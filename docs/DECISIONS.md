@@ -6283,3 +6283,43 @@ someone ran `POST /api/range/slot/rebuild/` and `/configure/` by hand.
   `bin/verify` after this deploy.
 - Full `bin/verify` after that deploy: unit 1592 passed; acceptance 73
   passed, 0 failed, 0 errors, 0 skipped in 4083 s; ratchet ok.
+
+## 2026-10-24 — A disabled rule is called disabled
+
+The platform's way to take a Suricata rule out of the learner's ruleset
+comments the rule's line out of the rule file until a time. It was named
+"suppression" in the API, the model, the code and the docs. In Suricata a
+suppression keeps the rule running and hides only its alerts: "Suppressions
+can be used to suppress alerts for a rule or a host/network."
+(https://docs.suricata.io/en/latest/configuration/global-thresholds.html).
+Taking a rule out is disabling: "to disable rules use
+/etc/suricata/disable.conf"
+(https://docs.suricata.io/en/latest/rule-management/suricata-update.html).
+The user ruled to use practitioners' terms as far as possible, so the feature
+is renamed end to end. Behaviour is unchanged.
+
+| Old | New |
+|---|---|
+| `GET/POST /api/rules/suppressions/` | `GET/POST /api/rules/disabled/` |
+| `POST /api/rules/suppressions/<id>/restore/` | `POST /api/rules/disabled/<id>/enable/` |
+| reply keys `suppressions`, `restored` | `disabled`, `enabled` (also the ingest reply's `restored`) |
+| field `restored_at` | `enabled_at` |
+| model `Suppression` (table `api_suppression`), related name `suppressions` | `DisabledRule` (`api_disabledrule`), `disabled_rules`; migration 0028 renames, rows kept |
+| `platform/suppress.py`: `silence`, `restore` | `platform/disable.py`: `comment_out`, `uncomment` |
+| rule file marker `# fsl-suppressed until <t>` | `# fsl-disabled until <t>` |
+| views `suppressions`, `restore_suppression` | `disabled_rules`, `enable_rule` |
+| `bin/backup` row `suppressions` | `disabled rules` |
+| `test/test_suppression.py`, `platform/tests/test_suppress.py`, `test_api_suppressions.py` | `test/test_disabled_rule.py`, `test_disable.py`, `test_api_disabled_rules.py` |
+
+- A rule file written before the rename can still hold `# fsl-suppressed`
+  lines on a standing sensor, so `disable.MARKERS` also accepts the old marker
+  when a rule is enabled; new disables write only `# fsl-disabled`.
+- Migration 0028 was run on a copy of the platform store backed up on
+  2026-10-23 (95 rows): the same 95 rows, byte-identical in every column, in
+  `api_disabledrule`, and `api_suppression` gone. Unapplying 0028 stops in
+  Django's content-type rename hook because `django.contrib.contenttypes` is
+  not installed; the platform is rebuilt forward, never migrated back.
+- The console has no screen for this feature, so no console string changes.
+  The Korean docs had called it "예외 처리", the word the WAF lessons use for
+  CRS exclusions; they now say "룰 비활성화" and "비활성화한 룰".
+- Decision entries above this one keep "suppression" as they were written.

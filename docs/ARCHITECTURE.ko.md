@@ -69,12 +69,12 @@
 
 워게임의 `compose.yaml`은 `container_name`을 고정하지 않습니다. 워게임 호스트는 컨테이너를 서비스 이름(`board`, `corp-wp`)으로 부릅니다. 고정 이름은 컨트롤 플레인에만 있습니다: `fsl-platform`, `fsl-elasticsearch`, `fsl-kibana`, `fsl-collector`, `fsl-gns3`. 아래 첫 번째 표는 서비스를 이 이름으로 적습니다.
 
-훈련 환경에 작용하는 엔드포인트는 쿼리나 본문에서 `session`을 받습니다. 해당 엔드포인트는 rules, validate, suppressions, `/api/attacker/`, origin, label, canary입니다.
+훈련 환경에 작용하는 엔드포인트는 쿼리나 본문에서 `session`을 받습니다. 해당 엔드포인트는 rules, validate, 룰 비활성화, `/api/attacker/`, origin, label, canary입니다.
 
 - `session`을 지정하지 않으면 쓰기는 가장 최근에 열린 세션으로 갑니다. 열린 세션이 없으면 409로 응답합니다.
 - `session`을 지정하지 않은 읽기는 가장 최근 세션을 씁니다.
 - 닫힌 세션을 지정한 쓰기는 거부합니다.
-- 예외 처리(suppression)는 세션과 함께 저장합니다(마이그레이션 0014).
+- 비활성화한 룰은 세션과 함께 저장합니다(마이그레이션 0014). 마이그레이션 0028에서 모델 이름을 `Suppression`에서 `DisabledRule`로, `restored_at`을 `enabled_at`으로 바꿨습니다. 저장된 행은 그대로 남습니다.
 
 각 슬롯의 센서는 실제로 적용 중인 룰 파일을 따로 가집니다.
 
@@ -429,8 +429,8 @@ id와 이름: 모든 id는 `uuid5(<learner id>, "slot-<n>-<wargame>")`입니다.
 | `platform/scoring/` | `correlate.py`는 마커나 시간 창으로 탐지를 케이스에 매칭하고, `metrics.py`는 TP, FP, FN, TN을 셉니다 |
 | `platform/scoreboard.py` | 목표 점수. 탐지를 시도에 귀속시키고, `corroborated`를 판정하고, 탈취된 목표를 집계합니다 |
 | `platform/game.py` | 게임 점수(speed, accuracy, coverage, response). 점수의 `game` 블록에 들어갑니다 |
-| `platform/suppress.py` | Suricata 룰을 정해진 시각까지 주석 처리했다가 되돌립니다(`# fsl-suppressed`) |
-| `platform/api/models.py` | Django 모델: `Session`, `Case`, `CustomerRequest`, `Detection`, `Objective`, `RuleSet`, `Suppression` |
+| `platform/disable.py` | Suricata 룰을 정해진 시각까지 주석 처리해 비활성화하고, 다시 활성화합니다(`# fsl-disabled`) |
+| `platform/api/models.py` | Django 모델: `Session`, `Case`, `CustomerRequest`, `Detection`, `Objective`, `RuleSet`, `DisabledRule` |
 | `platform/fsl/urls.py` | 모든 엔드포인트의 라우트 표 |
 | `platform/api/refusals.py` | 예외를 HTTP 상태 코드로 바꿉니다(`/api/` 아래의 404는 JSON). 변경 요청(POST 등)의 동일 출처 검사도 합니다 |
 | `platform/api/reachability.py` | 훈련 환경 호스트에서 온 요청을 거부하는 미들웨어 |
@@ -643,7 +643,7 @@ Suricata ---------> eve.json ----+-> Filebeat -> Elasticsearch, logs-<slot>-sens
 
 ingest 호출마다 다음을 수행합니다.
 
-- 먼저 만료된 룰 예외 처리(suppression)를 원래대로 되돌립니다.
+- 먼저 비활성화 시간이 지난 룰을 다시 활성화합니다.
 - `logs-<N>-*`를 읽습니다(`ELASTIC_SESSION_INDEX`, N은 세션의 슬롯).
   - 공유 수집기가 syslog 줄마다 송신자 hostname이 가리키는 슬롯(도메인 앞의 `-N`, 없으면 슬롯 1)을 태그로 붙여 그 슬롯의 인덱스에 씁니다. ingest 파이프라인이 문서를 저장하기 전에 그 태그를 지웁니다.
   - Filebeat는 모든 이벤트에 `event.module`(`suricata` 또는 `modsecurity`)을 붙이고, 둘 다 아닌 syslog 줄은 버립니다.
@@ -860,7 +860,7 @@ check 종류별 통과 조건:
   - `known`에 있는 값에는 `<text>.wrong.<step>.<value>`를 보여 줍니다.
   - 허용 값은 `accept` 목록이거나 `of:`로 세션의 기록에서 읽습니다("기초 레슨 F1-F6").
   - `of: rule`(`wargames.ANSWERS_OF`)은 학습자 자신의 요청이면 요청의 `path`와 `marker: browse`를, Kali 단계의 실행이면 `marker: step:<id>`를 받습니다. 룰 `family`로 좁힐 수 있습니다. 플랫폼은 최근 600초를 수집하고, 그 요청이나 실행에 대한 세션의 ModSecurity 탐지 기록을 모읍니다. 그중 CRS 합계 룰(949, 959, 980으로 시작하는 id)을 빼고, 남은 `ruleId`를 모두 허용 값으로 받습니다(`lesson.rules_named`). 기록된 것이 없으면 사유는 `lesson.check.unrecorded`입니다.
-- `rules`는 센서의 룰 파일(`GET /api/rules/`)에 방어 설정의 룰 파일에 없는 sid나 내용이 다른 sid가 생기면 통과합니다(`lesson.added_rules`, `suppress.sids`). `added`로 응답합니다. `needs: nocase`이면 그 룰에 `nocase`나 `i` 플래그가 붙은 pcre도 있어야 합니다(`lesson.ignores_case`).
+- `rules`는 센서의 룰 파일(`GET /api/rules/`)에 방어 설정의 룰 파일에 없는 sid나 내용이 다른 sid가 생기면 통과합니다(`lesson.added_rules`, `disable.sids`). `added`로 응답합니다. `needs: nocase`이면 그 룰에 `nocase`나 `i` 플래그가 붙은 pcre도 있어야 합니다(`lesson.ignores_case`).
 - `triage`(`judged: customer | attack | all`)는 학습자가 옳게 판정하면 통과합니다("시나리오").
 - `waf_changed`(`removed_target`)는 방어 설정이 선언한 예외의 target을 WAF 파일의 어떤 예외도 더는 가리키지 않으면 통과합니다.
 - `replay`는 `after`로 지정한 단계를 통과한 뒤에 다음 두 조건이 모두 맞으면 통과합니다.
@@ -1403,7 +1403,7 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
   - Elasticsearch나 substrate에 연결할 수 없거나 룰 파일을 읽을 수 없으면 503으로 응답합니다.
   - 세션 생성은 대상 시스템에 연결할 수 없어도 진행합니다. 세션은 스냅샷 없이 시작하고 board의 `loot/`는 409로 응답합니다.
   - 케이스 실행이나 기록, 세션 닫기는 대상 시스템을 읽지 않습니다. 단, 실행에 출발지나 도구 때문에 substrate가 필요하면 503으로 응답합니다.
-  - ingest 안의 예외 처리 복원과, 경보를 구간·호스트에 배치하는 작업은 substrate에 연결할 수 없어도 진행합니다. 배치 결과는 비어 있게 됩니다. 그래서 세션은 시작하고 멈출 수 있습니다.
+  - ingest 안에서 시간이 지난 룰을 다시 활성화하는 작업과, 경보를 구간·호스트에 배치하는 작업은 substrate에 연결할 수 없어도 진행합니다. 배치 결과는 비어 있게 됩니다. 그래서 세션은 시작하고 멈출 수 있습니다.
   - 분모가 0인 비율은 null이 아니라 0.0입니다. 정밀도, 재현율, F1, FPR, 그리고 게임의 speed, coverage, accuracy가 그렇습니다. `objectives` 블록의 `coverage`만 null입니다.
 - **점수는 보증할 수 없는 부분을 밝힙니다.** 다음 경우마다 경고를 담습니다.
   - 정상 케이스가 없습니다(`no_benign`).
@@ -1527,7 +1527,7 @@ fabric은 보안 그룹 세 개도 만듭니다.
 - 슬롯 어댑터(`OpenStack.in_slot(n)`)는 자기 슬롯의 서버만, 선언된 호스트 이름으로 읽습니다. 그래서 역할, runner, 구성도, 에지 방화벽의 렌더링된 설정이 모든 슬롯에서 같습니다. 슬롯 N의 에지 방화벽은 hostname을 `firewall-N`으로 렌더링합니다.
 - 한 슬롯의 수집기를 열 때 다른 슬롯의 송신자 룰은 그대로 둡니다.
 - 플랫폼은 세션을 열 때 세션을 슬롯에 묶습니다(`Session.slot`. unique 제약으로 슬롯당 열린 세션은 하나). 잠금을 잡은 상태에서 READY인 첫 번째 빈 슬롯을 고릅니다.
-- 세션별 훈련 환경 호출은 모두 그 슬롯으로 갑니다. 세션 종료는 그 슬롯만 초기화하며 그 슬롯의 예외 처리(suppression)만 복원된 것으로 표시합니다. 초기화 상태도 슬롯마다 따로입니다(`api/reset.py`). 룰 변경은 그 슬롯의 차례를 잡습니다. 따라서 한 슬롯의 초기화가 다른 슬롯의 세션을 붙잡지 않습니다.
+- 세션별 훈련 환경 호출은 모두 그 슬롯으로 갑니다. 세션 종료는 그 슬롯만 초기화하며 그 슬롯에서 비활성화한 룰만 다시 활성화된 것으로 표시합니다. 초기화 상태도 슬롯마다 따로입니다(`api/reset.py`). 룰 변경은 그 슬롯의 차례를 잡습니다. 따라서 한 슬롯의 초기화가 다른 슬롯의 세션을 붙잡지 않습니다.
 - `run_on_role`은 `--session`이나 `--slot`을 받으며, 슬롯이 둘 이상인데 둘 다 없으면 거부합니다.
 - 콘솔의 VM 터미널은 세션을 `?arg=<id>`(ttyd `-a`)로 받아 그 슬롯의 호스트를 엽니다.
 
@@ -1581,7 +1581,7 @@ configure의 마지막 단계인 `start_wargames()`는 `wargames` 역할을 통�
 
 `configure_slot()`(수동 configure)은 호스트마다 스레드 하나씩 두고 각 호스트의 단계를 나란히 실행합니다: 에지 방화벽(설정과 재부팅), WAF, Kali, 워게임 호스트, 수집기 보안 그룹. 모든 Ubuntu 호스트의 체인은 시간 동기화로 시작합니다. 모두 끝날 때까지 기다린 뒤, 위 순서에서 첫 번째 실패를 결과로 반환합니다.
 
-close는 즉시 응답합니다. 초기화 상태(idle, running, failed와 그 이유)는 플랫폼 프로세스가 보관합니다. 초기화는 시작을 잡은 때부터 성공할 때까지 `FSL_RESET_OWED_DIR`(`/data/reset-owed`)에 `slot-N` 파일을 남깁니다. 부팅할 때 `fsl/wsgi.py`가 이 파일이 남은 슬롯마다 close와 똑같이 초기화를 처음부터 다시 하므로(재구축, 억제 해제, 제자리 초기화, 설정), 재시작해도 슬롯이 세션을 거절한 채로 남지 않습니다. 실패한 초기화는 파일을 그대로 둡니다. `POST /api/range/configure/`는 수동 재시도 수단으로 남아 있으며, 실패한 초기화 상태를 지웁니다.
+close는 즉시 응답합니다. 초기화 상태(idle, running, failed와 그 이유)는 플랫폼 프로세스가 보관합니다. 초기화는 시작을 잡은 때부터 성공할 때까지 `FSL_RESET_OWED_DIR`(`/data/reset-owed`)에 `slot-N` 파일을 남깁니다. 부팅할 때 `fsl/wsgi.py`가 이 파일이 남은 슬롯마다 close와 똑같이 초기화를 처음부터 다시 하므로(재구축, 비활성화한 룰을 활성화로 표시, 제자리 초기화, 설정), 재시작해도 슬롯이 세션을 거절한 채로 남지 않습니다. 실패한 초기화는 파일을 그대로 둡니다. `POST /api/range/configure/`는 수동 재시도 수단으로 남아 있으며, 실패한 초기화 상태를 지웁니다.
 
 **준비 상태.** 모든 슬롯이 사용 중이거나 준비된 빈 슬롯이 없으면 세션 생성이 409로 응답합니다.
 
@@ -1590,7 +1590,7 @@ close는 즉시 응답합니다. 초기화 상태(idle, running, failed와 그 �
 - 번호와 그 슬롯을 잡은 세션
 - 단계: 세션이 잡고 있으면 `IN_USE`, 초기화가 진행 중이면 `RESETTING`, 초기화가 실패했으면 그 이유와 함께 `RESET_FAILED`, 그 밖에는 `NOT_STANDING`, `STALE`(VM이 호스트의 준비된 이미지가 아닌 이미지로 떠 있음), `REBUILDING`, `CHECKING`, `READY`
 - 초기화 상태
-- 세 가지 검사: 모든 VM이 ACTIVE, board의 정답 데이터를 읽을 수 있음, 센서 룰이 기준선이며 그 슬롯에 적용 중인 예외 처리가 없음
+- 세 가지 검사: 모든 VM이 ACTIVE, board의 정답 데이터를 읽을 수 있음, 센서 룰이 기준선이며 그 슬롯에 비활성화한 룰이 없음
 
 최상위의 `ready`와 `slot`은 다음 세션 열기가 잡게 될 슬롯을 가리킵니다.
 

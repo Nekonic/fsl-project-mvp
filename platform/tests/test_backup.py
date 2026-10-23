@@ -22,7 +22,7 @@ ROWS = {
     "api_customerrequest": 4,
     "api_objective": 2,
     "api_ruleset": 1,
-    "api_suppression": 0,
+    "api_disabledrule": 0,
 }
 
 
@@ -183,8 +183,8 @@ def test_a_store_the_platform_has_not_yet_migrated_to_the_checkout_is_still_kept
     [kept] = backup.module.BACKUPS.iterdir()
     assert kept.name.endswith(".sqlite3")
     assert dump(kept) == dump(store)
-    assert re.search(r"^\s*suppressions\s+absent$", printed, re.M), (
-        f"0003 adds api_suppression; a store taken before the platform has "
+    assert re.search(r"^\s*disabled rules\s+absent$", printed, re.M), (
+        f"0003 adds the disabled-rule table; a store taken before the platform has "
         f"applied it is the backup most worth having:\n{printed}"
     )
     assert re.search(r"^\s*sessions\s+0$", printed, re.M), printed

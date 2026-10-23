@@ -31,7 +31,7 @@ import gns3
 import kibana
 import lesson
 import scoreboard
-import suppress
+import disable
 import topology
 import wargames
 import traffic
@@ -44,7 +44,7 @@ from api.models import (
     Objective,
     RuleSet,
     Session,
-    Suppression,
+    DisabledRule,
 )
 from ingest import elastic
 from redteam import harness, tools
@@ -69,8 +69,8 @@ DETECTION_DETAIL_FIELDS = DETECTION_FIELDS + ("raw",)
 OBJECTIVE_FIELDS = ("id", "key", "name", "category", "difficulty", "achieved_at")
 RULESET_FIELDS = ("id", "content", "created_at", "applied_at")
 SCORE_FIELDS = ("tp", "fp", "fn", "tn", "precision", "recall", "f1", "false_positive_rate")
-SUPPRESSION_FIELDS = (
-    "id", "session_id", "sid", "reason", "created_at", "expires_at", "restored_at",
+DISABLED_RULE_FIELDS = (
+    "id", "session_id", "sid", "reason", "created_at", "expires_at", "enabled_at",
 )
 
 SITE_BROWSER_MARKER = site.MARKER
@@ -89,7 +89,7 @@ RECORD_SLACK = timedelta(seconds=5)
 RUN_SETTLED = timedelta(seconds=15)
 OBJECTIVE_FACTS = ("lost_points", "detected_penalty")
 _segments_kept: dict = {}
-SUPPRESSION_MINUTES = 60
+DISABLE_MINUTES = 60
 DEFAULT_RULES = "local.rules"
 RULE_ERROR = re.compile(r"\b(Error|ERRCODE)\b|<Error>")
 RULE_CHANGES = threading.RLock()
@@ -127,7 +127,7 @@ def _renamed(one, pairs):
 
 def _of_slot(number: int):
     return Q(session__slot=number) | (Q(session__slot=None) if number == 1 else Q(pk__in=[]))
-SUPPRESSION_LONGEST = 24 * 60
+DISABLE_LONGEST = 24 * 60
 CASE_REQUIRED = ("case_id", "name", "malicious", "correlation", "started_at", "ended_at")
 
 def _shape(obj, fields):
@@ -508,7 +508,7 @@ def _judge(session, taught, step, body, kept):
     if kind == "rules":
         live = _live_rules(session)
         added = lesson.added_rules(live, _posture_rules(session))
-        needed = [sid for sid in added if check.get("needs") != "nocase" or lesson.ignores_case(suppress.find(live, sid))]
+        needed = [sid for sid in added if check.get("needs") != "nocase" or lesson.ignores_case(disable.find(live, sid))]
         return bool(needed), [failed, []], {"added": added}
     if kind == "sent":
         return bool(_site_requests(session, check["match"])), [failed, []]
@@ -1741,7 +1741,7 @@ def _rebuilt_on_close(session, adapter, closed_at, claimed, reply):
         return None
     if not hasattr(adapter, "configure_slot"):
         return None
-    _lifted_by_the_rebuild(closed_at, _slot_of(session))
+    _enabled_by_the_rebuild(closed_at, _slot_of(session))
     return claimed and reset.begin(adapter, turn, rebuilt, claimed=True,
                                    then=lambda: _map_begin(session, adapter))
 
@@ -1758,16 +1758,16 @@ def _reset_again(adapter, turn, number):
     try:
         with turn:
             rebuilt = getattr(adapter, "reset_slot", adapter.rebuild_slot)()
-        _lifted_by_the_rebuild(timezone.now(), number)
+        _enabled_by_the_rebuild(timezone.now(), number)
     except Exception as exc:
         reset.failed(number, str(exc) or type(exc).__name__)
         return
     reset.begin(adapter, turn, rebuilt, claimed=True)
 
-def _lifted_by_the_rebuild(rebuilt_at, number=1):
-    Suppression.objects.filter(
-        _of_slot(number), restored_at__isnull=True, created_at__lte=rebuilt_at,
-    ).update(restored_at=rebuilt_at)
+def _enabled_by_the_rebuild(rebuilt_at, number=1):
+    DisabledRule.objects.filter(
+        _of_slot(number), enabled_at__isnull=True, created_at__lte=rebuilt_at,
+    ).update(enabled_at=rebuilt_at)
 
 @require_http_methods(["GET", "POST"])
 def session_cases(request, session_id):
@@ -1870,9 +1870,9 @@ def _ingest(session, within=None):
     if within is not None:
         start = max(start, timezone.now() - timedelta(seconds=within))
     try:
-        restored = _restore_expired()
+        enabled = _enable_expired()
     except (RangeUnavailable, suricata.RulesUnreadable):
-        restored = []
+        enabled = []
 
     documents, truncated = _fetched(_session_index(session) or settings.ELASTIC_INDEX, start, end,
                                     newest_first=within is not None)
@@ -1914,7 +1914,7 @@ def _ingest(session, within=None):
     Detection.objects.bulk_create(rows, ignore_conflicts=True)
     ingested = session.detections.count() - before
 
-    reply = {"ingested": ingested, "skipped": skipped, "stale": stale, "restored": restored}
+    reply = {"ingested": ingested, "skipped": skipped, "stale": stale, "enabled": enabled}
     if truncated and within is None:
         read, total = truncated
         reply["truncated"] = {"read": read, "total": total}
@@ -2217,25 +2217,25 @@ def _minutes(given) -> float:
         minutes = float(given)
     except (TypeError, ValueError, OverflowError):
         minutes = math.nan
-    if not 0 < minutes <= SUPPRESSION_LONGEST:
+    if not 0 < minutes <= DISABLE_LONGEST:
         raise BadRequest(
-            f'"minutes" must be more than 0 and at most {SUPPRESSION_LONGEST}, '
+            f'"minutes" must be more than 0 and at most {DISABLE_LONGEST}, '
             f"got {given!r}"
         )
     return minutes
 
 @require_http_methods(["GET", "POST"])
-def suppressions(request):
-    expired = _restore_expired()
+def disabled_rules(request):
+    expired = _enable_expired()
 
     if request.method == "GET":
         return _reply(
             {
-                "suppressions": [
-                    _shape(s, SUPPRESSION_FIELDS)
-                    for s in Suppression.objects.filter(restored_at__isnull=True)
+                "disabled": [
+                    _shape(s, DISABLED_RULE_FIELDS)
+                    for s in DisabledRule.objects.filter(enabled_at__isnull=True)
                 ],
-                "restored": expired,
+                "enabled": expired,
             }
         )
 
@@ -2245,47 +2245,47 @@ def suppressions(request):
     except (TypeError, ValueError, OverflowError):
         raise BadRequest(f'"sid" must be a rule id, got {body.get("sid")!r}')
 
-    minutes = _minutes(body.get("minutes", SUPPRESSION_MINUTES))
+    minutes = _minutes(body.get("minutes", DISABLE_MINUTES))
     expires_at = timezone.now() + timedelta(minutes=minutes)
     session = _written(request)
     with _turn_of(session):
         content = _live_rules(session)
 
         try:
-            silenced = suppress.silence(content, sid, expires_at.isoformat())
+            commented_out = disable.comment_out(content, sid, expires_at.isoformat())
         except KeyError:
             raise Http404(f"no active rule carries sid {sid}")
 
-        original = suppress.find(content, sid)
-        _apply(silenced, session)
+        original = disable.find(content, sid)
+        _apply(commented_out, session)
 
-        record = Suppression.objects.create(
+        record = DisabledRule.objects.create(
             session=session,
             sid=sid,
             original=original,
             reason=body.get("reason") or "",
             expires_at=expires_at,
         )
-    return _reply(_shape(record, SUPPRESSION_FIELDS), status=201)
+    return _reply(_shape(record, DISABLED_RULE_FIELDS), status=201)
 
 @require_http_methods(["POST"])
-def restore_suppression(request, suppression_id):
-    record = get_object_or_404(Suppression, pk=suppression_id)
+def enable_rule(request, rule_id):
+    record = get_object_or_404(DisabledRule, pk=rule_id)
     with _turn_of(record.session):
         record.refresh_from_db()
-        return _restored(record)
+        return _enabled(record)
 
-def _restored(record):
-    if record.restored_at is not None:
-        return _reply(_shape(record, SUPPRESSION_FIELDS) | {
-            "detail": f"sid {record.sid} was already restored at {record.restored_at.isoformat()}"
+def _enabled(record):
+    if record.enabled_at is not None:
+        return _reply(_shape(record, DISABLED_RULE_FIELDS) | {
+            "detail": f"sid {record.sid} was already enabled at {record.enabled_at.isoformat()}"
         })
-    ok, detail = _restore(record)
+    ok, detail = _enable(record)
     if not ok:
         return _reply({"detail": detail}, status=400)
-    return _reply(_shape(record, SUPPRESSION_FIELDS) | {"detail": detail})
+    return _reply(_shape(record, DISABLED_RULE_FIELDS) | {"detail": detail})
 
-def _restore(record) -> tuple[bool, str | None]:
+def _enable(record) -> tuple[bool, str | None]:
     try:
         current = _live_rules(record.session)
     except RangeUnavailable:
@@ -2294,50 +2294,50 @@ def _restore(record) -> tuple[bool, str | None]:
         adapter = _range(record.session)
         if not hasattr(adapter, "rebuild_slot"):
             raise
-        record.restored_at = timezone.now()
-        record.save(update_fields=["restored_at"])
+        record.enabled_at = timezone.now()
+        record.save(update_fields=["enabled_at"])
         return True, (
             f"session {record.session_id} has ended and its sensor is "
-            f"rebuilt from its image, so nothing is left silenced"
+            f"rebuilt from its image, so nothing is left disabled"
         )
-    superseded = suppress.find(current, record.sid) is not None
-    lift = suppress.discard if superseded else suppress.restore
+    superseded = disable.find(current, record.sid) is not None
+    enable = disable.discard if superseded else disable.uncomment
     try:
-        content = lift(current, record.sid, record.original)
+        content = enable(current, record.sid, record.original)
     except KeyError:
         content = superseded = None
     if content is not None:
         try:
             _apply(content, record.session)
         except suricata.RuleApplyError as exc:
-            return False, f"could not restore sid {record.sid}: {exc}"
+            return False, f"could not enable sid {record.sid}: {exc}"
 
-    record.restored_at = timezone.now()
-    record.save(update_fields=["restored_at"])
+    record.enabled_at = timezone.now()
+    record.save(update_fields=["enabled_at"])
     if superseded:
         return True, (
             f"sid {record.sid} was superseded by an active rule carrying it, so "
-            f"the silenced original was dropped rather than restored"
+            f"the commented-out original was dropped rather than uncommented"
         )
     return True, None
 
 def _due():
-    return Suppression.objects.filter(
-        restored_at__isnull=True, expires_at__lte=timezone.now()
+    return DisabledRule.objects.filter(
+        enabled_at__isnull=True, expires_at__lte=timezone.now()
     )
 
-def _restore_expired() -> list:
+def _enable_expired() -> list:
     if not _due().exists():
         return []
-    lifted = []
+    enabled = []
     for record in list(_due()):
         with _turn_of(record.session):
             record.refresh_from_db()
-            if record.restored_at is not None:
+            if record.enabled_at is not None:
                 continue
-            ok, detail = _restore(record)
-        lifted.append({"sid": record.sid, "ok": ok, "detail": detail})
-    return lifted
+            ok, detail = _enable(record)
+        enabled.append({"sid": record.sid, "ok": ok, "detail": detail})
+    return enabled
 
 def _sensors(adapter):
     return [
@@ -2554,8 +2554,8 @@ def _rules_at_baseline(adapter) -> bool:
     if any(rules != _baseline_rules() for rules in live):
         return False
     now = timezone.now()
-    return not Suppression.objects.filter(
-        _of_slot(getattr(adapter, "slot", 1)), restored_at__isnull=True, expires_at__gt=now
+    return not DisabledRule.objects.filter(
+        _of_slot(getattr(adapter, "slot", 1)), enabled_at__isnull=True, expires_at__gt=now
     ).exists()
 
 def _holders() -> dict[int, int]:
@@ -2621,7 +2621,7 @@ def _range_ready(adapter, plan=None, held=None) -> dict:
     if checks["ground_truth"] is False:
         blocked.append("the target's ground truth could not be read")
     if checks["rules_baseline"] is False:
-        blocked.append("the sensor rules are off baseline or a suppression is in force")
+        blocked.append("the sensor rules are off baseline or a rule is disabled")
     if number != 1:
         blocked = [f"slot {number}: {reason}" for reason in blocked]
     return {

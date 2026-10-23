@@ -144,18 +144,18 @@ class RuleSet(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
-class Suppression(models.Model):
+class DisabledRule(models.Model):
 
     session = models.ForeignKey(
         Session, null=True, blank=True, on_delete=models.SET_NULL,
-        related_name="suppressions",
+        related_name="disabled_rules",
     )
     sid = models.IntegerField()
     original = models.TextField()
     reason = models.CharField(max_length=256, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
-    restored_at = models.DateTimeField(null=True, blank=True)
+    enabled_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]

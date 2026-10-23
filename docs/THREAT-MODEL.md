@@ -11,7 +11,7 @@ starts, and what the range cannot show.
 | **Attacker's position** | Outside the network. The attacker sends from one of the Internet origins the range builds (thirty, one /24 each). Each origin has its own address range and a declared country, and GeoIP gives the same country. At the start the attacker has no account on the target, no code running on it and no access to the internal network. |
 | **Command and control** | None. The attacks are requests sent from Kali or from the platform. Nothing left on the target calls back. |
 | **What the attacker is after** | On `board`, the password hashes in `auth_user`. The attacker steals them and submits them. The platform counts them only if they match the copy of `auth_user` the platform took from the target when the session opened (`loot_verified`). On `corp`, three changes to the WordPress database, listed in `wargames/corp/objectives.yaml`: a new administrator account, the `users_can_register` option turned on, and content written without permission. The platform finds these in `corp-db`'s own record of changes since the session started (`effect_observed`). |
-| **What the defence has** | Suricata, which watches the traffic to the WAF, and ModSecurity with the Core Rule Set (CRS) in front of the application. ModSecurity blocks (`SecRuleEngine On`, `deploy/waf/modsecurity.conf:1`). Both send their alerts to one Elasticsearch index. The defender can write and suppress Suricata rules. The defender can tune the WAF through `PUT /api/sessions/<id>/waf/`: CRS paranoia level, anomaly thresholds and rule exclusions. The defender also has a shell on the WAF and, outside a wargame, a Kali shell for attacking the range as practice. The defender has nothing else. |
+| **What the defence has** | Suricata, which watches the traffic to the WAF, and ModSecurity with the Core Rule Set (CRS) in front of the application. ModSecurity blocks (`SecRuleEngine On`, `deploy/waf/modsecurity.conf:1`). Both send their alerts to one Elasticsearch index. The defender can write and disable Suricata rules. The defender can tune the WAF through `PUT /api/sessions/<id>/waf/`: CRS paranoia level, anomaly thresholds and rule exclusions. The defender also has a shell on the WAF and, outside a wargame, a Kali shell for attacking the range as practice. The defender has nothing else. |
 
 ## The stages it reaches
 
@@ -128,7 +128,7 @@ limit scope.
   `FSL_RETAIN_CLOSED_MINUTES` ago (default 60). It deletes the session's cases,
   detections, customer requests and objectives. It does this at start and after
   every close (`platform/api/retention.py`).
-- A suppression stays, with its session cleared.
+- A disabled rule stays, with its session cleared.
 - You cannot review or compare an older session from the platform's store. The
   alerts stay in Elasticsearch.
 

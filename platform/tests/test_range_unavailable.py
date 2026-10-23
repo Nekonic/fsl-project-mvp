@@ -7,7 +7,7 @@ pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("a_session_is_open"
     ("get", "/api/rules/", None),
     ("post", "/api/rules/validate/", {"content": "alert http any any -> any any (sid:9000001;)"}),
     ("post", "/api/rules/apply/", {"content": "alert http any any -> any any (sid:9000001;)"}),
-    ("post", "/api/rules/suppressions/", {"sid": 9000001}),
+    ("post", "/api/rules/disabled/", {"sid": 9000001}),
     ("post", "/api/attacker/label/", {"case_id": "sqli-login-bypass"}),
 ])
 def test_a_range_that_cannot_answer_is_503_with_its_reason(client, method, path, body):

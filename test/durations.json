@@ -26,7 +26,7 @@
   "test_score_reveal": 1,
   "test_strategy_comparison": 100,
   "test_strategy_honesty": 5,
-  "test_suppression": 260,
+  "test_disabled_rule": 260,
   "test_tool_cases": 95,
   "test_topology": 5,
   "test_waf_geolocation": 1,
