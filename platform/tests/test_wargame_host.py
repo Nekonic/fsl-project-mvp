@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 import pytest
 import yaml
 
-from range import declared, openstack, ports, wargame_host
+from range import declared, images, openstack, ports, wargame_host
 from range.ports import Drifted, Node, Ran, Segment, Shape
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -146,11 +146,114 @@ def test_the_host_setup_fetches_each_sideloaded_image_from_the_address_the_platf
     assert "served=$(cat served-from)" in setup
     assert 'while read -r image id name; do' in setup and '"$served$name/"' in setup
 
-def test_a_wargame_starts_from_its_installed_file_with_no_pull():
+def test_a_wargame_starts_from_its_installed_file_with_no_pull_on_volumes_filled_from_its_pristine_copy():
     argv = wargame_host.up("board")
+    script = argv[3].splitlines()
+    compose = "docker compose -p board -f /opt/fsl/wargames/board.yaml"
 
-    assert argv[5:7] == ["-f", "/opt/fsl/wargames/board.yaml"]
-    assert argv[-2:] == ["--pull", "never"], "the range has no route to ghcr.io; the images are already on the host"
+    assert argv[:3] == ["sudo", "sh", "-c"] and script[0] == "set -e"
+    created = script.index(f"{compose} up --no-start --pull never")
+    restored = next(i for i, line in enumerate(script) if f"sh {wargame_host.PRISTINE} restore board" in line)
+    started = script.index(f"{compose} up -d --wait --pull never")
+    assert created < restored < started, (
+        "the containers' new volumes are filled from the copy kept at image build before any "
+        "container starts, so MySQL finds an initialised datadir and skips its initialisation")
+    assert all("--pull never" in line for line in script if " up " in line), (
+        "the range has no route to ghcr.io; the images are already on the host")
+
+def test_the_pristine_copy_is_made_once_at_image_build_and_never_by_a_reset():
+    setup = (ROOT / "deploy/wargame-host/setup.sh").read_text()
+    pristine = (ROOT / "deploy/wargame-host/pristine.sh").read_text()
+    kept = setup.index('sh /opt/fsl/pristine.sh keep "${wargame%.yaml}"')
+
+    assert f"install -m 0755 pristine.sh {wargame_host.PRISTINE}" in setup
+    assert kept > setup.index("docker load") and kept > setup.index("pull --quiet"), (
+        "the copy is made from the images the host image holds")
+    assert "FSL_PRISTINE:-/opt/fsl/pristine}" in pristine
+    assert not "/opt/fsl/pristine".startswith(images.WORKDIR), "the builder deletes its workdir after setup"
+    reset = [*wargame_host.up("board"), *wargame_host.cleared(["board", "corp"], (), True)]
+    assert not any(" keep " in part for part in reset)
+    assert not any("pristine" in part for part in wargame_host.cleared(["board", "corp"], (), True)), (
+        "down -v removes the containers' volumes and leaves the pristine copy alone")
+
+FAKE_DOCKER = """#!/bin/sh
+echo "$*" >> "$FAKE/calls"
+case "$1" in
+  compose)
+    case "$*" in
+      *"config --services"*) cat "$FAKE/services" ;;
+      *" down -v "*) for volume in "$FAKE"/volumes/*; do rm -rf "$volume"; done ;;
+    esac ;;
+  inspect)
+    case "$3" in
+      *State.Status*) cat "$FAKE/$4.status" ;;
+      *) cat "$FAKE/$4.mounts" ;;
+    esac ;;
+esac
+"""
+
+def _host(tmp_path, containers):
+    fake = tmp_path / "docker-state"
+    (fake / "volumes").mkdir(parents=True)
+    (tmp_path / "bin").mkdir()
+    docker = tmp_path / "bin" / "docker"
+    docker.write_text(FAKE_DOCKER)
+    docker.chmod(0o755)
+    (fake / "services").write_text("".join(f"{name}\n" for name in containers))
+    for name, (status, path, files) in containers.items():
+        volume = fake / "volumes" / name
+        volume.mkdir()
+        for file, content in files.items():
+            (volume / file).write_text(content)
+        (fake / f"{name}.status").write_text(f"{status}\n")
+        (fake / f"{name}.mounts").write_text(f"{path} {volume}\n\n")
+    return fake
+
+def _pristine(tmp_path, fake, verb):
+    env = {"PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin", "FAKE": str(fake),
+           "FSL_PRISTINE": str(tmp_path / "pristine")}
+    return subprocess.run(["sh", str(ROOT / "deploy/wargame-host/pristine.sh"), verb, "board"],
+                          env=env, capture_output=True, text=True)
+
+def test_keeping_copies_each_stopped_containers_volumes_before_removing_them(tmp_path):
+    fake = _host(tmp_path, {
+        "board-db": ("exited", "/var/lib/mysql", {"ibdata1": "initialised", "binlog.000001": "rows"}),
+        "board": ("exited", "/srv/static", {}),
+    })
+
+    done = _pristine(tmp_path, fake, "keep")
+
+    assert done.returncode == 0, done.stderr
+    kept = tmp_path / "pristine" / "board"
+    assert (kept / "board-db/var/lib/mysql/ibdata1").read_text() == "initialised"
+    assert (kept / "board-db/var/lib/mysql/binlog.000001").read_text() == "rows"
+    assert (kept / "board/srv/static").is_dir()
+    calls = (fake / "calls").read_text().splitlines()
+    order = [next(i for i, call in enumerate(calls) if step in call)
+             for step in ("up -d --wait --pull never", "stop --timeout", "down -v")]
+    assert order == sorted(order), "MySQL is shut down cleanly before its datadir is copied"
+
+def test_restoring_fills_only_the_new_empty_volumes_of_containers_that_never_ran(tmp_path):
+    fake = _host(tmp_path, {
+        "board-db": ("created", "/var/lib/mysql", {}),
+        "board": ("running", "/srv/static", {"live": "session data"}),
+        "cache": ("created", "/data", {"kept-by-compose": "old"}),
+    })
+    for container, path in (("board-db", "var/lib/mysql"), ("board", "srv/static"), ("cache", "data")):
+        kept = tmp_path / "pristine" / "board" / container / path
+        kept.mkdir(parents=True)
+        (kept / "pristine").write_text(container)
+
+    done = _pristine(tmp_path, fake, "restore")
+
+    assert done.returncode == 0, done.stderr
+    volumes = fake / "volumes"
+    assert (volumes / "board-db" / "pristine").read_text() == "board-db"
+    assert sorted(p.name for p in (volumes / "board").iterdir()) == ["live"], (
+        "a running container's datadir is live; writing under it would corrupt it")
+    assert sorted(p.name for p in (volumes / "cache").iterdir()) == ["kept-by-compose"], (
+        "compose hands a recreated container its old anonymous volume, which holds data already")
+    assert not any(" up " in call or " down" in call for call in (fake / "calls").read_text().splitlines())
 
 class WargameShell:
     def __init__(self, exit_code=0):
@@ -190,7 +293,7 @@ def test_the_wargames_start_side_by_side_and_not_one_after_the_other():
 def test_each_wargame_that_does_not_come_up_healthy_is_named_in_the_drift(failing):
     def runner(role, segment_id=""):
         def run(argv, stdin=None, timeout=60.0):
-            wargame = argv[argv.index("-p") + 1]
+            wargame = argv[-1].split(" -p ")[1].split()[0]
             return Ran(1, f"container {wargame}-db is unhealthy") if wargame in failing else Ran(0, "")
         return run
 

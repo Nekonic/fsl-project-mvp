@@ -6446,3 +6446,57 @@ Done, not yet measured live: `start_wargames()` runs each wargame's `up -d
 that failed; the four wargame healthchecks probe every second for their first
 120 s (`start_interval: 1s`; the wargame hosts run Docker Engine 29.1.3, read
 2026-10-24).
+
+## 2026-10-24 — A reset restores pristine wargame data
+
+What: the wargame host's image build starts each wargame once, lets it finish
+its setup, stops it and keeps a copy of every container's volumes under
+`/opt/fsl/pristine/<id>/<container><path>` (`deploy/wargame-host/pristine.sh
+keep`, run by `setup.sh`). Every start of a wargame, at configure and at each
+reset after `down -v`, now creates the containers with `up --no-start`, copies
+the pristine data into each new empty volume of a container that has never
+run (`pristine.sh restore`), then runs `up -d --wait`. MySQL then skips its
+initialisation, the board skips migrate's table creation and creating its posts
+and comments (its seed still sets the seeded accounts' passwords afresh), and
+corp skips `wp core install` and its plugin setup. corp's entrypoint waits for
+`wp db check` to pass, so `wp-config.php` is complete, before it asks whether
+WordPress is installed (a review found that asking earlier could read a
+half-written file and run the build-time setup again).
+
+Why: about 60-65 % of each wargame's `up` was MySQL initialising its datadir
+and about 25 % app setup, on a disk that takes about 27 ms per write
+("Where a slot reset's time goes"). A copy of about 0.5 GB replaces that
+work. The copy is made at image build, not on the host's first configure,
+because the images it was made from are in the same host image: a new tag or
+a sideloaded image already makes a new host image, so the copy cannot drift
+from the images it runs with, and a rebuilt host needs no slow first start.
+
+The fresh-secrets rule: every session starts from the same data, but nothing a
+learner could carry from one session to the next may match. The board's
+`seed` now sets each seeded account's password on every start, so each
+session's hashes have new salts, and loot from an earlier session does not
+match the next session's ground truth. It also moves the seeded posts' dates
+to today. corp is scored by the binary-log changes after the session's
+start, so an old change cannot be replayed into a new session. corp's
+entrypoint now deletes `wp-config.php` before the WordPress image's
+entrypoint runs, so each start gets new keys and salts (old cookies and nonces
+do not validate), and on restored data it sets the admin password again, so
+the admin hash is new too. The binary log stays on; the copied log holds only
+build-time rows, which fall before any session's start.
+
+The salts change on every start of the board container, not only after a
+restore. Nothing restarts a wargame container during a session (no restart
+policy, and the platform never restarts one), so a session's ground truth stays
+fixed from its start snapshot to its close.
+
+Rejected:
+
+- A tmpfs datadir: a database container restarted during a session would lose
+  the session's data.
+- MySQL durability flags (`innodb_flush_log_at_trx_commit`, `sync_binlog`,
+  doublewrite off): they shorten the writes but leave the initialisation, a
+  smaller gain.
+- Smaller redo capacity for the copy: no simple way with MySQL 8.4's
+  `#innodb_redo` files; the copy keeps them (about 100 MB per datadir).
+
+Not yet measured live.

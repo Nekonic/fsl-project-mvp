@@ -1122,10 +1122,16 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       time goes"): the wargame host's `up --wait` of board (115-165 s) then
       corp (94-110 s) is the critical path; Nova rebuilds (16-19 s), guest
       boot (about 55 s), the edge reset (3-5 s) and the polling are off it or
-      small. Planned, repo only: start board and corp side by side; a 1 s
-      healthcheck start interval; then restore a clean data volume made at
-      image build instead of a fresh MySQL init, migrate, seed and WordPress
-      install on every reset. For the user (cloud admin): `com01`'s Nova
+      small. Done in the repo, not yet measured live: board and corp start
+      side by side; healthchecks probe every second while starting; and the
+      wargame host's image build keeps a pristine copy of each wargame's
+      volumes (`/opt/fsl/pristine`), which every start copies into the new
+      volumes before `up`, so no reset runs MySQL init, migrate, seeding or the
+      WordPress install (`docs/DECISIONS.md` "A reset restores pristine
+      wargame data"). The board's password salts and corp's keys, salts and
+      admin hash are still new each session. To prove: two sessions on a
+      rebuilt slot, close to READY, and different board hashes in the two
+      baselines. For the user (cloud admin): `com01`'s Nova
       `cpu_mode` (guests see a Sandy Bridge model) and disk, and 4 vCPU for
       the wargame host (needs a 22-24 core quota).
 - [ ] Acceptance run time: 2,900 s on OpenStack on 2026-10-12 with one slot
