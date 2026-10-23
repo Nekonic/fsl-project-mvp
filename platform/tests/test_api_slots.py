@@ -71,7 +71,8 @@ class Slot:
         if not renew:
             return self.plan_slot()
         self.cloud.renewed.append(self.slot)
-        return replace(self.plan_slot(), stale=())
+        stale = self.plan_slot().stale
+        return replace(self.plan_slot(), stale=(), rebuilt=tuple((host, f"s{self.slot}") for host in stale))
 
 
 class Cloud(Slot):
@@ -279,6 +280,9 @@ def test_a_slot_on_an_older_image_is_rebuilt_by_a_post_only_when_no_session_hold
         "a rebuild under an open session wipes the VMs its learner is using"
     )
     assert answer["stale"] == ["fsl-waf"]
+    assert cloud.reset == [("begun", 2)] and answer["rebuilding"] == [{"host": "fsl-waf-2", "server": "s2"}], (
+        "the free slot's rebuild is followed by its own reset, which configures it once Nova shows it back"
+    )
     assert answer["blocked"] == [
         f"session {held.pk} holds this slot, so the rebuild of fsl-waf onto the ready image "
         f"waits for its close"

@@ -1517,7 +1517,7 @@ fabric은 보안 그룹 세 개도 만듭니다.
 - 각 호스트는 선언된 네트워크마다 `<host>.<segment>` 이름의 포트를 가집니다. 이 포트는 `fsl-range`에, `mgmt`에서는 `fsl-mgmt`에 속합니다. 다른 그룹에 있던 기존 `mgmt` 포트는 `fsl-mgmt`로 옮깁니다.
 - `gateway` 역할을 맡은 호스트는 모든 출발지의 게이트웨이 주소를 인터넷 포트 하나에 갖습니다. cloud-init은 첫 번째 주소만 설정하므로, 나머지는 호스트의 user data가 부팅할 때마다 추가합니다.
 - 모든 호스트의 user data는 `estate` 이름을 `/etc/hosts`에 덧붙입니다. WAF의 `board.com`과 `corp.com`, 워게임 호스트의 `board`와 `corp-wp`입니다. WAF는 이것으로 각 워게임의 publish된 포트를 찾습니다. 각 데이터베이스는 호스트 안의 자기 compose 프로젝트 안에서만 응답합니다.
-- 떠 있는 서버의 이미지(Nova의 `image.id`)가 그 호스트의 준비된 이미지와 다르면 계획에서 `stale`로 표시합니다. 세션이 잡지 않은 슬롯이면 `POST /api/range/slot/`이 Nova로 그 서버를 준비된 이미지로 재구축합니다. 세션이 잡은 슬롯이면 아무것도 재구축하지 않고 슬롯을 blocked로 보고합니다.
+- 떠 있는 서버의 이미지(Nova의 `image.id`)가 그 호스트의 준비된 이미지와 다르면 계획에서 `stale`로 표시합니다. 세션이 잡지 않은 슬롯이면 `POST /api/range/slot/`이 Nova로 그 서버를 준비된 이미지로 재구축하고, 재구축한 서버를 `rebuilding`에 적어 돌려줍니다. 이어서 플랫폼이 `api/reset.py`로 그 슬롯을 직접 초기화합니다. Nova가 재구축한 서버마다 ACTIVE를 벗어났다가 돌아오는 것을 보이고 `configure_slot()`이 끝날 때까지 슬롯은 `RESETTING`입니다. 세션이 잡은 슬롯이면 아무것도 재구축하지 않고 슬롯을 blocked로 보고합니다.
 
 **훈련 환경 슬롯.** `cloud.yaml`의 `compute.slots`(기본값 1, 플랫폼에서는 `FSL_OPENSTACK_SLOTS`)는 훈련 환경을 몇 벌 동시에 세울지 정합니다. `max_sessions`가 바로 이 수입니다.
 

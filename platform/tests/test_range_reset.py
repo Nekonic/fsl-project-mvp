@@ -211,6 +211,53 @@ def test_an_in_place_reset_that_fails_fails_the_reset_with_its_reason(client):
     assert "did not clear its wargames" in reset.standing()["reason"]
     assert cloud.configured_rebuilt == [["fsl-waf"]], "the rebuilt side still ran to the end"
 
+class RenewedByAPost(ResetsInPlace):
+    def __init__(self):
+        super().__init__(plans=[])
+        self.nova = ACTIVE
+        self.read = 0
+
+    def plan_slot(self):
+        self.read += 1
+        return slot.Plan(standing=self.nova)
+
+    def ensure_slot(self, renew=True):
+        return slot.Plan(standing=self.nova, rebuilt=(("fsl-waf", "s2"),))
+
+def _read_again(cloud, times=3):
+    wanted = cloud.read + times
+    deadline = time.monotonic() + 5
+    while cloud.read < wanted:
+        assert time.monotonic() < deadline, "the reset stopped reading the slot"
+        time.sleep(0.01)
+
+def test_a_post_that_rebuilds_a_free_slot_s_stale_vm_configures_the_slot_once_nova_shows_the_rebuild(client):
+    cloud = RenewedByAPost()
+    first, second, third = _checked(cloud)
+    with first, second, third:
+        posted = client.post_json("/api/range/slot/")
+        _read_again(cloud)
+        lagging = client.get("/api/range/ready/").json(), cloud.configured
+        cloud.nova = WAF_REBUILDING
+        _read_again(cloud)
+        rebuilding = client.get("/api/range/ready/").json(), cloud.configured
+        cloud.nova = ACTIVE
+        _until_settled()
+        after = client.get("/api/range/ready/").json()
+
+    assert posted.json()["rebuilding"] == [{"host": "fsl-waf", "server": "s2"}]
+    assert lagging[0]["slot"]["phase"] == "RESETTING" and lagging[1] == 0, (
+        "Nova takes the new image id at once but shows the server ACTIVE for a few seconds "
+        "before REBUILD; configuring then configured the VM from before the rebuild and left "
+        "the rebuilt wargame host without its estate sensor"
+    )
+    assert rebuilding[0]["slot"]["phase"] == "RESETTING" and rebuilding[1] == 0
+    assert cloud.configured == 1, "the whole slot is configured once its rebuilt VM is back"
+    assert cloud.reset == 0 and cloud.configured_rebuilt == [], (
+        "no session used the slot, so nothing is reset in place"
+    )
+    assert after["ready"] is True and after["slot"]["phase"] == "READY"
+
 def test_closing_on_the_cloud_rebuilds_what_the_adapter_names_and_resets_the_rest(client):
     session = Session.objects.create(scenario="board", baseline=[])
 

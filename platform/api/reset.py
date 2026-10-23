@@ -56,12 +56,13 @@ def release(slot: int) -> None:
 def failed(slot: int, reason: str) -> None:
     _set(slot, FAILED, reason)
 
-def begin(adapter, turn, rebuilt=None, claimed=False, then=None):
+def begin(adapter, turn, rebuilt=None, claimed=False, then=None, in_place=True):
     slot = getattr(adapter, "slot", 1)
     if not claimed and not claim(slot):
         return None
     worker = threading.Thread(
-        target=_reset, args=(adapter, turn, rebuilt, then), name=f"fsl-range-reset-{slot}", daemon=True
+        target=_reset, args=(adapter, turn, rebuilt, then, in_place), name=f"fsl-range-reset-{slot}",
+        daemon=True,
     )
     worker.start()
     return worker
@@ -72,12 +73,12 @@ def _set(slot: int, state: str, reason: str) -> None:
         if state == IDLE:
             _marker(slot).unlink(missing_ok=True)
 
-def _reset(adapter, turn, rebuilt, then=None) -> None:
+def _reset(adapter, turn, rebuilt, then=None, in_place=True) -> None:
     slot = getattr(adapter, "slot", 1)
     deadline = time.monotonic() + RESET_WAIT
     servers = None if rebuilt is None else {server for _, server in rebuilt}
     try:
-        if hasattr(adapter, "reset_in_place"):
+        if in_place and hasattr(adapter, "reset_in_place"):
             hosts = [host for host, _ in rebuilt or ()]
             with turn:
                 _side_by_side(

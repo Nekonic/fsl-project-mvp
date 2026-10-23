@@ -928,6 +928,15 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       2026-10-20 image through every rebuild since; the next `--replace`
       rebuilt both wargame hosts onto the new image and Glance kept only
       that one (`docs/DECISIONS.md` 2026-10-23).
+- [x] The rebuild of a stale slot raced its configure: Nova showed the
+      rebuilt wargame hosts ACTIVE for a few seconds before REBUILD, so
+      `bin/cloud up` configured the VMs from before the rebuild and both
+      slots stayed `CHECKING` until a configure by hand (2026-10-23). Fixed
+      2026-10-24: `POST /api/range/slot/` starts the slot's own reset after
+      the rebuild, which configures only once Nova has shown each rebuilt VM
+      leave ACTIVE and come back; `ready/` reads `RESETTING` meanwhile and
+      `bin/cloud up` waits through it (`docs/DECISIONS.md` 2026-10-24).
+      Unit-tested; not yet proven live.
 - [ ] A two-arm WAF (option, 2026-10-15): the range wires the WAF one-arm,
       on the service segment beside the sites, and the learner map draws it
       so (`docs/DECISIONS.md`, 2026-10-15, uniform host symbols). Barracuda

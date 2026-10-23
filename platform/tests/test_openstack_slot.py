@@ -283,7 +283,10 @@ def test_a_free_slot_standing_on_an_older_image_is_rebuilt_onto_the_ready_one(cl
     assert _rebuilds(cloud) == [(old["id"], f"img-{WARGAME_HOST}")], (
         "only the server on an older image is rebuilt; the others already run the ready image"
     )
-    assert plan.stale == () and not plan.active, "bin/cloud up waits for the rebuild, then configures"
+    assert plan.stale == () and not plan.active
+    assert plan.rebuilt == ((WARGAME_HOST, old["id"]),), (
+        "the platform waits for Nova to show these servers rebuilding before it configures the slot"
+    )
 
 def test_a_slot_on_an_older_image_is_not_rebuilt_while_a_session_holds_it(cloud):
     adapter(cloud).ensure_slot()
@@ -292,7 +295,7 @@ def test_a_slot_on_an_older_image_is_not_rebuilt_while_a_session_holds_it(cloud)
     plan = adapter(cloud).ensure_slot(renew=False)
 
     assert _rebuilds(cloud) == []
-    assert plan.stale == ("fsl-kali",)
+    assert plan.stale == ("fsl-kali",) and plan.rebuilt == ()
 
 def test_a_close_rebuilds_a_host_it_would_reset_in_place_when_that_host_is_on_an_older_image(cloud):
     adapter(cloud).ensure_slot()

@@ -33,6 +33,7 @@ class Plan:
     blocked: tuple[str, ...] = ()
     slot: int = 1
     stale: tuple[str, ...] = ()
+    rebuilt: tuple[tuple[str, str], ...] = ()
 
     @property
     def clean(self) -> bool:

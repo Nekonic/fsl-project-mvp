@@ -1210,7 +1210,7 @@ class OpenStack:
                 )
             self.get(self._call(BOOT), {"server": self.build.placed(server)})
         self._shape = None
-        return self._slot()[0]
+        return replace(self._slot()[0], rebuilt=tuple(stale))
 
     def _port_name(self, host: str, segment: str) -> str:
         return slot.port_name(slot.named(host, self.slot), segment)
