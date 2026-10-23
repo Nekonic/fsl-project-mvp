@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
+from django.db.models import F
 from django.utils import timezone
 
 from posts.models import Comment, Post
@@ -68,15 +69,16 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         authors = {}
         for username, password, is_admin in USERS:
-            user, created = User.objects.get_or_create(
+            user, _ = User.objects.get_or_create(
                 username=username, defaults={"is_staff": is_admin, "is_superuser": is_admin}
             )
-            if created:
-                user.set_password(password)
-                user.save()
+            user.set_password(password)
+            user.save()
             authors[username] = user
 
-        if not Post.objects.exists():
+        if Post.objects.exists():
+            self.bring_dates_to_today()
+        else:
             now = timezone.now()
             today = timezone.localtime(now).replace(second=0, microsecond=0)
             posted = []
@@ -94,3 +96,14 @@ class Command(BaseCommand):
                 )
 
         self.stdout.write("seeded")
+
+    def bring_dates_to_today(self):
+        title, _, username, days_ago, _ = min(POSTS, key=lambda post: post[3])
+        newest = Post.objects.filter(title=title, author__username=username).first()
+        if newest is None:
+            return
+        seeded_on = timezone.localtime(newest.created_at).date() + timedelta(days=days_ago)
+        behind = timedelta(days=(timezone.localdate() - seeded_on).days)
+        if behind.days > 0:
+            Post.objects.update(created_at=F("created_at") + behind)
+            Comment.objects.update(created_at=F("created_at") + behind)

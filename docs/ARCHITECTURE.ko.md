@@ -1486,6 +1486,7 @@ VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init이 쓴 `FSL_S
 - `range/wargame_host.py`는 각 `wargames/<id>/compose.yaml`을 호스트용으로 렌더링해 번들에 넣습니다. `build:`와 세션 네트워크를 빼고, 각 컨테이너 이름을 서비스 이름으로 정하고, 이미지 참조에 플랫폼의 `FSL_IMAGE_TAG`를 씁니다. WAF가 프록시하는 포트(`publish: {board: 8000, corp-wp: 80}`)를 publish합니다.
 - `daemon.json`은 Docker 브리지에 테넌트 네트워크의 MTU를 지정합니다.
 - 인터넷에 연결된 빌더가 컨테이너 이미지를 받아 호스트 이미지 안에 넣어 둡니다. 훈련 환경에는 인터넷이 없습니다.
+- 그다음 빌더가 워게임을 한 번씩 띄워 초기화된 데이터를 `/opt/fsl/pristine`에 남깁니다(`pristine.sh keep`, 아래 "재구축과 초기화" 참고). 이미지가 약 0.5 GB 커지고 빌드가 몇 분 늘어납니다.
 - 태그가 번들의 digest에 들어가므로, 새 태그로 올라간 플랫폼은 새 호스트 이미지를 계획합니다.
 - 워게임이 늘어도 이미지 수는 그대로입니다: 베이스, 에지 방화벽, WAF, Kali, 워게임 호스트.
 
@@ -1557,7 +1558,18 @@ fabric은 보안 그룹 세 개도 만듭니다.
 
 워게임 호스트의 제자리 초기화(`clear_wargames()`)는 각 워게임과 estate 센서에 `docker compose down -v`를 실행합니다. 센서의 eve 로그와 rsyslog의 imfile 상태도 지웁니다. 그 결과 이미지만 남고 컨테이너나 볼륨은 남지 않습니다.
 
-configure의 마지막 단계인 `start_wargames()`는 `wargames` 역할을 통해 모든 워게임에 대해 `sudo docker compose -p <id> -f /opt/fsl/wargames/<id>.yaml up -d --wait --pull never`를 동시에 실행합니다. 워게임마다 ssh 명령 하나씩입니다. 그래서 모든 세션은 새로 시드된 대상 시스템에서 시작합니다.
+configure의 마지막 단계인 `start_wargames()`는 `wargames` 역할을 통해 모든 워게임을 동시에 띄웁니다. 워게임마다 ssh 명령 하나씩이고, 명령 하나가 호스트에서 세 단계를 실행합니다(`wargame_host.up()`).
+
+- `docker compose -p <id> -f /opt/fsl/wargames/<id>.yaml up --no-start --pull never`로 컨테이너와 비어 있는 새 볼륨을 만듭니다.
+- `/opt/fsl/pristine.sh restore <id>`가 한 번도 실행되지 않은 컨테이너의 빈 볼륨에 초기 데이터 사본을 복사합니다.
+- `up -d --wait --pull never`로 띄웁니다. MySQL은 이미 초기화된 datadir을 보고 초기화를 건너뛰고, 앱도 데이터가 이미 있는 상태로 시작합니다.
+
+초기 데이터 사본은 워게임 호스트 이미지를 빌드할 때 한 번 만듭니다. `setup.sh`가 워게임마다 `pristine.sh keep <id>`를 실행합니다. 워게임을 띄워 healthy가 될 때까지 기다린 뒤 멈추고, 컨테이너마다 볼륨을 `/opt/fsl/pristine/<id>/<container><path>`에 복사한 다음 `down -v`로 컨테이너를 지웁니다. 초기화 때의 `down -v`는 이 사본을 건드리지 않습니다. 사본이 없는 호스트 이미지에서는 예전처럼 빈 볼륨에서 시작합니다.
+
+모든 세션은 같은 초기 데이터에서 시작하지만 비밀값은 세션마다 새로 만듭니다.
+
+- 보드의 `seed`는 시작할 때마다 시드 계정의 비밀번호를 다시 설정합니다. 그래서 세션마다 해시의 솔트가 달라지고, 이전 세션에서 탈취한 해시는 다음 세션의 ground truth와 맞지 않습니다. 시드 게시글의 날짜도 오늘 기준으로 옮깁니다.
+- corp의 엔트리포인트는 이미지의 엔트리포인트보다 먼저 `wp-config.php`를 지웁니다. 그러면 이미지가 새 랜덤 키와 솔트로 파일을 다시 씁니다. 복원된 데이터에서는 관리자 비밀번호도 다시 설정해 해시가 새로 만들어집니다. 복원된 DB에 이미 들어 있는 설치와 플러그인 설정은 건너뜁니다.
 
 그다음 configure가 estate 센서를 띄웁니다.
 

@@ -1486,6 +1486,7 @@ The wargames have no image each. One host image, `fsl-wargame-host` (`deploy/war
 - `range/wargame_host.py` renders each `wargames/<id>/compose.yaml` for the host into the bundle. It drops `build:` and the session network, names each container by its service, and writes the platform's `FSL_IMAGE_TAG` into the image references. It publishes the ports that the WAF proxies to (`publish: {board: 8000, corp-wp: 80}`).
 - `daemon.json` gives Docker's bridges the tenant MTU.
 - The builder has the Internet and pulls the images into the image. The range has none.
+- The builder then starts each wargame once and keeps its initialised data under `/opt/fsl/pristine` (`pristine.sh keep`, below under "Rebuild and reset"). This adds about 0.5 GB to the image and a few minutes to its build.
 - The tag is in the bundle's digest, so a platform on a new tag plans a new host image.
 - The image count stays fixed as wargames are added: the base, the edge, the WAF, Kali and the wargame host.
 
@@ -1557,7 +1558,18 @@ A rebuild wipes the disk, so configure must follow once the VMs are ACTIVE.
 
 On the wargame host, the in-place reset (`clear_wargames()`) runs `docker compose down -v` for each wargame and the estate sensor. It removes the sensor's eve log and rsyslog's imfile state. It leaves the images and no container or volume.
 
-Configure's last step, `start_wargames()`, runs `sudo docker compose -p <id> -f /opt/fsl/wargames/<id>.yaml up -d --wait --pull never` for every wargame at once, one ssh command each, through the `wargames` role. Every session therefore starts on freshly seeded targets.
+Configure's last step, `start_wargames()`, starts every wargame at once, one ssh command each, through the `wargames` role. Each command runs three steps on the host (`wargame_host.up()`):
+
+- `docker compose -p <id> -f /opt/fsl/wargames/<id>.yaml up --no-start --pull never` creates the containers and their new, empty volumes.
+- `/opt/fsl/pristine.sh restore <id>` copies the pristine data into each volume of a container that has never run and whose volume is empty.
+- `up -d --wait --pull never` starts them. MySQL finds an initialised datadir and skips its initialisation, and the apps find their data in place.
+
+The pristine data is made once, when the wargame host's image is built. `setup.sh` runs `pristine.sh keep <id>` for each wargame: it brings the wargame up, waits until it is healthy, stops it, copies each container's volumes to `/opt/fsl/pristine/<id>/<container><path>`, and removes the containers with `down -v`. `down -v` at a reset never touches that copy. A host image without the copy starts its wargames from empty volumes, as before.
+
+Every session starts on the same pristine data, with fresh secrets:
+
+- The board's `seed` sets each seeded account's password on every start, so each session's hashes have new salts, and a hash stolen in one session does not match the next session's ground truth. It also moves the seeded posts' dates to today.
+- corp's entrypoint deletes `wp-config.php` before the image's entrypoint runs, so the image writes a new one with new random keys and salts. On restored data it also sets the admin password again, which gives a new hash. It skips the install and the plugin setup, which the restored database already holds.
 
 Then configure starts the estate sensor.
 

@@ -49,3 +49,15 @@ def test_corp_is_healthy_only_after_its_forms_and_pages_exist():
     assert f"test -f {mark}" in test[-1]
     assert "ultimate-member" in test[-1]
     assert not _corp()["corp-wp"].get("volumes")
+
+
+def test_a_corp_restored_from_its_pristine_copy_gets_fresh_secret_keys_and_admin_hash():
+    entrypoint = (ROOT / "wargames/corp/app/entrypoint.sh").read_text().splitlines()
+    removed = entrypoint.index("rm -f /var/www/html/wp-config.php")
+    started = next(i for i, line in enumerate(entrypoint) if line.startswith("docker-entrypoint.sh "))
+    rehashed = next(i for i, line in enumerate(entrypoint) if "wp user update admin --user_pass=" in line)
+    touched = next(i for i, line in enumerate(entrypoint) if line.startswith("touch /tmp/fsl-corp-ready"))
+    assert removed < started, (
+        "the image's entrypoint writes wp-config.php with new random keys and salts only when it is missing; "
+        "a restored volume holds the build's file")
+    assert rehashed < touched

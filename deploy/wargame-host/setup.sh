@@ -39,3 +39,12 @@ install -m 0644 ../suricata/rules/local.rules /opt/fsl/rules/local.rules
 install -d -m 2750 -g adm /var/log/suricata
 FSL_SENSOR_INTERFACE=lo docker compose -f /opt/fsl/sensor.yaml config --quiet
 FSL_SENSOR_INTERFACE=lo docker compose -f /opt/fsl/sensor.yaml pull --quiet
+
+install -m 0755 pristine.sh /opt/fsl/pristine.sh
+keeping=""
+for compose in wargames/*.yaml; do
+  wargame=${compose##*/}
+  sh /opt/fsl/pristine.sh keep "${wargame%.yaml}" &
+  keeping="$keeping $!"
+done
+for job in $keeping; do wait "$job"; done

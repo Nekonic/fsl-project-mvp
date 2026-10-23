@@ -15,6 +15,7 @@ COMPOSE = "wargames/{wargame}/compose.yaml"
 SHIPPED = "deploy/wargame-host/wargames/{wargame}.yaml"
 DAEMON = "deploy/wargame-host/daemon.json"
 INSTALLED = "/opt/fsl/wargames/{wargame}.yaml"
+PRISTINE = "/opt/fsl/pristine.sh"
 TAG = re.compile(r"\$\{FSL_IMAGE_TAG(?::-[^}]*)?\}")
 DROPPED = ("build", "networks")
 UP_TIMEOUT = 900.0
@@ -98,8 +99,13 @@ def served_from(address: str) -> dict[str, bytes]:
     return {SERVED_FROM: f"{SERVED_AT.format(address=address)}\n".encode()}
 
 def up(wargame: str) -> list[str]:
-    return ["sudo", "docker", "compose", "-p", wargame, "-f", INSTALLED.format(wargame=wargame),
-            "up", "-d", "--wait", "--pull", "never"]
+    compose = f"docker compose -p {wargame} -f {INSTALLED.format(wargame=wargame)}"
+    return ["sudo", "sh", "-c", "\n".join([
+        "set -e",
+        f"{compose} up --no-start --pull never",
+        f"if [ -f {PRISTINE} ]; then sh {PRISTINE} restore {wargame}; fi",
+        f"{compose} up -d --wait --pull never",
+    ])]
 
 def inside(container: str, argv: list[str], reads_input: bool) -> list[str]:
     return ["sudo", "docker", "exec", *(["-i"] if reads_input else []), container, *argv]
