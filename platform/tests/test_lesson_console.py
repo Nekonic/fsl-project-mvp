@@ -25,7 +25,7 @@ STEPS = [
     {"id": "kept", "point": {"opens": "elk", "kibana": {"doc": "rule"}, "keep": True}, "check": {"kind": "answer"}},
     {"id": "logged", "point": {"opens": "elk", "kibana": {"hits": True}},
      "check": {"kind": "choice", "options": ["present", "absent"]}},
-    {"id": "sqlmap", "point": {"opens": "kali", "term": {"pane": "kali", "match": r"\$ $", "done": r"\[\*\] ending @"}},
+    {"id": "sqlmap", "point": {"opens": "kali", "term": {"pane": "kali", "match": r"[$#] $", "done": r"\[\*\] ending @"}},
      "command": "sqlmap -u \"http://board.com/?sort=posts_post.id*\" --batch", "check": {"kind": "kali"}},
     {"id": "verdict", "point": {"opens": "kali", "term": {"pane": "kali", "match": "injectable", "idle": r"\$ "}},
      "check": {"kind": "choice", "options": ["yes", "no"]}},

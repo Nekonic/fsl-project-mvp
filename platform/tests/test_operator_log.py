@@ -181,5 +181,5 @@ def test_the_attacker_prompt_is_kali_s_two_line_prompt_and_ends_in_a_dollar_and_
 
     assert "┌──" in prompt and "\\u㉿\\h" in prompt and "\\n" in prompt and "└─" in prompt, prompt
     assert re.sub(r"\\\[.*?\\\]", "", prompt).endswith("└─\\$ "), (
-        "the terminal steps wait for the prompt with the pattern '\\$ $'"
+        "the terminal steps wait for the prompt with the pattern '[$#] $'"
     )
