@@ -6403,3 +6403,40 @@ before configure). The stale rebuild now uses it.
   `/api/range/ready/`, polled every 10 s, read `STALE` on both slots, then
   `RESETTING` for 38 polls (about 6 min), then `READY`; no configure was sent
   by hand and `up` exited 0 in 36 min.
+
+## 2026-10-24 — Where a slot reset's time goes
+
+The user asked why the acceptance run takes over 60 minutes. It runs about 20
+sessions, and each close resets its slot; a reset takes 272-314 s from close
+to the next open on this cloud against 60-66 s on the previous one
+(`docs/OPENSTACK.md` §6.1). Measured read-only during a live `bin/verify`
+(Nova instance action events, the platform's ssh commands sampled once a
+second, session times from the store), four resets:
+
+| Phase | Seconds |
+|---|---|
+| close to the rebuild request and the in-place reset start | 4-6 |
+| Nova rebuild of the WAF and Kali (`compute_rebuild_instance`) | 16-19 |
+| guest boot to ssh / cloud-init finished | about 45 / 55 |
+| WAF and Kali path done after close (off the critical path) | about 75 |
+| edge in-place reset | 3-5 |
+| wargame host `down -v` | 12-17 |
+| `up --wait` board | 115-120, 159-165 when the other slot starts board too |
+| `up --wait` corp | 94-110 |
+| sensor, rules, log forwarding | 9-11 |
+| end of the chain to the next open | 17-32 |
+
+The code path is the one the previous cloud ran in 60-66 s (the same `down
+-v`, board then corp, the same healthchecks), so the same work runs about four
+times slower on `com01`. Every reset initialises two MySQL data directories
+and reruns migrate, seed and `wp core install`. Refuted as the cause: the
+image format and Nova rebuild, the guest boot, the platform's polling, the
+edge reset, the corp readiness fix of 2026-10-22 (the slowness predates it).
+Unverified: why `com01` is slow (guests see QEMU's Sandy Bridge model; disk
+type unknown).
+
+Plan, repo only, in order of size: start board and corp side by side
+(saves up to about 100 s); a 1 s healthcheck start interval (10-30 s); then
+restore a clean data volume made at image build instead of initialising the
+data on every reset (unmeasured, the largest). For the user: `com01`'s
+`cpu_mode` and disk, and 4 vCPU for the wargame host.
