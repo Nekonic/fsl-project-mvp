@@ -6346,3 +6346,41 @@ Every graded source checks what the rule does, by running it; none passes
 "any new rule", and none shows an unrelated complete rule as the only
 reference. The candidates drawn from them are in the user-facing summary of
 2026-10-24; the ruling is open.
+
+## 2026-10-24 — A slot rebuilt onto a new image resets itself
+
+The `bin/cloud up --replace` of 2026-10-23 built a new wargame host image, and
+`POST /api/range/slot/` had Nova rebuild both slots' wargame hosts. Nova takes
+the new image id at once, but the server reads ACTIVE for a few seconds before
+REBUILD. The plan therefore read the slot not stale and ACTIVE, phase
+`CHECKING`, which `bin/cloud` did not wait through. Its `POST configure/`
+answered 200 against the VMs from before the rebuild, the rebuilt hosts came
+up without the estate sensor, and both slots stayed `CHECKING` ("the sensor
+rules are off baseline") until a configure by hand. The deploy before it
+worked only because that configure first got 503 and retried.
+
+The close-time reset already waits for this (`api/reset.py`: every rebuilt
+server must be seen leaving ACTIVE within `REBUILD_SHOWN`, then ACTIVE again,
+before configure). The stale rebuild now uses it.
+
+- `ensure_slot()` returns the servers it rebuilt in `Plan.rebuilt`, and
+  `POST slot/` reports them under `rebuilding`, as a close does.
+- For a free slot with a rebuilt server, `POST slot/` claims the slot's reset
+  and starts it with those servers. `ready/` reads `RESETTING` from the moment
+  the POST answers, then `READY` or `RESET_FAILED` with the reason.
+- The reset runs `configure_slot()`, not the close's in-place reset plus
+  `configure_rebuilt()`: no session used the slot, so there is nothing to
+  clear, and a whole configure is what the slot was given by hand before.
+  `begin(..., in_place=False)` picks that branch.
+- `bin/cloud` counts `RESETTING` as still booting, so it waits for the reset
+  before its own `POST configure/`. That configure then runs a second time on
+  the reset slot and changes nothing; skipping it per slot would take more code
+  than it saves, and the slots that were not rebuilt still get the configure
+  `up` always gave them. A by-hand `POST slot/` now needs no configure.
+- A held slot and the close-time stale rebuild are unchanged. If the platform
+  restarts during this reset, the owed marker makes the next start run a
+  close's reset on that slot; the slot is free, so that is safe.
+- The console's resetting notice no longer says the last session closed.
+- Rejected: having `bin/cloud` wait for each rebuilt server to show REBUILD
+  (a by-hand `POST slot/` would still race); treating `CHECKING` as booting
+  (it is also a slot that will never be ready without a configure).

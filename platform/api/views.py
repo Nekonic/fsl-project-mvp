@@ -2450,6 +2450,7 @@ def _slot_plan(plan):
         ],
         "blocked": [reason if number == 1 else f"slot {number}: {reason}" for reason in plan.blocked],
         "stale": [named(host) for host in plan.stale],
+        "rebuilding": [{"host": named(host), "server": server} for host, server in plan.rebuilt],
         "clean": plan.clean,
     }
 
@@ -2459,7 +2460,7 @@ def _slot_plans(plans):
         return each[0]
     return {
         **{key: [entry for plan in each for entry in plan[key]]
-           for key in ("boot", "ports", "standing", "blocked", "stale")},
+           for key in ("boot", "ports", "standing", "blocked", "stale", "rebuilding")},
         "clean": all(plan["clean"] for plan in each),
         "slots": each,
     }
@@ -2500,14 +2501,18 @@ def range_slot(request):
     if request.method == "POST":
         held = _holders()
         return _reply(_slot_plans(_each_slot(
-            request, adapter, lambda one: _ensured(one, held.get(getattr(one, "slot", 1))))))
+            request, adapter, lambda one: _ensured(one, held.get(getattr(one, "slot", 1)), _turn(
+                getattr(one, "slot", 1) if _slotted(adapter) else None)))))
     removed = [step for steps in _each_slot(request, adapter, lambda one: one.teardown_slot())
                for step in steps]
     return _reply({"removed": [{"kind": kind, "id": ident} for kind, ident in removed]})
 
-def _ensured(adapter, held):
+def _ensured(adapter, held, turn):
     if held is None:
-        return adapter.ensure_slot()
+        plan = adapter.ensure_slot()
+        if plan.rebuilt and reset.claim(getattr(adapter, "slot", 1)):
+            reset.begin(adapter, turn, plan.rebuilt, claimed=True, in_place=False)
+        return plan
     plan = adapter.ensure_slot(renew=False)
     if not plan.stale:
         return plan
@@ -2594,8 +2599,9 @@ def _range_ready(adapter, plan=None, held=None) -> dict:
     elif unchecked:
         phase = "RESETTING"
         blocked.append(
-            "the range is resetting after the last session closed (each VM "
-            "rebuilt or reset in place, then configured); wait for it, no need to call configure"
+            "the range is resetting after a session closed or a VM was rebuilt onto a newer "
+            "image (each VM rebuilt or reset in place, then configured); wait for it, no need "
+            "to call configure"
         )
     elif resetting["state"] == reset.FAILED:
         phase = "RESET_FAILED"

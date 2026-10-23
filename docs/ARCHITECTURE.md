@@ -1517,7 +1517,7 @@ The slot is the set of range hosts. It is managed through `/api/range/slot/` and
 - Each host has a port per declared segment, named `<host>.<segment>`, in `fsl-range` or, on `mgmt`, in `fsl-mgmt`. A standing `mgmt` port in another group is moved into `fsl-mgmt`.
 - The host that fills `gateway` holds every origin's gateway address on one Internet port. Cloud-init configures only the first address, so the host's user data adds the rest at every boot.
 - Every host's user data appends the `estate` names to `/etc/hosts`: the WAF's `board.com` and `corp.com`, and the wargame host's `board` and `corp-wp`. This is how the WAF finds each wargame's published port. Each database answers only inside its compose project on the host.
-- A standing server whose image (`image.id` in Nova) is not its host's ready image is `stale` in the plan. `POST /api/range/slot/` has Nova rebuild it from the ready image when no session holds the slot. For a held slot it rebuilds nothing and reports the slot blocked.
+- A standing server whose image (`image.id` in Nova) is not its host's ready image is `stale` in the plan. `POST /api/range/slot/` has Nova rebuild it from the ready image when no session holds the slot, and names the servers under `rebuilding`. The platform then resets that slot itself with `api/reset.py`: the slot reads `RESETTING` until Nova has shown each rebuilt server leave ACTIVE and come back, and `configure_slot()` has run. For a held slot it rebuilds nothing and reports the slot blocked.
 
 **Range slots.** `compute.slots` in `cloud.yaml` (default 1, `FSL_OPENSTACK_SLOTS` on the platform) sets how many copies of the range stand at once. `max_sessions` is that count.
 

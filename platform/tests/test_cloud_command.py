@@ -245,6 +245,23 @@ def test_up_waits_until_every_slot_stands_and_every_slot_is_ready():
     assert platform.calls.index(("POST", "/configure/")) > gets[1] - 1
 
 
+
+def test_up_does_not_configure_a_slot_while_it_resets_itself_after_a_rebuild():
+    platform = Platform(ready=[
+        {"ready": False, "slot": {"phase": "RESETTING"}, "slots": [{"phase": "RESETTING"}, {"phase": "READY"}]},
+        {"ready": False, "slot": {"phase": "RESETTING"}, "slots": [{"phase": "RESETTING"}, {"phase": "READY"}]},
+        {"ready": True, "slot": {"phase": "READY"}, "slots": [{"phase": "READY"}, {"phase": "READY"}]},
+        {"ready": True, "slot": {"phase": "READY"}, "slots": [{"phase": "READY"}, {"phase": "READY"}]},
+    ])
+
+    converge(platform)
+
+    gets = [i for i, call in enumerate(platform.calls) if call == ("GET", "/ready/")]
+    assert platform.calls.index(("POST", "/configure/")) > gets[2], (
+        "a configure sent while the slot waits for Nova to show its rebuild reaches the VM "
+        "from before the rebuild and returns 200, and the rebuilt VM stays unconfigured"
+    )
+
 class StandingStack:
     def __init__(self, monkeypatch, holds, status="CREATE_COMPLETE"):
         self.module = command()

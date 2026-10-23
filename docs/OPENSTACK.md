@@ -786,12 +786,16 @@ The scripts find the `openstack` command beside `.venv/bin/python`.
 7. It sends `POST slot/`. It stops when the slot is blocked. On a slot that
    already stands, this POST has Nova rebuild each VM whose image is not its
    host's ready image, so a slot booted before an image changed runs the new
-   image. It does this only when no session holds the slot. A held slot with
-   such a VM reads blocked, and `up` stops; that session's close rebuilds the VM
-   (§6.1).
-8. It sends `GET ready/` until the slot leaves `NOT_STANDING` and `REBUILDING`.
+   image. It does this only when no session holds the slot. The platform then
+   resets that slot itself, as a close does: `ready/` reads it `RESETTING`
+   until Nova has shown each rebuilt VM leave ACTIVE and come back, and the
+   platform has configured the slot. A held slot with such a VM reads blocked,
+   and `up` stops; that session's close rebuilds the VM (§6.1).
+8. It sends `GET ready/` until the slot leaves `NOT_STANDING`, `REBUILDING` and
+   `RESETTING`.
 9. It sends `POST configure/`. It retries while the answer is 503, which means
-   the VMs' ssh is not up yet. It stops on 409.
+   the VMs' ssh is not up yet. It stops on 409. On a slot that reset itself in
+   step 7 this configures it a second time, which changes nothing.
 10. It sends `GET ready/` until the range is ready.
 11. It sends `DELETE images/`, which removes unused images that no server boots
     from.
@@ -930,18 +934,27 @@ to 5 minutes.
 
 A slot that was already up runs the wargame host it booted, with the old board,
 until `POST slot/` rebuilds that host from the new image. `bin/cloud up` sends
-it after the images are ready and then configures the slot, so an `up` brings
-every free slot onto the new image. Until then `ready/` reads the slot `STALE`.
-A slot that a session holds keeps the old host until the session closes. The
-close then rebuilds the host instead of resetting it in place (§6.1). By hand:
+it after the images are ready, so an `up` brings every free slot onto the new
+image. Until then `ready/` reads the slot `STALE`. After the rebuild the
+platform resets the slot itself: it waits until Nova has shown each rebuilt VM
+leave ACTIVE and come back, then configures the slot. Meanwhile `ready/` reads
+the slot `RESETTING`; if this fails it reads `RESET_FAILED` with the reason, and
+`POST configure/` retries it. A slot that a session holds keeps the old host
+until the session closes. The close then rebuilds the host instead of resetting
+it in place (§6.1). By hand:
 
 ```bash
 P=http://ADDRESS:8000/api/range
-curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/
-curl -s $P/ready/          # until no slot is REBUILDING
-curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/configure/   # retry on 503 until ssh is up
-curl -s $P/ready/          # every slot READY
+curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/   # "rebuilding" lists the servers
+curl -s $P/ready/          # RESETTING, then every slot READY; no configure needed
 ```
+
+Nova takes the new image id as soon as the rebuild is asked for, but the server
+reads ACTIVE for a few seconds before it reads REBUILD. A configure sent in
+that window reaches the VM from before the rebuild and answers 200, and the
+rebuilt VM comes up without its configuration (seen 2026-10-23: both wargame
+hosts without the estate sensor). This is why the platform, not the caller,
+configures after the rebuild.
 
 To see the sideloaded names, run
 `sudo docker exec fsl-platform env | grep FSL_SIDELOADED` on the VM.
@@ -1021,7 +1034,8 @@ curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/fabric/     # fsl
                                   # keypair fsl-platform, groups fsl-range/fsl-reach/fsl-mgmt, platform port fsl-platform.mgmt
 curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/images/     # repeat until "clean": true; builders on FSL_OPENSTACK_BUILD_NETWORK
 curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/       # boots fsl-edge, fsl-kali, fsl-waf, fsl-wargame-host; mgmt ports into fsl-mgmt;
-                                  # rebuilds a standing VM whose image is not the ready one, when no session holds its slot
+                                  # rebuilds a standing VM whose image is not the ready one, when no session holds its slot,
+                                  # then resets that slot itself (ready/ reads RESETTING until it is configured)
 curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/configure/  # the edge's config.xml + reboot; WAF log forwarding; the wargames and the estate sensor up
 curl -s $P/ready/
 ```
