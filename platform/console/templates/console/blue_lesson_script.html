@@ -1031,6 +1031,7 @@ function highlight(rect, callout, options = {}) {
 
 const AUTOMATIC = ["rules", "sent", "triage", "replay", "waf_changed"];
 const POLLED = ["sent", "triage", "replay", "waf_changed", "kali"];
+const firesCheck = (step) => step.check.kind === "rules" && Boolean(step.check.match);
 const ANSWERED = ["answer", "choice", "loot"];
 const SENT_SETTLES_MS = 1500;
 const changed = [];
@@ -1149,7 +1150,7 @@ function coach(prefix, declared) {
     return [attack.split("{0}").join(word(replayed.attack, false)), benign.split("{0}").join(word(replayed.benign, replayed.seen))].join("\n");
   }
 
-  const standing = (step) => replayLines(step) || (AUTOMATIC.includes(step.check.kind) && !finished && !done(step) ? t("lesson.status.auto") : "");
+  const standing = (step) => replayLines(step) || (AUTOMATIC.includes(step.check.kind) && !firesCheck(step) && !finished && !done(step) ? t("lesson.status.auto") : "");
 
   function stepList() {
     const passedCount = steps.filter((step) => recordOf(step).passed).length;
@@ -1294,6 +1295,8 @@ function coach(prefix, declared) {
       html = `<div class="flex flex-wrap gap-1.5">${(check().options || []).map((option) =>
         `<button type="button" data-act="choose" data-value="${esc(option)}" class="btn btn-sm btn-ghost">${
           esc(choiceLabel(prefix, step, option))}</button>`).join("")}</div>`;
+    } else if (firesCheck(step)) {
+      html = `<button type="button" data-act="check" class="self-start btn btn-sm btn-blue">${esc(t("lesson.rules.fired_check"))}</button>`;
     } else if (kind === "kali") {
       html = `<button type="button" data-act="kali" class="self-start btn btn-sm btn-ghost">${esc(t("lesson.kali.check"))}</button>
         <ul data-act="rows" class="flex flex-col gap-2">${carried.has(step.id) ? kaliRow(carried.get(step.id)) : ""}</ul>`;
@@ -1327,7 +1330,7 @@ function coach(prefix, declared) {
     const ordered = act.querySelector('[data-act="order"]');
     if (ordered) ordered.addEventListener("click", () => answer(picked.join(" > ")));
     if (act.querySelector('[data-act="picked"]')) showPicked(act);
-    const again = act.querySelector('[data-act="kali"]');
+    const again = act.querySelector('[data-act="kali"], [data-act="check"]');
     if (again) again.addEventListener("click", () => run(step, true));
     act.querySelectorAll("[data-discover]").forEach((link) =>
       link.addEventListener("click", () => showInKibana(link.dataset.discover)));
@@ -1444,11 +1447,25 @@ function coach(prefix, declared) {
     coveredSaid = false;
   }
 
-  const following = (step) => step.point.until === "sent" && sentSince && Boolean(step.point.then);
+  const rulesApplied = () => {
+    const box = field("lesson-rules-text");
+    return rulesAdded.length > 0 && Boolean(box) && box.value === rulesText;
+  };
+  const reached = (point) => Boolean(point.then) && ((point.until === "sent" && sentSince) || (point.until === "applied" && rulesApplied()));
+
+  function stageOf(step) {
+    let point = step.point;
+    let depth = 0;
+    while (reached(point)) {
+      point = point.then;
+      depth += 1;
+    }
+    return { point, depth };
+  }
 
   function targetOf(step) {
     if (step.solo || finished || done(step)) return null;
-    return locatorOf(following(step) ? step.point.then : step.point);
+    return locatorOf(stageOf(step).point);
   }
 
   function calloutFor(step, target, found, home) {
@@ -1459,7 +1476,7 @@ function coach(prefix, declared) {
       const key = STAGE_KEYS[found.stage];
       return (found.leg && localized(`${key}.${found.leg}`, "")) || localized(key, STAGE_FALLBACKS[found.stage] || "");
     }
-    return localized(`${prefix}.callout.${step.id}${following(step) ? ".then" : ""}`, "");
+    return localized(`${prefix}.callout.${step.id}${".then".repeat(stageOf(step).depth)}`, "");
   }
 
   function settleKibana() {
@@ -1757,7 +1774,9 @@ function coach(prefix, declared) {
 
   changed.push((what) => {
     const step = steps[at];
-    if (step.check.kind === what) run(step, true);
+    if (step.check.kind !== what) return;
+    if (firesCheck(step)) sentSince = false;
+    run(step, !firesCheck(step));
   });
 
   field("step-back").addEventListener("click", () => go(at - 1));

@@ -509,6 +509,8 @@ def _judge(session, taught, step, body, kept):
         live = _live_rules(session)
         added = lesson.added_rules(live, _posture_rules(session))
         needed = [sid for sid in added if check.get("needs") != "nocase" or lesson.ignores_case(disable.find(live, sid))]
+        if needed and "match" in check:
+            return (*_rule_fired(session, check["match"], needed, failed), {"added": added})
         return bool(needed), [failed, []], {"added": added}
     if kind == "sent":
         return bool(_site_requests(session, check["match"])), [failed, []]
@@ -521,6 +523,27 @@ def _judge(session, taught, step, body, kept):
     if kind == "replay":
         return _replay_check(session, step, kept)
     return scenario_run.triage_passed(session, check["judged"]), [failed, []]
+
+def _rule_fired(session, match, mine, failed):
+    applied = RuleSet.objects.filter(applied_at__isnull=False).aggregate(last=Max("applied_at"))["last"]
+    sent = _site_requests(session, match, applied)
+    if not sent:
+        return False, [f"{failed}.unsent", []]
+    _ingest(session, RECENT_ALERTS)
+    if any(set(_alerted_sids(session, record)) & set(mine) for record in sent):
+        return True, None
+    if not any(_sensed_for(session, record) for record in sent):
+        return False, ["lesson.check.unrecorded", []]
+    sids = ", ".join(map(str, mine))
+    elsewhere = _alerted_elsewhere(session, mine, applied, sent)
+    return False, [f"{failed}.elsewhere", [sids, elsewhere[0]]] if elsewhere else [f"{failed}.silent", [sids]]
+
+def _alerted_elsewhere(session, mine, since, sent):
+    seen = {detection.pk for record in sent for detection in _alerts_for(session, record)}
+    found = session.detections.filter(source="suricata", **({"timestamp__gte": since} if since else {}))
+    return [url for detection in found if detection.pk not in seen
+            and ((detection.raw or {}).get("alert") or {}).get("signature_id") in mine
+            and (url := unquote(str(((detection.raw or {}).get("http") or {}).get("url") or "")))]
 
 def _unrecorded(session, check, taught, failed):
     if "of" in check and wargames.fact_family(check) == "kali" and _kali_case(session, check["about"]) is None:

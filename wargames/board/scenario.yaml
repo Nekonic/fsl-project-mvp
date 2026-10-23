@@ -408,11 +408,12 @@ foundations:
         point: {opens: elk, kibana: {hits: true}}
         check: {kind: choice, of: alerted, about: [probe, upper], options: [present, absent]}
       - id: write
-        point: {opens: rules, panel: "#lesson-rules"}
-        check: {kind: rules}
+        point: {opens: rules, panel: "#lesson-rules", until: applied,
+                then: {site: "input[name=q]", until: sent, then: {panel: "#step-act"}}}
+        check: {kind: rules, match: '<script'}
       - id: fired
-        point: {opens: site, site: "input[name=q]", until: sent, then: {kibana: {doc: rule_id}}}
-        check: {kind: answer, of: alerted_sid, match: '<script', after: write}
+        point: {opens: elk, kibana: {doc: rule_id}}
+        check: {kind: answer, of: alerted_sid, about: write}
       - id: slipped
         point: {opens: site, site: "input[name=q]", until: sent, then: {kibana: {hits: true}}}
         check: {kind: choice, of: alerted_sid_present, match: '<(?!script)(?i:script)', after: write, options: ["yes", "no"]}

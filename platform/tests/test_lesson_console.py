@@ -87,6 +87,9 @@ const judge = (id, body) => {
   if (check.kind === "replay") {
     return range.passed ? passing(id) : failing(id, body.poll, range.attacked ? "lesson.check.replay_benign" : "lesson.check.replay_attack");
   }
+  if (check.kind === "rules") {
+    return range.passed ? passing(id, {added: range.added || []}) : {...failing(id, body.poll, "lesson.demo.fail"), added: range.added || []};
+  }
   return range.passed ? passing(id) : failing(id, body.poll, "lesson.demo.fail");
 };
 browser.serve((request) => {
@@ -846,6 +849,7 @@ def test_a_finished_foundation_starts_the_next_lesson_and_the_last_one_ends_on_a
 
 LOCATORS = {"panel", "map", "site", "dev", "kibana", "term"}
 POINT_KEYS = LOCATORS | {"opens", "until", "then", "keep"}
+UNTIL = {"sent", "applied"}
 LOCATOR_PANES = {"map": "topology", "site": "site", "dev": "site", "kibana": "elk"}
 DEV_NAMES = {"toggle", "row", "tab.headers", "tab.payload", "tab.preview", "tab.response", "general.url",
              "general.method", "general.status", "general.remote", "payload.query"}
@@ -892,6 +896,18 @@ def locator_unresolved(page, locator):
     return [*(panel_unresolved(page, spec) if kind == "panel" else []),
             *([f"pane {pane}"] if pane and f'data-pane="{pane}"' not in page else [])]
 
+def stages(point):
+    return [point, *stages(point["then"])] if point.get("then") else [point]
+
+def then_unresolved(page, point):
+    then = point.get("then") or {}
+    return [
+        *(["until is sent or applied, with then"] if "until" in point and (point["until"] not in UNTIL or not then) else []),
+        *(["then without until"] if then and "until" not in point else []),
+        *(["then holds a locator and its own until and then"] if set(then) - LOCATORS - {"until", "then"} else []),
+        *([f"then {missing}" for missing in [*locator_unresolved(page, then), *then_unresolved(page, then)]] if then else []),
+    ]
+
 def unresolved(page, point, solo):
     located = set(point) & LOCATORS
     first = locator_unresolved(page, point) if located else []
@@ -904,10 +920,7 @@ def unresolved(page, point, solo):
         *(["a solo step with a locator"] if solo and (located or then) else []),
         *first,
         *([f"{kind} needs {needs}, opens {point['opens']}"] if needs and point.get("opens", needs) != needs else []),
-        *(["until is sent, with then"] if "until" in point and (point["until"] != "sent" or not then) else []),
-        *(["then without until"] if then and "until" not in point else []),
-        *(["then holds only a locator"] if set(then) - LOCATORS else []),
-        *([f"then {missing}" for missing in locator_unresolved(page, then)] if then else []),
+        *then_unresolved(page, point),
     ]
 
 def test_every_point_a_foundation_or_scenario_step_names_resolves_on_the_blue_console(client):
@@ -927,7 +940,7 @@ def test_every_pane_a_step_opens_or_points_into_has_an_open_button_label_in_both
         for step in unit["steps"]:
             point = step.get("point") or {}
             panes |= {point["opens"]} if "opens" in point else set()
-            for locator in (point, point.get("then") or {}):
+            for locator in stages(point):
                 kind = next(iter(set(locator) & LOCATORS), None)
                 panes |= {pane_of(kind, locator[kind])} - {None} if kind else set()
 
@@ -1313,6 +1326,61 @@ def test_the_rules_step_rings_the_editor_s_last_line_until_the_text_changes_then
     assert result["addingOver"] is False
     assert result["applying"]["text"] == "Press Apply" and result["applying"]["ring"]["top"] == 680 - 6
     assert result["over"] is False, "the callout sits beside the Apply button, never over the rules being edited"
+
+FIRES = [{"id": "fires", "point": {"opens": "rules", "panel": "#lesson-rules", "until": "applied",
+                                   "then": {"site": "input[name=q]", "until": "sent", "then": {"panel": "#step-act"}}},
+          "check": {"kind": "rules", "match": "<script"}},
+         {"id": "db_ip", "solo": True, "point": {"opens": "topology"}, "check": {"kind": "answer"}}]
+
+def test_a_rule_that_must_fire_rings_apply_then_the_search_box_then_its_check_button_which_judges_it(client):
+    seen = open_page(client, "/blue/1/", setup=RULES + served(steps=FIRES) + DEV, scenario="""
+      STRINGS.en['lesson.rules.press_apply'] = 'Press Apply';
+      STRINGS.en['lesson.demo.callout.fires.then'] = 'Search here';
+      STRINGS.en['lesson.demo.callout.fires.then.then'] = 'Press the check';
+      await browser.click('[data-step="0"]');
+      await frames(4);
+      Object.assign(browser.element('lesson-rules-text'), {clientHeight: 160, clientWidth: 340});
+      placeAt('lesson-rules-text', box(1060, 500, 340, 160));
+      placeAt('lesson-rules', box(1050, 440, 380, 280));
+      placeAt('lesson-rules-apply', box(1060, 680, 60, 28));
+      placeAt('step-act', box(1060, 200, 340, 28));
+      const area = browser.element('lesson-rules-text');
+      area.value += 'alert http any any -> any any (msg:"xss"; http.uri; content:"<script"; sid:9100001; rev:1;)';
+      area.dispatchEvent({type: 'input'});
+      await frames(2);
+      const applying = browser.text('coach-callout');
+      const status = browser.text('step-status');
+      const button = Boolean(document.querySelector('#step-act [data-act="check"]'));
+      range.added = ['9100001'];
+      await browser.click('lesson-rules-apply');
+      await frames(2);
+      const quiet = range.checked[range.checked.length - 1][1];
+      await browser.click('step-open');
+      await frames(2);
+      const asked = posted.filter((one) => one.frame === 'site' && one.data.locate).pop().data.locate;
+      answer('site-frame', {x: 700, y: 300, w: 120, h: 30}, []);
+      await frames(2);
+      const searching = browser.text('coach-callout');
+      window.dispatchEvent({type: 'message', data: {site: '/site/1/board.com/search/?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E'},
+                            source: browser.element('site-frame').contentWindow, origin: 'http://console.test:8002'});
+      await frames(2);
+      const pressing = {text: browser.text('coach-callout'), ring: styled('coach-ring')};
+      range.passed = true;
+      await browser.click('#step-act [data-act="check"]');
+      const pressed = range.checked[range.checked.length - 1][1];
+      return {applying, status, button, quiet, searching, asked, pressing, pressed, said: browser.text('step-said')};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["applying"] == "Press Apply" and result["button"] is True
+    assert result["status"] != english("lesson.status.auto"), "the learner presses the check, it is not automatic"
+    assert result["quiet"] == {"poll": True}, "applying checks quietly, so it is not counted as a wrong try"
+    assert (result["searching"], result["asked"]) == ("Search here", "input[name=q]")
+    ring = result["pressing"]["ring"]
+    assert result["pressing"]["text"] == "Press the check" and ring["top"] <= 200 and ring["top"] + ring["height"] >= 228, (
+        "after the search the ring moves to the step's own check button")
+    assert result["pressed"] == {} and result["said"].startswith("✓")
 
 def test_the_rules_ring_and_scroll_follow_the_rows_a_long_line_wraps_into(client):
     seen = open_page(client, "/blue/1/", setup=RULES + served(), scenario=f"""
