@@ -4,6 +4,7 @@ import pathlib
 import shlex
 import subprocess
 import tarfile
+import threading
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
@@ -98,7 +99,8 @@ def test_an_image_sideloaded_for_the_platform_alone_leaves_the_host_image_as_ghc
     plain = _adapter()._bundle(HOST, ENTRY)
 
     for sideloaded in ({"platform"}, {"platform", "kali", "gns3"}):
-        assert _adapter(sideloaded=sideloaded)._bundle(HOST, ENTRY) == plain, (
+        bundle = _adapter(sideloaded=sideloaded)._bundle(HOST, ENTRY)
+        assert (bundle.digest, _members(bundle)) == (plain.digest, _members(plain)), (
             "no wargame image was sideloaded, so the host pulls every image from GHCR as before")
     assert wargame_host.LOADED not in wargame_host.generated(
         ROOT, HOST, ENTRY.wargames, ENTRY.publish, "c0ffee", 1450)
@@ -167,6 +169,48 @@ def test_a_wargame_that_does_not_come_up_healthy_is_drift():
 
     with pytest.raises(Drifted, match="unhealthy"):
         built.start_wargames()
+
+def test_the_wargames_start_side_by_side_and_not_one_after_the_other():
+    both_running = threading.Barrier(len(ENTRY.wargames), timeout=10)
+
+    def runner(role, segment_id=""):
+        def run(argv, stdin=None, timeout=60.0):
+            both_running.wait()
+            return Ran(0, "")
+        return run
+
+    built = _adapter()
+    built.runner = runner
+
+    assert built.start_wargames() == (HOST, tuple(f"runs {wargame}" for wargame in ENTRY.wargames)), (
+        "each wargame's up waits only for its own containers; a serial start puts one wargame's whole "
+        "start on the reset's critical path")
+
+@pytest.mark.parametrize("failing", [("corp",), ("board",), ("board", "corp")])
+def test_each_wargame_that_does_not_come_up_healthy_is_named_in_the_drift(failing):
+    def runner(role, segment_id=""):
+        def run(argv, stdin=None, timeout=60.0):
+            wargame = argv[argv.index("-p") + 1]
+            return Ran(1, f"container {wargame}-db is unhealthy") if wargame in failing else Ran(0, "")
+        return run
+
+    built = _adapter()
+    built.runner = runner
+
+    with pytest.raises(Drifted) as raised:
+        built.start_wargames()
+    for wargame in ENTRY.wargames:
+        named = f"did not start {wargame} (exit 1): container {wargame}-db is unhealthy" in str(raised.value)
+        assert named == (wargame in failing), str(raised.value)
+
+@pytest.mark.parametrize("wargame", ENTRY.wargames)
+def test_every_wargame_healthcheck_probes_each_second_while_it_starts(wargame):
+    for service, entry in _shipped(wargame)["services"].items():
+        check = entry["healthcheck"]
+        assert check["start_interval"] == "1s", (
+            f"{service}: --wait sees a container healthy only at its next probe; Docker Engine 25 and "
+            f"later probe every start_interval during start_period")
+        assert check["interval"] == "10s" and check["start_period"] == "120s", service
 
 def test_the_vm_waf_reaches_corp_without_a_resolver():
     conf = (ROOT / "deploy/waf/board.com.conf").read_text()

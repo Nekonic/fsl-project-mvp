@@ -1557,7 +1557,7 @@ fabric은 보안 그룹 세 개도 만듭니다.
 
 워게임 호스트의 제자리 초기화(`clear_wargames()`)는 각 워게임과 estate 센서에 `docker compose down -v`를 실행합니다. 센서의 eve 로그와 rsyslog의 imfile 상태도 지웁니다. 그 결과 이미지만 남고 컨테이너나 볼륨은 남지 않습니다.
 
-configure의 마지막 단계인 `start_wargames()`는 `wargames` 역할을 통해 워게임마다 `sudo docker compose -p <id> -f /opt/fsl/wargames/<id>.yaml up -d --wait --pull never`를 실행합니다. 그래서 모든 세션은 새로 시드된 대상 시스템에서 시작합니다.
+configure의 마지막 단계인 `start_wargames()`는 `wargames` 역할을 통해 모든 워게임에 대해 `sudo docker compose -p <id> -f /opt/fsl/wargames/<id>.yaml up -d --wait --pull never`를 동시에 실행합니다. 워게임마다 ssh 명령 하나씩입니다. 그래서 모든 세션은 새로 시드된 대상 시스템에서 시작합니다.
 
 그다음 configure가 estate 센서를 띄웁니다.
 

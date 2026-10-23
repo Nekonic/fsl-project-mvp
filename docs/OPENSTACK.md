@@ -1085,9 +1085,13 @@ Notes:
   3. It waits up to 15 minutes for a new boot time before checking the edge.
   4. It records `/conf/fsl-settled` for the session reset (§6.1).
 - `configure/` ends by starting the wargames on `fsl-wargame-host` over ssh, as
-  `ubuntu` with sudo. For each wargame (the `wargames` role) it runs `docker
-  compose -p <id> -f /opt/fsl/wargames/<id>.yaml up -d --wait --pull never`. If
-  one does not come up healthy, `configure/` fails and shows compose's output.
+  `ubuntu` with sudo. It starts every wargame (the `wargames` role) at once,
+  each with its own `docker compose -p <id> -f /opt/fsl/wargames/<id>.yaml up -d
+  --wait --pull never`. If one does not come up healthy, `configure/` fails and
+  shows compose's output for each wargame that failed.
+  - Each healthcheck probes every second during its start period
+    (`start_interval: 1s`, Docker Engine 25 or later; the host runs Engine
+    29.1.3), so `--wait` sees a container healthy about a second after it is.
   - The board publishes port 8000 on the host. corp-wp publishes port 80.
   - The WAF reaches them by the names `board` and `corp-wp`. Its `/etc/hosts`
     maps those names to the host's estate address.
@@ -1112,7 +1116,7 @@ wargame host in place"):
 | `fsl-kali` | Nova rebuild from its image, then its time source (the platform over `mgmt`) | It is the red team's root shell. Anything outside the config can carry over |
 | `fsl-waf` | Nova rebuild, then its time source and `configure_waf()` (audit-log forwarding) | It is the blue team's shell (`vm-terminal.sh fsl-waf`) |
 | `fsl-edge` | in place: the baseline `fsl.rules` is written back; `/conf/config.xml`, `conf.d/fsl.yaml` and `fsl.rules` are checked by sha256; the pf states of every range subnet are dropped (`pfctl -k`, mgmt kept); `configctl filter reload`; `configctl ids restart`; wait for the Suricata socket | The session can change only `fsl.rules`, and only the platform reaches the edge's GUI and ssh (`fsl-mgmt`) |
-| `fsl-wargame-host` | in place: `docker compose -p <id> down -v` for each wargame and for the estate sensor; its `eve.json` and rsyslog's imfile state are removed. Then its time source, the usual `up -d --wait --pull never`, the sensor with the platform's `suricata.yaml`, the baseline rules seeded into it through `rules/suricata.py`, and log forwarding | The containers mount no host path, run unprivileged and get no docker socket |
+| `fsl-wargame-host` | in place: `docker compose -p <id> down -v` for each wargame and for the estate sensor; its `eve.json` and rsyslog's imfile state are removed. Then its time source, the usual `up -d --wait --pull never` for every wargame at once, the sensor with the platform's `suricata.yaml`, the baseline rules seeded into it through `rules/suricata.py`, and log forwarding | The containers mount no host path, run unprivileged and get no docker socket |
 
 The close rebuilds the edge or the wargame host too when that VM's image is not
 its host's ready image. This happens when a deploy changed the image while a
