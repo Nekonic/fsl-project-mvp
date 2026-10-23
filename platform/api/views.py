@@ -763,7 +763,7 @@ def _kali_check(session, step, kept):
     recorded, shown = _kali_run(session, step["id"], step["check"], kept)
     if recorded is None:
         tool = wargames.find_case(session.scenario, step["check"]["case"])["tool"]
-        state = "kali_running" if (shown.get("kali") or {}).get("running") else "kali_none"
+        state = "kali_settling" if (shown.get("kali") or {}).get("settling") else "kali_none"
         return False, [f"lesson.check.{state}", [tool]], shown
     return True, None, shown
 
@@ -785,7 +785,7 @@ def _kali_run(session, step_id, check, kept):
     if not seen:
         return None, {"kali": {"name": case["name"]}}
     if now - seen[-1] < RUN_SETTLED:
-        return None, {"kali": {"name": case["name"], "running": True}}
+        return None, {"kali": {"name": case["name"], "settling": True}}
     recorded = _record_case(session, dict(case, case_id=marker, correlation="marker"), seen[0], seen[-1],
                             {"kali": step_id, "lesson": session.lesson, "launched_on": settings.RANGE.default_origin,
                              "command": _kali_command(session, case["name"])})

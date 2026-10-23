@@ -57,7 +57,7 @@ const used = (entry) => { if (!range.used.some((one) => one.step === entry.step)
 const stepState = (id, extra) => ({...extra, hint: own(id).hint, hints: range.used, progress: range.progress});
 const passing = (id, extra) => {
   own(id).passed = own(id).passed || "now";
-  own(id).ok = {en: `${id} passed`, ko: `${id} 통과`};
+  own(id).ok = range.ok || {en: `${id} passed`, ko: `${id} 통과`};
   return stepState(id, {passed: true, reason: null, ...extra});
 };
 const failing = (id, poll, key) => {
@@ -80,6 +80,9 @@ const judge = (id, body) => {
     return range.sent.some((path) => new RegExp(check.match).test(path)) ? passing(id) : failing(id, body.poll, "lesson.demo.fail");
   }
   if (check.kind === "kali") {
+    if (range.settling) {
+      return stepState(id, {passed: false, reason: ["lesson.check.kali_settling", ["sqlmap"]], kali: {name: "board-sqli-orderby-sqlmap", settling: true}});
+    }
     return range.passed ? passing(id, {kali: {name: "board-sqli-orderby-sqlmap", requests: 1539, sensors: {firewall: 1539},
                                               discover: "/kibana/app/discover#/?run=sqlmap"}})
       : failing(id, body.poll, "lesson.demo.fail");
@@ -380,6 +383,50 @@ def test_skip_records_the_step_skipped_moves_on_and_performs_nothing(client, ste
     assert seen["result"]["asked"] == [[f"/api/sessions/1/lesson/steps/{step_id}/", "skipped"],
                                        [f"/api/sessions/1/lesson/steps/{following}/", "reached"]]
     assert seen["result"]["title"] == f"lesson.demo.label.{following}"
+
+def test_a_run_whose_last_requests_are_still_being_logged_reads_as_settling_not_wrong_and_passes_on_the_next_poll(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("sqlmap")}
+      range.settling = true;
+      await browser.click('#step-act [data-act="kali"]');
+      await browser.settle();
+      const settling = {{status: browser.text('step-status'), said: shown('step-said'),
+                         failed: browser.element('step-said').classList.contains('text-danger'), passed: Boolean(range.progress.sqlmap.passed)}};
+      range.settling = false;
+      range.passed = true;
+      for (let i = 0; i < 6; i += 1) await browser.wait(1000);
+      return {{settling, polled: range.checked.filter((one) => one[0] === 'sqlmap').map((one) => Boolean(one[1].poll)),
+               passed: Boolean(range.progress.sqlmap.passed), hint: range.progress.sqlmap.hint, wrong: range.progress.sqlmap.wrong}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["settling"] == {"status": "Collecting the request logs of the run. It is checked again automatically in a few seconds.",
+                                          "said": False, "failed": False, "passed": False}
+    assert seen["result"]["polled"][0] is False and seen["result"]["polled"][-1] is True, "pressed once, then checked by itself"
+    assert (seen["result"]["passed"], seen["result"]["hint"], seen["result"]["wrong"]) == (True, 0, 0)
+
+def test_a_pass_text_longer_than_an_acknowledgement_stays_until_next_is_pressed_and_a_short_one_moves_on(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("method")}
+      {answering(RIGHT["method"])}
+      await browser.wait(1600);
+      const short = browser.text('step-title');
+      {to("verdict")}
+      range.ok = {{en: 'Correct. sqlmap judged the parameter not injectable only because every request was blocked with 403.', ko: 'x'}};
+      await browser.click('#step-act [data-value="no"]');
+      await browser.settle();
+      await browser.wait(4000);
+      const long = {{title: browser.text('step-title'), said: browser.text('step-said'), status: browser.text('step-status'),
+                     next: browser.element('step-next').classList.contains('btn-blue')}};
+      await browser.click('step-next');
+      return {{short, long, after: browser.text('step-title')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["short"] == "lesson.demo.label.sort", "a short pass moves on by itself"
+    assert seen["result"]["long"]["title"] == "lesson.demo.label.verdict", "a long pass waits to be read"
+    assert seen["result"]["long"]["status"] == "Press Next to continue." and seen["result"]["long"]["next"] is True
+    assert seen["result"]["after"] != "lesson.demo.label.verdict"
 
 def test_the_last_step_is_solo_without_a_highlight_or_hints_and_offers_skip_from_the_start(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""

@@ -1037,6 +1037,7 @@ const SENT_SETTLES_MS = 1500;
 const changed = [];
 const stepPath = (step, tail = "") => lessonPath(`lesson/steps/${encodeURIComponent(step.id)}/${tail}`);
 const PASS_PAUSE_MS = 1500;
+const SHORT_PASS_CHARS = 30;
 const NEXT_LESSON_MS = 2000;
 const HELP_AFTER_SECONDS = 60;
 const SKIP_OFFERED = 3;
@@ -1641,7 +1642,9 @@ function coach(prefix, declared) {
     if (steps[at] !== step || passing) return;
     const line = [spoken(recordOf(step).line), saidOnPass.get(step.id)].filter(Boolean).join(" ");
     const ok = spoken(recordOf(step).ok) || localized(`${prefix}.ok.${step.id}`, "");
-    say([`✓ ${ok}`.trim(), line].filter(Boolean).join(" "), "ok");
+    const text = [`✓ ${ok}`.trim(), line].filter(Boolean).join(" ");
+    const unread = text.length > SHORT_PASS_CHARS;
+    say(text, "ok");
     status("");
     coveredSaid = false;
     showHelp();
@@ -1655,6 +1658,10 @@ function coach(prefix, declared) {
       return;
     }
     if (!ANSWERED.includes(step.check.kind)) return;
+    if (unread) {
+      status(t("lesson.status.press_next"));
+      return;
+    }
     passing = true;
     setTimeout(() => {
       passing = false;
@@ -1692,6 +1699,13 @@ function coach(prefix, declared) {
     }
     if (verdict.passed) {
       pass(step);
+      return;
+    }
+    if (verdict.kali && verdict.kali.settling) {
+      if (loud) {
+        say("", "");
+        status(t(verdict.reason[0], ...(verdict.reason[1] || [])));
+      }
       return;
     }
     if (!loud) return;

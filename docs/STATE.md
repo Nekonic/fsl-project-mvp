@@ -1320,6 +1320,14 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       reads that alert's rule_id in Kibana; the theory shows a rule form with
       square-bracket blanks instead of the complete `/admin` rule. Not run
       live yet.
+- [x] 2026-10-24: a finished run reads as settling, and a long pass text gets
+      time to be read. A Kali step pressed while the newest request is under
+      `RUN_SETTLED` old answers `lesson.check.kali_settling` ("collecting the
+      request logs, checked again automatically") in the neutral status line,
+      not the red failure line; the 5 s poll passes it by itself. A pass text
+      over 30 characters (`SHORT_PASS_CHARS`) no longer auto-advances after
+      1.5 s; the status line says to press Next, and short passes advance as
+      before. Not run live yet.
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 
