@@ -48,9 +48,10 @@ the Internet.
   failures that all come from the single slot (the earlier runs, two bullets
   down).
 - Last full `bin/verify`, on the sideloaded VM with all the fixes of this
-  push (2026-10-24, on the image with the F4 rule check, the stale-slot reset
-  and the lesson screen fixes): unit 1607 passed; acceptance 73 passed, 0
-  failed, 0 errors, 0 skipped in 4038 s; ratchet ok. The 2026-10-23 run after
+  push (2026-10-24, on the image with the pristine wargame restore): unit 1618
+  passed; acceptance 73 passed, 0 failed, 0 errors, 0 skipped in 2186 s;
+  ratchet ok. Before the reset speed-ups it was 4038 s (unit 1607), with the
+  side-by-side start alone 3564 s. The 2026-10-23 run after
   the stale-image fix gave unit 1592 and acceptance 73 passed in 4083 s; the
   run before it gave unit 1583 and acceptance 73 passed in
   3969 s; the 2026-10-22 run before the root-shell fix gave
@@ -179,8 +180,11 @@ copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
 3. An acceptance run longer than `FSL_RETAIN_CLOSED_MINUTES` (60) loses
    the shared session of `test_strategy_honesty` to retention. A one-slot run
    took about 2 h 50 min and failed there; the two-slot run of 2026-10-21 took
-   64 min and passed. Open question: either the harness keeps a session it
-   still needs, or the retention window accounts for a long run.
+   64 min and passed, and since the pristine restore (2026-10-24) a run takes
+   36 min. Only a one-slot run still outlasts the window; the user asked on
+   2026-10-24 why a run took over an hour, and the answer was the slow reset,
+   now fixed. Still open for a one-slot run: the harness keeps a session it
+   needs, or the window accounts for a long run.
 4. The `test_corp_authz` nonce error: the likely cause (corp healthy before
    its forms existed) is fixed and one full `bin/verify` passed with it. The
    error was intermittent, so watch the next runs for it (`docs/STATE.md`
