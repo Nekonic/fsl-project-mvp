@@ -44,9 +44,9 @@ one-VM trial and the last bring-up fixes"): `down` beside a stopped container,
 `resume` checking the hand-over, the first range key and the wargame host kept
 across `down` then `up` all ran live, and the §9 one-VM trial ran end to end
 from an empty cloud (README step 7 took 17 min 41 s). The last full
-`bin/verify` ran on 2026-10-23 on the new cloud with two slots, both on the
-new images: unit 1592 passed; acceptance 73 passed, 0 failed, 0 errors, 0
-skipped in 4083 s; ratchet ok. The run of 2026-10-21 on dev's head gave unit 1578 and acceptance 73
+`bin/verify` ran on 2026-10-24 on the new cloud with two slots: unit 1607
+passed; acceptance 73 passed, 0 failed, 0 errors, 0 skipped in 4038 s; ratchet
+ok. The run of 2026-10-21 on dev's head gave unit 1578 and acceptance 73
 passed in 3853 s. The earlier one-slot runs on the new cloud (3da925e before
 the removal, and one after it; failures that all come from the single slot) and
 the last run on the old cloud (unit 1718; acceptance 73 passed) are recorded in
@@ -1116,6 +1116,18 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [ ] Unverified: the edge's Suricata include and rules surviving an
       OPNsense update (`opnsense-update`); the edge has no Internet route and
       cannot resolve `pkg.opnsense.org`. Needs a route out, or stays unverified.
+- [ ] A slot reset takes 272-314 s from close to the next open on this cloud
+      (60-66 s on the previous one), which makes the acceptance run 63-68
+      min. Measured 2026-10-24 (`docs/DECISIONS.md` "Where a slot reset's
+      time goes"): the wargame host's `up --wait` of board (115-165 s) then
+      corp (94-110 s) is the critical path; Nova rebuilds (16-19 s), guest
+      boot (about 55 s), the edge reset (3-5 s) and the polling are off it or
+      small. Planned, repo only: start board and corp side by side; a 1 s
+      healthcheck start interval; then restore a clean data volume made at
+      image build instead of a fresh MySQL init, migrate, seed and WordPress
+      install on every reset. For the user (cloud admin): `com01`'s Nova
+      `cpu_mode` (guests see a Sandy Bridge model) and disk, and 4 vCPU for
+      the wargame host (needs a 22-24 core quota).
 - [ ] Acceptance run time: 2,900 s on OpenStack on 2026-10-12 with one slot
       (fixture setup 1,689 s, test bodies 1,179 s; `test_suppression` setup
       alone 578 s); with two slots and the audited tests about 730-990 s on the

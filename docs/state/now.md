@@ -48,11 +48,11 @@ the Internet.
   failures that all come from the single slot (the earlier runs, two bullets
   down).
 - Last full `bin/verify`, on the sideloaded VM with all the fixes of this
-  push (2026-10-23, after the standing slots were rebuilt onto the new images,
-  so both slots ran the fixed corp): unit 1592 passed; acceptance 73 passed, 0
-  failed, 0 errors, 0 skipped in 4083 s; ratchet ok (`docs/DECISIONS.md` "A
-  slot standing through a deploy is rebuilt onto the new images"). The run
-  before the stale-image fix gave unit 1583 and acceptance 73 passed in
+  push (2026-10-24, on the image with the F4 rule check, the stale-slot reset
+  and the lesson screen fixes): unit 1607 passed; acceptance 73 passed, 0
+  failed, 0 errors, 0 skipped in 4038 s; ratchet ok. The 2026-10-23 run after
+  the stale-image fix gave unit 1592 and acceptance 73 passed in 4083 s; the
+  run before it gave unit 1583 and acceptance 73 passed in
   3969 s; the 2026-10-22 run before the root-shell fix gave
   unit 1581 and acceptance 73 passed in 3759 s. The run before those, on dev's head without a
   sideload, gave unit 1578 and acceptance 73 passed in 3853 s; the one-slot
