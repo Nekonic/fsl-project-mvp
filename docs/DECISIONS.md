@@ -6323,3 +6323,26 @@ is renamed end to end. Behaviour is unchanged.
   The Korean docs had called it "예외 처리", the word the WAF lessons use for
   CRS exclusions; they now say "룰 비활성화" and "비활성화한 룰".
 - Decision entries above this one keep "suppression" as they were written.
+
+## 2026-10-24 — How courses check a learner's rule
+
+Asked by the user before ruling on F4 step 7, which passes as soon as any rule
+is added while the side panel's only example rule (`content:"/admin";
+sid:9100001`) is a valid rule for something else. What hands-on courses give
+the learner and how they check the rule, from their pages or write-ups that
+quote their checkers:
+
+| Source | Given | Checked by | A valid but wrong rule is caught |
+|---|---|---|---|
+| SANS Holiday Hack 2022 "Suricata Regatta" (https://hackmd.io/@hamayanhamayan/SJnFgxLYj) | the required `msg` and a rules file | a `rule_checker` that counts matches: "we flagged 0 packet(s), but we expected 681" | at the writing step |
+| TryHackMe "Snort Challenge – The Basics" (walkthroughs: https://cipherssecurity.com/tryhackme-walkthrough-snort-challenge-basics/) | a blank rules file and a pcap; in task 6 broken rules to fix | the learner types the alert count | at that question |
+| TryHackMe "Snort Challenge – Live Attacks" (https://www.jalblas.com/blog/tryhackme-snort-challenge-live-attacks-soc-level-1/) | the attack traffic | the effect: "Block the traffic at least for a minute and then the flag file will appear" | at that task |
+| HTB Academy "Working with IDS/IPS" (https://academy.hackthebox.com/course/preview/working-with-idsips) | an existing rule to extend | a typed answer; the rule itself is not checked (forum) | no |
+| SuriCap, arXiv 2609.25901 (https://arxiv.org/html/2609.25901) | a scenario and pcaps, no starter rule | load check, visible and hidden tests with malicious and benign traffic, green/red feedback | at the writing step |
+| Suricata docs "Adding Your Own Rules" (https://docs.suricata.io/en/latest/rule-management/adding-your-own-rules.html) | one example rule | "double check your rule by doing something that should trigger it" | not graded |
+| LabEx "Writing Snort Rules" (https://labex.io/tutorials/linux-writing-snort-rules-656129) | the exact rule to type | `snort -T` only | no (the counter-example) |
+
+Every graded source checks what the rule does, by running it; none passes
+"any new rule", and none shows an unrelated complete rule as the only
+reference. The candidates drawn from them are in the user-facing summary of
+2026-10-24; the ruling is open.
