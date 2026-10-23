@@ -44,8 +44,8 @@ one-VM trial and the last bring-up fixes"): `down` beside a stopped container,
 `resume` checking the hand-over, the first range key and the wargame host kept
 across `down` then `up` all ran live, and the §9 one-VM trial ran end to end
 from an empty cloud (README step 7 took 17 min 41 s). The last full
-`bin/verify` ran on 2026-10-24 on the new cloud with two slots: unit 1607
-passed; acceptance 73 passed, 0 failed, 0 errors, 0 skipped in 4038 s; ratchet
+`bin/verify` ran on 2026-10-24 on the new cloud with two slots: unit 1618
+passed; acceptance 73 passed, 0 failed, 0 errors, 0 skipped in 2186 s; ratchet
 ok. The run of 2026-10-21 on dev's head gave unit 1578 and acceptance 73
 passed in 3853 s. The earlier one-slot runs on the new cloud (3da925e before
 the removal, and one after it; failures that all come from the single slot) and
@@ -1116,24 +1116,21 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [ ] Unverified: the edge's Suricata include and rules surviving an
       OPNsense update (`opnsense-update`); the edge has no Internet route and
       cannot resolve `pkg.opnsense.org`. Needs a route out, or stays unverified.
-- [ ] A slot reset takes 272-314 s from close to the next open on this cloud
-      (60-66 s on the previous one), which makes the acceptance run 63-68
-      min. Measured 2026-10-24 (`docs/DECISIONS.md` "Where a slot reset's
-      time goes"): the wargame host's `up --wait` of board (115-165 s) then
-      corp (94-110 s) is the critical path; Nova rebuilds (16-19 s), guest
-      boot (about 55 s), the edge reset (3-5 s) and the polling are off it or
-      small. Done in the repo, not yet measured live: board and corp start
-      side by side; healthchecks probe every second while starting; and the
-      wargame host's image build keeps a pristine copy of each wargame's
-      volumes (`/opt/fsl/pristine`), which every start copies into the new
-      volumes before `up`, so no reset runs MySQL init, migrate, seeding or the
-      WordPress install (`docs/DECISIONS.md` "A reset restores pristine
-      wargame data"). The board's password salts and corp's keys, salts and
-      admin hash are still new each session. To prove: two sessions on a
-      rebuilt slot, close to READY, and different board hashes in the two
-      baselines. For the user (cloud admin): `com01`'s Nova
-      `cpu_mode` (guests see a Sandy Bridge model) and disk, and 4 vCPU for
-      the wargame host (needs a 22-24 core quota).
+- [x] A slot reset took 272-314 s from close to the next open on this cloud
+      (60-66 s on the previous one). The wargame host's `up --wait` of board
+      then corp was the critical path, and inside it MySQL's data
+      initialisation and the apps' migrate, seed and WordPress install on a
+      slow guest disk (about 27 ms per write; `docs/DECISIONS.md` "Where a
+      slot reset's time goes"). Fixed 2026-10-24: board and corp start side
+      by side with 1 s health probes, and every start restores a pristine
+      copy of each wargame's volumes made at the host image build
+      (`docs/DECISIONS.md` "A reset restores pristine wargame data").
+      Measured live, both slots closed together, close to READY: 288 s
+      before, 245 s with the side-by-side start, 117 s with the pristine
+      restore. The ground truth stays per session: two sessions on slot 1
+      held different board hashes, and the first one's hashes submitted to
+      the second matched no account. For the user (cloud admin), still open:
+      `com01`'s disk and Nova `cpu_mode` (guests see a Sandy Bridge model).
 - [ ] Acceptance run time: 2,900 s on OpenStack on 2026-10-12 with one slot
       (fixture setup 1,689 s, test bodies 1,179 s; `test_suppression` setup
       alone 578 s); with two slots and the audited tests about 730-990 s on the

@@ -6500,3 +6500,17 @@ Rejected:
   `#innodb_redo` files; the copy keeps them (about 100 MB per datadir).
 
 Not yet measured live.
+- Live proof (2026-10-24, `bin/cloud up --replace --sideload platform=...
+  --sideload board=... --sideload corp=...`, 41 min, exit 0; the stale-slot
+  reset rebuilt both wargame hosts onto the image with the pristine copy).
+  Both slots' sessions closed together, close to READY: 288 s on the code
+  before the side-by-side start, 245 s with it, 117 s with the pristine
+  restore. The full `bin/verify` on the side-by-side code took 3564 s for
+  acceptance against 4038 s before. Sessions 1247 and 1249, opened on slot 1
+  one after the other, held different salts and hashes for admin, jiwoo
+  and minseo; 1247's hashes submitted to 1249 as loot matched no account
+  (`"matched": []`), and 1249's own matched all three.
+- Full `bin/verify` on the pristine-restore image: unit 1618 passed;
+  acceptance 73 passed, 0 failed, 0 errors, 0 skipped in 2186 s (4038 s
+  before the reset speed-ups); ratchet ok. The run now ends well inside
+  `FSL_RETAIN_CLOSED_MINUTES` (60).
