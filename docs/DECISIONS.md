@@ -6398,3 +6398,8 @@ before configure). The stale rebuild now uses it.
 - Rejected: having `bin/cloud` wait for each rebuilt server to show REBUILD
   (a by-hand `POST slot/` would still race); treating `CHECKING` as booting
   (it is also a slot that will never be ready without a configure).
+- Live proof (2026-10-24): `bin/cloud up --replace --sideload` with this code,
+  on a run that built a new wargame host image while both slots stood free.
+  `/api/range/ready/`, polled every 10 s, read `STALE` on both slots, then
+  `RESETTING` for 38 polls (about 6 min), then `READY`; no configure was sent
+  by hand and `up` exited 0 in 36 min.

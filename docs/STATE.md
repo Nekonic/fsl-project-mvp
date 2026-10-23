@@ -936,7 +936,9 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       the rebuild, which configures only once Nova has shown each rebuilt VM
       leave ACTIVE and come back; `ready/` reads `RESETTING` meanwhile and
       `bin/cloud up` waits through it (`docs/DECISIONS.md` 2026-10-24).
-      Unit-tested; not yet proven live.
+      Proven live 2026-10-24: a `--replace` that built a new wargame host
+      image read both slots `STALE`, then `RESETTING` for about 6 min, then
+      `READY` with no configure by hand; `up` exited 0 in 36 min.
 - [ ] A two-arm WAF (option, 2026-10-15): the range wires the WAF one-arm,
       on the service segment beside the sites, and the learner map draws it
       so (`docs/DECISIONS.md`, 2026-10-15, uniform host symbols). Barracuda
@@ -1311,8 +1313,11 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       yet" (`unrecorded` stays for a request not yet recorded). F5 `sqlmap`
       takes `ua: any`, so a run with `--random-agent` as sqlmap's own output
       suggests is recorded like the `agent` step's. The Kali and WAF terminal
-      steps wait for `[$#] $`, so a root shell's prompt is found too. Not run
-      live yet.
+      steps wait for `[$#] $`, so a root shell's prompt is found too. Proven
+      live 2026-10-24 for F5 (sessions 1190, 1191): a run with
+      `--random-agent` passed step 4, and after `sudo su` the ring moved to
+      the check button when the `#` prompt returned and the check passed. The
+      F4 part was replaced by the A + C step below.
 - [x] F4 step 7 checks that the learner's rule fires (A + C, 2026-10-24;
       `docs/DECISIONS.md` "How courses check a learner's rule"). `write`
       passes only when a `<script` search sent after applying drew an alert
