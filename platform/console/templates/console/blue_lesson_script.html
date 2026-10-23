@@ -1088,6 +1088,7 @@ function coach(prefix, declared) {
   let finished = false;
   let moving = false;
   let sentSince = false;
+  let kaliSettling = false;
   let reaching = Promise.resolve();
   let last = "";
   let lost = 0;
@@ -1393,6 +1394,8 @@ function coach(prefix, declared) {
     if (needed && runAt) button.dataset.discover = runAt;
     else button.removeAttribute("data-discover");
     button.classList.toggle("hidden", !needed);
+    button.classList.toggle("btn-blue", !done(step));
+    button.classList.toggle("btn-ghost", done(step));
   }
 
   function finishedText() {
@@ -1473,6 +1476,7 @@ function coach(prefix, declared) {
     if (!target) return "";
     if (home) return t("lesson.site.home");
     if (found.stage === "field") return phrase(STAGE_KEYS.field, "", target.spec.doc || "");
+    if (found.stage === "run_done" && kaliSettling) return t("lesson.check.kali_settling");
     if (found.stage) {
       const key = STAGE_KEYS[found.stage];
       return (found.leg && localized(`${key}.${found.leg}`, "")) || localized(key, STAGE_FALLBACKS[found.stage] || "");
@@ -1595,6 +1599,7 @@ function coach(prefix, declared) {
     finished = false;
     replayed = { attack: false, benign: false, seen: false };
     sentSince = false;
+    kaliSettling = false;
     dismissed = -1;
     homed = -1;
     lined = -1;
@@ -1649,6 +1654,7 @@ function coach(prefix, declared) {
     coveredSaid = false;
     showHelp();
     nextStyled();
+    opener();
     field("step-act").querySelectorAll("form button, input, textarea, [data-act]").forEach((control) => {
       if (!control.dataset.discover) control.disabled = true;
     });
@@ -1657,11 +1663,11 @@ function coach(prefix, declared) {
       finish();
       return;
     }
-    if (!ANSWERED.includes(step.check.kind)) return;
     if (unread) {
       status(t("lesson.status.press_next"));
       return;
     }
+    if (!ANSWERED.includes(step.check.kind)) return;
     passing = true;
     setTimeout(() => {
       passing = false;
@@ -1684,6 +1690,7 @@ function coach(prefix, declared) {
       replayed = { attack: Boolean(verdict.passed) || reason === "lesson.check.replay_benign", benign: Boolean(verdict.passed), seen: replayed.seen };
       if (!verdict.passed && replayLines(step)) status(replayLines(step));
     }
+    kaliSettling = Boolean(verdict.kali && verdict.kali.settling && !verdict.passed);
     if (verdict.kali) {
       carried.set(step.id, verdict.kali);
       const rows = field("step-act").querySelector('[data-act="rows"]');
@@ -1728,7 +1735,10 @@ function coach(prefix, declared) {
     const step = steps[at];
     const value = String(given || "").trim();
     if (!value || passing) return;
-    settle(step, await judged(step, { answer: value }), true);
+    status(t("lesson.status.checking"));
+    const verdict = await judged(step, { answer: value });
+    if (!verdict) status(standing(step));
+    settle(step, verdict, true);
   }
 
   function skip() {

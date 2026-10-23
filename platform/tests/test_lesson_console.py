@@ -72,6 +72,7 @@ const failing = (id, poll, key) => {
 const judge = (id, body) => {
   const check = FULL[id];
   range.checked.push([id, body]);
+  range.statusAtCheck = browser.text('step-status');
   if (check.kind === "answer" || check.kind === "choice") {
     range.answers.push([id, body.answer]);
     return String(body.answer || "").trim() === RIGHT[id] ? passing(id) : failing(id, false, "lesson.check.wrong");
@@ -1771,3 +1772,87 @@ def test_the_lesson_text_and_the_callouts_switch_off_the_font_ligature_that_draw
     page = client.get("/blue/1/").content.decode()
 
     assert re.search(r'#lesson,\s*\.coach-callout\s*\{[^}]*font-feature-settings:\s*"calt"\s*0', page)
+
+LONG_OK = "range.ok = {en: 'Confirmed. Your rule alerted on the <script request. The next step finds this alert in Kibana.', ko: 'x'};"
+
+def test_every_kind_of_step_with_a_long_pass_text_says_to_press_next_and_a_short_one_says_nothing(client):
+    seen = open_page(client, "/blue/1/", setup=RULES + served(steps=FIRES) + DEV, scenario=f"""
+      await browser.click('[data-step="0"]');
+      await frames(4);
+      {LONG_OK}
+      range.passed = true;
+      await browser.click('#step-act [data-act="check"]');
+      await browser.settle();
+      await browser.wait(4000);
+      return {{status: browser.text('step-status'), title: browser.text('step-title'), next: browser.element('step-next').classList.contains('btn-blue')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"status": "Press Next to continue.", "title": "lesson.demo.label.fires",
+                              "next": True}
+
+    short = open_page(client, "/blue/1/", setup=RULES + served(steps=FIRES) + DEV, scenario="""
+      await browser.click('[data-step="0"]');
+      await frames(4);
+      range.passed = true;
+      await browser.click('#step-act [data-act="check"]');
+      await browser.settle();
+      return browser.text('step-status');
+    """)
+    assert short["errors"] == [] and short["result"] == ""
+
+def test_a_finished_run_still_being_logged_does_not_tell_the_learner_to_press_the_check_button(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS.en['lesson.kali.press'] = 'The run has finished. Press Check.';
+      {to("sqlmap")}
+      await browser.click('step-open');
+      RECTS.set(document.querySelector('[data-act="kali"]'), box(1060, 400, 130, 28));
+      kaliLines.splice(0, kaliLines.length, "ubuntu@kali:~$ sqlmap -u x --batch", "[*] ending @ 10:00:00 /2026-10-19/", "", "ubuntu@kali:~$ ");
+      await frames();
+      const finished = browser.text('step-coach');
+      range.settling = true;
+      await browser.click('#step-act [data-act="kali"]');
+      await browser.settle();
+      await frames();
+      const settling = browser.text('step-coach');
+      range.settling = false;
+      range.passed = false;
+      await browser.click('#step-act [data-act="kali"]');
+      await browser.settle();
+      await frames();
+      return {{finished, settling, wrong: browser.text('step-coach')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["finished"] == "The run has finished. Press Check."
+    assert seen["result"]["settling"] == "Collecting the request logs of the run. It is checked again automatically in a few seconds."
+    assert seen["result"]["wrong"] == "The run has finished. Press Check."
+
+def test_a_passed_step_s_open_pane_button_is_secondary_so_next_is_the_one_call_to_action(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("method")}
+      const style = () => ({{shown: shown('step-open'), blue: browser.element('step-open').classList.contains('btn-blue'),
+                            ghost: browser.element('step-open').classList.contains('btn-ghost')}});
+      const before = style();
+      {answering(RIGHT["method"])}
+      return {{before, after: style(), next: browser.element('step-next').classList.contains('btn-blue')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"before": {"shown": True, "blue": True, "ghost": False},
+                              "after": {"shown": True, "blue": False, "ghost": True}, "next": True}
+
+def test_a_choice_shows_checking_the_moment_it_is_pressed_and_a_wrong_one_clears_it(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("verdict")}
+      await browser.click('#step-act [data-value="yes"]');
+      await browser.settle();
+      const wrong = {{during: range.statusAtCheck, after: browser.text('step-status')}};
+      await browser.click('#step-act [data-value="no"]');
+      await browser.settle();
+      return {{wrong, passed: {{during: range.statusAtCheck, after: browser.text('step-status')}}}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["wrong"] == {"during": "Checking...", "after": ""}
+    assert seen["result"]["passed"] == {"during": "Checking...", "after": ""}

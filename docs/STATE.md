@@ -1323,8 +1323,11 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       passes only when a `<script` search sent after applying drew an alert
       from the learner's sid, and says what was missing otherwise; `fired`
       reads that alert's rule_id in Kibana; the theory shows a rule form with
-      square-bracket blanks instead of the complete `/admin` rule. Not run
-      live yet.
+      square-bracket blanks instead of the complete `/admin` rule. Proven
+      live 2026-10-24 (session 1194): the copied `/admin` rule got "내
+      룰(sid 9100001)이 <script 요청에 경보를 내지 않았습니다…", a check
+      before searching got the "send the search" message, `content:"<script"`
+      passed, and steps 8-11 passed.
 - [x] 2026-10-24: a finished run reads as settling, and a long pass text gets
       time to be read. A Kali step pressed while the newest request is under
       `RUN_SETTLED` old answers `lesson.check.kali_settling` ("collecting the
@@ -1332,7 +1335,18 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       not the red failure line; the 5 s poll passes it by itself. A pass text
       over 30 characters (`SHORT_PASS_CHARS`) no longer auto-advances after
       1.5 s; the status line says to press Next, and short passes advance as
-      before. Not run live yet.
+      before. Proven live 2026-10-24 (sessions 1193, 1196): an immediate press
+      showed the settling line and no red text, and the step passed by itself
+      in 23-26 s; the F5 verdict text stayed until Next.
+- [x] 2026-10-24: four lesson screen fixes from the live check. (1) Every step
+      kind whose pass text is over 30 characters shows the press-Next line, not
+      only the answer, choice and loot kinds (F4 step 7 showed nothing).
+      (2) While a Kali run answers `kali_settling`, the coach line under the
+      check button says so instead of "press the check". (3) Once a step has
+      passed, its open-pane button turns secondary, so Next is the one primary
+      button. (4) A choice or answer shows "Checking..." the moment it is
+      pressed. Proven live 2026-10-24 (sessions 1195, 1196) on the image built
+      from this code.
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 
