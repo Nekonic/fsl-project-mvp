@@ -860,7 +860,7 @@ How each check kind passes:
   - A value listed in `known` gets its own `<text>.wrong.<step>.<value>`.
   - The accepted values are the `accept` list, or they are read `of:` the session's records ("Foundations F1-F6").
   - `of: rule` (`wargames.ANSWERS_OF`) takes the `path` of the request with `marker: browse` for the learner's own request, or `marker: step:<id>` for a Kali step's run. It may be narrowed to a rule `family`. The platform ingests the last 600 s, takes the session's ModSecurity detections of that request or run, drops the CRS totals (rule ids starting 949, 959 or 980) and accepts each remaining `ruleId` (`lesson.rules_named`). With nothing recorded, the reason is `lesson.check.unrecorded`.
-- `rules` passes once the sensor's file (`GET /api/rules/`) holds a sid that the posture's rule file does not hold, or holds with other text (`lesson.added_rules`, `disable.sids`). It answers `added`. `needs: nocase` also wants that rule to carry `nocase` or a pcre with the `i` flag (`lesson.ignores_case`).
+- `rules` passes once the sensor's file (`GET /api/rules/`) holds a sid that the posture's rule file does not hold, or holds with other text (`lesson.added_rules`, `disable.sids`). It answers `added`. `needs: nocase` also wants that rule to carry `nocase` or a pcre with the `i` flag (`lesson.ignores_case`). With a `match`, the rule must also have fired: a Website pane request matching it, sent after the last apply (`RuleSet.applied_at`), drew an alert from one of those sids. Otherwise it answers `<fail>.unsent` (no such request), `lesson.check.unrecorded` (the sensor has not logged the request yet), or `<fail>.silent` with the sids, or `<fail>.elsewhere` with the sids and a URL they alerted on instead.
 - `triage` (`judged: customer | attack | all`) passes on the learner's right verdicts ("Scenarios").
 - `waf_changed` (`removed_target`) passes once no exclusion in the WAF's file targets that variable, while the posture declared one.
 - `replay` passes once, after the step named `after` passed, when both of these hold:
@@ -880,7 +880,7 @@ Checks run by themselves.
 
 - `sent`, `triage`, `kali`, `replay` and `waf_changed` are polled silently every 5 s while their step is shown, the tab is visible and the session is open. The page re-reads the session every 30 s to notice a close. A poll never writes the status line.
 - `sent` also runs 1.5 s after the Website pane shows a path that matches the step's `match`.
-- `rules` also runs when the rule editor applies a file.
+- `rules` also runs when the rule editor applies a file. A `rules` step with a `match` runs then silently and shows its own check button, which the learner presses after sending the request.
 - A pass says the step's `ok` line on the passed step, and 1.5 s later the note moves to the next step.
 - The step after a Kali step shows that step's row: the case's name and "Open Kibana at this run's time". The link opens the run's window with an empty query. It shows no request count and no sensor name. A poll of the Kali check reads the row again after a reload.
 - On the last step, a foundation says "Lesson complete. Next lesson: <title>" and moves on ("One session, F1 to F6"). After F6, the card lists the lessons taken and a button closes the session. A worked scenario says "Lesson complete".
@@ -916,11 +916,11 @@ The locators are:
   On a step whose check names a `leg`, the coach rings the expand toggle of the row on that leg and the flyout's arrow while the other event is open. The row on a leg is the one whose source is another row's destination, or the reverse. When that row cannot be found, or the open document's position is unknown, the coach rings the field filter and never a value. `keep: true` on the point leaves the flyout open on arrival.
 - `term`: `{pane: kali | waf, match}`, the row of the xterm buffer that matches. An optional `done` pattern, once printed after the last typed command, moves the ring to the step's check button.
 
-A two-phase point holds the first target `until: sent` and then points at `then` (the select, then the payload line).
+A two-phase point holds the first target `until: sent` and then points at `then` (the select, then the payload line). `until: applied` holds until the step's added rule is applied and the editor holds no unapplied change. A `then` may carry its own `until` and `then`; F4's rule step rings the rule editor, then the site's search box, then its check button (`#step-act`).
 
 How the highlight draws:
 
-- It dims the pane alone (`pointer-events: none`). It rings the target in the primary colour and puts a one-line callout beside it (`<text>.callout.<step>`, and `.callout.<step>.then` for the second phase).
+- It dims the pane alone (`pointer-events: none`). It rings the target in the primary colour and puts a one-line callout beside it (`<text>.callout.<step>`, and `.callout.<step>.then` for the second phase, `.then.then` for the third).
 - The callout is flipped or shifted inside the pane. It never covers the target, the rail, the bars or the note. It also never covers the text and controls that the site frame or the Kibana frame report around the target (Kibana's leaf text and controls within 220 px of the ring, skipping what the document flyout covers).
 - With no one-line spot free, it wraps to two or three lines.
 - A flyout step (the next-event arrow) looks inside the flyout first.
@@ -984,13 +984,13 @@ Each unit below lists its defense and opening pane, what the learner does, and w
 
 **f4 Blocking an XSS request and writing an IDS rule** (`lesson.xss`). Defense `xss-gap`, opens on Website.
 
-- The learner sends `<script>alert(1)</script>` and reads the status, one detecting rule and the Total Score. They read the status of the mixed-case probe, and say whether either drew an IDS alert. They write a rule for `<script` in the URI, read its sid from its alert, see the mixed case slip past, and add `nocase`. The solo step replays the mixed case and an ordinary search.
+- The learner sends `<script>alert(1)</script>` and reads the status, one detecting rule and the Total Score. They read the status of the mixed-case probe, and say whether either drew an IDS alert. They write a rule for `<script` in the URI, apply it, search `<script>alert(1)</script>` and press the check, which passes only when that rule alerted on the search. They read its sid from the alert in Kibana, see the mixed case slip past, and add `nocase`. The theory shows the rule's form with square-bracket blanks, not a complete rule. The solo step replays the mixed case and an ordinary search.
 - Answers are read from:
   - `status`;
   - `rule`: the ModSecurity rule ids of the request, 949110 excluded;
   - `anomaly_total`: 949110's `Total Score: N`;
   - `alerted`, `alerted_sid`, `alerted_sid_present`: the Suricata alerts in the record's window, against `lesson.added_rules`;
-  - `rules` with `needs: nocase`;
+  - `rules` with `match: '<script'`, and `rules` with `needs: nocase`;
   - `replay`.
 
 **f5 Analysing SQL injection on the sort parameter** (`lesson.sqli`). Defense `full`, opens on Website.

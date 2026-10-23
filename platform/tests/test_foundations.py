@@ -11,7 +11,7 @@ from django.utils import timezone
 
 import wargames
 from api import site
-from api.models import Case, Detection, Objective, Session
+from api.models import Case, Detection, Objective, RuleSet, Session
 from range import declared
 from range.ports import Ran
 from tests.test_gns3_maps import read_slot
@@ -126,7 +126,11 @@ def test_every_step_opens_a_pane_points_at_one_element_and_the_last_is_solo_with
             point = shown["point"]
             assert "opens" in point and "pane" not in point, (taught["id"], shown["id"])
             assert len(LOCATORS & set(point)) == 1, (taught["id"], shown["id"])
-            assert set(point.get("then") or {}) <= LOCATORS and len(point.get("then") or {"one": 1}) == 1
+            stage = point
+            while stage.get("then"):
+                assert stage.get("until") in ("sent", "applied"), (taught["id"], shown["id"])
+                stage = stage["then"]
+                assert len(LOCATORS & set(stage)) == 1 and set(stage) - LOCATORS <= {"until", "then"}
     Session.objects.filter(pk=session.pk).update(lesson="f6", defense="overbroad")
     steps = client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]
     assert [one["solo"] for one in steps] == [False] * 7 + [True]
@@ -237,6 +241,58 @@ def test_the_learner_s_rule_is_judged_by_its_own_alerts_and_the_fix_needs_nocase
         with_nocase = step(client, session, "nocase").json()["passed"]
 
     assert (fired, without, with_nocase) == (True, False, True)
+
+COPIED = ('alert http any any -> any any (msg:"admin page request"; flow:established,to_server; http.uri; '
+          'content:"/admin"; sid:9100001; rev:1;)\n')
+SCRIPT_SEARCH = "/search/?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E"
+
+def ruled(content):
+    return patch("api.views._live_rules", lambda session=None: content)
+
+def test_f4_write_passes_only_when_the_learner_s_own_rule_alerted_on_a_script_search_sent_after_applying_it(client):
+    session = opened("f4")
+    posture = (ROOT / "deploy/suricata/rules/no-xss.rules").read_text()
+    applied = timezone.now() - timedelta(minutes=1)
+    RuleSet.objects.create(content=posture + COPIED, applied_at=applied)
+    before = browsed(SCRIPT_SEARCH, 403, at=(applied - timedelta(minutes=1)).timestamp())
+    search = browsed(SCRIPT_SEARCH, 403, request_id=2)
+    logged = http_event(session.browse_marker, SCRIPT_SEARCH, 403, host="fsl-edge", src_ip=CUSTOMER, dest_ip=WAF,
+                        dest_port=80)
+    with quietly():
+        with ruled(posture), patch.object(site, "kept", return_value=[search]):
+            unwritten = step(client, session, "write").json()
+        with ruled(posture + COPIED):
+            with patch.object(site, "kept", return_value=[before]), indexed():
+                unsent = step(client, session, "write").json()
+            with patch.object(site, "kept", return_value=[before, search]):
+                with indexed():
+                    unlogged = step(client, session, "write").json()
+                with indexed(logged):
+                    silent = step(client, session, "write").json()
+                    admin = detected(session, "admin", "suricata", None, "admin page request",
+                                     alert={"signature_id": 9100001}, http={"url": "/admin/"})
+                    Detection.objects.filter(pk=admin.pk).update(timestamp=applied + timedelta(seconds=10))
+                    elsewhere = step(client, session, "write").json()
+        with ruled(posture + NOCASE_LESS), patch.object(site, "kept", return_value=[before, search]), indexed(logged):
+            detected(session, "mine", "suricata", session.browse_marker, "script", alert={"signature_id": 9100001},
+                     http={"url": SCRIPT_SEARCH})
+            fired = step(client, session, "write").json()
+
+    assert (unwritten["passed"], unwritten["reason"]) == (False, ["lesson.xss.fail.write", []])
+    assert unsent["reason"] == ["lesson.xss.fail.write.unsent", []], "a search sent before the rule was applied does not count"
+    assert unlogged["reason"] == ["lesson.check.unrecorded", []], "no sensor log of the search yet means check again soon"
+    assert (silent["passed"], silent["reason"]) == (False, ["lesson.xss.fail.write.silent", ["9100001"]]), (
+        "the copied /admin example is a valid rule that does not alert on <script")
+    assert elsewhere["reason"] == ["lesson.xss.fail.write.elsewhere", ["9100001", "/admin/"]]
+    assert fired["passed"] is True and fired["added"] == [9100001]
+
+def test_the_f4_rule_theory_gives_a_rule_form_to_fill_in_and_no_complete_rule_for_something_else():
+    table = tables()
+    for language in ("en", "ko"):
+        body = table[language]["lesson.xss.theory.rule.body"]
+        shown = [line for line in body.split("\n") if line.startswith("alert ")]
+        assert len(shown) == 1 and "9100001;" not in body and "/admin" not in body, language
+        assert re.search(r'msg:"\[[^]]+\]";.*content:"\[[^]]+\]";.*sid:\[[^]]+\];', shown[0]), language
 
 def test_a_logged_search_that_drew_no_alert_from_the_rule_says_so_instead_of_asking_for_a_log(client):
     session = opened("f4")

@@ -6345,7 +6345,21 @@ quote their checkers:
 Every graded source checks what the rule does, by running it; none passes
 "any new rule", and none shows an unrelated complete rule as the only
 reference. The candidates drawn from them are in the user-facing summary of
-2026-10-24; the ruling is open.
+2026-10-24.
+
+Ruling (the user, 2026-10-24): A + C. A: F4 step 7 (`write`) passes only when
+the learner's own rule fired, as Holiday Hack's checker does: a `<script`
+search sent from the Website pane after the last apply drew an alert from a
+sid the learner added (`{kind: rules, match: '<script'}`). A failure says
+which: no rule added, no search since applying, no sensor log yet, or "your
+rule (sid N) raised no alert on the `<script` request", naming a URL it
+alerted on instead when there is one. The learner presses the step's own
+check button; the coach rings the rule editor, then the search box, then that
+button (`until: applied`, nested `then`). Step 8 (`fired`) becomes reading
+that alert's rule_id in Kibana (`about: write`, no new request). C: the theory
+shows the rule's form with square-bracket blanks (`msg:"[alert description]"`,
+`content:"[string to find]"`, `sid:[rule ID]`), which Suricata refuses as pasted,
+in place of the complete `/admin` rule with sid 9100001.
 
 ## 2026-10-24 — A slot rebuilt onto a new image resets itself
 

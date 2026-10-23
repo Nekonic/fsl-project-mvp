@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-10-23
+Updated: 2026-10-24
 
 ## Where things stand
 
@@ -1312,6 +1312,13 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       takes `ua: any`, so a run with `--random-agent` as sqlmap's own output
       suggests is recorded like the `agent` step's. The Kali and WAF terminal
       steps wait for `[$#] $`, so a root shell's prompt is found too. Not run
+      live yet.
+- [x] F4 step 7 checks that the learner's rule fires (A + C, 2026-10-24;
+      `docs/DECISIONS.md` "How courses check a learner's rule"). `write`
+      passes only when a `<script` search sent after applying drew an alert
+      from the learner's sid, and says what was missing otherwise; `fired`
+      reads that alert's rule_id in Kibana; the theory shows a rule form with
+      square-bracket blanks instead of the complete `/admin` rule. Not run
       live yet.
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)

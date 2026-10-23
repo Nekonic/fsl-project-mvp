@@ -860,7 +860,7 @@ check 종류별 통과 조건:
   - `known`에 있는 값에는 `<text>.wrong.<step>.<value>`를 보여 줍니다.
   - 허용 값은 `accept` 목록이거나 `of:`로 세션의 기록에서 읽습니다("기초 레슨 F1-F6").
   - `of: rule`(`wargames.ANSWERS_OF`)은 학습자 자신의 요청이면 요청의 `path`와 `marker: browse`를, Kali 단계의 실행이면 `marker: step:<id>`를 받습니다. 룰 `family`로 좁힐 수 있습니다. 플랫폼은 최근 600초를 수집하고, 그 요청이나 실행에 대한 세션의 ModSecurity 탐지 기록을 모읍니다. 그중 CRS 합계 룰(949, 959, 980으로 시작하는 id)을 빼고, 남은 `ruleId`를 모두 허용 값으로 받습니다(`lesson.rules_named`). 기록된 것이 없으면 사유는 `lesson.check.unrecorded`입니다.
-- `rules`는 센서의 룰 파일(`GET /api/rules/`)에 방어 설정의 룰 파일에 없는 sid나 내용이 다른 sid가 생기면 통과합니다(`lesson.added_rules`, `disable.sids`). `added`로 응답합니다. `needs: nocase`이면 그 룰에 `nocase`나 `i` 플래그가 붙은 pcre도 있어야 합니다(`lesson.ignores_case`).
+- `rules`는 센서의 룰 파일(`GET /api/rules/`)에 방어 설정의 룰 파일에 없는 sid나 내용이 다른 sid가 생기면 통과합니다(`lesson.added_rules`, `disable.sids`). `added`로 응답합니다. `needs: nocase`이면 그 룰에 `nocase`나 `i` 플래그가 붙은 pcre도 있어야 합니다(`lesson.ignores_case`). `match`가 있으면 그 룰이 실제로 경보를 내야 합니다. 마지막 적용(`RuleSet.applied_at`) 뒤에 웹사이트 창에서 보낸 요청 중 `match`에 맞는 요청에 그 sid의 경보가 있어야 통과합니다. 아니면 `<fail>.unsent`(그런 요청이 없음), `lesson.check.unrecorded`(센서가 아직 그 요청을 기록하지 않음), sid를 담은 `<fail>.silent`, 또는 sid와 대신 경보를 낸 URL을 담은 `<fail>.elsewhere`로 응답합니다.
 - `triage`(`judged: customer | attack | all`)는 학습자가 옳게 판정하면 통과합니다("시나리오").
 - `waf_changed`(`removed_target`)는 방어 설정이 선언한 예외의 target을 WAF 파일의 어떤 예외도 더는 가리키지 않으면 통과합니다.
 - `replay`는 `after`로 지정한 단계를 통과한 뒤에 다음 두 조건이 모두 맞으면 통과합니다.
@@ -880,7 +880,7 @@ check는 스스로 실행됩니다.
 
 - `sent`, `triage`, `kali`, `replay`, `waf_changed`는 단계가 보이고 탭이 보이며 세션이 열려 있는 동안 5초마다 조용히 폴링합니다. 화면은 닫힌 것을 알아채려고 30초마다 세션을 다시 읽습니다. 폴링은 상태 줄에 아무것도 쓰지 않습니다.
 - `sent`는 웹사이트 창에 단계의 `match`에 맞는 경로가 나타나고 1.5초 뒤에도 실행됩니다.
-- `rules`는 룰 편집기가 파일을 적용할 때도 실행됩니다.
+- `rules`는 룰 편집기가 파일을 적용할 때도 실행됩니다. `match`가 있는 `rules` 단계는 이때 조용히 실행되고, 따로 확인 버튼을 보여 줍니다. 학습자는 요청을 보낸 뒤 이 버튼을 누릅니다.
 - 통과하면 통과한 단계에 `ok` 문장을 보여 주고, 1.5초 뒤 다음 단계로 넘어갑니다.
 - Kali 단계 다음 단계에는 그 단계의 행이 나옵니다. 케이스 이름과 "Kibana에서 이 실행 시간대 열기"입니다. 이 링크는 실행 시간대를 빈 쿼리로 엽니다. 요청 수와 센서 이름은 없습니다. 다시 불러오면 Kali check를 폴링해 이 행을 다시 읽습니다.
 - 마지막 단계에서 기초 레슨은 "레슨을 완료했습니다. 다음 레슨: <제목>"을 보여 주고 넘어갑니다("한 세션, F1부터 F6까지"). F6 뒤에는 카드에 들은 레슨을 나열하고, 버튼으로 세션을 닫습니다. 단계형 시나리오는 "레슨을 완료했습니다"라고 합니다.
@@ -916,11 +916,11 @@ check는 스스로 실행됩니다.
   단계의 체크가 `leg`을 지정하면, 코치는 그 구간 행의 펼치기 버튼을 가리킵니다. 다른 이벤트가 열려 있으면 플라이아웃의 화살표도 가리킵니다. 그 구간 행은 출발지가 다른 행의 목적지인 행, 또는 그 반대입니다. 그 구간 행을 못 찾거나 열린 문서의 순서를 알 수 없으면 값이 아니라 필드 필터를 가리킵니다. `point`에 `keep: true`가 있으면 도착한 뒤에도 플라이아웃을 열어 둡니다.
 - `term`: `{pane: kali | waf, match}`로, xterm 버퍼에서 맞는 줄입니다. 선택 항목 `done` 패턴이 마지막으로 입력한 명령 뒤에 출력되면 테두리가 단계의 확인 버튼으로 옮겨 갑니다.
 
-두 단계 로케이터는 첫 대상을 `until: sent`까지 가리킨 뒤 `then`을 가리킵니다(정렬 선택 상자, 그다음 페이로드의 줄).
+두 단계 로케이터는 첫 대상을 `until: sent`까지 가리킨 뒤 `then`을 가리킵니다(정렬 선택 상자, 그다음 페이로드의 줄). `until: applied`는 단계에서 추가한 룰이 적용되고 편집기에 적용하지 않은 변경이 없을 때까지 첫 대상을 가리킵니다. `then` 안에 다시 `until`과 `then`을 둘 수 있습니다. F4의 룰 단계는 룰 편집기, 사이트 검색창, 확인 버튼(`#step-act`) 순서로 가리킵니다.
 
 강조 표시를 그리는 방식:
 
-- 창만 어둡게 하고(`pointer-events: none`), 대상에 기본 색 테두리를 두릅니다. 그 옆에 한 줄 콜아웃을 붙입니다(`<text>.callout.<step>`, 두 번째 대상에는 `.callout.<step>.then`).
+- 창만 어둡게 하고(`pointer-events: none`), 대상에 기본 색 테두리를 두릅니다. 그 옆에 한 줄 콜아웃을 붙입니다(`<text>.callout.<step>`, 두 번째 대상에는 `.callout.<step>.then`, 세 번째 대상에는 `.then.then`).
 - 콜아웃은 창 안에서 뒤집거나 밀어서 놓습니다. 대상, 왼쪽 메뉴, 툴바, 노트를 덮지 않습니다. 사이트 프레임이나 Kibana 프레임이 대상 주변에서 알려 주는 글자와 컨트롤도 덮지 않습니다(Kibana는 테두리에서 220px 안의 글자와 컨트롤이며, 문서 플라이아웃이 가린 것은 뺍니다).
 - 한 줄로 놓을 자리가 없으면 두세 줄로 줄바꿈합니다.
 - 플라이아웃 단계(다음 이벤트 화살표)는 플라이아웃 안을 먼저 찾습니다.
@@ -984,13 +984,13 @@ board의 `scenario.yaml`은 `foundations:` 목록을 선언합니다. discovery 
 
 **f4 XSS 요청 차단과 IDS 룰 작성**(`lesson.xss`). defense `xss-gap`, 웹사이트 창에서 시작합니다.
 
-- 학습자는 `<script>alert(1)</script>`를 보내 상태 코드, 탐지한 룰 하나, Total Score를 읽습니다. 대소문자를 섞은 요청의 상태 코드를 읽고, 두 요청에 IDS 경보가 있었는지 답합니다. URI의 `<script`를 잡는 룰을 쓰고, 그 경보의 sid를 읽고, 대소문자를 섞은 요청이 빠져나가는 것을 본 뒤 `nocase`를 붙입니다. 혼자 푸는 단계에서는 대소문자를 섞은 요청과 일반 검색을 다시 보냅니다.
+- 학습자는 `<script>alert(1)</script>`를 보내 상태 코드, 탐지한 룰 하나, Total Score를 읽습니다. 대소문자를 섞은 요청의 상태 코드를 읽고, 두 요청에 IDS 경보가 있었는지 답합니다. URI의 `<script`를 잡는 룰을 쓰고 적용한 뒤 `<script>alert(1)</script>`를 검색하고 확인 버튼을 누릅니다. 그 룰이 이 검색에 경보를 냈을 때만 통과합니다. 이어서 Kibana에서 그 경보의 sid를 읽고, 대소문자를 섞은 요청이 빠져나가는 것을 본 뒤 `nocase`를 붙입니다. 이론은 완성된 룰이 아니라 대괄호로 빈칸을 둔 룰 형태를 보여 줍니다. 혼자 푸는 단계에서는 대소문자를 섞은 요청과 일반 검색을 다시 보냅니다.
 - 답은 다음에서 읽습니다.
   - `status`
   - `rule`: 요청의 ModSecurity 룰 id. 949110은 제외합니다.
   - `anomaly_total`: 949110의 `Total Score: N`
   - `alerted`, `alerted_sid`, `alerted_sid_present`: 기록 시간대의 Suricata 경보를 `lesson.added_rules`와 대조합니다.
-  - `needs: nocase`가 붙은 `rules`
+  - `match: '<script'`가 붙은 `rules`, `needs: nocase`가 붙은 `rules`
   - `replay`
 
 **f5 sort 파라미터 SQL Injection 분석**(`lesson.sqli`). defense `full`, 웹사이트 창에서 시작합니다.
