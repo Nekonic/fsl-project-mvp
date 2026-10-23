@@ -69,12 +69,12 @@ A new wargame needs `scenario.yaml`, `objectives.yaml` and `compose.yaml` in its
 
 Nothing in a wargame's `compose.yaml` pins `container_name`. The wargame host names each container by its service (`board`, `corp-wp`). The control plane keeps fixed names: `fsl-platform`, `fsl-elasticsearch`, `fsl-kibana`, `fsl-collector` and `fsl-gns3`. The first table below lists each service by that name.
 
-Every endpoint that acts on the range takes `session` from the query or the body. These endpoints are rules, validate, suppressions, `/api/attacker/`, origin, label and canary.
+Every endpoint that acts on the range takes `session` from the query or the body. These endpoints are rules, validate, disabled rules, `/api/attacker/`, origin, label and canary.
 
 - Without `session`, a write goes to the newest open session. It answers 409 when none is open.
 - Without `session`, a read uses the newest session.
 - A write that names a closed session is refused.
-- Suppressions are stored with their session (migration 0014).
+- A disabled rule is stored with its session (migration 0014). Migration 0028 renamed the model `Suppression` to `DisabledRule` and `restored_at` to `enabled_at`; the stored rows are kept.
 
 Each slot's sensors keep their own live rule files.
 
@@ -429,8 +429,8 @@ Important files that this document does not otherwise name.
 | `platform/scoring/` | `correlate.py` matches detections to cases by marker or window. `metrics.py` counts TP, FP, FN and TN |
 | `platform/scoreboard.py` | Objective scoring. It attributes detections to attempts, decides `corroborated` and tallies the lost objectives |
 | `platform/game.py` | The game score (speed, accuracy, coverage, response) in the score's `game` block |
-| `platform/suppress.py` | Comments a Suricata rule out until a time and restores it (`# fsl-suppressed`) |
-| `platform/api/models.py` | The Django models: `Session`, `Case`, `CustomerRequest`, `Detection`, `Objective`, `RuleSet`, `Suppression` |
+| `platform/disable.py` | Disables a Suricata rule by commenting it out until a time, and enables it again (`# fsl-disabled`) |
+| `platform/api/models.py` | The Django models: `Session`, `Case`, `CustomerRequest`, `Detection`, `Objective`, `RuleSet`, `DisabledRule` |
 | `platform/fsl/urls.py` | The route table of every endpoint |
 | `platform/api/refusals.py` | Maps exceptions to HTTP statuses (a 404 under `/api/` is JSON). It also holds the same-origin check for unsafe methods |
 | `platform/api/reachability.py` | The middleware that refuses requests from range hosts |
@@ -643,7 +643,7 @@ How an alert gets its marker:
 
 Each ingest call does the following.
 
-- It first restores rule suppressions that have expired.
+- It first enables again the rules whose disable has expired.
 - It reads `logs-<N>-*` (`ELASTIC_SESSION_INDEX`, where N is the session's slot).
   - The shared collector tags each syslog line with the slot that its sender's hostname names (`-N` before the domain, slot 1 otherwise). It writes the line to that slot's index, and the ingest pipeline removes the tag before the document is stored.
   - Filebeat sets `event.module` (`suricata` or `modsecurity`) on every event. It drops a syslog line that is neither.
@@ -860,7 +860,7 @@ How each check kind passes:
   - A value listed in `known` gets its own `<text>.wrong.<step>.<value>`.
   - The accepted values are the `accept` list, or they are read `of:` the session's records ("Foundations F1-F6").
   - `of: rule` (`wargames.ANSWERS_OF`) takes the `path` of the request with `marker: browse` for the learner's own request, or `marker: step:<id>` for a Kali step's run. It may be narrowed to a rule `family`. The platform ingests the last 600 s, takes the session's ModSecurity detections of that request or run, drops the CRS totals (rule ids starting 949, 959 or 980) and accepts each remaining `ruleId` (`lesson.rules_named`). With nothing recorded, the reason is `lesson.check.unrecorded`.
-- `rules` passes once the sensor's file (`GET /api/rules/`) holds a sid that the posture's rule file does not hold, or holds with other text (`lesson.added_rules`, `suppress.sids`). It answers `added`. `needs: nocase` also wants that rule to carry `nocase` or a pcre with the `i` flag (`lesson.ignores_case`).
+- `rules` passes once the sensor's file (`GET /api/rules/`) holds a sid that the posture's rule file does not hold, or holds with other text (`lesson.added_rules`, `disable.sids`). It answers `added`. `needs: nocase` also wants that rule to carry `nocase` or a pcre with the `i` flag (`lesson.ignores_case`).
 - `triage` (`judged: customer | attack | all`) passes on the learner's right verdicts ("Scenarios").
 - `waf_changed` (`removed_target`) passes once no exclusion in the WAF's file targets that variable, while the posture declared one.
 - `replay` passes once, after the step named `after` passed, when both of these hold:
@@ -1403,7 +1403,7 @@ Scenario 4.2 (a person on the red console against the learner) is not declared, 
   - An unreachable Elasticsearch or substrate, and an unreadable rule file, answer 503.
   - Session create tolerates an unreachable target. The session starts with no snapshot, and the board's `loot/` answers 409.
   - Firing or recording a case, and close, read no target. Firing still answers 503 when it needs the substrate for an origin or a tool.
-  - The suppression restore inside ingest, and placing alerts on segments and hosts, tolerate an unreachable substrate. The placement comes back empty, so a session can still start and stop.
+  - Enabling expired disabled rules inside ingest, and placing alerts on segments and hosts, tolerate an unreachable substrate. The placement comes back empty, so a session can still start and stop.
   - A ratio with a zero denominator is 0.0, not null. This covers precision, recall, F1 and FPR, and the game's speed, coverage and accuracy. Only the `objectives` block's `coverage` is null.
 - **A score lists what it cannot vouch for.** It carries a warning in each of these cases:
   - there are no benign cases (`no_benign`);
@@ -1527,7 +1527,7 @@ The slot is the set of range hosts. It is managed through `/api/range/slot/` and
 - A slot adapter (`OpenStack.in_slot(n)`) reads only its own slot's servers, by their declared host name. Roles, runners, topology and the edge's rendered settings are therefore the same in every slot. Slot N's edge renders its hostname as `firewall-N`.
 - Opening the collector for one slot keeps the other slots' sender rules.
 - The platform binds a session to a slot at open (`Session.slot`, one open session per slot by a unique constraint). It takes the first free slot that is READY, chosen under a lock.
-- Every per-session range call goes to that slot. The close resets only that slot and marks only its suppressions restored. Its reset state is its own (`api/reset.py`). Rule changes take that slot's turn, so one slot's reset does not hold the other slot's session.
+- Every per-session range call goes to that slot. The close resets only that slot and marks only its disabled rules enabled. Its reset state is its own (`api/reset.py`). Rule changes take that slot's turn, so one slot's reset does not hold the other slot's session.
 - `run_on_role` takes `--session` or `--slot`, and it refuses to run with neither when there is more than one slot.
 - The console's VM terminals take the session as `?arg=<id>` (ttyd `-a`) and open its slot's host.
 
@@ -1581,7 +1581,7 @@ Both sides retry while a VM does not answer ssh (up to 30 minutes). The first fa
 
 `configure_slot()` (the manual configure) runs every host's steps side by side, one thread per host: the edge (configure and reboot), the WAF, Kali, the wargame host, and the collector's security group. Every Ubuntu host's chain starts with its time source. It waits for all of them and fails with the first failure in that order.
 
-The close answers at once. The reset state (idle, running, failed and why) is held in the platform process. A reset also leaves a file `slot-N` under `FSL_RESET_OWED_DIR` (`/data/reset-owed`) from the moment it is claimed until it succeeds. At boot `fsl/wsgi.py` does the reset again for each owed slot, as a close does (rebuild, suppressions lifted, in-place reset, configure), so a restart does not leave the slot refusing sessions; a failed reset keeps its file. `POST /api/range/configure/` stays the manual retry and clears a failed reset.
+The close answers at once. The reset state (idle, running, failed and why) is held in the platform process. A reset also leaves a file `slot-N` under `FSL_RESET_OWED_DIR` (`/data/reset-owed`) from the moment it is claimed until it succeeds. At boot `fsl/wsgi.py` does the reset again for each owed slot, as a close does (rebuild, disabled rules marked enabled, in-place reset, configure), so a restart does not leave the slot refusing sessions; a failed reset keeps its file. `POST /api/range/configure/` stays the manual retry and clears a failed reset.
 
 **Readiness.** Session create answers 409 while every slot is held or no free slot is ready.
 
@@ -1590,7 +1590,7 @@ The close answers at once. The reset state (idle, running, failed and why) is he
 - its number and the session holding it;
 - its phase: `IN_USE` while a session holds it, `RESETTING` while its reset runs, `RESET_FAILED` with its reason if it failed, otherwise `NOT_STANDING`, `STALE` (a VM on an image other than its host's ready one), `REBUILDING`, `CHECKING` or `READY`;
 - its reset state;
-- three checks: every VM ACTIVE, the board's ground truth readable, and the sensor rules at baseline with no suppression of that slot in force.
+- three checks: every VM ACTIVE, the board's ground truth readable, and the sensor rules at baseline with no rule of that slot disabled.
 
 The top-level `ready` and `slot` are the slot that the next open would take.
 

@@ -157,7 +157,7 @@ range-facing logic changed, and before a push.
   (same for `test/`).
 - No comments or docstrings in code; name things so the code says what it
   does. Exceptions: `deploy/suricata/rules/`, where a commented-out rule is how
-  suppression works, and the header Django writes into generated migrations.
+  a rule is disabled, and the header Django writes into generated migrations.
 - The target is not published; the harness fires from inside the range.
   The product runs only on OpenStack: the range is the cloud's VMs, and the
   platform VM runs the shared control plane from `compose.yaml`. Bring-up

@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from django.utils import timezone
 
-from api.models import Detection, Suppression
+from api.models import Detection, DisabledRule
 from range.ports import Ran
 from rules import suricata
 
@@ -92,9 +92,9 @@ def test_two_ingests_at_once_neither_fails_nor_doubles(client):
 
 
 @pytest.mark.django_db
-def test_a_suppression_past_its_time_is_lifted_by_the_tick_the_console_runs(client):
+def test_a_rule_disabled_past_its_time_is_enabled_by_the_tick_the_console_runs(client):
     sensor = Sensor("# " + RULE)
-    Suppression.objects.create(
+    DisabledRule.objects.create(
         sid=9000901, original=RULE, reason="",
         expires_at=timezone.now() - timedelta(minutes=1),
     )
@@ -106,11 +106,11 @@ def test_a_suppression_past_its_time_is_lifted_by_the_tick_the_console_runs(clie
         answer = client.post_json(f"/api/sessions/{session_id}/ingest/").json()
 
     assert RULE in sensor.rules, (
-        "a suppression expired only when someone opened the suppression list; "
-        "an open console never did, so a sixty-minute silence lasted until "
+        "a disabled rule expired only when someone opened the disabled-rule list; "
+        "an open console never did, so a sixty-minute disable lasted until "
         "someone looked"
     )
-    assert [r["sid"] for r in answer["restored"]] == [9000901]
+    assert [r["sid"] for r in answer["enabled"]] == [9000901]
 
 
 @pytest.mark.django_db
@@ -123,9 +123,9 @@ def test_rules_edited_from_a_stale_copy_are_refused(client):
         stale = client.post_json("/api/rules/apply/", {"content": loaded["content"], "base": loaded["version"]})
 
     assert stale.status_code == 409, (
-        "the editor was loaded before a suppression and applied after it, "
-        "writing the silenced rule back live while the list still said it was "
-        "suppressed"
+        "the editor was loaded before a rule was disabled and applied after it, "
+        "writing the disabled rule back live while the list still said it was "
+        "disabled"
     )
     assert sensor.rules == "# " + RULE
 

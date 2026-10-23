@@ -186,17 +186,17 @@ class RebuildsAndConfigures(Rebuilds):
         return []
 
 
-def _silenced(session_id, minutes=60):
-    from api.models import Suppression
+def _disabled(session_id, minutes=60):
+    from api.models import DisabledRule
 
-    return Suppression.objects.create(
+    return DisabledRule.objects.create(
         session_id=session_id, sid=9000004, original="alert x",
         expires_at=timezone.now() + timedelta(minutes=minutes),
     )
 
 
-def test_closing_on_the_cloud_lifts_the_suppressions_the_rebuild_wiped(client, session_id):
-    record = _silenced(session_id)
+def test_closing_on_the_cloud_enables_the_rules_the_rebuild_put_back(client, session_id):
+    record = _disabled(session_id)
 
     with patch("api.views.substrate", lambda: RebuildsAndConfigures()), \
             patch("api.views.reset.begin") as began:
@@ -204,9 +204,9 @@ def test_closing_on_the_cloud_lifts_the_suppressions_the_rebuild_wiped(client, s
 
     record.refresh_from_db()
     assert began.called
-    assert record.restored_at == Session.objects.get(pk=session_id).ended_at, (
+    assert record.enabled_at == Session.objects.get(pk=session_id).ended_at, (
         "the close rebuilt every slot VM and the reset seeds the baseline rules, "
-        "but the suppression stayed on the books, so readiness refused every "
+        "but the disabled rule stayed on the books, so readiness refused every "
         "new session until it expired"
     )
 
@@ -218,8 +218,8 @@ def _failed_rebuild():
 
 
 @pytest.mark.parametrize("found", [_failed_rebuild, None], ids=["cloud-rebuild-failed", "compose"])
-def test_a_close_that_rebuilt_nothing_keeps_the_suppression_on_the_books(client, session_id, found):
-    record = _silenced(session_id)
+def test_a_close_that_rebuilt_nothing_keeps_the_disabled_rule_on_the_books(client, session_id, found):
+    record = _disabled(session_id)
 
     if found is None:
         client.post_json(f"/api/sessions/{session_id}/close/")
@@ -229,7 +229,7 @@ def test_a_close_that_rebuilt_nothing_keeps_the_suppression_on_the_books(client,
             client.post_json(f"/api/sessions/{session_id}/close/")
 
     record.refresh_from_db()
-    assert record.restored_at is None, (
+    assert record.enabled_at is None, (
         "nothing was rebuilt, so the sensor still runs with the rule commented out"
     )
 

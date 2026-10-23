@@ -798,7 +798,7 @@ bin/prune --ids FILE --apply     # FILE에 적힌 닫힌 세션만
 
 ## 백업과 복원
 
-플랫폼의 DB에는 세션, 케이스, 탐지 기록, 목표, 룰셋, 예외 처리가 들어 있습니다.
+플랫폼의 DB에는 세션, 케이스, 탐지 기록, 목표, 룰셋, 비활성화한 룰이 들어 있습니다.
 SQLite 파일 하나이고, 플랫폼 VM의 `fsl_platformdata` 볼륨에 있는
 `/data/db.sqlite3`입니다. 그 밖에는 아무것도 백업하지 않습니다. Elasticsearch의
 `fsl_esdata` 볼륨과 `fsl_collectordata`에 있는 collector의 registry도 백업 대상이

@@ -1133,7 +1133,7 @@ would drop the platform's own ssh session to the edge.
 A restart of the platform during a reset does not lose it. The reset leaves a file
 `slot-N` in `/data/reset-owed` until it succeeds. At boot the platform does the
 reset again for each slot that still has one, as a close does: it rebuilds the
-WAF and Kali, lifts the slot's suppressions, resets the edge and the wargames in
+WAF and Kali, marks the slot's disabled rules enabled, resets the edge and the wargames in
 place and configures the slot. `/api/range/ready/` shows that slot `RESETTING`,
 then `READY` or `RESET_FAILED` with the reason.
 
@@ -1262,7 +1262,7 @@ passed, 14 failed, 22 errors. We have since fixed or deleted what that run left:
 - We deleted the compose-only checks on 2026-10-17.
 
 Run time was 2,900 s: fixture setup 1,689 s, test bodies 1,179 s, teardown 27 s.
-The slowest item is `test_suppression`'s setup (578 s).
+The slowest item is `test_disabled_rule`'s setup (578 s).
 
 We checked live the same day:
 

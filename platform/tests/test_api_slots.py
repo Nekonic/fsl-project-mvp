@@ -12,7 +12,7 @@ from django.core.management.base import CommandError
 
 from api import reachability, reset, views
 from api.management.commands import run_on_role
-from api.models import Session, Suppression
+from api.models import Session, DisabledRule
 from range import slot
 from range.ports import Node, Ran, Segment
 
@@ -137,18 +137,18 @@ def test_no_ready_slot_refuses_the_open_with_the_resetting_reason(client, cloud)
     assert Session.objects.count() == 0
 
 
-def test_closing_a_session_resets_its_own_slot_only_and_lifts_only_its_suppressions(client, cloud):
+def test_closing_a_session_resets_its_own_slot_only_and_enables_only_its_disabled_rules(client, cloud):
     first, second = opened(client), opened(client)
-    mine = Suppression.objects.create(session=second, sid=1, original="", expires_at="2099-01-01T00:00:00Z")
-    theirs = Suppression.objects.create(session=first, sid=2, original="", expires_at="2099-01-01T00:00:00Z")
+    mine = DisabledRule.objects.create(session=second, sid=1, original="", expires_at="2099-01-01T00:00:00Z")
+    theirs = DisabledRule.objects.create(session=first, sid=2, original="", expires_at="2099-01-01T00:00:00Z")
 
     client.post_json(f"/api/sessions/{second.pk}/close/")
 
     assert cloud.reset == [2, ("begun", 2)]
     mine.refresh_from_db(), theirs.refresh_from_db()
-    assert mine.restored_at is not None
-    assert theirs.restored_at is None, (
-        "the other slot's sensor still runs without that rule; marking it restored would "
+    assert mine.enabled_at is not None
+    assert theirs.enabled_at is None, (
+        "the other slot's sensor still runs without that rule; marking it enabled would "
         "leave its session with a hole the platform no longer reports"
     )
 
@@ -171,22 +171,22 @@ def test_an_open_while_a_close_is_between_ended_at_and_its_reset_does_not_take_t
     assert Session.objects.filter(ended_at=None).count() == 1
 
 
-def test_a_close_lifts_only_suppressions_made_before_it(client, cloud):
+def test_a_close_enables_only_rules_disabled_before_it(client, cloud):
     opened(client)
     second = opened(client)
     later = []
 
-    def reset_then_a_new_session_suppresses():
+    def reset_then_a_new_session_disables_a_rule():
         newer = Session.objects.create(scenario="board", baseline=[], slot=second.slot)
-        later.append(Suppression.objects.create(
+        later.append(DisabledRule.objects.create(
             session=newer, sid=3, original="", expires_at="2099-01-01T00:00:00Z"))
         return [("fsl-waf", "s2")]
 
-    with patch.object(Slot, "reset_slot", lambda self: reset_then_a_new_session_suppresses()):
+    with patch.object(Slot, "reset_slot", lambda self: reset_then_a_new_session_disables_a_rule()):
         client.post_json(f"/api/sessions/{second.pk}/close/")
 
     later[0].refresh_from_db()
-    assert later[0].restored_at is None, (
+    assert later[0].enabled_at is None, (
         "that rule was commented out after the rebuild, on the sensor the next session uses"
     )
 

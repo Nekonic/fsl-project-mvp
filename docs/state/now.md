@@ -157,11 +157,12 @@ copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
 
 ## Waiting for the user
 
-1. Two open items in `docs/STATE.md` backlog 0: renaming
-   `/api/rules/suppressions/` (the API disables a rule by commenting it out,
-   which Suricata calls something else) and publishing the OPNsense image
-   (licence is fine, the trademark policy asks for a note to the project).
-   Both are the user's call.
+1. Publishing the OPNsense image (`docs/STATE.md` backlog 0): the licence is
+   fine, the trademark policy asks for a note to the project. The user's call.
+2. F4 step 7: whether the step checks that the learner's rule actually
+   detects `<script` (the user asked on 2026-10-24 for candidates from how
+   real courses check rule writing; `docs/DECISIONS.md` "How courses check a
+   learner's rule").
 
 ## Next, in order
 

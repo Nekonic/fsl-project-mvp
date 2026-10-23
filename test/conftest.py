@@ -269,18 +269,18 @@ def baseline_rules(stack_is_up):
 
 @pytest.fixture(scope="session", autouse=True)
 def defence_is_on(stack_is_up):
-    active = requests.get(f"{PLATFORM_URL}/api/rules/suppressions/", timeout=60)
+    active = requests.get(f"{PLATFORM_URL}/api/rules/disabled/", timeout=60)
     if not active.ok:
         return
     live = {row["id"] for row in requests.get(
         f"{PLATFORM_URL}/api/sessions/?state=open", timeout=30
     ).json()}
-    silenced = [s["sid"] for s in active.json()["suppressions"]
+    disabled = [s["sid"] for s in active.json()["disabled"]
                 if s.get("session_id") is None or s["session_id"] not in live]
-    assert not silenced, (
-        f"sid {silenced} are suppressed, so this run would score a defence "
-        f"with a hole in it. Restore them first: "
-        f"POST /api/rules/suppressions/<id>/restore/"
+    assert not disabled, (
+        f"sid {disabled} are disabled, so this run would score a defence "
+        f"with a hole in it. Enable them first: "
+        f"POST /api/rules/disabled/<id>/enable/"
     )
 
 def _opened_by(output: str) -> None:

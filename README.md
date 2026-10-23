@@ -843,7 +843,7 @@ generated stylesheet is committed, and no test checks that it is current.
 ## Backup and restore
 
 The platform's database holds sessions, cases, detections, objectives, rule sets
-and suppressions. It is one SQLite file, `/data/db.sqlite3`, on the
+and disabled rules. It is one SQLite file, `/data/db.sqlite3`, on the
 `fsl_platformdata` volume of the platform VM. Nothing else is backed up: not
 Elasticsearch's `fsl_esdata` volume, and not the collector's registry in
 `fsl_collectordata`. These volumes go with the VM when `bin/cloud down` deletes

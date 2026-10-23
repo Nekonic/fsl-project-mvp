@@ -1029,8 +1029,8 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [x] A range reset interrupted by a platform restart is resumed at boot: a
       close writes `slot-N` under `FSL_RESET_OWED_DIR` (`/data/reset-owed`),
       the end of a successful reset removes it, and at boot `fsl/wsgi.py` does
-      each owed slot's reset again as a close does (rebuild, suppressions
-      lifted, in-place reset of the edge and the wargames, configure). A
+      each owed slot's reset again as a close does (rebuild, disabled rules
+      re-enabled, in-place reset of the edge and the wargames, configure). A
       failed one keeps its file and shows `RESET_FAILED`. Proven live on
       2026-10-22: a platform restart 40 s into slot 1's reset; the slot read
       `RESETTING` again, Nova rebuilt the WAF and Kali a second time, the slot
@@ -1283,14 +1283,16 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [x] 2026-10-11: console redesign, the site browser with a Network panel,
       the seven-step beginner lesson, and the review fixes (`docs/DECISIONS.md`,
       the four 2026-10-11 entries).
-- [ ] Naming: the API `suppression` (`/api/rules/suppressions/`) disables a
+- [x] Naming: the API `suppression` (`/api/rules/suppressions/`) disables a
       rule by commenting it out. In Suricata, a suppression keeps the rule
       running and hides only its alerts ("Suppressions can be used to
       suppress alerts for a rule or a host/network.",
       https://docs.suricata.io/en/latest/configuration/global-thresholds.html),
       while taking a rule out is disabling ("to disable rules use",
       https://docs.suricata.io/en/latest/rule-management/suricata-update.html).
-      Rename candidate; awaits the user.
+      Done 2026-10-24: renamed to disabling end to end, `/api/rules/disabled/`
+      and `.../<id>/enable/`, model `DisabledRule` (migration 0028), not run
+      live yet (`docs/DECISIONS.md`, "A disabled rule is called disabled").
 - [x] Spike: the CRS starting configuration. PL1 already blocks the board
       SQLi and passes O'Brien; PL4 blocks O'Brien (920273, 949110). The lesson
       starts at PL4 and the learner tunes; done 2026-10-10 (`docs/DECISIONS.md`).
@@ -1603,7 +1605,7 @@ step ends with `describe()`/`segments()` and the acceptance suite reading it.
      `slot.Plan.active` (pure: clean + standing + every VM ACTIVE). `GET
      /api/range/ready/` is substrate-aware: compose answers `ready:true`,
      OpenStack answers the three read-only checks (active, ground truth readable,
-     Suricata rules at baseline with no suppression in force) with a
+     Suricata rules at baseline with no disabled rule in force) with a
      derived phase (NOT_STANDING / REBUILDING / CHECKING / READY). `POST
      /api/range/canary/` fires one known SQLi probe from the default origin
      (wear_origin + `harness.fire`), then

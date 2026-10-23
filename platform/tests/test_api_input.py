@@ -20,15 +20,15 @@ def test_applying_without_a_rule_file_leaves_the_sensor_alone(client, body):
 
 
 @pytest.mark.parametrize("minutes", ["x", -5, 0, 10**9, "nan", "inf"])
-def test_a_suppression_length_outside_what_makes_sense_is_refused(client, minutes):
+def test_a_disable_length_outside_what_makes_sense_is_refused(client, minutes):
     with patch("api.views.suricata.current", return_value=RULE) as read:
         response = client.post_json(
-            "/api/rules/suppressions/", {"sid": 9000001, "minutes": minutes}
+            "/api/rules/disabled/", {"sid": 9000001, "minutes": minutes}
         )
 
     assert response.status_code == 400, (
-        f"minutes={minutes!r} answered {response.status_code}: a suppression "
-        f"that never ends, or ends before it starts, is not a suppression"
+        f"minutes={minutes!r} answered {response.status_code}: a rule disabled "
+        f"for ever, or until before it was disabled, makes no sense"
     )
     read.assert_not_called()
 

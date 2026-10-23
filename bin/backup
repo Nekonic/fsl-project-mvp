@@ -28,7 +28,7 @@ TABLES = (
     ("customer requests", "api_customerrequest"),
     ("objectives", "api_objective"),
     ("rule sets", "api_ruleset"),
-    ("suppressions", "api_suppression"),
+    ("disabled rules", "api_disabledrule"),
 )
 
 IMPORTS = """

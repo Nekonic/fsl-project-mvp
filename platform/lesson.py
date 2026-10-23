@@ -3,7 +3,7 @@ from __future__ import annotations
 import difflib
 import re
 
-import suppress
+import disable
 
 ANSWER = 3
 SKIP_OFFERED = 4
@@ -117,9 +117,9 @@ def rules_named(messages: list[dict]) -> list[str]:
     return sorted(found)
 
 def added_rules(live: str, baseline: str) -> list[int]:
-    started = {sid: " ".join(suppress.find(baseline, sid).split()) for sid in suppress.sids(baseline)}
-    return sorted(sid for sid in suppress.sids(live)
-                  if started.get(sid) != " ".join(suppress.find(live, sid).split()))
+    started = {sid: " ".join(disable.find(baseline, sid).split()) for sid in disable.sids(baseline)}
+    return sorted(sid for sid in disable.sids(live)
+                  if started.get(sid) != " ".join(disable.find(live, sid).split()))
 
 def pasted_rows(text: str, parsed: list) -> list:
     return parsed or [found.groups() for found in map(PASTED_ROW.match, text.splitlines()) if found]

@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from django.utils import timezone
 
-from api.models import Suppression
+from api.models import DisabledRule
 from range.ports import Ran
 
 pytestmark = pytest.mark.django_db
@@ -37,21 +37,21 @@ def test_the_rules_endpoint_does_not_serve_an_error_as_the_rule_file(client):
     )
 
 
-def test_a_suppression_is_not_recorded_as_lifted_when_the_rules_could_not_be_read(client):
+def test_a_disabled_rule_is_not_recorded_as_enabled_when_the_rules_could_not_be_read(client):
     sensor = Unreadable()
-    record = Suppression.objects.create(
+    record = DisabledRule.objects.create(
         sid=9000901, original=RULE, reason="",
         expires_at=timezone.now() - timedelta(minutes=1),
     )
 
     with patch("api.views.substrate", return_value=sensor):
-        response = client.get("/api/rules/suppressions/")
+        response = client.get("/api/rules/disabled/")
 
     record.refresh_from_db()
-    assert record.restored_at is None, (
+    assert record.enabled_at is None, (
         "the rule file could not be read, the error text was edited as if it "
-        "were rules, and the suppression was marked lifted while the rule "
-        "stayed silenced"
+        "were rules, and the rule was marked enabled while it "
+        "stayed commented out"
     )
     assert response.status_code == 503
     assert sensor.writes == []
