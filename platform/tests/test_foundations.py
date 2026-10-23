@@ -1,3 +1,4 @@
+import re
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -236,6 +237,41 @@ def test_the_learner_s_rule_is_judged_by_its_own_alerts_and_the_fix_needs_nocase
         with_nocase = step(client, session, "nocase").json()["passed"]
 
     assert (fired, without, with_nocase) == (True, False, True)
+
+def test_a_logged_search_that_drew_no_alert_from_the_rule_says_so_instead_of_asking_for_a_log(client):
+    session = opened("f4")
+    passed(session, "f4", write=timezone.now() - timedelta(minutes=1))
+    searched = [browsed("/search/?q=%3Cscript%3E", 403)]
+    with patch.object(site, "kept", return_value=[]), quietly():
+        unsent = answer(client, session, "fired", "9100001")
+    with patch.object(site, "kept", return_value=searched), quietly():
+        silent = answer(client, session, "fired", "9100001")
+
+    assert unsent["reason"] == ["lesson.check.unrecorded", []]
+    assert (silent["passed"], silent["reason"]) == (False, ["lesson.xss.fail.fired", []])
+
+def test_the_f5_sqlmap_step_accepts_a_run_with_a_random_user_agent(client):
+    session = opened("f5")
+    with patch("api.views.attacker.set_label"):
+        step(client, session, "sqlmap", tail="", body={"state": "reached"})
+    marker = Session.objects.get(pk=session.pk).lesson_steps["f5"]["sqlmap"]["marker"]
+    settled = timezone.now() - timedelta(seconds=20)
+    run = [http_event(marker, f"/?sort=posts_post.id{n}", 403, host="fsl-edge", agent="Opera/9.21",
+                       src_ip=KALI, dest_ip=WAF, at=settled) for n in range(3)]
+    with indexed(*run), quietly():
+        ran = step(client, session, "sqlmap").json()
+
+    assert ran["passed"] is True
+
+def test_every_run_step_waits_for_a_shell_prompt_ending_in_a_dollar_or_a_hash_and_not_for_text_in_the_output():
+    waits = [shown["point"]["term"]["match"] for taught in wargames.foundations("board") for shown in taught["steps"]
+             if shown["point"].get("term", {}).get("match", "").endswith(" $")]
+
+    assert len(waits) == 4
+    for wanted in waits:
+        found = re.compile(wanted)
+        assert all(found.search(prompt) for prompt in ("└─$ ", "└─# ", "root@kali:~# "))
+        assert not any(found.search(text) for text in ("# comment line", "costs $5 each", "sqlmap resumed #1 run"))
 
 def test_a_replay_passes_only_when_the_attack_after_the_fix_alerts_and_an_ordinary_search_still_passes(client):
     session = opened("f4")

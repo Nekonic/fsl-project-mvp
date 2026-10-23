@@ -503,7 +503,7 @@ def _judge(session, taught, step, body, kept):
             raise BadRequest(f'"answer" must be the text given for step {step_id!r}, got {given!r}')
         accepted = _accepted(session, check, taught)
         if not accepted:
-            return False, [_unrecorded(session, check), []]
+            return False, [_unrecorded(session, check, taught, failed), []]
         return lesson.answered(dict(check, accept=accepted), given.strip(), f"{prefix}.wrong.{step_id}")
     if kind == "rules":
         live = _live_rules(session)
@@ -522,9 +522,11 @@ def _judge(session, taught, step, body, kept):
         return _replay_check(session, step, kept)
     return scenario_run.triage_passed(session, check["judged"]), [failed, []]
 
-def _unrecorded(session, check):
+def _unrecorded(session, check, taught, failed):
     if "of" in check and wargames.fact_family(check) == "kali" and _kali_case(session, check["about"]) is None:
         return "lesson.check.kali_first"
+    if check.get("of") == "alerted_sid" and _about_records(session, check, taught):
+        return failed
     return "lesson.check.unrecorded"
 
 def _accepted(session, check, taught=None):

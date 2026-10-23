@@ -1294,6 +1294,14 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [x] Spike: the CRS starting configuration. PL1 already blocks the board
       SQLi and passes O'Brien; PL4 blocks O'Brien (920273, 949110). The lesson
       starts at PL4 and the learner tunes; done 2026-10-10 (`docs/DECISIONS.md`).
+- [x] 2026-10-23: three lesson-check bugs from the tester report review.
+      F4 `fired`: a search that is logged but drew no alert from the learner's
+      rule answers `lesson.xss.fail.fired` instead of "no log of that request
+      yet" (`unrecorded` stays for a request not yet recorded). F5 `sqlmap`
+      takes `ua: any`, so a run with `--random-agent` as sqlmap's own output
+      suggests is recorded like the `agent` step's. The Kali and WAF terminal
+      steps wait for `[$#] $`, so a root shell's prompt is found too. Not run
+      live yet.
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 
