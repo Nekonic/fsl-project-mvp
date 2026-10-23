@@ -17,7 +17,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
-      start_period: 90s
+      start_period: 120s
+      start_interval: 1s
 
   corp-db:
     platform: linux/amd64
@@ -35,4 +36,5 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
-      start_period: 30s
+      start_period: 120s
+      start_interval: 1s

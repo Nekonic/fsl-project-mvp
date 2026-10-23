@@ -6440,3 +6440,9 @@ Plan, repo only, in order of size: start board and corp side by side
 restore a clean data volume made at image build instead of initialising the
 data on every reset (unmeasured, the largest). For the user: `com01`'s
 `cpu_mode` and disk, and 4 vCPU for the wargame host.
+
+Done, not yet measured live: `start_wargames()` runs each wargame's `up -d
+--wait --pull never` at once, one ssh command each, and names every wargame
+that failed; the four wargame healthchecks probe every second for their first
+120 s (`start_interval: 1s`; the wargame hosts run Docker Engine 29.1.3, read
+2026-10-24).

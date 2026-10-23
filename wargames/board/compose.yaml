@@ -16,7 +16,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 24
-      start_period: 40s
+      start_period: 120s
+      start_interval: 1s
 
   board-db:
     platform: linux/amd64
@@ -32,4 +33,5 @@ services:
       interval: 10s
       timeout: 5s
       retries: 24
-      start_period: 30s
+      start_period: 120s
+      start_interval: 1s

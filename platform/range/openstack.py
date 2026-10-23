@@ -1516,10 +1516,14 @@ class OpenStack:
         entry = self.declared.hosts.get(host)
         if entry is None or not entry.wargames:
             raise Drifted(f"{host} fills {wargame_host.ROLE!r} and the declaration gives it no wargame to run")
-        for wargame in entry.wargames:
-            ran = self.runner(wargame_host.ROLE)(wargame_host.up(wargame), timeout=wargame_host.UP_TIMEOUT)
-            if not ran.ok:
-                raise Drifted(f"{host} did not start {wargame} (exit {ran.exit_code}): {ran.output[-1000:]}")
+        run = self.runner(wargame_host.ROLE)
+        with ThreadPoolExecutor(max_workers=len(entry.wargames)) as pool:
+            started = list(pool.map(
+                lambda wargame: run(wargame_host.up(wargame), timeout=wargame_host.UP_TIMEOUT), entry.wargames))
+        failed = [f"{host} did not start {wargame} (exit {ran.exit_code}): {ran.output[-1000:]}"
+                  for wargame, ran in zip(entry.wargames, started) if not ran.ok]
+        if failed:
+            raise Drifted("; ".join(failed))
         return host, tuple(f"runs {wargame}" for wargame in entry.wargames)
 
     def open_collector(self) -> tuple[str, tuple[str, ...]]:

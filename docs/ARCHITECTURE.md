@@ -1557,7 +1557,7 @@ A rebuild wipes the disk, so configure must follow once the VMs are ACTIVE.
 
 On the wargame host, the in-place reset (`clear_wargames()`) runs `docker compose down -v` for each wargame and the estate sensor. It removes the sensor's eve log and rsyslog's imfile state. It leaves the images and no container or volume.
 
-Configure's last step, `start_wargames()`, runs `sudo docker compose -p <id> -f /opt/fsl/wargames/<id>.yaml up -d --wait --pull never` for each wargame through the `wargames` role. Every session therefore starts on freshly seeded targets.
+Configure's last step, `start_wargames()`, runs `sudo docker compose -p <id> -f /opt/fsl/wargames/<id>.yaml up -d --wait --pull never` for every wargame at once, one ssh command each, through the `wargames` role. Every session therefore starts on freshly seeded targets.
 
 Then configure starts the estate sensor.
 
