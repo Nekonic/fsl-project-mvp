@@ -147,9 +147,10 @@ def test_configuring_the_slot_configures_the_edge_and_the_waf_opens_the_collecto
         "fsl-wargame-host", "fsl-wargame-host", "fsl-platform",
     ]
     assert sorted([argv for role, argv, _ in edge.calls
-                   if role == "wargames" and argv != clock.command("10.31.0.195")][:2]) == sorted(
-        wargame_host.up(wargame) for wargame in OS.hosts["fsl-wargame-host"].wargames
-    ), "a rebuilt wargame host holds the images and no containers; configure starts them"
+                   if role == "wargames" and argv != clock.command("10.31.0.195")][:3]) == sorted(
+        [*(wargame_host.up(wargame) for wargame in OS.hosts["fsl-wargame-host"].wargames),
+         wargame_host.sensor_up("10.30.0.63")]
+    ), "a rebuilt wargame host holds the images and no containers; configure starts them and the sensor together"
     heard = {r["remote_ip_prefix"] for r in groups.group["security_group_rules"]}
     assert heard == {"10.31.0.63/32", "10.31.0.198/32", "10.31.0.107/32"}, (
         "the wargame host ships its sensor's eve log to the collector as the edge does"
@@ -325,9 +326,10 @@ def test_resetting_in_place_clears_the_wargames_and_starts_them_fresh_on_the_sam
     assert on_the_host[1] == (clock.command("10.31.0.195"), clock.timesyncd("10.31.0.195")), (
         "a rebuilt platform has a new management address, so every reset points the host at it"
     )
-    assert sorted(argv for argv, _ in on_the_host[2:4]) == sorted(
-        wargame_host.up(wargame) for wargame in OS.hosts["fsl-wargame-host"].wargames
-    )
+    assert sorted(argv for argv, _ in on_the_host[2:5]) == sorted(
+        [*(wargame_host.up(wargame) for wargame in OS.hosts["fsl-wargame-host"].wargames),
+         wargame_host.sensor_up("10.30.0.63")]
+    ), "the sensor does not wait for the wargames: it sniffs the host interface"
     assert (wargame_host.sensor_up("10.30.0.63"), (ROOT / wargame_host.SENSOR_CONFIG_SOURCE).read_text()) in (
         on_the_host), (
         "the wargame host stays standing across resets, so its sensor config comes with each start; "
