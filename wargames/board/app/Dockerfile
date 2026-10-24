@@ -18,6 +18,8 @@ RUN mkdir -p posts/static/vendor \
  && curl -fsSL -o posts/static/vendor/bootstrap.min.css \
       https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css
 
+RUN python manage.py collectstatic --noinput
+
 RUN chmod +x entrypoint.sh
 
 EXPOSE 8000
