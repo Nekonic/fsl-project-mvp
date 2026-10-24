@@ -1556,9 +1556,9 @@ fabric은 보안 그룹 세 개도 만듭니다.
 
 재구축은 디스크를 지우므로, VM이 ACTIVE가 된 뒤 반드시 configure를 다시 실행해야 합니다.
 
-워게임 호스트의 제자리 초기화(`clear_wargames()`)는 각 워게임과 estate 센서에 `docker compose down -v`를 실행합니다. 센서의 eve 로그와 rsyslog의 imfile 상태도 지웁니다. 그 결과 이미지만 남고 컨테이너나 볼륨은 남지 않습니다.
+워게임 호스트의 제자리 초기화(`clear_wargames()`)는 각 워게임과 estate 센서에 `docker compose down -v`를 한꺼번에 실행하고, 하나라도 실패하면 실패로 처리합니다. 센서의 eve 로그와 rsyslog의 imfile 상태도 지웁니다. 그 결과 이미지만 남고 컨테이너나 볼륨은 남지 않습니다.
 
-configure의 마지막 단계인 `start_wargames()`는 `wargames` 역할을 통해 모든 워게임을 동시에 띄웁니다. 워게임마다 ssh 명령 하나씩이고, 명령 하나가 호스트에서 세 단계를 실행합니다(`wargame_host.up()`).
+configure의 `start_wargames()`는 `wargames` 역할을 통해 모든 워게임을 동시에 띄웁니다. 워게임마다 ssh 명령 하나씩이고, 명령 하나가 호스트에서 세 단계를 실행합니다(`wargame_host.up()`).
 
 - `docker compose -p <id> -f /opt/fsl/wargames/<id>.yaml up --no-start --pull never`로 컨테이너와 비어 있는 새 볼륨을 만듭니다.
 - `/opt/fsl/pristine.sh restore <id>`가 한 번도 실행되지 않은 컨테이너의 빈 볼륨에 초기 데이터 사본을 복사합니다.
@@ -1571,7 +1571,7 @@ configure의 마지막 단계인 `start_wargames()`는 `wargames` 역할을 통�
 - 보드의 `seed`는 시작할 때마다 시드 계정의 비밀번호를 다시 설정합니다. 그래서 세션마다 해시의 솔트가 달라지고, 이전 세션에서 탈취한 해시는 다음 세션의 ground truth와 맞지 않습니다. 시드 게시글의 날짜도 오늘 기준으로 옮깁니다.
 - corp의 엔트리포인트는 이미지의 엔트리포인트보다 먼저 `wp-config.php`를 지웁니다. 그러면 이미지가 새 랜덤 키와 솔트로 파일을 다시 씁니다. 복원된 데이터에서는 관리자 비밀번호도 다시 설정해 해시가 새로 만들어집니다. 복원된 DB에 이미 들어 있는 설치와 플러그인 설정은 건너뜁니다.
 
-그다음 configure가 estate 센서를 띄웁니다.
+estate 센서도 같은 단계에서 워게임과 함께 띄웁니다. 센서는 호스트 인터페이스를 감시하므로 워게임에 의존하지 않습니다. 로그 전달은 모두 뜬 뒤에 이어집니다.
 
 - docker의 Suricata 이미지와 `deploy/suricata/suricata.yaml`을 씁니다. 후자는 띄울 때마다 플랫폼의 사본을 호스트에 씁니다.
 - `deploy/wargame-host/sensor.yaml`로 host 네트워킹 모드로 띄우고, 호스트의 estate 주소가 있는 인터페이스를 감시합니다. 그래서 이 센서는 WAF→대상 시스템 구간을 봅니다.
