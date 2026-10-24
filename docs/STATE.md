@@ -29,11 +29,16 @@ moved to a new OpenStack cloud"). The old cloud is in other use and is not
 touched. The platform VM is now 192.168.2.247 (Keystone 10.0.0.10, reached
 through the user's VPN), two slots since 2026-10-21. On 2026-10-21 the docker substrate was
 removed from the code (the removal commit, then the documents) and
-proven live on the new cloud. The VM's `/opt/fsl` runs the fixes of this
-push (the reset resumed at boot, corp's readiness healthcheck, the corp cases'
-form id and nonce key) with the platform and corp images sideloaded
-(`FSL_SIDELOADED=corp,platform`); before that, on 2026-10-21, it was rebuilt
-from dev's head on GHCR images alone. The records are in `docs/DECISIONS.md`
+proven live on the new cloud. Nothing of the work since dev's head is pushed.
+The VM's `/opt/fsl` was rebuilt on 2026-10-24 from the working branch with the
+platform, board and corp images sideloaded (`FSL_SIDELOADED=board,corp,platform`)
+and runs all of it: the reset resumed at boot, corp's readiness healthcheck, the
+stale-slot reset, the pristine wargame restore, the shorter reset, the F4 rule
+check and the coach fixes. Before that, on 2026-10-21, it was rebuilt from dev's
+head on GHCR images alone. All three VM images (Kali, WAF, wargame host) were
+rebuilt on 2026-10-24 without `snapd` and `ModemManager`. The project quota is
+24 cores, 57344 MB of RAM and 12 instances (the user, 2026-10-24); the project
+uses 18 cores, 40 GB and 9 instances. The records are in `docs/DECISIONS.md`
 (2026-10-21, "Two range slots on the new cloud", "The docker substrate is
 removed" and "The estate sensor's HOME_NET and a repeated lesson move";
 2026-10-22, "A reset cut short by a restart, and corp's readiness"). The
@@ -53,8 +58,8 @@ the removal, and one after it; failures that all come from the single slot) and
 the last run on the old cloud (unit 1718; acceptance 73 passed) are recorded in
 `docs/DECISIONS.md`, and `docs/state/now.md` summarises them. Before the old
 cloud's last run, two runs on the same code: acceptance 72 passed and 1 failed
-(the `test_corp_authz` nonce error), then 73 passed (1155 s). Live state:
-`docs/state/now.md`.
+(the `test_corp_authz` nonce error), then 73 passed (1155 s). The full run on
+the branch as deployed on 2026-10-24: unit 1626 passed; acceptance 73 passed, 0 failed, 0 errors, 0 skipped in 1867 s; ratchet ok (run on the platform VM, 2026-10-24). Live state: `docs/state/now.md`.
 
 The range has two targets: the Django board (`board.com`, MySQL behind the WAF,
 `loot_verified`) and the WordPress site `corp` (`corp.com`, `effect_observed`,
@@ -809,7 +814,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       session `test_strategy_honesty` still needs. Either the harness keeps a
       session it still needs, or the retention window accounts for a long run
       (open question). With two slots (2026-10-21) the run took 64 min and
-      passed; with one slot `test_concurrent_sessions` and `test_lesson` also
+      passed, and 36 min (2186 s) after the reset speed-ups of 2026-10-24; with one slot `test_concurrent_sessions` and `test_lesson` also
       fail with 409 "1 session is already open".
 - [x] Newcomer bring-up on OpenStack (2026-10-20): LF line endings pinned (`.gitattributes`); the first
       `bin/cloud up` makes the range key; the `openstack` CLI is found
@@ -1092,7 +1097,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       and again while the element was missing, now ends after one trip home
       with "이 단계가 가리키는 요소가 이 화면에 없습니다…"
       (`lesson.site.missing`).
-      Not reproduced: the F4 step 3 report (too vague to act on).
+      The F4 step 3 report was too vague to reproduce then; see the next item.
 - [ ] A corp scenario (what a WAF cannot see) is not built: corp's CVEs
       succeed but it has no customer traffic; it needs a generator for
       WordPress (P3's shape) first.
@@ -1130,21 +1135,34 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       before, 245 s with the side-by-side start, 117 s with the pristine
       restore. The ground truth stays per session: two sessions on slot 1
       held different board hashes, and the first one's hashes submitted to
-      the second matched no account. For the user (cloud admin), still open:
-      `com01`'s disk and Nova `cpu_mode` (guests see a Sandy Bridge model).
+      the second matched no account. A second round the same day (the board
+      image runs `makemigrations` and `collectstatic` at build, the wargames
+      and the sensor are cleared and started at once, the databases keep one
+      InnoDB rollback segment, and the three VM images drop `snapd` and
+      `ModemManager`) gave 70-82 s for one slot and 98-99 s for two at once;
+      the cause and the numbers are in `docs/TROUBLESHOOTING.md`. Tried and
+      reverted: 4 vCPUs for the wargame host, which changed nothing. Measured and
+      rejected: a copy-on-write restore on an XFS loop file. For
+      the user (cloud admin), still open: `com01`'s disk and Nova `cpu_mode`
+      (guests see a Sandy Bridge model).
 - [ ] Acceptance run time: 2,900 s on OpenStack on 2026-10-12 with one slot
       (fixture setup 1,689 s, test bodies 1,179 s; `test_suppression` setup
       alone 578 s); with two slots and the audited tests about 730-990 s on the
       old cloud (987 s on 9674d0e with 70 tests); with two slots on the new
-      cloud the run takes 3,759-3,853 s. Measure where the setup still goes, then: polling
-      instead of fixed waits, edge configuration without a reboot.
+      cloud the run took 3,759-4,083 s until 2026-10-24 and 2,186 s after the
+      reset speed-ups, whose time was the resets (`docs/TROUBLESHOOTING.md`).
+      Measure where the setup still goes, then: polling instead of fixed
+      waits, edge configuration without a reboot.
 - [x] Floating IP 192.168.0.220 on the old cloud: dropped (2026-10-20). That
       address belongs to the old cloud, which is in other use and which we do
       not touch.
 - [ ] Rebuild the platform VM with `bin/cloud up --replace`, without
       `--sideload`, from the main checkout after the push and a green
       `images.yml` run. Done once on 2026-10-21 (dev's head, 29 min, exit 0),
-      then replaced by two sideloaded rebuilds to prove the fixes of this push.
+      then replaced by sideloaded rebuilds from the working branch; the last
+      (2026-10-24) sideloaded the platform, board and corp images and rebuilt
+      all three VM images (65 min, exit 0). The VM runs unpushed code until
+      this is done.
 - [x] Review of the seven-step lesson text: dropped with the lesson (P6).
 - [ ] Publishing the OPNsense image: BSD-2 allows it; its trademark policy
       allows "based on OPNsense" and asks project@opnsense.org before a
@@ -1344,6 +1362,25 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       룰(sid 9100001)이 <script 요청에 경보를 내지 않았습니다…", a check
       before searching got the "send the search" message, `content:"<script"`
       passed, and steps 8-11 passed.
+- [x] 2026-10-24: F4 step 3, a second tester report: the Kibana coach rang
+      the first row's expand toggle whatever the row was, so with Suricata
+      `http` rows on top it sent the learner into an event with no `rule_id`.
+      It now rings the first grid row whose column holds a value other than
+      `-` (and keeps the first row when none does, for a WAF log no rule
+      matched); an open document without the field sends the learner to the
+      row that has it, or back to the query when no row does; a value inside
+      the Document panel but under its footer asks for the field name in the
+      panel's search instead of asking to close the panel; and once that
+      closed document leaves the grid without a valued row, the coach keeps
+      asking for a new query until the query text changes (it remembers the
+      query per step). The first help for the step is KQL advice (`url` is
+      stored URL-encoded, so leave out `<`), and the step 6 coach says an empty
+      result is a result, not an error. Proven live 2026-10-24: one live run
+      passed all five checks. The last fix (the new query after a closed
+      document) is unit-tested and deployed but was not walked live.
+- [x] `bin/platform-rebuild`'s ssh sends keepalives (`ServerAliveInterval=15`,
+      `ServerAliveCountMax=4`) and gives up on a dead connection; a dead VPN
+      connection had hung a rebuild for 3 hours (2026-10-24).
 - [x] 2026-10-24: a finished run reads as settling, and a long pass text gets
       time to be read. A Kali step pressed while the newest request is under
       `RUN_SETTLED` old answers `lesson.check.kali_settling` ("collecting the

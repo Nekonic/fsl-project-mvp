@@ -203,9 +203,27 @@ busy for about 10 s while the board ran `migrate` and `seed` and corp ran
 
 ### What is left
 
-- The restore copies the data. A copy-on-write clone (`cp --reflink` on XFS
-  or btrfs) would write no data at restore, so no writeback would compete
-  with MySQL's start. Not tried.
+- Tried and rejected: a copy-on-write restore (`cp --reflink=always`). The
+  wargame host's root is ext4, so the only way on the current VM is an XFS
+  file system in a file on the root, attached as a loop device (`mkfs.xfs -m
+  reflink=1`, `losetup --direct-io=on`). Measured on slot 1's wargame host
+  (2026-10-25, scratch MySQL containers with the live images and options,
+  both wargames restored at once, caches dropped, five runs each), from the
+  restore's start to both servers ready:
+
+  | | idle, median | with a direct-I/O writer beside it, median |
+  |---|---|---|
+  | `cp` on ext4 (today) | 25.2 s | 33.6 s |
+  | `cp --reflink` on the XFS loop | 17.0 s | 29.2 s |
+  | `cp` on the XFS loop | 29.3 s | 41.8 s |
+
+  The reflink copy took 0.3-3.6 s against 4.6-16 s, but the loop device made
+  every commit slower for the whole session: 200 autocommit inserts took
+  16 s instead of 6.4 s (about 81 ms per commit against 32 ms), with or
+  without reflink, direct I/O or a preallocated file. Saving 4-8 s per reset
+  is not worth commits 2-2.5 times slower while a learner attacks. A real XFS
+  block device (a second disk for the wargame host) would avoid the loop, but
+  it changes the VM and its commit cost is not measured.
 - Tried and reverted: the wargame host on a 4-vCPU flavor (`dba.medium`, 8 GB),
   after the core quota was raised to 24. One slot took 79 s and 78 s, two at
   once 99 s, the same as on 2 vCPUs: the CPU-bound 10 s was not on the
