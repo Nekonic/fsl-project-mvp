@@ -48,6 +48,8 @@ UNIT
 systemctl enable set-hostname
 
 $APT update
+$APT purge snapd modemmanager
+printf 'Package: snapd modemmanager\nPin: release *\nPin-Priority: -1\n' > /etc/apt/preferences.d/no-snapd-modemmanager
 $APT install nginx build-essential pkg-config libpcre2-dev zlib1g-dev libxml2-dev \
   libyajl-dev libcurl4-openssl-dev liblmdb-dev libmaxminddb-dev
 nginx -V 2>&1 | grep -q "nginx/$NGINX "

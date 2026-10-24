@@ -182,3 +182,12 @@ def test_every_image_is_built_from_files_the_repo_holds():
         bundle = images.bundle(ROOT, host, entry.setup, entry.files)
         assert entry.setup in members(bundle), host
         images.user_data(bundle)
+
+@pytest.mark.parametrize("image", ["kali", "waf", "wargame-host"])
+def test_an_image_drops_snapd_and_modemmanager_which_only_slow_its_boot_and_keeps_them_out(image):
+    script = (ROOT / "deploy" / image / "setup.sh").read_text().splitlines()
+    purged = script.index("$APT purge snapd modemmanager")
+    assert script.index("$APT update") < purged < next(
+        i for i, line in enumerate(script) if line.startswith("$APT install"))
+    assert any("Package: snapd modemmanager" in line and "Pin-Priority: -1" in line
+               for line in script[purged:])
