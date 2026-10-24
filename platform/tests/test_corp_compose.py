@@ -61,3 +61,9 @@ def test_a_corp_restored_from_its_pristine_copy_gets_fresh_secret_keys_and_admin
         "the image's entrypoint writes wp-config.php with new random keys and salts only when it is missing; "
         "a restored volume holds the build's file")
     assert rehashed < touched
+
+
+def test_every_wargame_database_keeps_one_rollback_segment_from_its_first_start():
+    for wargame, service in (("board", "board-db"), ("corp", "corp-db")):
+        compose = yaml.safe_load((ROOT / f"wargames/{wargame}/compose.yaml").read_text())
+        assert "--innodb-rollback-segments=1" in compose["services"][service].get("command", []), service
