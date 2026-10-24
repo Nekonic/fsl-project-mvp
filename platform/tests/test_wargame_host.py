@@ -5,6 +5,7 @@ import shlex
 import subprocess
 import tarfile
 import threading
+import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
@@ -175,6 +176,31 @@ def test_the_pristine_copy_is_made_once_at_image_build_and_never_by_a_reset():
     assert not any(" keep " in part for part in reset)
     assert not any("pristine" in part for part in wargame_host.cleared(["board", "corp"], (), True)), (
         "down -v removes the containers' volumes and leaves the pristine copy alone")
+
+def _clear(tmp_path, failing):
+    (tmp_path / "bin").mkdir(exist_ok=True)
+    docker = tmp_path / "bin" / "docker"
+    docker.write_text(f"""#!/bin/sh
+echo "$*" >> {tmp_path}/downs
+case "$*" in *"-p {failing} "*) sleep 1; exit 3 ;; esac
+sleep 1
+""")
+    docker.chmod(0o755)
+    script = wargame_host.cleared(["board", "corp"], (), True)[-1]
+    started = time.monotonic()
+    done = subprocess.run(["sh", "-c", script], env={"PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin"},
+                          capture_output=True, text=True)
+    return done, time.monotonic() - started
+
+def test_the_wargames_and_the_sensor_come_down_at_once_and_one_failure_fails_the_clear(tmp_path):
+    done, took = _clear(tmp_path, "none")
+    assert done.returncode == 0, done.stderr
+    assert len((tmp_path / "downs").read_text().splitlines()) == 3
+    assert took < 2.5, "three one-second downs run side by side"
+
+    failed, _ = _clear(tmp_path, "corp")
+    assert failed.returncode != 0
+    assert len((tmp_path / "downs").read_text().splitlines()) == 6, "the others finish before it reports"
 
 FAKE_DOCKER = """#!/bin/sh
 echo "$*" >> "$FAKE/calls"

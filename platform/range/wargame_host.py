@@ -117,12 +117,14 @@ def sensor_up(address: str) -> list[str]:
                         f"-p {SENSOR_PROJECT} -f {SENSOR} up -d --wait --pull never"]
 
 def cleared(wargames, logs, sensed: bool) -> list[str]:
-    steps = ["set -e", *(["systemctl stop rsyslog"] if logs else [])]
-    steps += [f"docker compose -p {wargame} -f {INSTALLED.format(wargame=wargame)} "
-              f"down -v --remove-orphans --timeout {STOP_GRACE}" for wargame in wargames]
+    downs = [f"docker compose -p {wargame} -f {INSTALLED.format(wargame=wargame)} "
+             f"down -v --remove-orphans --timeout {STOP_GRACE}" for wargame in wargames]
     if sensed:
-        steps.append(f"{SENSOR_INTERFACE}=lo docker compose -p {SENSOR_PROJECT} -f {SENSOR} "
+        downs.append(f"{SENSOR_INTERFACE}=lo docker compose -p {SENSOR_PROJECT} -f {SENSOR} "
                      f"down -v --timeout {STOP_GRACE}")
+    steps = ["set -e", *(["systemctl stop rsyslog"] if logs else [])]
+    steps += [f'{down} & pids="$pids $!"' for down in downs]
+    steps.append('failed=0; for pid in $pids; do wait "$pid" || failed=1; done; [ "$failed" = 0 ]')
     if logs:
         steps.append(" ".join(["rm -f", *(shlex.quote(path) for path in logs), LOG_READER_STATE]))
     return ["sudo", "sh", "-c", "\n".join(steps)]
