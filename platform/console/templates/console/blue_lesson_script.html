@@ -320,20 +320,40 @@ function gridRowOf(element) {
   return cell ? cell.getAttribute(GRID_ROW) : null;
 }
 
-function legRow(doc, spec) {
-  if (!spec.leg || typeof doc.querySelectorAll !== "function") return null;
-  const column = (name) => new Map(Array.from(doc.querySelectorAll(KIBANA.cell(name))).map((cell) => {
+function gridColumn(doc, name) {
+  return new Map(Array.from(doc.querySelectorAll(KIBANA.cell(name))).map((cell) => {
     const shown = (typeof cell.querySelector === "function" && cell.querySelector(KIBANA.cellText)) || cell;
     return [gridRowOf(cell), (shown.textContent || "").replace(/\s+/g, "")];
   }));
-  const from = column("source_ip");
-  const to = column("destination");
+}
+
+function rowToggle(doc, row) {
+  const toggle = Array.from(doc.querySelectorAll(KIBANA.expand)).find((one) => gridRowOf(one) === row);
+  return toggle ? { row: Number(row), toggle } : null;
+}
+
+function legRow(doc, spec) {
+  if (!spec.leg || typeof doc.querySelectorAll !== "function") return null;
+  const from = gridColumn(doc, "source_ip");
+  const to = gridColumn(doc, "destination");
   const hops = Array.from(to.keys()).filter((row) => row !== null && from.get(row))
     .map((row) => ({ row, from: from.get(row), to: to.get(row) }));
   const chained = (hop, other) => hop !== other && (spec.leg === "upstream" ? other.to === hop.from : other.from === hop.to);
   const found = hops.find((hop) => hops.some((other) => chained(hop, other)));
-  const toggle = found ? Array.from(doc.querySelectorAll(KIBANA.expand)).find((one) => gridRowOf(one) === found.row) : null;
-  return toggle ? { row: Number(found.row), toggle } : null;
+  return found ? rowToggle(doc, found.row) : null;
+}
+
+function valuedRow(doc, name) {
+  if (typeof doc.querySelectorAll !== "function") return null;
+  const column = gridColumn(doc, name);
+  const row = Array.from(column.keys()).find((at) => at !== null && column.get(at) && column.get(at) !== "-");
+  return row === undefined ? null : rowToggle(doc, row);
+}
+
+function lacksField(doc, name) {
+  const filter = doc.querySelector(KIBANA.fieldFilter);
+  const typed = String((filter && filter.value) || "").replace(/\s+/g, "").toLowerCase();
+  return Boolean(typed) && name.toLowerCase().includes(typed) && !doc.querySelector(KIBANA.name(name));
 }
 
 function openedRow(doc) {
@@ -360,8 +380,16 @@ function kibanaFound(doc, spec) {
       }
     }
     const value = found(KIBANA.value(spec.doc));
-    if (boxOf(value)) return { element: value, also: found(KIBANA.name(spec.doc)), stage: "" };
-    if (boxOf(found(KIBANA.flyout))) return { element: first(KIBANA.fieldFilter), stage: "field" };
+    if (boxOf(value) && !coveredIn(doc, value)) return { element: value, also: found(KIBANA.name(spec.doc)), stage: "" };
+    const valued = valuedRow(doc, spec.doc);
+    if (boxOf(found(KIBANA.flyout))) {
+      if (!lacksField(doc, spec.doc)) return { element: first(KIBANA.fieldFilter), stage: "field" };
+      const opened = openedRow(doc);
+      const arrow = opened && valued && opened.row !== valued.row
+        ? opened.page.querySelector(opened.row > valued.row ? KIBANA.previous : KIBANA.next) : null;
+      return boxOf(arrow) && !arrow.disabled ? { element: arrow, stage: "other" } : { element: first(KIBANA.query), stage: "query" };
+    }
+    if (valued) return { element: valued.toggle, stage: "expand" };
     const expand = first(KIBANA.expand);
     return expand ? { element: expand, stage: "expand" } : { element: first(KIBANA.query), stage: "query" };
   }
@@ -450,13 +478,14 @@ function kibanaRect(spec, leg, step) {
   if (!doc) return { rect: null, stage: "" };
   if (kibanaLoading()) queryArrival.step = "";
   const { element, also, stage, leg: aimed } = kibanaFound(doc, { ...spec, ...(leg ? { leg } : {}), step });
-  if (coveredIn(doc, element)) return { rect: inFrame(frame, boxOf(doc.querySelector(KIBANA.close))), stage: "covered" };
+  const flyout = doc.querySelector(KIBANA.flyout);
+  const inFlyout = Boolean(flyout && element && typeof flyout.contains === "function" && flyout.contains(element));
+  if (!inFlyout && coveredIn(doc, element)) return { rect: inFrame(frame, boxOf(doc.querySelector(KIBANA.close))), stage: "covered" };
   const rect = inFrame(frame, joined(boxOf(element), boxOf(also)));
   const core = !rect ? [] : stage === "query" || spec.query ? pickerRows(doc, rect)
     : spec.doc ? flyoutRows(doc, rect) : spec.hits || spec.sidebar ? toolbarRows(doc, rect) : [];
   const crowd = rect ? [...core, ...frameText(doc, rect)] : core;
-  const flyout = stage === "other" ? inFrame(frame, boxOf(doc.querySelector(KIBANA.flyout))) : null;
-  return { rect, stage, leg: aimed || "", crowd, core, within: flyout };
+  return { rect, stage, leg: aimed || "", crowd, core, within: stage === "other" ? inFrame(frame, boxOf(flyout)) : null };
 }
 
 function kibanaLoading() {
