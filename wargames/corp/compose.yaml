@@ -25,7 +25,7 @@ services:
     build: ./db
     image: ghcr.io/nekonic/fsl-corp-db:${FSL_IMAGE_TAG:-dev}
     networks: [estate]
-    command: ["--binlog-format=ROW", "--log-bin=binlog", "--server-id=1"]
+    command: ["--binlog-format=ROW", "--log-bin=binlog", "--server-id=1", "--innodb-rollback-segments=1"]
     environment:
       MYSQL_RANDOM_ROOT_PASSWORD: "yes"
       MYSQL_DATABASE: "wordpress"
