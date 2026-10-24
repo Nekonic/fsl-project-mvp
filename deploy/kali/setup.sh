@@ -9,6 +9,8 @@ export DEBIAN_FRONTEND=noninteractive
 sed -i 's/^Components:.*/Components: main restricted universe multiverse/' \
   /etc/apt/sources.list.d/ubuntu.sources
 $APT update
+$APT purge snapd modemmanager
+printf 'Package: snapd modemmanager\nPin: release *\nPin-Priority: -1\n' > /etc/apt/preferences.d/no-snapd-modemmanager
 $APT install \
   ca-certificates curl wget iptables \
   nmap sqlmap nikto whatweb ffuf gobuster hydra \

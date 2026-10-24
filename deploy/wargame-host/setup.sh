@@ -7,6 +7,8 @@ export DEBIAN_FRONTEND=noninteractive
 sed -i 's/^Components:.*/Components: main restricted universe/' \
   /etc/apt/sources.list.d/ubuntu.sources
 $APT update
+$APT purge snapd modemmanager
+printf 'Package: snapd modemmanager\nPin: release *\nPin-Priority: -1\n' > /etc/apt/preferences.d/no-snapd-modemmanager
 $APT install docker.io docker-compose-v2
 
 install -d -m 0755 /etc/docker /opt/fsl/wargames
