@@ -1071,6 +1071,98 @@ def test_a_leg_step_whose_row_cannot_be_found_asks_for_the_destination_and_never
     assert result["unknown"] == {"ring": filter_ring, "text": "Read the destination first."}
     assert result["noPager"] == result["unknown"], "a document whose position is unknown is never taken for the right one"
 
+VALUED = """
+let ruleIds = [];
+let typed = '';
+const gridAll = doc.querySelectorAll;
+doc.querySelectorAll = (selector) => {
+  if (selector.includes('"rule_id"')) return ruleIds.map((text, row) => cellOf(row, text, 'rule_id'));
+  if (selector.includes('docTableExpandToggleColumn')) return ruleIds.map((text, row) => toggleOf(row));
+  return gridAll(selector);
+};
+const gridOne = doc.querySelector;
+doc.querySelector = (selector) => {
+  if (selector.includes('docTableExpandToggleColumn')) return ruleIds.length ? toggleOf(0) : null;
+  const one = gridOne(selector);
+  return one && selector.includes('FieldsSearchInput') ? {...one, value: typed} : one;
+};
+kibana.set('[data-test-subj="queryInput"]', box(300, 20, 400, 36));
+"""
+
+def test_a_field_step_rings_the_first_row_that_has_the_field_and_moves_off_a_document_without_it(client):
+    seen = open_page(client, "/blue/1/", setup=served() + GRID + VALUED, scenario=f"""
+      STRINGS.en['lesson.kibana.other'] = 'Another event';
+      STRINGS.en['lesson.kibana.query'] = 'Type the KQL';
+      {to("rule")}
+      await browser.click('step-open');
+      ruleIds = ['-', '941100,949110'];
+      await frames();
+      const valued = styled('coach-ring');
+      kibana.set('[data-test-subj="docViewerFlyout"]', box(500, 0, 480, 704));
+      kibana.set('[data-test-subj="unifiedDocViewerFieldsSearchInput"]', box(520, 80, 300, 24));
+      pageAt = 0;
+      arrows.set('button[data-test-subj="pagination-button-next"]', box(760, 24, 24, 24));
+      await frames();
+      const untyped = styled('coach-ring');
+      typed = 'rule_id';
+      await frames();
+      const other = {{ring: styled('coach-ring'), text: browser.text('coach-callout')}};
+      ruleIds = ['-', '-'];
+      await frames();
+      const query = browser.text('coach-callout');
+      kibana.delete('[data-test-subj="docViewerFlyout"]');
+      await frames();
+      const bare = styled('coach-ring');
+      return {{valued, untyped, other, query, bare}};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["valued"] == {"left": 64, "top": 430, "width": 32, "height": 32}, (
+        "the second row: the first one's rule_id is -, an IDS event that has none")
+    assert result["untyped"] == {"left": 574, "top": 175, "width": 312, "height": 26}, (
+        "the field may sit on another page of the document table until its name is typed")
+    assert result["other"] == {"ring": {"left": 814, "top": 114, "width": 36, "height": 36}, "text": "Another event"}
+    assert result["query"] == "Type the KQL", "no row carries the field: the query has to change"
+    assert result["bare"] == {"left": 64, "top": 390, "width": 32, "height": 32}, (
+        "no row carries a value, as when no WAF rule matched: the first row is still the one to expand")
+
+def test_a_value_the_document_panel_scrolled_under_its_footer_asks_for_the_field_and_only_a_panel_over_the_target_asks_to_close_it(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS.en['lesson.kibana.field'] = 'Type the field name';
+      STRINGS.en['lesson.kibana.covered'] = 'Close the panel';
+      const doc = browser.element('pane-frame').contentDocument;
+      const plain = doc.querySelector;
+      const value = {{getBoundingClientRect: () => box(640, 690, 300, 24)}};
+      const footer = {{getBoundingClientRect: () => box(500, 680, 480, 24), contains: (one) => one === footer}};
+      const flyout = {{getBoundingClientRect: () => box(500, 0, 480, 704), contains: (one) => one !== hits}};
+      const hits = {{getBoundingClientRect: () => box(600, 300, 80, 20)}};
+      const owned = {{
+        '[data-test-subj="docViewerFlyout"]': flyout,
+        '[data-test-subj="tableDocViewRow-rule_id-value"]': value,
+        '[data-test-subj="tableDocViewRow-rule_id-name"]': {{getBoundingClientRect: () => box(520, 690, 120, 24)}},
+        '[data-test-subj="discoverQueryHits"]': hits,
+      }};
+      doc.querySelector = (selector) => owned[selector] || plain(selector);
+      doc.elementFromPoint = (x, y) => (x < 500 ? null : y > 680 ? footer : flyout);
+      kibana.set('[data-test-subj="unifiedDocViewerFieldsSearchInput"]', box(520, 80, 300, 24));
+      kibana.set('[data-test-subj="euiFlyoutCloseButton"]', box(950, 10, 24, 24));
+      {to("rule")}
+      await browser.click('step-open');
+      await frames();
+      const scrolled = {{ring: styled('coach-ring'), text: browser.text('coach-callout')}};
+      {to("logged")}
+      await frames();
+      const covered = browser.text('coach-callout');
+      return {{scrolled, covered}};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["scrolled"] == {"ring": {"left": 574, "top": 175, "width": 312, "height": 26}, "text": "Type the field name"}, (
+        "the value is in the open panel, under its footer: typing the field brings it up, closing the panel would lose it")
+    assert result["covered"] == "Close the panel", "the hit count lies under the panel: it has to be closed"
+
 def test_a_finished_run_moves_the_ring_from_the_prompt_to_the_check_button(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       STRINGS.en['lesson.kali.press'] = 'The run has finished. Press Check.';
