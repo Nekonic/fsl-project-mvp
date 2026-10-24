@@ -20,6 +20,7 @@ Kolla-Ansible 2025.1 이상으로 구축하고 `nova_compute_virt_type: kvm`을 
 - `docs/STATE.md`: 작업 현황
 - `docs/OPENSTACK.md`: 클라우드(Kolla-Ansible 2025.1 이상)에 필요한 것, 프로젝트와
   플랫폼 VM, 훈련 환경, VM 한 대로 해 보는 체험
+- `docs/TROUBLESHOOTING.md`: 훈련 환경에서 겪은 문제와 원인, 해결 방법(영어)
 - `README.ko.md`, `docs/ARCHITECTURE.ko.md`: 이 README와 아키텍처 문서의 한국어판
 
 ## 필요한 것
