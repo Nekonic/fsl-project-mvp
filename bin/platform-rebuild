@@ -320,6 +320,7 @@ class Host:
         self.target = f"{user}@{address}"
         self.options = ["-i", str(identity), "-o", "IdentitiesOnly=yes",
                         "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+                        "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4",
                         "-o", "StrictHostKeyChecking=accept-new",
                         "-o", f"UserKnownHostsFile={known_hosts}"]
 
