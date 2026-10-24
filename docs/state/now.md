@@ -76,7 +76,8 @@ the Internet.
   - The unit count fell from 1718 to 1575 because the removal deleted tests of
     removed mechanisms.
 - 2026-10-20: the user ruled the product OpenStack-only (Kolla-Ansible
-  2026.1, kvm), superseding the 2026-10-11 first-class-substrate ruling
+  2026.1, kvm; widened on 2026-10-24 to 2025.1 or later, `docs/DECISIONS.md`),
+  superseding the 2026-10-11 first-class-substrate ruling
   (`docs/DECISIONS.md` 2026-10-20). The plan is
   `docs/superpowers/specs/2026-10-20-remove-docker-substrate-plan.md`. Docker
   stays on the platform VM (the platform's own services), the wargame host and

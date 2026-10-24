@@ -6,7 +6,7 @@ WordPress 회사 사이트이고, 각자 MySQL을 씁니다. 둘 앞에는 WAF�
 블루팀은 Suricata와 ModSecurity로 방어하고, 플랫폼이 양쪽의 점수를 매깁니다.
 이 저장소는 버릴 프로토타입입니다. 실제 제품 프로젝트는 다른 저장소에 있습니다.
 
-Kolla-Ansible 2026.1로 구축하고 `nova_compute_virt_type: kvm`을 쓰는 OpenStack
+Kolla-Ansible 2025.1 이상으로 구축하고 `nova_compute_virt_type: kvm`을 쓰는 OpenStack
 위에서 돌아갑니다. Heat 스택 하나가 플랫폼 VM을 만듭니다. 플랫폼 VM은 플랫폼을
 컨테이너로 실행합니다(`docker compose`, GHCR에 미리 빌드한 이미지). 그다음
 플랫폼이 OpenStack API로 훈련 환경의 VM을 만듭니다. 이 과정 전체를 운영자
@@ -18,7 +18,7 @@ Kolla-Ansible 2026.1로 구축하고 `nova_compute_virt_type: kvm`을 쓰는 Ope
 - `docs/ARCHITECTURE.md`: 훈련 환경의 구성과 앞으로의 방향
 - `docs/THREAT-MODEL.md`: 훈련 환경이 흉내 내는 것과 뺀 것
 - `docs/STATE.md`: 작업 현황
-- `docs/OPENSTACK.md`: 클라우드(Kolla-Ansible 2026.1)에 필요한 것, 프로젝트와
+- `docs/OPENSTACK.md`: 클라우드(Kolla-Ansible 2025.1 이상)에 필요한 것, 프로젝트와
   플랫폼 VM, 훈련 환경, VM 한 대로 해 보는 체험
 - `README.ko.md`, `docs/ARCHITECTURE.ko.md`: 이 README와 아키텍처 문서의 한국어판
 
@@ -37,7 +37,7 @@ Kolla-Ansible 2026.1로 구축하고 `nova_compute_virt_type: kvm`을 쓰는 Ope
 
 클라우드:
 
-- x86_64 호스트에 Kolla-Ansible 2026.1로 구축하고 `nova_compute_virt_type: kvm`을
+- x86_64 호스트에 Kolla-Ansible 2025.1 이상으로 구축하고 `nova_compute_virt_type: kvm`을
   쓰는 OpenStack. Heat는 기본으로 켜져 있습니다. Cinder, Octavia, Designate는
   필요 없습니다.
 - floating IP 풀이 있는 외부 네트워크, 그리고 그 네트워크로 나가는 VM의 인터넷

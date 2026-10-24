@@ -1417,7 +1417,7 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 
 OpenStack 구축은 `docs/STATE.md` 백로그의 OpenStack 항목을 그 순서대로 따릅니다. 이 절은 구축한 것을 설명하며, 각 항목은 클라우드에서 또는 fake를 상대로 실행해 확인했습니다. 남은 작업은 이 절 끝에 있습니다. 근거는 `docs/STATE.md`("Decided on 2026-09-30"), `docs/superpowers/specs/2026-09-30-openstack-range-placement.md`, `docs/superpowers/specs/2026-09-30-waf-console-and-tutorial.md`에 있습니다. 이 절은 구조만 기록합니다.
 
-클라우드는 ML2/Open vSwitch 위에서 kolla-ansible 2026.1을 운영하는 KVM 컴퓨트 노드 한 대(8 vCPU, 64 GB)입니다. 훈련 환경은 프로젝트 `fsl-range`에 있고, member 역할 사용자 `fsl-range`가 이를 조작합니다. 사용자에게 Horizon은 보여 주지 않습니다.
+처음 쓴 클라우드는 ML2/Open vSwitch 위에서 kolla-ansible 2026.1을 운영하는 KVM 컴퓨트 노드 한 대(8 vCPU, 64 GB)였습니다. 지금 쓰는 클라우드는 노드가 세 대이고 Kolla 2025.2에 ML2/OVN을 쓰며, 제품은 Kolla-Ansible 2025.1 이상을 지원합니다(`docs/OPENSTACK.md` §2). 훈련 환경은 프로젝트 `fsl-range`에 있고, member 역할 사용자 `fsl-range`가 이를 조작합니다. 사용자에게 Horizon은 보여 주지 않습니다.
 
 클라우드마다 달라지는 값은 모두 `deploy/openstack/cloud.yaml`에 있습니다. 커밋된 `cloud.example.yaml`을 복사한 파일이며, git이 무시하고 비밀 값은 없습니다. identity, 네트워크와 MTU, 베이스 이미지, zone, flavor, 키, OPNsense 릴리스, 플랫폼의 스택과 ref가 들어 있습니다.
 

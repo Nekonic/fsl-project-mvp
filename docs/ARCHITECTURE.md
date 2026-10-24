@@ -1417,7 +1417,7 @@ Scenario 4.2 (a person on the red console against the learner) is not declared, 
 
 The build follows the OpenStack item of the backlog in `docs/STATE.md`, in its order. This section describes what is built, run on the cloud or against fakes. What is left is listed at the end. The reasoning is in `docs/STATE.md` ("Decided on 2026-09-30"), `docs/superpowers/specs/2026-09-30-openstack-range-placement.md` and `docs/superpowers/specs/2026-09-30-waf-console-and-tutorial.md`. This section records only the structure.
 
-The cloud is one KVM compute node (8 vCPU, 64 GB) running kolla-ansible 2026.1 with ML2/Open vSwitch. The range lives in project `fsl-range`, driven by the member-role user `fsl-range`. Horizon is never shown to users.
+The first cloud was one KVM compute node (8 vCPU, 64 GB) running kolla-ansible 2026.1 with ML2/Open vSwitch. The cloud now in use has three nodes, runs Kolla 2025.2 with ML2/OVN, and the product supports Kolla-Ansible 2025.1 or later (`docs/OPENSTACK.md` §2). The range lives in project `fsl-range`, driven by the member-role user `fsl-range`. Horizon is never shown to users.
 
 Everything that differs between clouds is in `deploy/openstack/cloud.yaml`. It is copied from the committed `cloud.example.yaml`, ignored by git, and holds no secrets. It holds identity, networks and MTU, base image, zone, flavors, keys, the OPNsense release, and the platform's stack and ref.
 

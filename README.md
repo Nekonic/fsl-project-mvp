@@ -7,7 +7,7 @@ database, and a WAF sits in front of both. A blue team defends with Suricata
 and ModSecurity. The platform scores both teams. This repo is a throwaway
 prototype. The production project is in another repo.
 
-It runs on OpenStack deployed with Kolla-Ansible 2026.1 and
+It runs on OpenStack deployed with Kolla-Ansible 2025.1 or later and
 `nova_compute_virt_type: kvm`. One Heat stack creates the platform VM. The
 platform VM runs the platform as containers (`docker compose`, prebuilt images
 from GHCR). The platform then builds the range's VMs through the OpenStack API.
@@ -19,7 +19,7 @@ from GHCR). The platform then builds the range's VMs through the OpenStack API.
 - `docs/ARCHITECTURE.md`: how the range is put together, and where it is going
 - `docs/THREAT-MODEL.md`: what the range imitates and what it leaves out
 - `docs/STATE.md`: where the work stands
-- `docs/OPENSTACK.md`: what the cloud needs (Kolla-Ansible 2026.1), the project
+- `docs/OPENSTACK.md`: what the cloud needs (Kolla-Ansible 2025.1 or later), the project
   and the platform VM, the range, and a trial on one VM
 - `README.ko.md`, `docs/ARCHITECTURE.ko.md`: this README and the architecture
   document in Korean
@@ -39,7 +39,7 @@ The operator machine, where you run `bin/cloud`:
 
 The cloud:
 
-- OpenStack deployed with Kolla-Ansible 2026.1 on x86_64 hosts, with
+- OpenStack deployed with Kolla-Ansible 2025.1 or later on x86_64 hosts, with
   `nova_compute_virt_type: kvm`. Heat is on by default. You do not need Cinder,
   Octavia or Designate.
 - An external network with a floating-IP pool, and Internet access for the VMs
