@@ -2,79 +2,78 @@
 
 The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
-detail in `git log`. Numbers are in `metrics.json` (`bin/measure`).
+problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
+log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-23 (the platform VM runs the fixes of this push with its
-platform and corp images sideloaded, with two range slots). Written for a session that reaches the new cloud through the user's
-VPN (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and
-the Internet.
+Updated: 2026-10-24 (nothing is pushed; the platform VM runs this branch with
+the platform, board and corp images sideloaded, two range slots). Written for
+a session that reaches the new cloud through the user's VPN (Keystone
+http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the Internet.
 
 ## Where things stand
 
+- Push state: the branch `claude/cloud-vm-status-report-45aefd` holds about 50
+  commits over `dev` and none is pushed. A push goes to `dev` as a fast-forward,
+  and only when the user approves it.
 - 2026-10-20: the product moved to a new OpenStack cloud. The old cloud
   (master@192.168.0.100, Keystone 192.168.0.110, platform VM 192.168.0.210,
   floating IP 192.168.0.220) is in other use by the user and must not be
   touched. The facts, the defects the move found and the fixes are in
   `docs/DECISIONS.md` "The product moved to a new OpenStack cloud"; the cloud's
   values are the "(this cloud)" passages of `docs/OPENSTACK.md` §2-§4.
-- The platform VM is `fsl-platform` at 192.168.2.247. On 2026-10-21 it was
-  rebuilt from the main checkout without `--sideload` (29 min, dev's head from
-  GitHub and GHCR), then twice from a worktree with `--sideload
-  platform=... --sideload corp=...` (27 min each) to prove the corp readiness
-  and reset-resume fixes live, and on 2026-10-23 once more (33 min, the Kali
-  image rebuilt) for the root-shell proxy fix; both slots' Kali run that
-  image. It runs the fixes of this push now
-  (`FSL_SIDELOADED=corp,platform`); the other images come from GHCR. Two slots (`compute.slots: 2`), both READY: the user had their VM
-  `FSL-front` deleted, which freed 4 cores, and the project now uses 18 of
-  its 20 cores (`docs/OPENSTACK.md` §3.2).
+- The platform VM is `fsl-platform` at 192.168.2.247. It was rebuilt on
+  2026-10-24 from this branch with `bin/cloud up --replace --sideload
+  platform=... --sideload board=... --sideload corp=...` (the rebuild that
+  built the three new VM images took 65 min). It runs `FSL_SIDELOADED=board,corp,platform`; the other images come
+  from GHCR. Both slots (`compute.slots: 2`) are READY. All three VM images
+  (Kali, WAF, wargame host) were rebuilt without `snapd` and `ModemManager`,
+  and the wargame host image holds a pristine copy of the wargame data made
+  with `--innodb-rollback-segments=1`. The wargame hosts run on `m1.medium`
+  (a trial on the 4-vCPU `dba.medium` changed nothing).
+- Quota (the user raised it on 2026-10-24): 24 cores, 57344 MB of RAM, 12
+  instances. The project uses 18 cores, 40 GB and 9 instances
+  (`docs/OPENSTACK.md` §3.2).
 - A rebuilt VM has new ssh host keys. Check the new fingerprints in the VM's
   console log (`openstack console log show fsl-platform`, the cloud-init
   "SSH HOST KEY FINGERPRINTS" block) before replacing the operator machine's
   `known_hosts` entry for 192.168.2.247. The operator key is
   `~/.ssh/fsl_claude` (Nova keypair `fsl-claude`).
+- Slot reset, close to READY: 70-82 s for one slot and 98-99 s for two at once.
+  It was 272-314 s on this cloud before the pristine restore. What was
+  measured and changed is in `docs/TROUBLESHOOTING.md`. A copy-on-write
+  restore on an XFS loop file was measured and rejected (commits 2-2.5 times
+  slower). Open: `com01`'s disk and Nova `cpu_mode`, which are the cloud
+  admin's.
+- F4 step 3 (the tester report): the Kibana coach rings the row that has the
+  field, asks for the field name when the panel scrolled it under the footer,
+  moves off a document without the field, and asks for a new query after a
+  closed document lacked the field. The first help for the step is KQL advice,
+  and the step 6 coach says an empty result is a result. One live run passed
+  all five checks. The last fix (the new query after a closed document) is
+  unit-tested and deployed, and was not walked live.
+- `bin/platform-rebuild`'s ssh now sends keepalives (`ServerAliveInterval=15`,
+  `ServerAliveCountMax=4`) and gives up on a dead connection; a dead VPN
+  connection had hung one rebuild for 3 hours.
+- Full `bin/verify` on this branch (unit and acceptance against
+  http://192.168.2.247:8000): unit 1626 passed; acceptance 73 passed, 0 failed, 0 errors, 0 skipped in 1867 s; ratchet ok (run on the platform VM, 2026-10-24).
+- Last completed full `bin/verify` (2026-10-24, on the image with the pristine
+  wargame restore, before the later image and coach changes): unit 1618 passed;
+  acceptance 73 passed, 0 failed, 0 errors, 0 skipped in 2186 s; ratchet ok. It
+  was 4038 s (unit 1607) before the reset speed-ups. The earlier runs on this
+  cloud with two slots gave acceptance 73 passed in 3759-4083 s
+  (`docs/STATE.md`); the one-slot runs and the old cloud's last run follow.
 - 2026-10-21, decided by the user: the estate sensor's `HOME_NET` no longer
   holds the attacker origins, and a move to the lesson a session is
-  already on changes nothing (re-checked under the lock, and it
-  seeds the lesson's logs again only if they are missing, after the
-  pre-push review). Proven on the VM: sensor acceptance 14 passed, and
-  session 1077 kept `lessons` at `[f1]` on a repeated move (`docs/DECISIONS.md`
-  "The estate sensor's HOME_NET and a repeated lesson move").
-- 2026-10-21: the docker substrate removal is done in code (the removal
-  commit, then the documents, the README laptop note, the two-session fixture
-  fix and the terminal-isolation test fix) and proven live on this
-  cloud. The record is in `docs/DECISIONS.md` "The docker substrate is removed",
-  "Live proof on the new cloud": `bin/cloud up --replace --sideload` passed in
-  19 min 44 s, and the full `bin/verify` on the VM, on the code with the docker substrate removed, passed with 8
-  failures that all come from the single slot (the earlier runs, two bullets
-  down).
-- Last full `bin/verify`, on the sideloaded VM with all the fixes of this
-  push (2026-10-24, on the image with the pristine wargame restore): unit 1618
-  passed; acceptance 73 passed, 0 failed, 0 errors, 0 skipped in 2186 s;
-  ratchet ok. Before the reset speed-ups it was 4038 s (unit 1607), with the
-  side-by-side start alone 3564 s. The 2026-10-23 run after
-  the stale-image fix gave unit 1592 and acceptance 73 passed in 4083 s; the
-  run before it gave unit 1583 and acceptance 73 passed in
-  3969 s; the 2026-10-22 run before the root-shell fix gave
-  unit 1581 and acceptance 73 passed in 3759 s. The run before those, on dev's head without a
-  sideload, gave unit 1578 and acceptance 73 passed in 3853 s; the one-slot
-  failures below are gone (`docs/DECISIONS.md` "Two range slots on the new
-  cloud").
-- Earlier full `bin/verify` runs on the new cloud are recorded in `docs/DECISIONS.md`:
-  the 3da925e run (before the removal) in "The product moved to a new OpenStack
-  cloud", the run after the removal in "The docker substrate is removed".
-  - 3da925e: unit 1718 passed; acceptance 68 passed, 2 failed, 3 errors, 0
-    skipped in 10024 s.
-  - After the removal: unit 1575 passed; acceptance 65 passed, 2 failed, 6 errors, 0
-    skipped in 10241 s; ratchet ok (core_loc 584, dependencies 6, services 5,
-    wargame_services 4, product_loc 25016, tests 1198).
-  - Every failure comes from the single slot, none from the removal. The
-    errors are `409 "1 session is already open on the range; close one first"`
-    in `test_concurrent_sessions` and `test_lesson`. The 2 failures are
-    `test_strategy_honesty`: its shared session was deleted by retention
-    (`FSL_RETAIN_CLOSED_MINUTES` 60), because a one-slot run takes about 2 h 50
-    min (slot resets take 4-5 min on this cloud, 70-80 s on the previous one).
-  - The unit count fell from 1718 to 1575 because the removal deleted tests of
-    removed mechanisms.
+  already on changes nothing (`docs/DECISIONS.md` "The estate sensor's HOME_NET
+  and a repeated lesson move").
+- 2026-10-21: the docker substrate removal is done in code and proven live on
+  this cloud (`docs/DECISIONS.md` "The docker substrate is removed", "Live proof
+  on the new cloud").
+- The one-slot runs on this cloud (3da925e, then after the docker removal)
+  failed 2 tests and errored on 3 and 6 others because only one session fits
+  one slot, and `test_strategy_honesty` lost its session to retention in a run of
+  about 2 h 50 min. None came from the removal. Numbers: `docs/DECISIONS.md` "The
+  product moved to a new OpenStack cloud" and "The docker substrate is removed".
 - 2026-10-20: the user ruled the product OpenStack-only (Kolla-Ansible
   2026.1, kvm; widened on 2026-10-24 to 2025.1 or later, `docs/DECISIONS.md`),
   superseding the 2026-10-11 first-class-substrate ruling
@@ -110,7 +109,7 @@ the Internet.
 - Unverified and open: Kibana's learner space still shows Home and Stack
   Management in its menu (their pages answer 403) and ad-hoc data views cannot
   be turned off in 8.15; no taste items were collected. The e4a467e smoke passed
-  20 of 20 steps (details under Next, 9).
+  20 of 20 steps (details under Next, 10).
 - To try it: open http://192.168.2.247:8000 (through the VPN), open the
   catalogue, start the foundations course (its first lesson button) and go F1 to
   F6 in one session; about 30-40 minutes by hand.
@@ -128,8 +127,9 @@ was for the old lab. The old copies are `s.sh.old-cloud`, `reach.sh.old-cloud`,
 - `sh build.sh platform` builds the image on the platform VM (the Mac's Docker
   daemon is off) and copies `images/fsl-platform-<HEAD>.tar` back. It knows
   `platform`, `board`, `corp`, `kali`, `proxy` and `gns3`.
-- `sh deploy.sh <tag> platform=<HEAD>` runs `bin/cloud up --replace
-  --sideload` with the `openstack` CLI from `osc/bin`; the log is
+- `sh deploy.sh <tag> platform=<HEAD> board=<HEAD> corp=<HEAD>` runs `bin/cloud
+  up --replace --sideload` for each pair with the `openstack` CLI from `osc/bin`;
+  the log is
   `deploy/<tag>.log`. A rebuild from images on GHCR needs no script: run
   `bin/cloud up --replace` from the main checkout.
 - `sh known-hosts.sh` replaces the operator's `known_hosts` entry for
@@ -140,7 +140,7 @@ was for the old lab. The old copies are `s.sh.old-cloud`, `reach.sh.old-cloud`,
   corp's readiness").
 - `sh s.sh '<cmd>'` runs a command on the platform VM, for example `sh s.sh 'git
   -C /opt/fsl rev-parse HEAD'`.
-- `walker/walk.py` is the lesson walker (Next, 9).
+- `walker/walk.py` is the lesson walker (Next, 10).
 - The repository has a `cloud` git remote (the VM's `/opt/fsl`). Work goes to
   the VM with `git push cloud HEAD:refs/heads/work` and `git -C /opt/fsl
   checkout --detach work` on the VM. Claude Code asks the user before every push to GitHub
@@ -151,7 +151,7 @@ was for the old lab. The old copies are `s.sh.old-cloud`, `reach.sh.old-cloud`,
 main checkout (`/Users/nekonic/Documents/GitHub/fsl-project-mvp`) and this
 worktree both have them for the new cloud (newest copy: the main checkout's
 `db-20261021T130039Z.sqlite3`, 22.8 MB; this worktree's
-`db-20261021T153219Z.sqlite3`, 471 KB); the old cloud's `cloud.yaml` is kept outside the
+`db-20261024T132318Z.sqlite3`, 537 KB); the old cloud's `cloud.yaml` is kept outside the
 repo in `~/.cache/fsl-work/old-cloud/`. A worktree that is cleaned
 up loses these files, so copy them before working in a new one. Older store
 copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
@@ -161,14 +161,10 @@ copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
 
 1. Publishing the OPNsense image (`docs/STATE.md` backlog 0): the licence is
    fine, the trademark policy asks for a note to the project. The user's call.
-2. F4 step 7: whether the step checks that the learner's rule actually
-   detects `<script` (the user asked on 2026-10-24 for candidates from how
-   real courses check rule writing; `docs/DECISIONS.md` "How courses check a
-   learner's rule").
 
 ## Next, in order
 
-1. After the next push: check the `images.yml` run for that push (`gh run list
+1. When the user approves, push to `dev`. After the push: check the `images.yml` run for that push (`gh run list
    --workflow images.yml --branch dev --limit 3`; the run for ee5e641 was
    green), then rebuild the platform VM
    from the main checkout with `bin/cloud up --replace`, without `--sideload`,
@@ -180,12 +176,10 @@ copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
    Kali image digest once more).
 3. An acceptance run longer than `FSL_RETAIN_CLOSED_MINUTES` (60) loses
    the shared session of `test_strategy_honesty` to retention. A one-slot run
-   took about 2 h 50 min and failed there; the two-slot run of 2026-10-21 took
-   64 min and passed, and since the pristine restore (2026-10-24) a run takes
-   36 min. Only a one-slot run still outlasts the window; the user asked on
-   2026-10-24 why a run took over an hour, and the answer was the slow reset,
-   now fixed. Still open for a one-slot run: the harness keeps a session it
-   needs, or the window accounts for a long run.
+   took about 2 h 50 min and failed there. With two slots a run took 64 min on
+   2026-10-21 and 36 min (2186 s) after the pristine restore, so only a
+   one-slot run still outlasts the window. Still open for a one-slot run: the
+   harness keeps a session it needs, or the window accounts for a long run.
 4. The `test_corp_authz` nonce error: the likely cause (corp healthy before
    its forms existed) is fixed and one full `bin/verify` passed with it. The
    error was intermittent, so watch the next runs for it (`docs/STATE.md`
@@ -198,7 +192,9 @@ copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
    a generator for WordPress first (P3's shape).
 8. Acceptance run time and ingest re-reading the whole window (paged since
    f07919f, up to about 205k records).
-9. Foundations rebuild, remaining (`docs/STATE.md` backlog 0, "Foundations
+9. Walk F4 step 3 live once more: the coach's new query after a closed document
+   lacked the field is unit-tested and deployed but was not walked live.
+10. Foundations rebuild, remaining (`docs/STATE.md` backlog 0, "Foundations
    rebuild, remaining work"): the F1/F2 "auto-advance" item was a walker
    race, fixed in the walker on 2026-10-21 (`docs/STATE.md`); the walker's
    two F4/F6 faults are fixed and the 2026-10-22 re-walk (session 1137)

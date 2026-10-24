@@ -6560,6 +6560,8 @@ Rejected: deleting the spare redo files from the pristine copy (faster on
 scratch datadirs, but the MySQL manual does not say they may be removed); a
 smaller `innodb_redo_log_capacity` (same 32 files and syncs).
 
-Open: a copy-on-write restore (`cp --reflink` on XFS or btrfs). Tried and
-reverted: 4 vCPUs for the wargame host (`dba.medium`), which left the reset
-time unchanged (one slot 78-79 s, two at once 99 s).
+Tried and reverted: 4 vCPUs for the wargame host (`dba.medium`), which left
+the reset time unchanged (one slot 78-79 s, two at once 99 s). Rejected after
+a measurement: a copy-on-write restore on an XFS loop file, which saved 4-8 s
+per restore and made every commit 2-2.5 times slower
+(`docs/TROUBLESHOOTING.md`).
