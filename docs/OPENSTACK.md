@@ -363,10 +363,11 @@ must raise the quota.
 
 **(this cloud)** These are the figures:
 
-- The quota is 20 cores, 51200 MB of RAM and 10 instances.
+- Since 2026-10-24 the quota is 24 cores, 57344 MB of RAM and 12 instances
+  (Nova's default, 20 / 51200 / 10, until then).
 - The platform VM (2 cores, 8 GB) and two slots (8 cores, 16 GB each) bring the
   project to 18 cores, 40 GB and 9 instances. So `compute.slots` is 2 here. The
-  2 cores left fit one image builder at a time.
+  cores left fit image builders.
 - Until 2026-10-21 the project also held a VM of the user's, `FSL-front` (4
   cores, 8 GB), which left room for one slot only. The user had it deleted.
 - Each slot beyond the first adds 2 networks (`fsl-internet-N`, `fsl-estate-N`),
@@ -403,8 +404,12 @@ them:
 | `wargames` (optional) | `fsl-wargame-host` | It runs two MySQL 8, Django and WordPress containers at once. The example names `m1.medium` (4 GB). Without this key the host takes `range`. We did not measure its memory use |
 
 **(this cloud)** The admin made two flavors: `m1.large` (8 GB / 2 vCPU / 60 GB)
-and `m1.medium` (4 GB / 2 vCPU / 30 GB). `cloud.yaml` names `m1.large` for
-`platform` and `m1.medium` for `builder`, `range`, `edge` and `wargames`. Check
+and `m1.medium` (4 GB / 2 vCPU / 30 GB). The cloud also has `dba.medium` (8 GB /
+4 vCPU / 40 GB). `cloud.yaml` names `m1.large` for `platform` and `m1.medium`
+for `builder`, `range`, `edge` and `wargames`. The wargame host on `dba.medium`
+did not shorten a reset (2026-10-24, `docs/TROUBLESHOOTING.md`). A slot VM
+keeps its flavor until the slot is deleted and booted again (`DELETE
+$P/slot/`, then `bin/cloud up`). Check
 that every flavor `cloud.yaml` names exists on your cloud. The platform refuses a
 missing flavor and names it.
 

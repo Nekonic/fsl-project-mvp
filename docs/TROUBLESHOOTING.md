@@ -206,6 +206,7 @@ busy for about 10 s while the board ran `migrate` and `seed` and corp ran
 - The restore copies the data. A copy-on-write clone (`cp --reflink` on XFS
   or btrfs) would write no data at restore, so no writeback would compete
   with MySQL's start. Not tried.
-- The wargame host has 2 vCPUs and is CPU-bound for about 10 s of the app
-  start. A 4-vCPU flavor needs 4 more cores for two slots; the project uses
-  18 of its 20.
+- Tried and reverted: the wargame host on a 4-vCPU flavor (`dba.medium`, 8 GB),
+  after the core quota was raised to 24. One slot took 79 s and 78 s, two at
+  once 99 s, the same as on 2 vCPUs: the CPU-bound 10 s was not on the
+  critical path's longest part, MySQL's start waiting on the disk.
