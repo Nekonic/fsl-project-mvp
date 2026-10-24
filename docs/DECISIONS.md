@@ -6514,3 +6514,26 @@ Not yet measured live.
   acceptance 73 passed, 0 failed, 0 errors, 0 skipped in 2186 s (4038 s
   before the reset speed-ups); ratchet ok. The run now ends well inside
   `FSL_RETAIN_CLOSED_MINUTES` (60).
+
+## 2026-10-24 — Supported Kolla-Ansible releases
+
+The user ruled that the product supports OpenStack deployed with Kolla-Ansible
+2025.1 or later; later releases are much the same.
+
+The cloud the product runs on now (`con01`, `com01`, `stg01`, Keystone
+10.0.0.10) runs Kolla images tagged 2025.2: `stg01` runs
+`quay.io/openstack.kolla/cinder-backup:2025.2-ubuntu-noble`. The earlier docs
+named 2026.1 because the previous cloud (192.168.0.100) ran kolla-ansible
+2026.1, and the requirement was written from that cloud.
+
+The README files, `docs/OPENSTACK.md` and `docs/ARCHITECTURE.md` (and its
+Korean pair) now say "Kolla-Ansible 2025.1 or later". The install commands in
+`docs/OPENSTACK.md` use 2025.2 (`stable/2025.2`, `constraints/upper/2025.2`,
+`openstack_release: "2025.2"`) and the sources [K1]-[K8] point at 2025.2. The
+quickstart page, the constraints URL (a redirect to `stable/2025.2` of
+`openstack/requirements`), the Libvirt guide, the Neutron networking page and the
+`stable/2025.2` globals, group_vars and neutron task files exist. The
+2026-10-20 one-VM trial (§9) ran 2026.1; its 2025.2 commands were not run
+again. The TaaS bug in §2.3 was measured on 2026.1 only; the same code is in
+`stable/2025.2`, but it is not checked on 2025.x. Earlier entries and the
+previous-cloud records in `docs/STATE.md` stay as written.

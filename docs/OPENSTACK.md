@@ -1,7 +1,7 @@
 # OpenStack
 
 This file says what this project needs from an OpenStack cloud and how to set
-one up from nothing. It covers the cloud (Kolla-Ansible 2026.1), the project,
+one up from nothing. It covers the cloud (Kolla-Ansible 2025.1 or later), the project,
 the one base image, `cloud.yaml`, the platform VM, the range and the checks. It
 is written for an operator who rebuilds the cloud side or onboards a new cloud.
 `README.md` has the numbered steps to bring the product up. This file has the
@@ -101,7 +101,16 @@ The platform calls these APIs (`platform/range/openstack.py`):
 The operator also uses Heat for the platform VM. The project uses no Cinder,
 Octavia or Designate.
 
-## 2. What the cloud needs (Kolla-Ansible 2026.1)
+## 2. What the cloud needs (Kolla-Ansible 2025.1 or later)
+
+The product supports OpenStack deployed with Kolla-Ansible 2025.1 or later (the
+user's ruling of 2026-10-24: later releases are much the same). **(this cloud)**
+It runs the Kolla images tagged 2025.2 (seen on 2026-10-24:
+`quay.io/openstack.kolla/cinder-backup:2025.2-ubuntu-noble` on `stg01`), so the
+commands below use 2025.2. Any release from 2025.1 on is installed the same way:
+change `2025.2` to that release in the `pip install` line, the constraints URL
+and `openstack_release`. The previous cloud ran 2026.1, and the measurements
+marked as coming from it are about 2026.1.
 
 **(this cloud)** kolla-ansible (Nova reports microversion 2.100), Ubuntu images, ML2/OVN
 with Geneve tenant networks, and `nova_compute_virt_type: "kvm"`. The nodes are:
@@ -140,13 +149,13 @@ tenant network on your cloud.
 
 ### 2.1 Install and deploy [admin, once]
 
-These commands follow the 2026.1 quickstart [K1]:
+These commands follow the 2025.2 quickstart [K1]:
 
 ```bash
 sudo apt install -y git python3-dev libffi-dev gcc libssl-dev libdbus-glib-1-dev python3-venv
 python3 -m venv /opt/kolla-venv && . /opt/kolla-venv/bin/activate
 pip install -U pip
-pip install git+https://opendev.org/openstack/kolla-ansible@stable/2026.1
+pip install git+https://opendev.org/openstack/kolla-ansible@stable/2025.2
 pip install docker dbus-python
 sudo mkdir -p /etc/kolla && sudo chown $USER:$USER /etc/kolla
 cp -r /opt/kolla-venv/share/kolla-ansible/etc_examples/kolla/* /etc/kolla
@@ -157,7 +166,7 @@ kolla-genpwd
 kolla-ansible bootstrap-servers -i ./all-in-one
 kolla-ansible prechecks -i ./all-in-one --use-test-images
 kolla-ansible deploy -i ./all-in-one
-pip install python-openstackclient python-heatclient -c https://releases.openstack.org/constraints/upper/2026.1
+pip install python-openstackclient python-heatclient -c https://releases.openstack.org/constraints/upper/2025.2
 kolla-ansible post-deploy -i ./all-in-one        # writes /etc/kolla/clouds.yaml
 ```
 
@@ -181,7 +190,7 @@ The kolla venv has no Heat client. Run Heat from a separate venv that has
 
 ```yaml
 kolla_base_distro: "ubuntu"                   # the example file defaults to rocky; match the host [K1]
-openstack_release: "2026.1"
+openstack_release: "2025.2"
 network_interface: "<NIC with the management IP>"
 neutron_external_interface: "<NIC up with no IP: floating IPs and the external network>"
 kolla_internal_vip_address: "10.0.0.10"       # this cloud's API address: an unused address on network_interface's network [K1]
@@ -214,7 +223,7 @@ We enabled TaaS on the previous cloud (ML2/OVS) on 2026-09-30 for a sensor owned
 by the organiser. We then dropped that sensor (`docs/STATE.md`, "Tap-as-a-Service
 is dropped from the design"). Nothing uses TaaS, and a new cloud does not need
 it. The steps below are the ones we ran on the previous cloud, and they assume
-the Open vSwitch agent. To enable it on 2026.1:
+the Open vSwitch agent. To enable it on 2026.1, the release of the previous cloud:
 
 ```yaml
 enable_neutron_taas: "yes"     # defined in ansible/group_vars/all/neutron.yml, default false [K3]
@@ -225,7 +234,12 @@ cp /etc/kolla/globals.yml /etc/kolla/globals.yml.before-taas
 kolla-ansible reconfigure -i /root/all-in-one -t neutron
 ```
 
-**The 2026.1 bug.**
+**The 2026.1 bug.** Measured on the previous cloud. We did not run TaaS on 2025.x. The
+same code is in `stable/2025.2` (read, not run): the task copies
+`neutron_taas.conf` only for `neutron-server` and `neutron-openvswitch-agent`,
+and `neutron.conf.j2` lists the service plugins for every Neutron service. So
+the bug probably applies there too; this is not checked on 2025.x.
+
 
 - kolla-ansible adds `taas` to `service_plugins` for all three Neutron API
   services.
@@ -1392,8 +1406,9 @@ route to the Internet and cannot resolve `pkg.opnsense.org`.
 ## 9. Try it in one VM (VirtualBox or VMware)
 
 This section is for checking that the product runs. It is not for operating it.
-One Ubuntu 24.04 VM holds an all-in-one Kolla-Ansible 2026.1 cloud and this
-repo's numbered steps. It follows the official quickstart [K1] and the
+One Ubuntu 24.04 VM holds an all-in-one Kolla-Ansible cloud and this
+repo's numbered steps. The 2026-10-20 trial ran 2026.1; the commands below use
+2025.2 and were not run again. It follows the official quickstart [K1] and the
 hypervisors' manuals [V1][W1]. Run end to end on 2026-10-20 (on a KVM host; the
 VirtualBox/VMware settings themselves were not exercised).
 
@@ -1487,7 +1502,7 @@ These are the quickstart's all-in-one steps [K1], run in `~`:
 
 ```bash
 python3 -m venv ~/kolla-venv && . ~/kolla-venv/bin/activate && pip install -U pip
-pip install git+https://opendev.org/openstack/kolla-ansible@stable/2026.1
+pip install git+https://opendev.org/openstack/kolla-ansible@stable/2025.2
 pip install docker dbus-python
 sudo mkdir -p /etc/kolla && sudo chown $USER:$USER /etc/kolla
 cp -r ~/kolla-venv/share/kolla-ansible/etc_examples/kolla/* /etc/kolla
@@ -1517,7 +1532,7 @@ took 11 min 39 s on 2026-10-20. §2.1 gives the reasons for the extra `pip insta
 kolla-ansible bootstrap-servers -i ./all-in-one
 kolla-ansible prechecks -i ./all-in-one --use-test-images
 kolla-ansible deploy -i ./all-in-one
-pip install python-openstackclient -c https://releases.openstack.org/constraints/upper/2026.1
+pip install python-openstackclient -c https://releases.openstack.org/constraints/upper/2025.2
 kolla-ansible post-deploy -i ./all-in-one
 . /etc/kolla/admin-openrc.sh
 ```
@@ -1542,12 +1557,12 @@ reachable on the host's network.
 
 ## Sources
 
-- [K1] Kolla-Ansible 2026.1 quickstart — https://docs.openstack.org/kolla-ansible/2026.1/user/quickstart.html
-- [K2] kolla-ansible stable/2026.1 `etc/kolla/globals.yml` — https://opendev.org/openstack/kolla-ansible/src/branch/stable/2026.1/etc/kolla/globals.yml
-- [K7] Kolla-Ansible 2026.1, Libvirt guide (`nova_compute_virt_type`: kvm is the default) — https://docs.openstack.org/kolla-ansible/2026.1/reference/compute/libvirt-guide.html
-- [K8] Kolla-Ansible 2026.1, Neutron networking (`neutron_external_interface` must be up without an IP) — https://docs.openstack.org/kolla-ansible/2026.1/reference/networking/neutron.html
-- [K3] kolla-ansible stable/2026.1 `ansible/group_vars/all/neutron.yml` (`enable_neutron_taas: false`); TaaS added in 18.0.0 — https://docs.openstack.org/releasenotes/kolla-ansible/2024.1.html
-- [K4] kolla-ansible stable/2026.1 `ansible/roles/neutron/tasks/config.yml` — https://opendev.org/openstack/kolla-ansible/src/branch/stable/2026.1/ansible/roles/neutron/tasks/config.yml
+- [K1] Kolla-Ansible 2025.2 quickstart — https://docs.openstack.org/kolla-ansible/2025.2/user/quickstart.html
+- [K2] kolla-ansible stable/2025.2 `etc/kolla/globals.yml` — https://opendev.org/openstack/kolla-ansible/src/branch/stable/2025.2/etc/kolla/globals.yml
+- [K7] Kolla-Ansible 2025.2, Libvirt guide (`nova_compute_virt_type`: kvm is the default) — https://docs.openstack.org/kolla-ansible/2025.2/reference/compute/libvirt-guide.html
+- [K8] Kolla-Ansible 2025.2, Neutron networking (`neutron_external_interface` goes on `br-ex`, physical network `physnet1`; the page says an interface plugged into a bridge cannot hold a usable IP address) — https://docs.openstack.org/kolla-ansible/2025.2/reference/networking/neutron.html
+- [K3] kolla-ansible stable/2025.2 `ansible/group_vars/all/neutron.yml` (`enable_neutron_taas: false`); TaaS added in 18.0.0 — https://docs.openstack.org/releasenotes/kolla-ansible/2024.1.html
+- [K4] kolla-ansible stable/2025.2 `ansible/roles/neutron/tasks/config.yml` (the 2026.1 bug in §2.3 was measured on stable/2026.1) — https://opendev.org/openstack/kolla-ansible/src/branch/stable/2025.2/ansible/roles/neutron/tasks/config.yml
 - [K5] Kolla-Ansible, OpenStack service configuration overrides — https://docs.openstack.org/kolla-ansible/latest/admin/advanced-configuration.html
 - [N1] Nova configuration, `allow_resize_to_same_host` (default False) — https://docs.openstack.org/nova/latest/configuration/config.html
 - [N2] Nova configuration, `initial_cpu_allocation_ratio` 4.0, `initial_ram_allocation_ratio` 1.0, `initial_disk_allocation_ratio` 1.0, `reserved_host_memory_mb` 512 — same page

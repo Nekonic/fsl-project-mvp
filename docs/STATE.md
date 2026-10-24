@@ -21,7 +21,8 @@ P6 removed the older lessons 0-5 and 7 and the Lesson / Practice / Wargame rungs
 on 2026-10-14 (`docs/DECISIONS.md`). On 2026-10-18 the foundations were rebuilt
 as attack and defence lessons that run back to back in one session, and on
 2026-10-19 four live review rounds (2-5) tuned them. On 2026-10-20 the user
-ruled the product OpenStack-only (Kolla-Ansible 2026.1, kvm) and the newcomer
+ruled the product OpenStack-only (Kolla-Ansible 2026.1, kvm; widened on 2026-10-24 to 2025.1 or later,
+`docs/DECISIONS.md`) and the newcomer
 bring-up was fixed and rewritten. Later the same day the user moved the
 product to a new OpenStack cloud (`docs/DECISIONS.md` 2026-10-20, "The product
 moved to a new OpenStack cloud"). The old cloud is in other use and is not
