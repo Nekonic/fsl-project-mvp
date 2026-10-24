@@ -300,6 +300,7 @@ const KIBANA = {
 };
 const GRID_ROW = "data-gridcell-row-index";
 const queryArrival = { step: "", text: null };
+const fieldlessQuery = { step: "", text: null };
 
 function queryText(doc) {
   const input = doc.querySelector(KIBANA.query);
@@ -387,9 +388,13 @@ function kibanaFound(doc, spec) {
       const opened = openedRow(doc);
       const arrow = opened && valued && opened.row !== valued.row
         ? opened.page.querySelector(opened.row > valued.row ? KIBANA.previous : KIBANA.next) : null;
-      return boxOf(arrow) && !arrow.disabled ? { element: arrow, stage: "other" } : { element: first(KIBANA.query), stage: "query" };
+      if (boxOf(arrow) && !arrow.disabled) return { element: arrow, stage: "other" };
+      if (!valued) Object.assign(fieldlessQuery, { step: spec.step, text: queryText(doc) });
+      return { element: first(KIBANA.query), stage: "query" };
     }
     if (valued) return { element: valued.toggle, stage: "expand" };
+    const text = queryText(doc);
+    if (text !== null && fieldlessQuery.step === spec.step && fieldlessQuery.text === text) return { element: first(KIBANA.query), stage: "query" };
     const expand = first(KIBANA.expand);
     return expand ? { element: expand, stage: "expand" } : { element: first(KIBANA.query), stage: "query" };
   }
@@ -1633,6 +1638,7 @@ function coach(prefix, declared) {
     homed = -1;
     lined = -1;
     queryArrival.step = "";
+    fieldlessQuery.step = "";
     say("", "");
     show();
     reach(steps[at]);

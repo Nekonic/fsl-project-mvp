@@ -1074,6 +1074,7 @@ def test_a_leg_step_whose_row_cannot_be_found_asks_for_the_destination_and_never
 VALUED = """
 let ruleIds = [];
 let typed = '';
+let kql = 'event_type : http';
 const gridAll = doc.querySelectorAll;
 doc.querySelectorAll = (selector) => {
   if (selector.includes('"rule_id"')) return ruleIds.map((text, row) => cellOf(row, text, 'rule_id'));
@@ -1084,7 +1085,8 @@ const gridOne = doc.querySelector;
 doc.querySelector = (selector) => {
   if (selector.includes('docTableExpandToggleColumn')) return ruleIds.length ? toggleOf(0) : null;
   const one = gridOne(selector);
-  return one && selector.includes('FieldsSearchInput') ? {...one, value: typed} : one;
+  if (one && selector.includes('FieldsSearchInput')) return {...one, value: typed};
+  return one && selector.includes('queryInput') ? {...one, value: kql} : one;
 };
 kibana.set('[data-test-subj="queryInput"]', box(300, 20, 400, 36));
 """
@@ -1111,6 +1113,7 @@ def test_a_field_step_rings_the_first_row_that_has_the_field_and_moves_off_a_doc
       await frames();
       const query = browser.text('coach-callout');
       kibana.delete('[data-test-subj="docViewerFlyout"]');
+      kql = 'log_source : modsecurity';
       await frames();
       const bare = styled('coach-ring');
       return {{valued, untyped, other, query, bare}};
@@ -1126,6 +1129,38 @@ def test_a_field_step_rings_the_first_row_that_has_the_field_and_moves_off_a_doc
     assert result["query"] == "Type the KQL", "no row carries the field: the query has to change"
     assert result["bare"] == {"left": 64, "top": 390, "width": 32, "height": 32}, (
         "no row carries a value, as when no WAF rule matched: the first row is still the one to expand")
+
+def test_a_closed_document_without_the_field_keeps_asking_for_the_query_until_it_changes(client):
+    seen = open_page(client, "/blue/1/", setup=served() + GRID + VALUED, scenario=f"""
+      STRINGS.en['lesson.kibana.expand'] = 'Expand the row';
+      STRINGS.en['lesson.kibana.query'] = 'Type the KQL';
+      {to("rule")}
+      await browser.click('step-open');
+      ruleIds = ['-', '-'];
+      await frames();
+      const fresh = {{ring: styled('coach-ring'), text: browser.text('coach-callout')}};
+      kibana.set('[data-test-subj="docViewerFlyout"]', box(500, 0, 480, 704));
+      kibana.set('[data-test-subj="unifiedDocViewerFieldsSearchInput"]', box(520, 80, 300, 24));
+      typed = 'rule_id';
+      await frames();
+      const lacking = browser.text('coach-callout');
+      kibana.delete('[data-test-subj="docViewerFlyout"]');
+      await frames();
+      const closed = browser.text('coach-callout');
+      kql = 'log_source : modsecurity';
+      await frames();
+      const changed = {{ring: styled('coach-ring'), text: browser.text('coach-callout')}};
+      return {{fresh, lacking, closed, changed}};
+    """)
+    result = seen["result"]
+    first_row = {"ring": {"left": 64, "top": 390, "width": 32, "height": 32}, "text": "Expand the row"}
+
+    assert seen["errors"] == []
+    assert result["fresh"] == first_row, "no row carries a value, as when no WAF rule matched: the first row is the one to expand"
+    assert result["lacking"] == "Type the KQL"
+    assert result["closed"] == "Type the KQL", (
+        "the same query already showed a document without the field: expanding a row again would loop")
+    assert result["changed"] == first_row, "a new query is a new result: its first row is worth expanding again"
 
 def test_a_value_the_document_panel_scrolled_under_its_footer_asks_for_the_field_and_only_a_panel_over_the_target_asks_to_close_it(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
