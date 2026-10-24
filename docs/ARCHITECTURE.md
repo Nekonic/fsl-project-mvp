@@ -1556,9 +1556,9 @@ The rules editor writes the file that the include names and reloads with `surica
 
 A rebuild wipes the disk, so configure must follow once the VMs are ACTIVE.
 
-On the wargame host, the in-place reset (`clear_wargames()`) runs `docker compose down -v` for each wargame and the estate sensor. It removes the sensor's eve log and rsyslog's imfile state. It leaves the images and no container or volume.
+On the wargame host, the in-place reset (`clear_wargames()`) runs `docker compose down -v` for each wargame and the estate sensor, all at once, and fails if any of them fails. It removes the sensor's eve log and rsyslog's imfile state. It leaves the images and no container or volume.
 
-Configure's last step, `start_wargames()`, starts every wargame at once, one ssh command each, through the `wargames` role. Each command runs three steps on the host (`wargame_host.up()`):
+Configure's `start_wargames()` starts every wargame at once, one ssh command each, through the `wargames` role. Each command runs three steps on the host (`wargame_host.up()`):
 
 - `docker compose -p <id> -f /opt/fsl/wargames/<id>.yaml up --no-start --pull never` creates the containers and their new, empty volumes.
 - `/opt/fsl/pristine.sh restore <id>` copies the pristine data into each volume of a container that has never run and whose volume is empty.
@@ -1571,7 +1571,7 @@ Every session starts on the same pristine data, with fresh secrets:
 - The board's `seed` sets each seeded account's password on every start, so each session's hashes have new salts, and a hash stolen in one session does not match the next session's ground truth. It also moves the seeded posts' dates to today.
 - corp's entrypoint deletes `wp-config.php` before the image's entrypoint runs, so the image writes a new one with new random keys and salts. On restored data it also sets the admin password again, which gives a new hash. It skips the install and the plugin setup, which the restored database already holds.
 
-Then configure starts the estate sensor.
+The estate sensor starts in the same step, alongside the wargames: it does not depend on them, because it watches the host interface. Log forwarding follows once all of them are up.
 
 - It uses docker's Suricata image and `deploy/suricata/suricata.yaml`, which each start writes to the host from the platform's copy.
 - It runs from `deploy/wargame-host/sensor.yaml` with host networking, on the interface that holds the host's estate address. It therefore sees the WAF-to-target leg.
