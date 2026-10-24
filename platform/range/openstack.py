@@ -209,7 +209,10 @@ def once_it_answers(step):
 
 def alongside(*chains: list) -> list:
     def in_order(chain: list) -> list:
-        return [once_it_answers(step) for step in chain]
+        done = []
+        for step in chain:
+            done += alongside(*[[each] for each in step]) if isinstance(step, list) else [once_it_answers(step)]
+        return done
 
     with ThreadPoolExecutor(max_workers=max(1, len(chains))) as pool:
         running = [pool.submit(in_order, chain) for chain in chains]
@@ -1327,9 +1330,11 @@ class OpenStack:
         return host, (f"keeps time by {server}",)
 
     def _wargame_chain(self) -> list:
-        chain = ([partial(self.keep_time, self.declared.host(wargame_host.ROLE)), self.start_wargames]
+        chain = ([partial(self.keep_time, self.declared.host(wargame_host.ROLE))]
                  if wargame_host.ROLE in self.declared.roles else [])
-        chain += [partial(self.start_sensor, role, host) for role, host in self._hosted_sensors()]
+        starting = ([self.start_wargames] if wargame_host.ROLE in self.declared.roles else [])
+        starting += [partial(self.start_sensor, role, host) for role, host in self._hosted_sensors()]
+        chain += [starting] if starting else []
         chain += [partial(self.forward_logs, host)
                   for host, entry in sorted(self.declared.hosts.items())
                   if entry.logs and host in self.declared.roles.values()]
