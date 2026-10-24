@@ -1214,8 +1214,9 @@ rebooted. With the in-place reset it took 65.8, 65.9 and 60.1 s (three board
 sessions, 2026-10-12, no fallback).
 On the current cloud it took 272-314 s, most of it MySQL initialisation and
 app setup on the wargame host (`docs/DECISIONS.md`, "Where a slot reset's time
-goes"). The restore from pristine data (§6) removes that work from the reset;
-the new time is not measured yet.
+goes"). The restore from pristine data (§6) removed that work from the reset:
+117 s for two slots at once. On 2026-10-24 one slot took 70-82 s and two at
+once 98 s (`docs/TROUBLESHOOTING.md`).
 
 These trade-offs are recorded. They are not verified threats:
 

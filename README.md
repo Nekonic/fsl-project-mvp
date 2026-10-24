@@ -21,6 +21,7 @@ from GHCR). The platform then builds the range's VMs through the OpenStack API.
 - `docs/STATE.md`: where the work stands
 - `docs/OPENSTACK.md`: what the cloud needs (Kolla-Ansible 2025.1 or later), the project
   and the platform VM, the range, and a trial on one VM
+- `docs/TROUBLESHOOTING.md`: problems the range has had, their causes and fixes
 - `README.ko.md`, `docs/ARCHITECTURE.ko.md`: this README and the architecture
   document in Korean
 

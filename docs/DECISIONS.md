@@ -6537,3 +6537,28 @@ quickstart page, the constraints URL (a redirect to `stable/2025.2` of
 again. The TaaS bug in §2.3 was measured on 2026.1 only; the same code is in
 `stable/2025.2`, but it is not checked on 2025.x. Earlier entries and the
 previous-cloud records in `docs/STATE.md` stay as written.
+
+## 2026-10-24 — The reset's last serial steps and MySQL's rollback segments
+
+What: the board image runs `makemigrations` (its migration is committed) and
+`collectstatic` at build; the wargame host's `down -v` of every wargame and
+the sensor run at once; the estate sensor starts beside the wargames; board-db
+and corp-db start with `--innodb-rollback-segments=1`, kept in the compose
+files so the pristine datadir is made with it; the Kali, WAF and wargame host
+images purge and pin out `snapd` and `modemmanager`.
+
+Why: a traced reset (86 s, one slot) still ran these steps in series, and both
+rebuilt VMs spent 15-18 s waiting for `snapd.seeded` with no snap installed.
+MySQL's InnoDB initialisation read about 720 undo pages one at a time for its
+128 rollback segments per undo tablespace. Measurements and sources are in
+`docs/TROUBLESHOOTING.md`.
+
+Result: one slot 70-82 s, two at once 98 s (from 117 s). MySQL's start on the
+range stayed at about 18 s: the restore's writeback shares the disk with it.
+
+Rejected: deleting the spare redo files from the pristine copy (faster on
+scratch datadirs, but the MySQL manual does not say they may be removed); a
+smaller `innodb_redo_log_capacity` (same 32 files and syncs).
+
+Open: a copy-on-write restore (`cp --reflink` on XFS or btrfs), and 4 vCPUs
+for the wargame host, which needs a larger core quota.
