@@ -50,7 +50,6 @@ def test_each_restore_of_the_pristine_board_salts_the_seeded_accounts_afresh(tmp
         return done.stdout
 
     pristine = tmp_path / "pristine.sqlite3"
-    manage(pristine, "makemigrations", "posts", "--noinput")
     manage(pristine, "migrate", "--noinput")
     manage(pristine, "seed")
     built = json.loads(manage(pristine, "shell", "-c", READ).splitlines()[-1])
