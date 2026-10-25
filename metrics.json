@@ -1,8 +1,8 @@
 {
   "core_loc": 584,
-  "product_loc": 25466,
+  "product_loc": 25473,
   "dependencies": 6,
   "services": 5,
   "wargame_services": 4,
-  "tests": 1280
+  "tests": 1283
 }
