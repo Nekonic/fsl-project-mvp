@@ -83,9 +83,12 @@ def tidy(kind: str, live: list[str]) -> list[str]:
         _loaded.pop(key, None)
     return removed
 
-def _run(key: str, read, kind: str, live: list[str]) -> None:
+def _run(key: str, read, kind: str, live: list[str], turn: threading.Lock) -> None:
     try:
-        publish(key, read)
+        try:
+            _published(key, read)
+        finally:
+            turn.release()
         tidy(kind, live)
     except (gns3.Unavailable, RangeUnavailable) as exc:
         _failed[key] = str(exc)
@@ -98,19 +101,21 @@ def begin(key: str, read, kind: str, live: list[str]):
         if key in _running:
             return None
         _running.add(key)
-    worker = threading.Thread(target=_run, args=(key, read, kind, live), name=f"fsl-map-{_salt(key)}", daemon=True)
+    turn = _turn(key)
+    turn.acquire()
+    worker = threading.Thread(target=_run, args=(key, read, kind, live, turn), name=f"fsl-map-{_salt(key)}",
+                              daemon=True)
     worker.start()
     return worker
 
 def served(key: str, language: str, read) -> dict:
     wanted = project_id(key, language)
-    if gns3.status(wanted) != "opened":
-        try:
-            with _turn(key):
-                if gns3.status(wanted) != "opened":
-                    _published(key, read)
-        except (gns3.Unavailable, RangeUnavailable) as exc:
-            _failed[key] = str(exc)
-            return {**gns3.project(language, template(wargame_of(key), language)),
-                    "detail": f"the map of your {key} could not be loaded: {exc}"[:300]}
+    try:
+        with _turn(key):
+            if gns3.status(wanted) != "opened":
+                _published(key, read)
+    except (gns3.Unavailable, RangeUnavailable) as exc:
+        _failed[key] = str(exc)
+        return {**gns3.project(language, template(wargame_of(key), language)),
+                "detail": f"the map of your {key} could not be loaded: {exc}"[:300]}
     return gns3.project(language, {**template(wargame_of(key), language), "project_id": wanted})

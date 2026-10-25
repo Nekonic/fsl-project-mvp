@@ -602,7 +602,7 @@ class OpenStack:
 
         return run
 
-    def interfaces(self, hosts=None) -> list[interfaces.Interface]:
+    def interfaces(self, hosts=None, skip_unanswered=True) -> list[interfaces.Interface]:
         origins = {origin.id: origin.segment for origin in self.declared.origins}
         subnets = [(segment.subnet, origins.get(segment.id, segment.id)) for segment in self.describe().segments]
         found = []
@@ -626,6 +626,8 @@ class OpenStack:
                     subnets_here = subnets
                 found += interfaces.placed(host, own, subnets_here)
             except RangeUnavailable:
+                if not skip_unanswered:
+                    raise
                 continue
         scorer = self.declared.host(SCORER_ROLE)
         if hosts is not None and scorer in hosts:
