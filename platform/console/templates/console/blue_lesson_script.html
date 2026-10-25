@@ -1151,6 +1151,7 @@ function coach(prefix, declared) {
   let sentSince = false;
   let kaliSettling = false;
   let reaching = Promise.resolve();
+  let preparingFor = null;
   let last = "";
   let lost = 0;
   let picked = [];
@@ -1448,10 +1449,13 @@ function coach(prefix, declared) {
 
   function command() {
     const step = steps[at];
-    field("step-command").innerHTML = finished ? "" : commandHtml(step.command || "");
-    field("step-command").classList.toggle("hidden", finished || !step.command);
+    const preparing = !step.command && Boolean(step.has_command) && preparingFor === step;
+    const shown = !finished && (Boolean(step.command) || preparing);
+    field("step-command").innerHTML = shown ? commandHtml(step.command || localized("lesson.command.preparing", "Preparing the command…")) : "";
+    field("step-command").classList.toggle("hidden", !shown);
     field("step-copy").textContent = localized("lesson.command.copy", "Copy");
-    field("step-copy").classList.toggle("hidden", finished || !step.command);
+    field("step-copy").disabled = preparing;
+    field("step-copy").classList.toggle("hidden", !shown);
   }
 
   function opener() {
@@ -1648,7 +1652,15 @@ function coach(prefix, declared) {
   }
 
   function reach(step) {
-    reaching = post(stepPath(step), { state: "reached" }).then((read) => { if (read.ok) learn(read.body); });
+    preparingFor = step;
+    command();
+    reaching = post(stepPath(step), { state: "reached" }).then((read) => {
+      if (preparingFor === step) preparingFor = null;
+      if (read.ok) learn(read.body);
+      if (steps[at] !== step) return;
+      command();
+      if (!read.ok && step.has_command && !step.command) say(t("lesson.command.failed", detail(read)), "fail");
+    });
   }
 
   function leave(index) {

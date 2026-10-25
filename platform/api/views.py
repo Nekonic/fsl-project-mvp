@@ -1710,7 +1710,7 @@ def _shown_step(session, step, taught=None):
     solo = bool(taught and taught.get("group") == "foundations" and step["id"] == taught["steps"][-1]["id"])
     return shown | ({"point": point} if point else {}) | (
         {"command": step["command"]} if reached and step.get("command") else {}) | {
-        "solo": solo, "check": _shown_check(session, taught, check)}
+        "has_command": bool(step.get("command")), "solo": solo, "check": _shown_check(session, taught, check)}
 
 def _shown_check(session, taught, check):
     shown = {"kind": check["kind"], **{key: check[key] for key in SHOWN_CHECK if key in check}}

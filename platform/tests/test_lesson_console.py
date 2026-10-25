@@ -104,7 +104,12 @@ browser.serve((request) => {
     range.states.push([stepped[0], request.body.state]);
     if (request.body.state === "reached") own(stepped[0]).reached = "now";
     else if (!own(stepped[0]).passed) own(stepped[0]).skipped = "now";
-    return {body: stepState(stepped[0], {})};
+    if (request.body.state === "reached" && range.reachFails) return {status: 503, body: {detail: range.reachFails}};
+    const revealed = () => {
+      if (request.body.state === "reached" && (range.commands || {})[stepped[0]]) own(stepped[0]).command = range.commands[stepped[0]];
+      return {body: stepState(stepped[0], {})};
+    };
+    return request.body.state === "reached" && range.reachHold ? range.reachHold.then(revealed) : revealed();
   }
   if (stepped && stepped[1] === "check/") {
     return range.hold ? range.hold.then(() => ({body: judge(stepped[0], request.body)})) : {body: judge(stepped[0], request.body)};
@@ -493,6 +498,43 @@ def test_a_kali_step_shows_the_command_to_type_with_a_copy_button_and_no_button_
     assert "1539" not in result["row"] and "firewall" not in result["row"]
     assert result["row"].endswith(english("lesson.kali.window"))
     assert result["window"] == "/kibana/app/discover#/?run=sqlmap"
+
+COMMAND_WITHHELD = [dict({key: value for key, value in step.items() if key != "command"}, has_command=True)
+                    if step["id"] == "sqlmap" else step for step in STEPS]
+SQLMAP_COMMAND = STEPS[ids.index("sqlmap")]["command"]
+COMMAND_SEEN = """({shown: shown('step-command'), text: browser.text('step-command'), copy: shown('step-copy'),
+                   disabled: browser.element('step-copy').disabled, said: browser.text('step-said')})"""
+
+def test_a_step_with_a_command_shows_a_placeholder_and_a_disabled_copy_until_the_reached_reply_brings_the_command(client):
+    seen = open_page(client, "/blue/1/", setup=served(steps=COMMAND_WITHHELD), scenario=f"""
+      let release;
+      range.commands = {{sqlmap: {json.dumps(SQLMAP_COMMAND)}}};
+      range.reachHold = new Promise((resolve) => {{ release = resolve; }});
+      {to("sqlmap")}
+      const waiting = {COMMAND_SEEN};
+      range.reachHold = null;
+      release();
+      await browser.settle();
+      return {{waiting, ready: {COMMAND_SEEN}}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["waiting"] == {"shown": True, "text": english("lesson.command.preparing"), "copy": True,
+                                         "disabled": True, "said": ""}, (
+        "the reached reply waits for the marker's write to the stamp proxy, about 2 s live; the command area shows at once")
+    assert seen["result"]["ready"] == {"shown": True, "text": SQLMAP_COMMAND, "copy": True, "disabled": False, "said": ""}
+
+def test_a_reached_reply_that_fails_hides_the_command_placeholder_and_says_why(client):
+    seen = open_page(client, "/blue/1/", setup=served(steps=COMMAND_WITHHELD), scenario=f"""
+      range.reachFails = "the stamp proxy did not answer";
+      {to("sqlmap")}
+      await browser.settle();
+      return {COMMAND_SEEN};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"shown": False, "text": "", "copy": False, "disabled": False,
+                              "said": english("lesson.command.failed", "the stamp proxy did not answer")}
 
 def test_opening_kibana_at_the_run_s_time_again_reloads_it_so_a_record_ingested_since_shows(client):
     seen = open_page(client, "/blue/1/", setup=served() + """
