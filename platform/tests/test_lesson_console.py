@@ -483,7 +483,7 @@ def test_a_kali_step_shows_the_command_to_type_with_a_copy_button_and_no_button_
     assert result["command"] == {"shown": True, "text": step["command"], "copy": True, "styled": None, "pieces": [
         "sqlmap", "-u", '"http://', "board.com/?", 'sort=posts_post.id*"', "--batch"]}, (
         "a space-separated word never breaks across lines; a long path may break only after a slash or a question mark")
-    assert result["buttons"] == [english("lesson.kali.check"), english("lesson.hint.more"), english("lesson.coach.back"),
+    assert result["buttons"] == [english("lesson.kali.check"), english("lesson.hint.show"), english("lesson.coach.back"),
                                  english("lesson.coach.next")], "the learner types every attack"
     assert result["stayed"] == "lesson.demo.label.sqlmap", "the pass line stays until the learner presses Next"
     assert result["title"] == "lesson.demo.label.verdict"
@@ -1094,10 +1094,10 @@ kibana.set('[data-test-subj="queryInput"]', box(300, 20, 400, 36));
 def test_a_field_step_rings_the_first_row_that_has_the_field_and_moves_off_a_document_without_it(client):
     seen = open_page(client, "/blue/1/", setup=served() + GRID + VALUED, scenario=f"""
       STRINGS.en['lesson.kibana.other'] = 'Another event';
-      STRINGS.en['lesson.kibana.query'] = 'Type the KQL';
+      STRINGS.en['lesson.kibana.fieldless'] = 'No event has {{0}}';
       {to("rule")}
       await browser.click('step-open');
-      ruleIds = ['-', '941100,949110'];
+      ruleIds = [' - ', '941100,949110'];
       await frames();
       const valued = styled('coach-ring');
       kibana.set('[data-test-subj="docViewerFlyout"]', box(500, 0, 480, 704));
@@ -1109,7 +1109,7 @@ def test_a_field_step_rings_the_first_row_that_has_the_field_and_moves_off_a_doc
       typed = 'rule_id';
       await frames();
       const other = {{ring: styled('coach-ring'), text: browser.text('coach-callout')}};
-      ruleIds = ['-', '-'];
+      ruleIds = [' - ', ' - '];
       await frames();
       const query = browser.text('coach-callout');
       kibana.delete('[data-test-subj="docViewerFlyout"]');
@@ -1122,21 +1122,22 @@ def test_a_field_step_rings_the_first_row_that_has_the_field_and_moves_off_a_doc
 
     assert seen["errors"] == []
     assert result["valued"] == {"left": 64, "top": 430, "width": 32, "height": 32}, (
-        "the second row: the first one's rule_id is -, an IDS event that has none")
+        "the second row: the first one's rule_id is Kibana's ' - ', an IDS event that has none")
     assert result["untyped"] == {"left": 574, "top": 175, "width": 312, "height": 26}, (
         "the field may sit on another page of the document table until its name is typed")
     assert result["other"] == {"ring": {"left": 814, "top": 114, "width": 36, "height": 36}, "text": "Another event"}
-    assert result["query"] == "Type the KQL", "no row carries the field: the query has to change"
+    assert result["query"] == "No event has rule_id", "no row carries the field: the query has to change"
     assert result["bare"] == {"left": 64, "top": 390, "width": 32, "height": 32}, (
-        "no row carries a value, as when no WAF rule matched: the first row is still the one to expand")
+        "no row carries the field under a new query: the first row is still the one to expand")
 
 def test_a_closed_document_without_the_field_keeps_asking_for_the_query_until_it_changes(client):
     seen = open_page(client, "/blue/1/", setup=served() + GRID + VALUED, scenario=f"""
       STRINGS.en['lesson.kibana.expand'] = 'Expand the row';
       STRINGS.en['lesson.kibana.query'] = 'Type the KQL';
+      STRINGS.en['lesson.kibana.fieldless'] = 'No event has {{0}}';
       {to("rule")}
       await browser.click('step-open');
-      ruleIds = ['-', '-'];
+      ruleIds = [' - ', ' - '];
       await frames();
       const fresh = {{ring: styled('coach-ring'), text: browser.text('coach-callout')}};
       kibana.set('[data-test-subj="docViewerFlyout"]', box(500, 0, 480, 704));
@@ -1156,11 +1157,45 @@ def test_a_closed_document_without_the_field_keeps_asking_for_the_query_until_it
     first_row = {"ring": {"left": 64, "top": 390, "width": 32, "height": 32}, "text": "Expand the row"}
 
     assert seen["errors"] == []
-    assert result["fresh"] == first_row, "no row carries a value, as when no WAF rule matched: the first row is the one to expand"
-    assert result["lacking"] == "Type the KQL"
-    assert result["closed"] == "Type the KQL", (
+    assert result["fresh"] == first_row, "no row carries the field: the first row is the one to expand"
+    assert result["lacking"] == "No event has rule_id", "the query is there already: it has to change, and the field is named"
+    assert result["closed"] == "No event has rule_id", (
         "the same query already showed a document without the field: expanding a row again would loop")
     assert result["changed"] == first_row, "a new query is a new result: its first row is worth expanding again"
+
+def test_a_field_step_rings_a_waf_row_whose_rule_id_is_a_dash_over_rows_kibana_shows_without_the_field(client):
+    seen = open_page(client, "/blue/1/", setup=served() + GRID + VALUED, scenario=f"""
+      STRINGS.en['lesson.kibana.expand'] = 'Expand the row';
+      {to("rule")}
+      await browser.click('step-open');
+      ruleIds = [' - ', ' - ', '-'];
+      await frames();
+      const dashed = {{ring: styled('coach-ring'), text: browser.text('coach-callout')}};
+      ruleIds = [' - ', '-', '942100'];
+      await frames();
+      const valued = styled('coach-ring');
+      return {{dashed, valued}};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["dashed"] == {"ring": {"left": 64, "top": 470, "width": 32, "height": 32}, "text": "Expand the row"}, (
+        "Kibana shows a missing field as ' - ' and the WAF writes '-' when no rule matched: the third row is the WAF log")
+    assert result["valued"] == {"left": 64, "top": 470, "width": 32, "height": 32}, "a row with a rule ID comes before a '-'"
+
+def test_the_hint_button_offers_the_next_hint_only_after_the_learner_opened_one(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("source")}
+      const fresh = browser.text('step-hint');
+      for (let i = 0; i < 61; i += 1) await browser.wait(1000);
+      const offered = browser.text('step-hint');
+      await browser.click('step-hint');
+      return {{fresh, offered, opened: browser.text('step-hint')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"fresh": english("lesson.hint.show"), "offered": english("lesson.hint.show"),
+                              "opened": english("lesson.hint.next")}, "the timer offers a hint; no hint has been opened yet"
 
 def test_a_value_the_document_panel_scrolled_under_its_footer_asks_for_the_field_and_only_a_panel_over_the_target_asks_to_close_it(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""

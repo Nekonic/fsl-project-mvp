@@ -299,6 +299,7 @@ const KIBANA = {
   rows: '[data-test-subj^="tableDocViewRow-"]',
 };
 const GRID_ROW = "data-gridcell-row-index";
+const GRID_MISSING = " - ";
 const queryArrival = { step: "", text: null };
 const fieldlessQuery = { step: "", text: null };
 
@@ -321,11 +322,15 @@ function gridRowOf(element) {
   return cell ? cell.getAttribute(GRID_ROW) : null;
 }
 
-function gridColumn(doc, name) {
+function gridCells(doc, name) {
   return new Map(Array.from(doc.querySelectorAll(KIBANA.cell(name))).map((cell) => {
     const shown = (typeof cell.querySelector === "function" && cell.querySelector(KIBANA.cellText)) || cell;
-    return [gridRowOf(cell), (shown.textContent || "").replace(/\s+/g, "")];
+    return [gridRowOf(cell), shown.textContent || ""];
   }));
+}
+
+function gridColumn(doc, name) {
+  return new Map(Array.from(gridCells(doc, name)).map(([row, text]) => [row, text.replace(/\s+/g, "")]));
 }
 
 function rowToggle(doc, row) {
@@ -344,10 +349,12 @@ function legRow(doc, spec) {
   return found ? rowToggle(doc, found.row) : null;
 }
 
-function valuedRow(doc, name) {
+function carryingRow(doc, name) {
   if (typeof doc.querySelectorAll !== "function") return null;
-  const column = gridColumn(doc, name);
-  const row = Array.from(column.keys()).find((at) => at !== null && column.get(at) && column.get(at) !== "-");
+  const cells = gridCells(doc, name);
+  const rows = Array.from(cells.keys()).filter((at) => at !== null && cells.get(at).trim() && cells.get(at) !== GRID_MISSING);
+  const valued = rows.find((at) => cells.get(at).trim() !== "-");
+  const row = valued === undefined ? rows[0] : valued;
   return row === undefined ? null : rowToggle(doc, row);
 }
 
@@ -382,19 +389,22 @@ function kibanaFound(doc, spec) {
     }
     const value = found(KIBANA.value(spec.doc));
     if (boxOf(value) && !coveredIn(doc, value)) return { element: value, also: found(KIBANA.name(spec.doc)), stage: "" };
-    const valued = valuedRow(doc, spec.doc);
+    const carrying = carryingRow(doc, spec.doc);
     if (boxOf(found(KIBANA.flyout))) {
       if (!lacksField(doc, spec.doc)) return { element: first(KIBANA.fieldFilter), stage: "field" };
       const opened = openedRow(doc);
-      const arrow = opened && valued && opened.row !== valued.row
-        ? opened.page.querySelector(opened.row > valued.row ? KIBANA.previous : KIBANA.next) : null;
+      const arrow = opened && carrying && opened.row !== carrying.row
+        ? opened.page.querySelector(opened.row > carrying.row ? KIBANA.previous : KIBANA.next) : null;
       if (boxOf(arrow) && !arrow.disabled) return { element: arrow, stage: "other" };
-      if (!valued) Object.assign(fieldlessQuery, { step: spec.step, text: queryText(doc) });
+      if (!carrying || (opened && opened.row === carrying.row)) {
+        Object.assign(fieldlessQuery, { step: spec.step, text: queryText(doc) });
+        return { element: first(KIBANA.query), stage: "fieldless" };
+      }
       return { element: first(KIBANA.query), stage: "query" };
     }
-    if (valued) return { element: valued.toggle, stage: "expand" };
     const text = queryText(doc);
-    if (text !== null && fieldlessQuery.step === spec.step && fieldlessQuery.text === text) return { element: first(KIBANA.query), stage: "query" };
+    if (text !== null && fieldlessQuery.step === spec.step && fieldlessQuery.text === text) return { element: first(KIBANA.query), stage: "fieldless" };
+    if (carrying) return { element: carrying.toggle, stage: "expand" };
     const expand = first(KIBANA.expand);
     return expand ? { element: expand, stage: "expand" } : { element: first(KIBANA.query), stage: "query" };
   }
@@ -487,7 +497,7 @@ function kibanaRect(spec, leg, step) {
   const inFlyout = Boolean(flyout && element && typeof flyout.contains === "function" && flyout.contains(element));
   if (!inFlyout && coveredIn(doc, element)) return { rect: inFrame(frame, boxOf(doc.querySelector(KIBANA.close))), stage: "covered" };
   const rect = inFrame(frame, joined(boxOf(element), boxOf(also)));
-  const core = !rect ? [] : stage === "query" || spec.query ? pickerRows(doc, rect)
+  const core = !rect ? [] : stage === "query" || stage === "fieldless" || spec.query ? pickerRows(doc, rect)
     : spec.doc ? flyoutRows(doc, rect) : spec.hits || spec.sidebar ? toolbarRows(doc, rect) : [];
   const crowd = rect ? [...core, ...frameText(doc, rect)] : core;
   return { rect, stage, leg: aimed || "", crowd, core, within: stage === "other" ? inFrame(frame, boxOf(flyout)) : null };
@@ -1218,6 +1228,8 @@ function coach(prefix, declared) {
     return [...new Set(lines.filter(Boolean))];
   }
 
+  const hintLabel = () => t(level > 0 ? "lesson.hint.next" : "lesson.hint.show");
+
   function showHelp() {
     const step = steps[at];
     const passed = done(step) && !finished;
@@ -1225,7 +1237,7 @@ function coach(prefix, declared) {
     field("step-help").innerHTML = lines.map((line) => `<p>${esc(line)}</p>`).join("");
     shownSection("step-help", lines.length > 0);
     offered = false;
-    field("step-hint").textContent = t("lesson.hint.more");
+    field("step-hint").textContent = hintLabel();
     field("step-hint").classList.remove("btn-blue");
     field("step-hint").classList.toggle("hidden", solo() || passed || level >= SKIP_OFFERED || finished);
     field("step-skip").classList.toggle("hidden", finished || passed || !(solo() || level >= SKIP_OFFERED));
@@ -1234,7 +1246,7 @@ function coach(prefix, declared) {
   function offerHint() {
     if (offered || solo() || done(steps[at])) return;
     offered = true;
-    field("step-hint").textContent = t("lesson.hint.available");
+    field("step-hint").textContent = hintLabel();
     field("step-hint").classList.add("btn-blue");
   }
 
@@ -1510,6 +1522,7 @@ function coach(prefix, declared) {
     if (!target) return "";
     if (home) return t("lesson.site.home");
     if (found.stage === "field") return phrase(STAGE_KEYS.field, "", target.spec.doc || "");
+    if (found.stage === "fieldless") return phrase("lesson.kibana.fieldless", t(STAGE_KEYS.query), target.spec.doc || "");
     if (found.stage === "run_done" && kaliSettling) return t("lesson.check.kali_settling");
     if (found.stage) {
       const key = STAGE_KEYS[found.stage];
