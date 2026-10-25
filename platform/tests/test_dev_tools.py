@@ -83,6 +83,48 @@ def test_the_initiator_and_timing_tabs_show_what_the_record_holds(client):
     assert "http://board.com/search/?q=hello" in result["chain"] and "http://board.com/static/app.css" in result["chain"]
     assert "Total" in result["timing"] and "20 ms" in result["timing"]
 
+HELD_DETAILS = """
+const details = new Map();
+const realServe = browser.serve;
+browser.serve = (handler) => realServe((request) => {
+  const id = (request.route.match(/\\/site\\/requests\\/(\\d+)\\/$/) || [])[1];
+  return id && details.has(Number(id)) ? details.get(Number(id)) : handler(request);
+});
+"""
+
+def test_a_picked_request_shows_nothing_of_the_previous_one_while_its_record_loads_and_a_late_answer_for_another_row_is_dropped(client):
+    seen = open_page(client, "/blue/1/", setup=HELD_DETAILS + served() + ROWS, scenario="""
+      const sorted = {...doc, id: 4, url: "http://board.com/?sort=created_at"};
+      await browser.click('[data-pane="site"]');
+      await browser.click('site-dev-toggle');
+      dev.rows = [doc, css, sorted];
+      devRows();
+      dev.tab = 'payload';
+      details.set(1, {body: doc});
+      await devPick(1);
+      const first = browser.element('site-dev-view').innerHTML.includes('hello');
+      let release;
+      details.set(4, new Promise((resolve) => { release = resolve; }));
+      const picking = devPick(4);
+      await frames();
+      const loading = {hello: browser.element('site-dev-view').innerHTML.includes('hello'),
+                       ring: Boolean(devElement('payload.query', {check: {}}).element)};
+      details.set(2, {body: {...doc, id: 2, url: "http://board.com/search/?q=other"}});
+      await devPick(2);
+      release({body: sorted});
+      await picking;
+      await frames();
+      const late = {sorted: browser.element('site-dev-view').innerHTML.includes('created_at'),
+                    other: browser.element('site-dev-view').innerHTML.includes('other')};
+      devUnpick();
+      return {first, loading, late, unpicked: browser.element('site-dev-view').innerHTML};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"first": True, "loading": {"hello": False, "ring": False}, "late": {"sorted": False, "other": True},
+                              "unpicked": ""}, (
+        "the payload tab showed the previous request's q=hello while the coach spoke of the sorted request")
+
 def test_a_disk_cache_row_reads_as_in_chrome_and_the_resources_figure_is_the_decoded_size(client):
     seen = open_page(client, "/blue/1/", setup=served() + ROWS, scenario="""
       dev.rows = [doc, css, cached];

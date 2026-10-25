@@ -342,6 +342,8 @@ function devShow() {
 
 async function devPick(id) {
   dev.picked = id;
+  dev.record = null;
+  field("site-dev-view").innerHTML = "";
   devRows();
   field("site-dev-detail").classList.remove("hidden");
   field("site-dev-detail").classList.add("flex");
@@ -354,6 +356,7 @@ async function devPick(id) {
 function devUnpick() {
   dev.picked = null;
   dev.record = null;
+  field("site-dev-view").innerHTML = "";
   field("site-dev-detail").classList.add("hidden");
   field("site-dev-detail").classList.remove("flex");
   field("site-dev").classList.remove("dv-picked");
