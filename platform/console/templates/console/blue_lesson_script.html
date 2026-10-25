@@ -601,7 +601,7 @@ function termRect(spec) {
   const term = terminalOf(host);
   const screen = term && term.element && term.element.querySelector ? term.element.querySelector(".xterm-screen") : null;
   const area = screen ? screen.getBoundingClientRect() : null;
-  if (!term || !term.rows || !area || !area.height) return bottom(BAND_ROWS * ROW_GUESS);
+  if (!term || !term.rows || !area || !area.height) return none;
   const rowHeight = area.height / term.rows;
   const cellWidth = area.width / (term.cols || 80);
   const buffer = term.buffer.active;
