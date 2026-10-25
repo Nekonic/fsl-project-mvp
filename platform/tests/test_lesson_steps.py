@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 import kibana
+import lesson
 import wargames
 from api import site, views
 from api.models import Case, Detection, Objective, Session
@@ -371,29 +372,39 @@ def test_waf_records_without_a_rule_are_no_alert_so_a_run_that_drew_only_server_
     assert none["passed"] is True
     assert waf["passed"] is True
 
-def waf_record(at, status, marker=None):
+def waf_record(at, status, marker=None, rules=()):
     headers = {"X-Request-ID": marker} if marker else {}
     return {"event": {"module": "modsecurity"}, "@timestamp": at.isoformat(),
-            "transaction": {"request": {"headers": headers}, "response": {"http_code": status}}}
+            "transaction": {"request": {"headers": headers}, "response": {"http_code": status},
+                            "messages": [{"message": "matched", "details": {"ruleId": rule}} for rule in rules]}}
 
-def test_the_errors_a_run_drew_are_the_waf_log_records_with_status_500_in_the_window_kibana_opens(client):
+def test_the_trace_question_asks_the_rule_id_kibana_shows_on_the_run_s_500_records_in_the_window_kibana_opens(client):
     session = taught("f6")
     now = timezone.now()
     started, ended = now - timedelta(seconds=90), now - timedelta(seconds=30)
     recorded_run(session, "f6", "dump", "dump-run", started, ended)
     inside = [waf_record(started + timedelta(seconds=10 * n), status, "dump-run" if n % 2 else None)
-              for n, status in enumerate((500, 500, 403, 500))]
-    suricata = [dict(http_event("dump-run", "/?sort=posts_post.id", started + timedelta(seconds=5), 500))]
-    before = waf_record(started - timedelta(seconds=20), 500, "dump-run")
+              for n, status in enumerate((500, 500, 500))]
+    blocked = waf_record(started + timedelta(seconds=40), 403, "dump-run", rules=("942100", "949110"))
+    before = waf_record(started - timedelta(seconds=20), 500, "dump-run", rules=("913100",))
     asked = []
-    with quietly(), indexed(*inside, *suricata, before, asked=asked):
-        accepted = views._accepted(session, {"kind": "answer", "of": "run_errors", "about": "dump"})
-        right = check(client, session, "seen", {"answer": "3"}).json()
-        suricata_count = check(client, session, "seen", {"answer": "4"}).json()
+    with quietly(), indexed(*inside, blocked, before, asked=asked):
+        accepted = views._accepted(session, {"kind": "answer", "of": "error_rule_id", "about": "dump"})
+        right = check(client, session, "seen", {"answer": "-"}).json()
+        counted = check(client, session, "seen", {"answer": "1,310"}).json()
 
-    assert accepted == ["3"], "the WAF records with status 500, the number log_source : modsecurity and status : 500 shows"
+    assert accepted == ["-"], "what rule_id shows on a WAF record no rule matched; a 403's rules and a record before the run are not asked"
     assert asked[0] == (started - views.RECORD_SLACK, ended + views.RECORD_SLACK), "the window the Kibana button opens"
-    assert right["passed"] is True and suricata_count["passed"] is False
+    assert right["passed"] is True
+    assert counted["passed"] is False and counted["reason"] == ["lesson.miss.wrong.seen.count", []], (
+        "sqlmap prints how many 500s it drew, so the count is no longer the question")
+
+def test_a_500_record_a_rule_matched_shows_that_rule_id_beside_the_dash():
+    records = [{"transaction": {"response": {"http_code": 500}, "messages": [{"details": {"ruleId": "942100"}}]}},
+               {"transaction": {"response": {"http_code": 500}}},
+               {"transaction": {"response": {"http_code": 403}, "messages": [{"details": {"ruleId": "949110"}}]}}]
+
+    assert lesson.server_error_rules(records, "-") == ["-", "942100"]
 
 def test_the_cost_question_asks_what_the_admin_objective_would_have_cost_if_detected_not_the_printed_total(client):
     session = taught("f6")

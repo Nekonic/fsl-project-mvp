@@ -766,7 +766,7 @@ WAF 상태 스냅샷:
 
 `platform/lesson.py`에는 조치 유형 함수와 함께 다음이 있습니다.
 
-- 단계 답을 다루는 함수: `answered`, `rules_named`, `added_rules`, `pasted_rows`, `server_errors`, `alerted_by`, `detected_penalty`
+- 단계 답을 다루는 함수: `answered`, `rules_named`, `added_rules`, `pasted_rows`, `server_error_rules`, `alerted_by`, `detected_penalty`
 - 도움 사용 횟수
 - 시나리오 디브리핑에 나오는 추가·삭제한 예외 규칙과 파일 diff(`exclusions_changed`, `config_diff`)
 
@@ -1007,12 +1007,12 @@ board의 `scenario.yaml`은 `foundations:` 목록을 선언합니다. discovery 
 
 **f6 넓은 예외 처리로 놓친 공격 확인하기**(`lesson.miss`). defense `overbroad`, WAF 창에서 시작합니다.
 
-- 학습자는 예외 파일을 grep해 빠진 파라미터를 찾습니다. sqlmap으로 계정을 덤프해 표를 붙여 넣습니다. 어느 엔진이 경보를 냈는지, 실행 구간에서 WAF 로그에 남은 status 500 기록 수, 관리자 목표가 탐지되었을 때 붙는 감점을 답합니다. 그다음 예외를 지우고 nginx를 reload합니다. 혼자 푸는 단계에서는 덤프를 다시 실행하고 정렬을 한 번 바꿉니다.
+- 학습자는 예외 파일을 grep해 빠진 파라미터를 찾습니다. sqlmap으로 계정을 덤프해 표를 붙여 넣습니다. 어느 엔진이 경보를 냈는지, 실행 구간에서 WAF 로그에 남은 status 500 기록의 rule_id(`-`: 기록은 됐지만 매칭된 룰 없음), 관리자 목표가 탐지되었을 때 붙는 감점을 답합니다. 그다음 예외를 지우고 nginx를 reload합니다. 혼자 푸는 단계에서는 덤프를 다시 실행하고 정렬을 한 번 바꿉니다.
 - 답은 다음에서 읽습니다.
   - `excluded_target`: 적용 중인 WAF 파일(`ARGS:sort` 또는 `sort`)
   - `loot`: 세션 스냅샷과 대조합니다.
   - `alerted_by`: 실행의 탐지 기록으로 없음, IDS만, WAF만, 둘 다를 구분합니다.
-  - `run_errors`: Kibana가 열리는 조회 기간의 WAF(ModSecurity) 로그 중 status 500인 기록 수입니다. `log_source : modsecurity and status : 500`이 보여 주는 수입니다(`lesson.server_errors`).
+  - `error_rule_id`: Kibana가 열리는 조회 기간의 WAF(ModSecurity) 로그 중 status 500인 기록에서 Kibana의 `rule_id` 필드가 보여 주는 값입니다. 매칭된 룰이 없는 기록은 `-`입니다(`lesson.server_error_rules`). 건수는 묻지 않습니다. sqlmap이 받은 500 응답 수를 직접 출력하기 때문입니다.
   - `objective:`가 붙은 `detected_penalty`: 그 목표가 탐지되었을 때 붙는 감점, 곧 난이도 ×1입니다. 값은 `wargames.objectives`의 등급에서 읽고, 채점하지 않는 시나리오에서는 비어 있습니다.
   - `waf_changed`
   - `replay`: 실행이 차단되고 탈취 데이터가 없는지, 일반 정렬이 2xx이고 WAF 기록이 없는지
@@ -1073,7 +1073,7 @@ F6의 sqlmap 명령에는 `--skip-waf`가 붙습니다. 그러지 않으면 sqlm
 
 - `of:`가 훈련 환경 사실인 경우: `address`, `subnet`, `zone_of`, `path`, `logs`, `host_of`, `excluded_target`, `lost_points`, `detected_penalty`
 - `of:`가 요청 사실이고 `about:`이 `match`가 있는 단계를 가리키거나 단계 자신의 `match`가 있는 경우(그 단계와 일치하는 가장 최근 웹사이트 창 기록을 읽음): `status`, `method`, `path`, `parameter`, `param_value`, `sensor_source`, `forwarded_for`, `waf_logged`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_sid`, `alerted_sid_present`, `hits`
-- `of:`가 Kali 사실이고 `about:`이 `kali` 단계를 가리키는 경우: `sqlmap_found`, `kali_source`, `alerted_by`, `run_errors`
+- `of:`가 Kali 사실이고 `about:`이 `kali` 단계를 가리키는 경우: `sqlmap_found`, `kali_source`, `alerted_by`, `error_rule_id`
 - 요청의 `path`나 `step:` 마커와 함께 쓰는 `rule`(위)
 
 ## 점수 계산 방식

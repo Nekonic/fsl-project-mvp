@@ -411,7 +411,7 @@ def test_f6_reads_the_exception_the_alerts_the_attack_drew_and_the_errors_it_cau
     with quietly(), on_map(read_slot()), on_the_range(), indexed(*edge, *upstream, *logged), \
             patch("api.views._waf_in_force", lambda session: standing):
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("excluded", "sort"), ("alerts", "none"), ("seen", "3"))}
+            ("excluded", "sort"), ("alerts", "none"), ("seen", "-"))}
         detected(session, "ids", "suricata", "dump-1", "SQLi", alert={"signature_id": 9000003})
         ids_only = answer(client, session, "alerts", "ids")["passed"]
 

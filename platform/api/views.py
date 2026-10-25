@@ -840,10 +840,9 @@ def _kali_fact(session, check):
         except RangeUnavailable:
             return []
         return [] if found is None else [lesson.YES if found else lesson.NO]
-    if of == "run_errors":
-        errors = lesson.server_errors(_logged(session, recorded.started_at - RECORD_SLACK,
-                                              recorded.ended_at + RECORD_SLACK, "modsecurity"))
-        return [str(errors)] if errors else []
+    if of == "error_rule_id":
+        return lesson.server_error_rules(_logged(session, recorded.started_at - RECORD_SLACK,
+                                                 recorded.ended_at + RECORD_SLACK, "modsecurity"), kibana.NO_RULE)
     if check.get("from") == "http":
         return sorted({str(event["src_ip"]) for event in _on_leg(session, _run_events(session, recorded), "inbound")
                        if event.get("src_ip")})
