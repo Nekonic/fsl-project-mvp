@@ -1308,6 +1308,8 @@ function coach(prefix, declared) {
     act.querySelector('[data-act="picked"]').textContent = picked.join(" > ");
   }
 
+  let courseWhole = false;
+
   function courseSummary() {
     const notes = [t("lesson.course.scores"), localized("lesson.course.result_link", "")].filter(Boolean).join("\n");
     return `<ul data-act="course" class="flex flex-col gap-1 text-[12.5px]"></ul>
@@ -1322,6 +1324,8 @@ function coach(prefix, declared) {
     const wargame = read.ok && Array.isArray(read.body) ? read.body.find((one) => one.id === session.scenario) : null;
     const taken = new Set((session.lessons || []).map((one) => one.id));
     const taught = wargame ? (wargame.foundations || []).filter((one) => taken.has(one.id)) : [];
+    courseWhole = taught.length > 0 && taught.length === wargame.foundations.length;
+    if (finished) field("step-task").textContent = finishedText();
     list.innerHTML = taught.map((one) => `<li class="flex items-center gap-2" data-course="${esc(one.id)}">
       <span class="text-success font-bold">✓</span><span>${esc(t(one.title))}</span></li>`).join("");
   }
@@ -1467,7 +1471,7 @@ function coach(prefix, declared) {
 
   function finishedText() {
     if (nextLesson) return t("lesson.next.ready", t(`${nextLesson.text}.title`));
-    return t(foundation ? "lesson.course.done" : "lesson.done");
+    return t(foundation && courseWhole ? "lesson.course.done" : "lesson.done");
   }
 
   function nextStyled() {

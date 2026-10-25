@@ -33,6 +33,11 @@
         </div>
       </section>
 
+      <section id="stretch-card" class="hidden card p-3 flex-col gap-1">
+        <b data-t="lesson.stretch" class="text-heading"></b>
+        <p id="stretch-text" class="text-body whitespace-pre-line"></p>
+      </section>
+
       <section id="theory-card" class="card hidden flex-col">
         <button id="theory-toggle" type="button" class="w-full text-left px-3 py-2 font-semibold text-heading flex items-center gap-2" aria-expanded="false">
           <span data-t="lesson.tab.theory" class="flex-1"></span><span id="theory-mark" class="text-faint text-[12px]">▾</span>
@@ -63,11 +68,6 @@
           <button type="button" id="scenario-hints-close" class="ml-auto text-faint hover:text-heading text-[16px] leading-none" aria-label="close">×</button>
         </div>
         <ol id="scenario-hint-list" class="flex flex-col gap-2"></ol>
-      </section>
-
-      <section id="stretch-card" class="hidden card p-3 flex-col gap-1">
-        <b data-t="lesson.stretch" class="text-heading"></b>
-        <p id="stretch-text" class="text-body whitespace-pre-line"></p>
       </section>
 
       <section id="steps-card" class="card hidden flex-col">

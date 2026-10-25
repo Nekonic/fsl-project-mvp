@@ -1044,7 +1044,7 @@ The detail carries:
 The console offers only the next unit.
 
 - When a foundation's last step passes or is skipped, the card says "Lesson complete. Next lesson: <title>" with a "Next lesson" button. 2 s later the console posts the switch and reloads the page into the new unit, unless the unit shows a stretch task; then the learner presses "Next lesson".
-- After F6, the card lists the lessons taken. Its button ingests, closes the session through `POST /close/` and opens the session page. That page's course card lists each lesson's steps passed and skipped, and labels each Kali run "Lesson n · step m".
+- After F6, the card lists the lessons taken. It says "All foundation lessons complete." only when the session took every foundation lesson, otherwise "Lesson complete.". The stretch card sits right under the step card. Its button ingests, closes the session through `POST /close/` and opens the session page. That page's course card lists each lesson's steps passed and skipped, and labels each Kali run "Lesson n · step m".
 - Restarting starts the first lesson the learner worked in (the page's `begun()`: passed, skipped or hinted, or the lesson the session opened on) with its own defense. With more than one such lesson the button reads "Start again from lesson n", with one "Start the same lesson again".
 
 Nothing is reset between units. The board allows this, because its objective layer is exfiltration only (loot matched against the snapshot taken at open). A unit therefore leaves the ground truth as it found it. F4 and F6 change the posture in place, and F5 returns it to `full`.

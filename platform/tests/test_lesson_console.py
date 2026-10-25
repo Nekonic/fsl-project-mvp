@@ -1,5 +1,6 @@
 import json
 import re
+from pathlib import Path
 
 import pytest
 
@@ -896,6 +897,26 @@ def test_a_finished_foundation_starts_the_next_lesson_and_the_last_one_ends_on_a
         assert result["waited"] == 0, "the summary stays until the learner closes the session"
         assert (result["moved"], result["closed"]) == ([], 1)
         assert result["href"].endswith("/session/1/")
+
+def test_the_last_foundation_says_the_course_is_done_only_when_the_session_took_every_foundation(client):
+    seen = open_page(client, "/blue/1/", setup=served(next_lesson=None).replace(
+        'lessons: [{id: "f1"}, {id: "f9"}]', 'lessons: [{id: "f9"}]'), scenario=f"""
+      {to("db_ip")}
+      {answering(RIGHT["db_ip"])}
+      await browser.wait(500);
+      return {{said: browser.text('step-task'),
+               course: document.querySelectorAll('#step-act [data-course]').map((line) => line.dataset.course)}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"said": english("lesson.done"), "course": ["f9"]}, (
+        "a session that took only the last lesson finished that lesson, not every foundation lesson")
+
+def test_the_stretch_task_sits_right_under_the_step_card_so_a_finished_lesson_shows_it_without_scrolling():
+    note = (Path(__file__).resolve().parents[1] / "console/templates/console/blue_note.html").read_text()
+    order = [note.index(f'id="{card}"') for card in ("step-card", "stretch-card", "theory-card", "lesson-objectives")]
+
+    assert order == sorted(order)
 
 LOCATORS = {"panel", "map", "site", "dev", "kibana", "term"}
 POINT_KEYS = LOCATORS | {"opens", "until", "then", "keep"}
