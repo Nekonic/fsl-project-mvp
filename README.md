@@ -731,13 +731,16 @@ through the lesson's steps.
   session records hint use.
 - A lesson's last step is done alone, with no highlight or hint.
 
-The benign request that a lesson replays at open is scored as a benign case.
+The benign request that a lesson replays is scored as a benign case. The first
+lesson replays it at open; a lesson moved to later replays it when the learner
+first passes, skips or takes a hint on one of its steps.
 
 The six lessons run back to back in one session. When a lesson's last step
 passes, the note names the next lesson. After 2 seconds, or when the learner
 presses "Next lesson", it starts that lesson in the same session
-(`POST /api/sessions/<id>/lesson/ {"lesson": "f2"}`). That call applies the
-lesson's defense in place and replays its benign request. The range is not reset
+(`POST /api/sessions/<id>/lesson/ {"lesson": "f2"}`). A lesson that shows a
+"Try it yourself" task after its last step waits for "Next lesson". That call
+applies the lesson's defense in place. The range is not reset
 between lessons, and each lesson judges only what happened since it started.
 After F6 the note lists the lessons taken, and its button closes the session.
 
