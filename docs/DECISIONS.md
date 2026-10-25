@@ -4932,6 +4932,14 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   re-read by a poll of the Kali check after a reload. 3a7238d's
   keep-until-Next is removed; 470b1bb's re-placement of the popover when a row
   is drawn stays, since the row now makes the next step's popover taller.
+  Reaching a Kali step (F5's sqlmap steps, F6's `dump` and `replay`) writes
+  the marker to the stamp proxy over ssh before the reply, about 1.9 s live
+  against 0.1 s for other steps, and the command text comes only in that
+  reply, so F6 `replay` showed no command for about 2 s (live review round
+  10). The write stays ahead of the reply, so no request typed from the shown
+  command goes out unlabelled. Each step instead says `has_command`, and the
+  card shows "Preparing the command…" with a disabled Copy until the reply
+  brings the text; a failed reply says so in the card.
 - `bin/verify --changed`: unit 821 passed; `--fast` 1483 passed; ratchet
   holds (core_loc 580; tests 1057 -> 1063, reported). `bin/select-tests`
   named all 32 acceptance files (no acceptance test names the changed

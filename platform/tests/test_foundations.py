@@ -347,6 +347,17 @@ def test_a_replay_passes_only_when_the_attack_after_the_fix_alerts_and_an_ordina
     assert no_benign["reason"] == ["lesson.check.replay_benign", []]
     assert done["passed"] is True
 
+def test_a_step_says_it_has_a_command_before_it_is_reached_and_gives_the_text_only_once_reached(client):
+    session = opened("f6")
+    before = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
+    with patch("api.views.attacker.set_label"):
+        step(client, session, "replay", tail="", body={"state": "reached"})
+    after = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
+
+    assert (before["replay"]["has_command"], "command" in before["replay"]) == (True, False)
+    assert (before["loot"]["has_command"], "command" in before["loot"]) == (False, False)
+    assert after["replay"]["command"].startswith("sqlmap ")
+
 def test_a_kali_step_writes_its_marker_to_the_stamp_proxy_shows_no_runnable_command_and_passes_on_that_marker(client):
     session = opened("f5")
     with patch("api.views.attacker.set_label") as labelled:
