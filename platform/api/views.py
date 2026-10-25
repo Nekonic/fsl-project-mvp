@@ -2,6 +2,7 @@ import functools
 import hashlib
 import ipaddress
 import json
+import logging
 import math
 import re
 import shlex
@@ -17,7 +18,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from django.conf import settings
 from django.core.exceptions import BadRequest
-from django.db import IntegrityError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
 from django.db.models import Count, F, Max, Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
@@ -55,6 +56,8 @@ from rules import crs, suricata
 from scoring.correlate import correlate
 from scoring.metrics import score as compute_score
 from scoring.types import CORRELATION_STRATEGIES, DetectionRecord
+
+log = logging.getLogger(__name__)
 
 SESSION_FIELDS = ("id", "scenario", "started_at", "ended_at", "guidance", "defense")
 CASE_FIELDS = (
@@ -1186,10 +1189,13 @@ def _map_key(session, adapter=None):
         return None
     return maps.called(maps.SLOT, _slot_of(session), session.scenario)
 
-def _maps_live(adapter) -> list[str]:
+def _newest_in_each_slot(adapter) -> list:
     newest = (Session.objects.filter(Q(slot=number) | (Q(slot=None) if number == 1 else Q(pk__in=[])))
               .order_by("-pk").first() for number in range(1, adapter.slots + 1))
-    return [maps.called(maps.SLOT, _slot_of(session), session.scenario) for session in newest if session]
+    return [session for session in newest if session]
+
+def _maps_live(adapter) -> list[str]:
+    return [maps.called(maps.SLOT, _slot_of(session), session.scenario) for session in _newest_in_each_slot(adapter)]
 
 def _map_read(session):
     drawn = maps.learner(session.scenario)
@@ -1200,6 +1206,18 @@ def _map_begin(session, adapter):
     key = _map_key(session, adapter)
     if key is not None and settings.FSL_GNS3_URL:
         maps.begin(key, _map_read(session), maps.SLOT, _maps_live(adapter))
+
+def publish_maps():
+    if not settings.FSL_GNS3_URL:
+        return
+    try:
+        cloud = substrate()
+        if not _slotted(cloud):
+            return
+        for session in _newest_in_each_slot(cloud):
+            _map_begin(session, _in_slot(cloud, _slot_of(session)))
+    except (RangeUnavailable, DatabaseError) as exc:
+        log.warning("the slot maps were not loaded at start; each loads when its session asks: %s", exc)
 
 def _drawn(session, described):
     return topology.overlay(maps.template(session.scenario), described, maps.learner(session.scenario))
