@@ -24,7 +24,8 @@ browser.serve((request) => {
       started_at: "2026-10-18T09:00:00Z", ended_at: "2026-10-18T09:40:00Z",
       lessons: [{id: "f1", started_at: "2026-10-18T09:00:00Z"}, {id: "f5", started_at: "2026-10-18T09:10:00Z"},
                 {id: "f6", started_at: "2026-10-18T09:25:00Z"}],
-      course: [{id: "f5", steps: 9, passed: 8, skipped: 1}],
+      course: [{id: "f1", steps: 2, passed: 2, skipped: 0, hints: 0}, {id: "f5", steps: 9, passed: 8, skipped: 1, hints: 0},
+               {id: "f6", steps: 2, passed: 2, skipped: 0, hints: 0}],
       result: {objectives: {lost: 1, undetected: 1, total: 1}, scenario: null}}};
   }
   if (request.route === "/api/wargames/") {
@@ -70,6 +71,36 @@ def test_a_closed_course_names_each_run_by_lesson_and_step_and_never_by_case_id(
         "after a course the page sums up every lesson taken, not only the last")
     assert english("session.course.steps", 9, 8) in shown["course"]
     assert english("session.course.span", 1, 6) in shown["line"]
+
+F6_RUN = """        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: false, detections: 0, corroborated: null,
+         lesson: "f6", step: "dump", seed: false},
+"""
+LOSS = 'breaches: [{key: "board-auth-user-admin", difficulty: 4, detected: false}],'
+
+def test_a_lesson_switched_to_but_never_worked_on_is_not_listed_in_the_course(client):
+    setup = COURSE.replace('{id: "f6", steps: 2, passed: 2, skipped: 0, hints: 0}', '{id: "f6", steps: 2, passed: 0, skipped: 0, hints: 0}')
+    seen = open_page(client, "/session/1/", setup=setup, scenario=SHOWN)
+    shown = seen["result"]
+
+    assert seen["errors"] == []
+    assert english("lesson.sqli.title") in shown["course"] and english("lesson.miss.title") not in shown["course"], (
+        "the next lesson opens by itself after a lesson ends; opening it is not taking it")
+    assert english("session.course.span", 1, 5) in shown["line"]
+
+def test_the_lesson_6_note_shows_only_when_lesson_6_ran_its_attack_or_an_objective_was_lost(client):
+    def noted(setup):
+        seen = open_page(client, "/session/1/", setup=setup, scenario="""
+          await browser.wait(500);
+          return !browser.element('score-lesson-lost').classList.contains('hidden');
+        """)
+        assert seen["errors"] == []
+        return seen["result"]
+
+    opened = COURSE.replace(LOSS, "breaches: [],").replace(F6_RUN, "")
+    assert F6_RUN in COURSE and LOSS in COURSE
+    assert noted(COURSE) is True
+    assert noted(COURSE.replace(LOSS, "breaches: [],")) is True, "the run of step 2 is what the note explains"
+    assert noted(opened) is False, "lesson 6 opened without its attack has nothing on purpose to explain"
 
 def test_restarting_a_course_starts_its_first_lesson_with_that_lesson_s_defence(client):
     seen = open_page(client, "/session/1/", setup=COURSE, scenario="""
