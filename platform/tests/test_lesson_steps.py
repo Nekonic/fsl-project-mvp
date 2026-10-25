@@ -256,8 +256,8 @@ def test_a_fact_about_a_kali_step_that_recorded_nothing_sends_the_learner_back_t
     assert (before["passed"], before["reason"]) == (False, ["lesson.check.kali_first", []])
     assert after["passed"] is True
 
-@pytest.mark.parametrize("word, others, expected", [("word0", ["/search/?q=other"], "3"), ("notes", [], "4")])
-def test_the_count_of_my_searches_is_the_events_the_kibana_view_of_this_lesson_shows_for_my_word(
+@pytest.mark.parametrize("word, others, expected", [("word0", ["/search/?q=other"], "6"), ("notes", [], "7")])
+def test_the_count_of_my_searches_is_the_http_events_of_both_legs_the_kibana_view_of_this_lesson_shows_for_my_word(
         client, word, others, expected):
     now = timezone.now()
     session = taught("f3", lessons=[{"id": "f2", "started_at": (now - timedelta(minutes=10)).isoformat()},
@@ -278,7 +278,8 @@ def test_the_count_of_my_searches_is_the_events_the_kibana_view_of_this_lesson_s
         right = check(client, session, "count", {"answer": expected}).json()
         wrong = check(client, session, "count", {"answer": "9"}).json()
 
-    assert accepted == [expected], "my word's http events on the leg that reaches the WAF, as the KQL url : *word* shows them"
+    assert accepted == [expected], (
+        "my word's http events on both legs, as event_type : http and url : *word* shows them, not the searches I made")
     assert right["passed"] is True
     assert (wrong["passed"], wrong["reason"]) == (False, ["lesson.check.wrong", []])
 
@@ -372,39 +373,44 @@ def test_waf_records_without_a_rule_are_no_alert_so_a_run_that_drew_only_server_
     assert none["passed"] is True
     assert waf["passed"] is True
 
-def waf_record(at, status, marker=None, rules=()):
+def waf_record(at, status, marker=None, rules=(), client=KALI):
     headers = {"X-Request-ID": marker} if marker else {}
     return {"event": {"module": "modsecurity"}, "@timestamp": at.isoformat(),
-            "transaction": {"request": {"headers": headers}, "response": {"http_code": status},
+            "transaction": {"client_ip": client, "request": {"headers": headers}, "response": {"http_code": status},
                             "messages": [{"message": "matched", "details": {"ruleId": rule}} for rule in rules]}}
 
-def test_the_trace_question_asks_the_rule_id_kibana_shows_on_the_run_s_500_records_in_the_window_kibana_opens(client):
+def test_the_trace_question_asks_the_source_ip_of_the_run_s_500_records_in_the_window_kibana_opens(client):
     session = taught("f6")
     now = timezone.now()
     started, ended = now - timedelta(seconds=90), now - timedelta(seconds=30)
     recorded_run(session, "f6", "dump", "dump-run", started, ended)
     inside = [waf_record(started + timedelta(seconds=10 * n), status, "dump-run" if n % 2 else None)
               for n, status in enumerate((500, 500, 500))]
-    blocked = waf_record(started + timedelta(seconds=40), 403, "dump-run", rules=("942100", "949110"))
-    before = waf_record(started - timedelta(seconds=20), 500, "dump-run", rules=("913100",))
+    blocked = waf_record(started + timedelta(seconds=40), 403, "dump-run", rules=("942100",), client=CUSTOMER)
+    before = waf_record(started - timedelta(seconds=20), 500, client=CUSTOMER)
+    seen = next(step["check"] for step in wargames.lesson("board", lesson_id="f6")["steps"] if step["id"] == "seen")
     asked = []
     with quietly(), indexed(*inside, blocked, before, asked=asked):
-        accepted = views._accepted(session, {"kind": "answer", "of": "error_rule_id", "about": "dump"})
-        right = check(client, session, "seen", {"answer": "-"}).json()
+        accepted = views._accepted(session, seen)
+        right = check(client, session, "seen", {"answer": KALI}).json()
+        ruled = check(client, session, "seen", {"answer": "-"}).json()
         counted = check(client, session, "seen", {"answer": "1,310"}).json()
 
-    assert accepted == ["-"], "what rule_id shows on a WAF record no rule matched; a 403's rules and a record before the run are not asked"
+    assert accepted == [KALI], "the client IP of the run's 500 records; a 403's client and a record before the run are not asked"
     assert asked[0] == (started - views.RECORD_SLACK, ended + views.RECORD_SLACK), "the window the Kibana button opens"
     assert right["passed"] is True
+    assert ruled["passed"] is False and ruled["reason"] == ["lesson.miss.wrong.seen.rule_id", []], (
+        "the step before already said rule_id - means no rule matched, so it is no longer the question")
     assert counted["passed"] is False and counted["reason"] == ["lesson.miss.wrong.seen.count", []], (
-        "sqlmap prints how many 500s it drew, so the count is no longer the question")
+        "sqlmap prints how many 500s it drew, so the count is not the question")
 
-def test_a_500_record_a_rule_matched_shows_that_rule_id_beside_the_dash():
-    records = [{"transaction": {"response": {"http_code": 500}, "messages": [{"details": {"ruleId": "942100"}}]}},
-               {"transaction": {"response": {"http_code": 500}}},
-               {"transaction": {"response": {"http_code": 403}, "messages": [{"details": {"ruleId": "949110"}}]}}]
+def test_only_500_records_name_a_source_for_the_trace_question():
+    records = [{"transaction": {"client_ip": KALI, "response": {"http_code": 500}}},
+               {"transaction": {"client_ip": KALI, "response": {"http_code": "500"}}},
+               {"transaction": {"client_ip": CUSTOMER, "response": {"http_code": 403}}},
+               {"transaction": {"response": {"http_code": 500}}}]
 
-    assert lesson.server_error_rules(records, "-") == ["-", "942100"]
+    assert lesson.server_error_sources(records) == [KALI]
 
 def test_the_cost_question_asks_what_the_admin_objective_would_have_cost_if_detected_not_the_printed_total(client):
     session = taught("f6")

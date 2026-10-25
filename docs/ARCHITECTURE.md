@@ -766,7 +766,7 @@ The scenario final check reports the fix class beside its verdict (`result.fix`,
 
 `platform/lesson.py` holds the fix class together with:
 
-- the step-answer helpers: `answered`, `rules_named`, `added_rules`, `pasted_rows`, `server_error_rules`, `alerted_by`, `detected_penalty`;
+- the step-answer helpers: `answered`, `rules_named`, `added_rules`, `pasted_rows`, `server_error_sources`, `alerted_by`, `detected_penalty`;
 - the help counts;
 - the exclusions added and removed, and the file diff that the scenario debrief shows (`exclusions_changed`, `config_diff`).
 
@@ -977,12 +977,12 @@ Each unit below lists its defense and opening pane, what the learner does, and w
   - the source IP of the event arriving at board.com, and the map host that uses it;
   - the source IP of the same search arriving at waf, and its X-Forwarded-For;
   - whether the WAF logged it.
-  The solo step asks how many of their searches arrived at waf.
+  The solo step asks how many http events Kibana shows for their word after two more searches. Each search is recorded on both legs, so the count is twice the searches.
 - Answers are read from the sensors' http events of the record (`sensor_source`, `forwarded_for`), split by leg.
-  - A leg is `upstream` when `dest_ip` is one of board.com's addresses (waf sends it on). Otherwise it is `inbound` (the request arrives at waf). A sensor that sees both legs therefore counts each search once.
+  - A leg is `upstream` when `dest_ip` is one of board.com's addresses (waf sends it on). Otherwise it is `inbound` (the request arrives at waf). A sensor that sees both legs therefore reads each search once per leg. `leg: both` takes the events of both legs.
   - `host_of` gives the map host with that address.
   - `waf_logged` comes from the WAF's own records.
-  - `hits` is one count of the learner's own searches: the inbound events with the browse marker under `/search/` since the unit (or the session) started.
+  - `hits` is one count: the http events on both legs (`leg: both`) whose url holds the learner's word, since the unit (or the session) started. It matches what `event_type : http and url : *word*` shows in Kibana.
 
 **f4 Blocking an XSS request and writing an IDS rule** (`lesson.xss`). Defense `xss-gap`, opens on Website.
 
@@ -1007,12 +1007,12 @@ Each unit below lists its defense and opening pane, what the learner does, and w
 
 **f6 Finding the attack an over-broad exception let through** (`lesson.miss`). Defense `overbroad`, opens on WAF.
 
-- The learner greps the exclusion file for the parameter that was left out. They dump the accounts with sqlmap and paste the table. They say which engines alerted, and the rule_id the run's WAF log records with status 500 show (`-`: logged, but no rule matched). They say the penalty the admin objective would carry if detected. They delete the exception and reload nginx. The solo step replays the dump and sorts once.
+- The learner greps the exclusion file for the parameter that was left out. They dump the accounts with sqlmap and paste the table. They say which engines alerted, and the source IP of the run's WAF log records with status 500 (the attacker's address; their rule_id is `-`: logged, but no rule matched). They say the penalty the admin objective would carry if detected. They delete the exception and reload nginx. The solo step replays the dump and sorts once.
 - Answers are read from:
   - `excluded_target`: the WAF file in force (`ARGS:sort` or `sort`);
   - `loot`: against the session's snapshot;
   - `alerted_by`: none, IDS only, WAF only, or both, from the run's detections;
-  - `error_rule_id`: the rule_id values that Kibana's `rule_id` field shows on the WAF (ModSecurity) log records with status 500 in the window Kibana opens on, `-` for a record no rule matched (`lesson.server_error_rules`). The count is not asked: sqlmap prints how many 500 responses it drew;
+  - `kali_source` with `from: server_error`: the client IPs (Kibana's `source_ip`) of the WAF (ModSecurity) log records with status 500 in the window Kibana opens on (`lesson.server_error_sources`). The count is not asked: sqlmap prints how many 500 responses it drew. The rule_id is not asked: the step before already says `-` means no rule matched;
   - `detected_penalty` with `objective:`: the objective's difficulty x 1, the penalty it would carry if detected. The tier is read from `wargames.objectives`, and the value is empty when the scenario is not judged;
   - `waf_changed`;
   - `replay`: the run blocked with no loot, and an ordinary sort 2xx with no WAF record.
@@ -1073,7 +1073,7 @@ An answer reads one of these facts. `wargames.read_from_record` refuses anything
 
 - `of:` a range fact: `address`, `subnet`, `zone_of`, `path`, `logs`, `host_of`, `excluded_target`, `lost_points`, `detected_penalty`.
 - `of:` a request fact, `about:` a step that has a `match` (or with its own `match`, taking the latest Website pane record that matches it): `status`, `method`, `path`, `parameter`, `param_value`, `sensor_source`, `forwarded_for`, `waf_logged`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_sid`, `alerted_sid_present`, `hits`.
-- `of:` a Kali fact, `about:` a `kali` step: `sqlmap_found`, `kali_source`, `alerted_by`, `error_rule_id`.
+- `of:` a Kali fact, `about:` a `kali` step: `sqlmap_found`, `kali_source` (from the run's WAF detections, or with `from: server_error` from its 500 records), `alerted_by`.
 - `rule`, with the request's `path` or a `step:` marker (above).
 
 ## How the scores are computed

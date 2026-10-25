@@ -40,8 +40,8 @@ RANGE_FACTS = ("address", "subnet", "zone_of", "path", "logs", "host_of", "exclu
                "detected_penalty")
 REQUEST_FACTS = ("status", "method", "path", "parameter", "param_value", "sensor_source", "forwarded_for",
                  "waf_logged", "waf_detected", "anomaly_total", "alerted", "alerted_sid", "alerted_sid_present", "hits")
-KALI_FACTS = ("sqlmap_found", "kali_source", "alerted_by", "error_rule_id")
-LEGS = ("inbound", "upstream")
+KALI_FACTS = ("sqlmap_found", "kali_source", "alerted_by")
+LEGS = ("inbound", "upstream", "both")
 STEP_MARKER = "step:"
 DETECTORS = ("suricata",)
 RULE_FILE = re.compile(r"[\w-]+\.rules", re.ASCII)
