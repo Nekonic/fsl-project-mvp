@@ -469,7 +469,7 @@ foundations:
         check: {kind: kali, case: board-sqli-orderby-sqlmap-random-agent, ua: any}
       - id: still
         point: {opens: elk}
-        check: {kind: answer, of: rule, marker: "step:agent", family: "942", known: ["949110", "913100"]}
+        check: {kind: choice, of: rule_matched, marker: "step:agent", rule: "913100", options: [present, absent]}
   - id: f6
     order: 6
     text: lesson.miss

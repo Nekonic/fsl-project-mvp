@@ -316,6 +316,7 @@ id와 이름: 모든 id는 `uuid5(<learner id>, "slot-<n>-<wargame>")`입니다.
 - OpenStack에서는 슬롯의 각 호스트에서 `ip -o -4 addr`(OPNsense에서는 `ifconfig`)를 실행합니다. 그 호스트 자체에서 실행되는 runner를 씁니다.
 - 워게임 호스트에서는 compose 컨테이너의 주소를 `nsenter`로, 브리지는 Docker 네트워크 id로 읽습니다.
 - 플랫폼 VM 자신의 NIC는 호스트 네트워크의 `busybox` 컨테이너에서 같은 `ip`로 읽습니다(`interfaces.on_this_host`). 플랫폼에는 SSH를 쓰지 않습니다.
+- 세션의 구성도를 만들 때 읽은 인터페이스는 세션이 끝날 때까지 두고, 주소를 묻는 단계의 답으로 씁니다(`_map_found`). 슬롯은 세션을 닫을 때만 초기화되므로, 세션이 슬롯을 쓰는 동안 주소는 바뀌지 않습니다. 빈 결과는 두지 않고, 둔 결과로 답할 수 없는 질문이 오면 슬롯을 다시 읽습니다. 세션을 닫으면 지웁니다.
 
 `gns3.publish`는 다음 순서로 프로젝트를 GNS3에 올립니다.
 
@@ -658,7 +659,7 @@ ingest 호출마다 다음을 수행합니다.
 - 이벤트 자체의 시각이 조회 기간 밖인 경보는 버리고 `stale`로 셉니다.
 - 나중에 찾은 마커를 마커가 없던 저장된 행에 기록합니다.
 - `src_host`와 `dest_host`를 substrate의 구간 정보로 채웁니다. substrate에 접근할 수 없으면 비워 둡니다.
-  - ingest와 `/detections/`는 세션의 구간 정보를 30초 동안 재사용합니다. 단계 폴링 때마다 클라우드를 읽지 않기 위해서입니다.
+  - ingest와 `/detections/`는 열린 세션의 구간 정보를 세션이 닫힐 때까지 재사용합니다. 단계 폴링과 답 확인 때마다 클라우드를 읽지 않기 위해서입니다.
   - `/top/`, `/map/`, `/topology/`는 매번 새로 읽습니다.
 
 Elasticsearch는 저장과 색인 시점의 GeoIP 보강에 쓰며, 그래서 Logstash가 없습니다.
@@ -859,6 +860,8 @@ check 종류별 통과 조건:
   - `known`에 있는 값에는 `<text>.wrong.<step>.<value>`를 보여 줍니다.
   - 허용 값은 `accept` 목록이거나 `of:`로 세션의 기록에서 읽습니다("기초 레슨 F1-F6").
   - `of: rule`(`wargames.ANSWERS_OF`)은 학습자 자신의 요청이면 요청의 `path`와 `marker: browse`를, Kali 단계의 실행이면 `marker: step:<id>`를 받습니다. 룰 `family`로 좁힐 수 있습니다. 플랫폼은 최근 600초를 수집하고, 그 요청이나 실행에 대한 세션의 ModSecurity 탐지 기록을 모읍니다. 그중 CRS 합계 룰(949, 959, 980으로 시작하는 id)을 빼고, 남은 `ruleId`를 모두 허용 값으로 받습니다(`lesson.rules_named`). 기록된 것이 없으면 사유는 `lesson.check.unrecorded`입니다.
+  - `rule: <id>`가 붙은 `of: rule_matched`는 같은 탐지 기록을 읽어 그 룰 하나에 대해 `present`나 `absent`를 허용 값으로 받습니다. 기록된 실행에 탐지가 하나도 없으면 `absent`입니다.
+  - 기록된 Kali 실행의 탐지 기록이 세션에 이미 있으면 다시 수집하지 않습니다. 실행은 로그가 `RUN_SETTLED` 동안 조용해진 뒤에 기록되고, 기록할 때 한 수집이 그 로그를 읽었기 때문입니다.
 - `rules`는 센서의 룰 파일(`GET /api/rules/`)에 방어 설정의 룰 파일에 없는 sid나 내용이 다른 sid가 생기면 통과합니다(`lesson.added_rules`, `disable.sids`). `added`로 응답합니다. `needs: nocase`이면 그 룰에 `nocase`나 `i` 플래그가 붙은 pcre도 있어야 합니다(`lesson.ignores_case`). `match`가 있으면 그 룰이 실제로 경보를 내야 합니다. 마지막 적용(`RuleSet.applied_at`) 뒤에 웹사이트 창에서 보낸 요청 중 `match`에 맞는 요청에 그 sid의 경보가 있어야 통과합니다. 아니면 `<fail>.unsent`(그런 요청이 없음), `lesson.check.unrecorded`(센서가 아직 그 요청을 기록하지 않음), sid를 담은 `<fail>.silent`, 또는 sid와 대신 경보를 낸 URL을 담은 `<fail>.elsewhere`로 응답합니다.
 - `triage`(`judged: customer | attack | all`)는 학습자가 옳게 판정하면 통과합니다("시나리오").
 - `waf_changed`(`removed_target`)는 방어 설정이 선언한 예외의 target을 WAF 파일의 어떤 예외도 더는 가리키지 않으면 통과합니다.
@@ -994,13 +997,13 @@ board의 `scenario.yaml`은 `foundations:` 목록을 선언합니다. discovery 
 
 **f5 sort 파라미터 SQL Injection 분석**(`lesson.sqli`). defense `full`, 웹사이트 창에서 시작합니다.
 
-- 학습자는 sort 값을 읽습니다. 주소창에서 `)`를 붙여 상태 코드를 읽고, WAF 룰이 탐지했는지 답합니다. Kali 창에 sqlmap을 입력해 판정, 실행의 출발지 IP, 스캐너를 알아본 룰을 읽습니다. `--random-agent`를 붙여 다시 실행합니다. 혼자 푸는 단계에서는 그래도 차단한 룰 하나를 묻습니다.
+- 학습자는 sort 값을 읽습니다. 주소창에서 `)`를 붙여 상태 코드를 읽고, WAF 룰이 탐지했는지 답합니다. Kali 창에 sqlmap을 입력해 판정, 실행의 출발지 IP, 스캐너를 알아본 룰을 읽습니다. `--random-agent`를 붙여 다시 실행합니다. 혼자 푸는 단계에서는 다시 실행한 기록의 웹방화벽 로그에 913100이 있는지 묻습니다.
 - 답은 다음에서 읽습니다.
   - `param_value`, `status`
   - `waf_detected`: 요청의 ModSecurity 탐지 기록. 500은 룰 없이 기록되며 탐지가 아닙니다.
   - `sqlmap_found`: `attacker.sqlmap_found`가 박스의 `<home>/.local/share/sqlmap/output/<host>/log`를 읽어 `Parameter:` 줄이 있는지 봅니다.
   - `kali_source`: 실행의 ModSecurity `src_ip`
-  - `marker: step:<id>`와 `family: "913"`(스캐너)이 붙은 `rule`. 그다음 `family: "942"`와 `known: [949110, 913100]`이 붙은 `rule`(다시 실행해도 차단한 SQL Injection 룰)
+  - `marker: step:<id>`와 `family: "913"`(스캐너)이 붙은 `rule`. 그다음 다시 실행한 기록에 대한 `rule: "913100"`이 붙은 `rule_matched`(새 User-Agent에 더는 매칭되지 않으면 `absent`)
 
 **f6 넓은 예외 처리로 놓친 공격 확인하기**(`lesson.miss`). defense `overbroad`, WAF 창에서 시작합니다.
 

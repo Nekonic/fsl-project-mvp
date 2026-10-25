@@ -87,7 +87,6 @@ OPERATOR_WARNINGS = ("score.warning.no_marker", "score.warning.no_benign")
 SCHEDULE = ("attacks", "completion")
 REPLAY_MARKS = ("seed", "verify", "check", "replay")
 CHECK_TIMEOUT = 10.0
-SEGMENTS_KEPT_FOR = 30.0
 RECORD_SLACK = timedelta(seconds=5)
 RUN_SETTLED = timedelta(seconds=15)
 OBJECTIVE_FACTS = ("lost_points", "detected_penalty")
@@ -560,7 +559,10 @@ def _accepted(session, check, taught=None):
         return check["accept"]
     family = wargames.fact_family(check)
     if family == "range":
-        return _range_fact(session, check, taught)
+        found = _range_fact(session, check, taught)
+        if not found:
+            _found_kept.pop(session.pk, None)
+        return found
     if family == "request":
         return _request_fact(session, check, taught)
     if family == "kali":
@@ -568,17 +570,24 @@ def _accepted(session, check, taught=None):
     return _rules_seen(session, check)
 
 def _rules_seen(session, check):
-    _ingest(session, RECENT_ALERTS)
     marked = check.get("marker") or ""
     marker = session.browse_marker if marked == SITE_BROWSER_MARKER else _step_marker(session, marked)
     if not marker:
         return []
     since = _lesson_started(session)
-    found = session.detections.filter(source="modsecurity", marker=marker,
-                                      **({"timestamp__gte": since - RECORD_SLACK} if since else {}))
-    named = lesson.rules_named([detection.raw or {} for detection in found
-                                if check.get("path", "") in unquote(_request_of(detection.raw or {})[1])])
+    settled = marker != session.browse_marker and session.cases.filter(case_id=marker).exists()
+    found = [detection for detection in _detected(session, marker, settled, source="modsecurity",
+                                                  **({"timestamp__gte": since - RECORD_SLACK} if since else {}))
+             if check.get("path", "") in unquote(_request_of(detection.raw or {})[1])]
+    named = lesson.rules_named([detection.raw or {} for detection in found])
+    if check["of"] == "rule_matched":
+        return [lesson.PRESENT if check["rule"] in named else lesson.ABSENT] if found or settled else []
     return [rule for rule in named if rule.startswith(str(check.get("family", "")))]
+
+def _detected(session, marker, settled, **narrowed):
+    if not (settled and session.detections.filter(marker=marker, **narrowed).exists()):
+        _ingest(session, RECENT_ALERTS)
+    return list(session.detections.filter(marker=marker, **narrowed))
 
 def _step_marker(session, marked):
     step_id = marked[len(wargames.STEP_MARKER):] if marked.startswith(wargames.STEP_MARKER) else ""
@@ -641,20 +650,20 @@ _found_kept = {}
 
 def _map_found(session):
     held = _found_kept.get(session.pk)
-    if held and time.monotonic() - held[0] < SEGMENTS_KEPT_FOR:
-        return held[1]
-    drawn = maps.learner(session.scenario)
+    if held:
+        return held
     try:
-        found = _range(session).interfaces(set(drawn.hosts) | set(drawn.logs_from))
+        return _map_read(session)()
     except RangeUnavailable:
         return []
-    _found_kept[session.pk] = (time.monotonic(), found)
-    return found
 
 def _site_addresses(session):
     site = wargames.host(session.scenario)
-    return {one.address.partition("/")[0] for (name, _), one in
-            topology.link_heads(maps.learner(session.scenario), _map_found(session)).items() if name == site}
+    found = {one.address.partition("/")[0] for (name, _), one in
+             topology.link_heads(maps.learner(session.scenario), _map_found(session)).items() if name == site}
+    if not found:
+        _found_kept.pop(session.pk, None)
+    return found
 
 def _on_leg(session, events, leg):
     site = _site_addresses(session)
@@ -832,8 +841,7 @@ def _kali_fact(session, check):
     if check.get("from") == "http":
         return sorted({str(event["src_ip"]) for event in _on_leg(session, _run_events(session, recorded), "inbound")
                        if event.get("src_ip")})
-    _ingest(session, RECENT_ALERTS)
-    marked = list(session.detections.filter(marker=recorded.case_id))
+    marked = _detected(session, recorded.case_id, settled=True)
     if of == "alerted_by":
         return [lesson.alerted_by({detection.source for detection in marked if lesson.rule_of(detection.raw or {})})]
     return sorted({detection.src_ip for detection in marked if detection.source == "modsecurity" and detection.src_ip})
@@ -1082,10 +1090,10 @@ def _standing(session=None):
     return Shape(segments=_range(session).segments(), sensors=())
 
 def _segments(session=None, recent=False):
-    key = (session.pk, session.started_at) if session and recent else None
+    key = (session.pk, session.started_at) if session and recent and session.ended_at is None else None
     held = _segments_kept.get(key) if key else None
-    if held and time.monotonic() - held[0] < SEGMENTS_KEPT_FOR:
-        return held[1]
+    if held:
+        return held
     try:
         standing = _standing(session)
     except RangeUnavailable:
@@ -1100,7 +1108,7 @@ def _segments(session=None, recent=False):
         if node["address"]
     }
     if key:
-        _segments_kept[key] = (time.monotonic(), (_zones(segments), hosts))
+        _segments_kept[key] = (_zones(segments), hosts)
     return _zones(segments), hosts
 
 def _zones(segments):
@@ -1200,7 +1208,13 @@ def _maps_live(adapter) -> list[str]:
 def _map_read(session):
     drawn = maps.learner(session.scenario)
     on_map = set(drawn.hosts) | set(drawn.logs_from)
-    return lambda: _range(session).interfaces(on_map)
+
+    def read():
+        found = _range(session).interfaces(on_map)
+        if found and session.ended_at is None:
+            _found_kept[session.pk] = found
+        return found
+    return read
 
 def _map_begin(session, adapter):
     key = _map_key(session, adapter)
@@ -1749,6 +1763,8 @@ def close_session(request, session_id):
             _refuse_closed(session)
     session.ended_at = closed_at
     site.forget(session.pk)
+    _found_kept.pop(session.pk, None)
+    _segments_kept.pop((session.pk, session.started_at), None)
     reply = _shape(session, SESSION_FIELDS)
 
     begun = None

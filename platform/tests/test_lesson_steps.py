@@ -15,6 +15,7 @@ import wargames
 from api import site, views
 from api.models import Case, Detection, Objective, Session
 from console import strings
+from range.interfaces import Interface
 
 pytestmark = pytest.mark.django_db
 
@@ -280,25 +281,79 @@ def test_the_count_of_my_searches_is_the_events_the_kibana_view_of_this_lesson_s
     assert right["passed"] is True
     assert (wrong["passed"], wrong["reason"]) == (False, ["lesson.check.wrong", []])
 
-def test_the_rule_that_still_detects_the_random_agent_run_is_a_sql_injection_rule_of_that_run_alone(client):
+def test_the_last_f5_step_asks_whether_the_scanner_rule_matched_the_random_agent_run_from_that_run_s_records(client):
     session = taught("f5")
-    for step_id, marker in (("sqlmap", "probe-run"), ("agent", "agent-run")):
-        run_step(session, "f5", step_id, marker, timezone.now() - timedelta(minutes=2))
+    now = timezone.now()
+    recorded_run(session, "f5", "sqlmap", "probe-run", now - timedelta(minutes=4), now - timedelta(minutes=3))
+    recorded_run(session, "f5", "agent", "agent-run", now - timedelta(minutes=2), now - timedelta(minutes=1))
     for detection_id, marker, rule in (("probe-ua", "probe-run", "913100"), ("probe-sqli", "probe-run", "942190"),
-                                       ("agent-sqli", "agent-run", "942100"), ("agent-lfi", "agent-run", "930100"),
-                                       ("agent-php", "agent-run", "933160"), ("agent-total", "agent-run", "949110"),
-                                       ("mine", session.browse_marker, "941100")):
+                                       ("agent-sqli", "agent-run", "942100"), ("agent-total", "agent-run", "949110"),
+                                       ("mine", session.browse_marker, "913100")):
         blocked_by(session, detection_id, marker, "/?sort=posts_post.id", rule)
     still = next(step["check"] for step in wargames.lesson("board", lesson_id="f5")["steps"] if step["id"] == "still")
     with quietly():
         accepted = views._accepted(session, still)
-        judged = {given: check(client, session, "still", {"answer": given}).json()
-                  for given in ("930100", "941100", "942190", "913100", "942100")}
+        judged = {given: check(client, session, "still", {"answer": given}).json() for given in ("present", "absent")}
+        blocked_by(session, "agent-ua", "agent-run", "/?sort=posts_post.id", "913100")
+        kept_its_agent = views._accepted(session, still)
 
-    assert accepted == ["942100"]
-    assert [judged[given]["passed"] for given in ("930100", "941100", "942190", "942100")] == [False, False, False, True], (
-        "not path traversal, not F4's XSS rule, not the first run's rule")
-    assert judged["913100"]["reason"] == ["lesson.sqli.wrong.still.913100", []]
+    assert (still["kind"], still["options"]) == ("choice", ["present", "absent"])
+    assert accepted == ["absent"], "913100 matched the first run and the learner's own request, not this run"
+    assert (judged["present"]["passed"], judged["present"]["reason"]) == (False, ["lesson.check.wrong", []])
+    assert judged["absent"]["passed"] is True
+    assert kept_its_agent == ["present"], "a run that kept sqlmap's User-Agent drew 913100, and the answer follows"
+
+def test_whether_a_rule_matched_a_run_waits_for_the_run_to_be_recorded(client):
+    session = taught("f5")
+    run_step(session, "f5", "agent", "agent-run", timezone.now() - timedelta(minutes=2))
+    still = next(step["check"] for step in wargames.lesson("board", lesson_id="f5")["steps"] if step["id"] == "still")
+    with quietly():
+        unrecorded = check(client, session, "still", {"answer": "absent"}).json()
+        recorded_run(session, "f5", "agent", "agent-run", timezone.now() - timedelta(minutes=2), timezone.now())
+        silent = views._accepted(session, still)
+
+    assert (unrecorded["passed"], unrecorded["reason"]) == (False, ["lesson.check.unrecorded", []])
+    assert silent == ["absent"], "a recorded run the WAF matched no rule on did not match 913100 either"
+
+def test_a_recorded_run_s_facts_are_read_without_ingesting_again_once_its_records_are_held(client):
+    session = taught("f5")
+    now = timezone.now()
+    recorded_run(session, "f5", "sqlmap", "probe-run", now - timedelta(minutes=2), now - timedelta(minutes=1))
+    steps = {step["id"]: step["check"] for step in wargames.lesson("board", lesson_id="f5")["steps"]}
+    ingested = []
+    with patch("api.views._ingest", lambda session, within=None: ingested.append(within) or {}):
+        before = views._accepted(session, steps["scanner"])
+        blocked_by(session, "probe-ua", "probe-run", "/?sort=posts_post.id", "913100")
+        Detection.objects.filter(detection_id="probe-ua").update(src_ip="5.188.10.10")
+        held = [views._accepted(session, steps[name]) for name in ("scanner", "source", "scanner")]
+
+    assert before == [] and len(ingested) == 1, "nothing of the run held yet, so the check ingests"
+    assert held == [["913100"], ["5.188.10.10"], ["913100"]]
+    assert len(ingested) == 1, "the run ended and settled before it was recorded, so its records do not change"
+
+def test_the_slot_s_interfaces_read_for_the_map_answer_the_session_s_address_questions_until_it_closes(client):
+    session = taught("f1")
+    reads = []
+
+    class Slot:
+        def interfaces(self, hosts):
+            reads.append(hosts)
+            return [Interface("fsl-wargame-host", "ens3", "10.30.0.48/24", "estate")] if len(reads) > 1 else []
+
+    with patch("api.views._range", lambda session=None, adapter=None: Slot()):
+        unreachable = views._map_found(session)
+        views._map_read(session)()
+        kept = [views._map_found(session) for _ in range(3)]
+        with patch("api.views._range_fact", lambda session, check, taught: []):
+            views._accepted(session, {"of": "address", "host": "board.com"})
+        dropped = session.pk not in views._found_kept
+        views._map_read(session)()
+    client.post_json(f"/api/sessions/{session.pk}/close/")
+
+    assert unreachable == [] and len(reads) == 3, "an empty read is not kept; three checks read nothing"
+    assert all(found == kept[0] and found for found in kept), "the map's read at open answers each check"
+    assert dropped, "an address question the kept read cannot answer reads the slot again"
+    assert session.pk not in views._found_kept, "a closed session's slot is reset for the next one"
 
 def test_waf_records_without_a_rule_are_no_alert_so_a_run_that_drew_only_server_errors_alerted_nobody(client):
     session = taught("f6")

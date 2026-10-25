@@ -6607,3 +6607,40 @@ per restore and made every commit 2-2.5 times slower
   answer 403 or redirect to Discover at the front (`platform/nginx.conf`).
   Hiding them with the DOM is not done. Not run live: the offline sources
   above were read, the menu was not re-captured.
+
+## 2026-10-25 — F5's last step asks whether 913100 matched the rerun; a check reads the range once per session
+
+- **F5 `still`.** The step asked for one 942 rule that detected the
+  `--random-agent` run. The first run's log at step 7 already listed the same
+  942 rules, so a learner could answer from memory. The step now asks whether
+  913100 is in the rerun's WAF logs (`choice`, `present`/`absent`), read with
+  `of: rule_matched, rule: "913100"` from the run's ModSecurity detections. The
+  point of the step is the change: the new User-Agent no longer matches
+  913100, while the 942 rules still match the payload (the pass line says so).
+  A run that kept sqlmap's User-Agent answers `present`, because the answer
+  comes from that run's records.
+- **Answer checks read the range once.** In round 6, a wrong answer to F1
+  `board_ip`/`db_ip`, F3 `site_source`/`client_source`/`xff`/`count` and F5
+  `source`/`scanner`/`still` still showed "Checking..." 3.8 s after submit. The
+  first check of a step read every map host's interfaces over SSH
+  (`_map_found`, kept 30 s) and the cloud's segments (kept 30 s), and the F5
+  checks ingested the last 600 s again (up to 5000 documents after a sqlmap
+  run). The right answer came seconds later from the warm 30 s cache, so the
+  wrong one looked slow. Now the interfaces read for the session's map at open
+  answer its address questions until close, the segments are kept for an open
+  session, and a recorded Kali run whose detections are held is not ingested
+  again. Why these cannot change within a session: a slot is reset only when
+  its session closes, and a run is recorded only after its logs have settled
+  for `RUN_SETTLED` and is ingested at its recording. An empty read is not
+  kept, and an address question the kept read cannot answer reads the slot
+  again. Not measured live; the time saved is the SSH reads of the map hosts,
+  one cloud segment read and one 600 s ingest per check.
+- **Round 6's "remote address of the other slot" was a misreading.** F2
+  (session 1311) and F5 (session 1317) showed `10.30.0.111:80`. Both sessions'
+  slot holds the WAF at `10.30.0.111` on `estate` (`GET
+  /api/sessions/<id>/topology/`); F1 (session 1318) ran on the other slot,
+  whose WAF is `10.30.0.225` and board.com `10.30.0.48`. Every slot has its
+  own `estate` network with the same CIDR, so addresses from two slots look
+  alike. `site.egress_of` takes the address and
+  the Kali box that opens the connection from the same slot adapter, so a
+  request cannot leave its slot.
