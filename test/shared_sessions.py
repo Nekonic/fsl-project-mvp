@@ -160,15 +160,18 @@ def full_run(stack_is_up):
 
     score = score_when_ready(session_id, until=ready)
     seen = {"session_id": session_id, "score": score, "detections": detections_of(session_id)}
+    seen["cases"] = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/cases/", timeout=120).json()
     seen["topology"] = requests.get(
         f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=120
     ).json()
+    seen["scored_by"] = {
+        strategy: requests.get(
+            f"{PLATFORM_URL}/api/sessions/{session_id}/score/",
+            params={"correlation": strategy}, timeout=120,
+        ).json()
+        for strategy in ("marker", "window")
+    }
     return seen
-
-
-@pytest.fixture(scope="session")
-def session_id(full_run):
-    return full_run["session_id"]
 
 
 @pytest.fixture(scope="session")

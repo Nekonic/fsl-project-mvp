@@ -1,10 +1,5 @@
-import requests
-
-from conftest import PLATFORM_URL
-
-
-def test_ground_truth_contains_both_labels(session_id):
-    cases = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/cases/").json()
+def test_ground_truth_contains_both_labels(full_run):
+    cases = full_run["cases"]
 
     assert any(c["malicious"] for c in cases)
     assert any(not c["malicious"] for c in cases), (
@@ -12,10 +7,8 @@ def test_ground_truth_contains_both_labels(session_id):
     )
 
 
-def test_both_engines_produce_detections(session_id, score):
-    detections = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/detections/"
-    ).json()
+def test_both_engines_produce_detections(full_run):
+    detections = full_run["detections"]
 
     assert {d["source"] for d in detections} == {"suricata", "modsecurity"}
 
@@ -36,7 +29,7 @@ def test_score_has_no_pipeline_warnings(score):
 
     assert not pipeline_warnings, pipeline_warnings
 
-def test_detections_are_spread_across_cases(session_id, score):
+def test_detections_are_spread_across_cases(score):
     owners = [len(c["detection_ids"]) for c in score["per_case"] if c["detected"]]
 
     assert len(owners) > 1, (
@@ -58,10 +51,8 @@ def test_invalid_rule_is_rejected_and_not_applied(rules_session):
     assert rules_session["rules_after_invalid"] == rules_session["rules_before_invalid"]
 
 
-def test_the_stack_does_not_attack_itself(session_id, score):
-    rows = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
-    ).json()
+def test_the_stack_does_not_attack_itself(full_run):
+    rows = full_run["detections"]
 
     own = [
         d["signature"] for d in rows

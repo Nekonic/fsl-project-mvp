@@ -71,6 +71,17 @@ def test_the_red_team_run_is_shared_by_the_modules_that_read_it():
     )
 
 
+def test_the_red_team_run_is_read_from_what_its_fixture_recorded():
+    readers = [path.name for path in (ROOT / "test").glob("test_*.py")
+               if 'full_run["session_id"]' in path.read_text()]
+
+    assert "session_id" not in split.shared_fixtures(), (
+        "a test that asks the platform about the red-team session hours after it closed finds it "
+        "deleted by FSL_RETAIN_CLOSED_MINUTES; full_run records what the tests read when it runs"
+    )
+    assert not readers, readers
+
+
 @pytest.mark.parametrize("workers", [2, 3])
 def test_the_modules_that_hold_two_sessions_run_alone_after_the_rest(workers):
     together, after = split.plan(workers)

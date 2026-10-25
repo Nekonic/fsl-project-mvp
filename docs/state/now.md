@@ -175,12 +175,12 @@ copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
    `/var/lib/session/origin`, which nothing wrote (`docs/DECISIONS.md` "The
    docker substrate is removed"). The Kali image digest changes once, so the
    next `bin/cloud up` rebuilds `fsl-kali`.
-3. An acceptance run longer than `FSL_RETAIN_CLOSED_MINUTES` (60) loses
-   the shared session of `test_strategy_honesty` to retention. A one-slot run
-   took about 2 h 50 min and failed there. With two slots a run took 64 min on
-   2026-10-21 and 36 min (2186 s) after the pristine restore, so only a
-   one-slot run still outlasts the window. Still open for a one-slot run: the
-   harness keeps a session it needs, or the window accounts for a long run.
+3. Fixed in the harness, not yet run live on one slot: a one-slot run (about
+   2 h 50 min) outlasted `FSL_RETAIN_CLOSED_MINUTES` (60), and retention
+   deleted the red-team session before `test_strategy_honesty` asked for its
+   score. `full_run` now records the cases, detections and the score under
+   both correlation strategies when the run is scored, and the tests read that
+   record instead of the platform. Retention for real sessions is unchanged.
 4. The `test_corp_authz` nonce error: the likely cause (corp healthy before
    its forms existed) is fixed and one full `bin/verify` passed with it. The
    error was intermittent, so watch the next runs for it (`docs/STATE.md`
