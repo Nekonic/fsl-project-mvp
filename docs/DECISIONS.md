@@ -6571,7 +6571,7 @@ per restore and made every commit 2-2.5 times slower
 - **Question.** Can the learner's embedded Kibana (8.15.0) drop "Home" and
   "Stack Management" from its menu with a Kibana mechanism, so the lessons
   show Discover only? The lessons point at Discover alone (`kibana:` points in
-  `scenario.yaml` are `doc` and `hits`, both Discover).
+  `scenario.yaml` are `doc`, `hits` and `sidebar`, all Discover).
 - **Already used.** The learner's space is created with `disabledFeatures`
   (`SPACE_FEATURES_OFF` in `platform/kibana.py`). Kibana's Spaces page says
   "You have control over which features are visible in each space" and
