@@ -952,7 +952,7 @@ The board's `scenario.yaml` declares a `foundations:` list. Discovery checks it:
 - `wargames.lesson(lesson_id=...)` finds a foundation or a scenario with steps, refuses any other id, and marks a foundation `group: foundations`.
 - `GET /api/wargames/` lists `foundations` (`wargames._foundation_card`). Each card has `id`, `order`, the `title` and `goal` string keys, `minutes`, `level`, `defense`, `prerequisites`, the step count, `step_ids`, and `learns` (the string key of what the unit teaches).
 - The main page lists the foundations first, as lessons, with minutes, what each teaches and a Start button (a guided open of that unit).
-- Every unit seeds `board-normal-search` at open. The seed is a benign case and counts in the second score (`views._replayed` keeps a benign `meta.seed` case). A closed course therefore has a true negative, and `no_benign` and `no_marker` are not shown in a lesson session.
+- Every unit seeds `board-normal-search`: the first at open, a unit moved to on the learner's first pass, skip or hint in it (`views._seed_once_worked`, the same work the result page's `begun()` counts), so a unit the console moved to and the learner left unworked adds no benign case. The seed is a benign case and counts in the second score (`views._replayed` keeps a benign `meta.seed` case). A closed course therefore has a true negative, and `no_benign` and `no_marker` are not shown in a lesson session.
 
 Each unit below lists its defense and opening pane, what the learner does, and where the answers are read from.
 
@@ -1030,7 +1030,7 @@ One session, F1 to F6. `POST /api/sessions/<id>/lesson/ {"lesson": "<id>"}` move
 - It sets `Session.lesson` and `Session.defense`.
 - It appends `{id, started_at}` to `Session.lessons` (migration 0027). A foundation open writes the first entry.
 - It clears the stamp proxy's label.
-- It replays the unit's `cases` as an open does.
+- It does not replay the unit's `cases`; the learner's first pass, skip or hint in the unit does.
 - It answers the session detail.
 
 It refuses a closed session, a scenario session and an unguided one with 409. It refuses an id that is not a foundation with 400.

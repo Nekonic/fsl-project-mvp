@@ -952,7 +952,7 @@ board의 `scenario.yaml`은 `foundations:` 목록을 선언합니다. discovery 
 - `wargames.lesson(lesson_id=...)`은 기초 레슨이나 단계가 있는 시나리오를 찾고, 그 밖의 id는 거부하며, 기초 레슨에는 `group: foundations`를 붙입니다.
 - `GET /api/wargames/`는 `foundations`를 나열합니다(`wargames._foundation_card`). 카드에는 `id`, `order`, `title`과 `goal` 문자열 키, `minutes`, `level`, `defense`, `prerequisites`, 단계 수, `step_ids`, 레슨이 가르치는 내용의 문자열 키인 `learns`가 들어 있습니다.
 - 메인 페이지는 기초 레슨을 레슨으로 맨 앞에 보여 줍니다. 소요 시간, 학습 내용, 시작 버튼(해당 레슨을 안내와 함께 엽니다)이 함께 나옵니다.
-- 모든 레슨은 열 때 `board-normal-search`를 시드로 재생합니다. 이 시드는 정상 케이스로 두 번째 점수에 들어갑니다(`views._replayed`가 정상 `meta.seed` 케이스를 남김). 그래서 닫힌 레슨 세션에는 TN이 생기고, 레슨 세션에서는 `no_benign`과 `no_marker`를 보여 주지 않습니다.
+- 모든 레슨은 `board-normal-search`를 시드로 재생합니다. 첫 레슨은 열 때, 나중에 넘어간 레슨은 학습자가 그 레슨에서 처음 통과하거나 건너뛰거나 힌트를 볼 때 재생합니다(`views._seed_once_worked`, 결과 화면의 `begun()`이 세는 것과 같은 기준). 그래서 콘솔이 자동으로 넘어간 뒤 학습자가 손대지 않은 레슨은 정상 케이스를 더하지 않습니다. 이 시드는 정상 케이스로 두 번째 점수에 들어갑니다(`views._replayed`가 정상 `meta.seed` 케이스를 남김). 그래서 닫힌 레슨 세션에는 TN이 생기고, 레슨 세션에서는 `no_benign`과 `no_marker`를 보여 주지 않습니다.
 
 아래에서 레슨마다 defense와 여는 창, 학습자가 하는 일, 답을 읽는 곳을 적습니다.
 
@@ -1030,7 +1030,7 @@ F6의 sqlmap 명령에는 `--skip-waf`가 붙습니다. 그러지 않으면 sqlm
 - `Session.lesson`과 `Session.defense`를 바꿉니다.
 - `Session.lessons`에 `{id, started_at}`를 덧붙입니다(마이그레이션 0027). 기초 레슨을 열 때 첫 항목을 씁니다.
 - 스탬프 프록시의 라벨을 지웁니다.
-- 세션을 열 때처럼 레슨의 `cases`를 재생합니다.
+- 레슨의 `cases`는 재생하지 않습니다. 학습자가 그 레슨에서 처음 통과하거나 건너뛰거나 힌트를 볼 때 재생합니다.
 - 세션 상세를 응답합니다.
 
 닫힌 세션, 시나리오 세션, 가이드가 없는 세션은 409로 거부합니다. 기초 레슨이 아닌 id는 400으로 거부합니다.
