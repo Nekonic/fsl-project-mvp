@@ -229,9 +229,9 @@ function objectivesShow(objectives) {
       <td class="py-1 text-right">${esc(row.difficulty)}</td>
       <td class="py-1 text-right ${row.lost ? "text-danger" : "text-success"}">${esc(t(row.lost ? "common.yes" : "common.no"))}</td>
       <td class="py-1 text-right">${esc(row.lost && unasked ? t(row.detected ? "common.yes" : "common.no") : "—")}</td>
-      <td class="py-1 text-right">${esc(row.points)}</td>
+      <td class="py-1 text-right">${esc(unasked ? row.points : "—")}</td>
     </tr>`).join("");
-  field("lesson-objectives-total").textContent = String(objectives.total ?? 0);
+  field("lesson-objectives-total").textContent = unasked ? String(objectives.total ?? 0) : "—";
 }
 
 async function objectivesRead() {
