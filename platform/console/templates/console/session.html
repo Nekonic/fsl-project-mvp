@@ -177,7 +177,11 @@
   const foundations = () => (wargame && Array.isArray(wargame.foundations) ? wargame.foundations : []);
   const lessonNumber = (lessonId) => foundations().findIndex((taught) => taught.id === lessonId) + 1;
   const takenLessons = () => (session && Array.isArray(session.lessons) ? session.lessons : []);
-  const courseNumbers = () => takenLessons().map((taken) => lessonNumber(taken.id)).filter(Boolean);
+  const worked = (lessonId) => (Array.isArray(session.course) ? session.course : [])
+    .some((row) => row.id === lessonId && (row.passed || row.skipped || row.hints));
+  const begun = (one, at) => at === 0 || worked(one.id) || (!session.ended_at && one.id === session.lesson_id);
+  const startedLessons = () => takenLessons().filter(begun);
+  const courseNumbers = () => startedLessons().map((taken) => lessonNumber(taken.id)).filter(Boolean);
   const lessonPrefix = (card) => String(card && card.title || "").replace(/\.title$/, "");
   const seeded = (row) => Boolean(row.seed || (row.meta && row.meta.seed));
   const sender = (row) => (seeded(row) ? badge(t("score.kind.auto_benign"), "neutral") : badge(t("session.activity.red"), "red"));
@@ -211,7 +215,9 @@
     field("session-badges").innerHTML = badge(t(`kind.${session.kind}`), session.kind === "lesson" ? "blue" : "neutral") + state;
     const parts = [scenarioName()];
     const course = courseNumbers();
+    const only = course.length === 1 ? foundations()[course[0] - 1] : null;
     if (course.length > 1) parts.push(t("session.course.span", Math.min(...course), Math.max(...course)));
+    else if (only) parts.push(t(only.title));
     else if (lessonText()) parts.push(localized(`${lessonText()}.title`, ""));
     const began = clock(session.started_at);
     const ended = clock(session.ended_at);
@@ -466,16 +472,17 @@
     }
     objectiveTable(tiers.ok && Array.isArray(tiers.body) ? tiers.body : [], score.body.breaches);
     judgement(score.body);
+    lessonLostNote(score.body);
   }
 
   function courseSummary() {
     const taken = takenLessons();
     show("course", lessonSession() && taken.length > 0);
     const counted = Array.isArray(session.course) ? session.course : [];
-    field("course-rows").innerHTML = taken.map((one, at) => {
+    field("course-rows").innerHTML = taken.map((one, at) => ({ one, at, until: at + 1 < taken.length ? taken[at + 1].started_at : session.ended_at }))
+      .filter(({ one, at }) => begun(one, at)).map(({ one, until }) => {
       const number = lessonNumber(one.id);
       const card = foundations()[number - 1];
-      const until = at + 1 < taken.length ? taken[at + 1].started_at : session.ended_at;
       const done = counted.find((row) => row.id === one.id);
       return `
         <li class="py-2 flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -489,12 +496,18 @@
   }
 
   function lessonScoreNote() {
-    const notes = takenLessons()
+    const notes = startedLessons()
       .map((one) => localized(`${lessonPrefix(foundations()[lessonNumber(one.id) - 1])}.score_note`, ""))
       .filter((note, at, all) => note && all.indexOf(note) === at);
     show("score-lesson-note", notes.length > 0);
     field("score-lesson-note").textContent = notes.join(" ");
-    show("score-lesson-lost", takenLessons().some((one) => lessonNumber(one.id) === 6));
+    show("score-lesson-lost", false);
+  }
+
+  function lessonLostNote(score) {
+    const sixth = (lessonId) => lessonNumber(lessonId) === 6;
+    const lostOrRun = score.breaches.length > 0 || score.per_case.some((row) => row.malicious && sixth(row.lesson));
+    show("score-lesson-lost", startedLessons().some((one) => sixth(one.id)) && lostOrRun);
   }
 
   async function scoreboard() {
