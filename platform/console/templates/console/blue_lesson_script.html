@@ -1686,11 +1686,13 @@ function coach(prefix, declared) {
     rulesLearned();
   }
 
-  function finish() {
+  function finish(unread = false) {
     finished = true;
     show();
     if (paneOpen("topology")) mapFitSoon();
-    if (nextLesson && !field("stretch-text").textContent) setTimeout(moveOn, NEXT_LESSON_MS);
+    if (!nextLesson) return;
+    if (unread) status(t("lesson.status.press_next"));
+    else if (!field("stretch-text").textContent) setTimeout(moveOn, NEXT_LESSON_MS);
   }
 
   async function moveOn() {
@@ -1698,12 +1700,15 @@ function coach(prefix, declared) {
     moving = true;
     status(t(nextLesson ? "lesson.next.preparing" : "main.closing"));
     if (nextLesson) {
+      const onwards = field("step-act").querySelector('[data-act="next-lesson"]');
+      if (onwards) onwards.disabled = true;
       const moved = await post(lessonPath("lesson/"), { lesson: nextLesson.id }, PATIENCE_FOR_RANGE_WORK);
       if (moved.ok) {
         location.reload();
         return;
       }
       moving = false;
+      if (onwards) onwards.disabled = false;
       status("");
       say(t("lesson.next.failed", detail(moved)), "fail");
       return;
@@ -1736,7 +1741,7 @@ function coach(prefix, declared) {
     });
     if (session.lesson_objectives) objectivesRead();
     if (at === steps.length - 1) {
-      finish();
+      finish(unread);
       return;
     }
     if (unread) {

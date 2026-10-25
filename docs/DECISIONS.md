@@ -4922,6 +4922,11 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   which lands on its Theory card as a first open does (the landing and step
   keys are per lesson). After F6: "All foundation lessons complete." (`lesson.course.done`),
   then ingest, `POST /close/`, and the session page.
+  The last step follows the long-pass rule of every other step: when its pass
+  line is longer than `SHORT_PASS_CHARS` (F3's `count`, F5's `still`), the
+  lesson does not move on by itself; the status says to press Next and the
+  learner presses "Next lesson", which is disabled while "Preparing the next
+  lesson…" shows (live review round 9).
 - **Kali steps.** The 1.2 s pass pause applies to `kali` too; the step after a
   Kali step shows that step's row (requests per sensor, the Kibana link),
   re-read by a poll of the Kali check after a reload. 3a7238d's
