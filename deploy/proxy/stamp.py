@@ -2,7 +2,6 @@ from pathlib import Path
 
 MARKER_HEADER = "X-Request-ID"
 LABEL_FILE = Path("/var/lib/session/active")
-ORIGIN_FILE = Path("/var/lib/session/origin")
 
 def _read(path):
     try:
@@ -14,12 +13,3 @@ def request(flow):
     marker = _read(LABEL_FILE)
     if marker and MARKER_HEADER not in flow.request.headers:
         flow.request.headers[MARKER_HEADER] = marker
-
-    address = _read(ORIGIN_FILE)
-    if not address:
-        return
-
-    asked_for = flow.request.host_header
-    flow.request.host = address
-    if asked_for:
-        flow.request.host_header = asked_for

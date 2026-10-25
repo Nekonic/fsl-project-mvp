@@ -71,7 +71,6 @@ chmod 0755 /usr/local/sbin/set-origin
 
 install -d -m 0711 /var/lib/session
 install -m 0600 -o ubuntu -g ubuntu /dev/null /var/lib/session/active
-install -m 0600 -o ubuntu -g ubuntu /dev/null /var/lib/session/origin
 
 install -m 0622 -o ubuntu -g ubuntu /dev/null /var/log/commands.log
 echo '. /usr/local/lib/shell-hook.sh' >> /etc/bash.bashrc

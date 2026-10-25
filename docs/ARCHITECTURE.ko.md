@@ -454,10 +454,9 @@ id와 이름: 모든 id는 `uuid5(<learner id>, "slot-<n>-<wargame>")`입니다.
 프록시는 `mitmdump` 스크립트입니다.
 
 - Kali VM에서는 `web-proxy.service`가 `/usr/local/lib/web-proxy.py`로 실행하고, 터미널은 `ttyd.service`가 실행합니다.
-- `/var/lib/session/active`와 `origin`은 플랫폼이 로그인하는 `ubuntu` 전용 0600입니다. 쉘 훅은 직접 읽지 못하면 `sudo -n cat`으로 마커를 읽습니다.
+- `/var/lib/session/active`는 플랫폼이 로그인하는 `ubuntu` 전용 0600입니다. 쉘 훅은 직접 읽지 못하면 `sudo -n cat`으로 마커를 읽습니다.
 - `/var/log/commands.log`는 `ubuntu` 소유 0622라서 `kali`는 덧붙이기만 할 수 있습니다.
 - 프록시는 `X-Request-ID`가 없는 요청에 `/var/lib/session/active`의 값으로 그 헤더를 설정합니다.
-- `/var/lib/session/origin`에 주소가 있으면 원래 `Host`를 유지한 채 요청을 그 주소로 전달합니다. `host-rewrite` 출발지 모드를 삭제한(2026-10-21) 뒤로는 이 파일에 쓰는 곳이 없습니다. `stamp.py`와 `deploy/kali/setup.sh`는 아직 이 파일 이름을 적고 있습니다.
 - 플랫폼은 `active` 파일을 `runner("proxy")`로, ssh를 통해 씁니다.
 - TLS 가로채기를 하지 않습니다. 프록시는 환경 변수로 지정될 뿐 아무것도 강제하지 않습니다. `curl --noproxy '*'`로 보내면 프록시를 거치지 않습니다.
 - `/etc/profile.d/proxy.sh`가 로그인 셸에 `http_proxy`와 `HTTP_PROXY`를 지정하고, `kali`의 sudoers 드롭인이 두 변수를 `sudo`에서도 유지합니다. 그래서 `sudo su`, `sudo -s`, `sudo <명령>`으로 연 root 셸도 프록시를 거칩니다.
