@@ -2050,14 +2050,18 @@ def test_the_objectives_card_keeps_the_detected_column_blank_until_the_step_aski
       await frames();
       const detected = () => document.querySelectorAll('#lesson-objectives-rows [data-objective]').map((row) =>
         row.querySelectorAll('td')[3].textContent);
+      const scored = () => [...document.querySelectorAll('#lesson-objectives-rows [data-objective]').map((row) =>
+        row.querySelectorAll('td')[4].textContent), browser.text('lesson-objectives-total')];
+      const pointsBefore = scored();
       const before = detected();
       RIGHT.alerts = "none";
       await browser.click('[data-step="1"]');
       await frames();
       const asked = detected();
+      const pointsAsked = scored();
       await browser.click('#step-act [data-value="none"]');
       await browser.settle();
-      return {before, asked, after: detected()};
+      return {before, asked, after: detected(), pointsBefore, pointsAsked, pointsAfter: scored()};
     """)
     plain = open_page(client, "/blue/1/", setup=served(), scenario="""
       await frames();
@@ -2068,6 +2072,9 @@ def test_the_objectives_card_keeps_the_detected_column_blank_until_the_step_aski
     assert seen["result"]["before"] == ["—", "—"] and seen["result"]["asked"] == ["—", "—"], (
         "the card would answer the question before it is asked")
     assert seen["result"]["after"] == [english("common.no"), "—"]
+    assert seen["result"]["pointsBefore"] == seen["result"]["pointsAsked"] == ["—", "—", "—"], (
+        "a lost row's points double when it went undetected, so a number would answer the question too")
+    assert seen["result"]["pointsAfter"] == ["4", "0", "4"]
     assert plain["result"] == [english("common.no"), "—"], "a lesson that never asks which device alerted shows it from the start"
 
 def test_the_stretch_card_shows_only_once_the_lesson_s_last_step_has_passed(client):
