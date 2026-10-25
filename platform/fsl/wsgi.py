@@ -30,6 +30,12 @@ def resume_resets():
 
     views.resume_resets()
 
+def publish_maps():
+    from api import views
+
+    views.publish_maps()
+
 threading.Thread(target=resume_resets, name="fsl-resets-resume", daemon=True).start()
+threading.Thread(target=publish_maps, name="fsl-maps-publish", daemon=True).start()
 threading.Thread(target=resume_scenarios, name="fsl-scenarios-resume", daemon=True).start()
 threading.Thread(target=prune_closed_sessions, name="fsl-retention", daemon=True).start()

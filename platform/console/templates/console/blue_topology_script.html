@@ -1,4 +1,4 @@
-const topo = { read: false, web: null, drawn: false, waiting: false, fitTimer: null, waitTimer: null, drawnHeard: [], fitBox: "" };
+const topo = { read: false, asking: false, web: null, drawn: false, waiting: false, fitTimer: null, waitTimer: null, drawnHeard: [], fitBox: "" };
 const MAP_WAIT_MS = 30000;
 const MAP_FIT_WAIT_MS = 8000;
 const REFIT_SETTLES_MS = 250;
@@ -26,7 +26,7 @@ function topologyWait(ms) {
   field("topology-frame").style.visibility = "hidden";
   field("map-wait").classList.remove("hidden");
   clearTimeout(topo.waitTimer);
-  topo.waitTimer = setTimeout(topologyFitted, ms);
+  if (ms) topo.waitTimer = setTimeout(topologyFitted, ms);
 }
 
 function topologyFitted() {
@@ -69,7 +69,12 @@ function topologyShow() {
 
 async function topologyOpen() {
   if (!topo.read) {
+    if (topo.asking) return;
+    topo.asking = true;
+    topologyWait();
     const project = await api(`/api/topology/?language=${encodeURIComponent(language)}&session=${sessionId()}`);
+    topo.asking = false;
+    topologyFitted();
     if (!project.ok) {
       field("topology-said").textContent = (project.body && project.body.detail) || String(project.status);
       return;

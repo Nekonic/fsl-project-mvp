@@ -55,10 +55,12 @@ def documents(key: str, found) -> dict[str, dict]:
     return {language: topology.labelled(gns3.local(language), drawn, found, _salt(key), key)
             for language in LANGUAGES}
 
-def publish(key: str, read) -> dict[str, str]:
+def _turn(key: str) -> threading.Lock:
     with _guard:
-        turn = _turns.setdefault(key, threading.Lock())
-    with turn:
+        return _turns.setdefault(key, threading.Lock())
+
+def publish(key: str, read) -> dict[str, str]:
+    with _turn(key):
         return _published(key, read)
 
 def _published(key: str, read) -> dict[str, str]:
@@ -104,7 +106,9 @@ def served(key: str, language: str, read) -> dict:
     wanted = project_id(key, language)
     if gns3.status(wanted) != "opened":
         try:
-            publish(key, read)
+            with _turn(key):
+                if gns3.status(wanted) != "opened":
+                    _published(key, read)
         except (gns3.Unavailable, RangeUnavailable) as exc:
             _failed[key] = str(exc)
             return {**gns3.project(language, template(wargame_of(key), language)),

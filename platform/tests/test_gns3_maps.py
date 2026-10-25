@@ -267,6 +267,19 @@ def test_the_map_served_for_a_session_is_its_slot_s_project_once_gns3_holds_it_o
     assert shown["project_id"] == maps.project_id("slot 2 board", "ko")
     assert len(served.published) == 2, "a map GNS3 did not hold yet is loaded before it is served"
 
+def test_a_map_the_session_s_own_load_opened_while_this_request_waited_is_served_without_reading_the_slot_again(served, monkeypatch):
+    monkeypatch.setattr(gns3, "project", lambda language, kept=None: {"project_id": (kept or {}).get("project_id")})
+    asked = []
+    monkeypatch.setattr(gns3, "status", lambda project_id: "opened" if asked.append(project_id) or len(asked) > 1 else "")
+
+    def read():
+        raise AssertionError("the slot's hosts were read again over SSH")
+
+    shown = maps.served("slot 2 board", "en", read)
+
+    assert shown["project_id"] == maps.project_id("slot 2 board", "en")
+    assert served.published == [] and len(asked) == 2
+
 def test_a_map_that_cannot_be_loaded_falls_back_to_the_range_s_own_map_and_says_why(served, monkeypatch):
     def refused(document):
         raise gns3.Unavailable("GNS3 refused the admin sign-in")
@@ -367,3 +380,39 @@ def test_a_slot_keeps_the_map_of_its_newest_session():
     Session.objects.create(scenario="board", slot=2, ended_at=timezone.now())
 
     assert _maps_live(slotted) == ["slot 1 corp", "slot 2 board"], "one wargame's map per slot, the newest session's"
+
+
+@pytest.mark.django_db
+def test_at_start_the_platform_loads_the_map_of_each_slot_s_newest_session(settings):
+    from api import views
+    from api.models import Session
+
+    settings.FSL_GNS3_URL = "http://gns3:3080"
+    cloud = SimpleNamespace(slots=2, interfaces=None, in_slot=lambda number: SimpleNamespace(
+        slots=2, interfaces=None, in_slot=None, number=number))
+    Session.objects.create(scenario="board", slot=1)
+    Session.objects.create(scenario="corp", slot=2)
+    with patch("api.views.substrate", lambda: cloud), patch.object(maps, "begin") as begun:
+        views.publish_maps()
+
+    assert [(call.args[0], call.args[3]) for call in begun.call_args_list] == [
+        ("slot 1 board", ["slot 1 board", "slot 2 corp"]), ("slot 2 corp", ["slot 1 board", "slot 2 corp"])]
+
+@pytest.mark.django_db
+def test_a_cloud_that_does_not_answer_at_start_leaves_each_map_to_load_when_its_session_asks(settings, caplog):
+    from api import views
+
+    def unanswered():
+        raise RangeUnavailable("keystone did not answer")
+
+    settings.FSL_GNS3_URL = "http://gns3:3080"
+    with patch("api.views.substrate", unanswered), patch.object(maps, "begin") as begun:
+        views.publish_maps()
+
+    assert not begun.called and "keystone did not answer" in caplog.text
+
+def test_the_platform_loads_the_slot_maps_in_the_background_as_it_starts():
+    started = (ROOT / "platform" / "fsl" / "wsgi.py").read_text()
+
+    assert 'threading.Thread(target=publish_maps, name="fsl-maps-publish", daemon=True).start()' in started
+    assert "views.publish_maps()" in started
