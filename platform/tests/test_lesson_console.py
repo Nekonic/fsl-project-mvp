@@ -132,7 +132,7 @@ browser.serve((request) => {
   if (request.route === "/api/sessions/1/ingest/") return {body: {ingested: 0}};
   if (request.route === "/api/sessions/1/lesson/") {
     range.moved.push(request.body);
-    return {body: {id: 1}};
+    return range.moving ? range.moving.then(() => ({body: {id: 1}})) : {body: {id: 1}};
   }
   if (request.route === "/api/sessions/1/close/") {
     range.ended_at = "now";
@@ -2129,6 +2129,30 @@ def test_a_finished_lesson_with_a_stretch_task_waits_for_next_lesson_instead_of_
     assert seen["errors"] == []
     assert seen["result"] == {"waited": 0, "stretch": True, "moved": [{"lesson": "f10"}]}, (
         "a stretch card that vanished after two seconds could not be read; the learner moves on with Next lesson")
+
+def test_a_long_pass_line_on_the_last_step_waits_for_next_lesson_which_greys_out_while_the_next_lesson_is_prepared(client):
+    seen = open_page(client, "/blue/1/", setup=served(next_lesson="f10"), scenario=f"""
+      {to("db_ip")}
+      {LONG_OK}
+      {answering(RIGHT["db_ip"])}
+      await browser.wait(2500);
+      const waited = {{moved: range.moved.length, status: browser.text('step-status')}};
+      let release;
+      range.moving = new Promise((resolve) => {{ release = resolve; }});
+      const onwards = () => document.querySelector('#step-act [data-act="next-lesson"]');
+      onwards().click();
+      await frames();
+      const preparing = {{status: browser.text('step-status'), disabled: onwards().disabled}};
+      release();
+      await browser.settle();
+      return {{waited, preparing, moved: range.moved, reloaded: range.reloaded}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"waited": {"moved": 0, "status": english("lesson.status.press_next")},
+                              "preparing": {"status": english("lesson.next.preparing"), "disabled": True},
+                              "moved": [{"lesson": "f10"}], "reloaded": 1}, (
+        "a long last pass line that vanished after two seconds could not be read; the learner moves on with Next lesson")
 
 PRESSED_IN_CARD = [
     {"id": "board_ip", "point": {"opens": "topology"}, "check": {"kind": "answer"}},
