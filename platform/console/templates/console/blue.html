@@ -344,7 +344,10 @@
     noteLesson(taught);
     objectivesShow(session.lesson_objectives);
     const goTo = declared.length ? coach(taught.text, declared) : null;
-    if (!goTo) openPane(kibana);
+    if (!goTo) {
+      openPane(kibana);
+      stretchShown(true);
+    }
     theory(taught.text, taught.theory, goTo);
   })();
 </script>
