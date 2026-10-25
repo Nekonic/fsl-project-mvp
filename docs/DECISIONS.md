@@ -6058,7 +6058,7 @@ Image digests (computed before and after the fold of the declaration, with the s
 Open, left as they are:
 
 - `deploy/suricata/suricata.yaml` `HOME_NET` still listed the four former docker edge subnets (5.188.10.0/24, 177.54.144.0/24, 103.152.220.0/24 and 73.0.0.0/24), and the file still named the interfaces `eth0` to `eth4`. Settled the next day; see "2026-10-21 — The estate sensor's HOME_NET and a repeated lesson move".
-- `deploy/proxy/stamp.py` and `deploy/kali/setup.sh` still name `/var/lib/session/origin`, which nothing writes now. Both are in the Kali bundle, so editing them would change its digest again.
+- `deploy/proxy/stamp.py` and `deploy/kali/setup.sh` still name `/var/lib/session/origin`, which nothing writes now. Both are in the Kali bundle, so editing them would change its digest again. Removed on 2026-10-25: nothing in `platform/`, `deploy/`, `redteam/`, `test/` or `wargames/` wrote or read the path, so `stamp.py` now only stamps `X-Request-ID` from `/var/lib/session/active`, `setup.sh` no longer creates the file, and the Kali image digest changes once.
 
 Live proof on the new cloud, 2026-10-20 to 2026-10-21:
 

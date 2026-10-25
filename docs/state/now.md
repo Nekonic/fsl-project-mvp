@@ -170,10 +170,10 @@ copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
    from the main checkout with `bin/cloud up --replace`, without `--sideload`,
    so the VM runs dev from GitHub and GHCR. Then refresh the operator's
    `known_hosts` from the console log (`~/.cache/fsl-work/known-hosts.sh`).
-2. Open items that need a decision (`docs/DECISIONS.md` "The docker substrate
-   is removed"): `deploy/proxy/stamp.py` and `deploy/kali/setup.sh` still name
-   `/var/lib/session/origin`, which nothing writes (editing them changes the
-   Kali image digest once more).
+2. Done: `deploy/proxy/stamp.py` and `deploy/kali/setup.sh` no longer name
+   `/var/lib/session/origin`, which nothing wrote (`docs/DECISIONS.md` "The
+   docker substrate is removed"). The Kali image digest changes once, so the
+   next `bin/cloud up` rebuilds `fsl-kali`.
 3. An acceptance run longer than `FSL_RETAIN_CLOSED_MINUTES` (60) loses
    the shared session of `test_strategy_honesty` to retention. A one-slot run
    took about 2 h 50 min and failed there. With two slots a run took 64 min on

@@ -805,9 +805,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       --sideload` passed in 19 min 44 s, and the full `bin/verify` on the code
       with the docker substrate removed passed but for the single-slot failures (`docs/DECISIONS.md` 2026-10-21,
       "The docker substrate is removed"). Still open from it:
-      `/var/lib/session/origin` in `deploy/proxy/stamp.py` and
-      `deploy/kali/setup.sh` (needs a decision); `HOME_NET` was settled by
-      the HOME_NET fix; a one-slot acceptance run
+      a one-slot acceptance run
       outlives `FSL_RETAIN_CLOSED_MINUTES` (next item).
 - [ ] A one-slot acceptance run takes about 2 h 50 min on the new cloud, longer
       than `FSL_RETAIN_CLOSED_MINUTES` (60), so retention deletes the shared
