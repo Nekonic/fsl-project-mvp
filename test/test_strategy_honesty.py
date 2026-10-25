@@ -1,20 +1,12 @@
 import pytest
-import requests
 
-from conftest import PLATFORM_URL
 
 @pytest.fixture(scope="module")
-def marker_only_session(full_run):
-    return full_run["session_id"]
+def scored_by(full_run):
+    return full_run["scored_by"]
 
-def scored(session_id, strategy):
-    return requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/score/?correlation={strategy}",
-        timeout=120,
-    ).json()
-
-def test_a_strategy_that_cannot_place_a_case_says_which_ones(marker_only_session):
-    window = scored(marker_only_session, "window")
+def test_a_strategy_that_cannot_place_a_case_says_which_ones(scored_by):
+    window = scored_by["window"]
 
     named = [w for w in window["warnings"] if w[0] == "score.warning.no_source_ip"]
 
@@ -25,9 +17,9 @@ def test_a_strategy_that_cannot_place_a_case_says_which_ones(marker_only_session
     )
     assert "board-sqli-search" in named[0][1], named
 
-def test_the_two_strategies_still_disagree_for_a_real_reason(marker_only_session):
-    marker = scored(marker_only_session, "marker")
-    window = scored(marker_only_session, "window")
+def test_the_two_strategies_still_disagree_for_a_real_reason(scored_by):
+    marker = scored_by["marker"]
+    window = scored_by["window"]
 
     assert marker["tp"] > window["tp"], (
         f"marker {marker['tp']} vs window {window['tp']} - if these agree, "

@@ -805,13 +805,17 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       --sideload` passed in 19 min 44 s, and the full `bin/verify` on the code
       with the docker substrate removed passed but for the single-slot failures (`docs/DECISIONS.md` 2026-10-21,
       "The docker substrate is removed"). Still open from it:
-      a one-slot acceptance run
-      outlives `FSL_RETAIN_CLOSED_MINUTES` (next item).
-- [ ] A one-slot acceptance run takes about 2 h 50 min on the new cloud, longer
-      than `FSL_RETAIN_CLOSED_MINUTES` (60), so retention deletes the shared
-      session `test_strategy_honesty` still needs. Either the harness keeps a
-      session it still needs, or the retention window accounts for a long run
-      (open question). With two slots (2026-10-21) the run took 64 min and
+      none; the one-slot run that outlived
+      `FSL_RETAIN_CLOSED_MINUTES` is fixed (next item).
+- [x] A one-slot acceptance run takes about 2 h 50 min on the new cloud, longer
+      than `FSL_RETAIN_CLOSED_MINUTES` (60), so retention deleted the shared
+      red-team session before `test_strategy_honesty` asked for its score.
+      Fixed in the harness, not the window: `full_run`
+      (`test/shared_sessions.py`) records the session's cases, detections and
+      its score under both correlation strategies as soon as the run is
+      scored, the tests read that record, and no fixture hands out the bare
+      session id (a unit test in `platform/tests/test_acceptance_split.py`
+      holds it). Not yet run live on one slot. With two slots (2026-10-21) the run took 64 min and
       passed, and 36 min (2186 s) after the reset speed-ups of 2026-10-24; with one slot `test_concurrent_sessions` and `test_lesson` also
       fail with 409 "1 session is already open".
 - [x] Newcomer bring-up on OpenStack (2026-10-20): LF line endings pinned (`.gitattributes`); the first
