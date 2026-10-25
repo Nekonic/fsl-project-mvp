@@ -175,7 +175,7 @@ def test_a_question_is_judged_from_the_learner_s_own_website_pane_request(client
     assert (before["passed"], before["reason"]) == (False, ["lesson.check.unrecorded", []])
     assert (judged[right]["passed"], judged[wrong]["passed"], judged[wrong]["reason"]) == (True, False, [reason, []])
 
-def test_f3_reads_the_two_legs_of_one_search_by_destination_so_one_sensor_seeing_both_counts_each_search_once(client):
+def test_f3_reads_the_two_legs_of_one_search_by_destination_and_counts_both_legs_of_each_search(client):
     session = opened("f3")
     marker = session.browse_marker
     searched = [browsed("/search/?q=kim2026", 200), browsed("/search/?q=lee2026", 200, request_id=2)]
@@ -185,11 +185,11 @@ def test_f3_reads_the_two_legs_of_one_search_by_destination_so_one_sensor_seeing
     with on_the_range(), on_map(read_slot()), patch.object(site, "kept", return_value=searched), indexed(*legs):
         step(client, session, "search")
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("site_source", WAF), ("client_source", CUSTOMER), ("xff", CUSTOMER), ("count", "1"))}
+            ("site_source", WAF), ("client_source", CUSTOMER), ("xff", CUSTOMER), ("count", "2"))}
         Session.objects.filter(pk=session.pk).update(lesson_steps={"f3": {"site_source": {"passed": "x"}}})
         host = answer(client, session, "site_host", "waf")["passed"]
         wrong = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("site_source", CUSTOMER), ("client_source", WAF), ("count", "2"))}
+            ("site_source", CUSTOMER), ("client_source", WAF), ("count", "1"))}
 
     assert said == {"site_source": True, "client_source": True, "xff": True, "count": True}
     assert host is True, "the host is the map host whose address the step before found"
@@ -405,17 +405,19 @@ def test_f6_reads_the_exception_the_alerts_the_attack_drew_and_the_errors_it_cau
     upstream = [http_event("dump-1", f"/?sort=posts_post.id{n}", status, src_ip=WAF, dest_ip=BOARD)
                 for n, status in enumerate((500, 500, 200))]
     logged = [{"event": {"module": "modsecurity"}, "@timestamp": edge[0]["timestamp"],
-               "transaction": {"request": {"headers": {}}, "response": {"http_code": status}}}
+               "transaction": {"client_ip": KALI, "request": {"headers": {}}, "response": {"http_code": status}}}
               for status in (500, 500, 500, 403)]
     standing = {"paranoia": 1, "exclusions": [{"tag": "OWASP_CRS", "target": "ARGS:sort", "path": ""}]}
     with quietly(), on_map(read_slot()), on_the_range(), indexed(*edge, *upstream, *logged), \
             patch("api.views._waf_in_force", lambda session: standing):
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("excluded", "sort"), ("alerts", "none"), ("seen", "-"))}
+            ("excluded", "sort"), ("alerts", "none"), ("seen", KALI))}
+        the_waf = answer(client, session, "seen", WAF)["passed"]
         detected(session, "ids", "suricata", "dump-1", "SQLi", alert={"signature_id": 9000003})
         ids_only = answer(client, session, "alerts", "ids")["passed"]
 
     assert said == {"excluded": True, "alerts": True, "seen": True}
+    assert the_waf is False, "the 500 records' source is the attacker, not the WAF they reached"
     assert ids_only is True
 
 def test_the_penalty_counts_double_for_an_objective_lost_undetected_since_the_lesson_started(client):

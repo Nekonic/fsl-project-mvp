@@ -672,6 +672,8 @@ def _site_addresses(session):
     return found
 
 def _on_leg(session, events, leg):
+    if leg == "both":
+        return events
     site = _site_addresses(session)
     return [event for event in events if (str(event.get("dest_ip") or "") in site) == (leg == "upstream")]
 
@@ -822,9 +824,6 @@ def _stamped(event):
     stamp = parse_datetime(str(event.get("timestamp") or event.get("@timestamp") or ""))
     return stamp if stamp is None or stamp.tzinfo else stamp.replace(tzinfo=dt_timezone.utc)
 
-def _run_events(session, recorded):
-    return _sensed(session, recorded.started_at - RECORD_SLACK, recorded.ended_at + RECORD_SLACK, recorded.case_id)
-
 def _kali_case(session, step_id):
     marker = (_steps_of(session).get(step_id) or {}).get("marker")
     return session.cases.filter(case_id=marker).first() if marker else None
@@ -840,12 +839,9 @@ def _kali_fact(session, check):
         except RangeUnavailable:
             return []
         return [] if found is None else [lesson.YES if found else lesson.NO]
-    if of == "error_rule_id":
-        return lesson.server_error_rules(_logged(session, recorded.started_at - RECORD_SLACK,
-                                                 recorded.ended_at + RECORD_SLACK, "modsecurity"), kibana.NO_RULE)
-    if check.get("from") == "http":
-        return sorted({str(event["src_ip"]) for event in _on_leg(session, _run_events(session, recorded), "inbound")
-                       if event.get("src_ip")})
+    if check.get("from") == "server_error":
+        return lesson.server_error_sources(_logged(session, recorded.started_at - RECORD_SLACK,
+                                                   recorded.ended_at + RECORD_SLACK, "modsecurity"))
     marked = _detected(session, recorded.case_id, settled=True)
     if of == "alerted_by":
         return [lesson.alerted_by({detection.source for detection in marked if lesson.rule_of(detection.raw or {})})]

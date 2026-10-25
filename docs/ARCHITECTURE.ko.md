@@ -766,7 +766,7 @@ WAF 상태 스냅샷:
 
 `platform/lesson.py`에는 조치 유형 함수와 함께 다음이 있습니다.
 
-- 단계 답을 다루는 함수: `answered`, `rules_named`, `added_rules`, `pasted_rows`, `server_error_rules`, `alerted_by`, `detected_penalty`
+- 단계 답을 다루는 함수: `answered`, `rules_named`, `added_rules`, `pasted_rows`, `server_error_sources`, `alerted_by`, `detected_penalty`
 - 도움 사용 횟수
 - 시나리오 디브리핑에 나오는 추가·삭제한 예외 규칙과 파일 diff(`exclusions_changed`, `config_diff`)
 
@@ -977,12 +977,12 @@ board의 `scenario.yaml`은 `foundations:` 목록을 선언합니다. discovery 
   - board.com에 도착한 이벤트의 출발지 IP, 그리고 구성도에서 그 주소를 쓰는 호스트
   - 같은 검색이 waf에 도착한 이벤트의 출발지 IP와 그 X-Forwarded-For
   - WAF 로그에 남았는지
-  혼자 푸는 단계에서는 내 검색 중 waf에 도착한 건수를 묻습니다.
+  혼자 푸는 단계에서는 두 번 더 검색한 뒤 Kibana에서 내 검색어로 조회되는 http 이벤트 건수를 묻습니다. 검색 하나가 두 구간에서 기록되므로 건수는 검색 횟수의 두 배입니다.
 - 답은 기록에 대한 센서의 http 이벤트(`sensor_source`, `forwarded_for`)에서 읽으며, 구간으로 나눕니다.
-  - `dest_ip`가 board.com의 주소이면 `upstream`(waf가 넘긴 요청)이고, 아니면 `inbound`(waf에 도착한 요청)입니다. 그래서 두 구간을 모두 보는 센서 하나도 검색을 한 번씩만 셉니다.
+  - `dest_ip`가 board.com의 주소이면 `upstream`(waf가 넘긴 요청)이고, 아니면 `inbound`(waf에 도착한 요청)입니다. 그래서 두 구간을 모두 보는 센서 하나도 검색을 구간마다 한 번씩 읽습니다. `leg: both`는 두 구간의 이벤트를 모두 씁니다.
   - `host_of`는 그 주소를 쓰는 구성도 호스트입니다.
   - `waf_logged`는 WAF 자체의 기록에서 읽습니다.
-  - `hits`는 내 검색의 수 하나입니다. 레슨(또는 세션) 시작 뒤 `/search/` 아래 브라우징 마커가 붙은 inbound 이벤트 수입니다.
+  - `hits`는 건수 하나입니다. 레슨(또는 세션) 시작 뒤 url에 내 검색어가 들어 있는 두 구간(`leg: both`)의 http 이벤트 수입니다. Kibana에서 `event_type : http and url : *검색어*`로 조회한 건수와 같습니다.
 
 **f4 XSS 요청 차단과 IDS 룰 작성**(`lesson.xss`). defense `xss-gap`, 웹사이트 창에서 시작합니다.
 
@@ -1007,12 +1007,12 @@ board의 `scenario.yaml`은 `foundations:` 목록을 선언합니다. discovery 
 
 **f6 넓은 예외 처리로 놓친 공격 확인하기**(`lesson.miss`). defense `overbroad`, WAF 창에서 시작합니다.
 
-- 학습자는 예외 파일을 grep해 빠진 파라미터를 찾습니다. sqlmap으로 계정을 덤프해 표를 붙여 넣습니다. 어느 엔진이 경보를 냈는지, 실행 구간에서 WAF 로그에 남은 status 500 기록의 rule_id(`-`: 기록은 됐지만 매칭된 룰 없음), 관리자 목표가 탐지되었을 때 붙는 감점을 답합니다. 그다음 예외를 지우고 nginx를 reload합니다. 혼자 푸는 단계에서는 덤프를 다시 실행하고 정렬을 한 번 바꿉니다.
+- 학습자는 예외 파일을 grep해 빠진 파라미터를 찾습니다. sqlmap으로 계정을 덤프해 표를 붙여 넣습니다. 어느 엔진이 경보를 냈는지, 실행 구간에서 WAF 로그에 남은 status 500 기록의 출발지 IP(공격자 주소. 이 기록의 rule_id는 `-`: 기록은 됐지만 매칭된 룰 없음), 관리자 목표가 탐지되었을 때 붙는 감점을 답합니다. 그다음 예외를 지우고 nginx를 reload합니다. 혼자 푸는 단계에서는 덤프를 다시 실행하고 정렬을 한 번 바꿉니다.
 - 답은 다음에서 읽습니다.
   - `excluded_target`: 적용 중인 WAF 파일(`ARGS:sort` 또는 `sort`)
   - `loot`: 세션 스냅샷과 대조합니다.
   - `alerted_by`: 실행의 탐지 기록으로 없음, IDS만, WAF만, 둘 다를 구분합니다.
-  - `error_rule_id`: Kibana가 열리는 조회 기간의 WAF(ModSecurity) 로그 중 status 500인 기록에서 Kibana의 `rule_id` 필드가 보여 주는 값입니다. 매칭된 룰이 없는 기록은 `-`입니다(`lesson.server_error_rules`). 건수는 묻지 않습니다. sqlmap이 받은 500 응답 수를 직접 출력하기 때문입니다.
+  - `from: server_error`가 붙은 `kali_source`: Kibana가 열리는 조회 기간의 WAF(ModSecurity) 로그 중 status 500인 기록의 클라이언트 IP(Kibana의 `source_ip`)입니다(`lesson.server_error_sources`). 건수는 묻지 않습니다. sqlmap이 받은 500 응답 수를 직접 출력하기 때문입니다. rule_id도 묻지 않습니다. 앞 단계가 이미 `-`는 매칭된 룰이 없다는 뜻이라고 알려 주기 때문입니다.
   - `objective:`가 붙은 `detected_penalty`: 그 목표가 탐지되었을 때 붙는 감점, 곧 난이도 ×1입니다. 값은 `wargames.objectives`의 등급에서 읽고, 채점하지 않는 시나리오에서는 비어 있습니다.
   - `waf_changed`
   - `replay`: 실행이 차단되고 탈취 데이터가 없는지, 일반 정렬이 2xx이고 WAF 기록이 없는지
@@ -1073,7 +1073,7 @@ F6의 sqlmap 명령에는 `--skip-waf`가 붙습니다. 그러지 않으면 sqlm
 
 - `of:`가 훈련 환경 사실인 경우: `address`, `subnet`, `zone_of`, `path`, `logs`, `host_of`, `excluded_target`, `lost_points`, `detected_penalty`
 - `of:`가 요청 사실이고 `about:`이 `match`가 있는 단계를 가리키거나 단계 자신의 `match`가 있는 경우(그 단계와 일치하는 가장 최근 웹사이트 창 기록을 읽음): `status`, `method`, `path`, `parameter`, `param_value`, `sensor_source`, `forwarded_for`, `waf_logged`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_sid`, `alerted_sid_present`, `hits`
-- `of:`가 Kali 사실이고 `about:`이 `kali` 단계를 가리키는 경우: `sqlmap_found`, `kali_source`, `alerted_by`, `error_rule_id`
+- `of:`가 Kali 사실이고 `about:`이 `kali` 단계를 가리키는 경우: `sqlmap_found`, `kali_source`(실행의 WAF 탐지 기록에서, `from: server_error`가 붙으면 500 기록에서), `alerted_by`
 - 요청의 `path`나 `step:` 마커와 함께 쓰는 `rule`(위)
 
 ## 점수 계산 방식
