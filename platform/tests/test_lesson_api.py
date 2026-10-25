@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -532,12 +533,13 @@ def test_an_old_closed_session_whose_lesson_is_gone_still_lists_and_reads(client
 def switch(client, session, lesson_id):
     return client.post_json(f"/api/sessions/{session.pk}/lesson/", {"lesson": lesson_id})
 
-def test_a_foundation_session_moves_to_the_next_lesson_in_place_taking_its_defense_and_seeding_its_logs(client):
+def test_a_foundation_session_moves_to_the_next_lesson_in_place_taking_its_defense_and_seeding_no_logs_yet(client):
     session = foundation("f5", lessons=[{"id": "f5", "started_at": timezone.now().isoformat()}])
     stand = Stand()
     fire, fired = attacker({})
     with one_slot(stand), patch("api.views.harness.fire", fire):
         moved = switch(client, session, "f6")
+        step(client, session, "excluded", "", {"state": "reached"})
 
     assert moved.status_code == 200, moved.content
     body = moved.json()
@@ -549,7 +551,8 @@ def test_a_foundation_session_moves_to_the_next_lesson_in_place_taking_its_defen
         "F6's over-broad exception is applied to the open session")
     assert session.waf["exclusions"] == [{"tag": "OWASP_CRS", "target": "ARGS:sort", "path": ""}]
     assert stand.to("sensor"), "F6 runs the IDS rules without the URI SQL injection signature"
-    assert fired == SEEDED and all(case.meta.get("seed") for case in session.cases.all())
+    assert fired == [], (
+        "the console moves on by itself after a lesson ends; the next lesson's benign case waits for the learner's work there")
     assert session.ended_at is None
 
 def test_moving_to_the_lesson_the_session_is_already_on_changes_nothing(client):
@@ -565,9 +568,33 @@ def test_moving_to_the_lesson_the_session_is_already_on_changes_nothing(client):
     assert [taken["id"] for taken in again.json()["lessons"]] == ["f1", "f2"], (
         "the page and a learner's second click both ask for the lesson already open; "
         "a second entry would list the lesson twice in the course summary")
-    assert len(stand.calls) == writes and fired == seeded == SEEDED
+    assert len(stand.calls) == writes and fired == seeded == []
 
-def test_a_repeated_move_after_the_log_seed_failed_seeds_the_lesson_once_more(client):
+@pytest.mark.parametrize("worked", ["hint", "skipped", "passed"])
+def test_a_moved_to_lesson_is_seeded_once_on_the_learner_s_first_hint_skip_or_pass_there(client, worked):
+    session = foundation("f1", lessons=[{"id": "f1", "started_at": timezone.now().isoformat()}])
+    fire, fired = attacker({})
+    searched = lambda session_id: [{"id": 1, "at": time.time(), "method": "GET", "url": "http://board.com/search/?q=hello",
+                                    "status": 200}]
+    acts = {"hint": lambda: client.post_json(f"/api/sessions/{session.pk}/lesson/hints/", {"step": "method", "level": "hint"}),
+            "skipped": lambda: step(client, session, "method", "", {"state": "skipped"}),
+            "passed": lambda: step(client, session, "search", "check/", {"poll": True})}
+    with one_slot(Stand()), patch("api.views.harness.fire", fire):
+        switch(client, session, "f2")
+        step(client, session, "search", "", {"state": "reached"})
+        step(client, session, "search", "check/", {"poll": True})
+        before = list(fired)
+        with patch("api.views.site.kept", searched):
+            acted = acts[worked]()
+            acts[worked]()
+
+    assert before == [], "reaching a step and a failed poll are the console's own requests, not the learner's work"
+    assert acted.status_code == 200, acted.content
+    assert fired == SEEDED, "the lesson's benign case is sent once, on the first work done in it"
+    seeded = Case.objects.get(session=session)
+    assert seeded.meta["seed"] is True and seeded.meta["lesson"] == "f2"
+
+def test_a_seed_that_could_not_run_does_not_fail_the_learner_s_step_and_runs_on_the_next_one(client):
     from redteam.tools import ToolUnavailable
 
     session = foundation("f1", lessons=[{"id": "f1", "started_at": timezone.now().isoformat()}])
@@ -577,15 +604,28 @@ def test_a_repeated_move_after_the_log_seed_failed_seeds_the_lesson_once_more(cl
         raise ToolUnavailable("curl: the tool did not run")
 
     with one_slot(Stand()):
+        switch(client, session, "f2")
         with patch("api.views.harness.fire", unavailable):
-            failed = switch(client, session, "f2")
+            first = step(client, session, "search", "", {"state": "skipped"})
         with patch("api.views.harness.fire", fire):
-            retried = switch(client, session, "f2")
+            second = step(client, session, "method", "", {"state": "skipped"})
 
-    assert failed.status_code == 503, failed.content
-    assert retried.status_code == 200, retried.content
-    assert fired == SEEDED, "a retry after a 503 must not answer 200 with the lesson's logs never seeded"
-    assert [taken["id"] for taken in retried.json()["lessons"]] == ["f1", "f2"]
+    assert (first.status_code, second.status_code) == (200, 200)
+    assert fired == SEEDED, "a seed the range could not run is sent on the learner's next step"
+
+def test_a_lesson_the_console_moved_to_and_the_learner_closed_unworked_adds_no_benign_case_to_the_score(client):
+    session = foundation("f1", lessons=[{"id": "f1", "started_at": timezone.now().isoformat()}])
+    fire, fired = attacker({})
+    with one_slot(Stand()), patch("api.views.harness.fire", fire):
+        step(client, session, "board_ip", "", {"state": "skipped"})
+        switch(client, session, "f2")
+        step(client, session, "search", "", {"state": "reached"})
+        client.post_json(f"/api/sessions/{session.pk}/close/")
+    score = client.get(f"/api/sessions/{session.pk}/score/").json()
+
+    assert fired == SEEDED
+    assert score["benign_cases"] == 1 and [row["lesson"] for row in score["per_case"]] == ["f1"], (
+        "lesson 2 was opened by the console's move only; its benign case was never sent")
 
 def test_a_lesson_switch_is_refused_for_a_closed_scenario_or_unguided_session_and_an_unknown_lesson(client):
     closed, scenario, plain, guided = foundation("f1"), board(guidance=True, lesson="1.1", course_scenario="1.1"), board(), foundation("f1")

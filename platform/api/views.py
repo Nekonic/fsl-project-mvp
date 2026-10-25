@@ -80,6 +80,7 @@ SITE_BROWSER_MARKER = site.MARKER
 RESERVED_MARKERS = (SITE_BROWSER_MARKER,)
 HINT_LEVELS = ("hint",)
 LESSON_STEP_STATES = ("reached", "skipped")
+WORKED_MARKS = ("passed", "skipped", "hint")
 RECENT_ALERTS = 600
 SHOWN_CHECK = ("form", "options", "leg")
 SWITCH_OF = re.compile(r"\{switch:([\w.-]+)\}")
@@ -96,6 +97,7 @@ DEFAULT_RULES = "local.rules"
 RULE_ERROR = re.compile(r"\b(Error|ERRCODE)\b|<Error>")
 RULE_CHANGES = threading.RLock()
 SLOT_CHOICE = threading.Lock()
+LESSON_SEEDING = threading.Lock()
 _TURNS_GUARD = threading.Lock()
 _SLOT_TURNS: dict[int, threading.RLock] = {}
 SETTLING_PHASES = ("RESETTING", "REBUILDING", "CHECKING")
@@ -345,6 +347,7 @@ def lesson_hints(request, session_id):
     if level not in HINT_LEVELS:
         raise BadRequest(f'"level" must be one of {list(HINT_LEVELS)}, got {level!r}')
     session = _progressed(session, step, lambda kept, held: _hinted(kept, held, step, _top_rung(session)))
+    _seed_once_worked(session)
     return _reply(_lesson_state(session, step))
 
 def _lesson_of(session):
@@ -446,6 +449,7 @@ def lesson_step(request, session_id, step_id):
     session = _progressed(session, step_id, mark)
     if armed and state == "reached":
         _label(session, _steps_of(session)[step_id]["marker"])
+    _seed_once_worked(session)
     return _reply(_lesson_state(session, step_id))
 
 def _label(session, marker):
@@ -465,7 +469,9 @@ def lesson_step_check(request, session_id, step_id):
         passed, reason, *seen = _judge(session, taught, step, body, kept)
     except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
-    return _reply(_judged_step(session, step_id, passed, reason, body.get("poll") is True) | dict(*seen))
+    judged = _judged_step(session, step_id, passed, reason, body.get("poll") is True) | dict(*seen)
+    _seed_once_worked(session)
+    return _reply(judged)
 
 def _posture_rules(session):
     declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense) or {}
@@ -985,14 +991,22 @@ def session_lesson(request, session_id):
             session.lessons = [*taken, {"id": asked, "started_at": timezone.now().isoformat()}]
             session.lesson, session.defense = asked, defense
             session.save(update_fields=["lesson", "lessons", "defense", "waf"])
-    if not moved and _logs_seeded(session):
-        return _reply(_detail(session))
-    _label(session, None)
-    try:
-        _seed_logs(session)
-    except harness.ToolUnavailable as exc:
-        return _reply({"detail": str(exc)}, status=503)
+            _label(session, None)
     return _reply(_detail(session))
+
+def _seed_once_worked(session):
+    if not session.guidance or session.course_scenario:
+        return
+    with LESSON_SEEDING:
+        session.refresh_from_db()
+        worked = any(kept.get(mark) for kept in _steps_of(session).values() for mark in WORKED_MARKS)
+        if not worked or _logs_seeded(session):
+            return
+        try:
+            _seed_logs(session)
+        except (harness.ToolUnavailable, loot.GroundTruthUnavailable, traffic.NoOrigin, RangeUnavailable) as exc:
+            log.warning("lesson %s of session %s is not seeded yet; its next step retries: %s",
+                        session.lesson, session.pk, exc)
 
 def _logs_seeded(session):
     return any(case.meta.get("seed") and case.meta.get("lesson") == session.lesson for case in session.cases.all())
