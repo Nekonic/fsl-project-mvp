@@ -86,7 +86,7 @@ const judge = (id, body) => {
     }
     return range.passed ? passing(id, {kali: {name: "board-sqli-orderby-sqlmap", requests: 1539, sensors: {firewall: 1539},
                                               discover: "/kibana/app/discover#/?run=sqlmap"}})
-      : failing(id, body.poll, "lesson.demo.fail");
+      : {...failing(id, body.poll, "lesson.demo.fail"), kali: {name: "board-sqli-orderby-sqlmap"}};
   }
   if (check.kind === "replay") {
     return range.passed ? passing(id) : failing(id, body.poll, range.attacked ? "lesson.check.replay_benign" : "lesson.check.replay_attack");
@@ -105,7 +105,9 @@ browser.serve((request) => {
     else if (!own(stepped[0]).passed) own(stepped[0]).skipped = "now";
     return {body: stepState(stepped[0], {})};
   }
-  if (stepped && stepped[1] === "check/") return {body: judge(stepped[0], request.body)};
+  if (stepped && stepped[1] === "check/") {
+    return range.hold ? range.hold.then(() => ({body: judge(stepped[0], request.body)})) : {body: judge(stepped[0], request.body)};
+  }
   if (request.route === "/api/sessions/1/") {
     return {body: {id: 1, scenario: "board", lesson_id: "f9", next_lesson: NEXT_JSON, guidance: true, hints: range.used,
                    progress: range.progress, ended_at: range.ended_at, waf_box: "waf", discover: "/kibana/app/discover#/",
@@ -1574,7 +1576,7 @@ def test_a_rule_that_must_fire_rings_apply_then_the_search_box_then_its_check_bu
       window.dispatchEvent({type: 'message', data: {site: '/site/1/board.com/search/?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E'},
                             source: browser.element('site-frame').contentWindow, origin: 'http://console.test:8002'});
       await frames(2);
-      const pressing = {text: browser.text('coach-callout'), ring: styled('coach-ring')};
+      const pressing = {text: shown('step-coach') ? browser.text('step-coach') : null, floating: shown('coach-callout'), ring: styled('coach-ring')};
       range.passed = true;
       await browser.click('#step-act [data-act="check"]');
       const pressed = range.checked[range.checked.length - 1][1];
@@ -1590,6 +1592,7 @@ def test_a_rule_that_must_fire_rings_apply_then_the_search_box_then_its_check_bu
     ring = result["pressing"]["ring"]
     assert result["pressing"]["text"] == "Press the check" and ring["top"] <= 200 and ring["top"] + ring["height"] >= 228, (
         "after the search the ring moves to the step's own check button")
+    assert result["pressing"]["floating"] is False, "the line sits under the button inside the card, not on the card's heading"
     assert result["pressed"] == {} and result["said"].startswith("✓")
 
 def test_the_rules_ring_and_scroll_follow_the_rows_a_long_line_wraps_into(client):
@@ -2018,3 +2021,108 @@ def test_a_choice_shows_checking_the_moment_it_is_pressed_and_a_wrong_one_clears
     assert seen["errors"] == []
     assert seen["result"]["wrong"] == {"during": "Checking...", "after": ""}
     assert seen["result"]["passed"] == {"during": "Checking...", "after": ""}
+
+def test_a_kali_step_draws_no_run_row_until_the_platform_has_seen_the_run(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("sqlmap")}
+      for (let i = 0; i < 6; i += 1) await browser.wait(1000);
+      const rows = () => browser.element('step-act').querySelectorAll('[data-kali]').length;
+      const before = {{rows: rows(), polled: range.checked.filter(([id]) => id === 'sqlmap').length > 0}};
+      range.settling = true;
+      for (let i = 0; i < 6; i += 1) await browser.wait(1000);
+      return {{before, settling: rows()}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["before"] == {"rows": 0, "polled": True}, (
+        "the platform names the case before any run; a row then would claim a run nobody typed")
+    assert seen["result"]["settling"] == 1
+
+ALERTS_ASKED = [
+    {"id": "loot", "point": {"opens": "kali"}, "check": {"kind": "answer"}},
+    {"id": "alerts", "point": {"opens": "elk", "kibana": {"hits": True}},
+     "check": {"kind": "choice", "options": ["none", "ids", "waf", "both"]}},
+    {"id": "cost", "point": {"panel": "#lesson-objectives .total"}, "check": {"kind": "answer"}},
+]
+
+def test_the_objectives_card_keeps_the_detected_column_blank_until_the_step_asking_which_device_alerted_passes(client):
+    seen = open_page(client, "/blue/1/", setup=served(steps=ALERTS_ASKED), scenario="""
+      await frames();
+      const detected = () => document.querySelectorAll('#lesson-objectives-rows [data-objective]').map((row) =>
+        row.querySelectorAll('td')[3].textContent);
+      const before = detected();
+      RIGHT.alerts = "none";
+      await browser.click('[data-step="1"]');
+      await frames();
+      const asked = detected();
+      await browser.click('#step-act [data-value="none"]');
+      await browser.settle();
+      return {before, asked, after: detected()};
+    """)
+    plain = open_page(client, "/blue/1/", setup=served(), scenario="""
+      await frames();
+      return document.querySelectorAll('#lesson-objectives-rows [data-objective]').map((row) => row.querySelectorAll('td')[3].textContent);
+    """)
+
+    assert seen["errors"] == [] and plain["errors"] == []
+    assert seen["result"]["before"] == ["—", "—"] and seen["result"]["asked"] == ["—", "—"], (
+        "the card would answer the question before it is asked")
+    assert seen["result"]["after"] == [english("common.no"), "—"]
+    assert plain["result"] == [english("common.no"), "—"], "a lesson that never asks which device alerted shows it from the start"
+
+def test_the_stretch_card_shows_only_once_the_lesson_s_last_step_has_passed(client):
+    seen = open_page(client, "/blue/1/", setup=served().replace('text: "lesson.demo"', 'text: "lesson.miss"'), scenario=f"""
+      await frames();
+      const first = shown('stretch-card');
+      {to("db_ip")}
+      const last = shown('stretch-card');
+      {answering(RIGHT["db_ip"])}
+      await browser.wait(500);
+      return {{first, last, finished: shown('stretch-card'), text: browser.text('stretch-text')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"first": False, "last": False, "finished": True, "text": english("lesson.miss.stretch")}, (
+        "the stretch task refers to what the lesson builds, so it waits for the lesson's end")
+
+PRESSED_IN_CARD = [
+    {"id": "board_ip", "point": {"opens": "topology"}, "check": {"kind": "answer"}},
+    {"id": "press", "point": {"panel": "#step-act"}, "check": {"kind": "kali"}},
+    {"id": "db_ip", "solo": True, "point": {"opens": "topology"}, "check": {"kind": "answer"}},
+]
+
+def test_a_callout_for_a_button_in_the_step_card_sits_under_it_instead_of_on_the_card_s_heading(client):
+    seen = open_page(client, "/blue/1/", setup=served(steps=PRESSED_IN_CARD), scenario="""
+      STRINGS.en['lesson.demo.callout.press'] = 'Press the button.';
+      placeAt('step-card', box(1050, 70, 380, 420));
+      placeAt('step-act', box(1060, 360, 360, 30));
+      await browser.click('[data-step="1"]');
+      await frames();
+      const line = browser.element('step-coach');
+      const act = browser.element('step-act');
+      return {text: shown('step-coach') ? browser.text('step-coach') : null, floating: shown('coach-callout'),
+              below: line.parentNode.children[line.parentNode.children.indexOf(act) + 1] === line};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"text": "Press the button.", "floating": False, "below": True}, (
+        "a callout on the card heading draws its leader across every line of the task")
+
+def test_an_answer_being_checked_disables_its_submit_button_and_a_second_submit_posts_nothing(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("method")}
+      let release;
+      range.hold = new Promise((resolve) => {{ release = resolve; }});
+      const submit = () => document.querySelector('#step-act [data-act="answer"] button');
+      {answering("POST")}
+      const during = {{status: browser.text('step-status'), disabled: submit().disabled}};
+      {answering("POST")}
+      range.hold = null;
+      release();
+      await browser.settle();
+      return {{during, checks: range.checked.filter(([id]) => id === 'method').length, after: submit().disabled}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"during": {"status": english("lesson.status.checking"), "disabled": True}, "checks": 1,
+                              "after": False}
