@@ -74,6 +74,12 @@ def _published(key: str, read) -> dict[str, str]:
     _failed.pop(key, None)
     return loaded
 
+def loaded(key: str) -> bool:
+    return key in _loaded
+
+def failure(key: str) -> str:
+    return _failed.get(key, "")
+
 def tidy(kind: str, live: list[str]) -> list[str]:
     kept = {project_id(key, language) for key in live for language in LANGUAGES}
     removed = []

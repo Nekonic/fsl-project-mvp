@@ -429,24 +429,106 @@ def test_at_start_the_platform_loads_the_map_of_each_slot_s_newest_session(setti
         slots=2, interfaces=None, in_slot=None, number=number))
     Session.objects.create(scenario="board", slot=1)
     Session.objects.create(scenario="corp", slot=2)
-    with patch("api.views.substrate", lambda: cloud), patch.object(maps, "begin") as begun:
-        views.publish_maps()
+    maps._loaded.clear()
+    with patch("api.views.substrate", lambda: cloud), patch.object(maps, "begin", side_effect=loads()) as begun:
+        views.publish_maps(pause=refuse_to_wait)
 
     assert [(call.args[0], call.args[3]) for call in begun.call_args_list] == [
         ("slot 1 board", ["slot 1 board", "slot 2 corp"]), ("slot 2 corp", ["slot 1 board", "slot 2 corp"])]
 
+def refuse_to_wait(seconds):
+    raise AssertionError("the start publish waited although every map loaded")
+
+def loads(failing=()):
+    tries = {}
+
+    def begin(key, read, kind, live):
+        tries[key] = tries.get(key, 0) + 1
+        if tries[key] <= dict(failing).get(key, 0):
+            maps._failed[key] = "edge did not answer"
+        else:
+            maps._loaded[key] = "fingerprint"
+        return None
+    return begin
+
+def slotted_cloud():
+    return SimpleNamespace(slots=2, interfaces=None, in_slot=lambda number: SimpleNamespace(
+        slots=2, interfaces=None, in_slot=None, number=number))
+
 @pytest.mark.django_db
-def test_a_cloud_that_does_not_answer_at_start_leaves_each_map_to_load_when_its_session_asks(settings, caplog):
+def test_a_cloud_that_does_not_answer_at_start_is_asked_again_a_bounded_number_of_times(settings, caplog):
     from api import views
 
     def unanswered():
         raise RangeUnavailable("keystone did not answer")
 
     settings.FSL_GNS3_URL = "http://gns3:3080"
+    waits = []
     with patch("api.views.substrate", unanswered), patch.object(maps, "begin") as begun:
-        views.publish_maps()
+        views.publish_maps(pause=waits.append)
 
     assert not begun.called and "keystone did not answer" in caplog.text
+    assert waits == [views.MAP_START_RETRY_SECONDS] * (views.MAP_START_ATTEMPTS - 1)
+    assert "each loads when its session asks" in caplog.text
+
+@pytest.mark.django_db
+def test_a_slot_whose_hosts_did_not_all_answer_at_start_is_read_again_and_its_map_loads(served, settings, monkeypatch):
+    from api import views
+    from api.models import Session
+
+    settings.FSL_GNS3_URL = "http://gns3:3080"
+    Session.objects.create(scenario="board", slot=1)
+    rebooting, _ = slot_adapter({"attacker": KALI_IP, "gateway": WAF_IP, "wargames": HOST_IP})
+    answering, _ = slot_adapter()
+    rebooting._own_listed = answering._own_listed = lambda: ""
+    reads = iter([rebooting, answering])
+    monkeypatch.setattr(views, "_range", lambda session=None, **_: next(reads))
+    waits = []
+    with patch("api.views.substrate", slotted_cloud):
+        views.publish_maps(pause=waits.append)
+
+    assert waits == [views.MAP_START_RETRY_SECONDS], "the edge rebooting at start fails the first read only"
+    assert [document["name"] for document in served.published] == [
+        "range-openstack slot 1 board", "range-openstack slot 1 board" + KOREAN_SUFFIX]
+    assert maps.loaded("slot 1 board")
+
+@pytest.mark.django_db
+def test_a_slot_whose_map_loaded_is_not_read_again_while_another_slot_is_retried(settings):
+    from api import views
+    from api.models import Session
+
+    settings.FSL_GNS3_URL = "http://gns3:3080"
+    Session.objects.create(scenario="board", slot=1)
+    Session.objects.create(scenario="corp", slot=2)
+    maps._loaded.clear()
+    waits = []
+    with patch("api.views.substrate", slotted_cloud), patch.object(
+            maps, "begin", side_effect=loads(failing={"slot 2 corp": 2})) as begun:
+        views.publish_maps(pause=waits.append)
+
+    assert [call.args[0] for call in begun.call_args_list] == [
+        "slot 1 board", "slot 2 corp", "slot 2 corp", "slot 2 corp"]
+    assert len(waits) == 2
+
+@pytest.mark.django_db
+def test_a_slot_whose_session_loaded_its_map_while_the_start_publish_waited_is_not_loaded_again(settings):
+    from api import views
+    from api.models import Session
+
+    settings.FSL_GNS3_URL = "http://gns3:3080"
+    Session.objects.create(scenario="board", slot=1)
+    maps._loaded.clear()
+    waits = []
+
+    def session_loads_meanwhile(seconds):
+        waits.append(seconds)
+        maps._loaded["slot 1 board"] = "loaded by the session's own request"
+
+    with patch("api.views.substrate", slotted_cloud), patch.object(maps, "begin", return_value=None) as begun:
+        views.publish_maps(pause=session_loads_meanwhile)
+
+    assert begun.call_count == 1, "a load already in flight is left to finish, and its map is not loaded twice"
+    assert waits == [views.MAP_START_RETRY_SECONDS]
 
 def test_the_platform_loads_the_slot_maps_in_the_background_as_it_starts():
     started = (ROOT / "platform" / "fsl" / "wsgi.py").read_text()

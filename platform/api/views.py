@@ -59,6 +59,8 @@ from scoring.types import CORRELATION_STRATEGIES, DetectionRecord
 
 log = logging.getLogger(__name__)
 
+MAP_START_RETRY_SECONDS = 30
+MAP_START_ATTEMPTS = 30
 SESSION_FIELDS = ("id", "scenario", "started_at", "ended_at", "guidance", "defense")
 CASE_FIELDS = (
     "id", "case_id", "name", "malicious", "stage", "technique", "pattern",
@@ -1229,19 +1231,40 @@ def _map_read(session, skip_unanswered=True):
 def _map_begin(session, adapter):
     key = _map_key(session, adapter)
     if key is not None and settings.FSL_GNS3_URL:
-        maps.begin(key, _map_read(session, skip_unanswered=False), maps.SLOT, _maps_live(adapter))
+        return maps.begin(key, _map_read(session, skip_unanswered=False), maps.SLOT, _maps_live(adapter))
+    return None
 
-def publish_maps():
+def publish_maps(pause=time.sleep):
     if not settings.FSL_GNS3_URL:
         return
+    for attempt in range(MAP_START_ATTEMPTS):
+        if attempt:
+            pause(MAP_START_RETRY_SECONDS)
+        if _slot_maps_loaded():
+            return
+    log.warning("the slot maps did not all load in %d tries at start; each loads when its session asks",
+                MAP_START_ATTEMPTS)
+
+def _slot_maps_loaded() -> bool:
+    loading = {}
     try:
         cloud = substrate()
         if not _slotted(cloud):
-            return
+            return True
         for session in _newest_in_each_slot(cloud):
-            _map_begin(session, _in_slot(cloud, _slot_of(session)))
+            adapter = _in_slot(cloud, _slot_of(session))
+            key = _map_key(session, adapter)
+            if key is not None and not maps.loaded(key):
+                loading[key] = _map_begin(session, adapter)
     except (RangeUnavailable, DatabaseError) as exc:
-        log.warning("the slot maps were not loaded at start; each loads when its session asks: %s", exc)
+        log.warning("the slot maps could not be read at start: %s", exc)
+        return False
+    for worker in filter(None, loading.values()):
+        worker.join()
+    unloaded = [key for key in loading if not maps.loaded(key)]
+    for key in unloaded:
+        log.warning("the map of %s did not load at start: %s", key, maps.failure(key) or "another load was in flight")
+    return not unloaded
 
 def _drawn(session, described):
     return topology.overlay(maps.template(session.scenario), described, maps.learner(session.scenario))
