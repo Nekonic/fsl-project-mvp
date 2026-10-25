@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-10-24
+Updated: 2026-10-26
 
 ## Where things stand
 
@@ -34,7 +34,9 @@ The VM's `/opt/fsl` was rebuilt on 2026-10-24 from the working branch with the
 platform, board and corp images sideloaded (`FSL_SIDELOADED=board,corp,platform`)
 and runs all of it: the reset resumed at boot, corp's readiness healthcheck, the
 stale-slot reset, the pristine wargame restore, the shorter reset, the F4 rule
-check and the coach fixes. Before that, on 2026-10-21, it was rebuilt from dev's
+check and the coach fixes. The VM runs the branch's later work too: the fixes
+of live review rounds 6-12 and the acceptance harness's record of the red-team
+session. Before that, on 2026-10-21, it was rebuilt from dev's
 head on GHCR images alone. All three VM images (Kali, WAF, wargame host) were
 rebuilt on 2026-10-24 without `snapd` and `ModemManager`. The project quota is
 24 cores, 57344 MB of RAM and 12 instances (the user, 2026-10-24); the project
@@ -50,16 +52,17 @@ one-VM trial and the last bring-up fixes"): `down` beside a stopped container,
 `resume` checking the hand-over, the first range key and the wargame host kept
 across `down` then `up` all ran live, and the §9 one-VM trial ran end to end
 from an empty cloud (README step 7 took 17 min 41 s). The last full
-`bin/verify` ran on 2026-10-24 on the new cloud with two slots: unit 1618
-passed; acceptance 73 passed, 0 failed, 0 errors, 0 skipped in 2186 s; ratchet
-ok. The run of 2026-10-21 on dev's head gave unit 1578 and acceptance 73
-passed in 3853 s. The earlier one-slot runs on the new cloud (3da925e before
+`bin/verify` ran on 2026-10-26 on the platform VM, on the code before the last
+wording fix: unit 1669 passed; acceptance 73 passed, 0 failed, 0 errors, 0
+skipped in 2003 s across 4 processes; ratchet ok. On 2026-10-24 two runs on
+the new cloud with two slots gave unit 1618 and acceptance 73 passed in 2186 s,
+then unit 1626 and acceptance 73 passed in 1867 s. The run of 2026-10-21 on
+dev's head gave unit 1578 and acceptance 73 passed in 3853 s. The earlier one-slot runs on the new cloud (3da925e before
 the removal, and one after it; failures that all come from the single slot) and
 the last run on the old cloud (unit 1718; acceptance 73 passed) are recorded in
 `docs/DECISIONS.md`, and `docs/state/now.md` summarises them. Before the old
 cloud's last run, two runs on the same code: acceptance 72 passed and 1 failed
-(the `test_corp_authz` nonce error), then 73 passed (1155 s). The full run on
-the branch as deployed on 2026-10-24: unit 1626 passed; acceptance 73 passed, 0 failed, 0 errors, 0 skipped in 1867 s; ratchet ok (run on the platform VM, 2026-10-24). Live state: `docs/state/now.md`.
+(the `test_corp_authz` nonce error), then 73 passed (1155 s). Live state: `docs/state/now.md`.
 
 The range has two targets: the Django board (`board.com`, MySQL behind the WAF,
 `loot_verified`) and the WordPress site `corp` (`corp.com`, `effect_observed`,
@@ -815,9 +818,12 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       its score under both correlation strategies as soon as the run is
       scored, the tests read that record, and no fixture hands out the bare
       session id (a unit test in `platform/tests/test_acceptance_split.py`
-      holds it). Not yet run live on one slot. With two slots (2026-10-21) the run took 64 min and
-      passed, and 36 min (2186 s) after the reset speed-ups of 2026-10-24; with one slot `test_concurrent_sessions` and `test_lesson` also
-      fail with 409 "1 session is already open".
+      holds it). Not shown live: with two slots (2026-10-21) the run took 64 min
+      and passed, 36 min (2186 s) after the reset speed-ups of 2026-10-24, and
+      33 min (2003 s across 4 processes) on 2026-10-26; a one-worker run now
+      takes about 40 min, inside the 60-min window, so a live run cannot show
+      the fix and the unit test holds it. With one slot `test_concurrent_sessions`
+      and `test_lesson` also fail with 409 "1 session is already open".
 - [x] Newcomer bring-up on OpenStack (2026-10-20): LF line endings pinned (`.gitattributes`); the first
       `bin/cloud up` makes the range key; the `openstack` CLI is found
       beside the interpreter; a platform VM that never ran `fsl-platform`
@@ -967,9 +973,9 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       "Foundations review loop, rounds 2-5"): critical and high findings
       summed over the reviewers fell from 7 and 12 to 0 and 1; every walker
       run passed 48 of 48 steps; the round-5 fixes (9f1f39d..60243e6) are
-      deployed as e4a467e and carried by the VM's current code; the last full
-      `bin/verify` passed on 2026-10-22. Round 6 was skipped at the user's
-      request.
+      deployed as e4a467e and carried by the VM's current code. Round 6 was
+      skipped at the user's request then and run live on 2026-10-25 (the
+      review rounds item below).
 - [x] Full `bin/verify` (unit and acceptance) on the old cloud's VM
       (2026-10-20, the last code before the move): unit 1718 passed; acceptance 73 passed, 0 failed, 0
       errors, 0 skipped; the VM made its own `.venv`.
@@ -1030,14 +1036,16 @@ To do, found by the 2026-10-08 doc review (open until checked off):
             Proven on the platform image on 2026-10-23 (session 1189):
             Kali and WAF 147 columns ending at 1034 px of a 1040 px pane at
             1440 px, 104 columns ending at 733 of 740 at 1100 px.
-      - [ ] A live review round of the round-5 fixes under the convergence
-            rule: six reviewers (lesson design, UI, terms, AI-sounding
-            Korean, realism and leaks, first-time learner); a finding counts
-            only if a learner would notice it, taste items are listed
-            separately; exit is a round with zero countable findings. Counts
-            so far (critical/high/medium/low, summed over reviewers): r2 live
-            7/12/45/76, r3 2/11/38/79, r4 0/2/30/70, r5 0/1/18/48 (UI
-            reviewer missing).
+      - [ ] Live review rounds under the convergence rule: six reviewers
+            (lesson design, UI, terms, AI-sounding Korean, realism and leaks,
+            first-time learner); a finding counts only if a learner would
+            notice it, taste items are listed separately; exit is a round with
+            zero countable findings. Counts of rounds 2-5 (critical/high/
+            medium/low, summed over reviewers): r2 live 7/12/45/76, r3
+            2/11/38/79, r4 0/2/30/70, r5 0/1/18/48 (UI reviewer missing).
+            Countable findings of rounds 6-12 (2026-10-25/26): r6 47, r7 6,
+            r8 5, r9 3, r10 1, r11 2, r12 2 (both wording, fixed). Round 13 is
+            running: ROUND13_PENDING.
       - [x] Kibana's menu still lists Home and Stack Management (they answer
             403 or redirect to Discover): no supported setting in 8.15 hides
             them, so they stay (`docs/DECISIONS.md` "Kibana's Home and Stack
@@ -1078,7 +1086,8 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       healthcheck requires it, so `up --wait` covers corp. Not yet
       on the GHCR image; the full `bin/verify` of 2026-10-22 with the fixed
       corp image passed, and so did three `test_corp_*` runs in a row after
-      it, but the error was intermittent, so this is not yet proof. The live `/submit-a-story/` page
+      it, but the error was intermittent, so this is not yet proof (the full runs of 2026-10-24 and 2026-10-26 passed
+      without it). The live `/submit-a-story/` page
       localizes two `"nonce"` values (`rbGlobalSubmissionSettings` and
       `um_scripts`); `test_corp_authz` and `corp-content-write` now read the
       `rbGlobalSubmissionSettings` one only.
@@ -1148,13 +1157,16 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       reverted: 4 vCPUs for the wargame host, which changed nothing. Measured and
       rejected: a copy-on-write restore on an XFS loop file. For
       the user (cloud admin), still open: `com01`'s disk and Nova `cpu_mode`
-      (guests see a Sandy Bridge model).
+      (guests see a Sandy Bridge model), and `stg01`'s cinder-backup, which is
+      down (a Ceph driver without Ceph).
 - [ ] Acceptance run time: 2,900 s on OpenStack on 2026-10-12 with one slot
       (fixture setup 1,689 s, test bodies 1,179 s; `test_suppression` setup
       alone 578 s); with two slots and the audited tests about 730-990 s on the
       old cloud (987 s on 9674d0e with 70 tests); with two slots on the new
-      cloud the run took 3,759-4,083 s until 2026-10-24 and 2,186 s after the
-      reset speed-ups, whose time was the resets (`docs/TROUBLESHOOTING.md`).
+      cloud the run took 3,759-4,083 s until 2026-10-24, 2,186 s and then
+      1,867 s after the reset speed-ups, whose time was the resets
+      (`docs/TROUBLESHOOTING.md`), and 2,003 s across 4 processes on
+      2026-10-26.
       Measure where the setup still goes, then: polling instead of fixed
       waits, edge configuration without a reboot.
 - [x] Floating IP 192.168.0.220 on the old cloud: dropped (2026-10-20). That
@@ -1246,7 +1258,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       image and config on its estate interface (`estate-sensor`); its eve log
       reaches Elasticsearch decoded as `suricata` with the WAF's estate address
       as source, and rule changes go to both sensors.
-- [x] Full `bin/verify` on openstack, 2026-10-12 (HEAD c05e912): unit 1695
+- [x] Full `bin/verify` on openstack, 2026-10-12: unit 1695
       passed; acceptance 72 passed, 0 failed, 0 errors, 76 skipped (the 15
       `COMPOSE_RANGE_ONLY` modules); the only failure is the `core_loc`
       ratchet (569 against 560, the +9 in `rules/crs.py` still awaiting the
@@ -1404,6 +1416,33 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       button. (4) A choice or answer shows "Checking..." the moment it is
       pressed. Proven live 2026-10-24 (sessions 1195, 1196) on the image built
       from this code.
+
+- [x] 2026-10-25/26: the work of live review rounds 6-12 and what came with it.
+      (1) The dead `/var/lib/session/origin` path is gone from the stamp proxy
+      and the Kali setup; the Kali image digest changed once. (2) The
+      acceptance harness records the red-team session's cases, detections and
+      scores right after it closes, so a long one-slot run does not lose it to
+      retention (unit-tested; a one-worker run now takes about 40 min, inside
+      the 60-min window, so a live run cannot show it). (3) Kibana 8.15 cannot
+      hide Home and Stack Management, so they stay (`docs/DECISIONS.md`
+      "Kibana's Home and Stack Management entries"). (4) The coach and the
+      lessons: the slot maps load at platform start with retries and no map is
+      published from a partial read; a Kali run row shows only after a run;
+      the F6 detection and penalty columns stay hidden until the alerts step
+      passes; F5's last step asks whether 913100 is in the run's WAF logs; F6
+      step 5 asks the source IP of the 500-response records; F3's count counts
+      both legs (6); a stretch card shows only after the last step, under the
+      step card; a long last-step pass text or a stretch card stops the
+      auto-advance; the result page lists only the lessons worked on, and the
+      benign seed is sent on the first pass, skip or hint of a lesson; a
+      command shows a placeholder until the reached reply; no terminal ring
+      or callout is drawn before the terminal connects; a blocked run reads
+      as an attempt; Korean wording fixes. (5) Answer checks keep the slot's
+      range reads for the session, so a wrong answer returns in 0.2-3 s, and
+      a session open reads the range outside the slot lock, so a close no
+      longer waits behind an open (the cause of one acceptance timeout).
+      Proven by the full `bin/verify` of 2026-10-26 (unit 1669; acceptance 73
+      passed in 2003 s across 4 processes).
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 
