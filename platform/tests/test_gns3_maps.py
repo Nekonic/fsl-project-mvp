@@ -1,6 +1,7 @@
 import io
 import json
 import pathlib
+import threading
 import uuid
 import zipfile
 from types import SimpleNamespace
@@ -267,18 +268,54 @@ def test_the_map_served_for_a_session_is_its_slot_s_project_once_gns3_holds_it_o
     assert shown["project_id"] == maps.project_id("slot 2 board", "ko")
     assert len(served.published) == 2, "a map GNS3 did not hold yet is loaded before it is served"
 
-def test_a_map_the_session_s_own_load_opened_while_this_request_waited_is_served_without_reading_the_slot_again(served, monkeypatch):
+def test_a_map_request_waits_for_the_slot_s_load_in_flight_and_is_served_the_map_it_loaded(served, monkeypatch):
     monkeypatch.setattr(gns3, "project", lambda language, kept=None: {"project_id": (kept or {}).get("project_id")})
-    asked = []
-    monkeypatch.setattr(gns3, "status", lambda project_id: "opened" if asked.append(project_id) or len(asked) > 1 else "")
+    key = "slot 2 board"
+    served.opened = {maps.project_id(key, language) for language in ("en", "ko")}
+    reading, answered, shown = threading.Event(), threading.Event(), {}
 
-    def read():
+    def slow_read():
+        reading.set()
+        answered.wait(5)
+        return read_slot()
+
+    def again():
         raise AssertionError("the slot's hosts were read again over SSH")
 
-    shown = maps.served("slot 2 board", "en", read)
+    loading = maps.begin(key, slow_read, maps.SLOT, [key])
+    reading.wait(5)
+    asking = threading.Thread(target=lambda: shown.update(maps.served(key, "en", again)))
+    asking.start()
+    asking.join(0.3)
+    waited = asking.is_alive() and not shown
+    answered.set()
+    loading.join(5)
+    asking.join(5)
 
-    assert shown["project_id"] == maps.project_id("slot 2 board", "en")
-    assert served.published == [] and len(asked) == 2
+    assert waited, "a map GNS3 still holds open from before is not shown while the session's own load replaces it"
+    assert shown["project_id"] == maps.project_id(key, "en")
+    assert [document["name"] for document in served.published] == [
+        "range-openstack slot 2 board", "range-openstack slot 2 board" + KOREAN_SUFFIX]
+
+def test_a_read_some_host_did_not_answer_loads_no_map_and_a_check_still_reads_the_hosts_that_did(served, monkeypatch):
+    from api import views
+
+    adapter, _ = slot_adapter({"attacker": KALI_IP, "gateway": WAF_IP, "wargames": HOST_IP})
+    adapter._own_listed = lambda: ""
+    monkeypatch.setattr(views, "_range", lambda session=None, **_: adapter)
+    session = SimpleNamespace(pk=0, scenario="board", ended_at="ended")
+
+    maps.begin("slot 1 board", views._map_read(session, skip_unanswered=False), maps.SLOT, ["slot 1 board"]).join(5)
+
+    assert served.published == [], "a map without the firewall's interfaces would be loaded again once it answers"
+    assert "edge did not answer" in maps._failed.pop("slot 1 board")
+    assert "fsl-kali" in {one.host for one in views._map_read(session)()}
+
+def test_a_host_that_does_not_answer_fails_a_read_that_asks_every_host():
+    adapter, _ = slot_adapter({"attacker": KALI_IP, "gateway": WAF_IP, "wargames": HOST_IP})
+
+    with pytest.raises(RangeUnavailable, match="edge did not answer"):
+        adapter.interfaces(skip_unanswered=False)
 
 def test_a_map_that_cannot_be_loaded_falls_back_to_the_range_s_own_map_and_says_why(served, monkeypatch):
     def refused(document):

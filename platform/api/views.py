@@ -1198,7 +1198,7 @@ def range_topology(request):
     key = _map_key(session)
     if key is None or not settings.FSL_GNS3_URL:
         return _reply(gns3.project(language, maps.template(session.scenario, language)))
-    return _reply(maps.served(key, language, _map_read(session)))
+    return _reply(maps.served(key, language, _map_read(session, skip_unanswered=False)))
 
 def _map_key(session, adapter=None):
     adapter = adapter or substrate()
@@ -1214,12 +1214,13 @@ def _newest_in_each_slot(adapter) -> list:
 def _maps_live(adapter) -> list[str]:
     return [maps.called(maps.SLOT, _slot_of(session), session.scenario) for session in _newest_in_each_slot(adapter)]
 
-def _map_read(session):
+def _map_read(session, skip_unanswered=True):
     drawn = maps.learner(session.scenario)
     on_map = set(drawn.hosts) | set(drawn.logs_from)
+    asked = {} if skip_unanswered else {"skip_unanswered": False}
 
     def read():
-        found = _range(session).interfaces(on_map)
+        found = _range(session).interfaces(on_map, **asked)
         if found and session.ended_at is None:
             _found_kept[session.pk] = found
         return found
@@ -1228,7 +1229,7 @@ def _map_read(session):
 def _map_begin(session, adapter):
     key = _map_key(session, adapter)
     if key is not None and settings.FSL_GNS3_URL:
-        maps.begin(key, _map_read(session), maps.SLOT, _maps_live(adapter))
+        maps.begin(key, _map_read(session, skip_unanswered=False), maps.SLOT, _maps_live(adapter))
 
 def publish_maps():
     if not settings.FSL_GNS3_URL:
