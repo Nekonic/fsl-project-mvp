@@ -26,6 +26,7 @@ def nothing_remembered_between_tests():
     from api import site, views
 
     views._segments_kept.clear()
+    views._found_kept.clear()
     site._records.clear()
 
 @pytest.fixture(autouse=True)

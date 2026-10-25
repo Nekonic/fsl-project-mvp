@@ -35,7 +35,7 @@ COMPLETION_OPTIONS = {"judgement": ("pattern",), "availability": ("thresholds",)
 PATTERN_JUDGED = "judged"
 REDS = ("schedule", "person")
 SCENARIO_ID = re.compile(r"[0-9]+(\.[0-9]+)+", re.ASCII)
-ANSWERS_OF = ("rule",)
+ANSWERS_OF = ("rule", "rule_matched")
 RANGE_FACTS = ("address", "subnet", "zone_of", "path", "logs", "host_of", "excluded_target", "lost_points",
                "detected_penalty")
 REQUEST_FACTS = ("status", "method", "path", "parameter", "param_value", "sensor_source", "forwarded_for",
@@ -264,6 +264,8 @@ def checked_step_judging(taught: dict, step: dict, where: str) -> None:
                                f"step, one of {', '.join(RANGE_FACTS)}, one of {', '.join(REQUEST_FACTS)} about "
                                f"a step with a match or with its own match, or one of {', '.join(KALI_FACTS)} "
                                f"about a kali step")
+    if check.get("of") == "rule_matched" and not (isinstance(check.get("rule"), str) and check["rule"]):
+        raise InvalidCatalogue(f"{where}: of: rule_matched needs rule:, the rule id whose match it asks about")
     if kind in ("answer", "choice") and check.get("leg", LEGS[0]) not in LEGS:
         raise InvalidCatalogue(f"{where}: leg must be one of {', '.join(LEGS)}")
     if not all(isinstance(rule, dict) and _pattern(rule.get("match")) and isinstance(rule.get("says"), str)

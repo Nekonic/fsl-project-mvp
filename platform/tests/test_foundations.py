@@ -478,6 +478,8 @@ def test_loot_from_the_dump_is_judged_by_the_board_s_own_accounts(client):
     ({"kind": "answer", "of": "status"}, "read from the record"),
     ({"kind": "answer", "of": "sqlmap_found", "about": "one"}, "read from the record"),
     ({"kind": "answer", "of": "rule", "marker": "step:one"}, "read from the record"),
+    ({"kind": "choice", "of": "rule_matched", "marker": "browse", "path": "x", "options": ["present", "absent"]},
+     "needs rule:"),
     ({"kind": "answer", "of": "status", "match": "("}, "read from the record"),
     ({"kind": "answer", "of": "status", "match": "x", "wrong_if": [{"match": "(", "says": "x"}]}, "wrong_if"),
     ({"kind": "answer", "of": "sensor_source", "match": "x", "leg": "sideways"}, "leg"),

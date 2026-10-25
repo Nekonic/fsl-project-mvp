@@ -316,6 +316,7 @@ The adapter reads the interfaces with `interfaces()`:
 - On OpenStack, `ip -o -4 addr` (`ifconfig` on OPNsense) runs on each slot host through a runner that runs on the host itself.
 - On the wargame host, the compose containers' addresses come through `nsenter`, and the bridges by Docker network id.
 - The platform VM's own NICs are read with the same `ip` in a `busybox` container on the host network (`interfaces.on_this_host`). The platform takes no SSH.
+- The read a session's map makes is kept for the session and answers its address questions (`_map_found`). The slot is reset only when its session closes, so its addresses do not change while the session holds it. An empty read is not kept, and a question the kept read cannot answer reads the slot again. Close drops it.
 
 `gns3.publish` loads a project into GNS3 in these steps:
 
@@ -658,7 +659,7 @@ Each ingest call does the following.
 - It drops alerts whose own event time falls outside the window, and counts them as `stale`.
 - It writes markers found later onto stored rows that had none.
 - It fills `src_host` and `dest_host` from the substrate's segments. The fields stay empty if the substrate cannot be reached.
-  - Ingest and `/detections/` reuse a session's segments for 30 s. This avoids reading the cloud on every step poll.
+  - Ingest and `/detections/` reuse an open session's segments until it closes. This avoids reading the cloud on every step poll and answer check.
   - `/top/`, `/map/` and `/topology/` read the segments fresh.
 
 Elasticsearch is used for storage and for GeoIP enrichment at index time, which is why there is no Logstash.
@@ -859,6 +860,8 @@ How each check kind passes:
   - A value listed in `known` gets its own `<text>.wrong.<step>.<value>`.
   - The accepted values are the `accept` list, or they are read `of:` the session's records ("Foundations F1-F6").
   - `of: rule` (`wargames.ANSWERS_OF`) takes the `path` of the request with `marker: browse` for the learner's own request, or `marker: step:<id>` for a Kali step's run. It may be narrowed to a rule `family`. The platform ingests the last 600 s, takes the session's ModSecurity detections of that request or run, drops the CRS totals (rule ids starting 949, 959 or 980) and accepts each remaining `ruleId` (`lesson.rules_named`). With nothing recorded, the reason is `lesson.check.unrecorded`.
+  - `of: rule_matched` with `rule: <id>` reads the same detections and accepts `present` or `absent` for that one rule. A recorded run with no detection is `absent`.
+  - A recorded Kali run's detections are not ingested again once the session holds some of them: the run was recorded after its logs had settled for `RUN_SETTLED`, and the ingest at its recording read them.
 - `rules` passes once the sensor's file (`GET /api/rules/`) holds a sid that the posture's rule file does not hold, or holds with other text (`lesson.added_rules`, `disable.sids`). It answers `added`. `needs: nocase` also wants that rule to carry `nocase` or a pcre with the `i` flag (`lesson.ignores_case`). With a `match`, the rule must also have fired: a Website pane request matching it, sent after the last apply (`RuleSet.applied_at`), drew an alert from one of those sids. Otherwise it answers `<fail>.unsent` (no such request), `lesson.check.unrecorded` (the sensor has not logged the request yet), or `<fail>.silent` with the sids, or `<fail>.elsewhere` with the sids and a URL they alerted on instead.
 - `triage` (`judged: customer | attack | all`) passes on the learner's right verdicts ("Scenarios").
 - `waf_changed` (`removed_target`) passes once no exclusion in the WAF's file targets that variable, while the posture declared one.
@@ -994,13 +997,13 @@ Each unit below lists its defense and opening pane, what the learner does, and w
 
 **f5 Analysing SQL injection on the sort parameter** (`lesson.sqli`). Defense `full`, opens on Website.
 
-- The learner reads the sort value. They add `)` in the address bar and read the status, then say whether a WAF rule detected it. They type sqlmap in the Kali pane and read its verdict, the run's source IP and the rule that named the scanner. They rerun with `--random-agent`. The solo step asks for the one rule that still blocked the rerun.
+- The learner reads the sort value. They add `)` in the address bar and read the status, then say whether a WAF rule detected it. They type sqlmap in the Kali pane and read its verdict, the run's source IP and the rule that named the scanner. They rerun with `--random-agent`. The solo step asks whether 913100 appears in the rerun's WAF logs.
 - Answers are read from:
   - `param_value` and `status`;
   - `waf_detected`: the ModSecurity detections of the request. A 500 is logged with no rule, which is no detection;
   - `sqlmap_found`: `attacker.sqlmap_found` reads `<home>/.local/share/sqlmap/output/<host>/log` on the box and looks for a `Parameter:` line;
   - `kali_source`: the run's ModSecurity `src_ip`;
-  - `rule` with `marker: step:<id>` and `family: "913"` (the scanner), then with `family: "942"` and `known: [949110, 913100]` (the SQL injection rule that still blocked the rerun).
+  - `rule` with `marker: step:<id>` and `family: "913"` (the scanner), then `rule_matched` with `rule: "913100"` on the rerun (`absent` when the new User-Agent no longer matched it).
 
 **f6 Finding the attack an over-broad exception let through** (`lesson.miss`). Defense `overbroad`, opens on WAF.
 
