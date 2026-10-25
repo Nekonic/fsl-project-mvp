@@ -2085,6 +2085,23 @@ def test_the_stretch_card_shows_only_once_the_lesson_s_last_step_has_passed(clie
     assert seen["result"] == {"first": False, "last": False, "finished": True, "text": english("lesson.miss.stretch")}, (
         "the stretch task refers to what the lesson builds, so it waits for the lesson's end")
 
+def test_a_finished_lesson_with_a_stretch_task_waits_for_next_lesson_instead_of_moving_on_by_itself(client):
+    seen = open_page(client, "/blue/1/", setup=served(next_lesson="f10").replace('text: "lesson.demo"', 'text: "lesson.miss"'),
+                     scenario=f"""
+      {to("db_ip")}
+      {answering(RIGHT["db_ip"])}
+      await browser.wait(2500);
+      const waited = range.moved.length;
+      const stretch = shown('stretch-card');
+      document.querySelector('#step-act [data-act="next-lesson"]').click();
+      await browser.settle();
+      return {{waited, stretch, moved: range.moved}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"waited": 0, "stretch": True, "moved": [{"lesson": "f10"}]}, (
+        "a stretch card that vanished after two seconds could not be read; the learner moves on with Next lesson")
+
 PRESSED_IN_CARD = [
     {"id": "board_ip", "point": {"opens": "topology"}, "check": {"kind": "answer"}},
     {"id": "press", "point": {"panel": "#step-act"}, "check": {"kind": "kali"}},

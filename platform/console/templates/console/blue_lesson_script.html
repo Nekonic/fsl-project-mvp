@@ -1686,7 +1686,7 @@ function coach(prefix, declared) {
     finished = true;
     show();
     if (paneOpen("topology")) mapFitSoon();
-    if (nextLesson) setTimeout(moveOn, NEXT_LESSON_MS);
+    if (nextLesson && !field("stretch-text").textContent) setTimeout(moveOn, NEXT_LESSON_MS);
   }
 
   async function moveOn() {
