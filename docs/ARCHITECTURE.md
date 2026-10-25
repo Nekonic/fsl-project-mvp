@@ -766,7 +766,7 @@ The scenario final check reports the fix class beside its verdict (`result.fix`,
 
 `platform/lesson.py` holds the fix class together with:
 
-- the step-answer helpers: `answered`, `rules_named`, `added_rules`, `pasted_rows`, `server_errors`, `alerted_by`, `detected_penalty`;
+- the step-answer helpers: `answered`, `rules_named`, `added_rules`, `pasted_rows`, `server_error_rules`, `alerted_by`, `detected_penalty`;
 - the help counts;
 - the exclusions added and removed, and the file diff that the scenario debrief shows (`exclusions_changed`, `config_diff`).
 
@@ -1007,12 +1007,12 @@ Each unit below lists its defense and opening pane, what the learner does, and w
 
 **f6 Finding the attack an over-broad exception let through** (`lesson.miss`). Defense `overbroad`, opens on WAF.
 
-- The learner greps the exclusion file for the parameter that was left out. They dump the accounts with sqlmap and paste the table. They say which engines alerted, and how many WAF log records of the run have status 500. They say the penalty the admin objective would carry if detected. They delete the exception and reload nginx. The solo step replays the dump and sorts once.
+- The learner greps the exclusion file for the parameter that was left out. They dump the accounts with sqlmap and paste the table. They say which engines alerted, and the rule_id the run's WAF log records with status 500 show (`-`: logged, but no rule matched). They say the penalty the admin objective would carry if detected. They delete the exception and reload nginx. The solo step replays the dump and sorts once.
 - Answers are read from:
   - `excluded_target`: the WAF file in force (`ARGS:sort` or `sort`);
   - `loot`: against the session's snapshot;
   - `alerted_by`: none, IDS only, WAF only, or both, from the run's detections;
-  - `run_errors`: the count of the WAF (ModSecurity) log records with status 500 in the window Kibana opens on. It is the number that `log_source : modsecurity and status : 500` shows (`lesson.server_errors`);
+  - `error_rule_id`: the rule_id values that Kibana's `rule_id` field shows on the WAF (ModSecurity) log records with status 500 in the window Kibana opens on, `-` for a record no rule matched (`lesson.server_error_rules`). The count is not asked: sqlmap prints how many 500 responses it drew;
   - `detected_penalty` with `objective:`: the objective's difficulty x 1, the penalty it would carry if detected. The tier is read from `wargames.objectives`, and the value is empty when the scenario is not judged;
   - `waf_changed`;
   - `replay`: the run blocked with no loot, and an ordinary sort 2xx with no WAF record.
@@ -1073,7 +1073,7 @@ An answer reads one of these facts. `wargames.read_from_record` refuses anything
 
 - `of:` a range fact: `address`, `subnet`, `zone_of`, `path`, `logs`, `host_of`, `excluded_target`, `lost_points`, `detected_penalty`.
 - `of:` a request fact, `about:` a step that has a `match` (or with its own `match`, taking the latest Website pane record that matches it): `status`, `method`, `path`, `parameter`, `param_value`, `sensor_source`, `forwarded_for`, `waf_logged`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_sid`, `alerted_sid_present`, `hits`.
-- `of:` a Kali fact, `about:` a `kali` step: `sqlmap_found`, `kali_source`, `alerted_by`, `run_errors`.
+- `of:` a Kali fact, `about:` a `kali` step: `sqlmap_found`, `kali_source`, `alerted_by`, `error_rule_id`.
 - `rule`, with the request's `path` or a `step:` marker (above).
 
 ## How the scores are computed

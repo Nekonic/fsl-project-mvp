@@ -63,9 +63,15 @@ def detected_penalty(tiers: list[dict], key: str) -> int | None:
 def rule_of(raw: dict) -> str:
     return str((raw.get("details") or {}).get("ruleId") or (raw.get("alert") or {}).get("signature_id") or "")
 
-def server_errors(records: list[dict]) -> int:
-    return sum(1 for record in records
-               if str(((record.get("transaction") or {}).get("response") or {}).get("http_code") or "") == "500")
+def server_error_rules(records: list[dict], no_rule: str) -> list[str]:
+    found = set()
+    for record in records:
+        transaction = record.get("transaction") or {}
+        if str((transaction.get("response") or {}).get("http_code") or "") != "500":
+            continue
+        found |= {str(rule) for message in transaction.get("messages") or []
+                  if (rule := (message.get("details") or {}).get("ruleId"))} or {no_rule}
+    return sorted(found)
 
 def fix_class(waf: dict | None, posture: dict | None) -> str | None:
     if not waf:

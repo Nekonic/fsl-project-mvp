@@ -497,8 +497,13 @@ foundations:
         point: {opens: elk, kibana: {hits: true}}
         check: {kind: choice, of: alerted_by, about: dump, options: [none, ids, waf, both]}
       - id: seen
-        point: {opens: elk, kibana: {hits: true}}
-        check: {kind: answer, of: run_errors, about: dump}
+        point: {opens: elk, kibana: {doc: rule_id}}
+        check:
+          kind: answer
+          of: error_rule_id
+          about: dump
+          wrong_if:
+            - {match: '^[\d,]+$', says: count}
       - id: cost
         point: {opens: elk, panel: "#lesson-objectives [data-objective=board-auth-user-admin]"}
         check: {kind: answer, of: detected_penalty, objective: board-auth-user-admin}
