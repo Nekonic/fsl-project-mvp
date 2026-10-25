@@ -1691,7 +1691,7 @@ function coach(prefix, declared) {
     show();
     if (paneOpen("topology")) mapFitSoon();
     if (!nextLesson) return;
-    if (unread) status(t("lesson.status.press_next"));
+    if (unread) status(t("lesson.status.press_next_lesson"));
     else if (!field("stretch-text").textContent) setTimeout(moveOn, NEXT_LESSON_MS);
   }
 

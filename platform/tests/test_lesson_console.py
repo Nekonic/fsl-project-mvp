@@ -2149,7 +2149,7 @@ def test_a_long_pass_line_on_the_last_step_waits_for_next_lesson_which_greys_out
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"waited": {"moved": 0, "status": english("lesson.status.press_next")},
+    assert seen["result"] == {"waited": {"moved": 0, "status": english("lesson.status.press_next_lesson")},
                               "preparing": {"status": english("lesson.next.preparing"), "disabled": True},
                               "moved": [{"lesson": "f10"}], "reloaded": 1}, (
         "a long last pass line that vanished after two seconds could not be read; the learner moves on with Next lesson")
