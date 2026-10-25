@@ -109,10 +109,39 @@ def test_restarting_a_course_starts_its_first_lesson_with_that_lesson_s_defence(
       return {label, posted: browser.requests.filter((r) => r.method === "POST" && r.route === "/api/sessions/")};
     """)
 
-    assert seen["result"]["label"] == english("session.restart.course")
+    assert seen["result"]["label"] == english("session.restart.course", 1)
     assert [request["body"] for request in seen["result"]["posted"]] == [
         {"scenario": "board", "guidance": True, "lesson": "f1", "defense": "full"}], (
         "restarting from F6 with F6's posture would open F1 on the overbroad WAF exclusion")
+
+def restarted(client, setup):
+    seen = open_page(client, "/session/1/", setup=setup, scenario="""
+      const label = browser.text('restart');
+      await browser.click('restart');
+      return {label, posted: browser.requests.filter((r) => r.method === "POST" && r.route === "/api/sessions/")
+        .map((r) => r.body)};
+    """)
+    assert seen["errors"] == []
+    return seen["result"]
+
+ONLY_F5 = COURSE.replace('{id: "f1", started_at: "2026-10-18T09:00:00Z"}, ', "").replace(
+    '{id: "f1", steps: 2, passed: 2, skipped: 0, hints: 0}, ', "").replace(
+    '{id: "f6", steps: 2, passed: 2, skipped: 0, hints: 0}', '{id: "f6", steps: 2, passed: 0, skipped: 0, hints: 0}')
+
+def test_a_session_that_worked_only_lesson_5_restarts_lesson_5_and_says_the_same_lesson(client):
+    shown = restarted(client, ONLY_F5)
+
+    assert 'lessons: [{id: "f5"' in ONLY_F5 and 'course: [{id: "f5"' in ONLY_F5
+    assert shown["label"] == english("session.restart.lesson"), (
+        "the console moved on to lesson 6 by itself; one lesson worked restarts that lesson")
+    assert shown["posted"] == [{"scenario": "board", "guidance": True, "lesson": "f5", "defense": "full"}]
+
+def test_a_course_begun_at_lesson_5_restarts_from_lesson_5_and_names_it(client):
+    shown = restarted(client, COURSE.replace('{id: "f1", started_at: "2026-10-18T09:00:00Z"}, ', "").replace(
+        '{id: "f1", steps: 2, passed: 2, skipped: 0, hints: 0}, ', ""))
+
+    assert shown["label"] == english("session.restart.course", 5)
+    assert shown["posted"] == [{"scenario": "board", "guidance": True, "lesson": "f5", "defense": "full"}]
 
 READY = """
 LOCATION

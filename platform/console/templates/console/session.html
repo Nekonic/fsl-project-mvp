@@ -181,6 +181,7 @@
     .some((row) => row.id === lessonId && (row.passed || row.skipped || row.hints));
   const begun = (one, at) => at === 0 || worked(one.id) || (!session.ended_at && one.id === session.lesson_id);
   const startedLessons = () => takenLessons().filter(begun);
+  const restartLesson = () => (startedLessons().length ? startedLessons()[0].id : session.lesson_id);
   const courseNumbers = () => startedLessons().map((taken) => lessonNumber(taken.id)).filter(Boolean);
   const lessonPrefix = (card) => String(card && card.title || "").replace(/\.title$/, "");
   const seeded = (row) => Boolean(row.seed || (row.meta && row.meta.seed));
@@ -559,7 +560,7 @@
   async function restart() {
     const button = field("restart");
     button.disabled = true;
-    const first = takenLessons().length > 1 ? takenLessons()[0].id : session.lesson_id;
+    const first = restartLesson();
     const card = foundations().find((taught) => taught.id === first);
     const defense = first === session.lesson_id ? session.defense : card && card.defense;
     const settings = first ? { guidance: true, lesson: first, ...(defense ? { defense } : {}) } : {};
@@ -596,8 +597,8 @@
     header(result.lost, result.total);
     if (session.ended_at) {
       show("close", false);
-      field("restart").textContent = t(takenLessons().length > 1 ? "session.restart.course"
-        : session.lesson_id ? "session.restart.lesson" : "session.restart");
+      field("restart").textContent = startedLessons().length > 1 ? t("session.restart.course", lessonNumber(restartLesson()))
+        : t(session.lesson_id ? "session.restart.lesson" : "session.restart");
       show("restart", true);
       await scoreboard();
       return;
