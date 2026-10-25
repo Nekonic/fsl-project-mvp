@@ -236,29 +236,10 @@ def sessions(request):
     else:
         guidance, taught, defense, posture = _settings(scenario, body)
     adapter = substrate()
-    with SLOT_CHOICE:
-        live = list(Session.objects.filter(ended_at=None).values_list("pk", flat=True))
-        if len(live) >= getattr(adapter, "max_sessions", 1):
-            raise Conflict(
-                f"{len(live)} {'session is' if len(live) == 1 else 'sessions are'} "
-                f"already open on the range; close one first"
-            )
-        chosen = None
-        if hasattr(adapter, "plan_slot"):
-            verdict = _readiness(adapter, first_ready=True)
-            if not verdict["ready"]:
-                raise Conflict(
-                    "the range is not ready: " + "; ".join(verdict["slot"]["blocked"])
-                )
-            chosen = verdict["slot"].get("number") if _slotted(adapter) else None
-        try:
-            session = Session.objects.create(
-                scenario=scenario, baseline=[], guidance=guidance, lesson=taught, defense=defense, slot=chosen,
-                course_scenario=played,
-                lessons=[{"id": taught, "started_at": timezone.now().isoformat()}] if guidance and not played else [],
-            )
-        except IntegrityError:
-            raise Conflict(f"slot {chosen} was taken by another session as this one opened; try again")
+    session = _opened_on_a_ready_slot(adapter, dict(
+        scenario=scenario, baseline=[], guidance=guidance, lesson=taught, defense=defense, course_scenario=played,
+        lessons=[{"id": taught, "started_at": timezone.now().isoformat()}] if guidance and not played else [],
+    ))
     try:
         adapter = _range(session, adapter)
         _aim_attacker(adapter)
@@ -280,6 +261,35 @@ def sessions(request):
         Session.objects.filter(pk=session.pk).update(ended_at=timezone.now())
         raise
     return _reply(_described(session), status=201)
+
+def _opened_on_a_ready_slot(adapter, fields):
+    for _ in range(getattr(adapter, "slots", 1) + 1):
+        _refuse_a_full_range(adapter)
+        chosen = _ready_slot(adapter)
+        with SLOT_CHOICE:
+            _refuse_a_full_range(adapter)
+            if not hasattr(adapter, "plan_slot") or (chosen or 1) not in _holders():
+                try:
+                    return Session.objects.create(slot=chosen, **fields)
+                except IntegrityError:
+                    pass
+    raise Conflict("each slot this open chose was taken by another session as it opened; try again")
+
+def _refuse_a_full_range(adapter):
+    live = Session.objects.filter(ended_at=None).count()
+    if live >= getattr(adapter, "max_sessions", 1):
+        raise Conflict(
+            f"{live} {'session is' if live == 1 else 'sessions are'} "
+            f"already open on the range; close one first"
+        )
+
+def _ready_slot(adapter):
+    if not hasattr(adapter, "plan_slot"):
+        return None
+    verdict = _readiness(adapter, first_ready=True)
+    if not verdict["ready"]:
+        raise Conflict("the range is not ready: " + "; ".join(verdict["slot"]["blocked"]))
+    return verdict["slot"].get("number") if _slotted(adapter) else None
 
 def _asked_ids(given):
     try:

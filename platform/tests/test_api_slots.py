@@ -172,6 +172,53 @@ def test_an_open_while_a_close_is_between_ended_at_and_its_reset_does_not_take_t
     assert Session.objects.filter(ended_at=None).count() == 1
 
 
+def test_a_close_does_not_wait_while_another_open_reads_the_range(client, cloud):
+    first = opened(client)
+    reading, done = threading.Event(), threading.Event()
+    read = views._readiness
+
+    def slow_readiness(adapter, first_ready=False):
+        verdict = read(adapter, first_ready)
+        reading.set()
+        done.wait(5)
+        return verdict
+
+    answers = []
+    with patch("api.views._readiness", slow_readiness):
+        opening = threading.Thread(target=lambda: answers.append(type(client)().post_json("/api/sessions/", {})))
+        opening.start()
+        reading.wait(5)
+        started = time.monotonic()
+        closed = client.post_json(f"/api/sessions/{first.pk}/close/")
+        took = time.monotonic() - started
+        done.set()
+        opening.join()
+
+    assert closed.status_code == 200
+    assert took < 2, (
+        "an open held the slot choice while it read every slot over ssh (5 to 26 s live), and an "
+        "acceptance close behind it ran past its 30 s timeout"
+    )
+    assert answers[0].status_code == 201 and Session.objects.get(pk=answers[0].json()["id"]).slot == 2
+
+
+def test_an_open_whose_ready_slot_is_taken_as_it_reads_takes_the_next_ready_one(client, cloud):
+    read = views._readiness
+    raced = []
+
+    def taken_while_reading(adapter, first_ready=False):
+        verdict = read(adapter, first_ready)
+        if not raced:
+            raced.append(Session.objects.create(scenario="board", baseline=[], slot=verdict["slot"]["number"]))
+        return verdict
+
+    with patch("api.views._readiness", taken_while_reading):
+        answer = client.post_json("/api/sessions/", {})
+
+    assert answer.status_code == 201, answer.content
+    assert (raced[0].slot, Session.objects.get(pk=answer.json()["id"]).slot) == (1, 2)
+
+
 def test_a_close_enables_only_rules_disabled_before_it(client, cloud):
     opened(client)
     second = opened(client)
