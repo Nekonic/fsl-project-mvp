@@ -1426,6 +1426,28 @@ def test_a_terminal_step_rings_the_prompt_until_its_line_appears(client):
     assert result["idle"]["text"] == "Type the command here." and result["idle"]["ring"]["top"] == 96
     assert result["found"]["text"] == "The verdict" and result["found"]["ring"]["top"] == 116
 
+def test_a_terminal_step_draws_no_ring_or_callout_while_the_terminal_is_not_connected_and_rings_the_line_once_it_is(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS.en['lesson.demo.callout.verdict'] = 'The verdict';
+      const term = browser.element('kali-frame').contentWindow.term;
+      const attached = term.element;
+      term.element = {{querySelector: () => null}};
+      kaliLines.splice(0, kaliLines.length, "ubuntu@kali:~$ sqlmap -u x", "[INFO] not injectable", "ubuntu@kali:~$ ");
+      {to("verdict")}
+      await browser.click('step-open');
+      await frames(4);
+      const connecting = {{ring: shown('coach-ring'), callout: shown('coach-callout')}};
+      term.element = attached;
+      await frames(4);
+      return {{connecting, connected: {{ring: shown('coach-ring'), callout: shown('coach-callout'), top: styled('coach-ring').top,
+                                      text: browser.text('coach-callout')}}}};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["connecting"] == {"ring": False, "callout": False}, "no guessed band over a pane that shows only its connecting message"
+    assert result["connected"] == {"ring": True, "callout": True, "top": 116, "text": "The verdict"}
+
 def test_a_closed_pane_rings_the_open_button_with_its_own_callout_a_solo_step_has_no_ring_and_a_note_target_has_no_pane_button(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       STRINGS.en['lesson.open.callout'] = 'Open it here first.';
