@@ -6565,3 +6565,45 @@ the reset time unchanged (one slot 78-79 s, two at once 99 s). Rejected after
 a measurement: a copy-on-write restore on an XFS loop file, which saved 4-8 s
 per restore and made every commit 2-2.5 times slower
 (`docs/TROUBLESHOOTING.md`).
+
+## Kibana's Home and Stack Management entries
+
+- **Question.** Can the learner's embedded Kibana (8.15.0) drop "Home" and
+  "Stack Management" from its menu with a Kibana mechanism, so the lessons
+  show Discover only? The lessons point at Discover alone (`kibana:` points in
+  `scenario.yaml` are `doc` and `hits`, both Discover).
+- **Already used.** The learner's space is created with `disabledFeatures`
+  (`SPACE_FEATURES_OFF` in `platform/kibana.py`). Kibana's Spaces page says
+  "You have control over which features are visible in each space" and
+  "Controlling feature visibility is not a security feature"
+  (https://www.elastic.co/guide/en/kibana/8.15/xpack-spaces.html). The spaces
+  API says only "The list of disabled features for the space"
+  (https://www.elastic.co/guide/en/kibana/8.15/spaces-api-put.html).
+- **Home cannot be hidden.** In v8.15.0 the navigation drawer renders Home as
+  an unconditional pinned item (`label: 'Home'`, `href: homeHref`,
+  `data-test-subj: 'homeLink'`) and the `home` app is registered with
+  `visibleIn: []`, so it is not a space feature and has no setting
+  (packages/core/chrome/core-chrome-browser-internal/src/ui/header/collapsible_nav.tsx,
+  src/plugins/home/public/plugin.ts at tag v8.15.0).
+- **Stack Management cannot be hidden here.** The management plugin sets the
+  app to `status: inaccessible, visibleIn: []` only when no management section
+  has an enabled app (src/plugins/management/public/plugin.tsx at v8.15.0). A
+  space switches a management item off only if a disabled feature declared it
+  (x-pack/plugins/spaces/server/capabilities/capabilities_switcher.ts). The
+  features already off remove Data Views, Saved Objects, Advanced Settings,
+  Files, Rules, Connectors and Dev Tools. What is left does not belong to a
+  space feature: the Elasticsearch-backed sections (Index Management, Ingest
+  Pipelines, Snapshot and Restore, Transforms and others, shown to every
+  caller because security is off), License and Upgrade Assistant, and Spaces
+  (`spaces.manage` is a constant `true` in the Spaces capabilities provider).
+  The documented per-UI switches (`xpack.index_management.ui.enabled`,
+  `xpack.snapshot_restore.ui.enabled`, `xpack.license_management.ui.enabled`,
+  `xpack.upgrade_assistant.ui.enabled`, `xpack.ilm.ui.enabled` and the like,
+  https://www.elastic.co/guide/en/kibana/8.15/settings.html) cover only some
+  of them: that page has none for Ingest Pipelines or Transforms, and none
+  for Spaces. Hiding the entry for good would need Elasticsearch security with
+  roles, which the "Round 3" entry above rejected.
+- **Decision.** Nothing changes in the code. The entries stay; their pages
+  answer 403 or redirect to Discover at the front (`platform/nginx.conf`).
+  Hiding them with the DOM is not done. Not run live: the offline sources
+  above were read, the menu was not re-captured.

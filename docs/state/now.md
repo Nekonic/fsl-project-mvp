@@ -106,9 +106,10 @@ http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the Internet.
   loop, rounds 2-5"): critical and high findings summed over the reviewers fell
   from 7 and 12 in round 2 to 0 and 1 in round 5. The round-5 fixes were not
   re-reviewed: round 6 was skipped at the user's request.
-- Unverified and open: Kibana's learner space still shows Home and Stack
-  Management in its menu (their pages answer 403) and ad-hoc data views cannot
-  be turned off in 8.15; no taste items were collected. The e4a467e smoke passed
+- Unverified and open: ad-hoc data views cannot be turned off in 8.15; no
+  taste items were collected. Kibana's Home and Stack Management menu entries
+  stay: 8.15 has no supported setting that hides them (`docs/DECISIONS.md`
+  "Kibana's Home and Stack Management entries"). The e4a467e smoke passed
   20 of 20 steps (details under Next, 10).
 - To try it: open http://192.168.2.247:8000 (through the VPN), open the
   catalogue, start the foundations course (its first lesson button) and go F1 to
@@ -201,6 +202,5 @@ copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
    passed F4-F6, 28 of 28 steps; the Kali and WAF terminals' last column no
    longer sits under the lesson notes (fixed in `blue.html`, `docs/STATE.md`);
    a live review round of 9f1f39d..60243e6 (six reviewers, convergence
-   rule, exit on zero countable findings); Kibana's Home and Stack Management
-   menu entries; whether the walker (`~/.cache/fsl-work/walker/walk.py`)
+   rule, exit on zero countable findings); whether the walker (`~/.cache/fsl-work/walker/walk.py`)
    becomes a repo tool.

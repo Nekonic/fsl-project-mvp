@@ -1034,9 +1034,11 @@ To do, found by the 2026-10-08 doc review (open until checked off):
             so far (critical/high/medium/low, summed over reviewers): r2 live
             7/12/45/76, r3 2/11/38/79, r4 0/2/30/70, r5 0/1/18/48 (UI
             reviewer missing).
-      - [ ] Kibana's menu still lists Home and Stack Management (they answer
-            403 or redirect to Discover); Kibana 8.15 cannot switch off
-            ad-hoc data views.
+      - [x] Kibana's menu still lists Home and Stack Management (they answer
+            403 or redirect to Discover): no supported setting in 8.15 hides
+            them, so they stay (`docs/DECISIONS.md` "Kibana's Home and Stack
+            Management entries"). Kibana 8.15 also cannot switch off ad-hoc
+            data views.
       - [ ] The live walker (headless Playwright, F1-F6, about 28 min) lives
             outside the repo in `~/.cache/fsl-work/walker/walk.py`; decide
             whether it becomes a repo tool (under `bin/` or `test/live/`) so
