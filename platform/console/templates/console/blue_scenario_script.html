@@ -94,7 +94,7 @@ function cardsShow() {
 function hintsShow() {
   const opened = scenario.hints.opened;
   field("scenario-hint-list").innerHTML = opened.length
-    ? opened.map((id) => `<li class="text-body leading-relaxed" data-hint="${esc(id)}">${esc(t(`${scenario.text}.hint.${id}`))}</li>`).join("")
+    ? opened.map((id) => `<li class="text-body leading-relaxed" data-hint="${esc(id)}">${withOptionsWhole(t(`${scenario.text}.hint.${id}`))}</li>`).join("")
     : `<li class="text-muted">${esc(t("scenario.hint.none"))}</li>`;
   field("scenario-hints").classList.remove("hidden");
   field("scenario-hints").classList.add("flex");

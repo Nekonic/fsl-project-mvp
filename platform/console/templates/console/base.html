@@ -71,6 +71,9 @@
       overflow-wrap: anywhere;
       vertical-align: top;
     }
+    .cli-option {
+      white-space: nowrap;
+    }
     html:lang(ko) {
       word-break: keep-all;
       overflow-wrap: break-word;
@@ -126,6 +129,9 @@
     const esc = (value) =>
       String(value === null || value === undefined ? "" : value)
         .replace(/[&<>"']/g, (c) => ESCAPES[c]);
+
+    const withOptionsWhole = (text) =>
+      esc(text).replace(/(^|\s)(--?[A-Za-z]\S*)/g, '$1<span class="cli-option">$2</span>');
 
     const post = (path, payload, patience) => api(path, {
       method: "POST",
