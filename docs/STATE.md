@@ -1045,7 +1045,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
             2/11/38/79, r4 0/2/30/70, r5 0/1/18/48 (UI reviewer missing).
             Countable findings of rounds 6-12 (2026-10-25/26): r6 47, r7 6,
             r8 5, r9 3, r10 1, r11 2, r12 2 (both wording, fixed). Round 13 is
-            running: ROUND13_PENDING.
+            running: round 13 found 4 (a refused open explained off screen in operator English, Kibana's search-session popover over the KQL bar, option names wrapping in the dump hint, the F4 slipped pass line contradicting a yes answer), all fixed; round 14 is next.
       - [x] Kibana's menu still lists Home and Stack Management (they answer
             403 or redirect to Discover): no supported setting in 8.15 hides
             them, so they stay (`docs/DECISIONS.md` "Kibana's Home and Stack

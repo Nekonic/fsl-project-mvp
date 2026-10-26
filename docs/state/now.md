@@ -42,9 +42,13 @@ Internet.
 - Full `bin/verify` on the platform VM, on the code before the last wording
   fix: unit 1669 passed; acceptance 73 passed, 0 failed, 0 errors, 0 skipped
   in 2003 s across 4 processes; ratchet ok. A one-worker acceptance run is
-  running now: ONEWORKER_PENDING. A one-worker run takes about 40 min, inside
-  the 60-min `FSL_RETAIN_CLOSED_MINUTES` window, so it cannot show whether the
-  harness fix below works; the unit test holds it.
+  run on 2026-10-26 (`bin/acceptance --workers 1` on the two-slot range, while a
+  lesson walk held one slot) took 3948 s: 64 passed, 6 failed, 3 errors. Eight
+  failures say "the range has 2 slots; name the one to run on", because one
+  worker on a two-slot range does not name a slot for attacker commands; the
+  ninth is a 409 from a test that needs both slots. None is a product fault,
+  and the run is not the one-slot case the harness fix is for; the unit test
+  holds that fix.
 - Acceptance harness: `full_run` records the red-team session's cases,
   detections and scores under both correlation strategies right after the
   session closes, and the tests read that record, so a long one-slot run no
@@ -54,7 +58,7 @@ Internet.
   AI-sounding Korean, realism and leaks, first-time learner; convergence rule,
   exit on zero countable findings). Countable findings per round: r6 47, r7 6,
   r8 5, r9 3, r10 1, r11 2, r12 2 (both wording, fixed). Round 13 is running:
-  ROUND13_PENDING. The fixes of rounds 6-12 are on the branch and the VM; what
+  round 13 found 4 (a refused open explained off screen in operator English, Kibana's search-session popover over the KQL bar, option names wrapping in the dump hint, the F4 slipped pass line contradicting a yes answer), all fixed; round 14 is next. The fixes of rounds 6-12 are on the branch and the VM; what
   they changed is in `git log`. Behind them:
   - Answer checks keep the slot's range reads for the session, so a wrong
     answer comes back in 0.2-3 s.
@@ -165,8 +169,8 @@ copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
 6. Whether the live walker (`~/.cache/fsl-work/walker/walk.py`, headless
    Playwright, F1-F6) becomes a repo tool. Undecided (`docs/STATE.md`
    backlog 0, "Foundations rebuild, remaining work").
-7. Walk F4 step 3 live once more: the coach's new query after a closed document
-   lacked the field is unit-tested and deployed, and no record shows a live walk
-   of it.
+7. `bin/acceptance --workers 1` on a range with more than one slot does not
+   name a slot for attacker commands (8 failures on 2026-10-26); pass the slot,
+   or refuse that mode with a clear message.
 8. Acceptance run time and ingest re-reading the whole window (paged since
    f07919f, up to about 205k records).
