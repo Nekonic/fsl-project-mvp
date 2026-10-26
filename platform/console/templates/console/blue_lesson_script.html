@@ -1256,7 +1256,7 @@ function coach(prefix, declared) {
     const step = steps[at];
     const passed = done(step) && !finished;
     const lines = solo() || passed ? [] : helpLines(step);
-    field("step-help").innerHTML = lines.map((line) => `<p>${esc(line)}</p>`).join("");
+    field("step-help").innerHTML = lines.map((line) => `<p>${withOptionsWhole(line)}</p>`).join("");
     shownSection("step-help", lines.length > 0);
     offered = false;
     field("step-hint").textContent = hintLabel();

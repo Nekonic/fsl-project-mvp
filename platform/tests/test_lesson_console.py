@@ -375,6 +375,21 @@ def test_help_climbs_nudge_then_hint_then_skip_is_recorded_only_when_asked_and_n
     ]
     assert result["recorded"] == [{"step": "source", "level": "hint"}]
 
+def test_a_hint_keeps_each_command_line_option_on_one_line(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS.en["lesson.demo.hint.source"] = '-D board -C a,b --dump reads, and --answers="crack=N" & --flush-session clears';
+      {to("source")}
+      {hints(2)}
+      return browser.element('step-help').innerHTML;
+    """)
+
+    assert seen["errors"] == []
+    kept = re.findall(r'<span class="cli-option">([^<]*)</span>', seen["result"])
+    assert kept == ["-D", "-C", "--dump", "--answers=&quot;crack=N&quot;", "--flush-session"], (
+        f"a browser may break a line after the hyphen inside an option the hint names: {seen['result']}"
+    )
+    assert "&amp;" in seen["result"], "the hint text must still be escaped"
+
 @pytest.mark.parametrize("step_id", ["search", "logged", "sqlmap"])
 def test_skip_records_the_step_skipped_moves_on_and_performs_nothing(client, step_id):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
