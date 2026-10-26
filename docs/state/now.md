@@ -147,9 +147,18 @@ copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
 
 ## Next, in order
 
-1. Finish the review loop: read round 13, fix what a learner would notice, and
-   repeat until a round has zero countable findings. Read the one-worker
-   acceptance result.
+1. Finish the review loop with round 14. Round 13's four findings are fixed on
+   the branch; the platform was being redeployed with them on 2026-10-26 09:35
+   KST (`~/.cache/fsl-work/deploy/round14-*.log`). If that deploy did not end
+   with "exit 0", run it again (`deploy.sh` with platform, board and corp
+   sideloaded; the store backup is also in `~/.cache/fsl-work/backup-safe/`).
+   Then walk F1-F6 and the F1+F2 session with the walker into
+   `~/.cache/fsl-work/live/round14/` (round 13's INDEX.md shows the shape;
+   check the refused-open message, no Kibana search-session popover, the dump
+   hint's options on one line, and the F4 slipped pass line), run the six
+   reviewers with a round-14 brief (copy `round13/REVIEW-BRIEF.md`), fix what
+   counts, and repeat until a round has zero countable findings. Then run the
+   full `bin/verify` on the platform VM once more.
 2. When the user approves, push to `dev`. After the push: check the `images.yml`
    run for that push (`gh run list --workflow images.yml --branch dev --limit
    3`; the run for ee5e641 was green), then rebuild the platform VM from the
