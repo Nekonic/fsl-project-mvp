@@ -427,9 +427,12 @@ def _revealed(session, taught, step, kept):
     return {
         **({"answer": strings.both(named.format("answer"))}
            if scenario and kept.get("hint", 0) >= lesson.ANSWER else {}),
-        **({passed_line: strings.both(named.format(passed_line))} if kept.get("passed") else {}),
+        **({passed_line: _pass_line(named.format(passed_line), kept)} if kept.get("passed") else {}),
         **({"command": step["command"]} if step.get("command") and kept.get("reached") else {}),
     }
+
+def _pass_line(key, kept):
+    return (kept.get("chose") and strings.both(f"{key}.{kept['chose']}")) or strings.both(key)
 
 def _kali_command(session, name):
     case = dict(wargames.find_case(session.scenario, name), correlation="window")
@@ -481,7 +484,8 @@ def lesson_step_check(request, session_id, step_id):
         passed, reason, *seen = _judge(session, taught, step, body, kept)
     except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
-    judged = _judged_step(session, step_id, passed, reason, body.get("poll") is True) | dict(*seen)
+    chose = body["answer"].strip() if passed and step["check"]["kind"] == "choice" else None
+    judged = _judged_step(session, step_id, passed, reason, body.get("poll") is True, chose) | dict(*seen)
     _seed_once_worked(session)
     return _reply(judged)
 
@@ -489,12 +493,14 @@ def _posture_rules(session):
     declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense) or {}
     return (Path(settings.FSL_SOURCE) / "deploy/suricata/rules" / declared.get("suricata", DEFAULT_RULES)).read_text()
 
-def _judged_step(session, step_id, passed, reason, poll):
+def _judged_step(session, step_id, passed, reason, poll, chose=None):
     now = timezone.now().isoformat()
 
     def mark(kept, held):
         if passed:
             kept.setdefault("passed", now)
+            if chose:
+                kept["chose"] = chose
             return
         if poll:
             return

@@ -12,6 +12,7 @@ from django.utils import timezone
 import wargames
 from api import site
 from api.models import Case, Detection, Objective, RuleSet, Session
+from console import strings
 from range import declared
 from range.ports import Ran
 from tests.test_gns3_maps import read_slot
@@ -241,6 +242,26 @@ def test_the_learner_s_rule_is_judged_by_its_own_alerts_and_the_fix_needs_nocase
         with_nocase = step(client, session, "nocase").json()["passed"]
 
     assert (fired, without, with_nocase) == (True, False, True)
+
+@pytest.mark.parametrize("rule, alerted, chosen, line", [
+    (NOCASE_LESS, False, "no", "lesson.xss.ok.slipped"),
+    (WITH_NOCASE, True, "yes", "lesson.xss.ok.slipped.yes"),
+], ids=["missed", "already-nocase"])
+def test_the_slipped_pass_line_follows_the_answer_the_learner_s_own_rule_made_true(client, rule, alerted, chosen, line):
+    session = opened("f4")
+    posture = (ROOT / "deploy/suricata/rules/no-xss.rules").read_text()
+    passed(session, "f4", write=timezone.now() - timedelta(minutes=1))
+    if alerted:
+        detected(session, "mine", "suricata", session.browse_marker, "script", alert={"signature_id": 9100001},
+                 http={"url": "/search/?q=%3CScRiPt%3E"})
+    with patch.object(site, "kept", return_value=[browsed("/search/?q=%3CScRiPt%3E", 403)]), quietly(), \
+            patch("api.views._live_rules", lambda session=None: posture + rule):
+        judged = answer(client, session, "slipped", chosen)
+
+    assert judged["passed"] is True, judged
+    assert judged["progress"]["slipped"]["ok"] == strings.both(line), (
+        "the pass line contradicts the answer the learner's own rule made true"
+    )
 
 COPIED = ('alert http any any -> any any (msg:"admin page request"; flow:established,to_server; http.uri; '
           'content:"/admin"; sid:9100001; rev:1;)\n')

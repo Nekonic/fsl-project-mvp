@@ -220,7 +220,9 @@ def test_no_pass_line_names_an_option_a_later_step_of_its_lesson_offers():
             for at, step in enumerate(steps):
                 later = {option for after in steps[at + 1:] for option in after["check"].get("options", [])}
                 for language in strings.LANGUAGES:
-                    words = set(re.findall(r"[\w-]+", withheld[language].get(f"{taught['text']}.ok.{step['id']}", "")))
+                    lines = [f"{taught['text']}.ok.{step['id']}", *(f"{taught['text']}.ok.{step['id']}.{option}"
+                                                                  for option in step["check"].get("options", []))]
+                    words = set(re.findall(r"[\w-]+", " ".join(withheld[language].get(key, "") for key in lines)))
                     named += [f"{language} {taught['text']}.ok.{step['id']}: {option}" for option in later
                               if table[language].get(f"lesson.choice.{option}") in words]
 
