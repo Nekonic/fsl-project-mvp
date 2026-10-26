@@ -227,3 +227,80 @@ def test_the_home_page_gives_the_learner_one_line_and_the_operator_the_raw_reaso
     assert seen["errors"] == []
     assert english("range.blocked") in seen["result"]
     assert ("fsl-waf" in seen["result"]) is operator, seen["result"]
+
+REFUSED = """
+const range = {phase: "READY", open: []};
+LOCATION
+browser.serve((request) => {
+  if (request.route === "/api/wargames/") {
+    return {body: [{id: "board", name: "Board", description: "", cases: 1,
+      foundations: [{id: "f1", order: 1, title: "lesson.range.title", learns: "lesson.range.learns", minutes: 10,
+                     steps: 4}]}]};
+  }
+  if (request.route === "/api/range/ready/") {
+    return {body: {ready: range.phase === "READY", max_sessions: 2, slot: {number: 1, session: null,
+      phase: range.phase, blocked: range.phase === "READY" ? [] : ["the range is resetting; no need to call configure"]}}};
+  }
+  if (request.route === "/api/sessions/" && request.method === "POST") {
+    range.phase = range.refuseWith;
+    return {status: range.status, body: {detail: "the range is not ready: no need to call configure"}};
+  }
+  if (request.route === "/api/sessions/") return {body: request.query.state === "open" ? range.open : []};
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+def refused_open(client, refuse_with, status=409, open_sessions=0, operator=False, then=""):
+    setup = REFUSED.replace("LOCATION", 'location.search = "?operator";' if operator else "")
+    seen = open_page(client, "/", setup=setup, scenario=f"""
+      await browser.wait(0);
+      range.refuseWith = {refuse_with!r};
+      range.status = {status};
+      range.open = Array.from({{length: {open_sessions}}}, (_, at) => ({{id: at + 1, scenario: "board", kind: "wargame",
+        ready: true, started_at: "2026-10-26T10:00:00Z"}}));
+      const button = document.querySelector('[data-lesson-id="f1"]');
+      await browser.click('[data-lesson-id="f1"]');
+      const failure = document.querySelector('[data-failure="board"]');
+      const shown = () => ({{text: failure.querySelector('[data-failure-text]').textContent,
+        hidden: failure.classList.contains('hidden'), warning: failure.classList.contains('bg-warning-soft'),
+        nextToButton: failure.parentNode === button.parentNode,
+        closeOffered: !failure.querySelector('[data-close-open]').classList.contains('hidden'),
+        disabled: button.disabled}});
+      const refused = shown();
+      {then}
+      return {{refused, later: shown()}};
+    """)
+    assert seen["errors"] == []
+    return seen["result"]
+
+def test_an_open_refused_while_the_range_resets_says_so_beside_the_pressed_button_and_offers_start_again_once_ready(client):
+    seen = refused_open(client, "RESETTING", then="""
+      range.phase = "READY";
+      await browser.wait(3000);
+    """)
+
+    assert seen["refused"] == {"text": english("range.resetting"), "hidden": False, "warning": True,
+                               "nextToButton": True, "closeOffered": False, "disabled": True}, (
+        "the learner pressed Start and saw nothing beside it, or saw the API's operator reason"
+    )
+    assert seen["later"]["text"] == english("main.start_again")
+    assert seen["later"]["disabled"] is False, "the buttons stay dim after the range is ready again"
+
+def test_an_open_refused_because_the_range_is_not_standing_gives_the_learner_s_line_not_the_api_reason(client):
+    seen = refused_open(client, "NOT_STANDING")["refused"]
+
+    assert seen["text"] == english("range.blocked")
+    assert "configure" not in seen["text"]
+
+def test_an_open_refused_because_every_seat_is_taken_says_how_many_are_open_and_offers_to_close_one(client):
+    seen = refused_open(client, "READY", open_sessions=2)["refused"]
+
+    assert seen["text"] == english("main.start_failed.full", 2, 2)
+    assert seen["closeOffered"] is True and seen["warning"] is False and seen["nextToButton"] is True
+
+@pytest.mark.parametrize("operator", [False, True], ids=["learner", "operator"])
+def test_an_open_that_failed_otherwise_shows_the_api_reason_only_to_the_operator(client, operator):
+    seen = refused_open(client, "READY", status=503, operator=operator)["refused"]
+
+    assert ("no need to call configure" in seen["text"]) is operator, seen["text"]
+    assert seen["text"].startswith(english("main.start_failed", "").strip())
