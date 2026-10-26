@@ -56,6 +56,8 @@
   let capacity = null;
   let starting = false;
   let rangeReady = true;
+  let rangePhase = null;
+  let waiting = null;
   const operatorView = new URLSearchParams(location.search).has("operator");
 
   const field = (id) => document.getElementById(id);
@@ -150,8 +152,8 @@
         <div class="hidden mt-3 rounded-lg bg-danger-soft border border-danger-soft px-3 py-2.5 text-[13px]"
              data-failure="${id}">
           <div class="flex flex-wrap items-start gap-2">
-            <span class="text-danger font-bold">!</span>
-            <p data-failure-text class="flex-1 text-danger min-w-0"></p>
+            <span data-tone class="text-danger font-bold">!</span>
+            <p data-failure-text data-tone class="flex-1 text-danger min-w-0"></p>
             <button data-close-open class="btn btn-sm btn-ghost hidden">${esc(t("main.close_open"))}</button>
           </div>
           <div data-open-list class="hidden mt-2 space-y-1"></div>
@@ -214,11 +216,26 @@
     return setInterval(tick, 1000);
   }
 
+  function toned(failure, tone) {
+    const other = tone === "warning" ? "danger" : "warning";
+    [failure, ...failure.querySelectorAll("[data-tone]")].forEach((element) => {
+      element.className = element.className.replaceAll(`-${other}`, `-${tone}`);
+    });
+  }
+
+  function refusedLine(started) {
+    if (started.status !== 409) return t("main.start_failed", operatorView ? detail(started) : t("range.blocked"));
+    if (capacity !== null && running.length >= capacity) return t("main.start_failed.full", running.length, capacity);
+    if (rangeReady) return t("main.start_again");
+    return t(rangePhase === "RESETTING" ? "range.resetting" : "range.blocked");
+  }
+
   async function start(button) {
     const card = button.closest("[data-scenario]");
     const failure = card.querySelector("[data-failure]");
     const label = button.textContent;
-    failure.classList.add("hidden");
+    waiting = null;
+    document.querySelectorAll("[data-failure]").forEach((each) => each.classList.add("hidden"));
     starting = true;
     card.querySelectorAll(".start").forEach((each) => { each.disabled = true; });
     const ticking = opening(button);
@@ -235,15 +252,21 @@
       return;
     }
     button.textContent = label;
+    await refreshSessions();
     card.querySelectorAll(".start").forEach((each) => { each.disabled = !rangeReady; });
     const full = started.status === 409 && capacity !== null && running.length >= capacity;
-    failure.querySelector("[data-failure-text]").textContent = full
-      ? t("main.start_failed.full", running.length, capacity)
-      : t("main.start_failed", detail(started));
-    failure.querySelector("[data-close-open]").classList.toggle("hidden", started.status !== 409);
+    const settling = started.status === 409 && !full;
+    failure.querySelector("[data-failure-text]").textContent = refusedLine(started);
+    failure.querySelector("[data-close-open]").classList.toggle("hidden", !full);
     failure.querySelector("[data-open-list]").classList.add("hidden");
+    toned(failure, settling ? "warning" : "danger");
+    button.after(failure);
     failure.classList.remove("hidden");
-    refreshSessions();
+    waiting = settling && !rangeReady ? failure : null;
+    if (waiting) {
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(refreshSessions, WAITING_EVERY);
+    }
   }
 
   function listOpen(failure) {
@@ -394,6 +417,11 @@
     renderRunning();
 
     rangeReady = ready;
+    rangePhase = slot ? slot.phase : null;
+    if (ready && waiting) {
+      waiting.querySelector("[data-failure-text]").textContent = t("main.start_again");
+      waiting = null;
+    }
     if (!starting) document.querySelectorAll(".start").forEach((button) => { button.disabled = !ready; });
 
     const health = field("range-health");
@@ -413,22 +441,26 @@
   }
 
   const SESSIONS_EVERY = 10000;
+  const WAITING_EVERY = 3000;
   let refreshTimer = null;
-  let refreshing = false;
+  let refreshing = null;
   let refreshedAt = 0;
 
-  async function refreshSessions() {
-    if (refreshing) return;
-    refreshing = true;
+  async function refreshOnce() {
     clearTimeout(refreshTimer);
     try {
       await renderSessions();
       await renderReady();
     } finally {
-      refreshing = false;
+      refreshing = null;
       refreshedAt = Date.now();
-      refreshTimer = setTimeout(refreshSessions, SESSIONS_EVERY);
+      refreshTimer = setTimeout(refreshSessions, waiting ? WAITING_EVERY : SESSIONS_EVERY);
     }
+  }
+
+  function refreshSessions() {
+    if (!refreshing) refreshing = refreshOnce();
+    return refreshing;
   }
 
   onResume(() => {
