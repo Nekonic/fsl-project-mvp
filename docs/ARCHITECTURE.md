@@ -849,7 +849,7 @@ The session API shows only what the browser needs.
 - It shows a check's `kind` only, plus `form`, `options` (for `form: order`, every non-switch host on the learner map), the step's own `match` or the `match` of the step it is `about`, and `solo` on a foundation's last step.
 - No `accept` list or answer rule reaches the browser.
 - A step's `command` is in the payload only once `progress` records the step as reached. It is text to type, with no button that runs or copies it.
-- The pass lines (`<text>.ok.<step>`) and a worked scenario's answers sit in a `{% comment %}` section at the end of `strings.html`, which Django never renders. `console/strings.py` reads them, and the step's `progress` record carries them once earned.
+- The pass lines (`<text>.ok.<step>`, or `<text>.ok.<step>.<option>` when a choice step's line depends on the option the learner chose) and a worked scenario's answers sit in a `{% comment %}` section at the end of `strings.html`, which Django never renders. `console/strings.py` reads them, and the step's `progress` record carries them once earned.
 - Each step is advanced by its check. Back and Next stay as the way around one.
 
 How each check kind passes:

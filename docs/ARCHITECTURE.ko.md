@@ -849,7 +849,7 @@ WAF 상태 스냅샷:
 - check의 `kind`와 `form`, `options`(`form: order`이면 학습자용 구성도의 스위치가 아닌 모든 호스트), 단계 자신의 `match` 또는 `about`으로 가리키는 단계의 `match`, 그리고 기초 레슨 마지막 단계의 `solo`만 보여 줍니다.
 - `accept` 목록이나 정답 규칙은 브라우저로 가지 않습니다.
 - 단계의 `command`는 `progress`에 그 단계 진입이 기록된 뒤에야 응답에 들어갑니다. 입력할 문구일 뿐이고, 실행하거나 복사하는 버튼은 없습니다.
-- 통과 문장(`<text>.ok.<step>`)과 단계형 시나리오의 정답은 `strings.html` 끝의 `{% comment %}` 구역에 있어 Django가 렌더링하지 않습니다. `console/strings.py`가 이를 읽고, 학습자가 얻은 시점에 단계의 `progress` 기록에 싣습니다.
+- 통과 문장(`<text>.ok.<step>`, 선택형 단계에서 학습자가 고른 답에 따라 문장이 달라지면 `<text>.ok.<step>.<option>`)과 단계형 시나리오의 정답은 `strings.html` 끝의 `{% comment %}` 구역에 있어 Django가 렌더링하지 않습니다. `console/strings.py`가 이를 읽고, 학습자가 얻은 시점에 단계의 `progress` 기록에 싣습니다.
 - 각 단계는 check를 통과하면 넘어갑니다. 이전/다음은 check를 거치지 않고 이동하는 방법으로 남아 있습니다.
 
 check 종류별 통과 조건:
