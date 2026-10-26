@@ -68,6 +68,7 @@ services:
       SERVER_REWRITEBASEPATH: "true"
       SERVER_PUBLICBASEURL: "http://localhost:8000/kibana"
       TELEMETRY_ENABLED: "false"
+      DATA_SEARCH_SESSIONS_ENABLED: "false"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5601/kibana/api/status | grep -q '\"level\":\"available\"'"]
       interval: 10s
