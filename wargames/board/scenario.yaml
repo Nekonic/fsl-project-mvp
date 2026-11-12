@@ -283,7 +283,7 @@ courses:
   - id: c2
     text: course.attack
     lessons: [f4, f5, f6]
-    reference: [kql, fields, addresses, crs, suricata, sqli, sqlmap, exception, scores]
+    reference: [kql, fields, addresses, devtools, crs, suricata, sqli, sqlmap, exception, scores]
 foundations:
   - id: f1
     order: 1
@@ -301,7 +301,7 @@ foundations:
         point: {opens: topology, map: {node: board.com}}
         check: {kind: answer, of: address, host: board.com, zone: service}
       - id: path
-        point: {opens: topology, map: {zone: internet}}
+        point: {opens: topology, map: {node: kali}}
         check: {kind: answer, of: path, form: order, from: kali}
       - id: dmz
         point: {opens: topology, map: {zone: "{switch:board.com}"}}
@@ -406,7 +406,7 @@ foundations:
         point: {opens: site, site: "input[name=q]", until: sent, then: {dev: general.status}}
         check: {kind: answer, of: status, match: '<(?!script)(?i:script)'}
       - id: ids_none
-        point: {opens: elk, kibana: {hits: true, kql: 'event_type\s*:\s*"?alert'}}
+        point: {opens: elk, kibana: {hits: true, kql: '^(?=.*event_type\s*:\s*"?alert)(?=.*url\s*:\s*"?\*[^ ]*alert)'}}
         check: {kind: choice, of: alerted, about: [probe, upper], options: [present, absent]}
       - id: write
         point: {opens: rules, panel: "#lesson-rules", until: applied,
