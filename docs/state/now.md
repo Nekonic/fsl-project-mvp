@@ -183,3 +183,9 @@ copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
    or refuse that mode with a clear message.
 8. Acceptance run time and ingest re-reading the whole window (paged since
    f07919f, up to about 205k records).
+9. `POST slot/rebuild/?slot=N` followed at once by `POST configure/?slot=N`
+   failed on the first try for both slots on 2026-11-12 and passed on the
+   second. Slot 1: the rebuilt edge did not hold its WAN aliases or log to the
+   collector. Slot 2: the platform's `known_hosts` still held the rebuilt WAF's
+   old host key. The cause is not confirmed; find it so the documented order
+   (§6.1, rebuild then configure) works on the first try.
