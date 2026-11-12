@@ -207,7 +207,7 @@ compose는 Docker 소켓을 플랫폼에 마운트하고, entrypoint가 플랫�
 훈련 환경의 네트워크 구성은 GNS3 프로젝트 파일로 보관합니다. `revision` 9이므로 GNS3 2.2가 열 수 있고, 3.x는 불러올 때 업그레이드합니다. 두 종류가 있습니다.
 
 - **시스템 구성도**, `deploy/topology/system/range-openstack.gns3`: 선언의 전체 배선을 보여 줍니다. 관리 구간, 플랫폼 VM, 워게임 호스트의 컨테이너가 들어 있습니다. 영어로만 있으며 개발과 GNS3의 MCP용입니다. GNS3 서비스는 레포의 구성도를 보지 않으므로 학습자에게는 제공되지 않습니다.
-- **학습자용 구성도**, `deploy/topology/range-openstack.gns3`와 그 한국어 짝: 학습자가 방어하는 회사 웹 서비스 네트워크를 보여 줍니다. 실습 토폴로지를 그리는 방식(Cisco NetAcad lab topology, NSRC 워크숍 logical diagram)의 논리 구성도입니다. 구성도에 들어가는 것은 아래와 같습니다.
+- **학습자용 구성도**, `deploy/topology/range-openstack.gns3`: 학습자가 방어하는 회사 웹 서비스 네트워크를 보여 줍니다. 실습 토폴로지를 그리는 방식(Cisco NetAcad lab topology, NSRC 워크숍 logical diagram)의 논리 구성도입니다. 구성도에 들어가는 것은 아래와 같습니다.
 
 학습자용 구성도에 있는 것:
 
@@ -256,7 +256,7 @@ compose는 Docker 소켓을 플랫폼에 마운트하고, entrypoint가 플랫�
 - GNS3는 링크 끝을 노드 상태에 따라 칠하므로, 멈춘 노드는 모든 링크 끝이 빨강으로 그려집니다.
 - 그래서 각 호스트는 고정한 이미지 하나(`busybox`, `topology.DISPLAY_IMAGE`)의 `docker` 노드입니다. `sleep`만 실행하고 콘솔이 없습니다.
 - 실제 기계는 훈련 환경에서 실행됩니다. 구성도의 노드는 이를 표시만 합니다.
-- 플랫폼 VM에서 슬롯 1에 board 구성도, 슬롯 2에 corp 구성도를 두 언어로 올려 측정한 값: 표시용 컨테이너 26개, 그 프로세스와 runc shim의 PSS 115MB, uBridge 프로세스 12MB(`docs/DECISIONS.md`).
+- 플랫폼 VM에서 슬롯 1에 board 구성도, 슬롯 2에 corp 구성도를 두 언어로 올려 측정한 값(제품을 한국어 전용으로 바꾸기 전): 표시용 컨테이너 26개, 그 프로세스와 runc shim의 PSS 115MB, uBridge 프로세스 12MB(`docs/DECISIONS.md`).
 
 구간은 `ethernet_switch` 노드입니다. 시스템 구성도는 나머지를 다음과 같이 그립니다.
 
@@ -275,7 +275,7 @@ compose는 Docker 소켓을 플랫폼에 마운트하고, entrypoint가 플랫�
 
 ### 훈련 환경 자체의 구성도
 
-학습자는 자기 훈련 환경의 주소를 봅니다. `api/maps.py`가 학습자용 구성도에서 이 구성도를 만듭니다. 슬롯마다, 그리고 그 세션의 워게임마다(`slot 1 board`, `slot 2 corp`) 언어별로 프로젝트 하나를 만듭니다(`topology.labelled`). 실습 토폴로지처럼 모든 링크의 양 끝에 라벨을 붙입니다.
+학습자는 자기 훈련 환경의 주소를 봅니다. `api/maps.py`가 학습자용 구성도에서 이 구성도를 만듭니다. 슬롯마다, 그리고 그 세션의 워게임마다(`slot 1 board`, `slot 2 corp`) 프로젝트 하나를 만듭니다(`topology.labelled`). 실습 토폴로지처럼 모든 링크의 양 끝에 라벨을 붙입니다.
 
 스위치 쪽 끝의 라벨:
 
@@ -330,15 +330,14 @@ id와 이름: 모든 id는 `uuid5(<learner id>, "slot-<n>-<wargame>")`입니다.
 
 - 세션을 열 때
 - 슬롯 초기화 후
-- 구성도 창이 요청했는데(`GET /api/topology/?language=&session=`) GNS3가 그 구성도를 열어 두지 않았을 때
+- 구성도 창이 요청했는데(`GET /api/topology/?session=`) GNS3가 그 구성도를 열어 두지 않았을 때
 
 바뀌지 않은 구성도는 다시 올리지 않습니다. 플랫폼은 슬롯마다 가장 최근 세션의 구성도를 남기고 나머지는 삭제합니다. 생성한 구성도는 커밋하지 않습니다. GNS3가 구성도를 불러오지 못하면 엔드포인트는 세션 워게임의 학습자용 구성도를 파일에서 제공하고, 그 이유를 `detail`에 적습니다.
 
-학습자용 구성도에는 한국어 학습자를 위한 한국어 짝 `deploy/topology/range-openstack.ko.gns3`가 있습니다.
+학습자용 구성도는 한국어로 그립니다. 제품은 한국어 전용입니다(`docs/DECISIONS.md`, 2026-11-13).
 
-- 노드, 링크, 포트, 위치는 같습니다. 영역 캡션만 `docs/vocabulary.md`의 용어를 써서 한국어로 적습니다. 노드 이름은 역할 이름 그대로 둡니다.
-- 짝 파일의 모든 id는 `uuid5(<English id>, "ko")`이고 프로젝트 이름에는 한국어 접미사가 붙습니다. GNS3의 compute는 노드를 노드 id만으로 관리하므로, 열린 두 프로젝트가 같은 id를 공유할 수 없기 때문입니다.
-- 영어 파일이 기준입니다. 테스트가 영어 파일에서 한국어 파일의 구조를 다시 만들어, 문구 외의 차이가 있으면 실패합니다.
+- 영역 캡션은 `docs/vocabulary.md`의 용어를 써서 한국어로 적습니다. 노드 이름은 역할 이름 그대로 두고, 호스트·네트워크 이름과 IDS는 장비가 아는 이름 그대로 적습니다.
+- id는 시스템 구성도와 다릅니다. GNS3의 compute는 노드를 노드 id만으로 관리하므로, 열린 두 프로젝트가 같은 id를 공유할 수 없기 때문입니다.
 
 `gns3` 서비스(`deploy/gns3`, MCP extra를 포함한 gns3-server 3.1.0a6)는 시작할 때 다음을 합니다.
 
@@ -390,14 +389,13 @@ id와 이름: 모든 id는 `uuid5(<learner id>, "slot-<n>-<wargame>")`입니다.
 - 서버는 `gns3` 사용자로 실행되며, 플랫폼의 `fsl`처럼 시작할 때 소켓의 그룹에 참여합니다.
 - `GET /api/topology/`는 GNS3가 프로젝트를 `opened`로 보고하는 동안에만 웹 UI(`web_ui`)를 제공합니다. 그렇지 않으면 콘솔의 구성도 창에 구성도가 열려 있지 않다고 표시합니다.
 
-`GET /api/topology/?language=en|ko`는 그 언어로 그린 substrate의 학습자용 구성도를 반환합니다. `&session=<id>`를 붙이면 위에서 설명한, 그 세션 워게임의 구성도를 반환합니다.
+`GET /api/topology/`는 substrate의 학습자용 구성도를 반환합니다. `?session=<id>`를 붙이면 위에서 설명한, 그 세션 워게임의 구성도를 반환합니다.
 
 - 구성도는 GNS3(`platform/gns3.py`)나 레포 파일에서 가져옵니다.
-- 값이 없으면 `en`입니다. 그 밖의 값은 400입니다.
-- 콘솔은 자기 표시 언어를 보내고, `web_ui`는 GNS3 웹 UI의 해당 프로젝트 id로 바로 연결합니다.
+- `web_ui`는 GNS3 웹 UI의 해당 프로젝트 id로 바로 연결합니다.
 - 구성도 창은 이 구성도 하나만 보여 줍니다: 프레임 안의 GNS3 웹 UI와 맞추기 버튼.
 
-`GET /api/sessions/<id>/topology/`는 세션 워게임의 영어 구성도를 읽고(짝 파일은 노드 이름과 링크가 같습니다) `project.nodes`를 더합니다.
+`GET /api/sessions/<id>/topology/`는 세션 워게임의 학습자용 구성도를 읽고 `project.nodes`를 더합니다.
 
 - `project.nodes`에는 같은 훈련 환경 읽기에서 얻은 호스트 노드별, 스위치별 주소와 `running` 또는 `not reported` 상태가 들어갑니다.
 - 세션 오버레이는 구성도에 있는 호스트와, 구성도에 있는 스위치 위의 주소만 나열합니다.
@@ -581,7 +579,7 @@ nginx는 `</body>` 앞에 스크립트도 하나 붙입니다.
   - 헤더에는 일반(요청 URL, 요청 메서드, 상태 코드, 원격 주소, 리퍼러 정책), 응답 헤더, 요청 헤더가 나오고, 각각 원본 보기가 있습니다.
   - 페이로드에는 디코딩한 쿼리 문자열 매개변수(소스 보기와 인코딩된 URL 보기)와 폼 본문이 나옵니다.
 - 행, 탭, 줄에는 코치를 위한 `data-coach`가 붙어 있습니다.
-- 한국어 라벨은 Chrome 자체의 문구(`front_end/core/i18n/locales/ko.json`)이고, 영어는 Chrome en-US의 표기를 따릅니다. 패널 어디에도 "WAF"라는 말은 없습니다.
+- 라벨은 Chrome 자체의 한국어 문구(`front_end/core/i18n/locales/ko.json`)입니다. 패널 어디에도 "WAF"라는 말은 없습니다.
 
 브라우징 요청에는 세션 자신의 비밀값이 마커로 붙습니다.
 
@@ -830,7 +828,7 @@ WAF 상태 스냅샷:
 
 - 단계마다 `reached`, `passed`, `skipped`(시각), `hint`(보여 준 힌트 단계)를 남깁니다.
 - 세션의 현재 레슨 것을 `GET /api/sessions/<id>/`와 모든 단계·힌트 응답의 `progress`로 보고합니다.
-- 단계 기록에는 그 단계에서 얻은 것도 실립니다. 단계에 진입하면 `command`, 통과하면 `ok`(통과할 때 보여 주는 문장, `{en, ko}`), 단계형 시나리오에서는 힌트 단계가 3(`lesson.ANSWER`)이 되면 `answer`입니다.
+- 단계 기록에는 그 단계에서 얻은 것도 실립니다. 단계에 진입하면 `command`, 통과하면 `ok`(통과할 때 보여 주는 문장), 단계형 시나리오에서는 힌트 단계가 3(`lesson.ANSWER`)이 되면 `answer`입니다.
 - `POST /api/sessions/<id>/lesson/steps/<step>/ {state: reached|skipped}`는 단계에 진입했음 또는 통과하지 않고 넘어갔음을 기록합니다. check가 Kali 케이스를 가리키는 단계에 진입하면 단계가 마커를 받고, 플랫폼이 그 마커를 스탬프 프록시의 `/var/lib/session/active`에 씁니다.
 - 콘솔은 통과하지 않은 단계에서 다음을 누르거나 목록으로 이동할 때 `skipped`를 보냅니다. 이전을 누르거나 통과했을 때는 보내지 않습니다.
 - 통과 문장은 통과한 단계에 보여 줍니다. 다음 단계는 깨끗한 카드로 시작합니다.
@@ -962,7 +960,7 @@ board의 `scenario.yaml`은 `foundations:` 목록을 선언합니다. discovery 
 - 답은 세션의 학습자용 구성도에서 읽습니다(`views._range_fact`: `topology.learner`를 거친 `topology.address`, `topology.subnet`, `topology.zone_names`, `topology.route`, `topology.hosts`).
   - `address`: 링크 라벨의 주소. 프리픽스 길이는 있어도 없어도 됩니다.
   - `subnet`: 영역의 서브넷
-  - `zone_of`: 두 언어의 영역 캡션
+  - `zone_of`: 영역 캡션
   - `path`: `customers`, 그다음 구성도에 있는 경유 역할, 그다음 사이트 순서입니다(`customers > firewall > waf > board.com`).
   - `logs`: `log-server` 노드
 

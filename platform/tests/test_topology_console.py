@@ -38,17 +38,15 @@ def test_the_topology_pane_frames_the_gns3_web_ui_through_its_read_only_sign_in(
     assert seen["result"]["frameShown"] == "block"
 
 
-@pytest.mark.parametrize("language", ["en", "ko"])
-def test_the_topology_pane_asks_for_the_project_drawn_in_the_console_s_language(client, language):
+def test_the_topology_pane_asks_for_the_map_of_its_own_session(client):
     web_ui = {"port": 3080, "path": "/static/web-ui/map.html?project=p"}
-    chosen = f"localStorage.setItem('fsl-language', '{language}');\n"
-    seen = open_page(client, "/blue/1/", setup=chosen + serving(web_ui), scenario="""
+    seen = open_page(client, "/blue/1/", setup=serving(web_ui), scenario="""
       await browser.click('[data-pane="topology"]');
-      return browser.requests.filter((r) => r.route === '/api/topology/').map((r) => [r.query.language, r.query.session]);
+      return browser.requests.filter((r) => r.route === '/api/topology/').map((r) => r.query);
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == [[language, "1"]], "the pane asks for the map of its own session's range"
+    assert seen["result"] == [{"session": "1"}], "the pane asks for the map of its own session's range"
 
 def held_back(web_ui):
     return f"""

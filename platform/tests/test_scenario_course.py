@@ -51,13 +51,12 @@ def rule_of(name, sid):
     return buffer, re.compile(pattern.group(1), re.IGNORECASE if "i" in pattern.group(2) else 0)
 
 @pytest.mark.parametrize("scenario_id", COURSE)
-def test_every_scenario_validates_and_has_its_words_in_both_languages(scenario_id):
+def test_every_scenario_validates_and_has_its_words(scenario_id):
     one = copy.deepcopy(wargames.scenario_run(scenario_id))
     checked(one)
-    table = {language: strings.shown()[language] for language in strings.LANGUAGES}
+    table = strings.shown()
 
-    missing = {language: [key for key in keys_of(one) if key not in table[language]] for language in table}
-    assert missing == {"en": [], "ko": []}
+    assert [key for key in keys_of(one) if key not in table] == []
     assert one["traffic"]["profile"] in TRAFFIC["profiles"]
     assert all(dict(known())[attack["case"]] for attack in one["attacks"])
     card = wargames.scenario_card(one)
@@ -65,7 +64,7 @@ def test_every_scenario_validates_and_has_its_words_in_both_languages(scenario_i
 
 def test_the_broken_rule_reads_the_body_and_the_answer_s_buffer_fix_catches_stock_sqlmap_and_not_a_sort():
     buffer, pattern = rule_of("broken-sort.rules", 9000101)
-    answer = strings.both("scenario.fixrule.answer.fix")["en"]
+    answer = strings.line("scenario.fixrule.answer.fix")
 
     assert buffer == "http.request_body"
     assert all(word in answer for word in ("9000101", "http.request_body", "http.uri"))

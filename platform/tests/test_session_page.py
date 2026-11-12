@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from tests.browser import english, open_page
+from tests.browser import open_page, worded
 
 pytestmark = pytest.mark.django_db
 
@@ -62,15 +62,15 @@ def test_a_closed_course_names_each_run_by_lesson_and_step_and_never_by_case_id(
     assert seen["errors"] == []
     assert not re.search(r"board-[a-z-]+", shown["cases"] + shown["judged"]), (
         "a learner reads case names, not the case file's ids")
-    assert english("session.run.step", 5, 4) in shown["cases"] and english("session.run.step", 6, 2) in shown["cases"], (
+    assert worded("session.run.step", 5, 4) in shown["cases"] and worded("session.run.step", 6, 2) in shown["cases"], (
         "the same sqlmap case ran in two lessons; each run says where it came from")
-    assert english("session.run.lesson", 1) in shown["cases"]
-    assert shown["lost"] == "1 / 1" and english("score.benign", 1, 1) in shown["judged"], (
+    assert worded("session.run.lesson", 1) in shown["cases"]
+    assert shown["lost"] == "1 / 1" and worded("score.benign", 1, 1) in shown["judged"], (
         "both numbers stay on the page, side by side")
-    assert english("lesson.map.title") in shown["course"] and english("lesson.miss.title") in shown["course"], (
+    assert worded("lesson.map.title") in shown["course"] and worded("lesson.miss.title") in shown["course"], (
         "after a course the page sums up every lesson taken, not only the last")
-    assert english("session.course.steps", 9, 8) in shown["course"]
-    assert english("session.course.span", 1, 6) in shown["line"]
+    assert worded("session.course.steps", 9, 8) in shown["course"]
+    assert worded("session.course.span", 1, 6) in shown["line"]
 
 F6_RUN = """        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: false, detections: 0, corroborated: null,
          lesson: "f6", step: "dump", seed: false},
@@ -83,9 +83,9 @@ def test_a_lesson_switched_to_but_never_worked_on_is_not_listed_in_the_course(cl
     shown = seen["result"]
 
     assert seen["errors"] == []
-    assert english("lesson.sqli.title") in shown["course"] and english("lesson.miss.title") not in shown["course"], (
+    assert worded("lesson.sqli.title") in shown["course"] and worded("lesson.miss.title") not in shown["course"], (
         "the next lesson opens by itself after a lesson ends; opening it is not taking it")
-    assert english("session.course.span", 1, 5) in shown["line"]
+    assert worded("session.course.span", 1, 5) in shown["line"]
 
 def test_the_lesson_6_note_shows_only_when_lesson_6_ran_its_attack_or_an_objective_was_lost(client):
     def noted(setup):
@@ -109,7 +109,7 @@ def test_restarting_a_course_starts_its_first_lesson_with_that_lesson_s_defence(
       return {label, posted: browser.requests.filter((r) => r.method === "POST" && r.route === "/api/sessions/")};
     """)
 
-    assert seen["result"]["label"] == english("session.restart.course", 1)
+    assert seen["result"]["label"] == worded("session.restart.course", 1)
     assert [request["body"] for request in seen["result"]["posted"]] == [
         {"scenario": "board", "guidance": True, "lesson": "f1", "defense": "full"}], (
         "restarting from F6 with F6's posture would open F1 on the overbroad WAF exclusion")
@@ -132,7 +132,7 @@ def test_a_session_that_worked_only_lesson_5_restarts_lesson_5_and_says_the_same
     shown = restarted(client, ONLY_F5)
 
     assert 'lessons: [{id: "f5"' in ONLY_F5 and 'course: [{id: "f5"' in ONLY_F5
-    assert shown["label"] == english("session.restart.lesson"), (
+    assert shown["label"] == worded("session.restart.lesson"), (
         "the console moved on to lesson 6 by itself; one lesson worked restarts that lesson")
     assert shown["posted"] == [{"scenario": "board", "guidance": True, "lesson": "f5", "defense": "full"}]
 
@@ -140,7 +140,7 @@ def test_a_course_begun_at_lesson_5_restarts_from_lesson_5_and_names_it(client):
     shown = restarted(client, COURSE.replace('{id: "f1", started_at: "2026-10-18T09:00:00Z"}, ', "").replace(
         '{id: "f1", steps: 2, passed: 2, skipped: 0, hints: 0}, ', ""))
 
-    assert shown["label"] == english("session.restart.course", 5)
+    assert shown["label"] == worded("session.restart.course", 5)
     assert shown["posted"] == [{"scenario": "board", "guidance": True, "lesson": "f5", "defense": "full"}]
 
 READY = """
@@ -170,11 +170,11 @@ def test_the_catalogue_shows_range_controls_only_in_the_operator_view(client, op
     shown = seen["result"]
 
     assert seen["errors"] == []
-    assert english("main.lesson_number", 1) in shown["cards"], "foundations are called lessons"
-    assert (shown["capacity"] == english("main.capacity", 0, 2)) is operator
+    assert worded("main.lesson_number", 1) in shown["cards"], "foundations are called lessons"
+    assert (shown["capacity"] == worded("main.capacity", 0, 2)) is operator
     assert shown["health"] is not operator and shown["canary"] is not operator, (
         "the alert ingest check and the network state are operator controls")
-    assert (english("main.counts", 9, 6, 3) in shown["cards"]) is operator
+    assert (worded("main.counts", 9, 6, 3) in shown["cards"]) is operator
 
 GATED = (
     "let open;\nconst gate = new Promise((resolve) => { open = resolve; });\n"
@@ -208,9 +208,9 @@ def test_the_result_page_shows_the_course_and_verdict_at_once_and_placeholders_u
     assert waiting["layout"] == {
         "loading": False, "session-card": True, "consoles": False, "activity": False, "scoreboard": True}, (
         "the closed session's header and summary are on screen while the score is on its way; no loading line stands alone")
-    assert english("lesson.map.title") in waiting["course"], "the course summary does not wait for the score"
+    assert worded("lesson.map.title") in waiting["course"], "the course summary does not wait for the score"
     for part in ("objectives", "judged", "cases"):
-        assert english("session.loading.result") in waiting[part], "each table says what it is waiting for"
+        assert worded("session.loading.result") in waiting[part], "each table says what it is waiting for"
     assert waiting["slow"] is False
     assert shown["done"] == waiting["layout"]
     assert shown["lost"] == "1 / 1"
@@ -272,14 +272,14 @@ def test_an_opened_lesson_session_says_what_to_do_next_and_lists_only_the_learne
     assert shown["layout"] == {
         "loading": False, "session-card": True, "consoles": True, "activity": True, "scoreboard": False}
     assert shown["nextShown"] and shown["next"]
-    assert "Step 1/2 (lesson 1)" in shown["figures"] and "Step 1/2 (lesson 1)" in shown["tiles"], (
+    assert worded("session.lesson_step", 1, 2, 1) in shown["figures"] and worded("session.lesson_step", 1, 2, 1) in shown["tiles"], (
         "a step counter says which lesson it counts; six lessons each have steps")
-    assert "903" not in shown["crumbs"] and english("wargame.board.name") in shown["crumbs"], (
+    assert "903" not in shown["crumbs"] and worded("wargame.board.name") in shown["crumbs"], (
         "the trail names the wargame, not a session number")
-    assert english("common.session", 1) == shown["title"], "the session page itself keeps the number"
-    assert english("score.kind.auto_benign") not in shown["activity"], (
+    assert worded("common.session", 1) == shown["title"], "the session page itself keeps the number"
+    assert worded("score.kind.auto_benign") not in shown["activity"], (
         "the lesson's own automatic request is the platform's, not something the learner ran")
-    assert english("case.board-sqli-orderby-sqlmap") in shown["activity"]
+    assert worded("case.board-sqli-orderby-sqlmap") in shown["activity"]
 
 def test_a_session_that_cannot_be_read_says_so_instead_of_showing_an_empty_page(client):
     seen = open_page(client, "/session/1/", setup="""

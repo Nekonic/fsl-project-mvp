@@ -3,7 +3,6 @@ from __future__ import annotations
 import io
 import json
 import zipfile
-from pathlib import Path
 
 import requests
 from django.conf import settings
@@ -11,18 +10,13 @@ from django.conf import settings
 TIMEOUT = (3, 10)
 IMPORT_TIMEOUT = (3, 120)
 BOOTSTRAP = "/static/web-ui/map.html"
-ENGLISH = "en"
 PORTABLE = "project.gns3"
 
 class Unavailable(RuntimeError):
     pass
 
-def drawn_in(language: str) -> Path:
-    english = settings.FSL_TOPOLOGY
-    return english if language == ENGLISH else english.with_suffix(f".{language}{english.suffix}")
-
-def local(language: str = ENGLISH) -> dict:
-    return json.loads(drawn_in(language).read_text())
+def local() -> dict:
+    return json.loads(settings.FSL_TOPOLOGY.read_text())
 
 def _api() -> str:
     return settings.FSL_GNS3_URL.rstrip("/") + "/v3"
@@ -47,8 +41,8 @@ def _served(project_id: str) -> tuple[dict, str]:
     gns3file.raise_for_status()
     return gns3file.json(), found.json().get("status", "")
 
-def project(language: str = ENGLISH, kept: dict | None = None) -> dict:
-    kept = kept or local(language)
+def project(kept: dict | None = None) -> dict:
+    kept = kept or local()
     if not settings.FSL_GNS3_URL:
         return {"source": "file", "status": "", "detail": "FSL_GNS3_URL is not set", "project": kept,
                 "web_ui": None}

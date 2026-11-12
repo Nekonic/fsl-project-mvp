@@ -207,7 +207,7 @@ Compose mounts the Docker socket into the platform, and the entrypoint adds the 
 The range's topology is kept as GNS3 project files. They use `revision` 9, so GNS3 2.2 opens them and 3.x upgrades them on load. There are two kinds.
 
 - **The system map**, `deploy/topology/system/range-openstack.gns3`, shows the full wiring of the declaration. It includes the management segment, the platform VM and the wargame host's containers. It is English only, for development and GNS3's MCP. The GNS3 service never sees the repo's maps, so learners are never offered it.
-- **The learner map**, `deploy/topology/range-openstack.gns3` and its Korean pair, shows the company web-service network the learner defends. It is a logical diagram, drawn the way lab topologies are drawn (Cisco NetAcad lab topology, NSRC workshop logical diagram). The rules below describe what the learner map contains.
+- **The learner map**, `deploy/topology/range-openstack.gns3`, shows the company web-service network the learner defends. It is a logical diagram, drawn the way lab topologies are drawn (Cisco NetAcad lab topology, NSRC workshop logical diagram). The rules below describe what the learner map contains.
 
 What the learner map shows:
 
@@ -256,7 +256,7 @@ Drawing rules:
 - GNS3 colours a link end by its node's status, so a stopped node draws every end red.
 - Each host is therefore a `docker` node of one pinned image (`busybox`, `topology.DISPLAY_IMAGE`). It only runs `sleep` and has no console.
 - The real machines run in the range. The map's nodes only display them.
-- Measured on the platform VM with a board map on slot 1 and a corp map on slot 2, both languages: 26 display containers, 115 MB PSS for their processes and runc shims, and 12 MB for their uBridge processes (`docs/DECISIONS.md`).
+- Measured on the platform VM with a board map on slot 1 and a corp map on slot 2, both languages (before the product became Korean-only): 26 display containers, 115 MB PSS for their processes and runc shims, and 12 MB for their uBridge processes (`docs/DECISIONS.md`).
 
 Segments are `ethernet_switch` nodes. The system map draws the rest as follows.
 
@@ -275,7 +275,7 @@ Segments are `ethernet_switch` nodes. The system map draws the rest as follows.
 
 ### A range's own map
 
-The learner sees the addresses of their own range. `api/maps.py` derives the maps from the learner map. For each slot, and for the session's wargame (`slot 1 board`, `slot 2 corp`), it makes one project per language (`topology.labelled`). Every link is labelled at both ends, as a lab topology labels it.
+The learner sees the addresses of their own range. `api/maps.py` derives the maps from the learner map. For each slot, and for the session's wargame (`slot 1 board`, `slot 2 corp`), it makes one project (`topology.labelled`). Every link is labelled at both ends, as a lab topology labels it.
 
 Labels at the switch end:
 
@@ -330,15 +330,14 @@ When the platform loads a map:
 
 - at session open;
 - after a slot's reset;
-- when the Map pane asks (`GET /api/topology/?language=&session=`) and GNS3 does not hold it open.
+- when the Map pane asks (`GET /api/topology/?session=`) and GNS3 does not hold it open.
 
 An unchanged map is not loaded again. The platform keeps the newest session's map of each slot and deletes the others. Generated maps are never committed. If GNS3 cannot load a map, the endpoint serves the session's wargame's learner map from the file and says why in `detail`.
 
-The learner map has a Korean pair for Korean learners, `deploy/topology/range-openstack.ko.gns3`.
+The learner map is drawn in Korean; the product is Korean-only (`docs/DECISIONS.md`, 2026-11-13).
 
-- The pair has the same nodes, links, ports and positions. Only the zone captions are in Korean, in the terms of `docs/vocabulary.md`. Node names stay the role names.
-- Every id in the pair is `uuid5(<English id>, "ko")`, and the project name carries a Korean suffix. GNS3's compute keeps nodes by node id alone, so two open projects may not share one.
-- The English file is canonical. The test rebuilds the Korean file's structure from it and fails on any difference but the words.
+- The zone captions are in Korean, in the terms of `docs/vocabulary.md`. Node names stay the role names, and host and network names and IDS are drawn as the machine knows them.
+- Its ids differ from the system map's. GNS3's compute keeps nodes by node id alone, so two open projects may not share one.
 
 The `gns3` service (`deploy/gns3`, gns3-server 3.1.0a6 with its MCP extra) does the following at start.
 
@@ -390,14 +389,13 @@ Other facts about the image:
 - The server runs as the user `gns3`, which joins the socket's group at start, as `fsl` does in the platform.
 - `GET /api/topology/` offers the web UI (`web_ui`) only while GNS3 reports the project `opened`. Otherwise the console's Map pane says the map is not open.
 
-`GET /api/topology/?language=en|ko` returns the substrate's learner map drawn in that language. With `&session=<id>`, it returns that session's map for its wargame, described above.
+`GET /api/topology/` returns the substrate's learner map. With `?session=<id>`, it returns that session's map for its wargame, described above.
 
 - The map comes from GNS3 (`platform/gns3.py`) or from the repo's file.
-- `en` is the default when the parameter is absent. Any other value gets 400.
-- The console sends its own language. `web_ui` deep-links the GNS3 web UI to that project's id.
+- `web_ui` deep-links the GNS3 web UI to that project's id.
 - The Map pane is that map alone: the framed GNS3 web UI and its fit button.
 
-`GET /api/sessions/<id>/topology/` reads the English map of the session's wargame (the pair has the same node names and links) and adds `project.nodes`.
+`GET /api/sessions/<id>/topology/` reads the learner map of the session's wargame and adds `project.nodes`.
 
 - `project.nodes` holds each host node's addresses per switch, from the same range read, and the state `running` or `not reported`.
 - The session overlay lists only the map's hosts and their addresses on the map's switches.
@@ -581,7 +579,7 @@ The Developer tools panel is Chrome's Network panel, docked under the page. Its 
   - Headers shows General (Request URL, Request Method, Status Code, Remote Address, Referrer Policy), then Response Headers and Request Headers, each with a raw view.
   - Payload shows the Query String Parameters decoded, with source and URL-encoded views, and a form body.
 - Rows, tabs and lines carry `data-coach` for the coach.
-- The Korean labels are Chrome's own (`front_end/core/i18n/locales/ko.json`). The English ones use Chrome's en-US casing. Nothing in the panel says "WAF".
+- The labels are Chrome's own Korean (`front_end/core/i18n/locales/ko.json`). Nothing in the panel says "WAF".
 
 Browsing is marked with the session's own secret.
 
@@ -830,7 +828,7 @@ Progress itself belongs to the session and is kept per unit (`Session.lesson_ste
 
 - Per step it records `reached`, `passed`, `skipped` (times) and `hint` (the level shown).
 - It is reported for the session's current unit as `progress` in `GET /api/sessions/<id>/` and in every step and hint response.
-- A step's record also carries what the step has earned: `command` once the step is reached, `ok` (the line said on a pass, `{en, ko}`) once it is passed, and in a worked scenario `answer` once its hint level reaches 3 (`lesson.ANSWER`).
+- A step's record also carries what the step has earned: `command` once the step is reached, `ok` (the line said on a pass) once it is passed, and in a worked scenario `answer` once its hint level reaches 3 (`lesson.ANSWER`).
 - `POST /api/sessions/<id>/lesson/steps/<step>/ {state: reached|skipped}` records a step as reached or left unpassed. Reaching a step whose check names a Kali case gives the step a marker and writes that marker to the stamp proxy's `/var/lib/session/active`.
 - The console sends `skipped` on Next or a list jump from a step not passed. It never sends it on Back or a pass.
 - A pass is said on the passed step. The next step opens on a clean card.
@@ -962,7 +960,7 @@ Each unit below lists its defense and opening pane, what the learner does, and w
 - Answers are read from the session's learner map (`views._range_fact`: `topology.address`, `topology.subnet`, `topology.zone_names`, `topology.route` and `topology.hosts`, through `topology.learner`):
   - `address`: the link-label addresses, with or without the prefix length;
   - `subnet`: the zone's subnet;
-  - `zone_of`: the zone caption in both languages;
+  - `zone_of`: the zone caption;
   - `path`: `customers`, then the transit roles present, then the site (`customers > firewall > waf > board.com`);
   - `logs`: the `log-server` node.
 

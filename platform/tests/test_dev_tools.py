@@ -1,6 +1,6 @@
 import pytest
 
-from tests.browser import open_page
+from tests.browser import open_page, worded
 from tests.test_lesson_console import served
 
 pytestmark = pytest.mark.django_db
@@ -44,7 +44,7 @@ def test_the_tools_open_on_the_network_panel_and_the_other_panels_show_what_chro
 
     assert seen["errors"] == []
     assert result["opened"] == {"network": True, "blank": False, "selected": ["network"]}
-    assert result["console"] == {"network": False, "blank": True, "selected": ["console"], "text": "top Default levels >"}
+    assert result["console"] == {"network": False, "blank": True, "selected": ["console"], "text": f"top {worded('site.dev.console.levels')} >"}
     assert "&lt;h1" in result["elements"] and "Board" in result["elements"] and "&lt;body" in result["elements"]
     assert result["sources"]["blank"] and result["sources"]["selected"] == ["sources"]
     assert "&lt;h1&gt;Board&lt;/h1&gt;" in result["sources"]["text"] and "/site/" not in result["sources"]["text"]
@@ -79,9 +79,9 @@ def test_the_initiator_and_timing_tabs_show_what_the_record_holds(client):
     result = seen["result"]
 
     assert seen["errors"] == []
-    assert "No initiator data" in result["none"]
+    assert worded("site.dev.initiator.none") in result["none"]
     assert "http://board.com/search/?q=hello" in result["chain"] and "http://board.com/static/app.css" in result["chain"]
-    assert "Total" in result["timing"] and "20 ms" in result["timing"]
+    assert worded("site.dev.timing.total") in result["timing"] and "20 ms" in result["timing"]
 
 HELD_DETAILS = """
 const details = new Map();
@@ -135,8 +135,8 @@ def test_a_disk_cache_row_reads_as_in_chrome_and_the_resources_figure_is_the_dec
     result = seen["result"]
 
     assert seen["errors"] == []
-    assert result["cached"][4:6] == ["(disk cache)", "0 ms"]
-    assert result["fetched"][4] != "(disk cache)"
+    assert result["cached"][4:6] == [worded("site.dev.disk_cache"), "0 ms"]
+    assert result["fetched"][4] != worded("site.dev.disk_cache")
     assert result["resources"].startswith("10.2") and result["transferred"].startswith("5.1")
 
 def test_the_last_waterfall_bar_ends_inside_the_column_and_no_bar_is_a_sliver(client):
@@ -273,7 +273,7 @@ def test_an_empty_page_shows_the_bare_document_and_the_style_pane_shows_element_
 
     assert seen["errors"] == []
     assert result["tree"] == ["\u25BC<html>", "<head></head>", "<body></body> == $0", "</html>"]
-    assert result["side"] == ["Styles", "Computed", "Layout", "Event Listeners"]
+    assert result["side"] == [worded(f"site.dev.{key}") for key in ("styles", "computed", "layout", "event_listeners")]
     assert result["styles"] == "element.style { }" and result["layout"] == "" and result["filter"] == "none"
 
 def test_sources_has_the_page_navigator_with_the_site_folders_and_opens_the_chosen_file(client):
@@ -312,15 +312,15 @@ def test_sources_has_the_page_navigator_with_the_site_folders_and_opens_the_chos
 
     assert seen["errors"] == []
     assert result["first"] == ["\u25BCtop", "\u25BCboard.com", "\u25B6search", "\u25B6static"] or result["first"] == [
-        "\u25BCtop", "\u25BCboard.com", "\u25BCsearch", "(index)?q=hello", "\u25B6static"]
-    assert result["tabs"] == ["Page", "Workspace", "Overrides"]
-    assert result["opened"].startswith("(index)?q=hello")
+        "\u25BCtop", "\u25BCboard.com", "\u25BCsearch", f"{worded('site.dev.sources.index')}?q=hello", "\u25B6static"]
+    assert result["tabs"] == [worded(f"site.dev.sources.{key}") for key in ("page", "workspace", "overrides")]
+    assert result["opened"].startswith(f"{worded('site.dev.sources.index')}?q=hello")
     assert "app.css" in result["folder"]
     assert "body { margin: 0 }" in result["code"]
     assert "app.css" in result["kept"] and "app.css" not in result["shut"]
-    assert result["status"].startswith("Line 1, Column 1")
-    assert result["closed"].startswith("Open file")
-    assert result["overrides"] == "No local overrides set"
+    assert result["status"].startswith(worded("site.dev.sources.line_column", 1, 1))
+    assert result["closed"].startswith(worded("site.dev.sources.open_file"))
+    assert result["overrides"] == worded("site.dev.sources.no_overrides")
 
 def test_the_console_has_chromes_toolbar_above_the_prompt(client):
     seen = open_page(client, "/blue/1/", setup=served() + ROWS, scenario="""
@@ -339,7 +339,7 @@ def test_the_console_has_chromes_toolbar_above_the_prompt(client):
     result = seen["result"]
 
     assert seen["errors"] == []
-    assert result["titles"] == ["Show console sidebar", "Clear console", "Create live expression", "Console settings"]
-    assert result["selects"] == ["top", "Default levels"]
-    assert result["filter"] == "Filter"
+    assert result["titles"] == [worded(f"site.dev.console.{key}") for key in ("sidebar", "clear", "live", "settings")]
+    assert result["selects"] == ["top", worded("site.dev.console.levels")]
+    assert result["filter"] == worded("site.dev.filter")
     assert result["order"] == ["dv-bar", "dv-prompt"]

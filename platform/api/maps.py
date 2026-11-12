@@ -8,7 +8,6 @@ import gns3
 import topology
 from api import customers
 from range.ports import RangeUnavailable
-from console.strings import LANGUAGES
 
 SLOT = "slot"
 
@@ -27,11 +26,8 @@ def wargame_of(key: str) -> str:
 def _salt(key: str) -> str:
     return key.replace(" ", "-")
 
-def _base(language: str) -> str:
-    return gns3.local(language)["name"].partition(topology.KOREAN_SUFFIX)[0]
-
-def project_id(key: str, language: str) -> str:
-    return topology.renamed(gns3.local(language)["project_id"], _salt(key))
+def project_id(key: str) -> str:
+    return topology.renamed(gns3.local()["project_id"], _salt(key))
 
 def _customers_prefer(wargame: str) -> tuple[str, ...]:
     try:
@@ -47,29 +43,26 @@ def learner(wargame: str) -> topology.Learner:
     declared = settings.RANGE
     return topology.learner(declared, wargame, declared.roles["attacker"], _customers_prefer(wargame))
 
-def template(wargame: str, language: str = gns3.ENGLISH) -> dict:
-    return topology.for_wargame(gns3.local(language), learner(wargame))
+def template(wargame: str) -> dict:
+    return topology.for_wargame(gns3.local(), learner(wargame))
 
-def documents(key: str, found) -> dict[str, dict]:
-    drawn = learner(wargame_of(key))
-    return {language: topology.labelled(gns3.local(language), drawn, found, _salt(key), key)
-            for language in LANGUAGES}
+def document(key: str, found) -> dict:
+    return topology.labelled(gns3.local(), learner(wargame_of(key)), found, _salt(key), key)
 
 def _turn(key: str) -> threading.Lock:
     with _guard:
         return _turns.setdefault(key, threading.Lock())
 
-def publish(key: str, read) -> dict[str, str]:
+def publish(key: str, read) -> str:
     with _turn(key):
         return _published(key, read)
 
-def _published(key: str, read) -> dict[str, str]:
-    drawn = documents(key, read())
+def _published(key: str, read) -> str:
+    drawn = document(key, read())
     fingerprint = hashlib.sha256(json.dumps(drawn, sort_keys=True).encode()).hexdigest()
-    if _loaded.get(key) == fingerprint and all(
-            gns3.status(document["project_id"]) == "opened" for document in drawn.values()):
-        return {language: "opened" for language in drawn}
-    loaded = {language: gns3.publish(document) for language, document in drawn.items()}
+    if _loaded.get(key) == fingerprint and gns3.status(drawn["project_id"]) == "opened":
+        return "opened"
+    loaded = gns3.publish(drawn)
     _loaded[key] = fingerprint
     _failed.pop(key, None)
     return loaded
@@ -81,10 +74,8 @@ def failure(key: str) -> str:
     return _failed.get(key, "")
 
 def tidy(kind: str, live: list[str]) -> list[str]:
-    kept = {project_id(key, language) for key in live for language in LANGUAGES}
-    removed = []
-    for language in LANGUAGES:
-        removed += gns3.remove_except(f"{_base(language)} {kind} ", kept)
+    kept = {project_id(key) for key in live}
+    removed = gns3.remove_except(f"{gns3.local()['name']} {kind} ", kept)
     for key in [key for key in _loaded if key.startswith(kind) and key not in live]:
         _loaded.pop(key, None)
     return removed
@@ -114,14 +105,14 @@ def begin(key: str, read, kind: str, live: list[str]):
     worker.start()
     return worker
 
-def served(key: str, language: str, read) -> dict:
-    wanted = project_id(key, language)
+def served(key: str, read) -> dict:
+    wanted = project_id(key)
     try:
         with _turn(key):
             if gns3.status(wanted) != "opened":
                 _published(key, read)
     except (gns3.Unavailable, RangeUnavailable) as exc:
         _failed[key] = str(exc)
-        return {**gns3.project(language, template(wargame_of(key), language)),
+        return {**gns3.project(template(wargame_of(key))),
                 "detail": f"the map of your {key} could not be loaded: {exc}"[:300]}
-    return gns3.project(language, {**template(wargame_of(key), language), "project_id": wanted})
+    return gns3.project({**template(wargame_of(key)), "project_id": wanted})

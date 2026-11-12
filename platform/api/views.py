@@ -426,14 +426,14 @@ def _revealed(session, taught, step, kept):
     scenario = taught.get("group") != "foundations"
     passed_line = "line" if scenario else "ok"
     return {
-        **({"answer": strings.both(named.format("answer"))}
+        **({"answer": strings.line(named.format("answer"))}
            if scenario and kept.get("hint", 0) >= lesson.ANSWER else {}),
         **({passed_line: _pass_line(named.format(passed_line), kept)} if kept.get("passed") else {}),
         **({"command": step["command"]} if step.get("command") and kept.get("reached") else {}),
     }
 
 def _pass_line(key, kept):
-    return (kept.get("chose") and strings.both(f"{key}.{kept['chose']}")) or strings.both(key)
+    return (kept.get("chose") and strings.line(f"{key}.{kept['chose']}")) or strings.line(key)
 
 def _kali_command(session, name):
     case = dict(wargames.find_case(session.scenario, name), correlation="window")
@@ -661,8 +661,7 @@ def _range_fact(session, check, taught):
     if of == "path":
         return topology.route(drawn, wargames.host(session.scenario))
     if of == "zone_of":
-        named = topology.zone_names([maps.template(session.scenario, language) for language in strings.LANGUAGES],
-                                    check["host"])
+        named = topology.zone_name(project, check["host"])
         return list(dict.fromkeys([*named, *(name.removesuffix("망") for name in named if len(name) > 1)]))
     found = _map_found(session)
     if of == "host_of":
@@ -1209,19 +1208,16 @@ def session_top(request, session_id):
 
 @require_http_methods(["GET"])
 def range_topology(request):
-    language = request.GET.get("language") or gns3.ENGLISH
-    if language not in strings.LANGUAGES:
-        raise BadRequest(f'"language" is one of {", ".join(strings.LANGUAGES)}, got {language!r}')
     asked = request.GET.get("session")
     if asked is None:
-        return _reply(gns3.project(language))
+        return _reply(gns3.project())
     if not asked.isdigit():
         raise BadRequest(f'"session" must be a session id, got {asked!r}')
     session = get_object_or_404(Session, pk=int(asked))
     key = _map_key(session)
     if key is None or not settings.FSL_GNS3_URL:
-        return _reply(gns3.project(language, maps.template(session.scenario, language)))
-    return _reply(maps.served(key, language, _map_read(session, skip_unanswered=False)))
+        return _reply(gns3.project(maps.template(session.scenario)))
+    return _reply(maps.served(key, _map_read(session, skip_unanswered=False)))
 
 def _map_key(session, adapter=None):
     adapter = adapter or substrate()

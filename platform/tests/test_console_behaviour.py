@@ -1,6 +1,6 @@
 import pytest
 
-from tests.browser import english, open_page
+from tests.browser import open_page, worded
 
 pytestmark = pytest.mark.django_db
 
@@ -55,14 +55,14 @@ def test_a_closed_session_reports_what_was_taken_and_what_the_defence_judged_cou
 
     assert seen["errors"] == []
     assert result["lost"] == "1 / 2"
-    assert english("score.lost_unseen") in result["objectives"] and "8" in result["objectives"], (
+    assert worded("score.lost_unseen") in result["objectives"] and "8" in result["objectives"], (
         "lost and unnoticed costs double the difficulty"
     )
-    assert english("score.attacks", 8, 7) in result["judged"]
-    assert english("score.attacks_missed", 1, english("case.board-sqli-orderby-sqlmap")) in result["judged"]
-    assert english("score.benign", 4, 3) in result["judged"]
-    assert english("score.one_case_once") in result["judged"]
-    assert english("score.not_corroborated", 7, 1) in result["judged"]
+    assert worded("score.attacks", 8, 7) in result["judged"]
+    assert worded("score.attacks_missed", 1, worded("case.board-sqli-orderby-sqlmap")) in result["judged"]
+    assert worded("score.benign", 4, 3) in result["judged"]
+    assert worded("score.one_case_once") in result["judged"]
+    assert worded("score.not_corroborated", 7, 1) in result["judged"]
 
 SCORE_FAILS_ONCE = CLOSED.replace("browser.serve((request) => {", """
 let scored = 0;
@@ -82,14 +82,14 @@ def test_a_score_that_did_not_load_says_so_instead_of_calling_every_objective_ke
     first, then = seen["result"]["first"], seen["result"]["then"]
 
     assert seen["errors"] == []
-    assert english("score.kept") not in first["objectives"], (
+    assert worded("score.kept") not in first["objectives"], (
         "the score did not load and the table still said every objective was kept, "
         "while the header said some were lost"
     )
-    assert english("score.unavailable", "database is locked") in first["objectives"]
+    assert worded("score.unavailable", "database is locked") in first["objectives"]
     assert first["lost"] == "—"
     assert seen["result"]["asked"] == 2, "the page did not read the score again"
-    assert then["lost"] == "1 / 2" and english("score.lost_unseen") in then["objectives"]
+    assert then["lost"] == "1 / 2" and worded("score.lost_unseen") in then["objectives"]
 
 def test_a_score_that_answered_without_its_tables_is_not_read_as_nothing_lost(client):
     seen = open_page(client, "/session/1/", setup=CLOSED.replace(
@@ -98,8 +98,8 @@ def test_a_score_that_answered_without_its_tables_is_not_read_as_nothing_lost(cl
       return browser.text('objective-rows');
     """)
 
-    assert english("score.kept") not in seen["result"]
-    assert english("score.retrying") in seen["result"]
+    assert worded("score.kept") not in seen["result"]
+    assert worded("score.retrying") in seen["result"]
 
 def _session_7(kind):
     return f"""
@@ -201,7 +201,7 @@ def test_the_home_page_says_the_practice_network_is_resetting_in_the_learner_s_w
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == english("range.resetting"), (
+    assert seen["result"] == worded("range.resetting"), (
         "the home page showed the readiness API's operator reason instead of the learner's line"
     )
 
@@ -225,7 +225,7 @@ def test_the_home_page_gives_the_learner_one_line_and_the_operator_the_raw_reaso
     """)
 
     assert seen["errors"] == []
-    assert english("range.blocked") in seen["result"]
+    assert worded("range.blocked") in seen["result"]
     assert ("fsl-waf" in seen["result"]) is operator, seen["result"]
 
 REFUSED = """
@@ -279,23 +279,23 @@ def test_an_open_refused_while_the_range_resets_says_so_beside_the_pressed_butto
       await browser.wait(3000);
     """)
 
-    assert seen["refused"] == {"text": english("range.resetting"), "hidden": False, "warning": True,
+    assert seen["refused"] == {"text": worded("range.resetting"), "hidden": False, "warning": True,
                                "nextToButton": True, "closeOffered": False, "disabled": True}, (
         "the learner pressed Start and saw nothing beside it, or saw the API's operator reason"
     )
-    assert seen["later"]["text"] == english("main.start_again")
+    assert seen["later"]["text"] == worded("main.start_again")
     assert seen["later"]["disabled"] is False, "the buttons stay dim after the range is ready again"
 
 def test_an_open_refused_because_the_range_is_not_standing_gives_the_learner_s_line_not_the_api_reason(client):
     seen = refused_open(client, "NOT_STANDING")["refused"]
 
-    assert seen["text"] == english("range.blocked")
+    assert seen["text"] == worded("range.blocked")
     assert "configure" not in seen["text"]
 
 def test_an_open_refused_because_every_seat_is_taken_says_how_many_are_open_and_offers_to_close_one(client):
     seen = refused_open(client, "READY", open_sessions=2)["refused"]
 
-    assert seen["text"] == english("main.start_failed.full", 2, 2)
+    assert seen["text"] == worded("main.start_failed.full", 2, 2)
     assert seen["closeOffered"] is True and seen["warning"] is False and seen["nextToButton"] is True
 
 @pytest.mark.parametrize("operator", [False, True], ids=["learner", "operator"])
@@ -303,4 +303,4 @@ def test_an_open_that_failed_otherwise_shows_the_api_reason_only_to_the_operator
     seen = refused_open(client, "READY", status=503, operator=operator)["refused"]
 
     assert ("no need to call configure" in seen["text"]) is operator, seen["text"]
-    assert seen["text"].startswith(english("main.start_failed", "").strip())
+    assert seen["text"].startswith(worded("main.start_failed", "").strip())

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 import wargames
-from tests.browser import english, open_page
+from tests.browser import open_page, worded
 from tests.test_strings import tables
 
 pytestmark = pytest.mark.django_db
@@ -58,7 +58,7 @@ const used = (entry) => { if (!range.used.some((one) => one.step === entry.step)
 const stepState = (id, extra) => ({...extra, hint: own(id).hint, hints: range.used, progress: range.progress});
 const passing = (id, extra) => {
   own(id).passed = own(id).passed || "now";
-  own(id).ok = range.ok || {en: `${id} passed`, ko: `${id} 통과`};
+  own(id).ok = range.ok || `${id} passed`;
   return stepState(id, {passed: true, reason: null, ...extra});
 };
 const failing = (id, poll, key) => {
@@ -259,7 +259,7 @@ def test_a_lesson_opens_on_its_first_step_s_pane_and_a_step_on_another_pane_offe
 
     assert seen["errors"] == []
     assert result["first"] == "topology"
-    assert result["offered"] == {"shown": True, "pane": "site", "text": english("lesson.open.site"),
+    assert result["offered"] == {"shown": True, "pane": "site", "text": worded("lesson.open.site"),
                                  "task": "lesson.demo.coach.search"}, "the task text is never replaced by a detour"
     assert (result["opened"], result["after"]) == ("site", False)
 
@@ -280,7 +280,7 @@ def test_the_note_is_a_column_beside_the_pane_with_the_step_card_on_top_and_the_
     assert result["body"][0] == "step-card"
     assert result["body"].index("step-card") < result["body"].index("theory-card")
     assert result["theoryOpen"] == "true"
-    assert result["strip"] == {"folded": True, "text": english("lesson.note.strip", 1, len(STEPS))}
+    assert result["strip"] == {"folded": True, "text": worded("lesson.note.strip", 1, len(STEPS))}
 
 def test_silent_polls_of_a_sent_step_write_nothing_and_the_platform_alone_judges(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
@@ -300,7 +300,7 @@ def test_silent_polls_of_a_sent_step_write_nothing_and_the_platform_alone_judges
     result = seen["result"]
 
     assert seen["errors"] == []
-    assert result["quiet"] == {"said": False, "status": english("lesson.status.auto")}, (
+    assert result["quiet"] == {"said": False, "status": worded("lesson.status.auto")}, (
         "a poll that finds nothing is not a failure the learner should read")
     assert result["polls"] and all(result["polls"])
     assert result["passed"] == {"title": "lesson.demo.label.search", "said": "✓ search passed", "ring": False, "next": True,
@@ -348,7 +348,7 @@ def test_a_choice_shows_the_shared_label_of_each_option_and_posts_its_key(client
     """)
 
     assert seen["errors"] == []
-    assert seen["result"]["labels"] == [english("lesson.choice.present"), english("lesson.choice.absent")]
+    assert seen["result"]["labels"] == [worded("lesson.choice.present"), worded("lesson.choice.absent")]
     assert seen["result"]["answers"] == [["logged", "absent"]]
 
 def test_help_climbs_nudge_then_hint_then_skip_is_recorded_only_when_asked_and_never_reveals_an_answer(client):
@@ -377,7 +377,7 @@ def test_help_climbs_nudge_then_hint_then_skip_is_recorded_only_when_asked_and_n
 
 def test_a_hint_keeps_each_command_line_option_on_one_line(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en["lesson.demo.hint.source"] = '-D board -C a,b --dump reads, and --answers="crack=N" & --flush-session clears';
+      STRINGS["lesson.demo.hint.source"] = '-D board -C a,b --dump reads, and --answers="crack=N" & --flush-session clears';
       {to("source")}
       {hints(2)}
       return browser.element('step-help').innerHTML;
@@ -424,7 +424,7 @@ def test_a_run_whose_last_requests_are_still_being_logged_reads_as_settling_not_
     """)
 
     assert seen["errors"] == []
-    assert seen["result"]["settling"] == {"status": "Collecting the request logs of the run. It is checked again automatically in a few seconds.",
+    assert seen["result"]["settling"] == {"status": worded("lesson.check.kali_settling"),
                                           "said": False, "failed": False, "passed": False}
     assert seen["result"]["polled"][0] is False and seen["result"]["polled"][-1] is True, "pressed once, then checked by itself"
     assert (seen["result"]["passed"], seen["result"]["hint"], seen["result"]["wrong"]) == (True, 0, 0)
@@ -436,7 +436,7 @@ def test_a_pass_text_longer_than_an_acknowledgement_stays_until_next_is_pressed_
       await browser.wait(1600);
       const short = browser.text('step-title');
       {to("verdict")}
-      range.ok = {{en: 'Correct. sqlmap judged the parameter not injectable only because every request was blocked with 403.', ko: 'x'}};
+      range.ok = 'Correct. sqlmap judged the parameter not injectable only because every request was blocked with 403.';
       await browser.click('#step-act [data-value="no"]');
       await browser.settle();
       await browser.wait(4000);
@@ -449,7 +449,7 @@ def test_a_pass_text_longer_than_an_acknowledgement_stays_until_next_is_pressed_
     assert seen["errors"] == []
     assert seen["result"]["short"] == "lesson.demo.label.sort", "a short pass moves on by itself"
     assert seen["result"]["long"]["title"] == "lesson.demo.label.verdict", "a long pass waits to be read"
-    assert seen["result"]["long"]["status"] == "Press Next to continue." and seen["result"]["long"]["next"] is True
+    assert seen["result"]["long"]["status"] == worded("lesson.status.press_next") and seen["result"]["long"]["next"] is True
     assert seen["result"]["after"] != "lesson.demo.label.verdict"
 
 def test_the_last_step_is_solo_without_a_highlight_or_hints_and_offers_skip_from_the_start(client):
@@ -506,12 +506,12 @@ def test_a_kali_step_shows_the_command_to_type_with_a_copy_button_and_no_button_
     assert result["command"] == {"shown": True, "text": step["command"], "copy": True, "styled": None, "pieces": [
         "sqlmap", "-u", '"http://', "board.com/?", 'sort=posts_post.id*"', "--batch"]}, (
         "a space-separated word never breaks across lines; a long path may break only after a slash or a question mark")
-    assert result["buttons"] == [english("lesson.kali.check"), english("lesson.hint.show"), english("lesson.coach.back"),
-                                 english("lesson.coach.next")], "the learner types every attack"
+    assert result["buttons"] == [worded("lesson.kali.check"), worded("lesson.hint.show"), worded("lesson.coach.back"),
+                                 worded("lesson.coach.next")], "the learner types every attack"
     assert result["stayed"] == "lesson.demo.label.sqlmap", "the pass line stays until the learner presses Next"
     assert result["title"] == "lesson.demo.label.verdict"
     assert "1539" not in result["row"] and "firewall" not in result["row"]
-    assert result["row"].endswith(english("lesson.kali.window"))
+    assert result["row"].endswith(worded("lesson.kali.window"))
     assert result["window"] == "/kibana/app/discover#/?run=sqlmap"
 
 COMMAND_WITHHELD = [dict({key: value for key, value in step.items() if key != "command"}, has_command=True)
@@ -534,7 +534,7 @@ def test_a_step_with_a_command_shows_a_placeholder_and_a_disabled_copy_until_the
     """)
 
     assert seen["errors"] == []
-    assert seen["result"]["waiting"] == {"shown": True, "text": english("lesson.command.preparing"), "copy": True,
+    assert seen["result"]["waiting"] == {"shown": True, "text": worded("lesson.command.preparing"), "copy": True,
                                          "disabled": True, "said": ""}, (
         "the reached reply waits for the marker's write to the stamp proxy, about 2 s live; the command area shows at once")
     assert seen["result"]["ready"] == {"shown": True, "text": SQLMAP_COMMAND, "copy": True, "disabled": False, "said": ""}
@@ -549,7 +549,7 @@ def test_a_reached_reply_that_fails_hides_the_command_placeholder_and_says_why(c
 
     assert seen["errors"] == []
     assert seen["result"] == {"shown": False, "text": "", "copy": False, "disabled": False,
-                              "said": english("lesson.command.failed", "the stamp proxy did not answer")}
+                              "said": worded("lesson.command.failed", "the stamp proxy did not answer")}
 
 def test_opening_kibana_at_the_run_s_time_again_reloads_it_so_a_record_ingested_since_shows(client):
     seen = open_page(client, "/blue/1/", setup=served() + """
@@ -573,7 +573,7 @@ browser.element('pane-frame').contentWindow = {location: {reload: () => { reload
 def test_the_ring_sits_on_the_target_the_pane_alone_is_dimmed_and_the_callout_never_covers_the_target(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       {to("cost")}
-      STRINGS.en['lesson.demo.callout.cost'] = 'The total is here';
+      STRINGS['lesson.demo.callout.cost'] = 'The total is here';
       await frames();
       const target = {{left: 1380, top: 300, width: 40, height: 20}};
       return {{ring: styled('coach-ring'), dim: shown('coach-dim'), callout: callout(),
@@ -621,7 +621,7 @@ def test_the_website_and_the_map_are_asked_where_the_target_is_and_their_answer_
 def test_the_callout_on_the_website_keeps_off_the_page_content_the_frame_reports_around_the_target(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       {to("search")}
-      STRINGS.en['lesson.demo.callout.search'] = 'Type the word here';
+      STRINGS['lesson.demo.callout.search'] = 'Type the word here';
       await browser.click('step-open');
       await frames();
       answer('site-frame', {{x: 100, y: 50, w: 300, h: 30}}, [
@@ -729,8 +729,8 @@ def test_kibana_and_terminal_steps_ring_the_flyout_row_the_hit_count_and_the_mat
 def test_a_terminal_ring_covers_a_wrapped_line_or_a_printed_table_and_its_callout_avoids_the_text(client):
     wrapped = "[CRITICAL] all tested parameters do not appear to be injectable. Try to increase "
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.demo.callout.verdict'] = 'The verdict';
-      STRINGS.en['lesson.demo.callout.loot'] = 'The table';
+      STRINGS['lesson.demo.callout.verdict'] = 'The verdict';
+      STRINGS['lesson.demo.callout.loot'] = 'The table';
       {to("verdict")}
       await browser.click('step-open');
       kaliLines.push({json.dumps(wrapped)}, {{text: "values for '--level'/'--risk' options"}}, "ubuntu@kali:~$ ");
@@ -786,7 +786,7 @@ def test_a_website_step_whose_element_is_not_on_this_page_points_at_the_link_to_
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"home": "a.navbar-brand", "ring": True, "callout": english("lesson.site.home"), "missing": False}
+    assert seen["result"] == {"home": "a.navbar-brand", "ring": True, "callout": worded("lesson.site.home"), "missing": False}
 
 def test_a_website_step_whose_element_is_missing_on_the_post_list_too_says_so_instead_of_pointing_home_again(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
@@ -812,7 +812,7 @@ def test_a_website_step_whose_element_is_missing_on_the_post_list_too_says_so_in
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"sentHome": 2, "again": 2, "ring": False, "status": english("lesson.site.missing")}, (
+    assert seen["result"] == {"sentHome": 2, "again": 2, "ring": False, "status": worded("lesson.site.missing")}, (
         "sent home once; with the element still missing there, no second trip and no ring on the home link"
     )
 
@@ -886,7 +886,7 @@ def test_every_step_that_reads_a_kali_run_carries_the_button_that_opens_kibana_a
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"window": "/kibana/app/discover#/?run=sqlmap", "text": english("lesson.kali.window"), "shown": True,
+    assert seen["result"] == {"window": "/kibana/app/discover#/?run=sqlmap", "text": worded("lesson.kali.window"), "shown": True,
                               "links": 0}, "one button: the step's open button itself opens the run's window"
 
 def test_the_objectives_card_lists_each_objective_with_its_penalty_and_the_total(client):
@@ -899,7 +899,7 @@ def test_the_objectives_card_lists_each_objective_with_its_penalty_and_the_total
 
     assert seen["errors"] == []
     assert seen["result"]["shown"] is True and seen["result"]["total"] == "4"
-    assert seen["result"]["rows"][0][1:] == ["2", english("common.yes"), english("common.no"), "4"], (
+    assert seen["result"]["rows"][0][1:] == ["2", worded("common.yes"), worded("common.no"), "4"], (
         "lost and detected read yes or no, as on the result page")
 
 POLLED = ("/ingest/", "/detections/", "/waf/", "/check/", "/site/requests/")
@@ -945,12 +945,12 @@ def test_a_finished_foundation_starts_the_next_lesson_and_the_last_one_ends_on_a
     assert result["counter"] is True, "no step counter on the finished card"
     assert result["early"] == 0, "the learner reads the line before the next lesson starts"
     if following:
-        assert result["said"] == english("lesson.next.ready", "lesson.next.title")
+        assert result["said"] == worded("lesson.next.ready", "lesson.next.title")
         assert result["button"] is True
         assert (result["moved"], result["reloaded"], result["closed"]) == ([{"lesson": following}], 1, 0)
     else:
         assert result["course"] == ["f1", "f9"]
-        assert result["said"] == english("lesson.course.done"), "the last task line is never left empty"
+        assert result["said"] == worded("lesson.course.done"), "the last task line is never left empty"
         assert result["waited"] == 0, "the summary stays until the learner closes the session"
         assert (result["moved"], result["closed"]) == ([], 1)
         assert result["href"].endswith("/session/1/")
@@ -966,7 +966,7 @@ def test_the_last_foundation_says_the_course_is_done_only_when_the_session_took_
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"said": english("lesson.done"), "course": ["f9"]}, (
+    assert seen["result"] == {"said": worded("lesson.done"), "course": ["f9"]}, (
         "a session that took only the last lesson finished that lesson, not every foundation lesson")
 
 def test_the_stretch_task_sits_right_under_the_step_card_so_a_finished_lesson_shows_it_without_scrolling():
@@ -1061,7 +1061,7 @@ def test_every_point_a_foundation_or_scenario_step_names_resolves_on_the_blue_co
     assert len({unit for unit, _, _, _ in points}) == len(taught) > 6
     assert [(unit, step, missing) for unit, step, point, solo in points if (missing := unresolved(page, point, solo))] == []
 
-def test_every_pane_a_step_opens_or_points_into_has_an_open_button_label_in_both_languages():
+def test_every_pane_a_step_opens_or_points_into_has_an_open_button_label():
     table = tables()
     panes = set()
     for unit in stepped():
@@ -1073,8 +1073,8 @@ def test_every_pane_a_step_opens_or_points_into_has_an_open_button_label_in_both
                 panes |= {pane_of(kind, locator[kind])} - {None} if kind else set()
 
     assert panes
-    assert [(language, f"lesson.open.{pane}") for pane in sorted(panes) for language in ("en", "ko")
-            if f"lesson.open.{pane}" not in table[language]] == [], "the step card's open button would show a raw key"
+    assert [f"lesson.open.{pane}" for pane in sorted(panes)
+            if f"lesson.open.{pane}" not in table] == [], "the step card's open button would show a raw key"
 
 GRID = """
 const doc = browser.element('pane-frame').contentDocument;
@@ -1103,8 +1103,8 @@ doc.querySelector = (selector) => (selector.includes('NavigationPage')
 
 def test_a_leg_step_rings_the_expand_toggle_of_the_row_on_that_leg_then_the_arrow_off_a_wrong_document_then_the_value(client):
     seen = open_page(client, "/blue/1/", setup=served() + GRID, scenario=f"""
-      STRINGS.en['lesson.kibana.expand.upstream'] = 'Expand the row for the board';
-      STRINGS.en['lesson.kibana.other'] = 'Another event';
+      STRINGS['lesson.kibana.expand.upstream'] = 'Expand the row for the board';
+      STRINGS['lesson.kibana.other'] = 'Another event';
       {to("source")}
       await browser.click('step-open');
       hops = [hop(0, '175.192.0.10', '10.30.0.102'), hop(1, '10.30.0.102', '10.30.0.63')];
@@ -1131,7 +1131,7 @@ def test_a_leg_step_rings_the_expand_toggle_of_the_row_on_that_leg_then_the_arro
 
 def test_a_leg_step_whose_row_cannot_be_found_asks_for_the_destination_and_never_rings_a_flyout_value(client):
     seen = open_page(client, "/blue/1/", setup=served() + GRID, scenario=f"""
-      STRINGS.en['lesson.kibana.verify.upstream'] = 'Read the destination first.';
+      STRINGS['lesson.kibana.verify.upstream'] = 'Read the destination first.';
       {to("source")}
       await browser.click('step-open');
       kibana.set('[data-test-subj="docViewerFlyout"]', box(500, 0, 480, 704));
@@ -1173,8 +1173,8 @@ kibana.set('[data-test-subj="queryInput"]', box(300, 20, 400, 36));
 
 def test_a_field_step_rings_the_first_row_that_has_the_field_and_moves_off_a_document_without_it(client):
     seen = open_page(client, "/blue/1/", setup=served() + GRID + VALUED, scenario=f"""
-      STRINGS.en['lesson.kibana.other'] = 'Another event';
-      STRINGS.en['lesson.kibana.fieldless'] = 'No event has {{0}}';
+      STRINGS['lesson.kibana.other'] = 'Another event';
+      STRINGS['lesson.kibana.fieldless'] = 'No event has {{0}}';
       {to("rule")}
       await browser.click('step-open');
       ruleIds = [' - ', '941100,949110'];
@@ -1212,9 +1212,9 @@ def test_a_field_step_rings_the_first_row_that_has_the_field_and_moves_off_a_doc
 
 def test_a_closed_document_without_the_field_keeps_asking_for_the_query_until_it_changes(client):
     seen = open_page(client, "/blue/1/", setup=served() + GRID + VALUED, scenario=f"""
-      STRINGS.en['lesson.kibana.expand'] = 'Expand the row';
-      STRINGS.en['lesson.kibana.query'] = 'Type the KQL';
-      STRINGS.en['lesson.kibana.fieldless'] = 'No event has {{0}}';
+      STRINGS['lesson.kibana.expand'] = 'Expand the row';
+      STRINGS['lesson.kibana.query'] = 'Type the KQL';
+      STRINGS['lesson.kibana.fieldless'] = 'No event has {{0}}';
       {to("rule")}
       await browser.click('step-open');
       ruleIds = [' - ', ' - '];
@@ -1245,7 +1245,7 @@ def test_a_closed_document_without_the_field_keeps_asking_for_the_query_until_it
 
 def test_a_field_step_rings_a_waf_row_whose_rule_id_is_a_dash_over_rows_kibana_shows_without_the_field(client):
     seen = open_page(client, "/blue/1/", setup=served() + GRID + VALUED, scenario=f"""
-      STRINGS.en['lesson.kibana.expand'] = 'Expand the row';
+      STRINGS['lesson.kibana.expand'] = 'Expand the row';
       {to("rule")}
       await browser.click('step-open');
       ruleIds = [' - ', ' - ', '-'];
@@ -1274,13 +1274,13 @@ def test_the_hint_button_offers_the_next_hint_only_after_the_learner_opened_one(
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"fresh": english("lesson.hint.show"), "offered": english("lesson.hint.show"),
-                              "opened": english("lesson.hint.next")}, "the timer offers a hint; no hint has been opened yet"
+    assert seen["result"] == {"fresh": worded("lesson.hint.show"), "offered": worded("lesson.hint.show"),
+                              "opened": worded("lesson.hint.next")}, "the timer offers a hint; no hint has been opened yet"
 
 def test_a_value_the_document_panel_scrolled_under_its_footer_asks_for_the_field_and_only_a_panel_over_the_target_asks_to_close_it(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.kibana.field'] = 'Type the field name';
-      STRINGS.en['lesson.kibana.covered'] = 'Close the panel';
+      STRINGS['lesson.kibana.field'] = 'Type the field name';
+      STRINGS['lesson.kibana.covered'] = 'Close the panel';
       const doc = browser.element('pane-frame').contentDocument;
       const plain = doc.querySelector;
       const value = {{getBoundingClientRect: () => box(640, 690, 300, 24)}};
@@ -1315,7 +1315,7 @@ def test_a_value_the_document_panel_scrolled_under_its_footer_asks_for_the_field
 
 def test_a_finished_run_moves_the_ring_from_the_prompt_to_the_check_button(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.kali.press'] = 'The run has finished. Press Check.';
+      STRINGS['lesson.kali.press'] = 'The run has finished. Press Check.';
       {to("sqlmap")}
       await browser.click('step-open');
       RECTS.set(document.querySelector('[data-act="kali"]'), box(1060, 400, 130, 28));
@@ -1390,9 +1390,9 @@ def test_a_step_that_keeps_the_document_open_does_not_close_the_flyout_on_arriva
 
 def test_a_hit_count_step_asks_for_the_query_until_it_changes_whether_the_previous_result_was_empty_or_not(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.kibana.none'] = 'No events match.';
-      STRINGS.en['lesson.kibana.query'] = 'Type the KQL here.';
-      STRINGS.en['lesson.demo.callout.logged'] = 'The count.';
+      STRINGS['lesson.kibana.none'] = 'No events match.';
+      STRINGS['lesson.kibana.query'] = 'Type the KQL here.';
+      STRINGS['lesson.demo.callout.logged'] = 'The count.';
       const doc = browser.element('pane-frame').contentDocument;
       const plain = doc.querySelector;
       const input = {{value: 'status : 500', getBoundingClientRect: () => box(300, 100, 400, 36)}};
@@ -1425,8 +1425,8 @@ def test_a_hit_count_step_asks_for_the_query_until_it_changes_whether_the_previo
 
 def test_a_terminal_step_rings_the_prompt_until_its_line_appears(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.term.prompt'] = 'Type the command here.';
-      STRINGS.en['lesson.demo.callout.verdict'] = 'The verdict';
+      STRINGS['lesson.term.prompt'] = 'Type the command here.';
+      STRINGS['lesson.demo.callout.verdict'] = 'The verdict';
       {to("verdict")}
       await browser.click('step-open');
       await frames();
@@ -1443,7 +1443,7 @@ def test_a_terminal_step_rings_the_prompt_until_its_line_appears(client):
 
 def test_a_terminal_step_draws_no_ring_or_callout_while_the_terminal_is_not_connected_and_rings_the_line_once_it_is(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.demo.callout.verdict'] = 'The verdict';
+      STRINGS['lesson.demo.callout.verdict'] = 'The verdict';
       const term = browser.element('kali-frame').contentWindow.term;
       const attached = term.element;
       term.element = {{querySelector: () => null}};
@@ -1465,7 +1465,7 @@ def test_a_terminal_step_draws_no_ring_or_callout_while_the_terminal_is_not_conn
 
 def test_a_closed_pane_rings_the_open_button_with_its_own_callout_a_solo_step_has_no_ring_and_a_note_target_has_no_pane_button(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.open.callout'] = 'Open it here first.';
+      STRINGS['lesson.open.callout'] = 'Open it here first.';
       placeAt('step-open', box(1060, 300, 120, 28));
       {to("search")}
       await frames();
@@ -1495,7 +1495,7 @@ def test_a_closed_pane_rings_the_open_button_with_its_own_callout_a_solo_step_ha
 
 def test_an_address_bar_target_inside_the_pane_still_gets_its_callout(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.demo.callout.address'] = 'Type the address here.';
+      STRINGS['lesson.demo.callout.address'] = 'Type the address here.';
       placeAt('site-address', box(120, 60, 800, 28));
       {to("address")}
       await browser.click('step-open');
@@ -1511,7 +1511,7 @@ def test_an_address_bar_target_inside_the_pane_still_gets_its_callout(client):
 
 def test_a_map_callout_stays_beside_its_target_and_off_the_map_text(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.demo.callout.board_ip'] = 'The board address.';
+      STRINGS['lesson.demo.callout.board_ip'] = 'The board address.';
       await frames();
       window.dispatchEvent({{type: 'message', data: {{map: 'drawn'}}, source: browser.element('topology-frame').contentWindow}});
       await frames();
@@ -1532,7 +1532,7 @@ def test_a_map_callout_stays_beside_its_target_and_off_the_map_text(client):
 
 def test_the_course_summary_shows_the_learner_s_own_two_scores(client):
     seen = open_page(client, "/blue/1/", setup=served(next_lesson=None), scenario=f"""
-      STRINGS.en['lesson.course.values'] = 'S1 {{0}} / attacks {{1}} caught {{2}} / benign {{3}} alerted {{4}}';
+      STRINGS['lesson.course.values'] = 'S1 {{0}} / attacks {{1}} caught {{2}} / benign {{3}} alerted {{4}}';
       {to("db_ip")}
       {answering(RIGHT["db_ip"])}
       await browser.wait(500);
@@ -1547,7 +1547,7 @@ def test_the_course_summary_shows_the_learner_s_own_two_scores(client):
 
 def test_a_developer_tools_callout_keeps_off_the_sibling_tabs_and_the_other_requests(client):
     seen = open_page(client, "/blue/1/", setup=served() + DEV, scenario=f"""
-      STRINGS.en['lesson.dev.tab.headers'] = 'Press this tab';
+      STRINGS['lesson.dev.tab.headers'] = 'Press this tab';
       {to("method")}
       await browser.click('step-open');
       browser.element('site-dev-toggle').setAttribute('aria-pressed', 'true');
@@ -1566,7 +1566,7 @@ def test_a_developer_tools_callout_keeps_off_the_sibling_tabs_and_the_other_requ
 
 def test_a_hit_count_callout_keeps_off_the_toolbar_buttons_beside_the_count(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.demo.callout.logged'] = 'The count of the results shown, and more words so it is long.';
+      STRINGS['lesson.demo.callout.logged'] = 'The count of the results shown, and more words so it is long.';
       {to("logged")}
       await browser.click('step-open');
       kibana.set('[data-test-subj="discoverQueryHits"]', box(400, 150, 80, 20));
@@ -1582,7 +1582,7 @@ def test_a_hit_count_callout_keeps_off_the_toolbar_buttons_beside_the_count(clie
 
 def test_a_callout_beside_a_website_target_that_is_boxed_in_sits_on_the_nearest_free_row_centred_on_the_target(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.demo.callout.sort'] = 'The sort menu.';
+      STRINGS['lesson.demo.callout.sort'] = 'The sort menu.';
       {to("sort")}
       await browser.click('step-open');
       await frames();
@@ -1611,8 +1611,8 @@ document.createElement = (tag) => (tag === 'canvas' ? {getContext: () => ({measu
 
 def test_the_rules_step_rings_the_editor_s_last_line_until_the_text_changes_then_the_apply_button_off_the_editor(client):
     seen = open_page(client, "/blue/1/", setup=RULES + served(), scenario=f"""
-      STRINGS.en['lesson.rules.add_line'] = 'Add one rule line here.';
-      STRINGS.en['lesson.rules.press_apply'] = 'Press Apply';
+      STRINGS['lesson.rules.add_line'] = 'Add one rule line here.';
+      STRINGS['lesson.rules.press_apply'] = 'Press Apply';
       {to("write")}
       await frames(4);
       const editor = box(1060, 500, 340, 160);
@@ -1646,9 +1646,9 @@ FIRES = [{"id": "fires", "point": {"opens": "rules", "panel": "#lesson-rules", "
 
 def test_a_rule_that_must_fire_rings_apply_then_the_search_box_then_its_check_button_which_judges_it(client):
     seen = open_page(client, "/blue/1/", setup=RULES + served(steps=FIRES) + DEV, scenario="""
-      STRINGS.en['lesson.rules.press_apply'] = 'Press Apply';
-      STRINGS.en['lesson.demo.callout.fires.then'] = 'Search here';
-      STRINGS.en['lesson.demo.callout.fires.then.then'] = 'Press the check';
+      STRINGS['lesson.rules.press_apply'] = 'Press Apply';
+      STRINGS['lesson.demo.callout.fires.then'] = 'Search here';
+      STRINGS['lesson.demo.callout.fires.then.then'] = 'Press the check';
       await browser.click('[data-step="0"]');
       await frames(4);
       Object.assign(browser.element('lesson-rules-text'), {clientHeight: 160, clientWidth: 340});
@@ -1686,7 +1686,7 @@ def test_a_rule_that_must_fire_rings_apply_then_the_search_box_then_its_check_bu
 
     assert seen["errors"] == []
     assert result["applying"] == "Press Apply" and result["button"] is True
-    assert result["status"] != english("lesson.status.auto"), "the learner presses the check, it is not automatic"
+    assert result["status"] != worded("lesson.status.auto"), "the learner presses the check, it is not automatic"
     assert result["quiet"] == {"poll": True}, "applying checks quietly, so it is not counted as a wrong try"
     assert (result["searching"], result["asked"]) == ("Search here", "input[name=q]")
     ring = result["pressing"]["ring"]
@@ -1747,7 +1747,7 @@ def test_the_console_is_told_which_leg_a_log_question_is_about(client):
 
 def test_a_callout_for_a_row_of_the_objectives_card_sits_on_the_card_s_title_line_not_over_the_next_card(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.demo.callout.cost'] = 'The total is here';
+      STRINGS['lesson.demo.callout.cost'] = 'The total is here';
       placeAt('lesson-objectives', box(1050, 240, 380, 160));
       {to("cost")}
       await frames();
@@ -1781,8 +1781,8 @@ def test_the_map_waits_for_a_fit_only_when_the_pane_opens_at_a_size_it_was_not_f
 
 def test_a_replay_step_lists_which_of_its_two_requests_is_confirmed_while_it_checks_on_its_own(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.demo.replay.attack'] = 'Attack: {{0}}';
-      STRINGS.en['lesson.demo.replay.benign'] = 'Normal: {{0}}';
+      STRINGS['lesson.demo.replay.attack'] = 'Attack: {{0}}';
+      STRINGS['lesson.demo.replay.benign'] = 'Normal: {{0}}';
       {to("replay")}
       const first = browser.text('step-status');
       range.attacked = true;
@@ -1794,14 +1794,14 @@ def test_a_replay_step_lists_which_of_its_two_requests_is_confirmed_while_it_che
     """)
 
     assert seen["errors"] == []
-    assert seen["result"]["first"] == "Attack: waiting\nNormal: waiting"
-    assert seen["result"]["second"] == "Attack: confirmed\nNormal: waiting"
+    assert seen["result"]["first"] == f"Attack: {worded('lesson.replay.waiting')}\nNormal: {worded('lesson.replay.waiting')}"
+    assert seen["result"]["second"] == f"Attack: {worded('lesson.replay.confirmed')}\nNormal: {worded('lesson.replay.waiting')}"
     assert seen["result"]["shown"] is False, "the pass line takes over once both are confirmed"
 
 def test_a_sidebar_step_that_shows_the_top_values_says_what_they_are_and_stays_off_the_toolbar(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.kibana.top_values'] = 'The most frequent values.';
-      STRINGS.en['lesson.demo.callout.run_source'] = 'Press the field name.';
+      STRINGS['lesson.kibana.top_values'] = 'The most frequent values.';
+      STRINGS['lesson.demo.callout.run_source'] = 'Press the field name.';
       const doc = browser.element('pane-frame').contentDocument;
       const plain = doc.querySelector;
       let title = 'Top values';
@@ -1827,7 +1827,7 @@ def test_a_sidebar_step_that_shows_the_top_values_says_what_they_are_and_stays_o
 
 def test_the_query_prompt_keeps_off_the_time_range_picker_the_step_asks_to_leave_unchanged(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.kibana.query'] = 'Type the KQL here.';
+      STRINGS['lesson.kibana.query'] = 'Type the KQL here.';
       {to("logged")}
       await browser.click('step-open');
       kibana.set('[data-test-subj="queryInput"]', box(200, 100, 400, 36));
@@ -1846,7 +1846,7 @@ def test_the_query_prompt_keeps_off_the_time_range_picker_the_step_asks_to_leave
 
 def test_a_map_callout_that_finds_no_spot_beside_its_label_goes_to_the_nearest_free_row_and_not_to_a_corner(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.demo.callout.board_ip'] = 'The board address.';
+      STRINGS['lesson.demo.callout.board_ip'] = 'The board address.';
       await frames();
       window.dispatchEvent({{type: 'message', data: {{map: 'drawn'}}, source: browser.element('topology-frame').contentWindow}});
       await frames();
@@ -1865,7 +1865,7 @@ def test_a_map_callout_that_finds_no_spot_beside_its_label_goes_to_the_nearest_f
 
 def test_a_map_zone_callout_goes_inside_the_zone_on_the_first_row_free_of_text(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.demo.callout.path'] = 'The internet side.';
+      STRINGS['lesson.demo.callout.path'] = 'The internet side.';
       {to("path")}
       await frames();
       window.dispatchEvent({{type: 'message', data: {{map: 'drawn'}}, source: browser.element('topology-frame').contentWindow}});
@@ -1931,7 +1931,7 @@ def test_the_map_pane_keeps_its_size_while_another_pane_is_open(client):
 
 def test_a_callout_for_the_objectives_card_leaves_the_title_line_when_its_leader_would_cross_a_column_header(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.demo.callout.cost'] = 'The total is here';
+      STRINGS['lesson.demo.callout.cost'] = 'The total is here';
       placeAt('lesson-objectives', box(1050, 240, 380, 160));
       placeAt('lesson-objectives-total', box(1380, 360, 40, 20));
       {to("cost")}
@@ -1948,7 +1948,7 @@ def test_a_callout_for_the_objectives_card_leaves_the_title_line_when_its_leader
 
 def test_a_developer_tools_callout_also_keeps_off_the_toolbar_controls_and_the_tabs_it_does_not_point_at(client):
     seen = open_page(client, "/blue/1/", setup=served() + DEV, scenario=f"""
-      STRINGS.en['lesson.dev.tab.headers'] = 'Press this tab';
+      STRINGS['lesson.dev.tab.headers'] = 'Press this tab';
       {to("method")}
       await browser.click('step-open');
       browser.element('site-dev-toggle').setAttribute('aria-pressed', 'true');
@@ -1990,8 +1990,8 @@ def test_the_map_is_not_asked_to_fit_again_after_it_drew_or_when_a_lesson_ends_a
 def test_a_replay_shows_the_normal_request_as_checking_once_it_was_seen_and_the_logs_are_pending(client):
     replay = [{**step, "check": {"kind": "replay", "match": "[?&]sort=title$"}} if step["id"] == "replay" else step for step in STEPS]
     seen = open_page(client, "/blue/1/", setup=served(steps=replay), scenario=f"""
-      STRINGS.en['lesson.demo.replay.attack'] = 'Attack: {{0}}';
-      STRINGS.en['lesson.demo.replay.benign'] = 'Normal: {{0}}';
+      STRINGS['lesson.demo.replay.attack'] = 'Attack: {{0}}';
+      STRINGS['lesson.demo.replay.benign'] = 'Normal: {{0}}';
       {to("replay")}
       range.attacked = true;
       for (let i = 0; i < 6; i += 1) await browser.wait(1000);
@@ -2004,14 +2004,14 @@ def test_a_replay_shows_the_normal_request_as_checking_once_it_was_seen_and_the_
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"waiting": "Attack: confirmed\nNormal: waiting", "seen": "Attack: confirmed\nNormal: checking",
-                              "later": "Attack: confirmed\nNormal: checking"}
+    assert seen["result"] == {"waiting": f"Attack: {worded('lesson.replay.confirmed')}\nNormal: {worded('lesson.replay.waiting')}", "seen": f"Attack: {worded('lesson.replay.confirmed')}\nNormal: {worded('lesson.replay.checking')}",
+                              "later": f"Attack: {worded('lesson.replay.confirmed')}\nNormal: {worded('lesson.replay.checking')}"}
 
 def test_the_course_summary_explains_the_lost_objectives_under_the_values_and_the_run_card_says_it_is_still_running_until_the_run_ends(client):
     seen = open_page(client, "/blue/1/", setup=served(next_lesson=None), scenario=f"""
-      STRINGS.en['lesson.course.values'] = 'S1 {{0}}';
-      STRINGS.en['lesson.kali.running'] = 'Still running.';
-      STRINGS.en['score.lesson_lost_note'] = 'Lost on purpose at step 2.';
+      STRINGS['lesson.course.values'] = 'S1 {{0}}';
+      STRINGS['lesson.kali.running'] = 'Still running.';
+      STRINGS['score.lesson_lost_note'] = 'Lost on purpose at step 2.';
       {to("sqlmap")}
       await browser.click('step-open');
       document.querySelector('#step-act [data-act="rows"]').innerHTML = kaliRow({{name: 'board-sqli-orderby-sqlmap', discover: '/kibana/'}});
@@ -2038,7 +2038,7 @@ def test_the_lesson_text_and_the_callouts_switch_off_the_font_ligature_that_draw
 
     assert re.search(r'#lesson,\s*\.coach-callout\s*\{[^}]*font-feature-settings:\s*"calt"\s*0', page)
 
-LONG_OK = "range.ok = {en: 'Confirmed. Your rule alerted on the <script request. The next step finds this alert in Kibana.', ko: 'x'};"
+LONG_OK = "range.ok = 'Confirmed. Your rule alerted on the <script request. The next step finds this alert in Kibana.';"
 
 def test_every_kind_of_step_with_a_long_pass_text_says_to_press_next_and_a_short_one_says_nothing(client):
     seen = open_page(client, "/blue/1/", setup=RULES + served(steps=FIRES) + DEV, scenario=f"""
@@ -2053,7 +2053,7 @@ def test_every_kind_of_step_with_a_long_pass_text_says_to_press_next_and_a_short
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"status": "Press Next to continue.", "title": "lesson.demo.label.fires",
+    assert seen["result"] == {"status": worded("lesson.status.press_next"), "title": "lesson.demo.label.fires",
                               "next": True}
 
     short = open_page(client, "/blue/1/", setup=RULES + served(steps=FIRES) + DEV, scenario="""
@@ -2068,7 +2068,7 @@ def test_every_kind_of_step_with_a_long_pass_text_says_to_press_next_and_a_short
 
 def test_a_finished_run_still_being_logged_does_not_tell_the_learner_to_press_the_check_button(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS.en['lesson.kali.press'] = 'The run has finished. Press Check.';
+      STRINGS['lesson.kali.press'] = 'The run has finished. Press Check.';
       {to("sqlmap")}
       await browser.click('step-open');
       RECTS.set(document.querySelector('[data-act="kali"]'), box(1060, 400, 130, 28));
@@ -2090,7 +2090,7 @@ def test_a_finished_run_still_being_logged_does_not_tell_the_learner_to_press_th
 
     assert seen["errors"] == []
     assert seen["result"]["finished"] == "The run has finished. Press Check."
-    assert seen["result"]["settling"] == "Collecting the request logs of the run. It is checked again automatically in a few seconds."
+    assert seen["result"]["settling"] == worded("lesson.check.kali_settling")
     assert seen["result"]["wrong"] == "The run has finished. Press Check."
 
 def test_a_passed_step_s_open_pane_button_is_secondary_so_next_is_the_one_call_to_action(client):
@@ -2119,8 +2119,8 @@ def test_a_choice_shows_checking_the_moment_it_is_pressed_and_a_wrong_one_clears
     """)
 
     assert seen["errors"] == []
-    assert seen["result"]["wrong"] == {"during": "Checking...", "after": ""}
-    assert seen["result"]["passed"] == {"during": "Checking...", "after": ""}
+    assert seen["result"]["wrong"] == {"during": worded("lesson.status.checking"), "after": ""}
+    assert seen["result"]["passed"] == {"during": worded("lesson.status.checking"), "after": ""}
 
 def test_a_kali_step_draws_no_run_row_until_the_platform_has_seen_the_run(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
@@ -2171,11 +2171,11 @@ def test_the_objectives_card_keeps_the_detected_column_blank_until_the_step_aski
     assert seen["errors"] == [] and plain["errors"] == []
     assert seen["result"]["before"] == ["—", "—"] and seen["result"]["asked"] == ["—", "—"], (
         "the card would answer the question before it is asked")
-    assert seen["result"]["after"] == [english("common.no"), "—"]
+    assert seen["result"]["after"] == [worded("common.no"), "—"]
     assert seen["result"]["pointsBefore"] == seen["result"]["pointsAsked"] == ["—", "—", "—"], (
         "a lost row's points double when it went undetected, so a number would answer the question too")
     assert seen["result"]["pointsAfter"] == ["4", "0", "4"]
-    assert plain["result"] == [english("common.no"), "—"], "a lesson that never asks which device alerted shows it from the start"
+    assert plain["result"] == [worded("common.no"), "—"], "a lesson that never asks which device alerted shows it from the start"
 
 def test_the_stretch_card_shows_only_once_the_lesson_s_last_step_has_passed(client):
     seen = open_page(client, "/blue/1/", setup=served().replace('text: "lesson.demo"', 'text: "lesson.miss"'), scenario=f"""
@@ -2189,7 +2189,7 @@ def test_the_stretch_card_shows_only_once_the_lesson_s_last_step_has_passed(clie
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"first": False, "last": False, "finished": True, "text": english("lesson.miss.stretch")}, (
+    assert seen["result"] == {"first": False, "last": False, "finished": True, "text": worded("lesson.miss.stretch")}, (
         "the stretch task refers to what the lesson builds, so it waits for the lesson's end")
 
 def test_a_finished_lesson_with_a_stretch_task_waits_for_next_lesson_instead_of_moving_on_by_itself(client):
@@ -2228,8 +2228,8 @@ def test_a_long_pass_line_on_the_last_step_waits_for_next_lesson_which_greys_out
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"waited": {"moved": 0, "status": english("lesson.status.press_next_lesson")},
-                              "preparing": {"status": english("lesson.next.preparing"), "disabled": True},
+    assert seen["result"] == {"waited": {"moved": 0, "status": worded("lesson.status.press_next_lesson")},
+                              "preparing": {"status": worded("lesson.next.preparing"), "disabled": True},
                               "moved": [{"lesson": "f10"}], "reloaded": 1}, (
         "a long last pass line that vanished after two seconds could not be read; the learner moves on with Next lesson")
 
@@ -2241,7 +2241,7 @@ PRESSED_IN_CARD = [
 
 def test_a_callout_for_a_button_in_the_step_card_sits_under_it_instead_of_on_the_card_s_heading(client):
     seen = open_page(client, "/blue/1/", setup=served(steps=PRESSED_IN_CARD), scenario="""
-      STRINGS.en['lesson.demo.callout.press'] = 'Press the button.';
+      STRINGS['lesson.demo.callout.press'] = 'Press the button.';
       placeAt('step-card', box(1050, 70, 380, 420));
       placeAt('step-act', box(1060, 360, 360, 30));
       await browser.click('[data-step="1"]');
@@ -2272,5 +2272,5 @@ def test_an_answer_being_checked_disables_its_submit_button_and_a_second_submit_
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"during": {"status": english("lesson.status.checking"), "disabled": True}, "checks": 1,
+    assert seen["result"] == {"during": {"status": worded("lesson.status.checking"), "disabled": True}, "checks": 1,
                               "after": False}
