@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-10-26
+Updated: 2026-11-13
 
 ## Where things stand
 
@@ -29,7 +29,7 @@ moved to a new OpenStack cloud"). The old cloud is in other use and is not
 touched. The platform VM is now 192.168.2.247 (Keystone 10.0.0.10, reached
 through the user's VPN), two slots since 2026-10-21. On 2026-10-21 the docker substrate was
 removed from the code (the removal commit, then the documents) and
-proven live on the new cloud. Nothing of the work since dev's head is pushed.
+proven live on the new cloud.
 The VM's `/opt/fsl` was rebuilt on 2026-10-24 from the working branch with the
 platform, board and corp images sideloaded (`FSL_SIDELOADED=board,corp,platform`)
 and runs all of it: the reset resumed at boot, corp's readiness healthcheck, the
@@ -52,8 +52,9 @@ one-VM trial and the last bring-up fixes"): `down` beside a stopped container,
 `resume` checking the hand-over, the first range key and the wargame host kept
 across `down` then `up` all ran live, and the §9 one-VM trial ran end to end
 from an empty cloud (README step 7 took 17 min 41 s). The last full
-`bin/verify` ran on 2026-10-26 on the platform VM, on the code before the last
-wording fix: unit 1669 passed; acceptance 73 passed, 0 failed, 0 errors, 0
+`bin/verify` ran on 2026-11-13 on the platform VM: 1677 unit and API tests
+passed; acceptance: 73 passed (two workers in parallel, 23:24, then the two two-session modules alone, 9:26). The one before it ran on 2026-10-26, on the
+code before the last wording fix: unit 1669 passed; acceptance 73 passed, 0 failed, 0 errors, 0
 skipped in 2003 s across 4 processes; ratchet ok. On 2026-10-24 two runs on
 the new cloud with two slots gave unit 1618 and acceptance 73 passed in 2186 s,
 then unit 1626 and acceptance 73 passed in 1867 s. The run of 2026-10-21 on
@@ -62,7 +63,11 @@ the removal, and one after it; failures that all come from the single slot) and
 the last run on the old cloud (unit 1718; acceptance 73 passed) are recorded in
 `docs/DECISIONS.md`, and `docs/state/now.md` summarises them. Before the old
 cloud's last run, two runs on the same code: acceptance 72 passed and 1 failed
-(the `test_corp_authz` nonce error), then 73 passed (1155 s). Live state: `docs/state/now.md`.
+(the `test_corp_authz` nonce error), then 73 passed (1155 s). On 2026-11-12 the
+user had shut down all nine fsl VMs; they were started, session 1443 (open since
+2026-10-28) was closed after a store backup, and both slots were reset. The first
+configure after the rebuild failed on both slots and the second passed
+(`docs/state/now.md` Next 8). Live state: `docs/state/now.md`.
 
 The range has two targets: the Django board (`board.com`, MySQL behind the WAF,
 `loot_verified`) and the WordPress site `corp` (`corp.com`, `effect_observed`,
@@ -999,7 +1004,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [x] The `images.yml` run for 3da925e was green (gh run 39421089777,
       2026-10-20T12:17Z), and the new cloud's bring-up ran on those GHCR
       images. The run for ee5e641 was green too. Still to do: check the run for
-      the next push (`docs/state/now.md` Next 1).
+      the push of 2026-11-13 (`docs/state/now.md` Next 1).
 - [ ] Foundations rebuild, remaining work (2026-10-19; round-5 fixes
       9f1f39d..60243e6 deployed as e4a467e, `docs/DECISIONS.md` "Foundations
       review loop, rounds 2-5"):
@@ -1036,7 +1041,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
             Proven on the platform image on 2026-10-23 (session 1189):
             Kali and WAF 147 columns ending at 1034 px of a 1040 px pane at
             1440 px, 104 columns ending at 733 of 740 at 1100 px.
-      - [ ] Live review rounds under the convergence rule: six reviewers
+      - [x] Live review rounds under the convergence rule: six reviewers
             (lesson design, UI, terms, AI-sounding Korean, realism and leaks,
             first-time learner); a finding counts only if a learner would
             notice it, taste items are listed separately; exit is a round with
@@ -1044,8 +1049,14 @@ To do, found by the 2026-10-08 doc review (open until checked off):
             medium/low, summed over reviewers): r2 live 7/12/45/76, r3
             2/11/38/79, r4 0/2/30/70, r5 0/1/18/48 (UI reviewer missing).
             Countable findings of rounds 6-12 (2026-10-25/26): r6 47, r7 6,
-            r8 5, r9 3, r10 1, r11 2, r12 2 (both wording, fixed). Round 13 is
-            running: round 13 found 4 (a refused open explained off screen in operator English, Kibana's search-session popover over the KQL bar, option names wrapping in the dump hint, the F4 slipped pass line contradicting a yes answer), all fixed; round 14 is next.
+            r8 5, r9 3, r10 1, r11 2, r12 2 (both wording, fixed), r13 4 (a refused
+            open explained off screen in operator English, Kibana's
+            search-session popover over the KQL bar, option names wrapping in
+            the dump hint, the F4 slipped pass line contradicting a yes
+            answer; all fixed). Round 14 (2026-11-13, idle range after the
+            reset) walked F1-F6 and F1+F2; six reviewers found no countable
+            finding except one low, an 11.8 s wrong-answer wait at F5 step 3
+            that did not reproduce on a rerun (1.6 s). The loop has converged.
       - [x] Kibana's menu still lists Home and Stack Management (they answer
             403 or redirect to Discover): no supported setting in 8.15 hides
             them, so they stay (`docs/DECISIONS.md` "Kibana's Home and Stack
@@ -1177,7 +1188,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       `images.yml` run. Done once on 2026-10-21 (dev's head, 29 min, exit 0),
       then replaced by sideloaded rebuilds from the working branch; the last
       (2026-10-24) sideloaded the platform, board and corp images and rebuilt
-      all three VM images (65 min, exit 0). The VM runs unpushed code until
+      all three VM images (65 min, exit 0). The VM runs sideloaded branch code until
       this is done.
 - [x] Review of the seven-step lesson text: dropped with the lesson (P6).
 - [ ] Publishing the OPNsense image: BSD-2 allows it; its trademark policy

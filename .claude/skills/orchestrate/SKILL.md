@@ -55,11 +55,13 @@ session, and you do not make the user say "continue".
    Show the command and its output, not a claim that it passed. If it is red or a gated metric grew, fix it or `git reset --hard`
    and say what you learned — a reported failure beats a half-finished success.
 
-6. **Gate 2 — visual review before anything outward.** Before a push or a
-   merge, present what was done and what changed as a picture, not prose (see
+6. **Push, tag, and gate 2.** Push a verified state to `dev` as a
+   fast-forward, and working branches whenever useful, without asking; tag a
+   version worth keeping (`vMAJOR.MINOR.PATCH`). Before a version goes to
+   `main`, present what was done and what changed as a picture, not prose (see
    "The visual review"), with the verification evidence beside it — one row
-   per live path from step 5 and its run. Wait. Push
-   and merge are the user's; a push goes to `dev` as a fast-forward.
+   per live path from step 5 and its run — and wait. `main` holds only the
+   best version, moved as a fast-forward; never force-push `dev` or `main`.
 
 Stop between gates only for a real blocker or a decision that changes what the
 product does — a new target's identity, a change to what the score means. An

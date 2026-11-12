@@ -5,17 +5,24 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-10-26, morning (nothing is pushed; the platform VM runs this
-branch with the platform, board and corp images sideloaded, two range slots).
+Updated: 2026-11-13 (the platform
+VM runs the branch with the platform, board and corp images sideloaded,
+two range slots).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
 
 ## Where things stand
 
-- Push state: the branch `claude/cloud-vm-status-report-45aefd` holds 71
-  commits over `dev` (ee5e641) and none is pushed. A push goes to `dev` as a
-  fast-forward, only when the user approves it, and only as the very last step.
+- Versions: commits, branches, tags and pushes to `dev` need no gate; `main`
+  takes only a tagged best version after gate 2 (CLAUDE.md, "How work runs
+  here"). The platform VM does not yet run dev from GitHub and GHCR; Next 1
+  does that.
+- 2026-11-12: the user had shut down all nine fsl VMs. They were started,
+  session 1443 (left open since 2026-10-28) was closed after a store backup,
+  and both slots were reset (`slot/rebuild`, then `configure`). The first
+  configure after the rebuild failed on both slots and the second passed (Next
+  8).
 - 2026-10-20: the product moved to a new OpenStack cloud. The old cloud
   (master@192.168.0.100, Keystone 192.168.0.110, platform VM 192.168.0.210,
   floating IP 192.168.0.220) is in other use by the user and must not be
@@ -39,9 +46,10 @@ Internet.
 - Slot reset, close to READY: 70-82 s for one slot and 98-99 s for two at once
   (`docs/TROUBLESHOOTING.md`). `bin/platform-rebuild`'s ssh sends keepalives
   and gives up on a dead connection.
-- Full `bin/verify` on the platform VM, on the code before the last wording
-  fix: unit 1669 passed; acceptance 73 passed, 0 failed, 0 errors, 0 skipped
-  in 2003 s across 4 processes; ratchet ok. A one-worker acceptance run is
+- Full `bin/verify` on 2026-11-13: 1677 unit and API tests passed (5:10);
+  acceptance: 73 passed (two workers in parallel, 23:24, then the two two-session modules alone, 9:26). The run before it, on 2026-10-26 on the code
+  before the last wording fix: unit 1669 passed; acceptance 73 passed, 0
+  failed, 0 errors, 0 skipped in 2003 s across 4 processes; ratchet ok. A one-worker acceptance run is
   run on 2026-10-26 (`bin/acceptance --workers 1` on the two-slot range, while a
   lesson walk held one slot) took 3948 s: 64 passed, 6 failed, 3 errors. Eight
   failures say "the range has 2 slots; name the one to run on", because one
@@ -57,9 +65,15 @@ Internet.
 - Live review loop of the foundations (six reviewers: lesson design, UI, terms,
   AI-sounding Korean, realism and leaks, first-time learner; convergence rule,
   exit on zero countable findings). Countable findings per round: r6 47, r7 6,
-  r8 5, r9 3, r10 1, r11 2, r12 2 (both wording, fixed). Round 13 is running:
-  round 13 found 4 (a refused open explained off screen in operator English, Kibana's search-session popover over the KQL bar, option names wrapping in the dump hint, the F4 slipped pass line contradicting a yes answer), all fixed; round 14 is next. The fixes of rounds 6-12 are on the branch and the VM; what
-  they changed is in `git log`. Behind them:
+  r8 5, r9 3, r10 1, r11 2, r12 2 (both wording, fixed), r13 4 (a refused open
+  explained off screen in operator English, Kibana's search-session popover
+  over the KQL bar, option names wrapping in the dump hint, the F4 slipped pass
+  line contradicting a yes answer; all fixed). Round 14 (2026-11-13, idle range
+  after the reset) walked F1-F6 and F1+F2: six reviewers found no countable
+  finding except one low, an 11.8 s wrong-answer wait at F5 step 3, which did
+  not reproduce on a rerun (1.6 s). The loop has converged. The fixes of
+  rounds 6-13 are on the branch and the VM; what they changed is in `git log`.
+  Behind them:
   - Answer checks keep the slot's range reads for the session, so a wrong
     answer comes back in 0.2-3 s.
   - A session open reads the range before it takes the slot choice, so a
@@ -83,7 +97,7 @@ Internet.
   `docs/superpowers/specs/2026-10-20-remove-docker-substrate-plan.md`. Docker
   stays on the platform VM (the platform's own services), the wargame host and
   the GNS3 display nodes.
-- Goal in flight: none beyond the review loop above. The scenario course
+- Goal in flight: none; the review loop above has converged. The scenario course
   (design `docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`)
   is finished, and every scenario was run live with a wrong and a right
   defence (`docs/DECISIONS.md`, "P5 built").
@@ -123,7 +137,7 @@ was for the old lab. The old copies are `s.sh.old-cloud`, `reach.sh.old-cloud`,
   corp's readiness").
 - `sh s.sh '<cmd>'` runs a command on the platform VM, for example `sh s.sh 'git
   -C /opt/fsl rev-parse HEAD'`.
-- `walker/walk.py` is the lesson walker (Next, 6).
+- `walker/walk.py` is the lesson walker (Next 5).
 - The repository has a `cloud` git remote (the VM's `/opt/fsl`). Work goes to
   the VM with `git push cloud HEAD:refs/heads/work` and `git -C /opt/fsl
   checkout --detach work` on the VM. Claude Code asks the user before every push to GitHub
@@ -147,43 +161,31 @@ copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
 
 ## Next, in order
 
-1. Finish the review loop with round 14. Round 13's four findings are fixed on
-   the branch; the platform was being redeployed with them on 2026-10-26 09:35
-   KST (`~/.cache/fsl-work/deploy/round14-*.log`). If that deploy did not end
-   with "exit 0", run it again (`deploy.sh` with platform, board and corp
-   sideloaded; the store backup is also in `~/.cache/fsl-work/backup-safe/`).
-   Then walk F1-F6 and the F1+F2 session with the walker into
-   `~/.cache/fsl-work/live/round14/` (round 13's INDEX.md shows the shape;
-   check the refused-open message, no Kibana search-session popover, the dump
-   hint's options on one line, and the F4 slipped pass line), run the six
-   reviewers with a round-14 brief (copy `round13/REVIEW-BRIEF.md`), fix what
-   counts, and repeat until a round has zero countable findings. Then run the
-   full `bin/verify` on the platform VM once more.
-2. When the user approves, push to `dev`. After the push: check the `images.yml`
+1. The push to `dev` is done. Check the `images.yml`
    run for that push (`gh run list --workflow images.yml --branch dev --limit
    3`; the run for ee5e641 was green), then rebuild the platform VM from the
    main checkout with `bin/cloud up --replace`, without `--sideload`, so the VM
    runs dev from GitHub and GHCR. Then refresh the operator's `known_hosts`
    from the console log (`~/.cache/fsl-work/known-hosts.sh`).
-3. The `test_corp_authz` nonce error: the likely cause (corp healthy before
+2. The `test_corp_authz` nonce error: the likely cause (corp healthy before
    its forms existed) is fixed and full `bin/verify` runs have passed with it.
    The error was intermittent, so watch the next runs for it (`docs/STATE.md`
    backlog 0).
-4. Have a newcomer follow README on a clean machine, or run §9 on VirtualBox
+3. Have a newcomer follow README on a clean machine, or run §9 on VirtualBox
    or VMware (the 2026-10-20 trial ran on the KVM test cloud).
-5. 4.2, a person as the red team against the learner: the engine accepts
+4. 4.2, a person as the red team against the learner: the engine accepts
    `red: person`; needs a second person to run it live. A corp scenario: corp's
    CVEs succeed but it has no customer traffic; needs a generator for
    WordPress first (P3's shape).
-6. Whether the live walker (`~/.cache/fsl-work/walker/walk.py`, headless
+5. Whether the live walker (`~/.cache/fsl-work/walker/walk.py`, headless
    Playwright, F1-F6) becomes a repo tool. Undecided (`docs/STATE.md`
    backlog 0, "Foundations rebuild, remaining work").
-7. `bin/acceptance --workers 1` on a range with more than one slot does not
+6. `bin/acceptance --workers 1` on a range with more than one slot does not
    name a slot for attacker commands (8 failures on 2026-10-26); pass the slot,
    or refuse that mode with a clear message.
-8. Acceptance run time and ingest re-reading the whole window (paged since
+7. Acceptance run time and ingest re-reading the whole window (paged since
    f07919f, up to about 205k records).
-9. `POST slot/rebuild/?slot=N` followed at once by `POST configure/?slot=N`
+8. `POST slot/rebuild/?slot=N` followed at once by `POST configure/?slot=N`
    failed on the first try for both slots on 2026-11-12 and passed on the
    second. Slot 1: the rebuilt edge did not hold its WAN aliases or log to the
    collector. Slot 2: the platform's `known_hosts` still held the rebuilt WAF's
