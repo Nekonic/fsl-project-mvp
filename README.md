@@ -691,18 +691,22 @@ declares (`minimal` is PL4). An agent tunes the WAF through
 
 ### Lessons
 
-The home page lists six lessons, called foundations, for learners new to
-networks. Open one by its id: `{"lesson": "f1"}` to `f6`. `{"guidance": true}`
-alone opens F1. The learner attacks from the Kali pane and the Website pane and
-defends in the same blue console.
+The home page lists six lessons, called foundations, in two courses. Open one
+by its id: `{"lesson": "f1"}` to `f6`. `{"guidance": true}` alone opens F1.
 
-- F1: read addresses, a subnet, the attacker's network and a customer's request
-  path on the map.
+Course 1, "로그 분석 기초" (F1-F3), only reads the range:
+
+- F1: read the attacker's and the web server's addresses, the request path
+  from kali, the DMZ network and the log server on the map.
 - F2: search with the board's search box and read method, parameter, path and
   status code in the developer tools.
 - F3: find that search in Kibana with KQL the learner writes. Read both legs of
   the request, before and after the reverse proxy, and the X-Forwarded-For
-  header.
+  header, then count with `and` and `not`.
+
+Course 2, "공격 탐지 실습" (F4-F6), changes it. The learner attacks from the Kali
+pane and the Website pane and defends in the same blue console:
+
 - F4: send an XSS probe (403, the CRS anomaly score), write an IDS rule, bypass
   it with letter case and fix it (defense `xss-gap`).
 - F5: run sqlmap on the board's `sort` parameter and read the verdict and the
@@ -710,6 +714,11 @@ defends in the same blue console.
 - F6: use an over-broad WAF exception (defense `overbroad`) to dump the accounts
   undetected, read the doubled penalty, remove the exception and replay the
   attack.
+
+A course's first lesson opens on a briefing: what the course does and the
+reference cards it needs (KQL, Kibana fields, the map's addresses, rule forms).
+The same cards stay in the 참고 column the rail opens. A Kibana step keeps its
+highlight on the query bar until the learner's own query matches.
 
 Every answer is read from the learner's own records or the session's map. There
 is no fixed answer key. The learner's own sqlmap run counts in both scores like
@@ -734,14 +743,14 @@ The benign request that a lesson replays is scored as a benign case. The first
 lesson replays it at open; a lesson moved to later replays it when the learner
 first passes, skips or takes a hint on one of its steps.
 
-The six lessons run back to back in one session. When a lesson's last step
-passes, the note names the next lesson. After 2 seconds, or when the learner
+The lessons of a course run back to back in one session. When a lesson's last
+step passes, the note names the next lesson of the course. After 2 seconds, or when the learner
 presses "Next lesson", it starts that lesson in the same session
 (`POST /api/sessions/<id>/lesson/ {"lesson": "f2"}`). A lesson that shows a
 "Try it yourself" task after its last step waits for "Next lesson". That call
 applies the lesson's defense in place. The range is not reset
 between lessons, and each lesson judges only what happened since it started.
-After F6 the note lists the lessons taken, and its button closes the session.
+At a course's end the note lists the course's lessons taken, and its button closes the session.
 
 ### Scenarios
 

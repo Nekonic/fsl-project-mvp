@@ -209,22 +209,23 @@ compose는 Docker 소켓을 플랫폼에 마운트하고, entrypoint가 플랫�
 - **시스템 구성도**, `deploy/topology/system/range-openstack.gns3`: 선언의 전체 배선을 보여 줍니다. 관리 구간, 플랫폼 VM, 워게임 호스트의 컨테이너가 들어 있습니다. 영어로만 있으며 개발과 GNS3의 MCP용입니다. GNS3 서비스는 레포의 구성도를 보지 않으므로 학습자에게는 제공되지 않습니다.
 - **학습자용 구성도**, `deploy/topology/range-openstack.gns3`: 학습자가 방어하는 회사 웹 서비스 네트워크를 보여 줍니다. 실습 토폴로지를 그리는 방식(Cisco NetAcad lab topology, NSRC 워크숍 logical diagram)의 논리 구성도입니다. 구성도에 들어가는 것은 아래와 같습니다.
 
-학습자용 구성도에 있는 것:
+학습자용 구성도에 있는 것(기업 논리 구성도 방식):
 
-- 역할 호스트 이름
-- 링크 양 끝마다 인터페이스와 프리픽스를 붙인 주소. `kali`와 `customers`는 인터페이스만 적습니다.
-- 영역마다 그 네트워크를 적은 캡션. 인터넷 영역은 이름만 적습니다.
-- Suricata가 도는 호스트 옆의 "IDS" 글자. `firewall`과 사이트가 그 호스트입니다.
+- 아이콘 위의 역할 호스트 이름
+- 호스트 쪽 링크 끝마다 주소만(`10.30.0.184`). 인터페이스, 포트, 프리픽스는 적지 않습니다. 스위치 쪽 끝과 관리 링크, DB 스위치로 가는 링크(주소가 Docker 브리지 것)에는 라벨이 없습니다.
+- 영역 넷: KISA ISMS-P 2.6.1이 부르는 영역 이름(DMZ, DB존)과 인터넷, 관리망. 라벨이 붙은 링크가 있는 영역은 캡션에 네트워크를 덧붙입니다(`DMZ 10.30.0.0/24`).
+- IDS는 따로 그린 센서 상자("IDS")이고, 트래픽을 받아 보는 호스트와 점선으로 잇습니다. `firewall`(OPNsense 에지의 Suricata)과 사이트(워게임 호스트의 estate 센서)이며, Kibana의 `sensor`가 부르는 호스트와 같습니다.
+- 초록 화살표(선으로 그린 화살촉)와 "웹 요청" 글자가 internet → firewall → waf → 사이트 순서의 요청 흐름을 보여 줍니다.
 
-그 밖에는 아무것도 없습니다. 제목, 범례, 메모, 기계 자체의 이름, `fsl-`, 관리 구간, Docker 브리지 이름이 모두 없습니다.
+그 밖에는 아무것도 없습니다. 제목, 범례, 기계 자체의 이름, `fsl-`, 관리 주소, Docker 브리지가 모두 없습니다.
 
-- 요청 경로는 왼쪽에서 오른쪽으로 인터넷 영역, `firewall`, 서비스망 영역(`waf`, 사이트), DB망 영역, 관제망 영역 순서로 놓입니다.
-- `topology.for_wargame`은 두 영역 사이에 있는 firewall의 "IDS"처럼 어느 영역에도 속하지 않는 글자도 남깁니다.
+- 흐름은 한 줄로 왼쪽에서 오른쪽(internet, firewall, waf, 사이트)이고, `sw1`은 그 줄 위, `sw3`은 아래에 있어 링크가 서로 겹치지 않습니다.
+- `topology.for_wargame`은 노드가 있던 영역에 그 워게임의 노드가 하나도 남지 않을 때만 그 영역과 안쪽 그림을 지웁니다. 그런 영역 밖의 선, 센서 상자, 글자는 남습니다.
 
 학습자용 구성도의 노드:
 
 - `customers`와 `kali`(공격자의 Kali 박스)는 `internet` 스위치에 붙습니다.
-- `firewall`은 OpenStack의 OPNsense 에지입니다. 에지의 Suricata를 이 노드에 합쳐 그립니다.
+- `firewall`은 OpenStack의 OPNsense 에지입니다. 에지의 Suricata는 옆의 IDS 센서 상자로 그립니다.
 - `sw1`은 서비스 구간입니다. `waf`와 사이트(`board.com` 또는 `corp.com`, WAF 호스트의 선언된 이름)가 붙습니다.
 - `sw2`는 데이터베이스 구간입니다. 사이트 뒤에 있고 데이터베이스(`board-db`)가 붙습니다.
 - `sw3`은 관제 구간입니다. `log-server`(Elasticsearch)를 기록을 보내는 호스트인 방화벽, WAF, 사이트와 잇습니다. estate 센서가 사이트의 호스트에서 실행되며 자기 eve.json을 직접 전송합니다.
@@ -277,27 +278,17 @@ compose는 Docker 소켓을 플랫폼에 마운트하고, entrypoint가 플랫�
 
 학습자는 자기 훈련 환경의 주소를 봅니다. `api/maps.py`가 학습자용 구성도에서 이 구성도를 만듭니다. 슬롯마다, 그리고 그 세션의 워게임마다(`slot 1 board`, `slot 2 corp`) 프로젝트 하나를 만듭니다(`topology.labelled`). 실습 토폴로지처럼 모든 링크의 양 끝에 라벨을 붙입니다.
 
-스위치 쪽 끝의 라벨:
+라벨:
 
-- 스위치 쪽 끝(`internet` 스위치 포함)에는 링크가 쓰는 포트를 짧게 적습니다(`Ethernet2`는 `e2`).
-
-호스트 쪽 끝의 라벨:
-
-- 호스트 쪽 끝에는 그 스위치 구간의 실제 인터페이스와 프리픽스를 붙인 주소를 적습니다(`ens3 10.30.0.102/24`, `vtnet0 5.188.10.1/24`).
-- 이 값은 `topology.learner`를 거쳐 훈련 환경에서 읽습니다.
-- 두 호스트는 주소 없이 인터페이스만 적습니다(`topology.ADDRESS_VARIES`). 요청마다 출발지가 다를 수 있어 출발지 주소가 바뀌기 때문입니다(출발지 SNAT, 여러 출발지).
-  - 공격자: 기본 출발지의 인터페이스
-  - 고객: 가장 많이 쓰는 출발지의 인터페이스. 가장 많이 쓰는 출발지는 `traffic.yaml`의 가중치로 정하며, `attacker.customer_origins`처럼 기본 출발지는 제외합니다. 그런 인터페이스가 없으면 라벨을 붙이지 않습니다.
-- 사이트는 `sw1`에서는 호스트의 주소를 적습니다. WAF가 이 주소로 사이트에 접속하기 때문입니다. `sw2`에서는 사이트 컨테이너의 주소를 적습니다. 사이트는 이중 연결(dual-homed) 서버이므로 자기 링크 끝마다 라벨이 하나씩 붙습니다.
-- `sw3` 쪽 끝에는 NIC 이름만 적습니다(`ens4`, `vtnet2`). 그 주소는 학습자에게 보이지 않는 관리 네트워크에 있기 때문입니다.
-- `log-server`의 끝에는 플랫폼 VM의 NIC를 적습니다(`ens7`).
-- Docker 브리지(`br-`) 이름을 적는 라벨은 없습니다.
+- 호스트 쪽 끝에는 그 스위치 구간의 주소를 프리픽스 없이 적습니다(`10.30.0.102`). `topology.learner`를 거쳐 읽습니다. 공격자는 기본 출발지의 주소, 고객은 가장 많이 쓰는 출발지의 주소입니다(`traffic.yaml`의 가중치, `attacker.customer_origins`처럼 기본 출발지 제외). 그런 주소가 없으면 라벨을 붙이지 않습니다.
+- 스위치 쪽 끝, `sw3` 쪽 끝, DB 스위치 쪽 끝(`topology.UNLABELLED`)의 라벨은 비어 있습니다. 인터페이스, 포트, Docker 브리지 이름을 적는 라벨은 없습니다.
 
 영역 캡션:
 
-- 각 영역 캡션에는 그 스위치에 붙은 라벨의 네트워크를 덧붙입니다(`Services 10.30.0.0/24`, `Internal DB 172.18.0.0/16`).
+- 각 영역 캡션에는 그 스위치에 붙은 라벨의 네트워크를 덧붙입니다(`DMZ 10.30.0.0/24`).
 - 스위치의 캡션은 그 스위치를 담은 가장 작은 상자의 텍스트입니다(`topology.captions`).
-- 인터넷(Internet)과 관제(Monitoring) 캡션은 이름만 둡니다.
+- 인터넷, DB존, 관리망 캡션은 이름만 둡니다.
+- `GET /api/sessions/<id>/lesson/addresses/`는 같은 주소를 `{host, zone, address}` 행으로 돌려줍니다(`topology.addresses`). 참고 열의 주소 카드가 씁니다.
 
 라벨의 위치(`topology.leaving`):
 
@@ -816,7 +807,7 @@ WAF 상태 스냅샷:
 - 너비는 340 px(1280 px 이하에서는 300 px)입니다. 접으면 44 px 띠("단계 n/N")가 됩니다. 1024 px 미만에서는 창 아래의 패널이 됩니다.
 - 노트는 위에서부터 다음으로 이루어집니다.
   - 단계 카드: 단계 n/N, 단계 제목, 할 일, 단계에 진입한 뒤 입력할 명령, 단계의 창이 보이지 않을 때 "<창> 열기" 버튼, 질문과 입력란, 상태 줄, 도움말, 건너뛰기, 이전, 다음
-  - 이론 카드: 레슨을 처음 열 때 펼쳐지고(`fsl-lesson-landed-<id>-<lesson>`), 그 뒤로는 사용자가 둔 대로 둡니다.
+  - F6의 목표 카드는 단계 카드와 직접 해 보기 카드 다음에 옵니다. 이론 카드는 없습니다(2026-11-13, 이론이던 내용은 참고 열과 과정 안내에 있습니다).
   - F6의 목표 카드(`lesson_objectives`): 레슨을 시작한 뒤 탈취된 목표마다 난이도, 탐지 여부, 감점(난이도 ×1 또는 ×2)을 보여 주고 합계를 냅니다.
   - 단계형 시나리오의 카드와 힌트
   - F4와 F6의 채점하지 않는 "직접 해보기" 카드
@@ -840,7 +831,7 @@ WAF 상태 스냅샷:
 - `point`
 - 학습자가 입력할 터미널 `command`. `command`의 `{waf_rules}`, `{waf_reload}`, `{sudo}`는 `wargames.lesson`이 선언된 WAF 구성(`settings.FSL_WAF`)으로 채웁니다.
 
-기초 레슨의 단계에는 Kibana `query`가 없습니다.
+기초 레슨의 단계에는 Kibana `query`가 없습니다. Kibana 대상에는 `kql:`을 붙일 수 있습니다. 학습자가 직접 제출한 쿼리(Discover URL의 `query`, 없으면 쿼리 입력창)가 이 정규식에 맞을 때까지(대소문자 무시) 강조는 쿼리 입력창에만 머뭅니다(단계 `write`, `lesson.kibana.write`). 그래서 학습자가 쿼리를 쓰기 전에는 어떤 강조도 답을 보여 주지 않습니다.
 
 세션 API는 브라우저에 필요한 것만 보여 줍니다.
 
@@ -913,6 +904,7 @@ check는 스스로 실행됩니다.
   - `hits`: 결과가 없으면 `discoverNoResults`를 대신 가리키고, 그때는 그 경우용 말풍선을 씁니다.
   - `doc: <field>`: 문서 플라이아웃에서 필드 행을 가리킵니다. 플라이아웃의 필드 필터로 행을 화면에 불러옵니다.
   - `sidebar: <field>`
+  - 위 형태 어느 것이든 `kql: <pattern>`을 붙이면 학습자의 쿼리가 맞을 때까지 쿼리 입력창을 가리킵니다.
   단계의 체크가 `leg`을 지정하면, 코치는 그 구간 행의 펼치기 버튼을 가리킵니다. 다른 이벤트가 열려 있으면 플라이아웃의 화살표도 가리킵니다. 그 구간 행은 출발지가 다른 행의 목적지인 행, 또는 그 반대입니다. 그 구간 행을 못 찾거나 열린 문서의 순서를 알 수 없으면 값이 아니라 필드 필터를 가리킵니다. `point`에 `keep: true`가 있으면 도착한 뒤에도 플라이아웃을 열어 둡니다.
 - `term`: `{pane: kali | waf, match}`로, xterm 버퍼에서 맞는 줄입니다. 선택 항목 `done` 패턴이 마지막으로 입력한 명령 뒤에 출력되면 테두리가 단계의 확인 버튼으로 옮겨 갑니다.
 
@@ -940,11 +932,18 @@ check는 스스로 실행됩니다.
 - 룰 검사는 `errors`로 응답합니다. 거부한 모든 센서의 출력에서 Suricata `Error`가 들어 있는 줄들입니다. `output`은 그런 줄이 가장 많은 거부 센서의 출력입니다.
 - OPNsense 에지의 Suricata는 syslog로만 로그를 남깁니다(템플릿에 콘솔 출력이 없습니다). 그래서 `-T` 출력에 오류 줄이 없습니다. 워게임 호스트의 estate 센서는 오류 줄을 출력합니다.
 
-### 기초 레슨 F1-F6
+### 기초 레슨 F1-F6과 두 과정
 
 설계는 `docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`의 P2 단계입니다. 2026-10-18에 공격과 방어를 함께 다루는 레슨으로 다시 만들었습니다(`docs/DECISIONS.md`, "Foundations rebuilt as integrated attack and defence lessons").
 
 board의 `scenario.yaml`은 `foundations:` 목록을 선언합니다. discovery 시점에 이 목록을 검사하며, id는 기초 레슨과 시나리오 전체에서 유일해야 합니다(`wargames.checked_groups`). 가르치는 레슨은 기초 레슨입니다. 단계형 시나리오 1.1과 3.1도 같은 엔진에서 단계를 실행합니다.
+
+`courses:`도 선언합니다(`wargames.checked_courses`). 모든 기초 레슨은 정확히 한 과정에 속하고, 과정마다 `id`, 문자열 키 `text`, `reference` 카드가 있습니다. 과정 `c1` "로그 분석 기초"는 f1-f3이고 훈련 환경을 읽기만 합니다(defense `full`, 룰, Kali, WAF 변경 없음). 과정 `c2` "공격 탐지 실습"은 f4-f6이고 훈련 환경을 바꿉니다(`docs/DECISIONS.md`, "The six foundations become two courses"). 과정 1의 단계는 학습자 자신의 검색어나 마커로 자기 요청을 찾으며, 새로 만든 훈련 환경이나 다른 트래픽이 없다는 것에 기대지 않습니다.
+
+- `GET /api/wargames/`는 `courses`(`id`, `title`, `goal`, `lessons`)를 나열합니다. 메인 페이지는 과정마다 구역 하나에 레슨을 보여 줍니다.
+- `GET /api/sessions/<id>/`에는 `lesson_course`(`id`, `text`, `lessons`, `reference`)가 있습니다.
+- 과정의 첫 레슨은 단계에 하나도 진입하지 않은 동안 창 위에 과정 안내(`<course>.brief`와 접힌 참고 카드)를 띄웁니다. 시작을 누르면 첫 단계에 진입합니다(`POST .../steps/<id>/ {state: reached}`). 에이전트는 이 요청을 바로 보냅니다.
+- 레일의 참고 버튼은 왼쪽 열을 열고, 과정 카드와 레슨 자신의 `reference:` 카드(`lesson.ref.<id>.title`, `.body`, `.rows`)를 보여 줍니다. `addresses` 카드는 `GET .../lesson/addresses/`로 채웁니다. F1은 주소를 묻는 레슨이라 주소 카드가 없습니다.
 
 - `wargames.foundations()`는 기초 레슨을 `order` 순으로 나열합니다.
 - `wargames.lesson(lesson_id=...)`은 기초 레슨이나 단계가 있는 시나리오를 찾고, 그 밖의 id는 거부하며, 기초 레슨에는 `group: foundations`를 붙입니다.
@@ -956,12 +955,11 @@ board의 `scenario.yaml`은 `foundations:` 목록을 선언합니다. discovery 
 
 **f1 구성도 읽기**(`lesson.map`). defense `full`, 구성도 창에서 시작합니다.
 
-- 학습자는 board.com의 서비스망 주소와 board-db의 서브넷을 읽고, kali가 연결된 망의 이름을 답합니다. 고객의 검색 요청이 거치는 호스트를 순서대로 고르고, 로그를 모으는 호스트를 답합니다. 혼자 푸는 단계에서는 board-db의 주소를 묻습니다.
-- 답은 세션의 학습자용 구성도에서 읽습니다(`views._range_fact`: `topology.learner`를 거친 `topology.address`, `topology.subnet`, `topology.zone_names`, `topology.route`, `topology.hosts`).
+- 학습자는 kali와 board.com의 주소를 읽고, kali의 요청이 거치는 호스트를 순서대로 고르고(`path`, `from: kali`), DMZ 네트워크를 읽고, 로그를 모으는 호스트를 답합니다. 혼자 푸는 단계에서는 waf의 주소를 묻습니다. 호스트가 어느 영역에 있는지는 묻지 않습니다.
+- 답은 세션의 학습자용 구성도에서 읽습니다(`views._range_fact`: `topology.learner`를 거친 `topology.address`, `topology.subnet`, `topology.route`, `topology.hosts`).
   - `address`: 링크 라벨의 주소. 프리픽스 길이는 있어도 없어도 됩니다.
-  - `subnet`: 영역의 서브넷
-  - `zone_of`: 영역 캡션
-  - `path`: `customers`, 그다음 구성도에 있는 경유 역할, 그다음 사이트 순서입니다(`customers > firewall > waf > board.com`).
+  - `subnet`: 호스트가 붙은 스위치의 네트워크
+  - `path`: 단계의 `from`(기본 `customers`), 그다음 구성도에 있는 경유 역할, 그다음 사이트 순서입니다(`kali > firewall > waf > board.com`).
   - `logs`: `log-server` 노드
 
 **f2 개발자 도구로 HTTP 요청 읽기**(`lesson.http`). defense `full`, 웹사이트 창에서 시작합니다.
@@ -971,20 +969,19 @@ board의 `scenario.yaml`은 `foundations:` 목록을 선언합니다. discovery 
 
 **f3 Kibana에서 내 요청 찾기**(`lesson.logs`). defense `full`, 웹사이트 창에서 시작합니다.
 
-- 학습자는 영문자와 숫자로 된 단어를 검색하고 그 단어로 KQL을 씁니다. 이어서 아래 항목을 답합니다.
-  - board.com에 도착한 이벤트의 출발지 IP, 그리고 구성도에서 그 주소를 쓰는 호스트
-  - 같은 검색이 waf에 도착한 이벤트의 출발지 IP와 그 X-Forwarded-For
-  - WAF 로그에 남았는지
-  혼자 푸는 단계에서는 두 번 더 검색한 뒤 Kibana에서 내 검색어로 조회되는 http 이벤트 건수를 묻습니다. 검색 하나가 두 구간에서 기록되므로 건수는 검색 횟수의 두 배입니다.
-- 답은 기록에 대한 센서의 http 이벤트(`sensor_source`, `forwarded_for`)에서 읽으며, 구간으로 나눕니다.
-  - `dest_ip`가 board.com의 주소이면 `upstream`(waf가 넘긴 요청)이고, 아니면 `inbound`(waf에 도착한 요청)입니다. 그래서 두 구간을 모두 보는 센서 하나도 검색을 구간마다 한 번씩 읽습니다. `leg: both`는 두 구간의 이벤트를 모두 씁니다.
+- 학습자는 영문자와 숫자로 된 자기만의 단어로 검색하고 Kibana에 `url : *단어*`를 씁니다. 카드마다 쿼리를 다시 적고 화면의 열 이름을 그대로 써서 아래를 묻습니다.
+  - Kibana가 보여 주는 건수(그 단어로 한 모든 검색의 두 구간)
+  - `destination`이 waf 주소인 행의 `source_ip`, `destination`이 board.com 주소인 행의 `source_ip`, 그리고 구성도에서 그 주소를 쓰는 호스트
+  - 그 행의 `request_header.x_forwarded_for`
+  혼자 푸는 단계에서는 학습자가 `and`와 `not`으로 쓴 쿼리(내 단어이면서 `destination`이 waf 주소가 아닌 것)의 건수를 묻습니다.
+- 답은 기록에 있는 센서의 http 이벤트에서 구간별로 읽습니다(`sensor_source`, `forwarded_for`).
+  - `dest_ip`가 board.com의 주소이면 `upstream`(waf가 넘긴 요청), 아니면 `inbound`(waf에 도착한 요청)입니다. `leg: both`는 두 구간을 모두 씁니다.
   - `host_of`는 그 주소를 쓰는 구성도 호스트입니다.
-  - `waf_logged`는 WAF 자체의 기록에서 읽습니다.
-  - `hits`는 건수 하나입니다. 레슨(또는 세션) 시작 뒤 url에 내 검색어가 들어 있는 두 구간(`leg: both`)의 http 이벤트 수입니다. Kibana에서 `event_type : http and url : *검색어*`로 조회한 건수와 같습니다.
+  - `hits`는 레슨(또는 세션)이 시작된 뒤, 학습자의 가장 최근 검색 단어가 url에 든 그 구간의 http 이벤트 수입니다.
 
 **f4 XSS 요청 차단과 IDS 룰 작성**(`lesson.xss`). defense `xss-gap`, 웹사이트 창에서 시작합니다.
 
-- 학습자는 `<script>alert(1)</script>`를 보내 상태 코드, 탐지한 룰 하나, Total Score를 읽습니다. 대소문자를 섞은 요청의 상태 코드를 읽고, 두 요청에 IDS 경보가 있었는지 답합니다. URI의 `<script`를 잡는 룰을 쓰고 적용한 뒤 `<script>alert(1)</script>`를 검색하고 확인 버튼을 누릅니다. 그 룰이 이 검색에 경보를 냈을 때만 통과합니다. 이어서 Kibana에서 그 경보의 sid를 읽고, 대소문자를 섞은 요청이 빠져나가는 것을 본 뒤 `nocase`를 붙입니다. 이론은 완성된 룰이 아니라 대괄호로 빈칸을 둔 룰 형태를 보여 줍니다. 혼자 푸는 단계에서는 대소문자를 섞은 요청과 일반 검색을 다시 보냅니다.
+- 학습자는 `<script>alert(1)</script>`를 보내 상태 코드, 탐지한 룰 하나, Total Score를 읽습니다. 대소문자를 섞은 요청의 상태 코드를 읽고, 두 요청에 IDS 경보가 있었는지 답합니다. URI의 `<script`를 잡는 룰을 쓰고 적용한 뒤 `<script>alert(1)</script>`를 검색하고 확인 버튼을 누릅니다. 그 룰이 이 검색에 경보를 냈을 때만 통과합니다. 이어서 Kibana에서 그 경보의 sid를 읽고, 대소문자를 섞은 요청이 빠져나가는 것을 본 뒤 `nocase`를 붙입니다. Suricata 참고 카드는 완성된 룰이 아니라 대괄호로 빈칸을 둔 룰 형태를 보여 줍니다. Kibana 단계는 학습자의 쿼리가 웹방화벽 로그와 script(또는 alert)를 지정할 때까지 쿼리 입력창만 가리킵니다. 혼자 푸는 단계에서는 대소문자를 섞은 요청과 일반 검색을 다시 보냅니다.
 - 답은 다음에서 읽습니다.
   - `status`
   - `rule`: 요청의 ModSecurity 룰 id. 949110은 제외합니다.
@@ -1022,7 +1019,7 @@ board의 `scenario.yaml`은 `foundations:` 목록을 선언합니다. discovery 
 
 F6의 sqlmap 명령에는 `--skip-waf`가 붙습니다. 그러지 않으면 sqlmap이 WAF를 확인하려고 보내는 요청 하나가 IDS 9000003, 9000004와 CRS 룰 하나에 걸려서, 실행이 탐지된 것으로 셉니다. 어떤 레슨 질문에도 `accept` 목록은 없습니다.
 
-한 세션, F1부터 F6까지. `POST /api/sessions/<id>/lesson/ {"lesson": "<id>"}`는 열려 있는 가이드 세션을 그 자리에서 다른 기초 레슨으로 옮깁니다. 하는 일은 다음과 같습니다.
+과정마다 세션 하나. `POST /api/sessions/<id>/lesson/ {"lesson": "<id>"}`는 열려 있는 가이드 세션을 그 자리에서 다른 기초 레슨으로 옮깁니다. 콘솔의 다음 레슨은 세션의 과정 안에서만 이어지고(`views._next_lesson`), 과정 요약은 그 과정의 레슨만 보여 줍니다. 과정 1은 자기 마침 문장으로, 과정 2는 두 점수(`course.attack.scores`)로 끝납니다. 하는 일은 다음과 같습니다.
 
 - 그 레슨이 선언한 방어 설정이 `Session.defense`와 다르면 레슨의 CRS 설정을 씁니다(`PUT /waf/`처럼 `crs.apply`). 센서 룰 파일은 방어 설정의 룰 파일이 바뀔 때만 다시 넣습니다.
 - `Session.lesson`과 `Session.defense`를 바꿉니다.
@@ -1069,8 +1066,8 @@ F6의 sqlmap 명령에는 `--skip-waf`가 붙습니다. 그러지 않으면 sqlm
 
 답은 다음 중 하나를 읽습니다. 그 밖의 값은 `wargames.read_from_record`가 discovery 시점에 거부합니다.
 
-- `of:`가 훈련 환경 사실인 경우: `address`, `subnet`, `zone_of`, `path`, `logs`, `host_of`, `excluded_target`, `lost_points`, `detected_penalty`
-- `of:`가 요청 사실이고 `about:`이 `match`가 있는 단계를 가리키거나 단계 자신의 `match`가 있는 경우(그 단계와 일치하는 가장 최근 웹사이트 창 기록을 읽음): `status`, `method`, `path`, `parameter`, `param_value`, `sensor_source`, `forwarded_for`, `waf_logged`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_sid`, `alerted_sid_present`, `hits`
+- `of:`가 훈련 환경 사실인 경우: `address`, `subnet`, `path`, `logs`, `host_of`, `excluded_target`, `lost_points`, `detected_penalty`
+- `of:`가 요청 사실이고 `about:`이 `match`가 있는 단계를 가리키거나 단계 자신의 `match`가 있는 경우(그 단계와 일치하는 가장 최근 웹사이트 창 기록을 읽음): `status`, `method`, `path`, `parameter`, `param_value`, `sensor_source`, `forwarded_for`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_sid`, `alerted_sid_present`, `hits`
 - `of:`가 Kali 사실이고 `about:`이 `kali` 단계를 가리키는 경우: `sqlmap_found`, `kali_source`(실행의 WAF 탐지 기록에서, `from: server_error`가 붙으면 500 기록에서), `alerted_by`
 - 요청의 `path`나 `step:` 마커와 함께 쓰는 `rule`(위)
 
