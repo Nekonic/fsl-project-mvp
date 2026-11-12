@@ -267,8 +267,8 @@ def test_the_learner_s_rule_is_judged_by_its_own_alerts_and_the_fix_needs_nocase
     assert (fired, without, with_nocase) == (True, False, True)
 
 @pytest.mark.parametrize("rule, alerted, chosen, line", [
-    (NOCASE_LESS, False, "no", "lesson.xss.ok.slipped"),
-    (WITH_NOCASE, True, "yes", "lesson.xss.ok.slipped.yes"),
+    (NOCASE_LESS, False, "absent", "lesson.xss.ok.slipped"),
+    (WITH_NOCASE, True, "present", "lesson.xss.ok.slipped.present"),
 ], ids=["missed", "already-nocase"])
 def test_the_slipped_pass_line_follows_the_answer_the_learner_s_own_rule_made_true(client, rule, alerted, chosen, line):
     session = opened("f4")

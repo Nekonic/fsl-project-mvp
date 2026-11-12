@@ -372,8 +372,8 @@ foundations:
         point: {opens: elk, kibana: {doc: source_ip, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
         check: {kind: answer, of: sensor_source, about: search, leg: upstream}
       - id: site_host
-        point: {opens: topology, map: {zone: sw1}}
-        check: {kind: answer, of: host_of, from: site_source}
+        point: {opens: elk, kibana: {doc: source_ip, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
+        check: {kind: answer, of: host_of, from: site_source, leg: upstream}
       - id: xff
         point: {opens: elk, kibana: {doc: request_header.x_forwarded_for, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
         check: {kind: answer, of: forwarded_for, about: search, leg: upstream}
@@ -418,7 +418,7 @@ foundations:
       - id: slipped
         point: {opens: site, site: "input[name=q]", until: sent,
                 then: {kibana: {hits: true, kql: '^(?=.*event_type\s*:\s*"?alert)(?=.*url\s*:\s*"?\*[^ ]*ScRiPt)'}}}
-        check: {kind: choice, of: alerted_sid_present, match: '<(?!script)(?i:script)', after: write, options: ["yes", "no"]}
+        check: {kind: choice, of: alerted_sid_present, match: '<(?!script)(?i:script)', after: write, options: [present, absent]}
       - id: nocase
         point: {opens: rules, panel: "#lesson-rules"}
         check: {kind: rules, needs: nocase}

@@ -715,7 +715,7 @@ def _request_fact(session, check, taught):
     if of == "alerted_sid_present":
         added = set(lesson.added_rules(_live_rules(session), _posture_rules(session)))
         found = {sid for record in records for sid in _alerted_sids(session, record)}
-        return [lesson.YES if found & added else lesson.NO]
+        return [lesson.PRESENT if found & added else lesson.ABSENT]
     if of == "anomaly_total":
         return sorted({total for record in records for total in lesson.anomaly_totals(
             [detection.signature or "" for detection in _browsed(session, record) if detection.source == "modsecurity"])})
