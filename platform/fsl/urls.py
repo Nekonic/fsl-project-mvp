@@ -34,6 +34,7 @@ urlpatterns = [
     path("api/sessions/<int:session_id>/scenario/debrief/", scenario_run.scenario_debrief),
     path("api/sessions/<int:session_id>/lesson/", views.session_lesson),
     path("api/sessions/<int:session_id>/lesson/hints/", views.lesson_hints),
+    path("api/sessions/<int:session_id>/lesson/addresses/", views.lesson_addresses),
     path("api/sessions/<int:session_id>/lesson/steps/<str:step_id>/", views.lesson_step),
     path("api/sessions/<int:session_id>/lesson/steps/<str:step_id>/check/", views.lesson_step_check),
     path("api/sessions/<int:session_id>/site/requests/", site.site_requests),

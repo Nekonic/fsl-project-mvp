@@ -120,7 +120,8 @@ browser.serve((request) => {
                    kind: "lesson", kali_terminal: "/vm-terminal/kali/?arg=1", site: {port: 8002, path: "/site/1/board.com/"},
                    waf_rules: "/etc/modsecurity.d/owasp-crs/rules", lessons: [{id: "f1"}, {id: "f9"}],
                    lesson_objectives: OBJECTIVES_JSON,
-                   lesson: {text: "lesson.demo", group: "foundations", steps: STEPS, theory: [{id: "one"}], hints: []}}};
+                   lesson_course: COURSE_JSON,
+                   lesson: {text: "lesson.demo", group: "foundations", steps: STEPS, reference: ["addresses"], hints: []}}};
   }
   if (request.route === "/api/wargames/") {
     return {body: [{id: "board", foundations: [{id: "f1", title: "lesson.map.title"}, {id: "f9", title: "lesson.demo.title"}]}]};
@@ -135,6 +136,7 @@ browser.serve((request) => {
   }
   if (request.route === "/api/topology/") return {body: {source: "gns3", web_ui: {port: 3080, path: "/static/web-ui/map.html?project=p"}}};
   if (request.route === "/api/sessions/1/ingest/") return {body: {ingested: 0}};
+  if (request.route === "/api/sessions/1/lesson/addresses/") return {body: {addresses: [{host: "waf", zone: "DMZ", address: "10.30.0.177"}]}};
   if (request.route === "/api/sessions/1/lesson/") {
     range.moved.push(request.body);
     return range.moving ? range.moving.then(() => ({body: {id: 1}})) : {body: {id: 1}};
@@ -195,10 +197,13 @@ const meets = (a, b) => Boolean(a && b) && a.left < b.left + b.width && b.left <
 const frames = async (count = 2) => { for (let i = 0; i < count; i += 1) await browser.wait(0); };
 """
 
-def served(next_lesson="f10", objectives=OBJECTIVES, steps=None):
+COURSE = {"id": "c2", "text": "course.attack", "lessons": ["f1", "f9"], "reference": ["kql"]}
+
+def served(next_lesson="f10", objectives=OBJECTIVES, steps=None, course=COURSE):
     following = json.dumps({"id": next_lesson, "text": "lesson.next"} if next_lesson else None)
     return SERVED.replace("STEPS_JSON", json.dumps(steps or STEPS)).replace("RIGHT_JSON", json.dumps(RIGHT)).replace(
-        "NEXT_JSON", following).replace("OBJECTIVES_JSON", json.dumps(objectives)) + LAID_OUT
+        "NEXT_JSON", following).replace("OBJECTIVES_JSON", json.dumps(objectives)).replace(
+        "COURSE_JSON", json.dumps(course)) + LAID_OUT
 
 def to(step):
     return f"await browser.click('[data-step=\"{ids.index(step)}\"]'); await frames();"
@@ -263,24 +268,50 @@ def test_a_lesson_opens_on_its_first_step_s_pane_and_a_step_on_another_pane_offe
                                  "task": "lesson.demo.coach.search"}, "the task text is never replaced by a detour"
     assert (result["opened"], result["after"]) == ("site", False)
 
-def test_the_note_is_a_column_beside_the_pane_with_the_step_card_on_top_and_the_theory_open_on_a_lesson_s_first_visit(client):
+def test_the_note_is_a_column_beside_the_pane_and_the_reference_is_a_column_the_rail_opens_with_the_course_s_cards(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario="""
       await frames();
       const body = browser.element('lesson-body').children.map((child) => child.id);
       const work = browser.element('work').children.map((child) => child.id);
-      const theoryOpen = browser.element('theory-toggle').getAttribute('aria-expanded');
+      const closed = browser.element('ref-col').classList.contains('hidden');
+      await browser.click('rail-ref');
+      await browser.settle();
+      const cards = document.querySelectorAll('#ref-list [data-ref]').map((card) => card.dataset.ref);
+      const address = browser.text('ref-list');
+      const opened = !browser.element('ref-col').classList.contains('hidden');
       await browser.click('lesson-collapse');
       const strip = {folded: browser.element('lesson').classList.contains('folded'), text: browser.text('note-strip-text')};
-      return {body, work, theoryOpen, strip};
+      return {body, work, closed, cards, opened, address, strip};
     """)
     result = seen["result"]
 
     assert seen["errors"] == []
     assert result["work"] == ["pane", "lesson"], "the note shrinks the pane instead of covering it"
-    assert result["body"][0] == "step-card"
-    assert result["body"].index("step-card") < result["body"].index("theory-card")
-    assert result["theoryOpen"] == "true"
+    assert result["body"][0] == "step-card" and "theory-card" not in result["body"], "no theory between the steps"
+    assert (result["closed"], result["opened"]) == (True, True)
+    assert result["cards"] == ["kql", "addresses"], "the course's cards, then the lesson's own"
+    assert "10.30.0.177" in result["address"], "the address card is filled from the session's map"
     assert result["strip"] == {"folded": True, "text": worded("lesson.note.strip", 1, len(STEPS))}
+
+def test_the_first_lesson_of_a_course_opens_on_its_briefing_and_starts_only_when_the_learner_presses_start(client):
+    course = {**COURSE, "lessons": ["f9", "f10"]}
+    seen = open_page(client, "/blue/1/", setup=served(course=course), scenario="""
+      await frames();
+      const shown = !browser.element('lesson-brief').classList.contains('hidden');
+      const title = browser.text('brief-title');
+      const cards = document.querySelectorAll('#brief-ref [data-ref]').map((card) => card.dataset.ref);
+      const before = range.states.length;
+      const ring = browser.element('coach-ring').classList.contains('hidden') || !browser.element('coach-ring').style.width;
+      await browser.click('brief-start');
+      await browser.settle();
+      return {shown, title, cards, before, ring, after: range.states, hidden: browser.element('lesson-brief').classList.contains('hidden')};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert (result["shown"], result["title"], result["cards"]) == (True, worded("course.attack.title"), ["kql"])
+    assert result["before"] == 0, "nothing is reached while the briefing is up"
+    assert result["after"] == [["board_ip", "reached"]] and result["hidden"] is True
 
 def test_silent_polls_of_a_sent_step_write_nothing_and_the_platform_alone_judges(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
@@ -950,7 +981,7 @@ def test_a_finished_foundation_starts_the_next_lesson_and_the_last_one_ends_on_a
         assert (result["moved"], result["reloaded"], result["closed"]) == ([{"lesson": following}], 1, 0)
     else:
         assert result["course"] == ["f1", "f9"]
-        assert result["said"] == worded("lesson.course.done"), "the last task line is never left empty"
+        assert result["said"] == worded("course.attack.done"), "the last task line is never left empty"
         assert result["waited"] == 0, "the summary stays until the learner closes the session"
         assert (result["moved"], result["closed"]) == ([], 1)
         assert result["href"].endswith("/session/1/")
@@ -971,7 +1002,7 @@ def test_the_last_foundation_says_the_course_is_done_only_when_the_session_took_
 
 def test_the_stretch_task_sits_right_under_the_step_card_so_a_finished_lesson_shows_it_without_scrolling():
     note = (Path(__file__).resolve().parents[1] / "console/templates/console/blue_note.html").read_text()
-    order = [note.index(f'id="{card}"') for card in ("step-card", "stretch-card", "theory-card", "lesson-objectives")]
+    order = [note.index(f'id="{card}"') for card in ("step-card", "stretch-card", "lesson-objectives")]
 
     assert order == sorted(order)
 
@@ -1005,8 +1036,9 @@ def shaped(kind, spec):
         "dev": lambda: spec in DEV_NAMES,
         "map": lambda: (single in ("node", "zone") and isinstance(spec[single], str)) or (
             single in ("link", "label") and isinstance(spec[single], list) and len(spec[single]) == 2),
-        "kibana": lambda: (single in ("doc", "sidebar") and isinstance(spec[single], str)) or (
-            single in ("hits", "query") and spec[single] is True),
+        "kibana": lambda: isinstance(spec, dict) and set(spec) <= {"doc", "sidebar", "hits", "query", "kql"} and (
+            isinstance(spec.get("kql", ""), str) and len(set(spec) - {"kql"}) == 1) and (
+            (isinstance(spec.get("doc", spec.get("sidebar")), str)) or spec.get("hits", spec.get("query")) is True),
         "term": lambda: isinstance(spec, dict) and spec.get("pane") in ("kali", "waf") and isinstance(spec.get("match"), str),
     }[kind]()
 
