@@ -150,8 +150,8 @@ ended 8 s behind it, so both had to shrink:
 
 ### Fix
 
-1. The board image runs `makemigrations` (its migration is now in the repo)
-   and `collectstatic` at build; a start runs only `migrate` and `seed`.
+1. The board no longer runs `makemigrations` (its migration is now in the
+   repo) and runs `collectstatic` at build; a start runs only `migrate` and `seed`.
 2. The sensor starts alongside the wargames, and log forwarding after both.
 3. `down -v` of every wargame and the sensor run at once; the clear fails if
    any of them fails.

@@ -274,7 +274,8 @@ def test_f4_write_passes_only_when_the_learner_s_own_rule_alerted_on_a_script_se
     session = opened("f4")
     posture = (ROOT / "deploy/suricata/rules/no-xss.rules").read_text()
     applied = timezone.now() - timedelta(minutes=1)
-    RuleSet.objects.create(content=posture + COPIED, applied_at=applied)
+    RuleSet.objects.create(session=session, content=posture + COPIED, applied_at=applied)
+    RuleSet.objects.create(content=posture, applied_at=timezone.now())
     before = browsed(SCRIPT_SEARCH, 403, at=(applied - timedelta(minutes=1)).timestamp())
     search = browsed(SCRIPT_SEARCH, 403, request_id=2)
     logged = http_event(session.browse_marker, SCRIPT_SEARCH, 403, host="fsl-edge", src_ip=CUSTOMER, dest_ip=WAF,

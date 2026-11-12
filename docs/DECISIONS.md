@@ -6553,8 +6553,8 @@ previous-cloud records in `docs/STATE.md` stay as written.
 
 ## 2026-10-24 — The reset's last serial steps and MySQL's rollback segments
 
-What: the board image runs `makemigrations` (its migration is committed) and
-`collectstatic` at build; the wargame host's `down -v` of every wargame and
+What: the board no longer runs `makemigrations` (its migration is committed) and
+runs `collectstatic` at build; the wargame host's `down -v` of every wargame and
 the sensor run at once; the estate sensor starts beside the wargames; board-db
 and corp-db start with `--innodb-rollback-segments=1`, kept in the compose
 files so the pristine datadir is made with it; the Kali, WAF and wargame host

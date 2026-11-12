@@ -137,6 +137,10 @@ class Objective(models.Model):
 
 class RuleSet(models.Model):
 
+    session = models.ForeignKey(
+        Session, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="rulesets",
+    )
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     applied_at = models.DateTimeField(null=True, blank=True)
