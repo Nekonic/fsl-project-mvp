@@ -215,9 +215,9 @@ def subnet(project, learner, found, host: str) -> list[str]:
     one = link_heads(learner, found).get((host, switch_of(project, host)))
     return [str(ipaddress.ip_interface(one.address).network)] if one else []
 
-def zone_names(projects, host: str) -> list[str]:
-    named = [captions(project).get(switch_of(project, host)) for project in projects]
-    return [_shape(caption)[1].text.strip() for caption in named if caption is not None]
+def zone_name(project, host: str) -> list[str]:
+    caption = captions(project).get(switch_of(project, host))
+    return [_shape(caption)[1].text.strip()] if caption is not None else []
 
 def hosts_at(learner, found, addresses: list[str]) -> list[str]:
     wanted = {value.partition("/")[0] for value in addresses}
@@ -246,7 +246,6 @@ NAME_TOP = 1
 NAME_BOTTOM = 22
 LABEL_NUDGE = 3
 PORT_NAME = re.compile(r"(?P<kind>[A-Za-z])[A-Za-z]*(?P<number>\d+)")
-KOREAN_SUFFIX = " ("
 CAPTION_CHAR = 0.62
 NETWORKS_JOINED = ", "
 
@@ -405,8 +404,7 @@ def _captioned(drawing, networks) -> None:
 def labelled(project, learner, found, salt: str, called: str) -> dict:
     document = for_wargame(project, learner)
     document["project_id"] = renamed(document["project_id"], salt)
-    base, korean, rest = document["name"].partition(KOREAN_SUFFIX)
-    document["name"] = f"{base} {called}" + (korean + rest if korean else "")
+    document["name"] = f"{document['name']} {called}"
     document["show_interface_labels"] = True
     by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
     heads, bare = link_heads(learner, found), _nic_only(learner, found)

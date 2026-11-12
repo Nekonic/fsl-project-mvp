@@ -102,7 +102,7 @@ const crowdedDoc = (doc) => {
 
 def test_the_f5_sort_callout_sits_on_the_menu_s_own_row_in_the_empty_space_beside_it_and_its_leader_crosses_no_date(client):
     seen = open_page(client, "/blue/1/", setup=served_with(step_named("sort", site="form:has(select[name=sort])")), scenario=f"""
-      STRINGS.en['lesson.demo.callout.sort'] = '게시글 목록의 정렬 메뉴입니다.';
+      STRINGS['lesson.demo.callout.sort'] = '게시글 목록의 정렬 메뉴입니다.';
       {to("sort")}
       await browser.click('step-open');
       await frames();
@@ -136,7 +136,7 @@ def test_the_f6_cost_callout_sits_beside_the_ringed_row_and_its_leader_crosses_n
     seen = open_page(client, "/blue/1/",
                      setup=served_with(step_named("cost", panel="#lesson-objectives [data-objective=board-auth-user-admin]"), COST_ROWS),
                      scenario=f"""
-      STRINGS.en['lesson.demo.callout.cost'] = '관리자 계정 목표의 난이도와 감점입니다.';
+      STRINGS['lesson.demo.callout.cost'] = '관리자 계정 목표의 난이도와 감점입니다.';
       placeAt('lesson-objectives', box(1113, 364, 314, 194));
       const rows = document.querySelectorAll('#lesson-objectives-rows [data-objective]');
       rows.forEach((row, index) => RECTS.set(row, box(1119, 432 + 29 * index, 301, 28)));
@@ -175,7 +175,7 @@ FLYOUT = [
 
 def test_the_f3_other_event_callout_keeps_off_the_query_bar_the_pager_and_the_actions_row(client):
     seen = open_page(client, "/blue/1/", setup=served_with(STEPS) + GRID, scenario=f"""
-      STRINGS.en['lesson.kibana.other'] = '찾는 이벤트가 아닙니다. Document 창 위쪽의 > 버튼으로 다음 이벤트로 넘기세요.';
+      STRINGS['lesson.kibana.other'] = '찾는 이벤트가 아닙니다. Document 창 위쪽의 > 버튼으로 다음 이벤트로 넘기세요.';
       {KIBANA_FRAME}
       crowdedDoc(doc);
       flyoutRegion = [555, 152, 545, 748];
@@ -215,7 +215,7 @@ LIST = [
 
 def test_the_f6_seen_callout_keeps_off_the_tab_label_next_to_the_count_and_the_text_around_it(client):
     seen = open_page(client, "/blue/1/", setup=served_with(STEPS), scenario=f"""
-      STRINGS.en['lesson.demo.callout.logged'] = '조회된 이벤트 건수입니다.';
+      STRINGS['lesson.demo.callout.logged'] = '조회된 이벤트 건수입니다.';
       {KIBANA_FRAME}
       const doc = browser.element('pane-frame').contentDocument;
       crowdedDoc(doc);
@@ -239,7 +239,7 @@ def test_the_f6_seen_callout_keeps_off_the_tab_label_next_to_the_count_and_the_t
 
 def test_the_f6_query_prompt_keeps_off_the_data_view_picker_the_filter_buttons_and_the_time_range(client):
     seen = open_page(client, "/blue/1/", setup=served_with(STEPS), scenario=f"""
-      STRINGS.en['lesson.kibana.query'] = '여기에 KQL을 입력하세요.';
+      STRINGS['lesson.kibana.query'] = '여기에 KQL을 입력하세요.';
       {KIBANA_FRAME}
       const doc = browser.element('pane-frame').contentDocument;
       crowdedDoc(doc);

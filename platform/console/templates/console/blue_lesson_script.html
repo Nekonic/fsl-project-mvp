@@ -1,7 +1,6 @@
 const lessonPath = (tail) => `/api/sessions/${sessionId()}/${tail}`;
 const lessonId = () => (session && session.lesson_id) || "";
 const caseLabel = (name) => localized(`case.${name}`, name);
-const spoken = (texts) => (texts ? texts[language] || texts.en || "" : "");
 const phrase = (key, fallback, ...values) => values.reduce(
   (out, value, index) => out.split(`{${index}}`).join(value), localized(key, fallback));
 
@@ -1246,7 +1245,7 @@ function coach(prefix, declared) {
     const said = (part) => (foundation ? t(`${prefix}.${part}.${step.id}`) : localized(`${prefix}.${part}.${step.id}`, pointing));
     if (level >= 1) lines.push(said("nudge"));
     if (level >= 2) lines.push(said("hint"));
-    if (!foundation && level >= SKIP_OFFERED && recordOf(step).answer) lines.push(spoken(recordOf(step).answer));
+    if (!foundation && level >= SKIP_OFFERED && recordOf(step).answer) lines.push(recordOf(step).answer);
     return [...new Set(lines.filter(Boolean))];
   }
 
@@ -1738,8 +1737,8 @@ function coach(prefix, declared) {
 
   function pass(step) {
     if (steps[at] !== step || passing) return;
-    const line = [spoken(recordOf(step).line), saidOnPass.get(step.id)].filter(Boolean).join(" ");
-    const ok = spoken(recordOf(step).ok) || localized(`${prefix}.ok.${step.id}`, "");
+    const line = [recordOf(step).line, saidOnPass.get(step.id)].filter(Boolean).join(" ");
+    const ok = recordOf(step).ok || localized(`${prefix}.ok.${step.id}`, "");
     const text = [`✓ ${ok}`.trim(), line].filter(Boolean).join(" ");
     const unread = text.length > SHORT_PASS_CHARS;
     say(text, "ok");

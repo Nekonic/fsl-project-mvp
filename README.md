@@ -629,14 +629,14 @@ the learner defends, drawn as a lab topology.
   address with its prefix. At `kali` and `customers` it shows the interface
   alone. Each zone except the Internet has the network as its caption.
 - It shows no management segment, no platform and no machine's own name.
-- There is one map per slot for the session's wargame, in English
-  and Korean. GNS3 holds each map open with every node started.
+- There is one map per slot for the session's wargame, in Korean.
+  GNS3 holds each map open with every node started.
 - Each host is a display container of one pinned busybox image, so every link
   end is green. The machines themselves run in the range.
 - The full wiring is in `deploy/topology/system/`. Learners never see it.
 - The blue console's Map pane (tab Map) frames `/static/web-ui/map.html`. That
   page signs in read-only, turns off the web UI's usage statistics, and shows
-  the session's map in the console's language, fitted to the pane. It is
+  the session's map, fitted to the pane. It is
   view-only: no editing controls, drag pans, the wheel zooms.
 - The `gns3` container has `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket
   and the host's pid namespace. GNS3 needs them to run its switches and start a
@@ -659,8 +659,7 @@ in `/etc/hosts` from their boot user data, pointing at that slot's WAF.
 Open the console (`http://ADDRESS:8000/`) and start a session. A lesson or a
 scenario opens the blue console, which has both sides. A wargame (person against
 person) opens a red console for the attacker and a blue console for the
-defender. The language button in the header switches between English and
-Korean.
+defender. The console is in Korean only.
 
 - **Red** is the attacker's console. It has the objectives, "Submit stolen
   hashes", a Kali terminal, and a Website pane pointed at the target. It runs no

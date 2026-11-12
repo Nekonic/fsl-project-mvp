@@ -86,7 +86,7 @@ function devInitiator(initiator) {
 }
 
 function devNumber(value, unit, digits, display = "narrow") {
-  return new Intl.NumberFormat(language, {
+  return new Intl.NumberFormat("ko", {
     style: "unit", unit, unitDisplay: display, minimumFractionDigits: digits, maximumFractionDigits: digits,
   }).format(value);
 }

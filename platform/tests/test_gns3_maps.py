@@ -21,11 +21,9 @@ from tests.test_gns3_topology import learner_of
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 TOPOLOGY = ROOT / "deploy" / "topology"
 OPENSTACK = TOPOLOGY / "range-openstack.gns3"
-OPENSTACK_KO = TOPOLOGY / "range-openstack.ko.gns3"
 LABEL_KEYS = {"text", "style", "x", "y", "rotation"}
 DEFAULT_ORIGIN = "5.188.10.0/24"
 PLATFORM_NIC = Interface("fsl-platform", "ens7", "10.31.0.238/24", "mgmt")
-KOREAN_SUFFIX = json.loads(OPENSTACK_KO.read_text())["name"].removeprefix("range-openstack")
 
 KALI_IP = """1: lo    inet 127.0.0.1/8 scope host lo\\       valid_lft forever preferred_lft forever
 2: ens3    inet 73.0.0.10/24 scope global ens3\\       valid_lft forever preferred_lft forever
@@ -152,8 +150,8 @@ def test_no_management_address_reaches_the_learner_map():
     assert not [text for text in shown.values() if "10.31.0." in text]
 
 def test_each_slot_s_map_carries_its_own_addresses_and_ids_and_keeps_every_drawing_of_its_wargame():
-    english = json.loads(OPENSTACK.read_text())
-    template = topology.for_wargame(english, learner_of(declared.read(), "board"))
+    drawn = json.loads(OPENSTACK.read_text())
+    template = topology.for_wargame(drawn, learner_of(declared.read(), "board"))
     one = slot_map(1, found=[Interface("fsl-waf", "ens3", "10.30.0.102/24", "estate")])
     two = slot_map(2)
     ids = lambda document: ({document["project_id"]} | {n["node_id"] for n in document["topology"]["nodes"]}
@@ -162,24 +160,16 @@ def test_each_slot_s_map_carries_its_own_addresses_and_ids_and_keeps_every_drawi
 
     assert labels(one)[("waf", "sw1")]["text"] == "ens3 10.30.0.102/24"
     assert labels(two)[("waf", "sw1")]["text"] == "ens3 10.30.0.177/24"
-    assert not ids(one) & ids(two) and not ids(one) & ids(english) and not ids(two) & ids(english)
-    assert two["project_id"] == str(uuid.uuid5(uuid.UUID(english["project_id"]), "slot-2-board"))
+    assert not ids(one) & ids(two) and not ids(one) & ids(drawn) and not ids(two) & ids(drawn)
+    assert two["project_id"] == str(uuid.uuid5(uuid.UUID(drawn["project_id"]), "slot-2-board"))
     assert one["name"] == "range-openstack slot 1 board" and two["show_interface_labels"] is True
     assert [d["svg"] for d in two["topology"]["drawings"] if "<rect" in d["svg"]] == [
         d["svg"] for d in template["topology"]["drawings"] if "<rect" in d["svg"]]
     assert [(n["name"], n["symbol"], n["x"], n["y"]) for n in two["topology"]["nodes"]] == [
         (n["name"], n["symbol"], n["x"], n["y"]) for n in template["topology"]["nodes"]]
 
-def test_the_korean_slot_map_keeps_its_language_in_the_name_and_differs_in_id_from_the_english_one():
-    korean = slot_map(2, OPENSTACK_KO)
-
-    assert KOREAN_SUFFIX.startswith(" (") and korean["name"] == "range-openstack slot 2 board" + KOREAN_SUFFIX
-    assert korean["project_id"] != slot_map(2)["project_id"]
-    assert labels(korean)[("waf", "sw1")]["text"] == "ens3 10.30.0.177/24"
-
-@pytest.mark.parametrize("path", [OPENSTACK, OPENSTACK_KO], ids=["openstack", "openstack-ko"])
-def test_a_generated_map_is_a_gns3_2_2_project_whose_labels_fit_both_releases_schemas(path):
-    document = slot_map(2, path)
+def test_a_generated_map_is_a_gns3_2_2_project_whose_labels_fit_both_releases_schemas():
+    document = slot_map(2)
     from tests.test_gns3_topology import GNS3_2_2_TOP_LEVEL, GNS3_2_2_TOPOLOGY
     by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
 
@@ -226,14 +216,12 @@ def served(settings, monkeypatch):
     maps._loaded.clear()
     return fake
 
-def test_a_slot_s_maps_are_loaded_in_both_languages_and_not_again_while_nothing_changed(served):
+def test_a_slot_s_map_is_loaded_once_and_not_again_while_nothing_changed(served):
     maps.publish("slot 2 board", read_slot)
     maps.publish("slot 2 board", read_slot)
 
-    assert [document["name"] for document in served.published] == [
-        "range-openstack slot 2 board", "range-openstack slot 2 board" + KOREAN_SUFFIX]
-    assert {document["project_id"] for document in served.published} == {
-        maps.project_id("slot 2 board", "en"), maps.project_id("slot 2 board", "ko")}
+    assert [document["name"] for document in served.published] == ["range-openstack slot 2 board"]
+    assert [document["project_id"] for document in served.published] == [maps.project_id("slot 2 board")]
 
 def test_a_session_s_map_is_drawn_for_the_wargame_it_defends(served):
     maps.publish("slot 1 corp", read_slot)
@@ -249,29 +237,28 @@ def test_a_changed_address_loads_the_slot_s_maps_again(served):
     maps.publish("slot 2 board", read_slot)
     maps.publish("slot 2 board", lambda: [Interface("fsl-waf", "ens3", "10.30.0.99/24", "estate")])
 
-    assert len(served.published) == 4
-    assert labels(served.published[-2])[("waf", "sw1")]["text"] == "ens3 10.30.0.99/24"
+    assert len(served.published) == 2
+    assert labels(served.published[-1])[("waf", "sw1")]["text"] == "ens3 10.30.0.99/24"
 
 def test_tidying_keeps_only_the_maps_of_the_slots_still_standing(served):
     maps.tidy(maps.SLOT, ["slot 2 board"])
 
-    kept = sorted({maps.project_id("slot 2 board", language) for language in ("en", "ko")})
-    assert served.removed == [("range-openstack slot ", kept)] * 2, (
-        "both languages' maps share the base name, and a canonical map never matches the prefix"
+    assert served.removed == [("range-openstack slot ", [maps.project_id("slot 2 board")])], (
+        "a canonical map never matches the prefix"
     )
 
 def test_the_map_served_for_a_session_is_its_slot_s_project_once_gns3_holds_it_open(served, monkeypatch):
-    monkeypatch.setattr(gns3, "project", lambda language, kept=None: {"project_id": (kept or {}).get("project_id")})
+    monkeypatch.setattr(gns3, "project", lambda kept=None: {"project_id": (kept or {}).get("project_id")})
 
-    shown = maps.served("slot 2 board", "ko", read_slot)
+    shown = maps.served("slot 2 board", read_slot)
 
-    assert shown["project_id"] == maps.project_id("slot 2 board", "ko")
-    assert len(served.published) == 2, "a map GNS3 did not hold yet is loaded before it is served"
+    assert shown["project_id"] == maps.project_id("slot 2 board")
+    assert len(served.published) == 1, "a map GNS3 did not hold yet is loaded before it is served"
 
 def test_a_map_request_waits_for_the_slot_s_load_in_flight_and_is_served_the_map_it_loaded(served, monkeypatch):
-    monkeypatch.setattr(gns3, "project", lambda language, kept=None: {"project_id": (kept or {}).get("project_id")})
+    monkeypatch.setattr(gns3, "project", lambda kept=None: {"project_id": (kept or {}).get("project_id")})
     key = "slot 2 board"
-    served.opened = {maps.project_id(key, language) for language in ("en", "ko")}
+    served.opened = {maps.project_id(key)}
     reading, answered, shown = threading.Event(), threading.Event(), {}
 
     def slow_read():
@@ -284,7 +271,7 @@ def test_a_map_request_waits_for_the_slot_s_load_in_flight_and_is_served_the_map
 
     loading = maps.begin(key, slow_read, maps.SLOT, [key])
     reading.wait(5)
-    asking = threading.Thread(target=lambda: shown.update(maps.served(key, "en", again)))
+    asking = threading.Thread(target=lambda: shown.update(maps.served(key, again)))
     asking.start()
     asking.join(0.3)
     waited = asking.is_alive() and not shown
@@ -293,9 +280,8 @@ def test_a_map_request_waits_for_the_slot_s_load_in_flight_and_is_served_the_map
     asking.join(5)
 
     assert waited, "a map GNS3 still holds open from before is not shown while the session's own load replaces it"
-    assert shown["project_id"] == maps.project_id(key, "en")
-    assert [document["name"] for document in served.published] == [
-        "range-openstack slot 2 board", "range-openstack slot 2 board" + KOREAN_SUFFIX]
+    assert shown["project_id"] == maps.project_id(key)
+    assert [document["name"] for document in served.published] == ["range-openstack slot 2 board"]
 
 def test_a_read_some_host_did_not_answer_loads_no_map_and_a_check_still_reads_the_hosts_that_did(served, monkeypatch):
     from api import views
@@ -322,10 +308,10 @@ def test_a_map_that_cannot_be_loaded_falls_back_to_the_range_s_own_map_and_says_
         raise gns3.Unavailable("GNS3 refused the admin sign-in")
 
     monkeypatch.setattr(gns3, "publish", refused)
-    monkeypatch.setattr(gns3, "project", lambda language, kept=None: {
+    monkeypatch.setattr(gns3, "project", lambda kept=None: {
         "project_id": "canonical", "detail": "", "nodes": {node["name"] for node in kept["topology"]["nodes"]}})
 
-    shown = maps.served("slot 1 board", "en", read_slot)
+    shown = maps.served("slot 1 board", read_slot)
 
     assert shown["project_id"] == "canonical" and "admin sign-in" in shown["detail"]
     assert "board.com" in shown["nodes"] and "corp.com" not in shown["nodes"], "the fallback is the wargame's own map"
@@ -395,11 +381,11 @@ def test_the_topology_endpoint_serves_the_session_s_own_map_when_gns3_runs(clien
     with override_settings(FSL_GNS3_URL="http://gns3:3080"), \
          patch("api.views._map_key", return_value="slot 1 board"), \
          patch.object(maps, "served", return_value={"project": {"name": "mine"}, "web_ui": None}) as asked:
-        found = client.get(f"/api/topology/?language=ko&session={session_id}").json()
+        found = client.get(f"/api/topology/?session={session_id}").json()
         refused = client.get("/api/topology/?session=x")
 
     assert found["project"] == {"name": "mine"}
-    assert asked.call_args.args[:2] == ("slot 1 board", "ko")
+    assert asked.call_args.args[0] == "slot 1 board"
     assert refused.status_code == 400
 
 
@@ -488,8 +474,7 @@ def test_a_slot_whose_hosts_did_not_all_answer_at_start_is_read_again_and_its_ma
         views.publish_maps(pause=waits.append)
 
     assert waits == [views.MAP_START_RETRY_SECONDS], "the edge rebooting at start fails the first read only"
-    assert [document["name"] for document in served.published] == [
-        "range-openstack slot 1 board", "range-openstack slot 1 board" + KOREAN_SUFFIX]
+    assert [document["name"] for document in served.published] == ["range-openstack slot 1 board"]
     assert maps.loaded("slot 1 board")
 
 @pytest.mark.django_db

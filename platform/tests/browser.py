@@ -89,10 +89,10 @@ def open_page(client, path, setup="", scenario=""):
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
 
-def english(key, *values):
+def worded(key, *values):
     from tests.test_strings import tables
 
-    text = tables()["en"][key]
+    text = tables()[key]
     for index, value in enumerate(values):
         text = text.replace("{%d}" % index, str(value))
     return text

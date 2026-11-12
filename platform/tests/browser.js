@@ -501,7 +501,7 @@ const sandbox = {
     search: "",
     reload() {},
   },
-  navigator: { language: "en-US", languages: ["en-US", "en"] },
+  navigator: { language: "ko-KR", languages: ["ko-KR", "ko"] },
   localStorage: storage(),
   sessionStorage: storage(),
   console: { log: record("log"), info: record("info"), warn: record("warn"), error: record("error") },

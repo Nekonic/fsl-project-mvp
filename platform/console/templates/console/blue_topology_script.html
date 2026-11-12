@@ -72,7 +72,7 @@ async function topologyOpen() {
     if (topo.asking) return;
     topo.asking = true;
     topologyWait();
-    const project = await api(`/api/topology/?language=${encodeURIComponent(language)}&session=${sessionId()}`);
+    const project = await api(`/api/topology/?session=${sessionId()}`);
     topo.asking = false;
     topologyFitted();
     if (!project.ok) {

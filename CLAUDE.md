@@ -43,19 +43,23 @@ messages, PR descriptions, documents, the state and decision files — because
 Korean costs about twice the tokens per line and every session re-reads them.
 Code carries no comments in any language.
 
+The product itself is Korean-only: everything a learner or operator sees in
+the console and on the learner map is Korean, and there is no English version
+or language switch. This is about the product, not the working language.
+
 Korean belongs in exactly four places among the documentation and the console:
 
 - `*.ko.md` — a document for Korean readers. The English file is canonical; add
   a `.ko.md` beside it only when the user asks (as with `README.ko.md` and
   `docs/ARCHITECTURE.ko.md`). When a change touches a document that has a
   `.ko.md`, update both together so the pair never drifts.
-- `*.ko.gns3` — a Korean copy of a GNS3 project for Korean learners (as with
-  `deploy/topology/range-openstack.ko.gns3`). The English `.gns3` file is
-  canonical; the pair keeps the same nodes, links, ports and positions, every
-  id mapped one to one, and differs only in the drawing text and the project
-  id and name. Change both together; a test holds the pair.
-- `platform/console/templates/console/strings.html` — the console's `en`/`ko`
-  string table, the only console template allowed Korean, enforced by a test.
+- `deploy/topology/range-openstack.gns3` — the learner map, whose drawing
+  text is Korean. It is the only learner map; the system map
+  (`deploy/topology/system/range-openstack.gns3`) stays English and is never
+  shown to learners.
+- `platform/console/templates/console/strings.html` — the console's string
+  table, Korean only, the only console template allowed Korean, enforced by a
+  test.
 - `docs/vocabulary.md` — term translations and their sources.
 
 Leave the last two unread unless you are editing them, and do not read the

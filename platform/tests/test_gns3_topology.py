@@ -14,11 +14,8 @@ from tests import composed
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 TOPOLOGY = ROOT / "deploy" / "topology"
 OPENSTACK = TOPOLOGY / "range-openstack.gns3"
-OPENSTACK_KO = TOPOLOGY / "range-openstack.ko.gns3"
 SYSTEM_OPENSTACK = TOPOLOGY / "system" / "range-openstack.gns3"
-PAIRS = {OPENSTACK: OPENSTACK_KO}
-EVERY_MAP = [*PAIRS, *PAIRS.values(), SYSTEM_OPENSTACK]
-KOREAN_NAME = re.compile(r" \([\uac00-\ud7a3]+\)")
+EVERY_MAP = [OPENSTACK, SYSTEM_OPENSTACK]
 HANGUL = re.compile(r"[\uac00-\ud7a3]")
 SENSOR_COMPOSE = ROOT / "deploy" / "wargame-host" / "sensor.yaml"
 RFC1123 = re.compile(r"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")
@@ -82,19 +79,7 @@ def openstack_expected():
         expected.setdefault(host, {"type": "qemu", "segments": {fabric.MANAGEMENT}})
     return stack, expected
 
-def korean_id(english_id):
-    return str(uuid.uuid5(uuid.UUID(english_id), "ko"))
-
-def english_of(document):
-    if document["project_id"] == project(SYSTEM_OPENSTACK)["project_id"]:
-        return document
-    for english in PAIRS:
-        kept = project(english)
-        if document["project_id"] in (kept["project_id"], korean_id(kept["project_id"])):
-            return kept
-    raise AssertionError(f"{document['name']} pairs with no English project")
-
-@pytest.fixture(params=EVERY_MAP, ids=["openstack", "openstack-ko", "system-openstack"])
+@pytest.fixture(params=EVERY_MAP, ids=["openstack", "system-openstack"])
 def any_map(request):
     return project(request.param)
 
@@ -105,49 +90,15 @@ def defended_ids():
     declared_segments, _ = segment_ids()
     return declared_segments - {fabric.MANAGEMENT}
 
-def test_the_directory_holds_each_english_project_and_its_korean_pair_and_nothing_else():
-    assert sorted(TOPOLOGY.glob("*.gns3")) == sorted([*PAIRS, *PAIRS.values()])
+def test_the_directory_holds_the_learner_map_and_nothing_else():
+    assert sorted(TOPOLOGY.glob("*.gns3")) == [OPENSTACK]
 
-def without_words(svg):
-    drawn = ElementTree.fromstring(svg)
-    if drawn[0].tag == "text":
-        drawn.attrib.pop("width")
-        drawn[0].text = ""
-    return ElementTree.tostring(drawn, encoding="unicode")
-
-@pytest.mark.parametrize("english", list(PAIRS), ids=["openstack"])
-def test_a_korean_project_is_its_english_pair_with_its_own_ids_and_only_the_drawn_words_changed(english):
-    kept, korean = project(english), project(PAIRS[english])
-    expected = json.loads(json.dumps(kept))
-    expected["project_id"] = korean_id(kept["project_id"])
-    assert korean["name"].startswith(kept["name"])
-    assert KOREAN_NAME.fullmatch(korean["name"].removeprefix(kept["name"])), korean["name"]
-    expected["name"] = korean["name"]
-    for node in expected["topology"]["nodes"]:
-        node["node_id"] = korean_id(node["node_id"])
-    for link in expected["topology"]["links"]:
-        link["link_id"] = korean_id(link["link_id"])
-        for end in link["nodes"]:
-            end["node_id"] = korean_id(end["node_id"])
-    drawings = korean["topology"]["drawings"]
-    assert len(drawings) == len(expected["topology"]["drawings"])
-    for drawing, said in zip(expected["topology"]["drawings"], drawings):
-        drawing["drawing_id"] = korean_id(drawing["drawing_id"])
-        assert without_words(drawing["svg"]) == without_words(said["svg"]), said["svg"]
-        drawing["svg"] = said["svg"]
-
-    assert korean == expected
-
-def test_every_word_drawn_on_a_korean_map_is_korean_and_none_on_an_english_one(any_map):
-    gns3 = any_map
-    texts = [shape["text"] for shape in drawn_shapes(gns3) if shape["kind"] == "text"]
-    english = [shape["text"] for shape in drawn_shapes(english_of(gns3)) if shape["kind"] == "text"]
-    korean = gns3["project_id"] != english_of(gns3)["project_id"]
+def test_every_word_drawn_on_the_learner_map_is_korean_and_none_on_the_system_map(any_map):
+    texts = [shape["text"] for shape in drawn_shapes(any_map) if shape["kind"] == "text"]
+    korean = not is_system(any_map)
 
     kept_as_is = lambda said: IDENTIFIER.match(said) or ACRONYM.match(said)
-    assert [text for text, said in zip(texts, english)
-            if not kept_as_is(said) and bool(HANGUL.search(text)) != korean] == []
-    assert [text for text, said in zip(texts, english) if kept_as_is(said) and text != said] == [], (
+    assert [text for text in texts if not kept_as_is(text) and bool(HANGUL.search(text)) != korean] == [], (
         "a host or network name is drawn as the machine knows it, and IDS as Korean practitioners write it too")
 
 def test_no_two_projects_share_an_id_because_the_gns3_compute_keeps_nodes_by_id_alone():
@@ -254,8 +205,8 @@ def drawn_shapes(document):
                        "text": shape.text or "", "font": shape.get("font-family")})
     return shapes
 
-LEARNER_MAPS = [OPENSTACK, OPENSTACK_KO]
-LEARNER_IDS = ["openstack", "openstack-ko"]
+LEARNER_MAPS = [OPENSTACK]
+LEARNER_IDS = ["openstack"]
 WARGAMES = sorted(yaml.safe_load(declared.DECLARATION.read_text())["hosts"]["fsl-waf"]["names"])
 WARGAMES = [name.split(".")[0] for name in WARGAMES]
 PROJECTED = [(path, wargame) for path in LEARNER_MAPS for wargame in WARGAMES]
@@ -346,12 +297,12 @@ def test_a_wargame_s_map_shows_its_own_site_and_database_and_no_other_wargame_s(
 @pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
 def test_no_word_on_a_learner_map_names_the_platform_its_management_segment_or_a_machine_s_own_name(drawn_in):
     document = project(drawn_in)
-    english = [shape["text"] for shape in drawn_shapes(english_of(document)) if shape["kind"] == "text"]
+    said = [shape["text"] for shape in drawn_shapes(document) if shape["kind"] == "text"]
     scorer = declared.read().roles["scorer"]
     named = [node["name"] for node in document["topology"]["nodes"]] + [document["name"]]
 
-    assert [said for said in english if scorer in said or "mgmt" in said or "anagement" in said] == []
-    assert [said for said in english + named if any(word in said for word in WARGAME_HOST_WORDS)] == []
+    assert [text for text in said if scorer in text or "mgmt" in text or "anagement" in text] == []
+    assert [text for text in said + named if any(word in text for word in WARGAME_HOST_WORDS)] == []
     assert "fsl-" not in json.dumps(document)
 
 @pytest.mark.parametrize("drawn_in, wargame", PROJECTED, ids=PROJECTED_IDS)

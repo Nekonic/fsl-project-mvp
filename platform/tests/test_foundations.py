@@ -90,7 +90,7 @@ def kali_run(session, lesson_id, step_id, marker, **meta):
                                malicious=True, correlation="marker", started_at=timezone.now() - timedelta(minutes=1),
                                ended_at=timezone.now(), meta={"kali": step_id, "lesson": lesson_id, **meta})
 
-def test_every_foundation_has_its_words_in_both_languages():
+def test_every_foundation_has_its_words():
     table = tables()
     for taught in wargames.foundations("board"):
         prefix, last = taught["text"], taught["steps"][-1]["id"]
@@ -106,8 +106,7 @@ def test_every_foundation_has_its_words_in_both_languages():
                                                                   *(rule["says"] for rule in check.get("wrong_if", []))]]
             keys += [f"{prefix}.wrong.{named}.order"] if check.get("form") == "order" else []
             keys += [f"lesson.open.{shown['point']['opens']}"]
-        for language in ("en", "ko"):
-            assert not [key for key in keys if key not in table[language]], (taught["id"], language)
+        assert not [key for key in keys if key not in table], taught["id"]
 
 def test_no_foundation_question_carries_a_fixed_answer():
     for taught in wargames.foundations("board"):
@@ -151,7 +150,7 @@ def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_lear
         right = answer(client, session, "path", route)
         shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
 
-    assert given == {"board_ip": [True, True, False], "db_subnet": [True, False], "kali_zone": [True, True, True, False],
+    assert given == {"board_ip": [True, True, False], "db_subnet": [True, False], "kali_zone": [True, True, False, False],
                      "log_host": [True, False], "db_ip": [True, False]}
     assert reordered["reason"] == ["lesson.map.wrong.path.order", []], "right hosts in the wrong order say so"
     assert right["passed"] is True
@@ -259,7 +258,7 @@ def test_the_slipped_pass_line_follows_the_answer_the_learner_s_own_rule_made_tr
         judged = answer(client, session, "slipped", chosen)
 
     assert judged["passed"] is True, judged
-    assert judged["progress"]["slipped"]["ok"] == strings.both(line), (
+    assert judged["progress"]["slipped"]["ok"] == strings.line(line), (
         "the pass line contradicts the answer the learner's own rule made true"
     )
 
@@ -310,11 +309,10 @@ def test_f4_write_passes_only_when_the_learner_s_own_rule_alerted_on_a_script_se
 
 def test_the_f4_rule_theory_gives_a_rule_form_to_fill_in_and_no_complete_rule_for_something_else():
     table = tables()
-    for language in ("en", "ko"):
-        body = table[language]["lesson.xss.theory.rule.body"]
-        shown = [line for line in body.split("\n") if line.startswith("alert ")]
-        assert len(shown) == 1 and "9100001;" not in body and "/admin" not in body, language
-        assert re.search(r'msg:"\[[^]]+\]";.*content:"\[[^]]+\]";.*sid:\[[^]]+\];', shown[0]), language
+    body = table["lesson.xss.theory.rule.body"]
+    shown = [line for line in body.split("\n") if line.startswith("alert ")]
+    assert len(shown) == 1 and "9100001;" not in body and "/admin" not in body
+    assert re.search(r'msg:"\[[^]]+\]";.*content:"\[[^]]+\]";.*sid:\[[^]]+\];', shown[0])
 
 def test_a_logged_search_that_drew_no_alert_from_the_rule_says_so_instead_of_asking_for_a_log(client):
     session = opened("f4")

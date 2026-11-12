@@ -3,7 +3,7 @@ from json import dumps as js
 import pytest
 
 import wargames
-from tests.browser import english, open_page
+from tests.browser import open_page, worded
 
 pytestmark = pytest.mark.django_db
 
@@ -94,8 +94,8 @@ def test_the_judge_pane_lists_the_evidence_without_the_answer_and_posts_a_verdic
     assert seen["errors"] == []
     assert "/search/?q=%3Cb%3E" in result["listed"]
     for label in ("attack", "customer", "malicious", "board-sqli"):
-        assert label not in result["listed"].lower().replace(english("triage.attack").lower(), "").replace(
-            english("triage.customer").lower(), "")
+        assert label not in result["listed"].lower().replace(worded("triage.attack").lower(), "").replace(
+            worded("triage.customer").lower(), "")
     assert result["posted"] == [{"item": "a1", "verdict": "customer"},
                                 {"item": "b2", "verdict": "attack", "succeeded": False}]
 
@@ -145,7 +145,7 @@ def test_a_stepped_scenario_rings_the_rail_button_its_first_step_names_and_moves
     steps = [step["id"] for step in lesson["steps"]]
 
     assert seen["errors"] == []
-    assert result["first"] == {"title": english(f"{lesson['text']}.label.{steps[0]}"), "ring": True, "left": "2px", "note": True}
+    assert result["first"] == {"title": worded(f"{lesson['text']}.label.{steps[0]}"), "ring": True, "left": "2px", "note": True}
     assert result["checked"] == [f"/api/sessions/1/lesson/steps/{steps[0]}/check/"]
-    assert result["stayed"] == {"title": english(f"{lesson['text']}.label.{steps[0]}"), "next": True}
-    assert result["next"] == english(f"{lesson['text']}.label.{steps[1]}")
+    assert result["stayed"] == {"title": worded(f"{lesson['text']}.label.{steps[0]}"), "next": True}
+    assert result["next"] == worded(f"{lesson['text']}.label.{steps[1]}")

@@ -40,8 +40,7 @@ def check(client, session, step_id, body=None):
     return step(client, session, step_id, "check/", body)
 
 def withheld_texts(prefix):
-    return {encoded(text) for table in strings.withheld().values() for key, text in table.items()
-            if key.startswith(f"{prefix}.")}
+    return {encoded(text) for key, text in strings.withheld().items() if key.startswith(f"{prefix}.")}
 
 def encoded(text):
     return json.dumps(text, ensure_ascii=False)[1:-1]
@@ -155,7 +154,7 @@ def test_a_worked_scenario_s_ladder_still_gives_the_answer_before_skip(client):
     pressed = [hint(client, session, "buffer") for _ in range(5)]
 
     assert [one["hint"] for one in pressed] == [1, 2, 3, 4, 4]
-    assert pressed[2]["progress"]["buffer"]["answer"] == strings.both("scenario.fixrule.answer.buffer")
+    assert pressed[2]["progress"]["buffer"]["answer"] == strings.line("scenario.fixrule.answer.buffer")
 
 @pytest.mark.parametrize("mark", views.REPLAY_MARKS)
 def test_a_case_an_old_check_verify_replay_or_seed_fired_stays_out_of_both_scores(client, mark):

@@ -6657,3 +6657,42 @@ per restore and made every commit 2-2.5 times slower
   alike. `site.egress_of` takes the address and
   the Kali box that opens the connection from the same slot adapter, so a
   request cannot leave its slot.
+
+## 2026-11-13 — The product is Korean-only
+
+The user's decision: everything a learner or operator sees in the product is
+Korean, and there is no English version. Repo files for developers stay
+English (code, identifiers, commit messages, docs, the state and decision
+files); this is about the product, not the working language.
+
+- **The console string table holds Korean only.** `strings.html` keeps one
+  flat table (and one withheld table) under the same keys; the `en` tables,
+  the header's language button, the `fsl-language` localStorage key and the
+  `navigator.language` pick are gone. `t()` reads the one table; a missing
+  key still shows as the key. `common.language` went with the button.
+- **A pass line or a worked answer is one string.** The step's `progress`
+  record carried `{en, ko}` for `ok`, `line` and `answer`; it now carries the
+  Korean text (`console/strings.py` `line()`).
+- **One learner map.** The English `deploy/topology/range-openstack.gns3` was
+  removed and the Korean drawing took its path, its name now plain
+  `range-openstack` and its project id the Korean file's, so the slot maps
+  already loaded under that id keep their ids. `api/maps.py` loads one
+  project per slot instead of one per language, `tidy` removes the English
+  slot maps still held under the `range-openstack slot ` prefix, and
+  `GET /api/topology/` takes no `language`. The pair test went with the pair;
+  a test now holds that every drawn word on the learner map is Korean except
+  host and network names and IDS, and none is on the system map. The system
+  map stays English: it is for development and is never shown to learners.
+- **`zone_of` accepts the Korean caption only.** It accepted the English
+  caption too (`internet`) while the English map existed; no screen shows
+  that word now.
+- **What stays English on screen, and why.** Third-party tools framed in the
+  console keep their own UI: Kibana (the platform sets no `i18n.locale`;
+  Kibana's bundled translations are zh-CN, ja-JP, fr-FR and de-DE, no
+  Korean — not re-checked against the running 8.x release), the GNS3 web UI,
+  pfSense/OPNsense, the ttyd terminals and the tools run in them (sqlmap's
+  output). The targets are what they are: the board is a Korean site, corp an
+  English WordPress site. API error `detail` texts (for example a map that
+  could not be loaded) stay English, as does the map page's own sign-in
+  failure line in `deploy/gns3/auditor.html`: both are diagnostics, and
+  Korean in those files would be Korean outside the places CLAUDE.md allows.
