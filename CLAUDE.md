@@ -17,14 +17,19 @@ work starts.
 Two review gates, and only these two stop the run:
 
 1. Before building — present a short plan or spec and wait for approval.
-2. Before anything irreversible or outward (push, merge) — present what
-   changed, visually (diagram, table, not walls of prose), and wait for
-   approval.
+2. Before a version goes to `main` — present what changed, visually
+   (diagram, table, not walls of prose), with the verification evidence, and
+   wait for approval.
 
 Between the gates the session works on its own: report progress, do not ask
 "continue?". Stop early only for a real blocker or a decision that changes what
-the product does. Commit is local and needs no gate; push and merge are the
-human's, and a push goes to `dev` as a fast-forward.
+the product does. The code may be replaced at any time, so commits, branches,
+tags and pushes to `dev` and to working branches need no gate: push a verified
+state to `dev` as a fast-forward, keep as many branches as the work needs, and
+tag a version (`vMAJOR.MINOR.PATCH`) when a verified state is worth keeping.
+`main` holds only the best version: a tagged state that passed the full
+`bin/verify` and a live review round with zero countable findings, moved there
+as a fast-forward after gate 2. Never force-push `dev` or `main`.
 
 Replies are short — the result and the reason, no restatement, no analogy;
 detail goes in the commit and `docs/DECISIONS.md`. Use the words practitioners
