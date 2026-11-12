@@ -16,93 +16,219 @@
         "computes": [],
         "drawings": [
             {
-                "drawing_id": "00cbf202-0ec3-5c8a-a0ee-eae48f971c74",
+                "drawing_id": "db5ac558-e840-5c56-9b89-bb8d9f016105",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"20\" height=\"14\"><text font-family=\"Noto Sans\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#8a5a00\" fill-opacity=\"1.0\">IDS</text></svg>",
-                "x": 456,
-                "y": -20,
-                "z": 2
-            },
-            {
-                "drawing_id": "af156c71-e858-5d3c-813a-5af98201ffde",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"20\" height=\"14\"><text font-family=\"Noto Sans\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#8a5a00\" fill-opacity=\"1.0\">IDS</text></svg>",
-                "x": 899,
-                "y": 37,
-                "z": 2
-            },
-            {
-                "drawing_id": "6e07a08c-a2a2-55b6-af17-0a8f2a73b52d",
-                "locked": true,
-                "rotation": 0,
-                "svg": "<svg width=\"208\" height=\"332\"><rect width=\"208\" height=\"332\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
-                "x": 26,
-                "y": -160,
+                "svg": "<svg width=\"240\" height=\"320\"><rect width=\"240\" height=\"320\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
+                "x": 0,
+                "y": -140,
                 "z": 0
             },
             {
-                "drawing_id": "147c198c-4cab-5586-99db-292273af4fc5",
+                "drawing_id": "e4df948d-58bd-5575-bbae-4fa7418c5ef1",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"64\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">\uc778\ud130\ub137\ub9dd</text></svg>",
-                "x": 34,
-                "y": -157,
-                "z": 2
+                "svg": "<svg width=\"52\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">인터넷</text></svg>",
+                "x": 8,
+                "y": -137,
+                "z": 1
             },
             {
-                "drawing_id": "b7f598f2-9f7a-5b0a-9c37-16eda8913da8",
+                "drawing_id": "967bc61e-85ab-5230-b889-5433b58474c3",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"422\" height=\"351\"><rect width=\"422\" height=\"351\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
-                "x": 591,
-                "y": -92,
+                "svg": "<svg width=\"440\" height=\"370\"><rect width=\"440\" height=\"370\" fill=\"#2e6da4\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#2e6da4\"/></svg>",
+                "x": 520,
+                "y": -220,
                 "z": 0
             },
             {
-                "drawing_id": "4b6ab292-6277-53ea-8640-90568e11dcc7",
+                "drawing_id": "851d7703-ef80-5188-9a49-3689e4343419",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"64\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">\uc11c\ube44\uc2a4\ub9dd</text></svg>",
-                "x": 599,
-                "y": -89,
-                "z": 2
+                "svg": "<svg width=\"40\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#2e6da4\" fill-opacity=\"1.0\">DMZ</text></svg>",
+                "x": 528,
+                "y": -217,
+                "z": 1
             },
             {
-                "drawing_id": "5860ec5a-8df4-5c77-b274-9e0b7db2cf10",
+                "drawing_id": "080ecbcf-84d2-5e03-8cb4-0f0e49b8ac5a",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"346\" height=\"159\"><rect width=\"346\" height=\"159\" fill=\"#4a6fa5\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#4a6fa5\"/></svg>",
-                "x": 592,
-                "y": -270,
+                "svg": "<svg width=\"270\" height=\"150\"><rect width=\"270\" height=\"150\" fill=\"#4a6fa5\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#4a6fa5\"/></svg>",
+                "x": 990,
+                "y": -50,
                 "z": 0
             },
             {
-                "drawing_id": "85fb7eea-d8f9-57e4-875a-c629f7ed7a68",
+                "drawing_id": "12c9effc-f3b2-57ac-a6cf-8dbaa741e303",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"78\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">\ub0b4\ubd80 DB\ub9dd</text></svg>",
-                "x": 600,
-                "y": -267,
-                "z": 2
+                "svg": "<svg width=\"46\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">DB존</text></svg>",
+                "x": 998,
+                "y": -47,
+                "z": 1
             },
             {
-                "drawing_id": "daffa5ca-65f4-5c0e-864d-efc51c1d5386",
+                "drawing_id": "ad2168e8-fdd7-5218-a952-29fcff340dfb",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"352\" height=\"164\"><rect width=\"352\" height=\"164\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
-                "x": 386,
-                "y": 268,
+                "svg": "<svg width=\"360\" height=\"140\"><rect width=\"360\" height=\"140\" fill=\"#5b6770\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#5b6770\"/></svg>",
+                "x": 300,
+                "y": 160,
                 "z": 0
             },
             {
-                "drawing_id": "c9a3a91a-dfc6-53eb-a701-962ce9cc25a6",
+                "drawing_id": "67712045-3ce6-5d6c-b88c-97fe0fb7a27b",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"50\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">\uad00\uc81c\ub9dd</text></svg>",
+                "svg": "<svg width=\"52\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">관리망</text></svg>",
+                "x": 308,
+                "y": 163,
+                "z": 1
+            },
+            {
+                "drawing_id": "363f0021-a9c6-5483-b1af-8192084e0db2",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"112\" height=\"1\"><line x1=\"0\" y1=\"0\" x2=\"112\" y2=\"0\" stroke=\"#2e7d32\" stroke-width=\"2\"/></svg>",
+                "x": 214,
+                "y": 46,
+                "z": 2
+            },
+            {
+                "drawing_id": "2f4fc775-6470-5b25-a909-87b8d96d84eb",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"9\" height=\"5\"><line x1=\"0\" y1=\"0\" x2=\"9\" y2=\"5\" stroke=\"#2e7d32\" stroke-width=\"2\"/></svg>",
+                "x": 317,
+                "y": 41,
+                "z": 2
+            },
+            {
+                "drawing_id": "69be04f7-2bd4-5bce-b6da-00eb2fb54345",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"9\" height=\"5\"><line x1=\"0\" y1=\"5\" x2=\"9\" y2=\"0\" stroke=\"#2e7d32\" stroke-width=\"2\"/></svg>",
+                "x": 317,
+                "y": 46,
+                "z": 2
+            },
+            {
+                "drawing_id": "69c6b3ce-d23d-59df-8fb0-1e286f284c63",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"162\" height=\"1\"><line x1=\"0\" y1=\"0\" x2=\"162\" y2=\"0\" stroke=\"#2e7d32\" stroke-width=\"2\"/></svg>",
                 "x": 394,
-                "y": 271,
+                "y": 30,
+                "z": 2
+            },
+            {
+                "drawing_id": "9be6c650-336b-51e6-8fc3-170d9fcac9b0",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"9\" height=\"5\"><line x1=\"0\" y1=\"0\" x2=\"9\" y2=\"5\" stroke=\"#2e7d32\" stroke-width=\"2\"/></svg>",
+                "x": 547,
+                "y": 25,
+                "z": 2
+            },
+            {
+                "drawing_id": "24f5e0d4-ccc4-5936-8691-507633296028",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"9\" height=\"5\"><line x1=\"0\" y1=\"5\" x2=\"9\" y2=\"0\" stroke=\"#2e7d32\" stroke-width=\"2\"/></svg>",
+                "x": 547,
+                "y": 30,
+                "z": 2
+            },
+            {
+                "drawing_id": "6783a797-fc11-5127-aeaf-640c3a249cb7",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"162\" height=\"1\"><line x1=\"0\" y1=\"0\" x2=\"162\" y2=\"0\" stroke=\"#2e7d32\" stroke-width=\"2\"/></svg>",
+                "x": 624,
+                "y": 30,
+                "z": 2
+            },
+            {
+                "drawing_id": "92c29667-68a2-5eb0-89fd-b3935bd6d642",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"9\" height=\"5\"><line x1=\"0\" y1=\"0\" x2=\"9\" y2=\"5\" stroke=\"#2e7d32\" stroke-width=\"2\"/></svg>",
+                "x": 777,
+                "y": 25,
+                "z": 2
+            },
+            {
+                "drawing_id": "d60ef977-240c-553c-ae12-12506e2b6b67",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"9\" height=\"5\"><line x1=\"0\" y1=\"5\" x2=\"9\" y2=\"0\" stroke=\"#2e7d32\" stroke-width=\"2\"/></svg>",
+                "x": 777,
+                "y": 30,
+                "z": 2
+            },
+            {
+                "drawing_id": "0cb696dc-5d53-5ff8-80d1-1cd096396f9b",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"56\" height=\"18\"><text font-family=\"Noto Sans\" font-size=\"11.0\" font-weight=\"bold\" fill=\"#2e7d32\" fill-opacity=\"1.0\">웹 요청</text></svg>",
+                "x": 440,
+                "y": 6,
+                "z": 3
+            },
+            {
+                "drawing_id": "3fabf2d5-4b44-51e4-91af-71e0d5a5ebe2",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"44\" height=\"24\"><rect width=\"44\" height=\"24\" rx=\"4\" fill=\"#fff7e6\" fill-opacity=\"1.0\" stroke-width=\"2\" stroke=\"#8a5a00\"/></svg>",
+                "x": 262,
+                "y": 104,
+                "z": 2
+            },
+            {
+                "drawing_id": "befb86bd-de0a-5bfc-9599-ab1e89dfcbc6",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"26\" height=\"16\"><text font-family=\"Noto Sans\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#8a5a00\" fill-opacity=\"1.0\">IDS</text></svg>",
+                "x": 272,
+                "y": 108,
+                "z": 3
+            },
+            {
+                "drawing_id": "f4cda297-a90c-5d96-a1d6-f2dc423f0db3",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"56\" height=\"42\"><line x1=\"0\" y1=\"42\" x2=\"56\" y2=\"0\" stroke=\"#8a5a00\" stroke-width=\"2\" stroke-dasharray=\"6, 4\"/></svg>",
+                "x": 284,
+                "y": 62,
+                "z": 2
+            },
+            {
+                "drawing_id": "573d8a26-e627-50df-a707-72cf238d38b1",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"44\" height=\"24\"><rect width=\"44\" height=\"24\" rx=\"4\" fill=\"#fff7e6\" fill-opacity=\"1.0\" stroke-width=\"2\" stroke=\"#8a5a00\"/></svg>",
+                "x": 868,
+                "y": 96,
+                "z": 2
+            },
+            {
+                "drawing_id": "43716c2b-f655-506e-aefc-8adb97d98625",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"26\" height=\"16\"><text font-family=\"Noto Sans\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#8a5a00\" fill-opacity=\"1.0\">IDS</text></svg>",
+                "x": 878,
+                "y": 100,
+                "z": 3
+            },
+            {
+                "drawing_id": "54f668bb-b0ce-5d1c-9e4f-3f8562b2e80a",
+                "locked": true,
+                "rotation": 0,
+                "svg": "<svg width=\"44\" height=\"34\"><line x1=\"44\" y1=\"34\" x2=\"0\" y2=\"0\" stroke=\"#8a5a00\" stroke-width=\"2\" stroke-dasharray=\"6, 4\"/></svg>",
+                "x": 846,
+                "y": 62,
                 "z": 2
             }
         ],
@@ -401,7 +527,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-kali.svg",
-                "x": 40,
+                "x": 20,
                 "y": 100,
                 "z": 1
             },
@@ -425,7 +551,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-client.svg",
-                "x": 40,
+                "x": 20,
                 "y": -100,
                 "z": 1
             },
@@ -519,7 +645,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-firewall.svg",
-                "x": 388,
+                "x": 330,
                 "y": 0,
                 "z": 1
             },
@@ -589,8 +715,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 617,
-                "y": 0,
+                "x": 560,
+                "y": -170,
                 "z": 1
             },
             {
@@ -613,8 +739,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-shield.svg",
-                "x": 617,
-                "y": 160,
+                "x": 560,
+                "y": 0,
                 "z": 1
             },
             {
@@ -637,7 +763,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-server.svg",
-                "x": 832,
+                "x": 790,
                 "y": 0,
                 "z": 1
             },
@@ -661,7 +787,7 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-server.svg",
-                "x": 832,
+                "x": 790,
                 "y": 0,
                 "z": 1
             },
@@ -731,8 +857,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 832,
-                "y": -210,
+                "x": 1010,
+                "y": 0,
                 "z": 1
             },
             {
@@ -755,8 +881,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-storage.svg",
-                "x": 607,
-                "y": -210,
+                "x": 1170,
+                "y": 0,
                 "z": 1
             },
             {
@@ -779,8 +905,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-storage.svg",
-                "x": 607,
-                "y": -210,
+                "x": 1170,
+                "y": 0,
                 "z": 1
             },
             {
@@ -849,8 +975,8 @@
                     ]
                 },
                 "symbol": ":/symbols/affinity/square/gray/switch.svg",
-                "x": 617,
-                "y": 360,
+                "x": 560,
+                "y": 200,
                 "z": 1
             },
             {
@@ -873,8 +999,8 @@
                     "start_command": "sleep 2147483647"
                 },
                 "symbol": "host-statistics.svg",
-                "x": 410,
-                "y": 360,
+                "x": 330,
+                "y": 200,
                 "z": 1
             }
         ]
