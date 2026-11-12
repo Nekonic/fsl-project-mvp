@@ -6696,3 +6696,55 @@ files); this is about the product, not the working language.
   could not be loaded) stay English, as does the map page's own sign-in
   failure line in `deploy/gns3/auditor.html`: both are diagnostics, and
   Korean in those files would be Korean outside the places CLAUDE.md allows.
+
+## 2026-11-13 — The six foundations become two courses
+
+The product owner took F1-F4 live as a first-time learner and they failed him,
+although six AI reviewers had found nothing (feedback in the session notes).
+The lessons were rewritten, not reworded, and regrouped at his decision.
+
+- **Two courses.** Course 1 "로그 분석 기초" is F1-F3 and only reads the range;
+  it will later run many learners on one shared slot, so every step finds the
+  learner's own request by their own search word or marker. Course 2 "공격 탐지
+  실습" is F4-F6 and changes the range (IDS rules, sqlmap, the WAF exclusion),
+  one learner per slot. `scenario.yaml` declares `courses:`; lesson ids stay
+  `f1`-`f6`, since the steps, defenses and records are keyed by them and a
+  rename would only move names. The next lesson stays inside a course.
+- **Theory out of the step flow.** A course opens on a briefing (what the
+  course does, the reference cards folded, Start); the same cards stay in a
+  left 참고 column the rail opens. The note's theory card is gone. Start is
+  the existing `POST .../steps/<first>/ {state: reached}`, so an agent needs no
+  new call.
+- **A highlight never shows an answer before the work.** A Kibana point may
+  name `kql:`; the ring stays on the query bar until the learner's own
+  submitted query matches. Every Kibana step in F3-F6 names it.
+- **KQL is taught once and used.** The reference card lists field : value,
+  wildcards, quoted values, and/or/not, ranges and field : *, with this
+  range's field names; course 2 steps ask the learner to write the query
+  rather than paste it.
+- **F1 asks what the map shows.** The zone quiz is gone (no platform grades
+  zone membership); F1 asks the attacker's and the web server's addresses,
+  the path from kali, the DMZ network and the log server. The `zone_of` fact
+  had no step left and was removed.
+- **F3's last four steps were wrong questions.** They chained answers, said
+  "destination" loosely, needed the WAF address recalled from the map, and
+  assumed KQL edits. They are now: the count of the learner's own word, the
+  source of the row whose `destination` is waf's address, of the row whose
+  `destination` is board.com's, the host using it, X-Forwarded-For, and a
+  count the learner writes with and/not. Addresses are in the reference
+  column (`GET /api/sessions/<id>/lesson/addresses/`). The `waf_logged` fact
+  had no step left and was removed; the WAF's logging policy is in the fields
+  card.
+- **The learner map is an enterprise logical diagram.** Zones 인터넷, DMZ,
+  DB존 and 관리망: DMZ and DB존 are the zone names of KISA's ISMS-P 2.6.1
+  ("네트워크 분리(DMZ, 서버팜, DB존, 개발존 등)"), which also lists a DB server in
+  the DMZ as a defect, so board-db keeps its own zone; 서비스망 and 관제망 were
+  this project's words. Labels are addresses alone; no interface, port or
+  Docker bridge name. Each IDS is a sensor box fed by a dashed line from the
+  host whose traffic it sees (the edge and the wargame host really run them).
+  Green arrows show the request flow internet → firewall → waf → board.com.
+  The system map is unchanged.
+- **Review includes an answer-blind walk.** A fresh agent given only the
+  on-screen text and a description of each tool screen walks the lessons;
+  rounds 1-3 went 43, 46 and 48 of 48 steps, each flagged step fixed.
+
