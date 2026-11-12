@@ -1160,7 +1160,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       restore. The ground truth stays per session: two sessions on slot 1
       held different board hashes, and the first one's hashes submitted to
       the second matched no account. A second round the same day (the board
-      image runs `makemigrations` and `collectstatic` at build, the wargames
+      image has its migration committed and runs `collectstatic` at build, the wargames
       and the sensor are cleared and started at once, the databases keep one
       InnoDB rollback segment, and the three VM images drop `snapd` and
       `ModemManager`) gave 70-82 s for one slot and 98-99 s for two at once;

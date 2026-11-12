@@ -100,6 +100,7 @@ RULE_ERROR = re.compile(r"\b(Error|ERRCODE)\b|<Error>")
 RULE_CHANGES = threading.RLock()
 SLOT_CHOICE = threading.Lock()
 LESSON_SEEDING = threading.Lock()
+_SEEDING_BY_SESSION: dict[int, threading.Lock] = {}
 _TURNS_GUARD = threading.Lock()
 _SLOT_TURNS: dict[int, threading.RLock] = {}
 SETTLING_PHASES = ("RESETTING", "REBUILDING", "CHECKING")
@@ -551,7 +552,7 @@ def _judge(session, taught, step, body, kept):
     return scenario_run.triage_passed(session, check["judged"]), [failed, []]
 
 def _rule_fired(session, match, mine, failed):
-    applied = RuleSet.objects.filter(applied_at__isnull=False).aggregate(last=Max("applied_at"))["last"]
+    applied = RuleSet.objects.filter(session=session, applied_at__isnull=False).aggregate(last=Max("applied_at"))["last"]
     sent = _site_requests(session, match, applied)
     if not sent:
         return False, [f"{failed}.unsent", []]
@@ -1010,7 +1011,7 @@ def session_lesson(request, session_id):
 def _seed_once_worked(session):
     if not session.guidance or session.course_scenario:
         return
-    with LESSON_SEEDING:
+    with _seeding_of(session.pk):
         session.refresh_from_db()
         worked = any(kept.get(mark) for kept in _steps_of(session).values() for mark in WORKED_MARKS)
         if not worked or _logs_seeded(session):
@@ -1020,6 +1021,10 @@ def _seed_once_worked(session):
         except (harness.ToolUnavailable, loot.GroundTruthUnavailable, traffic.NoOrigin, RangeUnavailable) as exc:
             log.warning("lesson %s of session %s is not seeded yet; its next step retries: %s",
                         session.lesson, session.pk, exc)
+
+def _seeding_of(session_id):
+    with LESSON_SEEDING:
+        return _SEEDING_BY_SESSION.setdefault(session_id, threading.Lock())
 
 def _logs_seeded(session):
     return any(case.meta.get("seed") and case.meta.get("lesson") == session.lesson for case in session.cases.all())
@@ -1858,10 +1863,11 @@ def resume_resets():
     cloud = _built_by_the_cloud(substrate(), "configure_slot", "slot is")
     for number in numbers:
         if reset.claim(number):
-            _reset_again(_in_slot(cloud, number), _turn(number if _slotted(cloud) else None), number)
+            _reset_again(cloud, number)
 
-def _reset_again(adapter, turn, number):
+def _reset_again(cloud, number):
     try:
+        adapter, turn = _in_slot(cloud, number), _turn(number if _slotted(cloud) else None)
         with turn:
             rebuilt = getattr(adapter, "reset_slot", adapter.rebuild_slot)()
         _enabled_by_the_rebuild(timezone.now(), number)
@@ -2486,7 +2492,7 @@ def apply_rules(request):
                     f"(loaded {base or 'nothing'}, live {live}); reload them and edit again"
                 )
         _apply(content, session)
-    ruleset = RuleSet.objects.create(content=content, applied_at=timezone.now())
+    ruleset = RuleSet.objects.create(session=session, content=content, applied_at=timezone.now())
     return _reply(_shape(ruleset, RULESET_FIELDS))
 
 def _fabric_plan(plan):
