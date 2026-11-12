@@ -116,7 +116,7 @@ function kaliRow(row, windowed = true) {
 }
 
 const NOTE_KEY = "fsl-lesson-note";
-const THEORY_KEY = (id, lesson) => `fsl-lesson-theory-${id}-${lesson}`;
+const REF_KEY = "fsl-lesson-reference";
 const LANDED_KEY = (id, lesson) => `fsl-lesson-landed-${id}-${lesson}`;
 let note = { open: true };
 let landed = false;
@@ -156,8 +156,6 @@ function folding(toggle, body, mark, heard = () => {}) {
   return set;
 }
 
-let theoryFolded = () => {};
-
 function noteControls() {
   landed = firstOpen();
   note = { open: landed || kept(NOTE_KEY, {}).open !== false };
@@ -165,8 +163,6 @@ function noteControls() {
   field("note-strip-text").textContent = t("lesson.note.heading");
   field("lesson-collapse").addEventListener("click", () => setNote({ open: false }));
   field("note-strip").addEventListener("click", () => setNote({ open: true }));
-  theoryFolded = folding(field("theory-toggle"), field("theory-body"), field("theory-mark"),
-    (opened) => keep(THEORY_KEY(sessionId(), lessonId()), opened));
   folding(field("steps-toggle"), field("lesson-step-list"));
   placeNote();
 }
@@ -178,7 +174,6 @@ function shownSection(id, shown = true) {
 
 function noteLesson(taught) {
   field("lesson-title").textContent = t(`${taught.text}.title`);
-  field("lesson-goal-line").textContent = localized(`${taught.text}.summary`, "");
   field("stretch-text").textContent = localized(`${taught.text}.stretch`, "");
   stretchShown(false);
 }
@@ -190,19 +185,61 @@ function stretchShown(reached) {
 const cards = (listed) => (Array.isArray(listed) ? listed : []).map((card) =>
   (typeof card === "string" ? { id: card } : card));
 
-function theory(prefix, listed, goTo) {
-  const items = cards(listed);
-  field("lesson-theory").innerHTML = items.map((card) => `
-    <li class="flex flex-col gap-1" data-card="${esc(card.id)}">
-      <b class="text-heading">${esc(t(`${prefix}.theory.${card.id}.title`))}</b>
-      <p class="whitespace-pre-line text-body">${esc(t(`${prefix}.theory.${card.id}.body`))}</p>
-      ${card.shows && goTo ? `<button type="button" class="self-start text-[12px] text-primary hover:underline" data-shows="${esc(card.shows)}">${esc(t("lesson.theory.show"))}</button>` : ""}
-    </li>`).join("");
-  field("lesson-theory").querySelectorAll("[data-shows]").forEach((button) =>
-    button.addEventListener("click", () => goTo(button.dataset.shows)));
-  const any = items.length > 0 || Boolean(field("lesson-goal-line").textContent);
-  shownSection("theory-card", any);
-  theoryFolded(landed || kept(THEORY_KEY(sessionId(), lessonId()), false) === true);
+function referenceRows(id) {
+  return localized(`lesson.ref.${id}.rows`, "").split("\n").filter(Boolean).map((line) => line.split("\t"));
+}
+
+function referenceHtml(id, titled = true) {
+  const body = localized(`lesson.ref.${id}.body`, "");
+  const rows = referenceRows(id);
+  return `${titled ? `<b class="text-heading">${esc(t(`lesson.ref.${id}.title`))}</b>` : ""}
+    ${body ? `<p class="whitespace-pre-line text-body">${esc(body)}</p>` : ""}
+    ${rows.length ? `<table class="w-full text-[12px]"><tbody>${rows.map(([code, meaning]) =>
+      `<tr class="align-top border-t border-line"><td class="py-1 pr-2 font-mono text-heading whitespace-pre-wrap">${esc(code)}</td><td class="py-1 text-body">${esc(meaning || "")}</td></tr>`).join("")}</tbody></table>` : ""}
+    ${id === "addresses" ? '<table data-addresses class="w-full text-[12px]"><tbody></tbody></table>' : ""}`;
+}
+
+async function addressesFill() {
+  const tables = Array.from(document.querySelectorAll("[data-addresses]"));
+  if (!tables.length) return;
+  const read = await api(lessonPath("lesson/addresses/"));
+  const listed = read.ok && read.body && Array.isArray(read.body.addresses) ? read.body.addresses : [];
+  const rows = listed.length ? listed.map((one) =>
+    `<tr class="border-t border-line"><td class="py-1 pr-2 font-mono text-heading">${esc(one.host)}</td><td class="py-1 pr-2 text-muted">${esc(one.zone)}</td><td class="py-1 font-mono text-heading">${esc(one.address)}</td></tr>`).join("")
+    : `<tr><td class="py-1 text-muted">${esc(t("lesson.ref.addresses.none"))}</td></tr>`;
+  tables.forEach((table) => { table.querySelector("tbody").innerHTML = rows; });
+}
+
+let referenceShown = [];
+
+function referenceOpen(opened) {
+  field("ref-col").classList.toggle("hidden", !opened);
+  field("rail-ref").setAttribute("aria-expanded", String(opened));
+  field("rail-ref").classList.toggle("active", opened);
+  keep(REF_KEY, opened);
+}
+
+function reference(listed) {
+  referenceShown = (Array.isArray(listed) ? listed : []).map(String);
+  const any = referenceShown.length > 0;
+  field("rail-ref").classList.toggle("hidden", !any);
+  if (!any) return;
+  field("ref-list").innerHTML = referenceShown.map((id) =>
+    `<section class="card p-3 flex flex-col gap-1" data-ref="${esc(id)}">${referenceHtml(id)}</section>`).join("");
+  field("rail-ref").addEventListener("click", () => referenceOpen(field("ref-col").classList.contains("hidden")));
+  field("ref-close").addEventListener("click", () => referenceOpen(false));
+  referenceOpen(kept(REF_KEY, false) === true);
+  addressesFill();
+}
+
+function briefOpen(course) {
+  field("brief-title").textContent = t(`${course.text}.title`);
+  field("brief-goal").textContent = t(`${course.text}.brief`);
+  field("brief-ref").innerHTML = (course.reference || []).map((id) =>
+    `<details class="border-t border-line pt-2" data-ref="${esc(id)}"><summary class="cursor-pointer font-semibold text-heading">${esc(t(`lesson.ref.${id}.title`))}</summary>
+      <div class="flex flex-col gap-1 pt-1">${referenceHtml(id, false)}</div></details>`).join("");
+  field("lesson-brief").classList.remove("hidden");
+  addressesFill();
 }
 
 let objectivesKept = null;
@@ -385,9 +422,29 @@ function openedRow(doc) {
   return at ? { page, row: Number(at[1]) } : null;
 }
 
+function submittedQuery(doc) {
+  try {
+    const href = decodeURIComponent(String(frame.contentWindow.location.href || ""));
+    const found = /query:\(language:kuery,query:'((?:[^'!]|!.)*)'\)/.exec(href);
+    if (found) return found[1].replace(/!(.)/g, "$1");
+  } catch (error) {
+    return queryText(doc) || "";
+  }
+  return queryText(doc) || "";
+}
+
+function kqlWritten(doc, wanted) {
+  const asked = pattern(wanted);
+  return !asked || new RegExp(asked.source, "i").test(submittedQuery(doc));
+}
+
 function kibanaFound(doc, spec) {
   const found = (selector) => doc.querySelector(selector);
   const first = (...selectors) => selectors.map(found).find((element) => boxOf(element)) || null;
+  if (spec.kql && !kqlWritten(doc, spec.kql)) {
+    if (spec.hits && queryArrival.step !== spec.step) Object.assign(queryArrival, { step: spec.step, text: queryText(doc) });
+    return { element: first(KIBANA.query), stage: "write" };
+  }
   if (spec.doc) {
     if (spec.leg) {
       const legged = legRow(doc, spec);
@@ -512,7 +569,7 @@ function kibanaRect(spec, leg, step) {
   const inFlyout = Boolean(flyout && element && typeof flyout.contains === "function" && flyout.contains(element));
   if (!inFlyout && coveredIn(doc, element)) return { rect: inFrame(frame, boxOf(doc.querySelector(KIBANA.close))), stage: "covered" };
   const rect = inFrame(frame, joined(boxOf(element), boxOf(also)));
-  const core = !rect ? [] : stage === "query" || stage === "fieldless" || spec.query ? pickerRows(doc, rect)
+  const core = !rect ? [] : stage === "query" || stage === "write" || stage === "fieldless" || spec.query ? pickerRows(doc, rect)
     : spec.doc ? flyoutRows(doc, rect) : spec.hits || spec.sidebar ? toolbarRows(doc, rect) : [];
   const crowd = rect ? [...core, ...frameText(doc, rect)] : core;
   return { rect, stage, leg: aimed || "", crowd, core, within: stage === "other" ? inFrame(frame, boxOf(flyout)) : null };
@@ -1105,7 +1162,7 @@ const MISSING_AFTER_FRAMES = 120;
 const SITE_SILENT_MS = 3000;
 const STAGE_KEYS = {
   open: "lesson.dev.open", row: "lesson.dev.row", "tab.headers": "lesson.dev.tab.headers", "tab.payload": "lesson.dev.tab.payload",
-  query: "lesson.kibana.query", top: "lesson.kibana.top_values", expand: "lesson.kibana.expand", field: "lesson.kibana.field", covered: "lesson.kibana.covered",
+  query: "lesson.kibana.query", write: "lesson.kibana.write", top: "lesson.kibana.top_values", expand: "lesson.kibana.expand", field: "lesson.kibana.field", covered: "lesson.kibana.covered",
   other: "lesson.kibana.other", none: "lesson.kibana.none", prompt: "lesson.term.prompt",
   apply: "lesson.rules.press_apply", add: "lesson.rules.add_line", verify: "lesson.kibana.verify", run_done: "lesson.kali.press",
 };
@@ -1138,6 +1195,7 @@ function coach(prefix, declared) {
   let at = Math.min(steps.length, lessonStep(sessionId(), lessonId())) - 1;
   const foundation = Boolean(session && session.lesson && session.lesson.group === "foundations");
   const nextLesson = foundation ? session.next_lesson : null;
+  const course = foundation ? session.lesson_course : null;
   let progress = {};
   let level = 0;
   let seconds = 0;
@@ -1188,6 +1246,8 @@ function coach(prefix, declared) {
   }
 
   learn(session);
+  let briefed = !(course && course.lessons[0] === lessonId() && localized(`${course.text}.brief`, "")
+    && !Object.values(progress).some((kept) => kept && kept.reached));
 
   const asksWhichDeviceAlerted = (step) => step.check.kind === "choice"
     && ["ids", "waf"].every((device) => (step.check.options || []).includes(device));
@@ -1310,10 +1370,13 @@ function coach(prefix, declared) {
 
   let courseWhole = false;
 
+  const courseText = course ? course.text : "lesson.course";
+  const scored = Boolean(localized(`${courseText}.scores`, ""));
+
   function courseSummary() {
-    const notes = [t("lesson.course.scores"), localized("lesson.course.result_link", "")].filter(Boolean).join("\n");
+    const notes = [localized(`${courseText}.scores`, ""), localized("lesson.course.result_link", "")].filter(Boolean).join("\n");
     return `<ul data-act="course" class="flex flex-col gap-1 text-[12.5px]"></ul>
-      <p data-act="values" class="text-heading font-medium text-[12.5px]">${esc(localized("lesson.course.computing", "Calculating the scores…"))}</p>
+      ${scored ? `<p data-act="values" class="text-heading font-medium text-[12.5px]">${esc(localized("lesson.course.computing", "Calculating the scores…"))}</p>` : ""}
       <p data-act="lost-note" class="hidden text-muted text-[12.5px]">${esc(localized("score.lesson_lost_note", ""))}</p>
       <p class="text-muted text-[12.5px] whitespace-pre-line">${esc(notes)}</p>
       <button type="button" data-act="close" class="self-start btn btn-sm btn-blue">${esc(t("lesson.course.close"))}</button>`;
@@ -1323,8 +1386,10 @@ function coach(prefix, declared) {
     const read = await api("/api/wargames/");
     const wargame = read.ok && Array.isArray(read.body) ? read.body.find((one) => one.id === session.scenario) : null;
     const taken = new Set((session.lessons || []).map((one) => one.id));
-    const taught = wargame ? (wargame.foundations || []).filter((one) => taken.has(one.id)) : [];
-    courseWhole = taught.length > 0 && taught.length === wargame.foundations.length;
+    const inCourse = (one) => !course || course.lessons.includes(one.id);
+    const listed = wargame ? (wargame.foundations || []).filter(inCourse) : [];
+    const taught = listed.filter((one) => taken.has(one.id));
+    courseWhole = taught.length > 0 && taught.length === listed.length;
     if (finished) field("step-task").textContent = finishedText();
     list.innerHTML = taught.map((one) => `<li class="flex items-center gap-2" data-course="${esc(one.id)}">
       <span class="text-success font-bold">✓</span><span>${esc(t(one.title))}</span></li>`).join("");
@@ -1474,7 +1539,7 @@ function coach(prefix, declared) {
 
   function finishedText() {
     if (nextLesson) return t("lesson.next.ready", t(`${nextLesson.text}.title`));
-    return t(foundation && courseWhole ? "lesson.course.done" : "lesson.done");
+    return t(foundation && courseWhole ? `${courseText}.done` : "lesson.done");
   }
 
   function nextStyled() {
@@ -1488,7 +1553,7 @@ function coach(prefix, declared) {
     const card = field("lesson-objectives");
     const body = field("lesson-body");
     const aimed = !finished && typeof step.point.panel === "string" && step.point.panel.startsWith("#lesson-objectives");
-    const anchor = aimed ? field("step-card") : field("theory-card");
+    const anchor = aimed ? field("step-card") : field("stretch-card");
     if (typeof body.insertBefore !== "function" || !anchor) return;
     if (anchor.nextElementSibling !== card) body.insertBefore(card, anchor.nextSibling);
     if (aimed && typeof card.scrollIntoView === "function") card.scrollIntoView({ block: "nearest" });
@@ -1544,7 +1609,7 @@ function coach(prefix, declared) {
   }
 
   function targetOf(step) {
-    if (step.solo || finished || done(step)) return null;
+    if (!briefed || step.solo || finished || done(step)) return null;
     return locatorOf(stageOf(step).point);
   }
 
@@ -1893,7 +1958,7 @@ function coach(prefix, declared) {
   if (typeof ResizeObserver === "function") new ResizeObserver(mapFitSoon).observe(field("topology"));
 
   setInterval(() => {
-    if (finished || sessionClosed() || document.hidden) return;
+    if (!briefed || finished || sessionClosed() || document.hidden) return;
     seconds += 1;
     if (seconds >= HELP_AFTER_SECONDS && level < SKIP_OFFERED) offerHint();
     if (POLLED.includes(check().kind) && seconds % POLL_SECONDS === 0) run(steps[at], false);
@@ -1936,10 +2001,19 @@ function coach(prefix, declared) {
   }
   shownSection("steps-card");
   level = Math.min(SKIP_OFFERED, Number(recordOf(steps[at]).hint) || 0);
-  openPane(paneTab(landingPane(steps, at)));
-  show();
-  reach(steps[at]);
-  rulesLearned();
+  const begin = () => {
+    briefed = true;
+    field("lesson-brief").classList.add("hidden");
+    openPane(paneTab(landingPane(steps, at)));
+    show();
+    reach(steps[at]);
+    rulesLearned();
+  };
+  if (briefed) begin();
+  else {
+    briefOpen(course);
+    field("brief-start").addEventListener("click", begin);
+  }
   requestAnimationFrame(tick);
   return (id) => go(steps.findIndex((step) => step.id === id));
 }

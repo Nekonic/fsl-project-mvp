@@ -30,7 +30,13 @@
   .order-chip[aria-pressed="true"] { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-text); }
   .term-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--terminal); color: var(--terminal-text); font-size: 13px; pointer-events: none; }
   .map-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--panel); color: var(--text-muted); font-size: 13px; pointer-events: none; }
-  .note-col.hidden, .term-wait.hidden, .map-wait.hidden { display: none; }
+  .note-col.hidden, .term-wait.hidden, .map-wait.hidden, .ref-col.hidden, .brief.hidden { display: none; }
+  .ref-col { flex: none; width: 300px; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border); }
+  .ref-body { flex: 1 1 0%; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; line-height: 1.6; }
+  .ref-body pre, .brief pre { white-space: pre-wrap; font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; }
+  .brief { position: absolute; inset: 0; z-index: 30; overflow-y: auto; background: var(--page, var(--panel)); display: flex; justify-content: center; padding: 32px 16px; }
+  .brief-card { width: 100%; max-width: 680px; height: max-content; padding: 24px; display: flex; flex-direction: column; gap: 12px; font-size: 13.5px; line-height: 1.65; }
+  @media (max-width: 1023px) { .ref-col { width: auto; max-height: 40%; border-right: 0; border-bottom: 1px solid var(--border); } }
 </style>
 <nav id="rail" class="shrink-0 bg-panel border-b md:border-b-0 md:border-r border-line flex md:flex-col items-center gap-2 px-2 py-1 md:px-0 md:py-3 md:w-[60px]">
   <button class="pane-tab rail-btn" data-pane="elk" data-src="">
@@ -57,12 +63,24 @@
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
     <span data-t="blue.pane.waf"></span>
   </button>
+  <button id="rail-ref" type="button" class="rail-btn hidden" aria-expanded="false" aria-controls="ref-col">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h11a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3z"/><path d="M8 8h6M8 12h6"/></svg>
+    <span data-t="lesson.ref.heading"></span>
+  </button>
   <div id="rail-line" class="rail-line hidden"></div>
   <button class="pane-tab rail-btn hidden" data-pane="kali">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 7 5 5-5 5M12 18h7"/></svg>
     <span>Kali</span>
   </button>
 </nav>
+
+<aside id="ref-col" class="ref-col hidden" aria-label="reference">
+  <header class="px-3 py-2 border-b border-line flex items-center gap-2">
+    <h2 data-t="lesson.ref.heading" class="flex-1 font-bold text-heading text-[13px]"></h2>
+    <button id="ref-close" type="button" data-t-title="lesson.ref.close" class="text-faint hover:text-heading text-[16px] leading-none px-1" aria-label="close">«</button>
+  </header>
+  <div id="ref-list" class="ref-body"></div>
+</aside>
 
 <div id="work" class="work">
   <section id="pane" class="flex-1 min-h-0 min-w-0 relative bg-panel flex flex-col">
@@ -99,6 +117,17 @@
       {% include "console/blue_topology.html" %}
       {% include "console/blue_triage.html" %}
       {% include "console/blue_rules.html" %}
+      <div id="lesson-brief" class="brief hidden">
+        <div class="brief-card card">
+          <p data-t="lesson.brief.kicker" class="text-[12px] font-semibold text-primary"></p>
+          <h2 id="brief-title" class="text-[18px] font-bold text-heading"></h2>
+          <p id="brief-goal" class="text-body whitespace-pre-line"></p>
+          <h3 data-t="lesson.brief.needed" class="font-semibold text-heading"></h3>
+          <div id="brief-ref" class="flex flex-col gap-3"></div>
+          <p data-t="lesson.brief.later" class="text-[12px] text-muted"></p>
+          <button id="brief-start" type="button" data-t="lesson.brief.start" class="self-start btn btn-blue"></button>
+        </div>
+      </div>
       <div id="pane-status" class="absolute inset-0 flex flex-col items-center justify-center text-center gap-2 px-6 text-[13px]">
         <p id="pane-status-title" class="text-heading font-medium"></p>
         <p id="pane-status-note" class="text-muted max-w-md"></p>
@@ -343,12 +372,12 @@
     const declared = Array.isArray(taught.steps) ? taught.steps : [];
     noteLesson(taught);
     objectivesShow(session.lesson_objectives);
+    reference([...new Set([...((session.lesson_course || {}).reference || []), ...(taught.reference || [])])]);
     const goTo = declared.length ? coach(taught.text, declared) : null;
     if (!goTo) {
       openPane(kibana);
       stretchShown(true);
     }
-    theory(taught.text, taught.theory, goTo);
   })();
 </script>
 {% endblock %}

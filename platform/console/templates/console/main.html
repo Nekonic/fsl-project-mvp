@@ -81,7 +81,7 @@
 
   function foundationsBlock(wargame) {
     const id = esc(wargame.id);
-    const units = (wargame.foundations || []).map((taught, index) => `
+    const unit = (taught, index) => `
       <li class="flex flex-col gap-1" data-foundation="${esc(taught.id)}">
         <div class="flex items-center gap-2">
           <span class="badge badge-blue">${esc(t("main.lesson_number", index + 1))}</span>
@@ -90,15 +90,21 @@
         </div>
         <p class="text-body leading-relaxed"><span class="text-muted">${esc(t("main.foundation.learns"))}</span> ${esc(t(taught.learns))}</p>
         <button data-wargame="${id}" data-lesson="true" data-lesson-id="${esc(taught.id)}"
-          data-defense="${esc(taught.defense || "")}" class="start self-start btn btn-sm btn-blue">${esc(t("main.foundation.start"))}</button>
+          data-defense="${esc(taught.defense || "")}" class="start self-start btn btn-sm btn-blue">${esc(t(index ? "main.foundation.resume" : "main.foundation.start"))}</button>
         <p class="hidden text-[12px]" data-last="${id}/${esc(taught.id)}"></p>
-      </li>`).join("");
-    return units ? `
-      <section class="pt-4 mt-4 border-t border-line-subdued" data-foundations="${id}">
-        <h4 class="text-[15px] font-bold text-heading">${esc(t("main.group.foundations"))}</h4>
-        <p class="text-[12px] text-muted mt-0.5">${esc(t("main.group.foundations.note"))}</p>
+      </li>`;
+    const taught = wargame.foundations || [];
+    const grouped = (wargame.courses || []).length ? wargame.courses
+      : taught.length ? [{ id: "", title: "main.group.foundations", goal: "main.group.foundations.note", lessons: taught.map((one) => one.id) }] : [];
+    return grouped.map((course) => {
+      const units = course.lessons.map((lessonId) => taught.find((one) => one.id === lessonId)).filter(Boolean).map(unit).join("");
+      return `
+      <section class="pt-4 mt-4 border-t border-line-subdued" data-foundations="${id}" data-course="${esc(course.id)}">
+        <h4 class="text-[15px] font-bold text-heading">${esc(t(course.title))}</h4>
+        <p class="text-[12px] text-muted mt-0.5">${esc(t(course.goal))}</p>
         <ol class="mt-3 flex flex-col gap-4">${units}</ol>
-      </section>` : "";
+      </section>`;
+    }).join("");
   }
 
   function scenariosBlock(wargame) {

@@ -191,8 +191,16 @@ def switch_of(project, host: str) -> str:
     kinds = _kinds(project)
     return min((name for name in _wired(project).get(host, ()) if kinds[name] == SWITCH), default="")
 
-def route(learner, site: str) -> list[str]:
-    return list(dict.fromkeys([CUSTOMERS, *(learner.roles[role] for role in TRANSIT if role in learner.roles), site]))
+def route(learner, site: str, start: str = CUSTOMERS) -> list[str]:
+    return list(dict.fromkeys([start, *(learner.roles[role] for role in TRANSIT if role in learner.roles), site]))
+
+def addresses(project, learner, found) -> list[dict]:
+    placed = {node["name"]: (node["x"], node["y"]) for node in project["topology"]["nodes"]}
+    named = {switch: _shape(caption)[1].text.strip() for switch, caption in captions(project).items()}
+    return [{"host": host, "zone": named.get(switch, switch), "address": one.address.partition("/")[0]}
+            for (host, switch), one in sorted(link_heads(learner, found).items(),
+                                              key=lambda pair: (placed.get(pair[0][0], (0, 0)), pair[0][1]))
+            if host in placed and switch in placed and switch not in UNLABELLED]
 
 def link_heads(learner, found) -> dict[tuple[str, str], object]:
     held: dict[tuple[str, str], list] = {}
@@ -211,10 +219,6 @@ def address(project, learner, found, host: str, zone: str | None = None) -> list
 def subnet(project, learner, found, host: str) -> list[str]:
     one = link_heads(learner, found).get((host, switch_of(project, host)))
     return [str(ipaddress.ip_interface(one.address).network)] if one else []
-
-def zone_name(project, host: str) -> list[str]:
-    caption = captions(project).get(switch_of(project, host))
-    return [_shape(caption)[1].text.strip()] if caption is not None else []
 
 def hosts_at(learner, found, addresses: list[str]) -> list[str]:
     wanted = {value.partition("/")[0] for value in addresses}

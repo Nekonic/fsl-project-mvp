@@ -363,6 +363,13 @@ def lesson_hints(request, session_id):
     _seed_once_worked(session)
     return _reply(_lesson_state(session, step))
 
+@require_http_methods(["GET"])
+def lesson_addresses(request, session_id):
+    session = get_object_or_404(Session, pk=session_id)
+    _taught(session)
+    return _reply({"addresses": topology.addresses(maps.template(session.scenario), maps.learner(session.scenario),
+                                                   _map_found(session))})
+
 def _lesson_of(session):
     try:
         return wargames.lesson(session.scenario, lesson_id=session.lesson or None)
@@ -659,10 +666,7 @@ def _range_fact(session, check, taught):
     if of == "logs":
         return [name for name in topology.hosts(project) if name == topology.LOG_SERVER]
     if of == "path":
-        return topology.route(drawn, wargames.host(session.scenario))
-    if of == "zone_of":
-        named = topology.zone_name(project, check["host"])
-        return list(dict.fromkeys([*named, *(name.removesuffix("망") for name in named if len(name) > 1)]))
+        return topology.route(drawn, wargames.host(session.scenario), check.get("from", topology.CUSTOMERS))
     found = _map_found(session)
     if of == "host_of":
         return topology.hosts_at(drawn, found, _accepted(session, _taught_check(taught, check["from"]), taught))
@@ -722,8 +726,6 @@ def _request_fact(session, check, taught):
                 "path": list(dict.fromkeys([url.path, url.path.rstrip("/") or "/"])),
                 "parameter": sorted(parse_qs(url.query, keep_blank_values=True)),
                 "param_value": parse_qs(url.query, keep_blank_values=True).get(check.get("name"), [])[:1]}[of]
-    if of == "waf_logged":
-        return [lesson.PRESENT if _waf_records(session, record) else lesson.ABSENT]
     if of == "waf_detected":
         return [lesson.PRESENT if any(detection.source == "modsecurity" for detection in _browsed(session, record))
                 else lesson.ABSENT]
@@ -763,7 +765,7 @@ def _waf_records(session, record):
         for name, value in (((doc.get("transaction") or {}).get("request") or {}).get("headers") or {}).items())]
 
 def _hits(session, check, records):
-    word = next(iter(parse_qs(urlsplit(records[0]["url"]).query).get("q", [])), "") if records else ""
+    word = next(iter(parse_qs(urlsplit(records[-1]["url"]).query).get("q", [])), "") if records else ""
     if not word:
         return []
     since = _lesson_started(session) or session.started_at
@@ -974,7 +976,8 @@ def _lesson_started(session):
 def _next_lesson(session):
     if not session.guidance or session.course_scenario:
         return None
-    known = wargames.foundations(session.scenario)
+    course = wargames.course_of(session.scenario, session.lesson)
+    known = [taught for taught in wargames.foundations(session.scenario) if not course or taught["id"] in course["lessons"]]
     after = next((index + 1 for index, taught in enumerate(known) if taught["id"] == session.lesson), len(known))
     return {"id": known[after]["id"], "text": known[after]["text"]} if after < len(known) else None
 
@@ -1705,14 +1708,21 @@ def _detail(session):
         "kali_terminal": _terminal_url(session), "waf_box": WAF_SHOWN_AS, "waf_rules": str(PurePosixPath(settings.FSL_WAF.rules).parent),
         "site": _site(session), "hints": session.hints, "progress": _progress(session),
         "lessons": session.lessons, "next_lesson": _next_lesson(session),
+        "lesson_course": _lesson_course(session),
         "lesson_objectives": _lesson_objectives(session),
         "course": _course(session),
     }
 
+def _lesson_course(session):
+    course = wargames.course_of(session.scenario, session.lesson) if session.guidance and session.lesson else None
+    return {key: course[key] for key in ("id", "text", "lessons", "reference") if key in course} if course else None
+
 def _course(session):
     if not session.guidance or session.course_scenario:
         return []
-    declared = {taught["id"]: taught for taught in wargames.foundations(session.scenario)}
+    course = wargames.course_of(session.scenario, session.lesson)
+    declared = {taught["id"]: taught for taught in wargames.foundations(session.scenario)
+                if not course or taught["id"] in course["lessons"]}
     taken = session.lessons or [{"id": session.lesson}]
     return [{"id": one["id"], "steps": len(declared[one["id"]].get("steps", [])),
              **lesson.help_counts(lesson.records(session.lesson_steps, one["id"])),
