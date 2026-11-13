@@ -51,53 +51,46 @@ roles:
   gateway: cr-waf
   proxy: cr-kali
   sensor: cr-edge
-  board: cr-wargame-host
-  board-db: cr-wargame-host
-  corp: cr-wargame-host
-  corp-db: cr-wargame-host
   edge: cr-edge
-  wargames: cr-wargame-host
-  estate-sensor: cr-wargame-host
+  board: cr-range
+  board-db: cr-range
+  corp: cr-range
+  corp-db: cr-range
+  wargames: cr-range
+  estate-sensor: cr-range
 
 compose:
+  attacker: kali
+  proxy: kali
+  gateway: waf
+  edge: edge
+  sensor: edge-sensor
   board: board
   board-db: board-db
   corp: corp-wp
   corp-db: corp-db
-  estate-sensor: suricata
+  estate-sensor: estate-sensor
 
 watches:
   sensor: edge
   estate-sensor: wargames
 
 hosts:
-  cr-waf:
-    segments: [estate, mgmt]
-    names: [board.com, corp.com]
-    setup: deploy/waf/setup.sh
-    files: [deploy/waf]
-    rules: /etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
-    reload: sudo nginx -t 2>&1 && sudo systemctl reload nginx 2>&1
-    pid: /run/nginx.pid
-  cr-edge:
-    segments: [internet, estate, mgmt]
-    setup: deploy/opnsense/build.sh
-    files: [deploy/opnsense]
-    uploads: opnsense
-    ssh_user: root
-    rules: /usr/local/etc/suricata/rules/cr.rules
-    reload: /usr/local/bin/suricatasc -c reload-rules /var/run/suricata-command.socket
-  cr-kali:
-    segments: [internet, mgmt]
-    setup: deploy/kali/setup.sh
-    files: [deploy/kali, deploy/proxy/stamp.py]
-  cr-wargame-host:
-    segments: [estate, mgmt]
-    names: [board, corp-wp]
-    setup: deploy/wargame-host/setup.sh
-    files: [deploy/wargame-host, deploy/suricata/suricata.yaml, deploy/suricata/rules/local.rules]
+  cr-range:
+    segments: [mgmt]
+    setup: deploy/range-host/setup.sh
     wargames: [board, corp]
-    publish: {board: 8000, corp-wp: 80}
-    logs: {suricata: /var/log/suricata/eve.json}
     rules: /var/lib/suricata/rules/local.rules
     reload: suricatasc -c reload-rules
+  cr-waf:
+    segments: [estate]
+    names: [board.com, corp.com]
+    rules: /etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
+    reload: nginx -t 2>&1 && nginx -s reload 2>&1
+    pid: /run/nginx.pid
+  cr-edge:
+    segments: [internet, estate]
+    rules: /var/lib/suricata/rules/local.rules
+    reload: suricatasc -c reload-rules
+  cr-kali:
+    segments: [internet]

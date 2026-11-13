@@ -50,7 +50,7 @@ from api.models import (
 from ingest import elastic
 from redteam import harness, tools
 import operator_log
-from range import slot, substrate
+from range import substrate
 from range.ports import Drifted, RangeUnavailable, Shape
 from rules import crs, suricata
 from scoring.correlate import correlate
@@ -127,10 +127,10 @@ def _turn_of(session, adapter=None):
     return _turn(_slot_of(_newest(session)) if adapter.slots > 1 else 1)
 
 def _named_in(number: int, host: str) -> str:
-    return slot.named(host, number) if host in settings.RANGE.hosts else host
+    return host
 
 def _renamed(one, pairs):
-    return [(_named_in(getattr(one, "slot", 1), host), held) for host, held in pairs]
+    return list(pairs)
 
 def _of_slot(number: int):
     return Q(session__slot=number) | (Q(session__slot=None) if number == 1 else Q(pk__in=[]))
@@ -2527,28 +2527,19 @@ def _built_by_the_cloud(adapter, plans: str, what: str):
         )
     return adapter
 
-def _image_plan(plan):
+def _leftovers(found):
     return {
-        "images": [
-            {"host": i.host, "bundle": i.bundle, "state": i.state,
-             "image": i.image, "builder": i.builder, "detail": i.detail}
-            for i in plan.images
-        ],
-        "leftovers": [
-            {"kind": kind, "id": ident, "why": why} for kind, ident, why in plan.leftovers
-        ],
-        "clean": plan.clean,
+        "leftovers": [{"kind": kind, "id": ident, "why": why} for kind, ident, why in found],
+        "clean": not found,
     }
 
-@require_http_methods(["GET", "POST", "DELETE"])
-def range_images(request):
-    adapter = _built_by_the_cloud(substrate(), "plan_images", "images are")
+@require_http_methods(["GET", "DELETE"])
+def range_leftovers(request):
+    adapter = _built_by_the_cloud(substrate(), "plan_leftovers", "leftovers are")
     if request.method == "GET":
-        return _reply(_image_plan(adapter.plan_images()))
+        return _reply(_leftovers(adapter.plan_leftovers()))
     with RULE_CHANGES:
-        if request.method == "POST":
-            return _reply(_image_plan(adapter.ensure_images()))
-        removed = adapter.clean_images()
+        removed = adapter.clean_leftovers()
     return _reply({"removed": [{"kind": kind, "id": ident} for kind, ident in removed]})
 
 def _slot_plan(plan):
@@ -2557,11 +2548,6 @@ def _slot_plan(plan):
     return {
         "slot": number,
         "boot": [named(host) for host in plan.boot],
-        "ports": [
-            {"host": named(p.host), "segment": p.segment, "name": p.name,
-             "addresses": [address for _, address in p.fixed_ips]}
-            for p in plan.ports
-        ],
         "standing": [
             {"host": named(host), "server": server, "status": status}
             for host, server, status in plan.standing
@@ -2578,7 +2564,7 @@ def _slot_plans(plans):
         return each[0]
     return {
         **{key: [entry for plan in each for entry in plan[key]]
-           for key in ("boot", "ports", "standing", "blocked", "stale", "rebuilding")},
+           for key in ("boot", "standing", "blocked", "stale", "rebuilding")},
         "clean": all(plan["clean"] for plan in each),
         "slots": each,
     }
@@ -2619,10 +2605,12 @@ def range_slot(request):
     if request.method == "POST":
         held = _holders()
         return _reply(_slot_plans(_each_slot(
-            request, adapter, lambda one: _ensured(one, held.get(getattr(one, "slot", 1)), _turn(
+            request, adapter, lambda one: _ensured(one, held.get(getattr(one, "slot", 1)) or min(held.values(), default=None), _turn(
                 getattr(one, "slot", 1) if _slotted(adapter) else None)))))
     removed = [step for steps in _each_slot(request, adapter, lambda one: one.teardown_slot())
                for step in steps]
+    if request.GET.get("slot") in (None, "") and hasattr(adapter, "teardown_range_host"):
+        removed += adapter.teardown_range_host()
     return _reply({"removed": [{"kind": kind, "id": ident} for kind, ident in removed]})
 
 def _ensured(adapter, held, turn):
@@ -2717,9 +2705,8 @@ def _range_ready(adapter, plan=None, held=None) -> dict:
     elif unchecked:
         phase = "RESETTING"
         blocked.append(
-            "the range is resetting after a session closed or a VM was rebuilt onto a newer "
-            "image (each VM rebuilt or reset in place, then configured); wait for it, no need "
-            "to call configure"
+            "the slot is resetting after a session closed (its Kali, WAF and targets recreated, "
+            "its sensors back on the baseline rules); wait for it, no need to call configure"
         )
     elif resetting["state"] == reset.FAILED:
         phase = "RESET_FAILED"
@@ -2732,8 +2719,8 @@ def _range_ready(adapter, plan=None, held=None) -> dict:
         blocked += list(plan.blocked) or [f"{host} is not standing" for host in plan.boot]
     elif plan.stale:
         phase = "STALE"
-        blocked += [f"{host} runs an older image than the ready one; POST /api/range/slot/ rebuilds it"
-                    for host in plan.stale]
+        blocked += [f"{host} runs images or slot files older than the platform's; POST "
+                    f"/api/range/slot/ replaces it" for host in plan.stale]
     elif not plan.active:
         phase = "REBUILDING"
         blocked += [f"{host} is {status}" for host, _, status in plan.standing
