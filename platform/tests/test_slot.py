@@ -17,7 +17,7 @@ def fabric_standing():
     for want in fabric.wanted(DECLARED, INSIDE):
         net_id = f"net-{want.segment}"
         if not any(n["id"] == net_id for n in networks):
-            networks.append({"id": net_id, "name": f"fsl-{want.segment}",
+            networks.append({"id": net_id, "name": f"cr-{want.segment}",
                              "tags": [f"{fabric.TAG}={want.segment}"]})
         subnets.append({"id": f"sub-{want.name}", "network_id": net_id, "cidr": want.cidr,
                         "gateway_ip": want.cidr.replace("0/24", "1") if want.gateway else None})
@@ -51,7 +51,7 @@ def test_the_edge_holds_every_origins_gateway_and_the_estate_gateway():
     assert sorted(address for _, address in internet.fixed_ips) == sorted(
         o.subnet.replace("0/24", "1") for o in DECLARED.origins
     )
-    assert {subnet for subnet, _ in internet.fixed_ips} == {f"sub-fsl-{o.id}" for o in DECLARED.origins}
+    assert {subnet for subnet, _ in internet.fixed_ips} == {f"sub-cr-{o.id}" for o in DECLARED.origins}
     assert [address for _, address in estate.fixed_ips] == ["10.30.0.1"], (
         "the estate's hosts default-route to the edge, so the edge has to "
         "answer at the estate's gateway address"
@@ -73,39 +73,39 @@ def test_the_attacker_holds_the_declared_per_country_addresses_on_the_internet()
     for origin in DECLARED.origins:
         wanted = slot.origin_addresses(origin.subnet, origin.addresses)
         assert set(wanted) <= set(held), origin.id
-        assert sorted(by_subnet[f"sub-fsl-{origin.id}"]) == sorted(wanted), origin.id
+        assert sorted(by_subnet[f"sub-cr-{origin.id}"]) == sorted(wanted), origin.id
         assert all(a not in wanted for a in (origin.subnet.replace("0/24", "1"),)), (
             "the gateway .1 is the edge's; the attacker must not claim it"
         )
 
 def test_a_host_standing_is_not_booted_again_and_its_ports_stay():
-    servers = [{"id": "srv-1", "name": "fsl-wargame-host", "status": "ACTIVE",
-                "metadata": {slot.HOST: "fsl-wargame-host"}}]
+    servers = [{"id": "srv-1", "name": "cr-wargame-host", "status": "ACTIVE",
+                "metadata": {slot.HOST: "cr-wargame-host"}}]
 
     plan = planned(servers=servers)
 
-    assert "fsl-wargame-host" not in plan.boot
-    assert ("fsl-wargame-host", "srv-1", "ACTIVE") in plan.standing
-    assert not [p for p in plan.ports if p.host == "fsl-wargame-host"]
+    assert "cr-wargame-host" not in plan.boot
+    assert ("cr-wargame-host", "srv-1", "ACTIVE") in plan.standing
+    assert not [p for p in plan.ports if p.host == "cr-wargame-host"]
 
 def test_a_port_left_from_an_earlier_try_is_used_not_made_again():
-    left = [{"id": "port-9", "name": "fsl-wargame-host.estate", "network_id": "net-estate"}]
+    left = [{"id": "port-9", "name": "cr-wargame-host.estate", "network_id": "net-estate"}]
 
     plan = planned(ports=left)
 
-    assert "fsl-wargame-host.estate" not in {p.name for p in plan.ports}
-    assert "fsl-wargame-host" in plan.boot
+    assert "cr-wargame-host.estate" not in {p.name for p in plan.ports}
+    assert "cr-wargame-host" in plan.boot
 
 def test_a_host_that_is_neither_edge_nor_attacker_may_not_stand_on_the_internet(tmp_path):
     document = yaml.safe_load((ROOT / "platform/range/declaration.yaml").read_text())
-    document["hosts"]["fsl-wargame-host"]["segments"] = ["estate", "mgmt", "internet"]
+    document["hosts"]["cr-wargame-host"]["segments"] = ["estate", "mgmt", "internet"]
     path = tmp_path / "declaration.yaml"
     path.write_text(yaml.safe_dump(document))
     networks, subnets = fabric_standing()
 
     plan = slot.plan(declared.read(path), networks, subnets, [], [], READY)
 
-    assert any("fsl-wargame-host" in reason and "internet" in reason for reason in plan.blocked)
+    assert any("cr-wargame-host" in reason and "internet" in reason for reason in plan.blocked)
 
 def config(**given):
     text = base64.b64decode(slot.user_data(**given)).decode()
@@ -134,11 +134,11 @@ def test_the_gateway_puts_every_address_of_its_internet_port_on_that_nic_each_bo
     assert "73.0.0.1/24" in script and "117.192.0.1/24" in script
 
 @pytest.mark.parametrize("plan, active", [
-    (slot.Plan(standing=(("fsl-waf", "s1", "ACTIVE"), ("fsl-juice-shop", "s2", "ACTIVE"))), True),
-    (slot.Plan(standing=(("fsl-waf", "s1", "ACTIVE"), ("fsl-juice-shop", "s2", "REBUILD"))), False),
-    (slot.Plan(standing=(("fsl-waf", "s1", "BUILD"),)), False),
-    (slot.Plan(boot=("fsl-wiki",), standing=(("fsl-waf", "s1", "ACTIVE"),)), False),
-    (slot.Plan(standing=(("fsl-waf", "s1", "ACTIVE"),), blocked=("image fsl-wargame-host is not ready",)), False),
+    (slot.Plan(standing=(("cr-waf", "s1", "ACTIVE"), ("cr-juice-shop", "s2", "ACTIVE"))), True),
+    (slot.Plan(standing=(("cr-waf", "s1", "ACTIVE"), ("cr-juice-shop", "s2", "REBUILD"))), False),
+    (slot.Plan(standing=(("cr-waf", "s1", "BUILD"),)), False),
+    (slot.Plan(boot=("cr-wiki",), standing=(("cr-waf", "s1", "ACTIVE"),)), False),
+    (slot.Plan(standing=(("cr-waf", "s1", "ACTIVE"),), blocked=("image cr-wargame-host is not ready",)), False),
     (slot.Plan(), False),
 ], ids=["standing", "rebuilding", "booting", "to-boot", "blocked", "empty"])
 def test_a_slot_is_active_only_when_every_host_stands_active_and_nothing_blocks_it(plan, active):

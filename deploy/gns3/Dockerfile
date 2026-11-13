@@ -34,14 +34,14 @@ RUN skills="$(python -c 'import gns3server, pathlib; print(pathlib.Path(gns3serv
  && grep -q '"enabled": False,' "$skills"
 
 COPY --from=ubridge /usr/local/bin/ubridge /usr/local/bin/ubridge
-COPY --from=ubridge /symbols /opt/fsl-gns3/symbols
+COPY --from=ubridge /symbols /opt/cr-gns3/symbols
 RUN setcap cap_net_admin,cap_net_raw+ep /usr/local/bin/ubridge
 
-COPY entrypoint.sh provision.py auditor.html symbols.py /opt/fsl-gns3/
-COPY --from=ubridge /dragon/kali-dragon-black.svg /opt/fsl-gns3/kali-dragon-black.svg
+COPY entrypoint.sh provision.py auditor.html symbols.py /opt/cr-gns3/
+COPY --from=ubridge /dragon/kali-dragon-black.svg /opt/cr-gns3/kali-dragon-black.svg
 ARG KALI_PRESS_PACK
-RUN python /opt/fsl-gns3/symbols.py /opt/fsl-gns3/kali-dragon-black.svg "${KALI_PRESS_PACK}" /opt/fsl-gns3/symbols
+RUN python /opt/cr-gns3/symbols.py /opt/cr-gns3/kali-dragon-black.svg "${KALI_PRESS_PACK}" /opt/cr-gns3/symbols
 
 EXPOSE 3080
 
-ENTRYPOINT ["/opt/fsl-gns3/entrypoint.sh"]
+ENTRYPOINT ["/opt/cr-gns3/entrypoint.sh"]

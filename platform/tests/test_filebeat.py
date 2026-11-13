@@ -53,7 +53,7 @@ def test_a_syslog_line_from_another_program_is_dropped_so_the_index_holds_only_t
     assert heard["processors"][-1] == {"drop_event": {"when": {"not": {"has_fields": ["event.module"]}}}}, (
         "the learner's Discover shows every document of the index; the hosts' own system log lines are no events"
     )
-    assert "fsl_source" not in yaml.safe_dump(heard["processors"])
+    assert "cr_source" not in yaml.safe_dump(heard["processors"])
 
 
 def test_the_data_stream_filebeat_makes_for_its_template_matches_the_template_s_pattern():
@@ -94,8 +94,8 @@ def slot_rule():
 
 
 @pytest.mark.parametrize("hostname, slot", [
-    ("firewall.localdomain", "1"), ("fsl-waf", "1"), ("fsl-wargame-host", "1"),
-    ("firewall-2.localdomain", "2"), ("fsl-waf-2", "2"), ("fsl-wargame-host-2", "2"),
+    ("firewall.localdomain", "1"), ("cr-waf", "1"), ("cr-wargame-host", "1"),
+    ("firewall-2.localdomain", "2"), ("cr-waf-2", "2"), ("cr-wargame-host-2", "2"),
 ])
 def test_a_range_vm_s_syslog_is_tagged_with_the_slot_its_hostname_names(hostname, slot):
     found = slot_rule().match(hostname)
@@ -107,9 +107,9 @@ def test_a_slot_s_logs_go_to_that_slot_s_index_and_a_session_s_own_stack_to_its_
     config = yaml.safe_load(FILEBEAT.read_text())
     output = config["output.elasticsearch"]
 
-    assert output["index"] == "logs-${FSL_SESSION:shared}-sensors"
-    assert output["indices"] == [{"index": "logs-%{[fsl_slot]}-sensors",
-                                  "when.has_fields": ["fsl_slot"]}], (
+    assert output["index"] == "logs-${CR_SESSION:shared}-sensors"
+    assert output["indices"] == [{"index": "logs-%{[cr_slot]}-sensors",
+                                  "when.has_fields": ["cr_slot"]}], (
         "two slots send from the same origin addresses at once; one index for both would "
         "score each session on the other's alerts"
     )

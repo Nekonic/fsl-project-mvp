@@ -38,8 +38,8 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ${{ env.REGISTRY }}/fsl-${{ matrix.name }}:${{ github.sha }}
-            ${{ github.ref == 'refs/heads/dev' && format('{0}/fsl-{1}:dev', env.REGISTRY, matrix.name) || '' }}
+            ${{ env.REGISTRY }}/cr-${{ matrix.name }}:${{ github.sha }}
+            ${{ github.ref == 'refs/heads/dev' && format('{0}/cr-{1}:dev', env.REGISTRY, matrix.name) || '' }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}

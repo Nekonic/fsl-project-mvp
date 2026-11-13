@@ -15,25 +15,25 @@ SCRIPT = "deploy/opnsense/configure.sh"
 RULES = "deploy/suricata/rules/local.rules"
 UPLOADS = "opnsense"
 HOSTNAME = "firewall"
-IMAGE_SETTINGS = "fsl/opnsense.conf"
-IMAGE_CONFIG = "fsl/config.xml"
+IMAGE_SETTINGS = "cr/opnsense.conf"
+IMAGE_CONFIG = "cr/config.xml"
 IMAGE_PROPERTIES = {"hw_vif_model": "virtio", "hw_disk_bus": "virtio", "os_distro": "freebsd",
                     "min_ram": 3072}
-STAGED = {"config": "/tmp/fsl-config.xml", "include": "/tmp/fsl-suricata.yaml",
-          "rules": "/tmp/fsl.rules"}
-INSTALLED = {"config": "/conf/config.xml", "include": "/usr/local/etc/suricata/conf.d/fsl.yaml",
-             "rules": "/usr/local/etc/suricata/rules/fsl.rules"}
-SETTLED = "/conf/fsl-settled"
+STAGED = {"config": "/tmp/cr-config.xml", "include": "/tmp/cr-suricata.yaml",
+          "rules": "/tmp/cr.rules"}
+INSTALLED = {"config": "/conf/config.xml", "include": "/usr/local/etc/suricata/conf.d/cr.yaml",
+             "rules": "/usr/local/etc/suricata/rules/cr.rules"}
+SETTLED = "/conf/cr-settled"
 SOCKET = "/var/run/suricata-command.socket"
 SENSOR_ANSWER = 60
 WAN = "vtnet0"
-REPORTS = "fsl-edge "
-HOLDS = "fsl-edge wan "
-SENSING = "fsl-edge sensor "
-BOOTED = "fsl-edge booted "
-REBOOTING = "fsl-edge rebooting"
-RESET = "fsl-edge reset"
-DRIFTED = "fsl-edge drifted"
+REPORTS = "cr-edge "
+HOLDS = "cr-edge wan "
+SENSING = "cr-edge sensor "
+BOOTED = "cr-edge booted "
+REBOOTING = "cr-edge rebooting"
+RESET = "cr-edge reset"
+DRIFTED = "cr-edge drifted"
 INTERFACES = ("wan", "lan", "opt1")
 MANAGEMENT_INTERFACE = "opt1"
 NAMESPACE = uuid.UUID("6f1c7e3a-5d0b-4c8e-9a51-2b7d4e0f9c11")
@@ -97,7 +97,7 @@ def _vip(parent, alias: dict):
         parent, "vip", uuid=str(uuid.uuid5(NAMESPACE, f"vip {alias['id']}")))
     for name, text in (("interface", "wan"), ("mode", "ipalias"), ("type", "single"),
                        ("subnet", alias["address"]), ("subnet_bits", alias["bits"]),
-                       ("descr", f"fsl origin {alias['id']}")):
+                       ("descr", f"cr origin {alias['id']}")):
         _set(vip, name, text)
 
 
@@ -107,7 +107,7 @@ def _destination(parent, collector: dict):
     for name, text in (("enabled", "1"), ("transport", "udp4"), ("program", ""),
                        ("level", LEVELS), ("facility", ""), ("hostname", collector["host"]),
                        ("port", str(collector["port"])), ("rfc5424", "1"),
-                       ("description", "fsl collector")):
+                       ("description", "cr collector")):
         _set(destination, name, text)
 
 
@@ -154,7 +154,7 @@ def render(template: str, wanted: dict) -> str:
 
 
 def _heredoc(path: str, content: str) -> str:
-    marker = "FSL_" + uuid.uuid5(NAMESPACE, content).hex.upper()
+    marker = "CR_" + uuid.uuid5(NAMESPACE, content).hex.upper()
     if marker in content:
         raise RangeUnavailable(f"{path} holds its own end marker")
     return f"cat > {path} <<'{marker}'\n{content}{'' if content.endswith(chr(10)) else chr(10)}{marker}\n"
@@ -234,8 +234,8 @@ def verify() -> list[str]:
         f"else echo '{SENSING}{WAN} stopped'; fi; "
         "php -r '$c = simplexml_load_file(\"/conf/config.xml\"); "
         "foreach ($c->OPNsense->Syslog->destinations->destination as $d) "
-        "{ if ((string)$d->enabled === \"1\") echo \"fsl-edge logs \", $d->hostname, \":\", $d->port, \"\\n\"; }'; "
-        f"echo \"fsl-edge wanrule $(pfctl -sr 2>/dev/null | grep -c 'pass in quick on {WAN} inet ')\""
+        "{ if ((string)$d->enabled === \"1\") echo \"cr-edge logs \", $d->hostname, \":\", $d->port, \"\\n\"; }'; "
+        f"echo \"cr-edge wanrule $(pfctl -sr 2>/dev/null | grep -c 'pass in quick on {WAN} inet ')\""
     )]
 
 
@@ -267,7 +267,7 @@ def reported(output: str) -> tuple[str, ...]:
 
 def wan_rule_loaded(output: str) -> bool:
     return any(
-        line.startswith("fsl-edge wanrule ") and line.split()[-1].isdigit()
+        line.startswith("cr-edge wanrule ") and line.split()[-1].isdigit()
         and int(line.split()[-1]) > 0
         for line in output.splitlines()
     )

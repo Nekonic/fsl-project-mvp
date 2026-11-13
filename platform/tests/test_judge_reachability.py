@@ -10,15 +10,15 @@ pytestmark = pytest.mark.django_db
 SHAPE = Shape(
     segments=(
         Segment(id="edge", name="Internet", origin="Moscow, Russia",
-                subnet="5.188.10.0/24", network="fsl_edge",
+                subnet="5.188.10.0/24", network="cr_edge",
                 gateway="5.188.10.1",
-                nodes=(Node("fsl-kali", "5.188.10.2"),
-                       Node("fsl-proxy", "5.188.10.3"),
-                       Node("fsl-platform", "5.188.10.5"))),
+                nodes=(Node("cr-kali", "5.188.10.2"),
+                       Node("cr-proxy", "5.188.10.3"),
+                       Node("cr-platform", "5.188.10.5"))),
         Segment(id="estate", name="Application estate", subnet="172.30.0.0/24",
-                network="fsl_estate", gateway="172.30.0.1",
-                nodes=(Node("fsl-juice-shop", "172.30.0.2"),
-                       Node("fsl-platform", "172.30.0.4"))),
+                network="cr_estate", gateway="172.30.0.1",
+                nodes=(Node("cr-juice-shop", "172.30.0.2"),
+                       Node("cr-platform", "172.30.0.4"))),
     ),
     sensors=(),
 )
@@ -145,7 +145,7 @@ def test_a_stopped_sensor_does_not_open_the_judge_to_the_range(client):
 
     class SensorDown(Stub):
         def describe(self):
-            raise RangeUnavailable("fsl-suricata is declared to watch fsl-waf and stands in nothing")
+            raise RangeUnavailable("cr-suricata is declared to watch cr-waf and stands in nothing")
 
     with ranged(SensorDown):
         answered = get(client, "/api/rules/", "5.188.10.2")

@@ -23,5 +23,5 @@ def sideloaded_image(request, name):
     adapter = substrate()
     image = adapter.sideloaded_image(name) if hasattr(adapter, "sideloaded_image") else ""
     if not image:
-        raise Http404(f"no wargame image fsl-{name} is sideloaded on this platform")
+        raise Http404(f"no wargame image cr-{name} is sideloaded on this platform")
     return StreamingHttpResponse(_streamed(wargame_host.saved(image)), content_type="application/x-tar")

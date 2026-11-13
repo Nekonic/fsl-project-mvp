@@ -27,13 +27,13 @@ class NoTraffic(LookupError):
     pass
 
 def declared(scenario: str) -> dict:
-    path = Path(settings.FSL_SOURCE) / "wargames" / scenario / "traffic.yaml"
+    path = Path(settings.CR_SOURCE) / "wargames" / scenario / "traffic.yaml"
     if scenario not in wargames.WARGAMES or not path.exists():
         raise NoTraffic(f"{scenario!r} declares no customers (wargames/{scenario}/traffic.yaml)")
     return traffic.checked(yaml.safe_load(path.read_text(encoding="utf-8")), path)
 
 def _program() -> str:
-    return (Path(settings.FSL_SOURCE) / PROGRAM).read_text(encoding="utf-8")
+    return (Path(settings.CR_SOURCE) / PROGRAM).read_text(encoding="utf-8")
 
 def _segments(state: dict) -> list[str]:
     return sorted({persona["origin"] for persona in state.get("personas") or []})

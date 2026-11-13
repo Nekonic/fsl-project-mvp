@@ -1,6 +1,6 @@
 #!/bin/sh
 host="$1"
-shown="${host#fsl-}"
+shown="${host#cr-}"
 log="${TERMINAL_LOG:-/data/terminal.log}"
 : >> "$log" 2>/dev/null || log=/dev/null
 failed() {

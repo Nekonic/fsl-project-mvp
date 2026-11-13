@@ -54,7 +54,7 @@ def test_the_display_nodes_run_the_one_image_provisioning_starts_and_no_image_ta
     entrypoint = (GNS3 / "entrypoint.sh").read_text()
     provision = (GNS3 / "provision.py").read_text()
 
-    assert "FSL_IMAGE_TAG" not in gns3["environment"] and "sed " not in entrypoint
+    assert "CR_IMAGE_TAG" not in gns3["environment"] and "sed " not in entrypoint
     assert f'DISPLAY_IMAGE = "{topology.DISPLAY_IMAGE}"' in provision
     for path in TOPOLOGY.glob("*.gns3"):
         images = {node["properties"].get("image") for node in json.loads(path.read_text())["topology"]["nodes"]
@@ -64,18 +64,18 @@ def test_the_display_nodes_run_the_one_image_provisioning_starts_and_no_image_ta
 def test_the_gns3_server_is_published_like_the_platform_and_holds_only_the_maps_the_platform_loads():
     gns3 = service()
 
-    assert gns3["ports"] == ["${FSL_PUBLISH:-127.0.0.1}:3080:3080"]
+    assert gns3["ports"] == ["${CR_PUBLISH:-127.0.0.1}:3080:3080"]
     assert not [volume for volume in gns3["volumes"] if "topology" in volume], (
         "a template draws every wargame; only a session's own map is loaded, by the platform"
     )
     assert gns3["networks"] == ["mgmt"]
-    assert composed.services()["platform"]["environment"]["FSL_GNS3_URL"] == "http://gns3:3080"
+    assert composed.services()["platform"]["environment"]["CR_GNS3_URL"] == "http://gns3:3080"
 
 def test_no_project_is_copied_in_before_the_server_starts_and_the_admin_password_is_set_first():
     entrypoint = (GNS3 / "entrypoint.sh").read_text()
 
     assert ".gns3" not in entrypoint and "/topology" not in entrypoint
-    assert "default_admin_password = $FSL_GNS3_ADMIN_PASSWORD" in entrypoint, (
+    assert "default_admin_password = $CR_GNS3_ADMIN_PASSWORD" in entrypoint, (
         "the admin password only takes effect when the controller database is first made"
     )
     assert entrypoint.index("default_admin_password") < entrypoint.index("gns3server --config")
@@ -102,7 +102,7 @@ def provision(monkeypatch, tmp_path):
     stub = types.ModuleType("gns3server")
     stub.__file__ = str(tmp_path / "gns3server" / "__init__.py")
     monkeypatch.setitem(sys.modules, "gns3server", stub)
-    spec = importlib.util.spec_from_file_location("fsl_gns3_provision", GNS3 / "provision.py")
+    spec = importlib.util.spec_from_file_location("cr_gns3_provision", GNS3 / "provision.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -113,7 +113,7 @@ def test_provisioning_starts_every_stopped_display_node_of_an_open_project_and_n
     listed = [{"node_id": "n1", "name": "waf", "status": "stopped", "properties": {"image": provision.DISPLAY_IMAGE}},
               {"node_id": "n2", "name": "attacker", "status": "started", "properties": {"image": provision.DISPLAY_IMAGE}},
               {"node_id": "n3", "name": "service-sw", "status": "started", "properties": {}},
-              {"node_id": "n4", "name": "fsl-kali", "status": "stopped", "properties": {"image": "kalilinux/kali"}}]
+              {"node_id": "n4", "name": "cr-kali", "status": "stopped", "properties": {"image": "kalilinux/kali"}}]
 
     def call(method, path, body=None, token=""):
         calls.append((method, path))
@@ -130,8 +130,8 @@ def test_the_platform_reads_the_gns3_admin_password_it_needs_to_load_a_range_s_o
     platform = composed.services()["platform"]
     entrypoint = (GNS3 / "entrypoint.sh").read_text()
 
-    assert "/var/lib/fsl-gns3:/run/fsl-gns3:ro" in platform["volumes"]
-    assert platform["environment"]["FSL_GNS3_ADMIN_PASSWORD"] == "${FSL_GNS3_ADMIN_PASSWORD:-}"
+    assert "/var/lib/cr-gns3:/run/cr-gns3:ro" in platform["volumes"]
+    assert platform["environment"]["CR_GNS3_ADMIN_PASSWORD"] == "${CR_GNS3_ADMIN_PASSWORD:-}"
     assert 'chgrp "$gid" "$file"' in entrypoint and 'chmod 640 "$file"' in entrypoint, (
         "only the docker socket's group, which the platform's user joins and which is root on the host, reads it"
     )
@@ -141,21 +141,21 @@ def test_the_learner_map_page_and_password_carry_no_platform_name_and_the_passwo
     entrypoint = (GNS3 / "entrypoint.sh").read_text()
     platform = composed.services()["platform"]
 
-    assert 'BOOTSTRAP = "map.html"' in provision and "fsl-auditor" not in provision
-    assert "fsl-auditor" not in json.dumps(composed.document())
+    assert 'BOOTSTRAP = "map.html"' in provision and "cr-auditor" not in provision
+    assert "cr-auditor" not in json.dumps(composed.document())
     assert 'generated admin-password' in entrypoint and 'generated auditor-password' in entrypoint
-    assert platform["environment"]["FSL_GNS3_AUDITOR_PASSWORD"] == "${FSL_GNS3_AUDITOR_PASSWORD:-}"
-    assert service()["environment"]["FSL_GNS3_AUDITOR_PASSWORD"] == "${FSL_GNS3_AUDITOR_PASSWORD:-}"
+    assert platform["environment"]["CR_GNS3_AUDITOR_PASSWORD"] == "${CR_GNS3_AUDITOR_PASSWORD:-}"
+    assert service()["environment"]["CR_GNS3_AUDITOR_PASSWORD"] == "${CR_GNS3_AUDITOR_PASSWORD:-}"
 
 def test_the_platform_signs_in_as_the_learner_with_the_generated_password_file_when_none_is_set(settings, tmp_path):
     import gns3
 
     secret = tmp_path / "auditor-password"
     secret.write_text("generated\n")
-    settings.FSL_GNS3_PASSWORD = ""
-    settings.FSL_GNS3_PASSWORD_FILE = secret
+    settings.CR_GNS3_PASSWORD = ""
+    settings.CR_GNS3_PASSWORD_FILE = secret
 
     assert gns3._learner_password() == "generated"
 
-    settings.FSL_GNS3_PASSWORD = "given"
+    settings.CR_GNS3_PASSWORD = "given"
     assert gns3._learner_password() == "given"

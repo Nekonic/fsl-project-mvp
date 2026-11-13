@@ -57,7 +57,7 @@ def test_an_attack_that_could_not_be_sent_is_503_with_its_reason_and_records_not
     from range.ports import RangeUnavailable
     from redteam.harness import ToolUnavailable
 
-    reason = "no ssh to fsl-kali: Host key verification failed."
+    reason = "no ssh to cr-kali: Host key verification failed."
     raised = ToolUnavailable(reason) if refusal == "tool" else RangeUnavailable(reason)
     with patch("api.views.harness.fire", side_effect=raised):
         response = client.post_json(

@@ -13,12 +13,12 @@ from range.ports import Node, Ran, Segment
 pytestmark = pytest.mark.django_db
 
 SEGMENTS = (
-    Segment(id="ru", name="Internet", origin="Russia", subnet="5.188.10.0/24", network="fsl_edge",
-            nodes=(Node("fsl-kali", "5.188.10.5"), Node("fsl-waf", "5.188.10.9"))),
-    Segment(id="us", name="Internet", origin="United States", subnet="73.0.0.0/24", network="fsl_edge-us",
-            nodes=(Node("fsl-kali", "73.0.0.5"), Node("fsl-kali", "73.0.0.6"), Node("fsl-waf", "73.0.0.9"))),
-    Segment(id="hk", name="Internet", origin="Hong Kong", subnet="103.152.220.0/24", network="fsl_edge-hk",
-            nodes=(Node("fsl-kali", "103.152.220.5"), Node("fsl-kali", "103.152.220.6"), Node("fsl-waf", "103.152.220.9"))),
+    Segment(id="ru", name="Internet", origin="Russia", subnet="5.188.10.0/24", network="cr_edge",
+            nodes=(Node("cr-kali", "5.188.10.5"), Node("cr-waf", "5.188.10.9"))),
+    Segment(id="us", name="Internet", origin="United States", subnet="73.0.0.0/24", network="cr_edge-us",
+            nodes=(Node("cr-kali", "73.0.0.5"), Node("cr-kali", "73.0.0.6"), Node("cr-waf", "73.0.0.9"))),
+    Segment(id="hk", name="Internet", origin="Hong Kong", subnet="103.152.220.0/24", network="cr_edge-hk",
+            nodes=(Node("cr-kali", "103.152.220.5"), Node("cr-kali", "103.152.220.6"), Node("cr-waf", "103.152.220.9"))),
 )
 
 class Box:
@@ -132,7 +132,7 @@ def test_a_close_with_the_box_unreachable_still_closes_and_says_why(client, sess
     put(client, session, {})
 
     def gone(argv, stdin=None, timeout=60.0):
-        raise RangeUnavailable("fsl-kali at 10.31.0.180 never reported the command finishing")
+        raise RangeUnavailable("cr-kali at 10.31.0.180 never reported the command finishing")
 
     the_range.box = gone
     closed = client.post_json(f"/api/sessions/{session.pk}/close/")

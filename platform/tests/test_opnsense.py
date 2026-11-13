@@ -11,7 +11,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 OS = declared.read()
 INSIDE = cloud.read(cloud.EXAMPLE).inside
 COLLECTOR = ("10.31.0.195", 5140)
-KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlatformKey fsl-platform"
+KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlatformKey cr-platform"
 
 
 def _segments():
@@ -54,7 +54,7 @@ def test_the_configured_edge_keeps_time_by_the_platform_on_management_alone():
     assert root.findtext("ntpd/iburst") == "10.31.0.195"
     assert root.findtext("ntpd/interface") == "opt1", (
         "ntpd answers on every address it listens on; bound to management, only the "
-        "platform reaches it, past fsl-mgmt"
+        "platform reaches it, past cr-mgmt"
     )
 
 
@@ -138,17 +138,17 @@ def test_the_sensor_sends_alerts_and_http_records_to_syslog_as_suricata():
 
 
 def test_the_lines_the_edge_printed_are_read_back_and_a_stopped_sensor_or_empty_pf_is_not_done():
-    printed = ("fsl-edge booted 1760000000\nfsl-edge wan 73.0.0.1 120.96.0.1 \n"
-               "fsl-edge sensor vtnet0 running\nfsl-edge logs 10.31.0.195:5140\n"
-               "fsl-edge wanrule 2\n")
+    printed = ("cr-edge booted 1760000000\ncr-edge wan 73.0.0.1 120.96.0.1 \n"
+               "cr-edge sensor vtnet0 running\ncr-edge logs 10.31.0.195:5140\n"
+               "cr-edge wanrule 2\n")
 
     assert opnsense.booted(printed) == "1760000000"
     assert opnsense.held(printed) == {"73.0.0.1", "120.96.0.1"}
     assert opnsense.sensing(printed)
     assert "logs 10.31.0.195:5140" in opnsense.reported(printed)
     assert opnsense.wan_rule_loaded(printed)
-    assert not opnsense.sensing("fsl-edge sensor vtnet0 stopped\n")
-    assert not opnsense.wan_rule_loaded("fsl-edge wanrule 0\n")
+    assert not opnsense.sensing("cr-edge sensor vtnet0 stopped\n")
+    assert not opnsense.wan_rule_loaded("cr-edge wanrule 0\n")
     assert opnsense.held("sh: php: not found\n") == set()
     assert opnsense.booted("") == ""
 

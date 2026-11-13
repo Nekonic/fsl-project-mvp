@@ -17,12 +17,12 @@ from range.ports import Drifted, Node, Ran, Segment, Shape
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OS = declared.read()
-HOST = "fsl-wargame-host"
+HOST = "cr-wargame-host"
 ENTRY = OS.hosts[HOST]
 SPEC = openstack.Cloud(
     keystone="http://keystone:5000", neutron="http://neutron:9696",
-    nova="http://nova:8774/v2.1", glance="http://glance:9292", project="fsl",
-    user="fsl", ssh_user="ubuntu", ssh_key="/keys/fsl",
+    nova="http://nova:8774/v2.1", glance="http://glance:9292", project="cr",
+    user="cr", ssh_user="ubuntu", ssh_key="/keys/cr",
 )
 
 def _adapter(tag="c0ffee", mtu=1450, sideloaded=frozenset()):
@@ -49,7 +49,7 @@ def test_the_host_runs_the_same_ghcr_images_as_docker_at_the_platforms_tag():
 
     shipped = _shipped("board")
 
-    assert shipped["services"]["board"]["image"] == "ghcr.io/nekonic/fsl-board:c0ffee"
+    assert shipped["services"]["board"]["image"] == "ghcr.io/nekonic/cr-board:c0ffee"
     assert shipped["services"]["board-db"]["image"] == compose["services"]["board-db"]["image"]
     assert set(shipped["services"]) == set(compose["services"])
 
@@ -75,7 +75,7 @@ def test_the_board_is_published_where_the_ground_truth_reader_and_the_waf_expect
     assert ENTRY.publish["board"] == urlsplit(settings.BOARD_API_URL).port
     assert "proxy_pass http://board:8000;" in (ROOT / "deploy/waf/board.com.conf").read_text()
     assert {"board", OS.compose["corp"]} <= set(ENTRY.names), "the WAF resolves both to the host through /etc/hosts"
-    assert {"board.com", "corp.com"} <= set(OS.hosts["fsl-waf"].names)
+    assert {"board.com", "corp.com"} <= set(OS.hosts["cr-waf"].names)
 
 def test_the_containers_networks_take_the_tenant_mtu():
     files = wargame_host.generated(ROOT, HOST, ENTRY.wargames, ENTRY.publish, "c0ffee", 1450)
@@ -107,7 +107,7 @@ def test_an_image_sideloaded_for_the_platform_alone_leaves_the_host_image_as_ghc
         ROOT, HOST, ENTRY.wargames, ENTRY.publish, "c0ffee", 1450)
 
 def test_a_sideloaded_board_reaches_the_host_image_from_the_platform_and_its_image_id_is_in_the_digest(monkeypatch):
-    held = {"ghcr.io/nekonic/fsl-board:c0ffee": "sha256:" + "a" * 64}
+    held = {"ghcr.io/nekonic/cr-board:c0ffee": "sha256:" + "a" * 64}
     monkeypatch.setattr(wargame_host, "local_image_id", lambda image: held[image])
     monkeypatch.setattr(openstack.OpenStack, "_platform_address", lambda self, why: "10.0.0.5")
     built = _adapter(sideloaded={"board", "platform"})
@@ -115,15 +115,15 @@ def test_a_sideloaded_board_reaches_the_host_image_from_the_platform_and_its_ima
     first = built._bundle(HOST, ENTRY)
     loaded = _members(first)[wargame_host.LOADED].decode()
     served = _members(first)[wargame_host.SERVED_FROM].decode()
-    held["ghcr.io/nekonic/fsl-board:c0ffee"] = "sha256:" + "b" * 64
+    held["ghcr.io/nekonic/cr-board:c0ffee"] = "sha256:" + "b" * 64
 
-    assert loaded == "ghcr.io/nekonic/fsl-board:c0ffee sha256:" + "a" * 64 + " board\n", (
+    assert loaded == "ghcr.io/nekonic/cr-board:c0ffee sha256:" + "a" * 64 + " board\n", (
         "GHCR's board at the platform's tag is the pushed one; the host image must hold the board the "
         "platform runs, and setup.sh checks the loaded image is that image")
     assert served == "http://10.0.0.5:8000/api/range/images/sideloaded/\n"
     assert built._bundle(HOST, ENTRY).digest != first.digest, (
         "a slot reset keeps the wargame host's images, so a new board needs a new host image")
-    assert built.sideloaded_image("board") == "ghcr.io/nekonic/fsl-board:c0ffee"
+    assert built.sideloaded_image("board") == "ghcr.io/nekonic/cr-board:c0ffee"
     assert built.sideloaded_image("platform") == "", "the platform serves only a wargame image it runs"
     assert built.sideloaded_image("corp") == ""
 
@@ -150,7 +150,7 @@ def test_the_host_setup_fetches_each_sideloaded_image_from_the_address_the_platf
 def test_a_wargame_starts_from_its_installed_file_with_no_pull_on_volumes_filled_from_its_pristine_copy():
     argv = wargame_host.up("board")
     script = argv[3].splitlines()
-    compose = "docker compose -p board -f /opt/fsl/wargames/board.yaml"
+    compose = "docker compose -p board -f /opt/cr/wargames/board.yaml"
 
     assert argv[:3] == ["sudo", "sh", "-c"] and script[0] == "set -e"
     created = script.index(f"{compose} up --no-start --pull never")
@@ -165,13 +165,13 @@ def test_a_wargame_starts_from_its_installed_file_with_no_pull_on_volumes_filled
 def test_the_pristine_copy_is_made_once_at_image_build_and_never_by_a_reset():
     setup = (ROOT / "deploy/wargame-host/setup.sh").read_text()
     pristine = (ROOT / "deploy/wargame-host/pristine.sh").read_text()
-    kept = setup.index('sh /opt/fsl/pristine.sh keep "${wargame%.yaml}"')
+    kept = setup.index('sh /opt/cr/pristine.sh keep "${wargame%.yaml}"')
 
     assert f"install -m 0755 pristine.sh {wargame_host.PRISTINE}" in setup
     assert kept > setup.index("docker load") and kept > setup.index("pull --quiet"), (
         "the copy is made from the images the host image holds")
-    assert "FSL_PRISTINE:-/opt/fsl/pristine}" in pristine
-    assert not "/opt/fsl/pristine".startswith(images.WORKDIR), "the builder deletes its workdir after setup"
+    assert "CR_PRISTINE:-/opt/cr/pristine}" in pristine
+    assert not "/opt/cr/pristine".startswith(images.WORKDIR), "the builder deletes its workdir after setup"
     reset = [*wargame_host.up("board"), *wargame_host.cleared(["board", "corp"], (), True)]
     assert not any(" keep " in part for part in reset)
     assert not any("pristine" in part for part in wargame_host.cleared(["board", "corp"], (), True)), (
@@ -237,7 +237,7 @@ def _host(tmp_path, containers):
 
 def _pristine(tmp_path, fake, verb):
     env = {"PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin", "FAKE": str(fake),
-           "FSL_PRISTINE": str(tmp_path / "pristine")}
+           "CR_PRISTINE": str(tmp_path / "pristine")}
     return subprocess.run(["sh", str(ROOT / "deploy/wargame-host/pristine.sh"), verb, "board"],
                           env=env, capture_output=True, text=True)
 
@@ -380,9 +380,9 @@ def test_clearing_the_host_removes_each_wargame_with_its_volumes_and_the_sensor_
 
     assert argv[:3] == ["sudo", "sh", "-c"] and script[0] == "set -e"
     for wargame in ("board", "corp"):
-        assert any(f"-p {wargame} -f /opt/fsl/wargames/{wargame}.yaml down -v" in line
+        assert any(f"-p {wargame} -f /opt/cr/wargames/{wargame}.yaml down -v" in line
                    for line in script), "anonymous volumes keep a session's database"
-    assert any("-p sensor" in line and "down -v" in line and "FSL_SENSOR_INTERFACE=lo" in line
+    assert any("-p sensor" in line and "down -v" in line and "CR_SENSOR_INTERFACE=lo" in line
                for line in script)
     assert any(line.startswith("rm -f /var/log/suricata/eve.json") for line in script)
     assert not any("rules" in line for line in script), (

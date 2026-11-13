@@ -4,7 +4,7 @@ import argparse
 import subprocess
 import sys
 
-CONTAINER = "fsl-platform"
+CONTAINER = "cr-platform"
 
 SETUP = """
 import os, django

@@ -14,10 +14,10 @@ class Built:
     def plan_images(self):
         return images.Plan(
             images=(
-                images.Image("fsl-waf", "d1", "ready", image="img-1"),
-                images.Image("fsl-wg-board", "b1", "failed", builder="srv-2", detail="E: no mysql"),
+                images.Image("cr-waf", "d1", "ready", image="img-1"),
+                images.Image("cr-wg-board", "b1", "failed", builder="srv-2", detail="E: no mysql"),
             ),
-            leftovers=(("image", "img-old", "image fsl-wiki was built from bundle d0"),),
+            leftovers=(("image", "img-old", "image cr-wiki was built from bundle d0"),),
         )
 
     def ensure_images(self):
@@ -38,12 +38,12 @@ def test_reading_the_images_changes_nothing_and_only_a_post_or_delete_acts_on_th
     answer = client.get(URL).json()
 
     assert answer["images"][0] == {
-        "host": "fsl-waf", "bundle": "d1", "state": "ready",
+        "host": "cr-waf", "bundle": "d1", "state": "ready",
         "image": "img-1", "builder": "", "detail": "",
     }
     assert answer["images"][1]["detail"] == "E: no mysql"
     assert answer["leftovers"] == [{
-        "kind": "image", "id": "img-old", "why": "image fsl-wiki was built from bundle d0",
+        "kind": "image", "id": "img-old", "why": "image cr-wiki was built from bundle d0",
     }]
     assert (built.ensured, built.cleaned) == (0, 0)
 
@@ -55,7 +55,7 @@ def test_reading_the_images_changes_nothing_and_only_a_post_or_delete_acts_on_th
 
 class Sideloaded:
     def sideloaded_image(self, name):
-        return {"board": "ghcr.io/nekonic/fsl-board:c0ffee"}.get(name, "")
+        return {"board": "ghcr.io/nekonic/cr-board:c0ffee"}.get(name, "")
 
 def test_the_builder_fetches_only_a_sideloaded_wargame_image_and_gets_its_docker_save(client):
     saved = []
@@ -70,4 +70,4 @@ def test_the_builder_fetches_only_a_sideloaded_wargame_image_and_gets_its_docker
         assert b"".join(answer.streaming_content) == b"board tarball"
         assert client.get(URL + "sideloaded/platform/").status_code == 404, (
             "the endpoint answers anyone on the platform network; it hands out only a wargame image")
-    assert saved == ["ghcr.io/nekonic/fsl-board:c0ffee"]
+    assert saved == ["ghcr.io/nekonic/cr-board:c0ffee"]

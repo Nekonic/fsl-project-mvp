@@ -91,9 +91,9 @@ def test_boot_writes_every_setting_the_adapter_requires_for_the_cloud_range_and_
     assert names == {
         variable for name, variable in SETTINGS.items()
         if name not in ("password", "platform", "source", "image_tag", "sideloaded")
-    } | {"FSL_SUBSTRATE", "DJANGO_ALLOWED_HOSTS", "FSL_TOOL_IMAGE"}, names
-    assert "FSL_SUBSTRATE=range.openstack.connect" in lines
-    assert f"FSL_TOOL_IMAGE={attacker}" in lines, (
+    } | {"CR_SUBSTRATE", "DJANGO_ALLOWED_HOSTS", "CR_TOOL_IMAGE"}, names
+    assert "CR_SUBSTRATE=range.openstack.connect" in lines
+    assert f"CR_TOOL_IMAGE={attacker}" in lines, (
         "the OpenStack launcher runs a tool only on the attacker host the range "
         "declares and refuses any other image; without this the harness asks for "
         "the GHCR Kali image and every case is refused before it is sent"
@@ -101,7 +101,7 @@ def test_boot_writes_every_setting_the_adapter_requires_for_the_cloud_range_and_
 
 def test_the_platform_reads_the_image_sources_it_bundles():
     service = platform_service()
-    source = service["environment"]["FSL_SOURCE"]
+    source = service["environment"]["CR_SOURCE"]
     mounted = {
         volume.split(":")[1] for volume in service["volumes"] if volume.startswith("./")
     }
@@ -159,7 +159,7 @@ def test_the_platform_vm_makes_its_own_virtualenv_in_the_background_after_the_pl
 
     config = cloud_config()
     commands = [list(map(str, command)) for command in config["runcmd"]]
-    started = next(i for i, c in enumerate(commands) if "fsl-platform.service" in c)
+    started = next(i for i, c in enumerate(commands) if "cr-platform.service" in c)
     [made] = [i for i, c in enumerate(commands) if c[0] == "systemd-run"]
     command = commands[made]
     loader = SourceFileLoader("platform_rebuild_venv", str(ROOT / "bin/platform-rebuild"))
@@ -178,6 +178,6 @@ def test_the_platform_vm_makes_its_own_virtualenv_in_the_background_after_the_pl
         "one at a time: the hand-over starts while the first boot's pip install may still run"
     )
     assert module.VENV_COMMAND == (
-        "exec 9>/tmp/fsl-venv.lock && flock 9 && python3 -m venv /opt/fsl/.venv && "
-        "/opt/fsl/.venv/bin/pip install --quiet -r /opt/fsl/platform/requirements.txt"
+        "exec 9>/tmp/cr-venv.lock && flock 9 && python3 -m venv /opt/cr/.venv && "
+        "/opt/cr/.venv/bin/pip install --quiet -r /opt/cr/platform/requirements.txt"
     )

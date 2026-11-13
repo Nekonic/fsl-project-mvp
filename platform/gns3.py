@@ -16,10 +16,10 @@ class Unavailable(RuntimeError):
     pass
 
 def local() -> dict:
-    return json.loads(settings.FSL_TOPOLOGY.read_text())
+    return json.loads(settings.CR_TOPOLOGY.read_text())
 
 def _api() -> str:
-    return settings.FSL_GNS3_URL.rstrip("/") + "/v3"
+    return settings.CR_GNS3_URL.rstrip("/") + "/v3"
 
 def _signed(username: str, password: str) -> dict:
     signed = requests.post(f"{_api()}/access/users/authenticate", timeout=TIMEOUT,
@@ -28,13 +28,13 @@ def _signed(username: str, password: str) -> dict:
     return {"Authorization": f"Bearer {signed.json()['access_token']}"}
 
 def _learner_password() -> str:
-    password = settings.FSL_GNS3_PASSWORD
-    if not password and settings.FSL_GNS3_PASSWORD_FILE.is_file():
-        password = settings.FSL_GNS3_PASSWORD_FILE.read_text().strip()
+    password = settings.CR_GNS3_PASSWORD
+    if not password and settings.CR_GNS3_PASSWORD_FILE.is_file():
+        password = settings.CR_GNS3_PASSWORD_FILE.read_text().strip()
     return password
 
 def _served(project_id: str) -> tuple[dict, str]:
-    headers = _signed(settings.FSL_GNS3_USER, _learner_password())
+    headers = _signed(settings.CR_GNS3_USER, _learner_password())
     found = requests.get(f"{_api()}/projects/{project_id}", headers=headers, timeout=TIMEOUT)
     found.raise_for_status()
     gns3file = requests.get(f"{_api()}/projects/{project_id}/gns3file", headers=headers, timeout=TIMEOUT)
@@ -43,26 +43,26 @@ def _served(project_id: str) -> tuple[dict, str]:
 
 def project(kept: dict | None = None) -> dict:
     kept = kept or local()
-    if not settings.FSL_GNS3_URL:
-        return {"source": "file", "status": "", "detail": "FSL_GNS3_URL is not set", "project": kept,
+    if not settings.CR_GNS3_URL:
+        return {"source": "file", "status": "", "detail": "CR_GNS3_URL is not set", "project": kept,
                 "web_ui": None}
     try:
         served, status = _served(kept["project_id"])
     except (requests.RequestException, ValueError, KeyError) as exc:
         return {"source": "file", "status": "", "detail": f"GNS3 did not serve the project: {exc}"[:300],
                 "project": kept, "web_ui": None}
-    web_ui = {"port": settings.FSL_GNS3_WEB_PORT, "path": f"{BOOTSTRAP}?project={kept['project_id']}"}
+    web_ui = {"port": settings.CR_GNS3_WEB_PORT, "path": f"{BOOTSTRAP}?project={kept['project_id']}"}
     return {"source": "gns3", "status": status, "detail": "", "project": served,
             "web_ui": web_ui if status == "opened" else None}
 
 def _admin() -> dict:
-    password = settings.FSL_GNS3_ADMIN_PASSWORD
-    if not password and settings.FSL_GNS3_ADMIN_PASSWORD_FILE.is_file():
-        password = settings.FSL_GNS3_ADMIN_PASSWORD_FILE.read_text().strip()
-    if not settings.FSL_GNS3_URL or not password:
+    password = settings.CR_GNS3_ADMIN_PASSWORD
+    if not password and settings.CR_GNS3_ADMIN_PASSWORD_FILE.is_file():
+        password = settings.CR_GNS3_ADMIN_PASSWORD_FILE.read_text().strip()
+    if not settings.CR_GNS3_URL or not password:
         raise Unavailable("the GNS3 admin password is neither set nor readable, so no map can be loaded")
     try:
-        return _signed(settings.FSL_GNS3_ADMIN_USER, password)
+        return _signed(settings.CR_GNS3_ADMIN_USER, password)
     except (requests.RequestException, ValueError, KeyError) as exc:
         raise Unavailable(f"GNS3 refused the admin sign-in: {exc}"[:300]) from exc
 

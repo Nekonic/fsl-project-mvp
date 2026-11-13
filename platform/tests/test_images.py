@@ -23,7 +23,7 @@ def source(tmp_path):
     return tmp_path
 
 def packed(source, files=("waf",)):
-    return images.bundle(source, "fsl-waf", "waf/setup.sh", files)
+    return images.bundle(source, "cr-waf", "waf/setup.sh", files)
 
 def members(bundle):
     with tarfile.open(fileobj=io.BytesIO(bundle.archive)) as archive:
@@ -64,14 +64,14 @@ def test_a_checkout_s_umask_does_not_change_the_digest_and_only_the_executable_b
 
 def test_a_build_time_file_is_packed_for_the_builder_and_left_out_of_the_digest(source):
     plain = packed(source)
-    first = images.bundle(source, "fsl-waf", "waf/setup.sh", ("waf",), unhashed={"waf/served-from": b"http://a/\n"})
-    moved = images.bundle(source, "fsl-waf", "waf/setup.sh", ("waf",), unhashed={"waf/served-from": b"http://b/\n"})
+    first = images.bundle(source, "cr-waf", "waf/setup.sh", ("waf",), unhashed={"waf/served-from": b"http://a/\n"})
+    moved = images.bundle(source, "cr-waf", "waf/setup.sh", ("waf",), unhashed={"waf/served-from": b"http://b/\n"})
 
     assert "waf/served-from" in members(first)
     assert first.digest == moved.digest == plain.digest, (
         "where the builder fetches its inputs from is not what the image holds")
     with pytest.raises(RangeUnavailable, match="waf/site.conf"):
-        images.bundle(source, "fsl-waf", "waf/setup.sh", ("waf",), unhashed={"waf/site.conf": b""})
+        images.bundle(source, "cr-waf", "waf/setup.sh", ("waf",), unhashed={"waf/site.conf": b""})
 
 def test_a_file_the_declaration_names_and_the_repo_lacks_is_refused_by_name(source):
     with pytest.raises(RangeUnavailable, match="waf/gone.conf"):
@@ -94,12 +94,12 @@ def test_the_builder_unpacks_runs_the_setup_and_says_on_its_console_how_it_went(
         "its setup worked; the platform stops it after reading the console"
     )
 
-BUNDLE = images.Bundle(host="fsl-waf", setup="waf/setup.sh", digest="d1", archive=b"")
+BUNDLE = images.Bundle(host="cr-waf", setup="waf/setup.sh", digest="d1", archive=b"")
 
 def image(status="active", bundle="d1", ident="img-1"):
-    return {"id": ident, "name": "fsl-waf", "status": status, images.BUNDLE: bundle}
+    return {"id": ident, "name": "cr-waf", "status": status, images.BUNDLE: bundle}
 
-def builder(status="ACTIVE", bundle="d1", ident="srv-1", host="fsl-waf"):
+def builder(status="ACTIVE", bundle="d1", ident="srv-1", host="cr-waf"):
     return {"id": ident, "name": images.BUILDER + host, "status": status,
             "created": "2026-10-01T12:00:00Z",
             "metadata": {images.BUILDS: host, images.BUNDLE: bundle}}
@@ -153,25 +153,25 @@ def test_an_image_or_builder_of_another_bundle_is_left_over_and_does_not_stand_i
 
 def test_what_cleaning_removes_is_leftovers_and_failures_never_a_ready_image():
     plan = images.plan(
-        (BUNDLE, images.Bundle("fsl-wiki", "wiki/setup.sh", "w1", b"")),
+        (BUNDLE, images.Bundle("cr-wiki", "wiki/setup.sh", "w1", b"")),
         [image(), image(bundle="d0", ident="img-old")],
-        [builder(bundle="w1", ident="srv-wiki", host="fsl-wiki")],
+        [builder(bundle="w1", ident="srv-wiki", host="cr-wiki")],
         {"srv-wiki": f"Traceback\n{images.FAILED} w1\n"},
     )
 
     assert images.removable(plan) == [("image", "img-old"), ("server", "srv-wiki")]
 
 def test_a_prebuilt_image_the_cloud_already_holds_is_ready_with_no_builder():
-    glance = [{"id": "img-edge", "name": "fsl-edge", "status": "active"}]
+    glance = [{"id": "img-edge", "name": "cr-edge", "status": "active"}]
 
-    plan = images.plan((), glance, [], {}, prebuilt=[("fsl-edge", "fsl-edge")])
+    plan = images.plan((), glance, [], {}, prebuilt=[("cr-edge", "cr-edge")])
     [found] = plan.images
-    lacking = images.plan((), [], [], {}, prebuilt=[("fsl-edge", "fsl-edge")])
+    lacking = images.plan((), [], [], {}, prebuilt=[("cr-edge", "cr-edge")])
 
-    assert found.host == "fsl-edge"
+    assert found.host == "cr-edge"
     assert found.state == "ready" and found.image == "img-edge" and not found.builder
     assert plan.clean and images.removable(plan) == []
-    assert lacking.images[0].state == "missing" and "fsl-edge" in lacking.images[0].detail
+    assert lacking.images[0].state == "missing" and "cr-edge" in lacking.images[0].detail
     assert not lacking.clean
 
 def test_every_image_is_built_from_files_the_repo_holds():

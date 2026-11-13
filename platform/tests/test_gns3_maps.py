@@ -24,7 +24,7 @@ TOPOLOGY = ROOT / "deploy" / "topology"
 OPENSTACK = TOPOLOGY / "range-openstack.gns3"
 LABEL_KEYS = {"text", "style", "x", "y", "rotation"}
 DEFAULT_ORIGIN = "5.188.10.0/24"
-PLATFORM_NIC = Interface("fsl-platform", "ens7", "10.31.0.238/24", "mgmt")
+PLATFORM_NIC = Interface("cr-platform", "ens7", "10.31.0.238/24", "mgmt")
 
 KALI_IP = """1: lo    inet 127.0.0.1/8 scope host lo\\       valid_lft forever preferred_lft forever
 2: ens3    inet 73.0.0.10/24 scope global ens3\\       valid_lft forever preferred_lft forever
@@ -66,10 +66,10 @@ HOST_CONTAINERS = """@network 7cc6b1febc1d00000000000000000000000000000000000000
 
 def slot_shape(estate_waf="10.30.0.177"):
     return Shape(segments=(
-        Segment(id="ru", name="Russia", subnet=DEFAULT_ORIGIN, nodes=(Node("fsl-kali", "5.188.10.10"),)),
-        Segment(id="us", name="United States", subnet="73.0.0.0/24", nodes=(Node("fsl-kali", "73.0.0.10"),)),
+        Segment(id="ru", name="Russia", subnet=DEFAULT_ORIGIN, nodes=(Node("cr-kali", "5.188.10.10"),)),
+        Segment(id="us", name="United States", subnet="73.0.0.0/24", nodes=(Node("cr-kali", "73.0.0.10"),)),
         Segment(id="estate", name="Application estate", subnet="10.30.0.0/24",
-                nodes=(Node("fsl-waf", estate_waf),)),
+                nodes=(Node("cr-waf", estate_waf),)),
         Segment(id="mgmt", name="Management", subnet="10.31.0.0/24", nodes=()),
     ), sensors=())
 
@@ -109,14 +109,14 @@ def test_a_slot_s_interfaces_come_from_each_host_and_the_wargame_host_s_containe
     adapter, fake = slot_adapter()
     found = held(adapter.interfaces())
 
-    assert {("fsl-kali", "ens3", "5.188.10.10/24", "internet"), ("fsl-kali", "ens4", "10.31.0.59/24", "mgmt"),
-            ("fsl-edge", "vtnet0", "73.0.0.1/24", "internet"), ("fsl-edge", "vtnet1", "10.30.0.1/24", "estate"),
-            ("fsl-waf", "ens3", "10.30.0.177/24", "estate"),
-            ("fsl-wargame-host", "ens3", "10.30.0.184/24", "estate"),
-            ("fsl-wargame-host", "br-7cc6b1febc1d", "172.18.0.1/16", "board-default"),
+    assert {("cr-kali", "ens3", "5.188.10.10/24", "internet"), ("cr-kali", "ens4", "10.31.0.59/24", "mgmt"),
+            ("cr-edge", "vtnet0", "73.0.0.1/24", "internet"), ("cr-edge", "vtnet1", "10.30.0.1/24", "estate"),
+            ("cr-waf", "ens3", "10.30.0.177/24", "estate"),
+            ("cr-wargame-host", "ens3", "10.30.0.184/24", "estate"),
+            ("cr-wargame-host", "br-7cc6b1febc1d", "172.18.0.1/16", "board-default"),
             ("board", "eth0", "172.18.0.3/16", "board-default"),
             ("corp-db", "eth0", "172.19.0.2/16", "corp-default")} <= found
-    assert ("fsl-wargame-host", "docker0", "172.17.0.1/16", "") in found, "a bridge no wargame uses is no segment"
+    assert ("cr-wargame-host", "docker0", "172.17.0.1/16", "") in found, "a bridge no wargame uses is no segment"
     assert {role for role, _ in fake.ran} == {"attacker", "edge", "gateway", "wargames"}, (
         "each host is read over a role that runs on the host itself, never inside a wargame container"
     )
@@ -125,8 +125,8 @@ def test_a_slot_s_interfaces_come_from_each_host_and_the_wargame_host_s_containe
 def test_a_host_that_does_not_answer_leaves_its_own_labels_empty_and_the_rest_are_read():
     adapter, _ = slot_adapter({"attacker": KALI_IP, "gateway": WAF_IP, "wargames": HOST_IP})
 
-    assert "fsl-edge" not in {one.host for one in adapter.interfaces()}
-    assert "fsl-kali" in {one.host for one in adapter.interfaces()}
+    assert "cr-edge" not in {one.host for one in adapter.interfaces()}
+    assert "cr-kali" in {one.host for one in adapter.interfaces()}
 
 
 def slot_map(number=2, path=OPENSTACK, found=None, wargame="board"):
@@ -162,7 +162,7 @@ def test_a_label_is_the_address_alone_with_no_interface_port_or_docker_bridge_na
 def test_each_slot_s_map_carries_its_own_addresses_and_ids_and_keeps_every_drawing_of_its_wargame():
     drawn = json.loads(OPENSTACK.read_text())
     template = topology.for_wargame(drawn, learner_of(declared.read(), "board"))
-    one = slot_map(1, found=[Interface("fsl-waf", "ens3", "10.30.0.102/24", "estate")])
+    one = slot_map(1, found=[Interface("cr-waf", "ens3", "10.30.0.102/24", "estate")])
     two = slot_map(2)
     ids = lambda document: ({document["project_id"]} | {n["node_id"] for n in document["topology"]["nodes"]}
                             | {link["link_id"] for link in document["topology"]["links"]}
@@ -218,7 +218,7 @@ class Served:
 
 @pytest.fixture
 def served(settings, monkeypatch):
-    settings.FSL_TOPOLOGY = OPENSTACK
+    settings.CR_TOPOLOGY = OPENSTACK
     settings.RANGE = declared.read()
     fake = Served()
     for name in ("publish", "status", "remove_except"):
@@ -239,13 +239,13 @@ def test_a_session_s_map_is_drawn_for_the_wargame_it_defends(served):
 
     assert {"corp.com", "corp-db", "sw2"} <= names and not {"board.com", "board-db"} & names
     assert "customers" not in names, "corp declares no customers"
-    assert maps.wargame_of("slot 1 corp") == "corp" and maps.learner("corp").hosts["fsl-kali"] == ("kali",)
-    assert maps.learner("board").hosts["fsl-kali"] == ("kali", "customers"), (
+    assert maps.wargame_of("slot 1 corp") == "corp" and maps.learner("corp").hosts["cr-kali"] == ("kali",)
+    assert maps.learner("board").hosts["cr-kali"] == ("kali", "customers"), (
         "on OpenStack the customers' program runs on the attacker's box")
 
 def test_a_changed_address_loads_the_slot_s_maps_again(served):
     maps.publish("slot 2 board", read_slot)
-    maps.publish("slot 2 board", lambda: [Interface("fsl-waf", "ens3", "10.30.0.99/24", "estate")])
+    maps.publish("slot 2 board", lambda: [Interface("cr-waf", "ens3", "10.30.0.99/24", "estate")])
 
     assert len(served.published) == 2
     assert labels(served.published[-1])[("waf", "sw1")]["text"] == "10.30.0.99"
@@ -305,7 +305,7 @@ def test_a_read_some_host_did_not_answer_loads_no_map_and_a_check_still_reads_th
 
     assert served.published == [], "a map without the firewall's interfaces would be loaded again once it answers"
     assert "edge did not answer" in maps._failed.pop("slot 1 board")
-    assert "fsl-kali" in {one.host for one in views._map_read(session)()}
+    assert "cr-kali" in {one.host for one in views._map_read(session)()}
 
 def test_a_host_that_does_not_answer_fails_a_read_that_asks_every_host():
     adapter, _ = slot_adapter({"attacker": KALI_IP, "gateway": WAF_IP, "wargames": HOST_IP})
@@ -327,11 +327,11 @@ def test_a_map_that_cannot_be_loaded_falls_back_to_the_range_s_own_map_and_says_
     assert "board.com" in shown["nodes"] and "corp.com" not in shown["nodes"], "the fallback is the wargame's own map"
 
 def test_publishing_replaces_the_project_by_import_opens_it_as_admin_and_starts_its_nodes(settings, tmp_path):
-    settings.FSL_GNS3_URL = "http://gns3:3080"
-    settings.FSL_GNS3_ADMIN_PASSWORD = ""
+    settings.CR_GNS3_URL = "http://gns3:3080"
+    settings.CR_GNS3_ADMIN_PASSWORD = ""
     secret = tmp_path / "admin-password"
     secret.write_text("s3cret\n")
-    settings.FSL_GNS3_ADMIN_PASSWORD_FILE = secret
+    settings.CR_GNS3_ADMIN_PASSWORD_FILE = secret
     document = slot_map(2)
     calls = []
     project_id = document["project_id"]
@@ -367,8 +367,8 @@ def test_publishing_replaces_the_project_by_import_opens_it_as_admin_and_starts_
 
 
 def test_a_project_gns3_does_not_hold_is_imported_without_a_delete(settings):
-    settings.FSL_GNS3_URL = "http://gns3:3080"
-    settings.FSL_GNS3_ADMIN_PASSWORD = "s3cret"
+    settings.CR_GNS3_URL = "http://gns3:3080"
+    settings.CR_GNS3_ADMIN_PASSWORD = "s3cret"
     listed = SimpleNamespace(raise_for_status=lambda: None, json=lambda: [{"project_id": "another"}])
     answered = SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"status": "opened"})
 
@@ -388,7 +388,7 @@ def test_the_topology_endpoint_serves_the_session_s_own_map_when_gns3_runs(clien
     from tests.sessions import open_session
 
     session_id = open_session(client)
-    with override_settings(FSL_GNS3_URL="http://gns3:3080"), \
+    with override_settings(CR_GNS3_URL="http://gns3:3080"), \
          patch("api.views._map_key", return_value="slot 1 board"), \
          patch.object(maps, "served", return_value={"project": {"name": "mine"}, "web_ui": None}) as asked:
         found = client.get(f"/api/topology/?session={session_id}").json()
@@ -420,7 +420,7 @@ def test_at_start_the_platform_loads_the_map_of_each_slot_s_newest_session(setti
     from api import views
     from api.models import Session
 
-    settings.FSL_GNS3_URL = "http://gns3:3080"
+    settings.CR_GNS3_URL = "http://gns3:3080"
     cloud = SimpleNamespace(slots=2, interfaces=None, in_slot=lambda number: SimpleNamespace(
         slots=2, interfaces=None, in_slot=None, number=number))
     Session.objects.create(scenario="board", slot=1)
@@ -458,7 +458,7 @@ def test_a_cloud_that_does_not_answer_at_start_is_asked_again_a_bounded_number_o
     def unanswered():
         raise RangeUnavailable("keystone did not answer")
 
-    settings.FSL_GNS3_URL = "http://gns3:3080"
+    settings.CR_GNS3_URL = "http://gns3:3080"
     waits = []
     with patch("api.views.substrate", unanswered), patch.object(maps, "begin") as begun:
         views.publish_maps(pause=waits.append)
@@ -472,7 +472,7 @@ def test_a_slot_whose_hosts_did_not_all_answer_at_start_is_read_again_and_its_ma
     from api import views
     from api.models import Session
 
-    settings.FSL_GNS3_URL = "http://gns3:3080"
+    settings.CR_GNS3_URL = "http://gns3:3080"
     Session.objects.create(scenario="board", slot=1)
     rebooting, _ = slot_adapter({"attacker": KALI_IP, "gateway": WAF_IP, "wargames": HOST_IP})
     answering, _ = slot_adapter()
@@ -492,7 +492,7 @@ def test_a_slot_whose_map_loaded_is_not_read_again_while_another_slot_is_retried
     from api import views
     from api.models import Session
 
-    settings.FSL_GNS3_URL = "http://gns3:3080"
+    settings.CR_GNS3_URL = "http://gns3:3080"
     Session.objects.create(scenario="board", slot=1)
     Session.objects.create(scenario="corp", slot=2)
     maps._loaded.clear()
@@ -510,7 +510,7 @@ def test_a_slot_whose_session_loaded_its_map_while_the_start_publish_waited_is_n
     from api import views
     from api.models import Session
 
-    settings.FSL_GNS3_URL = "http://gns3:3080"
+    settings.CR_GNS3_URL = "http://gns3:3080"
     Session.objects.create(scenario="board", slot=1)
     maps._loaded.clear()
     waits = []

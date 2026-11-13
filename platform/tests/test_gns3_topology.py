@@ -21,7 +21,7 @@ SENSOR_COMPOSE = ROOT / "deploy" / "wargame-host" / "sensor.yaml"
 RFC1123 = re.compile(r"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")
 IDENTIFIER = re.compile(r"^[a-z0-9][a-z0-9_.-]*$")
 ACRONYM = re.compile(r"^[A-Z]{2,5}$")
-TAG = re.compile(r"\$\{FSL_IMAGE_TAG(?::-([^}]*))?\}")
+TAG = re.compile(r"\$\{CR_IMAGE_TAG(?::-([^}]*))?\}")
 GNS3_2_2_TOP_LEVEL = {
     "project_id", "type", "auto_start", "auto_close", "auto_open", "revision",
     "version", "name", "scene_height", "scene_width", "zoom", "show_layers",
@@ -207,12 +207,12 @@ def drawn_shapes(document):
 
 LEARNER_MAPS = [OPENSTACK]
 LEARNER_IDS = ["openstack"]
-WARGAMES = sorted(yaml.safe_load(declared.DECLARATION.read_text())["hosts"]["fsl-waf"]["names"])
+WARGAMES = sorted(yaml.safe_load(declared.DECLARATION.read_text())["hosts"]["cr-waf"]["names"])
 WARGAMES = [name.split(".")[0] for name in WARGAMES]
 PROJECTED = [(path, wargame) for path in LEARNER_MAPS for wargame in WARGAMES]
 PROJECTED_IDS = [f"{name}-{wargame}" for name in LEARNER_IDS for wargame in WARGAMES]
 IDLE = "sleep 2147483647"
-WARGAME_HOST_WORDS = ("wargame", "fsl-", "mgmt", "anagement", "_default", "-default")
+WARGAME_HOST_WORDS = ("wargame", "cr-", "mgmt", "anagement", "_default", "-default")
 
 def customers_prefer(stack, wargame):
     path = ROOT / "wargames" / wargame / "traffic.yaml"
@@ -303,7 +303,7 @@ def test_no_word_on_a_learner_map_names_the_platform_its_management_segment_or_a
 
     assert [text for text in said if scorer in text or "mgmt" in text or "anagement" in text] == []
     assert [text for text in said + named if any(word in text for word in WARGAME_HOST_WORDS)] == []
-    assert "fsl-" not in json.dumps(document)
+    assert "cr-" not in json.dumps(document)
 
 @pytest.mark.parametrize("drawn_in, wargame", PROJECTED, ids=PROJECTED_IDS)
 def test_the_log_server_sits_on_the_monitoring_switch_with_exactly_the_hosts_whose_records_reach_it(drawn_in, wargame):

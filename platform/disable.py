@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 
 MARKER = "# cr-disabled"
-MARKERS = (MARKER, "# fsl-disabled", "# fsl-suppressed")
+MARKERS = (MARKER, "# cr-disabled", "# cr-suppressed")
 _QUOTED = re.compile(r'"(?:\\.|[^"\\])*"')
 _SID = re.compile(r"[(;]\s*sid\s*:\s*(\d+)\s*[;)]")
 

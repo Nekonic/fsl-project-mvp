@@ -10,20 +10,20 @@ pytestmark = pytest.mark.django_db
 WHEN_INGESTED = Shape(
     segments=(
         Segment(id="estate", name="Application estate", subnet="172.30.0.0/24",
-                network="fsl_estate",
-                nodes=(Node("fsl-waf", "172.30.0.3"),
-                       Node("fsl-juice-shop", "172.30.0.2"))),
+                network="cr_estate",
+                nodes=(Node("cr-waf", "172.30.0.3"),
+                       Node("cr-juice-shop", "172.30.0.2"))),
     ),
     sensors=(),
 )
 AFTER_A_RECREATE = Shape(
     segments=(
         Segment(id="estate", name="Application estate", subnet="172.30.0.0/24",
-                network="fsl_estate",
-                nodes=(Node("fsl-wiki", "172.30.0.3"),
-                       Node("fsl-waf", "172.30.0.2"))),
+                network="cr_estate",
+                nodes=(Node("cr-wiki", "172.30.0.3"),
+                       Node("cr-waf", "172.30.0.2"))),
         Segment(id="edge", name="Internet", subnet="10.9.9.0/24",
-                network="fsl_edge", nodes=(Node("fsl-kali", "10.9.9.9"),)),
+                network="cr_edge", nodes=(Node("cr-kali", "10.9.9.9"),)),
     ),
     sensors=(),
 )
@@ -59,13 +59,13 @@ def test_the_alert_remembers_who_held_the_address_when_it_was_written(client):
     with stub(AFTER_A_RECREATE):
         top = client.get(f"/api/sessions/{session.id}/top/").json()
 
-    assert top["sources"][0]["host"] == "fsl-waf", (
+    assert top["sources"][0]["host"] == "cr-waf", (
         "the address was resolved against the range as it is now, not as it "
         "was when the alert was written. Docker hands these out by DHCP, so "
         "after a recreate the dashboard reports whichever container inherited "
         "the address - here it would say the wiki attacked the target"
     )
-    assert top["destinations"][0]["host"] == "fsl-juice-shop"
+    assert top["destinations"][0]["host"] == "cr-juice-shop"
 
 def test_the_range_being_unreachable_does_not_lose_the_alert(client):
     from api.models import Session

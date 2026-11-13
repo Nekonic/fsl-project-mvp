@@ -100,9 +100,9 @@ def test_on_openstack_the_waf_terminal_is_an_ssh_shell_on_the_waf_vm(client):
         session, = opened_sessions(1)
         assert client.get(f"/api/sessions/{session.pk}/").json()["waf_terminal"] == "/vm-terminal/waf/"
 
-    assert "ttyd -W -a -b /vm-terminal/waf -t disableResizeOverlay=true -i 127.0.0.1 -p 7692 /app/vm-terminal.sh fsl-waf" in (
+    assert "ttyd -W -a -b /vm-terminal/waf -t disableResizeOverlay=true -i 127.0.0.1 -p 7692 /app/vm-terminal.sh cr-waf" in (
         ROOT / "platform/entrypoint.sh").read_text()
-    assert "mgmt" in declared.read().hosts["fsl-waf"].segments
+    assert "mgmt" in declared.read().hosts["cr-waf"].segments
     shell = (ROOT / "platform/vm-terminal.sh").read_text()
     assert 'if seg.id == "mgmt"' in shell and '"ubuntu@${addr}"' in shell and '"kali@${addr}"' in shell, (
         "the shell is the ssh user the platform tunes the WAF as, on the VM's management address"

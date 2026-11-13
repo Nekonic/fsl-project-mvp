@@ -11,23 +11,23 @@ from tests.sessions import open_session
 
 EDGE = Segment(
     id="ru", name="Internet", origin="Russia",
-    subnet="5.188.10.0/24", network="fsl_edge", gateway="5.188.10.1",
-    nodes=(Node("fsl-waf", "5.188.10.4"), Node("fsl-proxy", "5.188.10.3")),
+    subnet="5.188.10.0/24", network="cr_edge", gateway="5.188.10.1",
+    nodes=(Node("cr-waf", "5.188.10.4"), Node("cr-proxy", "5.188.10.3")),
 )
 ESTATE = Segment(
     id="estate", name="Application estate", origin="",
-    subnet="172.30.0.0/24", network="fsl_estate", gateway="172.30.0.1",
-    nodes=(Node("fsl-waf", "172.30.0.3"), Node("fsl-juice-shop", "172.30.0.2")),
+    subnet="172.30.0.0/24", network="cr_estate", gateway="172.30.0.1",
+    nodes=(Node("cr-waf", "172.30.0.3"), Node("cr-juice-shop", "172.30.0.2")),
 )
 MGMT = Segment(
     id="mgmt", name="", origin="",
-    subnet="172.31.0.0/24", network="fsl_mgmt", gateway="172.31.0.1",
-    nodes=(Node("fsl-elasticsearch", "172.31.0.2"),),
+    subnet="172.31.0.0/24", network="cr_mgmt", gateway="172.31.0.1",
+    nodes=(Node("cr-elasticsearch", "172.31.0.2"),),
 )
 
 SHAPE = Shape(
     segments=(EDGE, ESTATE, MGMT),
-    sensors=(Sensor(name="fsl-edge", watches="fsl-waf"),),
+    sensors=(Sensor(name="cr-edge", watches="cr-waf"),),
 )
 
 def stub(described=SHAPE, error=None):
@@ -139,4 +139,4 @@ def test_the_picture_names_hosts_as_the_map_does_and_the_sensor_host_likewise(cl
     names = {node["name"] for s in drawn["segments"] for node in s["nodes"]}
     names |= {sensor["name"] for sensor in drawn["sensors"]} | {sensor["watches"] for sensor in drawn["sensors"]}
     assert "waf" in names and "log-server" in names
-    assert not {name for name in names if name.startswith("fsl-") and name not in ("fsl-juice-shop", "fsl-proxy")}, names
+    assert not {name for name in names if name.startswith("cr-") and name not in ("cr-juice-shop", "cr-proxy")}, names

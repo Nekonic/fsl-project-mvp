@@ -86,7 +86,7 @@ def cloud():
 def spec(tmp_path):
     return openstack.Cloud(
         keystone="http://keystone:5000", neutron="http://neutron:9696",
-        nova="http://nova:8774", project="fsl", user="fsl",
+        nova="http://nova:8774", project="cr", user="cr",
         ssh_user="ubuntu", ssh_key=str(tmp_path / "ssh" / "id_ed25519"),
     )
 
@@ -193,7 +193,7 @@ def test_a_replaced_platform_s_detached_management_port_is_deleted_before_the_ne
 def test_taking_it_down_removes_detached_ports_that_hold_a_subnet_in_use(cloud, platform, tmp_path):
     replaced(cloud, tmp_path, "srv-old")
     estate = network_of(cloud, "estate")["id"]
-    cloud.ports.append({"id": "port-left", "name": "fsl-1-wargame.estate", "network_id": estate,
+    cloud.ports.append({"id": "port-left", "name": "cr-1-wargame.estate", "network_id": estate,
                         "device_id": "", "device_owner": ""})
 
     platform.teardown_fabric()

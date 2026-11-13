@@ -13,7 +13,7 @@ from range import ATTACKER, SCORER, RangeUnavailable, run, start_hint
 pytest_plugins = ["shared_sessions"]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PLATFORM_URL = os.environ.get("FSL_PLATFORM_URL", "http://localhost:8000").rstrip("/")
+PLATFORM_URL = os.environ.get("CR_PLATFORM_URL", "http://localhost:8000").rstrip("/")
 PLATFORM_FROM_SCORER = "http://localhost:8000"
 TARGET_PUBLIC = "http://board.com"
 
@@ -23,9 +23,9 @@ CLOSING = re.compile(re.escape(PLATFORM_URL) + r"/api/sessions/(\d+)/close/?")
 
 ENGINES = {"suricata", "modsecurity"}
 
-SPLIT = os.environ.get("FSL_SPLIT", "")
+SPLIT = os.environ.get("CR_SPLIT", "")
 IDLE = SPLIT == "idle"
-BESIDE_ANOTHER_WORKER = SPLIT == "worker" and int(os.environ.get("FSL_WORKERS") or 1) > 1
+BESIDE_ANOTHER_WORKER = SPLIT == "worker" and int(os.environ.get("CR_WORKERS") or 1) > 1
 
 def range_readiness() -> dict | None:
     try:
@@ -89,7 +89,7 @@ OPEN_NOW: set[int] = set()
 
 def listed_for_pruning(session_id: int) -> int:
     MADE_BY_THIS_RUN.add(session_id)
-    listed = os.environ.get("FSL_ACCEPTANCE_SESSIONS")
+    listed = os.environ.get("CR_ACCEPTANCE_SESSIONS")
     if listed:
         with open(listed, "a", encoding="utf-8") as ids:
             ids.write(f"{session_id}\n")

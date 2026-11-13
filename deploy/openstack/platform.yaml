@@ -69,12 +69,12 @@ resources:
   network:
     type: OS::Neutron::Net
     properties:
-      name: fsl-platform
+      name: cr-platform
 
   subnet:
     type: OS::Neutron::Subnet
     properties:
-      name: fsl-platform
+      name: cr-platform
       network: {get_resource: network}
       cidr: {get_param: cidr}
       dns_nameservers: {get_param: dns}
@@ -82,7 +82,7 @@ resources:
   router:
     type: OS::Neutron::Router
     properties:
-      name: fsl-platform
+      name: cr-platform
       external_gateway_info:
         network: {get_param: external_network}
 
@@ -95,7 +95,7 @@ resources:
   security_group:
     type: OS::Neutron::SecurityGroup
     properties:
-      name: fsl-platform
+      name: cr-platform
       rules:
         - {protocol: tcp, port_range_min: 22, port_range_max: 22}
         - {protocol: tcp, port_range_min: 8000, port_range_max: 8000}
@@ -129,7 +129,7 @@ resources:
   server:
     type: OS::Nova::Server
     properties:
-      name: fsl-platform
+      name: cr-platform
       image: {get_param: image}
       flavor: {get_param: flavor}
       key_name: {get_param: key_name}
@@ -170,11 +170,11 @@ resources:
               filename: /swapfile
               size: 4G
             write_files:
-              - path: /etc/chrony/conf.d/fsl-range.conf
+              - path: /etc/chrony/conf.d/cr-range.conf
                 content: |
                   allow %management%
                   local stratum 10
-              - path: /etc/sysctl.d/90-fsl-syslog.conf
+              - path: /etc/sysctl.d/90-cr-syslog.conf
                 content: |
                   net.core.rmem_max = 33554432
                   net.core.rmem_default = 4194304
@@ -184,28 +184,28 @@ resources:
               - path: /root/openstack.env
                 permissions: "0600"
                 content: |
-                  FSL_SUBSTRATE=range.openstack.connect
+                  CR_SUBSTRATE=range.openstack.connect
                   DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,[::1],%floating_ip%
-                  FSL_TOOL_IMAGE=fsl-kali
-                  FSL_OPENSTACK_KEYSTONE=%keystone%
-                  FSL_OPENSTACK_USER=%user%
-                  FSL_OPENSTACK_DOMAIN=%domain%
-                  FSL_OPENSTACK_PROJECT=%project%
-                  FSL_OPENSTACK_REGION=%region%
-                  FSL_OPENSTACK_INTERFACE=%interface%
-                  FSL_OPENSTACK_BASE_IMAGE=%image%
-                  FSL_OPENSTACK_FLAVOR=%range_flavor%
-                  FSL_OPENSTACK_BUILD_FLAVOR=%build_flavor%
-                  FSL_OPENSTACK_ROLE_FLAVORS=%role_flavors%
-                  FSL_OPENSTACK_AVAILABILITY_ZONE=%availability_zone%
-                  FSL_OPENSTACK_SUBNETS=%subnets%
-                  FSL_OPENSTACK_MTU=%range_mtu%
-                  FSL_OPNSENSE=%opnsense%
-                  FSL_OPENSTACK_SLOTS=%slots%
-                  FSL_OPENSTACK_SSH_USER=ubuntu
-                  FSL_OPENSTACK_SSH_KEY=/data/ssh/id_ed25519
-                  FSL_OPENSTACK_BUILD_NETWORK=%network%
-              - path: /etc/systemd/network/90-fsl-attached.network
+                  CR_TOOL_IMAGE=cr-kali
+                  CR_OPENSTACK_KEYSTONE=%keystone%
+                  CR_OPENSTACK_USER=%user%
+                  CR_OPENSTACK_DOMAIN=%domain%
+                  CR_OPENSTACK_PROJECT=%project%
+                  CR_OPENSTACK_REGION=%region%
+                  CR_OPENSTACK_INTERFACE=%interface%
+                  CR_OPENSTACK_BASE_IMAGE=%image%
+                  CR_OPENSTACK_FLAVOR=%range_flavor%
+                  CR_OPENSTACK_BUILD_FLAVOR=%build_flavor%
+                  CR_OPENSTACK_ROLE_FLAVORS=%role_flavors%
+                  CR_OPENSTACK_AVAILABILITY_ZONE=%availability_zone%
+                  CR_OPENSTACK_SUBNETS=%subnets%
+                  CR_OPENSTACK_MTU=%range_mtu%
+                  CR_OPNSENSE=%opnsense%
+                  CR_OPENSTACK_SLOTS=%slots%
+                  CR_OPENSTACK_SSH_USER=ubuntu
+                  CR_OPENSTACK_SSH_KEY=/data/ssh/id_ed25519
+                  CR_OPENSTACK_BUILD_NETWORK=%network%
+              - path: /etc/systemd/network/90-cr-attached.network
                 content: |
                   [Match]
                   Name=en*
@@ -216,9 +216,9 @@ resources:
                   UseDNS=false
               - path: /root/compose.env
                 content: |
-                  FSL_PUBLISH=%fixed_ip%
-                  FSL_SYSLOG_PUBLISH=0.0.0.0
-              - path: /etc/systemd/system/fsl-platform.service
+                  CR_PUBLISH=%fixed_ip%
+                  CR_SYSLOG_PUBLISH=0.0.0.0
+              - path: /etc/systemd/system/cr-platform.service
                 content: |
                   [Unit]
                   Requires=docker.service
@@ -228,24 +228,24 @@ resources:
                   Type=oneshot
                   RemainAfterExit=yes
                   TimeoutStartSec=0
-                  ExecStartPre=-/usr/bin/docker compose -f /opt/fsl/compose.yaml pull --quiet
-                  ExecStart=/usr/bin/docker compose -f /opt/fsl/compose.yaml up -d
+                  ExecStartPre=-/usr/bin/docker compose -f /opt/cr/compose.yaml pull --quiet
+                  ExecStart=/usr/bin/docker compose -f /opt/cr/compose.yaml up -d
                   [Install]
                   WantedBy=multi-user.target
             runcmd:
               - [sysctl, --system]
-              - [git, clone, --branch, "%ref%", "%repository%", /opt/fsl]
-              - [mv, /root/openstack.env, /opt/fsl/openstack.env]
-              - [mv, /root/compose.env, /opt/fsl/.env]
-              - [sh, -c, "echo FSL_IMAGE_TAG=$(git -C /opt/fsl rev-parse HEAD) >> /opt/fsl/.env"]
-              - [python3, /opt/fsl/bin/fetch-geoip]
-              - [sh, -c, "echo FSL_OPENSTACK_PLATFORM=$(cloud-init query instance_id) >> /opt/fsl/openstack.env"]
+              - [git, clone, --branch, "%ref%", "%repository%", /opt/cr]
+              - [mv, /root/openstack.env, /opt/cr/openstack.env]
+              - [mv, /root/compose.env, /opt/cr/.env]
+              - [sh, -c, "echo CR_IMAGE_TAG=$(git -C /opt/cr rev-parse HEAD) >> /opt/cr/.env"]
+              - [python3, /opt/cr/bin/fetch-geoip]
+              - [sh, -c, "echo CR_OPENSTACK_PLATFORM=$(cloud-init query instance_id) >> /opt/cr/openstack.env"]
               - [networkctl, reload]
-              - [chown, -R, "ubuntu:ubuntu", /opt/fsl]
+              - [chown, -R, "ubuntu:ubuntu", /opt/cr]
               - [usermod, -aG, docker, ubuntu]
               - [systemctl, daemon-reload]
-              - [systemctl, enable, --now, fsl-platform.service]
-              - [systemd-run, --collect, --no-block, --unit=fsl-venv, --uid=ubuntu, --gid=ubuntu, sh, -c, "exec 9>/tmp/fsl-venv.lock && flock 9 && python3 -m venv /opt/fsl/.venv && /opt/fsl/.venv/bin/pip install --quiet -r /opt/fsl/platform/requirements.txt"]
+              - [systemctl, enable, --now, cr-platform.service]
+              - [systemd-run, --collect, --no-block, --unit=cr-venv, --uid=ubuntu, --gid=ubuntu, sh, -c, "exec 9>/tmp/cr-venv.lock && flock 9 && python3 -m venv /opt/cr/.venv && /opt/cr/.venv/bin/pip install --quiet -r /opt/cr/platform/requirements.txt"]
 
 outputs:
   address:

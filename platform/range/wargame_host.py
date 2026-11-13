@@ -14,20 +14,20 @@ ROLE = "wargames"
 COMPOSE = "wargames/{wargame}/compose.yaml"
 SHIPPED = "deploy/wargame-host/wargames/{wargame}.yaml"
 DAEMON = "deploy/wargame-host/daemon.json"
-INSTALLED = "/opt/fsl/wargames/{wargame}.yaml"
-PRISTINE = "/opt/fsl/pristine.sh"
-TAG = re.compile(r"\$\{FSL_IMAGE_TAG(?::-[^}]*)?\}")
+INSTALLED = "/opt/cr/wargames/{wargame}.yaml"
+PRISTINE = "/opt/cr/pristine.sh"
+TAG = re.compile(r"\$\{CR_IMAGE_TAG(?::-[^}]*)?\}")
 DROPPED = ("build", "networks")
 UP_TIMEOUT = 900.0
-SENSOR = "/opt/fsl/sensor.yaml"
-SENSOR_CONFIG = "/opt/fsl/suricata.yaml"
+SENSOR = "/opt/cr/sensor.yaml"
+SENSOR_CONFIG = "/opt/cr/suricata.yaml"
 SENSOR_CONFIG_SOURCE = "deploy/suricata/suricata.yaml"
 SENSOR_PROJECT = "sensor"
-SENSOR_INTERFACE = "FSL_SENSOR_INTERFACE"
+SENSOR_INTERFACE = "CR_SENSOR_INTERFACE"
 BASELINE_RULES = "deploy/suricata/rules/local.rules"
 LOG_READER_STATE = "/var/spool/rsyslog/imfile-state:*"
 STOP_GRACE = 1
-REGISTRY = "ghcr.io/nekonic/fsl-"
+REGISTRY = "ghcr.io/nekonic/cr-"
 LOADED = "deploy/wargame-host/loaded"
 SERVED_FROM = "deploy/wargame-host/served-from"
 SERVED_AT = "http://{address}:8000/api/range/images/sideloaded/"
@@ -58,7 +58,7 @@ def local_image_id(image: str, run=subprocess.run) -> str:
                capture_output=True, text=True)
     if done.returncode != 0 or not done.stdout.strip():
         raise RangeUnavailable(
-            f"FSL_SIDELOADED names {image} and the platform's docker holds no such image: "
+            f"CR_SIDELOADED names {image} and the platform's docker holds no such image: "
             f"{done.stderr.strip()[:200]}")
     return done.stdout.strip()
 
@@ -70,11 +70,11 @@ def generated(source: Path, host: str, wargames, publish: dict[str, int], tag: s
     if not tag:
         raise RangeUnavailable(
             f"{host} pulls the wargames' images at build time by the platform's own tag; "
-            f"set FSL_IMAGE_TAG")
+            f"set CR_IMAGE_TAG")
     if not mtu:
         raise RangeUnavailable(
             f"{host} gives its containers' networks the tenant MTU; set "
-            f"FSL_OPENSTACK_MTU (network.mtu in cloud.yaml)")
+            f"CR_OPENSTACK_MTU (network.mtu in cloud.yaml)")
     files, served = {}, set()
     for wargame in wargames:
         path = Path(source) / COMPOSE.format(wargame=wargame)

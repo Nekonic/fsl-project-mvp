@@ -10,7 +10,7 @@ identity:
   project: fsl-range                    # a project this member user belongs to
   user: fsl-range                       # a member, never admin
   password_file: ~/.config/fsl/fsl-range.password
-  # password_env: FSL_OPENSTACK_PASSWORD   # instead of password_file
+  # password_env: CR_OPENSTACK_PASSWORD   # instead of password_file
 
 network:
   external: provider                    # the external network floating IPs come from
@@ -46,7 +46,7 @@ opnsense:
   pubkey_sha256: 1c940b2feb8e8c78ba7348a50b11f476929ddca1794ceaa89446be7d515e0d02
 
 platform:
-  stack: fsl-platform
+  stack: cr-platform
   repository: https://github.com/Nekonic/fsl-project-mvp.git
   ref: dev                              # only pushed commits are cloned
 

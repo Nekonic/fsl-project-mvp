@@ -189,7 +189,7 @@ def down(args: argparse.Namespace) -> None:
         old = rebuild.Host("ubuntu", address, Path(scratch) / "known_hosts",
                            Path(cloud.operator_key_file).expanduser())
         if not rebuild.holds_store(old):
-            take_down_broken(cloud.stack, f"at {address} has no fsl-platform container and no store, so "
+            take_down_broken(cloud.stack, f"at {address} has no cr-platform container and no store, so "
                              "there is nothing to back up and no platform to ask", rebuild.run)
             return
         rebuild.start_platform(old)

@@ -19,7 +19,7 @@ from range.ports import Node, Ran, Segment
 pytestmark = pytest.mark.django_db(transaction=True)
 
 BASELINE = (Path(__file__).resolve().parents[2] / "deploy/suricata/rules/local.rules").read_text()
-STANDING = (("fsl-waf", "s-fsl-waf", "ACTIVE"), ("fsl-platform", "s-fsl-platform", "ACTIVE"))
+STANDING = (("cr-waf", "s-cr-waf", "ACTIVE"), ("cr-platform", "s-cr-platform", "ACTIVE"))
 
 
 class Slot:
@@ -41,7 +41,7 @@ class Slot:
 
     def segments(self):
         return (Segment(id="mgmt", name="Management", subnet="10.31.0.0/16",
-                        nodes=(Node("fsl-waf", f"10.31.{self.slot}.9"),)),)
+                        nodes=(Node("cr-waf", f"10.31.{self.slot}.9"),)),)
 
     def runner(self, role, segment_id=""):
         def run(argv, stdin=None, timeout=60.0):
@@ -57,14 +57,14 @@ class Slot:
 
     def reset_slot(self):
         self.cloud.reset.append(self.slot)
-        return [("fsl-waf", f"s{self.slot}")]
+        return [("cr-waf", f"s{self.slot}")]
 
     def rebuild_slot(self):
         return self.reset_slot()
 
     def configure_slot(self):
         self.cloud.configured.append(self.slot)
-        return [("fsl-waf", ("configured",))]
+        return [("cr-waf", ("configured",))]
 
     def ensure_slot(self, renew=True):
         self.cloud.ensured.append(self.slot)
@@ -228,7 +228,7 @@ def test_a_close_enables_only_rules_disabled_before_it(client, cloud):
         newer = Session.objects.create(scenario="board", baseline=[], slot=second.slot)
         later.append(DisabledRule.objects.create(
             session=newer, sid=3, original="", expires_at="2099-01-01T00:00:00Z"))
-        return [("fsl-waf", "s2")]
+        return [("cr-waf", "s2")]
 
     with patch.object(Slot, "reset_slot", lambda self: reset_then_a_new_session_disables_a_rule()):
         client.post_json(f"/api/sessions/{second.pk}/close/")
@@ -246,7 +246,7 @@ def test_a_failed_reset_on_close_frees_the_slot_s_reset_state(client, cloud):
     second = opened(client)
 
     def drifted(self):
-        raise Drifted("fsl-waf is not standing")
+        raise Drifted("cr-waf is not standing")
 
     with patch.object(Slot, "reset_slot", drifted):
         client.post_json(f"/api/sessions/{second.pk}/close/")
@@ -309,9 +309,9 @@ def test_the_slot_endpoints_act_on_one_slot_or_every_slot(client, cloud):
     every = client.post_json("/api/range/slot/").json()
     configured = client.post_json("/api/range/configure/?slot=2").json()
 
-    assert one["slot"] == 2 and [s["host"] for s in one["standing"]] == ["fsl-waf-2", "fsl-platform"]
+    assert one["slot"] == 2 and [s["host"] for s in one["standing"]] == ["cr-waf-2", "cr-platform"]
     assert sorted(cloud.ensured) == [1, 2] and [s["slot"] for s in every["slots"]] == [1, 2]
-    assert cloud.configured == [2] and configured["configured"][0]["host"] == "fsl-waf-2"
+    assert cloud.configured == [2] and configured["configured"][0]["host"] == "cr-waf-2"
     assert (reset.standing(1)["state"], reset.standing(2)["state"]) == (reset.FAILED, reset.IDLE), (
         "configuring a slot by hand clears that slot's failed reset and no other")
     assert client.get("/api/range/slot/?slot=3").status_code == 400
@@ -319,19 +319,19 @@ def test_the_slot_endpoints_act_on_one_slot_or_every_slot(client, cloud):
 
 def test_a_slot_on_an_older_image_is_rebuilt_by_a_post_only_when_no_session_holds_it(client, cloud):
     held = opened(client)
-    cloud.plans = [replace(plan, stale=("fsl-waf",)) for plan in cloud.plans]
+    cloud.plans = [replace(plan, stale=("cr-waf",)) for plan in cloud.plans]
 
     answer = client.post_json("/api/range/slot/").json()
 
     assert held.slot == 1 and cloud.renewed == [2], (
         "a rebuild under an open session wipes the VMs its learner is using"
     )
-    assert answer["stale"] == ["fsl-waf"]
-    assert cloud.reset == [("begun", 2)] and answer["rebuilding"] == [{"host": "fsl-waf-2", "server": "s2"}], (
+    assert answer["stale"] == ["cr-waf"]
+    assert cloud.reset == [("begun", 2)] and answer["rebuilding"] == [{"host": "cr-waf-2", "server": "s2"}], (
         "the free slot's rebuild is followed by its own reset, which configures it once Nova shows it back"
     )
     assert answer["blocked"] == [
-        f"session {held.pk} holds this slot, so the rebuild of fsl-waf onto the ready image "
+        f"session {held.pk} holds this slot, so the rebuild of cr-waf onto the ready image "
         f"waits for its close"
     ], "bin/cloud up stops on a blocked slot instead of waiting for a READY that cannot come"
 
@@ -351,7 +351,7 @@ def test_a_session_reads_its_alerts_from_its_own_slot_s_index(client, cloud, set
 def test_the_openstack_session_index_is_by_slot_and_the_collector_names_the_slot(monkeypatch):
     import runpy
 
-    monkeypatch.setenv("FSL_SUBSTRATE", "range.openstack.connect")
+    monkeypatch.setenv("CR_SUBSTRATE", "range.openstack.connect")
     monkeypatch.delenv("ELASTIC_SESSION_INDEX", raising=False)
     said = runpy.run_path(str(Path(__file__).resolve().parents[1] / "cr" / "settings.py"))
 

@@ -31,4 +31,4 @@ def prune_quietly(now=None) -> None:
     try:
         prune(now)
     except DatabaseError:
-        log.exception("closed sessions past FSL_RETAIN_CLOSED_MINUTES could not be deleted")
+        log.exception("closed sessions past CR_RETAIN_CLOSED_MINUTES could not be deleted")
