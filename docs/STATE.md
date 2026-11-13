@@ -1484,6 +1484,18 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       longer waits behind an open (the cause of one acceptance timeout).
       Proven by the full `bin/verify` of 2026-10-26 (unit 1669; acceptance 73
       passed in 2003 s across 4 processes).
+- [x] 2026-11-14: the answer-blind walk of round 16 (both courses, live), its
+      nineteen findings fixed (`docs/DECISIONS.md` "Answer-blind walk round
+      16"): the router's own symbol and the map-reading text; no step names
+      its own or a later answer (F2's `?q=`/`?sort=`, F3's customers place,
+      F1's kali line); F3 loses the repeated `site_host` and its solo count
+      needs the and-not query (`kql`); F4 asks the alert's destination, not
+      the sid typed; every pass waits for Next; a Kali run still collecting
+      when Next is pressed keeps its window; zone, rule-line and Top values
+      placement; Kibana's field search reset per load; per-course lesson
+      numbers and score note on the result page; truthful F4/F6 wording and
+      run times. The WAF's time zone stays UTC (its audit time stamp has no
+      zone).
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 

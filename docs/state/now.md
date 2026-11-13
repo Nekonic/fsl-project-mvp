@@ -63,6 +63,13 @@ Internet.
   584, `dependencies` 6, `services` 5). The acceptance red-team run now may
   take 15 minutes: beside three other workers' slots on one host it passed
   300 s once.
+- Answer-blind walk round 16 (2026-11-14): its nineteen findings were fixed
+  and deployed (the live platform runs `range-host-live` at that work, images
+  from GHCR by its commit; the range host was replaced by `POST slot/` for
+  the new tag). Full `bin/verify` on the platform VM after it: unit and API
+  1506 passed (5:00); acceptance 91 passed, 0 failed, 0 errors, 1 skipped in
+  1101 s across 6 processes; ratchet no regression (`core_loc` 584,
+  `dependencies` 6, `services` 5).
 - Live paths run end to end on 2026-11-13: `bin/cloud up --replace` from the
   VM range (25 min, the range host replaced as stale, the leftovers removed
   after READY); a stale range host replaced by `POST slot/`; `bin/cloud down`
@@ -115,11 +122,13 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 
 1. The live cloud on `dev`: set `platform.ref` back to `dev` and
    `compute.slots` as the user wants (four now).
-2. The learner map was rendered in the live GNS3 web UI with this file's
-   positions and shows no overlapping text; the string table calls the edge
-   라우터. Open: the router still wears the firewall icon (`host-firewall.svg`),
-   and the live platform VM still serves the map from before that layout fix.
-3. An answer-blind review round of both courses, then the user's own test.
+2. A fresh answer-blind review round of both courses on the round-16 fixes
+   (`docs/DECISIONS.md` "Answer-blind walk round 16"), then the user's own
+   test. The live map now shows the router's own symbol (`host-router.svg`)
+   and F1's DMZ callout outside the zone.
+3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
+   or `union select` even where it is loaded: a detection gap to measure
+   (round 16, `docs/DECISIONS.md`).
 4. Acceptance run time, and ingest re-reading the whole window.
 5. MySQL `performance_schema=OFF`: memory caps the slots a range host holds
    (`docs/STATE.md` backlog 4).
