@@ -116,7 +116,7 @@ def _map_answers(session_id: int) -> dict:
     listed = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/lesson/addresses/", timeout=120).json()["addresses"]
     steps = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/", timeout=60).json()["lesson"]["steps"]
     hosts = next(step["check"]["options"] for step in steps if step["id"] == "path")
-    route = ["kali", *(["firewall"] if "firewall" in hosts else []), "waf", "board.com"]
+    route = ["kali", *(["router"] if "router" in hosts else []), "waf", "board.com"]
     board = _drawn_address(listed, project, "board.com", "sw1")
     given = {
         "kali_ip": _drawn_address(listed, project, "kali", "internet").partition("/")[0],
