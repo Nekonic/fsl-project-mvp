@@ -298,3 +298,10 @@ to be created, so every number above is for 2 vCPU.
   objectives / loot ground truth.
 - Container escape from the learner's root shells (the shared-kernel risk
   in the design stays a ruling for the user).
+
+## Clean-up
+
+- `cr-range-proto` deleted (its Nova-created port went with it; it had no
+  volumes). Baseline sessions 1559 and 1560 were closed by the harness; both
+  live slots are READY with no session. Nothing on the platform VM was
+  changed apart from `/tmp/proto-baseline` (logs and the dump script).
