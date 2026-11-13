@@ -6748,3 +6748,49 @@ The lessons were rewritten, not reworded, and regrouped at his decision.
   on-screen text and a description of each tool screen walks the lessons;
   rounds 1-3 went 43, 46 and 48 of 48 steps, each flagged step fixed.
 
+## 2026-11-13 — FSL leaves the product's names; the prefix is `cr`
+
+FSL is the name of the funding programme, not of the product. The console's
+brand (`common.brand` in the string table, now also the default page title and
+the source of the header mark `common.brand_mark`) says "cyber training range"
+in Korean, the English prose says "cyber range", and every name the code
+creates or reads takes the prefix `cr`. `range-` was rejected:
+`platform/range/`, `range.openstack.connect`, `range.internal` and the project
+`fsl-range` would read as `range-range` and make every grep ambiguous. `cr` and
+`CR_` had no hit in the repo; the near miss `crs` (OWASP CRS) never appears as
+`cr-` or `CR_`.
+
+| What | Before | After |
+|---|---|---|
+| Brand | `common.brand` "FSL" + "training range", titles `FSL`, mark `F` | "cyber training range", default title from `common.brand`, mark from `common.brand_mark` |
+| Django package | `platform/fsl/`, `fsl.settings` | `platform/cr/`, `cr.settings` |
+| Range hosts, role images | `fsl-edge`, `fsl-waf`, `fsl-kali`, `fsl-wargame-host` | `cr-edge`, `cr-waf`, `cr-kali`, `cr-wargame-host` |
+| Fabric | `fsl-internet[-N]`, `fsl-estate[-N]`, `fsl-mgmt`, `fsl-<origin>`; groups `fsl-range`, `fsl-reach`, `fsl-mgmt`, `fsl-build`; keypair and port `fsl-platform[.mgmt]` | the same with `cr-` |
+| Tags and metadata | `fsl.segment.id`, `fsl.slot`, `fsl_host`, `fsl_slot`, `fsl_image`, `fsl_bundle`, builders `fsl-build-<host>` | `cr.segment.id`, `cr.slot`, `cr_host`, `cr_slot`, `cr_image`, `cr_bundle`, `cr-build-<host>` |
+| Platform VM | stack and resources `fsl-platform`, `/opt/fsl`, `fsl-platform.service`, `fsl-venv`, the `fsl` drop-ins under `/etc` | `cr-platform`, `/opt/cr`, `cr-platform.service`, `cr-venv`, `cr` drop-ins |
+| Compose | project `fsl`, containers `fsl-*`, volumes `fsl_*`, user `fsl` (uid 10001) | `cr`, `cr-*`, `cr_*`, `cr` (same uid) |
+| Images | `ghcr.io/nekonic/fsl-{platform,gns3,board,corp,corp-db}` | `ghcr.io/nekonic/cr-…` |
+| Settings | `FSL_*` | `CR_*` |
+| In-range paths | `/opt/fsl`, `/var/lib/fsl*`, `/var/log/fsl`, `fsl-users`, OPNsense `fsl.rules`, `fsl.yaml`, `/conf/fsl-settled`, `FSLSEED` | `cr` forms, `CRSEED` |
+| Wire and storage keys | `fsl.records=`, `fsl.customers=`, `fsl.exit=`, `fsl.platform.answer=`, thread names, `localStorage` `fsl-*`, `__FSL_AUDITOR__`, Elasticsearch `fsl_slot` | `cr` forms |
+| Rule disable marker | `# fsl-disabled` | `# cr-disabled`; `# fsl-disabled` and `# fsl-suppressed` are still read |
+| Test signatures | `msg:"FSL …"` | no prefix, like the shipped rules |
+
+Left as they are: the cloud identity made by hand (Keystone domain `fsl`,
+project and user `fsl-range`, keypair `fsl-claude`, the Glance family
+`fsl-opnsense-<version>`), operator-machine paths (`~/.config/fsl`,
+`~/.ssh/fsl_*`, `~/.ssh/fsl-platform`, `~/.cache/fsl*`), the repository name
+`fsl-project-mvp`, and the historical records (this file,
+`TROUBLESHOOTING.md`, archived plans, dated specs, the history in `STATE.md`
+and `now.md`). Search those for the old names.
+
+The live cloud keeps the old names until the code that made them takes it down
+and the renamed code brings it up again (`docs/OPENSTACK.md` §5.4). Rejected:
+teaching the new code every old name for one hop; the old checkout's
+`bin/cloud down` already backs up the store and removes the old resources. The
+one guard kept: a VM still holding `fsl_platformdata` makes `platform-rebuild`
+and `cloud down` refuse, so a rebuild cannot read the old VM as empty and
+delete it. Learners lose their remembered tabs and notes once
+(`localStorage`), and the first image build replaces `fsl-opnsense-<version>`
+under the same name because the edge's bundle changed.
+

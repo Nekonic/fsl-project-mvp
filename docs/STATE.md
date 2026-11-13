@@ -392,7 +392,7 @@ geolocated TW.
   yes` at startup; a sensor started without it answers "Unable to connect
   socket" and rolls back every change until restarted. OK means the reload ran,
   not that it worked, so `suricata -T` first still catches a bad rule. On
-  OpenStack set `FSL_SENSOR_RELOAD="suricatasc -c reload-rules
+  OpenStack set `CR_SENSOR_RELOAD="suricatasc -c reload-rules
   /run/suricata/suricata-command.socket"`, with `sudo -n` in front if needed.
 - **Rules are written, validated and reloaded as commands through `runner`**
   with stdin, so the port has no rule verbs. Validation reads `/dev/stdin`,
@@ -430,22 +430,22 @@ geolocated TW.
   session's 5,000-document read in about 14 hours.
 - **Bring-up of the platform VM's control plane is `docker compose pull && docker compose up -d`** (`build:` is for local development). The platform's
   entrypoint reads the docker socket's group from the socket at start, adds
-  `fsl` to it, drops root with `gosu`, and registers the `geoip` ingest
+  `cr` to it, drops root with `gosu`, and registers the `geoip` ingest
   pipeline itself, so a fresh host needs no build argument and no manual PUT.
-- **The store is the named volume `fsl_platformdata`**, not `./data` of
+- **The store is the named volume `cr_platformdata`**, not `./data` of
   whichever checkout ran `compose up`; `./data/label` is still a bind mount.
   `bin/backup` copies the store live with `VACUUM INTO` and keeps the newest
   `--keep` copies (default 1; `cloud.yaml` `backups: {keep: 1}`);
   `bin/platform-rebuild` restored a 6 GB store on a new VM twice on 2026-10-15
   (`docs/OPENSTACK.md` §5.3).
-- **Closed sessions are deleted after `FSL_RETAIN_CLOSED_MINUTES`** (default
-  60; `fsl/settings.py`, `compose.yaml`): `platform/api/retention.py` runs at
+- **Closed sessions are deleted after `CR_RETAIN_CLOSED_MINUTES`** (default
+  60; `cr/settings.py`, `compose.yaml`): `platform/api/retention.py` runs at
   start and after every close, 2,000 rows per transaction; open sessions are
   never touched. SQLite transactions begin `IMMEDIATE`.
 - **Published ports.** By default 8000 (platform), 9200
   (Elasticsearch) and 5140/udp (syslog) are on `127.0.0.1`. On the platform VM
-  cloud-init sets `FSL_PUBLISH` to the VM's address, so 8000 opens to
-  any address with no login (the user, 2026-10-01), and `FSL_SYSLOG_PUBLISH` to
+  cloud-init sets `CR_PUBLISH` to the VM's address, so 8000 opens to
+  any address with no login (the user, 2026-10-01), and `CR_SYSLOG_PUBLISH` to
   `0.0.0.0` for 5140/udp (`platform.yaml:145`); 9200 stays on loopback. Django
   answers to the floating IP. Before, each segment's gateway
   forwarded 8000, 9200, 7681 and 8080 into the platform from inside the range
@@ -473,7 +473,7 @@ geolocated TW.
 - **`bin/verify`** restarts the platform first (waitress never reloads), opens
   and closes one session to prove a session stack comes up (else TP 0 reads as
   a failed defence), refuses a stack another checkout brought up, and prunes
-  only the sessions its run listed in `FSL_ACCEPTANCE_SESSIONS`. `--changed
+  only the sessions its run listed in `CR_ACCEPTANCE_SESSIONS`. `--changed
   [BASE]` (`bin/select-tests`) runs only the unit tests the change reaches and
   the ratchet, `--live` adds the acceptance modules it reaches, `--fast` runs
   every unit test; docs-only changes select nothing.
@@ -491,17 +491,17 @@ Docker was the first substrate and was removed on 2026-10-21; OpenStack is the o
 `platform/range/` is the port: `describe() -> Shape`, `segments()` (who stands
 where, without the sensor), `runner(role, segment)` and `launcher(segment)`.
 `range.substrate()` is the one place a name becomes an adapter
-(`FSL_SUBSTRATE`, options keyed by substrate; a test refuses a second
+(`CR_SUBSTRATE`, options keyed by substrate; a test refuses a second
 `import_string`), and `redteam/run.py` uses it too. Core, `topology.py` and
 `attacker.py` never call Docker. `test/range.py` is the acceptance suite's side
 of the port.
 
 `platform/range/declaration.yaml` declares per segment an id, a name and an
 attack origin, a role table, and `watches: {sensor: gateway}`; the OpenStack
-adapter, `fsl/settings.py` and `test/range.py` read it. Identity is declared,
+adapter, `cr/settings.py` and `test/range.py` read it. Identity is declared,
 allocation reported: a declared subnet that disagreed with the real one would
 bin alerts by a subnet nothing lives on. A segment is bound by its
-`fsl.segment.id` mark (a Neutron tag), never by name: Heat stack suffixes,
+`cr.segment.id` mark (a Neutron tag), never by name: Heat stack suffixes,
 non-unique Neutron names and a project called `fsl_lab` broke name rules.
 
 `platform/range/openstack.py` is unit-tested against fakes built from the
@@ -734,7 +734,7 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   scheduled automated attacker over customer traffic from `api/customers.py`
   and `traffic.py`, judged at a final check).
 - **Stack**: every service `linux/amd64`. On the platform VM,
-  `fsl-platform.service` runs `docker compose pull` and `up -d` for the
+  `cr-platform.service` runs `docker compose pull` and `up -d` for the
   control plane (the platform entrypoint sets the socket group and registers
   the ingest pipeline). The product is OpenStack-only since 2026-10-20; the
   docker substrate (`platform/range/docker.py`, `session.yaml`) was removed on
@@ -743,7 +743,7 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   the OpenStack cloud as one Heat stack (backlog 2, step 1).
 - **The range on OpenStack**: the platform builds the networks, the golden
   images and the slot (the OPNsense edge running Suricata, the WAF, Kali, and
-  `fsl-wargame-host` running the wargames' GHCR containers with an estate
+  `cr-wargame-host` running the wargames' GHCR containers with an estate
   Suricata) through `/api/range/fabric/`, `/images/` and `/slot/`, and reaches
   every host over ssh on `mgmt` (backlog 2); two slots on the current cloud
   (`compute.slots: 2`, since 2026-10-21).
@@ -935,6 +935,9 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       longer shows it (`topology.learner` maps the range's names to role
       names), but the operator's system maps, the `log.syslog.hostname` of the WAF and
       the wargame host, and the container and VM names still do.
+      Renamed in code 2026-11-13 to the prefix `cr` (`docs/DECISIONS.md`,
+      2026-11-13); the live cloud still runs the old names until the
+      cut-over in `docs/OPENSTACK.md` §5.4 is done.
 - [x] A slot standing before a deploy kept the servers booted from the
       previous images: the wargame host and the edge until someone ran
       `POST /api/range/slot/rebuild/` and `/configure/`, the Kali and WAF
@@ -1818,7 +1821,7 @@ binary log via a substrate runner, proven end to end against the live stack.
   non-root, via the socket's group): an escape path, on the platform VM too.
 - The ttyd terminals at `/vm-terminal/kali/` and `/vm-terminal/waf/` are
   unauthenticated shells for whoever reaches the platform's port: the VM's
-  address (`FSL_PUBLISH`) on the platform VM.
+  address (`CR_PUBLISH`) on the platform VM.
 - `elastic.fetch` reads at most 5000 documents per call, oldest first, `http`
   records included. Since 2026-10-13 a full ingest pages by `@timestamp`
   (`api/views.py` `_fetched`, up to 41 reads, about 205,000 documents); past

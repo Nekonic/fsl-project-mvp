@@ -157,12 +157,12 @@ a single VM on VirtualBox or VMware.
    continues where it stopped.
 
    - Platform VM: log in with `ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS`. Then
-     run `systemctl status fsl-platform` (how the last boot's bring-up went),
-     `sudo cloud-init status --long` and `sudo docker logs fsl-platform`.
+     run `systemctl status cr-platform` (how the last boot's bring-up went),
+     `sudo cloud-init status --long` and `sudo docker logs cr-platform`.
    - Heat stack: in the shell of step 6, run
-     `.venv/bin/openstack stack failures list fsl-platform`.
-   - The stack exists, but the VM never ran `fsl-platform`. `sudo docker ps`
-     shows no `fsl-platform` container, and `sudo cloud-init status --long`
+     `.venv/bin/openstack stack failures list cr-platform`.
+   - The stack exists, but the VM never ran `cr-platform`. `sudo docker ps`
+     shows no `cr-platform` container, and `sudo cloud-init status --long`
      shows why. Often the VM has no Internet (`docs/OPENSTACK.md` §2.6). If the
      first boot is only slow, run `bin/cloud up` again and it finishes.
      Otherwise fix the cause and run
@@ -188,26 +188,26 @@ a single VM on VirtualBox or VMware.
 The platform and the services around it run in one VM. A single Heat stack
 (`deploy/openstack/platform.yaml`) creates that VM. The platform controls the
 range through the OpenStack API as the member-role user `fsl-range`. On the VM,
-`FSL_SUBSTRATE=range.openstack.connect` tells the platform that the range is the
+`CR_SUBSTRATE=range.openstack.connect` tells the platform that the range is the
 OpenStack slot. A session cannot start until `/api/range/ready/` reports the
 slot ready.
 
-Cloud-init installs `fsl-platform.service`. At every boot it runs
-`docker compose pull` and `docker compose up -d` on `/opt/fsl/compose.yaml`.
+Cloud-init installs `cr-platform.service`. At every boot it runs
+`docker compose pull` and `docker compose up -d` on `/opt/cr/compose.yaml`.
 
 - We build seven images: platform, board, corp, corp-db, kali, proxy and gns3.
   `.github/workflows/images.yml` builds them on every push to `dev`. It
-  publishes them as `ghcr.io/nekonic/fsl-<name>`, tagged with the commit SHA
+  publishes them as `ghcr.io/nekonic/cr-<name>`, tagged with the commit SHA
   and with `dev`.
-- The VM writes the SHA of the commit it cloned into `/opt/fsl/.env` as
-  `FSL_IMAGE_TAG`. It therefore runs the images of exactly that commit.
+- The VM writes the SHA of the commit it cloned into `/opt/cr/.env` as
+  `CR_IMAGE_TAG`. It therefore runs the images of exactly that commit.
 - GitHub makes a package private on the first push, even when the repository is
   public. Make each of the seven public once. Otherwise the pull without a
   login fails. On github.com open the package page, then **Package settings**,
   **Change visibility**, **Public**. You cannot undo this.
-- The containers on the VM are `fsl-platform`, `fsl-elasticsearch`,
-  `fsl-kibana`, `fsl-gns3` and `fsl-collector`. To read a log, log in with ssh
-  and run `sudo docker logs fsl-platform` (or another name).
+- The containers on the VM are `cr-platform`, `cr-elasticsearch`,
+  `cr-kibana`, `cr-gns3` and `cr-collector`. To read a log, log in with ssh
+  and run `sudo docker logs cr-platform` (or another name).
 - To run a commit that is not pushed, use `--sideload` (`docs/OPENSTACK.md`
   §5.3).
 
@@ -234,9 +234,9 @@ When a session opens, it gets its own Kibana space, "SOC" (`KIBANA_URL`, set in
 They show the engine and the sensor's map name as fields and hide the
 platform's internal fields.
 
-The platform builds three kinds of range network. `fsl-internet` is the
-simulated Internet, with 30 origin subnets. `fsl-estate` is the company's
-internal network, where the targets sit. `fsl-mgmt` is the management network,
+The platform builds three kinds of range network. `cr-internet` is the
+simulated Internet, with 30 origin subnets. `cr-estate` is the company's
+internal network, where the targets sit. `cr-mgmt` is the management network,
 which the platform uses to reach the range's VMs.
 
 ```mermaid
@@ -245,16 +245,16 @@ flowchart TB
 
   subgraph cloud["OpenStack project fsl-range"]
     api["OpenStack API<br/>Keystone, Neutron, Nova"]
-    subgraph heat["Heat stack fsl-platform"]
+    subgraph heat["Heat stack cr-platform"]
       fip["floating IP<br/>8000, 8002, 3080, ssh and ping"]
       subgraph vm["platform VM, Ubuntu 24.04"]
-        unit["fsl-platform.service<br/>docker compose pull, up -d"]
+        unit["cr-platform.service<br/>docker compose pull, up -d"]
         stack["the platform's containers<br/>(next graph)"]
       end
     end
     subgraph fabric_box["range networks, built by the platform"]
-      internet["fsl-internet<br/>30 origin subnets"]
-      inside["fsl-estate, fsl-mgmt"]
+      internet["cr-internet<br/>30 origin subnets"]
+      inside["cr-estate, cr-mgmt"]
     end
   end
 
@@ -287,7 +287,7 @@ and Suricata), the WAF, Kali (with the stamping proxy and the customers'
 traffic) and the wargame host (every wargame as containers, plus a second
 Suricata on the estate). They send their logs by syslog to `collector`.
 
-A closed session stays in the database for `FSL_RETAIN_CLOSED_MINUTES` (default
+A closed session stays in the database for `CR_RETAIN_CLOSED_MINUTES` (default
 60, set in `compose.yaml`). That is long enough to read its score and debrief.
 After that the platform deletes the session with its cases, detections,
 customer requests and objectives. It checks at start and each time a session
@@ -299,7 +299,7 @@ To add a wargame you need:
   `objectives.yaml`;
 - a case file under `redteam/cases/`;
 - its name under `wargames:` and its port under `publish:` in the
-  `fsl-wargame-host` entry of `platform/range/declaration.yaml`, and a `server`
+  `cr-wargame-host` entry of `platform/range/declaration.yaml`, and a `server`
   block in `deploy/waf/board.com.conf`.
 
 `platform/wargames.py` finds the wargame from `scenario.yaml`. There are two
@@ -444,13 +444,13 @@ many database backups `bin/platform-rebuild` and `bin/cloud down` leave in
 `backups/`.
 
 The new VM clones `ref`, pulls the images tagged with that commit, and starts.
-Cloud-init writes the cloud's values into `/opt/fsl/openstack.env`. Two secrets
+Cloud-init writes the cloud's values into `/opt/cr/openstack.env`. Two secrets
 are kept out of the stack: the password and the platform's range ssh key. Nova's
 metadata service gives user data to every process on the VM, including
 containers, so a secret in the stack would be readable there. When the VM
 answers ssh and cloud-init is done, `bin/platform-rebuild`:
 
-1. appends `FSL_OPENSTACK_PASSWORD` to `/opt/fsl/openstack.env`;
+1. appends `CR_OPENSTACK_PASSWORD` to `/opt/cr/openstack.env`;
 2. writes the range key to `/data/ssh/id_ed25519` in the platform's data
    volume;
 3. restores the database it backed up, or, when the old VM held none, the
@@ -466,7 +466,7 @@ the file does not exist:
   holds a database;
 - it refuses when you replace a failed stack.
 
-Because the key survives, the range's VMs and the `fsl-platform` keypair keep
+Because the key survives, the range's VMs and the `cr-platform` keypair keep
 trusting the new platform. The range can stay up while you replace the
 platform.
 
@@ -482,7 +482,7 @@ that commit. Then the rebuild:
   HEAD's too.
 
 Before it deletes anything, it refuses two things: a tarball that does not hold
-exactly one `ghcr.io/nekonic/fsl-NAME:<commit>`, and any image whose build
+exactly one `ghcr.io/nekonic/cr-NAME:<commit>`, and any image whose build
 context (`.github/workflows/images.yml`) differs between the commit it came
 from and HEAD. A sideloaded VM that reboots may pull the cloned commit's images
 from GHCR over the sideloaded ones. Push and rebuild instead of rebooting.
@@ -491,8 +491,8 @@ The stack's `address` output is the floating IP. The console is at
 `http://ADDRESS:8000/` and asks for no login. Ports 9200 and 5601 listen only on
 the VM's loopback. Port 5140/udp listens on all of the VM's addresses.
 
-On the VM the checkout is `/opt/fsl`, owned by `ubuntu`. Run compose,
-`bin/backup` and the restore below there. `systemctl status fsl-platform` shows
+On the VM the checkout is `/opt/cr`, owned by `ubuntu`. Run compose,
+`bin/backup` and the restore below there. `systemctl status cr-platform` shows
 how the last boot's bring-up went.
 
 You can also call by hand the range steps that `bin/cloud up` runs. First the
@@ -522,7 +522,7 @@ If a build fails, `detail` shows the end of the builder's console. `DELETE` on
 the same path removes failed builders and images built from older scripts.
 
 When the images are ready, one POST boots four VMs, each from its own image:
-`fsl-edge`, `fsl-kali`, `fsl-waf` and `fsl-wargame-host`. The wargame host runs
+`cr-edge`, `cr-kali`, `cr-waf` and `cr-wargame-host`. The wargame host runs
 every wargame as its GHCR containers. The platform reaches the four over ssh on
 `mgmt`:
 
@@ -642,9 +642,9 @@ the learner defends, drawn as a lab topology.
   and the host's pid namespace. GNS3 needs them to run its switches and start a
   docker node (`docs/ARCHITECTURE.md`, The topology).
 
-`compose.yaml` publishes every port on `127.0.0.1` unless `FSL_PUBLISH` says
+`compose.yaml` publishes every port on `127.0.0.1` unless `CR_PUBLISH` says
 otherwise. On the platform VM, 8000, 8002 and 3080 are published on the VM's own
-address (`FSL_PUBLISH`) and 5140/udp on `0.0.0.0` (`FSL_SYSLOG_PUBLISH`). The
+address (`CR_PUBLISH`) and 5140/udp on `0.0.0.0` (`CR_SYSLOG_PUBLISH`). The
 platform template's security group opens 8000, 8002 and 3080
 (`docs/OPENSTACK.md` §3.5).
 
@@ -799,7 +799,7 @@ do. The target is not published, so the harness runs inside the range, from the
 platform:
 
 ```bash
-sudo docker exec fsl-platform python redteam/run.py --tool-target http://board.com
+sudo docker exec cr-platform python redteam/run.py --tool-target http://board.com
 ```
 
 The harness opens a session for the scenario whose `case_file` matches the
@@ -839,7 +839,7 @@ only the sessions it created.
 
 `bin/acceptance --plan` prints the split, and `test/README.md` explains it. The
 platform VM does not listen on localhost, so run it on the VM with
-`FSL_PLATFORM_URL=http://<address>:8000 bin/verify`. Every acceptance test runs
+`CR_PLATFORM_URL=http://<address>:8000 bin/verify`. Every acceptance test runs
 on OpenStack and none is skipped.
 
 `bin/prune` deletes sessions by hand. Without `--apply` it is a dry run:
@@ -856,17 +856,17 @@ generated stylesheet is committed, and no test checks that it is current.
 
 The platform's database holds sessions, cases, detections, objectives, rule sets
 and disabled rules. It is one SQLite file, `/data/db.sqlite3`, on the
-`fsl_platformdata` volume of the platform VM. Nothing else is backed up: not
-Elasticsearch's `fsl_esdata` volume, and not the collector's registry in
-`fsl_collectordata`. These volumes go with the VM when `bin/cloud down` deletes
+`cr_platformdata` volume of the platform VM. Nothing else is backed up: not
+Elasticsearch's `cr_esdata` volume, and not the collector's registry in
+`cr_collectordata`. These volumes go with the VM when `bin/cloud down` deletes
 it. `down` first backs up the database and keeps the copy in `backups/`.
 
 ```bash
-FSL_PLATFORM_EXEC="ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS sudo docker exec -i fsl-platform python -" \
+CR_PLATFORM_EXEC="ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS sudo docker exec -i cr-platform python -" \
   bin/backup      # writes backups/db-<UTC time>.sqlite3 while the platform serves
 ```
 
-`FSL_PLATFORM_EXEC` is the command that runs `python -` in the platform's
+`CR_PLATFORM_EXEC` is the command that runs `python -` in the platform's
 environment. `bin/backup`:
 
 1. writes a compacted copy with SQLite's `VACUUM INTO` into a temporary file
@@ -884,19 +884,19 @@ To restore by hand, copy the file to the VM. Then, on the VM, with the platform
 stopped:
 
 ```bash
-ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS mkdir -p /opt/fsl/backups
-scp -i ~/.ssh/fsl_claude backups/db-20260925T020000Z.sqlite3 ubuntu@ADDRESS:/opt/fsl/backups/
+ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS mkdir -p /opt/cr/backups
+scp -i ~/.ssh/fsl_claude backups/db-20260925T020000Z.sqlite3 ubuntu@ADDRESS:/opt/cr/backups/
 ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS
-cd /opt/fsl
+cd /opt/cr
 sudo docker compose stop platform
-sudo docker run --rm --network none --entrypoint sh --user fsl \
-  -v fsl_platformdata:/data -v "$PWD/backups:/backups:ro" "$(sudo docker inspect --format '{{.Config.Image}}' fsl-platform)" \
+sudo docker run --rm --network none --entrypoint sh --user cr \
+  -v cr_platformdata:/data -v "$PWD/backups:/backups:ro" "$(sudo docker inspect --format '{{.Config.Image}}' cr-platform)" \
   -c 'rm -f /data/db.sqlite3-journal && cp /backups/db-20260925T020000Z.sqlite3 /data/db.sqlite3'
 sudo docker compose start platform
 ```
 
 `--entrypoint sh` replaces the image's entrypoint, which ignores its arguments.
-`--user fsl` leaves the copy owned by the platform's user. `docker cp` would
+`--user cr` leaves the copy owned by the platform's user. `docker cp` would
 leave it owned by root, and the platform could not write it. You must remove the
 old `-journal` file, or SQLite replays it onto the restored file. When the
 platform starts, it applies newer migrations. `bin/platform-rebuild` runs these
@@ -916,6 +916,6 @@ same steps.
   passwordless sudo.
 
 The same holds on the platform VM. There the project's password is also in
-plain text in `/opt/fsl/openstack.env` and in the platform container's
+plain text in `/opt/cr/openstack.env` and in the platform container's
 environment. The VM's ssh, 8000, 8002 and 3080 are open to any address, and
 8000 asks for no login.
