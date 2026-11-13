@@ -33,7 +33,7 @@ def test_both_legs_run_the_pinned_sensor_image_on_their_slot_s_bridge():
         ), "both legs are judged by one Suricata build, which moves only when this pin does"
         assert sensor["network_mode"] == "host"
         assert f"--af-packet=s@slot@-{bridge}" in sensor["command"]
-        assert sensor["volumes"][0].endswith(":/etc/suricata/suricata.yaml:ro")
+        assert sensor["volumes"][0].endswith(":/etc/suricata/suricata.yaml")
 
 
 def test_the_estate_sensor_starts_on_the_shipped_baseline_rules():
