@@ -280,3 +280,26 @@ def test_a_reset_owed_to_a_slot_whose_files_are_gone_configures_it_instead():
 
     assert range_.reset_in_place() == [("cr-range", ("configured",))], (
         "a new range host or a slot taken down while its reset was owed has no slot.sh to reset with")
+
+
+def test_a_range_host_that_failed_its_setup_is_replaced_by_the_next_post(monkeypatch):
+    cloud = Cloud()
+    range_ = adapter(cloud)
+    range_.ensure_slot()
+    monkeypatch.setattr(openstack.OpenStack, "_setup_status", lambda self, server: openstack.SETUP_FAILED)
+
+    range_.ensure_slot()
+
+    assert len(cloud.booted()) == 2 and "srv-1" in cloud.deleted, (
+        "a setup that failed for a passing reason, such as a pull from GHCR, is tried again on a new range host")
+
+
+def test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it():
+    import re
+
+    written = re.search(r"^SecAuditLog\s+(\S+)", (ROOT / "deploy/waf/modsecurity.conf").read_text(), re.M)[1]
+    document = rangehost.compose(ROOT, laid(1), WARGAMES)
+    mounted = {volume.split(":")[1] for volume in document["services"]["waf"]["volumes"]}
+
+    assert written.rsplit("/", 1)[0] in mounted
+    assert rangehost.LOGS["waf"].rsplit("/", 1)[1] == written.rsplit("/", 1)[1]
