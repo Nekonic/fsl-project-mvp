@@ -131,7 +131,7 @@
 
 - 슬롯 네트워크는 모두 `internal`이고 `gateway_mode_ipv4: isolated`입니다. 훈련 환경 호스트는 슬롯 브리지에 주소를 갖지 않고, 어느 슬롯 네트워크에도 밖으로 나가는 경로나 NAT가 없습니다.
 - Kali는 `internet`에만 붙어 있고, 아는 이름은 `board.com`과 `corp.com` 둘뿐이며 둘 다 WAF입니다. 에지는 `internet`과 `estate` 사이를 NAT 없이 라우팅합니다. DB는 자기 워게임의 `<wargame>-default` 네트워크에만 붙습니다.
-- `test/test_attacker_reach.py`는 실제 훈련 환경에서 Kali가 `board:8000`에도 `corp-wp`에도 이름으로 접근하지 못하는지 확인합니다. 이 파일의 포트 스캔은 Kali의 기본 경로가 걸린 인터페이스를 뺀 나머지 인터페이스를 훑는데, 슬롯의 Kali에는 `eth0`만 있으므로 그 테스트는 슬롯에서 아무것도 스캔하지 않고 아무것도 증명하지 않습니다. `test/test_board_exfil.py`는 `board.com`을 거쳐 board에 접근합니다.
+- `test/test_attacker_reach.py`는 실제 훈련 환경에서 Kali가 `board:8000`에도 `corp-wp`에도 이름으로 접근하지 못하는지 확인합니다. 포트 스캔은 `test/test_range_isolation.py`로 옮겼고, 여기서 Kali가 훈련 환경 호스트와 플랫폼, 훈련 환경 호스트의 `mgmt` 네트워크를 훑습니다. `test/test_board_exfil.py`는 `board.com`을 거쳐 board에 접근합니다.
 - 실제 훈련 환경의 격리 증거는 `test/test_range_isolation.py`입니다. Kali, WAF, board에서 격리를 검증합니다. 훈련 환경 호스트의 sshd, 플랫폼, 인터넷, 메타데이터 서비스, 다른 슬롯 어디에도 닿지 않아야 합니다. Kali는 WAF에 닿고, 에지를 거쳐 board의 estate 주소에도 닿습니다. `board-db`는 이름이 풀리지 않고, SYN 스캔은 동작합니다.
 - `platform/tests/test_containment.py`는 렌더링한 슬롯 compose 파일이 격리 조건을 어기면 `bin/verify`를 실패시킵니다("OpenStack" 절).
 - `test/test_concurrent_sessions.py`는 동시에 연 두 세션이 서로를 보지 못함을 검증합니다.
@@ -416,7 +416,7 @@ id와 이름: 모든 id는 `uuid5(<learner id>, "slot-<n>-<wargame>")`입니다.
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`가 기동 시 `geoip` ingest 파이프라인을 PUT합니다 |
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`가 Kibana API 경로를 압니다. 관리용 API, Default space, space 접두어 없는 경로, `?namespaces=`를 거부하고, `GET /kibana/s/<space>/api/spaces/space`에는 SOC space 하나만 담은 응답을 직접 돌려줍니다 |
 | GNS3 API | `platform/gns3.py` | GNS3 컨테이너 안의 `deploy/gns3/provision.py`가 admin으로 로그인해 학습자 계정을 만들고 프로젝트를 엽니다. GNS3가 `/static/web-ui/map.html`로 제공하는 `deploy/gns3/auditor.html`이 learner로 로그인해 `/v3/projects/<id>/nodes`와 `/links`를 읽습니다. 콘솔의 구성도 창은 `gns3.py`가 돌려주는 포트와 경로의 웹 UI를 프레임으로 띄웁니다 |
-| CRS 설정과 nginx reload | `platform/rules/crs.py` | `entrypoint.sh`가 `vm-terminal.sh cr-waf`를 실행하고, 이것이 사용자에게 슬롯 WAF 컨테이너의 쉘을 열어 줍니다(훈련 환경 호스트로 ssh한 뒤 `sudo docker exec -it sN-waf bash -l`). audit 로그의 rsyslog 전달 설정은 훈련 환경 호스트에서 `range/rangehost.forwarding`이 씁니다. WAF의 audit 디렉터리는 `deploy/range-host/slot.yaml`이 마운트하고 파일 이름은 `rangehost.LOGS`가 정하며, `platform/tests/test_range_host.py`의 `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it`가 둘 다 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 확인합니다. F6의 WAF 창 단계는 학습자가 입력할 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`)을 보여 줍니다. `wargames.lesson`이 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 이 명령을 채웁니다. 플랫폼은 터미널을 조작하지 않습니다 |
+| CRS 설정과 nginx reload | `platform/rules/crs.py` | `entrypoint.sh`가 `vm-terminal.sh cr-waf`를 실행하고, 이것이 사용자에게 슬롯 WAF 컨테이너의 쉘을 열어 줍니다(훈련 환경 호스트로 ssh한 뒤 `sudo docker exec -it sN-waf bash -l`). audit 로그의 rsyslog 전달 설정은 훈련 환경 호스트에서 `range/rangehost.forwarding`이 씁니다. WAF의 audit 로그 파일은 `deploy/range-host/slot.yaml`이 `rangehost.LOGS`가 정한 경로에서 마운트하며, `platform/tests/test_range_host.py`의 `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it`가 둘 다 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 확인합니다. F6의 WAF 창 단계는 학습자가 입력할 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`)을 보여 줍니다. `wargames.lesson`이 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 이 명령을 채웁니다. 플랫폼은 터미널을 조작하지 않습니다 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `declaration.yaml`의 각 센서 호스트(`sensor`는 `cr-edge`, `estate-sensor`는 `cr-range`)가 `suricata.py`에 넘길 룰 파일과 reload 명령을 지정합니다. `platform/range/rangehost.py`는 두 센서의 설정(`deploy/range-host/edge-sensor.yaml`, `deploy/suricata/suricata.yaml`)과 compose 서비스를 렌더링하고, `deploy/range-host/slot.sh`는 슬롯과 함께 센서를 띄우고 내리며, 초기화 때 센서의 로그 파일을 다시 열게 하고, 에지 라우터를 설정합니다. 그 뒤 기본 룰은 `suricata.py`를 거쳐 적용됩니다 |
 | 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/commands.log`를 읽습니다. 터미널 연결 설정은 `cr-kali`를 지정합니다. `entrypoint.sh`가 `vm-terminal.sh cr-kali`를 실행합니다. 웹사이트 창(`platform/api/site.py`)은 예외가 아닙니다. 박스에는 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(훈련 환경 호스트로 연 ssh 스트림으로 슬롯의 Kali 컨테이너에 들어감)만 거쳐 닿습니다 |
 | 대상 시스템 자체의 기록 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음. `loot.py`는 `board` 역할의 runner로 board 컨테이너 안에서 `127.0.0.1`에 HTTP 요청을 보내고, `effect.py`는 `corp-db`에 `docker exec`하는 runner로 corp에 접근합니다 |
@@ -1510,7 +1510,7 @@ fabric이 만드는 네트워크는 `mgmt` 하나입니다. 슬롯의 `internet`
 
 - `POST /api/range/slot/`은 이 VM이 없으면 부팅합니다. 손대지 않은 Ubuntu 이미지(`compute.base_image`), flavor `compute.flavors.range`(`CR_OPENSTACK_FLAVOR`), config drive, 키페어 `cr-platform`을 씁니다. 포트는 둘입니다. `mgmt` 위 `cr-mgmt`에 속한 `cr-range.mgmt`, 그리고 플랫폼 네트워크(`CR_OPENSTACK_BUILD_NETWORK`) 위 `cr-egress`에 속한 포트입니다. 설치가 ready를 알리면 플랫폼이 두 번째 포트를 뗍니다. 설치를 마친 훈련 환경 호스트에는 `cr-range.mgmt`만 남아 인터넷으로 나갈 길도, DNS 리졸버도 없습니다.
 - Nova user data에 설치 번들을 담습니다(`rangehost.bundle()`, `rangehost.user_data()`). `deploy/range-host/setup.sh`, 이미지 목록, Docker `daemon.json`, pristine 워게임의 compose 파일과 목록입니다. 인코딩한 user data는 Nova 한도인 65,535바이트 안에 들어가야 합니다.
-- `setup.sh`는 `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog`, `acl`을 설치합니다. sshd의 `MaxSessions`, `MaxStartups`와 inotify 한도를 올립니다. 플랫폼의 `CR_IMAGE_TAG`로 GHCR에서 이미지를 모두 pull합니다. 대상 시스템의 pristine 볼륨을 `/opt/cr/pristine`에 떠 둡니다. 그다음 `setup.sh`를 실행한 user-data 스크립트가 `/var/lib/cr/ready`를 남기고, 실패하면 `/var/lib/cr/failed`를 남기고 로그 끝부분을 콘솔에 출력합니다(`rangehost.user_data`).
+- `setup.sh`는 `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog`를 설치합니다. sshd의 `MaxSessions`, `MaxStartups`와 inotify 한도를 올립니다. 플랫폼의 `CR_IMAGE_TAG`로 GHCR에서 이미지를 모두 pull합니다. 대상 시스템의 pristine 볼륨을 `/opt/cr/pristine`에 떠 둡니다. 그다음 `setup.sh`를 실행한 user-data 스크립트가 `/var/lib/cr/ready`를 남기고, 실패하면 `/var/lib/cr/failed`를 남기고 로그 끝부분을 콘솔에 출력합니다(`rangehost.user_data`).
 - 그 전까지 플랫폼은 Nova의 `ACTIVE` 대신 `SETTING_UP`이나 `SETUP_FAILED`로 훈련 환경 호스트를 보고합니다. 설치가 실패하면 `/api/range/ready/`의 슬롯 단계가 `SETUP_FAILED`가 되고 훈련 환경 호스트의 `/var/log/cr-setup.log`를 가리키며, `bin/cloud up`은 그 이유와 함께 멈춥니다. 다음 `POST /api/range/slot/`은 열린 세션이 없으면 설치에 실패한 훈련 환경 호스트를 지우고 다시 부팅합니다(`ensure_slot`).
 - `daemon.json`은 Docker에 테넌트 MTU(`mtu`, `default-network-opts`), /28 단위의 주소 풀 10.40.0.0/16, `local` 로그 드라이버, `userns-remap: default`를 줍니다.
 - 서버 메타데이터에 `cr_host`, `cr_tag`(이미지 태그), `cr_bundle`(번들 digest)을 둡니다. digest는 파일마다 이름과 내용을 해시합니다. 태그나 digest가 플랫폼과 다른 훈련 환경 호스트는 `stale`입니다. 그러면 `POST /api/range/slot/`이 열린 세션이 없을 때 그 VM을 지우고 다시 부팅하며, 세션이 열려 있으면 슬롯을 blocked로 보고합니다.
@@ -1532,7 +1532,7 @@ fabric이 만드는 네트워크는 `mgmt` 하나입니다. 슬롯의 `internet`
 
 **configure.** `POST /api/range/configure/`(`configure_slot()`)는 수집기 룰을 여는 일과 훈련 환경 호스트의 시간 출처 설정을 나란히 처리합니다. 둘 다 훈련 환경 호스트 세대와 수집기 주소 조합마다 한 번만 합니다. 그다음 슬롯의 파일을 훈련 환경 호스트의 `slot.sh up N`에 넘깁니다. compose 파일, 두 센서의 설정, Kali와 에지의 주소, rsyslog 설정, 기본 룰, 스크립트 자신입니다. `slot.sh up`은 다음을 합니다.
 
-1. 슬롯 디렉터리를 만듭니다. WAF 로그 디렉터리 `/var/log/cr/sN/waf`만 remap된 범위의 `www-data`와 `adm` 소유로 두고, `syslog`가 읽도록 ACL을 겁니다. 에지와 estate 로그 디렉터리는 root 소유입니다.
+1. 슬롯 디렉터리를 모두 root 소유로 만듭니다. WAF 로그 디렉터리 `/var/log/cr/sN/waf`에서는 일반 파일 `audit.log` 말고는 모두 지우고, 그 파일이 없으면 remap된 범위의 `www-data`와 호스트의 `adm` 소유(`0640`)로 만듭니다. 그래서 `syslog`가 읽을 수 있습니다.
 2. 컨테이너를 만들고(`up --no-start --pull never`), 한 번도 실행하지 않은 대상 시스템의 빈 볼륨마다 초기 데이터를 복사합니다.
 3. 컨테이너를 띄웁니다(`up -d --wait`).
 4. Kali에 출발지 주소와 기본 출발지 게이트웨이로 가는 기본 경로를, 에지의 `wan`에 출발지마다 게이트웨이 주소를 붙입니다(`nsenter`로 `ip -batch` 실행).
@@ -1554,7 +1554,7 @@ fabric이 만드는 네트워크는 `mgmt` 하나입니다. 슬롯의 `internet`
 - 둘 다 `/var/lib/suricata/rules/local.rules`에서 룰을 읽고 `suricatasc -c reload-rules`로 reload합니다. 호스트 항목 `cr-edge`와 `cr-range`가 이 둘을 지정합니다(estate 센서는 `settings.CR_EXTRA_SENSORS`). 룰 넣기, 검증, 변경, 기준선 검사는 모두 두 센서에 갑니다.
 - EVE 경보와 HTTP 기록은 `/var/log/cr/sN/edge/eve.json`이나 `/var/log/cr/sN/estate/eve.json`에 씁니다.
 
-**로그.** WAF는 audit 로그를 훈련 환경 호스트의 `/var/log/cr/sN/waf/audit.log`에 씁니다. 이것이 WAF의 유일한 호스트 경로 마운트입니다. `/etc/rsyslog.d/60-cr-sN.conf`(`rangehost.forwarding`)가 세 파일을 `imfile`로 읽어 플랫폼 `mgmt` 주소의 5140으로 UDP 전달합니다. 파일마다 송신자 이름이 고정입니다. 슬롯 1은 `cr-edge`, `cr-range`, `cr-waf`, 슬롯 N은 `cr-edge-N`, `cr-range-N`, `cr-waf-N`입니다. 그래서 Filebeat의 슬롯 정규식이 예전처럼 슬롯을 읽습니다. 파일을 `/var/log` 아래에 두는 것은 Ubuntu의 rsyslog가 `syslog` 사용자로 권한을 낮추고 AppArmor가 그 위치로 묶어 두기 때문입니다.
+**로그.** WAF는 audit 로그를 훈련 환경 호스트의 `/var/log/cr/sN/waf/audit.log`에 씁니다. 이것이 WAF의 유일한 호스트 경로 마운트이고, 그 파일 하나만 마운트합니다. 디렉터리는 root 소유라서 WAF 안의 root가 호스트의 root 프로세스가 따라갈 링크를 그 안에 만들 수 없습니다(`docs/THREAT-MODEL.md`). `/etc/rsyslog.d/60-cr-sN.conf`(`rangehost.forwarding`)가 세 파일을 `imfile`로 읽어 플랫폼 `mgmt` 주소의 5140으로 UDP 전달합니다. 파일마다 송신자 이름이 고정입니다. 슬롯 1은 `cr-edge`, `cr-range`, `cr-waf`, 슬롯 N은 `cr-edge-N`, `cr-range-N`, `cr-waf-N`입니다. 그래서 Filebeat의 슬롯 정규식이 예전처럼 슬롯을 읽습니다. 파일을 `/var/log` 아래에 두는 것은 Ubuntu의 rsyslog가 `syslog` 사용자로 권한을 낮추고 AppArmor가 그 위치로 묶어 두기 때문입니다.
 
 **격리.** 학습자가 만지는 컨테이너(Kali, WAF, 에지, 대상 시스템 넷)는 `cap_drop: ALL`에 필요한 capability만 더해 돕니다.
 

@@ -6873,3 +6873,49 @@ Found while bringing it up, and settled in code:
 - `/api/range/images/` and `api/sideloaded.py` are gone with the image
   builder; `DELETE /api/range/leftovers/` removes what the VM range left, and
   `bin/cloud up` calls it only after every slot is READY.
+
+## 2026-11-14 — The WAF mounts its log file, not its log directory
+
+A review of the range host found that root in the WAF container could steer
+root on the range host. The WAF mounted `/var/log/cr/sN/waf`, a directory
+owned by the remapped range, so the learner (root in the WAF) could replace
+`audit.log` with a symlink. Two host processes then opened that name and
+followed the link: `slot.sh reset`, as root, emptied it with `: >` (a link to
+`/etc/passwd` truncates the host's password file), and rsyslog's `imfile`, as
+`syslog` in `adm`, read it (rsyslog's imfile documentation: "For symlink-ed
+files this does **not** contain name of the actual file"), so a link to
+another slot's log or to `/var/log/auth.log` shipped those lines as this
+slot's records.
+
+- **Ruling: the WAF mounts the one file.** `slot.yaml` binds
+  `/var/log/cr/sN/waf/audit.log` onto `SecAuditLog`'s path; the directory is
+  root's `0755`, which the container's root, mapped to an unprivileged range,
+  cannot write. The WAF keeps writing its own log (owner the remapped
+  `www-data`, group the host's `adm`, `0640`, which `syslog` reads without an
+  ACL), and cannot rename, unlink or add a name. `slot.sh prepare` makes the
+  directory root's, removes any other name in it and recreates `audit.log` if
+  it is not a regular file, before every `up` and `reset`, which also clears
+  what the old layout left. `acl` leaves the range host's packages.
+- **Every other host-side operation was checked and none follows a learner's
+  name.** Kali, the edge and the targets mount no host path. The targets'
+  volumes are refilled from `/opt/cr/pristine` only while freshly created,
+  empty and never started. The sensors' directories are root's and mounted
+  only into the sensors, which no learner has a shell in. `slot.sh down`
+  uses `rm -rf`, which does not follow links. The platform's reads of
+  learner boxes (`operator_log`, loot, effect) run inside the container
+  through `docker exec`. `nsenter -n` in `slot.sh` and `rangehost.listed`
+  enters only the network namespace and runs the host's `ip` and `ethtool`
+  on interface names, not paths.
+- Rejected: keeping the directory mount and opening the log with
+  `O_NOFOLLOW` in `slot.sh` (no POSIX shell way, and rsyslog has no such
+  option for `imfile`, so the read path stays open); shipping the audit log
+  through Docker's log driver (the WAF's stdout also carries nginx's own
+  lines, and Filebeat's parsing would change).
+- `test/test_range_isolation.py` proves it live: the WAF plants links to a
+  host canary, `/etc/passwd` and another slot's log; a line the WAF writes
+  reaches only its own slot's index; after the session's reset the canary is
+  unchanged and absent from Elasticsearch, and the directory holds only
+  `audit.log`. `test_attacker_reach.py`'s port scan, which scanned nothing in
+  a slot (Kali has only `eth0`, its route out), became a scan from Kali of
+  the range host, the platform and the range host's `mgmt` network in the
+  same file.

@@ -17,7 +17,7 @@ CAPABILITIES = {
     "corp-wp": {"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETUID", "SETGID", "NET_BIND_SERVICE"},
     "corp-db": {"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETUID", "SETGID"},
 }
-MOUNTS = {"waf": {"/var/log/modsecurity/audit"}}
+MOUNTS = {"waf": {"/var/log/modsecurity/audit/audit.log"}}
 UNCONFINED = ("seccomp=unconfined", "seccomp:unconfined", "apparmor=unconfined", "apparmor:unconfined",
               "systempaths=unconfined")
 
@@ -64,10 +64,13 @@ def test_a_learner_facing_container_mounts_nothing_of_the_host_beyond_its_own_lo
 
     assert not [volume for volume in mounts if "docker.sock" in str(volume)], f"{name} holds the docker socket"
     assert bound <= MOUNTS.get(name, set()), f"{name} mounts {sorted(bound)} from the range host"
+    own_logs = {f"{rangehost.LOG_FILES.format(slot=3)}/{log}" for log in rangehost.LOGS.values()}
     for volume in mounts:
         source = str(volume).split(":")[0]
-        assert not source.startswith("/") or source.startswith(("/opt/cr/s3/", "/var/log/cr/s3/")), (
-            f"{name} mounts {source}, outside its own slot's directory")
+        assert not source.startswith("/") or source in own_logs, (
+            f"{name} mounts {source} from the range host; a learner who is root in it can plant a link "
+            f"in a mounted directory that a root operation on the host then follows, so it mounts at "
+            f"most its own log file")
 
 
 def test_every_slot_network_is_internal_with_no_host_address_and_no_route_out():
