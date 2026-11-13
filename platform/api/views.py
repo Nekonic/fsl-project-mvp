@@ -104,6 +104,7 @@ _SEEDING_BY_SESSION: dict[int, threading.Lock] = {}
 _TURNS_GUARD = threading.Lock()
 _SLOT_TURNS: dict[int, threading.RLock] = {}
 SETTLING_PHASES = ("RESETTING", "REBUILDING", "CHECKING")
+SETUP_FAILED = "SETUP_FAILED"
 
 def _turn(slot):
     if slot is None:
@@ -2732,6 +2733,10 @@ def _range_ready(adapter, plan=None, held=None) -> dict:
         phase = "STALE"
         blocked += [f"{host} runs images or slot files older than the platform's; POST "
                     f"/api/range/slot/ replaces it" for host in plan.stale]
+    elif any(status == SETUP_FAILED for _, _, status in plan.standing):
+        phase = SETUP_FAILED
+        blocked += [f"{host} failed its setup; /var/log/cr-setup.log on it says why"
+                    for host, _, status in plan.standing if status == SETUP_FAILED]
     elif not plan.active:
         phase = "REBUILDING"
         blocked += [f"{host} is {status}" for host, _, status in plan.standing

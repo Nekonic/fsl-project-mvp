@@ -320,3 +320,13 @@ def test_up_on_a_standing_stack_finishes_its_hand_over_and_replace_makes_a_new_v
     module.up(module.arguments(["up", "--replace"]))
 
     assert calls == ["resume", "converge", "rebuild", "converge"]
+
+
+def test_a_range_host_that_failed_its_setup_stops_up_with_why():
+    platform = Platform(ready=[{"ready": False, "slot": {"phase": "SETUP_FAILED"},
+                                "slots": [{"phase": "SETUP_FAILED",
+                                           "blocked": ["cr-range failed its setup; /var/log/cr-setup.log on it says why"]}]}])
+
+    with pytest.raises(SystemExit, match="cr-range failed its setup"):
+        converge(platform)
+    assert ("POST", "/configure/") not in platform.calls

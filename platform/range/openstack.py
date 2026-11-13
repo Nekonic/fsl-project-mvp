@@ -1024,10 +1024,10 @@ class OpenStack:
 
     def reset_in_place(self, rebuilt=()) -> list[tuple[str, tuple[str, ...]]]:
         self.describe()
+        if not self._shell()(rangehost.standing(self._laid_out()), timeout=60).ok:
+            return self.configure_slot()
         ran = self._shell()(rangehost.reset(self._laid_out()), timeout=rangehost.RESET_TIMEOUT)
         if not ran.ok:
-            if "compose.yaml" in ran.output and "no such file" in ran.output.lower():
-                return self.configure_slot()
             raise Drifted(f"{self.range_host} did not reset slot {self.slot} (exit {ran.exit_code}): "
                           f"{ran.output[-1000:]}")
         return [(self.range_host, (f"reset slot {self.slot}",)), *self._seeded()]

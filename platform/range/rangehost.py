@@ -13,6 +13,7 @@ from pathlib import Path
 
 import yaml
 
+from range import cloud
 from range.ports import RangeUnavailable
 
 ROLE = "wargames"
@@ -302,7 +303,7 @@ def bundle(source: Path, wargames, tag: str, mtu: int) -> dict[str, bytes]:
         "daemon.json": json.dumps({
             "mtu": mtu,
             "default-network-opts": {"bridge": {"com.docker.network.driver.mtu": str(mtu)}},
-            "default-address-pools": [{"base": "10.40.0.0/16", "size": 28}],
+            "default-address-pools": [{"base": cloud.RANGE_HOST_POOL, "size": 28}],
             "log-driver": "local",
             "log-opts": {"max-size": "10m", "max-file": "2"},
             "userns-remap": "default",
@@ -346,6 +347,10 @@ def up(slot: Slot) -> list[str]:
 
 def reset(slot: Slot) -> list[str]:
     return ["sudo", "sh", f"{SLOT_FILES.format(slot=slot.number)}/{SCRIPT}", "reset", str(slot.number)]
+
+
+def standing(slot: Slot) -> list[str]:
+    return ["test", "-f", f"{SLOT_FILES.format(slot=slot.number)}/compose.yaml"]
 
 
 def down(slot: Slot) -> list[str]:

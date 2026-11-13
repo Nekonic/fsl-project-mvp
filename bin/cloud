@@ -100,6 +100,9 @@ def _slots(ready: dict) -> list[dict]:
 
 def _standing(call):
     slots = _slots(_done(call, "GET", "/ready/"))
+    failed = [reason for slot in slots if slot.get("phase") == "SETUP_FAILED" for reason in slot.get("blocked") or []]
+    if failed:
+        raise Refused("cloud: the range host did not set itself up:\n  " + "\n  ".join(failed))
     return slots if all(slot.get("phase") not in BOOTING for slot in slots) else None
 
 
