@@ -27,3 +27,37 @@ under `deploy/range-host/proto/`. Nothing in the product was replaced.
 - Baseline observations: the estate leg raised no alert in the whole run (it
   saw 60 HTTP transactions, WAF to board with XFF = origin); every alert and
   source is origin 5.188.10.10 (`ru`, the default origin).
+- Corp: session 1560, slot 1, 7 cases (3 attack, 4 benign), 67 s. 4 TN,
+  3 FN (`corroborated: false`), no alert on any leg; every HTTP event on the
+  edge leg has source 5.188.10.10 and on the estate leg WAF to corp-wp with
+  XFF 5.188.10.10. Per-case results: `deploy/range-host/proto/results/baseline-*.json`.
+
+## Prototype layout
+
+- `slot.yaml` (project `s<N>`): kali, edge (busybox, ip_forward), waf,
+  edge-sensor, estate-sensor. `board.yaml` / `corp.yaml` (projects
+  `s<N>-board`, `s<N>-corp`): the targets, attached to `s<N>_estate` at
+  session open and removed at close; each has its own internal backend network
+  for its database, so the database is off the estate as on today's wargame
+  host.
+- Networks: `s<N>_internet` (bridge `s<N>-inet`, throwaway docker subnet
+  172.30.N.0/24) and `s<N>_estate` (bridge `s<N>-estate`, 10.30.N.0/24), both
+  `internal: true`, `gateway_mode_ipv4: isolated` (no host address on the
+  bridge), MTU 1442 as on the OpenStack networks. No published ports, no NAT.
+- Addresses (`slot.sh address_common`, nsenter from the host): Kali's docker
+  address is flushed and the 100 origin addresses of `declaration.yaml` are
+  added, default route via 36.128.0.1 as on today's Kali; the edge gets the
+  30 origin `.1` gateways on its `wan` side and 10.30.N.1 on `lan`; WAF and the
+  target front ends route via 10.30.N.1. Board is 10.30.N.59, corp-wp
+  10.30.N.60, WAF 10.30.N.247 (today board and corp-wp share 10.30.0.59).
+- Sensors: both `jasonish/suricata` 8.0.7 (the estate sensor's pinned digest),
+  host network, af-packet on the slot's bridge. Edge leg config =
+  the live OPNsense effective `suricata.yaml` with `conf.d/cr.yaml` merged
+  (HOME_NET adjusted to the slot's estate, pcap/netmap replaced by af-packet).
+  Estate leg config = `deploy/suricata/suricata.yaml` plus a BPF filter on the
+  board and corp-wp addresses, because the estate bridge also carries
+  edge-to-WAF traffic that the wargame host's NIC never sees.
+- Firing: `fire.py` uses `redteam.harness.fire` with a launcher that runs the
+  argv by `docker exec -u kali s<N>-kali` after `set-origin 5.188.10.10` (the
+  live session's default origin). `collect.py` turns EVE and the audit log
+  into documents shaped like the Elasticsearch ones, and `score.py` scores them.

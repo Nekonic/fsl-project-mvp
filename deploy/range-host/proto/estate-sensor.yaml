@@ -1,0 +1,32 @@
+%YAML 1.1
+---
+vars:
+  address-groups:
+    HOME_NET: '[10.0.0.0/8,172.16.0.0/12,192.168.0.0/16]'
+    EXTERNAL_NET: any
+  port-groups:
+    HTTP_PORTS: '[80,8000]'
+default-log-dir: /var/log/suricata/
+unix-command:
+  enabled: true
+outputs:
+- eve-log:
+    enabled: true
+    filetype: regular
+    filename: eve.json
+    types:
+    - alert
+    - http:
+        extended: true
+        dump-all-headers: request
+af-packet:
+- interface: sSLOT-estate
+  cluster-id: 9SLOT
+  cluster-type: cluster_flow
+  defrag: true
+  bpf-filter: host 10.30.SLOT.59 or host 10.30.SLOT.60
+default-rule-path: /var/lib/suricata/rules
+rule-files:
+- local.rules
+detect:
+  guess-applayer-tx: true
