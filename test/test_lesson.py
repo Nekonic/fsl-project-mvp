@@ -110,7 +110,7 @@ def course(stack_is_up):
         route = ["customers", *(["firewall"] if "firewall" in hosts else []), "waf", "board.com"]
         board = project["nodes"]["board.com"]["addresses"]["sw1"][0].partition("/")[0]
         seen["map"] = {step: _post(f"{session_id}/lesson/steps/{step}/check/", {"answer": given}).json()["passed"]
-                       for step, given in (("board_ip", board), ("kali_zone", "Internet"),
+                       for step, given in (("board_ip", board), ("kali_zone", "인터넷망"),
                                            ("path", " > ".join(route)), ("log_host", "log-server"))}
         seen.update(_walked(session_id))
     finally:
