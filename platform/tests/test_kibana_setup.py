@@ -119,7 +119,7 @@ def test_the_discover_link_opens_the_session_view_inside_its_own_space():
     assert "_index" not in closed and "logs'" not in closed, "no link reaches the shared view or another index"
 
 
-SENSORS = {"cr-edge": "firewall", "cr-wargame-host": "board.com"}
+SENSORS = {"cr-edge": "router", "cr-wargame-host": "board.com"}
 
 
 def a_session_view(pattern="logs-2-*", sensors=SENSORS):
@@ -153,7 +153,7 @@ def test_the_session_data_view_keeps_the_shared_columns_and_adds_the_engine_the_
 
     assert {"rule", "rule_id", "source_ip", "destination", "url", "status", "log_source", "sensor",
             "request_headers"} <= set(runtime)
-    assert '"edge": "firewall"' in observer and '"wargame-host": "board.com"' in observer, (
+    assert '"edge": "router"' in observer and '"wargame-host": "board.com"' in observer, (
         "sensor is the map name of the host whose sensor wrote the event, found by the host name without its first part"
     )
     assert "emit(\"waf\")" in observer, "a ModSecurity record is written by the WAF"
@@ -368,4 +368,4 @@ def test_nothing_a_learner_can_open_in_kibana_names_the_platform():
 def test_a_sensor_whose_host_name_is_its_map_name_is_found_by_that_name():
     observer = kibana.sensor_script(SENSORS, "waf")
 
-    assert '"firewall": "firewall"' in observer and '"edge": "firewall"' in observer
+    assert '"router": "router"' in observer and '"edge": "router"' in observer

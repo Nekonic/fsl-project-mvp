@@ -274,7 +274,7 @@ def test_the_learner_map_is_the_declared_range_named_by_role_and_wired_as_the_sy
     database = f"{wargame}{topology.DATABASE_SUFFIX}"
     expected = {topology.ATTACKER, topology.WAF, topology.LOG_SERVER, topology.INTERNET, topology.SERVICE,
                 topology.MONITORING, domain, database}
-    expected |= {topology.FIREWALL} if "edge" in stack.roles else set()
+    expected |= {topology.ROUTER} if "edge" in stack.roles else set()
     expected |= {topology.CUSTOMERS} if customers_prefer(stack, wargame) else set()
     expected |= {topology.DATABASE_SWITCH} if f"{wargame}{topology.BRIDGE_SUFFIX}" in nodes(system) else set()
     real = {(shown_as, shown.switches[segment]) for host, segments in wiring(system).items()
@@ -316,7 +316,7 @@ def test_the_log_server_sits_on_the_monitoring_switch_with_exactly_the_hosts_who
     assert wiring(learner)[topology.LOG_SERVER] == {topology.MONITORING}
     assert monitoring_ends(learner) == sources | {topology.LOG_SERVER}
     assert not {topology.ATTACKER, topology.CUSTOMERS} & monitoring_ends(learner)
-    assert sources == {topology.WAF, topology.FIREWALL, topology.domains(stack)[wargame]}, (
+    assert sources == {topology.WAF, topology.ROUTER, topology.domains(stack)[wargame]}, (
         "the WAF's and the edge's logs and the estate sensor on the sites' host reach the store")
 
 @pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)

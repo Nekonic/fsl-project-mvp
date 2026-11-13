@@ -61,7 +61,7 @@ BRIDGE_SUFFIX = "-default"
 LOG_STORE = "cr-elasticsearch"
 ATTACKER = "kali"
 CUSTOMERS = "customers"
-FIREWALL = "firewall"
+ROUTER = "router"
 WAF = "waf"
 LOG_SERVER = "log-server"
 INTERNET = "internet"
@@ -107,7 +107,7 @@ def learner(declared, wargame: str, customers_from: str = "", customers_prefer: 
     put(roles.get("attacker", ""), ATTACKER)
     if customers_prefer:
         put(customers_from, CUSTOMERS)
-    put(roles.get("edge", ""), FIREWALL)
+    put(roles.get("edge", ""), ROUTER)
     put(roles.get("gateway", ""), WAF)
     for real in (compose.get(wargame, ""), roles.get(wargame, "")):
         put(real, sites[wargame])
