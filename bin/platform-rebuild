@@ -51,7 +51,7 @@ REGISTRY = "ghcr.io"
 OWNER = "nekonic"
 BUILDER = "cr-build-"
 BUILDS = "cr_image"
-IMAGES = ("platform", "board", "corp", "corp-db", "gns3")
+IMAGES = ("platform", "board", "corp", "corp-db", "gns3", "kali", "waf", "edge")
 MANIFESTS = ", ".join((
     "application/vnd.oci.image.index.v1+json",
     "application/vnd.oci.image.manifest.v1+json",
