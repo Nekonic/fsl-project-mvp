@@ -30,44 +30,43 @@ touched. The platform VM is now 192.168.2.247 (Keystone 10.0.0.10, reached
 through the user's VPN), two slots since 2026-10-21. On 2026-10-21 the docker substrate was
 removed from the code (the removal commit, then the documents) and
 proven live on the new cloud.
-The VM's `/opt/fsl` was rebuilt on 2026-10-24 from the working branch with the
-platform, board and corp images sideloaded (`FSL_SIDELOADED=board,corp,platform`)
-and runs all of it: the reset resumed at boot, corp's readiness healthcheck, the
-stale-slot reset, the pristine wargame restore, the shorter reset, the F4 rule
-check and the coach fixes. The VM runs the branch's later work too: the fixes
-of live review rounds 6-12 and the acceptance harness's record of the red-team
-session. Before that, on 2026-10-21, it was rebuilt from dev's
-head on GHCR images alone. All three VM images (Kali, WAF, wargame host) were
-rebuilt on 2026-10-24 without `snapd` and `ModemManager`. The project quota is
-24 cores, 57344 MB of RAM and 12 instances (the user, 2026-10-24); the project
-uses 18 cores, 40 GB and 9 instances. The records are in `docs/DECISIONS.md`
-(2026-10-21, "Two range slots on the new cloud", "The docker substrate is
-removed" and "The estate sensor's HOME_NET and a repeated lesson move";
-2026-10-22, "A reset cut short by a restart, and corp's readiness"). The
-commits above 3da925e include the fix that makes range subnets announce no DNS
-resolver. Live runs on the old cloud on
-2026-10-20 proved the changed bring-up paths and led to fixes
+On 2026-11-13 the code's names moved from `fsl` to `cr` and the live cloud
+was cut over the same day (`docs/OPENSTACK.md` §5.4): the old checkout's
+`bin/cloud down` backed up the store (`db-20261113T082150Z.sqlite3`, 60 MB),
+the old role images and `fsl-build` were deleted, and `bin/cloud up` with
+`platform.stack: cr-platform` (about 42 min) rebuilt the role images
+`cr-kali`, `cr-waf`, `cr-edge` and `cr-wargame-host` and replaced
+`fsl-opnsense-26.7` under the same name. The platform VM is now
+`cr-platform` (`m1.large`), checkout `/opt/cr` at 3a0df7d, every image pulled
+from GHCR (the `cr-*` images tagged with the commit SHA, built by `images.yml`
+through `workflow_dispatch` on the working branch `cr-rename`); nothing is
+sideloaded. Both slots are READY, their eight VMs on `m1.medium`, and the store
+was restored. The project quota is 17 instances, 24 cores and 57344 MB of RAM;
+com01 allocates VCPU at 4.0, memory at 1.5 (512 MB reserved) and disk at 1.5.
+The records are in `docs/DECISIONS.md` (2026-10-21, "Two range slots on the
+new cloud", "The docker substrate is removed" and "The estate sensor's
+HOME_NET and a repeated lesson move"; 2026-10-22, "A reset cut short by a
+restart, and corp's readiness"; 2026-11-13, the `cr` names). Live runs on the
+old cloud on 2026-10-20 proved the changed bring-up paths and led to fixes
 (`docs/DECISIONS.md` 2026-10-20, "Live checks of the bring-up paths" and "The
 one-VM trial and the last bring-up fixes"): `down` beside a stopped container,
 `resume` checking the hand-over, the first range key and the wargame host kept
 across `down` then `up` all ran live, and the §9 one-VM trial ran end to end
 from an empty cloud (README step 7 took 17 min 41 s). The last full
-`bin/verify` ran on 2026-11-13 on the platform VM: 1677 unit and API tests
-passed; acceptance: 73 passed (two workers in parallel, 23:24, then the two two-session modules alone, 9:26). The one before it ran on 2026-10-26, on the
-code before the last wording fix: unit 1669 passed; acceptance 73 passed, 0 failed, 0 errors, 0
-skipped in 2003 s across 4 processes; ratchet ok. On 2026-10-24 two runs on
-the new cloud with two slots gave unit 1618 and acceptance 73 passed in 2186 s,
-then unit 1626 and acceptance 73 passed in 1867 s. The run of 2026-10-21 on
-dev's head gave unit 1578 and acceptance 73 passed in 3853 s. The earlier one-slot runs on the new cloud (3da925e before
-the removal, and one after it; failures that all come from the single slot) and
-the last run on the old cloud (unit 1718; acceptance 73 passed) are recorded in
-`docs/DECISIONS.md`, and `docs/state/now.md` summarises them. Before the old
-cloud's last run, two runs on the same code: acceptance 72 passed and 1 failed
-(the `test_corp_authz` nonce error), then 73 passed (1155 s). On 2026-11-12 the
-user had shut down all nine fsl VMs; they were started, session 1443 (open since
-2026-10-28) was closed after a store backup, and both slots were reset. The first
-configure after the rebuild failed on both slots and the second passed
-(`docs/state/now.md` Next 8). Live state: `docs/state/now.md`.
+`bin/verify` ran on 2026-11-13 on the platform VM at 3a0df7d: 1663 unit and
+API tests passed (4:53); acceptance 76 passed, 0 failed, 0 errors, 1 skipped
+(the c2 course does not start with F1, by design) in 1945 s across 4
+processes; ratchet no regression. History: on 2026-10-26 unit 1669 and
+acceptance 73 passed in 2003 s across 4 processes; on 2026-10-24 two runs with
+two slots gave unit 1618 and acceptance 73 in 2186 s, then unit 1626 and
+acceptance 73 in 1867 s; on 2026-10-21, on dev's head, unit 1578 and acceptance
+73 in 3853 s. The earlier one-slot runs on the new cloud and the last run on
+the old cloud (unit 1718; acceptance 73 passed) are recorded in
+`docs/DECISIONS.md`. Before the old cloud's last run, two runs on the same
+code: acceptance 72 passed and 1 failed (the `test_corp_authz` nonce error),
+then 73 passed (1155 s). On 2026-11-12 the first configure after a slot
+rebuild failed on both slots and the second passed (`docs/state/now.md` Next
+7). Live state: `docs/state/now.md`.
 
 The range has two targets: the Django board (`board.com`, MySQL behind the WAF,
 `loot_verified`) and the WordPress site `corp` (`corp.com`, `effect_observed`,
@@ -727,8 +726,10 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   map was removed on 2026-10-16. The blue dashboard, Live view,
   scoreboard tab, rule editor and world map were removed on 2026-10-05, and the
   pfSense GUI pane on 2026-10-08.
-- **Course**: `wargames/board/scenario.yaml` declares foundations F1-F6 (48
-  steps, run back to back in one session; `platform/lesson.py` judges each
+- **Course**: `wargames/board/scenario.yaml` declares foundations F1-F6 in
+  two courses, c1, log analysis basics (F1-F3), and c2,
+  attack detection practice (F4-F6), each with a briefing and a reference
+  column (48 steps; `platform/lesson.py` judges each
   step from range and request facts, with a ladder nudge, a hint and Skip) and
   eleven scenarios 1.1-4.1 (`platform/scenarios.py`, `api/scenario_run.py`: a
   scheduled automated attacker over customer traffic from `api/customers.py`
@@ -928,7 +929,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [x] The learner map as the company network the learner defends (2026-10-15):
       role names, one map per wargame, every display node started, the
       addressing table removed (`docs/DECISIONS.md`, 2026-10-15).
-- [ ] Rename the infrastructure's `fsl-` names (deferred by the user,
+- [x] Rename the infrastructure's `fsl-` names (deferred by the user,
       2026-10-15): hosts, containers, VMs and networks (`fsl-kali`,
       `fsl-waf`, `fsl-edge`, `fsl-wargame-host`, `fsl-platform`, `fsl_mgmt`,
       ...). `fsl-` is not a real name; the learner map no
@@ -936,8 +937,10 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       names), but the operator's system maps, the `log.syslog.hostname` of the WAF and
       the wargame host, and the container and VM names still do.
       Renamed in code 2026-11-13 to the prefix `cr` (`docs/DECISIONS.md`,
-      2026-11-13); the live cloud still runs the old names until the
-      cut-over in `docs/OPENSTACK.md` §5.4 is done.
+      2026-11-13) and cut over live the same day by `docs/OPENSTACK.md`
+      §5.4; the cloud runs `cr-platform` and the `cr-*` slot VMs. The
+      keypair `fsl-claude` and the image `fsl-opnsense-<version>` keep
+      their names.
 - [x] A slot standing before a deploy kept the servers booted from the
       previous images: the wargame host and the edge until someone ran
       `POST /api/range/slot/rebuild/` and `/configure/`, the Kali and WAF
@@ -1186,13 +1189,12 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [x] Floating IP 192.168.0.220 on the old cloud: dropped (2026-10-20). That
       address belongs to the old cloud, which is in other use and which we do
       not touch.
-- [ ] Rebuild the platform VM with `bin/cloud up --replace`, without
-      `--sideload`, from the main checkout after the push and a green
-      `images.yml` run. Done once on 2026-10-21 (dev's head, 29 min, exit 0),
-      then replaced by sideloaded rebuilds from the working branch; the last
-      (2026-10-24) sideloaded the platform, board and corp images and rebuilt
-      all three VM images (65 min, exit 0). The VM runs sideloaded branch code until
-      this is done.
+- [x] Rebuild the platform VM without `--sideload`, from GHCR images. Done
+      once on 2026-10-21 (dev's head, 29 min, exit 0), then replaced by
+      sideloaded rebuilds from the working branch (the last on 2026-10-24,
+      65 min). Since the cut-over of 2026-11-13 the VM runs GHCR images only,
+      at 3a0df7d from the branch `cr-rename` (`images.yml` by
+      `workflow_dispatch`); running `dev` itself waits for the push to `dev`.
 - [x] Review of the seven-step lesson text: dropped with the lesson (P6).
 - [ ] Publishing the OPNsense image: BSD-2 allows it; its trademark policy
       allows "based on OPNsense" and asks project@opnsense.org before a
