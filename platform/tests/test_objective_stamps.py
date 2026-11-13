@@ -32,7 +32,7 @@ def _detected_exfil(client, session_id):
     })
     with patch(
         "api.views.elastic.fetch",
-        return_value=([alert(EXFIL_CASE, "FSL SQL injection attempt")], None),
+        return_value=([alert(EXFIL_CASE, "SQL injection attempt")], None),
     ):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
 

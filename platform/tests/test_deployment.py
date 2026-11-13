@@ -12,10 +12,10 @@ DOCKERFILE = ROOT / "platform/Dockerfile"
 ENTRYPOINT = ROOT / "platform/entrypoint.sh"
 
 def setting(name, **env):
-    given = {**os.environ, "DJANGO_SETTINGS_MODULE": "fsl.settings", **env}
+    given = {**os.environ, "DJANGO_SETTINGS_MODULE": "cr.settings", **env}
     done = subprocess.run(
         [sys.executable, "-c",
-         f"import fsl.settings as s; print(repr(s.{name}))"],
+         f"import cr.settings as s; print(repr(s.{name}))"],
         cwd=ROOT / "platform", capture_output=True, text=True,
         env={key: value for key, value in given.items() if value is not None},
     )
@@ -38,10 +38,10 @@ def test_unless_told_otherwise_it_answers_only_to_the_names_of_this_machine():
 
 def test_serving_without_a_secret_is_refused_when_debug_is_off():
     done = subprocess.run(
-        [sys.executable, "-c", "import fsl.wsgi"],
+        [sys.executable, "-c", "import cr.wsgi"],
         cwd=ROOT / "platform", capture_output=True, text=True,
         env={**os.environ, "DJANGO_DEBUG": "", "DJANGO_SECRET_KEY": "",
-             "DJANGO_SETTINGS_MODULE": "fsl.settings"},
+             "DJANGO_SETTINGS_MODULE": "cr.settings"},
     )
 
     assert done.returncode != 0, "it would have served with a shipped secret key"

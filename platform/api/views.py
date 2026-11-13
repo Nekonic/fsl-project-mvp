@@ -2605,7 +2605,7 @@ def _each_slot(request, adapter, step):
 
     if len(numbers) == 1:
         return [in_turn(numbers[0])]
-    with ThreadPoolExecutor(max_workers=len(numbers), thread_name_prefix="fsl-slot") as pool:
+    with ThreadPoolExecutor(max_workers=len(numbers), thread_name_prefix="cr-slot") as pool:
         return list(pool.map(in_turn, numbers))
 
 @require_http_methods(["GET", "POST", "DELETE"])

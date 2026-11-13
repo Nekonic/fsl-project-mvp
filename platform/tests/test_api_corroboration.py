@@ -45,14 +45,14 @@ def scored(client, session_id, signature):
     return client.get(f"/api/sessions/{session_id}/score/").json()
 
 def test_the_right_rule_corroborates_the_true_positive(client, session_id):
-    s = scored(client, session_id, "FSL path traversal attempt")
+    s = scored(client, session_id, "path traversal attempt")
 
     assert s["tp"] == 1
     assert s["per_case"][0]["corroborated"] is True
     assert not any(w[0] == "score.warning.wrong_reason" for w in s["warnings"])
 
 def test_a_true_positive_found_by_an_unrelated_rule_is_called_out(client, session_id):
-    s = scored(client, session_id, "FSL XSS attempt - script tag or event handler")
+    s = scored(client, session_id, "XSS attempt - script tag or event handler")
 
     assert s["tp"] == 1
     assert s["per_case"][0]["detected"] is True
@@ -68,7 +68,7 @@ def test_an_attack_nobody_saw_is_missed_not_caught_for_the_wrong_reason(client, 
         "ended_at": (T0 + timedelta(seconds=3)).isoformat(),
     })
 
-    s = scored(client, session_id, "FSL XSS attempt - script tag or event handler")
+    s = scored(client, session_id, "XSS attempt - script tag or event handler")
 
     by_name = {c["name"]: c for c in s["per_case"]}
     assert by_name["sqli-login-bypass"]["expect"] == "SQL"
@@ -99,7 +99,7 @@ def test_a_case_the_catalogue_does_not_know_is_not_judged(client, session_id):
     assert not any(w[0] == "score.warning.wrong_reason" for w in s["warnings"])
 
 CASES_DIR = Path(__file__).resolve().parents[2] / "redteam/cases"
-MATCHING = "FSL path traversal attempt"
+MATCHING = "path traversal attempt"
 
 def edited_catalogue(directory):
     edited = load_cases(CASES_DIR / "board.yaml")

@@ -31,7 +31,7 @@ def session_with(alerts_matching_no_case, benign_cases=2, benign_that_alerted=0)
     for index in range(benign_that_alerted):
         Detection.objects.create(
             session=session, detection_id=f"benign-alert-{index}",
-            source="suricata", signature="FSL SQLi attempt - URI", severity=2,
+            source="suricata", signature="SQLi attempt - URI", severity=2,
             timestamp=started, src_ip="172.30.0.4", marker=f"benign-{index}",
             raw={},
         )
@@ -57,7 +57,7 @@ def test_no_alert_of_the_session_is_missing_from_the_accounting(client):
     session = session_with(alerts_matching_no_case=5, benign_that_alerted=1)
     Detection.objects.create(
         session=session, detection_id="attack-alert-0", source="suricata",
-        signature="FSL SQLi attempt - URI", severity=2,
+        signature="SQLi attempt - URI", severity=2,
         timestamp=timezone.now(), src_ip="172.30.0.4", marker="attack-0", raw={},
     )
 

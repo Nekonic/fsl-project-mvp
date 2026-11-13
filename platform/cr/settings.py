@@ -32,7 +32,7 @@ MIDDLEWARE = [
     "api.refusals.Refusals",
 ]
 
-ROOT_URLCONF = "fsl.urls"
+ROOT_URLCONF = "cr.urls"
 
 TEMPLATES = [
     {

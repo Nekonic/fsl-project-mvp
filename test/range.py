@@ -18,7 +18,7 @@ BOARD = "board"
 SENSOR = "sensor"
 SCORER = "scorer"
 
-EXIT_MARK = "fsl.exit="
+EXIT_MARK = "cr.exit="
 _REPORTED = re.compile(r"(?s)(.*)" + re.escape(EXIT_MARK) + r"(\d+)\n(.*)\Z")
 
 class RangeUnavailable(RuntimeError):
@@ -96,8 +96,8 @@ class Platform:
                 _said(getattr(exc, "stdout", None)),
             ) from exc
 
-STDOUT_END = "fsl.stdout.end"
-PLATFORM_ANSWER = "fsl.platform.answer="
+STDOUT_END = "cr.stdout.end"
+PLATFORM_ANSWER = "cr.platform.answer="
 
 def stdout_apart(argv: list[str]) -> list[str]:
     return ["sh", "-c", f'"$@"; code=$?; printf "\\n%s\\n" {STDOUT_END}; exit $code',

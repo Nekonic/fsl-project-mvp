@@ -44,7 +44,7 @@ def ingested(client, shape):
     session = Session.objects.create()
     alert = {
         "detection_id": "a1", "source": "suricata",
-        "signature": "FSL SQLi attempt - URI", "severity": 2,
+        "signature": "SQLi attempt - URI", "severity": 2,
         "timestamp": timezone.now(), "src_ip": "172.30.0.3", "marker": None,
         "raw": {"src_ip": "172.30.0.3", "dest_ip": "172.30.0.2", "dest_port": 3000},
     }

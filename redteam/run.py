@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT / "platform"))
 
 import django
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "cr.settings")
 django.setup()
 
 import requests
@@ -30,7 +30,7 @@ def range_of(adapter, session_id):
     return adapter
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="FSL red team harness")
+    parser = argparse.ArgumentParser(description="Red team harness")
     parser.add_argument("--platform", default="http://localhost:8000")
     parser.add_argument("--cases", default=str(DEFAULT_CASES))
     parser.add_argument(

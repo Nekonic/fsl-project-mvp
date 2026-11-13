@@ -8,7 +8,7 @@ CONTAINER = "fsl-platform"
 
 SETUP = """
 import os, django
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "cr.settings")
 django.setup()
 from django.db.models import Max
 from api.models import Session, Detection, Case, Objective

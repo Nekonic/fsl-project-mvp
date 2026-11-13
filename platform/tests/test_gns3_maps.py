@@ -526,7 +526,7 @@ def test_a_slot_whose_session_loaded_its_map_while_the_start_publish_waited_is_n
     assert waits == [views.MAP_START_RETRY_SECONDS]
 
 def test_the_platform_loads_the_slot_maps_in_the_background_as_it_starts():
-    started = (ROOT / "platform" / "fsl" / "wsgi.py").read_text()
+    started = (ROOT / "platform" / "cr" / "wsgi.py").read_text()
 
-    assert 'threading.Thread(target=publish_maps, name="fsl-maps-publish", daemon=True).start()' in started
+    assert 'threading.Thread(target=publish_maps, name="cr-maps-publish", daemon=True).start()' in started
     assert "views.publish_maps()" in started

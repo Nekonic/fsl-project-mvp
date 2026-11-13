@@ -95,7 +95,7 @@ def generated(into: Path) -> list[Path]:
     made[0].parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([str(ROOT / ".venv" / "bin" / "python"), "-c", GENERATE,
                     *[str(path) for pair in zip(sources, made) for path in pair]],
-                   cwd=ROOT / "platform", check=True, env={**os.environ, "DJANGO_SETTINGS_MODULE": "fsl.settings"})
+                   cwd=ROOT / "platform", check=True, env={**os.environ, "DJANGO_SETTINGS_MODULE": "cr.settings"})
     return made
 
 def check(interpreter: Path, project: Path) -> bool:

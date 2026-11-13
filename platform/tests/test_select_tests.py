@@ -108,8 +108,8 @@ def test_a_template_change_selects_the_tests_naming_that_template(repo):
 def test_a_template_rendered_for_a_requested_page_selects_the_test_requesting_it(repo):
     root = repo({
         **SMALL,
-        "platform/fsl/__init__.py": "",
-        "platform/fsl/urls.py": (
+        "platform/cr/__init__.py": "",
+        "platform/cr/urls.py": (
             "from django.urls import path\n\nfrom api import views\nfrom console import views as console\n\n"
             "urlpatterns = [\n    path(\"api/show/\", views.show),\n"
             "    path(\"blue/<int:session_id>/\", console.blue),\n]\n"

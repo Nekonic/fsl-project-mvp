@@ -7,7 +7,7 @@ def fired_with_a_ported_rule(rules_session):
 def test_a_rule_written_against_http_ports_actually_fires(fired_with_a_ported_rule):
     ported = [
         d for d in fired_with_a_ported_rule
-        if d["signature"] == "FSL ported SQLi probe"
+        if d["signature"] == "ported SQLi probe"
     ]
 
     assert ported, (

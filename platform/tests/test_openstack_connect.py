@@ -184,12 +184,12 @@ def test_the_console_draws_an_openstack_range(cloud, client, settings):
 def test_settings_hand_the_openstack_substrate_its_credentials_from_the_environment():
     read = subprocess.run(
         [sys.executable, "-c",
-         "import json, fsl.settings as s; o = s.FSL_SUBSTRATE_OPTIONS; "
+         "import json, cr.settings as s; o = s.FSL_SUBSTRATE_OPTIONS; "
          "print(json.dumps(sorted(o))); print(o['keystone'])"],
         cwd=ROOT / "platform", capture_output=True, text=True,
         env={
             **os.environ,
-            "DJANGO_SETTINGS_MODULE": "fsl.settings",
+            "DJANGO_SETTINGS_MODULE": "cr.settings",
             "FSL_SUBSTRATE": "range.openstack.connect",
             "FSL_OPENSTACK_KEYSTONE": "https://keystone.example:5000",
         },

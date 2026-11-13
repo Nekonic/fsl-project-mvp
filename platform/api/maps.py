@@ -100,7 +100,7 @@ def begin(key: str, read, kind: str, live: list[str]):
         _running.add(key)
     turn = _turn(key)
     turn.acquire()
-    worker = threading.Thread(target=_run, args=(key, read, kind, live, turn), name=f"fsl-map-{_salt(key)}",
+    worker = threading.Thread(target=_run, args=(key, read, kind, live, turn), name=f"cr-map-{_salt(key)}",
                               daemon=True)
     worker.start()
     return worker

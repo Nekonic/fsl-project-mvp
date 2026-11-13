@@ -102,7 +102,7 @@ def started(token: str, project: dict) -> None:
                   file=sys.stderr, flush=True)
 
 def bootstrap() -> None:
-    page = (HERE / "auditor.html").read_text().replace("__FSL_AUDITOR__", json.dumps(auditor()).replace("<", "\\u003c"))
+    page = (HERE / "auditor.html").read_text().replace("__CR_AUDITOR__", json.dumps(auditor()).replace("<", "\\u003c"))
     (WEB_UI / BOOTSTRAP).write_text(page)
 
 def provision() -> None:

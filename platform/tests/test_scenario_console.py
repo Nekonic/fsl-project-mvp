@@ -28,7 +28,7 @@ ITEMS = [
      "status": 403, "rules": [{"engine": "modsecurity", "rule": "941320", "signature": "XSS", "count": 1}]},
     {"item": "b2", "first": "2026-10-13T06:03:00+00:00", "last": "2026-10-13T06:04:00+00:00", "alerts": 900,
      "sources": ["5.188.10.10"], "request": {"method": "GET", "path": "/?sort=posts_post.id"}, "waf": "blocked",
-     "status": 403, "rules": [{"engine": "suricata", "rule": "9000001", "signature": "FSL SQLi", "count": 400}]},
+     "status": 403, "rules": [{"engine": "suricata", "rule": "9000001", "signature": "SQLi", "count": 400}]},
 ]
 
 def serving(state, items=ITEMS, lesson=None):
