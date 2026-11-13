@@ -6824,7 +6824,9 @@ rulings, each recorded here:
    the edge) run with `cap_drop: [ALL]` and a listed set of capabilities,
    `no-new-privileges`, docker's default seccomp and AppArmor profiles,
    memory and process limits, no `privileged`, no docker socket, no host
-   network or namespace, and no host path but the WAF's audit log directory.
+   network or namespace, and no host path but the WAF's audit log directory
+   (superseded by the 2026-11-14 entry "The WAF mounts its log file, not its
+   log directory": it mounts the one file).
    Kali holds `NET_RAW` and `NET_ADMIN` (a SYN scan works, checked live) and
    the set-uid and file-owner capabilities its customers account and `sudo`
    need; the WAF holds what nginx needs to bind 80 and drop to www-data.
@@ -6864,7 +6866,8 @@ Found while bringing it up, and settled in code:
 - Ubuntu's rsyslog drops to the `syslog` user and AppArmor confines it to
   `/var/log`, so the slot logs live in `/var/log/cr/sN/`; an ACL lets
   `syslog` read the WAF's audit log, which nginx writes as the remapped
-  www-data.
+  www-data (superseded by the 2026-11-14 entry "The WAF mounts its log file,
+  not its log directory": the log is `0644` in `adm`, read without an ACL).
 - The board's ground truth is read inside the board container (`api/loot.py`
   through the board role's runner); the board publishes no port.
 - Every command goes to one host now, so the platform shares one ssh
