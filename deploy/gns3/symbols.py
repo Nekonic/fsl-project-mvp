@@ -9,7 +9,7 @@ STROKE = 16
 CORNER = 22
 PAPER = "#fffefe"
 COLOURS = {"red": "#e3292e", "green": "#109e00", "blue": "#2d67b9", "gray": "#4d4d4d"}
-GLYPHS = {"client": "gray", "firewall": "green", "shield": "green", "server": "blue",
+GLYPHS = {"client": "gray", "router": "blue", "shield": "green", "server": "blue",
           "storage": "blue", "statistics": "gray"}
 KALI = "host-kali"
 KALI_COLOUR = "red"

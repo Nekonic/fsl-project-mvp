@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import pathlib
 import re
@@ -360,3 +361,15 @@ def test_the_zones_are_the_internet_the_dmz_the_db_zone_and_the_management_netwo
     captions = sorted(ElementTree.fromstring(caption["svg"])[0].text for caption in topology.captions(project(drawn_in)).values())
 
     assert captions == ["DB존", "DMZ", "관리망", "인터넷"]
+
+def test_every_host_symbol_the_learner_map_names_is_one_the_gns3_image_builds_and_the_router_has_its_own():
+    spec = importlib.util.spec_from_file_location("gns3_symbols", ROOT / "deploy" / "gns3" / "symbols.py")
+    symbols = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(symbols)
+    made = {f"{symbols.named(glyph)}.svg" for glyph in symbols.GLYPHS} | {f"{symbols.KALI}.svg"}
+    named = {node["name"]: node["symbol"] for node in project(OPENSTACK)["topology"]["nodes"]}
+
+    assert {symbol for symbol in named.values() if not symbol.startswith(":/")} <= made
+    assert named["router"] == "host-router.svg", "the router is drawn as a router, not as a firewall"
+    assert symbols.GLYPHS["router"] not in (symbols.GLYPHS["shield"], "gray"), (
+        "the router reads neither as one of the gray switches nor as one of the green WAF family")
