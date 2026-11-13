@@ -14,10 +14,13 @@ from scoring.correlate import correlate
 from scoring.types import CaseRecord, DetectionRecord
 import scoreboard
 
-LEGS = {"firewall.localdomain": "edge", "edge": "edge", "cr-wargame-host": "estate", "wargame-host": "estate", "waf": "modsec"}
+LEGS = {"firewall.localdomain": "edge", "edge": "edge", "cr-wargame-host": "estate", "wargame-host": "estate", "waf": "modsec",
+        "cr-edge": "edge", "cr-range": "estate", "cr-waf": "modsec"}
 
 def leg_of(doc):
-    return LEGS.get(((doc.get("log") or {}).get("syslog") or {}).get("hostname"), "?")
+    host = str(((doc.get("log") or {}).get("syslog") or {}).get("hostname") or "")
+    named, _, number = host.rpartition("-")
+    return LEGS.get(host) or (LEGS.get(named, "?") if number.isdigit() else "?")
 
 def opened(path):
     return gzip.open(path, "rt") if str(path).endswith(".gz") else open(path)
