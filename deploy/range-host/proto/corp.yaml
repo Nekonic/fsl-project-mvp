@@ -5,6 +5,8 @@ services:
     image: ghcr.io/nekonic/cr-corp:${CR_IMAGE_TAG:?image tag}
     container_name: s${N}-corp-wp
     hostname: corp-wp
+    extra_hosts:
+      - "corp.com:127.0.0.1"
     depends_on:
       corp-db: {condition: service_healthy}
     networks:
@@ -51,3 +53,4 @@ networks:
     internal: true
     driver_opts:
       com.docker.network.driver.mtu: "1442"
+      com.docker.network.bridge.gateway_mode_ipv4: isolated

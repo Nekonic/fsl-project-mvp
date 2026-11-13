@@ -101,3 +101,52 @@ under `deploy/range-host/proto/`. Nothing in the product was replaced.
   `capture.kernel_drops` 0 on both and `tcp.invalid_checksum` 0. Detection was
   still identical, but the fix (list interfaces with `ip -o link` in the
   netns) is applied for every later run.
+
+### Detection, prototype run 2 (s1 board, offloads off on every sniffed veth)
+
+- `show_offloads` after the fix: TSO, GSO and GRO off on every container
+  interface on the two sniffed bridges (kali, edge `wan`/`lan`, waf, board,
+  corp-wp) and on the bridges; tx checksumming left on. The databases'
+  backend interfaces keep the defaults (not sniffed).
+- Board 18 cases, 249.5 s: **0 differences** against the baseline
+  (`results/proto-board-s1-run2.json`); `capture.kernel_drops` 0,
+  `afpacket.trunc_pkt` 0, `tcp.invalid_checksum` 0 on both legs.
+- RAM during sqlmap: common part peak 313 MiB, board 559 MiB, so about
+  0.87 GB per board session under sqlmap; host available memory never below
+  5.7 GB with s1 (board, sqlmap) and s2 (corp) up.
+
+### Corp target: hidden egress dependency found
+
+- The first corp run in the prototype failed at `corp-normal-registration`:
+  `/register/` served the home page. Cause: WordPress's `wp core install`
+  enables pretty permalinks only if a loopback HTTP request to the site URL
+  (`http://corp.com`) succeeds. On today's wargame host the corp network has
+  egress, so that request leaves for the real Internet name corp.com and the
+  install ends with `/%year%/%monthnum%/%day%/%postname%/`; on the prototype's
+  internal network it fails and the site keeps plain permalinks, so
+  `/register/` falls through to the home page.
+- Prototype fix (no product change): `corp.yaml` gives corp-wp
+  `extra_hosts: corp.com:127.0.0.1`, so the loopback test reaches its own
+  Apache. The pristine keep was redone (permalinks now as on the live slot).
+  Worth fixing in the product regardless: the live corp install sends a
+  request to a real third-party host at every pristine build.
+
+### Isolation (v)
+
+- `isolation.sh 1 2`: from s1-kali and s1-waf, s2's estate (WAF, board), the
+  range host (10.20.0.41:22, 172.17.0.1:22), the estate bridge's gateway
+  address, the platform (10.31.0.88, 10.20.0.74, 192.168.2.247 on 8000), the
+  metadata service and the Internet (1.1.1.1:443, ghcr.io) are all refused;
+  board.com through the WAF and board directly through the edge are reached;
+  board-db does not resolve from Kali. 28/28 checks hold.
+- Gap found and closed: the targets' backend networks (internal, but default
+  gateway mode) put a host address on their bridge (172.18.0.1), and board
+  reached the range host's sshd through it. With
+  `com.docker.network.bridge.gateway_mode_ipv4: isolated` on the backend
+  networks too, no docker bridge carries a host address and the target-side
+  probes (range host sshd, Internet) are refused.
+- `br_netfilter` is not loaded by Docker 29 here, so bridged frames do not
+  traverse iptables and Docker's `DOCKER-INTERNAL` drops (which would drop the
+  origin addresses, being outside the docker subnet) do not apply.
+  `slot.sh` still adds `DOCKER-USER` same-bridge accepts so that loading
+  `br_netfilter` later would not break the slot.
