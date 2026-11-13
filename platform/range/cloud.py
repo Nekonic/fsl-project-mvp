@@ -17,6 +17,7 @@ DECLARATION = Path(__file__).resolve().parent / "declaration.yaml"
 INSIDE = ("estate", "mgmt")
 OPTIONAL_SECTIONS = ("backups",)
 REQUIRED_FLAVORS = ("platform", "range")
+RANGE_HOST_POOL = "10.40.0.0/16"
 DOCKER_DEFAULT_POOLS = ("172.17.0.0/16", "172.18.0.0/16", "172.19.0.0/16", "172.20.0.0/14",
                         "172.24.0.0/14", "172.28.0.0/14", "192.168.0.0/16")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
@@ -273,6 +274,7 @@ def taken() -> dict[str, ipaddress.IPv4Network]:
     return {
         **{f"docker's default address pool {pool}": ipaddress.ip_network(pool)
            for pool in DOCKER_DEFAULT_POOLS},
+        f"the range host's docker address pool {RANGE_HOST_POOL}": ipaddress.ip_network(RANGE_HOST_POOL),
         **_compose_networks(),
         **_origins(),
     }

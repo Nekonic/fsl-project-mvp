@@ -49,7 +49,8 @@ def test_a_standing_active_range_that_passes_its_checks_is_ready(client):
     (Cloud(boot=("cr-range",), blocked=("the range host pulls the images by the platform's tag",)), "NOT_STANDING",
      "the range host pulls the images"),
     (Cloud(stale=("cr-range",)), "STALE", "cr-range runs images or slot files older than the platform's"),
-], ids=["rebuilding", "to-boot", "older-image"])
+    (Cloud(standing=(("cr-range", "s1", "SETUP_FAILED"),)), "SETUP_FAILED", "cr-range failed its setup"),
+], ids=["rebuilding", "to-boot", "older-image", "setup-failed"])
 def test_a_slot_not_standing_ready_is_not_ready_and_says_why(client, cloud, phase, reason):
     body = _get(client, cloud).json()
 

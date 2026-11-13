@@ -250,8 +250,9 @@ def test_a_reset_is_the_slot_s_own_fast_reset_then_the_baseline_rules_on_both_se
     range_.describe = lambda: None
     done = range_.reset_in_place()
 
-    assert ran[0] == ("", ["sudo", "sh", "/opt/cr/s2/slot.sh", "reset"])
-    assert {container for container, _ in ran[1:]} == {"s2-edge-sensor", "s2-estate-sensor"}
+    assert ran[0] == ("", ["test", "-f", "/opt/cr/s2/compose.yaml"])
+    assert ran[1] == ("", ["sudo", "sh", "/opt/cr/s2/slot.sh", "reset"])
+    assert {container for container, _ in ran[2:]} == {"s2-edge-sensor", "s2-estate-sensor"}
     assert done[0] == ("cr-range", ("reset slot 2",)) and range_.reset_slot() == [], (
         "nothing is rebuilt by Nova: the slot's own containers are recreated on the range host")
 
@@ -268,3 +269,14 @@ def test_taking_a_slot_down_leaves_the_range_host_and_its_other_slots():
     with pytest.raises(Drifted):
         range_._shell = lambda container="": lambda argv, stdin=None, timeout=60: Ran(1, "busy")
         range_.teardown_slot()
+
+
+def test_a_reset_owed_to_a_slot_whose_files_are_gone_configures_it_instead():
+    cloud = Cloud()
+    range_ = adapter(cloud).in_slot(2)
+    range_.describe = lambda: None
+    range_._shell = lambda container="": lambda argv, stdin=None, timeout=60: Ran(1, "")
+    range_.configure_slot = lambda: [("cr-range", ("configured",))]
+
+    assert range_.reset_in_place() == [("cr-range", ("configured",))], (
+        "a new range host or a slot taken down while its reset was owed has no slot.sh to reset with")
