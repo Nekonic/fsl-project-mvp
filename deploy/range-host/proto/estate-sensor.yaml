@@ -7,6 +7,9 @@ vars:
   port-groups:
     HTTP_PORTS: '[80,8000]'
 default-log-dir: /var/log/suricata/
+stats:
+  enabled: true
+  interval: 5
 unix-command:
   enabled: true
 outputs:

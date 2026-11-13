@@ -8,7 +8,8 @@ services:
     depends_on:
       corp-db: {condition: service_healthy}
     networks:
-      estate: {ipv4_address: 10.30.${N}.60}
+      estate:
+        ipv4_address: "10.30.${N}.60"
       backend: {}
     environment:
       WORDPRESS_DB_HOST: "corp-db"

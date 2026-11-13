@@ -21,7 +21,8 @@ services:
     hostname: kali
     cap_add: [NET_ADMIN]
     networks:
-      internet: {ipv4_address: 172.30.${N}.10}
+      internet:
+        ipv4_address: "172.30.${N}.10"
     extra_hosts:
       - "board.com:10.30.${N}.247"
       - "corp.com:10.30.${N}.247"
@@ -38,15 +39,20 @@ services:
       net.ipv4.conf.all.rp_filter: "0"
       net.ipv4.conf.default.rp_filter: "0"
     networks:
-      internet: {ipv4_address: 172.30.${N}.1, interface_name: wan}
-      estate: {ipv4_address: 10.30.${N}.1, interface_name: lan}
+      internet:
+        ipv4_address: "172.30.${N}.1"
+        interface_name: wan
+      estate:
+        ipv4_address: "10.30.${N}.1"
+        interface_name: lan
 
   waf:
     image: cr-proto-waf
     container_name: s${N}-waf
     hostname: waf
     networks:
-      estate: {ipv4_address: 10.30.${N}.247}
+      estate:
+        ipv4_address: "10.30.${N}.247"
     extra_hosts:
       - "board:10.30.${N}.59"
       - "corp-wp:10.30.${N}.60"
@@ -83,7 +89,9 @@ networks:
       com.docker.network.driver.mtu: "1442"
       com.docker.network.bridge.gateway_mode_ipv4: isolated
     ipam:
-      config: [{subnet: 172.30.${N}.0/24, gateway: 172.30.${N}.254}]
+      config:
+        - subnet: "172.30.${N}.0/24"
+          gateway: "172.30.${N}.254"
   estate:
     name: s${N}_estate
     internal: true
@@ -92,4 +100,6 @@ networks:
       com.docker.network.driver.mtu: "1442"
       com.docker.network.bridge.gateway_mode_ipv4: isolated
     ipam:
-      config: [{subnet: 10.30.${N}.0/24, gateway: 10.30.${N}.254}]
+      config:
+        - subnet: "10.30.${N}.0/24"
+          gateway: "10.30.${N}.254"

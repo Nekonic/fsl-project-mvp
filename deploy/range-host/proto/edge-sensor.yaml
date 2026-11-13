@@ -32,7 +32,7 @@ vars:
 default-log-dir: /var/log/suricata/
 stats:
   enabled: true
-  interval: 300
+  interval: 5
 outputs:
 - eve-log:
     enabled: true

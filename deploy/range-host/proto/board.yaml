@@ -8,7 +8,8 @@ services:
     depends_on:
       board-db: {condition: service_healthy}
     networks:
-      estate: {ipv4_address: 10.30.${N}.59}
+      estate:
+        ipv4_address: "10.30.${N}.59"
       backend: {}
     environment:
       BOARD_DB_HOST: "board-db"

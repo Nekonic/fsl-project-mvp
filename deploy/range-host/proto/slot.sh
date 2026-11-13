@@ -11,9 +11,18 @@ inside() { c=$1; shift; nsenter -t "$(pid "$c")" -n "$@"; }
 slot() { sn=$1; shift; N=$sn docker compose -p "s$sn" -f "$HERE/slot.yaml" "$@"; }
 
 quiet_offloads() {
-  for dev in $(inside "$1" ls /sys/class/net); do
+  for dev in $(inside "$1" ip -o link show | awk -F': ' '{print $2}' | cut -d@ -f1); do
     [ "$dev" = lo ] && continue
     inside "$1" ethtool -K "$dev" tso off gso off gro off >/dev/null 2>&1 || true
+  done
+}
+
+show_offloads() {
+  for c in $(docker ps --format '{{.Names}}' | grep "^s$1-" | grep -v sensor); do
+    for dev in $(inside "$c" ip -o link show | awk -F': ' '{print $2}' | cut -d@ -f1); do
+      [ "$dev" = lo ] && continue
+      echo "$c $dev $(inside "$c" ethtool -k "$dev" | grep -E '^(tcp-segmentation-offload|generic-segmentation-offload|generic-receive-offload|tx-checksumming):' | awk '{printf "%s=%s ", $1, $2}')"
+    done
   done
 }
 
