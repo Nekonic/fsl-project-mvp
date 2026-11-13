@@ -197,7 +197,8 @@ def route(learner, site: str, start: str = CUSTOMERS) -> list[str]:
 def addresses(project, learner, found) -> list[dict]:
     placed = {node["name"]: (node["x"], node["y"]) for node in project["topology"]["nodes"]}
     named = {switch: _shape(caption)[1].text.strip() for switch, caption in captions(project).items()}
-    return [{"host": host, "zone": named.get(switch, switch), "address": one.address.partition("/")[0]}
+    return [{"host": host, "zone": named.get(switch, switch), "address": one.address.partition("/")[0],
+             "network": "" if switch == INTERNET else str(ipaddress.ip_interface(one.address).network)}
             for (host, switch), one in sorted(link_heads(learner, found).items(),
                                               key=lambda pair: (placed.get(pair[0][0], (0, 0)), pair[0][1]))
             if host in placed and switch in placed and switch not in UNLABELLED]
