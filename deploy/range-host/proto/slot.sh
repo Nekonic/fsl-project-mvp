@@ -50,21 +50,31 @@ bridges_forward() {
   done
 }
 
+address_kali() {
+  n=$1
+  awk '{ for (i = 10; i < 10 + $2; i++) printf "addr add %s.%d/24 dev eth0\n", $1, i }
+       END { print "route replace default via 36.128.0.1 dev eth0" }' "$HERE/origins.txt" > "$BASE/s$n/kali.ip"
+  inside "s$n-kali" ip addr flush dev eth0
+  inside "s$n-kali" ip -batch "$BASE/s$n/kali.ip"
+  quiet_offloads "s$n-kali"
+}
+
+address_edge() {
+  n=$1
+  awk '{ printf "addr add %s.1/24 dev wan\n", $1 } END { print "addr del 172.30.N.1/24 dev wan" }' "$HERE/origins.txt" \
+    | sed "s/\.N\./.$n./" > "$BASE/s$n/edge.ip"
+  inside "s$n-edge" ip -batch "$BASE/s$n/edge.ip"
+  quiet_offloads "s$n-edge"
+}
+
+address_waf() {
+  inside "s$1-waf" ip route replace default via "10.30.$1.1"
+  quiet_offloads "s$1-waf"
+}
+
 address_common() {
   n=$1
-  inside "s$n-kali" ip addr flush dev eth0
-  while read -r prefix count; do
-    i=10
-    while [ "$i" -lt $((10 + count)) ]; do
-      inside "s$n-kali" ip addr add "$prefix.$i/24" dev eth0
-      i=$((i + 1))
-    done
-    inside "s$n-edge" ip addr add "$prefix.1/24" dev wan 2>/dev/null || true
-  done < "$HERE/origins.txt"
-  inside "s$n-edge" ip addr del "172.30.$n.1/24" dev wan 2>/dev/null || true
-  inside "s$n-kali" ip route replace default via 36.128.0.1 dev eth0
-  inside "s$n-waf" ip route replace default via "10.30.$n.1"
-  for c in kali edge waf; do quiet_offloads "s$n-$c"; done
+  address_kali "$n"; address_edge "$n"; address_waf "$n"
   quiet_host_offloads "$n"
 }
 
@@ -130,13 +140,35 @@ target_down() {
 }
 
 reset() {
-  n=$1; w=${2:-}; t=$(now)
+  n=$1; w=${2:-}; began=$(now)
   [ -z "$w" ] || target_down "$n" "$w" >/dev/null
-  slot "$n" down -v --timeout 1 >/dev/null
+  step=$(now); slot "$n" down -v --timeout 1 >/dev/null; downed=$(since "$step")
   rm -rf "$BASE/s$n/edge-log"/* "$BASE/s$n/estate-log"/* "$BASE/s$n/waf"/*
-  up "$n" >/dev/null
-  [ -z "$w" ] || attach "$n" "$w" >/dev/null
-  echo "reset s$n ${w:-common} $(since "$t")s"
+  step=$(now); up "$n" >/dev/null; upped=$(since "$step")
+  step=$(now); [ -z "$w" ] || attach "$n" "$w" >/dev/null; attached=$(since "$step")
+  echo "reset s$n ${w:-common} $(since "$began")s (common down ${downed}s, up ${upped}s, attach ${attached}s)"
+}
+
+reset_fast() {
+  n=$1; w=$2; began=$(now)
+  (
+    step=$(now)
+    target_down "$n" "$w" >/dev/null 2>&1
+    attach "$n" "$w" >/dev/null 2>&1
+    echo "target $(since "$step")s" > "$BASE/s$n/reset-target"
+  ) &
+  step=$(now)
+  slot "$n" up -d --force-recreate --no-deps --wait kali waf >/dev/null 2>&1
+  address_kali "$n"; address_waf "$n"; quiet_host_offloads "$n"
+  inside "s$n-edge" ip neigh flush all
+  for leg in edge estate; do
+    : > "$BASE/s$n/$leg-log/eve.json"
+    docker exec "s$n-$leg-sensor" suricatasc -c reopen-log-files >/dev/null
+  done
+  : > "$BASE/s$n/waf/audit.log" 2>/dev/null || true
+  common=$(since "$step")
+  wait
+  echo "reset_fast s$n $w $(since "$began")s (kali and waf recreated ${common}s, $(cat "$BASE/s$n/reset-target"))"
 }
 
 "$@"

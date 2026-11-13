@@ -5,6 +5,8 @@ t=$(date +%s.%N)
 case "$what" in
   reset)
     for n in "$@"; do sh "$HERE/slot.sh" reset "$n" board 2>/dev/null | tail -1 & done ;;
+  reset_fast)
+    for n in "$@"; do sh "$HERE/slot.sh" reset_fast "$n" board 2>/dev/null | tail -1 & done ;;
   sqlmap)
     python3 -c "
 import yaml

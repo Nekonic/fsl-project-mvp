@@ -70,8 +70,9 @@ under `deploy/range-host/proto/`. Nothing in the product was replaced.
   egress from the internal networks.
 - (i) Cold up to healthy, one slot, images and pristine present: common part
   13.5 s + board attach 25.4 s = **39 s**.
-- Reset of one slot (`down -v` of both projects, `up`, addressing, pristine
-  restore, board `up --wait`): **22.0 s**.
+- Reset of one slot: the 22.0 s first logged here was wrong (`slot.sh` reused
+  one timer variable across nested functions, so it timed only the attach);
+  the corrected numbers are in "Reset" below.
 - RAM, board session idle: 683 MiB of container memory (common part
   144 MiB: kali 46, waf 37, edge-sensor 37, estate-sensor 24, edge 1; board
   115 + board-db 424).
@@ -168,3 +169,35 @@ under `deploy/range-host/proto/`. Nothing in the product was replaced.
   (baseline `.'.(,,."((` and `(((.,('.)"`). The verdict and `corroborated` are
   unchanged. This is the tool's randomness, not the substrate: the same
   probe would raise the same alert on today's estate sensor.
+
+### Attach and detach of a scenario's targets
+
+| step | times measured (s) |
+|---|---|
+| attach board (pristine restore, `up --wait`, route, offloads) | 25.4, 24.3, 25.8, 26.2, 27.8, 25.4, 25.7 |
+| detach board (`down -v`) | 3.9, 3.7, 4.5 |
+| attach corp | 22.2, 24.3, 20.7 |
+| detach corp | 5.0, 4.8, 5.2 |
+| common part `up --wait` + addressing (one nsenter per address) | 13.5-15.0 |
+| common part `up --wait` + addressing (`ip -batch`) | 8.0 |
+
+Board's attach is MySQL start on the restored datadir plus Django start and
+its healthcheck; the common part is not on that path.
+
+### Reset (ii)
+
+Full reset = detach target, `down -v` of the common part, `up --wait`,
+addressing, attach target; wall clock from the first to the last slot done.
+
+| slots at once | wall (s), one nsenter per address | wall (s), `ip -batch` |
+|---|---|---|
+| 1 | 52.6 | 42.9 (down 4.9, up 8.0, attach 25.7) |
+| 2 | 75.7 | see below |
+| 3 | 107.6 | see below |
+| 4 | 129.3 | see below |
+
+`reset_fast` (a variant, not in the design): keep edge and both sensors
+running (truncate the logs and `suricatasc -c reopen-log-files`), recreate
+only kali and waf (the two root shells) while the target is detached and
+re-attached in parallel, flush the edge's neighbour table. One slot: 34.3 s
+(kali and waf 8.2 s, target 34.2 s), isolation 28/28 afterwards.
