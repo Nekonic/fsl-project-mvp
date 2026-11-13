@@ -221,11 +221,6 @@ def subnet(project, learner, found, host: str) -> list[str]:
     one = link_heads(learner, found).get((host, switch_of(project, host)))
     return [str(ipaddress.ip_interface(one.address).network)] if one else []
 
-def hosts_at(learner, found, addresses: list[str]) -> list[str]:
-    wanted = {value.partition("/")[0] for value in addresses}
-    return sorted({name for (name, _), one in link_heads(learner, found).items()
-                   if one.address.partition("/")[0] in wanted})
-
 LABEL_STYLE = "font-family: Noto Sans;font-size: 10.0;fill: #1b4f8a;fill-opacity: 1.0;"
 SWITCH_LABEL_STYLE = "font-family: Noto Sans;font-size: 10.0;fill: #5b6770;fill-opacity: 1.0;"
 STARTS = "text-anchor: start;"

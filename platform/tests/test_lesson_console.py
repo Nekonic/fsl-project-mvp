@@ -346,12 +346,17 @@ def test_a_pass_is_said_on_the_passed_step_and_the_next_step_opens_on_a_clean_ca
       const passed = {{title: browser.text('step-title'), said: browser.text('step-said'),
                        ok: browser.element('step-said').classList.contains('text-success')}};
       await browser.wait(1600);
-      return {{passed, next: browser.text('step-title'), said: shown('step-said')}};
+      const waited = {{title: browser.text('step-title'), said: browser.text('step-said'),
+                       next: browser.element('step-next').classList.contains('btn-blue')}};
+      await browser.click('step-next');
+      return {{passed, waited, next: browser.text('step-title'), said: shown('step-said')}};
     """)
     result = seen["result"]
 
     assert seen["errors"] == []
     assert result["passed"] == {"title": "lesson.demo.label.board_ip", "said": "✓ board_ip passed", "ok": True}
+    assert result["waited"] == {"title": "lesson.demo.label.board_ip", "said": "✓ board_ip passed", "next": True}, (
+        "a pass stays on its step with the tick until Next, so a Next pressed after the tick never skips a step")
     assert (result["next"], result["said"]) == ("lesson.demo.label.path", False)
 
 def test_the_order_picker_posts_the_hosts_in_the_order_pressed_and_a_second_press_takes_one_out(client):
@@ -460,12 +465,13 @@ def test_a_run_whose_last_requests_are_still_being_logged_reads_as_settling_not_
     assert seen["result"]["polled"][0] is False and seen["result"]["polled"][-1] is True, "pressed once, then checked by itself"
     assert (seen["result"]["passed"], seen["result"]["hint"], seen["result"]["wrong"]) == (True, 0, 0)
 
-def test_a_pass_text_longer_than_an_acknowledgement_stays_until_next_is_pressed_and_a_short_one_moves_on(client):
+def test_every_pass_stays_until_next_is_pressed_and_a_long_one_also_says_to_press_next(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       {to("method")}
       {answering(RIGHT["method"])}
       await browser.wait(1600);
-      const short = browser.text('step-title');
+      const short = {{title: browser.text('step-title'), status: browser.text('step-status'),
+                      next: browser.element('step-next').classList.contains('btn-blue')}};
       {to("verdict")}
       range.ok = 'Correct. sqlmap judged the parameter not injectable only because every request was blocked with 403.';
       await browser.click('#step-act [data-value="no"]');
@@ -478,7 +484,8 @@ def test_a_pass_text_longer_than_an_acknowledgement_stays_until_next_is_pressed_
     """)
 
     assert seen["errors"] == []
-    assert seen["result"]["short"] == "lesson.demo.label.sort", "a short pass moves on by itself"
+    assert seen["result"]["short"] == {"title": "lesson.demo.label.method", "status": "", "next": True}, (
+        "a short pass does not move on by itself either")
     assert seen["result"]["long"]["title"] == "lesson.demo.label.verdict", "a long pass waits to be read"
     assert seen["result"]["long"]["status"] == worded("lesson.status.press_next") and seen["result"]["long"]["next"] is True
     assert seen["result"]["after"] != "lesson.demo.label.verdict"
@@ -500,6 +507,7 @@ def test_next_and_a_jump_record_a_step_left_unpassed_as_skipped_and_back_does_no
       {to("method")}
       {answering(RIGHT["method"])}
       await browser.wait(1600);
+      await browser.click('step-next');
       await browser.click('step-next');
       await browser.click('step-back');
       await browser.settle();
@@ -919,6 +927,70 @@ def test_every_step_that_reads_a_kali_run_carries_the_button_that_opens_kibana_a
     assert seen["errors"] == []
     assert seen["result"] == {"window": "/kibana/app/discover#/?run=sqlmap", "text": worded("lesson.kali.window"), "shown": True,
                               "links": 0}, "one button: the step's open button itself opens the run's window"
+
+def test_an_answer_to_a_kibana_step_carries_the_query_kibana_holds_and_one_to_a_website_step_does_not(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      const doc = browser.element('pane-frame').contentDocument;
+      const plain = doc.querySelector;
+      doc.querySelector = (selector) => (selector === '[data-test-subj="queryInput"]'
+        ? {{value: 'url : *kim0413* and not destination : 10.30.0.177', getBoundingClientRect: () => box(200, 100, 400, 36)}}
+        : plain(selector));
+      {to("source")}
+      {answering("10.30.0.177")}
+      {to("method")}
+      {answering("GET")}
+      return range.checked.filter(([id]) => id === "source" || id === "method");
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == [["source", {"answer": "10.30.0.177", "query": "url : *kim0413* and not destination : 10.30.0.177"}],
+                              ["method", {"answer": "GET"}]]
+
+def test_the_console_forgets_the_document_panel_s_field_search_an_earlier_lesson_typed_in_kibana(client):
+    seen = open_page(client, "/blue/1/", setup='localStorage.setItem("discover:searchText", \'"x_forwarded_for"\');' + served(),
+                     scenario="""
+      return {searched: localStorage.getItem("discover:searchText"), seen: localStorage.getItem("discover:docExplorerCalloutClosed")};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"searched": None, "seen": "true"}, (
+        "Kibana keeps the Document panel's search across sessions, so a later 'rule' would read 'x_forwarded_forrule'")
+
+@pytest.mark.parametrize("way", ["answered_after_next", "passed_unseen"])
+def test_a_run_still_being_collected_when_the_learner_presses_next_still_gives_the_later_steps_its_window(client, way):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("sqlmap")}
+      range.settling = true;
+      await browser.click('#step-act [data-act="kali"]');
+      await browser.settle();
+      const settlingRow = Boolean(browser.element('step-act').querySelector('[data-kali]'));
+      range.settling = false;
+      range.passed = true;
+      if ('{way}' === 'answered_after_next') {{
+        let release;
+        range.hold = new Promise((resolve) => {{ release = resolve; }});
+        browser.click('#step-act [data-act="kali"]');
+        await frames();
+        await browser.click('step-next');
+        release();
+        await browser.settle();
+        range.hold = null;
+      }} else {{
+        own('sqlmap').passed = 'now';
+        await browser.click('step-next');
+        await browser.settle();
+      }}
+      {to("run_source")}
+      await browser.settle();
+      await browser.wait(50);
+      await browser.settle();
+      return {{settlingRow, window: browser.element('step-open').dataset.discover || null, text: browser.text('step-open')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"settlingRow": True, "window": "/kibana/app/discover#/?run=sqlmap",
+                              "text": worded("lesson.kali.window")}, (
+        "a run the platform recorded after the learner moved on still opens Kibana at the run's time")
 
 def test_the_objectives_card_lists_each_objective_with_its_penalty_and_the_total(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario="""
@@ -1666,7 +1738,8 @@ def test_the_rules_step_rings_the_editor_s_last_line_until_the_text_changes_then
 
     assert seen["errors"] == []
     assert result["adding"]["text"] == "Add one rule line here."
-    assert result["adding"]["ring"]["top"] == 500 + 8 + 1 + 16 - 1, "the last line of the loaded rules, not the Apply button"
+    assert result["adding"]["ring"]["top"] == 500 + 8 + 1 + 16, "the last line of the loaded rules, not the Apply button"
+    assert result["adding"]["ring"]["height"] == 16, "the ring stays inside the empty line and covers no rule above it"
     assert result["addingOver"] is False
     assert result["applying"]["text"] == "Press Apply" and result["applying"]["ring"]["top"] == 680 - 6
     assert result["over"] is False, "the callout sits beside the Apply button, never over the rules being edited"
@@ -1857,6 +1930,31 @@ def test_a_sidebar_step_that_shows_the_top_values_says_what_they_are_and_stays_o
     assert seen["result"]["after"] == "The most frequent values."
     assert seen["result"]["over"] is False
 
+def test_the_top_values_callout_keeps_off_the_popover_s_line_saying_how_many_records_it_counted(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS['lesson.kibana.top_values'] = 'The most frequent values.';
+      const doc = browser.element('pane-frame').contentDocument;
+      const plain = doc.querySelector;
+      const footer = {{firstElementChild: null, textContent: 'Calculated from 1,974 records',
+                      getBoundingClientRect: () => box(150, 486, 200, 18)}};
+      const panel = {{querySelectorAll: () => [footer], getBoundingClientRect: () => box(140, 300, 260, 220)}};
+      const values = {{getBoundingClientRect: () => box(150, 420, 240, 60), closest: () => panel}};
+      doc.querySelector = (selector) => selector === '[data-test-subj="fieldPopoverHeader_fieldDisplayName"]'
+        ? {{textContent: 'source_ip', getBoundingClientRect: () => box(150, 320, 100, 20)}}
+        : selector === '[data-test-subj="dscFieldStats-topValues"]' ? values : plain(selector);
+      {to("run_source")}
+      await browser.click('step-open');
+      kibana.set('[data-test-subj="field-source_ip"]', box(20, 400, 120, 24));
+      kibana.set('[data-test-subj="dataGridColumnSelectorButton"]', box(420, 440, 116, 28));
+      await frames(4);
+      const spot = callout();
+      return {{text: browser.text('coach-callout'), spot, over: meets(spot, {{left: 210, top: 582, width: 200, height: 18}})}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["text"] == "The most frequent values."
+    assert seen["result"]["spot"] is not None and seen["result"]["over"] is False
+
 def test_the_query_prompt_keeps_off_the_time_range_picker_the_step_asks_to_leave_unchanged(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       STRINGS['lesson.kibana.query'] = 'Type the KQL here.';
@@ -1915,6 +2013,30 @@ def test_a_map_zone_callout_goes_inside_the_zone_on_the_first_row_free_of_text(c
 
     assert seen["errors"] == []
     assert seen["result"]["inside"] is True and seen["result"]["belowCaption"] is True
+
+def test_a_map_zone_callout_with_room_outside_every_zone_goes_there_and_not_onto_the_zone_s_own_links(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS['lesson.demo.callout.path'] = 'The DMZ.';
+      {to("path")}
+      await frames();
+      window.dispatchEvent({{type: 'message', data: {{map: 'drawn'}}, source: browser.element('topology-frame').contentWindow}});
+      await frames();
+      const last = posted.filter((one) => one.frame === 'map' && one.data.locate).pop();
+      const zone = {{x: 300, y: 150, w: 460, h: 300}};
+      const below = {{x: 100, y: 470, w: 400, h: 140}};
+      window.dispatchEvent({{type: 'message', data: {{located: last.data.id, rect: zone, zones: [zone, below],
+                             text: [{{x: 310, y: 155, w: 150, h: 20}}]}},
+                             source: browser.element('topology-frame').contentWindow, origin: last.origin}});
+      await frames();
+      const spot = callout();
+      return {{spot, inZone: meets(spot, box(360, 246, 460, 300)), onOther: meets(spot, box(160, 566, 400, 140))}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["spot"] is not None
+    assert (seen["result"]["inZone"], seen["result"]["onOther"]) == (False, False), (
+        "inside the zone the callout lands on its switches' link ends and address labels")
+    assert seen["result"]["spot"]["top"] + seen["result"]["spot"]["height"] <= 246
 
 def test_the_terminal_is_fitted_to_the_pane_it_sits_in_and_left_alone_once_it_fits(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""

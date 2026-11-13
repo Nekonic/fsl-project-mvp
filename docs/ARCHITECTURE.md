@@ -896,8 +896,9 @@ Checks run by themselves.
 - `sent`, `triage`, `kali`, `replay` and `waf_changed` are polled silently every 5 s while their step is shown, the tab is visible and the session is open. The page re-reads the session every 30 s to notice a close. A poll never writes the status line.
 - `sent` also runs 1.5 s after the Website pane shows a path that matches the step's `match`.
 - `rules` also runs when the rule editor applies a file. A `rules` step with a `match` runs then silently and shows its own check button, which the learner presses after sending the request.
-- A pass says the step's `ok` line on the passed step, and 1.5 s later the note moves to the next step.
-- The step after a Kali step shows that step's row: the case's name and "Open Kibana at this run's time". The link opens the run's window with an empty query. It shows no request count and no sensor name. A poll of the Kali check reads the row again after a reload.
+- A pass says the step's `ok` line on the passed step and stays there with Next highlighted; the learner presses Next. A pass line longer than 30 characters also says to press Next. Only the last step's short pass moves on by itself.
+- The step after a Kali step shows that step's row: the case's name and "Open Kibana at this run's time". The link opens the run's window with an empty query. It shows no request count and no sensor name. A poll of the Kali check reads the row again after a reload, and whenever the row held has no window (a run still being collected when the learner pressed Next); a verdict that arrives after the learner moved on still updates the row.
+- Every answer to a step that opens Kibana carries `query`, the query Kibana holds. A check with `kql` fails unless that query matches it.
 - On the last step, a foundation says "Lesson complete. Next lesson: <title>" and moves on ("One session, F1 to F6"). After F6, the card lists the lessons taken and a button closes the session. A worked scenario says "Lesson complete".
 - A wrong answer says what is wrong.
 - A recent ingest (`within`) reads the newest records of the window first and records no truncation, because one sqlmap case leaves more than 5000.
@@ -995,22 +996,21 @@ Each unit below lists its defense and opening pane, what the learner does, and w
 
 - The learner searches a word of their own, of letters and digits, and writes `url : *word*` in Kibana. They then read, each card restating the query and naming the column the screen shows:
   - the count Kibana shows (both legs of every search with the word);
-  - the `source_ip` of the row whose `destination` is waf's address, then of the row whose `destination` is board.com's, and which map host uses that address;
+  - the `source_ip` of the row whose `destination` is waf's address, then of the row whose `destination` is board.com's (waf's own address);
   - the row's `request_header.x_forwarded_for`.
-  The solo step asks the count of a query the learner writes with `and` and `not`: their word, and `destination` not waf's address.
+  The solo step asks the count of a query the learner writes with `and` and `not`: their word, and `destination` not waf's address. Its check carries `kql`, a regular expression the Kibana query must match: the console sends the query Kibana holds with every answer of a step that opens Kibana, and an answer sent with a query that does not match fails (`lesson.logs.wrong.upstream.kql`) whatever the number, since the number is also on the screen of the step before.
 - Answers are read from the sensors' http events of the record (`sensor_source`, `forwarded_for`), split by leg.
   - A leg is `upstream` when `dest_ip` is one of board.com's addresses (waf sends it on). Otherwise it is `inbound` (the request arrives at waf). `leg: both` takes the events of both legs.
-  - `host_of` gives the map host with that address.
   - `hits` counts the http events on the leg whose url holds the word of the learner's newest search, since the unit (or the session) started.
 
 **f4 Blocking an XSS request and writing an IDS rule** (`lesson.xss`). Defense `xss-gap`, opens on Website.
 
-- The learner sends `<script>alert(1)</script>` and reads the status, one detecting rule and the Total Score. They read the status of the mixed-case probe, and say whether either drew an IDS alert. They write a rule for `<script` in the URI, apply it, search `<script>alert(1)</script>` and press the check, which passes only when that rule alerted on the search. They read its sid from the alert in Kibana, see the mixed case slip past, and add `nocase`. The Suricata reference card shows the rule's form with square-bracket blanks, not a complete rule. The Kibana steps hold the ring on the query bar until the learner's own query names the WAF log and script (or alert). The solo step replays the mixed case and an ordinary search.
+- The learner sends `<script>alert(1)</script>` and reads the status, one detecting rule and the Total Score. They read the status of the mixed-case probe, and say whether either drew an IDS alert. They write a rule for `<script` in the URI, apply it, search `<script>alert(1)</script>` and press the check, which passes only when that rule alerted on the search. They read the alert's `destination` in Kibana (waf's address: only the sensor on the way in saw the request, since the WAF blocked it), see the mixed case slip past, and add `nocase`. The Suricata reference card shows the rule's form with square-bracket blanks, not a complete rule. The Kibana steps hold the ring on the query bar until the learner's own query names the WAF log and script (or alert). The solo step replays the mixed case and an ordinary search.
 - Answers are read from:
   - `status`;
   - `rule`: the ModSecurity rule ids of the request, 949110 excluded;
   - `anomaly_total`: 949110's `Total Score: N`;
-  - `alerted`, `alerted_sid`, `alerted_sid_present`: the Suricata alerts in the record's window, against `lesson.added_rules`;
+  - `alerted`, `alerted_destination` (the `dest_ip` of the alerts the learner's own rules raised), `alerted_sid_present`: the Suricata alerts in the record's window, against `lesson.added_rules`;
   - `rules` with `match: '<script'`, and `rules` with `needs: nocase`;
   - `replay`.
 
@@ -1090,8 +1090,8 @@ Three check kinds follow the learner's own actions.
 
 An answer reads one of these facts. `wargames.read_from_record` refuses anything else at discovery.
 
-- `of:` a range fact: `address`, `subnet`, `path`, `logs`, `host_of`, `excluded_target`, `lost_points`, `detected_penalty`.
-- `of:` a request fact, `about:` a step that has a `match` (or with its own `match`, taking the latest Website pane record that matches it): `status`, `method`, `path`, `parameter`, `param_value`, `sensor_source`, `forwarded_for`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_sid`, `alerted_sid_present`, `hits`.
+- `of:` a range fact: `address`, `subnet`, `path`, `logs`, `excluded_target`, `lost_points`, `detected_penalty`.
+- `of:` a request fact, `about:` a step that has a `match` (or with its own `match`, taking the latest Website pane record that matches it): `status`, `method`, `path`, `parameter`, `param_value`, `sensor_source`, `forwarded_for`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_destination`, `alerted_sid_present`, `hits`.
 - `of:` a Kali fact, `about:` a `kali` step: `sqlmap_found`, `kali_source` (from the run's WAF detections, or with `from: server_error` from its 500 records), `alerted_by`.
 - `rule`, with the request's `path` or a `step:` marker (above).
 
@@ -1418,7 +1418,7 @@ Scenario 4.2 (a person on the red console against the learner) is not declared, 
     - A lesson opens it with an empty query. A scenario or a wargame opens it with the alert query.
     - While the space or view is not ready, or without `KIBANA_URL`, `discover` is null. It is never the shared operator view. The ELK pane then shows a preparing line and polls the session until the link arrives. The import is retried every 10 seconds.
     - The ELK pane opens the link. It is not the saved search with an overriding query, which Kibana badges "Unsaved changes".
-  - Before the pane loads, the blue console marks Kibana's first-visit callouts as seen in the shared same-origin localStorage (`discover:docExplorerUpdateCalloutClosed`, `discover:docExplorerCalloutClosed`, `data.noDataPopover`).
+  - Before the pane loads, the blue console marks Kibana's first-visit callouts as seen in the shared same-origin localStorage (`discover:docExplorerUpdateCalloutClosed`, `discover:docExplorerCalloutClosed`, `data.noDataPopover`). On every load (a session opened, a lesson switched) it also removes `discover:searchText`, the Document panel's field search, which Kibana keeps across sessions and would otherwise prefill a word typed in an earlier lesson.
 - **Elasticsearch is a single node with a 512 MB heap.**
 - **Missing data is an error, not a zero, with stated exceptions.**
   - An unreachable Elasticsearch or substrate, and an unreadable rule file, answer 503.

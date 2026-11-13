@@ -3929,13 +3929,16 @@ and the WAF drawn where the range wires it.
   GNS3's own affinity squares do not meet it: the green ones draw a
   16-unit ring, the blue and gray ones a traced outline of another weight.
 - **What is built.** `deploy/gns3/symbols.py` runs when the GNS3 image is
-  built and writes `host-client`, `host-firewall`, `host-shield`,
+  built and writes `host-client`, `host-router`, `host-shield`,
   `host-server`, `host-storage`, `host-statistics` and `host-kali` (`.svg`,
   60x60, viewBox 300): one `rect` (x/y 8, 284 square, `rx` 22, stroke 16,
   paper `#fffefe`) whose stroke alone differs, red `#e3292e` for the
-  attacker, green `#109e00` for the firewall and the WAF, blue `#2d67b9`
+  attacker, green `#109e00` for the WAF, blue `#2d67b9` for the router and
   for the sites and their databases, gray `#4d4d4d` for customers and the
-  log server (affinity's own colours). Inside it, the glyph of the bundled
+  log server (affinity's own colours). The router took the firewall glyph
+  while the edge was OPNsense; since the edge became an nftables router
+  (2026-11-13) it wears affinity's router glyph (four arrows), in blue so
+  it reads neither as a gray switch nor as one of the green WAF family. Inside it, the glyph of the bundled
   affinity square symbol of that colour (`affinity/square/<colour>/<glyph>.svg`
   in the installed gns3-server, The Unlicense), with the symbol's paper and
   frame paths dropped and its root style kept; the build fails if a bundled
@@ -6921,3 +6924,80 @@ slot's records.
   a slot (Kali has only `eth0`, its route out), became a scan from Kali of
   the range host, the platform and the range host's `mgmt` network in the
   same file.
+
+## 2026-11-14 — Answer-blind walk round 16: what changed in the lessons and why
+
+An answer-blind walk of both courses on the live range found nineteen
+problems. The rulings that change behaviour, not only wording:
+
+- **A pass never moves on by itself.** A short pass line (30 characters or
+  fewer) used to advance after 1.5 s, a long one waited for Next. A learner
+  who had learned to press Next after the tick pressed it once more after a
+  short pass had already advanced, and skipped the next step unanswered (F2
+  `parameter` to `sort`). Every pass now waits on its step with the tick and
+  the blue Next; a long line still says to press Next. The lesson's last step
+  keeps its rule: a short last pass opens the next lesson after 2 s.
+  Supersedes the short-pass auto-advance recorded earlier.
+- **F3's solo count needs the query.** Its count (`url` holds the word and
+  `destination` is not waf's address) was already on the screen of the step
+  before, so it could be answered by counting rows. The check now carries
+  `kql`, a regular expression the learner's Kibana query must match; the
+  console sends the query Kibana holds (`submittedQuery`) with every answer of
+  a step that opens Kibana, and a query that does not match fails with
+  `lesson.logs.wrong.upstream.kql` whatever the number. Rejected: a count the
+  table cannot show (all searches, or extra searches): it depends on the
+  learner's time range and still does not make the learner write `not`.
+- **F3 drops `site_host`.** It asked for the name of the host whose address
+  the step before had just asked for (waf), the same fact twice; `host_of` had
+  no other user and is gone. The pass line of `site_source` now says the
+  address is waf's and why.
+- **F4 `fired` asks the alert's `destination`.** Asking its `rule_id` asked
+  back the sid the learner had typed one step before. The destination is read
+  from the alert (`alerted_destination`: `dest_ip` of the alerts the learner's
+  own added rules raised) and is waf's address, which is what the pass line
+  explains: only the sensor on the way in saw the blocked request.
+- **No step gives its answer, or a later one, away.** F2's method step told
+  the learner the search row's name began with `?q=` (the answer of
+  `parameter`), F2's sort step that the new row began with `?sort=` (its own
+  answer); both now say the name begins with `?`. F3's client step and the
+  address reference said the browser connects from the customers place (the
+  answer, and F5's Kali source in the same way); removed.
+- **The result page numbers lessons as the catalogue does.** The catalogue
+  numbers each course's lessons from 1; the session page numbered them by
+  their order across the wargame (4 to 6 for the attack course). A session
+  whose lessons all belong to one course now numbers them within it, names the
+  course in the header, restarts "from lesson 1", and shows the course's own
+  score note (`course.attack.scores`, or the course-free `result.scores`
+  without sqlmap or lesson numbers for the logs course).
+- **A run still being collected when Next is pressed keeps its window.** A
+  poll of a Kali step that came back after the learner moved on was dropped,
+  so the platform recorded the run (and passed the step) but the console kept
+  the "collecting" row without a Kibana window, and later steps offered only
+  the whole session. The console now keeps a late verdict's row, and recalls
+  the run whenever the row it holds has no window.
+- **Placement.** A map zone callout first tries spots outside the zone that
+  overlap no other zone, before rows inside it (inside, F1's DMZ callout sat
+  on sw1's link ends beside waf's address). A rule-line ring in the IDS rule
+  editor is drawn inside its line, as terminal rows are, so it no longer cuts
+  the rule above. The Top values callout keeps off every text line of the
+  field popover ("Calculated from N records"). The console removes Kibana's
+  `discover:searchText` (the Document panel's field search, which Kibana
+  keeps across sessions) on every load.
+- **The WAF keeps UTC.** Setting the WAF container's `TZ` to Asia/Seoul (as
+  the Kali image is) was checked and rejected: ModSecurity writes the audit
+  log's `transaction.time_stamp` in local time without a zone, and both the
+  ingest pipeline and `ingest/elastic.py` read it as UTC, so a KST WAF would
+  move every WAF detection nine hours.
+- **F6's IDS miss is the defence, and the text says so.** sid 9000001 ("SQLi
+  attempt - URI") is in `local.rules` and `no-xss.rules`, so the learner sees
+  it on F4's rule screen; F6's `overbroad` loads `no-uri-sqli.rules`, which
+  leaves it out. Shown live on the range host: the slot's estate sensor logged
+  "3 rules successfully loaded" when F6 opened and 4 after the reset, and
+  Elasticsearch has 2,121 alerts from 9000001 for the F5 run before and none
+  for F6's dump of about 6,000 requests. The pass line now names the rule the
+  lesson removed instead of saying the IDS has none. Many of sqlmap's ORDER BY
+  payloads carry no quote, `-- ` or `union select` and would pass 9000001
+  even when it is loaded (`docs/STATE.md` records it as fragile); that is a
+  detection gap to measure, not changed here.
+- **The router wears a router.** `host-router` (affinity's blue router
+  glyph) replaces `host-firewall`; see the symbols paragraph above.

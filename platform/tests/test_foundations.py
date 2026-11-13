@@ -222,16 +222,21 @@ def test_f3_reads_the_two_legs_of_one_search_by_destination_and_counts_both_legs
     with on_the_range(), on_map(read_slot()), patch.object(site, "kept", return_value=searched), indexed(*legs):
         step(client, session, "search")
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("site_source", WAF), ("client_source", CUSTOMER), ("xff", CUSTOMER), ("count", "2"), ("upstream", "1"))}
-        Session.objects.filter(pk=session.pk).update(lesson_steps={"f3": {"site_source": {"passed": "x"}}})
-        host = answer(client, session, "site_host", "waf")["passed"]
+            ("site_source", WAF), ("client_source", CUSTOMER), ("xff", CUSTOMER), ("count", "2"))}
+        written = f"url : *lee2026* and not destination : {WAF}"
+        counted = {query: step(client, session, "upstream", body={"answer": "1", "query": query}).json()
+                   for query in (written, "url : *lee2026*", "")}
         wrong = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("site_source", CUSTOMER), ("client_source", WAF), ("count", "1"), ("upstream", "2"))}
+            ("site_source", CUSTOMER), ("client_source", WAF), ("count", "1"))}
+        upstream_wrong = step(client, session, "upstream", body={"answer": "2", "query": written}).json()["passed"]
 
-    assert said == {"site_source": True, "client_source": True, "xff": True, "count": True, "upstream": True}, (
+    assert said == {"site_source": True, "client_source": True, "xff": True, "count": True}, (
         "a count reads the newest search word, not another learner's or an older one")
-    assert host is True, "the host is the map host whose address the step before found"
-    assert wrong == {"site_source": False, "client_source": False, "count": False, "upstream": False}
+    assert counted[written]["passed"] is True
+    assert [(counted[query]["passed"], counted[query]["reason"]) for query in ("url : *lee2026*", "")] == [
+        (False, ["lesson.logs.wrong.upstream.kql", []])] * 2, (
+        "the right number read off the step before's table without the and-not query does not pass")
+    assert wrong == {"site_source": False, "client_source": False, "count": False} and upstream_wrong is False
 
 def test_f4_reads_the_probe_s_block_score_and_whether_the_ids_alerted_from_the_session_s_records(client):
     session = opened("f4")
@@ -259,16 +264,22 @@ def test_the_learner_s_rule_is_judged_by_its_own_alerts_and_the_fix_needs_nocase
     passed(session, "f4", write=timezone.now() - timedelta(minutes=1))
     after = [browsed("/search/?q=%3Cscript%3E", 403), browsed("/search/?q=%3CScRiPt%3E", 403, request_id=2)]
     detected(session, "mine", "suricata", session.browse_marker, "script", alert={"signature_id": 9100001},
-             http={"url": "/search/?q=%3Cscript%3E"})
+             http={"url": "/search/?q=%3Cscript%3E"}, dest_ip=WAF)
+    detected(session, "posture", "suricata", session.browse_marker, "sqli", alert={"signature_id": 9000001},
+             http={"url": "/search/?q=%3Cscript%3E"}, dest_ip=BOARD)
     with patch.object(site, "kept", return_value=after[:1]), quietly(), \
             patch("api.views._live_rules", lambda session=None: posture + NOCASE_LESS):
-        fired = answer(client, session, "fired", "9100001")["passed"]
+        sid = answer(client, session, "fired", "9100001")["passed"]
+        board = answer(client, session, "fired", BOARD)["passed"]
+        fired = answer(client, session, "fired", WAF)["passed"]
         without = step(client, session, "nocase").json()["passed"]
     with patch.object(site, "kept", return_value=after), quietly(), \
             patch("api.views._live_rules", lambda session=None: posture + WITH_NOCASE):
         with_nocase = step(client, session, "nocase").json()["passed"]
 
     assert (fired, without, with_nocase) == (True, False, True)
+    assert (sid, board) == (False, False), (
+        "the step asks what the alert says, the destination of the learner's own rule's alert, not the sid they typed")
 
 @pytest.mark.parametrize("rule, alerted, chosen, line", [
     (NOCASE_LESS, False, "absent", "lesson.xss.ok.slipped"),
@@ -347,9 +358,9 @@ def test_a_logged_search_that_drew_no_alert_from_the_rule_says_so_instead_of_ask
     passed(session, "f4", write=timezone.now() - timedelta(minutes=1))
     searched = [browsed("/search/?q=%3Cscript%3E", 403)]
     with patch.object(site, "kept", return_value=[]), quietly():
-        unsent = answer(client, session, "fired", "9100001")
+        unsent = answer(client, session, "fired", WAF)
     with patch.object(site, "kept", return_value=searched), quietly():
-        silent = answer(client, session, "fired", "9100001")
+        silent = answer(client, session, "fired", WAF)
 
     assert unsent["reason"] == ["lesson.check.unrecorded", []]
     assert (silent["passed"], silent["reason"]) == (False, ["lesson.xss.fail.fired", []])

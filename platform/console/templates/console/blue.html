@@ -305,10 +305,12 @@
     "discover:docExplorerCalloutClosed": "true",
     "data.noDataPopover": "true",
   };
+  const KIBANA_LEFT_FROM_BEFORE = ["discover:searchText"];
 
   function quietKibana() {
     try {
       Object.entries(KIBANA_ALREADY_SEEN).forEach(([key, value]) => localStorage.setItem(key, value));
+      KIBANA_LEFT_FROM_BEFORE.forEach((key) => localStorage.removeItem(key));
     } catch (error) {
       return;
     }

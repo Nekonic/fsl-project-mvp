@@ -896,8 +896,9 @@ check는 스스로 실행됩니다.
 - `sent`, `triage`, `kali`, `replay`, `waf_changed`는 단계가 보이고 탭이 보이며 세션이 열려 있는 동안 5초마다 조용히 폴링합니다. 화면은 닫힌 것을 알아채려고 30초마다 세션을 다시 읽습니다. 폴링은 상태 줄에 아무것도 쓰지 않습니다.
 - `sent`는 웹사이트 창에 단계의 `match`에 맞는 경로가 나타나고 1.5초 뒤에도 실행됩니다.
 - `rules`는 룰 편집기가 파일을 적용할 때도 실행됩니다. `match`가 있는 `rules` 단계는 이때 조용히 실행되고, 따로 확인 버튼을 보여 줍니다. 학습자는 요청을 보낸 뒤 이 버튼을 누릅니다.
-- 통과하면 통과한 단계에 `ok` 문장을 보여 주고, 1.5초 뒤 다음 단계로 넘어갑니다.
-- Kali 단계 다음 단계에는 그 단계의 행이 나옵니다. 케이스 이름과 "Kibana에서 이 실행 시간대 열기"입니다. 이 링크는 실행 시간대를 빈 쿼리로 엽니다. 요청 수와 센서 이름은 없습니다. 다시 불러오면 Kali check를 폴링해 이 행을 다시 읽습니다.
+- 통과하면 통과한 단계에 `ok` 문장을 보여 주고 '다음'을 강조한 채 그 단계에 머뭅니다. 학습자가 '다음'을 누릅니다. 통과 문장이 30자보다 길면 '다음'을 누르라는 안내도 나옵니다. 마지막 단계의 짧은 통과만 저절로 넘어갑니다.
+- Kali 단계 다음 단계에는 그 단계의 행이 나옵니다. 케이스 이름과 "Kibana에서 이 실행 시간대 열기"입니다. 이 링크는 실행 시간대를 빈 쿼리로 엽니다. 요청 수와 센서 이름은 없습니다. 다시 불러오면 Kali check를 폴링해 이 행을 다시 읽고, 가진 행에 시간대가 없을 때(학습자가 기록을 모으는 중에 '다음'을 누른 경우)도 다시 읽습니다. 학습자가 넘어간 뒤에 도착한 결과도 행을 고칩니다.
+- Kibana를 여는 단계의 답에는 Kibana에 들어 있는 쿼리 `query`가 함께 갑니다. `kql`이 있는 check는 그 쿼리가 정규식에 맞지 않으면 통과하지 않습니다.
 - 마지막 단계에서 기초 레슨은 "레슨을 완료했습니다. 다음 레슨: <제목>"을 보여 주고 넘어갑니다("한 세션, F1부터 F6까지"). F6 뒤에는 카드에 들은 레슨을 나열하고, 버튼으로 세션을 닫습니다. 단계형 시나리오는 "레슨을 완료했습니다"라고 합니다.
 - 오답이면 무엇이 틀렸는지 알려 줍니다.
 - 최근 수집(`within`)은 구간의 최신 기록부터 읽고 잘림을 기록하지 않습니다. sqlmap 케이스 하나가 5000건 넘는 기록을 남기기 때문입니다.
@@ -995,22 +996,21 @@ board의 `scenario.yaml`은 `foundations:` 목록을 선언합니다. discovery 
 
 - 학습자는 영문자와 숫자로 된 자기만의 단어로 검색하고 Kibana에 `url : *단어*`를 씁니다. 카드마다 쿼리를 다시 적고 화면의 열 이름을 그대로 써서 아래를 묻습니다.
   - Kibana가 보여 주는 건수(그 단어로 한 모든 검색의 두 구간)
-  - `destination`이 waf 주소인 행의 `source_ip`, `destination`이 board.com 주소인 행의 `source_ip`, 그리고 구성도에서 그 주소를 쓰는 호스트
+  - `destination`이 waf 주소인 행의 `source_ip`, `destination`이 board.com 주소인 행의 `source_ip`(waf 자신의 주소)
   - 그 행의 `request_header.x_forwarded_for`
-  혼자 푸는 단계에서는 학습자가 `and`와 `not`으로 쓴 쿼리(내 단어이면서 `destination`이 waf 주소가 아닌 것)의 건수를 묻습니다.
+  혼자 푸는 단계에서는 학습자가 `and`와 `not`으로 쓴 쿼리(내 단어이면서 `destination`이 waf 주소가 아닌 것)의 건수를 묻습니다. 이 단계의 check에는 Kibana 쿼리가 맞아야 하는 정규식 `kql`이 있습니다. 콘솔은 Kibana를 여는 단계의 답을 보낼 때마다 Kibana에 들어 있는 쿼리를 함께 보내고, 쿼리가 맞지 않으면 숫자와 상관없이 틀린 답으로 처리합니다(`lesson.logs.wrong.upstream.kql`). 그 숫자는 앞 단계 화면에서도 보이기 때문입니다.
 - 답은 기록에 있는 센서의 http 이벤트에서 구간별로 읽습니다(`sensor_source`, `forwarded_for`).
   - `dest_ip`가 board.com의 주소이면 `upstream`(waf가 넘긴 요청), 아니면 `inbound`(waf에 도착한 요청)입니다. `leg: both`는 두 구간을 모두 씁니다.
-  - `host_of`는 그 주소를 쓰는 구성도 호스트입니다.
   - `hits`는 레슨(또는 세션)이 시작된 뒤, 학습자의 가장 최근 검색 단어가 url에 든 그 구간의 http 이벤트 수입니다.
 
 **f4 XSS 요청 차단과 IDS 룰 작성**(`lesson.xss`). defense `xss-gap`, 웹사이트 창에서 시작합니다.
 
-- 학습자는 `<script>alert(1)</script>`를 보내 상태 코드, 탐지한 룰 하나, Total Score를 읽습니다. 대소문자를 섞은 요청의 상태 코드를 읽고, 두 요청에 IDS 경보가 있었는지 답합니다. URI의 `<script`를 잡는 룰을 쓰고 적용한 뒤 `<script>alert(1)</script>`를 검색하고 확인 버튼을 누릅니다. 그 룰이 이 검색에 경보를 냈을 때만 통과합니다. 이어서 Kibana에서 그 경보의 sid를 읽고, 대소문자를 섞은 요청이 빠져나가는 것을 본 뒤 `nocase`를 붙입니다. Suricata 참고 카드는 완성된 룰이 아니라 대괄호로 빈칸을 둔 룰 형태를 보여 줍니다. Kibana 단계는 학습자의 쿼리가 웹방화벽 로그와 script(또는 alert)를 지정할 때까지 쿼리 입력창만 가리킵니다. 혼자 푸는 단계에서는 대소문자를 섞은 요청과 일반 검색을 다시 보냅니다.
+- 학습자는 `<script>alert(1)</script>`를 보내 상태 코드, 탐지한 룰 하나, Total Score를 읽습니다. 대소문자를 섞은 요청의 상태 코드를 읽고, 두 요청에 IDS 경보가 있었는지 답합니다. URI의 `<script`를 잡는 룰을 쓰고 적용한 뒤 `<script>alert(1)</script>`를 검색하고 확인 버튼을 누릅니다. 그 룰이 이 검색에 경보를 냈을 때만 통과합니다. 이어서 Kibana에서 그 경보의 `destination`을 읽고(waf 주소입니다. 웹방화벽이 요청을 막아서 들어오는 구간의 센서만 요청을 봤습니다), 대소문자를 섞은 요청이 빠져나가는 것을 본 뒤 `nocase`를 붙입니다. Suricata 참고 카드는 완성된 룰이 아니라 대괄호로 빈칸을 둔 룰 형태를 보여 줍니다. Kibana 단계는 학습자의 쿼리가 웹방화벽 로그와 script(또는 alert)를 지정할 때까지 쿼리 입력창만 가리킵니다. 혼자 푸는 단계에서는 대소문자를 섞은 요청과 일반 검색을 다시 보냅니다.
 - 답은 다음에서 읽습니다.
   - `status`
   - `rule`: 요청의 ModSecurity 룰 id. 949110은 제외합니다.
   - `anomaly_total`: 949110의 `Total Score: N`
-  - `alerted`, `alerted_sid`, `alerted_sid_present`: 기록 시간대의 Suricata 경보를 `lesson.added_rules`와 대조합니다.
+  - `alerted`, `alerted_destination`(학습자가 추가한 룰이 낸 경보의 `dest_ip`), `alerted_sid_present`: 기록 시간대의 Suricata 경보를 `lesson.added_rules`와 대조합니다.
   - `match: '<script'`가 붙은 `rules`, `needs: nocase`가 붙은 `rules`
   - `replay`
 
@@ -1090,8 +1090,8 @@ F6의 sqlmap 명령에는 `--skip-waf`가 붙습니다. 그러지 않으면 sqlm
 
 답은 다음 중 하나를 읽습니다. 그 밖의 값은 `wargames.read_from_record`가 discovery 시점에 거부합니다.
 
-- `of:`가 훈련 환경 사실인 경우: `address`, `subnet`, `path`, `logs`, `host_of`, `excluded_target`, `lost_points`, `detected_penalty`
-- `of:`가 요청 사실이고 `about:`이 `match`가 있는 단계를 가리키거나 단계 자신의 `match`가 있는 경우(그 단계와 일치하는 가장 최근 웹사이트 창 기록을 읽음): `status`, `method`, `path`, `parameter`, `param_value`, `sensor_source`, `forwarded_for`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_sid`, `alerted_sid_present`, `hits`
+- `of:`가 훈련 환경 사실인 경우: `address`, `subnet`, `path`, `logs`, `excluded_target`, `lost_points`, `detected_penalty`
+- `of:`가 요청 사실이고 `about:`이 `match`가 있는 단계를 가리키거나 단계 자신의 `match`가 있는 경우(그 단계와 일치하는 가장 최근 웹사이트 창 기록을 읽음): `status`, `method`, `path`, `parameter`, `param_value`, `sensor_source`, `forwarded_for`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_destination`, `alerted_sid_present`, `hits`
 - `of:`가 Kali 사실이고 `about:`이 `kali` 단계를 가리키는 경우: `sqlmap_found`, `kali_source`(실행의 WAF 탐지 기록에서, `from: server_error`가 붙으면 500 기록에서), `alerted_by`
 - 요청의 `path`나 `step:` 마커와 함께 쓰는 `rule`(위)
 
@@ -1418,7 +1418,7 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
     - 레슨은 빈 쿼리로, 시나리오와 워게임은 경보 쿼리로 엽니다.
     - space나 data view가 아직 준비되지 않았거나 `KIBANA_URL`이 없으면 `discover`는 null이며, 공유 운영자 data view로 대신하지 않습니다. 그러면 ELK 창은 준비 중 문구를 보이고 링크가 생길 때까지 세션을 다시 읽습니다. 가져오기는 10초마다 재시도합니다.
     - ELK 창이 이 링크를 엽니다. 저장된 검색에 쿼리를 덮어쓴 형태가 아닙니다. 그런 형태에는 Kibana가 "Unsaved changes" 배지를 붙입니다.
-  - 창이 로드되기 전에 블루팀 콘솔은 같은 출처(same-origin)로 공유하는 localStorage에 Kibana의 첫 방문 안내를 이미 본 것으로 표시합니다(`discover:docExplorerUpdateCalloutClosed`, `discover:docExplorerCalloutClosed`, `data.noDataPopover`).
+  - 창이 로드되기 전에 블루팀 콘솔은 같은 출처(same-origin)로 공유하는 localStorage에 Kibana의 첫 방문 안내를 이미 본 것으로 표시합니다(`discover:docExplorerUpdateCalloutClosed`, `discover:docExplorerCalloutClosed`, `data.noDataPopover`). 콘솔을 불러올 때마다(세션을 열거나 레슨을 바꿀 때) `discover:searchText`도 지웁니다. Document 창의 필드 검색어인데, Kibana가 세션이 바뀌어도 남겨 두어서 앞 레슨에서 입력한 단어가 그대로 채워지기 때문입니다.
 - **Elasticsearch는 512 MB 힙의 단일 노드**입니다.
 - **누락된 데이터는 0이 아니라 오류로 처리하며, 예외는 명시합니다.**
   - Elasticsearch나 substrate에 연결할 수 없거나 룰 파일을 읽을 수 없으면 503으로 응답합니다.
