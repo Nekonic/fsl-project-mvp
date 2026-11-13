@@ -80,7 +80,7 @@
   <section id="course" class="hidden card p-5 mb-5 text-[13px]">
     <h2 data-t="session.course.heading" class="font-semibold text-heading mb-2"></h2>
     <ul id="course-rows" class="divide-y divide-line-subdued"></ul>
-    <p data-t="result.scores" class="text-muted text-[13px] mt-2"></p>
+    <p id="course-scores" data-t="result.scores" class="text-muted text-[13px] mt-2"></p>
   </section>
   <div id="verdict" class="hidden card p-5 mb-5 flex flex-wrap items-center gap-5 border-l-4"></div>
   <section id="debrief" class="hidden card p-5 mb-5 flex flex-col gap-3 text-[13px]"></section>
@@ -174,14 +174,26 @@
   const scenarioName = () => localized(`wargame.${session.scenario}.name`, wargame ? wargame.name : session.scenario);
   const lessonSession = () => Boolean(session && session.kind === "lesson");
   const foundations = () => (wargame && Array.isArray(wargame.foundations) ? wargame.foundations : []);
-  const lessonNumber = (lessonId) => foundations().findIndex((taught) => taught.id === lessonId) + 1;
+  const courses = () => (wargame && Array.isArray(wargame.courses) ? wargame.courses : []);
+  const cardOf = (lessonId) => foundations().find((taught) => taught.id === lessonId) || null;
+  const courseOf = (lessonId) => courses().find((course) => (course.lessons || []).includes(lessonId)) || null;
   const takenLessons = () => (session && Array.isArray(session.lessons) ? session.lessons : []);
+  const takenCourse = () => {
+    const course = takenLessons().length ? courseOf(takenLessons()[0].id) : null;
+    return course && takenLessons().every((one) => courseOf(one.id) === course) ? course : null;
+  };
+  const lessonNumber = (lessonId) => {
+    const course = takenCourse();
+    return course && course.lessons.includes(lessonId) ? course.lessons.indexOf(lessonId) + 1
+      : foundations().findIndex((taught) => taught.id === lessonId) + 1;
+  };
   const worked = (lessonId) => (Array.isArray(session.course) ? session.course : [])
     .some((row) => row.id === lessonId && (row.passed || row.skipped || row.hints));
   const begun = (one, at) => at === 0 || worked(one.id) || (!session.ended_at && one.id === session.lesson_id);
   const startedLessons = () => takenLessons().filter(begun);
   const restartLesson = () => (startedLessons().length ? startedLessons()[0].id : session.lesson_id);
   const courseNumbers = () => startedLessons().map((taken) => lessonNumber(taken.id)).filter(Boolean);
+  const courseText = () => (takenCourse() ? String(takenCourse().title || "").replace(/\.title$/, "") : "");
   const lessonPrefix = (card) => String(card && card.title || "").replace(/\.title$/, "");
   const seeded = (row) => Boolean(row.seed || (row.meta && row.meta.seed));
   const sender = (row) => (seeded(row) ? badge(t("score.kind.auto_benign"), "neutral") : badge(t("session.activity.red"), "red"));
@@ -189,7 +201,7 @@
   function runLabel(row) {
     const number = row.lesson ? lessonNumber(row.lesson) : 0;
     if (!number) return "";
-    const card = foundations()[number - 1];
+    const card = cardOf(row.lesson);
     const step = row.step && Array.isArray(card.step_ids) ? card.step_ids.indexOf(row.step) + 1 : 0;
     return step ? t("session.run.step", number, step) : t("session.run.lesson", number);
   }
@@ -215,7 +227,8 @@
     field("session-badges").innerHTML = badge(t(`kind.${session.kind}`), session.kind === "lesson" ? "blue" : "neutral") + state;
     const parts = [scenarioName()];
     const course = courseNumbers();
-    const only = course.length === 1 ? foundations()[course[0] - 1] : null;
+    const only = startedLessons().length === 1 ? cardOf(startedLessons()[0].id) : null;
+    if (course.length > 1 && takenCourse()) parts.push(t(takenCourse().title));
     if (course.length > 1) parts.push(t("session.course.span", Math.min(...course), Math.max(...course)));
     else if (only) parts.push(t(only.title));
     else if (lessonText()) parts.push(localized(`${lessonText()}.title`, ""));
@@ -479,10 +492,11 @@
     const taken = takenLessons();
     show("course", lessonSession() && taken.length > 0);
     const counted = Array.isArray(session.course) ? session.course : [];
+    field("course-scores").textContent = (courseText() && localized(`${courseText()}.scores`, "")) || t("result.scores");
     field("course-rows").innerHTML = taken.map((one, at) => ({ one, at, until: at + 1 < taken.length ? taken[at + 1].started_at : session.ended_at }))
       .filter(({ one, at }) => begun(one, at)).map(({ one, until }) => {
       const number = lessonNumber(one.id);
-      const card = foundations()[number - 1];
+      const card = cardOf(one.id);
       const done = counted.find((row) => row.id === one.id);
       return `
         <li class="py-2 flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -497,7 +511,7 @@
 
   function lessonScoreNote() {
     const notes = startedLessons()
-      .map((one) => localized(`${lessonPrefix(foundations()[lessonNumber(one.id) - 1])}.score_note`, ""))
+      .map((one) => localized(`${lessonPrefix(cardOf(one.id))}.score_note`, ""))
       .filter((note, at, all) => note && all.indexOf(note) === at);
     show("score-lesson-note", notes.length > 0);
     field("score-lesson-note").textContent = notes.join(" ");

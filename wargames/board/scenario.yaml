@@ -371,15 +371,12 @@ foundations:
       - id: site_source
         point: {opens: elk, kibana: {doc: source_ip, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
         check: {kind: answer, of: sensor_source, about: search, leg: upstream}
-      - id: site_host
-        point: {opens: elk, kibana: {doc: source_ip, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
-        check: {kind: answer, of: host_of, from: site_source, leg: upstream}
       - id: xff
         point: {opens: elk, kibana: {doc: request_header.x_forwarded_for, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
         check: {kind: answer, of: forwarded_for, about: search, leg: upstream}
       - id: upstream
         point: {opens: elk}
-        check: {kind: answer, of: hits, about: search, leg: upstream}
+        check: {kind: answer, of: hits, about: search, leg: upstream, kql: '(?is)^(?=.*\burl\s*:)(?=.*\bnot\s*\(?\s*destination\s*:)'}
   - id: f4
     order: 4
     text: lesson.xss
@@ -413,8 +410,8 @@ foundations:
                 then: {site: "input[name=q]", until: sent, then: {panel: "#step-act"}}}
         check: {kind: rules, match: '<script'}
       - id: fired
-        point: {opens: elk, kibana: {doc: rule_id, kql: 'event_type\s*:\s*"?alert'}}
-        check: {kind: answer, of: alerted_sid, about: write}
+        point: {opens: elk, kibana: {doc: destination, kql: 'event_type\s*:\s*"?alert'}}
+        check: {kind: answer, of: alerted_destination, about: write}
       - id: slipped
         point: {opens: site, site: "input[name=q]", until: sent,
                 then: {kibana: {hits: true, kql: '^(?=.*event_type\s*:\s*"?alert)(?=.*url\s*:\s*"?\*[^ ]*ScRiPt)'}}}

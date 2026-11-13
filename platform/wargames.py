@@ -36,10 +36,10 @@ PATTERN_JUDGED = "judged"
 REDS = ("schedule", "person")
 SCENARIO_ID = re.compile(r"[0-9]+(\.[0-9]+)+", re.ASCII)
 ANSWERS_OF = ("rule", "rule_matched")
-RANGE_FACTS = ("address", "subnet", "path", "logs", "host_of", "excluded_target", "lost_points",
+RANGE_FACTS = ("address", "subnet", "path", "logs", "excluded_target", "lost_points",
                "detected_penalty")
 REQUEST_FACTS = ("status", "method", "path", "parameter", "param_value", "sensor_source", "forwarded_for",
-                 "waf_detected", "anomaly_total", "alerted", "alerted_sid", "alerted_sid_present", "hits")
+                 "waf_detected", "anomaly_total", "alerted", "alerted_destination", "alerted_sid_present", "hits")
 KALI_FACTS = ("sqlmap_found", "kali_source", "alerted_by")
 LEGS = ("inbound", "upstream", "both")
 STEP_MARKER = "step:"
@@ -291,6 +291,8 @@ def checked_step_judging(taught: dict, step: dict, where: str) -> None:
     if not all(isinstance(rule, dict) and _pattern(rule.get("match")) and isinstance(rule.get("says"), str)
                for rule in check.get("wrong_if", [])):
         raise InvalidCatalogue(f"{where}: wrong_if is a list of a match, a regular expression, and says, a code")
+    if "kql" in check and not _pattern(check["kql"]):
+        raise InvalidCatalogue(f"{where}: kql is the regular expression the learner's Kibana query must match")
     if check.get("after") is not None and check["after"] not in _kinds_of_steps(taught):
         raise InvalidCatalogue(f"{where}: after must name a step of the lesson")
     if kind == "replay" and not (_pattern((check.get("benign") or {}).get("sent")) and (

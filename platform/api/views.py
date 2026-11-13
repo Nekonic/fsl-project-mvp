@@ -536,6 +536,8 @@ def _judge(session, taught, step, body, kept):
         given = body.get("answer")
         if not isinstance(given, str) or not given.strip():
             raise BadRequest(f'"answer" must be the text given for step {step_id!r}, got {given!r}')
+        if "kql" in check and not re.search(check["kql"], str(body.get("query") or "")):
+            return False, [f"{prefix}.wrong.{step_id}.kql", []]
         accepted = _accepted(session, check, taught)
         if not accepted:
             return False, [_unrecorded(session, check, taught, failed), []]
@@ -583,7 +585,7 @@ def _alerted_elsewhere(session, mine, since, sent):
 def _unrecorded(session, check, taught, failed):
     if "of" in check and wargames.fact_family(check) == "kali" and _kali_case(session, check["about"]) is None:
         return "lesson.check.kali_first"
-    if check.get("of") == "alerted_sid" and _about_records(session, check, taught):
+    if check.get("of") == "alerted_destination" and _about_records(session, check, taught):
         return failed
     return "lesson.check.unrecorded"
 
@@ -669,8 +671,6 @@ def _range_fact(session, check, taught):
     if of == "path":
         return topology.route(drawn, wargames.host(session.scenario), check.get("from", topology.CUSTOMERS))
     found = _map_found(session)
-    if of == "host_of":
-        return topology.hosts_at(drawn, found, _accepted(session, _taught_check(taught, check["from"]), taught))
     if of == "subnet":
         return topology.subnet(project, drawn, found, check["host"])
     return topology.address(project, drawn, found, check["host"], check.get("zone"))
@@ -707,12 +707,15 @@ def _request_fact(session, check, taught):
         return _hits(session, check, records)
     if not records:
         return []
-    if of in ("alerted", "alerted_sid", "alerted_sid_present", "anomaly_total", "waf_detected"):
+    if of in ("alerted", "alerted_destination", "alerted_sid_present", "anomaly_total", "waf_detected"):
         _ingest(session, RECENT_ALERTS)
     if of == "alerted":
         return [lesson.PRESENT if any(_alerts_for(session, record) for record in records) else lesson.ABSENT]
-    if of == "alerted_sid":
-        return sorted({str(sid) for record in records for sid in _alerted_sids(session, record)})
+    if of == "alerted_destination":
+        alerts = [detection.raw or {} for record in records for detection in _alerts_for(session, record)]
+        added = set(lesson.added_rules(_live_rules(session), _posture_rules(session))) if alerts else set()
+        return sorted({str(raw["dest_ip"]) for raw in alerts
+                       if (raw.get("alert") or {}).get("signature_id") in added and raw.get("dest_ip")})
     if of == "alerted_sid_present":
         added = set(lesson.added_rules(_live_rules(session), _posture_rules(session)))
         found = {sid for record in records for sid in _alerted_sids(session, record)}

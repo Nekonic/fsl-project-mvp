@@ -105,6 +105,7 @@ function commandHtml(text) {
 }
 
 const ranSeen = (run) => Boolean(run) && (Boolean(run.settling) || "discover" in run);
+const windowed = (run) => Boolean(run) && "discover" in run;
 
 function kaliRow(row, windowed = true) {
   return `<li class="rounded-md border border-line p-2 text-[12px] flex flex-wrap items-center gap-2" data-kali="${esc(row.name)}">
@@ -338,6 +339,7 @@ const KIBANA = {
   noResults: '[data-test-subj="discoverNoResults"]',
   query: '[data-test-subj="queryInput"]',
   topValues: '[data-test-subj="dscFieldStats-topValues"]',
+  popover: '[data-popover-panel], .euiPopover__panel',
   statsTitle: '[data-test-subj="fieldPopoverHeader_fieldDisplayName"]',
   cellText: "[data-datagrid-cellcontent]",
   toolbar: ['[data-test-subj="dscViewModeFieldStatsButton"]', '[data-test-subj="dataGridColumnSelectorButton"]'],
@@ -431,6 +433,15 @@ function submittedQuery(doc) {
     return queryText(doc) || "";
   }
   return queryText(doc) || "";
+}
+
+function kibanaQueryNow() {
+  try {
+    const doc = frame.contentDocument;
+    return doc && typeof doc.querySelector === "function" ? submittedQuery(doc) : "";
+  } catch (error) {
+    return "";
+  }
 }
 
 function kqlWritten(doc, wanted) {
@@ -571,8 +582,16 @@ function kibanaRect(spec, leg, step) {
   const rect = inFrame(frame, joined(boxOf(element), boxOf(also)));
   const core = !rect ? [] : stage === "query" || stage === "write" || stage === "fieldless" || spec.query ? pickerRows(doc, rect)
     : spec.doc ? flyoutRows(doc, rect) : spec.hits || spec.sidebar ? toolbarRows(doc, rect) : [];
-  const crowd = rect ? [...core, ...frameText(doc, rect)] : core;
+  const crowd = rect ? [...core, ...frameText(doc, rect), ...(stage === "top" ? popoverText(element, rect) : [])] : core;
   return { rect, stage, leg: aimed || "", crowd, core, within: stage === "other" ? inFrame(frame, boxOf(flyout)) : null };
+}
+
+function popoverText(element, rect) {
+  const panel = element && typeof element.closest === "function" ? element.closest(KIBANA.popover) : null;
+  if (!panel || typeof panel.querySelectorAll !== "function") return [];
+  return Array.from(panel.querySelectorAll("*"))
+    .filter((one) => !one.firstElementChild && Boolean((one.textContent || "").trim()))
+    .map((one) => inFrame(frame, boxOf(one))).filter((box) => box && !overlaps(box, rect));
 }
 
 function kibanaLoading() {
@@ -999,7 +1018,7 @@ function calloutSpot(target, size, bounds, options = {}) {
   const ordered = {
     term: [...rowEnds, ...beside, ...across],
     site: [across[0], beside[1], across[1], beside[0]],
-    map: [...inside, ...near],
+    map: [...(inside.length ? near.filter((spot) => !zones.some((zone) => overlaps({ ...spot, ...size }, zone))) : []), ...inside, ...near],
     kibana: tall ? [beside[1], ...across, beside[0]] : near,
     open: [beside[0], across[1], beside[1], across[0]],
   }[kind] || (holder && !holding ? [...heading, ...near, ...outside] : [...heading, ...outside, ...underStart, ...near]);
@@ -1071,7 +1090,7 @@ function highlight(rect, callout, options = {}) {
   const centre = { left: rect.left + rect.width / 2, top: rect.top + rect.height / 2, width: 0, height: 0 };
   const inPane = Boolean(pane) && within(centre, pane);
   const inNote = !inPane && Boolean(noteBox) && within(centre, noteBox);
-  const banded = options.kind === "term";
+  const banded = options.kind === "term" || Boolean(options.line);
   const shape = banded ? { left: rect.left - RING_PAD, top: rect.top, width: rect.width + 2 * RING_PAD, height: rect.height } : padded(rect);
   const ringed = (inPane && clipped(shape, banded ? pane : grown(pane, -RING))) || shape;
   placed(ring, ringed);
@@ -1152,7 +1171,6 @@ const ANSWERED = ["answer", "choice", "loot"];
 const SENT_SETTLES_MS = 1500;
 const changed = [];
 const stepPath = (step, tail = "") => lessonPath(`lesson/steps/${encodeURIComponent(step.id)}/${tail}`);
-const PASS_PAUSE_MS = 1500;
 const SHORT_PASS_CHARS = 30;
 const NEXT_LESSON_MS = 2000;
 const HELP_AFTER_SECONDS = 60;
@@ -1202,7 +1220,6 @@ function coach(prefix, declared) {
   let checking = false;
   let answering = false;
   let offered = false;
-  let passing = false;
   let finished = false;
   let moving = false;
   let sentSince = false;
@@ -1480,7 +1497,7 @@ function coach(prefix, declared) {
     if (course) courseList(course);
     const values = act.querySelector('[data-act="values"]');
     if (values) courseScores(values);
-    if (!finished && before && recordOf(before).passed && !carried.has(before.id)
+    if (!finished && before && recordOf(before).passed && !windowed(carried.get(before.id))
       && !recalled.has(before.id)) recall(before, step);
   }
 
@@ -1503,7 +1520,11 @@ function coach(prefix, declared) {
   async function recall(kali, step) {
     recalled.add(kali.id);
     const verdict = await judged(kali, { poll: true });
-    if (!verdict || !ranSeen(verdict.kali) || carried.has(kali.id)) return;
+    if (!verdict || !windowed(verdict.kali)) {
+      recalled.delete(kali.id);
+      return;
+    }
+    if (windowed(carried.get(kali.id))) return;
     carried.set(kali.id, verdict.kali);
     if (steps[at] === step) {
       action();
@@ -1706,7 +1727,7 @@ function coach(prefix, declared) {
       const inCard = Boolean(marked) && marked !== field("step-card") && field("step-card").contains(marked);
       const pressing = found.stage === "run_done" ? document.querySelector('[data-act="kali"]') : inCard ? marked : null;
       const aimed = rect
-        ? { crowd, coreCrowd: kind === "kibana" ? [...(found.core || []), ...cells] : null, within: found.within || null, holder, titled, kind, bands: kind === "term" ? bandRows : [], zones, anchor: pressing }
+        ? { crowd, coreCrowd: kind === "kibana" ? [...(found.core || []), ...cells] : null, within: found.within || null, holder, titled, kind, bands: kind === "term" ? bandRows : [], zones, anchor: pressing, line: found.line >= 0 }
         : { kind: "open", anchor: field("step-open") };
       highlight(rect || openBox, rect ? callout : opening, aimed);
       coveredSay((found.stage === "covered" || stuck) && !rect ? callout : "");
@@ -1801,7 +1822,7 @@ function coach(prefix, declared) {
   }
 
   function pass(step) {
-    if (steps[at] !== step || passing) return;
+    if (steps[at] !== step) return;
     const line = [recordOf(step).line, saidOnPass.get(step.id)].filter(Boolean).join(" ");
     const ok = recordOf(step).ok || localized(`${prefix}.ok.${step.id}`, "");
     const text = [`✓ ${ok}`.trim(), line].filter(Boolean).join(" ");
@@ -1820,16 +1841,7 @@ function coach(prefix, declared) {
       finish(unread);
       return;
     }
-    if (unread) {
-      status(t("lesson.status.press_next"));
-      return;
-    }
-    if (!ANSWERED.includes(step.check.kind)) return;
-    passing = true;
-    setTimeout(() => {
-      passing = false;
-      if (steps[at] === step) go(at + 1);
-    }, PASS_PAUSE_MS);
+    if (unread) status(t("lesson.status.press_next"));
   }
 
   async function judged(step, body, tail = "check/") {
@@ -1841,6 +1853,7 @@ function coach(prefix, declared) {
   }
 
   function settle(step, verdict, loud) {
+    if (verdict && steps[at] !== step && verdict.kali && "discover" in verdict.kali) carried.set(step.id, verdict.kali);
     if (!verdict || steps[at] !== step) return;
     if (step.check.kind === "replay") {
       const reason = Array.isArray(verdict.reason) ? verdict.reason[0] : "";
@@ -1878,7 +1891,7 @@ function coach(prefix, declared) {
   }
 
   async function run(step, loud) {
-    if (checking || steps[at] !== step || finished || passing || done(step)) return;
+    if (checking || steps[at] !== step || finished || done(step)) return;
     checking = true;
     if (loud) status(t("lesson.status.checking"));
     try {
@@ -1894,13 +1907,14 @@ function coach(prefix, declared) {
   async function answer(given) {
     const step = steps[at];
     const value = String(given || "").trim();
-    if (!value || passing || answering) return;
+    if (!value || answering) return;
     answering = true;
     const controls = answerControls();
     controls.forEach((control) => { control.disabled = true; });
     status(t("lesson.status.checking"));
     try {
-      const verdict = await judged(step, { answer: value });
+      const inKibana = paneFor(locatorOf(step.point), step.point) === "elk";
+      const verdict = await judged(step, { answer: value, ...(inKibana ? { query: kibanaQueryNow() } : {}) });
       if (!verdict) status(standing(step));
       settle(step, verdict, true);
     } finally {

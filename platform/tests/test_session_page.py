@@ -297,3 +297,32 @@ def test_a_session_that_cannot_be_read_says_so_instead_of_showing_an_empty_page(
         "loading": False, "session-card": False, "consoles": False, "activity": False, "scoreboard": False}
     assert shown["first"]["unread"]
     assert shown["retried"], "a busy server is asked again"
+
+COURSES = """[{id: "c1", title: "course.logs.title", lessons: ["f1", "f2", "f3"]},
+              {id: "c2", title: "course.attack.title", lessons: ["f4", "f5", "f6"]}]"""
+ATTACK_COURSE = COURSE.replace('{id: "f1", started_at: "2026-10-18T09:00:00Z"}', '{id: "f4", started_at: "2026-10-18T09:00:00Z"}').replace(
+    '{id: "f1", steps: 2, passed: 2, skipped: 0, hints: 0}', '{id: "f4", steps: 1, passed: 1, skipped: 0, hints: 0}').replace(
+    'lesson: "f1", step: null, seed: true', 'lesson: "f4", step: null, seed: true').replace(
+    'foundations: [', f'courses: {COURSES}, foundations: [', 1)
+LOGS_COURSE = COURSE.replace('{id: "f5", started_at: "2026-10-18T09:10:00Z"}', '{id: "f2", started_at: "2026-10-18T09:10:00Z"}').replace(
+    '{id: "f6", started_at: "2026-10-18T09:25:00Z"}', '{id: "f3", started_at: "2026-10-18T09:25:00Z"}').replace(
+    '{id: "f5", steps: 9, passed: 8, skipped: 1, hints: 0}', '{id: "f2", steps: 1, passed: 1, skipped: 0, hints: 0}').replace(
+    '{id: "f6", steps: 2, passed: 2, skipped: 0, hints: 0}', '{id: "f3", steps: 1, passed: 1, skipped: 0, hints: 0}').replace(
+    'foundations: [', f'courses: {COURSES}, foundations: [', 1)
+SCORED = SHOWN.replace("restart: browser.text('restart')}", "restart: browser.text('restart'), scores: browser.text('course-scores')}")
+
+def test_a_course_s_result_numbers_its_lessons_as_the_catalogue_does_and_says_its_own_score_note(client):
+    attack = open_page(client, "/session/1/", setup=ATTACK_COURSE, scenario=SCORED)
+    logs = open_page(client, "/session/1/", setup=LOGS_COURSE, scenario=SCORED)
+    shown, read = attack["result"], logs["result"]
+
+    assert ATTACK_COURSE.count("courses: [") == 1 and LOGS_COURSE.count("courses: [") == 1 and "scores:" in SCORED
+    assert attack["errors"] == [] and logs["errors"] == []
+    assert worded("course.attack.title") in shown["line"] and worded("session.course.span", 1, 3) in shown["line"], (
+        "the attack course's lessons are 1 to 3 on the catalogue, so on its result too")
+    assert worded("session.run.step", 2, 4) in shown["cases"] and worded("session.run.step", 3, 2) in shown["cases"]
+    assert shown["restart"] == worded("session.restart.course", 1)
+    assert shown["scores"] == worded("course.attack.scores")
+    assert read["scores"] == worded("result.scores") and "sqlmap" not in read["scores"], (
+        "the logs course sends no sqlmap; its result does not talk about lessons it does not have")
+    assert not [number for number in range(1, 7) if worded("session.run.lesson", number) in read["scores"] + shown["scores"]]
