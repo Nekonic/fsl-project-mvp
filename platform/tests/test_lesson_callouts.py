@@ -71,7 +71,7 @@ def test_the_f5_sort_step_points_at_the_whole_control_so_its_label_is_inside_the
 def test_the_f3_forwarded_for_step_points_at_the_one_line_field_not_the_wrapped_header_list():
     xff = next(step for lesson in wargames.foundations("board") for step in lesson["steps"] if step["id"] == "xff")
 
-    assert xff["point"]["kibana"] == {"doc": "request_header.x_forwarded_for"}
+    assert xff["point"]["kibana"]["doc"] == "request_header.x_forwarded_for"
 
 
 KIBANA_FRAME = """

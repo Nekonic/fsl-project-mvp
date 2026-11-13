@@ -275,6 +275,15 @@ scenarios:
       - {at: 300, case: board-sqli-orderby-sqlmap-versioned, origin: us}
       - {at: 600, case: board-sqli-orderby-sqlmap, origin: us}
     completion: {served: all, held: all}
+courses:
+  - id: c1
+    text: course.logs
+    lessons: [f1, f2, f3]
+    reference: [map, http, devtools, kql, fields]
+  - id: c2
+    text: course.attack
+    lessons: [f4, f5, f6]
+    reference: [kql, fields, addresses, devtools, crs, suricata, sqli, sqlmap, exception, scores]
 foundations:
   - id: f1
     order: 1
@@ -284,27 +293,25 @@ foundations:
     prerequisites: []
     defense: full
     cases: [board-normal-search]
-    theory:
-      - {id: map, shows: board_ip}
     steps:
-      - id: board_ip
-        point: {opens: topology, map: {label: [board.com, sw1]}}
-        check: {kind: answer, of: address, host: board.com, zone: service}
-      - id: db_subnet
-        point: {opens: topology, map: {zone: "{switch:board-db}"}}
-        check: {kind: answer, of: subnet, host: board-db}
-      - id: kali_zone
+      - id: kali_ip
         point: {opens: topology, map: {node: kali}}
-        check: {kind: answer, of: zone_of, host: kali}
+        check: {kind: answer, of: address, host: kali}
+      - id: board_ip
+        point: {opens: topology, map: {node: board.com}}
+        check: {kind: answer, of: address, host: board.com, zone: service}
       - id: path
-        point: {opens: topology, map: {zone: internet}}
-        check: {kind: answer, of: path, form: order}
+        point: {opens: topology, map: {node: kali}}
+        check: {kind: answer, of: path, form: order, from: kali}
+      - id: dmz
+        point: {opens: topology, map: {zone: "{switch:board.com}"}}
+        check: {kind: answer, of: subnet, host: board.com}
       - id: log_host
         point: {opens: topology, map: {zone: sw3}}
         check: {kind: answer, of: logs}
-      - id: db_ip
+      - id: waf_ip
         point: {opens: topology}
-        check: {kind: answer, of: address, host: board-db}
+        check: {kind: answer, of: address, host: waf, zone: service}
   - id: f2
     order: 2
     text: lesson.http
@@ -313,8 +320,7 @@ foundations:
     prerequisites: [f1]
     defense: full
     cases: [board-normal-search]
-    theory:
-      - {id: request, shows: method}
+    reference: [addresses]
     steps:
       - id: search
         point: {opens: site, site: "input[name=q]"}
@@ -351,31 +357,29 @@ foundations:
     prerequisites: [f2]
     defense: full
     cases: [board-normal-search]
-    theory:
-      - {id: discover, shows: site_source}
-      - {id: proxy, shows: site_host}
+    reference: [addresses]
     steps:
       - id: search
         point: {opens: site, site: "input[name=q]"}
         check: {kind: sent, match: '[?&]q=[A-Za-z0-9]{4,}(&|$)'}
+      - id: count
+        point: {opens: elk, kibana: {hits: true, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
+        check: {kind: answer, of: hits, about: search, leg: both}
+      - id: client_source
+        point: {opens: elk, kibana: {doc: source_ip, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
+        check: {kind: answer, of: sensor_source, about: search, leg: inbound}
       - id: site_source
-        point: {opens: elk, kibana: {doc: source_ip}}
+        point: {opens: elk, kibana: {doc: source_ip, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
         check: {kind: answer, of: sensor_source, about: search, leg: upstream}
       - id: site_host
-        point: {opens: topology, map: {zone: sw1}}
-        check: {kind: answer, of: host_of, from: site_source}
-      - id: client_source
-        point: {opens: elk, kibana: {doc: source_ip}}
-        check: {kind: answer, of: sensor_source, about: search, leg: inbound}
+        point: {opens: elk, kibana: {doc: source_ip, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
+        check: {kind: answer, of: host_of, from: site_source, leg: upstream}
       - id: xff
-        point: {opens: elk, kibana: {doc: request_header.x_forwarded_for}}
+        point: {opens: elk, kibana: {doc: request_header.x_forwarded_for, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
         check: {kind: answer, of: forwarded_for, about: search, leg: upstream}
-      - id: waf_logged
-        point: {opens: elk, kibana: {hits: true}}
-        check: {kind: choice, of: waf_logged, about: search, options: [present, absent]}
-      - id: count
+      - id: upstream
         point: {opens: elk}
-        check: {kind: answer, of: hits, about: search, leg: both}
+        check: {kind: answer, of: hits, about: search, leg: upstream}
   - id: f4
     order: 4
     text: lesson.xss
@@ -385,9 +389,6 @@ foundations:
     defense: xss-gap
     detected_by: suricata
     cases: [board-normal-search]
-    theory:
-      - {id: score, shows: score}
-      - {id: rule, shows: write}
     steps:
       - id: probe
         point: {opens: site, site: "input[name=q]"}
@@ -396,27 +397,28 @@ foundations:
         point: {opens: site, dev: general.status}
         check: {kind: answer, of: status, about: probe}
       - id: rule
-        point: {opens: elk, kibana: {doc: rule_id}}
+        point: {opens: elk, kibana: {doc: rule_id, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*script)'}}
         check: {kind: answer, of: rule, marker: browse, path: "<script", known: ["949110"]}
       - id: score
-        point: {opens: elk, kibana: {doc: rule}, keep: true}
+        point: {opens: elk, kibana: {doc: rule, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*script)'}, keep: true}
         check: {kind: answer, of: anomaly_total, about: probe}
       - id: upper
         point: {opens: site, site: "input[name=q]", until: sent, then: {dev: general.status}}
         check: {kind: answer, of: status, match: '<(?!script)(?i:script)'}
       - id: ids_none
-        point: {opens: elk, kibana: {hits: true}}
+        point: {opens: elk, kibana: {hits: true, kql: '^(?=.*event_type\s*:\s*"?alert)(?=.*url\s*:\s*"?\*[^ ]*alert)'}}
         check: {kind: choice, of: alerted, about: [probe, upper], options: [present, absent]}
       - id: write
         point: {opens: rules, panel: "#lesson-rules", until: applied,
                 then: {site: "input[name=q]", until: sent, then: {panel: "#step-act"}}}
         check: {kind: rules, match: '<script'}
       - id: fired
-        point: {opens: elk, kibana: {doc: rule_id}}
+        point: {opens: elk, kibana: {doc: rule_id, kql: 'event_type\s*:\s*"?alert'}}
         check: {kind: answer, of: alerted_sid, about: write}
       - id: slipped
-        point: {opens: site, site: "input[name=q]", until: sent, then: {kibana: {hits: true}}}
-        check: {kind: choice, of: alerted_sid_present, match: '<(?!script)(?i:script)', after: write, options: ["yes", "no"]}
+        point: {opens: site, site: "input[name=q]", until: sent,
+                then: {kibana: {hits: true, kql: '^(?=.*event_type\s*:\s*"?alert)(?=.*url\s*:\s*"?\*[^ ]*ScRiPt)'}}}
+        check: {kind: choice, of: alerted_sid_present, match: '<(?!script)(?i:script)', after: write, options: [present, absent]}
       - id: nocase
         point: {opens: rules, panel: "#lesson-rules"}
         check: {kind: rules, needs: nocase}
@@ -436,9 +438,6 @@ foundations:
     prerequisites: [f4]
     defense: full
     cases: [board-normal-search]
-    theory:
-      - {id: orderby, shows: error}
-      - {id: sqlmap, shows: sqlmap}
     steps:
       - id: sort
         point: {opens: site, site: "form:has(select[name=sort])", until: sent, then: {dev: payload.query}}
@@ -448,7 +447,7 @@ foundations:
         command: 'http://board.com/?sort=posts_post.id)'
         check: {kind: answer, of: status, match: '[?&]sort=[^&]*\)'}
       - id: undetected
-        point: {opens: elk, kibana: {doc: rule_id}}
+        point: {opens: elk, kibana: {doc: rule_id, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*sort)'}}
         check: {kind: choice, of: waf_detected, about: error, options: [present, absent]}
       - id: sqlmap
         point: {opens: kali, term: {pane: kali, match: '[$#] $', done: '\[\*\] ending @'}}
@@ -458,10 +457,10 @@ foundations:
         point: {opens: kali, term: {pane: kali, match: 'injectable'}}
         check: {kind: choice, of: sqlmap_found, about: sqlmap, options: ["yes", "no"]}
       - id: source
-        point: {opens: elk, kibana: {sidebar: source_ip}}
+        point: {opens: elk, kibana: {sidebar: source_ip, kql: 'log_source\s*:\s*"?modsecurity'}}
         check: {kind: answer, of: kali_source, about: sqlmap}
       - id: scanner
-        point: {opens: elk, kibana: {doc: rule}}
+        point: {opens: elk, kibana: {doc: rule, kql: 'log_source\s*:\s*"?modsecurity'}}
         check: {kind: answer, of: rule, marker: "step:sqlmap", family: "913"}
       - id: agent
         point: {opens: kali, term: {pane: kali, match: '[$#] $', done: '\[\*\] ending @'}}
@@ -478,9 +477,6 @@ foundations:
     prerequisites: [f5]
     defense: overbroad
     cases: [board-normal-search]
-    theory:
-      - {id: exception, shows: excluded}
-      - {id: cost, shows: cost}
     steps:
       - id: excluded
         point: {opens: waf, term: {pane: waf, match: 'ctl:ruleRemove', idle: '\$ '}}
@@ -494,10 +490,10 @@ foundations:
         point: {opens: kali, term: {pane: kali, match: '^\|'}}
         check: {kind: loot, about: dump}
       - id: alerts
-        point: {opens: elk, kibana: {hits: true}}
+        point: {opens: elk, kibana: {hits: true, kql: 'event_type\s*:\s*"?alert|log_source\s*:\s*"?modsecurity'}}
         check: {kind: choice, of: alerted_by, about: dump, options: [none, ids, waf, both]}
       - id: seen
-        point: {opens: elk, kibana: {sidebar: source_ip}}
+        point: {opens: elk, kibana: {sidebar: source_ip, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*status\s*(:|>=?)\s*"?5)'}}
         check:
           kind: answer
           of: kali_source
