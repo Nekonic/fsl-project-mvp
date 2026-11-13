@@ -482,13 +482,13 @@ class OpenStack:
         servers = self._all(SERVERS, "servers")
         self._generations = _generations(servers)
         standing = {slot.known_as(server) for server in servers}
-        laid = self._laid_out()
-        document = self._document()
+        origins = {origin.id: origin for origin in self.declared.origins}
+        in_slot = any(s.id in origins or s.id == slot.NAMED_ON for s in self.declared.segments)
+        laid = self._laid_out() if in_slot else None
+        on_estate = rangehost.addressed(self._document(), rangehost.FRONT) if in_slot else {}
         names = self._service_hosts()
         edge = self.declared.roles.get("edge", "")
         attacker = self.declared.roles.get(ATTACKER_ROLE, "")
-        origins = {origin.id: origin for origin in self.declared.origins}
-        on_estate = rangehost.addressed(document, rangehost.FRONT)
         gateway = on_estate.get(self.declared.compose.get("edge", ""), "")
 
         segments = []
