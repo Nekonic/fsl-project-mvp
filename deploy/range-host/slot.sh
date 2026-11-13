@@ -89,10 +89,18 @@ address_edge() {
   quiet "$project-edge"
 }
 
+rsyslog_restarted() {
+  flock /run/cr-rsyslog.lock sh -c 'systemctl reset-failed rsyslog; systemctl restart rsyslog'
+}
+
 logs_forwarded() {
-  install -m 0644 "$d/rsyslog.conf" "/etc/rsyslog.d/60-cr-$project.conf"
+  forwarding=/etc/rsyslog.d/60-cr-$project.conf
+  if cmp -s "$d/rsyslog.conf" "$forwarding" && systemctl is-active -q rsyslog; then
+    return 0
+  fi
+  install -m 0644 "$d/rsyslog.conf" "$forwarding"
   rsyslogd -N1 >/dev/null
-  systemctl restart rsyslog
+  rsyslog_restarted
 }
 
 logs_emptied() {
@@ -144,7 +152,7 @@ reset() {
 down() {
   [ ! -f "$d/compose.yaml" ] || compose down -v --remove-orphans --timeout 1
   rm -f "/etc/rsyslog.d/60-cr-$project.conf"
-  systemctl restart rsyslog
+  rsyslog_restarted
   rm -rf "$d" "$logs"
 }
 
