@@ -71,7 +71,7 @@
       "Bash(gh pr *)",
       "Bash(gh pr create*)",
       "Bash(gh repo *)",
-      "Bash(git push*)"
+      "Bash(git push*main*)"
     ],
     "deny": [
       "Bash(rm -rf /*)",
