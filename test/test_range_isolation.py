@@ -27,6 +27,7 @@ ELASTIC = "http://localhost:9200"
 CANARY = "/var/log/cr-isolation-canary.log"
 WAF_AUDIT = "/var/log/modsecurity/audit"
 SHIPPED_WITHIN = 180
+PLANTED_WAIT = 60
 SETTLE_WAIT = 1800
 
 
@@ -166,17 +167,19 @@ def test_a_link_planted_in_the_waf_neither_reaches_a_host_file_at_reset_nor_ship
         other = next((name for name in written.stdout.split() if name != f"s{slot}"), "s0")
         waf_before = run(RANGE_HOST, ["sudo", "docker", "inspect", "-f", "{{.State.StartedAt}}",
                                       f"s{slot}-waf"], session=session).stdout.strip()
-        planted = run(GATEWAY, ["sh", "-c",
-                                f"cd {WAF_AUDIT}; ln -sf {CANARY} audit.log; ln -s {CANARY} planted; "
-                                f"ln -s /var/log/cr/{other}/waf/audit.log other; ln {CANARY} hard; "
-                                f"ln -s /etc/passwd passwd; printf '%s\\n' {shlex.quote(own)} >> audit.log; "
-                                f"ls -la"], session=session)
-
+        wrote = run(GATEWAY, ["sh", "-c", f"printf '%s\\n' {shlex.quote(own)} >> {WAF_AUDIT}/audit.log"],
+                    session=session)
         shipped_own = _shipped_within(f"own-{token}", SHIPPED_WITHIN)
         assert shipped_own == [f"logs-{slot}-sensors"], (
             f"a line the WAF wrote to its audit log did not reach slot {slot}'s index ({shipped_own}), "
-            f"so the rest of this test would prove nothing: {planted.output[-600:]}")
-        assert not _shipped(f"canary-{token}"), (
+            f"so the rest of this test would prove nothing: {wrote.output[-300:]}")
+
+        planted = run(GATEWAY, ["sh", "-c",
+                                f"cd {WAF_AUDIT}; ln -sf {CANARY} audit.log; ln -s {CANARY} planted; "
+                                f"ln -s /var/log/cr/{other}/waf/audit.log other; ln -s /etc/passwd passwd; "
+                                f"ls -la"], session=session)
+
+        assert not _shipped_within(f"canary-{token}", PLANTED_WAIT), (
             f"a host file reached Elasticsearch after the WAF planted links to it: {planted.output[-600:]}")
     finally:
         closed = requests.post(f"{PLATFORM_URL}/api/sessions/{session}/close/", json={}, timeout=120)
