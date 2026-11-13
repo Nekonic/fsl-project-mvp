@@ -112,6 +112,8 @@ SETTINGS = {
 _connected: dict[tuple, tuple["Cloud", object]] = {}
 _set_up: set[str] = set()
 _booting = threading.Lock()
+_hearing = threading.Lock()
+_heard: dict[tuple[str, str], list] = {}
 
 
 class EndpointGone(RangeUnavailable):
@@ -208,6 +210,7 @@ def alongside(*chains: list) -> list:
 def forget() -> None:
     _connected.clear()
     _set_up.clear()
+    _heard.clear()
 
 
 def discover(
@@ -1042,13 +1045,21 @@ class OpenStack:
                                      self.declared.default_origin,
                                      rangehost.forwarding(laid, collector, fabric.COLLECTOR_PORT, senders))
         packed = base64.b64encode(rangehost.archive(files)).decode()
-        done = alongside([self.open_collector], [self.keep_time])
+        done = self._heard_and_timed(collector)
         ran = self._shell()(rangehost.up(laid), stdin=packed, timeout=rangehost.UP_TIMEOUT)
         if not ran.ok:
             raise Drifted(f"{self.range_host} did not bring slot {self.slot} up (exit {ran.exit_code}): "
                           f"{ran.output[-1000:]}")
         return [*done, (self.range_host, (f"runs slot {self.slot} as {laid.project}",
                                           f"logs to {collector}:{fabric.COLLECTOR_PORT}")), *self._seeded()]
+
+    def _heard_and_timed(self, collector: str) -> list[tuple[str, tuple[str, ...]]]:
+        address = self._address(self.range_host)
+        key = (self._generations.get(address, address), collector)
+        with _hearing:
+            if key not in _heard:
+                _heard[key] = alongside([self.open_collector], [self.keep_time])
+            return list(_heard[key])
 
     def _seeded(self) -> list[tuple[str, tuple[str, ...]]]:
         baseline = (Path(self.build.source) / rangehost.BASELINE_RULES).read_text()
