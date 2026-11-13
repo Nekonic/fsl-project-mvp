@@ -18,13 +18,15 @@ x-sensor: &sensor
     PGID: "4"
   healthcheck:
     test: ["CMD", "suricatasc", "-c", "uptime"]
-    interval: 5s
+    interval: 60s
     timeout: 5s
     retries: 24
     start_interval: 1s
     start_period: 60s
 
 x-wargames:
+  healthcheck:
+    interval: 60s
   fronts:
     board: 59
     corp-wp: 60

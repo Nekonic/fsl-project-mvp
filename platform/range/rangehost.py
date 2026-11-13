@@ -107,6 +107,8 @@ def _wargame_services(source: Path, wargames, slot: Slot, declared: dict,
             kept["hostname"] = name
             kept.update(contained)
             kept.update(limits.get(name) or {})
+            if kept.get("healthcheck"):
+                kept["healthcheck"] = {**kept["healthcheck"], **(declared.get("healthcheck") or {})}
             attached = {backend: {}}
             if name in fronts:
                 attached[FRONT] = {"ipv4_address": f"{slot.prefix}.{fronts[name]}"}
