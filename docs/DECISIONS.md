@@ -6794,3 +6794,82 @@ delete it. Learners lose their remembered tabs and notes once
 (`localStorage`), and the first image build replaces `fsl-opnsense-<version>`
 under the same name because the edge's bundle changed.
 
+
+## 2026-11-13 — The range is one range host; a slot is a compose project
+
+Approved at gate 1 (option a2 of
+`docs/superpowers/specs/2026-11-13-container-range-design.md`, measured in
+`docs/superpowers/specs/2026-11-13-range-host-proto-results.md`). The user's
+rulings, each recorded here:
+
+1. **Two VMs in all.** The platform VM stays as it is (`cr-platform`,
+   `m1.large`). One range-host VM, `cr-range`, on the existing flavor
+   `dba.range` (6 vCPU, 16 GB, 60 GB), runs every slot as the compose
+   project `sN`. No new flavor is asked for; the cloud's existing resources
+   are used.
+2. **The edge is a Linux router container.** `sN-edge` is alpine with
+   nftables (`deploy/edge/`), holding only `NET_ADMIN`, never privileged;
+   its rules are the OPNsense filter it replaces (the range never reaches the
+   edge itself, anything crosses it). Suricata stays two separate containers,
+   one per leg, as in the prototype. OPNsense goes: `range/opnsense.py`,
+   `deploy/opnsense/`, the `opnsense:` section of `cloud.yaml` and the
+   `fsl-opnsense-*` image. A real firewall product (OpenWrt with LuCI is the
+   candidate) waits for a corp/DMZ lesson that needs one (`docs/STATE.md`
+   backlog).
+3. **Containment by configuration, and the configuration is tested.**
+   Learner-facing containers (Kali, the WAF, the four target containers, and
+   the edge) run with `cap_drop: [ALL]` and a listed set of capabilities,
+   `no-new-privileges`, docker's default seccomp and AppArmor profiles,
+   memory and process limits, no `privileged`, no docker socket, no host
+   network or namespace, and no host path but the WAF's audit log directory.
+   Kali holds `NET_RAW` and `NET_ADMIN` (a SYN scan works, checked live) and
+   the set-uid and file-owner capabilities its customers account and `sudo`
+   need; the WAF holds what nginx needs to bind 80 and drop to www-data.
+   dockerd runs with `userns-remap`, so root in a container is an
+   unprivileged host user; the sensors and the nsenter addressing work under
+   it (the sensors run `userns_mode: host`, measured live). Every slot
+   network is `internal` with `gateway_mode_ipv4: isolated`.
+   `platform/tests/test_containment.py` fails `bin/verify` when the rendered
+   slot compose breaks any of this, and `test/test_range_isolation.py` is the
+   live check (no range-host sshd, no platform, no Internet, no metadata
+   service and no other slot from Kali, the WAF or the board). No gVisor.
+4. **The sqlmap variant cases all stay.** The corp WordPress install's
+   pretty-permalink loopback request to the real `corp.com` is a backlog line;
+   in the slot, `corp-wp` maps `corp.com` to 127.0.0.1 (the prototype's fix),
+   since the slot has no egress at all and the registration case needs the
+   permalinks.
+5. **The reset is the prototype's `reset_fast`.** `slot.sh reset N` recreates
+   Kali and the WAF, removes and restores the targets from the pristine copy
+   in parallel, flushes the edge's neighbour table and empties the logs in
+   place; the edge and both sensors keep running and the platform reseeds
+   their baseline rules. Nothing is rebuilt by Nova.
+6. **`services` stays 5.** The per-slot compose file lives under
+   `deploy/range-host/` as `deploy/wargame-host/sensor.yaml` did, and is not
+   the platform's own stack; `bin/measure` does not count it (the user's
+   ruling on the design's open question).
+
+Found while bringing it up, and settled in code:
+
+- The range host boots from the stock Ubuntu image with its setup bundle in
+  the user data, and pulls its images from GHCR through a port on the
+  platform's network (security group `cr-egress`, no ingress). Once setup
+  reports ready the platform detaches that port, so the host keeps no way
+  out and a rebuild of the platform's stack finds no port of it on the
+  stack's network. Rejected: a range-host Glance image built by a builder,
+  because the quota held no room for a builder beside the eight slot VMs the
+  cut-over keeps until the range host is proven.
+- Ubuntu's rsyslog drops to the `syslog` user and AppArmor confines it to
+  `/var/log`, so the slot logs live in `/var/log/cr/sN/`; an ACL lets
+  `syslog` read the WAF's audit log, which nginx writes as the remapped
+  www-data.
+- The board's ground truth is read inside the board container (`api/loot.py`
+  through the board role's runner); the board publishes no port.
+- Every command goes to one host now, so the platform shares one ssh
+  connection per range host (`ControlMaster auto`, `ControlPersist 60`), and
+  the range host's sshd takes 256 sessions per connection; the time source
+  and the collector rule are set once per range host, not per slot (ten
+  slots configured at once restarted `systemd-timesyncd` past its start
+  limit).
+- `/api/range/images/` and `api/sideloaded.py` are gone with the image
+  builder; `DELETE /api/range/leftovers/` removes what the VM range left, and
+  `bin/cloud up` calls it only after every slot is READY.
