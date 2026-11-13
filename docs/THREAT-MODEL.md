@@ -11,7 +11,7 @@ starts, and what the range cannot show.
 | **Attacker's position** | Outside the network. The attacker sends from one of the Internet origins the range builds (thirty, one /24 each). Each origin has its own address range and a declared country, and GeoIP gives the same country. At the start the attacker has no account on the target, no code running on it and no access to the internal network. |
 | **Command and control** | None. The attacks are requests sent from Kali or from the platform. Nothing left on the target calls back. |
 | **What the attacker is after** | On `board`, the password hashes in `auth_user`. The attacker steals them and submits them. The platform counts them only if they match the copy of `auth_user` the platform took from the target when the session opened (`loot_verified`). On `corp`, three changes to the WordPress database, listed in `wargames/corp/objectives.yaml`: a new administrator account, the `users_can_register` option turned on, and content written without permission. The platform finds these in `corp-db`'s own record of changes since the session started (`effect_observed`). |
-| **What the defence has** | Suricata, which watches the traffic to the WAF, and ModSecurity with the Core Rule Set (CRS) in front of the application. ModSecurity blocks (`SecRuleEngine On`, `deploy/waf/modsecurity.conf:1`). Both send their alerts to one Elasticsearch index. The defender can write and disable Suricata rules. The defender can tune the WAF through `PUT /api/sessions/<id>/waf/`: CRS paranoia level, anomaly thresholds and rule exclusions. The defender also has a shell on the WAF and, outside a wargame, a Kali shell for attacking the range as practice. The defender has nothing else. |
+| **What the defence has** | Suricata on two legs, the slot's Internet side in front of the edge router and the estate side between the WAF and the targets, and ModSecurity with the Core Rule Set (CRS) in front of the application. ModSecurity blocks (`SecRuleEngine On`, `deploy/waf/modsecurity.conf:1`). Both send their alerts to one Elasticsearch index. The defender can write and disable Suricata rules. The defender can tune the WAF through `PUT /api/sessions/<id>/waf/`: CRS paranoia level, anomaly thresholds and rule exclusions. The defender also has a root shell in the WAF container and, outside a wargame, a root shell in the Kali container for attacking the range as practice. The defender has nothing else. |
 
 ## The stages it reaches
 
@@ -35,9 +35,10 @@ part of an attack.
 
 - No case scans, so initial reconnaissance is missing.
 - Establish foothold, internal reconnaissance, move laterally and maintain
-  presence are missing because no case runs code on the target. The internal
-  network can be reached only through the application, so the attacker never
-  gets a foothold on the operating system.
+  presence are missing because no case runs code on the target. The databases
+  stand on networks the attacker's container is not on, so they can be reached
+  only through the application, and the attacker never gets a foothold on the
+  operating system.
 - Privilege escalation happens inside the application only. The Ultimate Member
   CVE on corp lets an unprivileged registration become a WordPress
   administrator (`corp-rogue-admin`).
@@ -63,12 +64,15 @@ These cases catch a rule that fires on everything. They do not estimate a false
 positive rate.
 
 **The platform API checks where a request comes from, but it does not
-authenticate the caller.** The platform is attached to every network segment.
-Without a check, the attacker's shell could call `POST /api/rules/apply/` and
-rewrite the detector that scores the attacker. The API therefore refuses any
-request from the address of a host in the range. The operator's console reaches
-the API through the published port, and the request arrives from a segment's
-gateway, which is not a host in the range. The check has three limits:
+authenticate the caller.** The platform stands on the management network only,
+and no slot container has a route to it: every slot network is internal and its
+bridge carries no address of the range host. If a container did reach it, the
+attacker's shell could call `POST /api/rules/apply/` and rewrite the detector
+that scores the attacker. The API therefore also refuses any request from the
+address of a host in the range: the range host's management address and every
+address the slots' containers report. The operator's console reaches the API
+through the platform's floating address, from an address that is not a host in
+the range. The check has three limits:
 
 - The platform caches the list of range hosts for 30 seconds. A host that is
   recreated within that time keeps its old answer.
@@ -107,16 +111,76 @@ also refuses cross-origin writes and any write whose body is not
   (`statistics_command` false), so the console's Map pane sends nothing to
   Google Analytics.
 
-**On OpenStack the platform answers NTP (time) requests from every range host,
-Kali included.**
+**On OpenStack the platform answers NTP (time) requests from the range host.**
 
-- The security group `cr-mgmt` shields each range host's `mgmt` port so that
+- The security group `cr-mgmt` shields the range host's `mgmt` port so that
   only the platform can reach it.
-- The one way back is udp 123 to the platform's `mgmt` port, from members of
-  `cr-mgmt`. chrony answers it. It accepts that subnet (`allow`) and has no
-  `cmdallow`, so its command port stays on loopback.
-- The attacker's shell can read the platform's time and send it NTP packets. It
-  reaches nothing else on the platform from `mgmt`.
+- The ways back to the platform's `mgmt` port are udp 123 from members of
+  `cr-mgmt`, which chrony answers, and udp 5140 from the range host's own
+  address, the syslog collector. chrony accepts that subnet (`allow`) and has
+  no `cmdallow`, so its command port stays on loopback.
+- The slots' containers reach neither: their networks have no route off the
+  range host.
+
+**Every slot shares the range host's kernel.** The range is one VM,
+`cr-range`, and each slot is a Docker Compose project on it. The earlier range
+gave each slot its own VMs, so reaching another slot meant breaking out of the
+hypervisor. Now a learner holds a root shell in the Kali container and in the
+WAF container (no-new-privileges leaves `sudo` nothing to gain, so the shell
+starts as root), and one kernel separates that shell from every other slot.
+
+What stands between them (`deploy/range-host/slot.yaml`,
+`platform/range/rangehost.py`):
+
+- dockerd runs with `userns-remap`, so root in a container is an unprivileged
+  user on the range host.
+- Every learner-facing container (Kali, the WAF, the edge router and the four
+  targets) drops all capabilities and adds back only a listed few: Kali
+  `NET_RAW`, `NET_ADMIN`, `SETUID`, `SETGID`, `CHOWN`, `DAC_OVERRIDE`, `FOWNER`,
+  `KILL`, `AUDIT_WRITE`; the WAF `NET_BIND_SERVICE`, `SETUID`, `SETGID`,
+  `CHOWN`, `DAC_OVERRIDE`; the edge `NET_ADMIN`; the targets `CHOWN`,
+  `DAC_OVERRIDE`, `FOWNER`, `SETUID`, `SETGID`, and corp's WordPress also
+  `NET_BIND_SERVICE`.
+- Each runs with `no-new-privileges`, Docker's default seccomp and AppArmor
+  profiles, and a memory and process limit. None is privileged, holds the
+  Docker socket, shares the host's network, PID or IPC namespace, or mounts a
+  host path, except the WAF's audit log directory.
+- Every slot network is internal and its bridge has no host address
+  (`gateway_mode_ipv4` isolated). Nothing is published and nothing is NATed, so
+  a container has no route out and no address of the range host to reach.
+- The range host's `mgmt` port is in `cr-mgmt`, which only the platform
+  reaches. Its second port, on the platform's network, is in `cr-egress`, which
+  admits nothing inbound; the range host uses it to pull images.
+- The two Suricata sensors of each slot run on the host network with
+  `NET_ADMIN`, `NET_RAW` and `SYS_NICE` and no user namespace remap. No learner
+  is given a shell in them.
+
+What a container escape reaches: a kernel bug reachable through the default
+seccomp profile puts the learner on the range host as the remapped user, and a
+second bug as root. From there every other slot on the host is open, including
+its board's `auth_user` secret, its sensors and its logs, and so are the range
+host's own way to the Internet and its syslog stream to the platform. The
+control plane is not: the platform is another VM, and from `mgmt` it accepts
+only NTP and syslog from the range host. A root on the range host can still
+send the platform forged log lines for any slot, so no score from that host is
+evidence after an escape.
+
+What is tested:
+
+- `platform/tests/test_containment.py` fails `bin/verify` when the rendered
+  slot compose breaks any rule above: a learner-facing container privileged,
+  keeping default capabilities, gaining one not listed, missing
+  `no-new-privileges` or a limit, leaving a default profile, sharing a host
+  namespace, publishing a port, holding the Docker socket or mounting a host
+  path beyond its own log; a slot network not internal or with a host address;
+  two slots sharing a subnet or a name; dockerd without `userns-remap`.
+- `test/test_range_isolation.py` checks a live slot from Kali, the WAF and the
+  board: none reaches the range host's sshd, the platform, the Internet, the
+  metadata service or another slot's WAF; Kali reaches `board.com` (the WAF)
+  and the board through the edge; `board-db` does not resolve from Kali; a SYN
+  scan runs.
+- No test runs an escape. The kernel is the boundary, and its bugs are not
+  something the range can show.
 
 **One operator, one session.** There are no accounts and no roles. Nothing
 stops two browser windows from driving the same session. We decided this to

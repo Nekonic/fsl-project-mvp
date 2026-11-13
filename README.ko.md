@@ -1,6 +1,6 @@
 # fsl-project-mvp
 
-사이버 공격·방어 훈련장입니다. 훈련 환경은 공격과 방어가 벌어지는 VM과
+사이버 공격·방어 훈련장입니다. 훈련 환경은 공격과 방어가 벌어지는 컨테이너와
 네트워크의 모음입니다. 레드팀은 웹사이트 두 개를 공격합니다. Django 게시판과
 WordPress 회사 사이트이고, 각자 MySQL을 씁니다. 둘 앞에는 WAF가 있습니다.
 블루팀은 Suricata와 ModSecurity로 방어하고, 플랫폼이 양쪽의 점수를 매깁니다.
@@ -9,7 +9,8 @@ WordPress 회사 사이트이고, 각자 MySQL을 씁니다. 둘 앞에는 WAF�
 Kolla-Ansible 2025.1 이상으로 구축하고 `nova_compute_virt_type: kvm`을 쓰는 OpenStack
 위에서 돌아갑니다. Heat 스택 하나가 플랫폼 VM을 만듭니다. 플랫폼 VM은 플랫폼을
 컨테이너로 실행합니다(`docker compose`, GHCR에 미리 빌드한 이미지). 그다음
-플랫폼이 OpenStack API로 훈련 환경의 VM을 만듭니다. 이 과정 전체를 운영자
+플랫폼이 OpenStack API로 VM을 하나 더 띄웁니다. 이 VM이 훈련 환경 호스트이고, 훈련
+환경 한 벌 한 벌을 이 위에서 컨테이너로 돌립니다. 이 과정 전체를 운영자
 컴퓨터에서 `bin/cloud`가 실행합니다.
 
 - `CLAUDE.md`: 저장소의 목적, 점수 계산 방식, 작업 규칙
@@ -43,15 +44,18 @@ Kolla-Ansible 2025.1 이상으로 구축하고 `nova_compute_virt_type: kvm`을 
   필요 없습니다.
 - floating IP 풀이 있는 외부 네트워크, 그리고 그 네트워크로 나가는 VM의 인터넷
   접속(`docs/OPENSTACK.md` §2.5, §2.6).
-- 플랫폼 VM과 슬롯 하나를 올릴 자원. 슬롯은 훈련 환경 한 벌입니다. 합해서 vCPU 10,
-  RAM 24 GB, 인스턴스 5, floating IP 1, 컴퓨트 노드 디스크 180 GB가 필요합니다.
-  - Nova 기본 quota(코어 20, RAM 51200 MB, 인스턴스 10)로 충분합니다. Nova에는
-    디스크 quota가 없으므로 180 GB는 quota가 아니라 컴퓨트 노드에 실제로 있어야
-    하는 디스크 용량입니다.
-  - 플랫폼 VM은 2 vCPU, 8 GB, 60 GB입니다. 슬롯의 VM 네 대는 각각 2 vCPU, 4 GB,
-    30 GB입니다.
-  - 슬롯(`compute.slots`)이 하나 늘 때마다 vCPU 8, RAM 16 GB, 디스크 120 GB,
-    인스턴스 4가 더 듭니다. 이때는 quota를 올려야 합니다.
+- VM 두 대, 플랫폼 VM과 훈련 환경 호스트를 올릴 자원. 슬롯은 훈련 환경 한 벌이고,
+  슬롯은 모두 훈련 환경 호스트 위에서 돕니다.
+  - 플랫폼 VM은 2 vCPU, 8 GB, 60 GB입니다(`compute.flavors.platform`).
+  - 훈련 환경 호스트는 `compute.flavors.range`에 적은 flavor로 뜹니다. 예제에는
+    `dba.range`(6 vCPU, 16 GB, 60 GB)가 적혀 있습니다.
+  - 합해서 vCPU 8, RAM 24 GB, 인스턴스 2, floating IP 1, 컴퓨트 노드 디스크
+    120 GB입니다. Nova 기본 quota(코어 20, RAM 51200 MB, 인스턴스 10)로
+    충분합니다. Nova에는 디스크 quota가 없으므로 120 GB는 quota가 아니라 컴퓨트
+    노드에 실제로 있어야 하는 디스크 용량입니다.
+  - 슬롯(`compute.slots`)을 늘리면 VM이 아니라 같은 훈련 환경 호스트의 컨테이너가
+    늘어납니다. `cloud.example.yaml`의 주석은 슬롯 하나에 메모리를 1.2 GB쯤
+    잡습니다.
 
 먼저 한 대에서 확인하려면 `docs/OPENSTACK.md` §9를 보세요. VirtualBox나 VMware의
 VM 한 대에 클라우드 전체를 올리는 방법이 있습니다.
@@ -59,8 +63,8 @@ VM 한 대에 클라우드 전체를 올리는 방법이 있습니다.
 ## 기동
 
 1. **클라우드를 준비합니다(관리자, 한 번).** 외부 네트워크, 프로젝트 `fsl-range`와
-   member 사용자 `fsl-range`, flavor `m1.large`와 `m1.medium`, 베이스 이미지
-   `ubuntu-24.04`를 만듭니다. 명령은 `docs/OPENSTACK.md` §2.5, §3.1, §3.3, §3.6에
+   member 사용자 `fsl-range`, flavor `m1.large`와 훈련 환경 호스트용 flavor(예제는
+   `dba.range`), 베이스 이미지 `ubuntu-24.04`를 만듭니다. 명령은 `docs/OPENSTACK.md` §2.5, §3.1, §3.3, §3.6에
    있습니다. 관리자로 이미지를 올릴 때는 `--public`을 붙이세요. 붙이지 않으면
    `fsl-range`가 이미지를 보지 못합니다.
 2. **clone합니다.**
@@ -78,7 +82,7 @@ VM 한 대에 클라우드 전체를 올리는 방법이 있습니다.
    ```
 
 4. **운영자 키를 만듭니다.** 플랫폼 VM에 로그인할 때 쓰는 ssh 키입니다. 훈련 환경
-   키는 따로 만들 필요가 없습니다. 플랫폼이 훈련 환경 VM에 로그인할 때 쓰는 키이며,
+   키는 따로 만들 필요가 없습니다. 플랫폼이 훈련 환경 호스트에 로그인할 때 쓰는 키이며,
    `~/.ssh/fsl-platform`이 없으면 처음 `bin/cloud up`을 실행할 때 만들어집니다.
 
    ```bash
@@ -126,11 +130,9 @@ VM 한 대에 클라우드 전체를 올리는 방법이 있습니다.
    ```
 
    `bin/cloud up`은 플랫폼 VM을 만들고, 이어서 플랫폼 자신의 API로 훈련 환경을
-   만들면서 단계마다 출력합니다. 처음 실행할 때는 훈련 환경의 골든 이미지(훈련
-   환경 VM이 부팅할 때 쓰는 VM 이미지)와 OPNsense 에지 이미지를 클라우드에서
-   빌드하므로, 이후 실행보다 훨씬 오래 걸립니다. `docs/OPENSTACK.md` §9의
-   시험에서는 빈 클라우드에서 17분 41초가 걸렸습니다(빌더 네 대를 병렬로
-   실행). 끝나면
+   만들면서 단계마다 출력합니다. 처음 실행할 때는 훈련 환경 호스트를 띄우고, 이
+   호스트가 Docker를 설치하고 GHCR에서 훈련 환경 이미지를 전부 pull한 뒤에야 첫
+   슬롯이 뜨므로 이후 실행보다 오래 걸립니다. 끝나면
    `the range is ready; the platform is at http://ADDRESS:8000/`를 출력합니다.
 
 8. **동작을 확인합니다.** 브라우저로 그 주소를 엽니다.
@@ -141,7 +143,7 @@ VM 한 대에 클라우드 전체를 올리는 방법이 있습니다.
      콘솔에 회사 네트워크를 그린 **구성도** 창이 보이고, 그 옆의 레슨 노트에 첫
      단계가 적혀 있습니다.
    - 훈련 네트워크가 아직 준비되지 않았다는 안내가 나오면 기다립니다. 닫힌
-     세션의 슬롯은 2분쯤 뒤에 초기화됩니다.
+     세션의 슬롯은 먼저 초기화를 거칩니다.
 
    터미널에서는 `curl -s http://ADDRESS:8000/api/range/ready/`가 레슨을 시작하기
    전에 `"ready": true`를 돌려줍니다. 세션이 열려 있는 동안은 `false`이고,
@@ -169,7 +171,7 @@ VM 한 대에 클라우드 전체를 올리는 방법이 있습니다.
      없으면 빈 DB로 시작하고 그렇다고 알려 줍니다.
    - 처음부터 다시 하려면 `.venv/bin/python bin/cloud down`을 실행한 뒤
      `bin/cloud up`을 다시 실행합니다. `down`은 훈련 환경과 스택(실패한 스택
-     포함)을 지웁니다. Glance 이미지, 키페어, 훈련 환경 키는 남깁니다. 플랫폼
+     포함)을 지웁니다. 키페어와 훈련 환경 키는 남깁니다. 플랫폼
      VM에 DB가 있으면 먼저 백업합니다. 백업할 수 없으면 아무것도 지우지 않고
      거부합니다. 플랫폼 컨테이너가 멈춰 있으면 `down`이 먼저 시작합니다. VM의
      ssh나 Docker가 응답하지 않거나 컨테이너가 시작되지 않으면 거부합니다. 먼저
@@ -190,13 +192,13 @@ cloud-init이 `cr-platform.service`를 설치합니다. 이 서비스는 부팅�
 `/opt/cr/compose.yaml`로 `docker compose pull`과 `docker compose up -d`를
 실행합니다.
 
-- 이미지는 일곱 개를 직접 빌드합니다: platform, board, corp, corp-db, kali,
-  proxy, gns3. `dev`에 push할 때마다 `.github/workflows/images.yml`이 빌드해
+- 이미지는 여덟 개를 직접 빌드합니다: platform, board, corp, corp-db, gns3,
+  kali, waf, edge. `dev`에 push할 때마다 `.github/workflows/images.yml`이 빌드해
   `ghcr.io/nekonic/cr-<name>`으로 게시합니다. 태그는 커밋 SHA와 `dev`입니다.
 - VM은 clone한 커밋의 SHA를 `CR_IMAGE_TAG`로 `/opt/cr/.env`에 적습니다. 그래서
   정확히 그 커밋의 이미지로 실행합니다.
 - GitHub는 저장소가 public이어도 첫 push 때 만드는 패키지를 private으로 둡니다.
-  일곱 개를 한 번씩 public으로 바꾸세요. 그렇지 않으면 로그인 없는 pull이
+  여덟 개를 한 번씩 public으로 바꾸세요. 그렇지 않으면 로그인 없는 pull이
   실패합니다. github.com에서 패키지 페이지, **Package settings**, **Change
   visibility**, **Public** 순서로 들어갑니다. 되돌릴 수 없습니다.
 - VM의 컨테이너는 `cr-platform`, `cr-elasticsearch`, `cr-kibana`, `cr-gns3`,
@@ -227,9 +229,10 @@ bind mount라서 컨테이너를 다시 만들어도 남습니다. 클라우드�
 여기서는 엔진과 센서의 구성도 이름이 필드로 보이고, 플랫폼 내부 필드는
 숨겨집니다.
 
-플랫폼은 훈련 환경 네트워크를 세 종류 만듭니다. `cr-internet`은 모의 인터넷이고
-출발지 서브넷이 30개 있습니다. `cr-estate`는 대상 시스템이 있는 회사 내부망입니다.
-`cr-mgmt`는 관리망이고, 플랫폼이 훈련 환경 VM에 접속할 때 씁니다.
+플랫폼이 훈련 환경용으로 만드는 OpenStack 네트워크는 관리망 `cr-mgmt` 하나입니다.
+플랫폼은 이 망으로 훈련 환경 호스트에 접속합니다. 슬롯의 나머지 네트워크는 훈련 환경
+호스트 안의 Docker 네트워크입니다. `sN_internet`은 출발지 서브넷 30개가 있는 모의
+인터넷이고, `sN_estate`는 WAF와 대상 시스템이 있는 회사 내부망입니다.
 
 ```mermaid
 flowchart TB
@@ -244,18 +247,19 @@ flowchart TB
         stack["플랫폼 컨테이너<br/>(다음 그래프)"]
       end
     end
-    subgraph fabric_box["훈련 환경 네트워크, 플랫폼이 만듦"]
-      internet["cr-internet<br/>출발지 서브넷 30개"]
-      inside["cr-estate, cr-mgmt"]
+    mgmt["cr-mgmt<br/>플랫폼이 만듦"]
+    subgraph rangevm["훈련 환경 호스트 cr-range, Ubuntu 24.04"]
+      slots["슬롯마다 docker compose 프로젝트 하나<br/>s1, s2, ..."]
     end
   end
 
   person -->|":8000"| fip
   fip --> vm
   unit -->|"부팅할 때마다"| stack
-  stack -->|"/api/range/fabric/, describe()"| api
-  api -.->|만들고 조회| internet
-  api -.->|만들고 조회| inside
+  stack -->|"/api/range/fabric/, /slot/"| api
+  api -.->|만듦| mgmt
+  api -.->|부팅| rangevm
+  stack -->|"cr-mgmt로 ssh, docker exec"| rangevm
 ```
 
 ### 세션의 구성
@@ -272,9 +276,11 @@ Elasticsearch로 갑니다. 플랫폼은 이 경보와 대상 시스템 자신�
 Elasticsearch, Kibana, `gns3`(학습자용 구성도), `collector`입니다. `collector`는
 훈련 환경의 syslog만 받는 Filebeat입니다.
 
-세션 하나의 서비스는 그 세션 슬롯의 VM 네 대에서 돕니다. OPNsense 에지(방화벽과
-Suricata), WAF, Kali(마커를 붙이는 프록시와 고객 트래픽), 워게임 호스트(워게임
-컨테이너 전부와 estate 쪽 Suricata)입니다. 로그는 syslog로 `collector`에 보냅니다.
+세션 하나의 서비스는 그 세션의 슬롯, 즉 훈련 환경 호스트의 docker compose 프로젝트
+`sN`에서 돕니다. Kali(마커를 붙이는 프록시와 고객 트래픽), 에지(nftables 라우터),
+WAF, board와 corp 및 각자의 MySQL, 그리고 Suricata 센서 두 개입니다. 센서 하나는
+슬롯의 인터넷 브리지를, 다른 하나는 estate 브리지를 봅니다. 센서 경보와 WAF의 audit
+log는 훈련 환경 호스트의 rsyslog가 `collector`로 보냅니다.
 
 닫힌 세션은 `CR_RETAIN_CLOSED_MINUTES`분(기본 60, `compose.yaml`에서 설정) 동안
 DB에 남습니다. 그 시간이면 점수와 결과 보고를 읽을 수 있습니다. 그 뒤에는 플랫폼이
@@ -285,9 +291,9 @@ DB에 남습니다. 그 시간이면 점수와 결과 보고를 읽을 수 있�
 
 - `wargames/` 아래에 `compose.yaml`, `scenario.yaml`, `objectives.yaml`이 든 폴더
 - `redteam/cases/` 아래의 케이스 파일
-- `platform/range/declaration.yaml`의 `cr-wargame-host` 항목에서 `wargames:` 아래에
-  넣는 워게임 이름과 `publish:` 아래에 넣는 포트, 그리고
-  `deploy/waf/board.com.conf`의 `server` 블록
+- `platform/range/declaration.yaml`의 `cr-range` 항목에서 `wargames:` 아래에
+  넣는 워게임 이름, `deploy/range-host/slot.yaml`의 `fronts:` 아래에 넣는 estate
+  주소, 그리고 `deploy/waf/board.com.conf`의 `server` 블록
 
 `platform/wargames.py`가 `scenario.yaml`을 보고 워게임을 찾습니다. 워게임은 두
 개입니다. 게시판은 Django이고 `loot_verified`로 채점합니다. 제출한 해시를
@@ -305,15 +311,15 @@ flowchart LR
     es[("elasticsearch")]
   end
 
-  subgraph slot["세션 슬롯, VM 네 대"]
+  subgraph slot["세션 슬롯, cr-range의 compose 프로젝트 sN"]
     kali["kali<br/>공격 터미널<br/>프록시가 케이스마다 라벨"]
-    edge["에지<br/>OPNsense + Suricata"]
+    edge["에지<br/>nftables 라우터"]
+    edgesensor["sN-inet 쪽<br/>Suricata"]
     waf["waf<br/>nginx + ModSecurity CRS"]
-    subgraph host["워게임 호스트"]
-      board["board<br/>+ MySQL"]
-      corp["corp<br/>WordPress + MySQL"]
-      estate["estate 쪽<br/>Suricata"]
-    end
+    board["board<br/>+ MySQL"]
+    corp["corp<br/>WordPress + MySQL"]
+    estate["sN-estate 쪽<br/>Suricata"]
+    rsyslog["훈련 환경 호스트의 rsyslog"]
   end
 
   person -->|":8000"| console
@@ -322,9 +328,10 @@ flowchart LR
   edge --> waf
   waf --> board
   waf --> corp
-  edge -.->|"경보, syslog"| collector
-  waf -.->|"audit log, syslog"| collector
-  estate -.->|"경보, syslog"| collector
+  edgesensor -.->|"eve.json"| rsyslog
+  waf -.->|"audit log"| rsyslog
+  estate -.->|"eve.json"| rsyslog
+  rsyslog -.->|"syslog, 5140/udp"| collector
   collector --> es
   es -->|경보| scoring
   board -.->|자체 기록| scoring
@@ -334,17 +341,20 @@ flowchart LR
 그래프에 없는 것:
 
 - Kali의 raw TCP는 프록시를 거치지 않고 에지를 지나 WAF로 갑니다.
-- 스크립트 케이스는 공격자 박스에서 출발합니다. 플랫폼이 ssh로 Kali에서 `curl`이나
-  도구를 실행하며, 고른 출발지 주소를 씁니다.
-- 플랫폼은 센서의 룰과 프록시의 케이스 라벨을 쓰고, 공격자의 명령 로그와
-  corp-db의 MySQL 바이너리 로그(`mysqlbinlog`)를 읽습니다. 이것은 ssh로 합니다.
-- 플랫폼은 게시판의 자체 기록(`auth_user` 테이블)을 WAF를 거치지 않고 게시판에서
-  HTTP로 바로 읽습니다(`BOARD_API_URL`).
+- 스크립트 케이스는 공격자 박스에서 출발합니다. 플랫폼이 Kali 컨테이너에서
+  `curl`이나 도구를 실행하며, 고른 출발지 주소를 씁니다.
+- 플랫폼은 센서들의 룰과 프록시의 케이스 라벨을 쓰고, 공격자의 명령 로그와
+  corp-db의 MySQL 바이너리 로그(`mysqlbinlog`)를 읽습니다.
+- 플랫폼은 게시판의 자체 기록(`auth_user` 테이블)을 WAF를 거치지 않고 게시판
+  컨테이너 안에서 읽습니다.
+- 위 명령은 모두 훈련 환경 호스트의 `mgmt` 주소로 ssh 접속한 뒤 슬롯의
+  컨테이너(`sN-kali`, `sN-board` 등)에 `sudo docker exec`로 실행합니다.
 
 Kali 터미널은 레드팀 콘솔에 있고, 레슨과 시나리오에서는 블루팀 콘솔의 Kali 창에도
-있습니다. 플랫폼 안의 ttyd가 세션 슬롯에 있는 Kali VM의 `mgmt`
-주소로 ssh 접속합니다(`/vm-terminal/kali/?arg=<세션 id>`). 프롬프트는 Kali
-자체와 같은 `(kali㉿kali)`입니다. WAF의 프롬프트는 `ubuntu@waf`입니다. 네트워크
+있습니다. 플랫폼 안의 ttyd가 훈련 환경 호스트의 `mgmt` 주소로 ssh 접속해 세션
+슬롯의 Kali 컨테이너에 `docker exec`로 들어갑니다(`/vm-terminal/kali/?arg=<세션
+id>`). 프롬프트는 `(root㉿kali)`입니다. WAF 터미널도 같은 방법으로 슬롯의 WAF
+컨테이너에 root로 들어갑니다. 네트워크
 구성은 `docs/ARCHITECTURE.ko.md`에 있습니다.
 
 ## OpenStack 운영
@@ -359,11 +369,9 @@ git이 무시하는 파일이고, `deploy/openstack/cloud.example.yaml`을 복�
 - 비밀번호를 읽을 위치: `password_file` 또는 `password_env`. 비밀번호 자체는
   파일에 넣지 않습니다.
 - 외부 네트워크, DNS, 테넌트 MTU, platform·estate·mgmt CIDR
-- 베이스 이미지 이름, availability zone
-- 플랫폼, 이미지 빌더, 훈련 환경, 역할별(`edge`) flavor
+- 베이스 이미지 이름, availability zone, 슬롯 수
+- flavor 두 개: `platform`과 `range`(훈련 환경 호스트)
 - 운영자의 키페어와 키 파일, 훈련 환경 키
-- 빌드할 OPNsense 릴리스: 버전, 미러, 릴리스 공지에 있는 이미지 SHA256과 서명 키
-  SHA256
 - 스택, 저장소, ref
 
 모든 스크립트와 Heat 스택이 이 파일을 읽습니다. 해석할 수 없는 값이 있으면
@@ -371,12 +379,13 @@ git이 무시하는 파일이고, `deploy/openstack/cloud.example.yaml`을 복�
 
 클라우드에 올려 둘 이미지는 딱 하나입니다. Canonical의 기본 Ubuntu 24.04 클라우드
 이미지를 수정 없이 `compute.base_image`에 적은 이름으로 업로드합니다. 내려받기,
-체크섬, `openstack image create` 명령은 `docs/OPENSTACK.md`에 있습니다. 나머지는
-모두 이 이미지에서 만듭니다.
+체크섬, `openstack image create` 명령은 `docs/OPENSTACK.md`에 있습니다. VM 두 대
+모두 이 이미지로 부팅하고, 부팅할 때 cloud-init이 각자를 설정합니다.
 
-- 플랫폼 VM은 cloud-init이 부팅할 때 만듭니다.
-- 훈련 환경의 골든 이미지는 빌더가 만듭니다.
-- OPNsense 에지 이미지는 공식 릴리스를 내려받는 빌더가 만듭니다(아래).
+- 플랫폼 VM은 저장소를 clone하고 `compose.yaml`을 띄웁니다.
+- 훈련 환경 호스트는 Nova user data로 설정 번들(`deploy/range-host/setup.sh`)을
+  받습니다. Docker를 설치하고, 플랫폼의 `CR_IMAGE_TAG`로 GHCR에서 훈련 환경
+  이미지를 전부 pull하고, 초기화에 쓸 대상 시스템 볼륨의 원본을 떠 둡니다.
 
 `.venv`에 OpenStack CLI가 있는 상태(3단계)에서 운영자 컴퓨터에서 실행합니다.
 
@@ -390,11 +399,14 @@ git이 무시하는 파일이고, `deploy/openstack/cloud.example.yaml`을 복�
 1. 플랫폼의 Heat 스택(`deploy/openstack/platform.yaml`)이 없으면 만듭니다.
    `--replace`를 주면 이미 있는 스택을 `bin/platform-rebuild`로 교체합니다.
 2. API가 응답할 때까지 기다립니다.
-3. 플랫폼 자신의 훈련 환경 API를 순서대로 호출합니다. fabric(네트워크, 키페어,
-   보안 그룹), images(clean이 될 때까지 반복), slot, configure 순서입니다.
+3. 플랫폼 자신의 훈련 환경 API를 순서대로 호출합니다. fabric(관리망, 키페어,
+   보안 그룹), 그다음 slot(훈련 환경 호스트를 부팅하거나 교체)입니다. 훈련 환경
+   호스트가 떠서 설정을 마칠 때까지 기다린 뒤 configure를 호출합니다.
 4. `/api/range/ready/`가 ready라고 할 때까지 기다립니다.
+5. 예전 VM 방식 훈련 환경이 남긴 것을 지우고(`DELETE /api/range/leftovers/`) 지운
+   항목을 출력합니다.
 
-처음 만난 drift, 실패한 이미지, 막힌 슬롯, 거부된 configure에서 멈추고 이유를
+처음 만난 drift, 막힌 슬롯, 실패한 설정, 거부된 configure에서 멈추고 이유를
 알려 줍니다.
 
 `up`과 `down` 모두 테스트 클라우드에서 실행해 봤습니다. 2026-10-20에는
@@ -402,10 +414,11 @@ git이 무시하는 파일이고, `deploy/openstack/cloud.example.yaml`을 복�
 `up`, `down`, 그리고 `down` 뒤의 `up`(행이 있는 가장 최근 백업을 복원)을 실제로
 돌렸습니다(`docs/DECISIONS.md` 2026-10-20, "Live checks of the bring-up paths").
 같은 날 수정 두 건을 더 넣은 뒤에는 컨테이너가 멈춘 플랫폼에 대한 `down`, 비밀번호
-줄이 없는 플랫폼에 대한 `up`, 처음 만든 훈련 환경 키, 워게임 호스트 이미지를 다시
-빌드하지 않는 `down` 뒤의 `up`도 돌렸습니다. VM 한 대에 빈 클라우드를 올려 §9 전체도
+줄이 없는 플랫폼에 대한 `up`, 처음 만든 훈련 환경 키, 훈련 환경 VM을 다시 빌드하지
+않는 `down` 뒤의 `up`도 돌렸습니다. VM 한 대에 빈 클라우드를 올려 §9 전체도
 돌렸습니다(`docs/DECISIONS.md` 2026-10-20, "The one-VM trial and the last bring-up fixes").
-단계는 `docs/OPENSTACK.md` §5에 있습니다.
+모두 훈련 환경 호스트 이전, 훈련 환경이 VM 여러 대이던 때의 기록입니다. 단계는
+`docs/OPENSTACK.md` §5에 있습니다.
 
 `bin/platform-rebuild`만 실행하면 플랫폼 VM만 만들거나 교체합니다.
 
@@ -413,7 +426,7 @@ git이 무시하는 파일이고, `deploy/openstack/cloud.example.yaml`을 복�
 .venv/bin/python bin/platform-rebuild            # --cloud PATH, --ref REF
 ```
 
-무엇이든 삭제하기 전에 ref의 커밋에 해당하는 이미지 일곱 개를 ghcr.io에서 로그인
+무엇이든 삭제하기 전에 ref의 커밋에 해당하는 이미지 여덟 개를 ghcr.io에서 로그인
 없이 pull할 수 있는지 확인합니다. 훈련 환경 키(아래)를 보관하고, DB를
 백업합니다(ssh로 `bin/backup` 실행). 그다음 스택을 삭제하고 `cloud.yaml`의 모든
 파라미터로 다시 만든 뒤, `/api/sessions/`가 응답할 때까지 기다립니다.
@@ -441,7 +454,7 @@ cloud-init이 클라우드 값을 `/opt/cr/openstack.env`에 씁니다. 비밀 �
 - DB가 있는 VM을 교체하면 실행 중인 플랫폼에서 한 번 복사해 옵니다.
 - 실패한 스택을 교체할 때는 거부합니다.
 
-키가 남아 있으므로 훈련 환경의 VM과 `cr-platform` 키페어는 새 플랫폼을 계속
+키가 남아 있으므로 훈련 환경 호스트와 `cr-platform` 키페어는 새 플랫폼을 계속
 신뢰합니다. 플랫폼을 교체하는 동안에도 훈련 환경은 그대로 둘 수 있습니다.
 
 아직 push하지 않은 커밋을 실행하려면 두 명령 모두 `--sideload NAME=TARBALL`
@@ -451,7 +464,8 @@ cloud-init이 클라우드 값을 `/opt/cr/openstack.env`에 씁니다. 비밀 �
 
 - git bundle로 이 체크아웃의 HEAD를 checkout합니다.
 - tarball마다 `docker load`하고, 그 이미지에 clone한 커밋의 태그를 붙입니다.
-  compose와 훈련 환경의 이미지 빌더가 이 태그를 씁니다.
+  플랫폼 VM의 compose가 이 태그를 씁니다. 훈련 환경 호스트는 이 태그로 GHCR에서
+  직접 pull하므로 sideload한 이미지는 받지 못합니다.
 - 모든 서비스를 다시 만듭니다(`--force-recreate`). 그래서 bind mount한 파일도
   HEAD의 것이 됩니다.
 
@@ -479,69 +493,64 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 `GET`은 없는 것, 있는 것, 선언과 달라진 것(drift), 남은 것을 보여 줍니다.
 `DELETE`는 fabric을 내립니다. 서버가 연결되어 있으면 거부됩니다.
 
-훈련 환경의 VM은 골든 이미지로 부팅합니다. 플랫폼은 `declaration.yaml`이 `hosts:`
-아래에 지정한 설정 스크립트로 이미지를 만들고, 스크립트마다 베이스 이미지로 부팅한
-빌더 VM에서 실행합니다. POST 한 번에 모든 빌드가 한 단계씩 진행됩니다. 빌더 부팅,
-설정이 끝났다고 보고하면 중지, 스냅샷, 삭제 순서입니다. 에지 빌더는 스냅샷하지 않습니다. 빌더가
-디스크를 내놓으면 플랫폼이 받아서 Glance에 올립니다. 응답에 `"clean": true`가 나올 때까지 POST를
-반복하세요.
-
-```bash
-curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/images/
-```
-
-빌드가 실패하면 `detail`에 빌더 콘솔 출력의 끝부분이 나옵니다. 같은 경로에
-`DELETE`를 보내면 실패한 빌더와 예전 스크립트로 만든 이미지를 삭제합니다.
-
-이미지가 준비되면 POST 한 번으로 VM 네 대를 각자의 이미지로 부팅합니다.
-`cr-edge`, `cr-kali`, `cr-waf`, `cr-wargame-host`입니다. 워게임 호스트는 모든
-워게임을 GHCR 컨테이너로 실행합니다. 플랫폼은 `mgmt`에서 ssh로 이 네 대에
-접속합니다.
+그다음 POST 한 번으로 훈련 환경 호스트 `cr-range`를 베이스 이미지로 부팅하고, user
+data에 설정 번들을 넣습니다. 포트는 두 개입니다. 하나는 `mgmt`에 있고 보안 그룹
+`cr-mgmt`(플랫폼만 접속 가능)를 씁니다. 다른 하나는 플랫폼 자신의 네트워크에 있고
+보안 그룹 `cr-egress`(인바운드 없음)를 쓰며, 이미지를 pull할 때 씁니다.
 
 ```bash
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/slot/
 ```
 
-이미 떠 있는 슬롯에 같은 POST를 보내면, 준비된 이미지가 아닌 이미지로 떠 있는 VM을
-재구축합니다. 세션이 그 슬롯을 잡고 있으면 재구축하지 않습니다.
+같은 경로에 `GET`을 보내면, 훈련 환경 호스트의 설정이 `/var/lib/cr/ready`를 남길
+때까지 `SETTING_UP`을, 설정이 실패하면 설정 로그의 끝부분과 함께 `SETUP_FAILED`를
+보여 줍니다. 이미 떠 있는 훈련 환경 호스트에 같은 POST를 보내면, 이미지 태그나 설정
+번들이 플랫폼의 것과 다를 때 훈련 환경 호스트를 교체합니다. 세션이 슬롯을 잡고 있으면
+교체하지 않습니다.
 
-그다음 `POST /api/range/configure/`가 ssh로 설정을 적용합니다. OPNsense 에지에는
-config.xml(WAN 주소, pass 규칙, Suricata, syslog)을 넣고 재부팅합니다. WAF에는
-ModSecurity 로그 전달을 설정합니다. board와 corp는 워게임 호스트에서 컨테이너로
-실행되고, configure가 이들을 시작합니다.
+그다음 `POST /api/range/configure/`가 슬롯마다 실행합니다. 플랫폼이
+`deploy/range-host/slot.yaml`과 워게임별 `wargames/<w>/compose.yaml`로 슬롯의
+compose 파일을 만들어 ssh로 훈련 환경 호스트에 보내고 `deploy/range-host/slot.sh up
+N`을 실행합니다. 이 스크립트가 compose 프로젝트 `sN`을 띄우고, Kali와 에지에
+출발지 주소를 붙이고, 훈련 환경 호스트의 rsyslog가 슬롯 로그를 전달하도록 설정합니다.
+그 뒤 플랫폼이 두 센서에 기본 룰을 넣습니다.
 
-`POST /api/range/slot/rebuild/`는 모든 VM을 골든 이미지로 Nova rebuild합니다.
-포트와 주소는 유지됩니다. 수정한 데이터와 룰은 이어지지 않고, 적용한 설정도
-지워집니다. `slot/rebuild/`만 따로 호출했다면 `configure/`를 직접 실행하세요.
+`POST /api/range/slot/rebuild/`는 슬롯의 compose 프로젝트를 볼륨까지 내립니다.
+수정한 데이터와 룰은 이어지지 않습니다. 다시 띄우려면 `configure/`를 실행하세요.
 
-세션을 닫으면 그 세션의 슬롯을 초기화합니다.
+세션을 닫으면 `slot.sh reset N`으로 그 슬롯을 그 자리에서 초기화합니다.
 
-- Kali와 WAF는 다시 만듭니다.
-- 에지는 그 자리에서 초기화합니다. 해시를 비교해서 파일이 달라졌을 때만
-  재부팅합니다.
-- 워게임 호스트도 그 자리에서 초기화합니다(`docker compose down -v`).
-- 에지나 워게임 호스트의 이미지가 준비된 이미지와 다르면 그 자리에서 초기화하지
-  않고 재구축합니다.
+- Kali와 WAF는 컨테이너를 다시 만듭니다.
+- 대상 시스템은 지운 뒤 훈련 환경 호스트가 떠 둔 원본 볼륨으로 되돌립니다.
+- 에지의 neighbour 테이블을 비웁니다. 에지와 센서는 계속 돕니다.
+- 슬롯 로그는 그 자리에서 비우고, 센서가 로그 파일을 다시 엽니다. 그 뒤 플랫폼이
+  두 센서에 기본 룰을 다시 넣습니다.
 
-VM이 ACTIVE가 되면 플랫폼이 스스로 다시 configure합니다. 그동안
+그동안
 `GET /api/range/ready/`는 phase `RESETTING`을 보여 주고, 세션 열기는 거부됩니다.
 초기화가 실패하면 이유와 함께 `RESET_FAILED`를 보여 주고,
 `POST /api/range/configure/`로 다시 시도합니다.
 
 `cloud.yaml`의 `compute.slots`(기본 1)는 훈련 환경을 몇 벌 세울지 정합니다. 벌마다
-에지, WAF, Kali, 워게임 호스트를 따로 두고, internet·estate 네트워크도 벌마다
-따로 만듭니다. 슬롯 N의 호스트 이름은 `<host>-N`입니다. 세션은 슬롯 하나를
+훈련 환경 호스트에 compose 프로젝트 `sN`을 따로 두고, 인터넷·estate 네트워크도 벌마다
+따로 만듭니다. 슬롯 N의 estate는 `network.estate`의 N번째 /24(예제로는
+`10.30.N.0/24`)이고, 컨테이너 이름은 `sN-<service>`입니다. 세션은 슬롯 하나를
 차지하므로 슬롯 수만큼 세션을 동시에 돌릴 수 있습니다. 세션을 닫으면 그 슬롯만
 초기화합니다. `slot/`, `slot/rebuild/`, `configure/`는 `?slot=N`을 받고, 없으면
 모든 슬롯에 적용합니다.
+
+`GET /api/range/leftovers/`는 훈련 환경 호스트 이전의 VM 방식 훈련 환경이 프로젝트에
+남긴 것을 보여 줍니다. 그때의 VM과 이미지 빌더, 폐기한 세그먼트의 포트·서브넷·
+네트워크, 보안 그룹 `cr-range`와 `cr-build`, 그때의 이미지입니다. 같은 경로에
+`DELETE`를 보내면 지웁니다. `bin/cloud up`이 마지막에 호출합니다.
 
 훈련 환경은 Heat 스택에 속하지 않으므로 플랫폼 VM보다 오래 남을 수 있습니다.
 `bin/platform-rebuild`로 플랫폼을 교체하면 훈련 환경 키가 유지되므로 슬롯과
 fabric이 계속 동작합니다. 다음 `POST /api/range/fabric/`가 새 서버를 `mgmt`에 다시
 연결하고, `configure/`가 훈련 환경의 syslog를 새 서버로 향하게 합니다. 키를
 보관하지 않고 스택을 직접 삭제하면 새 VM이 새 키를 만들고, fabric은 예전 키페어를
-drift로 보고합니다. 이때는 먼저 `/api/range/slot/`과 `/api/range/fabric/`에
-`DELETE`를 보내세요. 이미지는 남습니다.
+drift로 보고합니다. 이때는 먼저 `/api/range/slot/`(`?slot=` 없이 보내면 훈련 환경
+호스트까지 지웁니다)과 `/api/range/fabric/`에 `DELETE`를 보내세요.
 
 스택은 `keys.operator`가 가리키는 키페어로 부팅하므로, 이 키페어가 먼저 프로젝트에
 있어야 합니다.
@@ -550,36 +559,14 @@ drift로 보고합니다. 이때는 먼저 `/api/range/slot/`과 `/api/range/fab
 openstack keypair create --public-key PUBLIC_KEY_FILE fsl-claude
 ```
 
-### OPNsense 이미지
-
-에지는 OPNsense(BSD 2-clause 라이선스)이고, images 단계가 자동으로 빌드합니다.
-기본 Ubuntu 이미지로 부팅한 빌더가 다음을 합니다.
-
-1. 필요한 도구를 설치합니다.
-2. `opnsense.mirror`에서 `OPNsense-<version>-nano-amd64.img.bz2`, 그 `.sig`,
-   릴리스 키를 내려받습니다.
-3. 압축 파일을 `opnsense.image_sha256`과, 키를 `opnsense.pubkey_sha256`과
-   대조합니다. 두 값은 미러가 아니라 릴리스 공지에서 가져온 것입니다.
-4. 압축을 풀고 서명을 검증합니다.
-5. QEMU에서 이미지를 한 번 부팅하고 configuration importer에 응답해서
-   `deploy/opnsense/config.xml`로 시작하게 합니다. 이 설정에서 root는 플랫폼 키만
-   신뢰하고 비밀번호가 없습니다. 기본 이미지의 기본 비밀번호는 아예 존재하지
-   않습니다.
-6. `qemu-img`로 qcow2로 변환해 내놓습니다. 플랫폼이 SHA256을 확인한 뒤 Glance에
-   `fsl-opnsense-<version>`으로 올립니다.
-
-버전, MTU, 플랫폼 키 중 하나가 바뀌면 새 이미지를 빌드합니다. 이미지는 클라우드마다
-공식 릴리스로 빌드하며 배포하지 않습니다. OPNsense 상표 정책은 파생 이름을 쓰기
-전에 허락을 받도록 요구합니다.
-
 ## 포트
 
 | 포트 | | 사용처 |
 |---|---|---|
 | 8000 | 콘솔, `/api/`, `/kibana/`의 Kibana, `/vm-terminal/kali/`와 `/vm-terminal/waf/`의 터미널 | 사용자의 브라우저 |
-| 8002 | 레드·블루팀 콘솔의 웹사이트 창: `/site/<세션 id>/<host>/`. 요청은 고객 주소에서 해당 세션의 WAF로 갑니다(Kali에서 에지를 거쳐) | 사용자 브라우저 안의 iframe |
+| 8002 | 레드·블루팀 콘솔의 웹사이트 창: `/site/<세션 id>/<host>/`. 요청은 고객 주소에서 해당 세션의 WAF로 갑니다(Kali 컨테이너에서 에지를 거쳐) | 사용자 브라우저 안의 iframe |
 | 3080 | `gns3`: GNS3 3.1의 API와 웹 UI. 학습자용 구성도가 여기 있습니다(아래) | 사용자 브라우저 안의 iframe, 그리고 `mgmt`를 거친 `platform/gns3.py` |
-| 5140/udp | `collector`, Filebeat의 syslog 입력 | OPNsense 에지, WAF, 워게임 호스트의 estate 센서 |
+| 5140/udp | `collector`, Filebeat의 syslog 입력 | 훈련 환경 호스트의 rsyslog. 슬롯마다 센서 두 개의 경보와 WAF의 audit log를 보냅니다 |
 | 5601 | Kibana 자체. 플랫폼 호스트의 loopback에만 열려 있습니다. 8000번의 `/kibana/`는 세션별 space만, 그 안에서는 Discover만 제공합니다 | 운영자, ssh 터널로 |
 | 9200 | Elasticsearch | acceptance 테스트 |
 
@@ -587,8 +574,8 @@ openstack keypair create --public-key PUBLIC_KEY_FILE fsl-claude
 origin이라서, 대상 시스템에 심어진 스크립트가 콘솔을 읽거나 조작할 수 없습니다.
 쿠키는 포트가 아니라 호스트 단위로 적용됩니다. 그래서 그런 스크립트도 콘솔이 보낼
 쿠키를 설정할 수는 있습니다. 하지만 콘솔은 쿠키를 쓰지 않습니다. nginx는
-`/vm-terminal/`을 플랫폼 안의 ttyd 프로세스로 넘기고, 이 ttyd가 해당 호스트의
-`mgmt` 주소로 ssh 접속합니다.
+`/vm-terminal/`을 플랫폼 안의 ttyd 프로세스로 넘기고, 이 ttyd가 훈련 환경 호스트의
+`mgmt` 주소로 ssh 접속해 `docker exec`로 슬롯의 컨테이너를 엽니다.
 
 **학습자용 구성도(3080번 포트).** 세션마다 학습자가 방어하는 회사
 네트워크를 실습용 네트워크 구성도로 그려 보여 줍니다.
@@ -618,8 +605,8 @@ origin이라서, 대상 시스템에 심어진 스크립트가 콘솔을 읽거�
 대상 시스템은 공개하지 않습니다. 명령줄 케이스와 acceptance 테스트는 콘솔처럼
 훈련 환경 안에서 대상 시스템에 접속합니다. 훈련 환경 안에서 대상 시스템은 WAF 뒤
 80번 포트에 있습니다. `http://board.com`과 `http://corp.com`은 `Host` 헤더로 고르는
-가상 호스트입니다. 슬롯의 VM은 부팅할 때 user data로 이 이름을 `/etc/hosts`에
-받으며, 그 슬롯의 WAF를 가리킵니다.
+가상 호스트입니다. 슬롯의 Kali 컨테이너는 슬롯의 compose 파일로 이 두 이름만
+`/etc/hosts`에 받으며, 둘 다 그 슬롯의 WAF를 가리킵니다.
 
 ## 세션 진행
 
@@ -773,7 +760,7 @@ bin/verify --fast     # 단위·API 테스트와 지표, 스택 불필요
 bin/verify            # test/의 acceptance 테스트까지, 실행 중인 스택 대상
 ```
 
-레인지는 OpenStack에서만 돌아가므로 노트북에서는 `--changed`와 `--fast`까지만
+훈련 환경은 OpenStack에서만 돌아가므로 노트북에서는 `--changed`와 `--fast`까지만
 실행됩니다. acceptance 테스트는 플랫폼 VM에서 돌려야 합니다.
 
 `--changed`는 `dev`와의 merge-base(또는 지정한 커밋이나 `A..B`)와 비교해, 바뀐
@@ -863,8 +850,11 @@ sudo docker compose start platform
   `DJANGO_ALLOWED_HOSTS`에 따로 지정하지 않으면 `localhost`, `127.0.0.1`,
   `[::1]`에만 응답합니다. 플랫폼 VM은 여기에 자신의 floating IP를 추가합니다.
 - 플랫폼에는 Docker 소켓이 마운트되어 있어서 컨테이너 탈출 경로가 됩니다.
-- `/vm-terminal/` 아래 터미널은 별도 로그인 없이 Kali와 WAF의 쉘을 제공합니다.
-  Kali 쉘은 `kali` 사용자이고, 암호 없이 sudo를 쓸 수 있습니다.
+- `/vm-terminal/` 아래 터미널은 별도 로그인 없이 슬롯의 Kali 컨테이너와 WAF
+  컨테이너에 root 쉘을 줍니다. 두 컨테이너 모두 지정한 몇 가지를 뺀 capability를
+  전부 버리고 `no-new-privileges`로 돌며, Docker의 user namespace remap 때문에
+  컨테이너의 root는 훈련 환경 호스트에서 권한 없는 사용자입니다. 모든 슬롯이 훈련 환경
+  호스트의 커널을 함께 씁니다(`docs/THREAT-MODEL.md`).
 
 플랫폼 VM에서도 마찬가지입니다. 게다가 그곳에서는 프로젝트 비밀번호가
 `/opt/cr/openstack.env`와 플랫폼 컨테이너의 환경 변수에 평문으로 들어 있습니다.

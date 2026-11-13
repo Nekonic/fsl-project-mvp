@@ -121,14 +121,13 @@ alert that does not mention the attack's mechanism is reported
   Known exceptions in code today; do not add more, and whether to move them is
   open (`docs/STATE.md` backlog 0):
   `register_pipeline.py` PUTs the ingest pipeline to Elasticsearch at bring-up;
-  `range/opnsense.py` (with `deploy/opnsense/`) configures and restarts
-  Suricata on the OPNsense edge (OpenStack), and each sensor host in
-  `declaration.yaml` (the edge and the wargame host) names the rule file and
-  reload command `rules/suricata.py` is handed;
-  `range/wargame_host.py` (with `deploy/wargame-host/sensor.yaml`) stops and
-  starts the estate sensor on the wargame host when a slot is configured or reset;
-  `range/waf.py` reads the `SecAuditLog` path from `deploy/waf/modsecurity.conf`
-  to forward the audit log; `platform/nginx.conf` names the Kibana API routes
+  each sensor host in `declaration.yaml` (`cr-edge` for the edge sensor,
+  `cr-range` for the estate sensor) names the rule file and reload command
+  `rules/suricata.py` is handed;
+  `range/rangehost.py` (with `deploy/range-host/slot.sh`) renders and runs each
+  slot, starts and stops both Suricata sensors, configures the edge router and
+  names the sensors' and the WAF's log files it forwards;
+  `platform/nginx.conf` names the Kibana API routes
   it refuses and answers Kibana's `api/spaces/space` lookup itself, and
   `blue.html` presets Kibana's localStorage keys;
   `operator_log.py` reads the attacker's command log, and the terminal wiring
@@ -169,8 +168,8 @@ range-facing logic changed, and before a push.
   does. Exceptions: `deploy/suricata/rules/`, where a commented-out rule is how
   a rule is disabled, and the header Django writes into generated migrations.
 - The target is not published; the harness fires from inside the range.
-  The product runs only on OpenStack: the range is the cloud's VMs, and the
-  platform VM runs the shared control plane from `compose.yaml`. Bring-up
+  The product runs only on OpenStack: the range is one range-host VM that
+  runs every slot as a compose project, and the platform VM runs the shared control plane from `compose.yaml`. Bring-up
   pulls prebuilt images from GHCR (built by `.github/workflows/images.yml` on
   push to `dev`): `docker compose pull && docker compose up -d` starts the
   control plane (it sets up the docker socket group and registers the

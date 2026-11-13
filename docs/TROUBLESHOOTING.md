@@ -4,6 +4,16 @@ Problems the range has had, how each was measured, what caused it and what
 fixed it. Each case keeps the numbers it was decided on. The rulings are in
 `docs/DECISIONS.md`; this file is the path from symptom to fix.
 
+The two reset cases below were measured on the earlier range, where each slot
+was four VMs (an OPNsense edge, Kali, the WAF and a wargame host) and a reset
+rebuilt Kali and the WAF through Nova. That range is gone: every slot now runs
+as containers on one range host, `cr-range`, and a reset is `slot.sh reset`
+on it (`deploy/range-host/slot.sh`). The wargame host, `pristine.sh` and the
+rebuild named below no longer exist. What carried over: the pristine copy of
+the targets' volumes (now under `/opt/cr/pristine/`, taken by
+`deploy/range-host/setup.sh`), the one-second healthchecks and
+`--innodb-rollback-segments=1`.
+
 ## A slot reset took 272-314 s on the new cloud
 
 ### Symptom

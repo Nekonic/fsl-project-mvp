@@ -27,7 +27,7 @@ substrate was removed on 2026-10-21, so a laptop with Docker cannot run it.
 
 `bin/verify --fast` skips the acceptance suite. `bin/verify --changed [BASE]`
 runs only the unit tests the change reaches and lists the acceptance modules it
-reaches. Add `--live` to run those modules too. The suite collects 73 tests and
+reaches. Add `--live` to run those modules too. The suite collects 91 tests and
 skips none.
 
 If the range is down, these tests fail. They do not skip, because a skipped
@@ -83,7 +83,7 @@ The split follows these rules:
 - **No range host.** `test_geoip_durable`, `test_origin_placement` and
   `test_waf_geolocation` read only Elasticsearch and repo files. They run in a
   process of their own beside the workers, so they do not wait for a range reset.
-  Anything that runs a command on a range host needs the range up and stays in a
+  Anything that runs a command on the range host needs the range up and stays in a
   worker.
 - **Balanced.** For N > 1, the modules that share a session-scoped fixture are
   one group and stay in one process. The script finds these fixtures by reading
@@ -114,7 +114,7 @@ check of a compose-only mechanism instead of skipping it (2026-10-17).
   `scorer` role, with `docker exec` on the platform container.
 - It runs the attacker's command in a login shell. The shell reads
   `/etc/profile.d/proxy.sh`, so the command gets the same `http_proxy` (the
-  stamping proxy) as the terminal's ssh login.
+  stamping proxy) as the terminal's login shell (`docker exec ... bash -l`).
 - It reads alerts through the platform's API
   (`/api/sessions/<id>/detections/`), not from a sensor's log file.
 - Beside another worker, it skips the wait for a range reset after each test.

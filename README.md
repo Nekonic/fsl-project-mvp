@@ -1,7 +1,7 @@
 # fsl-project-mvp
 
-A training range for cyber attack and defence. The range is the set of VMs and
-networks where the attack and the defence happen. A red team attacks two
+A training range for cyber attack and defence. The range is the set of
+containers and networks where the attack and the defence happen. A red team attacks two
 websites: a Django board and a WordPress company site. Each has its own MySQL
 database, and a WAF sits in front of both. A blue team defends with Suricata
 and ModSecurity. The platform scores both teams. This repo is a throwaway
@@ -10,7 +10,8 @@ prototype. The production project is in another repo.
 It runs on OpenStack deployed with Kolla-Ansible 2025.1 or later and
 `nova_compute_virt_type: kvm`. One Heat stack creates the platform VM. The
 platform VM runs the platform as containers (`docker compose`, prebuilt images
-from GHCR). The platform then builds the range's VMs through the OpenStack API.
+from GHCR). The platform then boots one more VM, the range host, through the
+OpenStack API, and runs each copy of the range on it as containers.
 `bin/cloud` does all of this from your machine.
 
 - `CLAUDE.md`: what the repo is for, how the score works, the working rules
@@ -45,15 +46,18 @@ The cloud:
   Octavia or Designate.
 - An external network with a floating-IP pool, and Internet access for the VMs
   on it (`docs/OPENSTACK.md` §2.5 and §2.6).
-- Room for the platform VM and one slot. A slot is one copy of the range.
-  Together they need 10 vCPU, 24 GB RAM, 5 instances, 1 floating IP and 180 GB
-  of disk on the compute node.
-  - Nova's default quotas (20 cores, 51200 MB, 10 instances) already allow
-    this. Nova has no disk quota, so the 180 GB is capacity.
-  - The platform VM is 2 vCPU, 8 GB, 60 GB. Each of the slot's four VMs is
-    2 vCPU, 4 GB, 30 GB.
-  - Each further slot (`compute.slots`) adds 8 vCPU, 16 GB, 120 GB and 4
-    instances. Then you must raise the quota.
+- Room for two VMs: the platform VM and the range host. A slot is one copy of
+  the range, and every slot runs on the range host.
+  - The platform VM is 2 vCPU, 8 GB, 60 GB (`compute.flavors.platform`).
+  - The range host takes the flavor named in `compute.flavors.range`. The
+    example names `dba.range`: 6 vCPU, 16 GB, 60 GB.
+  - Together that is 8 vCPU, 24 GB RAM, 2 instances, 1 floating IP and 120 GB
+    of disk on the compute node. Nova's default quotas (20 cores, 51200 MB,
+    10 instances) already allow this. Nova has no disk quota, so the 120 GB is
+    capacity.
+  - Each further slot (`compute.slots`) adds containers on the same range
+    host, not VMs. The comment in `cloud.example.yaml` budgets about 1.2 GB of
+    memory per slot.
 
 To check on one machine first, `docs/OPENSTACK.md` §9 builds the whole cloud in
 a single VM on VirtualBox or VMware.
@@ -61,8 +65,9 @@ a single VM on VirtualBox or VMware.
 ## Bringing it up
 
 1. **Prepare the cloud (an admin, once).** Create the external network, the
-   project `fsl-range` with a member user `fsl-range`, the flavors `m1.large`
-   and `m1.medium`, and the base image `ubuntu-24.04`. The commands are in
+   project `fsl-range` with a member user `fsl-range`, the flavor `m1.large`,
+   a flavor for the range host (the example names `dba.range`), and the base
+   image `ubuntu-24.04`. The commands are in
    `docs/OPENSTACK.md` §2.5, §3.1, §3.3 and §3.6. When you upload the image as
    admin, add `--public`. Otherwise `fsl-range` cannot see it.
 2. **Clone.**
@@ -81,7 +86,7 @@ a single VM on VirtualBox or VMware.
 
 4. **Make the operator key.** This is the ssh key you use to log in to the
    platform VM. The range key needs no step. It is the key the platform uses to
-   log in to the range's VMs, and the first `bin/cloud up` makes
+   log in to the range host, and the first `bin/cloud up` makes
    `~/.ssh/fsl-platform` if it is missing.
 
    ```bash
@@ -129,11 +134,9 @@ a single VM on VirtualBox or VMware.
    ```
 
    `bin/cloud up` creates the platform VM. Then it builds the range through
-   the platform's own API and prints each step. The first run also builds the
-   range's golden images (the VM images the range boots from) and the OPNsense
-   edge image on the cloud, so it takes much longer than later runs. In the
-   trial of `docs/OPENSTACK.md` §9 it took 17 min 41 s from an empty cloud, with
-   the four builders running in parallel. It ends with
+   the platform's own API and prints each step. The first run boots the range
+   host, which installs Docker and pulls every range image from GHCR before
+   its first slot starts, so it takes longer than later runs. It ends with
    `the range is ready; the platform is at http://ADDRESS:8000/`.
 
 8. **Check that it works.** Open that address in a browser.
@@ -144,7 +147,7 @@ a single VM on VirtualBox or VMware.
      **Open**. The console shows the **Map** pane with the company network drawn
      on it. Beside it, the lesson note names the first step.
    - If the page says the practice network is not ready, wait. A closed session
-     resets its slot in about two minutes.
+     resets its slot first.
 
    From a terminal, `curl -s http://ADDRESS:8000/api/range/ready/` answers
    `"ready": true` before you start the lesson. It answers `"ready": false`
@@ -174,7 +177,7 @@ a single VM on VirtualBox or VMware.
      there is none, it starts with an empty database and says so.
    - To start over, run `.venv/bin/python bin/cloud down`, then
      `bin/cloud up` again. `down` removes the range and the stack, including a
-     failed stack. It keeps the Glance images, the keypair and the range key.
+     failed stack. It keeps the keypair and the range key.
      If the platform VM holds the database, `down` backs it up first. If it
      cannot back it up, it refuses and deletes nothing. If the platform container
      is stopped, `down` starts it first. It refuses when ssh or Docker on the
@@ -195,14 +198,15 @@ slot ready.
 Cloud-init installs `cr-platform.service`. At every boot it runs
 `docker compose pull` and `docker compose up -d` on `/opt/cr/compose.yaml`.
 
-- We build seven images: platform, board, corp, corp-db, kali, proxy and gns3.
+- We build eight images: platform, board, corp, corp-db, gns3, kali, waf and
+  edge.
   `.github/workflows/images.yml` builds them on every push to `dev`. It
   publishes them as `ghcr.io/nekonic/cr-<name>`, tagged with the commit SHA
   and with `dev`.
 - The VM writes the SHA of the commit it cloned into `/opt/cr/.env` as
   `CR_IMAGE_TAG`. It therefore runs the images of exactly that commit.
 - GitHub makes a package private on the first push, even when the repository is
-  public. Make each of the seven public once. Otherwise the pull without a
+  public. Make each of the eight public once. Otherwise the pull without a
   login fails. On github.com open the package page, then **Package settings**,
   **Change visibility**, **Public**. You cannot undo this.
 - The containers on the VM are `cr-platform`, `cr-elasticsearch`,
@@ -234,10 +238,11 @@ When a session opens, it gets its own Kibana space, "SOC" (`KIBANA_URL`, set in
 They show the engine and the sensor's map name as fields and hide the
 platform's internal fields.
 
-The platform builds three kinds of range network. `cr-internet` is the
-simulated Internet, with 30 origin subnets. `cr-estate` is the company's
-internal network, where the targets sit. `cr-mgmt` is the management network,
-which the platform uses to reach the range's VMs.
+The platform builds one OpenStack network for the range: `cr-mgmt`, the
+management network, which the platform uses to reach the range host. Each
+slot's other networks are Docker networks on the range host: `sN_internet` is
+the simulated Internet, with 30 origin subnets, and `sN_estate` is the
+company's internal network, where the WAF and the targets sit.
 
 ```mermaid
 flowchart TB
@@ -252,18 +257,19 @@ flowchart TB
         stack["the platform's containers<br/>(next graph)"]
       end
     end
-    subgraph fabric_box["range networks, built by the platform"]
-      internet["cr-internet<br/>30 origin subnets"]
-      inside["cr-estate, cr-mgmt"]
+    mgmt["cr-mgmt<br/>built by the platform"]
+    subgraph rangevm["range host cr-range, Ubuntu 24.04"]
+      slots["one docker compose project per slot<br/>s1, s2, ..."]
     end
   end
 
   person -->|":8000"| fip
   fip --> vm
   unit -->|"every boot"| stack
-  stack -->|"/api/range/fabric/, describe()"| api
-  api -.->|builds and lists| internet
-  api -.->|builds and lists| inside
+  stack -->|"/api/range/fabric/, /slot/"| api
+  api -.->|builds| mgmt
+  api -.->|boots| rangevm
+  stack -->|"ssh over cr-mgmt, docker exec"| rangevm
 ```
 
 ### What a session contains
@@ -282,10 +288,12 @@ long as the VM does: the platform, Elasticsearch, Kibana, `gns3` (the learners'
 maps), and `collector`. The collector is a Filebeat that only receives syslog
 from the range.
 
-One session's services run in its slot, four VMs: the OPNsense edge (firewall
-and Suricata), the WAF, Kali (with the stamping proxy and the customers'
-traffic) and the wargame host (every wargame as containers, plus a second
-Suricata on the estate). They send their logs by syslog to `collector`.
+One session's services run in its slot, the docker compose project `sN` on the
+range host: Kali (with the stamping proxy and the customers' traffic), the
+edge (an nftables router), the WAF, the board and corp with their MySQL
+databases, and two Suricata sensors, one on the slot's Internet bridge and one
+on its estate bridge. The range host's rsyslog sends the sensors' alerts and
+the WAF's audit log to `collector`.
 
 A closed session stays in the database for `CR_RETAIN_CLOSED_MINUTES` (default
 60, set in `compose.yaml`). That is long enough to read its score and debrief.
@@ -298,9 +306,10 @@ To add a wargame you need:
 - a folder under `wargames/` with `compose.yaml`, `scenario.yaml` and
   `objectives.yaml`;
 - a case file under `redteam/cases/`;
-- its name under `wargames:` and its port under `publish:` in the
-  `cr-wargame-host` entry of `platform/range/declaration.yaml`, and a `server`
-  block in `deploy/waf/board.com.conf`.
+- its name under `wargames:` in the `cr-range` entry of
+  `platform/range/declaration.yaml`, its estate address under `fronts:` in
+  `deploy/range-host/slot.yaml`, and a `server` block in
+  `deploy/waf/board.com.conf`.
 
 `platform/wargames.py` finds the wargame from `scenario.yaml`. There are two
 wargames. The board is Django and is scored by `loot_verified`: submitted
@@ -318,15 +327,15 @@ flowchart LR
     es[("elasticsearch")]
   end
 
-  subgraph slot["One session's slot, four VMs"]
+  subgraph slot["One session's slot, compose project sN on cr-range"]
     kali["kali<br/>attack terminal<br/>proxy labels each case"]
-    edge["edge<br/>OPNsense + Suricata"]
+    edge["edge<br/>nftables router"]
+    edgesensor["Suricata<br/>on sN-inet"]
     waf["waf<br/>nginx + ModSecurity CRS"]
-    subgraph host["wargame host"]
-      board["board<br/>and its MySQL"]
-      corp["corp<br/>WordPress and its MySQL"]
-      estate["Suricata<br/>on the estate"]
-    end
+    board["board<br/>and its MySQL"]
+    corp["corp<br/>WordPress and its MySQL"]
+    estate["Suricata<br/>on sN-estate"]
+    rsyslog["the range host's rsyslog"]
   end
 
   person -->|":8000"| console
@@ -335,9 +344,10 @@ flowchart LR
   edge --> waf
   waf --> board
   waf --> corp
-  edge -.->|"alerts, syslog"| collector
-  waf -.->|"audit log, syslog"| collector
-  estate -.->|"alerts, syslog"| collector
+  edgesensor -.->|"eve.json"| rsyslog
+  waf -.->|"audit log"| rsyslog
+  estate -.->|"eve.json"| rsyslog
+  rsyslog -.->|"syslog, 5140/udp"| collector
   collector --> es
   es -->|alerts| scoring
   board -.->|its own records| scoring
@@ -348,18 +358,21 @@ Not drawn in the graph:
 
 - Kali's raw TCP skips the proxy and goes through the edge to the WAF.
 - Scripted cases leave from the attacker box: the platform runs `curl` or the
-  tool on Kali over ssh, from the chosen origin.
-- The platform writes the sensor's rules and the proxy's case label. It reads
-  the attacker's command log and corp-db's MySQL binary log (`mysqlbinlog`). It
-  does this over ssh.
-- The platform reads the board's own records (its `auth_user` table) over HTTP
-  straight from the board (`BOARD_API_URL`), not through the WAF.
+  tool in the Kali container, from the chosen origin.
+- The platform writes the sensors' rules and the proxy's case label. It reads
+  the attacker's command log and corp-db's MySQL binary log (`mysqlbinlog`).
+- The platform reads the board's own records (its `auth_user` table) inside
+  the board's container, not through the WAF.
+- Each of these commands runs as ssh to the range host's `mgmt` address and
+  `sudo docker exec` into the slot's container (`sN-kali`, `sN-board` and so
+  on).
 
 The Kali terminal appears in the red console, and in the Kali pane of the blue
 console in a lesson or scenario. It is a ttyd inside the platform
-that logs in over ssh to the `mgmt` address of the Kali VM in the session's
-slot (`/vm-terminal/kali/?arg=<session id>`). Its prompt reads `(kali㉿kali)`,
-as Kali's own does. The WAF's prompt is `ubuntu@waf`. The networks are in
+that logs in over ssh to the range host's `mgmt` address and runs
+`docker exec` into the Kali container of the session's slot
+(`/vm-terminal/kali/?arg=<session id>`). Its prompt reads `(root㉿kali)`. The
+WAF's terminal opens the slot's WAF container the same way, as root. The networks are in
 `docs/ARCHITECTURE.md`.
 
 ## Operating on OpenStack
@@ -375,12 +388,9 @@ Everything that differs between clouds is in one file,
   itself never goes in the file;
 - the external network, DNS, the tenant MTU, and the platform, estate and mgmt
   CIDRs;
-- the base image name and an availability zone;
-- flavors for the platform, the image builders, the range, and any role
-  (`edge`);
+- the base image name, an availability zone and the number of slots;
+- two flavors: `platform` and `range` (the range host);
 - the operator's keypair and key file, and the range key;
-- the OPNsense release to build: version, mirror, the image's SHA256 and the
-  signing key's SHA256 from the release announcement;
 - the stack, the repository and the ref.
 
 Every script and the Heat stack read this file. If a value does not parse, they
@@ -389,12 +399,13 @@ refuse before they touch anything and name every bad key.
 The cloud needs exactly one uploaded image: Canonical's stock Ubuntu 24.04
 cloud image, uploaded unchanged under the name set in `compute.base_image`.
 `docs/OPENSTACK.md` has the download, checksum and `openstack image create`
-commands. Everything else is built from that image:
+commands. Both VMs boot from that image, and cloud-init sets each up at boot:
 
-- cloud-init builds the platform VM at boot;
-- builders build the range's golden images;
-- a builder that downloads the official release builds the OPNsense edge image
-  (below).
+- the platform VM clones the repository and starts `compose.yaml`;
+- the range host gets its setup bundle in the Nova user data
+  (`deploy/range-host/setup.sh`). It installs Docker, pulls every range image
+  from GHCR at the platform's `CR_IMAGE_TAG`, and keeps a pristine copy of the
+  targets' volumes for resets.
 
 With the OpenStack CLI in `.venv` (step 3), run these on the operator's
 machine:
@@ -410,11 +421,15 @@ machine:
    there is none. With `--replace` it replaces an existing stack through
    `bin/platform-rebuild`.
 2. It waits for the API.
-3. It calls the platform's range API in order: fabric (the networks, keypair
-   and security groups), images (repeated until clean), slot, configure.
+3. It calls the platform's range API in order: fabric (the management
+   network, keypair and security groups), then slot (boots or replaces the
+   range host). It waits until the range host stands and its setup is done,
+   then calls configure.
 4. It waits until `/api/range/ready/` says ready.
+5. It removes what the earlier range of VMs left (`DELETE
+   /api/range/leftovers/`) and prints each item.
 
-It stops at the first drift, failed image, blocked slot or refused configure,
+It stops at the first drift, blocked slot, failed setup or refused configure,
 and says why.
 
 `up` and `down` both ran on the test cloud. On 2026-10-20 these
@@ -424,10 +439,11 @@ after `down`, which restored the newest backup that holds rows
 (`docs/DECISIONS.md` 2026-10-20, "Live checks of the bring-up paths"). Later that
 day, after two more fixes, these ran live too: `down` on a platform whose container
 was stopped, `up` on a platform whose `openstack.env` had lost its password
-line, the first range key, and `up` after `down` without rebuilding the wargame
-host. The whole of §9 ran in one VM on an empty cloud
-(`docs/DECISIONS.md` 2026-10-20, "The one-VM trial and the last bring-up
-fixes"). `docs/OPENSTACK.md` §5 has the steps.
+line, the first range key, and `up` after `down` without rebuilding a range
+VM. The whole of §9 ran in one VM on an empty cloud (`docs/DECISIONS.md`
+2026-10-20, "The one-VM trial and the last bring-up fixes"). All of these ran
+on the range of VMs that came before the range host. `docs/OPENSTACK.md` §5
+has the steps.
 
 `bin/platform-rebuild` alone creates or replaces only the platform VM:
 
@@ -435,7 +451,7 @@ fixes"). `docs/OPENSTACK.md` §5 has the steps.
 .venv/bin/python bin/platform-rebuild            # --cloud PATH, --ref REF
 ```
 
-Before it deletes anything, it checks that the seven images for the ref's
+Before it deletes anything, it checks that the eight images for the ref's
 commit can be pulled from ghcr.io without a login. It keeps the range key
 (below) and backs up the database (`bin/backup` over ssh). Then it deletes the
 stack, creates it again with every parameter from `cloud.yaml`, and waits until
@@ -466,7 +482,7 @@ the file does not exist:
   holds a database;
 - it refuses when you replace a failed stack.
 
-Because the key survives, the range's VMs and the `cr-platform` keypair keep
+Because the key survives, the range host and the `cr-platform` keypair keep
 trusting the new platform. The range can stay up while you replace the
 platform.
 
@@ -477,7 +493,8 @@ that commit. Then the rebuild:
 
 - checks out this checkout's HEAD from a git bundle;
 - runs `docker load` on each tarball and tags the image with the cloned
-  commit. Compose and the range's image builders use that tag;
+  commit. The platform VM's compose uses that tag. The range host pulls its
+  images from GHCR at that tag, so it never sees a sideloaded image;
 - recreates every service (`--force-recreate`), so bind-mounted files are
   HEAD's too.
 
@@ -506,64 +523,59 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 left over. `DELETE` takes the fabric down. It is refused while a server is
 attached.
 
-The range's VMs boot from golden images. The platform builds each image from a
-setup script that `declaration.yaml` names under `hosts:`, on a builder VM
-booted from the base image. Each POST moves every build one step: boot a
-builder, stop it once its setup reports done, snapshot it, delete it. The edge's
-builder is not snapshotted: it serves its disk, and the platform uploads that
-disk to Glance. Repeat the POST until
-the answer says `"clean": true`:
-
-```bash
-curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/images/
-```
-
-If a build fails, `detail` shows the end of the builder's console. `DELETE` on
-the same path removes failed builders and images built from older scripts.
-
-When the images are ready, one POST boots four VMs, each from its own image:
-`cr-edge`, `cr-kali`, `cr-waf` and `cr-wargame-host`. The wargame host runs
-every wargame as its GHCR containers. The platform reaches the four over ssh on
-`mgmt`:
+Then one POST boots the range host `cr-range` from the base image, with its
+setup bundle in the user data. It has two ports: one on `mgmt` (security group
+`cr-mgmt`, which only the platform reaches) and one on the platform's own
+network (security group `cr-egress`, no ingress), which it uses to pull
+images:
 
 ```bash
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/slot/
 ```
 
-On a slot that already stands, the same POST rebuilds each VM whose image is
-not the ready one, unless a session holds the slot.
+`GET` on the same path reports the range host `SETTING_UP` until its setup
+marks `/var/lib/cr/ready`, and `SETUP_FAILED` with the end of the setup log if
+the setup fails. On a range host that already stands, the same POST replaces
+it when its image tag or setup bundle is not the platform's, unless a session
+holds a slot.
 
-`POST /api/range/configure/` then pushes configuration over ssh. On the
-OPNsense edge it installs config.xml (WAN addresses, pass rules, Suricata,
-syslog) and reboots it. On the WAF it sets up forwarding of the ModSecurity log.
-Board and corp run as containers on the wargame host, and `configure` starts
-them.
+`POST /api/range/configure/` then starts each slot. The platform renders the
+slot's compose file from `deploy/range-host/slot.yaml` and each wargame's
+`wargames/<w>/compose.yaml`, sends it to the range host over ssh, and runs
+`deploy/range-host/slot.sh up N`. That starts the compose project `sN`, gives
+Kali and the edge their origin addresses, and sets up the range host's rsyslog
+to forward the slot's logs. The platform then loads the baseline rules into
+both sensors.
 
-`POST /api/range/slot/rebuild/` rebuilds every VM from its golden image with
-Nova. Ports and addresses stay. Edited data and rules do not carry over, and the
-pushed configuration is wiped. After you call `slot/rebuild/` alone, run
-`configure/` yourself.
+`POST /api/range/slot/rebuild/` takes the slot's compose project down with its
+volumes. Edited data and rules do not carry over. Run `configure/` after it to
+start the slot again.
 
-Closing a session resets its slot:
+Closing a session resets its slot in place with `slot.sh reset N`:
 
-- Kali and the WAF are rebuilt.
-- The edge is reset in place. It compares hashes and reboots only if its files
-  drifted.
-- The wargame host is reset in place (`docker compose down -v`).
-- The edge or the wargame host is rebuilt instead when its image is not the
-  ready one.
+- Kali and the WAF are recreated.
+- The targets are removed and restored from the pristine volumes the range
+  host keeps.
+- The edge's neighbour table is flushed. The edge and the sensors keep running.
+- The slot's logs are emptied in place, and the sensors reopen their log
+  files. The platform then loads the baseline rules into both sensors again.
 
-When the VMs are ACTIVE, the platform configures them again by itself.
 Meanwhile `GET /api/range/ready/` reports phase `RESETTING`, and opening a
 session is refused. If the reset fails, it reports `RESET_FAILED` with the
 reason, and `POST /api/range/configure/` retries.
 
 `compute.slots` in `cloud.yaml` (default 1) sets how many copies of the range
-stand. Each copy has its own edge, WAF, Kali and wargame host, on its own copy
-of the internet and estate networks. Slot N's hosts are named `<host>-N`. Each
-session holds one slot, so that many sessions can run at once. Closing a
-session resets only its slot. `slot/`, `slot/rebuild/` and `configure/` take
-`?slot=N`. Without it they act on every slot.
+stand. Each copy is its own compose project `sN` on the range host, with its
+own Internet and estate networks. Slot N's estate is the Nth /24 of
+`network.estate` (`10.30.N.0/24` in the example), and its containers are named
+`sN-<service>`. Each session holds one slot, so that many sessions can run at
+once. Closing a session resets only its slot. `slot/`, `slot/rebuild/` and
+`configure/` take `?slot=N`. Without it they act on every slot.
+
+`GET /api/range/leftovers/` lists what the range of VMs before the range host
+left in the project: its VMs, image builders, the ports, subnets and networks
+of retired segments, the security groups `cr-range` and `cr-build`, and its
+images. `DELETE` on the same path removes them. `bin/cloud up` calls it last.
 
 The range is not part of the Heat stack, so it can outlive the platform VM. When
 you replace the platform with `bin/platform-rebuild`, the range key is kept, so
@@ -571,7 +583,8 @@ the slot and the fabric keep working. The next `POST /api/range/fabric/`
 attaches the new server to `mgmt` again, and `configure/` points the range's
 syslog at it. If you delete the stack by hand without keeping the key, the new
 VM makes a new key, and the fabric reports the old keypair as drift. Then first
-send `DELETE` to `/api/range/slot/` and `/api/range/fabric/`. The images stay.
+send `DELETE` to `/api/range/slot/` (without `?slot=`, which also deletes the
+range host) and `/api/range/fabric/`.
 
 The stack boots with the keypair that `keys.operator` names. The keypair must be
 in the project first:
@@ -580,38 +593,14 @@ in the project first:
 openstack keypair create --public-key PUBLIC_KEY_FILE fsl-claude
 ```
 
-### The OPNsense image
-
-The edge is OPNsense (BSD 2-clause license). The images step builds it
-automatically. A builder booted from the stock Ubuntu image does this:
-
-1. It installs its tools.
-2. It downloads `OPNsense-<version>-nano-amd64.img.bz2`, its `.sig` and the
-   release key from `opnsense.mirror`.
-3. It checks the archive against `opnsense.image_sha256` and the key against
-   `opnsense.pubkey_sha256`. Both values come from the release announcement,
-   not from the mirror.
-4. It unpacks the archive and verifies the signature.
-5. It boots the image once under QEMU and answers its configuration importer,
-   so the image starts from `deploy/opnsense/config.xml`. In that
-   configuration root trusts only the platform key and has no password. The
-   stock image's default password never exists.
-6. It converts the image to qcow2 with `qemu-img` and serves it. The platform
-   checks its SHA256 and uploads it to Glance as `fsl-opnsense-<version>`.
-
-A new version, a new MTU or a new platform key builds a new image. The image is
-built from the official release on each cloud and is never published.
-OPNsense's trademark policy asks for permission before a derivative name is
-used.
-
 ## Ports
 
 | Port | | Used by |
 |---|---|---|
 | 8000 | the console and `/api/`; Kibana at `/kibana/`; the terminals at `/vm-terminal/kali/` and `/vm-terminal/waf/` | a person's browser |
-| 8002 | the Website pane of the red and blue consoles: `/site/<session id>/<host>/`. The request goes to that session's WAF from a customers address (from Kali through the edge) | the iframe in a person's browser |
+| 8002 | the Website pane of the red and blue consoles: `/site/<session id>/<host>/`. The request goes to that session's WAF from a customers address (from the Kali container through the edge) | the iframe in a person's browser |
 | 3080 | `gns3`: GNS3 3.1's API and web UI. It holds the learner maps (below) | the iframe in a person's browser, and `platform/gns3.py` over `mgmt` |
-| 5140/udp | `collector`, Filebeat's syslog input | the OPNsense edge, the WAF and the wargame host's estate sensor |
+| 5140/udp | `collector`, Filebeat's syslog input | the range host's rsyslog, which forwards each slot's two sensors' alerts and its WAF's audit log |
 | 5601 | Kibana itself, on the platform host's loopback only. `/kibana/` on 8000 serves only the sessions' spaces, and inside them only Discover | an operator, through an ssh tunnel |
 | 9200 | Elasticsearch | the acceptance tests |
 
@@ -620,7 +609,8 @@ separate origin for the target site, so a script planted on the target cannot
 read or drive the console. Cookies are scoped by host, not port, so such a
 script could still set a cookie that the console would send. The console uses
 no cookies. nginx passes `/vm-terminal/` to ttyd processes inside the platform.
-They log in over ssh to the host's `mgmt` address.
+They log in over ssh to the range host's `mgmt` address and open the slot's
+container with `docker exec`.
 
 **The learner map (port 3080).** Each session's map shows the company network
 the learner defends, drawn as a lab topology.
@@ -651,8 +641,9 @@ platform template's security group opens 8000, 8002 and 3080
 The target is not published. The command-line cases and the acceptance tests
 reach it from inside the range, as the console does. Inside the range the
 targets sit behind the WAF on port 80: `http://board.com` and `http://corp.com`,
-two virtual hosts chosen by the `Host` header. Each slot's VMs get those names
-in `/etc/hosts` from their boot user data, pointing at that slot's WAF.
+two virtual hosts chosen by the `Host` header. Each slot's Kali container gets
+those two names, and no others, in `/etc/hosts` from the slot's compose file,
+pointing at that slot's WAF.
 
 ## Running a session
 
@@ -912,8 +903,11 @@ same steps.
 - The Docker socket is mounted into the platform, which gives a way out of the
   container.
 - The terminals under `/vm-terminal/` need no login of their own. They give a
-  shell on Kali and on the WAF. The Kali shell is user `kali`, who has
-  passwordless sudo.
+  root shell in the slot's Kali container and in its WAF container. Both drop
+  every capability except a listed few and run with `no-new-privileges`, and
+  Docker's user namespace remap makes container root an unprivileged user on
+  the range host. Every slot shares the range host's kernel
+  (`docs/THREAT-MODEL.md`).
 
 The same holds on the platform VM. There the project's password is also in
 plain text in `/opt/cr/openstack.env` and in the platform container's

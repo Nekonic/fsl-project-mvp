@@ -2,7 +2,7 @@
 
 이 문서는 훈련 환경이 어떻게 구성되어 있는지, 트래픽과 증거가 그 안에서 어떻게 이동하는지, 왜 그렇게 설계했는지를 설명합니다. 점수의 정의는 `CLAUDE.md`에 있습니다. 미해결 문제와 측정으로 확인한 특이 사항은 `docs/STATE.md`에 있습니다.
 
-훈련 환경은 OpenStack에서만 돌립니다. docker substrate는 2026-10-21에 삭제했습니다(`docs/DECISIONS.md`). Docker는 지금도 플랫폼 VM에서 플랫폼 자신의 서비스를, 워게임 호스트에서 워게임을, GNS3의 표시용 노드를 실행합니다. 로컬 개발에서는 훈련 환경이 아니라 유닛 테스트를 실행합니다. 마지막 절 "OpenStack"은 훈련 환경을 설명하며, 이미 구축한 것과 계획만 있는 것을 구분해 적습니다(`docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`).
+훈련 환경은 OpenStack에서만 돌립니다. docker substrate는 2026-10-21에 삭제했습니다(`docs/DECISIONS.md`). Docker는 지금도 플랫폼 VM에서 플랫폼 자신의 서비스를, 훈련 환경 호스트에서 모든 슬롯의 컨테이너를, GNS3의 표시용 노드를 실행합니다. 로컬 개발에서는 훈련 환경이 아니라 유닛 테스트를 실행합니다. 마지막 절 "OpenStack"은 훈련 환경을 설명하며, 이미 구축한 것과 계획만 있는 것을 구분해 적습니다(`docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`).
 
 이 레포는 가설 하나에서 출발했습니다. 레드팀 공격에는 정답 데이터(ground truth) 라벨을 붙일 수 있습니다. Suricata와 ModSecurity 경보는 그 라벨에 자동으로 맞출 수 있습니다. 그러면 오탐과 미탐을 기계적으로 채점할 수 있습니다. 목표 점수는 이 가설이 맞는 것을 확인한 뒤에 추가했습니다.
 
@@ -16,17 +16,18 @@
 - **정답 데이터**(ground truth): 대상 시스템이 직접 저장한 데이터입니다. 공격자가 실제로 무엇을 빼앗았는지 보여 줍니다. board에서는 제출한 탈취 데이터를 대조하는 비밀 값이고, corp에서는 DB 변경 로그입니다.
 - **substrate**: 플랫폼이 훈련 환경을 올리는 기반으로, `CR_SUBSTRATE`로 고릅니다. 지원하는 것은 OpenStack뿐입니다.
 - **`estate`**: 대상 앱이 있는 내부 네트워크입니다.
-- **슬롯**: 훈련 환경 VM 한 벌입니다. 세션 하나가 슬롯 하나를 씁니다.
+- **슬롯**: 훈련 환경 한 벌로, 훈련 환경 호스트 위의 docker compose 프로젝트 `sN`입니다. 세션 하나가 슬롯 하나를 씁니다.
 - **방어 설정**(posture): 시작 방어 상태입니다. WAF 설정과 IDS 룰 파일로 이루어지며, 워게임이 `defense:` 맵에 선언하고 세션은 그중 하나로 시작합니다. 코드에서는 posture라고 부릅니다.
 - **코치**(coach): 레슨 강조 기능입니다. 단계가 다루는 화면 요소에 원을 두르고 그 옆에 한 줄 안내를 붙입니다.
 - **격리 경계**(isolation seam): 한 관심사를 한 파일만 다루게 하는 규칙입니다. "격리 경계" 절에 목록이 있습니다.
 - **플랫폼 DB**(store): 플랫폼의 SQLite 데이터베이스, `/data/db.sqlite3`입니다.
 - **유닛**(unit): 단계 엔진이 실행하는 기초 레슨 또는 시나리오 하나입니다. 본문에서는 대개 "레슨"이라고 씁니다.
-- **박스**(box): 역할 하나를 맡는 VM입니다. 공격 박스(Kali)가 한 예입니다.
+- **박스**(box): 역할 하나를 맡는 컨테이너입니다. 공격 박스(Kali)가 한 예입니다.
+- **훈련 환경 호스트**(range host): 모든 슬롯의 컨테이너를 실행하는 VM 하나, `cr-range`입니다.
 
 ## 훈련 환경
 
-플랫폼 VM은 compose 파일 하나, `compose.yaml`(프로젝트 `cr`)을 실행합니다. 이것이 컨트롤 플레인이며, 오래 떠 있는 사본 하나가 플랫폼, Elasticsearch, Kibana, `collector`, GNS3 서버를 네트워크 `mgmt` 하나 위에서 실행합니다. `bin/measure`가 이 파일의 서비스 수를 셉니다. 훈련 환경 자체는 슬롯 안의 OpenStack VM입니다("OpenStack" 절).
+플랫폼 VM은 compose 파일 하나, `compose.yaml`(프로젝트 `cr`)을 실행합니다. 이것이 컨트롤 플레인이며, 오래 떠 있는 사본 하나가 플랫폼, Elasticsearch, Kibana, `collector`, GNS3 서버를 네트워크 `mgmt` 하나 위에서 실행합니다. `bin/measure`가 이 파일의 서비스 수를 셉니다. 훈련 환경 자체는 VM 하나를 더 써서, 훈련 환경 호스트 `cr-range`에서 슬롯마다 compose 프로젝트 하나로 돕니다("OpenStack" 절).
 
 세션을 열면(`POST /api/sessions/`) 스택을 띄우지 않습니다.
 
@@ -43,11 +44,11 @@
 - 플랫폼 DB는 `transaction_mode: IMMEDIATE`(`cr/settings.py`)로 설정한 SQLite입니다. 읽은 뒤 쓰는 트랜잭션은 시작할 때 쓰기 잠금을 잡습니다. `database is locked`로 바로 실패하지 않고 30초 busy timeout 동안 기다립니다.
 - `bin/backup`은 `VACUUM INTO`로 플랫폼 DB의 스냅숏을 만들고, 가장 최근 사본 `--keep`개를 남깁니다(기본 1). `bin/platform-rebuild`와 `bin/cloud down`에서는 `cloud.yaml`의 `backups: {keep}` 값을 씁니다.
 
-워게임은 VM 하나(`cr-wargame-host`)에서 GHCR 컨테이너로 실행됩니다.
+워게임은 훈련 환경 호스트의 각 슬롯에서 GHCR 컨테이너로 돕니다.
 
-- 준비 상태 점검과 세션 baseline은 어댑터의 `address("board")`로 board를 읽습니다. 이 주소는 board의 8000 포트가 publish된 워게임 호스트의 관리망 주소입니다. `loot.ground_truth`가 `BOARD_API_URL`의 호스트를 이 주소로 바꿉니다.
+- 준비 상태 점검과 세션 baseline은 `board` 역할의 runner(`sudo docker exec sN-board`)로 board 컨테이너 안에서 board를 읽습니다. `loot.ground_truth`는 그 안에서 `BOARD_API_URL`의 포트로 `127.0.0.1`에 요청합니다. board의 포트는 어디에도 publish하지 않습니다.
 
-대상 시스템은 워게임이고, `wargames/` 아래 폴더 하나입니다. 워게임 호스트가 그 폴더의 `compose.yaml`을 실행합니다. 워게임은 둘입니다.
+대상 시스템은 워게임이고, `wargames/` 아래 폴더 하나입니다. 모든 슬롯이 그 폴더의 `compose.yaml`을 실행합니다. 워게임은 둘입니다.
 
 - `board`(Django와 MySQL, `loot_verified`)
 - `corp`(WordPress와 MySQL, `effect_observed`)
@@ -62,12 +63,13 @@
 이미지는 다음과 같이 만들고 가져옵니다.
 
 - 앱 이미지는 CI(`.github/workflows/images.yml`)가 빌드합니다.
-- 워게임 호스트가 `ghcr.io/nekonic/cr-<name>:<CR_IMAGE_TAG>`를 pull합니다. 플랫폼이 자신의 태그를 호스트의 번들에 적어 넣습니다.
-- 도구 케이스는 공격 호스트에서 실행합니다(`redteam/tools.py`, `TOOL_IMAGE`의 기본값은 `cr-kali`).
+- 훈련 환경 자체의 이미지도 CI가 빌드합니다: Kali(`deploy/kali/Dockerfile`), WAF(`deploy/waf/Dockerfile`), 에지(`deploy/edge/Dockerfile`).
+- 훈련 환경 호스트가 각 이미지를 `ghcr.io/nekonic/cr-<name>:<CR_IMAGE_TAG>`로 pull합니다. 플랫폼이 자신의 태그를 호스트의 설치 번들과 슬롯마다의 compose 파일에 적어 넣습니다.
+- 도구 케이스는 공격 컨테이너에서 실행합니다(`redteam/tools.py`, `TOOL_IMAGE`의 기본값은 `cr-kali`).
 
-새 워게임을 추가하려면 폴더 안의 `scenario.yaml`, `objectives.yaml`, `compose.yaml`, `redteam/cases/` 아래의 케이스 파일, 그리고 `declaration.yaml`에서 워게임 호스트의 `wargames:` 목록에 넣을 이름이 필요합니다.
+새 워게임을 추가하려면 폴더 안의 `scenario.yaml`, `objectives.yaml`, `compose.yaml`, `redteam/cases/` 아래의 케이스 파일, 그리고 `declaration.yaml`에서 훈련 환경 호스트의 `wargames:` 목록에 넣을 이름이 필요합니다.
 
-워게임의 `compose.yaml`은 `container_name`을 고정하지 않습니다. 워게임 호스트는 컨테이너를 서비스 이름(`board`, `corp-wp`)으로 부릅니다. 고정 이름은 컨트롤 플레인에만 있습니다: `cr-platform`, `cr-elasticsearch`, `cr-kibana`, `cr-collector`, `cr-gns3`. 아래 첫 번째 표는 서비스를 이 이름으로 적습니다.
+워게임의 `compose.yaml`은 `container_name`을 고정하지 않습니다. 슬롯은 컨테이너 이름을 `sN-<service>`(`s1-board`, `s2-corp-wp`)로 붙이고, 호스트 이름은 서비스 이름으로 줍니다. 고정 이름은 컨트롤 플레인에만 있습니다: `cr-platform`, `cr-elasticsearch`, `cr-kibana`, `cr-collector`, `cr-gns3`. 아래 첫 번째 표는 서비스를 이 이름으로 적습니다.
 
 훈련 환경에 작용하는 엔드포인트는 쿼리나 본문에서 `session`을 받습니다. 해당 엔드포인트는 rules, validate, 룰 비활성화, `/api/attacker/`, origin, label, canary입니다.
 
@@ -83,28 +85,32 @@
 
 | 서비스 | 실행 위치 | 이미지 | 네트워크 | 호스트 포트 |
 |---|---|---|---|---|
-| `board` | 워게임 호스트 | `wargames/board/app`에서 빌드한 `ghcr.io/nekonic/cr-board` (gunicorn 위의 Django, 포트 8000) | estate | 8000 |
-| `board-db` | 워게임 호스트 | `mysql` | estate | |
-| `corp-wp` | 워게임 호스트 | `wargames/corp/app`에서 빌드한 `ghcr.io/nekonic/cr-corp` (WordPress 6.6.2, 취약 버전으로 고정한 플러그인 세 개. `Host` 헤더가 `corp.com`) | estate | 80 |
-| `corp-db` | 워게임 호스트 | `wargames/corp/db`에서 빌드한 `ghcr.io/nekonic/cr-corp-db` (MySQL 8.4, binlog `ROW`) | estate | |
-| `suricata` | 워게임 호스트 | `jasonish/suricata`, estate 센서(`deploy/wargame-host/sensor.yaml`) | 호스트 네트워크 | |
+| `kali` | 훈련 환경 호스트, 슬롯 N | `deploy/kali/Dockerfile`에서 빌드한 `ghcr.io/nekonic/cr-kali` (공격 도구와 마커 프록시를 넣은 Ubuntu 24.04) | internet | |
+| `edge` | 훈련 환경 호스트, 슬롯 N | `deploy/edge/Dockerfile`에서 빌드한 `ghcr.io/nekonic/cr-edge` (Alpine과 nftables로 만든 라우터) | internet, estate | |
+| `waf` | 훈련 환경 호스트, 슬롯 N | `deploy/waf/Dockerfile`에서 빌드한 `ghcr.io/nekonic/cr-waf` (nginx 1.24, ModSecurity v3, CRS) | estate | |
+| `edge-sensor` | 훈련 환경 호스트, 슬롯 N | digest로 고정한 `jasonish/suricata`, 브리지 `sN-inet` 감시(`deploy/range-host/edge-sensor.yaml`) | 호스트 네트워크 | |
+| `estate-sensor` | 훈련 환경 호스트, 슬롯 N | digest로 고정한 `jasonish/suricata`, 브리지 `sN-estate` 감시(`deploy/suricata/suricata.yaml`) | 호스트 네트워크 | |
+| `board` | 훈련 환경 호스트, 슬롯 N | `wargames/board/app`에서 빌드한 `ghcr.io/nekonic/cr-board` (gunicorn 위의 Django, 포트 8000) | estate, `board-default` | |
+| `board-db` | 훈련 환경 호스트, 슬롯 N | digest로 고정한 `mysql` | `board-default` | |
+| `corp-wp` | 훈련 환경 호스트, 슬롯 N | `wargames/corp/app`에서 빌드한 `ghcr.io/nekonic/cr-corp` (WordPress 6.6.2, 취약 버전으로 고정한 플러그인 세 개. `Host` 헤더가 `corp.com`) | estate, `corp-default` | |
+| `corp-db` | 훈련 환경 호스트, 슬롯 N | `wargames/corp/db`에서 빌드한 `ghcr.io/nekonic/cr-corp-db` (MySQL 8.4, binlog `ROW`) | `corp-default` | |
 | `cr-elasticsearch` | 플랫폼 VM | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `cr-collector` | 플랫폼 VM | `filebeat:8.15.0`, syslog 입력만 사용 | mgmt | 5140/udp |
 | `cr-kibana` | 플랫폼 VM | `kibana:8.15.0`, `/kibana/`에서 제공 | mgmt | 5601 |
 | `cr-platform` | 플랫폼 VM | `platform/` (waitress 위의 Django, nginx 뒤에서 동작). nginx는 `/kibana/`의 Kibana, `/vm-terminal/kali/`와 `/vm-terminal/waf/`의 VM 터미널도 제공 | mgmt | 8000, 8002 |
 | `cr-gns3` | 플랫폼 VM | `deploy/gns3`에서 빌드한 `ghcr.io/nekonic/cr-gns3` (gns3-server 3.1.0a6, qemu, uBridge 1.2.3, busybox-static, docker-cli). 플랫폼이 올린 학습자 구성도를 열어 두고 그 표시용 노드를 시작. `CAP_NET_ADMIN`, `/dev/net/tun`, Docker 소켓, 호스트의 pid 네임스페이스가 있음 | mgmt | 3080 |
 
-8000, 8002, 3080은 `CR_PUBLISH`에, 5140/udp는 `CR_SYSLOG_PUBLISH`에 바인딩합니다. 두 변수의 기본값은 모두 127.0.0.1입니다. 9200과 5601은 loopback에만 바인딩합니다.
+8000, 8002, 3080은 `CR_PUBLISH`에, 5140/udp는 `CR_SYSLOG_PUBLISH`에 바인딩합니다. 두 변수의 기본값은 모두 127.0.0.1입니다. 9200과 5601은 loopback에만 바인딩합니다. 훈련 환경 호스트는 포트를 하나도 publish하지 않습니다. 표의 슬롯 컨테이너 이름은 `sN-<service>`(`s1-kali`)이고, 슬롯 네트워크는 모두 internal입니다.
 
 | 구간 | 서브넷 | 이름 |
 |---|---|---|
-| `internet` | 출발지마다 /24 하나, 모두 서른 개(`declaration.yaml`). 예: `ru` 5.188.10.0/24, `us` 73.0.0.0/24 | 인터넷 |
-| `estate` | `cloud.yaml`의 `estate` CIDR | 애플리케이션 estate (서비스망) |
-| `mgmt` | `cloud.yaml`의 `mgmt` CIDR | 관리망 |
+| `internet` | 출발지마다 /24 하나, 모두 서른 개(`declaration.yaml`). 예: `ru` 5.188.10.0/24, `us` 73.0.0.0/24. 슬롯의 브리지 `sN-inet` 위 | 인터넷 |
+| `estate` | `cloud.yaml`의 `estate` /16 중 슬롯 N의 /24(10.30.N.0/24), 슬롯의 브리지 `sN-estate` | 애플리케이션 estate (서비스망) |
+| `mgmt` | `cloud.yaml`의 `mgmt` CIDR. fabric이 만드는 유일한 Neutron 네트워크 | 관리망 |
 
 출발지 서브넷은 `declaration.yaml`에 고정합니다. GeoIP용 출발지 정보가 서브넷에 담기기 때문입니다.
 
-`mgmt`는 모든 슬롯이 공유합니다. 플랫폼은 모든 훈련 환경 호스트에 이 네트워크로 접속하고, 호스트들은 이 네트워크로 collector에 syslog를 보냅니다(`docs/DECISIONS.md`, 2026-10-10).
+`mgmt` 하나가 모든 슬롯을 맡습니다. 플랫폼은 이 네트워크로 훈련 환경 호스트에 접속하고, 훈련 환경 호스트는 모든 슬롯의 syslog를 이 네트워크로 collector에 보냅니다(`docs/DECISIONS.md`, 2026-10-10).
 
 플랫폼 VM의 compose 네트워크도 이름이 `mgmt`입니다. 이것은 별개의 Docker 브리지이며, `cloud.yaml`의 CIDR은 이 브리지와 겹칠 수 없습니다.
 
@@ -112,34 +118,38 @@
 
 - Cloudflare Radar 기준 HTTP 요청 점유율 상위 서른 개 국가입니다.
 - 각 출발지는 GeoIP가 그 국가로 판정하는 /24 하나를 갖고, 약 100개의 공격 주소 중 일부를 배정받습니다.
-- OpenStack fabric은 서른 개 모두를 한 네트워크의 서브넷으로 만듭니다.
+- 슬롯마다 `internet` 브리지 하나에 서른 개가 모두 올라갑니다. `deploy/range-host/slot.sh`가 에지에는 출발지마다 게이트웨이 주소를, Kali에는 출발지마다 배정된 주소를 붙입니다(`nsenter`로 `ip -batch` 실행). 브리지 자체의 서브넷 172.30.N.0/24는 아무도 읽지 않는 자리 채움용입니다.
 - `bin/pick-origins`로 이 표를 다시 만들 수 있습니다. acceptance 테스트는 모든 서브넷을 점수 계산이 읽는 파이프라인과 대조합니다.
 
-망 분리는 fabric의 네트워크와 보안 그룹이 합니다.
+망 분리는 훈련 환경 호스트 위 슬롯의 docker 네트워크가 하고, 호스트 바깥은 fabric의 보안 그룹이 막습니다.
 
-- `test/test_attacker_reach.py`가 실제 훈련 환경에서 분리를 검증합니다. Kali는 `board:8000`에도 `corp-wp`에도 직접 접근하지 못하고, 나가는 경로 밖의 어떤 서비스에도 접근하지 못합니다. `test/test_board_exfil.py`는 `board.com`을 거쳐 board에 접근합니다.
+- 슬롯 네트워크는 모두 `internal`이고 `gateway_mode_ipv4: isolated`입니다. 훈련 환경 호스트는 슬롯 브리지에 주소를 갖지 않고, 어느 슬롯 네트워크에도 밖으로 나가는 경로나 NAT가 없습니다.
+- Kali는 `internet`에만 붙어 있고, 아는 이름은 `board.com`과 `corp.com` 둘뿐이며 둘 다 WAF입니다. 에지는 `internet`과 `estate` 사이를 NAT 없이 라우팅합니다. DB는 자기 워게임의 `<wargame>-default` 네트워크에만 붙습니다.
+- `test/test_attacker_reach.py`가 실제 훈련 환경에서 분리를 검증합니다. Kali는 `board:8000`에도 `corp-wp`에도 이름으로는 접근하지 못하고, 나가는 경로 밖의 어떤 서비스에도 접근하지 못합니다. `test/test_board_exfil.py`는 `board.com`을 거쳐 board에 접근합니다.
+- `test/test_range_isolation.py`는 Kali, WAF, board에서 격리를 검증합니다. 훈련 환경 호스트의 sshd, 플랫폼, 인터넷, 메타데이터 서비스, 다른 슬롯 어디에도 닿지 않아야 합니다. Kali는 WAF에 닿고, 에지를 거쳐 board의 estate 주소에도 닿습니다. `board-db`는 이름이 풀리지 않고, SYN 스캔은 동작합니다.
+- `platform/tests/test_containment.py`는 렌더링한 슬롯 compose 파일이 격리 조건을 어기면 `bin/verify`를 실패시킵니다("OpenStack" 절).
 - `test/test_concurrent_sessions.py`는 동시에 연 두 세션이 서로를 보지 못함을 검증합니다.
-- 고정된 것은 출발지 서브넷뿐입니다. 호스트 주소는 Neutron이 할당하므로, 뷰는 요청마다 새 어댑터를 만들어 주소를 읽습니다.
-- 훈련 환경 호스트에서 온 요청을 거부하는 규칙은 그 주소를 30초 동안 캐시합니다. substrate에 연결할 수 없으면 훈련 환경이 비어 있다고 보고 요청을 허용합니다(`docs/THREAT-MODEL.md`).
+- 출발지 서브넷과 슬롯 안의 주소는 선언, `cloud.yaml`, `deploy/range-host/slot.yaml`이 정합니다. 훈련 환경 호스트의 `mgmt` 주소는 Neutron이 할당하므로, 뷰는 요청마다 새 어댑터를 만들어 주소를 읽습니다.
+- 훈련 환경 안에서 온 요청(슬롯이 보고하는 모든 주소와 훈련 환경 호스트의 `mgmt` 주소)을 거부하는 규칙은 그 주소를 30초 동안 캐시합니다. substrate에 연결할 수 없으면 훈련 환경이 비어 있다고 보고 요청을 허용합니다(`docs/THREAT-MODEL.md`).
 
 플랫폼은 훈련 환경에 `mgmt`로만 닿습니다.
 
-- 공격자의 트래픽은 에지와 WAF를 거쳐서만 내부망(`estate`)으로 들어옵니다.
-- 플랫폼은 `cr-reach`에 속한 포트로 `mgmt`의 모든 훈련 환경 호스트에 접속합니다. 훈련 환경 호스트가 플랫폼으로 여는 연결은 NTP뿐입니다("OpenStack" 절). 그래도 API가 호출자를 직접 검사합니다(`docs/THREAT-MODEL.md`).
+- 공격자의 트래픽은 에지를 거쳐서만 내부망(`estate`)으로 들어옵니다.
+- 플랫폼은 `cr-reach`에 속한 포트로 `mgmt`의 훈련 환경 호스트에 접속합니다. 훈련 환경 호스트가 플랫폼으로 여는 연결은 NTP와 5140/udp syslog뿐입니다("OpenStack" 절). 그래도 API가 호출자를 직접 검사합니다(`docs/THREAT-MODEL.md`).
 
 경로 전체는 이 문서 끝쪽의 "OpenStack 훈련 환경: 목표 구조"에 그림으로 있습니다.
 
-`deploy/suricata/suricata.yaml`은 estate 센서의 설정 파일입니다. af-packet 항목은 `default` 하나뿐이고, wargame host가 `--af-packet`으로 지정한 인터페이스(예: `ens3`)에 이 캡처 설정이 적용됩니다. `HOME_NET`은 10/8, 172.16/12, 192.168/16이며 출발지 대역은 들어 있지 않습니다. 공격자 주소는 바깥으로 취급합니다(`docs/DECISIONS.md`, 2026-10-21, "The estate sensor's HOME_NET and a repeated lesson move").
+`deploy/suricata/suricata.yaml`은 estate 센서의 설정 파일입니다. `rangehost.estate_sensor`가 af-packet 항목을 슬롯의 브리지 `sN-estate` 하나로 바꿉니다. 스레드는 하나이고, board와 corp-wp의 estate 주소만 받는 BPF 필터를 겁니다. `HOME_NET`은 10/8, 172.16/12, 192.168/16이며 출발지 대역은 들어 있지 않습니다. 공격자 주소는 바깥으로 취급합니다(`docs/DECISIONS.md`, 2026-10-21, "The estate sensor's HOME_NET and a repeated lesson move").
 
-WAF는 `board.com`을 `board:8000`으로 보냅니다. `/internal/`은 board가 서비스하지 않는 경로로 보내서, board 자신의 404 응답이 그대로 나가게 합니다(`deploy/waf/board.com.conf`). `corp.com`은 같은 파일에 있는 두 번째 vhost이며 `corp-wp:80`으로 갑니다.
+WAF는 `board.com`을 `board:8000`으로 보냅니다(WAF의 `extra_hosts`가 `board`와 `corp-wp`를 estate 주소 .59와 .60으로 정합니다). `/internal/`은 board가 서비스하지 않는 경로로 보내서, board 자신의 404 응답이 그대로 나가게 합니다(`deploy/waf/board.com.conf`). `corp.com`은 같은 파일에 있는 두 번째 vhost이며 `corp-wp:80`으로 갑니다.
 
 board는 첫 번째 워게임입니다.
 
 - gunicorn 위에서 Django 3.2.4가 돌고, digest로 고정한 MySQL을 씁니다. 이 Django 버전은 패치하지 않은 버전이며, 알려진 `order_by` SQL Injection 취약점(CVE-2021-35042)이 있습니다.
 - 시작할 때 스스로 마이그레이션과 시드 데이터 입력을 수행합니다.
-- board도 그 데이터베이스도 훈련 환경 밖에서는 접근할 수 없습니다. board의 8000 포트는 WAF와 플랫폼이 쓰도록 워게임 호스트에 publish되어 있습니다.
+- board도 그 데이터베이스도 훈련 환경 밖에서는 접근할 수 없습니다. 둘 다 훈련 환경 호스트에 포트를 publish하지 않습니다.
 - 탈취된 계정 정보로 채점합니다. 세션이 시작되면 플랫폼이 `/internal/auth-users`에서 board의 `auth_user` 사용자 이름과 비밀번호 해시를 읽어 세션의 스냅숏으로 보관합니다.
-- 플랫폼은 이 경로에 워게임 호스트의 관리망 주소로 직접 접근하고, WAF는 이 경로를 전달하지 않습니다. 이 읽기는 WAF도 IDS도 거치지 않으므로 둘 다 이를 보지 못합니다.
+- 플랫폼은 `board` 역할의 runner로 board 컨테이너 안에서 `127.0.0.1`의 이 경로를 읽고, WAF는 이 경로를 전달하지 않습니다. 이 읽기는 슬롯 브리지를 지나지 않으므로 WAF도 IDS도 보지 못합니다.
 
 corp 워게임은 두 번째 워게임입니다. WordPress 6.6.2(`corp-wp`)에 플러그인 세 개를 미패치 버전으로 고정했습니다.
 
@@ -159,54 +169,54 @@ corp 워게임은 두 번째 워게임입니다. WordPress 6.6.2(`corp-wp`)에 �
 
 - 구간별 id, 표시 이름, 공격 출발지
 - 역할 표: attacker, scorer(플랫폼), gateway, proxy, sensor, edge, estate-sensor, wargames, board, board-db, corp, corp-db
-- 호스트(VM)별 구간, 설치 스크립트, 파일(`hosts:`)
-- 워게임 호스트의 각 역할이 대응하는 compose 서비스(`compose:`)
+- 호스트별 구간(`hosts:`): 설치 스크립트(`setup`)와 실행할 `wargames`를 가진 유일한 호스트인 훈련 환경 호스트 `cr-range`, 그리고 슬롯의 `cr-waf`, `cr-edge`, `cr-kali`
+- 각 역할이 대응하는 슬롯의 compose 서비스(`compose:`)
 - 센서마다 감시하는 호스트(`watches:`)
 - 기본 출발지
 - 방어 대상 사이트(서울)
 
 출발지를 선언한 구간만 외부 구간입니다.
 
-선언에는 `estate`와 `mgmt`의 주소도, 호스트 주소도 없습니다. 이 값들은 Neutron이 할당하므로 플랫폼이 substrate에서 가져옵니다. 선언에 서브넷을 적었는데 클라우드가 다른 서브넷을 할당하면, 호스트가 하나도 없는 서브넷으로 경보가 묶이게 됩니다.
+선언에는 `estate`와 `mgmt`의 주소도, 호스트 주소도 없습니다. estate /16과 `mgmt`는 `cloud.yaml`이, 슬롯 안 주소는 슬롯 템플릿이, 훈련 환경 호스트의 `mgmt` 주소는 Neutron이 정하므로 플랫폼이 substrate에서 가져옵니다. 선언에 서브넷을 적었는데 클라우드가 다른 서브넷을 할당하면, 호스트가 하나도 없는 서브넷으로 경보가 묶이게 됩니다.
 
 플랫폼은 구간을 태그로 찾습니다.
 
 - 각 구간은 `cr.segment.id`를 Neutron 태그로 가집니다. 어댑터는 태그가 붙은 네트워크만 가져옵니다.
 - 이름으로 맞추는 방식은 Heat 스택 접미사와 유일하지 않은 Neutron 이름 때문에 깨졌습니다.
-- 역할은 여전히 선언이 지정한 서버 이름입니다. 어댑터는 프로젝트의 모든 서버를 나열해 `server["name"]`을 맞춰 보는데, Nova는 이 이름의 유일성을 보장하지 않습니다. 이 문제는 `docs/STATE.md`에 아직 미해결로 남아 있습니다.
-- 워게임 호스트에서는 `compose:`가 서비스에 대응시킨 역할이 그 컨테이너 안에서 실행됩니다(`sudo docker exec <service>`).
+- 역할은 선언이 지정한 호스트를 가리킵니다. 어댑터는 메타데이터 `cr_host`가 `cr-range`인 서버를 훈련 환경 호스트로 찾고(`slot.host_of`), 나머지 호스트는 슬롯의 컨테이너입니다.
+- `compose:`가 서비스에 대응시킨 역할은 그 슬롯 컨테이너 안에서 실행됩니다(훈련 환경 호스트에서 `sudo docker exec sN-<service>`). `wargames` 역할은 훈련 환경 호스트 자체에서 실행됩니다.
 
 코어 코드와 플랫폼 대부분은 이 인터페이스의 메서드 네 개만 씁니다.
 
 - `describe()`는 구조를 반환합니다: 구간, 각 구간의 노드와 주소, 센서.
 - `segments()`는 센서 검사 없이 어느 호스트가 어느 구간에 있는지 반환합니다.
-- `runner(role, segment)`는 상주 호스트에서 명령을 실행합니다. 상주 호스트는 센서, 프록시, 플랫폼이 명령 로그를 읽는 공격 박스, corp-db입니다.
+- `runner(role, segment)`는 떠 있는 컨테이너나 훈련 환경 호스트에서 명령을 실행합니다. 대상 역할에는 센서, 프록시, 플랫폼이 명령 로그를 읽는 공격 박스, board, corp-db가 있습니다.
 - `launcher(segment)`는 한 구간에서 일회성 도구를 실행하고 그 출력을 반환합니다.
 
 `range.substrate()`는 `CR_SUBSTRATE`가 지정한 어댑터(기본값 `range.openstack.connect`)를 만듭니다. `CR_SUBSTRATE_OPTIONS`가 그 이름 아래에 둔 옵션에 `declared=RANGE`를 더해 넘깁니다.
 
 - `CR_OPENSTACK_KEYSTONE`, `_USER`, `_PASSWORD`, `_PROJECT`, `_SSH_USER`, `_SSH_KEY`, `_REGION`, `_INTERFACE`, `_DOMAIN`을 받습니다. 하나라도 없으면 그 이름을 밝혀 거부합니다.
-- 훈련 환경의 모양을 정하는 값 `_BASE_IMAGE`, `_FLAVOR`, `_BUILD_FLAVOR`, `_ROLE_FLAVORS`, `_AVAILABILITY_ZONE`, `_SUBNETS`, `_MTU`, `CR_OPNSENSE`도 받습니다. 이 값들은 쓰이는 곳에서 이름을 밝혀 거부합니다.
-- `CR_IMAGE_TAG`도 받습니다. 워게임 호스트의 이미지에 쓰며, 부팅할 때 `/opt/cr/.env`에 기록합니다.
+- 훈련 환경의 모양을 정하는 값 `_BASE_IMAGE`, `_FLAVOR`(훈련 환경 호스트의 flavor), `_AVAILABILITY_ZONE`, `_SUBNETS`, `_MTU`, `_SLOTS`, `_BUILD_NETWORK`(훈련 환경 호스트가 이미지를 받아 오는 플랫폼 자신의 네트워크), `_PLATFORM`도 받습니다. 이 값들은 쓰이는 곳에서 이름을 밝혀 거부합니다.
+- `CR_IMAGE_TAG`도 받습니다. 훈련 환경 호스트의 이미지에 쓰며, 부팅할 때 `/opt/cr/.env`에 기록합니다.
 - 코드에 기본값이 있는 값은 없습니다. 모두 Heat 스택을 거쳐 `deploy/openstack/cloud.yaml`에서 옵니다. `platform/range/cloud.py`가 그 파일을 읽고 검증합니다.
 - `redteam/harness.py`는 launcher를, `platform/rules/suricata.py`는 runner를 전달받습니다. 둘 다 `subprocess`를 import하지 않고 substrate 이름도 쓰지 않습니다.
 
 어댑터가 각 호출에 답하는 방식은 다음과 같습니다.
 
-- 구조: Keystone v3, `tags-any`를 쓰는 Neutron, Nova
-- 센서: 이름이 지정된 두 서버가 모두 있으면 센서를 보고합니다. 센서가 gateway의 트래픽을 실제로 보는지는 확인하지 않습니다.
-- runner: 인스턴스로 `ssh`합니다. 워게임 호스트가 맡고 `compose:`가 서비스에 대응시킨 역할은 그 컨테이너 안에서 실행합니다(`sudo docker exec <service>`, `range/wargame_host.py`).
-- address: 호스트의 `mgmt` 주소
-- launcher: `runner("attacker")`가 선언된 공격 박스의 mgmt 주소로 ssh해 도구를 실행합니다. origin은 공격 박스가 그 구간에 있는지만 확인하고, 출발 국가는 `set-origin` SNAT가 정합니다. 다른 이미지는 거부합니다. Nova로는 호스트를 부팅해 출력을 받고 삭제할 수 없기 때문입니다.
-- 검증 대상: 공개 API 레퍼런스와 로컬 sshd로 만든 fake에 대한 유닛 테스트. `fsl-range` 클라우드에서는 플랫폼 VM이 `/api/range/`로 fabric, 이미지, 슬롯을 구축했고, `describe()`가 출발지 서른 개 위의 WAF와 estate·mgmt 위의 호스트 네 대를 다시 읽었으며, `runner()`가 각 호스트에서 mgmt 주소로 ssh해 실행됨. `launcher()`는 2026-10-08에 `ru`와 `tw` 출발지에서 sqlmap을 실행함
+- 구조: `mgmt`는 Keystone v3, `tags-any`를 쓰는 Neutron, Nova로 읽습니다. 슬롯의 `internet`과 `estate`, 그 노드와 주소는 렌더링한 슬롯 compose 파일(`rangehost.compose`)에서 옵니다.
+- 센서: 훈련 환경 호스트가 떠 있으면 두 센서를 모두 보고합니다. 센서가 gateway의 트래픽을 실제로 보는지는 확인하지 않습니다.
+- runner: 훈련 환경 호스트의 `mgmt` 주소로 `ssh`하며, 호스트마다 연결 하나를 같이 씁니다(`ControlMaster auto`, `ControlPersist 60`). `compose:`가 서비스에 대응시킨 역할은 그 슬롯 컨테이너 안에서 실행합니다(`sudo docker exec sN-<service>`, `range/rangehost.exec_in`).
+- address: 훈련 환경이 맡는 모든 역할에 대해 훈련 환경 호스트의 `mgmt` 주소
+- launcher: `runner("attacker")`가 슬롯의 Kali 컨테이너에서 도구를 실행합니다. origin은 공격 박스가 그 구간에 있는지만 확인하고, 출발 국가는 `set-origin` SNAT가 정합니다. 다른 이미지는 거부합니다. 도구는 슬롯의 공격 컨테이너에서만 돕니다.
+- 검증 대상: 공개 API 레퍼런스와 로컬 sshd로 만든 fake에 대한 유닛 테스트. 훈련 환경 호스트 이전인 2026-10-08에는 `fsl-range` 클라우드의 VM 훈련 환경을 `/api/range/`로 구축했고, `launcher()`가 `ru`와 `tw` 출발지에서 sqlmap을 실행함
 
-compose는 Docker 소켓을 플랫폼에 마운트하고, entrypoint가 플랫폼 사용자를 그 소켓의 그룹에 추가합니다. 플랫폼은 이 소켓으로 이미지를 사이드로드하고 자기 NIC를 읽으며, GNS3는 표시용 노드를 띄웁니다. 이는 컨테이너 탈출 경로이며, 아직 없애지 않았습니다. 남은 작업은 `docs/STATE.md`의 "The substrate seam" 항목에 있습니다.
+compose는 Docker 소켓을 플랫폼에 마운트하고, entrypoint가 플랫폼 사용자를 그 소켓의 그룹에 추가합니다. 플랫폼은 이 소켓으로 자기 NIC를 읽으며, GNS3는 표시용 노드를 띄웁니다. 이는 컨테이너 탈출 경로이며, 아직 없애지 않았습니다. 남은 작업은 `docs/STATE.md`의 "The substrate seam" 항목에 있습니다.
 
 ## 네트워크 구성도
 
 훈련 환경의 네트워크 구성은 GNS3 프로젝트 파일로 보관합니다. `revision` 9이므로 GNS3 2.2가 열 수 있고, 3.x는 불러올 때 업그레이드합니다. 두 종류가 있습니다.
 
-- **시스템 구성도**, `deploy/topology/system/range-openstack.gns3`: 선언의 전체 배선을 보여 줍니다. 관리 구간, 플랫폼 VM, 워게임 호스트의 컨테이너가 들어 있습니다. 영어로만 있으며 개발과 GNS3의 MCP용입니다. GNS3 서비스는 레포의 구성도를 보지 않으므로 학습자에게는 제공되지 않습니다.
+- **시스템 구성도**, `deploy/topology/system/range-openstack.gns3`: 선언의 전체 배선을 보여 줍니다. 관리 구간, 플랫폼 VM, 훈련 환경 호스트 `cr-range`와 그 위의 슬롯 하나 분량 컨테이너가 들어 있습니다. 영어로만 있으며 개발과 GNS3의 MCP용입니다. GNS3 서비스는 레포의 구성도를 보지 않으므로 학습자에게는 제공되지 않습니다.
 - **학습자용 구성도**, `deploy/topology/range-openstack.gns3`: 학습자가 방어하는 회사 웹 서비스 네트워크를 보여 줍니다. 실습 토폴로지를 그리는 방식(Cisco NetAcad lab topology, NSRC 워크숍 logical diagram)의 논리 구성도입니다. 구성도에 들어가는 것은 아래와 같습니다.
 
 학습자용 구성도에 있는 것(기업 논리 구성도 방식):
@@ -214,7 +224,7 @@ compose는 Docker 소켓을 플랫폼에 마운트하고, entrypoint가 플랫�
 - 아이콘 위의 역할 호스트 이름
 - 호스트 쪽 링크 끝마다 주소만(`10.30.0.184`). 인터페이스, 포트, 프리픽스는 적지 않습니다. 스위치 쪽 끝과 관리 링크, DB 스위치로 가는 링크(주소가 Docker 브리지 것)에는 라벨이 없습니다.
 - 영역 넷: KISA ISMS-P 2.6.1이 부르는 영역 이름(DMZ, DB존)과 인터넷, 관리망. 라벨이 붙은 링크가 있는 영역은 캡션에 네트워크를 덧붙입니다(`DMZ 10.30.0.0/24`).
-- IDS는 따로 그린 센서 상자("IDS")이고, 트래픽을 받아 보는 호스트와 점선으로 잇습니다. `firewall`(OPNsense 에지의 Suricata)과 사이트(워게임 호스트의 estate 센서)이며, Kibana의 `sensor`가 부르는 호스트와 같습니다.
+- IDS는 따로 그린 센서 상자("IDS")이고, 트래픽을 받아 보는 호스트와 점선으로 잇습니다. `firewall`(슬롯 `internet` 브리지를 보는 에지 센서)과 사이트(슬롯 `estate` 브리지를 보는 estate 센서)이며, Kibana의 `sensor`가 부르는 호스트와 같습니다.
 - 초록 화살표(선으로 그린 화살촉)와 "웹 요청" 글자가 internet → firewall → waf → 사이트 순서의 요청 흐름을 보여 줍니다.
 
 그 밖에는 아무것도 없습니다. 제목, 범례, 기계 자체의 이름, `cr-`, 관리 주소, Docker 브리지가 모두 없습니다.
@@ -225,10 +235,10 @@ compose는 Docker 소켓을 플랫폼에 마운트하고, entrypoint가 플랫�
 학습자용 구성도의 노드:
 
 - `customers`와 `kali`(공격자의 Kali 박스)는 `internet` 스위치에 붙습니다.
-- `firewall`은 OpenStack의 OPNsense 에지입니다. 에지의 Suricata는 옆의 IDS 센서 상자로 그립니다.
+- `firewall`은 슬롯의 에지 라우터 컨테이너입니다. 에지 센서는 옆의 IDS 센서 상자로 그립니다.
 - `sw1`은 서비스 구간입니다. `waf`와 사이트(`board.com` 또는 `corp.com`, WAF 호스트의 선언된 이름)가 붙습니다.
 - `sw2`는 데이터베이스 구간입니다. 사이트 뒤에 있고 데이터베이스(`board-db`)가 붙습니다.
-- `sw3`은 관제 구간입니다. `log-server`(Elasticsearch)를 기록을 보내는 호스트인 방화벽, WAF, 사이트와 잇습니다. estate 센서가 사이트의 호스트에서 실행되며 자기 eve.json을 직접 전송합니다.
+- `sw3`은 관제 구간입니다. `log-server`(Elasticsearch)를 기록을 보내는 호스트인 방화벽, WAF, 사이트와 잇습니다. 두 센서의 eve.json과 WAF의 audit 로그는 훈련 환경 호스트가 전달합니다.
 
 스위치 번호는 실습 토폴로지가 붙이는 방식(`sw1`, `sw2`, `sw3`, NSRC의 `sw1`)을 따르고, 순서는 서비스, 데이터베이스, 관제로 고정합니다. 각 스위치가 어느 구간인지는 영역 캡션이 알려 줍니다.
 
@@ -236,7 +246,7 @@ compose는 Docker 소켓을 플랫폼에 마운트하고, entrypoint가 플랫�
 
 `topology.learner(declaration, wargame)`는 훈련 환경의 이름을 구성도의 이름으로 옮깁니다.
 
-- 호스트: `cr-kali`는 `kali`입니다. 고객 트래픽을 그 호스트에서 생성하면 `customers`이기도 합니다. `cr-edge`는 `firewall`입니다. 워게임 호스트와 그 사이트 컨테이너는 사이트입니다. `cr-elasticsearch`는 `log-server`입니다.
+- 호스트: `cr-kali`는 `kali`입니다. 고객 트래픽을 그 호스트에서 생성하면 `customers`이기도 합니다. `cr-edge`는 `firewall`입니다. 훈련 환경 호스트와 그 사이트 컨테이너는 사이트입니다. `cr-elasticsearch`는 `log-server`입니다.
 - 역할
 - 구간에서 스위치로: 출발지는 `internet`, estate는 `sw1`, 워게임의 compose 네트워크는 `sw2`, 관리 구간은 NIC 이름만 쓰는 `sw3`
 - 각 센서에서 그 센서가 NIC를 쓰는 노드로
@@ -261,8 +271,8 @@ compose는 Docker 소켓을 플랫폼에 마운트하고, entrypoint가 플랫�
 
 구간은 `ethernet_switch` 노드입니다. 시스템 구성도는 나머지를 다음과 같이 그립니다.
 
-- OpenStack VM은 디스크 이미지 없는 `qemu` 노드입니다. OPNsense 에지는 vtnet 순서대로 NIC 세 개입니다.
-- 워게임 호스트의 컨테이너는 실제 이미지를 지정했지만 시작하지 않는 `docker` 노드입니다. compose 프로젝트마다 스위치 하나(`board-default`, `corp-default`)에 연결됩니다.
+- OpenStack VM 두 대, `cr-platform`과 `cr-range`는 디스크 이미지 없는 `qemu` 노드입니다.
+- 슬롯 하나 분량의 컨테이너(`cr-kali`, `cr-edge`, `cr-waf`, 두 센서, 대상 시스템 넷)는 실제 이미지를 지정했지만 시작하지 않는 `docker` 노드입니다. 에지는 NIC 두 개, `wan`과 `lan`을 가집니다. 대상 시스템은 워게임 네트워크마다 스위치 하나(`board-default`, `corp-default`)에 연결됩니다.
 - 호스트 네트워크에서 실행되는 센서는 NIC가 없습니다. 옆의 메모가 어느 노드의 네트워크를 감시하는지 알려 줍니다.
 - 선언된 구간마다 그 스위치를 담은 제목 붙은 사각형이 있습니다(Internet, Application estate, Management and monitoring).
 - 컨테이너와 VM마다 쉬운 말로 쓴 메모가 붙습니다. GNS3 3.1에서는 노드의 라벨이 곧 노드 이름입니다.
@@ -304,8 +314,7 @@ id와 이름: 모든 id는 `uuid5(<learner id>, "slot-<n>-<wargame>")`입니다.
 
 인터페이스는 어댑터가 `interfaces()`로 읽습니다.
 
-- OpenStack에서는 슬롯의 각 호스트에서 `ip -o -4 addr`(OPNsense에서는 `ifconfig`)를 실행합니다. 그 호스트 자체에서 실행되는 runner를 씁니다.
-- 워게임 호스트에서는 compose 컨테이너의 주소를 `nsenter`로, 브리지는 Docker 네트워크 id로 읽습니다.
+- 훈련 환경 호스트에서 명령 하나(`rangehost.listed`)로 슬롯의 docker 네트워크와 그 서브넷을 나열하고, `nsenter`로 슬롯 컨테이너마다 `ip -o -4 addr`을 읽습니다. 호스트 네트워크를 쓰는 컨테이너(센서)는 건너뜁니다.
 - 플랫폼 VM 자신의 NIC는 호스트 네트워크의 `busybox` 컨테이너에서 같은 `ip`로 읽습니다(`interfaces.on_this_host`). 플랫폼에는 SSH를 쓰지 않습니다.
 - 세션의 구성도를 만들 때 읽은 인터페이스는 세션이 끝날 때까지 두고, 주소를 묻는 단계의 답으로 씁니다(`_map_found`). 슬롯은 세션을 닫을 때만 초기화되므로, 세션이 슬롯을 쓰는 동안 주소는 바뀌지 않습니다. 빈 결과는 두지 않고, 둔 결과로 답할 수 없는 질문이 오면 슬롯을 다시 읽습니다. 세션을 닫으면 지웁니다.
 
@@ -390,7 +399,7 @@ id와 이름: 모든 id는 `uuid5(<learner id>, "slot-<n>-<wargame>")`입니다.
 
 - `project.nodes`에는 같은 훈련 환경 읽기에서 얻은 호스트 노드별, 스위치별 주소와 `running` 또는 `not reported` 상태가 들어갑니다.
 - 세션 오버레이는 구성도에 있는 호스트와, 구성도에 있는 스위치 위의 주소만 나열합니다.
-- 오버레이는 훈련 환경이 보고하는 이름으로 호스트를 배치합니다. OpenStack은 슬롯의 서버를 선언된 이름(`slot.known_as`)으로 보고합니다. syslog 기록에 실리는 VM 자체의 hostname에만 슬롯 접미사가 붙습니다.
+- 오버레이는 훈련 환경이 보고하는 이름으로 호스트를 배치합니다. 슬롯마다 컨테이너를 선언된 호스트 이름(`cr-kali`, `cr-waf`)으로 보고합니다. 슬롯 접미사는 syslog 송신자 이름(`cr-waf-2`)에만 붙습니다.
 
 ## 격리 경계
 
@@ -401,10 +410,10 @@ id와 이름: 모든 id는 `uuid5(<learner id>, "slot-<n>-<wargame>")`입니다.
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`가 기동 시 `geoip` ingest 파이프라인을 PUT합니다 |
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`가 Kibana API 경로를 압니다. 관리용 API, Default space, space 접두어 없는 경로, `?namespaces=`를 거부하고, `GET /kibana/s/<space>/api/spaces/space`에는 SOC space 하나만 담은 응답을 직접 돌려줍니다 |
 | GNS3 API | `platform/gns3.py` | GNS3 컨테이너 안의 `deploy/gns3/provision.py`가 admin으로 로그인해 학습자 계정을 만들고 프로젝트를 엽니다. GNS3가 `/static/web-ui/map.html`로 제공하는 `deploy/gns3/auditor.html`이 learner로 로그인해 `/v3/projects/<id>/nodes`와 `/links`를 읽습니다. 콘솔의 구성도 창은 `gns3.py`가 돌려주는 포트와 경로의 웹 UI를 프레임으로 띄웁니다 |
-| CRS 설정과 nginx reload | `platform/rules/crs.py` | `entrypoint.sh`가 `vm-terminal.sh cr-waf`를 실행하고, 이것이 사용자에게 WAF VM의 ssh 쉘을 열어 줍니다. F6의 WAF 창 단계는 학습자가 입력할 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`)을 보여 줍니다. `wargames.lesson`이 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 이 명령을 채웁니다. 플랫폼은 터미널을 조작하지 않습니다 |
-| Suricata 프로세스 | `platform/rules/suricata.py` | `platform/range/opnsense.py`와 `deploy/opnsense/`가 OPNsense 에지의 Suricata를 설정하고 재시작합니다(OpenStack). `declaration.yaml`의 각 센서 호스트(에지, 그리고 `estate-sensor`를 맡는 워게임 호스트)가 `suricata.py`에 넘길 룰 파일과 reload 명령을 지정합니다. `platform/range/wargame_host.py`(`deploy/wargame-host/sensor.yaml`과 함께)는 슬롯을 설정하거나 리셋할 때 워게임 호스트의 estate 센서 compose 서비스를 멈췄다가 다시 시작합니다(OpenStack). 그 뒤 기본 룰은 `suricata.py`를 거쳐 적용됩니다 |
-| 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/commands.log`를 읽습니다. 터미널 연결 설정은 `cr-kali`를 지정합니다. `entrypoint.sh`가 `vm-terminal.sh cr-kali`를 실행합니다. 웹사이트 창(`platform/api/site.py`)은 예외가 아닙니다. 박스에는 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(OpenStack에서는 ssh 스트림)만 거쳐 닿습니다 |
-| 대상 시스템 자체의 기록 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음. `loot.py`는 워게임 호스트의 publish된 포트로 board에 HTTP 요청을 보내고, `effect.py`는 `corp-db`에 `docker exec`하는 runner로 corp에 접근합니다 |
+| CRS 설정과 nginx reload | `platform/rules/crs.py` | `entrypoint.sh`가 `vm-terminal.sh cr-waf`를 실행하고, 이것이 사용자에게 슬롯 WAF 컨테이너의 쉘을 열어 줍니다(훈련 환경 호스트로 ssh한 뒤 `sudo docker exec -it sN-waf bash -l`). audit 로그의 rsyslog 전달 설정은 훈련 환경 호스트에서 `range/rangehost.forwarding`이 씁니다. F6의 WAF 창 단계는 학습자가 입력할 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`)을 보여 줍니다. `wargames.lesson`이 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 이 명령을 채웁니다. 플랫폼은 터미널을 조작하지 않습니다 |
+| Suricata 프로세스 | `platform/rules/suricata.py` | `declaration.yaml`의 각 센서 호스트(`sensor`는 `cr-edge`, `estate-sensor`는 `cr-range`)가 `suricata.py`에 넘길 룰 파일과 reload 명령을 지정합니다. `platform/range/rangehost.py`는 두 센서의 설정(`deploy/range-host/edge-sensor.yaml`, `deploy/suricata/suricata.yaml`)과 compose 서비스를 렌더링하고, `deploy/range-host/slot.sh`는 슬롯과 함께 센서를 띄우고 내리며, 초기화 때 센서의 로그 파일을 다시 열게 하고, 에지 라우터를 설정합니다. 그 뒤 기본 룰은 `suricata.py`를 거쳐 적용됩니다 |
+| 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/commands.log`를 읽습니다. 터미널 연결 설정은 `cr-kali`를 지정합니다. `entrypoint.sh`가 `vm-terminal.sh cr-kali`를 실행합니다. 웹사이트 창(`platform/api/site.py`)은 예외가 아닙니다. 박스에는 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(훈련 환경 호스트로 연 ssh 스트림으로 슬롯의 Kali 컨테이너에 들어감)만 거쳐 닿습니다 |
+| 대상 시스템 자체의 기록 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음. `loot.py`는 `board` 역할의 runner로 board 컨테이너 안에서 `127.0.0.1`에 HTTP 요청을 보내고, `effect.py`는 `corp-db`에 `docker exec`하는 runner로 corp에 접근합니다 |
 
 ## 파일
 
@@ -414,8 +423,17 @@ id와 이름: 모든 id는 `uuid5(<learner id>, "slot-<n>-<wargame>")`입니다.
 |---|---|
 | `deploy/filebeat/filebeat.yml` | collector의 Filebeat 설정. `event.module`을 붙이고, 슬롯(`cr_slot`) 태그를 달고, `logs-<slot>-sensors` 인덱스에 씁니다 |
 | `deploy/elastic/ingest-pipeline.json` | `geoip` ingest 파이프라인. 이벤트 시각을 `@timestamp`로 옮기고, `src_ip`의 GeoIP를 붙이고, `cr_slot`을 지웁니다 |
-| `deploy/proxy/stamp.py` | `X-Request-ID`를 붙이는 mitmdump 스크립트. Kali VM이 `/usr/local/lib/web-proxy.py`로 설치합니다 |
+| `deploy/proxy/stamp.py` | `X-Request-ID`를 붙이는 mitmdump 스크립트. Kali 이미지가 `/usr/local/lib/web-proxy.py`로 설치합니다 |
 | `deploy/kali/operator-log.sh` | Kali 쉘 훅. 입력한 명령을 마커와 함께 `/var/log/commands.log`에 덧붙입니다 |
+| `deploy/kali/Dockerfile`, `deploy/waf/Dockerfile`, `deploy/edge/Dockerfile` | 슬롯의 Kali, WAF, 에지 이미지. `.github/workflows/images.yml`이 빌드하고 GHCR에서 pull합니다 |
+| `deploy/edge/edge.nft` | 에지의 nftables 룰. loopback 외 input은 drop, forward는 accept |
+| `deploy/range-host/setup.sh` | Nova user data로 한 번 실행하는 훈련 환경 호스트 설치 스크립트. 패키지, Docker `daemon.json`, sshd와 inotify 한도, 이미지, pristine 볼륨 |
+| `deploy/range-host/slot.yaml` | 슬롯 하나의 compose 프로젝트 템플릿. `range/rangehost.py`가 값을 채우고 워게임마다의 `compose.yaml`과 합칩니다 |
+| `deploy/range-host/slot.sh` | 훈련 환경 호스트에서 슬롯 N의 `up`, `reset`, `down`을 실행합니다 |
+| `deploy/range-host/edge-sensor.yaml` | 에지 센서의 Suricata 설정 |
+| `platform/range/rangehost.py` | 훈련 환경 호스트의 설치 번들과 user data, 슬롯마다의 compose 파일과 파일들, 그리고 이를 실행하는 명령을 만듭니다 |
+| `platform/tests/test_containment.py` | 렌더링한 슬롯 compose 파일이 격리 조건을 어기면 `bin/verify`를 실패시킵니다 |
+| `test/test_range_isolation.py` | Kali, WAF, board에서 격리를 확인하는 실제 환경 검사 |
 | `platform/scoring/` | `correlate.py`는 마커나 시간 창으로 탐지를 케이스에 매칭하고, `metrics.py`는 TP, FP, FN, TN을 셉니다 |
 | `platform/scoreboard.py` | 목표 점수. 탐지를 시도에 귀속시키고, `corroborated`를 판정하고, 탈취된 목표를 집계합니다 |
 | `platform/game.py` | 게임 점수(speed, accuracy, coverage, response). 점수의 `game` 블록에 들어갑니다 |
@@ -439,17 +457,16 @@ id와 이름: 모든 id는 `uuid5(<learner id>, "slot-<n>-<wargame>")`입니다.
 | CLI 실행, HTTP | 공격 박스. `redteam/run.py`가 `launcher(<선언된 기본 출발지>)`로 거기서 `curl`을 실행함 | 공격 박스, 기본 출발지에서 | harness가 추가 |
 | CLI 실행, 도구 | 공격 박스, `launcher(<선언된 기본 출발지>)`에서 | 공격 박스, 기본 출발지에서 | sqlmap `--headers=` |
 | 사이트 브라우저 | 학습자의 브라우저, 플랫폼 nginx의 8002번 포트와 `platform/api/site.py`를 거침 | 고객 주소. Kali가 가진 주소이며, `cr-users` 계정으로 보내 에지를 지남 | 세션의 비밀값 `browse-<hex>`, `site.py`가 설정. API에는 `browse`로 표시 |
-| 고객 | `deploy/traffic/users.py`, Kali VM의 `cr-users`로 | 기본이 아닌 출발지에 있는 페르소나 자신의 주소. 공격자가 요청을 보내는 주소는 쓰지 않음 | 요청마다 새 UUID |
+| 고객 | `deploy/traffic/users.py`, Kali 컨테이너의 `cr-users`로 | 기본이 아닌 출발지에 있는 페르소나 자신의 주소. 공격자가 요청을 보내는 주소는 쓰지 않음 | 요청마다 새 UUID |
 
 프록시는 `mitmdump` 스크립트입니다.
 
-- Kali VM에서는 `web-proxy.service`가 `/usr/local/lib/web-proxy.py`로 실행하고, 터미널은 `ttyd.service`가 실행합니다.
-- `/var/lib/session/active`는 플랫폼이 로그인하는 `ubuntu` 전용 0600입니다. 쉘 훅은 직접 읽지 못하면 `sudo -n cat`으로 마커를 읽습니다.
-- `/var/log/commands.log`는 `ubuntu` 소유 0622라서 `kali`는 덧붙이기만 할 수 있습니다.
+- Kali 컨테이너의 메인 프로세스입니다. 이미지의 `CMD`가 `/usr/local/lib/web-proxy.py`로 127.0.0.1:8081에서 `mitmdump`를 띄웁니다.
+- `/var/lib/session/active`와 `/var/log/commands.log`는 root 전용 0600입니다. 플랫폼의 명령도 학습자의 셸도 컨테이너 안에서 root로 돕니다.
 - 프록시는 `X-Request-ID`가 없는 요청에 `/var/lib/session/active`의 값으로 그 헤더를 설정합니다.
-- 플랫폼은 `active` 파일을 `runner("proxy")`로, ssh를 통해 씁니다.
+- 플랫폼은 `active` 파일을 `runner("proxy")`로, 훈련 환경 호스트로 ssh한 뒤 Kali에 `docker exec`해서 씁니다.
 - TLS 가로채기를 하지 않습니다. 프록시는 환경 변수로 지정될 뿐 아무것도 강제하지 않습니다. `curl --noproxy '*'`로 보내면 프록시를 거치지 않습니다.
-- `/etc/profile.d/proxy.sh`가 로그인 셸에 `http_proxy`와 `HTTP_PROXY`를 지정하고, `kali`의 sudoers 드롭인이 두 변수를 `sudo`에서도 유지합니다. 그래서 `sudo su`, `sudo -s`, `sudo <명령>`으로 연 root 셸도 프록시를 거칩니다.
+- `/etc/profile.d/proxy.sh`가 로그인 셸에 `http_proxy`와 `HTTP_PROXY`를 지정합니다.
 
 터미널은 사용자가 입력한 명령도 기록합니다.
 
@@ -458,18 +475,19 @@ id와 이름: 모든 id는 `uuid5(<learner id>, "slot-<n>-<wargame>")`입니다.
 
 Kali 창(레드팀 콘솔의 창, 그리고 레슨·시나리오 세션에서 블루팀 콘솔의 창)은 세션 API가 알려 주는 URL(`GET /api/sessions/<id>/`의 `kali_terminal`)을 프레임으로 띄웁니다.
 
-- URL은 `/vm-terminal/kali/?arg=<세션 id>`입니다. 플랫폼 안의 ttyd가 세션 슬롯에 있는 호스트의 mgmt 주소로 ssh 접속합니다.
+- URL은 `/vm-terminal/kali/?arg=<세션 id>`입니다. 플랫폼 안의 ttyd가 `platform/vm-terminal.sh`를 실행합니다. 이 스크립트는 훈련 환경 호스트의 mgmt 주소로 ssh 접속해, 세션 슬롯의 `sudo docker exec -it ... sN-kali bash -l`을 실행합니다.
 
-`vm-terminal.sh`는 플랫폼의 runner가 같은 서버에 쓰는 별칭 `cr-<server id>-<launch time>`(`OpenStack.host_key_alias`)으로 호스트 키를 확인합니다. `StrictHostKeyChecking=accept-new`를 씁니다.
+`vm-terminal.sh`는 플랫폼의 runner가 훈련 환경 호스트에 쓰는 별칭 `cr-<server id>-<launch time>`(`OpenStack.host_key_alias`)으로 호스트 키를 확인합니다. `StrictHostKeyChecking=accept-new`를 씁니다.
 
-- 초기화로 재구축된 서버는 별칭이 새로 바뀝니다. 그래서 "REMOTE HOST IDENTIFICATION HAS CHANGED" 경고 없이 새 키를 등록합니다.
+- 훈련 환경 호스트를 다시 부팅해 새로 만들면 별칭이 바뀝니다. 그래서 "REMOTE HOST IDENTIFICATION HAS CHANGED" 경고 없이 새 키를 등록합니다.
 - 이미 알고 있는 별칭에서 키가 바뀌면 접속을 거부합니다.
 
-OpenStack에서 터미널별 로그인 방식:
+터미널별 로그인 방식:
 
-- Kali는 `kali` 사용자로 그냥 로그인합니다(sudo, 호스트 이름 `kali`, Kali 자체의 두 줄 프롬프트, motd 없음). 그래서 `/etc/profile.d/proxy.sh`(`http_proxy`)와 명령 훅(`/usr/local/lib/shell-hook.sh`의 `__log_command`, `/etc/bash.bashrc`에서 불러옴)이 로그인했을 때처럼 적용됩니다.
-- WAF는 `ubuntu`로 `bash --rcfile`을 `-i`로 실행합니다. rc 파일은 `/etc/profile`과 `~/.profile`을 읽고 시간대를 설정하며, 프롬프트의 `\h`를 `cr-`를 뺀 호스트 이름(`ubuntu@waf`)으로 바꿉니다. 그리고 `/etc/motd`를 출력합니다. 명령을 함께 주면 sshd는 Ubuntu 로그인 배너와 마지막 로그인 줄을 출력하지 않습니다.
-- WAF VM의 hostname도 `waf`입니다. 부팅 유닛 `set-hostname`이 cloud-init 뒤에 이름을 바꾸고, `cr-`를 뺀 Nova 이름(`waf`, `waf-2`)을 rsyslog `localHostname`으로 넘깁니다. 그래서 Filebeat가 송신자 이름에서 슬롯을 계속 읽을 수 있습니다.
+- Kali는 `/root`에서 root 로그인 셸을 받습니다(호스트 이름 `kali`, Kali 자체의 두 줄 프롬프트(`deploy/kali/bashrc`), motd 없음). `no-new-privileges` 때문에 `sudo`로 얻을 것이 없으므로 처음부터 root 셸입니다. `/etc/profile.d/proxy.sh`(`http_proxy`)와 명령 훅(`/usr/local/lib/shell-hook.sh`의 `__log_command`, `/etc/bash.bashrc`에서 불러옴)이 로그인했을 때처럼 적용됩니다.
+- WAF는 슬롯 WAF 컨테이너의 root 로그인 셸을 받습니다(호스트 이름 `waf`). 가르치는 reload 명령에 `sudo`가 없습니다(`nginx -t && nginx -s reload`).
+- 두 셸 모두 `TERM=xterm-256color`, `TZ=Asia/Seoul`로 엽니다.
+- syslog 송신자 이름은 훈련 환경 호스트의 rsyslog 템플릿이 슬롯마다 고정합니다(`cr-waf`, `cr-waf-2`). 그래서 Filebeat가 송신자 이름에서 슬롯을 읽습니다.
 
 블루팀 콘솔의 WAF 창은 세션 API가 알려 주는 URL(`GET /api/sessions/<id>/`의 `waf_terminal`)을 프레임으로 띄웁니다.
 
@@ -533,7 +551,7 @@ nginx는 `</body>` 앞에 스크립트도 하나 붙입니다.
 - 기록기가 Kali로 ssh stdio 스트림을 열고(`OpenStack.opened`) 거기서 `attacker.as_customer`를 실행합니다.
   - `as_customer`는 Python 브리지입니다. Kali의 출발지 SNAT가 건드리지 않는 `cr-users` 계정으로 돕니다. 그 슬롯에서 고객 트래픽을 한 번도 돌리지 않았다면 계정과 예외 규칙을 만듭니다.
   - 브리지는 그 출발지의 첫 주소에 바인드해 WAF의 `estate` 주소 80번 포트로 연결합니다.
-  - 요청은 에지를 지납니다(DNAT). 에지 센서는 요청이 `waf`에 도착하는 것을 봅니다. estate 센서는 `waf`가 `X-Forwarded-For`에 고객 주소를 담아 `board.com`으로 보내는 것을 봅니다.
+  - 요청은 에지를 NAT 없이 라우팅되어 지납니다. 에지 센서는 `waf`로 가는 요청을 봅니다. estate 센서는 `waf`가 `X-Forwarded-For`에 고객 주소를 담아 `board.com`으로 보내는 것을 봅니다.
 - 컨테이너 이름이나 `mgmt` 주소는 쓰지 않습니다.
 
 이 경로는 콘솔의 8000과 출처가 다른 별도 포트 8002에서 서비스합니다. 모든 응답에 `Content-Security-Policy: sandbox allow-forms allow-scripts allow-same-origin`을 붙입니다.
@@ -597,7 +615,7 @@ API로 실행한 도구 케이스는 출발지의 대상 URL을 향합니다. �
 - `--target`의 기본값은 `--cases` 파일이 속한 시나리오의 `public_url`(board는 `http://board.com`)입니다. 이 주소는 포트 80의 WAF로 해석됩니다.
 - `--tool-target`의 기본값은 `http://board.com`입니다.
 
-WAF VM은 CRS를 `deploy/waf/modsecurity.conf`의 `SecRuleEngine On`, CRS 기본 임계치 5, Paranoia Level 1로 실행합니다.
+WAF 컨테이너는 CRS를 `deploy/waf/modsecurity.conf`의 `SecRuleEngine On`, CRS 기본 임계치 5, Paranoia Level 1로 실행합니다.
 
 - Paranoia Level과 룰 예외는 세션마다 따로 둡니다(`Session.waf`). 세션을 열 때 시나리오의 defense로 쓰고, `/api/sessions/<id>/waf/`로 바꿉니다("세션, WAF 설정 조정, 단계 엔진").
 - `GET`은 10초 timeout으로 파일을 읽으므로 폴링 한 번이 서버 스레드를 그보다 오래 잡고 있지 않습니다.
@@ -737,7 +755,7 @@ discovery 시점에 레슨마다 `defense`를 이 목록과 대조합니다. 어
 
 WAF 상태 스냅샷:
 
-- 시나리오 최종 점검마다 그 구간을 판정할 때, 그리고 세션을 닫을 때마다 슬롯을 재구축하기 전에 `crs.read`가 읽은 내용을 스냅샷으로 남깁니다.
+- 시나리오 최종 점검마다 그 구간을 판정할 때, 그리고 세션을 닫을 때마다 슬롯을 초기화하기 전에 `crs.read`가 읽은 내용을 스냅샷으로 남깁니다.
 - 스냅샷은 `Session.waf_snapshots`에 쌓입니다(마이그레이션 0021): `{at, scenario_window|closed, waf}`. 이전 과정의 세션에는 VERIFY 실행에서 남은 `{at, run, waf}`도 있습니다.
 - 가장 최근 스냅샷이 `Session.waf`이기도 합니다. 그래서 닫힌 세션은 파일을 포함해 학습자의 마지막 설정을 보고합니다(한 번도 읽지 못했으면 `file: null`).
 - WAF를 읽을 수 없으면 스냅샷을 남기지 않으며, 최종 점검도 세션 종료도 막지 않습니다.
@@ -930,7 +948,7 @@ check는 스스로 실행됩니다.
 - `GET /api/rules/?session=<id>`로 읽습니다.
 - `POST /api/rules/validate/`로 검사하고, 불러온 버전을 기준으로 `POST /api/rules/apply/`로 씁니다.
 - 룰 검사는 `errors`로 응답합니다. 거부한 모든 센서의 출력에서 Suricata `Error`가 들어 있는 줄들입니다. `output`은 그런 줄이 가장 많은 거부 센서의 출력입니다.
-- OPNsense 에지의 Suricata는 syslog로만 로그를 남깁니다(템플릿에 콘솔 출력이 없습니다). 그래서 `-T` 출력에 오류 줄이 없습니다. 워게임 호스트의 estate 센서는 오류 줄을 출력합니다.
+- 두 센서는 콘솔 로그를 켠 같은 Suricata 이미지라서 각자 `-T` 오류 줄을 출력합니다.
 
 ### 기초 레슨 F1-F6과 두 과정
 
@@ -1183,19 +1201,19 @@ board 세션에는 고객을 둘 수 있습니다. 세션 내내 둘러보고, �
 - 요청마다 JSON 한 줄을 `records.jsonl`에 씁니다.
 - 계획 파일이 바뀌면 다시 읽고, 파일이 삭제되거나 SIGTERM을 받으면 멈춥니다.
 
-고객 트래픽 생성기는 슬롯의 `cr-kali` VM에서 시스템 계정 `cr-users`로 실행합니다.
+고객 트래픽 생성기는 슬롯의 Kali 컨테이너에서 시스템 계정 `cr-users`로 실행합니다.
 
-- 페르소나마다 VM의 출발지 주소 중 하나에 바인딩하므로, 출발지 주소는 그 출발지의 것입니다.
-- 공격자와 분리합니다. 기본 출발지를 쓰지 않고, 공격자가 쓰는 어떤 출발지의 `source_ip`나 VM의 바인딩되지 않은 출발 주소(대상으로 `ip route get`)도 쓰지 않습니다. `POSTROUTING -m owner --uid-owner cr-users -j RETURN`을 `ORIGIN-SNAT` SNAT 점프 앞에 넣으므로 공격자의 출발지 변환은 고객에게 적용되지 않습니다.
+- 페르소나마다 컨테이너의 출발지 주소 중 하나에 바인딩하므로, 출발지 주소는 그 출발지의 것입니다.
+- 공격자와 분리합니다. 기본 출발지를 쓰지 않고, 공격자가 쓰는 어떤 출발지의 `source_ip`나 컨테이너의 바인딩되지 않은 출발 주소(대상으로 `ip route get`)도 쓰지 않습니다. `POSTROUTING -m owner --uid-owner cr-users -j RETURN`을 `ORIGIN-SNAT` SNAT 점프 앞에 넣으므로 공격자의 출발지 변환은 고객에게 적용되지 않습니다.
 
 `platform/attacker.py`가 박스에서 실행하는 모든 명령을 담습니다.
 
-- `place_customers`: 계정, NAT 예외, 프로그램을 배치합니다. OpenStack에서는 `sudo`로 합니다.
+- `place_customers`: 계정, NAT 예외, 프로그램을 배치합니다. 컨테이너 안에서 `sudo`로 합니다.
 - `run_customers`: 계획을 쓰고, 프로그램이 실행 중이 아니면 `setsid`와 `setpriv`로 시작합니다.
 - `stop_customers`
 - `customer_records`
 
-프로그램은 시작할 때마다 플랫폼이 보냅니다. Kali 이미지에 넣어 두지 않습니다. VM은 닫힐 때마다 골든 이미지로 재구축되는데, `deploy/kali/` 아래에 파일을 두면 그 이미지의 다이제스트가 바뀌어 이미지를 다시 빌드할 때까지 다음 재구축이 멈추기 때문입니다.
+프로그램은 시작할 때마다 플랫폼이 보냅니다. Kali 이미지에 넣어 두지 않습니다. 컨테이너는 닫힐 때마다 이미지에서 새로 만들어지므로, 이미지에 넣으면 프로그램을 고칠 때마다 새 이미지를 기다려야 하기 때문입니다.
 
 API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 
@@ -1208,7 +1226,7 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
   - 건수 `sent`, `served`, `blocked`(앱이 아니라 방어 설정이 낸 403), `unanswered`, `other`
   - `sources`(출발지, 주소, 요청 수)
   - `by_action`(행동별 보낸 수와 차단된 수)
-- `DELETE`는 생성기를 멈추고 마지막으로 보낸 기록까지 읽습니다. 세션을 닫을 때도 슬롯을 재구축하기 전에 같은 일을 합니다. 박스에 연결할 수 없으면 닫기는 계속 진행하고 오류를 `traffic.error`에 남깁니다.
+- `DELETE`는 생성기를 멈추고 마지막으로 보낸 기록까지 읽습니다. 세션을 닫을 때도 슬롯을 초기화하기 전에 같은 일을 합니다. 박스에 연결할 수 없으면 닫기는 계속 진행하고 오류를 `traffic.error`에 남깁니다.
 
 기록은 바이트 오프셋 기준으로 가져와(`tail -c`, 호출당 최대 1 MiB, 완전한 줄만) 호출마다 `bulk_create` 한 번으로 `CustomerRequest` 행에 넣습니다. 오프셋은 `Session.traffic`에 둡니다.
 
@@ -1416,13 +1434,13 @@ OpenStack 구축은 `docs/STATE.md` 백로그의 OpenStack 항목을 그 순서�
 
 처음 쓴 클라우드는 ML2/Open vSwitch 위에서 kolla-ansible 2026.1을 운영하는 KVM 컴퓨트 노드 한 대(8 vCPU, 64 GB)였습니다. 지금 쓰는 클라우드는 노드가 세 대이고 Kolla 2025.2에 ML2/OVN을 쓰며, 제품은 Kolla-Ansible 2025.1 이상을 지원합니다(`docs/OPENSTACK.md` §2). 훈련 환경은 프로젝트 `fsl-range`에 있고, member 역할 사용자 `fsl-range`가 이를 조작합니다. 사용자에게 Horizon은 보여 주지 않습니다.
 
-클라우드마다 달라지는 값은 모두 `deploy/openstack/cloud.yaml`에 있습니다. 커밋된 `cloud.example.yaml`을 복사한 파일이며, git이 무시하고 비밀 값은 없습니다. identity, 네트워크와 MTU, 베이스 이미지, zone, flavor, 키, OPNsense 릴리스, 플랫폼의 스택과 ref가 들어 있습니다.
+클라우드마다 달라지는 값은 모두 `deploy/openstack/cloud.yaml`에 있습니다. 커밋된 `cloud.example.yaml`을 복사한 파일이며, git이 무시하고 비밀 값은 없습니다. identity, 네트워크와 MTU, 베이스 이미지, zone, 슬롯 수, flavor 두 개(`platform`, `range`), 키, 플랫폼의 스택과 ref, 백업 설정이 들어 있습니다.
 
 - `platform/range/cloud.py`가 이 파일을 검사해 문제를 키별로 모두 보고합니다.
 - `bin/platform-rebuild`와 `bin/cloud`는 이 파일의 값으로 openstack CLI와 Heat 파라미터를 구동합니다. 스택은 이 값을 플랫폼의 `openstack.env`에 씁니다.
-- `bin/cloud up`은 스택을 만든 뒤 `/api/range/ready/`가 준비 상태가 될 때까지 fabric, images, slot, configure 엔드포인트를 호출합니다.
-- `bin/cloud down`은 키는 남겨 두고, 플랫폼 DB를 백업한 뒤(`bin/backup`, 사본은 `backups.keep`개까지 보관) slot, fabric, 남아 있는 이미지 빌더, 스택을 지웁니다.
-- `*_FAILED` 상태의 스택은 `up`이 (빌더부터) 지우고 다시 만들며, `down`은 지웁니다.
+- `bin/cloud up`은 스택을 만든 뒤 `/api/range/fabric/`을 POST하고, `/api/range/slot/`을 POST해 훈련 환경 호스트를 부팅하거나 교체합니다. 호스트가 뜨고 설치가 끝나기를 기다려 `/api/range/configure/`를 POST하고, `/api/range/ready/`가 모든 슬롯을 READY로 보고할 때까지 기다린 뒤, 마지막으로 `DELETE /api/range/leftovers/`를 보냅니다.
+- `bin/cloud down`은 키는 남겨 두고, 플랫폼 DB를 백업한 뒤(`bin/backup`, 사본은 `backups.keep`개까지 보관) 슬롯과 훈련 환경 호스트, fabric, 스택을 지웁니다.
+- `*_FAILED` 상태의 스택은 `up`이 (남은 빌더 서버부터) 지우고 다시 만들며, `down`은 지웁니다.
 - VM에 실행 중인 `cr-platform` 컨테이너도 플랫폼 DB 파일도 없는 스택은 백업할 것이 없습니다. 그러면 `down`과 `up --replace`가 백업을 건너뜁니다. VM에 ssh가 닿지 않으면 여전히 거부합니다. 플랫폼 DB는 있는데 `cr-platform` 컨테이너가 멈춰 있어도 거부하지 않습니다. `down`이 컨테이너를 시작하고(백업은 `docker exec`로 실행됨), 백업한 뒤 API가 응답하기를 기다렸다가 훈련 환경을 지웁니다. `up`은 API가 응답하든 않든 매번 VM에 인계(hand-over) 여부를 물어서, 인계를 받지 못한 VM(`openstack.env`에 `CR_OPENSTACK_PASSWORD`가 없음)에는 그때 인계를 합니다. 비밀번호와 훈련 환경 키를 넣고(키가 없고 VM에 플랫폼 DB도 없으면 새로 만듦), VM에 플랫폼 DB가 없으면 행이 있는 가장 최근 백업을 복원합니다.
 
 ### 구축됨: 플랫폼 VM
@@ -1448,217 +1466,193 @@ OpenStack 구축은 `docs/STATE.md` 백로그의 OpenStack 항목을 그 순서�
 
 systemd 유닛 `cr-platform.service`는 부팅할 때마다 `compose.yaml`의 이미지를 pull하고 `docker compose -f /opt/cr/compose.yaml up -d`를 실행합니다. 이 유닛은 아무것도 빌드하지 않습니다. pull이 실패해도 유닛은 멈추지 않으며(`ExecStartPre=-`), 이때는 `up`이 없는 이미지를 체크아웃에서 빌드합니다. `bin/platform-rebuild`는 ghcr.io를 먼저 확인해 이런 빌드를 피합니다.
 
-플랫폼 VM은 플랫폼 컨테이너(`compose.yaml`)만 돌립니다. board의 정답 데이터는 워게임 호스트의 관리망 주소에서 읽습니다.
+플랫폼 VM은 플랫폼 컨테이너(`compose.yaml`)만 돌립니다. board의 정답 데이터는 훈련 환경 호스트 위 board 컨테이너 안에서 읽습니다.
 
-cloud-init이 `CR_PUBLISH`를 VM의 고정 주소로 설정합니다. 그래서 8000, 8002, 3080이 그 주소에 publish되고 보안 그룹에서도 열려 있어, 브라우저는 floating IP로 콘솔에 접속합니다. `CR_SYSLOG_PUBLISH=0.0.0.0`은 에지 방화벽의 syslog를 받기 위해 5140/udp를 모든 주소에 publish합니다. 9200은 loopback에만 둡니다.
+cloud-init이 `CR_PUBLISH`를 VM의 고정 주소로 설정합니다. 그래서 8000, 8002, 3080이 그 주소에 publish되고 보안 그룹에서도 열려 있어, 브라우저는 floating IP로 콘솔에 접속합니다. `CR_SYSLOG_PUBLISH=0.0.0.0`은 훈련 환경 호스트의 syslog를 받기 위해 5140/udp를 모든 주소에 publish합니다. 9200은 loopback에만 둡니다.
 
 템플릿의 파라미터는 모두 `deploy/openstack/cloud.yaml`에서 옵니다(`bin/platform-rebuild`, `bin/cloud`).
 
-- cloud-init은 그 값을 `CR_OPENSTACK_*`와 `CR_OPNSENSE`로 씁니다. 여기에 `_PROJECT`(스택 자신의 프로젝트), `_SSH_USER=ubuntu`, `_SSH_KEY=/data/ssh/id_ed25519`를 더해 모드 0600으로 `/root/openstack.env`에 쓴 뒤, git이 무시하는 `/opt/cr/openstack.env`로 옮깁니다.
-- 비밀번호는 템플릿에 넣지 않습니다. Nova가 user data를 보관하고, 메타데이터 서비스가 훈련 환경의 컨테이너를 포함해 VM에서 실행되는 모든 것에 이를 제공하기 때문입니다.
+- cloud-init은 그 값을 `CR_OPENSTACK_*`로 씁니다. 여기에 `_PROJECT`(스택 자신의 프로젝트), `_SSH_USER=ubuntu`, `_SSH_KEY=/data/ssh/id_ed25519`를 더해 모드 0600으로 `/root/openstack.env`에 쓴 뒤, git이 무시하는 `/opt/cr/openstack.env`로 옮깁니다.
+- 비밀번호는 템플릿에 넣지 않습니다. Nova가 user data를 보관하고, 메타데이터 서비스가 플랫폼의 컨테이너를 포함해 VM에서 실행되는 모든 것에 이를 제공하기 때문입니다.
 - `bin/platform-rebuild`는 VM이 뜬 뒤 ssh로 `CR_OPENSTACK_PASSWORD`를 덧붙입니다. 훈련 환경용 ssh 키도 같은 방식으로 플랫폼의 데이터 볼륨에 씁니다(`README.md`).
 - 플랫폼 서비스는 이 파일을 `env_file`(`required: false`, `format: raw`)로 읽습니다. compose는 변수 치환이나 따옴표 제거 없이 값을 그대로 전달합니다.
 
 VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init이 쓴 `CR_SUBSTRATE=range.openstack.connect`). 훈련 환경의 네트워크는 `/api/range/fabric/`으로 직접 만들며, 계획은 `range/fabric.py`가 세웁니다.
 
-- 선언된 출발지마다 서브넷을 하나씩 둔 `internet` 네트워크 하나(DHCP 끔)
-- `cloud.yaml`이 정한 CIDR의 `estate`(서비스망)와 `mgmt`(게이트웨이 없음). `cloud.yaml` 로더는 이 CIDR이 서로 겹치거나, 플랫폼 네트워크, Docker의 기본 로컬 주소 풀(172.17.0.0/16부터 172.31.0.0/16까지와 192.168.0.0/16. moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`이 선언한 네트워크, 선언된 출발지와 겹치면 거부합니다.
-- `/data/ssh/id_ed25519`의 키로 만든 키페어 `cr-platform`
+- `mgmt`(DHCP 켬, 게이트웨이 없음). CIDR은 `cloud.yaml`이 정합니다. 로더는 서로 겹치거나, 플랫폼 네트워크, Docker 기본 로컬 주소 풀(172.17.0.0/16~172.31.0.0/16, 192.168.0.0/16, moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`이 선언한 네트워크, 선언된 출발지와 겹치는 CIDR을 거부합니다. /16보다 좁은 `estate`도 거부합니다.
+- `/data/ssh/id_ed25519`의 키로 만드는 키페어 `cr-platform`
+- 아래의 보안 그룹 세 개
 
-플랫폼은 첫 fabric POST 시점에 그 키가 없을 때만 키를 만듭니다. `bin/platform-rebuild`는 운영자 컴퓨터에 사본을 두고 새 플랫폼 VM마다 써 넣습니다. 그래서 VM을 교체해도 키페어와 훈련 환경의 VM이 신뢰하는 키가 그대로 유지됩니다.
+fabric이 만드는 네트워크는 `mgmt` 하나입니다. 슬롯의 `internet`과 `estate`는 Neutron 네트워크가 아니라 훈련 환경 호스트 위의 docker 네트워크입니다.
 
-`describe()`는 각 출발지를 하나뿐인 인터넷 네트워크의 해당 서브넷에 CIDR로 연결합니다. VM의 라우터에는 플랫폼 자신의 서브넷만 붙습니다. 플랫폼은 `mgmt` 포트(아래)를 통해 훈련 환경 호스트에 접속합니다.
+플랫폼은 첫 fabric POST 시점에 그 키가 없을 때만 키를 만듭니다. `bin/platform-rebuild`는 운영자 컴퓨터에 사본을 두고 새 플랫폼 VM마다 써 넣습니다. 그래서 VM을 교체해도 키페어와 훈련 환경 호스트가 믿는 키가 유지됩니다.
 
-호스트는 골든 이미지로 부팅합니다. 골든 이미지는 빌더 VM이 한 번 만들어 두고 부팅할 때마다 재사용하는 Glance 이미지입니다. `/api/range/images/`로 만들고, 계획은 `range/images.py`가 세웁니다.
+보안 그룹 세 개:
 
-- 클라우드에 업로드해 둔 이미지는 손대지 않은 Ubuntu 24.04 클라우드 이미지(`compute.base_image`) 하나뿐입니다. 모든 빌더가 이 이미지로 부팅합니다.
-- `declaration.yaml`의 `hosts:`가 VM마다 설정 스크립트와 필요한 파일을 정합니다. 플랫폼은 이를 빌더의 user data에 담아 빌더를 플랫폼 자신의 네트워크(라우터가 있는 네트워크)에서 부팅합니다. 설정 스크립트가 끝날 때 출력하는 줄을 빌더 콘솔에서 확인한 뒤 빌더를 멈추고 스냅샷합니다.
-- 이미지에는 번들의 digest가 들어 있습니다. 그래서 스크립트를 수정하면 낡은 이미지가 조용히 쓰이는 대신 다른 번들의 이미지로 드러납니다.
-- digest는 파일마다 이름, 내용, mode를 해시합니다. mode는 실행 비트만 남겨 0755 또는 0644(git이 추적하는 방식)로 정하므로, checkout의 umask가 달라도 digest는 같습니다.
-- `uploads`가 있는 호스트(에지 방화벽)는 다르게 처리합니다. 이 빌더는 자격 증명을 받지 않습니다. 빌더는 디스크를 만들어 플랫폼 네트워크에 HTTP로 제공하고, 디스크의 SHA256을 콘솔에 출력합니다. 플랫폼이 디스크를 받아 SHA256을 확인하고 Glance 레코드를 만든 뒤 자신의 토큰으로 업로드합니다. 빌더는 Glance가 active를 알리면 삭제하며, 스냅샷하지 않습니다.
-- 에지 방화벽의 빌더는 OPNsense nano 이미지를 내려받아 그 SHA256과 릴리스 키의 SHA256을 `cloud.yaml`과 대조하고, 서명을 검증합니다. QEMU로 한 번 부팅해 설정 가져오기(importer) 프롬프트에 응답함으로써 `deploy/opnsense/config.xml`로 시작하게 합니다. 그 뒤 `qemu-img`로 변환해 제공하면 플랫폼이 이를 `fsl-opnsense-<version>`으로 업로드합니다(`deploy/opnsense/build.sh`, `importer.py`).
+- `cr-reach`: 플랫폼 자신의 `mgmt` 포트. `cr-mgmt` 멤버가 보내는 NTP(udp 123)와, 훈련 환경 호스트의 `mgmt` 주소가 보내는 syslog(udp 5140)만 들입니다.
+- `cr-mgmt`: 훈련 환경 호스트의 `mgmt` 포트. `cr-reach` 멤버만 들입니다.
+- `cr-egress`: 훈련 환경 호스트가 이미지를 받아 오는, 플랫폼 네트워크 쪽 포트. 인바운드 룰이 없습니다.
 
-워게임마다 이미지를 따로 두지 않습니다. 호스트 이미지 하나, `cr-wargame-host`(`deploy/wargame-host/setup.sh`)는 베이스 이미지에 `docker.io`와 `docker-compose-v2`를 더한 것입니다. 선언 항목에 나열된 모든 워게임(`wargames: [board, corp]`)을 GHCR 컨테이너로 실행합니다.
+플랫폼은 자기 서버 id(부팅 때 기록하는 `CR_OPENSTACK_PLATFORM`)로 찾은 `cr-reach` 포트를 통해 `mgmt`에 붙습니다. 그래서 플랫폼은 훈련 환경 호스트에 ssh할 수 있고, 훈련 환경 호스트가 플랫폼으로 여는 연결은 NTP와 syslog뿐입니다.
 
-- `range/wargame_host.py`는 각 `wargames/<id>/compose.yaml`을 호스트용으로 렌더링해 번들에 넣습니다. `build:`와 세션 네트워크를 빼고, 각 컨테이너 이름을 서비스 이름으로 정하고, 이미지 참조에 플랫폼의 `CR_IMAGE_TAG`를 씁니다. WAF가 프록시하는 포트(`publish: {board: 8000, corp-wp: 80}`)를 publish합니다.
-- `daemon.json`은 Docker 브리지에 테넌트 네트워크의 MTU를 지정합니다.
-- 인터넷에 연결된 빌더가 컨테이너 이미지를 받아 호스트 이미지 안에 넣어 둡니다. 훈련 환경에는 인터넷이 없습니다.
-- 그다음 빌더가 워게임을 한 번씩 띄워 초기화된 데이터를 `/opt/cr/pristine`에 남깁니다(`pristine.sh keep`, 아래 "재구축과 초기화" 참고). 이미지가 약 0.5 GB 커지고 빌드가 몇 분 늘어납니다.
-- 태그가 번들의 digest에 들어가므로, 새 태그로 올라간 플랫폼은 새 호스트 이미지를 계획합니다.
-- 워게임이 늘어도 이미지 수는 그대로입니다: 베이스, 에지 방화벽, WAF, Kali, 워게임 호스트.
-
-플랫폼에 사이드로드한 워게임 이미지(`CR_SIDELOADED`, `bin/platform-rebuild --sideload`에 준 이름. `docs/OPENSTACK.md` §5.3)는 GHCR을 거치지 않고 워게임 호스트에 닿습니다.
-
-1. `wargame_host.sideloaded_images`가 이미지가 정확히 `ghcr.io/nekonic/cr-<name>:<CR_IMAGE_TAG>`인 서비스를 찾습니다. 플랫폼이 자기 docker에서 그 이미지 id를 읽습니다.
-2. 번들에 생성 파일 `deploy/wargame-host/loaded`(줄마다 `<image> <image id> <name>`)가 더해집니다. 그래서 id가 번들 digest에 들어갑니다. 플랫폼의 기본 URL을 담은 `deploy/wargame-host/served-from`도 더해집니다. 빌더는 이 파일을 받지만 digest 계산에서는 빠지므로, 플랫폼의 고정 IP가 바뀌어도 이미지를 다시 빌드하지 않습니다.
-3. `setup.sh`는 이전처럼 GHCR에서 pull한 다음 `<name>`마다 `<served-from><name>/`, 곧 `GET /api/range/images/sideloaded/<name>/`(`platform/api/sideloaded.py`)을 받습니다. 이 엔드포인트는 그 이미지의 `docker save`를 스트리밍합니다. 사이드로드하지 않았거나 선언된 워게임이 쓰지 않는 이름에는 404를 응답합니다.
-4. `setup.sh`가 `docker load`하고, 로드한 이미지의 id가 플랫폼의 id와 다르면 거부합니다. GHCR 사본을 정리합니다.
-
-워게임에 사이드로드한 이미지가 없으면 아무것도 바뀌지 않습니다. 새 이미지가 준비되기 전부터 서 있던 슬롯은 `POST /api/range/slot/`이 재구축할 때까지 이전 워게임 호스트를 그대로 씁니다. `bin/cloud up`이 이 요청을 보냅니다. 세션이 열려 있으면 재구축은 그 세션을 닫을 때까지 미룹니다.
-
-fabric은 보안 그룹 세 개도 만듭니다.
-
-- `cr-range`: `mgmt`가 아닌 모든 훈련 환경 포트가 속하며 모든 IPv4 유입을 허용합니다. 훈련 환경을 방어하는 것은 Neutron이 아니라 WAF입니다. anti-spoofing은 켜 둡니다.
-- `cr-reach`: `cr-mgmt` 구성원에서 오는 NTP(udp 123)만 허용합니다.
-- `cr-mgmt`: 모든 훈련 환경 호스트의 `mgmt` 포트가 속하며 `cr-reach` 구성원에서 오는 연결만 허용합니다.
-
-플랫폼은 자신의 서버 id(`CR_OPENSTACK_PLATFORM`, 부팅 시 기록)로 찾은 `cr-reach` 포트를 통해 `mgmt`에 붙습니다. 그래서 플랫폼은 모든 호스트에 ssh로 접속할 수 있지만, 어떤 호스트도 NTP 말고는 플랫폼으로 연결을 열 수 없습니다. Kali의 `mgmt` 포트에서는 다른 호스트로 연결할 수 없습니다. runner는 호출자가 네트워크를 지정하지 않으면 호스트의 `mgmt` 주소로 접속합니다.
-
-훈련 환경에는 인터넷이 없어 자체 시간 동기화 서버가 없습니다. 채점기(플랫폼)는 대상 시스템과 센서의 시각을 플랫폼 시계 기준의 케이스 시간 구간과 비교합니다. 그래서 플랫폼이 훈련 환경에 시각을 제공합니다.
+훈련 환경에는 인터넷이 없으므로 자체 시간 출처도 없습니다. 채점기(플랫폼)는 대상 시스템과 센서의 시각을 자기 시계 기준의 케이스 시간 구간과 비교합니다. 그래서 플랫폼이 훈련 환경에 시간을 제공합니다.
 
 - 플랫폼 VM은 chrony를 실행합니다(cloud-init: `allow <network.mgmt>`, `local stratum 10`).
-- 모든 훈련 환경 호스트는 플랫폼의 `mgmt` 주소로 시간을 맞춥니다. `range/clock.py`는 Ubuntu 호스트에 `systemd-timesyncd` drop-in을 쓰고 첫 응답을 기다립니다(`keep_time()`. 모든 호스트의 configure 체인 안에서, 그리고 워게임이 시작되기 전에 실행).
-- 에지 방화벽의 렌더링된 `config.xml`은 `system/timeservers`에 플랫폼 주소를 지정하고 ntpd를 `opt1`에 바인딩합니다.
+- 훈련 환경 호스트는 플랫폼의 `mgmt` 주소로 시간을 맞춥니다. `range/clock.py`가 `systemd-timesyncd` drop-in을 쓰고 첫 응답을 기다립니다(`keep_time()`, configure할 때마다). 컨테이너는 호스트의 시계를 같이 씁니다.
 
-슬롯은 훈련 환경 호스트의 집합입니다. `/api/range/slot/`으로 관리하고 계획은 `range/slot.py`가 세웁니다.
+**훈련 환경 호스트.** VM 하나, `cr-range`가 모든 슬롯을 돌립니다. `/api/range/slot/`으로 관리하고, 계획은 `range/slot.py`가 세웁니다.
 
-- 각 호스트는 선언된 네트워크마다 `<host>.<segment>` 이름의 포트를 가집니다. 이 포트는 `cr-range`에, `mgmt`에서는 `cr-mgmt`에 속합니다. 다른 그룹에 있던 기존 `mgmt` 포트는 `cr-mgmt`로 옮깁니다.
-- `gateway` 역할을 맡은 호스트는 모든 출발지의 게이트웨이 주소를 인터넷 포트 하나에 갖습니다. cloud-init은 첫 번째 주소만 설정하므로, 나머지는 호스트의 user data가 부팅할 때마다 추가합니다.
-- 모든 호스트의 user data는 `estate` 이름을 `/etc/hosts`에 덧붙입니다. WAF의 `board.com`과 `corp.com`, 워게임 호스트의 `board`와 `corp-wp`입니다. WAF는 이것으로 각 워게임의 publish된 포트를 찾습니다. 각 데이터베이스는 호스트 안의 자기 compose 프로젝트 안에서만 응답합니다.
-- 떠 있는 서버의 이미지(Nova의 `image.id`)가 그 호스트의 준비된 이미지와 다르면 계획에서 `stale`로 표시합니다. 세션이 잡지 않은 슬롯이면 `POST /api/range/slot/`이 Nova로 그 서버를 준비된 이미지로 재구축하고, 재구축한 서버를 `rebuilding`에 적어 돌려줍니다. 이어서 플랫폼이 `api/reset.py`로 그 슬롯을 직접 초기화합니다. Nova가 재구축한 서버마다 ACTIVE를 벗어났다가 돌아오는 것을 보이고 `configure_slot()`이 끝날 때까지 슬롯은 `RESETTING`입니다. 세션이 잡은 슬롯이면 아무것도 재구축하지 않고 슬롯을 blocked로 보고합니다.
+- `POST /api/range/slot/`은 이 VM이 없으면 부팅합니다. 손대지 않은 Ubuntu 이미지(`compute.base_image`), flavor `compute.flavors.range`(`CR_OPENSTACK_FLAVOR`), config drive, 키페어 `cr-platform`을 씁니다. 포트는 둘입니다. `mgmt` 위 `cr-mgmt`에 속한 `cr-range.mgmt`, 그리고 플랫폼 네트워크(`CR_OPENSTACK_BUILD_NETWORK`) 위 `cr-egress`에 속한 포트입니다.
+- Nova user data에 설치 번들을 담습니다(`rangehost.bundle()`, `rangehost.user_data()`). `deploy/range-host/setup.sh`, 이미지 목록, Docker `daemon.json`, pristine 워게임의 compose 파일과 목록입니다. 인코딩한 user data는 Nova 한도인 65,535바이트 안에 들어가야 합니다.
+- `setup.sh`는 `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog`, `acl`을 설치합니다. sshd의 `MaxSessions`, `MaxStartups`와 inotify 한도를 올립니다. 플랫폼의 `CR_IMAGE_TAG`로 GHCR에서 이미지를 모두 pull합니다. 대상 시스템의 pristine 볼륨을 `/opt/cr/pristine`에 떠 두고, `/var/lib/cr/ready`를 남깁니다. 실패하면 `/var/lib/cr/failed`를 남기고 로그 끝부분을 콘솔에 출력합니다.
+- 그 전까지 플랫폼은 Nova의 `ACTIVE` 대신 `SETTING_UP`이나 `SETUP_FAILED`로 훈련 환경 호스트를 보고합니다.
+- `daemon.json`은 Docker에 테넌트 MTU(`mtu`, `default-network-opts`), /28 단위의 주소 풀 10.40.0.0/16, `local` 로그 드라이버, `userns-remap: default`를 줍니다.
+- 서버 메타데이터에 `cr_host`, `cr_tag`(이미지 태그), `cr_bundle`(번들 digest)을 둡니다. digest는 파일마다 이름과 내용을 해시합니다. 태그나 digest가 플랫폼과 다른 훈련 환경 호스트는 `stale`입니다. 그러면 `POST /api/range/slot/`이 열린 세션이 없을 때 그 VM을 지우고 다시 부팅하며, 세션이 열려 있으면 슬롯을 blocked로 보고합니다.
+- Glance 이미지는 만들지 않습니다. 훈련 환경 호스트는 GHCR에서만 pull합니다.
 
-**훈련 환경 슬롯.** `cloud.yaml`의 `compute.slots`(기본값 1, 플랫폼에서는 `CR_OPENSTACK_SLOTS`)는 훈련 환경을 몇 벌 동시에 세울지 정합니다. `max_sessions`가 바로 이 수입니다.
+초기 데이터 사본은 `setup.sh`가 한 번 만듭니다. 모든 워게임을 compose 프로젝트 `pristine`으로 한 번 띄워 healthy가 될 때까지 기다린 뒤 멈추고, 컨테이너마다 볼륨을 `/opt/cr/pristine/<service><path>`로 복사한 다음 `down -v`로 지웁니다.
 
-- 슬롯 1은 위의 이름을 그대로 씁니다. 슬롯 N>1은 서버와 포트 이름을 `<host>-N`(`cr-edge-2`, `cr-waf-2.mgmt`)으로 짓고, 서버에 `cr_host`와 함께 `cr_slot=N` 태그를 답니다.
-- 첫 슬롯을 제외한 슬롯마다 internet과 estate 네트워크의 사본(`cr-internet-N`, `cr-estate-N`, `cr.slot=N` 태그)을 같은 서브넷으로 따로 둡니다. 그래서 모든 에지 방화벽이 같은 출발지 게이트웨이 30개를, 모든 Kali가 같은 출발지 주소를 가지며, 경보의 출발지는 어느 슬롯에서나 같은 국가로 분류됩니다. Neutron은 라우터를 공유하지 않는 두 네트워크에 같은 CIDR을 허용합니다.
-- `mgmt`는 모든 슬롯이 공유합니다. 슬롯마다 호스트가 여기서 각자의 DHCP 주소를 받고, 이전과 같이 `cr-mgmt`가 이들을 격리합니다.
-- 슬롯 어댑터(`OpenStack.in_slot(n)`)는 자기 슬롯의 서버만, 선언된 호스트 이름으로 읽습니다. 그래서 역할, runner, 구성도, 에지 방화벽의 렌더링된 설정이 모든 슬롯에서 같습니다. 슬롯 N의 에지 방화벽은 hostname을 `firewall-N`으로 렌더링합니다.
-- 한 슬롯의 수집기를 열 때 다른 슬롯의 송신자 룰은 그대로 둡니다.
-- 플랫폼은 세션을 열 때 세션을 슬롯에 묶습니다(`Session.slot`. unique 제약으로 슬롯당 열린 세션은 하나). 잠금을 잡은 상태에서 READY인 첫 번째 빈 슬롯을 고릅니다.
-- 세션별 훈련 환경 호출은 모두 그 슬롯으로 갑니다. 세션 종료는 그 슬롯만 초기화하며 그 슬롯에서 비활성화한 룰만 다시 활성화된 것으로 표시합니다. 초기화 상태도 슬롯마다 따로입니다(`api/reset.py`). 룰 변경은 그 슬롯의 차례를 잡습니다. 따라서 한 슬롯의 초기화가 다른 슬롯의 세션을 붙잡지 않습니다.
-- `run_on_role`은 `--session`이나 `--slot`을 받으며, 슬롯이 둘 이상인데 둘 다 없으면 거부합니다.
-- 콘솔의 VM 터미널은 세션을 `?arg=<id>`(ttyd `-a`)로 받아 그 슬롯의 호스트를 엽니다.
+**훈련 환경 슬롯.** `cloud.yaml`의 `compute.slots`(기본 1, 플랫폼에서는 `CR_OPENSTACK_SLOTS`)가 동시에 띄울 훈련 환경 사본 수를 정합니다. `max_sessions`가 이 값입니다.
 
-**에지 방화벽.** OPNsense 에지 `cr-edge`(vtnet0 internet이 WAN, vtnet1 estate가 LAN, vtnet2 mgmt가 opt1)는 슬롯 안에서 부팅합니다. `POST /api/range/configure/`가 다음을 설정합니다.
+- 슬롯 N은 훈련 환경 호스트 위의 docker compose 프로젝트 `sN`입니다. `platform/range/rangehost.py`가 `deploy/range-host/slot.yaml`과 워게임마다의 `wargames/<w>/compose.yaml`로 렌더링합니다. 컨테이너는 `sN-kali`, `sN-edge`, `sN-waf`, `sN-edge-sensor`, `sN-estate-sensor`, `sN-board`, `sN-board-db`, `sN-corp-wp`, `sN-corp-db`입니다.
+- 네트워크는 `sN_internet`(브리지 `sN-inet`, 172.30.N.0/24), `sN_estate`(브리지 `sN-estate`, 10.30.N.0/24: 에지 .1, WAF .247, board .59, corp-wp .60), 그리고 워게임마다 DB용 `<wargame>-default` 하나입니다. 모두 `internal`이고 `gateway_mode_ipv4: isolated`이며 테넌트 MTU를 씁니다. publish한 포트도 NAT도 없습니다.
+- 슬롯마다 `internet` 브리지에 같은 출발지 서브넷 서른 개가 올라가므로, 경보의 출발지는 어느 슬롯에서나 같은 국가로 분류됩니다.
+- 슬롯 어댑터(`OpenStack.in_slot(n)`)는 자기 compose 프로젝트만 다룹니다. 역할, runner, 구성도는 모든 슬롯에서 같습니다.
+- 플랫폼은 세션을 열 때 슬롯 하나에 묶습니다(`Session.slot`, unique 제약으로 슬롯마다 열린 세션 하나). 비어 있고 READY인 첫 번째 슬롯을 잠금 아래에서 고릅니다.
+- 세션별 훈련 환경 호출은 모두 그 슬롯으로 갑니다. close는 그 슬롯만 초기화하고, 그 슬롯의 비활성화 룰만 활성화 상태로 돌립니다. 초기화 상태도 슬롯마다 따로입니다(`api/reset.py`). 룰 변경은 그 슬롯의 차례를 잡으므로, 한 슬롯의 초기화가 다른 슬롯의 세션을 붙잡지 않습니다.
+- `run_on_role`은 `--session`이나 `--slot`을 받고, 슬롯이 둘 이상인데 둘 다 없으면 실행을 거부합니다.
+- 콘솔의 VM 터미널은 세션을 `?arg=<id>`(ttyd `-a`)로 받아 그 슬롯의 컨테이너를 엽니다.
 
-1. 슬롯에 맞춰 `deploy/opnsense/config.xml`을 렌더링합니다(`range/opnsense.py`). 이 파일에는 `dnsmasq`, `Syslog`, `unboundplus` 모델의 기본값이 들어 있습니다. OPNsense의 마이그레이션이 실행되기 전에 초기 부팅 단계의 템플릿 렌더링에 이 값이 필요하기 때문입니다.
-2. 렌더링한 파일을 Suricata include `deploy/opnsense/suricata.yaml`, 시작 룰과 함께 관리망 ssh로 root 권한으로 올려 설치하고, 에지를 재부팅합니다.
-3. 새 부팅 시각이 확인될 때까지 기다리고, 에지의 상태를 확인합니다.
-   - 출발지 게이트웨이 주소 30개를 갖고 있습니다(하나는 static, 나머지는 IP alias).
-   - WAN에서 Suricata를 IDS 모드로 실행하며, estate와 mgmt를 `HOME_NET`으로 두고 EVE 경보와 HTTP 기록을 syslog로 보냅니다.
-   - syslog를 수집기로 보냅니다.
-   - pf에 WAN pass 룰이 있습니다. 이 룰은 WAF의 estate 주소로 가는 tcp 80만 허용하고 나머지는 허용하지 않습니다.
+**configure.** `POST /api/range/configure/`(`configure_slot()`)는 수집기 룰을 여는 일과 훈련 환경 호스트의 시간 출처 설정을 나란히 처리합니다. 그다음 슬롯의 파일을 훈련 환경 호스트의 `slot.sh up N`에 넘깁니다. compose 파일, 두 센서의 설정, Kali와 에지의 주소, rsyslog 설정, 기본 룰, 스크립트 자신입니다. `slot.sh up`은 다음을 합니다.
 
-룰 편집기는 include가 가리키는 파일에 쓰고, include가 여는 소켓에서 `suricatasc`로 룰을 다시 읽힙니다. 에지의 syslog와 WAF의 ModSecurity audit 로그는 GeoIP 정보가 붙은 채 플랫폼의 Elasticsearch로 수집됩니다.
+1. 슬롯 디렉터리를 만들고, 로그 디렉터리의 소유자를 remap된 사용자로 맞춥니다.
+2. 컨테이너를 만들고(`up --no-start --pull never`), 한 번도 실행하지 않은 대상 시스템의 빈 볼륨마다 초기 데이터를 복사합니다.
+3. 컨테이너를 띄웁니다(`up -d --wait`).
+4. Kali에 출발지 주소와 기본 출발지 게이트웨이로 가는 기본 경로를, 에지의 `wan`에 출발지마다 게이트웨이 주소를 붙입니다(`nsenter`로 `ip -batch` 실행).
+5. WAF와 `estate`의 대상 시스템이 에지의 estate 주소로 라우팅하게 합니다.
+6. 모든 브리지와 그 포트, 컨테이너 인터페이스에서 TSO, GSO, GRO를 끕니다. 센서가 보낸 그대로의 패킷을 보게 하려는 것입니다.
+7. `DOCKER-USER`에서 브리지마다 같은 브리지로의 forward를 허용합니다.
+8. `/etc/rsyslog.d/60-cr-sN.conf`를 설치하고 rsyslog를 재시작합니다.
 
-**Kali.** Kali 이미지 하나가 모든 출발지를 맡습니다. 인터넷 포트 하나에 국가별 주소 약 100개를 두고(슬롯의 `bootcmd`가 NIC에 추가), `/usr/local/sbin/set-origin`이 박스에서 나가는 트래픽의 출발지 주소를 국가별로 SNAT합니다. 그래서 어떤 도구를 쓰든 선택한 국가에서 나가는 트래픽이 됩니다. 마커를 붙이는 프록시와 ttyd 터미널은 Kali 박스에서 실행됩니다.
+그 뒤 플랫폼이 `rules/suricata.py`로 두 센서에 기본 룰을 넣습니다.
 
-**재구축과 초기화.** `rebuild_slot()`(`POST /api/range/slot/rebuild/`)은 떠 있는 슬롯 VM 전부를 각자의 골든 이미지로 재구축하되, 각 서버의 id, flavour, 포트, 고정 IP는 유지합니다.
+**에지.** `sN-edge`(`deploy/edge/`)는 nftables를 넣은 Alpine이며 `NET_ADMIN`만 가집니다. `wan`은 `sN-inet`에, `lan`은 `sN-estate`에 붙습니다. `rp_filter`를 끄고 NAT 없이 forward하므로 출발 국가 주소가 그대로 WAF에 닿습니다. `deploy/edge/edge.nft`는 loopback 외 input을 drop하고 forward는 accept합니다.
 
-`POST /api/sessions/<id>/close/`는 이 함수 대신 `reset_slot()`을 호출합니다.
+**Kali.** Kali 이미지 하나가 모든 출발지를 맡습니다. `slot.sh`가 국가별 주소 약 100개를 `eth0`에 붙입니다. `/usr/local/sbin/set-origin`이 컨테이너의 출발 주소를 국가별로 SNAT하므로, 모든 도구가 고른 국가에서 나갑니다. 마커를 붙이는 프록시는 컨테이너의 메인 프로세스입니다. Kali가 아는 이름은 `board.com`과 `corp.com` 둘이고, 둘 다 WAF의 estate 주소입니다.
 
-- 쉘을 내주는 VM(Kali, WAF)만 재구축합니다.
-- 에지 방화벽과 워게임 호스트는 제자리에서 초기화합니다(`docs/OPENSTACK.md` §6.1). 단, 그 VM이 `stale`이면 다른 VM과 함께 재구축하고 `reset_in_place()`는 건너뜁니다.
-- 그래서 한 세션이 수정한 룰이나 심어 둔 데이터가 다음 세션에 남지 않습니다.
+**센서.** `sN-edge-sensor`와 `sN-estate-sensor`는 digest로 고정한 `jasonish/suricata`를 호스트 네트워크와 호스트 user namespace(`userns_mode: host`)에서 `NET_ADMIN`, `NET_RAW`, `SYS_NICE`로 돌립니다. 각각 브리지 하나에서 스레드 하나로 af-packet을 씁니다.
 
-재구축은 디스크를 지우므로, VM이 ACTIVE가 된 뒤 반드시 configure를 다시 실행해야 합니다.
+- 에지 센서는 `sN-inet`, 곧 인터넷 구간을 봅니다. 설정은 `deploy/range-host/edge-sensor.yaml`이고, `HOME_NET`은 슬롯의 estate /24입니다.
+- estate 센서는 `sN-estate`를 보며, board와 corp-wp 주소로 BPF 필터를 겁니다. 곧 WAF→대상 시스템 구간입니다. 설정은 `deploy/suricata/suricata.yaml`로 렌더링합니다.
+- 둘 다 `/var/lib/suricata/rules/local.rules`에서 룰을 읽고 `suricatasc -c reload-rules`로 reload합니다. 호스트 항목 `cr-edge`와 `cr-range`가 이 둘을 지정합니다(estate 센서는 `settings.CR_EXTRA_SENSORS`). 룰 넣기, 검증, 변경, 기준선 검사는 모두 두 센서에 갑니다.
+- EVE 경보와 HTTP 기록은 `/var/log/cr/sN/edge/eve.json`이나 `/var/log/cr/sN/estate/eve.json`에 씁니다.
 
-워게임 호스트의 제자리 초기화(`clear_wargames()`)는 각 워게임과 estate 센서에 `docker compose down -v`를 한꺼번에 실행하고, 하나라도 실패하면 실패로 처리합니다. 센서의 eve 로그와 rsyslog의 imfile 상태도 지웁니다. 그 결과 이미지만 남고 컨테이너나 볼륨은 남지 않습니다.
+**로그.** WAF는 audit 로그를 훈련 환경 호스트의 `/var/log/cr/sN/waf/audit.log`에 씁니다. 이것이 WAF의 유일한 호스트 경로 마운트입니다. `/etc/rsyslog.d/60-cr-sN.conf`(`rangehost.forwarding`)가 세 파일을 `imfile`로 읽어 플랫폼 `mgmt` 주소의 5140으로 UDP 전달합니다. 파일마다 송신자 이름이 고정입니다. 슬롯 1은 `cr-edge`, `cr-range`, `cr-waf`, 슬롯 N은 `cr-edge-N`, `cr-range-N`, `cr-waf-N`입니다. 그래서 Filebeat의 슬롯 정규식이 예전처럼 슬롯을 읽습니다. 파일을 `/var/log` 아래에 두는 것은 Ubuntu의 rsyslog가 `syslog` 사용자로 권한을 낮추고 AppArmor가 그 위치로 묶어 두기 때문입니다.
 
-configure의 `start_wargames()`는 `wargames` 역할을 통해 모든 워게임을 동시에 띄웁니다. 워게임마다 ssh 명령 하나씩이고, 명령 하나가 호스트에서 세 단계를 실행합니다(`wargame_host.up()`).
+**격리.** 학습자가 만지는 컨테이너(Kali, WAF, 에지, 대상 시스템 넷)는 `cap_drop: ALL`에 필요한 capability만 더해 돕니다.
 
-- `docker compose -p <id> -f /opt/cr/wargames/<id>.yaml up --no-start --pull never`로 컨테이너와 비어 있는 새 볼륨을 만듭니다.
-- `/opt/cr/pristine.sh restore <id>`가 한 번도 실행되지 않은 컨테이너의 빈 볼륨에 초기 데이터 사본을 복사합니다.
-- `up -d --wait --pull never`로 띄웁니다. MySQL은 이미 초기화된 datadir을 보고 초기화를 건너뛰고, 앱도 데이터가 이미 있는 상태로 시작합니다.
+| 컨테이너 | capability |
+|---|---|
+| `kali` | `NET_RAW`, `NET_ADMIN`, `SETUID`, `SETGID`, `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `KILL`, `AUDIT_WRITE` |
+| `waf` | `NET_BIND_SERVICE`, `SETUID`, `SETGID`, `CHOWN`, `DAC_OVERRIDE` |
+| `edge` | `NET_ADMIN` |
+| `board`, `board-db`, `corp-db` | `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETUID`, `SETGID` |
+| `corp-wp` | 위와 같고 `NET_BIND_SERVICE` 추가 |
 
-초기 데이터 사본은 워게임 호스트 이미지를 빌드할 때 한 번 만듭니다. `setup.sh`가 워게임마다 `pristine.sh keep <id>`를 실행합니다. 워게임을 띄워 healthy가 될 때까지 기다린 뒤 멈추고, 컨테이너마다 볼륨을 `/opt/cr/pristine/<id>/<container><path>`에 복사한 다음 `down -v`로 컨테이너를 지웁니다. 초기화 때의 `down -v`는 이 사본을 건드리지 않습니다. 사본이 없는 호스트 이미지에서는 예전처럼 빈 볼륨에서 시작합니다.
+- 모두 `no-new-privileges`, Docker 기본 seccomp·AppArmor 프로파일, 메모리·pids 한도를 씁니다.
+- privileged인 것, Docker 소켓을 마운트한 것, 호스트의 network·pid·ipc 네임스페이스를 같이 쓰는 것은 없습니다. 호스트 경로 마운트는 WAF의 audit 로그 디렉터리 하나뿐입니다.
+- dockerd는 `userns-remap`으로 돌기 때문에 컨테이너 안의 root는 호스트에서 권한 없는 사용자입니다. 호스트 user namespace를 쓰는 것은 센서뿐입니다.
+- `platform/tests/test_containment.py`는 렌더링한 슬롯 compose 파일이 이 중 하나라도 어기면 `bin/verify`를 실패시킵니다. 실제 환경 검사는 `test/test_range_isolation.py`입니다. 컨테이너 탈출이 어디까지 닿는지는 `docs/THREAT-MODEL.md`에 있습니다.
 
-모든 세션은 같은 초기 데이터에서 시작하지만 비밀값은 세션마다 새로 만듭니다.
+**초기화.** `POST /api/sessions/<id>/close/`는 슬롯을 제자리에서 초기화합니다. VM은 재구축하지 않습니다.
 
-- 보드의 `seed`는 시작할 때마다 시드 계정의 비밀번호를 다시 설정합니다. 그래서 세션마다 해시의 솔트가 달라지고, 이전 세션에서 탈취한 해시는 다음 세션의 ground truth와 맞지 않습니다. 시드 게시글의 날짜도 오늘 기준으로 옮깁니다.
-- corp의 엔트리포인트는 이미지의 엔트리포인트보다 먼저 `wp-config.php`를 지웁니다. 그러면 이미지가 새 랜덤 키와 솔트로 파일을 다시 씁니다. 복원된 데이터에서는 관리자 비밀번호도 다시 설정해 해시가 새로 만들어집니다. 복원된 DB에 이미 들어 있는 설치와 플러그인 설정은 건너뜁니다.
+- `reset_in_place()`가 `slot.sh reset N`을 실행합니다. Kali와 WAF를 이미지에서 새로 만듭니다. 동시에 대상 시스템을 볼륨째 지우고 초기 데이터로 다시 띄웁니다. 에지의 neighbour 테이블을 비우고, 슬롯의 로그 파일을 제자리에서 비운 뒤 두 센서가 로그 파일을 다시 열게 합니다.
+- 그 뒤 플랫폼이 두 센서에 기본 룰을 다시 넣습니다.
+- 에지와 센서는 계속 돌고 있습니다.
+- 훈련 환경 호스트에 슬롯의 compose 파일이 없으면 configure로 대신합니다.
+- 그래서 한 세션이 다음 세션에 수정한 룰이나 심어 둔 데이터를 남기지 않습니다.
 
-estate 센서도 같은 단계에서 워게임과 함께 띄웁니다. 센서는 호스트 인터페이스를 감시하므로 워게임에 의존하지 않습니다. 로그 전달은 모두 뜬 뒤에 이어집니다.
+`POST /api/range/slot/rebuild/`(`rebuild_slot()`)는 `slot.sh down N`으로 슬롯을 내립니다. `compose down -v`를 하고 rsyslog 파일, 슬롯 파일, 로그를 지웁니다. `POST /api/range/configure/`가 다시 올립니다. `DELETE /api/range/slot/`은 모든 슬롯을 내리고, `?slot` 없이 부르면 훈련 환경 호스트와 그 `mgmt` 포트도 지웁니다.
 
-- docker의 Suricata 이미지와 `deploy/suricata/suricata.yaml`을 씁니다. 후자는 띄울 때마다 플랫폼의 사본을 호스트에 씁니다.
-- `deploy/wargame-host/sensor.yaml`로 host 네트워킹 모드로 띄우고, 호스트의 estate 주소가 있는 인터페이스를 감시합니다. 그래서 이 센서는 WAF→대상 시스템 구간을 봅니다.
-- 센서가 응답하면 `start_sensor()`가 호스트 항목에 지정된 룰 파일과 reload 명령으로 `rules/suricata.py`를 통해 기준선 룰을 시드합니다.
-- 이 센서의 역할 `estate-sensor`는 compose 서비스 `suricata`에 매핑됩니다. 그래서 runner는 그 컨테이너 안에서 명령을 실행합니다.
-- 호스트 항목이 룰 파일과 reload 명령을 지정합니다(`settings.CR_EXTRA_SENSORS`). 룰 시드, 검증, 변경, 기준선 검사는 모두 두 센서에 함께 적용됩니다.
-- 호스트의 `logs:` 항목에 따라 rsyslog가 `eve.json`을 `suricata` 태그로 수집기에 전달합니다(`range/waf.py`의 태그별 전달).
-- `cr-reach`는 에지 방화벽, WAF와 마찬가지로 이 워게임 호스트에서 오는 syslog를 받아들입니다.
+모든 세션은 같은 초기 데이터에서 시작하되 비밀 값은 새로 만듭니다.
 
-세션 종료 뒤에는 플랫폼이 이 작업을 직접 합니다. `platform/api/reset.py`가 백그라운드 스레드를 띄우고, 이 스레드는 룰 잠금을 한 번 잡은 채 두 갈래를 동시에 실행합니다.
+- board의 `seed`는 시작할 때마다 시드 계정의 비밀번호를 새로 설정합니다. 그래서 세션마다 해시의 salt가 새로 바뀌고, 한 세션에서 훔친 해시는 다음 세션의 정답 데이터와 맞지 않습니다. 시드 글의 날짜도 오늘로 옮깁니다.
+- corp의 entrypoint는 이미지의 entrypoint가 실행되기 전에 `wp-config.php`를 지웁니다. 그래서 이미지가 무작위 키와 salt로 새 파일을 씁니다. 복원한 데이터에서는 관리자 비밀번호도 다시 설정해 새 해시가 생깁니다. 설치와 플러그인 설정은 복원한 DB에 이미 있으므로 건너뜁니다.
 
-- 한 갈래는 `reset_in_place()`입니다.
-  - 에지 방화벽의 제자리 초기화(`reset_edge()`): 기준선 `cr.rules`를 되돌리고, 설치된 파일을 에지가 마지막 설치와 부팅 뒤 기록한 해시와 sha256으로 대조하고, 훈련 환경의 pf 상태를 지우고, 필터를 다시 읽히고, Suricata를 재시작합니다. 하나라도 일치하지 않으면 `configure_edge()`의 설치와 재부팅으로 넘어갑니다.
-  - 수집기 보안 그룹
-  - 워게임 호스트: 비운 다음 시간 동기화, 워게임, 센서, 로그 전달 순서로 처리합니다.
-- 다른 갈래는 재구축한 VM 각각이 ACTIVE를 벗어났다가 다시 ACTIVE가 되는 것을 `plan_slot()`으로 폴링해 확인합니다. 그런 다음 클라우드를 새로 읽어 `configure_rebuilt()`(재구축한 호스트마다 시간 동기화, 그리고 WAF의 로그 전달)를 실행합니다.
+세션을 닫으면 플랫폼이 직접 초기화합니다. `platform/api/reset.py`가 백그라운드 스레드를 띄워, 룰 잠금을 한 번 잡은 채로 초기화를 실행합니다. 훈련 환경 호스트가 ssh에 응답하지 않는 동안 재시도합니다(최대 30분). 처음 발생한 실패가 초기화를 실패로 만듭니다.
 
-두 갈래 모두 VM이 ssh에 응답하지 않는 동안 재시도합니다(최대 30분). 처음 발생한 실패가 초기화를 실패로 만듭니다.
+close는 즉시 응답합니다. 초기화 상태(idle, running, failed와 그 이유)는 플랫폼 프로세스가 보관합니다. 초기화는 시작을 잡은 때부터 성공할 때까지 `CR_RESET_OWED_DIR`(`/data/reset-owed`)에 `slot-N` 파일을 남깁니다. 부팅할 때 `cr/wsgi.py`가 이 파일이 남은 슬롯마다 close와 똑같이 초기화를 다시 하므로, 재시작해도 슬롯이 세션을 거부하는 상태로 남지 않습니다. 실패한 초기화는 파일을 그대로 둡니다. 수동 재시도는 여전히 `POST /api/range/configure/`이며, 실패한 초기화 상태도 지웁니다.
 
-`configure_slot()`(수동 configure)은 호스트마다 스레드 하나씩 두고 각 호스트의 단계를 나란히 실행합니다: 에지 방화벽(설정과 재부팅), WAF, Kali, 워게임 호스트, 수집기 보안 그룹. 모든 Ubuntu 호스트의 체인은 시간 동기화로 시작합니다. 모두 끝날 때까지 기다린 뒤, 위 순서에서 첫 번째 실패를 결과로 반환합니다.
-
-close는 즉시 응답합니다. 초기화 상태(idle, running, failed와 그 이유)는 플랫폼 프로세스가 보관합니다. 초기화는 시작을 잡은 때부터 성공할 때까지 `CR_RESET_OWED_DIR`(`/data/reset-owed`)에 `slot-N` 파일을 남깁니다. 부팅할 때 `cr/wsgi.py`가 이 파일이 남은 슬롯마다 close와 똑같이 초기화를 처음부터 다시 하므로(재구축, 비활성화한 룰을 활성화로 표시, 제자리 초기화, 설정), 재시작해도 슬롯이 세션을 거절한 채로 남지 않습니다. 실패한 초기화는 파일을 그대로 둡니다. `POST /api/range/configure/`는 수동 재시도 수단으로 남아 있으며, 실패한 초기화 상태를 지웁니다.
-
-**준비 상태.** 모든 슬롯이 사용 중이거나 준비된 빈 슬롯이 없으면 세션 생성이 409로 응답합니다.
+**준비 상태.** 모든 슬롯이 잡혀 있거나 비어 있는 슬롯 중 준비된 것이 없으면 세션 생성은 409로 응답합니다.
 
 `GET /api/range/ready/`는 `slots` 아래에 슬롯마다 다음을 보고합니다.
 
 - 번호와 그 슬롯을 잡은 세션
-- 단계: 세션이 잡고 있으면 `IN_USE`, 초기화가 진행 중이면 `RESETTING`, 초기화가 실패했으면 그 이유와 함께 `RESET_FAILED`, 그 밖에는 `NOT_STANDING`, `STALE`(VM이 호스트의 준비된 이미지가 아닌 이미지로 떠 있음), `REBUILDING`, `CHECKING`, `READY`
+- 단계: 세션이 잡고 있으면 `IN_USE`, 초기화가 진행 중이면 `RESETTING`, 초기화가 실패했으면 그 이유와 함께 `RESET_FAILED`, 그 밖에는 `NOT_STANDING`, `STALE`(플랫폼보다 오래된 이미지나 슬롯 파일로 도는 훈련 환경 호스트), `REBUILDING`(훈련 환경 호스트가 아직 `ACTIVE`가 아니거나 설치가 끝나지 않음), `CHECKING`, `READY`
 - 초기화 상태
-- 세 가지 검사: 모든 VM이 ACTIVE, board의 정답 데이터를 읽을 수 있음, 센서 룰이 기준선이며 그 슬롯에 비활성화한 룰이 없음
+- 세 가지 검사: 훈련 환경 호스트가 ACTIVE이고 설치가 끝남, board의 정답 데이터를 읽을 수 있음, 센서 룰이 기준선이며 그 슬롯에 비활성화한 룰이 없음
 
-최상위의 `ready`와 `slot`은 다음 세션 열기가 잡게 될 슬롯을 가리킵니다.
+최상위의 `ready`와 `slot`은 다음 세션 열기가 가져갈 슬롯입니다.
 
-`/api/range/slot/`, `slot/rebuild/`, `configure/`는 `?slot=N`을 받으며, 없으면 모든 슬롯에 적용합니다.
+`/api/range/slot/`, `slot/rebuild/`, `configure/`는 `?slot=N`을 받습니다. 없으면 모든 슬롯에 적용합니다.
 
-`POST /api/range/canary/`는 마커를 붙인 케이스 하나를 발사해 Suricata와 ModSecurity가 모두 경보를 냈는지와 두 시계의 차이가 얼마인지를 보고합니다. 이 검사는 ready 검사에 포함되지 않습니다. 랜딩 페이지는 둘 다 호출합니다.
+`POST /api/range/canary/`는 마커를 붙인 케이스를 보내고 Suricata와 ModSecurity가 둘 다 경보를 냈는지, 둘의 시계가 얼마나 차이 나는지 보고합니다. 준비 상태 검사에는 들어가지 않습니다. 첫 화면이 둘 다 호출합니다.
+
+**남은 자원.** `GET /api/range/leftovers/`는 훈련 환경 호스트 이전의 VM 훈련 환경이 프로젝트에 남긴 것을 나열하고, `DELETE`가 지웁니다. `cr_host` 메타데이터로 찾은 슬롯 VM, 이미지 빌더, 폐기한 구간의 포트·서브넷·네트워크, 보안 그룹 `cr-range`와 `cr-build`, `cr_bundle` 속성을 가진 프로젝트 이미지입니다. `bin/cloud up`이 마지막에 `DELETE`를 호출합니다.
 
 ### OpenStack 훈련 환경: 목표 구조
 
-2026-09-30에 사용자가 결정했으며, 2026-10-08의 변경 사항을 표시했습니다. 대부분은 구축되어 있습니다(위 참고).
+사용자가 2026-09-30에 정하고 2026-10-08에 바꾼 구조입니다. 지금은 역할마다 VM을 두는 대신 훈련 환경 호스트 하나가 모든 슬롯을 컨테이너로 돌립니다.
 
 ```
  OpenStack project fsl-range.
 
- platform VM: Ubuntu 24.04, floating IP, docker compose up
+ platform VM cr-platform: Ubuntu 24.04, floating IP, docker compose up
    console and /api/, scoring, Elasticsearch, Filebeat, Kibana
    landing page /: start and stop a session, the scoreboard after close
    blue console panes: Kibana, Website, Map, Alerts or IDS rules,
-     WAF (ttyd in the platform, ssh to the WAF VM), Kali
-   red console: Kali (ttyd, ssh to the Kali VM on mgmt), Website
+     WAF (ttyd in the platform, ssh to the range host, docker exec), Kali
+   red console: Kali (ttyd, ssh to the range host, docker exec), Website
      |
-     +--OpenStack API, as member fsl-range--> networks, VMs, consoles
-     +--management network, ssh-------------> Kali VM, WAF VM, wargame host
+     +--OpenStack API, as member fsl-range--> network, VMs
+     +--management network, ssh-------------> range host
+                                              (docker exec into a slot)
 
- Internet network: one subnet per origin country (30), no Neutron router
-   Kali VM: one port holds every attack address; the source is rewritten
-            to the chosen country's address as packets leave
-     |
-     v
- OPNsense VM: edge router; its WAN holds each subnet's gateway address
-              and routes on without NAT, so country sources survive
-   Suricata (OPNsense IDS): detects; no firewall lesson, per 2026-10-08
-     |
-     v
- WAF VM: nginx + ModSecurity v3 + CRS
-         (SecRuleEngine On; the learner tunes CRS to block)
-     |
-     v
- estate network
-   wargame host VM (Docker): board + board-db, corp-wp + corp-db,
-                             the GHCR images (2026-10-11)
-     Suricata on the estate NIC: the WAF-to-target leg (2026-10-12)
+ range host VM cr-range (Docker, userns-remap): compose project sN per slot
 
- Evidence:
-   OPNsense: Suricata EVE, syslog-ng, UDP-------> Filebeat --+
-   WAF VM: ModSecurity audit log --------------------------------+
-   wargame host: Suricata EVE, rsyslog imfile, UDP --------------+
-                                                                 v
+   sN_internet (bridge sN-inet): one subnet per origin country (30)
+     kali: holds every attack address; the source is rewritten
+           to the chosen country's address as packets leave
+       |
+       v
+     edge: nftables router; its wan holds each subnet's gateway address
+           and routes on without NAT, so country sources survive
+     edge-sensor (Suricata) on sN-inet: detects
+       |
+       v
+   sN_estate (bridge sN-estate, 10.30.N.0/24)
+     waf: nginx + ModSecurity v3 + CRS
+          (SecRuleEngine On; the learner tunes CRS to block)
+       |
+       v
+     board (+ board-db on board-default), corp-wp (+ corp-db on corp-default)
+     estate-sensor (Suricata) on sN-estate: the WAF-to-target leg
+
+ Evidence (rsyslog imfile on the range host, UDP 5140 over mgmt):
+   edge-sensor eve.json ------------> Filebeat --+
+   waf ModSecurity audit log --------------------+
+   estate-sensor eve.json -----------------------+
+                                                 v
    Elasticsearch --> platform ingest --> scoring
    Elasticsearch ----------------> Kibana --> blue team
 ```
 
 남은 작업:
 
-- 세션 수명 주기: WAF 모드와 시계 차이를 준비 상태 검사에 포함하기. 종료 시 재구축 뒤 `configure`를 다시 실행하는 것은 2026-10-11부터 자동입니다.
+
+- 세션 수명 주기: WAF 모드와 시계 차이를 준비 상태 검사에 포함하기.
 - 차단은 구축되었습니다. WAF는 `SecRuleEngine On`으로 동작하고, 학습자는 WAF 터미널이나 `PUT /api/sessions/<id>/waf/`로 CRS를 조정합니다. 실행한 케이스의 `meta["blocked"]`는 대상 시스템이 아니라 403 응답으로 정합니다.
   - 시작 paranoia level은 2026-10-10에 측정했습니다(`docs/DECISIONS.md`). PL1만으로도 board의 SQLi는 차단되고 O'Brien은 통과합니다.
   - 그래서 과차단하도록 만든 방어 설정은 PL1보다 높은 단계에서 시작합니다(시나리오의 `level2`, `level3`). 학습자는 더 낮은 PL, 임계치, 예외 규칙으로 설정을 조정합니다.
 
 사람이 결정해야 할 남은 사항은 `docs/STATE.md`("Decisions left for a person")에 있습니다.
-
-구축됨: WAF VM은 ModSecurity audit 로그를 rsyslog imfile로 UDP 5140에 전달합니다(`platform/range/waf.py`). OPNsense 에지의 Suricata는 IDS(pcap) 모드로 동작합니다(`deploy/opnsense/`). 둘 다 `fsl-range` 클라우드에서 동작합니다(`docs/STATE.md`).
