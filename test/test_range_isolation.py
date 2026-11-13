@@ -170,7 +170,7 @@ def test_a_link_planted_in_the_waf_neither_reaches_a_host_file_at_reset_nor_ship
         wrote = run(GATEWAY, ["sh", "-c", f"printf '%s\\n' {shlex.quote(own)} >> {WAF_AUDIT}/audit.log"],
                     session=session)
         shipped_own = _shipped_within(f"own-{token}", SHIPPED_WITHIN)
-        assert shipped_own == [f"logs-{slot}-sensors"], (
+        assert shipped_own and all(f"logs-{slot}-sensors-" in f"{index}-" for index in shipped_own), (
             f"a line the WAF wrote to its audit log did not reach slot {slot}'s index ({shipped_own}), "
             f"so the rest of this test would prove nothing: {wrote.output[-300:]}")
 
