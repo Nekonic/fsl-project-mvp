@@ -61,3 +61,43 @@ under `deploy/range-host/proto/`. Nothing in the product was replaced.
   argv by `docker exec -u kali s<N>-kali` after `set-origin 5.188.10.10` (the
   live session's default origin). `collect.py` turns EVE and the audit log
   into documents shaped like the Elasticsearch ones, and `score.py` scores them.
+
+## Measurements
+
+- Image build on the VM: WAF image (ModSecurity compiled) about 20 min on
+  2 vCPU; pristine keep (first start of the target, stop, copy volumes):
+  board 94 s (198 MB), corp 224 s (286 MB, WordPress install), both with no
+  egress from the internal networks.
+- (i) Cold up to healthy, one slot, images and pristine present: common part
+  13.5 s + board attach 25.4 s = **39 s**.
+- Reset of one slot (`down -v` of both projects, `up`, addressing, pristine
+  restore, board `up --wait`): **22.0 s**.
+- RAM, board session idle: 683 MiB of container memory (common part
+  144 MiB: kali 46, waf 37, edge-sensor 37, estate-sensor 24, edge 1; board
+  115 + board-db 424).
+
+### Detection, prototype run 1 (s1, board)
+
+- 18 cases in 252 s (baseline 4.5 min including session open and close);
+  sqlmap cases 33.5-47.9 s against 37.0-47.8 s on the VM range.
+- Compared with the baseline per case: verdict, `corroborated`, the
+  signature-id sets of the edge leg, the estate leg and ModSecurity, the alert
+  source addresses, the edge-leg HTTP source and the estate-leg XFF are
+  **identical for all 18 cases** (`compare.py`: 0 differences;
+  `results/proto-board-s1.json`).
+- Counts differ, not sets: edge-leg alerts per sqlmap case are 1-14 % higher in
+  the prototype (for example 936 against 901); the two dump cases give exactly
+  936 each in the prototype against 901 and 927 on the VM range, so the VM
+  range is the one losing alerts (the OPNsense counters were reset with the
+  slot, so whether pcap drops or UDP syslog loss could not be told).
+  ModSecurity counts are equal except random-agent (7546 against 7544, random
+  User-Agent).
+- Pitfall found in this run: the offload switch-off in `slot.sh` listed
+  interfaces with `ls /sys/class/net` under `nsenter -n`, which reads the
+  host's sysfs, so container interfaces kept TSO/GSO on. Suricata turns
+  offloads off on the bridge it captures, not on the veths feeding it: the
+  edge leg had 0 truncated packets (small requests), the estate leg 13
+  `afpacket.trunc_pkt` (large board responses as GSO super-packets), with
+  `capture.kernel_drops` 0 on both and `tcp.invalid_checksum` 0. Detection was
+  still identical, but the fix (list interfaces with `ip -o link` in the
+  netns) is applied for every later run.
