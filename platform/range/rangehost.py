@@ -25,7 +25,7 @@ YAML_HEADER = "%YAML 1.1\n---\n"
 BASELINE_RULES = "deploy/suricata/rules/local.rules"
 COMPOSE = "wargames/{wargame}/compose.yaml"
 INSTALLED = "/opt/cr"
-SCRIPT = f"{INSTALLED}/slot.sh"
+SCRIPT = "slot.sh"
 READY = "/var/lib/cr/ready"
 FAILED = "/var/lib/cr/failed"
 SLOT_FILES = f"{INSTALLED}/s{{slot}}"
@@ -228,6 +228,7 @@ def slot_files(source: Path, slot: Slot, wargames, origins, default_origin: str,
         "edge.ip": edge_addresses(origins, slot).encode(),
         "rsyslog.conf": forwarded.encode(),
         "local.rules": (Path(source) / BASELINE_RULES).read_bytes(),
+        SCRIPT: (Path(source) / SLOT_SCRIPT).read_bytes(),
         "fronts": "".join(f"{name}\n" for name in sorted(fronted(document))).encode(),
         "gateway": f"{addressed(document, FRONT)['edge']}\n".encode(),
     }
@@ -292,7 +293,6 @@ def bundle(source: Path, wargames, tag: str, mtu: int) -> dict[str, bytes]:
     source = Path(source)
     return {
         "setup.sh": (source / SETUP).read_bytes(),
-        "slot.sh": (source / SLOT_SCRIPT).read_bytes(),
         "images.txt": "".join(f"{image}\n" for image in images(source, wargames, tag)).encode(),
         "pristine.yaml": dumped(pristine(source, wargames, tag, mtu)),
         "wargames.txt": "".join(f"{name}\n" for name in pristine(source, wargames, tag, mtu)["services"]).encode(),
@@ -338,15 +338,15 @@ def exec_in(container: str, argv: list[str], reads_input: bool, tty: bool = Fals
 def up(slot: Slot) -> list[str]:
     return ["sudo", "sh", "-c",
             f"set -e; d={SLOT_FILES.format(slot=slot.number)}; mkdir -p \"$d\"; "
-            f"base64 -d | tar -xzf - -C \"$d\"; exec sh {SCRIPT} up {slot.number}"]
+            f"base64 -d | tar -xzf - -C \"$d\"; exec sh \"$d/{SCRIPT}\" up {slot.number}"]
 
 
 def reset(slot: Slot) -> list[str]:
-    return ["sudo", "sh", SCRIPT, "reset", str(slot.number)]
+    return ["sudo", "sh", f"{SLOT_FILES.format(slot=slot.number)}/{SCRIPT}", "reset", str(slot.number)]
 
 
 def down(slot: Slot) -> list[str]:
-    return ["sudo", "sh", SCRIPT, "down", str(slot.number)]
+    return ["sudo", "sh", "-c", f"f={SLOT_FILES.format(slot=slot.number)}/{SCRIPT}; [ ! -f \"$f\" ] || exec sh \"$f\" down {slot.number}"]
 
 
 def setup_state() -> list[str]:

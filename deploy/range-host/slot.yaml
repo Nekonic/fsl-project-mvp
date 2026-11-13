@@ -109,7 +109,7 @@ services:
     container_name: s@slot@-edge-sensor
     command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet=s@slot@-inet"]
     volumes:
-      - /opt/cr/s@slot@/edge-sensor.yaml:/etc/suricata/suricata.yaml:ro
+      - /opt/cr/s@slot@/edge-sensor.yaml:/etc/suricata/suricata.yaml
       - /opt/cr/s@slot@/edge-rules:/var/lib/suricata/rules
       - /opt/cr/s@slot@/edge-log:/var/log/suricata
     depends_on: [edge]
@@ -119,7 +119,7 @@ services:
     container_name: s@slot@-estate-sensor
     command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet=s@slot@-estate"]
     volumes:
-      - /opt/cr/s@slot@/estate-sensor.yaml:/etc/suricata/suricata.yaml:ro
+      - /opt/cr/s@slot@/estate-sensor.yaml:/etc/suricata/suricata.yaml
       - /opt/cr/s@slot@/estate-rules:/var/lib/suricata/rules
       - /opt/cr/s@slot@/estate-log:/var/log/suricata
     depends_on: [waf]

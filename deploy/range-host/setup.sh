@@ -17,7 +17,6 @@ install -m 0644 daemon.json /etc/docker/daemon.json
 systemctl enable docker
 systemctl restart docker
 
-install -m 0755 slot.sh "$BASE/slot.sh"
 install -m 0644 wargames.txt "$BASE/wargames.txt"
 install -m 0644 pristine.yaml "$BASE/pristine.yaml"
 
@@ -43,5 +42,4 @@ done
 pristine down -v --timeout 1
 
 printf 'global(maxMessageSize="64k")\nmodule(load="imfile")\n' > /etc/rsyslog.d/50-cr.conf
-rsyslogd -N1
 systemctl restart rsyslog
