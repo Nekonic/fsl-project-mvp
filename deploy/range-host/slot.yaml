@@ -104,7 +104,7 @@ services:
       - "board:@estate@.59"
       - "corp-wp:@estate@.60"
     volumes:
-      - /var/log/cr/s@slot@/waf:/var/log/modsecurity/audit
+      - /var/log/cr/s@slot@/waf/audit.log:/var/log/modsecurity/audit/audit.log
 
   edge-sensor:
     <<: *sensor

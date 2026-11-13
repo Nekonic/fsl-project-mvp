@@ -10,7 +10,7 @@ sed -i 's/^Components:.*/Components: main restricted universe/' /etc/apt/sources
 $APT update
 $APT purge snapd modemmanager
 printf 'Package: snapd modemmanager\nPin: release *\nPin-Priority: -1\n' > /etc/apt/preferences.d/no-snapd-modemmanager
-$APT install docker.io docker-compose-v2 ethtool rsyslog acl
+$APT install docker.io docker-compose-v2 ethtool rsyslog
 
 printf 'fs.inotify.max_user_instances = 1024\nfs.inotify.max_user_watches = 524288\n' > /etc/sysctl.d/90-cr-range.conf
 sysctl --system >/dev/null

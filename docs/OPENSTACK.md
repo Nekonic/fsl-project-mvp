@@ -316,7 +316,7 @@ an allowlist, also allow the hosts the registries redirect to.
 | Who | Reaches | For |
 |---|---|---|
 | platform VM (cloud-init, `cr-platform.service`) | the Ubuntu archive; github.com; ghcr.io; docker.elastic.co; geoip.elastic.co | `apt` (Docker, git, chrony); `git clone` of `platform.repository`; `cr-platform` and `cr-gns3`; Elasticsearch, Kibana and Filebeat; `bin/fetch-geoip` |
-| the range host (`deploy/range-host/setup.sh`) | the Ubuntu archive; ghcr.io; Docker Hub | `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog`, `acl`; `cr-kali`, `cr-waf`, `cr-edge`, `cr-board`, `cr-corp`, `cr-corp-db`; the pinned Suricata (`jasonish/suricata`) and MySQL images |
+| the range host (`deploy/range-host/setup.sh`) | the Ubuntu archive; ghcr.io; Docker Hub | `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog`; `cr-kali`, `cr-waf`, `cr-edge`, `cr-board`, `cr-corp`, `cr-corp-db`; the pinned Suricata (`jasonish/suricata`) and MySQL images |
 | the operator machine | the cloud's API; the floating IP; github.com; ghcr.io | `bin/cloud`; the check that the images can be pulled |
 
 The range host reaches the Internet only through its second port, on the
@@ -532,7 +532,7 @@ bundle holds `deploy/range-host/setup.sh` and files the platform generates:
 `setup.sh` does these steps while the range host has its egress port:
 
 1. It enables `universe`, purges `snapd` and `modemmanager`, and installs
-   `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog` and `acl`.
+   `docker.io`, `docker-compose-v2`, `ethtool` and `rsyslog`.
 2. It raises the inotify limits and sshd's `MaxSessions` and `MaxStartups`,
    because the platform runs many commands at once over one shared ssh
    connection.
@@ -1093,10 +1093,12 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
    sets the range host's time source (§3.5), side by side. It does this once
    per range-host generation and collector address, not for each slot.
 2. It sends the slot's files and runs `slot.sh up N`:
-   1. It makes the slot's rule and log directories. The WAF's log directory
-      `/var/log/cr/sN/waf` is owned by the remapped range's `www-data` and
-      `adm`, with an ACL that lets `syslog` read it. The edge and estate log
-      directories are root's.
+   1. It makes the slot's rule and log directories, all root's. In the WAF's
+      log directory `/var/log/cr/sN/waf` it removes every name but a regular
+      file `audit.log`, and creates that file if missing, owned by the
+      remapped range's `www-data` and the host's `adm` (`0640`), so `syslog`
+      reads it. The WAF mounts that file alone, so it cannot plant a link
+      in the directory (`docs/THREAT-MODEL.md`).
    2. `docker compose up --no-start --pull never` creates the containers and
       their new, empty volumes.
    3. It copies the targets' pristine data (§3.6) into each empty volume of a

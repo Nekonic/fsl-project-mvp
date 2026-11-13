@@ -299,7 +299,6 @@ def test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it():
 
     written = re.search(r"^SecAuditLog\s+(\S+)", (ROOT / "deploy/waf/modsecurity.conf").read_text(), re.M)[1]
     document = rangehost.compose(ROOT, laid(1), WARGAMES)
-    mounted = {volume.split(":")[1] for volume in document["services"]["waf"]["volumes"]}
+    mounted = dict(volume.split(":")[1::-1] for volume in document["services"]["waf"]["volumes"])
 
-    assert written.rsplit("/", 1)[0] in mounted
-    assert rangehost.LOGS["waf"].rsplit("/", 1)[1] == written.rsplit("/", 1)[1]
+    assert mounted.get(written) == f"{rangehost.LOG_FILES.format(slot=1)}/{rangehost.LOGS['waf']}"

@@ -144,7 +144,29 @@ What stands between them (`deploy/range-host/slot.yaml`,
 - Each runs with `no-new-privileges`, Docker's default seccomp and AppArmor
   profiles, and a memory and process limit. None is privileged, holds the
   Docker socket, shares the host's network, PID or IPC namespace, or mounts a
-  host path, except the WAF's audit log directory.
+  host path, except the WAF's audit log, which is one file.
+- No root operation on the range host goes through a path a learner can
+  alter. The WAF is root in its container, and its root may create links in
+  any host directory mounted into it, because the directory belongs to the
+  remapped range. A host process that later opens a name in that directory
+  follows the link: `slot.sh reset` (root) emptied
+  `/var/log/cr/sN/waf/audit.log` with `: >`, and rsyslog (`syslog`, in `adm`)
+  read the same name with `imfile`, which reads a symlinked file as if it
+  were the file ("For symlink-ed files this does **not** contain name of the
+  actual file", rsyslog's imfile documentation, Metadata). A link to
+  `/etc/passwd` would have had the next reset truncate it; a link to another
+  slot's log or to `/var/log/auth.log` would have shipped those lines as this
+  slot's. The WAF therefore mounts only the file
+  `/var/log/cr/sN/waf/audit.log`; its directory is root's (`0755`), so the
+  WAF can write the file it holds and can neither replace it nor add a name
+  beside it. `slot.sh` makes the directory root's, removes any other name in
+  it and recreates the log if it is not a regular file before every `up` and
+  `reset`. Kali, the edge and the targets mount no host path; the targets'
+  volumes are refilled from `/opt/cr/pristine` only while freshly created and
+  empty, before their container first runs. The platform's reads of the
+  learner's boxes (`operator_log` reading Kali's `/var/log/commands.log`, the
+  loot and effect paths) run inside the container through `docker exec`, so a
+  link there resolves in the container's own filesystem.
 - Every slot network is internal and its bridge has no host address
   (`gateway_mode_ipv4` isolated). Nothing is published and nothing is NATed, so
   a container has no route out and no address of the range host to reach.
@@ -158,9 +180,10 @@ What stands between them (`deploy/range-host/slot.yaml`,
   `NET_ADMIN`, `NET_RAW` and `SYS_NICE` and no user namespace remap. No learner
   is given a shell in them.
 
-What a container escape reaches: a kernel bug reachable through the default
-seccomp profile puts the learner on the range host as the remapped user, and a
-second bug as root. From there every other slot on the host is open, including
+What a container escape reaches: with no host path a root operation follows
+on the learner's say, leaving the container takes a kernel bug reachable
+through the default seccomp profile, which puts the learner on the range host
+as the remapped user, and a second bug as root. From there every other slot on the host is open, including
 its board's `auth_user` secret, its sensors and its logs, and so is the range
 host's syslog stream to the platform. It reaches no way out: the range host's
 egress port exists only during its setup, before any slot holds a session. The
@@ -176,13 +199,19 @@ What is tested:
   keeping default capabilities, gaining one not listed, missing
   `no-new-privileges` or a limit, leaving a default profile, sharing a host
   namespace, publishing a port, holding the Docker socket or mounting a host
-  path beyond its own log; a slot network not internal or with a host address;
+  path beyond its own log file; a slot network not internal or with a host address;
   two slots sharing a subnet or a name; dockerd without `userns-remap`.
 - `test/test_range_isolation.py` checks a live slot from Kali, the WAF and the
   board: none reaches the range host's sshd, the platform, the Internet, the
   metadata service or another slot's WAF; Kali reaches `board.com` (the WAF)
   and the board through the edge; `board-db` does not resolve from Kali; a SYN
-  scan runs.
+  scan runs; Kali finds no open service port on the range host, the platform
+  or the range host's `mgmt` network. Its last test opens a session, has the
+  WAF plant links to a host canary file, to `/etc/passwd` and to another
+  slot's log in its audit directory, waits for a line the WAF wrote to reach
+  its own slot's index, closes the session and, after the reset, checks the
+  canary unchanged, nothing of it in Elasticsearch, and the WAF's host log
+  directory root's and holding only `audit.log`.
 - No test runs an escape. The kernel is the boundary, and its bugs are not
   something the range can show.
 
