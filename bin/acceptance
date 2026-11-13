@@ -254,7 +254,7 @@ def _started(process: Process, workers: int, logs: Path, extra: list[str]):
           f"{process.estimate:.0f}s - {log.name}", flush=True)
     running = subprocess.Popen(
         _command(process, report, extra), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
-        env={**os.environ, "FSL_SPLIT": process.role, "FSL_WORKERS": str(workers)},
+        env={**os.environ, "CR_SPLIT": process.role, "CR_WORKERS": str(workers)},
     )
     return process, running, log, report
 
@@ -289,12 +289,12 @@ def save_durations(measured: dict[str, float], path: Path = DURATIONS) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="run test/ in parallel pytest processes")
-    parser.add_argument("--workers", type=int, default=int(os.environ.get("FSL_WORKERS") or 0))
+    parser.add_argument("--workers", type=int, default=int(os.environ.get("CR_WORKERS") or 0))
     parser.add_argument("--plan", action="store_true", help="print the split and run nothing")
     parser.add_argument("--save-durations", action="store_true")
     parser.add_argument("--only", default="", help="comma-separated test modules to run instead of all")
     args, extra = parser.parse_known_args(argv)
-    platform = os.environ.get("FSL_PLATFORM_URL", "http://localhost:8000").rstrip("/")
+    platform = os.environ.get("CR_PLATFORM_URL", "http://localhost:8000").rstrip("/")
     workers = args.workers or workers_the_range_allows(platform)
     together, after = plan(workers, only=set(filter(None, args.only.split(","))))
 

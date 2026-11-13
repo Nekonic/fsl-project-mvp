@@ -51,7 +51,7 @@ def test_discarding_drops_the_marker_and_the_commented_copy_and_nothing_else():
     assert discard(replaced, 100, RULE) == f"#{RULE}\n{REPLACEMENT}\n"
 
 def test_a_rule_disabled_before_the_marker_was_renamed_can_still_be_enabled():
-    for old in ("# fsl-disabled", "# fsl-suppressed"):
+    for old in ("# cr-disabled", "# cr-suppressed"):
         disabled = f"{old} until t\n#{RULE}\n"
 
         assert uncomment(disabled, 100, RULE) == f"{RULE}\n"

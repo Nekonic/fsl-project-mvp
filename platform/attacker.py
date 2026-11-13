@@ -89,8 +89,8 @@ def _write(proxy, where: str, value: str | None) -> None:
             f"the proxy could not write {where}: {ran.output.strip()[:200]}"
         )
 
-CUSTOMERS_ACCOUNT = "fsl-users"
-CUSTOMERS_HOME = "/var/lib/fsl-users"
+CUSTOMERS_ACCOUNT = "cr-users"
+CUSTOMERS_HOME = "/var/lib/cr-users"
 CUSTOMERS_PROGRAM = f"{CUSTOMERS_HOME}/users.py"
 CUSTOMERS_PLAN = f"{CUSTOMERS_HOME}/plan.json"
 CUSTOMERS_RECORDS = f"{CUSTOMERS_HOME}/records.jsonl"

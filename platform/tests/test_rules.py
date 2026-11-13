@@ -18,7 +18,7 @@ class Sensor:
 
     def __call__(self, argv, stdin=None, timeout=60.0):
         if self.unreachable:
-            raise RangeUnavailable("fsl-suricata is not running")
+            raise RangeUnavailable("cr-suricata is not running")
         self.calls.append((argv, stdin))
         for needle, reply in self.replies.items():
             if needle in " ".join(argv):

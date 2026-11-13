@@ -499,7 +499,7 @@ def lesson_step_check(request, session_id, step_id):
 
 def _posture_rules(session):
     declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense) or {}
-    return (Path(settings.FSL_SOURCE) / "deploy/suricata/rules" / declared.get("suricata", DEFAULT_RULES)).read_text()
+    return (Path(settings.CR_SOURCE) / "deploy/suricata/rules" / declared.get("suricata", DEFAULT_RULES)).read_text()
 
 def _judged_step(session, step_id, passed, reason, poll, chose=None):
     now = timezone.now().isoformat()
@@ -959,13 +959,13 @@ def _take_defense(session, adapter, posture):
     if not checked_at_baseline_when_ready:
         _seed_ruleset(adapter, ruleset)
     if posture is not None:
-        session.waf = crs.apply(posture["waf"], adapter.runner("gateway"), settings.FSL_WAF)
+        session.waf = crs.apply(posture["waf"], adapter.runner("gateway"), settings.CR_WAF)
 
 def _ruleset_of(posture):
     return (posture or {}).get("suricata", DEFAULT_RULES)
 
 def _seed_ruleset(adapter, ruleset):
-    rules = (Path(settings.FSL_SOURCE) / "deploy/suricata/rules" / ruleset).read_text()
+    rules = (Path(settings.CR_SOURCE) / "deploy/suricata/rules" / ruleset).read_text()
     for runner, reload_command, path in _sensors(adapter):
         suricata.seed(rules, runner, reload_command, path)
 
@@ -1002,7 +1002,7 @@ def session_lesson(request, session_id):
                 if _ruleset_of(before) != _ruleset_of(after):
                     _seed_ruleset(adapter, _ruleset_of(after))
                 if after is not None:
-                    session.waf = crs.apply(after["waf"], adapter.runner("gateway"), settings.FSL_WAF)
+                    session.waf = crs.apply(after["waf"], adapter.runner("gateway"), settings.CR_WAF)
             taken = session.lessons or [{"id": session.lesson, "started_at": session.started_at.isoformat()}]
             session.lessons = [*taken, {"id": asked, "started_at": timezone.now().isoformat()}]
             session.lesson, session.defense = asked, defense
@@ -1218,7 +1218,7 @@ def range_topology(request):
         raise BadRequest(f'"session" must be a session id, got {asked!r}')
     session = get_object_or_404(Session, pk=int(asked))
     key = _map_key(session)
-    if key is None or not settings.FSL_GNS3_URL:
+    if key is None or not settings.CR_GNS3_URL:
         return _reply(gns3.project(maps.template(session.scenario)))
     return _reply(maps.served(key, _map_read(session, skip_unanswered=False)))
 
@@ -1250,12 +1250,12 @@ def _map_read(session, skip_unanswered=True):
 
 def _map_begin(session, adapter):
     key = _map_key(session, adapter)
-    if key is not None and settings.FSL_GNS3_URL:
+    if key is not None and settings.CR_GNS3_URL:
         return maps.begin(key, _map_read(session, skip_unanswered=False), maps.SLOT, _maps_live(adapter))
     return None
 
 def publish_maps(pause=time.sleep):
-    if not settings.FSL_GNS3_URL:
+    if not settings.CR_GNS3_URL:
         return
     for attempt in range(MAP_START_ATTEMPTS):
         if attempt:
@@ -1616,7 +1616,7 @@ def session_waf(request, session_id):
         with _turn_of(session):
             standing = _waf_in_force(session)
             tuning = crs.checked({**({} if "thresholds" in body else _thresholds_of(standing)), **body})
-            session.waf = crs.apply(tuning, _range(session).runner("gateway"), settings.FSL_WAF)
+            session.waf = crs.apply(tuning, _range(session).runner("gateway"), settings.CR_WAF)
             session.save(update_fields=["waf"])
         scenario_run.waf_applied(session, tuning, (standing.get("file") or "").strip() == crs.rendered(tuning).strip())
     tuning = _waf_in_force(session)
@@ -1636,7 +1636,7 @@ def _waf_in_force(session):
 
 def _waf_read(session):
     gateway = functools.partial(_range(session).runner("gateway"), timeout=CHECK_TIMEOUT)
-    return crs.read(gateway, settings.FSL_WAF)
+    return crs.read(gateway, settings.CR_WAF)
 
 def _snapshot_waf(session, **taken):
     try:
@@ -1705,7 +1705,7 @@ def _detail(session):
             **({"cases": []} if session.course_scenario else {})}
     return _described(session, judged=True) | {
         "lesson": taught, "discover": _discover(session), "waf_terminal": _waf_terminal_url(session),
-        "kali_terminal": _terminal_url(session), "waf_box": WAF_SHOWN_AS, "waf_rules": str(PurePosixPath(settings.FSL_WAF.rules).parent),
+        "kali_terminal": _terminal_url(session), "waf_box": WAF_SHOWN_AS, "waf_rules": str(PurePosixPath(settings.CR_WAF.rules).parent),
         "site": _site(session), "hints": session.hints, "progress": _progress(session),
         "lessons": session.lessons, "next_lesson": _next_lesson(session),
         "lesson_course": _lesson_course(session),
@@ -2461,13 +2461,13 @@ def _sensors(adapter):
     return [
         (adapter.runner(role), reload_command, path)
         for role, path, reload_command in (
-            ("sensor", settings.FSL_SENSOR_RULES, settings.FSL_SENSOR_RELOAD),
-            *settings.FSL_EXTRA_SENSORS,
+            ("sensor", settings.CR_SENSOR_RULES, settings.CR_SENSOR_RELOAD),
+            *settings.CR_EXTRA_SENSORS,
         )
     ]
 
 def _live_rules(session=None):
-    return suricata.current(_range(session).runner("sensor"), settings.FSL_SENSOR_RULES)
+    return suricata.current(_range(session).runner("sensor"), settings.CR_SENSOR_RULES)
 
 def _apply(content, session=None):
     sensors = _sensors(_range(session))
@@ -2667,7 +2667,7 @@ def _ground_truth_readable(adapter) -> bool:
         return False
 
 def _baseline_rules() -> str:
-    return (Path(settings.FSL_SOURCE) / "deploy/suricata/rules/local.rules").read_text()
+    return (Path(settings.CR_SOURCE) / "deploy/suricata/rules/local.rules").read_text()
 
 def _rules_at_baseline(adapter) -> bool:
     try:

@@ -35,7 +35,7 @@ def test_every_lesson_renders_its_steps_for_a_session(client, wargame_id, lesson
     session = Session.objects.create(scenario=wargame_id, baseline={}, guidance=True, lesson=lesson_id,
                                      lesson_steps={lesson_id: {step["id"]: {"reached": "2026-10-13T09:00:00+00:00"} for step in declared}})
 
-    with override_settings(FSL_WAF=layout()):
+    with override_settings(CR_WAF=layout()):
         shown = client.get(f"/api/sessions/{session.pk}/").json()["lesson"]
 
     assert shown["id"] == lesson_id

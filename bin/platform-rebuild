@@ -29,25 +29,28 @@ LOADER = ROOT / "platform/range/cloud.py"
 BACKUP = ROOT / "bin/backup"
 BACKUPS = ROOT / "backups"
 PLATFORM_KEY = "/data/ssh/id_ed25519"
-CHECKOUT = "/opt/fsl"
+CHECKOUT = "/opt/cr"
 VENV_COMMAND = (
-    "exec 9>/tmp/fsl-venv.lock && flock 9 && "
+    "exec 9>/tmp/cr-venv.lock && flock 9 && "
     f"python3 -m venv {CHECKOUT}/.venv && "
     f"{CHECKOUT}/.venv/bin/pip install --quiet -r {CHECKOUT}/platform/requirements.txt"
 )
 SSH_WAIT = 900
 API_WAIT = 1200
 CONTAINER_WAIT = 120
-STORE_DIRECTORY = "/var/lib/docker/volumes/fsl_platformdata/_data"
+STORE_DIRECTORY = "/var/lib/docker/volumes/cr_platformdata/_data"
+LEGACY_STORE = "/var/lib/docker/volumes/fsl_platformdata/_data/db.sqlite3"
+LEGACY_HELD = 4
 STORE_PROBE = (
     "command -v docker >/dev/null || exit 0; "
-    "sudo docker ps -q --filter 'name=^fsl-platform$' --filter status=running || exit 3; "
+    f"sudo test -e {LEGACY_STORE} && exit {LEGACY_HELD}; "
+    "sudo docker ps -q --filter 'name=^cr-platform$' --filter status=running || exit 3; "
     f"sudo test -e {STORE_DIRECTORY}/db.sqlite3 && echo stored; exit 0"
 )
 REGISTRY = "ghcr.io"
 OWNER = "nekonic"
-BUILDER = "fsl-build-"
-BUILDS = "fsl_image"
+BUILDER = "cr-build-"
+BUILDS = "cr_image"
 IMAGES = ("platform", "board", "corp", "corp-db", "gns3")
 MANIFESTS = ", ".join((
     "application/vnd.oci.image.index.v1+json",
@@ -81,7 +84,7 @@ def add_sideload(parser: argparse.ArgumentParser) -> None:
         "--sideload", action="append", default=[], metavar="NAME=TARBALL",
         help="run this checkout's HEAD, unpushed: the VM clones the ref, checks HEAD out from a "
              "git bundle and docker-loads this image from a docker save tarball holding "
-             f"{REGISTRY}/{OWNER}/fsl-NAME:<commit it was built from>, tagged as the ref's commit; "
+             f"{REGISTRY}/{OWNER}/cr-NAME:<commit it was built from>, tagged as the ref's commit; "
              "every image not named is pulled from GHCR at the ref's commit. Each image's build "
              "context must be HEAD's. Repeatable",
     )
@@ -92,7 +95,7 @@ def settings_module():
         import yaml  # noqa: F401
     except ImportError as missing:
         raise Refused("platform-rebuild: PyYAML is missing; run it with .venv/bin/python") from missing
-    spec = importlib.util.spec_from_file_location("fsl_cloud", LOADER)
+    spec = importlib.util.spec_from_file_location("cr_cloud", LOADER)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -132,7 +135,7 @@ def commit_of(repository: str, ref: str) -> str:
 
 
 def published(name: str, tag: str) -> str | None:
-    repository = f"{OWNER}/fsl-{name}"
+    repository = f"{OWNER}/cr-{name}"
     try:
         with urllib.request.urlopen(
             f"https://{REGISTRY}/token?scope=repository:{repository}:pull", timeout=30
@@ -198,7 +201,7 @@ def sideloaded(pairs: list[str], tags_of=image_tags) -> dict[str, Tarball]:
         tarball = Path(path).expanduser()
         if not tarball.is_file():
             raise Refused(f"platform-rebuild: --sideload {name}: {tarball} does not exist, so nothing was deleted")
-        image = f"{REGISTRY}/{OWNER}/fsl-{name}:"
+        image = f"{REGISTRY}/{OWNER}/cr-{name}:"
         commits = sorted(tag[len(image):] for tag in tags_of(tarball)
                          if tag.startswith(image) and re.fullmatch(r"[0-9a-f]{40}", tag[len(image):]))
         if len(commits) != 1:
@@ -235,7 +238,7 @@ def refuse_unless_unchanged(base: str, commit: str, tarballs: dict[str, Tarball]
 
 
 def head_bundle(commit: str, scratch: Path) -> Path:
-    bundle = scratch / f"fsl-{commit}.bundle"
+    bundle = scratch / f"cr-{commit}.bundle"
     run(["git", "-C", str(ROOT), "bundle", "create", str(bundle), "HEAD"])
     return bundle
 
@@ -345,7 +348,7 @@ class Host:
 
 def make_range_key(key: Path, run=run) -> None:
     key.parent.mkdir(parents=True, exist_ok=True)
-    run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "fsl-range", "-f", str(key)])
+    run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "cr-range", "-f", str(key)])
     print(f"made the range key at {key}")
 
 
@@ -360,7 +363,7 @@ def keep_range_key(key: Path, old: Host | None, first: bool = False, run=run) ->
             f"platform-rebuild: no range key at {key} and no running platform to take "
             f"it from. Without it the range's VMs refuse the new platform"
         )
-    taken = old.ssh(f"sudo docker exec fsl-platform cat {PLATFORM_KEY}").stdout
+    taken = old.ssh(f"sudo docker exec cr-platform cat {PLATFORM_KEY}").stdout
     if b"PRIVATE KEY" not in taken:
         raise Refused(f"platform-rebuild: {PLATFORM_KEY} on the running platform is not a private key")
     key.parent.mkdir(parents=True, exist_ok=True)
@@ -372,6 +375,12 @@ def keep_range_key(key: Path, old: Host | None, first: bool = False, run=run) ->
 
 def holds_store(old: Host) -> bool:
     asked = old.ssh(STORE_PROBE, check=False)
+    if asked.returncode == LEGACY_HELD:
+        raise Refused(
+            f"{Path(sys.argv[0]).name}: {old.target} holds its store under the names used before the "
+            f"rename ({LEGACY_STORE}), which this checkout cannot back up, so nothing was deleted; "
+            f"take it down from a checkout before the rename first (docs/OPENSTACK.md, \"The rename cut-over\")"
+        )
     if asked.returncode != 0:
         said = asked.stderr.decode(errors="replace").strip()
         raise Refused(
@@ -382,8 +391,8 @@ def holds_store(old: Host) -> bool:
 
 
 def back_up(old: Host, keep: int = 1) -> Path:
-    environ = {**os.environ, "FSL_PLATFORM_EXEC": shlex.join(
-        ["ssh", *old.options, old.target, "sudo docker exec -i fsl-platform python -"])}
+    environ = {**os.environ, "CR_PLATFORM_EXEC": shlex.join(
+        ["ssh", *old.options, old.target, "sudo docker exec -i cr-platform python -"])}
     done = subprocess.run([str(ROOT / "bin/backup"), "--keep", str(keep)],
                           env=environ, capture_output=True, text=True)
     if done.returncode != 0:
@@ -393,8 +402,8 @@ def back_up(old: Host, keep: int = 1) -> Path:
 
 
 def backup_module():
-    loader = SourceFileLoader("fsl_backup", str(BACKUP))
-    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("fsl_backup", loader))
+    loader = SourceFileLoader("cr_backup", str(BACKUP))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("cr_backup", loader))
     loader.exec_module(module)
     return module
 
@@ -463,23 +472,23 @@ def side_load(new: Host, sideload: Sideload) -> None:
     new.copy(sideload.bundle, f"/tmp/{sideload.bundle.name}")
     new.ssh(f"git -C {CHECKOUT} fetch -q /tmp/{sideload.bundle.name} HEAD "
             f"&& git -C {CHECKOUT} checkout -q --detach {sideload.commit} && rm /tmp/{sideload.bundle.name}")
-    new.ssh(f"sudo systemd-run --collect --no-block --unit=fsl-venv-checkout --uid=ubuntu --gid=ubuntu "
+    new.ssh(f"sudo systemd-run --collect --no-block --unit=cr-venv-checkout --uid=ubuntu --gid=ubuntu "
             f"sh -c {shlex.quote(VENV_COMMAND)}")
     for name, tarball in sideload.tarballs.items():
-        image = f"{REGISTRY}/{OWNER}/fsl-{name}"
+        image = f"{REGISTRY}/{OWNER}/cr-{name}"
         new.copy(tarball.path, f"/tmp/{tarball.path.name}")
         new.ssh(f"sudo docker load -q -i /tmp/{tarball.path.name} && rm /tmp/{tarball.path.name} "
                 f"&& sudo docker tag {image}:{tarball.built_from} "
-                f"{image}:$(sed -n 's/^FSL_IMAGE_TAG=//p' {CHECKOUT}/.env)")
+                f"{image}:$(sed -n 's/^CR_IMAGE_TAG=//p' {CHECKOUT}/.env)")
 
 
 def platform_settings(password: str, sideload: Sideload | None) -> str:
-    named = f"FSL_SIDELOADED={','.join(sorted(sideload.tarballs))}\n" if sideload else ""
-    return f"FSL_OPENSTACK_PASSWORD={password}\n{named}"
+    named = f"CR_SIDELOADED={','.join(sorted(sideload.tarballs))}\n" if sideload else ""
+    return f"CR_OPENSTACK_PASSWORD={password}\n{named}"
 
 
 def settings_rewrite(sideload: Sideload | None) -> str:
-    owned = ("FSL_OPENSTACK_PASSWORD",) + (("FSL_SIDELOADED",) if sideload else ())
+    owned = ("CR_OPENSTACK_PASSWORD",) + (("CR_SIDELOADED",) if sideload else ())
     unowned = " ".join(f"-e '^{name}='" for name in owned)
     settings = f"{CHECKOUT}/openstack.env"
     kept = f"{settings}.kept"
@@ -487,7 +496,7 @@ def settings_rewrite(sideload: Sideload | None) -> str:
 
 
 def start_platform(host: Host) -> None:
-    running = "[ \"$(sudo docker inspect -f '{{.State.Running}}' fsl-platform 2>/dev/null)\" = true ]"
+    running = "[ \"$(sudo docker inspect -f '{{.State.Running}}' cr-platform 2>/dev/null)\" = true ]"
     started = host.ssh(
         f"cd {CHECKOUT} && sudo docker compose -f {CHECKOUT}/compose.yaml up -d platform >/dev/null "
         f"&& for _ in $(seq {CONTAINER_WAIT // 2}); do {running} && exit 0; sleep 2; done; exit 1",
@@ -496,7 +505,7 @@ def start_platform(host: Host) -> None:
     if started.returncode != 0:
         said = started.stderr.decode(errors="replace").strip()
         raise Refused(
-            f"platform-rebuild: the fsl-platform container on {host.target} is not running and did not "
+            f"platform-rebuild: the cr-platform container on {host.target} is not running and did not "
             f"start within {CONTAINER_WAIT}s (ssh exited {started.returncode}: {said[-300:] or 'nothing'}); "
             f"read `sudo docker compose -f {CHECKOUT}/compose.yaml logs platform` there"
         )
@@ -505,14 +514,14 @@ def start_platform(host: Host) -> None:
 def hand_over(new: Host, password: str, range_key: Path, store: Path | None,
               sideload: Sideload | None = None) -> None:
     compose = f"sudo docker compose -f {CHECKOUT}/compose.yaml"
-    brought_up = new.ssh("cloud-init status --wait >/dev/null; systemctl is-active --quiet fsl-platform",
+    brought_up = new.ssh("cloud-init status --wait >/dev/null; systemctl is-active --quiet cr-platform",
                          check=False)
     if brought_up.returncode != 0:
         said = brought_up.stderr.decode(errors="replace").strip()
         raise Refused(
-            f"platform-rebuild: fsl-platform.service is not active on {new.target} (ssh exited "
+            f"platform-rebuild: cr-platform.service is not active on {new.target} (ssh exited "
             f"{brought_up.returncode}: {said[-300:] or 'nothing'}); its first boot did not finish. Read "
-            f"`sudo cloud-init status --long` and `sudo journalctl -u fsl-platform` there. Nothing is "
+            f"`sudo cloud-init status --long` and `sudo journalctl -u cr-platform` there. Nothing is "
             f"stored on it yet, so `bin/cloud up --replace` makes it again and restores the newest "
             f"backup in backups/"
         )
@@ -520,7 +529,7 @@ def hand_over(new: Host, password: str, range_key: Path, store: Path | None,
         side_load(new, sideload)
     start_platform(new)
     new.ssh(
-        "sudo docker exec -i -u fsl fsl-platform sh -c "
+        "sudo docker exec -i -u cr cr-platform sh -c "
         + shlex.quote(f"umask 077 && mkdir -p {Path(PLATFORM_KEY).parent} && cat > {PLATFORM_KEY} "
                       f"&& ssh-keygen -y -f {PLATFORM_KEY} > {PLATFORM_KEY}.pub"),
         range_key.read_bytes(),
@@ -530,8 +539,8 @@ def hand_over(new: Host, password: str, range_key: Path, store: Path | None,
         new.copy(store, f"{CHECKOUT}/backups/{store.name}")
         new.ssh(
             f"cd {CHECKOUT} && {compose} stop platform && sudo docker run --rm --network none "
-            f"--entrypoint sh --user fsl -v fsl_platformdata:/data -v {CHECKOUT}/backups:/backups:ro "
-            "$(sudo docker inspect --format '{{.Config.Image}}' fsl-platform) -c "
+            f"--entrypoint sh --user cr -v cr_platformdata:/data -v {CHECKOUT}/backups:/backups:ro "
+            "$(sudo docker inspect --format '{{.Config.Image}}' cr-platform) -c "
             + shlex.quote(f"rm -f /data/db.sqlite3-journal && cp /backups/{store.name} /data/db.sqlite3")
         )
     new.ssh(settings_rewrite(sideload), platform_settings(password, sideload).encode())
@@ -560,7 +569,7 @@ def wait_for_api(address: str) -> None:
 
 def hand_over_done(host: Host) -> bool:
     settings = f"{CHECKOUT}/openstack.env"
-    asked = host.ssh(f"sudo test -e {settings} || exit 1; sudo grep -q '^FSL_OPENSTACK_PASSWORD=' {settings}",
+    asked = host.ssh(f"sudo test -e {settings} || exit 1; sudo grep -q '^CR_OPENSTACK_PASSWORD=' {settings}",
                      check=False)
     if asked.returncode in (0, 1):
         return asked.returncode == 0
@@ -614,7 +623,7 @@ def rebuild(cloud, environment: dict[str, str], sideload_pairs: list[str] = ()) 
         if holding:
             start_platform(old)
         if old and not holding:
-            print(f"{old.target} has no fsl-platform container and no store, so there is nothing to back up")
+            print(f"{old.target} has no cr-platform container and no store, so there is nothing to back up")
         keep_range_key(range_key, old if holding else None, first=status is None or old is not None)
         store = store_to_restore(back_up(old, cloud.backups_keep) if holding else None)
         known_hosts.unlink(missing_ok=True)

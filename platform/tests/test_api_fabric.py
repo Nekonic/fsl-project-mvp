@@ -16,23 +16,23 @@ class Built:
     def plan_fabric(self):
         return fabric.Plan(
             networks=("internet",),
-            subnets=(fabric.Subnet("internet", "fsl-us", "73.0.0.0/24", False, True),),
+            subnets=(fabric.Subnet("internet", "cr-us", "73.0.0.0/24", False, True),),
             keypair=True,
-            groups=("fsl-reach",),
+            groups=("cr-reach",),
             reach=True,
-            present=("fsl-estate",),
-            leftovers=("network fsl-edge carries fsl.segment.id=edge, which the declaration does not name",),
+            present=("cr-estate",),
+            leftovers=("network cr-edge carries cr.segment.id=edge, which the declaration does not name",),
         )
 
     def ensure_fabric(self):
         if self.drifted:
-            raise Drifted("subnet fsl-us 73.0.0.0/24: dhcp is on, declared off")
+            raise Drifted("subnet cr-us 73.0.0.0/24: dhcp is on, declared off")
         self.ensured += 1
         return self.plan_fabric()
 
     def teardown_fabric(self):
         self.torn += 1
-        return [("subnet", "sub-1"), ("network", "net-1"), ("keypair", "fsl-platform")]
+        return [("subnet", "sub-1"), ("network", "net-1"), ("keypair", "cr-platform")]
 
 @pytest.fixture
 def built():

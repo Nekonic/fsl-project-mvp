@@ -115,7 +115,7 @@ def check(interpreter: Path, project: Path) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="load the range's GNS3 projects in real gns3-server releases")
-    parser.add_argument("--python", default=os.environ.get("FSL_CHECK_PYTHON", "python3"))
+    parser.add_argument("--python", default=os.environ.get("CR_CHECK_PYTHON", "python3"))
     parser.add_argument("--version", action="append", choices=VERSIONS)
     args = parser.parse_args()
     projects = sorted(TOPOLOGY.glob("*.gns3")) + sorted((TOPOLOGY / "system").glob("*.gns3"))

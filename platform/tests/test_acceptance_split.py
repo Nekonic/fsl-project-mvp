@@ -77,7 +77,7 @@ def test_the_red_team_run_is_read_from_what_its_fixture_recorded():
 
     assert "session_id" not in split.shared_fixtures(), (
         "a test that asks the platform about the red-team session hours after it closed finds it "
-        "deleted by FSL_RETAIN_CLOSED_MINUTES; full_run records what the tests read when it runs"
+        "deleted by CR_RETAIN_CLOSED_MINUTES; full_run records what the tests read when it runs"
     )
     assert not readers, readers
 
@@ -174,7 +174,7 @@ def test_a_red_team_run_refused_for_want_of_room_is_told_apart_from_any_other_re
     assert opening.refused_a_run_for_room(
         "409 Client Error: Conflict: {\"detail\": \"2 sessions are already open on the range; close one first\"}")
     assert not opening.refused_a_run_for_room(
-        "409 Client Error: Conflict: {\"detail\": \"fsl-edge did not take its configuration\"}"), (
+        "409 Client Error: Conflict: {\"detail\": \"cr-edge did not take its configuration\"}"), (
         "a range that refused for a reason other than room is retried for half an hour"
     )
     assert not opening.refused_a_run_for_room("503 Server Error: already open on the range")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import shlex
 
-TIMESYNCD = "/etc/systemd/timesyncd.conf.d/60-fsl.conf"
+TIMESYNCD = "/etc/systemd/timesyncd.conf.d/60-cr.conf"
 FIRST_ANSWER = 30
 
 def timesyncd(server: str) -> str:

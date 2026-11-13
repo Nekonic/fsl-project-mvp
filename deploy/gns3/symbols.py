@@ -66,4 +66,4 @@ if __name__ == "__main__":
     out.mkdir(parents=True, exist_ok=True)
     for name, text in built(bundled_square(), mark, commit).items():
         (out / name).write_text(text)
-        print(f"fsl-gns3: built {name}")
+        print(f"cr-gns3: built {name}")

@@ -42,7 +42,7 @@ def no_scenario_engine_thread():
 def no_real_range(settings):
     from tests import standin
 
-    settings.FSL_SUBSTRATE = "tests.standin.StandIn"
+    settings.CR_SUBSTRATE = "tests.standin.StandIn"
     with patch("api.views._aim_attacker", lambda adapter: None), \
             patch("subprocess.Popen", standin.refusing_docker()):
         yield

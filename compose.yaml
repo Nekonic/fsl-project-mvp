@@ -1,10 +1,10 @@
-name: fsl
+name: cr
 
 networks:
   mgmt:
     labels:
-      fsl.segment.id: "mgmt"
-      fsl.segment: "Management"
+      cr.segment.id: "mgmt"
+      cr.segment: "Management"
     ipam:
       config:
         - subnet: 172.31.0.0/24
@@ -18,7 +18,7 @@ services:
   elasticsearch:
     platform: linux/amd64
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
-    container_name: fsl-elasticsearch
+    container_name: cr-elasticsearch
     networks: [mgmt]
     ports:
       - "127.0.0.1:9200:9200"
@@ -39,14 +39,14 @@ services:
   collector:
     platform: linux/amd64
     image: docker.elastic.co/beats/filebeat:8.15.0
-    container_name: fsl-collector
+    container_name: cr-collector
     hostname: log-server
     user: root
     depends_on:
       elasticsearch: {condition: service_healthy}
     networks: [mgmt]
     ports:
-      - "${FSL_SYSLOG_PUBLISH:-127.0.0.1}:5140:5140/udp"
+      - "${CR_SYSLOG_PUBLISH:-127.0.0.1}:5140:5140/udp"
     command: ["--strict.perms=false", "-e"]
     volumes:
       - ./deploy/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
@@ -55,7 +55,7 @@ services:
   kibana:
     platform: linux/amd64
     image: docker.elastic.co/kibana/kibana:8.15.0
-    container_name: fsl-kibana
+    container_name: cr-kibana
     depends_on:
       elasticsearch: {condition: service_healthy}
     networks: [mgmt]
@@ -79,30 +79,30 @@ services:
   platform:
     platform: linux/amd64
     build: ./platform
-    image: ghcr.io/nekonic/fsl-platform:${FSL_IMAGE_TAG:-dev}
-    container_name: fsl-platform
+    image: ghcr.io/nekonic/cr-platform:${CR_IMAGE_TAG:-dev}
+    container_name: cr-platform
     depends_on:
       elasticsearch: {condition: service_healthy}
     networks:
       mgmt: {}
     ports:
-      - "${FSL_PUBLISH:-127.0.0.1}:8000:8000"
-      - "${FSL_PUBLISH:-127.0.0.1}:8002:8002"
+      - "${CR_PUBLISH:-127.0.0.1}:8000:8000"
+      - "${CR_PUBLISH:-127.0.0.1}:8002:8002"
     environment:
       ELASTIC_URL: "http://elasticsearch:9200"
       ELASTIC_INDEX: "logs-*"
       KIBANA_URL: "http://kibana:5601/kibana"
       DJANGO_DB_PATH: "/data/db.sqlite3"
-      FSL_RESET_OWED_DIR: "/data/reset-owed"
+      CR_RESET_OWED_DIR: "/data/reset-owed"
       TARGET_URL: "http://board.com"
       PUBLIC_TARGET_URL: "http://board.com"
       WARGAME_CASES_DIR: "/app/redteam/cases"
-      FSL_SOURCE: "/src"
-      FSL_IMAGE_TAG: "${FSL_IMAGE_TAG:-dev}"
-      FSL_GNS3_URL: "http://gns3:3080"
-      FSL_GNS3_AUDITOR_PASSWORD: "${FSL_GNS3_AUDITOR_PASSWORD:-}"
-      FSL_GNS3_ADMIN_PASSWORD: "${FSL_GNS3_ADMIN_PASSWORD:-}"
-      FSL_RETAIN_CLOSED_MINUTES: "${FSL_RETAIN_CLOSED_MINUTES:-60}"
+      CR_SOURCE: "/src"
+      CR_IMAGE_TAG: "${CR_IMAGE_TAG:-dev}"
+      CR_GNS3_URL: "http://gns3:3080"
+      CR_GNS3_AUDITOR_PASSWORD: "${CR_GNS3_AUDITOR_PASSWORD:-}"
+      CR_GNS3_ADMIN_PASSWORD: "${CR_GNS3_ADMIN_PASSWORD:-}"
+      CR_RETAIN_CLOSED_MINUTES: "${CR_RETAIN_CLOSED_MINUTES:-60}"
     env_file:
       - path: ./openstack.env
         required: false
@@ -113,24 +113,24 @@ services:
       - ./deploy:/src/deploy:ro
       - ./wargames:/src/wargames:ro
       - /var/run/docker.sock:/var/run/docker.sock
-      - /var/lib/fsl-gns3:/run/fsl-gns3:ro
+      - /var/lib/cr-gns3:/run/cr-gns3:ro
       - platformdata:/data
 
   gns3:
     platform: linux/amd64
     build: ./deploy/gns3
-    image: ghcr.io/nekonic/fsl-gns3:${FSL_IMAGE_TAG:-dev}
-    container_name: fsl-gns3
+    image: ghcr.io/nekonic/cr-gns3:${CR_IMAGE_TAG:-dev}
+    container_name: cr-gns3
     networks: [mgmt]
     pid: host
     ports:
-      - "${FSL_PUBLISH:-127.0.0.1}:3080:3080"
+      - "${CR_PUBLISH:-127.0.0.1}:3080:3080"
     environment:
-      FSL_GNS3_ADMIN_PASSWORD: "${FSL_GNS3_ADMIN_PASSWORD:-}"
-      FSL_GNS3_AUDITOR_PASSWORD: "${FSL_GNS3_AUDITOR_PASSWORD:-}"
+      CR_GNS3_ADMIN_PASSWORD: "${CR_GNS3_ADMIN_PASSWORD:-}"
+      CR_GNS3_AUDITOR_PASSWORD: "${CR_GNS3_AUDITOR_PASSWORD:-}"
     cap_add: [NET_ADMIN]
     devices:
       - /dev/net/tun:/dev/net/tun
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /var/lib/fsl-gns3:/var/lib/fsl-gns3
+      - /var/lib/cr-gns3:/var/lib/cr-gns3

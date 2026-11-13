@@ -4,7 +4,7 @@ description: >-
   plugins have access-control vulnerabilities (CVEs) that need no login and that
   the default rules do not detect. An objective counts as reached only when the
   site's own database shows the change.
-image: ghcr.io/nekonic/fsl-corp
+image: ghcr.io/nekonic/cr-corp
 public_url: http://corp.com
 objective_model: effect_observed
 case_file: corp.yaml

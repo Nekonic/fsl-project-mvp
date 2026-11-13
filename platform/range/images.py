@@ -12,19 +12,19 @@ import yaml
 
 from range.ports import RangeUnavailable
 
-BUILDER = "fsl-build-"
-BUILDS = "fsl_image"
-BUNDLE = "fsl_bundle"
-READY = "fsl-image-ready"
-FAILED = "fsl-image-failed"
+BUILDER = "cr-build-"
+BUILDS = "cr_image"
+BUNDLE = "cr_bundle"
+READY = "cr-image-ready"
+FAILED = "cr-image-failed"
 TASK = "OS-EXT-STS:task_state"
-WORKDIR = "/var/lib/fsl"
+WORKDIR = "/var/lib/cr"
 USER_DATA_LIMIT = 65535
 SKIPPED = {"__pycache__"}
 FAILED_IMAGE = {"killed", "deleted", "pending_delete", "deactivated"}
 TAIL_LINES = 20
 
-SERVED = "/var/lib/fsl-serve"
+SERVED = "/var/lib/cr-serve"
 DISK = "disk.qcow2"
 SERVE_PORT = 8080
 SERVED_SHA = re.compile(r"sha256=([0-9a-f]{64})")
@@ -114,7 +114,7 @@ def _serving(bundle: Bundle) -> str:
         return f"said='{READY} {bundle.digest}'"
     return (
         f"sha=$(sha256sum {SERVED}/{DISK} | cut -c1-64) && "
-        f"systemd-run --unit=fsl-serve /usr/bin/python3 -m http.server {SERVE_PORT} "
+        f"systemd-run --unit=cr-serve /usr/bin/python3 -m http.server {SERVE_PORT} "
         f"--directory {SERVED} && said=\"{READY} {bundle.digest} sha256=$sha\""
     )
 

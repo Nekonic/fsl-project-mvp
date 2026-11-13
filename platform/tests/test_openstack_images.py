@@ -80,8 +80,8 @@ class Cloud:
 
 SPEC = openstack.Cloud(
     keystone="http://keystone:5000", neutron="http://neutron:9696",
-    nova="http://nova:8774/v2.1", glance="http://glance:9292", project="fsl",
-    user="fsl", ssh_user="ubuntu", ssh_key="/keys/fsl",
+    nova="http://nova:8774/v2.1", glance="http://glance:9292", project="cr",
+    user="cr", ssh_user="ubuntu", ssh_key="/keys/cr",
 )
 
 @pytest.fixture
@@ -121,56 +121,56 @@ def test_a_builder_still_running_is_left_alone(cloud):
 
 def test_a_builder_that_finished_is_stopped_and_then_snapshotted(cloud):
     adapter(cloud).ensure_images()
-    cloud.finish("fsl-waf")
+    cloud.finish("cr-waf")
     adapter(cloud).ensure_images()
 
     plan = adapter(cloud).ensure_images()
 
-    made = [i for i in cloud.images if i["name"] == "fsl-waf"]
+    made = [i for i in cloud.images if i["name"] == "cr-waf"]
     assert len(made) == 1
-    assert made[0][images.BUNDLE] == cloud.builder("fsl-waf")["metadata"][images.BUNDLE]
-    assert next(i for i in plan.images if i.host == "fsl-waf").state == "saving"
+    assert made[0][images.BUNDLE] == cloud.builder("cr-waf")["metadata"][images.BUNDLE]
+    assert next(i for i in plan.images if i.host == "cr-waf").state == "saving"
 
 def test_the_builder_goes_once_its_image_is_active(cloud):
     adapter(cloud).ensure_images()
-    cloud.finish("fsl-waf")
+    cloud.finish("cr-waf")
     adapter(cloud).ensure_images()
     adapter(cloud).ensure_images()
-    next(i for i in cloud.images if i["name"] == "fsl-waf")["status"] = "active"
+    next(i for i in cloud.images if i["name"] == "cr-waf")["status"] = "active"
 
     plan = adapter(cloud).ensure_images()
 
-    assert "fsl-waf" not in {s["metadata"][images.BUILDS] for s in cloud.servers}
-    waf = next(i for i in plan.images if i.host == "fsl-waf")
+    assert "cr-waf" not in {s["metadata"][images.BUILDS] for s in cloud.servers}
+    waf = next(i for i in plan.images if i.host == "cr-waf")
     assert waf.state == "ready" and waf.builder == ""
 
 def test_a_builder_whose_setup_failed_is_neither_stopped_nor_snapshotted(cloud):
     adapter(cloud).ensure_images()
-    cloud.finish("fsl-wargame-host", worked=False)
+    cloud.finish("cr-wargame-host", worked=False)
 
     plan = adapter(cloud).ensure_images()
 
-    assert not [i for i in cloud.images if i["name"] == "fsl-wargame-host"]
-    assert cloud.builder("fsl-wargame-host")["status"] == "ACTIVE"
-    board = next(i for i in plan.images if i.host == "fsl-wargame-host")
+    assert not [i for i in cloud.images if i["name"] == "cr-wargame-host"]
+    assert cloud.builder("cr-wargame-host")["status"] == "ACTIVE"
+    board = next(i for i in plan.images if i.host == "cr-wargame-host")
     assert board.state == "failed" and "Unable to locate package" in board.detail
 
 def test_cleaning_removes_failed_builders_and_stale_images_but_not_ready_ones(cloud):
     adapter(cloud).ensure_images()
-    cloud.finish("fsl-wargame-host", worked=False)
-    cloud.finish("fsl-waf")
+    cloud.finish("cr-wargame-host", worked=False)
+    cloud.finish("cr-waf")
     adapter(cloud).ensure_images()
     adapter(cloud).ensure_images()
-    next(i for i in cloud.images if i["name"] == "fsl-waf")["status"] = "active"
-    cloud.images.append({"id": "img-old", "name": "fsl-wargame-host", "status": "active",
+    next(i for i in cloud.images if i["name"] == "cr-waf")["status"] = "active"
+    cloud.images.append({"id": "img-old", "name": "cr-wargame-host", "status": "active",
                          images.BUNDLE: "0000000000000000"})
 
     removed = adapter(cloud).clean_images()
 
     assert ("image", "img-old") in removed
     assert ("server", cloud_id_of(removed, "server")) in removed
-    assert "fsl-wargame-host" not in {s["metadata"][images.BUILDS] for s in cloud.servers}
-    assert [i["id"] for i in cloud.images if i["name"] == "fsl-waf"]
+    assert "cr-wargame-host" not in {s["metadata"][images.BUILDS] for s in cloud.servers}
+    assert [i["id"] for i in cloud.images if i["name"] == "cr-waf"]
 
 def cloud_id_of(removed, kind):
     return next(ident for k, ident in removed if k == kind)

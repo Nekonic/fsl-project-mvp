@@ -6,7 +6,7 @@ MODSECURITY = "deploy/waf/modsecurity.conf"
 TAG = "modsecurity"
 
 def conf(tag: str) -> str:
-    return f"/etc/rsyslog.d/60-fsl-{tag}.conf"
+    return f"/etc/rsyslog.d/60-cr-{tag}.conf"
 
 CONF = conf(TAG)
 
@@ -18,8 +18,8 @@ def forwarding(path: str, collector: str, port: int, tag: str = TAG) -> str:
         'global(maxMessageSize="64k")\n'
         'module(load="imfile")\n'
         f'input(type="imfile" File="{path}" Tag="{tag}" Facility="local2" '
-        f'Severity="info" ruleset="fsl-{tag}")\n'
-        f'ruleset(name="fsl-{tag}") {{\n'
+        f'Severity="info" ruleset="cr-{tag}")\n'
+        f'ruleset(name="cr-{tag}") {{\n'
         f'    action(type="omfwd" Target="{collector}" Port="{port}" Protocol="udp" '
         'Template="RSYSLOG_SyslogProtocol23Format")\n'
         '}\n'

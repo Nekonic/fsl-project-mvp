@@ -1,4 +1,5 @@
 import pathlib
+import re
 
 import attacker
 from range.ports import Ran
@@ -13,7 +14,7 @@ def test_nothing_on_the_kali_vm_that_a_learner_can_list_carries_the_platform_s_n
     root = pathlib.Path(attacker.__file__).resolve().parents[1] / "deploy"
     setup = (root / "kali/setup.sh").read_text()
 
-    assert "fsl" not in setup.lower(), "systemctl, ps and iptables on the box print these names"
+    assert not re.search(r"\bcr[-_.]", setup), "systemctl, ps and iptables on the box print these names"
     assert "web-proxy.service" in setup and "ttyd.service" in setup and "ORIGIN-SNAT" in setup
 
 def test_the_label_file_is_read_only_to_the_account_the_platform_logs_in_as():

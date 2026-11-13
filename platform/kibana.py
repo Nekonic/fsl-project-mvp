@@ -7,7 +7,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-OBJECTS = f"{os.environ.get('FSL_SOURCE', '/app')}/deploy/kibana/objects.ndjson"
+OBJECTS = f"{os.environ.get('CR_SOURCE', '/app')}/deploy/kibana/objects.ndjson"
 BASE_PATH = "/kibana"
 DATA_VIEW = "logs"
 ALERT_SEARCH = "alerts"

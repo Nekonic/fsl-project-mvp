@@ -40,7 +40,7 @@ def backup(tmp_path, monkeypatch, capsys):
     module = load_backup()
     backups = tmp_path / "backups"
     monkeypatch.setattr(module, "BACKUPS", backups)
-    monkeypatch.delenv("FSL_PLATFORM_EXEC", raising=False)
+    monkeypatch.delenv("CR_PLATFORM_EXEC", raising=False)
 
     def invoke():
         monkeypatch.setattr(sys, "argv", ["backup"])
@@ -88,7 +88,7 @@ def dump(path):
 def answering(monkeypatch, tmp_path, data):
     answer = tmp_path / "answer"
     answer.write_bytes(data)
-    monkeypatch.setenv("FSL_PLATFORM_EXEC", shlex.join(["cat", str(answer)]))
+    monkeypatch.setenv("CR_PLATFORM_EXEC", shlex.join(["cat", str(answer)]))
 
 
 def failure(backup):
@@ -156,7 +156,7 @@ def test_a_platform_reached_some_other_way_is_backed_up_the_same(
     store = made_store(tmp_path / "db.sqlite3")
     monkeypatch.chdir(ROOT / "platform")
     monkeypatch.setenv("DJANGO_DB_PATH", str(store))
-    monkeypatch.setenv("FSL_PLATFORM_EXEC", shlex.join([sys.executable, "-"]))
+    monkeypatch.setenv("CR_PLATFORM_EXEC", shlex.join([sys.executable, "-"]))
 
     printed = backup()
 
@@ -176,7 +176,7 @@ def test_a_store_the_platform_has_not_yet_migrated_to_the_checkout_is_still_kept
         [sys.executable, "manage.py", "migrate", "api", "0002", "--noinput", "--skip-checks"],
         check=True, capture_output=True,
     )
-    monkeypatch.setenv("FSL_PLATFORM_EXEC", shlex.join([sys.executable, "-"]))
+    monkeypatch.setenv("CR_PLATFORM_EXEC", shlex.join([sys.executable, "-"]))
 
     printed = backup()
 
@@ -273,7 +273,7 @@ def test_a_store_that_keeps_arriving_is_kept_however_long_the_whole_takes(
     store = made_store(tmp_path / "db.sqlite3")
     size = store.stat().st_size
     monkeypatch.setattr(backup.module, "TIMEOUT", 0.2)
-    monkeypatch.setenv("FSL_PLATFORM_EXEC", shlex.join([
+    monkeypatch.setenv("CR_PLATFORM_EXEC", shlex.join([
         "sh", "-c",
         f"for skip in 0 1 2 3; do sleep 0.1; dd if={shlex.quote(str(store))} bs={size // 4} "
         f"skip=$skip count=1 2>/dev/null; done; "

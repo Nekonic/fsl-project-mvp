@@ -15,9 +15,9 @@ RUN set -eux; \
       unzip -q "/tmp/${slug}.zip" -d /usr/src/wordpress/wp-content/plugins/; \
     done
 
-COPY entrypoint.sh /usr/local/bin/fsl-entrypoint.sh
-COPY rbsm-form.php /usr/local/bin/fsl-rbsm-form.php
-RUN chmod +x /usr/local/bin/fsl-entrypoint.sh
+COPY entrypoint.sh /usr/local/bin/cr-entrypoint.sh
+COPY rbsm-form.php /usr/local/bin/cr-rbsm-form.php
+RUN chmod +x /usr/local/bin/cr-entrypoint.sh
 
-ENTRYPOINT ["/usr/local/bin/fsl-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/cr-entrypoint.sh"]
 CMD ["apache2-foreground"]

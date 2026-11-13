@@ -6,10 +6,10 @@ services:
     cap_add: [NET_ADMIN, NET_RAW, SYS_NICE]
     environment:
       PGID: "4"
-    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet=${FSL_SENSOR_INTERFACE:?the estate interface}"]
+    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet=${CR_SENSOR_INTERFACE:?the estate interface}"]
     volumes:
-      - /opt/fsl/suricata.yaml:/etc/suricata/suricata.yaml
-      - /opt/fsl/rules:/var/lib/suricata/rules
+      - /opt/cr/suricata.yaml:/etc/suricata/suricata.yaml
+      - /opt/cr/rules:/var/lib/suricata/rules
       - /var/log/suricata:/var/log/suricata
     healthcheck:
       test: ["CMD", "suricatasc", "-c", "uptime"]

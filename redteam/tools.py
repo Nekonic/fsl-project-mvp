@@ -20,7 +20,7 @@ CONCLUSIONS_KEPT = 4
 LINE_KEPT = 160
 ABORTED = re.compile(r"\[CRITICAL\][^\n]*does not exist|Traceback|user (quit|aborted)", re.IGNORECASE)
 
-TOOL_IMAGE = os.environ.get("FSL_TOOL_IMAGE", "fsl-kali")
+TOOL_IMAGE = os.environ.get("CR_TOOL_IMAGE", "cr-kali")
 
 class ToolUnavailable(RuntimeError):
     pass

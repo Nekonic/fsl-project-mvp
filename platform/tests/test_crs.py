@@ -80,10 +80,10 @@ def test_on_openstack_tuning_writes_where_the_waf_vm_reads_and_reloads_it_with_s
     import sys
 
     read = subprocess.run(
-        [sys.executable, "-c", "import cr.settings as s; print('\\n'.join(s.FSL_WAF))"],
+        [sys.executable, "-c", "import cr.settings as s; print('\\n'.join(s.CR_WAF))"],
         cwd=pathlib.Path(__file__).resolve().parents[1], capture_output=True, text=True,
-        env={**{k: v for k, v in os.environ.items() if not k.startswith("FSL_")},
-             "DJANGO_SETTINGS_MODULE": "cr.settings", "FSL_SUBSTRATE": "range.openstack.connect"},
+        env={**{k: v for k, v in os.environ.items() if not k.startswith("CR_")},
+             "DJANGO_SETTINGS_MODULE": "cr.settings", "CR_SUBSTRATE": "range.openstack.connect"},
     )
     assert read.returncode == 0, read.stderr[-300:]
     layout = crs.Layout(*read.stdout.strip().splitlines())

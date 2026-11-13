@@ -55,7 +55,7 @@ def test_only_a_stack_brought_up_from_this_checkout_is_restarted(tmp_path, check
     done, docker = verify_against(f'echo "{brought_up}"')
 
     assert (RESTART in docker) == (brought_up == checkout), (
-        f"compose project fsl belongs to whichever checkout last ran up, so "
+        f"compose project cr belongs to whichever checkout last ran up, so "
         f"restarting another tree's stack makes acceptance test that tree's "
         f"code while saying it tested this one. docker was called with:\n{docker}\n{done.stdout}"
     )

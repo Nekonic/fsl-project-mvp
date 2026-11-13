@@ -131,7 +131,7 @@ class Rebuilds:
         self.rebuilt += 1
         if self.fail is not None:
             raise self.fail
-        return [("fsl-waf", "srv-1"), ("fsl-wg-board", "srv-2")]
+        return [("cr-waf", "srv-1"), ("cr-wg-board", "srv-2")]
 
 
 def test_closing_a_session_on_the_cloud_rebuilds_the_slot(client, session_id):
@@ -143,8 +143,8 @@ def test_closing_a_session_on_the_cloud_rebuilds_the_slot(client, session_id):
     assert Session.objects.get(pk=session_id).ended_at is not None
     assert found.rebuilt == 1
     assert response.json()["rebuilding"] == [
-        {"host": "fsl-waf", "server": "srv-1"},
-        {"host": "fsl-wg-board", "server": "srv-2"},
+        {"host": "cr-waf", "server": "srv-1"},
+        {"host": "cr-wg-board", "server": "srv-2"},
     ]
 
 
@@ -171,13 +171,13 @@ def test_closing_stamps_ended_at_before_it_rebuilds(client, session_id):
 def test_a_failed_rebuild_leaves_the_session_closed(client, session_id):
     from range.ports import Drifted
 
-    found = Rebuilds(fail=Drifted("fsl-waf is not standing"))
+    found = Rebuilds(fail=Drifted("cr-waf is not standing"))
     with patch("api.views.substrate", lambda: found):
         response = client.post_json(f"/api/sessions/{session_id}/close/")
 
     assert response.status_code == 200, response.content
     assert Session.objects.get(pk=session_id).ended_at is not None
-    assert "fsl-waf" in response.json()["rebuild"]
+    assert "cr-waf" in response.json()["rebuild"]
     assert "rebuilding" not in response.json()
 
 
@@ -214,7 +214,7 @@ def test_closing_on_the_cloud_enables_the_rules_the_rebuild_put_back(client, ses
 def _failed_rebuild():
     from range.ports import Drifted
 
-    return RebuildsAndConfigures(fail=Drifted("fsl-waf is not standing"))
+    return RebuildsAndConfigures(fail=Drifted("cr-waf is not standing"))
 
 
 @pytest.mark.parametrize("found", [_failed_rebuild, None], ids=["cloud-rebuild-failed", "compose"])
@@ -245,7 +245,7 @@ def test_closing_deletes_only_sessions_closed_longer_ago_than_the_retention_with
     assert client.post_json(f"/api/sessions/{session_id}/close/").status_code == 200
 
     assert set(Session.objects.values_list("pk", flat=True)) == {session_id, recent.pk}, (
-        "the store grew to 6 GB of closed sessions; one closed past FSL_RETAIN_CLOSED_MINUTES goes, "
+        "the store grew to 6 GB of closed sessions; one closed past CR_RETAIN_CLOSED_MINUTES goes, "
         "while the one just closed and one still inside the retention must stay for their score and debrief"
     )
     assert list(Detection.objects.values_list("session", flat=True)) == [recent.pk]

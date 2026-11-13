@@ -37,7 +37,7 @@ const range = {{state: {js(state)}, items: {js(items)}, posted: [], hinted: 0, w
 browser.serve((request) => {{
   if (request.route === "/api/sessions/1/") return {{body: {{id: 1, scenario: "board", course_scenario: range.state.id,
     kind: "scenario", ended_at: null, guidance: Boolean({js(lesson)}), mode: "guided", lesson: {js(lesson)},
-    hints: [], progress: {{}}, discover: "/kibana/app/discover#/", waf_box: "fsl-1-waf", waf_rules: "/etc"}}}};
+    hints: [], progress: {{}}, discover: "/kibana/app/discover#/", waf_box: "cr-1-waf", waf_rules: "/etc"}}}};
   if (request.route === "/api/sessions/1/scenario/") return {{body: range.state}};
   if (request.route === "/api/sessions/1/scenario/verify-window/") {{
     range.windowed += 1;
