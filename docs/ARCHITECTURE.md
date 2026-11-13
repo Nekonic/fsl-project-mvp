@@ -67,7 +67,13 @@ The images are built and pulled as follows.
 - The range host pulls each as `ghcr.io/nekonic/cr-<name>:<CR_IMAGE_TAG>`. The platform writes its own tag into the host's setup bundle and into each slot's compose file.
 - Tool cases run in the attacker container (`redteam/tools.py`, whose `TOOL_IMAGE` defaults to `cr-kali`).
 
-A new wargame needs `scenario.yaml`, `objectives.yaml` and `compose.yaml` in its folder, a case file under `redteam/cases/`, and its name in the `wargames:` list of the range host in `declaration.yaml`.
+A new wargame needs the following.
+
+- `scenario.yaml`, `objectives.yaml` and `compose.yaml` in its folder under `wargames/`, and a case file under `redteam/cases/`.
+- In `declaration.yaml`, its name in the `wargames:` list of the range host and its site name in the `names:` list of `cr-waf`.
+- In `deploy/range-host/slot.yaml`, the last octet of the estate address of each service the WAF proxies to under `x-wargames.fronts`, each service's `cap_add` and limits under `x-wargames.limits`, the service's name and estate address in the `waf` service's `extra_hosts`, and the site name in the `kali` service's `extra_hosts`. `rangehost.compose` reads `fronts` and `limits` when it renders a slot.
+- Its services in `LEARNER_FACING` and `CAPABILITIES` in `platform/tests/test_containment.py`.
+- A `server` block in `deploy/waf/board.com.conf`.
 
 Nothing in a wargame's `compose.yaml` pins `container_name`. Each slot names a container `sN-<service>` (`s1-board`, `s2-corp-wp`) and gives it its service as hostname. The control plane keeps fixed names: `cr-platform`, `cr-elasticsearch`, `cr-kibana`, `cr-collector` and `cr-gns3`. The first table below lists each service by that name.
 
@@ -125,12 +131,12 @@ Segmentation is the slot's docker networks on the range host, and the fabric's s
 
 - Every slot network is `internal`, with `gateway_mode_ipv4: isolated`: the range host holds no address on any slot bridge, and no slot network has a route out or NAT.
 - Kali stands on `internet` only and knows two names, `board.com` and `corp.com`, both the WAF. The edge routes between `internet` and `estate` without NAT. A database stands only on its wargame's `<wargame>-default` network.
-- `test/test_attacker_reach.py` asserts the segmentation against the live range. Kali reaches neither `board:8000` nor `corp-wp` by name, and no service off its route out. `test/test_board_exfil.py` reaches the board through `board.com`.
-- `test/test_range_isolation.py` asserts the containment from Kali, the WAF and the board: no range host sshd, no platform, no Internet, no metadata service, no other slot. Kali reaches the WAF and, through the edge, the board's estate address; `board-db` does not resolve; a SYN scan works.
+- `test/test_attacker_reach.py` checks against the live range that Kali reaches neither `board:8000` nor `corp-wp` by name. Its port scan covers Kali's interfaces other than the one with its default route; in a slot Kali has only `eth0`, so that test scans nothing and proves nothing there. `test/test_board_exfil.py` reaches the board through `board.com`.
+- `test/test_range_isolation.py` is the live containment evidence. It asserts the containment from Kali, the WAF and the board: no range host sshd, no platform, no Internet, no metadata service, no other slot. Kali reaches the WAF and, through the edge, the board's estate address; `board-db` does not resolve; a SYN scan works.
 - `platform/tests/test_containment.py` fails `bin/verify` when the rendered slot compose file breaks the containment ("OpenStack").
 - `test/test_concurrent_sessions.py` asserts that two concurrent sessions do not see each other.
 - The origin subnets and each slot's addresses are fixed by the declaration, `cloud.yaml` and `deploy/range-host/slot.yaml`. Neutron assigns the range host's `mgmt` address, so the views build a new adapter and read the addresses on every request.
-- The rule that refuses requests from the range's hosts (every address the slots report, the range host's `mgmt` address included) caches their addresses for 30 s. When it cannot reach the substrate, it treats the range as empty and lets the request through (`docs/THREAT-MODEL.md`).
+- The rule that refuses requests from the range's hosts (every address the slots report except the scorer's, the range host's `mgmt` address included) caches their addresses for 30 s. When it cannot reach the substrate, it treats the range as empty and lets the request through (`docs/THREAT-MODEL.md`).
 
 The platform reaches the range on `mgmt` only.
 
@@ -181,7 +187,7 @@ The declaration holds no address for `estate` or `mgmt` and none for a host. `cl
 
 The platform finds segments by a tag.
 
-- Each segment carries `cr.segment.id` as a Neutron tag. The adapter fetches only tagged networks.
+- Only `mgmt` is a Neutron network, tagged `cr.segment.id=mgmt`. The adapter fetches only tagged networks. A slot's `internet` and `estate` segments come from its rendered compose file (`_read` in `platform/range/openstack.py`).
 - Matching by name broke on Heat stack suffixes and on non-unique Neutron names.
 - A role names a host the declaration gives. The adapter finds the range host as the server whose `cr_host` metadata is `cr-range` (`slot.host_of`); the other hosts are the slot's containers.
 - A role that `compose:` maps to a service runs in that slot container (`sudo docker exec sN-<service>` on the range host). The `wargames` role runs on the range host itself.
@@ -207,7 +213,7 @@ How the adapter answers each call:
 - Sensor: it reports both sensors whenever the range host stands. Nothing confirms that it sees the gateway's traffic.
 - Runner: `ssh` to the range host's `mgmt` address, one shared connection per host (`ControlMaster auto`, `ControlPersist 60`). A role that `compose:` maps to a service runs in that slot container (`sudo docker exec sN-<service>`, `range/rangehost.exec_in`).
 - Address: the range host's `mgmt` address, for every role the range fills.
-- Launcher: `runner("attacker")` runs the tool in the slot's Kali container. The origin only checks that the attacker stands on that segment, and the source country comes from `set-origin` SNAT. Any other image is refused: a tool runs in the slot's attacker container and in no other.
+- Launcher: `runner("attacker")` runs the tool in the slot's Kali container. It does not check the segment it is given, which only appears in the refusal; the source country comes from `set-origin` SNAT. Any other image is refused: a tool runs in the slot's attacker container and in no other.
 - Tested against: unit tests on fakes built from the published API reference and a local sshd. Before the range host, on 2026-10-08, the VM range on the `fsl-range` cloud was built through `/api/range/` and `launcher()` fired sqlmap from the `ru` and `tw` origins.
 
 Compose mounts the Docker socket into the platform, and the entrypoint adds the platform user to the socket's group. The platform uses the socket to read its own NICs. GNS3 uses it for its display nodes. This is a container escape path, and nothing removes it yet. `docs/STATE.md` lists, under "The substrate seam", what is left.
@@ -410,7 +416,7 @@ An isolation seam is a rule that only one file may handle one concern. For examp
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py` PUTs the `geoip` ingest pipeline at bring-up |
 | The Kibana HTTP API, its saved objects and the Discover link | `platform/kibana.py` | `platform/nginx.conf` knows Kibana's API paths. It refuses the administration APIs, the Default space, unprefixed paths and `?namespaces=`. It answers `GET /kibana/s/<space>/api/spaces/space` itself with the one SOC space |
 | The GNS3 API | `platform/gns3.py` | `deploy/gns3/provision.py`, inside the GNS3 container, signs in as admin to provision the learner and open the projects. `deploy/gns3/auditor.html`, served by GNS3 as `/static/web-ui/map.html`, signs in as the learner and reads `/v3/projects/<id>/nodes` and `/links`. The console's Map pane frames the web UI at the port and path `gns3.py` returns |
-| CRS configuration and the nginx reload | `platform/rules/crs.py` | `entrypoint.sh` starts `vm-terminal.sh cr-waf`, which opens a shell in the slot's WAF container for the person (ssh to the range host, then `sudo docker exec -it sN-waf bash -l`). `range/rangehost.forwarding` writes the audit log's rsyslog forwarding on the range host. F6's WAF-pane steps show the commands the learner types (`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`). `wargames.lesson` fills them in from the declared exclusion file and reload command (`settings.CR_WAF`). The platform does not drive the terminal |
+| CRS configuration and the nginx reload | `platform/rules/crs.py` | `entrypoint.sh` starts `vm-terminal.sh cr-waf`, which opens a shell in the slot's WAF container for the person (ssh to the range host, then `sudo docker exec -it sN-waf bash -l`). `range/rangehost.forwarding` writes the audit log's rsyslog forwarding on the range host. `deploy/range-host/slot.yaml` mounts the WAF's audit directory and `rangehost.LOGS` names the file; `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it` in `platform/tests/test_range_host.py` ties both to `SecAuditLog` in `deploy/waf/modsecurity.conf`. F6's WAF-pane steps show the commands the learner types (`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`). `wargames.lesson` fills them in from the declared exclusion file and reload command (`settings.CR_WAF`). The platform does not drive the terminal |
 | The Suricata process | `platform/rules/suricata.py` | Each sensor host in `declaration.yaml` (`cr-edge` for `sensor`, `cr-range` for `estate-sensor`) names the rule file and reload command that `suricata.py` is handed. `platform/range/rangehost.py` renders both sensors' configuration (`deploy/range-host/edge-sensor.yaml`, `deploy/suricata/suricata.yaml`) and their compose services; `deploy/range-host/slot.sh` starts and stops them with the slot, reopens their log files at a reset, and configures the edge router. Their baseline rules then go through `suricata.py` |
 | The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/commands.log`. The terminal wiring names `cr-kali`: `entrypoint.sh` starts `vm-terminal.sh cr-kali`. The Website pane (`platform/api/site.py`) is not an exception: it reaches the box only through `attacker.py` (`customer_origins`, `unbound_source`, `as_customer`, which holds the command) and the substrate's `opened` (an ssh stream to the range host, into the slot's Kali container) |
 | The target's own records | `platform/api/loot.py` (board), `platform/api/effect.py` (corp) | None. `loot.py` reads the board over HTTP at `127.0.0.1` inside the board's container, through the `board` role's runner, and `effect.py` reaches corp through the runner, which `docker exec`s into `corp-db` |
@@ -441,7 +447,7 @@ Important files that this document does not otherwise name.
 | `platform/api/models.py` | The Django models: `Session`, `Case`, `CustomerRequest`, `Detection`, `Objective`, `RuleSet`, `DisabledRule` |
 | `platform/cr/urls.py` | The route table of every endpoint |
 | `platform/api/refusals.py` | Maps exceptions to HTTP statuses (a 404 under `/api/` is JSON). It also holds the same-origin check for unsafe methods |
-| `platform/api/reachability.py` | The middleware that refuses requests from range hosts |
+| `platform/api/reachability.py` | The middleware that refuses requests from every address the slots report, except the scorer's |
 | `platform/range/declared.py` | Reads `declaration.yaml` into `Declaration` |
 | `platform/range/openstack.py` | The OpenStack adapter (`connect`): Keystone, Neutron, Nova and ssh |
 | `bin/verify` | The ratchet check, which refuses a change that grows a gated size number (see `CLAUDE.md`), and the tests a change reaches (`--changed`, `--fast`; `bin/select-tests` picks them) |
@@ -782,7 +788,7 @@ A case marked with any of `views.REPLAY_MARKS` (`seed`, `verify`, `check`, `repl
 - The exception is a benign `seed` case. A lesson's seed replay is scored as a benign case (2026-10-18), so a lesson session has a true negative.
 - Only `seed` is still written. `verify`, `check` and `replay` stay listed so that the replays older sessions hold stay out of both scores.
 
-The console is four screens, and every one is filled from `/api/`. It follows a static mockup the user approved, with two rulings on top (`docs/DECISIONS.md`, 2026-10-11, console redesign). The palette and component classes are in `base.html` and `platform/console/components.css`, which `bin/build-css` puts into `tailwind.css`. The header carries the breadcrumb, the range state and the language switch.
+The console is four screens, and every one is filled from `/api/`. It follows a static mockup the user approved, with two rulings on top (`docs/DECISIONS.md`, 2026-10-11, console redesign). The palette and component classes are in `base.html` and `platform/console/components.css`, which `bin/build-css` puts into `tailwind.css`. The header carries the breadcrumb and the range state. The console is Korean only and has no language switch.
 
 - **Main** (`/`):
   - It lists running sessions with their kind (`scenario`, `lesson` or `wargame`), the step a foundation session reached, and whether opening has finished (`ready`, from `Session.ready_at`). Until then it shows "Preparing ns / about 80s".
@@ -1504,8 +1510,8 @@ The range has no Internet and so no time source of its own. The scorer (the plat
 
 - `POST /api/range/slot/` boots it when it is absent: the stock Ubuntu image (`compute.base_image`), the flavor `compute.flavors.range` (`CR_OPENSTACK_FLAVOR`), a config drive and the keypair `cr-platform`. It has two ports: `cr-range.mgmt` on `mgmt` in `cr-mgmt`, and one on the platform's network (`CR_OPENSTACK_BUILD_NETWORK`) in `cr-egress`. When the setup reports ready, the platform detaches the second port. A set-up range host has only `cr-range.mgmt`: no way to the Internet and no DNS resolver.
 - Its Nova user data carries the setup bundle (`rangehost.bundle()`, `rangehost.user_data()`): `deploy/range-host/setup.sh`, the image list, Docker's `daemon.json`, and the compose file and list of the pristine wargames. The encoded user data must fit Nova's 65,535 bytes.
-- `setup.sh` installs `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog` and `acl`. It raises sshd's `MaxSessions` and `MaxStartups` and the inotify limits. It pulls every image from GHCR by the platform's `CR_IMAGE_TAG`. It keeps the targets' pristine volumes in `/opt/cr/pristine`, then marks `/var/lib/cr/ready`, or `/var/lib/cr/failed` with the log's tail on the console.
-- Until then the platform reports the range host `SETTING_UP` or `SETUP_FAILED` in place of Nova's `ACTIVE`. A failed setup makes the slot phase `SETUP_FAILED` in `/api/range/ready/`, naming `/var/log/cr-setup.log` on the range host, and `bin/cloud up` stops on it with that reason.
+- `setup.sh` installs `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog` and `acl`. It raises sshd's `MaxSessions` and `MaxStartups` and the inotify limits. It pulls every image from GHCR by the platform's `CR_IMAGE_TAG`. It keeps the targets' pristine volumes in `/opt/cr/pristine`. The user-data script that runs `setup.sh` then marks `/var/lib/cr/ready`, or `/var/lib/cr/failed` with the log's tail on the console (`rangehost.user_data`).
+- Until then the platform reports the range host `SETTING_UP` or `SETUP_FAILED` in place of Nova's `ACTIVE`. A failed setup makes the slot phase `SETUP_FAILED` in `/api/range/ready/`, naming `/var/log/cr-setup.log` on the range host, and `bin/cloud up` stops on it with that reason. The next `POST /api/range/slot/` deletes a range host that failed its setup and boots it again when no session is open (`ensure_slot`).
 - `daemon.json` gives Docker the tenant MTU (`mtu` and `default-network-opts`), the address pool 10.40.0.0/16 in /28s, the `local` log driver and `userns-remap: default`.
 - The server carries `cr_host`, `cr_tag` (the image tag) and `cr_bundle` (the bundle's digest) in its metadata. The digest hashes each file's name and content. A range host whose tag or digest differs from the platform's is `stale`. `POST /api/range/slot/` then deletes it and boots it again when no session is open, and reports the slot blocked while one is.
 - No Glance image is built. The range host pulls only from GHCR.

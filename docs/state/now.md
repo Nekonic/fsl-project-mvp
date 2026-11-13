@@ -41,10 +41,14 @@ Internet.
   101 s for three at once, with ten slots up. Ten configured from nothing in
   4 min 14 s. Ten learners at once is the supported number; twelve fit with
   no headroom.
-- Live containment: `test/test_range_isolation.py` and
-  `test/test_attacker_reach.py` passed on the live range (16 passed): no
-  container of a slot reaches the range host, the platform, the Internet, the
-  metadata service or another slot; a SYN scan works from Kali.
+- Live containment: `test/test_range_isolation.py` passed on the live range
+  (14 passed): no container of a slot reaches the range host, the platform,
+  the Internet, the metadata service or another slot, and a SYN scan works
+  from Kali. With it,
+  `test/test_attacker_reach.py`'s two tests passed, but its port scan covers
+  only Kali's interfaces other than the one with its default route, and in a
+  slot Kali has only `eth0`, so it scans nothing and is not containment
+  evidence; its other test (no target reached past the WAF by name) holds.
 
 ## Operator tooling
 

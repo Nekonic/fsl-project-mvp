@@ -78,7 +78,8 @@ totals of all of them, taken from each process's JUnit report.
 The split follows these rules:
 
 - **Workers.** N is `max_sessions` from `GET /api/range/ready/`: the number of
-  slots (`compute.slots`, two on the test cloud since 2026-10-12). With N = 1,
+  slots (`compute.slots`, four on the test cloud since 2026-11-13; two from
+  2026-10-12). With N = 1,
   one worker runs every session module in the order `pytest test/` would.
 - **No range host.** `test_geoip_durable`, `test_origin_placement` and
   `test_waf_geolocation` read only Elasticsearch and repo files. They run in a

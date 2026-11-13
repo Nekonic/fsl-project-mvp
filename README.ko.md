@@ -152,7 +152,10 @@ VM 한 대에 클라우드 전체를 올리는 방법이 있습니다.
 9. **실패하면.** `bin/cloud up`은 처음 실패한 곳에서 멈추고 이유를 알려 줍니다.
    `cloud.yaml`의 키, 없는 flavor나 이미지, public이 아닌 GHCR 패키지가 이름으로
    나옵니다. 훈련 환경 호스트가 설정에 실패하면 슬롯 단계 `SETUP_FAILED`와 함께,
-   이유가 적힌 그 호스트의 `/var/log/cr-setup.log`를 알려 줍니다. 원인을 고친 뒤 같은 명령을 다시 실행하면 멈춘 곳부터 이어 갑니다.
+   이유가 적힌 그 호스트의 `/var/log/cr-setup.log`를 알려 줍니다. 원인을 고친 뒤
+   같은 명령을 다시 실행하면 멈춘 곳부터 이어 갑니다. 설정에 실패했거나 이미지
+   태그나 설정 번들이 바뀐 훈련 환경 호스트는, 열린 세션이 없으면 그 실행에서
+   지우고 다시 띄웁니다.
 
    - 플랫폼 VM: `ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS`로 로그인해
      `systemctl status cr-platform`(마지막 부팅의 기동 결과),
@@ -292,9 +295,16 @@ DB에 남습니다. 그 시간이면 점수와 결과 보고를 읽을 수 있�
 
 - `wargames/` 아래에 `compose.yaml`, `scenario.yaml`, `objectives.yaml`이 든 폴더
 - `redteam/cases/` 아래의 케이스 파일
-- `platform/range/declaration.yaml`의 `cr-range` 항목에서 `wargames:` 아래에
-  넣는 워게임 이름, `deploy/range-host/slot.yaml`의 `fronts:` 아래에 넣는 estate
-  주소, 그리고 `deploy/waf/board.com.conf`의 `server` 블록
+- `platform/range/declaration.yaml`에서 `cr-range` 항목의 `wargames:` 아래에
+  넣는 워게임 이름과 `cr-waf` 항목의 `names:` 아래에 넣는 사이트 이름
+- `deploy/range-host/slot.yaml`에서 WAF가 프록시하는 서비스마다
+  `x-wargames.fronts` 아래에 넣는 estate 주소의 마지막 옥텟, 서비스마다
+  `x-wargames.limits` 아래에 넣는 capability와 자원 제한, `waf` 서비스의
+  `extra_hosts`에 넣는 서비스 이름과 estate 주소, `kali` 서비스의
+  `extra_hosts`에 넣는 사이트 이름
+- `platform/tests/test_containment.py`의 `LEARNER_FACING`과 `CAPABILITIES`에
+  넣는 서비스
+- `deploy/waf/board.com.conf`의 `server` 블록
 
 `platform/wargames.py`가 `scenario.yaml`을 보고 워게임을 찾습니다. 워게임은 두
 개입니다. 게시판은 Django이고 `loot_verified`로 채점합니다. 제출한 해시를
@@ -508,8 +518,8 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 같은 경로에 `GET`을 보내면, 훈련 환경 호스트의 설정이 `/var/lib/cr/ready`를 남길
 때까지 `SETTING_UP`을, 설정이 실패하면 `SETUP_FAILED`를 보여 줍니다. 이때
 `/api/range/ready/`는 슬롯 단계를 `SETUP_FAILED`로 알리면서 훈련 환경 호스트의
-`/var/log/cr-setup.log`를 가리키고, `bin/cloud up`은 그 이유와 함께 멈춥니다. 이미 떠 있는 훈련 환경 호스트에 같은 POST를 보내면, 이미지 태그나 설정
-번들이 플랫폼의 것과 다를 때 훈련 환경 호스트를 교체합니다. 세션이 슬롯을 잡고 있으면
+`/var/log/cr-setup.log`를 가리키고, `bin/cloud up`은 그 이유와 함께 멈춥니다. 이미 떠 있는 훈련 환경 호스트에 같은 POST를 보내면, 설정에 실패했거나 이미지
+태그나 설정 번들이 플랫폼의 것과 다를 때 훈련 환경 호스트를 교체합니다. 세션이 슬롯을 잡고 있으면
 교체하지 않습니다.
 
 그다음 `POST /api/range/configure/`가 슬롯마다 실행합니다. 플랫폼이

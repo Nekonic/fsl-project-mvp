@@ -157,8 +157,11 @@ a single VM on VirtualBox or VMware.
 9. **If it fails.** `bin/cloud up` stops at the first failure and says why. It
    names the `cloud.yaml` key, the missing flavor or image, the GHCR package
    that is not public, or a range host that failed its setup (slot phase
-   `SETUP_FAILED`, with `/var/log/cr-setup.log` on the range host saying why). Fix the cause and run the same command again. It
-   continues where it stopped.
+   `SETUP_FAILED`, with `/var/log/cr-setup.log` on the range host saying why).
+   Fix the cause and run the same command again. It continues where it
+   stopped. A range host that failed its setup, or whose image tag or setup
+   bundle no longer matches, is deleted and booted again by that run when no
+   session is open.
 
    - Platform VM: log in with `ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS`. Then
      run `systemctl status cr-platform` (how the last boot's bring-up went),
@@ -307,10 +310,16 @@ To add a wargame you need:
 - a folder under `wargames/` with `compose.yaml`, `scenario.yaml` and
   `objectives.yaml`;
 - a case file under `redteam/cases/`;
-- its name under `wargames:` in the `cr-range` entry of
-  `platform/range/declaration.yaml`, its estate address under `fronts:` in
-  `deploy/range-host/slot.yaml`, and a `server` block in
-  `deploy/waf/board.com.conf`.
+- in `platform/range/declaration.yaml`, its name under `wargames:` in the
+  `cr-range` entry and its site name under `names:` in the `cr-waf` entry;
+- in `deploy/range-host/slot.yaml`, the last octet of the estate address of
+  each service the WAF proxies to under `x-wargames.fronts`, the capabilities
+  and limits of each of its services under `x-wargames.limits`, the service's
+  name and estate address in the `waf` service's `extra_hosts`, and the site
+  name in the `kali` service's `extra_hosts`;
+- its services in `LEARNER_FACING` and `CAPABILITIES` in
+  `platform/tests/test_containment.py`;
+- a `server` block in `deploy/waf/board.com.conf`.
 
 `platform/wargames.py` finds the wargame from `scenario.yaml`. There are two
 wargames. The board is Django and is scored by `loot_verified`: submitted
@@ -541,8 +550,8 @@ marks `/var/lib/cr/ready`, and `SETUP_FAILED` if the setup fails. Then
 `/api/range/ready/` reports the slot phase `SETUP_FAILED`, naming
 `/var/log/cr-setup.log` on the range host, and `bin/cloud up` stops with that
 reason. On a range host that already stands, the same POST replaces
-it when its image tag or setup bundle is not the platform's, unless a session
-holds a slot.
+it when its setup failed or its image tag or setup bundle is not the
+platform's, unless a session holds a slot.
 
 `POST /api/range/configure/` then starts each slot. The platform renders the
 slot's compose file from `deploy/range-host/slot.yaml` and each wargame's
