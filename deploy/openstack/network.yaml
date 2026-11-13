@@ -2,6 +2,7 @@
 # A picture of the network for people. The values that configure it are in
 # cloud.yaml (copied from cloud.example.yaml); the provider/host values are the live cloud's
 # (the cloud the product moved to on 2026-10-20; the tenant MTU there is 1442, OVN Geneve).
+# Since 2026-11-13 the range is one range host, cr-range; slot N is the compose project sN on it.
 
 provider:                         # the external network (flat) — physical, where floating IPs live
   cidr: 192.168.2.0/24
@@ -14,30 +15,45 @@ provider:                         # the external network (flat) — physical, wh
     stg01: 10.0.0.41              # storage (Cinder LVM; the product does not use it)
   operator: "reaches 10.0.0.0/24 and the provider network through a VPN"
 
-tenant:                           # fsl-range — VMs on `com01`, reached via the Neutron router + floating IPs
+tenant:                           # fsl-range — two VMs on `com01`
   project: fsl-range
-  router:                         # Neutron tenant router (virtual)
+  router:                         # Neutron tenant router of the Heat stack (deploy/openstack/platform.yaml)
     gateway: 10.20.0.1            # the cr-platform subnet gateway
-    nat: "FIP 192.168.2.247 -> platform 10.20.0.143"
-  networks:
-    cr-platform: 10.20.0.0/24    # the scorer VM's net; the floating IP terminates here
-    cr-internet: "30 origin /24 (simulated), default ru 5.188.10.0/24"
-    cr-estate:   10.30.0.0/24    # the targets + the WAF; the edge is 10.30.0.1
-    cr-mgmt:     10.31.0.0/24    # out-of-band management (no gateway, fabric.py NO_DEFAULT_ROUTE)
+    nat: "FIP 192.168.2.247 -> the platform's port on cr-platform"
+  networks:                       # Neutron networks
+    cr-platform: 10.20.0.0/24    # the Heat stack's network; the floating IP terminates here
+    cr-mgmt:     10.31.0.0/24    # the fabric's only network (fabric.py CARRIED), tagged cr.segment.id=mgmt; DHCP, no gateway
+  security_groups:
+    cr-platform: "the platform VM's port on cr-platform: tcp 22, 8000, 8002, 3080, icmp (Heat stack)"
+    cr-reach:    "the platform's cr-mgmt port: NTP udp 123 from cr-mgmt members, syslog udp 5140 from the range host"
+    cr-mgmt:     "the range host's cr-mgmt port: only members of cr-reach"
+    cr-egress:   "the range host's cr-platform port, no ingress; detached once its setup reports ready"
   hosts:
-    cr-platform:                 # scorer, multi-homed
-      ens3: 10.20.0.143           # cr-platform -> FIP 192.168.2.247 (operator console :8000)
-      ens7: 10.31.0.183           # cr-mgmt -> ssh to range hosts, syslog :5140 collector
-    cr-edge:                     # OPNsense edge firewall + Suricata (IDS)
-      wan:  "cr-internet — holds the .1 gateway of each of the 30 origin /24s"
-      opt1: "cr-estate"
-      mgmt: 10.31.0.103
-    cr-kali:     { cr-internet: "origin source IPs (30 countries, per-country SNAT)", mgmt: 10.31.0.40 }
-    cr-waf:      { cr-estate: 10.30.0.71, mgmt: 10.31.0.235 }   # ModSecurity reverse-proxy, fronts the targets
-    cr-wargame-host: { cr-estate: 10.30.0.231, mgmt: 10.31.0.204 }   # Docker: board :8000, corp-wp :80 published; board-db, corp-db inside
+    cr-platform:                 # scorer, multi-homed (m1.large)
+      cr-platform: "DHCP -> FIP 192.168.2.247 (operator console :8000)"
+      cr-mgmt:     "DHCP, in cr-reach -> ssh to the range host, syslog :5140 collector, NTP"
+    cr-range:                    # the range host (dba.range, 6 vCPU, 16 GB): Docker, every slot
+      cr-mgmt:     "DHCP, port cr-range.mgmt in cr-mgmt"
+      cr-platform: "only during setup, in cr-egress: pulls the slot images from GHCR, then detached"
+
+slots:                            # docker networks on cr-range, not Neutron networks (deploy/range-host/slot.yaml)
+  every_network: "internal, gateway_mode_ipv4 isolated, the tenant MTU; nothing published, no NAT"
+  sN_internet:                    # bridge sN-inet
+    subnet: 172.30.N.0/24
+    origins: "the same 30 origin /24s in every slot (simulated), default ru 5.188.10.0/24"
+  sN_estate:                      # bridge sN-estate
+    subnet: 10.30.N.0/24         # slot N's /24 of network.estate 10.30.0.0/16
+  "<wargame>-default": "one per wargame, its app and its database"
+  containers:
+    sN-kali:  { sN_internet: "172.30.N.10 and the origin source addresses (per-country SNAT)" }
+    sN-edge:  { wan: "172.30.N.1 and the .1 of each origin /24", lan: 10.30.N.1 }   # nftables router, no NAT
+    sN-waf:   { sN_estate: 10.30.N.247 }                                         # ModSecurity reverse-proxy, fronts the targets
+    sN-board:   { sN_estate: 10.30.N.59, board-default: "with sN-board-db" }
+    sN-corp-wp: { sN_estate: 10.30.N.60, corp-default: "with sN-corp-db" }
+    sN-edge-sensor:   "host network, af-packet on sN-inet"
+    sN-estate-sensor: "host network, af-packet on sN-estate"
   paths:
     external: "operator (through the VPN) -> FIP 192.168.2.247 -> platform (console :8000)"
-    attack:   "cr-kali -> cr-internet (spoofed origin) -> OPNsense WAN -> cr-estate -> WAF -> board/corp"
-    mgmt:     "platform ens7 10.31.0.183 -> cr-mgmt -> ssh / syslog to every host (out-of-band)"
-  collector_port: 5140            # syslog UDP: OPNsense + WAF -> platform Filebeat -> Elasticsearch -> Kibana
-  security_groups: [cr-range, cr-reach, cr-platform]
+    attack:   "sN-kali -> sN_internet (spoofed origin) -> sN-edge -> sN_estate -> WAF -> board/corp"
+    mgmt:     "platform -> cr-mgmt -> ssh to cr-range -> docker exec sN-<service>"
+  collector_port: 5140            # syslog UDP: cr-range rsyslog (sensors + WAF) -> platform Filebeat -> Elasticsearch -> Kibana

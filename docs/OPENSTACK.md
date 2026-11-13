@@ -45,7 +45,8 @@ hand, the stock Ubuntu 24.04 cloud image.
 
 1. `bin/cloud up` reads `deploy/openstack/cloud.yaml` (§4). It has Heat create
    the platform VM (`deploy/openstack/platform.yaml`). On first boot the VM pulls
-   the platform and session images from GHCR. It does not build them.
+   the control-plane images from GHCR. It does not build them. The range host
+   pulls the slot images from GHCR during its own setup (§3.6).
 2. The script gives the VM the password and the range ssh key over ssh.
 3. The script then drives the platform's own range API in this order: fabric;
    slot, which boots the range host from the stock Ubuntu image with its setup
@@ -366,11 +367,11 @@ off).
 
 **(this cloud)** These are the figures:
 
-- Since 2026-10-24 the quota is 24 cores, 57344 MB of RAM and 12 instances
-  (Nova's default, 20 / 51200 / 10, until then).
-- The platform VM (2 cores, 8 GB) and the range host on `dba.range` (6 cores,
-  16 GB) bring the project to 8 cores, 24 GB and 2 instances. `compute.slots`
-  is 2.
+- The project quota is 24 cores, 57344 MB of RAM and 17 instances (recorded
+  2026-11-13). It was Nova's default, 20 / 51200 / 10, until 2026-10-24.
+- The range needs less: the platform VM (2 cores, 8 GB) and the range host on
+  `dba.range` (6 cores, 16 GB) bring the project to 8 cores, 24 GB and 2
+  instances. `compute.slots` is 4.
 - The fabric holds 1 network (`cr-mgmt`) with 1 subnet, and the groups
   `cr-reach`, `cr-mgmt` and `cr-egress`. The stack also needs 1 network, 1
   router and 1 floating IP.
@@ -547,7 +548,8 @@ last lines of `/var/log/cr-setup.log` on the console. Until then the platform
 reports the range host `SETTING_UP`, or `SETUP_FAILED` (§6). When it reports
 ready, the platform detaches the egress port. A failed setup shows as the slot
 phase `SETUP_FAILED` in `/api/range/ready/`, and `bin/cloud up` stops on it with
-the reason.
+the reason. The next `POST slot/` (the next `bin/cloud up`) deletes a range
+host that failed its setup and boots a new one, when no session holds a slot.
 
 The images must be public and exist for the tag. The tag and every bundle file
 are part of the bundle's digest, which the range host carries in its metadata
@@ -555,10 +557,10 @@ are part of the bundle's digest, which the range host carries in its metadata
 change to a file in the bundle, makes the range host stale, and `POST slot/`
 replaces it (§6). A tag that moves (`dev`) does not change the digest.
 
-Every bundle digest hashes each file's name, its content and its mode. The mode
-is only the executable bit, 0755 or 0644, as git tracks it. A checkout's umask
-therefore does not change a digest: a sideloaded checkout (files 0664) and a
-cloud-init clone (files 0644) of one commit plan the same range host.
+The bundle digest (`rangehost.digest`) hashes each file's name and content,
+not its mode. A checkout's umask therefore does not change it: a sideloaded
+checkout (files 0664) and a cloud-init clone (files 0644) of one commit plan
+the same range host.
 
 A sideloaded image (§5.3) is loaded on the platform VM only. The range host
 pulls every slot image from GHCR at the platform's tag, so a changed Kali, WAF,
@@ -590,7 +592,7 @@ password written into the file.
 | `compute.base_image` | `ubuntu-24.04` | the platform VM and the range host |
 | `compute.availability_zone` | `""` | the platform VM and the range host; if empty, Nova chooses |
 | `compute.flavors` | `platform`, `range`, exactly these two | §3.3 |
-| `compute.slots` | `1` (**(this cloud)** `2`) | optional; how many slots the range host runs, which is how many sessions can run at once (§6.4); `CR_OPENSTACK_SLOTS` |
+| `compute.slots` | `1` (**(this cloud)** `4`) | optional; how many slots the range host runs, which is how many sessions can run at once (§6.4); `CR_OPENSTACK_SLOTS` |
 | `keys.operator`, `keys.operator_file` | `fsl-claude`, `~/.ssh/fsl_claude` | the keypair the platform VM boots with, and its private half |
 | `keys.range` | `~/.ssh/fsl-platform` | the platform's range key, kept across rebuilds |
 | `platform.stack`, `.repository`, `.ref` | `cr-platform`, this repo, `dev` | the stack, and the checkout it clones |
@@ -690,12 +692,14 @@ The scripts find the `openstack` command beside `.venv/bin/python`.
 6. It sends `POST slot/`. It stops when the slot is blocked. If no range host
    stands, this boots `cr-range` (§6). If the range host is stale, because the
    platform's tag or the bundle's digest differs from the one it was booted
-   with, this deletes it and boots a new one, but only when no session holds
-   any slot. While a session holds one, the slot reads blocked and `up` stops.
+   with, or its setup failed (`SETUP_FAILED`), this deletes it and boots a new
+   one, but only when no session holds any slot. While a session holds one, a
+   stale slot reads blocked and `up` stops.
 7. It sends `GET ready/` until no slot reads `NOT_STANDING`, `REBUILDING`,
    `RESETTING` or `STALE`. A range host that is still running its setup reads
    `SETTING_UP`, and its slots `REBUILDING`. A slot that reads `SETUP_FAILED`
-   stops `up`, which prints the reason.
+   stops `up`, which prints the reason; the next `up` replaces that range host
+   at step 6.
 8. It sends `POST configure/`. It retries while the answer is 503, which means
    the range host's ssh is not up yet. It stops on 409.
 9. It sends `GET ready/` until the range is ready. With more than one slot,
@@ -1029,7 +1033,9 @@ Notes:
 - The platform reports the range host `SETTING_UP` until `/var/lib/cr/ready`
   exists, and `SETUP_FAILED` when `/var/lib/cr/failed` does. It asks over ssh.
   `/api/range/ready/` then names `/var/log/cr-setup.log` on the range host as
-  the place that says why, and `bin/cloud up` stops on it. When the setup is
+  the place that says why, and `bin/cloud up` stops on it. The next `POST
+  slot/` deletes that range host and boots a new one when no session holds a
+  slot (`ensure_slot` in `platform/range/openstack.py`). When the setup is
   ready, the platform detaches the range host's egress port.
 - The platform reaches the range host as `ubuntu` over `mgmt`, with one shared
   ssh connection per host (`ControlMaster auto`, `ControlPersist 60`). A role
@@ -1249,8 +1255,14 @@ acceptance 73, with 0 failed, 0 errors and 0 skipped (about 22 minutes).
 A change to a slot image (`deploy/kali`, `deploy/waf`, `deploy/edge`, a
 target) reaches the range only through a pushed commit: the new tag makes the
 range host stale, and `bin/cloud up` replaces it when no session holds a slot
-(§5.3). A change to the slot's files (`deploy/range-host/slot.yaml`, the
-sensors' configs) reaches a slot at its next `configure/`.
+(§5.3). A change to `deploy/range-host/slot.yaml` that changes the setup
+bundle's `pristine.yaml` or `images.txt` changes the bundle's digest, so the
+range host is stale the same way: an edit to `x-contained`, to
+`x-wargames.healthcheck`, `.limits` or `.extra_hosts`, or to any service's
+`image` (`rangehost.bundle`). Any other change to the slot's files (the rest of
+`slot.yaml`, `x-wargames.fronts`, the sensors' configs) reaches a slot at its
+next `configure/`, which renders the slot's compose file again
+(`rangehost.compose`).
 
 **The first acceptance run on the OpenStack substrate**, 2026-10-11, on a range
 built from scratch by `bin/cloud up` on the previous cloud (OPNsense 26.7 edge):
@@ -1326,10 +1338,13 @@ We did not check whether that OPNsense edge survived an OPNsense update.
 
   The `mgmt` ports were then put in `cr-mgmt`, which admits only the
   platform's port. Kali now has no port on any Neutron network; the range
-  host's `mgmt` port is in `cr-mgmt`. `test/test_attacker_reach.py` scans every
-  network Kali holds an address on besides its route out, and
-  `test/test_range_isolation.py` checks that no container reaches the range
-  host, the platform, the Internet, the metadata service or another slot.
+  host's `mgmt` port is in `cr-mgmt`. `test/test_range_isolation.py` checks
+  that no container reaches the range host, the platform, the Internet, the
+  metadata service or another slot (14 passed on the live range).
+  `test/test_attacker_reach.py`'s port scan covers the interfaces Kali holds
+  besides the one with its default route; in a slot Kali has only `eth0`, so
+  that test scans nothing there and is not containment evidence. Its second
+  test, no target reached past the WAF by name, still holds.
 - On the VM range a server's `/etc/hosts` came from the user data it was booted
   with, and a Nova rebuild passed none, so on 2026-10-12 the WAF and Kali kept
   an old board address. The containers' names now come from the rendered slot

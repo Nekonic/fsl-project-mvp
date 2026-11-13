@@ -27,7 +27,8 @@ bring-up was fixed and rewritten. Later the same day the user moved the
 product to a new OpenStack cloud (`docs/DECISIONS.md` 2026-10-20, "The product
 moved to a new OpenStack cloud"). The old cloud is in other use and is not
 touched. The platform VM is now 192.168.2.247 (Keystone 10.0.0.10, reached
-through the user's VPN), two slots since 2026-10-21. On 2026-10-21 the docker substrate was
+through the user's VPN), two slots from 2026-10-21 and four since 2026-11-13
+(`compute.slots: 4`). On 2026-10-21 the docker substrate was
 removed from the code (the removal commit, then the documents) and
 proven live on the new cloud.
 On 2026-11-13 the code's names moved from `fsl` to `cr` and the live cloud
@@ -40,8 +41,13 @@ the old role images and `fsl-build` were deleted, and `bin/cloud up` with
 `cr-platform` (`m1.large`), checkout `/opt/cr` at 3a0df7d, every image pulled
 from GHCR (the `cr-*` images tagged with the commit SHA, built by `images.yml`
 through `workflow_dispatch` on the working branch `cr-rename`); nothing is
-sideloaded. Both slots are READY, their eight VMs on `m1.medium`, and the store
-was restored. The project quota is 17 instances, 24 cores and 57344 MB of RAM;
+sideloaded. Until the range host replaced them later on 2026-11-13, both slots
+ran as eight VMs on `m1.medium`; the store was restored. Since then the cloud
+holds two VMs: `cr-platform` and `cr-range` (`dba.range`, 6 vCPU, 16 GB), which
+runs slot N as the compose project `sN` (`docs/DECISIONS.md` "The range is one
+range host; a slot is a compose project"). The project quota is 17 instances,
+24 cores and 57344 MB of RAM (recorded 2026-11-13; `docs/OPENSTACK.md` §3.2);
+the two VMs take 8 cores, 24 GB and 2 instances of it.
 com01 allocates VCPU at 4.0, memory at 1.5 (512 MB reserved) and disk at 1.5.
 The records are in `docs/DECISIONS.md` (2026-10-21, "Two range slots on the
 new cloud", "The docker substrate is removed" and "The estate sensor's
@@ -65,8 +71,9 @@ the old cloud (unit 1718; acceptance 73 passed) are recorded in
 `docs/DECISIONS.md`. Before the old cloud's last run, two runs on the same
 code: acceptance 72 passed and 1 failed (the `test_corp_authz` nonce error),
 then 73 passed (1155 s). On 2026-11-12 the first configure after a slot
-rebuild failed on both slots and the second passed (`docs/state/now.md` Next
-7). Live state: `docs/state/now.md`.
+rebuild failed on both slots and the second passed, on the VM range that the
+range host replaced the next day (recorded in `docs/state/now.md` at a68e1ea).
+Live state: `docs/state/now.md`.
 
 The range has two targets: the Django board (`board.com`, MySQL behind the WAF,
 `loot_verified`) and the WordPress site `corp` (`corp.com`, `effect_observed`,
@@ -751,12 +758,14 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   2026-10-21.
 - **Platform VM**: `deploy/openstack/platform.yaml` boots the whole stack on
   the OpenStack cloud as one Heat stack (backlog 2, step 1).
-- **The range on OpenStack**: the platform builds the networks, the golden
-  images and the slot (the OPNsense edge running Suricata, the WAF, Kali, and
-  `cr-wargame-host` running the wargames' GHCR containers with an estate
-  Suricata) through `/api/range/fabric/`, `/images/` and `/slot/`, and reaches
-  every host over ssh on `mgmt` (backlog 2); two slots on the current cloud
-  (`compute.slots: 2`, since 2026-10-21).
+- **The range on OpenStack**: the platform builds the `mgmt` network and the
+  range host `cr-range` through `/api/range/fabric/` and `/slot/`, and runs
+  each slot on it as a compose project (Kali, the nftables edge, the WAF, two
+  Suricata sensors and the wargames' GHCR containers) through `/configure/`,
+  reaching the range host over ssh on `mgmt` (backlog 2). Until 2026-11-13
+  each slot was four VMs (the OPNsense edge, the WAF, Kali and
+  `cr-wargame-host`) built from golden images. Four slots on the current cloud
+  (`compute.slots: 4`); two from 2026-10-21.
 
 ## Backlog
 
@@ -1817,7 +1826,7 @@ binary log via a substrate runner, proven end to end against the live stack.
       the real `corp.com`; the slot maps `corp.com` to 127.0.0.1 inside
       `corp-wp` because the slot has no egress. Make the image's install not
       depend on a request to its public name.
-- [ ] MySQL `performance_schema=OFF` (Next 6 in `docs/state/now.md`): the two
+- [ ] MySQL `performance_schema=OFF` (Next 5 in `docs/state/now.md`): the two
       MySQL containers are the largest share of a slot's memory, and memory is
       what caps the slots a range host holds.
 
