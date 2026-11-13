@@ -201,3 +201,24 @@ running (truncate the logs and `suricatasc -c reopen-log-files`), recreate
 only kali and waf (the two root shells) while the target is detached and
 re-attached in parallel, flush the edge's neighbour table. One slot: 34.3 s
 (kali and waf 8.2 s, target 34.2 s), isolation 28/28 afterwards.
+
+Multi-slot resets, first pass (2 vCPU; a stray memory sampler from run 2 was
+still polling `docker inspect` every 5 s, so these are pessimistic and are
+re-measured below):
+
+| slots at once | full reset wall (s) | `reset_fast` wall (s) |
+|---|---|---|
+| 1 | 42.9 | 34.3 |
+| 2 | 67.6 | 55.6 |
+| 3 | 101.4 | 87.2 (77.1 on a repeat) |
+| 4 | 123.9 | 113.2 |
+
+`vmstat` during three `reset_fast` at once: 61 % user, 25 % system, 5 % idle,
+7 % iowait: CPU-bound on 2 vCPU, not disk-bound. The board attach (MySQL and
+Django start) grows linearly with the number of slots resetting.
+
+sqlmap scaling, first pass (`board-sqli-orderby-sqlmap` from 1-4 Kalis at
+once, 4 board sessions up): 48.1 s alone, 70 s with 2, 101 s with 3, 129 s
+with 4. `capture.kernel_drops` 0 on all 8 sensors in every step, including 4
+slots running sqlmap at once. Lowest available memory 4.0 GB with 4 sessions
+running sqlmap.
