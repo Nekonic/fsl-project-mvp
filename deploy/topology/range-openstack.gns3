@@ -30,7 +30,7 @@
                 "rotation": 0,
                 "svg": "<svg width=\"52\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">인터넷</text></svg>",
                 "x": 8,
-                "y": -137,
+                "y": 150,
                 "z": 1
             },
             {
@@ -84,7 +84,7 @@
                 "rotation": 0,
                 "svg": "<svg width=\"52\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#5b6770\" fill-opacity=\"1.0\">관리망</text></svg>",
                 "x": 308,
-                "y": 163,
+                "y": 272,
                 "z": 1
             },
             {
@@ -120,7 +120,7 @@
                 "rotation": 0,
                 "svg": "<svg width=\"162\" height=\"1\"><line x1=\"0\" y1=\"0\" x2=\"162\" y2=\"0\" stroke=\"#2e7d32\" stroke-width=\"2\"/></svg>",
                 "x": 394,
-                "y": 30,
+                "y": 46,
                 "z": 2
             },
             {
@@ -129,7 +129,7 @@
                 "rotation": 0,
                 "svg": "<svg width=\"9\" height=\"5\"><line x1=\"0\" y1=\"0\" x2=\"9\" y2=\"5\" stroke=\"#2e7d32\" stroke-width=\"2\"/></svg>",
                 "x": 547,
-                "y": 25,
+                "y": 41,
                 "z": 2
             },
             {
@@ -138,7 +138,7 @@
                 "rotation": 0,
                 "svg": "<svg width=\"9\" height=\"5\"><line x1=\"0\" y1=\"5\" x2=\"9\" y2=\"0\" stroke=\"#2e7d32\" stroke-width=\"2\"/></svg>",
                 "x": 547,
-                "y": 30,
+                "y": 46,
                 "z": 2
             },
             {
@@ -147,7 +147,7 @@
                 "rotation": 0,
                 "svg": "<svg width=\"162\" height=\"1\"><line x1=\"0\" y1=\"0\" x2=\"162\" y2=\"0\" stroke=\"#2e7d32\" stroke-width=\"2\"/></svg>",
                 "x": 624,
-                "y": 30,
+                "y": 46,
                 "z": 2
             },
             {
@@ -156,7 +156,7 @@
                 "rotation": 0,
                 "svg": "<svg width=\"9\" height=\"5\"><line x1=\"0\" y1=\"0\" x2=\"9\" y2=\"5\" stroke=\"#2e7d32\" stroke-width=\"2\"/></svg>",
                 "x": 777,
-                "y": 25,
+                "y": 41,
                 "z": 2
             },
             {
@@ -165,7 +165,7 @@
                 "rotation": 0,
                 "svg": "<svg width=\"9\" height=\"5\"><line x1=\"0\" y1=\"5\" x2=\"9\" y2=\"0\" stroke=\"#2e7d32\" stroke-width=\"2\"/></svg>",
                 "x": 777,
-                "y": 30,
+                "y": 46,
                 "z": 2
             },
             {
@@ -631,11 +631,11 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "firewall",
+                    "text": "router",
                     "x": null,
                     "y": -40
                 },
-                "name": "firewall",
+                "name": "router",
                 "node_id": "6e74495c-c3dd-59df-9de7-a720764d7c6a",
                 "node_type": "docker",
                 "port_name_format": "eth{0}",

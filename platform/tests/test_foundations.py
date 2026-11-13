@@ -160,7 +160,7 @@ def test_every_step_opens_a_pane_points_at_one_element_and_the_last_is_solo_with
     assert [one["solo"] for one in steps] == [False] * 7 + [True]
 
 def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_learner_s_map_shows(client):
-    route = "kali > firewall > waf > board.com"
+    route = "kali > router > waf > board.com"
     session = opened("f1")
     with on_the_range(), on_map(read_slot()):
         given = {
@@ -171,7 +171,7 @@ def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_lear
             "waf_ip": [answer(client, session, "waf_ip", one)["passed"] for one in (WAF, BOARD)],
         }
         reordered = answer(client, session, "path", " > ".join(reversed(route.split(" > "))))
-        from_customers = answer(client, session, "path", "customers > firewall > waf > board.com")
+        from_customers = answer(client, session, "path", "customers > router > waf > board.com")
         right = answer(client, session, "path", route)
         shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
 

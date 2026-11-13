@@ -16,7 +16,7 @@ STEPS = [
     {"id": "board_ip", "point": {"opens": "topology", "map": {"label": ["board.com", "sw1"]}},
      "check": {"kind": "answer"}},
     {"id": "path", "point": {"opens": "topology", "map": {"zone": "internet"}},
-     "check": {"kind": "answer", "form": "order", "options": ["board.com", "customers", "firewall", "waf"]}},
+     "check": {"kind": "answer", "form": "order", "options": ["board.com", "customers", "router", "waf"]}},
     {"id": "search", "point": {"opens": "site", "site": "input[name=q]"}, "check": {"kind": "sent", "match": SEARCH}},
     {"id": "method", "point": {"opens": "site", "dev": "general.method"}, "check": {"kind": "answer", "match": SEARCH}},
     {"id": "sort", "point": {"opens": "site", "site": "select[name=sort]", "until": "sent",
@@ -38,7 +38,7 @@ STEPS = [
     {"id": "cost", "point": {"panel": "#lesson-objectives .total"}, "check": {"kind": "answer"}},
     {"id": "db_ip", "solo": True, "point": {"opens": "topology"}, "check": {"kind": "answer"}},
 ]
-RIGHT = {"board_ip": "10.30.0.63", "path": "customers > firewall > waf > board.com", "method": "GET",
+RIGHT = {"board_ip": "10.30.0.63", "path": "customers > router > waf > board.com", "method": "GET",
          "sort": "sort", "source": "5.188.10.10", "logged": "absent", "verdict": "no", "cost": "22",
          "db_ip": "172.18.0.2"}
 OBJECTIVES = {"rows": [{"id": "board-auth-user-partial", "difficulty": 2, "lost": True, "detected": False, "points": 4},
@@ -85,7 +85,7 @@ const judge = (id, body) => {
     if (range.settling) {
       return stepState(id, {passed: false, reason: ["lesson.check.kali_settling", ["sqlmap"]], kali: {name: "board-sqli-orderby-sqlmap", settling: true}});
     }
-    return range.passed ? passing(id, {kali: {name: "board-sqli-orderby-sqlmap", requests: 1539, sensors: {firewall: 1539},
+    return range.passed ? passing(id, {kali: {name: "board-sqli-orderby-sqlmap", requests: 1539, sensors: {router: 1539},
                                               discover: "/kibana/app/discover#/?run=sqlmap"}})
       : {...failing(id, body.poll, "lesson.demo.fail"), kali: {name: "board-sqli-orderby-sqlmap"}};
   }
@@ -358,7 +358,7 @@ def test_the_order_picker_posts_the_hosts_in_the_order_pressed_and_a_second_pres
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       {to("path")}
       const press = async (name) => browser.click(`#step-act [data-act="pick"][data-value="${{name}}"]`);
-      for (const name of ["customers", "waf", "firewall"]) await press(name);
+      for (const name of ["customers", "waf", "router"]) await press(name);
       await press("waf");
       for (const name of ["waf", "board.com"]) await press(name);
       const picked = document.querySelector('#step-act [data-act="picked"]').textContent;
@@ -541,7 +541,7 @@ def test_a_kali_step_shows_the_command_to_type_with_a_copy_button_and_no_button_
                                  worded("lesson.coach.next")], "the learner types every attack"
     assert result["stayed"] == "lesson.demo.label.sqlmap", "the pass line stays until the learner presses Next"
     assert result["title"] == "lesson.demo.label.verdict"
-    assert "1539" not in result["row"] and "firewall" not in result["row"]
+    assert "1539" not in result["row"] and "router" not in result["row"]
     assert result["row"].endswith(worded("lesson.kali.window"))
     assert result["window"] == "/kibana/app/discover#/?run=sqlmap"
 
