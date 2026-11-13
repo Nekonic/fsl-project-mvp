@@ -88,7 +88,7 @@ def checked_card(loaded: dict, source) -> dict[str, Any]:
 def checked_defense(declared: Any, source) -> dict[str, Any]:
     if not isinstance(declared, dict):
         raise InvalidCatalogue(f"{source}: defense maps a name to its waf and suricata")
-    rules = Path(settings.FSL_SOURCE) / "deploy" / "suricata" / "rules"
+    rules = Path(settings.CR_SOURCE) / "deploy" / "suricata" / "rules"
     for name, posture in declared.items():
         posture = posture if isinstance(posture, dict) else {}
         try:
@@ -369,7 +369,7 @@ def armed_case(check: dict) -> str | None:
     return check.get("case") if check["kind"] == "kali" else (check.get("attack") or {}).get("kali")
 
 def _discover() -> dict[str, dict[str, Any]]:
-    root = Path(settings.FSL_SOURCE) / "wargames"
+    root = Path(settings.CR_SOURCE) / "wargames"
     found = {}
     for path in sorted(root.glob("*/scenario.yaml")):
         wargame_id = path.parent.name
@@ -439,7 +439,7 @@ def lesson(wargame_id: str, waf: crs.Layout | None = None, *, lesson_id: str | N
                    if taught["id"] == lesson_id), None)
     if taught is None:
         raise UnknownWargame(lesson_id)
-    waf = waf or settings.FSL_WAF
+    waf = waf or settings.CR_WAF
     grouped = {"group": "foundations"} if taught in foundations(wargame_id) else {}
     return taught | grouped | {"steps": [
         step | {"command": filled(step["command"], waf)} if step.get("command") else step
@@ -459,7 +459,7 @@ def judged(wargame_id: str) -> bool:
 def objectives(wargame_id: str) -> dict[str, Any]:
     if wargame_id not in WARGAMES:
         raise UnknownWargame(wargame_id)
-    path = Path(settings.FSL_SOURCE) / "wargames" / wargame_id / "objectives.yaml"
+    path = Path(settings.CR_SOURCE) / "wargames" / wargame_id / "objectives.yaml"
     loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return checked_objectives(loaded, path)
 

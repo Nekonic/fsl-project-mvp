@@ -11,8 +11,8 @@ import yaml
 from range import fabric
 from range.declared import Declaration
 
-HOST = "fsl_host"
-SLOT = "fsl_slot"
+HOST = "cr_host"
+SLOT = "cr_slot"
 GATEWAY_ROLE = "gateway"
 EDGE_ROLE = "edge"
 ATTACKER_ROLE = "attacker"

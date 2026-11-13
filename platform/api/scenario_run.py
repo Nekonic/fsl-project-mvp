@@ -29,7 +29,7 @@ from rules import crs
 log = logging.getLogger(__name__)
 
 STATE = threading.RLock()
-FIRING = ThreadPoolExecutor(max_workers=4, thread_name_prefix="fsl-scenario-attack")
+FIRING = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cr-scenario-attack")
 ASKED_KEYS = ("lesson", "guidance", "defense")
 RECENT = 180
 MINUTE = timedelta(minutes=1)
@@ -83,7 +83,7 @@ def ensure_running() -> None:
     with STATE:
         if _loop is not None and _loop.is_alive():
             return
-        _loop = threading.Thread(target=_run, name="fsl-scenarios", daemon=True)
+        _loop = threading.Thread(target=_run, name="cr-scenarios", daemon=True)
         _loop.start()
 
 def resume() -> None:

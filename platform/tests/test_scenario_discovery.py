@@ -6,7 +6,7 @@ import wargames
 A_SCENARIO = {
     "name": "Demo",
     "description": "A scenario discovered from disk.",
-    "image": "ghcr.io/nekonic/fsl-demo",
+    "image": "ghcr.io/nekonic/cr-demo",
     "public_url": "http://demo.com",
     "objective_model": "none",
     "case_file": "board.yaml",
@@ -16,7 +16,7 @@ def test_a_scenario_is_read_from_disk_not_hardcoded(settings, tmp_path):
     folder = tmp_path / "wargames" / "demo"
     folder.mkdir(parents=True)
     (folder / "scenario.yaml").write_text(yaml.safe_dump(A_SCENARIO))
-    settings.FSL_SOURCE = str(tmp_path)
+    settings.CR_SOURCE = str(tmp_path)
 
     discovered = wargames._discover()
 
@@ -63,7 +63,7 @@ def test_a_foundations_list_that_cannot_be_offered_is_refused_at_discovery(setti
     folder = tmp_path / "wargames" / "demo"
     folder.mkdir(parents=True)
     (folder / "scenario.yaml").write_text(yaml.safe_dump({**A_SCENARIO, "foundations": foundations}))
-    settings.FSL_SOURCE = str(tmp_path)
+    settings.CR_SOURCE = str(tmp_path)
 
     with pytest.raises(wargames.InvalidCatalogue, match=reason):
         wargames._discover()
@@ -84,4 +84,4 @@ def test_the_catalogue_lists_each_foundation_with_what_its_card_shows(client):
 def test_the_waf_step_s_command_names_the_declared_exclusion_file(settings):
     [step] = [step for step in wargames.lesson("board", lesson_id="f6")["steps"] if step["id"] == "excluded"]
 
-    assert step["command"] == f"grep -n ruleRemove {settings.FSL_WAF.rules}"
+    assert step["command"] == f"grep -n ruleRemove {settings.CR_WAF.rules}"

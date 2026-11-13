@@ -90,7 +90,7 @@ def test_a_command_names_to_the_platform_the_session_it_was_given_and_no_other(d
 @pytest.mark.parametrize("failure", [
     {"returncode": 1, "stderr": "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. "
                                 "Is the docker daemon running?\n"},
-    {"returncode": 1, "stderr": "Error: No such container: fsl-platform"},
+    {"returncode": 1, "stderr": "Error: No such container: cr-platform"},
     {"returncode": 0, "stdout": "", "stderr": ""},
     {"raises": FileNotFoundError("docker")},
     {"raises": subprocess.TimeoutExpired(cmd="docker", timeout=8)},
@@ -117,7 +117,7 @@ def test_the_report_survives_a_real_interpreter():
     assert said == "200\n"
     assert status == (4, "warn\n")
 
-    _, missing = run_here(seam.through_shell(["/nonexistent/fsl-tool", "--flag"]), "/bin/sh")
+    _, missing = run_here(seam.through_shell(["/nonexistent/cr-tool", "--flag"]), "/bin/sh")
     assert missing is not None and missing[0] == 127, missing
 
 def test_nothing_substrate_specific_crosses_the_seam():

@@ -12,8 +12,8 @@ from tests.test_openstack_slot import (
 
 from range import openstack
 
-PLATFORM = {"id": "srv-platform", "name": "fsl-platform", "status": "ACTIVE",
-            "metadata": {}, "addresses": {"fsl-mgmt": [
+PLATFORM = {"id": "srv-platform", "name": "cr-platform", "status": "ACTIVE",
+            "metadata": {}, "addresses": {"cr-mgmt": [
                 {"addr": "10.31.0.195", "OS-EXT-IPS:type": "fixed", "version": 4}]}}
 
 
@@ -128,7 +128,7 @@ def test_each_slot_s_edge_holds_the_same_origin_gateways_and_its_attacker_the_sa
         port = next(p for p in plan.ports if p.name == name)
         return sorted(address for _, address in port.fixed_ips), {subnet for subnet, _ in port.fixed_ips}
 
-    for host, segment in (("fsl-pf", "ru"), ("fsl-pf", "estate"), ("fsl-kali", "ru")):
+    for host, segment in (("cr-pf", "ru"), ("cr-pf", "estate"), ("cr-kali", "ru")):
         one, other = held(first, f"{host}.{segment}"), held(second, f"{host}-2.{segment}")
         assert one[0] == other[0] and one[0], (
             "an alert's source address is binned to its country by the origin subnets; a second "
@@ -140,7 +140,7 @@ def test_each_slot_s_edge_holds_the_same_origin_gateways_and_its_attacker_the_sa
 def test_a_slot_s_hosts_learn_their_own_slot_s_estate_addresses(two):
     cloud, _ = two
     wargames = cloud.port(f"{WARGAME_HOST}-2.estate")["fixed_ips"][0]["ip_address"]
-    config = yaml.safe_load(base64.b64decode(cloud.server("fsl-waf-2")["user_data"]).decode())
+    config = yaml.safe_load(base64.b64decode(cloud.server("cr-waf-2")["user_data"]).decode())
     [hosts] = [f for f in config["write_files"] if f["path"] == "/etc/hosts"]
 
     assert f"{wargames} {' '.join(DECLARED.hosts[WARGAME_HOST].names)}\n" in hosts["content"]
@@ -153,7 +153,7 @@ def test_a_slot_reads_its_own_hosts_by_their_declared_names(two):
     mgmt = next(s for s in shape.segments if s.id == fabric.MANAGEMENT)
     estate = next(s for s in shape.segments if s.id == "estate")
 
-    assert {node.name for node in mgmt.nodes} == set(DECLARED.hosts) | {"fsl-platform"}
+    assert {node.name for node in mgmt.nodes} == set(DECLARED.hosts) | {"cr-platform"}
     assert {node.address for node in estate.nodes} == {
         cloud.port(f"{host}-2.estate")["fixed_ips"][0]["ip_address"]
         for host, entry in DECLARED.hosts.items() if "estate" in entry.segments
@@ -167,8 +167,8 @@ def test_a_slot_runs_a_role_s_command_on_its_own_host(two):
     first = adapter.in_slot(1).address("gateway")
     second = adapter.in_slot(2).address("gateway")
 
-    assert first == cloud.port("fsl-waf.mgmt")["fixed_ips"][0]["ip_address"]
-    assert second == cloud.port("fsl-waf-2.mgmt")["fixed_ips"][0]["ip_address"]
+    assert first == cloud.port("cr-waf.mgmt")["fixed_ips"][0]["ip_address"]
+    assert second == cloud.port("cr-waf-2.mgmt")["fixed_ips"][0]["ip_address"]
     assert adapter.in_slot(2).address("scorer") == "10.31.0.195", "the collector is shared"
 
 
@@ -186,7 +186,7 @@ def test_taking_one_slot_down_leaves_the_other_standing(two):
 
     adapter.in_slot(2).teardown_slot()
 
-    assert {s["name"] for s in cloud.servers} == set(DECLARED.hosts) | {"fsl-platform"}
+    assert {s["name"] for s in cloud.servers} == set(DECLARED.hosts) | {"cr-platform"}
     assert all(not p["name"].split(".")[0].endswith("-2") for p in cloud.ports)
     assert adapter.in_slot(1).plan_slot().clean
 
@@ -205,7 +205,7 @@ def test_the_second_slot_s_edge_names_itself_so_the_collector_can_tell_its_logs_
 def test_opening_the_collector_for_one_slot_keeps_the_other_slot_s_senders(two):
     from dataclasses import replace
     cloud, adapter = two
-    adapter.declared = replace(DECLARED, roles={**DECLARED.roles, "edge": "fsl-waf"}, watches={})
+    adapter.declared = replace(DECLARED, roles={**DECLARED.roles, "edge": "cr-waf"}, watches={})
     rules = []
     group = {"id": "sg-reach", "name": fabric.REACH_GROUP, "security_group_rules": rules}
     cloud.groups = [g for g in cloud.groups if g["name"] != fabric.REACH_GROUP] + [group]
@@ -228,7 +228,7 @@ def test_opening_the_collector_for_one_slot_keeps_the_other_slot_s_senders(two):
 
     heard = {r["remote_ip_prefix"] for r in rules}
     assert heard == {f"{cloud.port(name)['fixed_ips'][0]['ip_address']}/32"
-                     for name in ("fsl-waf.mgmt", "fsl-waf-2.mgmt")}, (
+                     for name in ("cr-waf.mgmt", "cr-waf-2.mgmt")}, (
         "each slot opened the collector for its own senders; the second must not have deleted "
         "the first's rule, or the first slot's alerts stop arriving"
     )
@@ -236,7 +236,7 @@ def test_opening_the_collector_for_one_slot_keeps_the_other_slot_s_senders(two):
 
 def test_a_standing_two_slot_fabric_is_clean_and_a_third_slot_s_network_is_a_leftover():
     cloud = TwoSlots()
-    networks = cloud.networks + [{"id": "net-internet-3", "name": "fsl-internet-3",
+    networks = cloud.networks + [{"id": "net-internet-3", "name": "cr-internet-3",
                                   "tags": fabric.network_tags("internet", 3)}]
     keys = [{"name": fabric.KEYPAIR, "public_key": "ssh-ed25519 AAAA"}]
 
@@ -244,7 +244,7 @@ def test_a_standing_two_slot_fabric_is_clean_and_a_third_slot_s_network_is_a_lef
                        cloud.groups, inside=INSIDE, slots=2)
 
     assert plan.networks == () and plan.subnets == () and plan.drifted == ()
-    assert any("fsl-internet-3" in reason for reason in plan.leftovers)
+    assert any("cr-internet-3" in reason for reason in plan.leftovers)
 
 
 def test_ensuring_a_two_slot_fabric_tags_the_second_slot_s_networks_with_their_slot():
@@ -271,6 +271,6 @@ def test_ensuring_a_two_slot_fabric_tags_the_second_slot_s_networks_with_their_s
     adapter._public_key = lambda make=False: "ssh-ed25519 AAAA"
     adapter.ensure_fabric()
 
-    assert made == ["fsl-internet", "fsl-estate", "fsl-mgmt", "fsl-internet-2", "fsl-estate-2"]
-    assert tagged["id-fsl-internet-2"] == [f"{fabric.TAG}=internet", f"{fabric.SLOT_TAG}=2"]
-    assert tagged["id-fsl-internet"] == [f"{fabric.TAG}=internet"]
+    assert made == ["cr-internet", "cr-estate", "cr-mgmt", "cr-internet-2", "cr-estate-2"]
+    assert tagged["id-cr-internet-2"] == [f"{fabric.TAG}=internet", f"{fabric.SLOT_TAG}=2"]
+    assert tagged["id-cr-internet"] == [f"{fabric.TAG}=internet"]

@@ -17,7 +17,7 @@ from range.ports import Node, Segment, Shape
 
 REPO = Path(__file__).resolve().parents[2]
 MIX_PATH = REPO / "wargames" / "board" / "traffic.yaml"
-KALI = "fsl-kali"
+KALI = "cr-kali"
 
 def mix():
     return traffic.checked(yaml.safe_load(MIX_PATH.read_text(encoding="utf-8")), MIX_PATH)
@@ -89,14 +89,14 @@ def test_records_are_taken_only_up_to_the_last_whole_line():
 
 def _openstack_shape():
     kr = Segment(id="kr", name="Internet", origin="South Korea", subnet="175.192.0.0/24",
-                 nodes=(Node("fsl-edge", "175.192.0.1"), Node(KALI, "175.192.0.10"), Node(KALI, "175.192.0.11")))
+                 nodes=(Node("cr-edge", "175.192.0.1"), Node(KALI, "175.192.0.10"), Node(KALI, "175.192.0.11")))
     us = Segment(id="us", name="Internet", origin="United States", subnet="73.0.0.0/24",
-                 nodes=(Node("fsl-edge", "73.0.0.1"), Node(KALI, "73.0.0.10"), Node(KALI, "73.0.0.11"),
+                 nodes=(Node("cr-edge", "73.0.0.1"), Node(KALI, "73.0.0.10"), Node(KALI, "73.0.0.11"),
                         Node(KALI, "73.0.0.12")))
     ru = Segment(id="ru", name="Internet", origin="Russia", subnet="5.188.10.0/24",
-                 nodes=(Node("fsl-edge", "5.188.10.1"), Node(KALI, "5.188.10.10")))
+                 nodes=(Node("cr-edge", "5.188.10.1"), Node(KALI, "5.188.10.10")))
     au = Segment(id="au", name="Internet", origin="Australia", subnet="1.128.0.0/24",
-                 nodes=(Node("fsl-edge", "1.128.0.1"), Node(KALI, "1.128.0.10")))
+                 nodes=(Node("cr-edge", "1.128.0.1"), Node(KALI, "1.128.0.10")))
     return Shape(segments=(kr, us, ru, au), sensors=())
 
 @pytest.fixture
@@ -135,23 +135,23 @@ def test_the_customers_run_as_their_own_account_that_the_origin_rewrite_passes_b
 
     def box(argv, stdin=None, timeout=60.0):
         seen.append((argv, stdin))
-        return Ran(0, "fsl.customers=started\n")
+        return Ran(0, "cr.customers=started\n")
 
     attacker.place_customers(box, "print()")
     assert attacker.run_customers(box, "{}") is True
     placed, ran = seen[0][0][3], seen[1][0][3]
 
-    assert "-m owner --uid-owner fsl-users -j RETURN" in placed and "-I POSTROUTING 1" in placed
+    assert "-m owner --uid-owner cr-users -j RETURN" in placed and "-I POSTROUTING 1" in placed
     assert seen[0][1] == "print()" and seen[1][1] == "{}"
-    assert "setpriv --reuid=fsl-users" in ran and "setsid" in ran
+    assert "setpriv --reuid=cr-users" in ran and "setsid" in ran
 
 def test_the_website_pane_leaves_kali_as_the_customers_account_so_the_attacker_origin_does_not_rewrite_its_source(
         on_openstack):
     argv = attacker.as_customer("73.0.0.10", "10.30.0.102", 80)
 
     assert argv[:3] == ["sudo", "sh", "-c"]
-    assert "iptables -t nat -C POSTROUTING -m owner --uid-owner fsl-users" in argv[3]
-    assert "setpriv --reuid=fsl-users" in argv[3] and argv[3].endswith("73.0.0.10 10.30.0.102 80")
+    assert "iptables -t nat -C POSTROUTING -m owner --uid-owner cr-users" in argv[3]
+    assert "setpriv --reuid=cr-users" in argv[3] and argv[3].endswith("73.0.0.10 10.30.0.102 80")
 
 def test_the_attackers_own_rewrite_stays_after_the_customers_exemption():
     setup = (REPO / "deploy/kali/setup.sh").read_text()
@@ -163,7 +163,7 @@ def test_records_are_cut_out_of_whatever_else_the_box_said():
     from range.ports import Ran
 
     def box(argv, stdin=None, timeout=60.0):
-        return Ran(0, 'fsl.records=\n{"marker":"a"}\n{"mar\n=fsl.records\nsudo: unable to resolve host\n')
+        return Ran(0, 'cr.records=\n{"marker":"a"}\n{"mar\n=cr.records\nsudo: unable to resolve host\n')
 
     assert attacker.customer_records(box, 0, 100) == '{"marker":"a"}\n{"mar'
 

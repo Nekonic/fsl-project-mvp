@@ -14,7 +14,7 @@ def a_session(client):
 def ingest(client, session, truncated):
     started = timezone.now()
     alert = {
-        "detection_id": "d1", "source": "suricata", "signature": "FSL SQLi",
+        "detection_id": "d1", "source": "suricata", "signature": "SQLi",
         "severity": 2, "timestamp": started, "src_ip": "5.188.10.2",
         "marker": None, "raw": {},
     }
@@ -57,7 +57,7 @@ def _paged_index(started, count, size):
     return fetch, asked
 
 def _as_alerts(documents):
-    return [{"detection_id": doc_id, "source": "suricata", "signature": "FSL SQLi", "severity": 2,
+    return [{"detection_id": doc_id, "source": "suricata", "signature": "SQLi", "severity": 2,
              "timestamp": datetime.fromisoformat(doc["@timestamp"]), "src_ip": "5.188.10.2",
              "marker": None, "raw": {}} for doc_id, doc in documents]
 

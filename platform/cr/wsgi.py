@@ -1,7 +1,7 @@
 import os
 import threading
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "cr.settings")
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
@@ -35,7 +35,7 @@ def publish_maps():
 
     views.publish_maps()
 
-threading.Thread(target=resume_resets, name="fsl-resets-resume", daemon=True).start()
-threading.Thread(target=publish_maps, name="fsl-maps-publish", daemon=True).start()
-threading.Thread(target=resume_scenarios, name="fsl-scenarios-resume", daemon=True).start()
-threading.Thread(target=prune_closed_sessions, name="fsl-retention", daemon=True).start()
+threading.Thread(target=resume_resets, name="cr-resets-resume", daemon=True).start()
+threading.Thread(target=publish_maps, name="cr-maps-publish", daemon=True).start()
+threading.Thread(target=resume_scenarios, name="cr-scenarios-resume", daemon=True).start()
+threading.Thread(target=prune_closed_sessions, name="cr-retention", daemon=True).start()

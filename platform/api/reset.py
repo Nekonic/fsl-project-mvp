@@ -61,7 +61,7 @@ def begin(adapter, turn, rebuilt=None, claimed=False, then=None, in_place=True):
     if not claimed and not claim(slot):
         return None
     worker = threading.Thread(
-        target=_reset, args=(adapter, turn, rebuilt, then, in_place), name=f"fsl-range-reset-{slot}",
+        target=_reset, args=(adapter, turn, rebuilt, then, in_place), name=f"cr-range-reset-{slot}",
         daemon=True,
     )
     worker.start()
@@ -101,7 +101,7 @@ def _holding(turn, step):
         return step()
 
 def _side_by_side(*steps) -> None:
-    with ThreadPoolExecutor(max_workers=len(steps), thread_name_prefix="fsl-range-reset") as pool:
+    with ThreadPoolExecutor(max_workers=len(steps), thread_name_prefix="cr-range-reset") as pool:
         running = [pool.submit(step) for step in steps]
         wait(running)
     for done in running:

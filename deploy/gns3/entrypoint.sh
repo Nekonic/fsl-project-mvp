@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
 
-DATA="${FSL_GNS3_DATA:-/var/lib/fsl-gns3}"
-HERE=/opt/fsl-gns3
-export FSL_GNS3_DATA="$DATA"
+DATA="${CR_GNS3_DATA:-/var/lib/cr-gns3}"
+HERE=/opt/cr-gns3
+export CR_GNS3_DATA="$DATA"
 mkdir -p "$DATA/projects" "$DATA/resources"
 
 SOCK=/var/run/docker.sock
@@ -29,9 +29,9 @@ generated() {
   cat "$file"
 }
 
-[ -n "${FSL_GNS3_ADMIN_PASSWORD:-}" ] || FSL_GNS3_ADMIN_PASSWORD="$(generated admin-password)"
-[ -n "${FSL_GNS3_AUDITOR_PASSWORD:-}" ] || FSL_GNS3_AUDITOR_PASSWORD="$(generated auditor-password)"
-export FSL_GNS3_ADMIN_PASSWORD FSL_GNS3_AUDITOR_PASSWORD
+[ -n "${CR_GNS3_ADMIN_PASSWORD:-}" ] || CR_GNS3_ADMIN_PASSWORD="$(generated admin-password)"
+[ -n "${CR_GNS3_AUDITOR_PASSWORD:-}" ] || CR_GNS3_AUDITOR_PASSWORD="$(generated auditor-password)"
+export CR_GNS3_ADMIN_PASSWORD CR_GNS3_AUDITOR_PASSWORD
 
 cat > "$DATA/gns3_server.conf" <<CONF
 [Server]
@@ -47,15 +47,15 @@ report_errors = False
 
 [Controller]
 default_admin_username = admin
-default_admin_password = $FSL_GNS3_ADMIN_PASSWORD
+default_admin_password = $CR_GNS3_ADMIN_PASSWORD
 CONF
 chmod 600 "$DATA/gns3_server.conf"
 
 python "$HERE/provision.py" bootstrap
 chown -R gns3 "$DATA"
 exec gosu gns3 sh -c '
-  gns3server --config "$FSL_GNS3_DATA/gns3_server.conf" &
+  gns3server --config "$CR_GNS3_DATA/gns3_server.conf" &
   server=$!
-  python /opt/fsl-gns3/provision.py provision || echo "fsl-gns3: provisioning failed; the server keeps running" >&2
+  python /opt/cr-gns3/provision.py provision || echo "cr-gns3: provisioning failed; the server keeps running" >&2
   wait "$server"
 '

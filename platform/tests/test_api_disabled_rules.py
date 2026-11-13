@@ -10,9 +10,9 @@ pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("a_session_is_open"
 
 RELOAD = ("kill", "-USR2", "1")
 RULES = (
-    '# FSL MVP baseline rules.\n\n'
-    'alert http any any -> any any (msg:"FSL SQLi attempt - URI"; sid:9000001; rev:1;)\n\n'
-    'alert http any any -> any any (msg:"FSL XSS attempt"; sid:9000003; rev:1;)\n'
+    '# Baseline rules.\n\n'
+    'alert http any any -> any any (msg:"SQLi attempt - URI"; sid:9000001; rev:1;)\n\n'
+    'alert http any any -> any any (msg:"XSS attempt"; sid:9000003; rev:1;)\n'
 )
 
 class Suricata:
@@ -43,8 +43,8 @@ def test_disabling_a_rule_comments_it_out_reloads_and_names_the_session(client, 
     assert response.status_code == 201
     assert response.json()["sid"] == 9000001
     assert ids.applied, "the IDS was never told"
-    assert '#alert http any any -> any any (msg:"FSL SQLi attempt - URI"' in ids.content
-    assert 'alert http any any -> any any (msg:"FSL XSS' in ids.content
+    assert '#alert http any any -> any any (msg:"SQLi attempt - URI"' in ids.content
+    assert 'alert http any any -> any any (msg:"XSS' in ids.content
     assert [s["session_id"] for s in listed] == [a_session_is_open.pk], (
         "a disabled rule that does not say which session disabled it cannot be told "
         "apart from one an earlier run left behind"
@@ -90,7 +90,7 @@ def test_a_disabled_rule_stays_disabled_until_it_expires_and_then_comes_back(cli
     assert [r["sid"] for r in listed["enabled"]] == [9000001]
     assert ids.content == RULES, "the rule file did not come back byte for byte"
 
-REWORDED = 'alert http any any -> any any (msg:"FSL SQLi attempt - URI, reworded"; sid:9000001; rev:1;)\n'
+REWORDED = 'alert http any any -> any any (msg:"SQLi attempt - URI, reworded"; sid:9000001; rev:1;)\n'
 
 def refuses_a_duplicate_signature(ids):
     def apply(content, sensor, reload_command=None, path=None):
@@ -149,4 +149,4 @@ def test_an_enable_whose_rule_was_replaced_meanwhile_is_done_once_and_says_so(cl
         "the enable was tried again on the next tick"
     )
     the_replacement_alone_carries_the_sid(ids.content)
-    assert "FSL XSS attempt" in ids.content
+    assert "XSS attempt" in ids.content

@@ -32,7 +32,7 @@ def test_what_was_typed_comes_back_with_when_and_under_which_case():
     ]
 
 def test_nothing_typed_yet_is_no_commands_and_not_an_error():
-    missing = reader("cat: /var/log/fsl/commands.log: No such file", exit_code=1)
+    missing = reader("cat: /var/log/cr/commands.log: No such file", exit_code=1)
 
     assert operator_log.commands(missing) == []
 
@@ -89,7 +89,7 @@ def test_the_console_can_ask_what_was_typed_during_a_session(client):
 
 def test_a_log_that_cannot_be_read_is_503_and_not_an_empty_list(client):
     _, response = session_with(
-        client, "cat: /var/log/fsl/commands.log: Permission denied", exit_code=1
+        client, "cat: /var/log/cr/commands.log: Permission denied", exit_code=1
     )
 
     assert response.status_code == 503, (

@@ -70,10 +70,10 @@ def test_missing_tool_image_raises_instead_of_being_swallowed():
     from redteam.harness import fire_tool
     from redteam.tools import ToolUnavailable
 
-    with pytest.raises(ToolUnavailable, match="fsl-kali"):
+    with pytest.raises(ToolUnavailable, match="cr-kali"):
         fire_tool(
             dict(CASE), INTERNAL_TARGET,
-            launcher(125, "Unable to find image 'fsl-kali:latest' locally"),
+            launcher(125, "Unable to find image 'cr-kali:latest' locally"),
         )
 
 def test_tool_reporting_a_failed_scan_is_not_an_error():
@@ -113,7 +113,7 @@ def test_sqlmap_s_conclusions_are_its_verdict_lines_without_the_clock():
 def test_the_tool_image_defaults_to_the_attacker_host_the_range_declares(settings):
     from tests.conftest import REPO_ROOT
 
-    environment = {name: value for name, value in os.environ.items() if name != "FSL_TOOL_IMAGE"}
+    environment = {name: value for name, value in os.environ.items() if name != "CR_TOOL_IMAGE"}
     printed = subprocess.run(
         [sys.executable, "-c", "from redteam.tools import TOOL_IMAGE; print(TOOL_IMAGE)"],
         cwd=REPO_ROOT, env=environment, capture_output=True, text=True, check=True,

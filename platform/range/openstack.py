@@ -77,12 +77,12 @@ SERVER_ALIVE_INTERVAL = 15
 SERVER_ALIVE_COUNT_MAX = 3
 NOVA_MICROVERSION = "2.1"
 SUBJECT_TOKEN = "X-Subject-Token"
-SEGMENT_TAG = "fsl.segment.id"
+SEGMENT_TAG = "cr.segment.id"
 ATTACKER_ROLE = "attacker"
 SCORER_ROLE = "scorer"
 OWN_LISTED_TIMEOUT = 60
 GATEWAY_ROLE = "gateway"
-BUILD_GROUP = "fsl-build"
+BUILD_GROUP = "cr-build"
 SENSOR_ROLE = "sensor"
 EDGE_REBOOT = 900
 EDGE_POLL = 3
@@ -95,29 +95,29 @@ UPLOAD_TIMEOUT = 600
 CHUNK = 1 << 20
 
 SETTINGS = {
-    "keystone": "FSL_OPENSTACK_KEYSTONE",
-    "user": "FSL_OPENSTACK_USER",
-    "domain": "FSL_OPENSTACK_DOMAIN",
-    "password": "FSL_OPENSTACK_PASSWORD",
-    "project": "FSL_OPENSTACK_PROJECT",
-    "ssh_user": "FSL_OPENSTACK_SSH_USER",
-    "ssh_key": "FSL_OPENSTACK_SSH_KEY",
-    "region": "FSL_OPENSTACK_REGION",
-    "interface": "FSL_OPENSTACK_INTERFACE",
-    "source": "FSL_SOURCE",
-    "base_image": "FSL_OPENSTACK_BASE_IMAGE",
-    "flavor": "FSL_OPENSTACK_FLAVOR",
-    "build_flavor": "FSL_OPENSTACK_BUILD_FLAVOR",
-    "role_flavors": "FSL_OPENSTACK_ROLE_FLAVORS",
-    "availability_zone": "FSL_OPENSTACK_AVAILABILITY_ZONE",
-    "subnets": "FSL_OPENSTACK_SUBNETS",
-    "mtu": "FSL_OPENSTACK_MTU",
-    "opnsense": "FSL_OPNSENSE",
-    "build_network": "FSL_OPENSTACK_BUILD_NETWORK",
-    "platform": "FSL_OPENSTACK_PLATFORM",
-    "image_tag": "FSL_IMAGE_TAG",
-    "slots": "FSL_OPENSTACK_SLOTS",
-    "sideloaded": "FSL_SIDELOADED",
+    "keystone": "CR_OPENSTACK_KEYSTONE",
+    "user": "CR_OPENSTACK_USER",
+    "domain": "CR_OPENSTACK_DOMAIN",
+    "password": "CR_OPENSTACK_PASSWORD",
+    "project": "CR_OPENSTACK_PROJECT",
+    "ssh_user": "CR_OPENSTACK_SSH_USER",
+    "ssh_key": "CR_OPENSTACK_SSH_KEY",
+    "region": "CR_OPENSTACK_REGION",
+    "interface": "CR_OPENSTACK_INTERFACE",
+    "source": "CR_SOURCE",
+    "base_image": "CR_OPENSTACK_BASE_IMAGE",
+    "flavor": "CR_OPENSTACK_FLAVOR",
+    "build_flavor": "CR_OPENSTACK_BUILD_FLAVOR",
+    "role_flavors": "CR_OPENSTACK_ROLE_FLAVORS",
+    "availability_zone": "CR_OPENSTACK_AVAILABILITY_ZONE",
+    "subnets": "CR_OPENSTACK_SUBNETS",
+    "mtu": "CR_OPENSTACK_MTU",
+    "opnsense": "CR_OPNSENSE",
+    "build_network": "CR_OPENSTACK_BUILD_NETWORK",
+    "platform": "CR_OPENSTACK_PLATFORM",
+    "image_tag": "CR_IMAGE_TAG",
+    "slots": "CR_OPENSTACK_SLOTS",
+    "sideloaded": "CR_SIDELOADED",
 }
 ROOM = (("maxTotalInstances", "totalInstancesUsed", ""), ("maxTotalCores", "totalCoresUsed", "vcpus"),
         ("maxTotalRAMSize", "totalRAMUsed", "ram"))
@@ -427,7 +427,7 @@ def _generations(servers: list[dict]) -> dict[str, str]:
         if not server.get("id"):
             continue
         booted = "".join(c for c in str(server.get(LAUNCHED) or "") if c.isdigit())
-        generation = "-".join(filter(None, ("fsl", server["id"], booted)))
+        generation = "-".join(filter(None, ("cr", server["id"], booted)))
         for entries in (server.get("addresses") or {}).values():
             for entry in entries:
                 if entry.get(FIXED) == "fixed":

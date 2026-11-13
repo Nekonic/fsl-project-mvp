@@ -33,7 +33,7 @@ class Stand:
         def runner(adapter, role, segment_id=""):
             def run(argv, stdin=None, timeout=60.0):
                 calls.append((adapter.session, role, " ".join(argv), stdin))
-                waf = settings.FSL_WAF
+                waf = settings.CR_WAF
                 if " ".join(argv).endswith(crs.workers_of(waf.pid)):
                     return Ran(0, str(len(calls)))
                 if " ".join(argv).endswith("cat > " + waf.rules):

@@ -91,8 +91,8 @@ also refuses cross-origin writes and any write whose body is not
   2026-10-13).
 - The Auditor can read the host's Docker image list
   (`GET /v3/computes/local/docker/images`).
-- The admin password is `FSL_GNS3_ADMIN_PASSWORD`, or it is generated into
-  `/var/lib/fsl-gns3/admin-password`. It is never given to learners. API keys
+- The admin password is `CR_GNS3_ADMIN_PASSWORD`, or it is generated into
+  `/var/lib/cr-gns3/admin-password`. It is never given to learners. API keys
   for MCP are made only with `docker exec` on the platform host.
 - **GNS3's admin controls the platform host's Docker daemon, and so does the
   platform container.** To open the projects, the container holds the Docker
@@ -110,10 +110,10 @@ also refuses cross-origin writes and any write whose body is not
 **On OpenStack the platform answers NTP (time) requests from every range host,
 Kali included.**
 
-- The security group `fsl-mgmt` shields each range host's `mgmt` port so that
+- The security group `cr-mgmt` shields each range host's `mgmt` port so that
   only the platform can reach it.
 - The one way back is udp 123 to the platform's `mgmt` port, from members of
-  `fsl-mgmt`. chrony answers it. It accepts that subnet (`allow`) and has no
+  `cr-mgmt`. chrony answers it. It accepts that subnet (`allow`) and has no
   `cmdallow`, so its command port stays on loopback.
 - The attacker's shell can read the platform's time and send it NTP packets. It
   reaches nothing else on the platform from `mgmt`.
@@ -125,7 +125,7 @@ limit scope.
 **A closed session's records last an hour.**
 
 - The platform deletes a session that was closed more than
-  `FSL_RETAIN_CLOSED_MINUTES` ago (default 60). It deletes the session's cases,
+  `CR_RETAIN_CLOSED_MINUTES` ago (default 60). It deletes the session's cases,
   detections, customer requests and objectives. It does this at start and after
   every close (`platform/api/retention.py`).
 - A disabled rule stays, with its session cleared.

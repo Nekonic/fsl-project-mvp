@@ -44,7 +44,7 @@ def guided_beside_minimal(minimal):
         _tune(second, {"paranoia": 4})
         _tune(first, {"paranoia": 1})
         committed = (REPO_ROOT / "deploy/suricata/rules/local.rules").read_text()
-        probe = 'alert http any any -> any any (msg:"FSL lesson isolation probe"; sid:9009901; rev:1;)\n'
+        probe = 'alert http any any -> any any (msg:"lesson isolation probe"; sid:9009901; rev:1;)\n'
         seen["committed"], seen["probe"] = committed, probe
         seen["applied"] = requests.post(
             f"{PLATFORM_URL}/api/rules/apply/?session={first}", json={"content": committed + probe},

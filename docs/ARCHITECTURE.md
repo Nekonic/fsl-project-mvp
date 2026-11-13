@@ -14,7 +14,7 @@ Words used throughout:
 - **Case**: one attack or one benign request set that the harness sends. A case counts as one decision however many alerts it draws.
 - **Marker**: the `X-Request-ID` value on a case's requests. It lets the platform match an alert to its case.
 - **Ground truth**: the target's own stored data. It shows what the attacker really took. For the board it is the secret that submitted loot is matched against; for corp it is the changes in its database log.
-- **Substrate**: what the platform builds the range on, chosen by `FSL_SUBSTRATE`. The only one is OpenStack.
+- **Substrate**: what the platform builds the range on, chosen by `CR_SUBSTRATE`. The only one is OpenStack.
 - **`estate`**: the internal network that holds the target apps.
 - **Slot**: one complete set of range VMs. One session uses one slot.
 - **Posture**: a named starting state of the defence (WAF tuning plus an IDS rule file). The wargame declares it in its `defense:` map, and a session starts from one.
@@ -26,7 +26,7 @@ Words used throughout:
 
 ## The range
 
-The platform VM runs one compose file, `compose.yaml`, project `fsl`. It is the control plane: one long-lived copy that runs the platform, Elasticsearch, Kibana, the `collector` and the GNS3 server on one network, `mgmt`. `bin/measure` counts its services. The range itself is the set of OpenStack VMs in a slot ("OpenStack").
+The platform VM runs one compose file, `compose.yaml`, project `cr`. It is the control plane: one long-lived copy that runs the platform, Elasticsearch, Kibana, the `collector` and the GNS3 server on one network, `mgmt`. `bin/measure` counts its services. The range itself is the set of OpenStack VMs in a slot ("OpenStack").
 
 Opening a session (`POST /api/sessions/`) starts no stack.
 
@@ -36,14 +36,14 @@ Opening a session (`POST /api/sessions/`) starts no stack.
 
 Sessions run at the same time, one per slot. `max_sessions` is the number of slots, and an open past it answers 409. Closing a session resets only its slot.
 
-The store keeps a closed session for `FSL_RETAIN_CLOSED_MINUTES` (default 60, set in `compose.yaml`).
+The store keeps a closed session for `CR_RETAIN_CLOSED_MINUTES` (default 60, set in `compose.yaml`).
 
-- `platform/api/retention.py` deletes older closed sessions, with everything that belongs to them. It runs at start (`fsl/wsgi.py`) and after each close.
+- `platform/api/retention.py` deletes older closed sessions, with everything that belongs to them. It runs at start (`cr/wsgi.py`) and after each close.
 - It deletes a session's detections and customer requests 2,000 rows per transaction, then the session. A large prune therefore never holds the store's write lock for long.
-- The store is SQLite with `transaction_mode: IMMEDIATE` (`fsl/settings.py`). A read-then-write transaction takes the write lock at its start. It waits out the 30 s busy timeout instead of failing at once with `database is locked`.
+- The store is SQLite with `transaction_mode: IMMEDIATE` (`cr/settings.py`). A read-then-write transaction takes the write lock at its start. It waits out the 30 s busy timeout instead of failing at once with `database is locked`.
 - `bin/backup` snapshots the store with `VACUUM INTO` and keeps the newest `--keep` copies (default 1). For `bin/platform-rebuild` and `bin/cloud down`, the value is `backups: {keep}` in `cloud.yaml`.
 
-The wargames run on one VM, `fsl-wargame-host`, as GHCR containers.
+The wargames run on one VM, `cr-wargame-host`, as GHCR containers.
 
 - The readiness probe and the session baseline read the board through the adapter's `address("board")`. This is the wargame host's management address, where the board's port 8000 is published. `loot.ground_truth` puts it in place of the host in `BOARD_API_URL`.
 
@@ -62,12 +62,12 @@ The platform finds each wargame from `wargames/<id>/scenario.yaml` (`platform/wa
 The images are built and pulled as follows.
 
 - CI (`.github/workflows/images.yml`) builds each app image.
-- The wargame host pulls it as `ghcr.io/nekonic/fsl-<name>:<FSL_IMAGE_TAG>`. The platform writes its own tag into the host's bundle.
-- Tool cases run on the attacker host (`redteam/tools.py`, whose `TOOL_IMAGE` defaults to `fsl-kali`).
+- The wargame host pulls it as `ghcr.io/nekonic/cr-<name>:<CR_IMAGE_TAG>`. The platform writes its own tag into the host's bundle.
+- Tool cases run on the attacker host (`redteam/tools.py`, whose `TOOL_IMAGE` defaults to `cr-kali`).
 
 A new wargame needs `scenario.yaml`, `objectives.yaml` and `compose.yaml` in its folder, a case file under `redteam/cases/`, and its name in the `wargames:` list of the wargame host in `declaration.yaml`.
 
-Nothing in a wargame's `compose.yaml` pins `container_name`. The wargame host names each container by its service (`board`, `corp-wp`). The control plane keeps fixed names: `fsl-platform`, `fsl-elasticsearch`, `fsl-kibana`, `fsl-collector` and `fsl-gns3`. The first table below lists each service by that name.
+Nothing in a wargame's `compose.yaml` pins `container_name`. The wargame host names each container by its service (`board`, `corp-wp`). The control plane keeps fixed names: `cr-platform`, `cr-elasticsearch`, `cr-kibana`, `cr-collector` and `cr-gns3`. The first table below lists each service by that name.
 
 Every endpoint that acts on the range takes `session` from the query or the body. These endpoints are rules, validate, disabled rules, `/api/attacker/`, origin, label and canary.
 
@@ -83,18 +83,18 @@ Each slot's sensors keep their own live rule files.
 
 | Service | Runs on | Image | Network | Host port |
 |---|---|---|---|---|
-| `board` | wargame host | `ghcr.io/nekonic/fsl-board` from `wargames/board/app` (Django under gunicorn, port 8000) | estate | 8000 |
+| `board` | wargame host | `ghcr.io/nekonic/cr-board` from `wargames/board/app` (Django under gunicorn, port 8000) | estate | 8000 |
 | `board-db` | wargame host | `mysql` | estate | |
-| `corp-wp` | wargame host | `ghcr.io/nekonic/fsl-corp` from `wargames/corp/app` (WordPress 6.6.2, three pinned vulnerable plugins; `corp.com` by `Host` header) | estate | 80 |
-| `corp-db` | wargame host | `ghcr.io/nekonic/fsl-corp-db` from `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | estate | |
+| `corp-wp` | wargame host | `ghcr.io/nekonic/cr-corp` from `wargames/corp/app` (WordPress 6.6.2, three pinned vulnerable plugins; `corp.com` by `Host` header) | estate | 80 |
+| `corp-db` | wargame host | `ghcr.io/nekonic/cr-corp-db` from `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | estate | |
 | `suricata` | wargame host | `jasonish/suricata`, the estate sensor (`deploy/wargame-host/sensor.yaml`) | host network | |
-| `fsl-elasticsearch` | platform VM | `elasticsearch:8.15.0` | mgmt | 9200 |
-| `fsl-collector` | platform VM | `filebeat:8.15.0`, the syslog input only | mgmt | 5140/udp |
-| `fsl-kibana` | platform VM | `kibana:8.15.0`, served at `/kibana/` | mgmt | 5601 |
-| `fsl-platform` | platform VM | `platform/` (Django under waitress, behind nginx). nginx also serves Kibana at `/kibana/` and the VM terminals at `/vm-terminal/kali/` and `/vm-terminal/waf/` | mgmt | 8000, 8002 |
-| `fsl-gns3` | platform VM | `ghcr.io/nekonic/fsl-gns3` from `deploy/gns3` (gns3-server 3.1.0a6, qemu, uBridge 1.2.3, busybox-static, docker-cli). It holds open the learner maps the platform loads and starts their display nodes. It has `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket and the host's pid namespace | mgmt | 3080 |
+| `cr-elasticsearch` | platform VM | `elasticsearch:8.15.0` | mgmt | 9200 |
+| `cr-collector` | platform VM | `filebeat:8.15.0`, the syslog input only | mgmt | 5140/udp |
+| `cr-kibana` | platform VM | `kibana:8.15.0`, served at `/kibana/` | mgmt | 5601 |
+| `cr-platform` | platform VM | `platform/` (Django under waitress, behind nginx). nginx also serves Kibana at `/kibana/` and the VM terminals at `/vm-terminal/kali/` and `/vm-terminal/waf/` | mgmt | 8000, 8002 |
+| `cr-gns3` | platform VM | `ghcr.io/nekonic/cr-gns3` from `deploy/gns3` (gns3-server 3.1.0a6, qemu, uBridge 1.2.3, busybox-static, docker-cli). It holds open the learner maps the platform loads and starts their display nodes. It has `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket and the host's pid namespace | mgmt | 3080 |
 
-Ports 8000, 8002 and 3080 bind to `FSL_PUBLISH`. Port 5140/udp binds to `FSL_SYSLOG_PUBLISH`. Both variables default to 127.0.0.1. Ports 9200 and 5601 bind to loopback only.
+Ports 8000, 8002 and 3080 bind to `CR_PUBLISH`. Port 5140/udp binds to `CR_SYSLOG_PUBLISH`. Both variables default to 127.0.0.1. Ports 9200 and 5601 bind to loopback only.
 
 | Segment | Subnet | Name |
 |---|---|---|
@@ -125,7 +125,7 @@ Segmentation is the fabric's networks and security groups.
 The platform reaches the range on `mgmt` only.
 
 - The attacker's traffic enters the internal network (`estate`) only through the edge and the WAF.
-- The platform reaches every range host on `mgmt`, through a port in `fsl-reach`. A range host may open a connection to the platform for NTP only ("OpenStack"). The API still checks the caller itself (`docs/THREAT-MODEL.md`).
+- The platform reaches every range host on `mgmt`, through a port in `cr-reach`. A range host may open a connection to the platform for NTP only ("OpenStack"). The API still checks the caller itself (`docs/THREAT-MODEL.md`).
 
 "The range on OpenStack: the target structure", near the end of this document, draws the whole path.
 
@@ -171,7 +171,7 @@ The declaration holds no address for `estate` or `mgmt` and none for a host. Neu
 
 The platform finds segments by a tag.
 
-- Each segment carries `fsl.segment.id` as a Neutron tag. The adapter fetches only tagged networks.
+- Each segment carries `cr.segment.id` as a Neutron tag. The adapter fetches only tagged networks.
 - Matching by name broke on Heat stack suffixes and on non-unique Neutron names.
 - A role is still the server name the declaration gives. The adapter lists every server in the project and matches `server["name"]`, which Nova does not keep unique. This is still open in `docs/STATE.md`.
 - On the wargame host, a role that `compose:` maps to a service runs in that container (`sudo docker exec <service>`).
@@ -183,11 +183,11 @@ Core code and most of the platform use only four methods of that interface:
 - `runner(role, segment)` runs a command on a standing host. The standing hosts are the sensor, the proxy, the attacker (whose command log the platform reads) and corp-db.
 - `launcher(segment)` runs a one-shot tool on a segment and returns its output.
 
-`range.substrate()` builds the adapter named by `FSL_SUBSTRATE` (default `range.openstack.connect`). It passes the options that `FSL_SUBSTRATE_OPTIONS` keeps under that name, plus `declared=RANGE`.
+`range.substrate()` builds the adapter named by `CR_SUBSTRATE` (default `range.openstack.connect`). It passes the options that `CR_SUBSTRATE_OPTIONS` keeps under that name, plus `declared=RANGE`.
 
-- It takes `FSL_OPENSTACK_KEYSTONE`, `_USER`, `_PASSWORD`, `_PROJECT`, `_SSH_USER`, `_SSH_KEY`, `_REGION`, `_INTERFACE` and `_DOMAIN`. It refuses by name any that is missing.
-- It also takes the values that shape the range: `_BASE_IMAGE`, `_FLAVOR`, `_BUILD_FLAVOR`, `_ROLE_FLAVORS`, `_AVAILABILITY_ZONE`, `_SUBNETS`, `_MTU` and `FSL_OPNSENSE`. It refuses by name where they are used.
-- It takes `FSL_IMAGE_TAG` as well, for the wargame host's images. The tag is written to `/opt/fsl/.env` at boot.
+- It takes `CR_OPENSTACK_KEYSTONE`, `_USER`, `_PASSWORD`, `_PROJECT`, `_SSH_USER`, `_SSH_KEY`, `_REGION`, `_INTERFACE` and `_DOMAIN`. It refuses by name any that is missing.
+- It also takes the values that shape the range: `_BASE_IMAGE`, `_FLAVOR`, `_BUILD_FLAVOR`, `_ROLE_FLAVORS`, `_AVAILABILITY_ZONE`, `_SUBNETS`, `_MTU` and `CR_OPNSENSE`. It refuses by name where they are used.
+- It takes `CR_IMAGE_TAG` as well, for the wargame host's images. The tag is written to `/opt/cr/.env` at boot.
 - None has a default in code. All come from `deploy/openstack/cloud.yaml` through the Heat stack. `platform/range/cloud.py` reads and validates that file.
 - `redteam/harness.py` is handed a launcher and `platform/rules/suricata.py` is handed a runner. Neither imports `subprocess` or names a substrate.
 
@@ -217,7 +217,7 @@ What the learner map shows, drawn as an enterprise logical diagram:
 - Each IDS is its own sensor box ("IDS") joined by a dashed line to the host whose traffic it is fed. That is `firewall` (the OPNsense edge's Suricata) and the site (the estate sensor on the wargame host), the hosts Kibana's `sensor` names.
 - Green arrows with drawn arrowheads, and the caption 웹 요청, show the request flow internet → firewall → waf → site.
 
-It shows nothing else: no title, legend, machine's own name, `fsl-`, management address or Docker bridge.
+It shows nothing else: no title, legend, machine's own name, `cr-`, management address or Docker bridge.
 
 - The flow runs left to right along one row (internet, firewall, waf, site), with `sw1` above the row and `sw3` below it, so no link crosses another.
 - `topology.for_wargame` drops a zone and the drawings inside it only when the zone held nodes and none is left for the wargame; lines, sensor boxes and texts outside such a zone stay.
@@ -236,7 +236,7 @@ A template draws both wargames' site and database in one place (both on `sw2`). 
 
 `topology.learner(declaration, wargame)` maps the range's names to the map's names.
 
-- Hosts: `fsl-kali` is `kali`, and also `customers` where the customers run on it. `fsl-edge` is `firewall`. The wargame host and its site container are the site. `fsl-elasticsearch` is `log-server`.
+- Hosts: `cr-kali` is `kali`, and also `customers` where the customers run on it. `cr-edge` is `firewall`. The wargame host and its site container are the site. `cr-elasticsearch` is `log-server`.
 - Roles.
 - Segments to switches: origins to `internet`, the estate to `sw1`, a wargame's compose network to `sw2`, and the management segment to `sw3` for the NIC name alone.
 - Each sensor to the node whose NIC it uses.
@@ -311,7 +311,7 @@ The adapter reads the interfaces with `interfaces()`:
 
 `gns3.publish` loads a project into GNS3 in these steps:
 
-1. It signs in as GNS3's admin. The password comes from `FSL_GNS3_ADMIN_PASSWORD` or `/run/fsl-gns3/admin-password`. The GNS3 data directory is mounted read-only, and the file is 0640 to the Docker socket's group.
+1. It signs in as GNS3's admin. The password comes from `CR_GNS3_ADMIN_PASSWORD` or `/run/cr-gns3/admin-password`. The GNS3 data directory is mounted read-only, and the file is 0640 to the Docker socket's group.
 2. It deletes the project if GNS3 lists it. A DELETE of a project GNS3 never held is logged at ERROR.
 3. It imports the project as a portable project. Its `project.gns3` keeps the URL's project id, so GNS3 keeps every id, as for a snapshot.
 4. It turns `auto_close` off. An import is made with it on, whatever the file says, and a project closed when the last web client leaves stops its nodes.
@@ -333,8 +333,8 @@ The learner map is drawn in Korean; the product is Korean-only (`docs/DECISIONS.
 The `gns3` service (`deploy/gns3`, gns3-server 3.1.0a6 with its MCP extra) does the following at start.
 
 - It holds only the maps the platform loads. A template draws every wargame, so none is copied in.
-- It sets the admin password before the controller database exists (`FSL_GNS3_ADMIN_PASSWORD`, or generated once into `/var/lib/fsl-gns3/admin-password`).
-- It gives the learner user the built-in Auditor role on `/` (`FSL_GNS3_AUDITOR_PASSWORD`, or generated once into `/var/lib/fsl-gns3/auditor-password`, which the platform reads from the same mount).
+- It sets the admin password before the controller database exists (`CR_GNS3_ADMIN_PASSWORD`, or generated once into `/var/lib/cr-gns3/admin-password`).
+- It gives the learner user the built-in Auditor role on `/` (`CR_GNS3_AUDITOR_PASSWORD`, or generated once into `/var/lib/cr-gns3/auditor-password`, which the platform reads from the same mount).
 - It writes `/static/web-ui/map.html`, titled Map. The page signs in as the learner and stores the token where the bundled web UI reads its controller (`controller-1`, `controllerIds` in `localStorage`). It sets `showInterfaceLabels` on and `integrateLinkLabelsToLinks` off, so each link end's label is drawn where the project puts it. It sets `statistics_command` to `false`, so the web UI sends no usage statistics from the learner's browser.
 
 The page opens the project in a same-origin frame and makes it view-only before the map draws.
@@ -359,7 +359,7 @@ The page and the console cooperate as follows.
 - It also sends every zone drawing's rectangle (`zones`) and the boxes of every node, interface label and zone caption (`text`), so that callouts stay off the map's text.
 - The Auditor role still refuses every write on the server.
 
-For development MCP use (`/v3/mcp/`), `docker exec fsl-gns3 python /opt/fsl-gns3/provision.py api-key <name>` prints an API key. Nothing in the console exposes MCP. The console's tab for the map reads Map (`blue.pane.topology`, one word in Korean too). No word a learner reads names GNS3.
+For development MCP use (`/v3/mcp/`), `docker exec cr-gns3 python /opt/cr-gns3/provision.py api-key <name>` prints an API key. Nothing in the console exposes MCP. The console's tab for the map reads Map (`blue.pane.topology`, one word in Korean too). No word a learner reads names GNS3.
 
 A read-only user cannot open a project (`Project.Allocate`). So `provision.py` opens every project as admin at start and starts each of its stopped display nodes. It starts only nodes of the pinned image and never runs a node of any other image. The Auditor then sees the projects open and green.
 
@@ -376,8 +376,8 @@ What the service needs:
 Other facts about the image:
 
 - The `[ai-features]` extra is needed, or 3.1.0a6 does not start. It brings a copilot that clones a skills repository at start. The image sets its `enabled` to `False` in `skills_config.py`, and the image build fails if that line is gone.
-- The host daemon resolves the containers' bind mounts on the host, so the data directory has the same path on both sides (`/var/lib/fsl-gns3`).
-- The server runs as the user `gns3`, which joins the socket's group at start, as `fsl` does in the platform.
+- The host daemon resolves the containers' bind mounts on the host, so the data directory has the same path on both sides (`/var/lib/cr-gns3`).
+- The server runs as the user `gns3`, which joins the socket's group at start, as `cr` does in the platform.
 - `GET /api/topology/` offers the web UI (`web_ui`) only while GNS3 reports the project `opened`. Otherwise the console's Map pane says the map is not open.
 
 `GET /api/topology/` returns the substrate's learner map. With `?session=<id>`, it returns that session's map for its wargame, described above.
@@ -401,9 +401,9 @@ An isolation seam is a rule that only one file may handle one concern. For examp
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py` PUTs the `geoip` ingest pipeline at bring-up |
 | The Kibana HTTP API, its saved objects and the Discover link | `platform/kibana.py` | `platform/nginx.conf` knows Kibana's API paths. It refuses the administration APIs, the Default space, unprefixed paths and `?namespaces=`. It answers `GET /kibana/s/<space>/api/spaces/space` itself with the one SOC space |
 | The GNS3 API | `platform/gns3.py` | `deploy/gns3/provision.py`, inside the GNS3 container, signs in as admin to provision the learner and open the projects. `deploy/gns3/auditor.html`, served by GNS3 as `/static/web-ui/map.html`, signs in as the learner and reads `/v3/projects/<id>/nodes` and `/links`. The console's Map pane frames the web UI at the port and path `gns3.py` returns |
-| CRS configuration and the nginx reload | `platform/rules/crs.py` | `entrypoint.sh` starts `vm-terminal.sh fsl-waf`, which opens an ssh shell on the WAF VM for the person. F6's WAF-pane steps show the commands the learner types (`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`). `wargames.lesson` fills them in from the declared exclusion file and reload command (`settings.FSL_WAF`). The platform does not drive the terminal |
+| CRS configuration and the nginx reload | `platform/rules/crs.py` | `entrypoint.sh` starts `vm-terminal.sh cr-waf`, which opens an ssh shell on the WAF VM for the person. F6's WAF-pane steps show the commands the learner types (`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`). `wargames.lesson` fills them in from the declared exclusion file and reload command (`settings.CR_WAF`). The platform does not drive the terminal |
 | The Suricata process | `platform/rules/suricata.py` | `platform/range/opnsense.py` and `deploy/opnsense/` configure and restart Suricata on the OPNsense edge (OpenStack). Each sensor host in `declaration.yaml` (the edge, and the wargame host for `estate-sensor`) names the rule file and reload command that `suricata.py` is handed. `platform/range/wargame_host.py` (with `deploy/wargame-host/sensor.yaml`) stops and starts the estate sensor's compose service on the wargame host when a slot is configured or reset (OpenStack). Its baseline rules then go through `suricata.py` |
-| The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/commands.log`. The terminal wiring names `fsl-kali`: `entrypoint.sh` starts `vm-terminal.sh fsl-kali`. The Website pane (`platform/api/site.py`) is not an exception: it reaches the box only through `attacker.py` (`customer_origins`, `unbound_source`, `as_customer`, which holds the command) and the substrate's `opened` (an ssh stream on OpenStack) |
+| The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/commands.log`. The terminal wiring names `cr-kali`: `entrypoint.sh` starts `vm-terminal.sh cr-kali`. The Website pane (`platform/api/site.py`) is not an exception: it reaches the box only through `attacker.py` (`customer_origins`, `unbound_source`, `as_customer`, which holds the command) and the substrate's `opened` (an ssh stream on OpenStack) |
 | The target's own records | `platform/api/loot.py` (board), `platform/api/effect.py` (corp) | None. `loot.py` reaches the board over HTTP at the wargame host's published port, and `effect.py` reaches corp through the runner, which `docker exec`s into `corp-db` |
 
 ## Files
@@ -412,16 +412,16 @@ Important files that this document does not otherwise name.
 
 | File | What it does |
 |---|---|
-| `deploy/filebeat/filebeat.yml` | The collector configuration. It sets `event.module`, tags the slot (`fsl_slot`) and writes `logs-<slot>-sensors` |
-| `deploy/elastic/ingest-pipeline.json` | The `geoip` ingest pipeline. It puts the event time into `@timestamp`, adds GeoIP of `src_ip` and drops `fsl_slot` |
+| `deploy/filebeat/filebeat.yml` | The collector configuration. It sets `event.module`, tags the slot (`cr_slot`) and writes `logs-<slot>-sensors` |
+| `deploy/elastic/ingest-pipeline.json` | The `geoip` ingest pipeline. It puts the event time into `@timestamp`, adds GeoIP of `src_ip` and drops `cr_slot` |
 | `deploy/proxy/stamp.py` | The mitmdump script that stamps `X-Request-ID`. The Kali VM installs it as `/usr/local/lib/web-proxy.py` |
 | `deploy/kali/operator-log.sh` | Kali's shell hook. It appends each command with its marker to `/var/log/commands.log` |
 | `platform/scoring/` | `correlate.py` matches detections to cases by marker or window. `metrics.py` counts TP, FP, FN and TN |
 | `platform/scoreboard.py` | Objective scoring. It attributes detections to attempts, decides `corroborated` and tallies the lost objectives |
 | `platform/game.py` | The game score (speed, accuracy, coverage, response) in the score's `game` block |
-| `platform/disable.py` | Disables a Suricata rule by commenting it out until a time, and enables it again (`# fsl-disabled`) |
+| `platform/disable.py` | Disables a Suricata rule by commenting it out until a time, and enables it again (`# cr-disabled`) |
 | `platform/api/models.py` | The Django models: `Session`, `Case`, `CustomerRequest`, `Detection`, `Objective`, `RuleSet`, `DisabledRule` |
-| `platform/fsl/urls.py` | The route table of every endpoint |
+| `platform/cr/urls.py` | The route table of every endpoint |
 | `platform/api/refusals.py` | Maps exceptions to HTTP statuses (a 404 under `/api/` is JSON). It also holds the same-origin check for unsafe methods |
 | `platform/api/reachability.py` | The middleware that refuses requests from range hosts |
 | `platform/range/declared.py` | Reads `declaration.yaml` into `Declaration` |
@@ -438,8 +438,8 @@ Important files that this document does not otherwise name.
 | Fired case, tool | the attacker box: the platform runs the tool there through the launcher | the attacker box, on the chosen origin | sqlmap `--headers=` |
 | CLI run, HTTP | the attacker box: `redteam/run.py` runs `curl` there through `launcher(<declared default origin>)` | the attacker box, on the default origin | added by the harness |
 | CLI run, tool | the attacker box, from `launcher(<declared default origin>)` | the attacker box, on the default origin | sqlmap `--headers=` |
-| Site browser | the learner's browser, through the platform's nginx on port 8002 and `platform/api/site.py` | a customers address: an address Kali holds, sent as the `fsl-users` account so it crosses the edge | the session's secret `browse-<hex>`, set by `site.py`; the API shows it as `browse` |
-| Customers | `deploy/traffic/users.py`, as `fsl-users` on the Kali VM | the persona's own address on a non-default origin, never one the attacker sends from | a fresh UUID per request |
+| Site browser | the learner's browser, through the platform's nginx on port 8002 and `platform/api/site.py` | a customers address: an address Kali holds, sent as the `cr-users` account so it crosses the edge | the session's secret `browse-<hex>`, set by `site.py`; the API shows it as `browse` |
+| Customers | `deploy/traffic/users.py`, as `cr-users` on the Kali VM | the persona's own address on a non-default origin, never one the attacker sends from | a fresh UUID per request |
 
 The proxy is a `mitmdump` script.
 
@@ -460,7 +460,7 @@ The Kali pane (the red console's, and the blue console's in a lesson or scenario
 
 - The URL is `/vm-terminal/kali/?arg=<session id>`. It is a ttyd inside the platform that connects over ssh to the mgmt address of the host in the session's slot.
 
-`vm-terminal.sh` checks the host key under the alias that the platform's runner uses for the same server, `fsl-<server id>-<launch time>` (`OpenStack.host_key_alias`), with `StrictHostKeyChecking=accept-new`.
+`vm-terminal.sh` checks the host key under the alias that the platform's runner uses for the same server, `cr-<server id>-<launch time>` (`OpenStack.host_key_alias`), with `StrictHostKeyChecking=accept-new`.
 
 - A server rebuilt by a reset gets a new alias. Its new key is learnt without the "REMOTE HOST IDENTIFICATION HAS CHANGED" warning.
 - A changed key under an alias already known is refused.
@@ -468,8 +468,8 @@ The Kali pane (the red console's, and the blue console's in a lesson or scenario
 How each terminal logs in on OpenStack:
 
 - Kali gets a plain login as the `kali` user: sudo, hostname `kali`, Kali's own two-line prompt, no motd. So `/etc/profile.d/proxy.sh` (`http_proxy`) and the command hook (`/usr/local/lib/shell-hook.sh`, `__log_command`, sourced from `/etc/bash.bashrc`) apply as at any login.
-- The WAF runs `bash --rcfile` with `-i` as `ubuntu`. The rc file reads `/etc/profile` and `~/.profile`, sets the time zone, and replaces `\h` in the prompt with the host's name without `fsl-` (`ubuntu@waf`). It prints `/etc/motd`. With a command, sshd prints no Ubuntu login banner or last-login line.
-- The WAF VM's own hostname is `waf` too. The boot unit `set-hostname` renames it after cloud-init and gives the Nova name to rsyslog as `localHostname` without the `fsl-` prefix (`waf`, `waf-2`). Filebeat can therefore still read the slot from the sender name.
+- The WAF runs `bash --rcfile` with `-i` as `ubuntu`. The rc file reads `/etc/profile` and `~/.profile`, sets the time zone, and replaces `\h` in the prompt with the host's name without `cr-` (`ubuntu@waf`). It prints `/etc/motd`. With a command, sshd prints no Ubuntu login banner or last-login line.
+- The WAF VM's own hostname is `waf` too. The boot unit `set-hostname` renames it after cloud-init and gives the Nova name to rsyslog as `localHostname` without the `cr-` prefix (`waf`, `waf-2`). Filebeat can therefore still read the slot from the sender name.
 
 The blue console's WAF pane frames the URL that the session API names (`waf_terminal` in `GET /api/sessions/<id>/`).
 
@@ -531,7 +531,7 @@ nginx also appends a script before `</body>`.
 The Website pane's egress (`site.found_egress`, once per session) leaves from a customers address. Its requests therefore take the customers' path, and the sensors see them as they see the customers. The address is in the origin that the scenario's customer traffic weights most (`customers.declared`, else the first by id) among `attacker.customer_origins`.
 
 - The recorder opens an ssh stdio stream to Kali (`OpenStack.opened`) that runs `attacker.as_customer`.
-  - `as_customer` is a Python bridge. It runs as the `fsl-users` account, which Kali's origin SNAT leaves alone. The account is created with its exemption when the customers never ran on the slot.
+  - `as_customer` is a Python bridge. It runs as the `cr-users` account, which Kali's origin SNAT leaves alone. The account is created with its exemption when the customers never ran on the slot.
   - The bridge binds to that origin's first address and connects to the WAF's `estate` address on port 80.
   - The request crosses the edge (DNAT). The edge sensor sees it arrive at `waf`. The estate sensor sees `waf` send it on to `board.com` with the customers address in `X-Forwarded-For`.
 - No container or `mgmt` address is named.
@@ -669,7 +669,7 @@ Two geoip processors write `src_geo`: one on `src_ip` (Suricata) and one on `tra
 Django runs with `DEBUG` off unless `DJANGO_DEBUG=1`.
 
 - With no `DJANGO_SECRET_KEY`, the entrypoint generates a key once into `/data/secret-key` (mode 600).
-- `fsl/wsgi.py` refuses to serve with `DEBUG` off and no key.
+- `cr/wsgi.py` refuses to serve with `DEBUG` off and no key.
 - A 404 under `/api/` is JSON `{detail}` (`api/refusals.py`).
 
 ## Sessions, WAF tuning and the step engine
@@ -772,7 +772,7 @@ The console is four screens, and every one is filled from `/api/`. It follows a 
   - Under each card come the foundations block, the scenarios block ("Scenarios"), and one plain "Start wargame" button.
     - The foundations block shows each unit with its minutes and what it teaches. Its Start button posts `{scenario, guidance: true, lesson, defense}` with the unit's declared defense.
     - "Start wargame" is `[data-wargame-start]`. It posts `{scenario}`, so there is no guidance and the defense is `full`.
-  - Each foundation and scenario also shows its newest run among the sessions this browser opened. The browser keeps them in `fsl-opened-sessions` in localStorage, which the session and blue pages write, newest first, at most 20. The main page reads them through `?ids=`.
+  - Each foundation and scenario also shows its newest run among the sessions this browser opened. The browser keeps them in `cr-opened-sessions` in localStorage, which the session and blue pages write, newest first, at most 20. The main page reads them through `?ids=`.
     - For a foundation it shows still open or closed.
     - For a scenario it shows PASS/FAIL, still open, or closed with no final check.
   - It lists finished sessions with their `result`: PASS/FAIL from the scenario's last final check (`result.scenario`), or the objectives lost of the total and how many went unnoticed.
@@ -795,7 +795,7 @@ The console is four screens, and every one is filled from `/api/`. It follows a 
   - It has a rail and a pane. The rail holds Kibana, Website, Map, then Alerts for a judgement scenario, IDS rules for a detection or unknown scenario or for a lesson with a step on it (F4), WAF, then a divider and Kali.
   - Kali shows only when the session's `kind` is `lesson` or `scenario`. In a `wargame` session a person attacks from the red console, and the defender does not hold the attacker's shell.
   - The Kali pane has its own frame, loaded once, so a running sqlmap survives a switch to another pane.
-  - On the WAF pane, a banner names only the box (`waf_box`, `waf`) and the CRS rules directory (`waf_rules`). That is the directory of the declared exclusion file, `settings.FSL_WAF.rules`.
+  - On the WAF pane, a banner names only the box (`waf_box`, `waf`) and the CRS rules directory (`waf_rules`). That is the directory of the declared exclusion file, `settings.CR_WAF.rules`.
 - **Red** (`/red/<id>/`):
   - It shows the session and wargame name, the objectives (Korean names under `objective.<key>`) and "Submit stolen hashes" at the top.
   - Its rail has two panes: the session's Kali terminal and the Website pane (address bar and developer tools, the blue console's own scripts).
@@ -813,7 +813,7 @@ In a guided session (a foundation or a worked scenario), the lesson note is a co
   - F4's and F6's ungraded "Do it yourself" card;
   - the folded step list.
 - The step list ticks a step only when `progress` says it passed. It marks a step left unpassed as "skipped" and says "n of N steps passed".
-- The note's folding is kept per viewer (`fsl-lesson-note`). The step shown is kept in `fsl-lesson-step-<id>-<lesson>`, which the main and session pages read for "step n/N".
+- The note's folding is kept per viewer (`cr-lesson-note`). The step shown is kept in `cr-lesson-step-<id>-<lesson>`, which the main and session pages read for "step n/N".
 
 Progress itself belongs to the session and is kept per unit (`Session.lesson_steps[<lesson>][<step>]`, migrations 0020 and 0027).
 
@@ -829,7 +829,7 @@ The steps are declared in the unit (`steps` of a foundation or a worked scenario
 - an `id`;
 - a `check` whose `kind` is one of `click`, `answer`, `choice`, `rules`, `sent`, `kali`, `loot`, `triage`, `waf_changed` or `replay` (`wargames.CHECK_KINDS`, validated at discovery);
 - a `point`;
-- a terminal `command` when the learner types one. `wargames.lesson` fills `{waf_rules}`, `{waf_reload}` and `{sudo}` in it from the declared WAF layout (`settings.FSL_WAF`).
+- a terminal `command` when the learner types one. `wargames.lesson` fills `{waf_rules}`, `{waf_reload}` and `{sudo}` in it from the declared WAF layout (`settings.CR_WAF`).
 
 A foundation step has no Kibana `query`. A Kibana point may carry `kql:`, a regular expression the learner's own submitted query (the Discover URL's `query`, else the query bar) must match, case-insensitively, before the ring leaves the query bar (stage `write`, `lesson.kibana.write`). So no highlight shows an answer before the learner has written the query.
 
@@ -1183,10 +1183,10 @@ Sign-in and comments are form posts. The flow first GETs the page. The box takes
 - It writes one JSON line per request to `records.jsonl`.
 - It re-reads the plan when the file changes, and stops when the file is removed or on SIGTERM.
 
-The generator runs on the slot's `fsl-kali` VM, as the system account `fsl-users`.
+The generator runs on the slot's `cr-kali` VM, as the system account `cr-users`.
 
 - Each persona is bound to one of the VM's origin addresses, so its source address is that origin's.
-- The generator is kept apart from the attacker. The default origin is not used. Neither is any origin's `source_ip` the attacker wears, nor the VM's unbound source (`ip route get` to the target). `POSTROUTING -m owner --uid-owner fsl-users -j RETURN` is inserted before the `ORIGIN-SNAT` SNAT jump, so the attacker's origin rewrite never applies to customers.
+- The generator is kept apart from the attacker. The default origin is not used. Neither is any origin's `source_ip` the attacker wears, nor the VM's unbound source (`ip route get` to the target). `POSTROUTING -m owner --uid-owner cr-users -j RETURN` is inserted before the `ORIGIN-SNAT` SNAT jump, so the attacker's origin rewrite never applies to customers.
 
 `platform/attacker.py` holds every command run on the box:
 
@@ -1250,9 +1250,9 @@ The design is phase P4 of `docs/superpowers/specs/2026-10-13-scenario-course-and
 
 A worked scenario sets `guidance` true and `lesson` to its id. Its steps then run on `/lesson/steps/` without seeding replays. Customers that cannot start close the session with 503.
 
-**The engine** is `platform/api/scenario_run.py`, with the pure rules in `platform/scenarios.py`. It is one thread in the platform process. It starts on the first scenario and at boot, from `fsl/wsgi.py` (`resume` marks an attack that was interrupted while firing as due again). A failure of a tick, or of the connection cleanup after it, is logged on its own and does not end the thread.
+**The engine** is `platform/api/scenario_run.py`, with the pure rules in `platform/scenarios.py`. It is one thread in the platform process. It starts on the first scenario and at boot, from `cr/wsgi.py` (`resume` marks an attack that was interrupted while firing as due again). A failure of a tick, or of the connection cleanup after it, is logged on its own and does not end the thread.
 
-Every `FSL_SCENARIO_TICK` (2 s), for each open scenario session, the engine does the following.
+Every `CR_SCENARIO_TICK` (2 s), for each open scenario session, the engine does the following.
 
 - It opens the window at its scheduled time (`minutes - window_minutes` after open) if the learner has not.
 - It claims each due attack and fires it on a pool of four through `views._fire`, marked `meta.scheduled`. This is not a replay mark, so the attack counts in both scores.
@@ -1261,8 +1261,8 @@ Every `FSL_SCENARIO_TICK` (2 s), for each open scenario session, the engine does
   - The case keeps sqlmap's conclusion lines and its 403 count (`meta.conclusions`, `meta.forbidden`, not judged).
   - `meta.blocked` is set on a 403, or on sqlmap's own not-injectable conclusion after a clean exit with no dumped row (`tools.found_not_injectable`).
   - The sqlmap cases decline sqlmap's offer to crack the hashes (`--answers=crack=N`). The dumped cells are therefore the raw hashes that `loot.matched` compares.
-- Every `FSL_SCENARIO_OBSERVE` (15 s), it pulls the customers' records and ingests the last 180 s.
-- Every `FSL_SCENARIO_WAF_POLL` (20 s), it reads the WAF file to notice a change made in the terminal.
+- Every `CR_SCENARIO_OBSERVE` (15 s), it pulls the customers' records and ingests the last 180 s.
+- Every `CR_SCENARIO_WAF_POLL` (20 s), it reads the WAF file to notice a change made in the terminal.
 - It judges an open window once the window has ended and every attack due inside it has fired or failed.
 
 Closing cancels the attacks still due. An attack already firing finishes and is recorded.
@@ -1384,7 +1384,7 @@ Scenario 4.2 (a person on the red console against the learner) is not declared, 
     - The data view is on the session's index pattern. It is shown by its name `logs-*` and never by the pattern.
     - It has the shared runtime fields plus these:
       - `log_source` (`suricata` or `modsecurity`);
-      - `sensor`: the map name of the sensor, matched on the sender's host name without its domain and slot number, with or without its first dash-separated part. The script therefore names no `fsl` host, and the edge's `edge` still reads as its map name. The names are `firewall` and `board.com` for Suricata and `waf` for every ModSecurity record, with slot suffixes stripped;
+      - `sensor`: the map name of the sensor, matched on the sender's host name without its domain and slot number, with or without its first dash-separated part. The script therefore names no `cr` host, and the edge's `edge` still reads as its map name. The names are `firewall` and `board.com` for Suricata and `waf` for every ModSecurity record, with slot suffixes stripped;
       - `request_headers`: one `Name: value` per request header, `X-Request-ID` left out;
       - `request_header`: a composite with one keyword per common header (`request_header.host`, `.user_agent`, `.referer`, `.cookie`, `.x_forwarded_for`, and the rest of `kibana.REQUEST_HEADERS_SHOWN`). It comes from Suricata's `http.request_headers` or ModSecurity's `transaction.request.headers`.
     - `sourceFilters` hide `_index`, `event.*`, `log.*`, `message`, `agent.*`, `ecs.*`, `host`, `host.*`, `input.*`, `error.*`, `http.*`, `transaction.*`, `metadata.*`, `data_stream.*`, `flow_id`, `tx_id`, `pcap_cnt`, `in_iface`, `pkt_src`, `community_id`, `src_ip`, `dest_ip`, `alert.signature` and `alert.signature_id` (`kibana.HIDDEN_FIELDS`). KQL on them still works.
@@ -1423,16 +1423,16 @@ Everything that differs between clouds is in `deploy/openstack/cloud.yaml`. It i
 - `bin/cloud up` creates the stack, then calls the fabric, images, slot and configure endpoints until `/api/range/ready/` is ready.
 - `bin/cloud down` keeps the key, backs the store up (`bin/backup`, keeping `backups.keep` copies) and removes the slot, the fabric, any image builder and the stack.
 - A `*_FAILED` stack is deleted (builders first). `up` creates it again, and `down` deletes it.
-- A stack whose VM has no running `fsl-platform` container and no store file has nothing to back up. `down` and `up --replace` then skip the backup, though they still refuse when ssh to the VM does not answer. A store beside a stopped `fsl-platform` container is not a refusal: `down` starts the container (the backup runs through `docker exec`), backs up, waits for the API, then removes the range. Plain `up` asks the VM about its hand-over every time, whether or not the API answers, and a VM that never took it (no `FSL_OPENSTACK_PASSWORD` in its `openstack.env`) gets the hand-over then. It writes the password and the range key, making the key if it is missing and the VM holds no store. It restores the newest backup that holds rows when the VM holds no store.
+- A stack whose VM has no running `cr-platform` container and no store file has nothing to back up. `down` and `up --replace` then skip the backup, though they still refuse when ssh to the VM does not answer. A store beside a stopped `cr-platform` container is not a refusal: `down` starts the container (the backup runs through `docker exec`), backs up, waits for the API, then removes the range. Plain `up` asks the VM about its hand-over every time, whether or not the API answers, and a VM that never took it (no `CR_OPENSTACK_PASSWORD` in its `openstack.env`) gets the hand-over then. It writes the password and the range key, making the key if it is missing and the VM holds no store. It restores the newest backup that holds rows when the VM holds no store.
 
 ### Built: the platform VM
 
 `deploy/openstack/platform.yaml` is a Heat template. It creates:
 
-- network and subnet `fsl-platform`;
+- network and subnet `cr-platform`;
 - a router to the external network, and a floating IP. With `network.address` set, it associates one the project already holds instead. A stack delete leaves that address in place;
 - a security group that opens tcp/22, tcp/8000, tcp/8002, tcp/3080 and ICMP to any address;
-- the Nova server `fsl-platform`, with a config drive.
+- the Nova server `cr-platform`, with a config drive.
 
 The template has no defaults. Every parameter comes from `deploy/openstack/cloud.yaml` (see `docs/OPENSTACK.md` §4).
 
@@ -1441,29 +1441,29 @@ cloud-init does the following on the platform VM:
 - installs `docker.io`, `docker-compose-v2` and `git`;
 - adds 4 GB of swap;
 - sets Docker's MTU to the Neutron network's, for the default bridge (`mtu`) and for every new bridge network, compose's included (`default-network-opts`);
-- clones `repository` at `ref` into `/opt/fsl`;
-- writes `FSL_IMAGE_TAG=<the checkout's commit>` to `/opt/fsl/.env`;
+- clones `repository` at `ref` into `/opt/cr`;
+- writes `CR_IMAGE_TAG=<the checkout's commit>` to `/opt/cr/.env`;
 - fetches the GeoIP database (`bin/fetch-geoip`). It needs no credential: Elastic's GeoIP endpoint serves GeoLite2 to anyone who accepts its terms in the URL;
 - adds `ubuntu` to the `docker` group.
 
-A systemd unit, `fsl-platform.service`, pulls the images of `compose.yaml` and runs `docker compose -f /opt/fsl/compose.yaml up -d` on every boot. It builds nothing. A failed pull does not stop the unit (`ExecStartPre=-`). `up` then builds what is missing from the checkout. `bin/platform-rebuild` avoids that by checking ghcr.io first.
+A systemd unit, `cr-platform.service`, pulls the images of `compose.yaml` and runs `docker compose -f /opt/cr/compose.yaml up -d` on every boot. It builds nothing. A failed pull does not stop the unit (`ExecStartPre=-`). `up` then builds what is missing from the checkout. `bin/platform-rebuild` avoids that by checking ghcr.io first.
 
 The platform VM runs only the platform's containers (`compose.yaml`). The board's ground truth is read from the wargame host at its management address.
 
-cloud-init sets `FSL_PUBLISH` to the VM's fixed address. Ports 8000, 8002 and 3080 are therefore published there and opened in the security group, and a browser reaches the console at the floating IP. `FSL_SYSLOG_PUBLISH=0.0.0.0` publishes 5140/udp on every address, for the edge's syslog. Port 9200 stays on loopback.
+cloud-init sets `CR_PUBLISH` to the VM's fixed address. Ports 8000, 8002 and 3080 are therefore published there and opened in the security group, and a browser reaches the console at the floating IP. `CR_SYSLOG_PUBLISH=0.0.0.0` publishes 5140/udp on every address, for the edge's syslog. Port 9200 stays on loopback.
 
 Every parameter of the template comes from `deploy/openstack/cloud.yaml` (`bin/platform-rebuild`, `bin/cloud`).
 
-- cloud-init writes those values as `FSL_OPENSTACK_*` and `FSL_OPNSENSE`, plus `_PROJECT` (the stack's own project), `_SSH_USER=ubuntu` and `_SSH_KEY=/data/ssh/id_ed25519`. It writes them to `/root/openstack.env` with mode 0600, then moves the file to `/opt/fsl/openstack.env`, which git ignores.
+- cloud-init writes those values as `CR_OPENSTACK_*` and `CR_OPNSENSE`, plus `_PROJECT` (the stack's own project), `_SSH_USER=ubuntu` and `_SSH_KEY=/data/ssh/id_ed25519`. It writes them to `/root/openstack.env` with mode 0600, then moves the file to `/opt/cr/openstack.env`, which git ignores.
 - The password is not in the template. Nova keeps the user data, and its metadata service serves it to whatever runs on the VM, the range's containers included.
-- `bin/platform-rebuild` appends `FSL_OPENSTACK_PASSWORD` over ssh once the VM is up. In the same way it writes the range ssh key into the platform's data volume (`README.md`).
+- `bin/platform-rebuild` appends `CR_OPENSTACK_PASSWORD` over ssh once the VM is up. In the same way it writes the range ssh key into the platform's data volume (`README.md`).
 - The platform service reads the file with `env_file` (`required: false`, `format: raw`). Compose passes it through without interpolating or unquoting.
 
-The platform on the VM uses the OpenStack adapter (`FSL_SUBSTRATE=range.openstack.connect`, written by cloud-init). It builds the range's networks itself through `/api/range/fabric/`, planned by `range/fabric.py`:
+The platform on the VM uses the OpenStack adapter (`CR_SUBSTRATE=range.openstack.connect`, written by cloud-init). It builds the range's networks itself through `/api/range/fabric/`, planned by `range/fabric.py`:
 
 - one `internet` network with a subnet per declared origin (DHCP off);
 - `estate` and `mgmt` (no gateway), on the CIDRs that `cloud.yaml` gives. The loader refuses CIDRs that overlap each other, the platform's network, Docker's default local address pools (172.17.0.0/16 to 172.31.0.0/16 and 192.168.0.0/16; moby `daemon/libnetwork/ipamutils/utils.go`), a network that `compose.yaml` declares, or a declared origin;
-- the keypair `fsl-platform`, from the key at `/data/ssh/id_ed25519`.
+- the keypair `cr-platform`, from the key at `/data/ssh/id_ed25519`.
 
 The platform makes that key only when it is absent at the first fabric POST. `bin/platform-rebuild` keeps a copy on the operator's machine and writes it into every new platform VM. A replaced VM therefore keeps the key that the keypair and the range's VMs trust.
 
@@ -1478,18 +1478,18 @@ The hosts boot from golden images. A golden image is a Glance image built once b
 - A host that `uploads` (the edge) is different. Its builder gets no credential. It makes the disk, serves it over HTTP on the platform network and prints the disk's SHA256 on its console. The platform pulls the disk, checks the SHA256, creates the Glance record and uploads the disk with its own token. The builder is deleted once Glance says active, and is never snapshotted.
 - The edge's builder downloads the OPNsense nano image. It checks its SHA256 and the release key's against `cloud.yaml`, and verifies the signature. It boots the image once under QEMU, answering its configuration importer so that it starts from `deploy/opnsense/config.xml`. It converts the result with `qemu-img` and serves it for the platform to upload as `fsl-opnsense-<version>` (`deploy/opnsense/build.sh`, `importer.py`).
 
-The wargames have no image each. One host image, `fsl-wargame-host` (`deploy/wargame-host/setup.sh`), is the base image plus `docker.io` and `docker-compose-v2`. It runs every wargame that its declaration entry lists (`wargames: [board, corp]`) as GHCR containers.
+The wargames have no image each. One host image, `cr-wargame-host` (`deploy/wargame-host/setup.sh`), is the base image plus `docker.io` and `docker-compose-v2`. It runs every wargame that its declaration entry lists (`wargames: [board, corp]`) as GHCR containers.
 
-- `range/wargame_host.py` renders each `wargames/<id>/compose.yaml` for the host into the bundle. It drops `build:` and the session network, names each container by its service, and writes the platform's `FSL_IMAGE_TAG` into the image references. It publishes the ports that the WAF proxies to (`publish: {board: 8000, corp-wp: 80}`).
+- `range/wargame_host.py` renders each `wargames/<id>/compose.yaml` for the host into the bundle. It drops `build:` and the session network, names each container by its service, and writes the platform's `CR_IMAGE_TAG` into the image references. It publishes the ports that the WAF proxies to (`publish: {board: 8000, corp-wp: 80}`).
 - `daemon.json` gives Docker's bridges the tenant MTU.
 - The builder has the Internet and pulls the images into the image. The range has none.
-- The builder then starts each wargame once and keeps its initialised data under `/opt/fsl/pristine` (`pristine.sh keep`, below under "Rebuild and reset"). This adds about 0.5 GB to the image and a few minutes to its build.
+- The builder then starts each wargame once and keeps its initialised data under `/opt/cr/pristine` (`pristine.sh keep`, below under "Rebuild and reset"). This adds about 0.5 GB to the image and a few minutes to its build.
 - The tag is in the bundle's digest, so a platform on a new tag plans a new host image.
 - The image count stays fixed as wargames are added: the base, the edge, the WAF, Kali and the wargame host.
 
-A wargame image can be sideloaded onto the platform (`FSL_SIDELOADED`, the names that `bin/platform-rebuild --sideload` gave; `docs/OPENSTACK.md` §5.3). It then reaches the wargame host without GHCR:
+A wargame image can be sideloaded onto the platform (`CR_SIDELOADED`, the names that `bin/platform-rebuild --sideload` gave; `docs/OPENSTACK.md` §5.3). It then reaches the wargame host without GHCR:
 
-1. `wargame_host.sideloaded_images` finds each service whose image is exactly `ghcr.io/nekonic/fsl-<name>:<FSL_IMAGE_TAG>`. The platform reads its image id from its own docker.
+1. `wargame_host.sideloaded_images` finds each service whose image is exactly `ghcr.io/nekonic/cr-<name>:<CR_IMAGE_TAG>`. The platform reads its image id from its own docker.
 2. The bundle gains a generated `deploy/wargame-host/loaded` file (`<image> <image id> <name>` per line), so the id is in the bundle digest. It also gains `deploy/wargame-host/served-from`, the platform's base URL. The builder gets that file, but the digest leaves it out, so a new fixed IP for the platform does not rebuild the image.
 3. `setup.sh` pulls from GHCR as before. Then for each `<name>` it fetches `<served-from><name>/`, which is `GET /api/range/images/sideloaded/<name>/` (`platform/api/sideloaded.py`). That endpoint streams `docker save` of the image. It answers 404 for a name that is not sideloaded or not run by a declared wargame.
 4. `setup.sh` runs `docker load` and refuses unless the loaded image's id equals the platform's. It prunes the GHCR copy.
@@ -1498,11 +1498,11 @@ With nothing sideloaded for a wargame, nothing changes. A slot standing before t
 
 The fabric also makes three security groups.
 
-- `fsl-range`: every range port off `mgmt` joins it. It lets any IPv4 in. The WAF defends the range and Neutron does not. Anti-spoofing stays on.
-- `fsl-reach`: it lets in only NTP (udp 123) from members of `fsl-mgmt`.
-- `fsl-mgmt`: every range host's `mgmt` port joins it. It lets in only members of `fsl-reach`.
+- `cr-range`: every range port off `mgmt` joins it. It lets any IPv4 in. The WAF defends the range and Neutron does not. Anti-spoofing stays on.
+- `cr-reach`: it lets in only NTP (udp 123) from members of `cr-mgmt`.
+- `cr-mgmt`: every range host's `mgmt` port joins it. It lets in only members of `cr-reach`.
 
-The platform attaches itself to `mgmt` through a port in `fsl-reach`, found by its own server id (`FSL_OPENSTACK_PLATFORM`, written at boot). It can therefore ssh to every host, while no host can open a connection to it but NTP. Kali's `mgmt` port reaches no other host. The runner reaches a host at its `mgmt` address unless the caller names a segment.
+The platform attaches itself to `mgmt` through a port in `cr-reach`, found by its own server id (`CR_OPENSTACK_PLATFORM`, written at boot). It can therefore ssh to every host, while no host can open a connection to it but NTP. Kali's `mgmt` port reaches no other host. The runner reaches a host at its `mgmt` address unless the caller names a segment.
 
 The range has no Internet and so no time source of its own. The scorer (the platform) compares target and sensor times with case windows on its own clock. The platform therefore serves time to the range:
 
@@ -1512,16 +1512,16 @@ The range has no Internet and so no time source of its own. The scorer (the plat
 
 The slot is the set of range hosts. It is managed through `/api/range/slot/` and planned by `range/slot.py`.
 
-- Each host has a port per declared segment, named `<host>.<segment>`, in `fsl-range` or, on `mgmt`, in `fsl-mgmt`. A standing `mgmt` port in another group is moved into `fsl-mgmt`.
+- Each host has a port per declared segment, named `<host>.<segment>`, in `cr-range` or, on `mgmt`, in `cr-mgmt`. A standing `mgmt` port in another group is moved into `cr-mgmt`.
 - The host that fills `gateway` holds every origin's gateway address on one Internet port. Cloud-init configures only the first address, so the host's user data adds the rest at every boot.
 - Every host's user data appends the `estate` names to `/etc/hosts`: the WAF's `board.com` and `corp.com`, and the wargame host's `board` and `corp-wp`. This is how the WAF finds each wargame's published port. Each database answers only inside its compose project on the host.
 - A standing server whose image (`image.id` in Nova) is not its host's ready image is `stale` in the plan. `POST /api/range/slot/` has Nova rebuild it from the ready image when no session holds the slot, and names the servers under `rebuilding`. The platform then resets that slot itself with `api/reset.py`: the slot reads `RESETTING` until Nova has shown each rebuilt server leave ACTIVE and come back, and `configure_slot()` has run. For a held slot it rebuilds nothing and reports the slot blocked.
 
-**Range slots.** `compute.slots` in `cloud.yaml` (default 1, `FSL_OPENSTACK_SLOTS` on the platform) sets how many copies of the range stand at once. `max_sessions` is that count.
+**Range slots.** `compute.slots` in `cloud.yaml` (default 1, `CR_OPENSTACK_SLOTS` on the platform) sets how many copies of the range stand at once. `max_sessions` is that count.
 
-- Slot 1 keeps the names above. Slot N>1 names its servers and ports `<host>-N` (`fsl-edge-2`, `fsl-waf-2.mgmt`) and tags its servers `fsl_slot=N` beside `fsl_host`.
-- Each slot beyond the first has its own copy of the internet and estate networks (`fsl-internet-N`, `fsl-estate-N`, tagged `fsl.slot=N`) with the same subnets. Every edge therefore holds the same 30 origin gateways, every Kali the same origin addresses, and an alert's source is sorted to the same country in every slot. Neutron allows the same CIDR on two networks that share no router.
-- `mgmt` is shared. Each slot's hosts take their own DHCP addresses there, and `fsl-mgmt` fences them as before.
+- Slot 1 keeps the names above. Slot N>1 names its servers and ports `<host>-N` (`cr-edge-2`, `cr-waf-2.mgmt`) and tags its servers `cr_slot=N` beside `cr_host`.
+- Each slot beyond the first has its own copy of the internet and estate networks (`cr-internet-N`, `cr-estate-N`, tagged `cr.slot=N`) with the same subnets. Every edge therefore holds the same 30 origin gateways, every Kali the same origin addresses, and an alert's source is sorted to the same country in every slot. Neutron allows the same CIDR on two networks that share no router.
+- `mgmt` is shared. Each slot's hosts take their own DHCP addresses there, and `cr-mgmt` fences them as before.
 - A slot adapter (`OpenStack.in_slot(n)`) reads only its own slot's servers, by their declared host name. Roles, runners, topology and the edge's rendered settings are therefore the same in every slot. Slot N's edge renders its hostname as `firewall-N`.
 - Opening the collector for one slot keeps the other slots' sender rules.
 - The platform binds a session to a slot at open (`Session.slot`, one open session per slot by a unique constraint). It takes the first free slot that is READY, chosen under a lock.
@@ -1529,7 +1529,7 @@ The slot is the set of range hosts. It is managed through `/api/range/slot/` and
 - `run_on_role` takes `--session` or `--slot`, and it refuses to run with neither when there is more than one slot.
 - The console's VM terminals take the session as `?arg=<id>` (ttyd `-a`) and open its slot's host.
 
-**The edge.** The OPNsense edge `fsl-edge` (vtnet0 internet as WAN, vtnet1 estate as LAN, vtnet2 mgmt as opt1) boots in the slot. `POST /api/range/configure/` sets it up:
+**The edge.** The OPNsense edge `cr-edge` (vtnet0 internet as WAN, vtnet1 estate as LAN, vtnet2 mgmt as opt1) boots in the slot. `POST /api/range/configure/` sets it up:
 
 1. It renders `deploy/opnsense/config.xml` for the slot (`range/opnsense.py`). The file carries the defaults of the `dnsmasq`, `Syslog` and `unboundplus` models, which the early-boot template render needs before OPNsense's migrations run.
 2. It stages the file, with the Suricata include `deploy/opnsense/suricata.yaml` and the starting rules, over the management ssh as root. It installs them and reboots the edge.
@@ -1557,11 +1557,11 @@ On the wargame host, the in-place reset (`clear_wargames()`) runs `docker compos
 
 Configure's `start_wargames()` starts every wargame at once, one ssh command each, through the `wargames` role. Each command runs three steps on the host (`wargame_host.up()`):
 
-- `docker compose -p <id> -f /opt/fsl/wargames/<id>.yaml up --no-start --pull never` creates the containers and their new, empty volumes.
-- `/opt/fsl/pristine.sh restore <id>` copies the pristine data into each volume of a container that has never run and whose volume is empty.
+- `docker compose -p <id> -f /opt/cr/wargames/<id>.yaml up --no-start --pull never` creates the containers and their new, empty volumes.
+- `/opt/cr/pristine.sh restore <id>` copies the pristine data into each volume of a container that has never run and whose volume is empty.
 - `up -d --wait --pull never` starts them. MySQL finds an initialised datadir and skips its initialisation, and the apps find their data in place.
 
-The pristine data is made once, when the wargame host's image is built. `setup.sh` runs `pristine.sh keep <id>` for each wargame: it brings the wargame up, waits until it is healthy, stops it, copies each container's volumes to `/opt/fsl/pristine/<id>/<container><path>`, and removes the containers with `down -v`. `down -v` at a reset never touches that copy. A host image without the copy starts its wargames from empty volumes, as before.
+The pristine data is made once, when the wargame host's image is built. `setup.sh` runs `pristine.sh keep <id>` for each wargame: it brings the wargame up, waits until it is healthy, stops it, copies each container's volumes to `/opt/cr/pristine/<id>/<container><path>`, and removes the containers with `down -v`. `down -v` at a reset never touches that copy. A host image without the copy starts its wargames from empty volumes, as before.
 
 Every session starts on the same pristine data, with fresh secrets:
 
@@ -1574,14 +1574,14 @@ The estate sensor starts in the same step, alongside the wargames: it does not d
 - It runs from `deploy/wargame-host/sensor.yaml` with host networking, on the interface that holds the host's estate address. It therefore sees the WAF-to-target leg.
 - Once the sensor answers, `start_sensor()` seeds the baseline rules through `rules/suricata.py`, with the rule file and reload that the host entry names.
 - Its role, `estate-sensor`, maps to the compose service `suricata`, so the runner execs into it.
-- The host entry names its rule file and reload command (`settings.FSL_EXTRA_SENSORS`). Every rule seed, validation, change and baseline check goes to both sensors.
+- The host entry names its rule file and reload command (`settings.CR_EXTRA_SENSORS`). Every rule seed, validation, change and baseline check goes to both sensors.
 - The host's `logs:` entry has rsyslog forward `eve.json` to the collector, tagged `suricata` (`range/waf.py`'s forwarding, by tag).
-- `fsl-reach` accepts syslog from the wargame host, as it does from the edge and the WAF.
+- `cr-reach` accepts syslog from the wargame host, as it does from the edge and the WAF.
 
 After a close, the platform does the reset itself. `platform/api/reset.py` starts a background thread that, under one hold of the rules lock, runs two sides at once.
 
 - One side is `reset_in_place()`:
-  - the edge's in-place reset (`reset_edge()`): the baseline `fsl.rules` go back, the installed files are checked by sha256 against the hash the edge recorded after its last install and boot, range pf states are dropped, the filter is reloaded and Suricata is restarted. On any mismatch it falls back to `configure_edge()`'s install and reboot;
+  - the edge's in-place reset (`reset_edge()`): the baseline `cr.rules` go back, the installed files are checked by sha256 against the hash the edge recorded after its last install and boot, range pf states are dropped, the filter is reloaded and Suricata is restarted. On any mismatch it falls back to `configure_edge()`'s install and reboot;
   - the collector's security group;
   - the wargame host: cleared, then its time source, wargames, sensor and log forwarding, in that order.
 - The other side polls `plan_slot()` until each rebuilt VM has been seen out of ACTIVE and back to ACTIVE. Then it runs `configure_rebuilt()` (each rebuilt host's time source, and the WAF's log forwarding) from a fresh read of the cloud.
@@ -1590,7 +1590,7 @@ Both sides retry while a VM does not answer ssh (up to 30 minutes). The first fa
 
 `configure_slot()` (the manual configure) runs every host's steps side by side, one thread per host: the edge (configure and reboot), the WAF, Kali, the wargame host, and the collector's security group. Every Ubuntu host's chain starts with its time source. It waits for all of them and fails with the first failure in that order.
 
-The close answers at once. The reset state (idle, running, failed and why) is held in the platform process. A reset also leaves a file `slot-N` under `FSL_RESET_OWED_DIR` (`/data/reset-owed`) from the moment it is claimed until it succeeds. At boot `fsl/wsgi.py` does the reset again for each owed slot, as a close does (rebuild, disabled rules marked enabled, in-place reset, configure), so a restart does not leave the slot refusing sessions; a failed reset keeps its file. `POST /api/range/configure/` stays the manual retry and clears a failed reset.
+The close answers at once. The reset state (idle, running, failed and why) is held in the platform process. A reset also leaves a file `slot-N` under `CR_RESET_OWED_DIR` (`/data/reset-owed`) from the moment it is claimed until it succeeds. At boot `cr/wsgi.py` does the reset again for each owed slot, as a close does (rebuild, disabled rules marked enabled, in-place reset, configure), so a restart does not leave the slot refusing sessions; a failed reset keeps its file. `POST /api/range/configure/` stays the manual retry and clears a failed reset.
 
 **Readiness.** Session create answers 409 while every slot is held or no free slot is ready.
 

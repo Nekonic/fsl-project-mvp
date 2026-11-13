@@ -35,7 +35,7 @@ class Sensor:
 def test_the_sensor_is_reloaded_through_its_command_socket_by_default():
     from django.conf import settings
 
-    assert (settings.FSL_SENSOR_RELOAD[0].rpartition("/")[2], *settings.FSL_SENSOR_RELOAD[1:3]) == RELOAD, (
+    assert (settings.CR_SENSOR_RELOAD[0].rpartition("/")[2], *settings.CR_SENSOR_RELOAD[1:3]) == RELOAD, (
         "kill -USR2 1 signals whatever is pid 1, which is Suricata only in "
         "its container and init on an instance, and it returns before the "
         "new rules have loaded, so the caller never learns whether they did"
@@ -81,7 +81,7 @@ def test_a_reload_the_sensor_did_not_confirm_fails_and_writes_the_old_rules_back
     )
 
 def test_the_rules_go_to_the_path_the_sensor_reads_and_roll_back_there():
-    edge_rules = "/usr/local/etc/suricata/rules/fsl.rules"
+    edge_rules = "/usr/local/etc/suricata/rules/cr.rules"
     sensor = Sensor(Ran(0, BUSY))
     sensor.files[edge_rules] = BEFORE
 
@@ -100,15 +100,15 @@ def test_on_openstack_the_rules_editor_writes_and_reloads_what_the_edge_loads():
 
     read = subprocess.run(
         [sys.executable, "-c",
-         "import fsl.settings as s; print(s.FSL_SENSOR_RULES); print(' '.join(s.FSL_SENSOR_RELOAD))"],
+         "import cr.settings as s; print(s.CR_SENSOR_RULES); print(' '.join(s.CR_SENSOR_RELOAD))"],
         cwd=pathlib.Path(__file__).resolve().parents[1], capture_output=True, text=True,
-        env={**{k: v for k, v in os.environ.items() if not k.startswith("FSL_SENSOR")},
-             "DJANGO_SETTINGS_MODULE": "fsl.settings", "FSL_SUBSTRATE": "range.openstack.connect"},
+        env={**{k: v for k, v in os.environ.items() if not k.startswith("CR_SENSOR")},
+             "DJANGO_SETTINGS_MODULE": "cr.settings", "CR_SUBSTRATE": "range.openstack.connect"},
     )
     assert read.returncode == 0, read.stderr[-300:]
 
     rules, reload = read.stdout.strip().splitlines()
-    assert rules == "/usr/local/etc/suricata/rules/fsl.rules", (
+    assert rules == "/usr/local/etc/suricata/rules/cr.rules", (
         "the editor wrote /var/lib/suricata/rules/local.rules on the edge, a "
         "file the edge's Suricata never loads"
     )

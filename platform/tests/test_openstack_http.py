@@ -67,7 +67,7 @@ class Cloud:
                 if cloud.refuse_logins:
                     return self._send(401, {"error": {
                         "code": 401, "title": "Unauthorized",
-                        "message": "The account is disabled for user: fsl",
+                        "message": "The account is disabled for user: cr",
                     }})
                 cloud.tokens += 1
                 self._send(201, {"token": {}}, {"X-Subject-Token": f"tok{cloud.tokens}"})
@@ -104,8 +104,8 @@ def cloud():
 def reader(spy):
     base = f"http://127.0.0.1:{spy.port}"
     return openstack.http_reader(
-        openstack.Cloud(keystone=base, neutron=base, nova=base, project="fsl",
-                        user="fsl", ssh_user="fsl", ssh_key="/keys/fsl"),
+        openstack.Cloud(keystone=base, neutron=base, nova=base, project="cr",
+                        user="cr", ssh_user="cr", ssh_key="/keys/cr"),
         password="secret",
     )
 
@@ -145,8 +145,8 @@ def test_an_adapter_with_nowhere_else_to_look_names_the_cloud_it_could_not_reach
     from range import declared
 
     far = "http://127.0.0.1:1"
-    cloudspec = openstack.Cloud(keystone=far, neutron=far, nova=far, project="fsl",
-                                user="fsl", ssh_user="fsl", ssh_key="/k")
+    cloudspec = openstack.Cloud(keystone=far, neutron=far, nova=far, project="cr",
+                                user="cr", ssh_user="cr", ssh_key="/k")
     adapter = openstack.OpenStack(
         declared.read(), cloudspec, get=openstack.http_reader(cloudspec, "secret")
     )
@@ -157,18 +157,18 @@ def test_an_adapter_with_nowhere_else_to_look_names_the_cloud_it_could_not_reach
 
 REAL_SHAPES = {
     "networks": [
-        {"id": "net-ru", "name": "range1-ru-v4", "tags": ["fsl.segment.id=ru"],
+        {"id": "net-ru", "name": "range1-ru-v4", "tags": ["cr.segment.id=ru"],
          "admin_state_up": True, "status": "ACTIVE", "shared": False,
-         "project_id": "fsl", "subnets": ["sub-ru"]},
+         "project_id": "cr", "subnets": ["sub-ru"]},
     ],
     "subnets": [{"cidr": "5.188.10.0/24", "gateway_ip": "5.188.10.1",
                  "id": "sub-ru", "network_id": "net-ru", "ip_version": 4}],
     "servers": [
-        {"name": "fsl-waf", "id": "srv-waf", "status": "ACTIVE",
+        {"name": "cr-waf", "id": "srv-waf", "status": "ACTIVE",
          "addresses": {"range1-ru-v4": [
              {"addr": "5.188.10.4", "OS-EXT-IPS-MAC:mac_addr": "00:0c:29:0d:11:74",
               "OS-EXT-IPS:type": "fixed", "version": 4}]}},
-        {"name": "fsl-edge", "id": "srv-edge", "status": "ACTIVE",
+        {"name": "cr-edge", "id": "srv-edge", "status": "ACTIVE",
          "addresses": {"range1-ru-v4": [
              {"addr": "5.188.10.9", "OS-EXT-IPS:type": "fixed", "version": 4}]}},
     ],
@@ -199,7 +199,7 @@ def test_describe_runs_end_to_end_over_http_against_reference_shapes(cloud):
             roles=one.roles, watches=one.watches, default_origin=one.default_origin,
         )
         cloudspec = openstack.Cloud(keystone=base, neutron=base, nova=base,
-                                    project="fsl", user="fsl", ssh_user="fsl", ssh_key="/k")
+                                    project="cr", user="cr", ssh_user="cr", ssh_key="/k")
         shape = openstack.OpenStack(
             only_edge, cloudspec, get=openstack.http_reader(cloudspec, "secret")
         ).describe()
@@ -210,10 +210,10 @@ def test_describe_runs_end_to_end_over_http_against_reference_shapes(cloud):
     edge = shape.segments[0]
     assert (edge.id, edge.subnet, edge.gateway) == ("ru", "5.188.10.0/24", "5.188.10.1")
     assert [(n.name, n.address) for n in edge.nodes] == [
-        ("fsl-edge", "5.188.10.9"), ("fsl-waf", "5.188.10.4"),
+        ("cr-edge", "5.188.10.9"), ("cr-waf", "5.188.10.4"),
     ]
     assert [(s.name, s.watches) for s in shape.sensors] == [
-        ("fsl-edge", "fsl-edge")
+        ("cr-edge", "cr-edge")
     ]
 
 
@@ -278,8 +278,8 @@ def keystone():
 def test_the_endpoints_come_from_the_token_not_from_configuration(keystone, interface, neutron, nova):
     found = openstack.discover(
         keystone=f"http://127.0.0.1:{keystone.port}",
-        user="range-operator", password="secret", project="fsl",
-        ssh_user="debian", ssh_key="/keys/fsl", interface=interface,
+        user="range-operator", password="secret", project="cr",
+        ssh_user="debian", ssh_key="/keys/cr", interface=interface,
     )
 
     assert (found.neutron, found.nova) == (neutron, nova)
@@ -288,7 +288,7 @@ def test_the_endpoints_come_from_the_token_not_from_configuration(keystone, inte
 def test_the_cloud_is_read_as_the_keystone_user_not_the_ssh_login(cloud):
     base = f"http://127.0.0.1:{cloud.port}"
     ask = openstack.http_reader(
-        openstack.Cloud(keystone=base, neutron=base, nova=base, project="fsl",
+        openstack.Cloud(keystone=base, neutron=base, nova=base, project="cr",
                         user="range-operator", ssh_user="debian", ssh_key="/k"),
         password="secret",
     )
@@ -301,15 +301,15 @@ def test_the_cloud_is_read_as_the_keystone_user_not_the_ssh_login(cloud):
     )
 
 def test_a_write_sends_its_verb_its_body_and_the_token_and_reads_the_answer(cloud):
-    body = {"network": {"name": "fsl-internet"}}
-    cloud.write_answers = [(201, {"network": {"id": "net-1", "name": "fsl-internet"}})]
+    body = {"network": {"name": "cr-internet"}}
+    cloud.write_answers = [(201, {"network": {"id": "net-1", "name": "cr-internet"}})]
 
     answered = reader(cloud)(f"POST http://127.0.0.1:{cloud.port}/v2.0/networks", body)
 
     verb, path, sent, headers = cloud.written[0]
     assert (verb, path, sent) == ("POST", "/v2.0/networks", body)
     assert headers.get("X-Auth-Token") == "tok1"
-    assert answered == {"network": {"id": "net-1", "name": "fsl-internet"}}
+    assert answered == {"network": {"id": "net-1", "name": "cr-internet"}}
 
 def test_a_delete_answered_with_no_body_is_done(cloud):
     cloud.write_answers = [(204, None)]
@@ -362,8 +362,8 @@ def glance():
 
 def uploader(base):
     return openstack.http_reader(
-        openstack.Cloud(keystone=base, neutron=base, nova=base, glance=base, project="fsl",
-                        user="fsl", ssh_user="fsl", ssh_key="/keys/fsl"),
+        openstack.Cloud(keystone=base, neutron=base, nova=base, glance=base, project="cr",
+                        user="cr", ssh_user="cr", ssh_key="/keys/cr"),
         password="secret",
     )
 

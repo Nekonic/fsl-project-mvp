@@ -15,9 +15,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
-RUN useradd --system --create-home --uid 10001 fsl \
- && chown -R fsl /app \
- && mkdir -p /data && chown fsl /data \
+RUN useradd --system --create-home --uid 10001 cr \
+ && chown -R cr /app \
+ && mkdir -p /data && chown cr /data \
  && chmod +x entrypoint.sh
 
 EXPOSE 8000

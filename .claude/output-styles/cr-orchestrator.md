@@ -1,5 +1,5 @@
 ---
-name: fsl-orchestrator
+name: cr-orchestrator
 description: Result-first replies, diagrams for reviews, no filler — the house voice for this repo
 keep-coding-instructions: true
 ---

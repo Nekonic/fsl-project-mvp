@@ -30,12 +30,12 @@ def test_every_built_image_is_named_where_ci_publishes_it():
         name: service.get("image")
         for name, service in composed.services().items()
         if "build" in service
-        and not re.fullmatch(r"ghcr\.io/nekonic/fsl-[a-z0-9-]+:\$\{FSL_IMAGE_TAG:-dev\}",
+        and not re.fullmatch(r"ghcr\.io/nekonic/cr-[a-z0-9-]+:\$\{CR_IMAGE_TAG:-dev\}",
                              service.get("image") or "")
     }
 
     assert not unnamed, (
-        f"these are built without a ghcr.io/nekonic/fsl-...:${{FSL_IMAGE_TAG:-dev}} "
+        f"these are built without a ghcr.io/nekonic/cr-...:${{CR_IMAGE_TAG:-dev}} "
         f"name, so a VM cannot pull them and compose names them after the "
         f"project, and a second session's stack would build them again: {unnamed}"
     )
@@ -163,10 +163,10 @@ def test_only_the_platform_the_gns3_server_and_the_syslog_collector_may_be_publi
     }
 
     assert chosen == {
-        ("platform", "${FSL_PUBLISH:-127.0.0.1}:8000:8000"),
-        ("platform", "${FSL_PUBLISH:-127.0.0.1}:8002:8002"),
-        ("gns3", "${FSL_PUBLISH:-127.0.0.1}:3080:3080"),
-        ("collector", "${FSL_SYSLOG_PUBLISH:-127.0.0.1}:5140:5140/udp"),
+        ("platform", "${CR_PUBLISH:-127.0.0.1}:8000:8000"),
+        ("platform", "${CR_PUBLISH:-127.0.0.1}:8002:8002"),
+        ("gns3", "${CR_PUBLISH:-127.0.0.1}:3080:3080"),
+        ("collector", "${CR_SYSLOG_PUBLISH:-127.0.0.1}:5140:5140/udp"),
     }, chosen
 
 def test_the_address_a_vm_publishes_on_stays_out_of_git():

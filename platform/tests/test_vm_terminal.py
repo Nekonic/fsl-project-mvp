@@ -22,11 +22,11 @@ class Slot:
 
     def describe(self):
         return Shape(segments=(Segment(id="mgmt", name="Management", subnet="10.31.0.0/16",
-                                       nodes=(Node("fsl-waf", f"10.31.{self.number}.9"),)),),
+                                       nodes=(Node("cr-waf", f"10.31.{self.number}.9"),)),),
                      sensors=())
 
     def host_key_alias(self, address):
-        return f"fsl-server-{self.number}"
+        return f"cr-server-{self.number}"
 
 
 class Cloud:
@@ -39,7 +39,7 @@ class Cloud:
 
 def _found(monkeypatch, capsys, slots, session):
     monkeypatch.setattr("range.substrate", lambda: Cloud(slots))
-    monkeypatch.setattr(sys, "argv", ["-", "fsl-waf", session])
+    monkeypatch.setattr(sys, "argv", ["-", "cr-waf", session])
     try:
         exec(compile(_finder(), str(SCRIPT), "exec"), {"__name__": "__main__"})
     except SystemExit as stopped:
@@ -54,7 +54,7 @@ def _found(monkeypatch, capsys, slots, session):
 def test_the_shell_opens_on_the_slot_the_named_session_holds(monkeypatch, capsys):
     held = Session.objects.create(scenario="board", baseline=[], slot=2)
 
-    assert _found(monkeypatch, capsys, 2, str(held.pk))[:2] == (None, "10.31.2.9 fsl-server-2")
+    assert _found(monkeypatch, capsys, 2, str(held.pk))[:2] == (None, "10.31.2.9 cr-server-2")
 
 
 @pytest.mark.django_db
@@ -83,7 +83,7 @@ def test_a_refused_lookup_ends_the_shell_without_ssh_and_tells_the_learner_one_p
     reached = tmp_path / "ssh-reached"
     env = _fakes(tmp_path, python="cat >/dev/null; echo 'no open session 7' >&2; exit 2", ssh=f"touch {reached}")
 
-    ran = subprocess.run(["sh", str(SCRIPT), "fsl-waf", "7"], capture_output=True, text=True, env=env)
+    ran = subprocess.run(["sh", str(SCRIPT), "cr-waf", "7"], capture_output=True, text=True, env=env)
 
     assert ran.returncode != 0 and not reached.exists()
     assert ran.stdout.strip() == "Connection to waf failed. Reopen the terminal in a moment."
@@ -93,12 +93,12 @@ def test_a_refused_lookup_ends_the_shell_without_ssh_and_tells_the_learner_one_p
 
 def test_the_kali_pane_logs_in_as_the_kali_user_and_the_waf_pane_as_the_cloud_user(tmp_path):
     seen = tmp_path / "ssh-argv"
-    env = _fakes(tmp_path, python="cat >/dev/null; echo '10.31.0.180 fsl-server-1'",
+    env = _fakes(tmp_path, python="cat >/dev/null; echo '10.31.0.180 cr-server-1'",
                  ssh=f'printf "%s\\n" "$@" > {seen}')
 
-    subprocess.run(["sh", str(SCRIPT), "fsl-kali", "3"], capture_output=True, text=True, env=env)
+    subprocess.run(["sh", str(SCRIPT), "cr-kali", "3"], capture_output=True, text=True, env=env)
     kali = seen.read_text().split("\n")
-    subprocess.run(["sh", str(SCRIPT), "fsl-waf", "3"], capture_output=True, text=True, env=env)
+    subprocess.run(["sh", str(SCRIPT), "cr-waf", "3"], capture_output=True, text=True, env=env)
     waf = seen.read_text().split("\n")
 
     assert "kali@10.31.0.180" in kali and kali[-2] == "kali@10.31.0.180", (
@@ -108,10 +108,10 @@ def test_the_kali_pane_logs_in_as_the_kali_user_and_the_waf_pane_as_the_cloud_us
 
 
 def test_an_ssh_that_cannot_connect_ends_in_the_same_plain_line(tmp_path):
-    env = _fakes(tmp_path, python="cat >/dev/null; echo '10.31.0.180 fsl-server-1'",
+    env = _fakes(tmp_path, python="cat >/dev/null; echo '10.31.0.180 cr-server-1'",
                  ssh="echo 'ssh: connect to host 10.31.0.180 port 22: Connection timed out' >&2; exit 255")
 
-    ran = subprocess.run(["sh", str(SCRIPT), "fsl-kali", "3"], capture_output=True, text=True, env=env)
+    ran = subprocess.run(["sh", str(SCRIPT), "cr-kali", "3"], capture_output=True, text=True, env=env)
 
     assert ran.returncode == 1
     assert ran.stdout.strip() == "Connection to kali failed. Reopen the terminal in a moment."

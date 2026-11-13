@@ -10,8 +10,8 @@ FAST=0
 CHANGED=0
 LIVE=0
 BASE=""
-PLATFORM="${FSL_PLATFORM_URL:-http://localhost:8000}"
-export FSL_PLATFORM_URL="$PLATFORM"
+PLATFORM="${CR_PLATFORM_URL:-http://localhost:8000}"
+export CR_PLATFORM_URL="$PLATFORM"
 FAILED=0
 
 case "${1:-}" in
@@ -82,9 +82,9 @@ fi
 live_acceptance() {
 only="$1"
 section "stack"
-owner="$(docker inspect fsl-platform --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null)"
+owner="$(docker inspect cr-platform --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null)"
 if [ -z "$owner" ]; then
-  stack_down 'fsl-platform is not there — docker compose up -d --build'
+  stack_down 'cr-platform is not there — docker compose up -d --build'
 fi
 if [ "$(cd "$owner" 2>/dev/null && pwd -P)" != "$(pwd -P)" ]; then
   fail "the stack was brought up from $owner, not from $ROOT"
@@ -97,7 +97,7 @@ open_sessions="$("$PY" - <<'OPENCHECK' 2>/dev/null
 import json, os, sys, urllib.request
 try:
     with urllib.request.urlopen(
-        os.environ["FSL_PLATFORM_URL"] + "/api/sessions/?state=open", timeout=5
+        os.environ["CR_PLATFORM_URL"] + "/api/sessions/?state=open", timeout=5
     ) as answer:
         rows = json.load(answer)
 except Exception:
@@ -124,15 +124,15 @@ else
   stack_down "platform not responding after a restart — docker compose logs platform"
 fi
 
-FSL_ACCEPTANCE_SESSIONS="$(mktemp)"
-export FSL_ACCEPTANCE_SESSIONS
+CR_ACCEPTANCE_SESSIONS="$(mktemp)"
+export CR_ACCEPTANCE_SESSIONS
 
 opened="$("$PY" - <<'OPENSTACK'
 import json, os, sys, urllib.error, urllib.request
 
 def post(path, body):
     request = urllib.request.Request(
-        os.environ["FSL_PLATFORM_URL"] + path, json.dumps(body).encode(),
+        os.environ["CR_PLATFORM_URL"] + path, json.dumps(body).encode(),
         {"Content-Type": "application/json"},
     )
     return json.load(urllib.request.urlopen(request, timeout=900))
@@ -147,7 +147,7 @@ try:
 except OSError as error:
     print(refused(error), file=sys.stderr)
     sys.exit(1)
-with open(os.environ["FSL_ACCEPTANCE_SESSIONS"], "a") as ids:
+with open(os.environ["CR_ACCEPTANCE_SESSIONS"], "a") as ids:
     ids.write(f"{session['id']}\n")
 print(session["id"])
 try:
@@ -176,7 +176,7 @@ import json, os, pathlib, sys, time, urllib.request
 
 def resetting():
     try:
-        with urllib.request.urlopen(os.environ["FSL_PLATFORM_URL"] + "/api/range/ready/", timeout=30) as answer:
+        with urllib.request.urlopen(os.environ["CR_PLATFORM_URL"] + "/api/range/ready/", timeout=30) as answer:
             readiness = json.load(answer)
     except (OSError, ValueError):
         return False
@@ -192,7 +192,7 @@ body = json.dumps(
     {"content": pathlib.Path("deploy/suricata/rules/local.rules").read_text()}
 ).encode()
 request = urllib.request.Request(
-    os.environ["FSL_PLATFORM_URL"] + "/api/rules/validate/", body,
+    os.environ["CR_PLATFORM_URL"] + "/api/rules/validate/", body,
     {"Content-Type": "application/json"},
 )
 try:
@@ -219,10 +219,10 @@ else
 fi
 
 section "housekeeping"
-if pruned="$(./bin/prune --ids "$FSL_ACCEPTANCE_SESSIONS" --apply 2>&1)"; then
+if pruned="$(./bin/prune --ids "$CR_ACCEPTANCE_SESSIONS" --apply 2>&1)"; then
   ok "$(printf '%s\n' "$pruned" | head -1) - only sessions this run made"
 else
-  printf '     could not prune the sessions this run made; their ids are in %s\n' "$FSL_ACCEPTANCE_SESSIONS"
+  printf '     could not prune the sessions this run made; their ids are in %s\n' "$CR_ACCEPTANCE_SESSIONS"
 fi
 }
 

@@ -45,7 +45,7 @@ def browsed(url, status, request_id=1, ms=40, at=None):
     return {"id": request_id, "at": at or time.time(), "method": "GET", "url": f"http://board.com{url}",
             "status": status, "blocked": status == 403, "ms": ms}
 
-def http_event(marker, url, status, host="fsl-wargame-host", agent="Mozilla/5.0", event_type="http", **fields):
+def http_event(marker, url, status, host="cr-wargame-host", agent="Mozilla/5.0", event_type="http", **fields):
     headers = [{"name": "X-Request-ID", "value": marker}] if marker else []
     headers += [{"name": "X-Forwarded-For", "value": fields["xff"]}] if fields.get("xff") else []
     return {"event": {"module": "suricata"}, "event_type": event_type, "timestamp": (fields.get("at") or timezone.now()).isoformat(),
@@ -70,7 +70,7 @@ def on_map(found):
     return patch("api.views._map_found", lambda session: found)
 
 def on_the_range():
-    return override_settings(FSL_TOPOLOGY=TOPOLOGY, RANGE=declared.read())
+    return override_settings(CR_TOPOLOGY=TOPOLOGY, RANGE=declared.read())
 
 def detected(session, detection_id, source, marker, signature="", src_ip=None, **raw):
     return Detection.objects.create(session=session, detection_id=detection_id, source=source, signature=signature,
@@ -213,7 +213,7 @@ def test_f3_reads_the_two_legs_of_one_search_by_destination_and_counts_both_legs
     marker = session.browse_marker
     searched = [browsed("/search/?q=kim2026", 200), browsed("/search/?q=lee2026", 200, request_id=2)]
     legs = [event for word in ("kim2026", "lee2026") for event in (
-        http_event(marker, f"/search/?q={word}", 200, host="fsl-edge", src_ip=CUSTOMER, dest_ip=WAF, dest_port=80),
+        http_event(marker, f"/search/?q={word}", 200, host="cr-edge", src_ip=CUSTOMER, dest_ip=WAF, dest_port=80),
         http_event(marker, f"/search/?q={word}", 200, src_ip=WAF, dest_ip=BOARD, xff=CUSTOMER))]
     with on_the_range(), on_map(read_slot()), patch.object(site, "kept", return_value=searched), indexed(*legs):
         step(client, session, "search")
@@ -301,7 +301,7 @@ def test_f4_write_passes_only_when_the_learner_s_own_rule_alerted_on_a_script_se
     RuleSet.objects.create(content=posture, applied_at=timezone.now())
     before = browsed(SCRIPT_SEARCH, 403, at=(applied - timedelta(minutes=1)).timestamp())
     search = browsed(SCRIPT_SEARCH, 403, request_id=2)
-    logged = http_event(session.browse_marker, SCRIPT_SEARCH, 403, host="fsl-edge", src_ip=CUSTOMER, dest_ip=WAF,
+    logged = http_event(session.browse_marker, SCRIPT_SEARCH, 403, host="cr-edge", src_ip=CUSTOMER, dest_ip=WAF,
                         dest_port=80)
     with quietly():
         with ruled(posture), patch.object(site, "kept", return_value=[search]):
@@ -356,7 +356,7 @@ def test_the_f5_sqlmap_step_accepts_a_run_with_a_random_user_agent(client):
         step(client, session, "sqlmap", tail="", body={"state": "reached"})
     marker = Session.objects.get(pk=session.pk).lesson_steps["f5"]["sqlmap"]["marker"]
     settled = timezone.now() - timedelta(seconds=20)
-    run = [http_event(marker, f"/?sort=posts_post.id{n}", 403, host="fsl-edge", agent="Opera/9.21",
+    run = [http_event(marker, f"/?sort=posts_post.id{n}", 403, host="cr-edge", agent="Opera/9.21",
                        src_ip=KALI, dest_ip=WAF, at=settled) for n in range(3)]
     with indexed(*run), quietly():
         ran = step(client, session, "sqlmap").json()
@@ -409,9 +409,9 @@ def test_a_kali_step_writes_its_marker_to_the_stamp_proxy_shows_no_runnable_comm
     marker = Session.objects.get(pk=session.pk).lesson_steps["f5"]["agent"]["marker"]
     shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
     settled = timezone.now() - timedelta(seconds=20)
-    run = [http_event(marker, f"/?sort=posts_post.id{n}", 403, host="fsl-edge", agent="Opera/9.21",
+    run = [http_event(marker, f"/?sort=posts_post.id{n}", 403, host="cr-edge", agent="Opera/9.21",
                        src_ip=KALI, dest_ip=WAF, at=settled) for n in range(3)]
-    fresh = http_event(marker, "/?sort=posts_post.id9", 403, host="fsl-edge", agent="Opera/9.21", src_ip=KALI, dest_ip=WAF)
+    fresh = http_event(marker, "/?sort=posts_post.id9", 403, host="cr-edge", agent="Opera/9.21", src_ip=KALI, dest_ip=WAF)
     with indexed(), quietly():
         early = step(client, session, "agent").json()
     with indexed(*run, fresh), quietly():
@@ -455,7 +455,7 @@ def test_f5_reads_the_verdict_from_sqlmap_s_own_log_and_the_run_s_source_and_rul
 def test_f6_reads_the_exception_the_alerts_the_attack_drew_and_the_errors_it_caused_from_the_run(client):
     session = opened("f6")
     kali_run(session, "f6", "dump", "dump-1")
-    edge = [http_event("dump-1", f"/?sort=posts_post.id{n}", status, host="fsl-edge", src_ip=KALI, dest_ip=WAF,
+    edge = [http_event("dump-1", f"/?sort=posts_post.id{n}", status, host="cr-edge", src_ip=KALI, dest_ip=WAF,
                        dest_port=80) for n, status in enumerate((500, 500, 200))]
     upstream = [http_event("dump-1", f"/?sort=posts_post.id{n}", status, src_ip=WAF, dest_ip=BOARD)
                 for n, status in enumerate((500, 500, 200))]
@@ -553,7 +553,7 @@ def test_a_foundation_that_could_not_be_judged_is_refused_at_discovery(settings,
     taught = [{"id": "a", "order": 1, "text": "lesson.demo", "cases": ["board-normal-search"],
                "steps": [{"id": "one", "check": {"kind": "click"}}, {"id": "two", "check": check}]}]
     (folder / "scenario.yaml").write_text(yaml.safe_dump({**A_SCENARIO, "foundations": taught}))
-    settings.FSL_SOURCE = str(tmp_path)
+    settings.CR_SOURCE = str(tmp_path)
 
     with pytest.raises(wargames.InvalidCatalogue, match=reason):
         wargames._discover()

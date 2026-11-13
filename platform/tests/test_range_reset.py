@@ -11,8 +11,8 @@ from range.ports import Drifted, Ran, RangeUnavailable
 
 pytestmark = pytest.mark.django_db
 
-ACTIVE = (("fsl-edge", "s1", "ACTIVE"), ("fsl-waf", "s2", "ACTIVE"))
-REBUILDING = (("fsl-edge", "s1", "REBUILD"), ("fsl-waf", "s2", "REBUILD"))
+ACTIVE = (("cr-edge", "s1", "ACTIVE"), ("cr-waf", "s2", "ACTIVE"))
+REBUILDING = (("cr-edge", "s1", "REBUILD"), ("cr-waf", "s2", "REBUILD"))
 
 class Slot:
     def __init__(self, configure=None, plans=None):
@@ -30,7 +30,7 @@ class Slot:
     def configure_slot(self):
         self.configured += 1
         self.configure()
-        return [("fsl-edge", ("sensing",))]
+        return [("cr-edge", ("sensing",))]
 
     def runner(self, role):
         return lambda *a, **k: Ran(0, "")
@@ -59,8 +59,8 @@ def _until_settled():
 
 def test_closing_a_session_on_the_cloud_configures_the_slot_once_its_vms_are_active(client):
     session = Session.objects.create(scenario="board", baseline=[])
-    rebuilding = (("fsl-edge", "s1", "REBUILD"), ("fsl-waf", "s2", "REBUILD"))
-    half = (("fsl-edge", "s1", "REBUILD"), ("fsl-waf", "s2", "ACTIVE"))
+    rebuilding = (("cr-edge", "s1", "REBUILD"), ("cr-waf", "s2", "REBUILD"))
+    half = (("cr-edge", "s1", "REBUILD"), ("cr-waf", "s2", "ACTIVE"))
     cloud = Slot(plans=[rebuilding, half])
 
     with patch("api.views.substrate", lambda: cloud):
@@ -96,7 +96,7 @@ def test_while_the_reset_runs_the_range_says_it_is_resetting_and_refuses_a_sessi
 
 def test_a_failed_reset_is_reported_until_configure_is_called_by_hand(client):
     def drifts():
-        raise Drifted("fsl-edge did not take its configuration")
+        raise Drifted("cr-edge did not take its configuration")
 
     tried = Slot(configure=drifts)
     reset.begin(tried, threading.RLock()).join(5)
@@ -110,13 +110,13 @@ def test_a_failed_reset_is_reported_until_configure_is_called_by_hand(client):
 
     assert failed["ready"] is False
     assert failed["slot"]["phase"] == "RESET_FAILED"
-    assert any("fsl-edge did not take its configuration" in reason
+    assert any("cr-edge did not take its configuration" in reason
                for reason in failed["slot"]["blocked"])
     assert retried.status_code == 200
     assert after["ready"] is True and after["slot"]["phase"] == "READY"
 
 def test_the_reset_retries_configure_while_the_rebuilt_vms_do_not_answer_ssh(client):
-    unanswered = [RangeUnavailable("fsl-edge never reported the command finishing")] * 2
+    unanswered = [RangeUnavailable("cr-edge never reported the command finishing")] * 2
 
     def answers_later():
         if unanswered:
@@ -129,8 +129,8 @@ def test_the_reset_retries_configure_while_the_rebuilt_vms_do_not_answer_ssh(cli
     assert reset.standing()["state"] == reset.IDLE
 
 def test_the_reset_does_not_configure_a_vm_nova_still_shows_active_from_before_its_rebuild(client):
-    edge_lags = (("fsl-edge", "s1", "ACTIVE"), ("fsl-waf", "s2", "REBUILD"))
-    edge_rebuilds = (("fsl-edge", "s1", "REBUILD"), ("fsl-waf", "s2", "ACTIVE"))
+    edge_lags = (("cr-edge", "s1", "ACTIVE"), ("cr-waf", "s2", "REBUILD"))
+    edge_rebuilds = (("cr-edge", "s1", "REBUILD"), ("cr-waf", "s2", "ACTIVE"))
     configured_after = []
     cloud = Slot(plans=[ACTIVE, edge_lags, edge_rebuilds])
     cloud.configure = lambda: configured_after.append(list(cloud.plans))
@@ -165,51 +165,51 @@ class ResetsInPlace(Slot):
         self.reset += 1
         self.left_to_the_rebuild.append(list(rebuilt))
         self.in_place()
-        return [("fsl-edge", ("reset in place",))]
+        return [("cr-edge", ("reset in place",))]
 
     def configure_rebuilt(self, hosts):
         self.configured_rebuilt.append(list(hosts))
         self.rebuilt_step(hosts)
         return [(host, ()) for host in hosts]
 
-WAF_REBUILDING = (("fsl-edge", "s1", "ACTIVE"), ("fsl-waf", "s2", "REBUILD"))
+WAF_REBUILDING = (("cr-edge", "s1", "ACTIVE"), ("cr-waf", "s2", "REBUILD"))
 
 def test_only_the_vms_the_close_rebuilt_must_be_seen_rebuilding(client):
     cloud = ResetsInPlace(plans=[WAF_REBUILDING])
 
     with patch("api.reset.REBUILD_SHOWN", 0):
-        reset.begin(cloud, threading.RLock(), [("fsl-waf", "s2")]).join(5)
+        reset.begin(cloud, threading.RLock(), [("cr-waf", "s2")]).join(5)
 
     assert reset.standing() == {"state": reset.IDLE, "reason": ""}, (
         "the edge resets in place, so Nova never shows it rebuilding; waiting for "
         "that failed every reset"
     )
-    assert cloud.reset == 1 and cloud.configured_rebuilt == [["fsl-waf"]]
+    assert cloud.reset == 1 and cloud.configured_rebuilt == [["cr-waf"]]
     assert cloud.configured == 0, "the whole slot is not configured again on top"
 
 def test_a_host_the_close_rebuilt_is_not_also_reset_in_place(client):
     cloud = ResetsInPlace(plans=[REBUILDING])
 
     with patch("api.reset.REBUILD_SHOWN", 0):
-        reset.begin(cloud, threading.RLock(), [("fsl-edge", "s1"), ("fsl-waf", "s2")]).join(5)
+        reset.begin(cloud, threading.RLock(), [("cr-edge", "s1"), ("cr-waf", "s2")]).join(5)
 
     assert reset.standing() == {"state": reset.IDLE, "reason": ""}
-    assert cloud.left_to_the_rebuild == [["fsl-edge", "fsl-waf"]], (
+    assert cloud.left_to_the_rebuild == [["cr-edge", "cr-waf"]], (
         "an edge on an older image is rebuilt at close; resetting it in place "
         "at the same time would race the rebuild"
     )
-    assert cloud.configured_rebuilt == [["fsl-edge", "fsl-waf"]]
+    assert cloud.configured_rebuilt == [["cr-edge", "cr-waf"]]
 
 def test_an_in_place_reset_that_fails_fails_the_reset_with_its_reason(client):
     def drifts():
-        raise Drifted("fsl-wargame-host did not clear its wargames")
+        raise Drifted("cr-wargame-host did not clear its wargames")
 
     cloud = ResetsInPlace(plans=[WAF_REBUILDING], in_place=drifts)
-    reset.begin(cloud, threading.RLock(), [("fsl-waf", "s2")]).join(5)
+    reset.begin(cloud, threading.RLock(), [("cr-waf", "s2")]).join(5)
 
     assert reset.standing()["state"] == reset.FAILED
     assert "did not clear its wargames" in reset.standing()["reason"]
-    assert cloud.configured_rebuilt == [["fsl-waf"]], "the rebuilt side still ran to the end"
+    assert cloud.configured_rebuilt == [["cr-waf"]], "the rebuilt side still ran to the end"
 
 class RenewedByAPost(ResetsInPlace):
     def __init__(self):
@@ -222,7 +222,7 @@ class RenewedByAPost(ResetsInPlace):
         return slot.Plan(standing=self.nova)
 
     def ensure_slot(self, renew=True):
-        return slot.Plan(standing=self.nova, rebuilt=(("fsl-waf", "s2"),))
+        return slot.Plan(standing=self.nova, rebuilt=(("cr-waf", "s2"),))
 
 def _read_again(cloud, times=3):
     wanted = cloud.read + times
@@ -245,7 +245,7 @@ def test_a_post_that_rebuilds_a_free_slot_s_stale_vm_configures_the_slot_once_no
         _until_settled()
         after = client.get("/api/range/ready/").json()
 
-    assert posted.json()["rebuilding"] == [{"host": "fsl-waf", "server": "s2"}]
+    assert posted.json()["rebuilding"] == [{"host": "cr-waf", "server": "s2"}]
     assert lagging[0]["slot"]["phase"] == "RESETTING" and lagging[1] == 0, (
         "Nova takes the new image id at once but shows the server ACTIVE for a few seconds "
         "before REBUILD; configuring then configured the VM from before the rebuild and left "
@@ -263,7 +263,7 @@ def test_closing_on_the_cloud_rebuilds_what_the_adapter_names_and_resets_the_res
 
     class Cloud(ResetsInPlace):
         def reset_slot(self):
-            return [("fsl-waf", "s2")]
+            return [("cr-waf", "s2")]
 
         def rebuild_slot(self):
             raise AssertionError("a close rebuilt every VM")
@@ -274,8 +274,8 @@ def test_closing_on_the_cloud_rebuilds_what_the_adapter_names_and_resets_the_res
         _until_settled()
 
     assert closed.status_code == 200, closed.content
-    assert closed.json()["rebuilding"] == [{"host": "fsl-waf", "server": "s2"}]
-    assert cloud.reset == 1 and cloud.configured_rebuilt == [["fsl-waf"]]
+    assert closed.json()["rebuilding"] == [{"host": "cr-waf", "server": "s2"}]
+    assert cloud.reset == 1 and cloud.configured_rebuilt == [["cr-waf"]]
     assert reset.standing()["state"] == reset.IDLE
 
 def test_a_reset_cut_short_by_a_restart_is_resumed_at_boot(client):
@@ -284,7 +284,7 @@ def test_a_reset_cut_short_by_a_restart_is_resumed_at_boot(client):
     class Cloud(ResetsInPlace):
         def reset_slot(self):
             self.slot_reset = getattr(self, "slot_reset", 0) + 1
-            return [("fsl-waf", "s2")]
+            return [("cr-waf", "s2")]
 
     cloud = Cloud(plans=[WAF_REBUILDING])
     assert reset.claim(1)
@@ -299,7 +299,7 @@ def test_a_reset_cut_short_by_a_restart_is_resumed_at_boot(client):
 
     assert cloud.slot_reset == 1, "the resume did not rebuild the VMs a close rebuilds"
     assert cloud.reset == 1, "the resume configured the slot over the last session's wargame data"
-    assert cloud.configured_rebuilt == [["fsl-waf"]]
+    assert cloud.configured_rebuilt == [["cr-waf"]]
     assert after == {"state": reset.IDLE, "reason": ""}
     assert reset.owed() == []
 
@@ -307,7 +307,7 @@ def test_a_resumed_reset_that_fails_keeps_the_marker_for_the_next_start():
     from api import views
 
     def drifts():
-        raise Drifted("fsl-edge did not take its configuration")
+        raise Drifted("cr-edge did not take its configuration")
 
     reset.claim(1)
     with patch.dict(reset._states, clear=True):
@@ -316,5 +316,5 @@ def test_a_resumed_reset_that_fails_keeps_the_marker_for_the_next_start():
         _until_settled()
         failed = reset.standing()
 
-    assert failed == {"state": reset.FAILED, "reason": "fsl-edge did not take its configuration"}
+    assert failed == {"state": reset.FAILED, "reason": "cr-edge did not take its configuration"}
     assert reset.owed() == [1]

@@ -9,28 +9,28 @@ from attacker import AttackerUnavailable
 from range import declared
 from range.ports import Node, RangeUnavailable, Segment, Shape
 
-KALI = "fsl-kali"
-WAF = "fsl-waf"
-PF = "fsl-edge"
+KALI = "cr-kali"
+WAF = "cr-waf"
+PF = "cr-edge"
 
 EDGE = Segment(
     id="ru", name="Internet", origin="Russia",
-    subnet="5.188.10.0/24", network="fsl-internet", gateway="5.188.10.1",
+    subnet="5.188.10.0/24", network="cr-internet", gateway="5.188.10.1",
     nodes=(Node(PF, "5.188.10.1"), Node(KALI, "5.188.10.10")),
 )
 HK = Segment(
     id="hk", name="Internet", origin="Hong Kong",
-    subnet="103.152.220.0/24", network="fsl-internet", gateway="103.152.220.1",
+    subnet="103.152.220.0/24", network="cr-internet", gateway="103.152.220.1",
     nodes=(Node(PF, "103.152.220.1"), Node(KALI, "103.152.220.10")),
 )
 BR = Segment(
     id="br", name="Internet", origin="Brazil",
-    subnet="177.54.144.0/24", network="fsl-internet", gateway="177.54.144.1",
+    subnet="177.54.144.0/24", network="cr-internet", gateway="177.54.144.1",
     nodes=(Node(PF, "177.54.144.1"), Node(KALI, "177.54.144.10")),
 )
 ESTATE = Segment(
     id="estate", name="Application estate", origin="",
-    subnet="10.30.0.0/24", network="fsl-estate",
+    subnet="10.30.0.0/24", network="cr-estate",
     nodes=(Node(PF, "10.30.0.1"), Node(WAF, "10.30.0.217")),
 )
 
@@ -98,13 +98,13 @@ pytestmark = pytest.mark.django_db
 PLACES = [
     {"id": "ru", "label": "Russia", "source_ip": "5.188.10.7", "direct_ip": "5.188.10.7",
      "address": "5.188.10.9", "target_url": "http://5.188.10.9:8080", "subnet": "5.188.10.0/24",
-     "network": "fsl_edge", "default": True},
+     "network": "cr_edge", "default": True},
     {"id": "br", "label": "Brazil", "source_ip": "177.54.144.7", "direct_ip": "177.54.144.7",
      "address": "177.54.144.9", "target_url": "http://177.54.144.9:8080", "subnet": "177.54.144.0/24",
-     "network": "fsl_edge-br", "default": False},
+     "network": "cr_edge-br", "default": False},
     {"id": "hk", "label": "Hong Kong", "source_ip": "103.152.220.7", "direct_ip": "103.152.220.7",
      "address": "103.152.220.9", "target_url": "http://103.152.220.9:8080", "subnet": "103.152.220.0/24",
-     "network": "fsl_edge-hk", "default": False},
+     "network": "cr_edge-hk", "default": False},
 ]
 
 def _fire(client, session_id, payload):
@@ -287,7 +287,7 @@ def test_the_places_to_attack_from_are_listed_while_the_sensor_is_down(client):
             return SHAPE.segments
 
         def describe(self):
-            raise RangeUnavailable("fsl-suricata is declared to watch fsl-waf and stands in nothing")
+            raise RangeUnavailable("cr-suricata is declared to watch cr-waf and stands in nothing")
 
     with patch("api.views.substrate", SensorDown):
         listed = client.get("/api/origins/")
@@ -301,13 +301,13 @@ def test_the_places_to_attack_from_are_listed_while_the_sensor_is_down(client):
 
 def _openstack_shape():
     us = Segment(id="us", name="Internet", origin="United States", subnet="73.0.0.0/24",
-                 network="fsl-internet", gateway="73.0.0.1",
+                 network="cr-internet", gateway="73.0.0.1",
                  nodes=(Node(PF, "73.0.0.1"), Node(KALI, "73.0.0.10")))
     tw = Segment(id="tw", name="Internet", origin="Taiwan", subnet="120.96.0.0/24",
-                 network="fsl-internet", gateway="120.96.0.1",
+                 network="cr-internet", gateway="120.96.0.1",
                  nodes=(Node(PF, "120.96.0.1"), Node(KALI, "120.96.0.10")))
     estate = Segment(id="estate", name="Estate", origin="", subnet="10.30.0.0/24",
-                     network="fsl-estate", nodes=(Node("fsl-waf", "10.30.0.217"),))
+                     network="cr-estate", nodes=(Node("cr-waf", "10.30.0.217"),))
     return Shape(segments=(us, tw, estate), sensors=())
 
 def test_the_edge_is_the_way_in_and_the_target_is_a_name(settings):

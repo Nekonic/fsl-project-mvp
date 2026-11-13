@@ -10,10 +10,10 @@ CLOUD = openstack.Cloud(
     keystone="http://keystone:5000",
     neutron="http://neutron:9696",
     nova="http://nova:8774",
-    project="fsl",
-    user="fsl",
-    ssh_user="fsl",
-    ssh_key="/keys/fsl",
+    project="cr",
+    user="cr",
+    ssh_user="cr",
+    ssh_key="/keys/cr",
 )
 
 ALLOCATED = {
@@ -51,13 +51,13 @@ SUBNETS = {
 SERVERS = {
     "servers": [
         {
-            "name": "fsl-kali",
+            "name": "cr-kali",
             "addresses": {
                 "range1-internet-v4": [{"addr": "5.188.10.7", "OS-EXT-IPS:type": "fixed"}]
             },
         },
         {
-            "name": "fsl-waf",
+            "name": "cr-waf",
             "addresses": {
                 "range1-internet-v4": [
                     {"addr": "5.188.10.9", "OS-EXT-IPS:type": "fixed"},
@@ -69,7 +69,7 @@ SERVERS = {
             },
         },
         {
-            "name": "fsl-suricata",
+            "name": "cr-suricata",
             "addresses": {
                 "range1-estate-v4": [
                     {"addr": "172.30.0.11", "OS-EXT-IPS:type": "fixed"}
@@ -111,7 +111,7 @@ def test_the_cloud_supplies_only_what_it_allocated():
         "5.188.10.0/24", "5.188.10.1", "net-internet",
     )
     assert [(node.name, node.address) for node in edge.nodes] == [
-        ("fsl-kali", "5.188.10.7"), ("fsl-waf", "5.188.10.9"),
+        ("cr-kali", "5.188.10.7"), ("cr-waf", "5.188.10.9"),
     ]
 
 
@@ -145,7 +145,7 @@ def test_every_origin_is_one_subnet_of_the_internet_network_and_keeps_its_own_ho
     assert [(by_id[o.id].subnet, by_id[o.id].network) for o in origins] == [
         (o.subnet, "net-internet") for o in origins
     ]
-    assert [n.name for n in by_id["ru"].nodes] == ["fsl-kali", "fsl-waf"]
+    assert [n.name for n in by_id["ru"].nodes] == ["cr-kali", "cr-waf"]
     assert not by_id["us"].nodes, (
         "every host on the shared Internet network was put on every origin, "
         "so an alert from Moscow could be binned to Seattle"
@@ -201,7 +201,7 @@ def test_a_tool_reaches_the_attacker_over_management():
     from unittest.mock import patch
 
     servers = {"servers": [{
-        "name": "fsl-kali",
+        "name": "cr-kali",
         "addresses": {
             "range1-mgmt-v4": [{"addr": "172.31.0.7", "OS-EXT-IPS:type": "fixed"}],
             "range1-internet-v4": [{"addr": "5.188.10.7", "OS-EXT-IPS:type": "fixed"}],
@@ -216,7 +216,7 @@ def test_a_tool_reaches_the_attacker_over_management():
         ran.return_value.returncode = 0
         ran.return_value.stdout = "sqlmap 1.10"
         ran.return_value.stderr = f"{ports.EXIT_MARK}0\n"
-        adapter.launcher("ru")("fsl-kali", ["sqlmap", "--version"])
+        adapter.launcher("ru")("cr-kali", ["sqlmap", "--version"])
 
     target = ran.call_args.args[0][-2]
     assert target.endswith("@172.31.0.7"), (
@@ -253,7 +253,7 @@ def test_a_new_adapter_sees_a_range_that_changed():
 
 
 ON_THREE = {"servers": [{
-    "id": "srv-waf", "name": "fsl-waf",
+    "id": "srv-waf", "name": "cr-waf",
     "addresses": {
         "range1-internet-v4": [{"addr": "5.188.10.9", "OS-EXT-IPS:type": "fixed"}],
         "range1-estate-v4": [{"addr": "172.30.0.9", "OS-EXT-IPS:type": "fixed"}],
@@ -278,14 +278,14 @@ def reached_at(monkeypatch):
     return reached
 
 def test_a_host_is_reached_on_management_when_no_segment_is_named(monkeypatch):
-    assert reached_at(monkeypatch) == ["fsl@172.31.0.9"], (
+    assert reached_at(monkeypatch) == ["cr@172.31.0.9"], (
         "the platform stands only on management; the WAF's first address is "
         "an origin gateway it has no route to"
     )
 
 def test_the_board_is_addressed_on_management_not_on_the_estate():
     servers = {"servers": [{
-        "name": "fsl-wargame-host",
+        "name": "cr-wargame-host",
         "addresses": {
             "range1-estate-v4": [{"addr": "10.20.0.9", "OS-EXT-IPS:type": "fixed"}],
             "range1-mgmt-v4": [{"addr": "172.31.0.9", "OS-EXT-IPS:type": "fixed"}],

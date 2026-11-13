@@ -131,8 +131,8 @@ alert that does not mention the attack's mechanism is reported
   it refuses and answers Kibana's `api/spaces/space` lookup itself, and
   `blue.html` presets Kibana's localStorage keys;
   `operator_log.py` reads the attacker's command log, and the terminal wiring
-  names `fsl-kali` and `fsl-waf` (`entrypoint.sh` starts
-  `vm-terminal.sh fsl-kali` and `vm-terminal.sh fsl-waf`); foundation F6's
+  names `cr-kali` and `cr-waf` (`entrypoint.sh` starts
+  `vm-terminal.sh cr-kali` and `vm-terminal.sh cr-waf`); foundation F6's
   step commands name the exclusion file and the nginx reload, which
   `wargames.lesson` fills in from the declaration. `docs/ARCHITECTURE.md` keeps
   the table.

@@ -37,10 +37,10 @@ def test_corp_keeps_no_persistent_volume_so_each_rebuild_is_clean():
 
 def test_corp_is_healthy_only_after_its_forms_and_pages_exist():
     entrypoint = (ROOT / "wargames/corp/app/entrypoint.sh").read_text().splitlines()
-    mark = "/tmp/fsl-corp-ready"
+    mark = "/tmp/cr-corp-ready"
     forms = next(i for i, line in enumerate(entrypoint) if "install_default_forms" in line)
     pages = next(i for i, line in enumerate(entrypoint) if "install_default_pages" in line)
-    rbsm = next(i for i, line in enumerate(entrypoint) if "fsl-rbsm-form.php" in line)
+    rbsm = next(i for i, line in enumerate(entrypoint) if "cr-rbsm-form.php" in line)
     touched = [i for i, line in enumerate(entrypoint) if line.startswith("touch ") and mark in line]
     cleared = [i for i, line in enumerate(entrypoint) if line.startswith("rm -f ") and mark in line]
     assert len(touched) == 1 and touched[0] > max(forms, pages, rbsm)
@@ -56,7 +56,7 @@ def test_a_corp_restored_from_its_pristine_copy_gets_fresh_secret_keys_and_admin
     removed = entrypoint.index("rm -f /var/www/html/wp-config.php")
     started = next(i for i, line in enumerate(entrypoint) if line.startswith("docker-entrypoint.sh "))
     rehashed = next(i for i, line in enumerate(entrypoint) if "wp user update admin --user_pass=" in line)
-    touched = next(i for i, line in enumerate(entrypoint) if line.startswith("touch /tmp/fsl-corp-ready"))
+    touched = next(i for i, line in enumerate(entrypoint) if line.startswith("touch /tmp/cr-corp-ready"))
     assert removed < started, (
         "the image's entrypoint writes wp-config.php with new random keys and salts only when it is missing; "
         "a restored volume holds the build's file")

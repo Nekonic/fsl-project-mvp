@@ -4,7 +4,7 @@ description: >-
   accounts' password hashes; the blue team detects and blocks the attack. A
   theft counts only when the submitted hashes match the accounts stored on the
   board.
-image: ghcr.io/nekonic/fsl-board
+image: ghcr.io/nekonic/cr-board
 public_url: http://board.com
 objective_model: loot_verified
 case_file: board.yaml

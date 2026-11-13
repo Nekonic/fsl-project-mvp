@@ -6,7 +6,7 @@ from api.models import Session
 from range import substrate
 from range.ports import RangeUnavailable
 
-ANSWER = "fsl.platform.answer="
+ANSWER = "cr.platform.answer="
 
 
 class Command(BaseCommand):
