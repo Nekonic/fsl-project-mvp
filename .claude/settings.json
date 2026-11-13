@@ -64,7 +64,15 @@
       "Bash(mkdir *)",
       "Bash(touch *)",
       "Bash(diff *)",
-      "Bash(jq *)"
+      "Bash(jq *)",
+      "Bash(git push origin HEAD:dev*)",
+      "Bash(git push -q origin HEAD:dev*)",
+      "Bash(git push origin range-host-proto*)",
+      "Bash(git push -q origin range-host-proto*)",
+      "Bash(git push origin HEAD*)",
+      "Bash(git push -q origin HEAD*)",
+      "Bash(git push cloud *)",
+      "Bash(git push -q cloud *)"
     ],
     "ask": [
       "Bash(docker compose down -v*)",
