@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-11-13
+Updated: 2026-11-14
 
 ## Where things stand
 
@@ -92,6 +92,15 @@ requests, the steps and hints of a foundation or worked scenario, a scenario's s
 detections. The only rule editor is the Suricata one in the IDS rules pane, which F4 and the detection and unknown scenarios show (`/api/rules/`, D3 of the 2026-10-13 course design); CRS stays exclusions, level and anomaly thresholds. The session page's confirm-close calls
 `/ingest/` once before closing, and also reads `/score/`. The acceptance suite
 calls `/ingest/` too, and `redteam/run.py` prints the curl.
+
+On 2026-11-13 the four VMs per slot gave way to one range host
+(`docs/DECISIONS.md` "The range is one range host; a slot is a compose
+project"): the cloud holds `cr-platform` and `cr-range` (`dba.range`), slot N
+is the compose project `sN` on the range host, OPNsense, the image builder and
+the wargame host are gone, and `bin/cloud up --replace` removed the old slot
+VMs, their networks and the role images. Detection matched the VM range case
+for case (board 18, corp 7); ten slots run at once on the range host
+(`docs/state/now.md`).
 
 ## The objective model (done 2026-10-04)
 
