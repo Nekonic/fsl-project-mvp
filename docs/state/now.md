@@ -56,9 +56,10 @@ Internet.
   (`docs/DECISIONS.md` "The WAF mounts its log file, not its log
   directory"); `test_range_isolation.py`'s last test plants the links and
   checks the canary after a reset.
-- Full `bin/verify` on the platform VM at be49cf5 (2026-11-13, four slots):
-  unit and API 1498 passed (4:47); acceptance 90 passed, 0 failed, 0 errors,
-  1 skipped in 950 s across 6 processes; ratchet no regression (`core_loc`
+- Full `bin/verify` on the platform VM at 89b528c (2026-11-14, four slots,
+  the range host replaced by `POST slot/` with the WAF log fix):
+  unit and API 1498 passed (5:07); acceptance 91 passed, 0 failed, 0 errors,
+  1 skipped in 1047 s across 6 processes; ratchet no regression (`core_loc`
   584, `dependencies` 6, `services` 5). The acceptance red-team run now may
   take 15 minutes: beside three other workers' slots on one host it passed
   300 s once.
