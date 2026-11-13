@@ -14,7 +14,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN sed -i 's/^Components:.*/Components: main restricted universe/' /etc/apt/sources.list.d/ubuntu.sources \
  && apt-get update \
- && apt-get install -y ca-certificates curl iproute2 nginx build-essential pkg-config libpcre2-dev zlib1g-dev libxml2-dev \
+ && apt-get install -y ca-certificates curl iproute2 nano less nginx build-essential pkg-config libpcre2-dev zlib1g-dev libxml2-dev \
       libyajl-dev libcurl4-openssl-dev liblmdb-dev libmaxminddb-dev \
  && nginx -V 2>&1 | grep -q "nginx/$NGINX " && nginx -V 2>&1 | grep -q -- "--with-compat"
 

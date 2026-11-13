@@ -107,19 +107,16 @@ def test_the_fabric_s_groups_admit_only_ntp_to_the_platform_and_only_the_platfor
     adapter.ensure_fabric()
 
     groups = {g["name"]: g["id"] for g in cloud.groups}
-    assert set(groups) == {fabric.RANGE_GROUP, fabric.REACH_GROUP, fabric.MANAGEMENT_GROUP}
+    assert set(groups) == {fabric.EGRESS_GROUP, fabric.REACH_GROUP, fabric.MANAGEMENT_GROUP}
     assert sorted(cloud.rules, key=repr) == sorted([
-        {"security_group_id": groups[fabric.RANGE_GROUP], "direction": "ingress", "ethertype": "IPv4"},
         {"security_group_id": groups[fabric.REACH_GROUP], "direction": "ingress", "ethertype": "IPv4",
          "protocol": "udp", "port_range_min": 123, "port_range_max": 123,
          "remote_group_id": groups[fabric.MANAGEMENT_GROUP]},
         {"security_group_id": groups[fabric.MANAGEMENT_GROUP], "direction": "ingress",
          "ethertype": "IPv4", "remote_group_id": groups[fabric.REACH_GROUP]},
     ], key=repr), (
-        "the attacker has a port on management too; a management port that "
-        "lets in any range host lets Kali reach the edge's web GUI and the "
-        "wargame host's published ports without crossing the edge or the WAF, "
-        "and the platform's port takes nothing a range host starts but NTP"
+        "the range host's management port lets in only the platform, its egress port "
+        "lets in nothing, and the platform's port takes nothing the range host starts but NTP"
     )
 
 def test_the_platform_joins_management_through_a_port_in_the_reach_group(cloud, platform):
@@ -135,8 +132,9 @@ def test_building_on_an_empty_project_makes_the_whole_fabric_with_no_way_out_of_
     adapter.ensure_fabric()
 
     tags = sorted(t for n in cloud.networks for t in n["tags"])
-    assert tags == [f"{fabric.TAG}={s}" for s in ("estate", "internet", "mgmt")]
-    assert len(cloud.subnets) == 32
+    assert tags == [f"{fabric.TAG}=mgmt"], (
+        "the internet and the estate are each slot's own docker networks on the range host")
+    assert len(cloud.subnets) == 1
     assert [k["name"] for k in cloud.keypairs] == [fabric.KEYPAIR]
     [mgmt] = [s for s in cloud.subnets if s["network_id"] == network_of(cloud, fabric.MANAGEMENT)["id"]]
     assert mgmt["gateway_ip"] is None and mgmt["enable_dhcp"] is True
@@ -192,8 +190,8 @@ def test_a_replaced_platform_s_detached_management_port_is_deleted_before_the_ne
 
 def test_taking_it_down_removes_detached_ports_that_hold_a_subnet_in_use(cloud, platform, tmp_path):
     replaced(cloud, tmp_path, "srv-old")
-    estate = network_of(cloud, "estate")["id"]
-    cloud.ports.append({"id": "port-left", "name": "cr-1-wargame.estate", "network_id": estate,
+    management = network_of(cloud, fabric.MANAGEMENT)["id"]
+    cloud.ports.append({"id": "port-left", "name": "cr-range.mgmt", "network_id": management,
                         "device_id": "", "device_owner": ""})
 
     platform.teardown_fabric()

@@ -6,7 +6,6 @@ import sys
 import pytest
 
 from api.models import Session
-from range.ports import Node, Segment, Shape
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "vm-terminal.sh"
 
@@ -20,13 +19,8 @@ class Slot:
     def __init__(self, cloud, number):
         self.cloud, self.number = cloud, number
 
-    def describe(self):
-        return Shape(segments=(Segment(id="mgmt", name="Management", subnet="10.31.0.0/16",
-                                       nodes=(Node("cr-waf", f"10.31.{self.number}.9"),)),),
-                     sensors=())
-
-    def host_key_alias(self, address):
-        return f"cr-server-{self.number}"
+    def terminal(self, host):
+        return "10.31.0.9", "cr-range-generation", f"s{self.number}-{host.removeprefix('cr-')}"
 
 
 class Cloud:
@@ -54,7 +48,7 @@ def _found(monkeypatch, capsys, slots, session):
 def test_the_shell_opens_on_the_slot_the_named_session_holds(monkeypatch, capsys):
     held = Session.objects.create(scenario="board", baseline=[], slot=2)
 
-    assert _found(monkeypatch, capsys, 2, str(held.pk))[:2] == (None, "10.31.2.9 cr-server-2")
+    assert _found(monkeypatch, capsys, 2, str(held.pk))[:2] == (None, "10.31.0.9 cr-range-generation s2-waf")
 
 
 @pytest.mark.django_db
@@ -91,24 +85,22 @@ def test_a_refused_lookup_ends_the_shell_without_ssh_and_tells_the_learner_one_p
     assert "no open session 7" in (tmp_path / "terminal.log").read_text(), "the cause went nowhere"
 
 
-def test_the_kali_pane_logs_in_as_the_kali_user_and_the_waf_pane_as_the_cloud_user(tmp_path):
+def test_each_pane_is_a_login_shell_in_its_slot_s_container_on_the_range_host(tmp_path):
     seen = tmp_path / "ssh-argv"
-    env = _fakes(tmp_path, python="cat >/dev/null; echo '10.31.0.180 cr-server-1'",
+    env = _fakes(tmp_path, python="cat >/dev/null; echo '10.31.0.180 cr-range-1 s3-kali'",
                  ssh=f'printf "%s\\n" "$@" > {seen}')
 
     subprocess.run(["sh", str(SCRIPT), "cr-kali", "3"], capture_output=True, text=True, env=env)
     kali = seen.read_text().split("\n")
-    subprocess.run(["sh", str(SCRIPT), "cr-waf", "3"], capture_output=True, text=True, env=env)
-    waf = seen.read_text().split("\n")
 
-    assert "kali@10.31.0.180" in kali and kali[-2] == "kali@10.31.0.180", (
-        "the shell must be the login shell of the kali user, with its own prompt, not a bash started by the platform"
+    assert "ubuntu@10.31.0.180" in kali and "HostKeyAlias=cr-range-1" in kali
+    assert kali[-2].startswith("sudo docker exec -it ") and kali[-2].endswith(" s3-kali bash -l"), (
+        "the shell must be a login shell inside the slot's own Kali, with its own prompt"
     )
-    assert "ubuntu@10.31.0.180" in waf and any(argument.startswith("exec bash --rcfile") for argument in waf)
 
 
 def test_an_ssh_that_cannot_connect_ends_in_the_same_plain_line(tmp_path):
-    env = _fakes(tmp_path, python="cat >/dev/null; echo '10.31.0.180 cr-server-1'",
+    env = _fakes(tmp_path, python="cat >/dev/null; echo '10.31.0.180 cr-range-1 s3-kali'",
                  ssh="echo 'ssh: connect to host 10.31.0.180 port 22: Connection timed out' >&2; exit 255")
 
     ran = subprocess.run(["sh", str(SCRIPT), "cr-kali", "3"], capture_output=True, text=True, env=env)

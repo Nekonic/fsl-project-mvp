@@ -609,6 +609,10 @@ class OpenStack:
         names = self._service_hosts()
         project = self._laid_out().project
         networks, inside = interfaces.slot_listed(listed, project)
+        unanswered = sorted(name for name, service in self._document()["services"].items()
+                            if service.get("networks") and name not in inside)
+        if unanswered and not skip_unanswered:
+            raise RangeUnavailable(f"{', '.join(unanswered)} did not answer in slot {self.slot}")
         here = subnets + [(subnet, key) for key, subnet in networks
                           if key not in (rangehost.INTERNET, rangehost.FRONT)]
         for service, said in sorted(inside.items()):

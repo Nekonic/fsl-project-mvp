@@ -154,7 +154,7 @@ def test_the_website_pane_leaves_kali_as_the_customers_account_so_the_attacker_o
     assert "setpriv --reuid=cr-users" in argv[3] and argv[3].endswith("73.0.0.10 10.30.0.102 80")
 
 def test_the_attackers_own_rewrite_stays_after_the_customers_exemption():
-    setup = (REPO / "deploy/kali/setup.sh").read_text()
+    setup = (REPO / "deploy/kali/set-origin").read_text()
 
     assert "iptables -t nat -C POSTROUTING -o \"$dev\" -j ORIGIN-SNAT 2>/dev/null \\\n  || iptables -t nat -A POSTROUTING" \
         in setup, "set-origin appends its jump, so an exemption inserted first is passed before the rewrite"

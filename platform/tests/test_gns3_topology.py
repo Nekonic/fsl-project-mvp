@@ -17,7 +17,7 @@ OPENSTACK = TOPOLOGY / "range-openstack.gns3"
 SYSTEM_OPENSTACK = TOPOLOGY / "system" / "range-openstack.gns3"
 EVERY_MAP = [OPENSTACK, SYSTEM_OPENSTACK]
 HANGUL = re.compile(r"[\uac00-\ud7a3]")
-SENSOR_COMPOSE = ROOT / "deploy" / "wargame-host" / "sensor.yaml"
+SLOT_COMPOSE = ROOT / "deploy" / "range-host" / "slot.yaml"
 RFC1123 = re.compile(r"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")
 IDENTIFIER = re.compile(r"^[a-z0-9][a-z0-9_.-]*$")
 ACRONYM = re.compile(r"^[A-Z]{2,5}$")
@@ -59,22 +59,24 @@ def image(service):
 
 def openstack_expected():
     stack = declared.read()
+    slot = yaml.safe_load(SLOT_COMPOSE.read_text())
+    fronts = set(slot["x-wargames"]["fronts"])
+    named = {}
+    for role, service in stack.compose.items():
+        host = stack.roles[role]
+        named.setdefault(service, service if stack.hosts[host].wargames else host)
     expected = {}
     for host, entry in stack.hosts.items():
-        bridges = {f"{wargame}-default" for wargame in entry.wargames}
-        expected[host] = {"type": "qemu", "segments": set(entry.segments) | bridges}
-        served = set()
+        if entry.setup:
+            expected[host] = {"type": "qemu", "segments": set(entry.segments)}
         for wargame in entry.wargames:
             document = yaml.safe_load((ROOT / "wargames" / wargame / "compose.yaml").read_text())
             for service, definition in document["services"].items():
-                served.add(service)
                 expected[service] = {"type": "docker", "image": image(definition),
-                                     "segments": {f"{wargame}-default"}}
-        sensors = yaml.safe_load(SENSOR_COMPOSE.read_text())["services"]
-        for role, service in stack.compose.items():
-            if entry.wargames and stack.roles.get(role) == host and service not in served:
-                expected[service] = {"type": "docker", "image": image(sensors[service]),
-                                     "segments": set()}
+                                     "segments": {f"{wargame}-default"} | ({"estate"} if service in fronts else set())}
+    for service, definition in slot["services"].items():
+        expected[named[service] if definition.get("networks") else service] = {"type": "docker", "image": image(definition),
+                                    "segments": set(definition.get("networks") or {})}
     for role, host in stack.roles.items():
         expected.setdefault(host, {"type": "qemu", "segments": {fabric.MANAGEMENT}})
     return stack, expected
@@ -174,7 +176,7 @@ def test_the_segments_are_the_declared_segments_as_switches(any_map):
         assert drawn - defended - {topology.MONITORING} <= bridges, wargame
         assert fabric.MANAGEMENT not in shown.switches, "no switch stands for the management segment"
 
-def test_the_openstack_system_map_is_the_declared_hosts_and_the_wargame_hosts_containers():
+def test_the_openstack_system_map_is_the_range_host_and_the_containers_of_one_slot():
     gns3 = project(SYSTEM_OPENSTACK)
     stack, expected = openstack_expected()
     declared_segments, _ = segment_ids()
@@ -242,7 +244,7 @@ def ends(document):
 
 def log_sources(stack):
     senders = {stack.roles["gateway"]} | {stack.roles[role] for role in stack.watches}
-    return senders | {host for host, entry in stack.hosts.items() if entry.logs}
+    return senders
 
 def monitoring_ends(document):
     by_id = {node["node_id"]: node["name"] for node in document["topology"]["nodes"]}

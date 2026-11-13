@@ -131,6 +131,10 @@ def options(cloud, **overrides):
         "region": "RegionOne",
         "interface": "public",
         "domain": "default",
+        "source": str(ROOT),
+        "subnets": "estate=10.30.0.0/16 mgmt=10.31.0.0/24",
+        "mtu": "1442",
+        "image_tag": "abc",
         **overrides,
     }
 

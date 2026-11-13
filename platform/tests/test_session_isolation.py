@@ -95,17 +95,17 @@ def test_the_red_console_s_calls_act_on_its_own_session(client):
 
 
 @pytest.mark.django_db
-def test_on_openstack_the_waf_terminal_is_an_ssh_shell_on_the_waf_vm(client):
+def test_on_openstack_the_waf_terminal_is_a_shell_in_the_slot_s_waf_container(client):
     with override_settings(WAF_SESSION_TERMINAL_URL=""):
         session, = opened_sessions(1)
         assert client.get(f"/api/sessions/{session.pk}/").json()["waf_terminal"] == "/vm-terminal/waf/"
 
     assert "ttyd -W -a -b /vm-terminal/waf -t disableResizeOverlay=true -i 127.0.0.1 -p 7692 /app/vm-terminal.sh cr-waf" in (
         ROOT / "platform/entrypoint.sh").read_text()
-    assert "mgmt" in declared.read().hosts["cr-waf"].segments
+    assert declared.read().compose["gateway"] == "waf"
     shell = (ROOT / "platform/vm-terminal.sh").read_text()
-    assert 'if seg.id == "mgmt"' in shell and '"ubuntu@${addr}"' in shell and '"kali@${addr}"' in shell, (
-        "the shell is the ssh user the platform tunes the WAF as, on the VM's management address"
+    assert ".terminal(wanted)" in shell and '"ubuntu@${addr}"' in shell and "sudo docker exec -it" in shell, (
+        "the shell is a docker exec into the slot's WAF on the range host's management address"
     )
     assert "StrictHostKeyChecking=accept-new" in shell and '-o HostKeyAlias=$alias' in shell, (
         "a rebuilt server is a new key under a new alias, so the terminal neither warns nor stops checking"

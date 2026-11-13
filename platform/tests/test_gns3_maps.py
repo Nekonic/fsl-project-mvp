@@ -14,7 +14,7 @@ from django.test import override_settings
 import gns3
 import topology
 from api import maps
-from range import declared, interfaces, openstack
+from range import declared, openstack, rangehost
 from range.interfaces import Interface
 from range.ports import Node, Ran, RangeUnavailable, Segment, Shape
 from tests.test_gns3_topology import learner_of
@@ -26,43 +26,29 @@ LABEL_KEYS = {"text", "style", "x", "y", "rotation"}
 DEFAULT_ORIGIN = "5.188.10.0/24"
 PLATFORM_NIC = Interface("cr-platform", "ens7", "10.31.0.238/24", "mgmt")
 
-KALI_IP = """1: lo    inet 127.0.0.1/8 scope host lo\\       valid_lft forever preferred_lft forever
-2: ens3    inet 73.0.0.10/24 scope global ens3\\       valid_lft forever preferred_lft forever
-2: ens3    inet 5.188.10.10/24 scope global ens3\\       valid_lft forever preferred_lft forever
-3: ens4    inet 10.31.0.59/24 metric 100 brd 10.31.0.255 scope global dynamic ens4\\       valid_lft 1sec
-"""
-EDGE_IFCONFIG = """vtnet0: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1450
-\tdescription: internet (wan)
-\tinet 73.0.0.1 netmask 0xffffff00 broadcast 73.0.0.255
-\tinet 5.188.10.1 netmask 0xffffff00 broadcast 5.188.10.255
-vtnet1: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1450
-\tinet 10.30.0.1 netmask 0xffffff00 broadcast 10.30.0.255
-vtnet2: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1450
-\tinet 10.31.0.78 netmask 0xffffff00 broadcast 10.31.0.255
-lo0: flags=1008049<UP,LOOPBACK,RUNNING,MULTICAST,LOWER_UP> metric 0 mtu 16384
-\tinet 127.0.0.1 netmask 0xff000000
-"""
-WAF_IP = """2: ens3    inet 10.30.0.177/24 metric 100 scope global dynamic ens3
-3: ens4    inet 10.31.0.195/24 metric 100 scope global dynamic ens4
-"""
-HOST_IP = """2: ens3    inet 10.30.0.184/24 metric 100 scope global dynamic ens3
-3: ens4    inet 10.31.0.134/24 metric 100 scope global dynamic ens4
-4: docker0    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0
-1125: br-7cc6b1febc1d    inet 172.18.0.1/16 brd 172.18.255.255 scope global br-7cc6b1febc1d
-1128: br-228fc957cc76    inet 172.19.0.1/16 brd 172.19.255.255 scope global br-228fc957cc76
-"""
-HOST_CONTAINERS = """@network 7cc6b1febc1d0000000000000000000000000000000000000000000000000000 board_default
-@network 228fc957cc760000000000000000000000000000000000000000000000000000 corp_default
-@network 0f0f0f0f0f0f0000000000000000000000000000000000000000000000000000 bridge
-@container board
-42: eth0@if43    inet 172.18.0.3/16 brd 172.18.255.255 scope global eth0
-@container board-db
-40: eth0@if41    inet 172.18.0.2/16 brd 172.18.255.255 scope global eth0
-@container corp-wp
-44: eth0@if45    inet 172.19.0.3/16 brd 172.19.255.255 scope global eth0
-@container corp-db
-46: eth0@if47    inet 172.19.0.2/16 brd 172.19.255.255 scope global eth0
-"""
+SLOT_LISTED = {
+    "@network": """@network s1_internet 172.30.1.0/24
+@network s1_estate 10.30.0.0/24
+@network s1_board-default 172.18.0.0/16
+@network s1_corp-default 172.19.0.0/16""",
+    "kali": """2: eth0@if10    inet 73.0.0.10/24 scope global eth0\\       valid_lft forever preferred_lft forever
+2: eth0@if10    inet 5.188.10.10/24 scope global eth0\\       valid_lft forever preferred_lft forever""",
+    "edge": """3: wan@if11    inet 73.0.0.1/24 scope global wan
+3: wan@if11    inet 5.188.10.1/24 scope global wan
+4: lan@if12    inet 10.30.0.1/24 brd 10.30.0.255 scope global lan""",
+    "waf": """5: eth0@if13    inet 10.30.0.177/24 brd 10.30.0.255 scope global eth0""",
+    "board": """6: eth0@if14    inet 172.18.0.3/16 brd 172.18.255.255 scope global eth0
+7: eth1@if15    inet 10.30.0.184/24 brd 10.30.0.255 scope global eth1""",
+    "board-db": """8: eth0@if16    inet 172.18.0.2/16 brd 172.18.255.255 scope global eth0""",
+    "corp-wp": """9: eth0@if17    inet 172.19.0.3/16 brd 172.19.255.255 scope global eth0
+10: eth1@if18    inet 10.30.0.185/24 brd 10.30.0.255 scope global eth1""",
+    "corp-db": """11: eth0@if19    inet 172.19.0.2/16 brd 172.19.255.255 scope global eth0""",
+}
+
+
+def listed(without=()):
+    return "\n".join(said if name == "@network" else f"@container {name}\n{said}"
+                     for name, said in SLOT_LISTED.items() if name not in without) + "\n"
 
 def slot_shape(estate_waf="10.30.0.177"):
     return Shape(segments=(
@@ -74,26 +60,24 @@ def slot_shape(estate_waf="10.30.0.177"):
     ), sensors=())
 
 class FakeSlot:
-    def __init__(self, said):
-        self.said = said
+    def __init__(self, without):
+        self.without = without
         self.ran = []
 
-    def runner(self, role):
+    def shell(self, container=""):
         def run(argv, stdin=None, timeout=60.0):
-            self.ran.append((role, argv))
-            if role == "wargames" and argv[0] == "sudo":
-                return Ran(0, HOST_CONTAINERS)
-            if role not in self.said:
-                raise RangeUnavailable(f"{role} did not answer")
-            return Ran(0, self.said[role])
+            self.ran.append((container, argv))
+            return Ran(0, listed(self.without))
         return run
 
-def slot_adapter(said=None, shape=None):
+def slot_adapter(without=(), shape=None):
     adapter = object.__new__(openstack.OpenStack)
     adapter.declared = declared.read()
-    fake = FakeSlot(said if said is not None else
-                    {"attacker": KALI_IP, "edge": EDGE_IFCONFIG, "gateway": WAF_IP, "wargames": HOST_IP})
-    adapter.runner = fake.runner
+    adapter.slot = 1
+    adapter.build = openstack.Build(source=str(ROOT), inside={"estate": "10.30.0.0/16", "mgmt": "10.31.0.0/24"},
+                                    image_tag="dev", mtu=1442)
+    fake = FakeSlot(without)
+    adapter._shell = fake.shell
     adapter.describe = lambda: shape or slot_shape()
     return adapter, fake
 
@@ -105,25 +89,23 @@ def held(found):
     return {(one.host, one.name, one.address, one.segment) for one in found}
 
 
-def test_a_slot_s_interfaces_come_from_each_host_and_the_wargame_host_s_containers_on_their_own_bridges():
+def test_a_slot_s_interfaces_come_from_its_containers_by_the_hosts_they_stand_for():
     adapter, fake = slot_adapter()
     found = held(adapter.interfaces())
 
-    assert {("cr-kali", "ens3", "5.188.10.10/24", "internet"), ("cr-kali", "ens4", "10.31.0.59/24", "mgmt"),
-            ("cr-edge", "vtnet0", "73.0.0.1/24", "internet"), ("cr-edge", "vtnet1", "10.30.0.1/24", "estate"),
-            ("cr-waf", "ens3", "10.30.0.177/24", "estate"),
-            ("cr-wargame-host", "ens3", "10.30.0.184/24", "estate"),
-            ("cr-wargame-host", "br-7cc6b1febc1d", "172.18.0.1/16", "board-default"),
+    assert {("cr-kali", "eth0", "5.188.10.10/24", "internet"),
+            ("cr-edge", "wan", "73.0.0.1/24", "internet"), ("cr-edge", "lan", "10.30.0.1/24", "estate"),
+            ("cr-waf", "eth0", "10.30.0.177/24", "estate"),
+            ("board", "eth1", "10.30.0.184/24", "estate"),
             ("board", "eth0", "172.18.0.3/16", "board-default"),
             ("corp-db", "eth0", "172.19.0.2/16", "corp-default")} <= found
-    assert ("cr-wargame-host", "docker0", "172.17.0.1/16", "") in found, "a bridge no wargame uses is no segment"
-    assert {role for role, _ in fake.ran} == {"attacker", "edge", "gateway", "wargames"}, (
-        "each host is read over a role that runs on the host itself, never inside a wargame container"
+    assert [argv for _, argv in fake.ran] == [rangehost.listed("s1")], (
+        "one read on the range host lists every container of the slot, not one ssh per host"
     )
-    assert ["sudo", "sh", "-c", interfaces.CONTAINERS] in [argv for _, argv in fake.ran]
+    assert [container for container, _ in fake.ran] == [""]
 
-def test_a_host_that_does_not_answer_leaves_its_own_labels_empty_and_the_rest_are_read():
-    adapter, _ = slot_adapter({"attacker": KALI_IP, "gateway": WAF_IP, "wargames": HOST_IP})
+def test_a_container_that_does_not_answer_leaves_its_own_labels_empty_and_the_rest_are_read():
+    adapter, _ = slot_adapter(without=("edge",))
 
     assert "cr-edge" not in {one.host for one in adapter.interfaces()}
     assert "cr-kali" in {one.host for one in adapter.interfaces()}
@@ -296,7 +278,7 @@ def test_a_map_request_waits_for_the_slot_s_load_in_flight_and_is_served_the_map
 def test_a_read_some_host_did_not_answer_loads_no_map_and_a_check_still_reads_the_hosts_that_did(served, monkeypatch):
     from api import views
 
-    adapter, _ = slot_adapter({"attacker": KALI_IP, "gateway": WAF_IP, "wargames": HOST_IP})
+    adapter, _ = slot_adapter(without=("edge",))
     adapter._own_listed = lambda: ""
     monkeypatch.setattr(views, "_range", lambda session=None, **_: adapter)
     session = SimpleNamespace(pk=0, scenario="board", ended_at="ended")
@@ -308,7 +290,7 @@ def test_a_read_some_host_did_not_answer_loads_no_map_and_a_check_still_reads_th
     assert "cr-kali" in {one.host for one in views._map_read(session)()}
 
 def test_a_host_that_does_not_answer_fails_a_read_that_asks_every_host():
-    adapter, _ = slot_adapter({"attacker": KALI_IP, "gateway": WAF_IP, "wargames": HOST_IP})
+    adapter, _ = slot_adapter(without=("edge",))
 
     with pytest.raises(RangeUnavailable, match="edge did not answer"):
         adapter.interfaces(skip_unanswered=False)
@@ -474,7 +456,7 @@ def test_a_slot_whose_hosts_did_not_all_answer_at_start_is_read_again_and_its_ma
 
     settings.CR_GNS3_URL = "http://gns3:3080"
     Session.objects.create(scenario="board", slot=1)
-    rebooting, _ = slot_adapter({"attacker": KALI_IP, "gateway": WAF_IP, "wargames": HOST_IP})
+    rebooting, _ = slot_adapter(without=("edge",))
     answering, _ = slot_adapter()
     rebooting._own_listed = answering._own_listed = lambda: ""
     reads = iter([rebooting, answering])
