@@ -20,7 +20,8 @@ TEMPLATE = "deploy/range-host/slot.yaml"
 SETUP = "deploy/range-host/setup.sh"
 SLOT_SCRIPT = "deploy/range-host/slot.sh"
 EDGE_SENSOR = "deploy/range-host/edge-sensor.yaml"
-ESTATE_SENSOR = "deploy/range-host/estate-sensor.yaml"
+ESTATE_SENSOR = "deploy/suricata/suricata.yaml"
+YAML_HEADER = "%YAML 1.1\n---\n"
 BASELINE_RULES = "deploy/suricata/rules/local.rules"
 COMPOSE = "wargames/{wargame}/compose.yaml"
 INSTALLED = "/opt/cr"
@@ -197,9 +198,22 @@ def forwarding(slot: Slot, collector: str, port: int, senders: dict[str, tuple[s
     return "".join(blocks)
 
 
-def sensor_config(source: Path, path: str, slot: Slot, fronts: list[str]) -> str:
-    filled = _filled((Path(source) / path).read_text(), slot)
-    return filled.replace("@fronts@", " or ".join(f"host {address}" for address in fronts))
+def edge_sensor(source: Path, slot: Slot) -> str:
+    return _filled((Path(source) / EDGE_SENSOR).read_text(), slot)
+
+
+def estate_sensor(source: Path, slot: Slot, fronts: list[str]) -> str:
+    config = yaml.safe_load((Path(source) / ESTATE_SENSOR).read_text().removeprefix(YAML_HEADER))
+    config["stats"] = {"enabled": True, "interval": 5}
+    config["af-packet"] = [{
+        "interface": f"{slot.project}-estate",
+        "cluster-id": int(f"{slot.number}72"),
+        "cluster-type": "cluster_flow",
+        "defrag": True,
+        "threads": 1,
+        "bpf-filter": " or ".join(f"host {address}" for address in fronts),
+    }]
+    return YAML_HEADER + yaml.dump(config, Dumper=_Unaliased, sort_keys=False)
 
 
 def slot_files(source: Path, slot: Slot, wargames, origins, default_origin: str,
@@ -208,8 +222,8 @@ def slot_files(source: Path, slot: Slot, wargames, origins, default_origin: str,
     fronts = front_addresses(document)
     return {
         "compose.yaml": dumped(document),
-        "edge-sensor.yaml": sensor_config(source, EDGE_SENSOR, slot, fronts).encode(),
-        "estate-sensor.yaml": sensor_config(source, ESTATE_SENSOR, slot, fronts).encode(),
+        "edge-sensor.yaml": edge_sensor(source, slot).encode(),
+        "estate-sensor.yaml": estate_sensor(source, slot, fronts).encode(),
         "kali.ip": kali_addresses(origins, default_origin).encode(),
         "edge.ip": edge_addresses(origins, slot).encode(),
         "rsyslog.conf": forwarded.encode(),

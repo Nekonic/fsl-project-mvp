@@ -1,4 +1,5 @@
 import pytest
+import yaml
 
 from range.ports import Ran
 from rules import suricata
@@ -108,8 +109,9 @@ def test_on_openstack_the_rules_editor_writes_and_reloads_what_the_edge_loads():
     assert read.returncode == 0, read.stderr[-300:]
 
     rules, reload = read.stdout.strip().splitlines()
-    assert rules == "/usr/local/etc/suricata/rules/cr.rules", (
-        "the editor wrote /var/lib/suricata/rules/local.rules on the edge, a "
-        "file the edge's Suricata never loads"
+    edge_sensor = (pathlib.Path(__file__).resolve().parents[2] / "deploy/range-host/edge-sensor.yaml").read_text()
+    loaded = yaml.safe_load(edge_sensor.split("\n", 2)[2])
+    assert rules == f"{loaded['default-rule-path']}/{loaded['rule-files'][0]}", (
+        "the editor must write the file the edge sensor's Suricata loads"
     )
-    assert reload == "/usr/local/bin/suricatasc -c reload-rules /var/run/suricata-command.socket"
+    assert reload == "suricatasc -c reload-rules"

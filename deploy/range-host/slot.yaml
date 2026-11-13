@@ -64,8 +64,6 @@ services:
     extra_hosts:
       - "board.com:@estate@.247"
       - "corp.com:@estate@.247"
-      - "board:@estate@.59"
-      - "corp-wp:@estate@.60"
 
   edge:
     <<: *contained

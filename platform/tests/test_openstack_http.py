@@ -157,26 +157,26 @@ def test_an_adapter_with_nowhere_else_to_look_names_the_cloud_it_could_not_reach
 
 REAL_SHAPES = {
     "networks": [
-        {"id": "net-ru", "name": "range1-ru-v4", "tags": ["cr.segment.id=ru"],
+        {"id": "net-mgmt", "name": "cr-mgmt", "tags": ["cr.segment.id=mgmt"],
          "admin_state_up": True, "status": "ACTIVE", "shared": False,
-         "project_id": "cr", "subnets": ["sub-ru"]},
+         "project_id": "cr", "subnets": ["sub-mgmt"]},
     ],
-    "subnets": [{"cidr": "5.188.10.0/24", "gateway_ip": "5.188.10.1",
-                 "id": "sub-ru", "network_id": "net-ru", "ip_version": 4}],
+    "subnets": [{"cidr": "10.31.0.0/24", "gateway_ip": None,
+                 "id": "sub-mgmt", "network_id": "net-mgmt", "ip_version": 4}],
     "servers": [
-        {"name": "cr-waf", "id": "srv-waf", "status": "ACTIVE",
-         "addresses": {"range1-ru-v4": [
-             {"addr": "5.188.10.4", "OS-EXT-IPS-MAC:mac_addr": "00:0c:29:0d:11:74",
-              "OS-EXT-IPS:type": "fixed", "version": 4}]}},
-        {"name": "cr-edge", "id": "srv-edge", "status": "ACTIVE",
-         "addresses": {"range1-ru-v4": [
-             {"addr": "5.188.10.9", "OS-EXT-IPS:type": "fixed", "version": 4}]}},
+        {"name": "cr-range", "id": "srv-range", "status": "ACTIVE", "metadata": {"cr_host": "cr-range"},
+         "addresses": {"cr-mgmt": [
+             {"addr": "10.31.0.40", "OS-EXT-IPS-MAC:mac_addr": "fa:16:3e:0d:11:74",
+              "OS-EXT-IPS:type": "fixed", "version": 4}],
+             "cr-platform": [{"addr": "10.20.0.31", "OS-EXT-IPS:type": "fixed", "version": 4}]}},
+        {"name": "cr-platform", "id": "srv-platform", "status": "ACTIVE", "metadata": {},
+         "addresses": {"cr-mgmt": [
+             {"addr": "10.31.0.2", "OS-EXT-IPS:type": "fixed", "version": 4}]}},
     ],
 }
 
 def test_describe_runs_end_to_end_over_http_against_reference_shapes(cloud):
     from range import declared
-    from range.ports import Segment
 
     class H(cloud.handler()):
         def do_GET(self):
@@ -194,26 +194,26 @@ def test_describe_runs_end_to_end_over_http_against_reference_shapes(cloud):
     base = f"http://127.0.0.1:{server.server_port}"
     try:
         one = declared.read()
-        only_edge = type(one)(
-            segments=tuple(s for s in one.segments if s.id == "ru"),
-            roles=one.roles, watches=one.watches, default_origin=one.default_origin,
+        only_management = type(one)(
+            segments=tuple(s for s in one.segments if s.id == "mgmt"),
+            roles=one.roles, watches=one.watches, hosts=one.hosts, compose=one.compose,
         )
         cloudspec = openstack.Cloud(keystone=base, neutron=base, nova=base,
                                     project="cr", user="cr", ssh_user="cr", ssh_key="/k")
         shape = openstack.OpenStack(
-            only_edge, cloudspec, get=openstack.http_reader(cloudspec, "secret")
+            only_management, cloudspec, get=openstack.http_reader(cloudspec, "secret")
         ).describe()
     finally:
         server.shutdown()
         server.server_close()
 
-    edge = shape.segments[0]
-    assert (edge.id, edge.subnet, edge.gateway) == ("ru", "5.188.10.0/24", "5.188.10.1")
-    assert [(n.name, n.address) for n in edge.nodes] == [
-        ("cr-edge", "5.188.10.9"), ("cr-waf", "5.188.10.4"),
+    management = shape.segments[0]
+    assert (management.id, management.subnet, management.gateway) == ("mgmt", "10.31.0.0/24", "")
+    assert [(n.name, n.address) for n in management.nodes] == [
+        ("cr-platform", "10.31.0.2"), ("cr-range", "10.31.0.40"),
     ]
-    assert [(s.name, s.watches) for s in shape.sensors] == [
-        ("cr-edge", "cr-edge")
+    assert sorted((s.name, s.watches) for s in shape.sensors) == [
+        ("cr-edge", "cr-edge"), ("cr-range", "cr-range")
     ]
 
 
@@ -322,96 +322,3 @@ def test_a_refused_write_names_its_address_and_answer(cloud):
 
     with pytest.raises(RangeUnavailable, match="409.*overlaps"):
         reader(cloud)(f"POST http://127.0.0.1:{cloud.port}/v2.0/subnets", {"subnets": []})
-
-class Upload(BaseHTTPRequestHandler):
-    answers = []
-    received = []
-    tokens = 0
-
-    def log_message(self, *args):
-        pass
-
-    def _empty(self, code, headers=None):
-        self.send_response(code)
-        for name, value in (headers or {}).items():
-            self.send_header(name, value)
-        self.send_header("Content-Length", "0")
-        self.end_headers()
-
-    def do_POST(self):
-        self.rfile.read(int(self.headers["Content-Length"]))
-        Upload.tokens += 1
-        self._empty(201, {"X-Subject-Token": f"tok{Upload.tokens}"})
-
-    def do_PUT(self):
-        body = self.rfile.read(int(self.headers["Content-Length"]))
-        Upload.received.append((self.path, self.headers["X-Auth-Token"],
-                                self.headers["Content-Type"], body))
-        self._empty(Upload.answers.pop(0) if Upload.answers else 204)
-
-
-@pytest.fixture
-def glance():
-    Upload.answers, Upload.received, Upload.tokens = [], [], 0
-    server = HTTPServer(("127.0.0.1", 0), Upload)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_port}"
-    server.shutdown()
-    server.server_close()
-
-
-def uploader(base):
-    return openstack.http_reader(
-        openstack.Cloud(keystone=base, neutron=base, nova=base, glance=base, project="cr",
-                        user="cr", ssh_user="cr", ssh_key="/keys/cr"),
-        password="secret",
-    )
-
-
-def test_an_image_file_goes_to_glance_with_a_token_taken_just_before(glance, tmp_path):
-    disk = tmp_path / "disk.qcow2"
-    disk.write_bytes(b"QFI\xfb" + b"\x00" * 4096)
-    send = uploader(glance)
-    send(f"PUT {glance}/v2/images/img-1/tags/x")
-
-    send.upload(f"{glance}/v2/images/img-1/file", disk)
-
-    path, token, kind, body = Upload.received[-1]
-    assert (path, kind, body) == ("/v2/images/img-1/file", "application/octet-stream", disk.read_bytes())
-    assert token == "tok2", "an upload outlasting a held token must not start with an old one"
-
-
-def test_an_upload_refused_for_its_token_is_sent_once_more_then_named(glance, tmp_path):
-    disk = tmp_path / "disk.qcow2"
-    disk.write_bytes(b"x" * 10)
-    Upload.answers = [401, 413]
-
-    with pytest.raises(RangeUnavailable, match="413"):
-        uploader(glance).upload(f"{glance}/v2/images/img-1/file", disk)
-    assert [token for _, token, _, _ in Upload.received] == ["tok1", "tok2"]
-
-
-def test_a_pulled_disk_is_written_whole_and_hashed(tmp_path):
-    import hashlib
-    from functools import partial
-    from http.server import SimpleHTTPRequestHandler
-
-    class Quiet(SimpleHTTPRequestHandler):
-        def log_message(self, *args):
-            pass
-
-    (tmp_path / "served").mkdir()
-    content = bytes(range(256)) * 9000
-    (tmp_path / "served" / "disk.qcow2").write_bytes(content)
-    server = HTTPServer(("127.0.0.1", 0), partial(Quiet, directory=str(tmp_path / "served")))
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    try:
-        got = openstack.pull(f"http://127.0.0.1:{server.server_port}/disk.qcow2", tmp_path / "pulled")
-        with pytest.raises(RangeUnavailable, match="404"):
-            openstack.pull(f"http://127.0.0.1:{server.server_port}/gone.qcow2", tmp_path / "gone")
-    finally:
-        server.shutdown()
-        server.server_close()
-
-    assert got == hashlib.sha256(content).hexdigest()
-    assert (tmp_path / "pulled").read_bytes() == content

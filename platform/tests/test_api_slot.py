@@ -17,11 +17,8 @@ class Built:
 
     def plan_slot(self):
         return slot.Plan(
-            boot=("cr-wiki",),
-            ports=(slot.Port("cr-wiki", "estate", "cr-wiki.estate"),
-                   slot.Port("cr-waf", "internet", "cr-waf.internet",
-                             (("sub-us", "73.0.0.1"),))),
-            standing=(("cr-waf", "srv-1", "ACTIVE"),),
+            boot=("cr-range",),
+            standing=(("cr-range", "srv-1", "ACTIVE"),),
         )
 
     def ensure_slot(self):
@@ -30,11 +27,15 @@ class Built:
 
     def teardown_slot(self):
         self.torn += 1
-        return [("server", "srv-1"), ("port", "port-1")]
+        return [("project", "s1")]
 
     def rebuild_slot(self):
         self.rebuilt += 1
-        return [("cr-waf", "srv-1")]
+        return []
+
+    def teardown_range_host(self):
+        self.torn += 1
+        return [("server", "srv-1"), ("port", "port-1")]
 
     def configure_slot(self):
         self.configured += 1
@@ -48,17 +49,18 @@ def built():
 
 def test_reading_the_slot_changes_nothing_and_only_a_post_or_delete_acts_on_the_range(client, built):
     answer = client.get(URL).json()
-    assert answer["boot"] == ["cr-wiki"]
-    assert answer["standing"] == [{"host": "cr-waf", "server": "srv-1", "status": "ACTIVE"}]
+    assert answer["boot"] == ["cr-range"]
+    assert answer["standing"] == [{"host": "cr-range", "server": "srv-1", "status": "ACTIVE"}]
     assert client.get("/api/range/slot/rebuild/").status_code == 405
     assert client.get("/api/range/configure/").status_code == 405
     assert (built.ensured, built.torn, built.rebuilt, built.configured) == (0, 0, 0, 0)
 
     assert client.post_json(URL).status_code == 200
     assert client.post_json("/api/range/slot/rebuild/").json() == {
-        "rebuilt": [{"host": "cr-waf", "server": "srv-1"}]}
+        "rebuilt": []}
     assert client.post_json("/api/range/configure/").json() == {
         "configured": [{"host": "cr-edge", "reported": ["logs 10.31.0.195:5140"]}]}
-    assert client.delete(URL).json()["removed"] == [{"kind": "server", "id": "srv-1"},
+    assert client.delete(URL).json()["removed"] == [{"kind": "project", "id": "s1"},
+                                                    {"kind": "server", "id": "srv-1"},
                                                     {"kind": "port", "id": "port-1"}]
-    assert (built.ensured, built.torn, built.rebuilt, built.configured) == (1, 1, 1, 1)
+    assert (built.ensured, built.torn, built.rebuilt, built.configured) == (1, 2, 1, 1)

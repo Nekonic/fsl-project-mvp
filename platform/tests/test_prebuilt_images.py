@@ -38,7 +38,7 @@ def steps():
 
 def built_by_compose():
     found = set()
-    for path in composed.files():
+    for path in [*composed.files(), ROOT / "deploy/range-host/slot.yaml"]:
         for service in (yaml.safe_load(path.read_text()).get("services") or {}).values():
             if "build" in service:
                 build = service["build"]
@@ -381,7 +381,7 @@ def test_a_sideloaded_image_is_not_looked_for_on_ghcr_and_the_others_are(tmp_pat
 
 @pytest.mark.parametrize("pair, said", [
     ("gns3={missing}", "does not exist, so nothing was deleted"),
-    ("waf={tarball}", "NAME one of"),
+    ("opnsense={tarball}", "NAME one of"),
     ("gns3", "NAME one of"),
     ("gns3={wrong}", "holds no single ghcr.io/nekonic/cr-gns3:<commit>"),
     ("gns3={two}", "holds no single ghcr.io/nekonic/cr-gns3:<commit>"),

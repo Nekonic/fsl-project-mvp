@@ -20,29 +20,33 @@ class Standing:
     def runner(self, role, segment_id=""):
         return self.sensors[role]
 
-def test_the_wargame_host_runs_the_pinned_sensor_image():
-    host = yaml.safe_load((ROOT / "deploy/wargame-host/sensor.yaml").read_text())["services"]["suricata"]
+def sensors():
+    return yaml.safe_load((ROOT / "deploy/range-host/slot.yaml").read_text())["services"]
 
-    assert host["image"] == (
-        "jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840"
-    ), "the inside leg is judged by one Suricata build, which moves only when this pin does"
-    assert host["network_mode"] == "host"
-    assert host["volumes"][0].endswith(":/etc/suricata/suricata.yaml")
 
-def test_the_host_sensor_starts_on_docker_s_config_and_the_shipped_baseline_rules():
-    entry = declared.read().hosts["cr-wargame-host"]
-    setup = (ROOT / entry.setup).read_text()
-    host = yaml.safe_load((ROOT / "deploy/wargame-host/sensor.yaml").read_text())["services"]["suricata"]
+def test_both_legs_run_the_pinned_sensor_image_on_their_slot_s_bridge():
+    for name, bridge in (("edge-sensor", "inet"), ("estate-sensor", "estate")):
+        sensor = sensors()[name]
 
-    assert "deploy/suricata/suricata.yaml" in entry.files
-    assert "../suricata/suricata.yaml /opt/cr/suricata.yaml" in setup
-    assert "deploy/suricata/rules/local.rules" in entry.files
-    assert "../suricata/rules/local.rules /opt/cr/rules/local.rules" in setup
-    assert "/opt/cr/rules:/var/lib/suricata/rules" in host["volumes"], (
-        "the ready check reads every sensor's rules against local.rules; a host "
-        "sensor started with none kept the range out of READY"
+        assert sensor["image"] == (
+            "jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840"
+        ), "both legs are judged by one Suricata build, which moves only when this pin does"
+        assert sensor["network_mode"] == "host"
+        assert f"--af-packet=s@slot@-{bridge}" in sensor["command"]
+        assert sensor["volumes"][0].endswith(":/etc/suricata/suricata.yaml:ro")
+
+
+def test_the_estate_sensor_starts_on_the_shipped_baseline_rules():
+    entry = declared.read().hosts["cr-range"]
+    volumes = sensors()["estate-sensor"]["volumes"]
+
+    assert "/opt/cr/s@slot@/estate-rules:/var/lib/suricata/rules" in volumes, (
+        "the ready check reads every sensor's rules against local.rules; a sensor started "
+        "with none kept the range out of READY"
     )
     assert entry.rules == "/var/lib/suricata/rules/local.rules"
+    assert "install -m 0644" in (ROOT / "deploy/range-host/slot.sh").read_text()
+
 
 @pytest.mark.django_db
 def test_a_rule_change_reaches_every_declared_sensor(client, settings):

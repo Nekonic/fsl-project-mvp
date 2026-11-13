@@ -105,12 +105,12 @@ def test_the_platform_reads_the_image_sources_it_bundles():
     mounted = {
         volume.split(":")[1] for volume in service["volumes"] if volume.startswith("./")
     }
-    from range import declared
+    from range import rangehost
 
-    for host, entry in declared.read().hosts.items():
-        for path in (entry.setup, *entry.files):
-            assert any(f"{source}/{path}".startswith(f"{m}/") or f"{source}/{path}" == m
-                       for m in mounted), (host, path)
+    for path in (rangehost.SETUP, rangehost.SLOT_SCRIPT, rangehost.TEMPLATE, rangehost.EDGE_SENSOR,
+                 rangehost.ESTATE_SENSOR, rangehost.BASELINE_RULES, "wargames/board/compose.yaml"):
+        assert any(f"{source}/{path}".startswith(f"{m}/") or f"{source}/{path}" == m
+                   for m in mounted), path
 
 def test_the_credentials_file_is_private_and_reaches_the_platform_as_written():
     entry = credentials_file()

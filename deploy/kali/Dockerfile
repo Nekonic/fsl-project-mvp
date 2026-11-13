@@ -16,7 +16,6 @@ RUN f=$(dpkg -L sqlmap 2>/dev/null | grep -m1 'lib/core/settings\.py$' || true);
 
 RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime && echo Asia/Seoul > /etc/timezone && : > /etc/motd \
  && (userdel -r ubuntu 2>/dev/null || true) \
- && useradd --system --no-create-home --shell /usr/sbin/nologin cr-users \
  && touch /root/.hushlogin
 
 COPY kali/bashrc /root/.bashrc

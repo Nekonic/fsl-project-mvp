@@ -309,31 +309,27 @@ def test_the_slot_endpoints_act_on_one_slot_or_every_slot(client, cloud):
     every = client.post_json("/api/range/slot/").json()
     configured = client.post_json("/api/range/configure/?slot=2").json()
 
-    assert one["slot"] == 2 and [s["host"] for s in one["standing"]] == ["cr-waf-2", "cr-platform"]
+    assert one["slot"] == 2 and [s["host"] for s in one["standing"]] == ["cr-waf", "cr-platform"]
     assert sorted(cloud.ensured) == [1, 2] and [s["slot"] for s in every["slots"]] == [1, 2]
-    assert cloud.configured == [2] and configured["configured"][0]["host"] == "cr-waf-2"
+    assert cloud.configured == [2] and configured["configured"][0]["host"] == "cr-waf"
     assert (reset.standing(1)["state"], reset.standing(2)["state"]) == (reset.FAILED, reset.IDLE), (
         "configuring a slot by hand clears that slot's failed reset and no other")
     assert client.get("/api/range/slot/?slot=3").status_code == 400
 
 
-def test_a_slot_on_an_older_image_is_rebuilt_by_a_post_only_when_no_session_holds_it(client, cloud):
+def test_the_range_host_on_older_images_is_replaced_by_a_post_only_when_no_session_is_open(client, cloud):
     held = opened(client)
     cloud.plans = [replace(plan, stale=("cr-waf",)) for plan in cloud.plans]
 
     answer = client.post_json("/api/range/slot/").json()
 
-    assert held.slot == 1 and cloud.renewed == [2], (
-        "a rebuild under an open session wipes the VMs its learner is using"
+    assert held.slot == 1 and cloud.renewed == [], (
+        "every slot runs on the one range host, so replacing it under any open session "
+        "wipes the containers that session's learner is using"
     )
-    assert answer["stale"] == ["cr-waf"]
-    assert cloud.reset == [("begun", 2)] and answer["rebuilding"] == [{"host": "cr-waf-2", "server": "s2"}], (
-        "the free slot's rebuild is followed by its own reset, which configures it once Nova shows it back"
-    )
-    assert answer["blocked"] == [
-        f"session {held.pk} holds this slot, so the rebuild of cr-waf onto the ready image "
-        f"waits for its close"
-    ], "bin/cloud up stops on a blocked slot instead of waiting for a READY that cannot come"
+    assert answer["stale"] == ["cr-waf", "cr-waf"]
+    assert all(f"session {held.pk} holds this slot" in reason for reason in answer["blocked"]), (
+        "bin/cloud up stops on a blocked slot instead of waiting for a READY that cannot come")
 
 
 def test_a_session_reads_its_alerts_from_its_own_slot_s_index(client, cloud, settings):

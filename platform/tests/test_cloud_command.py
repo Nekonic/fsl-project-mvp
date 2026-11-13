@@ -17,14 +17,10 @@ def command():
     return module
 
 
-def image(state, host="cr-edge", bundle="d1", detail=""):
-    return {"host": host, "bundle": bundle, "state": state, "image": "", "builder": "", "detail": detail}
-
-
 class Platform:
-    def __init__(self, images=None, fabric=None, slot=None, ready=None, configure=None):
+    def __init__(self, fabric=None, slot=None, ready=None, configure=None, removed=()):
         self.calls = []
-        self.images = iter(images or [{"images": [image("ready")], "leftovers": [], "clean": True}])
+        self.removed = list(removed)
         self.fabric = fabric or {"drifted": [], "clean": True}
         self.slot = slot or {"blocked": [], "clean": True}
         self.ready = iter(ready or [
@@ -38,15 +34,13 @@ class Platform:
         self.calls.append((verb, path))
         if (verb, path) == ("POST", "/fabric/"):
             return 200, self.fabric
-        if (verb, path) == ("POST", "/images/"):
-            return 200, next(self.images)
         if (verb, path) == ("POST", "/slot/"):
             return 200, self.slot
         if (verb, path) == ("GET", "/ready/"):
             return 200, next(self.ready)
         if (verb, path) == ("POST", "/configure/"):
             return next(self.configure)
-        return 200, {"removed": []}
+        return 200, {"removed": self.removed}
 
 
 def converge(platform):
@@ -60,51 +54,25 @@ def test_up_builds_the_range_in_the_order_the_platform_requires():
     assert converge(platform)["ready"]
 
     order = [call for call in platform.calls if call[0] == "POST"]
-    assert order == [("POST", "/fabric/"), ("POST", "/images/"), ("POST", "/slot/"),
-                     ("POST", "/configure/")]
+    assert order == [("POST", "/fabric/"), ("POST", "/slot/"), ("POST", "/configure/")]
     first_configure = platform.calls.index(("POST", "/configure/"))
     assert platform.calls[first_configure - 1] == ("GET", "/ready/"), (
-        "configure ssh-es to the slot's VMs, so it waits until Nova says they stand"
+        "configure ssh-es to the range host, so it waits until it stands and has set itself up"
     )
 
 
-@pytest.mark.parametrize("bad, why", [
-    (image("failed", detail="checksum did NOT match"), "checksum did NOT match"),
-    (image("missing", bundle=""), "no script builds it"),
-])
-def test_a_failed_image_stops_up_with_why(bad, why):
-    platform = Platform(images=[{"images": [bad], "leftovers": [], "clean": False}])
-
-    with pytest.raises(SystemExit, match=why):
-        converge(platform)
-    assert ("POST", "/slot/") not in platform.calls
-
-
-def test_leftovers_are_cleaned_only_once_the_range_stands_on_the_new_images():
-    platform = Platform(images=[
-        {"images": [image("ready")], "leftovers": [{"kind": "image", "id": "img-old"}], "clean": False},
-    ])
+def test_what_the_vm_range_left_is_removed_only_once_the_range_host_s_slots_are_ready(capsys):
+    platform = Platform(removed=[{"kind": "server", "id": "srv-old-kali"}])
 
     converge(platform)
 
-    assert platform.calls.index(("DELETE", "/images/")) > platform.calls.index(("POST", "/configure/"))
-    assert platform.calls[-1] == ("DELETE", "/images/")
-    assert platform.calls.count(("POST", "/images/")) == 1
+    assert platform.calls.index(("DELETE", "/leftovers/")) > platform.calls.index(("POST", "/configure/"))
+    assert platform.calls[-1] == ("DELETE", "/leftovers/"), (
+        "the old slot VMs fill the quota beside the range host, and they go only once it is proven")
+    assert "server srv-old-kali" in capsys.readouterr().out
 
 
-def test_a_ready_image_whose_builder_is_still_there_is_asked_for_again():
-    with_builder = dict(image("ready"), builder="srv-1")
-    platform = Platform(images=[
-        {"images": [with_builder], "leftovers": [], "clean": False},
-        {"images": [image("ready")], "leftovers": [], "clean": True},
-    ])
-
-    converge(platform)
-
-    assert platform.calls.count(("POST", "/images/")) == 2
-
-
-def test_a_drifted_fabric_stops_up_before_any_image_is_built():
+def test_a_drifted_fabric_stops_up_before_the_range_host_boots():
     platform = Platform(fabric={"drifted": ["keypair cr-platform holds another public key"]})
 
     with pytest.raises(SystemExit, match="another public key"):
@@ -208,13 +176,6 @@ def test_a_working_stack_whose_address_cannot_be_read_is_not_taken_for_a_missing
 def test_a_stack_heat_is_still_working_on_is_left_alone():
     with pytest.raises(SystemExit, match="DELETE_IN_PROGRESS"):
         command().rebuild.working_address("cr-platform", Cli(status=b"DELETE_IN_PROGRESS"))
-
-
-def test_the_builder_marks_match_the_ones_the_platform_boots_with():
-    from range import images
-
-    module = command().rebuild
-    assert (module.BUILDER, module.BUILDS) == (images.BUILDER, images.BUILDS)
 
 
 def test_down_stops_before_the_stack_if_the_range_will_not_come_down():

@@ -3,7 +3,7 @@ import copy
 import pytest
 import yaml
 
-from range import cloud
+from range import cloud, openstack
 
 DOCUMENT = yaml.safe_load(cloud.EXAMPLE.read_text())
 
@@ -43,9 +43,13 @@ def test_networks_that_overlap_each_other_docker_or_compose_are_refused(network,
     assert clash in refusal(changed(**{f"network__{network}": cidr}))
 
 
-def test_the_edge_flavor_is_required_because_the_opnsense_image_wants_3_gb():
-    assert "compute.flavors: lacks edge" in refusal(
-        changed(compute__flavors={"platform": "m1.large", "builder": "m1.medium", "range": "m1.small"}))
+def test_a_flavor_for_a_vm_the_range_no_longer_has_is_refused():
+    assert "compute.flavors: names edge, which the range no longer has" in refusal(
+        changed(compute__flavors={"platform": "m1.large", "range": "dba.range", "edge": "m1.medium"}))
+
+
+def test_the_estate_is_wide_enough_for_a_slash_24_per_slot():
+    assert "network.estate: must be a /16 or wider" in refusal(changed(network__estate="10.30.0.0/24"))
 
 
 def test_the_settings_survive_the_trip_through_heat_and_the_environment():
@@ -53,9 +57,8 @@ def test_the_settings_survive_the_trip_through_heat_and_the_environment():
 
     carried = found.heat_parameters()
 
-    assert cloud.opnsense_from(carried["opnsense"]) == found.opnsense
-    assert cloud.pairs(carried["subnets"]) == found.inside
-    assert cloud.pairs(carried["role_flavors"]) == found.role_flavors
+    assert openstack.pairs(carried["subnets"]) == found.inside
+    assert carried["range_flavor"] == found.flavors["range"]
     assert carried["slots"] == "2"
 
 

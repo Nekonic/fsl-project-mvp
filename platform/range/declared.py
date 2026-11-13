@@ -71,7 +71,7 @@ class Declaration:
                 f"the range would ever reach it"
             )
         machines = sorted(name for name, host in self.hosts.items() if host.setup)
-        if len(machines) != 1:
+        if self.hosts and len(machines) != 1:
             raise ValueError(
                 f"the range runs on one range host built from a setup script, and "
                 f"{len(machines)} hosts declare one: {machines}"

@@ -1,32 +1,43 @@
+import ipaddress
 import pathlib
 import re
 
+import yaml
+
 import attacker
-from range.ports import Ran
+from range import rangehost
+
+DEPLOY = pathlib.Path(attacker.__file__).resolve().parents[1] / "deploy"
+
 
 def test_the_kali_image_ships_the_source_rewrite_script():
-    setup = (pathlib.Path(attacker.__file__).resolve().parents[1] / "deploy/kali/setup.sh").read_text()
+    image = (DEPLOY / "kali/Dockerfile").read_text()
+    script = (DEPLOY / "kali/set-origin").read_text()
 
-    assert "/usr/local/sbin/set-origin" in setup
-    assert "SNAT" in setup and "--to-source" in setup
+    assert "COPY kali/set-origin /usr/local/sbin/set-origin" in image
+    assert "SNAT" in script and "--to-source" in script
 
-def test_nothing_on_the_kali_vm_that_a_learner_can_list_carries_the_platform_s_name():
-    root = pathlib.Path(attacker.__file__).resolve().parents[1] / "deploy"
-    setup = (root / "kali/setup.sh").read_text()
 
-    assert not re.search(r"\bcr[-_.]", setup), "systemctl, ps and iptables on the box print these names"
-    assert "web-proxy.service" in setup and "ttyd.service" in setup and "ORIGIN-SNAT" in setup
+def test_nothing_in_the_kali_image_that_a_learner_can_list_carries_the_platform_s_name():
+    image = (DEPLOY / "kali/Dockerfile").read_text()
+    script = (DEPLOY / "kali/set-origin").read_text()
 
-def test_the_label_file_is_read_only_to_the_account_the_platform_logs_in_as():
-    setup = (pathlib.Path(attacker.__file__).resolve().parents[1] / "deploy/kali/setup.sh").read_text()
+    assert not re.search(r"\bcr[-_.]", image + script), "ps and iptables in the container print these names"
+    assert "ORIGIN-SNAT" in script
 
-    assert "install -m 0600 -o ubuntu -g ubuntu /dev/null /var/lib/session/active" in setup
-    assert "/var/lib/session/origin" not in setup
 
-def test_the_waf_vm_answers_to_waf_and_keeps_its_slot_in_the_log_sender_name():
-    setup = (pathlib.Path(attacker.__file__).resolve().parents[1] / "deploy/waf/setup.sh").read_text()
+def test_the_label_file_is_read_only_to_the_root_the_platform_runs_its_commands_as():
+    image = (DEPLOY / "kali/Dockerfile").read_text()
 
-    assert "echo waf > /etc/hostname" in setup and "hostname waf" in setup
-    assert 'global(localHostname="%s")' in setup, (
+    assert "install -m 0600 /dev/null /var/lib/session/active" in image
+    assert "/var/lib/session/origin" not in image
+
+
+def test_the_waf_answers_to_waf_and_its_log_sender_name_keeps_its_slot():
+    services = yaml.safe_load((DEPLOY / "range-host/slot.yaml").read_text())["services"]
+    slot = rangehost.Slot(2, ipaddress.ip_network("10.30.2.0/24"), "abc", 1442)
+
+    assert services["waf"]["hostname"] == "waf"
+    assert " cr-waf-2 " in rangehost.forwarding(slot, "10.31.0.2", 5140, {"waf": ("cr-waf", "modsecurity")}), (
         "Filebeat takes the slot from the syslog host name, which the fixed name would erase"
     )

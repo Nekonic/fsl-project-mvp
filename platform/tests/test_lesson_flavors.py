@@ -27,7 +27,8 @@ def test_the_waf_commands_a_learner_types_name_the_waf_s_file_and_reload_with_no
     edit = next(command for command in typed if "nano" in command)
 
     assert not [command for command in typed if "{" in command.replace("{target}", "")]
-    assert edit == f"sudo nano {waf.rules} && " + waf.reload.replace(" 2>&1", "")
+    assert edit == f"nano {waf.rules} && " + waf.reload.replace(" 2>&1", ""), (
+        "the learner's WAF shell is root in the WAF container, so nothing needs sudo")
 
 @pytest.mark.parametrize("wargame_id, lesson_id", LESSONS)
 def test_every_lesson_renders_its_steps_for_a_session(client, wargame_id, lesson_id):
