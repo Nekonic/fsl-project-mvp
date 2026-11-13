@@ -7,11 +7,11 @@ code. They see the system from the outside.
 The range must be up before you run them. Run the suite on the OpenStack
 platform VM, against that VM's own platform and its running range
 (`docs/OPENSTACK.md` §7). `bin/verify` needs the checkout's `.venv`. The platform VM
-makes `/opt/fsl/.venv` itself at first boot and after a sideload checkout
+makes `/opt/cr/.venv` itself at first boot and after a sideload checkout
 (`docs/OPENSTACK.md` §7).
 
 ```bash
-ssh ubuntu@<address> 'cd /opt/fsl && FSL_PLATFORM_URL=http://<address>:8000 bin/verify'
+ssh ubuntu@<address> 'cd /opt/cr && CR_PLATFORM_URL=http://<address>:8000 bin/verify'
 ```
 
 `bin/verify` runs these steps in order:
@@ -20,7 +20,7 @@ ssh ubuntu@<address> 'cd /opt/fsl && FSL_PLATFORM_URL=http://<address>:8000 bin/
 2. The acceptance suite, through `bin/acceptance`, which runs `python -m pytest test/`.
 3. The ratchet.
 
-`FSL_PLATFORM_URL` is the platform's address. The default is
+`CR_PLATFORM_URL` is the platform's address. The default is
 `http://localhost:8000`. The platform VM does not listen on localhost, so always
 set it there. The suite has no other way to reach the range: the docker
 substrate was removed on 2026-10-21, so a laptop with Docker cannot run it.

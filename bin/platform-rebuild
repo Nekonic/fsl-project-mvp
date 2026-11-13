@@ -379,7 +379,7 @@ def holds_store(old: Host) -> bool:
         raise Refused(
             f"{Path(sys.argv[0]).name}: {old.target} holds its store under the names used before the "
             f"rename ({LEGACY_STORE}), which this checkout cannot back up, so nothing was deleted; "
-            f"take it down from a checkout before the rename first (docs/OPENSTACK.md, \"The rename cut-over\")"
+            f"take it down from a checkout before the rename first (docs/OPENSTACK.md §5.4)"
         )
     if asked.returncode != 0:
         said = asked.stderr.decode(errors="replace").strip()
