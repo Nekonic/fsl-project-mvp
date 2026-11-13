@@ -247,3 +247,54 @@ CRS 4.25.1 (846 rules):
   estate-sensor: 0.40, 0.38, 0.38 s. A rule appended to the edge rules file
   and reloaded fired on the next request (1 alert, sid 9900001), then removed.
 - WAF `nginx -t && nginx -s reload`: 0.70, 0.87, 0.91 s.
+
+### 4 vCPU not measurable
+
+Resizing `cr-range-proto` to `dba.medium` (4 vCPU / 8 GB, the size the
+design assumed) was refused by Nova: the flavor's 40 GB disk is below the
+Ubuntu image's 60 GB minimum. No other 4-vCPU flavor exists and no new VM was
+to be created, so every number above is for 2 vCPU.
+
+## Settings the container range needs (record of what was set)
+
+| pitfall | setting |
+|---|---|
+| TSO/GSO super-packets truncated by af-packet (`afpacket.trunc_pkt`) | `ethtool -K <if> tso off gso off gro off` inside every container whose interface is on a sniffed bridge (kali, edge both legs, waf, target front ends), on the host veths and the bridges; Suricata only turns offloads off on the capture interface itself |
+| checksum offload | tx checksumming left on; af-packet `checksum-checks` default and `stream.checksum-validation: yes` (as on OPNsense): `tcp.invalid_checksum` 0 in every run, because af-packet marks partial-checksum packets as not to be validated |
+| capture point | the slot's bridge (`s<N>-inet`, `s<N>-estate`), promiscuous (Suricata's default), one fanout `cluster-id` per sensor; the estate leg needs `bpf-filter: host <board> or host <corp-wp>` because the bridge also carries edge-to-WAF traffic that the wargame host's NIC never sees |
+| NAT, userland proxy, published ports | none: no `ports:`, `internal: true` networks, no masquerade; origin addresses arrive unchanged at the WAF and both sensors |
+| host address on bridges | `com.docker.network.bridge.gateway_mode_ipv4: isolated` on every network, the targets' backend networks included (otherwise the target reaches the range host's sshd) |
+| overlapping origin CIDRs across slots | docker gets a throwaway 172.30.N.0/24 per internet bridge; the 100 origin addresses and 30 gateways go in with `nsenter ... ip -batch` (one call per container, 8 s for the common part instead of 13.5-15 s) |
+| `br_netfilter` | not loaded by Docker 29; if loaded, Docker's `DOCKER-INTERNAL` would drop origin-address frames, so `DOCKER-USER` same-bridge accepts are added |
+| MTU | 1442 on all networks, as on the OpenStack networks |
+| stats | `stats.interval: 5` so `capture.kernel_drops` can be read with `dump-counters` (the OPNsense value of 300 s returns "stats not yet synchronized") |
+| corp first install | `extra_hosts: corp.com:127.0.0.1` on corp-wp so WordPress's pretty-permalink loopback test succeeds without egress |
+
+## Against the pass bar (2 vCPU / 8 GB)
+
+| criterion | bar | measured | verdict |
+|---|---|---|---|
+| one reset | <= 45 s | full 46.3 s (42.9 s on a repeat); `reset_fast` 36.0 s | pass with `reset_fast`; full reset marginal |
+| three resets at once | <= 60 s | full 99.9 s; `reset_fast` 89.7 s | fail on 2 vCPU (CPU-bound) |
+| RAM per session | <= 2 GB | 0.68 GB idle, about 0.87 GB under sqlmap | pass |
+| sessions on 8 GB | >= 4 | 4 ran sqlmap at once with 4.0 GB still available (memory would allow about 8) | pass on memory; CPU limits useful concurrency to 2 on 2 vCPU (sqlmap growth 1.35x at 2, 1.99x at 3) |
+| isolation | holds | 28/28 from Kali and WAF; target-side probes refused after the backend-network fix | pass |
+| detection identical | identical per case | board runs 1 and 2: 0 differences; run 3: one extra estate alert from sqlmap's random heuristic string; corp: 0 differences | pass |
+| kernel_drops | 0 | 0 with 1 slot busy and with 4 slots running sqlmap at once | pass |
+| cold up | (measure) | 39 s for one slot | - |
+| rule reload | (measure) | Suricata 0.4-0.6 s, nginx 0.7-0.9 s | - |
+| attach / detach | (measure) | board 24-28 s / 4-5 s; corp 21-24 s / 5 s | - |
+
+## Not measured
+
+- A 4 vCPU or 16 GB range host (see above); the time bars that failed are
+  CPU-bound and were measured on half the CPUs the design assumed.
+- Resets while other slots are under load (resets and sqlmap were measured
+  separately).
+- The production paths that the prototype replaces with local tooling: log
+  shipping by rsyslog to the collector and Elasticsearch (the offline scorer
+  reads the files), the platform's session open/close and reset state machine,
+  ttyd terminals through `docker exec`, the background customers traffic, and
+  objectives / loot ground truth.
+- Container escape from the learner's root shells (the shared-kernel risk
+  in the design stays a ruling for the user).
