@@ -6891,8 +6891,10 @@ slot's records.
   `/var/log/cr/sN/waf/audit.log` onto `SecAuditLog`'s path; the directory is
   root's `0755`, which the container's root, mapped to an unprivileged range,
   cannot write. The WAF keeps writing its own log (owner the remapped
-  `www-data`, group the host's `adm`, `0640`, which `syslog` reads without an
-  ACL), and cannot rename, unlink or add a name. `slot.sh prepare` makes the
+  `www-data` and `adm`, `0644`, which `syslog` reads without an ACL; a group
+  outside the remapped range left the container's root, which opens the
+  serial log in nginx's master, without `DAC_OVERRIDE` on it, and ModSecurity
+  wrote nothing), and cannot rename, unlink or add a name. `slot.sh prepare` makes the
   directory root's, removes any other name in it and recreates `audit.log` if
   it is not a regular file, before every `up` and `reset`, which also clears
   what the old layout left. `acl` leaves the range host's packages.

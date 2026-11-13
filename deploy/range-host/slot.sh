@@ -48,11 +48,13 @@ prepare() {
   shift_by=$(remapped)
   owner=$(( ${shift_by:-0} ))
   www=$(( ${shift_by:-0} + 33 ))
+  adm=$(( ${shift_by:-0} + 4 ))
   install -d -m 0755 "$d/edge-rules" "$d/estate-rules" "$logs" "$logs/edge" "$logs/estate" "$logs/waf"
   chown -h root:root "$logs/waf"
   find "$logs/waf" -mindepth 1 -maxdepth 1 ! \( -name audit.log -type f \) -exec rm -rf {} +
-  [ -f "$logs/waf/audit.log" ] || install -m 0640 -o "$www" -g adm /dev/null "$logs/waf/audit.log"
-  chmod 0640 "$logs/waf/audit.log"
+  [ -f "$logs/waf/audit.log" ] || install -m 0644 -o "$www" -g "$adm" /dev/null "$logs/waf/audit.log"
+  chown -h "$www:$adm" "$logs/waf/audit.log"
+  chmod 0644 "$logs/waf/audit.log"
   for leg in edge estate; do
     install -m 0644 -o "$owner" "$d/local.rules" "$d/$leg-rules/local.rules"
   done

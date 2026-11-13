@@ -1532,7 +1532,7 @@ The pristine data is made once, by `setup.sh`: it brings every wargame up once a
 
 **Configure.** `POST /api/range/configure/` (`configure_slot()`) opens the collector's rule and sets the range host's time source side by side, once per range-host generation and collector address. It then pipes the slot's files to `slot.sh up N` on the range host: the compose file, both sensor configurations, Kali's and the edge's addresses, the rsyslog configuration, the baseline rules and the script itself. `slot.sh up`:
 
-1. makes the slot's directories, all root's. In the WAF's log directory `/var/log/cr/sN/waf` it removes every name but a regular file `audit.log` and creates that file if missing, owned by the remapped range's `www-data` and the host's `adm` (`0640`), so `syslog` reads it;
+1. makes the slot's directories, all root's. In the WAF's log directory `/var/log/cr/sN/waf` it removes every name but a regular file `audit.log` and creates that file if missing, owned by the remapped range's `www-data` and `adm` (`0644`), so nginx's master, root in the container, opens it and `syslog` reads it;
 2. creates the containers (`up --no-start --pull never`) and copies the pristine data into each empty volume of a target that has never run;
 3. starts them (`up -d --wait`);
 4. gives Kali its origin addresses and its default route through the default origin's gateway, and gives the edge every origin's gateway address on `wan` (`ip -batch` through `nsenter`);

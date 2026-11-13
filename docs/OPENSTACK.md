@@ -1096,8 +1096,8 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
    1. It makes the slot's rule and log directories, all root's. In the WAF's
       log directory `/var/log/cr/sN/waf` it removes every name but a regular
       file `audit.log`, and creates that file if missing, owned by the
-      remapped range's `www-data` and the host's `adm` (`0640`), so `syslog`
-      reads it. The WAF mounts that file alone, so it cannot plant a link
+      remapped range's `www-data` and `adm` (`0644`), so nginx's master, root
+      in the container, opens it and `syslog` reads it. The WAF mounts that file alone, so it cannot plant a link
       in the directory (`docs/THREAT-MODEL.md`).
    2. `docker compose up --no-start --pull never` creates the containers and
       their new, empty volumes.
