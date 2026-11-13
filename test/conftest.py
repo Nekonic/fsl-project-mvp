@@ -35,6 +35,7 @@ def range_readiness() -> dict | None:
     return readiness if isinstance(readiness, dict) else None
 
 RESET_WAIT = 1800
+REDTEAM_WAIT = 900
 RESET_POLL = 2
 ATTEMPTS_WHILE_WAITING = int(RESET_WAIT / RESET_POLL)
 SETTLING = {"RESETTING", "REBUILDING", "CHECKING"}
@@ -297,7 +298,7 @@ def _redteam_once():
             ["python", "redteam/run.py",
              "--platform", PLATFORM_FROM_SCORER,
              "--tool-target", TARGET_PUBLIC],
-            timeout=300,
+            timeout=REDTEAM_WAIT,
         )
     except RangeUnavailable as exc:
         _opened_by(exc.output)
