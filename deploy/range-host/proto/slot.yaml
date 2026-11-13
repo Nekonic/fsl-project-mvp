@@ -1,0 +1,105 @@
+name: s${N:?slot number}
+
+x-sensor: &sensor
+  image: jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840
+  network_mode: host
+  cap_add: [NET_ADMIN, NET_RAW, SYS_NICE]
+  environment:
+    PGID: "4"
+  healthcheck:
+    test: ["CMD", "suricatasc", "-c", "uptime"]
+    interval: 5s
+    timeout: 5s
+    retries: 24
+    start_interval: 1s
+    start_period: 60s
+
+services:
+  kali:
+    image: cr-proto-kali
+    container_name: s${N}-kali
+    hostname: kali
+    cap_add: [NET_ADMIN]
+    networks:
+      internet:
+        ipv4_address: "172.30.${N}.10"
+    extra_hosts:
+      - "board.com:10.30.${N}.247"
+      - "corp.com:10.30.${N}.247"
+      - "board:10.30.${N}.59"
+      - "corp-wp:10.30.${N}.60"
+
+  edge:
+    image: busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+    container_name: s${N}-edge
+    hostname: edge
+    command: ["sh", "-c", "trap 'exit 0' TERM; sleep 2147483647 & wait"]
+    sysctls:
+      net.ipv4.ip_forward: "1"
+      net.ipv4.conf.all.rp_filter: "0"
+      net.ipv4.conf.default.rp_filter: "0"
+    networks:
+      internet:
+        ipv4_address: "172.30.${N}.1"
+        interface_name: wan
+      estate:
+        ipv4_address: "10.30.${N}.1"
+        interface_name: lan
+
+  waf:
+    image: cr-proto-waf
+    container_name: s${N}-waf
+    hostname: waf
+    networks:
+      estate:
+        ipv4_address: "10.30.${N}.247"
+    extra_hosts:
+      - "board:10.30.${N}.59"
+      - "corp-wp:10.30.${N}.60"
+    volumes:
+      - /opt/proto/s${N}/waf:/var/log/modsecurity/audit
+      - /opt/proto/s${N}/exclusions.conf:/etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
+
+  edge-sensor:
+    <<: *sensor
+    container_name: s${N}-edge-sensor
+    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet=s${N}-inet"]
+    volumes:
+      - /opt/proto/s${N}/edge-sensor.yaml:/etc/suricata/suricata.yaml
+      - /opt/proto/s${N}/edge-rules:/var/lib/suricata/rules
+      - /opt/proto/s${N}/edge-log:/var/log/suricata
+    depends_on: [edge]
+
+  estate-sensor:
+    <<: *sensor
+    container_name: s${N}-estate-sensor
+    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet=s${N}-estate"]
+    volumes:
+      - /opt/proto/s${N}/estate-sensor.yaml:/etc/suricata/suricata.yaml
+      - /opt/proto/s${N}/estate-rules:/var/lib/suricata/rules
+      - /opt/proto/s${N}/estate-log:/var/log/suricata
+    depends_on: [waf]
+
+networks:
+  internet:
+    name: s${N}_internet
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: s${N}-inet
+      com.docker.network.driver.mtu: "1442"
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+    ipam:
+      config:
+        - subnet: "172.30.${N}.0/24"
+          gateway: "172.30.${N}.254"
+  estate:
+    name: s${N}_estate
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: s${N}-estate
+      com.docker.network.driver.mtu: "1442"
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+    ipam:
+      config:
+        - subnet: "10.30.${N}.0/24"
+          gateway: "10.30.${N}.254"

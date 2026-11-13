@@ -1,0 +1,56 @@
+name: s${N:?slot number}-corp
+
+services:
+  corp-wp:
+    image: ghcr.io/nekonic/cr-corp:${CR_IMAGE_TAG:?image tag}
+    container_name: s${N}-corp-wp
+    hostname: corp-wp
+    extra_hosts:
+      - "corp.com:127.0.0.1"
+    depends_on:
+      corp-db: {condition: service_healthy}
+    networks:
+      estate:
+        ipv4_address: "10.30.${N}.60"
+      backend: {}
+    environment:
+      WORDPRESS_DB_HOST: "corp-db"
+      WORDPRESS_DB_NAME: "wordpress"
+      WORDPRESS_DB_USER: "wordpress"
+      WORDPRESS_DB_PASSWORD: "wordpress"
+      CR_WP_URL: "http://corp.com"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -f /tmp/cr-corp-ready && wp core is-installed --allow-root --path=/var/www/html && wp plugin is-active ultimate-member --allow-root --path=/var/www/html"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+      start_interval: 1s
+
+  corp-db:
+    image: ghcr.io/nekonic/cr-corp-db:${CR_IMAGE_TAG:?image tag}
+    container_name: s${N}-corp-db
+    networks: [backend]
+    command: ["--binlog-format=ROW", "--log-bin=binlog", "--server-id=1", "--innodb-rollback-segments=1"]
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: "wordpress"
+      MYSQL_USER: "wordpress"
+      MYSQL_PASSWORD: "wordpress"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uwordpress", "-pwordpress"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+      start_interval: 1s
+
+networks:
+  estate:
+    name: s${N}_estate
+    external: true
+  backend:
+    internal: true
+    driver_opts:
+      com.docker.network.driver.mtu: "1442"
+      com.docker.network.bridge.gateway_mode_ipv4: isolated

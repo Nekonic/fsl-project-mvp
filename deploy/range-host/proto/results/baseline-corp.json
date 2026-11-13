@@ -1,0 +1,219 @@
+[
+ {
+  "alert_sources": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "corroborated": null,
+  "counts": {
+   "edge": 0,
+   "estate": 0,
+   "modsec": 0
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.0.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "corp-normal-home",
+  "sids": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "verdict": "TN"
+ },
+ {
+  "alert_sources": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "corroborated": null,
+  "counts": {
+   "edge": 0,
+   "estate": 0,
+   "modsec": 0
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.0.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "corp-normal-registration-page",
+  "sids": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "verdict": "TN"
+ },
+ {
+  "alert_sources": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "corroborated": null,
+  "counts": {
+   "edge": 0,
+   "estate": 0,
+   "modsec": 0
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.0.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "corp-normal-search",
+  "sids": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "verdict": "TN"
+ },
+ {
+  "alert_sources": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "corroborated": null,
+  "counts": {
+   "edge": 0,
+   "estate": 0,
+   "modsec": 0
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.0.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "corp-normal-registration",
+  "sids": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "verdict": "TN"
+ },
+ {
+  "alert_sources": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "corroborated": false,
+  "counts": {
+   "edge": 0,
+   "estate": 0,
+   "modsec": 0
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.0.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "corp-rogue-admin",
+  "sids": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "verdict": "FN"
+ },
+ {
+  "alert_sources": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "corroborated": false,
+  "counts": {
+   "edge": 0,
+   "estate": 0,
+   "modsec": 0
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.0.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "corp-option-flip",
+  "sids": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "verdict": "FN"
+ },
+ {
+  "alert_sources": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "corroborated": false,
+  "counts": {
+   "edge": 0,
+   "estate": 0,
+   "modsec": 0
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.0.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "corp-content-write",
+  "sids": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "verdict": "FN"
+ }
+]

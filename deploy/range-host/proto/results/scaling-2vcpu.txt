@@ -1,0 +1,58 @@
+s1 board-sqli-orderby-sqlmap 40.1s exit=0
+sqlmap 1 wall 41.5s
+kernel_drops total 0
+min available 4209 MiB
+s2 board-sqli-orderby-sqlmap 53.0s exit=0
+s1 board-sqli-orderby-sqlmap 54.1s exit=0
+sqlmap 1 2 wall 55.7s
+kernel_drops total 0
+min available 4114 MiB
+s2 board-sqli-orderby-sqlmap 77.5s exit=0
+s1 board-sqli-orderby-sqlmap 79.8s exit=0
+s3 board-sqli-orderby-sqlmap 79.6s exit=0
+sqlmap 1 2 3 wall 81.6s
+kernel_drops total 0
+min available 4068 MiB
+s4 board-sqli-orderby-sqlmap 103.4s exit=0
+s2 board-sqli-orderby-sqlmap 104.7s exit=0
+s1 board-sqli-orderby-sqlmap 105.0s exit=0
+s3 board-sqli-orderby-sqlmap 105.4s exit=0
+sqlmap 1 2 3 4 wall 107.4s
+kernel_drops total 0
+min available 3996 MiB
+reset s1 board 46.3s (common down 5.1s, up 8.7s, attach 28.0s)
+reset 1 wall 46.3s
+min available 4350 MiB
+reset s1 board 71.6s (common down 7.3s, up 13.5s, attach 44.8s)
+reset s2 board 72.3s (common down 7.4s, up 13.9s, attach 44.8s)
+reset 1 2 wall 72.3s
+min available 4322 MiB
+reset s2 board 83.9s (common down 8.1s, up 17.3s, attach 51.5s)
+reset s1 board 99.7s (common down 10.2s, up 17.2s, attach 65.0s)
+reset s3 board 99.8s (common down 9.4s, up 18.2s, attach 64.7s)
+reset 1 2 3 wall 99.9s
+min available 4269 MiB
+reset s2 board 113.6s (common down 11.3s, up 21.6s, attach 71.8s)
+reset s4 board 115.4s (common down 11.7s, up 21.9s, attach 73.5s)
+reset s3 board 121.7s (common down 11.3s, up 23.2s, attach 78.0s)
+reset s1 board 122.3s (common down 11.4s, up 22.6s, attach 79.0s)
+reset 1 2 3 4 wall 122.3s
+min available 4397 MiB
+reset_fast s1 board 36.0s (kali and waf recreated 8.7s, target 36.0s)
+reset_fast 1 wall 36.0s
+min available 4369 MiB
+reset_fast s1 board 58.8s (kali and waf recreated 13.7s, target 58.8s)
+reset_fast s2 board 58.8s (kali and waf recreated 13.8s, target 58.8s)
+reset_fast 1 2 wall 58.9s
+min available 4390 MiB
+reset_fast s1 board 89.6s (kali and waf recreated 18.5s, target 89.5s)
+reset_fast s3 board 89.7s (kali and waf recreated 18.3s, target 89.6s)
+reset_fast s2 board 89.7s (kali and waf recreated 18.5s, target 89.7s)
+reset_fast 1 2 3 wall 89.7s
+min available 4294 MiB
+reset_fast s3 board 87.2s (kali and waf recreated 30.2s, target 87.2s)
+reset_fast s2 board 100.8s (kali and waf recreated 29.5s, target 100.8s)
+reset_fast s4 board 103.9s (kali and waf recreated 28.7s, target 103.9s)
+reset_fast s1 board 104.3s (kali and waf recreated 22.6s, target 104.3s)
+reset_fast 1 2 3 4 wall 104.3s
+min available 4287 MiB

@@ -1,0 +1,756 @@
+[
+ {
+  "alert_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "modsec": [
+    "5.188.10.10"
+   ]
+  },
+  "corroborated": true,
+  "counts": {
+   "edge": 1,
+   "estate": 0,
+   "modsec": 2
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "estate_xff": []
+  },
+  "name": "board-sqli-search",
+  "sids": {
+   "edge": [
+    "9000001"
+   ],
+   "estate": [],
+   "modsec": [
+    "942100",
+    "949110"
+   ]
+  },
+  "verdict": "TP"
+ },
+ {
+  "alert_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "modsec": [
+    "5.188.10.10"
+   ]
+  },
+  "corroborated": true,
+  "counts": {
+   "edge": 1,
+   "estate": 0,
+   "modsec": 2
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "estate_xff": []
+  },
+  "name": "board-sqli-login-bypass",
+  "sids": {
+   "edge": [
+    "9000002"
+   ],
+   "estate": [],
+   "modsec": [
+    "942100",
+    "949110"
+   ]
+  },
+  "verdict": "TP"
+ },
+ {
+  "alert_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "modsec": [
+    "5.188.10.10"
+   ]
+  },
+  "corroborated": true,
+  "counts": {
+   "edge": 1,
+   "estate": 0,
+   "modsec": 4
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "estate_xff": []
+  },
+  "name": "board-sqli-union-search",
+  "sids": {
+   "edge": [
+    "9000001"
+   ],
+   "estate": [],
+   "modsec": [
+    "942100",
+    "942190",
+    "942270",
+    "949110"
+   ]
+  },
+  "verdict": "TP"
+ },
+ {
+  "alert_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "modsec": [
+    "5.188.10.10"
+   ]
+  },
+  "corroborated": true,
+  "counts": {
+   "edge": 936,
+   "estate": 0,
+   "modsec": 8286
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "estate_xff": []
+  },
+  "name": "board-sqli-orderby-sqlmap",
+  "sids": {
+   "edge": [
+    "9000001",
+    "9000003",
+    "9000004"
+   ],
+   "estate": [],
+   "modsec": [
+    "913100",
+    "930100",
+    "930110",
+    "930120",
+    "932160",
+    "932235",
+    "933160",
+    "941100",
+    "941110",
+    "941160",
+    "941390",
+    "942100",
+    "942140",
+    "942151",
+    "942160",
+    "942170",
+    "942190",
+    "942230",
+    "942270",
+    "942320",
+    "942350",
+    "942360",
+    "942540",
+    "949110"
+   ]
+  },
+  "verdict": "TP"
+ },
+ {
+  "alert_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "modsec": [
+    "5.188.10.10"
+   ]
+  },
+  "corroborated": true,
+  "counts": {
+   "edge": 936,
+   "estate": 0,
+   "modsec": 8286
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "estate_xff": []
+  },
+  "name": "board-sqli-orderby-sqlmap-probe",
+  "sids": {
+   "edge": [
+    "9000001",
+    "9000003",
+    "9000004"
+   ],
+   "estate": [],
+   "modsec": [
+    "913100",
+    "930100",
+    "930110",
+    "930120",
+    "932160",
+    "932235",
+    "933160",
+    "941100",
+    "941110",
+    "941160",
+    "941390",
+    "942100",
+    "942140",
+    "942151",
+    "942160",
+    "942170",
+    "942190",
+    "942230",
+    "942270",
+    "942320",
+    "942350",
+    "942360",
+    "942540",
+    "949110"
+   ]
+  },
+  "verdict": "TP"
+ },
+ {
+  "alert_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "modsec": [
+    "5.188.10.10"
+   ]
+  },
+  "corroborated": true,
+  "counts": {
+   "edge": 1189,
+   "estate": 0,
+   "modsec": 7544
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.1.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "board-sqli-orderby-sqlmap-random-agent",
+  "sids": {
+   "edge": [
+    "9000001",
+    "9000003",
+    "9000004"
+   ],
+   "estate": [],
+   "modsec": [
+    "930100",
+    "930110",
+    "930120",
+    "932160",
+    "932235",
+    "933160",
+    "941100",
+    "941110",
+    "941160",
+    "941390",
+    "942100",
+    "942140",
+    "942151",
+    "942160",
+    "942170",
+    "942190",
+    "942230",
+    "942270",
+    "942320",
+    "942350",
+    "942360",
+    "942540",
+    "949110"
+   ]
+  },
+  "verdict": "TP"
+ },
+ {
+  "alert_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "modsec": [
+    "5.188.10.10"
+   ]
+  },
+  "corroborated": true,
+  "counts": {
+   "edge": 1186,
+   "estate": 0,
+   "modsec": 7527
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.1.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "board-sqli-orderby-sqlmap-skip-waf",
+  "sids": {
+   "edge": [
+    "9000001"
+   ],
+   "estate": [],
+   "modsec": [
+    "933160",
+    "942100",
+    "942140",
+    "942151",
+    "942160",
+    "942170",
+    "942190",
+    "942230",
+    "942270",
+    "942320",
+    "942350",
+    "942360",
+    "942540",
+    "949110"
+   ]
+  },
+  "verdict": "TP"
+ },
+ {
+  "alert_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "modsec": [
+    "5.188.10.10"
+   ]
+  },
+  "corroborated": true,
+  "counts": {
+   "edge": 507,
+   "estate": 0,
+   "modsec": 6824
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.1.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "board-sqli-orderby-sqlmap-tamper",
+  "sids": {
+   "edge": [
+    "9000001",
+    "9000003",
+    "9000004"
+   ],
+   "estate": [],
+   "modsec": [
+    "930100",
+    "930110",
+    "930120",
+    "932160",
+    "932235",
+    "933160",
+    "941100",
+    "941110",
+    "941160",
+    "941390",
+    "942100",
+    "942140",
+    "942151",
+    "942160",
+    "942190",
+    "942270",
+    "942350",
+    "942540",
+    "949110"
+   ]
+  },
+  "verdict": "TP"
+ },
+ {
+  "alert_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "modsec": [
+    "5.188.10.10"
+   ]
+  },
+  "corroborated": true,
+  "counts": {
+   "edge": 507,
+   "estate": 0,
+   "modsec": 7489
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.1.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "board-sqli-orderby-sqlmap-versioned",
+  "sids": {
+   "edge": [
+    "9000001",
+    "9000003",
+    "9000004"
+   ],
+   "estate": [],
+   "modsec": [
+    "930100",
+    "930110",
+    "930120",
+    "932160",
+    "932235",
+    "933160",
+    "941100",
+    "941110",
+    "941160",
+    "941390",
+    "942100",
+    "942140",
+    "942151",
+    "942160",
+    "942190",
+    "942270",
+    "942350",
+    "942540",
+    "949110"
+   ]
+  },
+  "verdict": "TP"
+ },
+ {
+  "alert_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "modsec": [
+    "5.188.10.10"
+   ]
+  },
+  "corroborated": true,
+  "counts": {
+   "edge": 1,
+   "estate": 0,
+   "modsec": 5
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "estate_xff": []
+  },
+  "name": "board-xss-script-tag-in-search",
+  "sids": {
+   "edge": [
+    "9000003"
+   ],
+   "estate": [],
+   "modsec": [
+    "941100",
+    "941110",
+    "941160",
+    "941390",
+    "949110"
+   ]
+  },
+  "verdict": "TP"
+ },
+ {
+  "alert_sources": {
+   "edge": [],
+   "estate": [],
+   "modsec": [
+    "5.188.10.10"
+   ]
+  },
+  "corroborated": true,
+  "counts": {
+   "edge": 0,
+   "estate": 0,
+   "modsec": 5
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "estate_xff": []
+  },
+  "name": "board-xss-img-onerror-in-comment",
+  "sids": {
+   "edge": [],
+   "estate": [],
+   "modsec": [
+    "941100",
+    "941120",
+    "941160",
+    "941390",
+    "949110"
+   ]
+  },
+  "verdict": "TP"
+ },
+ {
+  "alert_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "modsec": []
+  },
+  "corroborated": true,
+  "counts": {
+   "edge": 1,
+   "estate": 0,
+   "modsec": 0
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [],
+   "estate_xff": []
+  },
+  "name": "board-path-traversal-static",
+  "sids": {
+   "edge": [
+    "9000004"
+   ],
+   "estate": [],
+   "modsec": []
+  },
+  "verdict": "TP"
+ },
+ {
+  "alert_sources": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "corroborated": null,
+  "counts": {
+   "edge": 0,
+   "estate": 0,
+   "modsec": 0
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.1.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "board-normal-search",
+  "sids": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "verdict": "TN"
+ },
+ {
+  "alert_sources": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "corroborated": null,
+  "counts": {
+   "edge": 0,
+   "estate": 0,
+   "modsec": 0
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.1.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "board-normal-search-with-apostrophe",
+  "sids": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "verdict": "TN"
+ },
+ {
+  "alert_sources": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "corroborated": null,
+  "counts": {
+   "edge": 0,
+   "estate": 0,
+   "modsec": 0
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.1.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "board-normal-post-list",
+  "sids": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "verdict": "TN"
+ },
+ {
+  "alert_sources": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "corroborated": null,
+  "counts": {
+   "edge": 0,
+   "estate": 0,
+   "modsec": 0
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.1.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "board-normal-sort",
+  "sids": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "verdict": "TN"
+ },
+ {
+  "alert_sources": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "corroborated": null,
+  "counts": {
+   "edge": 0,
+   "estate": 0,
+   "modsec": 0
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.1.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "board-normal-search-korean",
+  "sids": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "verdict": "TN"
+ },
+ {
+  "alert_sources": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "corroborated": null,
+  "counts": {
+   "edge": 0,
+   "estate": 0,
+   "modsec": 0
+  },
+  "http_sources": {
+   "edge": [
+    "5.188.10.10"
+   ],
+   "estate": [
+    "10.30.1.247"
+   ],
+   "estate_xff": [
+    "5.188.10.10"
+   ]
+  },
+  "name": "board-normal-comment",
+  "sids": {
+   "edge": [],
+   "estate": [],
+   "modsec": []
+  },
+  "verdict": "TN"
+ }
+]
