@@ -1532,7 +1532,7 @@ fabric이 만드는 네트워크는 `mgmt` 하나입니다. 슬롯의 `internet`
 
 **configure.** `POST /api/range/configure/`(`configure_slot()`)는 수집기 룰을 여는 일과 훈련 환경 호스트의 시간 출처 설정을 나란히 처리합니다. 둘 다 훈련 환경 호스트 세대와 수집기 주소 조합마다 한 번만 합니다. 그다음 슬롯의 파일을 훈련 환경 호스트의 `slot.sh up N`에 넘깁니다. compose 파일, 두 센서의 설정, Kali와 에지의 주소, rsyslog 설정, 기본 룰, 스크립트 자신입니다. `slot.sh up`은 다음을 합니다.
 
-1. 슬롯 디렉터리를 모두 root 소유로 만듭니다. WAF 로그 디렉터리 `/var/log/cr/sN/waf`에서는 일반 파일 `audit.log` 말고는 모두 지우고, 그 파일이 없으면 remap된 범위의 `www-data`와 호스트의 `adm` 소유(`0640`)로 만듭니다. 그래서 `syslog`가 읽을 수 있습니다.
+1. 슬롯 디렉터리를 모두 root 소유로 만듭니다. WAF 로그 디렉터리 `/var/log/cr/sN/waf`에서는 일반 파일 `audit.log` 말고는 모두 지우고, 그 파일이 없으면 remap된 범위의 `www-data`와 `adm` 소유(`0644`)로 만듭니다. 그래서 컨테이너 안에서 root인 nginx 마스터가 열 수 있고 `syslog`가 읽을 수 있습니다.
 2. 컨테이너를 만들고(`up --no-start --pull never`), 한 번도 실행하지 않은 대상 시스템의 빈 볼륨마다 초기 데이터를 복사합니다.
 3. 컨테이너를 띄웁니다(`up -d --wait`).
 4. Kali에 출발지 주소와 기본 출발지 게이트웨이로 가는 기본 경로를, 에지의 `wan`에 출발지마다 게이트웨이 주소를 붙입니다(`nsenter`로 `ip -batch` 실행).
