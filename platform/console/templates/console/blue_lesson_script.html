@@ -194,8 +194,8 @@ function referenceHtml(id, titled = true) {
   const rows = referenceRows(id);
   return `${titled ? `<b class="text-heading">${esc(t(`lesson.ref.${id}.title`))}</b>` : ""}
     ${body ? `<p class="whitespace-pre-line text-body">${esc(body)}</p>` : ""}
-    ${rows.length ? `<table class="w-full text-[12px]"><tbody>${rows.map(([code, meaning]) =>
-      `<tr class="align-top border-t border-line"><td class="py-1 pr-2 font-mono text-heading whitespace-pre-wrap">${esc(code)}</td><td class="py-1 text-body">${esc(meaning || "")}</td></tr>`).join("")}</tbody></table>` : ""}
+    ${rows.length ? `<div class="flex flex-col text-[12px]">${rows.map(([code, meaning]) =>
+      `<div class="border-t border-line py-1"><code class="block font-mono text-heading whitespace-pre-wrap break-all">${esc(code)}</code><span class="block text-body">${esc(meaning || "")}</span></div>`).join("")}</div>` : ""}
     ${id === "addresses" ? '<table data-addresses class="w-full text-[12px]"><tbody></tbody></table>' : ""}`;
 }
 
