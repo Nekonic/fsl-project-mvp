@@ -6,7 +6,7 @@ problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
 Updated: 2026-11-14 (the range is one range host, `cr-range`, running four
-slots as compose projects; branch `range-host`, waiting for gate 2).
+slots as compose projects; on `dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
@@ -23,9 +23,9 @@ Internet.
   6 vCPU, 16 GB), which runs slot N as the compose project `sN` (Kali, the
   nftables edge, the WAF, two Suricata sensors, board and corp). The old slot
   VMs, their networks, the role images and the OPNsense image were removed by
-  `bin/cloud up --replace`'s leftovers step. The work is on the branch
-  `range-host`; the live platform runs the branch `range-host-live` (no `/`
-  in `platform.ref`), images from GHCR by its commit.
+  `bin/cloud up --replace`'s leftovers step. The work is on `dev`; the live
+  platform runs the branch `range-host-live` (no `/` in `platform.ref`),
+  images from GHCR by its commit.
 - Detection against the VM range (the prototype's offline scorer on the live
   range, `deploy/range-host/proto/score.py` and `compare.py`): board 18 cases
   and corp 7 cases have the same verdict, `corroborated` and signature sets
@@ -109,13 +109,12 @@ files, so copy them before working in a new one. Older store copies are in
 
 ## Waiting for the user
 
-1. Gate 2 for the container range (branch `range-host`): the evidence is in
-   the report of 2026-11-14 and in this file.
+Nothing. Gate 2 is only for `main` (Next, item 6).
 
 ## Next, in order
 
-1. Gate 2, then `dev` and the live cloud on `dev` (set `platform.ref` back to
-   `dev` and `compute.slots` as the user wants; four now).
+1. The live cloud on `dev`: set `platform.ref` back to `dev` and
+   `compute.slots` as the user wants (four now).
 2. The learner map was rendered in the live GNS3 web UI with this file's
    positions and shows no overlapping text; the string table calls the edge
    라우터. Open: the router still wears the firewall icon (`host-firewall.svg`),

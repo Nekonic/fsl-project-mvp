@@ -127,7 +127,7 @@ alert that does not mention the attack's mechanism is reported
   `range/rangehost.py` (with `deploy/range-host/slot.sh`) renders and runs each
   slot, starts and stops both Suricata sensors, configures the edge router and
   names the sensors' and the WAF's log files it forwards, and
-  `deploy/range-host/slot.yaml` mounts the WAF's audit directory, both tied
+  `deploy/range-host/slot.yaml` mounts the WAF's audit log file, both tied
   to `deploy/waf/modsecurity.conf`'s `SecAuditLog` by a test in
   `platform/tests/test_range_host.py`;
   `platform/nginx.conf` names the Kibana API routes

@@ -58,11 +58,10 @@ old cloud on 2026-10-20 proved the changed bring-up paths and led to fixes
 one-VM trial and the last bring-up fixes"): `down` beside a stopped container,
 `resume` checking the hand-over, the first range key and the wargame host kept
 across `down` then `up` all ran live, and the §9 one-VM trial ran end to end
-from an empty cloud (README step 7 took 17 min 41 s). The last full
-`bin/verify` ran on 2026-11-13 on the platform VM at 3a0df7d: 1663 unit and
-API tests passed (4:53); acceptance 76 passed, 0 failed, 0 errors, 1 skipped
-(the c2 course does not start with F1, by design) in 1945 s across 4
-processes; ratchet no regression. History: on 2026-10-26 unit 1669 and
+from an empty cloud (README step 7 took 17 min 41 s). The latest full
+`bin/verify` is in `docs/state/now.md`. History: on 2026-11-13 at 3a0df7d
+unit and API 1663 and acceptance 76 passed, 1 skipped (the c2 course does not
+start with F1, by design), in 1945 s across 4 processes; on 2026-10-26 unit 1669 and
 acceptance 73 passed in 2003 s across 4 processes; on 2026-10-24 two runs with
 two slots gave unit 1618 and acceptance 73 in 2186 s, then unit 1626 and
 acceptance 73 in 1867 s; on 2026-10-21, on dev's head, unit 1578 and acceptance
@@ -512,7 +511,8 @@ where, without the sensor), `runner(role, segment)` and `launcher(segment)`.
 of the port.
 
 `platform/range/declaration.yaml` declares per segment an id, a name and an
-attack origin, a role table, and `watches: {sensor: gateway}`; the OpenStack
+attack origin, a role table, and `watches: {sensor: edge, estate-sensor:
+wargames}`; the OpenStack
 adapter, `cr/settings.py` and `test/range.py` read it. Identity is declared,
 allocation reported: a declared subnet that disagreed with the real one would
 bin alerts by a subnet nothing lives on. A segment is bound by its
@@ -574,10 +574,11 @@ package, step 4), and one attacker for every origin (one Kali Internet port
 holding the ~100 origin addresses, step 5). Not re-checked since:
 
 4. **Roles are found by Nova server name**, which is not unique; segments are
-   bound by tag for that reason, roles not yet. The slot marks its servers with
-   metadata `fsl_host`, which `describe()` does not read yet. Credentials are
-   settled: `FSL_SUBSTRATE=range.openstack.connect` and `FSL_OPENSTACK_*`, each
-   refused by name when missing.
+   bound by tag for that reason, roles not yet. Settled: the range host is
+   found by its `cr_host` metadata (`range/slot.py` `host_of`, read by
+   `range/openstack.py`), not by name. Credentials are settled:
+   `CR_SUBSTRATE=range.openstack.connect` and `CR_OPENSTACK_*`, each refused
+   by name when missing.
 5. **Does the operator still look like an outsider?** The reachability rule
    works because Docker DNATs the published port to a gateway. A Neutron router
    presenting the operator's own address is fine; one presenting a node's
@@ -712,8 +713,10 @@ through the scenarios' exclusions, level and thresholds (backlog 0).
 The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
 
 - **Range**: an Internet segment with thirty declared origin countries, the
-  internal network (`estate`) and management, crossed only at the WAF; two
-  targets stand there, `http://board.com` and `http://corp.com`.
+  internal network (`estate`) and management. Kali knows the targets by name
+  only through the WAF, `http://board.com` and `http://corp.com`; the edge
+  routes `internet` to `estate` without NAT or filtering, so Kali also reaches
+  the board's estate address (`docs/ARCHITECTURE.md`).
 - **Red team**: one Kali image, driven from the red console's terminal in a wargame or the
   blue console's Kali pane in a lesson or scenario; the
   cases stay for the API, the harness and the scenario engine's attacker; each
@@ -724,9 +727,12 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   the snapshotted ground truth. A WordPress site behind the WAF as `corp.com`
   (three pinned-version CVEs, see "Sub-project B"): `effect_observed`, scored
   from `corp-db`'s own MySQL binary log. Each wargame is one folder,
-  `wargames/<id>/`, whose `compose.yaml` the top one includes; `board` holds
-  the board and its MySQL, `corp` the WordPress site and its MySQL. A test
-  holds the folders, the includes and the console's catalogue to each other.
+  `wargames/<id>/`; the top `compose.yaml` does not include them but mounts
+  `./wargames` read-only into the platform, and `range/rangehost.py`
+  (`compose`) renders each wargame's `compose.yaml` into every slot's compose
+  project. `board` holds the board and its MySQL, `corp` the WordPress site
+  and its MySQL. `test_compose.py` holds the folders and the console's
+  catalogue to each other.
 - **Score**: objectives (exfiltrated data or observed effect, checked against
   the target's own records) beside detection TP/FP/FN/TN with the
   `corroborated` gate; `platform/game.py` also computes a zero-sum balance,
@@ -1167,9 +1173,10 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       step makes: it stays, as the keypair does (`docs/OPENSTACK.md` §3.5,
       §5.2); the next images step reuses it and resets its one ingress rule
       to the platform's address. Recorded 2026-10-21.
-- [ ] Unverified: the edge's Suricata include and rules surviving an
-      OPNsense update (`opnsense-update`); the edge has no Internet route and
-      cannot resolve `pkg.opnsense.org`. Needs a route out, or stays unverified.
+- [x] Unverified: the edge's Suricata include and rules surviving an
+      OPNsense update (`opnsense-update`): moot since 2026-11-13, when the
+      range host replaced the OPNsense edge with an nftables container
+      (`deploy/edge/edge.nft`).
 - [x] A slot reset took 272-314 s from close to the next open on this cloud
       (60-66 s on the previous one). The wargame host's `up --wait` of board
       then corp was the critical path, and inside it MySQL's data
@@ -1214,9 +1221,8 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       at 3a0df7d from the branch `cr-rename` (`images.yml` by
       `workflow_dispatch`); running `dev` itself waits for the push to `dev`.
 - [x] Review of the seven-step lesson text: dropped with the lesson (P6).
-- [ ] Publishing the OPNsense image: BSD-2 allows it; its trademark policy
-      allows "based on OPNsense" and asks project@opnsense.org before a
-      derived name is used. Awaits the user.
+- [x] Publishing the OPNsense image: moot since 2026-11-13; the range has no
+      OPNsense image (the edge is `deploy/edge`).
 - [x] On substrate openstack the board's ground truth was read from
       `BOARD_API_URL` (`http://board:8000`), the compose board on `estate`,
       not the OpenStack board VM. Readiness and the session baseline now read
@@ -1351,19 +1357,20 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       `corp-normal-registration` posted a form id (4) that does not exist; they
       now post 5, as `test/shared_sessions.py` does, and `corp-content-write`'s
       prefetch reads the rbsm key only.
-- [ ] Attacker image on OpenStack resolves from an env var (FSL_TOOL_IMAGE,
+- [ ] Attacker image on OpenStack resolves from an env var (CR_TOOL_IMAGE,
       written by the platform VM's cloud-init since 2026-10-11) rather than
       from the substrate in code; decide which.
 - [ ] Seam exceptions: move the code or keep them recorded
-      (`register_pipeline.py` for Elasticsearch, `range/opnsense.py` +
-      `deploy/opnsense/` and the sensor hosts' rule paths and reload commands in
-      `declaration.yaml` for Suricata, and since 2026-10-12 the estate sensor:
-      `deploy/wargame-host/sensor.yaml` runs Suricata on the wargame host and
-      `range/openstack.py` (`start_sensor`) with `range/wargame_host.py`
-      (`sensor_up`) starts it; `operator_log.py` + the `fsl-kali` terminal
-      wiring for the attacker box; `vm-terminal.sh fsl-waf`, and F6's step commands naming the exclusion file
-      and the nginx reload). `CLAUDE.md` lists them, the estate
-      sensor as `range/wargame_host.py`.
+      (`register_pipeline.py` for Elasticsearch; the sensor hosts' rule paths
+      and reload commands in `declaration.yaml` (`cr-edge`, `cr-range`) for
+      Suricata; `range/rangehost.py` with `deploy/range-host/slot.sh`, which
+      render and run each slot, start and stop both Suricata sensors,
+      configure the edge router and name the forwarded log files, and
+      `deploy/range-host/slot.yaml`, which mounts the WAF's audit log file;
+      `platform/nginx.conf` and `blue.html` for Kibana; `operator_log.py` and
+      the `cr-kali` and `cr-waf` terminal wiring (`vm-terminal.sh`) for the
+      attacker box and the WAF; F6's step commands naming the exclusion file
+      and the nginx reload). `CLAUDE.md` lists them.
 - [x] The WAF terminal names the WAF container by convention instead of the
       label lookup (`platform/waf-terminal.sh` builds `fsl-<id>-waf-1`): moot
       since the docker substrate removal deleted both files; the terminal is
@@ -1842,15 +1849,6 @@ binary log via a substrate runner, proven end to end against the live stack.
   if the platform VM loses its upstream, the range follows the platform's
   clock, which is what scoring compares against, not true time. A host whose
   time source does not answer within 30 s fails its configure step.
-- A slot host booted again on its own (its server deleted, then POST)
-  takes a new `estate` address the others' `/etc/hosts` does not have; take
-  the whole slot down and up instead.
-- A slot server's `/etc/hosts` comes from the user data it was booted with,
-  and the reset's rebuild sends none, so a change to the declared names or a
-  host's estate address reaches a standing server only when it is booted
-  again.
-- On `mgmt`, the Neutron DHCP port (dnsmasq, tcp/udp 53) has no security
-  group and answers Kali's queries.
 - The platform and gns3 containers mount the Docker socket (the platform
   non-root, via the socket's group): an escape path, on the platform VM too.
 - The ttyd terminals at `/vm-terminal/kali/` and `/vm-terminal/waf/` are

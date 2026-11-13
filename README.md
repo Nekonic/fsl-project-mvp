@@ -846,7 +846,9 @@ only the sessions it created.
 `bin/acceptance --plan` prints the split, and `test/README.md` explains it. The
 platform VM does not listen on localhost, so run it on the VM with
 `CR_PLATFORM_URL=http://<address>:8000 bin/verify`. Every acceptance test runs
-on OpenStack and none is skipped.
+on OpenStack. One skips by design: `test_lesson.py`'s F1 map test runs once per
+course and skips for a course that does not start with F1 (`c2` starts with F4),
+so a full run reports one skip.
 
 `bin/prune` deletes sessions by hand. Without `--apply` it is a dry run:
 
