@@ -155,8 +155,9 @@ a single VM on VirtualBox or VMware.
    slot has reset.
 
 9. **If it fails.** `bin/cloud up` stops at the first failure and says why. It
-   names the `cloud.yaml` key, the missing flavor or image, or the GHCR package
-   that is not public. Fix the cause and run the same command again. It
+   names the `cloud.yaml` key, the missing flavor or image, the GHCR package
+   that is not public, or a range host that failed its setup (slot phase
+   `SETUP_FAILED`, with `/var/log/cr-setup.log` on the range host saying why). Fix the cause and run the same command again. It
    continues where it stopped.
 
    - Platform VM: log in with `ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS`. Then
@@ -527,15 +528,19 @@ Then one POST boots the range host `cr-range` from the base image, with its
 setup bundle in the user data. It has two ports: one on `mgmt` (security group
 `cr-mgmt`, which only the platform reaches) and one on the platform's own
 network (security group `cr-egress`, no ingress), which it uses to pull
-images:
+images. Once its setup reports ready, the platform detaches that second port.
+A set-up range host keeps only `cr-range.mgmt`: no way to the Internet and no
+DNS resolver.
 
 ```bash
 curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/api/range/slot/
 ```
 
 `GET` on the same path reports the range host `SETTING_UP` until its setup
-marks `/var/lib/cr/ready`, and `SETUP_FAILED` with the end of the setup log if
-the setup fails. On a range host that already stands, the same POST replaces
+marks `/var/lib/cr/ready`, and `SETUP_FAILED` if the setup fails. Then
+`/api/range/ready/` reports the slot phase `SETUP_FAILED`, naming
+`/var/log/cr-setup.log` on the range host, and `bin/cloud up` stops with that
+reason. On a range host that already stands, the same POST replaces
 it when its image tag or setup bundle is not the platform's, unless a session
 holds a slot.
 
@@ -615,9 +620,10 @@ container with `docker exec`.
 **The learner map (port 3080).** Each session's map shows the company network
 the learner defends, drawn as a lab topology.
 
-- It names roles, not machines. Each link end shows the interface and the
-  address with its prefix. At `kali` and `customers` it shows the interface
-  alone. Each zone except the Internet has the network as its caption.
+- It names roles, not machines. A host's link end shows its address alone,
+  with no interface or prefix. Links to the database and monitoring switches
+  carry no label. DMZ gains its network in the caption; 인터넷, DB존 and 관리망
+  keep their name alone.
 - It shows no management segment, no platform and no machine's own name.
 - There is one map per slot for the session's wargame, in Korean.
   GNS3 holds each map open with every node started.

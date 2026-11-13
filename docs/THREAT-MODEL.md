@@ -149,8 +149,11 @@ What stands between them (`deploy/range-host/slot.yaml`,
   (`gateway_mode_ipv4` isolated). Nothing is published and nothing is NATed, so
   a container has no route out and no address of the range host to reach.
 - The range host's `mgmt` port is in `cr-mgmt`, which only the platform
-  reaches. Its second port, on the platform's network, is in `cr-egress`, which
-  admits nothing inbound; the range host uses it to pull images.
+  reaches. While it sets itself up it has a second port, on the platform's
+  network, in `cr-egress`, which admits nothing inbound; the range host uses it
+  to pull images. Once the setup reports ready, the platform detaches that
+  port, so a set-up range host has no way to the Internet and no DNS
+  resolver.
 - The two Suricata sensors of each slot run on the host network with
   `NET_ADMIN`, `NET_RAW` and `SYS_NICE` and no user namespace remap. No learner
   is given a shell in them.
@@ -158,8 +161,9 @@ What stands between them (`deploy/range-host/slot.yaml`,
 What a container escape reaches: a kernel bug reachable through the default
 seccomp profile puts the learner on the range host as the remapped user, and a
 second bug as root. From there every other slot on the host is open, including
-its board's `auth_user` secret, its sensors and its logs, and so are the range
-host's own way to the Internet and its syslog stream to the platform. The
+its board's `auth_user` secret, its sensors and its logs, and so is the range
+host's syslog stream to the platform. It reaches no way out: the range host's
+egress port exists only during its setup, before any slot holds a session. The
 control plane is not: the platform is another VM, and from `mgmt` it accepts
 only NTP and syslog from the range host. A root on the range host can still
 send the platform forged log lines for any slot, so no score from that host is
