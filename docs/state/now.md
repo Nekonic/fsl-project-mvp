@@ -44,11 +44,18 @@ Internet.
 - Live containment: `test/test_range_isolation.py` passed on the live range
   (14 passed): no container of a slot reaches the range host, the platform,
   the Internet, the metadata service or another slot, and a SYN scan works
-  from Kali. With it,
-  `test/test_attacker_reach.py`'s two tests passed, but its port scan covers
-  only Kali's interfaces other than the one with its default route, and in a
-  slot Kali has only `eth0`, so it scans nothing and is not containment
-  evidence; its other test (no target reached past the WAF by name) holds.
+  from Kali. `test/test_attacker_reach.py`'s port scan scanned nothing in a
+  slot (Kali has only `eth0`) and was replaced by a scan from Kali of the
+  range host, the platform and the `mgmt` network in
+  `test_range_isolation.py`; its other test (no target reached past the WAF
+  by name) holds.
+- 2026-11-14: the WAF mounted its log directory, so root in it could plant a
+  symlink that `slot.sh reset` (root) truncated through and rsyslog read
+  through. Shown live on the old layout: a reset emptied a root-owned host
+  canary the WAF had linked to. The WAF now mounts only its `audit.log`
+  (`docs/DECISIONS.md` "The WAF mounts its log file, not its log
+  directory"); `test_range_isolation.py`'s last test plants the links and
+  checks the canary after a reset.
 - Full `bin/verify` on the platform VM at be49cf5 (2026-11-13, four slots):
   unit and API 1498 passed (4:47); acceptance 90 passed, 0 failed, 0 errors,
   1 skipped in 950 s across 6 processes; ratchet no regression (`core_loc`
