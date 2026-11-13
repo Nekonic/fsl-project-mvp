@@ -12,6 +12,8 @@ $APT purge snapd modemmanager
 printf 'Package: snapd modemmanager\nPin: release *\nPin-Priority: -1\n' > /etc/apt/preferences.d/no-snapd-modemmanager
 $APT install docker.io docker-compose-v2 ethtool rsyslog acl
 
+printf 'fs.inotify.max_user_instances = 1024\nfs.inotify.max_user_watches = 524288\n' > /etc/sysctl.d/90-cr-range.conf
+sysctl --system >/dev/null
 printf 'MaxSessions 256\nMaxStartups 64:30:256\n' > /etc/ssh/sshd_config.d/60-cr.conf
 sshd -t
 systemctl reload ssh
