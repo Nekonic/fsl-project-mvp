@@ -1,3 +1,4 @@
+import re
 import io
 import json
 import pathlib
@@ -149,6 +150,15 @@ def test_no_management_address_reaches_the_learner_map():
     assert [text for text in shown.values() if text], "the map is labelled at all"
     assert not [text for text in shown.values() if "10.31.0." in text]
 
+def test_a_label_is_the_address_alone_with_no_interface_port_or_docker_bridge_name():
+    shown = {pair: label["text"] for pair, label in labels(slot_map(2)).items()}
+
+    assert shown[("board.com", "sw1")] == "10.30.0.184" and shown[("waf", "sw1")] == "10.30.0.177"
+    assert shown[("kali", "internet")] == "5.188.10.10", "the attacker's address in the default origin is drawn"
+    assert not [text for text in shown.values() if re.search(r"ens\d|vtnet|eth\d|^e\d+$|/", text)]
+    assert shown[("board.com", "sw2")] == shown[("board-db", "sw2")] == "", "no Docker bridge address"
+    assert [pair for pair, text in shown.items() if text and pair[0] in ("sw1", "sw2", "sw3", "internet")] == []
+
 def test_each_slot_s_map_carries_its_own_addresses_and_ids_and_keeps_every_drawing_of_its_wargame():
     drawn = json.loads(OPENSTACK.read_text())
     template = topology.for_wargame(drawn, learner_of(declared.read(), "board"))
@@ -158,8 +168,8 @@ def test_each_slot_s_map_carries_its_own_addresses_and_ids_and_keeps_every_drawi
                             | {link["link_id"] for link in document["topology"]["links"]}
                             | {d["drawing_id"] for d in document["topology"]["drawings"]})
 
-    assert labels(one)[("waf", "sw1")]["text"] == "ens3 10.30.0.102/24"
-    assert labels(two)[("waf", "sw1")]["text"] == "ens3 10.30.0.177/24"
+    assert labels(one)[("waf", "sw1")]["text"] == "10.30.0.102"
+    assert labels(two)[("waf", "sw1")]["text"] == "10.30.0.177"
     assert not ids(one) & ids(two) and not ids(one) & ids(drawn) and not ids(two) & ids(drawn)
     assert two["project_id"] == str(uuid.uuid5(uuid.UUID(drawn["project_id"]), "slot-2-board"))
     assert one["name"] == "range-openstack slot 1 board" and two["show_interface_labels"] is True
@@ -238,7 +248,7 @@ def test_a_changed_address_loads_the_slot_s_maps_again(served):
     maps.publish("slot 2 board", lambda: [Interface("fsl-waf", "ens3", "10.30.0.99/24", "estate")])
 
     assert len(served.published) == 2
-    assert labels(served.published[-1])[("waf", "sw1")]["text"] == "ens3 10.30.0.99/24"
+    assert labels(served.published[-1])[("waf", "sw1")]["text"] == "10.30.0.99"
 
 def test_tidying_keeps_only_the_maps_of_the_slots_still_standing(served):
     maps.tidy(maps.SLOT, ["slot 2 board"])

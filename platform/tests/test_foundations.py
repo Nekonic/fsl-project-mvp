@@ -92,10 +92,14 @@ def kali_run(session, lesson_id, step_id, marker, **meta):
 
 def test_every_foundation_has_its_words():
     table = tables()
+    for course in wargames.courses("board"):
+        keys = [f"{course['text']}.{part}" for part in ("title", "summary", "brief", "done")]
+        keys += [f"lesson.ref.{card}.title" for card in course.get("reference", [])]
+        assert not [key for key in keys if key not in table], course["id"]
     for taught in wargames.foundations("board"):
         prefix, last = taught["text"], taught["steps"][-1]["id"]
         keys = [f"{prefix}.{part}" for part in ("title", "summary", "learns")]
-        keys += [f"{prefix}.theory.{card['id']}.{part}" for card in taught["theory"] for part in ("title", "body")]
+        keys += [f"lesson.ref.{card}.title" for card in taught.get("reference", [])]
         for shown in taught["steps"]:
             check, named = shown["check"], shown["id"]
             keys += [f"{prefix}.{part}.{named}" for part in ("title", "coach", "ok")]
@@ -107,6 +111,25 @@ def test_every_foundation_has_its_words():
             keys += [f"{prefix}.wrong.{named}.order"] if check.get("form") == "order" else []
             keys += [f"lesson.open.{shown['point']['opens']}"]
         assert not [key for key in keys if key not in table], taught["id"]
+
+def test_the_six_foundations_are_two_courses_the_first_reading_the_range_and_the_second_changing_it():
+    courses = {course["id"]: course for course in wargames.courses("board")}
+    table = tables()
+
+    assert [course["lessons"] for course in courses.values()] == [["f1", "f2", "f3"], ["f4", "f5", "f6"]]
+    assert [table[f"{course['text']}.title"] for course in courses.values()] == ["로그 분석 기초", "공격 탐지 실습"]
+    assert {wargames.lesson_defense("board", one) for one in courses["c1"]["lessons"]} == {"full"}
+    assert not [step for one in courses["c1"]["lessons"] for step in wargames.lesson("board", lesson_id=one)["steps"]
+                if step["check"]["kind"] in ("rules", "kali", "waf_changed", "replay", "loot")], "course 1 only reads"
+    assert "kql" in courses["c1"]["reference"] and "kql" in courses["c2"]["reference"]
+
+def test_a_kibana_step_rings_its_answer_only_once_the_learner_s_own_query_is_written():
+    kibana = [step for taught in wargames.foundations("board") for step in taught["steps"]
+              if (step["point"].get("kibana") or {}).get("doc") or (step["point"].get("kibana") or {}).get("sidebar")
+              or (step["point"].get("kibana") or {}).get("hits")]
+
+    assert kibana and all((step["point"]["kibana"]).get("kql") for step in kibana), [
+        step["id"] for step in kibana if not step["point"]["kibana"].get("kql")]
 
 def test_no_foundation_question_carries_a_fixed_answer():
     for taught in wargames.foundations("board"):
@@ -136,26 +159,36 @@ def test_every_step_opens_a_pane_points_at_one_element_and_the_last_is_solo_with
     assert [one["solo"] for one in steps] == [False] * 7 + [True]
 
 def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_learner_s_map_shows(client):
-    board_ip, db_subnet, db_ip, route = BOARD, "172.18.0.0/16", "172.18.0.2", "customers > firewall > waf > board.com"
+    route = "kali > firewall > waf > board.com"
     session = opened("f1")
     with on_the_range(), on_map(read_slot()):
         given = {
-            "board_ip": [answer(client, session, "board_ip", one)["passed"] for one in (board_ip, f"{board_ip}/24", WAF)],
-            "db_subnet": [answer(client, session, "db_subnet", one)["passed"] for one in (db_subnet, db_ip)],
-            "kali_zone": [answer(client, session, "kali_zone", one)["passed"] for one in ("인터넷망", "인터넷", "internet", "Services")],
+            "kali_ip": [answer(client, session, "kali_ip", one)["passed"] for one in (KALI, CUSTOMER)],
+            "board_ip": [answer(client, session, "board_ip", one)["passed"] for one in (BOARD, f"{BOARD}/24", WAF)],
+            "dmz": [answer(client, session, "dmz", one)["passed"] for one in ("10.30.0.0/24", BOARD)],
             "log_host": [answer(client, session, "log_host", one)["passed"] for one in ("log-server", "waf")],
-            "db_ip": [answer(client, session, "db_ip", one)["passed"] for one in (db_ip, board_ip)],
+            "waf_ip": [answer(client, session, "waf_ip", one)["passed"] for one in (WAF, BOARD)],
         }
         reordered = answer(client, session, "path", " > ".join(reversed(route.split(" > "))))
+        from_customers = answer(client, session, "path", "customers > firewall > waf > board.com")
         right = answer(client, session, "path", route)
         shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
 
-    assert given == {"board_ip": [True, True, False], "db_subnet": [True, False], "kali_zone": [True, True, False, False],
-                     "log_host": [True, False], "db_ip": [True, False]}
+    assert given == {"kali_ip": [True, False], "board_ip": [True, True, False], "dmz": [True, False],
+                     "log_host": [True, False], "waf_ip": [True, False]}
     assert reordered["reason"] == ["lesson.map.wrong.path.order", []], "right hosts in the wrong order say so"
-    assert right["passed"] is True
+    assert from_customers["passed"] is False and right["passed"] is True
     assert set(route.split(" > ")) <= set(shown["path"]["check"]["options"]) and "sw1" not in shown["path"]["check"]["options"]
-    assert shown["db_subnet"]["point"]["map"] == {"zone": "sw2"}
+    assert shown["dmz"]["point"]["map"] == {"zone": "sw1"}
+
+def test_the_reference_s_address_table_lists_the_addresses_the_learner_s_map_draws(client):
+    session = opened("f3")
+    with on_the_range(), on_map(read_slot()):
+        listed = client.get(f"/api/sessions/{session.pk}/lesson/addresses/").json()["addresses"]
+
+    rows = {(one["host"], one["zone"], one["address"]) for one in listed}
+    assert {("kali", "인터넷", KALI), ("waf", "DMZ", WAF), ("board.com", "DMZ", BOARD)} <= rows
+    assert not [one for one in listed if one["address"].startswith("172.18.")], "no Docker bridge address"
 
 @pytest.mark.parametrize("lesson_id, step_id, url, status, right, wrong, reason", [
     ("f2", "path", "/search/?q=hello", 200, "/search/", "board.com/search/", "lesson.http.wrong.path.host"),
@@ -185,25 +218,16 @@ def test_f3_reads_the_two_legs_of_one_search_by_destination_and_counts_both_legs
     with on_the_range(), on_map(read_slot()), patch.object(site, "kept", return_value=searched), indexed(*legs):
         step(client, session, "search")
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("site_source", WAF), ("client_source", CUSTOMER), ("xff", CUSTOMER), ("count", "2"))}
+            ("site_source", WAF), ("client_source", CUSTOMER), ("xff", CUSTOMER), ("count", "2"), ("upstream", "1"))}
         Session.objects.filter(pk=session.pk).update(lesson_steps={"f3": {"site_source": {"passed": "x"}}})
         host = answer(client, session, "site_host", "waf")["passed"]
         wrong = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("site_source", CUSTOMER), ("client_source", WAF), ("count", "1"))}
+            ("site_source", CUSTOMER), ("client_source", WAF), ("count", "1"), ("upstream", "2"))}
 
-    assert said == {"site_source": True, "client_source": True, "xff": True, "count": True}
+    assert said == {"site_source": True, "client_source": True, "xff": True, "count": True, "upstream": True}, (
+        "a count reads the newest search word, not another learner's or an older one")
     assert host is True, "the host is the map host whose address the step before found"
-    assert wrong == {"site_source": False, "client_source": False, "count": False}
-
-def test_whether_a_search_is_in_the_waf_log_is_read_from_the_waf_s_own_records(client):
-    session = opened("f3")
-    with patch.object(site, "kept", return_value=[browsed("/search/?q=kim2026", 200)]):
-        with indexed():
-            quiet = answer(client, session, "waf_logged", "absent")["passed"]
-        with indexed(waf_record(session.browse_marker, "/search/?q=kim2026")):
-            logged = answer(client, session, "waf_logged", "present")["passed"]
-
-    assert (quiet, logged) == (True, True)
+    assert wrong == {"site_source": False, "client_source": False, "count": False, "upstream": False}
 
 def test_f4_reads_the_probe_s_block_score_and_whether_the_ids_alerted_from_the_session_s_records(client):
     session = opened("f4")
@@ -243,8 +267,8 @@ def test_the_learner_s_rule_is_judged_by_its_own_alerts_and_the_fix_needs_nocase
     assert (fired, without, with_nocase) == (True, False, True)
 
 @pytest.mark.parametrize("rule, alerted, chosen, line", [
-    (NOCASE_LESS, False, "no", "lesson.xss.ok.slipped"),
-    (WITH_NOCASE, True, "yes", "lesson.xss.ok.slipped.yes"),
+    (NOCASE_LESS, False, "absent", "lesson.xss.ok.slipped"),
+    (WITH_NOCASE, True, "present", "lesson.xss.ok.slipped.present"),
 ], ids=["missed", "already-nocase"])
 def test_the_slipped_pass_line_follows_the_answer_the_learner_s_own_rule_made_true(client, rule, alerted, chosen, line):
     session = opened("f4")
@@ -307,9 +331,9 @@ def test_f4_write_passes_only_when_the_learner_s_own_rule_alerted_on_a_script_se
     assert elsewhere["reason"] == ["lesson.xss.fail.write.elsewhere", ["9100001", "/admin/"]]
     assert fired["passed"] is True and fired["added"] == [9100001]
 
-def test_the_f4_rule_theory_gives_a_rule_form_to_fill_in_and_no_complete_rule_for_something_else():
+def test_the_suricata_reference_gives_a_rule_form_to_fill_in_and_no_complete_rule_for_something_else():
     table = tables()
-    body = table["lesson.xss.theory.rule.body"]
+    body = table["lesson.ref.suricata.body"]
     shown = [line for line in body.split("\n") if line.startswith("alert ")]
     assert len(shown) == 1 and "9100001;" not in body and "/admin" not in body
     assert re.search(r'msg:"\[[^]]+\]";.*content:"\[[^]]+\]";.*sid:\[[^]]+\];', shown[0])

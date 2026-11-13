@@ -36,10 +36,10 @@ PATTERN_JUDGED = "judged"
 REDS = ("schedule", "person")
 SCENARIO_ID = re.compile(r"[0-9]+(\.[0-9]+)+", re.ASCII)
 ANSWERS_OF = ("rule", "rule_matched")
-RANGE_FACTS = ("address", "subnet", "zone_of", "path", "logs", "host_of", "excluded_target", "lost_points",
+RANGE_FACTS = ("address", "subnet", "path", "logs", "host_of", "excluded_target", "lost_points",
                "detected_penalty")
 REQUEST_FACTS = ("status", "method", "path", "parameter", "param_value", "sensor_source", "forwarded_for",
-                 "waf_logged", "waf_detected", "anomaly_total", "alerted", "alerted_sid", "alerted_sid_present", "hits")
+                 "waf_detected", "anomaly_total", "alerted", "alerted_sid", "alerted_sid_present", "hits")
 KALI_FACTS = ("sqlmap_found", "kali_source", "alerted_by")
 LEGS = ("inbound", "upstream", "both")
 STEP_MARKER = "step:"
@@ -69,6 +69,7 @@ def checked_scenario(loaded: Any, wargame_id: str, source) -> dict[str, Any]:
         **{field: loaded[field] for field in SCENARIO_FIELDS},
         **checked_card(loaded, source),
         **({"foundations": loaded["foundations"]} if "foundations" in loaded else {}),
+        **({"courses": loaded["courses"]} if "courses" in loaded else {}),
         **({"scenarios": loaded["scenarios"]} if "scenarios" in loaded else {}),
         **({"defense": checked_defense(loaded["defense"], source)} if "defense" in loaded else {}),
     }
@@ -118,6 +119,25 @@ def checked_lessons(lessons: Any, known: set[str], source, defenses=(DEFAULT_DEF
         checked_lesson_card(taught, set(ids) - {taught["id"]}, source)
         checked_lesson(taught, known, source, defenses)
         checked_lesson_judging(taught, source)
+
+def checked_courses(scenario: dict, source) -> None:
+    declared = scenario.get("courses")
+    if declared is None:
+        return
+    taught = [one["id"] for one in scenario.get("foundations") or []]
+    if not isinstance(declared, list) or not all(
+            isinstance(course, dict) and isinstance(course.get("id"), str) and LESSON_ID.fullmatch(course["id"])
+            and isinstance(course.get("text"), str) and isinstance(course.get("lessons"), list) and course["lessons"]
+            and all(isinstance(card, str) for card in course.get("reference", [])) for course in declared):
+        raise InvalidCatalogue(f"{source}: courses is a list of an id, a text, a non-empty lessons list and an "
+                               f"optional reference list")
+    grouped = [lesson_id for course in declared for lesson_id in course["lessons"]]
+    if sorted(grouped) != sorted(taught) or len({course["id"] for course in declared}) != len(declared):
+        raise InvalidCatalogue(f"{source}: every foundation belongs to exactly one course and every course has its own "
+                               f"id, got {grouped} for {taught}")
+    for one in scenario.get("foundations") or []:
+        if not all(isinstance(card, str) for card in one.get("reference", [])):
+            raise InvalidCatalogue(f"{source}: lesson {one['id']} reference is a list of reference card ids")
 
 def checked_groups(scenario: dict, source) -> None:
     ids = [taught["id"] for group in ("foundations", "scenarios") for taught in scenario.get(group) or []]
@@ -364,6 +384,7 @@ def _discover() -> dict[str, dict[str, Any]]:
         checked_lessons(found[wargame_id].get("foundations"), known, path, defenses)
         checked_scenarios(found[wargame_id].get("scenarios"), malicious, path, defenses, _profiles(path.parent))
         checked_groups(found[wargame_id], path)
+        checked_courses(found[wargame_id], path)
     return found
 
 def _profiles(directory: Path) -> set[str]:
@@ -387,6 +408,12 @@ def defense(wargame_id: str, name: str) -> dict[str, Any] | None:
 
 def foundations(wargame_id: str) -> list[dict[str, Any]]:
     return sorted(WARGAMES[wargame_id].get("foundations") or [], key=lambda taught: taught["order"])
+
+def courses(wargame_id: str) -> list[dict[str, Any]]:
+    return list(WARGAMES[wargame_id].get("courses") or [])
+
+def course_of(wargame_id: str, lesson_id: str) -> dict[str, Any] | None:
+    return next((course for course in courses(wargame_id) if lesson_id in course["lessons"]), None)
 
 def scenarios(wargame_id: str) -> list[dict[str, Any]]:
     return sorted(WARGAMES[wargame_id].get("scenarios") or [], key=lambda one: one["order"])
@@ -536,6 +563,8 @@ def _summarise(wargame: dict[str, Any]) -> dict[str, Any]:
         "benign": len(loaded) - attacks,
         "objectives": len(objectives(wargame["id"])["tiers"]) if wargame["objective_model"] != "none" else 0,
         "foundations": [_foundation_card(taught) for taught in foundations(wargame["id"])],
+        "courses": [{"id": course["id"], "title": f"{course['text']}.title", "goal": f"{course['text']}.summary",
+                     "lessons": list(course["lessons"])} for course in courses(wargame["id"])],
         "scenarios": [scenario_card(one) for one in scenarios(wargame["id"])],
         "category": wargame.get("category") or "",
         "difficulty": wargame.get("difficulty") or "",

@@ -3,12 +3,10 @@ from __future__ import annotations
 import ipaddress
 import json
 import math
-import re
 import uuid
 from dataclasses import dataclass
 from xml.etree import ElementTree
 
-from range.fabric import MANAGEMENT
 from range.interfaces import BRIDGE_PREFIX, BUSYBOX
 from range.slot import NAMED_ON
 
@@ -67,11 +65,11 @@ FIREWALL = "firewall"
 WAF = "waf"
 LOG_SERVER = "log-server"
 INTERNET = "internet"
-ADDRESS_VARIES = frozenset({ATTACKER, CUSTOMERS})
 SERVICE = "sw1"
 DATABASE_SWITCH = "sw2"
 MONITORING = "sw3"
 SCORER = "scorer"
+UNLABELLED = frozenset({DATABASE_SWITCH})
 DISPLAY_IMAGE = BUSYBOX
 
 @dataclass(frozen=True)
@@ -84,7 +82,6 @@ class Learner:
     sensors: dict[str, str]
     hidden: frozenset[str]
     prefers: dict[str, tuple[str, ...]]
-    unaddressed: dict[str, str]
     logs_from: tuple[str, ...]
 
     def shown(self, real: str) -> str:
@@ -147,7 +144,7 @@ def learner(declared, wargame: str, customers_from: str = "", customers_prefer: 
     logs_from = tuple(dict.fromkeys(filter(None, (LOG_STORE, roles.get(SCORER, "")))))
     return Learner(wargame=wargame, hosts={real: tuple(shown) for real, shown in hosts.items()}, roles=placed,
                    switches=switches, shared=shared, sensors=sensors, hidden=frozenset(hidden), prefers=prefers,
-                   unaddressed={MANAGEMENT: MONITORING}, logs_from=logs_from)
+                   logs_from=logs_from)
 
 def _wired(project) -> dict[str, set[str]]:
     named = {node["node_id"]: node["name"] for node in project["topology"]["nodes"]}
@@ -194,8 +191,16 @@ def switch_of(project, host: str) -> str:
     kinds = _kinds(project)
     return min((name for name in _wired(project).get(host, ()) if kinds[name] == SWITCH), default="")
 
-def route(learner, site: str) -> list[str]:
-    return list(dict.fromkeys([CUSTOMERS, *(learner.roles[role] for role in TRANSIT if role in learner.roles), site]))
+def route(learner, site: str, start: str = CUSTOMERS) -> list[str]:
+    return list(dict.fromkeys([start, *(learner.roles[role] for role in TRANSIT if role in learner.roles), site]))
+
+def addresses(project, learner, found) -> list[dict]:
+    placed = {node["name"]: (node["x"], node["y"]) for node in project["topology"]["nodes"]}
+    named = {switch: _shape(caption)[1].text.strip() for switch, caption in captions(project).items()}
+    return [{"host": host, "zone": named.get(switch, switch), "address": one.address.partition("/")[0]}
+            for (host, switch), one in sorted(link_heads(learner, found).items(),
+                                              key=lambda pair: (placed.get(pair[0][0], (0, 0)), pair[0][1]))
+            if host in placed and switch in placed and switch not in UNLABELLED]
 
 def link_heads(learner, found) -> dict[tuple[str, str], object]:
     held: dict[tuple[str, str], list] = {}
@@ -214,10 +219,6 @@ def address(project, learner, found, host: str, zone: str | None = None) -> list
 def subnet(project, learner, found, host: str) -> list[str]:
     one = link_heads(learner, found).get((host, switch_of(project, host)))
     return [str(ipaddress.ip_interface(one.address).network)] if one else []
-
-def zone_name(project, host: str) -> list[str]:
-    caption = captions(project).get(switch_of(project, host))
-    return [_shape(caption)[1].text.strip()] if caption is not None else []
 
 def hosts_at(learner, found, addresses: list[str]) -> list[str]:
     wanted = {value.partition("/")[0] for value in addresses}
@@ -245,7 +246,6 @@ GLYPH_BOTTOM = 23
 NAME_TOP = 1
 NAME_BOTTOM = 22
 LABEL_NUDGE = 3
-PORT_NAME = re.compile(r"(?P<kind>[A-Za-z])[A-Za-z]*(?P<number>\d+)")
 CAPTION_CHAR = 0.62
 NETWORKS_JOINED = ", "
 
@@ -327,25 +327,6 @@ def _placed_label(node, other, others, text) -> tuple[int, int, str]:
         return round(max(crossed) + LABEL_ASIDE) - LABEL_NUDGE, top, STARTS
     return round(min(crossed) - LABEL_ASIDE) - LABEL_NUDGE, top, ENDS
 
-def port_label(node, number: int) -> str:
-    named = next((port["name"] for port in (node.get("properties") or {}).get("ports_mapping") or ()
-                  if port["port_number"] == number), "")
-    found = PORT_NAME.fullmatch(named)
-    return f"{found['kind'].lower()}{found['number']}" if found else ""
-
-def _nic_only(learner, found) -> dict[tuple[str, str], str]:
-    ranked: dict[tuple[str, str], list] = {}
-    for one in found:
-        switch = learner.unaddressed.get(one.segment)
-        if not switch or one.name.startswith(BRIDGE_PREFIX):
-            continue
-        logging = one.host in learner.logs_from
-        names = learner.hosts.get(one.host) or ((LOG_SERVER,) if logging else ())
-        rank = learner.logs_from.index(one.host) if logging else 0
-        for name in names:
-            ranked.setdefault((name, switch), []).append((rank, one.name))
-    return {pair: min(held)[1] for pair, held in ranked.items()}
-
 def _shape(drawing) -> tuple[ElementTree.Element, ElementTree.Element]:
     svg = ElementTree.fromstring(drawing["svg"])
     return svg, svg[0]
@@ -383,15 +364,15 @@ def for_wargame(project, learner) -> dict:
     document = json.loads(json.dumps(project))
     topology = document["topology"]
     gone = {node["node_id"] for node in topology["nodes"] if node["name"] in learner.hidden}
+    holds = lambda zone, nodes: any(_within(node["x"] + SYMBOL_SIZE / 2, node["y"] + SYMBOL_SIZE / 2, _area(zone))
+                                    for node in nodes)
+    zones, _ = _zones(document)
+    held = [zone for zone in zones if holds(zone, topology["nodes"])]
     topology["nodes"] = [node for node in topology["nodes"] if node["node_id"] not in gone]
     topology["links"] = [link for link in topology["links"] if not {end["node_id"] for end in link["nodes"]} & gone]
-    zones, texts = _zones(document)
-    kept = [zone for zone in zones if any(_within(node["x"] + SYMBOL_SIZE / 2, node["y"] + SYMBOL_SIZE / 2,
-                                                  _area(zone)) for node in topology["nodes"])]
-    kept_ids = {id(zone) for zone in kept}
-    shown = kept_ids | {id(text) for text in texts
-                        if (zone := _smallest(text["x"], text["y"], zones)) is None or id(zone) in kept_ids}
-    topology["drawings"] = [drawing for drawing in topology["drawings"] if id(drawing) in shown]
+    emptied = [zone for zone in held if not holds(zone, topology["nodes"])]
+    topology["drawings"] = [drawing for drawing in topology["drawings"] if not any(
+        drawing is zone or _within(drawing["x"], drawing["y"], _area(zone)) for zone in emptied)]
     return document
 
 def _captioned(drawing, networks) -> None:
@@ -407,7 +388,7 @@ def labelled(project, learner, found, salt: str, called: str) -> dict:
     document["name"] = f"{document['name']} {called}"
     document["show_interface_labels"] = True
     by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
-    heads, bare = link_heads(learner, found), _nic_only(learner, found)
+    heads = link_heads(learner, found)
     toward: dict[str, list[tuple[str, tuple[float, float]]]] = {}
     for link in document["topology"]["links"]:
         one, other = (by_id[end["node_id"]] for end in link["nodes"])
@@ -418,13 +399,8 @@ def labelled(project, learner, found, salt: str, called: str) -> dict:
         ends = [by_id[end["node_id"]] for end in link["nodes"]]
         for end, node, other in ((link["nodes"][0], ends[0], ends[1]), (link["nodes"][1], ends[1], ends[0])):
             switching = node["node_type"] == SWITCH
-            head = None if switching else heads.get((node["name"], other["name"]))
-            if switching:
-                text = port_label(node, end["port_number"])
-            elif head:
-                text = head.name if node["name"] in ADDRESS_VARIES else f"{head.name} {head.address}"
-            else:
-                text = bare.get((node["name"], other["name"]), "")
+            head = None if switching or other["name"] in UNLABELLED else heads.get((node["name"], other["name"]))
+            text = head.address.partition("/")[0] if head else ""
             if head:
                 network = str(ipaddress.ip_interface(head.address).network)
                 if network not in networks.setdefault(other["name"], []):

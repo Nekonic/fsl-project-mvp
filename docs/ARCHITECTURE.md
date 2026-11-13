@@ -209,22 +209,23 @@ The range's topology is kept as GNS3 project files. They use `revision` 9, so GN
 - **The system map**, `deploy/topology/system/range-openstack.gns3`, shows the full wiring of the declaration. It includes the management segment, the platform VM and the wargame host's containers. It is English only, for development and GNS3's MCP. The GNS3 service never sees the repo's maps, so learners are never offered it.
 - **The learner map**, `deploy/topology/range-openstack.gns3`, shows the company web-service network the learner defends. It is a logical diagram, drawn the way lab topologies are drawn (Cisco NetAcad lab topology, NSRC workshop logical diagram). The rules below describe what the learner map contains.
 
-What the learner map shows:
+What the learner map shows, drawn as an enterprise logical diagram:
 
-- Role hostnames.
-- At each link end, the interface and its address with prefix. At `kali` and `customers` it shows the interface alone.
-- A caption on each zone with its network. The Internet zone shows its name alone.
-- The text "IDS" beside each host that runs Suricata. That is `firewall` and the site.
+- Role hostnames above the icons.
+- At each host's link end, the address alone (`10.30.0.184`): no interface, port or prefix. Switch ends and management links carry no label, and the links to the database switch carry none either, since their addresses are a Docker bridge's.
+- Four zones, captioned as KISA's ISMS-P 2.6.1 names network zones (DMZ, DB존) plus 인터넷 and 관리망. A zone with labelled links gains its network in the caption (`DMZ 10.30.0.0/24`).
+- Each IDS is its own sensor box ("IDS") joined by a dashed line to the host whose traffic it is fed. That is `firewall` (the OPNsense edge's Suricata) and the site (the estate sensor on the wargame host), the hosts Kibana's `sensor` names.
+- Green arrows with drawn arrowheads, and the caption 웹 요청, show the request flow internet → firewall → waf → site.
 
-It shows nothing else. It has no title, legend or note, no machine's own name, no `fsl-`, no management segment and no Docker bridge name.
+It shows nothing else: no title, legend, machine's own name, `fsl-`, management address or Docker bridge.
 
-- The request path runs left to right: the Internet zone, `firewall`, the Services zone (`waf` and the site), the database zone, then the monitoring zone.
-- `topology.for_wargame` keeps a text that lies in no zone, such as the firewall's "IDS" between two zones.
+- The flow runs left to right along one row (internet, firewall, waf, site), with `sw1` above the row and `sw3` below it, so no link crosses another.
+- `topology.for_wargame` drops a zone and the drawings inside it only when the zone held nodes and none is left for the wargame; lines, sensor boxes and texts outside such a zone stay.
 
 The nodes of the learner map:
 
 - `customers` and `kali` (the attacker's Kali box) are on the `internet` switch.
-- `firewall` is OpenStack's OPNsense edge. Its Suricata is folded into this node.
+- `firewall` is OpenStack's OPNsense edge. Its Suricata is drawn as the IDS sensor box beside it.
 - `sw1` is the service segment. The `waf` and the site (`board.com` or `corp.com`, the WAF host's declared names) are on it.
 - `sw2` is the database segment. It sits behind the site and holds the database (`board-db`).
 - `sw3` is monitoring. It links the `log-server` (Elasticsearch) to the hosts whose records reach it: the firewall, the WAF and the site. The estate sensor runs on the sites' host and ships its own eve.json.
@@ -277,27 +278,17 @@ Segments are `ethernet_switch` nodes. The system map draws the rest as follows.
 
 The learner sees the addresses of their own range. `api/maps.py` derives the maps from the learner map. For each slot, and for the session's wargame (`slot 1 board`, `slot 2 corp`), it makes one project (`topology.labelled`). Every link is labelled at both ends, as a lab topology labels it.
 
-Labels at the switch end:
+Labels:
 
-- A switch's end, and the `internet` switch's end, carries the port the link uses in short form (`Ethernet2` is `e2`).
-
-Labels at the host end:
-
-- Every host's end carries the real interface and its address with prefix on that switch's segment (`ens3 10.30.0.102/24`, `vtnet0 5.188.10.1/24`).
-- The platform reads these through `topology.learner`.
-- Two hosts show only the interface, not the address (`topology.ADDRESS_VARIES`): each request can leave from a different origin, so the source address changes (origin SNAT, several origins):
-  - the attacker, whose interface is the one in the default origin;
-  - the customers, whose interface is the one in their busiest origin. The busiest origin comes from the weights in `traffic.yaml`, leaving the default origin out, as `attacker.customer_origins` does. Where the box holds no such interface, there is no label.
-- The site shows its host address on `sw1`, because the WAF reaches the site there. It shows the site container's address on `sw2`. The site is a dual-homed server, so it gets one label at each of its own link ends.
-- A `sw3` end carries the NIC name alone (`ens4`, `vtnet2`), because its address is on the management network, which the learner does not see.
-- The `log-server`'s end is the platform VM's NIC (`ens7`).
-- No label names a Docker bridge (`br-`).
+- A host's end carries its address on that switch's segment without the prefix (`10.30.0.102`), read through `topology.learner`. The attacker's is the one in the default origin; the customers' is the one in their busiest origin (the weights in `traffic.yaml`, leaving the default origin out, as `attacker.customer_origins` does), and no label where the box holds none.
+- A switch's end, a `sw3` end and an end on the database switch (`topology.UNLABELLED`) carry an empty label. No label names an interface, a port or a Docker bridge.
 
 Zone captions:
 
-- Each zone caption gains the networks of the labels on its switch (`Services 10.30.0.0/24`, `Internal DB 172.18.0.0/16`).
+- Each zone caption gains the networks of the labels on its switch (`DMZ 10.30.0.0/24`).
 - The caption of a switch is the text in the smallest box that holds it (`topology.captions`).
-- Internet and Monitoring keep their name alone.
+- 인터넷, DB존 and 관리망 keep their name alone.
+- `GET /api/sessions/<id>/lesson/addresses/` returns the same addresses as rows `{host, zone, address}` (`topology.addresses`) for the reference column's address card.
 
 Where a label sits (`topology.leaving`):
 
@@ -816,7 +807,7 @@ In a guided session (a foundation or a worked scenario), the lesson note is a co
 - It is 340 px wide (300 px at 1280 px or less). It folds to a 44 px strip ("step n/N"). Below 1024 px it is a panel under the pane.
 - From the top, the note holds:
   - the step card: step n/N, the step's title, the task, the command to type once the step is reached, an "Open <pane>" button when the step's pane is not shown, the question and its input, the status line, the help, and Skip, Back and Next;
-  - the theory card, open on a unit's first visit (`fsl-lesson-landed-<id>-<lesson>`) and then as the viewer left it;
+  - F6's objectives card follows the step card and the stretch card; there is no theory card (2026-11-13, the reference column and the course briefing hold what was theory);
   - F6's objectives card (`lesson_objectives`), which lists each objective lost since the unit started, its difficulty, detected or not, and its penalty (difficulty x 1 or x 2), with the total;
   - a worked scenario's cards and hints;
   - F4's and F6's ungraded "Do it yourself" card;
@@ -840,7 +831,7 @@ The steps are declared in the unit (`steps` of a foundation or a worked scenario
 - a `point`;
 - a terminal `command` when the learner types one. `wargames.lesson` fills `{waf_rules}`, `{waf_reload}` and `{sudo}` in it from the declared WAF layout (`settings.FSL_WAF`).
 
-A foundation step has no Kibana `query`.
+A foundation step has no Kibana `query`. A Kibana point may carry `kql:`, a regular expression the learner's own submitted query (the Discover URL's `query`, else the query bar) must match, case-insensitively, before the ring leaves the query bar (stage `write`, `lesson.kibana.write`). So no highlight shows an answer before the learner has written the query.
 
 The session API shows only what the browser needs.
 
@@ -912,7 +903,8 @@ The locators are:
   - `query`;
   - `hits`, with `discoverNoResults` as its fallback (its own stage callout);
   - `doc: <field>`, a field's row in the document flyout, brought into view through the flyout's field filter;
-  - `sidebar: <field>`.
+  - `sidebar: <field>`;
+  - any of these with `kql: <pattern>`, which holds the ring on the query bar until the learner's own query matches.
   On a step whose check names a `leg`, the coach rings the expand toggle of the row on that leg and the flyout's arrow while the other event is open. The row on a leg is the one whose source is another row's destination, or the reverse. When that row cannot be found, or the open document's position is unknown, the coach rings the field filter and never a value. `keep: true` on the point leaves the flyout open on arrival.
 - `term`: `{pane: kali | waf, match}`, the row of the xterm buffer that matches. An optional `done` pattern, once printed after the last typed command, moves the ring to the step's check button.
 
@@ -940,11 +932,18 @@ The rule editor (`#lesson-rules`, ruling D3) sits in the blue console's IDS rule
 - Check rules answers `errors`: the lines carrying Suricata's `Error` from every sensor that refused. `output` is the refusing sensor's output with the most of them.
 - The OPNsense edge's Suricata logs to syslog only (its template has no console output), so its `-T` output carries no error line. The wargame host's estate sensor prints them.
 
-### Foundations F1-F6
+### Foundations F1-F6 in two courses
 
 The design is phase P2 of `docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`. It was rebuilt on 2026-10-18 as attack and defence lessons (`docs/DECISIONS.md`, "Foundations rebuilt as integrated attack and defence lessons").
 
 The board's `scenario.yaml` declares a `foundations:` list. Discovery checks it: ids must be unique across the foundations and the scenarios (`wargames.checked_groups`). The foundations are the taught units. The worked scenarios 1.1 and 3.1 run their steps on the same engine.
+
+It also declares `courses:` (`wargames.checked_courses`): every foundation in exactly one course, each course an `id`, a string key `text` and its `reference` cards. Course `c1` "로그 분석 기초" is f1-f3 and only reads the range (defense `full`, no rule, Kali or WAF change); course `c2` "공격 탐지 실습" is f4-f6 and changes it (`docs/DECISIONS.md`, "The six foundations become two courses"). A course 1 step finds the learner's own request by the learner's own search word or marker and never needs a fresh range or the absence of other traffic.
+
+- `GET /api/wargames/` lists `courses` (`id`, `title`, `goal`, `lessons`); the main page shows one section per course with its lessons.
+- `GET /api/sessions/<id>/` carries `lesson_course` (`id`, `text`, `lessons`, `reference`).
+- The first lesson of a course opens on a briefing over the pane (`<course>.brief` and the course's reference cards, folded) while no step of it is reached; Start reaches the first step (`POST .../steps/<id>/ {state: reached}`), which an agent sends directly.
+- The rail's 참고 button opens a left column with the course's cards and the lesson's own `reference:` cards (`lesson.ref.<id>.title`, `.body`, `.rows`); the `addresses` card is filled from `GET .../lesson/addresses/`. F1 has no address card, since its questions are the addresses.
 
 - `wargames.foundations()` lists the foundations by `order`.
 - `wargames.lesson(lesson_id=...)` finds a foundation or a scenario with steps, refuses any other id, and marks a foundation `group: foundations`.
@@ -956,12 +955,11 @@ Each unit below lists its defense and opening pane, what the learner does, and w
 
 **f1 Reading the network map** (`lesson.map`). Defense `full`, opens on Map.
 
-- The learner reads board.com's Services address and board-db's subnet, and names kali's network. They pick in order the hosts a customer's search passes, and name the host that collects the logs. The solo step asks for board-db's address.
-- Answers are read from the session's learner map (`views._range_fact`: `topology.address`, `topology.subnet`, `topology.zone_names`, `topology.route` and `topology.hosts`, through `topology.learner`):
+- The learner reads kali's and board.com's addresses, picks in order the hosts a request from kali passes (`path` with `from: kali`), reads the DMZ network and names the host that collects the logs. The solo step asks for waf's address. No step asks which zone a host is in.
+- Answers are read from the session's learner map (`views._range_fact`: `topology.address`, `topology.subnet`, `topology.route` and `topology.hosts`, through `topology.learner`):
   - `address`: the link-label addresses, with or without the prefix length;
-  - `subnet`: the zone's subnet;
-  - `zone_of`: the zone caption;
-  - `path`: `customers`, then the transit roles present, then the site (`customers > firewall > waf > board.com`);
+  - `subnet`: the network of the host's switch;
+  - `path`: the step's `from` (default `customers`), then the transit roles present, then the site (`kali > firewall > waf > board.com`);
   - `logs`: the `log-server` node.
 
 **f2 Reading HTTP requests in DevTools** (`lesson.http`). Defense `full`, opens on Website.
@@ -971,20 +969,19 @@ Each unit below lists its defense and opening pane, what the learner does, and w
 
 **f3 Finding your requests in Kibana** (`lesson.logs`). Defense `full`, opens on Website.
 
-- The learner searches a word of letters and digits and writes KQL for it. They then read:
-  - the source IP of the event arriving at board.com, and the map host that uses it;
-  - the source IP of the same search arriving at waf, and its X-Forwarded-For;
-  - whether the WAF logged it.
-  The solo step asks how many http events Kibana shows for their word after two more searches. Each search is recorded on both legs, so the count is twice the searches.
+- The learner searches a word of their own, of letters and digits, and writes `url : *word*` in Kibana. They then read, each card restating the query and naming the column the screen shows:
+  - the count Kibana shows (both legs of every search with the word);
+  - the `source_ip` of the row whose `destination` is waf's address, then of the row whose `destination` is board.com's, and which map host uses that address;
+  - the row's `request_header.x_forwarded_for`.
+  The solo step asks the count of a query the learner writes with `and` and `not`: their word, and `destination` not waf's address.
 - Answers are read from the sensors' http events of the record (`sensor_source`, `forwarded_for`), split by leg.
-  - A leg is `upstream` when `dest_ip` is one of board.com's addresses (waf sends it on). Otherwise it is `inbound` (the request arrives at waf). A sensor that sees both legs therefore reads each search once per leg. `leg: both` takes the events of both legs.
+  - A leg is `upstream` when `dest_ip` is one of board.com's addresses (waf sends it on). Otherwise it is `inbound` (the request arrives at waf). `leg: both` takes the events of both legs.
   - `host_of` gives the map host with that address.
-  - `waf_logged` comes from the WAF's own records.
-  - `hits` is one count: the http events on both legs (`leg: both`) whose url holds the learner's word, since the unit (or the session) started. It matches what `event_type : http and url : *word*` shows in Kibana.
+  - `hits` counts the http events on the leg whose url holds the word of the learner's newest search, since the unit (or the session) started.
 
 **f4 Blocking an XSS request and writing an IDS rule** (`lesson.xss`). Defense `xss-gap`, opens on Website.
 
-- The learner sends `<script>alert(1)</script>` and reads the status, one detecting rule and the Total Score. They read the status of the mixed-case probe, and say whether either drew an IDS alert. They write a rule for `<script` in the URI, apply it, search `<script>alert(1)</script>` and press the check, which passes only when that rule alerted on the search. They read its sid from the alert in Kibana, see the mixed case slip past, and add `nocase`. The theory shows the rule's form with square-bracket blanks, not a complete rule. The solo step replays the mixed case and an ordinary search.
+- The learner sends `<script>alert(1)</script>` and reads the status, one detecting rule and the Total Score. They read the status of the mixed-case probe, and say whether either drew an IDS alert. They write a rule for `<script` in the URI, apply it, search `<script>alert(1)</script>` and press the check, which passes only when that rule alerted on the search. They read its sid from the alert in Kibana, see the mixed case slip past, and add `nocase`. The Suricata reference card shows the rule's form with square-bracket blanks, not a complete rule. The Kibana steps hold the ring on the query bar until the learner's own query names the WAF log and script (or alert). The solo step replays the mixed case and an ordinary search.
 - Answers are read from:
   - `status`;
   - `rule`: the ModSecurity rule ids of the request, 949110 excluded;
@@ -1022,7 +1019,7 @@ The postures `xss-gap` and `overbroad`:
 
 F6's sqlmap command carries `--skip-waf`. Without it, sqlmap's own WAF-detection request would trip IDS 9000003 and 9000004 and one CRS rule, and the run would count as detected. No unit question carries an `accept` list.
 
-One session, F1 to F6. `POST /api/sessions/<id>/lesson/ {"lesson": "<id>"}` moves an open guided session to any foundation in place. It does the following:
+One session per course. `POST /api/sessions/<id>/lesson/ {"lesson": "<id>"}` moves an open guided session to any foundation in place. The console's next lesson stays inside the session's course (`views._next_lesson`), and the course summary lists only that course's lessons; course 1 ends on its own line, course 2 on the two scores (`course.attack.scores`). It does the following:
 
 - When that unit's declared defense differs from `Session.defense`, it writes the unit's CRS tuning (`crs.apply`, as `PUT /waf/` does). It seeds the sensors only when the posture's rule file changes.
 - It sets `Session.lesson` and `Session.defense`.
@@ -1069,8 +1066,8 @@ Three check kinds follow the learner's own actions.
 
 An answer reads one of these facts. `wargames.read_from_record` refuses anything else at discovery.
 
-- `of:` a range fact: `address`, `subnet`, `zone_of`, `path`, `logs`, `host_of`, `excluded_target`, `lost_points`, `detected_penalty`.
-- `of:` a request fact, `about:` a step that has a `match` (or with its own `match`, taking the latest Website pane record that matches it): `status`, `method`, `path`, `parameter`, `param_value`, `sensor_source`, `forwarded_for`, `waf_logged`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_sid`, `alerted_sid_present`, `hits`.
+- `of:` a range fact: `address`, `subnet`, `path`, `logs`, `host_of`, `excluded_target`, `lost_points`, `detected_penalty`.
+- `of:` a request fact, `about:` a step that has a `match` (or with its own `match`, taking the latest Website pane record that matches it): `status`, `method`, `path`, `parameter`, `param_value`, `sensor_source`, `forwarded_for`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_sid`, `alerted_sid_present`, `hits`.
 - `of:` a Kali fact, `about:` a `kali` step: `sqlmap_found`, `kali_source` (from the run's WAF detections, or with `from: server_error` from its 500 records), `alerted_by`.
 - `rule`, with the request's `path` or a `step:` marker (above).
 

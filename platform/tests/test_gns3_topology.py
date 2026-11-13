@@ -330,14 +330,31 @@ def test_every_host_on_a_learner_map_is_a_display_container_of_one_pinned_image_
                                                        project(drawn_in)["topology"]["links"] for end in link["nodes"])
                for node in hosts), "a display node has one adapter per link and no more"
 
-@pytest.mark.parametrize("drawn_in, wargame", PROJECTED, ids=PROJECTED_IDS)
-def test_each_host_an_ids_runs_on_is_marked_ids_beside_it_and_no_zone_takes_the_mark_for_its_title(drawn_in, wargame):
-    learner, shown, _ = projected(drawn_in, wargame)
-    placed = {name: (node["x"] + 30, node["y"] + 30) for name, node in nodes(learner).items()}
-    marks = [shape for shape in drawn_shapes(learner) if shape["kind"] == "text" and shape["text"] == "IDS"]
-    beside = [min(placed, key=lambda name: (placed[name][0] - mark["x"] - 12) ** 2 + (placed[name][1] - mark["y"] - 8) ** 2)
-              for mark in marks]
+def dashed_ends(document):
+    ends = []
+    for drawing in document["topology"]["drawings"]:
+        line = ElementTree.fromstring(drawing["svg"])[0]
+        if line.tag == "line" and line.get("stroke-dasharray"):
+            ends.append([(drawing["x"] + float(line.get(f"x{at}")), drawing["y"] + float(line.get(f"y{at}"))) for at in (1, 2)])
+    return ends
 
-    assert sorted(beside) == sorted(set(shown.sensors.values())), (
-        "sensor in Kibana names these hosts, so the map shows where each IDS listens")
+@pytest.mark.parametrize("drawn_in, wargame", PROJECTED, ids=PROJECTED_IDS)
+def test_each_ids_is_its_own_sensor_fed_by_a_dashed_mirror_line_from_the_host_it_watches(drawn_in, wargame):
+    learner, shown, _ = projected(drawn_in, wargame)
+    centre = {name: (node["x"] + 30, node["y"] + 30) for name, node in nodes(learner).items()}
+    boxes = [shape for shape in drawn_shapes(learner) if shape["kind"] == "rect" and shape["width"] < 100]
+    marks = [shape for shape in drawn_shapes(learner) if shape["kind"] == "text" and shape["text"] == "IDS"]
+    inside = lambda mark, box: box["x"] <= mark["x"] <= box["x"] + box["width"] and box["y"] <= mark["y"] <= box["y"] + box["height"]
+    distance = lambda point, name: (centre[name][0] - point[0]) ** 2 + (centre[name][1] - point[1]) ** 2
+    watched = [min(centre, key=lambda name: min(distance(end, name) for end in line)) for line in dashed_ends(learner)]
+
+    assert len(marks) == len(boxes) == len(dashed_ends(learner)) and all(any(inside(mark, box) for box in boxes) for mark in marks)
+    assert sorted(watched) == sorted(set(shown.sensors.values())), (
+        "sensor in Kibana names these hosts, so the map shows whose traffic each IDS is fed")
     assert not [switch for switch, caption in topology.captions(learner).items() if ">IDS<" in caption["svg"]]
+
+@pytest.mark.parametrize("drawn_in", LEARNER_MAPS, ids=LEARNER_IDS)
+def test_the_zones_are_the_internet_the_dmz_the_db_zone_and_the_management_network(drawn_in):
+    captions = sorted(ElementTree.fromstring(caption["svg"])[0].text for caption in topology.captions(project(drawn_in)).values())
+
+    assert captions == ["DB존", "DMZ", "관리망", "인터넷"]
