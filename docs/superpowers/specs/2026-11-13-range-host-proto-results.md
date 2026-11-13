@@ -222,3 +222,28 @@ once, 4 board sessions up): 48.1 s alone, 70 s with 2, 101 s with 3, 129 s
 with 4. `capture.kernel_drops` 0 on all 8 sensors in every step, including 4
 slots running sqlmap at once. Lowest available memory 4.0 GB with 4 sessions
 running sqlmap.
+
+### Clean re-measurement on 2 vCPU (4 board sessions up, stray sampler killed)
+
+Idle CPU with 4 board sessions up: about 30 % of 2 vCPU (8 Suricata
+instances, healthchecks, 4 MySQL). Raw output `results/scaling-2vcpu.txt`.
+
+| slots at once | sqlmap dump case (s) | growth vs 1 | full reset wall (s) | `reset_fast` wall (s) | kernel_drops | min available |
+|---|---|---|---|---|---|---|
+| 1 | 40.1 | 1.00 | 46.3 | 36.0 | 0 | 4209 MiB |
+| 2 | 53.0-54.1 | 1.35 | 72.3 | 58.9 | 0 | 4114 MiB |
+| 3 | 77.5-79.8 | 1.99 | 99.9 | 89.7 | 0 | 4068 MiB |
+| 4 | 103.4-105.4 | 2.63 | 122.3 | 104.3 | 0 | 3996 MiB |
+
+(VM range reference: the same sqlmap case took 37.0 s; a slot reset 70-82 s,
+two at once 98 s.)
+
+### Rule reload (vi)
+
+Through `docker exec`, idle slot, 4 local rules (edge leg) / ModSecurity with
+CRS 4.25.1 (846 rules):
+
+- `suricatasc -c reload-rules` on the edge-sensor: 0.40, 0.41, 0.61 s; on the
+  estate-sensor: 0.40, 0.38, 0.38 s. A rule appended to the edge rules file
+  and reloaded fired on the next request (1 alert, sid 9900001), then removed.
+- WAF `nginx -t && nginx -s reload`: 0.70, 0.87, 0.91 s.
