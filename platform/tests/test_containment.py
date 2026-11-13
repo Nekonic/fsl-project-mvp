@@ -66,7 +66,7 @@ def test_a_learner_facing_container_mounts_nothing_of_the_host_beyond_its_own_lo
     assert bound <= MOUNTS.get(name, set()), f"{name} mounts {sorted(bound)} from the range host"
     for volume in mounts:
         source = str(volume).split(":")[0]
-        assert not source.startswith("/") or source.startswith("/opt/cr/s3/"), (
+        assert not source.startswith("/") or source.startswith(("/opt/cr/s3/", "/var/log/cr/s3/")), (
             f"{name} mounts {source}, outside its own slot's directory")
 
 

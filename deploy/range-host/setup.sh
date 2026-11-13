@@ -10,7 +10,7 @@ sed -i 's/^Components:.*/Components: main restricted universe/' /etc/apt/sources
 $APT update
 $APT purge snapd modemmanager
 printf 'Package: snapd modemmanager\nPin: release *\nPin-Priority: -1\n' > /etc/apt/preferences.d/no-snapd-modemmanager
-$APT install docker.io docker-compose-v2 ethtool rsyslog
+$APT install docker.io docker-compose-v2 ethtool rsyslog acl
 
 install -d -m 0755 /etc/docker "$BASE" "$KEPT"
 install -m 0644 daemon.json /etc/docker/daemon.json

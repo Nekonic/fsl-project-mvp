@@ -7,6 +7,7 @@ WAIT=600
 verb=${1:?slot.sh up|reset|down <slot>}
 n=${2:?slot number}
 d=$BASE/s$n
+logs=/var/log/cr/s$n
 project=s$n
 
 compose() { docker compose -p "$project" -f "$d/compose.yaml" "$@"; }
@@ -47,8 +48,10 @@ prepare() {
   shift_by=$(remapped)
   owner=$(( ${shift_by:-0} ))
   www=$(( ${shift_by:-0} + 33 ))
-  install -d -m 0755 "$d/edge-log" "$d/estate-log" "$d/edge-rules" "$d/estate-rules"
-  install -d -m 0750 -o "$www" -g 4 "$d/waf-audit"
+  adm=$(( ${shift_by:-0} + 4 ))
+  install -d -m 0755 "$d/edge-rules" "$d/estate-rules" "$logs" "$logs/edge" "$logs/estate"
+  install -d -m 0750 -o "$www" -g "$adm" "$logs/waf"
+  setfacl -m u:syslog:rx -d -m u:syslog:r "$logs/waf"
   for leg in edge estate; do
     install -m 0644 -o "$owner" "$d/local.rules" "$d/$leg-rules/local.rules"
   done
@@ -94,10 +97,10 @@ logs_forwarded() {
 
 logs_emptied() {
   for leg in edge estate; do
-    : > "$d/$leg-log/eve.json"
+    : > "$logs/$leg/eve.json"
     docker exec "$project-$leg-sensor" suricatasc -c reopen-log-files >/dev/null
   done
-  [ ! -f "$d/waf-audit/audit.log" ] || : > "$d/waf-audit/audit.log"
+  [ ! -f "$logs/waf/audit.log" ] || : > "$logs/waf/audit.log"
 }
 
 up() {
@@ -142,7 +145,7 @@ down() {
   [ ! -f "$d/compose.yaml" ] || compose down -v --remove-orphans --timeout 1
   rm -f "/etc/rsyslog.d/60-cr-$project.conf"
   systemctl restart rsyslog
-  rm -rf "$d"
+  rm -rf "$d" "$logs"
 }
 
 case "$verb" in

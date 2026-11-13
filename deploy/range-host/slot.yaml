@@ -102,7 +102,7 @@ services:
       - "board:@estate@.59"
       - "corp-wp:@estate@.60"
     volumes:
-      - /opt/cr/s@slot@/waf-audit:/var/log/modsecurity/audit
+      - /var/log/cr/s@slot@/waf:/var/log/modsecurity/audit
 
   edge-sensor:
     <<: *sensor
@@ -111,7 +111,7 @@ services:
     volumes:
       - /opt/cr/s@slot@/edge-sensor.yaml:/etc/suricata/suricata.yaml
       - /opt/cr/s@slot@/edge-rules:/var/lib/suricata/rules
-      - /opt/cr/s@slot@/edge-log:/var/log/suricata
+      - /var/log/cr/s@slot@/edge:/var/log/suricata
     depends_on: [edge]
 
   estate-sensor:
@@ -121,7 +121,7 @@ services:
     volumes:
       - /opt/cr/s@slot@/estate-sensor.yaml:/etc/suricata/suricata.yaml
       - /opt/cr/s@slot@/estate-rules:/var/lib/suricata/rules
-      - /opt/cr/s@slot@/estate-log:/var/log/suricata
+      - /var/log/cr/s@slot@/estate:/var/log/suricata
     depends_on: [waf]
 
 networks:
