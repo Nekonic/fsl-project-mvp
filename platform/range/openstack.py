@@ -70,6 +70,8 @@ SETUP_FAILED = "SETUP_FAILED"
 CONNECT_TIMEOUT = 10
 SERVER_ALIVE_INTERVAL = 15
 SERVER_ALIVE_COUNT_MAX = 3
+SHARED_CONNECTIONS = "/tmp/cr-ssh-%C"
+SHARED_FOR = 60
 NOVA_MICROVERSION = "2.1"
 SUBJECT_TOKEN = "X-Subject-Token"
 SEGMENT_TAG = fabric.TAG
@@ -660,6 +662,9 @@ class OpenStack:
             f"  ConnectTimeout {CONNECT_TIMEOUT}",
             f"  ServerAliveInterval {SERVER_ALIVE_INTERVAL}",
             f"  ServerAliveCountMax {SERVER_ALIVE_COUNT_MAX}",
+            "  ControlMaster auto",
+            f"  ControlPath {SHARED_CONNECTIONS}",
+            f"  ControlPersist {SHARED_FOR}",
         ]
         generation = self._generations.get(address)
         aliased = [f"Host {address}", f"  HostKeyAlias {generation}"] if generation else []

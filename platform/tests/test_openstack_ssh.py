@@ -88,6 +88,8 @@ def host(tmp_path):
     (tmp_path / "ssh_config").write_text(
         f"Port {port}\n"
         f"UserKnownHostsFile {tmp_path / 'known_hosts'}\n"
+        "ControlMaster no\n"
+        "ControlPath none\n"
     )
     state = {"home": tmp_path, "port": port, "key": client, "daemon": daemon}
     yield state
