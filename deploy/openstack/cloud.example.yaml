@@ -18,32 +18,22 @@ network:
   dns: [8.8.8.8, 8.8.4.4]
   mtu: 1450                             # the tenant networks' MTU (1450 on VXLAN with ML2/OVS, 1442 on Geneve with ML2/OVN)
   platform: 10.20.0.0/24                # the platform VM's network
-  estate: 10.30.0.0/24                  # the targets and the WAF
+  estate: 10.30.0.0/16                 # slot N's estate is its Nth /24 (10.30.N.0/24): the targets and the WAF
   mgmt: 10.31.0.0/24                    # out-of-band: ssh and syslog only
 
 compute:
   base_image: ubuntu-24.04              # the stock noble-server-cloudimg-amd64.img, uploaded as is
   availability_zone: ""                 # empty: Nova chooses
-  slots: 1                              # range slots: sessions that run at once, each its own edge, WAF, Kali and wargame host
+  slots: 1                              # range slots: sessions that run at once, each a compose project on the range host
   flavors:
     platform: m1.large                  # 8 GB or more
-    builder: m1.medium                  # image builders; the OPNsense builder boots it under QEMU
-    range: m1.medium                    # every range VM no role below names; at least the builder flavor's disk
-    edge: m1.medium                     # OPNsense wants 3 GB of RAM or more
-    wargames: m1.medium                 # the wargame host: two MySQL, Django and WordPress containers
+    range: dba.range                    # the range host that runs every slot as containers; about 1.2 GB per slot
 
 keys:
   operator: fsl-claude                  # the Nova keypair the platform VM boots with
   operator_file: ~/.ssh/fsl_claude      # its private half, for ssh to the platform VM
   range: ~/.ssh/fsl-platform            # the platform's range key, kept across rebuilds
 
-opnsense:
-  version: "26.7"                       # an image release (January and July), not an update
-  mirror: https://pkg.opnsense.org/releases
-  # SHA256 of OPNsense-26.7-nano-amd64.img.bz2 and of the 26.7 signing key (DER),
-  # both from the release announcement, docs.opnsense.org/releases/CE_26.7.html
-  image_sha256: 28d5e2f37e40d87468a924e3006ef10e2ddc6de485b85333d9e3958c84d0cb9d
-  pubkey_sha256: 1c940b2feb8e8c78ba7348a50b11f476929ddca1794ceaa89446be7d515e0d02
 
 platform:
   stack: cr-platform

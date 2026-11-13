@@ -45,17 +45,11 @@ parameters:
     type: string
   range_flavor:
     type: string
-  build_flavor:
-    type: string
-  role_flavors:
-    type: string
   subnets:
     type: string
   management:
     type: string
   range_mtu:
-    type: string
-  opnsense:
     type: string
   slots:
     type: string
@@ -148,12 +142,9 @@ resources:
             "%image%": {get_param: image}
             "%availability_zone%": {get_param: availability_zone}
             "%range_flavor%": {get_param: range_flavor}
-            "%build_flavor%": {get_param: build_flavor}
-            "%role_flavors%": {get_param: role_flavors}
             "%subnets%": {get_param: subnets}
             "%management%": {get_param: management}
             "%range_mtu%": {get_param: range_mtu}
-            "%opnsense%": {get_param: opnsense}
             "%slots%": {get_param: slots}
             "%project%": {get_param: "OS::project_id"}
             "%repository%": {get_param: repository}
@@ -195,12 +186,9 @@ resources:
                   CR_OPENSTACK_INTERFACE=%interface%
                   CR_OPENSTACK_BASE_IMAGE=%image%
                   CR_OPENSTACK_FLAVOR=%range_flavor%
-                  CR_OPENSTACK_BUILD_FLAVOR=%build_flavor%
-                  CR_OPENSTACK_ROLE_FLAVORS=%role_flavors%
                   CR_OPENSTACK_AVAILABILITY_ZONE=%availability_zone%
                   CR_OPENSTACK_SUBNETS=%subnets%
                   CR_OPENSTACK_MTU=%range_mtu%
-                  CR_OPNSENSE=%opnsense%
                   CR_OPENSTACK_SLOTS=%slots%
                   CR_OPENSTACK_SSH_USER=ubuntu
                   CR_OPENSTACK_SSH_KEY=/data/ssh/id_ed25519

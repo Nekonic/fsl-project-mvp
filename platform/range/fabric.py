@@ -9,14 +9,15 @@ TAG = "cr.segment.id"
 SLOT_TAG = "cr.slot"
 KEYPAIR = "cr-platform"
 MANAGEMENT = "mgmt"
-NO_DEFAULT_ROUTE = {MANAGEMENT}
-SHARED = {MANAGEMENT}
-RANGE_GROUP = "cr-range"
+CARRIED = (MANAGEMENT,)
 REACH_GROUP = "cr-reach"
 MANAGEMENT_GROUP = "cr-mgmt"
-GROUPS = (RANGE_GROUP, REACH_GROUP, MANAGEMENT_GROUP)
+EGRESS_GROUP = "cr-egress"
+GROUPS = (REACH_GROUP, MANAGEMENT_GROUP, EGRESS_GROUP)
+RETIRED_GROUPS = ("cr-range", "cr-build")
 COLLECTOR_PORT = 5140
 NTP_PORT = 123
+
 
 @dataclass(frozen=True)
 class Subnet:
@@ -25,11 +26,7 @@ class Subnet:
     cidr: str
     dhcp: bool
     gateway: bool
-    slot: int = 1
 
-    @property
-    def carrier(self) -> str:
-        return carrier(self.segment, self.slot)
 
 @dataclass(frozen=True)
 class Plan:
@@ -48,20 +45,14 @@ class Plan:
         return not (self.networks or self.subnets or self.keypair or self.groups
                     or self.reach or self.ntp or self.drifted)
 
-def suffixed(name: str, slot: int = 1) -> str:
-    return name if slot == 1 else f"{name}-{slot}"
 
-def carrier(segment: str, slot: int = 1) -> str:
-    return suffixed(segment, slot)
+def network_name(segment: str) -> str:
+    return f"cr-{segment}"
 
-def network_name(segment: str, slot: int = 1) -> str:
-    return f"cr-{carrier(segment, slot)}"
 
-def network_tags(segment: str, slot: int = 1) -> list[str]:
-    return [f"{TAG}={segment}"] + ([f"{SLOT_TAG}={slot}"] if slot > 1 else [])
+def network_tags(segment: str) -> list[str]:
+    return [f"{TAG}={segment}"]
 
-def owner(segment: str, slot: int) -> int:
-    return 1 if segment in SHARED else slot
 
 def slot_of(network: dict) -> int:
     for tag in network.get("tags") or []:
@@ -70,79 +61,40 @@ def slot_of(network: dict) -> int:
             return int(value) if value.isdigit() else 0
     return 1
 
-def _inside(declaration: Declaration) -> list[str]:
-    origins = {origin.id for origin in declaration.origins}
-    return [segment.id for segment in declaration.segments if segment.id not in origins]
 
-def wanted(declaration: Declaration, inside: dict[str, str], slot: int = 1) -> tuple[Subnet, ...]:
-    unplaced = [segment for segment in _inside(declaration) if segment not in inside]
-    if unplaced:
-        raise RangeUnavailable(
-            f"the declaration names {unplaced} and the fabric has no subnet for them; "
-            f"set network.{', network.'.join(unplaced)} in cloud.yaml"
-        )
-    return tuple(
-        Subnet(origin.segment, suffixed(f"cr-{origin.id}", slot), origin.subnet, dhcp=False,
-               gateway=True, slot=slot)
-        for origin in declaration.origins
-    ) + tuple(
-        Subnet(segment, suffixed(f"cr-{segment}", slot), inside[segment], dhcp=True,
-               gateway=segment not in NO_DEFAULT_ROUTE, slot=slot)
-        for segment in _inside(declaration) if owner(segment, slot) == slot
-    )
-
-def _segment_of(network: dict) -> str | None:
+def segment_of(network: dict) -> str | None:
     for tag in network.get("tags") or []:
         if tag.startswith(f"{TAG}="):
             return tag.split("=", 1)[1]
     return None
 
-def _same_key(one: str, other: str) -> bool:
-    return one.split()[:2] == other.split()[:2]
 
-def _segments(declaration) -> list[str]:
-    return list(dict.fromkeys(
-        [origin.segment for origin in declaration.origins] + _inside(declaration)
-    ))
+def carried(declaration: Declaration) -> list[str]:
+    declared = {segment.id for segment in declaration.segments}
+    return [segment for segment in CARRIED if segment in declared]
 
-def _bound(declaration, networks, slot: int = 1):
-    segments = _segments(declaration)
-    bound: dict[str, dict] = {}
-    drifted, leftovers = [], []
-    for network in networks:
-        segment = _segment_of(network)
-        if segment is None:
-            if slot == 1 and network["name"] in {network_name(s) for s in segments}:
-                leftovers.append(f"network {network['name']} carries no {TAG}")
-        elif segment not in segments:
-            if slot == 1:
-                leftovers.append(
-                    f"network {network['name']} carries {TAG}={segment}, which the "
-                    f"declaration does not name"
-                )
-        elif slot_of(network) != owner(segment, slot):
-            continue
-        elif segment in bound:
-            drifted.append(
-                f"networks {bound[segment]['name']} and {network['name']} both "
-                f"carry {TAG}={segment}"
-            )
-        else:
-            bound[segment] = network
-    return segments, bound, drifted, leftovers
 
-def bound(declaration: Declaration, networks: list, slot: int = 1) -> dict[str, dict]:
-    return _bound(declaration, networks, slot)[1]
+def wanted(declaration: Declaration, inside: dict[str, str]) -> tuple[Subnet, ...]:
+    unplaced = [segment for segment in carried(declaration) if segment not in inside]
+    if unplaced:
+        raise RangeUnavailable(
+            f"the declaration names {unplaced} and the fabric has no subnet for them; "
+            f"set network.{', network.'.join(unplaced)} in cloud.yaml"
+        )
+    return tuple(Subnet(segment, f"cr-{segment}", inside[segment], dhcp=True, gateway=False)
+                 for segment in carried(declaration))
 
-def _beyond(declaration: Declaration, networks: list, slots: int) -> list[str]:
-    segments = set(_segments(declaration))
-    return [
-        f"network {network['name']} carries {SLOT_TAG}={slot_of(network) or '?'}, "
-        f"beyond the {slots} slot(s) the cloud settings ask for"
-        for network in networks
-        if _segment_of(network) in segments
-        and not 1 <= slot_of(network) <= (1 if _segment_of(network) in SHARED else slots)
-    ]
+
+def retired(network: dict) -> bool:
+    segment = segment_of(network)
+    return segment is not None and (segment not in CARRIED or slot_of(network) != 1)
+
+
+def bound(declaration: Declaration, networks: list) -> dict[str, dict]:
+    segments = carried(declaration)
+    return {segment_of(network): network for network in networks
+            if segment_of(network) in segments and slot_of(network) == 1}
+
 
 def _differs(found: dict, subnet: Subnet) -> list[str]:
     differences = []
@@ -158,27 +110,36 @@ def _differs(found: dict, subnet: Subnet) -> list[str]:
         )
     return differences
 
+
+def _same_key(one: str, other: str) -> bool:
+    return one.split()[:2] == other.split()[:2]
+
+
 def plan(declaration: Declaration, networks: list, subnets: list, keypairs: list,
          public_key: str, groups: list = (), reached: bool = True,
-         inside: dict[str, str] | None = None, slots: int = 1) -> Plan:
-    numbers = range(1, max(1, slots) + 1)
-    want = tuple(subnet for n in numbers for subnet in wanted(declaration, inside or {}, n))
-    bound_in, missing, drifted, leftovers = {}, [], [], []
-    for n in numbers:
-        segments, bound_in[n], drifted_n, leftovers_n = _bound(declaration, networks, n)
-        drifted += drifted_n
-        leftovers += leftovers_n
-        missing += [carrier(segment, n) for segment in segments
-                    if segment not in bound_in[n] and owner(segment, n) == n]
-    leftovers += _beyond(declaration, networks, max(1, slots))
+         inside: dict[str, str] | None = None) -> Plan:
+    want = wanted(declaration, inside or {})
+    segments = carried(declaration)
+    drifted, leftovers, held = [], [], {}
+    for network in networks:
+        segment = segment_of(network)
+        if segment is None:
+            if network["name"] in {network_name(s) for s in segments}:
+                leftovers.append(f"network {network['name']} carries no {TAG}")
+        elif retired(network):
+            leftovers.append(f"network {network['name']} carries {TAG}={segment}, which the "
+                             f"range host's slots replaced")
+        elif segment in held:
+            drifted.append(f"networks {held[segment]['name']} and {network['name']} both "
+                           f"carry {TAG}={segment}")
+        else:
+            held[segment] = network
+    missing = [segment for segment in segments if segment not in held]
     create, present = [], []
     for subnet in want:
-        network = bound_in[subnet.slot].get(subnet.segment)
+        network = held.get(subnet.segment)
         found = network and next(
-            (s for s in subnets
-             if s["network_id"] == network["id"] and s["cidr"] == subnet.cidr),
-            None,
-        )
+            (s for s in subnets if s["network_id"] == network["id"] and s["cidr"] == subnet.cidr), None)
         if not found:
             create.append(subnet)
             continue
@@ -187,26 +148,18 @@ def plan(declaration: Declaration, networks: list, subnets: list, keypairs: list
             drifted.append(f"subnet {subnet.name} {subnet.cidr}: {', '.join(differences)}")
         else:
             present.append(subnet.name)
-    declared_cidrs = {
-        (bound_in[subnet.slot][subnet.segment]["id"], subnet.cidr)
-        for subnet in want if subnet.segment in bound_in[subnet.slot]
-    }
-    carriers = {network["id"]: network for n in numbers for network in bound_in[n].values()}
-    for network in carriers.values():
+    declared_cidrs = {(held[s.segment]["id"], s.cidr) for s in want if s.segment in held}
+    for network in held.values():
         for found in subnets:
             if found["network_id"] == network["id"] and (network["id"], found["cidr"]) not in declared_cidrs:
-                leftovers.append(
-                    f"subnet {found.get('name') or found['id']} {found['cidr']} on "
-                    f"{network['name']} is declared by nothing"
-                )
+                leftovers.append(f"subnet {found.get('name') or found['id']} {found['cidr']} on "
+                                 f"{network['name']} is declared by nothing")
     key = next((k for k in keypairs if k["name"] == KEYPAIR), None)
     if key and not _same_key(key["public_key"], public_key):
         drifted.append(f"keypair {KEYPAIR} holds another public key")
     named = {name: [g for g in groups if g["name"] == name] for name in GROUPS}
-    drifted += [
-        f"{len(found)} security groups are called {name}"
-        for name, found in named.items() if len(found) > 1
-    ]
+    drifted += [f"{len(found)} security groups are called {name}"
+                for name, found in named.items() if len(found) > 1]
     return Plan(
         networks=tuple(missing),
         subnets=tuple(create),
@@ -219,39 +172,40 @@ def plan(declaration: Declaration, networks: list, subnets: list, keypairs: list
         leftovers=tuple(leftovers),
     )
 
+
 def teardown(declaration: Declaration, networks: list, subnets: list,
              keypairs: list, groups: list = ()) -> list[tuple[str, str]]:
-    segments = set(_segments(declaration))
-    owned = [network["id"] for network in networks if _segment_of(network) in segments]
+    owned = [network["id"] for network in networks if segment_of(network) is not None]
     return (
         [("subnet", s["id"]) for s in subnets if s["network_id"] in set(owned)]
         + [("network", network_id) for network_id in owned]
         + [("keypair", k["name"]) for k in keypairs if k["name"] == KEYPAIR]
-        + [("group", g["id"]) for name in reversed(GROUPS) for g in groups if g["name"] == name]
+        + [("group", g["id"]) for name in (*reversed(GROUPS), *RETIRED_GROUPS)
+           for g in groups if g["name"] == name]
     )
 
-def group_of(segment: str) -> str:
-    return MANAGEMENT_GROUP if segment == MANAGEMENT else RANGE_GROUP
 
 def ntp_rule(reach: str, management: str) -> dict:
     return {"security_group_id": reach, "direction": "ingress", "ethertype": "IPv4",
             "protocol": "udp", "port_range_min": NTP_PORT, "port_range_max": NTP_PORT,
             "remote_group_id": management}
 
+
 def _serves_time(reach: list[dict], management: list[dict]) -> bool:
     if len(reach) != 1 or len(management) != 1:
         return False
-    wanted = ntp_rule(reach[0]["id"], management[0]["id"])
-    return any(all(rule.get(key) == value for key, value in wanted.items())
+    wanted_rule = ntp_rule(reach[0]["id"], management[0]["id"])
+    return any(all(rule.get(key) == value for key, value in wanted_rule.items())
                for rule in reach[0].get("security_group_rules") or [])
+
 
 def _collector_rule(rule: dict) -> bool:
     return (rule.get("direction") == "ingress" and rule.get("protocol") == "udp"
             and rule.get("port_range_min") == COLLECTOR_PORT)
 
-def hearing(group: dict, senders: list[str], kept=()) -> tuple[list[dict], list[str]]:
-    wanted = [f"{sender}/32" for sender in senders]
-    staying = set(wanted) | {f"{address}/32" for address in kept}
+
+def hearing(group: dict, senders: list[str]) -> tuple[list[dict], list[str]]:
+    wanted_prefixes = [f"{sender}/32" for sender in senders]
     heard = {
         rule.get("remote_ip_prefix"): rule["id"]
         for rule in group.get("security_group_rules") or [] if _collector_rule(rule)
@@ -260,6 +214,6 @@ def hearing(group: dict, senders: list[str], kept=()) -> tuple[list[dict], list[
         {"security_group_id": group["id"], "direction": "ingress", "ethertype": "IPv4",
          "protocol": "udp", "port_range_min": COLLECTOR_PORT,
          "port_range_max": COLLECTOR_PORT, "remote_ip_prefix": prefix}
-        for prefix in wanted if prefix not in heard
+        for prefix in wanted_prefixes if prefix not in heard
     ]
-    return create, [rule for prefix, rule in heard.items() if prefix not in staying]
+    return create, [rule for prefix, rule in heard.items() if prefix not in wanted_prefixes]

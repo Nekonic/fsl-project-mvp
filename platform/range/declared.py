@@ -26,18 +26,12 @@ class Origin:
 @dataclass(frozen=True)
 class Host:
     setup: str = ""
-    image: str = ""
-    ssh_user: str = ""
     rules: str = ""
     reload: str = ""
     pid: str = ""
-    uploads: str = ""
-    files: tuple[str, ...] = ()
     segments: tuple[str, ...] = ()
     names: tuple[str, ...] = ()
     wargames: tuple[str, ...] = ()
-    publish: dict[str, int] = field(default_factory=dict)
-    logs: dict[str, str] = field(default_factory=dict)
 
 @dataclass(frozen=True)
 class Declaration:
@@ -73,25 +67,26 @@ class Declaration:
         roleless = sorted(set(self.hosts) - set(self.roles.values()))
         if roleless:
             raise ValueError(
-                f"{', '.join(roleless)} would be built as an image and no role "
-                f"names it, so nothing in the range would ever reach it"
+                f"{', '.join(roleless)} is declared and no role names it, so nothing in "
+                f"the range would ever reach it"
+            )
+        machines = sorted(name for name, host in self.hosts.items() if host.setup)
+        if len(machines) != 1:
+            raise ValueError(
+                f"the range runs on one range host built from a setup script, and "
+                f"{len(machines)} hosts declare one: {machines}"
             )
         for name, host in sorted(self.hosts.items()):
-            if bool(host.setup) == bool(host.image):
+            if host.wargames and not host.setup:
                 raise ValueError(
-                    f"host {name!r} declares "
-                    + ("both a setup script and a prebuilt image"
-                       if host.setup else "neither a setup script nor a prebuilt image")
-                    + "; a host is either built from a script in the repo or "
-                    "boots from an image the cloud already holds"
+                    f"host {name!r} runs wargames and is no range host; the wargames run "
+                    f"on {machines[0]}"
                 )
-            if host.uploads and not host.setup:
+        for role, service in sorted(self.compose.items()):
+            if self.roles.get(role) not in self.hosts:
                 raise ValueError(
-                    f"host {name!r} uploads {host.uploads!r} and has no setup script to make it"
-                )
-            if host.publish and not host.wargames:
-                raise ValueError(
-                    f"host {name!r} publishes {', '.join(sorted(host.publish))} and runs no wargame"
+                    f"role {role!r} runs in the slot's {service!r} container and its host "
+                    f"{self.roles.get(role)!r} is not declared"
                 )
         outside = {s.id for s in self.segments if s.outside}
         if self.default_origin and self.default_origin not in outside:
@@ -99,6 +94,10 @@ class Declaration:
                 f"default_origin is {self.default_origin!r}, which is not a "
                 f"segment an attack can start from. Outside: {sorted(outside)}"
             )
+
+    @property
+    def range_host(self) -> str:
+        return next(name for name, host in self.hosts.items() if host.setup)
 
     def host(self, role: str) -> str:
         host = self.roles.get(role)
@@ -149,18 +148,12 @@ def _hosts(entries) -> dict[str, Host]:
     return {
         name: Host(
             setup=entry.get("setup") or "",
-            image=entry.get("image") or "",
-            ssh_user=entry.get("ssh_user") or "",
             rules=entry.get("rules") or "",
             reload=entry.get("reload") or "",
             pid=entry.get("pid") or "",
-            uploads=entry.get("uploads") or "",
-            files=tuple(entry.get("files") or ()),
             segments=tuple(entry.get("segments") or ()),
             names=tuple(entry.get("names") or ()),
             wargames=tuple(entry.get("wargames") or ()),
-            publish={str(service): int(port) for service, port in (entry.get("publish") or {}).items()},
-            logs={str(tag): str(path) for tag, path in (entry.get("logs") or {}).items()},
         )
         for name, entry in (entries or {}).items()
     }

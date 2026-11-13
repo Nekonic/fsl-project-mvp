@@ -14,41 +14,17 @@ EXAMPLE = FOLDER / "cloud.example.yaml"
 CONFIGURED = FOLDER / "cloud.yaml"
 COMPOSE = ROOT / "compose.yaml"
 DECLARATION = Path(__file__).resolve().parent / "declaration.yaml"
-OPNSENSE_FAMILY = "fsl-opnsense-"
 INSIDE = ("estate", "mgmt")
 OPTIONAL_SECTIONS = ("backups",)
-FIXED_FLAVORS = ("platform", "builder", "range")
-REQUIRED_FLAVORS = (*FIXED_FLAVORS, "edge")
+REQUIRED_FLAVORS = ("platform", "range")
 DOCKER_DEFAULT_POOLS = ("172.17.0.0/16", "172.18.0.0/16", "172.19.0.0/16", "172.20.0.0/14",
                         "172.24.0.0/14", "172.28.0.0/14", "192.168.0.0/16")
-SHA256 = re.compile(r"[0-9a-f]{64}")
-VERSION = re.compile(r"\d+\.\d+(\.\d+)?")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
 ENVIRONMENT = re.compile(r"[A-Z_][A-Z0-9_]*")
 
 
 class Invalid(ValueError):
     pass
-
-
-@dataclass(frozen=True)
-class OPNsense:
-    version: str
-    mirror: str
-    image_sha256: str
-    pubkey_sha256: str
-
-    @property
-    def image(self) -> str:
-        return f"{OPNSENSE_FAMILY}{self.version}"
-
-    @property
-    def nano(self) -> str:
-        return f"OPNsense-{self.version}-nano-amd64.img"
-
-    def pairs(self) -> dict[str, str]:
-        return {"version": self.version, "mirror": self.mirror,
-                "image_sha256": self.image_sha256, "pubkey_sha256": self.pubkey_sha256}
 
 
 @dataclass(frozen=True)
@@ -66,7 +42,6 @@ class Cloud:
     operator_key: str
     operator_key_file: str
     range_key: str
-    opnsense: OPNsense
     stack: str
     repository: str
     ref: str
@@ -79,10 +54,6 @@ class Cloud:
     flavors: dict[str, str] = field(default_factory=dict)
     slots: int = 1
     backups_keep: int = 1
-
-    @property
-    def role_flavors(self) -> dict[str, str]:
-        return {role: name for role, name in self.flavors.items() if role not in FIXED_FLAVORS}
 
     def password(self, environ=os.environ) -> str:
         if self.password_env:
@@ -105,11 +76,9 @@ class Cloud:
             "availability_zone": self.availability_zone,
             "cidr": self.platform_cidr, "dns": ",".join(self.dns),
             "repository": self.repository, "ref": self.ref,
-            "range_flavor": self.flavors["range"], "build_flavor": self.flavors["builder"],
-            "role_flavors": joined(self.role_flavors), "subnets": joined(self.inside),
+            "range_flavor": self.flavors["range"], "subnets": joined(self.inside),
             "management": self.inside["mgmt"],
-            "range_mtu": str(self.mtu), "opnsense": joined(self.opnsense.pairs()),
-            "slots": str(self.slots),
+            "range_mtu": str(self.mtu), "slots": str(self.slots),
         }
 
     def cli_environment(self, environ=os.environ) -> dict[str, str]:
@@ -124,27 +93,6 @@ class Cloud:
 
 def joined(pairs: dict[str, str]) -> str:
     return " ".join(f"{key}={value}" for key, value in pairs.items())
-
-
-def pairs(text: str) -> dict[str, str]:
-    found = {}
-    for word in (text or "").split():
-        key, equals, value = word.partition("=")
-        if not equals or not key or not value:
-            raise Invalid(f"{word!r} is not key=value")
-        found[key] = value
-    return found
-
-
-def opnsense_from(text: str) -> OPNsense | None:
-    given = pairs(text)
-    if not given:
-        return None
-    wanted = ("version", "mirror", "image_sha256", "pubkey_sha256")
-    missing = [key for key in wanted if key not in given]
-    if missing:
-        raise Invalid(f"the OPNsense settings lack {', '.join(missing)}")
-    return OPNsense(**{key: given[key] for key in wanted})
 
 
 def _url(value) -> str | None:
@@ -186,6 +134,15 @@ def _cidr(value) -> str | None:
     return None
 
 
+def _estate(value) -> str | None:
+    said = _cidr(value)
+    if said:
+        return said
+    if ipaddress.ip_network(str(value)).prefixlen > 16:
+        return "must be a /16 or wider: slot N's estate is its Nth /24, such as 10.30.0.0/16"
+    return None
+
+
 def _mtu(value) -> str | None:
     if isinstance(value, bool) or not isinstance(value, int) or not 1280 <= value <= 9000:
         return "must be a whole number between 1280 and 9000"
@@ -211,20 +168,15 @@ def _address(value) -> str | None:
     return None
 
 
-def _sha256(value) -> str | None:
-    return None if isinstance(value, str) and SHA256.fullmatch(value) else "must be 64 lower-case hex digits"
-
-
-def _version(value) -> str | None:
-    return None if isinstance(value, str) and VERSION.fullmatch(value) else "must be a release such as \"26.7\" (quoted)"
-
-
 def _flavors(value) -> str | None:
     if not isinstance(value, dict):
-        return "must map platform, builder, range, edge and optional role names to flavor names"
+        return "must map platform and range to flavor names"
     missing = [key for key in REQUIRED_FLAVORS if key not in value]
     if missing:
         return f"lacks {', '.join(missing)}"
+    extra = [key for key in value if key not in REQUIRED_FLAVORS]
+    if extra:
+        return f"names {', '.join(map(str, extra))}, which the range no longer has: one range host runs every slot"
     wrong = [key for key, name in value.items() if _name(name) or _name(str(key))]
     return f"has {', '.join(map(str, wrong))} not naming a flavor" if wrong else None
 
@@ -253,17 +205,13 @@ SCHEMA = {
     },
     "network": {
         "external": (_name, True), "address": (_address, False), "dns": (_dns, True), "mtu": (_mtu, True),
-        "platform": (_cidr, True), "estate": (_cidr, True), "mgmt": (_cidr, True),
+        "platform": (_cidr, True), "estate": (_estate, True), "mgmt": (_cidr, True),
     },
     "compute": {
         "base_image": (_name, True), "availability_zone": (_optional_name, False),
         "flavors": (_flavors, True), "slots": (_slots, False),
     },
     "keys": {"operator": (_name, True), "operator_file": (_text, True), "range": (_text, True)},
-    "opnsense": {
-        "version": (_version, True), "mirror": (_url, True),
-        "image_sha256": (_sha256, True), "pubkey_sha256": (_sha256, True),
-    },
     "platform": {"stack": (_name, True), "repository": (_url, True), "ref": (_name, True)},
     "backups": {"keep": (_keep, False)},
 }
@@ -373,7 +321,6 @@ def parse(document, source: str = "cloud.yaml") -> Cloud:
         slots=compute.get("slots") or 1,
         operator_key=keys["operator"], operator_key_file=keys["operator_file"],
         range_key=keys["range"],
-        opnsense=OPNsense(**document["opnsense"]),
         stack=platform["stack"], repository=platform["repository"], ref=platform["ref"],
         backups_keep=backups.get("keep") or 1,
     )

@@ -17,12 +17,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 REBUILD = ROOT / "bin/platform-rebuild"
 CALL_TIMEOUT = 1800
-IMAGES_WAIT = 4 * 3600
 SLOT_WAIT = 1800
 READY_WAIT = 1800
 POLL = 30
 CONFIGURE_TRIES = 10
-BOOTING = ("NOT_STANDING", "REBUILDING", "RESETTING")
+BOOTING = ("NOT_STANDING", "REBUILDING", "RESETTING", "STALE")
 
 
 def rebuild_module():
@@ -95,21 +94,6 @@ def _until(what: str, wait: float, sleep, clock, step):
         sleep(POLL)
 
 
-def _images(call):
-    plan = _done(call, "POST", "/images/")
-    failed = [f"{i['host']}: {i['detail']}" for i in plan["images"] if i["state"] == "failed"]
-    unbuildable = [i["host"] for i in plan["images"] if i["state"] == "missing" and not i["bundle"]]
-    if failed or unbuildable:
-        raise Refused(
-            "cloud: an image cannot be made; DELETE /api/range/images/ clears failed builds:\n  "
-            + "\n  ".join(failed + [f"{host}: no script builds it" for host in unbuildable])
-        )
-    if all(i["state"] == "ready" and not i["builder"] for i in plan["images"]):
-        return plan
-    print("images: " + ", ".join(f"{i['host']} {i['state']}" for i in plan["images"]), flush=True)
-    return None
-
-
 def _slots(ready: dict) -> list[dict]:
     return ready.get("slots") or [ready.get("slot") or {}]
 
@@ -139,14 +123,15 @@ def converge(call, sleep=time.sleep, clock=time.monotonic) -> dict:
     fabric = _done(call, "POST", "/fabric/")
     if fabric["drifted"]:
         raise Refused("cloud: the fabric drifted:\n  " + "\n  ".join(fabric["drifted"]))
-    _until("the images", IMAGES_WAIT, sleep, clock, lambda: _images(call))
     slot = _done(call, "POST", "/slot/")
     if slot["blocked"]:
         raise Refused("cloud: the slot is blocked:\n  " + "\n  ".join(slot["blocked"]))
     _until("the slot standing", SLOT_WAIT, sleep, clock, lambda: _standing(call))
     _configured(call, sleep)
     ready = _until("the range ready", READY_WAIT, sleep, clock, lambda: _ready(call))
-    _done(call, "DELETE", "/images/")
+    removed = _done(call, "DELETE", "/leftovers/")["removed"]
+    if removed:
+        print("removed what the VM range left: " + ", ".join(f"{r['kind']} {r['id']}" for r in removed), flush=True)
     return ready
 
 
@@ -197,7 +182,7 @@ def down(args: argparse.Namespace) -> None:
         rebuild.back_up(old, cloud.backups_keep)
     rebuild.wait_for_api(address)
     take_down(Platform(address), cloud.stack, rebuild.run)
-    print("the platform and the range are gone; Glance keeps the images")
+    print("the platform and the range are gone")
 
 
 def main(argv: list[str]) -> int:

@@ -1,0 +1,291 @@
+%YAML 1.1
+---
+vars:
+  address-groups:
+    HOME_NET: '[@estate@.0/24]'
+    EXTERNAL_NET: '!$HOME_NET'
+    HTTP_SERVERS: $HOME_NET
+    SMTP_SERVERS: $HOME_NET
+    SQL_SERVERS: $HOME_NET
+    DNS_SERVERS: $HOME_NET
+    TELNET_SERVERS: $HOME_NET
+    AIM_SERVERS: $EXTERNAL_NET
+    DC_SERVERS: $HOME_NET
+    DNP3_SERVER: $HOME_NET
+    DNP3_CLIENT: $HOME_NET
+    MODBUS_CLIENT: $HOME_NET
+    MODBUS_SERVER: $HOME_NET
+    ENIP_CLIENT: $HOME_NET
+    ENIP_SERVER: $HOME_NET
+  port-groups:
+    HTTP_PORTS: '80'
+    SHELLCODE_PORTS: '!80'
+    ORACLE_PORTS: 1521
+    SSH_PORTS: 22
+    DNP3_PORTS: 20000
+    MODBUS_PORTS: 502
+    FILE_DATA_PORTS: '[$HTTP_PORTS,110,143]'
+    FTP_PORTS: 21
+    GENEVE_PORTS: 6081
+    VXLAN_PORTS: 4789
+    TEREDO_PORTS: 3544
+default-log-dir: /var/log/suricata/
+stats:
+  enabled: true
+  interval: 5
+outputs:
+- eve-log:
+    enabled: true
+    filetype: regular
+    filename: eve.json
+    types:
+    - alert:
+        metadata: true
+    - http:
+        extended: true
+        dump-all-headers: request
+logging:
+  default-log-level: notice
+  outputs:
+  - console:
+      enabled: true
+app-layer:
+  error-policy: ignore
+  protocols:
+    telnet:
+      enabled: true
+    rfb:
+      enabled: true
+      detection-ports:
+        dp: 5900, 5901, 5902, 5903, 5904, 5905, 5906, 5907, 5908, 5909
+    mqtt:
+      enabled: true
+    krb5:
+      enabled: true
+    bittorrent-dht:
+      enabled: true
+    snmp:
+      enabled: true
+    ike:
+      enabled: true
+    tls:
+      enabled: true
+      detection-ports:
+        dp: 443
+      ja3-fingerprints: true
+      ja4-fingerprints: true
+    pgsql:
+      enabled: false
+      stream-depth: 0
+    dcerpc:
+      enabled: true
+    ftp:
+      enabled: true
+    rdp: null
+    ssh:
+      enabled: true
+    http2:
+      enabled: true
+    smtp:
+      enabled: true
+      raw-extraction: false
+      mime:
+        decode-mime: true
+        decode-base64: true
+        decode-quoted-printable: true
+        header-value-depth: 2000
+        extract-urls: true
+        body-md5: false
+      inspected-tracker:
+        content-limit: 100000
+        content-inspect-min-size: 32768
+        content-inspect-window: 4096
+    imap:
+      enabled: detection-only
+    smb:
+      enabled: true
+      detection-ports:
+        dp: 139, 445
+    nfs:
+      enabled: true
+    tftp:
+      enabled: true
+    dns:
+      tcp:
+        enabled: true
+        detection-ports:
+          dp: 53
+      udp:
+        enabled: true
+        detection-ports:
+          dp: 53
+    http:
+      enabled: true
+      libhtp:
+        default-config:
+          personality: IDS
+          request-body-limit: 100kb
+          response-body-limit: 100kb
+          request-body-minimal-inspect-size: 32kb
+          request-body-inspect-window: 4kb
+          response-body-minimal-inspect-size: 40kb
+          response-body-inspect-window: 16kb
+          response-body-decompress-layer-limit: 2
+          http-body-inline: auto
+          swf-decompression:
+            enabled: false
+            type: both
+            compress-depth: 100kb
+            decompress-depth: 100kb
+          double-decode-path: false
+          double-decode-query: false
+        server-config: null
+    modbus:
+      enabled: true
+      detection-ports:
+        dp: 502
+      stream-depth: 0
+    ntp:
+      enabled: true
+    quic:
+      enabled: true
+    dhcp:
+      enabled: true
+    sip: null
+asn1-max-frames: 256
+coredump:
+  max-dump: unlimited
+host-mode: auto
+runmode: workers
+legacy:
+  uricontent: enabled
+exception-policy: ignore
+engine-analysis:
+  rules-fast-pattern: true
+  rules: true
+pcre:
+  match-limit: 3500
+  match-limit-recursion: 1500
+host-os-policy:
+  windows:
+  - 0.0.0.0/0
+  bsd: []
+  bsd-right: []
+  old-linux: []
+  linux: []
+  old-solaris: []
+  solaris: []
+  hpux10: []
+  hpux11: []
+  irix: []
+  macos: []
+  vista: []
+  windows2k3: []
+defrag:
+  memcap: 32mb
+  hash-size: 65536
+  trackers: 65535
+  max-frags: 65535
+  prealloc: true
+  timeout: 60
+flow:
+  memcap: 128mb
+  hash-size: 65536
+  prealloc: 10000
+  emergency-recovery: 30
+vlan:
+  use-for-tracking: true
+livedev:
+  use-for-tracking: false
+flow-timeouts:
+  default:
+    new: 30
+    established: 300
+    closed: 0
+    bypassed: 100
+    emergency-new: 10
+    emergency-established: 100
+    emergency-closed: 0
+    emergency-bypassed: 50
+  tcp:
+    new: 60
+    established: 600
+    closed: 60
+    bypassed: 100
+    emergency-new: 5
+    emergency-established: 100
+    emergency-closed: 10
+    emergency-bypassed: 50
+  udp:
+    new: 30
+    established: 300
+    bypassed: 100
+    emergency-new: 10
+    emergency-established: 100
+    emergency-bypassed: 50
+  icmp:
+    new: 30
+    established: 300
+    bypassed: 100
+    emergency-new: 10
+    emergency-established: 100
+    emergency-bypassed: 50
+stream:
+  memcap: 64mb
+  checksum-validation: true
+  inline: auto
+  midstream-policy: ignore
+  reassembly:
+    memcap: 256mb
+    depth: 1mb
+    toserver-chunk-size: 2560
+    toclient-chunk-size: 2560
+    randomize-chunk-size: true
+host:
+  hash-size: 4096
+  prealloc: 1000
+  memcap: 32mb
+decoder:
+  teredo:
+    enabled: true
+    ports: $TEREDO_PORTS
+  vxlan:
+    enabled: true
+    ports: $VXLAN_PORTS
+  geneve:
+    enabled: true
+    ports: $GENEVE_PORTS
+detect:
+  profile: medium
+  custom-values:
+    toclient-groups: 3
+    toserver-groups: 25
+  sgh-mpm-context: auto
+  inspection-recursion-limit: 3000
+  prefilter:
+    default: mpm
+  profiling:
+    grouping:
+      dump-to-disk: false
+      include-rules: false
+      include-mpm-stats: false
+  guess-applayer-tx: true
+mpm-algo: ac
+spm-algo: auto
+threading:
+  detect-thread-ratio: 1.0
+luajit:
+  states: 128
+default-rule-path: /var/lib/suricata/rules
+rule-files:
+- local.rules
+classification-file: /etc/suricata/classification.config
+reference-config-file: /etc/suricata/reference.config
+af-packet:
+- interface: s@slot@-inet
+  cluster-id: @slot@71
+  cluster-type: cluster_flow
+  defrag: true
+  threads: 1
+unix-command:
+  enabled: true

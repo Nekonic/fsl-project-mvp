@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import hashlib
+import base64
 import ipaddress
 import shlex
 import shutil
@@ -10,15 +10,13 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
-from functools import partial
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from urllib.parse import quote
 
 import requests
-from dataclasses import dataclass, field, replace
 
-from range import cloud as configured
-from range import clock, fabric, images, interfaces, opnsense, slot, waf, wargame_host
+from range import clock, fabric, interfaces, rangehost, slot
 from range.declared import Declaration
 from rules import suricata
 from range.ports import (
@@ -26,7 +24,6 @@ from range.ports import (
     reported, reporting,
 )
 
-TOKEN = "POST {keystone}/v3/auth/tokens"
 NETWORKS = "GET {neutron}/v2.0/networks?project_id={project}&tags-any={tags}"
 SUBNETS = "GET {neutron}/v2.0/subnets?network_id={network}"
 SERVERS = "GET {nova}/servers/detail?project_id={project}"
@@ -34,6 +31,7 @@ BOOT = "POST {nova}/servers"
 PROJECT_NETWORKS = "GET {neutron}/v2.0/networks?project_id={project}"
 PROJECT_SUBNETS = "GET {neutron}/v2.0/subnets?project_id={project}"
 PORTS = "GET {neutron}/v2.0/ports?network_id={network}"
+PROJECT_PORTS = "GET {neutron}/v2.0/ports?project_id={project}"
 CREATE_NETWORK = "POST {neutron}/v2.0/networks"
 TAG_NETWORK = "PUT {neutron}/v2.0/networks/{network}/tags"
 CREATE_SUBNETS = "POST {neutron}/v2.0/subnets"
@@ -45,13 +43,8 @@ IMPORT_KEYPAIR = "POST {nova}/os-keypairs"
 DELETE_KEYPAIR = "DELETE {nova}/os-keypairs/{keypair}"
 IMAGES = "GET {glance}/v2/images?name={name}"
 OWN_IMAGES = "GET {glance}/v2/images?owner={project}&visibility=private&limit=100"
-CREATE_IMAGE = "POST {glance}/v2/images"
-IMAGE_FILE = "{glance}/v2/images/{image}/file"
 DELETE_IMAGE = "DELETE {glance}/v2/images/{image}"
 FLAVORS = "GET {nova}/flavors"
-FLAVOR = "GET {nova}/flavors/{flavor}"
-LIMITS = "GET {nova}/limits"
-ACTION = "POST {nova}/servers/{server}/action"
 DELETE_SERVER = "DELETE {nova}/servers/{server}"
 SECURITY_GROUPS = "GET {neutron}/v2.0/security-groups?project_id={project}"
 CREATE_GROUP = "POST {neutron}/v2.0/security-groups"
@@ -59,40 +52,36 @@ CREATE_RULE = "POST {neutron}/v2.0/security-group-rules"
 DELETE_GROUP = "DELETE {neutron}/v2.0/security-groups/{group}"
 DELETE_RULE = "DELETE {neutron}/v2.0/security-group-rules/{rule}"
 CREATE_PORT = "POST {neutron}/v2.0/ports"
-UPDATE_PORT = "PUT {neutron}/v2.0/ports/{port}"
 DELETE_PORT = "DELETE {neutron}/v2.0/ports/{port}"
 ATTACH = "POST {nova}/servers/{server}/os-interface"
 
 DELETES = {
     "subnet": DELETE_SUBNET, "network": DELETE_NETWORK, "keypair": DELETE_KEYPAIR,
-    "group": DELETE_GROUP, "port": DELETE_PORT, "server": DELETE_SERVER,
+    "group": DELETE_GROUP, "port": DELETE_PORT, "server": DELETE_SERVER, "image": DELETE_IMAGE,
 }
 
 FIXED = "OS-EXT-IPS:type"
 LAUNCHED = "OS-SRV-USG:launched_at"
 PAGE_LIMIT = 50
+BUILDS = "cr_image"
+SETTING_UP = "SETTING_UP"
+SETUP_FAILED = "SETUP_FAILED"
 
 CONNECT_TIMEOUT = 10
 SERVER_ALIVE_INTERVAL = 15
 SERVER_ALIVE_COUNT_MAX = 3
 NOVA_MICROVERSION = "2.1"
 SUBJECT_TOKEN = "X-Subject-Token"
-SEGMENT_TAG = "cr.segment.id"
+SEGMENT_TAG = fabric.TAG
 ATTACKER_ROLE = "attacker"
 SCORER_ROLE = "scorer"
-OWN_LISTED_TIMEOUT = 60
 GATEWAY_ROLE = "gateway"
-BUILD_GROUP = "cr-build"
-SENSOR_ROLE = "sensor"
-EDGE_REBOOT = 900
-EDGE_POLL = 3
-EDGE_SETTLE_READS = 40
-HOST_READS = 100
-HOST_POLL = 3
-RESET_IN_PLACE = (slot.EDGE_ROLE, wargame_host.ROLE)
-DISK_TIMEOUT = 60
-UPLOAD_TIMEOUT = 600
-CHUNK = 1 << 20
+SENSOR_ROLES = ("sensor", "estate-sensor")
+OWN_LISTED_TIMEOUT = 60
+GONE_WAIT = 300
+GONE_POLL = 3
+COLLECTED = {"edge-sensor": ("sensor", "suricata"), "estate-sensor": ("estate-sensor", "suricata"),
+             "waf": (GATEWAY_ROLE, "modsecurity")}
 
 SETTINGS = {
     "keystone": "CR_OPENSTACK_KEYSTONE",
@@ -107,25 +96,33 @@ SETTINGS = {
     "source": "CR_SOURCE",
     "base_image": "CR_OPENSTACK_BASE_IMAGE",
     "flavor": "CR_OPENSTACK_FLAVOR",
-    "build_flavor": "CR_OPENSTACK_BUILD_FLAVOR",
-    "role_flavors": "CR_OPENSTACK_ROLE_FLAVORS",
     "availability_zone": "CR_OPENSTACK_AVAILABILITY_ZONE",
     "subnets": "CR_OPENSTACK_SUBNETS",
     "mtu": "CR_OPENSTACK_MTU",
-    "opnsense": "CR_OPNSENSE",
     "build_network": "CR_OPENSTACK_BUILD_NETWORK",
     "platform": "CR_OPENSTACK_PLATFORM",
     "image_tag": "CR_IMAGE_TAG",
     "slots": "CR_OPENSTACK_SLOTS",
-    "sideloaded": "CR_SIDELOADED",
 }
-ROOM = (("maxTotalInstances", "totalInstancesUsed", ""), ("maxTotalCores", "totalCoresUsed", "vcpus"),
-        ("maxTotalRAMSize", "totalRAMUsed", "ram"))
 
 _connected: dict[tuple, tuple["Cloud", object]] = {}
+_set_up: set[str] = set()
+_booting = threading.Lock()
+
 
 class EndpointGone(RangeUnavailable):
     pass
+
+
+def pairs(text: str) -> dict[str, str]:
+    found = {}
+    for word in (text or "").split():
+        key, equals, value = word.partition("=")
+        if not equals or not key or not value:
+            raise ValueError(f"{word!r} is not key=value")
+        found[key] = value
+    return found
+
 
 def connect(
     declared: Declaration,
@@ -141,17 +138,13 @@ def connect(
     source: str = "",
     base_image: str = "",
     flavor: str = "",
-    build_flavor: str = "",
-    role_flavors: str = "",
     availability_zone: str = "",
     subnets: str = "",
     mtu: str = "",
-    opnsense: str = "",
     build_network: str = "",
     platform: str = "",
     image_tag: str = "",
     slots: str = "",
-    sideloaded: str = "",
 ) -> "OpenStack":
     given = {
         "keystone": keystone, "user": user, "password": password,
@@ -178,20 +171,18 @@ def connect(
     try:
         build = Build(
             source=source, base_image=base_image, flavor=flavor,
-            build_flavor=build_flavor, role_flavors=configured.pairs(role_flavors),
-            availability_zone=availability_zone, inside=configured.pairs(subnets),
-            mtu=int(mtu or 0), opnsense=configured.opnsense_from(opnsense),
-            network=build_network, platform=platform, image_tag=image_tag,
+            availability_zone=availability_zone, inside=pairs(subnets),
+            mtu=int(mtu or 0), network=build_network, platform=platform, image_tag=image_tag,
             slots=_count(slots or "1"),
-            sideloaded=frozenset(name for name in sideloaded.split(",") if name),
         )
     except ValueError as error:
         raise RangeUnavailable(
-            f"the cloud settings ({', '.join(SETTINGS[n] for n in ('role_flavors', 'subnets', 'mtu', 'opnsense', 'slots'))}) "
+            f"the cloud settings ({', '.join(SETTINGS[n] for n in ('subnets', 'mtu', 'slots'))}) "
             f"do not parse: {error}; they come from cloud.yaml through the Heat stack"
         ) from error
     cloud, reader = _connected.get(known) or rediscover()
     return OpenStack(declared, cloud, get=reader, rediscover=rediscover, build=build)
+
 
 def _count(text: str) -> int:
     count = int(text)
@@ -199,28 +190,21 @@ def _count(text: str) -> int:
         raise ValueError(f"{SETTINGS['slots']} is {count}; a range has one slot or more")
     return count
 
-def once_it_answers(step):
-    for _ in range(HOST_READS - 1):
-        try:
-            return step()
-        except RangeUnavailable:
-            time.sleep(HOST_POLL)
-    return step()
 
 def alongside(*chains: list) -> list:
     def in_order(chain: list) -> list:
-        done = []
-        for step in chain:
-            done += alongside(*[[each] for each in step]) if isinstance(step, list) else [once_it_answers(step)]
-        return done
+        return [step() for step in chain]
 
     with ThreadPoolExecutor(max_workers=max(1, len(chains))) as pool:
         running = [pool.submit(in_order, chain) for chain in chains]
         wait(running)
     return [done for finished in running for done in finished.result()]
 
+
 def forget() -> None:
     _connected.clear()
+    _set_up.clear()
+
 
 def discover(
     keystone: str,
@@ -249,6 +233,7 @@ def discover(
         domain=domain,
     )
 
+
 def _signed_in(keystone: str, user: str, password: str, project: str, timeout: float,
                domain: str = "default"):
     body = {
@@ -274,6 +259,7 @@ def _signed_in(keystone: str, user: str, password: str, project: str, timeout: f
         )
     return answered
 
+
 def _endpoint(catalog, service: str, region: str, interface: str) -> str:
     for entry in catalog:
         if entry.get("type") != service:
@@ -287,6 +273,7 @@ def _endpoint(catalog, service: str, region: str, interface: str) -> str:
         f"{interface!r} in region {region!r}; set {SETTINGS['region']} and "
         f"{SETTINGS['interface']} to a region and interface it lists"
     )
+
 
 def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
     held: dict = {"token": ""}
@@ -319,46 +306,8 @@ def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
             )
         return answered.json() if answered.content else {}
 
-    def upload(url: str, disk: Path) -> None:
-        def put(token: str):
-            with open(disk, "rb") as content:
-                return requests.put(url, data=content, timeout=UPLOAD_TIMEOUT, headers={
-                    "X-Auth-Token": token, "Content-Type": "application/octet-stream"})
-        try:
-            answered = put(authenticate())
-            if answered.status_code == 401:
-                answered = put(authenticate())
-        except requests.RequestException as exc:
-            raise RangeUnavailable(f"could not upload {disk.name} to {url}: {exc}") from exc
-        if not answered.ok:
-            raise RangeUnavailable(
-                f"PUT {url} answered {answered.status_code}: {answered.text.strip()[:200]}")
-
-    send.upload = upload
     return send
 
-def pull(url: str, into: Path, timeout: float = DISK_TIMEOUT) -> str:
-    digest = hashlib.sha256()
-    try:
-        with requests.get(url, stream=True, timeout=timeout) as answered:
-            if not answered.ok:
-                raise RangeUnavailable(f"GET {url} answered {answered.status_code}")
-            with open(into, "wb") as disk:
-                for chunk in answered.iter_content(CHUNK):
-                    disk.write(chunk)
-                    digest.update(chunk)
-    except requests.RequestException as exc:
-        raise RangeUnavailable(f"could not pull the disk from {url}: {exc}") from exc
-    return digest.hexdigest()
-
-def _fixed_ipv4(server: dict) -> str:
-    found = next((
-        entry["addr"] for entries in (server.get("addresses") or {}).values() for entry in entries
-        if entry.get(FIXED, "fixed") == "fixed" and entry.get("version", 4) == 4
-    ), "")
-    if not found:
-        raise RangeUnavailable(f"builder {server.get('name', server['id'])} has no fixed IPv4 address to pull its disk from")
-    return found
 
 def _send(verb: str, url: str, token: str | None, body, timeout: float):
     headers = {"X-OpenStack-Nova-API-Version": NOVA_MICROVERSION}
@@ -371,6 +320,7 @@ def _send(verb: str, url: str, token: str | None, body, timeout: float):
     except requests.RequestException as exc:
         raise EndpointGone(f"could not reach {url}: {exc}") from exc
 
+
 def _one_ipv4_subnet(segment_id: str, allocated: list[dict]) -> dict:
     ipv4 = [subnet for subnet in allocated if subnet.get("ip_version", 4) == 4]
     if len(ipv4) > 1:
@@ -381,28 +331,6 @@ def _one_ipv4_subnet(segment_id: str, allocated: list[dict]) -> dict:
         )
     return ipv4[0] if ipv4 else {}
 
-def _origin_subnet(origin, network: dict, allocated: list[dict]) -> dict:
-    found = next((s for s in allocated if s.get("cidr") == origin.subnet), None)
-    if found is None:
-        raise RangeUnavailable(
-            f"origin {origin.id!r} is declared on {origin.subnet} and network "
-            f"{network.get('name') or network['id']} has no such subnet"
-        )
-    return found
-
-def _refuse_undeclared(origins, bound: dict, allocated: dict) -> None:
-    declared = {(origin.segment, origin.subnet) for origin in origins}
-    for carrier in {origin.segment for origin in origins}:
-        stray = [
-            subnet.get("cidr", "") for subnet in allocated.get(carrier, [])
-            if subnet.get("ip_version", 4) == 4 and (carrier, subnet.get("cidr")) not in declared
-        ]
-        if stray:
-            raise RangeUnavailable(
-                f"network {bound[carrier].get('name') or bound[carrier]['id']} "
-                f"carries {stray}, which no origin declares; an address there "
-                f"would be binned to no country"
-            )
 
 def _subnet_body(subnet: "fabric.Subnet", network_id: str) -> dict:
     body = {
@@ -413,9 +341,11 @@ def _subnet_body(subnet: "fabric.Subnet", network_id: str) -> dict:
         body["gateway_ip"] = None
     return body
 
+
 def _tidied(piped: subprocess.Popen, scratch: Path) -> None:
     piped.wait()
     shutil.rmtree(scratch, ignore_errors=True)
+
 
 def _detached(port: dict) -> bool:
     return not port.get("device_id") and not port.get("device_owner")
@@ -433,6 +363,7 @@ def _generations(servers: list[dict]) -> dict[str, str]:
                 if entry.get(FIXED) == "fixed":
                     found[entry["addr"]] = generation
     return found
+
 
 @dataclass(frozen=True)
 class Cloud:
@@ -453,17 +384,13 @@ class Build:
     source: str = ""
     base_image: str = ""
     flavor: str = ""
-    build_flavor: str = ""
-    role_flavors: dict = field(default_factory=dict)
     availability_zone: str = ""
     inside: dict = field(default_factory=dict)
     mtu: int = 0
-    opnsense: configured.OPNsense | None = None
     network: str = ""
     platform: str = ""
     image_tag: str = ""
     slots: int = 1
-    sideloaded: frozenset = frozenset()
 
     def placed(self, server: dict) -> dict:
         return {**server, "availability_zone": self.availability_zone} if self.availability_zone else server
@@ -482,6 +409,7 @@ class OpenStack:
         self.slot = slot
         self._shape: Shape | None = None
         self._generations: dict[str, str] = {}
+        self._range_address = ""
 
     @property
     def slots(self) -> int:
@@ -501,9 +429,31 @@ class OpenStack:
     def every_slot(self) -> list["OpenStack"]:
         return [self.in_slot(number) for number in range(1, self.slots + 1)]
 
-    def _visible(self, servers: list[dict]) -> list[dict]:
-        return [server for server in servers
-                if not slot.in_slot(server) or slot.slot_of(server) == self.slot]
+    @property
+    def range_host(self) -> str:
+        return self.declared.range_host
+
+    def _wargames(self) -> tuple[str, ...]:
+        return self.declared.hosts[self.range_host].wargames
+
+    def _laid_out(self) -> rangehost.Slot:
+        base = self.build.inside.get(slot.NAMED_ON)
+        if not base:
+            raise RangeUnavailable(
+                f"the slots' estates are carved from network.{slot.NAMED_ON} in cloud.yaml, "
+                f"which {SETTINGS['subnets']} does not carry")
+        return rangehost.Slot(number=self.slot, estate=rangehost.estate(base, self.slot),
+                              tag=self.build.image_tag, mtu=self.build.mtu or 1500)
+
+    def _document(self) -> dict:
+        return rangehost.compose(Path(self.build.source), self._laid_out(), self._wargames())
+
+    def _service_hosts(self) -> dict[str, str]:
+        found = {}
+        for role, service in sorted(self.declared.compose.items()):
+            host = self.declared.roles[role]
+            found.setdefault(service, service if self.declared.hosts[host].wargames else host)
+        return found
 
     def describe(self) -> Shape:
         shape = self._shape
@@ -526,109 +476,145 @@ class OpenStack:
         return self._generations.get(address, "")
 
     def _read(self) -> Shape:
-        origins = {origin.id: origin for origin in self.declared.origins}
-        carriers = list(dict.fromkeys(
-            origins[segment.id].segment if segment.id in origins else segment.id
-            for segment in self.declared.segments
-        ))
+        carriers = fabric.carried(self.declared)
         wanted = ",".join(f"{SEGMENT_TAG}={carrier}" for carrier in carriers)
-        bound = self._bind(self._all(NETWORKS, "networks", tags=wanted))
-        servers = self._visible(self._all(SERVERS, "servers"))
+        bound = fabric.bound(self.declared, self._all(NETWORKS, "networks", tags=wanted))
+        servers = self._all(SERVERS, "servers")
         self._generations = _generations(servers)
-
-        allocated = {}
-        for carrier in carriers:
-            network = bound.get(carrier)
-            if network is None:
-                raise RangeUnavailable(
-                    f"the declaration names the segment {carrier!r} and no "
-                    f"network of project {self.cloud.project!r} is tagged "
-                    f"{SEGMENT_TAG}={carrier}"
-                )
-            allocated[carrier] = self._all(SUBNETS, "subnets", network=network["id"])
-        _refuse_undeclared(origins.values(), bound, allocated)
+        standing = {slot.known_as(server) for server in servers}
+        laid = self._laid_out()
+        document = self._document()
+        names = self._service_hosts()
+        edge = self.declared.roles.get("edge", "")
+        attacker = self.declared.roles.get(ATTACKER_ROLE, "")
+        origins = {origin.id: origin for origin in self.declared.origins}
+        on_estate = rangehost.addressed(document, rangehost.FRONT)
+        gateway = on_estate.get(self.declared.compose.get("edge", ""), "")
 
         segments = []
         for declared in self.declared.segments:
             origin = origins.get(declared.id)
-            carrier = origin.segment if origin else declared.id
-            network = bound[carrier]
-            bound_subnet = (
-                _origin_subnet(origin, network, allocated[carrier]) if origin
-                else _one_ipv4_subnet(declared.id, allocated[carrier])
-            )
-            segments.append(
-                replace(
-                    declared,
-                    subnet=bound_subnet.get("cidr", ""),
-                    network=network["id"],
-                    gateway=bound_subnet.get("gateway_ip") or "",
-                    nodes=self._nodes(network["name"], servers, bound_subnet.get("cidr", "")),
-                )
-            )
+            if origin is not None:
+                way_in = rangehost.gateway_of(origin.subnet)
+                nodes = [Node(name=edge, address=way_in)] + [
+                    Node(name=attacker, address=address)
+                    for address in rangehost.origin_addresses(origin.subnet, origin.addresses)]
+                segments.append(replace(declared, subnet=origin.subnet, network=laid.network(rangehost.INTERNET),
+                                        gateway=way_in, nodes=tuple(sorted(nodes, key=lambda n: n.name))))
+            elif declared.id == slot.NAMED_ON:
+                nodes = [Node(name=names.get(service, service), address=address)
+                         for service, address in sorted(on_estate.items())]
+                segments.append(replace(declared, subnet=str(laid.estate), network=laid.network(rangehost.FRONT),
+                                        gateway=gateway, nodes=tuple(sorted(nodes, key=lambda n: n.name))))
+            elif declared.id in carriers:
+                network = bound.get(declared.id)
+                if network is None:
+                    raise RangeUnavailable(
+                        f"the declaration names the segment {declared.id!r} and no network of "
+                        f"project {self.cloud.project!r} is tagged {SEGMENT_TAG}={declared.id}")
+                held = _one_ipv4_subnet(declared.id, self._all(SUBNETS, "subnets", network=network["id"]))
+                segments.append(replace(declared, subnet=held.get("cidr", ""), network=network["id"],
+                                        gateway=held.get("gateway_ip") or "",
+                                        nodes=self._nodes(network["name"], servers, held.get("cidr", ""))))
+            else:
+                raise RangeUnavailable(f"the declaration names the segment {declared.id!r}, which "
+                                       f"neither a slot nor the fabric carries")
+        sensors = tuple(Sensor(name=name, watches=host) for name, host in self.declared.watching()
+                        if self.range_host in standing)
+        return Shape(segments=tuple(segments), sensors=sensors)
 
-        return Shape(segments=tuple(segments), sensors=self._sensors(servers))
+    def _nodes(self, network_name: str, servers: list[dict], cidr: str = "") -> tuple[Node, ...]:
+        inside = ipaddress.ip_network(cidr) if cidr else None
+        found = [
+            Node(name=slot.known_as(server), address=entry["addr"])
+            for server in servers
+            for entry in (server.get("addresses") or {}).get(network_name, [])
+            if entry.get(FIXED) == "fixed" and entry.get("version", 4) == 4
+            and (inside is None or ipaddress.ip_address(entry["addr"]) in inside)
+        ]
+        return tuple(sorted(found, key=lambda node: node.name))
+
+    def _address(self, host: str) -> str:
+        for segment in self.describe().segments:
+            if segment.id != fabric.MANAGEMENT:
+                continue
+            for node in segment.nodes:
+                if node.name == host:
+                    return node.address
+        raise RangeUnavailable(f"{host} stands on no {fabric.MANAGEMENT} address this platform can reach")
+
+    def address(self, role: str) -> str:
+        host = self.declared.host(role)
+        return self._address(self.range_host if host in self._contained_hosts() else host)
+
+    def _contained_hosts(self) -> set[str]:
+        return {self.declared.roles[role] for role in self.declared.compose} - {self.range_host}
+
+    def _container(self, role: str) -> str:
+        service = self.declared.compose.get(role, "")
+        return self._laid_out().container(service) if service else ""
 
     def runner(self, role: str, segment_id: str = ""):
         host = self.declared.host(role)
-        container = self._container(role, host)
+        container = self._container(role)
+        if not container and host != self.range_host:
+            raise RangeUnavailable(f"{role!r} is filled by {host}, which runs no command the range host reaches")
+        return self._shell(container)
 
+    def _shell(self, container: str = ""):
         def run(argv: list[str], stdin: str | None = None, timeout: float = 60.0) -> Ran:
-            address = self._address(role, host, segment_id)
+            address = self._address(self.range_host)
             with tempfile.TemporaryDirectory() as scratch:
                 said = Path(scratch) / "ssh.log"
                 config = self._config(Path(scratch) / "ssh_config", address)
-                command = self._ssh(address, stdin is not None, said, config,
-                                    self._ssh_user(host))
+                command = self._ssh(address, stdin is not None, said, config)
                 sent = reporting(argv)
                 if container:
-                    sent = wargame_host.inside(container, sent, stdin is not None)
+                    sent = rangehost.exec_in(container, sent, stdin is not None)
                 command.append(shlex.join(sent))
-                done = execute(host, command, stdin, timeout)
+                done = execute(self.range_host, command, stdin, timeout)
                 logged = said.read_text() if said.exists() else ""
                 complaint = " ".join(filter(None, (
                     line.strip("@ ") for line in
                     f"{logged}\n{done.stderr or ''}".splitlines()
                 )))
-
             ran = reported(done)
             if ran is None:
                 raise RangeUnavailable(
-                    f"{host} at {address} never reported the command "
-                    f"finishing: "
+                    f"{container or self.range_host} at {address} never reported the command finishing: "
                     + (complaint[:1000] or "the connection ended before it did")
                 )
             return ran
 
         return run
 
+    def terminal(self, host: str) -> tuple[str, str, str]:
+        role = next((role for role, filled in sorted(self.declared.roles.items())
+                     if filled == host and role in self.declared.compose), "")
+        if not role:
+            raise RangeUnavailable(f"{host} has no container in the slot to open a terminal in")
+        address = self._address(self.range_host)
+        return address, self._generations.get(address, "") or address, self._container(role)
+
     def interfaces(self, hosts=None, skip_unanswered=True) -> list[interfaces.Interface]:
         origins = {origin.id: origin.segment for origin in self.declared.origins}
         subnets = [(segment.subnet, origins.get(segment.id, segment.id)) for segment in self.describe().segments]
         found = []
-        for host, entry in sorted(self.declared.hosts.items()):
-            if hosts is not None and host not in hosts:
-                continue
-            role = next((role for role, named in sorted(self.declared.roles.items())
-                         if named == host and not self._container(role, host)), "")
-            if not role:
-                continue
-            try:
-                run = self.runner(role)
-                own = run(["sh", "-c", interfaces.LISTED], timeout=30).output
-                if entry.wargames:
-                    bridges, inside = interfaces.containers(
-                        own, run(["sudo", "sh", "-c", interfaces.CONTAINERS], timeout=60).output)
-                    for service, said in sorted(inside.items()):
-                        found += interfaces.placed(service, said, bridges)
-                    subnets_here = subnets + bridges
-                else:
-                    subnets_here = subnets
-                found += interfaces.placed(host, own, subnets_here)
-            except RangeUnavailable:
-                if not skip_unanswered:
-                    raise
-                continue
+        try:
+            listed = self._shell()(rangehost.listed(self._laid_out().project), timeout=60).output
+        except RangeUnavailable:
+            if not skip_unanswered:
+                raise
+            listed = ""
+        names = self._service_hosts()
+        project = self._laid_out().project
+        networks, inside = interfaces.slot_listed(listed, project)
+        here = subnets + [(subnet, key) for key, subnet in networks
+                          if key not in (rangehost.INTERNET, rangehost.FRONT)]
+        for service, said in sorted(inside.items()):
+            host = names.get(service, service)
+            if hosts is None or host in hosts:
+                found += interfaces.placed(host, said, here)
         scorer = self.declared.host(SCORER_ROLE)
         if hosts is not None and scorer in hosts:
             found += interfaces.placed(scorer, self._own_listed(), subnets)
@@ -643,16 +629,7 @@ class OpenStack:
             return ""
         return done.stdout if done.returncode == 0 else ""
 
-    def _container(self, role: str, host: str) -> str:
-        entry = self.declared.hosts.get(host)
-        return self.declared.compose.get(role, "") if entry and entry.wargames else ""
-
-    def _ssh_user(self, host: str) -> str:
-        entry = self.declared.hosts.get(host)
-        return entry.ssh_user if entry and entry.ssh_user else self.cloud.ssh_user
-
-    def _ssh(self, address: str, reads_input: bool, log: Path, config: Path,
-             ssh_user: str) -> list[str]:
+    def _ssh(self, address: str, reads_input: bool, log: Path, config: Path) -> list[str]:
         command = ["ssh", "-F", str(config)]
         if not reads_input:
             command.append("-n")
@@ -662,7 +639,7 @@ class OpenStack:
             "-o", "BatchMode=yes",
             "-o", "IdentitiesOnly=yes",
             "-o", "LogLevel=ERROR",
-            f"{ssh_user}@{address}",
+            f"{self.cloud.ssh_user}@{address}",
         ]
 
     def _config(self, written: Path, address: str) -> Path:
@@ -691,12 +668,9 @@ class OpenStack:
         def launch(image: str, argv: list[str], timeout: float = 600.0) -> Ran:
             if image != attacker:
                 raise RangeUnavailable(
-                    f"asked to start {image!r} on {segment_id!r}. Nova has no "
-                    f"call that boots a host, hands back its output and "
-                    f"deletes it, so a tool runs on the attacker this range "
-                    f"already has - {attacker!r} - and no other image"
+                    f"asked to start {image!r} on {segment_id!r}; a tool runs in the slot's "
+                    f"attacker {attacker!r} and no other container"
                 )
-            self._address(ATTACKER_ROLE, attacker, segment_id)
             return self.runner(ATTACKER_ROLE)(argv, timeout=timeout)
 
         return launch
@@ -705,105 +679,48 @@ class OpenStack:
         attacker = self.declared.roles.get(ATTACKER_ROLE, "")
         if image != attacker:
             raise RangeUnavailable(
-                f"asked to run customers from {image!r}; on OpenStack they run on the attacker "
-                f"this range already has - {attacker!r} - which stands on every origin"
+                f"asked to run customers from {image!r}; they run in the slot's attacker "
+                f"{attacker!r}, which stands on every origin"
             )
         return self.runner(ATTACKER_ROLE)
 
     def opened(self, role: str, argv: list[str]) -> socket.socket:
-        host = self.declared.host(role)
-        address = self._address(role, host, "")
+        address = self._address(self.range_host)
+        container = self._container(role)
         scratch = Path(tempfile.mkdtemp())
         config = self._config(scratch / "ssh_config", address)
-        command = self._ssh(address, True, scratch / "ssh.log", config, self._ssh_user(host))
+        command = self._ssh(address, True, scratch / "ssh.log", config)
+        sent = rangehost.exec_in(container, argv, True) if container else argv
         ours, theirs = socket.socketpair()
         try:
-            piped = subprocess.Popen(command + [shlex.join(argv)], stdin=theirs, stdout=theirs,
+            piped = subprocess.Popen(command + [shlex.join(sent)], stdin=theirs, stdout=theirs,
                                      stderr=subprocess.DEVNULL)
         except OSError as exc:
             ours.close()
             shutil.rmtree(scratch, ignore_errors=True)
-            raise RangeUnavailable(f"could not reach {host}: {exc}") from exc
+            raise RangeUnavailable(f"could not reach {self.range_host}: {exc}") from exc
         finally:
             theirs.close()
         threading.Thread(target=_tidied, args=(piped, scratch), daemon=True).start()
         return ours
 
-    def _bind(self, networks: list[dict]) -> dict[str, dict]:
-        found: dict[str, dict] = {}
-        for network in networks:
-            for tag in network.get("tags") or []:
-                mark, _, segment_id = tag.partition("=")
-                if mark != SEGMENT_TAG or not segment_id:
-                    continue
-                if fabric.slot_of(network) != fabric.owner(segment_id, self.slot):
-                    continue
-                if segment_id in found:
-                    raise RangeUnavailable(
-                        f"{found[segment_id]['id']} and {network['id']} both "
-                        f"carry {SEGMENT_TAG}={segment_id!r}, so nothing says "
-                        f"which of them the segment is"
-                    )
-                found[segment_id] = network
-        return found
-
-    def _nodes(self, network_name: str, servers: list[dict], cidr: str = "") -> tuple[Node, ...]:
-        inside = ipaddress.ip_network(cidr) if cidr else None
-        found = [
-            Node(name=slot.known_as(server), address=entry["addr"])
-            for server in servers
-            for entry in (server.get("addresses") or {}).get(network_name, [])
-            if entry.get(FIXED) == "fixed" and entry.get("version", 4) == 4
-            and (inside is None or ipaddress.ip_address(entry["addr"]) in inside)
-        ]
-        return tuple(sorted(found, key=lambda node: node.name))
-
-    def _sensors(self, servers: list[dict]) -> tuple[Sensor, ...]:
-        standing = {slot.known_as(server) for server in servers}
-        return tuple(
-            Sensor(name=name, watches=host)
-            for name, host in self.declared.watching()
-            if name in standing and host in standing
-        )
-
-    def _address(self, role: str, host: str, segment_id: str) -> str:
-        segments = sorted(self.describe().segments, key=lambda s: s.id != fabric.MANAGEMENT)
-        for segment in segments:
-            if segment_id and segment.id != segment_id:
-                continue
-            for node in segment.nodes:
-                if node.name == host:
-                    return node.address
-        raise RangeUnavailable(
-            f"the host filling {role!r} ({host}) stands on no segment this "
-            f"platform can address"
-            + (f", and {segment_id!r} in particular" if segment_id else "")
-        )
-
     def plan_fabric(self) -> fabric.Plan:
         networks, subnets, keypairs, groups = self._fabric_standing()
         return fabric.plan(self.declared, networks, subnets, keypairs, self._public_key(),
-                           groups, self._reached(networks), self.build.inside, self.slots)
+                           groups, self._reached(networks), self.build.inside)
 
     def ensure_fabric(self) -> fabric.Plan:
         public_key = self._public_key(make=True)
         networks, subnets, keypairs, groups = self._fabric_standing()
         plan = fabric.plan(self.declared, networks, subnets, keypairs, public_key,
-                           groups, self._reached(networks), self.build.inside, self.slots)
+                           groups, self._reached(networks), self.build.inside)
         if plan.drifted:
             raise Drifted("; ".join(plan.drifted))
-        carriers = {
-            fabric.carrier(segment, number): network["id"]
-            for number in range(1, self.slots + 1)
-            for segment, network in fabric.bound(self.declared, networks, number).items()
-        }
-        wanted = {fabric.carrier(subnet.segment, subnet.slot): (subnet.segment, subnet.slot)
-                  for number in range(1, self.slots + 1)
-                  for subnet in fabric.wanted(self.declared, self.build.inside, number)}
-        carriers.update({carrier: self._make_network(*wanted[carrier]) for carrier in plan.networks})
+        carriers = {segment: network["id"] for segment, network in fabric.bound(self.declared, networks).items()}
+        carriers.update({segment: self._make_network(segment) for segment in plan.networks})
         if plan.subnets:
             self.get(self._call(CREATE_SUBNETS), {"subnets": [
-                _subnet_body(subnet, carriers[subnet.carrier]) for subnet in plan.subnets
+                _subnet_body(subnet, carriers[subnet.segment]) for subnet in plan.subnets
             ]})
         if plan.keypair:
             self.get(self._call(IMPORT_KEYPAIR), {
@@ -814,11 +731,6 @@ class OpenStack:
             named[name] = self.get(self._call(CREATE_GROUP), {
                 "security_group": {"name": name}
             })["security_group"]["id"]
-            if name == fabric.RANGE_GROUP:
-                self.get(self._call(CREATE_RULE), {"security_group_rule": {
-                    "security_group_id": named[name], "direction": "ingress",
-                    "ethertype": "IPv4",
-                }})
             if name == fabric.MANAGEMENT_GROUP:
                 self.get(self._call(CREATE_RULE), {"security_group_rule": {
                     "security_group_id": named[name], "direction": "ingress",
@@ -860,9 +772,9 @@ class OpenStack:
     def teardown_fabric(self) -> list[tuple[str, str]]:
         networks, subnets, keypairs, groups = self._fabric_standing()
         own = []
-        owned = {network["id"]: network for number in range(1, self.slots + 1)
-                 for network in fabric.bound(self.declared, networks, number).values()}
-        for network in owned.values():
+        for network in networks:
+            if fabric.segment_of(network) is None:
+                continue
             ports = self._all(PORTS, "ports", network=network["id"])
             servers = [port for port in ports if str(port.get("device_owner") or "").startswith("compute:")]
             own += [("port", p["id"]) for p in ports if _detached(p)]
@@ -879,13 +791,13 @@ class OpenStack:
         self._shape = None
         return steps
 
-    def _make_network(self, segment: str, number: int = 1) -> str:
+    def _make_network(self, segment: str) -> str:
         created = self.get(self._call(CREATE_NETWORK), {
-            "network": {"name": fabric.network_name(segment, number)}
+            "network": {"name": fabric.network_name(segment)}
         })["network"]
         try:
             self.get(self._call(TAG_NETWORK, network=created["id"]), {
-                "tags": fabric.network_tags(segment, number)
+                "tags": fabric.network_tags(segment)
             })
         except RangeUnavailable:
             self.get(self._call(DELETE_NETWORK, network=created["id"]))
@@ -919,187 +831,285 @@ class OpenStack:
                 )
         return public.read_text().strip() if public.exists() else ""
 
-    def plan_images(self) -> images.Plan:
-        return self._image_plan(self._bundles())
+    def _bundle(self) -> dict[str, bytes]:
+        return rangehost.bundle(Path(self.build.source), self._wargames(), self.build.image_tag,
+                                self.build.mtu)
 
-    def ensure_images(self) -> images.Plan:
-        bundles = self._bundles()
-        plan = self._image_plan(bundles)
-        made = {bundle.host: bundle for bundle in bundles}
-        missing = [found for found in plan.images
-                   if found.state == "missing" and found.host in made]
-        room = self._builder_room() if missing else 0
-        if missing and room < 1 and not any(found.builder for found in plan.images):
-            raise RangeUnavailable(
-                f"{', '.join(found.host for found in missing)} need a builder and the project's "
-                f"quota has no room for one ({self.build.build_flavor}); take a slot down "
-                f"(DELETE /api/range/slot/?slot={self.slots}) or raise the quota, then build again"
-            )
-        for found in missing[:max(0, room)]:
-            server = {
-                **self._builder_base(self.build.base_image),
-                "name": images.BUILDER + found.host,
-                "user_data": images.user_data(made[found.host]),
-                "metadata": {images.BUILDS: found.host, images.BUNDLE: found.bundle},
-            }
-            if made[found.host].uploads:
-                self._build_group()
-                server["security_groups"] = [{"name": BUILD_GROUP}]
-            self.get(self._call(BOOT), {"server": self.build.placed(server)})
-        for found in plan.images:
-            if found.state == "built" and made[found.host].uploads:
-                self._take_disk(made[found.host], found)
-            elif found.state == "built":
-                self.get(self._call(ACTION, server=found.builder), {"os-stop": None})
-            elif found.state == "stopped":
-                self.get(self._call(ACTION, server=found.builder), {"createImage": {
-                    "name": found.host, "metadata": {images.BUNDLE: found.bundle},
-                }})
-            elif found.state == "ready" and found.builder:
-                self.get(self._call(DELETE_SERVER, server=found.builder))
-        return self._image_plan(bundles)
+    def _range_server(self, servers: list[dict]) -> dict | None:
+        return next((server for server in servers if slot.host_of(server) == self.range_host), None)
 
-    def _builder_room(self) -> int:
-        absolute = (self.get(self._call(LIMITS)).get("limits") or {}).get("absolute") or {}
-        flavor = self.get(self._call(
-            FLAVOR, flavor=self._flavor(self.build.build_flavor, "build_flavor"))).get("flavor") or {}
-        rooms = [
-            (absolute[most] - absolute.get(used, 0)) // max(1, int(flavor.get(each) or 1) if each else 1)
-            for most, used, each in ROOM
-            if isinstance(absolute.get(most), int) and absolute[most] >= 0
-        ]
-        return min(rooms, default=len(self.declared.hosts))
+    def _setup_status(self, server: dict) -> str:
+        if server.get("status") != "ACTIVE" or server["id"] in _set_up:
+            return str(server.get("status") or "")
+        try:
+            said = self._shell()(rangehost.setup_state(), timeout=30).output
+        except RangeUnavailable:
+            return SETTING_UP
+        if said.startswith("ready"):
+            _set_up.add(server["id"])
+            return "ACTIVE"
+        return SETUP_FAILED if said.startswith("failed") else SETTING_UP
 
-    def _platform_address(self, why: str) -> str:
-        if not self.build.platform:
-            raise RangeUnavailable(f"{why}, so the platform needs its own server id; set {SETTINGS['platform']}")
-        own = next((port for port in self._all(PORTS, "ports", network=self.build.network)
-                    if port.get("device_id") == self.build.platform and port.get("fixed_ips")), None)
-        if own is None:
-            raise RangeUnavailable(f"the platform has no port on the build network {self.build.network}")
-        return own["fixed_ips"][0]["ip_address"]
+    def _plan(self, servers: list[dict], digest: str, statuses: dict[str, str]) -> slot.Plan:
+        server = self._range_server(servers)
+        if server is None:
+            return slot.Plan(boot=(self.range_host,), blocked=tuple(self._unbootable()), slot=self.slot)
+        metadata = server.get("metadata") or {}
+        stale = (metadata.get(slot.TAG) != self.build.image_tag or metadata.get(slot.BUNDLE) != digest)
+        return slot.Plan(standing=((self.range_host, server["id"], statuses[server["id"]]),),
+                         slot=self.slot, stale=(self.range_host,) if stale else ())
 
-    def _build_group(self) -> str:
-        address = self._platform_address("a builder that serves its disk lets in only the platform")
-        wanted = {"direction": "ingress", "ethertype": "IPv4", "protocol": "tcp",
-                  "port_range_min": images.SERVE_PORT, "port_range_max": images.SERVE_PORT,
-                  "remote_ip_prefix": f"{address}/32"}
-        group = next((g for g in self._all(SECURITY_GROUPS, "security_groups")
-                      if g["name"] == BUILD_GROUP), None)
-        if group is None:
-            group = self.get(self._call(CREATE_GROUP), {"security_group": {"name": BUILD_GROUP}})["security_group"]
-        ingress = [rule for rule in group.get("security_group_rules") or []
-                   if rule.get("direction") == "ingress"]
-        held = [rule for rule in ingress if all(rule.get(key) == value for key, value in wanted.items())]
-        for rule in ingress:
-            if rule not in held:
-                self.get(self._call(DELETE_RULE, rule=rule["id"]))
-        if not held:
-            self.get(self._call(CREATE_RULE), {"security_group_rule": {
-                **wanted, "security_group_id": group["id"]}})
-        return group["id"]
+    def _unbootable(self) -> list[str]:
+        reasons = []
+        if not self.build.network:
+            reasons.append(f"the range host pulls its images, so it needs a network that reaches the "
+                           f"Internet; set {SETTINGS['build_network']}")
+        if not self.build.image_tag:
+            reasons.append(f"the range host pulls the images by the platform's tag; set {SETTINGS['image_tag']}")
+        return reasons
 
-    def _take_disk(self, bundle: images.Bundle, found: images.Image) -> None:
-        upload = getattr(self.get, "upload", None)
-        if upload is None:
-            raise RangeUnavailable("this connection cannot upload an image to Glance")
-        builder = next(s for s in self._all(SERVERS, "servers") if s["id"] == found.builder)
-        wanted = images.served_sha256(self._console(found.builder), bundle.digest)
-        if not wanted:
-            raise RangeUnavailable(f"{builder['name']} said it finished and named no sha256 of its disk")
-        source = f"http://{_fixed_ipv4(builder)}:{images.SERVE_PORT}/{images.DISK}"
-        with tempfile.TemporaryDirectory() as scratch:
-            disk = Path(scratch) / images.DISK
-            got = pull(source, disk)
-            if got != wanted:
-                raise RangeUnavailable(
-                    f"the disk pulled from {source} has sha256 {got} and {builder['name']} "
-                    f"said {wanted}, so nothing went to Glance")
-            image = found.image or self.get(
-                self._call(CREATE_IMAGE), images.record(bundle, opnsense.IMAGE_PROPERTIES))["id"]
-            upload(self._call(IMAGE_FILE, image=image), disk)
+    def plan_slot(self) -> slot.Plan:
+        return self.plan_slots()[self.slot - 1]
 
-    def clean_images(self) -> list[tuple[str, str]]:
-        removed = images.removable(self.plan_images())
-        for kind, ident in removed:
-            gone = DELETE_IMAGE if kind == "image" else DELETE_SERVER
-            self.get(self._call(gone, image=ident, server=ident))
-        return removed
-
-    def _bundles(self) -> tuple[images.Bundle, ...]:
-        return tuple(
-            self._bundle(host, entry)
-            for host, entry in self.declared.hosts.items()
-            if entry.setup
-        )
-
-    def _bundle(self, host: str, entry) -> images.Bundle:
-        source = Path(self.build.source)
-        if entry.wargames:
-            loaded = self._loaded(entry.wargames)
-            served = wargame_host.served_from(self._platform_address(
-                "the wargame host's builder fetches sideloaded images from the platform")) if loaded else None
-            return images.bundle(source, host, entry.setup, entry.files, generated=wargame_host.generated(
-                source, host, entry.wargames, entry.publish, self.build.image_tag, self.build.mtu,
-                loaded=loaded), unhashed=served)
-        if not entry.uploads:
-            return images.bundle(source, host, entry.setup, entry.files)
-        if entry.uploads != opnsense.UPLOADS:
-            raise RangeUnavailable(f"{host} uploads {entry.uploads!r}, which no builder makes")
-        if self.build.opnsense is None or not self.build.mtu:
-            raise RangeUnavailable(
-                f"the {host} image is built from the OPNsense release and the tenant MTU; "
-                f"set {SETTINGS['opnsense']} and {SETTINGS['mtu']} (opnsense and network.mtu in cloud.yaml)"
-            )
-        key = self._public_key()
-        if not key:
-            raise RangeUnavailable(f"the {host} image trusts the platform's key, which the fabric makes; build the fabric first")
-        generated = opnsense.image_bundle(
-            (source / opnsense.CONFIG).read_text(), self.build.opnsense, self.build.mtu, key)
-        return images.bundle(source, host, entry.setup, entry.files, generated=generated,
-                             image=self.build.opnsense.image, uploads=True)
-
-    def sideloaded_image(self, name: str) -> str:
-        wargames = [wargame for entry in self.declared.hosts.values() for wargame in entry.wargames]
-        return wargame_host.sideloaded_images(
-            self.build.source, wargames, self.build.image_tag, self.build.sideloaded).get(name, "")
-
-    def _loaded(self, wargames) -> tuple[tuple[str, str, str], ...]:
-        found = wargame_host.sideloaded_images(
-            self.build.source, wargames, self.build.image_tag, self.build.sideloaded)
-        return tuple((image, wargame_host.local_image_id(image), name) for name, image in sorted(found.items()))
-
-    def _prebuilt(self) -> tuple[tuple[str, str], ...]:
-        return tuple(
-            (host, entry.image)
-            for host, entry in self.declared.hosts.items()
-            if entry.image
-        )
-
-    def _image_plan(self, bundles) -> images.Plan:
-        prebuilt = self._prebuilt()
-        names = {bundle.name for bundle in bundles} | {image for _, image in prebuilt}
-        found = [
-            image for name in names
-            for image in self.get(self._call(IMAGES, name=quote(name))).get("images") or []
-        ]
-        if any(bundle.uploads for bundle in bundles):
-            found += [image for image in self._own_images()
-                      if image.get("name") not in names
-                      and str(image.get("name", "")).startswith(configured.OPNSENSE_FAMILY)]
-        digests = {bundle.digest for bundle in bundles}
+    def plan_slots(self) -> list[slot.Plan]:
         servers = self._all(SERVERS, "servers")
-        builders = [server for server in servers if images.BUILDS in (server.get("metadata") or {})]
-        in_use = {(server.get("image") or {}).get("id") for server in servers
-                  if isinstance(server.get("image"), dict)}
-        consoles = {
-            server["id"]: self._console(server["id"])
-            for server in builders
-            if server.get("status") == "ACTIVE"
-            and server["metadata"].get(images.BUNDLE) in digests
+        server = self._range_server(servers)
+        statuses = {server["id"]: self._setup_status(server)} if server else {}
+        digest = rangehost.digest(self._bundle())
+        return [self.in_slot(number)._plan(servers, digest, statuses) for number in range(1, self.slots + 1)]
+
+    def ensure_slot(self, renew: bool = True) -> slot.Plan:
+        with _booting:
+            plan = self.plan_slot()
+            if plan.blocked:
+                raise Drifted("; ".join(plan.blocked))
+            if plan.stale and renew:
+                self._take_down_range_host()
+                plan = self.plan_slot()
+            if plan.boot:
+                self._boot_range_host()
+                plan = self.plan_slot()
+        self._shape = None
+        return plan
+
+    def _take_down_range_host(self) -> list[tuple[str, str]]:
+        servers = self._all(SERVERS, "servers")
+        server = self._range_server(servers)
+        steps = []
+        if server is not None:
+            self.get(self._call(DELETE_SERVER, server=server["id"]))
+            steps.append(("server", server["id"]))
+            self._until_gone({server["id"]})
+            _set_up.discard(server["id"])
+        name = self._port_name()
+        for port in self._all(PROJECT_PORTS, "ports"):
+            if port.get("name") == name and _detached(port):
+                self.get(self._call(DELETE_PORT, port=port["id"]))
+                steps.append(("port", port["id"]))
+        self._shape = None
+        return steps
+
+    def _until_gone(self, servers: set[str]) -> None:
+        deadline = time.monotonic() + GONE_WAIT
+        while servers & {server["id"] for server in self._all(SERVERS, "servers")}:
+            if time.monotonic() > deadline:
+                raise Drifted(f"Nova did not delete {', '.join(sorted(servers))} within {GONE_WAIT}s")
+            time.sleep(GONE_POLL)
+
+    def _port_name(self) -> str:
+        return f"{self.range_host}.{fabric.MANAGEMENT}"
+
+    def _boot_range_host(self) -> None:
+        networks, _, _, groups = self._fabric_standing()
+        management = fabric.bound(self.declared, networks).get(fabric.MANAGEMENT)
+        named = {group["name"]: group["id"] for group in groups}
+        missing = [name for name in (fabric.MANAGEMENT_GROUP, fabric.EGRESS_GROUP) if name not in named]
+        if management is None or missing:
+            raise Drifted(f"the fabric has no {fabric.MANAGEMENT} network or no security group "
+                          f"{', '.join(missing) or '-'}; build the fabric first")
+        for port in self._all(PORTS, "ports", network=management["id"]):
+            if port.get("name") == self._port_name() and _detached(port):
+                self.get(self._call(DELETE_PORT, port=port["id"]))
+        port = self.get(self._call(CREATE_PORT), {"port": {
+            "network_id": management["id"], "name": self._port_name(),
+            "security_groups": [named[fabric.MANAGEMENT_GROUP]],
+        }})["port"]
+        files = self._bundle()
+        server = {
+            "name": self.range_host,
+            "imageRef": self._base_image(),
+            "flavorRef": self._flavor(self.build.flavor),
+            "networks": [{"port": port["id"]}, {"uuid": self.build.network}],
+            "security_groups": [{"name": fabric.EGRESS_GROUP}],
+            "config_drive": True, "key_name": fabric.KEYPAIR,
+            "user_data": rangehost.user_data(files),
+            "metadata": {slot.HOST: self.range_host, slot.TAG: self.build.image_tag,
+                         slot.BUNDLE: rangehost.digest(files)},
         }
-        return images.plan(bundles, found, builders, consoles, prebuilt=prebuilt,
-                           families=(configured.OPNSENSE_FAMILY,), in_use=frozenset(in_use))
+        try:
+            self.get(self._call(BOOT), {"server": self.build.placed(server)})
+        except RangeUnavailable:
+            self.get(self._call(DELETE_PORT, port=port["id"]))
+            raise
+
+    def _base_image(self) -> str:
+        bases = [image for image in self.get(self._call(IMAGES, name=quote(self.build.base_image))).get("images") or []
+                 if image.get("status") == "active"]
+        if len(bases) != 1:
+            raise RangeUnavailable(
+                f"the range host boots {self.build.base_image!r} and the cloud has {len(bases)} active "
+                f"images by that name; set {SETTINGS['base_image']} to one it has exactly once")
+        return bases[0]["id"]
+
+    def _flavor(self, name: str) -> str:
+        flavor = next((
+            entry["id"] for entry in self.get(self._call(FLAVORS)).get("flavors") or []
+            if name and entry.get("name") == name
+        ), None)
+        if flavor is None:
+            raise RangeUnavailable(
+                f"the cloud has no flavor {name!r}; set {SETTINGS['flavor']} "
+                f"(compute.flavors.range in cloud.yaml) to one it lists"
+            )
+        return flavor
+
+    def teardown_slot(self) -> list[tuple[str, str]]:
+        server = self._range_server(self._all(SERVERS, "servers"))
+        if server is None:
+            return []
+        self._shape = None
+        try:
+            ran = self._shell()(rangehost.down(self._laid_out()), timeout=rangehost.UP_TIMEOUT)
+        except RangeUnavailable:
+            return []
+        if not ran.ok:
+            raise Drifted(f"{self.range_host} did not take slot {self.slot} down: {ran.output[-1000:]}")
+        return [("project", self._laid_out().project)]
+
+    def teardown_range_host(self) -> list[tuple[str, str]]:
+        with _booting:
+            return self._take_down_range_host()
+
+    def rebuild_slot(self, kept: frozenset[str] = frozenset()) -> list[tuple[str, str]]:
+        self.describe()
+        ran = self._shell()(rangehost.down(self._laid_out()), timeout=rangehost.UP_TIMEOUT)
+        if not ran.ok:
+            raise Drifted(f"{self.range_host} did not take slot {self.slot} down: {ran.output[-1000:]}")
+        self._shape = None
+        return []
+
+    def reset_slot(self) -> list[tuple[str, str]]:
+        return []
+
+    def reset_in_place(self, rebuilt=()) -> list[tuple[str, tuple[str, ...]]]:
+        self.describe()
+        ran = self._shell()(rangehost.reset(self._laid_out()), timeout=rangehost.RESET_TIMEOUT)
+        if not ran.ok:
+            if "compose.yaml" in ran.output and "no such file" in ran.output.lower():
+                return self.configure_slot()
+            raise Drifted(f"{self.range_host} did not reset slot {self.slot} (exit {ran.exit_code}): "
+                          f"{ran.output[-1000:]}")
+        return [(self.range_host, (f"reset slot {self.slot}",)), *self._seeded()]
+
+    def configure_rebuilt(self, hosts) -> list[tuple[str, tuple[str, ...]]]:
+        return []
+
+    def configure_slot(self) -> list[tuple[str, tuple[str, ...]]]:
+        self._shape = None
+        self.describe()
+        laid = self._laid_out()
+        collector = self.address(SCORER_ROLE)
+        senders = {service: (self.declared.host(role), tag) for service, (role, tag) in COLLECTED.items()}
+        files = rangehost.slot_files(Path(self.build.source), laid, self._wargames(), self.declared.origins,
+                                     self.declared.default_origin,
+                                     rangehost.forwarding(laid, collector, fabric.COLLECTOR_PORT, senders))
+        packed = base64.b64encode(rangehost.archive(files)).decode()
+        done = alongside([self.open_collector], [self.keep_time])
+        ran = self._shell()(rangehost.up(laid), stdin=packed, timeout=rangehost.UP_TIMEOUT)
+        if not ran.ok:
+            raise Drifted(f"{self.range_host} did not bring slot {self.slot} up (exit {ran.exit_code}): "
+                          f"{ran.output[-1000:]}")
+        return [*done, (self.range_host, (f"runs slot {self.slot} as {laid.project}",
+                                          f"logs to {collector}:{fabric.COLLECTOR_PORT}")), *self._seeded()]
+
+    def _seeded(self) -> list[tuple[str, tuple[str, ...]]]:
+        baseline = (Path(self.build.source) / rangehost.BASELINE_RULES).read_text()
+        done = []
+        for role in SENSOR_ROLES:
+            if role not in self.declared.roles:
+                continue
+            entry = self.declared.hosts[self.declared.host(role)]
+            try:
+                suricata.seed(baseline, self.runner(role), entry.reload.split(), entry.rules)
+            except suricata.RuleApplyError as exc:
+                raise Drifted(f"slot {self.slot}'s {role} did not load the baseline rules: {exc}")
+            done.append((self.declared.host(role), (f"loaded {entry.rules}",)))
+        return done
+
+    def keep_time(self) -> tuple[str, tuple[str, ...]]:
+        server = self.address(SCORER_ROLE)
+        ran = self._shell()(clock.command(server), stdin=clock.timesyncd(server),
+                            timeout=clock.FIRST_ANSWER + 60)
+        if not ran.ok:
+            raise Drifted(f"{self.range_host} did not take {server} as its time source "
+                          f"(exit {ran.exit_code}): {ran.output[-1000:]}")
+        return self.range_host, (f"keeps time by {server}",)
+
+    def open_collector(self) -> tuple[str, tuple[str, ...]]:
+        senders = [self._address(self.range_host)]
+        group = next(
+            group for group in self._all(SECURITY_GROUPS, "security_groups")
+            if group["name"] == fabric.REACH_GROUP
+        )
+        create, delete = fabric.hearing(group, senders)
+        for rule in delete:
+            self.get(self._call(DELETE_RULE, rule=rule))
+        for rule in create:
+            self.get(self._call(CREATE_RULE), {"security_group_rule": rule})
+        return self.declared.host(SCORER_ROLE), tuple(f"hears {sender}" for sender in senders)
+
+    def plan_leftovers(self) -> list[tuple[str, str, str]]:
+        servers = self._all(SERVERS, "servers")
+        found = [("server", server["id"], f"{server['name']}: a VM of the range before the range host")
+                 for server in servers
+                 if slot.host_of(server) and slot.host_of(server) != self.range_host]
+        found += [("server", server["id"], f"{server['name']}: an image builder")
+                  for server in servers if BUILDS in (server.get("metadata") or {})]
+        networks, subnets, _, groups = self._fabric_standing()
+        retired = {network["id"] for network in networks if fabric.retired(network)}
+        carried = {network["id"] for network in networks if fabric.segment_of(network) and not fabric.retired(network)}
+        found += [("port", port["id"], f"{port.get('name') or port['id']}: a port the VM range left")
+                  for port in self._all(PROJECT_PORTS, "ports")
+                  if port.get("network_id") in retired
+                  or (port.get("network_id") in carried and _detached(port)
+                      and port.get("name") != self._port_name())]
+        found += [("subnet", subnet["id"], f"{subnet.get('name') or subnet['id']}: on a retired network")
+                  for subnet in subnets if subnet["network_id"] in retired]
+        found += [("network", network["id"], f"{network['name']}: carried a segment the slots carry now")
+                  for network in networks if network["id"] in retired]
+        found += [("group", group["id"], f"{group['name']}: a security group of the VM range")
+                  for group in groups if group["name"] in fabric.RETIRED_GROUPS]
+        found += [("image", image["id"], f"{image.get('name')}: a role image of the VM range")
+                  for image in self._own_images() if slot.BUNDLE in image]
+        return found
+
+    def clean_leftovers(self) -> list[tuple[str, str]]:
+        found = self.plan_leftovers()
+        servers = {ident for kind, ident, _ in found if kind == "server"}
+        for ident in sorted(servers):
+            self.get(self._call(DELETE_SERVER, server=ident))
+        if servers:
+            self._until_gone(servers)
+        found = self.plan_leftovers()
+        order = ("port", "subnet", "network", "group", "image")
+        removed = [(kind, ident) for kind in order for each, ident, _ in found if each == kind]
+        for kind, ident in removed:
+            try:
+                self.get(self._call(DELETES[kind], **{kind: ident}))
+            except EndpointGone:
+                continue
+        self._shape = None
+        return [("server", ident) for ident in sorted(servers)] + removed
 
     def _own_images(self) -> list[dict]:
         found, marker = [], ""
@@ -1110,484 +1120,6 @@ class OpenStack:
                 return found
             marker = page["images"][-1]["id"]
         raise RangeUnavailable(f"Glance listed more than {PAGE_LIMIT} pages of this project's images")
-
-    def _console(self, server: str) -> str:
-        try:
-            said = self.get(self._call(ACTION, server=server), {"os-getConsoleOutput": {}})
-        except EndpointGone:
-            return ""
-        return said.get("output") or ""
-
-    def _builder_base(self, base_image: str) -> dict:
-        if not self.build.network:
-            raise RangeUnavailable(
-                f"an image is built on a server that downloads its packages, so "
-                f"it needs a network that reaches the Internet; set "
-                f"{SETTINGS['build_network']} to one"
-            )
-        bases = [
-            image for image in self.get(
-                self._call(IMAGES, name=quote(base_image))
-            ).get("images") or []
-            if image.get("status") == "active"
-        ]
-        if len(bases) != 1:
-            raise RangeUnavailable(
-                f"images are built on {base_image!r} and the cloud has "
-                f"{len(bases)} active images by that name; set "
-                f"{SETTINGS['base_image']} to one it has exactly once"
-            )
-        return {
-            "imageRef": bases[0]["id"],
-            "flavorRef": self._flavor(self.build.build_flavor, "build_flavor"),
-            "networks": [{"uuid": self.build.network}], "config_drive": True,
-        }
-
-    def _flavor(self, name: str, setting: str) -> str:
-        flavor = next((
-            entry["id"] for entry in self.get(self._call(FLAVORS)).get("flavors") or []
-            if name and entry.get("name") == name
-        ), None)
-        if flavor is None:
-            raise RangeUnavailable(
-                f"the cloud has no flavor {name!r}; set {SETTINGS[setting]} "
-                f"(compute.flavors in cloud.yaml) to one it lists"
-            )
-        return flavor
-
-    def _host_flavor(self, host: str) -> str:
-        roles = [role for role, filled in self.declared.roles.items() if filled == host]
-        named = next((self.build.role_flavors[role] for role in roles
-                      if role in self.build.role_flavors), "")
-        return self._flavor(named or self.build.flavor, "role_flavors" if named else "flavor")
-
-    def plan_slot(self) -> slot.Plan:
-        return self._slot()[0]
-
-    def ensure_slot(self, renew: bool = True) -> slot.Plan:
-        plan, bound, subnets, ports, groups, ready = self._slot()
-        if plan.blocked:
-            raise Drifted("; ".join(plan.blocked))
-        named_groups = self._slot_groups(groups)
-        self._fence_management(bound, ports, named_groups[fabric.MANAGEMENT_GROUP])
-        stale = [(host, server) for host, server, _ in plan.standing if renew and host in plan.stale]
-        self._rebuild(stale, ready)
-        if not (plan.boot or stale):
-            return plan
-        edge = slot.edge_of(self.declared)
-        own = self._port_name
-        for port in plan.ports:
-            body = {"network_id": bound[port.segment]["id"], "name": port.name,
-                    "security_groups": [named_groups[fabric.group_of(port.segment)]]}
-            if port.fixed_ips:
-                body["fixed_ips"] = [
-                    {"subnet_id": subnet, "ip_address": address} for subnet, address in port.fixed_ips
-                ]
-            if port.host == edge and port.segment != fabric.MANAGEMENT:
-                body["allowed_address_pairs"] = [{"ip_address": "0.0.0.0/0"}]
-            ports.append(self.get(self._call(CREATE_PORT), {"port": body})["port"])
-        named = {port["name"]: port for port in ports if port.get("name")}
-        names = {
-            named[own(host, slot.NAMED_ON)]["fixed_ips"][0]["ip_address"]: list(entry.names)
-            for host, entry in self.declared.hosts.items()
-            if entry.names and own(host, slot.NAMED_ON) in named
-        }
-        prefixes = {subnet["id"]: subnet["cidr"].split("/")[1] for subnet in subnets}
-        outside = {origin.segment for origin in self.declared.origins}
-        for host in plan.boot:
-            entry = self.declared.hosts[host]
-            facing = [named[own(host, s)] for s in entry.segments if s in outside]
-            server = {
-                "name": slot.named(host, self.slot), "imageRef": ready[host],
-                "flavorRef": self._host_flavor(host),
-                "networks": [{"port": named[own(host, s)]["id"]} for s in entry.segments],
-                "config_drive": True, "key_name": fabric.KEYPAIR,
-                "metadata": {slot.HOST: host, **({slot.SLOT: str(self.slot)} if self.slot > 1 else {})},
-            }
-            if not entry.image and not entry.uploads:
-                server["user_data"] = slot.user_data(
-                    names,
-                    mac=facing[0]["mac_address"] if facing else "",
-                    addresses=tuple(
-                        f"{fixed['ip_address']}/{prefixes[fixed['subnet_id']]}"
-                        for port in facing for fixed in port["fixed_ips"]
-                    ),
-                )
-            self.get(self._call(BOOT), {"server": self.build.placed(server)})
-        self._shape = None
-        return replace(self._slot()[0], rebuilt=tuple(stale))
-
-    def _port_name(self, host: str, segment: str) -> str:
-        return slot.port_name(slot.named(host, self.slot), segment)
-
-    @staticmethod
-    def _slot_groups(groups: list) -> dict[str, str]:
-        named = {g["name"]: g["id"] for g in groups}
-        missing = [name for name in (fabric.RANGE_GROUP, fabric.MANAGEMENT_GROUP) if name not in named]
-        if missing:
-            raise Drifted(f"the fabric has no security group {', '.join(missing)}; build the fabric first")
-        return named
-
-    def _fence_management(self, bound: dict, ports: list, fenced: str) -> None:
-        names = {self._port_name(host, fabric.MANAGEMENT) for host in self.declared.hosts}
-        for port in ports:
-            if (port["network_id"] == bound[fabric.MANAGEMENT]["id"] and port.get("name") in names
-                    and list(port.get("security_groups") or []) != [fenced]):
-                self.get(self._call(UPDATE_PORT, port=port["id"]),
-                         {"port": {"security_groups": [fenced]}})
-                port["security_groups"] = [fenced]
-
-    def teardown_slot(self) -> list[tuple[str, str]]:
-        hosts = self.declared.hosts
-        bound = fabric.bound(self.declared, self._all(PROJECT_NETWORKS, "networks"), self.slot)
-        made = {self._port_name(host, s) for host, entry in hosts.items() for s in entry.segments}
-        steps = [
-            ("server", server["id"]) for server in self._all(SERVERS, "servers")
-            if (server.get("metadata") or {}).get(slot.HOST) in hosts
-            and slot.slot_of(server) == self.slot
-        ] + [
-            ("port", port["id"])
-            for network in bound.values()
-            for port in self._all(PORTS, "ports", network=network["id"])
-            if port.get("name") in made
-        ]
-        for kind, ident in steps:
-            self.get(self._call(DELETES[kind], **{kind: ident}))
-        self._shape = None
-        return steps
-
-    def rebuild_slot(self, kept: frozenset[str] = frozenset()) -> list[tuple[str, str]]:
-        plan, _bound, _subnets, _ports, _groups, ready = self._slot()
-        if plan.blocked:
-            raise Drifted("; ".join(plan.blocked))
-        if plan.boot:
-            raise Drifted(
-                f"the slot is not fully standing, so there is nothing to reset "
-                f"for {', '.join(plan.boot)}; provision it first"
-            )
-        rebuilding = [(host, server) for host, server, _status in plan.standing
-                      if host not in kept or host in plan.stale]
-        missing = [host for host, _server in rebuilding if host not in ready]
-        if missing:
-            raise Drifted(
-                f"image {', '.join(missing)} is not ready, so rebuilding would "
-                f"wipe some VMs and leave others; make the images ready first"
-            )
-        self._rebuild(rebuilding, ready)
-        self._shape = None
-        return rebuilding
-
-    def _rebuild(self, servers: list[tuple[str, str]], ready: dict[str, str]) -> None:
-        for host, server in servers:
-            self.get(self._call(ACTION, server=server), {"rebuild": {"imageRef": ready[host]}})
-
-    def reset_slot(self) -> list[tuple[str, str]]:
-        return self.rebuild_slot(kept=self.reset_in_place_hosts())
-
-    def reset_in_place_hosts(self) -> frozenset[str]:
-        return frozenset(self.declared.roles[role] for role in RESET_IN_PLACE
-                         if role in self.declared.roles)
-
-    def configure_slot(self) -> list[tuple[str, tuple[str, ...]]]:
-        self.describe()
-        first = (slot.edge_of(self.declared), self.declared.host(GATEWAY_ROLE))
-        return alongside(*self._chains([*first, *self.declared.hosts]), [self.open_collector])
-
-    def reset_in_place(self, rebuilt=()) -> list[tuple[str, tuple[str, ...]]]:
-        self.describe()
-        hosts = self.reset_in_place_hosts() - set(rebuilt)
-        edge = [self.reset_edge] if slot.edge_of(self.declared) in hosts else []
-        wargames = ([self.clear_wargames, *self._wargame_chain()]
-                    if self.declared.roles.get(wargame_host.ROLE) in hosts else [])
-        return alongside(edge, [self.open_collector], wargames)
-
-    def configure_rebuilt(self, hosts) -> list[tuple[str, tuple[str, ...]]]:
-        self._shape = None
-        self.describe()
-        return alongside(*self._chains(hosts))
-
-    def _chains(self, hosts) -> list[list]:
-        edge = slot.edge_of(self.declared)
-        chains = {host: [partial(self.keep_time, host)]
-                  for host in self.declared.hosts if host != edge and self._own_role(host)}
-        chains[edge] = [self.configure_edge]
-        gateway = self.declared.host(GATEWAY_ROLE)
-        chains[gateway] = [*(chains.get(gateway, []) if gateway != edge else []), self.configure_waf]
-        if wargame_host.ROLE in self.declared.roles:
-            chains[self.declared.host(wargame_host.ROLE)] = self._wargame_chain()
-        return [chains[host] for host in dict.fromkeys(hosts) if host in chains]
-
-    def _own_role(self, host: str) -> str:
-        return next((role for role, filled in sorted(self.declared.roles.items())
-                     if filled == host and not self._container(role, host)), "")
-
-    def keep_time(self, host: str) -> tuple[str, tuple[str, ...]]:
-        role = self._own_role(host)
-        server = self.address(SCORER_ROLE)
-        ran = self.runner(role)(clock.command(server), stdin=clock.timesyncd(server),
-                                timeout=clock.FIRST_ANSWER + 60)
-        if not ran.ok:
-            raise Drifted(f"{host} did not take {server} as its time source "
-                          f"(exit {ran.exit_code}): {ran.output[-1000:]}")
-        return host, (f"keeps time by {server}",)
-
-    def _wargame_chain(self) -> list:
-        chain = ([partial(self.keep_time, self.declared.host(wargame_host.ROLE))]
-                 if wargame_host.ROLE in self.declared.roles else [])
-        starting = ([self.start_wargames] if wargame_host.ROLE in self.declared.roles else [])
-        starting += [partial(self.start_sensor, role, host) for role, host in self._hosted_sensors()]
-        chain += [starting] if starting else []
-        chain += [partial(self.forward_logs, host)
-                  for host, entry in sorted(self.declared.hosts.items())
-                  if entry.logs and host in self.declared.roles.values()]
-        return chain
-
-    def clear_wargames(self) -> tuple[str, tuple[str, ...]]:
-        host = self.declared.host(wargame_host.ROLE)
-        entry = self.declared.hosts.get(host)
-        if entry is None or not entry.wargames:
-            raise Drifted(f"{host} fills {wargame_host.ROLE!r} and the declaration gives it no wargame to run")
-        sensed = any(filled == host for _, filled in self._hosted_sensors())
-        logs = tuple(path for _, path in sorted(entry.logs.items()))
-        ran = self.runner(wargame_host.ROLE)(
-            wargame_host.cleared(entry.wargames, logs, sensed), timeout=wargame_host.UP_TIMEOUT,
-        )
-        if not ran.ok:
-            raise Drifted(f"{host} did not clear its wargames (exit {ran.exit_code}): {ran.output[-1000:]}")
-        return host, tuple(f"cleared {wargame}" for wargame in entry.wargames) + (
-            ("cleared its sensor and its log",) if sensed else ())
-
-    def _hosted_sensors(self) -> list[tuple[str, str]]:
-        return [
-            (role, self.declared.host(role)) for role in sorted(self.declared.watches)
-            if self._container(role, self.declared.host(role))
-        ]
-
-    def start_sensor(self, role: str, host: str) -> tuple[str, tuple[str, ...]]:
-        address = self._address(role, host, slot.NAMED_ON)
-        ran = self.runner(wargame_host.ROLE)(
-            wargame_host.sensor_up(address),
-            stdin=(Path(self.build.source) / wargame_host.SENSOR_CONFIG_SOURCE).read_text(),
-            timeout=wargame_host.UP_TIMEOUT)
-        if not ran.ok:
-            raise Drifted(f"{host} did not start its sensor on {address} (exit {ran.exit_code}): "
-                          f"{ran.output[-1000:]}")
-        entry = self.declared.hosts[host]
-        if not entry.rules or not entry.reload:
-            raise Drifted(f"{host} runs a sensor and the declaration names no rule file and reload for it")
-        try:
-            suricata.seed((Path(self.build.source) / wargame_host.BASELINE_RULES).read_text(),
-                          self.runner(role), entry.reload.split(), entry.rules)
-        except suricata.RuleApplyError as exc:
-            raise Drifted(f"{host} did not load the baseline rules into its sensor: {exc}")
-        return host, (f"senses {slot.NAMED_ON} at {address}", f"loaded {entry.rules}")
-
-    def forward_logs(self, host: str) -> tuple[str, tuple[str, ...]]:
-        role = self._own_role(host)
-        collector = self._collector()
-        for tag, path in sorted(self.declared.hosts[host].logs.items()):
-            ran = self.runner(role)(
-                waf.command(tag), stdin=waf.forwarding(path, collector, fabric.COLLECTOR_PORT, tag),
-                timeout=120,
-            )
-            if not ran.ok:
-                raise Drifted(f"{host} did not take its {tag} log forwarding: {ran.output[-1000:]}")
-        return host, tuple(f"logs {path} to {collector}:{fabric.COLLECTOR_PORT}"
-                           for _, path in sorted(self.declared.hosts[host].logs.items()))
-
-    def address(self, role: str) -> str:
-        return self._address(role, self.declared.host(role), fabric.MANAGEMENT)
-
-    def _collector(self) -> str:
-        return self.address(SCORER_ROLE)
-
-    def _edge_wanted(self) -> tuple[dict, tuple[str, int], str, str, str]:
-        source = Path(self.build.source)
-        collector = (self._collector(), fabric.COLLECTOR_PORT)
-        wanted = opnsense.settings(self.describe().segments, collector, self.build.inside,
-                                   self.build.mtu, self._public_key(),
-                                   management=self.address(slot.EDGE_ROLE),
-                                   front=self._address(GATEWAY_ROLE, self.declared.host(GATEWAY_ROLE),
-                                                       slot.NAMED_ON),
-                                   hostname=fabric.suffixed(opnsense.HOSTNAME, self.slot)
-                                   if self.slot > 1 else "",
-                                   clock=self.address(SCORER_ROLE))
-        return (wanted, collector, opnsense.render((source / opnsense.CONFIG).read_text(), wanted),
-                (source / opnsense.INCLUDE).read_text(), (source / opnsense.RULES).read_text())
-
-    @staticmethod
-    def _edge_expects(wanted: dict) -> list[str]:
-        return [gateway["address"] for gateway in [wanted["wan"], *wanted["aliases"]]]
-
-    def reset_edge(self) -> tuple[str, tuple[str, ...]]:
-        wanted, collector, config, include, rules = self._edge_wanted()
-        edge = slot.edge_of(self.declared)
-        flushed = [segment.subnet for segment in self.describe().segments
-                   if segment.id != fabric.MANAGEMENT and segment.subnet]
-        ran = self.runner(slot.EDGE_ROLE)(
-            opnsense.command(), stdin=opnsense.in_place(config, include, rules, flushed), timeout=180)
-        drifted = opnsense.drifted(ran.output)
-        why = (f"{', '.join(drifted)} drifted" if drifted
-               else f"the in-place reset exited {ran.exit_code}")
-        if ran.ok and opnsense.reset_done(ran.output):
-            ran = self.runner(slot.EDGE_ROLE)(opnsense.verify(), timeout=60)
-            if self._edge_holds_its_configuration(ran, self._edge_expects(wanted), collector):
-                return edge, opnsense.reported(ran.output) + ("reset in place",)
-            why = "it did not hold its configuration after the reset"
-        host, reported = self.configure_edge()
-        return host, reported + (f"reinstalled and rebooted: {why}",)
-
-    def configure_edge(self) -> tuple[str, tuple[str, ...]]:
-        source = Path(self.build.source)
-        wanted, collector, config, include, rules = self._edge_wanted()
-        edge = slot.edge_of(self.declared)
-        staged = opnsense.playback(config, include, rules, (source / opnsense.SCRIPT).read_text())
-        ran = self.runner(slot.EDGE_ROLE)(opnsense.command(), stdin=staged, timeout=120)
-        before = opnsense.booted(ran.output)
-        if not ran.ok or opnsense.REBOOTING not in ran.output or not before:
-            raise Drifted(f"{edge} did not take its configuration (exit {ran.exit_code}): "
-                          f"{ran.output[-1000:]}")
-        ran = self._rebooted(edge, before)
-        expected = self._edge_expects(wanted)
-        ran = self._settled(ran, expected, collector)
-        missing = [address for address in expected if address not in opnsense.held(ran.output)]
-        reported = opnsense.reported(ran.output)
-        sensing = opnsense.sensing(ran.output)
-        logging = f"logs {collector[0]}:{collector[1]}" in reported
-        wan_rule = opnsense.wan_rule_loaded(ran.output)
-        if not ran.ok or missing or not sensing or not logging or not wan_rule:
-            raise Drifted(
-                f"{edge} came back with exit {ran.exit_code}, does not hold "
-                f"{', '.join(missing) or 'nothing missing'}, its sensor is "
-                f"{'running' if sensing else 'not running'}, it "
-                f"{'logs' if logging else 'does not log'} to {collector[0]}:{collector[1]}, and "
-                f"its wan pass rule is {'in pf' if wan_rule else 'not loaded into pf'}: "
-                f"{ran.output[-1000:]}"
-            )
-        recorded = self.runner(slot.EDGE_ROLE)(opnsense.record(config), timeout=60)
-        if not recorded.ok:
-            raise Drifted(f"{edge} did not record the configuration it settled on "
-                          f"(exit {recorded.exit_code}): {recorded.output[-1000:]}")
-        return edge, reported
-
-    def _settled(self, ran: Ran, expected: list[str], collector: tuple[str, int]) -> Ran:
-        for _ in range(EDGE_SETTLE_READS):
-            if self._edge_holds_its_configuration(ran, expected, collector):
-                return ran
-            time.sleep(EDGE_POLL)
-            try:
-                ran = self.runner(slot.EDGE_ROLE)(opnsense.verify(), timeout=60)
-            except RangeUnavailable:
-                continue
-        return ran
-
-    @staticmethod
-    def _edge_holds_its_configuration(ran: Ran, expected: list[str], collector: tuple[str, int]) -> bool:
-        return (
-            ran.ok
-            and set(expected) <= opnsense.held(ran.output)
-            and opnsense.sensing(ran.output)
-            and f"logs {collector[0]}:{collector[1]}" in opnsense.reported(ran.output)
-            and opnsense.wan_rule_loaded(ran.output)
-        )
-
-    def _rebooted(self, edge: str, before: str) -> Ran:
-        deadline = time.monotonic() + EDGE_REBOOT
-        said = "it never answered"
-        while time.monotonic() < deadline:
-            try:
-                ran = self.runner(slot.EDGE_ROLE)(opnsense.verify(), timeout=60)
-            except RangeUnavailable as gone:
-                said = str(gone)
-            else:
-                if opnsense.booted(ran.output) not in ("", before):
-                    return ran
-                said = "it had not rebooted yet"
-            time.sleep(EDGE_POLL)
-        raise Drifted(f"{edge} did not come back from its reboot within {EDGE_REBOOT}s: {said}")
-
-    def configure_waf(self) -> tuple[str, tuple[str, ...]]:
-        host = self.declared.host(GATEWAY_ROLE)
-        audit = waf.audit_log((Path(self.build.source) / waf.MODSECURITY).read_text())
-        collector = self._collector()
-        ran = self.runner(GATEWAY_ROLE)(
-            waf.command(), stdin=waf.forwarding(audit, collector, fabric.COLLECTOR_PORT),
-            timeout=120,
-        )
-        if not ran.ok:
-            raise Drifted(f"{host} did not take its log forwarding: {ran.output[-1000:]}")
-        return host, (f"logs {audit} to {collector}:{fabric.COLLECTOR_PORT}",)
-
-    def start_wargames(self) -> tuple[str, tuple[str, ...]]:
-        host = self.declared.host(wargame_host.ROLE)
-        entry = self.declared.hosts.get(host)
-        if entry is None or not entry.wargames:
-            raise Drifted(f"{host} fills {wargame_host.ROLE!r} and the declaration gives it no wargame to run")
-        run = self.runner(wargame_host.ROLE)
-        with ThreadPoolExecutor(max_workers=len(entry.wargames)) as pool:
-            started = list(pool.map(
-                lambda wargame: run(wargame_host.up(wargame), timeout=wargame_host.UP_TIMEOUT), entry.wargames))
-        failed = [f"{host} did not start {wargame} (exit {ran.exit_code}): {ran.output[-1000:]}"
-                  for wargame, ran in zip(entry.wargames, started) if not ran.ok]
-        if failed:
-            raise Drifted("; ".join(failed))
-        return host, tuple(f"runs {wargame}" for wargame in entry.wargames)
-
-    def open_collector(self) -> tuple[str, tuple[str, ...]]:
-        roles = (slot.EDGE_ROLE, GATEWAY_ROLE, *sorted(self.declared.watches))
-        senders = list(dict.fromkeys(
-            self._address(role, self.declared.host(role), fabric.MANAGEMENT) for role in roles
-        ))
-        sending = {self.declared.host(role) for role in roles}
-        elsewhere = [
-            entry["addr"] for server in self._all(SERVERS, "servers")
-            if slot.in_slot(server) and slot.slot_of(server) != self.slot
-            and server["metadata"][slot.HOST] in sending
-            for entries in (server.get("addresses") or {}).values() for entry in entries
-        ]
-        group = next(
-            group for group in self._all(SECURITY_GROUPS, "security_groups")
-            if group["name"] == fabric.REACH_GROUP
-        )
-        create, delete = fabric.hearing(group, senders, kept=elsewhere)
-        for rule in delete:
-            self.get(self._call(DELETE_RULE, rule=rule))
-        for rule in create:
-            self.get(self._call(CREATE_RULE), {"security_group_rule": rule})
-        return self.declared.host(SCORER_ROLE), tuple(f"hears {sender}" for sender in senders)
-
-    def _slot(self):
-        networks, subnets, _, groups = self._fabric_standing()
-        bound = fabric.bound(self.declared, networks, self.slot)
-        ports = [
-            port for network in bound.values()
-            for port in self._all(PORTS, "ports", network=network["id"])
-        ]
-        ready = self._ready_images()
-        plan = slot.plan(self.declared, networks, subnets, ports,
-                         self._all(SERVERS, "servers"), ready, self.slot)
-        return plan, bound, subnets, ports, groups, ready
-
-    def _ready_images(self) -> dict[str, str]:
-        return {
-            found.host: found.image for found in self.plan_images().images
-            if found.state == "ready"
-        }
-
-    def plan_slots(self) -> list[slot.Plan]:
-        networks, subnets, _, _ = self._fabric_standing()
-        servers = self._all(SERVERS, "servers")
-        ready = self._ready_images()
-        listed: dict[str, list] = {}
-        plans = []
-        for number in range(1, self.slots + 1):
-            bound = fabric.bound(self.declared, networks, number)
-            ports = [
-                port for network in bound.values()
-                for port in listed.setdefault(network["id"], self._all(PORTS, "ports", network=network["id"]))
-            ]
-            plans.append(slot.plan(self.declared, networks, subnets, ports, servers, ready, number))
-        return plans
 
     def _call(self, call: str, **binding) -> str:
         return call.format(**vars(self.cloud), **binding)
