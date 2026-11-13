@@ -1,3 +1,4 @@
+import ipaddress
 import re
 import time
 from datetime import timedelta
@@ -189,6 +190,9 @@ def test_the_reference_s_address_table_lists_the_addresses_the_learner_s_map_dra
     rows = {(one["host"], one["zone"], one["address"]) for one in listed}
     assert {("kali", "인터넷", KALI), ("waf", "DMZ", WAF), ("board.com", "DMZ", BOARD)} <= rows
     assert not [one for one in listed if one["address"].startswith("172.18.")], "no Docker bridge address"
+    networks = {one["host"]: one["network"] for one in listed}
+    assert networks["kali"] == ""
+    assert networks["board.com"] == str(ipaddress.ip_interface(f"{BOARD}/24").network)
 
 @pytest.mark.parametrize("lesson_id, step_id, url, status, right, wrong, reason", [
     ("f2", "path", "/search/?q=hello", 200, "/search/", "board.com/search/", "lesson.http.wrong.path.host"),

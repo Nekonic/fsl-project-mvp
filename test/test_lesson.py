@@ -1,4 +1,3 @@
-import ipaddress
 
 import pytest
 import requests
@@ -123,7 +122,7 @@ def _map_answers(session_id: int) -> dict:
         "kali_ip": _drawn_address(listed, project, "kali", "internet").partition("/")[0],
         "board_ip": board.partition("/")[0],
         "path": " > ".join(route),
-        "dmz": str(ipaddress.ip_interface(board).network),
+        "dmz": next(row["network"] for row in listed if row["host"] == "board.com" and row["network"]),
         "log_host": "log-server",
         "waf_ip": _drawn_address(listed, project, "waf", "sw1").partition("/")[0],
     }
