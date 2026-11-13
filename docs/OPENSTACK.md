@@ -1057,7 +1057,7 @@ code cannot see them, so take them down with the code that made them, once:
    git worktree add ../cr-cutover <the commit before the rename>
    cp deploy/openstack/cloud.yaml ../cr-cutover/deploy/openstack/
    (cd ../cr-cutover && "$OLDPWD/.venv/bin/python" bin/cloud down)
-   cp ../cr-cutover/backups/db-*.sqlite3 backups/
+   mkdir -p backups && cp ../cr-cutover/backups/db-*.sqlite3 backups/
    ```
 
 3. Delete what `down` leaves under the old names: the role images and the
