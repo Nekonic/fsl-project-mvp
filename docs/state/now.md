@@ -49,6 +49,17 @@ Internet.
   only Kali's interfaces other than the one with its default route, and in a
   slot Kali has only `eth0`, so it scans nothing and is not containment
   evidence; its other test (no target reached past the WAF by name) holds.
+- Full `bin/verify` on the platform VM at be49cf5 (2026-11-13, four slots):
+  unit and API 1498 passed (4:47); acceptance 90 passed, 0 failed, 0 errors,
+  1 skipped in 950 s across 6 processes; ratchet no regression (`core_loc`
+  584, `dependencies` 6, `services` 5). The acceptance red-team run now may
+  take 15 minutes: beside three other workers' slots on one host it passed
+  300 s once.
+- Live paths run end to end on 2026-11-13: `bin/cloud up --replace` from the
+  VM range (25 min, the range host replaced as stale, the leftovers removed
+  after READY); a stale range host replaced by `POST slot/`; `bin/cloud down`
+  (1 min: the slots, the range host, the fabric and the stack) and then
+  `bin/cloud up` from nothing; slot resets on every acceptance close.
 
 ## Operator tooling
 
