@@ -222,23 +222,23 @@ compose는 Docker 소켓을 플랫폼에 마운트하고, entrypoint가 플랫�
 학습자용 구성도에 있는 것(기업 논리 구성도 방식):
 
 - 아이콘 위의 역할 호스트 이름
-- 호스트 쪽 링크 끝마다 주소만(`10.30.0.184`). 인터페이스, 포트, 프리픽스는 적지 않습니다. 스위치 쪽 끝과 관리 링크, DB 스위치로 가는 링크(주소가 Docker 브리지 것)에는 라벨이 없습니다.
-- 영역 넷: KISA ISMS-P 2.6.1이 부르는 영역 이름(DMZ, DB존)과 인터넷, 관리망. 라벨이 붙은 링크가 있는 영역은 캡션에 네트워크를 덧붙입니다(`DMZ 10.30.0.0/24`).
-- IDS는 따로 그린 센서 상자("IDS")이고, 트래픽을 받아 보는 호스트와 점선으로 잇습니다. `firewall`(슬롯 `internet` 브리지를 보는 에지 센서)과 사이트(슬롯 `estate` 브리지를 보는 estate 센서)이며, Kibana의 `sensor`가 부르는 호스트와 같습니다.
-- 초록 화살표(선으로 그린 화살촉)와 "웹 요청" 글자가 internet → firewall → waf → 사이트 순서의 요청 흐름을 보여 줍니다.
+- 호스트 쪽 링크 끝마다 주소만(`10.30.1.59`). 인터페이스, 포트, 프리픽스는 적지 않습니다. 스위치 쪽 끝과 관리 링크, DB 스위치로 가는 링크(주소가 Docker 브리지 것)에는 라벨이 없습니다.
+- 영역 넷: KISA ISMS-P 2.6.1이 부르는 영역 이름(DMZ, DB존)과 인터넷, 관리망. 라벨이 붙은 링크가 있는 영역은 캡션에 네트워크를 덧붙입니다(`DMZ 10.30.1.0/24`).
+- IDS는 따로 그린 센서 상자("IDS")이고, 트래픽을 받아 보는 호스트와 점선으로 잇습니다. `router`(슬롯 `internet` 브리지를 보는 에지 센서)과 사이트(슬롯 `estate` 브리지를 보는 estate 센서)이며, Kibana의 `sensor`가 부르는 호스트와 같습니다.
+- 초록 화살표(선으로 그린 화살촉)와 "웹 요청" 글자가 internet → router → waf → 사이트 순서의 요청 흐름을 보여 줍니다.
 
 그 밖에는 아무것도 없습니다. 제목, 범례, 기계 자체의 이름, `cr-`, 관리 주소, Docker 브리지가 모두 없습니다.
 
-- 흐름은 한 줄로 왼쪽에서 오른쪽(internet, firewall, waf, 사이트)이고, `sw1`은 그 줄 위, `sw3`은 아래에 있어 링크가 서로 겹치지 않습니다.
+- 흐름은 한 줄로 왼쪽에서 오른쪽(internet, router, waf, 사이트)이고, `sw1`은 그 줄 위, `sw3`은 아래에 있어 링크가 서로 겹치지 않습니다.
 - `topology.for_wargame`은 노드가 있던 영역에 그 워게임의 노드가 하나도 남지 않을 때만 그 영역과 안쪽 그림을 지웁니다. 그런 영역 밖의 선, 센서 상자, 글자는 남습니다.
 
 학습자용 구성도의 노드:
 
 - `customers`와 `kali`(공격자의 Kali 박스)는 `internet` 스위치에 붙습니다.
-- `firewall`은 슬롯의 에지 라우터 컨테이너입니다. 에지 센서는 옆의 IDS 센서 상자로 그립니다.
+- `router`는 슬롯의 에지 라우터 컨테이너입니다. 에지 센서는 옆의 IDS 센서 상자로 그립니다.
 - `sw1`은 서비스 구간입니다. `waf`와 사이트(`board.com` 또는 `corp.com`, WAF 호스트의 선언된 이름)가 붙습니다.
 - `sw2`는 데이터베이스 구간입니다. 사이트 뒤에 있고 데이터베이스(`board-db`)가 붙습니다.
-- `sw3`은 관제 구간입니다. `log-server`(Elasticsearch)를 기록을 보내는 호스트인 방화벽, WAF, 사이트와 잇습니다. 두 센서의 eve.json과 WAF의 audit 로그는 훈련 환경 호스트가 전달합니다.
+- `sw3`은 관제 구간입니다. `log-server`(Elasticsearch)를 기록을 보내는 호스트인 라우터, WAF, 사이트와 잇습니다. 두 센서의 eve.json과 WAF의 audit 로그는 훈련 환경 호스트가 전달합니다.
 
 스위치 번호는 실습 토폴로지가 붙이는 방식(`sw1`, `sw2`, `sw3`, NSRC의 `sw1`)을 따르고, 순서는 서비스, 데이터베이스, 관제로 고정합니다. 각 스위치가 어느 구간인지는 영역 캡션이 알려 줍니다.
 
@@ -246,7 +246,7 @@ compose는 Docker 소켓을 플랫폼에 마운트하고, entrypoint가 플랫�
 
 `topology.learner(declaration, wargame)`는 훈련 환경의 이름을 구성도의 이름으로 옮깁니다.
 
-- 호스트: `cr-kali`는 `kali`입니다. 고객 트래픽을 그 호스트에서 생성하면 `customers`이기도 합니다. `cr-edge`는 `firewall`입니다. 훈련 환경 호스트와 그 사이트 컨테이너는 사이트입니다. `cr-elasticsearch`는 `log-server`입니다.
+- 호스트: `cr-kali`는 `kali`입니다. 고객 트래픽을 그 호스트에서 생성하면 `customers`이기도 합니다. `cr-edge`는 `router`입니다. 훈련 환경 호스트와 그 사이트 컨테이너는 사이트입니다. `cr-elasticsearch`는 `log-server`입니다.
 - 역할
 - 구간에서 스위치로: 출발지는 `internet`, estate는 `sw1`, 워게임의 compose 네트워크는 `sw2`, 관리 구간은 NIC 이름만 쓰는 `sw3`
 - 각 센서에서 그 센서가 NIC를 쓰는 노드로
@@ -290,12 +290,12 @@ compose는 Docker 소켓을 플랫폼에 마운트하고, entrypoint가 플랫�
 
 라벨:
 
-- 호스트 쪽 끝에는 그 스위치 구간의 주소를 프리픽스 없이 적습니다(`10.30.0.102`). `topology.learner`를 거쳐 읽습니다. 공격자는 기본 출발지의 주소, 고객은 가장 많이 쓰는 출발지의 주소입니다(`traffic.yaml`의 가중치, `attacker.customer_origins`처럼 기본 출발지 제외). 그런 주소가 없으면 라벨을 붙이지 않습니다.
+- 호스트 쪽 끝에는 그 스위치 구간의 주소를 프리픽스 없이 적습니다(`10.30.1.247`). `topology.learner`를 거쳐 읽습니다. 공격자는 기본 출발지의 주소, 고객은 가장 많이 쓰는 출발지의 주소입니다(`traffic.yaml`의 가중치, `attacker.customer_origins`처럼 기본 출발지 제외). 그런 주소가 없으면 라벨을 붙이지 않습니다.
 - 스위치 쪽 끝, `sw3` 쪽 끝, DB 스위치 쪽 끝(`topology.UNLABELLED`)의 라벨은 비어 있습니다. 인터페이스, 포트, Docker 브리지 이름을 적는 라벨은 없습니다.
 
 영역 캡션:
 
-- 각 영역 캡션에는 그 스위치에 붙은 라벨의 네트워크를 덧붙입니다(`DMZ 10.30.0.0/24`).
+- 각 영역 캡션에는 그 스위치에 붙은 라벨의 네트워크를 덧붙입니다(`DMZ 10.30.1.0/24`).
 - 스위치의 캡션은 그 스위치를 담은 가장 작은 상자의 텍스트입니다(`topology.captions`).
 - 인터넷, DB존, 관리망 캡션은 이름만 둡니다.
 - `GET /api/sessions/<id>/lesson/addresses/`는 같은 주소를 `{host, zone, address}` 행으로 돌려줍니다(`topology.addresses`). 참고 열의 주소 카드가 씁니다.
@@ -977,7 +977,7 @@ board의 `scenario.yaml`은 `foundations:` 목록을 선언합니다. discovery 
 - 답은 세션의 학습자용 구성도에서 읽습니다(`views._range_fact`: `topology.learner`를 거친 `topology.address`, `topology.subnet`, `topology.route`, `topology.hosts`).
   - `address`: 링크 라벨의 주소. 프리픽스 길이는 있어도 없어도 됩니다.
   - `subnet`: 호스트가 붙은 스위치의 네트워크
-  - `path`: 단계의 `from`(기본 `customers`), 그다음 구성도에 있는 경유 역할, 그다음 사이트 순서입니다(`kali > firewall > waf > board.com`).
+  - `path`: 단계의 `from`(기본 `customers`), 그다음 구성도에 있는 경유 역할, 그다음 사이트 순서입니다(`kali > router > waf > board.com`).
   - `logs`: `log-server` 노드
 
 **f2 개발자 도구로 HTTP 요청 읽기**(`lesson.http`). defense `full`, 웹사이트 창에서 시작합니다.
@@ -1402,7 +1402,7 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
     - data view는 세션의 인덱스 패턴 위에 있으며, 패턴이 아니라 이름 `logs-*`로 보입니다.
     - 공유 runtime field에 다음 필드를 더합니다.
       - `log_source`(`suricata` 또는 `modsecurity`)
-      - `sensor`: 센서의 구성도 이름입니다. 송신자 호스트 이름에서 도메인과 슬롯 번호를 떼고, 첫 번째 `-` 앞부분은 있든 없든 맞춥니다. 그래서 스크립트에 `cr` 호스트 이름이 나오지 않고, 에지의 `edge`도 구성도 이름으로 읽힙니다. 이름은 Suricata 기록에서는 `firewall`과 `board.com`, 모든 ModSecurity 기록에서는 `waf`이며, 슬롯 접미사는 뗍니다.
+      - `sensor`: 센서의 구성도 이름입니다. 송신자 호스트 이름에서 도메인과 슬롯 번호를 떼고, 첫 번째 `-` 앞부분은 있든 없든 맞춥니다. 그래서 스크립트에 `cr` 호스트 이름이 나오지 않고, 에지의 `edge`도 구성도 이름으로 읽힙니다. 이름은 Suricata 기록에서는 `router`와 `board.com`, 모든 ModSecurity 기록에서는 `waf`이며, 슬롯 접미사는 뗍니다.
       - `request_headers`: 요청 헤더마다 `Name: value` 하나. `X-Request-ID`는 뺍니다.
       - `request_header`: 자주 쓰는 헤더마다 keyword 하나를 두는 composite field입니다(`request_header.host`, `.user_agent`, `.referer`, `.cookie`, `.x_forwarded_for` 등 `kibana.REQUEST_HEADERS_SHOWN`). Suricata의 `http.request_headers`나 ModSecurity의 `transaction.request.headers`에서 읽습니다.
     - `sourceFilters`는 `_index`, `event.*`, `log.*`, `message`, `agent.*`, `ecs.*`, `host`, `host.*`, `input.*`, `error.*`, `http.*`, `transaction.*`, `metadata.*`, `data_stream.*`, `flow_id`, `tx_id`, `pcap_cnt`, `in_iface`, `pkt_src`, `community_id`, `src_ip`, `dest_ip`, `alert.signature`, `alert.signature_id`를 숨깁니다(`kibana.HIDDEN_FIELDS`). KQL로는 여전히 검색됩니다.
@@ -1479,7 +1479,7 @@ cloud-init이 `CR_PUBLISH`를 VM의 고정 주소로 설정합니다. 그래서 
 
 VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init이 쓴 `CR_SUBSTRATE=range.openstack.connect`). 훈련 환경의 네트워크는 `/api/range/fabric/`으로 직접 만들며, 계획은 `range/fabric.py`가 세웁니다.
 
-- `mgmt`(DHCP 켬, 게이트웨이 없음). CIDR은 `cloud.yaml`이 정합니다. 로더는 서로 겹치거나, 플랫폼 네트워크, Docker 기본 로컬 주소 풀(172.17.0.0/16~172.31.0.0/16, 192.168.0.0/16, moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`이 선언한 네트워크, 선언된 출발지와 겹치는 CIDR을 거부합니다. /16보다 좁은 `estate`도 거부합니다.
+- `mgmt`(DHCP 켬, 게이트웨이 없음). CIDR은 `cloud.yaml`이 정합니다. 로더는 서로 겹치거나, 플랫폼 네트워크, Docker 기본 로컬 주소 풀(172.17.0.0/16~172.31.0.0/16, 192.168.0.0/16, moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`이 선언한 네트워크, 선언된 출발지, 훈련 환경 호스트의 Docker 주소 풀 10.40.0.0/16(`cloud.RANGE_HOST_POOL`)과 겹치는 CIDR을 거부합니다. /16보다 좁은 `estate`도 거부합니다.
 - `/data/ssh/id_ed25519`의 키로 만드는 키페어 `cr-platform`
 - 아래의 보안 그룹 세 개
 
@@ -1491,21 +1491,21 @@ fabric이 만드는 네트워크는 `mgmt` 하나입니다. 슬롯의 `internet`
 
 - `cr-reach`: 플랫폼 자신의 `mgmt` 포트. `cr-mgmt` 멤버가 보내는 NTP(udp 123)와, 훈련 환경 호스트의 `mgmt` 주소가 보내는 syslog(udp 5140)만 들입니다.
 - `cr-mgmt`: 훈련 환경 호스트의 `mgmt` 포트. `cr-reach` 멤버만 들입니다.
-- `cr-egress`: 훈련 환경 호스트가 이미지를 받아 오는, 플랫폼 네트워크 쪽 포트. 인바운드 룰이 없습니다.
+- `cr-egress`: 훈련 환경 호스트가 이미지를 받아 오는, 플랫폼 네트워크 쪽 포트. 인바운드 룰이 없습니다. 이 포트는 훈련 환경 호스트가 설치하는 동안에만 있습니다. 설치가 ready를 알리면 플랫폼이 포트를 뗍니다(`_close_egress`).
 
 플랫폼은 자기 서버 id(부팅 때 기록하는 `CR_OPENSTACK_PLATFORM`)로 찾은 `cr-reach` 포트를 통해 `mgmt`에 붙습니다. 그래서 플랫폼은 훈련 환경 호스트에 ssh할 수 있고, 훈련 환경 호스트가 플랫폼으로 여는 연결은 NTP와 syslog뿐입니다.
 
 훈련 환경에는 인터넷이 없으므로 자체 시간 출처도 없습니다. 채점기(플랫폼)는 대상 시스템과 센서의 시각을 자기 시계 기준의 케이스 시간 구간과 비교합니다. 그래서 플랫폼이 훈련 환경에 시간을 제공합니다.
 
 - 플랫폼 VM은 chrony를 실행합니다(cloud-init: `allow <network.mgmt>`, `local stratum 10`).
-- 훈련 환경 호스트는 플랫폼의 `mgmt` 주소로 시간을 맞춥니다. `range/clock.py`가 `systemd-timesyncd` drop-in을 쓰고 첫 응답을 기다립니다(`keep_time()`, configure할 때마다). 컨테이너는 호스트의 시계를 같이 씁니다.
+- 훈련 환경 호스트는 플랫폼의 `mgmt` 주소로 시간을 맞춥니다. `range/clock.py`가 `systemd-timesyncd` drop-in을 쓰고 첫 응답을 기다립니다(`keep_time()`). 플랫폼은 이 설정과 수집기 룰 열기를 훈련 환경 호스트 세대와 수집기 주소 조합마다 한 번만 합니다(`_heard_and_timed`). 그래서 수집기 주소가 바뀐 재구축 플랫폼은 다음 configure에서 둘 다 다시 받습니다. 컨테이너는 호스트의 시계를 같이 씁니다.
 
 **훈련 환경 호스트.** VM 하나, `cr-range`가 모든 슬롯을 돌립니다. `/api/range/slot/`으로 관리하고, 계획은 `range/slot.py`가 세웁니다.
 
-- `POST /api/range/slot/`은 이 VM이 없으면 부팅합니다. 손대지 않은 Ubuntu 이미지(`compute.base_image`), flavor `compute.flavors.range`(`CR_OPENSTACK_FLAVOR`), config drive, 키페어 `cr-platform`을 씁니다. 포트는 둘입니다. `mgmt` 위 `cr-mgmt`에 속한 `cr-range.mgmt`, 그리고 플랫폼 네트워크(`CR_OPENSTACK_BUILD_NETWORK`) 위 `cr-egress`에 속한 포트입니다.
+- `POST /api/range/slot/`은 이 VM이 없으면 부팅합니다. 손대지 않은 Ubuntu 이미지(`compute.base_image`), flavor `compute.flavors.range`(`CR_OPENSTACK_FLAVOR`), config drive, 키페어 `cr-platform`을 씁니다. 포트는 둘입니다. `mgmt` 위 `cr-mgmt`에 속한 `cr-range.mgmt`, 그리고 플랫폼 네트워크(`CR_OPENSTACK_BUILD_NETWORK`) 위 `cr-egress`에 속한 포트입니다. 설치가 ready를 알리면 플랫폼이 두 번째 포트를 뗍니다. 설치를 마친 훈련 환경 호스트에는 `cr-range.mgmt`만 남아 인터넷으로 나갈 길도, DNS 리졸버도 없습니다.
 - Nova user data에 설치 번들을 담습니다(`rangehost.bundle()`, `rangehost.user_data()`). `deploy/range-host/setup.sh`, 이미지 목록, Docker `daemon.json`, pristine 워게임의 compose 파일과 목록입니다. 인코딩한 user data는 Nova 한도인 65,535바이트 안에 들어가야 합니다.
 - `setup.sh`는 `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog`, `acl`을 설치합니다. sshd의 `MaxSessions`, `MaxStartups`와 inotify 한도를 올립니다. 플랫폼의 `CR_IMAGE_TAG`로 GHCR에서 이미지를 모두 pull합니다. 대상 시스템의 pristine 볼륨을 `/opt/cr/pristine`에 떠 두고, `/var/lib/cr/ready`를 남깁니다. 실패하면 `/var/lib/cr/failed`를 남기고 로그 끝부분을 콘솔에 출력합니다.
-- 그 전까지 플랫폼은 Nova의 `ACTIVE` 대신 `SETTING_UP`이나 `SETUP_FAILED`로 훈련 환경 호스트를 보고합니다.
+- 그 전까지 플랫폼은 Nova의 `ACTIVE` 대신 `SETTING_UP`이나 `SETUP_FAILED`로 훈련 환경 호스트를 보고합니다. 설치가 실패하면 `/api/range/ready/`의 슬롯 단계가 `SETUP_FAILED`가 되고 훈련 환경 호스트의 `/var/log/cr-setup.log`를 가리키며, `bin/cloud up`은 그 이유와 함께 멈춥니다.
 - `daemon.json`은 Docker에 테넌트 MTU(`mtu`, `default-network-opts`), /28 단위의 주소 풀 10.40.0.0/16, `local` 로그 드라이버, `userns-remap: default`를 줍니다.
 - 서버 메타데이터에 `cr_host`, `cr_tag`(이미지 태그), `cr_bundle`(번들 digest)을 둡니다. digest는 파일마다 이름과 내용을 해시합니다. 태그나 digest가 플랫폼과 다른 훈련 환경 호스트는 `stale`입니다. 그러면 `POST /api/range/slot/`이 열린 세션이 없을 때 그 VM을 지우고 다시 부팅하며, 세션이 열려 있으면 슬롯을 blocked로 보고합니다.
 - Glance 이미지는 만들지 않습니다. 훈련 환경 호스트는 GHCR에서만 pull합니다.
@@ -1516,6 +1516,7 @@ fabric이 만드는 네트워크는 `mgmt` 하나입니다. 슬롯의 `internet`
 
 - 슬롯 N은 훈련 환경 호스트 위의 docker compose 프로젝트 `sN`입니다. `platform/range/rangehost.py`가 `deploy/range-host/slot.yaml`과 워게임마다의 `wargames/<w>/compose.yaml`로 렌더링합니다. 컨테이너는 `sN-kali`, `sN-edge`, `sN-waf`, `sN-edge-sensor`, `sN-estate-sensor`, `sN-board`, `sN-board-db`, `sN-corp-wp`, `sN-corp-db`입니다.
 - 네트워크는 `sN_internet`(브리지 `sN-inet`, 172.30.N.0/24), `sN_estate`(브리지 `sN-estate`, 10.30.N.0/24: 에지 .1, WAF .247, board .59, corp-wp .60), 그리고 워게임마다 DB용 `<wargame>-default` 하나입니다. 모두 `internal`이고 `gateway_mode_ipv4: isolated`이며 테넌트 MTU를 씁니다. publish한 포트도 NAT도 없습니다.
+- 표적과 센서의 평상시 healthcheck는 60초마다, 시작 구간에는 1초마다 돕니다(`slot.yaml`의 `x-wargames.healthcheck`가 워게임 자체의 주기를 덮어씀). 그래서 쉬는 슬롯은 바쁜 슬롯에 CPU를 내줍니다.
 - 슬롯마다 `internet` 브리지에 같은 출발지 서브넷 서른 개가 올라가므로, 경보의 출발지는 어느 슬롯에서나 같은 국가로 분류됩니다.
 - 슬롯 어댑터(`OpenStack.in_slot(n)`)는 자기 compose 프로젝트만 다룹니다. 역할, runner, 구성도는 모든 슬롯에서 같습니다.
 - 플랫폼은 세션을 열 때 슬롯 하나에 묶습니다(`Session.slot`, unique 제약으로 슬롯마다 열린 세션 하나). 비어 있고 READY인 첫 번째 슬롯을 잠금 아래에서 고릅니다.
@@ -1523,16 +1524,16 @@ fabric이 만드는 네트워크는 `mgmt` 하나입니다. 슬롯의 `internet`
 - `run_on_role`은 `--session`이나 `--slot`을 받고, 슬롯이 둘 이상인데 둘 다 없으면 실행을 거부합니다.
 - 콘솔의 VM 터미널은 세션을 `?arg=<id>`(ttyd `-a`)로 받아 그 슬롯의 컨테이너를 엽니다.
 
-**configure.** `POST /api/range/configure/`(`configure_slot()`)는 수집기 룰을 여는 일과 훈련 환경 호스트의 시간 출처 설정을 나란히 처리합니다. 그다음 슬롯의 파일을 훈련 환경 호스트의 `slot.sh up N`에 넘깁니다. compose 파일, 두 센서의 설정, Kali와 에지의 주소, rsyslog 설정, 기본 룰, 스크립트 자신입니다. `slot.sh up`은 다음을 합니다.
+**configure.** `POST /api/range/configure/`(`configure_slot()`)는 수집기 룰을 여는 일과 훈련 환경 호스트의 시간 출처 설정을 나란히 처리합니다. 둘 다 훈련 환경 호스트 세대와 수집기 주소 조합마다 한 번만 합니다. 그다음 슬롯의 파일을 훈련 환경 호스트의 `slot.sh up N`에 넘깁니다. compose 파일, 두 센서의 설정, Kali와 에지의 주소, rsyslog 설정, 기본 룰, 스크립트 자신입니다. `slot.sh up`은 다음을 합니다.
 
-1. 슬롯 디렉터리를 만들고, 로그 디렉터리의 소유자를 remap된 사용자로 맞춥니다.
+1. 슬롯 디렉터리를 만듭니다. WAF 로그 디렉터리 `/var/log/cr/sN/waf`만 remap된 범위의 `www-data`와 `adm` 소유로 두고, `syslog`가 읽도록 ACL을 겁니다. 에지와 estate 로그 디렉터리는 root 소유입니다.
 2. 컨테이너를 만들고(`up --no-start --pull never`), 한 번도 실행하지 않은 대상 시스템의 빈 볼륨마다 초기 데이터를 복사합니다.
 3. 컨테이너를 띄웁니다(`up -d --wait`).
 4. Kali에 출발지 주소와 기본 출발지 게이트웨이로 가는 기본 경로를, 에지의 `wan`에 출발지마다 게이트웨이 주소를 붙입니다(`nsenter`로 `ip -batch` 실행).
 5. WAF와 `estate`의 대상 시스템이 에지의 estate 주소로 라우팅하게 합니다.
 6. 모든 브리지와 그 포트, 컨테이너 인터페이스에서 TSO, GSO, GRO를 끕니다. 센서가 보낸 그대로의 패킷을 보게 하려는 것입니다.
 7. `DOCKER-USER`에서 브리지마다 같은 브리지로의 forward를 허용합니다.
-8. `/etc/rsyslog.d/60-cr-sN.conf`를 설치하고 rsyslog를 재시작합니다.
+8. `/etc/rsyslog.d/60-cr-sN.conf`를 설치하고 rsyslog를 재시작합니다. 파일이 바뀌었거나 rsyslog가 돌고 있지 않을 때만 하고, 한 번에 한 슬롯씩 합니다(`flock /run/cr-rsyslog.lock`, 먼저 `systemctl reset-failed`).
 
 그 뒤 플랫폼이 `rules/suricata.py`로 두 센서에 기본 룰을 넣습니다.
 
@@ -1569,7 +1570,7 @@ fabric이 만드는 네트워크는 `mgmt` 하나입니다. 슬롯의 `internet`
 - `reset_in_place()`가 `slot.sh reset N`을 실행합니다. Kali와 WAF를 이미지에서 새로 만듭니다. 동시에 대상 시스템을 볼륨째 지우고 초기 데이터로 다시 띄웁니다. 에지의 neighbour 테이블을 비우고, 슬롯의 로그 파일을 제자리에서 비운 뒤 두 센서가 로그 파일을 다시 열게 합니다.
 - 그 뒤 플랫폼이 두 센서에 기본 룰을 다시 넣습니다.
 - 에지와 센서는 계속 돌고 있습니다.
-- 훈련 환경 호스트에 슬롯의 compose 파일이 없으면 configure로 대신합니다.
+- 초기화할 슬롯의 파일이 훈련 환경 호스트에서 사라졌으면(`/opt/cr/sN/compose.yaml` 없음) 초기화 대신 슬롯을 configure합니다.
 - 그래서 한 세션이 다음 세션에 수정한 룰이나 심어 둔 데이터를 남기지 않습니다.
 
 `POST /api/range/slot/rebuild/`(`rebuild_slot()`)는 `slot.sh down N`으로 슬롯을 내립니다. `compose down -v`를 하고 rsyslog 파일, 슬롯 파일, 로그를 지웁니다. `POST /api/range/configure/`가 다시 올립니다. `DELETE /api/range/slot/`은 모든 슬롯을 내리고, `?slot` 없이 부르면 훈련 환경 호스트와 그 `mgmt` 포트도 지웁니다.
@@ -1588,11 +1589,11 @@ close는 즉시 응답합니다. 초기화 상태(idle, running, failed와 그 �
 `GET /api/range/ready/`는 `slots` 아래에 슬롯마다 다음을 보고합니다.
 
 - 번호와 그 슬롯을 잡은 세션
-- 단계: 세션이 잡고 있으면 `IN_USE`, 초기화가 진행 중이면 `RESETTING`, 초기화가 실패했으면 그 이유와 함께 `RESET_FAILED`, 그 밖에는 `NOT_STANDING`, `STALE`(플랫폼보다 오래된 이미지나 슬롯 파일로 도는 훈련 환경 호스트), `REBUILDING`(훈련 환경 호스트가 아직 `ACTIVE`가 아니거나 설치가 끝나지 않음), `CHECKING`, `READY`
+- 단계: 세션이 잡고 있으면 `IN_USE`, 초기화가 진행 중이면 `RESETTING`, 초기화가 실패했으면 그 이유와 함께 `RESET_FAILED`, 그 밖에는 `NOT_STANDING`, `STALE`(플랫폼보다 오래된 이미지나 슬롯 파일로 도는 훈련 환경 호스트), `SETUP_FAILED`(훈련 환경 호스트가 설치에 실패함. 이유는 그 호스트의 `/var/log/cr-setup.log`), `REBUILDING`(훈련 환경 호스트가 아직 `ACTIVE`가 아니거나 설치가 끝나지 않음), `CHECKING`, `READY`
 - 초기화 상태
 - 세 가지 검사: 훈련 환경 호스트가 ACTIVE이고 설치가 끝남, board의 정답 데이터를 읽을 수 있음, 센서 룰이 기준선이며 그 슬롯에 비활성화한 룰이 없음
 
-최상위의 `ready`와 `slot`은 다음 세션 열기가 가져갈 슬롯입니다.
+최상위의 `ready`와 `slot`은 다음 세션 열기가 가져갈 슬롯입니다. 슬롯이 둘 이상이면 플랫폼은 슬롯을 나란히 검사합니다.
 
 `/api/range/slot/`, `slot/rebuild/`, `configure/`는 `?slot=N`을 받습니다. 없으면 모든 슬롯에 적용합니다.
 

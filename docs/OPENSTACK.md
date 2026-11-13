@@ -320,7 +320,10 @@ an allowlist, also allow the hosts the registries redirect to.
 
 The range host reaches the Internet only through its second port, on the
 platform's own network (`CR_OPENSTACK_BUILD_NETWORK`), in the security group
-`cr-egress`, which admits nothing in. The slots' containers have no Internet:
+`cr-egress`, which admits nothing in. That port exists only while the range
+host sets itself up: once its setup reports ready, the platform detaches it
+(`_close_egress` in `platform/range/openstack.py`). A set-up range host has
+only `cr-range.mgmt`, no way to the Internet and no DNS resolver. The slots' containers have no Internet:
 every slot network is an internal Docker network with no host address (§6).
 
 ## 3. Project, user, quotas, flavors, keys, groups, images
@@ -444,8 +447,9 @@ The range has no Internet, so the platform is its only time source.
   upstream time source.
 - The range host takes its time from the platform's `mgmt` address. It gets a
   `systemd-timesyncd` drop-in (`/etc/systemd/timesyncd.conf.d/60-cr.conf`,
-  `NTP=<platform mgmt>`) at every `configure/`. The step waits for the first
-  answer. The containers share the range host's clock.
+  `NTP=<platform mgmt>`) once per range-host generation and collector
+  address, at the first `configure/` that finds either new. The step waits
+  for the first answer. The containers share the range host's clock.
 - A rebuilt platform VM has a new `mgmt` address. The range host takes it at
   the next `configure/`.
 - A range made before 2026-10-15 gets the udp 123 rule at the next `bin/cloud up`
@@ -540,7 +544,10 @@ bundle holds `deploy/range-host/setup.sh` and files the platform generates:
 
 cloud-init then marks `/var/lib/cr/ready`, or `/var/lib/cr/failed` with the
 last lines of `/var/log/cr-setup.log` on the console. Until then the platform
-reports the range host `SETTING_UP`, or `SETUP_FAILED` (§6).
+reports the range host `SETTING_UP`, or `SETUP_FAILED` (§6). When it reports
+ready, the platform detaches the egress port. A failed setup shows as the slot
+phase `SETUP_FAILED` in `/api/range/ready/`, and `bin/cloud up` stops on it with
+the reason.
 
 The images must be public and exist for the tag. The tag and every bundle file
 are part of the bundle's digest, which the range host carries in its metadata
@@ -579,7 +586,7 @@ password written into the file.
 | `network.address` | `""` (**(this cloud)** `192.168.2.247`) | optional; a floating IP the project already holds. The stack associates it and never releases it, so the address survives `bin/cloud down` and every rebuild. If empty, the stack allocates a new one (§5.1) |
 | `network.dns` | `[8.8.8.8, 8.8.4.4]` | the platform network's DNS |
 | `network.mtu` | `1450` (**(this cloud)** `1442`) | the tenant networks' MTU (1450 on VXLAN with ML2/OVS, 1442 on Geneve with ML2/OVN, §2); Docker on the platform VM and on the range host, and every slot network |
-| `network.platform`, `.estate`, `.mgmt` | `10.20.0.0/24`, `10.30.0.0/16`, `10.31.0.0/24` | The ranges must be private and must not overlap. They must also stay outside Docker's default local address pools (172.17.0.0/16 to 172.31.0.0/16 and 192.168.0.0/16, moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`'s networks and the declared origins. `network.estate` must be a /16 or wider: slot N's estate is its Nth /24 (10.30.N.0/24), a Docker network on the range host, not a Neutron network |
+| `network.platform`, `.estate`, `.mgmt` | `10.20.0.0/24`, `10.30.0.0/16`, `10.31.0.0/24` | The ranges must be private and must not overlap. They must also stay outside Docker's default local address pools (172.17.0.0/16 to 172.31.0.0/16 and 192.168.0.0/16, moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`'s networks, the declared origins and the range host's Docker address pool 10.40.0.0/16 (`RANGE_HOST_POOL` in `platform/range/cloud.py`). `network.estate` must be a /16 or wider: slot N's estate is its Nth /24 (10.30.N.0/24), a Docker network on the range host, not a Neutron network |
 | `compute.base_image` | `ubuntu-24.04` | the platform VM and the range host |
 | `compute.availability_zone` | `""` | the platform VM and the range host; if empty, Nova chooses |
 | `compute.flavors` | `platform`, `range`, exactly these two | §3.3 |
@@ -687,10 +694,12 @@ The scripts find the `openstack` command beside `.venv/bin/python`.
    any slot. While a session holds one, the slot reads blocked and `up` stops.
 7. It sends `GET ready/` until no slot reads `NOT_STANDING`, `REBUILDING`,
    `RESETTING` or `STALE`. A range host that is still running its setup reads
-   `SETTING_UP`, and its slots `REBUILDING`.
+   `SETTING_UP`, and its slots `REBUILDING`. A slot that reads `SETUP_FAILED`
+   stops `up`, which prints the reason.
 8. It sends `POST configure/`. It retries while the answer is 503, which means
    the range host's ssh is not up yet. It stops on 409.
-9. It sends `GET ready/` until the range is ready.
+9. It sends `GET ready/` until the range is ready. With more than one slot,
+   the platform checks the slots side by side.
 10. It sends `DELETE leftovers/`, which removes what the VM range of before
     left in the project (§5.5), and prints what it removed.
 
@@ -769,10 +778,9 @@ so. The hand-over that `up` redoes (§5.2) does the same when the VM holds no
 store.
 
 Because the key is carried over, the fabric's `cr-platform` keypair stays valid.
-You do not need to tear the slot down. The range host holds a port on the
-stack's own network (its egress port, §2.6). Whether the stack delete succeeds
-while that port stands has not been run since the range became one host;
-`bin/cloud down` deletes the range host before the stack.
+You do not need to tear the slot down. A set-up range host holds no port on
+the stack's own network: the platform detached its egress port (§2.6) when its
+setup reported ready.
 
 `bin/backup` works like this:
 
@@ -1019,8 +1027,10 @@ Notes:
   metadata names it (`cr_host=cr-range`) and records the tag (`cr_tag`) and the
   bundle digest (`cr_bundle`) it was booted with (§3.6).
 - The platform reports the range host `SETTING_UP` until `/var/lib/cr/ready`
-  exists, and `SETUP_FAILED`, with the last lines of `/var/log/cr-setup.log`,
-  when `/var/lib/cr/failed` does. It asks over ssh.
+  exists, and `SETUP_FAILED` when `/var/lib/cr/failed` does. It asks over ssh.
+  `/api/range/ready/` then names `/var/log/cr-setup.log` on the range host as
+  the place that says why, and `bin/cloud up` stops on it. When the setup is
+  ready, the platform detaches the range host's egress port.
 - The platform reaches the range host as `ubuntu` over `mgmt`, with one shared
   ssh connection per host (`ControlMaster auto`, `ControlPersist 60`). A role
   that a container fills (the `compose:` map in
@@ -1074,10 +1084,13 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
 `configure/` does these steps for each slot:
 
 1. It opens the collector to the range host's `mgmt` address (`cr-reach`) and
-   sets the range host's time source (§3.5), side by side.
+   sets the range host's time source (§3.5), side by side. It does this once
+   per range-host generation and collector address, not for each slot.
 2. It sends the slot's files and runs `slot.sh up N`:
-   1. It makes the slot's rule and log directories. The WAF's log directory is
-      owned by the remapped `www-data` and readable by `syslog`.
+   1. It makes the slot's rule and log directories. The WAF's log directory
+      `/var/log/cr/sN/waf` is owned by the remapped range's `www-data` and
+      `adm`, with an ACL that lets `syslog` read it. The edge and estate log
+      directories are root's.
    2. `docker compose up --no-start --pull never` creates the containers and
       their new, empty volumes.
    3. It copies the targets' pristine data (§3.6) into each empty volume of a
@@ -1093,7 +1106,9 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
       the containers' interfaces, both bridges and their ports.
    8. It lets each bridge forward to itself past Docker's isolation rules
       (`DOCKER-USER`).
-   9. It installs the slot's rsyslog file and restarts rsyslog.
+   9. It installs the slot's rsyslog file and restarts rsyslog, only when the
+      file changed or rsyslog is not running, and one slot at a time (`flock
+      /run/cr-rsyslog.lock`, `systemctl reset-failed` first).
 3. It seeds both sensors with the baseline rules through `rules/suricata.py`.
 
 Secrets stay per session. The board's `seed` sets each seeded account's
@@ -1104,7 +1119,9 @@ sets the admin password again.
 
 Each healthcheck probes every second during its start period
 (`start_interval: 1s`, Docker Engine 25 or later), so `--wait` sees a container
-healthy about a second after it is.
+healthy about a second after it is. After that the targets and the sensors are
+checked every 60 s (`slot.yaml`'s sensor healthcheck and its
+`x-wargames.healthcheck`), so idle slots leave the CPU to busy ones.
 
 The learner's terminals (`platform/vm-terminal.sh cr-kali`, `cr-waf`) ssh to
 the range host's `mgmt` address and run `sudo docker exec -it ... sN-kali bash
@@ -1123,8 +1140,9 @@ runs `slot.sh reset N` on the range host:
 | the two sensors | keep running; their `eve.json` and the WAF's `audit.log` are emptied in place and the sensors reopen their log files |
 
 The platform then seeds both sensors with the baseline rules again and marks
-the slot's disabled rules enabled. If the slot's files are gone from the range
-host, the reset configures the slot instead.
+the slot's disabled rules enabled. A reset owed to a slot whose files are gone
+from the range host (`/opt/cr/sN/compose.yaml` missing) configures the slot
+instead.
 
 A restart of the platform during a reset does not lose it. The reset leaves a
 file `slot-N` in `/data/reset-owed` until it succeeds. At boot the platform
@@ -1279,8 +1297,9 @@ We did not check whether that OPNsense edge survived an OPNsense update.
     is-installed` took 1.9 s.
   - A fabric made before that commit keeps the old subnet. Run `openstack subnet
     set --dns-nameserver 0.0.0.0 cr-mgmt`, then reboot the range host so that
-    it asks DHCP again. The range host resolves names through its port on the
-    platform's network (`network.dns`).
+    it asks DHCP again. While it sets itself up, the range host resolves names
+    through its egress port on the platform's network (`network.dns`). Once set
+    up it has no resolver.
   - A cloud admin can also set `[ovn] dns_servers`, which helps the cloud's other
     VMs. The product no longer needs it.
 - A member user cannot create flavors or change quotas. The stack uses no

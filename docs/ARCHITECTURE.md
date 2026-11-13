@@ -222,23 +222,23 @@ The range's topology is kept as GNS3 project files. They use `revision` 9, so GN
 What the learner map shows, drawn as an enterprise logical diagram:
 
 - Role hostnames above the icons.
-- At each host's link end, the address alone (`10.30.0.184`): no interface, port or prefix. Switch ends and management links carry no label, and the links to the database switch carry none either, since their addresses are a Docker bridge's.
-- Four zones, captioned as KISA's ISMS-P 2.6.1 names network zones (DMZ, DB존) plus 인터넷 and 관리망. A zone with labelled links gains its network in the caption (`DMZ 10.30.0.0/24`).
-- Each IDS is its own sensor box ("IDS") joined by a dashed line to the host whose traffic it is fed. That is `firewall` (the edge sensor on the slot's `internet` bridge) and the site (the estate sensor on the slot's `estate` bridge), the hosts Kibana's `sensor` names.
-- Green arrows with drawn arrowheads, and the caption 웹 요청, show the request flow internet → firewall → waf → site.
+- At each host's link end, the address alone (`10.30.1.59`): no interface, port or prefix. Switch ends and management links carry no label, and the links to the database switch carry none either, since their addresses are a Docker bridge's.
+- Four zones, captioned as KISA's ISMS-P 2.6.1 names network zones (DMZ, DB존) plus 인터넷 and 관리망. A zone with labelled links gains its network in the caption (`DMZ 10.30.1.0/24`).
+- Each IDS is its own sensor box ("IDS") joined by a dashed line to the host whose traffic it is fed. That is `router` (the edge sensor on the slot's `internet` bridge) and the site (the estate sensor on the slot's `estate` bridge), the hosts Kibana's `sensor` names.
+- Green arrows with drawn arrowheads, and the caption 웹 요청, show the request flow internet → router → waf → site.
 
 It shows nothing else: no title, legend, machine's own name, `cr-`, management address or Docker bridge.
 
-- The flow runs left to right along one row (internet, firewall, waf, site), with `sw1` above the row and `sw3` below it, so no link crosses another.
+- The flow runs left to right along one row (internet, router, waf, site), with `sw1` above the row and `sw3` below it, so no link crosses another.
 - `topology.for_wargame` drops a zone and the drawings inside it only when the zone held nodes and none is left for the wargame; lines, sensor boxes and texts outside such a zone stay.
 
 The nodes of the learner map:
 
 - `customers` and `kali` (the attacker's Kali box) are on the `internet` switch.
-- `firewall` is the slot's edge router container. The edge sensor is drawn as the IDS sensor box beside it.
+- `router` is the slot's edge router container. The edge sensor is drawn as the IDS sensor box beside it.
 - `sw1` is the service segment. The `waf` and the site (`board.com` or `corp.com`, the WAF host's declared names) are on it.
 - `sw2` is the database segment. It sits behind the site and holds the database (`board-db`).
-- `sw3` is monitoring. It links the `log-server` (Elasticsearch) to the hosts whose records reach it: the firewall, the WAF and the site. The range host forwards both sensors' eve.json and the WAF's audit log.
+- `sw3` is monitoring. It links the `log-server` (Elasticsearch) to the hosts whose records reach it: the router, the WAF and the site. The range host forwards both sensors' eve.json and the WAF's audit log.
 
 Switches are numbered the way lab topologies number them (`sw1`, `sw2`, `sw3`, as in NSRC's `sw1`), in a fixed order: service, database, monitoring. The zone captions say which segment each switch is.
 
@@ -246,7 +246,7 @@ A template draws both wargames' site and database in one place (both on `sw2`). 
 
 `topology.learner(declaration, wargame)` maps the range's names to the map's names.
 
-- Hosts: `cr-kali` is `kali`, and also `customers` where the customers run on it. `cr-edge` is `firewall`. The range host and its site container are the site. `cr-elasticsearch` is `log-server`.
+- Hosts: `cr-kali` is `kali`, and also `customers` where the customers run on it. `cr-edge` is `router`. The range host and its site container are the site. `cr-elasticsearch` is `log-server`.
 - Roles.
 - Segments to switches: origins to `internet`, the estate to `sw1`, a wargame's compose network to `sw2`, and the management segment to `sw3` for the NIC name alone.
 - Each sensor to the node whose NIC it uses.
@@ -290,12 +290,12 @@ The learner sees the addresses of their own range. `api/maps.py` derives the map
 
 Labels:
 
-- A host's end carries its address on that switch's segment without the prefix (`10.30.0.102`), read through `topology.learner`. The attacker's is the one in the default origin; the customers' is the one in their busiest origin (the weights in `traffic.yaml`, leaving the default origin out, as `attacker.customer_origins` does), and no label where the box holds none.
+- A host's end carries its address on that switch's segment without the prefix (`10.30.1.247`), read through `topology.learner`. The attacker's is the one in the default origin; the customers' is the one in their busiest origin (the weights in `traffic.yaml`, leaving the default origin out, as `attacker.customer_origins` does), and no label where the box holds none.
 - A switch's end, a `sw3` end and an end on the database switch (`topology.UNLABELLED`) carry an empty label. No label names an interface, a port or a Docker bridge.
 
 Zone captions:
 
-- Each zone caption gains the networks of the labels on its switch (`DMZ 10.30.0.0/24`).
+- Each zone caption gains the networks of the labels on its switch (`DMZ 10.30.1.0/24`).
 - The caption of a switch is the text in the smallest box that holds it (`topology.captions`).
 - 인터넷, DB존 and 관리망 keep their name alone.
 - `GET /api/sessions/<id>/lesson/addresses/` returns the same addresses as rows `{host, zone, address}` (`topology.addresses`) for the reference column's address card.
@@ -977,7 +977,7 @@ Each unit below lists its defense and opening pane, what the learner does, and w
 - Answers are read from the session's learner map (`views._range_fact`: `topology.address`, `topology.subnet`, `topology.route` and `topology.hosts`, through `topology.learner`):
   - `address`: the link-label addresses, with or without the prefix length;
   - `subnet`: the network of the host's switch;
-  - `path`: the step's `from` (default `customers`), then the transit roles present, then the site (`kali > firewall > waf > board.com`);
+  - `path`: the step's `from` (default `customers`), then the transit roles present, then the site (`kali > router > waf > board.com`);
   - `logs`: the `log-server` node.
 
 **f2 Reading HTTP requests in DevTools** (`lesson.http`). Defense `full`, opens on Website.
@@ -1402,7 +1402,7 @@ Scenario 4.2 (a person on the red console against the learner) is not declared, 
     - The data view is on the session's index pattern. It is shown by its name `logs-*` and never by the pattern.
     - It has the shared runtime fields plus these:
       - `log_source` (`suricata` or `modsecurity`);
-      - `sensor`: the map name of the sensor, matched on the sender's host name without its domain and slot number, with or without its first dash-separated part. The script therefore names no `cr` host, and the edge's `edge` still reads as its map name. The names are `firewall` and `board.com` for Suricata and `waf` for every ModSecurity record, with slot suffixes stripped;
+      - `sensor`: the map name of the sensor, matched on the sender's host name without its domain and slot number, with or without its first dash-separated part. The script therefore names no `cr` host, and the edge's `edge` still reads as its map name. The names are `router` and `board.com` for Suricata and `waf` for every ModSecurity record, with slot suffixes stripped;
       - `request_headers`: one `Name: value` per request header, `X-Request-ID` left out;
       - `request_header`: a composite with one keyword per common header (`request_header.host`, `.user_agent`, `.referer`, `.cookie`, `.x_forwarded_for`, and the rest of `kibana.REQUEST_HEADERS_SHOWN`). It comes from Suricata's `http.request_headers` or ModSecurity's `transaction.request.headers`.
     - `sourceFilters` hide `_index`, `event.*`, `log.*`, `message`, `agent.*`, `ecs.*`, `host`, `host.*`, `input.*`, `error.*`, `http.*`, `transaction.*`, `metadata.*`, `data_stream.*`, `flow_id`, `tx_id`, `pcap_cnt`, `in_iface`, `pkt_src`, `community_id`, `src_ip`, `dest_ip`, `alert.signature` and `alert.signature_id` (`kibana.HIDDEN_FIELDS`). KQL on them still works.
@@ -1479,7 +1479,7 @@ Every parameter of the template comes from `deploy/openstack/cloud.yaml` (`bin/p
 
 The platform on the VM uses the OpenStack adapter (`CR_SUBSTRATE=range.openstack.connect`, written by cloud-init). It builds the range's network itself through `/api/range/fabric/`, planned by `range/fabric.py`:
 
-- `mgmt` (DHCP on, no gateway), on the CIDR that `cloud.yaml` gives. The loader refuses CIDRs that overlap each other, the platform's network, Docker's default local address pools (172.17.0.0/16 to 172.31.0.0/16 and 192.168.0.0/16; moby `daemon/libnetwork/ipamutils/utils.go`), a network that `compose.yaml` declares, or a declared origin. It also refuses an `estate` narrower than a /16;
+- `mgmt` (DHCP on, no gateway), on the CIDR that `cloud.yaml` gives. The loader refuses CIDRs that overlap each other, the platform's network, Docker's default local address pools (172.17.0.0/16 to 172.31.0.0/16 and 192.168.0.0/16; moby `daemon/libnetwork/ipamutils/utils.go`), a network that `compose.yaml` declares, a declared origin, or the range host's Docker address pool 10.40.0.0/16 (`cloud.RANGE_HOST_POOL`). It also refuses an `estate` narrower than a /16;
 - the keypair `cr-platform`, from the key at `/data/ssh/id_ed25519`;
 - three security groups, below.
 
@@ -1491,21 +1491,21 @@ The three security groups:
 
 - `cr-reach`: the platform's own `mgmt` port. It lets in only NTP (udp 123) from members of `cr-mgmt`, and syslog (udp 5140) from the range host's `mgmt` address.
 - `cr-mgmt`: the range host's `mgmt` port. It lets in only members of `cr-reach`.
-- `cr-egress`: the range host's port on the platform's network, which it pulls its images over. It has no ingress rule.
+- `cr-egress`: the range host's port on the platform's network, which it pulls its images over. It has no ingress rule. The port exists only while the range host sets itself up: once the setup reports ready, the platform detaches it (`_close_egress`).
 
 The platform attaches itself to `mgmt` through a port in `cr-reach`, found by its own server id (`CR_OPENSTACK_PLATFORM`, written at boot). It can therefore ssh to the range host, while the range host can open a connection to it only for NTP and syslog.
 
 The range has no Internet and so no time source of its own. The scorer (the platform) compares target and sensor times with case windows on its own clock. The platform therefore serves time to the range:
 
 - The platform VM runs chrony (cloud-init: `allow <network.mgmt>`, `local stratum 10`).
-- The range host keeps time by the platform's `mgmt` address. `range/clock.py` writes a `systemd-timesyncd` drop-in and waits for the first answer (`keep_time()`, at every configure). The containers share the host's clock.
+- The range host keeps time by the platform's `mgmt` address. `range/clock.py` writes a `systemd-timesyncd` drop-in and waits for the first answer (`keep_time()`). The platform sets it, and opens the collector's rule, once per range-host generation and collector address (`_heard_and_timed`), so a rebuilt platform with a new collector address gets both at its next configure. The containers share the host's clock.
 
 **The range host.** One VM, `cr-range`, runs every slot. It is managed through `/api/range/slot/` and planned by `range/slot.py`.
 
-- `POST /api/range/slot/` boots it when it is absent: the stock Ubuntu image (`compute.base_image`), the flavor `compute.flavors.range` (`CR_OPENSTACK_FLAVOR`), a config drive and the keypair `cr-platform`. It has two ports: `cr-range.mgmt` on `mgmt` in `cr-mgmt`, and one on the platform's network (`CR_OPENSTACK_BUILD_NETWORK`) in `cr-egress`.
+- `POST /api/range/slot/` boots it when it is absent: the stock Ubuntu image (`compute.base_image`), the flavor `compute.flavors.range` (`CR_OPENSTACK_FLAVOR`), a config drive and the keypair `cr-platform`. It has two ports: `cr-range.mgmt` on `mgmt` in `cr-mgmt`, and one on the platform's network (`CR_OPENSTACK_BUILD_NETWORK`) in `cr-egress`. When the setup reports ready, the platform detaches the second port. A set-up range host has only `cr-range.mgmt`: no way to the Internet and no DNS resolver.
 - Its Nova user data carries the setup bundle (`rangehost.bundle()`, `rangehost.user_data()`): `deploy/range-host/setup.sh`, the image list, Docker's `daemon.json`, and the compose file and list of the pristine wargames. The encoded user data must fit Nova's 65,535 bytes.
 - `setup.sh` installs `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog` and `acl`. It raises sshd's `MaxSessions` and `MaxStartups` and the inotify limits. It pulls every image from GHCR by the platform's `CR_IMAGE_TAG`. It keeps the targets' pristine volumes in `/opt/cr/pristine`, then marks `/var/lib/cr/ready`, or `/var/lib/cr/failed` with the log's tail on the console.
-- Until then the platform reports the range host `SETTING_UP` or `SETUP_FAILED` in place of Nova's `ACTIVE`.
+- Until then the platform reports the range host `SETTING_UP` or `SETUP_FAILED` in place of Nova's `ACTIVE`. A failed setup makes the slot phase `SETUP_FAILED` in `/api/range/ready/`, naming `/var/log/cr-setup.log` on the range host, and `bin/cloud up` stops on it with that reason.
 - `daemon.json` gives Docker the tenant MTU (`mtu` and `default-network-opts`), the address pool 10.40.0.0/16 in /28s, the `local` log driver and `userns-remap: default`.
 - The server carries `cr_host`, `cr_tag` (the image tag) and `cr_bundle` (the bundle's digest) in its metadata. The digest hashes each file's name and content. A range host whose tag or digest differs from the platform's is `stale`. `POST /api/range/slot/` then deletes it and boots it again when no session is open, and reports the slot blocked while one is.
 - No Glance image is built. The range host pulls only from GHCR.
@@ -1516,6 +1516,7 @@ The pristine data is made once, by `setup.sh`: it brings every wargame up once a
 
 - Slot N is the docker compose project `sN` on the range host, rendered by `platform/range/rangehost.py` from `deploy/range-host/slot.yaml` and each wargame's `wargames/<w>/compose.yaml`. Its containers are `sN-kali`, `sN-edge`, `sN-waf`, `sN-edge-sensor`, `sN-estate-sensor`, `sN-board`, `sN-board-db`, `sN-corp-wp` and `sN-corp-db`.
 - Its networks are `sN_internet` (bridge `sN-inet`, 172.30.N.0/24), `sN_estate` (bridge `sN-estate`, 10.30.N.0/24: the edge .1, the WAF .247, the board .59, corp-wp .60) and one `<wargame>-default` per wargame for its database. Every one is `internal`, with `gateway_mode_ipv4: isolated` and the tenant MTU. No port is published and nothing is NATed.
+- Steady healthchecks of the targets and the sensors run every 60 s, with a 1 s start interval (`slot.yaml`'s `x-wargames.healthcheck` overrides the wargames' own interval), so idle slots leave the CPU to busy ones.
 - Every slot's `internet` bridge carries the same thirty origin subnets, so an alert's source is sorted to the same country in every slot.
 - A slot adapter (`OpenStack.in_slot(n)`) works on its own compose project. Roles, runners and topology are the same in every slot.
 - The platform binds a session to a slot at open (`Session.slot`, one open session per slot by a unique constraint). It takes the first free slot that is READY, chosen under a lock.
@@ -1523,16 +1524,16 @@ The pristine data is made once, by `setup.sh`: it brings every wargame up once a
 - `run_on_role` takes `--session` or `--slot`, and it refuses to run with neither when there is more than one slot.
 - The console's VM terminals take the session as `?arg=<id>` (ttyd `-a`) and open its slot's container.
 
-**Configure.** `POST /api/range/configure/` (`configure_slot()`) opens the collector's rule and sets the range host's time source side by side. It then pipes the slot's files to `slot.sh up N` on the range host: the compose file, both sensor configurations, Kali's and the edge's addresses, the rsyslog configuration, the baseline rules and the script itself. `slot.sh up`:
+**Configure.** `POST /api/range/configure/` (`configure_slot()`) opens the collector's rule and sets the range host's time source side by side, once per range-host generation and collector address. It then pipes the slot's files to `slot.sh up N` on the range host: the compose file, both sensor configurations, Kali's and the edge's addresses, the rsyslog configuration, the baseline rules and the script itself. `slot.sh up`:
 
-1. makes the slot's directories, with the log directories owned by the remapped users;
+1. makes the slot's directories. The WAF's log directory `/var/log/cr/sN/waf` is owned by the remapped range's `www-data` and `adm`, with an ACL that lets `syslog` read it; the edge and estate log directories are root's;
 2. creates the containers (`up --no-start --pull never`) and copies the pristine data into each empty volume of a target that has never run;
 3. starts them (`up -d --wait`);
 4. gives Kali its origin addresses and its default route through the default origin's gateway, and gives the edge every origin's gateway address on `wan` (`ip -batch` through `nsenter`);
 5. routes the WAF and the targets on `estate` through the edge's estate address;
 6. switches TSO, GSO and GRO off on every bridge, its ports and every container interface, so the sensors see packets as they were sent;
 7. lets each bridge forward to itself in `DOCKER-USER`;
-8. installs `/etc/rsyslog.d/60-cr-sN.conf` and restarts rsyslog.
+8. installs `/etc/rsyslog.d/60-cr-sN.conf` and restarts rsyslog, only when the file changed or rsyslog is not running, and one slot at a time (`flock /run/cr-rsyslog.lock`, `systemctl reset-failed` first).
 
 The platform then seeds both sensors' baseline rules through `rules/suricata.py`.
 
@@ -1569,7 +1570,7 @@ The platform then seeds both sensors' baseline rules through `rules/suricata.py`
 - `reset_in_place()` runs `slot.sh reset N`. It recreates Kali and the WAF from their images. In parallel, it removes the targets with their volumes and starts them again on the pristine data. It flushes the edge's neighbour table, empties the slot's log files in place and has both sensors reopen theirs.
 - The platform then seeds both sensors' baseline rules again.
 - The edge and the sensors keep running.
-- A slot whose compose file is missing on the range host is configured instead.
+- A reset owed to a slot whose files are gone from the range host (`/opt/cr/sN/compose.yaml` missing) configures the slot instead.
 - A session therefore leaves the next one no edited rule or planted data.
 
 `POST /api/range/slot/rebuild/` (`rebuild_slot()`) takes a slot down with `slot.sh down N`: `compose down -v`, its rsyslog file, its files and its logs. `POST /api/range/configure/` brings it up again. `DELETE /api/range/slot/` takes every slot down and, without `?slot`, deletes the range host and its `mgmt` port.
@@ -1588,11 +1589,11 @@ The close answers at once. The reset state (idle, running, failed and why) is he
 `GET /api/range/ready/` reports every slot under `slots`:
 
 - its number and the session holding it;
-- its phase: `IN_USE` while a session holds it, `RESETTING` while its reset runs, `RESET_FAILED` with its reason if it failed, otherwise `NOT_STANDING`, `STALE` (a range host on images or slot files older than the platform's), `REBUILDING` (the range host not yet `ACTIVE` and set up), `CHECKING` or `READY`;
+- its phase: `IN_USE` while a session holds it, `RESETTING` while its reset runs, `RESET_FAILED` with its reason if it failed, otherwise `NOT_STANDING`, `STALE` (a range host on images or slot files older than the platform's), `SETUP_FAILED` (the range host failed its setup; `/var/log/cr-setup.log` on it says why), `REBUILDING` (the range host not yet `ACTIVE` and set up), `CHECKING` or `READY`;
 - its reset state;
 - three checks: the range host ACTIVE and set up, the board's ground truth readable, and the sensor rules at baseline with no rule of that slot disabled.
 
-The top-level `ready` and `slot` are the slot that the next open would take.
+The top-level `ready` and `slot` are the slot that the next open would take. With more than one slot, the platform checks the slots side by side.
 
 `/api/range/slot/`, `slot/rebuild/` and `configure/` take `?slot=N`. Without it they act on every slot.
 
