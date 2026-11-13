@@ -51,7 +51,7 @@ changed module (directly or through others, with `platform/` or `test/` as the
 working directory), requests a URL whose view module reaches it, or names or
 globs the changed file; reading a Python file as text does not pull in what it
 imports. Docs (`*.md`, `docs/`, `.claude/`, `metrics.json`) select nothing.
-The unit `conftest.py`, `pytest.ini`, `requirements.txt` and `fsl/settings.py`
+The unit `conftest.py`, `pytest.ini`, `requirements.txt` and `cr/settings.py`
 run the whole unit suite, and so does any changed file no test reaches. A
 range-facing change (`platform/` outside `tests/` and `console/`,
 `wargames/`, `redteam/`, `deploy/`, `test/`, the compose files) that no

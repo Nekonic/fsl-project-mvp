@@ -11,7 +11,7 @@ pytestmark = pytest.mark.django_db
 
 class Cloud:
     def plan_slot(self):
-        return slot.Plan(standing=(("fsl-waf", "s1", "ACTIVE"),))
+        return slot.Plan(standing=(("cr-waf", "s1", "ACTIVE"),))
 
     def runner(self, role):
         return lambda *a, **k: None
@@ -43,12 +43,12 @@ def test_starting_refuses_a_second_open_session_on_a_shared_range(client):
 
 def test_starting_refuses_a_slot_that_is_not_ready(client):
     with patch("api.views.substrate", lambda: Cloud()), patch(
-        "api.views._range_ready", return_value=_verdict(False, ["fsl-waf is REBUILD"])
+        "api.views._range_ready", return_value=_verdict(False, ["cr-waf is REBUILD"])
     ):
         response = client.post_json("/api/sessions/", {})
 
     assert response.status_code == 409
-    assert "fsl-waf is REBUILD" in response.json()["detail"]
+    assert "cr-waf is REBUILD" in response.json()["detail"]
     assert Session.objects.count() == 0, "a not-ready start must create no row"
 
 def test_starting_refuses_a_second_open_session_on_the_cloud(client):

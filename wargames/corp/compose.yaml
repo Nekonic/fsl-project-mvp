@@ -2,7 +2,7 @@ services:
   corp-wp:
     platform: linux/amd64
     build: ./app
-    image: ghcr.io/nekonic/fsl-corp:${FSL_IMAGE_TAG:-dev}
+    image: ghcr.io/nekonic/cr-corp:${CR_IMAGE_TAG:-dev}
     depends_on:
       corp-db: {condition: service_healthy}
     networks: [estate]
@@ -11,9 +11,9 @@ services:
       WORDPRESS_DB_NAME: "wordpress"
       WORDPRESS_DB_USER: "wordpress"
       WORDPRESS_DB_PASSWORD: "wordpress"
-      FSL_WP_URL: "http://corp.com"
+      CR_WP_URL: "http://corp.com"
     healthcheck:
-      test: ["CMD", "sh", "-c", "test -f /tmp/fsl-corp-ready && wp core is-installed --allow-root --path=/var/www/html && wp plugin is-active ultimate-member --allow-root --path=/var/www/html"]
+      test: ["CMD", "sh", "-c", "test -f /tmp/cr-corp-ready && wp core is-installed --allow-root --path=/var/www/html && wp plugin is-active ultimate-member --allow-root --path=/var/www/html"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -23,7 +23,7 @@ services:
   corp-db:
     platform: linux/amd64
     build: ./db
-    image: ghcr.io/nekonic/fsl-corp-db:${FSL_IMAGE_TAG:-dev}
+    image: ghcr.io/nekonic/cr-corp-db:${CR_IMAGE_TAG:-dev}
     networks: [estate]
     command: ["--binlog-format=ROW", "--log-bin=binlog", "--server-id=1", "--innodb-rollback-segments=1"]
     environment:

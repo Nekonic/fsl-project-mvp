@@ -14,7 +14,7 @@ from range.ports import Drifted
 INSIDE = cloud.read(cloud.EXAMPLE).inside
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-WARGAME_HOST = "fsl-wargame-host"
+WARGAME_HOST = "cr-wargame-host"
 _DECLARED = declared.read()
 DECLARED = replace(_DECLARED, hosts={name: host for name, host in _DECLARED.hosts.items() if not host.uploads})
 
@@ -26,7 +26,7 @@ class Cloud:
         for want in fabric.wanted(decl, INSIDE):
             net_id = f"net-{want.segment}"
             if not any(n["id"] == net_id for n in self.networks):
-                self.networks.append({"id": net_id, "name": f"fsl-{want.segment}",
+                self.networks.append({"id": net_id, "name": f"cr-{want.segment}",
                                       "tags": [f"{fabric.TAG}={want.segment}"]})
             self.subnets.append({
                 "id": f"sub-{want.name}", "network_id": net_id, "name": want.name,
@@ -116,8 +116,8 @@ class Cloud:
 
 SPEC = openstack.Cloud(
     keystone="http://keystone:5000", neutron="http://neutron:9696",
-    nova="http://nova:8774/v2.1", glance="http://glance:9292", project="fsl",
-    user="fsl", ssh_user="ubuntu", ssh_key="/keys/fsl",
+    nova="http://nova:8774/v2.1", glance="http://glance:9292", project="cr",
+    user="cr", ssh_user="ubuntu", ssh_key="/keys/cr",
 )
 
 @pytest.fixture
@@ -142,13 +142,13 @@ def edge_declaration():
         ),
         origins=(Origin(id="ru", label="Russia",
                         subnet="5.188.10.0/24", addresses=1, segment="ru"),),
-        roles={"edge": "fsl-pf", "gateway": "fsl-waf", "attacker": "fsl-kali",
-               "sensor": "fsl-pf", "scorer": "fsl-platform", "target": "fsl-shop"},
+        roles={"edge": "cr-pf", "gateway": "cr-waf", "attacker": "cr-kali",
+               "sensor": "cr-pf", "scorer": "cr-platform", "target": "cr-shop"},
         watches={"sensor": "edge"},
         hosts={
-            "fsl-pf": Host(image="pf-base", segments=("ru", "estate", "mgmt")),
-            "fsl-waf": Host(setup="waf/setup.sh", files=("waf",), segments=("estate", "mgmt")),
-            "fsl-kali": Host(setup="waf/setup.sh", files=("waf",), segments=("ru", "mgmt")),
+            "cr-pf": Host(image="pf-base", segments=("ru", "estate", "mgmt")),
+            "cr-waf": Host(setup="waf/setup.sh", files=("waf",), segments=("estate", "mgmt")),
+            "cr-kali": Host(setup="waf/setup.sh", files=("waf",), segments=("ru", "mgmt")),
         },
         default_origin="ru",
     )
@@ -165,16 +165,16 @@ def test_the_edge_forwarding_ports_may_carry_any_source_so_it_can_route_un_natte
 
     pairs = {"0.0.0.0/0"}
     for segment in ("ru", "estate"):
-        port = cloud.port(f"fsl-pf.{segment}")
+        port = cloud.port(f"cr-pf.{segment}")
         assert {p["ip_address"] for p in port.get("allowed_address_pairs") or []} == pairs, (
             f"the edge routes packets whose source is not its own on {segment}; "
             f"Neutron anti-spoofing drops those without an address pair"
         )
-    mgmt = cloud.port("fsl-pf.mgmt")
+    mgmt = cloud.port("cr-pf.mgmt")
     assert not mgmt.get("allowed_address_pairs"), (
         "management carries no forwarded traffic, so it keeps strict anti-spoofing"
     )
-    assert not cloud.port("fsl-waf.estate").get("allowed_address_pairs"), (
+    assert not cloud.port("cr-waf.estate").get("allowed_address_pairs"), (
         "a backend host sends only as itself"
     )
 
@@ -249,9 +249,9 @@ def test_rebuilding_the_slot_resets_every_vm_to_its_golden_image(cloud):
 
 def test_a_standing_host_whose_image_vanished_is_refused_before_any_rebuild(cloud):
     adapter(cloud).ensure_slot()
-    cloud.images = [i for i in cloud.images if i["name"] != "fsl-wargame-host"]
+    cloud.images = [i for i in cloud.images if i["name"] != "cr-wargame-host"]
 
-    with pytest.raises(Drifted, match="fsl-wargame-host"):
+    with pytest.raises(Drifted, match="cr-wargame-host"):
         adapter(cloud).rebuild_slot()
 
     assert [c for c in cloud.calls if c[0] == "POST" and c[1].endswith("/action")] == [], (
@@ -290,12 +290,12 @@ def test_a_free_slot_standing_on_an_older_image_is_rebuilt_onto_the_ready_one(cl
 
 def test_a_slot_on_an_older_image_is_not_rebuilt_while_a_session_holds_it(cloud):
     adapter(cloud).ensure_slot()
-    _on_an_older_image(cloud, "fsl-kali")
+    _on_an_older_image(cloud, "cr-kali")
 
     plan = adapter(cloud).ensure_slot(renew=False)
 
     assert _rebuilds(cloud) == []
-    assert plan.stale == ("fsl-kali",) and plan.rebuilt == ()
+    assert plan.stale == ("cr-kali",) and plan.rebuilt == ()
 
 def test_a_close_rebuilds_a_host_it_would_reset_in_place_when_that_host_is_on_an_older_image(cloud):
     adapter(cloud).ensure_slot()
@@ -311,7 +311,7 @@ def test_a_close_rebuilds_a_host_it_would_reset_in_place_when_that_host_is_on_an
 
 def test_taking_the_slot_down_removes_its_servers_and_the_ports_it_made(cloud):
     adapter(cloud).ensure_slot()
-    cloud.ports.append({"id": "port-platform", "name": "fsl-platform.mgmt",
+    cloud.ports.append({"id": "port-platform", "name": "cr-platform.mgmt",
                         "network_id": "net-mgmt", "fixed_ips": []})
 
     removed = adapter(cloud).teardown_slot()

@@ -6,7 +6,7 @@ from range import cloud, declared, fabric
 
 DECLARED = declared.read()
 INSIDE = cloud.read(cloud.EXAMPLE).inside
-PUBLIC_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlatformKey fsl@platform"
+PUBLIC_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlatformKey cr@platform"
 
 def built():
     networks, subnets = [], []
@@ -14,7 +14,7 @@ def built():
         net_id = f"net-{want.segment}"
         if not any(n["id"] == net_id for n in networks):
             networks.append({
-                "id": net_id, "name": f"fsl-{want.segment}",
+                "id": net_id, "name": f"cr-{want.segment}",
                 "tags": [f"{fabric.TAG}={want.segment}"],
             })
         subnets.append({
@@ -45,7 +45,7 @@ def test_the_internet_network_holds_one_subnet_per_origin_with_no_dhcp():
     internet = [s for s in fabric.wanted(DECLARED, INSIDE) if s.segment == "internet"]
 
     assert [(s.name, s.cidr) for s in internet] == [
-        (f"fsl-{o.id}", o.subnet) for o in DECLARED.origins
+        (f"cr-{o.id}", o.subnet) for o in DECLARED.origins
     ]
     assert not any(s.dhcp for s in internet), (
         "an attack address is set on the attacker's port, so DHCP on thirty "
@@ -77,39 +77,39 @@ def test_a_reach_group_without_the_time_rule_for_management_alone_needs_it(rules
 
     assert plan.ntp and not plan.clean, (
         "the range hosts have no Internet; the platform is their only NTP server, "
-        "and its management port answers NTP to members of fsl-mgmt alone"
+        "and its management port answers NTP to members of cr-mgmt alone"
     )
 
 def test_a_network_or_subnet_the_declaration_no_longer_names_is_a_leftover():
     networks, subnets, keypairs = built()
-    networks.append({"id": "net-edge", "name": "fsl-edge", "tags": [f"{fabric.TAG}=edge"]})
+    networks.append({"id": "net-edge", "name": "cr-edge", "tags": [f"{fabric.TAG}=edge"]})
     subnets.append({
-        "id": "sub-kp", "network_id": "net-internet", "name": "fsl-kp",
+        "id": "sub-kp", "network_id": "net-internet", "name": "cr-kp",
         "cidr": "175.45.176.0/24", "enable_dhcp": False, "gateway_ip": "175.45.176.1",
     })
 
     assert planned(networks, subnets, keypairs).leftovers == (
-        "network fsl-edge carries fsl.segment.id=edge, which the declaration does not name",
-        "subnet fsl-kp 175.45.176.0/24 on fsl-internet is declared by nothing",
+        "network cr-edge carries cr.segment.id=edge, which the declaration does not name",
+        "subnet cr-kp 175.45.176.0/24 on cr-internet is declared by nothing",
     )
 
 def test_a_network_left_untagged_by_a_failed_create_is_a_leftover_not_a_duplicate():
     networks, subnets, keypairs = built()
     networks = [n for n in networks if n["id"] != "net-mgmt"] + [
-        {"id": "net-half", "name": "fsl-mgmt", "tags": []}
+        {"id": "net-half", "name": "cr-mgmt", "tags": []}
     ]
 
     plan = planned(networks, subnets, keypairs)
 
-    assert plan.leftovers == ("network fsl-mgmt carries no fsl.segment.id",)
+    assert plan.leftovers == ("network cr-mgmt carries no cr.segment.id",)
     assert plan.networks == ("mgmt",)
 
 def test_two_networks_carrying_one_tag_are_drift():
     networks, subnets, keypairs = built()
-    networks.append({"id": "net-twin", "name": "fsl-estate-2", "tags": [f"{fabric.TAG}=estate"]})
+    networks.append({"id": "net-twin", "name": "cr-estate-2", "tags": [f"{fabric.TAG}=estate"]})
 
     assert planned(networks, subnets, keypairs).drifted == (
-        "networks fsl-estate and fsl-estate-2 both carry fsl.segment.id=estate",
+        "networks cr-estate and cr-estate-2 both carry cr.segment.id=estate",
     )
 
 def test_a_keypair_of_that_name_with_another_key_is_drift():
@@ -119,7 +119,7 @@ def test_a_keypair_of_that_name_with_another_key_is_drift():
     plan = planned(networks, subnets, other)
 
     assert not plan.keypair
-    assert plan.drifted == ("keypair fsl-platform holds another public key",)
+    assert plan.drifted == ("keypair cr-platform holds another public key",)
 
 def test_the_inside_networks_overlap_nothing_the_platform_vm_already_routes():
     held = [

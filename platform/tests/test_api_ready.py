@@ -11,7 +11,7 @@ URL = "/api/range/ready/"
 pytestmark = pytest.mark.django_db
 
 class Cloud:
-    def __init__(self, standing=(("fsl-waf", "s1", "ACTIVE"),), boot=(), blocked=(), stale=()):
+    def __init__(self, standing=(("cr-waf", "s1", "ACTIVE"),), boot=(), blocked=(), stale=()):
         self._plan = slot.Plan(boot=boot, standing=standing, blocked=blocked, stale=stale)
 
     def plan_slot(self):
@@ -45,10 +45,10 @@ def test_a_standing_active_range_that_passes_its_checks_is_ready(client):
     assert body["slot"]["blocked"] == []
 
 @pytest.mark.parametrize("cloud, phase, reason", [
-    (Cloud(standing=(("fsl-waf", "s1", "REBUILD"),)), "REBUILDING", "fsl-waf"),
-    (Cloud(boot=("fsl-wg-board",), blocked=("image fsl-wg-board is not ready",)), "NOT_STANDING",
-     "image fsl-wg-board is not ready"),
-    (Cloud(stale=("fsl-waf",)), "STALE", "fsl-waf runs an older image than the ready one"),
+    (Cloud(standing=(("cr-waf", "s1", "REBUILD"),)), "REBUILDING", "cr-waf"),
+    (Cloud(boot=("cr-wg-board",), blocked=("image cr-wg-board is not ready",)), "NOT_STANDING",
+     "image cr-wg-board is not ready"),
+    (Cloud(stale=("cr-waf",)), "STALE", "cr-waf runs an older image than the ready one"),
 ], ids=["rebuilding", "to-boot", "older-image"])
 def test_a_slot_not_standing_ready_is_not_ready_and_says_why(client, cloud, phase, reason):
     body = _get(client, cloud).json()

@@ -99,7 +99,7 @@
       <interface>wan</interface>
       <ipprotocol>inet</ipprotocol>
       <quick>1</quick>
-      <descr>fsl: the range never reaches the edge itself</descr>
+      <descr>the range never reaches the edge itself</descr>
       <source>
         <any/>
       </source>
@@ -112,7 +112,7 @@
       <interface>wan</interface>
       <ipprotocol>inet</ipprotocol>
       <quick>1</quick>
-      <descr>fsl range crosses the edge</descr>
+      <descr>the range crosses the edge</descr>
       <source>
         <any/>
       </source>
@@ -125,7 +125,7 @@
       <interface>lan</interface>
       <ipprotocol>inet</ipprotocol>
       <quick>1</quick>
-      <descr>fsl: the estate never reaches the edge itself</descr>
+      <descr>the estate never reaches the edge itself</descr>
       <source>
         <any/>
       </source>
@@ -138,7 +138,7 @@
       <interface>lan</interface>
       <ipprotocol>inet</ipprotocol>
       <quick>1</quick>
-      <descr>fsl estate answers across the edge</descr>
+      <descr>the estate answers across the edge</descr>
       <source>
         <any/>
       </source>
@@ -151,7 +151,7 @@
       <interface>opt1</interface>
       <ipprotocol>inet</ipprotocol>
       <quick>1</quick>
-      <descr>fsl the platform reaches the edge on management</descr>
+      <descr>the platform reaches the edge on management</descr>
       <source>
         <any/>
       </source>

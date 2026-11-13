@@ -5,15 +5,15 @@ from dataclasses import dataclass
 from range.declared import Declaration
 from range.ports import RangeUnavailable
 
-TAG = "fsl.segment.id"
-SLOT_TAG = "fsl.slot"
-KEYPAIR = "fsl-platform"
+TAG = "cr.segment.id"
+SLOT_TAG = "cr.slot"
+KEYPAIR = "cr-platform"
 MANAGEMENT = "mgmt"
 NO_DEFAULT_ROUTE = {MANAGEMENT}
 SHARED = {MANAGEMENT}
-RANGE_GROUP = "fsl-range"
-REACH_GROUP = "fsl-reach"
-MANAGEMENT_GROUP = "fsl-mgmt"
+RANGE_GROUP = "cr-range"
+REACH_GROUP = "cr-reach"
+MANAGEMENT_GROUP = "cr-mgmt"
 GROUPS = (RANGE_GROUP, REACH_GROUP, MANAGEMENT_GROUP)
 COLLECTOR_PORT = 5140
 NTP_PORT = 123
@@ -55,7 +55,7 @@ def carrier(segment: str, slot: int = 1) -> str:
     return suffixed(segment, slot)
 
 def network_name(segment: str, slot: int = 1) -> str:
-    return f"fsl-{carrier(segment, slot)}"
+    return f"cr-{carrier(segment, slot)}"
 
 def network_tags(segment: str, slot: int = 1) -> list[str]:
     return [f"{TAG}={segment}"] + ([f"{SLOT_TAG}={slot}"] if slot > 1 else [])
@@ -82,11 +82,11 @@ def wanted(declaration: Declaration, inside: dict[str, str], slot: int = 1) -> t
             f"set network.{', network.'.join(unplaced)} in cloud.yaml"
         )
     return tuple(
-        Subnet(origin.segment, suffixed(f"fsl-{origin.id}", slot), origin.subnet, dhcp=False,
+        Subnet(origin.segment, suffixed(f"cr-{origin.id}", slot), origin.subnet, dhcp=False,
                gateway=True, slot=slot)
         for origin in declaration.origins
     ) + tuple(
-        Subnet(segment, suffixed(f"fsl-{segment}", slot), inside[segment], dhcp=True,
+        Subnet(segment, suffixed(f"cr-{segment}", slot), inside[segment], dhcp=True,
                gateway=segment not in NO_DEFAULT_ROUTE, slot=slot)
         for segment in _inside(declaration) if owner(segment, slot) == slot
     )

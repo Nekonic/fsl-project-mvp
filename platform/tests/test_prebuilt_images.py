@@ -19,7 +19,7 @@ from wargames import WARGAMES
 ROOT = composed.ROOT
 WORKFLOW = ROOT / ".github/workflows/images.yml"
 REBUILD = ROOT / "bin/platform-rebuild"
-NAME = re.compile(r"ghcr\.io/nekonic/fsl-([a-z0-9-]+):\$\{FSL_IMAGE_TAG:-dev\}")
+NAME = re.compile(r"ghcr\.io/nekonic/cr-([a-z0-9-]+):\$\{CR_IMAGE_TAG:-dev\}")
 
 
 def workflow():
@@ -106,14 +106,14 @@ def test_each_wargame_names_the_image_its_service_runs():
 
     for wargame in WARGAMES.values():
         image = wargame["image"]
-        assert image.startswith("ghcr.io/nekonic/fsl-"), image
-        assert image.removeprefix("ghcr.io/nekonic/fsl-") in repositories, image
+        assert image.startswith("ghcr.io/nekonic/cr-"), image
+        assert image.removeprefix("ghcr.io/nekonic/cr-") in repositories, image
 
 
 def test_the_platform_hands_its_image_tag_to_the_range_it_builds():
     environment = composed.services()["platform"]["environment"]
 
-    assert environment["FSL_IMAGE_TAG"] == "${FSL_IMAGE_TAG:-dev}", (
+    assert environment["CR_IMAGE_TAG"] == "${CR_IMAGE_TAG:-dev}", (
         "the platform ships the wargame images to the wargame host at this tag; "
         "without it the range would run :dev whatever the VM pulled"
     )
@@ -138,11 +138,11 @@ def test_the_platform_vm_pulls_and_never_builds():
 def test_the_platform_vm_runs_the_images_built_from_its_own_checkout():
     _, config = platform_vm_config()
     commands = [" ".join(map(str, c)) for c in config["runcmd"]]
-    tagged = next(i for i, c in enumerate(commands) if "FSL_IMAGE_TAG=" in c)
-    started = next(i for i, c in enumerate(commands) if "fsl-platform.service" in c)
+    tagged = next(i for i, c in enumerate(commands) if "CR_IMAGE_TAG=" in c)
+    started = next(i for i, c in enumerate(commands) if "cr-platform.service" in c)
 
-    assert "git -C /opt/fsl rev-parse HEAD" in commands[tagged]
-    assert "/opt/fsl/.env" in commands[tagged]
+    assert "git -C /opt/cr rev-parse HEAD" in commands[tagged]
+    assert "/opt/cr/.env" in commands[tagged]
     assert tagged < started
 
 
@@ -150,8 +150,8 @@ def test_the_platform_vm_fetches_its_geoip_database_before_starting():
     _, config = platform_vm_config()
     commands = [" ".join(map(str, c)) for c in config["runcmd"]]
 
-    fetched = commands.index("python3 /opt/fsl/bin/fetch-geoip")
-    started = next(i for i, c in enumerate(commands) if "fsl-platform.service" in c)
+    fetched = commands.index("python3 /opt/cr/bin/fetch-geoip")
+    started = next(i for i, c in enumerate(commands) if "cr-platform.service" in c)
     assert fetched < started
 
 
@@ -190,9 +190,9 @@ def test_the_openstack_cli_is_driven_by_cloud_yaml_not_an_openrc(tmp_path):
 
 def test_the_rebuild_refuses_while_an_image_cannot_be_pulled():
     module = rebuild()
-    missing = {"corp-db": "ghcr.io/nekonic/fsl-corp-db is not public, or was never pushed"}
+    missing = {"corp-db": "ghcr.io/nekonic/cr-corp-db is not public, or was never pushed"}
 
-    with pytest.raises(module.Refused, match="fsl-corp-db is not public"):
+    with pytest.raises(module.Refused, match="cr-corp-db is not public"):
         module.refuse_unless_published("abc", lambda name, tag: missing.get(name))
     module.refuse_unless_published("abc", lambda name, tag: None)
 
@@ -318,8 +318,8 @@ class NewPlatform:
 
 COMPOSE_2_40_DOCKER = """#!/bin/sh
 case "$*" in
-  *"config --images platform"*) printf 'docker.elastic.co/elasticsearch/elasticsearch:8\\nghcr.io/nekonic/fsl-platform:dev\\n' ;;
-  "inspect --format {{.Config.Image}} fsl-platform") echo ghcr.io/nekonic/fsl-platform:dev ;;
+  *"config --images platform"*) printf 'docker.elastic.co/elasticsearch/elasticsearch:8\\nghcr.io/nekonic/cr-platform:dev\\n' ;;
+  "inspect --format {{.Config.Image}} cr-platform") echo ghcr.io/nekonic/cr-platform:dev ;;
   *) exit 1 ;;
 esac
 """
@@ -348,7 +348,7 @@ def test_the_store_restore_runs_exactly_the_platform_image(tmp_path):
         env={"PATH": f"{bin_dir}:/usr/bin:/bin"}, capture_output=True, text=True, check=True,
     ).stdout.split()
 
-    assert resolved == ["ghcr.io/nekonic/fsl-platform:dev"], (
+    assert resolved == ["ghcr.io/nekonic/cr-platform:dev"], (
         f"the restore runs docker run with {resolved}: Compose 2.40 lists the images platform "
         f"depends on too, so anything but the platform image alone breaks bin/cloud up --replace"
     )
@@ -369,7 +369,7 @@ def saved(tmp_path, name, *tags):
 
 def test_a_sideloaded_image_is_not_looked_for_on_ghcr_and_the_others_are(tmp_path):
     module = rebuild()
-    tarball = saved(tmp_path, "gns3.tar", f"ghcr.io/nekonic/fsl-gns3:{HEAD}")
+    tarball = saved(tmp_path, "gns3.tar", f"ghcr.io/nekonic/cr-gns3:{HEAD}")
     asked = []
 
     tarballs = module.sideloaded([f"gns3={tarball}"])
@@ -383,19 +383,19 @@ def test_a_sideloaded_image_is_not_looked_for_on_ghcr_and_the_others_are(tmp_pat
     ("gns3={missing}", "does not exist, so nothing was deleted"),
     ("waf={tarball}", "NAME one of"),
     ("gns3", "NAME one of"),
-    ("gns3={wrong}", "holds no single ghcr.io/nekonic/fsl-gns3:<commit>"),
-    ("gns3={two}", "holds no single ghcr.io/nekonic/fsl-gns3:<commit>"),
+    ("gns3={wrong}", "holds no single ghcr.io/nekonic/cr-gns3:<commit>"),
+    ("gns3={two}", "holds no single ghcr.io/nekonic/cr-gns3:<commit>"),
     ("gns3={unreadable}", "not a docker save tarball"),
 ])
 def test_the_rebuild_refuses_a_sideload_it_cannot_run_before_deleting_anything(tmp_path, pair, said):
     module = rebuild()
     paths = {
         "missing": tmp_path / "absent.tar",
-        "tarball": saved(tmp_path, "gns3.tar", f"ghcr.io/nekonic/fsl-gns3:{HEAD}"),
-        "wrong": saved(tmp_path, "platform.tar", f"ghcr.io/nekonic/fsl-platform:{HEAD}",
-                       "ghcr.io/nekonic/fsl-gns3:dev"),
-        "two": saved(tmp_path, "both.tar", f"ghcr.io/nekonic/fsl-gns3:{HEAD}",
-                     f"ghcr.io/nekonic/fsl-gns3:{BASE}"),
+        "tarball": saved(tmp_path, "gns3.tar", f"ghcr.io/nekonic/cr-gns3:{HEAD}"),
+        "wrong": saved(tmp_path, "platform.tar", f"ghcr.io/nekonic/cr-platform:{HEAD}",
+                       "ghcr.io/nekonic/cr-gns3:dev"),
+        "two": saved(tmp_path, "both.tar", f"ghcr.io/nekonic/cr-gns3:{HEAD}",
+                     f"ghcr.io/nekonic/cr-gns3:{BASE}"),
         "unreadable": tmp_path / "plain.tar",
     }
     paths["unreadable"].write_text("not a tar")
@@ -444,7 +444,7 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
     store.write_bytes(b"")
     key = tmp_path / "range-key"
     key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
-    bundle = tmp_path / f"fsl-{HEAD}.bundle"
+    bundle = tmp_path / f"cr-{HEAD}.bundle"
     built = "3" * 40
     sideload = module.Sideload(HEAD, bundle, {"gns3": module.Tarball(tmp_path / "gns3.tar", built)})
     platform = NewPlatform()
@@ -454,22 +454,22 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
     ran = platform.ran
     checkout = next(i for i, command in enumerate(ran) if f"checkout -q --detach {HEAD}" in command)
     assert f"fetch -q /tmp/{bundle.name} HEAD" in ran[checkout]
-    [venv] = [command for command in ran if "fsl-venv-checkout" in command]
+    [venv] = [command for command in ran if "cr-venv-checkout" in command]
     assert ran.index(venv) > checkout and "--no-block" in venv and module.VENV_COMMAND in venv.replace("'", ""), (
         "a sideload checkout can change platform/requirements.txt, and the pip install must not hold up the hand-over"
     )
     [load] = [command for command in ran if "docker load" in command]
     assert f"/tmp/gns3.tar" in load
-    assert (f"docker tag ghcr.io/nekonic/fsl-gns3:{built} ghcr.io/nekonic/fsl-gns3:"
-            "$(sed -n 's/^FSL_IMAGE_TAG=//p' /opt/fsl/.env)") in load
+    assert (f"docker tag ghcr.io/nekonic/cr-gns3:{built} ghcr.io/nekonic/cr-gns3:"
+            "$(sed -n 's/^CR_IMAGE_TAG=//p' /opt/cr/.env)") in load
     restore = next(i for i, command in enumerate(ran) if "docker run" in command)
     assert checkout < ran.index(load) < restore
-    assert ran[-1] == "cd /opt/fsl && sudo docker compose -f /opt/fsl/compose.yaml up -d --force-recreate", (
+    assert ran[-1] == "cd /opt/cr && sudo docker compose -f /opt/cr/compose.yaml up -d --force-recreate", (
         "HEAD's compose file may add services, so every service starts, not only the platform; and a file "
         "bind-mounted into a running container keeps the cloned commit's copy after the checkout, so the "
         "collector ran the old filebeat.yml until each service was recreated"
     )
-    assert platform.settings_fed() == b"FSL_OPENSTACK_PASSWORD=secret\nFSL_SIDELOADED=gns3\n", (
+    assert platform.settings_fed() == b"CR_OPENSTACK_PASSWORD=secret\nCR_SIDELOADED=gns3\n", (
         "the platform ships a sideloaded wargame image to the wargame host's builder instead of GHCR's copy "
         "at the same tag, so it has to know which images were sideloaded"
     )
@@ -485,7 +485,7 @@ def test_without_a_sideload_the_rebuild_pulls_everything_and_restarts_only_the_p
 
     assert not [command for command in platform.ran if "docker load" in command or "git " in command]
     assert platform.ran[-1].endswith("up -d platform")
-    assert platform.settings_fed() == b"FSL_OPENSTACK_PASSWORD=secret\n"
+    assert platform.settings_fed() == b"CR_OPENSTACK_PASSWORD=secret\n"
 
 
 class Probed:
@@ -503,6 +503,14 @@ def test_a_vm_that_answers_with_nothing_holds_no_store_and_one_that_says_stored_
 
     assert module.holds_store(Probed(0, b"")) is False
     assert module.holds_store(Probed(0, b"stored\n")) is True
+
+
+def test_a_vm_still_holding_the_store_under_the_old_names_is_never_taken_to_hold_nothing():
+    module = rebuild()
+
+    assert "fsl_platformdata" in module.STORE_PROBE
+    with pytest.raises(module.Refused, match="before the rename"):
+        module.holds_store(Probed(module.LEGACY_HELD))
 
 
 @pytest.mark.parametrize("code, said", [(255, "Permission denied"), (3, "")])
@@ -577,12 +585,12 @@ def test_a_vm_whose_first_boot_did_not_finish_stops_the_hand_over_and_says_how_t
     assert len(platform.ran) == 1
 
 
-HANDED_OVER = "FSL_OPENSTACK_USER=fsl\nFSL_OPENSTACK_PASSWORD=old\nFSL_SIDELOADED=board,platform\nFSL_OPENSTACK_PLATFORM=srv\n"
+HANDED_OVER = "CR_OPENSTACK_USER=cr\nCR_OPENSTACK_PASSWORD=old\nCR_SIDELOADED=board,platform\nCR_OPENSTACK_PLATFORM=srv\n"
 
 
 def rewritten_settings(monkeypatch, tmp_path, sideload):
     module = rebuild()
-    checkout = tmp_path / "fsl"
+    checkout = tmp_path / "cr"
     checkout.mkdir()
     settings = checkout / "openstack.env"
     settings.write_text(HANDED_OVER)
@@ -603,10 +611,10 @@ def test_a_second_hand_over_leaves_one_password_line_and_keeps_every_line_it_doe
     _, settings = rewritten_settings(monkeypatch, tmp_path, None)
 
     assert settings == (
-        "FSL_OPENSTACK_USER=fsl\nFSL_SIDELOADED=board,platform\nFSL_OPENSTACK_PLATFORM=srv\n"
-        "FSL_OPENSTACK_PASSWORD=secret\n"
+        "CR_OPENSTACK_USER=cr\nCR_SIDELOADED=board,platform\nCR_OPENSTACK_PLATFORM=srv\n"
+        "CR_OPENSTACK_PASSWORD=secret\n"
     ), (
-        "plain up redoes the hand-over on a VM that was sideloaded; dropping FSL_SIDELOADED made the "
+        "plain up redoes the hand-over on a VM that was sideloaded; dropping CR_SIDELOADED made the "
         "platform pull GHCR's wargame images over the sideloaded ones and rebuild the wargame host"
     )
 
@@ -619,8 +627,8 @@ def test_a_sideloading_hand_over_rewrites_the_sideloaded_line_too(monkeypatch, t
     _, settings = rewritten_settings(monkeypatch, tmp_path, sideload)
 
     assert settings == (
-        "FSL_OPENSTACK_USER=fsl\nFSL_OPENSTACK_PLATFORM=srv\n"
-        "FSL_OPENSTACK_PASSWORD=secret\nFSL_SIDELOADED=gns3\n"
+        "CR_OPENSTACK_USER=cr\nCR_OPENSTACK_PLATFORM=srv\n"
+        "CR_OPENSTACK_PASSWORD=secret\nCR_SIDELOADED=gns3\n"
     )
 
 
@@ -633,7 +641,7 @@ def test_the_range_key_is_written_into_a_platform_container_that_is_started_firs
     module.hand_over(platform, "secret", key, None)
 
     started = next(i for i, command in enumerate(platform.ran) if "up -d platform >/dev/null" in command)
-    written = next(i for i, command in enumerate(platform.ran) if "docker exec -i -u fsl fsl-platform" in command)
+    written = next(i for i, command in enumerate(platform.ran) if "docker exec -i -u cr cr-platform" in command)
     assert started < written, (
         "a redone hand-over found the platform container stopped and docker exec refused the key "
         "with 'container ... is not running'"
@@ -655,7 +663,7 @@ def test_a_platform_container_that_will_not_start_stops_the_hand_over_before_any
     key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
     platform = Stopped()
 
-    with pytest.raises(module.Refused, match=r"fsl-platform container on ubuntu@203.0.113.7 is not running.*dependency failed"):
+    with pytest.raises(module.Refused, match=r"cr-platform container on ubuntu@203.0.113.7 is not running.*dependency failed"):
         module.hand_over(platform, "secret", key, None)
     assert not [command for command in platform.ran if "docker exec" in command or "openstack.env" in command]
 
@@ -693,7 +701,7 @@ def test_a_hand_over_that_cannot_be_checked_is_never_redone(code, said):
 
 def test_the_hand_over_check_reads_a_missing_settings_file_as_not_done(monkeypatch, tmp_path):
     module = rebuild()
-    checkout = tmp_path / "fsl"
+    checkout = tmp_path / "cr"
     checkout.mkdir()
     monkeypatch.setattr(module, "CHECKOUT", str(checkout))
     bin_dir = tmp_path / "bin"
@@ -709,9 +717,9 @@ def test_the_hand_over_check_reads_a_missing_settings_file_as_not_done(monkeypat
                                   capture_output=True)
 
     assert module.hand_over_done(Shell()) is False, "cloud-init has not moved openstack.env into place yet"
-    (checkout / "openstack.env").write_text("FSL_OPENSTACK_USER=fsl\n")
+    (checkout / "openstack.env").write_text("CR_OPENSTACK_USER=cr\n")
     assert module.hand_over_done(Shell()) is False
-    (checkout / "openstack.env").write_text("FSL_OPENSTACK_USER=fsl\nFSL_OPENSTACK_PASSWORD=secret\n")
+    (checkout / "openstack.env").write_text("CR_OPENSTACK_USER=cr\nCR_OPENSTACK_PASSWORD=secret\n")
     assert module.hand_over_done(Shell()) is True
 
 

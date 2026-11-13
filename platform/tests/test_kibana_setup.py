@@ -1,5 +1,6 @@
 import json
 import pathlib
+import re
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
@@ -70,7 +71,7 @@ def test_the_saved_objects_parse_and_hang_off_the_one_data_view():
 
 
 def test_no_saved_object_id_names_the_platform():
-    assert not [item["id"] for item in saved_objects() if "fsl" in item["id"]], (
+    assert not [item["id"] for item in saved_objects() if re.search(r"\bcr[-_.]", item["id"])], (
         "a lookup in the learner's space prints the ids"
     )
 
@@ -118,7 +119,7 @@ def test_the_discover_link_opens_the_session_view_inside_its_own_space():
     assert "_index" not in closed and "logs'" not in closed, "no link reaches the shared view or another index"
 
 
-SENSORS = {"fsl-edge": "firewall", "fsl-wargame-host": "board.com"}
+SENSORS = {"cr-edge": "firewall", "cr-wargame-host": "board.com"}
 
 
 def a_session_view(pattern="logs-2-*", sensors=SENSORS):
@@ -141,7 +142,7 @@ def test_the_session_data_view_shows_its_name_not_its_pattern_and_hides_what_lea
     assert {"src_ip", "dest_ip", "alert.signature", "alert.signature_id"} <= hidden, (
         "the Suricata names for what the data view already shows as source_ip, destination, rule_id and rule"
     )
-    assert not any("fsl" in entry.lower() or "slot" in entry.lower() for entry in hidden), (
+    assert not any(re.search(r"\bcr[-_.]", entry.lower()) or "slot" in entry.lower() for entry in hidden), (
         "Inspect prints the source filters, so none names the platform"
     )
 
@@ -166,7 +167,7 @@ def test_a_sensor_is_found_by_its_host_name_with_or_without_the_first_part_and_t
 
     assert observer.index("shown.containsKey(host)") < observer.index("shown.containsKey(rest)")
     assert "host.substring(0, dash)" in observer and "host.indexOf('.')" in observer, (
-        "edge, edge-2.localdomain and fsl-wargame-host-2 all reach their map name"
+        "edge, edge-2.localdomain and cr-wargame-host-2 all reach their map name"
     )
 
 
@@ -174,12 +175,12 @@ def test_the_operator_objects_carry_no_platform_name_and_hide_the_same_fields_as
     found = saved_objects()
     view = next(item for item in found if item["type"] == "index-pattern")
 
-    assert not any("fsl" in item["attributes"].get("title", "").lower() for item in found)
+    assert not any(re.search(r"\bcr[-_.]", item["attributes"].get("title", "").lower()) for item in found)
     assert json.loads(view["attributes"]["sourceFilters"]) == json.loads(a_session_view()["attributes"]["sourceFilters"])
 
 
 def test_one_sensor_names_the_events_that_carry_no_sensor_host():
-    single = kibana.sensor_script({"fsl-suricata": "waf"}, "waf")
+    single = kibana.sensor_script({"cr-suricata": "waf"}, "waf")
     several = kibana.sensor_script(SENSORS, "waf")
 
     assert "host == '' ? \"waf\"" in single, "docker's one Suricata writes a file, not syslog, so no host is named"
@@ -357,10 +358,10 @@ def test_nothing_a_learner_can_open_in_kibana_names_the_platform():
     view = a_session_view()
     visible = json.dumps(view["attributes"]).lower() + kibana.SESSION_VIEW_NAME.lower()
 
-    assert "fsl" not in visible and "slot" not in visible, (
+    assert not re.search(r"\bcr[-_.]", visible) and "slot" not in visible, (
         "the JSON tab, Inspect and the data view page print the index, the field names, the source filters and the scripts"
     )
-    assert "fsl" not in json.dumps(kibana.session_search(view)).lower()
+    assert not re.search(r"\bcr[-_.]", json.dumps(kibana.session_search(view)).lower())
     assert kibana.SPACE_NAME == "SOC" and kibana.session_view_id("logs-2-*") == "soc-logs-2"
 
 

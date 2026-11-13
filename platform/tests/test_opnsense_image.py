@@ -16,20 +16,20 @@ from range import cloud, declared, images, openstack, opnsense
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OS = declared.read()
-EDGE = OS.hosts["fsl-edge"]
+EDGE = OS.hosts["cr-edge"]
 RELEASE = cloud.read(cloud.EXAMPLE).opnsense
-KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlatformKey fsl-platform"
+KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlatformKey cr-platform"
 BUILD = (ROOT / "deploy/opnsense/build.sh").read_text()
 SPEC = openstack.Cloud(
     keystone="http://keystone:5000", neutron="http://neutron:9696",
-    nova="http://nova:8774/v2.1", glance="http://glance:9292", project="fsl",
-    user="fsl", ssh_user="ubuntu", ssh_key="/keys/fsl",
+    nova="http://nova:8774/v2.1", glance="http://glance:9292", project="cr",
+    user="cr", ssh_user="ubuntu", ssh_key="/keys/cr",
 )
 
 
 def edge_bundle(release=RELEASE, mtu=1450, key=KEY):
     generated = opnsense.image_bundle((ROOT / opnsense.CONFIG).read_text(), release, mtu, key)
-    return images.bundle(ROOT, "fsl-edge", EDGE.setup, EDGE.files, generated=generated,
+    return images.bundle(ROOT, "cr-edge", EDGE.setup, EDGE.files, generated=generated,
                          image=release.image, uploads=True)
 
 
@@ -101,7 +101,7 @@ def test_the_builder_gets_no_credential_and_serves_its_disk_with_its_sha256():
     assert [entry["path"] for entry in config["write_files"]] == [f"{images.WORKDIR}/image.tar.gz"]
     [[_, _, script]] = config["runcmd"]
     assert f"sha256sum {images.SERVED}/{images.DISK}" in script
-    assert f"systemd-run --unit=fsl-serve /usr/bin/python3 -m http.server {images.SERVE_PORT}" in script
+    assert f"systemd-run --unit=cr-serve /usr/bin/python3 -m http.server {images.SERVE_PORT}" in script
     assert f"{images.READY} {bundle.digest} sha256=$sha" in script
     assert script.index("http.server") < script.index(images.READY), (
         "the ready line is the platform's cue to pull, so the server must already run")
@@ -109,7 +109,7 @@ def test_the_builder_gets_no_credential_and_serves_its_disk_with_its_sha256():
 
 def importer():
     path = ROOT / "deploy/opnsense/importer.py"
-    spec = importlib.util.spec_from_file_location("fsl_importer", path)
+    spec = importlib.util.spec_from_file_location("cr_importer", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -123,7 +123,7 @@ def test_the_importer_answers_each_prompt_of_the_opnsense_console_in_turn(reques
     ours.settimeout(1)
     printed = (b"Press any key to start the configuration importer: ...",
                b"Select device to import from (e.g. ada0) or leave blank to exit: ",
-               b"Restoring config.xml...done.\n", b"\nfsl-edge login: ")
+               b"Restoring config.xml...done.\n", b"\ncr-edge login: ")
     answers = []
 
     def console():
@@ -228,7 +228,7 @@ class Glance:
             return {"servers": self.servers}
         if verb == "POST" and path == "v2.1/servers":
             made = dict(body["server"], id=f"srv-{next(self.ids)}", status="ACTIVE",
-                        created="2026-10-11T12:00:00Z", addresses={"fsl-platform": [
+                        created="2026-10-11T12:00:00Z", addresses={"cr-platform": [
                             {"addr": "127.0.0.1", "version": 4, "OS-EXT-IPS:type": "fixed"}]})
             self.servers.append(made)
             return {"server": {"id": made["id"]}}
@@ -246,7 +246,7 @@ class Glance:
 def edge_only():
     from range.declared import Declaration
 
-    return Declaration(roles={"edge": "fsl-edge"}, hosts={"fsl-edge": EDGE})
+    return Declaration(roles={"edge": "cr-edge"}, hosts={"cr-edge": EDGE})
 
 
 def adapter(glance):
@@ -293,7 +293,7 @@ def test_a_missing_edge_image_gets_a_builder_and_no_glance_record_yet():
     assert not [i for i in glance.images if i["name"] == "fsl-opnsense-26.7"]
     [server] = glance.servers
     assert server["imageRef"] == "img-ubuntu" and server["flavorRef"] == "f-2"
-    assert server["security_groups"] == [{"name": "fsl-build"}], (
+    assert server["security_groups"] == [{"name": "cr-build"}], (
         "the platform pulls the disk from the builder, which the default group would refuse")
     assert "token" not in base64.b64decode(server["user_data"]).decode().lower()
     assert [found.state for found in plan.images] == ["building"]
@@ -413,7 +413,7 @@ def test_an_old_edge_image_a_server_still_boots_from_is_kept_until_it_is_rebuilt
     glance = Glance()
     glance.images.append(
         {"id": "img-old", "name": "fsl-opnsense-26.1", "status": "active", images.BUNDLE: "0" * 16})
-    glance.servers.append({"id": "srv-edge", "name": "fsl-edge", "status": "ACTIVE",
+    glance.servers.append({"id": "srv-edge", "name": "cr-edge", "status": "ACTIVE",
                            "image": {"id": "img-old"}, "metadata": {}})
 
     assert not adapter(glance).plan_images().leftovers

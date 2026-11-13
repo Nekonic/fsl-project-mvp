@@ -12,10 +12,10 @@ DOCKERFILE = ROOT / "platform/Dockerfile"
 ENTRYPOINT = ROOT / "platform/entrypoint.sh"
 
 def setting(name, **env):
-    given = {**os.environ, "DJANGO_SETTINGS_MODULE": "fsl.settings", **env}
+    given = {**os.environ, "DJANGO_SETTINGS_MODULE": "cr.settings", **env}
     done = subprocess.run(
         [sys.executable, "-c",
-         f"import fsl.settings as s; print(repr(s.{name}))"],
+         f"import cr.settings as s; print(repr(s.{name}))"],
         cwd=ROOT / "platform", capture_output=True, text=True,
         env={key: value for key, value in given.items() if value is not None},
     )
@@ -38,10 +38,10 @@ def test_unless_told_otherwise_it_answers_only_to_the_names_of_this_machine():
 
 def test_serving_without_a_secret_is_refused_when_debug_is_off():
     done = subprocess.run(
-        [sys.executable, "-c", "import fsl.wsgi"],
+        [sys.executable, "-c", "import cr.wsgi"],
         cwd=ROOT / "platform", capture_output=True, text=True,
         env={**os.environ, "DJANGO_DEBUG": "", "DJANGO_SECRET_KEY": "",
-             "DJANGO_SETTINGS_MODULE": "fsl.settings"},
+             "DJANGO_SETTINGS_MODULE": "cr.settings"},
     )
 
     assert done.returncode != 0, "it would have served with a shipped secret key"
@@ -50,10 +50,10 @@ def test_serving_without_a_secret_is_refused_when_debug_is_off():
 def test_the_platform_serves_as_a_non_root_user():
     steps = ENTRYPOINT.read_text()
 
-    assert "gosu fsl" in steps and "waitress-serve" in steps, steps
-    assert steps.index("gosu fsl") < steps.index("waitress-serve"), (
+    assert "gosu cr" in steps and "waitress-serve" in steps, steps
+    assert steps.index("gosu cr") < steps.index("waitress-serve"), (
         "the platform mounts the docker socket; serving as root makes a "
-        "container escape a root escape. It drops to fsl before waitress"
+        "container escape a root escape. It drops to cr before waitress"
     )
     assert "USER root" not in DOCKERFILE.read_text()
 
@@ -64,9 +64,9 @@ def test_socket_access_is_granted_by_a_group_resolved_at_start_that_may_already_
         "the socket's group differs per host; the platform reads it at start "
         "rather than being handed it, so a plain `docker compose up` works"
     )
-    assert "usermod" in steps and "gosu fsl" in steps, (
+    assert "usermod" in steps and "gosu cr" in steps, (
         "granting the socket by running as root makes a container escape a "
-        "root escape; fsl joins the socket's group instead"
+        "root escape; cr joins the socket's group instead"
     )
     assert "getent group" in steps, (
         "groupadd fails when the gid is already a group, and on some hosts the "

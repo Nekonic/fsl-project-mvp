@@ -125,9 +125,9 @@ def options(cloud, **overrides):
         "keystone": f"http://127.0.0.1:{cloud.port}",
         "user": "range-operator",
         "password": "secret",
-        "project": "fsl",
+        "project": "cr",
         "ssh_user": "debian",
-        "ssh_key": "/keys/fsl",
+        "ssh_key": "/keys/cr",
         "region": "RegionOne",
         "interface": "public",
         "domain": "default",
@@ -170,8 +170,8 @@ def test_services_the_cloud_moved_are_found_again(cloud, left_behind):
 
 
 def test_the_console_draws_an_openstack_range(cloud, client, settings):
-    settings.FSL_SUBSTRATE = "range.openstack.connect"
-    settings.FSL_SUBSTRATE_OPTIONS = options(cloud)
+    settings.CR_SUBSTRATE = "range.openstack.connect"
+    settings.CR_SUBSTRATE_OPTIONS = options(cloud)
 
     response = client.get("/api/origins/")
 
@@ -184,14 +184,14 @@ def test_the_console_draws_an_openstack_range(cloud, client, settings):
 def test_settings_hand_the_openstack_substrate_its_credentials_from_the_environment():
     read = subprocess.run(
         [sys.executable, "-c",
-         "import json, fsl.settings as s; o = s.FSL_SUBSTRATE_OPTIONS; "
+         "import json, cr.settings as s; o = s.CR_SUBSTRATE_OPTIONS; "
          "print(json.dumps(sorted(o))); print(o['keystone'])"],
         cwd=ROOT / "platform", capture_output=True, text=True,
         env={
             **os.environ,
-            "DJANGO_SETTINGS_MODULE": "fsl.settings",
-            "FSL_SUBSTRATE": "range.openstack.connect",
-            "FSL_OPENSTACK_KEYSTONE": "https://keystone.example:5000",
+            "DJANGO_SETTINGS_MODULE": "cr.settings",
+            "CR_SUBSTRATE": "range.openstack.connect",
+            "CR_OPENSTACK_KEYSTONE": "https://keystone.example:5000",
         },
     )
     assert read.returncode == 0, read.stderr[-300:]

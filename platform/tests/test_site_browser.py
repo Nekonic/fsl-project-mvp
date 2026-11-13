@@ -100,7 +100,7 @@ def test_a_board_link_shows_its_real_address_on_hover_and_the_click_goes_through
     assert result["late"] == "http://board.com/late/", "a link that appeared after the page loaded shows the same on hover"
     assert (result["plain"], result["navigated"]) == (True, "/site/7/board.com/posts/3/")
     assert result["outside"] is False and result["modified"] is False and result["hash"] is False
-    assert "fsl" not in injected.lower(), "the page source carries no platform name"
+    assert not re.search(r"\bcr[-_.]", injected), "the page source carries no platform name"
 
 def test_the_console_s_own_port_does_not_serve_the_proxy():
     console = NGINX[:NGINX.index("listen 8002;")]
@@ -370,16 +370,16 @@ def test_on_openstack_the_pane_leaves_kali_from_a_customers_address_and_goes_thr
     from range.ports import Node, Segment
 
     settings.RANGE = declared.read()
-    settings.ATTACKER_SOURCE_CONTAINER = "fsl-kali"
-    settings.ATTACKER_CONTAINER = "fsl-kali"
+    settings.ATTACKER_SOURCE_CONTAINER = "cr-kali"
+    settings.ATTACKER_CONTAINER = "cr-kali"
     settings.ATTACKER_TARGET_URL = "http://board.com"
     kr = Segment(id="kr", name="Internet", origin="South Korea", subnet="175.192.0.0/24",
-                 nodes=(Node("fsl-edge", "175.192.0.1"), Node("fsl-kali", "175.192.0.10"),
-                        Node("fsl-kali", "175.192.0.11")))
+                 nodes=(Node("cr-edge", "175.192.0.1"), Node("cr-kali", "175.192.0.10"),
+                        Node("cr-kali", "175.192.0.11")))
     ru = Segment(id="ru", name="Internet", origin="Russia", subnet="5.188.10.0/24",
-                 nodes=(Node("fsl-edge", "5.188.10.1"), Node("fsl-kali", "5.188.10.10")))
+                 nodes=(Node("cr-edge", "5.188.10.1"), Node("cr-kali", "5.188.10.10")))
     estate = Segment(id="estate", name="Application estate", subnet="10.30.0.0/24",
-                     nodes=(Node("fsl-edge", "10.30.0.1"), Node("fsl-waf", "10.30.0.63")))
+                     nodes=(Node("cr-edge", "10.30.0.1"), Node("cr-waf", "10.30.0.63")))
     session = Session.objects.create(scenario="board", baseline=[], slot=2)
     cloud = Range((kr, ru, estate))
 

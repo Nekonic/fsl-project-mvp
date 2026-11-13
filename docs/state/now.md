@@ -18,6 +18,10 @@ Internet.
   takes only a tagged best version after gate 2 (CLAUDE.md, "How work runs
   here"). The platform VM does not yet run dev from GitHub and GHCR; Next 1
   does that.
+- 2026-11-13: the code's names moved from `fsl` to `cr` (`docs/DECISIONS.md`,
+  2026-11-13); the live cloud below still runs the `fsl` names until the
+  cut-over in `docs/OPENSTACK.md` §5.4 (old checkout's `bin/cloud down`, then
+  `bin/cloud up` with `platform.stack: cr-platform`).
 - 2026-11-12: the user had shut down all nine fsl VMs. They were started,
   session 1443 (left open since 2026-10-28) was closed after a store backup,
   and both slots were reset (`slot/rebuild`, then `configure`). The first

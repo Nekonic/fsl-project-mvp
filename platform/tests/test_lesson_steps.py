@@ -81,7 +81,7 @@ def test_a_step_s_command_arrives_once_the_step_is_reached(client):
     reached = step(client, session, "excluded", body={"state": "reached"}).json()
     shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
 
-    assert command == f"grep -n ruleRemove {settings.FSL_WAF.rules}"
+    assert command == f"grep -n ruleRemove {settings.CR_WAF.rules}"
     assert reached["progress"]["excluded"]["command"] == command
     assert shown["excluded"]["command"] == command
     assert "command" not in shown["dump"] and "command" not in reached["progress"].get("dump", {})
@@ -339,7 +339,7 @@ def test_the_slot_s_interfaces_read_for_the_map_answer_the_session_s_address_que
     class Slot:
         def interfaces(self, hosts):
             reads.append(hosts)
-            return [Interface("fsl-wargame-host", "ens3", "10.30.0.48/24", "estate")] if len(reads) > 1 else []
+            return [Interface("cr-wargame-host", "ens3", "10.30.0.48/24", "estate")] if len(reads) > 1 else []
 
     with patch("api.views._range", lambda session=None, adapter=None: Slot()):
         unreachable = views._map_found(session)

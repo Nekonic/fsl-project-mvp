@@ -12,7 +12,7 @@ filebeat.inputs:
           source: >
             function process(event) {
               var slot = /^[^.]*-(\d+)(\.|$)/.exec(event.Get("log.syslog.hostname") || "");
-              event.Put("fsl_slot", slot ? slot[1] : "1");
+              event.Put("cr_slot", slot ? slot[1] : "1");
             }
       - drop_fields:
           fields: [log.source.address]
@@ -66,10 +66,10 @@ setup.ilm.enabled: false
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
-  index: "logs-${FSL_SESSION:shared}-sensors"
+  index: "logs-${CR_SESSION:shared}-sensors"
   indices:
-    - index: "logs-%{[fsl_slot]}-sensors"
-      when.has_fields: ["fsl_slot"]
+    - index: "logs-%{[cr_slot]}-sensors"
+      when.has_fields: ["cr_slot"]
   pipeline: geoip
 
 logging.level: warning

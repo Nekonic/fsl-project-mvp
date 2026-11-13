@@ -27,7 +27,7 @@ def test_the_cli_fires_from_the_slot_the_session_was_given(monkeypatch, db):
 
     def run(cases, platform_url, launch, tool_target, scenario, announce):
         announce(opened.pk)
-        launch("fsl-kali", ["curl"])
+        launch("cr-kali", ["curl"])
         return opened.pk
 
     monkeypatch.setattr(cli, "substrate", Slotted)

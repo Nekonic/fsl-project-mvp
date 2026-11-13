@@ -448,7 +448,7 @@ window.addEventListener("message", (event) => {
 });
 
 (async () => {
-  const auditor = __FSL_AUDITOR__;
+  const auditor = __CR_AUDITOR__;
   const said = document.getElementById("said");
   const port = parseInt(location.port, 10) || (location.protocol === "https:" ? 443 : 80);
   const answer = await fetch("/v3/access/users/authenticate", {

@@ -210,7 +210,7 @@ LOCATION
 browser.serve((request) => {
   if (request.route === "/api/range/ready/") {
     return {body: {ready: false, max_sessions: 2, slot: {number: 1, session: null, phase: "READY",
-      blocked: ["image fsl-waf is not ready", "the fabric has no network for fsl-kali"]}}};
+      blocked: ["image cr-waf is not ready", "the fabric has no network for cr-kali"]}}};
   }
   return {status: 404, body: {detail: "not served"}};
 });
@@ -226,7 +226,7 @@ def test_the_home_page_gives_the_learner_one_line_and_the_operator_the_raw_reaso
 
     assert seen["errors"] == []
     assert worded("range.blocked") in seen["result"]
-    assert ("fsl-waf" in seen["result"]) is operator, seen["result"]
+    assert ("cr-waf" in seen["result"]) is operator, seen["result"]
 
 REFUSED = """
 const range = {phase: "READY", open: []};

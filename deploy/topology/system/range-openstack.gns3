@@ -3,7 +3,7 @@
     "auto_open": true,
     "drawing_grid_size": 25,
     "grid_size": 75,
-    "name": "fsl-system-openstack",
+    "name": "cr-system-openstack",
     "project_id": "69d7a701-ea59-5b2f-bd63-f1720d4e7fc4",
     "revision": 9,
     "scene_height": 1200,
@@ -19,7 +19,7 @@
                 "drawing_id": "3a179981-7b6a-514a-9df9-f237c7a65db2",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"708\" height=\"31\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#000000\" fill-opacity=\"1.0\">fsl range on OpenStack: one slot; VMs, and the wargame host's containers</text></svg>",
+                "svg": "<svg width=\"708\" height=\"31\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#000000\" fill-opacity=\"1.0\">cyber range on OpenStack: one slot; VMs, and the wargame host's containers</text></svg>",
                 "x": -780,
                 "y": -390,
                 "z": 2
@@ -73,7 +73,7 @@
                 "drawing_id": "b9cc86a4-ad86-5dc8-8f14-d09cb811c37b",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"435\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">inside fsl-wargame-host: docker compose projects board and corp</text></svg>",
+                "svg": "<svg width=\"435\" height=\"21\"><text font-family=\"Noto Sans\" font-size=\"9.0\" fill=\"#4a6fa5\" fill-opacity=\"1.0\">inside cr-wargame-host: docker compose projects board and corp</text></svg>",
                 "x": 520,
                 "y": 245,
                 "z": 2
@@ -696,11 +696,11 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-kali",
+                    "text": "cr-kali",
                     "x": null,
                     "y": -25
                 },
-                "name": "fsl-kali",
+                "name": "cr-kali",
                 "node_id": "a31315c8-e788-556c-9e78-83b7e39bf13d",
                 "node_type": "qemu",
                 "port_name_format": "eth{0}",
@@ -721,11 +721,11 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-edge",
+                    "text": "cr-edge",
                     "x": null,
                     "y": -25
                 },
-                "name": "fsl-edge",
+                "name": "cr-edge",
                 "node_id": "c54c8b09-160b-5f6d-9e1b-9faba3556fd2",
                 "node_type": "qemu",
                 "port_name_format": "vtnet{0}",
@@ -746,11 +746,11 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-waf",
+                    "text": "cr-waf",
                     "x": null,
                     "y": -25
                 },
-                "name": "fsl-waf",
+                "name": "cr-waf",
                 "node_id": "18ddf19d-73d0-5e17-8313-fbb1c3f4c40e",
                 "node_type": "qemu",
                 "port_name_format": "eth{0}",
@@ -771,11 +771,11 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-wargame-host",
+                    "text": "cr-wargame-host",
                     "x": null,
                     "y": -25
                 },
-                "name": "fsl-wargame-host",
+                "name": "cr-wargame-host",
                 "node_id": "57268371-1d0f-5f7d-8dd4-f137e77f2b66",
                 "node_type": "qemu",
                 "port_name_format": "eth{0}",
@@ -796,11 +796,11 @@
                 "label": {
                     "rotation": 0,
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
-                    "text": "fsl-platform",
+                    "text": "cr-platform",
                     "x": null,
                     "y": -25
                 },
-                "name": "fsl-platform",
+                "name": "cr-platform",
                 "node_id": "cf8edd64-e24c-5e5b-a08f-24ada70007b4",
                 "node_type": "qemu",
                 "port_name_format": "eth{0}",
@@ -971,7 +971,7 @@
                 "port_name_format": "eth{0}",
                 "properties": {
                     "adapters": 1,
-                    "image": "ghcr.io/nekonic/fsl-board:dev"
+                    "image": "ghcr.io/nekonic/cr-board:dev"
                 },
                 "symbol": ":/symbols/classic/server.svg",
                 "x": 760,
@@ -1017,7 +1017,7 @@
                 "port_name_format": "eth{0}",
                 "properties": {
                     "adapters": 1,
-                    "image": "ghcr.io/nekonic/fsl-corp:dev"
+                    "image": "ghcr.io/nekonic/cr-corp:dev"
                 },
                 "symbol": ":/symbols/classic/server.svg",
                 "x": 760,
@@ -1040,7 +1040,7 @@
                 "port_name_format": "eth{0}",
                 "properties": {
                     "adapters": 1,
-                    "image": "ghcr.io/nekonic/fsl-corp-db:dev"
+                    "image": "ghcr.io/nekonic/cr-corp-db:dev"
                 },
                 "symbol": ":/symbols/classic/server.svg",
                 "x": 760,

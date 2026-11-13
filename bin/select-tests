@@ -28,7 +28,7 @@ WHOLE_UNIT_SUITE = (
     "platform/requirements.txt",
     "platform/tests/__init__.py",
     "platform/tests/conftest.py",
-    "platform/fsl/settings.py",
+    "platform/cr/settings.py",
 )
 RANGE_FACING = (
     "wargames/", "redteam/", "deploy/", "platform/", "test/",
@@ -36,7 +36,7 @@ RANGE_FACING = (
 )
 NOT_RANGE_FACING = ("platform/tests/", "platform/console/", "test/durations.json")
 ACCEPTANCE_CONFTEST = "test/conftest.py"
-URLCONF = "platform/fsl/urls.py"
+URLCONF = "platform/cr/urls.py"
 DJANGO_CLIENT = {"client", "Client"}
 GLOB_CALLS = {"glob", "rglob", "iglob"}
 RUNS = {"imports", "loads", "calls the API", "is collected with"}

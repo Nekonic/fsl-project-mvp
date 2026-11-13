@@ -77,9 +77,9 @@ def test_what_verify_runs_leaves_the_operators_and_every_open_session(
 def test_verify_prunes_only_the_sessions_its_run_listed():
     verify = (ROOT / "bin/verify").read_text()
 
-    listed = verify.find("FSL_ACCEPTANCE_SESSIONS")
+    listed = verify.find("CR_ACCEPTANCE_SESSIONS")
     acceptance = verify.find("bin/acceptance")
-    pruned = verify.find('./bin/prune --ids "$FSL_ACCEPTANCE_SESSIONS" --apply')
+    pruned = verify.find('./bin/prune --ids "$CR_ACCEPTANCE_SESSIONS" --apply')
 
     assert "--keep" not in verify and "--after" not in verify and -1 < listed < acceptance < pruned, (
         "verify pruned by count, and then by 'newer than the run', and neither "

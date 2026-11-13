@@ -23,7 +23,7 @@ def recorded(*sent):
     Detection.objects.bulk_create(
         Detection(
             session=session, detection_id=f"d{index}", source=source,
-            signature="FSL SQLi attempt - URI", severity=2,
+            signature="SQLi attempt - URI", severity=2,
             timestamp=started + timedelta(seconds=index), src_ip=src_ip,
             raw={"src_ip": src_ip, "src_geo": geo},
         )

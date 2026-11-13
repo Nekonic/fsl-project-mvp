@@ -42,7 +42,7 @@ def _refused(argv, stdin=None, timeout=60.0):
 
 
 def _down(argv, stdin=None, timeout=60.0):
-    raise RangeUnavailable("fsl-wg-corp-db never reported")
+    raise RangeUnavailable("cr-wg-corp-db never reported")
 
 
 @pytest.mark.parametrize("run", [_refused, _down], ids=["exits-nonzero", "range-down"])

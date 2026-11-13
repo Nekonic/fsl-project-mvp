@@ -164,7 +164,7 @@ def detection_window(session, *, alerted_by, customer_alert=False):
     sent = customer(session, start + timedelta(seconds=20))
     if customer_alert:
         alert(session, sent.marker, source="suricata", rule="9000102")
-    signature = "FSL SQLi attempt - sort is not a column name"
+    signature = "SQLi attempt - sort is not a column name"
     session.detections.filter(source="suricata").update(signature=signature)
     with Stack(patches), patch("api.scenario_run.customers.refresh", lambda session, adapter: None), \
             patch("api.views._snapshot_waf", lambda session, **taken: None):

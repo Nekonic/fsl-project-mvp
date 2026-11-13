@@ -15,7 +15,7 @@ class Recording:
 
     def runner(self, role):
         if self.fails:
-            raise RangeUnavailable("fsl-edge did not answer")
+            raise RangeUnavailable("cr-edge did not answer")
         return lambda *args, **kwargs: None
 
 

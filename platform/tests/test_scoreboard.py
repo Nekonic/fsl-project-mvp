@@ -74,16 +74,16 @@ from scoreboard import corroborated
 ANOMALY = "Inbound Anomaly Score Exceeded (Total Score: 5)"
 
 def test_a_case_that_declares_nothing_is_not_judged():
-    assert corroborated(None, ["FSL SQLi attempt - URI"]) is None
-    assert corroborated("", ["FSL SQLi attempt - URI"]) is None
+    assert corroborated(None, ["SQLi attempt - URI"]) is None
+    assert corroborated("", ["SQLi attempt - URI"]) is None
 
 def test_evidence_matching_the_mechanism_corroborates_whatever_its_case():
-    assert corroborated("SQL", ["FSL SQLi attempt - request body"]) is True
+    assert corroborated("SQL", ["SQLi attempt - request body"]) is True
     assert corroborated("SQL", ["SQL Injection Attack Detected via libinjection"]) is True
-    assert corroborated("TRAVERSAL", ["FSL path traversal attempt"]) is True
+    assert corroborated("TRAVERSAL", ["path traversal attempt"]) is True
 
 def test_an_alert_about_something_else_does_not_corroborate():
-    assert corroborated("traversal", ["FSL XSS attempt - script tag"]) is False
+    assert corroborated("traversal", ["XSS attempt - script tag"]) is False
 
 def test_a_generic_anomaly_alert_alone_does_not_corroborate():
     assert corroborated("SQL", [ANOMALY]) is False
@@ -119,7 +119,7 @@ def test_a_signature_that_also_fires_on_traffic_meant_to_pass_corroborates_nothi
 def test_a_case_with_one_discriminating_alert_among_noise_is_corroborated():
     assert corroborated(
         "SQL",
-        ["SQL XSS traversal Restricted File", "FSL SQLi attempt - URI"],
+        ["SQL XSS traversal Restricted File", "SQLi attempt - URI"],
         indiscriminate={"SQL XSS traversal Restricted File"},
     ) is True, (
         "one indiscriminate alert alongside a real one hid the real one"

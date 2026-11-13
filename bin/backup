@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BACKUPS = ROOT / "backups"
-PLATFORM_EXEC = "docker exec -i fsl-platform python -"
+PLATFORM_EXEC = "docker exec -i cr-platform python -"
 TIMEOUT = 600
 CHUNK = 1 << 20
 STAMPED = re.compile(r"db-\d{8}T\d{6}Z\.sqlite3")
@@ -37,7 +37,7 @@ from pathlib import Path
 """
 
 WRITE_THE_STORE = """
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "cr.settings")
 from django.conf import settings
 snapshot(settings.DATABASES["default"]["NAME"], sys.stdout.buffer)
 """
@@ -57,7 +57,7 @@ def snapshot(path, out):
 
 
 def fetch(out):
-    way_in = os.environ.get("FSL_PLATFORM_EXEC", "").strip() or PLATFORM_EXEC
+    way_in = os.environ.get("CR_PLATFORM_EXEC", "").strip() or PLATFORM_EXEC
     command = shlex.split(way_in)
     program = IMPORTS + inspect.getsource(snapshot) + WRITE_THE_STORE
     try:
@@ -66,7 +66,7 @@ def fetch(out):
         )
     except OSError as error:
         raise SystemExit(
-            f"backup: cannot run {command[0]!r}: {error.strerror}. FSL_PLATFORM_EXEC "
+            f"backup: cannot run {command[0]!r}: {error.strerror}. CR_PLATFORM_EXEC "
             f"is the command that runs python in the platform's environment "
             f"(default: {PLATFORM_EXEC})"
         )
@@ -167,7 +167,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Snapshot the platform's store into backups/ while it keeps "
                     "serving, compacted, then remove the older db-<UTC stamp>.sqlite3 "
-                    "files beyond --keep. FSL_PLATFORM_EXEC chooses how to reach the "
+                    "files beyond --keep. CR_PLATFORM_EXEC chooses how to reach the "
                     f"platform (default: {PLATFORM_EXEC}).",
     )
     parser.add_argument("--keep", type=int, default=1,

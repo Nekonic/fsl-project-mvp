@@ -3,7 +3,7 @@
   "processors": [
     {
       "remove": {
-        "field": "fsl_slot",
+        "field": "cr_slot",
         "ignore_missing": true
       }
     },

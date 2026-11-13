@@ -2,9 +2,9 @@ set -eu
 
 verb=$1
 wargame=$2
-kept="${FSL_PRISTINE:-/opt/fsl/pristine}/$wargame"
+kept="${CR_PRISTINE:-/opt/cr/pristine}/$wargame"
 
-compose() { docker compose -p "$wargame" -f "/opt/fsl/wargames/$wargame.yaml" "$@"; }
+compose() { docker compose -p "$wargame" -f "/opt/cr/wargames/$wargame.yaml" "$@"; }
 volumes() {
   docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Destination}} {{.Source}}{{println}}{{end}}{{end}}' "$1"
 }

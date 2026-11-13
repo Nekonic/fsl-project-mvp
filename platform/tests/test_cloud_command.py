@@ -11,13 +11,13 @@ COMMAND = ROOT / "bin/cloud"
 
 
 def command():
-    loader = SourceFileLoader("fsl_cloud_command", str(COMMAND))
-    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("fsl_cloud_command", loader))
+    loader = SourceFileLoader("cr_cloud_command", str(COMMAND))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("cr_cloud_command", loader))
     loader.exec_module(module)
     return module
 
 
-def image(state, host="fsl-edge", bundle="d1", detail=""):
+def image(state, host="cr-edge", bundle="d1", detail=""):
     return {"host": host, "bundle": bundle, "state": state, "image": "", "builder": "", "detail": detail}
 
 
@@ -105,7 +105,7 @@ def test_a_ready_image_whose_builder_is_still_there_is_asked_for_again():
 
 
 def test_a_drifted_fabric_stops_up_before_any_image_is_built():
-    platform = Platform(fabric={"drifted": ["keypair fsl-platform holds another public key"]})
+    platform = Platform(fabric={"drifted": ["keypair cr-platform holds another public key"]})
 
     with pytest.raises(SystemExit, match="another public key"):
         converge(platform)
@@ -113,14 +113,14 @@ def test_a_drifted_fabric_stops_up_before_any_image_is_built():
 
 
 def test_configure_is_retried_while_the_vms_ssh_is_not_up_yet_and_a_refusal_stops_up():
-    platform = Platform(configure=[(503, {"detail": "fsl-edge never reported the command finishing"}),
+    platform = Platform(configure=[(503, {"detail": "cr-edge never reported the command finishing"}),
                                    (200, {"configured": []})])
 
     converge(platform)
 
     assert platform.calls.count(("POST", "/configure/")) == 2
     with pytest.raises(SystemExit, match="did not take its configuration"):
-        converge(Platform(configure=[(409, {"detail": "fsl-edge did not take its configuration"})]))
+        converge(Platform(configure=[(409, {"detail": "cr-edge did not take its configuration"})]))
 
 
 class Cli:
@@ -132,66 +132,66 @@ class Cli:
     def __call__(self, argv, stdin=None, check=True):
         self.ran.append(argv)
         if argv[1:3] == ["network", "show"]:
-            return subprocess.CompletedProcess(argv, 0, stdout=b"fsl-platform\n")
+            return subprocess.CompletedProcess(argv, 0, stdout=b"cr-platform\n")
         said = self.answers.get(argv[2], b"")
         return subprocess.CompletedProcess(argv, 0 if said is not None else 1, stdout=said or b"")
 
 
-LEFT_BUILDER = (b'[{"ID": "srv-1", "Name": "fsl-build-fsl-edge", "Properties": {"fsl_image": "fsl-edge"},'
-                b' "Networks": {"fsl-platform": ["10.20.0.9"]}},'
-                b' {"ID": "srv-2", "Name": "fsl-build-mine", "Properties": {},'
-                b' "Networks": {"fsl-platform": ["10.20.0.8"]}},'
-                b' {"ID": "srv-3", "Name": "fsl-build-fsl-edge", "Properties": {"fsl_image": "fsl-edge"},'
+LEFT_BUILDER = (b'[{"ID": "srv-1", "Name": "cr-build-cr-edge", "Properties": {"cr_image": "cr-edge"},'
+                b' "Networks": {"cr-platform": ["10.20.0.9"]}},'
+                b' {"ID": "srv-2", "Name": "cr-build-mine", "Properties": {},'
+                b' "Networks": {"cr-platform": ["10.20.0.8"]}},'
+                b' {"ID": "srv-3", "Name": "cr-build-cr-edge", "Properties": {"cr_image": "cr-edge"},'
                 b' "Networks": {"other-platform": ["10.40.0.9"]}}]')
 
 
 def test_down_removes_the_slot_then_the_fabric_then_the_stack():
     platform, cli = Platform(), Cli()
 
-    command().take_down(platform, "fsl-platform", cli)
+    command().take_down(platform, "cr-platform", cli)
 
     assert platform.calls == [("DELETE", "/slot/"), ("DELETE", "/fabric/")]
-    assert cli.ran[-1] == ["openstack", "stack", "delete", "--yes", "--wait", "fsl-platform"]
+    assert cli.ran[-1] == ["openstack", "stack", "delete", "--yes", "--wait", "cr-platform"]
 
 
 def test_down_removes_builders_first_because_their_ports_hold_the_platform_network():
     cli = Cli(servers=LEFT_BUILDER)
 
-    command().take_down(Platform(), "fsl-platform", cli)
+    command().take_down(Platform(), "cr-platform", cli)
 
     assert cli.ran[-2:] == [["openstack", "server", "delete", "--wait", "srv-1"],
-                            ["openstack", "stack", "delete", "--yes", "--wait", "fsl-platform"]], (
-        "srv-2 is named like a builder but carries no fsl_image property, so it is not ours")
+                            ["openstack", "stack", "delete", "--yes", "--wait", "cr-platform"]], (
+        "srv-2 is named like a builder but carries no cr_image property, so it is not ours")
 
 
 def test_only_builders_on_this_stack_s_network_are_removed():
     cli = Cli(servers=LEFT_BUILDER)
 
-    assert command().rebuild.remove_builders("fsl-platform", cli) == ["srv-1"]
+    assert command().rebuild.remove_builders("cr-platform", cli) == ["srv-1"]
 
     assert ["openstack", "network", "show", "net-stack", "-f", "value", "-c", "name"] in cli.ran
-    assert ["openstack", "stack", "resource", "show", "fsl-platform", "network",
+    assert ["openstack", "stack", "resource", "show", "cr-platform", "network",
             "-f", "value", "-c", "physical_resource_id"] in cli.ran
 
 
 def test_a_stack_without_its_network_has_no_builders_to_remove():
     cli = Cli(servers=LEFT_BUILDER, network=None)
 
-    assert command().rebuild.remove_builders("fsl-platform", cli) == []
+    assert command().rebuild.remove_builders("cr-platform", cli) == []
     assert not [argv for argv in cli.ran if argv[1:3] in (["server", "list"], ["server", "delete"])]
 
 
 def test_a_failed_stack_has_no_working_platform_so_up_rebuilds_it():
     cli = Cli(status=b"CREATE_FAILED")
 
-    assert command().rebuild.working_address("fsl-platform", cli) is None
+    assert command().rebuild.working_address("cr-platform", cli) is None
     assert not [argv for argv in cli.ran if argv[2] == "output"]
 
 
 def test_a_failed_stack_is_taken_down_without_asking_its_platform(capsys):
     cli = Cli(servers=LEFT_BUILDER, status=b"DELETE_FAILED")
 
-    command().take_down_broken("fsl-platform", "is DELETE_FAILED and has no platform to ask", cli)
+    command().take_down_broken("cr-platform", "is DELETE_FAILED and has no platform to ask", cli)
 
     assert ["openstack", "server", "delete", "--wait", "srv-1"] in cli.ran
     assert cli.ran[-1][:3] == ["openstack", "stack", "delete"]
@@ -202,12 +202,12 @@ def test_a_working_stack_whose_address_cannot_be_read_is_not_taken_for_a_missing
     cli = Cli(address=None)
 
     with pytest.raises(SystemExit, match="CREATE_COMPLETE but its address output cannot be read"):
-        command().rebuild.working_address("fsl-platform", cli)
+        command().rebuild.working_address("cr-platform", cli)
 
 
 def test_a_stack_heat_is_still_working_on_is_left_alone():
     with pytest.raises(SystemExit, match="DELETE_IN_PROGRESS"):
-        command().rebuild.working_address("fsl-platform", Cli(status=b"DELETE_IN_PROGRESS"))
+        command().rebuild.working_address("cr-platform", Cli(status=b"DELETE_IN_PROGRESS"))
 
 
 def test_the_builder_marks_match_the_ones_the_platform_boots_with():
@@ -221,11 +221,11 @@ def test_down_stops_before_the_stack_if_the_range_will_not_come_down():
     class Refusing(Platform):
         def __call__(self, verb, path):
             self.calls.append((verb, path))
-            return 503, {"detail": "1 server port(s) still stand on fsl-mgmt"}
+            return 503, {"detail": "1 server port(s) still stand on cr-mgmt"}
 
     ran = []
     with pytest.raises(SystemExit, match="still stand"):
-        command().take_down(Refusing(), "fsl-platform", ran.append)
+        command().take_down(Refusing(), "cr-platform", ran.append)
     assert not ran
 
 
@@ -269,7 +269,7 @@ class StandingStack:
         rebuild = self.module.rebuild
         self.cli = Cli(servers=LEFT_BUILDER, status=status.encode())
         monkeypatch.setattr(rebuild, "load", lambda args: (
-            type("Cloud", (), {"stack": "fsl-platform", "operator_key_file": "~/key", "range_key": "~/range",
+            type("Cloud", (), {"stack": "cr-platform", "operator_key_file": "~/key", "range_key": "~/range",
                                "backups_keep": 1})(), {}))
         monkeypatch.setattr(rebuild, "run", self.cli)
         monkeypatch.setattr(rebuild, "stack_status", lambda stack: status)
@@ -310,7 +310,7 @@ def test_down_on_a_platform_whose_container_will_not_start_deletes_nothing(monke
     stack = StandingStack(monkeypatch, holds=True)
 
     def stuck(old):
-        raise SystemExit("the fsl-platform container on ubuntu@203.0.113.7 is not running and did not start")
+        raise SystemExit("the cr-platform container on ubuntu@203.0.113.7 is not running and did not start")
 
     monkeypatch.setattr(stack.module.rebuild, "start_platform", stuck)
     with pytest.raises(SystemExit, match="did not start"):
@@ -352,7 +352,7 @@ def test_up_on_a_standing_stack_finishes_its_hand_over_and_replace_makes_a_new_v
                         or "203.0.113.8")
     monkeypatch.setattr(module, "converge", lambda call: calls.append("converge"))
     monkeypatch.setattr(module.os, "environ", {})
-    cloud = type("Cloud", (), {"stack": "fsl-platform"})()
+    cloud = type("Cloud", (), {"stack": "cr-platform"})()
     monkeypatch.setattr(rebuild, "load", lambda args: (cloud, {}))
 
     module.up(module.arguments(["up"]))

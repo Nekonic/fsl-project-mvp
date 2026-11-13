@@ -152,12 +152,12 @@ VM 한 대에 클라우드 전체를 올리는 방법이 있습니다.
    나옵니다. 원인을 고친 뒤 같은 명령을 다시 실행하면 멈춘 곳부터 이어 갑니다.
 
    - 플랫폼 VM: `ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS`로 로그인해
-     `systemctl status fsl-platform`(마지막 부팅의 기동 결과),
-     `sudo cloud-init status --long`, `sudo docker logs fsl-platform`을 봅니다.
+     `systemctl status cr-platform`(마지막 부팅의 기동 결과),
+     `sudo cloud-init status --long`, `sudo docker logs cr-platform`을 봅니다.
    - Heat 스택: 6단계의 셸에서
-     `.venv/bin/openstack stack failures list fsl-platform`을 실행합니다.
-   - 스택은 만들어졌는데 VM에서 `fsl-platform`이 한 번도 실행되지 않은 경우.
-     `sudo docker ps`에 `fsl-platform` 컨테이너가 없고,
+     `.venv/bin/openstack stack failures list cr-platform`을 실행합니다.
+   - 스택은 만들어졌는데 VM에서 `cr-platform`이 한 번도 실행되지 않은 경우.
+     `sudo docker ps`에 `cr-platform` 컨테이너가 없고,
      `sudo cloud-init status --long`에 이유가 나옵니다. VM이 인터넷에 나가지
      못하는 경우가 많습니다(`docs/OPENSTACK.md` §2.6). 첫 부팅이 느릴 뿐이라면
      `bin/cloud up`을 다시 실행하면 마무리됩니다. 그렇지 않으면 원인을 고치고
@@ -182,25 +182,25 @@ VM 한 대에 클라우드 전체를 올리는 방법이 있습니다.
 플랫폼과 그 주변 서비스는 VM 한 대에서 돌아갑니다. 이 VM은 Heat 스택 하나
 (`deploy/openstack/platform.yaml`)가 만듭니다. 플랫폼은 member 역할 사용자
 `fsl-range`로 OpenStack API를 호출해 훈련 환경을 다룹니다. 플랫폼 VM에는
-`FSL_SUBSTRATE=range.openstack.connect`가 설정되어 있어, 플랫폼이 OpenStack에
+`CR_SUBSTRATE=range.openstack.connect`가 설정되어 있어, 플랫폼이 OpenStack에
 훈련 환경을 만들고 다룹니다. `/api/range/ready/`가 슬롯이 준비됐다고 보고하기
 전에는 세션을 시작할 수 없습니다.
 
-cloud-init이 `fsl-platform.service`를 설치합니다. 이 서비스는 부팅할 때마다
-`/opt/fsl/compose.yaml`로 `docker compose pull`과 `docker compose up -d`를
+cloud-init이 `cr-platform.service`를 설치합니다. 이 서비스는 부팅할 때마다
+`/opt/cr/compose.yaml`로 `docker compose pull`과 `docker compose up -d`를
 실행합니다.
 
 - 이미지는 일곱 개를 직접 빌드합니다: platform, board, corp, corp-db, kali,
   proxy, gns3. `dev`에 push할 때마다 `.github/workflows/images.yml`이 빌드해
-  `ghcr.io/nekonic/fsl-<name>`으로 게시합니다. 태그는 커밋 SHA와 `dev`입니다.
-- VM은 clone한 커밋의 SHA를 `FSL_IMAGE_TAG`로 `/opt/fsl/.env`에 적습니다. 그래서
+  `ghcr.io/nekonic/cr-<name>`으로 게시합니다. 태그는 커밋 SHA와 `dev`입니다.
+- VM은 clone한 커밋의 SHA를 `CR_IMAGE_TAG`로 `/opt/cr/.env`에 적습니다. 그래서
   정확히 그 커밋의 이미지로 실행합니다.
 - GitHub는 저장소가 public이어도 첫 push 때 만드는 패키지를 private으로 둡니다.
   일곱 개를 한 번씩 public으로 바꾸세요. 그렇지 않으면 로그인 없는 pull이
   실패합니다. github.com에서 패키지 페이지, **Package settings**, **Change
   visibility**, **Public** 순서로 들어갑니다. 되돌릴 수 없습니다.
-- VM의 컨테이너는 `fsl-platform`, `fsl-elasticsearch`, `fsl-kibana`, `fsl-gns3`,
-  `fsl-collector`입니다. 로그는 ssh로 로그인해 `sudo docker logs fsl-platform`
+- VM의 컨테이너는 `cr-platform`, `cr-elasticsearch`, `cr-kibana`, `cr-gns3`,
+  `cr-collector`입니다. 로그는 ssh로 로그인해 `sudo docker logs cr-platform`
   (또는 다른 컨테이너 이름)으로 봅니다.
 - 아직 push하지 않은 커밋을 실행하려면 `--sideload`를 쓰세요(`docs/OPENSTACK.md`
   §5.3).
@@ -227,9 +227,9 @@ bind mount라서 컨테이너를 다시 만들어도 남습니다. 클라우드�
 여기서는 엔진과 센서의 구성도 이름이 필드로 보이고, 플랫폼 내부 필드는
 숨겨집니다.
 
-플랫폼은 훈련 환경 네트워크를 세 종류 만듭니다. `fsl-internet`은 모의 인터넷이고
-출발지 서브넷이 30개 있습니다. `fsl-estate`는 대상 시스템이 있는 회사 내부망입니다.
-`fsl-mgmt`는 관리망이고, 플랫폼이 훈련 환경 VM에 접속할 때 씁니다.
+플랫폼은 훈련 환경 네트워크를 세 종류 만듭니다. `cr-internet`은 모의 인터넷이고
+출발지 서브넷이 30개 있습니다. `cr-estate`는 대상 시스템이 있는 회사 내부망입니다.
+`cr-mgmt`는 관리망이고, 플랫폼이 훈련 환경 VM에 접속할 때 씁니다.
 
 ```mermaid
 flowchart TB
@@ -237,16 +237,16 @@ flowchart TB
 
   subgraph cloud["OpenStack 프로젝트 fsl-range"]
     api["OpenStack API<br/>Keystone, Neutron, Nova"]
-    subgraph heat["Heat 스택 fsl-platform"]
+    subgraph heat["Heat 스택 cr-platform"]
       fip["floating IP<br/>8000, 8002, 3080, ssh, ping"]
       subgraph vm["플랫폼 VM, Ubuntu 24.04"]
-        unit["fsl-platform.service<br/>docker compose pull, up -d"]
+        unit["cr-platform.service<br/>docker compose pull, up -d"]
         stack["플랫폼 컨테이너<br/>(다음 그래프)"]
       end
     end
     subgraph fabric_box["훈련 환경 네트워크, 플랫폼이 만듦"]
-      internet["fsl-internet<br/>출발지 서브넷 30개"]
-      inside["fsl-estate, fsl-mgmt"]
+      internet["cr-internet<br/>출발지 서브넷 30개"]
+      inside["cr-estate, cr-mgmt"]
     end
   end
 
@@ -276,7 +276,7 @@ Elasticsearch, Kibana, `gns3`(학습자용 구성도), `collector`입니다. `co
 Suricata), WAF, Kali(마커를 붙이는 프록시와 고객 트래픽), 워게임 호스트(워게임
 컨테이너 전부와 estate 쪽 Suricata)입니다. 로그는 syslog로 `collector`에 보냅니다.
 
-닫힌 세션은 `FSL_RETAIN_CLOSED_MINUTES`분(기본 60, `compose.yaml`에서 설정) 동안
+닫힌 세션은 `CR_RETAIN_CLOSED_MINUTES`분(기본 60, `compose.yaml`에서 설정) 동안
 DB에 남습니다. 그 시간이면 점수와 결과 보고를 읽을 수 있습니다. 그 뒤에는 플랫폼이
 세션을 케이스, 탐지 기록, 고객 요청, 목표와 함께 삭제합니다. 시작할 때와 세션이
 닫힐 때마다 확인합니다. 열린 세션은 삭제하지 않습니다.
@@ -285,7 +285,7 @@ DB에 남습니다. 그 시간이면 점수와 결과 보고를 읽을 수 있�
 
 - `wargames/` 아래에 `compose.yaml`, `scenario.yaml`, `objectives.yaml`이 든 폴더
 - `redteam/cases/` 아래의 케이스 파일
-- `platform/range/declaration.yaml`의 `fsl-wargame-host` 항목에서 `wargames:` 아래에
+- `platform/range/declaration.yaml`의 `cr-wargame-host` 항목에서 `wargames:` 아래에
   넣는 워게임 이름과 `publish:` 아래에 넣는 포트, 그리고
   `deploy/waf/board.com.conf`의 `server` 블록
 
@@ -421,13 +421,13 @@ git이 무시하는 파일이고, `deploy/openstack/cloud.example.yaml`을 복�
 `backups/`에 남기는 DB 백업 개수입니다.
 
 새 VM은 `ref`를 clone하고, 그 커밋으로 태그된 이미지를 pull해 시작합니다.
-cloud-init이 클라우드 값을 `/opt/fsl/openstack.env`에 씁니다. 비밀 두 가지는
+cloud-init이 클라우드 값을 `/opt/cr/openstack.env`에 씁니다. 비밀 두 가지는
 스택에 넣지 않습니다. 비밀번호와 플랫폼의 훈련 환경 ssh 키입니다. Nova 메타데이터
 서비스는 컨테이너를 포함해 VM의 모든 프로세스에 user data를 내주므로, 스택에 넣은
 비밀은 VM 안 어디서든 읽힙니다. VM이 ssh에 응답하고 cloud-init이 끝나면
 `bin/platform-rebuild`가 다음을 합니다.
 
-1. `FSL_OPENSTACK_PASSWORD`를 `/opt/fsl/openstack.env`에 덧붙입니다.
+1. `CR_OPENSTACK_PASSWORD`를 `/opt/cr/openstack.env`에 덧붙입니다.
 2. 훈련 환경 키를 플랫폼 데이터 볼륨의 `/data/ssh/id_ed25519`에 씁니다.
 3. 백업해 둔 DB를 복원합니다. 이전 VM에 DB가 없었으면 `backups/`에서 행이 있는
    가장 최근 백업을 복원합니다.
@@ -441,7 +441,7 @@ cloud-init이 클라우드 값을 `/opt/fsl/openstack.env`에 씁니다. 비밀 
 - DB가 있는 VM을 교체하면 실행 중인 플랫폼에서 한 번 복사해 옵니다.
 - 실패한 스택을 교체할 때는 거부합니다.
 
-키가 남아 있으므로 훈련 환경의 VM과 `fsl-platform` 키페어는 새 플랫폼을 계속
+키가 남아 있으므로 훈련 환경의 VM과 `cr-platform` 키페어는 새 플랫폼을 계속
 신뢰합니다. 플랫폼을 교체하는 동안에도 훈련 환경은 그대로 둘 수 있습니다.
 
 아직 push하지 않은 커밋을 실행하려면 두 명령 모두 `--sideload NAME=TARBALL`
@@ -455,7 +455,7 @@ cloud-init이 클라우드 값을 `/opt/fsl/openstack.env`에 씁니다. 비밀 
 - 모든 서비스를 다시 만듭니다(`--force-recreate`). 그래서 bind mount한 파일도
   HEAD의 것이 됩니다.
 
-무엇이든 삭제하기 전에 두 가지를 거부합니다. `ghcr.io/nekonic/fsl-NAME:<commit>`
+무엇이든 삭제하기 전에 두 가지를 거부합니다. `ghcr.io/nekonic/cr-NAME:<commit>`
 하나만 담고 있지 않은 tarball, 그리고 이미지가 나온 커밋과 HEAD 사이에 빌드
 컨텍스트(`.github/workflows/images.yml`)가 달라진 이미지입니다. sideload한 VM이
 재부팅하면 clone한 커밋의 이미지를 GHCR에서 pull해 sideload한 이미지를 덮어쓸 수
@@ -465,9 +465,9 @@ cloud-init이 클라우드 값을 `/opt/fsl/openstack.env`에 씁니다. 비밀 
 로그인을 요구하지 않습니다. 9200과 5601은 VM의 loopback에서만 열려 있습니다.
 5140/udp는 VM의 모든 주소에서 수신합니다.
 
-VM에서 체크아웃 위치는 `/opt/fsl`이고 소유자는 `ubuntu`입니다. compose,
+VM에서 체크아웃 위치는 `/opt/cr`이고 소유자는 `ubuntu`입니다. compose,
 `bin/backup`, 아래의 복원 절차는 이 디렉터리에서 실행하세요. 마지막 부팅의 기동
-결과는 `systemctl status fsl-platform`으로 확인합니다.
+결과는 `systemctl status cr-platform`으로 확인합니다.
 
 `bin/cloud up`이 실행하는 훈련 환경 단계는 직접 호출할 수도 있습니다. 먼저
 fabric입니다.
@@ -494,7 +494,7 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 `DELETE`를 보내면 실패한 빌더와 예전 스크립트로 만든 이미지를 삭제합니다.
 
 이미지가 준비되면 POST 한 번으로 VM 네 대를 각자의 이미지로 부팅합니다.
-`fsl-edge`, `fsl-kali`, `fsl-waf`, `fsl-wargame-host`입니다. 워게임 호스트는 모든
+`cr-edge`, `cr-kali`, `cr-waf`, `cr-wargame-host`입니다. 워게임 호스트는 모든
 워게임을 GHCR 컨테이너로 실행합니다. 플랫폼은 `mgmt`에서 ssh로 이 네 대에
 접속합니다.
 
@@ -610,9 +610,9 @@ origin이라서, 대상 시스템에 심어진 스크립트가 콘솔을 읽거�
   네임스페이스가 있습니다. GNS3가 스위치를 실행하고 docker 노드를 시작하는 데
   필요합니다(`docs/ARCHITECTURE.ko.md`, 네트워크 구성도).
 
-`compose.yaml`은 `FSL_PUBLISH`로 달리 지정하지 않으면 모든 포트를 `127.0.0.1`에
-공개합니다. 플랫폼 VM에서는 8000, 8002, 3080을 VM 자신의 주소(`FSL_PUBLISH`)에,
-5140/udp를 `0.0.0.0`(`FSL_SYSLOG_PUBLISH`)에 공개합니다. 플랫폼 템플릿의 보안
+`compose.yaml`은 `CR_PUBLISH`로 달리 지정하지 않으면 모든 포트를 `127.0.0.1`에
+공개합니다. 플랫폼 VM에서는 8000, 8002, 3080을 VM 자신의 주소(`CR_PUBLISH`)에,
+5140/udp를 `0.0.0.0`(`CR_SYSLOG_PUBLISH`)에 공개합니다. 플랫폼 템플릿의 보안
 그룹이 8000, 8002, 3080을 엽니다(`docs/OPENSTACK.md` §3.5).
 
 대상 시스템은 공개하지 않습니다. 명령줄 케이스와 acceptance 테스트는 콘솔처럼
@@ -756,7 +756,7 @@ Kibana 필드, 구성도의 주소, 룰 형태)를 보여 주고, 같은 카드�
 시스템은 공개하지 않으므로 하네스는 훈련 환경 안, 플랫폼에서 실행합니다.
 
 ```bash
-sudo docker exec fsl-platform python redteam/run.py --tool-target http://board.com
+sudo docker exec cr-platform python redteam/run.py --tool-target http://board.com
 ```
 
 하네스는 `--cases`의 파일명과 `case_file`이 일치하는 시나리오의 세션을 엽니다
@@ -795,7 +795,7 @@ acceptance 단계는 `bin/acceptance`가 실행하며, 다음 프로세스를 �
 
 `bin/acceptance --plan`이 이 분할을 출력하고, `test/README.md`가 설명합니다.
 플랫폼 VM은 localhost에서 수신하지 않으므로, VM에서
-`FSL_PLATFORM_URL=http://<address>:8000 bin/verify`로 실행하세요. 모든 acceptance
+`CR_PLATFORM_URL=http://<address>:8000 bin/verify`로 실행하세요. 모든 acceptance
 테스트는 OpenStack에서 실행되고 skip되는 테스트는 없습니다.
 
 `bin/prune`은 세션을 직접 삭제합니다. `--apply` 없이 실행하면 dry run입니다.
@@ -811,18 +811,18 @@ bin/prune --ids FILE --apply     # FILE에 적힌 닫힌 세션만
 ## 백업과 복원
 
 플랫폼의 DB에는 세션, 케이스, 탐지 기록, 목표, 룰셋, 비활성화한 룰이 들어 있습니다.
-SQLite 파일 하나이고, 플랫폼 VM의 `fsl_platformdata` 볼륨에 있는
+SQLite 파일 하나이고, 플랫폼 VM의 `cr_platformdata` 볼륨에 있는
 `/data/db.sqlite3`입니다. 그 밖에는 아무것도 백업하지 않습니다. Elasticsearch의
-`fsl_esdata` 볼륨과 `fsl_collectordata`에 있는 collector의 registry도 백업 대상이
+`cr_esdata` 볼륨과 `cr_collectordata`에 있는 collector의 registry도 백업 대상이
 아닙니다. 이 볼륨들은 `bin/cloud down`이 VM을 삭제할 때 함께 사라집니다. `down`은
 먼저 DB를 백업해 `backups/`에 사본을 남깁니다.
 
 ```bash
-FSL_PLATFORM_EXEC="ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS sudo docker exec -i fsl-platform python -" \
+CR_PLATFORM_EXEC="ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS sudo docker exec -i cr-platform python -" \
   bin/backup      # 플랫폼이 서비스 중일 때 backups/db-<UTC time>.sqlite3를 씀
 ```
 
-`FSL_PLATFORM_EXEC`는 플랫폼 환경에서 `python -`을 실행하는 명령입니다.
+`CR_PLATFORM_EXEC`는 플랫폼 환경에서 `python -`을 실행하는 명령입니다.
 `bin/backup`은 다음을 합니다.
 
 1. SQLite의 `VACUUM INTO`로 빈 공간을 정리한 사본을 플랫폼 컨테이너 안의 임시
@@ -839,18 +839,18 @@ FSL_PLATFORM_EXEC="ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS sudo docker exec -i f
 직접 복원하려면 파일을 VM으로 복사한 뒤, VM에서 플랫폼을 멈춘 상태로 합니다.
 
 ```bash
-ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS mkdir -p /opt/fsl/backups
-scp -i ~/.ssh/fsl_claude backups/db-20260925T020000Z.sqlite3 ubuntu@ADDRESS:/opt/fsl/backups/
+ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS mkdir -p /opt/cr/backups
+scp -i ~/.ssh/fsl_claude backups/db-20260925T020000Z.sqlite3 ubuntu@ADDRESS:/opt/cr/backups/
 ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS
-cd /opt/fsl
+cd /opt/cr
 sudo docker compose stop platform
-sudo docker run --rm --network none --entrypoint sh --user fsl \
-  -v fsl_platformdata:/data -v "$PWD/backups:/backups:ro" "$(sudo docker inspect --format '{{.Config.Image}}' fsl-platform)" \
+sudo docker run --rm --network none --entrypoint sh --user cr \
+  -v cr_platformdata:/data -v "$PWD/backups:/backups:ro" "$(sudo docker inspect --format '{{.Config.Image}}' cr-platform)" \
   -c 'rm -f /data/db.sqlite3-journal && cp /backups/db-20260925T020000Z.sqlite3 /data/db.sqlite3'
 sudo docker compose start platform
 ```
 
-`--entrypoint sh`는 인자를 무시하는 이미지의 entrypoint를 대체합니다. `--user fsl`은
+`--entrypoint sh`는 인자를 무시하는 이미지의 entrypoint를 대체합니다. `--user cr`은
 사본을 플랫폼 사용자 소유로 남깁니다. `docker cp`를 쓰면 root 소유가 되어 플랫폼이
 쓸 수 없습니다. 예전 `-journal` 파일은 반드시 지워야 합니다. 남아 있으면 SQLite가
 복원한 파일에 이를 재생합니다. 플랫폼은 시작할 때 더 새로운 마이그레이션을
@@ -867,6 +867,6 @@ sudo docker compose start platform
   Kali 쉘은 `kali` 사용자이고, 암호 없이 sudo를 쓸 수 있습니다.
 
 플랫폼 VM에서도 마찬가지입니다. 게다가 그곳에서는 프로젝트 비밀번호가
-`/opt/fsl/openstack.env`와 플랫폼 컨테이너의 환경 변수에 평문으로 들어 있습니다.
+`/opt/cr/openstack.env`와 플랫폼 컨테이너의 환경 변수에 평문으로 들어 있습니다.
 VM의 ssh, 8000, 8002, 3080은 모든 주소에 열려 있고, 8000은 로그인을 요구하지
 않습니다.
