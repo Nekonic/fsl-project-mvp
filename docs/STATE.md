@@ -751,7 +751,7 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
 - **Course**: `wargames/board/scenario.yaml` declares foundations F1-F6 in
   two courses, c1, log analysis basics (F1-F3), and c2,
   attack detection practice (F4-F6), each with a briefing and a reference
-  column (48 steps; `platform/lesson.py` judges each
+  column (47 steps; `platform/lesson.py` judges each
   step from range and request facts, with a ladder nudge, a hint and Skip) and
   eleven scenarios 1.1-4.1 (`platform/scenarios.py`, `api/scenario_run.py`: a
   scheduled automated attacker over customer traffic from `api/customers.py`

@@ -66,12 +66,11 @@ Korean belongs in exactly four places among the documentation and the console:
 Leave the last two unread unless you are editing them, and do not read the
 archived `docs/superpowers/plans/`.
 
-Korean in code is the exception, in three kinds only: the board target's
+Korean in code is the exception, in two kinds only: the board target's
 site, which is a Korean site by design (`wargames/board/app/posts/templates/`,
-`posts/management/commands/seed.py`); test inputs standing in for Korean
-learner text (`platform/tests/test_lesson_path.py` and the like); and matching
-code, as `platform/api/views.py` matching the Korean map label suffix for "network". Do not add
-more.
+`posts/management/commands/seed.py`); and test inputs standing in for Korean
+learner text or checking the Korean the product shows
+(`platform/tests/test_lesson_path.py` and the like). Do not add more.
 
 Korean text is written Korean-first: from the meaning, not translated from the
 English sentence, in the usage of Korean security practitioners rather than the

@@ -753,7 +753,8 @@ The lessons of a course run back to back in one session. When a lesson's last
 step passes, the note names the next lesson of the course. After 2 seconds, or when the learner
 presses "Next lesson", it starts that lesson in the same session
 (`POST /api/sessions/<id>/lesson/ {"lesson": "f2"}`). A lesson that shows a
-"Try it yourself" task after its last step waits for "Next lesson". That call
+"Try it yourself" task after its last step, or whose last pass line is longer
+than 30 characters, waits for "Next lesson". That call
 applies the lesson's defense in place. The range is not reset
 between lessons, and each lesson judges only what happened since it started.
 At a course's end the note lists the course's lessons taken, and its button closes the session.

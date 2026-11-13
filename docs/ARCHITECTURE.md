@@ -264,7 +264,7 @@ Drawing rules:
 - Every link is one straight line, level, upright or diagonal. No link crosses another link or a node.
 - A node that a link reaches from straight above carries its name beside it.
 - Every host is one square frame of one size and line weight (`host-*.svg`). `deploy/gns3/symbols.py` builds the frames when the GNS3 image is built, and `provision.py` uploads them.
-- Inside the frame is GNS3's bundled affinity glyph. The frame is red for the attacker, green for the defence, blue for the sites, and gray for customers and the log server.
+- Inside the frame is GNS3's bundled affinity glyph. The frame is red for the attacker, green for the WAF (the shield), blue for the router (affinity's router glyph) and for the sites and their databases, and gray for customers and the log server.
 - Switches and the internet keep GNS3's bundled square switch and globe.
 - `kali`'s frame holds OffSec's Kali dragon. It is the press pack's `kali-dragon-black.svg` at a pinned commit, checked by sha256 and placed unmodified inside the frame. `host-kali.txt` and the Map pane say whose trademark it is.
 
@@ -863,7 +863,7 @@ The session API shows only what the browser needs.
 - No `accept` list or answer rule reaches the browser.
 - A step's `command` is in the payload only once `progress` records the step as reached. It is text to type, with no button that runs or copies it.
 - The pass lines (`<text>.ok.<step>`, or `<text>.ok.<step>.<option>` when a choice step's line depends on the option the learner chose) and a worked scenario's answers sit in a `{% comment %}` section at the end of `strings.html`, which Django never renders. `console/strings.py` reads them, and the step's `progress` record carries them once earned.
-- Each step is advanced by its check. Back and Next stay as the way around one.
+- A step's check does not advance it: after a pass the learner presses Next. Only the last step goes on by itself, to the lesson's end (see the pass line below). Back and Next also move without a check.
 
 How each check kind passes:
 
@@ -899,7 +899,7 @@ Checks run by themselves.
 - A pass says the step's `ok` line on the passed step and stays there with Next highlighted; the learner presses Next. A pass line longer than 30 characters also says to press Next. Only the last step's short pass moves on by itself.
 - The step after a Kali step shows that step's row: the case's name and "Open Kibana at this run's time". The link opens the run's window with an empty query. It shows no request count and no sensor name. A poll of the Kali check reads the row again after a reload, and whenever the row held has no window (a run still being collected when the learner pressed Next); a verdict that arrives after the learner moved on still updates the row.
 - Every answer to a step that opens Kibana carries `query`, the query Kibana holds. A check with `kql` fails unless that query matches it.
-- On the last step, a foundation says "Lesson complete. Next lesson: <title>" and moves on ("One session, F1 to F6"). After F6, the card lists the lessons taken and a button closes the session. A worked scenario says "Lesson complete".
+- On the last step, a foundation says "Lesson complete. Next lesson: <title>" and moves on ("One session per course"). After the course's last lesson (F3 in course 1, F6 in course 2), the card lists the course's lessons taken and a button closes the session. A worked scenario says "Lesson complete".
 - A wrong answer says what is wrong.
 - A recent ingest (`within`) reads the newest records of the window first and records no truncation, because one sqlmap case leaves more than 5000.
 
@@ -1057,13 +1057,13 @@ It refuses a closed session, a scenario session and an unguided one with 409. It
 The detail carries:
 
 - `lessons`;
-- `next_lesson` (`{id, text}` of the next foundation by `order`, or null);
+- `next_lesson` (`{id, text}` of the next foundation of the session's course by `order`, or null after the course's last lesson);
 - `course` (`[{id, steps, passed, skipped, hints}]` for every unit taken).
 
 The console offers only the next unit.
 
-- When a foundation's last step passes or is skipped, the card says "Lesson complete. Next lesson: <title>" with a "Next lesson" button. 2 s later the console posts the switch and reloads the page into the new unit, unless the unit shows a stretch task; then the learner presses "Next lesson".
-- After F6, the card lists the lessons taken. It says "All foundation lessons complete." only when the session took every foundation lesson, otherwise "Lesson complete.". The stretch card sits right under the step card. Its button ingests, closes the session through `POST /close/` and opens the session page. That page's course card lists each lesson's steps passed and skipped, and labels each Kali run "Lesson n · step m".
+- When a foundation's last step passes or is skipped, the card says "Lesson complete. Next lesson: <title>" with a "Next lesson" button. 2 s later the console posts the switch and reloads the page into the new unit, unless the unit shows a stretch task or the last step's pass line is longer than 30 characters (`SHORT_PASS_CHARS`, which also says to press "Next lesson"); then the learner presses "Next lesson".
+- After the course's last lesson, the card lists the course's lessons taken. It says the course's own `<course>.done` line only when the session took every lesson of its course, otherwise "Lesson complete.". The stretch card sits right under the step card. Its button ingests, closes the session through `POST /close/` and opens the session page. That page's course card lists each lesson's steps passed and skipped, and labels each Kali run "Lesson n · step m".
 - Restarting starts the first lesson the learner worked in (the page's `begun()`: passed, skipped or hinted, or the lesson the session opened on) with its own defense. With more than one such lesson the button reads "Start again from lesson n", with one "Start the same lesson again".
 
 Nothing is reset between units. The board allows this, because its objective layer is exfiltration only (loot matched against the snapshot taken at open). A unit therefore leaves the ground truth as it found it. F4 and F6 change the posture in place, and F5 returns it to `full`.
