@@ -23,7 +23,7 @@ product ran on until 2026-10-20 (an all-in-one host), close to READY took
 60-66 s. On the cloud it moved to (`con01`, `com01`, `stg01`, Kolla-Ansible
 2025.2), the same code took 272-314 s. The full `bin/verify` opens about 20
 sessions, so its acceptance stage grew to 4038 s, past the 60 minutes the
-platform keeps a closed session (`FSL_RETAIN_CLOSED_MINUTES`).
+platform keeps a closed session (`CR_RETAIN_CLOSED_MINUTES`).
 
 ### How it was measured
 

@@ -374,7 +374,7 @@ The page and the console cooperate as follows.
 - It also sends every zone drawing's rectangle (`zones`) and the boxes of every node, interface label and zone caption (`text`), so that callouts stay off the map's text.
 - The Auditor role still refuses every write on the server.
 
-For development MCP use (`/v3/mcp/`), `docker exec cr-gns3 python /opt/cr-gns3/provision.py api-key <name>` prints an API key. Nothing in the console exposes MCP. The console's tab for the map reads Map (`blue.pane.topology`, one word in Korean too). No word a learner reads names GNS3.
+For development MCP use (`/v3/mcp/`), `docker exec cr-gns3 python /opt/cr-gns3/provision.py api-key <name>` prints an API key. Nothing in the console exposes MCP. The console's tab for the map is labelled with one Korean word for map (`blue.pane.topology`). No word a learner reads names GNS3.
 
 A read-only user cannot open a project (`Project.Allocate`). So `provision.py` opens every project as admin at start and starts each of its stopped display nodes. It starts only nodes of the pinned image and never runs a node of any other image. The Auditor then sees the projects open and green.
 
@@ -1567,7 +1567,7 @@ The platform then seeds both sensors' baseline rules through `rules/suricata.py`
 | `corp-wp` | the same, and `NET_BIND_SERVICE` |
 
 - Each also runs with `no-new-privileges`, Docker's default seccomp and AppArmor profiles, and memory and pids limits.
-- None is privileged, mounts the Docker socket, shares the host's network, pid or ipc namespace, or mounts a host path, except the WAF's audit log directory.
+- None is privileged, mounts the Docker socket, shares the host's network, pid or ipc namespace, or mounts a host path, except the WAF's audit log file.
 - dockerd runs with `userns-remap`, so root in a container is an unprivileged user on the host. Only the sensors run in the host's user namespace.
 - `platform/tests/test_containment.py` fails `bin/verify` when the rendered slot compose file breaks any of this. `test/test_range_isolation.py` is the live check. `docs/THREAT-MODEL.md` has what a container escape would reach.
 

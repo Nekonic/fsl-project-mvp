@@ -374,7 +374,7 @@ id와 이름: 모든 id는 `uuid5(<learner id>, "slot-<n>-<wargame>")`입니다.
 - 모든 영역 도형의 사각형(`zones`)과 모든 노드·인터페이스 라벨·영역 캡션의 사각형(`text`)도 함께 보냅니다. 말풍선이 구성도의 글자를 가리지 않게 하기 위해서입니다.
 - 서버에서는 여전히 Auditor 역할이 모든 쓰기를 거부합니다.
 
-개발용 MCP(`/v3/mcp/`)를 쓰려면 `docker exec cr-gns3 python /opt/cr-gns3/provision.py api-key <name>`으로 API 키를 출력합니다. 콘솔에는 MCP를 노출하는 곳이 없습니다. 콘솔의 구성도 탭 이름은 구성도(`blue.pane.topology`, 영어로는 Map)입니다. 학습자가 읽는 문구 어디에도 GNS3라는 이름은 나오지 않습니다.
+개발용 MCP(`/v3/mcp/`)를 쓰려면 `docker exec cr-gns3 python /opt/cr-gns3/provision.py api-key <name>`으로 API 키를 출력합니다. 콘솔에는 MCP를 노출하는 곳이 없습니다. 콘솔의 구성도 탭 이름은 한 단어, 구성도(`blue.pane.topology`)입니다. 학습자가 읽는 문구 어디에도 GNS3라는 이름은 나오지 않습니다.
 
 읽기 전용 사용자는 프로젝트를 열 수 없습니다(`Project.Allocate`). 그래서 `provision.py`가 시작할 때 admin으로 모든 프로젝트를 열고, 멈춰 있는 표시용 노드를 모두 시작합니다. 고정 이미지의 노드만 시작하고, 다른 이미지의 노드는 실행하지 않습니다. 그러면 Auditor에게는 프로젝트가 열려 있고 초록으로 보입니다.
 
@@ -1567,7 +1567,7 @@ fabric이 만드는 네트워크는 `mgmt` 하나입니다. 슬롯의 `internet`
 | `corp-wp` | 위와 같고 `NET_BIND_SERVICE` 추가 |
 
 - 모두 `no-new-privileges`, Docker 기본 seccomp·AppArmor 프로파일, 메모리·pids 한도를 씁니다.
-- privileged인 것, Docker 소켓을 마운트한 것, 호스트의 network·pid·ipc 네임스페이스를 같이 쓰는 것은 없습니다. 호스트 경로 마운트는 WAF의 audit 로그 디렉터리 하나뿐입니다.
+- privileged인 것, Docker 소켓을 마운트한 것, 호스트의 network·pid·ipc 네임스페이스를 같이 쓰는 것은 없습니다. 호스트 경로 마운트는 WAF의 audit 로그 파일 하나뿐입니다.
 - dockerd는 `userns-remap`으로 돌기 때문에 컨테이너 안의 root는 호스트에서 권한 없는 사용자입니다. 호스트 user namespace를 쓰는 것은 센서뿐입니다.
 - `platform/tests/test_containment.py`는 렌더링한 슬롯 compose 파일이 이 중 하나라도 어기면 `bin/verify`를 실패시킵니다. 실제 환경 검사는 `test/test_range_isolation.py`입니다. 컨테이너 탈출이 어디까지 닿는지는 `docs/THREAT-MODEL.md`에 있습니다.
 

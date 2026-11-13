@@ -67,7 +67,7 @@ hand, the stock Ubuntu 24.04 cloud image.
 | Fabric via `POST /api/range/fabric/` | done | §6 |
 | Range host `cr-range` via `POST /api/range/slot/`: stock Ubuntu, set up from its user data, every image pulled from GHCR | done | §3.6, §6 |
 | Slots as Compose projects on the range host via `POST /api/range/configure/` | done; reset in place at close (§6.1) | §6 |
-| Acceptance on the OpenStack substrate | 70 passed / 0 failed / 0 skipped (2026-10-17, two workers, on the VM range of before) | §7 |
+| Acceptance on the OpenStack substrate | done; the latest full run is in `docs/state/now.md` | §7 |
 
 Steps below are tagged **[one-click]** where the script does them for you. They
 are tagged **[admin, once]** where you must do them by hand because a member
@@ -82,9 +82,9 @@ platform VM to select this.
 
 The platform VM runs only the control plane as containers: platform,
 Elasticsearch, Kibana, gns3 and the collector. `docker compose` pulls their
-prebuilt images from GHCR. Every acceptance test runs and passes on OpenStack,
-and none is marked skipped there (`docs/DECISIONS.md` 2026-10-11, which
-replaced the 2026-10-08 spec's "OpenStack work, not MVP").
+prebuilt images from GHCR. Every acceptance test runs and passes on OpenStack
+(`docs/DECISIONS.md` 2026-10-11, which replaced the 2026-10-08 spec's
+"OpenStack work, not MVP"); the one skip is by design (§7).
 
 The cloud therefore holds two VMs: the platform VM `cr-platform` and the range
 host `cr-range`. The edge, Kali, the WAF, the sensors and the targets of each
@@ -574,8 +574,8 @@ edge or target reaches the range only through a pushed commit whose images
 goes in it, only where to read the password. `platform/range/cloud.py` reads the
 file. It refuses the file before touching anything and names every problem by
 its dotted key. The problems it finds include an unknown key, a missing key, a
-Keystone URL that ends in `/v3`, an unquoted version, overlapping CIDRs and a
-password written into the file.
+Keystone URL that ends in `/v3`, overlapping CIDRs and a password written into
+the file.
 
 | Key | Example | Used by |
 |---|---|---|
@@ -1249,10 +1249,11 @@ resets the range. Never run it against a stack that someone is using.
 `bin/verify --changed --live` runs only the acceptance modules that a change
 reaches (`bin/acceptance --only`). `--fast` runs no acceptance.
 
-Since 2026-10-17 the whole acceptance suite runs here with no skip: 70 passed, 0
-failed, 0 skipped (`docs/DECISIONS.md` "No acceptance test is skipped on
-OpenStack"). The latest full run, 2026-10-20 on bf96876's code, passed unit 1718 and
-acceptance 73, with 0 failed, 0 errors and 0 skipped (about 22 minutes).
+Since 2026-10-17 the whole acceptance suite runs here (`docs/DECISIONS.md` "No
+acceptance test is skipped on OpenStack"). `test_lesson.py`'s F1 map test runs
+once per course and skips for a course that does not start with F1 (`c2` starts
+with F4), so a full run reports one skip. `docs/state/now.md`
+has the latest full run.
 
 A change to a slot image (`deploy/kali`, `deploy/waf`, `deploy/edge`, a
 target) reaches the range only through a pushed commit: the new tag makes the
@@ -1342,11 +1343,11 @@ We did not check whether that OPNsense edge survived an OPNsense update.
   platform's port. Kali now has no port on any Neutron network; the range
   host's `mgmt` port is in `cr-mgmt`. `test/test_range_isolation.py` checks
   that no container reaches the range host, the platform, the Internet, the
-  metadata service or another slot (14 passed on the live range).
-  `test/test_attacker_reach.py`'s port scan covers the interfaces Kali holds
-  besides the one with its default route; in a slot Kali has only `eth0`, so
-  that test scans nothing there and is not containment evidence. Its second
-  test, no target reached past the WAF by name, still holds.
+  metadata service or another slot (14 passed on the live range). Its
+  `test_the_attacker_reaches_no_service_on_the_range_host_the_platform_or_their_network`
+  scans the range host, the platform and the `mgmt` network from Kali.
+  `test/test_attacker_reach.py` keeps one test: no target reached past the
+  WAF by name.
 - On the VM range a server's `/etc/hosts` came from the user data it was booted
   with, and a Nova rebuild passed none, so on 2026-10-12 the WAF and Kali kept
   an old board address. The containers' names now come from the rendered slot

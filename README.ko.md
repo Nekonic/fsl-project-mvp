@@ -797,7 +797,10 @@ acceptance 단계는 `bin/acceptance`가 실행하며, 다음 프로세스를 �
 `bin/acceptance --plan`이 이 분할을 출력하고, `test/README.md`가 설명합니다.
 플랫폼 VM은 localhost에서 수신하지 않으므로, VM에서
 `CR_PLATFORM_URL=http://<address>:8000 bin/verify`로 실행하세요. 모든 acceptance
-테스트는 OpenStack에서 실행되고 skip되는 테스트는 없습니다.
+테스트는 OpenStack에서 실행됩니다. 일부러 skip하는 테스트가 하나 있습니다.
+`test_lesson.py`의 F1 구성도 테스트는 코스마다 한 번씩 도는데, F1으로 시작하지
+않는 코스(`c2`는 F4로 시작)에서는 skip합니다. 그래서 전체 실행에는 skip이 하나
+나옵니다.
 
 `bin/prune`은 세션을 직접 삭제합니다. `--apply` 없이 실행하면 dry run입니다.
 

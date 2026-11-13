@@ -27,8 +27,9 @@ substrate was removed on 2026-10-21, so a laptop with Docker cannot run it.
 
 `bin/verify --fast` skips the acceptance suite. `bin/verify --changed [BASE]`
 runs only the unit tests the change reaches and lists the acceptance modules it
-reaches. Add `--live` to run those modules too. The suite collects 91 tests and
-skips none.
+reaches. Add `--live` to run those modules too. The suite collects 92 tests;
+`test_lesson.py`'s F1 map test runs once per course and skips for a course that
+does not start with F1 (`c2` starts with F4), so a full run reports one skip.
 
 If the range is down, these tests fail. They do not skip, because a skipped
 acceptance check reads as "passed".
@@ -105,8 +106,10 @@ The split follows these rules:
 
 ## How the suite reaches the range
 
-Every acceptance test runs on OpenStack and none is skipped. We deleted one
-check of a compose-only mechanism instead of skipping it (2026-10-17).
+Every acceptance test runs on OpenStack, and none skips because the range is
+missing. The one skip is by design: `test_lesson.py`'s F1 map test runs once
+per course and skips for `c2`, which starts with F4. We deleted one check of a
+compose-only mechanism instead of skipping it (2026-10-17).
 `range.py` reaches the range only through the platform and works like this:
 
 - It runs a role's command through the platform container's own range adapter
