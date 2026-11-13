@@ -5,7 +5,7 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Protocol
 
-EXIT_MARK = "fsl.exit="
+EXIT_MARK = "cr.exit="
 EXIT_REPORT = f'printf "{EXIT_MARK}%d\\n" "$?" >&2'
 _REPORTED = re.compile(r"(?s)(.*)" + re.escape(EXIT_MARK) + r"(\d+)\n(.*)\Z")
 

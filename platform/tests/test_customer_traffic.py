@@ -135,7 +135,7 @@ def test_the_customers_run_as_their_own_account_that_the_origin_rewrite_passes_b
 
     def box(argv, stdin=None, timeout=60.0):
         seen.append((argv, stdin))
-        return Ran(0, "fsl.customers=started\n")
+        return Ran(0, "cr.customers=started\n")
 
     attacker.place_customers(box, "print()")
     assert attacker.run_customers(box, "{}") is True
@@ -163,7 +163,7 @@ def test_records_are_cut_out_of_whatever_else_the_box_said():
     from range.ports import Ran
 
     def box(argv, stdin=None, timeout=60.0):
-        return Ran(0, 'fsl.records=\n{"marker":"a"}\n{"mar\n=fsl.records\nsudo: unable to resolve host\n')
+        return Ran(0, 'cr.records=\n{"marker":"a"}\n{"mar\n=cr.records\nsudo: unable to resolve host\n')
 
     assert attacker.customer_records(box, 0, 100) == '{"marker":"a"}\n{"mar'
 

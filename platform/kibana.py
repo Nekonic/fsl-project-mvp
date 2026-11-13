@@ -70,7 +70,7 @@ def import_request(base, ndjson):
     return urllib.request.Request(
         f"{base.rstrip('/')}/api/saved_objects/_import?overwrite=true",
         data=body, method="POST",
-        headers={"kbn-xsrf": "fsl", "Content-Type": f"multipart/form-data; boundary={boundary}"},
+        headers={"kbn-xsrf": "cr", "Content-Type": f"multipart/form-data; boundary={boundary}"},
     )
 
 
@@ -82,7 +82,7 @@ def settings_request(base, changes=None):
     return urllib.request.Request(
         f"{base.rstrip('/')}/api/kibana/settings",
         data=json.dumps({"changes": changes or SETTINGS}).encode(), method="POST",
-        headers={"kbn-xsrf": "fsl", "Content-Type": "application/json"},
+        headers={"kbn-xsrf": "cr", "Content-Type": "application/json"},
     )
 
 
@@ -91,7 +91,7 @@ def space_request(base, space, create):
     body = {"id": space, "name": SPACE_NAME, "disabledFeatures": list(SPACE_FEATURES_OFF)}
     return urllib.request.Request(
         f"{base.rstrip('/')}{path}", data=json.dumps(body).encode(), method="POST" if create else "PUT",
-        headers={"kbn-xsrf": "fsl", "Content-Type": "application/json"},
+        headers={"kbn-xsrf": "cr", "Content-Type": "application/json"},
     )
 
 

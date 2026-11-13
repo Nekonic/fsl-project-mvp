@@ -310,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"sessions {already} are open and the workers would act on them; close them first")
         return 1
     began = time.monotonic()
-    logs = Path(tempfile.mkdtemp(prefix="fsl-acceptance-"))
+    logs = Path(tempfile.mkdtemp(prefix="cr-acceptance-"))
     codes, totals = run_phase(together, workers, logs, extra)
     if after:
         print("\nthe modules that hold two sessions at once, alone:", flush=True)

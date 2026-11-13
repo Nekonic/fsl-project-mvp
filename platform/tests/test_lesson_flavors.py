@@ -3,7 +3,7 @@ from django.test import override_settings
 
 import wargames
 from api.models import Session
-from fsl.settings import waf_layout
+from cr.settings import waf_layout
 from range import declared
 
 pytestmark = pytest.mark.django_db

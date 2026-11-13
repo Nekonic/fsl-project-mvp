@@ -1,9 +1,9 @@
 const scenarioPath = (tail) => `/api/sessions/${sessionId()}/${tail}`;
 const SCENARIO_POLL_MS = 5000;
 const TRIAGE_POLL_MS = 15000;
-const BRIEFED_KEY = (id) => `fsl-scenario-briefed-${id}`;
-const CARDS_KEY = (id) => `fsl-scenario-cards-${id}`;
-const DEBRIEFED_KEY = (id) => `fsl-scenario-debriefed-${id}`;
+const BRIEFED_KEY = (id) => `cr-scenario-briefed-${id}`;
+const CARDS_KEY = (id) => `cr-scenario-cards-${id}`;
+const DEBRIEFED_KEY = (id) => `cr-scenario-debriefed-${id}`;
 const PHASE_TONE = { running: "blue", window: "warn", passed: "ok-strong", failed: "red-strong", closed: "neutral" };
 const ENDED = ["passed", "failed"];
 let scenario = null;

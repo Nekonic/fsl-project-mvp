@@ -36,17 +36,17 @@ class Box:
         script = argv[-1]
         if "route get" in script:
             return Ran(0, "5.188.10.1 dev eth0 src 5.188.10.5 uid 0\n")
-        if "fsl.records=" in script:
+        if "cr.records=" in script:
             offset = int(re.search(r"tail -c \+(\d+)", script)[1]) - 1
             limit = int(re.search(r"head -c (\d+)", script)[1])
-            return Ran(0, "fsl.records=\n" + self.records[offset:offset + limit] + "\n=fsl.records\n")
+            return Ran(0, "cr.records=\n" + self.records[offset:offset + limit] + "\n=cr.records\n")
         if "users.py.new" in script:
             self.program = stdin
             return Ran(0, "")
         if "plan.json.new" in script:
             self.plans.append(json.loads(stdin))
             started, self.running = not self.running, True
-            return Ran(0, "fsl.customers=started\n" if started else "fsl.customers=changed\n")
+            return Ran(0, "cr.customers=started\n" if started else "cr.customers=changed\n")
         if "kill" in script and "rm -f" in script:
             self.running = False
             self.stopped += 1

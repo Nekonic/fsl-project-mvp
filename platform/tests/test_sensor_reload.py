@@ -100,10 +100,10 @@ def test_on_openstack_the_rules_editor_writes_and_reloads_what_the_edge_loads():
 
     read = subprocess.run(
         [sys.executable, "-c",
-         "import fsl.settings as s; print(s.FSL_SENSOR_RULES); print(' '.join(s.FSL_SENSOR_RELOAD))"],
+         "import cr.settings as s; print(s.FSL_SENSOR_RULES); print(' '.join(s.FSL_SENSOR_RELOAD))"],
         cwd=pathlib.Path(__file__).resolve().parents[1], capture_output=True, text=True,
         env={**{k: v for k, v in os.environ.items() if not k.startswith("FSL_SENSOR")},
-             "DJANGO_SETTINGS_MODULE": "fsl.settings", "FSL_SUBSTRATE": "range.openstack.connect"},
+             "DJANGO_SETTINGS_MODULE": "cr.settings", "FSL_SUBSTRATE": "range.openstack.connect"},
     )
     assert read.returncode == 0, read.stderr[-300:]
 

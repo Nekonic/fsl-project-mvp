@@ -353,7 +353,7 @@ def test_the_openstack_session_index_is_by_slot_and_the_collector_names_the_slot
 
     monkeypatch.setenv("FSL_SUBSTRATE", "range.openstack.connect")
     monkeypatch.delenv("ELASTIC_SESSION_INDEX", raising=False)
-    said = runpy.run_path(str(Path(__file__).resolve().parents[1] / "fsl" / "settings.py"))
+    said = runpy.run_path(str(Path(__file__).resolve().parents[1] / "cr" / "settings.py"))
 
     assert said["ELASTIC_SESSION_INDEX"] == "logs-{slot}-*"
 

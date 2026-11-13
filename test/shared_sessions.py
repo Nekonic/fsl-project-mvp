@@ -21,14 +21,14 @@ SQLMAP = "board-sqli-orderby-sqlmap"
 LAST_ATTACK = "board-path-traversal-static"
 
 NOISY_RULE = (
-    '\nalert http any any -> any any (msg:"FSL deliberate false positive"; '
+    '\nalert http any any -> any any (msg:"deliberate false positive"; '
     'http.uri; content:"release"; nocase; sid:9009999; rev:1;)\n'
 )
 BUFFERLESS = (
-    'alert http any any -> any any (msg:"FSL UNION without a buffer"; '
+    'alert http any any -> any any (msg:"UNION without a buffer"; '
     'flow:established,to_server; content:"UNION"; nocase; sid:9009996; rev:1;)\n'
 )
-PORTED_RULE = 'alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"FSL ported SQLi probe"; flow:established,to_server; http.uri; pcre:"/(\\x27[\\s+]*(or|and)[\\s+]*[\\x27\\d]|union[\\s+]+select|--[\\s+]|\\x27[\\s+]*--|\\x27[\\s+]*\\x29)/i"; sid:9009996; rev:1;)\n'
+PORTED_RULE = 'alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"ported SQLi probe"; flow:established,to_server; http.uri; pcre:"/(\\x27[\\s+]*(or|and)[\\s+]*[\\x27\\d]|union[\\s+]+select|--[\\s+]|\\x27[\\s+]*--|\\x27[\\s+]*\\x29)/i"; sid:9009996; rev:1;)\n'
 NOT_A_RULE = "this is not a rule"
 
 DETECT_WITHOUT_BLOCKING_SEARCH = {
@@ -310,7 +310,7 @@ def rules_session(stack_is_up, baseline_rules):
         def credited(totals):
             owned = next((c for c in totals["per_case"] if c["case_id"] == union), {})
             sigs = signatures(session_id)
-            return any(sigs.get(d, "").startswith("FSL UNION without a buffer")
+            return any(sigs.get(d, "").startswith("UNION without a buffer")
                        for d in owned.get("detection_ids", []))
 
         seen["bufferless"] = (

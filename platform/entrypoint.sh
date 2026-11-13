@@ -35,5 +35,5 @@ exec gosu fsl sh -c '
   python kibana.py &
   exec waitress-serve --listen=127.0.0.1:8001 --threads=16 \
     --trusted-proxy=127.0.0.1 --trusted-proxy-headers=x-forwarded-for \
-    --clear-untrusted-proxy-headers fsl.wsgi:application
+    --clear-untrusted-proxy-headers cr.wsgi:application
 '

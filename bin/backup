@@ -37,7 +37,7 @@ from pathlib import Path
 """
 
 WRITE_THE_STORE = """
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "cr.settings")
 from django.conf import settings
 snapshot(settings.DATABASES["default"]["NAME"], sys.stdout.buffer)
 """

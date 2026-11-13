@@ -66,7 +66,7 @@ def test_an_alert_with_no_source_is_unplaced_and_a_segment_with_no_subnet_says_z
     session_id = open_session(client)
     Detection.objects.create(
         session_id=session_id, detection_id="no-source", source="suricata",
-        signature="FSL SQLi attempt", timestamp=OPENED, src_ip=None,
+        signature="SQLi attempt", timestamp=OPENED, src_ip=None,
     )
     unsized = Shape(segments=(EDGE, replace(MGMT, subnet="")), sensors=SHAPE.sensors)
 
@@ -82,7 +82,7 @@ def _addressed(doc_id, src_ip, dest_ip, dest_port=80):
         "event": {"module": "suricata"}, "event_type": "alert",
         "timestamp": "2026-09-20T12:00:00Z",
         "src_ip": src_ip, "dest_ip": dest_ip, "dest_port": dest_port,
-        "alert": {"signature": "FSL SQLi attempt", "severity": 1},
+        "alert": {"signature": "SQLi attempt", "severity": 1},
     })
 
 

@@ -99,8 +99,8 @@ CUSTOMERS_LOG = f"{CUSTOMERS_HOME}/log"
 CUSTOMERS_RUNNING = f'[ -f {CUSTOMERS_PID} ] && kill -0 "$(cat {CUSTOMERS_PID})" 2>/dev/null'
 CUSTOMERS_STOP_WAIT = 50
 ROUTE_SOURCE = re.compile(r"\bsrc (\S+)")
-RECORDS_BEGIN = "fsl.records="
-RECORDS_END = "=fsl.records"
+RECORDS_BEGIN = "cr.records="
+RECORDS_END = "=cr.records"
 
 def _as_root(script: str) -> list[str]:
     return ["sudo", "sh", "-c", script]
@@ -178,16 +178,16 @@ def run_customers(box, plan: str) -> bool:
     user = f"setpriv --reuid={CUSTOMERS_ACCOUNT} --regid={CUSTOMERS_ACCOUNT} --init-groups "
     ran = _ran(box, (
         f"set -e; umask 077; cat > {CUSTOMERS_PLAN}.new; {owner}mv {CUSTOMERS_PLAN}.new {CUSTOMERS_PLAN}; "
-        f"if {CUSTOMERS_RUNNING}; then echo fsl.customers=changed; exit 0; fi; "
+        f"if {CUSTOMERS_RUNNING}; then echo cr.customers=changed; exit 0; fi; "
         f"cd {CUSTOMERS_HOME}; umask 022; "
         f"setsid {user}python3 {CUSTOMERS_PROGRAM} {CUSTOMERS_PLAN} {CUSTOMERS_RECORDS} "
-        f"</dev/null >>{CUSTOMERS_LOG} 2>&1 & echo $! > {CUSTOMERS_PID}; echo fsl.customers=started"
+        f"</dev/null >>{CUSTOMERS_LOG} 2>&1 & echo $! > {CUSTOMERS_PID}; echo cr.customers=started"
     ), "start the customers", stdin=plan)
-    return "fsl.customers=started" in ran.output
+    return "cr.customers=started" in ran.output
 
 def customers_running(box) -> bool:
-    return "fsl.customers=yes" in _ran(
-        box, f"if {CUSTOMERS_RUNNING}; then echo fsl.customers=yes; fi", "say whether the customers run").output
+    return "cr.customers=yes" in _ran(
+        box, f"if {CUSTOMERS_RUNNING}; then echo cr.customers=yes; fi", "say whether the customers run").output
 
 def stop_customers(box) -> None:
     _ran(box, (

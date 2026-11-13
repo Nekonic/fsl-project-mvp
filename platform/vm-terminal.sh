@@ -12,7 +12,7 @@ failed() {
 [ -n "$host" ] || failed "no host given"
 found=$(python - "$host" "${2:-}" 2>>"$log" <<'PY'
 import os, sys
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "fsl.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "cr.settings")
 import django
 django.setup()
 from api.models import Session

@@ -28,7 +28,7 @@ def _board_with_detected_exfil(client):
         "started_at": T0.isoformat(),
         "ended_at": (T0 + timedelta(seconds=3)).isoformat(),
     })
-    with patch("api.views.elastic.fetch", return_value=([alert(EXFIL, "FSL exfil")], None)):
+    with patch("api.views.elastic.fetch", return_value=([alert(EXFIL, "exfil")], None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
     return session_id
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}FSL{% endblock %}</title>
+  <title>{% block title %}{% endblock %}</title>
   <style>
     :root {
       color-scheme: light;
@@ -84,7 +84,7 @@
 <body class="bg-page text-body font-sans text-[14px] {% block body_class %}{% endblock %}">
   <header class="h-14 shrink-0 bg-panel border-b border-line px-4 sm:px-6 flex items-center gap-4 sm:gap-6">
     <a href="/" class="flex items-center gap-2 font-bold text-[15px] text-heading shrink-0">
-      <span class="brand-mark">F</span><span data-t="common.brand" class="hidden sm:inline"></span>
+      <span class="brand-mark" data-t="common.brand_mark"></span><span data-t="common.brand" class="hidden sm:inline"></span>
     </a>
     <nav id="crumbs" class="flex items-center gap-2 text-muted text-[13px] min-w-0 truncate"></nav>
     <div class="ml-auto flex items-center gap-4 text-[13px] text-muted shrink-0">
@@ -96,6 +96,7 @@
   </main>
   {% include "console/strings.html" %}
   <script>
+    if (!document.title) document.title = t("common.brand");
     const sessionId = () => location.pathname.split("/")[2];
 
     const PATIENCE = 90 * 1000;
@@ -163,7 +164,7 @@
     const secondsSince = (instant) =>
       Math.max(0, Math.round((Date.now() - new Date(instant)) / 1000));
 
-    const LESSON_STEP_KEY = (id, lesson) => `fsl-lesson-step-${id}-${lesson}`;
+    const LESSON_STEP_KEY = (id, lesson) => `cr-lesson-step-${id}-${lesson}`;
 
     function lessonStep(id, lesson) {
       try {
@@ -182,7 +183,7 @@
       }
     }
 
-    const OPENED_KEY = "fsl-opened-sessions";
+    const OPENED_KEY = "cr-opened-sessions";
     const OPENED_KEPT = 20;
 
     function openedSessions() {
@@ -205,7 +206,7 @@
       }
     }
 
-    const SESSION_NAME_KEY = (id) => `fsl-session-name-${id}`;
+    const SESSION_NAME_KEY = (id) => `cr-session-name-${id}`;
 
     function sessionCrumb(id, session) {
       const href = `/session/${id}/`;
