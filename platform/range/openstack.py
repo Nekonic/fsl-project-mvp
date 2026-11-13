@@ -904,7 +904,8 @@ class OpenStack:
             plan = self.plan_slot()
             if plan.blocked:
                 raise Drifted("; ".join(plan.blocked))
-            if plan.stale and renew:
+            failed = any(status == SETUP_FAILED for _, _, status in plan.standing)
+            if (plan.stale or failed) and renew:
                 self._take_down_range_host()
                 plan = self.plan_slot()
             if plan.boot:
