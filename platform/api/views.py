@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from django.conf import settings
 from django.core.exceptions import BadRequest
-from django.db import DatabaseError, IntegrityError, transaction
+from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.db.models import Count, F, Max, Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
@@ -2680,7 +2680,10 @@ def _readiness(adapter, first_ready=False) -> dict:
     numbers = range(1, getattr(adapter, "slots", 1) + 1)
     plans = adapter.plan_slots() if hasattr(adapter, "plan_slots") else [adapter.plan_slot()]
     verdicts = []
-    for number, plan in zip(numbers, plans):
+    if not first_ready and len(plans) > 1:
+        with ThreadPoolExecutor(max_workers=len(plans), thread_name_prefix="cr-ready") as pool:
+            verdicts = list(pool.map(lambda pair: _checked_apart(adapter, *pair, held), zip(numbers, plans)))
+    for number, plan in ([] if verdicts else zip(numbers, plans)):
         verdicts.append(_range_ready(_in_slot(adapter, number), plan, held.get(number)))
         if first_ready and verdicts[-1]["ready"]:
             return verdicts[-1] | {"slots": [verdict["slot"] for verdict in verdicts]}
@@ -2689,6 +2692,12 @@ def _readiness(adapter, first_ready=False) -> dict:
               or next((verdict for verdict in free if verdict["slot"].get("phase") in SETTLING_PHASES), None)
               or (free or verdicts)[0])
     return chosen | {"slots": [verdict["slot"] for verdict in verdicts]}
+
+def _checked_apart(adapter, number, plan, held):
+    try:
+        return _range_ready(_in_slot(adapter, number), plan, held.get(number))
+    finally:
+        connection.close()
 
 def _range_ready(adapter, plan=None, held=None) -> dict:
     number = getattr(adapter, "slot", 1)

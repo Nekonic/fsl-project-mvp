@@ -1798,6 +1798,20 @@ was built: three real, unauthenticated, pinned-version CVEs on `corp`
 (`wargames/corp/`), scored `effect_observed` from the target's own MySQL
 binary log via a substrate runner, proven end to end against the live stack.
 
+### 4. Left by the container range (2026-11-13)
+
+- [ ] A real firewall product at the edge (OpenWrt with LuCI is the
+      candidate), for a future corp or DMZ lesson that teaches a firewall's
+      own screens; the edge is an nftables router container until then (the
+      user's ruling, `docs/DECISIONS.md` 2026-11-13).
+- [ ] The corp WordPress install sends its pretty-permalink loopback test to
+      the real `corp.com`; the slot maps `corp.com` to 127.0.0.1 inside
+      `corp-wp` because the slot has no egress. Make the image's install not
+      depend on a request to its public name.
+- [ ] MySQL `performance_schema=OFF` (Next 6 in `docs/state/now.md`): the two
+      MySQL containers are the largest share of a slot's memory, and memory is
+      what caps the slots a range host holds.
+
 ## Known gaps
 
 - The first full `bin/verify` right after `docker compose up -d --build`
