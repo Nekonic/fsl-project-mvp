@@ -28,8 +28,9 @@ tags and pushes to `dev` and to working branches need no gate: push a verified
 state to `dev` as a fast-forward, keep as many branches as the work needs, and
 tag a version (`vMAJOR.MINOR.PATCH`) when a verified state is worth keeping.
 `main` holds only the best version: a tagged state that passed the full
-`bin/verify` and a live review round with zero countable findings, moved there
-as a fast-forward after gate 2. Never force-push `dev` or `main`.
+`bin/verify`, a live review round with zero countable findings, and a docs
+review that found no document out of step with the code (both languages of
+every `.ko.md` pair), moved there as a fast-forward after gate 2. Never force-push `dev` or `main`.
 
 Replies are short — the result and the reason, no restatement, no analogy;
 detail goes in the commit and `docs/DECISIONS.md`. Use the words practitioners
