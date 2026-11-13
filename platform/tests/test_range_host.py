@@ -132,8 +132,8 @@ def test_each_slot_s_logs_reach_the_collector_under_a_name_that_keeps_its_slot()
     one = rangehost.forwarding(laid(1), "10.31.0.2", 5140, {"waf": ("cr-waf", "modsecurity")})
     two = rangehost.forwarding(laid(2), "10.31.0.2", 5140, {"edge-sensor": ("cr-edge", "suricata")})
 
-    assert " cr-waf %APP-NAME%" in one and 'File="/opt/cr/s1/waf-audit/audit.log"' in one
-    assert " cr-edge-2 %APP-NAME%" in two and 'File="/opt/cr/s2/edge-log/eve.json"' in two
+    assert " cr-waf %APP-NAME%" in one and 'File="/var/log/cr/s1/waf/audit.log"' in one
+    assert " cr-edge-2 %APP-NAME%" in two and 'File="/var/log/cr/s2/edge/eve.json"' in two
     assert 'reopenOnTruncate="on"' in two, "a reset empties the logs in place"
 
 

@@ -38,7 +38,8 @@ UP_TIMEOUT = 900.0
 RESET_TIMEOUT = 600.0
 USER_DATA_LIMIT = 65535
 SENSORS = ("edge-sensor", "estate-sensor")
-LOGS = {"edge-sensor": "edge-log/eve.json", "estate-sensor": "estate-log/eve.json", "waf": "waf-audit/audit.log"}
+LOG_FILES = "/var/log/cr/s{slot}"
+LOGS = {"edge-sensor": "edge/eve.json", "estate-sensor": "estate/eve.json", "waf": "waf/audit.log"}
 
 
 @dataclass(frozen=True)
@@ -179,7 +180,7 @@ def sender(host: str, number: int) -> str:
 
 
 def forwarding(slot: Slot, collector: str, port: int, senders: dict[str, tuple[str, str]]) -> str:
-    base = SLOT_FILES.format(slot=slot.number)
+    base = LOG_FILES.format(slot=slot.number)
     blocks = []
     for service, (host, tag) in sorted(senders.items()):
         named = sender(host, slot.number)
