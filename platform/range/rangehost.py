@@ -288,6 +288,7 @@ def bundle(source: Path, wargames, tag: str, mtu: int) -> dict[str, bytes]:
             "default-address-pools": [{"base": "10.40.0.0/16", "size": 28}],
             "log-driver": "local",
             "log-opts": {"max-size": "10m", "max-file": "2"},
+            "userns-remap": "default",
         }, sort_keys=True).encode(),
     }
 

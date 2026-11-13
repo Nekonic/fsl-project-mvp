@@ -10,7 +10,7 @@ from dataclasses import replace
 
 import pytest
 
-from range import declared, openstack
+from range import declared, openstack, rangehost, slot
 from range.ports import RangeUnavailable, Segment
 
 SSHD = shutil.which("sshd") or "/usr/sbin/sshd"
@@ -124,7 +124,8 @@ def adapter(
         "servers": [
             {
                 "id": server_id,
-                "name": declaration.roles["attacker"],
+                "name": declaration.range_host,
+                "metadata": {slot.HOST: declaration.range_host},
                 openstack.LAUNCHED: launched_at,
                 "addresses": {
                     f"net-{standing}": [
@@ -157,7 +158,7 @@ def adapter(
 
 
 def attacker(host):
-    return adapter(host).runner("attacker")
+    return adapter(host).runner(rangehost.ROLE)
 
 
 def test_an_argument_reaches_the_host_as_the_argument_it_was(host):
@@ -221,7 +222,7 @@ def test_another_machine_at_an_instance_s_address_is_refused(host):
     another_key_answers(host)
 
     with pytest.raises(RangeUnavailable, match="Host key verification failed"):
-        adapter(host).runner("attacker")(["true"])
+        adapter(host).runner(rangehost.ROLE)(["true"])
 
 
 @pytest.mark.parametrize("generation", [
@@ -233,7 +234,7 @@ def test_a_rebuilt_instance_or_a_new_one_on_an_old_address_is_reached_again(host
 
     another_key_answers(host)
 
-    assert adapter(host, **generation).runner("attacker")(["true"]).exit_code == 0, (
+    assert adapter(host, **generation).runner(rangehost.ROLE)(["true"]).exit_code == 0, (
         "a rebuild recreates the root disk and cloud-init makes new host keys, "
         "so every rebuild on a range that is rebuilt constantly locked the "
         "platform out of that role until someone edited known_hosts by hand"
