@@ -48,6 +48,9 @@ class Cloud:
                 return {"images": [{"id": "img-ubuntu", "status": "active"}]}
             if "/images?owner=" in url:
                 return {"images": self.images}
+            if url.endswith("/os-interface"):
+                return {"interfaceAttachments": [{"port_id": "port-egress", "net_id": "net-platform"},
+                                                 {"port_id": "port-0", "net_id": "net-mgmt"}]}
         if verb == "POST" and url.endswith("/ports"):
             port = {"id": f"port-{len(self.ports)}", "device_id": "", "device_owner": "", **body["port"]}
             self.ports.append(port)
@@ -165,6 +168,9 @@ def test_a_range_host_still_setting_itself_up_is_not_active(monkeypatch):
     assert range_.plan_slot().standing[0][2] == openstack.SETTING_UP and not range_.plan_slot().active
     range_._shell = lambda container="": lambda argv, stdin=None, timeout=60: Ran(0, "ready\n")
     assert range_.plan_slot().active
+    assert "port-egress" in cloud.deleted and "port-0" not in cloud.deleted, (
+        "once its images are pulled the range host keeps no way to the Internet, and a stack delete "
+        "of the platform network finds no port of the range host on it")
 
 
 def test_a_range_host_on_an_older_tag_is_replaced_and_a_current_one_is_left():

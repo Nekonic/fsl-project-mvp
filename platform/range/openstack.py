@@ -54,6 +54,8 @@ DELETE_RULE = "DELETE {neutron}/v2.0/security-group-rules/{rule}"
 CREATE_PORT = "POST {neutron}/v2.0/ports"
 DELETE_PORT = "DELETE {neutron}/v2.0/ports/{port}"
 ATTACH = "POST {nova}/servers/{server}/os-interface"
+INTERFACES = "GET {nova}/servers/{server}/os-interface"
+DETACH = "DELETE {nova}/servers/{server}/os-interface/{port}"
 
 DELETES = {
     "subnet": DELETE_SUBNET, "network": DELETE_NETWORK, "keypair": DELETE_KEYPAIR,
@@ -855,9 +857,16 @@ class OpenStack:
         except RangeUnavailable:
             return SETTING_UP
         if said.startswith("ready"):
+            self._close_egress(server["id"])
             _set_up.add(server["id"])
             return "ACTIVE"
         return SETUP_FAILED if said.startswith("failed") else SETTING_UP
+
+    def _close_egress(self, server: str) -> None:
+        attached = self.get(self._call(INTERFACES, server=server)).get("interfaceAttachments") or []
+        for interface in attached:
+            if interface.get("net_id") == self.build.network:
+                self.get(self._call(DETACH, server=server, port=interface["port_id"]))
 
     def _plan(self, servers: list[dict], digest: str, statuses: dict[str, str]) -> slot.Plan:
         server = self._range_server(servers)
