@@ -150,3 +150,21 @@ under `deploy/range-host/proto/`. Nothing in the product was replaced.
   origin addresses, being outside the docker subnet) do not apply.
   `slot.sh` still adds `DOCKER-USER` same-bridge accepts so that loading
   `br_netfilter` later would not break the slot.
+
+### Detection, run 3: board in s1 and corp in s2 at the same time
+
+- Both started together; corp 7 cases in 6.8 s, board 18 cases in 257.6 s.
+  `kernel_drops` 0, `trunc_pkt` 0, `invalid_checksum` 0 on all four sensors.
+- Corp: **0 differences** against the baseline (4 TN, 3 FN with
+  `corroborated: false`, no alert on any leg, edge-leg source and estate XFF
+  5.188.10.10) (`results/proto-corp-s2.json`).
+- Board: 17 of 18 cases identical; `board-sqli-orderby-sqlmap-skip-waf` drew
+  one extra estate-leg alert, sid 9000001, source the WAF (10.30.1.247).
+  Cause: sqlmap's heuristic probe appends a random string of `'"().,` to the
+  parameter, and the WAF passes these probes to the board in every run (the
+  estate leg sees two per run in the baseline and in all three prototype runs).
+  In run 3 the random string was `').(").(..`, which contains `')`, matched by
+  9000001's `\x27[\s+]*\x29`; in the baseline and runs 1-2 it did not
+  (baseline `.'.(,,."((` and `(((.,('.)"`). The verdict and `corroborated` are
+  unchanged. This is the tool's randomness, not the substrate: the same
+  probe would raise the same alert on today's estate sensor.
