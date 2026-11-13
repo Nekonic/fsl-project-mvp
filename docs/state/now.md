@@ -5,9 +5,8 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-13 (the platform
-VM runs the branch with the platform, board and corp images sideloaded,
-two range slots).
+Updated: 2026-11-13 (the platform VM `cr-platform` runs 3a0df7d from GHCR
+images, two range slots under the `cr` names).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
@@ -16,95 +15,84 @@ Internet.
 
 - Versions: commits, branches, tags and pushes to `dev` need no gate; `main`
   takes only a tagged best version after gate 2 (CLAUDE.md, "How work runs
-  here"). The platform VM does not yet run dev from GitHub and GHCR; Next 1
-  does that.
+  here").
 - 2026-11-13: the code's names moved from `fsl` to `cr` (`docs/DECISIONS.md`,
-  2026-11-13); the live cloud below still runs the `fsl` names until the
-  cut-over in `docs/OPENSTACK.md` §5.4 (old checkout's `bin/cloud down`, then
-  `bin/cloud up` with `platform.stack: cr-platform`).
-- 2026-11-12: the user had shut down all nine fsl VMs. They were started,
-  session 1443 (left open since 2026-10-28) was closed after a store backup,
-  and both slots were reset (`slot/rebuild`, then `configure`). The first
-  configure after the rebuild failed on both slots and the second passed (Next
-  8).
+  2026-11-13), and the live cloud was cut over the same day by
+  `docs/OPENSTACK.md` §5.4: the old checkout's `bin/cloud down` (store backup
+  `db-20261113T082150Z.sqlite3`, 60 MB, integrity ok), the Glance images
+  `fsl-kali`, `fsl-waf`, `fsl-wargame-host` and the security group `fsl-build`
+  deleted, then `bin/cloud up` with `platform.stack: cr-platform` (about 42
+  min). It built the role images `cr-kali`, `cr-waf`, `cr-edge`,
+  `cr-wargame-host` and replaced `fsl-opnsense-26.7` under the same name. Two
+  things it needed: the `openstack` CLI on PATH, and a `platform.ref` with no
+  `/` in it (the branch `cr-rename` was pushed for that).
+- The platform VM is `cr-platform` at 192.168.2.247 (`m1.large`), checkout
+  `/opt/cr` at 3a0df7d. Every image comes from GHCR: the `cr-*` images tagged
+  with the commit SHA, built by `images.yml` through `workflow_dispatch` on the
+  working branch; nothing is sideloaded. Containers: `cr-platform`,
+  `cr-elasticsearch`, `cr-kibana`, `cr-collector`, `cr-gns3`. Both slots
+  (`compute.slots: 2`) are READY: `cr-edge`, `cr-kali`, `cr-waf`,
+  `cr-wargame-host` and their `-2` copies, all `m1.medium`. The store was
+  restored from the backup (3 sessions listed).
+- Quota: 17 instances, 24 cores, 57344 MB of RAM. com01's placement (checked by
+  the user on con01): VCPU allocation_ratio 4.0, MEMORY_MB 1.5 (reserved 512),
+  DISK_GB 1.5, set in `/etc/kolla/config/nova/com01/nova.conf`. The flavors
+  `dba.edge` (1 vCPU, 3072 MB, 30 GB) and `dba.small` (1 vCPU, 2048 MB, 30 GB)
+  exist and are not used yet.
 - 2026-10-20: the product moved to a new OpenStack cloud. The old cloud
   (master@192.168.0.100, Keystone 192.168.0.110, platform VM 192.168.0.210,
   floating IP 192.168.0.220) is in other use by the user and must not be
   touched. The facts, the defects the move found and the fixes are in
   `docs/DECISIONS.md` "The product moved to a new OpenStack cloud"; the cloud's
   values are the "(this cloud)" passages of `docs/OPENSTACK.md` §2-§4.
-- The platform VM is `fsl-platform` at 192.168.2.247. It was rebuilt on
-  2026-10-24 from this branch with `bin/cloud up --replace --sideload
-  platform=... --sideload board=... --sideload corp=...` (the rebuild that
-  built the three new VM images took 65 min). It runs
-  `FSL_SIDELOADED=board,corp,platform`; the other images come from GHCR. Both
-  slots (`compute.slots: 2`) are READY. The wargame hosts run on `m1.medium`.
-- Quota (the user raised it on 2026-10-24): 24 cores, 57344 MB of RAM, 12
-  instances. The project uses 18 cores, 40 GB and 9 instances
-  (`docs/OPENSTACK.md` §3.2).
 - A rebuilt VM has new ssh host keys. Check the new fingerprints in the VM's
-  console log (`openstack console log show fsl-platform`, the cloud-init
+  console log (`openstack console log show cr-platform`, the cloud-init
   "SSH HOST KEY FINGERPRINTS" block) before replacing the operator machine's
   `known_hosts` entry for 192.168.2.247. The operator key is
-  `~/.ssh/fsl_claude` (Nova keypair `fsl-claude`).
+  `~/.ssh/fsl_claude` (Nova keypair `fsl-claude`, kept through the cut-over).
 - Slot reset, close to READY: 70-82 s for one slot and 98-99 s for two at once
   (`docs/TROUBLESHOOTING.md`). `bin/platform-rebuild`'s ssh sends keepalives
   and gives up on a dead connection.
-- Full `bin/verify` on 2026-11-13: 1677 unit and API tests passed (5:10);
-  acceptance: 73 passed (two workers in parallel, 23:24, then the two two-session modules alone, 9:26). The run before it, on 2026-10-26 on the code
-  before the last wording fix: unit 1669 passed; acceptance 73 passed, 0
-  failed, 0 errors, 0 skipped in 2003 s across 4 processes; ratchet ok. A one-worker acceptance run is
-  run on 2026-10-26 (`bin/acceptance --workers 1` on the two-slot range, while a
-  lesson walk held one slot) took 3948 s: 64 passed, 6 failed, 3 errors. Eight
-  failures say "the range has 2 slots; name the one to run on", because one
-  worker on a two-slot range does not name a slot for attacker commands; the
-  ninth is a 409 from a test that needs both slots. None is a product fault,
-  and the run is not the one-slot case the harness fix is for; the unit test
-  holds that fix.
+- Full `bin/verify` on the VM at 3a0df7d (2026-11-13): unit and API 1663
+  passed (4:53); acceptance 76 passed, 0 failed, 0 errors, 1 skipped (the c2
+  course does not start with F1, by design) in 1945 s across 4 processes;
+  ratchet no regression.
+- History, 2026-10-26: `bin/acceptance --workers 1` on the two-slot range
+  took 3948 s: 64 passed, 6 failed, 3 errors. Eight failures say "the range
+  has 2 slots; name the one to run on", because one worker on a two-slot range
+  does not name a slot for attacker commands; the ninth is a 409 from a test
+  that needs both slots. None is a product fault.
 - Acceptance harness: `full_run` records the red-team session's cases,
   detections and scores under both correlation strategies right after the
   session closes, and the tests read that record, so a long one-slot run no
-  longer loses the session to retention. Retention for real sessions is
-  unchanged.
-- Live review loop of the foundations (six reviewers: lesson design, UI, terms,
-  AI-sounding Korean, realism and leaks, first-time learner; convergence rule,
-  exit on zero countable findings). Countable findings per round: r6 47, r7 6,
-  r8 5, r9 3, r10 1, r11 2, r12 2 (both wording, fixed), r13 4 (a refused open
-  explained off screen in operator English, Kibana's search-session popover
-  over the KQL bar, option names wrapping in the dump hint, the F4 slipped pass
-  line contradicting a yes answer; all fixed). Round 14 (2026-11-13, idle range
-  after the reset) walked F1-F6 and F1+F2: six reviewers found no countable
-  finding except one low, an 11.8 s wrong-answer wait at F5 step 3, which did
-  not reproduce on a rerun (1.6 s). The loop has converged. The fixes of
-  rounds 6-13 are on the branch and the VM; what they changed is in `git log`.
-  Behind them:
-  - Answer checks keep the slot's range reads for the session, so a wrong
-    answer comes back in 0.2-3 s.
-  - A session open reads the range before it takes the slot choice, so a
-    close no longer waits behind an open (the cause of one acceptance
-    timeout).
-  - The slot maps load at platform start, with retries; no map is published
-    from a partial read.
+  longer loses the session to retention.
+- The product since the last record: two courses, c1, log analysis basics
+  (F1-F3), and c2, attack detection practice (F4-F6), each with a briefing and
+  a reference column; the product is Korean-only, branded as a cyber training
+  range (the string table holds the Korean); the reference rows
+  stack the code above its meaning (a5fa3ac); the address table carries each
+  zone's network (3a0df7d), because the learner map labels bare addresses.
+- Live review loop (six reviewers: lesson design, UI, terms, AI-sounding
+  Korean, realism and leaks, first-time learner; exit on zero countable
+  findings). Countable findings per round: r6 47, r7 6, r8 5, r9 3, r10 1,
+  r11 2, r12 2, r13 4, r14 0 (one low that did not reproduce). Round 15
+  (2026-11-13) walked c1 and c2 end to end; the walker's two reported problems
+  were walker bugs, fixed in the walker outside the repo. Open from it: on the
+  learner map the Internet and management zone captions overlap the labels
+  `customers` and `log-server`, and the green flow arrow crosses the
+  `board.com` label (Next 2).
 - Kibana 8.15 has no supported setting that hides Home and Stack Management,
-  so they stay (decided, `docs/DECISIONS.md` "Kibana's Home and Stack
-  Management entries"). It cannot switch off ad-hoc data views either.
-- The dead `/var/lib/session/origin` path is gone from the stamp proxy and the
-  Kali setup. The Kali image digest changed once, so the next `bin/cloud up`
-  rebuilds `fsl-kali`.
+  so they stay (`docs/DECISIONS.md` "Kibana's Home and Stack Management
+  entries"). It cannot switch off ad-hoc data views either.
 - 2026-10-21, decided by the user: the estate sensor's `HOME_NET` no longer
   holds the attacker origins, and a move to the lesson a session is already on
-  changes nothing (`docs/DECISIONS.md` "The estate sensor's HOME_NET and a
-  repeated lesson move"). The docker substrate removal is done in code and
-  proven live on this cloud.
+  changes nothing (`docs/DECISIONS.md`).
 - 2026-10-20: the user ruled the product OpenStack-only (Kolla-Ansible 2025.1
-  or later, kvm; `docs/DECISIONS.md` 2026-10-20 and 2026-10-24). The plan is
-  `docs/superpowers/specs/2026-10-20-remove-docker-substrate-plan.md`. Docker
-  stays on the platform VM (the platform's own services), the wargame host and
-  the GNS3 display nodes.
-- Goal in flight: none; the review loop above has converged. The scenario course
-  (design `docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`)
-  is finished, and every scenario was run live with a wrong and a right
-  defence (`docs/DECISIONS.md`, "P5 built").
+  or later, kvm; `docs/DECISIONS.md` 2026-10-20 and 2026-10-24). Docker stays
+  on the platform VM (the platform's own services), the wargame host and the
+  GNS3 display nodes.
+- Goal in flight: a container-based range to replace the four VMs per slot
+  (Next 1); gate 1 is pending.
 - Not run live: the VirtualBox and VMware settings of `docs/OPENSTACK.md` §9.1;
   a host browser reaching the floating IP of a one-VM cloud.
 - Still open, not this branch's work: `stg01`'s cinder-backup is down (a Ceph
@@ -112,27 +100,21 @@ Internet.
   (guests see a Sandy Bridge model); a 52,689-detection ingest holds the SQLite
   write lock for about 15 s (measured, not fixed).
 - To try it: open http://192.168.2.247:8000 (through the VPN), open the
-  catalogue, start the foundations course (its first lesson button) and go F1 to
-  F6 in one session; about 30-40 minutes by hand.
+  catalogue and start course c1, then c2.
 
 ## Operator tooling
 
 Outside the repo, in `/Users/nekonic/.cache/fsl-work/`. The scripts take the
 repo root from the current git checkout (or `FSL_REPO`); run them from the
 checkout you work in. They target the new cloud (192.168.2.247 and 10.0.0.10)
-and need the VPN up. They no longer source `net/env.sh`: that WireGuard proxy
-was for the old lab. The old copies are `s.sh.old-cloud`, `reach.sh.old-cloud`,
-`build.sh.old-cloud` and `deploy.sh.old-cloud`; do not use them.
+and need the VPN up. The `*.old-cloud` copies are for the old lab; do not use
+them.
 
 - `sh reach.sh` checks the platform VM and Keystone.
-- `sh build.sh platform` builds the image on the platform VM (the Mac's Docker
-  daemon is off) and copies `images/fsl-platform-<HEAD>.tar` back. It knows
-  `platform`, `board`, `corp`, `kali`, `proxy` and `gns3`.
-- `sh deploy.sh <tag> platform=<HEAD> board=<HEAD> corp=<HEAD>` runs `bin/cloud
-  up --replace --sideload` for each pair with the `openstack` CLI from `osc/bin`;
-  the log is
-  `deploy/<tag>.log`. A rebuild from images on GHCR needs no script: run
-  `bin/cloud up --replace` from the main checkout.
+- `sh build.sh` and `sh deploy.sh` build images on the platform VM and run
+  `bin/cloud up --replace --sideload`. The VM now runs GHCR images only, so a
+  rebuild needs neither: run `bin/cloud up --replace` with the `openstack`
+  CLI on PATH.
 - `sh known-hosts.sh` replaces the operator's `known_hosts` entry for
   192.168.2.247 with the keys cloud-init printed to the VM's console log,
   after checking their fingerprints; run it after every rebuild.
@@ -140,58 +122,56 @@ was for the old lab. The old copies are `s.sh.old-cloud`, `reach.sh.old-cloud`,
   platform restart (`docs/DECISIONS.md` "A reset cut short by a restart, and
   corp's readiness").
 - `sh s.sh '<cmd>'` runs a command on the platform VM, for example `sh s.sh 'git
-  -C /opt/fsl rev-parse HEAD'`.
-- `walker/walk.py` is the lesson walker (Next 5).
-- The repository has a `cloud` git remote (the VM's `/opt/fsl`). Work goes to
-  the VM with `git push cloud HEAD:refs/heads/work` and `git -C /opt/fsl
-  checkout --detach work` on the VM. Claude Code asks the user before every push to GitHub
-  or pull request (the `ask` rules in `.claude/settings.json`).
+  -C /opt/cr rev-parse HEAD'`.
+- `walker/walk.py` is the lesson walker.
+- The repository's `cloud` git remote is `ssh://ubuntu@192.168.2.247/opt/cr`.
+  Work goes to the VM with `git push cloud HEAD:refs/heads/work` and `git -C
+  /opt/cr checkout --detach work` on the VM. Claude Code asks the user before
+  every push to GitHub or pull request (the `ask` rules in
+  `.claude/settings.json`).
 
 `bin/cloud` needs three gitignored files in the checkout that runs it:
-`deploy/openstack/cloud.yaml`, `.venv` and the newest copy in `backups/`. The
-main checkout (`/Users/nekonic/Documents/GitHub/fsl-project-mvp`) and this
-worktree both have them for the new cloud (newest copy: the main checkout's
-`db-20261021T130039Z.sqlite3`, 22.8 MB; this worktree's
-`db-20261025T222220Z.sqlite3`, 569 KB); the old cloud's `cloud.yaml` is kept
-outside the repo in `~/.cache/fsl-work/old-cloud/`. A worktree that is cleaned
-up loses these files, so copy them before working in a new one. Older store
-copies, among them the 59 MB `db-20261019T033253Z.sqlite3`, are in
+`deploy/openstack/cloud.yaml`, `.venv` and the newest copy in `backups/`. This
+worktree has them (newest copy `db-20261113T082150Z.sqlite3`, 60 MB, from the
+cut-over); the old cloud's `cloud.yaml` is kept outside the repo in
+`~/.cache/fsl-work/old-cloud/`. A worktree that is cleaned up loses these
+files, so copy them before working in a new one. Older store copies are in
 `~/.cache/fsl-work/backup-safe/`.
 
 ## Waiting for the user
 
-1. Publishing the OPNsense image (`docs/STATE.md` backlog 0): the licence is
+1. Gate 1 for the container-based range (Next 1).
+2. Publishing the OPNsense image (`docs/STATE.md` backlog 0): the licence is
    fine, the trademark policy asks for a note to the project. The user's call.
 
 ## Next, in order
 
-1. The push to `dev` is done. Check the `images.yml`
-   run for that push (`gh run list --workflow images.yml --branch dev --limit
-   3`; the run for ee5e641 was green), then rebuild the platform VM from the
-   main checkout with `bin/cloud up --replace`, without `--sideload`, so the VM
-   runs dev from GitHub and GHCR. Then refresh the operator's `known_hosts`
-   from the console log (`~/.cache/fsl-work/known-hosts.sh`).
-2. The `test_corp_authz` nonce error: the likely cause (corp healthy before
-   its forms existed) is fixed and full `bin/verify` runs have passed with it.
-   The error was intermittent, so watch the next runs for it (`docs/STATE.md`
-   backlog 0).
-3. Have a newcomer follow README on a clean machine, or run §9 on VirtualBox
-   or VMware (the 2026-10-20 trial ran on the KVM test cloud).
-4. 4.2, a person as the red team against the learner: the engine accepts
-   `red: person`; needs a second person to run it live. A corp scenario: corp's
-   CVEs succeed but it has no customer traffic; needs a generator for
-   WordPress first (P3's shape).
-5. Whether the live walker (`~/.cache/fsl-work/walker/walk.py`, headless
-   Playwright, F1-F6) becomes a repo tool. Undecided (`docs/STATE.md`
-   backlog 0, "Foundations rebuild, remaining work").
-6. `bin/acceptance --workers 1` on a range with more than one slot does not
-   name a slot for attacker commands (8 failures on 2026-10-26); pass the slot,
-   or refuse that mode with a clear message.
-7. Acceptance run time and ingest re-reading the whole window (paged since
+1. A container-based range to replace the four VMs per slot. The user asked
+   for it to merge the duplication, be as fast as containers and fully replace
+   what exists. Candidates: a range-host VM with per-session containers, k3s
+   pods, or a bigger platform VM that runs the sessions. Gate 1 is pending; the
+   planned switch to four slots on the `dba` flavors is on hold for it.
+2. The learner map's caption overlaps (Where things stand, round 15).
+3. An answer-blind review round of both courses, then the user's own test.
+4. sqlmap variant cases: drop those with no distinct meaning (in progress on
+   the branch `sqlmap-variants`).
+5. Acceptance run time, and ingest re-reading the whole window (paged since
    f07919f, up to about 205k records).
-8. `POST slot/rebuild/?slot=N` followed at once by `POST configure/?slot=N`
-   failed on the first try for both slots on 2026-11-12 and passed on the
-   second. Slot 1: the rebuilt edge did not hold its WAN aliases or log to the
-   collector. Slot 2: the platform's `known_hosts` still held the rebuilt WAF's
-   old host key. The cause is not confirmed; find it so the documented order
-   (§6.1, rebuild then configure) works on the first try.
+6. MySQL `performance_schema=OFF`.
+7. The first configure after a slot rebuild fails once: `POST
+   slot/rebuild/?slot=N` followed at once by `POST configure/?slot=N` failed
+   on the first try for both slots on 2026-11-12 and passed on the second.
+   Slot 1: the rebuilt edge did not hold its WAN aliases or log to the
+   collector. Slot 2: the platform's `known_hosts` still held the rebuilt
+   WAF's old host key. The cause is not confirmed.
+8. `allow_resize_to_same_host` doc drift (`docs/OPENSTACK.md`).
+9. Promotion to `main`: a tagged state, the full `bin/verify`, a live review
+   round with zero countable findings and a docs review with no drift
+   (CLAUDE.md), through gate 2.
+
+Also open, unordered: the intermittent `test_corp_authz` nonce error (watch
+the runs; `docs/STATE.md` backlog 0); a newcomer following README on a clean
+machine, or §9 on VirtualBox or VMware; scenario 4.2 (a person as the red
+team) and a corp scenario (needs a WordPress customer-traffic generator);
+whether the walker becomes a repo tool; `bin/acceptance --workers 1` on a
+range with more than one slot does not name a slot for attacker commands.

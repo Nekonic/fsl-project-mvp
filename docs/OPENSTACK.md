@@ -1073,8 +1073,10 @@ code cannot see them, so take them down with the code that made them, once:
    The server and network lists are empty and the keypairs are `fsl-claude`
    alone when the old range is gone.
 4. In `cloud.yaml` set `platform.stack: cr-platform`.
-5. Bring the cloud up from this checkout: `.venv/bin/python bin/cloud up`. It
-   creates `cr-platform`, restores the newest backup in `backups/` and builds
+5. Bring the cloud up from this checkout with the `openstack` CLI on PATH:
+   `PATH="$PWD/.venv/bin:$PATH" .venv/bin/python bin/cloud up`. `platform.ref`
+   must be a ref name with no `/` in it; push a branch so named if the working
+   branch has one. It creates `cr-platform`, restores the newest backup in `backups/` and builds
    the fabric, the role images and the slots under the new names. The edge's
    bundle changed, so the first build also replaces `fsl-opnsense-<version>`
    under the same name.
