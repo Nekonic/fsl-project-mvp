@@ -53,6 +53,7 @@ class Slot:
             if "reload-rules" in " ".join(argv):
                 return Ran(0, '{"return":"OK"}')
             return Ran(0, "")
+        run.slot = self.slot
         return run
 
     def reset_slot(self):
@@ -99,7 +100,7 @@ def cloud():
     held = Cloud()
     with patch("api.views.substrate", lambda: held), \
             patch("api.views._aim_attacker", lambda adapter: None), \
-            patch("api.views.loot.ground_truth", lambda wargame, host: {"admin": host}), \
+            patch("api.views.loot.ground_truth", lambda wargame, inside: {"admin": f"10.31.{inside.slot}.5"}), \
             patch.dict(reset._states, clear=True), \
             patch("api.views.reset.begin", lambda adapter, turn, rebuilt, **_: held.reset.append(("begun", adapter.slot))):
         yield held

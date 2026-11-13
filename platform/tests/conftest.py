@@ -52,7 +52,7 @@ def no_real_board_read(request):
     if request.node.get_closest_marker("reads_ground_truth"):
         yield
         return
-    def stand_in(wargame_id, host=""):
+    def stand_in(wargame_id, host="", inside=None):
         return {"unit-test-account": "unit-test-hash"}
 
     with patch("api.views.loot.ground_truth", stand_in):

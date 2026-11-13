@@ -73,11 +73,14 @@ def test_the_baseline_is_read_from_the_board_the_substrate_reports(client):
 
     class Addressed(Recording):
         def address(self, role):
-            asked.append(role)
-            return "10.20.0.7"
+            return "10.31.0.40"
 
-    def ground_truth(wargame_id, host=""):
-        asked.append(host)
+        def runner(self, role):
+            asked.append(role)
+            return f"inside {role}"
+
+    def ground_truth(wargame_id, host="", inside=None):
+        asked.append(inside)
         return [{"username": "admin", "password": "x"}]
 
     with patch("api.views.substrate", lambda: Addressed([])), \
@@ -85,8 +88,8 @@ def test_the_baseline_is_read_from_the_board_the_substrate_reports(client):
         answer = client.post_json("/api/sessions/", {"scenario": "board"})
 
     assert answer.status_code == 201, answer.content
-    assert asked == ["board", "10.20.0.7"], (
+    assert asked[:2] == ["board", "inside board"], (
         "the baseline came from the board named in settings, not the board "
-        "VM the red team attacks"
+        "container the red team attacks"
     )
 

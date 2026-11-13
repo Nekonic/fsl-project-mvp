@@ -11,20 +11,44 @@ from django.conf import settings
 import wargames
 
 TIMEOUT = 15
+READ_INSIDE = ("import sys, urllib.request; "
+               "sys.stdout.write(urllib.request.urlopen(sys.argv[1], timeout=float(sys.argv[2])).read().decode())")
 
 
 class GroundTruthUnavailable(RuntimeError):
     pass
 
 
-def ground_truth(wargame_id: str, host: str = "") -> dict[str, str]:
+def ground_truth(wargame_id: str, host: str = "", inside=None) -> dict[str, str]:
     spec = wargames.objectives(wargame_id)
+    if inside is not None:
+        return _from_inside(spec, inside)
     url = _board_url(host).rstrip("/") + spec["secret"]["read_path"]
     try:
         with urllib.request.urlopen(url, timeout=TIMEOUT) as response:
             body = json.load(response)
     except (urllib.error.URLError, OSError, ValueError) as exc:
         raise GroundTruthUnavailable(f"could not read ground truth from {url}: {exc}") from exc
+    return _mapped(body, url)
+
+
+def _from_inside(spec: dict, inside) -> dict[str, str]:
+    port = urllib.parse.urlsplit(settings.BOARD_API_URL).port or 80
+    url = f"http://127.0.0.1:{port}{spec['secret']['read_path']}"
+    try:
+        ran = inside(["python", "-c", READ_INSIDE, url, str(TIMEOUT)], timeout=TIMEOUT + 30)
+    except RuntimeError as exc:
+        raise GroundTruthUnavailable(f"could not reach the board to read {url}: {exc}") from exc
+    if not ran.ok:
+        raise GroundTruthUnavailable(f"the board could not read {url} (exit {ran.exit_code}): {ran.output[-300:]}")
+    try:
+        body = json.loads(ran.output)
+    except ValueError as exc:
+        raise GroundTruthUnavailable(f"{url} inside the board answered no JSON: {exc}") from exc
+    return _mapped(body, url)
+
+
+def _mapped(body, url: str) -> dict[str, str]:
     if not isinstance(body, dict):
         raise GroundTruthUnavailable(f"{url} did not return a username to hash map")
     return {str(name): str(digest) for name, digest in body.items()}

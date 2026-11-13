@@ -104,3 +104,20 @@ def test_ground_truth_rejects_a_body_that_is_not_a_username_map():
     ):
         with pytest.raises(loot.GroundTruthUnavailable):
             loot.ground_truth("board")
+
+
+@pytest.mark.reads_ground_truth
+def test_on_the_range_host_the_ground_truth_is_read_inside_the_board_s_own_container(settings):
+    from range.ports import Ran
+
+    settings.BOARD_API_URL = "http://board:8000"
+    seen = []
+
+    def inside(argv, stdin=None, timeout=60.0):
+        seen.append(argv)
+        return Ran(0, '{"admin": "h1"}')
+
+    with patch("api.loot.wargames.objectives", return_value=SPEC):
+        assert loot.ground_truth("board", inside=inside) == {"admin": "h1"}
+    assert seen[0][:2] == ["python", "-c"] and seen[0][3] == "http://127.0.0.1:8000/internal/auth-users", (
+        "the board's network is internal to its slot, so the platform reads it through docker exec")

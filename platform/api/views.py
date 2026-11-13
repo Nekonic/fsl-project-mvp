@@ -1056,11 +1056,13 @@ def _baseline(adapter, scenario):
     return []
 
 def _ground_truth(adapter, wargame_id):
+    if not hasattr(adapter, "address"):
+        return loot.ground_truth(wargame_id)
     try:
-        host = adapter.address("board") if hasattr(adapter, "address") else ""
+        inside = adapter.runner("board")
     except RangeUnavailable as exc:
         raise loot.GroundTruthUnavailable(str(exc)) from exc
-    return loot.ground_truth(wargame_id, host)
+    return loot.ground_truth(wargame_id, inside=inside)
 
 def _newest(session=None):
     return session or Session.objects.order_by("-id").first()
