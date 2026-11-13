@@ -19,7 +19,7 @@
                 "drawing_id": "db5ac558-e840-5c56-9b89-bb8d9f016105",
                 "locked": true,
                 "rotation": 0,
-                "svg": "<svg width=\"240\" height=\"320\"><rect width=\"240\" height=\"320\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
+                "svg": "<svg width=\"240\" height=\"350\"><rect width=\"240\" height=\"350\" fill=\"#b03a2e\" fill-opacity=\"0.06\" stroke-width=\"2\" stroke=\"#b03a2e\"/></svg>",
                 "x": 0,
                 "y": -140,
                 "z": 0
@@ -30,7 +30,7 @@
                 "rotation": 0,
                 "svg": "<svg width=\"52\" height=\"26\"><text font-family=\"Noto Sans\" font-size=\"13.0\" font-weight=\"bold\" fill=\"#b03a2e\" fill-opacity=\"1.0\">인터넷</text></svg>",
                 "x": 8,
-                "y": 150,
+                "y": 180,
                 "z": 1
             },
             {
@@ -751,7 +751,7 @@
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "board.com",
                     "x": 64,
-                    "y": 12
+                    "y": -8
                 },
                 "name": "board.com",
                 "node_id": "c01c6b90-c78b-551c-a04b-611f5d0f5fee",
@@ -775,7 +775,7 @@
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "corp.com",
                     "x": 64,
-                    "y": 12
+                    "y": -8
                 },
                 "name": "corp.com",
                 "node_id": "4f1bab76-6df2-5041-bd3f-f93278db9ad8",
@@ -799,7 +799,7 @@
                     "style": "font-family: TypeWriter;font-size: 10.0;font-weight: bold;fill: #000000;fill-opacity: 1.0;",
                     "text": "sw2",
                     "x": 64,
-                    "y": 20
+                    "y": -8
                 },
                 "name": "sw2",
                 "node_id": "59180116-44db-59c4-aee9-979341752c97",

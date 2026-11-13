@@ -108,9 +108,10 @@ files, so copy them before working in a new one. Older store copies are in
 
 1. Gate 2, then `dev` and the live cloud on `dev` (set `platform.ref` back to
    `dev` and `compute.slots` as the user wants; four now).
-2. The learner map's new captions and the router name were not looked at in a
-   rendered map; the lesson prose in the string table still calls the edge
-   방화벽 in places. A live review round should look at both.
+2. The learner map was rendered in the live GNS3 web UI with this file's
+   positions and shows no overlapping text; the string table calls the edge
+   라우터. Open: the router still wears the firewall icon (`host-firewall.svg`),
+   and the live platform VM still serves the map from before that layout fix.
 3. An answer-blind review round of both courses, then the user's own test.
 4. Acceptance run time, and ingest re-reading the whole window.
 5. MySQL `performance_schema=OFF`: memory caps the slots a range host holds
