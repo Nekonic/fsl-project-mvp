@@ -229,9 +229,9 @@ What the learner map shows, drawn as an enterprise logical diagram:
 
 - Role hostnames above the icons.
 - At each host's link end, the address alone (`10.30.1.59`): no interface, port or prefix. Switch ends and management links carry no label, and the links to the database switch carry none either, since their addresses are a Docker bridge's.
-- Four zones, captioned as KISA's ISMS-P 2.6.1 names network zones (DMZ, DB존) plus 인터넷 and 관리망. A zone with labelled links gains its network in the caption (`DMZ 10.30.1.0/24`).
+- Four zones. Two are captioned with KISA's ISMS-P 2.6.1 names for network zones (DMZ and the DB zone). The other two are the internet and the management network. A zone with labelled links gains its network in the caption (`DMZ 10.30.1.0/24`).
 - Each IDS is its own sensor box ("IDS") joined by a dashed line to the host whose traffic it is fed. That is `router` (the edge sensor on the slot's `internet` bridge) and the site (the estate sensor on the slot's `estate` bridge), the hosts Kibana's `sensor` names.
-- Green arrows with drawn arrowheads, and the caption 웹 요청, show the request flow internet → router → waf → site.
+- Green arrows with drawn arrowheads, and a Korean caption that says web request, show the request flow internet → router → waf → site.
 
 It shows nothing else: no title, legend, machine's own name, `cr-`, management address or Docker bridge.
 
@@ -303,7 +303,7 @@ Zone captions:
 
 - Each zone caption gains the networks of the labels on its switch (`DMZ 10.30.1.0/24`).
 - The caption of a switch is the text in the smallest box that holds it (`topology.captions`).
-- 인터넷, DB존 and 관리망 keep their name alone.
+- The internet, DB zone and management network zones keep their name alone.
 - `GET /api/sessions/<id>/lesson/addresses/` returns the same addresses as rows `{host, zone, address}` (`topology.addresses`) for the reference column's address card.
 
 Where a label sits (`topology.leaving`):
@@ -482,7 +482,7 @@ The terminal also records what the operator types.
 The Kali pane (the red console's, and the blue console's in a lesson or scenario session) frames the URL that the session API names (`kali_terminal` in `GET /api/sessions/<id>/`).
 
 - The URL is `/vm-terminal/kali/?arg=<session id>`. It is a ttyd inside the platform that runs `platform/vm-terminal.sh`, started with `-t disableLeaveAlert=true` so leaving the page (the next lesson, a session close) raises no browser "leave site?" dialog. The script connects over ssh to the range host's mgmt address and runs `sudo docker exec -it ... sN-kali bash -l` for the session's slot.
-- `entrypoint.sh` starts both ttyds with `TERMINAL_KEEP=1`. The script then runs itself inside `tmux new-session -A -s <host>-<session id>` (`platform/tmux.conf`: no status line, no alternate screen, so the output stays in xterm's scrollback). A reload reattaches to the same shell, so a running sqlmap and its output survive it. The session id must be digits to name a tmux session.
+- `entrypoint.sh` starts both ttyds with `TERMINAL_KEEP=1`. The script then runs itself inside `tmux new-session -A -s <host>-<session id>` (`platform/tmux.conf`: no status line, no alternate screen, so the output stays in xterm's scrollback). The host in the session name has no `cr-` prefix, for example `kali-12`. A reload reattaches to the same shell, so a running sqlmap and its output survive it. The session id must be digits to name a tmux session. If tmux is missing, a kept terminal opens the plain shell, which a reload does not keep.
 
 `vm-terminal.sh` checks the host key under the alias that the platform's runner uses for the range host, `cr-<server id>-<launch time>` (`OpenStack.host_key_alias`), with `StrictHostKeyChecking=accept-new`.
 
@@ -792,7 +792,7 @@ A case marked with any of `views.REPLAY_MARKS` (`seed`, `verify`, `check`, `repl
 The console is four screens, and every one is filled from `/api/`. It follows a static mockup the user approved, with two rulings on top (`docs/DECISIONS.md`, 2026-10-11, console redesign). The palette and component classes are in `base.html` and `platform/console/components.css`, which `bin/build-css` puts into `tailwind.css`. The header carries the breadcrumb and the range state. The console is Korean only and has no language switch.
 
 - **Main** (`/`):
-  - It lists running sessions by what was taken (course and lesson, scenario number and title, or wargame and target), the step a foundation session reached, and, only while opening (`ready`, from `Session.ready_at`), "Preparing ns" (no estimate: the 80 s was a guess).
+  - It lists running sessions by what was taken (the course title, or the lesson title for a lesson outside a course; scenario number and title; or wargame and target), the step a foundation session reached, and, only while opening (`ready`, from `Session.ready_at`), "Preparing ns" (no estimate: the 80 s was a guess).
   - It lists wargame cards (name and a one-line description) under "Target systems", with the counts of attack cases, benign cases and objectives from `GET /api/wargames/` for the operator only. There is no page title, time estimate, category, difficulty, class or guidance chip (2026-11-14).
   - Under each card come the foundations block, the scenarios block ("Scenarios"), and the wargame block. Every row's button reads Start.
     - The foundations block shows each lesson as "Lesson n" and its title. Its Start button posts `{scenario, guidance: true, lesson, defense}` with the unit's declared defense.
@@ -839,7 +839,7 @@ In a guided session (a foundation or a worked scenario), the lesson note is a co
   - a worked scenario's cards and hints;
   - F4's and F6's ungraded "Do it yourself" card;
   - the folded step list.
-- The step list ticks a step only when `progress` says it passed. It marks a step left unpassed as "skipped" and says "n of N steps passed".
+- The step list ticks a step only when `progress` says it passed. It marks a step left unpassed as "skipped".
 - The note's folding is kept per viewer (`cr-lesson-note`). The step shown is kept in `cr-lesson-step-<id>-<lesson>`, which the main and session pages read for "step n/N". A browser without that record (a new browser, a cleared store) opens on the furthest step the server recorded as `reached` (2026-11-14).
 
 Progress itself belongs to the session and is kept per unit (`Session.lesson_steps[<lesson>][<step>]`, migrations 0020 and 0027).
@@ -906,7 +906,7 @@ Checks run by themselves.
 - A Kali step's card shows its run's row: the case's name, the still-running line and "Open Kibana at this run's time" (no "recorded run" label). A later step does not repeat the row; a Kibana step after it carries the run's window on its open button. The link opens the run's window with an empty query. A poll of the Kali check reads the row again after a reload, and whenever the row held has no window (a run still being collected when the learner pressed Next); a verdict that arrives after the learner moved on still updates the row. A Kali step passes on its own poll once the run ends; its check button only checks sooner.
 - Every answer to a step whose point, or a later phase of it, opens Kibana carries `query`, the query Kibana holds. A check with `kql` fails unless that query matches it (`<text>.wrong.<step>.kql`). Every foundation answer read in Kibana carries `kql`, so none passes on a value guessed from the map, the reference or an earlier card.
 - A check with `dev`, a regular expression, is read in the Website pane's DevTools. The console sends `dev_request`, the id of the request row picked in DevTools while it is open (`null` otherwise). The answer fails with `lesson.check.wrong.dev` unless that row is a recorded request of the session whose path matches `dev` (`views._dev_picked`). F2's method, path, status, parameter, sort and missing-post steps carry it.
-- An answer that is a count with a short unit word (a number followed by the Korean word for points or records) is read as the number (`lesson._unit_dropped`); a `%` is not a unit.
+- An answer that is a number followed by a unit word of one or two letters (for example the words for points or records) is read as the number (`lesson._unit_dropped`); a `%` is not a unit.
 - On the last step, a foundation says "Lesson over." and its button names the next lesson ("Next lesson: <title>"), and moves on ("One session per course"). After the course's last lesson (F3 in course 1, F6 in course 2), the card lists the course's lessons taken with the steps each passed, and an "End session" button closes the session. The card repeats no score: the result page shows them. A worked scenario says "Lesson over".
 - The pass line stays where it is, under the question, on the last step too. A wrong answer's line goes when the learner types again or picks another option, and a KQL fault's line goes when the Kibana query changes.
 - The order picker shows the order only as the numbers on the pressed buttons, with no joined line under them; the question says how to take a button back.
@@ -976,12 +976,12 @@ The design is phase P2 of `docs/superpowers/specs/2026-10-13-scenario-course-and
 
 The board's `scenario.yaml` declares a `foundations:` list. Discovery checks it: ids must be unique across the foundations and the scenarios (`wargames.checked_groups`). The foundations are the taught units. The worked scenarios 1.1 and 3.1 run their steps on the same engine.
 
-It also declares `courses:` (`wargames.checked_courses`): every foundation in exactly one course, each course an `id`, a string key `text` and its `reference` cards. Course `c1` "로그 분석 기초" is f1-f3 and only reads the range (defense `full`, no rule, Kali or WAF change); course `c2` "공격 탐지 실습" is f4-f6 and changes it (`docs/DECISIONS.md`, "The six foundations become two courses"). A course 1 step finds the learner's own request by the learner's own search word or marker and never needs a fresh range or the absence of other traffic.
+It also declares `courses:` (`wargames.checked_courses`): every foundation in exactly one course, each course an `id`, a string key `text` and its `reference` cards. Course `c1` (`course.logs.title`) is f1-f3 and only reads the range (defense `full`, no rule, Kali or WAF change); course `c2` (`course.attack.title`) is f4-f6 and changes it (`docs/DECISIONS.md`, "The six foundations become two courses"). A course 1 step finds the learner's own request by the learner's own search word or marker and never needs a fresh range or the absence of other traffic.
 
 - `GET /api/wargames/` lists `courses` (`id`, `title`, `lessons`); the main page shows one section per course with its lessons.
 - `GET /api/sessions/<id>/` carries `lesson_course` (`id`, `text`, `lessons`, `reference`).
 - The first lesson of a course opens on a briefing over the pane (`<course>.brief` and the course's reference cards, folded) while no step of it is reached; Start reaches the first step (`POST .../steps/<id>/ {state: reached}`), which an agent sends directly.
-- The rail's 참고 button opens a left column with the course's cards and the lesson's own `reference:` cards (`lesson.ref.<id>.title`, `.body`, `.rows`); the `addresses` card is filled from `GET .../lesson/addresses/`. F1 has no address card, since its questions are the addresses.
+- The rail's reference button (`lesson.ref.heading`) opens a left column with the course's cards and the lesson's own `reference:` cards (`lesson.ref.<id>.title`, `.body`, `.rows`); the `addresses` card is filled from `GET .../lesson/addresses/`. F1 has no address card, since its questions are the addresses.
 
 - `wargames.foundations()` lists the foundations by `order`.
 - `wargames.lesson(lesson_id=...)` finds a foundation or a scenario with steps, refuses any other id, and marks a foundation `group: foundations`.
@@ -1030,7 +1030,7 @@ Each unit below lists its defense and opening pane, what the learner does, and w
 
 **f5 Analysing SQL injection on the sort parameter** (`lesson.sqli`). Defense `full`, opens on Website.
 
-- The learner reads the sort value. They add `)` in the address bar and read the status, then say whether a WAF rule detected it. They type sqlmap in the Kali pane and read its verdict, how many WAF records the run left (the source_ip Top values' "Calculated from N records", or the Documents count; the source itself is kali's, on the map). That step's `kql` needs a `source_ip` condition beside the WAF one, so the step's own query is written, not the one left from the undetected step and the rule that named the scanner. They rerun with `--random-agent`. The solo step asks whether 913100 appears in the rerun's WAF logs. The CRS reference no longer lists the 913 family and the solo step's title no longer names 913100, so neither gives the scanner answer away. Every Kibana answer carries `kql`.
+- The learner reads the sort value. They add `)` in the address bar and read the status, then say whether a WAF rule detected it. They type sqlmap in the Kali pane and read its verdict, how many WAF records the run left (the source_ip Top values' "Calculated from N records", or the Documents count; the source itself is kali's, on the map), and the rule that named the scanner. The record-count step's `kql` needs a `source_ip` condition beside the WAF one, so the step's own query is written, not the one left from the undetected step. They rerun with `--random-agent`. The solo step asks whether 913100 appears in the rerun's WAF logs. The CRS reference no longer lists the 913 family and the solo step's title no longer names 913100, so neither gives the scanner answer away. Every Kibana answer carries `kql`.
 - Answers are read from:
   - `param_value` and `status`;
   - `waf_detected`: the ModSecurity detections of the request. A 500 is logged with no rule, which is no detection;

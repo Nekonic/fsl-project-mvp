@@ -152,9 +152,10 @@ a single VM on VirtualBox or VMware.
      resets its slot first.
 
    From a terminal, `curl -s http://ADDRESS:8000/api/range/ready/` answers
-   `"ready": true` before you start the lesson. It answers `"ready": false`
-   while a session is open, and `true` again after the session closes and the
-   slot has reset.
+   `"ready": true` before you start the lesson. It stays `true` while any slot
+   is free. With one slot it answers `"ready": false` while a session is open,
+   and `true` again after the session closes and the slot has reset. With more
+   slots it stays `true` until every slot is held.
 
 9. **If it fails.** `bin/cloud up` stops at the first failure and says why. It
    names the `cloud.yaml` key, the missing flavor or image, the GHCR package
@@ -633,8 +634,8 @@ the learner defends, drawn as a lab topology.
 
 - It names roles, not machines. A host's link end shows its address alone,
   with no interface or prefix. Links to the database and monitoring switches
-  carry no label. DMZ gains its network in the caption; 인터넷, DB존 and 관리망
-  keep their name alone.
+  carry no label. DMZ gains its network in the caption; the internet, DB zone and
+  management network zones keep their name alone.
 - It shows no management segment, no platform and no machine's own name.
 - There is one map per slot for the session's wargame, in Korean.
   GNS3 holds each map open with every node started.
@@ -702,7 +703,7 @@ declares (`minimal` is PL4). An agent tunes the WAF through
 The home page lists six lessons, called foundations, in two courses. Open one
 by its id: `{"lesson": "f1"}` to `f6`. `{"guidance": true}` alone opens F1.
 
-Course 1, "로그 분석 기초" (F1-F3), only reads the range:
+Course 1, `course.logs.title` (F1-F3), only reads the range:
 
 - F1: read the attacker's and the web server's addresses, the request path
   from customers, the DMZ network and the log server on the map.
@@ -712,7 +713,7 @@ Course 1, "로그 분석 기초" (F1-F3), only reads the range:
   and `not` the leg after the reverse proxy, then read that row's source and
   its X-Forwarded-For header.
 
-Course 2, "공격 탐지 실습" (F4-F6), changes it. The learner attacks from the Kali
+Course 2, `course.attack.title` (F4-F6), changes it. The learner attacks from the Kali
 pane and the Website pane and defends in the same blue console:
 
 - F4: send an XSS probe (its percent-encoded URL, the CRS anomaly score), write
@@ -726,7 +727,7 @@ pane and the Website pane and defends in the same blue console:
 
 A course's first lesson opens on a briefing: what the course does and the
 reference cards it needs (KQL, Kibana fields, the map's addresses, rule forms).
-The same cards stay in the 참고 column the rail opens. A Kibana step keeps its
+The same cards stay in the reference column (`lesson.ref.heading`) the rail opens. A Kibana step keeps its
 highlight on the query bar until the learner's own query matches, and its
 answer counts only with that query in Kibana, so no answer passes on a value
 guessed from the map or the reference.
