@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-11-14
+Updated: 2026-11-15
 
 ## Where things stand
 
@@ -1532,6 +1532,14 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       ends count steps passed; 101 strings rewritten Korean-first or removed.
       A scenario's clock now starts at the briefing's Start, and a reload in a
       browser without its step record reopens the furthest reached step.
+- [x] 2026-11-15: the answer-blind walk of round 19 and docs review round 4
+      (`docs/DECISIONS.md` "Answer-blind walk round 19"): DevTools steps need
+      the picked row; F3 X-Forwarded-For and F5 record count need their own
+      query; F6 loot needs the whole table; no ring or wrong-answer line shows
+      a later answer; a reload keeps the Kali shell and a rule draft; the
+      scenario pages say what happened once; the round's slop list removed;
+      `<fail>.broad` names the matched URI and a header-only rule is not
+      broad.
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 
