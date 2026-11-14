@@ -837,13 +837,14 @@ The full run restarts the platform and resets the target, the rules and the
 attacker's origin. Do not run it against a stack someone is using. It deletes
 only the sessions it created.
 
-`bin/acceptance` runs the acceptance step. It starts:
-
-- one pytest process for each session the range can hold at once
-  (`max_sessions` in `GET /api/range/ready/`);
-- one more for the checks that read only Elasticsearch;
-- one for the modules that need the whole range (`test_concurrent_sessions`,
-  `test_lesson`).
+`bin/acceptance` runs the acceptance step. It starts one pytest process for
+the checks that read only Elasticsearch, and one for each group of modules
+that share a session. A group starts as soon as a slot is free, so as many run
+at once as the range has slots (`max_sessions` in `GET /api/range/ready/`);
+`test_concurrent_sessions`, which holds two sessions at once, takes two. The
+unit suite runs beside it at the lowest CPU priority. The red-team run fires
+one sqlmap case, the dump; `CR_SQLMAP_VARIANTS=1 bin/verify` fires every
+sqlmap variant.
 
 `bin/acceptance --plan` prints the split, and `test/README.md` explains it. The
 platform VM does not listen on localhost, so run it on the VM with

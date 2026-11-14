@@ -786,13 +786,13 @@ bin/verify            # test/의 acceptance 테스트까지, 실행 중인 스�
 다른 사람이 쓰고 있는 스택에서는 실행하지 마세요. 전체 실행은 자신이 만든
 세션만 삭제합니다.
 
-acceptance 단계는 `bin/acceptance`가 실행하며, 다음 프로세스를 띄웁니다.
-
-- 훈련 환경이 동시에 수용할 수 있는 세션 수(`GET /api/range/ready/`의
-  `max_sessions`)만큼의 pytest 프로세스
-- Elasticsearch만 읽는 검사용 프로세스 하나
-- 훈련 환경 전체가 필요한 모듈(`test_concurrent_sessions`, `test_lesson`)용
-  프로세스 하나
+acceptance 단계는 `bin/acceptance`가 실행합니다. Elasticsearch만 읽는 검사용
+pytest 프로세스 하나와, 세션을 함께 쓰는 모듈 묶음마다 프로세스 하나를 띄웁니다.
+묶음은 슬롯이 비는 대로 시작하므로, 훈련 환경의 슬롯 수(`GET /api/range/ready/`의
+`max_sessions`)만큼 동시에 돕니다. 세션 두 개를 한꺼번에 여는
+`test_concurrent_sessions`는 슬롯 두 개를 씁니다. unit 테스트는 그 옆에서 가장
+낮은 CPU 우선순위로 돕니다. 레드팀 실행은 sqlmap 케이스 중 덤프 하나만 쏘고,
+`CR_SQLMAP_VARIANTS=1 bin/verify`로 실행하면 sqlmap 변형을 전부 쏩니다.
 
 `bin/acceptance --plan`이 이 분할을 출력하고, `test/README.md`가 설명합니다.
 플랫폼 VM은 localhost에서 수신하지 않으므로, VM에서

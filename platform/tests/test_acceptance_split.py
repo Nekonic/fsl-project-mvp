@@ -82,12 +82,26 @@ def test_the_red_team_run_is_read_from_what_its_fixture_recorded():
     assert not readers, readers
 
 
-@pytest.mark.parametrize("workers", [2, 3])
-def test_the_modules_that_hold_two_sessions_run_alone_after_the_rest(workers):
-    together, after = split.plan(workers)
+@pytest.mark.parametrize("workers", [2, 3, 4])
+def test_the_modules_that_hold_two_sessions_take_two_slots_and_start_first(workers):
+    _, waiting = split.plan(workers)
 
-    assert not {m for p in together for m in p.modules} & set(split.SOLO)
-    assert [p.modules for p in after] == [sorted(split.SOLO)]
+    holding = [p for p in waiting if set(p.modules) & set(split.TWO_SESSIONS)]
+    assert holding and all(p.slots == 2 for p in holding)
+    assert waiting[:len(holding)] == holding, (
+        "a two-slot group queued behind one-slot groups waits until two slots are free at once, "
+        "which may not happen before the end of the run"
+    )
+    assert all(p.slots == 1 for p in waiting if p not in holding)
+
+
+def test_a_group_starts_only_when_the_slots_it_holds_are_free():
+    two = split.Process("group 1", "worker", ["test_concurrent_sessions"], 90, 2)
+    one = split.Process("group 2", "worker", ["test_board"], 30, 1)
+
+    assert split.next_to_start([two, one], 2) is two
+    assert split.next_to_start([two, one], 1) is one
+    assert split.next_to_start([two, one], 0) is None
 
 
 @pytest.mark.parametrize("workers", [2, 3])
@@ -178,3 +192,41 @@ def test_a_red_team_run_refused_for_want_of_room_is_told_apart_from_any_other_re
         "a range that refused for a reason other than room is retried for half an hour"
     )
     assert not opening.refused_a_run_for_room("503 Server Error: already open on the range")
+
+
+def test_the_run_never_holds_more_slots_than_the_range_has(monkeypatch, tmp_path):
+    in_flight, most = [], []
+
+    class Finishing:
+        def __init__(self):
+            self.polls = 0
+
+        def poll(self):
+            self.polls += 1
+            return 0 if self.polls > 2 else None
+
+    def started(process, slots, logs, extra):
+        in_flight.append(process.slots)
+        most.append(sum(in_flight))
+        return process, Finishing(), None, None
+
+    def finished(process, running, log, report):
+        in_flight.remove(process.slots)
+        return 0, split.Totals(passed=1)
+
+    monkeypatch.setattr(split, "_started", started)
+    monkeypatch.setattr(split, "_finished", finished)
+    monkeypatch.setattr(split, "POLL_SECONDS", 0)
+    groups = [split.Process(f"group {n}", "worker", [f"test_{n}"], 10, slots)
+              for n, slots in enumerate([2, 1, 1, 1, 1, 2, 1])]
+
+    codes, totals = split.run_all([], groups, 3, tmp_path, [])
+
+    assert codes == [0] * len(groups) and totals.passed == len(groups)
+    assert max(most) <= 3
+
+
+def test_a_group_wider_than_the_range_fails_the_run_instead_of_waiting_forever(monkeypatch, tmp_path):
+    codes, totals = split.run_all([], [split.Process("group 1", "worker", ["test_x"], 10, 2)], 1, tmp_path, [])
+
+    assert codes == [1] and totals.errors == 1

@@ -1,3 +1,9 @@
+def test_a_board_session_starts_with_no_objective_taken(board_session):
+    observed = board_session["objectives_at_open"]
+    assert observed.status_code == 200, observed.text
+    assert observed.json() == {"achieved": 0, "total": 0}, observed.json()
+
+
 def test_a_breach_is_scored_and_attributed_to_the_attack_that_took_it(board_session):
     submitted = board_session["real_loot"]
     case_id = board_session["case_id"]

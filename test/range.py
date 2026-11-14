@@ -117,17 +117,19 @@ class ThroughPlatform:
         self.platform = platform or Platform()
         self.roles, self.hosts = declared_roles(), declared_hosts()
 
-    def run(self, role: str, argv, timeout: float = 60.0, session: int | None = None) -> Ran:
+    def run(self, role: str, argv, timeout: float = 60.0, session: int | None = None,
+            slot: int | None = None) -> Ran:
         if role == SCORER:
             return self.platform.run(argv, timeout=timeout)
-        if session is None:
+        if session is None and slot is None:
             session = _default_session()
         argv = as_the_terminal(list(argv)) if role in self.in_the_terminal else list(argv)
         done = self.platform.dispatch(
             ["docker", "exec", self.platform.node,
              "python", "manage.py", "run_on_role", role,
              json.dumps(stdout_apart(argv)), "--timeout", str(timeout),
-             *(["--session", str(session)] if session is not None else [])],
+             *(["--session", str(session)] if session is not None else []),
+             *(["--slot", str(slot)] if slot is not None else [])],
             timeout + 60,
         )
         answer = next((line[len(PLATFORM_ANSWER):] for line in done.stdout.splitlines()
@@ -157,8 +159,36 @@ def default_to(session: Callable[[], int | None]) -> None:
 def missing(*roles: str) -> list[str]:
     return RANGE.missing(*roles)
 
-def run(role: str, argv, timeout: float = 60.0, session: int | None = None) -> Ran:
-    return RANGE.run(role, argv, timeout=timeout, session=session)
+def run(role: str, argv, timeout: float = 60.0, session: int | None = None, slot: int | None = None) -> Ran:
+    return RANGE.run(role, argv, timeout=timeout, session=session, slot=slot)
+
+PART_MARK = "cr.part="
+CODE_MARK = "cr.code="
+_PARTS = re.compile(re.escape(PART_MARK) + r"(\d+)\n(.*?)\n" + re.escape(CODE_MARK) + r"(\d+)\n", re.S)
+
+def side_by_side(commands: list[list[str]]) -> list[str]:
+    started = " ".join(
+        f'( ( {shlex.join(argv)} ) >"$d/{n}" 2>/dev/null; echo $? >"$d/{n}.code" ) &'
+        for n, argv in enumerate(commands)
+    )
+    shown = " ".join(
+        f'printf "{PART_MARK}{n}\\n"; cat "$d/{n}"; printf "\\n{CODE_MARK}%s\\n" "$(cat "$d/{n}.code")";'
+        for n in range(len(commands))
+    )
+    return ["sh", "-c", f'd=/tmp/cr-side-by-side-$$; mkdir -p "$d"; {started} wait; {shown} rm -rf "$d"']
+
+def parts(output: str, count: int) -> list[Ran]:
+    found = {int(n): Ran(exit_code=int(code), stdout=body, stderr="")
+             for n, body, code in _PARTS.findall(output)}
+    missing_parts = [n for n in range(count) if n not in found]
+    if missing_parts:
+        raise RangeUnavailable(f"commands {missing_parts} run side by side reported nothing", output)
+    return [found[n] for n in range(count)]
+
+def run_side_by_side(role: str, commands: dict, timeout: float = 60.0, session: int | None = None) -> dict:
+    keys = list(commands)
+    ran = run(role, side_by_side([commands[key] for key in keys]), timeout=timeout, session=session)
+    return dict(zip(keys, parts(ran.stdout, len(keys))))
 
 def start_hint() -> str:
     return "bin/cloud up, then wait for GET /api/range/ready/ to say ready"

@@ -1,7 +1,7 @@
 import pytest
 import requests
 
-from conftest import PLATFORM_URL
+from conftest import PLATFORM_URL, runs_the_declared_rules
 
 CATCH_ALL = (
     'alert http any any -> any any (msg:"SQL XSS traversal Restricted File"; '
@@ -51,10 +51,11 @@ def indiscriminate(totals, sigs):
     return found
 
 @pytest.fixture(scope="module")
-def block_everything(stack_is_up, baseline_rules):
+def block_everything(stack_is_up):
     session_id = requests.post(
         f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
     ).json()["id"]
+    baseline_rules = runs_the_declared_rules(session_id)
     apply_rules(CATCH_ALL, session_id)
     try:
         totals = fire_and_score(session_id)
@@ -113,15 +114,3 @@ def test_a_defence_with_nothing_but_noise_is_called_out(block_everything):
     assert any(
         w[0] == "score.warning.wrong_reason" for w in totals["warnings"]
     ), totals["warnings"]
-
-def test_the_real_rule_set_still_gets_the_credit(score):
-    credited = [
-        c["name"] for c in score["per_case"]
-        if c["malicious"] and c["expect"] and c["corroborated"] is True
-    ]
-
-    assert credited, (
-        f"the baseline defence corroborates nothing either, so the check now "
-        f"rejects every rule set rather than only indiscriminate ones: "
-        f"{[(c['name'], c['corroborated']) for c in score['per_case'] if c['malicious']]}"
-    )

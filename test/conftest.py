@@ -149,10 +149,12 @@ class Standing:
             self.session = listed_for_pruning(opened.json()["id"])
         return self.session
 
-    def release(self) -> None:
-        if self.session is not None:
-            REAL_POST(f"{PLATFORM_URL}/api/sessions/{self.session}/close/", json={}, timeout=120)
-            self.session = None
+    def release(self):
+        if self.session is None:
+            return None
+        closed = REAL_POST(f"{PLATFORM_URL}/api/sessions/{self.session}/close/", json={}, timeout=120)
+        self.session = None
+        return closed
 
 REAL_POST = requests.post
 STANDING = Standing()
@@ -252,19 +254,19 @@ def terminal_carries_no_case(stack_is_up):
         f"with a case that is not in this run."
     )
 
-@pytest.fixture(scope="session")
-def baseline_rules(stack_is_up):
-    committed = (REPO_ROOT / "deploy/suricata/rules/local.rules").read_text()
-    fresh = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600).json()["id"]
+def declared_rules() -> str:
+    return (REPO_ROOT / "deploy/suricata/rules/local.rules").read_text()
+
+def runs_the_declared_rules(session_id: int) -> str:
+    committed = declared_rules()
     live = requests.get(
-        f"{PLATFORM_URL}/api/rules/", params={"session": fresh}, timeout=60
+        f"{PLATFORM_URL}/api/rules/", params={"session": session_id}, timeout=60
     ).json()["content"]
-    requests.post(f"{PLATFORM_URL}/api/sessions/{fresh}/close/", json={}, timeout=120)
 
     assert live == committed, (
-        "the sensor is not running the rule set this repo declares. A test "
-        "that captures 'whatever was there' and restores it would cement "
-        "somebody else's leftovers as the baseline."
+        f"session {session_id} opened with a sensor that is not running the rule "
+        f"set this repo declares. A test that captures 'whatever was there' and "
+        f"restores it would cement somebody else's leftovers as the baseline."
     )
     return committed
 
@@ -291,12 +293,38 @@ def _opened_by(output: str) -> None:
             session_id = made_by_this_run(int(found.group(1)))
             requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120)
 
+EVERY_SQLMAP_VARIANT = os.environ.get("CR_SQLMAP_VARIANTS") == "1"
+SQLMAP_DUMP = "board-sqli-orderby-sqlmap"
+CASE_FILE = "redteam/cases/board.yaml"
+ONE_SQLMAP_CASES = "/tmp/cr-acceptance-cases/board.yaml"
+ONE_SQLMAP_RUN = (
+    "import pathlib, sys, yaml; "
+    "cases = yaml.safe_load(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8')); "
+    "kept = [case for case in cases if not case.get('tool') or case['name'] == sys.argv[2]]; "
+    "names = [case['name'] for case in kept]; "
+    "sys.exit('no case named ' + sys.argv[2]) if sys.argv[2] not in names else None; "
+    "out = pathlib.Path(sys.argv[3]); out.parent.mkdir(exist_ok=True); "
+    "out.write_text(yaml.safe_dump(kept, allow_unicode=True, sort_keys=False), encoding='utf-8'); "
+    "print(len(cases) - len(kept))"
+)
+
+def red_team_cases() -> str:
+    if EVERY_SQLMAP_VARIANT:
+        return CASE_FILE
+    written = run(SCORER, ["python", "-c", ONE_SQLMAP_RUN, CASE_FILE, SQLMAP_DUMP, ONE_SQLMAP_CASES])
+    assert written.ok and written.stdout.strip().isdigit() and int(written.stdout) > 0, (
+        f"could not leave the sqlmap variants out of the red-team run, so it would "
+        f"run every one of them: {written.output[-400:]}"
+    )
+    return ONE_SQLMAP_CASES
+
 def _redteam_once():
     try:
         result = run(
             SCORER,
             ["python", "redteam/run.py",
              "--platform", PLATFORM_FROM_SCORER,
+             "--cases", red_team_cases(),
              "--tool-target", TARGET_PUBLIC],
             timeout=REDTEAM_WAIT,
         )

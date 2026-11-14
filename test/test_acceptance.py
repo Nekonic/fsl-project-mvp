@@ -37,20 +37,6 @@ def test_detections_are_spread_across_cases(score):
         f"Score: {score}"
     )
 
-def test_criterion_4_adding_a_rule_moves_the_score(rules_session):
-    assert rules_session["noisy"].ok, rules_session["noisy"].text
-
-    after = rules_session["after"]
-    assert after["fp"] > 0, (
-        f"a rule hitting 'release' was added but no false positive was "
-        f"scored. Score: {after}"
-    )
-
-def test_invalid_rule_is_rejected_and_not_applied(rules_session):
-    assert rules_session["invalid"].status_code == 400
-    assert rules_session["rules_after_invalid"] == rules_session["rules_before_invalid"]
-
-
 def test_the_stack_does_not_attack_itself(full_run):
     rows = full_run["detections"]
 
@@ -69,4 +55,16 @@ def test_the_stack_does_not_attack_itself(full_run):
         f"side of the session, so this also goes red on residue from whatever "
         f"used the range in the minute before this run. Check whether the "
         f"signature is still being produced now, not only that it is in here."
+    )
+
+def test_the_real_rule_set_still_gets_the_credit(score):
+    credited = [
+        c["name"] for c in score["per_case"]
+        if c["malicious"] and c["expect"] and c["corroborated"] is True
+    ]
+
+    assert credited, (
+        f"the baseline defence corroborates nothing either, so the check now "
+        f"rejects every rule set rather than only indiscriminate ones: "
+        f"{[(c['name'], c['corroborated']) for c in score['per_case'] if c['malicious']]}"
     )
