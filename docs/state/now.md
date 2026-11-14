@@ -70,6 +70,16 @@ Internet.
   1506 passed (5:00); acceptance 91 passed, 0 failed, 0 errors, 1 skipped in
   1101 s across 6 processes; ratchet no regression (`core_loc` 584,
   `dependencies` 6, `services` 5).
+- Test speed (branch `test-speed`, `docs/DECISIONS.md` "The acceptance
+  suite runs one sqlmap case and fills the slots as they free"): the
+  red-team run fires one sqlmap case (the dump; `CR_SQLMAP_VARIANTS=1` fires
+  all six), `bin/acceptance` starts a group per free slot, the containment
+  probes run side by side, and the unit suite runs beside the acceptance
+  suite. Full `bin/verify` on the platform VM (2026-11-14, four slots):
+  13 min 18 s from start to result, against about 25 min before; acceptance
+  91 passed, 0 failed, 0 errors, 1 skipped in 746 s across 14 processes
+  (1101 s before); unit and API 1517 passed in two processes beside it;
+  ratchet no regression (`core_loc` 584, `dependencies` 6, `services` 5).
 - Live paths run end to end on 2026-11-13: `bin/cloud up --replace` from the
   VM range (25 min, the range host replaced as stale, the leftovers removed
   after READY); a stale range host replaced by `POST slot/`; `bin/cloud down`
@@ -129,7 +139,10 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
    or `union select` even where it is loaded: a detection gap to measure
    (round 16, `docs/DECISIONS.md`).
-4. Acceptance run time, and ingest re-reading the whole window.
+4. Ingest re-reading the whole window: `POST /ingest/` took 22-42 s on a
+   closed red-team session while the suite ran, and every score wait calls it.
+   More slots (`compute.slots`; ten fit on `dba.range`) would shorten the
+   acceptance run further; a slot reset (53 s alone) is now its floor.
 5. MySQL `performance_schema=OFF`: memory caps the slots a range host holds
    (`docs/STATE.md` backlog 4).
 6. Promotion to `main`: a tagged state, the full `bin/verify`, a live review

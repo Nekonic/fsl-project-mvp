@@ -7166,4 +7166,28 @@ the scope fix in `test_judge_isolation`): 86 passed, 5 errors (that fixture),
 1 skipped in 662 s across 14 processes, against 1101 s across 6 processes
 for the previous full `bin/verify`. The red-team group took 99 s (540 s
 before), `test_range_isolation` 224 s (546 s; its scan 10 s, 153 s before).
-The full `bin/verify` on this branch is in `docs/state/now.md`.
+Full `bin/verify` with the fix, on the platform VM: 13 min 18 s start to
+result (about 25 min before); acceptance 91 passed, 0 failed, 0 errors, 1
+skipped in 746 s across 14 processes; the unit suite's two processes took
+329 s and 192 s beside it. With the unit suite beside it the acceptance run
+was slower than alone (746 s against 662 s; the platform VM has two vCPUs),
+still shorter than running the unit suite first. `durations.json` holds the
+larger of the two runs' seconds per module, so a module whose time varies
+(the red-team group took 99 s and 248 s) is not started last.
+
+| Module | Before (s) | After (s) |
+|---|---|---|
+| test_acceptance (red-team run) | 540 | 99-248 |
+| test_range_isolation | 546 | 224-246 |
+| test_corp_authz | 303 | 385-387 |
+| test_origins | 292 | 151-198 |
+| test_lesson | 157 | 168-246 |
+| test_concurrent_sessions | 36 | 160-246 (now also the two-session lesson test) |
+| test_judge_isolation | 134 | 28 |
+| test_disabled_rule | 131 | 93-108 |
+| test_window_correlation | 87 | 40-97 |
+| test_strategy_comparison | 29 | 83-162 |
+| acceptance wall | 1101 | 662-746 |
+
+Per-module seconds include the wait for a free, reset slot, which now falls
+on whichever group opens next; the wall time is the number that fell.
