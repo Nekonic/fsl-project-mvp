@@ -309,7 +309,11 @@ LOGS_COURSE = COURSE.replace('{id: "f5", started_at: "2026-10-18T09:10:00Z"}', '
     '{id: "f5", steps: 9, passed: 8, skipped: 1, hints: 0}', '{id: "f2", steps: 1, passed: 1, skipped: 0, hints: 0}').replace(
     '{id: "f6", steps: 2, passed: 2, skipped: 0, hints: 0}', '{id: "f3", steps: 1, passed: 1, skipped: 0, hints: 0}').replace(
     'foundations: [', f'courses: {COURSES}, foundations: [', 1)
-SCORED = SHOWN.replace("restart: browser.text('restart')}", "restart: browser.text('restart'), scores: browser.text('course-scores')}")
+SCORED = SHOWN.replace("restart: browser.text('restart')}", "restart: browser.text('restart'), scores: browser.text('course-scores'), "
+                       "panels: !browser.element('score-panels').classList.contains('hidden'), "
+                       "noted: !browser.element('course-scores').classList.contains('hidden'), "
+                       "listed: !browser.element('score-cases').classList.contains('hidden'), "
+                       "figures: browser.text('session-figures')}")
 
 def test_a_course_s_result_numbers_its_lessons_as_the_catalogue_does_and_says_its_own_score_note(client):
     attack = open_page(client, "/session/1/", setup=ATTACK_COURSE, scenario=SCORED)
@@ -323,6 +327,21 @@ def test_a_course_s_result_numbers_its_lessons_as_the_catalogue_does_and_says_it
     assert worded("session.run.step", 2, 4) in shown["cases"] and worded("session.run.step", 3, 2) in shown["cases"]
     assert shown["restart"] == worded("session.restart.course", 1)
     assert shown["scores"] == worded("course.attack.scores")
-    assert read["scores"] == worded("result.scores") and "sqlmap" not in read["scores"], (
-        "the logs course sends no sqlmap; its result does not talk about lessons it does not have")
-    assert not [number for number in range(1, 7) if worded("session.run.lesson", number) in read["scores"] + shown["scores"]]
+    assert (shown["panels"], shown["noted"], shown["listed"]) == (True, True, True)
+    assert (read["panels"], read["noted"], read["listed"]) == (False, False, False), (
+        "the logs course only reads the range: no objective is at stake and no attack is sent, so it shows no score")
+    assert worded("session.lost") not in read["figures"]
+    assert not [number for number in range(1, 7) if worded("session.run.lesson", number) in shown["scores"]]
+
+def test_one_case_sent_once_in_each_lesson_is_named_once_with_its_lessons_not_by_the_first_lesson(client):
+    three = ATTACK_COURSE.replace('''        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: true, detections: 1, corroborated: false,
+         lesson: "f5", step: "sqlmap", seed: false},''', '''        {name: "board-normal-search", malicious: false, detected: false, detections: 0, corroborated: null,
+         lesson: "f5", step: null, seed: true},
+        {name: "board-normal-search", malicious: false, detected: false, detections: 0, corroborated: null,
+         lesson: "f6", step: null, seed: true},''')
+    seen = open_page(client, "/session/1/", setup=three, scenario=SHOWN)
+    first = worded("session.run.named", worded("session.run.lesson", 1), worded("case.board-normal-search"))
+
+    assert three != ATTACK_COURSE and seen["errors"] == []
+    assert worded("score.case_in_lessons", worded("case.board-normal-search"), "1, 2, 3") in seen["result"]["judged"]
+    assert worded("score.and_more", first, 2) not in seen["result"]["judged"]

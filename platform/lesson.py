@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import difflib
+import ipaddress
 import re
+from http import HTTPStatus
 
 import disable
 
@@ -19,6 +21,10 @@ TOTAL_SCORE = re.compile(r"Total Score: (\d+)")
 NOCASE = re.compile(r"\bnocase\s*;|\bpcre\s*:\s*\"/.*/[A-Za-z]*i[A-Za-z]*\"")
 REV = re.compile(r"[(;]\s*rev\s*:\s*(\d+)\s*[;)]")
 BLOCKING_RULE = "949110"
+OPTION = re.compile(r'\s*([\w.]+)\s*(?::\s*((?:"(?:\\.|[^"\\])*"|[^;])*))?;')
+HEX = re.compile(r"\|([0-9A-Fa-f\s]*)\|")
+URI_BUFFERS = ("http.uri", "http.uri.raw", "http.request_line", "pkt_data")
+URI_MODIFIERS = ("http_uri", "http_raw_uri")
 PRESENT, ABSENT = "present", "absent"
 YES, NO = "yes", "no"
 ALERTED_BY = {frozenset(): "none", frozenset({"suricata"}): "ids", frozenset({"modsecurity"}): "waf",
@@ -38,6 +44,47 @@ def answered(check: dict, given: str, wrong: str) -> tuple[bool, list | None]:
         return False, [f"{wrong}.{given}", []]
     said = next((rule["says"] for rule in check.get("wrong_if", []) if re.search(rule["match"], given)), None)
     return False, [f"{wrong}.{said}" if said else "lesson.check.wrong", []]
+
+def status_said(code: int) -> list[str]:
+    try:
+        return [str(code), f"{code} {HTTPStatus(code).phrase}"]
+    except ValueError:
+        return [str(code)]
+
+def an_address(text: str) -> bool:
+    try:
+        ipaddress.IPv4Address(text.strip())
+    except ValueError:
+        return False
+    return True
+
+def alerts_on(rule: str | None, uri: str) -> bool | None:
+    body = (rule or "")[(rule or "").find("(") + 1:(rule or "").rfind(")")]
+    contents, buffer = [], ""
+    for name, value in OPTION.findall(body):
+        if name == "pcre":
+            return None
+        if name == "content":
+            negated = value.strip().startswith("!")
+            contents.append({"text": _content(value), "negated": negated, "nocase": False, "uri": not buffer or buffer in URI_BUFFERS})
+        elif name == "nocase" and contents:
+            contents[-1]["nocase"] = True
+        elif name in URI_MODIFIERS and contents:
+            contents[-1]["uri"] = True
+        elif name.startswith("http_") and contents:
+            contents[-1]["uri"] = False
+        elif name.startswith(("http.", "file.")) or name == "pkt_data":
+            buffer = name
+    if not contents:
+        return None
+    seen = lambda one: (one["text"].casefold() in uri.casefold()) if one["nocase"] else one["text"] in uri
+    return all(seen(one) != one["negated"] for one in contents if one["uri"])
+
+def _content(value: str) -> str:
+    quoted = value.strip().lstrip("!").strip()
+    text = quoted[1:-1] if len(quoted) >= 2 and quoted[0] == quoted[-1] == '"' else quoted
+    text = HEX.sub(lambda found: bytes.fromhex("".join(found[1].split())).decode("latin-1"), text)
+    return re.sub(r"\\(.)", r"\1", text)
 
 def _ungrouped(text: str) -> str:
     return text.replace(",", "") if GROUPED_NUMBER.fullmatch(text.strip()) else text
@@ -119,7 +166,13 @@ def help_counts(steps: dict) -> dict:
     return {
         "hints": sum(1 for step in kept if step.get("hint")),
         "skipped": sum(1 for step in kept if step.get("skipped") and not step.get("passed")),
+        "retried": sum(1 for step in kept if step.get("passed") and step.get("tries")),
     }
+
+def objective_outcome(row: dict | None) -> str | None:
+    if row is None:
+        return None
+    return "kept" if not row["lost"] else "detected" if row["detected"] else "undetected"
 
 def rules_named(messages: list[dict]) -> list[str]:
     found = set()

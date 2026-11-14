@@ -716,8 +716,8 @@ pane and the Website pane and defends in the same blue console:
 - F4: send an XSS probe (its percent-encoded URL, the CRS anomaly score), write
   an IDS rule, bypass it with letter case and fix it with `nocase` and a raised
   `rev` (defense `xss-gap`).
-- F5: run sqlmap on the board's `sort` parameter and read the verdict and the
-  rules that caught it.
+- F5: run sqlmap on the board's `sort` parameter and read the verdict, how many
+  WAF records the run left (in Kibana) and the rules that caught it.
 - F6: use an over-broad WAF exception (defense `overbroad`) to dump the accounts
   undetected, read the doubled penalty, remove the exception and replay the
   attack.
@@ -725,7 +725,9 @@ pane and the Website pane and defends in the same blue console:
 A course's first lesson opens on a briefing: what the course does and the
 reference cards it needs (KQL, Kibana fields, the map's addresses, rule forms).
 The same cards stay in the 참고 column the rail opens. A Kibana step keeps its
-highlight on the query bar until the learner's own query matches.
+highlight on the query bar until the learner's own query matches, and its
+answer counts only with that query in Kibana, so no answer passes on a value
+guessed from the map or the reference.
 
 Every answer is read from the learner's own records or the session's map. There
 is no fixed answer key. The learner's own sqlmap run counts in both scores like
@@ -743,7 +745,8 @@ through the lesson's steps.
   learner reaches the step, as text to type. No button runs an attack.
 - Help for each step comes in order: a nudge, then a hint, then "Skip". "Skip"
   records the step as skipped and moves on. It does nothing for the learner. The
-  session records hint use.
+  session records hint use, and the result page counts the steps passed after a
+  wrong answer.
 - A lesson's last step is done alone, with no highlight or hint.
 
 The benign request that a lesson replays is scored as a benign case. The first
@@ -758,7 +761,9 @@ presses "Next lesson", it starts that lesson in the same session
 than 30 characters, waits for "Next lesson". That call
 applies the lesson's defense in place. The range is not reset
 between lessons, and each lesson judges only what happened since it started.
-At a course's end the note lists the course's lessons taken, and its button closes the session.
+At a course's end the note lists the course's lessons taken, and its button
+asks, then closes the session. Course 1 only reads the range, so its result page
+shows the lessons and no score.
 
 ### Scenarios
 

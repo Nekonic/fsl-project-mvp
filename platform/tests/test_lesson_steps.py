@@ -17,6 +17,7 @@ from api import site, views
 from api.models import Case, Detection, Objective, Session
 from console import strings
 from range.interfaces import Interface
+from tests.test_lesson_api import WRITTEN
 
 pytestmark = pytest.mark.django_db
 
@@ -37,7 +38,8 @@ def step(client, session, step_id, tail="", body=None):
     return client.post_json(f"/api/sessions/{session.pk}/lesson/steps/{step_id}/{tail}", body or {})
 
 def check(client, session, step_id, body=None):
-    return step(client, session, step_id, "check/", body)
+    asked = {"query": WRITTEN, **body} if body and "answer" in body else body
+    return step(client, session, step_id, "check/", asked)
 
 def withheld_texts(prefix):
     return {encoded(text) for key, text in strings.withheld().items() if key.startswith(f"{prefix}.")}
@@ -326,10 +328,10 @@ def test_a_recorded_run_s_facts_are_read_without_ingesting_again_once_its_record
         before = views._accepted(session, steps["scanner"])
         blocked_by(session, "probe-ua", "probe-run", "/?sort=posts_post.id", "913100")
         Detection.objects.filter(detection_id="probe-ua").update(src_ip="5.188.10.10")
-        held = [views._accepted(session, steps[name]) for name in ("scanner", "source", "scanner")]
+        held = [views._accepted(session, steps[name]) for name in ("scanner", "scanner")]
 
     assert before == [] and len(ingested) == 1, "nothing of the run held yet, so the check ingests"
-    assert held == [["913100"], ["5.188.10.10"], ["913100"]]
+    assert held == [["913100"], ["913100"]]
     assert len(ingested) == 1, "the run ended and settled before it was recorded, so its records do not change"
 
 def test_the_slot_s_interfaces_read_for_the_map_answer_the_session_s_address_questions_until_it_closes(client):

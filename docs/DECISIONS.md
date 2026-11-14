@@ -7194,3 +7194,43 @@ larger of the two runs' seconds per module, so a module whose time varies
 
 Per-module seconds include the wait for a free, reset slot, which now falls
 on whichever group opens next; the wall time is the number that fell.
+
+## 2026-11-14 — Answer-blind walk round 18: what changed in the lessons and why
+
+An answer-blind walk of both courses on the live range found seventeen
+problems. Two were left by ruling (Next skipping steps, and whether XSS
+counts in the score); the rest changed as below.
+
+| # | Finding | What changed |
+|---|---|---|
+| 1 | The browser's "leave site?" dialog on Next lesson and on close | Both ttyd terminals start with `-t disableLeaveAlert=true`; no console template registers `beforeunload`, so ttyd was the only source |
+| 2 | F4 `write` passed `content:"/search/"` | `rules` checks carry `quiet_on` (two plain searches); a rule whose URI contents all appear in one fails with `<fail>.broad` before any alert is read (`lesson.alerts_on`). Applies to `write` and `nocase` |
+| 3 | F4 replay sat at "checking" with such a rule | `views._benign_fault` names the fault (`.alerted` with sids and URL, `.status`, `.waf_logged`) and answers `loud: true`, which the console says even on a silent poll; the benign line reads "문제 있음" |
+| 4 | F6 `narrow` silent on a deleted Paranoia Level line, then passed | `waf_changed` also needs the posture's level line; a deleted or changed one fails loud with `<fail>.paranoia` and the line to put back |
+| 5 | Early answers: F5 source on the address table, 913100 in the CRS reference and the solo step's title, F4 941100 and 20 guessable | F5's source step asks the record count only Kibana shows (`run_records`: Top values' "Calculated from N records", equal to the Documents count; window or marker count accepted); the 913 row and 913100 in the step title are gone; every foundation answer read in Kibana carries `kql` |
+| 6 | F3 count passed without Kibana | Its check carries `kql` (a `url` condition), as do `site_source` and `xff` |
+| 7 | Two-way choices pass by trying the other option | Attempts were not recorded: `wrong` reset at two into a hint, so one wrong pick left no trace. Steps now keep `tries` and the result page counts the steps passed after a wrong answer (`retried`). Not penalised: that would change what the score means |
+| 8 | F6 cost line said 8 points deducted when admin was not lost | The pass line follows the objective's row at pass time (`.undetected`, `.detected`, `.kept`); the nudge no longer says the current state |
+| 9 | Contradictory run messages | A run counts as finished only when the last typed command holds the step's command words, so step 8 no longer shows step 4's "finished"; while the step's command runs the settling status and a red "no run yet" are cleared; a settling poll clears the red line; the `sudo su ... exit` sentence is gone (the prompt is root) |
+| 11 | F2 rejected "200 OK" | `status` accepts the code with its reason phrase (`lesson.status_said`) |
+| 12 | Same "틀렸습니다" for every wrong answer; hints unrelated | A wrong address that the map gives to a host names that host (`lesson.check.wrong.address_of`); a Kibana step whose query is wrong says what the query lacks (`<text>.wrong.<step>.kql`); F4 `rule`'s nudge is about reading the value, the KQL help moved to its kql message; F5 source has wrong_if for an address or a share |
+| 13 | DevTools empty in course 2 | F4's probe card says to open DevTools first, and the encoded card to search again with it open. The network panel lists what it receives while open; why the earlier 403 row was dropped on open was not reproduced off the range |
+| 14 | Three labels for one area; callout lines over the Field statistics tab; no callout on F5's 0-result step; Kali callout over the prompt | Count callouts all read "조회된 로그 건수입니다." and the empty result "조회된 로그가 없습니다(0건)."; the hit-count ring joins the Field statistics tab; a callout on a bare prompt goes below the prompt line. F5's `still` is the lesson's last step, which is solo by design (no highlight), so it gets no callout; its card now says what the 0-result screen means |
+| 15 | Result page: "레슨 1 — 일반 검색 외 2건", score 1 and the mechanism note on course 1 | One case across lessons reads "일반 검색 — 레슨 1, 2, 3" (`score.case_in_lessons`); a lesson session whose course has no `<course>.scores` (course 1) shows no score panels, per-request table, score note or lost-objectives figure |
+| 16 | "XSS 요청은 세지 않습니다" | Wording only: the XSS searches sent from the Website pane are not attack runs the platform records, so they are not in score 2. What score 2 counts is unchanged |
+| 17 | `/search` and `ARGS:sort` accepted; F5 sort line vs the brief; close confirmation; F1's pointless sentence | Both strict, each with its own message (`lesson.http.wrong.path.slash`, `lesson.miss.wrong.excluded.prefix`); the sort pass line says Django's `order_by()` builds the ORDER BY; the lesson's "세션 종료하고 결과 보기" asks first, as the session page does; the internet/sw1 sentence is gone |
+
+Left by ruling:
+
+- **Finding 10** (Next skips a step and the result shows "건너뜀") is intended.
+- **Finding 16**: XSS is not scored; only the wording changed. Scoring the
+  learner's own Website pane attacks would change what score 2 means, a
+  product decision left open.
+- **Finding 7**: wrong attempts are recorded and shown, not penalised, for
+  the same reason.
+
+The answers a Kibana check now needs a query for: F3 `count`, `upstream`,
+`site_source`, `xff`; F4 `rule`, `score`, `upper`, `ids_none`, `fired`,
+`slipped`; F5 `undetected`, `source`, `scanner`, `still`; F6 `alerts`, `seen`.
+Each pattern is the point's own `kql` (or a `url` condition where the point has
+none), so a learner who follows the card writes a query that passes.

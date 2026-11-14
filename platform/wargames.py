@@ -40,7 +40,7 @@ RANGE_FACTS = ("address", "subnet", "path", "logs", "excluded_target", "lost_poi
                "detected_penalty")
 REQUEST_FACTS = ("status", "method", "path", "parameter", "param_value", "escaped", "sensor_source", "forwarded_for",
                  "waf_detected", "anomaly_total", "alerted", "alerted_destination", "alerted_sid_present", "hits")
-KALI_FACTS = ("sqlmap_found", "kali_source", "alerted_by", "server_errors")
+KALI_FACTS = ("sqlmap_found", "run_records", "alerted_by", "server_errors")
 LEGS = ("inbound", "upstream", "both")
 STEP_MARKER = "step:"
 DETECTORS = ("suricata",)
@@ -293,6 +293,9 @@ def checked_step_judging(taught: dict, step: dict, where: str) -> None:
         raise InvalidCatalogue(f"{where}: wrong_if is a list of a match, a regular expression, and says, a code")
     if "kql" in check and not _pattern(check["kql"]):
         raise InvalidCatalogue(f"{where}: kql is the regular expression the learner's Kibana query must match")
+    if "quiet_on" in check and not (kind == "rules" and isinstance(check["quiet_on"], list) and check["quiet_on"]
+                                    and all(isinstance(uri, str) and uri.startswith("/") for uri in check["quiet_on"])):
+        raise InvalidCatalogue(f"{where}: quiet_on is a list of ordinary request URIs a rules step's rule must not match")
     if check.get("after") is not None and check["after"] not in _kinds_of_steps(taught):
         raise InvalidCatalogue(f"{where}: after must name a step of the lesson")
     if kind == "replay" and not (_pattern((check.get("benign") or {}).get("sent")) and (

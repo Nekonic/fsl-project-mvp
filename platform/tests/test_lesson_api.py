@@ -20,6 +20,8 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 TRUTH = json.loads((FIXTURES / "board-auth-users.json").read_text())
 SEEDED = ["board-normal-search"]
 DUMPED = (FIXTURES / "sqlmap-orderby-dump.out").read_text()
+WRITTEN = ("log_source : modsecurity and event_type : alert and url : *ScRiPt* and url : *alert* and url : *sort* "
+           "and rule_id : 913100 and status : 500 and url : *kim0413* and not destination : 10.30.0.177")
 HELD = (FIXTURES / "sqlmap-not-injectable.out").read_text()
 
 class Stand:
