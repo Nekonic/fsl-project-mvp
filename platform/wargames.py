@@ -601,7 +601,6 @@ def scenario_card(one: dict[str, Any]) -> dict[str, Any]:
         "minutes": one["minutes"],
         "window_minutes": one["window_minutes"],
         "title": f"{one['text']}.title",
-        "practise": f"{one['text']}.practise",
         "briefing": dict(one["briefing"]),
         "defense": one["defense"],
         "steps": len(one.get("steps") or []),

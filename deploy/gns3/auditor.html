@@ -365,22 +365,10 @@ function zoneBox(doc, name) {
   return zones[0] || null;
 }
 
-function withInterfaces(doc, box) {
-  if (!box) return null;
-  const reach = Math.max(box.w, box.h) * 0.4;
-  const near = {x: box.x - reach, y: box.y - reach, w: box.w + 2 * reach, h: box.h + 2 * reach};
-  const touching = (label) => {
-    const at = boxOf(label);
-    return at.x < near.x + near.w && near.x < at.x + at.w && at.y < near.y + near.h && near.y < at.y + at.h;
-  };
-  const labels = [...doc.querySelectorAll("text.interface_label")].filter((label) => label.textContent.trim() && touching(label));
-  return union([box, ...labels.map(boxOf)]);
-}
-
 function located(spec) {
   const doc = view.map && view.map.document;
   if (!doc || !spec) return null;
-  if (spec.node) return withInterfaces(doc, nodeBox(doc, spec.node));
+  if (spec.node) return nodeBox(doc, spec.node);
   if (Array.isArray(spec.link)) return linkBox(doc, spec.link[0], spec.link[1]);
   if (Array.isArray(spec.label)) return labelBox(doc, spec.label[0], spec.label[1]);
   if (spec.zone) return zoneBox(doc, spec.zone);

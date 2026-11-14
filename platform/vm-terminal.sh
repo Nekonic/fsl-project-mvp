@@ -10,6 +10,10 @@ failed() {
   exit 1
 }
 [ -n "$host" ] || failed "no host given"
+case "${2:-}" in
+  ''|*[!0-9]*) ;;
+  *) [ -z "${TERMINAL_KEEP:-}" ] || [ -n "${TMUX:-}" ] || exec tmux -f /app/tmux.conf new-session -A -s "${shown}-$2" "$0" "$host" "$2" ;;
+esac
 found=$(python - "$host" "${2:-}" 2>>"$log" <<'PY'
 import os, sys
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "cr.settings")

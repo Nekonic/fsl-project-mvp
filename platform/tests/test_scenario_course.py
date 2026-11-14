@@ -37,7 +37,7 @@ def checked(one):
 
 def keys_of(one):
     text = one["text"]
-    keys = [f"{text}.title", f"{text}.practise", *one["briefing"].values()]
+    keys = [f"{text}.title", *one["briefing"].values()]
     keys += [f"{text}.card.{card['id']}.{part}" for card in one.get("cards") or [] for part in ("title", "body")]
     keys += [f"{text}.hint.{hint}" for hint in one.get("hints") or []]
     for step in one.get("steps") or []:

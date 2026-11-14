@@ -283,7 +283,7 @@ courses:
   - id: c2
     text: course.attack
     lessons: [f4, f5, f6]
-    reference: [kql, fields, addresses, devtools, crs, suricata, sqli, sqlmap, exception, scores]
+    reference: [kql, fields, addresses, devtools, crs, suricata, sqli, sqlmap, exception]
 foundations:
   - id: f1
     order: 1
@@ -305,7 +305,7 @@ foundations:
         check: {kind: answer, of: path, form: order}
       - id: dmz
         point: {opens: topology, map: {zone: "{switch:board.com}"}}
-        check: {kind: answer, of: subnet, host: board.com}
+        check: {kind: answer, of: subnet, host: board.com, wrong_if: [{match: '^\d{1,3}(\.\d{1,3}){3}$', says: prefix}]}
       - id: log_host
         point: {opens: topology, map: {zone: sw3}}
         check: {kind: answer, of: logs}
@@ -327,29 +327,30 @@ foundations:
         check: {kind: sent, match: '^/search/\?(.*&)?q=.'}
       - id: method
         point: {opens: site, dev: general.method}
-        check: {kind: answer, of: method, about: search}
+        check: {kind: answer, of: method, about: search, dev: '^/search/\?(.*&)?q=.'}
       - id: path
         point: {opens: site, dev: general.url}
         check:
           kind: answer
           of: path
           about: search
+          dev: '^/search/\?(.*&)?q=.'
           wrong_if:
             - {match: '^https?://|board\.com', says: host}
             - {match: '\?', says: query}
             - {match: '^/[^?]*[^/?]$', says: slash}
       - id: status
         point: {opens: site, dev: general.status}
-        check: {kind: answer, of: status, about: search}
+        check: {kind: answer, of: status, about: search, dev: '^/search/\?(.*&)?q=.'}
       - id: parameter
         point: {opens: site, dev: payload.query}
-        check: {kind: answer, of: parameter, about: search}
+        check: {kind: answer, of: parameter, about: search, dev: '^/search/\?(.*&)?q=.', wrong_if: [{match: '=', says: equals}]}
       - id: sort
         point: {opens: site, site: "form:has(select[name=sort])", until: sent, then: {dev: payload.query}}
-        check: {kind: answer, of: parameter, match: '[?&]sort='}
+        check: {kind: answer, of: parameter, match: '[?&]sort=', dev: '[?&]sort='}
       - id: missing
         point: {opens: site}
-        check: {kind: answer, of: status, match: '^/posts/\d+/'}
+        check: {kind: answer, of: status, match: '^/posts/\d+/', dev: '^/posts/\d+/'}
   - id: f3
     order: 3
     text: lesson.logs
@@ -371,10 +372,11 @@ foundations:
         check: {kind: answer, of: hits, about: search, leg: upstream, kql: '(?is)^(?=.*\burl\s*:)(?=.*\bnot\s*\(?\s*destination\s*:)'}
       - id: site_source
         point: {opens: elk, kibana: {doc: source_ip, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
-        check: {kind: answer, of: sensor_source, about: search, leg: upstream, kql: '(?i)\burl\s*:'}
+        check: {kind: answer, of: sensor_source, about: search, leg: upstream, kql: '(?i)\burl\s*:',
+                wrong_if: [{match: '^\d{1,3}(\.\d{1,3}){3}$', says: row}]}
       - id: xff
         point: {opens: elk}
-        check: {kind: answer, of: forwarded_for, about: search, leg: upstream, kql: '(?i)\burl\s*:'}
+        check: {kind: answer, of: forwarded_for, about: search, leg: upstream, kql: '(?is)^(?=.*\burl\s*:)(?=.*\bx_forwarded_for\s*:)'}
   - id: f4
     order: 4
     text: lesson.xss
@@ -466,12 +468,12 @@ foundations:
         point: {opens: kali, term: {pane: kali, match: 'injectable'}}
         check: {kind: choice, of: sqlmap_found, about: sqlmap, options: ["yes", "no"]}
       - id: source
-        point: {opens: elk, kibana: {sidebar: source_ip, kql: 'log_source\s*:\s*"?modsecurity'}}
+        point: {opens: elk, kibana: {sidebar: source_ip, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*source_ip\s*:)'}}
         check:
           kind: answer
           of: run_records
           about: sqlmap
-          kql: '(?i)log_source\s*:\s*"?modsecurity'
+          kql: '(?is)^(?=.*log_source\s*:\s*"?modsecurity)(?=.*\bsource_ip\s*:)'
           wrong_if:
             - {match: '^\d{1,3}(\.\d{1,3}){3}$', says: address}
             - {match: '%', says: share}

@@ -19,7 +19,7 @@
 </section>
 
 <h2 data-t="main.scenarios" class="font-semibold text-heading mb-3"></h2>
-<div id="wargames" class="grid gap-4 md:grid-cols-2 mb-8"></div>
+<div id="wargames" class="grid gap-4 md:grid-cols-2 items-start mb-8"></div>
 <p id="start-error" class="text-danger text-[13px] mb-8 hidden"></p>
 
 <section id="finished-panel" class="hidden">
@@ -76,7 +76,6 @@
         <h4 class="font-semibold text-heading"><span class="text-muted font-normal mr-2">${esc(t("main.lesson_number", index + 1))}</span>${esc(t(taught.title))}</h4>
         <button data-wargame="${id}" data-lesson="true" data-lesson-id="${esc(taught.id)}"
           data-defense="${esc(taught.defense || "")}" class="start self-start btn btn-sm btn-blue">${esc(t("main.start"))}</button>
-        <p class="hidden text-[12px]" data-last="${id}/${esc(taught.id)}"></p>
       </li>`;
     const taught = wargame.foundations || [];
     const grouped = (wargame.courses || []).length ? wargame.courses
@@ -96,9 +95,7 @@
     const runs = (wargame.scenarios || []).map((one) => `
       <li class="flex flex-col gap-1" data-course-scenario="${esc(one.id)}">
         <h4 class="font-semibold text-heading"><span class="text-muted font-normal mr-2">${esc(one.id)}</span>${esc(t(one.title))}</h4>
-        <p class="text-body leading-relaxed">${esc(t(one.practise))}</p>
         <button data-wargame="${id}" data-course="${esc(one.id)}" class="start self-start btn btn-sm btn-blue">${esc(t("main.start"))}</button>
-        <p class="hidden text-[12px]" data-last-scenario="${esc(one.id)}"></p>
       </li>`).join("");
     return runs ? `
       <section class="pt-4 mt-4 border-t border-line-subdued" data-scenarios="${id}">
@@ -118,10 +115,9 @@
           esc(t("main.counts", wargame.attacks, wargame.benign, wargame.objectives))}</p>` : ""}
         ${foundationsBlock(wargame)}
         ${scenariosBlock(wargame)}
-        <div class="mt-auto pt-4">
+        <div class="pt-4">
           <section class="pt-4 border-t border-line-subdued flex flex-col gap-1" data-wargame-start="${id}">
             <h4 class="text-[15px] font-bold text-heading">${esc(t("kind.wargame"))}</h4>
-            <p class="text-body leading-relaxed">${esc(t("main.wargame.note"))}</p>
             <button data-wargame="${id}" class="start self-start btn btn-sm btn-blue">${esc(t("main.start"))}</button>
           </section>
         </div>
@@ -151,42 +147,12 @@
       button.addEventListener("click", () => listOpen(button.closest("[data-failure]"))));
     renderRunning();
     renderFinished(finishedRows);
-    renderMine();
-  }
-
-  async function renderMine() {
-    const opened = openedSessions();
-    if (!opened.length) return;
-    const read = await api(`/api/sessions/?ids=${opened.join(",")}`);
-    if (!read.ok || !Array.isArray(read.body)) return;
-    document.querySelectorAll("[data-last-scenario]").forEach((line) => {
-      const last = read.body.filter((session) => session.course_scenario === line.dataset.lastScenario)
-        .sort((a, b) => b.id - a.id)[0];
-      if (!last) return;
-      const verdict = last.result && last.result.scenario;
-      const state = !last.ended_at ? esc(t("main.last.open"))
-        : verdict ? badge(verdict.passed ? "PASS" : "FAIL", verdict.passed ? "ok-strong" : "red-strong")
-          : esc(t("main.last.unverified"));
-      line.innerHTML = `<a href="/session/${esc(last.id)}/" class="hover:underline">${
-        esc(t("main.last", last.id, t(`kind.${last.kind}`)))}</a> ${state}`;
-      line.classList.remove("hidden");
-    });
-    document.querySelectorAll("[data-last]").forEach((line) => {
-      const [scenario, taught] = line.dataset.last.split("/");
-      const last = read.body.filter((session) => session.scenario === scenario && session.lesson_id === taught)
-        .sort((a, b) => b.id - a.id)[0];
-      if (!last) return;
-      const state = esc(t(last.ended_at ? "state.closed" : "main.last.open"));
-      line.innerHTML = `<a href="/session/${esc(last.id)}/" class="hover:underline">${
-        esc(t("main.last", last.id, t(`kind.${last.kind}`)))}</a> ${state}`;
-      line.classList.remove("hidden");
-    });
   }
 
   function opening(button) {
     const began = Date.now();
     const tick = () => {
-      button.textContent = t("state.opening", Math.round((Date.now() - began) / 1000), OPENING_TAKES);
+      button.textContent = t("state.opening", Math.round((Date.now() - began) / 1000));
     };
     tick();
     return setInterval(tick, 1000);
@@ -279,15 +245,25 @@
 
   function openingLine(session) {
     return session.ready ? ""
-      : `<span class="text-warning text-[13px]">${esc(t("state.opening", secondsSince(session.started_at), OPENING_TAKES))}</span>`;
+      : `<span class="text-warning text-[13px]">${esc(t("state.opening", secondsSince(session.started_at)))}</span>`;
   }
+
+  const courseOf = (session) => {
+    const taught = lessonOf(session);
+    const wargame = scenarioOf(session.scenario);
+    return taught && wargame ? (wargame.courses || []).find((one) => one.lessons.includes(taught.id)) || null : null;
+  };
+  const scored = (session) => {
+    const course = session.kind === "lesson" ? courseOf(session) : null;
+    return !course || Boolean(localized(`${String(course.title).replace(/\.title$/, "")}.scores`, ""));
+  };
 
   function takenName(session) {
     if (session.kind === "lesson") {
       const taught = lessonOf(session);
-      const wargame = scenarioOf(session.scenario);
-      const course = taught && wargame ? (wargame.courses || []).find((one) => one.lessons.includes(taught.id)) : null;
-      if (taught) return [course ? t(course.title) : "", t(taught.title)].filter(Boolean).join(" · ");
+      const course = courseOf(session);
+      if (course) return t(course.title);
+      if (taught) return t(taught.title);
     }
     if (session.course_scenario) {
       const wargame = scenarioOf(session.scenario);
@@ -325,7 +301,7 @@
         ` <span class="text-muted text-[12px]">· ${esc(t(`result.helped.${kind}`))}</span>`).join("");
     }
     const objectives = result.objectives;
-    if (!objectives || !objectives.total) return `<span class="text-faint">—</span>`;
+    if (!objectives || !objectives.total || !scored(session)) return `<span class="text-faint">—</span>`;
     if (!objectives.lost) {
       return `<span class="font-semibold text-success">${esc(t("result.kept_all", objectives.total))}</span>`;
     }

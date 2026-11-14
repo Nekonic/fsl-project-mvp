@@ -543,15 +543,19 @@ def _judge(session, taught, step, body, kept):
         accepted = _accepted(session, check, taught)
         if not accepted:
             return False, [_unrecorded(session, check, taught, failed), []]
+        if "dev" in check and not _dev_picked(session, check["dev"], body.get("dev_request")):
+            return False, ["lesson.check.wrong.dev", []]
         passed, reason = lesson.answered(dict(check, accept=accepted), given.strip(), f"{prefix}.wrong.{step_id}")
-        return passed, _whose_address(session, given.strip()) or reason if reason == ["lesson.check.wrong", []] else reason
+        named = check.get("of") == "address" and reason == ["lesson.check.wrong", []]
+        return passed, _whose_address(session, given.strip()) or reason if named else reason
     if kind == "rules":
         live = _live_rules(session)
         added = lesson.added_rules(live, _posture_rules(session))
         needed = [sid for sid in added if check.get("needs") != "nocase" or lesson.ignores_case(disable.find(live, sid))]
-        broad = [sid for sid in needed if any(lesson.alerts_on(disable.find(live, sid), uri) for uri in check.get("quiet_on", []))]
+        broad = {sid: uri for sid in needed for uri in reversed(check.get("quiet_on", []))
+                 if lesson.alerts_on(disable.find(live, sid), uri)}
         if broad:
-            return False, [f"{failed}.broad", [", ".join(map(str, broad)), check["quiet_on"][0]]], {"added": added}
+            return False, [f"{failed}.broad", [", ".join(map(str, broad)), next(iter(broad.values()))]], {"added": added}
         if needed and "match" in check:
             return (*_rule_fired(session, check["match"], needed, failed), {"added": added})
         if needed and check.get("needs") == "nocase" and not any(_rev_raised(session, live, sid) for sid in needed):
@@ -577,7 +581,12 @@ def _whose_address(session, given):
     except (KeyError, ValueError):
         return None
     host = next((one["host"] for one in found if one["address"] == given), None)
-    return ["lesson.check.wrong.address_of", [given, host]] if host else None
+    return ["lesson.check.wrong.address_of", []] if host else None
+
+def _dev_picked(session, wanted, request_id):
+    pattern = re.compile(wanted)
+    return any(str(record.get("id")) == str(request_id) and pattern.search(_asked(record))
+               for record in site.kept(session.pk)) if request_id is not None else False
 
 def _outcome(session, check):
     if check.get("of") != "detected_penalty":
@@ -918,6 +927,9 @@ def _loot_check(session, check, given, failed):
         _credit_loot(session, lesson.pasted_rows(given, tools.dumped(given)), recorded.case_id)
         recorded.refresh_from_db()
     matched = recorded.meta.get("loot") or []
+    accounts = len(session.baseline or {})
+    if matched and len(matched) < accounts:
+        return False, [f"{failed}.partial", [len(matched), accounts]], {"loot": {"matched": matched}, "loud": True}
     return bool(matched), [failed, []], {"loot": {"matched": matched}}
 
 def _waf_changed(session, target, failed):

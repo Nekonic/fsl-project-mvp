@@ -147,7 +147,7 @@ RECTS.set(browser.element('pane-body'), box(60, 100, 980, 700));
 RECTS.set(document.querySelector('.pane-tab[data-pane="triage"]'), box(8, 300, 44, 44));
 """
 
-def test_a_stepped_scenario_rings_the_rail_button_its_first_step_names_and_moves_on_when_it_is_pressed(client):
+def test_a_stepped_scenario_s_open_step_passes_by_itself_when_its_pane_is_already_open(client):
     lesson = wargames.lesson("board", lesson_id="1.1")
     seen = open_page(client, "/blue/1/", setup=serving(status(JUDGEMENT, id="1.1"), lesson=lesson) + LAID_OUT, scenario="""
       await browser.click('briefing-start');
@@ -167,7 +167,8 @@ def test_a_stepped_scenario_rings_the_rail_button_its_first_step_names_and_moves
     steps = [step["id"] for step in lesson["steps"]]
 
     assert seen["errors"] == []
-    assert result["first"] == {"title": worded(f"{lesson['text']}.label.{steps[0]}"), "ring": True, "left": "2px", "note": True}
+    assert result["first"]["title"] == worded(f"{lesson['text']}.label.{steps[0]}") and result["first"]["note"] is True
+    assert result["first"]["ring"] is False, "the alert list is already open; the step does not ask to open it"
     assert result["checked"] == [f"/api/sessions/1/lesson/steps/{steps[0]}/check/"]
     assert result["stayed"] == {"title": worded(f"{lesson['text']}.label.{steps[0]}"), "next": True}
     assert result["next"] == worded(f"{lesson['text']}.label.{steps[1]}")

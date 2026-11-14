@@ -141,10 +141,13 @@ a single VM on VirtualBox or VMware.
 
 8. **Check that it works.** Open that address in a browser.
 
-   - The home page lists the board wargame. Under **Lessons**, press **Start**
-     on **Lesson 1**.
-   - The session page opens within seconds. Press **Open blue console**. The console shows the **Map** pane with the company network drawn
-     on it. Beside it, the lesson note names the first step.
+   - The home page lists the community board under its target systems
+     heading. Under its first course (log analysis basics), press **Start** on
+     **Lesson 1**. The console is in Korean; the labels here are translations.
+   - The session page opens within seconds. Press **Open blue console**. The
+     console opens on the course briefing; press **Start**. It then shows the
+     **Map** pane with the company network drawn on it, and beside it the lesson
+     note names the first step.
    - If the page says the practice network is not ready, wait. A closed session
      resets its slot first.
 

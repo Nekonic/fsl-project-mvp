@@ -89,6 +89,13 @@ def test_learners_sign_in_as_a_read_only_auditor_through_the_bundled_web_ui_s_ow
     assert 'localStorage.setItem("controllerIds", "controller-1")' in page
     assert 'location: "bundled"' in page and "authToken: token" in page
 
+def test_a_ringed_device_is_its_icon_and_name_without_the_addresses_on_its_links():
+    page = (GNS3 / "auditor.html").read_text()
+
+    assert "if (spec.node) return nodeBox(doc, spec.node);" in page, (
+        "the ring on board.com took in its link label, so the address the step asks showed inside the ring")
+    assert "interface_label" not in page.split("function nodeBox", 1)[1].split("\n}\n", 1)[0]
+
 def test_the_bundled_web_ui_sends_no_usage_statistics_from_the_learner_s_browser():
     page = (GNS3 / "auditor.html").read_text()
 

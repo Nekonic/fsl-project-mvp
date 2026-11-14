@@ -109,7 +109,6 @@ const windowed = (run) => Boolean(run) && "discover" in run;
 
 function kaliRow(row, windowed = true) {
   return `<li class="rounded-md border border-line p-2 text-[12px] flex flex-wrap items-center gap-2" data-kali="${esc(row.name)}">
-    <span class="text-muted">${esc(localized("lesson.kali.recorded", "Recorded run"))}</span>
     <b class="text-heading">${esc(caseLabel(row.name))}</b>
     ${windowed ? `<span data-running class="basis-full text-muted">${esc(localized("lesson.kali.running", ""))}</span>` : ""}
     ${windowed && row.discover ? `<button type="button" class="ml-auto text-primary hover:underline" data-discover="${esc(row.discover)}">${esc(t("lesson.kali.window"))}</button>` : ""}
@@ -117,7 +116,8 @@ function kaliRow(row, windowed = true) {
 }
 
 const NOTE_KEY = "cr-lesson-note";
-const REF_KEY = "cr-lesson-reference";
+const REF_KEY = () => `cr-lesson-reference-${sessionId()}-${lessonId()}`;
+const DRAFT_KEY = () => `cr-rules-draft-${sessionId()}`;
 const LANDED_KEY = (id, lesson) => `cr-lesson-landed-${id}-${lesson}`;
 let note = { open: true };
 let landed = false;
@@ -218,7 +218,7 @@ function referenceOpen(opened) {
   field("ref-col").classList.toggle("hidden", !opened);
   field("rail-ref").setAttribute("aria-expanded", String(opened));
   field("rail-ref").classList.toggle("active", opened);
-  keep(REF_KEY, opened);
+  keep(REF_KEY(), opened);
 }
 
 function reference(listed) {
@@ -230,7 +230,7 @@ function reference(listed) {
     `<section class="card p-3 flex flex-col gap-1" data-ref="${esc(id)}">${referenceHtml(id)}</section>`).join("");
   field("rail-ref").addEventListener("click", () => referenceOpen(field("ref-col").classList.contains("hidden")));
   field("ref-close").addEventListener("click", () => referenceOpen(false));
-  referenceOpen(kept(REF_KEY, false) === true);
+  referenceOpen(kept(REF_KEY(), false) === true);
   addressesFill();
 }
 
@@ -1217,7 +1217,6 @@ const STAGE_KEYS = {
   apply: "lesson.rules.press_apply", add: "lesson.rules.add_line", verify: "lesson.kibana.verify", run_done: "lesson.kali.press",
 };
 const STAGE_FALLBACKS = {
-  top: "The most frequent values of this field and their share.",
   add: "Add one rule line here.",
   verify: "Type destination in the field search and read this event's destination IP. If it is not the right address, switch to the other event with the arrows.",
   run_done: "The run has finished. Press 'Check the run'.",
@@ -1252,6 +1251,7 @@ function coach(prefix, declared) {
   let seconds = 0;
   let checking = false;
   let answering = false;
+  let saidFor = null;
   let offered = false;
   let finished = false;
   let moving = false;
@@ -1333,8 +1333,6 @@ function coach(prefix, declared) {
   const standing = (step) => replayLines(step) || (AUTOMATIC.includes(step.check.kind) && !firesCheck(step) && !finished && !done(step) ? t("lesson.status.auto") : "");
 
   function stepList() {
-    const passedCount = steps.filter((step) => recordOf(step).passed).length;
-    field("lesson-step-count").textContent = t("lesson.steps.passed", passedCount, steps.length);
     field("lesson-step-list").innerHTML = steps.map((step, index) => {
       const passed = Boolean(recordOf(step).passed);
       const current = index === at;
@@ -1405,10 +1403,8 @@ function coach(prefix, declared) {
   }
 
   function orderPicker(options) {
-    return `<p class="text-[12px] text-muted">${esc(t("lesson.order.help"))}</p>
-      <div class="flex flex-wrap gap-1.5">${options.map((option) =>
+    return `<div class="flex flex-wrap gap-1.5">${options.map((option) =>
         `<button type="button" data-act="pick" data-value="${esc(option)}" aria-pressed="false" class="order-chip btn btn-sm btn-ghost font-mono">${esc(option)}</button>`).join("")}</div>
-      <p data-act="picked" class="font-mono text-heading"></p>
       <button type="button" data-act="order" class="self-start btn btn-sm btn-blue">${esc(t("lesson.answer.submit"))}</button>`;
   }
 
@@ -1418,20 +1414,14 @@ function coach(prefix, declared) {
       chip.setAttribute("aria-pressed", String(place >= 0));
       chip.textContent = place >= 0 ? `${place + 1}. ${chip.dataset.value}` : chip.dataset.value;
     });
-    act.querySelector('[data-act="picked"]').textContent = picked.join(" > ");
   }
 
   let courseWhole = false;
 
   const courseText = course ? course.text : "lesson.course";
-  const scored = Boolean(localized(`${courseText}.scores`, ""));
 
   function courseSummary() {
-    const notes = [localized(`${courseText}.scores`, ""), localized("lesson.course.result_link", "")].filter(Boolean).join("\n");
     return `<ul data-act="course" class="flex flex-col gap-1 text-[12.5px]"></ul>
-      ${scored ? `<p data-act="values" class="text-heading font-medium text-[12.5px]">${esc(localized("lesson.course.computing", "Calculating the scores…"))}</p>` : ""}
-      <p data-act="lost-note" class="hidden text-muted text-[12.5px]">${esc(localized("score.lesson_lost_note", ""))}</p>
-      <p class="text-muted text-[12.5px] whitespace-pre-line">${esc(notes)}</p>
       <button type="button" data-act="close" class="self-start btn btn-sm btn-blue">${esc(t("lesson.course.close"))}</button>
       <div data-act="confirm" class="hidden flex flex-col gap-2">
         <p class="text-body text-[12.5px]">${esc(t("lesson.course.close_confirm"))}</p>
@@ -1461,33 +1451,13 @@ function coach(prefix, declared) {
     }).join("");
   }
 
-  async function courseScores(line) {
-    const [score, tiers] = await Promise.all([api(lessonPath("score/?brief=1")), api(`/api/wargames/${session.scenario}/objectives/`)]);
-    const body = score.ok ? score.body : {};
-    if (!Array.isArray(body.breaches) || !Array.isArray(body.per_case)) {
-      line.classList.add("hidden");
-      return;
-    }
-    const lost = new Map(body.breaches.map((breach) => [breach.key, breach]));
-    const penalty = (tiers.ok && Array.isArray(tiers.body) ? tiers.body : []).reduce((sum, tier) =>
-      sum + (lost.has(tier.key) ? tier.difficulty * (lost.get(tier.key).detected ? 1 : 2) : 0), 0);
-    const attacks = body.per_case.filter((row) => row.malicious);
-    const benign = body.per_case.filter((row) => !row.malicious);
-    line.textContent = phrase("lesson.course.values",
-      "Score 1 (penalty for objectives lost): {0} · Score 2: {2} of {1} attacks detected, {4} of {3} benign requests wrongly alerted",
-      penalty, attacks.length, attacks.filter((row) => row.detected).length, benign.length, benign.filter((row) => row.detected).length);
-    line.classList.remove("hidden");
-    const explained = field("step-act").querySelector('[data-act="lost-note"]');
-    if (explained) explained.classList.toggle("hidden", !(penalty > 0 && explained.textContent));
-  }
-
   function action() {
     const step = steps[at];
     const kind = check().kind;
     const act = field("step-act");
     let html = "";
     if (finished) {
-      html = nextLesson ? `<button type="button" data-act="next-lesson" class="self-start btn btn-sm btn-blue">${esc(t("lesson.next.start"))}</button>`
+      html = nextLesson ? `<button type="button" data-act="next-lesson" class="self-start btn btn-sm btn-blue">${esc(t("lesson.next.start", t(`${nextLesson.text}.title`)))}</button>`
         : foundation ? courseSummary() : "";
     } else if (kind === "answer" && check().form === "order") {
       html = orderPicker(check().options || []);
@@ -1511,9 +1481,6 @@ function coach(prefix, declared) {
         esc(t("lesson.loot.submit"))}</button></form>`;
     }
     const before = runOf(at);
-    if (!finished && before && carried.has(before.id)) {
-      html += `<ul data-act="carried" class="flex flex-col gap-2">${kaliRow(carried.get(before.id), false)}</ul>`;
-    }
     act.innerHTML = html;
     last = "";
     shownSection("step-act", Boolean(html));
@@ -1526,7 +1493,10 @@ function coach(prefix, declared) {
     }
     act.querySelectorAll('[data-act="choose"]').forEach((button) =>
       button.addEventListener("click", () => answer(button.dataset.value)));
+    const typed = act.querySelector('[data-act="value"]');
+    if (typed) typed.addEventListener("input", () => { if (!done(step)) say("", ""); });
     act.querySelectorAll('[data-act="pick"]').forEach((chip) => chip.addEventListener("click", () => {
+      say("", "");
       const name = chip.dataset.value;
       picked = picked.includes(name) ? picked.filter((one) => one !== name) : [...picked, name];
       showPicked(act);
@@ -1553,8 +1523,6 @@ function coach(prefix, declared) {
     }
     const course = act.querySelector('[data-act="course"]');
     if (course) courseList(course);
-    const values = act.querySelector('[data-act="values"]');
-    if (values) courseScores(values);
     if (!finished && before && recordOf(before).passed && !windowed(carried.get(before.id))
       && !recalled.has(before.id)) recall(before, step);
   }
@@ -1617,8 +1585,7 @@ function coach(prefix, declared) {
   }
 
   function finishedText() {
-    if (nextLesson) return t("lesson.next.ready", t(`${nextLesson.text}.title`));
-    return t(foundation && courseWhole ? `${courseText}.done` : "lesson.done");
+    return t(foundation && courseWhole && !nextLesson ? `${courseText}.done` : "lesson.done");
   }
 
   function nextStyled() {
@@ -1652,7 +1619,6 @@ function coach(prefix, declared) {
     field("step-question").textContent = question;
     field("step-question").classList.toggle("hidden", !question);
     status(standing(step));
-    field("step-said").style.order = finished ? "-1" : "";
     picked = [];
     action();
     command();
@@ -1798,9 +1764,15 @@ function coach(prefix, declared) {
     requestAnimationFrame(tick);
   }
 
+  function alreadyOpen(step) {
+    const tab = step.check.kind === "click" && typeof step.point.panel === "string" ? document.querySelector(step.point.panel) : null;
+    return Boolean(tab && tab.dataset && tab.dataset.pane && paneOpen(tab.dataset.pane));
+  }
+
   function reach(step) {
     preparingFor = step;
     command();
+    if (alreadyOpen(step)) setTimeout(() => run(step, true), 0);
     reaching = post(stepPath(step), { state: "reached" }).then((read) => {
       if (preparingFor === step) preparingFor = null;
       if (read.ok) learn(read.body);
@@ -1839,6 +1811,7 @@ function coach(prefix, declared) {
     lined = -1;
     queryArrival.step = "";
     fieldlessQuery.step = "";
+    saidFor = null;
     say("", "");
     show();
     reach(steps[at]);
@@ -1850,8 +1823,7 @@ function coach(prefix, declared) {
     show();
     if (paneOpen("topology")) mapFitSoon();
     if (!nextLesson) return;
-    if (unread) status(t("lesson.status.press_next_lesson"));
-    else if (!field("stretch-text").textContent) setTimeout(moveOn, NEXT_LESSON_MS);
+    if (!unread && !field("stretch-text").textContent) setTimeout(moveOn, NEXT_LESSON_MS);
   }
 
   async function moveOn() {
@@ -1974,7 +1946,11 @@ function coach(prefix, declared) {
     controls.forEach((control) => { control.disabled = true; });
     status(t("lesson.status.checking"));
     try {
-      const verdict = await judged(step, { answer: value, ...(readsKibana(step.point) ? { query: kibanaQueryNow() } : {}) });
+      const query = readsKibana(step.point) ? kibanaQueryNow() : null;
+      const devRequest = step.check.dev && typeof dev !== "undefined" && dev.open ? dev.picked : null;
+      const verdict = await judged(step, { answer: value, ...(query !== null ? { query } : {}),
+        ...(step.check.dev ? { dev_request: devRequest } : {}) });
+      saidFor = verdict && !verdict.passed ? { step, query } : null;
       if (!verdict) status(standing(step));
       settle(step, verdict, true);
     } finally {
@@ -2036,6 +2012,10 @@ function coach(prefix, declared) {
     seconds += 1;
     if (seconds >= HELP_AFTER_SECONDS && level < SKIP_OFFERED) offerHint();
     if (POLLED.includes(check().kind) && seconds % POLL_SECONDS === 0) run(steps[at], false);
+    if (saidFor && saidFor.step === steps[at] && saidFor.query !== null && kibanaQueryNow() !== saidFor.query) {
+      saidFor = null;
+      say("", "");
+    }
   }, 1000);
 
   changed.push((what) => {
@@ -2105,10 +2085,12 @@ async function loadRules() {
     return;
   }
   rulesText = read.body.content || "";
-  field("lesson-rules-text").value = rulesText;
   rulesVersion = read.body.version || "";
+  const draft = kept(DRAFT_KEY(), null);
+  const restored = Boolean(draft) && draft.base === rulesVersion && typeof draft.text === "string" && draft.text !== rulesText;
+  field("lesson-rules-text").value = restored ? draft.text : rulesText;
   if (!rulesKnown) rulesKnown = new Set((read.body.content || "").split("\n").map(sidOf).filter(Boolean));
-  status.textContent = "";
+  status.textContent = restored ? t("lesson.rules.draft") : "";
 }
 
 function showRuleErrors(result) {
@@ -2147,9 +2129,18 @@ async function applyRules() {
     status.textContent = t("lesson.rules.failed", detail(applied));
     return;
   }
+  forgetDraft();
   await loadRules();
   status.textContent = t("lesson.rules.applied");
   changed.forEach((heard) => heard("rules"));
+}
+
+function forgetDraft() {
+  try {
+    localStorage.removeItem(DRAFT_KEY());
+  } catch (error) {
+    return;
+  }
 }
 
 function rulesEditor() {
@@ -2159,6 +2150,7 @@ function rulesEditor() {
     style="padding: ${RULE_PAD}px; font-size: 11.5px; line-height: ${RULE_LINE}px; tab-size: 4"></textarea>`;
   field("lesson-rules-text").addEventListener("input", () => {
     field("lesson-rules-status").textContent = "";
+    keep(DRAFT_KEY(), { base: rulesVersion, text: field("lesson-rules-text").value });
   });
   field("lesson-rules-validate").addEventListener("click", validateRules);
   field("lesson-rules-apply").addEventListener("click", applyRules);

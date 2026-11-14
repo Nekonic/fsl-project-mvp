@@ -70,7 +70,7 @@ def test_a_closed_course_names_each_run_by_lesson_and_step_and_never_by_case_id(
     assert worded("lesson.map.title") in shown["course"] and worded("lesson.miss.title") in shown["course"], (
         "after a course the page sums up every lesson taken, not only the last")
     assert worded("session.course.steps", 9, 8) in shown["course"]
-    assert worded("session.course.span", 1, 6) in shown["line"]
+    assert worded("wargame.board.name") not in shown["line"], "the breadcrumb already names the target"
 
 F6_RUN = """        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: false, detections: 0, corroborated: null,
          lesson: "f6", step: "dump", seed: false},
@@ -85,7 +85,7 @@ def test_a_lesson_switched_to_but_never_worked_on_is_not_listed_in_the_course(cl
     assert seen["errors"] == []
     assert worded("lesson.sqli.title") in shown["course"] and worded("lesson.miss.title") not in shown["course"], (
         "the next lesson opens by itself after a lesson ends; opening it is not taking it")
-    assert worded("session.course.span", 1, 5) in shown["line"]
+    assert worded("lesson.miss.title") not in shown["line"]
 
 def test_the_lesson_6_note_shows_only_when_lesson_6_ran_its_attack_or_an_objective_was_lost(client):
     def noted(setup):
@@ -321,8 +321,7 @@ def test_a_course_s_result_numbers_its_lessons_as_the_catalogue_does_and_says_it
 
     assert ATTACK_COURSE.count("courses: [") == 1 and LOGS_COURSE.count("courses: [") == 1 and "scores:" in SCORED
     assert attack["errors"] == [] and logs["errors"] == []
-    assert worded("course.attack.title") in shown["line"] and worded("session.course.span", 1, 3) in shown["line"], (
-        "the attack course's lessons are 1 to 3 on the catalogue, so on its result too")
+    assert worded("course.attack.title") in shown["line"]
     assert worded("session.run.step", 2, 4) in shown["cases"] and worded("session.run.step", 3, 2) in shown["cases"]
     assert shown["restart"] == worded("session.restart")
     assert shown["scores"] == worded("course.attack.scores")
@@ -345,3 +344,71 @@ def test_one_case_sent_in_each_lesson_is_listed_per_lesson_in_the_table_and_not_
     assert worded("score.benign", 3, 3) in seen["result"]["judged"]
     assert worded("case.board-normal-search") not in seen["result"]["judged"], (
         "requests that passed are counted above and listed in the table; the count does not restate them")
+
+FINISHED_COURSES = READY.replace("LOCATION", "").replace(
+    'if (request.route === "/api/sessions/") return {body: []};',
+    'if (request.route === "/api/sessions/") return {body: request.query.state === "closed" ? CLOSED_ROWS : []};').replace(
+    f"foundations: {FOUNDATIONS}}}]", f'foundations: {FOUNDATIONS}, courses: [{{id: "c1", title: "course.logs.title", lessons: ["f1", "f2", "f3"]}}, '
+    '{id: "c2", title: "course.attack.title", lessons: ["f4", "f5", "f6"]}], scenarios: [{id: "1.1", title: "scenario.shift.title"}]}]')
+CLOSED_ROWS = """const CLOSED_ROWS = [
+  {id: 7, scenario: "board", kind: "lesson", lesson_id: "f3", started_at: "2026-10-18T09:00:00Z", ended_at: "2026-10-18T09:40:00Z",
+   result: {objectives: {total: 3, lost: 0, undetected: 0}}},
+  {id: 8, scenario: "board", kind: "lesson", lesson_id: "f6", started_at: "2026-10-18T10:00:00Z", ended_at: "2026-10-18T10:40:00Z",
+   result: {objectives: {total: 3, lost: 0, undetected: 0}}}];
+"""
+
+def test_the_catalogue_names_a_lesson_session_by_its_course_and_claims_no_kept_objectives_for_a_course_without_a_score(client):
+    seen = open_page(client, "/", setup=CLOSED_ROWS + FINISHED_COURSES, scenario="""
+      await browser.wait(500);
+      const rows = document.querySelectorAll('#finished tr').map((row) => row.querySelectorAll('td').map((cell) => cell.textContent.trim()));
+      return {rows, grid: browser.element('wargames').className, cards: browser.text('wargames')};
+    """)
+    rows = {row[0]: row[1:3] for row in seen["result"]["rows"]}
+
+    assert seen["errors"] == []
+    assert rows[worded("common.session", 7)] == [worded("course.logs.title"), "—"], "course 1 has no score to keep"
+    assert rows[worded("common.session", 8)] == [worded("course.attack.title"), worded("result.kept_all", 3)]
+    assert "items-start" in seen["result"]["grid"].split(), "a short card keeps its own height"
+    assert worded("scenario.shift.title") in seen["result"]["cards"]
+
+SCENARIO_RESULT = """
+browser.serve((request) => {
+  if (request.route === "/api/sessions/1/") {
+    return {body: {id: 1, scenario: "board", kind: "scenario", course_scenario: "1.1", ready: true, lesson: {text: "scenario.shift", steps: []},
+      started_at: "2026-10-18T09:00:00Z", ended_at: "2026-10-18T09:07:00Z", result: {objectives: {lost: 0, total: 0}, scenario: null}}};
+  }
+  if (request.route === "/api/wargames/") return {body: [{id: "board", name: "Board", public_url: "http://board.com", foundations: []}]};
+  if (request.route === "/api/wargames/board/objectives/") return {body: []};
+  if (request.route === "/api/sessions/1/score/") {
+    return {body: {breaches: [], per_case: [], warnings: [], customers: {sent: 788, blocked: 14, blocked_actions: {}}}};
+  }
+  if (request.route === "/api/sessions/1/scenario/debrief/") {
+    return {body: {overview: {verified: 0, steps: {passed: 0, total: 5}, help: {hints: 0}, fix: null},
+      customers: {sent: 788, served: 774, blocked: 14, in_window: [], blocked_actions: {}},
+      timeline: [{at: 150, case: "board-sqli-orderby-sqlmap", origin: "ru", state: "cancelled", in_window: false, leaked: []}],
+      task_class: "judgement", triage: {right: 0, items: 14, first_try: 0}, evidence: [],
+      change: {before: {paranoia: 2}, after: {paranoia: 2}, diff: []},
+      cases: [{name: "board-sqli-orderby-sqlmap", before: null, after: null}], risk: []}};
+  }
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+def test_a_scenario_result_says_only_what_happened_in_scenario_words_and_says_it_once(client):
+    seen = open_page(client, "/session/1/", setup=SCENARIO_RESULT, scenario="""
+      for (let i = 0; i < 6; i += 1) await browser.settle();
+      return {debrief: browser.text('debrief'), judged: browser.text('judgement'),
+              sections: document.querySelectorAll('#debrief [data-debrief]').map((one) => one.dataset.debrief),
+              cases: !browser.element('score-cases').classList.contains('hidden')};
+    """)
+    shown = seen["result"]
+
+    assert seen["errors"] == []
+    assert shown["sections"] == ["overview", "customers", "timeline", "triage", "change"], (
+        "no empty evidence, before-and-after or risk heading")
+    assert worded("scenario.debrief.from", worded("scenario.origin.ru")) in shown["debrief"]
+    assert worded("lesson.debrief.change.none") in shown["debrief"]
+    assert worded("scenario.debrief.overview", 0) not in shown["debrief"]
+    assert shown["judged"] == f'{worded("score.no_attacks_run")} {worded("score.one_case_once")}', (
+        "customer requests are in the debrief once, not again beside the attacks")
+    assert shown["cases"] is False

@@ -16,6 +16,7 @@ CRS_THRESHOLDS = {"inbound": 5, "outbound": 4}
 CRS_TOTALS = ("949", "959", "980")
 PASTED_ROW = re.compile(r"^\s*\|?\s*([\w.@+-]+)\s*[|:\s]\s*(\S+?)\s*\|?\s*$")
 GROUPED_NUMBER = re.compile(r"\d{1,3}(,\d{3})+")
+COUNTED = re.compile(r"\s*([\d,]+)\s*[^\W\d_]{1,2}\s*")
 ORDER_SEPARATOR = re.compile(r"[\s,>\u2192]+")
 TOTAL_SCORE = re.compile(r"Total Score: (\d+)")
 NOCASE = re.compile(r"\bnocase\s*;|\bpcre\s*:\s*\"/.*/[A-Za-z]*i[A-Za-z]*\"")
@@ -38,7 +39,7 @@ def answered(check: dict, given: str, wrong: str) -> tuple[bool, list | None]:
             return True, None
         if sorted(named) == sorted(accepted):
             return False, [f"{wrong}.order", []]
-    elif {_bare(given), _bare(_ungrouped(given))} & set(accepted):
+    elif {_bare(given), _bare(_ungrouped(given)), _bare(_ungrouped(_unit_dropped(given)))} & set(accepted):
         return True, None
     if given in check.get("known", []):
         return False, [f"{wrong}.{given}", []]
@@ -78,13 +79,18 @@ def alerts_on(rule: str | None, uri: str) -> bool | None:
     if not contents:
         return None
     seen = lambda one: (one["text"].casefold() in uri.casefold()) if one["nocase"] else one["text"] in uri
-    return all(seen(one) != one["negated"] for one in contents if one["uri"])
+    in_uri = [one for one in contents if one["uri"]]
+    return bool(in_uri) and all(seen(one) != one["negated"] for one in in_uri)
 
 def _content(value: str) -> str:
     quoted = value.strip().lstrip("!").strip()
     text = quoted[1:-1] if len(quoted) >= 2 and quoted[0] == quoted[-1] == '"' else quoted
     text = HEX.sub(lambda found: bytes.fromhex("".join(found[1].split())).decode("latin-1"), text)
     return re.sub(r"\\(.)", r"\1", text)
+
+def _unit_dropped(text: str) -> str:
+    found = COUNTED.fullmatch(text)
+    return found[1] if found else text
 
 def _ungrouped(text: str) -> str:
     return text.replace(",", "") if GROUPED_NUMBER.fullmatch(text.strip()) else text
