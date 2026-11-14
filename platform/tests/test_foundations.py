@@ -3,6 +3,7 @@ import re
 import time
 from datetime import timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -10,6 +11,7 @@ import yaml
 from django.test import override_settings
 from django.utils import timezone
 
+import lesson
 import wargames
 from api import site
 from api.models import Case, Detection, Objective, RuleSet, Session
@@ -17,7 +19,7 @@ from console import strings
 from range import declared
 from range.ports import Ran
 from tests.test_gns3_maps import read_slot
-from tests.test_lesson_api import DUMPED, TRUTH, Stand, attacker, one_slot
+from tests.test_lesson_api import DUMPED, TRUTH, WRITTEN, Stand, attacker, one_slot
 from tests.test_scenario_discovery import A_SCENARIO
 from tests.test_strings import tables
 
@@ -39,8 +41,8 @@ def opened(lesson_id, **fields):
 def step(client, session, step_id, tail="check/", body=None):
     return client.post_json(f"/api/sessions/{session.pk}/lesson/steps/{step_id}/{tail}", body or {})
 
-def answer(client, session, step_id, given):
-    return step(client, session, step_id, body={"answer": given}).json()
+def answer(client, session, step_id, given, query=WRITTEN):
+    return step(client, session, step_id, body={"answer": given, "query": query}).json()
 
 def browsed(url, status, request_id=1, ms=40, at=None):
     return {"id": request_id, "at": at or time.time(), "method": "GET", "url": f"http://board.com{url}",
@@ -196,7 +198,9 @@ def test_the_reference_s_address_table_lists_the_addresses_the_learner_s_map_dra
 
 @pytest.mark.parametrize("lesson_id, step_id, url, status, right, wrong, reason", [
     ("f2", "path", "/search/?q=hello", 200, "/search/", "board.com/search/", "lesson.http.wrong.path.host"),
-    ("f2", "path", "/search/?q=hello", 200, "/search", "/search/?q=hello", "lesson.http.wrong.path.query"),
+    ("f2", "path", "/search/?q=hello", 200, "/search/", "/search/?q=hello", "lesson.http.wrong.path.query"),
+    ("f2", "path", "/search/?q=hello", 200, "/search/", "/search", "lesson.http.wrong.path.slash"),
+    ("f2", "status", "/search/?q=hello", 200, "200 OK", "201", "lesson.check.wrong"),
     ("f2", "sort", "/?sort=title", 200, "sort", "q", "lesson.check.wrong"),
     ("f2", "missing", "/posts/9999/", 404, "404", "200", "lesson.check.wrong"),
     ("f5", "sort", "/?sort=-created_at", 200, "-created_at", "title", "lesson.check.wrong"),
@@ -494,12 +498,19 @@ def test_f5_reads_the_verdict_from_sqlmap_s_own_log_and_the_run_s_source_and_rul
         logs.append(argv[-1])
         return Ran(0, "")
 
-    with quietly(), one_slot(lambda adapter, role, segment_id="": kali):
+    window = [waf_record("run-1", "/?sort=posts_post.id") for _ in range(3)] + [waf_record("other", "/?sort=title)")]
+    with quietly(), one_slot(lambda adapter, role, segment_id="": kali), indexed(*window):
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("verdict", "no"), ("source", KALI), ("scanner", "913100"))}
+            ("verdict", "no"), ("source", "4"), ("scanner", "913100"))}
+        own = answer(client, session, "source", "3")["passed"]
+        unqueried = answer(client, session, "source", "4", query="")["reason"]
         family = answer(client, session, "scanner", "942100")["passed"]
+        address = answer(client, session, "source", KALI)["reason"]
 
     assert said == {"verdict": True, "source": True, "scanner": True}
+    assert own is True, "the run's own records count, as does the window Kibana opens"
+    assert unqueried == ["lesson.sqli.wrong.source.kql", []], "the count is read in Kibana, not guessed"
+    assert address == ["lesson.sqli.wrong.source.address", []], "kali's address is on the map; the question is the count"
     assert family is False, "the scanner question keeps the 913 family only"
     assert "/.local/share/sqlmap/output/board.com/log" in logs[0]
     assert run.case_id == "run-1"
@@ -572,7 +583,9 @@ def test_the_f6_replay_needs_the_run_blocked_with_no_loot_and_an_ordinary_sort_u
 
     assert unblocked["reason"] == ["lesson.check.replay_attack", []]
     assert done["passed"] is True
-    assert logged["reason"] == ["lesson.check.replay_benign", []], "an ordinary sort the WAF logged is no fix"
+    assert logged["reason"] == ["lesson.check.replay_benign.waf_logged", ["/?sort=title"]], (
+        "an ordinary sort the WAF logged is no fix, and the learner is told which request")
+    assert logged["loud"] is True
 
 def test_loot_from_the_dump_is_judged_by_the_board_s_own_accounts(client):
     session = opened("f6")
@@ -626,3 +639,99 @@ def test_after_a_switch_a_lesson_judges_only_what_the_learner_did_since_it_start
     assert before["passed"] is False, "F2's search was made before F3 started"
     assert after["passed"] is True
     assert set(Session.objects.get(pk=session.pk).lesson_steps) == {"f2", "f3"}
+
+BROAD = 'alert http any any -> any any (msg:"search"; http.uri; content:"/search/"; sid:9100001; rev:1;)\n'
+BROAD_NOCASE = 'alert http any any -> any any (msg:"search"; http.uri; content:"/search/"; nocase; sid:9100001; rev:2;)\n'
+
+def test_a_rule_that_would_alert_on_every_plain_search_fails_the_write_and_the_nocase_steps_with_the_reason(client):
+    session = opened("f4")
+    posture = (ROOT / "deploy/suricata/rules/no-xss.rules").read_text()
+    RuleSet.objects.create(session=session, content=posture + BROAD, applied_at=timezone.now() - timedelta(minutes=1))
+    search = browsed(SCRIPT_SEARCH, 403)
+    detected(session, "mine", "suricata", session.browse_marker, "search", alert={"signature_id": 9100001},
+             http={"url": SCRIPT_SEARCH})
+    plain = "/search/?q=release notes"
+    with quietly(), patch.object(site, "kept", return_value=[search]):
+        with ruled(posture + BROAD), indexed():
+            written = step(client, session, "write").json()
+        with ruled(posture + BROAD_NOCASE):
+            fixed = step(client, session, "nocase").json()
+        with ruled(posture + WITH_NOCASE):
+            narrow = step(client, session, "nocase").json()
+
+    assert (written["passed"], written["reason"]) == (False, ["lesson.xss.fail.write.broad", ["9100001", plain]]), (
+        "a rule that alerts on the attack and on every plain search does not pass")
+    assert fixed["reason"] == ["lesson.xss.fail.nocase.broad", ["9100001", plain]]
+    assert narrow["passed"] is True
+
+def test_a_replay_whose_plain_search_drew_the_learner_s_rule_says_so_at_once_instead_of_checking_forever(client):
+    session = opened("f4")
+    posture = (ROOT / "deploy/suricata/rules/no-xss.rules").read_text()
+    passed(session, "f4", nocase=timezone.now() - timedelta(minutes=1))
+    mixed, plain = browsed("/search/?q=%3CScRiPt%3E", 403), browsed("/search/?q=hello", 200, request_id=2)
+    detected(session, "attack", "suricata", session.browse_marker, "script", alert={"signature_id": 9100001},
+             http={"url": "/search/?q=%3CScRiPt%3E"})
+    detected(session, "plain", "suricata", session.browse_marker, "script", alert={"signature_id": 9100001},
+             http={"url": "/search/?q=hello"})
+    with quietly(), patch("api.views._live_rules", lambda session=None: posture + BROAD_NOCASE), \
+            patch.object(site, "kept", return_value=[mixed, plain]):
+        judged = step(client, session, "replay", body={"poll": True}).json()
+
+    assert judged["passed"] is False
+    assert judged["reason"] == ["lesson.check.replay_benign.alerted", ["9100001", "/search/?q=hello"]]
+    assert judged["loud"] is True, "a definite fault is shown even on a silent poll"
+
+@pytest.mark.parametrize("standing, reason", [
+    ({"paranoia": None, "exclusions": [{"tag": "OWASP_CRS", "target": "ARGS:sort", "path": ""}]}, "paranoia"),
+    ({"paranoia": None, "exclusions": []}, "paranoia"),
+    ({"paranoia": 1, "exclusions": [{"tag": "OWASP_CRS", "target": "ARGS:sort", "path": ""}]}, "kept"),
+    ({"paranoia": 1, "exclusions": []}, None),
+], ids=["level-deleted", "both-deleted", "untouched", "sort-deleted"])
+def test_narrowing_keeps_the_paranoia_level_line_and_says_so_when_it_was_deleted(client, standing, reason):
+    session = opened("f6")
+    with patch("api.views._waf_in_force", lambda session: standing):
+        judged = step(client, session, "narrow", body={"poll": True}).json()
+
+    if reason is None:
+        assert judged["passed"] is True
+    elif reason == "paranoia":
+        assert judged["passed"] is False and judged["loud"] is True
+        assert judged["reason"][0] == "lesson.miss.fail.narrow.paranoia"
+        assert "tx.blocking_paranoia_level=1" in judged["reason"][1][0], "the line to put back is given"
+    else:
+        assert judged["reason"] == ["lesson.miss.fail.narrow", []]
+
+@pytest.mark.parametrize("lost, seen, line", [
+    (True, False, "lesson.miss.ok.cost.undetected"),
+    (True, True, "lesson.miss.ok.cost.detected"),
+    (False, False, "lesson.miss.ok.cost.kept"),
+], ids=["lost-unseen", "lost-seen", "kept"])
+def test_the_cost_pass_line_states_what_happened_to_the_admin_account(client, lost, seen, line):
+    session = opened("f6")
+    breach = SimpleNamespace(key="board-auth-user-admin", detected=seen)
+    with quietly(), patch("api.views._breaches", lambda session, cases, result: [breach] if lost else []):
+        judged = answer(client, session, "cost", "4")
+
+    assert judged["passed"] is True
+    assert judged["progress"]["cost"]["ok"] == strings.line(line)
+
+def test_a_wrong_address_is_named_as_the_map_device_it_belongs_to(client):
+    session = opened("f3")
+    searched = browsed("/search/?q=kim0413", 200)
+    logged = http_event(session.browse_marker, "/search/?q=kim0413", 200, src_ip=WAF, dest_ip=BOARD)
+    with on_the_range(), on_map(read_slot()), patch.object(site, "kept", return_value=[searched]), indexed(logged), \
+            quietly():
+        judged = answer(client, session, "site_source", KALI)
+
+    assert judged["reason"] == ["lesson.check.wrong.address_of", [KALI, "kali"]]
+
+def test_a_step_passed_after_a_wrong_answer_is_counted_as_retried(client):
+    session = opened("f6")
+    standing = {"paranoia": 1, "exclusions": [{"tag": "OWASP_CRS", "target": "ARGS:sort", "path": ""}]}
+    with patch("api.views._waf_in_force", lambda session: standing):
+        prefixed = answer(client, session, "excluded", "ARGS:sort")["reason"]
+        answer(client, session, "excluded", "sort")
+    session.refresh_from_db()
+
+    assert prefixed == ["lesson.miss.wrong.excluded.prefix", []]
+    assert lesson.help_counts(session.lesson_steps["f6"])["retried"] == 1

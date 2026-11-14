@@ -180,6 +180,7 @@ browser.element('pane-frame').contentDocument = {
   querySelector: (selector) => (kibana.has(selector) ? {getBoundingClientRect: () => kibana.get(selector)} : null),
 };
 const kaliLines = ["ubuntu@kali:~$ "];
+const RAN = 'ubuntu@kali:~$ sqlmap -u "http://board.com/?sort=posts_post.id*" --batch';
 const screen = {getBoundingClientRect: () => box(0, 0, 960, 480)};
 browser.element('kali-frame').contentWindow = {term: {rows: 24, cols: 80, element: {querySelector: () => screen},
   buffer: {active: {get length() { return kaliLines.length; }, viewportY: 0,
@@ -819,7 +820,7 @@ def test_no_missing_line_while_a_terminal_runs_a_command_or_a_pane_still_loads(c
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       {to("sqlmap")}
       await browser.click('step-open');
-      kaliLines.splice(0, kaliLines.length, "ubuntu@kali:~$ sqlmap -u x --batch", "[INFO] testing connection");
+      kaliLines.splice(0, kaliLines.length, RAN, "[INFO] testing connection");
       await frames(130);
       const busy = {{missing: shown('step-missing'), ring: shown('coach-ring')}};
       {to("board_ip")}
@@ -1059,7 +1060,10 @@ def test_a_finished_foundation_starts_the_next_lesson_and_the_last_one_ends_on_a
       const waited = browser.requests.filter((r) => r.route.endsWith('/close/')).length;
       const close = document.querySelector('#step-act [data-act="close"]');
       if (close) {{ close.click(); await browser.settle(); }}
-      return {{said, counter, button, early, course, waited, moved: range.moved, reloaded: range.reloaded, href: location.href,
+      const asked = browser.requests.filter((r) => r.route.endsWith('/close/')).length;
+      const confirm = document.querySelector('#step-act [data-act="confirm-close"]');
+      if (confirm) {{ confirm.click(); await browser.settle(); }}
+      return {{said, counter, button, early, course, waited, asked, moved: range.moved, reloaded: range.reloaded, href: location.href,
                closed: browser.requests.filter((r) => r.route.endsWith('/close/')).length}};
     """)
     result = seen["result"]
@@ -1075,6 +1079,7 @@ def test_a_finished_foundation_starts_the_next_lesson_and_the_last_one_ends_on_a
         assert result["course"] == ["f1", "f9"]
         assert result["said"] == worded("course.attack.done"), "the last task line is never left empty"
         assert result["waited"] == 0, "the summary stays until the learner closes the session"
+        assert result["asked"] == 0, "closing from the lesson asks first, as the session page does"
         assert (result["moved"], result["closed"]) == ([], 1)
         assert result["href"].endswith("/session/1/")
 
@@ -1445,16 +1450,16 @@ def test_a_finished_run_moves_the_ring_from_the_prompt_to_the_check_button(clien
       RECTS.set(document.querySelector('[data-act="kali"]'), box(1060, 400, 130, 28));
       await frames();
       const idle = {{shown: shown('coach-ring'), top: styled('coach-ring').top}};
-      kaliLines.splice(0, kaliLines.length, "ubuntu@kali:~$ sqlmap -u x --batch", "[INFO] testing", "ubuntu@kali:~$ ");
+      kaliLines.splice(0, kaliLines.length, RAN, "[INFO] testing", "ubuntu@kali:~$ ");
       await frames();
-      kaliLines.splice(0, kaliLines.length, "ubuntu@kali:~$ sqlmap -u x --batch", "[*] ending @ 10:00:00 /2026-10-19/", "", "ubuntu@kali:~$ ");
+      kaliLines.splice(0, kaliLines.length, RAN, "[*] ending @ 10:00:00 /2026-10-19/", "", "ubuntu@kali:~$ ");
       await frames();
       const press = document.querySelector('[data-act="kali"]');
       const line = browser.element('step-coach');
       const done = {{text: browser.text('step-coach'), shown: shown('step-coach'), floating: shown('coach-callout'),
                     below: line.parentNode.children[line.parentNode.children.indexOf(press) + 1] === line,
                     ring: styled('coach-ring'), dim: shown('coach-dim')}};
-      kaliLines.splice(0, kaliLines.length, "ubuntu@kali:~$ sqlmap -u x --batch", "[*] ending @ 10:00:00", "ubuntu@kali:~$ sqlmap -u x --batch", "[INFO] testing");
+      kaliLines.splice(0, kaliLines.length, RAN, "[*] ending @ 10:00:00", RAN, "[INFO] testing");
       await frames();
       return {{idle, done, again: shown('coach-ring'), gone: shown('step-coach')}};
     """)
@@ -1467,6 +1472,37 @@ def test_a_finished_run_moves_the_ring_from_the_prompt_to_the_check_button(clien
         "the line sits right under the button inside the note, never floating over the run card")
     assert result["again"] is False, "a new command after the finished run leaves nothing to ring until its output ends"
     assert result["gone"] is False
+
+def test_a_run_step_says_one_thing_at_a_time_and_only_its_own_command_s_end_counts_as_finished(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS['lesson.kali.press'] = 'The run has finished. Press Check.';
+      {to("sqlmap")}
+      await browser.click('step-open');
+      RECTS.set(document.querySelector('[data-act="kali"]'), box(1060, 400, 130, 28));
+      kaliLines.splice(0, kaliLines.length, 'ubuntu@kali:~$ sqlmap -u "http://board.com/?q=1*" --batch',
+                       "[*] ending @ 10:00:00 /2026-10-19/", "", "ubuntu@kali:~$ ");
+      await frames();
+      const other = browser.text('step-coach');
+      await browser.click('#step-act [data-act="kali"]');
+      await browser.settle();
+      const pressed = {{said: shown('step-said'), red: browser.element('step-said').classList.contains('text-danger')}};
+      kaliLines.splice(0, kaliLines.length, RAN, "[INFO] testing");
+      await frames();
+      const running = shown('step-said');
+      range.settling = true;
+      await browser.click('#step-act [data-act="kali"]');
+      await browser.settle();
+      await frames();
+      const row = document.querySelector('#step-act [data-running]');
+      return {{other, pressed, running, status: browser.text('step-status'), row: Boolean(row) && !row.classList.contains('hidden')}};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["other"] != "The run has finished. Press Check.", "another command's finished run is not this step's"
+    assert result["pressed"] == {"said": True, "red": True}
+    assert result["running"] is False, "the step's own command running clears the earlier 'no run yet' error"
+    assert (result["status"], result["row"]) == ("", True), "while the command runs only the run card's line speaks"
 
 def test_a_sidebar_step_rings_the_top_values_once_the_popover_shows_that_field_s_name(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
@@ -2221,10 +2257,10 @@ def test_the_course_summary_explains_the_lost_objectives_under_the_values_and_th
       document.querySelector('#step-act [data-act="rows"]').innerHTML = kaliRow({{name: 'board-sqli-orderby-sqlmap', discover: '/kibana/'}});
       RECTS.set(document.querySelector('[data-act="kali"]'), box(1060, 400, 130, 28));
       const running = () => browser.element('step-act').querySelector('[data-running]').classList.contains('hidden');
-      kaliLines.splice(0, kaliLines.length, "ubuntu@kali:~$ sqlmap -u x --batch", "[INFO] testing");
+      kaliLines.splice(0, kaliLines.length, RAN, "[INFO] testing");
       await frames();
       const during = running();
-      kaliLines.splice(0, kaliLines.length, "ubuntu@kali:~$ sqlmap -u x --batch", "[*] ending @ 10:00:00 /2026-10-19/", "", "ubuntu@kali:~$ ");
+      kaliLines.splice(0, kaliLines.length, RAN, "[*] ending @ 10:00:00 /2026-10-19/", "", "ubuntu@kali:~$ ");
       await frames();
       const after = running();
       {to("db_ip")}
@@ -2276,7 +2312,7 @@ def test_a_finished_run_still_being_logged_does_not_tell_the_learner_to_press_th
       {to("sqlmap")}
       await browser.click('step-open');
       RECTS.set(document.querySelector('[data-act="kali"]'), box(1060, 400, 130, 28));
-      kaliLines.splice(0, kaliLines.length, "ubuntu@kali:~$ sqlmap -u x --batch", "[*] ending @ 10:00:00 /2026-10-19/", "", "ubuntu@kali:~$ ");
+      kaliLines.splice(0, kaliLines.length, RAN, "[*] ending @ 10:00:00 /2026-10-19/", "", "ubuntu@kali:~$ ");
       await frames();
       const finished = browser.text('step-coach');
       range.settling = true;

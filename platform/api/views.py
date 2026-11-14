@@ -91,6 +91,7 @@ SCHEDULE = ("attacks", "completion")
 REPLAY_MARKS = ("seed", "verify", "check", "replay")
 CHECK_TIMEOUT = 10.0
 RECORD_SLACK = timedelta(seconds=5)
+BENIGN_UNSENT = "lesson.check.replay_benign"
 RUN_SETTLED = timedelta(seconds=15)
 OBJECTIVE_FACTS = ("lost_points", "detected_penalty")
 _segments_kept: dict = {}
@@ -493,7 +494,7 @@ def lesson_step_check(request, session_id, step_id):
         passed, reason, *seen = _judge(session, taught, step, body, kept)
     except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
-    chose = body["answer"].strip() if passed and step["check"]["kind"] == "choice" else None
+    chose = (body["answer"].strip() if step["check"]["kind"] == "choice" else _outcome(session, step["check"])) if passed else None
     judged = _judged_step(session, step_id, passed, reason, body.get("poll") is True, chose) | dict(*seen)
     _seed_once_worked(session)
     return _reply(judged)
@@ -513,6 +514,7 @@ def _judged_step(session, step_id, passed, reason, poll, chose=None):
             return
         if poll:
             return
+        kept["tries"] = kept.get("tries", 0) + 1
         kept["wrong"] = kept.get("wrong", 0) + 1
         if kept["wrong"] >= lesson.WRONGS_PER_HINT:
             kept["wrong"] = 0
@@ -541,11 +543,15 @@ def _judge(session, taught, step, body, kept):
         accepted = _accepted(session, check, taught)
         if not accepted:
             return False, [_unrecorded(session, check, taught, failed), []]
-        return lesson.answered(dict(check, accept=accepted), given.strip(), f"{prefix}.wrong.{step_id}")
+        passed, reason = lesson.answered(dict(check, accept=accepted), given.strip(), f"{prefix}.wrong.{step_id}")
+        return passed, _whose_address(session, given.strip()) or reason if reason == ["lesson.check.wrong", []] else reason
     if kind == "rules":
         live = _live_rules(session)
         added = lesson.added_rules(live, _posture_rules(session))
         needed = [sid for sid in added if check.get("needs") != "nocase" or lesson.ignores_case(disable.find(live, sid))]
+        broad = [sid for sid in needed if any(lesson.alerts_on(disable.find(live, sid), uri) for uri in check.get("quiet_on", []))]
+        if broad:
+            return False, [f"{failed}.broad", [", ".join(map(str, broad)), check["quiet_on"][0]]], {"added": added}
         if needed and "match" in check:
             return (*_rule_fired(session, check["match"], needed, failed), {"added": added})
         if needed and check.get("needs") == "nocase" and not any(_rev_raised(session, live, sid) for sid in needed):
@@ -558,10 +564,26 @@ def _judge(session, taught, step, body, kept):
     if kind == "loot":
         return _loot_check(session, check, body.get("answer"), failed)
     if kind == "waf_changed":
-        return _waf_changed(session, check["removed_target"]), [failed, []]
+        return _waf_changed(session, check["removed_target"], failed)
     if kind == "replay":
         return _replay_check(session, step, kept)
     return scenario_run.triage_passed(session, check["judged"]), [failed, []]
+
+def _whose_address(session, given):
+    if not lesson.an_address(given):
+        return None
+    try:
+        found = topology.addresses(maps.template(session.scenario), maps.learner(session.scenario), _map_found(session))
+    except (KeyError, ValueError):
+        return None
+    host = next((one["host"] for one in found if one["address"] == given), None)
+    return ["lesson.check.wrong.address_of", [given, host]] if host else None
+
+def _outcome(session, check):
+    if check.get("of") != "detected_penalty":
+        return None
+    rows = (_lesson_objectives(session, every=True) or {}).get("rows") or []
+    return lesson.objective_outcome(next((row for row in rows if row["id"] == check.get("objective")), None))
 
 def _rev_raised(session, live, sid):
     applied = RuleSet.objects.filter(session=session, applied_at__isnull=False).order_by("applied_at")
@@ -663,7 +685,7 @@ def _range_fact(session, check, taught):
     of = check["of"]
     if of == "excluded_target":
         targets = [entry["target"] for entry in _waf_in_force(session)["exclusions"] if entry.get("target")]
-        return list(dict.fromkeys([*targets, *(target.partition(":")[2] for target in targets if ":" in target)]))
+        return list(dict.fromkeys(target.partition(":")[2] or target for target in targets))
     if of == "lost_points":
         return [str(_lesson_objectives(session, every=True)["total"])]
     if of == "detected_penalty":
@@ -732,8 +754,8 @@ def _request_fact(session, check, taught):
     record = records[-1]
     url = urlsplit(record["url"])
     if of in ("status", "method", "path", "parameter", "param_value"):
-        return {"status": [str(record["status"])], "method": [record["method"]],
-                "path": list(dict.fromkeys([url.path, url.path.rstrip("/") or "/"])),
+        return {"status": lesson.status_said(record["status"]), "method": [record["method"]],
+                "path": [url.path],
                 "parameter": sorted(parse_qs(url.query, keep_blank_values=True)),
                 "param_value": parse_qs(url.query, keep_blank_values=True).get(check.get("name"), [])[:1]}[of]
     if of == "escaped":
@@ -776,9 +798,11 @@ def _logged(session, start, end, source):
 
 def _waf_records(session, record):
     start, end = _window_of(record)
-    return [doc for doc in _logged(session, start, end, "modsecurity") if any(
-        str(name).lower() == elastic.MARKER_HEADER.lower() and value == session.browse_marker
-        for name, value in (((doc.get("transaction") or {}).get("request") or {}).get("headers") or {}).items())]
+    return [doc for doc in _logged(session, start, end, "modsecurity") if _waf_marked(doc, session.browse_marker)]
+
+def _waf_marked(doc, marker):
+    return any(str(name).lower() == elastic.MARKER_HEADER.lower() and value == marker
+               for name, value in (((doc.get("transaction") or {}).get("request") or {}).get("headers") or {}).items())
 
 def _hits(session, check, records):
     word = next(iter(parse_qs(urlsplit(records[-1]["url"]).query).get("q", [])), "") if records else ""
@@ -879,10 +903,12 @@ def _kali_fact(session, check):
         errors = lesson.server_errors(_logged(session, recorded.started_at - RECORD_SLACK,
                                               recorded.ended_at + RECORD_SLACK, "modsecurity"))
         return [str(len(errors))] if errors else []
+    if of == "run_records":
+        logged = _logged(session, recorded.started_at - RECORD_SLACK, recorded.ended_at + RECORD_SLACK, "modsecurity")
+        own = [doc for doc in logged if _waf_marked(doc, recorded.case_id)]
+        return sorted({str(len(found)) for found in (logged, own) if found})
     marked = _detected(session, recorded.case_id, settled=True)
-    if of == "alerted_by":
-        return [lesson.alerted_by({detection.source for detection in marked if lesson.rule_of(detection.raw or {})})]
-    return sorted({detection.src_ip for detection in marked if detection.source == "modsecurity" and detection.src_ip})
+    return [lesson.alerted_by({detection.source for detection in marked if lesson.rule_of(detection.raw or {})})]
 
 def _loot_check(session, check, given, failed):
     recorded = _kali_case(session, check["about"])
@@ -894,12 +920,16 @@ def _loot_check(session, check, given, failed):
     matched = recorded.meta.get("loot") or []
     return bool(matched), [failed, []], {"loot": {"matched": matched}}
 
-def _waf_changed(session, target):
+def _waf_changed(session, target, failed):
     declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense)
     if not declared:
-        return False
+        return False, [failed, []]
+    posture, standing = crs.checked(declared["waf"]), _waf_in_force(session)
+    if standing.get("paranoia") != posture["paranoia"]:
+        level_line = crs.rendered({**posture, "exclusions": []}).strip()
+        return False, [f"{failed}.paranoia", [level_line]], {"loud": True}
     targeted = lambda exclusions: any(entry.get("target") == target for entry in exclusions)
-    return targeted(crs.checked(declared["waf"])["exclusions"]) and not targeted(_waf_in_force(session)["exclusions"])
+    return targeted(posture["exclusions"]) and not targeted(standing["exclusions"]), [failed, []]
 
 def _replay_check(session, step, kept):
     check = step["check"]
@@ -908,8 +938,9 @@ def _replay_check(session, step, kept):
     if since is None or not (_kali_replayed(session, step, kept, attack) if attack.get("kali")
                              else _sent_replayed(session, attack["sent"], since)):
         return False, ["lesson.check.replay_attack", []]
-    if not _benign_replayed(session, benign, since):
-        return False, ["lesson.check.replay_benign", []]
+    fault = _benign_fault(session, benign, since)
+    if fault:
+        return False, fault, {"loud": fault[0] != BENIGN_UNSENT}
     return True, None
 
 def _added_alerted(session, record):
@@ -929,15 +960,25 @@ def _kali_replayed(session, step, kept, attack):
                                        for detection in session.detections.filter(marker=recorded.case_id)}
     return blocked and not recorded.meta.get("loot")
 
-def _benign_replayed(session, benign, since):
+def _benign_fault(session, benign, since):
     expect = benign.get("expect") or {}
     if expect.get("alerted_sid") == "none":
         _ingest(session, RECENT_ALERTS)
-    return any(
-        (not expect.get("status_class") or f"{record['status'] // 100}xx" == expect["status_class"])
-        and (expect.get("alerted_sid") != "none" or not _added_alerted(session, record))
-        and (expect.get("waf_logged") is not False or not _waf_records(session, record))
-        for record in _site_requests(session, benign["sent"], since))
+    faults = [_benign_record_fault(session, expect, record) for record in _site_requests(session, benign["sent"], since)]
+    if not faults:
+        return [BENIGN_UNSENT, []]
+    return None if not all(faults) else faults[-1]
+
+def _benign_record_fault(session, expect, record):
+    asked = _asked(record)
+    if expect.get("status_class") and f"{record['status'] // 100}xx" != expect["status_class"]:
+        return [f"{BENIGN_UNSENT}.status", [asked, str(record["status"])]]
+    alerted = _added_alerted(session, record) if expect.get("alerted_sid") == "none" else set()
+    if alerted:
+        return [f"{BENIGN_UNSENT}.alerted", [", ".join(map(str, sorted(alerted))), asked]]
+    if expect.get("waf_logged") is False and _waf_records(session, record):
+        return [f"{BENIGN_UNSENT}.waf_logged", [asked]]
+    return None
 
 def _fix(session, waf):
     declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense)

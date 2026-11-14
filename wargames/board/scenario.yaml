@@ -337,6 +337,7 @@ foundations:
           wrong_if:
             - {match: '^https?://|board\.com', says: host}
             - {match: '\?', says: query}
+            - {match: '^/[^?]*[^/?]$', says: slash}
       - id: status
         point: {opens: site, dev: general.status}
         check: {kind: answer, of: status, about: search}
@@ -364,16 +365,16 @@ foundations:
         check: {kind: sent, match: '[?&]q=[A-Za-z0-9]{4,}(&|$)'}
       - id: count
         point: {opens: elk, kibana: {hits: true, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
-        check: {kind: answer, of: hits, about: search, leg: both}
+        check: {kind: answer, of: hits, about: search, leg: both, kql: '(?i)\burl\s*:\s*"?\*?[A-Za-z0-9]{4,}'}
       - id: upstream
         point: {opens: elk, kibana: {hits: true, kql: '(?is)^(?=.*\burl\s*:)(?=.*\bnot\s*\(?\s*destination\s*:)'}}
         check: {kind: answer, of: hits, about: search, leg: upstream, kql: '(?is)^(?=.*\burl\s*:)(?=.*\bnot\s*\(?\s*destination\s*:)'}
       - id: site_source
         point: {opens: elk, kibana: {doc: source_ip, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
-        check: {kind: answer, of: sensor_source, about: search, leg: upstream}
+        check: {kind: answer, of: sensor_source, about: search, leg: upstream, kql: '(?i)\burl\s*:'}
       - id: xff
         point: {opens: elk}
-        check: {kind: answer, of: forwarded_for, about: search, leg: upstream}
+        check: {kind: answer, of: forwarded_for, about: search, leg: upstream, kql: '(?i)\burl\s*:'}
   - id: f4
     order: 4
     text: lesson.xss
@@ -399,31 +400,36 @@ foundations:
             - {match: '^<', says: same}
       - id: rule
         point: {opens: elk, kibana: {doc: rule_id, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*script)'}}
-        check: {kind: answer, of: rule, marker: browse, path: "<script", known: ["949110"]}
+        check: {kind: answer, of: rule, marker: browse, path: "<script", known: ["949110"],
+                kql: '(?i)^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*script)'}
       - id: score
         point: {opens: elk, kibana: {doc: rule, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*script)'}, keep: true}
-        check: {kind: answer, of: anomaly_total, about: probe}
+        check: {kind: answer, of: anomaly_total, about: probe,
+                kql: '(?i)^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*script)'}
       - id: upper
         point: {opens: site, site: "input[name=q]", until: sent,
                 then: {kibana: {doc: rule, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*ScRiPt)'}}}
-        check: {kind: answer, of: anomaly_total, match: '<(?!script)(?i:script)'}
+        check: {kind: answer, of: anomaly_total, match: '<(?!script)(?i:script)',
+                kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*ScRiPt)'}
       - id: ids_none
         point: {opens: elk, kibana: {hits: true, kql: '^(?=.*event_type\s*:\s*"?alert)(?=.*url\s*:\s*"?\*[^ ]*alert)'}}
-        check: {kind: choice, of: alerted, about: [probe, upper], options: [present, absent]}
+        check: {kind: choice, of: alerted, about: [probe, upper], options: [present, absent],
+                kql: '(?i)^(?=.*event_type\s*:\s*"?alert)(?=.*url\s*:\s*"?\*[^ ]*alert)'}
       - id: write
         point: {opens: rules, panel: "#lesson-rules", until: applied,
                 then: {site: "input[name=q]", until: sent, then: {panel: "#step-act"}}}
-        check: {kind: rules, match: '<script'}
+        check: {kind: rules, match: '<script', quiet_on: ["/search/?q=release notes", "/search/?q=hello"]}
       - id: fired
         point: {opens: elk, kibana: {doc: destination, kql: 'event_type\s*:\s*"?alert'}}
-        check: {kind: answer, of: alerted_destination, about: write}
+        check: {kind: answer, of: alerted_destination, about: write, kql: '(?i)event_type\s*:\s*"?alert'}
       - id: slipped
         point: {opens: site, site: "input[name=q]", until: sent,
                 then: {kibana: {hits: true, kql: '^(?=.*event_type\s*:\s*"?alert)(?=.*url\s*:\s*"?\*[^ ]*ScRiPt)'}}}
-        check: {kind: choice, of: alerted_sid_present, match: '<(?!script)(?i:script)', after: write, options: [present, absent]}
+        check: {kind: choice, of: alerted_sid_present, match: '<(?!script)(?i:script)', after: write, options: [present, absent],
+                kql: '^(?=.*event_type\s*:\s*"?alert)(?=.*url\s*:\s*"?\*[^ ]*ScRiPt)'}
       - id: nocase
         point: {opens: rules, panel: "#lesson-rules"}
-        check: {kind: rules, needs: nocase}
+        check: {kind: rules, needs: nocase, quiet_on: ["/search/?q=release notes", "/search/?q=hello"]}
       - id: replay
         point: {opens: site}
         check:
@@ -450,7 +456,8 @@ foundations:
         check: {kind: answer, of: status, match: '[?&]sort=[^&]*\)'}
       - id: undetected
         point: {opens: elk, kibana: {doc: rule_id, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*sort)'}}
-        check: {kind: choice, of: waf_detected, about: error, options: [present, absent]}
+        check: {kind: choice, of: waf_detected, about: error, options: [present, absent],
+                kql: '(?i)^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*sort)'}
       - id: sqlmap
         point: {opens: kali, term: {pane: kali, match: '[$#] $', done: '\[\*\] ending @'}}
         command: 'sqlmap -u "http://board.com/?sort=posts_post.id*" --dbms=mysql --technique=BT --level=5 --risk=3 --batch --flush-session'
@@ -460,17 +467,25 @@ foundations:
         check: {kind: choice, of: sqlmap_found, about: sqlmap, options: ["yes", "no"]}
       - id: source
         point: {opens: elk, kibana: {sidebar: source_ip, kql: 'log_source\s*:\s*"?modsecurity'}}
-        check: {kind: answer, of: kali_source, about: sqlmap}
+        check:
+          kind: answer
+          of: run_records
+          about: sqlmap
+          kql: '(?i)log_source\s*:\s*"?modsecurity'
+          wrong_if:
+            - {match: '^\d{1,3}(\.\d{1,3}){3}$', says: address}
+            - {match: '%', says: share}
       - id: scanner
         point: {opens: elk, kibana: {doc: rule, kql: 'log_source\s*:\s*"?modsecurity'}}
-        check: {kind: answer, of: rule, marker: "step:sqlmap", family: "913"}
+        check: {kind: answer, of: rule, marker: "step:sqlmap", family: "913", kql: '(?i)log_source\s*:\s*"?modsecurity'}
       - id: agent
         point: {opens: kali, term: {pane: kali, match: '[$#] $', done: '\[\*\] ending @'}}
         command: 'sqlmap -u "http://board.com/?sort=posts_post.id*" --dbms=mysql --technique=BT --level=5 --risk=3 --batch --flush-session --random-agent'
         check: {kind: kali, case: board-sqli-orderby-sqlmap-random-agent, ua: any}
       - id: still
         point: {opens: elk}
-        check: {kind: choice, of: rule_matched, marker: "step:agent", rule: "913100", options: [present, absent]}
+        check: {kind: choice, of: rule_matched, marker: "step:agent", rule: "913100", options: [present, absent],
+                kql: '(?i)^(?=.*log_source\s*:\s*"?modsecurity)(?=.*rule_id\s*:\s*"?913100)'}
   - id: f6
     order: 6
     text: lesson.miss
@@ -483,7 +498,11 @@ foundations:
       - id: excluded
         point: {opens: waf, term: {pane: waf, match: 'ctl:ruleRemove', idle: '\$ '}}
         command: grep -n ruleRemove {waf_rules}
-        check: {kind: answer, of: excluded_target}
+        check:
+          kind: answer
+          of: excluded_target
+          wrong_if:
+            - {match: '(?i)^ARGS:', says: prefix}
       - id: dump
         point: {opens: kali, term: {pane: kali, match: '[$#] $', done: '\[\*\] ending @'}}
         command: 'sqlmap -u "http://board.com/?sort=posts_post.id*" --dbms=mysql --technique=BT --level=5 --risk=3 --random-agent --skip-waf -D board -T auth_user -C username,password --dump --batch --answers="crack=N" --flush-session'
@@ -493,13 +512,15 @@ foundations:
         check: {kind: loot, about: dump}
       - id: alerts
         point: {opens: elk, kibana: {hits: true, kql: 'event_type\s*:\s*"?alert|log_source\s*:\s*"?modsecurity'}}
-        check: {kind: choice, of: alerted_by, about: dump, options: [none, ids, waf, both]}
+        check: {kind: choice, of: alerted_by, about: dump, options: [none, ids, waf, both],
+                kql: '(?i)event_type\s*:\s*"?alert|log_source\s*:\s*"?modsecurity'}
       - id: seen
         point: {opens: elk, kibana: {hits: true, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*status\s*(:|>=?)\s*"?5)'}}
         check:
           kind: answer
           of: server_errors
           about: dump
+          kql: '(?i)^(?=.*log_source\s*:\s*"?modsecurity)(?=.*status\s*(:|>=?)\s*"?5)'
           wrong_if:
             - {match: '^-$', says: rule_id}
             - {match: '^\d{1,3}(\.\d{1,3}){3}$', says: address}
