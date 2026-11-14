@@ -5,7 +5,7 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-14 (the range is one range host, `cr-range`, running four
+Updated: 2026-11-15 (the range is one range host, `cr-range`, running four
 slots as compose projects; on `dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
@@ -112,6 +112,28 @@ Internet.
   0 failed, 0 errors, 1 skipped in 693 s across 14 processes; unit and API
   1535 passed (853 + 682); ratchet no regression (`core_loc` 584,
   `dependencies` 6, `services` 5; `product_loc` 27256, 191 below round 18).
+- Answer-blind walk round 19 and docs review round 4 (2026-11-15,
+  `docs/DECISIONS.md` "Answer-blind walk round 19"): F2's DevTools answers
+  need the row picked in DevTools (`dev`), F3's X-Forwarded-For and F5's
+  record count need their own KQL condition, F6's loot needs the whole
+  dumped table, the map ring leaves out link addresses, a reload keeps the
+  Kali shell (tmux in the platform image) and an unapplied rule draft, the
+  scenario session and result pages lost their contradictions, and the
+  slop list (callouts, glosses, time estimates, the two-scores card,
+  repeated cards) went. Left: the "n" lines (not reproduced), `/search`
+  strict, the F6 dash, the scenario console's missing end button. Store
+  copied first to `~/.cache/fsl-work/backup-safe/db-20261114T1740Z-r19.sqlite3`.
+  Deployed: `range-host-live` at fc55570 with images by that commit
+  (`CR_IMAGE_TAG` in `/opt/cr/.env`), so `POST slot/` replaced the range
+  host and `configure/` left four slots READY. Full `bin/verify` on the platform VM at fc55570: the first run had 7
+  setup errors in four modules (the platform did not answer `GET /` within
+  3 s; the four passed when rerun alone), the second was all green: 12 min
+  30 s start to result; acceptance 91 passed, 0 failed, 0 errors, 1 skipped
+  in 704 s across 14 processes; unit and API 1546 passed (868 + 678);
+  ratchet no regression (`core_loc` 584, `dependencies` 6, `services` 5).
+  Live check: `vm-terminal.sh cr-kali` in a detached tmux session in the
+  platform container reached the slot's Kali and kept a command's output
+  with no client attached; a browser reload through ttyd was not tried.
 - Test speed (on `dev`, `docs/DECISIONS.md` "The acceptance
   suite runs one sqlmap case and fills the slots as they free"): the
   red-team run fires one sqlmap case (the dump; `CR_SQLMAP_VARIANTS=1` fires
@@ -175,11 +197,11 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 
 1. The live cloud on `dev`: set `platform.ref` back to `dev` and
    `compute.slots` as the user wants (four now).
-2. A fresh answer-blind review round of both courses on the round-18 fixes
-   (`docs/DECISIONS.md` "Answer-blind walk round 18"), checking on the range
-   that the new `kql` patterns accept the queries learners write and why
-   course 2's DevTools dropped the 403 row opened after the search, then the
-   user's own test. The live map now shows the router's own symbol (`host-router.svg`)
+2. A fresh answer-blind review round of both courses and a scenario on the
+   round-19 fixes (`docs/DECISIONS.md` "Answer-blind walk round 19"),
+   checking on the range that a reload keeps the Kali run (tmux), that the
+   DevTools guard accepts a learner who picks the row, and that the F3 and
+   F5 queries the cards now ask for pass; then the user's own test. The live map now shows the router's own symbol (`host-router.svg`)
    and F1's DMZ callout outside the zone.
 3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
    or `union select` even where it is loaded: a detection gap to measure
