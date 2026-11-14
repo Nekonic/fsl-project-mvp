@@ -77,8 +77,22 @@ Internet.
   check was the server: an alert was matched to any request within 5 s, so a
   plain search 3.5 s after an attack inherited its alert; alerts now match a
   request by URL. The full `bin/verify` below ran with that deploy live.
-  Left open for the next round: F5's source step asks kali's address, which
-  the map shows.
+- Answer-blind walk round 18 (2026-11-14): its findings were fixed
+  (`docs/DECISIONS.md` "Answer-blind walk round 18"): every Kibana answer
+  needs the learner's own query (`kql`), F5's source step now asks the
+  record count Kibana alone shows, F4 refuses a rule that alerts on every
+  plain search, F6 keeps the paranoia level line, run steps say one thing at
+  a time, course 1's result shows no score, ttyd raises no leave-site
+  dialog. Left by ruling: Next skipping steps, XSS not scored (wording only),
+  wrong attempts shown on the result but not penalised. Deployed: the live platform
+  runs `range-host-live` at 8304864, images from GHCR by that commit, the
+  range host replaced by `POST slot/` and four slots READY after
+  `configure/` (store copied first to
+  `~/.cache/fsl-work/backup-safe/db-20261114T1410Z-r18.sqlite3`). Full
+  `bin/verify` on the platform VM then: 12 min 40 s start to result;
+  acceptance 91 passed, 0 failed, 0 errors, 1 skipped in 706 s across 14
+  processes; unit and API 1532 passed (815 + 717 in two processes beside it);
+  ratchet no regression (`core_loc` 584, `dependencies` 6, `services` 5).
 - Test speed (on `dev`, `docs/DECISIONS.md` "The acceptance
   suite runs one sqlmap case and fills the slots as they free"): the
   red-team run fires one sqlmap case (the dump; `CR_SQLMAP_VARIANTS=1` fires
@@ -142,9 +156,11 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 
 1. The live cloud on `dev`: set `platform.ref` back to `dev` and
    `compute.slots` as the user wants (four now).
-2. A fresh answer-blind review round of both courses on the round-17 fixes
-   (`docs/DECISIONS.md` "Answer-blind walk round 17"), judging F5's source
-   step that asks kali's address, then the user's own test. The live map now shows the router's own symbol (`host-router.svg`)
+2. A fresh answer-blind review round of both courses on the round-18 fixes
+   (`docs/DECISIONS.md` "Answer-blind walk round 18"), checking on the range
+   that the new `kql` patterns accept the queries learners write and why
+   course 2's DevTools dropped the 403 row opened after the search, then the
+   user's own test. The live map now shows the router's own symbol (`host-router.svg`)
    and F1's DMZ callout outside the zone.
 3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
    or `union select` even where it is loaded: a detection gap to measure
