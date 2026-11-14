@@ -1210,9 +1210,14 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       cloud the run took 3,759-4,083 s until 2026-10-24, 2,186 s and then
       1,867 s after the reset speed-ups, whose time was the resets
       (`docs/TROUBLESHOOTING.md`), and 2,003 s across 4 processes on
-      2026-10-26.
-      Measure where the setup still goes, then: polling instead of fixed
-      waits, edge configuration without a reboot.
+      2026-10-26; on the range host, 1101 s across 6 processes on
+      2026-11-14, then 665-746 s across 14 processes after one sqlmap case
+      per run, the slot queue in `bin/acceptance`, side-by-side probes and
+      the unit suite beside it (`docs/DECISIONS.md` "The acceptance suite
+      runs one sqlmap case and fills the slots as they free"). Left: ingest
+      re-reading the whole window (22-42 s per `POST /ingest/` under load)
+      and the slot reset (53 s alone) as the floor; more slots would
+      shorten it.
 - [x] Floating IP 192.168.0.220 on the old cloud: dropped (2026-10-20). That
       address belongs to the old cloud, which is in other use and which we do
       not touch.
@@ -1498,6 +1503,18 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       numbers and score note on the result page; truthful F4/F6 wording and
       run times. The WAF's time zone stays UTC (its audit time stamp has no
       zone).
+- [x] 2026-11-14: the answer-blind walk of round 17, its fifteen findings
+      fixed (`docs/DECISIONS.md` "Answer-blind walk round 17"): alerts match
+      a request by URL, which ends F4's stalled plain-search check; F4's
+      `nocase` step needs `rev` raised; early answers removed from F2, F3,
+      F4, F6 and the catalogue (F3 drops `client_source`, F6 asks the 500
+      count); F1's path starts at customers; "웹사이트 열기" reloads the board;
+      callouts off the histogram, Top values and dev-tools toolbars; the WAF
+      tile only for lessons that edit the WAF.
+- [x] 2026-11-14: the acceptance suite cut from about 25 min to 12-13 min
+      end to end (`docs/DECISIONS.md` "The acceptance suite runs one sqlmap
+      case and fills the slots as they free"); no test deleted, the port
+      scan now covers every host.
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 

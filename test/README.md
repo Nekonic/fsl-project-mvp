@@ -44,9 +44,11 @@ acceptance check reads as "passed".
 
 Tests that change the Suricata rules each use a session of their own. Closing
 the session resets its slot (one copy of the range), which undoes the change.
-Each of those sessions first checks that its sensor runs the rule set this repo
-declares (`runs_the_declared_rules` in `conftest.py`); no session is opened
-only for that check.
+Each of those that captures a baseline first checks that its sensor runs the
+rule set this repo declares (`runs_the_declared_rules` in `conftest.py`); no
+session is opened only for that check. `test_concurrent_sessions` is the
+exception: it writes the repo's rule file plus a probe rule, so it captures no
+leftovers.
 
 Opening a session is the slow part of the suite: a close resets its slot,
 about 53 s alone on the test cloud and longer when several slots reset at once,
