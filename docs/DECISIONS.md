@@ -7173,7 +7173,9 @@ skipped in 746 s across 14 processes; the unit suite's two processes took
 was slower than alone (746 s against 662 s; the platform VM has two vCPUs),
 still shorter than running the unit suite first. `durations.json` holds the
 larger of the two runs' seconds per module, so a module whose time varies
-(the red-team group took 99 s and 248 s) is not started last.
+(the red-team group took 99 s and 248 s) is not started last. The full
+`bin/verify` with those durations: 11 min 54 s start to result, acceptance
+91 passed, 1 skipped in 665 s.
 
 | Module | Before (s) | After (s) |
 |---|---|---|
@@ -7188,6 +7190,7 @@ larger of the two runs' seconds per module, so a module whose time varies
 | test_window_correlation | 87 | 40-97 |
 | test_strategy_comparison | 29 | 83-162 |
 | acceptance wall | 1101 | 662-746 |
+| full `bin/verify`, start to result | about 1530 | 714-798 |
 
 Per-module seconds include the wait for a free, reset slot, which now falls
 on whichever group opens next; the wall time is the number that fell.
