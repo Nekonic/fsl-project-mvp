@@ -482,6 +482,7 @@ The terminal also records what the operator types.
 The Kali pane (the red console's, and the blue console's in a lesson or scenario session) frames the URL that the session API names (`kali_terminal` in `GET /api/sessions/<id>/`).
 
 - The URL is `/vm-terminal/kali/?arg=<session id>`. It is a ttyd inside the platform that runs `platform/vm-terminal.sh`, started with `-t disableLeaveAlert=true` so leaving the page (the next lesson, a session close) raises no browser "leave site?" dialog. The script connects over ssh to the range host's mgmt address and runs `sudo docker exec -it ... sN-kali bash -l` for the session's slot.
+- `entrypoint.sh` starts both ttyds with `TERMINAL_KEEP=1`. The script then runs itself inside `tmux new-session -A -s <host>-<session id>` (`platform/tmux.conf`: no status line, no alternate screen, so the output stays in xterm's scrollback). A reload reattaches to the same shell, so a running sqlmap and its output survive it. The session id must be digits to name a tmux session.
 
 `vm-terminal.sh` checks the host key under the alias that the platform's runner uses for the range host, `cr-<server id>-<launch time>` (`OpenStack.host_key_alias`), with `StrictHostKeyChecking=accept-new`.
 
@@ -791,28 +792,29 @@ A case marked with any of `views.REPLAY_MARKS` (`seed`, `verify`, `check`, `repl
 The console is four screens, and every one is filled from `/api/`. It follows a static mockup the user approved, with two rulings on top (`docs/DECISIONS.md`, 2026-10-11, console redesign). The palette and component classes are in `base.html` and `platform/console/components.css`, which `bin/build-css` puts into `tailwind.css`. The header carries the breadcrumb and the range state. The console is Korean only and has no language switch.
 
 - **Main** (`/`):
-  - It lists running sessions by what was taken (course and lesson, scenario number and title, or wargame and target), the step a foundation session reached, and, only while opening (`ready`, from `Session.ready_at`), "Preparing ns / about 80s".
+  - It lists running sessions by what was taken (course and lesson, scenario number and title, or wargame and target), the step a foundation session reached, and, only while opening (`ready`, from `Session.ready_at`), "Preparing ns" (no estimate: the 80 s was a guess).
   - It lists wargame cards (name and a one-line description) under "Target systems", with the counts of attack cases, benign cases and objectives from `GET /api/wargames/` for the operator only. There is no page title, time estimate, category, difficulty, class or guidance chip (2026-11-14).
   - Under each card come the foundations block, the scenarios block ("Scenarios"), and the wargame block. Every row's button reads Start.
     - The foundations block shows each lesson as "Lesson n" and its title. Its Start button posts `{scenario, guidance: true, lesson, defense}` with the unit's declared defense.
-    - A scenario row shows its number, title and one line of what is practised.
-    - The wargame block is `[data-wargame-start]`: its one line says it runs unguided, and Start posts `{scenario}`, so there is no guidance and the defense is `full`.
-  - Each foundation and scenario also shows its newest run among the sessions this browser opened. The browser keeps them in `cr-opened-sessions` in localStorage, which the session and blue pages write, newest first, at most 20. The main page reads them through `?ids=`.
-    - For a foundation it shows still open or closed.
-    - For a scenario it shows PASS/FAIL, still open, or closed with no final check.
+    - A scenario row shows its number and title. The one-line `practise` text is gone: three of them restated the title, and one named `?sort=`, the answer of course 1's sort step (2026-11-15).
+    - The wargame block is `[data-wargame-start]`: its heading and Start, which posts `{scenario}`, so there is no guidance and the defense is `full`.
+  - The cards grid aligns its items to the start, so a short card keeps its own height.
+  - The rows no longer show the newest run among the sessions this browser opened ("last session: n (lesson) closed"): the finished-sessions table already lists them (2026-11-15). The session and blue pages still write `cr-opened-sessions`.
+  - A finished lesson session's row names its course (or the lesson, outside a course). Its result cell shows the objectives only when the course has a score (`<course>.scores`); course 1 shows "—".
   - It lists finished sessions by what was taken, with their `result`: PASS/FAIL from the scenario's last final check (`result.scenario`), or the objectives lost of the total and how many went unnoticed.
   - The result is scored once and stored (`Session.result_cache`, migration 0018) with the inputs it was scored from: `ended_at`, the hint count, and each final check's verdict. The inputs also include, for each of detections, cases and objectives, the last id and the row count (for detections, also the rows with a marker).
   - A list reads three aggregates per session. It scores again only a session whose inputs changed, such as after a late ingest.
   - A refused start is explained under the button that was pressed. On 409, "Close open sessions" lists the open ones, and each is closed through `ingest/` then `close/`. `GET /api/range/ready/` names `max_sessions`.
   - The range controls (the alert pipeline check, the open-session count, the range's health and the counts on a wargame card) show only with `?operator`.
 - **Session** (`/session/<id>/`):
-  - The header shows the step a guided session reached, objectives lost while open (not on the result, where the primary score shows it) and the target. It names no kind and shows a state only while the session is opening.
+  - The header shows the step a guided session reached (no label) and objectives lost while open (not on the result, where the primary score shows it). It names no kind, does not repeat the target the breadcrumb names, and shows a state only while the session is opening. Its line names the course or the lesson and the time; an open scenario shows only its start, since its clock starts at the briefing's Start, not at the session's opening.
   - It shows an "Open blue console" button and, for a wargame session only, an "Open red console" button.
-  - Outside lessons it shows recent cases from `GET /api/sessions/<id>/cases/`. A lesson hides its automatic requests while open, so it has no activity panel.
+  - A wargame session shows recent cases from `GET /api/sessions/<id>/cases/`. A lesson hides its automatic requests while open, and a scenario hides its scheduled attacks, so neither has an activity panel (a scenario's said "no attack yet" while its console listed alerts).
   - Once the session is closed, it shows these in order:
     1. a scenario's verdict banner and its debrief ("Scenarios");
     2. the primary score: every tier with one result column (kept, lost and detected, lost and undetected) and the penalty (difficulty x1 or x2), and one line on how a loss is decided;
-    3. plain sentences on what the defence judged, such as "Caught 7 of 8 attacks, missed 1 (name)" and "3 of 4 benign requests passed, wrongly blocked 1 (O'Brien search)", listing only what went wrong, and one line saying that a run counts once however many alerts it drew and is not added to the primary score.
+    3. under "Detection results", plain counts of what the defence judged, such as "Caught 7 of 8 attacks" and "3 of 4 benign requests passed", with what went wrong listed once under them, and one line saying that a run counts once however many alerts it drew. A scenario's result leaves the customers' blocked requests to its debrief, says "no attack ran" when none did, and hides the per-request table when it is empty. The per-request outcomes are coloured words, not pills; an objective's result reads "lost, detected" or "lost, undetected".
+    A scenario's debrief leaves out an empty section (no logged attack, no request judged before and after, no remaining risk) and a zero final-check count, names an attack's origin as a country (`scenario.origin.<code>`), and says "the WAF settings were not changed" in scenario words.
   - TP/FP/FN/TN and the game's balance stay in the API. No string a person reads names them (`test_strings.py`).
   - A lesson session's page names each run by its case name. For a Kali run it says "Lesson n · step m" (`per_case[].lesson`, `.step`, `.seed`). It never names a run by case id. Its course card lists every lesson taken with its steps passed and skipped.
   - "Start again" reopens the same scenario, the same unit (`{scenario, guidance: true, lesson, defense}` when `lesson_id` is set) or the same wargame.
@@ -873,12 +875,12 @@ How each check kind passes:
   - A `wrong_if` rule whose `match` fits the answer says `<text>.wrong.<step>.<says>`.
   - A value listed in `known` gets its own `<text>.wrong.<step>.<value>`.
   - The accepted values are the `accept` list, or they are read `of:` the session's records ("Foundations F1-F6").
-  - A wrong IPv4 address that the learner map gives to a host says `lesson.check.wrong.address_of` with that host (`views._whose_address`), instead of a bare "wrong".
+  - On a map address step (`of: address`), a wrong IPv4 address that the learner map gives to a host says `lesson.check.wrong.address_of` (`views._whose_address`): another device's address, without naming the device or repeating the address, since the waf's address is F1's last answer. Other steps keep their own messages.
   - `status` accepts the code alone or with its reason phrase, as DevTools shows it (`200 OK`; `lesson.status_said`).
   - `of: rule` (`wargames.ANSWERS_OF`) takes the `path` of the request with `marker: browse` for the learner's own request, or `marker: step:<id>` for a Kali step's run. It may be narrowed to a rule `family`. The platform ingests the last 600 s, takes the session's ModSecurity detections of that request or run, drops the CRS totals (rule ids starting 949, 959 or 980) and accepts each remaining `ruleId` (`lesson.rules_named`). With nothing recorded, the reason is `lesson.check.unrecorded`.
   - `of: rule_matched` with `rule: <id>` reads the same detections and accepts `present` or `absent` for that one rule. A recorded run with no detection is `absent`.
   - A recorded Kali run's detections are not ingested again once the session holds some of them: the run was recorded after its logs had settled for `RUN_SETTLED`, and the ingest at its recording read them.
-- `rules` passes once the sensor's file (`GET /api/rules/`) holds a sid that the posture's rule file does not hold, or holds with other text (`lesson.added_rules`, `disable.sids`). It answers `added`. `needs: nocase` also wants that rule to carry `nocase` or a pcre with the `i` flag (`lesson.ignores_case`). With a `match`, the rule must also have fired: a Website pane request matching it, sent after this session's last apply (`RuleSet.applied_at` of the session's own `RuleSet`), drew an alert from one of those sids. Otherwise it answers `<fail>.unsent` (no such request), `lesson.check.unrecorded` (the sensor has not logged the request yet), or `<fail>.silent` with the sids, or `<fail>.elsewhere` with the sids and a URL they alerted on instead. `quiet_on:` lists ordinary request URIs: a rule whose URI contents all appear in one of them (`lesson.alerts_on`; a rule with a pcre is not judged this way) fails at once with `<fail>.broad`, the sids and that URI, since it would alert on every plain search.
+- `rules` passes once the sensor's file (`GET /api/rules/`) holds a sid that the posture's rule file does not hold, or holds with other text (`lesson.added_rules`, `disable.sids`). It answers `added`. `needs: nocase` also wants that rule to carry `nocase` or a pcre with the `i` flag (`lesson.ignores_case`). With a `match`, the rule must also have fired: a Website pane request matching it, sent after this session's last apply (`RuleSet.applied_at` of the session's own `RuleSet`), drew an alert from one of those sids. Otherwise it answers `<fail>.unsent` (no such request), `lesson.check.unrecorded` (the sensor has not logged the request yet), or `<fail>.silent` with the sids, or `<fail>.elsewhere` with the sids and a URL they alerted on instead. `quiet_on:` lists ordinary request URIs: a rule whose URI contents all appear in one of them (`lesson.alerts_on`; a rule with a pcre is not judged this way) fails at once with `<fail>.broad`, the sids and the first listed URI the rule matches, since it would alert on every plain search. A rule with no URI content (only `http.header`, say) is not judged broad.
 - `triage` (`judged: customer | attack | all`) passes on the learner's right verdicts ("Scenarios").
 - `waf_changed` (`removed_target`) passes once no exclusion in the WAF's file targets that variable, while the posture declared one, and the file's paranoia level line still sets the posture's level. A deleted or changed level line fails with `<fail>.paranoia` and the line to put back (`crs.rendered` of the posture without its exclusions).
 - `replay` passes once, after the step named `after` passed, when both of these hold:
@@ -901,9 +903,16 @@ Checks run by themselves.
 - `rules` also runs when the rule editor applies a file. A `rules` step with a `match` runs then silently and shows its own check button, which the learner presses after sending the request.
 - A pass says the step's `ok` line on the passed step and stays there with Next highlighted; the learner presses Next. Every such pass also says to press Next, however short its line. Only the last step's short pass moves on by itself.
 - The card's open-pane button for the Website pane also loads the board's front page when the pane shows another page (a 403 page left by an XSS search, for one), since the steps after it search in the board's own search box.
-- The step after a Kali step shows that step's row: the case's name and "Open Kibana at this run's time". The link opens the run's window with an empty query. It shows no request count and no sensor name. A poll of the Kali check reads the row again after a reload, and whenever the row held has no window (a run still being collected when the learner pressed Next); a verdict that arrives after the learner moved on still updates the row.
+- A Kali step's card shows its run's row: the case's name, the still-running line and "Open Kibana at this run's time" (no "recorded run" label). A later step does not repeat the row; a Kibana step after it carries the run's window on its open button. The link opens the run's window with an empty query. A poll of the Kali check reads the row again after a reload, and whenever the row held has no window (a run still being collected when the learner pressed Next); a verdict that arrives after the learner moved on still updates the row. A Kali step passes on its own poll once the run ends; its check button only checks sooner.
 - Every answer to a step whose point, or a later phase of it, opens Kibana carries `query`, the query Kibana holds. A check with `kql` fails unless that query matches it (`<text>.wrong.<step>.kql`). Every foundation answer read in Kibana carries `kql`, so none passes on a value guessed from the map, the reference or an earlier card.
-- On the last step, a foundation says "Lesson over. Next lesson: <title>" and moves on ("One session per course"). After the course's last lesson (F3 in course 1, F6 in course 2), the card lists the course's lessons taken with the steps each passed, and a button closes the session. A worked scenario says "Lesson over".
+- A check with `dev`, a regular expression, is read in the Website pane's DevTools. The console sends `dev_request`, the id of the request row picked in DevTools while it is open (`null` otherwise). The answer fails with `lesson.check.wrong.dev` unless that row is a recorded request of the session whose path matches `dev` (`views._dev_picked`). F2's method, path, status, parameter, sort and missing-post steps carry it.
+- An answer that is a count with a short unit word (a number followed by the Korean word for points or records) is read as the number (`lesson._unit_dropped`); a `%` is not a unit.
+- On the last step, a foundation says "Lesson over." and its button names the next lesson ("Next lesson: <title>"), and moves on ("One session per course"). After the course's last lesson (F3 in course 1, F6 in course 2), the card lists the course's lessons taken with the steps each passed, and an "End session" button closes the session. The card repeats no score: the result page shows them. A worked scenario says "Lesson over".
+- The pass line stays where it is, under the question, on the last step too. A wrong answer's line goes when the learner types again or picks another option, and a KQL fault's line goes when the Kibana query changes.
+- The order picker shows the order only as the numbers on the pressed buttons, with no joined line under them; the question says how to take a button back.
+- The reference column's open state is kept per session and lesson (`cr-lesson-reference-<session>-<lesson>`), so a new lesson opens with it closed.
+- An unapplied edit in the rule editor is kept in localStorage (`cr-rules-draft-<session>`, with the version it was based on) and put back after a reload, saying so; applying the rules drops it. A draft based on another version is not restored.
+- A `click` step whose pane is already open passes when it is reached (scenario 1.1 opens on the Alerts pane its first step asked to open).
 - A wrong answer says what is wrong.
 - A recent ingest (`within`) reads the newest records of the window first and records no truncation, because one sqlmap case leaves more than 5000.
 
@@ -924,7 +933,7 @@ The locators are:
 
 - `panel`: a console element, such as the site's address bar, the rule editor or the objectives total.
 - `map`: a `node`, `link`, `label: [host, switch]` or `zone`, which the server resolves from `{switch:<host>}`.
-  - `deploy/gns3/auditor.html` answers `{locate}` by `postMessage`. The answer holds the rectangle, every zone drawing's rectangle (`zones`) and the boxes of the nodes, interface labels and zone captions (`text`, so that callouts stay off them).
+  - `deploy/gns3/auditor.html` answers `{locate}` by `postMessage`. A `node` is the device's icon and name, not the address labels on its links, so a ring on board.com does not show the address its step asks. The answer holds the rectangle, every zone drawing's rectangle (`zones`) and the boxes of the nodes, interface labels and zone captions (`text`, so that callouts stay off them).
   - The page refits on `{fit}`. It posts `{map: "drawn"}` after its first fit and `{map: "fitted"}` after each later one.
 - `site`: a selector inside the cross-origin site frame, answered by the script nginx injects.
 - `dev`: a `data-coach` name in the developer tools, such as the toggle, the matching row, a tab or a line.
@@ -941,7 +950,7 @@ A two-phase point holds the first target `until: sent` and then points at `then`
 
 How the highlight draws:
 
-- It dims the pane alone (`pointer-events: none`). It rings the target in the primary colour and puts a one-line callout beside it (`<text>.callout.<step>`, and `.callout.<step>.then` for the second phase, `.then.then` for the third).
+- It dims the pane alone (`pointer-events: none`). It rings the target in the primary colour and puts a one-line callout beside it (`<text>.callout.<step>`, and `.callout.<step>.then` for the second phase, `.then.then` for the third). Since 2026-11-15 no lesson step has its own callout: each one only named what the ring showed or repeated the card. The stage callouts that say what to do next (open DevTools, pick the row, write KQL, expand the row) stay; the ones that named a count, an empty result, the Top values or the prompt are gone.
 - The callout is flipped or shifted inside the pane. It never covers the target, the rail, the bars or the note. It also never covers the text and controls that the site frame or the Kibana frame report around the target (Kibana's leaf text and controls within 220 px of the ring, skipping what the document flyout covers).
 - With no one-line spot free, it wraps to two or three lines.
 - A flyout step (the next-event arrow) looks inside the flyout first.
@@ -1002,7 +1011,7 @@ Each unit below lists its defense and opening pane, what the learner does, and w
   - the count Kibana shows (both legs of every search with the word);
   - the count of a query the learner writes with `and` and `not`: their word, and `destination` not waf's address. Its check carries `kql`, a regular expression the Kibana query must match: the console sends the query Kibana holds with every answer of a step that opens Kibana, and an answer sent with a query that does not match fails (`lesson.logs.wrong.upstream.kql`) whatever the number. The count's pass line says only that the url query found the learner's logs, so it does not tell how many rows each leg leaves;
   - the `source_ip` of the row that query leaves (waf's own address).
-  The first count's check carries `kql` too (a `url` condition), and so do the source and X-Forwarded-For steps, whose answers are on the reference's address table.
+  The first count's check carries `kql` too (a `url` condition), and so does the source step, whose answer is on the reference's address table. The X-Forwarded-For step's `kql` needs a `x_forwarded_for` condition beside the url one (`request_header.x_forwarded_for : *`), since a url query left from the earlier steps would otherwise satisfy it.
   The solo step asks that row's `request_header.x_forwarded_for` (the customers address), read in the Document flyout. Its pass line is the first text that says the Website pane browses from the customers place.
 - Answers are read from the sensors' http events of the record (`sensor_source`, `forwarded_for`), split by leg.
   - A leg is `upstream` when `dest_ip` is one of board.com's addresses (waf sends it on). Otherwise it is `inbound` (the request arrives at waf). `leg: both` takes the events of both legs.
@@ -1021,7 +1030,7 @@ Each unit below lists its defense and opening pane, what the learner does, and w
 
 **f5 Analysing SQL injection on the sort parameter** (`lesson.sqli`). Defense `full`, opens on Website.
 
-- The learner reads the sort value. They add `)` in the address bar and read the status, then say whether a WAF rule detected it. They type sqlmap in the Kali pane and read its verdict, how many WAF records the run left (the source_ip Top values' "Calculated from N records", or the Documents count; the source itself is kali's, on the map) and the rule that named the scanner. They rerun with `--random-agent`. The solo step asks whether 913100 appears in the rerun's WAF logs. The CRS reference no longer lists the 913 family and the solo step's title no longer names 913100, so neither gives the scanner answer away. Every Kibana answer carries `kql`.
+- The learner reads the sort value. They add `)` in the address bar and read the status, then say whether a WAF rule detected it. They type sqlmap in the Kali pane and read its verdict, how many WAF records the run left (the source_ip Top values' "Calculated from N records", or the Documents count; the source itself is kali's, on the map). That step's `kql` needs a `source_ip` condition beside the WAF one, so the step's own query is written, not the one left from the undetected step and the rule that named the scanner. They rerun with `--random-agent`. The solo step asks whether 913100 appears in the rerun's WAF logs. The CRS reference no longer lists the 913 family and the solo step's title no longer names 913100, so neither gives the scanner answer away. Every Kibana answer carries `kql`.
 - Answers are read from:
   - `param_value` and `status`;
   - `waf_detected`: the ModSecurity detections of the request. A 500 is logged with no rule, which is no detection;
@@ -1048,7 +1057,7 @@ The postures `xss-gap` and `overbroad`:
 
 F6's sqlmap command carries `--skip-waf`. Without it, sqlmap's own WAF-detection request would trip IDS 9000003 and 9000004 and one CRS rule, and the run would count as detected. No unit question carries an `accept` list.
 
-One session per course. `POST /api/sessions/<id>/lesson/ {"lesson": "<id>"}` moves an open guided session to any foundation in place. The console's next lesson stays inside the session's course (`views._next_lesson`), and the course summary lists only that course's lessons; course 1 ends on its own line, course 2 on the two scores (`course.attack.scores`). It does the following:
+One session per course. `POST /api/sessions/<id>/lesson/ {"lesson": "<id>"}` moves an open guided session to any foundation in place. The console's next lesson stays inside the session's course (`views._next_lesson`), and the course summary lists only that course's lessons; course 1 ends on its own line, course 2 on `course.attack.done`. The result page shows course 2's scores and its `course.attack.scores` line. It does the following:
 
 - When that unit's declared defense differs from `Session.defense`, it writes the unit's CRS tuning (`crs.apply`, as `PUT /waf/` does). It seeds the sensors only when the posture's rule file changes.
 - It sets `Session.lesson` and `Session.defense`.
@@ -1067,7 +1076,7 @@ The detail carries:
 
 The console offers only the next unit.
 
-- When a foundation's last step passes or is skipped, the card says "Lesson over. Next lesson: <title>" with a "Next lesson" button. 2 s later the console posts the switch and reloads the page into the new unit, unless the unit shows a stretch task or the last step's pass line is longer than 30 characters (`SHORT_PASS_CHARS`, which also says to press "Next lesson"); then the learner presses "Next lesson".
+- When a foundation's last step passes or is skipped, the card says "Lesson over." with a "Next lesson: <title>" button. 2 s later the console posts the switch and reloads the page into the new unit, unless the unit shows a stretch task or the last step's pass line is longer than 30 characters (`SHORT_PASS_CHARS`); then the learner presses the button.
 - After the course's last lesson, the card lists the course's lessons taken, each with "n of N steps passed" (no check mark: a lesson whose steps were all skipped shows 0). It says the course's own `<course>.done` line only when the session took every lesson of its course, otherwise "Lesson over." The stretch card sits right under the step card. Its button first asks, as the session page's close does, then ingests, closes the session through `POST /close/` and opens the session page. A lesson session whose course has no `<course>.scores` (course 1, which only reads the range) shows no score on that page: no objectives, detection or per-request tables and no lost-objectives figure. Course 2's `<course>.scores` line says that XSS searches sent from the Website pane are not in the second score. That page's course card lists each lesson's steps passed and skipped, and labels each Kali run "Lesson n · step m".
 - Restarting starts the first lesson the learner worked in (the page's `begun()`: passed, skipped or hinted, or the lesson the session opened on) with its own defense. The button reads "Start again".
 
@@ -1091,7 +1100,7 @@ Three check kinds follow the learner's own actions.
   - The check passes when the sensor's http records carry the marker and the tool's user agent (any user agent with `ua: any`, for `--random-agent`).
   - It then records the run as an ordinary malicious case (`meta.kali` and `meta.lesson`, no replay mark). The case counts in both scores like any other red action. It then ingests the session.
   - A learner who unsets `http_proxy` sends unmarked requests, and the step does not pass.
-- `loot` takes the pasted table (`tools.dumped`, or `name:hash` and `| name | hash |` lines). It credits the table as `POST /loot/` does, attributed to the kali case. `_credit_loot` keeps the matched accounts on the case it was attributed to (`meta.loot`).
+- `loot` takes the pasted table (`tools.dumped`, or `name:hash` and `| name | hash |` lines). It credits the table as `POST /loot/` does, attributed to the kali case. `_credit_loot` keeps the matched accounts on the case it was attributed to (`meta.loot`). It passes only when the matched accounts cover every account in the session's snapshot; fewer fail with `<fail>.partial` and the matched and total counts, and the box stays open, so a later paste adds the rest. A partial paste still credits what it matched: the objectives follow the target's data, and the step only asks for the whole table.
 
 An answer reads one of these facts. `wargames.read_from_record` refuses anything else at discovery.
 
@@ -1328,6 +1337,7 @@ Other rules of the window:
 
 - the scenario card;
 - `phase` (running, window, passed, failed, closed) and `time_left`;
+- `started`: false while the briefing is open and the clock has not begun (`time_left` is then the whole run);
 - the last minute's blocked customers and alerted requests (`alerted_per_minute`: distinct markers that drew an alert, each customer request and each attack case once however many requests it sent);
 - objectives lost, the window and the completion;
 - the cards due and the hint offer.

@@ -70,10 +70,7 @@
     <div class="card">
       <div class="px-5 pt-4 pb-3 flex items-end justify-between border-b border-line-subdued">
         <h2 data-t="score.primary.heading" class="font-bold text-[16px] text-heading"></h2>
-        <div class="text-right">
-          <div data-t="score.primary.lost" class="label"></div>
-          <div id="lost-count" class="text-[22px] font-bold leading-tight"></div>
-        </div>
+        <div id="lost-count" class="text-[22px] font-bold leading-tight"></div>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-[13px]">
@@ -144,7 +141,6 @@
 
   const lessonText = () => (session && session.lesson ? session.lesson.text : "");
   const lessonSteps = () => (session && session.lesson && session.lesson.steps ? session.lesson.steps.length : 0);
-  const scenarioName = () => localized(`wargame.${session.scenario}.name`, wargame ? wargame.name : session.scenario);
   const lessonSession = () => Boolean(session && session.kind === "lesson");
   const foundations = () => (wargame && Array.isArray(wargame.foundations) ? wargame.foundations : []);
   const courses = () => (wargame && Array.isArray(wargame.courses) ? wargame.courses : []);
@@ -197,29 +193,30 @@
     const closed = Boolean(session.ended_at);
     field("session-title").textContent = t("common.session", id);
     field("session-state").textContent = closed || session.ready ? ""
-      : t("state.opening", secondsSince(session.started_at), OPENING_TAKES);
-    const parts = [scenarioName()];
+      : t("state.opening", secondsSince(session.started_at));
+    const parts = [];
     const course = courseNumbers();
     const only = startedLessons().length === 1 ? cardOf(startedLessons()[0].id) : null;
-    if (course.length > 1 && takenCourse()) parts.push(t(takenCourse().title));
-    if (course.length > 1) parts.push(t("session.course.span", Math.min(...course), Math.max(...course)));
+    if (course.length > 1) parts.push(takenCourse() ? t(takenCourse().title) : "");
     else if (only) parts.push(t(only.title));
     else if (lessonText()) parts.push(localized(`${lessonText()}.title`, ""));
     const began = clock(session.started_at);
     const ended = clock(session.ended_at);
     const took = minutesBetween(session.started_at, session.ended_at);
-    parts.push(closed ? t("session.span", began, ended, took) : t("session.since", began, took));
+    parts.push(closed ? t("session.span", began, ended, took)
+      : session.course_scenario ? t("main.started_at", began) : t("session.since", began, took));
     field("session-line").textContent = parts.filter(Boolean).join(" · ");
     const figures = [];
-    if (lessonSteps() && !closed) figures.push(figure(t("session.lesson_progress"), esc(lessonProgress())));
+    if (lessonSteps() && !closed) figures.push(`<div class="font-semibold text-heading">${esc(lessonProgress())}</div>`);
     if (total && showsScores() && !closed) figures.push(figure(t("session.lost"), esc(`${taken}/${total}`), taken ? "text-danger" : "text-heading"));
-    if (wargame) figures.push(figure(t("session.target"), `<span class="font-mono">${esc(wargame.public_url.replace(/^https?:\/\//, ""))}</span>`));
     field("session-figures").innerHTML = figures.join("");
     show("session-card", true);
   }
 
+  const quietActivity = () => lessonSession() || Boolean(session.course_scenario);
+
   async function activity() {
-    if (lessonSession()) return;
+    if (quietActivity()) return;
     const cases = await api(`/api/sessions/${id}/cases/`);
     const hidden = (row) => !session.ended_at && session.course_scenario && row.meta && row.meta.scheduled;
     const rows = cases.ok && Array.isArray(cases.body) ? cases.body.filter((row) => !hidden(row)).slice(-8).reverse() : [];
@@ -313,26 +310,25 @@
     const passed = benign.filter((row) => !row.detected);
     const parts = [];
     if (attacks.length) {
-      const sentence = t("score.attacks", attacks.length, caught.length) +
-        (missed.length ? ` · ${t("score.attacks_missed", missed.length, missed.map(named).join(", "))}` : "");
+      const sentence = t("score.attacks", attacks.length, caught.length);
       parts.push(judgementBlock([caught.length, attacks.length], sentence,
         missed.map((row) => t("score.no_alert", named(row)))));
     }
     if (benign.length) {
-      const sentence = t("score.benign", benign.length, passed.length) +
-        (blocked.length ? ` · ${t("score.benign_blocked", blocked.length, blocked.map(named).join(", "))}` : "");
+      const sentence = t("score.benign", benign.length, passed.length);
       parts.push(judgementBlock([passed.length, benign.length], sentence,
         blocked.map((row) => t("score.drew_alerts", named(row), row.detections))));
     }
     const customers = score.customers || {};
-    if (customers.sent) {
+    if (customers.sent && !session.course_scenario) {
       const wrong = Object.entries(customers.blocked_actions || {})
         .map(([action, count]) => t("score.customers_action", localized(`traffic.action.${action}`, action), count));
       if (customers.unanswered) wrong.push(t("score.customers_unanswered", customers.unanswered));
       parts.push(judgementBlock([customers.blocked, customers.sent],
         t("score.customers", customers.sent, customers.blocked), wrong));
     }
-    if (!parts.length) parts.push(`<p class="text-muted">${esc(t("score.no_cases"))}</p>`);
+    const nothing = t(session.course_scenario ? "score.no_attacks_run" : "score.no_cases");
+    if (!parts.length) parts.push(`<p class="text-muted">${esc(nothing)}</p>`);
     const unproven = caught.filter((row) => row.corroborated === false).length;
     const notes = [t("score.one_case_once")];
     if (unproven) notes.push(t("score.not_corroborated", caught.length, unproven));
@@ -342,9 +338,9 @@
         ${notes.map((note) => `<p>${esc(note)}</p>`).join("")}
       </div>`;
     field("case-rows").innerHTML = perCase.map((row) => {
-      const outcome = row.malicious
-        ? (row.detected ? badge(t("score.caught"), "ok-strong") : badge(t("score.missed"), "red-strong"))
-        : (row.detected ? badge(t("score.wrongly_blocked"), "red-strong") : badge(t("score.passed"), "ok-strong"));
+      const right = row.malicious === Boolean(row.detected);
+      const word = row.malicious ? (row.detected ? "score.caught" : "score.missed") : (row.detected ? "score.wrongly_blocked" : "score.passed");
+      const outcome = `<span class="${right ? "text-success" : "text-danger"}">${esc(t(word))}</span>`;
       const mechanism = !row.malicious || !row.detected || row.corroborated === null
         ? `<span class="text-faint">—</span>`
         : `<span class="${row.corroborated ? "text-success" : "text-muted"}">${esc(t(row.corroborated ? "common.yes" : "common.no"))}</span>`;
@@ -358,6 +354,7 @@
           <td>${mechanism}</td>
         </tr>`;
     }).join("") || `<tr class="table-row"><td class="pl-5 text-muted" colspan="5">${esc(t("score.no_cases"))}</td></tr>`;
+    show("score-cases", showsScores() && (perCase.length > 0 || !session.course_scenario));
   }
 
   const SCORE_TRIES = 4;
@@ -554,7 +551,7 @@
     await activity();
     show("loading", false);
     show("consoles", true);
-    show("activity", !lessonSession());
+    show("activity", !quietActivity());
     trafficPanel();
   }
 

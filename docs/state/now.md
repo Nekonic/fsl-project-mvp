@@ -37,8 +37,9 @@ Internet.
   twelve leave under 0.5 GB; fifteen do not fit (about 17.5 GB). The
   `board-sqli-orderby-sqlmap` run took 59 s alone, 71 s with three at once,
   98 s with five and 171 s with ten (2.9x, CPU 8 % idle), kernel_drops 0 on
-  all twenty sensors. A slot reset (`slot.sh reset`) took 43 s alone and
-  101 s for three at once, with ten slots up. Ten configured from nothing in
+  all twenty sensors. In this capacity measurement a slot reset
+  (`slot.sh reset`) took 43 s alone and 101 s for three at once, with ten
+  slots up. Ten configured from nothing in
   4 min 14 s. Ten learners at once is the supported number; twelve fit with
   no headroom.
 - Live containment: `test/test_range_isolation.py` passed on the live range
@@ -186,7 +187,9 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 4. Ingest re-reading the whole window: `POST /ingest/` took 22-42 s on a
    closed red-team session while the suite ran, and every score wait calls it.
    More slots (`compute.slots`; ten fit on `dba.range`) would shorten the
-   acceptance run further; a slot reset (53 s alone) is now its floor.
+   acceptance run further; a slot reset is now its floor (43 s alone in the
+   capacity measurement above, 53 s in the 2026-11-14 acceptance round's
+   entry in `docs/DECISIONS.md`; two sources, not yet measured side by side).
 5. MySQL `performance_schema=OFF`: memory caps the slots a range host holds
    (`docs/STATE.md` backlog 4).
 6. Promotion to `main`: a tagged state, the full `bin/verify`, a live review

@@ -42,7 +42,7 @@ function debriefTimeline(timeline) {
     return `<li data-timeline class="flex flex-wrap items-center gap-2">
       <span class="font-mono text-faint">${esc(after)}</span>
       <span class="text-heading">${esc(localized(`case.${entry.case}`, entry.case))}</span>
-      ${entry.origin ? `<span class="text-muted">${esc(t("scenario.debrief.from", entry.origin))}</span>` : ""}
+      ${entry.origin ? `<span class="text-muted">${esc(t("scenario.debrief.from", localized(`scenario.origin.${entry.origin}`, entry.origin)))}</span>` : ""}
       ${entry.in_window ? badge(t("scenario.debrief.in_window"), "blue") : ""}
       ${state}
       ${entry.state === "fired" ? badge(t(entry.detected ? "scenario.debrief.alerted" : "scenario.debrief.no_alert"),
@@ -55,18 +55,18 @@ function debriefTimeline(timeline) {
 function renderDebrief(container, told) {
   const overview = told.overview;
   const facts = [
-    t("scenario.debrief.overview", overview.verified),
+    overview.verified ? t("scenario.debrief.overview", overview.verified) : "",
     overview.steps.total ? t("lesson.steps.passed", overview.steps.passed, overview.steps.total) : "",
     t("scenario.debrief.help", overview.help.hints),
     overview.fix ? t(`lesson.fix.${overview.fix}`) : "",
   ].filter(Boolean);
-  const evidence = told.evidence.length ? `<ul class="flex flex-col gap-1 font-mono text-[12px]">${told.evidence.map((row) =>
+  const evidence = `<ul class="flex flex-col gap-1 font-mono text-[12px]">${told.evidence.map((row) =>
     `<li data-evidence class="break-all">${esc([row.signature, `${row.method} ${row.path}`.trim(), t(`lesson.debrief.phase.${row.phase}`),
-      localized(`case.${row.case}`, row.case)].filter(Boolean).join(" · "))}</li>`).join("")}</ul>`
-    : `<p class="text-muted">${esc(t("lesson.debrief.evidence.none"))}</p>`;
+      localized(`case.${row.case}`, row.case)].filter(Boolean).join(" · "))}</li>`).join("")}</ul>`;
+  const judgedCases = told.cases.filter((row) => row.before || row.after);
   const cases = `<table class="w-full text-[12px]"><thead><tr class="text-left text-muted">
       <th class="font-normal">${esc(t("score.col.case"))}</th><th class="font-normal">${esc(t("scenario.debrief.before"))}</th>
-      <th class="font-normal">${esc(t("scenario.debrief.after"))}</th></tr></thead><tbody>${told.cases.map((row) =>
+      <th class="font-normal">${esc(t("scenario.debrief.after"))}</th></tr></thead><tbody>${judgedCases.map((row) =>
     `<tr data-case="${esc(row.name)}"><td class="py-1 pr-2">${esc(localized(`case.${row.name}`, row.name))}</td>
       <td>${debriefOutcome(row.before)}</td><td>${debriefOutcome(row.after)}</td></tr>`).join("")}</tbody></table>`;
   container.innerHTML = `<h3 class="font-semibold text-heading">${esc(t("lesson.debrief.heading"))}</h3>` + [
@@ -75,11 +75,11 @@ function renderDebrief(container, told) {
     debriefSection("timeline", debriefTimeline(told.timeline)),
     ...(told.task_class === "judgement" ? [debriefSection("triage", `<p>${esc(t("scenario.debrief.triage.line",
       told.triage.right, told.triage.items, told.triage.first_try))}</p>`)] : []),
-    debriefSection("evidence", evidence, "scenario.debrief.evidence"),
+    ...(told.evidence.length ? [debriefSection("evidence", evidence, "scenario.debrief.evidence")] : []),
     debriefSection("change", debriefChange(told.change)),
-    debriefSection("cases", cases),
-    debriefSection("risk", `<ul class="list-disc pl-4 space-y-1">${told.risk.map(([key, values]) =>
-      `<li>${esc(t(key, ...values))}</li>`).join("")}</ul>`),
+    ...(judgedCases.length ? [debriefSection("cases", cases)] : []),
+    ...(told.risk.length ? [debriefSection("risk", `<ul class="list-disc pl-4 space-y-1">${told.risk.map(([key, values]) =>
+      `<li>${esc(t(key, ...values))}</li>`).join("")}</ul>`)] : []),
   ].join("");
   container.classList.remove("hidden");
 }

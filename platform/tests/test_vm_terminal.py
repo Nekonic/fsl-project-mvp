@@ -109,3 +109,14 @@ def test_an_ssh_that_cannot_connect_ends_in_the_same_plain_line(tmp_path):
     assert ran.stdout.strip() == "Connection to kali failed. Reopen the terminal in a moment."
     assert "Connection timed out" not in ran.stdout + ran.stderr
     assert "Connection timed out" in (tmp_path / "terminal.log").read_text()
+
+
+def test_a_kept_terminal_reattaches_to_one_tmux_session_per_learner_session_so_a_reload_keeps_the_run(tmp_path):
+    seen = tmp_path / "tmux-argv"
+    env = {**_fakes(tmp_path, tmux=f'printf "%s\\n" "$@" > {seen}', ssh="exit 0"), "TERMINAL_KEEP": "1"}
+    env.pop("TMUX", None)
+
+    subprocess.run(["sh", str(SCRIPT), "cr-kali", "3"], capture_output=True, text=True, env=env)
+
+    assert seen.read_text().split("\n")[:-1] == [
+        "-f", "/app/tmux.conf", "new-session", "-A", "-s", "kali-3", str(SCRIPT), "cr-kali", "3"]

@@ -51,7 +51,8 @@ exception: it writes the repo's rule file plus a probe rule, so it captures no
 leftovers.
 
 Opening a session is the slow part of the suite: a close resets its slot,
-about 53 s alone on the test cloud and longer when several slots reset at once,
+43 s alone in the capacity measurement and 53 s in the 2026-11-14 acceptance
+round (`docs/state/now.md`), and longer when several slots reset at once,
 and the next open waits for a ready slot. Tests whose claims hold on the
 same traffic therefore share one session. `shared_sessions.py` holds these
 sessions as session-scoped fixtures. Each fixture does the following:

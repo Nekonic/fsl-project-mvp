@@ -41,8 +41,8 @@ def opened(lesson_id, **fields):
 def step(client, session, step_id, tail="check/", body=None):
     return client.post_json(f"/api/sessions/{session.pk}/lesson/steps/{step_id}/{tail}", body or {})
 
-def answer(client, session, step_id, given, query=WRITTEN):
-    return step(client, session, step_id, body={"answer": given, "query": query}).json()
+def answer(client, session, step_id, given, query=WRITTEN, dev_request=1):
+    return step(client, session, step_id, body={"answer": given, "query": query, "dev_request": dev_request}).json()
 
 def browsed(url, status, request_id=1, ms=40, at=None):
     return {"id": request_id, "at": at or time.time(), "method": "GET", "url": f"http://board.com{url}",
@@ -593,8 +593,12 @@ def test_loot_from_the_dump_is_judged_by_the_board_s_own_accounts(client):
     forged = DUMPED.replace("jiwoo    | pbkdf2_sha256$260000$q", "jiwoo    | pbkdf2_sha256$260000$X")
     with quietly():
         handed = step(client, session, "loot", body={"answer": forged}).json()
+        whole = step(client, session, "loot", body={"answer": DUMPED}).json()
 
-    assert handed["passed"] is True and handed["loot"]["matched"] == ["admin", "minseo"]
+    assert handed["passed"] is False and handed["loot"]["matched"] == ["admin", "minseo"]
+    assert handed["reason"] == ["lesson.miss.fail.loot.partial", [2, 3]], "a partial table says what is missing"
+    assert whole["passed"] is True and whole["loot"]["matched"] == ["admin", "jiwoo", "minseo"], (
+        "the box stays open after a partial paste, and the whole table passes")
 
 @pytest.mark.parametrize("check, reason", [
     ({"kind": "answer", "of": "status"}, "read from the record"),
@@ -664,6 +668,36 @@ def test_a_rule_that_would_alert_on_every_plain_search_fails_the_write_and_the_n
     assert fixed["reason"] == ["lesson.xss.fail.nocase.broad", ["9100001", plain]]
     assert narrow["passed"] is True
 
+def test_a_broad_rule_is_told_the_plain_search_it_actually_matches(client):
+    session = opened("f4")
+    posture = (ROOT / "deploy/suricata/rules/no-xss.rules").read_text()
+    hello = 'alert http any any -> any any (msg:"hello"; http.uri; content:"hello"; nocase; sid:9100001; rev:2;)\n'
+    with quietly(), ruled(posture + hello):
+        judged = step(client, session, "nocase").json()
+
+    assert judged["reason"] == ["lesson.xss.fail.nocase.broad", ["9100001", "/search/?q=hello"]]
+
+def test_a_rule_with_no_uri_content_is_not_judged_broad_on_a_uri():
+    header_only = 'alert http any any -> any any (msg:"x"; http.header; content:"<script"; sid:9100001; rev:1;)'
+
+    assert lesson.alerts_on(header_only, "/search/?q=hello") is False
+
+def test_a_count_or_points_answer_with_its_unit_word_is_the_number():
+    judged = {given: lesson.answered({"accept": ["20"]}, given, "w")[0] for given in ("20점", "20 점", "1,9점", "20%")}
+
+    assert judged == {"20점": True, "20 점": True, "1,9점": False, "20%": False}
+
+def test_a_devtools_question_needs_the_request_s_row_picked_in_devtools(client):
+    session = opened("f2")
+    kept = [browsed("/", 200, request_id=0), browsed("/search/?q=hello", 200)]
+    with patch.object(site, "kept", return_value=kept):
+        unpicked = answer(client, session, "method", "GET", dev_request=None)
+        other_row = answer(client, session, "method", "GET", dev_request=0)
+        picked = answer(client, session, "method", "GET", dev_request=1)
+
+    assert unpicked["reason"] == other_row["reason"] == ["lesson.check.wrong.dev", []]
+    assert picked["passed"] is True
+
 def test_a_replay_whose_plain_search_drew_the_learner_s_rule_says_so_at_once_instead_of_checking_forever(client):
     session = opened("f4")
     posture = (ROOT / "deploy/suricata/rules/no-xss.rules").read_text()
@@ -715,15 +749,19 @@ def test_the_cost_pass_line_states_what_happened_to_the_admin_account(client, lo
     assert judged["passed"] is True
     assert judged["progress"]["cost"]["ok"] == strings.line(line)
 
-def test_a_wrong_address_is_named_as_the_map_device_it_belongs_to(client):
-    session = opened("f3")
+def test_a_wrong_map_address_says_it_is_another_device_s_without_naming_it_and_a_log_step_says_which_row(client):
+    session = opened("f1")
+    with on_the_range(), on_map(read_slot()):
+        mapped = answer(client, session, "board_ip", WAF)
+    reading = opened("f3")
     searched = browsed("/search/?q=kim0413", 200)
-    logged = http_event(session.browse_marker, "/search/?q=kim0413", 200, src_ip=WAF, dest_ip=BOARD)
+    logged = http_event(reading.browse_marker, "/search/?q=kim0413", 200, src_ip=WAF, dest_ip=BOARD)
     with on_the_range(), on_map(read_slot()), patch.object(site, "kept", return_value=[searched]), indexed(logged), \
             quietly():
-        judged = answer(client, session, "site_source", KALI)
+        read = answer(client, reading, "site_source", KALI)
 
-    assert judged["reason"] == ["lesson.check.wrong.address_of", [KALI, "kali"]]
+    assert mapped["reason"] == ["lesson.check.wrong.address_of", []], "the waf address is the last step's answer"
+    assert read["reason"] == ["lesson.logs.wrong.site_source.row", []]
 
 def test_a_step_passed_after_a_wrong_answer_is_counted_as_retried(client):
     session = opened("f6")

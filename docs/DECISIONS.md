@@ -7301,3 +7301,70 @@ Two bugs fixed:
   now opens on the furthest step the server recorded as `reached` when the
   browser has no record of its own; a step the learner went back to in the same
   browser is kept.
+
+## 2026-11-15 — Answer-blind walk round 19: what changed in the lessons and why
+
+An answer-blind walk of both courses and scenario 1.1 on the live range found
+23 learning-flow findings and 15 slop findings (S1-S15); docs review round 4
+found two code bugs and three doc drifts. Rules applied: no text, ring or
+wrong-answer line shows a step's answer before the step; a step that teaches a
+tool needs that tool; the result shown is true; a reload loses no work; slop
+is removed rather than reworded. What the score means is unchanged.
+
+| # | Finding | What changed |
+|---|---|---|
+| 1 | "5단계는 틀린 뒤 통과" read as "step 5" | Counts say "개": "틀린 뒤 통과한 단계 n개", "건너뛴 단계 n개", "N개 단계 중 n개 통과" |
+| 2 | F6 loot passed on the admin row alone, then the result showed 전체 계정 "지킴" | The step passes only when the matched accounts cover every account in the session's snapshot; fewer fail loud with `lesson.miss.fail.loot.partial` (matched and total) and the box stays open. A partial paste still credits what it matched: the objectives follow the target's data, and the step asks for the whole table, so the result is true |
+| 3 | A reload wiped Kali's scrollback | ttyd runs `vm-terminal.sh` inside `tmux new-session -A -s <host>-<session>` (`TERMINAL_KEEP=1`, `platform/tmux.conf`: no status line, no alternate screen), so a reload reattaches to the same shell with sqlmap still printing. tmux is in the platform image; the Kali image is unchanged, since the range host pulls its images only at setup |
+| 4 | An unapplied rule was lost on reload | The editor keeps the text in localStorage (`cr-rules-draft-<session>`, with its base version, try/catch) and restores it, saying so; apply drops it |
+| 5 | "n" lines after a sqlmap run (run B) | Not reproduced; the scrollback that would show the cause was gone. Left; the tmux change keeps it next time |
+| 6 | F2's DevTools answers guessable | A check's `dev` pattern needs `dev_request`, the row picked in DevTools while open, to be a recorded request matching it (`lesson.check.wrong.dev`). On method, path, status, parameter, sort and the missing post. GET/200/404 stay guessable as values; the guard makes the learner pick the row |
+| 7 | F3 X-Forwarded-For and F5 record count passed on the query left from earlier steps | Their `kql` now needs the step's own condition: `x_forwarded_for` beside `url` (the card says to add `request_header.x_forwarded_for : *`, which leaves the upstream row), and `source_ip` beside the WAF log (kali's records) |
+| 8 | The ring on board.com took in its IP label | `auditor.html` rings a node's icon and name only, not the interface labels |
+| 9 | A wrong board address said "waf의 주소(10.30.1.247)" — the last step's answer | `address_of` says only that it is another device's address, with no name or address |
+| 10 | F2 sort's pass line and the catalogue named the SQL injection target | The pass line says only what the parameter carries; the catalogue's scenario `practise` lines are gone and 3.2's title says "정렬 파라미터" |
+| 11 | "20점", "4점" rejected | An answer that is a number with a one- or two-letter unit word is read as the number (`lesson._unit_dropped`); `%` is not a unit |
+| 12 | "10.30.1.0", "q=" got a bare "wrong" | F1 DMZ and F2 parameter have `wrong_if` messages. `/search` stays strict, by round 18's ruling (Django's paths end in `/`; the step reads the URL as written) |
+| 13 | F3 source's wrong address said "the device this step asks" | `address_of` applies only to map address steps; F3 source says which row to read |
+| 14 | A stale "틀렸습니다" or red KQL line stayed after the fix | Typing, picking an order chip, or changing the Kibana query clears it |
+| 15 | "카드의 '…열기' 버튼" | "카드의" removed (the button is above the card) |
+| 16 | "'실행 결과 확인'을 누르세요" while the check runs itself | Kali cards say the run is checked when it ends; the button stays to check sooner |
+| 17 | 탈취 여부 "예" with 탐지 여부 "—"; "오른쪽 '목표' 표" | Direction fixed ("레슨 노트 아래"). The dash stays, by the slop round's ruling: it hides the alerts step's answer |
+| 18 | nocase passed itself with "nocase를 붙인 룰을 적용했습니다" | The pass line states the rule's state, which is true whether it was edited now or before |
+| 19 | Slot addresses differ between sessions | Inherent to slots. No text says addresses stay the same; F1's waf pass line no longer says to remember the pairs |
+| 20 | Course 1's end promised per-request results | The line is gone; the course end shows no scores |
+| 21 | Scenario session page: "no attacks yet" beside listed alerts, minutes since open beside the scenario clock | An open scenario has no activity panel and shows only its start time |
+| 22 | Scenario result in lesson words, "ru에서", "판정한 최종 점검: 0회", an empty "남은 위험", customers twice, "no requests" beside 788 | Scenario words; origins named as countries (`scenario.origin.<code>`); a zero count and empty sections hidden; customer requests only in the debrief; "실행된 공격이 없습니다" and no empty per-request table |
+| 23 | "왼쪽 메뉴에서 경보를 누르세요" with the alerts already open | A `click` step whose pane is already open passes when reached |
+
+| # | Slop | What changed |
+|---|---|---|
+| S1 | Corp card stretched | The grid aligns items to the start |
+| S2 | Course-1 sessions "목표 3개 모두 지킴"; 실습 named the last lesson | The result cell shows objectives only for a course with a score; the row names the course |
+| S3 | "마지막 세션" lines; the wargame line twice; scenario lines restating titles | All removed |
+| S4 | "약 80초", "4~5분", "(1~2분)", "1분쯤" | Removed |
+| S5 | Session page repeats the target; labels | The target and the progress label are gone; the breadcrumb names the target |
+| S6 | Callouts that name what is ringed | Every lesson step's own callout removed; stage callouts that say what to do next stay; those naming a count, an empty result, Top values or the prompt are gone |
+| S7 | F1 path asked three times, order shown twice | One question with how to take a button back; the order shows only as numbers on the buttons |
+| S8 | Glosses | 고객 PC(customers), 웹방화벽(ModSecurity), IDS(Suricata), 이상 점수(anomaly score), the percent-encoding gloss, (구성도의 kali) and "(정탐·미탐·오탐·통과)" removed |
+| S9 | Scoring internals in lessons | The "두 가지 점수" reference card and the course-end "점수 1 · 점수 2" line are gone. F6's cost step stays, with the rule (difficulty, double when undetected) in its own card. "점수 2" became "탐지 결과" everywhere a learner reads it; the per-run line drops "점수 1에 더하지 않습니다" |
+| S10 | Result page repeats and decorations | A missed attack is named once; outcome pills became coloured words; "탈취됨, 미탐"; the "탈취된 목표" label beside the heading is gone |
+| S11 | "기록된 실행 \|" card repeated on later steps; step counter in the panel | The label and the repeated card are gone (the open button carries the run's window); the counter is gone |
+| S12 | End panel order and repetition | The pass line stays in place; the button names the next lesson once; the "press Next lesson" line is gone |
+| S13 | One action, several names | The lesson end's button is "세션 종료", as on the session page. Left: the scenario console has no end button (a scenario ends through its final check, and the session page closes it); "다시 시작" names a different action from the catalogue's "시작" |
+| S14 | "명령을 준비하는 중…" for a URL | "불러오는 중…" |
+| S15 | 참고 stayed open across lessons | Its open state is kept per session and lesson, so a new lesson opens with it closed |
+
+Docs review round 4:
+
+- `<fail>.broad` named `quiet_on[0]` whatever matched; it now names the first
+  listed URI the rule matches.
+- `lesson.alerts_on` judged a rule with no URI content broad (`all([])`); such
+  a rule is now not broad.
+- README's "check that it works" follows the catalogue (course heading, the
+  briefing's Start) in both languages; English names the Korean labels by
+  their translation.
+- ARCHITECTURE's scenario status lists `started`.
+- The slot reset time: 43 s is the capacity measurement's `slot.sh reset`,
+  53 s the 2026-11-14 acceptance round's entry; `now.md` and `test/README.md`
+  name both sources.
