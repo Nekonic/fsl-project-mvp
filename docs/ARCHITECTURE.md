@@ -779,7 +779,7 @@ The scenario final check reports the fix class beside its verdict (`result.fix`,
 
 `platform/lesson.py` holds the fix class together with:
 
-- the step-answer helpers: `answered`, `rules_named`, `added_rules`, `pasted_rows`, `server_error_sources`, `alerted_by`, `detected_penalty`;
+- the step-answer helpers: `answered`, `rules_named`, `added_rules`, `raised_rev`, `pasted_rows`, `server_errors`, `server_error_sources`, `alerted_by`, `detected_penalty`;
 - the help counts;
 - the exclusions added and removed, and the file diff that the scenario debrief shows (`exclusions_changed`, `config_diff`).
 
@@ -896,7 +896,8 @@ Checks run by themselves.
 - `sent`, `triage`, `kali`, `replay` and `waf_changed` are polled silently every 5 s while their step is shown, the tab is visible and the session is open. The page re-reads the session every 30 s to notice a close. A poll never writes the status line.
 - `sent` also runs 1.5 s after the Website pane shows a path that matches the step's `match`.
 - `rules` also runs when the rule editor applies a file. A `rules` step with a `match` runs then silently and shows its own check button, which the learner presses after sending the request.
-- A pass says the step's `ok` line on the passed step and stays there with Next highlighted; the learner presses Next. A pass line longer than 30 characters also says to press Next. Only the last step's short pass moves on by itself.
+- A pass says the step's `ok` line on the passed step and stays there with Next highlighted; the learner presses Next. Every such pass also says to press Next, however short its line. Only the last step's short pass moves on by itself.
+- The card's open-pane button for the Website pane also loads the board's front page when the pane shows another page (a 403 page left by an XSS search, for one), since the steps after it search in the board's own search box.
 - The step after a Kali step shows that step's row: the case's name and "Open Kibana at this run's time". The link opens the run's window with an empty query. It shows no request count and no sensor name. A poll of the Kali check reads the row again after a reload, and whenever the row held has no window (a run still being collected when the learner pressed Next); a verdict that arrives after the learner moved on still updates the row.
 - Every answer to a step that opens Kibana carries `query`, the query Kibana holds. A check with `kql` fails unless that query matches it.
 - On the last step, a foundation says "Lesson complete. Next lesson: <title>" and moves on ("One session per course"). After the course's last lesson (F3 in course 1, F6 in course 2), the card lists the course's lessons taken and a button closes the session. A worked scenario says "Lesson complete".
@@ -980,38 +981,38 @@ Each unit below lists its defense and opening pane, what the learner does, and w
 
 **f1 Reading the network map** (`lesson.map`). Defense `full`, opens on Map.
 
-- The learner reads kali's and board.com's addresses, picks in order the hosts a request from kali passes (`path` with `from: kali`), reads the DMZ network and names the host that collects the logs. The solo step asks for waf's address. No step asks which zone a host is in.
+- The learner reads kali's and board.com's addresses, picks in order the hosts a request from customers passes (`path`, from `customers`), reads the DMZ network and names the host that collects the logs. The solo step asks for waf's address. No step asks which zone a host is in.
 - Answers are read from the session's learner map (`views._range_fact`: `topology.address`, `topology.subnet`, `topology.route` and `topology.hosts`, through `topology.learner`):
   - `address`: the link-label addresses, with or without the prefix length;
   - `subnet`: the network of the host's switch;
-  - `path`: the step's `from` (default `customers`), then the transit roles present, then the site (`kali > router > waf > board.com`);
+  - `path`: the step's `from` (default `customers`), then the transit roles present, then the site (`customers > router > waf > board.com`);
   - `logs`: the `log-server` node.
 
 **f2 Reading HTTP requests in DevTools** (`lesson.http`). Defense `full`, opens on Website.
 
-- The learner searches with the board's search box. They read method, parameter, path and status in the Network panel, then the parameter behind the board's sort control. The solo step asks for the status of a post that does not exist.
+- The learner searches with the board's search box. They read method, parameter, path and status in the Network panel, then the parameter behind the board's sort control. The solo step asks for the status of `/posts/9999/`; neither the card nor the HTTP reference says the post is missing or what 404 means.
 - Answers are read from the learner's own Website pane records: `method`, `parameter`, `path` (a `wrong_if` says when the answer carries the host or the query) and `status`.
 
 **f3 Finding your requests in Kibana** (`lesson.logs`). Defense `full`, opens on Website.
 
 - The learner searches a word of their own, of letters and digits, and writes `url : *word*` in Kibana. They then read, each card restating the query and naming the column the screen shows:
   - the count Kibana shows (both legs of every search with the word);
-  - the `source_ip` of the row whose `destination` is waf's address, then of the row whose `destination` is board.com's (waf's own address);
-  - the row's `request_header.x_forwarded_for`.
-  The solo step asks the count of a query the learner writes with `and` and `not`: their word, and `destination` not waf's address. Its check carries `kql`, a regular expression the Kibana query must match: the console sends the query Kibana holds with every answer of a step that opens Kibana, and an answer sent with a query that does not match fails (`lesson.logs.wrong.upstream.kql`) whatever the number, since the number is also on the screen of the step before.
+  - the count of a query the learner writes with `and` and `not`: their word, and `destination` not waf's address. Its check carries `kql`, a regular expression the Kibana query must match: the console sends the query Kibana holds with every answer of a step that opens Kibana, and an answer sent with a query that does not match fails (`lesson.logs.wrong.upstream.kql`) whatever the number. The count's pass line says only that the url query found the learner's logs, so it does not tell how many rows each leg leaves;
+  - the `source_ip` of the row that query leaves (waf's own address).
+  The solo step asks that row's `request_header.x_forwarded_for` (the customers address), read in the Document flyout. Its pass line is the first text that says the Website pane browses from the customers place.
 - Answers are read from the sensors' http events of the record (`sensor_source`, `forwarded_for`), split by leg.
   - A leg is `upstream` when `dest_ip` is one of board.com's addresses (waf sends it on). Otherwise it is `inbound` (the request arrives at waf). `leg: both` takes the events of both legs.
   - `hits` counts the http events on the leg whose url holds the word of the learner's newest search, since the unit (or the session) started.
 
 **f4 Blocking an XSS request and writing an IDS rule** (`lesson.xss`). Defense `xss-gap`, opens on Website.
 
-- The learner sends `<script>alert(1)</script>` and reads the status, one detecting rule and the Total Score. They read the status of the mixed-case probe, and say whether either drew an IDS alert. They write a rule for `<script` in the URI, apply it, search `<script>alert(1)</script>` and press the check, which passes only when that rule alerted on the search. They read the alert's `destination` in Kibana (waf's address: only the sensor on the way in saw the request, since the WAF blocked it), see the mixed case slip past, and add `nocase`. The Suricata reference card shows the rule's form with square-bracket blanks, not a complete rule. The Kibana steps hold the ring on the query bar until the learner's own query names the WAF log and script (or alert). The solo step replays the mixed case and an ordinary search.
+- The learner sends `<script>alert(1)</script>` and reads in DevTools what `<` became in the request URL (`%3C`; the address bar shows `<`, and the pane shows nginx's 403 page, so the status is no longer asked), then one detecting rule and the Total Score. They send the mixed-case probe and read its Total Score in Kibana (the CRS reference no longer says CRS ignores case), and say whether either drew an IDS alert. They write a rule for `<script` in the URI, apply it, search `<script>alert(1)</script>` and press the check, which passes only when that rule alerted on the search. They read the alert's `destination` in Kibana (waf's address: only the sensor on the way in saw the request, since the WAF blocked it), see the mixed case slip past, and add `nocase` with `rev` raised. The Suricata reference card shows the rule's form with square-bracket blanks, not a complete rule, and does not say which string matches a `%3C` in Kibana's url. The Kibana steps hold the ring on the query bar until the learner's own query names the WAF log and script (or alert). The solo step replays the mixed case and an ordinary search.
 - Answers are read from:
-  - `status`;
+  - `escaped` with `char: "<"`: the percent escape of the character (`%3C`), when the record's query holds it;
   - `rule`: the ModSecurity rule ids of the request, 949110 excluded;
   - `anomaly_total`: 949110's `Total Score: N`;
-  - `alerted`, `alerted_destination` (the `dest_ip` of the alerts the learner's own rules raised), `alerted_sid_present`: the Suricata alerts in the record's window, against `lesson.added_rules`;
-  - `rules` with `match: '<script'`, and `rules` with `needs: nocase`;
+  - `alerted`, `alerted_destination` (the `dest_ip` of the alerts the learner's own rules raised), `alerted_sid_present`: the Suricata alerts in the record's window whose url is the record's, against `lesson.added_rules` (`views._alerts_for`). An alert with no url counts when it carries the browse marker. Matching on the marker alone charged an ordinary search sent seconds after the attack with the attack's alert, so a replay's benign search never passed (round 17);
+  - `rules` with `match: '<script'`, and `rules` with `needs: nocase`, which also needs the rule's `rev` above its last case-sensitive version applied in the session (`lesson.raised_rev`; `lesson.xss.fail.nocase.rev` otherwise). A rule written with `nocase` from the start has nothing to raise;
   - `replay`.
 
 **f5 Analysing SQL injection on the sort parameter** (`lesson.sqli`). Defense `full`, opens on Website.
@@ -1026,12 +1027,12 @@ Each unit below lists its defense and opening pane, what the learner does, and w
 
 **f6 Finding the attack an over-broad exception let through** (`lesson.miss`). Defense `overbroad`, opens on WAF.
 
-- The learner greps the exclusion file for the parameter that was left out. They dump the accounts with sqlmap and paste the table. They say which engines alerted, and the source IP of the run's WAF log records with status 500 (the attacker's address; their rule_id is `-`: logged, but no rule matched). They say the penalty the admin objective would carry if detected. They delete the exception and reload nginx. The solo step replays the dump and sorts once.
+- The learner greps the exclusion file for the parameter that was left out. They dump the accounts with sqlmap and paste the table. They say which engines alerted, and how many WAF log records with status 500 the run left (their rule_id is `-`: logged, but no rule matched). They say the penalty the admin objective would carry if detected. They delete the exception and reload nginx. The solo step replays the dump and sorts once.
 - Answers are read from:
   - `excluded_target`: the WAF file in force (`ARGS:sort` or `sort`);
   - `loot`: against the session's snapshot;
   - `alerted_by`: none, IDS only, WAF only, or both, from the run's detections;
-  - `kali_source` with `from: server_error`: the client IPs (Kibana's `source_ip`) of the WAF (ModSecurity) log records with status 500 in the window Kibana opens on (`lesson.server_error_sources`). The count is not asked: sqlmap prints how many 500 responses it drew. The rule_id is not asked: the step before already says `-` means no rule matched;
+  - `server_errors`: the number of WAF (ModSecurity) log records with status 500 in the window Kibana opens on (`lesson.server_errors`). The source IP is no longer asked: it is kali's address, on the map and asked in F5. sqlmap prints the same count at the end of its run; the pass line asks the learner to compare the two. The rule_id is not asked: the step before already says `-` means no rule matched;
   - `detected_penalty` with `objective:`: the objective's difficulty x 1, the penalty it would carry if detected. The tier is read from `wargames.objectives`, and the value is empty when the scenario is not judged;
   - `waf_changed`;
   - `replay`: the run blocked with no loot, and an ordinary sort 2xx with no WAF record.
@@ -1091,8 +1092,8 @@ Three check kinds follow the learner's own actions.
 An answer reads one of these facts. `wargames.read_from_record` refuses anything else at discovery.
 
 - `of:` a range fact: `address`, `subnet`, `path`, `logs`, `excluded_target`, `lost_points`, `detected_penalty`.
-- `of:` a request fact, `about:` a step that has a `match` (or with its own `match`, taking the latest Website pane record that matches it): `status`, `method`, `path`, `parameter`, `param_value`, `sensor_source`, `forwarded_for`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_destination`, `alerted_sid_present`, `hits`.
-- `of:` a Kali fact, `about:` a `kali` step: `sqlmap_found`, `kali_source` (from the run's WAF detections, or with `from: server_error` from its 500 records), `alerted_by`.
+- `of:` a request fact, `about:` a step that has a `match` (or with its own `match`, taking the latest Website pane record that matches it): `status`, `method`, `path`, `parameter`, `param_value`, `escaped`, `sensor_source`, `forwarded_for`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_destination`, `alerted_sid_present`, `hits`.
+- `of:` a Kali fact, `about:` a `kali` step: `sqlmap_found`, `kali_source` (from the run's WAF detections), `alerted_by`, `server_errors` (its 500 records).
 - `rule`, with the request's `path` or a `step:` marker (above).
 
 ## How the scores are computed

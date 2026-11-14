@@ -548,6 +548,8 @@ def _judge(session, taught, step, body, kept):
         needed = [sid for sid in added if check.get("needs") != "nocase" or lesson.ignores_case(disable.find(live, sid))]
         if needed and "match" in check:
             return (*_rule_fired(session, check["match"], needed, failed), {"added": added})
+        if needed and check.get("needs") == "nocase" and not any(_rev_raised(session, live, sid) for sid in needed):
+            return False, [f"{failed}.rev", [", ".join(map(str, needed))]], {"added": added}
         return bool(needed), [failed, []], {"added": added}
     if kind == "sent":
         return bool(_site_requests(session, check["match"])), [failed, []]
@@ -560,6 +562,10 @@ def _judge(session, taught, step, body, kept):
     if kind == "replay":
         return _replay_check(session, step, kept)
     return scenario_run.triage_passed(session, check["judged"]), [failed, []]
+
+def _rev_raised(session, live, sid):
+    applied = RuleSet.objects.filter(session=session, applied_at__isnull=False).order_by("applied_at")
+    return lesson.raised_rev(disable.find(live, sid), [disable.find(ruleset.content, sid) for ruleset in applied])
 
 def _rule_fired(session, match, mine, failed):
     applied = RuleSet.objects.filter(session=session, applied_at__isnull=False).aggregate(last=Max("applied_at"))["last"]
@@ -730,6 +736,9 @@ def _request_fact(session, check, taught):
                 "path": list(dict.fromkeys([url.path, url.path.rstrip("/") or "/"])),
                 "parameter": sorted(parse_qs(url.query, keep_blank_values=True)),
                 "param_value": parse_qs(url.query, keep_blank_values=True).get(check.get("name"), [])[:1]}[of]
+    if of == "escaped":
+        escape = f"%{ord(check['char']):02X}"
+        return [escape] if escape.casefold() in url.query.casefold() else []
     if of == "waf_detected":
         return [lesson.PRESENT if any(detection.source == "modsecurity" for detection in _browsed(session, record))
                 else lesson.ABSENT]
@@ -748,8 +757,11 @@ def _alerts_for(session, record):
     start, end = _window_of(record)
     asked = _asked(record)
     found = session.detections.filter(source="suricata", timestamp__gte=start, timestamp__lte=end)
-    return [detection for detection in found if detection.marker == session.browse_marker or (
-        detection.marker is None and unquote(str(((detection.raw or {}).get("http") or {}).get("url") or "")) == asked)]
+    return [detection for detection in found if detection.marker in (None, session.browse_marker)
+            and _alerted_url(detection) in ({asked, ""} if detection.marker else {asked})]
+
+def _alerted_url(detection):
+    return unquote(str(((detection.raw or {}).get("http") or {}).get("url") or "")).replace("+", " ")
 
 def _alerted_sids(session, record):
     return [sid for detection in _alerts_for(session, record)
@@ -863,9 +875,10 @@ def _kali_fact(session, check):
         except RangeUnavailable:
             return []
         return [] if found is None else [lesson.YES if found else lesson.NO]
-    if check.get("from") == "server_error":
-        return lesson.server_error_sources(_logged(session, recorded.started_at - RECORD_SLACK,
-                                                   recorded.ended_at + RECORD_SLACK, "modsecurity"))
+    if of == "server_errors":
+        errors = lesson.server_errors(_logged(session, recorded.started_at - RECORD_SLACK,
+                                              recorded.ended_at + RECORD_SLACK, "modsecurity"))
+        return [str(len(errors))] if errors else []
     marked = _detected(session, recorded.case_id, settled=True)
     if of == "alerted_by":
         return [lesson.alerted_by({detection.source for detection in marked if lesson.rule_of(detection.raw or {})})]

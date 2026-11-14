@@ -378,7 +378,7 @@ def waf_record(at, status, marker=None, rules=(), client=KALI):
             "transaction": {"client_ip": client, "request": {"headers": headers}, "response": {"http_code": status},
                             "messages": [{"message": "matched", "details": {"ruleId": rule}} for rule in rules]}}
 
-def test_the_trace_question_asks_the_source_ip_of_the_run_s_500_records_in_the_window_kibana_opens(client):
+def test_the_trace_question_asks_how_many_500_records_the_run_left_in_the_window_kibana_opens(client):
     session = taught("f6")
     now = timezone.now()
     started, ended = now - timedelta(seconds=90), now - timedelta(seconds=30)
@@ -391,17 +391,16 @@ def test_the_trace_question_asks_the_source_ip_of_the_run_s_500_records_in_the_w
     asked = []
     with quietly(), indexed(*inside, blocked, before, asked=asked):
         accepted = views._accepted(session, seen)
-        right = check(client, session, "seen", {"answer": KALI}).json()
+        right = check(client, session, "seen", {"answer": "3"}).json()
         ruled = check(client, session, "seen", {"answer": "-"}).json()
-        counted = check(client, session, "seen", {"answer": "1,310"}).json()
+        sourced = check(client, session, "seen", {"answer": KALI}).json()
 
-    assert accepted == [KALI], "the client IP of the run's 500 records; a 403's client and a record before the run are not asked"
+    assert accepted == ["3"], "the run's 500 records; a 403 and a record before the run are not counted"
     assert asked[0] == (started - views.RECORD_SLACK, ended + views.RECORD_SLACK), "the window the Kibana button opens"
     assert right["passed"] is True
-    assert ruled["passed"] is False and ruled["reason"] == ["lesson.miss.wrong.seen.rule_id", []], (
-        "the step before already said rule_id - means no rule matched, so it is no longer the question")
-    assert counted["passed"] is False and counted["reason"] == ["lesson.miss.wrong.seen.count", []], (
-        "sqlmap prints how many 500s it drew, so the count is not the question")
+    assert ruled["passed"] is False and ruled["reason"] == ["lesson.miss.wrong.seen.rule_id", []]
+    assert sourced["passed"] is False and sourced["reason"] == ["lesson.miss.wrong.seen.address", []], (
+        "the attacker's address is on the map and was asked in the lesson before, so it is no longer the question")
 
 def test_only_500_records_name_a_source_for_the_trace_question():
     records = [{"transaction": {"client_ip": KALI, "response": {"http_code": 500}}},

@@ -779,7 +779,7 @@ WAF 상태 스냅샷:
 
 `platform/lesson.py`에는 조치 유형 함수와 함께 다음이 있습니다.
 
-- 단계 답을 다루는 함수: `answered`, `rules_named`, `added_rules`, `pasted_rows`, `server_error_sources`, `alerted_by`, `detected_penalty`
+- 단계 답을 다루는 함수: `answered`, `rules_named`, `added_rules`, `raised_rev`, `pasted_rows`, `server_errors`, `server_error_sources`, `alerted_by`, `detected_penalty`
 - 도움 사용 횟수
 - 시나리오 디브리핑에 나오는 추가·삭제한 예외 규칙과 파일 diff(`exclusions_changed`, `config_diff`)
 
@@ -896,7 +896,8 @@ check는 스스로 실행됩니다.
 - `sent`, `triage`, `kali`, `replay`, `waf_changed`는 단계가 보이고 탭이 보이며 세션이 열려 있는 동안 5초마다 조용히 폴링합니다. 화면은 닫힌 것을 알아채려고 30초마다 세션을 다시 읽습니다. 폴링은 상태 줄에 아무것도 쓰지 않습니다.
 - `sent`는 웹사이트 창에 단계의 `match`에 맞는 경로가 나타나고 1.5초 뒤에도 실행됩니다.
 - `rules`는 룰 편집기가 파일을 적용할 때도 실행됩니다. `match`가 있는 `rules` 단계는 이때 조용히 실행되고, 따로 확인 버튼을 보여 줍니다. 학습자는 요청을 보낸 뒤 이 버튼을 누릅니다.
-- 통과하면 통과한 단계에 `ok` 문장을 보여 주고 '다음'을 강조한 채 그 단계에 머뭅니다. 학습자가 '다음'을 누릅니다. 통과 문장이 30자보다 길면 '다음'을 누르라는 안내도 나옵니다. 마지막 단계의 짧은 통과만 저절로 넘어갑니다.
+- 통과하면 통과한 단계에 `ok` 문장을 보여 주고 '다음'을 강조한 채 그 단계에 머뭅니다. 학습자가 '다음'을 누릅니다. 통과 문장이 짧아도 '다음'을 누르라는 안내가 함께 나옵니다. 마지막 단계의 짧은 통과만 저절로 넘어갑니다.
+- 카드의 창 열기 버튼 중 웹사이트 창 버튼은 창에 다른 페이지(XSS 검색이 남긴 403 페이지 등)가 떠 있으면 게시판 첫 화면도 다시 엽니다. 그 뒤 단계들이 게시판 검색창에서 검색하기 때문입니다.
 - Kali 단계 다음 단계에는 그 단계의 행이 나옵니다. 케이스 이름과 "Kibana에서 이 실행 시간대 열기"입니다. 이 링크는 실행 시간대를 빈 쿼리로 엽니다. 요청 수와 센서 이름은 없습니다. 다시 불러오면 Kali check를 폴링해 이 행을 다시 읽고, 가진 행에 시간대가 없을 때(학습자가 기록을 모으는 중에 '다음'을 누른 경우)도 다시 읽습니다. 학습자가 넘어간 뒤에 도착한 결과도 행을 고칩니다.
 - Kibana를 여는 단계의 답에는 Kibana에 들어 있는 쿼리 `query`가 함께 갑니다. `kql`이 있는 check는 그 쿼리가 정규식에 맞지 않으면 통과하지 않습니다.
 - 마지막 단계에서 기초 레슨은 "레슨을 완료했습니다. 다음 레슨: <제목>"을 보여 주고 넘어갑니다("과정마다 세션 하나"). 과정의 마지막 레슨(과정 1은 F3, 과정 2는 F6) 뒤에는 카드에 그 과정에서 들은 레슨을 나열하고, 버튼으로 세션을 닫습니다. 단계형 시나리오는 "레슨을 완료했습니다"라고 합니다.
@@ -980,38 +981,38 @@ board의 `scenario.yaml`은 `foundations:` 목록을 선언합니다. discovery 
 
 **f1 구성도 읽기**(`lesson.map`). defense `full`, 구성도 창에서 시작합니다.
 
-- 학습자는 kali와 board.com의 주소를 읽고, kali의 요청이 거치는 호스트를 순서대로 고르고(`path`, `from: kali`), DMZ 네트워크를 읽고, 로그를 모으는 호스트를 답합니다. 혼자 푸는 단계에서는 waf의 주소를 묻습니다. 호스트가 어느 영역에 있는지는 묻지 않습니다.
+- 학습자는 kali와 board.com의 주소를 읽고, customers의 요청이 거치는 호스트를 순서대로 고르고(`path`, 출발지 `customers`), DMZ 네트워크를 읽고, 로그를 모으는 호스트를 답합니다. 혼자 푸는 단계에서는 waf의 주소를 묻습니다. 호스트가 어느 영역에 있는지는 묻지 않습니다.
 - 답은 세션의 학습자용 구성도에서 읽습니다(`views._range_fact`: `topology.learner`를 거친 `topology.address`, `topology.subnet`, `topology.route`, `topology.hosts`).
   - `address`: 링크 라벨의 주소. 프리픽스 길이는 있어도 없어도 됩니다.
   - `subnet`: 호스트가 붙은 스위치의 네트워크
-  - `path`: 단계의 `from`(기본 `customers`), 그다음 구성도에 있는 경유 역할, 그다음 사이트 순서입니다(`kali > router > waf > board.com`).
+  - `path`: 단계의 `from`(기본 `customers`), 그다음 구성도에 있는 경유 역할, 그다음 사이트 순서입니다(`customers > router > waf > board.com`).
   - `logs`: `log-server` 노드
 
 **f2 개발자 도구로 HTTP 요청 읽기**(`lesson.http`). defense `full`, 웹사이트 창에서 시작합니다.
 
-- 학습자는 게시판 검색창으로 검색합니다. 네트워크 패널에서 메서드, 파라미터, 경로, 상태 코드를 읽은 뒤, 게시판 정렬 기능이 쓰는 파라미터를 찾습니다. 혼자 푸는 단계에서는 없는 게시글의 상태 코드를 묻습니다.
+- 학습자는 게시판 검색창으로 검색합니다. 네트워크 패널에서 메서드, 파라미터, 경로, 상태 코드를 읽은 뒤, 게시판 정렬 기능이 쓰는 파라미터를 찾습니다. 혼자 푸는 단계에서는 `/posts/9999/`의 상태 코드를 묻습니다. 카드도 HTTP 참고도 그 글이 없다거나 404가 무슨 뜻인지 말하지 않습니다.
 - 답은 학습자가 웹사이트 창에서 보낸 요청 기록에서 읽습니다: `method`, `parameter`, `path`(답에 호스트나 쿼리가 들어가면 `wrong_if`가 알려 줌), `status`.
 
 **f3 Kibana에서 내 요청 찾기**(`lesson.logs`). defense `full`, 웹사이트 창에서 시작합니다.
 
 - 학습자는 영문자와 숫자로 된 자기만의 단어로 검색하고 Kibana에 `url : *단어*`를 씁니다. 카드마다 쿼리를 다시 적고 화면의 열 이름을 그대로 써서 아래를 묻습니다.
   - Kibana가 보여 주는 건수(그 단어로 한 모든 검색의 두 구간)
-  - `destination`이 waf 주소인 행의 `source_ip`, `destination`이 board.com 주소인 행의 `source_ip`(waf 자신의 주소)
-  - 그 행의 `request_header.x_forwarded_for`
-  혼자 푸는 단계에서는 학습자가 `and`와 `not`으로 쓴 쿼리(내 단어이면서 `destination`이 waf 주소가 아닌 것)의 건수를 묻습니다. 이 단계의 check에는 Kibana 쿼리가 맞아야 하는 정규식 `kql`이 있습니다. 콘솔은 Kibana를 여는 단계의 답을 보낼 때마다 Kibana에 들어 있는 쿼리를 함께 보내고, 쿼리가 맞지 않으면 숫자와 상관없이 틀린 답으로 처리합니다(`lesson.logs.wrong.upstream.kql`). 그 숫자는 앞 단계 화면에서도 보이기 때문입니다.
+  - 학습자가 `and`와 `not`으로 쓴 쿼리(내 단어이면서 `destination`이 waf 주소가 아닌 것)의 건수. 이 단계의 check에는 Kibana 쿼리가 맞아야 하는 정규식 `kql`이 있습니다. 콘솔은 Kibana를 여는 단계의 답을 보낼 때마다 Kibana에 들어 있는 쿼리를 함께 보내고, 쿼리가 맞지 않으면 숫자와 상관없이 틀린 답으로 처리합니다(`lesson.logs.wrong.upstream.kql`). 앞 건수 단계의 통과 문장은 url 쿼리로 내 로그를 찾았다는 말만 하고, 구간마다 몇 줄이 남는지는 말하지 않습니다.
+  - 그 쿼리가 남긴 행의 `source_ip`(waf 자신의 주소)
+  혼자 푸는 단계에서는 그 행의 `request_header.x_forwarded_for`(customers 주소)를 Document 창에서 읽게 합니다. 웹사이트 창이 customers 자리에서 접속한다고 처음 말하는 글이 이 단계의 통과 문장입니다.
 - 답은 기록에 있는 센서의 http 이벤트에서 구간별로 읽습니다(`sensor_source`, `forwarded_for`).
   - `dest_ip`가 board.com의 주소이면 `upstream`(waf가 넘긴 요청), 아니면 `inbound`(waf에 도착한 요청)입니다. `leg: both`는 두 구간을 모두 씁니다.
   - `hits`는 레슨(또는 세션)이 시작된 뒤, 학습자의 가장 최근 검색 단어가 url에 든 그 구간의 http 이벤트 수입니다.
 
 **f4 XSS 요청 차단과 IDS 룰 작성**(`lesson.xss`). defense `xss-gap`, 웹사이트 창에서 시작합니다.
 
-- 학습자는 `<script>alert(1)</script>`를 보내 상태 코드, 탐지한 룰 하나, Total Score를 읽습니다. 대소문자를 섞은 요청의 상태 코드를 읽고, 두 요청에 IDS 경보가 있었는지 답합니다. URI의 `<script`를 잡는 룰을 쓰고 적용한 뒤 `<script>alert(1)</script>`를 검색하고 확인 버튼을 누릅니다. 그 룰이 이 검색에 경보를 냈을 때만 통과합니다. 이어서 Kibana에서 그 경보의 `destination`을 읽고(waf 주소입니다. 웹방화벽이 요청을 막아서 들어오는 구간의 센서만 요청을 봤습니다), 대소문자를 섞은 요청이 빠져나가는 것을 본 뒤 `nocase`를 붙입니다. Suricata 참고 카드는 완성된 룰이 아니라 대괄호로 빈칸을 둔 룰 형태를 보여 줍니다. Kibana 단계는 학습자의 쿼리가 웹방화벽 로그와 script(또는 alert)를 지정할 때까지 쿼리 입력창만 가리킵니다. 혼자 푸는 단계에서는 대소문자를 섞은 요청과 일반 검색을 다시 보냅니다.
+- 학습자는 `<script>alert(1)</script>`를 보내 개발자 도구의 요청 URL에서 `<`가 무엇으로 바뀌었는지(`%3C`) 읽습니다. 주소창에는 `<`로 보이고 화면에는 nginx의 403 페이지가 나오므로 상태 코드는 더 묻지 않습니다. 이어서 탐지한 룰 하나와 Total Score를 읽습니다. 대소문자를 섞은 요청을 보내 Kibana에서 그 Total Score를 읽고(CRS 참고는 더 이상 CRS가 대소문자를 가리지 않는다고 말하지 않습니다), 두 요청에 IDS 경보가 있었는지 답합니다. URI의 `<script`를 잡는 룰을 쓰고 적용한 뒤 `<script>alert(1)</script>`를 검색하고 확인 버튼을 누릅니다. 그 룰이 이 검색에 경보를 냈을 때만 통과합니다. 이어서 Kibana에서 그 경보의 `destination`을 읽고(waf 주소입니다. 웹방화벽이 요청을 막아서 들어오는 구간의 센서만 요청을 봤습니다), 대소문자를 섞은 요청이 빠져나가는 것을 본 뒤 `nocase`를 붙이고 `rev`를 올립니다. Suricata 참고 카드는 완성된 룰이 아니라 대괄호로 빈칸을 둔 룰 형태를 보여 주고, Kibana url의 `%3C`를 어떤 문자열로 찾는지는 말하지 않습니다. Kibana 단계는 학습자의 쿼리가 웹방화벽 로그와 script(또는 alert)를 지정할 때까지 쿼리 입력창만 가리킵니다. 혼자 푸는 단계에서는 대소문자를 섞은 요청과 일반 검색을 다시 보냅니다.
 - 답은 다음에서 읽습니다.
-  - `status`
+  - `char: "<"`가 붙은 `escaped`: 기록의 쿼리에 그 문자의 퍼센트 인코딩(`%3C`)이 있으면 그 값
   - `rule`: 요청의 ModSecurity 룰 id. 949110은 제외합니다.
   - `anomaly_total`: 949110의 `Total Score: N`
-  - `alerted`, `alerted_destination`(학습자가 추가한 룰이 낸 경보의 `dest_ip`), `alerted_sid_present`: 기록 시간대의 Suricata 경보를 `lesson.added_rules`와 대조합니다.
-  - `match: '<script'`가 붙은 `rules`, `needs: nocase`가 붙은 `rules`
+  - `alerted`, `alerted_destination`(학습자가 추가한 룰이 낸 경보의 `dest_ip`), `alerted_sid_present`: 기록 시간대의 Suricata 경보 중 url이 그 기록의 url과 같은 것을 `lesson.added_rules`와 대조합니다(`views._alerts_for`). url이 없는 경보는 browse 마커가 있으면 셉니다. 마커만으로 맞추던 때에는 공격 몇 초 뒤에 보낸 일반 검색이 공격의 경보를 뒤집어써서 replay의 일반 검색이 통과하지 못했습니다(17회차).
+  - `match: '<script'`가 붙은 `rules`, `needs: nocase`가 붙은 `rules`. 뒤의 것은 세션에서 마지막으로 적용한, 대소문자를 구분하던 판보다 룰의 `rev`가 커야 통과합니다(`lesson.raised_rev`, 아니면 `lesson.xss.fail.nocase.rev`). 처음부터 `nocase`로 쓴 룰은 올릴 판이 없습니다.
   - `replay`
 
 **f5 sort 파라미터 SQL Injection 분석**(`lesson.sqli`). defense `full`, 웹사이트 창에서 시작합니다.
@@ -1026,12 +1027,12 @@ board의 `scenario.yaml`은 `foundations:` 목록을 선언합니다. discovery 
 
 **f6 넓은 예외 처리로 놓친 공격 확인하기**(`lesson.miss`). defense `overbroad`, WAF 창에서 시작합니다.
 
-- 학습자는 예외 파일을 grep해 빠진 파라미터를 찾습니다. sqlmap으로 계정을 덤프해 표를 붙여 넣습니다. 어느 엔진이 경보를 냈는지, 실행 구간에서 WAF 로그에 남은 status 500 기록의 출발지 IP(공격자 주소. 이 기록의 rule_id는 `-`: 기록은 됐지만 매칭된 룰 없음), 관리자 목표가 탐지되었을 때 붙는 감점을 답합니다. 그다음 예외를 지우고 nginx를 reload합니다. 혼자 푸는 단계에서는 덤프를 다시 실행하고 정렬을 한 번 바꿉니다.
+- 학습자는 예외 파일을 grep해 빠진 파라미터를 찾습니다. sqlmap으로 계정을 덤프해 표를 붙여 넣습니다. 어느 엔진이 경보를 냈는지, 실행이 WAF 로그에 남긴 status 500 기록이 몇 건인지(이 기록의 rule_id는 `-`: 기록은 됐지만 매칭된 룰 없음), 관리자 목표가 탐지되었을 때 붙는 감점을 답합니다. 그다음 예외를 지우고 nginx를 reload합니다. 혼자 푸는 단계에서는 덤프를 다시 실행하고 정렬을 한 번 바꿉니다.
 - 답은 다음에서 읽습니다.
   - `excluded_target`: 적용 중인 WAF 파일(`ARGS:sort` 또는 `sort`)
   - `loot`: 세션 스냅샷과 대조합니다.
   - `alerted_by`: 실행의 탐지 기록으로 없음, IDS만, WAF만, 둘 다를 구분합니다.
-  - `from: server_error`가 붙은 `kali_source`: Kibana가 열리는 조회 기간의 WAF(ModSecurity) 로그 중 status 500인 기록의 클라이언트 IP(Kibana의 `source_ip`)입니다(`lesson.server_error_sources`). 건수는 묻지 않습니다. sqlmap이 받은 500 응답 수를 직접 출력하기 때문입니다. rule_id도 묻지 않습니다. 앞 단계가 이미 `-`는 매칭된 룰이 없다는 뜻이라고 알려 주기 때문입니다.
+  - `server_errors`: Kibana가 열리는 조회 기간의 WAF(ModSecurity) 로그 중 status 500인 기록의 수입니다(`lesson.server_errors`). 출발지 IP는 더 묻지 않습니다. kali의 주소라 구성도에 있고 F5에서 이미 물었기 때문입니다. sqlmap도 실행 끝에 같은 수를 출력하고, 통과 문장은 두 값을 맞춰 보라고 합니다. rule_id도 묻지 않습니다. 앞 단계가 이미 `-`는 매칭된 룰이 없다는 뜻이라고 알려 주기 때문입니다.
   - `objective:`가 붙은 `detected_penalty`: 그 목표가 탐지되었을 때 붙는 감점, 곧 난이도 ×1입니다. 값은 `wargames.objectives`의 등급에서 읽고, 채점하지 않는 시나리오에서는 비어 있습니다.
   - `waf_changed`
   - `replay`: 실행이 차단되고 탈취 데이터가 없는지, 일반 정렬이 2xx이고 WAF 기록이 없는지
@@ -1091,8 +1092,8 @@ F6의 sqlmap 명령에는 `--skip-waf`가 붙습니다. 그러지 않으면 sqlm
 답은 다음 중 하나를 읽습니다. 그 밖의 값은 `wargames.read_from_record`가 discovery 시점에 거부합니다.
 
 - `of:`가 훈련 환경 사실인 경우: `address`, `subnet`, `path`, `logs`, `excluded_target`, `lost_points`, `detected_penalty`
-- `of:`가 요청 사실이고 `about:`이 `match`가 있는 단계를 가리키거나 단계 자신의 `match`가 있는 경우(그 단계와 일치하는 가장 최근 웹사이트 창 기록을 읽음): `status`, `method`, `path`, `parameter`, `param_value`, `sensor_source`, `forwarded_for`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_destination`, `alerted_sid_present`, `hits`
-- `of:`가 Kali 사실이고 `about:`이 `kali` 단계를 가리키는 경우: `sqlmap_found`, `kali_source`(실행의 WAF 탐지 기록에서, `from: server_error`가 붙으면 500 기록에서), `alerted_by`
+- `of:`가 요청 사실이고 `about:`이 `match`가 있는 단계를 가리키거나 단계 자신의 `match`가 있는 경우(그 단계와 일치하는 가장 최근 웹사이트 창 기록을 읽음): `status`, `method`, `path`, `parameter`, `param_value`, `escaped`, `sensor_source`, `forwarded_for`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_destination`, `alerted_sid_present`, `hits`
+- `of:`가 Kali 사실이고 `about:`이 `kali` 단계를 가리키는 경우: `sqlmap_found`, `kali_source`(실행의 WAF 탐지 기록에서), `alerted_by`, `server_errors`(실행의 500 기록에서)
 - 요청의 `path`나 `step:` 마커와 함께 쓰는 `rule`(위)
 
 ## 점수 계산 방식

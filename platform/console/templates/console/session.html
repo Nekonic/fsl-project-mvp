@@ -249,9 +249,10 @@
 
   function consoles(paranoia, taken, total) {
     const lesson = Boolean(lessonText());
+    const wafEdited = !lessonSession() || takenLessons().some((one) => Boolean((cardOf(one.id) || {}).changes_waf));
     field("blue-tiles").innerHTML = [
       tile("Kibana", t("session.tile.logs")),
-      tile(t("session.tile.waf"), t("session.tile.waf_does")),
+      wafEdited ? tile(t("session.tile.waf"), t("session.tile.waf_does")) : "",
       lesson ? tile(t("session.tile.note"), lessonProgress())
         : tile(t("session.lost"), total ? `${taken}/${total}` : "—"),
     ].join("");

@@ -7004,3 +7004,72 @@ problems. The rulings that change behaviour, not only wording:
   detection gap to measure, not changed here.
 - **The router wears a router.** `host-router` (affinity's blue router
   glyph) replaces `host-firewall`; see the symbols paragraph above.
+
+## 2026-11-14 — Answer-blind walk round 17: what changed in the lessons and why
+
+An answer-blind walk of both courses on the live range found fifteen
+problems. The rulings that change behaviour, not only wording:
+
+- **A replay's ordinary search is no longer charged with the attack's
+  alert.** F4's last step stayed "checking" on the ordinary search for over
+  seven minutes. Root cause, measured in the slot's index: the mixed-case
+  attack alerted at 23:50:27.649 and the ordinary search reached the WAF at
+  23:50:31.159, 3.5 s later. `views._alerts_for` took every Suricata alert
+  with the browse marker within `RECORD_SLACK` (5 s) of a request, so the
+  ordinary search was judged to have drawn the learner's own rule, and the
+  check failed on every poll until a search sent more than 5 s after any
+  attack. The rule's `rev` was not the cause; the walk's other run spaced the
+  two searches further apart. An alert now belongs to a request when its
+  `http.url` is the request's; an alert without a url still counts on the
+  browse marker. The console kept polling; nothing in its state machine was
+  wrong.
+- **F4's `nocase` step needs `rev` raised.** The card asks for it; the check
+  now compares the rule's `rev` with its last case-sensitive version applied
+  in the session (`lesson.raised_rev`) and says
+  `lesson.xss.fail.nocase.rev` otherwise. A rule written with `nocase` from
+  the start passes.
+- **No step's answer is on the pane, the map or an earlier card.**
+  - F4's first reading step asked the status, which nginx's 403 page shows
+    in the pane. It now asks what `<` became in the request URL DevTools
+    shows (`escaped`, `%3C`; the address bar shows `<`). The mixed-case
+    step asks that request's Total Score in Kibana instead of the status,
+    and the CRS reference no longer says CRS ignores case. Rejected: a WAF
+    block page without the code, which changes the range image, sqlmap's
+    view of the WAF and every lesson that reads a 403.
+  - The Suricata reference no longer says `%3Cscript` is matched with
+    `content:"<script"` (F4's rule).
+  - F2's method and missing-post steps: the HTTP reference no longer says
+    the browser uses GET or that 404 means a missing page, and the card no
+    longer says post 9999 does not exist.
+  - F3 drops `client_source`: its answer (the customers address) was the
+    X-Forwarded-For step's, so the Document flyout was never needed. The
+    `and not` count comes right after the first count, before any card or
+    pass line says how many rows each leg leaves, and the steps after it
+    read the row it leaves: its `source_ip`, then (solo) its
+    `request_header.x_forwarded_for`. The count's pass line no longer
+    explains the two legs; F1's path and waf pass lines no longer say waf
+    opens a new connection or what lesson 3 reads.
+  - F6's trace step asked the source IP of the 500 records, which is kali's
+    address, on the map and asked in F5. It now asks how many 500 records
+    the run left (`server_errors`). sqlmap prints the same count at its
+    end; that is another tool's output, not our text, and the pass line asks
+    the learner to compare the two. This reverses the earlier ruling that
+    the count was not the question.
+  - The catalogue's F6 summary and "learns" line no longer say the attack
+    drew no alert (F6's alerts step), and the exception reference no longer
+    says an excluded parameter is neither detected nor blocked.
+- **The Website pane browses from customers, and the text says so once it
+  is no longer an answer.** F1's path step starts at customers (the green
+  arrow's start) instead of kali. The first text that names the Website
+  pane's place is F3's X-Forwarded-For pass line; course 2's brief repeats
+  it next to Kali's.
+- **Console.** "Open website" loads the board's front page when the pane
+  shows another page. Every pass that waits for Next says so, however short
+  its line. The run-still-logging line shows once (the status line), not
+  also under the check button. Callouts keep off Discover's histogram (its
+  axis labels are drawn, not text), the whole Top values popover, and the
+  DevTools toolbars and column header. The session page shows the WAF
+  terminal tile in a lesson session only when one of its lessons edits the
+  WAF (`changes_waf` on the catalogue card).
+- **Still open.** F5's source step asks kali's address, which the map shows;
+  the walk did not flag it, and it is left for the next round.

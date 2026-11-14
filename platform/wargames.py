@@ -38,9 +38,9 @@ SCENARIO_ID = re.compile(r"[0-9]+(\.[0-9]+)+", re.ASCII)
 ANSWERS_OF = ("rule", "rule_matched")
 RANGE_FACTS = ("address", "subnet", "path", "logs", "excluded_target", "lost_points",
                "detected_penalty")
-REQUEST_FACTS = ("status", "method", "path", "parameter", "param_value", "sensor_source", "forwarded_for",
+REQUEST_FACTS = ("status", "method", "path", "parameter", "param_value", "escaped", "sensor_source", "forwarded_for",
                  "waf_detected", "anomaly_total", "alerted", "alerted_destination", "alerted_sid_present", "hits")
-KALI_FACTS = ("sqlmap_found", "kali_source", "alerted_by")
+KALI_FACTS = ("sqlmap_found", "kali_source", "alerted_by", "server_errors")
 LEGS = ("inbound", "upstream", "both")
 STEP_MARKER = "step:"
 DETECTORS = ("suricata",)
@@ -587,6 +587,7 @@ def _foundation_card(taught: dict[str, Any]) -> dict[str, Any]:
         "prerequisites": list(taught.get("prerequisites") or []),
         "steps": len(taught.get("steps") or []),
         "step_ids": [step["id"] for step in taught.get("steps") or []],
+        "changes_waf": any(step["check"]["kind"] == "waf_changed" for step in taught.get("steps") or []),
         "learns": f"{taught['text']}.learns",
     }
 
