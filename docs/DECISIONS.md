@@ -7374,3 +7374,83 @@ Docs review round 4:
 - Docs review round 5: the English docs name Korean UI text by its
   `strings.html` key or an English description, since CLAUDE.md allows
   Korean only in four places.
+
+## 2026-11-15 — Answer-blind walk round 20: what changed in the lessons and why
+
+An answer-blind walk of both courses and scenario 1.1 on the live range (at
+55c4fb6) found 19 learning-flow findings (F1-F19) and 9 slop findings
+(F20-F28). Three were blockers. The rules are round 19's: no answer before
+its step, a step that teaches a tool needs it, what the console shows is
+true, a reload loses no work, slop is removed rather than reworded. What
+either score means is unchanged; F6's cost step stays, since a lost and
+undetected objective counting double is the product's core idea.
+
+Blockers:
+
+| # | Finding | Cause | What changed |
+|---|---|---|---|
+| F1 | Every c1 L2 DevTools answer was rejected with the row open | `SHOWN_CHECK` dropped a check's `dev`, so the console never sent `dev_request` and the server's `_dev_picked` always failed. Round 19's test drove the server alone | The shown check carries `dev: true` (never the pattern). A test now takes the step the server shows, answers it in the console with a row picked, and posts that body to the real check |
+| F2 | Slot 1's map never loaded (404/409 on open) | `provision.py` opened every project when `cr-gns3` restarted while the platform deleted and loaded slot 1's map. The half-done load left that slot's switch TAPs busy in `cr-gns3`'s network namespace, and GNS3 names them from the node id, which was fixed per slot, so every later open failed the same way | The platform is the one loader: `provision.py` opens and starts nothing. `gns3.publish` imports with fresh node and link ids per load (`fresh_ids`; the project id stays) and retries a failed load (`LOAD_TRIES` 3, `LOAD_PAUSE` 3 s). The deploy recreated `cr-gns3`, which cleared the wedged namespace |
+| F3 | c2 L3's last step sat on "waiting / checking" for 8 minutes until a reload | A silent poll waited `PATIENCE_FOR_RANGE_WORK` (15 min). The first poll after a sqlmap run does the run's heavy ingest; while it hung, every later tick returned at `checking` | Silent polls wait the normal 90 s, so a hung one is dropped and the next tick checks again (the run's case row already exists, so it is fast). A replay step also checks once its normal request is seen |
+
+Other findings:
+
+| # | Finding | What changed |
+|---|---|---|
+| F4 | Skip on a lesson's last step jumped to the next lesson with no end screen | The lesson end never moves on by itself: no 2 s switch, after a pass or a skip; the end card waits for its next-lesson button |
+| F5 | The c1 end said the course was finished over "0 of 6 steps passed", under the last lesson's title | At the course end the card's title is the course's and its line (`course.logs.done`, `course.attack.done`) says only that the last lesson ended |
+| F6 | c2 L2's error status passed with DevTools closed | f5 `error` has a `dev` pattern, like F2's DevTools steps |
+| F7 | c1 L3's search passed on the example word the step forbids | f3 `search` rejects `kim0413` |
+| F8 | The result page under-counted skipped steps | The skipped count is gone from the course card; "n of N steps passed" already says it |
+| F9 | The map ring covered the first digit of kali's address | A map ring shrinks its padding until it clears the map text beside the node (`clearOfText`) |
+| F10 | After a rule was applied the ring still said to apply | Apply marks the learner's own new sids as added at once; the ring no longer waits for the check's reply |
+| F11 | The hit-count ring took in the Field statistics tab | The ring holds the count alone |
+| F12 | The Top values ring missed the record-count line the step asks for | A sidebar step rings Kibana's `dscFieldStats-statsFooter` when it shows, else Top values |
+| F13 | Two wordings of the end-session confirmation, one promising a score c1 has not | One line, `session.close.consequence`, on the session page and the lesson end; the rebuild line is gone |
+| F14 | The c2 end after a reload showed no course summary | The course end reads the session's own `course` rows (each now carries `text`), not `/api/wargames/`, whose failed or slow answer left it empty |
+| F15 | Scenario 1.1's first step passed itself (the alert list opens by default) | The step is gone; 1.1 starts on the first judgement |
+| F16 | An item read right while the count still said 0 right | The count updates from the POST's `right_so_far` |
+| F17 | A quoted wildcard (`url : "*word*"`) got a bare "wrong" | Any KQL step answers it with `lesson.check.wrong.kql_quoted`: the star is literal inside quotes |
+| F18 (#19) | c1 and c2 ran on different slots, so the addresses changed | A learner's next session cannot reuse the slot just closed: it is being rebuilt. The c2 brief says addresses can differ per session and where to read this session's (`course.attack.brief`) |
+| F19 (#16) | "Checked when it ends" beside the check button | The sentence is gone from the Kali step texts and `lesson.kali.running`; the button stays to check sooner |
+
+Slop, removed rather than reworded:
+
+| # | Where | What changed |
+|---|---|---|
+| F20 | "Read, then press Next" under every pass | `lesson.status.press_next` is gone |
+| F21 | Callouts repeating the step text | `lesson.dev.open`, `lesson.dev.row`, `lesson.kibana.query`, `lesson.kibana.write`, `lesson.kibana.expand`, `lesson.rules.press_apply` are gone; those stages draw only the ring. The leg-specific expand lines stay: they say which row |
+| F22 | Penalty column and total in F6's objectives table | The table keeps objective, difficulty, lost, detected: what F6's steps read. The cost step and its rule line stay |
+| F23 | Scoring internals on the result page | The counts-once note, the mechanism column with its note and the course-2 XSS line are gone. Whether a lesson session shows a score comes from the course card's `scored` flag (a course with a `kali` or `replay` check) instead of whether a `<course>.scores` string existed. The API still reports `corroborated` |
+| F24 | Dot-joined home results | A lost cell is `result.lost` alone; the scenario help markers lost their dot |
+| F25 | Step counter "(lesson n)" repeating the subtitle | The counter is `main.step` |
+| F26 | Trademark line under the map | Moved to a small home-page footer (`topology.trademark`): the logo is OffSec's, so the notice stays |
+| F27 | The run card inside the step card, naming the case | The run is a plain line with its Kibana link |
+| F28 | Next and Skip both left an unsolved step | One button: it reads `lesson.coach.next` on a passed step and `lesson.skip` otherwise, and records an unpassed step as skipped. Skipping is no longer behind the hint rungs, since Next never was |
+
+Judgement calls, decided:
+
+- Scenario 1.1 marks each judgement right or wrong at once, so a learner can
+  try the other verdict: kept. Immediate feedback is the scenario's teaching,
+  and every try is recorded (`tries`).
+- "Step 1/5" beside a passed step 1: gone with F15.
+- "Opened 0 hints" and "kept all 3 objectives" for a scenario closed before
+  its attack ran: kept. Both are true; the debrief says the attack did not run.
+- The briefing's label headings and its "in progress" pill: kept. They are
+  the briefing's structure, not decoration.
+- c1 L1 path hint about the green arrows starting at the internet: kept; the
+  learner's request leaves from customers, which hangs off the internet switch.
+- c1 L1 log host: the zone ring holds two hosts, so the choice is narrow:
+  kept. The step teaches reading the management zone, not guessing.
+- Plain "wrong" for sw3, 942100 and 8: kept. Each is wrong and a specific
+  line for each would teach the answer by elimination.
+- c2 L3's parameter name read case-insensitively: kept; ModSecurity's
+  `ARGS` names match that way too.
+- A correct admin row alone does not flip the admin objective: kept by round
+  19's ruling; the step asks for the whole table.
+- The XSS sentence under the CRS anomaly heading, the two target cards'
+  shared opening and one Start per line: left; not defects.
+- Steps that say to expand a row whose value the table already shows: left;
+  the expanded document is where later steps read fields.
+- The last step's pass line below the next-lesson button: left by round 19's
+  ruling (S12).

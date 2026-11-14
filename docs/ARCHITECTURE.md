@@ -104,7 +104,7 @@ Each slot's sensors keep their own live rule files.
 | `cr-collector` | platform VM | `filebeat:8.15.0`, the syslog input only | mgmt | 5140/udp |
 | `cr-kibana` | platform VM | `kibana:8.15.0`, served at `/kibana/` | mgmt | 5601 |
 | `cr-platform` | platform VM | `platform/` (Django under waitress, behind nginx). nginx also serves Kibana at `/kibana/` and the VM terminals at `/vm-terminal/kali/` and `/vm-terminal/waf/` | mgmt | 8000, 8002 |
-| `cr-gns3` | platform VM | `ghcr.io/nekonic/cr-gns3` from `deploy/gns3` (gns3-server 3.1.0a6, qemu, uBridge 1.2.3, busybox-static, docker-cli). It holds open the learner maps the platform loads and starts their display nodes. It has `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket and the host's pid namespace | mgmt | 3080 |
+| `cr-gns3` | platform VM | `ghcr.io/nekonic/cr-gns3` from `deploy/gns3` (gns3-server 3.1.0a6, qemu, uBridge 1.2.3, busybox-static, docker-cli). It holds the learner maps the platform loads, opens and starts. It has `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket and the host's pid namespace | mgmt | 3080 |
 
 Ports 8000, 8002 and 3080 bind to `CR_PUBLISH`. Port 5140/udp binds to `CR_SYSLOG_PUBLISH`. Both variables default to 127.0.0.1. Ports 9200 and 5601 bind to loopback only. The range host publishes no port: each slot container in the table is `sN-<service>` (`s1-kali`), and every slot network is internal.
 
@@ -266,7 +266,7 @@ Drawing rules:
 - Every host is one square frame of one size and line weight (`host-*.svg`). `deploy/gns3/symbols.py` builds the frames when the GNS3 image is built, and `provision.py` uploads them.
 - Inside the frame is GNS3's bundled affinity glyph. The frame is red for the attacker, green for the WAF (the shield), blue for the router (affinity's router glyph) and for the sites and their databases, and gray for customers and the log server.
 - Switches and the internet keep GNS3's bundled square switch and globe.
-- `kali`'s frame holds OffSec's Kali dragon. It is the press pack's `kali-dragon-black.svg` at a pinned commit, checked by sha256 and placed unmodified inside the frame. `host-kali.txt` and the Map pane say whose trademark it is.
+- `kali`'s frame holds OffSec's Kali dragon. It is the press pack's `kali-dragon-black.svg` at a pinned commit, checked by sha256 and placed unmodified inside the frame. `host-kali.txt` and the main page's footer (`topology.trademark`) say whose trademark it is.
 
 **Every learner-map host is a display container.**
 
@@ -328,9 +328,10 @@ The adapter reads the interfaces with `interfaces()`:
 
 1. It signs in as GNS3's admin. The password comes from `CR_GNS3_ADMIN_PASSWORD` or `/run/cr-gns3/admin-password`. The GNS3 data directory is mounted read-only, and the file is 0640 to the Docker socket's group.
 2. It deletes the project if GNS3 lists it. A DELETE of a project GNS3 never held is logged at ERROR.
-3. It imports the project as a portable project. Its `project.gns3` keeps the URL's project id, so GNS3 keeps every id, as for a snapshot.
+3. It imports the project as a portable project with fresh node and link ids (`gns3.fresh_ids`: the uuid5 of each id under a nonce drawn for this load). Its `project.gns3` keeps the URL's project id. GNS3 names a switch's kernel bridge and TAPs from its node id, and a half-done load left them busy, so no load reuses the last one's ids.
 4. It turns `auto_close` off. An import is made with it on, whatever the file says, and a project closed when the last web client leaves stops its nodes.
 5. It opens the project and starts its nodes.
+6. A load that fails is tried again from step 2, up to `gns3.LOAD_TRIES` (3) times, `LOAD_PAUSE` (3 s) apart.
 
 When the platform loads a map:
 
@@ -376,7 +377,7 @@ The page and the console cooperate as follows.
 
 For development MCP use (`/v3/mcp/`), `docker exec cr-gns3 python /opt/cr-gns3/provision.py api-key <name>` prints an API key. Nothing in the console exposes MCP. The console's tab for the map is labelled with one Korean word for map (`blue.pane.topology`). No word a learner reads names GNS3.
 
-A read-only user cannot open a project (`Project.Allocate`). So `provision.py` opens every project as admin at start and starts each of its stopped display nodes. It starts only nodes of the pinned image and never runs a node of any other image. The Auditor then sees the projects open and green.
+A read-only user cannot open a project (`Project.Allocate`). So the platform is the one loader: `gns3.publish` opens each project as admin and starts its nodes, and the Map pane's request loads a project GNS3 does not hold open. `provision.py` opens nothing and starts nothing. The Auditor then sees the projects open and green.
 
 What the service needs:
 
@@ -415,7 +416,7 @@ An isolation seam is a rule that only one file may handle one concern. For examp
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py` PUTs the `geoip` ingest pipeline at bring-up |
 | The Kibana HTTP API, its saved objects and the Discover link | `platform/kibana.py` | `platform/nginx.conf` knows Kibana's API paths. It refuses the administration APIs, the Default space, unprefixed paths and `?namespaces=`. It answers `GET /kibana/s/<space>/api/spaces/space` itself with the one SOC space |
-| The GNS3 API | `platform/gns3.py` | `deploy/gns3/provision.py`, inside the GNS3 container, signs in as admin to provision the learner and open the projects. `deploy/gns3/auditor.html`, served by GNS3 as `/static/web-ui/map.html`, signs in as the learner and reads `/v3/projects/<id>/nodes` and `/links`. The console's Map pane frames the web UI at the port and path `gns3.py` returns |
+| The GNS3 API | `platform/gns3.py` | `deploy/gns3/provision.py`, inside the GNS3 container, signs in as admin to provision the learner and upload the symbols. `deploy/gns3/auditor.html`, served by GNS3 as `/static/web-ui/map.html`, signs in as the learner and reads `/v3/projects/<id>/nodes` and `/links`. The console's Map pane frames the web UI at the port and path `gns3.py` returns |
 | CRS configuration and the nginx reload | `platform/rules/crs.py` | `entrypoint.sh` starts `vm-terminal.sh cr-waf`, which opens a shell in the slot's WAF container for the person (ssh to the range host, then `sudo docker exec -it sN-waf bash -l`). `range/rangehost.forwarding` writes the audit log's rsyslog forwarding on the range host. `deploy/range-host/slot.yaml` mounts the WAF's audit log file, at the path `rangehost.LOGS` names; `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it` in `platform/tests/test_range_host.py` ties both to `SecAuditLog` in `deploy/waf/modsecurity.conf`. F6's WAF-pane steps show the commands the learner types (`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`). `wargames.lesson` fills them in from the declared exclusion file and reload command (`settings.CR_WAF`). The platform does not drive the terminal |
 | The Suricata process | `platform/rules/suricata.py` | Each sensor host in `declaration.yaml` (`cr-edge` for `sensor`, `cr-range` for `estate-sensor`) names the rule file and reload command that `suricata.py` is handed. `platform/range/rangehost.py` renders both sensors' configuration (`deploy/range-host/edge-sensor.yaml`, `deploy/suricata/suricata.yaml`) and their compose services; `deploy/range-host/slot.sh` starts and stops them with the slot, reopens their log files at a reset, and configures the edge router. Their baseline rules then go through `suricata.py` |
 | The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/commands.log`. The terminal wiring names `cr-kali`: `entrypoint.sh` starts `vm-terminal.sh cr-kali`. The Website pane (`platform/api/site.py`) is not an exception: it reaches the box only through `attacker.py` (`customer_origins`, `unbound_source`, `as_customer`, which holds the command) and the substrate's `opened` (an ssh stream to the range host, into the slot's Kali container) |
@@ -800,23 +801,24 @@ The console is four screens, and every one is filled from `/api/`. It follows a 
     - The wargame block is `[data-wargame-start]`: its heading and Start, which posts `{scenario}`, so there is no guidance and the defense is `full`.
   - The cards grid aligns its items to the start, so a short card keeps its own height.
   - The rows no longer show the newest run among the sessions this browser opened ("last session: n (lesson) closed"): the finished-sessions table already lists them (2026-11-15). The session and blue pages still write `cr-opened-sessions`.
-  - A finished lesson session's row names its course (or the lesson, outside a course). Its result cell shows the objectives only when the course has a score (`<course>.scores`); course 1 shows "—".
-  - It lists finished sessions by what was taken, with their `result`: PASS/FAIL from the scenario's last final check (`result.scenario`), or the objectives lost of the total and how many went unnoticed.
+  - A finished lesson session's row names its course (or the lesson, outside a course). Its result cell shows the objectives only when the course card's `scored` flag is set (`wargames._course_scored`: a course with a `kali` or `replay` check); course 1 shows "—".
+  - It lists finished sessions by what was taken, with their `result`: PASS/FAIL from the scenario's last final check (`result.scenario`), or the objectives lost of the total (`result.lost`, which no longer adds how many went unnoticed).
   - The result is scored once and stored (`Session.result_cache`, migration 0018) with the inputs it was scored from: `ended_at`, the hint count, and each final check's verdict. The inputs also include, for each of detections, cases and objectives, the last id and the row count (for detections, also the rows with a marker).
   - A list reads three aggregates per session. It scores again only a session whose inputs changed, such as after a late ingest.
   - A refused start is explained under the button that was pressed. On 409, "Close open sessions" lists the open ones, and each is closed through `ingest/` then `close/`. `GET /api/range/ready/` names `max_sessions`.
+  - Its footer carries the Kali trademark notice (`topology.trademark`), which used to sit under the Map pane.
   - The range controls (the alert pipeline check, the open-session count, the range's health and the counts on a wargame card) show only with `?operator`.
 - **Session** (`/session/<id>/`):
-  - The header shows the step a guided session reached (no label) and objectives lost while open (not on the result, where the primary score shows it). It names no kind, does not repeat the target the breadcrumb names, and shows a state only while the session is opening. Its line names the course or the lesson and the time; an open scenario shows only its start, since its clock starts at the briefing's Start, not at the session's opening.
+  - The header shows the step a guided session reached (`main.step`, no label and no lesson number) and objectives lost while open (not on the result, where the primary score shows it). It names no kind, does not repeat the target the breadcrumb names, and shows a state only while the session is opening. Its line names the course or the lesson and the time; an open scenario shows only its start, since its clock starts at the briefing's Start, not at the session's opening.
   - It shows an "Open blue console" button and, for a wargame session only, an "Open red console" button.
   - A wargame session shows recent cases from `GET /api/sessions/<id>/cases/`. A lesson hides its automatic requests while open, and a scenario hides its scheduled attacks, so neither has an activity panel (a scenario's said "no attack yet" while its console listed alerts).
   - Once the session is closed, it shows these in order:
     1. a scenario's verdict banner and its debrief ("Scenarios");
     2. the primary score: every tier with one result column (kept, lost and detected, lost and undetected) and the penalty (difficulty x1 or x2), and one line on how a loss is decided;
-    3. under "Detection results", plain counts of what the defence judged, such as "Caught 7 of 8 attacks" and "3 of 4 benign requests passed", with what went wrong listed once under them, and one line saying that a run counts once however many alerts it drew. A scenario's result leaves the customers' blocked requests to its debrief, says "no attack ran" when none did, and hides the per-request table when it is empty. The per-request outcomes are coloured words, not pills; an objective's result reads "lost, detected" or "lost, undetected".
+    3. under "Detection results", plain counts of what the defence judged, such as "Caught 7 of 8 attacks" and "3 of 4 benign requests passed", with what went wrong listed once under them. No line says that a run counts once, and no column says whether a detection named the attack's mechanism (`corroborated` stays in the API). A scenario's result leaves the customers' blocked requests to its debrief, says "no attack ran" when none did, and hides the per-request table when it is empty. The per-request outcomes are coloured words, not pills; an objective's result reads "lost, detected" or "lost, undetected".
     A scenario's debrief leaves out an empty section (no logged attack, no request judged before and after, no remaining risk) and a zero final-check count, names an attack's origin as a country (`scenario.origin.<code>`), and says "the WAF settings were not changed" in scenario words.
   - TP/FP/FN/TN and the game's balance stay in the API. No string a person reads names them (`test_strings.py`).
-  - A lesson session's page names each run by its case name. For a Kali run it says "Lesson n · step m" (`per_case[].lesson`, `.step`, `.seed`). It never names a run by case id. Its course card lists every lesson taken with its steps passed and skipped.
+  - A lesson session's page names each run by its case name. For a Kali run it says "Lesson n · step m" (`per_case[].lesson`, `.step`, `.seed`). It never names a run by case id. Its course card lists every lesson taken with its steps passed (no skipped count).
   - "Start again" reopens the same scenario, the same unit (`{scenario, guidance: true, lesson, defense}` when `lesson_id` is set) or the same wargame.
 - **Blue** (`/blue/<id>/`):
   - It has a rail and a pane. The rail holds Kibana, Website, Map, then Alerts for a judgement scenario, IDS rules for a detection or unknown scenario or for a lesson with a step on it (F4), WAF, then a divider and Kali.
@@ -833,9 +835,9 @@ In a guided session (a foundation or a worked scenario), the lesson note is a co
 
 - It is 340 px wide (300 px at 1280 px or less). It folds to a 44 px strip ("step n/N"). Below 1024 px it is a panel under the pane. Its heading is "Lesson note" in a lesson and "Scenario note" in a scenario, with no subtitle.
 - From the top, the note holds:
-  - the step card: step n/N, the step's title, the task, the command to type once the step is reached, an "Open <pane>" button when the step's pane is not shown, the question and its input, the status line, the help, and Skip, Back and Next;
+  - the step card: step n/N, the step's title, the task, the command to type once the step is reached, an "Open <pane>" button when the step's pane is not shown, the question and its input, the status line, the help, and Back and one Next button (`step-next`), which reads `lesson.coach.next` on a passed step and `lesson.skip` otherwise;
   - F6's objectives card follows the step card and the stretch card; there is no theory card (2026-11-13, the reference column and the course briefing hold what was theory);
-  - F6's objectives card (`lesson_objectives`), which lists each objective lost since the unit started, its difficulty, detected or not, and its penalty (difficulty x 1 or x 2), with the total;
+  - F6's objectives card (`lesson_objectives`), which lists each objective lost since the unit started, its difficulty, lost or not, and detected or not (no penalty column and no total);
   - a worked scenario's cards and hints;
   - F4's and F6's ungraded "Do it yourself" card;
   - the folded step list.
@@ -858,15 +860,15 @@ The steps are declared in the unit (`steps` of a foundation or a worked scenario
 - a `point`;
 - a terminal `command` when the learner types one. `wargames.lesson` fills `{waf_rules}`, `{waf_reload}` and `{sudo}` in it from the declared WAF layout (`settings.CR_WAF`).
 
-A foundation step has no Kibana `query`. A Kibana point may carry `kql:`, a regular expression the learner's own submitted query (the Discover URL's `query`, else the query bar) must match, case-insensitively, before the ring leaves the query bar (stage `write`, `lesson.kibana.write`). So no highlight shows an answer before the learner has written the query.
+A foundation step has no Kibana `query`. A Kibana point may carry `kql:`, a regular expression the learner's own submitted query (the Discover URL's `query`, else the query bar) must match, case-insensitively, before the ring leaves the query bar (stage `write`, which draws the ring with no callout). So no highlight shows an answer before the learner has written the query.
 
 The session API shows only what the browser needs.
 
-- It shows a check's `kind` only, plus `form`, `options` (for `form: order`, every non-switch host on the learner map), the step's own `match` or the `match` of the step it is `about`, and `solo` on a foundation's last step.
+- It shows a check's `kind` only, plus `form`, `options` (for `form: order`, every non-switch host on the learner map), the step's own `match` or the `match` of the step it is `about`, `dev: true` when the check has `dev` (never its pattern), and `solo` on a foundation's last step.
 - No `accept` list or answer rule reaches the browser.
 - A step's `command` is in the payload only once `progress` records the step as reached. It is text to type, with no button that runs or copies it.
 - The pass lines (`<text>.ok.<step>`, or `<text>.ok.<step>.<option>` when a choice step's line depends on the option the learner chose) and a worked scenario's answers sit in a `{% comment %}` section at the end of `strings.html`, which Django never renders. `console/strings.py` reads them, and the step's `progress` record carries them once earned.
-- A step's check does not advance it: after a pass the learner presses Next. Only the last step goes on by itself, to the lesson's end (see the pass line below). Back and Next also move without a check.
+- A step's check does not advance it: after a pass the learner presses Next. Only the last step goes on by itself, to the lesson's end card (see the pass line below). Back and Next also move without a check.
 
 How each check kind passes:
 
@@ -898,32 +900,33 @@ The platform judges every check, with `POST /api/sessions/<id>/lesson/steps/<ste
 
 Checks run by themselves.
 
-- `sent`, `triage`, `kali`, `replay` and `waf_changed` are polled silently every 5 s while their step is shown, the tab is visible and the session is open. The page re-reads the session every 30 s to notice a close. A poll writes nothing unless its answer carries `loud`; then the reason is said as a wrong answer is, and a replay's benign line reads "problem" instead of "checking".
-- `sent` also runs 1.5 s after the Website pane shows a path that matches the step's `match`.
+- `sent`, `triage`, `kali`, `replay` and `waf_changed` are polled silently every 5 s while their step is shown, the tab is visible and the session is open. A poll (`{poll: true}`) waits the normal 90 s (`PATIENCE`), not the longer patience for range work, so a hung poll does not hold the step. The page re-reads the session every 30 s to notice a close. A poll writes nothing unless its answer carries `loud`; then the reason is said as a wrong answer is, and a replay's benign line reads "problem" instead of "checking".
+- `sent` and `replay` also run 1.5 s after the Website pane shows a path that matches the step's `match` (for `replay`, its benign request's `sent`).
 - `rules` also runs when the rule editor applies a file. A `rules` step with a `match` runs then silently and shows its own check button, which the learner presses after sending the request.
-- A pass says the step's `ok` line on the passed step and stays there with Next highlighted; the learner presses Next. Every such pass also says to press Next, however short its line. Only the last step's short pass moves on by itself.
+- A pass says the step's `ok` line on the passed step and stays there with Next highlighted; the learner presses Next. No pass line says to press Next. The last step's pass goes to the lesson's end card, which waits for its button.
 - The card's open-pane button for the Website pane also loads the board's front page when the pane shows another page (a 403 page left by an XSS search, for one), since the steps after it search in the board's own search box.
-- A Kali step's card shows its run's row: the case's name, the still-running line and "Open Kibana at this run's time" (no "recorded run" label). A later step does not repeat the row; a Kibana step after it carries the run's window on its open button. The link opens the run's window with an empty query. A poll of the Kali check reads the row again after a reload, and whenever the row held has no window (a run still being collected when the learner pressed Next); a verdict that arrives after the learner moved on still updates the row. A Kali step passes on its own poll once the run ends; its check button only checks sooner.
-- Every answer to a step whose point, or a later phase of it, opens Kibana carries `query`, the query Kibana holds. A check with `kql` fails unless that query matches it (`<text>.wrong.<step>.kql`). Every foundation answer read in Kibana carries `kql`, so none passes on a value guessed from the map, the reference or an earlier card.
-- A check with `dev`, a regular expression, is read in the Website pane's DevTools. The console sends `dev_request`, the id of the request row picked in DevTools while it is open (`null` otherwise). The answer fails with `lesson.check.wrong.dev` unless that row is a recorded request of the session whose path matches `dev` (`views._dev_picked`). F2's method, path, status, parameter, sort and missing-post steps carry it.
+- A Kali step's card shows its run's row as a plain line, with no border and no case name: the still-running line and "Open Kibana at this run's time" (no "recorded run" label). Neither the step texts nor the still-running line say the run is checked when it ends. A later step does not repeat the row; a Kibana step after it carries the run's window on its open button. The link opens the run's window with an empty query. A poll of the Kali check reads the row again after a reload, and whenever the row held has no window (a run still being collected when the learner pressed Next); a verdict that arrives after the learner moved on still updates the row. A Kali step passes on its own poll once the run ends; its check button only checks sooner.
+- Every answer to a step whose point, or a later phase of it, opens Kibana carries `query`, the query Kibana holds. A check with `kql` fails unless that query matches it (`<text>.wrong.<step>.kql`). A query with a quoted wildcard (`: "...*..."`, `views.QUOTED_WILDCARD`) fails first with `lesson.check.wrong.kql_quoted`. Every foundation answer read in Kibana carries `kql`, so none passes on a value guessed from the map, the reference or an earlier card.
+- A check with `dev`, a regular expression, is read in the Website pane's DevTools. The console sends `dev_request`, the id of the request row picked in DevTools while it is open (`null` otherwise). The answer fails with `lesson.check.wrong.dev` unless that row is a recorded request of the session whose path matches `dev` (`views._dev_picked`). F2's method, path, status, parameter, sort and missing-post steps and F5's error step carry it.
 - An answer that is a number followed by a unit word of one or two letters (for example the words for points or records) is read as the number (`lesson._unit_dropped`); a `%` is not a unit.
-- On the last step, a foundation says "Lesson over." and its button names the next lesson ("Next lesson: <title>"), and moves on ("One session per course"). After the course's last lesson (F3 in course 1, F6 in course 2), the card lists the course's lessons taken with the steps each passed, and an "End session" button closes the session. The card repeats no score: the result page shows them. A worked scenario says "Lesson over".
+- On the last step, a foundation says "Lesson over." and its button names the next lesson ("Next lesson: <title>"), and waits for that button ("One session per course"). After the course's last lesson (F3 in course 1, F6 in course 2), the card lists the course's lessons taken with the steps each passed, and an "End session" button closes the session. The card repeats no score: the result page shows them. A worked scenario says "Lesson over".
 - The pass line stays where it is, under the question, on the last step too. A wrong answer's line goes when the learner types again or picks another option, and a KQL fault's line goes when the Kibana query changes.
 - The order picker shows the order only as the numbers on the pressed buttons, with no joined line under them; the question says how to take a button back.
 - The reference column's open state is kept per session and lesson (`cr-lesson-reference-<session>-<lesson>`), so a new lesson opens with it closed.
 - An unapplied edit in the rule editor is kept in localStorage (`cr-rules-draft-<session>`, with the version it was based on) and put back after a reload, saying so; applying the rules drops it. A draft based on another version is not restored.
-- A `click` step whose pane is already open passes when it is reached (scenario 1.1 opens on the Alerts pane its first step asked to open).
+- A `click` step whose pane is already open passes when it is reached. Scenario 1.1 has no step that opens the Alerts pane: it opens on it, so its first step judges the customers.
 - A wrong answer says what is wrong.
 - A recent ingest (`within`) reads the newest records of the window first and records no truncation, because one sqlmap case leaves more than 5000.
 
 Each step offers help in a fixed order. The next level opens when the learner presses "Show a hint", or after two wrong answers or failed checks.
 
-- In a foundation the rungs are the nudge (`<text>.nudge.<step>`, where to look), then the hint (`<text>.hint.<step>`, how to read it, never the answer), then Skip (`lesson.SKIP_OFFERED_IN_FOUNDATIONS`, 3).
-- A worked scenario keeps its answer rung before Skip (`lesson.ANSWER`, `lesson.SKIP_OFFERED`).
+- In a foundation the rungs are the nudge (`<text>.nudge.<step>`, where to look), then the hint (`<text>.hint.<step>`, how to read it, never the answer); the hint button goes at level 3 (`lesson.SKIP_OFFERED_IN_FOUNDATIONS`).
+- A worked scenario keeps its answer rung (`lesson.ANSWER`, `lesson.SKIP_OFFERED`).
+- Skipping is not behind the rungs: the one Next button reads `lesson.skip` on any step not passed, and records it as skipped.
 - Each press is `POST /api/sessions/<id>/lesson/hints/ {step, level: "hint"}`. It raises the step's `hint` level. The first press is recorded in `Session.hints` with its unit (`{lesson, step, level}`; migrations 0017 and 0027). It answers 400 for a session that is not guided, or for a step or level the unit does not have, and 409 when the session is closed.
 - After 60 s on a step, the button only changes to "Show the new hint". Nothing is recorded until the learner presses it.
-- A foundation's last step is solo: no highlight, no nudge, no hint, and Skip from the start.
-- Skip is `POST /api/sessions/<id>/lesson/steps/<step>/ {state: skipped}`, and the next step is reached. On the last step, Skip records the skip. In a foundation it then moves to the next unit as a pass does. In a worked scenario it closes the step.
+- A foundation's last step is solo: no highlight, no nudge, no hint.
+- A skip is `POST /api/sessions/<id>/lesson/steps/<step>/ {state: skipped}`, and the next step is reached. On the last step, the skip records the skip and shows the lesson's end card, which waits for its button as after a pass. In a worked scenario it closes the step.
 - Nothing is entered, fired, applied or credited for the learner. A later step that reads a skipped step's record therefore stays unanswered until the learner does that step or skips it too. Examples are an answer about a request never sent, or the loot of a run never made.
 - `result.scenario.helped` (`["hint"]` or none) puts "hints used" beside PASS or FAIL on the main page and the closed session's page.
 
@@ -931,7 +934,7 @@ Each lesson opens on the pane that its first step names (`opens`). The console c
 
 The locators are:
 
-- `panel`: a console element, such as the site's address bar, the rule editor or the objectives total.
+- `panel`: a console element, such as the site's address bar, the rule editor or an objective's row.
 - `map`: a `node`, `link`, `label: [host, switch]` or `zone`, which the server resolves from `{switch:<host>}`.
   - `deploy/gns3/auditor.html` answers `{locate}` by `postMessage`. A `node` is the device's icon and name, not the address labels on its links, so a ring on board.com does not show the address its step asks. The answer holds the rectangle, every zone drawing's rectangle (`zones`) and the boxes of the nodes, interface labels and zone captions (`text`, so that callouts stay off them).
   - The page refits on `{fit}`. It posts `{map: "drawn"}` after its first fit and `{map: "fitted"}` after each later one.
@@ -939,23 +942,24 @@ The locators are:
 - `dev`: a `data-coach` name in the developer tools, such as the toggle, the matching row, a tab or a line.
 - `kibana`: a target in the same-origin Kibana frame. The forms are:
   - `query`;
-  - `hits`, with `discoverNoResults` as its fallback (its own stage callout). The ring joins the count with the Field statistics tab beside it, so the leader line does not cross the tab;
+  - `hits`, with `discoverNoResults` as its fallback (its own stage). The ring holds the count alone;
   - `doc: <field>`, a field's row in the document flyout, brought into view through the flyout's field filter;
-  - `sidebar: <field>`;
+  - `sidebar: <field>`. Once the field's popover is open, it rings the popover's "calculated from N records" line (`dscFieldStats-statsFooter`) when present, else its Top values;
   - any of these with `kql: <pattern>`, which holds the ring on the query bar until the learner's own query matches.
   On a step whose check names a `leg`, the coach rings the expand toggle of the row on that leg and the flyout's arrow while the other event is open. The row on a leg is the one whose source is another row's destination, or the reverse. When that row cannot be found, or the open document's position is unknown, the coach rings the field filter and never a value. `keep: true` on the point leaves the flyout open on arrival.
 - `term`: `{pane: kali | waf, match}`, the row of the xterm buffer that matches. An optional `done` pattern, once printed after the last typed command, moves the ring to the step's check button, but only when that command holds every word of the step's own command (quotes aside), so an earlier step's finished run does not say this one finished. While the step's command runs, the run card's "still running" line is the only message: the "collecting" status and an earlier red "no run yet" are cleared. A callout on a bare prompt sits below the prompt line, where the command is not typed.
 
-A two-phase point holds the first target `until: sent` and then points at `then` (the select, then the payload line). `until: applied` holds until the step's added rule is applied and the editor holds no unapplied change. A `then` may carry its own `until` and `then`; F4's rule step rings the rule editor, then the site's search box, then its check button (`#step-act`).
+A two-phase point holds the first target `until: sent` and then points at `then` (the select, then the payload line). `until: applied` holds until the step's added rule is applied and the editor holds no unapplied change. An apply marks the sids of the learner's own new lines as added in the console at once, so the ring leaves Apply without waiting for the check's reply. A `then` may carry its own `until` and `then`; F4's rule step rings the rule editor, then the site's search box, then its check button (`#step-act`).
 
 How the highlight draws:
 
-- It dims the pane alone (`pointer-events: none`). It rings the target in the primary colour and puts a one-line callout beside it (`<text>.callout.<step>`, and `.callout.<step>.then` for the second phase, `.then.then` for the third). Since 2026-11-15 no lesson step has its own callout: each one only named what the ring showed or repeated the card. The stage callouts that say what to do next (open DevTools, pick the row, write KQL, expand the row) stay; the ones that named a count, an empty result, the Top values or the prompt are gone.
+- It dims the pane alone (`pointer-events: none`). It rings the target in the primary colour and puts a one-line callout beside it (`<text>.callout.<step>`, and `.callout.<step>.then` for the second phase, `.then.then` for the third). Since 2026-11-15 no lesson step has its own callout: each one only named what the ring showed or repeated the card. Stage callouts stay only where the ring does not say what to do: the DevTools tab, the expand toggle of a row on a leg, the flyout's field, the rule line to add and the Kali check button. Opening DevTools, picking the row, writing or running the query, expanding a row with no leg and pressing Apply have no string, and a stage with no string draws only the ring.
 - The callout is flipped or shifted inside the pane. It never covers the target, the rail, the bars or the note. It also never covers the text and controls that the site frame or the Kibana frame report around the target (Kibana's leaf text and controls within 220 px of the ring, skipping what the document flyout covers).
 - With no one-line spot free, it wraps to two or three lines.
 - A flyout step (the next-event arrow) looks inside the flyout first.
 - A target in the note card gets its callout in the pane beside the card.
 - The leader line crosses no text. It is left out when the callout is within 48 px of the ring.
+- A ring on the map shrinks its padding until it clears the map text beside the node (`clearOfText`), down to the node's own box.
 - The hint says "Look at the highlighted spot." when the step has a locator.
 - While the step's pane is not shown, the step card shows the "Open <pane>" button (`lesson.open.<pane>`), ringed with no callout, since the button says what it opens (none on the last step). A step's own callout is optional: a ring that only names what it rings (the search box, kali, the DMZ) has no text.
 - With no target for about 2 s, the card says where to look (`lesson.coach.missing`).
@@ -978,9 +982,9 @@ The board's `scenario.yaml` declares a `foundations:` list. Discovery checks it:
 
 It also declares `courses:` (`wargames.checked_courses`): every foundation in exactly one course, each course an `id`, a string key `text` and its `reference` cards. Course `c1` (`course.logs.title`) is f1-f3 and only reads the range (defense `full`, no rule, Kali or WAF change); course `c2` (`course.attack.title`) is f4-f6 and changes it (`docs/DECISIONS.md`, "The six foundations become two courses"). A course 1 step finds the learner's own request by the learner's own search word or marker and never needs a fresh range or the absence of other traffic.
 
-- `GET /api/wargames/` lists `courses` (`id`, `title`, `lessons`); the main page shows one section per course with its lessons.
+- `GET /api/wargames/` lists `courses` (`id`, `title`, `lessons`, `scored`); the main page shows one section per course with its lessons. `scored` (`wargames._course_scored`) is true for a course with a `kali` or `replay` check, and decides whether its lesson sessions show scores.
 - `GET /api/sessions/<id>/` carries `lesson_course` (`id`, `text`, `lessons`, `reference`).
-- The first lesson of a course opens on a briefing over the pane (`<course>.brief` and the course's reference cards, folded) while no step of it is reached; Start reaches the first step (`POST .../steps/<id>/ {state: reached}`), which an agent sends directly.
+- The first lesson of a course opens on a briefing over the pane (`<course>.brief` and the course's reference cards, folded) while no step of it is reached; Start reaches the first step (`POST .../steps/<id>/ {state: reached}`), which an agent sends directly. Course 2's brief says the addresses can differ from one session to the next.
 - The rail's reference button (`lesson.ref.heading`) opens a left column with the course's cards and the lesson's own `reference:` cards (`lesson.ref.<id>.title`, `.body`, `.rows`); the `addresses` card is filled from `GET .../lesson/addresses/`. F1 has no address card, since its questions are the addresses.
 
 - `wargames.foundations()` lists the foundations by `order`.
@@ -1007,7 +1011,7 @@ Each unit below lists its defense and opening pane, what the learner does, and w
 
 **f3 Finding your requests in Kibana** (`lesson.logs`). Defense `full`, opens on Website.
 
-- The learner searches a word of their own, of letters and digits, and writes `url : *word*` in Kibana. They then read, each card restating the query and naming the column the screen shows:
+- The learner searches a word of their own, of letters and digits (not the example word `kim0413`, which the search step rejects), and writes `url : *word*` in Kibana. They then read, each card restating the query and naming the column the screen shows:
   - the count Kibana shows (both legs of every search with the word);
   - the count of a query the learner writes with `and` and `not`: their word, and `destination` not waf's address. Its check carries `kql`, a regular expression the Kibana query must match: the console sends the query Kibana holds with every answer of a step that opens Kibana, and an answer sent with a query that does not match fails (`lesson.logs.wrong.upstream.kql`) whatever the number. The count's pass line says only that the url query found the learner's logs, so it does not tell how many rows each leg leaves;
   - the `source_ip` of the row that query leaves (waf's own address).
@@ -1057,7 +1061,7 @@ The postures `xss-gap` and `overbroad`:
 
 F6's sqlmap command carries `--skip-waf`. Without it, sqlmap's own WAF-detection request would trip IDS 9000003 and 9000004 and one CRS rule, and the run would count as detected. No unit question carries an `accept` list.
 
-One session per course. `POST /api/sessions/<id>/lesson/ {"lesson": "<id>"}` moves an open guided session to any foundation in place. The console's next lesson stays inside the session's course (`views._next_lesson`), and the course summary lists only that course's lessons; course 1 ends on its own line, course 2 on `course.attack.done`. The result page shows course 2's scores and its `course.attack.scores` line. It does the following:
+One session per course. `POST /api/sessions/<id>/lesson/ {"lesson": "<id>"}` moves an open guided session to any foundation in place. The console's next lesson stays inside the session's course (`views._next_lesson`), and the course summary lists only that course's lessons; course 1 ends on `course.logs.done`, course 2 on `course.attack.done`, each saying only that the last lesson ended. The result page shows course 2's scores. It does the following:
 
 - When that unit's declared defense differs from `Session.defense`, it writes the unit's CRS tuning (`crs.apply`, as `PUT /waf/` does). It seeds the sensors only when the posture's rule file changes.
 - It sets `Session.lesson` and `Session.defense`.
@@ -1072,12 +1076,12 @@ The detail carries:
 
 - `lessons`;
 - `next_lesson` (`{id, text}` of the next foundation of the session's course by `order`, or null after the course's last lesson);
-- `course` (`[{id, steps, passed, skipped, hints, retried}]` for every unit taken; `retried` counts the steps passed after a wrong answer, so trying the other option of a two-way choice shows on the result page).
+- `course` (`[{id, text, steps, passed, skipped, hints, retried}]` for every unit taken; `retried` counts the steps passed after a wrong answer, so trying the other option of a two-way choice shows on the result page).
 
 The console offers only the next unit.
 
-- When a foundation's last step passes or is skipped, the card says "Lesson over." with a "Next lesson: <title>" button. 2 s later the console posts the switch and reloads the page into the new unit, unless the unit shows a stretch task or the last step's pass line is longer than 30 characters (`SHORT_PASS_CHARS`); then the learner presses the button.
-- After the course's last lesson, the card lists the course's lessons taken, each with "n of N steps passed" (no check mark: a lesson whose steps were all skipped shows 0). It says the course's own `<course>.done` line only when the session took every lesson of its course, otherwise "Lesson over." The stretch card sits right under the step card. Its button first asks, as the session page's close does, then ingests, closes the session through `POST /close/` and opens the session page. A lesson session whose course has no `<course>.scores` (course 1, which only reads the range) shows no score on that page: no objectives, detection or per-request tables and no lost-objectives figure. Course 2's `<course>.scores` line says that XSS searches sent from the Website pane are not in the second score. That page's course card lists each lesson's steps passed and skipped, and labels each Kali run "Lesson n · step m".
+- When a foundation's last step passes or is skipped, the card says "Lesson over." with a "Next lesson: <title>" button. Nothing moves on by itself: the console posts the switch and reloads the page into the new unit only when the learner presses the button.
+- After the course's last lesson, the card lists the course's lessons taken, read from the session's `course` rows (no `/api/wargames/` read), each with "n of N steps passed" (no check mark: a lesson whose steps were all skipped shows 0). When the session took every lesson of its course, the card's title is the course's title and its line the course's own `<course>.done`; otherwise "Lesson over." The stretch card sits right under the step card. Its button first asks with the session page's one confirmation (`session.close.consequence`), then ingests, closes the session through `POST /close/` and opens the session page. A lesson session whose course is not `scored` (course 1, which only reads the range) shows no score on that page: no objectives, detection or per-request tables and no lost-objectives figure. No line on that page says which searches are left out of the second score. That page's course card lists each lesson's steps passed (and retried), and labels each Kali run "Lesson n · step m".
 - Restarting starts the first lesson the learner worked in (the page's `begun()`: passed, skipped or hinted, or the lesson the session opened on) with its own defense. The button reads "Start again".
 
 Nothing is reset between units. The board allows this, because its objective layer is exfiltration only (loot matched against the snapshot taken at open). A unit therefore leaves the ground truth as it found it. F4 and F6 change the posture in place, and F5 returns it to `full`.
@@ -1329,7 +1333,7 @@ Other rules of the window:
 - The item id is a hash of the marker with the session's browse marker, so it cannot be matched to `/cases/`.
 - An item shows the first and last alert, the alert count, source addresses, one request, the WAF verdict (`blocked` when a 949/959 total fired, `logged` or `none`), the status, and up to 12 rules with engine, id, message and count. It never shows the case name or a label.
 - Replays and the learner's own Website pane requests are left out.
-- A verdict is `{item, verdict: attack|customer, succeeded}`. The platform judges `verdict` against the record (a case's `malicious`, or a customer row), and `succeeded` against the target (loot matched on the case, or an objective in its window).
+- A verdict is `{item, verdict: attack|customer, succeeded}`. The platform judges `verdict` against the record (a case's `malicious`, or a customer row), and `succeeded` against the target (loot matched on the case, or an objective in its window). The answer carries `right_so_far`, and the console's right-verdict count updates from it.
 - A scenario whose completion has `pattern: judged` also asks an attack's `pattern`. This is one of the CAPEC ids of the case file's malicious cases, listed in the scenario card's `patterns`. The platform judges it against the case's own `pattern`. It is kept with the verdict and never shown on an item.
 - The step check kind `triage` (`judged: customer | attack | all`) passes on the learner's right verdicts.
 

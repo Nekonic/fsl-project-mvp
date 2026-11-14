@@ -746,10 +746,11 @@ through the lesson's steps.
   the map, the page, the developer tools, Kibana or a terminal line.
 - The session payload has no answer key. A step's command appears only once the
   learner reaches the step, as text to type. No button runs an attack.
-- Help for each step comes in order: a nudge, then a hint, then "Skip". "Skip"
-  records the step as skipped and moves on. It does nothing for the learner. The
-  session records hint use, and the result page counts the steps passed after a
-  wrong answer.
+- Help for each step comes in order: a nudge, then a hint. The step card has one
+  forward button: "Next" on a passed step, "Skip" on any other. "Skip" records the
+  step as skipped and moves on. It does nothing for the learner. The session
+  records hint use, and the result page counts the steps passed after a wrong
+  answer.
 - A lesson's last step is done alone, with no highlight or hint.
 
 The benign request that a lesson replays is scored as a benign case. The first
@@ -757,11 +758,9 @@ lesson replays it at open; a lesson moved to later replays it when the learner
 first passes, skips or takes a hint on one of its steps.
 
 The lessons of a course run back to back in one session. When a lesson's last
-step passes, the note names the next lesson of the course. After 2 seconds, or when the learner
-presses "Next lesson", it starts that lesson in the same session
-(`POST /api/sessions/<id>/lesson/ {"lesson": "f2"}`). A lesson that shows a
-"Try it yourself" task after its last step, or whose last pass line is longer
-than 30 characters, waits for "Next lesson". That call
+step passes or is skipped, the note names the next lesson of the course and waits.
+When the learner presses "Next lesson", it starts that lesson in the same session
+(`POST /api/sessions/<id>/lesson/ {"lesson": "f2"}`). That call
 applies the lesson's defense in place. The range is not reset
 between lessons, and each lesson judges only what happened since it started.
 At a course's end the note lists the course's lessons taken with the steps each passed, and its button
