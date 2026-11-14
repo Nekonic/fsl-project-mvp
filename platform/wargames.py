@@ -568,8 +568,8 @@ def _summarise(wargame: dict[str, Any]) -> dict[str, Any]:
         "benign": len(loaded) - attacks,
         "objectives": len(objectives(wargame["id"])["tiers"]) if wargame["objective_model"] != "none" else 0,
         "foundations": [_foundation_card(taught) for taught in foundations(wargame["id"])],
-        "courses": [{"id": course["id"], "title": f"{course['text']}.title", "goal": f"{course['text']}.summary",
-                     "lessons": list(course["lessons"])} for course in courses(wargame["id"])],
+        "courses": [{"id": course["id"], "title": f"{course['text']}.title", "lessons": list(course["lessons"])}
+                    for course in courses(wargame["id"])],
         "scenarios": [scenario_card(one) for one in scenarios(wargame["id"])],
         "category": wargame.get("category") or "",
         "difficulty": wargame.get("difficulty") or "",
@@ -583,7 +583,6 @@ def _foundation_card(taught: dict[str, Any]) -> dict[str, Any]:
         "id": taught["id"],
         "order": taught["order"],
         "title": f"{taught['text']}.title",
-        "goal": f"{taught['text']}.summary",
         "minutes": taught.get("minutes"),
         "level": taught.get("level") or "",
         "defense": taught.get("defense", DEFAULT_DEFENSE),
@@ -591,7 +590,6 @@ def _foundation_card(taught: dict[str, Any]) -> dict[str, Any]:
         "steps": len(taught.get("steps") or []),
         "step_ids": [step["id"] for step in taught.get("steps") or []],
         "changes_waf": any(step["check"]["kind"] == "waf_changed" for step in taught.get("steps") or []),
-        "learns": f"{taught['text']}.learns",
     }
 
 def scenario_card(one: dict[str, Any]) -> dict[str, Any]:

@@ -56,7 +56,7 @@ Each target is a wargame, a folder under `wargames/` whose `compose.yaml` every 
 The platform finds each wargame from `wargames/<id>/scenario.yaml` (`platform/wargames.py`).
 
 - Required fields: `name`, `description`, `image`, `public_url`, `objective_model`, `case_file`.
-- Optional fields for the console's scenario card: `category`, `difficulty` (easy, medium, hard) and `minutes`.
+- Optional fields `category`, `difficulty` (easy, medium, hard) and `minutes`. The API carries them; the console shows none of them (2026-11-14).
 - Optional fields `defense`, `foundations` and `scenarios`. They are described under "Sessions, WAF tuning and the step engine" and "Scenarios".
 - Nothing reads `image` yet.
 
@@ -791,30 +791,31 @@ A case marked with any of `views.REPLAY_MARKS` (`seed`, `verify`, `check`, `repl
 The console is four screens, and every one is filled from `/api/`. It follows a static mockup the user approved, with two rulings on top (`docs/DECISIONS.md`, 2026-10-11, console redesign). The palette and component classes are in `base.html` and `platform/console/components.css`, which `bin/build-css` puts into `tailwind.css`. The header carries the breadcrumb and the range state. The console is Korean only and has no language switch.
 
 - **Main** (`/`):
-  - It lists running sessions with their kind (`scenario`, `lesson` or `wargame`), the step a foundation session reached, and whether opening has finished (`ready`, from `Session.ready_at`). Until then it shows "Preparing ns / about 80s".
-  - It lists wargame cards with category, difficulty and minutes from `scenario.yaml`, and counts of attack cases, benign cases and objectives from `GET /api/wargames/`.
-  - Under each card come the foundations block, the scenarios block ("Scenarios"), and one plain "Start wargame" button.
-    - The foundations block shows each unit with its minutes and what it teaches. Its Start button posts `{scenario, guidance: true, lesson, defense}` with the unit's declared defense.
-    - "Start wargame" is `[data-wargame-start]`. It posts `{scenario}`, so there is no guidance and the defense is `full`.
+  - It lists running sessions by what was taken (course and lesson, scenario number and title, or wargame and target), the step a foundation session reached, and, only while opening (`ready`, from `Session.ready_at`), "Preparing ns / about 80s".
+  - It lists wargame cards (name and a one-line description) under "Target systems", with the counts of attack cases, benign cases and objectives from `GET /api/wargames/` for the operator only. There is no page title, time estimate, category, difficulty, class or guidance chip (2026-11-14).
+  - Under each card come the foundations block, the scenarios block ("Scenarios"), and the wargame block. Every row's button reads Start.
+    - The foundations block shows each lesson as "Lesson n" and its title. Its Start button posts `{scenario, guidance: true, lesson, defense}` with the unit's declared defense.
+    - A scenario row shows its number, title and one line of what is practised.
+    - The wargame block is `[data-wargame-start]`: its one line says it runs unguided, and Start posts `{scenario}`, so there is no guidance and the defense is `full`.
   - Each foundation and scenario also shows its newest run among the sessions this browser opened. The browser keeps them in `cr-opened-sessions` in localStorage, which the session and blue pages write, newest first, at most 20. The main page reads them through `?ids=`.
     - For a foundation it shows still open or closed.
     - For a scenario it shows PASS/FAIL, still open, or closed with no final check.
-  - It lists finished sessions with their `result`: PASS/FAIL from the scenario's last final check (`result.scenario`), or the objectives lost of the total and how many went unnoticed.
+  - It lists finished sessions by what was taken, with their `result`: PASS/FAIL from the scenario's last final check (`result.scenario`), or the objectives lost of the total and how many went unnoticed.
   - The result is scored once and stored (`Session.result_cache`, migration 0018) with the inputs it was scored from: `ended_at`, the hint count, and each final check's verdict. The inputs also include, for each of detections, cases and objectives, the last id and the row count (for detections, also the rows with a marker).
   - A list reads three aggregates per session. It scores again only a session whose inputs changed, such as after a late ingest.
   - A refused start is explained under the button that was pressed. On 409, "Close open sessions" lists the open ones, and each is closed through `ingest/` then `close/`. `GET /api/range/ready/` names `max_sessions`.
   - The range controls (the alert pipeline check, the open-session count, the range's health and the counts on a wargame card) show only with `?operator`.
 - **Session** (`/session/<id>/`):
-  - The header shows the step a guided session reached, objectives lost and the target.
-  - It shows the blue console card and, for a wargame session only, the red console card (Kali terminal, Website, the objectives).
-  - It shows recent cases from `GET /api/sessions/<id>/cases/`.
+  - The header shows the step a guided session reached, objectives lost while open (not on the result, where the primary score shows it) and the target. It names no kind and shows a state only while the session is opening.
+  - It shows an "Open blue console" button and, for a wargame session only, an "Open red console" button.
+  - Outside lessons it shows recent cases from `GET /api/sessions/<id>/cases/`. A lesson hides its automatic requests while open, so it has no activity panel.
   - Once the session is closed, it shows these in order:
     1. a scenario's verdict banner and its debrief ("Scenarios");
-    2. the primary score: every tier, lost or kept, noticed or not, with the penalty (difficulty x1 or x2);
-    3. plain sentences on what the defence judged, such as "Caught 7 of 8 attacks, missed 1 (name)" and "3 of 4 benign requests passed, wrongly blocked 1 (O'Brien search)", and a line saying that a case counts once however many alerts it drew.
+    2. the primary score: every tier with one result column (kept, lost and detected, lost and undetected) and the penalty (difficulty x1 or x2), and one line on how a loss is decided;
+    3. plain sentences on what the defence judged, such as "Caught 7 of 8 attacks, missed 1 (name)" and "3 of 4 benign requests passed, wrongly blocked 1 (O'Brien search)", listing only what went wrong, and one line saying that a run counts once however many alerts it drew and is not added to the primary score.
   - TP/FP/FN/TN and the game's balance stay in the API. No string a person reads names them (`test_strings.py`).
   - A lesson session's page names each run by its case name. For a Kali run it says "Lesson n · step m" (`per_case[].lesson`, `.step`, `.seed`). It never names a run by case id. Its course card lists every lesson taken with its steps passed and skipped.
-  - "Start the same scenario again" ("Start the same lesson again" for a unit) reopens the same scenario, the same unit (`{scenario, guidance: true, lesson, defense}` when `lesson_id` is set) or the same wargame.
+  - "Start again" reopens the same scenario, the same unit (`{scenario, guidance: true, lesson, defense}` when `lesson_id` is set) or the same wargame.
 - **Blue** (`/blue/<id>/`):
   - It has a rail and a pane. The rail holds Kibana, Website, Map, then Alerts for a judgement scenario, IDS rules for a detection or unknown scenario or for a lesson with a step on it (F4), WAF, then a divider and Kali.
   - Kali shows only when the session's `kind` is `lesson` or `scenario`. In a `wargame` session a person attacks from the red console, and the defender does not hold the attacker's shell.
@@ -828,7 +829,7 @@ The console is four screens, and every one is filled from `/api/`. It follows a 
 
 In a guided session (a foundation or a worked scenario), the lesson note is a column beside the pane and never over it.
 
-- It is 340 px wide (300 px at 1280 px or less). It folds to a 44 px strip ("step n/N"). Below 1024 px it is a panel under the pane.
+- It is 340 px wide (300 px at 1280 px or less). It folds to a 44 px strip ("step n/N"). Below 1024 px it is a panel under the pane. Its heading is "Lesson note" in a lesson and "Scenario note" in a scenario, with no subtitle.
 - From the top, the note holds:
   - the step card: step n/N, the step's title, the task, the command to type once the step is reached, an "Open <pane>" button when the step's pane is not shown, the question and its input, the status line, the help, and Skip, Back and Next;
   - F6's objectives card follows the step card and the stretch card; there is no theory card (2026-11-13, the reference column and the course briefing hold what was theory);
@@ -837,7 +838,7 @@ In a guided session (a foundation or a worked scenario), the lesson note is a co
   - F4's and F6's ungraded "Do it yourself" card;
   - the folded step list.
 - The step list ticks a step only when `progress` says it passed. It marks a step left unpassed as "skipped" and says "n of N steps passed".
-- The note's folding is kept per viewer (`cr-lesson-note`). The step shown is kept in `cr-lesson-step-<id>-<lesson>`, which the main and session pages read for "step n/N".
+- The note's folding is kept per viewer (`cr-lesson-note`). The step shown is kept in `cr-lesson-step-<id>-<lesson>`, which the main and session pages read for "step n/N". A browser without that record (a new browser, a cleared store) opens on the furthest step the server recorded as `reached` (2026-11-14).
 
 Progress itself belongs to the session and is kept per unit (`Session.lesson_steps[<lesson>][<step>]`, migrations 0020 and 0027).
 
@@ -902,7 +903,7 @@ Checks run by themselves.
 - The card's open-pane button for the Website pane also loads the board's front page when the pane shows another page (a 403 page left by an XSS search, for one), since the steps after it search in the board's own search box.
 - The step after a Kali step shows that step's row: the case's name and "Open Kibana at this run's time". The link opens the run's window with an empty query. It shows no request count and no sensor name. A poll of the Kali check reads the row again after a reload, and whenever the row held has no window (a run still being collected when the learner pressed Next); a verdict that arrives after the learner moved on still updates the row.
 - Every answer to a step whose point, or a later phase of it, opens Kibana carries `query`, the query Kibana holds. A check with `kql` fails unless that query matches it (`<text>.wrong.<step>.kql`). Every foundation answer read in Kibana carries `kql`, so none passes on a value guessed from the map, the reference or an earlier card.
-- On the last step, a foundation says "Lesson complete. Next lesson: <title>" and moves on ("One session per course"). After the course's last lesson (F3 in course 1, F6 in course 2), the card lists the course's lessons taken and a button closes the session. A worked scenario says "Lesson complete".
+- On the last step, a foundation says "Lesson over. Next lesson: <title>" and moves on ("One session per course"). After the course's last lesson (F3 in course 1, F6 in course 2), the card lists the course's lessons taken with the steps each passed, and a button closes the session. A worked scenario says "Lesson over".
 - A wrong answer says what is wrong.
 - A recent ingest (`within`) reads the newest records of the window first and records no truncation, because one sqlmap case leaves more than 5000.
 
@@ -947,7 +948,7 @@ How the highlight draws:
 - A target in the note card gets its callout in the pane beside the card.
 - The leader line crosses no text. It is left out when the callout is within 48 px of the ring.
 - The hint says "Look at the highlighted spot." when the step has a locator.
-- While the step's pane is not shown, the step card shows the "Open <pane>" button (`lesson.open.<pane>`), ringed with its own callout (`lesson.open.callout`; none on the last step).
+- While the step's pane is not shown, the step card shows the "Open <pane>" button (`lesson.open.<pane>`), ringed with no callout, since the button says what it opens (none on the last step). A step's own callout is optional: a ring that only names what it rings (the search box, kali, the DMZ) has no text.
 - With no target for about 2 s, the card says where to look (`lesson.coach.missing`).
 - The map refits when its pane's size differs from the size it was last fitted at (a pane open or a resize). A step change or a lesson's last step alone does not redraw it.
 
@@ -968,15 +969,15 @@ The board's `scenario.yaml` declares a `foundations:` list. Discovery checks it:
 
 It also declares `courses:` (`wargames.checked_courses`): every foundation in exactly one course, each course an `id`, a string key `text` and its `reference` cards. Course `c1` "로그 분석 기초" is f1-f3 and only reads the range (defense `full`, no rule, Kali or WAF change); course `c2` "공격 탐지 실습" is f4-f6 and changes it (`docs/DECISIONS.md`, "The six foundations become two courses"). A course 1 step finds the learner's own request by the learner's own search word or marker and never needs a fresh range or the absence of other traffic.
 
-- `GET /api/wargames/` lists `courses` (`id`, `title`, `goal`, `lessons`); the main page shows one section per course with its lessons.
+- `GET /api/wargames/` lists `courses` (`id`, `title`, `lessons`); the main page shows one section per course with its lessons.
 - `GET /api/sessions/<id>/` carries `lesson_course` (`id`, `text`, `lessons`, `reference`).
 - The first lesson of a course opens on a briefing over the pane (`<course>.brief` and the course's reference cards, folded) while no step of it is reached; Start reaches the first step (`POST .../steps/<id>/ {state: reached}`), which an agent sends directly.
 - The rail's 참고 button opens a left column with the course's cards and the lesson's own `reference:` cards (`lesson.ref.<id>.title`, `.body`, `.rows`); the `addresses` card is filled from `GET .../lesson/addresses/`. F1 has no address card, since its questions are the addresses.
 
 - `wargames.foundations()` lists the foundations by `order`.
 - `wargames.lesson(lesson_id=...)` finds a foundation or a scenario with steps, refuses any other id, and marks a foundation `group: foundations`.
-- `GET /api/wargames/` lists `foundations` (`wargames._foundation_card`). Each card has `id`, `order`, the `title` and `goal` string keys, `minutes`, `level`, `defense`, `prerequisites`, the step count, `step_ids`, and `learns` (the string key of what the unit teaches).
-- The main page lists the foundations first, as lessons, with minutes, what each teaches and a Start button (a guided open of that unit).
+- `GET /api/wargames/` lists `foundations` (`wargames._foundation_card`). Each card has `id`, `order`, the `title` string key, `minutes`, `level`, `defense`, `prerequisites`, the step count, `step_ids` and `changes_waf`.
+- The main page lists the foundations first, as lessons, each with its number, title and a Start button (a guided open of that unit).
 - Every unit seeds `board-normal-search`: the first at open, a unit moved to on the learner's first pass, skip or hint in it (`views._seed_once_worked`, the same work the result page's `begun()` counts), so a unit the console moved to and the learner left unworked adds no benign case. The seed is a benign case and counts in the second score (`views._replayed` keeps a benign `meta.seed` case). A closed course therefore has a true negative, and `no_benign` and `no_marker` are not shown in a lesson session.
 
 Each unit below lists its defense and opening pane, what the learner does, and where the answers are read from.
@@ -1066,9 +1067,9 @@ The detail carries:
 
 The console offers only the next unit.
 
-- When a foundation's last step passes or is skipped, the card says "Lesson complete. Next lesson: <title>" with a "Next lesson" button. 2 s later the console posts the switch and reloads the page into the new unit, unless the unit shows a stretch task or the last step's pass line is longer than 30 characters (`SHORT_PASS_CHARS`, which also says to press "Next lesson"); then the learner presses "Next lesson".
-- After the course's last lesson, the card lists the course's lessons taken. It says the course's own `<course>.done` line only when the session took every lesson of its course, otherwise "Lesson complete.". The stretch card sits right under the step card. Its button first asks, as the session page's close does, then ingests, closes the session through `POST /close/` and opens the session page. A lesson session whose course has no `<course>.scores` (course 1, which only reads the range) shows no score on that page: no objectives, detection or per-request tables and no lost-objectives figure. The benign requests of several lessons are named once with their lessons (`score.case_in_lessons`). That page's course card lists each lesson's steps passed and skipped, and labels each Kali run "Lesson n · step m".
-- Restarting starts the first lesson the learner worked in (the page's `begun()`: passed, skipped or hinted, or the lesson the session opened on) with its own defense. With more than one such lesson the button reads "Start again from lesson n", with one "Start the same lesson again".
+- When a foundation's last step passes or is skipped, the card says "Lesson over. Next lesson: <title>" with a "Next lesson" button. 2 s later the console posts the switch and reloads the page into the new unit, unless the unit shows a stretch task or the last step's pass line is longer than 30 characters (`SHORT_PASS_CHARS`, which also says to press "Next lesson"); then the learner presses "Next lesson".
+- After the course's last lesson, the card lists the course's lessons taken, each with "n of N steps passed" (no check mark: a lesson whose steps were all skipped shows 0). It says the course's own `<course>.done` line only when the session took every lesson of its course, otherwise "Lesson over." The stretch card sits right under the step card. Its button first asks, as the session page's close does, then ingests, closes the session through `POST /close/` and opens the session page. A lesson session whose course has no `<course>.scores` (course 1, which only reads the range) shows no score on that page: no objectives, detection or per-request tables and no lost-objectives figure. Course 2's `<course>.scores` line says that XSS searches sent from the Website pane are not in the second score. That page's course card lists each lesson's steps passed and skipped, and labels each Kali run "Lesson n · step m".
+- Restarting starts the first lesson the learner worked in (the page's `begun()`: passed, skipped or hinted, or the lesson the session opened on) with its own defense. The button reads "Start again".
 
 Nothing is reset between units. The board allows this, because its objective layer is exfiltration only (loot matched against the snapshot taken at open). A unit therefore leaves the ground truth as it found it. F4 and F6 change the posture in place, and F5 returns it to `full`.
 
@@ -1282,7 +1283,8 @@ A worked scenario sets `guidance` true and `lesson` to its id. Its steps then ru
 
 Every `CR_SCENARIO_TICK` (2 s), for each open scenario session, the engine does the following.
 
-- It opens the window at its scheduled time (`minutes - window_minutes` after open) if the learner has not.
+- It does nothing for a session whose clock has not started. `begin` writes `started: false`; the briefing's Start posts `POST .../scenario/start/`, which sets `opened_at`, the window time, the end and the attack schedule from that moment, once (2026-11-14). Until then `time_left` is the whole `minutes`. `verify-window` starts the clock first if it has not.
+- It opens the window at its scheduled time (`minutes - window_minutes` after the clock started) if the learner has not.
 - It claims each due attack and fires it on a pool of four through `views._fire`, marked `meta.scheduled`. This is not a replay mark, so the attack counts in both scores.
   - A sqlmap dump goes through `views._credit_loot`, attributed to that case. The first score therefore counts a loss only when the board's own accounts match.
   - The entry keeps `outcome`, held or leaked.
@@ -1353,7 +1355,7 @@ A hint is offered (not recorded) when any of these happens:
 
 The console renders the debrief with `debrief_script.html` on the blue console and on the closed session's page.
 
-**Console.** The home page lists the scenarios under each wargame. Start opens the blue console on the briefing.
+**Console.** The home page lists the scenarios under each wargame. Start opens the blue console on the briefing: title, situation, goal, how it is measured and the time, with no class or guidance chip. Its Start starts the clock.
 
 - A strip above the panes shows the time left, customers blocked and alerted requests per minute, objectives lost, the hint offer and Start final check.
 - A judgement scenario adds the Alerts pane. The pane keeps its list clear: the cards and the opened hints sit in the lesson note's column beside the pane, and the highlight's callout stays inside the pane.

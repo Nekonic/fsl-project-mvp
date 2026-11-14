@@ -27,8 +27,8 @@ function remember(key, value) {
 }
 
 const minutesAndSeconds = (seconds) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-const scenarioLeft = () => (scenario
-  ? Math.max(0, scenario.time_left - Math.round((Date.now() - scenarioReadAt) / 1000)) : 0);
+const scenarioLeft = () => (!scenario ? 0 : scenario.started === false ? scenario.time_left
+  : Math.max(0, scenario.time_left - Math.round((Date.now() - scenarioReadAt) / 1000)));
 const scenarioTitle = () => `${scenario.id} ${t(scenario.title)}`;
 
 function stripShow() {
@@ -51,9 +51,6 @@ function stripShow() {
 }
 
 function briefingShow() {
-  field("briefing-class").textContent = t(`scenario.class.${scenario.task_class}`);
-  field("briefing-guidance").textContent = t(`scenario.guidance.${scenario.guidance}`);
-  field("briefing-minutes").textContent = t("main.minutes", scenario.minutes);
   field("briefing-title").textContent = scenarioTitle();
   field("briefing-situation").textContent = t(scenario.briefing.situation);
   field("briefing-goal").textContent = t(scenario.briefing.goal);
@@ -63,9 +60,17 @@ function briefingShow() {
   field("briefing").classList.remove("hidden");
 }
 
-function briefingClose() {
+async function briefingClose() {
   field("briefing").classList.add("hidden");
   remember(BRIEFED_KEY(sessionId()), true);
+  if (scenario && scenario.started === false) {
+    const started = await post(scenarioPath("scenario/start/"));
+    if (started.ok) {
+      scenario = started.body;
+      scenarioReadAt = Date.now();
+    }
+    stripShow();
+  }
 }
 
 function cardsShow() {
@@ -262,7 +267,7 @@ async function scenarioStart(started) {
   const tab = document.querySelector('.pane-tab[data-pane="triage"]');
   tab.classList.toggle("hidden", scenario.task_class !== "judgement");
   if (EDITS_RULES.includes(scenario.task_class)) rulesPane();
-  if (!remembered(BRIEFED_KEY(sessionId()), false) && !started.ended_at) briefingShow();
+  if ((scenario.started === false || !remembered(BRIEFED_KEY(sessionId()), false)) && !started.ended_at) briefingShow();
   field("briefing-start").addEventListener("click", briefingClose);
   field("scenario-briefing-open").addEventListener("click", briefingShow);
   field("scenario-done").addEventListener("click", scenarioDone);

@@ -53,21 +53,35 @@ def settings_for(scenario_id: str, body: dict) -> tuple:
     return wargame, guided, scenario_id if guided else "", declared["defense"], \
         wargames.defense(wargame, declared["defense"])
 
+def clock_from(declared: dict, opened) -> dict:
+    return {"opened_at": opened.isoformat(), "ends_at": scenarios.ends_at(declared, opened).isoformat(),
+            "window_at": scenarios.scheduled_window(declared, opened).isoformat(),
+            "schedule": scenarios.schedule(declared, opened), "last_change": opened.isoformat()}
+
 def begin(session, adapter, posture) -> None:
     declared = declared_of(session)
     opened = timezone.now()
     written = [{"at": opened.isoformat(), "version": scenarios.version_of(crs.rendered(crs.checked(posture["waf"])))}] \
         if posture else []
     session.scenario_state = {
-        "id": declared["id"], "opened_at": opened.isoformat(),
-        "ends_at": scenarios.ends_at(declared, opened).isoformat(),
-        "window_at": scenarios.scheduled_window(declared, opened).isoformat(),
-        "schedule": scenarios.schedule(declared, opened), "windows": [], "triage": {}, "offer": None,
-        "stuck": [], "waf": written, "last_change": opened.isoformat(), "hints": [],
+        "id": declared["id"], **clock_from(declared, opened), "started": False, "windows": [], "triage": {},
+        "offer": None, "stuck": [], "waf": written, "hints": [],
     }
     session.save(update_fields=["scenario_state"])
     customers.start(session, adapter, dict(declared["traffic"]))
     ensure_running()
+
+def started(state: dict) -> bool:
+    return state.get("started", True)
+
+def start_clock(session, now=None):
+    now = now or timezone.now()
+    declared = declared_of(session)
+
+    def start(state, held):
+        if not started(state):
+            state.update(clock_from(declared, now), started=True)
+    return _update(session.pk, start)[0]
 
 def _update(pk, change):
     with STATE, transaction.atomic():
@@ -114,6 +128,8 @@ def tick(now=None) -> None:
 
 def _advance(session, now) -> None:
     state = session.scenario_state
+    if not started(state):
+        return
     if not state["windows"] and now >= scenarios.at(state["window_at"]):
         session, _ = start_window(session, "schedule", now)
     for entry in scenarios.due_now(session.scenario_state["schedule"], now):
@@ -449,6 +465,7 @@ def status(session) -> dict:
     alerts = session.detections.count()
     blocked = customers.counted(session.customer_requests.all())["blocked"]
     ends = scenarios.at(window["ends_at"]) if window and window["result"] is None else scenarios.at(state["ends_at"])
+    left = max(0, round((ends - now).total_seconds())) if started(state) else declared["minutes"] * 60
     opened = [hint["hint"] for hint in state["hints"]]
     return {
         **wargames.scenario_card(declared),
@@ -456,7 +473,8 @@ def status(session) -> dict:
         "opened_at": state["opened_at"],
         "ends_at": state["ends_at"],
         "window_at": state["window_at"],
-        "time_left": max(0, round((ends - now).total_seconds())),
+        "time_left": left,
+        "started": started(state),
         "live": {
             "customers_blocked_per_minute": _blocked_between(session, now - MINUTE, now + MINUTE),
             "alerted_per_minute": session.detections.filter(timestamp__gte=now - MINUTE).exclude(marker=None)
@@ -485,9 +503,18 @@ def _completion(window) -> dict:
     return {"state": "passed" if result["passed"] else "failed", "reasons": result["reasons"], "fix": result["fix"]}
 
 @require_http_methods(["POST"])
+def scenario_start(request, session_id):
+    session = _scenario_session(session_id)
+    views._refuse_closed(session)
+    session = start_clock(session)
+    ensure_running()
+    return views._reply(status(session))
+
+@require_http_methods(["POST"])
 def verify_window(request, session_id):
     session = _scenario_session(session_id)
     views._refuse_closed(session)
+    session = start_clock(session)
     session, window = start_window(session, "learner")
     ensure_running()
     return views._reply(status(session), status=201)

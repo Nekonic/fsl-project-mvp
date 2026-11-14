@@ -1525,6 +1525,13 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       shows no score; ttyd raises no leave-site dialog. Left by ruling:
       Next skipping steps, XSS not scored (wording only), wrong attempts
       shown but not penalised.
+- [x] 2026-11-14: console text and UI slop removed (`docs/DECISIONS.md`
+      "Console text and UI slop removed"): the catalogue lost its time
+      estimates, chips, labels and pills; the session page is one console
+      button; the result page explains each score once in one column; lesson
+      ends count steps passed; 101 strings rewritten Korean-first or removed.
+      A scenario's clock now starts at the briefing's Start, and a reload in a
+      browser without its step record reopens the furthest reached step.
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 

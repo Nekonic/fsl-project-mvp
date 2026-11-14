@@ -2,10 +2,7 @@
   <button id="note-strip" type="button" class="note-strip" data-t-title="lesson.note.expand"><span id="note-strip-text"></span></button>
   <div class="note-open">
     <header class="px-3 py-2 border-b border-line flex items-start gap-2">
-      <div class="min-w-0 flex-1">
-        <h2 data-t="lesson.note.heading" class="font-bold text-heading text-[13px]"></h2>
-        <p id="lesson-title" class="text-[12px] text-muted truncate"></p>
-      </div>
+      <h2 id="note-heading" class="min-w-0 flex-1 font-bold text-heading text-[13px]"></h2>
       <button id="lesson-collapse" type="button" data-t-title="lesson.note.collapse" class="shrink-0 text-faint hover:text-heading text-[16px] leading-none px-1" aria-label="fold">»</button>
     </header>
     <div id="lesson-body" class="note-body">
@@ -39,7 +36,6 @@
       </section>
 
       <section id="lesson-objectives" class="card p-3 hidden flex-col gap-2">
-        <h3 data-t="lesson.objectives.title" class="font-semibold text-heading"></h3>
         <table class="w-full text-[12px]">
           <thead><tr id="lesson-objectives-head" class="text-left text-muted"></tr></thead>
           <tbody id="lesson-objectives-rows"></tbody>

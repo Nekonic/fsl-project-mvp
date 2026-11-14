@@ -57,6 +57,10 @@ browser.serve((request) => {{
       succeeded_right: request.body.verdict === "attack" ? right : null, tries: 1, right_so_far: right ? 1 : 0}}}};
   }}
   if (request.route === "/api/sessions/1/triage/") return {{body: {{items: range.items, total: range.items.length, judged: 0}}}};
+  if (request.route === "/api/sessions/1/scenario/start/") {{
+    range.state = {{...range.state, started: true}};
+    return {{body: range.state}};
+  }}
   if (request.route === "/api/sessions/1/ingest/") return {{body: {{ingested: 0}}}};
   if (request.route.startsWith("/api/sessions/1/lesson/steps/")) {{
     range.steps.push(request.route);
@@ -66,6 +70,24 @@ browser.serve((request) => {{
   return {{status: 404, body: {{detail: "not served"}}}};
 }});
 """
+
+def test_the_briefing_shows_the_full_length_until_start_and_start_begins_the_clock_once(client):
+    waiting = status(started=False, time_left=CARD["minutes"] * 60)
+    seen = open_page(client, "/blue/1/", setup=serving(waiting), scenario="""
+      const starts = () => browser.requests.filter((r) => r.route.endsWith('/scenario/start/')).length;
+      const before = {shown: !browser.element('briefing').classList.contains('hidden'), time: browser.text('briefing-time'), starts: starts()};
+      await browser.click('briefing-start');
+      await browser.settle();
+      await browser.click('scenario-briefing-open');
+      await browser.click('briefing-start');
+      await browser.settle();
+      return {before, starts: starts()};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["before"]["shown"] and seen["result"]["before"]["starts"] == 0
+    assert f'{CARD["minutes"]}:00' in seen["result"]["before"]["time"], "the clock does not run while the briefing is read"
+    assert seen["result"]["starts"] == 1, "reopening the briefing does not start the clock again"
 
 def test_a_hint_offered_when_stuck_is_recorded_only_when_opened(client):
     offered = status(hints={"offer": {"reason": "idle", "about": "", "at": "x"}, "opened": [], "left": 4})

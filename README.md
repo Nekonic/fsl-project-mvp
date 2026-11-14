@@ -143,8 +143,7 @@ a single VM on VirtualBox or VMware.
 
    - The home page lists the board wargame. Under **Lessons**, press **Start**
      on **Lesson 1**.
-   - The session page opens within seconds. Under **Blue team console**, press
-     **Open**. The console shows the **Map** pane with the company network drawn
+   - The session page opens within seconds. Press **Open blue console**. The console shows the **Map** pane with the company network drawn
      on it. Beside it, the lesson note names the first step.
    - If the page says the practice network is not ready, wait. A closed session
      resets its slot first.
@@ -761,7 +760,7 @@ presses "Next lesson", it starts that lesson in the same session
 than 30 characters, waits for "Next lesson". That call
 applies the lesson's defense in place. The range is not reset
 between lessons, and each lesson judges only what happened since it started.
-At a course's end the note lists the course's lessons taken, and its button
+At a course's end the note lists the course's lessons taken with the steps each passed, and its button
 asks, then closes the session. Course 1 only reads the range, so its result page
 shows the lessons and no score.
 
@@ -771,6 +770,7 @@ After the foundations come scenarios (`{"scenario": "1.1"}`). Customers and an
 attacker use the board while the learner defends with the real tools.
 
 - A scenario opens on a briefing: situation, goal, how it is measured, and time.
+  The clock and the attack schedule start when the learner presses Start on it.
 - A status bar at the top shows the time left, the customers blocked and the
   alerted requests in the last minute, and the objectives lost.
 - An attack schedule that the learner cannot see fires attacks through the

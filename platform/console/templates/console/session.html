@@ -5,7 +5,7 @@
   <div class="min-w-0">
     <div class="flex flex-wrap items-center gap-2">
       <h1 id="session-title" class="text-[20px] font-bold text-heading"></h1>
-      <span id="session-badges" class="flex gap-2"></span>
+      <span id="session-state" class="text-warning text-[13px]"></span>
     </div>
     <p id="session-line" class="text-muted mt-1"></p>
   </div>
@@ -43,31 +43,13 @@
   <p id="traffic-status" class="text-muted mt-2"></p>
 </section>
 
-<div id="consoles" class="hidden grid gap-5">
-  <a id="blue" href="#" class="card p-6 border-t-4 border-t-primary lift block">
-    <div class="flex items-center justify-between">
-      <div data-t="session.blue.title" class="text-primary font-bold text-[16px]"></div>
-      <span class="btn btn-sm btn-blue" data-t="session.open_console"></span>
-    </div>
-    <p id="session-next" class="hidden mt-3 text-body text-[13px]"></p>
-    <div id="blue-tiles" class="mt-4 grid grid-cols-3 gap-2 text-[12px]"></div>
-    <p id="blue-foot" class="mt-4 text-[12px] text-muted"></p>
-  </a>
-  <a id="red" href="#" class="hidden card p-6 border-t-4 border-t-danger lift block">
-    <div class="flex items-center justify-between">
-      <div data-t="session.red.title" class="text-danger font-bold text-[16px]"></div>
-      <span class="btn btn-sm btn-red" data-t="session.open_console"></span>
-    </div>
-    <div id="red-tiles" class="mt-4 grid grid-cols-3 gap-2 text-[12px]"></div>
-    <p id="red-foot" class="mt-4 text-[12px] text-muted"></p>
-  </a>
+<div id="consoles" class="hidden flex flex-wrap gap-3">
+  <a id="blue" href="#" data-t="session.blue.title" class="btn btn-blue"></a>
+  <a id="red" href="#" data-t="session.red.title" class="hidden btn btn-red"></a>
 </div>
 
 <section id="activity" class="hidden card mt-5 p-5">
-  <div class="flex items-center justify-between mb-3">
-    <h2 data-t="session.activity" class="font-semibold text-heading"></h2>
-    <span data-t="session.activity.live" class="label"></span>
-  </div>
+  <h2 data-t="session.activity" class="font-semibold text-heading mb-3"></h2>
   <ul id="activity-list" class="text-[13px] divide-y divide-line-subdued"></ul>
   <p id="activity-empty" data-t="session.activity.empty" class="text-muted text-[13px]"></p>
 </section>
@@ -80,17 +62,14 @@
   <section id="course" class="hidden card p-5 mb-5 text-[13px]">
     <h2 data-t="session.course.heading" class="font-semibold text-heading mb-2"></h2>
     <ul id="course-rows" class="divide-y divide-line-subdued"></ul>
-    <p id="course-scores" data-t="result.scores" class="text-muted text-[13px] mt-2"></p>
+    <p id="course-scores" class="hidden text-muted text-[13px] mt-2"></p>
   </section>
   <div id="verdict" class="hidden card p-5 mb-5 flex flex-wrap items-center gap-5 border-l-4"></div>
   <section id="debrief" class="hidden card p-5 mb-5 flex flex-col gap-3 text-[13px]"></section>
   <div id="score-panels" class="grid lg:grid-cols-[1fr_400px] gap-5 items-start">
     <div class="card">
       <div class="px-5 pt-4 pb-3 flex items-end justify-between border-b border-line-subdued">
-        <div>
-          <div data-t="score.primary.kicker" class="label"></div>
-          <h2 data-t="score.primary.heading" class="font-bold text-[16px] text-heading mt-0.5"></h2>
-        </div>
+        <h2 data-t="score.primary.heading" class="font-bold text-[16px] text-heading"></h2>
         <div class="text-right">
           <div data-t="score.primary.lost" class="label"></div>
           <div id="lost-count" class="text-[22px] font-bold leading-tight"></div>
@@ -102,8 +81,6 @@
             <tr>
               <th data-t="score.col.objective" class="pl-5"></th>
               <th data-t="score.col.difficulty"></th>
-              <th data-t="score.col.lost"></th>
-              <th data-t="score.col.seen"></th>
               <th data-t="score.col.result"></th>
               <th data-t="score.col.penalty" class="pr-5 text-right"></th>
             </tr>
@@ -111,7 +88,7 @@
           <tbody id="objective-rows"></tbody>
           <tfoot id="penalty-total" class="hidden">
             <tr class="table-row border-t border-line-subdued">
-              <td data-t="session.score1.penalty_total" class="pl-5 py-2.5 font-semibold text-heading" colspan="5"></td>
+              <td data-t="session.score1.penalty_total" class="pl-5 py-2.5 font-semibold text-heading" colspan="3"></td>
               <td id="penalty-total-value" class="pr-5 py-2.5 text-right font-bold text-heading"></td>
             </tr>
           </tfoot>
@@ -121,13 +98,11 @@
         <p id="score-lesson-note" class="hidden text-body text-[13px] mb-2"></p>
         <p id="score-lesson-lost" data-t="score.lesson_lost_note" class="hidden text-muted text-[13px] mb-2"></p>
         <p data-t="score.primary.how"></p>
-        <div id="legend" class="mt-2 flex flex-wrap gap-4"></div>
       </div>
     </div>
     <div class="card">
       <div class="px-5 pt-4 pb-3 border-b border-line-subdued">
-        <div data-t="score.second.kicker" class="label"></div>
-        <h2 data-t="score.second.heading" class="font-bold text-[16px] text-heading mt-0.5"></h2>
+        <h2 data-t="score.second.heading" class="font-bold text-[16px] text-heading"></h2>
       </div>
       <div id="judgement" class="p-5 space-y-4 text-[13px]"></div>
     </div>
@@ -166,8 +141,6 @@
 
   const figure = (label, value, tone) => `
     <div><div class="label">${esc(label)}</div><div class="font-semibold mt-0.5 ${tone || "text-heading"}">${value}</div></div>`;
-  const tile = (label, value) => `
-    <div class="rounded-lg bg-subdued p-3"><div class="label">${esc(label)}</div><div class="font-semibold text-heading mt-1">${esc(value)}</div></div>`;
 
   const lessonText = () => (session && session.lesson ? session.lesson.text : "");
   const lessonSteps = () => (session && session.lesson && session.lesson.steps ? session.lesson.steps.length : 0);
@@ -194,10 +167,11 @@
   const restartLesson = () => (startedLessons().length ? startedLessons()[0].id : session.lesson_id);
   const courseNumbers = () => startedLessons().map((taken) => lessonNumber(taken.id)).filter(Boolean);
   const courseText = () => (takenCourse() ? String(takenCourse().title || "").replace(/\.title$/, "") : "");
-  const showsScores = () => !lessonSession() || !takenCourse() || Boolean(localized(`${courseText()}.scores`, ""));
+  const courseNote = () => (courseText() ? localized(`${courseText()}.scores`, "") : "");
+  const showsScores = () => !lessonSession() || !takenCourse() || Boolean(courseNote());
   const lessonPrefix = (card) => String(card && card.title || "").replace(/\.title$/, "");
   const seeded = (row) => Boolean(row.seed || (row.meta && row.meta.seed));
-  const sender = (row) => (seeded(row) ? badge(t("score.kind.auto_benign"), "neutral") : badge(t("session.activity.red"), "red"));
+  const sender = () => badge(t("session.activity.red"), "red");
 
   function runLabel(row) {
     const number = row.lesson ? lessonNumber(row.lesson) : 0;
@@ -222,10 +196,8 @@
   function header(taken, total) {
     const closed = Boolean(session.ended_at);
     field("session-title").textContent = t("common.session", id);
-    const state = closed ? badge(t("state.closed"), "neutral")
-      : session.ready ? badge(t("state.ready"), "ok", true)
-        : badge(t("state.opening", secondsSince(session.started_at), OPENING_TAKES), "warn", true);
-    field("session-badges").innerHTML = badge(t(`kind.${session.kind}`), session.kind === "lesson" ? "blue" : "neutral") + state;
+    field("session-state").textContent = closed || session.ready ? ""
+      : t("state.opening", secondsSince(session.started_at), OPENING_TAKES);
     const parts = [scenarioName()];
     const course = courseNumbers();
     const only = startedLessons().length === 1 ? cardOf(startedLessons()[0].id) : null;
@@ -239,53 +211,27 @@
     parts.push(closed ? t("session.span", began, ended, took) : t("session.since", began, took));
     field("session-line").textContent = parts.filter(Boolean).join(" · ");
     const figures = [];
-    show("session-next", lessonSession() && !closed);
-    field("session-next").textContent = t("session.next.lesson");
     if (lessonSteps() && !closed) figures.push(figure(t("session.lesson_progress"), esc(lessonProgress())));
-    if (total && showsScores()) figures.push(figure(t("session.lost"), esc(`${taken}/${total}`), taken ? "text-danger" : "text-heading"));
+    if (total && showsScores() && !closed) figures.push(figure(t("session.lost"), esc(`${taken}/${total}`), taken ? "text-danger" : "text-heading"));
     if (wargame) figures.push(figure(t("session.target"), `<span class="font-mono">${esc(wargame.public_url.replace(/^https?:\/\//, ""))}</span>`));
     field("session-figures").innerHTML = figures.join("");
     show("session-card", true);
   }
 
-  function consoles(paranoia, taken, total) {
-    const lesson = Boolean(lessonText());
-    const wafEdited = !lessonSession() || takenLessons().some((one) => Boolean((cardOf(one.id) || {}).changes_waf));
-    field("blue-tiles").innerHTML = [
-      tile("Kibana", t("session.tile.logs")),
-      wafEdited ? tile(t("session.tile.waf"), t("session.tile.waf_does")) : "",
-      lesson ? tile(t("session.tile.note"), lessonProgress())
-        : tile(t("session.lost"), total ? `${taken}/${total}` : "—"),
-    ].join("");
-    const posture = Number.isInteger(paranoia) && !lessonSession() ? t("session.blue.posture", paranoia) : "";
-    field("blue-foot").textContent = posture;
-    show("blue-foot", Boolean(posture));
-    const wargameSession = session.kind === "wargame";
-    show("red", wargameSession);
-    field("consoles").classList.toggle("md:grid-cols-2", wargameSession);
-    field("red-tiles").innerHTML = [
-      tile(t("session.tile.kali"), "sqlmap · curl"),
-      tile(t("blue.pane.site"), wargame ? wargame.public_url.replace(/^https?:\/\//, "") : "—"),
-      tile(t("session.tile.objectives"), total ? t("session.tile.objective_count", total) : "—"),
-    ].join("");
-    field("red-foot").textContent = wargame ? t("session.red.target", wargame.public_url) : "";
-  }
-
   async function activity() {
+    if (lessonSession()) return;
     const cases = await api(`/api/sessions/${id}/cases/`);
-    const hidden = (row) => !session.ended_at && ((session.course_scenario && row.meta && row.meta.scheduled)
-      || (lessonSession() && seeded(row)));
+    const hidden = (row) => !session.ended_at && session.course_scenario && row.meta && row.meta.scheduled;
     const rows = cases.ok && Array.isArray(cases.body) ? cases.body.filter((row) => !hidden(row)).slice(-8).reverse() : [];
     show("activity-empty", rows.length === 0);
     field("activity-list").innerHTML = rows.map((row) => {
       const outcome = caseOutcome(row.malicious, row.meta);
-      const why = row.meta && row.meta.seed ? t("session.activity.seed")
-        : row.meta && row.meta.verify ? t("session.activity.verify") : "";
+      const why = row.meta && row.meta.verify ? t("session.activity.verify") : "";
       return `
         <li class="py-2 flex flex-wrap items-center gap-x-4 gap-y-1">
           <span class="text-faint w-12">${esc(clock(row.started_at))}</span>
-          ${sender(row)}
-          <span class="text-heading"${lessonSession() ? "" : ` title="${esc(row.name)}"`}>${esc(caseLabel(row.name))}</span>
+          ${sender()}
+          <span class="text-heading" title="${esc(row.name)}">${esc(caseLabel(row.name))}</span>
           ${badge(outcome.text, outcome.tone)}
           ${why ? `<span class="text-faint text-[12px]">${esc(why)}</span>` : ""}
         </li>`;
@@ -305,7 +251,7 @@
     banner.classList.toggle("border-l-danger", !judged.passed);
     banner.innerHTML = `
       <span class="badge ${judged.passed ? "badge-pass" : "badge-fail"} h-8 px-4 text-[14px]">${judged.passed ? "PASS" : "FAIL"}</span>
-      ${(judged.helped || []).map((kind) => `<span class="badge badge-muted">${esc(t(`result.helped.${kind}`))}</span>`).join("")}
+      ${(judged.helped || []).map((kind) => `<span class="text-muted">${esc(t(`result.helped.${kind}`))}</span>`).join("")}
       <div class="min-w-0 flex-1">
         <div class="font-bold text-[15px] text-heading">${esc(t(judged.passed ? "scenario.verdict.passed" : "scenario.verdict.failed",
           session.course_scenario))}</div>
@@ -332,27 +278,19 @@
     field("penalty-total-value").textContent = String(tiers.reduce((sum, tier) => sum + penaltyOf(tier), 0));
     field("objective-rows").innerHTML = tiers.map((tier) => {
       const breach = lost.get(tier.key);
-      const outcome = !breach ? badge(t("score.kept"), "ok-strong")
-        : breach.detected ? badge(t("score.lost_seen"), "warn") : badge(t("score.lost_unseen"), "red-strong");
+      const outcome = !breach ? t("score.kept") : t(breach.detected ? "score.lost_seen" : "score.lost_unseen");
       const penalty = penaltyOf(tier);
       return `
         <tr class="table-row">
           <td class="pl-5 font-semibold text-heading">${esc(objectiveName(tier))}</td>
           <td>${esc(tier.difficulty)}</td>
-          <td class="${breach ? "text-danger" : "text-success"}">${esc(t(breach ? "common.yes" : "common.no"))}</td>
-          <td class="${breach ? "" : "text-faint"}">${esc(breach ? t(breach.detected ? "common.yes" : "common.no") : "—")}</td>
-          <td>${outcome}</td>
+          <td class="${breach ? "text-danger" : "text-success"}">${esc(outcome)}</td>
           <td class="pr-5 text-right">${esc(penalty)}</td>
         </tr>`;
-    }).join("") || `<tr class="table-row"><td class="pl-5 text-muted" colspan="6">${esc(t("score.no_objectives"))}</td></tr>`;
-    field("legend").innerHTML = [
-      [badge(t("score.kept"), "ok-strong"), t("score.legend.kept")],
-      [badge(t("score.lost_seen"), "warn"), t("score.legend.seen")],
-      [badge(t("score.lost_unseen"), "red-strong"), t("score.legend.unseen")],
-    ].map(([mark, words]) => `<span class="flex items-center gap-1.5">${mark}${esc(words)}</span>`).join("");
+    }).join("") || `<tr class="table-row"><td class="pl-5 text-muted" colspan="4">${esc(t("score.no_objectives"))}</td></tr>`;
   }
 
-  function judgementBlock(count, sentence, wrong, right) {
+  function judgementBlock(count, sentence, wrong) {
     return `
       <div>
         <div class="flex flex-wrap items-baseline gap-2">
@@ -360,20 +298,9 @@
           <span class="font-semibold text-heading">${esc(sentence)}</span>
         </div>
         <ul class="mt-2 space-y-1 text-[12px]">
-          ${wrong.map((line) => `<li class="flex gap-2 text-danger"><span class="font-bold">✗</span><span>${esc(line)}</span></li>`).join("")}
-          ${right ? `<li class="flex gap-2 text-body"><span class="text-success font-bold">✓</span><span>${esc(right)}</span></li>` : ""}
+          ${wrong.map((line) => `<li class="text-danger">${esc(line)}</li>`).join("")}
         </ul>
       </div>`;
-  }
-
-  function plural(rows) {
-    if (!rows.length) return "";
-    const names = [...new Set(rows.map((row) => row.name))];
-    if (names.length > 1) return t("score.and_more", named(rows[0]), rows.length - 1);
-    const lessons = [...new Set(rows.map((row) => (row.lesson ? lessonNumber(row.lesson) : 0)).filter(Boolean))];
-    if (rows.length === 1) return named(rows[0]);
-    return lessons.length ? t("score.case_in_lessons", caseLabel(rows[0].name), lessons.join(", "))
-      : t("score.case_times", caseLabel(rows[0].name), rows.length);
   }
 
   function judgement(score) {
@@ -389,34 +316,29 @@
       const sentence = t("score.attacks", attacks.length, caught.length) +
         (missed.length ? ` · ${t("score.attacks_missed", missed.length, missed.map(named).join(", "))}` : "");
       parts.push(judgementBlock([caught.length, attacks.length], sentence,
-        missed.map((row) => t("score.no_alert", named(row))), plural(caught)));
+        missed.map((row) => t("score.no_alert", named(row)))));
     }
     if (benign.length) {
       const sentence = t("score.benign", benign.length, passed.length) +
         (blocked.length ? ` · ${t("score.benign_blocked", blocked.length, blocked.map(named).join(", "))}` : "");
       parts.push(judgementBlock([passed.length, benign.length], sentence,
-        blocked.map((row) => t("score.drew_alerts", named(row), row.detections)), plural(passed)));
+        blocked.map((row) => t("score.drew_alerts", named(row), row.detections))));
     }
     const customers = score.customers || {};
     if (customers.sent) {
       const wrong = Object.entries(customers.blocked_actions || {})
         .map(([action, count]) => t("score.customers_action", localized(`traffic.action.${action}`, action), count));
       if (customers.unanswered) wrong.push(t("score.customers_unanswered", customers.unanswered));
-      const served = !customers.blocked && !customers.unanswered ? t("score.customers_served") : "";
       parts.push(judgementBlock([customers.blocked, customers.sent],
-        t("score.customers", customers.sent, customers.blocked), wrong, served));
+        t("score.customers", customers.sent, customers.blocked), wrong));
     }
     if (!parts.length) parts.push(`<p class="text-muted">${esc(t("score.no_cases"))}</p>`);
     const unproven = caught.filter((row) => row.corroborated === false).length;
     const notes = [t("score.one_case_once")];
-    if (perCase.length) notes.push(t("score.mechanism_note"));
-    if (perCase.some(seeded)) notes.push(t("score.benign_auto_note"));
-    if (customers.sent) notes.push(t("score.customers_note"));
     if (unproven) notes.push(t("score.not_corroborated", caught.length, unproven));
-    notes.push(t("score.not_added"));
     (score.warnings || []).forEach(([key, ...values]) => notes.push(t(key, ...warningValues(key, values))));
     field("judgement").innerHTML = parts.join('<div class="border-t border-line-subdued"></div>') + `
-      <div class="rounded-lg bg-subdued p-3 text-[12px] text-muted leading-relaxed space-y-1">
+      <div class="text-[12px] text-muted leading-relaxed space-y-1">
         ${notes.map((note) => `<p>${esc(note)}</p>`).join("")}
       </div>`;
     field("case-rows").innerHTML = perCase.map((row) => {
@@ -446,7 +368,7 @@
     field("lost-count").textContent = "—";
     field("lost-count").className = "text-[22px] font-bold leading-tight text-faint";
     show("penalty-total", false);
-    field("objective-rows").innerHTML = `<tr class="table-row"><td class="pl-5 text-danger" colspan="6">${esc(said)}</td></tr>`;
+    field("objective-rows").innerHTML = `<tr class="table-row"><td class="pl-5 text-danger" colspan="4">${esc(said)}</td></tr>`;
     field("judgement").innerHTML = `<p class="text-danger">${esc(said)}</p>`;
     field("case-rows").innerHTML = "";
   }
@@ -460,7 +382,7 @@
     field("lost-count").textContent = "—";
     field("lost-count").className = "text-[22px] font-bold leading-tight text-faint";
     show("penalty-total", false);
-    field("objective-rows").innerHTML = `<tr class="table-row"><td class="pl-5 text-muted" colspan="6">${said}</td></tr>`;
+    field("objective-rows").innerHTML = `<tr class="table-row"><td class="pl-5 text-muted" colspan="4">${said}</td></tr>`;
     field("judgement").innerHTML = `<p class="text-muted">${said}</p>`;
     field("case-rows").innerHTML = `<tr class="table-row"><td class="pl-5 text-muted" colspan="5">${said}</td></tr>`;
   }
@@ -499,8 +421,8 @@
     const taken = takenLessons();
     show("course", lessonSession() && taken.length > 0);
     const counted = Array.isArray(session.course) ? session.course : [];
-    field("course-scores").textContent = (courseText() && localized(`${courseText()}.scores`, "")) || t("result.scores");
-    show("course-scores", showsScores());
+    field("course-scores").textContent = courseNote();
+    show("course-scores", Boolean(courseNote()));
     field("course-rows").innerHTML = taken.map((one, at) => ({ one, at, until: at + 1 < taken.length ? taken[at + 1].started_at : session.ended_at }))
       .filter(({ one, at }) => begun(one, at)).map(({ one, until }) => {
       const number = lessonNumber(one.id);
@@ -508,7 +430,7 @@
       const done = counted.find((row) => row.id === one.id);
       return `
         <li class="py-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-          ${number ? badge(t("session.run.lesson", number), "blue") : ""}
+          ${number ? `<span class="text-muted">${esc(t("session.run.lesson", number))}</span>` : ""}
           <span class="font-semibold text-heading">${esc(card ? t(card.title) : one.id)}</span>
           ${done ? `<span class="text-muted">${esc(t("session.course.steps", done.steps, done.passed))}</span>` : ""}
           ${done && done.skipped ? `<span class="text-muted">${esc(t("session.course.skipped", done.skipped))}</span>` : ""}
@@ -622,19 +544,17 @@
     header(result.lost, result.total);
     if (session.ended_at) {
       show("close", false);
-      field("restart").textContent = startedLessons().length > 1 ? t("session.restart.course", lessonNumber(restartLesson()))
-        : t(session.lesson_id ? "session.restart.lesson" : "session.restart");
+      field("restart").textContent = t("session.restart");
       show("restart", true);
       await scoreboard();
       return;
     }
     show("close", true);
-    const waf = lessonSession() ? { ok: false } : await api(`/api/sessions/${id}/waf/`);
-    consoles(waf.ok ? waf.body.paranoia : null, result.lost, result.total);
+    show("red", session.kind === "wargame");
     await activity();
     show("loading", false);
     show("consoles", true);
-    show("activity", true);
+    show("activity", !lessonSession());
     trafficPanel();
   }
 
