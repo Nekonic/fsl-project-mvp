@@ -5,7 +5,7 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-15 (the range is one range host, `cr-range`, running four
+Updated: 2026-11-15, round 20 deployed (the range is one range host, `cr-range`, running four
 slots as compose projects; on `dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
@@ -134,6 +134,26 @@ Internet.
   Live check: `vm-terminal.sh cr-kali` in a detached tmux session in the
   platform container reached the slot's Kali and kept a command's output
   with no client attached; a browser reload through ttyd was not tried.
+- Answer-blind walk round 20 (2026-11-15, `docs/DECISIONS.md`
+  "Answer-blind walk round 20"): three blockers fixed and checked live with
+  Playwright. F1: the shown check carries `dev: true`, so c1 L2's DevTools
+  answers send the picked row (method, path, status and parameter each
+  failed with DevTools closed and passed with the search row picked,
+  session 1867). F2: GNS3 maps load with fresh node ids per import and only
+  the platform opens them (`provision.py` opens nothing); after a reset all
+  four slots drew their own map (DMZ 10.30.1-4.0/24, 11 nodes, sessions
+  1863-1866). F3: silent polls wait 90 s, not 15 min; c2 L3 step 8 passed
+  26 s after the sort change made after sqlmap ended, with no reload
+  (session 1868). The other 25 findings and the slop list are in the
+  entry; scoring meaning unchanged. Store copied first to
+  `~/.cache/fsl-work/backup-safe/db-20261114T2113Z-r20.sqlite3`. Deployed:
+  `range-host-live` at 7529bee with images by that commit, so `POST slot/`
+  replaced the range host and `configure/` left four slots READY; `cr-gns3`
+  was recreated, which cleared slot 1's wedged switch TAPs. Full
+  `bin/verify` on the platform VM at a820c7c: 782 s start to result;
+  acceptance 91 passed, 0 failed, 0 errors, 1 skipped in 726 s across 14
+  processes; unit and API 1562 passed (896 + 666); ratchet no regression
+  (`core_loc` 584, `dependencies` 6, `services` 5).
 - Test speed (on `dev`, `docs/DECISIONS.md` "The acceptance
   suite runs one sqlmap case and fills the slots as they free"): the
   red-team run fires one sqlmap case (the dump; `CR_SQLMAP_VARIANTS=1` fires
@@ -198,10 +218,10 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 1. The live cloud on `dev`: set `platform.ref` back to `dev` and
    `compute.slots` as the user wants (four now).
 2. A fresh answer-blind review round of both courses and a scenario on the
-   round-19 fixes (`docs/DECISIONS.md` "Answer-blind walk round 19"),
-   checking on the range that a reload keeps the Kali run (tmux), that the
-   DevTools guard accepts a learner who picks the row, and that the F3 and
-   F5 queries the cards now ask for pass; then the user's own test. The live map now shows the router's own symbol (`host-router.svg`).
+   round-20 fixes (`docs/DECISIONS.md` "Answer-blind walk round 20"):
+   the single Next/Skip button, the lesson end that waits, the trimmed F6
+   objectives table and result page, and the c2 brief's address line; then
+   the user's own test. The live map now shows the router's own symbol (`host-router.svg`).
 3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
    or `union select` even where it is loaded: a detection gap to measure
    (round 16, `docs/DECISIONS.md`).

@@ -1539,6 +1539,13 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       scenario pages say what happened once; the round's slop list removed;
       `<fail>.broad` names the matched URI and a header-only rule is not
       broad.
+- [x] 2026-11-15: the answer-blind walk of round 20 (`docs/DECISIONS.md`
+      "Answer-blind walk round 20"): c1 L2's DevTools answers pass again
+      (the shown check carries `dev`), every slot's map loads (fresh GNS3
+      node ids per import, the platform the one loader), a hung check poll
+      no longer freezes a step; one Next/Skip button, a lesson end that
+      waits, scoring internals and repeated callouts removed. Checked live
+      with Playwright on the deployed range.
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 
