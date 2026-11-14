@@ -30,7 +30,7 @@ def checked(one):
     wargames.checked_scenarios([one], known(), "test", tuple(wargames.WARGAMES["board"]["defense"]),
                                {"community", "plain", "readers"})
 
-def opened(scenario_id="2.1", **fields):
+def briefed(scenario_id="2.1", **fields):
     session = Session.objects.create(scenario="board", baseline=dict(TRUTH), course_scenario=scenario_id,
                                      defense=wargames.scenario_run(scenario_id)["defense"], **fields)
     with patch("api.scenario_run.customers.start", lambda session, adapter, body: None), \
@@ -38,6 +38,9 @@ def opened(scenario_id="2.1", **fields):
         scenario_run.begin(session, None, wargames.defense("board", session.defense))
     session.refresh_from_db()
     return session
+
+def opened(scenario_id="2.1", **fields):
+    return scenario_run.start_clock(briefed(scenario_id, **fields))
 
 def attacker(output):
     fired = []
@@ -179,6 +182,26 @@ def test_an_attack_fires_only_once_it_is_due():
     assert run_at(session, 300) == [], "a fired attack is not fired again"
     entry = session.scenario_state["schedule"][0]
     assert (entry["state"], entry["outcome"]) == ("fired", "held")
+
+def test_the_clock_waits_for_the_briefing_and_starts_when_the_learner_starts(client):
+    session = briefed()
+    declared = wargames.scenario_run("2.1")
+    status = client.get(f"/api/sessions/{session.pk}/scenario/").json()
+
+    assert (status["started"], status["time_left"]) == (False, declared["minutes"] * 60)
+    assert run_at(session, 3600) == [], "no attack fires while the learner reads the briefing"
+    assert session.scenario_state["windows"] == [], "nor does the final check open by itself"
+
+    later = timezone.now() + timedelta(minutes=7)
+    with patch("api.scenario_run.ensure_running", lambda: None), patch("api.scenario_run.timezone.now", lambda: later):
+        started = client.post_json(f"/api/sessions/{session.pk}/scenario/start/").json()
+        again = client.post_json(f"/api/sessions/{session.pk}/scenario/start/").json()
+    session.refresh_from_db()
+
+    assert started["started"] is True and started["time_left"] == declared["minutes"] * 60
+    assert again["opened_at"] == started["opened_at"] == later.isoformat(), "starting twice does not restart the clock"
+    assert scenarios.at(session.scenario_state["schedule"][0]["due"]) == later + timedelta(seconds=240)
+    assert run_at(session, 239) == [] and run_at(session, 240) == [SQLMAP]
 
 def test_the_schedule_survives_a_restart_and_resumes_an_interrupted_attack():
     session = opened()

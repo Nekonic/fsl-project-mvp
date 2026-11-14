@@ -96,18 +96,18 @@ def kali_run(session, lesson_id, step_id, marker, **meta):
 def test_every_foundation_has_its_words():
     table = tables()
     for course in wargames.courses("board"):
-        keys = [f"{course['text']}.{part}" for part in ("title", "summary", "brief", "done")]
+        keys = [f"{course['text']}.{part}" for part in ("title", "brief", "done")]
         keys += [f"lesson.ref.{card}.title" for card in course.get("reference", [])]
         assert not [key for key in keys if key not in table], course["id"]
     for taught in wargames.foundations("board"):
         prefix, last = taught["text"], taught["steps"][-1]["id"]
-        keys = [f"{prefix}.{part}" for part in ("title", "summary", "learns")]
+        keys = [f"{prefix}.title"]
         keys += [f"lesson.ref.{card}.title" for card in taught.get("reference", [])]
         for shown in taught["steps"]:
             check, named = shown["check"], shown["id"]
             keys += [f"{prefix}.{part}.{named}" for part in ("title", "coach", "ok")]
             keys += [f"{prefix}.label.{named}"] if check["kind"] in ("answer", "choice") else []
-            keys += [f"{prefix}.{part}.{named}" for part in ("callout", "nudge", "hint")] if named != last else []
+            keys += [f"{prefix}.{part}.{named}" for part in ("nudge", "hint")] if named != last else []
             keys += [f"lesson.choice.{option}" for option in check.get("options", [])]
             keys += [f"{prefix}.wrong.{named}.{code}" for code in [*check.get("known", []),
                                                                   *(rule["says"] for rule in check.get("wrong_if", []))]]

@@ -234,7 +234,7 @@ LOCATION
 browser.serve((request) => {
   if (request.route === "/api/wargames/") {
     return {body: [{id: "board", name: "Board", description: "", cases: 1,
-      foundations: [{id: "f1", order: 1, title: "lesson.range.title", learns: "lesson.range.learns", minutes: 10,
+      foundations: [{id: "f1", order: 1, title: "lesson.range.title", minutes: 10,
                      steps: 4}]}]};
   }
   if (request.route === "/api/range/ready/") {

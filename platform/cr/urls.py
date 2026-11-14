@@ -28,6 +28,7 @@ urlpatterns = [
     path("api/sessions/<int:session_id>/waf/", views.session_waf),
     path("api/sessions/<int:session_id>/traffic/", views.session_traffic),
     path("api/sessions/<int:session_id>/scenario/", scenario_run.scenario_status),
+    path("api/sessions/<int:session_id>/scenario/start/", scenario_run.scenario_start),
     path("api/sessions/<int:session_id>/scenario/verify-window/", scenario_run.verify_window),
     path("api/sessions/<int:session_id>/scenario/hints/", scenario_run.scenario_hints),
     path("api/sessions/<int:session_id>/triage/", scenario_run.triage),

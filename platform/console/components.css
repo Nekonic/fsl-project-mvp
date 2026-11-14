@@ -1,4 +1,3 @@
-.brand-mark { width: 24px; height: 24px; border-radius: 6px; background: var(--heading); color: var(--text-inverse); font-size: 11px; display: inline-grid; place-items: center; }
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 8px; font-weight: 600; font-size: 13px; white-space: nowrap; border: 1px solid transparent; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -22,11 +21,10 @@
 .badge-fail { background: var(--danger); color: var(--text-inverse); }
 .badge-pass { background: var(--success); color: var(--text-inverse); }
 .dot { width: 6px; height: 6px; border-radius: 999px; display: inline-block; flex-shrink: 0; }
-.dot-neutral, .dot-muted { background: var(--text-faint); }
-.dot-blue { background: var(--primary); }
-.dot-ok, .dot-ok-strong, .dot-pass { background: var(--success); }
+.dot-neutral { background: var(--text-faint); }
+.dot-ok { background: var(--success); }
 .dot-warn { background: var(--warning); animation: pulse 2s ease-in-out infinite; }
-.dot-red, .dot-red-strong, .dot-fail { background: var(--danger); }
+.dot-red { background: var(--danger); }
 @keyframes pulse { 50% { opacity: 0.4; } }
 .label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
 .tab { padding: 10px 2px; font-size: 13px; color: var(--text-muted); border-bottom: 2px solid transparent; font-weight: 600; }
@@ -40,7 +38,6 @@
 .pop-wide { width: 480px; }
 .pop-arrow { position: absolute; width: 12px; height: 12px; background: var(--panel); transform: rotate(45deg); }
 .note-shadow { box-shadow: var(--shadow-note); }
-.lift:hover { box-shadow: var(--shadow-lift); }
 .table-head th { font-size: 12px; color: var(--text-muted); font-weight: 500; background: var(--subdued); text-align: left; padding: 8px 12px; }
 .table-row td { padding: 10px 12px; border-top: 1px solid var(--border-subdued); }
 .rail-line { flex: none; align-self: stretch; border-left: 1px solid var(--border); margin: 6px 2px; }

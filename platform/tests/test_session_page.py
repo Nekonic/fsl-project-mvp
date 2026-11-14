@@ -109,7 +109,7 @@ def test_restarting_a_course_starts_its_first_lesson_with_that_lesson_s_defence(
       return {label, posted: browser.requests.filter((r) => r.method === "POST" && r.route === "/api/sessions/")};
     """)
 
-    assert seen["result"]["label"] == worded("session.restart.course", 1)
+    assert seen["result"]["label"] == worded("session.restart"), "one name for the restart action"
     assert [request["body"] for request in seen["result"]["posted"]] == [
         {"scenario": "board", "guidance": True, "lesson": "f1", "defense": "full"}], (
         "restarting from F6 with F6's posture would open F1 on the overbroad WAF exclusion")
@@ -128,19 +128,19 @@ ONLY_F5 = COURSE.replace('{id: "f1", started_at: "2026-10-18T09:00:00Z"}, ', "")
     '{id: "f1", steps: 2, passed: 2, skipped: 0, hints: 0}, ', "").replace(
     '{id: "f6", steps: 2, passed: 2, skipped: 0, hints: 0}', '{id: "f6", steps: 2, passed: 0, skipped: 0, hints: 0}')
 
-def test_a_session_that_worked_only_lesson_5_restarts_lesson_5_and_says_the_same_lesson(client):
+def test_a_session_that_worked_only_lesson_5_restarts_lesson_5(client):
     shown = restarted(client, ONLY_F5)
 
     assert 'lessons: [{id: "f5"' in ONLY_F5 and 'course: [{id: "f5"' in ONLY_F5
-    assert shown["label"] == worded("session.restart.lesson"), (
+    assert shown["label"] == worded("session.restart")
+    assert shown["posted"] == [{"scenario": "board", "guidance": True, "lesson": "f5", "defense": "full"}], (
         "the console moved on to lesson 6 by itself; one lesson worked restarts that lesson")
-    assert shown["posted"] == [{"scenario": "board", "guidance": True, "lesson": "f5", "defense": "full"}]
 
-def test_a_course_begun_at_lesson_5_restarts_from_lesson_5_and_names_it(client):
+def test_a_course_begun_at_lesson_5_restarts_from_lesson_5(client):
     shown = restarted(client, COURSE.replace('{id: "f1", started_at: "2026-10-18T09:00:00Z"}, ', "").replace(
         '{id: "f1", steps: 2, passed: 2, skipped: 0, hints: 0}, ', ""))
 
-    assert shown["label"] == worded("session.restart.course", 5)
+    assert shown["label"] == worded("session.restart")
     assert shown["posted"] == [{"scenario": "board", "guidance": True, "lesson": "f5", "defense": "full"}]
 
 READY = """
@@ -260,26 +260,25 @@ browser.serve((request) => {
 });
 """.replace("FOUNDATIONS", FOUNDATIONS)
 
-def test_an_opened_lesson_session_says_what_to_do_next_and_lists_only_the_learner_s_own_requests(client):
+def test_an_opened_lesson_session_offers_one_console_button_and_its_step_and_no_activity_panel(client):
     seen = open_page(client, "/session/1/", setup=LIVE, scenario=LAYOUT + """
-      return {layout: shown(), next: browser.text('session-next'), nextShown: !hidden('session-next'),
-              activity: browser.text('activity-list'), figures: browser.text('session-figures'),
-              tiles: browser.text('blue-tiles'), crumbs: browser.text('crumbs'), title: browser.text('session-title')};
+      return {layout: shown(), blue: browser.text('blue'), red: !hidden('red'), figures: browser.text('session-figures'),
+              state: browser.text('session-state'), crumbs: browser.text('crumbs'), title: browser.text('session-title'),
+              asked: browser.requests.filter((r) => r.route === "/api/sessions/1/cases/").length};
     """)
     shown = seen["result"]
 
     assert seen["errors"] == []
     assert shown["layout"] == {
-        "loading": False, "session-card": True, "consoles": True, "activity": True, "scoreboard": False}
-    assert shown["nextShown"] and shown["next"]
-    assert worded("session.lesson_step", 1, 2, 1) in shown["figures"] and worded("session.lesson_step", 1, 2, 1) in shown["tiles"], (
+        "loading": False, "session-card": True, "consoles": True, "activity": False, "scoreboard": False}, (
+        "a lesson hides its automatic requests while open, so the activity panel would only ever be empty")
+    assert (shown["blue"], shown["red"], shown["asked"]) == (worded("session.blue.title"), False, 0)
+    assert shown["state"] == "", "a ready session needs no state label; only an opening one says so"
+    assert worded("session.lesson_step", 1, 2, 1) in shown["figures"], (
         "a step counter says which lesson it counts; six lessons each have steps")
     assert "903" not in shown["crumbs"] and worded("wargame.board.name") in shown["crumbs"], (
         "the trail names the wargame, not a session number")
     assert worded("common.session", 1) == shown["title"], "the session page itself keeps the number"
-    assert worded("score.kind.auto_benign") not in shown["activity"], (
-        "the lesson's own automatic request is the platform's, not something the learner ran")
-    assert worded("case.board-sqli-orderby-sqlmap") in shown["activity"]
 
 def test_a_session_that_cannot_be_read_says_so_instead_of_showing_an_empty_page(client):
     seen = open_page(client, "/session/1/", setup="""
@@ -325,7 +324,7 @@ def test_a_course_s_result_numbers_its_lessons_as_the_catalogue_does_and_says_it
     assert worded("course.attack.title") in shown["line"] and worded("session.course.span", 1, 3) in shown["line"], (
         "the attack course's lessons are 1 to 3 on the catalogue, so on its result too")
     assert worded("session.run.step", 2, 4) in shown["cases"] and worded("session.run.step", 3, 2) in shown["cases"]
-    assert shown["restart"] == worded("session.restart.course", 1)
+    assert shown["restart"] == worded("session.restart")
     assert shown["scores"] == worded("course.attack.scores")
     assert (shown["panels"], shown["noted"], shown["listed"]) == (True, True, True)
     assert (read["panels"], read["noted"], read["listed"]) == (False, False, False), (
@@ -333,15 +332,16 @@ def test_a_course_s_result_numbers_its_lessons_as_the_catalogue_does_and_says_it
     assert worded("session.lost") not in read["figures"]
     assert not [number for number in range(1, 7) if worded("session.run.lesson", number) in shown["scores"]]
 
-def test_one_case_sent_once_in_each_lesson_is_named_once_with_its_lessons_not_by_the_first_lesson(client):
+def test_one_case_sent_in_each_lesson_is_listed_per_lesson_in_the_table_and_not_restated_under_the_count(client):
     three = ATTACK_COURSE.replace('''        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: true, detections: 1, corroborated: false,
          lesson: "f5", step: "sqlmap", seed: false},''', '''        {name: "board-normal-search", malicious: false, detected: false, detections: 0, corroborated: null,
          lesson: "f5", step: null, seed: true},
         {name: "board-normal-search", malicious: false, detected: false, detections: 0, corroborated: null,
          lesson: "f6", step: null, seed: true},''')
     seen = open_page(client, "/session/1/", setup=three, scenario=SHOWN)
-    first = worded("session.run.named", worded("session.run.lesson", 1), worded("case.board-normal-search"))
 
     assert three != ATTACK_COURSE and seen["errors"] == []
-    assert worded("score.case_in_lessons", worded("case.board-normal-search"), "1, 2, 3") in seen["result"]["judged"]
-    assert worded("score.and_more", first, 2) not in seen["result"]["judged"]
+    assert all(worded("session.run.lesson", number) in seen["result"]["cases"] for number in (1, 2, 3))
+    assert worded("score.benign", 3, 3) in seen["result"]["judged"]
+    assert worded("case.board-normal-search") not in seen["result"]["judged"], (
+        "requests that passed are counted above and listed in the table; the count does not restate them")

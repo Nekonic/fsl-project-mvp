@@ -224,8 +224,7 @@ browser.serve((request) => {
   if (request.route === "/api/wargames/") {
     return {body: [
       {id: "board", name: "Board", description: "", cases: 1,
-       foundations: [{id: "f1", order: 1, title: "lesson.range.title", goal: "lesson.range.summary",
-                      learns: "lesson.range.learns", minutes: 10, level: "easy", defense: DECLARED,
+       foundations: [{id: "f1", order: 1, title: "lesson.range.title", minutes: 10, level: "easy", defense: DECLARED,
                       prerequisites: [], steps: 4}]},
       {id: "corp", name: "Corp", description: "", cases: 1, foundations: []},
     ]};
@@ -234,6 +233,21 @@ browser.serve((request) => {
   return {status: 404, body: {detail: "not served"}};
 });
 """
+
+def test_a_reload_without_the_browser_s_own_record_reopens_the_furthest_step_the_server_saw_reached(client):
+    reached = "range.progress = " + json.dumps({one: {"reached": "earlier", "hint": 0, "wrong": 0} for one in ids[:3]}) + ";"
+
+    def opened(kept):
+        seen = open_page(client, "/blue/1/", setup=kept + served() + reached, scenario="""
+          await frames();
+          return browser.text('step-count');
+        """)
+        assert seen["errors"] == []
+        return seen["result"]
+
+    assert opened("") == f"3 / {len(ids)}", "a new browser or a cleared store does not send the learner back to step 1"
+    assert opened('localStorage.setItem("cr-lesson-step-1-f9", "2");') == f"2 / {len(ids)}", (
+        "a step the learner went back to in this browser is kept")
 
 def test_a_foundation_starts_guided_on_the_defense_it_declares_and_the_wargame_starts_unguided(client):
     def started(declared, button):
@@ -1623,9 +1637,8 @@ def test_a_terminal_step_draws_no_ring_or_callout_while_the_terminal_is_not_conn
     assert result["connecting"] == {"ring": False, "callout": False}, "no guessed band over a pane that shows only its connecting message"
     assert result["connected"] == {"ring": True, "callout": True, "top": 116, "text": "The verdict"}
 
-def test_a_closed_pane_rings_the_open_button_with_its_own_callout_a_solo_step_has_no_ring_and_a_note_target_has_no_pane_button(client):
+def test_a_closed_pane_rings_the_open_button_without_a_callout_a_solo_step_has_no_ring_and_a_note_target_has_no_pane_button(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS['lesson.open.callout'] = 'Open it here first.';
       placeAt('step-open', box(1060, 300, 120, 28));
       {to("search")}
       await frames();
@@ -1646,10 +1659,9 @@ def test_a_closed_pane_rings_the_open_button_with_its_own_callout_a_solo_step_ha
 
     assert seen["errors"] == []
     assert result["closed"]["ring"] == {"left": 1054, "top": 299, "width": 132, "height": 30}
-    assert (result["closed"]["ringShown"], result["closed"]["dim"], result["closed"]["callout"]) == (
-        True, False, "Open it here first.")
-    assert (result["closed"]["floating"], result["closed"]["below"]) == (False, True), (
-        "the line follows the button inside the note and never floats over the task text")
+    assert (result["closed"]["ringShown"], result["closed"]["dim"], result["closed"]["callout"]) == (True, False, None), (
+        "the button already says what it opens; the ring points at it with no line under it")
+    assert result["closed"]["floating"] is False, "no callout floats over the task text either"
     assert result["solo"] == {"button": True, "ring": False, "callout": False}, "the last step keeps the button and gets no ring"
     assert result["button"] is False, "the objectives card is on screen whichever pane is open"
 

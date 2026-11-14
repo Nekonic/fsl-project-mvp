@@ -50,7 +50,6 @@
       --code-button: #1E293B;
       --shadow-pop: 0 10px 30px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(15, 23, 42, 0.06);
       --shadow-note: 0 20px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.1);
-      --shadow-lift: 0 4px 12px rgba(15, 23, 42, 0.08);
       --font-sans: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
       --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
@@ -83,9 +82,7 @@
 </head>
 <body class="bg-page text-body font-sans text-[14px] {% block body_class %}{% endblock %}">
   <header class="h-14 shrink-0 bg-panel border-b border-line px-4 sm:px-6 flex items-center gap-4 sm:gap-6">
-    <a href="/" class="flex items-center gap-2 font-bold text-[15px] text-heading shrink-0">
-      <span class="brand-mark" data-t="common.brand_mark"></span><span data-t="common.brand" class="hidden sm:inline"></span>
-    </a>
+    <a href="/" data-t="common.brand" class="font-bold text-[15px] text-heading shrink-0"></a>
     <nav id="crumbs" class="flex items-center gap-2 text-muted text-[13px] min-w-0 truncate"></nav>
     <div class="ml-auto flex items-center gap-4 text-[13px] text-muted shrink-0">
       <span id="range-health" class="hidden items-center gap-1.5"></span>
@@ -166,12 +163,12 @@
 
     const LESSON_STEP_KEY = (id, lesson) => `cr-lesson-step-${id}-${lesson}`;
 
-    function lessonStep(id, lesson) {
+    function lessonStep(id, lesson, fallback = 1) {
       try {
         const kept = Number(localStorage.getItem(LESSON_STEP_KEY(id, lesson)));
-        return Number.isInteger(kept) && kept > 0 ? kept : 1;
+        return Number.isInteger(kept) && kept > 0 ? kept : fallback;
       } catch (error) {
-        return 1;
+        return fallback;
       }
     }
 
@@ -235,8 +232,8 @@
       ).join('<span class="text-faint">/</span>');
     }
 
-    function badge(text, tone, dot) {
-      return `<span class="badge badge-${tone}">${dot ? `<span class="dot dot-${tone}"></span>` : ""}${esc(text)}</span>`;
+    function badge(text, tone) {
+      return `<span class="badge badge-${tone}">${esc(text)}</span>`;
     }
 
     function caseOutcome(malicious, meta) {

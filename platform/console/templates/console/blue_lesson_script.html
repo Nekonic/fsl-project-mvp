@@ -157,11 +157,13 @@ function folding(toggle, body, mark, heard = () => {}) {
   return set;
 }
 
-function noteControls() {
+function noteControls(started) {
   landed = firstOpen();
   note = { open: landed || kept(NOTE_KEY, {}).open !== false };
   field("lesson").classList.remove("hidden");
-  field("note-strip-text").textContent = t("lesson.note.heading");
+  const heading = t(started && started.course_scenario ? "scenario.note.heading" : "lesson.note.heading");
+  field("note-heading").textContent = heading;
+  field("note-strip-text").textContent = heading;
   field("lesson-collapse").addEventListener("click", () => setNote({ open: false }));
   field("note-strip").addEventListener("click", () => setNote({ open: true }));
   folding(field("steps-toggle"), field("lesson-step-list"));
@@ -174,7 +176,6 @@ function shownSection(id, shown = true) {
 }
 
 function noteLesson(taught) {
-  field("lesson-title").textContent = t(`${taught.text}.title`);
   field("stretch-text").textContent = localized(`${taught.text}.stretch`, "");
   stretchShown(false);
 }
@@ -1241,7 +1242,8 @@ function landingPane(steps, at) {
 
 function coach(prefix, declared) {
   const steps = declared.map((step) => ({ ...step, point: step.point || {}, check: step.check || {} }));
-  let at = Math.min(steps.length, lessonStep(sessionId(), lessonId())) - 1;
+  const keptStep = lessonStep(sessionId(), lessonId(), 0);
+  let at = Math.min(steps.length, keptStep || 1) - 1;
   const foundation = Boolean(session && session.lesson && session.lesson.group === "foundations");
   const nextLesson = foundation ? session.next_lesson : null;
   const course = foundation ? session.lesson_course : null;
@@ -1294,6 +1296,7 @@ function coach(prefix, declared) {
   }
 
   learn(session);
+  if (!keptStep) at = Math.max(0, steps.map((step) => Boolean(recordOf(step).reached)).lastIndexOf(true));
   let briefed = !(course && course.lessons[0] === lessonId() && localized(`${course.text}.brief`, "")
     && !Object.values(progress).some((kept) => kept && kept.reached));
 
@@ -1448,8 +1451,14 @@ function coach(prefix, declared) {
     const taught = listed.filter((one) => taken.has(one.id));
     courseWhole = taught.length > 0 && taught.length === listed.length;
     if (finished) field("step-task").textContent = finishedText();
-    list.innerHTML = taught.map((one) => `<li class="flex items-center gap-2" data-course="${esc(one.id)}">
-      <span class="text-success font-bold">✓</span><span>${esc(t(one.title))}</span></li>`).join("");
+    const counted = (one) => (one.id === lessonId()
+      ? { steps: steps.length, passed: steps.filter(done).length }
+      : (session.course || []).find((row) => row.id === one.id));
+    list.innerHTML = taught.map((one) => {
+      const count = counted(one);
+      return `<li class="flex flex-wrap items-center gap-x-2" data-course="${esc(one.id)}"><span>${esc(t(one.title))}</span>${
+        count && count.steps ? `<span class="text-muted">${esc(t("lesson.steps.passed", count.passed, count.steps))}</span>` : ""}</li>`;
+    }).join("");
   }
 
   async function courseScores(line) {
@@ -1498,7 +1507,7 @@ function coach(prefix, declared) {
     } else if (kind === "loot") {
       html = `<form data-act="loot" class="flex flex-col gap-2"><textarea data-act="value" rows="4" spellcheck="false"
         class="w-full border border-line rounded-md p-2 bg-panel font-mono text-[11.5px] leading-tight"
-        placeholder="${esc(t("lesson.loot.placeholder"))}"></textarea><button class="self-start btn btn-sm btn-blue">${
+></textarea><button class="self-start btn btn-sm btn-blue">${
         esc(t("lesson.loot.submit"))}</button></form>`;
     }
     const before = runOf(at);
@@ -1772,9 +1781,8 @@ function coach(prefix, declared) {
     const crowd = [...crowdOf(kind, found, rect), ...cells];
     const zones = kind === "map" ? mapZones() : [];
     const openBox = target && !rect && waiting ? boxOf(field("step-open")) : null;
-    const opening = openBox ? localized("lesson.open.callout", "Open it here first.") : "";
     const layout = [boxOf(field("pane")), boxOf(field("lesson"))].map(rounded).join("/");
-    const drawn = [rounded(rect) || "none", rounded(openBox), at, found.stage, callout, opening, note.open, waiting, finished, crowd.length, zones.length, layout].join("|");
+    const drawn = [rounded(rect) || "none", rounded(openBox), at, found.stage, callout, note.open, waiting, finished, crowd.length, zones.length, layout].join("|");
     if (drawn !== last) {
       last = drawn;
       const holder = titled ? boxOf(section) : rulesHolder(marked, found);
@@ -1783,7 +1791,7 @@ function coach(prefix, declared) {
       const aimed = rect
         ? { crowd, coreCrowd: kind === "kibana" ? [...(found.core || []), ...cells] : null, within: found.within || null, holder, titled, kind, bands: kind === "term" ? bandRows : [], zones, anchor: pressing, line: found.line >= 0, typing: kind === "term" && found.stage !== "run_done" && PROMPT_ONLY.test(target.spec.match || "") }
         : { kind: "open", anchor: field("step-open") };
-      highlight(rect || openBox, rect ? callout : opening, aimed);
+      highlight(rect || openBox, rect ? callout : "", aimed);
       coveredSay((found.stage === "covered" || stuck) && !rect ? callout : "");
       opener();
     }

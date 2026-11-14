@@ -7234,3 +7234,70 @@ The answers a Kibana check now needs a query for: F3 `count`, `upstream`,
 `slipped`; F5 `undetected`, `source`, `scanner`, `still`; F6 `alerts`, `seen`.
 Each pattern is the point's own `kql` (or a `url` condition where the point has
 none), so a learner who follows the card writes a query that passes.
+
+## 2026-11-14 — Console text and UI slop removed
+
+The user found the console full of generated-looking text and decoration. Two
+read-only reviews (a tone review of 101 Korean strings, a UI review of 27 items
+and two bugs, both at ed69a8c) were applied on the round-18 code. Where they
+disagreed, removal won over rewording. What a step asks or checks, the answers,
+and what either score means are unchanged; the scenario YAML keeps `minutes`
+(the run length).
+
+What went, and why:
+
+| Where | Removed | Why |
+|---|---|---|
+| Catalogue | Page title and subtitle, the brand mark, time estimates, category, difficulty, scenario class and guidance chips, "학습 내용:" and "실습 내용:" labels with the dot-joined `learns` lists, course and group subtitles, lesson-number pills | Unmeasured guesses (minutes, difficulty), metadata that repeats the title or the section numbering, and decoration. The outer heading is "대상 시스템", since it holds lessons, scenarios and the wargame |
+| Catalogue | "이 레슨부터 시작", "워게임 시작" | One action, one name: every row's button is "시작". The wargame's "안내 없이…" line became its row text |
+| Catalogue | Kind pill, "시나리오" column naming the target on every row, the `›` chevrons | Each session row names what was taken: course and lesson, scenario number and title, or wargame and target |
+| Session page | Console card with tiles (Kibana / 로그 조회, step progress again), coloured bar and hover lift, "블루팀 콘솔을 열어…" | One "블루팀 콘솔 열기" button (and "레드팀 콘솔 열기" in a wargame) |
+| Session page | Kind pill, "준비 완료" pill with a pulsing dot | The breadcrumb names the kind; a state shows only while opening |
+| Session page | "최근 활동 · 자동 새로고침" in lessons | A lesson hides its automatic requests while open, so the panel was always empty |
+| Result page | The score explanation printed three times (course paragraph, under score 1, a grey box of four notes) | One line per score: how a loss is decided and that undetected costs double; that a run counts once and is not added to score 1. Data-driven warnings stay. Course 2 keeps one line: Website-pane XSS searches are not in score 2 |
+| Result page | "탈취된 목표 0/3" in the header, the "점수 1 · 주 점수" / "점수 2 · 참고" kickers, the 탈취 여부 and 탐지 여부 columns and the pill legend, the "✓ 레슨 1 — 일반 검색 외 2건" line | The score card already shows the count; one plain result column says kept, lost and detected, or lost and undetected; the request table lists what passed |
+| Result page | "레슨 n부터 다시 시작", "같은 레슨 다시 시작", "같은 시나리오 다시 시작" | One label, "다시 시작" (a scenario's result said "같은 레슨") |
+| Lesson end | Green checks on every lesson and "레슨을 완료했습니다" after 0 steps passed | Each lesson shows "N단계 중 n단계 통과"; the line is "레슨이 끝났습니다" |
+| Briefings | "과정 안내" kicker, the reference footnote and closing paragraphs that said it twice, the scenario briefing's chips and "약 15분" | The time field already says the length; "약" was wrong for a fixed timer |
+| Lesson note | "먼저 이 버튼을 누르세요." under every open button; ring callouts that only name the ringed thing (search box, kali, board.com, DMZ, 관리망); the note's subtitle repeating the lesson title; "IDS 룰" header bar; the objectives card's "목표" title; placeholders that echo the question ("값", "숫자", "메서드", "세 자리 숫자" and the like, and the loot box's) | The button and the ring point already. The note is "레슨 노트" in lessons and "시나리오 노트" in scenarios. Format examples ("예: 192.0.2.10") stay |
+| Strings and API | The six lesson and two course `summary` strings, the scenario `summary` strings, `learns`, and the `goal`/`learns` card fields | Never shown, or shown only in the removed catalogue lines |
+| CSS | `.brand-mark`, `.lift` and `--shadow-lift`, the unused dot tones, the badge's dot | Nothing uses them any more |
+
+Tone fixes (Korean-first, practitioner wording): no glosses of field terms
+(레드팀, 해시, CVE, Core Rule Set, 퍼센트 인코딩, Paranoia Level, ModSecurity
+변수); no scoring internals in learner text (how the platform judges a dump,
+"결과 옆에 표시됩니다"); measured-by lines no longer restate the goal or the
+time line; one word per thing (실습 환경, 로그, 정상 검색, rule_id, 버전, 최종
+점검, 힌트 보기); "…중…" for every loading line.
+
+Two open questions, decided:
+
+- `lesson.fix.*` keeps only its first sentence. The second restated
+  `scenario.risk.*`, and the closed session's page renders the same debrief
+  (its "남은 위험" section) right under the verdict banner, so no explanation is
+  lost on the result page.
+- "경로 추적" for path traversal was not found in a primary source. A Korean
+  security press article keeps the English ("Path Traversal 취약점",
+  boannews.com idxno=107983), so the console says "Path Traversal"
+  (`docs/vocabulary.md`).
+
+Not applied: "감점 합계 —" in F6's objectives card stays, because the dash
+hides the penalty while F6's detection step is unanswered and the total would
+give the answer away. `lesson.kibana.none` already said "로그". The F6 card keeps
+its 탈취 여부 and 탐지 여부 columns: F6's steps name them.
+
+Two bugs fixed:
+
+- **A scenario's clock ran during its briefing.** The clock, the attack
+  schedule and the final check were set when the session opened. Now `begin`
+  writes `started: false`; the engine does nothing for such a session and
+  `time_left` is the whole run. The briefing's Start posts
+  `POST /api/sessions/<id>/scenario/start/`, which sets them from that moment,
+  once; `verify-window` starts the clock first if it has not. Sessions from
+  before carry no `started` key and count as started.
+- **A reload could drop the lesson position.** The step shown lived only in
+  the browser (`cr-lesson-step-<id>-<lesson>`); a browser without it (a new
+  browser, a cleared store, a fresh test context) opened on step 1. The console
+  now opens on the furthest step the server recorded as `reached` when the
+  browser has no record of its own; a step the learner went back to in the same
+  browser is kept.
