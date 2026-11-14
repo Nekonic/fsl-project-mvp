@@ -93,6 +93,20 @@ Internet.
   acceptance 91 passed, 0 failed, 0 errors, 1 skipped in 706 s across 14
   processes; unit and API 1532 passed (815 + 717 in two processes beside it);
   ratchet no regression (`core_loc` 584, `dependencies` 6, `services` 5).
+- Console slop removed (2026-11-14, `docs/DECISIONS.md` "Console text and
+  UI slop removed"): the tone review's 101 strings and the UI review's 27
+  items applied on the round-18 code, removal over rewording. The catalogue
+  has no time estimates, chips, labels or pills and one "시작" per row; the
+  session page is one console button; the result page explains each score
+  once; lesson ends count steps passed. Two bugs fixed: a scenario's clock
+  starts at the briefing's Start (`POST .../scenario/start/`), and a browser
+  without its step record reopens the furthest reached step. Store copied
+  first to `~/.cache/fsl-work/backup-safe/db-20261114T1502Z-slop.sqlite3`;
+  the live platform runs `range-host-live` (pulled in `/opt/cr`, platform
+  restarted; `POST slot/` found the range host standing, `configure/` left
+  four slots READY). The platform listens on its own address, not
+  127.0.0.1: drive the API from the operator machine. Before and after
+  screenshots are in the session scratchpad (`slop-after/`).
 - Test speed (on `dev`, `docs/DECISIONS.md` "The acceptance
   suite runs one sqlmap case and fills the slots as they free"): the
   red-team run fires one sqlmap case (the dump; `CR_SQLMAP_VARIANTS=1` fires
