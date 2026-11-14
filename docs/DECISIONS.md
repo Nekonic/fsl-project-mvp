@@ -7073,3 +7073,97 @@ problems. The rulings that change behaviour, not only wording:
   WAF (`changes_waf` on the catalogue card).
 - **Still open.** F5's source step asks kali's address, which the map shows;
   the walk did not flag it, and it is left for the next round.
+
+## 2026-11-14 — The acceptance suite runs one sqlmap case and fills the slots as they free
+
+The user asked for the test runs, above all the live acceptance suite in the
+full `bin/verify` (about 25 minutes, 91 tests), to be cut as far as they go
+without weakening what they prove.
+
+Measured first (the platform VM, four slots, read-only where a session was
+not needed):
+
+| Where the time went | Seconds |
+|---|---|
+| unit suite before the acceptance suite, one process on the 2-vCPU platform VM | 300 |
+| warm-up session, then the wait for its slot's reset | about 120 |
+| red-team run: six sqlmap cases (40, 40, 51, 51, 54, 53) | 290 of 306 |
+| `origins_session`: 30 fires of the control case with `origin: rotate`, read by no test since 2026-10-16 | 64 |
+| `test_range_isolation`'s nmap scan of the `mgmt` /24 | 136-152, and 44 of 258 hosts skipped by `--host-timeout` |
+| each `range.run` call (a Django process in the platform container, then ssh) | about 3, before the command runs |
+| a slot reset alone | 53 |
+| the solo phase (two-session modules) after every worker had finished | 193 |
+| worker imbalance: `test_range_isolation` had no entry in `durations.json` (weighed 10 s, took 546 s) | worker 3 904 s, worker 2 159 s |
+
+What changed and why each keeps the proof:
+
+- **One sqlmap case in the red-team run.** `full_run` passes
+  `redteam/run.py --cases` a copy of `board.yaml` written in the platform
+  container without the five sqlmap variants; `board-sqli-orderby-sqlmap`
+  (the dump) and every benign case stay. No acceptance test reads a variant's
+  verdict: they reached only the totals, which the remaining cases keep
+  above zero (TP and TN). The cases stay in `redteam/cases/` (the gate-1
+  ruling that kept them) and the console and lessons fire them as before.
+  `CR_SQLMAP_VARIANTS=1 bin/verify` runs all six, for measuring detection
+  against every variant's real traffic (the known gap: sid 9000001 misses
+  many ORDER BY payloads). The tool path from an origin (`test_tool_cases`)
+  still fires the dump from `hk`.
+- **The rotation fires go.** `test_rotation_does_not_stay_in_one_place` was
+  deleted on 2026-10-16 ("every test states its need or goes"); its 30
+  attacks and the unread `map` read stayed in `origins_session`.
+- **Probes side by side.** `range.run_side_by_side` runs a host's probes in
+  one shell and returns each one's exit code and output, so
+  `test_range_isolation` and `test_judge_isolation` make three calls per
+  module instead of thirty-odd. Every probe is the same command from the
+  same container; the attacker's batch now also carries the two
+  connections that must succeed (the WAF and the board through the edge),
+  so the batch is shown able to see a reach.
+- **The scan scans every host.** `--min-hostgroup 256 --min-parallelism 256`
+  scans the 258 addresses in 4-5 s with no host skipped (live: the WAF's
+  port 80 is still reported open when listed); before, 44 hosts hit
+  `--host-timeout 90s` and were never scanned. The test now fails when nmap
+  skips a host.
+- **Fewer sessions.** Each close costs a slot reset (53 s alone, 101 s for
+  three at once). `baseline_rules` opened a session only to read the rules:
+  each rule-changing session now checks its own rules on open
+  (`runs_the_declared_rules`), which checks every such session rather than
+  one. `test_enabling_brings_the_rule_back` reads the `disabled` session
+  after its attack is scored instead of opening its own. The containment
+  checks (`test_judge_isolation`, `test_range_isolation`) use the standing
+  session; the planted-link test plants in it and closes it, and reads the
+  host afterwards by slot (`run(..., slot=N)`) instead of opening a session
+  to name one. The lesson's `minimal` session closes with the guided one
+  instead of staying open through both course walks.
+- **Groups fill the slots.** `bin/acceptance` starts one pytest process per
+  group of modules sharing a session fixture and starts the next as soon as
+  a slot is free, instead of four fixed workers and a solo phase after them.
+  `test_concurrent_sessions` takes two slots and starts first; the
+  two-session lesson test moved into it, so `test_lesson` takes one.
+  Tests that tied two fixtures into one process moved to a module of the
+  fixture they read (the rule tests to `test_rule_changes`, the
+  empty-objectives check to `test_objectives`, the check before silencing to
+  `test_board`, the real rule set's credit to `test_acceptance`).
+- **The unit suite runs beside the acceptance suite.** Split over up to four
+  processes by file size; in a full run it starts first at `nice -n 19` and
+  its result is printed after the acceptance suite. `--fast` runs the same
+  split in the foreground (locally 79 s to 37 s).
+- **The warm-up does not wait for its reset.** It validates the rules on its
+  own session's sensors before closing it; the acceptance processes wait for
+  a ready slot themselves.
+
+Not cut, and why:
+
+- `PLANTED_WAIT` (60 s): it proves an absence (no host file shipped), so it
+  stays a fixed wait.
+- The three corp sessions: the binlog tests assert the credited set is
+  exactly the one exploit's key, which one shared session could not show.
+- `test_window_correlation` and `test_strategy_comparison` keep a session
+  each: `test_strategy_comparison` asserts exactly one TP per strategy.
+- The slot reset itself (53 s): platform and range code, not the suite.
+
+First live run of the new suite (`bin/acceptance` alone, four slots, before
+the scope fix in `test_judge_isolation`): 86 passed, 5 errors (that fixture),
+1 skipped in 662 s across 14 processes, against 1101 s across 6 processes
+for the previous full `bin/verify`. The red-team group took 99 s (540 s
+before), `test_range_isolation` 224 s (546 s; its scan 10 s, 153 s before).
+The full `bin/verify` on this branch is in `docs/state/now.md`.

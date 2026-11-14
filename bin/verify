@@ -28,6 +28,39 @@ case "${1:-}" in
     ;;
 esac
 
+UNIT_JOBS="${CR_UNIT_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)}"
+[ "$UNIT_JOBS" -gt 4 ] && UNIT_JOBS=4
+UNIT_NICE=""
+
+unit_suite() {
+  local dir n=0 code=0 file list
+  dir="$(mktemp -d)"
+  for file in $(cd platform && ls -S "$@"); do
+    echo "$file" >> "$dir/$((n % UNIT_JOBS)).files"
+    n=$((n + 1))
+  done
+  if [ "$n" = 0 ]; then
+    echo "no unit test files among: $*"
+    rm -rf "$dir"
+    return 1
+  fi
+  for list in "$dir"/*.files; do
+    (cd platform && $UNIT_NICE "$PY" -m pytest $(cat "$list") -q -p no:cacheprovider \
+      > "${list%.files}.log" 2>&1; echo $? > "${list%.files}.code") &
+  done
+  wait
+  for list in "$dir"/*.files; do
+    if [ "$(cat "${list%.files}.code")" = 0 ]; then
+      tail -1 "${list%.files}.log"
+    else
+      code=1
+      cat "${list%.files}.log"
+    fi
+  done
+  rm -rf "$dir"
+  return "$code"
+}
+
 section() { printf '\n\033[1m== %s\033[0m\n' "$1"; }
 fail()    { printf '\033[31mFAIL\033[0m %s\n' "$1"; FAILED=1; }
 ok()      { printf '\033[32mok\033[0m   %s\n' "$1"; }
@@ -61,12 +94,18 @@ section "unit + API tests"
 if [ "$CHANGED" = 1 ] && [ "$unit_kind" = none ]; then
   ok "no unit test reaches the change"
 elif [ "$CHANGED" = 1 ] && [ "$unit_kind" = some ]; then
-  if (cd platform && "$PY" -m pytest $unit_files -q -p no:cacheprovider); then
+  if unit_suite $unit_files; then
     ok "platform/tests, the files the change reaches"
   else
     fail "platform/tests, the files the change reaches"
   fi
-elif (cd platform && "$PY" -m pytest tests -q -p no:cacheprovider); then
+elif [ "$FAST" = 0 ] && [ "$CHANGED" = 0 ]; then
+  UNIT_LOG="$(mktemp)"
+  UNIT_NICE="nice -n 19"
+  (unit_suite $(cd platform && ls tests/test_*.py) > "$UNIT_LOG" 2>&1; echo $? >> "$UNIT_LOG.code") &
+  UNIT_PID=$!
+  echo "running in $UNIT_JOBS processes beside the acceptance suite, at the lowest CPU priority"
+elif unit_suite $(cd platform && ls tests/test_*.py); then
   ok "platform/tests"
 else
   fail "platform/tests"
@@ -127,20 +166,31 @@ fi
 CR_ACCEPTANCE_SESSIONS="$(mktemp)"
 export CR_ACCEPTANCE_SESSIONS
 
-opened="$("$PY" - <<'OPENSTACK'
-import json, os, sys, urllib.error, urllib.request
+RULES_SAID="$(mktemp)"
+opened="$("$PY" - "$RULES_SAID" <<'OPENSTACK'
+import json, os, pathlib, sys, urllib.error, urllib.request
 
-def post(path, body):
+def post(path, body, timeout=900):
     request = urllib.request.Request(
         os.environ["CR_PLATFORM_URL"] + path, json.dumps(body).encode(),
         {"Content-Type": "application/json"},
     )
-    return json.load(urllib.request.urlopen(request, timeout=900))
+    return json.load(urllib.request.urlopen(request, timeout=timeout))
 
 def refused(error):
     if isinstance(error, urllib.error.HTTPError):
         return json.load(error).get("detail") or error
     return error
+
+def rules_read(session_id):
+    content = pathlib.Path("deploy/suricata/rules/local.rules").read_text()
+    try:
+        return "ok" if post("/api/rules/validate/", {"content": content, "session": session_id}, 60)["ok"] else "not ok"
+    except urllib.error.HTTPError as answer:
+        said = json.load(answer)
+        return said.get("output") or said.get("detail") or str(answer)
+    except OSError as error:
+        return str(error)
 
 try:
     session = post("/api/sessions/", {})
@@ -150,6 +200,7 @@ except OSError as error:
 with open(os.environ["CR_ACCEPTANCE_SESSIONS"], "a") as ids:
     ids.write(f"{session['id']}\n")
 print(session["id"])
+pathlib.Path(sys.argv[1]).write_text(rules_read(session["id"]))
 try:
     post(f"/api/sessions/{session['id']}/close/", {})
 except OSError as error:
@@ -171,45 +222,14 @@ else
   exit 1
 fi
 
-if "$PY" - <<'RULECHECK'
-import json, os, pathlib, sys, time, urllib.request
-
-def resetting():
-    try:
-        with urllib.request.urlopen(os.environ["CR_PLATFORM_URL"] + "/api/range/ready/", timeout=30) as answer:
-            readiness = json.load(answer)
-    except (OSError, ValueError):
-        return False
-    slots = readiness.get("slots") or [readiness.get("slot") or {}]
-    return any(slot.get("phase") in ("RESETTING", "REBUILDING")
-               or (slot.get("reset") or {}).get("state") == "running" for slot in slots)
-
-deadline = time.monotonic() + 1800
-while resetting() and time.monotonic() < deadline:
-    time.sleep(2)
-
-body = json.dumps(
-    {"content": pathlib.Path("deploy/suricata/rules/local.rules").read_text()}
-).encode()
-request = urllib.request.Request(
-    os.environ["CR_PLATFORM_URL"] + "/api/rules/validate/", body,
-    {"Content-Type": "application/json"},
-)
-try:
-    sys.exit(0 if json.load(urllib.request.urlopen(request, timeout=30))["ok"] else 1)
-except urllib.error.HTTPError as refused:
-    said = json.load(refused)
-    print(said.get("output") or said.get("detail") or refused, file=sys.stderr)
-    sys.exit(1)
-except OSError as error:
-    print(error, file=sys.stderr)
-    sys.exit(1)
-RULECHECK
-then
+if [ "$(cat "$RULES_SAID")" = ok ]; then
   ok "suricata can read its config"
 else
-  fail "suricata could not validate deploy/suricata/rules/local.rules (reason above)"
+  cat "$RULES_SAID"
+  echo
+  fail "suricata could not validate deploy/suricata/rules/local.rules on session $opened's sensors (reason above)"
 fi
+rm -f "$RULES_SAID"
 
 section "acceptance (live stack)"
 if "$PY" bin/acceptance ${only:+--only "$only"}; then
@@ -228,6 +248,15 @@ fi
 
 if [ "$CHANGED" = 0 ]; then
   live_acceptance ""
+  section "unit + API tests (beside the acceptance suite)"
+  wait "$UNIT_PID"
+  cat "$UNIT_LOG"
+  if [ "$(cat "$UNIT_LOG.code")" = 0 ]; then
+    ok "platform/tests"
+  else
+    fail "platform/tests"
+  fi
+  rm -f "$UNIT_LOG" "$UNIT_LOG.code"
 elif [ "$acceptance_kind" != none ] && [ "$LIVE" = 1 ]; then
   live_acceptance "$acceptance_modules"
 elif [ "$acceptance_kind" != none ]; then

@@ -486,7 +486,9 @@ geolocated TW.
   be `application/json`.
 - **`bin/verify`** restarts the platform first (waitress never reloads), opens
   and closes one session to prove a session stack comes up (else TP 0 reads as
-  a failed defence), refuses a stack another checkout brought up, and prunes
+  a failed defence) and that its sensors read the rule file, runs the unit
+  suite beside the acceptance suite at the lowest CPU priority, refuses a
+  stack another checkout brought up, and prunes
   only the sessions its run listed in `CR_ACCEPTANCE_SESSIONS`. `--changed
   [BASE]` (`bin/select-tests`) runs only the unit tests the change reaches and
   the ratchet, `--live` adds the acceptance modules it reaches, `--fast` runs

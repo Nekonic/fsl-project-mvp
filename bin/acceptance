@@ -26,15 +26,17 @@ IDLE = (
     "test_origin_placement",
     "test_waf_geolocation",
 )
-SOLO = (
+TWO_SESSIONS = (
     "test_concurrent_sessions",
-    "test_lesson",
 )
 STANDING_STACK = (
     "test_attacker_reach",
     "test_board_exfil",
     "test_event_time",
+    "test_judge_isolation",
+    "test_range_isolation",
 )
+POLL_SECONDS = 1.0
 
 
 @dataclass
@@ -43,6 +45,7 @@ class Process:
     role: str
     modules: list[str]
     estimate: float = 0.0
+    slots: int = 1
 
 
 @dataclass
@@ -167,15 +170,18 @@ def seconds(group: list[str], durations: dict[str, float]) -> float:
     return sum(durations.get(module, UNMEASURED_SECONDS) for module in group)
 
 
-def balanced(groups: list[list[str]], durations: dict[str, float], workers: int) -> list[Process]:
-    processes = [Process(f"worker {n + 1}", "worker", []) for n in range(workers)]
-    for group in sorted(groups, key=lambda g: (-seconds(g, durations), g)):
-        lightest = min(processes, key=lambda p: (p.estimate, p.name))
-        lightest.modules += group
-        lightest.estimate += seconds(group, durations)
-    for process in processes:
-        process.modules.sort(key=lambda module: (module not in STANDING_STACK, module))
-    return [process for process in processes if process.modules]
+def slots_needed(group: list[str]) -> int:
+    return 2 if set(group) & set(TWO_SESSIONS) else 1
+
+
+def queued(groups: list[list[str]], durations: dict[str, float]) -> list[Process]:
+    ordered = sorted(groups, key=lambda g: (-slots_needed(g), -seconds(g, durations), g))
+    processes = []
+    for n, group in enumerate(ordered):
+        modules = sorted(group, key=lambda module: (module not in STANDING_STACK, module))
+        processes.append(Process(f"group {n + 1}", "worker", modules, seconds(group, durations),
+                                 slots_needed(group)))
+    return processes
 
 
 def plan(workers: int, tests: Path = TESTS, durations: dict[str, float] | None = None,
@@ -183,17 +189,17 @@ def plan(workers: int, tests: Path = TESTS, durations: dict[str, float] | None =
     durations = durations if durations is not None else measured_durations()
     every = [module for module in modules(tests) if not only or module in only]
     idle = [module for module in every if module in IDLE]
-    alongside = [Process("idle", "idle", idle, seconds(idle, durations))] if idle else []
+    alongside = [Process("idle", "idle", idle, seconds(idle, durations), 0)] if idle else []
+    rest = [module for module in every if module not in IDLE]
     if workers <= 1:
-        rest = [module for module in every if module not in IDLE]
-        return alongside + [Process("worker 1", "worker", rest, seconds(rest, durations))], []
-    solo = [module for module in every if module in SOLO]
+        return alongside, [Process("group 1", "worker", rest, seconds(rest, durations))] if rest else []
     sharing = {module: shared | ({"a standing stack"} if module in STANDING_STACK else set())
-               for module, shared in shared_by_module(tests).items()
-               if module in every and module not in IDLE and module not in SOLO}
-    parallel = balanced(bonded(sharing), durations, workers)
-    after = [Process("solo", "solo", solo, seconds(solo, durations))] if solo else []
-    return alongside + parallel, after
+               for module, shared in shared_by_module(tests).items() if module in rest}
+    return alongside, queued(bonded(sharing), durations)
+
+
+def next_to_start(waiting: list[Process], free: int) -> Process | None:
+    return next((process for process in waiting if process.slots <= free), None)
 
 
 def measured_durations(path: Path = DURATIONS) -> dict[str, float]:
@@ -271,11 +277,28 @@ def _finished(process: Process, running, log, report: Path) -> tuple[int, Totals
         return code or 1, Totals(errors=1)
 
 
-def run_phase(processes: list[Process], workers: int, logs: Path, extra: list[str]) -> tuple[list[int], Totals]:
-    started = [_started(process, workers, logs, extra) for process in processes]
+def run_all(alongside: list[Process], waiting: list[Process], slots: int, logs: Path,
+            extra: list[str]) -> tuple[list[int], Totals]:
+    running = [_started(process, slots, logs, extra) for process in alongside]
+    waiting = list(waiting)
+    free = slots
     codes, merged = [], Totals()
-    for process, running, log, report in started:
-        code, totals = _finished(process, running, log, report)
+    while waiting or running:
+        while (process := next_to_start(waiting, free)) is not None:
+            waiting.remove(process)
+            free -= process.slots
+            running.append(_started(process, slots, logs, extra))
+        done = next((each for each in running if each[1].poll() is not None), None)
+        if done is None:
+            if not running:
+                print(f"{waiting[0].name} needs {waiting[0].slots} slots and the range has {slots}",
+                      flush=True)
+                return codes + [1], merged.add(Totals(errors=1))
+            time.sleep(POLL_SECONDS)
+            continue
+        running.remove(done)
+        free += done[0].slots
+        code, totals = _finished(*done)
         codes.append(code)
         merged = merged.add(totals)
     return codes, merged
@@ -296,13 +319,14 @@ def main(argv: list[str] | None = None) -> int:
     args, extra = parser.parse_known_args(argv)
     platform = os.environ.get("CR_PLATFORM_URL", "http://localhost:8000").rstrip("/")
     workers = args.workers or workers_the_range_allows(platform)
-    together, after = plan(workers, only=set(filter(None, args.only.split(","))))
+    alongside, waiting = plan(workers, only=set(filter(None, args.only.split(","))))
 
-    print(f"{workers} {'worker' if workers == 1 else 'workers'} "
+    print(f"{workers} {'slot' if workers == 1 else 'slots'} "
           f"(max_sessions at {platform}/api/range/ready/)")
     if args.plan:
-        for process in together + after:
-            print(f"{process.name} ({process.estimate:.0f}s): {' '.join(process.modules)}")
+        for process in alongside + waiting:
+            print(f"{process.name} ({process.estimate:.0f}s, {process.slots} slots): "
+                  f"{' '.join(process.modules)}")
         return 0
 
     already = open_sessions(platform)
@@ -311,12 +335,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     began = time.monotonic()
     logs = Path(tempfile.mkdtemp(prefix="cr-acceptance-"))
-    codes, totals = run_phase(together, workers, logs, extra)
-    if after:
-        print("\nthe modules that hold two sessions at once, alone:", flush=True)
-        later, solo = run_phase(after, workers, logs, extra)
-        codes += later
-        totals = totals.add(solo)
+    codes, totals = run_all(alongside, waiting, workers, logs, extra)
     if args.save_durations:
         save_durations(totals.per_module)
     print(f"\n== acceptance: {totals.line(time.monotonic() - began, len(codes))}")

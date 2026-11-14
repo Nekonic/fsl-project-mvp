@@ -7,18 +7,22 @@ from urllib.parse import urlsplit
 import pytest
 import requests
 
-from conftest import PLATFORM_URL
-from range import ATTACKER, BOARD, declared_roles, run
+from conftest import PLATFORM_URL, STANDING
+from range import ATTACKER, BOARD, declared_roles, run, run_side_by_side
 
 PLATFORM = declared_roles()["scorer"]
 PUBLISHED = {
     8000: ("/api/range/ready/", "substrate", "the scoring API"),
     9200: ("/", "cluster_name", "Elasticsearch"),
 }
+PANES = ("kali", "waf")
 
 
 @pytest.fixture(scope="module")
 def session(stack_is_up):
+    standing = STANDING.id()
+    if standing is not None:
+        return standing
     opened = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600)
     assert opened.status_code == 201, opened.text
     return opened.json()["id"]
@@ -49,10 +53,28 @@ def gateway_of(role: str, session: int) -> str:
     pytest.fail(f"{role} has no default route: {table}")
 
 
-def fetched(role: str, url: str, session: int, *extra: str) -> str:
-    return run(role, [
-        "curl", "-s", "--max-time", "4", "--noproxy", "*", *extra, url,
-    ], session=session).stdout
+def fetch(url: str, *extra: str) -> list[str]:
+    return ["curl", "-s", "--max-time", "4", "--noproxy", "*", *extra, url]
+
+
+def terminal(address: str, pane: str) -> list[str]:
+    return fetch(f"http://{address}:8000/vm-terminal/{pane}/",
+                 "-o", "/dev/null", "-w", "%{http_code}", "-H", "Host: localhost:8000")
+
+
+@pytest.fixture(scope="module")
+def answered(session, platform_addresses):
+    found = {}
+    for role in (ATTACKER, BOARD):
+        addresses = sorted({gateway_of(role, session)} | platform_addresses)
+        commands = {(address, port): fetch(f"http://{address}:{port}{PUBLISHED[port][0]}")
+                    for address in addresses for port in PUBLISHED}
+        if role == BOARD:
+            commands |= {(address, pane): terminal(address, pane)
+                         for address in sorted(platform_addresses) for pane in PANES}
+        ran = run_side_by_side(role, commands, session=session)
+        found[role] = {key: result.stdout for key, result in ran.items()}
+    return found
 
 
 def answered_by(body: str, key: str) -> bool:
@@ -64,14 +86,11 @@ def answered_by(body: str, key: str) -> bool:
 
 @pytest.mark.parametrize("role", [ATTACKER, BOARD])
 @pytest.mark.parametrize("port", sorted(PUBLISHED))
-def test_a_host_in_the_range_cannot_reach_what_is_published_for_the_operator(
-    session, platform_addresses, role, port,
-):
+def test_a_host_in_the_range_cannot_reach_what_is_published_for_the_operator(answered, role, port):
     path, key, what = PUBLISHED[port]
-    addresses = {gateway_of(role, session)} | platform_addresses
     reached = sorted(
-        address for address in addresses
-        if answered_by(fetched(role, f"http://{address}:{port}{path}", session), key)
+        address for (address, asked), body in answered[role].items()
+        if asked == port and answered_by(body, key)
     )
 
     assert not reached, (
@@ -81,16 +100,10 @@ def test_a_host_in_the_range_cannot_reach_what_is_published_for_the_operator(
     )
 
 
-def test_a_host_in_the_range_is_refused_the_terminal(session, platform_addresses):
-    answered = {
-        (address, pane): fetched(
-            BOARD, f"http://{address}:8000/vm-terminal/{pane}/", session,
-            "-o", "/dev/null", "-w", "%{http_code}", "-H", "Host: localhost:8000",
-        ).strip()
-        for address in platform_addresses
-        for pane in ("kali", "waf")
-    }
+def test_a_host_in_the_range_is_refused_the_terminal(answered, platform_addresses):
+    codes = {(address, pane): answered[BOARD][(address, pane)].strip()
+             for address in platform_addresses for pane in PANES}
 
-    assert all(code in ("403", "000") for code in answered.values()), (
-        f"{answered}: 403 is the terminal's auth_request refusing a range host and 000 is "
+    assert all(code in ("403", "000") for code in codes.values()), (
+        f"{codes}: 403 is the terminal's auth_request refusing a range host and 000 is "
         f"no route to the platform; an empty answer means curl never ran")

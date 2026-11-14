@@ -10,7 +10,7 @@ import requests
 
 from conftest import (
     PLATFORM_URL, TARGET_PUBLIC, credited_to, from_attacker, run_redteam,
-    score_when_ready, seen_by_both_engines, target_code,
+    runs_the_declared_rules, score_when_ready, seen_by_both_engines, target_code,
 )
 from range import ATTACKER, BOARD, missing, run
 
@@ -231,7 +231,6 @@ def origins_session(stack_is_up):
         elsewhere = next((o for o in origins if not o["default"]), None)
         places = (("front", ""),) + ((("elsewhere", elsewhere["id"]),) if elsewhere else ())
         case_ids = {place: fired_case_id(session_id, CONTROL, origin) for place, origin in places}
-        rotated = [fire(session_id, CONTROL, "rotate") for _ in origins]
         tool = fire(session_id, SQLMAP, "hk", timeout=900)
         refused = fire(session_id, SQLMAP, "dmz", timeout=120)
         close_session(session_id)
@@ -253,10 +252,6 @@ def origins_session(stack_is_up):
                 }
                 for place, case_id in case_ids.items()
             },
-            "map": requests.get(
-                f"{PLATFORM_URL}/api/sessions/{session_id}/map/", timeout=120
-            ).json(),
-            "rotated": rotated,
             "tool": tool,
             "refused": refused,
         }
@@ -296,9 +291,10 @@ def tuned_session(stack_is_up):
 
 
 @pytest.fixture(scope="session")
-def rules_session(stack_is_up, baseline_rules):
+def rules_session(stack_is_up):
     with shared_session() as session_id:
         seen = {"session_id": session_id}
+        baseline_rules = runs_the_declared_rules(session_id)
         seen["rules_before_invalid"] = rules_of(session_id)
         seen["invalid"] = apply_rules(NOT_A_RULE, session_id)
         seen["rules_after_invalid"] = rules_of(session_id)

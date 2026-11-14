@@ -143,3 +143,23 @@ def test_the_seam_does_not_need_the_platform_to_run():
         "the seam must not borrow platform/range/, which is only importable "
         "with platform/ as the working directory"
     )
+
+def test_commands_run_side_by_side_report_each_its_own_output_and_exit_code():
+    commands = [["sh", "-c", "sleep 1; printf 'a\\nb'"], ["sh", "-c", "exit 3"], ["sh", "-c", "sleep 1; echo \"it's\""]]
+    done = subprocess.run(seam.side_by_side(commands), capture_output=True, text=True, timeout=30)
+
+    ran = seam.parts(done.stdout, len(commands))
+
+    assert [(r.exit_code, r.stdout) for r in ran] == [(0, "a\nb"), (3, ""), (0, "it's\n")]
+
+def test_commands_run_side_by_side_take_as_long_as_the_slowest_not_the_sum():
+    commands = [["sleep", "2"] for _ in range(5)]
+    done = subprocess.run(["/usr/bin/time", "-p", *seam.side_by_side(commands)],
+                          capture_output=True, text=True, timeout=30)
+
+    seconds = float(next(line.split()[1] for line in done.stderr.splitlines() if line.startswith("real")))
+    assert seconds < 6, done.stderr
+
+def test_a_side_by_side_command_that_reported_nothing_is_an_outage():
+    with pytest.raises(seam.RangeUnavailable):
+        seam.parts(f"{seam.PART_MARK}0\n\n{seam.CODE_MARK}0\n", 2)
