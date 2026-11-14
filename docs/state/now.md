@@ -70,7 +70,16 @@ Internet.
   1506 passed (5:00); acceptance 91 passed, 0 failed, 0 errors, 1 skipped in
   1101 s across 6 processes; ratchet no regression (`core_loc` 584,
   `dependencies` 6, `services` 5).
-- Test speed (branch `test-speed`, `docs/DECISIONS.md` "The acceptance
+- Answer-blind walk round 17 (2026-11-14): its fifteen findings were fixed
+  (`docs/DECISIONS.md` "Answer-blind walk round 17") and deployed (the live
+  platform runs `range-host-live` at e11eef8, images from GHCR by that
+  commit, the range host replaced by `POST slot/`). The stall on F4's last
+  check was the server: an alert was matched to any request within 5 s, so a
+  plain search 3.5 s after an attack inherited its alert; alerts now match a
+  request by URL. The full `bin/verify` below ran with that deploy live.
+  Left open for the next round: F5's source step asks kali's address, which
+  the map shows.
+- Test speed (on `dev`, `docs/DECISIONS.md` "The acceptance
   suite runs one sqlmap case and fills the slots as they free"): the
   red-team run fires one sqlmap case (the dump; `CR_SQLMAP_VARIANTS=1` fires
   all six), `bin/acceptance` starts a group per free slot, the containment
@@ -133,9 +142,9 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 
 1. The live cloud on `dev`: set `platform.ref` back to `dev` and
    `compute.slots` as the user wants (four now).
-2. A fresh answer-blind review round of both courses on the round-16 fixes
-   (`docs/DECISIONS.md` "Answer-blind walk round 16"), then the user's own
-   test. The live map now shows the router's own symbol (`host-router.svg`)
+2. A fresh answer-blind review round of both courses on the round-17 fixes
+   (`docs/DECISIONS.md` "Answer-blind walk round 17"), judging F5's source
+   step that asks kali's address, then the user's own test. The live map now shows the router's own symbol (`host-router.svg`)
    and F1's DMZ callout outside the zone.
 3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
    or `union select` even where it is loaded: a detection gap to measure
