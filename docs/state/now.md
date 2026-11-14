@@ -106,7 +106,11 @@ Internet.
   restarted; `POST slot/` found the range host standing, `configure/` left
   four slots READY). The platform listens on its own address, not
   127.0.0.1: drive the API from the operator machine. Before and after
-  screenshots are in the session scratchpad (`slop-after/`).
+  screenshots are in the session scratchpad (`slop-after/`). Full
+  `bin/verify` on the platform VM at 53fd1c9: acceptance 91 passed,
+  0 failed, 0 errors, 1 skipped in 693 s across 14 processes; unit and API
+  1535 passed (853 + 682); ratchet no regression (`core_loc` 584,
+  `dependencies` 6, `services` 5; `product_loc` 27256, 191 below round 18).
 - Test speed (on `dev`, `docs/DECISIONS.md` "The acceptance
   suite runs one sqlmap case and fills the slots as they free"): the
   red-team run fires one sqlmap case (the dump; `CR_SQLMAP_VARIANTS=1` fires
