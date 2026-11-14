@@ -458,6 +458,12 @@ def filled(command: str, waf: crs.Layout) -> str:
 def lesson_defense(wargame_id: str, lesson_id: str) -> str:
     return lesson(wargame_id, lesson_id=lesson_id).get("defense", DEFAULT_DEFENSE)
 
+SCORED_CHECKS = ("kali", "replay")
+
+def _course_scored(wargame_id: str, course: dict) -> bool:
+    return any(step["check"].get("kind") in SCORED_CHECKS for taught in foundations(wargame_id)
+               if taught["id"] in course["lessons"] for step in taught.get("steps", []))
+
 def judged(wargame_id: str) -> bool:
     return objective_model(wargame_id) != "none"
 
@@ -568,7 +574,8 @@ def _summarise(wargame: dict[str, Any]) -> dict[str, Any]:
         "benign": len(loaded) - attacks,
         "objectives": len(objectives(wargame["id"])["tiers"]) if wargame["objective_model"] != "none" else 0,
         "foundations": [_foundation_card(taught) for taught in foundations(wargame["id"])],
-        "courses": [{"id": course["id"], "title": f"{course['text']}.title", "lessons": list(course["lessons"])}
+        "courses": [{"id": course["id"], "title": f"{course['text']}.title", "lessons": list(course["lessons"]),
+                     "scored": _course_scored(wargame["id"], course)}
                     for course in courses(wargame["id"])],
         "scenarios": [scenario_card(one) for one in scenarios(wargame["id"])],
         "category": wargame.get("category") or "",

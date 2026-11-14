@@ -85,6 +85,7 @@ LESSON_STEP_STATES = ("reached", "skipped")
 WORKED_MARKS = ("passed", "skipped", "hint")
 RECENT_ALERTS = 600
 SHOWN_CHECK = ("form", "options", "leg")
+QUOTED_WILDCARD = re.compile(r':\s*"[^"]*\*[^"]*"')
 SWITCH_OF = re.compile(r"\{switch:([\w.-]+)\}")
 OPERATOR_WARNINGS = ("score.warning.no_marker", "score.warning.no_benign")
 SCHEDULE = ("attacks", "completion")
@@ -538,6 +539,8 @@ def _judge(session, taught, step, body, kept):
         given = body.get("answer")
         if not isinstance(given, str) or not given.strip():
             raise BadRequest(f'"answer" must be the text given for step {step_id!r}, got {given!r}')
+        if "kql" in check and QUOTED_WILDCARD.search(str(body.get("query") or "")):
+            return False, ["lesson.check.wrong.kql_quoted", []]
         if "kql" in check and not re.search(check["kql"], str(body.get("query") or "")):
             return False, [f"{prefix}.wrong.{step_id}.kql", []]
         accepted = _accepted(session, check, taught)
@@ -1796,7 +1799,7 @@ def _course(session):
     declared = {taught["id"]: taught for taught in wargames.foundations(session.scenario)
                 if not course or taught["id"] in course["lessons"]}
     taken = session.lessons or [{"id": session.lesson}]
-    return [{"id": one["id"], "steps": len(declared[one["id"]].get("steps", [])),
+    return [{"id": one["id"], "text": declared[one["id"]]["text"], "steps": len(declared[one["id"]].get("steps", [])),
              **lesson.help_counts(lesson.records(session.lesson_steps, one["id"])),
              "passed": sum(1 for kept in lesson.records(session.lesson_steps, one["id"]).values() if kept.get("passed"))}
             for one in taken if one["id"] in declared]
@@ -1818,7 +1821,7 @@ def _shown_check(session, taught, check):
     about = check.get("about")
     match = (check.get("match") or (check.get("benign") or {}).get("sent")
              or (_taught_check(taught, about).get("match") if taught and isinstance(about, str) else None))
-    return shown | ({"match": match} if match else {})
+    return shown | ({"match": match} if match else {}) | ({"dev": True} if "dev" in check else {})
 
 def _shown_point(session, point):
     zone = ((point or {}).get("map") or {}).get("zone")

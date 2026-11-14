@@ -19,7 +19,6 @@
 
 <div id="confirm" class="hidden card p-4 mb-5 max-w-xl">
   <p data-t="session.close.consequence" class="text-body text-[13px] mb-3"></p>
-  <p data-t="session.close.rebuilds" class="text-muted text-[13px] mb-3"></p>
   <div class="flex gap-3">
     <button id="confirm-close" data-t="session.close.confirm" class="btn btn-sm btn-red"></button>
     <button id="confirm-keep" data-t="session.close.keep" class="btn btn-sm btn-ghost"></button>
@@ -62,7 +61,6 @@
   <section id="course" class="hidden card p-5 mb-5 text-[13px]">
     <h2 data-t="session.course.heading" class="font-semibold text-heading mb-2"></h2>
     <ul id="course-rows" class="divide-y divide-line-subdued"></ul>
-    <p id="course-scores" class="hidden text-muted text-[13px] mt-2"></p>
   </section>
   <div id="verdict" class="hidden card p-5 mb-5 flex flex-wrap items-center gap-5 border-l-4"></div>
   <section id="debrief" class="hidden card p-5 mb-5 flex flex-col gap-3 text-[13px]"></section>
@@ -113,7 +111,6 @@
           <th data-t="score.col.kind"></th>
           <th data-t="score.col.rule_matches"></th>
           <th data-t="score.col.outcome"></th>
-          <th data-t="score.col.mechanism"></th>
         </tr>
       </thead>
       <tbody id="case-rows"></tbody>
@@ -162,9 +159,7 @@
   const startedLessons = () => takenLessons().filter(begun);
   const restartLesson = () => (startedLessons().length ? startedLessons()[0].id : session.lesson_id);
   const courseNumbers = () => startedLessons().map((taken) => lessonNumber(taken.id)).filter(Boolean);
-  const courseText = () => (takenCourse() ? String(takenCourse().title || "").replace(/\.title$/, "") : "");
-  const courseNote = () => (courseText() ? localized(`${courseText()}.scores`, "") : "");
-  const showsScores = () => !lessonSession() || !takenCourse() || Boolean(courseNote());
+  const showsScores = () => !lessonSession() || !takenCourse() || Boolean(takenCourse().scored);
   const lessonPrefix = (card) => String(card && card.title || "").replace(/\.title$/, "");
   const seeded = (row) => Boolean(row.seed || (row.meta && row.meta.seed));
   const sender = () => badge(t("session.activity.red"), "red");
@@ -183,10 +178,7 @@
   };
 
   function lessonProgress() {
-    const step = lessonStep(id, session.lesson_id);
-    const number = lessonNumber(session.lesson_id);
-    return number ? keyed("session.lesson_step", `Step ${step}/${lessonSteps()} (lesson ${number})`, step, lessonSteps(), number)
-      : t("main.step", step, lessonSteps());
+    return t("main.step", lessonStep(id, session.lesson_id), lessonSteps());
   }
 
   function header(taken, total) {
@@ -329,9 +321,7 @@
     }
     const nothing = t(session.course_scenario ? "score.no_attacks_run" : "score.no_cases");
     if (!parts.length) parts.push(`<p class="text-muted">${esc(nothing)}</p>`);
-    const unproven = caught.filter((row) => row.corroborated === false).length;
-    const notes = [t("score.one_case_once")];
-    if (unproven) notes.push(t("score.not_corroborated", caught.length, unproven));
+    const notes = [];
     (score.warnings || []).forEach(([key, ...values]) => notes.push(t(key, ...warningValues(key, values))));
     field("judgement").innerHTML = parts.join('<div class="border-t border-line-subdued"></div>') + `
       <div class="text-[12px] text-muted leading-relaxed space-y-1">
@@ -341,9 +331,6 @@
       const right = row.malicious === Boolean(row.detected);
       const word = row.malicious ? (row.detected ? "score.caught" : "score.missed") : (row.detected ? "score.wrongly_blocked" : "score.passed");
       const outcome = `<span class="${right ? "text-success" : "text-danger"}">${esc(t(word))}</span>`;
-      const mechanism = !row.malicious || !row.detected || row.corroborated === null
-        ? `<span class="text-faint">—</span>`
-        : `<span class="${row.corroborated ? "text-success" : "text-muted"}">${esc(t(row.corroborated ? "common.yes" : "common.no"))}</span>`;
       return `
         <tr class="table-row">
           <td class="pl-5 text-heading"${lessonSession() ? "" : ` title="${esc(row.name)}"`}>${esc(caseLabel(row.name))}${
@@ -351,9 +338,8 @@
           <td>${esc(t(seeded(row) ? "score.kind.auto_benign" : row.malicious ? "score.kind.attack" : "score.kind.benign"))}</td>
           <td>${esc(row.detections)}</td>
           <td>${outcome}</td>
-          <td>${mechanism}</td>
         </tr>`;
-    }).join("") || `<tr class="table-row"><td class="pl-5 text-muted" colspan="5">${esc(t("score.no_cases"))}</td></tr>`;
+    }).join("") || `<tr class="table-row"><td class="pl-5 text-muted" colspan="4">${esc(t("score.no_cases"))}</td></tr>`;
     show("score-cases", showsScores() && (perCase.length > 0 || !session.course_scenario));
   }
 
@@ -418,8 +404,6 @@
     const taken = takenLessons();
     show("course", lessonSession() && taken.length > 0);
     const counted = Array.isArray(session.course) ? session.course : [];
-    field("course-scores").textContent = courseNote();
-    show("course-scores", Boolean(courseNote()));
     field("course-rows").innerHTML = taken.map((one, at) => ({ one, at, until: at + 1 < taken.length ? taken[at + 1].started_at : session.ended_at }))
       .filter(({ one, at }) => begun(one, at)).map(({ one, until }) => {
       const number = lessonNumber(one.id);
@@ -430,7 +414,6 @@
           ${number ? `<span class="text-muted">${esc(t("session.run.lesson", number))}</span>` : ""}
           <span class="font-semibold text-heading">${esc(card ? t(card.title) : one.id)}</span>
           ${done ? `<span class="text-muted">${esc(t("session.course.steps", done.steps, done.passed))}</span>` : ""}
-          ${done && done.skipped ? `<span class="text-muted">${esc(t("session.course.skipped", done.skipped))}</span>` : ""}
           ${done && done.retried ? `<span class="text-muted">${esc(t("session.course.retried", done.retried))}</span>` : ""}
           <span class="ml-auto text-faint">${esc(t("main.minutes_spent", minutesBetween(one.started_at, until)))}</span>
         </li>`;

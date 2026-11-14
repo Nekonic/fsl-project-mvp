@@ -754,8 +754,8 @@ def test_a_wrong_map_address_says_it_is_another_device_s_without_naming_it_and_a
     with on_the_range(), on_map(read_slot()):
         mapped = answer(client, session, "board_ip", WAF)
     reading = opened("f3")
-    searched = browsed("/search/?q=kim0413", 200)
-    logged = http_event(reading.browse_marker, "/search/?q=kim0413", 200, src_ip=WAF, dest_ip=BOARD)
+    searched = browsed("/search/?q=lee0921", 200)
+    logged = http_event(reading.browse_marker, "/search/?q=lee0921", 200, src_ip=WAF, dest_ip=BOARD)
     with on_the_range(), on_map(read_slot()), patch.object(site, "kept", return_value=[searched]), indexed(logged), \
             quietly():
         read = answer(client, reading, "site_source", KALI)
@@ -773,3 +773,28 @@ def test_a_step_passed_after_a_wrong_answer_is_counted_as_retried(client):
 
     assert prefixed == ["lesson.miss.wrong.excluded.prefix", []]
     assert lesson.help_counts(session.lesson_steps["f6"])["retried"] == 1
+
+def test_the_search_step_that_says_not_to_use_the_example_word_does_not_pass_on_it(client):
+    session = opened("f3")
+    with patch.object(site, "kept", return_value=[browsed("/search/?q=kim0413", 200)]):
+        example = step(client, session, "search").json()
+    with patch.object(site, "kept", return_value=[browsed("/search/?q=kim0413", 200), browsed("/search/?q=lee0921", 200, 2)]):
+        own = step(client, session, "search").json()
+
+    assert example["passed"] is False and own["passed"] is True
+
+def test_the_sqli_error_status_is_read_from_the_request_s_row_in_devtools(client):
+    session = opened("f5")
+    kept = [browsed("/", 200, request_id=0), browsed("/?sort=posts_post.id)", 500)]
+    with patch.object(site, "kept", return_value=kept):
+        unpicked = answer(client, session, "error", "500", dev_request=None)
+        picked = answer(client, session, "error", "500", dev_request=1)
+
+    assert unpicked["reason"] == ["lesson.check.wrong.dev", []], "the page itself prints the status the step reads in DevTools"
+    assert picked["passed"] is True
+
+def test_a_quoted_wildcard_in_kql_gets_a_line_saying_the_star_is_literal_there(client):
+    session = opened("f3")
+    reply = answer(client, session, "count", "0", query='url : "*lee0921*"')
+
+    assert reply["passed"] is False and reply["reason"] == ["lesson.check.wrong.kql_quoted", []]

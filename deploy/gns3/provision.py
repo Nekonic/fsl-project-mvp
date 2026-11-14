@@ -16,7 +16,6 @@ SYMBOLS = HERE / "symbols"
 ADMIN = "admin"
 AUDITOR_ROLE = "Auditor"
 READY_WITHIN = 180
-DISPLAY_IMAGE = "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"
 DATA = Path(os.environ.get("CR_GNS3_DATA") or "/var/lib/cr-gns3")
 
 def admin_password() -> str:
@@ -77,30 +76,6 @@ def symbols(token: str) -> None:
         call("POST", f"/symbols/{symbol.name}/raw", token=token, raw=symbol.read_bytes())
         print(f"cr-gns3: symbol {symbol.name} uploaded", flush=True)
 
-def opened(token: str) -> None:
-    for project in call("GET", "/projects", token=token):
-        if project.get("status") == "opened":
-            print(f"cr-gns3: {project['name']} is open", flush=True)
-        else:
-            try:
-                call("POST", f"/projects/{project['project_id']}/open", {}, token)
-                print(f"cr-gns3: opened {project['name']}", flush=True)
-            except urllib.error.HTTPError as refused:
-                print(f"cr-gns3: {project['name']} stays closed: {refused.read().decode()[:400]}",
-                      file=sys.stderr, flush=True)
-                continue
-        started(token, project)
-
-def started(token: str, project: dict) -> None:
-    for node in call("GET", f"/projects/{project['project_id']}/nodes", token=token):
-        if node.get("status") == "started" or (node.get("properties") or {}).get("image") != DISPLAY_IMAGE:
-            continue
-        try:
-            call("POST", f"/projects/{project['project_id']}/nodes/{node['node_id']}/start", {}, token)
-        except urllib.error.HTTPError as refused:
-            print(f"cr-gns3: {project['name']} {node['name']} stays stopped: {refused.read().decode()[:400]}",
-                  file=sys.stderr, flush=True)
-
 def bootstrap() -> None:
     page = (HERE / "auditor.html").read_text().replace("__CR_AUDITOR__", json.dumps(auditor()).replace("<", "\\u003c"))
     (WEB_UI / BOOTSTRAP).write_text(page)
@@ -110,7 +85,6 @@ def provision() -> None:
     token = signed_in(ADMIN, admin_password())
     the_auditor(token)
     symbols(token)
-    opened(token)
 
 def api_key(name: str) -> None:
     token = signed_in(ADMIN, admin_password())

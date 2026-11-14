@@ -1,8 +1,11 @@
 import re
+from pathlib import Path
 
 import pytest
 
 from tests.browser import open_page, worded
+
+TEMPLATES = Path(__file__).resolve().parents[1] / "console" / "templates" / "console"
 
 pytestmark = pytest.mark.django_db
 
@@ -274,8 +277,7 @@ def test_an_opened_lesson_session_offers_one_console_button_and_its_step_and_no_
         "a lesson hides its automatic requests while open, so the activity panel would only ever be empty")
     assert (shown["blue"], shown["red"], shown["asked"]) == (worded("session.blue.title"), False, 0)
     assert shown["state"] == "", "a ready session needs no state label; only an opening one says so"
-    assert worded("session.lesson_step", 1, 2, 1) in shown["figures"], (
-        "a step counter says which lesson it counts; six lessons each have steps")
+    assert worded("main.step", 1, 2) in shown["figures"], "the subtitle names the lesson; the counter does not repeat it"
     assert "903" not in shown["crumbs"] and worded("wargame.board.name") in shown["crumbs"], (
         "the trail names the wargame, not a session number")
     assert worded("common.session", 1) == shown["title"], "the session page itself keeps the number"
@@ -297,8 +299,8 @@ def test_a_session_that_cannot_be_read_says_so_instead_of_showing_an_empty_page(
     assert shown["first"]["unread"]
     assert shown["retried"], "a busy server is asked again"
 
-COURSES = """[{id: "c1", title: "course.logs.title", lessons: ["f1", "f2", "f3"]},
-              {id: "c2", title: "course.attack.title", lessons: ["f4", "f5", "f6"]}]"""
+COURSES = """[{id: "c1", title: "course.logs.title", lessons: ["f1", "f2", "f3"], scored: false},
+              {id: "c2", title: "course.attack.title", lessons: ["f4", "f5", "f6"], scored: true}]"""
 ATTACK_COURSE = COURSE.replace('{id: "f1", started_at: "2026-10-18T09:00:00Z"}', '{id: "f4", started_at: "2026-10-18T09:00:00Z"}').replace(
     '{id: "f1", steps: 2, passed: 2, skipped: 0, hints: 0}', '{id: "f4", steps: 1, passed: 1, skipped: 0, hints: 0}').replace(
     'lesson: "f1", step: null, seed: true', 'lesson: "f4", step: null, seed: true').replace(
@@ -308,28 +310,25 @@ LOGS_COURSE = COURSE.replace('{id: "f5", started_at: "2026-10-18T09:10:00Z"}', '
     '{id: "f5", steps: 9, passed: 8, skipped: 1, hints: 0}', '{id: "f2", steps: 1, passed: 1, skipped: 0, hints: 0}').replace(
     '{id: "f6", steps: 2, passed: 2, skipped: 0, hints: 0}', '{id: "f3", steps: 1, passed: 1, skipped: 0, hints: 0}').replace(
     'foundations: [', f'courses: {COURSES}, foundations: [', 1)
-SCORED = SHOWN.replace("restart: browser.text('restart')}", "restart: browser.text('restart'), scores: browser.text('course-scores'), "
+SCORED = SHOWN.replace("restart: browser.text('restart')}", "restart: browser.text('restart'), "
                        "panels: !browser.element('score-panels').classList.contains('hidden'), "
-                       "noted: !browser.element('course-scores').classList.contains('hidden'), "
                        "listed: !browser.element('score-cases').classList.contains('hidden'), "
                        "figures: browser.text('session-figures')}")
 
-def test_a_course_s_result_numbers_its_lessons_as_the_catalogue_does_and_says_its_own_score_note(client):
+def test_a_course_s_result_numbers_its_lessons_as_the_catalogue_does_and_shows_a_score_only_for_a_scored_course(client):
     attack = open_page(client, "/session/1/", setup=ATTACK_COURSE, scenario=SCORED)
     logs = open_page(client, "/session/1/", setup=LOGS_COURSE, scenario=SCORED)
     shown, read = attack["result"], logs["result"]
 
-    assert ATTACK_COURSE.count("courses: [") == 1 and LOGS_COURSE.count("courses: [") == 1 and "scores:" in SCORED
+    assert ATTACK_COURSE.count("courses: [") == 1 and LOGS_COURSE.count("courses: [") == 1
     assert attack["errors"] == [] and logs["errors"] == []
     assert worded("course.attack.title") in shown["line"]
     assert worded("session.run.step", 2, 4) in shown["cases"] and worded("session.run.step", 3, 2) in shown["cases"]
     assert shown["restart"] == worded("session.restart")
-    assert shown["scores"] == worded("course.attack.scores")
-    assert (shown["panels"], shown["noted"], shown["listed"]) == (True, True, True)
-    assert (read["panels"], read["noted"], read["listed"]) == (False, False, False), (
+    assert (shown["panels"], shown["listed"]) == (True, True)
+    assert (read["panels"], read["listed"]) == (False, False), (
         "the logs course only reads the range: no objective is at stake and no attack is sent, so it shows no score")
     assert worded("session.lost") not in read["figures"]
-    assert not [number for number in range(1, 7) if worded("session.run.lesson", number) in shown["scores"]]
 
 def test_one_case_sent_in_each_lesson_is_listed_per_lesson_in_the_table_and_not_restated_under_the_count(client):
     three = ATTACK_COURSE.replace('''        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: true, detections: 1, corroborated: false,
@@ -348,8 +347,8 @@ def test_one_case_sent_in_each_lesson_is_listed_per_lesson_in_the_table_and_not_
 FINISHED_COURSES = READY.replace("LOCATION", "").replace(
     'if (request.route === "/api/sessions/") return {body: []};',
     'if (request.route === "/api/sessions/") return {body: request.query.state === "closed" ? CLOSED_ROWS : []};').replace(
-    f"foundations: {FOUNDATIONS}}}]", f'foundations: {FOUNDATIONS}, courses: [{{id: "c1", title: "course.logs.title", lessons: ["f1", "f2", "f3"]}}, '
-    '{id: "c2", title: "course.attack.title", lessons: ["f4", "f5", "f6"]}], scenarios: [{id: "1.1", title: "scenario.shift.title"}]}]')
+    f"foundations: {FOUNDATIONS}}}]", f'foundations: {FOUNDATIONS}, courses: [{{id: "c1", title: "course.logs.title", lessons: ["f1", "f2", "f3"], scored: false}}, '
+    '{id: "c2", title: "course.attack.title", lessons: ["f4", "f5", "f6"], scored: true}], scenarios: [{id: "1.1", title: "scenario.shift.title"}]}]')
 CLOSED_ROWS = """const CLOSED_ROWS = [
   {id: 7, scenario: "board", kind: "lesson", lesson_id: "f3", started_at: "2026-10-18T09:00:00Z", ended_at: "2026-10-18T09:40:00Z",
    result: {objectives: {total: 3, lost: 0, undetected: 0}}},
@@ -409,6 +408,32 @@ def test_a_scenario_result_says_only_what_happened_in_scenario_words_and_says_it
     assert worded("scenario.debrief.from", worded("scenario.origin.ru")) in shown["debrief"]
     assert worded("lesson.debrief.change.none") in shown["debrief"]
     assert worded("scenario.debrief.overview", 0) not in shown["debrief"]
-    assert shown["judged"] == f'{worded("score.no_attacks_run")} {worded("score.one_case_once")}', (
+    assert shown["judged"] == worded("score.no_attacks_run"), (
         "customer requests are in the debrief once, not again beside the attacks")
     assert shown["cases"] is False
+
+def test_a_lost_objective_row_in_the_catalogue_is_one_phrase_with_nothing_joined_to_it(client):
+    lost = CLOSED_ROWS.replace("result: {objectives: {total: 3, lost: 0, undetected: 0}}}];",
+                               "result: {objectives: {total: 3, lost: 3, undetected: 3}}}];")
+    seen = open_page(client, "/", setup=lost + FINISHED_COURSES, scenario="""
+      await browser.wait(500);
+      return document.querySelectorAll('#finished tr').map((row) => row.querySelectorAll('td').map((cell) => cell.textContent.trim()));
+    """)
+    rows = {row[0]: row[1:3] for row in seen["result"]}
+
+    assert seen["errors"] == []
+    assert rows[worded("common.session", 8)] == [worded("course.attack.title"), worded("result.lost", 3, 3)]
+
+def test_one_end_session_confirmation_is_said_the_same_on_the_session_page_and_in_the_console():
+    console = TEMPLATES
+    session_page = (console / "session.html").read_text()
+    lesson = (console / "blue_lesson_script.html").read_text()
+
+    assert session_page.count('data-t="session.close.') == 4 and 'data-t="session.close.consequence"' in session_page
+    assert 't("session.close.consequence")' in lesson and "close_confirm" not in lesson
+
+def test_the_kali_trademark_notice_is_in_the_home_page_footer_and_not_under_the_map(client):
+    console = TEMPLATES
+
+    assert "topology.trademark" not in (console / "blue_topology.html").read_text()
+    assert 'data-t="topology.trademark"' in client.get("/").content.decode()

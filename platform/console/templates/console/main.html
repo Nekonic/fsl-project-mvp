@@ -39,6 +39,7 @@
     </table>
   </div>
 </section>
+<footer class="mt-10 text-[11px] text-faint" data-t="topology.trademark"></footer>
 {% endblock %}
 {% block script %}
 <script>
@@ -255,7 +256,7 @@
   };
   const scored = (session) => {
     const course = session.kind === "lesson" ? courseOf(session) : null;
-    return !course || Boolean(localized(`${String(course.title).replace(/\.title$/, "")}.scores`, ""));
+    return !course || Boolean(course.scored);
   };
 
   function takenName(session) {
@@ -298,15 +299,14 @@
     const judged = result.scenario;
     if (judged) {
       return (judged.passed ? badge("PASS", "ok-strong") : badge("FAIL", "red-strong")) + (judged.helped || []).map((kind) =>
-        ` <span class="text-muted text-[12px]">· ${esc(t(`result.helped.${kind}`))}</span>`).join("");
+        ` <span class="text-muted text-[12px]">${esc(t(`result.helped.${kind}`))}</span>`).join("");
     }
     const objectives = result.objectives;
     if (!objectives || !objectives.total || !scored(session)) return `<span class="text-faint">—</span>`;
     if (!objectives.lost) {
       return `<span class="font-semibold text-success">${esc(t("result.kept_all", objectives.total))}</span>`;
     }
-    return `<span class="font-semibold text-danger">${esc(t("result.lost", objectives.total, objectives.lost))}</span>${
-      objectives.undetected ? ` <span class="text-muted">· ${esc(t("result.unseen", objectives.undetected))}</span>` : ""}`;
+    return `<span class="font-semibold text-danger">${esc(t("result.lost", objectives.total, objectives.lost))}</span>`;
   }
 
   function finishedRow(session) {

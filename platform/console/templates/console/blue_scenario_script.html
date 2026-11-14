@@ -195,6 +195,8 @@ function triageRow(item) {
   </li>`;
 }
 
+let triageTotal = null;
+
 async function triageJudge(row, verdict, succeeded) {
   const body = { item: row.dataset.item, verdict, ...(verdict === "attack" ? { succeeded } : {}),
     ...(verdict === "attack" && row.dataset.pattern ? { pattern: row.dataset.pattern } : {}) };
@@ -209,6 +211,7 @@ async function triageJudge(row, verdict, succeeded) {
   said.textContent = t(answer.right ? "triage.said.right" : !answer.verdict_right ? "triage.said.verdict"
     : answer.pattern_right === false ? "triage.said.pattern" : "triage.said.succeeded");
   row.querySelector("[data-judged]").innerHTML = badge(t(answer.right ? "triage.right" : "triage.wrong"), answer.right ? "ok" : "red");
+  if (typeof answer.right_so_far === "number" && triageTotal !== null) field("triage-count").textContent = t("triage.count", answer.right_so_far, triageTotal);
   changed.forEach((then) => then("triage"));
   scenarioRead();
 }
@@ -247,6 +250,7 @@ async function triageOpen() {
     field("triage-list").innerHTML = `<li class="text-muted">${esc(detail(read))}</li>`;
     return;
   }
+  triageTotal = read.body.total;
   field("triage-count").textContent = t("triage.count", read.body.judged, read.body.total);
   field("triage-list").innerHTML = read.body.items.length ? read.body.items.map(triageRow).join("")
     : `<li class="text-muted">${esc(t("triage.none"))}</li>`;

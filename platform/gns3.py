@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 import json
+import time
+import uuid
 import zipfile
 
 import requests
@@ -11,6 +13,8 @@ TIMEOUT = (3, 10)
 IMPORT_TIMEOUT = (3, 120)
 BOOTSTRAP = "/static/web-ui/map.html"
 PORTABLE = "project.gns3"
+LOAD_TRIES = 3
+LOAD_PAUSE = 3.0
 
 class Unavailable(RuntimeError):
     pass
@@ -82,27 +86,49 @@ def _gone(headers: dict, project_id: str) -> None:
     if removed.status_code not in (204, 404):
         removed.raise_for_status()
 
+def fresh_ids(document: dict, load: str) -> dict:
+    given: dict[str, str] = {}
+
+    def fresh(value: str) -> str:
+        return given.setdefault(value, str(uuid.uuid5(uuid.UUID(value), load)))
+
+    copied = json.loads(json.dumps(document))
+    for node in copied["topology"]["nodes"]:
+        node["node_id"] = fresh(node["node_id"])
+    for link in copied["topology"]["links"]:
+        link["link_id"] = fresh(link["link_id"])
+        for end in link["nodes"]:
+            end["node_id"] = fresh(end["node_id"])
+    return copied
+
+def _load(headers: dict, document: dict) -> str:
+    project_id = document["project_id"]
+    if any(found["project_id"] == project_id for found in _listed(headers)):
+        _gone(headers, project_id)
+    made = requests.post(f"{_api()}/projects/{project_id}/import", headers=headers,
+                         data=_portable(fresh_ids(document, uuid.uuid4().hex)), timeout=IMPORT_TIMEOUT)
+    made.raise_for_status()
+    kept = requests.put(f"{_api()}/projects/{project_id}", headers=headers, json={"auto_close": False},
+                        timeout=IMPORT_TIMEOUT)
+    kept.raise_for_status()
+    opened = requests.post(f"{_api()}/projects/{project_id}/open", headers=headers, json={},
+                           timeout=IMPORT_TIMEOUT)
+    opened.raise_for_status()
+    started = requests.post(f"{_api()}/projects/{project_id}/nodes/start", headers=headers, json={},
+                            timeout=IMPORT_TIMEOUT)
+    started.raise_for_status()
+    return opened.json().get("status", "")
+
 def publish(document: dict) -> str:
     headers = _admin()
-    project_id = document["project_id"]
-    try:
-        if any(found["project_id"] == project_id for found in _listed(headers)):
-            _gone(headers, project_id)
-        made = requests.post(f"{_api()}/projects/{project_id}/import", headers=headers,
-                             data=_portable(document), timeout=IMPORT_TIMEOUT)
-        made.raise_for_status()
-        kept = requests.put(f"{_api()}/projects/{project_id}", headers=headers, json={"auto_close": False},
-                            timeout=IMPORT_TIMEOUT)
-        kept.raise_for_status()
-        opened = requests.post(f"{_api()}/projects/{project_id}/open", headers=headers, json={},
-                               timeout=IMPORT_TIMEOUT)
-        opened.raise_for_status()
-        started = requests.post(f"{_api()}/projects/{project_id}/nodes/start", headers=headers, json={},
-                                timeout=IMPORT_TIMEOUT)
-        started.raise_for_status()
-        return opened.json().get("status", "")
-    except (requests.RequestException, ValueError) as exc:
-        raise Unavailable(f"GNS3 did not load {document['name']}: {exc}"[:300]) from exc
+    for attempt in range(LOAD_TRIES):
+        try:
+            return _load(headers, document)
+        except (requests.RequestException, ValueError) as exc:
+            failed = exc
+            if attempt + 1 < LOAD_TRIES:
+                time.sleep(LOAD_PAUSE)
+    raise Unavailable(f"GNS3 did not load {document['name']}: {failed}"[:300]) from failed
 
 def status(project_id: str) -> str:
     try:

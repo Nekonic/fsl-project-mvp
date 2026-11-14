@@ -343,9 +343,43 @@ def test_publishing_replaces_the_project_by_import_opens_it_as_admin_and_starts_
         "client left stops its nodes")
     assert calls[0][2]["json"] == {"username": "admin", "password": "s3cret"}
     archive = zipfile.ZipFile(io.BytesIO(calls[3][2]["data"]))
-    assert json.loads(archive.read("project.gns3")) == document, (
-        "an import whose project.gns3 keeps the URL's project id keeps every id, as GNS3 restores a snapshot"
-    )
+    imported = json.loads(archive.read("project.gns3"))
+    assert imported["project_id"] == project_id
+    assert {node["name"] for node in imported["topology"]["nodes"]} == {
+        node["name"] for node in document["topology"]["nodes"]}
+
+def test_a_load_that_failed_is_tried_again_with_node_ids_no_earlier_load_used(settings, monkeypatch):
+    settings.CR_GNS3_URL = "http://gns3:3080"
+    settings.CR_GNS3_ADMIN_PASSWORD = "s3cret"
+    monkeypatch.setattr(gns3, "LOAD_PAUSE", 0)
+    document = slot_map(1)
+    imported, opens = [], []
+
+    def post(url, **kwargs):
+        if url.endswith("/import"):
+            imported.append(json.loads(zipfile.ZipFile(io.BytesIO(kwargs["data"])).read("project.gns3")))
+        failed = url.endswith("/open") and not opens
+        if url.endswith("/open"):
+            opens.append(url)
+
+        def raise_for_status():
+            if failed:
+                raise gns3.requests.HTTPError("404 nios/batch not found")
+        return SimpleNamespace(status_code=404 if failed else 200, raise_for_status=raise_for_status,
+                               json=lambda: {"status": "opened"})
+
+    listed = SimpleNamespace(raise_for_status=lambda: None, json=lambda: [{"project_id": document["project_id"]}])
+    with patch("gns3._signed", return_value={}), patch("gns3.requests.post", side_effect=post), \
+         patch("gns3.requests.get", return_value=listed), \
+         patch("gns3.requests.put", return_value=SimpleNamespace(raise_for_status=lambda: None)), \
+         patch("gns3.requests.delete", return_value=SimpleNamespace(status_code=204)):
+        assert gns3.publish(document) == "opened"
+
+    first, second = ({node["node_id"] for node in one["topology"]["nodes"]} for one in imported)
+    assert len(imported) == 2 and not first & second, (
+        "GNS3 names a switch's kernel bridge and TAPs from its node id, and a load that failed half way leaves "
+        "them busy, so a retry with the same ids failed on every open of that slot")
+    assert imported[1]["project_id"] == document["project_id"]
 
 
 def test_a_project_gns3_does_not_hold_is_imported_without_a_delete(settings):

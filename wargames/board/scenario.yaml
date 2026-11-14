@@ -75,9 +75,6 @@ scenarios:
       - {id: window, when: window}
     hints: [source, verdict, loot]
     steps:
-      - id: open
-        point: {panel: '.pane-tab[data-pane="triage"]'}
-        check: {kind: click}
       - id: customer
         point: {panel: "#triage-list", opens: triage}
         check: {kind: triage, judged: customer}
@@ -363,7 +360,7 @@ foundations:
     steps:
       - id: search
         point: {opens: site, site: "input[name=q]"}
-        check: {kind: sent, match: '[?&]q=[A-Za-z0-9]{4,}(&|$)'}
+        check: {kind: sent, match: '[?&]q=(?!kim0413(&|$))[A-Za-z0-9]{4,}(&|$)'}
       - id: count
         point: {opens: elk, kibana: {hits: true, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
         check: {kind: answer, of: hits, about: search, leg: both, kql: '(?i)\burl\s*:\s*"?\*?[A-Za-z0-9]{4,}'}
@@ -455,7 +452,7 @@ foundations:
       - id: error
         point: {opens: site, panel: "#site-address", until: sent, then: {dev: general.status}}
         command: 'http://board.com/?sort=posts_post.id)'
-        check: {kind: answer, of: status, match: '[?&]sort=[^&]*\)'}
+        check: {kind: answer, of: status, match: '[?&]sort=[^&]*\)', dev: '[?&]sort=[^&]*\)'}
       - id: undetected
         point: {opens: elk, kibana: {doc: rule_id, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*sort)'}}
         check: {kind: choice, of: waf_detected, about: error, options: [present, absent],

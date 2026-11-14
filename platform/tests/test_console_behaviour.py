@@ -61,8 +61,8 @@ def test_a_closed_session_reports_what_was_taken_and_what_the_defence_judged_cou
     assert worded("score.attacks", 8, 7) in result["judged"]
     assert result["judged"].count(worded("case.board-sqli-orderby-sqlmap")) == 1, "a missed attack is named once"
     assert worded("score.benign", 4, 3) in result["judged"]
-    assert worded("score.one_case_once") in result["judged"]
-    assert worded("score.not_corroborated", 7, 1) in result["judged"]
+    assert worded("score.not_corroborated", 7, 1) not in result["judged"], (
+        "how alerts are matched to attacks is scoring internals a learner cannot act on")
 
 SCORE_FAILS_ONCE = CLOSED.replace("browser.serve((request) => {", """
 let scored = 0;

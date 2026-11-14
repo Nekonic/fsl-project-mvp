@@ -147,28 +147,24 @@ RECTS.set(browser.element('pane-body'), box(60, 100, 980, 700));
 RECTS.set(document.querySelector('.pane-tab[data-pane="triage"]'), box(8, 300, 44, 44));
 """
 
-def test_a_stepped_scenario_s_open_step_passes_by_itself_when_its_pane_is_already_open(client):
+def test_scenario_1_1_starts_on_judging_an_alert_and_not_on_opening_the_alert_list_it_opens_with():
     lesson = wargames.lesson("board", lesson_id="1.1")
-    seen = open_page(client, "/blue/1/", setup=serving(status(JUDGEMENT, id="1.1"), lesson=lesson) + LAID_OUT, scenario="""
+
+    assert [step["check"]["kind"] for step in lesson["steps"]][:1] == ["triage"], (
+        "a first step telling the learner to open the alert list passed by itself, since the list is open already")
+
+def test_the_count_of_right_judgements_moves_with_the_right_mark_it_counts(client):
+    seen = open_page(client, "/blue/1/", setup=serving(status(JUDGEMENT, id="1.1")), scenario="""
       await browser.click('briefing-start');
-      await browser.wait(0);
-      await browser.wait(0);
-      const first = {title: browser.text('step-title'), ring: !browser.element('coach-ring').classList.contains('hidden'),
-                     left: browser.element('coach-ring').style.left, note: !browser.element('lesson').classList.contains('hidden')};
       await browser.click('[data-pane="triage"]');
-      await browser.wait(0);
-      await browser.wait(1600);
-      const stayed = {title: browser.text('step-title'), next: browser.element('step-next').classList.contains('btn-blue')};
-      await browser.click('step-next');
-      await browser.wait(0);
-      return {first, stayed, next: browser.text('step-title'), checked: range.steps.filter((route) => route.endsWith('/check/'))};
+      const before = browser.text('triage-count');
+      await browser.click('[data-item="a1"] [data-judge="customer"]');
+      await browser.settle();
+      return {before, after: browser.text('triage-count'), said: browser.text('triage-list').includes(STRINGS['triage.said.right'])};
     """)
-    result = seen["result"]
-    steps = [step["id"] for step in lesson["steps"]]
 
     assert seen["errors"] == []
-    assert result["first"]["title"] == worded(f"{lesson['text']}.label.{steps[0]}") and result["first"]["note"] is True
-    assert result["first"]["ring"] is False, "the alert list is already open; the step does not ask to open it"
-    assert result["checked"] == [f"/api/sessions/1/lesson/steps/{steps[0]}/check/"]
-    assert result["stayed"] == {"title": worded(f"{lesson['text']}.label.{steps[0]}"), "next": True}
-    assert result["next"] == worded(f"{lesson['text']}.label.{steps[1]}")
+    assert seen["result"]["said"] is True
+    assert seen["result"]["before"] == worded("triage.count", 0, len(ITEMS))
+    assert seen["result"]["after"] == worded("triage.count", 1, len(ITEMS)), (
+        "the item said right while the header still counted none right until the next click")

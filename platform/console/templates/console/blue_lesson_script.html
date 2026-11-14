@@ -108,8 +108,7 @@ const ranSeen = (run) => Boolean(run) && (Boolean(run.settling) || "discover" in
 const windowed = (run) => Boolean(run) && "discover" in run;
 
 function kaliRow(row, windowed = true) {
-  return `<li class="rounded-md border border-line p-2 text-[12px] flex flex-wrap items-center gap-2" data-kali="${esc(row.name)}">
-    <b class="text-heading">${esc(caseLabel(row.name))}</b>
+  return `<li class="text-[12px] flex flex-wrap items-center gap-2" data-kali="${esc(row.name)}">
     ${windowed ? `<span data-running class="basis-full text-muted">${esc(localized("lesson.kali.running", ""))}</span>` : ""}
     ${windowed && row.discover ? `<button type="button" class="ml-auto text-primary hover:underline" data-discover="${esc(row.discover)}">${esc(t("lesson.kali.window"))}</button>` : ""}
   </li>`;
@@ -267,9 +266,7 @@ function objectivesShow(objectives) {
       <td class="py-1 text-right">${esc(row.difficulty)}</td>
       <td class="py-1 text-right ${row.lost ? "text-danger" : "text-success"}">${esc(t(row.lost ? "common.yes" : "common.no"))}</td>
       <td class="py-1 text-right">${esc(row.lost && unasked ? t(row.detected ? "common.yes" : "common.no") : "—")}</td>
-      <td class="py-1 text-right">${esc(unasked ? row.points : "—")}</td>
     </tr>`).join("");
-  field("lesson-objectives-total").textContent = unasked ? String(objectives.total ?? 0) : "—";
 }
 
 async function objectivesRead() {
@@ -340,6 +337,7 @@ const KIBANA = {
   noResults: '[data-test-subj="discoverNoResults"]',
   query: '[data-test-subj="queryInput"]',
   topValues: '[data-test-subj="dscFieldStats-topValues"]',
+  statsFooter: '[data-test-subj="dscFieldStats-statsFooter"]',
   popover: '[data-popover-panel], .euiPopover__panel',
   chart: '[data-test-subj="unifiedHistogramChart"]',
   statsTitle: '[data-test-subj="fieldPopoverHeader_fieldDisplayName"]',
@@ -498,7 +496,7 @@ function kibanaFound(doc, spec) {
     if (text !== null && queryArrival.step !== spec.step) Object.assign(queryArrival, { step: spec.step, text });
     const counted = first(...KIBANA.hits);
     const unchanged = text !== null && text === queryArrival.text;
-    if (counted) return unchanged ? { element: first(KIBANA.query), stage: "query" } : { element: counted, also: first(KIBANA.toolbar[0]), stage: "" };
+    if (counted) return unchanged ? { element: first(KIBANA.query), stage: "query" } : { element: counted, stage: "" };
     const none = first(KIBANA.noResults);
     if (!none) return { element: null, stage: "" };
     return unchanged ? { element: first(KIBANA.query), stage: "query" } : { element: none, stage: "none" };
@@ -507,7 +505,7 @@ function kibanaFound(doc, spec) {
   if (spec.sidebar) {
     const title = found(KIBANA.statsTitle);
     const opened = title && title.textContent && title.textContent.includes(spec.sidebar);
-    const values = opened ? first(KIBANA.topValues) : null;
+    const values = opened ? first(KIBANA.statsFooter) || first(KIBANA.topValues) : null;
     return { element: values || first(KIBANA.sidebar(spec.sidebar)), stage: values ? "top" : "" };
   }
   return { element: null, stage: "" };
@@ -973,6 +971,16 @@ function padded(rect) {
   return { left: rect.left - RING_PAD, top: rect.top - across, width: rect.width + 2 * RING_PAD, height: rect.height + 2 * across };
 }
 
+function clearOfText(rect, crowd) {
+  const others = (crowd || []).filter((text) => !overlaps(text, rect));
+  const clear = (shape) => !others.some((text) => overlaps(grown(shape, RING), text));
+  if (clear(padded(rect))) return padded(rect);
+  for (let pad = RING_PAD - 1; pad > 0; pad -= 1) {
+    if (clear(grown(rect, pad))) return grown(rect, pad);
+  }
+  return rect;
+}
+
 function placed(element, box) {
   Object.assign(element.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
 }
@@ -1121,7 +1129,8 @@ function highlight(rect, callout, options = {}) {
   const inPane = Boolean(pane) && within(centre, pane);
   const inNote = !inPane && Boolean(noteBox) && within(centre, noteBox);
   const banded = options.kind === "term" || Boolean(options.line);
-  const shape = banded ? { left: rect.left - RING_PAD, top: rect.top, width: rect.width + 2 * RING_PAD, height: rect.height } : padded(rect);
+  const shape = banded ? { left: rect.left - RING_PAD, top: rect.top, width: rect.width + 2 * RING_PAD, height: rect.height }
+    : options.kind === "map" ? clearOfText(rect, options.crowd) : padded(rect);
   const ringed = (inPane && clipped(shape, banded ? pane : grown(pane, -RING))) || shape;
   placed(ring, ringed);
   ring.classList.toggle("inset", banded);
@@ -1202,9 +1211,7 @@ const ANSWERED = ["answer", "choice", "loot"];
 const SENT_SETTLES_MS = 1500;
 const changed = [];
 const stepPath = (step, tail = "") => lessonPath(`lesson/steps/${encodeURIComponent(step.id)}/${tail}`);
-const SHORT_PASS_CHARS = 30;
 const PROMPT_ONLY = /\[\$#\] \$$/;
-const NEXT_LESSON_MS = 2000;
 const HELP_AFTER_SECONDS = 60;
 const SKIP_OFFERED = 3;
 const POLL_SECONDS = 5;
@@ -1372,7 +1379,6 @@ function coach(prefix, declared) {
     field("step-hint").textContent = hintLabel();
     field("step-hint").classList.remove("btn-blue");
     field("step-hint").classList.toggle("hidden", solo() || passed || level >= SKIP_OFFERED || finished);
-    field("step-skip").classList.toggle("hidden", finished || passed || !(solo() || level >= SKIP_OFFERED));
   }
 
   function offerHint() {
@@ -1416,15 +1422,17 @@ function coach(prefix, declared) {
     });
   }
 
-  let courseWhole = false;
-
   const courseText = course ? course.text : "lesson.course";
+  const courseTaken = () => (session.course || []).filter((one) => one.text && (!course || course.lessons.includes(one.id)));
+  const courseWhole = foundation && courseTaken().length > 0
+    && (!course || course.lessons.every((id) => courseTaken().some((one) => one.id === id)));
+  const courseEnd = () => foundation && courseWhole && !nextLesson;
 
   function courseSummary() {
     return `<ul data-act="course" class="flex flex-col gap-1 text-[12.5px]"></ul>
       <button type="button" data-act="close" class="self-start btn btn-sm btn-blue">${esc(t("lesson.course.close"))}</button>
       <div data-act="confirm" class="hidden flex flex-col gap-2">
-        <p class="text-body text-[12.5px]">${esc(t("lesson.course.close_confirm"))}</p>
+        <p class="text-body text-[12.5px]">${esc(t("session.close.consequence"))}</p>
         <div class="flex gap-2">
           <button type="button" data-act="confirm-close" class="btn btn-sm btn-blue">${esc(t("session.close.confirm"))}</button>
           <button type="button" data-act="confirm-keep" class="btn btn-sm btn-ghost">${esc(t("session.close.keep"))}</button>
@@ -1432,22 +1440,12 @@ function coach(prefix, declared) {
       </div>`;
   }
 
-  async function courseList(list) {
-    const read = await api("/api/wargames/");
-    const wargame = read.ok && Array.isArray(read.body) ? read.body.find((one) => one.id === session.scenario) : null;
-    const taken = new Set((session.lessons || []).map((one) => one.id));
-    const inCourse = (one) => !course || course.lessons.includes(one.id);
-    const listed = wargame ? (wargame.foundations || []).filter(inCourse) : [];
-    const taught = listed.filter((one) => taken.has(one.id));
-    courseWhole = taught.length > 0 && taught.length === listed.length;
-    if (finished) field("step-task").textContent = finishedText();
-    const counted = (one) => (one.id === lessonId()
-      ? { steps: steps.length, passed: steps.filter(done).length }
-      : (session.course || []).find((row) => row.id === one.id));
-    list.innerHTML = taught.map((one) => {
+  function courseList(list) {
+    const counted = (one) => (one.id === lessonId() ? { ...one, steps: steps.length, passed: steps.filter(done).length } : one);
+    list.innerHTML = courseTaken().map((one) => {
       const count = counted(one);
-      return `<li class="flex flex-wrap items-center gap-x-2" data-course="${esc(one.id)}"><span>${esc(t(one.title))}</span>${
-        count && count.steps ? `<span class="text-muted">${esc(t("lesson.steps.passed", count.passed, count.steps))}</span>` : ""}</li>`;
+      return `<li class="flex flex-wrap items-center gap-x-2" data-course="${esc(one.id)}"><span>${esc(t(`${one.text}.title`))}</span>${
+        count.steps ? `<span class="text-muted">${esc(t("lesson.steps.passed", count.passed, count.steps))}</span>` : ""}</li>`;
     }).join("");
   }
 
@@ -1585,11 +1583,12 @@ function coach(prefix, declared) {
   }
 
   function finishedText() {
-    return t(foundation && courseWhole && !nextLesson ? `${courseText}.done` : "lesson.done");
+    return t(courseEnd() ? `${courseText}.done` : "lesson.done");
   }
 
   function nextStyled() {
     const passed = done(steps[at]) && !finished;
+    field("step-next").textContent = t(done(steps[at]) ? "lesson.coach.next" : "lesson.skip");
     field("step-next").classList.toggle("btn-blue", passed);
     field("step-next").classList.toggle("btn-ghost", !passed);
     field("step-next").classList.toggle("hidden", finished);
@@ -1612,7 +1611,7 @@ function coach(prefix, declared) {
     shownSection("step-card");
     field("step-count").textContent = `${at + 1} / ${steps.length}`;
     field("step-count").classList.toggle("hidden", finished);
-    field("step-title").textContent = finished && foundation ? t(`${prefix}.title`) : titleOf(step);
+    field("step-title").textContent = finished && foundation ? t(courseEnd() ? `${courseText}.title` : `${prefix}.title`) : titleOf(step);
     field("step-task").textContent = finished ? finishedText() : t(`${prefix}.coach.${step.id}`);
     const titled = localized(`${prefix}.title.${step.id}`, "");
     const question = !finished && titled && ANSWERED.includes(check().kind) ? localized(`${prefix}.label.${step.id}`, "") : "";
@@ -1625,7 +1624,6 @@ function coach(prefix, declared) {
     opener();
     showHelp();
     field("step-back").disabled = at === 0;
-    field("step-next").disabled = at === steps.length - 1;
     nextStyled();
     objectivesRefresh();
     objectivesPlaced(step);
@@ -1662,7 +1660,7 @@ function coach(prefix, declared) {
     if (!target) return "";
     if (home) return t("lesson.site.home");
     if (found.stage === "field") return phrase(STAGE_KEYS.field, "", target.spec.doc || "");
-    if (found.stage === "fieldless") return phrase("lesson.kibana.fieldless", t(STAGE_KEYS.query), target.spec.doc || "");
+    if (found.stage === "fieldless") return phrase("lesson.kibana.fieldless", "", target.spec.doc || "");
     if (found.stage === "run_done" && kaliSettling) {
       const settlingSaid = t("lesson.check.kali_settling");
       return field("step-status").textContent === settlingSaid ? "" : settlingSaid;
@@ -1818,12 +1816,10 @@ function coach(prefix, declared) {
     rulesLearned();
   }
 
-  function finish(unread = false) {
+  function finish() {
     finished = true;
     show();
     if (paneOpen("topology")) mapFitSoon();
-    if (!nextLesson) return;
-    if (!unread && !field("stretch-text").textContent) setTimeout(moveOn, NEXT_LESSON_MS);
   }
 
   async function moveOn() {
@@ -1860,7 +1856,6 @@ function coach(prefix, declared) {
     const line = [recordOf(step).line, saidOnPass.get(step.id)].filter(Boolean).join(" ");
     const ok = recordOf(step).ok || localized(`${prefix}.ok.${step.id}`, "");
     const text = [`✓ ${ok}`.trim(), line].filter(Boolean).join(" ");
-    const unread = text.length > SHORT_PASS_CHARS;
     say(text, "ok");
     status("");
     coveredSaid = false;
@@ -1871,16 +1866,12 @@ function coach(prefix, declared) {
       if (!control.dataset.discover) control.disabled = true;
     });
     if (session.lesson_objectives) objectivesRead();
-    if (at === steps.length - 1) {
-      finish(unread);
-      return;
-    }
-    status(t("lesson.status.press_next"));
+    if (at === steps.length - 1) finish();
   }
 
   async function judged(step, body, tail = "check/") {
     await reaching;
-    const read = await post(stepPath(step, tail), body, PATIENCE_FOR_RANGE_WORK);
+    const read = await post(stepPath(step, tail), body, body && body.poll ? PATIENCE : PATIENCE_FOR_RANGE_WORK);
     if (!read.ok) return null;
     learn(read.body);
     return read.body;
@@ -1990,7 +1981,7 @@ function coach(prefix, declared) {
       replayed = { ...replayed, seen: true };
       status(replayLines(step));
     }
-    if (step.check.kind === "sent") setTimeout(() => run(step, false), SENT_SETTLES_MS);
+    if (["sent", "replay"].includes(step.check.kind)) setTimeout(() => run(step, false), SENT_SETTLES_MS);
   });
   topo.drawnHeard.push(() => {
     askAgain(field("topology-frame"));
@@ -2026,9 +2017,8 @@ function coach(prefix, declared) {
   });
 
   field("step-back").addEventListener("click", () => go(at - 1));
-  field("step-next").addEventListener("click", () => jump(at + 1));
+  field("step-next").addEventListener("click", skip);
   field("step-hint").addEventListener("click", escalate);
-  field("step-skip").addEventListener("click", skip);
   field("step-copy").addEventListener("click", async () => {
     const button = field("step-copy");
     try {
@@ -2129,8 +2119,10 @@ async function applyRules() {
     status.textContent = t("lesson.rules.failed", detail(applied));
     return;
   }
+  const mine = ownRuleLines().map(({ sid }) => sid);
   forgetDraft();
   await loadRules();
+  rulesAdded = [...new Set([...rulesAdded, ...mine])];
   status.textContent = t("lesson.rules.applied");
   changed.forEach((heard) => heard("rules"));
 }

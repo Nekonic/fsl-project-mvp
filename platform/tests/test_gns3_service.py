@@ -49,13 +49,11 @@ def test_the_gns3_server_runs_as_gns3_in_the_socket_s_group_like_the_platform():
     assert "exec gosu gns3" in entrypoint
     assert entrypoint.index("usermod -aG") < entrypoint.index("exec gosu gns3") < entrypoint.index("gns3server --config")
 
-def test_the_display_nodes_run_the_one_image_provisioning_starts_and_no_image_tag_is_rewritten():
+def test_the_display_nodes_run_one_pinned_image_and_no_image_tag_is_rewritten():
     gns3 = service()
     entrypoint = (GNS3 / "entrypoint.sh").read_text()
-    provision = (GNS3 / "provision.py").read_text()
 
     assert "CR_IMAGE_TAG" not in gns3["environment"] and "sed " not in entrypoint
-    assert f'DISPLAY_IMAGE = "{topology.DISPLAY_IMAGE}"' in provision
     for path in TOPOLOGY.glob("*.gns3"):
         images = {node["properties"].get("image") for node in json.loads(path.read_text())["topology"]["nodes"]
                   if node["node_type"] == "docker"}
@@ -114,24 +112,20 @@ def provision(monkeypatch, tmp_path):
     spec.loader.exec_module(module)
     return module
 
-def test_provisioning_starts_every_stopped_display_node_of_an_open_project_and_nothing_else(provision, monkeypatch):
+def test_provisioning_opens_no_project_so_the_platform_is_the_one_loader_of_every_map(provision, monkeypatch):
     calls = []
-    projects = [{"project_id": "a", "name": "range-openstack slot 1 board", "status": "opened"}]
-    listed = [{"node_id": "n1", "name": "waf", "status": "stopped", "properties": {"image": provision.DISPLAY_IMAGE}},
-              {"node_id": "n2", "name": "attacker", "status": "started", "properties": {"image": provision.DISPLAY_IMAGE}},
-              {"node_id": "n3", "name": "service-sw", "status": "started", "properties": {}},
-              {"node_id": "n4", "name": "cr-kali", "status": "stopped", "properties": {"image": "kalilinux/kali"}}]
+    monkeypatch.setattr(provision, "call", lambda method, path, body=None, token="", raw=None: calls.append(
+        (method, path)) or ([] if method == "GET" else {"user_id": "u", "access_token": "t"}))
+    monkeypatch.setattr(provision, "ready", lambda: None)
+    monkeypatch.setattr(provision, "signed_in", lambda user, password: "token-of-admin")
+    monkeypatch.setattr(provision, "admin_password", lambda: "s3cret")
+    monkeypatch.setattr(provision, "the_auditor", lambda token: None)
+    monkeypatch.setattr(provision, "symbols", lambda token: None)
+    provision.provision()
 
-    def call(method, path, body=None, token=""):
-        calls.append((method, path))
-        return projects if path == "/projects" else listed if path.endswith("/nodes") else None
-
-    monkeypatch.setattr(provision, "call", call)
-    provision.opened("token-of-admin")
-
-    assert [c for c in calls if c[0] == "POST"] == [("POST", "/projects/a/nodes/n1/start")], (
-        "a node of any other image, as an old map's real images, is never run by the map server"
-    )
+    assert not any(path.startswith("/projects") for _, path in calls), (
+        "provisioning opened every project at start while the platform deleted and loaded the same slot's map, "
+        "and the half-done load left that slot's switch TAPs busy for every later open")
 
 def test_the_platform_reads_the_gns3_admin_password_it_needs_to_load_a_range_s_own_map():
     platform = composed.services()["platform"]
