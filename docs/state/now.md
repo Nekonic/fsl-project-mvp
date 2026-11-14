@@ -97,7 +97,7 @@ Internet.
 - Console slop removed (2026-11-14, `docs/DECISIONS.md` "Console text and
   UI slop removed"): the tone review's 101 strings and the UI review's 27
   items applied on the round-18 code, removal over rewording. The catalogue
-  has no time estimates, chips, labels or pills and one "시작" per row; the
+  has no time estimates, chips, labels or pills and one `main.start` button per row; the
   session page is one console button; the result page explains each score
   once; lesson ends count steps passed. Two bugs fixed: a scenario's clock
   starts at the briefing's Start (`POST .../scenario/start/`), and a browser
@@ -201,8 +201,7 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
    round-19 fixes (`docs/DECISIONS.md` "Answer-blind walk round 19"),
    checking on the range that a reload keeps the Kali run (tmux), that the
    DevTools guard accepts a learner who picks the row, and that the F3 and
-   F5 queries the cards now ask for pass; then the user's own test. The live map now shows the router's own symbol (`host-router.svg`)
-   and F1's DMZ callout outside the zone.
+   F5 queries the cards now ask for pass; then the user's own test. The live map now shows the router's own symbol (`host-router.svg`).
 3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
    or `union select` even where it is loaded: a detection gap to measure
    (round 16, `docs/DECISIONS.md`).

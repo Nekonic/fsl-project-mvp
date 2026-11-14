@@ -6249,7 +6249,7 @@ review agents against the code and the live range, then fixed.
   root-shell message and step 5 the new `kali_first` message. After the
   slot's close rebuilt its Kali (session 1141, slot 1): in `sudo su`, `sudo
   -s` and `sudo -i` `http_proxy` stays set; sqlmap run from `sudo su`
-  passed step 4 ("sqlmap 실행을 확인했습니다") and step 5 answered
+  passed step 4 (`lesson.sqli.ok.sqlmap`) and step 5 answered
   correctly; step 1's sort control was there.
 - The run also showed that a deploy that rebuilds the Kali image leaves the
   standing slots' Kali on the old image until each slot's next close;
@@ -6336,8 +6336,9 @@ is renamed end to end. Behaviour is unchanged.
   Django's content-type rename hook because `django.contrib.contenttypes` is
   not installed; the platform is rebuilt forward, never migrated back.
 - The console has no screen for this feature, so no console string changes.
-  The Korean docs had called it "예외 처리", the word the WAF lessons use for
-  CRS exclusions; they now say "룰 비활성화" and "비활성화한 룰".
+  The Korean docs had called it by the Korean word the WAF lessons use for
+  CRS exclusions; they now use the Korean words for disabling a rule and a
+  disabled rule.
 - Decision entries above this one keep "suppression" as they were written.
 
 ## 2026-10-24 — How courses check a learner's rule
@@ -6706,16 +6707,16 @@ The product owner took F1-F4 live as a first-time learner and they failed him,
 although six AI reviewers had found nothing (feedback in the session notes).
 The lessons were rewritten, not reworded, and regrouped at his decision.
 
-- **Two courses.** Course 1 "로그 분석 기초" is F1-F3 and only reads the range;
+- **Two courses.** Course 1 (`course.logs.title`) is F1-F3 and only reads the range;
   it will later run many learners on one shared slot, so every step finds the
-  learner's own request by their own search word or marker. Course 2 "공격 탐지
-  실습" is F4-F6 and changes the range (IDS rules, sqlmap, the WAF exclusion),
+  learner's own request by their own search word or marker. Course 2
+  (`course.attack.title`) is F4-F6 and changes the range (IDS rules, sqlmap, the WAF exclusion),
   one learner per slot. `scenario.yaml` declares `courses:`; lesson ids stay
   `f1`-`f6`, since the steps, defenses and records are keyed by them and a
   rename would only move names. The next lesson stays inside a course.
 - **Theory out of the step flow.** A course opens on a briefing (what the
   course does, the reference cards folded, Start); the same cards stay in a
-  left 참고 column the rail opens. The note's theory card is gone. Start is
+  left reference column (`lesson.ref.heading`) the rail opens. The note's theory card is gone. Start is
   the existing `POST .../steps/<first>/ {state: reached}`, so an agent needs no
   new call.
 - **A highlight never shows an answer before the work.** A Kibana point may
@@ -6738,11 +6739,12 @@ The lessons were rewritten, not reworded, and regrouped at his decision.
   column (`GET /api/sessions/<id>/lesson/addresses/`). The `waf_logged` fact
   had no step left and was removed; the WAF's logging policy is in the fields
   card.
-- **The learner map is an enterprise logical diagram.** Zones 인터넷, DMZ,
-  DB존 and 관리망: DMZ and DB존 are the zone names of KISA's ISMS-P 2.6.1
-  ("네트워크 분리(DMZ, 서버팜, DB존, 개발존 등)"), which also lists a DB server in
-  the DMZ as a defect, so board-db keeps its own zone; 서비스망 and 관제망 were
-  this project's words. Labels are addresses alone; no interface, port or
+- **The learner map is an enterprise logical diagram.** Zones internet, DMZ,
+  DB zone and management network: DMZ and DB zone are the zone names of KISA's
+  ISMS-P 2.6.1 (network separation into DMZ, server farm, DB zone, development
+  zone and the like), which also lists a DB server in the DMZ as a defect, so
+  board-db keeps its own zone; the earlier Korean names for a service network
+  and a monitoring network were this project's words. Labels are addresses alone; no interface, port or
   Docker bridge name. Each IDS is a sensor box fed by a dashed line from the
   host whose traffic it sees (the edge and the wargame host really run them).
   Green arrows show the request flow internet → firewall → waf → board.com.
@@ -7205,7 +7207,7 @@ counts in the score); the rest changed as below.
 |---|---|---|
 | 1 | The browser's "leave site?" dialog on Next lesson and on close | Both ttyd terminals start with `-t disableLeaveAlert=true`; no console template registers `beforeunload`, so ttyd was the only source |
 | 2 | F4 `write` passed `content:"/search/"` | `rules` checks carry `quiet_on` (two plain searches); a rule whose URI contents all appear in one fails with `<fail>.broad` before any alert is read (`lesson.alerts_on`). Applies to `write` and `nocase` |
-| 3 | F4 replay sat at "checking" with such a rule | `views._benign_fault` names the fault (`.alerted` with sids and URL, `.status`, `.waf_logged`) and answers `loud: true`, which the console says even on a silent poll; the benign line reads "문제 있음" |
+| 3 | F4 replay sat at "checking" with such a rule | `views._benign_fault` names the fault (`.alerted` with sids and URL, `.status`, `.waf_logged`) and answers `loud: true`, which the console says even on a silent poll; the benign line reads `lesson.replay.failed` |
 | 4 | F6 `narrow` silent on a deleted Paranoia Level line, then passed | `waf_changed` also needs the posture's level line; a deleted or changed one fails loud with `<fail>.paranoia` and the line to put back |
 | 5 | Early answers: F5 source on the address table, 913100 in the CRS reference and the solo step's title, F4 941100 and 20 guessable | F5's source step asks the record count only Kibana shows (`run_records`: Top values' "Calculated from N records", equal to the Documents count; window or marker count accepted); the 913 row and 913100 in the step title are gone; every foundation answer read in Kibana carries `kql` |
 | 6 | F3 count passed without Kibana | Its check carries `kql` (a `url` condition), as do `site_source` and `xff` |
@@ -7213,16 +7215,16 @@ counts in the score); the rest changed as below.
 | 8 | F6 cost line said 8 points deducted when admin was not lost | The pass line follows the objective's row at pass time (`.undetected`, `.detected`, `.kept`); the nudge no longer says the current state |
 | 9 | Contradictory run messages | A run counts as finished only when the last typed command holds the step's command words, so step 8 no longer shows step 4's "finished"; while the step's command runs the settling status and a red "no run yet" are cleared; a settling poll clears the red line; the `sudo su ... exit` sentence is gone (the prompt is root) |
 | 11 | F2 rejected "200 OK" | `status` accepts the code with its reason phrase (`lesson.status_said`) |
-| 12 | Same "틀렸습니다" for every wrong answer; hints unrelated | A wrong address that the map gives to a host names that host (`lesson.check.wrong.address_of`); a Kibana step whose query is wrong says what the query lacks (`<text>.wrong.<step>.kql`); F4 `rule`'s nudge is about reading the value, the KQL help moved to its kql message; F5 source has wrong_if for an address or a share |
+| 12 | Same `lesson.check.wrong` for every wrong answer; hints unrelated | A wrong address that the map gives to a host names that host (`lesson.check.wrong.address_of`); a Kibana step whose query is wrong says what the query lacks (`<text>.wrong.<step>.kql`); F4 `rule`'s nudge is about reading the value, the KQL help moved to its kql message; F5 source has wrong_if for an address or a share |
 | 13 | DevTools empty in course 2 | F4's probe card says to open DevTools first, and the encoded card to search again with it open. The network panel lists what it receives while open; why the earlier 403 row was dropped on open was not reproduced off the range |
-| 14 | Three labels for one area; callout lines over the Field statistics tab; no callout on F5's 0-result step; Kali callout over the prompt | Count callouts all read "조회된 로그 건수입니다." and the empty result "조회된 로그가 없습니다(0건)."; the hit-count ring joins the Field statistics tab; a callout on a bare prompt goes below the prompt line. F5's `still` is the lesson's last step, which is solo by design (no highlight), so it gets no callout; its card now says what the 0-result screen means |
-| 15 | Result page: "레슨 1 — 일반 검색 외 2건", score 1 and the mechanism note on course 1 | One case across lessons reads "일반 검색 — 레슨 1, 2, 3" (`score.case_in_lessons`); a lesson session whose course has no `<course>.scores` (course 1) shows no score panels, per-request table, score note or lost-objectives figure |
-| 16 | "XSS 요청은 세지 않습니다" | Wording only: the XSS searches sent from the Website pane are not attack runs the platform records, so they are not in score 2. What score 2 counts is unchanged |
-| 17 | `/search` and `ARGS:sort` accepted; F5 sort line vs the brief; close confirmation; F1's pointless sentence | Both strict, each with its own message (`lesson.http.wrong.path.slash`, `lesson.miss.wrong.excluded.prefix`); the sort pass line says Django's `order_by()` builds the ORDER BY; the lesson's "세션 종료하고 결과 보기" asks first, as the session page does; the internet/sw1 sentence is gone |
+| 14 | Three labels for one area; callout lines over the Field statistics tab; no callout on F5's 0-result step; Kali callout over the prompt | Count callouts all read one line saying it is the count of logs found, and the empty result one line saying no logs were found (0); the hit-count ring joins the Field statistics tab; a callout on a bare prompt goes below the prompt line. F5's `still` is the lesson's last step, which is solo by design (no highlight), so it gets no callout; its card now says what the 0-result screen means |
+| 15 | Result page: one case named with "and 2 more" after lesson 1, score 1 and the mechanism note on course 1 | One case across lessons is named once with every lesson it ran in (`score.case_in_lessons`); a lesson session whose course has no `<course>.scores` (course 1) shows no score panels, per-request table, score note or lost-objectives figure |
+| 16 | A line saying XSS requests are not counted | Wording only: the XSS searches sent from the Website pane are not attack runs the platform records, so they are not in score 2. What score 2 counts is unchanged |
+| 17 | `/search` and `ARGS:sort` accepted; F5 sort line vs the brief; close confirmation; F1's pointless sentence | Both strict, each with its own message (`lesson.http.wrong.path.slash`, `lesson.miss.wrong.excluded.prefix`); the sort pass line says Django's `order_by()` builds the ORDER BY; the lesson's close-and-show-results button asks first, as the session page does; the internet/sw1 sentence is gone |
 
 Left by ruling:
 
-- **Finding 10** (Next skips a step and the result shows "건너뜀") is intended.
+- **Finding 10** (Next skips a step and the result shows `lesson.skipped`) is intended.
 - **Finding 16**: XSS is not scored; only the wording changed. Scoring the
   learner's own Website pane attacks would change what score 2 means, a
   product decision left open.
@@ -7248,43 +7250,44 @@ What went, and why:
 
 | Where | Removed | Why |
 |---|---|---|
-| Catalogue | Page title and subtitle, the brand mark, time estimates, category, difficulty, scenario class and guidance chips, "학습 내용:" and "실습 내용:" labels with the dot-joined `learns` lists, course and group subtitles, lesson-number pills | Unmeasured guesses (minutes, difficulty), metadata that repeats the title or the section numbering, and decoration. The outer heading is "대상 시스템", since it holds lessons, scenarios and the wargame |
-| Catalogue | "이 레슨부터 시작", "워게임 시작" | One action, one name: every row's button is "시작". The wargame's "안내 없이…" line became its row text |
-| Catalogue | Kind pill, "시나리오" column naming the target on every row, the `›` chevrons | Each session row names what was taken: course and lesson, scenario number and title, or wargame and target |
-| Session page | Console card with tiles (Kibana / 로그 조회, step progress again), coloured bar and hover lift, "블루팀 콘솔을 열어…" | One "블루팀 콘솔 열기" button (and "레드팀 콘솔 열기" in a wargame) |
-| Session page | Kind pill, "준비 완료" pill with a pulsing dot | The breadcrumb names the kind; a state shows only while opening |
-| Session page | "최근 활동 · 자동 새로고침" in lessons | A lesson hides its automatic requests while open, so the panel was always empty |
+| Catalogue | Page title and subtitle, the brand mark, time estimates, category, difficulty, scenario class and guidance chips, the "what you learn" and "what you practise" labels with the dot-joined `learns` lists, course and group subtitles, lesson-number pills | Unmeasured guesses (minutes, difficulty), metadata that repeats the title or the section numbering, and decoration. The outer heading is `main.scenarios`, since it holds lessons, scenarios and the wargame |
+| Catalogue | The "start from this lesson" and "start the wargame" buttons | One action, one name: every row's button is `main.start`. The wargame's "without guidance" line became its row text |
+| Catalogue | Kind pill, the scenario column naming the target on every row, the `›` chevrons | Each session row names what was taken: course and lesson, scenario number and title, or wargame and target |
+| Session page | Console card with tiles (Kibana and log search, step progress again), coloured bar and hover lift, a line telling the learner to open the blue console | One `session.blue.title` button (and `session.red.title` in a wargame) |
+| Session page | Kind pill, a "ready" pill with a pulsing dot | The breadcrumb names the kind; a state shows only while opening |
+| Session page | The recent activity panel (`session.activity`) with its auto-refresh label in lessons | A lesson hides its automatic requests while open, so the panel was always empty |
 | Result page | The score explanation printed three times (course paragraph, under score 1, a grey box of four notes) | One line per score: how a loss is decided and that undetected costs double; that a run counts once and is not added to score 1. Data-driven warnings stay. Course 2 keeps one line: Website-pane XSS searches are not in score 2 |
-| Result page | "탈취된 목표 0/3" in the header, the "점수 1 · 주 점수" / "점수 2 · 참고" kickers, the 탈취 여부 and 탐지 여부 columns and the pill legend, the "✓ 레슨 1 — 일반 검색 외 2건" line | The score card already shows the count; one plain result column says kept, lost and detected, or lost and undetected; the request table lists what passed |
-| Result page | "레슨 n부터 다시 시작", "같은 레슨 다시 시작", "같은 시나리오 다시 시작" | One label, "다시 시작" (a scenario's result said "같은 레슨") |
-| Lesson end | Green checks on every lesson and "레슨을 완료했습니다" after 0 steps passed | Each lesson shows "N단계 중 n단계 통과"; the line is "레슨이 끝났습니다" |
-| Briefings | "과정 안내" kicker, the reference footnote and closing paragraphs that said it twice, the scenario briefing's chips and "약 15분" | The time field already says the length; "약" was wrong for a fixed timer |
-| Lesson note | "먼저 이 버튼을 누르세요." under every open button; ring callouts that only name the ringed thing (search box, kali, board.com, DMZ, 관리망); the note's subtitle repeating the lesson title; "IDS 룰" header bar; the objectives card's "목표" title; placeholders that echo the question ("값", "숫자", "메서드", "세 자리 숫자" and the like, and the loot box's) | The button and the ring point already. The note is "레슨 노트" in lessons and "시나리오 노트" in scenarios. Format examples ("예: 192.0.2.10") stay |
+| Result page | The lost-objectives count (0/3) in the header, the kickers naming score 1 as primary and score 2 as reference, the lost and detected columns and the pill legend, the checked lesson-1 line naming one case "and 2 more" | The score card already shows the count; one plain result column says kept, lost and detected, or lost and undetected; the request table lists what passed |
+| Result page | Three restart labels (from lesson n, the same lesson, the same scenario) | One label, `session.restart` (a scenario's result had said "the same lesson") |
+| Lesson end | Green checks on every lesson and a "lesson completed" line after 0 steps passed | Each lesson shows how many of its steps passed (`lesson.steps.passed`); the line is `lesson.done` |
+| Briefings | The course-guide kicker, the reference footnote and closing paragraphs that said it twice, the scenario briefing's chips and "about 15 minutes" | The time field already says the length; "about" was wrong for a fixed timer |
+| Lesson note | A "press this button first" line under every open button; ring callouts that only name the ringed thing (search box, kali, board.com, DMZ, management network); the note's subtitle repeating the lesson title; the IDS rule header bar; the objectives card's title; placeholders that echo the question (value, number, method, three-digit number and the like, and the loot box's) | The button and the ring point already. The note is `lesson.note.heading` in lessons and `scenario.note.heading` in scenarios. Format examples (`lesson.map.placeholder.kali_ip`) stay |
 | Strings and API | The six lesson and two course `summary` strings, the scenario `summary` strings, `learns`, and the `goal`/`learns` card fields | Never shown, or shown only in the removed catalogue lines |
 | CSS | `.brand-mark`, `.lift` and `--shadow-lift`, the unused dot tones, the badge's dot | Nothing uses them any more |
 
 Tone fixes (Korean-first, practitioner wording): no glosses of field terms
-(레드팀, 해시, CVE, Core Rule Set, 퍼센트 인코딩, Paranoia Level, ModSecurity
-변수); no scoring internals in learner text (how the platform judges a dump,
-"결과 옆에 표시됩니다"); measured-by lines no longer restate the goal or the
-time line; one word per thing (실습 환경, 로그, 정상 검색, rule_id, 버전, 최종
-점검, 힌트 보기); "…중…" for every loading line.
+(red team, hash, CVE, Core Rule Set, percent-encoding, Paranoia Level,
+ModSecurity variables); no scoring internals in learner text (how the platform
+judges a dump, a "shown beside the result" line); measured-by lines no longer
+restate the goal or the time line; one Korean word per thing (practice range,
+log, benign search, rule_id, version, final check, show hint); one "loading"
+form for every loading line.
 
 Two open questions, decided:
 
 - `lesson.fix.*` keeps only its first sentence. The second restated
   `scenario.risk.*`, and the closed session's page renders the same debrief
-  (its "남은 위험" section) right under the verdict banner, so no explanation is
+  (its `lesson.debrief.risk` section) right under the verdict banner, so no explanation is
   lost on the result page.
-- "경로 추적" for path traversal was not found in a primary source. A Korean
-  security press article keeps the English ("Path Traversal 취약점",
-  boannews.com idxno=107983), so the console says "Path Traversal"
+- The Korean word for "path tracing" was not found in a primary source as a
+  name for path traversal. A Korean security press article keeps the English
+  (boannews.com idxno=107983), so the console says "Path Traversal"
   (`docs/vocabulary.md`).
 
-Not applied: "감점 합계 —" in F6's objectives card stays, because the dash
+Not applied: the dash after `lesson.objectives.total` in F6's objectives card stays, because the dash
 hides the penalty while F6's detection step is unanswered and the total would
-give the answer away. `lesson.kibana.none` already said "로그". The F6 card keeps
-its 탈취 여부 and 탐지 여부 columns: F6's steps name them.
+give the answer away. `lesson.kibana.none` already used the Korean word for log. The F6 card keeps
+its lost and detected columns (`lesson.objectives.col`): F6's steps name them.
 
 Two bugs fixed:
 
@@ -7313,47 +7316,47 @@ is removed rather than reworded. What the score means is unchanged.
 
 | # | Finding | What changed |
 |---|---|---|
-| 1 | "5단계는 틀린 뒤 통과" read as "step 5" | Counts say "개": "틀린 뒤 통과한 단계 n개", "건너뛴 단계 n개", "N개 단계 중 n개 통과" |
-| 2 | F6 loot passed on the admin row alone, then the result showed 전체 계정 "지킴" | The step passes only when the matched accounts cover every account in the session's snapshot; fewer fail loud with `lesson.miss.fail.loot.partial` (matched and total) and the box stays open. A partial paste still credits what it matched: the objectives follow the target's data, and the step asks for the whole table, so the result is true |
-| 3 | A reload wiped Kali's scrollback | ttyd runs `vm-terminal.sh` inside `tmux new-session -A -s <host>-<session>` (`TERMINAL_KEEP=1`, `platform/tmux.conf`: no status line, no alternate screen), so a reload reattaches to the same shell with sqlmap still printing. tmux is in the platform image; the Kali image is unchanged, since the range host pulls its images only at setup |
+| 1 | The count of steps passed after a wrong answer read as "step 5" | Counts use the Korean counter word for items: `session.course.retried`, `session.course.skipped`, `session.course.steps` |
+| 2 | F6 loot passed on the admin row alone, then the result showed every account as kept (`score.kept`) | The step passes only when the matched accounts cover every account in the session's snapshot; fewer fail loud with `lesson.miss.fail.loot.partial` (matched and total) and the box stays open. A partial paste still credits what it matched: the objectives follow the target's data, and the step asks for the whole table, so the result is true |
+| 3 | A reload wiped Kali's scrollback | ttyd runs `vm-terminal.sh` inside `tmux new-session -A -s <host>-<session>`, the host without its `cr-` prefix (for example `kali-12`) (`TERMINAL_KEEP=1`, `platform/tmux.conf`: no status line, no alternate screen), so a reload reattaches to the same shell with sqlmap still printing. tmux is in the platform image; the Kali image is unchanged, since the range host pulls its images only at setup |
 | 4 | An unapplied rule was lost on reload | The editor keeps the text in localStorage (`cr-rules-draft-<session>`, with its base version, try/catch) and restores it, saying so; apply drops it |
 | 5 | "n" lines after a sqlmap run (run B) | Not reproduced; the scrollback that would show the cause was gone. Left; the tmux change keeps it next time |
 | 6 | F2's DevTools answers guessable | A check's `dev` pattern needs `dev_request`, the row picked in DevTools while open, to be a recorded request matching it (`lesson.check.wrong.dev`). On method, path, status, parameter, sort and the missing post. GET/200/404 stay guessable as values; the guard makes the learner pick the row |
 | 7 | F3 X-Forwarded-For and F5 record count passed on the query left from earlier steps | Their `kql` now needs the step's own condition: `x_forwarded_for` beside `url` (the card says to add `request_header.x_forwarded_for : *`, which leaves the upstream row), and `source_ip` beside the WAF log (kali's records) |
 | 8 | The ring on board.com took in its IP label | `auditor.html` rings a node's icon and name only, not the interface labels |
-| 9 | A wrong board address said "waf의 주소(10.30.1.247)" — the last step's answer | `address_of` says only that it is another device's address, with no name or address |
-| 10 | F2 sort's pass line and the catalogue named the SQL injection target | The pass line says only what the parameter carries; the catalogue's scenario `practise` lines are gone and 3.2's title says "정렬 파라미터" |
-| 11 | "20점", "4점" rejected | An answer that is a number with a one- or two-letter unit word is read as the number (`lesson._unit_dropped`); `%` is not a unit |
+| 9 | A wrong board address said it was the waf's address and gave 10.30.1.247, the last step's answer | `address_of` says only that it is another device's address, with no name or address |
+| 10 | F2 sort's pass line and the catalogue named the SQL injection target | The pass line says only what the parameter carries; the catalogue's scenario `practise` lines are gone and 3.2's title says "sort parameter" (`scenario.writerule.title`) |
+| 11 | "20" and "4" with the Korean unit word for points rejected | An answer that is a number with a one- or two-letter unit word is read as the number (`lesson._unit_dropped`); `%` is not a unit |
 | 12 | "10.30.1.0", "q=" got a bare "wrong" | F1 DMZ and F2 parameter have `wrong_if` messages. `/search` stays strict, by round 18's ruling (Django's paths end in `/`; the step reads the URL as written) |
 | 13 | F3 source's wrong address said "the device this step asks" | `address_of` applies only to map address steps; F3 source says which row to read |
-| 14 | A stale "틀렸습니다" or red KQL line stayed after the fix | Typing, picking an order chip, or changing the Kibana query clears it |
-| 15 | "카드의 '…열기' 버튼" | "카드의" removed (the button is above the card) |
-| 16 | "'실행 결과 확인'을 누르세요" while the check runs itself | Kali cards say the run is checked when it ends; the button stays to check sooner |
-| 17 | 탈취 여부 "예" with 탐지 여부 "—"; "오른쪽 '목표' 표" | Direction fixed ("레슨 노트 아래"). The dash stays, by the slop round's ruling: it hides the alerts step's answer |
-| 18 | nocase passed itself with "nocase를 붙인 룰을 적용했습니다" | The pass line states the rule's state, which is true whether it was edited now or before |
+| 14 | A stale `lesson.check.wrong` or red KQL line stayed after the fix | Typing, picking an order chip, or changing the Kibana query clears it |
+| 15 | Lines naming the open button as "the card's" button | "The card's" removed (the button is above the card) |
+| 16 | A line telling the learner to press `lesson.kali.check` while the check runs itself | Kali cards say the run is checked when it ends; the button stays to check sooner |
+| 17 | Lost "yes" with detected "—"; a line placing the objectives table on the right | Direction fixed (below the lesson note). The dash stays, by the slop round's ruling: it hides the alerts step's answer |
+| 18 | nocase passed itself with a line saying the nocase rule was applied | The pass line states the rule's state, which is true whether it was edited now or before |
 | 19 | Slot addresses differ between sessions | Inherent to slots. No text says addresses stay the same; F1's waf pass line no longer says to remember the pairs |
 | 20 | Course 1's end promised per-request results | The line is gone; the course end shows no scores |
 | 21 | Scenario session page: "no attacks yet" beside listed alerts, minutes since open beside the scenario clock | An open scenario has no activity panel and shows only its start time |
-| 22 | Scenario result in lesson words, "ru에서", "판정한 최종 점검: 0회", an empty "남은 위험", customers twice, "no requests" beside 788 | Scenario words; origins named as countries (`scenario.origin.<code>`); a zero count and empty sections hidden; customer requests only in the debrief; "실행된 공격이 없습니다" and no empty per-request table |
-| 23 | "왼쪽 메뉴에서 경보를 누르세요" with the alerts already open | A `click` step whose pane is already open passes when reached |
+| 22 | Scenario result in lesson words, an origin given as the code "ru", a final-check count of 0, an empty `lesson.debrief.risk`, customers twice, "no requests" beside 788 | Scenario words; origins named as countries (`scenario.origin.<code>`); a zero count and empty sections hidden; customer requests only in the debrief; `score.no_attacks_run` and no empty per-request table |
+| 23 | A line telling the learner to press alerts in the left menu with the alerts already open | A `click` step whose pane is already open passes when reached |
 
 | # | Slop | What changed |
 |---|---|---|
 | S1 | Corp card stretched | The grid aligns items to the start |
-| S2 | Course-1 sessions "목표 3개 모두 지킴"; 실습 named the last lesson | The result cell shows objectives only for a course with a score; the row names the course |
-| S3 | "마지막 세션" lines; the wargame line twice; scenario lines restating titles | All removed |
-| S4 | "약 80초", "4~5분", "(1~2분)", "1분쯤" | Removed |
+| S2 | Course-1 sessions showed `result.kept_all`; the practice column named the last lesson | The result cell shows objectives only for a course with a score; the row names the course |
+| S3 | "Last session" lines; the wargame line twice; scenario lines restating titles | All removed |
+| S4 | Time estimates (about 80 s, 4-5 min, 1-2 min, about 1 min) | Removed |
 | S5 | Session page repeats the target; labels | The target and the progress label are gone; the breadcrumb names the target |
 | S6 | Callouts that name what is ringed | Every lesson step's own callout removed; stage callouts that say what to do next stay; those naming a count, an empty result, Top values or the prompt are gone |
 | S7 | F1 path asked three times, order shown twice | One question with how to take a button back; the order shows only as numbers on the buttons |
-| S8 | Glosses | 고객 PC(customers), 웹방화벽(ModSecurity), IDS(Suricata), 이상 점수(anomaly score), the percent-encoding gloss, (구성도의 kali) and "(정탐·미탐·오탐·통과)" removed |
-| S9 | Scoring internals in lessons | The "두 가지 점수" reference card and the course-end "점수 1 · 점수 2" line are gone. F6's cost step stays, with the rule (difficulty, double when undetected) in its own card. "점수 2" became "탐지 결과" everywhere a learner reads it; the per-run line drops "점수 1에 더하지 않습니다" |
-| S10 | Result page repeats and decorations | A missed attack is named once; outcome pills became coloured words; "탈취됨, 미탐"; the "탈취된 목표" label beside the heading is gone |
-| S11 | "기록된 실행 \|" card repeated on later steps; step counter in the panel | The label and the repeated card are gone (the open button carries the run's window); the counter is gone |
+| S8 | Glosses | The glosses after customer PC (customers), WAF (ModSecurity), IDS (Suricata) and anomaly score, the percent-encoding gloss, "kali on the map" and the TP/FN/FP/TN gloss removed |
+| S9 | Scoring internals in lessons | The "two scores" reference card and the course-end "score 1 · score 2" line are gone. F6's cost step stays, with the rule (difficulty, double when undetected) in its own card. "Score 2" became `score.second.heading` everywhere a learner reads it; the per-run line drops "not added to score 1" |
+| S10 | Result page repeats and decorations | A missed attack is named once; outcome pills became coloured words (`score.lost_unseen`); the lost-objectives label beside the heading is gone |
+| S11 | The "recorded run" label and card repeated on later steps; step counter in the panel | The label and the repeated card are gone (the open button carries the run's window); the counter is gone |
 | S12 | End panel order and repetition | The pass line stays in place; the button names the next lesson once; the "press Next lesson" line is gone |
-| S13 | One action, several names | The lesson end's button is "세션 종료", as on the session page. Left: the scenario console has no end button (a scenario ends through its final check, and the session page closes it); "다시 시작" names a different action from the catalogue's "시작" |
-| S14 | "명령을 준비하는 중…" for a URL | "불러오는 중…" |
-| S15 | 참고 stayed open across lessons | Its open state is kept per session and lesson, so a new lesson opens with it closed |
+| S13 | One action, several names | The lesson end's button is `lesson.course.close`, as on the session page (`session.close.button`). Left: the scenario console has no end button (a scenario ends through its final check, and the session page closes it); `session.restart` names a different action from the catalogue's `main.start` |
+| S14 | A "preparing the command" line for a URL | `lesson.command.preparing` now says loading |
+| S15 | The reference column (`lesson.ref.heading`) stayed open across lessons | Its open state is kept per session and lesson, so a new lesson opens with it closed |
 
 Docs review round 4:
 
@@ -7368,3 +7371,6 @@ Docs review round 4:
 - The slot reset time: 43 s is the capacity measurement's `slot.sh reset`,
   53 s the 2026-11-14 acceptance round's entry; `now.md` and `test/README.md`
   name both sources.
+- Docs review round 5: the English docs name Korean UI text by its
+  `strings.html` key or an English description, since CLAUDE.md allows
+  Korean only in four places.

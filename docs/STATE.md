@@ -1151,8 +1151,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       step 1 sort control (the tester's board image predated 2026-10-18).
       What the tester saw there, the coach pointing at the home link again
       and again while the element was missing, now ends after one trip home
-      with "이 단계가 가리키는 요소가 이 화면에 없습니다…"
-      (`lesson.site.missing`).
+      with `lesson.site.missing`.
       The F4 step 3 report was too vague to reproduce then; see the next item.
 - [ ] A corp scenario (what a WAF cannot see) is not built: corp's CVEs
       succeed but it has no customer traffic; it needs a generator for
@@ -1422,8 +1421,8 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       from the learner's sid, and says what was missing otherwise; `fired`
       reads that alert's rule_id in Kibana; the theory shows a rule form with
       square-bracket blanks instead of the complete `/admin` rule. Proven
-      live 2026-10-24 (session 1194): the copied `/admin` rule got "내
-      룰(sid 9100001)이 <script 요청에 경보를 내지 않았습니다…", a check
+      live 2026-10-24 (session 1194): the copied `/admin` rule got the message that the
+      learner's rule (sid 9100001) raised no alert on the `<script` request, a check
       before searching got the "send the search" message, `content:"<script"`
       passed, and steps 8-11 passed.
 - [x] 2026-10-24: F4 step 3, a second tester report: the Kibana coach rang
@@ -1508,7 +1507,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       a request by URL, which ends F4's stalled plain-search check; F4's
       `nocase` step needs `rev` raised; early answers removed from F2, F3,
       F4, F6 and the catalogue (F3 drops `client_source`, F6 asks the 500
-      count); F1's path starts at customers; "웹사이트 열기" reloads the board;
+      count); F1's path starts at customers; `lesson.open.site` reloads the board;
       callouts off the histogram, Top values and dev-tools toolbars; the WAF
       tile only for lessons that edit the WAF.
 - [x] 2026-11-14: the acceptance suite cut from about 25 min to 12-13 min
