@@ -71,7 +71,8 @@ what lets a piece be swapped without touching the rest.
   reload.
 - `platform/kibana.py` — the Kibana API.
 - `platform/gns3.py` — the GNS3 API (its container's own
-  `deploy/gns3/provision.py` aside).
+  `deploy/gns3/provision.py` and `deploy/gns3/auditor.html`, served as
+  `map.html`, aside).
 - `platform/attacker.py` — the attacker box and its marker.
 - `platform/api/loot.py` — the board: reads the target's own records and
   matches submitted stolen data against them.

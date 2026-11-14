@@ -7398,7 +7398,7 @@ Other findings:
 | # | Finding | What changed |
 |---|---|---|
 | F4 | Skip on a lesson's last step jumped to the next lesson with no end screen | The lesson end never moves on by itself: no 2 s switch, after a pass or a skip; the end card waits for its next-lesson button |
-| F5 | The c1 end said the course was finished over "0 of 6 steps passed", under the last lesson's title | At the course end the card's title is the course's and its line (`course.logs.done`, `course.attack.done`) says only that the last lesson ended |
+| F5 | The c1 end said the course was finished over "0 of 6 steps passed", under the last lesson's title | At the course end the card's title is the course's and its line (`course.logs.done`, `course.attack.done`) says that the last lesson ended; course 1's line also names course 2 |
 | F6 | c2 L2's error status passed with DevTools closed | f5 `error` has a `dev` pattern, like F2's DevTools steps |
 | F7 | c1 L3's search passed on the example word the step forbids | f3 `search` rejects `kim0413` |
 | F8 | The result page under-counted skipped steps | The skipped count is gone from the course card; "n of N steps passed" already says it |

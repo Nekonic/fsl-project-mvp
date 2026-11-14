@@ -316,7 +316,7 @@ Where a label sits (`topology.leaving`):
 - A shallow label goes to the other side of its line where it would touch its node's name.
 - A label on the left is right-aligned with `text-anchor: end`.
 
-Ids and names: every id is `uuid5(<learner id>, "slot-<n>-<wargame>")`. The name gets the key. `show_interface_labels` is on.
+Ids and names: the project id is `uuid5(<learner id>, "slot-<n>-<wargame>")`. Node and link ids are fresh on every load (`gns3.fresh_ids`, step 3 below). The name gets the key. `show_interface_labels` is on.
 
 The adapter reads the interfaces with `interfaces()`:
 
@@ -837,7 +837,7 @@ In a guided session (a foundation or a worked scenario), the lesson note is a co
 - From the top, the note holds:
   - the step card: step n/N, the step's title, the task, the command to type once the step is reached, an "Open <pane>" button when the step's pane is not shown, the question and its input, the status line, the help, and Back and one Next button (`step-next`), which reads `lesson.coach.next` on a passed step and `lesson.skip` otherwise;
   - F6's objectives card follows the step card and the stretch card; there is no theory card (2026-11-13, the reference column and the course briefing hold what was theory);
-  - F6's objectives card (`lesson_objectives`), which lists each objective lost since the unit started, its difficulty, lost or not, and detected or not (no penalty column and no total);
+  - F6's objectives card (`lesson_objectives`), which lists every objective with its difficulty, whether it was lost since the lesson started, and whether that loss was detected (no penalty column and no total);
   - a worked scenario's cards and hints;
   - F4's and F6's ungraded "Do it yourself" card;
   - the folded step list.
@@ -953,7 +953,7 @@ A two-phase point holds the first target `until: sent` and then points at `then`
 
 How the highlight draws:
 
-- It dims the pane alone (`pointer-events: none`). It rings the target in the primary colour and puts a one-line callout beside it (`<text>.callout.<step>`, and `.callout.<step>.then` for the second phase, `.then.then` for the third). Since 2026-11-15 no lesson step has its own callout: each one only named what the ring showed or repeated the card. Stage callouts stay only where the ring does not say what to do: the DevTools tab, the expand toggle of a row on a leg, the flyout's field, the rule line to add and the Kali check button. Opening DevTools, picking the row, writing or running the query, expanding a row with no leg and pressing Apply have no string, and a stage with no string draws only the ring.
+- It dims the pane alone (`pointer-events: none`). It rings the target in the primary colour and puts a one-line callout beside it (`<text>.callout.<step>`, and `.callout.<step>.then` for the second phase, `.then.then` for the third). Since 2026-11-15 no lesson step has its own callout: each one only named what the ring showed or repeated the card. Stage callouts stay only where the ring does not say what to do: the DevTools tab, the expand toggle of a row on a leg, the flyout's field, closing the open document flyout (`covered`), stepping to the next document (`other`), the event to check on a leg (`verify.<leg>`), the rule line to add and the Kali check button. Opening DevTools, picking the row, writing or running the query, expanding a row with no leg and pressing Apply have no string, and a stage with no string draws only the ring.
 - The callout is flipped or shifted inside the pane. It never covers the target, the rail, the bars or the note. It also never covers the text and controls that the site frame or the Kibana frame report around the target (Kibana's leaf text and controls within 220 px of the ring, skipping what the document flyout covers).
 - With no one-line spot free, it wraps to two or three lines.
 - A flyout step (the next-event arrow) looks inside the flyout first.
@@ -1061,7 +1061,7 @@ The postures `xss-gap` and `overbroad`:
 
 F6's sqlmap command carries `--skip-waf`. Without it, sqlmap's own WAF-detection request would trip IDS 9000003 and 9000004 and one CRS rule, and the run would count as detected. No unit question carries an `accept` list.
 
-One session per course. `POST /api/sessions/<id>/lesson/ {"lesson": "<id>"}` moves an open guided session to any foundation in place. The console's next lesson stays inside the session's course (`views._next_lesson`), and the course summary lists only that course's lessons; course 1 ends on `course.logs.done`, course 2 on `course.attack.done`, each saying only that the last lesson ended. The result page shows course 2's scores. It does the following:
+One session per course. `POST /api/sessions/<id>/lesson/ {"lesson": "<id>"}` moves an open guided session to any foundation in place. The console's next lesson stays inside the session's course (`views._next_lesson`), and the course summary lists only that course's lessons; course 1 ends on `course.logs.done`, course 2 on `course.attack.done`, each saying that the last lesson ended. Course 1's line also names course 2. The result page shows course 2's scores. It does the following:
 
 - When that unit's declared defense differs from `Session.defense`, it writes the unit's CRS tuning (`crs.apply`, as `PUT /waf/` does). It seeds the sensors only when the posture's rule file changes.
 - It sets `Session.lesson` and `Session.defense`.

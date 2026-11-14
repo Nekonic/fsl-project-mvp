@@ -102,9 +102,9 @@ also refuses cross-origin writes and any write whose body is not
   platform container.** To open the projects, the container holds the Docker
   socket, `CAP_NET_ADMIN` and `/dev/net/tun`. A `docker` node in GNS3 is a
   privileged container on the host's daemon.
-- At bring-up the platform starts every node of the learner map
-  (`deploy/gns3/provision.py` `started`). Each node is an idle container of one
-  pinned busybox image.
+- Every time the platform loads a learner map, `platform/gns3.py` starts every
+  node of that map. Each node is an idle container of one pinned busybox image
+  (`topology.DISPLAY_IMAGE`). A test checks that pin.
 - An admin who adds a node with another image, or starts one, runs code as root
   on the host.
 - The sign-in page turns off the web UI's usage statistics
