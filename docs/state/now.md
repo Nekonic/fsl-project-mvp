@@ -75,11 +75,12 @@ Internet.
   red-team run fires one sqlmap case (the dump; `CR_SQLMAP_VARIANTS=1` fires
   all six), `bin/acceptance` starts a group per free slot, the containment
   probes run side by side, and the unit suite runs beside the acceptance
-  suite. Full `bin/verify` on the platform VM (2026-11-14, four slots):
-  13 min 18 s from start to result, against about 25 min before; acceptance
-  91 passed, 0 failed, 0 errors, 1 skipped in 746 s across 14 processes
-  (1101 s before); unit and API 1517 passed in two processes beside it;
-  ratchet no regression (`core_loc` 584, `dependencies` 6, `services` 5).
+  suite. Two full `bin/verify` runs on the platform VM (2026-11-14, four
+  slots): 13 min 18 s and 11 min 54 s from start to result, against about
+  25 min before; acceptance 91 passed, 0 failed, 0 errors, 1 skipped in
+  746 s and 665 s across 14 processes (1101 s before); unit and API 1517
+  passed in two processes beside it; ratchet no regression (`core_loc` 584,
+  `dependencies` 6, `services` 5).
 - Live paths run end to end on 2026-11-13: `bin/cloud up --replace` from the
   VM range (25 min, the range host replaced as stale, the leftovers removed
   after READY); a stale range host replaced by `POST slot/`; `bin/cloud down`
