@@ -340,6 +340,7 @@ const KIBANA = {
   query: '[data-test-subj="queryInput"]',
   topValues: '[data-test-subj="dscFieldStats-topValues"]',
   popover: '[data-popover-panel], .euiPopover__panel',
+  chart: '[data-test-subj="unifiedHistogramChart"]',
   statsTitle: '[data-test-subj="fieldPopoverHeader_fieldDisplayName"]',
   cellText: "[data-datagrid-cellcontent]",
   toolbar: ['[data-test-subj="dscViewModeFieldStatsButton"]', '[data-test-subj="dataGridColumnSelectorButton"]'],
@@ -580,10 +581,20 @@ function kibanaRect(spec, leg, step) {
   const inFlyout = Boolean(flyout && element && typeof flyout.contains === "function" && flyout.contains(element));
   if (!inFlyout && coveredIn(doc, element)) return { rect: inFrame(frame, boxOf(doc.querySelector(KIBANA.close))), stage: "covered" };
   const rect = inFrame(frame, joined(boxOf(element), boxOf(also)));
-  const core = !rect ? [] : stage === "query" || stage === "write" || stage === "fieldless" || spec.query ? pickerRows(doc, rect)
+  const rows = !rect ? [] : stage === "query" || stage === "write" || stage === "fieldless" || spec.query ? pickerRows(doc, rect)
     : spec.doc ? flyoutRows(doc, rect) : spec.hits || spec.sidebar ? toolbarRows(doc, rect) : [];
+  const core = rect ? [...rows, ...drawnAreas(doc, element, rect, stage)] : rows;
   const crowd = rect ? [...core, ...frameText(doc, rect), ...(stage === "top" ? popoverText(element, rect) : [])] : core;
   return { rect, stage, leg: aimed || "", crowd, core, within: stage === "other" ? inFrame(frame, boxOf(flyout)) : null };
+}
+
+function drawnAreas(doc, element, rect, stage) {
+  const panel = stage === "top" && element && typeof element.closest === "function" ? element.closest(KIBANA.popover) : null;
+  const chart = typeof doc.querySelector === "function" ? doc.querySelector(KIBANA.chart) : null;
+  const drawn = inFrame(frame, boxOf(chart));
+  const shown = drawn && drawn.width > 0 && drawn.height > 0 && !overlaps(drawn, rect) ? [drawn] : [];
+  const held = panel ? inFrame(frame, boxOf(panel)) : null;
+  return [...shown, ...(held ? [held] : [])].map((box) => ({ ...box, icon: true }));
 }
 
 function popoverText(element, rect) {
@@ -766,7 +777,7 @@ const mapZones = () => asking.zones.map((zone) => inFrame(field("topology-frame"
 const mapText = () => asking.text.map((text) => inFrame(field("topology-frame"), text)).filter(Boolean);
 const siteText = () => asking.text.map((text) => inFrame(field("site-frame"), text)).filter(Boolean);
 
-const DEV_CROWD = '[data-coach], .dv-tab, .dv-row, .dv-chip, .dv-panel-tab, .dv-bar label, .dv-bar select, .dv-filter';
+const DEV_CROWD = '[data-coach], .dv-tab, .dv-row, .dv-chip, .dv-panel-tab, .dv-bar, .dv-bar label, .dv-bar select, .dv-filter, #site-dev-list th';
 
 function devCrowd(ring) {
   const tools = field("site-dev");
@@ -1639,7 +1650,10 @@ function coach(prefix, declared) {
     if (home) return t("lesson.site.home");
     if (found.stage === "field") return phrase(STAGE_KEYS.field, "", target.spec.doc || "");
     if (found.stage === "fieldless") return phrase("lesson.kibana.fieldless", t(STAGE_KEYS.query), target.spec.doc || "");
-    if (found.stage === "run_done" && kaliSettling) return t("lesson.check.kali_settling");
+    if (found.stage === "run_done" && kaliSettling) {
+      const settlingSaid = t("lesson.check.kali_settling");
+      return field("step-status").textContent === settlingSaid ? "" : settlingSaid;
+    }
     if (found.stage) {
       const key = STAGE_KEYS[found.stage];
       return (found.leg && localized(`${key}.${found.leg}`, "")) || localized(key, STAGE_FALLBACKS[found.stage] || "");
@@ -1841,7 +1855,7 @@ function coach(prefix, declared) {
       finish(unread);
       return;
     }
-    if (unread) status(t("lesson.status.press_next"));
+    status(t("lesson.status.press_next"));
   }
 
   async function judged(step, body, tail = "check/") {
@@ -2004,8 +2018,10 @@ function coach(prefix, declared) {
       showInKibana(button.dataset.discover);
       return;
     }
-    const tab = paneTab(button.dataset.pane);
+    const opening = button.dataset.pane;
+    const tab = paneTab(opening);
     if (tab) openPane(tab);
+    if (opening === "site" && site.history.length && site.history[site.at] !== "/") siteGo("/");
   });
   const editsRules = steps.some((step) => step.point.opens === "rules" || step.check.kind === "rules");
   if (editsRules) rulesPane();

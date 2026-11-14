@@ -335,7 +335,8 @@ def test_silent_polls_of_a_sent_step_write_nothing_and_the_platform_alone_judges
         "a poll that finds nothing is not a failure the learner should read")
     assert result["polls"] and all(result["polls"])
     assert result["passed"] == {"title": "lesson.demo.label.search", "said": "✓ search passed", "ring": False, "next": True,
-                                "status": ""}, "an automatically checked step shows its pass line and waits for Next"
+                                "status": worded("lesson.status.press_next")}, (
+        "an automatically checked step shows its pass line and waits for Next")
     assert result["title"] == "lesson.demo.label.method"
     assert result["read"] == 0
 
@@ -465,7 +466,7 @@ def test_a_run_whose_last_requests_are_still_being_logged_reads_as_settling_not_
     assert seen["result"]["polled"][0] is False and seen["result"]["polled"][-1] is True, "pressed once, then checked by itself"
     assert (seen["result"]["passed"], seen["result"]["hint"], seen["result"]["wrong"]) == (True, 0, 0)
 
-def test_every_pass_stays_until_next_is_pressed_and_a_long_one_also_says_to_press_next(client):
+def test_every_pass_stays_until_next_is_pressed_and_says_to_press_next(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       {to("method")}
       {answering(RIGHT["method"])}
@@ -484,8 +485,8 @@ def test_every_pass_stays_until_next_is_pressed_and_a_long_one_also_says_to_pres
     """)
 
     assert seen["errors"] == []
-    assert seen["result"]["short"] == {"title": "lesson.demo.label.method", "status": "", "next": True}, (
-        "a short pass does not move on by itself either")
+    assert seen["result"]["short"] == {"title": "lesson.demo.label.method", "status": worded("lesson.status.press_next"),
+                                       "next": True}, "a short pass does not move on by itself and says so too"
     assert seen["result"]["long"]["title"] == "lesson.demo.label.verdict", "a long pass waits to be read"
     assert seen["result"]["long"]["status"] == worded("lesson.status.press_next") and seen["result"]["long"]["next"] is True
     assert seen["result"]["after"] != "lesson.demo.label.verdict"
@@ -734,6 +735,25 @@ def test_a_step_held_until_its_request_is_sent_then_points_at_what_follows(clien
 
     assert seen["errors"] == []
     assert seen["result"] == {"before": "select[name=sort]", "after": 674}
+
+def test_the_open_website_button_always_brings_the_board_s_front_page_back(client):
+    seen = open_page(client, "/blue/1/", setup=served() + DEV, scenario=f"""
+      {to("sort")}
+      await browser.click('step-open');
+      await frames();
+      siteGo('/search/?q=%3Cscript%3E');
+      await browser.click('[data-pane="elk"]');
+      await frames();
+      const away = site.history[site.at];
+      const before = browser.element('step-open').dataset.pane;
+      await browser.click('step-open');
+      await frames();
+      return {{away, before, back: site.history[site.at]}};
+    """)
+
+    assert seen["errors"] == []
+    assert (seen["result"]["away"], seen["result"]["before"]) == ("/search/?q=%3Cscript%3E", "site")
+    assert seen["result"]["back"] == "/", "a blocked page left in the pane is replaced by the board's front page"
 
 def test_kibana_and_terminal_steps_ring_the_flyout_row_the_hit_count_and_the_matching_terminal_line(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
@@ -1848,7 +1868,7 @@ def test_the_console_is_told_which_leg_a_log_question_is_about(client):
     session = opened_lesson("f3")
     shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
 
-    assert [shown[name]["check"].get("leg") for name in ("site_source", "client_source", "xff")] == ["upstream", "inbound", "upstream"]
+    assert [shown[name]["check"].get("leg") for name in ("site_source", "xff", "upstream")] == ["upstream"] * 3
 
 def test_a_callout_for_a_row_of_the_objectives_card_sits_on_the_card_s_title_line_not_over_the_next_card(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
@@ -1901,7 +1921,7 @@ def test_a_replay_step_lists_which_of_its_two_requests_is_confirmed_while_it_che
     assert seen["errors"] == []
     assert seen["result"]["first"] == f"Attack: {worded('lesson.replay.waiting')}\nNormal: {worded('lesson.replay.waiting')}"
     assert seen["result"]["second"] == f"Attack: {worded('lesson.replay.confirmed')}\nNormal: {worded('lesson.replay.waiting')}"
-    assert seen["result"]["shown"] is False, "the pass line takes over once both are confirmed"
+    assert seen["result"]["third"] == worded("lesson.status.press_next"), "the pass line takes over once both are confirmed"
 
 def test_a_sidebar_step_that_shows_the_top_values_says_what_they_are_and_stays_off_the_toolbar(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
@@ -1948,11 +1968,41 @@ def test_the_top_values_callout_keeps_off_the_popover_s_line_saying_how_many_rec
       kibana.set('[data-test-subj="dataGridColumnSelectorButton"]', box(420, 440, 116, 28));
       await frames(4);
       const spot = callout();
-      return {{text: browser.text('coach-callout'), spot, over: meets(spot, {{left: 210, top: 582, width: 200, height: 18}})}};
+      return {{text: browser.text('coach-callout'), spot, over: meets(spot, {{left: 210, top: 582, width: 200, height: 18}}),
+               panel: meets(spot, {{left: 200, top: 396, width: 260, height: 220}})}};
     """)
 
     assert seen["errors"] == []
     assert seen["result"]["text"] == "The most frequent values."
+    assert seen["result"]["spot"] is not None and seen["result"]["over"] is False
+    assert seen["result"]["panel"] is False, "the callout sits outside the Top values popover"
+
+def test_a_hit_count_callout_keeps_off_the_histogram_whose_axis_labels_are_drawn_not_written(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      STRINGS['lesson.demo.callout.logged'] = 'The count.';
+      const doc = browser.element('pane-frame').contentDocument;
+      const plain = doc.querySelector;
+      const input = {{value: 'url : *kim0413*', getBoundingClientRect: () => box(300, 100, 400, 36)}};
+      doc.querySelector = (selector) => (selector === '[data-test-subj="queryInput"]' ? input : plain(selector));
+      const written = [box(0, 150, 290, 690), box(300, 392, 700, 440), box(430, 358, 560, 30)].map((rect) => ({{
+        tagName: 'SPAN', firstElementChild: null, textContent: 'x', matches: () => false, getBoundingClientRect: () => rect}}));
+      const everything = doc.querySelectorAll;
+      doc.querySelectorAll = (selector) => (selector === 'body *' ? written : everything.call(doc, selector));
+      doc.createRange = () => ({{selectNodeContents(element) {{ this.element = element; }}, getBoundingClientRect() {{ return this.element.getBoundingClientRect(); }}}});
+      doc.elementFromPoint = () => null;
+      {to("logged")}
+      await browser.click('step-open');
+      kibana.set('[data-test-subj="unifiedHistogramChart"]', box(300, 160, 700, 190));
+      kibana.set('[data-test-subj="discoverQueryHits"]', box(310, 360, 110, 24));
+      await frames();
+      input.value = 'url : *kim0413* and not destination : 10.30.1.247';
+      await frames(4);
+      const spot = callout();
+      return {{text: browser.text('coach-callout'), spot, over: meets(spot, {{left: 360, top: 256, width: 680, height: 190}})}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["text"] == "The count."
     assert seen["result"]["spot"] is not None and seen["result"]["over"] is False
 
 def test_the_query_prompt_keeps_off_the_time_range_picker_the_step_asks_to_leave_unchanged(client):
@@ -2194,7 +2244,7 @@ def test_the_lesson_text_and_the_callouts_switch_off_the_font_ligature_that_draw
 
 LONG_OK = "range.ok = 'Confirmed. Your rule alerted on the <script request. The next step finds this alert in Kibana.';"
 
-def test_every_kind_of_step_with_a_long_pass_text_says_to_press_next_and_a_short_one_says_nothing(client):
+def test_every_kind_of_step_with_a_long_or_a_short_pass_text_says_to_press_next(client):
     seen = open_page(client, "/blue/1/", setup=RULES + served(steps=FIRES) + DEV, scenario=f"""
       await browser.click('[data-step="0"]');
       await frames(4);
@@ -2218,7 +2268,7 @@ def test_every_kind_of_step_with_a_long_pass_text_says_to_press_next_and_a_short
       await browser.settle();
       return browser.text('step-status');
     """)
-    assert short["errors"] == [] and short["result"] == ""
+    assert short["errors"] == [] and short["result"] == worded("lesson.status.press_next")
 
 def test_a_finished_run_still_being_logged_does_not_tell_the_learner_to_press_the_check_button(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
@@ -2233,7 +2283,7 @@ def test_a_finished_run_still_being_logged_does_not_tell_the_learner_to_press_th
       await browser.click('#step-act [data-act="kali"]');
       await browser.settle();
       await frames();
-      const settling = browser.text('step-coach');
+      const settling = {{coach: shown('step-coach'), status: browser.text('step-status')}};
       range.settling = false;
       range.passed = false;
       await browser.click('#step-act [data-act="kali"]');
@@ -2244,7 +2294,8 @@ def test_a_finished_run_still_being_logged_does_not_tell_the_learner_to_press_th
 
     assert seen["errors"] == []
     assert seen["result"]["finished"] == "The run has finished. Press Check."
-    assert seen["result"]["settling"] == worded("lesson.check.kali_settling")
+    assert seen["result"]["settling"] == {"coach": False, "status": worded("lesson.check.kali_settling")}, (
+        "the card says the run is still being logged once, not twice")
     assert seen["result"]["wrong"] == "The run has finished. Press Check."
 
 def test_a_passed_step_s_open_pane_button_is_secondary_so_next_is_the_one_call_to_action(client):
@@ -2274,7 +2325,7 @@ def test_a_choice_shows_checking_the_moment_it_is_pressed_and_a_wrong_one_clears
 
     assert seen["errors"] == []
     assert seen["result"]["wrong"] == {"during": worded("lesson.status.checking"), "after": ""}
-    assert seen["result"]["passed"] == {"during": worded("lesson.status.checking"), "after": ""}
+    assert seen["result"]["passed"] == {"during": worded("lesson.status.checking"), "after": worded("lesson.status.press_next")}
 
 def test_a_kali_step_draws_no_run_row_until_the_platform_has_seen_the_run(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""

@@ -160,7 +160,7 @@ def test_every_step_opens_a_pane_points_at_one_element_and_the_last_is_solo_with
     assert [one["solo"] for one in steps] == [False] * 7 + [True]
 
 def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_learner_s_map_shows(client):
-    route = "kali > router > waf > board.com"
+    route = "customers > router > waf > board.com"
     session = opened("f1")
     with on_the_range(), on_map(read_slot()):
         given = {
@@ -171,14 +171,14 @@ def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_lear
             "waf_ip": [answer(client, session, "waf_ip", one)["passed"] for one in (WAF, BOARD)],
         }
         reordered = answer(client, session, "path", " > ".join(reversed(route.split(" > "))))
-        from_customers = answer(client, session, "path", "customers > router > waf > board.com")
+        from_kali = answer(client, session, "path", "kali > router > waf > board.com")
         right = answer(client, session, "path", route)
         shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
 
     assert given == {"kali_ip": [True, False], "board_ip": [True, True, False], "dmz": [True, False],
                      "log_host": [True, False], "waf_ip": [True, False]}
     assert reordered["reason"] == ["lesson.map.wrong.path.order", []], "right hosts in the wrong order say so"
-    assert from_customers["passed"] is False and right["passed"] is True
+    assert from_kali["passed"] is False and right["passed"] is True
     assert set(route.split(" > ")) <= set(shown["path"]["check"]["options"]) and "sw1" not in shown["path"]["check"]["options"]
     assert shown["dmz"]["point"]["map"] == {"zone": "sw1"}
 
@@ -222,21 +222,21 @@ def test_f3_reads_the_two_legs_of_one_search_by_destination_and_counts_both_legs
     with on_the_range(), on_map(read_slot()), patch.object(site, "kept", return_value=searched), indexed(*legs):
         step(client, session, "search")
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("site_source", WAF), ("client_source", CUSTOMER), ("xff", CUSTOMER), ("count", "2"))}
+            ("site_source", WAF), ("xff", CUSTOMER), ("count", "2"))}
         written = f"url : *lee2026* and not destination : {WAF}"
         counted = {query: step(client, session, "upstream", body={"answer": "1", "query": query}).json()
                    for query in (written, "url : *lee2026*", "")}
         wrong = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("site_source", CUSTOMER), ("client_source", WAF), ("count", "1"))}
+            ("site_source", CUSTOMER), ("xff", WAF), ("count", "1"))}
         upstream_wrong = step(client, session, "upstream", body={"answer": "2", "query": written}).json()["passed"]
 
-    assert said == {"site_source": True, "client_source": True, "xff": True, "count": True}, (
+    assert said == {"site_source": True, "xff": True, "count": True}, (
         "a count reads the newest search word, not another learner's or an older one")
     assert counted[written]["passed"] is True
     assert [(counted[query]["passed"], counted[query]["reason"]) for query in ("url : *lee2026*", "")] == [
         (False, ["lesson.logs.wrong.upstream.kql", []])] * 2, (
         "the right number read off the step before's table without the and-not query does not pass")
-    assert wrong == {"site_source": False, "client_source": False, "count": False} and upstream_wrong is False
+    assert wrong == {"site_source": False, "xff": False, "count": False} and upstream_wrong is False
 
 def test_f4_reads_the_probe_s_block_score_and_whether_the_ids_alerted_from_the_session_s_records(client):
     session = opened("f4")
@@ -248,11 +248,15 @@ def test_f4_reads_the_probe_s_block_score_and_whether_the_ids_alerted_from_the_s
              "Inbound Anomaly Score Exceeded (Total Score: 20)", details={"ruleId": "949110"})
     with patch.object(site, "kept", return_value=probes), quietly():
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("status", "403"), ("upper", "403"), ("score", "20"), ("ids_none", "absent"))}
+            ("encoded", "%3c"), ("upper", "20"), ("score", "20"), ("ids_none", "absent"))}
+        unencoded = answer(client, session, "encoded", "<")
+        whole = answer(client, session, "encoded", "%3Cscript")
         detected(session, "ids", "suricata", session.browse_marker, "script tag", alert={"signature_id": 9100001})
         alerted = answer(client, session, "ids_none", "present")["passed"]
 
-    assert said == {"status": True, "upper": True, "score": True, "ids_none": True}
+    assert said == {"encoded": True, "upper": True, "score": True, "ids_none": True}
+    assert unencoded["reason"] == ["lesson.xss.wrong.encoded.same", []]
+    assert whole["reason"] == ["lesson.xss.wrong.encoded.more", []]
     assert alerted is True
 
 NOCASE_LESS = 'alert http any any -> any any (msg:"script"; http.uri; content:"<script"; sid:9100001; rev:1;)\n'
@@ -280,6 +284,25 @@ def test_the_learner_s_rule_is_judged_by_its_own_alerts_and_the_fix_needs_nocase
     assert (fired, without, with_nocase) == (True, False, True)
     assert (sid, board) == (False, False), (
         "the step asks what the alert says, the destination of the learner's own rule's alert, not the sid they typed")
+
+def test_the_nocase_fix_passes_only_with_its_rev_raised_over_the_rule_it_fixes(client):
+    session = opened("f4")
+    posture = (ROOT / "deploy/suricata/rules/no-xss.rules").read_text()
+    RuleSet.objects.create(session=session, content=posture + NOCASE_LESS, applied_at=timezone.now() - timedelta(minutes=2))
+    same_rev = WITH_NOCASE.replace("rev:2;", "rev:1;")
+    RuleSet.objects.create(session=session, content=posture + same_rev, applied_at=timezone.now() - timedelta(minutes=1))
+    with quietly(), patch("api.views._live_rules", lambda session=None: posture + same_rev):
+        kept = step(client, session, "nocase").json()
+    RuleSet.objects.create(session=session, content=posture + WITH_NOCASE, applied_at=timezone.now())
+    with quietly(), patch("api.views._live_rules", lambda session=None: posture + WITH_NOCASE):
+        raised = step(client, session, "nocase").json()
+    fresh = opened("f4")
+    with quietly(), patch("api.views._live_rules", lambda session=None: posture + same_rev):
+        written_with_nocase = step(client, fresh, "nocase").json()
+
+    assert (kept["passed"], kept["reason"]) == (False, ["lesson.xss.fail.nocase.rev", ["9100001"]])
+    assert raised["passed"] is True
+    assert written_with_nocase["passed"] is True, "a rule written with nocase from the start has no case-sensitive rev to raise"
 
 @pytest.mark.parametrize("rule, alerted, chosen, line", [
     (NOCASE_LESS, False, "absent", "lesson.xss.ok.slipped"),
@@ -406,6 +429,20 @@ def test_a_replay_passes_only_when_the_attack_after_the_fix_alerts_and_an_ordina
     assert no_benign["reason"] == ["lesson.check.replay_benign", []]
     assert done["passed"] is True
 
+def test_a_replay_s_ordinary_search_seconds_after_the_attack_is_not_charged_with_the_attack_s_alert(client):
+    session = opened("f4")
+    posture = (ROOT / "deploy/suricata/rules/no-xss.rules").read_text()
+    passed(session, "f4", nocase=timezone.now() - timedelta(minutes=1))
+    mixed = browsed("/search/?q=%3CScRiPt%3Ealert(1)%3C%2FScRiPt%3E", 403)
+    plain = browsed("/search/?q=walrus2290", 200, request_id=2, at=mixed["at"] + 3.5)
+    detected(session, "mine", "suricata", session.browse_marker, "XSS", alert={"signature_id": 9100001},
+             http={"url": "/search/?q=%3CScRiPt%3Ealert%281%29%3C%2FScRiPt%3E"})
+    with quietly(), patch("api.views._live_rules", lambda session=None: posture + WITH_NOCASE):
+        with patch.object(site, "kept", return_value=[mixed, plain]):
+            judged = step(client, session, "replay").json()
+
+    assert judged["passed"] is True
+
 def test_a_step_says_it_has_a_command_before_it_is_reached_and_gives_the_text_only_once_reached(client):
     session = opened("f6")
     before = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
@@ -481,13 +518,13 @@ def test_f6_reads_the_exception_the_alerts_the_attack_drew_and_the_errors_it_cau
     with quietly(), on_map(read_slot()), on_the_range(), indexed(*edge, *upstream, *logged), \
             patch("api.views._waf_in_force", lambda session: standing):
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("excluded", "sort"), ("alerts", "none"), ("seen", KALI))}
-        the_waf = answer(client, session, "seen", WAF)["passed"]
+            ("excluded", "sort"), ("alerts", "none"), ("seen", "3"))}
+        the_waf = answer(client, session, "seen", "4")["passed"]
         detected(session, "ids", "suricata", "dump-1", "SQLi", alert={"signature_id": 9000003})
         ids_only = answer(client, session, "alerts", "ids")["passed"]
 
     assert said == {"excluded": True, "alerts": True, "seen": True}
-    assert the_waf is False, "the 500 records' source is the attacker, not the WAF they reached"
+    assert the_waf is False, "a 403 record is not a server error"
     assert ids_only is True
 
 def test_the_penalty_counts_double_for_an_objective_lost_undetected_since_the_lesson_started(client):

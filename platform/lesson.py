@@ -17,6 +17,7 @@ GROUPED_NUMBER = re.compile(r"\d{1,3}(,\d{3})+")
 ORDER_SEPARATOR = re.compile(r"[\s,>\u2192]+")
 TOTAL_SCORE = re.compile(r"Total Score: (\d+)")
 NOCASE = re.compile(r"\bnocase\s*;|\bpcre\s*:\s*\"/.*/[A-Za-z]*i[A-Za-z]*\"")
+REV = re.compile(r"[(;]\s*rev\s*:\s*(\d+)\s*[;)]")
 BLOCKING_RULE = "949110"
 PRESENT, ABSENT = "present", "absent"
 YES, NO = "yes", "no"
@@ -50,6 +51,14 @@ def anomaly_totals(messages: list[str]) -> list[str]:
 def ignores_case(rule: str) -> bool:
     return bool(NOCASE.search(rule))
 
+def rev_of(rule: str | None) -> int:
+    found = REV.search(rule or "")
+    return int(found[1]) if found else 0
+
+def raised_rev(rule: str, earlier: list[str]) -> bool:
+    before = [rev_of(one) for one in earlier if one and not ignores_case(one)]
+    return not before or rev_of(rule) > before[-1]
+
 def alerted_by(engines: set[str]) -> str:
     return ALERTED_BY[frozenset(engines) & frozenset({"suricata", "modsecurity"})]
 
@@ -63,10 +72,13 @@ def detected_penalty(tiers: list[dict], key: str) -> int | None:
 def rule_of(raw: dict) -> str:
     return str((raw.get("details") or {}).get("ruleId") or (raw.get("alert") or {}).get("signature_id") or "")
 
+def server_errors(records: list[dict]) -> list[dict]:
+    return [record for record in records
+            if str(((record.get("transaction") or {}).get("response") or {}).get("http_code") or "") == "500"]
+
 def server_error_sources(records: list[dict]) -> list[str]:
-    return sorted({str(source) for record in records
-                   if str(((transaction := record.get("transaction") or {}).get("response") or {}).get("http_code")
-                          or "") == "500" and (source := transaction.get("client_ip"))})
+    return sorted({str(source) for record in server_errors(records)
+                   if (source := (record.get("transaction") or {}).get("client_ip"))})
 
 def fix_class(waf: dict | None, posture: dict | None) -> str | None:
     if not waf:

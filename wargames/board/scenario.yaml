@@ -301,8 +301,8 @@ foundations:
         point: {opens: topology, map: {node: board.com}}
         check: {kind: answer, of: address, host: board.com, zone: service}
       - id: path
-        point: {opens: topology, map: {node: kali}}
-        check: {kind: answer, of: path, form: order, from: kali}
+        point: {opens: topology, map: {node: customers}}
+        check: {kind: answer, of: path, form: order}
       - id: dmz
         point: {opens: topology, map: {zone: "{switch:board.com}"}}
         check: {kind: answer, of: subnet, host: board.com}
@@ -365,18 +365,15 @@ foundations:
       - id: count
         point: {opens: elk, kibana: {hits: true, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
         check: {kind: answer, of: hits, about: search, leg: both}
-      - id: client_source
-        point: {opens: elk, kibana: {doc: source_ip, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
-        check: {kind: answer, of: sensor_source, about: search, leg: inbound}
+      - id: upstream
+        point: {opens: elk, kibana: {hits: true, kql: '(?is)^(?=.*\burl\s*:)(?=.*\bnot\s*\(?\s*destination\s*:)'}}
+        check: {kind: answer, of: hits, about: search, leg: upstream, kql: '(?is)^(?=.*\burl\s*:)(?=.*\bnot\s*\(?\s*destination\s*:)'}
       - id: site_source
         point: {opens: elk, kibana: {doc: source_ip, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
         check: {kind: answer, of: sensor_source, about: search, leg: upstream}
       - id: xff
-        point: {opens: elk, kibana: {doc: request_header.x_forwarded_for, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
-        check: {kind: answer, of: forwarded_for, about: search, leg: upstream}
-      - id: upstream
         point: {opens: elk}
-        check: {kind: answer, of: hits, about: search, leg: upstream, kql: '(?is)^(?=.*\burl\s*:)(?=.*\bnot\s*\(?\s*destination\s*:)'}
+        check: {kind: answer, of: forwarded_for, about: search, leg: upstream}
   - id: f4
     order: 4
     text: lesson.xss
@@ -390,9 +387,16 @@ foundations:
       - id: probe
         point: {opens: site, site: "input[name=q]"}
         check: {kind: sent, match: '<script'}
-      - id: status
-        point: {opens: site, dev: general.status}
-        check: {kind: answer, of: status, about: probe}
+      - id: encoded
+        point: {opens: site, dev: general.url}
+        check:
+          kind: answer
+          of: escaped
+          char: "<"
+          about: probe
+          wrong_if:
+            - {match: '(?i)^%3c.', says: more}
+            - {match: '^<', says: same}
       - id: rule
         point: {opens: elk, kibana: {doc: rule_id, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*script)'}}
         check: {kind: answer, of: rule, marker: browse, path: "<script", known: ["949110"]}
@@ -400,8 +404,9 @@ foundations:
         point: {opens: elk, kibana: {doc: rule, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*script)'}, keep: true}
         check: {kind: answer, of: anomaly_total, about: probe}
       - id: upper
-        point: {opens: site, site: "input[name=q]", until: sent, then: {dev: general.status}}
-        check: {kind: answer, of: status, match: '<(?!script)(?i:script)'}
+        point: {opens: site, site: "input[name=q]", until: sent,
+                then: {kibana: {doc: rule, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*ScRiPt)'}}}
+        check: {kind: answer, of: anomaly_total, match: '<(?!script)(?i:script)'}
       - id: ids_none
         point: {opens: elk, kibana: {hits: true, kql: '^(?=.*event_type\s*:\s*"?alert)(?=.*url\s*:\s*"?\*[^ ]*alert)'}}
         check: {kind: choice, of: alerted, about: [probe, upper], options: [present, absent]}
@@ -490,15 +495,14 @@ foundations:
         point: {opens: elk, kibana: {hits: true, kql: 'event_type\s*:\s*"?alert|log_source\s*:\s*"?modsecurity'}}
         check: {kind: choice, of: alerted_by, about: dump, options: [none, ids, waf, both]}
       - id: seen
-        point: {opens: elk, kibana: {sidebar: source_ip, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*status\s*(:|>=?)\s*"?5)'}}
+        point: {opens: elk, kibana: {hits: true, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*status\s*(:|>=?)\s*"?5)'}}
         check:
           kind: answer
-          of: kali_source
+          of: server_errors
           about: dump
-          from: server_error
           wrong_if:
             - {match: '^-$', says: rule_id}
-            - {match: '^[\d,]+$', says: count}
+            - {match: '^\d{1,3}(\.\d{1,3}){3}$', says: address}
       - id: cost
         point: {opens: elk, panel: "#lesson-objectives [data-objective=board-auth-user-admin]"}
         check: {kind: answer, of: detected_penalty, objective: board-auth-user-admin}

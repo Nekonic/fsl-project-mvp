@@ -703,18 +703,19 @@ by its id: `{"lesson": "f1"}` to `f6`. `{"guidance": true}` alone opens F1.
 Course 1, "로그 분석 기초" (F1-F3), only reads the range:
 
 - F1: read the attacker's and the web server's addresses, the request path
-  from kali, the DMZ network and the log server on the map.
+  from customers, the DMZ network and the log server on the map.
 - F2: search with the board's search box and read method, parameter, path and
   status code in the developer tools.
-- F3: find that search in Kibana with KQL the learner writes. Read both legs of
-  the request, before and after the reverse proxy, and the X-Forwarded-For
-  header, then count with `and` and `not`.
+- F3: find that search in Kibana with KQL the learner writes, count with `and`
+  and `not` the leg after the reverse proxy, then read that row's source and
+  its X-Forwarded-For header.
 
 Course 2, "공격 탐지 실습" (F4-F6), changes it. The learner attacks from the Kali
 pane and the Website pane and defends in the same blue console:
 
-- F4: send an XSS probe (403, the CRS anomaly score), write an IDS rule, bypass
-  it with letter case and fix it (defense `xss-gap`).
+- F4: send an XSS probe (its percent-encoded URL, the CRS anomaly score), write
+  an IDS rule, bypass it with letter case and fix it with `nocase` and a raised
+  `rev` (defense `xss-gap`).
 - F5: run sqlmap on the board's `sort` parameter and read the verdict and the
   rules that caught it.
 - F6: use an over-broad WAF exception (defense `overbroad`) to dump the accounts
