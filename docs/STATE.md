@@ -1515,6 +1515,16 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       end to end (`docs/DECISIONS.md` "The acceptance suite runs one sqlmap
       case and fills the slots as they free"); no test deleted, the port
       scan now covers every host.
+- [x] 2026-11-14: the answer-blind walk of round 18, its findings fixed
+      (`docs/DECISIONS.md` "Answer-blind walk round 18"): every Kibana answer
+      needs the learner's own query; F5's source step asks the record count
+      Kibana alone shows; F4 refuses a rule that alerts on every plain search
+      and its replay says why a plain search failed; F6 keeps the paranoia
+      level line; the cost line follows the objective; run steps say one
+      thing at a time; wrong addresses name their device; course 1's result
+      shows no score; ttyd raises no leave-site dialog. Left by ruling:
+      Next skipping steps, XSS not scored (wording only), wrong attempts
+      shown but not penalised.
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 
