@@ -12,7 +12,7 @@ failed() {
 [ -n "$host" ] || failed "no host given"
 case "${2:-}" in
   ''|*[!0-9]*) ;;
-  *) [ -z "${TERMINAL_KEEP:-}" ] || [ -n "${TMUX:-}" ] || exec tmux -f /app/tmux.conf new-session -A -s "${shown}-$2" "$0" "$host" "$2" ;;
+  *) [ -z "${TERMINAL_KEEP:-}" ] || [ -n "${TMUX:-}" ] || ! command -v tmux >/dev/null 2>&1 || exec tmux -f /app/tmux.conf new-session -A -s "${shown}-$2" "$0" "$host" "$2" ;;
 esac
 found=$(python - "$host" "${2:-}" 2>>"$log" <<'PY'
 import os, sys
