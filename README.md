@@ -155,7 +155,12 @@ VirtualBox나 VMware VM 1대에 클라우드 전체를 올려 시험하려면 `d
    export OS_INTERFACE='public'
    export OS_IDENTITY_API_VERSION='3'
    export OS_REGION_NAME='RegionOne'
+   : "${_OS_OLD_PS1:=$PS1}"
+   PS1="\[\e[1;33m\](${OS_PROJECT_NAME})\[\e[0m\] ${_OS_OLD_PS1}"
    ```
+
+   마지막 두 줄은 venv처럼 프롬프트 앞에 지금 쓰는 프로젝트를 노란색으로 붙입니다.
+   다른 RC를 다시 source해도 표시가 겹치지 않습니다.
 
    ```bash
    chmod 600 ~/fsl-range-openrc.sh
