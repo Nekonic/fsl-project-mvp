@@ -75,23 +75,25 @@ def test_a_learner_facing_container_mounts_nothing_of_the_host_beyond_its_own_lo
             f"most its own log file")
 
 
-SANDBOXED = ("kali", "waf", "board-db", "corp-db")
-RESOLVE_THEIR_DATABASE_BY_NAME = ("board", "corp-wp")
-
-
-@pytest.mark.parametrize("name", SANDBOXED)
-def test_the_learner_s_shells_and_the_databases_run_on_gvisor_s_kernel_not_the_range_host_s(name):
+@pytest.mark.parametrize("name", LEARNER_FACING)
+def test_every_learner_facing_container_runs_on_gvisor_s_kernel_not_the_range_host_s(name):
     assert slot_document()["services"][name].get("runtime") == rangehost.SANDBOX, (
         f"{name} runs on runc, so one kernel bug reachable through its seccomp profile reaches the range host"
     )
 
 
-@pytest.mark.parametrize("name", RESOLVE_THEIR_DATABASE_BY_NAME)
-def test_the_applications_stay_on_runc_while_they_reach_their_database_by_name(name):
-    assert set(SANDBOXED) | set(RESOLVE_THEIR_DATABASE_BY_NAME) == set(LEARNER_FACING)
-    assert not slot_document()["services"][name].get("runtime"), (
-        f"{name} finds its database through docker's embedded DNS at 127.0.0.11, which gVisor's netstack "
-        f"does not reach; on runsc it exits with Unknown server host"
+@pytest.mark.parametrize("name", ["board", "board-db", "corp-wp", "corp-db"])
+def test_a_target_finds_its_neighbours_by_a_fixed_address_not_by_docker_s_dns(name):
+    services = slot_document()["services"]
+    backends = {network for network in services[name]["networks"] if network.endswith("-default")}
+    [backend] = backends
+    neighbours = {other: service["networks"][backend]["ipv4_address"] for other, service in services.items()
+                  if backend in (service.get("networks") or {}) and other != name}
+
+    assert neighbours and services[name]["networks"][backend]["ipv4_address"]
+    assert {f"{other}:{address}" for other, address in neighbours.items()} <= set(services[name]["extra_hosts"]), (
+        "gVisor's netstack never reaches docker's embedded DNS at 127.0.0.11, so on runsc board exited with "
+        "Unknown server host 'board-db'; the name has to be in /etc/hosts"
     )
 
 

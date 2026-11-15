@@ -615,17 +615,23 @@ bundle holds `deploy/range-host/setup.sh` and files the platform generates:
 - `pristine.yaml` and `wargames.txt`: the targets, rendered once to make their
   pristine data.
 - `daemon.json` for Docker: the tenant MTU (`network.mtu`), the address pool
-  10.40.0.0/16 cut into /28s, the `local` log driver and `userns-remap:
-  default`, so a container's root is an unprivileged user on the host.
+  10.40.0.0/16 cut into /28s, the `local` log driver, `userns-remap:
+  default`, so a container's root is an unprivileged user on the host, and
+  the runtime `runsc` (gVisor) with `--net-raw`, which Kali's SYN scan needs.
 
 `setup.sh` does these steps while the range host has its egress port:
 
 1. It enables `universe`, purges `snapd` and `modemmanager`, and installs
-   `docker.io`, `docker-compose-v2`, `ethtool` and `rsyslog`.
+   `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog`, `bzip2` and
+   `curl`.
 2. It raises the inotify limits and sshd's `MaxSessions` and `MaxStartups`,
    because the platform runs many commands at once over one shared ssh
    connection.
-3. It installs `daemon.json` and restarts Docker.
+3. It downloads one pinned gVisor release (`gvisor.tar.bz2` of
+   release 20261026.0), checks it against the SHA-512 written in `setup.sh`
+   and unpacks `runsc`, its shim and `gvisor-bin/` into `/usr/local/bin`
+   (gvisor.dev, "Installation"). Then it installs `daemon.json` and restarts
+   Docker.
 4. It pulls every image in `images.txt`, five tries each.
 5. It brings the targets up once as the Compose project `pristine`, waits until
    they are healthy, stops them and copies their volumes to
@@ -1343,9 +1349,10 @@ These trade-offs are recorded. They are not verified threats:
 
 - The edge and the sensors are not recreated between sessions. No learner has
   a shell on them; the platform alone reaches them.
-- The slots share the range host's kernel. A container escape from Kali or the
-  WAF reaches the range host and every slot on it, and would persist to the
-  next session (`docs/THREAT-MODEL.md`).
+- Kali, the WAF, board, corp's WordPress and both databases run on gVisor
+  (`runsc`), so a learner's shell and the targets meet gVisor's kernel, not
+  the range host's. The edge and the sensors run on runc and share the range
+  host's kernel (`docs/THREAT-MODEL.md`).
 - The target data every session starts from is the same copy, made at the
   range host's setup. What a learner could reuse across sessions is renewed at
   each start: the board's password salts, corp's keys and salts, and corp's

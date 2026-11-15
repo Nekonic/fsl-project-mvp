@@ -308,7 +308,7 @@ sudo docker compose start platform
 | Elasticsearch, Kibana | 보안 기능 켬. `elastic` 비밀번호는 첫 시작 때 만들어 플랫폼 데이터 볼륨에 0600으로 둠. Kibana는 서비스 계정 토큰으로 접속. 학습자에게는 읽기 전용 계정 `cr-viewer`를 nginx가 붙여 줌. 9200, 5601은 VM loopback 전용 |
 | 프로젝트 비밀번호 | `/opt/cr/openstack-password`(0600)를 compose secret으로 읽기 전용 마운트. 컨테이너 환경 변수에는 없음 |
 | 플랫폼 VM 인바운드 | ssh, 8000, 8002는 `cloud.yaml`의 `network.allowed`에서만. 기본값 `[0.0.0.0/0]` |
-| 슬롯의 학습자용 컨테이너 | Kali, WAF, 두 DB는 gVisor(`runsc`) 위에서 돎. board, corp 웹 앱은 DB를 이름으로 찾는데 gVisor에서는 Docker 내장 DNS에 닿지 않아 runc. 모두 capability 최소화, `no-new-privileges`, userns-remap. 센서와 에지 라우터는 runc |
+| 슬롯의 학습자용 컨테이너 | Kali, WAF, board, corp와 두 DB는 gVisor(`runsc`) 위에서 돎. capability 최소화, `no-new-privileges`, userns-remap. 센서(af-packet)와 에지 라우터(nftables)만 runc |
 | Docker 소켓 | 플랫폼 VM의 어떤 서비스에도 마운트하지 않음 |
 
 초기 계정은 `admin` / `123456`입니다. 비밀번호를 바꾸라고 요구하지 않습니다. 바꾸려면:

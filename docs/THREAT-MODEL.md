@@ -125,8 +125,9 @@ script from the API:
 - The slots' containers reach neither: their networks have no route off the
   range host.
 
-**Every slot shares the range host's kernel.** The range is one VM,
-`cr-range`, and each slot is a Docker Compose project on it. The earlier range
+**The learner-facing containers run on gVisor; the edge and the sensors share
+the range host's kernel.** The range is one VM, `cr-range`, and each slot is a Docker
+Compose project on it. The earlier range
 gave each slot its own VMs, so reaching another slot meant breaking out of the
 hypervisor. Now a learner holds a root shell in the Kali container and in the
 WAF container (no-new-privileges leaves `sudo` nothing to gain, so the shell
@@ -134,6 +135,37 @@ starts as root), and one kernel separates that shell from every other slot.
 
 What stands between them (`deploy/range-host/slot.yaml`,
 `platform/range/rangehost.py`):
+
+- Kali, the WAF, `board`, `board-db`, `corp-wp` and `corp-db` run on gVisor
+  (`runsc`, release 20261026.0, pinned by SHA-512 in
+  `deploy/range-host/setup.sh`). gVisor answers their system calls in its own
+  user-space kernel, so the learner's root shells and the targets reach the
+  range host's kernel only through gVisor. `runsc` runs with `--net-raw`,
+  since Kali's SYN scan needs raw sockets.
+- gVisor's netstack never reaches Docker's embedded DNS at 127.0.0.11, which
+  Docker serves through iptables rules in the container's network namespace:
+  on `runsc` board first exited with `Unknown server host 'board-db' (-3)`
+  and WordPress never became healthy (measured 2026-11-15; gVisor's FAQ names
+  the same failure for user-defined bridges). Each target's backend network
+  therefore has a fixed /28 (`rangehost.backend`, 10.40.N+1.0/28 and
+  10.40.N+1.16/28 for slot N), every service on it a fixed address, and each
+  service names the others in `/etc/hosts` (`extra_hosts`). Nothing in a slot
+  resolves a name through DNS.
+- Two stay on runc and share the range host's kernel. No learner has a shell
+  in either:
+  - The two Suricata sensors, which read the slot's host bridges with
+    af-packet on the host network; gVisor's netstack offers no view of the
+    host's bridges.
+  - The edge, which forwards between the slot's networks and filters with the
+    kernel's nftables and sysctls (`ip_forward`, `rp_filter`).
+- `slot.sh` reaches into a sandbox's network with `docker exec --privileged`
+  (the one process gets every capability inside gVisor, the container keeps
+  its list), because gVisor copies the interfaces and routes into its own
+  netstack when the sandbox starts and removes the addresses from the host
+  namespace (gVisor `runsc/sandbox/network.go`), so `nsenter` from the host
+  would change nothing the sandbox sees. gVisor refuses `ip addr flush`
+  (`Operation not supported`), so the script deletes Kali's addresses one by
+  one.
 
 - dockerd runs with `userns-remap`, so root in a container is an unprivileged
   user on the range host.
@@ -184,8 +216,8 @@ What stands between them (`deploy/range-host/slot.yaml`,
   is given a shell in them.
 
 What a container escape reaches: with no host path a root operation follows
-on the learner's say, leaving the container takes a kernel bug reachable
-through the default seccomp profile, which puts the learner on the range host
+on the learner's say, leaving Kali, the WAF or a target takes a bug in gVisor and
+then a host kernel bug reachable from gVisor's own seccomp filter, which puts the learner on the range host
 as the remapped user, and a second bug as root. From there every other slot on the host is open, including
 its board's `auth_user` secret, its sensors and its logs, and so is the range
 host's syslog stream to the platform. It reaches no way out: the range host's

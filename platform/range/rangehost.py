@@ -36,6 +36,8 @@ TAG = re.compile(r"\$\{CR_IMAGE_TAG(?::-[^}]*)?\}")
 DROPPED = ("build", "networks", "platform")
 FRONT = "estate"
 BACKEND = "{wargame}-default"
+BACKEND_PREFIX = 28
+BACKEND_SIZE = 16
 INTERNET = "internet"
 UP_TIMEOUT = 900.0
 RESET_TIMEOUT = 600.0
@@ -67,6 +69,11 @@ class Slot:
         return f"{self.project}_{key}"
 
 
+def backend(number: int, index: int) -> ipaddress.IPv4Network:
+    pool = ipaddress.ip_network(cloud.RANGE_HOST_POOL)
+    return ipaddress.ip_network(f"{pool[(number + 1) * 256 + index * BACKEND_SIZE]}/{BACKEND_PREFIX}")
+
+
 def estate(base: str, number: int) -> ipaddress.IPv4Network:
     network = ipaddress.ip_network(base)
     if network.prefixlen > 16:
@@ -91,19 +98,23 @@ def _wargame_services(source: Path, wargames, slot: Slot, declared: dict,
     limits = declared.get("limits") or {}
     extra = declared.get("extra_hosts") or {}
     services, networks = {}, {}
-    for wargame in wargames:
+    for index, wargame in enumerate(wargames):
         path = Path(source) / COMPOSE.format(wargame=wargame)
         if not path.is_file():
             raise RangeUnavailable(f"the range host runs {wargame!r} and {path} does not exist")
-        backend = BACKEND.format(wargame=wargame)
-        networks[backend] = {
+        name_of = BACKEND.format(wargame=wargame)
+        subnet = backend(slot.number, index)
+        networks[name_of] = {
             "internal": True,
             "driver_opts": {
                 "com.docker.network.driver.mtu": str(slot.mtu),
                 "com.docker.network.bridge.gateway_mode_ipv4": "isolated",
             },
+            "ipam": {"config": [{"subnet": str(subnet), "gateway": str(subnet[1])}]},
         }
-        for name, service in (yaml.safe_load(path.read_text()).get("services") or {}).items():
+        declared_services = yaml.safe_load(path.read_text()).get("services") or {}
+        placed = {name: str(subnet[2 + n]) for n, name in enumerate(declared_services)}
+        for name, service in declared_services.items():
             kept = {key: value for key, value in service.items() if key not in DROPPED}
             kept["image"] = TAG.sub(slot.tag, kept["image"])
             kept["container_name"] = slot.container(name)
@@ -112,11 +123,11 @@ def _wargame_services(source: Path, wargames, slot: Slot, declared: dict,
             kept.update(limits.get(name) or {})
             if kept.get("healthcheck"):
                 kept["healthcheck"] = {**kept["healthcheck"], **(declared.get("healthcheck") or {})}
-            attached = {backend: {}}
+            attached = {name_of: {"ipv4_address": placed[name]}}
             if name in fronts:
                 attached[FRONT] = {"ipv4_address": f"{slot.prefix}.{fronts[name]}"}
-            if extra.get(name):
-                kept["extra_hosts"] = list(extra[name])
+            kept["extra_hosts"] = [f"{other}:{address}" for other, address in placed.items() if other != name]
+            kept["extra_hosts"] += list(extra.get(name) or [])
             kept["networks"] = attached
             services[name] = kept
     return services, networks
