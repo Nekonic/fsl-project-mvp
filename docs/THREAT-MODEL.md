@@ -95,8 +95,10 @@ several). Their limits:
   nginx, so `bin/verify` on the VM is not throttled. Through the floating IP
   the VM reaches itself with that address as the source; anything else that
   reached the platform from it would be spared too.
-- One open session per learner is checked before the session is created, not
-  under a lock; two requests at the same instant can both pass.
+- One open session per learner is checked again under the in-process lock
+  that picks the slot (`SLOT_CHOICE`), so parallel opens by one learner get
+  one session. The lock holds because one waitress process serves the API; a
+  second process would need a database lock.
 
 The platform stands on the management network only,
 and no slot container has a route to it: every slot network but the 관제망 is

@@ -225,10 +225,10 @@ def sessions(request):
         return _reply([_described(s, judged=s.ended_at is not None) for s in found[:limit]])
 
     body = _payload(request)
-    held = None if request.user.is_staff else Session.objects.filter(owner=request.user, ended_at=None).first()
-    if held is not None:
-        return _reply({"detail": f"you already hold open session {held.pk}; close it before opening another",
-                       "open_session": held.pk}, status=409)
+    try:
+        _refuse_a_second_session(request.user)
+    except HoldsASession as holding:
+        return holding.reply()
     scenario = body.get("scenario")
     if scenario is None:
         scenario = "board"
@@ -242,11 +242,14 @@ def sessions(request):
     else:
         guidance, taught, defense, posture = _settings(scenario, body)
     adapter = substrate()
-    session = _opened_on_a_ready_slot(adapter, dict(
-        scenario=scenario, baseline=[], guidance=guidance, lesson=taught, defense=defense, course_scenario=played,
-        owner=request.user,
-        lessons=[{"id": taught, "started_at": timezone.now().isoformat()}] if guidance and not played else [],
-    ))
+    try:
+        session = _opened_on_a_ready_slot(adapter, dict(
+            scenario=scenario, baseline=[], guidance=guidance, lesson=taught, defense=defense,
+            course_scenario=played, owner=request.user,
+            lessons=[{"id": taught, "started_at": timezone.now().isoformat()}] if guidance and not played else [],
+        ))
+    except HoldsASession as holding:
+        return holding.reply()
     try:
         adapter = _range(session, adapter)
         _aim_attacker(adapter)
@@ -273,6 +276,7 @@ def _opened_on_a_ready_slot(adapter, fields):
         _refuse_a_full_range(adapter)
         chosen = _ready_slot(adapter)
         with SLOT_CHOICE:
+            _refuse_a_second_session(fields["owner"])
             _refuse_a_full_range(adapter)
             if not hasattr(adapter, "plan_slot") or (chosen or 1) not in _holders():
                 try:
@@ -280,6 +284,20 @@ def _opened_on_a_ready_slot(adapter, fields):
                 except IntegrityError:
                     pass
     raise Conflict("each slot this open chose was taken by another session as it opened; try again")
+
+class HoldsASession(Exception):
+    def __init__(self, held):
+        super().__init__(held.pk)
+        self.held = held
+
+    def reply(self):
+        return _reply({"detail": f"you already hold open session {self.held.pk}; close it before opening another",
+                       "open_session": self.held.pk}, status=409)
+
+def _refuse_a_second_session(owner):
+    held = None if owner.is_staff else Session.objects.filter(owner=owner, ended_at=None).first()
+    if held is not None:
+        raise HoldsASession(held)
 
 def _refuse_a_full_range(adapter):
     live = Session.objects.filter(ended_at=None).count()

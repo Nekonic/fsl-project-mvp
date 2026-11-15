@@ -8355,6 +8355,7 @@ The user: "회원가입을 해도, 관리자가 직접 승인해야 하는거로
 Not chosen: a CAPTCHA (no new dependency, and the approval already stops a
 bot's account from doing anything); locking by address and username together
 (an attacker with many addresses would never lock, and nginx already limits
-per address); a lock under `select_for_update` for the one-session check
-(SQLite; two requests in the same instant can both pass, recorded in
-`docs/THREAT-MODEL.md`).
+per address); `select_for_update` for the one-session check (SQLite ignores
+it). The check runs again inside `SLOT_CHOICE`, the in-process lock that
+already serialises the slot choice, so parallel opens by one learner get one
+session.

@@ -79,6 +79,17 @@ def test_a_learner_holds_one_open_session_and_is_pointed_at_it():
     assert second.status_code == 409 and second.json()["open_session"] == first.json()["id"]
 
 
+def test_the_one_session_check_runs_again_where_the_slot_is_chosen():
+    from api import views
+
+    _, learner = learner_client()
+    held = Session.objects.create(owner=learner)
+
+    with pytest.raises(views.HoldsASession):
+        views._opened_on_a_ready_slot(views.substrate(), {"owner": learner})
+    assert Session.objects.filter(owner=learner).count() == 1 and held.ended_at is None
+
+
 def test_an_admin_is_not_held_to_one_open_session(client):
     Session.objects.create(owner=get_user_model().objects.get(username="admin"))
 
