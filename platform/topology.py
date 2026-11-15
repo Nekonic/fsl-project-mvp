@@ -62,8 +62,7 @@ INTERNET = "internet"
 SERVICE = NAMED_ON
 SWITCH = "switch:{zone}"
 SENSOR = "sensor:{service}"
-CAPTIONS = ("internet", "dmz", "web", "database")
-FORWARDED = "udp"
+CAPTIONS = ("internet", "dmz", "web", "database", "mgmt")
 
 @dataclass(frozen=True)
 class Learner:
@@ -111,6 +110,7 @@ def learner(declared, wargame: str, customers_from: str = "", customers_prefer: 
         if real not in hosts:
             put(real, database)
     put(LOG_STORE, LOG_SERVER)
+    put(compose.get(LOG_SERVER, ""), LOG_SERVER)
     for sensing, sensed in sorted(declared.watches.items()):
         if roles.get(sensing) and roles[sensing] not in hosts and roles.get(sensed) in hosts:
             put(roles[sensing], hosts[roles[sensed]][0])
@@ -168,6 +168,8 @@ def captions(learner, found) -> dict[str, str]:
             found_captions[zone] = "internet"
         elif ROUTER in names:
             found_captions[zone] = "dmz"
+        elif LOG_SERVER in names:
+            found_captions[zone] = "mgmt"
         elif names & learner.named("database") and WAF not in names:
             found_captions[zone] = "database"
         else:
@@ -235,9 +237,15 @@ def graph(learner, wiring) -> dict:
                 wiring.legs(container).get(container.sniffs, ""))
             if network is not None and network.key in zones:
                 drawn[container.service] = SENSOR.format(service=container.service)
-                nodes.append({"id": drawn[container.service], "kind": "sensor", "zone": network.key})
+                legs = wiring.legs(container)
+                linked = [(legs[name], address.partition("/")[0]) for name, address in container.addresses
+                          if legs.get(name) in zones and legs[name] != network.key]
+                nodes.append({"id": drawn[container.service], "kind": "sensor", "zone": network.key,
+                              **({"zones": [zone for zone, _ in linked]} if linked else {})})
                 edges.append({"source": drawn[container.service], "target": SWITCH.format(zone=network.key),
                               "kind": "mirror"})
+                edges += [{"source": drawn[container.service], "target": SWITCH.format(zone=zone),
+                           "kind": "link", "address": address} for zone, address in linked]
             continue
         named = [shown for shown in learner.hosts.get(container.host, ()) if shown != CUSTOMERS]
         if not named or named[0] in learner.hidden:
@@ -253,11 +261,13 @@ def graph(learner, wiring) -> dict:
             head = heads.get((name, zone))
             edges.append({"source": name, "target": SWITCH.format(zone=zone), "kind": "link",
                           "address": head.address.partition("/")[0] if head else ""})
-    logging = [drawn[one.service] for one in wiring.logging() if one.service in drawn]
-    if logging:
-        nodes.append({"id": LOG_SERVER, "kind": "logs", "name": LOG_SERVER,
-                      "port": f"{wiring.port}/{FORWARDED}" if wiring.port else ""})
-        edges += [{"source": source, "target": LOG_SERVER, "kind": "logs"} for source in logging]
+    server = next((node for node in nodes if node["id"] == LOG_SERVER), None)
+    beside = set(server["zones"]) if server is not None else set()
+    logging = [drawn[one.service] for one in wiring.logging() if one.service in drawn
+               and not beside & set(next(node.get("zones") or () for node in nodes if node["id"] == drawn[one.service]))]
+    if server is not None:
+        server["port"] = wiring.port
+        edges +=[{"source": source, "target": LOG_SERVER, "kind": "logs"} for source in logging]
     drawn_zones = [{"id": zone, "caption": captioned[zone],
                     "subnet": "" if captioned[zone] == "internet" else next(iter(wiring.network(zone).subnets), "")}
                    for zone in zones]
@@ -283,15 +293,22 @@ LANE_DROP = 60
 LANE = 12
 COLLECTOR_DROP = 80
 END_SPREAD = 12
+BAND = "mgmt"
+BAND_TOP = 50
+BAND_GAP = 40
+BAND_CAPTION = 110
+BAND_FLOOR = 90
 ACROSS = ("kali", "router", "waf", "server", "database")
 
 def _across(node) -> tuple:
     return (ACROSS.index(node["kind"]) if node["kind"] in ACROSS else len(ACROSS), node["id"])
 
 def laid_out(zones, nodes, edges) -> None:
-    order = [zone["id"] for zone in zones]
+    band = next((zone for zone in zones if zone["caption"] == BAND), None)
+    flow = [zone for zone in zones if zone is not band]
+    order = [zone["id"] for zone in flow]
     index = {zone: at for at, zone in enumerate(order)}
-    devices = sorted((node for node in nodes if node.get("zones")), key=_across)
+    devices = sorted((node for node in nodes if node.get("zones") and set(node["zones"]) <= set(order)), key=_across)
     alone = {zone: [node for node in devices if node["zones"] == [zone]] for zone in order}
     between = {at: [node for node in devices if len(node["zones"]) > 1
                     and min(index[zone] for zone in node["zones"]) == at] for at in range(len(order))}
@@ -326,16 +343,17 @@ def laid_out(zones, nodes, edges) -> None:
         else:
             left = right + ZONE_GAP
     for node in nodes:
-        if node["kind"] == "switch":
+        if node["id"] in at_x:
             node.update(x=at_x[node["id"]], y=0)
     bottom = max([0] + [node["y"] for node in devices if "y" in node]) + FLOOR
-    for zone in zones:
+    for zone in flow:
         x1, x2 = edges_of_zone[zone["id"]]
         zone["box"] = [x1, -TOP, x2, bottom]
-    sensor_y = bottom + SENSOR_DROP
+    sensor_y = bottom + SENSOR_DROP + (BAND_GAP + BAND_TOP if band else 0)
     for zone in order:
         for k, node in enumerate(node for node in nodes if node["kind"] == "sensor" and node["zone"] == zone):
-            node.update(x=at_x[SWITCH.format(zone=zone)] + k * SENSOR_SPREAD, y=sensor_y, label="right")
+            node.update(x=at_x[SWITCH.format(zone=zone)] + k * SENSOR_SPREAD, y=sensor_y,
+                        label="below" if band else "right")
     where = {node["id"]: node for node in nodes}
     logs = [edge for edge in edges if edge["kind"] == "logs" and "x" in where.get(edge["source"], {})]
     collector = next((node for node in nodes if node["kind"] == "logs"), None)
@@ -343,6 +361,9 @@ def laid_out(zones, nodes, edges) -> None:
         return
     sources = [where[edge["source"]]["x"] for edge in logs]
     middle = gaps[0] if gaps else round(sum(sources) / max(1, len(sources)))
+    if band is not None:
+        _on_the_band(band, flow, where, collector, logs, middle, sensor_y, bottom)
+        return
     lanes_top = sensor_y + LANE_DROP
     sides: dict[int, list[dict]] = {-1: [], 0: [], 1: []}
     for edge in logs:
@@ -358,3 +379,15 @@ def laid_out(zones, nodes, edges) -> None:
             edge.update(route=[[source["x"], lane], [end, lane]], end=[end - middle, -ICON_HALF])
             lanes = max(lanes, 2 * k + 2)
     collector.update(x=middle, y=lanes_top + max(0, lanes - 1) * LANE + COLLECTOR_DROP, label="below")
+
+def _on_the_band(band, flow, where, collector, logs, middle, sensor_y, bottom) -> None:
+    where[SWITCH.format(zone=band["id"])].update(x=middle, y=sensor_y)
+    collector.update(x=middle, y=sensor_y + ROW, label="below")
+    for k, edge in enumerate(sorted(logs, key=lambda edge: abs(where[edge["source"]]["x"] - middle))):
+        source = where[edge["source"]]
+        side = 1 if source["x"] > middle else -1
+        rise = (k // 2) * LANE * (1 if k % 2 else -1)
+        edge.update(route=[[source["x"], collector["y"] + rise]], end=[side * ICON_HALF, rise])
+    band["box"] = [min(zone["box"][0] for zone in flow), bottom + BAND_GAP,
+                   max(zone["box"][2] for zone in flow), collector["y"] + BAND_FLOOR]
+    band["shift"] = BAND_CAPTION - (band["box"][2] - band["box"][0]) // 2

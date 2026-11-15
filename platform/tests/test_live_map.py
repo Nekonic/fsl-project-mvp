@@ -1,6 +1,7 @@
 import hashlib
 import pathlib
 import re
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -20,7 +21,8 @@ CYTOSCAPE_SHA256 = "081591ab735b2b6a3b31a3c60f8f3a3e2fee8c92939e0c7820ad1208571b
 NETWORKS = """@network s1_internet 4f1c0d2e3a5b6c7d8e9f00112233445566778899aabbccddeeff001122334455 s1-inet 172.30.1.0/24
 @network s1_estate 5a1c0d2e3a5b6c7d8e9f00112233445566778899aabbccddeeff001122334455 s1-estate 10.30.0.0/24
 @network s1_board-default 6b1c0d2e3a5b6c7d8e9f00112233445566778899aabbccddeeff001122334455 - 172.18.0.0/16
-@network s1_corp-default 7c1c0d2e3a5b6c7d8e9f00112233445566778899aabbccddeeff001122334455 - 172.19.0.0/16 """
+@network s1_corp-default 7c1c0d2e3a5b6c7d8e9f00112233445566778899aabbccddeeff001122334455 - 172.19.0.0/16 
+@network s1_mgmt 8a1c0d2e3a5b6c7d8e9f00112233445566778899aabbccddeeff001122334455 s1-mgmt 172.29.1.0/24 """
 CONTAINERS = {
     "kali": ("s1_internet", "", (), """2: eth0@if10    inet 172.30.1.10/24 brd 172.30.1.255 scope global eth0\\       valid_lft forever
 2: eth0@if10    inet 73.0.0.10/24 scope global eth0\\       valid_lft forever preferred_lft forever
@@ -38,8 +40,19 @@ CONTAINERS = {
     "corp-wp": ("s1_corp-default", "", (), """9: eth0@if17    inet 172.19.0.3/16 brd 172.19.255.255 scope global eth0
 10: eth1@if18    inet 10.30.0.185/24 brd 10.30.0.255 scope global eth1"""),
     "corp-db": ("s1_corp-default", "", (), """11: eth0@if19    inet 172.19.0.2/16 brd 172.19.255.255 scope global eth0"""),
-    "edge-sensor": ("host", "-c /etc/suricata/suricata.yaml --af-packet=s1-inet", ("/var/log/cr/s1/edge",), ""),
-    "estate-sensor": ("host", "-c /etc/suricata/suricata.yaml --af-packet=s1-estate", ("/var/log/cr/s1/estate",), ""),
+    "edge-sensor": ("s1_internet", "-c /etc/suricata/suricata.yaml --af-packet=sniff", ("/var/log/cr/s1/edge",),
+                    """21: mgmt@if31    inet 172.29.1.11/24 brd 172.29.1.255 scope global mgmt"""),
+    "estate-sensor": ("s1_estate", "-c /etc/suricata/suricata.yaml --af-packet=sniff", ("/var/log/cr/s1/estate",),
+                      """23: mgmt@if33    inet 172.29.1.12/24 brd 172.29.1.255 scope global mgmt"""),
+    "edge-sensor-shipper": ("container:5d1f", "-n -f /etc/rsyslog.conf -i /tmp/rsyslogd.pid",
+                            ("/opt/cr/s1/rsyslog/edge-sensor-shipper.conf", "/var/log/cr/s1/edge"), ""),
+    "estate-sensor-shipper": ("container:6e2a", "-n -f /etc/rsyslog.conf -i /tmp/rsyslogd.pid",
+                              ("/opt/cr/s1/rsyslog/estate-sensor-shipper.conf", "/var/log/cr/s1/estate"), ""),
+    "waf-shipper": ("s1_mgmt", "-n -f /etc/rsyslog.conf -i /tmp/rsyslogd.pid",
+                    ("/opt/cr/s1/rsyslog/waf-shipper.conf", "/var/log/cr/s1/waf/audit.log"),
+                    """25: eth0@if35    inet 172.29.1.13/24 brd 172.29.1.255 scope global eth0"""),
+    "log-server": ("s1_mgmt", "-n -f /etc/rsyslog.conf -i /tmp/rsyslogd.pid", ("/opt/cr/s1/rsyslog/log-server.conf",),
+                   """27: eth0@if37    inet 172.29.1.10/24 brd 172.29.1.255 scope global eth0"""),
 }
 LEGS = {
     "kali": (("eth0", "internet", "02:42:ac:1e:01:0a"),),
@@ -49,15 +62,17 @@ LEGS = {
     "board-db": (("eth0", "board-default", "02:42:ac:12:00:02"),),
     "corp-wp": (("eth0", "corp-default", "02:42:ac:13:00:03"), ("eth1", "estate", "02:42:0a:1e:00:b9")),
     "corp-db": (("eth0", "corp-default", "02:42:ac:13:00:02"),),
-    "edge-sensor": (("", "host", ""),),
-    "estate-sensor": (("", "host", ""),),
+    "edge-sensor": (("sniff", "internet", "02:42:ac:1e:01:02"), ("mgmt", "mgmt", "02:42:ac:1d:01:0b")),
+    "estate-sensor": (("sniff", "estate", "02:42:0a:1e:00:02"), ("mgmt", "mgmt", "02:42:ac:1d:01:0c")),
+    "edge-sensor-shipper": (),
+    "estate-sensor-shipper": (),
+    "waf-shipper": (("eth0", "mgmt", "02:42:ac:1d:01:0d"),),
+    "log-server": (("eth0", "mgmt", "02:42:ac:1d:01:0a"),),
 }
 FORWARDED = """@forward /var/log/cr/s1/edge/eve.json
-@port 5140
 @forward /var/log/cr/s1/estate/eve.json
-@port 5140
 @forward /var/log/cr/s1/waf/audit.log
-@port 5140"""
+@port 514/tcp"""
 
 
 def said(without=()):
@@ -141,21 +156,18 @@ def behind_one_web_bridge():
     for mac, old, new in (("b8", "10.30.0.184/24 brd 10.30.0.255 scope global eth1", "10.32.0.59/24 brd 10.32.0.255 scope global eth1"),
                           ("b9", "10.30.0.185/24 brd 10.30.0.255 scope global eth1", "10.32.0.60/24 brd 10.32.0.255 scope global eth1")):
         moved = moved.replace(f"@leg s1_estate 02:42:0a:1e:00:{mac}", f"@leg s1_web 02:42:0a:1e:00:{mac}").replace(old, new)
-    moved = moved.replace("--af-packet=s1-estate", "--af-packet=s1-web")
+    moved = moved.replace("@leg s1_estate 02:42:0a:1e:00:02", "@leg s1_web 02:42:0a:1e:00:02")
     return moved.replace("5: eth0@if13    inet 10.30.0.177/24 brd 10.30.0.255 scope global eth0",
                          "5: eth0@if13    inet 10.30.0.177/24 brd 10.30.0.255 scope global eth0\n"
                          "12: eth1@if20    inet 10.32.0.2/24 brd 10.32.0.255 scope global eth1")
 
 
-def sensor_attached_to_the_web_bridge():
-    return behind_one_web_bridge().replace(
-        "@container estate-sensor host\n@args -c /etc/suricata/suricata.yaml --af-packet=s1-web\n"
-        "@mount /var/log/cr/s1/estate\n@leg host \n",
-        "@container estate-sensor s1_web\n@args -c /etc/suricata/suricata.yaml --af-packet=eth0\n"
-        "@mount /var/log/cr/s1/estate\n@leg s1_web 02:42:0a:20:00:05\n"
-        "2: eth0@if30: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1442 qdisc noqueue state UP mode DEFAULT group default"
-        " \\    link/ether 02:42:0a:20:00:05 brd ff:ff:ff:ff:ff:ff link-netnsid 0\n"
-        "2: eth0@if30    inet 10.32.0.5/24 brd 10.32.0.255 scope global eth0\n")
+def sensor_sniffing_the_web_bridge_by_name():
+    wired = behind_one_web_bridge()
+    start = wired.index("@container estate-sensor ")
+    end = wired.index("@container ", start + 1)
+    return (wired[:start] + "@container estate-sensor host\n@args -c /etc/suricata/suricata.yaml --af-packet=s1-web\n"
+            "@mount /var/log/cr/s1/estate\n" + wired[end:])
 
 
 def links(drawn):
@@ -178,11 +190,31 @@ def test_one_read_on_the_range_host_gives_every_container_its_networks_and_addre
 def test_a_sensor_is_read_with_the_bridge_it_sniffs_and_the_logs_by_the_files_rsyslog_forwards():
     wired = interfaces.wiring(said(), "s1")
 
-    sniffing = {one.service: wired.bridged(one.sniffs).key for one in wired.containers if one.sniffs}
+    sniffing = {one.service: wired.legs(one)[one.sniffs] for one in wired.containers if one.sniffs}
     assert sniffing == {"edge-sensor": "internet", "estate-sensor": "estate"}
-    assert {one.service for one in wired.logging()} == {"edge-sensor", "estate-sensor", "waf"}
-    assert wired.port == "5140"
+    assert {one.service for one in wired.logging()} == {
+        "edge-sensor", "estate-sensor", "waf", "edge-sensor-shipper", "estate-sensor-shipper", "waf-shipper"}
+    assert not {one.host for one in wired.interfaces()} & {"edge-sensor", "estate-sensor"}, (
+        "a sensor's own interfaces are no learner host's")
+    assert wired.port == "514/tcp"
     assert wired.network("board-default").bridge == "br-6b1c0d2e3a5b", "Docker's own name for an unnamed bridge"
+
+
+def test_the_listing_reads_the_shipped_files_and_the_log_server_s_port_from_the_configs_the_slot_runs(tmp_path):
+    files = rangehost.slot_files(ROOT, rangehost.Slot(1, rangehost.estate("10.30.0.0/16", 1), "dev", 1442),
+                                 ("board", "corp"), declared.read().origins, declared.read().default_origin,
+                                 "10.31.0.2", 5140, openstack.collected(declared.read()))
+    for name, body in files.items():
+        if name.startswith(f"{rangehost.SHIPPING}/"):
+            (tmp_path / name).parent.mkdir(exist_ok=True)
+            (tmp_path / name).write_bytes(body)
+    tail = "\n".join(line for line in rangehost.WIRING.splitlines() if line.startswith("[ ! -"))
+    read = subprocess.run(["sh", "-c", f'f=$1\n{tail}', "sh", str(tmp_path / rangehost.SHIPPING)],
+                          capture_output=True, text=True, check=True).stdout
+
+    assert interfaces.wiring(read, "s1").forwarded == (
+        "/var/log/cr/s1/edge/eve.json", "/var/log/cr/s1/estate/eve.json", "/var/log/cr/s1/waf/audit.log")
+    assert interfaces.wiring(read, "s1").port == "514/tcp"
 
 
 def test_a_range_host_that_does_not_answer_is_an_outage_not_an_empty_slot():
@@ -196,7 +228,8 @@ def test_web_services_behind_the_waf_are_drawn_on_the_bridge_they_share_with_it(
     drawn = board_map(output=fronted_by_the_waf())
 
     assert [(zone["id"], zone["caption"]) for zone in drawn["zones"]] == [
-        ("internet", "internet"), ("estate", "dmz"), ("board-web", "web"), ("board-default", "database")]
+        ("internet", "internet"), ("estate", "dmz"), ("board-web", "web"), ("board-default", "database"),
+        ("mgmt", "mgmt")]
     assert {pair for pair in links(drawn) if pair[1] in ("switch:estate", "switch:board-web")} == {
         ("router", "switch:estate"), ("waf", "switch:estate"), ("waf", "switch:board-web"),
         ("board.com", "switch:board-web")}
@@ -206,11 +239,12 @@ def test_web_services_behind_the_waf_are_drawn_on_the_bridge_they_share_with_it(
 def test_each_bridge_is_one_switch_and_each_interface_on_it_is_one_link_to_it():
     drawn = board_map()
 
-    assert [zone["id"] for zone in drawn["zones"]] == ["internet", "estate", "board-default"]
+    assert [zone["id"] for zone in drawn["zones"]] == ["internet", "estate", "board-default", "mgmt"]
     assert sorted(links(drawn)) == sorted([
         ("kali", "switch:internet"), ("router", "switch:internet"), ("router", "switch:estate"),
         ("waf", "switch:estate"), ("board.com", "switch:estate"), ("board.com", "switch:board-default"),
-        ("board-db", "switch:board-default")])
+        ("board-db", "switch:board-default"), ("sensor:edge-sensor", "switch:mgmt"),
+        ("sensor:estate-sensor", "switch:mgmt"), ("log-server", "switch:mgmt")])
     assert {edge["kind"] for edge in drawn["edges"]} == {"link", "mirror", "logs"}
 
 
@@ -221,7 +255,8 @@ def test_each_link_is_labelled_with_the_address_its_container_holds_on_that_brid
     assert shown[("router", "switch:internet")] == "5.188.10.1" and shown[("router", "switch:estate")] == "10.30.0.1"
     assert shown[("waf", "switch:estate")] == "10.30.0.177" and shown[("board.com", "switch:estate")] == "10.30.0.184"
     assert shown[("board.com", "switch:board-default")] == "172.18.0.3"
-    assert [zone["subnet"] for zone in board_map()["zones"]] == ["", "10.30.0.0/24", "172.18.0.0/16"]
+    assert [zone["subnet"] for zone in board_map()["zones"]] == ["", "10.30.0.0/24", "172.18.0.0/16", "172.29.1.0/24"]
+    assert shown[("sensor:edge-sensor", "switch:mgmt")] == "172.29.1.11" and shown[("log-server", "switch:mgmt")] == "172.29.1.10"
 
 
 def test_a_sensor_hangs_off_the_bridge_it_sniffs_and_the_logs_go_to_the_collector_rsyslog_names():
@@ -230,9 +265,11 @@ def test_a_sensor_hangs_off_the_bridge_it_sniffs_and_the_logs_go_to_the_collecto
 
     assert {("mirror", "sensor:edge-sensor", "switch:internet"),
             ("mirror", "sensor:estate-sensor", "switch:estate")} <= edges
-    assert {(source, target) for kind, source, target in edges if kind == "logs"} == {
-        ("sensor:edge-sensor", "log-server"), ("sensor:estate-sensor", "log-server"), ("waf", "log-server")}
-    assert next(node for node in drawn["nodes"] if node["id"] == "log-server")["port"] == "5140/udp"
+    assert {(source, target) for kind, source, target in edges if kind == "logs"} == {("waf", "log-server")}, (
+        "a sensor's shipper runs in the sensor's own network namespace, so its log goes over the 관제망 link "
+        "the map draws; the WAF's log file is read by a shipper the map does not draw")
+    assert {("link", "sensor:edge-sensor", "switch:mgmt"), ("link", "log-server", "switch:mgmt")} <= edges
+    assert next(node for node in drawn["nodes"] if node["id"] == "log-server")["port"] == "514/tcp"
 
 
 def test_a_sensor_hangs_off_the_bridge_it_sniffs_by_name_or_by_its_own_interface_on_it():
@@ -241,7 +278,7 @@ def test_a_sensor_hangs_off_the_bridge_it_sniffs_by_name_or_by_its_own_interface
                 if edge["kind"] == "mirror"}
 
     assert ("sensor:estate-sensor", "switch:web") in mirrored(behind_one_web_bridge())
-    assert mirrored(sensor_attached_to_the_web_bridge()) == mirrored(behind_one_web_bridge())
+    assert mirrored(sensor_sniffing_the_web_bridge_by_name()) == mirrored(behind_one_web_bridge())
 
 
 def test_customers_are_addresses_on_kali_and_not_a_device():
@@ -281,7 +318,7 @@ def nodes_of(drawn):
 
 @WIRINGS
 def test_zones_stand_left_to_right_in_the_order_traffic_reaches_them(output):
-    zones = board_map(output=output)["zones"]
+    zones = [zone for zone in board_map(output=output)["zones"] if zone["caption"] != topology.BAND]
     order = [zone["caption"] for zone in sorted(zones, key=lambda zone: zone["box"][0])]
 
     assert order == sorted(order, key=topology.CAPTIONS.index)
@@ -289,16 +326,30 @@ def test_zones_stand_left_to_right_in_the_order_traffic_reaches_them(output):
 
 
 @WIRINGS
-def test_a_sensor_stands_outside_every_zone_straight_below_the_bridge_it_mirrors(output):
+def test_a_sensor_stands_in_the_management_network_straight_below_the_bridge_it_mirrors(output):
     drawn = board_map(output=output)
     placed = nodes_of(drawn)
     mirrors = [edge for edge in drawn["edges"] if edge["kind"] == "mirror"]
 
+    flow = [zone for zone in drawn["zones"] if zone["caption"] != topology.BAND]
+    [band] = [zone for zone in drawn["zones"] if zone["caption"] == topology.BAND]
     assert mirrors
     for edge in mirrors:
         sensor, bridge = placed[edge["source"]], placed[edge["target"]]
-        assert not any(inside(sensor, zone["box"]) for zone in drawn["zones"]), sensor
-        assert sensor["x"] == bridge["x"] and sensor["y"] > max(zone["box"][3] for zone in drawn["zones"])
+        assert not any(inside(sensor, zone["box"]) for zone in flow) and inside(sensor, band["box"]), sensor
+        assert sensor["x"] == bridge["x"] and sensor["y"] > max(zone["box"][3] for zone in flow)
+
+
+@WIRINGS
+def test_the_management_network_runs_under_every_zone_with_the_log_server_on_it(output):
+    drawn = board_map(output=output)
+    placed = nodes_of(drawn)
+    flow = [zone for zone in drawn["zones"] if zone["caption"] != topology.BAND]
+    [band] = [zone for zone in drawn["zones"] if zone["caption"] == topology.BAND]
+
+    assert band["box"][0] <= min(zone["box"][0] for zone in flow) and band["box"][2] >= max(zone["box"][2] for zone in flow)
+    assert band["box"][1] > max(zone["box"][3] for zone in flow)
+    assert inside(placed["log-server"], band["box"]) and inside(placed[f"switch:{band['id']}"], band["box"])
 
 
 @WIRINGS
@@ -324,7 +375,7 @@ def test_a_log_edge_turns_at_right_angles_and_crosses_no_other_device_or_zone(ou
         source, target = placed[edge["source"]], placed[edge["target"]]
         points = [(source["x"], source["y"]), *map(tuple, edge["route"]),
                   (target["x"] + edge["end"][0], target["y"] + edge["end"][1])]
-        own = [zone["box"] for zone in drawn["zones"] if inside(source, zone["box"])]
+        own = [zone["box"] for zone in drawn["zones"] if inside(source, zone["box"]) or inside(target, zone["box"])]
         for (x1, y1), (x2, y2) in zip(points, points[1:]):
             assert x1 == x2 or y1 == y2, edge
             for node in drawn["nodes"]:

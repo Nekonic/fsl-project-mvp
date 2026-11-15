@@ -10,7 +10,7 @@ sed -i 's/^Components:.*/Components: main restricted universe/' /etc/apt/sources
 $APT update
 $APT purge snapd modemmanager
 printf 'Package: snapd modemmanager\nPin: release *\nPin-Priority: -1\n' > /etc/apt/preferences.d/no-snapd-modemmanager
-$APT install docker.io docker-compose-v2 ethtool rsyslog bzip2 curl
+$APT install docker.io docker-compose-v2 ethtool bzip2 curl
 
 printf 'fs.inotify.max_user_instances = 1024\nfs.inotify.max_user_watches = 524288\n' > /etc/sysctl.d/90-cr-range.conf
 sysctl --system >/dev/null
@@ -53,6 +53,3 @@ for service in $(cat wargames.txt); do
   done
 done
 pristine down -v --timeout 1
-
-printf 'global(maxMessageSize="64k")\nmodule(load="imfile")\n' > /etc/rsyslog.d/50-cr.conf
-systemctl restart rsyslog

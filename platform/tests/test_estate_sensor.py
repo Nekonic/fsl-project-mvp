@@ -25,14 +25,14 @@ def sensors():
 
 
 def test_both_legs_run_the_pinned_sensor_image_on_their_slot_s_bridge():
-    for name, bridge in (("edge-sensor", "inet"), ("estate-sensor", "web")):
+    for name, bridge in (("edge-sensor", "internet"), ("estate-sensor", "web")):
         sensor = sensors()[name]
 
         assert sensor["image"] == (
             "jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840"
         ), "both legs are judged by one Suricata build, which moves only when this pin does"
-        assert sensor["network_mode"] == "host"
-        assert f"--af-packet=s@slot@-{bridge}" in sensor["command"]
+        assert sensor["networks"][bridge]["interface_name"] == "sniff" and "--af-packet=sniff" in sensor["command"]
+        assert sensor["networks"]["mgmt"]["interface_name"] == "mgmt"
         assert sensor["volumes"][0].endswith(":/etc/suricata/suricata.yaml")
 
 

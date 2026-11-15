@@ -357,6 +357,10 @@ def _detached(port: dict) -> bool:
     return not port.get("device_id") and not port.get("device_owner")
 
 
+def collected(declared) -> dict[str, tuple[str, str]]:
+    return {service: (declared.host(role), tag) for service, (role, tag) in COLLECTED.items()}
+
+
 def _generations(servers: list[dict]) -> dict[str, str]:
     found = {}
     for server in servers:
@@ -1015,10 +1019,9 @@ class OpenStack:
         self.describe()
         laid = self._laid_out()
         collector = self.address(SCORER_ROLE)
-        senders = {service: (self.declared.host(role), tag) for service, (role, tag) in COLLECTED.items()}
         files = rangehost.slot_files(Path(self.build.source), laid, self._wargames(), self.declared.origins,
-                                     self.declared.default_origin,
-                                     rangehost.forwarding(laid, collector, fabric.COLLECTOR_PORT, senders))
+                                     self.declared.default_origin, collector, fabric.COLLECTOR_PORT,
+                                     collected(self.declared))
         packed = base64.b64encode(rangehost.archive(files)).decode()
         done = self._heard_and_timed(collector)
         ran = self._shell()(rangehost.up(laid), stdin=packed, timeout=rangehost.UP_TIMEOUT)

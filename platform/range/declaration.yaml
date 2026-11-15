@@ -58,6 +58,7 @@ roles:
   corp-db: cr-range
   wargames: cr-range
   estate-sensor: cr-range
+  log-server: cr-range
 
 compose:
   attacker: kali
@@ -70,6 +71,7 @@ compose:
   corp: corp-wp
   corp-db: corp-db
   estate-sensor: estate-sensor
+  log-server: log-server
 
 watches:
   sensor: edge

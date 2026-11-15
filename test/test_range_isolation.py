@@ -11,11 +11,12 @@ import pytest
 import requests
 
 from conftest import PLATFORM_URL, STANDING
-from range import ATTACKER, BOARD, run, run_side_by_side
+from range import ATTACKER, BOARD, SENSOR, run, run_side_by_side
 
 GATEWAY = "gateway"
 RANGE_HOST = "wargames"
-PROBERS = (ATTACKER, GATEWAY, BOARD)
+LOG_SERVER = "log-server"
+PROBERS = (ATTACKER, GATEWAY, BOARD, SENSOR, LOG_SERVER)
 ESTATE = re.compile(r"^\d+:\s+(\S+)\s+inet (10\.\d+\.(\d+)\.\d+)/24", re.M)
 DEFAULT_DEV = re.compile(r"^default via \S+ dev (\S+)", re.M)
 UPSTREAM = re.compile(r"^(\S+)\s+(board|corp-wp)$", re.M)
@@ -61,7 +62,7 @@ def facts():
     host = run_side_by_side(RANGE_HOST, {
         "ports": ["ip", "-o", "-4", "addr", "show"],
         "names": ["sudo", "docker", "ps", "--format", "{{.Names}}"],
-        "forwarded": ["sh", "-c", "cat /etc/rsyslog.d/60-cr-*.conf"],
+        "forwarded": ["sh", "-c", "sudo cat /opt/cr/s*/rsyslog/log-server.conf"],
     })
     ports = HOST_PORT.findall(host["ports"].stdout)
     others = [name for name in host["names"].stdout.split()

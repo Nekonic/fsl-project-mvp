@@ -282,7 +282,7 @@ rule-files:
 classification-file: /etc/suricata/classification.config
 reference-config-file: /etc/suricata/reference.config
 af-packet:
-- interface: s@slot@-inet
+- interface: sniff
   cluster-id: '@slot@71'
   cluster-type: cluster_flow
   defrag: true

@@ -10,6 +10,9 @@ from tests import composed
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 LEARNER_FACING = ("kali", "waf", "board", "board-db", "corp-wp", "corp-db")
+MONITORING = ("edge-sensor", "estate-sensor", "edge-sensor-shipper", "estate-sensor-shipper", "waf-shipper",
+              "log-server")
+LOGGING = ("edge-sensor-shipper", "estate-sensor-shipper", "waf-shipper", "log-server")
 CAPABILITIES = {
     "kali": {"NET_RAW", "NET_ADMIN", "SETUID", "SETGID", "CHOWN", "DAC_OVERRIDE", "FOWNER", "KILL", "AUDIT_WRITE"},
     "waf": {"NET_BIND_SERVICE", "SETUID", "SETGID", "CHOWN", "DAC_OVERRIDE"},
@@ -38,7 +41,7 @@ def contained():
 def test_every_learner_facing_container_is_in_the_slot_and_nothing_else_is_unnamed():
     services = slot_document()["services"]
 
-    assert set(LEARNER_FACING) | {"edge", "edge-sensor", "estate-sensor"} == set(services)
+    assert set(LEARNER_FACING) | {"edge", *MONITORING} == set(services)
 
 
 @pytest.mark.parametrize("name, service", contained(), ids=[name for name, _ in contained()])
@@ -154,14 +157,41 @@ def test_the_range_host_installs_one_pinned_gvisor_release_checked_by_its_sha512
     assert setup.index("sha512sum -c -") < setup.index("install -m 0644 daemon.json /etc/docker/daemon.json")
 
 
-def test_every_slot_network_is_internal_with_no_host_address_and_no_route_out():
+def test_every_slot_network_but_the_management_one_is_internal_with_no_host_address_and_no_route_out():
     document = slot_document()
 
     for key, network in document["networks"].items():
+        if key == rangehost.MGMT:
+            continue
         options = network.get("driver_opts") or {}
         assert network.get("internal") is True, f"{key} gives the slot a way to the Internet"
         assert options.get("com.docker.network.bridge.gateway_mode_ipv4") == "isolated", (
             f"{key} puts a range host address on its bridge, which a container reaches the host's sshd through")
+
+
+def test_the_management_network_s_way_out_is_filtered_before_any_container_joins_it_and_no_learner_stands_on_it():
+    services = slot_document()["services"]
+    script = (ROOT / "deploy/range-host/slot.sh").read_text()
+    up = script[script.index("\nup() {"):]
+    uplinked = script[script.index("\nuplinked() {"):script.index("\n}\n", script.index("\nuplinked() {"))]
+
+    assert not {name for name in LEARNER_FACING if rangehost.MGMT in (services[name].get("networks") or {})}
+    assert up.index("uplinked") < up.index("compose up"), (
+        "the management network routes out through the range host, so its filter goes in before it exists")
+    assert "INPUT -i \"$bridge\" -j DROP" in uplinked and "DOCKER-USER -i \"$bridge\" -j DROP" in uplinked
+    assert '-s "$server" -d "$collector" -p udp --dport "$port" -j ACCEPT' in uplinked
+
+
+@pytest.mark.parametrize("name", LOGGING)
+def test_a_log_shipper_or_the_log_server_holds_no_capability_and_reads_its_log_read_only(name):
+    service = slot_document()["services"][name]
+    bound = [str(volume) for volume in service.get("volumes") or ()]
+
+    assert service.get("cap_drop") == ["ALL"] and not service.get("cap_add") and not service.get("privileged")
+    assert "no-new-privileges:true" in service["security_opt"]
+    assert service.get("mem_limit") and service.get("pids_limit")
+    assert bound and all(volume.endswith(":ro") for volume in bound), bound
+    assert not [volume for volume in bound if "docker.sock" in volume]
 
 
 def test_each_slot_s_networks_and_names_are_its_own():
@@ -174,7 +204,7 @@ def test_each_slot_s_networks_and_names_are_its_own():
     assert not {s["container_name"] for s in one["services"].values()} & {
         s["container_name"] for s in other["services"].values()}
     assert {network.get("name") for network in one["networks"].values()} - {None} == {
-        "s3_internet", "s3_estate", "s3_web"}
+        "s3_internet", "s3_estate", "s3_web", "s3_mgmt"}
 
 
 def test_the_sensors_watch_the_slot_s_bridges_and_are_no_shell_a_learner_gets():
@@ -185,6 +215,8 @@ def test_the_sensors_watch_the_slot_s_bridges_and_are_no_shell_a_learner_gets():
         sensor = services[name]
         assert not sensor.get("privileged") and "no-new-privileges:true" in sensor["security_opt"]
         assert set(sensor["cap_add"]) == {"NET_ADMIN", "NET_RAW", "SYS_NICE"}
+        assert not sensor.get("network_mode") and not sensor.get("userns_mode"), (
+            f"{name} shares the range host's network or user namespace")
         assert not [v for v in sensor["volumes"] if "docker.sock" in v]
     terminals = {stack.roles[role] for role in ("attacker", "gateway")}
     assert {stack.compose[role] for role, host in stack.roles.items() if host in terminals} >= {"kali", "waf"}

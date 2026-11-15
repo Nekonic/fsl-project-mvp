@@ -26,7 +26,7 @@ const SYMBOLS = {
   database: "host-storage.svg", logs: "host-statistics.svg", sensor: "host-inspect.svg", switch: "switch.svg",
   host: "host-server.svg",
 };
-const COLOURS = { internet: "#b03a2e", dmz: "#2e6da4", web: "#2f7a6b", database: "#4a6fa5" };
+const COLOURS = { internet: "#b03a2e", dmz: "#2e6da4", web: "#2f7a6b", database: "#4a6fa5", mgmt: "#6b5b95" };
 const LINK = "#1b4f8a";
 const MIRROR = "#8a5a00";
 const LOGS = "#5b6770";
@@ -76,7 +76,7 @@ function elements(map) {
   const zones = map.zones.map((zone) => {
     const [x1, y1, x2, y2] = zone.box;
     return { group: "nodes", classes: "zone", position: { x: (x1 + x2) / 2, y: (y1 + y2) / 2 },
-      data: { id: zoneId(zone.id), label: captioned(zone), colour: COLOURS[zone.caption] || LOGS,
+      data: { id: zoneId(zone.id), label: captioned(zone), colour: COLOURS[zone.caption] || LOGS, shift: zone.shift || 0,
               width: x2 - x1, height: y2 - y1 } };
   });
   const nodes = map.nodes.map((node) => ({ group: "nodes", classes: node.kind === "switch" ? "switch" : `device ${node.kind}`,
@@ -100,8 +100,9 @@ const STYLE = [
     shape: "rectangle", width: "data(width)", height: "data(height)", "background-color": "data(colour)",
     "background-opacity": 0.06, "border-width": 2, "border-color": "data(colour)", label: "data(label)",
     "text-valign": "top", "text-halign": "center", "font-size": 13, "font-weight": "bold", color: "data(colour)",
-    "text-margin-y": 10, "text-background-color": "#FFFFFF", "text-background-opacity": 1,
-    "text-background-padding": 3, "z-compound-depth": "bottom", "z-index": 0, events: "no" } },
+    "text-margin-x": "data(shift)", "text-margin-y": 10, "text-background-color": "#FFFFFF",
+    "text-background-opacity": 1, "text-background-padding": 3, "z-compound-depth": "bottom", "z-index": 0,
+    events: "no" } },
   { selector: "node.device, node.switch", style: {
     shape: "rectangle", width: 52, height: 52, "background-opacity": 0, "border-width": 0,
     "background-image": "data(symbol)", "background-fit": "contain", "background-clip": "none", "z-index": 10 } },

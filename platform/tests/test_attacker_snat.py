@@ -30,7 +30,9 @@ def test_the_waf_answers_to_waf_and_its_log_sender_name_keeps_its_slot():
     slot = rangehost.Slot(2, ipaddress.ip_network("10.30.2.0/24"), "abc", 1442)
 
     assert services["waf"]["hostname"] == "waf"
-    assert " cr-waf-2 " in rangehost.forwarding(slot, "10.31.0.2", 5140, {"waf": ("cr-waf", "modsecurity")}), (
+    document = rangehost.compose(DEPLOY.parent, slot, ("board", "corp"))
+    relay = rangehost.forwarding(document, slot, "10.31.0.2", 5140, {"waf": ("cr-waf", "modsecurity")})
+    assert " cr-waf-2 " in relay["rsyslog/log-server.conf"], (
         "Filebeat takes the slot from the syslog host name, which the fixed name would erase"
     )
 

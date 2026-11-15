@@ -7,8 +7,6 @@ x-contained: &contained
 
 x-sensor: &sensor
   image: jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840
-  network_mode: host
-  userns_mode: host
   cap_add: [NET_ADMIN, NET_RAW, SYS_NICE]
   security_opt: ["no-new-privileges:true"]
   restart: "no"
@@ -23,6 +21,14 @@ x-sensor: &sensor
     retries: 24
     start_interval: 1s
     start_period: 60s
+
+x-rsyslog: &rsyslog
+  <<: *contained
+  image: rsyslog/rsyslog-minimal@sha256:1b2cd946cc590e38ffa189f6a01e38d49029dff92aabd8cb09968ef4a1063d1b
+  user: "0:4"
+  entrypoint: ["rsyslogd", "-n", "-f", "/etc/rsyslog.conf", "-i", "/tmp/rsyslogd.pid"]
+  mem_limit: 64m
+  pids_limit: 32
 
 x-wargames:
   healthcheck:
@@ -112,22 +118,74 @@ services:
   edge-sensor:
     <<: *sensor
     container_name: s@slot@-edge-sensor
-    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet=s@slot@-inet"]
+    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet=sniff"]
+    networks:
+      internet:
+        interface_name: sniff
+      mgmt:
+        ipv4_address: "172.29.@slot@.11"
+        interface_name: mgmt
     volumes:
       - /opt/cr/s@slot@/edge-sensor.yaml:/etc/suricata/suricata.yaml
       - /opt/cr/s@slot@/edge-rules:/var/lib/suricata/rules
       - /var/log/cr/s@slot@/edge:/var/log/suricata
     depends_on: [edge]
 
+  edge-sensor-shipper:
+    <<: *rsyslog
+    container_name: s@slot@-edge-sensor-shipper
+    network_mode: "service:edge-sensor"
+    volumes:
+      - /opt/cr/s@slot@/rsyslog/edge-sensor-shipper.conf:/etc/rsyslog.conf:ro
+      - /var/log/cr/s@slot@/edge:/var/log/cr/s@slot@/edge:ro
+    depends_on: [edge-sensor, log-server]
+
   estate-sensor:
     <<: *sensor
     container_name: s@slot@-estate-sensor
-    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet=s@slot@-web"]
+    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet=sniff"]
+    networks:
+      web:
+        interface_name: sniff
+      mgmt:
+        ipv4_address: "172.29.@slot@.12"
+        interface_name: mgmt
     volumes:
       - /opt/cr/s@slot@/estate-sensor.yaml:/etc/suricata/suricata.yaml
       - /opt/cr/s@slot@/estate-rules:/var/lib/suricata/rules
       - /var/log/cr/s@slot@/estate:/var/log/suricata
     depends_on: [waf]
+
+  estate-sensor-shipper:
+    <<: *rsyslog
+    container_name: s@slot@-estate-sensor-shipper
+    network_mode: "service:estate-sensor"
+    volumes:
+      - /opt/cr/s@slot@/rsyslog/estate-sensor-shipper.conf:/etc/rsyslog.conf:ro
+      - /var/log/cr/s@slot@/estate:/var/log/cr/s@slot@/estate:ro
+    depends_on: [estate-sensor, log-server]
+
+  waf-shipper:
+    <<: *rsyslog
+    container_name: s@slot@-waf-shipper
+    hostname: waf-shipper
+    networks:
+      mgmt:
+        ipv4_address: "172.29.@slot@.13"
+    volumes:
+      - /opt/cr/s@slot@/rsyslog/waf-shipper.conf:/etc/rsyslog.conf:ro
+      - /var/log/cr/s@slot@/waf/audit.log:/var/log/cr/s@slot@/waf/audit.log:ro
+    depends_on: [log-server]
+
+  log-server:
+    <<: *rsyslog
+    container_name: s@slot@-log-server
+    hostname: log-server
+    networks:
+      mgmt:
+        ipv4_address: "172.29.@slot@.10"
+    volumes:
+      - /opt/cr/s@slot@/rsyslog/log-server.conf:/etc/rsyslog.conf:ro
 
 networks:
   internet:
@@ -163,3 +221,12 @@ networks:
       config:
         - subnet: "@web@.0/24"
           gateway: "@web@.254"
+  mgmt:
+    name: s@slot@_mgmt
+    driver_opts:
+      com.docker.network.bridge.name: s@slot@-mgmt
+      com.docker.network.driver.mtu: "@mtu@"
+    ipam:
+      config:
+        - subnet: "172.29.@slot@.0/24"
+          gateway: "172.29.@slot@.254"

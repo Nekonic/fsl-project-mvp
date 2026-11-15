@@ -68,6 +68,7 @@ prepare() {
   chmod 0644 "$logs/waf/audit.log"
   for leg in edge estate; do
     install -m 0644 -o "$owner" "$d/local.rules" "$d/$leg-rules/local.rules"
+    chown -h "$owner:$owner" "$d/$leg-sensor.yaml" "$d/$leg-rules" "$logs/$leg"
   done
 }
 
@@ -109,18 +110,56 @@ address_edge() {
   quiet "$project-edge"
 }
 
-rsyslog_restarted() {
-  flock /run/cr-rsyslog.lock sh -c 'systemctl reset-failed rsyslog; systemctl restart rsyslog'
+peer() {
+  inside "$1" ip -o link show dev "$2" | sed -n 's/^[0-9]*: [^@:]*@if\([0-9]*\):.*/\1/p'
 }
 
-logs_forwarded() {
-  forwarding=/etc/rsyslog.d/60-cr-$project.conf
-  if cmp -s "$d/rsyslog.conf" "$forwarding" && systemctl is-active -q rsyslog; then
-    return 0
-  fi
-  install -m 0644 "$d/rsyslog.conf" "$forwarding"
-  rsyslogd -N1 >/dev/null
-  rsyslog_restarted
+port_of() {
+  at=$(peer "$1" "$2")
+  ip -o link show | awk -F': ' -v at="$at" '$1 == at { split($2, name, "@"); print name[1] }'
+}
+
+spanned() {
+  bridge=s$n-$1
+  sensor=$(port_of "$project-$2" sniff)
+  [ -n "$sensor" ]
+  inside "$project-$2" ip addr flush dev sniff
+  bridge link set dev "$sensor" learning off flood off mcast_flood off bcast_flood off
+  for port in $(ls "/sys/class/net/$bridge/brif"); do
+    tc qdisc replace dev "$port" clsact
+    tc filter del dev "$port" ingress 2>/dev/null || true
+    if [ "$port" = "$sensor" ]; then
+      tc filter add dev "$port" ingress matchall action drop
+    else
+      tc filter add dev "$port" ingress matchall action mirred egress mirror dev "$sensor"
+    fi
+  done
+}
+
+mirrored() {
+  spanned inet edge-sensor
+  spanned web estate-sensor
+}
+
+kept() {
+  iptables -C "$@" 2>/dev/null || iptables -I "$@"
+}
+
+uplinked() {
+  read -r server collector port < "$d/uplink"
+  bridge=s$n-mgmt
+  kept INPUT -i "$bridge" -j DROP
+  kept DOCKER-USER -i "$bridge" -j DROP
+  kept DOCKER-USER -i "$bridge" -s "$server" -d "$collector" -p udp --dport "$port" -j ACCEPT
+  kept DOCKER-USER -i "$bridge" -o "$bridge" -j ACCEPT
+}
+
+unlinked() {
+  for chain in INPUT DOCKER-USER; do
+    iptables -S "$chain" | grep -- "-i s$n-mgmt " | sed 's/^-A //' | while read -r rule; do
+      iptables -D $rule
+    done
+  done
 }
 
 logs_emptied() {
@@ -133,6 +172,7 @@ logs_emptied() {
 
 up() {
   prepare
+  uplinked
   compose up --no-start --pull never
   restore $(wargames)
   compose up -d --wait --wait-timeout "$WAIT" --pull never
@@ -142,7 +182,7 @@ up() {
   quieted $(fronts)
   quiet_bridges
   forwarded
-  logs_forwarded
+  mirrored
 }
 
 targets_reset() {
@@ -168,12 +208,12 @@ reset() {
   fi
   quiet_bridges
   forwarded
+  mirrored
 }
 
 down() {
   [ ! -f "$d/compose.yaml" ] || compose down -v --remove-orphans --timeout 1
-  rm -f "/etc/rsyslog.d/60-cr-$project.conf"
-  rsyslog_restarted
+  unlinked
   rm -rf "$d" "$logs"
 }
 

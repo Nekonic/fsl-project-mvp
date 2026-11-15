@@ -18,8 +18,17 @@ PLATFORM = {"id": "srv-platform", "name": "cr-platform", "status": "ACTIVE", "me
             "addresses": {"cr-mgmt": [{"addr": "10.31.0.2", "OS-EXT-IPS:type": "fixed", "version": 4}]}}
 
 
+SENDERS = {"edge-sensor": ("cr-edge", "suricata"), "estate-sensor": ("cr-range", "suricata"),
+           "waf": ("cr-waf", "modsecurity")}
+
+
 def laid(number=2):
     return rangehost.Slot(number, rangehost.estate("10.30.0.0/16", number), "abc", 1442)
+
+
+def slot_files(number=2):
+    return rangehost.slot_files(ROOT, laid(number), WARGAMES, DECLARED.origins, DECLARED.default_origin,
+                                "10.31.0.2", 5140, SENDERS)
 
 
 class Cloud:
@@ -103,7 +112,7 @@ def test_every_slot_s_estate_and_web_network_are_its_own_slash_24s_of_the_declar
 
 
 def test_a_slot_s_files_put_the_edge_and_the_waf_on_its_estate_and_the_targets_behind_the_waf_alone():
-    files = rangehost.slot_files(ROOT, laid(2), WARGAMES, DECLARED.origins, DECLARED.default_origin, "")
+    files = slot_files()
     document = yaml.safe_load(files["compose.yaml"])
 
     assert rangehost.addressed(document, "estate") == {"edge": "10.30.2.1", "waf": "10.30.2.247"}, (
@@ -118,12 +127,12 @@ def test_a_slot_s_files_put_the_edge_and_the_waf_on_its_estate_and_the_targets_b
 
 
 def test_the_estate_sensor_sees_the_waf_s_traffic_to_the_targets():
-    files = rangehost.slot_files(ROOT, laid(2), WARGAMES, DECLARED.origins, DECLARED.default_origin, "")
+    files = slot_files()
     config = yaml.safe_load(files["estate-sensor.yaml"].decode().removeprefix(rangehost.YAML_HEADER))
     [capture] = config["af-packet"]
     compose = yaml.safe_load(files["compose.yaml"])
 
-    assert capture["interface"] == "s2-web" == compose["networks"]["web"]["driver_opts"]["com.docker.network.bridge.name"]
+    assert capture["interface"] == "sniff" == compose["services"]["estate-sensor"]["networks"]["web"]["interface_name"]
     assert f"--af-packet={capture['interface']}" in compose["services"]["estate-sensor"]["command"]
     assert capture["bpf-filter"] == "host 10.30.130.59 or host 10.30.130.60", (
         "the web network carries only the WAF's traffic to the targets, which the wargame host's NIC saw")
@@ -131,7 +140,7 @@ def test_the_estate_sensor_sees_the_waf_s_traffic_to_the_targets():
 
 
 def test_kali_holds_every_declared_origin_address_and_the_edge_every_origin_gateway():
-    files = rangehost.slot_files(ROOT, laid(2), WARGAMES, DECLARED.origins, DECLARED.default_origin, "")
+    files = slot_files()
     kali, edge = files["kali.ip"].decode().splitlines(), files["edge.ip"].decode().splitlines()
 
     assert len(kali) == sum(origin.addresses for origin in DECLARED.origins) + 1
@@ -140,12 +149,34 @@ def test_kali_holds_every_declared_origin_address_and_the_edge_every_origin_gate
 
 
 def test_each_slot_s_logs_reach_the_collector_under_a_name_that_keeps_its_slot():
-    one = rangehost.forwarding(laid(1), "10.31.0.2", 5140, {"waf": ("cr-waf", "modsecurity")})
-    two = rangehost.forwarding(laid(2), "10.31.0.2", 5140, {"edge-sensor": ("cr-edge", "suricata")})
+    one, two = slot_files(1), slot_files(2)
+    relay = two["rsyslog/log-server.conf"].decode()
 
-    assert " cr-waf %APP-NAME%" in one and 'File="/var/log/cr/s1/waf/audit.log"' in one
-    assert " cr-edge-2 %APP-NAME%" in two and 'File="/var/log/cr/s2/edge/eve.json"' in two
-    assert 'reopenOnTruncate="on"' in two, "a reset empties the logs in place"
+    assert " cr-waf modsecurity " in one["rsyslog/log-server.conf"].decode()
+    assert 'File="/var/log/cr/s1/waf/audit.log"' in one["rsyslog/waf-shipper.conf"].decode()
+    assert " cr-edge-2 suricata " in relay and " cr-range-2 suricata " in relay and " cr-waf-2 modsecurity " in relay
+    assert 'File="/var/log/cr/s2/edge/eve.json"' in two["rsyslog/edge-sensor-shipper.conf"].decode()
+    assert 'reopenOnTruncate="on"' in two["rsyslog/edge-sensor-shipper.conf"].decode(), "a reset empties the logs in place"
+    assert relay.count('Target="10.31.0.2" Port="5140" Protocol="udp"') == 3
+
+
+def test_the_log_server_names_each_log_by_the_management_address_it_came_from():
+    files = slot_files(2)
+    compose = yaml.safe_load(files["compose.yaml"])
+    relay = files["rsyslog/log-server.conf"].decode()
+    on_mgmt = rangehost.addressed(compose, rangehost.MGMT)
+
+    for service, shipper in (("edge-sensor", "edge-sensor"), ("estate-sensor", "estate-sensor"), ("waf", "waf-shipper")):
+        shipped = files[f"rsyslog/{service}-shipper.conf"].decode()
+        assert f'Target="{on_mgmt["log-server"]}" Port="514" Protocol="tcp"' in shipped
+        assert f'$fromhost-ip == "{on_mgmt[shipper]}"' in relay
+        source = compose["services"][f"{service}-shipper"]
+        mounted = {str(volume).split(":")[1] for volume in source["volumes"]}
+        assert f"{rangehost.LOG_FILES.format(slot=2)}/{rangehost.LOGS[service]}".startswith(
+            tuple(path for path in mounted if path.startswith("/var/log/cr/")))
+    assert compose["services"]["edge-sensor-shipper"]["network_mode"] == "service:edge-sensor", (
+        "the sensor's log leaves from its own management interface")
+    assert files["uplink"] == f'{on_mgmt["log-server"]} 10.31.0.2 5140\n'.encode()
 
 
 def test_the_range_host_boots_once_from_the_stock_image_with_its_bundle_and_both_ports():

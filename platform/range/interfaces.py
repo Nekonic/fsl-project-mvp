@@ -76,6 +76,8 @@ class Wiring:
     def interfaces(self) -> list[Interface]:
         found = []
         for container in self.containers:
+            if container.sniffs:
+                continue
             legs = self.legs(container)
             found += [Interface(container.host or container.service, name, address, legs.get(name, ""))
                       for name, address in container.addresses]
