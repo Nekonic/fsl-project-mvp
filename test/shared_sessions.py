@@ -318,6 +318,7 @@ def tuned_session(stack_is_up):
 @pytest.fixture(scope="session")
 def rules_session(stack_is_up):
     with shared_session() as session_id:
+        passed_to_the_ids(session_id)
         seen = {"session_id": session_id}
         baseline_rules = runs_the_declared_rules(session_id)
         seen["rules_before_invalid"] = rules_of(session_id)
