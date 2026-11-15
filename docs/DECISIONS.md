@@ -8685,3 +8685,23 @@ runs. Left in each call: about 0.4 s of `django.setup()`, 0.5 s of imports
 (Django's management package, the adapter and `requests`), 0.2 s of ssh
 and `docker exec` on the range host, 0.15 s of `docker exec` into the
 platform. Under a second needs an entry point that does not boot Django.
+
+## 2026-11-16 — A session's slot runs only that session's wargame
+
+The user: "망은 시나리오 별로 달라야하지 왜 시나리오 2개가 같이있지?" The
+ruling of 2026-10-15 ("The learner map is the company network the learner
+defends, named by role, one map per wargame": "board and corp appeared
+together though a session defends one wargame") had been met by hiding the
+other wargame on a drawn template; the map now draws the slot's real wiring,
+so the slot itself must run one wargame. Opening a session runs
+`slot.sh play N <the wargame's services>`, which stops the other wargame's
+containers (`compose stop -t 1`); the map, which reads only running
+containers, then shows only the session's site and database. A reset starts
+every wargame again (`targets_reset` as before), so an idle slot stands ready
+for either and readiness still reads the ground truth.
+
+Session open, POST `/api/sessions/` to 201 on warm slots, two runs each:
+before board 15.0 s and 16.6 s, corp 8.1 s and 10.4 s; after board 12.0 s and
+17.2 s, corp 16.5 s and 10.8 s. The stop adds at most a few seconds, within
+run-to-run spread. A board session's map: Kali, 라우터, WAF, board.com,
+board-db, IDS, 로그 서버; a corp session's the same with corp.com and corp-db.

@@ -311,7 +311,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 
 - 영역(`zones`): 슬롯 워게임의 장비가 하나라도 붙은 Docker 네트워크. 망 이름으로 정하지 않고 붙은 장비로 캡션을 정함(`topology.captions`): kali가 있으면 `internet`, 라우터가 있으면 `dmz`, log-server가 있으면 `mgmt`(관제망), 워게임 DB가 있고 WAF가 없으면 `database`, 나머지는 `web`. 한국어는 `strings.html`의 `topology.zone.*`. 캡션은 영역 이름과 대역이고, 인터넷 구간에는 대역을 붙이지 않음. DB존에는 `owner`로 워게임 이름이 붙어 "board DB존", "corp DB존"으로 나옴
 - 스위치: 영역마다 하나(`switch:<망>`). 리눅스 브리지는 L2 스위치. 이름은 붙이지 않음
-- 장비: 브리지에 인터페이스가 있는 컨테이너. 이름은 `topology.learner`의 학습자 이름(`kali`, `router`, `waf`, `board.com`, `board-db`, `corp.com`, `corp-db`, `log-server`). 슬롯의 두 워게임 서버와 DB를 모두 그림. `kind`로 아이콘을 고름
+- 장비: 브리지에 인터페이스가 있는 컨테이너. 이름은 `topology.learner`의 학습자 이름(`kali`, `router`, `waf`, `board.com`, `board-db`, `corp.com`, `corp-db`, `log-server`). 세션을 열면 슬롯에는 그 세션 워게임의 서버와 DB만 돌고 있으므로 그 둘만 그려짐. `kind`로 아이콘을 고름
 - 선(`link`): 장비가 그 브리지에 가진 인터페이스마다 하나. `address`는 그 인터페이스에서 고른 주소(`link_heads`. kali와 라우터 wan은 기본 출발지 대역의 주소, 나머지는 망의 주소)
 - 센서(`sensor:<서비스>`): 감시하는 브리지마다 그 스위치에 `mirror` 선, 관제망 스위치에 `link` 선(관제망 주소). 지금은 웹 서버 구간 스위치 하나
 - 로그 서버(`log-server`): 관제망의 장비. 로그가 가는 선은 따로 그리지 않음
@@ -367,7 +367,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | `deploy/edge/edge.nft` | 에지 nftables 룰. loopback 외 input은 drop, forward는 accept |
 | `deploy/range-host/setup.sh` | 훈련 환경 호스트 설치 스크립트. Nova user data로 한 번 실행. 패키지, Docker `daemon.json`, sshd와 inotify 한도, 이미지, pristine 볼륨 |
 | `deploy/range-host/slot.yaml` | 슬롯 compose 프로젝트 템플릿. `range/rangehost.py`에서 값을 채워 워게임별 `compose.yaml`과 합침 |
-| `deploy/range-host/slot.sh` | 훈련 환경 호스트에서 슬롯 N의 `up`, `reset`, `down` 실행 |
+| `deploy/range-host/slot.sh` | 훈련 환경 호스트에서 슬롯 N의 `up`, `reset`, `down`, `play` 실행 |
 | `platform/range/rangehost.py` | 훈련 환경 호스트 설치 번들과 user data, 슬롯별 compose 파일과 부속 파일, 실행 명령 생성 |
 | `platform/tests/test_containment.py` | 렌더링한 슬롯 compose 파일이 격리 조건을 어기면 `bin/verify` 실패 |
 | `test/test_range_isolation.py` | Kali, WAF, board에서 격리를 확인하는 실환경 검사 |
@@ -2059,7 +2059,8 @@ Docker와 메타데이터:
 
 **초기화.** `POST /api/sessions/<id>/close/`는 슬롯을 그 자리에서 초기화합니다. VM은 재구축하지 않습니다.
 
-- `reset_in_place()`에서 `slot.sh reset N` 실행
+- `reset_in_place()`에서 `slot.sh reset N` 실행. reset은 모든 워게임을 다시 띄워 어느 워게임 세션이든 받을 수 있게 함
+- 세션을 열 때 `play(<워게임>)`이 `slot.sh play N <서비스...>`를 실행해 그 워게임의 서버와 DB만 남기고 다른 워게임 컨테이너를 멈춤(`compose stop -t 1`)
 - Kali와 WAF는 이미지에서 새로 만듦. 동시에 대상 시스템은 볼륨째 지우고 초기 데이터로 다시 띄움
 - 에지의 neighbour 테이블을 비우고, 슬롯 로그 파일(센서 `eve.json`, WAF `audit.log`와 `refused.log`)을 그 자리에서 비우고, 센서가 로그 파일을 다시 열게 함. shipper는 비워진 파일을 처음부터 다시 읽음(`reopenOnTruncate`). WAF shipper는 WAF와 함께 새로 만듦
 - 새로 만든 컨테이너의 브리지 포트에 미러링을 다시 검
