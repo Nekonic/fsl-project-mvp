@@ -48,9 +48,9 @@ def venv(version: str, python: str) -> Path:
     if (home / ".installed").is_file():
         return interpreter
     shutil.rmtree(home, ignore_errors=True)
-    subprocess.run([python, "-m", "venv", str(home)], check=True)
-    subprocess.run([str(interpreter), "-m", "pip", "install", "--quiet", "--upgrade", "pip"], check=True)
-    subprocess.run([str(interpreter), "-m", "pip", "install", "--quiet", f"gns3-server=={version}"], check=True)
+    subprocess.run(["uv", "venv", "--quiet", "--python", python, str(home)], check=True)
+    subprocess.run(["uv", "pip", "install", "--quiet", "--python", str(interpreter), f"gns3-server=={version}"],
+                   check=True)
     (home / ".installed").write_text(version)
     return interpreter
 
@@ -128,7 +128,7 @@ def main() -> int:
     for version in args.version or VERSIONS:
         try:
             interpreter = venv(version, args.python)
-        except subprocess.CalledProcessError as exc:
+        except (subprocess.CalledProcessError, OSError) as exc:
             print(f"gns3-server {version}: could not install ({exc})")
             passed = False
             continue

@@ -1,4 +1,5 @@
 import pathlib
+import re
 import subprocess
 
 import yaml
@@ -167,17 +168,23 @@ def test_the_platform_vm_makes_its_own_virtualenv_in_the_background_after_the_pl
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
 
-    assert "python3-venv" in config["packages"]
+    [fetched] = [i for i, c in enumerate(commands) if "github.com/astral-sh/uv/releases/download/" in " ".join(c)]
+    assert started < fetched < made, "uv is installed after the platform is up and before the virtualenv is made"
+    assert re.search(r"/download/\d+\.\d+\.\d+/", commands[fetched][-1]), "uv is pinned to one release"
+    assert re.search(r"echo '[0-9a-f]{64}  /tmp/uv.tar.gz' \| sha256sum -c -", commands[fetched][-1]), (
+        "the release tarball is checked against its published SHA-256 before it is unpacked"
+    )
     assert made > started, "the platform service starts first; the virtualenv must not delay it"
-    assert "--no-block" in command, "a slow pip install would hold up the rest of the first boot"
+    assert "--no-block" in command, "a slow package install would hold up the rest of the first boot"
     assert {"--uid=ubuntu", "--gid=ubuntu"} <= set(command), (
         "bin/verify runs as the ubuntu user and the checkout is owned by it"
     )
     assert command[-3:] == ["sh", "-c", module.VENV_COMMAND], (
         "the first boot and the hand-over after a sideload checkout make the same virtualenv, "
-        "one at a time: the hand-over starts while the first boot's pip install may still run"
+        "one at a time: the hand-over starts while the first boot's install may still run"
     )
     assert module.VENV_COMMAND == (
-        "exec 9>/tmp/cr-venv.lock && flock 9 && python3 -m venv /opt/cr/.venv && "
-        "/opt/cr/.venv/bin/pip install --quiet -r /opt/cr/platform/requirements.txt"
+        "exec 9>/tmp/cr-venv.lock && flock 9 && "
+        "/usr/local/bin/uv venv --quiet --clear --python /usr/bin/python3 /opt/cr/.venv && "
+        "/usr/local/bin/uv pip install --quiet --python /opt/cr/.venv/bin/python -r /opt/cr/platform/requirements.txt"
     )

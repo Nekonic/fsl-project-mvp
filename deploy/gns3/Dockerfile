@@ -23,10 +23,11 @@ RUN mkdir -p /dragon \
 
 FROM python:3.13-slim
 
-RUN apt-get update \
+RUN --mount=from=ghcr.io/astral-sh/uv:0.13.8@sha256:5cc1805e2426484abca4ad46ea783bab281fdb225fd82d8ce6d66a81254bac85,source=/uv,target=/bin/uv \
+    apt-get update \
  && apt-get install -y --no-install-recommends libmagic1 libpcap0.8t64 libcap2-bin gosu qemu-system-x86 busybox-static docker-cli \
  && rm -rf /var/lib/apt/lists/* \
- && pip install --no-cache-dir "gns3-server[ai-features]==3.1.0a6" \
+ && uv pip install --system --no-cache --compile-bytecode "gns3-server[ai-features]==3.1.0a6" \
  && useradd --system --create-home --uid 10002 gns3
 
 RUN skills="$(python -c 'import gns3server, pathlib; print(pathlib.Path(gns3server.__file__).parent)')/agent/gns3_copilot/configs/skills_config.py" \

@@ -1924,7 +1924,7 @@ cp deploy/openstack/cloud.example.yaml deploy/openstack/cloud.yaml
 - `identity`: `keystone`, `region`, `interface`, `domain`, `project`, `user`, `password_file`. 비밀번호는 이 파일에 넣지 않고 `password_file`이 가리키는 파일에 둠
 - `network`: `external`, `address`, `dns`, `mtu`, `platform`, `estate`, `mgmt`
 - `compute`: `base_image`, `availability_zone`, `slots`, `flavors.platform`, `flavors.range`
-- `keys`: `operator`, `operator_file`, `range`
+- `keys`: `key_name`(플랫폼 VM의 Nova 키페어 이름), `key_file`(그 개인키 경로), `range`
 - `platform`: `stack`, `repository`, `ref`
 - `backups`: `keep`
 
@@ -1932,15 +1932,17 @@ cp deploy/openstack/cloud.example.yaml deploy/openstack/cloud.yaml
 
 - `platform/range/cloud.py`: 파일 검사. 문제는 키별로 모두 보고
 - `bin/platform-rebuild`, `bin/cloud`: 이 값으로 openstack CLI와 Heat 파라미터를 채워 실행. 스택을 배포하면 값이 플랫폼의 `openstack.env`에 기록됨
+- `bin/cloud clouds`: `identity` 값을 `clouds.yaml` 항목 `fsl-range`로 출력. 비밀번호는 넣지 않음. 프로젝트 사용자 권한으로 `openstack --os-cloud fsl-range`를 쓸 때 필요
 
 `bin/cloud up`의 순서:
 
-1. 스택 생성
-2. `POST /api/range/fabric/`
-3. `POST /api/range/slot/`: 훈련 환경 호스트 부팅 또는 교체
-4. 호스트가 뜨고 설치가 끝나면 `POST /api/range/configure/`
-5. `/api/range/ready/`에서 모든 슬롯이 READY가 될 때까지 대기
-6. `DELETE /api/range/leftovers/`
+1. `keys.key_name`의 Nova 키페어 확인. 없으면 `<key_file>.pub`로 `openstack keypair create --public-key` 실행. 같은 이름의 키페어에 다른 공개키가 있으면 덮어쓰지 않고 키페어 이름을 출력한 뒤 중단(`bin/platform-rebuild`의 `ensure_keypair`)
+2. 스택 생성
+3. `POST /api/range/fabric/`
+4. `POST /api/range/slot/`: 훈련 환경 호스트 부팅 또는 교체
+5. 호스트가 뜨고 설치가 끝나면 `POST /api/range/configure/`
+6. `/api/range/ready/`에서 모든 슬롯이 READY가 될 때까지 대기
+7. `DELETE /api/range/leftovers/`
 
 `bin/cloud down`은 키를 남기고, 플랫폼 DB를 백업한 뒤(`bin/backup`, 사본은 `backups.keep`개까지) 슬롯, 훈련 환경 호스트, fabric, 스택을 지웁니다.
 
@@ -1973,6 +1975,8 @@ Heat 템플릿 `deploy/openstack/platform.yaml`이 만드는 리소스:
 - `/opt/cr/.env`에 `CR_IMAGE_TAG=<체크아웃의 커밋>` 기록
 - GeoIP DB 다운로드(`bin/fetch-geoip`). 자격 증명 불필요. Elastic GeoIP 엔드포인트는 URL에 약관 동의를 담으면 GeoLite2를 내려 줌
 - `ubuntu`를 `docker` 그룹에 추가
+- uv 0.13.8 설치. GitHub 릴리스 tarball을 받아 공개된 SHA-256과 대조한 뒤 `/usr/local/bin/uv`에 풀어 놓음
+- 백그라운드 유닛 `cr-venv`에서 `/opt/cr/.venv` 생성. `uv venv --clear --python /usr/bin/python3` 다음에 `uv pip install -r platform/requirements.txt`. sideload 체크아웃 뒤에는 `bin/platform-rebuild`에서 같은 명령을 다시 실행
 
 systemd 유닛 `cr-platform.service`는 부팅할 때마다 `compose.yaml`의 이미지를 pull하고 `docker compose -f /opt/cr/compose.yaml up -d`를 실행합니다.
 

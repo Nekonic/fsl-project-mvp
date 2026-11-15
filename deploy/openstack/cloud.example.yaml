@@ -3,7 +3,7 @@
 # No secret goes here: only where to read the password from.
 
 identity:
-  keystone: http://192.168.0.110:5000   # Keystone's base URL, without /v3
+  keystone: http://10.10.10.10:5000     # Keystone's base URL, without /v3
   region: RegionOne
   interface: public                     # the catalogue interface the platform calls
   domain: default                       # the id of the user's and the project's domain
@@ -30,8 +30,8 @@ compute:
     range: dba.range                    # the range host that runs every slot as containers; about 1.2 GB per slot
 
 keys:
-  operator: fsl-claude                  # the Nova keypair the platform VM boots with
-  operator_file: ~/.ssh/fsl_claude      # its private half, for ssh to the platform VM
+  key_name: fsl-claude                  # the Nova keypair the platform VM boots with (Nova's key_name)
+  key_file: ~/.ssh/fsl_claude           # that keypair's private key, for ssh to the platform VM
   range: ~/.ssh/fsl-platform            # the platform's range key, kept across rebuilds
 
 

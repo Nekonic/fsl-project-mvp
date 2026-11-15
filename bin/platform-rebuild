@@ -32,8 +32,8 @@ PLATFORM_KEY = "/data/ssh/id_ed25519"
 CHECKOUT = "/opt/cr"
 VENV_COMMAND = (
     "exec 9>/tmp/cr-venv.lock && flock 9 && "
-    f"python3 -m venv {CHECKOUT}/.venv && "
-    f"{CHECKOUT}/.venv/bin/pip install --quiet -r {CHECKOUT}/platform/requirements.txt"
+    f"/usr/local/bin/uv venv --quiet --clear --python /usr/bin/python3 {CHECKOUT}/.venv && "
+    f"/usr/local/bin/uv pip install --quiet --python {CHECKOUT}/.venv/bin/python -r {CHECKOUT}/platform/requirements.txt"
 )
 SSH_WAIT = 900
 API_WAIT = 1200
@@ -114,7 +114,7 @@ def load(args: argparse.Namespace, environ=os.environ, which=shutil.which):
     if openstack_cli(which) is None:
         raise Refused(
             f"{Path(sys.argv[0]).name}: no openstack CLI beside {Path(sys.executable).parent} or on PATH "
-            f"(pip install python-openstackclient python-heatclient into the environment that runs this)"
+            f"(uv pip install --python {sys.executable} python-openstackclient python-heatclient)"
         )
     return cloud, environment
 
@@ -450,6 +450,28 @@ def reserved_floating_ip(address: str, run=run) -> str:
     return found[0]
 
 
+def ensure_keypair(name: str, key_file: Path, run=run) -> None:
+    public = key_file.with_name(f"{key_file.name}.pub")
+    if not public.is_file():
+        raise Refused(
+            f"platform-rebuild: keys.key_file is {key_file}, and its public key {public} does not exist; "
+            f"ssh-keygen -y -f {key_file} > {public} writes it"
+        )
+    offered = public.read_text().split()[:2]
+    listed = json.loads(run(["openstack", "keypair", "list", "-f", "json"]).stdout or b"[]")
+    if name not in {entry.get("Name") for entry in listed}:
+        run(["openstack", "keypair", "create", "--public-key", str(public), name])
+        print(f"imported {public} as the Nova keypair {name}")
+        return
+    held = run(["openstack", "keypair", "show", "--public-key", name]).stdout.decode().split()[:2]
+    if held != offered:
+        raise Refused(
+            f"platform-rebuild: the Nova keypair {name} (keys.key_name) holds another public key than "
+            f"{public}, so it is left as it is; point keys.key_file at that keypair's private key, "
+            f"or delete the keypair to have {public} imported"
+        )
+
+
 def stack_arguments(cloud, run=run) -> list[str]:
     return [
         argument for name, value in cloud.heat_parameters(reserved_floating_ip(cloud.address, run)).items()
@@ -582,7 +604,7 @@ def hand_over_done(host: Host) -> bool:
 
 def resume(cloud, environment: dict[str, str], address: str, sideload_pairs: list[str] = ()) -> None:
     range_key = Path(cloud.range_key).expanduser()
-    identity = Path(cloud.operator_key_file).expanduser()
+    identity = Path(cloud.key_file).expanduser()
     with tempfile.TemporaryDirectory() as scratch:
         host = Host("ubuntu", address, Path(scratch) / "known_hosts", identity)
         host.wait()
@@ -605,7 +627,7 @@ def rebuild(cloud, environment: dict[str, str], sideload_pairs: list[str] = ()) 
     os.environ.update(environment)
     base = commit_of(cloud.repository, cloud.ref)
     range_key = Path(cloud.range_key).expanduser()
-    identity = Path(cloud.operator_key_file).expanduser()
+    identity = Path(cloud.key_file).expanduser()
     with tempfile.TemporaryDirectory() as scratch:
         sideload = None
         if sideload_pairs:
@@ -614,6 +636,7 @@ def rebuild(cloud, environment: dict[str, str], sideload_pairs: list[str] = ()) 
             refuse_unless_unchanged(base, commit, tarballs)
             sideload = Sideload(commit, head_bundle(commit, Path(scratch)), tarballs)
         refuse_unless_published(base, sideloaded=sideload.tarballs if sideload else ())
+        ensure_keypair(cloud.key_name, identity)
         known_hosts = Path(scratch) / "known_hosts"
         status = stack_status(cloud.stack)
         refuse_if_busy(cloud.stack, status)

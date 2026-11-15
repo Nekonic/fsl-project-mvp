@@ -12,7 +12,8 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=from=ghcr.io/astral-sh/uv:0.13.8@sha256:5cc1805e2426484abca4ad46ea783bab281fdb225fd82d8ce6d66a81254bac85,source=/uv,target=/bin/uv \
+    uv pip install --system --no-cache --compile-bytecode -r requirements.txt
 COPY . .
 
 RUN useradd --system --create-home --uid 10001 cr \

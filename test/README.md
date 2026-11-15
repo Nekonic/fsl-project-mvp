@@ -7,7 +7,7 @@ code. They see the system from the outside.
 The range must be up before you run them. Run the suite on the OpenStack
 platform VM, against that VM's own platform and its running range
 (`docs/OPENSTACK.md` §7). `bin/verify` needs the checkout's `.venv`. The platform VM
-makes `/opt/cr/.venv` itself at first boot and after a sideload checkout
+makes `/opt/cr/.venv` itself with uv at first boot and after a sideload checkout
 (`docs/OPENSTACK.md` §7).
 
 ```bash

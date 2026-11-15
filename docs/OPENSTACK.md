@@ -194,7 +194,7 @@ openstack_release: "2025.2"
 network_interface: "<NIC with the management IP>"
 neutron_external_interface: "<NIC up with no IP: floating IPs and the external network>"
 kolla_internal_vip_address: "10.0.0.10"       # this cloud's API address: an unused address on network_interface's network [K1]
-nova_compute_virt_type: "kvm"                 # the default [K7]; the compute hosts need VT-x or AMD-V
+nova_compute_virt_type: "kvm"                 # the default [K7]; recommended. Without VT-x or AMD-V, "qemu" runs everything, only slower
 neutron_plugin_agent: "openvswitch"           # the default [K2]; this cloud runs ML2/OVN, and the product runs on either
 enable_heat: "yes"        # default follows enable_openstack_core [K2]; keep it on
 enable_horizon: "yes"     # optional; the platform does not use it
@@ -204,7 +204,13 @@ enable_horizon: "yes"     # optional; the platform does not use it
 
 Heat, Glance, Nova, Neutron, Keystone and Placement are all part of
 `enable_openstack_core`, which is true by default [K2]. Nothing else is
-required. The hosts are Ubuntu 24.04 on x86_64, because every image the project
+required.
+
+KVM is recommended, not required (the user's ruling of 2026-11-15). Kolla's
+default `nova_compute_virt_type` is `kvm` [K7], which needs VT-x or AMD-V on the
+compute hosts. A host without them can set `nova_compute_virt_type: "qemu"`:
+Nova then runs the platform VM and the range host under plain QEMU emulation.
+Everything still runs, only slower. The hosts are Ubuntu 24.04 on x86_64, because every image the project
 runs is amd64.
 
 On an all-in-one cloud without HAProxy and keepalived, set `enable_haproxy:
@@ -295,8 +301,8 @@ network that interface is wired to:
 
 ```bash
 openstack network create --external --provider-network-type flat --provider-physical-network physnet1 provider
-openstack subnet create --network provider --no-dhcp --subnet-range 192.168.100.0/24 \
-  --gateway 192.168.100.1 --allocation-pool start=192.168.100.20,end=192.168.100.99 provider-subnet
+openstack subnet create --network provider --no-dhcp --subnet-range 10.10.10.0/24 \
+  --gateway 10.10.10.1 --allocation-pool start=10.10.10.20,end=10.10.10.99 provider-subnet
 ```
 
 **(this cloud)** The `provider` network is flat. Its subnet is 192.168.2.0/24
@@ -328,6 +334,12 @@ only `cr-range.mgmt`, no way to the Internet and no DNS resolver. The slots' con
 every slot network is an internal Docker network with no host address (§6).
 
 ## 3. Project, user, quotas, flavors, keys, groups, images
+
+Run the steps marked [admin] with the credentials `kolla-ansible post-deploy`
+writes: `source /etc/kolla/admin-openrc.sh`, or copy `/etc/kolla/clouds.yaml`
+to `~/.config/openstack/` and pass `--os-cloud kolla-admin` [K1][K9]. Run the
+project user's commands with `--os-cloud fsl-range`, the `clouds.yaml` entry
+`bin/cloud clouds` prints from `cloud.yaml` (README step 6) [O2].
 
 ### 3.1 Project and user [admin, once]
 
@@ -407,12 +419,19 @@ A new cloud makes these two flavors, and `cloud.example.yaml` names them.
 
 ### 3.4 Keypairs
 
-- `fsl-claude` is the operator's key that the platform VM boots with. It is the
-  stack parameter `key_name` and `keys.operator` in `cloud.yaml`. Make the key,
-  then create the keypair as `fsl-range` before the stack. Use the sign-in
-  variables from `README.md` step 6:
-  `ssh-keygen -t ed25519 -N "" -f ~/.ssh/fsl_claude` and
-  `openstack keypair create --public-key ~/.ssh/fsl_claude.pub fsl-claude`
+- `fsl-claude` is the Nova keypair the platform VM boots with: the server's
+  `key_name`, which is `keys.key_name` in `cloud.yaml` and the stack parameter
+  `key_name`. Its private key is `keys.key_file`, the key `bin/cloud` and
+  `bin/platform-rebuild` ssh to the VM with. Make the key
+  (`ssh-keygen -t ed25519 -N "" -f ~/.ssh/fsl_claude`); nothing else is done by
+  hand. Before they create the stack, both scripts look the keypair up
+  (`openstack keypair list`) and, when the project has none of that name,
+  import `<key_file>.pub` with `openstack keypair create --public-key` [O1]
+  (`ensure_keypair` in `bin/platform-rebuild`). A keypair of that name that
+  holds another public key (`openstack keypair show --public-key`) stops them
+  with the keypair's name and is never overwritten: whatever booted with it
+  would lose its key. A missing `.pub` stops them too;
+  `ssh-keygen -y -f <key_file>` writes it from the private key.
 - `cr-platform` is the platform's own range key. `POST /api/range/fabric/`
   imports it from `/data/ssh/id_ed25519` in the platform container. Never create
   this keypair by hand. The key file it comes from (`keys.range`) needs no step
@@ -492,7 +511,7 @@ openstack CLI.
 - Without `--public`, an admin's image belongs to the admin project and
   `fsl-range` does not see it. The stack then fails on its `image`, and the
   platform finds none.
-- As `fsl-range`, signed in as in `README.md` step 6, the same command without
+- As `fsl-range` (`--os-cloud fsl-range`, §3), the same command without
   `--public` works, because the image then belongs to the project.
 
 ```bash
@@ -579,7 +598,7 @@ the file.
 
 | Key | Example | Used by |
 |---|---|---|
-| `identity.keystone` | `http://10.0.0.10:5000` | Keystone base URL without `/v3`; CLI and platform |
+| `identity.keystone` | `http://10.10.10.10:5000` (**(this cloud)** `http://10.0.0.10:5000`) | Keystone base URL without `/v3`; CLI and platform |
 | `identity.region`, `identity.interface` | `RegionOne`, `public` | the catalogue endpoints the CLI and the platform call |
 | `identity.domain` | `default` (**(this cloud)** `c72af53edecb4e31a5645fdd9a07f0f9`, the domain `fsl`) | the id of the user's and the project's domain |
 | `identity.project`, `identity.user` | `fsl-range` | the member user the CLI and the platform sign in as |
@@ -593,7 +612,7 @@ the file.
 | `compute.availability_zone` | `""` | the platform VM and the range host; if empty, Nova chooses |
 | `compute.flavors` | `platform`, `range`, exactly these two | §3.3 |
 | `compute.slots` | `1` (**(this cloud)** `4`) | optional; how many slots the range host runs, which is how many sessions can run at once (§6.4); `CR_OPENSTACK_SLOTS` |
-| `keys.operator`, `keys.operator_file` | `fsl-claude`, `~/.ssh/fsl_claude` | the keypair the platform VM boots with, and its private half |
+| `keys.key_name`, `keys.key_file` | `fsl-claude`, `~/.ssh/fsl_claude` | the Nova keypair the platform VM boots with (its `key_name`, §3.4), and that keypair's private key, for ssh to the VM |
 | `keys.range` | `~/.ssh/fsl-platform` | the platform's range key, kept across rebuilds |
 | `platform.stack`, `.repository`, `.ref` | `cr-platform`, this repo, `dev` | the stack, and the checkout it clones |
 | `backups.keep` | `1` | optional; how many store backups `backups/` keeps after a rebuild or `down`, counting the new one (`bin/backup --keep`). Without it, one |
@@ -633,6 +652,11 @@ The server's cloud-init does these steps:
 6. Writes `/opt/cr/.env` with `CR_PUBLISH=<fixed IP>` and
    `CR_SYSLOG_PUBLISH=0.0.0.0`.
 7. Enables `cr-platform.service`.
+8. Installs uv from its GitHub release tarball, pinned to one version and
+   checked against that tarball's SHA-256, into `/usr/local/bin/uv` [U2].
+9. Makes `/opt/cr/.venv` in the background (the unit `cr-venv`):
+   `uv venv --clear --python /usr/bin/python3`, then
+   `uv pip install -r platform/requirements.txt`.
 
 When `network.address` is set, `bin/platform-rebuild` does this before it
 deletes anything:
@@ -662,12 +686,16 @@ there.
 ### 5.2 One command [one-click]
 
 Run this from the operator's machine. `python-openstackclient` and
-`python-heatclient` must be installed in the repo's `.venv`, which has PyYAML.
-The scripts find the `openstack` command beside `.venv/bin/python`.
+`python-heatclient` must be installed in the repo's `.venv`, which has PyYAML
+(`README.md` step 3: `uv venv .venv`, then `uv pip install --python
+.venv/bin/python -r platform/requirements.txt python-openstackclient
+python-heatclient`). The scripts find the `openstack` command beside
+`.venv/bin/python`.
 
 ```bash
 .venv/bin/python bin/cloud up            # --replace to replace a standing platform; --cloud, --ref, --sideload as in §5.3
 .venv/bin/python bin/cloud down
+.venv/bin/python bin/cloud clouds          # cloud.yaml's project user as a clouds.yaml entry, no password (§3)
 ```
 
 `up` does these steps in order:
@@ -934,6 +962,7 @@ code cannot see them, so take them down with the code that made them, once:
    range host needs none of these images (§3.6).
 
    ```bash
+   export OS_CLOUD=fsl-range
    .venv/bin/openstack image delete fsl-kali fsl-waf fsl-wargame-host fsl-opnsense-<version>
    .venv/bin/openstack security group delete fsl-build
    .venv/bin/openstack server list --name '^fsl-'; .venv/bin/openstack network list --name fsl-internet
@@ -943,8 +972,8 @@ code cannot see them, so take them down with the code that made them, once:
    The server and network lists are empty and the keypairs are `fsl-claude`
    alone when the old range is gone.
 4. In `cloud.yaml` set `platform.stack: cr-platform`.
-5. Bring the cloud up from this checkout with the `openstack` CLI on PATH:
-   `PATH="$PWD/.venv/bin:$PATH" .venv/bin/python bin/cloud up`. `platform.ref`
+5. Bring the cloud up from this checkout: `.venv/bin/python bin/cloud up`
+   (the scripts find `openstack` beside `.venv/bin/python`, §5.2). `platform.ref`
    must be a ref name with no `/` in it; push a branch so named if the working
    branch has one. It creates `cr-platform`, restores the newest backup in
    `backups/` and builds the fabric, the range host and the slots under the new
@@ -1243,7 +1272,8 @@ ssh ubuntu@$ADDRESS 'cd /opt/cr && CR_PLATFORM_URL=http://'$ADDRESS':8000 bin/ve
 ```
 
 `bin/verify` runs with the checkout's `.venv/bin/python`. The platform VM
-creates `/opt/cr/.venv` at first boot. `bin/verify` restarts the platform and
+creates `/opt/cr/.venv` with uv at first boot (§5.1), and again after a
+sideload checkout. `bin/verify` restarts the platform and
 resets the range. Never run it against a stack that someone is using.
 
 `bin/verify --changed --live` runs only the acceptance modules that a change
@@ -1366,7 +1396,9 @@ One Ubuntu 24.04 VM holds an all-in-one Kolla-Ansible cloud and this
 repo's numbered steps. The 2026-10-20 trial ran 2026.1; the commands below use
 2025.2 and were not run again. It follows the official quickstart [K1] and the
 hypervisors' manuals [V1][W1]. Run end to end on 2026-10-20 (on a KVM host; the
-VirtualBox/VMware settings themselves were not exercised).
+VirtualBox/VMware settings themselves were not exercised). Nested KVM is
+recommended; without it the cloud runs its VMs under plain QEMU, only slower
+(§2.2).
 
 ### 9.1 The VM
 
@@ -1408,10 +1440,10 @@ VirtualBox/VMware settings themselves were not exercised).
 
 | | Example |
 |---|---|
-| Network | 192.168.100.0/24 |
-| Gateway | 192.168.100.1 |
-| First adapter (management, fixed) | 192.168.100.10 |
-| Floating-IP pool | 192.168.100.20 to 192.168.100.99 |
+| Network | 10.10.10.0/24 |
+| Gateway | 10.10.10.1 |
+| First adapter (management, fixed) | 10.10.10.10 |
+| Floating-IP pool | 10.10.10.20 to 10.10.10.99 |
 
 After the install, find the adapters' names with `ip -br link` (here NIC1 and
 NIC2). Give the first the fixed address and bring the second up with no address.
@@ -1423,8 +1455,8 @@ network:
   ethernets:
     NIC1:
       dhcp4: false
-      addresses: [192.168.100.10/24]
-      routes: [{to: default, via: 192.168.100.1}]
+      addresses: [10.10.10.10/24]
+      routes: [{to: default, via: 10.10.10.1}]
       nameservers: {addresses: [8.8.8.8, 8.8.4.4]}
     NIC2:
       dhcp4: false
@@ -1447,13 +1479,17 @@ asked for a password. Give that user passwordless sudo:
 echo "$USER ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/90-kolla
 ```
 
-Install the quickstart's packages and check that the CPU's virtualization
+Install the quickstart's packages and check whether the CPU's virtualization
 reaches the VM:
 
 ```bash
 sudo apt update && sudo apt install -y git python3-dev libffi-dev gcc libssl-dev libdbus-glib-1-dev python3-venv cpu-checker
 sudo kvm-ok          # "KVM acceleration can be used"
 ```
+
+If `kvm-ok` says KVM cannot be used, set `nova_compute_virt_type: "qemu"` in the
+`globals.yml` lines below instead of `"kvm"`. The VMs then run under plain QEMU
+emulation: everything works, more slowly.
 
 ### 9.2 The cloud
 
@@ -1477,7 +1513,7 @@ comments:
 kolla_base_distro: "ubuntu"
 network_interface: "NIC1"
 neutron_external_interface: "NIC2"
-kolla_internal_vip_address: "192.168.100.10"
+kolla_internal_vip_address: "10.10.10.10"
 enable_haproxy: "no"
 enable_proxysql: "no"
 nova_compute_virt_type: "kvm"
@@ -1506,10 +1542,11 @@ Stay in that shell as admin. Do these steps:
    with `--public` (§3.1, §3.3, §3.6). Nova's default quotas already cover the
    two VMs (§3.2).
 
-In `cloud.yaml`, `identity.keystone` is `http://192.168.100.10:5000`.
+In `cloud.yaml`, `identity.keystone` is `http://10.10.10.10:5000`.
 
 Then open a new shell. The admin shell holds the Kolla venv and the admin `OS_*`
-variables, and README step 6 sets those of the `fsl-range` user. Follow
+variables from `admin-openrc.sh`; the new shell reaches the cloud as `fsl-range`
+through `--os-cloud fsl-range` (README step 6). Follow
 `README.md` from step 2 in that new shell, in the same VM and as your own user. The browser of step 8 is the host's browser. It opens the
 floating IP that `bin/cloud up` prints. The external network makes that address
 reachable on the host's network.
@@ -1517,6 +1554,7 @@ reachable on the host's network.
 ## Sources
 
 - [K1] Kolla-Ansible 2025.2 quickstart — https://docs.openstack.org/kolla-ansible/2025.2/user/quickstart.html
+- [K9] kolla-ansible stable/2025.2 `ansible/post-deploy.yml` (writes `admin-openrc.sh` and `clouds.yaml` into `/etc/kolla`) and `ansible/roles/common/templates/clouds.yaml.j2` (the entry `kolla-admin`) — https://opendev.org/openstack/kolla-ansible/src/branch/stable/2025.2/ansible/roles/common/templates/clouds.yaml.j2
 - [K2] kolla-ansible stable/2025.2 `etc/kolla/globals.yml` — https://opendev.org/openstack/kolla-ansible/src/branch/stable/2025.2/etc/kolla/globals.yml
 - [K7] Kolla-Ansible 2025.2, Libvirt guide (`nova_compute_virt_type`: kvm is the default) — https://docs.openstack.org/kolla-ansible/2025.2/reference/compute/libvirt-guide.html
 - [K8] Kolla-Ansible 2025.2, Neutron networking (`neutron_external_interface` goes on `br-ex`, physical network `physnet1`; the page says an interface plugged into a bridge cannot hold a usable IP address) — https://docs.openstack.org/kolla-ansible/2025.2/reference/networking/neutron.html
@@ -1531,3 +1569,6 @@ reachable on the host's network.
 - [W1] Broadcom KB 389469, "Virtualized Intel VT-x/EPT is not supported on this platform" (names the Workstation setting "Virtualize Intel VT-x/EPT or AMD-V/RVI") — https://knowledge.broadcom.com/external/article/389469
 - [H1] Heat `OS::Nova::Server` (`flavor_update_policy` RESIZE|REPLACE, default RESIZE; `user_data_update_policy` default REPLACE) — https://opendev.org/openstack/heat/src/branch/master/heat/engine/resources/openstack/nova/server.py
 - [U1] Ubuntu 24.04 cloud images and their `SHA256SUMS` — https://cloud-images.ubuntu.com/noble/current/
+- [U2] uv, Installation ("Request a specific version by including it in the URL"; release artifacts "can be downloaded directly from GitHub Releases") — https://docs.astral.sh/uv/getting-started/installation/; the 0.13.8 release and its `uv-x86_64-unknown-linux-gnu.tar.gz.sha256` — https://github.com/astral-sh/uv/releases/tag/0.13.8
+- [O2] python-openstackclient, Configuration (`clouds.yaml` in the current directory, `~/.config/openstack` or `/etc/openstack`; `--os-cloud`) — https://docs.openstack.org/python-openstackclient/latest/configuration/index.html; openstacksdk, Configuration (`secure.yaml` "will take precedence over anything in the `clouds.yaml` file") — https://docs.openstack.org/openstacksdk/latest/user/config/configuration.html
+- [O1] python-openstackclient, `keypair create` (`--public-key <file>`: "Filename for public key to add"; `--private-key <file>`: "Filename for private key to save") — https://docs.openstack.org/python-openstackclient/latest/cli/command-objects/keypair.html

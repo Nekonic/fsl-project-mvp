@@ -56,7 +56,11 @@ Kolla-Ansible 2025.1 이상으로 구축한 OpenStack에서 돌아갑니다.
 로컬 PC(`bin/cloud` 실행 위치):
 
 - `git`, `ssh`, `ssh-keygen`
-- Python 3.10 이상과 venv 모듈. Debian·Ubuntu는 `sudo apt install python3-venv`
+- Python 3.10 이상
+- uv. virtualenv 생성과 패키지 설치에 씁니다. 설치 방법은 uv 공식 문서
+  (https://docs.astral.sh/uv/getting-started/installation/) 참고. 버전을 고정하려면
+  `curl -LsSf https://astral.sh/uv/0.13.8/install.sh | sh`처럼 URL에 버전을 넣습니다.
+  플랫폼 VM에도 0.13.8을 설치합니다.
 - 클라우드 API와 플랫폼 VM floating IP로 가는 네트워크 경로
 - github.com, ghcr.io 접속
 
@@ -105,8 +109,8 @@ VirtualBox나 VMware VM 1대에 클라우드 전체를 올려 시험하려면 `d
    activate하지 않아도 됩니다.
 
    ```bash
-   python3 -m venv .venv
-   .venv/bin/pip install -r platform/requirements.txt python-openstackclient python-heatclient
+   uv venv .venv
+   uv pip install --python .venv/bin/python -r platform/requirements.txt python-openstackclient python-heatclient
    ```
 
 4. **Nova 키페어용 ssh 키 생성.** 플랫폼 VM에 ssh로 접속할 때 씁니다.
@@ -114,6 +118,11 @@ VirtualBox나 VMware VM 1대에 클라우드 전체를 올려 시험하려면 `d
    ```bash
    ssh-keygen -t ed25519 -N "" -f ~/.ssh/fsl_claude
    ```
+
+   키페어는 따로 등록하지 않습니다. 7단계 `bin/cloud up`에서 `keys.key_name`
+   이름의 Nova 키페어가 없으면 `keys.key_file`의 공개키(`~/.ssh/fsl_claude.pub`)로
+   등록합니다. 같은 이름의 키페어에 다른 공개키가 있으면 덮어쓰지 않고 키페어 이름을
+   출력한 뒤 멈춥니다.
 
    플랫폼이 훈련 환경 호스트에 접속하는 키(`~/.ssh/fsl-platform`)는 만들지 않아도
    됩니다. 처음 `bin/cloud up`을 실행할 때 생성합니다.
@@ -126,25 +135,35 @@ VirtualBox나 VMware VM 1대에 클라우드 전체를 올려 시험하려면 `d
    ```
 
    - `~/.config/fsl/fsl-range.password`: `fsl-range` 사용자 비밀번호 한 줄
-   - `cloud.yaml`의 `identity.keystone`: Keystone URL. `/v3`는 뺌
+   - `cloud.yaml`의 `identity.keystone`: Keystone URL. `/v3`는 뺌. 예제 값
+     `http://10.10.10.10:5000`은 `docs/OPENSTACK.md` §9의 예시 대역 10.10.10.0/24 기준
    - `cloud.yaml`의 `network.external`: 1단계에서 만든 외부 네트워크 이름
 
    나머지 키는 1~4단계의 이름과 같으므로 그대로 둡니다. 키 설명은
    `docs/OPENSTACK.md` §4에 있습니다. 값이 잘못되면 아무것도 바꾸기 전에 거부하고
    해당 키를 출력합니다.
 
-6. **Nova 키페어 등록.** `fsl-range` 사용자로 4단계의 공개키를 등록합니다.
+6. **`openstack` CLI용 `clouds.yaml` 작성.** 7단계에는 필요 없습니다. 스택이나
+   서버를 `fsl-range` 사용자로 직접 볼 때 씁니다.
 
    ```bash
-   export OS_AUTH_URL=<identity.keystone>/v3 OS_IDENTITY_API_VERSION=3 OS_INTERFACE=public \
-     OS_REGION_NAME=RegionOne OS_USER_DOMAIN_ID=default OS_PROJECT_DOMAIN_ID=default \
-     OS_PROJECT_NAME=fsl-range OS_USERNAME=fsl-range \
-     OS_PASSWORD="$(cat ~/.config/fsl/fsl-range.password)"
-   .venv/bin/openstack keypair create --public-key ~/.ssh/fsl_claude.pub fsl-claude
+   mkdir -p ~/.config/openstack
+   .venv/bin/python bin/cloud clouds > ~/.config/openstack/clouds.yaml
+   .venv/bin/openstack --os-cloud fsl-range stack list
    ```
 
-   `<identity.keystone>`에는 `cloud.yaml`의 값을 넣습니다. region, interface,
-   domain도 `cloud.yaml` 값과 맞춥니다.
+   - `bin/cloud clouds`로 `cloud.yaml`의 `identity` 값을 `clouds.yaml` 항목
+     `fsl-range`로 출력합니다. 비밀번호는 넣지 않습니다.
+   - `~/.config/openstack/clouds.yaml`이 이미 있으면 덮어쓰지 말고 `clouds:` 아래에
+     `fsl-range` 항목만 추가합니다.
+   - 비밀번호는 명령을 실행할 때 입력합니다. 매번 입력하지 않으려면
+     `~/.config/openstack/secure.yaml`(권한 600)의 `clouds.fsl-range.auth.password`에
+     넣습니다.
+   - `export OS_CLOUD=fsl-range`를 해 두면 `--os-cloud`는 빼도 됩니다.
+   - 참고: python-openstackclient 설정 문서
+     (https://docs.openstack.org/python-openstackclient/latest/configuration/index.html),
+     `secure.yaml`은 openstacksdk 설정 문서
+     (https://docs.openstack.org/openstacksdk/latest/user/config/configuration.html)
 
 7. **`bin/cloud up` 실행.**
 
@@ -195,8 +214,8 @@ VirtualBox나 VMware VM 1대에 클라우드 전체를 올려 시험하려면 `d
      - `systemctl status cr-platform`: 마지막 부팅의 시작 결과
      - `sudo cloud-init status --long`
      - `sudo docker logs cr-platform`
-   - Heat 스택: 6단계의 셸에서
-     `.venv/bin/openstack stack failures list cr-platform`
+   - Heat 스택: `.venv/bin/openstack --os-cloud fsl-range stack failures list cr-platform`
+     (6단계의 `clouds.yaml`)
    - `sudo docker ps`에 `cr-platform`이 없음: 플랫폼이 한 번도 뜨지 않은 상태입니다.
      원인은 `sudo cloud-init status --long`에 나옵니다. 대개 VM이 인터넷에 나가지
      못한 경우입니다(`docs/OPENSTACK.md` §2.6).
@@ -439,7 +458,7 @@ flowchart LR
 | `identity` | Keystone URL, region, interface, domain, 프로젝트, member 사용자, 비밀번호 위치(`password_file` 또는 `password_env`). 비밀번호 자체는 넣지 않음 |
 | `network` | 외부 네트워크, 고정 floating IP(`address`), DNS, 테넌트 MTU, platform·estate·mgmt CIDR |
 | `compute` | 베이스 이미지, availability zone, 슬롯 수, flavor 2개(`platform`, `range`) |
-| `keys` | Nova 키페어 이름(`operator`)과 개인키(`operator_file`), 플랫폼의 훈련 환경 ssh 키(`range`) |
+| `keys` | Nova 키페어 이름(`key_name`)과 그 개인키 경로(`key_file`), 플랫폼의 훈련 환경 ssh 키(`range`) |
 | `platform` | 스택 이름, 저장소, ref |
 | `backups` | `backups/`에 남길 백업 수(`keep`) |
 
@@ -465,11 +484,14 @@ flowchart LR
 ```bash
 .venv/bin/python bin/cloud up        # 플랫폼 VM, 그다음 훈련 환경 전체
 .venv/bin/python bin/cloud down      # DB 백업, 키 보관, 훈련 환경과 스택 제거
+.venv/bin/python bin/cloud clouds    # clouds.yaml 항목 출력(설치 6단계)
 ```
 
 `up` 순서:
 
 1. 플랫폼 Heat 스택(`deploy/openstack/platform.yaml`)이 없으면 만듭니다.
+   만들기 전에 `keys.key_name`의 Nova 키페어가 없으면 `keys.key_file`의 공개키로
+   등록합니다.
    `--replace`를 주면 기존 스택을 `bin/platform-rebuild`로 교체합니다.
 2. API가 응답할 때까지 기다립니다.
 3. 플랫폼의 훈련 환경 API를 차례로 호출합니다.
@@ -657,8 +679,11 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 - 이때는 `/api/range/slot/`과 `/api/range/fabric/`에 `DELETE`를 먼저 보냅니다.
   `?slot=` 없이 보내면 훈련 환경 호스트까지 지웁니다.
 
-스택은 `keys.operator`의 키페어로 부팅합니다. 이 키페어는 프로젝트에 먼저 등록해야
-합니다(설치 6단계).
+플랫폼 VM은 `keys.key_name`의 Nova 키페어로 부팅합니다. 키페어가 없으면
+`bin/cloud up`과 `bin/platform-rebuild`에서 `keys.key_file`의 공개키
+(`<key_file>.pub`)로 등록합니다. 같은 이름의 키페어가 다른 공개키를 갖고 있으면
+덮어쓰지 않고 멈춥니다. `.pub` 파일이 없으면 `ssh-keygen -y -f <key_file>`로
+개인키에서 공개키를 다시 뽑을 수 있습니다.
 
 ## 포트
 
@@ -972,12 +997,13 @@ scp -i ~/.ssh/fsl_claude backups/db-20260925T020000Z.sqlite3 ubuntu@ADDRESS:/opt
 ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS
 cd /opt/cr
 sudo docker compose stop platform
-sudo docker run --rm --network none --entrypoint sh --user cr \
-  -v cr_platformdata:/data -v "$PWD/backups:/backups:ro" "$(sudo docker inspect --format '{{.Config.Image}}' cr-platform)" \
+sudo docker compose run --rm --no-deps --user cr --entrypoint sh -v ./backups:/backups:ro platform \
   -c 'rm -f /data/db.sqlite3-journal && cp /backups/db-20260925T020000Z.sqlite3 /data/db.sqlite3'
 sudo docker compose start platform
 ```
 
+- `docker compose run`: `platform` 서비스의 이미지와 `/data` 볼륨을 그대로 씀.
+  `--no-deps`로 다른 서비스는 띄우지 않음
 - `--entrypoint sh`: 인자를 무시하는 이미지 entrypoint를 대체
 - `--user cr`: 사본을 플랫폼 사용자 소유로 남김. `docker cp`로 복사하면 root 소유가
   되어 플랫폼에서 쓸 수 없음

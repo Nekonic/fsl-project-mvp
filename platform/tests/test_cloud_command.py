@@ -230,7 +230,7 @@ class StandingStack:
         rebuild = self.module.rebuild
         self.cli = Cli(servers=LEFT_BUILDER, status=status.encode())
         monkeypatch.setattr(rebuild, "load", lambda args: (
-            type("Cloud", (), {"stack": "cr-platform", "operator_key_file": "~/key", "range_key": "~/range",
+            type("Cloud", (), {"stack": "cr-platform", "key_file": "~/key", "range_key": "~/range",
                                "backups_keep": 1})(), {}))
         monkeypatch.setattr(rebuild, "run", self.cli)
         monkeypatch.setattr(rebuild, "stack_status", lambda stack: status)
@@ -330,3 +330,17 @@ def test_a_range_host_that_failed_its_setup_stops_up_with_why():
     with pytest.raises(SystemExit, match="cr-range failed its setup"):
         converge(platform)
     assert ("POST", "/configure/") not in platform.calls
+
+
+def test_clouds_prints_the_project_user_as_a_clouds_yaml_entry_without_the_password(capsys):
+    import yaml
+
+    module = command()
+    module.main(["clouds", "--cloud", str(ROOT / "deploy/openstack/cloud.example.yaml")])
+    printed = capsys.readouterr().out
+
+    entry = yaml.safe_load(printed)["clouds"]["fsl-range"]
+    assert entry["auth"]["auth_url"] == "http://10.10.10.10:5000/v3"
+    assert entry["auth"]["username"] == entry["auth"]["project_name"] == "fsl-range"
+    assert entry["region_name"] == "RegionOne" and entry["interface"] == "public"
+    assert "password" not in printed, "clouds.yaml is printed to a terminal; the password stays in its file"

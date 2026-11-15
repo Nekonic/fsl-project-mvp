@@ -40,8 +40,8 @@ class Cloud:
     platform_cidr: str
     mtu: int
     base_image: str
-    operator_key: str
-    operator_key_file: str
+    key_name: str
+    key_file: str
     range_key: str
     stack: str
     repository: str
@@ -72,7 +72,7 @@ class Cloud:
             "keystone": self.keystone, "user": self.user, "domain": self.domain,
             "region": self.region, "interface": self.interface,
             "image": self.base_image, "flavor": self.flavors["platform"],
-            "key_name": self.operator_key, "external_network": self.external_network,
+            "key_name": self.key_name, "external_network": self.external_network,
             "floating_address": self.address, "floating_ip_id": floating_ip_id,
             "availability_zone": self.availability_zone,
             "cidr": self.platform_cidr, "dns": ",".join(self.dns),
@@ -212,7 +212,7 @@ SCHEMA = {
         "base_image": (_name, True), "availability_zone": (_optional_name, False),
         "flavors": (_flavors, True), "slots": (_slots, False),
     },
-    "keys": {"operator": (_name, True), "operator_file": (_text, True), "range": (_text, True)},
+    "keys": {"key_name": (_name, True), "key_file": (_text, True), "range": (_text, True)},
     "platform": {"stack": (_name, True), "repository": (_url, True), "ref": (_name, True)},
     "backups": {"keep": (_keep, False)},
 }
@@ -321,7 +321,7 @@ def parse(document, source: str = "cloud.yaml") -> Cloud:
         availability_zone=compute.get("availability_zone") or "",
         flavors={str(role): name for role, name in compute["flavors"].items()},
         slots=compute.get("slots") or 1,
-        operator_key=keys["operator"], operator_key_file=keys["operator_file"],
+        key_name=keys["key_name"], key_file=keys["key_file"],
         range_key=keys["range"],
         stack=platform["stack"], repository=platform["repository"], ref=platform["ref"],
         backups_keep=backups.get("keep") or 1,

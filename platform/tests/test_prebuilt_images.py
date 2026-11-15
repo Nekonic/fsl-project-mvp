@@ -169,8 +169,9 @@ def test_the_range_key_never_enters_the_user_data():
     ({"network__estate": "10.20.0.0/24"}, "/bin/openstack", "overlaps"),
     ({}, None, "openstack CLI"),
 ])
-def test_the_rebuild_refuses_before_touching_the_cloud(tmp_path, changed, which, said):
+def test_the_rebuild_refuses_before_touching_the_cloud(tmp_path, monkeypatch, changed, which, said):
     module = rebuild()
+    monkeypatch.setattr(module.sys, "executable", str(tmp_path / "python"))
 
     with pytest.raises(module.Refused, match=said):
         module.load(written_cloud(tmp_path, **changed), {}, lambda _: which)
@@ -181,7 +182,7 @@ def test_the_openstack_cli_is_driven_by_cloud_yaml_not_an_openrc(tmp_path):
 
     cloud, environment = module.load(written_cloud(tmp_path), {}, lambda _: "/bin/openstack")
 
-    assert environment["OS_AUTH_URL"] == "http://192.168.0.110:5000/v3"
+    assert environment["OS_AUTH_URL"] == "http://10.10.10.10:5000/v3"
     assert environment["OS_PASSWORD"] == "secret"
     assert environment["OS_PROJECT_NAME"] == cloud.project
     parameters = module.stack_arguments(cloud)
@@ -279,20 +280,57 @@ class FloatingIps:
 
 def test_the_reserved_floating_ip_is_found_by_its_address(tmp_path):
     module = rebuild()
-    cloud, _ = module.load(written_cloud(tmp_path, network__address="192.168.0.210"), {},
+    cloud, _ = module.load(written_cloud(tmp_path, network__address="10.10.10.21"), {},
                            lambda _: "/bin/openstack")
     cli = FloatingIps(b"fip-210\n")
 
     parameters = module.stack_arguments(cloud, cli)
 
     assert cli.ran == [["openstack", "floating", "ip", "list", "--floating-ip-address",
-                        "192.168.0.210", "-f", "value", "-c", "ID"]]
-    assert "floating_address=192.168.0.210" in parameters and "floating_ip_id=fip-210" in parameters
+                        "10.10.10.21", "-f", "value", "-c", "ID"]]
+    assert "floating_address=10.10.10.21" in parameters and "floating_ip_id=fip-210" in parameters
+
+
+class Keypairs:
+    def __init__(self, held=None):
+        self.held = held
+        self.ran = []
+
+    def __call__(self, argv, stdin=None, check=True):
+        self.ran.append(argv)
+        if argv[:3] == ["openstack", "keypair", "list"]:
+            listed = [{"Name": "fsl-claude", "Fingerprint": "x"}] if self.held else []
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(listed).encode())
+        if argv[:3] == ["openstack", "keypair", "show"]:
+            return subprocess.CompletedProcess(argv, 0, stdout=f"{self.held}\n".encode())
+        return subprocess.CompletedProcess(argv, 0, stdout=b"")
+
+
+def test_the_platform_vm_s_nova_keypair_is_imported_when_missing_and_never_overwritten(tmp_path):
+    module = rebuild()
+    key = tmp_path / "fsl_claude"
+    (tmp_path / "fsl_claude.pub").write_text("ssh-ed25519 AAAAmine me@laptop\n")
+    created = ["openstack", "keypair", "create", "--public-key", str(tmp_path / "fsl_claude.pub"), "fsl-claude"]
+
+    missing = Keypairs()
+    module.ensure_keypair("fsl-claude", key, missing)
+    same = Keypairs(held="ssh-ed25519 AAAAmine Generated-by-Nova")
+    module.ensure_keypair("fsl-claude", key, same)
+    other = Keypairs(held="ssh-ed25519 AAAAtheirs Generated-by-Nova")
+    with pytest.raises(module.Refused, match="fsl-claude .keys.key_name. holds another public key"):
+        module.ensure_keypair("fsl-claude", key, other)
+
+    assert missing.ran[-1] == created
+    assert created not in same.ran and created not in other.ran, (
+        "a keypair of that name is in use by whatever booted with it; replacing it would lock that out"
+    )
+    with pytest.raises(module.Refused, match="ssh-keygen -y -f"):
+        module.ensure_keypair("fsl-claude", tmp_path / "no-such-key", missing)
 
 
 def test_an_address_the_project_does_not_hold_stops_the_rebuild(tmp_path):
     module = rebuild()
-    cloud, _ = module.load(written_cloud(tmp_path, network__address="192.168.0.210"), {},
+    cloud, _ = module.load(written_cloud(tmp_path, network__address="10.10.10.21"), {},
                            lambda _: "/bin/openstack")
 
     with pytest.raises(module.Refused, match="holds no floating IP at"):
@@ -456,7 +494,7 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
     assert f"fetch -q /tmp/{bundle.name} HEAD" in ran[checkout]
     [venv] = [command for command in ran if "cr-venv-checkout" in command]
     assert ran.index(venv) > checkout and "--no-block" in venv and module.VENV_COMMAND in venv.replace("'", ""), (
-        "a sideload checkout can change platform/requirements.txt, and the pip install must not hold up the hand-over"
+        "a sideload checkout can change platform/requirements.txt, and the install must not hold up the hand-over"
     )
     [load] = [command for command in ran if "docker load" in command]
     assert f"/tmp/gns3.tar" in load
@@ -831,6 +869,7 @@ class Replacing:
             written_cloud(tmp_path, keys__range=str(tmp_path / "range-key")), {}, lambda _: "/bin/openstack")
         monkeypatch.setattr(module, "commit_of", lambda repository, ref: "a" * 40)
         monkeypatch.setattr(module, "refuse_unless_published", lambda *args, **kwargs: None)
+        monkeypatch.setattr(module, "ensure_keypair", lambda name, key_file: None)
         monkeypatch.setattr(module, "stack_status", lambda stack: status)
         monkeypatch.setattr(module, "address_of", lambda stack, run=None: address)
         monkeypatch.setattr(module, "holds_store", lambda old: holds)

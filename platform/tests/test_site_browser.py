@@ -282,7 +282,7 @@ def test_the_network_panel_lists_each_session_s_requests_with_chrome_s_columns(c
             uri="/search/?q=O%27Brien", HTTP_SEC_FETCH_DEST="iframe")
     proxied(client, f"{session.pk}/board.com/", Answer(200, b"body{}", {"Content-Type": "text/css"}),
             uri="/static/vendor/bootstrap.min.css", HTTP_SEC_FETCH_DEST="style",
-            HTTP_REFERER=f"http://192.168.0.210:8002/site/{session.pk}/board.com/search/?q=O%27Brien")
+            HTTP_REFERER=f"http://10.10.10.21:8002/site/{session.pk}/board.com/search/?q=O%27Brien")
     proxied(client, f"{other.pk}/board.com/", Answer(200, b"elsewhere"), uri="/")
 
     listed = client.get(f"/api/sessions/{session.pk}/site/requests/").json()
@@ -306,8 +306,8 @@ def test_one_request_s_detail_shows_what_the_browser_sent_without_the_marker_and
     _, sent = proxied(client, f"{session.pk}/board.com/",
                       Answer(200, big, {"Content-Type": "text/html", "Referrer-Policy": "same-origin"}), method="post",
                       uri="/posts/1/comments/", data="body=hello", content_type="application/x-www-form-urlencoded",
-                      HTTP_ORIGIN="http://192.168.0.210:8002",
-                      HTTP_REFERER=f"http://192.168.0.210:8002/site/{session.pk}/board.com/posts/1/")
+                      HTTP_ORIGIN="http://10.10.10.21:8002",
+                      HTTP_REFERER=f"http://10.10.10.21:8002/site/{session.pk}/board.com/posts/1/")
     row, = client.get(f"/api/sessions/{session.pk}/site/requests/").json()
 
     detail = client.get(f"/api/sessions/{session.pk}/site/requests/{row['id']}/").json()
