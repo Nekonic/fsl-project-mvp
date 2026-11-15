@@ -51,8 +51,7 @@ flowchart TB
       web --- corp["corp"]
       board --- boarddb["board-db"]
       corp --- corpdb["corp-db"]
-      ids["Suricata"] -. 미러링 .- estate
-      ids -. 미러링 .- web
+      ids["Suricata"] -. 미러링 .- web
       ids --- mgmtbr["관제망 sN-mgmt"]
       waf --- mgmtbr
       mgmtbr --- logsrv["log-server"]
@@ -66,7 +65,7 @@ flowchart TB
 | 브라우저 → 콘솔 | floating IP의 8000, 8002 |
 | 플랫폼 → 훈련 환경 호스트 | `cr-mgmt`로 ssh, `docker exec` |
 | 센서·WAF → log-server | 슬롯 관제망 `sN-mgmt`로 syslog 514/tcp |
-| log-server → collector | 훈련 환경 호스트 NAT, `cr-mgmt`로 syslog 5140/udp(센서 경보, WAF audit log) |
+| log-server → collector | 훈련 환경 호스트 NAT, `cr-mgmt`로 syslog 5140/udp(센서 경보, WAF audit log, nginx 거부 로그) |
 
 - `bin/cloud up`이 Heat 스택으로 VM `cr-platform`을 만들고, 플랫폼이 OpenStack API로 VM
   `cr-range`를 만듭니다.
@@ -74,11 +73,15 @@ flowchart TB
   네트워크입니다.
 - board와 corp는 WAF와만 이어진 `sN-web`에 있습니다. Kali의 공격은 모두 WAF를
   지나갑니다.
-- 센서는 슬롯마다 하나입니다. WAF 앞(`sN-estate`)과 뒤(`sN-web`)에 주소 없는 인터페이스로
-  붙고, `tc mirred`로 각 브리지의 다른 포트 트래픽을 모두 받습니다(SPAN). 관리 인터페이스는
+- 센서는 슬롯마다 하나입니다. WAF 뒤 웹 서버 구간(`sN-web`)에만 주소 없는 인터페이스로
+  붙고, `tc mirred`로 그 브리지의 다른 포트 트래픽을 모두 받습니다(SPAN). 관리 인터페이스는
   관제망 `sN-mgmt`에 있습니다.
+- WAF가 막은 요청은 센서에 닿지 않습니다. 이런 요청은 WAF 로그에 남습니다.
+- 센서가 보는 요청의 출발지는 WAF입니다. 수집할 때 같은 요청의 X-Forwarded-For 주소를
+  경보의 출발지로 씁니다.
 - WAF도 관제망에 관리 인터페이스가 있습니다. 센서와 WAF가 각자 로그를 log-server로 보내고,
-  log-server가 collector에 넘깁니다.
+  log-server가 collector에 넘깁니다. WAF 로그는 ModSecurity audit log와, ModSecurity까지
+  가기 전에 nginx가 400으로 거부한 요청의 로그 두 가지입니다.
 - 세션 하나가 슬롯 하나를 씁니다.
 
 자세한 구성은 [ARCHITECTURE.md](docs/ARCHITECTURE.md)에 있습니다.
@@ -241,7 +244,7 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체
 
 레슨:
 
-- F1: 구성도에서 주소, 경로, DMZ 대역, 로그 서버 읽기
+- F1: 구성도에서 주소, 경로, DMZ 대역, 로그 서버 주소 읽기
 - F2: 개발자 도구로 HTTP 요청의 메서드, 파라미터, 경로, 상태 코드 읽기
 - F3: KQL로 Kibana에서 같은 요청을 찾고 X-Forwarded-For 읽기
 - F4: XSS 요청 보내기, IDS 룰 작성, 대소문자 우회를 `nocase`로 막기

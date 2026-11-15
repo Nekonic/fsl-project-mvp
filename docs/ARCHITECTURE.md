@@ -125,10 +125,10 @@
 | `kali` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-kali`(`deploy/kali/Dockerfile`). Ubuntu 24.04, 공격 도구, 마커 프록시 | internet | |
 | `edge` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-edge`(`deploy/edge/Dockerfile`). Alpine, nftables 라우터 | internet, estate | |
 | `waf` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-waf`(`deploy/waf/Dockerfile`). nginx 1.24, ModSecurity v3, CRS | estate, web | |
-| `sensor` | 훈련 환경 호스트, 슬롯 N | digest 고정 `jasonish/suricata`. WAF 앞뒤 두 구간 감시(`deploy/suricata/suricata.yaml`) | estate(`dmz`, 주소 없음), web(`web`, 주소 없음), 관제망 .11 | |
+| `sensor` | 훈련 환경 호스트, 슬롯 N | digest 고정 `jasonish/suricata`. WAF 뒤 웹 서버 구간 감시(`deploy/suricata/suricata.yaml`) | web(`web`, 주소 없음), 관제망 .11 | |
 | `log-server` | 훈련 환경 호스트, 슬롯 N | digest 고정 `rsyslog/rsyslog-minimal`. 514/tcp로 받아 collector 5140/udp로 전달 | 관제망 .10 | |
 | `sensor-shipper` | 훈련 환경 호스트, 슬롯 N | 같은 rsyslog 이미지. 센서의 `eve.json`을 읽어 log-server로 보냄 | 센서의 네트워크 네임스페이스 | |
-| `waf-shipper` | 훈련 환경 호스트, 슬롯 N | 같은 rsyslog 이미지. WAF audit 로그를 읽기 전용으로 읽어 log-server로 보냄 | WAF의 네트워크 네임스페이스 | |
+| `waf-shipper` | 훈련 환경 호스트, 슬롯 N | 같은 rsyslog 이미지. WAF audit 로그와 nginx 거부 로그를 읽기 전용으로 읽어 log-server로 보냄 | WAF의 네트워크 네임스페이스 | |
 | `board` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-board`(`wargames/board/app`). gunicorn, Django, 포트 8000 | web, `board-default` | |
 | `board-db` | 훈련 환경 호스트, 슬롯 N | digest 고정 `mysql` | `board-default` | |
 | `corp-wp` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-corp`(`wargames/corp/app`). WordPress 6.6.2, 취약 버전 고정 플러그인 3개, `Host` 헤더 `corp.com` | web, `corp-default` | |
@@ -205,7 +205,8 @@
 
 `deploy/suricata/suricata.yaml`은 센서 설정입니다.
 
-- `rangehost.sensor_config`에서 af-packet 항목을 주소 없는 감시 인터페이스마다 하나씩 넣음: `dmz`(`sN-estate`), `web`(`sN-web`)
+- `rangehost.sensor_config`에서 af-packet 항목을 주소 없는 감시 인터페이스마다 하나씩 넣음. 지금은 `web`(`sN-web`) 하나
+- EVE 출력에 `xff`를 켬: `mode: extra-data`, `deployment: reverse`, `header: X-Forwarded-For`. http 기록의 `xff`에 클라이언트 주소가 남고, `src_ip`는 WAF 그대로
 - 인터페이스마다 스레드 1개, `cluster_flow`. BPF 필터 없음
 - `HOME_NET`은 10/8, 172.16/12, 192.168/16. 출발지 대역이 빠져 있어 공격자 주소는 외부로 잡힘(`docs/DECISIONS.md`, 2026-10-21, "The estate sensor's HOME_NET and a repeated lesson move"). `EXTERNAL_NET`은 `any`라 WAF가 board로 보내는 요청도 룰에 걸림. `HTTP_PORTS`는 80, 8000
 
@@ -297,27 +298,25 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 **읽기.** `rangehost.WIRING`은 훈련 환경 호스트에서 `sudo sh -c`로 도는 셸 스크립트입니다. `OpenStack.wiring()`이 ssh 한 번으로 실행합니다.
 
 - 슬롯 compose 프로젝트의 Docker 네트워크마다 `@network <이름> <id> <브리지 이름> <서브넷>`. 브리지 이름은 `com.docker.network.bridge.name` 옵션(`sN-inet`, `sN-estate`, `sN-web`)이고, 없으면 Docker 규칙대로 `br-<id 12자>`
-- 실행 중인 컨테이너마다 `@container <서비스> <NetworkMode>`, `@args`(`docker inspect`의 `Args`), `@mount`(마운트 원본 경로). 호스트 네트워크가 아니면 `nsenter -t <pid> -n`으로 읽은 `ip -o link show`와 `ip -o -4 addr show` 출력. 다른 컨테이너의 네트워크 네임스페이스를 쓰는 컨테이너(shipper)는 따로 읽지 않음
-- 슬롯의 shipper 설정(`/opt/cr/sN/rsyslog/*-shipper.conf`)이 읽는 파일 `@forward <파일>`, log-server 설정의 받는 포트 `@port <포트>/<프로토콜>`과 넘기는 곳 `@uplink <주소>:<포트>/<프로토콜>`
+- 실행 중인 컨테이너마다 `@container <서비스> <NetworkMode>`, `@args`(`docker inspect`의 `Args`), 붙은 망마다 `@leg <망> <MAC>`. 호스트 네트워크가 아니면 `nsenter -t <pid> -n`으로 읽은 `ip -o link show`와 `ip -o -4 addr show` 출력. 다른 컨테이너의 네트워크 네임스페이스를 쓰는 컨테이너(shipper)는 따로 읽지 않음
+- rsyslog 설정은 읽지 않음. 로그 경로, 포트, 수집기 주소는 구성도에 나오지 않음
 
 `interfaces.wiring`이 이 출력을 `Wiring`으로 풉니다.
 
 - 인터페이스의 망: 그 인터페이스 주소 중 하나를 품은 Docker 네트워크. 그래서 kali `eth0`에 함께 붙은 출발지 주소(5.188.10.10, 고객 주소)도 인터넷 구간에 속함
 - 센서: `Args`에 `--af-packet`(`rangehost.SNIFFS`)이 있는 컨테이너. 감시하는 망은 주소 없는 인터페이스가 붙은 망(`--af-packet=<이름>`이면 그 브리지나 인터페이스). 센서의 인터페이스는 학습자 호스트의 주소로 치지 않음
-- 로그를 보내는 컨테이너: shipper가 읽는 파일이 그 컨테이너의 마운트 아래에 있음
 - `OpenStack.wiring()`은 서비스 이름을 선언된 호스트 이름(`cr-kali`, `board`)으로 바꿔 붙임. 훈련 환경 호스트가 답하지 않으면 `RangeUnavailable`
 
 **그리기.** `topology.graph(learner, wiring)`가 콘솔이 그릴 그래프를 만듭니다.
 
-- 영역(`zones`): 학습자 워게임의 장비가 하나라도 붙은 Docker 네트워크. 망 이름으로 정하지 않고 붙은 장비로 캡션을 정함(`topology.captions`): kali가 있으면 `internet`, 라우터가 있으면 `dmz`, log-server가 있으면 `mgmt`(관제망), 워게임 DB가 있고 WAF가 없으면 `database`, 나머지는 `web`. 이 순서로 왼쪽에서 오른쪽에 놓음. 한국어는 `strings.html`의 `topology.zone.*`. 인터넷 구간에는 대역을 붙이지 않음
+- 영역(`zones`): 슬롯 워게임의 장비가 하나라도 붙은 Docker 네트워크. 망 이름으로 정하지 않고 붙은 장비로 캡션을 정함(`topology.captions`): kali가 있으면 `internet`, 라우터가 있으면 `dmz`, log-server가 있으면 `mgmt`(관제망), 워게임 DB가 있고 WAF가 없으면 `database`, 나머지는 `web`. 한국어는 `strings.html`의 `topology.zone.*`. 캡션은 영역 이름과 대역이고, 인터넷 구간에는 대역을 붙이지 않음. DB존에는 `owner`로 워게임 이름이 붙어 "board DB존", "corp DB존"으로 나옴
 - 스위치: 영역마다 하나(`switch:<망>`). 리눅스 브리지는 L2 스위치. 이름은 붙이지 않음
-- 장비: 브리지에 인터페이스가 있는 컨테이너. 이름은 `topology.learner`의 학습자 이름(`kali`, `router`, `waf`, `board.com`, `board-db`). `kind`로 아이콘을 고름
+- 장비: 브리지에 인터페이스가 있는 컨테이너. 이름은 `topology.learner`의 학습자 이름(`kali`, `router`, `waf`, `board.com`, `board-db`, `corp.com`, `corp-db`, `log-server`). 슬롯의 두 워게임 서버와 DB를 모두 그림. `kind`로 아이콘을 고름
 - 선(`link`): 장비가 그 브리지에 가진 인터페이스마다 하나. `address`는 그 인터페이스에서 고른 주소(`link_heads`. kali와 라우터 wan은 기본 출발지 대역의 주소, 나머지는 망의 주소)
-- 센서(`sensor:<서비스>`): 감시하는 브리지마다 그 스위치에 `mirror` 선, 관제망 스위치에 `link` 선(관제망 주소)
-- 로그 서버(`log-server`, `port`는 `514/tcp`): 관제망의 장비. 센서와 WAF의 로그는 각자의 관제망 선으로 감. 관제망에 없는 장비의 로그만 `logs` 선
-- 업링크(`collector`): log-server 설정이 로그를 넘기는 주소와 포트(`10.31.0.x:5140/udp`). 관제망 밖, log-server 아래 노드와 `uplink` 선
-- customers: 노드가 아님. kali 노드의 `customers`에 고객 대역의 첫 주소와 나머지 개수
-- 숨김: 다른 워게임의 컨테이너와 네트워크, 관리망, 플랫폼, 컨테이너·브리지의 실제 이름. 실행 중이 아닌 컨테이너는 읽히지 않으므로 그리지 않음. 상태는 표시하지 않음
+- 센서(`sensor:<서비스>`): 감시하는 브리지마다 그 스위치에 `mirror` 선, 관제망 스위치에 `link` 선(관제망 주소). 지금은 웹 서버 구간 스위치 하나
+- 로그 서버(`log-server`): 관제망의 장비. 로그가 가는 선은 따로 그리지 않음
+- 그리지 않는 것: 훈련 환경 호스트, 플랫폼 VM, 수집기, 고객, 관리망, 컨테이너·브리지의 실제 이름. 실행 중이 아닌 컨테이너는 읽히지 않으므로 그리지 않음. 상태는 표시하지 않음
+- 단계의 답과 보기(`topology.addresses`, `topology.hosts`)에서는 다른 워게임의 장비를 여전히 뺌
 
 **API.** `GET /api/sessions/<id>/topology/`의 `map`이 이 그래프입니다. 훈련 환경 호스트를 읽지 못하면 `map`은 빈 그래프와 `detail`입니다. 같은 응답의 `segments`, `sensors`, `unplaced`는 그대로입니다. 읽은 인터페이스는 세션이 끝날 때까지 보관해 주소를 묻는 단계의 답으로 씁니다(`views._map_found`, `_found_kept`).
 
@@ -325,14 +324,15 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 
 - 창을 열 때 `/api/sessions/<id>/topology/`를 한 번 읽음. 주기적으로 다시 읽지 않음
 - cytoscape.js 3.34.4(`platform/console/static/map/cytoscape.min.js`, SHA-256 `081591ab735b2b6a3b31a3c60f8f3a3e2fee8c92939e0c7820ad1208571b6cd8`, MIT)로 그림. nginx가 `/static/map/`을 `/app/console/static/map/`에서 직접 줌
-- 배치: 위치는 `topology.laid_out`이 정해 그래프에 실음(장비 `x`, `y`, 글자 쪽 `label`, 영역 `box`, `logs` 선의 꺾는 점 `route`와 끝점 `end`). 페이지는 그 위치를 그대로 씀(`preset`). 붙은 장비만으로 정하므로 같은 배선이면 어느 슬롯에서 몇 번 읽어도 같은 그림
-  - 영역은 캡션 순서(인터넷(모의), DMZ, 웹 서버 구간, DB존)로 왼쪽에서 오른쪽. 스위치는 영역 안 한 줄(y 0)에 놓음
-  - 두 영역에 붙은 장비(라우터, WAF, board.com)는 두 영역 상자 사이 경계에 같은 줄로 놓고 양쪽 스위치에 선을 하나씩 그음
-  - 한 영역에만 붙은 장비: 맨 왼쪽 영역이면 스위치 왼쪽, 맨 오른쪽 영역이면 스위치 오른쪽 같은 줄. 가운데 영역이면 스위치 아래에 좌우로 벌려 놓고 글자는 바깥쪽
-  - 관제망은 모든 영역 아래 가로 띠. 캡션은 왼쪽. 관제망 스위치는 관제망에 선이 있는 경계 장비(WAF) 바로 아래, 센서는 그 왼쪽 같은 줄. 감시하는 스위치마다 미러링 점선
-  - 로그 서버는 관제망 스위치 아래, 업링크 노드는 관제망 띠 밖 그 아래
-  - 관제망이 없는 배선(2026-11-15 이전)이면 센서는 영역 밖, 로그 수집기는 센서 아래이고 로그 선은 선마다 다른 높이의 길로 감
-  - 주소 글자는 장비 쪽 끝. 장비 이름은 줄 위, 한 영역에만 붙어 아래에 놓인 장비는 바깥쪽 옆, 관제망의 센서는 아래
+- 배치: 위치는 `topology.laid_out`이 정해 그래프에 실음(장비 `x`, `y`, 글자 쪽 `label`, 영역 `box`와 캡션 위치 `shift`, 꺾이는 선의 `route`, 시작점 `start`, 끝점 `end`). 주소 글자도 `kind: address` 노드로 실음. 페이지는 그 위치를 그대로 씀(`preset`). 붙은 장비만으로 정하므로 같은 배선이면 어느 슬롯에서 몇 번 읽어도 같은 그림
+  - 영역마다 상자. 캡션은 상자 위 가운데이고, 그 자리를 선이 지나면 비켜 놓음
+  - 윗줄은 왼쪽부터 Kali와 인터넷 구간 스위치, 라우터, DMZ 스위치와 WAF. 라우터는 인터넷 구간과 DMZ 상자 경계에 놓고, WAF는 DMZ 상자 안
+  - 웹 서버 구간은 DMZ 아래. 스위치는 WAF 아래, board.com과 corp.com은 그 오른쪽에 위아래로 벌려 상자 안에 놓음. 서버마다 오른쪽에 그 워게임의 DB존
+  - 관제망은 웹 서버 구간 왼쪽 상자. IDS와 로그 서버가 이 상자 안에 있음. IDS는 웹 서버 구간 스위치와 보통 실선으로, 관제망 스위치와 `link` 선으로 이어짐. 미러링 점선이나 문구는 없음
+  - WAF의 관제망 선은 DMZ 상자 아래로 내려와 웹 서버 구간 상자 왼쪽으로 감
+  - 주소: 인터페이스마다 전체 주소를 장비 옆, 선이 나가는 쪽에 씀. 선이 장비의 영역 상자를 벗어나면 선이 들어가는 영역 상자 바로 안쪽에 씀. 선 위에는 주소를 쓰지 않음
+  - 장비 이름은 아이콘 아래. `strings.html`의 `topology.name.<이름>`이 있으면 그것을 씀. 라우터와 로그 서버는 한국어 역할 이름, Kali, WAF, IDS는 고유 이름 그대로
+  - 포트, 범례는 그리지 않음
 - 아이콘: GNS3 affinity 글리프를 정사각형 틀에 넣은 `host-*.svg`와 스위치 아이콘. 출처와 라이선스는 같은 폴더의 `SOURCES`, Kali 드래곤 로고의 상표 고지는 `host-kali.txt`
 - 읽기 전용: `autoungrabify`, `autounselectify`, 상자 선택 끔. 이동과 확대·축소만 됨
 - 콘솔과의 메시지: 첫 맞춤 뒤 `{map: "drawn"}`, 이후 `{fit}`를 받아 맞출 때마다 `{map: "fitted"}`. `{locate: {node|zone|label}}`에는 사각형, 영역 사각형(`zones`), 글자 사각형(`text`)으로 답함. 같은 origin의 메시지만 받음
@@ -346,7 +346,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`: 시작 시 `geoip` ingest 파이프라인 PUT |
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`: Kibana API 경로를 앎. 관리용 API, Default space, space 접두어 없는 경로, `?namespaces=` 거부. `GET /kibana/s/<space>/api/spaces/space`에는 SOC space만 담은 응답을 직접 반환. `console/templates/console/blue.html`: Kibana의 localStorage 키를 미리 채움 |
 | 슬롯 배선 읽기 | `platform/range/rangehost.py`(`WIRING`) | 없음. 출력 해석은 `platform/range/interfaces.py`, 학습자 이름과 그래프는 `platform/topology.py` |
-| CRS 설정과 nginx reload | `platform/rules/crs.py` | `entrypoint.sh`: `vm-terminal.sh cr-waf`로 슬롯 WAF 컨테이너 쉘 제공(훈련 환경 호스트로 ssh 후 `sudo docker exec -it sN-waf bash -l`). `range/rangehost.forwarding`: 슬롯의 WAF shipper와 log-server 설정 작성(audit 로그 경로). `deploy/range-host/slot.yaml`: `rangehost.LOGS` 경로로 WAF audit 로그 파일 마운트. 둘 다 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 `platform/tests/test_range_host.py`의 `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it`로 확인. F6의 WAF 창 단계 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`): `wargames.lesson`에서 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 채움. 플랫폼은 터미널을 조작하지 않음 |
+| CRS 설정과 nginx reload | `platform/rules/crs.py` | `entrypoint.sh`: `vm-terminal.sh cr-waf`로 슬롯 WAF 컨테이너 쉘 제공(훈련 환경 호스트로 ssh 후 `sudo docker exec -it sN-waf bash -l`). `range/rangehost.forwarding`: 슬롯의 WAF shipper와 log-server 설정 작성(audit 로그와 nginx 거부 로그 경로). `deploy/range-host/slot.yaml`: `rangehost.LOGS` 경로로 WAF audit 로그 파일과 거부 로그 파일 마운트. audit 로그는 둘 다 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 `platform/tests/test_range_host.py`의 `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it`로 확인. F6의 WAF 창 단계 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`): `wargames.lesson`에서 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 채움. 플랫폼은 터미널을 조작하지 않음 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `declaration.yaml`의 센서 호스트(`sensor`는 `cr-range`): `suricata.py`에 넘길 룰 파일과 reload 명령 지정. `platform/range/rangehost.py`: 센서 설정(`deploy/suricata/suricata.yaml`)과 compose 서비스 렌더링. `deploy/range-host/slot.sh`: 슬롯과 함께 센서 시작·정지, 초기화 때 센서 로그 파일 다시 열기, 에지 라우터 설정. 이후 기본 룰 적용은 `suricata.py` |
 | 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`: `/var/log/commands.log` 읽기. 터미널 연결 설정에 `cr-kali` 지정, `entrypoint.sh`에서 `vm-terminal.sh cr-kali` 실행. 웹사이트 창(`platform/api/site.py`)은 예외가 아님. 박스 접근은 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(훈련 환경 호스트 ssh 스트림으로 슬롯 Kali 컨테이너 접속)로만 함 |
 | 대상 시스템 데이터 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음. `loot.py`는 `board` 역할 runner로 board 컨테이너 안 `127.0.0.1`에 HTTP 요청. `effect.py`는 `corp-db`에 `docker exec`하는 runner로 접근 |
@@ -510,7 +510,7 @@ nginx는 `</body>` 앞에 스크립트를 넣습니다.
 - 기록기가 Kali로 ssh stdio 스트림을 열고(`OpenStack.opened`) 그 안에서 `attacker.as_customer` 실행
 - `as_customer`는 Python 브리지. Kali의 출발지 SNAT가 적용되지 않는 `cr-users` 계정으로 돎. 그 슬롯에서 고객 트래픽을 돌린 적이 없으면 계정과 예외 규칙을 만듦
 - 브리지는 그 출발지의 첫 주소에 바인드해 WAF의 `estate` 주소 80번 포트로 연결
-- 요청은 NAT 없이 에지를 지남. 센서의 `dmz` 쪽에는 `waf`로 가는 요청이 보임. `web` 쪽에는 `waf`가 `X-Forwarded-For`에 고객 주소를 담아 `board.com`으로 보내는 요청이 보임
+- 요청은 NAT 없이 에지를 지남. 센서에는 `waf`가 `X-Forwarded-For`에 고객 주소를 담아 `board.com`으로 보내는 요청이 보임. 에지와 WAF 사이는 센서가 보지 않음
 - 컨테이너 이름이나 `mgmt` 주소는 쓰지 않음
 
 이 경로는 콘솔(8000)과 출처가 다른 8002번 포트에서 서비스합니다. 모든 응답에 `Content-Security-Policy: sandbox allow-forms allow-scripts allow-same-origin`을 붙입니다.
@@ -588,9 +588,10 @@ WAF 컨테이너는 `deploy/waf/modsecurity.conf`의 `SecRuleEngine On`, CRS 기
 ## 경보의 경로
 
 ```
-WAF (ModSecurity) -> audit.log --+
-Suricata ---------> eve.json ----+-> Filebeat -> Elasticsearch, logs-<slot>-sensors
-                                     (event.module) pipeline geoip
+WAF (ModSecurity) -> audit.log ---+
+WAF (nginx, 400) --> refused.log -+
+Suricata ----------> eve.json ----+-> Filebeat -> Elasticsearch, logs-<slot>-sensors
+                                      (event.module) pipeline geoip
                                                           |
              POST /api/sessions/<id>/ingest/ (called by tests, at close, by the scenario engine and by lesson checks)
                                                           |
@@ -613,6 +614,14 @@ Suricata ---------> eve.json ----+-> Filebeat -> Elasticsearch, logs-<slot>-sens
 - 그래서 ingest에서 `(flow_id, tx_id)`가 같은 `http` 이벤트의 마커를 alert로 복사
 - `flow_id`만으로 조인하던 때는 keep-alive 연결의 경보가 모두 그 연결의 첫 케이스로 잡혔음
 
+경보의 출발지 주소:
+
+- 센서는 WAF 뒤에 있어 Suricata 이벤트의 `src_ip`는 언제나 WAF
+- http 기록의 `xff`에는 WAF가 붙인 `X-Forwarded-For`의 클라이언트 주소가 있음. Suricata는 헤더를 읽기 전에 URI 경보를 내므로 alert 이벤트에는 `xff`가 없을 수 있음
+- 그래서 ingest(`elastic.normalize_all`)에서 `(flow_id, tx_id)`가 같은 `http` 기록의 `xff`를 Suricata 경보의 `src_ip`로 씀
+- 탐지 기록, window 매칭, 공격 출발지 지도, 레슨 답이 모두 공격자 주소를 씀
+- nginx 거부 기록에는 `X-Request-ID`가 없음. ModSecurity가 돌기 전이고 헤더도 읽기 전이기 때문. 이런 요청은 출발지 주소와 시각으로 매칭함
+
 ingest를 호출할 때마다 하는 일:
 
 - 비활성화 시간이 지난 룰부터 다시 활성화
@@ -620,6 +629,7 @@ ingest를 호출할 때마다 하는 일:
 - Elasticsearch는 세션 시작 1분 전부터 종료 시각(또는 현재) 1분 뒤까지의 `@timestamp`로 조회
 - 오래된 순으로 5000건씩 읽음
 - Suricata `alert` 이벤트는 그대로 씀. ModSecurity 기록은 매칭된 룰 메시지마다 `Detection`(id `<Elasticsearch _id>:<n>`)으로 나눔
+- nginx 거부 기록 하나는 WAF 탐지 하나. `source`는 `nginx`, 시그니처는 `<상태 코드> <요청 줄>`, `src_ip`는 클라이언트 주소
 - 이벤트 시각이 조회 기간을 벗어난 경보는 버리고 `stale`로 셈
 - 마커 없이 저장된 행에 나중에 찾은 마커를 채움
 - `src_host`와 `dest_host`는 substrate의 구간 정보로 채움. substrate에 접근할 수 없으면 비워 둠
@@ -627,12 +637,12 @@ ingest를 호출할 때마다 하는 일:
 인덱스와 슬롯:
 
 - 공유 수집기는 syslog 줄마다 송신자 hostname으로 슬롯을 판별(도메인 앞의 `-N`, 없으면 슬롯 1). 태그를 붙여 그 슬롯의 인덱스에 씀. 태그는 ingest 파이프라인에서 저장 전에 지움
-- Filebeat는 모든 이벤트에 `event.module`(`suricata` 또는 `modsecurity`)을 붙임. 둘 다 아닌 syslog 줄은 버림
-- 인덱스에는 두 엔진의 이벤트만 남음. 학습자가 Kibana에서 보는 필드·인덱스·헤더 어디에도 플랫폼 이름이 없음. 케이스 마커는 `X-Request-ID` 헤더에 실림
+- Filebeat는 syslog 태그로 `event.module`(`suricata`, `modsecurity`, `nginx`)을 붙임. 셋 다 아닌 syslog 줄은 버림
+- 인덱스에는 두 엔진의 이벤트와 nginx 거부 기록만 남음. 학습자가 Kibana에서 보는 필드·인덱스·헤더 어디에도 플랫폼 이름이 없음. 케이스 마커는 `X-Request-ID` 헤더에 실림
 
 조회 기간:
 
-- `geoip` 파이프라인은 `@timestamp`를 이벤트 발생 시각(Suricata의 `timestamp`, ModSecurity의 `transaction.time_stamp`)으로 덮어씀
+- `geoip` 파이프라인은 `@timestamp`를 이벤트 발생 시각(Suricata의 `timestamp`, ModSecurity의 `transaction.time_stamp`)으로 덮어씀. nginx 거부 기록은 Filebeat가 받은 시각 그대로
 - 조회 기간은 Filebeat가 읽은 시점이 아니라 이벤트 발생 시점 기준
 
 5000건 단위 읽기:
@@ -653,7 +663,7 @@ Elasticsearch는 저장과 색인 시점 GeoIP 보강에만 씁니다. 그래서
 - `src_geo.location`은 `geo_point`가 아니라 float 두 개로 매핑
 - `bin/worldmap`은 남위 60도에서 자른 Equal Earth 도법 월드맵을 만듦. 블루팀 대시보드를 없앤 뒤로 이 지도를 그리는 화면은 없음
 
-`src_geo`는 geoip 프로세서 두 개가 씁니다. 대상은 `src_ip`(Suricata)와 `transaction.client_ip`(ModSecurity)입니다.
+`src_geo`는 geoip 프로세서 두 개가 씁니다. 대상은 `src_ip`(Suricata)와 `transaction.client_ip`(ModSecurity)입니다. Suricata의 `src_ip`는 WAF 주소라 국가가 붙지 않고, nginx 거부 기록의 `client_ip`는 대상이 아닙니다.
 
 - compose에서 관리형 다운로더를 끄고, `bin/fetch-geoip`로 채운 `./config/ingest-geoip`를 bind-mount. 컨테이너를 다시 만들어도 `GeoLite2-City.mmdb`가 남음
 - 파이프라인은 시작 시 entrypoint에서 등록(`platform/register_pipeline.py`). `kibana.py`처럼 백그라운드로 돌아, Elasticsearch가 올라오는 중에도 플랫폼은 서비스를 시작함
@@ -1136,13 +1146,12 @@ board의 `scenario.yaml`에 `foundations:` 목록을 선언합니다. discovery 
 
 - kali와 board.com의 주소를 읽음
 - 웹 요청이 거치는 호스트를 순서대로 고름(`path`, 출발지 `kali`. 고객 주소도 kali에 붙어 있음)
-- DMZ 네트워크를 읽고, 로그를 모으는 호스트를 답함
+- DMZ 네트워크를 읽고, 로그 서버의 IP 주소를 답함
 - 혼자 푸는 단계: waf의 주소. 호스트가 어느 영역에 있는지는 묻지 않음
-- 답은 세션의 학습자용 구성도에서 읽음(`views._range_fact`: `topology.learner`를 거친 `topology.address`, `topology.subnet`, `topology.route`, `topology.hosts`)
-  - `address`: 링크 라벨의 주소. 프리픽스 길이는 있어도 없어도 됨. 고르는 망은 `subnet`과 같음. board.com은 waf와 함께 붙은 망의 주소
+- 답은 세션의 학습자용 구성도에서 읽음(`views._range_fact`: `topology.learner`를 거친 `topology.address`, `topology.subnet`, `topology.route`)
+  - `address`: 링크 라벨의 주소. 프리픽스 길이는 있어도 없어도 됨. 고르는 망은 `subnet`과 같음. board.com은 waf와 함께 붙은 망의 주소, log-server는 관제망 주소
   - `subnet`: 단계의 `zone`(`service`는 `estate`)에 호스트가 붙어 있으면 그 망, 아니면 호스트가 붙은 첫 영역(인터넷 구간, DMZ, 웹 서버 구간, DB존 순)의 네트워크. F1 `dmz`는 waf의 `estate` 대역
   - `path`: 단계의 `from`(기본 `kali`), 구성도에 있는 경유 역할, 사이트 순(`kali > router > waf > board.com`)
-  - `logs`: `log-server` 노드
 
 **f2 개발자 도구로 HTTP 요청 읽기**(`lesson.http`). defense `full`, 웹사이트 창에서 시작.
 
@@ -1156,7 +1165,7 @@ board의 `scenario.yaml`에 `foundations:` 목록을 선언합니다. discovery 
 
 - 영문자와 숫자로 된 자기만의 단어로 검색. 예시 단어 `kim0413`은 검색 단계에서 인정하지 않음
 - Kibana에 `url : *단어*`를 입력. 카드마다 쿼리를 다시 적어 주고, 화면의 열 이름을 그대로 써서 묻는 것:
-  - Kibana에 나오는 건수(그 단어로 한 모든 검색의 두 구간)
+  - Kibana에 나오는 건수. 센서가 WAF 뒤만 보므로 그 단어로 한 검색 가운데 waf가 board.com에 넘긴 요청 수
   - `and`와 `not`으로 작성한 쿼리(내 단어이면서 `destination`이 waf 주소가 아닌 것)의 건수
   - 그 쿼리로 남은 행의 `source_ip`(waf 자신의 주소)
 - 건수 단계의 check에는 Kibana 쿼리가 맞아야 하는 정규식 `kql`이 있음. 쿼리가 맞지 않으면 숫자와 상관없이 오답(`lesson.logs.wrong.upstream.kql`)
@@ -1165,7 +1174,7 @@ board의 `scenario.yaml`에 `foundations:` 목록을 선언합니다. discovery 
 - X-Forwarded-For 단계의 `kql`은 url 조건에 더해 `request_header.x_forwarded_for : *` 조건을 요구. 이 조건이 없으면 앞 단계의 url 쿼리만으로 통과해 버림
 - 혼자 푸는 단계: 그 행의 `request_header.x_forwarded_for`(customers 주소)를 Document 창에서 읽음. 웹사이트 창이 customers 자리에서 접속한다는 사실은 이 단계의 통과 문장에서 처음 나옴
 - 답은 기록된 센서 http 이벤트에서 구간별로 읽음(`sensor_source`, `forwarded_for`)
-  - `dest_ip`가 board.com 주소면 `upstream`(waf가 넘긴 요청), 아니면 `inbound`(waf에 도착한 요청). `leg: both`는 두 구간 모두
+  - `dest_ip`가 board.com 주소면 `upstream`(waf가 넘긴 요청), 아니면 `inbound`(waf에 도착한 요청). `leg: both`는 두 구간 모두. 센서가 WAF 뒤만 보므로 F3의 단계는 모두 `leg: upstream`
   - `hits`: 레슨(또는 세션) 시작 이후, 학습자의 가장 최근 검색 단어가 url에 든 해당 구간 http 이벤트 수
 
 **f4 XSS 요청 차단과 IDS 룰 작성**(`lesson.xss`). defense `xss-gap`, 웹사이트 창에서 시작.
@@ -1397,6 +1406,9 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 - `window`: 경보의 출발지 주소가 케이스와 같고, 경보 시각이 케이스 시작~종료 사이(앞뒤 2초 여유)면 매칭
 
 전략 간 fallback은 없습니다. 마커가 유실된 marker 케이스는 window로 메우지 않고 미탐으로 드러나야 합니다. 터미널 케이스에는 마커와 시간 구간이 모두 있습니다.
+
+- `board-path-traversal-static`은 window 케이스. nginx가 ModSecurity 전에 400으로 거부하므로 그 기록에 `X-Request-ID`가 없음
+- `POST /api/sessions/<id>/cases/`로 기록하는 window 케이스에 `source_ip`가 없으면 공격자의 기본 출발지 주소로 채움
 
 - 점수 엔드포인트에 `?correlation=marker`나 `?correlation=window`를 붙이면 전략을 강제. 그 밖의 값은 400
 - 이 파라미터를 넘기는 콘솔 페이지는 없음(`session.html`은 `correlation` 없이 `/score/` 요청)
@@ -1701,6 +1713,7 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 - 가져오는 파일: `deploy/kibana/objects.ndjson`(overwrite)
 - `@timestamp` 기준 data view `logs-*`. runtime field로 Suricata/ModSecurity 필드 쌍을 한 열로 합침(`rule`, `rule_id`, `source_ip`, `destination`, `url`, `status`)
 - "Alerts" 검색과 "Overview" 대시보드. 제목에도, data view의 `sourceFilters`에도 플랫폼 이름이 없음
+- 경보 검색어는 `event_type : "alert" or event.module : "modsecurity" or event.module : "nginx"`(`kibana.ALERTS_QUERY`). nginx가 거부한 요청도 경보로 보임
 - `defaultRoute`는 `kibana.py`에서 이 검색으로 지정. data view가 있어야 Kibana의 Welcome 화면이 뜨지 않음
 - Kibana `metaFields`에서 `_index`를 뺌
 - 가져오기가 거부되면 로그만 남기고 세션은 계속 진행
@@ -1729,8 +1742,8 @@ Kibana를 보안 기능 없이 돌리므로, 기능 설정으로 끌 수 없는 
 - space 이름은 "SOC"
 - data view는 세션의 인덱스 패턴에 걸려 있지만 이름은 `logs-*`로 보임
 - 공유 runtime field에 추가하는 필드:
-  - `log_source`: `suricata` 또는 `modsecurity`
-  - `sensor`: 기록을 남긴 쪽. Suricata 기록이면 센서가 본 구간(`in_iface`: `dmz`, `web`), ModSecurity 기록이면 `waf`
+  - `log_source`: `suricata`, `modsecurity`, `nginx` 중 하나
+  - `sensor`: 기록을 남긴 쪽. Suricata 기록이면 센서가 본 구간(`in_iface`. 센서가 WAF 뒤만 보므로 언제나 `web`), ModSecurity와 nginx 기록이면 `waf`
   - `request_headers`: 요청 헤더별 `Name: value`. `X-Request-ID`는 제외
   - `request_header`: 자주 쓰는 헤더별 keyword composite field(`request_header.host`, `.user_agent`, `.referer`, `.cookie`, `.x_forwarded_for` 등 `kibana.REQUEST_HEADERS_SHOWN`). Suricata의 `http.request_headers`나 ModSecurity의 `transaction.request.headers`에서 읽음
 - `sensor` 계산: Suricata 이벤트의 `in_iface` 값을 그대로 씀. 스크립트에 `cr` 호스트 이름이 드러나지 않음
@@ -1979,14 +1992,14 @@ Docker와 메타데이터:
 `slot.sh up`의 처리 순서:
 
 1. 슬롯 디렉터리를 모두 root 소유로 바꿉니다.
-2. WAF 로그 디렉터리 `/var/log/cr/sN/waf`에서 일반 파일 `audit.log`만 남기고 모두 지웁니다. 이 파일이 없으면 remap된 범위의 `www-data`·`adm` 소유(`0644`)로 만듭니다. 컨테이너 안에서 root로 도는 nginx 마스터가 파일을 열고, WAF shipper가 읽기 전용 마운트로 읽습니다.
+2. WAF 로그 디렉터리 `/var/log/cr/sN/waf`에서 일반 파일 `audit.log`와 `refused.log`만 남기고 모두 지웁니다. 없는 파일은 remap된 범위의 `www-data`·`adm` 소유(`0644`)로 만듭니다. 컨테이너 안에서 root로 도는 nginx 마스터가 파일을 열고, WAF shipper가 읽기 전용 마운트로 읽습니다.
 3. 관제망 필터를 넣습니다(위 "관제망만 밖으로"). 그다음 컨테이너를 만들고(`up --no-start --pull never`), 한 번도 실행하지 않은 대상 시스템의 빈 볼륨마다 초기 데이터를 복사합니다.
-4. 컨테이너를 띄웁니다(`up -d --wait`).
+4. 컨테이너를 띄웁니다(`up -d --wait`). 그다음 센서, log-server, shipper를 `--force-recreate`로 다시 만들어 방금 쓴 설정을 읽게 합니다. Suricata는 출력 설정을 시작할 때만 읽습니다.
 5. Kali에 출발지 주소들과 기본 출발지 게이트웨이로 가는 default route를, 에지의 `wan`에 출발지별 게이트웨이 주소를 붙입니다(`nsenter`로 `ip -batch`).
 6. WAF가 에지의 estate 주소로 라우팅하게 합니다. 대상 시스템에는 default route가 없고 WAF에만 응답합니다.
 7. 모든 브리지와 그 포트, 컨테이너 인터페이스에서 TSO, GSO, GRO를 끕니다. 센서가 실제로 오간 그대로의 패킷을 보게 합니다.
 8. `DOCKER-USER`에 브리지별로 같은 브리지로의 forward 허용 룰을 넣습니다.
-9. 센서 미러링(SPAN)을 겁니다(`mirrored`). 센서의 `dmz`, `web` 주소를 지우고, `sN-estate`와 `sN-web`의 다른 포트마다 ingress `tc` `matchall` → `mirred egress mirror dev <센서 포트>`. 센서 포트는 learning, flood를 끄고 ingress를 drop해 받기만 함. 초기화 때 새로 만든 컨테이너의 포트에도 다시 겁니다.
+9. 센서 미러링(SPAN)을 겁니다(`mirrored`). 먼저 `sN-inet`, `sN-estate` 포트에 남은 `tc` 설정을 지웁니다. 센서의 `web` 주소를 지우고, `sN-web`의 다른 포트마다 ingress `tc` `matchall` → `mirred egress mirror dev <센서 포트>`. 센서 포트는 learning, flood를 끄고 ingress를 drop해 받기만 함. 초기화 때 새로 만든 컨테이너의 포트에도 다시 겁니다.
 
 그 뒤 플랫폼이 `rules/suricata.py`로 센서에 기본 룰을 넣습니다.
 
@@ -2004,20 +2017,25 @@ Docker와 메타데이터:
 - 마커를 붙이는 프록시가 컨테이너의 메인 프로세스
 - 등록된 이름은 `board.com`과 `corp.com`. 둘 다 WAF의 estate 주소
 
-**센서.** 슬롯마다 Suricata 하나(`sN-sensor`, digest 고정 `jasonish/suricata`)가 WAF 앞뒤를 봅니다. `NET_ADMIN`, `NET_RAW`, `SYS_NICE`로 돕니다(다른 컨테이너처럼 `userns-remap`). 인터페이스는 셋: 감시용 `dmz`(`sN-estate`, 에지↔WAF), `web`(`sN-web`, WAF↔웹 서버). 둘 다 주소 없음. 관리용 `mgmt`(관제망 .11). 인터넷 쪽 `sN-inet`에는 센서가 없음.
+**센서.** 슬롯마다 Suricata 하나(`sN-sensor`, digest 고정 `jasonish/suricata`)가 WAF 뒤 웹 서버 구간을 봅니다. `NET_ADMIN`, `NET_RAW`, `SYS_NICE`로 돕니다(다른 컨테이너처럼 `userns-remap`). 인터페이스는 둘: 감시용 `web`(`sN-web`, WAF↔웹 서버, 주소 없음), 관리용 `mgmt`(관제망 .11). 에지와 WAF 사이 `sN-estate`와 인터넷 쪽 `sN-inet`에는 센서가 없음. WAF가 막은 요청은 센서에 닿지 않고 WAF 로그에 남음.
 
-- 설정은 `deploy/suricata/suricata.yaml`. `--af-packet`이면 설정의 af-packet 항목을 모두 엶. 이벤트의 `in_iface`가 본 구간(`dmz`, `web`)
+- 설정은 `deploy/suricata/suricata.yaml`. `--af-packet`이면 설정의 af-packet 항목을 모두 엶. 이벤트의 `in_iface`가 본 구간이고, 언제나 `web`
+- 센서가 보는 요청의 출발지는 WAF. http 기록의 `xff`에 클라이언트 주소가 남고, ingest가 이 주소를 경보의 출발지로 씀("경보의 경로" 절)
 - `/var/lib/suricata/rules/local.rules`에서 룰을 읽고 `suricatasc -c reload-rules`로 reload. 이 경로와 명령은 호스트 항목 `cr-range`에 있음
 - 룰 파일 하나, reload 하나. 룰 넣기, 검증, 변경, 기준선 검사도 이 센서 하나에 함
-- EVE 경보와 HTTP 기록: `/var/log/cr/sN/edge/eve.json`, `/var/log/cr/sN/estate/eve.json`
+- EVE 경보와 HTTP 기록: `/var/log/cr/sN/sensor/eve.json`
 
-**로그.** WAF audit 로그는 훈련 환경 호스트의 `/var/log/cr/sN/waf/audit.log`에 씁니다.
+**로그.** WAF는 훈련 환경 호스트의 `/var/log/cr/sN/waf`에 두 파일을 씁니다.
 
-- WAF의 호스트 경로 마운트는 이것 하나이고, 마운트 대상도 이 파일뿐
+- `audit.log`: ModSecurity audit 로그
+- `refused.log`: nginx가 400으로 거부한 요청. ModSecurity가 돌기 전, 헤더를 읽기 전에 거부한 요청이 남음. 예: `/static/..%2F..%2F..%2F..%2Fetc/passwd`처럼 잘못된 경로. `deploy/waf/board.com.conf`의 `map $status $refused`와 `log_format refused`로 JSON 한 줄씩(`time`, `client_ip`, `request`, `status`)
+- WAF의 호스트 경로 마운트는 이 두 파일이고, 마운트 대상도 이 파일뿐
 - 디렉터리가 root 소유라, WAF 안의 root는 호스트 root 프로세스가 따라갈 링크를 그 안에 만들 수 없음(`docs/THREAT-MODEL.md`)
 - 로그 서버 `sN-log-server`(digest 고정 `rsyslog/rsyslog-minimal`)가 관제망에서 514/tcp로 받아 플랫폼 `mgmt` 주소의 5140으로 UDP 전달(`rangehost.forwarding`, `/opt/cr/sN/rsyslog/log-server.conf`)
-- 파일마다 shipper(같은 이미지, `imfile`)가 읽어 log-server로 보냄. shipper는 로그를 쓴 장비의 네트워크 네임스페이스를 같이 씀(`network_mode: service:sensor`, `service:waf`). 그래서 로그는 센서와 WAF 자신의 관제망 인터페이스로 나감. WAF는 관제망 .12
-- log-server는 보낸 주소(`$fromhost-ip`)로 송신자 이름과 태그를 정함. 슬롯 1은 `cr-edge`, `cr-range`, `cr-waf`. 슬롯 N은 `cr-edge-N`, `cr-range-N`, `cr-waf-N`. Filebeat의 슬롯 정규식이 이 이름으로 슬롯을 읽음
+- 장비마다 shipper(같은 이미지, `imfile`)가 그 장비의 로그 파일을 읽어 log-server로 보냄. shipper는 로그를 쓴 장비의 네트워크 네임스페이스를 같이 씀(`network_mode: service:sensor`, `service:waf`). 그래서 로그는 센서와 WAF 자신의 관제망 인터페이스로 나감. WAF는 관제망 .12
+- WAF shipper는 두 파일을 각자의 태그로 읽음: `audit.log`는 `modsecurity`, `refused.log`는 `nginx`. 센서 shipper의 태그는 `suricata`
+- log-server는 보낸 주소(`$fromhost-ip`)와 태그(`$programname`)가 둘 다 맞는 줄만 넘김. 송신자마다 자기 로그의 태그만 통과하므로 WAF 안의 root가 Suricata 기록인 척 줄을 보낼 수 없음
+- 넘길 때 송신자 이름과 태그는 log-server가 정한 값으로 씀. 슬롯 1은 `cr-edge`, `cr-range`, `cr-waf`. 슬롯 N은 `cr-edge-N`, `cr-range-N`, `cr-waf-N`. Filebeat의 슬롯 정규식이 이 이름으로 슬롯을 읽음
 - shipper와 log-server는 capability 없음(`cap_drop: ALL`), 마운트는 모두 읽기 전용
 
 **격리.** 학습자가 만지는 컨테이너(Kali, WAF, 에지, 대상 시스템)는 `cap_drop: ALL`에 필요한 capability만 더해 돌립니다.
@@ -2031,7 +2049,7 @@ Docker와 메타데이터:
 | `corp-wp` | 위와 같고 `NET_BIND_SERVICE` 추가 |
 
 - 모두 `no-new-privileges`, Docker 기본 seccomp·AppArmor 프로파일, 메모리·pids 한도
-- privileged 컨테이너, Docker 소켓 마운트, 호스트 network·pid·ipc 네임스페이스 공유는 없음. 호스트 경로 마운트는 WAF의 audit 로그 파일 하나
+- privileged 컨테이너, Docker 소켓 마운트, 호스트 network·pid·ipc 네임스페이스 공유는 없음. 호스트 경로 마운트는 WAF의 로그 파일 두 개(`audit.log`, `refused.log`)
 - dockerd는 `userns-remap`. 컨테이너 안의 root는 호스트에서 권한 없는 사용자. 호스트 user namespace를 쓰는 컨테이너는 없음
 - 센서, 로그 서버와 shipper, 에지에는 학습자 셸이 없음
 - 학습자가 만지는 컨테이너 중 관제망에 붙는 것은 WAF뿐. `NET_RAW`, `NET_ADMIN`이 없어 다른 주소로 보낼 수 없고, log-server는 보낸 주소로 송신자를 정함
@@ -2042,7 +2060,7 @@ Docker와 메타데이터:
 
 - `reset_in_place()`에서 `slot.sh reset N` 실행
 - Kali와 WAF는 이미지에서 새로 만듦. 동시에 대상 시스템은 볼륨째 지우고 초기 데이터로 다시 띄움
-- 에지의 neighbour 테이블을 비우고, 슬롯 로그 파일을 그 자리에서 비우고, 센서가 로그 파일을 다시 열게 함. shipper는 비워진 파일을 처음부터 다시 읽음(`reopenOnTruncate`). WAF shipper는 WAF와 함께 새로 만듦
+- 에지의 neighbour 테이블을 비우고, 슬롯 로그 파일(센서 `eve.json`, WAF `audit.log`와 `refused.log`)을 그 자리에서 비우고, 센서가 로그 파일을 다시 열게 함. shipper는 비워진 파일을 처음부터 다시 읽음(`reopenOnTruncate`). WAF shipper는 WAF와 함께 새로 만듦
 - 새로 만든 컨테이너의 브리지 포트에 미러링을 다시 검
 - 그 뒤 플랫폼이 센서에 기본 룰을 다시 넣음
 - 에지, 센서, 로그 서버, shipper는 내리지 않음
@@ -2085,7 +2103,7 @@ Docker와 메타데이터:
 
 `/api/range/slot/`, `slot/rebuild/`, `configure/`는 `?slot=N`을 받습니다. 없으면 모든 슬롯에 적용합니다.
 
-`POST /api/range/canary/`는 마커를 붙인 케이스를 보내 Suricata와 ModSecurity가 둘 다 경보를 냈는지, 둘의 시계 차이가 얼마인지 보고합니다. 준비 상태 검사에는 들어가지 않습니다. 첫 화면에서 둘 다 호출합니다.
+`POST /api/range/canary/`는 마커를 붙인 요청 두 개를 보냅니다. 먼저 WAF가 막는 SQLi 요청, 바로 뒤에 WAF가 통과시키는 `/search/?q=canary`입니다. ModSecurity가 첫 요청에 경보를 내고 Suricata가 둘째 요청의 http 기록을 남겼는지, 둘의 시계 차이가 기준 안인지 보고합니다. 센서는 WAF 뒤에 있어 막힌 요청을 보지 못하기 때문입니다. 준비 상태 검사에는 들어가지 않습니다. 첫 화면에서 둘 다 호출합니다.
 
 **남은 자원.** `GET /api/range/leftovers/`는 훈련 환경 호스트 도입 전의 VM 훈련 환경이 프로젝트에 남긴 자원을 나열하고, `DELETE`로 지웁니다.
 
@@ -2128,12 +2146,13 @@ Docker와 메타데이터:
        v
    sN_web (bridge sN-web, 10.30.N+128.0/24): waf, board, corp-wp
      board (+ board-db on board-default), corp-wp (+ corp-db on corp-default)
-   sensor (Suricata): sniffs sN-estate (dmz) and sN-web (web), no address,
-     tc mirred from every other port of each bridge
+   sensor (Suricata): sniffs sN-web (web) only, behind the WAF, no address,
+     tc mirred from every other port of that bridge; eve-log xff on
 
  Evidence (sN_mgmt 관제망 172.29.N.0/24, then the range host's NAT and mgmt):
    sensor eve.json -- shipper in the sensor --+-- 514/tcp --> log-server -- 5140/udp --> Filebeat
-   waf audit log ---- shipper in the WAF -----+                                              |
+   waf audit log, ---- shipper in the WAF ----+                                              |
+   nginx refused.log                                                                         |
                                                                                              v
    Elasticsearch --> platform ingest --> scoring
    Elasticsearch ----------------> Kibana --> blue team

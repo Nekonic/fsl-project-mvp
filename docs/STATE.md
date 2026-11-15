@@ -799,11 +799,13 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   `cr-wargame-host`) built from golden images. Eight slots on the current cloud
   (`compute.slots: 8`) since 2026-11-15; four from 2026-11-13, two from 2026-10-21.
 - **Monitoring per slot** (2026-11-16): one Suricata sensor per slot sniffs
-  both legs of the WAF (`dmz` on `sN-estate`, `web` on `sN-web`, `tc mirred`
+  the web servers' segment behind the WAF (`web` on `sN-web`, `tc mirred`
   SPAN, no address) and stands on the slot's 관제망 `sN_mgmt`, where a log
-  server takes the sensor's and the WAF's logs (each shipped from its own
-  network namespace) and forwards them to the platform collector; no sensor on
-  `sN-inet`; the live map draws the 관제망.
+  server takes the sensor's log and the WAF's two (ModSecurity's audit log
+  and nginx's own refusals), each shipped from its own network namespace, and
+  forwards them to the platform collector. An IDS alert is credited to the
+  X-Forwarded-For address of its transaction. The live map draws the slot's
+  real subnets, switches and interfaces.
 
 ## Backlog
 

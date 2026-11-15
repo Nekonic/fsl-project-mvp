@@ -8555,3 +8555,101 @@ pair's exact set). Every assertion is unchanged. Left open: `run_on_role`'s
 3.3 s floor is platform-side (`requires_system_checks`, the OpenStack lookup
 per process) and would speed every acceptance module, but it needs a
 platform image to measure.
+
+## 2026-11-16 — The IDS stands behind the WAF; nginx's own refusals are WAF evidence; the live map redrawn
+
+**The ruling.** The user: "waf 뒤 IDS가 맞잖아. 요청이 오지 않는거도 당연한거
+아니야? waf 로그에 남겠지." The slot's one Suricata sensor sniffs only the
+web servers' segment behind the WAF (`web` on `sN-web`); the DMZ leg added
+earlier today is gone, after the user asked why every passed request was
+logged twice ("로그 2배로 발생하는거 아니야?"). A request the WAF stops never
+reaches the sensor; the WAF's own logs are its evidence.
+
+**Measured before the change.** The two-leg one-sensor runs record each
+Suricata event's leg (`in_iface`). Board session 2204: 5,266 Suricata
+alerts, every one on the DMZ leg, 0 on the web leg, which carried 60 passed
+requests (sqlmap's backtick and `/**/` probes; none matches the four
+baseline rules on either leg). Re-scored with the platform's own
+`correlate`/`score` without the web leg: unchanged (sessions 2203 and 2204,
+TP 12 FP 0 FN 0 TN 6; corp 2202, TP 0 FP 0 FN 3 TN 4). Without the DMZ leg,
+two board TPs fell to FN: `board-sqli-search`, which ModSecurity did block
+but whose audit record the reset shipper fault of 9eed805 had dropped, and
+`board-path-traversal-static`, which the WAF's nginx answers with 400 while
+it parses the URI, before ModSecurity runs and before it reads any header,
+so nothing but the DMZ leg had seen it.
+
+**nginx's refusals.** The WAF's nginx now writes the requests it refuses
+itself (status 400) as JSON to `/var/log/nginx/refused.log`, a host file
+`/var/log/cr/sN/waf/refused.log` mounted into the WAF and read by the
+waf-shipper under the tag `nginx`; the log server relays a sender's lines
+only under the tags its own logs carry. Ingest turns a line into a WAF
+detection (`source: nginx`). The error log could not hold it: nginx logs
+"client sent invalid request" at `info`, below the WAF's `error` level, and
+s7-waf's `error.log` was 0 bytes when the coordinator replayed the case. With
+no header read there is no `X-Request-ID`, so `board-path-traversal-static`
+is now correlated by `window` (the attacker's default-origin address, which
+the cases API fills in, and the time). In board session 2274 it is TP,
+`corroborated: false`; its record is `400 GET
+/static/..%2F..%2F..%2F..%2Fetc/passwd HTTP/1.1`, which does not name the
+mechanism its `expect: "traversal"` asks for. Its first score also credited
+it with 214 ModSecurity records of the XSS and sqlmap cases the same address
+had fired in the 2 s slack, so it would have been TP with no refused log; a
+window case now leaves a record that another request's marker names to that
+request (`scoring/correlate.py`), and re-scored, the case's evidence is its
+one refused record.
+
+**The attacker's address behind the WAF.** Suricata's EVE output reports the
+X-Forwarded-For address as the docs describe it: "HTTP X-Forwarded-For
+support by adding an extra field or overwriting the source or destination IP
+address (depending on flow direction) with the one reported in the
+X-Forwarded-For HTTP header" (Suricata 8.0 docs, Eve JSON Output). The sensor
+runs `xff: {enabled: true, mode: extra-data, deployment: reverse, header:
+X-Forwarded-For}`; `overwrite` would have put the client's address in
+`src_ip` and taken away what F3 teaches (the server sees the proxy, the
+client is in X-Forwarded-For). Measured: http records carry `xff`; URI alerts
+do not, because Suricata raises them after the request line and before it
+reads the headers. Ingest credits a Suricata alert to the `xff` of the http
+record of the same transaction (`flow_id`, `tx_id`). Shown on slot 2,
+session 2273: an alert with EVE `src_ip` 10.30.130.247 (the WAF) is credited
+to 5.188.10.10. `core_loc` 585 -> 592: +4 for the nginx record, +3 for the
+transaction's address.
+
+**What else follows.** The readiness canary fires the blocked SQLi probe and
+a passed `/search/?q=canary`: ready is ModSecurity's alert on the first and
+Suricata's http record of the second, within the skew bound, with no
+synthetic rule in the learners' rule set. Acceptance sessions that need both
+engines put the WAF in the posture `tuned_session` already used (rule 949110
+excluded on `/search/`, so ModSecurity logs the SQLi and lets it reach the
+IDS); `full_run` requires ModSecurity only; the disabled-rule test disables
+sid 9000001 and checks that the IDS goes silent on the attack the WAF still
+logs; the acceptance check that a case drawing only noise is not corroborated
+moved to the scoring unit tests, because behind the WAF every attack the IDS
+sees is also on the WAF's record. `slot.sh up` recreates the sensor so Suricata reads a changed config
+(the running sensor kept writing records without `xff` until restarted). F3's
+count reads the one leg there is; F1's last map question asks for the log
+server's IP address, since its label is now "로그 서버" and a Korean answer
+cannot be checked outside the string table.
+
+**Parity against the two-leg sensor, same red-team files:** board 2274, TP 12
+FP 0 FN 0 TN 6 (every TP corroborated but the traversal case, above); corp
+2275, TP 0 FP 0 FN 3 TN 4. Suricata alerts in the board run: 1 (the WAF
+passes nothing the baseline rules match); ModSecurity 45,974; nginx 1.
+
+**The map.** Drawn from the slot's real wiring only, as a practitioner draws
+a logical diagram: each subnet a captioned box with its CIDR ("a Layer 3
+diagram must show all of the important network segments and subnets";
+security zones, "put a box around them, and label the box clearly" — Kevin
+Dooley, Auvik, *The No-Sweat Guide to Network Topology*, pp. 17-19; "Inside
+the network ovals put the full network and netmask (use /XX notation)" and
+each link's address "near the interface" — FIU CGS4285, "Documenting
+networks"). Our choices on top, by the user's rulings: a switch per subnet is
+drawn although Dooley's Layer 3 guidance omits switches ("아니 스위치 그려");
+each interface's full address stands beside its device on the side its link
+leaves, or just inside the box its link enters when it leaves the device's
+own box, never mid-line ("저 아이피는 양쪽으로"); the WAF stands inside the
+DMZ, the web servers inside the 웹 서버 구간, the router on the boundary;
+the slot's both wargames are drawn, each DB zone named after its wargame;
+nothing outside the slot (no range host, platform VM or collector), no ports,
+no legend, no parentheses; the IDS's link to the web switch is an ordinary
+solid line, since no source gives a convention for a SPAN link. Names are
+Korean role names (라우터, 로그 서버) and proper names (Kali, WAF, IDS).

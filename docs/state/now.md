@@ -15,6 +15,23 @@ Internet.
 
 ## Where things stand
 
+- 2026-11-16, the IDS behind the WAF and the map redrawn (`docs/DECISIONS.md`
+  "The IDS stands behind the WAF; nginx's own refusals are WAF evidence; the
+  live map redrawn"): the sensor sniffs only `web` on `sN-web`; Suricata adds
+  X-Forwarded-For as `xff` and ingest credits an alert to its transaction's
+  address; nginx's own 400s reach Elasticsearch as WAF evidence
+  (`refused.log`), and the traversal case is matched by address and time; a
+  window case no longer takes records another request's marker names. The
+  canary takes ModSecurity's alert on the blocked probe and Suricata's record
+  of a passed one. The map draws switches, subnets as boxes, the WAF inside
+  the DMZ, the servers inside the web segment, full addresses beside each
+  link, no range host or platform. Parity with the two-leg sensor: board TP 12
+  FP 0 FN 0 TN 6, corp TP 0 FP 0 FN 3 TN 4. `core_loc` 585 -> 592. Live: the
+  platform VM runs `/opt/cr` at the branch `map-redraw` with images 014bc78d;
+  the range host 10.31.0.54. Full `bin/verify` on the VM: 563 s, acceptance
+  94 passed, 0 failed, 1 skipped in 508 s across 12 processes, unit and API
+  812 + 869. Next: one wargame per slot (the map then shows only the session's
+  target).
 - 2026-11-16, one sensor per slot (`docs/DECISIONS.md` "One sensor per slot
   on both legs of the WAF"): one Suricata container sniffs `dmz` on
   `sN-estate` and `web` on `sN-web` and stands on the 관제망 at .11; the WAF

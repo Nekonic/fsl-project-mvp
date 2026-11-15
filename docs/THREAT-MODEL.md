@@ -11,7 +11,7 @@ starts, and what the range cannot show.
 | **Attacker's position** | Outside the network. The attacker sends from one of the Internet origins the range builds (thirty, one /24 each). Each origin has its own address range and a declared country, and GeoIP gives the same country. At the start the attacker has no account on the target, no code running on it and no access to the internal network. |
 | **Command and control** | None. The attacks are requests sent from Kali or from the platform. Nothing left on the target calls back. |
 | **What the attacker is after** | On `board`, the password hashes in `auth_user`. The attacker steals them and submits them. The platform counts them only if they match the copy of `auth_user` the platform took from the target when the session opened (`loot_verified`). On `corp`, three changes to the WordPress database, listed in `wargames/corp/objectives.yaml`: a new administrator account, the `users_can_register` option turned on, and content written without permission. The platform finds these in `corp-db`'s own record of changes since the session started (`effect_observed`). |
-| **What the defence has** | Suricata on two legs, the slot's Internet side in front of the edge router and the estate side between the WAF and the targets, and ModSecurity with the Core Rule Set (CRS) in front of the application. ModSecurity blocks (`SecRuleEngine On`, `deploy/waf/modsecurity.conf:1`). Both send their alerts to one Elasticsearch index. The defender can write and disable Suricata rules. The defender can tune the WAF through `PUT /api/sessions/<id>/waf/`: CRS paranoia level, anomaly thresholds and rule exclusions. The defender also has a root shell in the WAF container and, outside a wargame, a root shell in the Kali container for attacking the range as practice. The defender has nothing else. |
+| **What the defence has** | Suricata on one leg, the web servers' segment behind the WAF, and ModSecurity with the Core Rule Set (CRS) in front of the application. A request the WAF blocks never reaches Suricata; the WAF's own logs record it: ModSecurity's audit log, and nginx's log of the requests it refuses with 400 before ModSecurity runs. Suricata sees every request coming from the WAF and credits each alert to the client address its `X-Forwarded-For` names. ModSecurity blocks (`SecRuleEngine On`, `deploy/waf/modsecurity.conf:1`). Both send their alerts to one Elasticsearch index. The defender can write and disable Suricata rules. The defender can tune the WAF through `PUT /api/sessions/<id>/waf/`: CRS paranoia level, anomaly thresholds and rule exclusions. The defender also has a root shell in the WAF container and, outside a wargame, a root shell in the Kali container for attacking the range as practice. The defender has nothing else. |
 
 ## The stages it reaches
 
@@ -152,8 +152,9 @@ script from the API:
   (`X-Frame-Options: SAMEORIGIN`).
 - To draw it, the platform runs one read-only script on the range host over
   the ssh key it already holds for `sudo docker`: `docker network inspect`,
-  `docker inspect`, `nsenter -n ip -o -4 addr` and a `sed` of the slot's
-  shipper and log-server rsyslog files. The platform container holds no Docker socket and its image
+  `docker inspect` and `nsenter -n ip -o -4 addr`. It reads no rsyslog file,
+  and the map shows nothing outside the slot: no range host, platform VM,
+  collector or customers. The platform container holds no Docker socket and its image
   no Docker client (until 2026-11-15 it held the platform host's socket, and
   the GNS3 server held it too, with `pid: host`, `CAP_NET_ADMIN` and
   `/dev/net/tun`).
@@ -190,7 +191,8 @@ How the containers are set up (`deploy/range-host/slot.yaml`,
 - Each runs with `no-new-privileges`, Docker's default seccomp and AppArmor
   profiles, and a memory and process limit. None is privileged, holds the
   Docker socket, shares the host's network, PID or IPC namespace, or mounts a
-  host path, except the WAF's audit log, which is one file.
+  host path, except the WAF's two log files, its audit log and nginx's log of
+  refused requests.
 - No root operation on the range host goes through a path a learner can
   alter. The WAF is root in its container, and its root may create links in
   any host directory mounted into it, because the directory belongs to the
@@ -204,12 +206,12 @@ How the containers are set up (`deploy/range-host/slot.yaml`,
   actual file", rsyslog's imfile documentation, Metadata). A link to
   `/etc/passwd` would have had the next reset truncate it; a link to another
   slot's log or to `/var/log/auth.log` would have shipped those lines as this
-  slot's. The WAF therefore mounts only the file
-  `/var/log/cr/sN/waf/audit.log`; its directory is root's (`0755`), so the
-  WAF can write the file it holds and can neither replace it nor add a name
-  beside it. `slot.sh` makes the directory root's, removes any other name in
-  it and recreates the log if it is not a regular file before every `up` and
-  `reset`. Kali, the edge and the targets mount no host path; the targets'
+  slot's. The WAF therefore mounts only the files
+  `/var/log/cr/sN/waf/audit.log` and `/var/log/cr/sN/waf/refused.log`; their
+  directory is root's (`0755`), so the WAF can write the files it holds and
+  can neither replace them nor add a name beside them. `slot.sh` makes the
+  directory root's, removes any other name in it and recreates each log that
+  is not a regular file before every `up` and `reset`. Kali, the edge and the targets mount no host path; the targets'
   volumes are refilled from `/opt/cr/pristine` only while freshly created and
   empty, before their container first runs. The platform's reads of the
   learner's boxes (`operator_log` reading Kali's `/var/log/commands.log`, the
@@ -224,8 +226,10 @@ How the containers are set up (`deploy/range-host/slot.yaml`,
   the sensor, the log server and the WAF's management interface. The WAF is
   the one learner-facing container on it: it holds neither `NET_RAW` nor
   `NET_ADMIN`, so it sends from its own address only, and the log server names
-  every log by the address it came from, so the WAF can write only the WAF's
-  log, which it already writes. From the 관제망 it reaches the log server's
+  every log by the address it came from and relays a sender's lines only under
+  the tags its own logs carry (`modsecurity` and `nginx` for the WAF), so the
+  WAF can write only the WAF's logs, which it already writes, and cannot pass
+  a line off as Suricata's. From the 관제망 it reaches the log server's
   514/tcp and nothing listening on the sensor.
 - The range host's `mgmt` port is in `cr-mgmt`, which only the platform
   reaches. While it sets itself up it has a second port, on the platform's
@@ -233,9 +237,9 @@ How the containers are set up (`deploy/range-host/slot.yaml`,
   to pull images. Once the setup reports ready, the platform detaches that
   port, so a set-up range host has no way to the Internet and no DNS
   resolver.
-- Each slot's one Suricata sensor is a slot container on the two bridges it
-  watches (interfaces with no address, fed by `tc mirred`) and on the
-  관제망, with `NET_ADMIN`, `NET_RAW` and `SYS_NICE` under the same user
+- Each slot's one Suricata sensor is a slot container on the one bridge it
+  watches, `sN-web` behind the WAF (an interface with no address, fed by
+  `tc mirred`), and on the 관제망, with `NET_ADMIN`, `NET_RAW` and `SYS_NICE` under the same user
   namespace remap as every other container. The log server and the shippers
   hold no capability and mount only read-only files. No learner is given a
   shell in any of them.
@@ -282,5 +286,6 @@ browser windows of one account from driving the same session.
 - The proxy labels HTTP requests.
 - Commands typed in the Kali shell are logged with the active label
   (`GET /api/sessions/<id>/commands/`).
-- Traffic that is not HTTP, such as `nmap`, still draws alerts. No label ties
-  those alerts to a case.
+- Traffic that does not pass the WAF, such as an `nmap` scan of it, never
+  reaches Suricata behind the WAF. A request nginx refuses with 400 is logged
+  by address and time with no label, so only a `window` case can claim it.

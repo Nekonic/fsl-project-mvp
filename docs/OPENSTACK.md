@@ -19,8 +19,8 @@ Words used in this file:
   targets.
   One open session uses one slot.
 - **Edge** (`sN-edge`): the slot's router between its Internet network and its
-  estate network, an Alpine container with nftables. Two Suricata containers
-  watch the slot's bridges.
+  estate network, an Alpine container with nftables. One Suricata container
+  watches the slot's web network behind the WAF.
 - **Estate network** (`sN_estate`): the slot's Docker network behind the edge.
   It holds the edge's `lan` leg and the WAF.
 - **Web network** (`sN_web`): the slot's Docker network between the WAF and the
@@ -474,7 +474,7 @@ it fits. It prints each choice, makes a private flavor visible to the project
 | Key | Use | Notes |
 |---|---|---|
 | `platform` | platform VM | 8 GB RAM or more. With 4 GB, the OOM killer once killed Elasticsearch when sessions stacked up (DECISIONS 2026-10-10). Example `m1.large` (8 GB / 2 vCPU / 60 GB) |
-| `range` | the range host `cr-range` | It runs every slot: per slot Kali, the edge, the WAF, two Suricata sensors, two MySQL 8, Django and WordPress. The rendered slot gives each container a memory limit (`deploy/range-host/slot.yaml`). Example `dba.range` (16 GB / 6 vCPU / 60 GB) |
+| `range` | the range host `cr-range` | It runs every slot: per slot Kali, the edge, the WAF, one Suricata sensor, two MySQL 8, Django and WordPress. The rendered slot gives each container a memory limit (`deploy/range-host/slot.yaml`). Example `dba.range` (16 GB / 6 vCPU / 60 GB) |
 
 **(this cloud)** The cloud has `m1.large` (8 GB / 2 vCPU / 60 GB), `m1.medium`
 (4 GB / 2 vCPU / 30 GB), `dba.medium` (8 GB / 4 vCPU / 40 GB) and `dba.range`
@@ -1218,7 +1218,7 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
 | `sN-kali` | `cr-kali` (`deploy/kali/Dockerfile`) | `sN_internet`, about 100 origin addresses |
 | `sN-edge` | `cr-edge` (`deploy/edge/`: Alpine and nftables) | `sN_internet` (`wan`, every origin's `.1`) and `sN_estate` (`lan`, `.1`) |
 | `sN-waf` | `cr-waf` (`deploy/waf/Dockerfile`: nginx, ModSecurity, CRS) | `sN_estate` `.247`, `sN_web` `.247` and `sN_mgmt` `.12` |
-| `sN-sensor` | `jasonish/suricata`, pinned by digest | `sN_estate` (`dmz`) and `sN_web` (`web`), no address on either, `af-packet`; `sN_mgmt` `.11` |
+| `sN-sensor` | `jasonish/suricata`, pinned by digest | `sN_web` (`web`), no address, `af-packet`; `sN_mgmt` `.11` |
 | `sN-log-server` | `rsyslog/rsyslog-minimal`, pinned by digest | `sN_mgmt` `.10` |
 | `sN-sensor-shipper`, `sN-waf-shipper` | the same | the sensor's and the WAF's own network namespace |
 | `sN-board`, `sN-board-db` | `cr-board`, `mysql` | `sN_web` `.59` (board) and `board-default` |
@@ -1247,23 +1247,34 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
   through the `board` role, not over a port. corp's effect reader gets
   `corp-db`'s binary log the same way, and so does the harness's
   `run_on_role`.
-- One sensor per slot watches both legs of the WAF: it captures on `dmz`
-  (`sN-estate`, the edge to the WAF) and `web` (`sN-web`, the WAF to the web
-  servers), which `slot.sh` strips of their addresses. Each bridge's other
-  ports are mirrored to the sensor's port on it with `tc` (ingress
-  `matchall`, `mirred egress mirror`); the sensor's port learns nothing,
-  floods nothing and drops what the sensor sends, so it is a receive-only
-  SPAN port. No sensor watches `sN_internet`. The config is
-  `deploy/suricata/suricata.yaml` with one `af-packet` entry per sniffing
-  interface, one thread each with `cluster_flow`; an event's `in_iface` names
-  the leg. The rule file is `/opt/cr/sN/sensor-rules/local.rules`.
-- A shipper per log reads `/var/log/cr/sN/sensor/eve.json` and
-  `/var/log/cr/sN/waf/audit.log` with `imfile` and sends it to the log server
-  over TCP 514 on the 관제망; each shipper runs in the network namespace of
-  the device whose log it ships, so the sensor's and the WAF's logs leave from
-  their own management interfaces. The log server
-  (`/opt/cr/sN/rsyslog/log-server.conf`) names each log by the address it came
-  from and forwards it over UDP 5140 to the platform's `mgmt` address. Each
+- One sensor per slot watches the web servers' segment behind the WAF: it
+  captures on `web` (`sN-web`, the WAF to the web servers), which `slot.sh`
+  strips of its address. The bridge's other ports are mirrored to the
+  sensor's port on it with `tc` (ingress `matchall`, `mirred egress mirror`);
+  the sensor's port learns nothing, floods nothing and drops what the sensor
+  sends, so it is a receive-only SPAN port. No sensor watches `sN_internet`
+  or `sN_estate`, so a request the WAF blocks never reaches the sensor; the
+  WAF's own logs record it. The config is `deploy/suricata/suricata.yaml`
+  with one `af-packet` entry per sniffing interface, one thread each with
+  `cluster_flow`; an event's `in_iface` is always `web`. Its EVE output has
+  `xff` on (`mode: extra-data`, `deployment: reverse`, header
+  `X-Forwarded-For`), so an http record carries the client's address in
+  `xff` while `src_ip` stays the WAF's; ingest credits each alert to that
+  address (`docs/ARCHITECTURE.md`, the alert path). The rule file is
+  `/opt/cr/sN/sensor-rules/local.rules`.
+- The WAF writes two logs to the range host: ModSecurity's audit log
+  `/var/log/cr/sN/waf/audit.log`, and `/var/log/cr/sN/waf/refused.log`, one
+  JSON line for each request nginx refuses with 400 itself, before
+  ModSecurity runs (`deploy/waf/board.com.conf`).
+- A shipper per device reads its logs with `imfile`, the sensor's
+  `/var/log/cr/sN/sensor/eve.json` under the tag `suricata` and the WAF's
+  `audit.log` and `refused.log` under `modsecurity` and `nginx`, and sends
+  them to the log server over TCP 514 on the 관제망; each shipper runs in the
+  network namespace of the device whose logs it ships, so the sensor's and
+  the WAF's logs leave from their own management interfaces. The log server
+  (`/opt/cr/sN/rsyslog/log-server.conf`) relays a line only when both the
+  address it came from and its tag belong to one sender, names it by that
+  sender, and forwards it over UDP 5140 to the platform's `mgmt` address. Each
   slot has fixed sender names: `cr-range` and `cr-waf` for slot 1,
   `cr-range-N` and `cr-waf-N` for slot N.
 
@@ -1274,12 +1285,12 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
    per range-host generation and collector address, not for each slot.
 2. It sends the slot's files and runs `slot.sh up N`:
    1. It makes the slot's rule and log directories, all root's. In the WAF's
-      log directory `/var/log/cr/sN/waf` it removes every name but a regular
-      file `audit.log`, and creates that file if missing, owned by the
-      remapped range's `www-data` and `adm` (`0644`), so nginx's master, root
-      in the container, opens it and the WAF shipper reads it through a
-      read-only mount. The WAF mounts that file alone, so it cannot plant a link
-      in the directory (`docs/THREAT-MODEL.md`).
+      log directory `/var/log/cr/sN/waf` it removes every name but the regular
+      files `audit.log` and `refused.log`, and creates each if missing, owned
+      by the remapped range's `www-data` and `adm` (`0644`), so nginx's master,
+      root in the container, opens them and the WAF shipper reads them through
+      read-only mounts. The WAF mounts those files alone, so it cannot plant a
+      link in the directory (`docs/THREAT-MODEL.md`).
    2. It installs the 관제망 filter, then `docker compose up --no-start --pull
       never` creates the containers and their new, empty volumes.
    3. It copies the targets' pristine data (§3.6) into each empty volume of a
@@ -1287,19 +1298,23 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
    4. `up -d --wait --pull never` starts the slot. MySQL finds an initialised
       datadir and skips its initialisation; the board skips creating its posts
       and comments but still sets the seeded accounts' passwords afresh, and
-      corp skips its install but sets a new admin password hash.
+      corp skips its install but sets a new admin password hash. Then the
+      sensor, the log server and the shippers are recreated
+      (`--force-recreate`), so they read the files just sent; Suricata reads
+      its outputs only at start.
    5. It gives Kali its origin addresses and default route, and the edge every
       origin's gateway, with `nsenter ... ip -batch`.
    6. It routes the WAF through the edge. The targets get no default route;
       they answer only the WAF.
-   7. It switches TSO, GSO and GRO off on every interface the sensors watch:
-      the containers' interfaces, the three slot bridges `sN-inet`,
-      `sN-estate` and `sN-web`, and their ports.
+   7. It switches TSO, GSO and GRO off on the three slot bridges `sN-inet`,
+      `sN-estate` and `sN-web` and on their ports, the containers'
+      interfaces.
    8. It lets each bridge forward to itself past Docker's isolation rules
       (`DOCKER-USER`).
-   9. It strips the sensor's `dmz` and `web` interfaces of their addresses
-      and mirrors each watched bridge's other ports to them; a reset does this
-      again for the containers it recreated.
+   9. It clears any `tc` mirror left on the ports of `sN-inet` and
+      `sN-estate`, strips the sensor's `web` interface of its address and
+      mirrors the other ports of `sN-web` to it; a reset does this again for
+      the containers it recreated.
 3. It seeds the sensor with the baseline rules through `rules/suricata.py`.
 
 Secrets stay per session. The board's `seed` sets each seeded account's
@@ -1328,7 +1343,7 @@ runs `slot.sh reset N` on the range host:
 | `sN-kali`, `sN-waf` | recreated from their images (`up -d --force-recreate`, the WAF's shipper with it), then Kali's origin addresses and the WAF's route set again |
 | the targets | removed with their volumes and created again, the volumes restored from `/opt/cr/pristine`, then started, beside the step above |
 | `sN-edge` | keeps running; its neighbour table is flushed |
-| the sensor | keeps running; its `eve.json` and the WAF's `audit.log` are emptied in place and the sensor reopens its log file |
+| the sensor | keeps running; its `eve.json` and the WAF's `audit.log` and `refused.log` are emptied in place and the sensor reopens its log file |
 
 The platform then seeds the sensor with the baseline rules again and marks
 the slot's disabled rules enabled. A reset owed to a slot whose files are gone
