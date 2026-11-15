@@ -90,10 +90,9 @@ def signed_in(name: str, path: Path = CLOUDS) -> Identity:
 
 def merged_clouds(text: str | None, name: str, entry: dict) -> str:
     document = (yaml.safe_load(text) if text else None) or {}
-    if not isinstance(document, dict) or not isinstance(document.get("clouds", {}), dict):
+    if not isinstance(document, dict) or not isinstance(document.get("clouds") or {}, dict):
         raise Invalid("the clouds.yaml there holds no clouds: mapping, so it was left as it is")
-    clouds = document.setdefault("clouds", {}) or {}
-    document["clouds"] = {**clouds, name: entry}
+    document["clouds"] = {**(document.get("clouds") or {}), name: entry}
     return yaml.safe_dump(document, sort_keys=False, default_flow_style=False)
 
 

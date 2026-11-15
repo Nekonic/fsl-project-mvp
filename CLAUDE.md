@@ -178,9 +178,11 @@ range-facing logic changed, and before a push.
   Elasticsearch ingest pipeline). Local development runs the unit tests, not
   the range. The `build:` keys stay because the CI build test checks them. The
   platform VM is rebuilt, never patched in place: `bin/platform-rebuild`;
-  the whole cloud side comes up with `bin/cloud up` from
-  `deploy/openstack/cloud.yaml`, the one file of cloud-specific values (no
-  secrets; copied from `cloud.example.yaml`); the cloud holds one uploaded
+  the whole cloud side comes up with `uv run bin/cloud init` (admin, once)
+  and `uv run bin/cloud up` from `deploy/openstack/cloud.yaml`, the one file
+  of cloud-specific values (no secrets; init writes it from
+  `cloud.example.yaml`), signing in with the `~/.config/openstack/clouds.yaml`
+  entry it names; the cloud holds one uploaded
   image, the stock Ubuntu 24.04 cloud image. OpenStack procedures are in
   `docs/OPENSTACK.md`.
   `README.md` has the ports, `docs/ARCHITECTURE.md` the file map and the isolation seams,

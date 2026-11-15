@@ -220,14 +220,14 @@ def admin_connection(environ=os.environ):
             region = loader.OpenStackConfig(load_yaml_config=False).get_one(cloud="envvars")
         elif KOLLA_CLOUDS.is_file():
             source = f"{KOLLA_CLOUDS}, entry {KOLLA_ADMIN}"
+            if not os.access(KOLLA_CLOUDS, os.R_OK):
+                raise Refused(f"cloud: cannot read {KOLLA_CLOUDS}; run init as the user who ran "
+                              f"kolla-ansible post-deploy, or source /etc/kolla/admin-openrc.sh first")
             region = loader.OpenStackConfig(config_files=[str(KOLLA_CLOUDS)], vendor_files=[],
                                             load_envvars=False).get_one(cloud=KOLLA_ADMIN)
         else:
             raise Refused(f"cloud: no admin credentials: {KOLLA_CLOUDS} does not exist and no OS_AUTH_URL is set; "
                           f"run source /etc/kolla/admin-openrc.sh, then bin/cloud init again")
-    except PermissionError as unreadable:
-        raise Refused(f"cloud: cannot read {KOLLA_CLOUDS} ({unreadable.strerror}); run init as the user who ran "
-                      f"kolla-ansible post-deploy, or source /etc/kolla/admin-openrc.sh first") from unreadable
     except openstack.exceptions.SDKException as wrong:
         raise Refused(f"cloud: the admin credentials in {source} are not usable: {wrong}") from wrong
     admin = openstack.connection.Connection(config=region)
@@ -280,6 +280,10 @@ def project_and_user(admin, auth: dict):
         print(f"user {name}: created with a random password")
     else:
         print(f"user {name}: present")
+    return project, user, project_domain, user_domain, password
+
+
+def member_role(admin, project, user) -> None:
     role = admin.identity.find_role(MEMBER)
     if role is None:
         raise Refused(f"cloud: Keystone has no role {MEMBER}")
@@ -288,7 +292,6 @@ def project_and_user(admin, auth: dict):
     else:
         admin.identity.assign_project_role_to_user(project, user, role)
         print(f"role {MEMBER} of {user.name} on {project.name}: given")
-    return project, user, project_domain, user_domain, password
 
 
 def credentials(admin, name: str, held: dict, project, user, project_domain, user_domain,
@@ -307,16 +310,20 @@ def credentials(admin, name: str, held: dict, project, user, project_domain, use
         password = secrets.token_urlsafe(32)
         admin.identity.update_user(user, password=password)
         print(f"user {user.name}: given a new random password")
-    settings.write_clouds(path, name, {
-        "auth": {
-            "auth_url": admin.endpoint_for("identity", interface="public"),
-            "username": user.name, "password": password, "project_name": project.name,
-            "user_domain_name": user_domain.name, "project_domain_name": project_domain.name,
-        },
-        "region_name": admin.config.get_region_name("identity"),
-        "interface": "public",
-        "identity_api_version": 3,
-    })
+    try:
+        settings.write_clouds(path, name, {
+            "auth": {
+                "auth_url": admin.endpoint_for("identity", interface="public"),
+                "username": user.name, "password": password, "project_name": project.name,
+                "user_domain_name": user_domain.name, "project_domain_name": project_domain.name,
+            },
+            "region_name": admin.config.get_region_name("identity"),
+            "interface": "public",
+            "identity_api_version": 3,
+        })
+    except (settings.Invalid, OSError) as unwritten:
+        raise Refused(f"cloud: {path}: {unwritten}; the user {user.name} now has a password no file holds, "
+                      f"so fix the file and run bin/cloud init --reset-password") from unwritten
     print(f"clouds.yaml entry {name} in {path}: written, mode 0600")
 
 
@@ -392,8 +399,11 @@ def base_image(admin, name: str, project) -> None:
         print(f"image {name}: uploaded")
     else:
         image = found[0]
+        if image.status != "active":
+            raise Refused(f"cloud: the image {name} ({image.id}) is {image.status}, not active, perhaps from an "
+                          f"upload cut short; delete it (openstack image delete {image.id}) and run init again")
         print(f"image {name}: present, {image.status}")
-    if image.visibility not in ("public", "community") and image.owner != project.id:
+    if image.visibility != "public" and image.owner != project.id:
         admin.image.update_image(image, visibility="public")
         print(f"image {name}: made public, so {project.name} sees it")
 
@@ -417,6 +427,9 @@ def write_cloud_yaml(path: Path, text: str, owned: dict) -> None:
         settings.parse(settings.yaml.safe_load(written), str(path))
     except settings.Invalid as invalid:
         raise Refused(f"cloud: {invalid}") from invalid
+    except settings.yaml.YAMLError as broken:
+        raise Refused(f"cloud: {path} could not take init's values ({broken}); write compute.flavors and the "
+                      f"other keys init sets in block style, one key per line") from broken
     if path.is_file() and path.read_text(encoding="utf-8") == written:
         print(f"{path}: unchanged")
         return
@@ -442,8 +455,14 @@ def init(args: argparse.Namespace) -> None:
         raise Refused(f"cloud: {invalid}") from invalid
     print(f"external network: {external}")
     chosen = flavors_for(admin, compute.get("flavors") or {}, path.name if path.is_file() else settings.EXAMPLE.name)
+    clouds = settings.CLOUDS.expanduser()
+    try:
+        settings.merged_clouds(clouds.read_text(encoding="utf-8") if clouds.is_file() else None, name, {})
+    except (settings.Invalid, settings.yaml.YAMLError, OSError) as unusable:
+        raise Refused(f"cloud: {clouds}: {unusable}") from unusable
     project, user, project_domain, user_domain, password = project_and_user(admin, held.get("auth") or {})
     credentials(admin, name, held, project, user, project_domain, user_domain, password, args.reset_password)
+    member_role(admin, project, user)
     flavor_access(admin, chosen, project)
     quota(admin, project, chosen)
     base_image(admin, image, project)

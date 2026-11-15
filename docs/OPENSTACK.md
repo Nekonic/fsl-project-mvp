@@ -569,7 +569,9 @@ downloads `noble-server-cloudimg-amd64.img` from
 `https://cloud-images.ubuntu.com/noble/current/`, compares its SHA-256 with
 that directory's `SHA256SUMS` and uploads it as qcow2, public. An image that
 the project cannot see (neither public nor the project's) is made public. Two
-images of that name stop it. By hand, as admin:
+images of that name stop it, and so does one that is not `active` (an upload
+cut short leaves it `queued`); delete it and run `init` again. By hand, as
+admin:
 
 - `SHA256SUMS` lists one line per file of that build. `--ignore-missing` checks
   only the file you downloaded [U1].
