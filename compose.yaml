@@ -23,26 +23,19 @@ services:
     platform: linux/amd64
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
     container_name: cr-elasticsearch
-    depends_on:
-      platform: {condition: service_healthy}
     networks: [mgmt]
     ports:
       - "127.0.0.1:9200:9200"
-    entrypoint: ["/bin/bash", "/usr/local/bin/cr-elastic-start"]
     environment:
       discovery.type: single-node
-      xpack.security.enabled: "true"
-      xpack.security.http.ssl.enabled: "false"
-      xpack.security.transport.ssl.enabled: "false"
+      xpack.security.enabled: "false"
       ingest.geoip.downloader.enabled: "false"
       ES_JAVA_OPTS: "-Xms512m -Xmx512m"
     volumes:
       - esdata:/usr/share/elasticsearch/data
       - ./config/ingest-geoip:/usr/share/elasticsearch/config/ingest-geoip:ro
-      - ./deploy/elastic/start.sh:/usr/local/bin/cr-elastic-start:ro
-      - {type: volume, source: platformdata, target: /run/cr-elastic, volume: {subpath: elastic}}
     healthcheck:
-      test: ["CMD-SHELL", "printf 'user = \"elastic:%s\"\\n' \"$$(cat /run/cr-elastic/elastic-password)\" | curl -K - -fsS http://127.0.0.1:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -58,16 +51,10 @@ services:
     networks: [mgmt]
     ports:
       - "${CR_SYSLOG_PUBLISH:-127.0.0.1}:5140:5140/udp"
-    entrypoint:
-      - /bin/sh
-      - -c
-      - 'ELASTIC_PASSWORD="$$(cat /run/cr-elastic/elastic-password)" && export ELASTIC_PASSWORD && exec /usr/bin/tini -s -- /usr/local/bin/docker-entrypoint "$$@"'
-      - filebeat
     command: ["--strict.perms=false", "-e"]
     volumes:
       - ./deploy/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - collectordata:/usr/share/filebeat/data
-      - {type: volume, source: platformdata, target: /run/cr-elastic, read_only: true, volume: {subpath: elastic}}
 
   kibana:
     platform: linux/amd64
@@ -78,12 +65,6 @@ services:
     networks: [mgmt]
     ports:
       - "127.0.0.1:5601:5601"
-    entrypoint:
-      - /bin/sh
-      - -c
-      - 'ELASTICSEARCH_SERVICEACCOUNTTOKEN="$$(cat /run/cr-kibana/token)" && export ELASTICSEARCH_SERVICEACCOUNTTOKEN && exec /bin/tini -- /usr/local/bin/kibana-docker'
-    volumes:
-      - {type: volume, source: platformdata, target: /run/cr-kibana, read_only: true, volume: {subpath: elastic/kibana}}
     environment:
       ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
       SERVER_NAME: kibana
@@ -104,6 +85,8 @@ services:
     build: {context: ., dockerfile: platform/Dockerfile}
     image: ghcr.io/nekonic/cr-platform:${CR_IMAGE_TAG:-dev}
     container_name: cr-platform
+    depends_on:
+      elasticsearch: {condition: service_healthy}
     networks:
       mgmt: {}
     ports:
@@ -126,11 +109,6 @@ services:
         required: false
         format: raw
     secrets: [openstack_password]
-    healthcheck:
-      test: ["CMD", "test", "-s", "/data/elastic/elastic-password"]
-      interval: 2s
-      timeout: 2s
-      retries: 60
     volumes:
       - ./platform:/app
       - ./redteam:/app/redteam:ro

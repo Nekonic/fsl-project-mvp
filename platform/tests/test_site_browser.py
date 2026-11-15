@@ -39,7 +39,7 @@ def site_tail(request_uri):
 def test_the_site_route_is_guarded_like_the_terminals_and_passes_every_page_through_the_platform():
     block = site_block()
 
-    assert "auth_request /terminal-allowed;" in block
+    assert "auth_request /signed-in;" in block
     assert "proxy_pass http://127.0.0.1:8001/site-proxy/$session/$site/;" in block, (
         "the platform sends every page from the customers side and keeps a copy for the Network panel"
     )

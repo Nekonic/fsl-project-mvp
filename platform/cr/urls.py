@@ -8,7 +8,6 @@ urlpatterns = [
     path("api/auth/login/", signin.sign_in),
     path("api/auth/logout/", signin.sign_out),
     path("auth-check/", signin.check),
-    path("auth-check/kibana/", signin.kibana_check),
     path("login/", console.login),
     path("api/origins/", views.origins, name="origins"),
     path("api/attacker/", views.attacker_box),

@@ -1980,8 +1980,7 @@ def ingest_detections(request, session_id):
 INGEST_PAGES = 40
 
 def _fetched(index, start, end, newest_first):
-    documents, truncated = elastic.fetch(settings.ELASTIC_URL, index, start, end, newest_first=newest_first,
-                                       auth=settings.ELASTIC_AUTH)
+    documents, truncated = elastic.fetch(settings.ELASTIC_URL, index, start, end, newest_first=newest_first)
     seen = {doc_id for doc_id, _ in documents}
     page = documents
     for _ in range(INGEST_PAGES):
@@ -1991,7 +1990,7 @@ def _fetched(index, start, end, newest_first):
         if after is None or after <= start:
             break
         start = after
-        page, more = elastic.fetch(settings.ELASTIC_URL, index, start, end, auth=settings.ELASTIC_AUTH)
+        page, more = elastic.fetch(settings.ELASTIC_URL, index, start, end)
         fresh = [(doc_id, doc) for doc_id, doc in page if doc_id not in seen]
         seen.update(doc_id for doc_id, _ in fresh)
         documents = documents + fresh
@@ -2839,7 +2838,6 @@ def _range_canary(adapter, session=None) -> dict:
             documents, _ = elastic.fetch(
                 settings.ELASTIC_URL, settings.ELASTIC_INDEX,
                 fired_at - timedelta(minutes=1), timezone.now() + timedelta(minutes=1),
-                auth=settings.ELASTIC_AUTH,
             )
         except elastic.ElasticUnavailable as exc:
             reach = [f"could not read Elasticsearch: {exc}"]

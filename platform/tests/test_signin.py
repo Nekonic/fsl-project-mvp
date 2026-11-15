@@ -12,7 +12,7 @@ from tests.conftest import ApiClient
 
 pytestmark = pytest.mark.django_db
 
-OPEN = {"/login/", "/api/auth/", "/api/auth/login/", "/auth-check/", "/auth-check/kibana/"}
+OPEN = {"/login/", "/api/auth/", "/api/auth/login/", "/auth-check/"}
 SITE_PROXY = "site-proxy/"
 
 
@@ -120,19 +120,11 @@ def test_no_answer_grants_another_origin_a_read():
         assert not [name for name in answer.headers if name.lower().startswith("access-control-")]
 
 
-def test_the_front_s_check_answers_401_until_signed_in_and_hands_kibana_the_viewer(tmp_path):
-    kept = tmp_path / "viewer"
-    kept.write_text("viewer-secret\n")
-
+def test_the_front_s_check_answers_401_until_signed_in():
     assert Client().get("/auth-check/").status_code == 401
-    assert Client().get("/auth-check/kibana/").status_code == 401
     client, _ = signed_in_client()
-    with patch("kibana.VIEWER_PASSWORD_FILE", str(kept)):
-        kibana = client.get("/auth-check/kibana/")
 
     assert client.get("/auth-check/").status_code == 204
-    assert kibana.status_code == 204
-    assert kibana["X-Kibana-Authorization"] == signin.kibana.basic("cr-viewer", "viewer-secret")
 
 
 def test_the_login_page_opens_without_a_session_and_posts_to_the_login_api():

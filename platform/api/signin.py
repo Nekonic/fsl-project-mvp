@@ -6,9 +6,7 @@ from django.http import HttpResponse, JsonResponse
 from django.middleware.csrf import get_token
 from django.views.decorators.http import require_GET, require_POST
 
-import kibana
-
-OPEN = frozenset({"/login/", "/api/auth/", "/api/auth/login/", "/auth-check/", "/auth-check/kibana/"})
+OPEN = frozenset({"/login/", "/api/auth/", "/api/auth/login/", "/auth-check/"})
 REACHED_ONLY_THROUGH_THE_SITE_PORT = "/site-proxy/"
 
 
@@ -72,10 +70,3 @@ def sign_out(request):
 def check(request):
     return HttpResponse(status=204 if request.user.is_authenticated else 401)
 
-
-def kibana_check(request):
-    if not request.user.is_authenticated:
-        return HttpResponse(status=401)
-    answer = HttpResponse(status=204)
-    answer["X-Kibana-Authorization"] = kibana.viewer_authorization()
-    return answer

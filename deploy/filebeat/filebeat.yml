@@ -66,8 +66,6 @@ setup.ilm.enabled: false
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
-  username: elastic
-  password: "${ELASTIC_PASSWORD}"
   index: "logs-${CR_SESSION:shared}-sensors"
   indices:
     - index: "logs-%{[cr_slot]}-sensors"

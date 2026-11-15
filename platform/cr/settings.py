@@ -101,9 +101,6 @@ WARGAME_CASES_DIR = os.environ.get(
 
 ELASTIC_URL = os.environ.get("ELASTIC_URL", "http://elasticsearch:9200")
 ELASTIC_INDEX = os.environ.get("ELASTIC_INDEX", "logs-*")
-ELASTIC_PASSWORD = os.environ.get("ELASTIC_PASSWORD") or kept_secret(
-    os.environ.get("ELASTIC_PASSWORD_FILE") or "/data/elastic-password")
-ELASTIC_AUTH = (os.environ.get("ELASTIC_USER") or "elastic", ELASTIC_PASSWORD) if ELASTIC_PASSWORD else None
 ELASTIC_SESSION_INDEX = os.environ.get(
     "ELASTIC_SESSION_INDEX",
     {"range.openstack.connect": "logs-{slot}-*"}.get(CR_SUBSTRATE, ""),

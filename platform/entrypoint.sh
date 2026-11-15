@@ -1,15 +1,6 @@
 #!/bin/sh
 set -e
 
-ELASTIC_KEPT=/data/elastic
-ELASTIC_UID=1000
-install -d -o "$ELASTIC_UID" -g 0 -m 700 "$ELASTIC_KEPT"
-if [ ! -s "$ELASTIC_KEPT/elastic-password" ]; then
-  (umask 077 && python -c 'import secrets; print(secrets.token_urlsafe(24))' > "$ELASTIC_KEPT/elastic-password.new")
-  chown "$ELASTIC_UID:0" "$ELASTIC_KEPT/elastic-password.new"
-  mv "$ELASTIC_KEPT/elastic-password.new" "$ELASTIC_KEPT/elastic-password"
-fi
-
 nginx -t -q -c /app/nginx.conf
 (
   until python -c 'import socket; socket.create_connection(("127.0.0.1", 8001), 1).close()' 2>/dev/null; do
@@ -20,8 +11,6 @@ nginx -t -q -c /app/nginx.conf
 
 gosu cr env TERMINAL_KEEP=1 ttyd -W -a -b /vm-terminal/kali -t disableResizeOverlay=true -t disableLeaveAlert=true -i 127.0.0.1 -p 7691 /app/vm-terminal.sh cr-kali &
 gosu cr env TERMINAL_KEEP=1 ttyd -W -a -b /vm-terminal/waf -t disableResizeOverlay=true -t disableLeaveAlert=true -i 127.0.0.1 -p 7692 /app/vm-terminal.sh cr-waf &
-
-install -o cr -m 600 "$ELASTIC_KEPT/elastic-password" /data/elastic-password
 
 exec gosu cr sh -c '
   if [ -z "${DJANGO_SECRET_KEY:-}" ]; then

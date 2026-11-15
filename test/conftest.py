@@ -1,6 +1,5 @@
 import os
 import re
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -28,26 +27,13 @@ CLOSING = re.compile(re.escape(PLATFORM_URL) + r"/api/sessions/(\d+)/close/?")
 
 ENGINES = {"suricata", "modsecurity"}
 
-ELASTIC_URL = "http://localhost:9200"
-ELASTIC_PASSWORD_FILE = "/run/cr-elastic/elastic-password"
 SIGNED_IN = requests.Session()
 SIGN_IN_OPEN = f"{PLATFORM_URL}/api/auth/"
 _known: dict[str, object] = {}
 
-def elastic_auth() -> tuple[str, str]:
-    if "elastic" not in _known:
-        password = os.environ.get("CR_ELASTIC_PASSWORD") or subprocess.run(
-            ["docker", "exec", "cr-elasticsearch", "cat", ELASTIC_PASSWORD_FILE],
-            capture_output=True, text=True, timeout=30,
-        ).stdout.strip()
-        _known["elastic"] = ("elastic", password)
-    return _known["elastic"]
-
 def _as_the_operator(method, url, **kwargs):
     if str(url).startswith(PLATFORM_URL) and not str(url).startswith(SIGN_IN_OPEN) and "platform" not in _known:
         _known["platform"] = signin.signed_in(PLATFORM_URL, SIGNED_IN)
-    if str(url).startswith(ELASTIC_URL):
-        kwargs.setdefault("auth", elastic_auth())
     return SIGNED_IN.request(method, url, **kwargs)
 
 requests.api.request = _as_the_operator
