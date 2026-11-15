@@ -50,10 +50,10 @@
 
   function pendingRow(user) {
     return `
-      <tr class="border-t border-line-subdued" data-user="${user.id}">
-        <td class="pl-5 py-2.5 font-semibold text-heading">${esc(user.username)}</td>
-        <td class="py-2.5">${esc(joined(user.joined))}</td>
-        <td class="pr-5 py-2.5 text-right whitespace-nowrap">
+      <tr class="table-row" data-user="${user.id}">
+        <td class="pl-5 font-semibold text-heading">${esc(user.username)}</td>
+        <td>${esc(joined(user.joined))}</td>
+        <td class="pr-5 text-right whitespace-nowrap">
           <button data-approve="${user.id}" class="btn btn-sm btn-blue">${esc(t("users.approve"))}</button>
           <button data-reject="${user.id}" class="btn btn-sm btn-ghost ml-2">${esc(t("users.reject"))}</button>
         </td>
@@ -62,10 +62,10 @@
 
   function activeRow(user) {
     return `
-      <tr class="border-t border-line-subdued">
-        <td class="pl-5 py-2.5 font-semibold text-heading">${esc(user.username)}</td>
-        <td class="py-2.5">${badge(t(user.staff ? "users.role.staff" : "users.role.learner"), user.staff ? "blue" : "neutral")}</td>
-        <td class="pr-5 py-2.5">${esc(joined(user.joined))}</td>
+      <tr class="table-row">
+        <td class="pl-5 font-semibold text-heading">${esc(user.username)}</td>
+        <td>${badge(t(user.staff ? "users.role.staff" : "users.role.learner"), user.staff ? "blue" : "neutral")}</td>
+        <td class="pr-5">${esc(joined(user.joined))}</td>
       </tr>`;
   }
 
