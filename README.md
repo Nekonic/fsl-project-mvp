@@ -38,15 +38,14 @@ Kolla-Ansible 2025.1 이상으로 구축한 OpenStack에서 돌아갑니다.
 
 문서:
 
-- `CLAUDE.md`: 저장소 목적, 점수 계산, 작업 규칙
-- `docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`:
-  2026-10-08 승인 방향. 일부 미구현
-- `docs/ARCHITECTURE.md`: 훈련 환경 구성과 향후 방향
-- `docs/THREAT-MODEL.md`: 실제 환경과 같게 만든 부분과 뺀 부분
-- `docs/STATE.md`: 작업 현황
-- `docs/OPENSTACK.md`: 클라우드 요구 사항, 프로젝트, 플랫폼 VM, 훈련 환경, VM 1대
+- [CLAUDE.md](CLAUDE.md): 저장소 목적, 점수 계산, 작업 규칙
+- [설계 문서](docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md): 2026-10-08 승인 방향. 일부 미구현
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md): 훈련 환경 구성과 향후 방향
+- [THREAT-MODEL.md](docs/THREAT-MODEL.md): 실제 환경과 같게 만든 부분과 뺀 부분
+- [STATE.md](docs/STATE.md): 작업 현황
+- [OPENSTACK.md](docs/OPENSTACK.md): 클라우드 요구 사항, 프로젝트, 플랫폼 VM, 훈련 환경, VM 1대
   체험 구성
-- `docs/TROUBLESHOOTING.md`: 훈련 환경에서 겪은 문제와 해결 방법(영어)
+- [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): 훈련 환경에서 겪은 문제와 해결 방법(영어)
 
 ## 요구 사항
 
