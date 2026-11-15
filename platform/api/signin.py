@@ -1,6 +1,7 @@
 import json
 
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.views import redirect_to_login
 from django.http import HttpResponse, JsonResponse
 from django.middleware.csrf import get_token
@@ -8,7 +9,10 @@ from django.views.decorators.http import require_GET, require_POST
 
 import kibana
 
-OPEN = frozenset({"/login/", "/api/auth/", "/api/auth/login/", "/auth-check/", "/auth-check/kibana/"})
+OPEN = frozenset({
+    "/login/", "/signup/", "/api/auth/", "/api/auth/login/", "/api/auth/signup/",
+    "/auth-check/", "/auth-check/kibana/",
+})
 REACHED_ONLY_THROUGH_THE_SITE_PORT = "/site-proxy/"
 
 
@@ -39,6 +43,7 @@ def _signed_in(request):
     user = request.user
     return {
         "user": user.get_username() if user.is_authenticated else None,
+        "staff": user.is_authenticated and user.is_staff,
         "csrf_token": get_token(request),
     }
 
@@ -48,19 +53,55 @@ def whoami(request):
     return JsonResponse(_signed_in(request))
 
 
-@require_POST
-def sign_in(request):
+def _given(request):
     try:
         given = json.loads(request.body or b"{}")
     except ValueError:
-        given = None
-    if not isinstance(given, dict):
+        return None
+    return given if isinstance(given, dict) else None
+
+
+def _awaits_approval(username, password):
+    waiting = get_user_model().objects.filter(username=username, is_active=False).first()
+    return waiting is not None and waiting.check_password(password)
+
+
+@require_POST
+def sign_in(request):
+    given = _given(request)
+    if given is None:
         return JsonResponse({"detail": "send {\"username\": ..., \"password\": ...}"}, status=400)
-    user = authenticate(request, username=str(given.get("username") or ""), password=str(given.get("password") or ""))
+    username, password = str(given.get("username") or ""), str(given.get("password") or "")
+    user = authenticate(request, username=username, password=password)
+    if user is None and _awaits_approval(username, password):
+        return JsonResponse({"detail": "this account waits for an admin's approval", "pending": True}, status=403)
     if user is None:
         return JsonResponse({"detail": "wrong username or password"}, status=401)
     login(request, user)
     return JsonResponse(_signed_in(request))
+
+
+@require_POST
+def sign_up(request):
+    given = _given(request)
+    if given is None:
+        return JsonResponse(
+            {"detail": "send {\"username\": ..., \"password\": ..., \"password_confirm\": ...}"}, status=400)
+    form = UserCreationForm({
+        "username": str(given.get("username") or ""),
+        "password1": str(given.get("password") or ""),
+        "password2": str(given.get("password_confirm") or ""),
+    })
+    if not form.is_valid():
+        refused = [(field, error) for field, errors in form.errors.as_data().items() for error in errors]
+        return JsonResponse({
+            "detail": " ".join(message for _, error in refused for message in error.messages),
+            "errors": [{"field": field, "code": error.code} for field, error in refused],
+        }, status=400)
+    user = form.save(commit=False)
+    user.is_active = False
+    user.save()
+    return JsonResponse({"user": user.get_username(), "pending": True}, status=201)
 
 
 @require_POST

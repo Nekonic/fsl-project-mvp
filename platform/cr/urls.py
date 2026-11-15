@@ -1,15 +1,21 @@
 from django.urls import path
 
-from api import scenario_run, signin, site, views
+from api import accounts, scenario_run, signin, site, views
 from console import views as console
 
 urlpatterns = [
     path("api/auth/", signin.whoami),
     path("api/auth/login/", signin.sign_in),
     path("api/auth/logout/", signin.sign_out),
+    path("api/auth/signup/", signin.sign_up),
+    path("api/users/", accounts.users),
+    path("api/users/<int:user_id>/approve/", accounts.approve),
+    path("api/users/<int:user_id>/reject/", accounts.reject),
     path("auth-check/", signin.check),
     path("auth-check/kibana/", signin.kibana_check),
     path("login/", console.login),
+    path("signup/", console.signup),
+    path("users/", console.users),
     path("api/origins/", views.origins, name="origins"),
     path("api/attacker/", views.attacker_box),
     path("api/attacker/label/", views.attacker_label),

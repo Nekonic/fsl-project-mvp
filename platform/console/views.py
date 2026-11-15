@@ -4,6 +4,12 @@ from django.views.decorators.clickjacking import xframe_options_sameorigin
 def login(request):
     return render(request, "console/login.html")
 
+def signup(request):
+    return render(request, "console/signup.html")
+
+def users(request):
+    return render(request, "console/users.html")
+
 def main(request):
     return render(request, "console/main.html")
 
