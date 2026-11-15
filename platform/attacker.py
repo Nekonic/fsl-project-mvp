@@ -164,8 +164,6 @@ def _customers_account() -> str:
     return (
         f"id -u {CUSTOMERS_ACCOUNT} >/dev/null 2>&1 || useradd --system --no-create-home "
         f"--shell /usr/sbin/nologin {CUSTOMERS_ACCOUNT}; "
-        f"iptables -t nat -C POSTROUTING -m owner --uid-owner {CUSTOMERS_ACCOUNT} -j RETURN 2>/dev/null "
-        f"|| iptables -t nat -I POSTROUTING 1 -m owner --uid-owner {CUSTOMERS_ACCOUNT} -j RETURN; "
     )
 
 def as_customer(source: str, address: str, port: int) -> list[str]:

@@ -1447,12 +1447,12 @@ board 세션에는 고객을 붙일 수 있습니다. 세션 내내 글을 둘�
 
 - 페르소나마다 컨테이너의 출발지 주소 하나에 바인딩. 요청의 출발지 주소는 그 출발지의 주소
 - 공격자와 분리함. 기본 출발지, 공격자가 쓰는 출발지의 `source_ip`, 컨테이너의 바인딩되지 않은 출발 주소를 쓰지 않음. 바인딩되지 않은 출발 주소는 `/usr/local/sbin/unbound-source`가 대상으로 UDP 소켓을 connect해 `getsockname`으로 읽음. gVisor는 경로의 `src`가 아니라 대상과 앞자리가 가장 길게 같은 주소를 고르므로 `ip route get`은 다른 주소를 말함(73.0.0.10이라고 했지만 실제로는 14.160.0.10에서 나감)
-- `set-origin`의 SNAT는 바인딩되지 않은 출발 주소에서 나가는 TCP, UDP에만 걸림(`-s <주소> -p tcp|udp -j SNAT`). gVisor는 프로토콜이 없는 SNAT 룰을 `Invalid argument`로 거부하고, owner 매치는 받기만 하고 적용하지 않음. 그래서 고객의 바인딩된 주소는 SNAT를 거치지 않음. `POSTROUTING -m owner --uid-owner cr-users -j RETURN`도 그대로 둠
+- `set-origin`의 SNAT는 바인딩되지 않은 출발 주소에서 나가는 TCP, UDP에만 걸림(`-s <주소> -p tcp|udp -j SNAT`). gVisor는 프로토콜이 없는 SNAT 룰을 `Invalid argument`로 거부하고, owner 매치는 받기만 하고 적용하지 않음. 그래서 고객의 바인딩된 주소는 SNAT를 거치지 않음. 계정별 예외(`-m owner --uid-owner cr-users -j RETURN`)는 지움. gVisor는 이 룰을 받아 두기만 하는데, 이 룰이 `POSTROUTING`에 있으면 박스에서 어떤 패킷도 나가지 않았음
 - Kali는 legacy iptables를 씀. gVisor는 nftables를 구현하지 않아 iptables-nft는 `Protocol not supported`로 실패
 
 박스에서 실행하는 명령은 모두 `platform/attacker.py`에 있습니다.
 
-- `place_customers`: 계정, NAT 예외, 프로그램 배치. 컨테이너 안에서 `sudo`로 실행
+- `place_customers`: 계정, 프로그램 배치. 컨테이너 안에서 `sudo`로 실행
 - `run_customers`: 계획을 쓰고, 프로그램이 떠 있지 않으면 `setsid`와 `setpriv`로 시작
 - `stop_customers`
 - `customer_records`

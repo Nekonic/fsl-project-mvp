@@ -144,7 +144,9 @@ def test_the_customers_run_as_their_own_account_that_the_origin_rewrite_passes_b
     assert attacker.run_customers(box, "{}") is True
     placed, ran = seen[0][0][3], seen[1][0][3]
 
-    assert "-m owner --uid-owner cr-users -j RETURN" in placed and "-I POSTROUTING 1" in placed
+    assert "useradd --system" in placed and "iptables" not in placed, (
+        "gVisor stores an owner match it cannot apply, and with it in POSTROUTING no packet left the box"
+    )
     assert seen[0][1] == "print()" and seen[1][1] == "{}"
     assert "setpriv --reuid=cr-users" in ran and "setsid" in ran
 
@@ -153,7 +155,7 @@ def test_the_website_pane_leaves_kali_as_the_customers_account_so_the_attacker_o
     argv = attacker.as_customer("73.0.0.10", "10.30.0.102", 80)
 
     assert argv[:3] == ["sudo", "sh", "-c"]
-    assert "iptables -t nat -C POSTROUTING -m owner --uid-owner cr-users" in argv[3]
+    assert "iptables" not in argv[3], "the rewrite matches only the unbound source, so the customers need no exemption"
     assert "setpriv --reuid=cr-users" in argv[3] and argv[3].endswith("73.0.0.10 10.30.0.102 80")
 
 def test_the_attackers_own_rewrite_stays_after_the_customers_exemption():
