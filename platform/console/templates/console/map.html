@@ -23,12 +23,11 @@
 <script>
 const SYMBOLS = {
   kali: "host-kali.svg", router: "host-router.svg", waf: "host-shield.svg", server: "host-server.svg",
-  database: "host-storage.svg", logs: "host-statistics.svg", sensor: "host-inspect.svg", switch: "switch.svg", collector: "host-server.svg",
+  database: "host-storage.svg", logs: "host-statistics.svg", sensor: "host-inspect.svg", switch: "switch.svg",
   host: "host-server.svg",
 };
 const COLOURS = { internet: "#b03a2e", dmz: "#2e6da4", web: "#2f7a6b", database: "#4a6fa5", mgmt: "#6b5b95" };
 const LINK = "#1b4f8a";
-const MIRROR = "#8a5a00";
 const LOGS = "#5b6770";
 const MARGIN = 24;
 const LOCATE_EVERY_MS = 150;
@@ -40,20 +39,21 @@ const zoneId = (zone) => `zone:${zone}`;
 const switchId = (zone) => `switch:${zone}`;
 
 function captioned(zone) {
-  return [t(`topology.zone.${zone.caption}`), zone.subnet].filter(Boolean).join(" ");
+  return [t(`topology.zone.${zone.caption}`, zone.owner || ""), zone.subnet].filter(Boolean).join(" ");
 }
 
 function named(node) {
-  if (node.kind === "sensor") return t("topology.sensor");
-  if (node.kind === "logs") return [node.name, t("topology.collector", node.port)].join("\n");
-  if (node.kind === "collector") return t("topology.uplink", node.address);
-  if (node.customers && node.customers.address) {
-    const note = node.customers.more ? t("topology.customers_more", node.customers.address, node.customers.more)
-      : t("topology.customers", node.customers.address);
-    return [node.name, note].join("\n");
-  }
-  return node.name || "";
+  if (node.kind === "address") return node.text;
+  const key = node.kind === "sensor" ? "topology.sensor" : `topology.name.${node.name}`;
+  const shown = t(key);
+  return shown === key ? node.name || "" : shown;
 }
+
+function classed(node) {
+  if (node.kind === "switch" || node.kind === "address") return node.kind;
+  return `device ${node.kind}`;
+}
+
 
 const SIDES = {
   above: { "text-valign": "top", "text-halign": "center", "text-margin-x": 0, "text-margin-y": -6 },
@@ -80,48 +80,46 @@ function elements(map) {
       data: { id: zoneId(zone.id), label: captioned(zone), colour: COLOURS[zone.caption] || LOGS, shift: zone.shift || 0,
               width: x2 - x1, height: y2 - y1 } };
   });
-  const nodes = map.nodes.map((node) => ({ group: "nodes", classes: node.kind === "switch" ? "switch" : `device ${node.kind}`,
+  const nodes = map.nodes.map((node) => ({ group: "nodes", classes: classed(node),
     position: at[node.id],
     data: { id: node.id, label: named(node), name: node.name || "", side: node.label || "below",
             symbol: `/static/map/symbols/${SYMBOLS[node.kind] || SYMBOLS.host}` } }));
   const edges = map.edges.map((edge) => {
     const route = edge.route ? bends(edge.route, at[edge.source], at[edge.target]) : [];
-    return { group: "edges", classes: edge.kind,
-      data: { id: edge.id, source: edge.source, target: edge.target, address: edge.address || "",
-              mirror: edge.kind === "mirror" ? t("topology.mirror") : "",
+    return { group: "edges", classes: edge.route ? `${edge.kind} routed` : edge.kind,
+      data: { id: edge.id, source: edge.source, target: edge.target,
               weights: route.map((bend) => bend.weight), distances: route.map((bend) => bend.distance),
+              start: edge.start ? `${edge.start[0]}px ${edge.start[1]}px` : "outside-to-node",
               end: edge.end ? `${edge.end[0]}px ${edge.end[1]}px` : "outside-to-node" } };
   });
   return [...zones, ...nodes, ...edges];
 }
 
 const STYLE = [
-  { selector: "node", style: { "font-family": font, "font-size": 11, color: "#0F172A" } },
+  { selector: "node", style: { "font-family": font, "font-size": 15, color: "#0F172A" } },
   { selector: "node.zone", style: {
     shape: "rectangle", width: "data(width)", height: "data(height)", "background-color": "data(colour)",
     "background-opacity": 0.06, "border-width": 2, "border-color": "data(colour)", label: "data(label)",
-    "text-valign": "top", "text-halign": "center", "font-size": 13, "font-weight": "bold", color: "data(colour)",
+    "text-valign": "top", "text-halign": "center", "font-size": 16, "font-weight": "bold", color: "data(colour)",
     "text-margin-x": "data(shift)", "text-margin-y": 10, "text-background-color": "#FFFFFF",
     "text-background-opacity": 1, "text-background-padding": 3, "z-compound-depth": "bottom", "z-index": 0,
     events: "no" } },
   { selector: "node.device, node.switch", style: {
     shape: "rectangle", width: 52, height: 52, "background-opacity": 0, "border-width": 0,
     "background-image": "data(symbol)", "background-fit": "contain", "background-clip": "none", "z-index": 10 } },
-  { selector: "node.device", style: { label: "data(label)", "text-wrap": "wrap", "line-height": 1.35 } },
+  { selector: "node.device", style: { label: "data(label)", "text-wrap": "wrap", "line-height": 1.35,
+    "text-background-color": "#FFFFFF", "text-background-opacity": 1, "text-background-padding": 1 } },
   ...Object.entries(SIDES).map(([side, style]) => ({ selector: `node.device[side = "${side}"]`, style })),
   { selector: "edge", style: { width: 2, "curve-style": "straight", "line-color": LINK, "font-family": font,
-    "font-size": 10, "z-index": 5 } },
-  { selector: "edge.link", style: {
-    "source-label": "data(address)", "source-text-offset": 52, color: LINK,
-    "text-background-color": "#FFFFFF", "text-background-opacity": 1, "text-background-padding": 2 } },
-  { selector: "edge.mirror", style: {
-    "line-color": MIRROR, "line-style": "dashed", "source-label": "data(mirror)", "source-text-offset": 32,
-    color: MIRROR, "text-background-color": "#FFFFFF", "text-background-opacity": 1,
-    "text-background-padding": 2 } },
-  { selector: "edge.logs", style: {
-    "line-color": LOGS, "line-style": "dashed", "curve-style": "segments", "edge-distances": "node-position",
-    "segment-weights": "data(weights)", "segment-distances": "data(distances)", "target-endpoint": "data(end)",
-    width: 1.5, "target-arrow-shape": "triangle", "target-arrow-color": LOGS, "arrow-scale": 0.9 } },
+    "z-index": 5, "source-endpoint": "data(start)", "target-endpoint": "data(end)" } },
+  { selector: "edge.routed", style: {
+    "curve-style": "segments", "edge-distances": "node-position", "segment-weights": "data(weights)",
+    "segment-distances": "data(distances)" } },
+  { selector: "node.address", style: { width: 1, height: 1, "background-opacity": 0, "border-width": 0,
+    label: "data(label)", "text-valign": "center", color: LINK, "text-background-color": "#FFFFFF",
+    "text-background-opacity": 1, "text-background-padding": 1, events: "no" } },
+  { selector: 'node.address[side = "right"]', style: { "text-halign": "right" } },
+  { selector: 'node.address[side = "left"]', style: { "text-halign": "left" } },
 ];
 
 function boxOf(ele, only) {
@@ -157,7 +155,7 @@ function located(spec) {
 function textRects() {
   const cy = view.cy;
   if (!cy) return [];
-  const nodes = cy.nodes(".device").map((node) => boxOf(node, { includeOverlays: false }));
+  const nodes = cy.nodes(".device, .address").map((node) => boxOf(node, { includeOverlays: false }));
   const captions = cy.nodes(".zone").map((zone) => boxOf(zone, { ...LABELS, includeMainLabels: true }));
   const ends = cy.edges(".link, .mirror").map((edge) => boxOf(edge, { ...LABELS, includeSourceLabels: true,
                                                                includeMainLabels: true }));

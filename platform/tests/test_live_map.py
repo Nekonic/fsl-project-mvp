@@ -43,7 +43,7 @@ CONTAINERS = {
     "corp-wp": ("s1_corp-default", "", (), """9: eth0@if17    inet 172.19.0.3/16 brd 172.19.255.255 scope global eth0
 10: eth1@if18    inet 10.32.0.60/24 brd 10.32.0.255 scope global eth1"""),
     "corp-db": ("s1_corp-default", "", (), """11: eth0@if19    inet 172.19.0.2/16 brd 172.19.255.255 scope global eth0"""),
-    "sensor": ("s1_estate", "-c /etc/suricata/suricata.yaml --af-packet", ("/var/log/cr/s1/sensor",),
+    "sensor": ("s1_web", "-c /etc/suricata/suricata.yaml --af-packet", (),
                """23: mgmt@if33    inet 172.29.1.11/24 brd 172.29.1.255 scope global mgmt"""),
     "sensor-shipper": ("container:5d1f", "-n -f /etc/rsyslog.conf -i /tmp/rsyslogd.pid",
                        ("/opt/cr/s1/rsyslog/sensor-shipper.conf", "/var/log/cr/s1/sensor"), ""),
@@ -61,32 +61,24 @@ LEGS = {
     "board-db": (("eth0", "board-default", "02:42:ac:12:00:02"),),
     "corp-wp": (("eth0", "corp-default", "02:42:ac:13:00:03"), ("eth1", "web", "02:42:0a:20:00:3c")),
     "corp-db": (("eth0", "corp-default", "02:42:ac:13:00:02"),),
-    "sensor": (("dmz", "estate", "02:42:0a:1e:00:02"), ("web", "web", "02:42:0a:20:00:05"),
-               ("mgmt", "mgmt", "02:42:ac:1d:01:0b")),
+    "sensor": (("web", "web", "02:42:0a:20:00:05"), ("mgmt", "mgmt", "02:42:ac:1d:01:0b")),
     "sensor-shipper": (),
     "waf-shipper": (),
     "log-server": (("eth0", "mgmt", "02:42:ac:1d:01:0a"),),
 }
-FORWARDED = """@forward /var/log/cr/s1/sensor/eve.json
-@forward /var/log/cr/s1/waf/audit.log
-@port 514/tcp
-@uplink 10.31.0.2:5140/udp"""
-
-
 def said(without=()):
     blocks = [NETWORKS]
-    for service, (mode, args, mounts, addresses) in CONTAINERS.items():
+    for service, (mode, args, _, addresses) in CONTAINERS.items():
         if service in without:
             continue
         links = [f"{at}: {name}@if{at + 20}: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1442 qdisc noqueue state UP "
                  f"mode DEFAULT group default \\    link/ether {mac} brd ff:ff:ff:ff:ff:ff link-netnsid 0"
                  for at, (name, _, mac) in enumerate(LEGS[service], start=2) if mac]
         blocks.append("\n".join([f"@container {service} {mode}", f"@args {args}",
-                                 *(f"@mount {mount}" for mount in mounts),
                                  *(f"@leg {'s1_' + network if mac else network} {mac}"
                                    for _, network, mac in LEGS[service]), ""]
                                 + ([*links, addresses] if addresses else [])))
-    return "\n".join(blocks + [FORWARDED]) + "\n"
+    return "\n".join(blocks) + "\n"
 
 
 class FakeSlot:
@@ -144,7 +136,7 @@ def sensor_sniffing_the_web_bridge_by_name():
     start = wired.index("@container sensor ")
     end = wired.index("@container ", start + 1)
     return (wired[:start] + "@container sensor host\n@args -c /etc/suricata/suricata.yaml --af-packet=s1-web\n"
-            "@mount /var/log/cr/s1/sensor\n" + wired[end:])
+            + wired[end:])
 
 
 def links(drawn):
@@ -165,33 +157,14 @@ def test_one_read_on_the_range_host_gives_every_container_its_networks_and_addre
     assert fake.ran == [("", rangehost.wiring("s1"))], "one ssh round trip lists the whole slot"
 
 
-def test_the_sensor_is_read_with_the_networks_it_sniffs_and_the_logs_by_the_files_its_shippers_read():
+def test_the_sensor_is_read_with_the_network_it_sniffs():
     wired = interfaces.wiring(said(), "s1")
 
     sniffing = {one.service: sorted(wired.legs(one)[name] for name in one.sniffs)
                 for one in wired.containers if one.sniffs}
-    assert sniffing == {"sensor": ["estate", "web"]}, "a sniffing interface is the sensor's one with no address"
-    assert {one.service for one in wired.logging()} == {"sensor", "waf", "sensor-shipper", "waf-shipper"}
+    assert sniffing == {"sensor": ["web"]}, "a sniffing interface is the sensor's one with no address"
     assert "sensor" not in {one.host for one in wired.interfaces()}, "a sensor's own interfaces are no learner host's"
-    assert wired.port == "514/tcp" and wired.uplink == "10.31.0.2:5140/udp"
     assert wired.network("board-default").bridge == "br-6b1c0d2e3a5b", "Docker's own name for an unnamed bridge"
-
-
-def test_the_listing_reads_the_shipped_files_the_log_server_s_port_and_its_uplink_from_the_configs_the_slot_runs(tmp_path):
-    files = rangehost.slot_files(ROOT, rangehost.Slot(1, rangehost.estate("10.30.0.0/16", 1), "dev", 1442),
-                                 ("board", "corp"), declared.read().origins, declared.read().default_origin,
-                                 "10.31.0.2", 5140, openstack.collected(declared.read()))
-    for name, body in files.items():
-        if name.startswith(f"{rangehost.SHIPPING}/"):
-            (tmp_path / name).parent.mkdir(exist_ok=True)
-            (tmp_path / name).write_bytes(body)
-    tail = "\n".join(line for line in rangehost.WIRING.splitlines() if line.startswith("[ ! -"))
-    read = subprocess.run(["sh", "-c", f'f=$1\n{tail}', "sh", str(tmp_path / rangehost.SHIPPING)],
-                          capture_output=True, text=True, check=True).stdout
-
-    assert interfaces.wiring(read, "s1").forwarded == ("/var/log/cr/s1/sensor/eve.json", "/var/log/cr/s1/waf/audit.log")
-    assert interfaces.wiring(read, "s1").port == "514/tcp"
-    assert interfaces.wiring(read, "s1").uplink == "10.31.0.2:5140/udp"
 
 
 def test_a_range_host_that_does_not_answer_is_an_outage_not_an_empty_slot():
@@ -205,9 +178,11 @@ def test_web_services_behind_the_waf_are_drawn_on_the_bridge_they_share_with_it(
     drawn = board_map()
 
     assert [(zone["id"], zone["caption"]) for zone in drawn["zones"]] == [
-        ("internet", "internet"), ("estate", "dmz"), ("web", "web"), ("board-default", "database"), ("mgmt", "mgmt")]
+        ("internet", "internet"), ("estate", "dmz"), ("web", "web"), ("board-default", "database"),
+        ("corp-default", "database"), ("mgmt", "mgmt")]
     assert {pair for pair in links(drawn) if pair[1] in ("switch:estate", "switch:web")} == {
-        ("router", "switch:estate"), ("waf", "switch:estate"), ("waf", "switch:web"), ("board.com", "switch:web")}
+        ("router", "switch:estate"), ("waf", "switch:estate"), ("waf", "switch:web"), ("board.com", "switch:web"),
+        ("corp.com", "switch:web")}
     assert links(drawn)[("board.com", "switch:web")] == "10.32.0.59"
 
 
@@ -217,37 +192,41 @@ def test_each_bridge_is_one_switch_and_each_interface_on_it_is_one_link_to_it():
     assert sorted(links(drawn)) == sorted([
         ("kali", "switch:internet"), ("router", "switch:internet"), ("router", "switch:estate"),
         ("waf", "switch:estate"), ("waf", "switch:web"), ("waf", "switch:mgmt"), ("board.com", "switch:web"),
-        ("board.com", "switch:board-default"), ("board-db", "switch:board-default"),
+        ("board.com", "switch:board-default"), ("board-db", "switch:board-default"), ("corp.com", "switch:web"),
+        ("corp.com", "switch:corp-default"), ("corp-db", "switch:corp-default"),
         ("sensor:sensor", "switch:mgmt"), ("log-server", "switch:mgmt")])
-    assert {edge["kind"] for edge in drawn["edges"]} == {"link", "mirror", "uplink"}
+    assert {edge["kind"] for edge in drawn["edges"]} == {"link", "mirror"}
 
 
-def test_each_link_is_labelled_with_the_address_its_container_holds_on_that_bridge():
-    shown = links(board_map())
+def test_each_interface_s_full_address_stands_beside_its_link_inside_the_box_of_its_subnet():
+    drawn = board_map()
+    shown = links(drawn)
+    labels = {node["id"]: node for node in drawn["nodes"] if node["kind"] == "address"}
+    boxes = {zone["id"]: zone["box"] for zone in drawn["zones"]}
 
     assert shown[("kali", "switch:internet")] == "5.188.10.10", "the address kali's own traffic leaves from"
     assert shown[("router", "switch:internet")] == "5.188.10.1" and shown[("router", "switch:estate")] == "10.30.0.1"
-    assert shown[("waf", "switch:estate")] == "10.30.0.177" and shown[("board.com", "switch:web")] == "10.32.0.59"
-    assert shown[("board.com", "switch:board-default")] == "172.18.0.3"
-    assert [zone["subnet"] for zone in board_map()["zones"]] == [
-        "", "10.30.0.0/24", "10.32.0.0/24", "172.18.0.0/16", "172.29.1.0/24"]
-    assert shown[("sensor:sensor", "switch:mgmt")] == "172.29.1.11" and shown[("waf", "switch:mgmt")] == "172.29.1.12"
-    assert shown[("log-server", "switch:mgmt")] == "172.29.1.10"
+    assert shown[("waf", "switch:estate")] == "10.30.0.177" and shown[("board.com", "switch:board-default")] == "172.18.0.3"
+    assert [zone["subnet"] for zone in drawn["zones"]] == [
+        "", "10.30.0.0/24", "10.32.0.0/24", "172.18.0.0/16", "172.19.0.0/16", "172.29.1.0/24"]
+    assert {(label["text"], label["zone"]) for label in labels.values()} == {
+        (address, target.removeprefix("switch:")) for (_, target), address in shown.items()}
+    for label in labels.values():
+        left, right = topology._spans(label)
+        box = boxes[label["zone"]]
+        assert box[0] < left and right < box[2] and box[1] < label["y"] < box[3], label
+    assert not [edge for edge in drawn["edges"] if edge.get("label") or edge.get("host")], "nothing is written mid-line"
 
 
-def test_the_sensor_mirrors_both_legs_of_the_waf_and_every_log_travels_on_a_drawn_link():
+def test_the_sensor_watches_the_web_servers_behind_the_waf_and_reports_on_the_management_network():
     drawn = board_map()
     edges = {(edge["kind"], edge["source"], edge["target"]) for edge in drawn["edges"]}
 
-    assert {(source, target) for kind, source, target in edges if kind == "mirror"} == {
-        ("sensor:sensor", "switch:estate"), ("sensor:sensor", "switch:web")}
-    assert not {edge for edge in edges if edge[0] == "logs"}, (
-        "the sensor and the WAF each ship from their own management interface, so the 관제망 links carry their logs")
+    assert {(source, target) for kind, source, target in edges if kind == "mirror"} == {("sensor:sensor", "switch:web")}
     assert {("link", "sensor:sensor", "switch:mgmt"), ("link", "waf", "switch:mgmt"),
-            ("link", "log-server", "switch:mgmt"), ("uplink", "log-server", "collector")} <= edges
-    nodes = {node["id"]: node for node in drawn["nodes"]}
-    assert nodes["log-server"]["port"] == "514/tcp"
-    assert nodes["collector"]["address"] == "10.31.0.2:5140/udp", "the log server's own forwarding target"
+            ("link", "log-server", "switch:mgmt")} <= edges
+    assert not [node for node in drawn["nodes"] if node["kind"] in ("collector", "host")], (
+        "the log path ends at the log server; the range host and the platform are not the learner's network")
 
 
 def test_a_sensor_hangs_off_the_bridge_it_sniffs_by_name_or_by_its_own_interface_on_it():
@@ -255,26 +234,23 @@ def test_a_sensor_hangs_off_the_bridge_it_sniffs_by_name_or_by_its_own_interface
         return {(edge["source"], edge["target"]) for edge in board_map(output=output)["edges"]
                 if edge["kind"] == "mirror"}
 
-    assert ("sensor:sensor", "switch:web") in mirrored(None)
+    assert mirrored(None) == {("sensor:sensor", "switch:web")}
     assert mirrored(sensor_sniffing_the_web_bridge_by_name()) == {("sensor:sensor", "switch:web")}
 
 
-def test_customers_are_addresses_on_kali_and_not_a_device():
+def test_customer_addresses_are_not_drawn_as_a_device_or_a_label():
     drawn = board_map()
-    kali = next(node for node in drawn["nodes"] if node["id"] == "kali")
 
-    assert "customers" not in {node["id"] for node in drawn["nodes"]}
-    assert kali["customers"] == {"address": "175.192.0.10", "more": 2}
+    assert "customers" not in repr(drawn) and "175.192.0.10" not in repr(drawn)
 
 
-def test_the_map_shows_its_own_wargame_and_no_management_platform_or_device_name():
+def test_the_map_draws_every_target_the_slot_runs_and_nothing_outside_the_slot():
     drawn = board_map()
     text = repr(drawn)
 
-    assert "corp" not in text and "172.19." not in text
-    beside = repr([node for node in drawn["nodes"] if node["id"] != "collector"]) + repr(drawn["zones"])
-    assert "10.31." not in beside, "only the log server's uplink names where its logs leave the slot for"
-    assert "cr-" not in text and "s1-" not in text and "s1_" not in text
+    assert {"board.com", "board-db", "corp.com", "corp-db"} <= {node["id"] for node in drawn["nodes"]}
+    assert [zone.get("owner") for zone in drawn["zones"] if zone["caption"] == "database"] == ["board", "corp"]
+    assert "10.31." not in text and "cr-" not in text and "s1-" not in text and "s1_" not in text
     assert not {node["id"] for node in drawn["nodes"]} & {"sw1", "sw2", "sw3", "internet"}
 
 
@@ -293,78 +269,99 @@ def nodes_of(drawn):
     return {node["id"]: node for node in drawn["nodes"]}
 
 
-def test_zones_stand_left_to_right_in_the_order_traffic_reaches_them():
-    zones = [zone for zone in board_map()["zones"] if zone["caption"] != topology.BAND]
-    order = [zone["caption"] for zone in sorted(zones, key=lambda zone: zone["box"][0])]
+def points(edge, placed):
+    source, target = placed[edge["source"]], placed[edge["target"]]
+    start, end = edge.get("start") or [0, 0], edge.get("end") or [0, 0]
+    return ([(source["x"] + start[0], source["y"] + start[1]), *map(tuple, edge.get("route") or ())]
+            + [(target["x"] + end[0], target["y"] + end[1])])
 
-    assert order == sorted(order, key=topology.CAPTIONS.index)
-    assert all(one["box"][2] < other["box"][0] for one, other in zip(zones, zones[1:]))
+
+def crosses(segment, box):
+    (x1, y1), (x2, y2) = segment
+    return min(x1, x2) < box[2] and box[0] < max(x1, x2) and min(y1, y2) < box[3] and box[1] < max(y1, y2)
 
 
-def test_the_sensor_stands_in_the_management_network_below_the_bridges_it_mirrors():
+def test_the_waf_stands_in_the_dmz_the_web_servers_in_their_segment_and_the_router_on_the_boundary():
     drawn = board_map()
     placed = nodes_of(drawn)
-    mirrors = [edge for edge in drawn["edges"] if edge["kind"] == "mirror"]
+    boxes = {zone["id"]: zone["box"] for zone in drawn["zones"]}
 
-    flow = [zone for zone in drawn["zones"] if zone["caption"] != topology.BAND]
-    [band] = [zone for zone in drawn["zones"] if zone["caption"] == topology.BAND]
-    assert len(mirrors) == 2
-    for edge in mirrors:
-        sensor = placed[edge["source"]]
-        assert not any(inside(sensor, zone["box"]) for zone in flow) and inside(sensor, band["box"]), sensor
-        assert sensor["y"] > max(zone["box"][3] for zone in flow)
+    assert inside(placed["waf"], boxes["estate"]) and inside(placed["switch:estate"], boxes["estate"])
+    assert inside(placed["board.com"], boxes["web"]) and inside(placed["corp.com"], boxes["web"])
+    assert not any(inside(placed["router"], box) for box in boxes.values())
+    assert boxes["internet"][2] <= placed["router"]["x"] - topology.ICON_HALF
+    assert placed["router"]["x"] + topology.ICON_HALF <= boxes["estate"][0]
+    assert inside(placed["sensor:sensor"], boxes["mgmt"]) and inside(placed["log-server"], boxes["mgmt"])
+    assert inside(placed["board-db"], boxes["board-default"]) and inside(placed["corp-db"], boxes["corp-default"])
 
 
-def test_the_management_network_runs_under_every_zone_with_the_log_server_on_it_and_its_uplink_below():
+def test_no_two_zone_boxes_overlap_and_no_two_captions_read_the_same():
+    drawn = board_map()
+    boxes = [zone["box"] for zone in drawn["zones"]]
+
+    for at, one in enumerate(boxes):
+        for other in boxes[at + 1:]:
+            assert not (one[0] < other[2] and other[0] < one[2] and one[1] < other[3] and other[1] < one[3])
+    named = [(zone["caption"], zone.get("owner", "")) for zone in drawn["zones"]]
+    assert len(set(named)) == len(named)
+
+
+def test_every_line_turns_at_right_angles_and_runs_through_no_icon_and_no_box_it_does_not_belong_to():
     drawn = board_map()
     placed = nodes_of(drawn)
-    flow = [zone for zone in drawn["zones"] if zone["caption"] != topology.BAND]
-    [band] = [zone for zone in drawn["zones"] if zone["caption"] == topology.BAND]
-
-    assert band["box"][0] <= min(zone["box"][0] for zone in flow) and band["box"][2] >= max(zone["box"][2] for zone in flow)
-    assert band["box"][1] > max(zone["box"][3] for zone in flow)
-    assert inside(placed["log-server"], band["box"]) and inside(placed[f"switch:{band['id']}"], band["box"])
-    assert not any(inside(placed["collector"], zone["box"]) for zone in drawn["zones"])
-    assert placed["collector"]["y"] > band["box"][3], "the uplink leaves the 관제망 for the platform"
-    assert placed[f"switch:{band['id']}"]["x"] == placed["waf"]["x"], (
-        "the WAF's management link drops straight from the gap between its two zones")
-
-
-def test_a_device_stands_inside_its_only_zone_or_on_the_boundary_between_its_zones():
-    drawn = board_map()
-    band = next(zone["id"] for zone in drawn["zones"] if zone["caption"] == topology.BAND)
-    boxes = {zone["id"]: zone["box"] for zone in drawn["zones"] if zone["id"] != band}
-
-    for node in drawn["nodes"]:
-        held = [zone for zone in node.get("zones") or ([node["zone"]] if node["kind"] == "switch" else [])
-                if zone != band]
-        within = {zone for zone, box in boxes.items() if inside(node, box)}
-        assert within == (set(held) if len(held) == 1 else set()), node
-        if len(held) > 1:
-            assert boxes[held[0]][2] < node["x"] < boxes[held[-1]][0], node
-
-
-def test_a_log_edge_turns_at_right_angles_and_crosses_no_other_device_or_zone():
-    drawn = board_map()
-    placed = nodes_of(drawn)
+    boxes = {zone["id"]: zone["box"] for zone in drawn["zones"]}
     half = topology.ICON_HALF
+    icons = [node for node in drawn["nodes"] if node["kind"] != "address"]
 
-    for edge in (edge for edge in drawn["edges"] if edge["kind"] == "logs"):
+    for edge in drawn["edges"]:
         source, target = placed[edge["source"]], placed[edge["target"]]
-        points = [(source["x"], source["y"]), *map(tuple, edge["route"]),
-                  (target["x"] + edge["end"][0], target["y"] + edge["end"][1])]
-        own = [zone["box"] for zone in drawn["zones"] if inside(source, zone["box"]) or inside(target, zone["box"])]
-        for (x1, y1), (x2, y2) in zip(points, points[1:]):
+        own = set(source.get("zones") or ()) | {source.get("zone"), target["zone"]}
+        for segment in zip(points(edge, placed), points(edge, placed)[1:]):
+            (x1, y1), (x2, y2) = segment
             assert x1 == x2 or y1 == y2, edge
-            for node in drawn["nodes"]:
+            for node in icons:
                 if node["id"] not in (source["id"], target["id"]):
-                    assert not (min(x1, x2) < node["x"] + half and node["x"] - half < max(x1, x2)
-                                and min(y1, y2) < node["y"] + half and node["y"] - half < max(y1, y2)), (edge, node)
-            for zone in drawn["zones"]:
-                box = zone["box"]
-                if box not in own:
-                    assert not (min(x1, x2) < box[2] and box[0] < max(x1, x2)
-                                and min(y1, y2) < box[3] and box[1] < max(y1, y2)), (edge, zone["id"])
+                    assert not crosses(segment, [node["x"] - half, node["y"] - half,
+                                                 node["x"] + half, node["y"] + half]), (edge, node["id"])
+            for zone, box in boxes.items():
+                if zone not in own:
+                    assert not crosses(segment, box), (edge["id"], zone)
+
+
+def test_no_two_lines_run_side_by_side():
+    drawn = board_map()
+    placed = nodes_of(drawn)
+    runs = [(edge["id"], segment) for edge in drawn["edges"]
+            for segment in zip(points(edge, placed), points(edge, placed)[1:])]
+
+    for at, (one, ((a1, b1), (a2, b2))) in enumerate(runs):
+        for other, ((c1, d1), (c2, d2)) in runs[at + 1:]:
+            if one == other:
+                continue
+            if a1 == a2 and c1 == c2 and abs(a1 - c1) < 40:
+                assert min(max(b1, b2), max(d1, d2)) - max(min(b1, b2), min(d1, d2)) < 80, (one, other)
+            if b1 == b2 and d1 == d2 and abs(b1 - d1) < 40:
+                assert min(max(a1, a2), max(c1, c2)) - max(min(a1, a2), min(c1, c2)) < 80, (one, other)
+
+
+def test_address_labels_do_not_overlap_each_other_or_an_icon():
+    drawn = board_map()
+    labels = [node for node in drawn["nodes"] if node["kind"] == "address"]
+    icons = [node for node in drawn["nodes"] if node["kind"] != "address"]
+    half, line = topology.ICON_HALF, topology.LINE
+
+    def area(label):
+        left, right = topology._spans(label)
+        return [left, label["y"] - line // 2, right, label["y"] + line // 2]
+
+    for at, one in enumerate(labels):
+        for other in labels[at + 1:]:
+            assert not crosses(((area(one)[0], area(one)[1]), (area(one)[2], area(one)[3])), area(other)), (
+                one["text"], other["text"])
+        for node in icons:
+            assert not crosses(((area(one)[0], area(one)[1]), (area(one)[2], area(one)[3])),
+                               [node["x"] - half, node["y"] - half, node["x"] + half, node["y"] + half]), (
+                one["text"], node["id"])
 
 
 def test_the_same_wiring_is_laid_out_the_same_on_every_slot_and_every_read():

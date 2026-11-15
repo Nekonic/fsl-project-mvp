@@ -58,7 +58,6 @@ CUSTOMERS = "customers"
 ROUTER = "router"
 WAF = "waf"
 LOG_SERVER = "log-server"
-UPLINKED = "collector"
 INTERNET = "internet"
 SERVICE = NAMED_ON
 SWITCH = "switch:{zone}"
@@ -109,6 +108,10 @@ def learner(declared, wargame: str, customers_from: str = "", customers_prefer: 
     for real in (compose.get(database, ""), roles.get(database, "")):
         if real not in hosts:
             put(real, database)
+    for site, domain in sorted(sites.items()):
+        if site != wargame:
+            put(compose.get(site, ""), domain)
+            put(compose.get(f"{site}{DATABASE_SUFFIX}", ""), f"{site}{DATABASE_SUFFIX}")
     put(LOG_STORE, LOG_SERVER)
     put(compose.get(LOG_SERVER, ""), LOG_SERVER)
     for sensing, sensed in sorted(declared.watches.items()):
@@ -133,8 +136,9 @@ def learner(declared, wargame: str, customers_from: str = "", customers_prefer: 
         hidden.add(CUSTOMERS)
     first = next((origin.subnet for origin in declared.origins if origin.id == declared.default_origin), "")
     prefers = {ATTACKER: (first,), CUSTOMERS: tuple(customers_prefer), "": (first,)}
-    kinds = {ATTACKER: "kali", ROUTER: "router", WAF: "waf", sites[wargame]: "server", database: "database",
-             LOG_SERVER: "logs"}
+    kinds = {ATTACKER: "kali", ROUTER: "router", WAF: "waf", LOG_SERVER: "logs",
+             **{domain: "server" for domain in sites.values()},
+             **{f"{site}{DATABASE_SUFFIX}": "database" for site in sites}}
     return Learner(wargame=wargame, hosts={real: tuple(shown) for real, shown in hosts.items()}, roles=placed,
                    switches=switches, hidden=frozenset(hidden), prefers=prefers,
                    zones={"internet": INTERNET, "service": SERVICE, "database": backend}, kinds=kinds)
@@ -213,13 +217,8 @@ def _head(found, prefers, strict=False):
     ranked = [one for one in found if not strict or _rank(one, prefers) < len(prefers)]
     return min(ranked, key=lambda one: (_rank(one, prefers), one.name, _ip(one)), default=None)
 
-def _customers(learner, found, host: str) -> dict:
-    head = link_heads(learner, found).get((CUSTOMERS, INTERNET))
-    if head is None or CUSTOMERS not in learner.hosts.get(host, ()):
-        return {}
-    held = [one for one in found if one.host == host and _rank(one, learner.prefers[CUSTOMERS]) < len(
-        learner.prefers[CUSTOMERS])]
-    return {"address": head.address.partition("/")[0], "more": max(0, len(held) - 1)}
+def _link(source: str, zone: str, address: str) -> dict:
+    return {"source": source, "target": SWITCH.format(zone=zone), "kind": "link", "address": address}
 
 def graph(learner, wiring) -> dict:
     found = wiring.interfaces()
@@ -228,7 +227,6 @@ def graph(learner, wiring) -> dict:
     zones = [zone for zone in ordered(learner, found) if wiring.network(zone)]
     nodes = [{"id": SWITCH.format(zone=zone), "kind": "switch", "zone": zone} for zone in zones]
     edges = []
-    drawn: dict[str, str] = {}
     for container in sorted(wiring.containers, key=lambda one: one.service):
         if container.sniffs:
             legs = wiring.legs(container)
@@ -236,172 +234,264 @@ def graph(learner, wiring) -> dict:
                         if (network := wiring.bridged(name) or wiring.network(legs.get(name, ""))) is not None
                         and network.key in zones]
             if mirrored:
-                drawn[container.service] = SENSOR.format(service=container.service)
+                sensor = SENSOR.format(service=container.service)
                 linked = [(legs[name], address.partition("/")[0]) for name, address in container.addresses
                           if legs.get(name) in zones and legs[name] not in mirrored]
-                nodes.append({"id": drawn[container.service], "kind": "sensor", "zone": mirrored[0],
+                nodes.append({"id": sensor, "kind": "sensor", "zone": mirrored[0],
                               **({"zones": [zone for zone, _ in linked]} if linked else {})})
-                edges += [{"source": drawn[container.service], "target": SWITCH.format(zone=zone),
-                           "kind": "mirror"} for zone in mirrored]
-                edges += [{"source": drawn[container.service], "target": SWITCH.format(zone=zone),
-                           "kind": "link", "address": address} for zone, address in linked]
+                edges += [{"source": sensor, "target": SWITCH.format(zone=zone), "kind": "mirror"}
+                          for zone in mirrored]
+                edges += [_link(sensor, zone, address) for zone, address in linked]
             continue
         named = [shown for shown in learner.hosts.get(container.host, ()) if shown != CUSTOMERS]
-        if not named or named[0] in learner.hidden:
+        if not named:
             continue
         name, legs = named[0], wiring.legs(container)
         on = [zone for zone in zones if zone in legs.values()]
         if not on:
             continue
-        drawn[container.service] = name
-        nodes.append({"id": name, "kind": learner.kinds.get(name, "host"), "name": name, "zones": on,
-                      "customers": _customers(learner, found, container.host)})
-        for zone in on:
-            head = heads.get((name, zone))
-            edges.append({"source": name, "target": SWITCH.format(zone=zone), "kind": "link",
-                          "address": head.address.partition("/")[0] if head else ""})
-    server = next((node for node in nodes if node["id"] == LOG_SERVER), None)
-    beside = set(server["zones"]) if server is not None else set()
-    logging = [drawn[one.service] for one in wiring.logging() if one.service in drawn
-               and not beside & set(next(node.get("zones") or () for node in nodes if node["id"] == drawn[one.service]))]
-    if server is not None:
-        server["port"] = wiring.port
-        edges += [{"source": source, "target": LOG_SERVER, "kind": "logs"} for source in logging]
-    if server is not None and wiring.uplink:
-        nodes.append({"id": UPLINKED, "kind": UPLINKED, "name": "", "address": wiring.uplink})
-        edges.append({"source": LOG_SERVER, "target": UPLINKED, "kind": "uplink"})
+        held = {zone: head.address.partition("/")[0] if (head := heads.get((name, zone))) else "" for zone in on}
+        nodes.append({"id": name, "kind": learner.kinds.get(name, "host"), "name": name, "zones": on})
+        edges += [_link(name, zone, address) for zone, address in held.items()]
     drawn_zones = [{"id": zone, "caption": captioned[zone],
-                    "subnet": "" if captioned[zone] == "internet" else next(iter(wiring.network(zone).subnets), "")}
+                    "subnet": "" if captioned[zone] == "internet" else next(iter(wiring.network(zone).subnets), ""),
+                    **({"owner": zone.removesuffix(BACKEND_SUFFIX)} if captioned[zone] == "database" else {})}
                    for zone in zones]
-    laid_out(drawn_zones, nodes, edges)
+    nodes += laid_out(drawn_zones, nodes, edges)
     return {"zones": drawn_zones, "nodes": nodes,
             "edges": [{"id": f"{edge['kind']}:{edge['source']}:{edge['target']}", **edge} for edge in edges]}
 
 ICON_HALF = 26
-ROW = 150
-HANG = 90
-HANG_SPREAD = 160
-HANG_ROOM = 120
-OUTER = 170
-OUTER_ROOM = 110
-HALF = 90
-GAP_HALF = 120
-ZONE_GAP = 80
-TOP = 100
-FLOOR = 70
-SENSOR_DROP = 90
-SENSOR_SPREAD = 90
-LANE_DROP = 60
-LANE = 12
-COLLECTOR_DROP = 80
-END_SPREAD = 12
+LINE = 21
+LABEL_GAP = 8
+PAD = 30
+CAPTION_WIDTH = 250
+CAPTION_CLEAR = 16
+SPAN = 200
+DB_SPAN = 230
+TIER = 440
+DROP = 480
+WEB_SPAN = 250
+BAND_GAP = 90
+BAND_DROP = -160
+TURN = 34
+OFFSET = 22
+BOX_GAP = 20
+ADDRESS_GAP = 6
+ADDRESS_RISE = 13
+CHAR_WIDTH = 8
 BAND = "mgmt"
-BAND_TOP = 50
-BAND_GAP = 40
-BAND_CAPTION = 110
-BAND_SENSOR = 180
-UPLINK_DROP = 90
-BAND_FLOOR = 90
-ACROSS = ("kali", "router", "waf", "server", "database")
 
-def _across(node) -> tuple:
-    return (ACROSS.index(node["kind"]) if node["kind"] in ACROSS else len(ACROSS), node["id"])
 
-def laid_out(zones, nodes, edges) -> None:
-    band = next((zone for zone in zones if zone["caption"] == BAND), None)
-    flow = [zone for zone in zones if zone is not band]
-    order = [zone["id"] for zone in flow]
-    index = {zone: at for at, zone in enumerate(order)}
-    flowing = {node["id"]: [zone for zone in node.get("zones") or () if zone in index] for node in nodes}
-    devices = sorted((node for node in nodes if flowing[node["id"]]), key=_across)
-    alone = {zone: [node for node in devices if flowing[node["id"]] == [zone]] for zone in order}
-    between = {at: [node for node in devices if len(flowing[node["id"]]) > 1
-                    and min(index[zone] for zone in flowing[node["id"]]) == at] for at in range(len(order))}
-    at_x: dict[str, int] = {}
-    edges_of_zone: dict[str, tuple[int, int]] = {}
-    gaps: list[int] = []
-    left = 0
-    for at, zone in enumerate(order):
-        members = alone[zone]
-        outer = members[:1] if at in (0, len(order) - 1) else []
-        outward = -1 if at == 0 else 1
-        hanging = members[len(outer):]
-        offsets = [(-1 if k % 2 == 0 else 1) * (HANG + HANG_SPREAD * (k // 2)) for k in range(len(hanging))]
-        reach_left = max([HALF] + [-dx + HANG_ROOM for dx in offsets if dx < 0]
-                         + [OUTER + OUTER_ROOM for _ in outer if outward < 0])
-        reach_right = max([HALF] + [dx + HANG_ROOM for dx in offsets if dx > 0]
-                          + [OUTER + OUTER_ROOM for _ in outer if outward > 0])
-        bridge = left + reach_left
-        at_x[SWITCH.format(zone=zone)] = bridge
-        for node in outer:
-            node.update(x=bridge + outward * OUTER, y=0, label="above")
-        for node, dx in zip(hanging, offsets):
-            node.update(x=bridge + dx, y=ROW, label="left" if dx < 0 else "right")
-        edges_of_zone[zone] = (left, bridge + reach_right)
-        right = bridge + reach_right
-        if at < len(order) - 1 and between[at]:
-            gap = right + GAP_HALF
-            gaps.append(gap)
-            for row, node in enumerate(between[at]):
-                node.update(x=gap, y=row * ROW, label="above")
-            left = gap + GAP_HALF
-        else:
-            left = right + ZONE_GAP
-    for node in nodes:
-        if node["id"] in at_x:
-            node.update(x=at_x[node["id"]], y=0)
-    bottom = max([0] + [node["y"] for node in devices if "y" in node]) + FLOOR
-    for zone in flow:
-        x1, x2 = edges_of_zone[zone["id"]]
-        zone["box"] = [x1, -TOP, x2, bottom]
-    sensor_y = bottom + SENSOR_DROP + (BAND_GAP + BAND_TOP if band else 0)
-    for zone in order:
-        for k, node in enumerate(node for node in nodes if node["kind"] == "sensor" and node["zone"] == zone):
-            node.update(x=at_x[SWITCH.format(zone=zone)] + k * SENSOR_SPREAD, y=sensor_y, label="right")
+def _below(node) -> int:
+    return ICON_HALF + (0 if node["kind"] == "switch" else LABEL_GAP + LINE)
+
+
+def _width(text: str) -> int:
+    return len(text) * CHAR_WIDTH
+
+
+def _spans(label) -> tuple[int, int]:
+    width = _width(label["text"])
+    return (label["x"], label["x"] + width) if label["label"] == "right" else (label["x"] - width, label["x"])
+
+
+def _boxed(held, labels=()) -> list[int]:
+    spans = [_spans(label) for label in labels]
+    x1 = min([node["x"] - ICON_HALF - PAD for node in held] + [left - ADDRESS_GAP for left, _ in spans])
+    x2 = max([node["x"] + ICON_HALF + PAD for node in held] + [right + ADDRESS_GAP for _, right in spans])
+    widen = max(0, CAPTION_WIDTH - (x2 - x1)) // 2
+    return [x1 - widen, min(node["y"] for node in held) - ICON_HALF - PAD,
+            x2 + widen, max([node["y"] + _below(node) + PAD for node in held]
+                            + [label["y"] + LINE for label in labels])]
+
+
+def _home(node, band) -> str | None:
+    held = node.get("zones") or []
+    if node["kind"] == "sensor":
+        return band
+    return None if node["kind"] in ("switch", "router") or not held else held[0]
+
+
+def laid_out(zones, nodes, edges) -> list[dict]:
     where = {node["id"]: node for node in nodes}
-    logs = [edge for edge in edges if edge["kind"] == "logs" and "x" in where.get(edge["source"], {})]
-    collector = next((node for node in nodes if node["kind"] == "logs"), None)
-    if collector is None:
-        return
-    sources = [where[edge["source"]]["x"] for edge in logs]
-    middle = gaps[0] if gaps else round(sum(sources) / max(1, len(sources)))
+    by: dict[str, list[str]] = {}
+    for zone in zones:
+        by.setdefault(zone["caption"], []).append(zone["id"])
+    band = next(iter(by.get(BAND, ())), None)
+    homes = {node["id"]: _home(node, band) for node in nodes}
+    held = {zone["id"]: [node for node in nodes if homes[node["id"]] == zone["id"]] for zone in zones}
+    switch = {zone["id"]: where[SWITCH.format(zone=zone["id"])] for zone in zones}
+    inet, dmz, web = (next(iter(by.get(caption, ())), None) for caption in ("internet", "dmz", "web"))
+    column = 0
+    if inet:
+        switch[inet].update(x=SPAN, y=0)
+        for k, node in enumerate(held[inet]):
+            node.update(x=SPAN - SPAN * (k + 1), y=0, label="below")
+        column = SPAN
+    for node in nodes:
+        if node["kind"] == "router":
+            node.update(x=column + SPAN, y=0, label="below")
+            column += SPAN
+    if dmz:
+        switch[dmz].update(x=column + SPAN, y=0)
+        for k, node in enumerate(held[dmz]):
+            node.update(x=column + SPAN * (k + 2), y=0, label="below")
+        column = max([column + SPAN] + [node["x"] for node in held[dmz]])
+    if web:
+        switch[web].update(x=column if held.get(dmz) else column + SPAN, y=DROP)
+        servers = held[web]
+        for k, node in enumerate(servers):
+            node.update(x=switch[web]["x"] + WEB_SPAN, y=DROP + round((k - (len(servers) - 1) / 2) * TIER), label="below")
+        for zone in by.get("database", ()):
+            server = next((node for node in servers if zone in node["zones"]), None)
+            at = server or {"x": switch[web]["x"] + WEB_SPAN, "y": DROP}
+            switch[zone].update(x=at["x"] + DB_SPAN, y=at["y"])
+            for k, node in enumerate(held[zone]):
+                node.update(x=switch[zone]["x"] + SPAN * (k + 1), y=at["y"], label="below")
+    flow = [zone for zone in zones if zone["id"] != band]
+    _routed(nodes, edges, where, switch, web, homes)
+    labels = _sided(nodes, edges, where, homes)
+    for zone in flow:
+        zone["box"] = _boxed([switch[zone["id"]], *held[zone["id"]]],
+                             [label for label in labels if label["zone"] == zone["id"]])
     if band is not None:
-        _on_the_band(band, flow, where, collector, logs, middle, sensor_y, bottom)
-        return
-    lanes_top = sensor_y + LANE_DROP
-    sides: dict[int, list[dict]] = {-1: [], 0: [], 1: []}
-    for edge in logs:
-        x = where[edge["source"]]["x"]
-        sides[(x > middle) - (x < middle)].append(edge)
-    lanes = 0
-    for side, held in sides.items():
-        held.sort(key=lambda edge: abs(where[edge["source"]]["x"] - middle))
-        for k, edge in enumerate(held):
-            source = where[edge["source"]]
-            lane = lanes_top + (2 * k + (side > 0)) * LANE
-            end = middle + side * END_SPREAD * (k + 1)
-            edge.update(route=[[source["x"], lane], [end, lane]], end=[end - middle, -ICON_HALF])
-            lanes = max(lanes, 2 * k + 2)
-    collector.update(x=middle, y=lanes_top + max(0, lanes - 1) * LANE + COLLECTOR_DROP, label="below")
+        bottom = max(zone["box"][3] for zone in flow)
+        _banded(band, held, switch, where, edges, bottom, web)
+        zone = next(zone for zone in zones if zone["id"] == band)
+        zone["box"] = _boxed([switch[band], *held[band]],
+                             [label for label in _sided(nodes, edges, where, homes) if label["zone"] == band])
+        _turned(edges, where, zones, homes, dmz)
+    for zone in zones:
+        _captioned(zone, edges, where)
+    entering = _entering(nodes, edges, where, homes, {zone["id"]: zone for zone in zones})
+    return _sided(nodes, edges, where, homes) + entering
 
-def _on_the_band(band, flow, where, collector, logs, middle, sensor_y, bottom) -> None:
-    linked = [node["x"] for node in where.values() if band["id"] in (node.get("zones") or ())
-              and node["kind"] not in ("sensor", "logs") and "x" in node]
-    anchor = linked[0] if linked else middle
-    where[SWITCH.format(zone=band["id"])].update(x=anchor, y=sensor_y)
-    for k, node in enumerate(node for node in where.values() if node["kind"] == "sensor"):
-        node.update(x=anchor - BAND_SENSOR * (k + 1), y=sensor_y, label="below")
-    uplinked = any(node["kind"] == UPLINKED for node in where.values())
-    collector.update(x=anchor, y=sensor_y + ROW, label="right" if uplinked else "below")
-    middle = anchor
-    for k, edge in enumerate(sorted(logs, key=lambda edge: abs(where[edge["source"]]["x"] - middle))):
-        source = where[edge["source"]]
-        side = 1 if source["x"] > middle else -1
-        rise = (k // 2) * LANE * (1 if k % 2 else -1)
-        edge.update(route=[[source["x"], collector["y"] + rise]], end=[side * ICON_HALF, rise])
-    band["box"] = [min(zone["box"][0] for zone in flow), bottom + BAND_GAP,
-                   max(zone["box"][2] for zone in flow), collector["y"] + BAND_FLOOR]
-    band["shift"] = BAND_CAPTION - (band["box"][2] - band["box"][0]) // 2
-    for node in where.values():
-        if node["kind"] == UPLINKED:
-            node.update(x=anchor, y=band["box"][3] + UPLINK_DROP, label="below")
+
+def _routed(nodes, edges, where, switch, web, homes) -> None:
+    for edge in edges:
+        source, target = where[edge["source"]], where[edge["target"]]
+        if "x" not in source or "x" not in target or edge["kind"] != "link":
+            continue
+        if web and edge["target"] == SWITCH.format(zone=web) and homes[edge["source"]] == web \
+                and source["y"] != target["y"]:
+            if source["y"] > target["y"]:
+                edge["route"] = [[target["x"], source["y"]]]
+                edge["end"] = [0, ICON_HALF]
+            else:
+                middle = (source["x"] + target["x"]) // 2
+                edge["route"] = [[middle, source["y"]], [middle, target["y"]]]
+                edge["end"] = [ICON_HALF, 0]
+
+
+def _banded(band, held, switch, where, edges, bottom, web) -> None:
+    beside = switch[web] if web else {"x": 0, "y": bottom}
+    y = beside["y"] + BAND_DROP
+    sensors = [node for node in held[band] if node["kind"] == "sensor"]
+    for k, node in enumerate(sensors):
+        mirrors = [edge for edge in edges if edge["source"] == node["id"] and edge["kind"] == "mirror"]
+        at = where[mirrors[0]["target"]] if mirrors else beside
+        node.update(x=at["x"] - SPAN * (k + 1), y=y, label="below")
+        for edge in mirrors:
+            middle = (node["x"] + at["x"]) // 2
+            edge["start"], edge["end"] = [ICON_HALF, 0], [-ICON_HALF, 0]
+            edge["route"] = [[middle, node["y"]], [middle, at["y"]]]
+    anchor = min([node["x"] for node in sensors] + [beside["x"]]) - SPAN
+    switch[band].update(x=anchor, y=y)
+    for k, node in enumerate(node for node in held[band] if node["kind"] != "sensor"):
+        node.update(x=anchor - SPAN * (k + 1), y=y, label="below")
+
+
+def _turned(edges, where, zones, homes, dmz) -> None:
+    boxes = {zone["id"]: zone["box"] for zone in zones}
+    for edge in edges:
+        source, target = where[edge["source"]], where[edge["target"]]
+        if edge["kind"] != "link" or homes[edge["source"]] != dmz or target["y"] <= source["y"]:
+            continue
+        if target["x"] == source["x"]:
+            continue
+        lower = [one for one in edges if one["source"] == edge["source"] and one is not edge
+                 and one["kind"] == "link" and where[one["target"]]["y"] > source["y"]]
+        edge["start"] = [-OFFSET, ICON_HALF]
+        turn = boxes[dmz][3] + TURN
+        edge["route"] = [[source["x"] - OFFSET, turn], [target["x"], turn]]
+        for one in lower:
+            if where[one["target"]]["x"] == source["x"]:
+                one["start"], one["end"] = [OFFSET, ICON_HALF], [OFFSET, -ICON_HALF]
+
+
+def _points(edge, where) -> list[tuple[int, int]]:
+    source, target = where[edge["source"]], where[edge["target"]]
+    start = edge.get("start") or [0, 0]
+    end = edge.get("end") or [0, 0]
+    return ([(source["x"] + start[0], source["y"] + start[1])] + [tuple(point) for point in edge.get("route") or ()]
+            + [(target["x"] + end[0], target["y"] + end[1])])
+
+
+def _sided(nodes, edges, where, homes) -> list[dict]:
+    placed = []
+    for edge in edges:
+        source, target = where[edge["source"]], where[edge["target"]]
+        if edge["kind"] != "link" or not edge.get("address") or "x" not in source or "x" not in target:
+            continue
+        if homes[edge["source"]] not in (None, target["zone"]):
+            continue
+        points = _points(edge, where)
+        (x0, y0), (x1, y1) = points[0], points[1]
+        if abs(x1 - x0) >= abs(y1 - y0):
+            side = "right" if x1 > x0 else "left"
+            x = source["x"] + (1 if x1 > x0 else -1) * (ICON_HALF + ADDRESS_GAP)
+            y = source["y"] - ADDRESS_RISE
+        else:
+            side, x = "right", x0 + ADDRESS_GAP
+            y = source["y"] + (_below(source) + ADDRESS_RISE if y1 > y0 else -ICON_HALF - ADDRESS_RISE)
+        placed.append(_label(edge, edge["address"], x, y, side, target["zone"]))
+    return placed
+
+
+def _label(edge, text, x, y, side, zone) -> dict:
+    return {"id": f"address:{edge['source']}:{edge['target']}", "kind": "address", "text": text,
+            "x": round(x), "y": round(y), "label": side, "zone": zone}
+
+
+def _entering(nodes, edges, where, homes, boxes) -> list[dict]:
+    placed = []
+    for edge in edges:
+        source, target = where[edge["source"]], where[edge["target"]]
+        home = homes[edge["source"]]
+        if edge["kind"] != "link" or not edge.get("address") or home in (None, target["zone"]):
+            continue
+        box = boxes[target["zone"]]["box"]
+        if source["y"] == target["y"] and source["x"] < box[0]:
+            box[0] = min(box[0], boxes[home]["box"][2] + BOX_GAP)
+        points = _points(edge, where)
+        for (x0, y0), (x1, y1) in zip(points, points[1:]):
+            if x0 == x1 and y0 < box[1] <= y1:
+                box[1] = min(box[1], target["y"] - ICON_HALF - 2 * LINE - ADDRESS_GAP)
+                placed.append(_label(edge, edge["address"], x0 + ADDRESS_GAP, box[1] + LINE + ADDRESS_GAP // 2,
+                                     "right", target["zone"]))
+                break
+            if y0 == y1 and x0 < box[0] <= x1:
+                placed.append(_label(edge, edge["address"], box[0] + ADDRESS_GAP, y0 - ADDRESS_RISE, "right",
+                                     target["zone"]))
+                break
+    return placed
+
+
+def _captioned(zone, edges, where) -> None:
+    x1, top, x2, _ = zone["box"]
+    crossing = sorted(x0 for edge in edges for (x0, y0), (x1_, y1) in zip(_points(edge, where), _points(edge, where)[1:])
+                      if x0 == x1_ and min(y0, y1) < top < max(y0, y1) and x1 < x0 < x2)
+    half = CAPTION_WIDTH // 2
+    middle = (x1 + x2) // 2
+    clear = lambda at: all(abs(at - x) >= half + CAPTION_CLEAR for x in crossing)
+    if crossing and not any(clear(at) for at in (middle, x1 + half + CAPTION_CLEAR, x2 - half - CAPTION_CLEAR)):
+        right = crossing[-1] + CAPTION_CLEAR + CAPTION_WIDTH + CAPTION_CLEAR
+        left = crossing[0] - CAPTION_CLEAR - CAPTION_WIDTH - CAPTION_CLEAR
+        if right - x2 <= x1 - left:
+            zone["box"][2] = x2 = right
+        else:
+            zone["box"][0] = x1 = left
+        middle = (x1 + x2) // 2
+    candidates = [middle, x1 + half + CAPTION_CLEAR, x2 - half - CAPTION_CLEAR]
+    zone["shift"] = next((at for at in candidates if clear(at)), middle) - middle

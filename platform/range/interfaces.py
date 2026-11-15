@@ -37,7 +37,6 @@ class Container:
     service: str
     mode: str
     args: tuple[str, ...] = ()
-    mounts: tuple[str, ...] = ()
     addresses: tuple[tuple[str, str], ...] = ()
     host: str = ""
     attached: tuple[tuple[str, str], ...] = ()
@@ -53,17 +52,11 @@ class Container:
         addressed = {name for name, _ in self.addresses}
         return tuple(name for name, _ in self.links if name not in addressed)
 
-    def keeps(self, path: str) -> bool:
-        return any(path == mount or path.startswith(mount.rstrip("/") + "/") for mount in self.mounts)
-
 
 @dataclass(frozen=True)
 class Wiring:
     networks: tuple[Network, ...] = ()
     containers: tuple[Container, ...] = ()
-    forwarded: tuple[str, ...] = ()
-    port: str = ""
-    uplink: str = ""
 
     def network(self, key: str) -> Network | None:
         return next((network for network in self.networks if network.key == key), None)
@@ -90,9 +83,6 @@ class Wiring:
                       for name, address in container.addresses]
         return found
 
-    def logging(self) -> list[Container]:
-        return [container for container in self.containers
-                if any(container.keeps(path) for path in self.forwarded)]
 
 
 def addressed(output: str) -> list[tuple[str, str]]:
@@ -116,13 +106,13 @@ def _network(project: str, fields: list[str]) -> Network:
 
 
 def wiring(output: str, project: str) -> Wiring:
-    networks, containers, forwarded, port, uplink = [], [], [], "", ""
+    networks, containers = [], []
     current: dict | None = None
 
     def close():
         if current and current["service"]:
             containers.append(Container(service=current["service"], mode=current["mode"],
-                                        args=tuple(current["args"]), mounts=tuple(current["mounts"]),
+                                        args=tuple(current["args"]),
                                         addresses=tuple(addressed("\n".join(current["lines"]))),
                                         attached=tuple(current["attached"]),
                                         links=tuple(linked("\n".join(current["lines"])))))
@@ -133,23 +123,14 @@ def wiring(output: str, project: str) -> Wiring:
         elif line.startswith("@container "):
             close()
             service, _, mode = line.removeprefix("@container ").strip().partition(" ")
-            current = {"service": service, "mode": mode.strip(), "args": [], "mounts": [], "attached": [],
+            current = {"service": service, "mode": mode.strip(), "args": [], "attached": [],
                        "lines": []}
         elif line.startswith("@args") and current is not None:
             current["args"] = line.removeprefix("@args").split()
         elif line.startswith("@leg ") and current is not None:
             network, _, mac = line.removeprefix("@leg ").strip().partition(" ")
             current["attached"].append((network.removeprefix(f"{project}_"), mac.strip().lower()))
-        elif line.startswith("@mount ") and current is not None:
-            current["mounts"].append(line.removeprefix("@mount ").strip())
-        elif line.startswith("@forward "):
-            forwarded.append(line.removeprefix("@forward ").strip())
-        elif line.startswith("@port "):
-            port = line.removeprefix("@port ").strip()
-        elif line.startswith("@uplink "):
-            uplink = line.removeprefix("@uplink ").strip()
         elif current is not None:
             current["lines"].append(line)
     close()
-    return Wiring(networks=tuple(networks), containers=tuple(containers), forwarded=tuple(forwarded), port=port,
-                  uplink=uplink)
+    return Wiring(networks=tuple(networks), containers=tuple(containers))
