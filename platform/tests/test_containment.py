@@ -1,6 +1,7 @@
 import ipaddress
 import json
 import pathlib
+import re
 
 import pytest
 
@@ -72,6 +73,35 @@ def test_a_learner_facing_container_mounts_nothing_of_the_host_beyond_its_own_lo
             f"{name} mounts {source} from the range host; a learner who is root in it can plant a link "
             f"in a mounted directory that a root operation on the host then follows, so it mounts at "
             f"most its own log file")
+
+
+@pytest.mark.parametrize("name", LEARNER_FACING)
+def test_every_learner_facing_container_runs_on_gvisor_s_kernel_not_the_range_host_s(name):
+    assert slot_document()["services"][name].get("runtime") == rangehost.SANDBOX, (
+        f"{name} runs on runc, so one kernel bug reachable through its seccomp profile reaches the range host"
+    )
+
+
+def test_the_edge_and_the_sensors_stay_on_runc_and_dockerd_knows_runsc_with_raw_sockets():
+    services = slot_document()["services"]
+    stack = declared.read()
+    daemon = json.loads(rangehost.bundle(ROOT, stack.hosts[stack.range_host].wargames, "abc", 1442)["daemon.json"])
+
+    assert not [name for name in ("edge", "edge-sensor", "estate-sensor") if services[name].get("runtime")], (
+        "the sensors read the host's bridges with af-packet and the edge filters with nftables, "
+        "which gVisor's netstack does not offer"
+    )
+    assert daemon["runtimes"][rangehost.SANDBOX] == {"path": rangehost.RUNSC, "runtimeArgs": ["--net-raw"]}, (
+        "without --net-raw gVisor refuses raw sockets, and Kali's SYN scan needs them"
+    )
+
+
+def test_the_range_host_installs_one_pinned_gvisor_release_checked_by_its_sha512():
+    setup = (ROOT / rangehost.SETUP).read_text()
+
+    assert re.search(r"releases/release/\d{8}\.\d+/x86_64/gvisor\.tar\.bz2", setup)
+    assert re.search(r'GVISOR_SHA512=[0-9a-f]{128}\n', setup) and "sha512sum -c -" in setup
+    assert setup.index("sha512sum -c -") < setup.index("install -m 0644 daemon.json /etc/docker/daemon.json")
 
 
 def test_every_slot_network_is_internal_with_no_host_address_and_no_route_out():

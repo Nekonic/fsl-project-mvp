@@ -15,7 +15,7 @@ pid() { docker inspect -f '{{.State.Pid}}' "$1"; }
 sandboxed() { [ "$(docker inspect -f '{{.HostConfig.Runtime}}' "$1")" = runsc ]; }
 inside() {
   c=$1; shift
-  if sandboxed "$c"; then docker exec -i -u 0 "$c" "$@"; else nsenter -t "$(pid "$c")" -n "$@"; fi
+  if sandboxed "$c"; then docker exec -i --privileged -u 0 "$c" "$@"; else nsenter -t "$(pid "$c")" -n "$@"; fi
 }
 wargames() { cat "$BASE/wargames.txt"; }
 fronts() { cat "$d/fronts"; }
@@ -85,8 +85,14 @@ routed() {
   done
 }
 
+unaddressed() {
+  for address in $(inside "$1" ip -o -4 addr show dev "$2" | awk '{print $4}'); do
+    inside "$1" ip addr del "$address" dev "$2"
+  done
+}
+
 address_kali() {
-  inside "$project-kali" ip addr flush dev eth0
+  unaddressed "$project-kali" eth0
   inside "$project-kali" ip -batch - < "$d/kali.ip"
   quiet "$project-kali"
 }

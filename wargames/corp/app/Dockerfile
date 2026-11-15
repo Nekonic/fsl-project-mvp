@@ -2,7 +2,7 @@ FROM wordpress:6.6.2-php8.2-apache
 
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends unzip default-mysql-client; \
+    apt-get install -y --no-install-recommends unzip default-mysql-client iproute2; \
     rm -rf /var/lib/apt/lists/*; \
     curl -fsSL -o /usr/local/bin/wp https://github.com/wp-cli/wp-cli/releases/download/v2.11.0/wp-cli-2.11.0.phar; \
     chmod +x /usr/local/bin/wp
