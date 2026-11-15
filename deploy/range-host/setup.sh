@@ -10,13 +10,20 @@ sed -i 's/^Components:.*/Components: main restricted universe/' /etc/apt/sources
 $APT update
 $APT purge snapd modemmanager
 printf 'Package: snapd modemmanager\nPin: release *\nPin-Priority: -1\n' > /etc/apt/preferences.d/no-snapd-modemmanager
-$APT install docker.io docker-compose-v2 ethtool rsyslog
+$APT install docker.io docker-compose-v2 ethtool rsyslog bzip2 curl
 
 printf 'fs.inotify.max_user_instances = 1024\nfs.inotify.max_user_watches = 524288\n' > /etc/sysctl.d/90-cr-range.conf
 sysctl --system >/dev/null
 printf 'MaxSessions 256\nMaxStartups 64:30:256\n' > /etc/ssh/sshd_config.d/60-cr.conf
 sshd -t
 systemctl reload ssh
+
+GVISOR=https://storage.googleapis.com/gvisor/releases/release/20261026.0/x86_64/gvisor.tar.bz2
+GVISOR_SHA512=26e4a327565f5da0f73261a6387e2c20f4695a232e330095a3111b70efd604fdf09d734e8cc8f714dbb5c5607ce8c87ea80b26df549d83a146f2efd5a1af448a
+curl -fsSL --retry 5 -o /tmp/gvisor.tar.bz2 "$GVISOR"
+echo "$GVISOR_SHA512  /tmp/gvisor.tar.bz2" | sha512sum -c -
+tar -xjf /tmp/gvisor.tar.bz2 -C /usr/local/bin runsc containerd-shim-runsc-v1 gvisor-bin
+rm /tmp/gvisor.tar.bz2
 
 install -d -m 0755 /etc/docker "$BASE" "$KEPT"
 install -m 0644 daemon.json /etc/docker/daemon.json

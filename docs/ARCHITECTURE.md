@@ -99,6 +99,8 @@
 
 워게임 `compose.yaml`에는 `container_name`을 쓰지 않습니다. 컨테이너 이름은 슬롯에서 `sN-<service>`로 붙습니다(`s1-board`, `s2-corp-wp`). 호스트 이름은 서비스 이름 그대로입니다. 고정 이름은 컨트롤 플레인의 `cr-platform`, `cr-elasticsearch`, `cr-kibana`, `cr-collector`뿐입니다. 아래 서비스 표도 이 이름을 씁니다.
 
+모든 콘솔 페이지와 `/api/` 엔드포인트는 로그인을 요구합니다(`api/signin.py`의 `SignedInOnly`). 로그인 없이 열리는 것은 로그인 페이지 `/login/`, `GET /api/auth/`(현재 사용자와 CSRF 토큰), `POST /api/auth/login/`뿐입니다. 로그인하지 않은 API 요청은 401, 페이지 요청은 로그인 페이지로 갑니다. POST, PUT, DELETE는 `X-CSRFToken` 헤더가 있어야 합니다. 토큰은 쿠키가 아니라 세션에 둡니다(`CSRF_USE_SESSIONS`). 첫 시작 때 `admin` / `123456` 계정을 만듭니다(마이그레이션 0030). 에이전트도 같은 REST로 로그인합니다(`redteam/signin.py`, `CR_ADMIN_USER`, `CR_ADMIN_PASSWORD`).
+
 훈련 환경을 바꾸는 엔드포인트는 쿼리나 본문으로 `session`을 받습니다. rules, validate, 룰 비활성화, `/api/attacker/`, origin, label, canary가 해당합니다.
 
 - `session`이 없는 쓰기 요청: 가장 최근에 연 세션에 적용. 열린 세션이 없으면 409
@@ -322,8 +324,8 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 
 | 관심사 | 담당 파일 | 알려진 예외 |
 |---|---|---|
-| Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`: 시작 시 `geoip` ingest 파이프라인 PUT |
-| Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`: Kibana API 경로를 앎. 관리용 API, Default space, space 접두어 없는 경로, `?namespaces=` 거부. `GET /kibana/s/<space>/api/spaces/space`에는 SOC space만 담은 응답을 직접 반환 |
+| Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`: 시작 시 `geoip` ingest 파이프라인, Kibana 읽기 전용 역할 `cr_viewer`와 사용자 `cr-viewer` PUT. `platform/entrypoint.sh`: `elastic` 비밀번호를 한 번 생성해 `/data/elastic`에 둠. `deploy/elastic/start.sh`: 그 비밀번호를 Elasticsearch에 넘기고 Kibana 서비스 계정 토큰 생성 |
+| Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`: Kibana API 경로를 앎. 관리용 API, Default space, space 접두어 없는 경로, `?namespaces=` 거부. `GET /kibana/s/<space>/api/spaces/space`에는 SOC space만 담은 응답을 직접 반환. `/auth-check/kibana/`가 준 `cr-viewer` 인증 헤더를 Kibana 요청에 붙임 |
 | 슬롯 배선 읽기 | `platform/range/rangehost.py`(`WIRING`) | 없음. 출력 해석은 `platform/range/interfaces.py`, 학습자 이름과 그래프는 `platform/topology.py` |
 | CRS 설정과 nginx reload | `platform/rules/crs.py` | `entrypoint.sh`: `vm-terminal.sh cr-waf`로 슬롯 WAF 컨테이너 쉘 제공(훈련 환경 호스트로 ssh 후 `sudo docker exec -it sN-waf bash -l`). `range/rangehost.forwarding`: 훈련 환경 호스트에 audit 로그 rsyslog 전달 설정 작성. `deploy/range-host/slot.yaml`: `rangehost.LOGS` 경로로 WAF audit 로그 파일 마운트. 둘 다 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 `platform/tests/test_range_host.py`의 `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it`로 확인. F6의 WAF 창 단계 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`): `wargames.lesson`에서 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 채움. 플랫폼은 터미널을 조작하지 않음 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `declaration.yaml`의 각 센서 호스트(`sensor`는 `cr-edge`, `estate-sensor`는 `cr-range`): `suricata.py`에 넘길 룰 파일과 reload 명령 지정. `platform/range/rangehost.py`: 두 센서 설정(`deploy/range-host/edge-sensor.yaml`, `deploy/suricata/suricata.yaml`)과 compose 서비스 렌더링. `deploy/range-host/slot.sh`: 슬롯과 함께 센서 시작·정지, 초기화 때 센서 로그 파일 다시 열기, 에지 라우터 설정. 이후 기본 룰 적용은 `suricata.py` |
@@ -418,7 +420,7 @@ Kali 창은 세션 API의 `kali_terminal` URL(`GET /api/sessions/<id>/`)을 프�
 - WAF의 nginx와 ModSecurity는 UTC. 수집 파이프라인이 audit 로그의 시간대 없는 `time_stamp`를 UTC로 읽음
 - syslog 송신자 이름은 훈련 환경 호스트의 rsyslog 템플릿에서 슬롯마다 고정(`cr-waf`, `cr-waf-2`). Filebeat는 송신자 이름으로 슬롯을 구분
 
-블루팀 콘솔의 WAF 창은 세션 API의 `waf_terminal` URL(`GET /api/sessions/<id>/`)을 프레임으로 띄웁니다. URL은 `/vm-terminal/waf/?arg=<세션 id>`이고, 같은 `auth_request /terminal-allowed`로 보호합니다.
+블루팀 콘솔의 WAF 창은 세션 API의 `waf_terminal` URL(`GET /api/sessions/<id>/`)을 프레임으로 띄웁니다. URL은 `/vm-terminal/waf/?arg=<세션 id>`이고, 같은 `auth_request /terminal-allowed`로 보호합니다. 이 검사는 플랫폼의 `/auth-check/`에 로그인 세션이 있는지 묻고, 훈련 환경 호스트 주소에서 온 요청은 거부합니다. 로그인하지 않았으면 로그인 페이지로 보냅니다.
 
 블루팀 콘솔의 웹사이트 창은 콘솔 안의 브라우저입니다.
 
@@ -432,7 +434,9 @@ Kali 창은 세션 API의 `kali_terminal` URL(`GET /api/sessions/<id>/`)을 프�
 board.com과 corp.com은 훈련 환경 안에서만 응답합니다. 학습자 브라우저는 플랫폼의 8002번 포트 nginx를 거쳐 접근합니다.
 
 - 경로: `/site/<세션>/<호스트>/<경로>`
-- nginx는 터미널과 같은 `auth_request /terminal-allowed`를 거친 뒤 플랫폼의 기록기로 넘김
+- nginx는 터미널과 같은 `auth_request /terminal-allowed`를 거친 뒤 플랫폼의 기록기로 넘김. 로그인하지 않았으면 8000의 로그인 페이지로 보냄
+- 쿠키는 포트가 아니라 호스트 단위라 8000의 세션 쿠키가 8002에도 실림. nginx는 검사에만 쓰고 기록기로 넘기기 전에 `Cookie`를 지움. 대상의 `Set-Cookie`는 브라우저로 보내지 않음
+- 세션 쿠키는 HttpOnly이고 CSRF 토큰은 쿠키가 아니라 세션에 있음. 그래서 8002에서 도는 XSS 스크립트는 둘 다 읽지 못함. 플랫폼은 CORS 헤더를 보내지 않아 8002의 스크립트가 8000 응답을 읽지 못하고, 쓰기 요청은 CSRF 토큰과 같은 출처(`Origin`)가 없으면 403
 - 기록기 경로는 `/site-proxy/<세션>/<호스트>/`(`platform/api/site.py`). 원래 경로와 쿼리는 `X-Site-Uri`에 담김
 
 기록기는 훈련 환경의 고객 주소에서(아래 참고) Chrome처럼 요청을 보냅니다.
@@ -1661,10 +1665,10 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 - sqlmap은 아무것도 찾지 못하면 0이 아닌 코드로 끝나지만, 트래픽은 이미 나간 뒤임
 - HTTP 케이스의 curl이 0이 아닌 코드로 끝나면 요청이 대상에 닿지 않은 것으로 보고 예외 처리
 
-**Kibana는 compose에 들어 있고 전체 권한으로 돕니다.** 읽기 전용 역할이 아닙니다. 플랫폼이 수집에 쓰는 Elasticsearch를 그대로 읽습니다.
+**Kibana는 compose에 들어 있고 Elasticsearch 보안 기능을 켠 채 돕니다.** Kibana는 서비스 계정 토큰(`elastic/kibana/cr-kibana`)으로 Elasticsearch에 붙습니다. 학습자는 Kibana에 따로 로그인하지 않습니다. nginx가 콘솔 로그인을 확인한 뒤 읽기 전용 사용자 `cr-viewer`의 인증 헤더를 붙입니다. 이 사용자의 역할 `cr_viewer`는 `logs-*` 읽기와 Kibana Discover만 가집니다.
 
-- 접속: 플랫폼 8000번 포트의 `/kibana/`. Discover 밖의 요청은 앞단 nginx에서 거부(아래)
-- 운영자: 플랫폼 호스트의 루프백 127.0.0.1:5601에 ssh 터널로 접속
+- 접속: 플랫폼 8000번 포트의 `/kibana/`. 로그인 세션이 없으면 로그인 페이지로. Discover 밖의 요청은 앞단 nginx에서 거부(아래)
+- 운영자: 플랫폼 호스트의 루프백 127.0.0.1:5601에 ssh 터널로 접속해 `elastic`으로 로그인(`docs/OPENSTACK.md` §5.6)
 - 블루팀 콘솔: Kibana를 프레임으로 띄움
 
 시작 시 가져오기:
@@ -1690,7 +1694,7 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 
 nginx 차단:
 
-Kibana를 보안 기능 없이 돌리므로, 기능 설정으로 끌 수 없는 것은 `platform/nginx.conf`에서 막습니다.
+`cr-viewer`의 역할이 막지 못하는 경로와, 기능 설정으로 끌 수 없는 것은 `platform/nginx.conf`에서 막습니다.
 
 - Elasticsearch·Kibana 관리 API는 403: console 프록시, ingest pipelines, index management, snapshot and restore, transforms, rollups, remote clusters, license, upgrade assistant, index lifecycle, watcher, data views API, security API, settings API, saved objects import·export, spaces API
 - spaces API 중 예외: `_active_space`, nginx가 space 하나로 직접 응답하는 `api/spaces/space` GET
@@ -1804,7 +1808,7 @@ init이 하는 일(`bin/cloud`의 `init`, 관리자 인증은 `/etc/kolla/clouds
 - VM에 실행 중인 `cr-platform` 컨테이너도 플랫폼 DB 파일도 없으면 `down`과 `up --replace`에서 백업을 건너뜀
 - VM에 ssh가 닿지 않으면 거부
 - 플랫폼 DB는 있고 `cr-platform` 컨테이너만 멈춰 있으면 `down`은 컨테이너를 시작해 백업함(`docker exec`로 실행). 그다음 API 응답을 기다렸다가 훈련 환경을 지움
-- `up`은 API 응답과 상관없이 매번 VM 인계 여부를 확인. 인계 전 VM(`openstack.env`에 `CR_OPENSTACK_PASSWORD`가 없음)이면 그 자리에서 인계
+- `up`은 API 응답과 상관없이 매번 VM 인계 여부를 확인. 인계 전 VM(`/opt/cr/openstack-password`가 없거나 비어 있음)이면 그 자리에서 인계
 - 인계: 비밀번호와 훈련 환경 키를 넣음. 키가 없고 VM에 플랫폼 DB도 없으면 키를 새로 생성. VM에 플랫폼 DB가 없으면 행이 있는 가장 최근 백업을 복원
 
 ### 구축됨: 플랫폼 VM
@@ -1841,15 +1845,16 @@ systemd 유닛 `cr-platform.service`는 부팅할 때마다 `compose.yaml`의 �
 포트:
 
 - cloud-init에서 `CR_PUBLISH`를 VM 고정 주소로 설정. 8000, 8002가 그 주소에 publish되고 보안 그룹에서도 열림. 브라우저는 floating IP로 콘솔에 접속
+- 보안 그룹 `cr-platform`은 ssh, 8000, 8002를 `cloud.yaml`의 `network.allowed`에 적은 네트워크에서만 받음. 기본은 `[0.0.0.0/0]`이고 `init`이 이 값을 씀
 - `CR_SYSLOG_PUBLISH=0.0.0.0`: 훈련 환경 호스트의 syslog를 받으려고 5140/udp를 모든 주소에 publish
-- 9200: loopback에만
+- 9200, 5601: loopback에만. Elasticsearch는 보안 기능을 켜고 돎
 
 `openstack.env`:
 
 - 템플릿 파라미터는 모두 `deploy/openstack/cloud.yaml`에서 받음(`bin/platform-rebuild`, `bin/cloud`)
 - cloud-init이 그 값을 `CR_OPENSTACK_*`로 쓰고 `_PROJECT`(스택이 속한 프로젝트), `_SSH_USER=ubuntu`, `_SSH_KEY=/data/ssh/id_ed25519`를 더해 모드 0600의 `/root/openstack.env`로 저장. 그다음 git이 무시하는 `/opt/cr/openstack.env`로 옮김
 - 비밀번호는 템플릿에 넣지 않음. Nova가 user data를 보관하고, 메타데이터 서비스는 플랫폼 컨테이너를 포함해 VM에서 도는 모든 것에 이를 내줌
-- `CR_OPENSTACK_PASSWORD`는 VM이 뜬 뒤 `bin/platform-rebuild`가 ssh로 덧붙임. 훈련 환경용 ssh 키도 같은 방식으로 플랫폼 데이터 볼륨에 씀(`README.md`)
+- 프로젝트 비밀번호는 이 파일에 없음. cloud-init이 빈 `/opt/cr/openstack-password`(0600, uid 10001)를 만들고, VM이 뜬 뒤 `bin/platform-rebuild`가 ssh 표준 입력으로 그 파일을 채움. compose가 이 파일을 secret `openstack_password`로 플랫폼에 읽기 전용 마운트하고(`/run/secrets/openstack_password`), 플랫폼은 시작할 때 읽음. 컨테이너 환경 변수에는 없음. 훈련 환경용 ssh 키도 ssh로 플랫폼 데이터 볼륨에 씀(`README.md`)
 - 플랫폼 서비스는 이 파일을 `env_file`(`required: false`, `format: raw`)로 읽음. compose는 변수 치환이나 따옴표 제거 없이 값을 그대로 넘김
 
 VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init의 `CR_SUBSTRATE=range.openstack.connect`). 훈련 환경 네트워크는 `/api/range/fabric/`으로 만들고, 계획은 `range/fabric.py`에서 세웁니다.

@@ -12,7 +12,11 @@ project=s$n
 
 compose() { docker compose -p "$project" -f "$d/compose.yaml" "$@"; }
 pid() { docker inspect -f '{{.State.Pid}}' "$1"; }
-inside() { c=$1; shift; nsenter -t "$(pid "$c")" -n "$@"; }
+sandboxed() { [ "$(docker inspect -f '{{.HostConfig.Runtime}}' "$1")" = runsc ]; }
+inside() {
+  c=$1; shift
+  if sandboxed "$c"; then docker exec -i -u 0 "$c" "$@"; else nsenter -t "$(pid "$c")" -n "$@"; fi
+}
 wargames() { cat "$BASE/wargames.txt"; }
 fronts() { cat "$d/fronts"; }
 remapped() { awk -F: '$1 == "dockremap" { print $2; exit }' /etc/subuid 2>/dev/null; }
@@ -22,6 +26,7 @@ volumes() {
 }
 
 quiet() {
+  sandboxed "$1" && return 0
   for dev in $(inside "$1" ip -o link show | awk -F': ' '{print $2}' | cut -d@ -f1); do
     [ "$dev" = lo ] && continue
     inside "$1" ethtool -K "$dev" tso off gso off gro off >/dev/null 2>&1 || true
@@ -82,13 +87,13 @@ routed() {
 
 address_kali() {
   inside "$project-kali" ip addr flush dev eth0
-  inside "$project-kali" ip -batch "$d/kali.ip"
+  inside "$project-kali" ip -batch - < "$d/kali.ip"
   quiet "$project-kali"
 }
 
 address_edge() {
   inside "$project-edge" ip addr flush dev wan
-  inside "$project-edge" ip -batch "$d/edge.ip"
+  inside "$project-edge" ip -batch - < "$d/edge.ip"
   quiet "$project-edge"
 }
 

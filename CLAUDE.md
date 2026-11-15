@@ -115,7 +115,9 @@ alert that does not mention the attack's mechanism is reported
   the only ones that read the target's ground truth. Keep them the only ones.
   Known exceptions in code today; do not add more, and whether to move them is
   open (`docs/STATE.md` backlog 0):
-  `register_pipeline.py` PUTs the ingest pipeline to Elasticsearch at bring-up;
+  `register_pipeline.py` PUTs the ingest pipeline and the Kibana viewer's
+  role and user to Elasticsearch at bring-up, and `entrypoint.sh` makes the
+  `elastic` password that `deploy/elastic/start.sh` hands Elasticsearch;
   each sensor host in `declaration.yaml` (`cr-edge` for the edge sensor,
   `cr-range` for the estate sensor) names the rule file and reload command
   `rules/suricata.py` is handed;
@@ -126,7 +128,8 @@ alert that does not mention the attack's mechanism is reported
   to `deploy/waf/modsecurity.conf`'s `SecAuditLog` by a test in
   `platform/tests/test_range_host.py`;
   `platform/nginx.conf` names the Kibana API routes
-  it refuses and answers Kibana's `api/spaces/space` lookup itself, and
+  it refuses, answers Kibana's `api/spaces/space` lookup itself and passes
+  Kibana the viewer's `Authorization` from `/auth-check/kibana/`, and
   `blue.html` presets Kibana's localStorage keys;
   `operator_log.py` reads the attacker's command log, and the terminal wiring
   names `cr-kali` and `cr-waf` (`entrypoint.sh` starts

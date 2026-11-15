@@ -19,6 +19,8 @@ from range.ports import RangeUnavailable
 ROLE = "wargames"
 TEMPLATE = "deploy/range-host/slot.yaml"
 SETUP = "deploy/range-host/setup.sh"
+SANDBOX = "runsc"
+RUNSC = "/usr/local/bin/runsc"
 SLOT_SCRIPT = "deploy/range-host/slot.sh"
 EDGE_SENSOR = "deploy/range-host/edge-sensor.yaml"
 ESTATE_SENSOR = "deploy/suricata/suricata.yaml"
@@ -307,6 +309,7 @@ def bundle(source: Path, wargames, tag: str, mtu: int) -> dict[str, bytes]:
             "log-driver": "local",
             "log-opts": {"max-size": "10m", "max-file": "2"},
             "userns-remap": "default",
+            "runtimes": {SANDBOX: {"path": RUNSC, "runtimeArgs": ["--net-raw"]}},
         }, sort_keys=True).encode(),
     }
 
@@ -369,10 +372,13 @@ docker network ls --filter label=com.docker.compose.project=$p --format '{{.Name
   echo "@network $n $(docker network inspect -f '{{.Id}} {{with index .Options "com.docker.network.bridge.name"}}{{.}}{{else}}-{{end}} {{range .IPAM.Config}}{{.Subnet}} {{end}}' "$n")"
 done
 for c in $(docker ps -q --filter label=com.docker.compose.project=$p); do
-  set -- $(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}} {{.State.Pid}} {{.HostConfig.NetworkMode}}' "$c")
+  set -- $(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}} {{.State.Pid}} {{.HostConfig.NetworkMode}} {{.HostConfig.Runtime}}' "$c")
   echo "@container $1 $3"
   docker inspect -f '@args {{join .Args " "}}{{println}}{{range .Mounts}}@mount {{.Source}}{{println}}{{end}}{{range $n, $e := .NetworkSettings.Networks}}@leg {{$n}} {{$e.MacAddress}}{{println}}{{end}}' "$c"
-  [ "$3" = host ] || nsenter -t "$2" -n sh -c 'ip -o link show; ip -o -4 addr show'
+  if [ "$3" = host ]; then :
+  elif [ "$4" != runsc ]; then nsenter -t "$2" -n sh -c 'ip -o link show; ip -o -4 addr show'
+  else docker exec "$c" sh -c 'ip -o link show; ip -o -4 addr show' 2>/dev/null || docker inspect -f '{{range $n, $e := .NetworkSettings.Networks}}0: {{$n}}: <UP> link/ether {{$e.MacAddress}}{{println}}0: {{$n}} inet {{$e.IPAddress}}/{{$e.IPPrefixLen}}{{println}}{{end}}' "$c"
+  fi
 done
 [ ! -f "$f" ] || sed -n -e 's/.*File="\([^"]*\)".*/@forward \1/p' -e 's/.*Port="\([^"]*\)".*/@port \1/p' "$f"
 """

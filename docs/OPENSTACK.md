@@ -684,8 +684,12 @@ environment and run the openstack CLI with `OS_CLOUD=<entry>` and
 `user_domain_name` is the user's domain, by name (**(this cloud)** `fsl`); the
 platform signs in with it. `interface` is the catalogue interface the CLI and
 the platform call; the platform VM needs one it reaches, `public` here. The
-password reaches the platform VM over ssh stdin, as the VM's `openstack.env`
-(§5.1); it is never on a command line or in a log.
+password reaches the platform VM over ssh stdin, into
+`/opt/cr/openstack-password` (mode 0600, owned by uid 10001, the platform
+container's `cr`). Compose mounts that file read-only into the platform as the
+secret `openstack_password` (`/run/secrets/openstack_password`), and the
+platform reads it at start (§5.3). It is never on a command line, in a log or
+in a container's environment.
 
 | Key | Example | Used by |
 |---|---|---|
@@ -695,6 +699,7 @@ password reaches the platform VM over ssh stdin, as the VM's `openstack.env`
 | `network.address` | `""` (**(this cloud)** `192.168.2.247`) | optional; a floating IP the project already holds. The stack associates it and never releases it, so the address survives `bin/cloud down` and every rebuild. If empty, the stack allocates a new one (§5.1) |
 | `network.dns` | `[8.8.8.8, 8.8.4.4]` | the platform network's DNS |
 | `network.mtu` | `1450` (**(this cloud)** `1442`) | the tenant networks' MTU (1450 on VXLAN with ML2/OVS, 1442 on Geneve with ML2/OVN, §2); Docker on the platform VM and on the range host, and every slot network |
+| `network.allowed` | `[0.0.0.0/0]` | optional; the source networks the group `cr-platform` takes ssh, 8000 and 8002 from, one rule per network and port. `init` writes the default. Keep the network `bin/cloud` runs from in it, or the rebuild cannot reach the VM over ssh. Without it, open to all |
 | `network.platform`, `.estate`, `.mgmt` | `10.20.0.0/24`, `10.30.0.0/16`, `10.31.0.0/24` | The ranges must be private and must not overlap. They must also stay outside Docker's default local address pools (172.17.0.0/16 to 172.31.0.0/16 and 192.168.0.0/16, moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`'s networks, the declared origins and the range host's Docker address pool 10.40.0.0/16 (`RANGE_HOST_POOL` in `platform/range/cloud.py`). `network.estate` must be a /16 or wider: slot N's estate is its Nth /24 (10.30.N.0/24), a Docker network on the range host, not a Neutron network |
 | `compute.base_image` | `ubuntu-24.04` | the platform VM and the range host |
 | `compute.availability_zone` | `""` | the platform VM and the range host; if empty, Nova chooses |
@@ -738,7 +743,8 @@ The server's cloud-init does these steps:
 4. Clones `repository` at `ref` into `/opt/cr`.
 5. Writes `/opt/cr/openstack.env`. It holds every cloud value except the
    password, and `CR_TOOL_IMAGE=cr-kali`, the attacker host the launcher runs
-   tools on.
+   tools on. It makes `/opt/cr/openstack-password` empty, mode 0600, owned by
+   uid 10001; the hand-over fills it.
 6. Writes `/opt/cr/.env` with `CR_PUBLISH=<fixed IP>` and
    `CR_SYSLOG_PUBLISH=0.0.0.0`.
 7. Enables `cr-platform.service`.
@@ -795,8 +801,8 @@ uv run bin/cloud down
    answers, and then waits for the API. A container can answer before the
    password line is written, and a range build on it would fail. The hand-over
    is the step that gives a new VM the password, the range key and the store
-   (§5.3). A VM never took it when `/opt/cr/openstack.env` has no
-   `CR_OPENSTACK_PASSWORD`. In that case `up` does the hand-over first. If the
+   (§5.3). A VM never took it when `/opt/cr/openstack-password` is missing or
+   empty. In that case `up` does the hand-over first. If the
    `cr-platform` container is stopped, `up` starts it first, because the key is
    written into that container. The redone hand-over keeps every other line of
    `openstack.env`, `CR_SIDELOADED` included. `up` refuses a `--sideload` here,
@@ -880,12 +886,15 @@ This command replaces the platform VM without losing data. It does these steps:
 5. It starts the `cr-platform` container on the new VM if it is stopped, then
    writes the kept key to `/data/ssh/id_ed25519` through `docker exec`.
 6. It restores the store.
-7. It rewrites the password line in `/opt/cr/openstack.env`, and the
-   `CR_SIDELOADED` line when the run sideloads. It keeps every other line, and
-   the file keeps mode 0600.
-8. It waits for `/api/sessions/`.
+7. It writes the password into `/opt/cr/openstack-password` in place, so the
+   file keeps mode 0600 and its owner. It drops a `CR_OPENSTACK_PASSWORD` line
+   an older hand-over left in `/opt/cr/openstack.env` and writes the
+   `CR_SIDELOADED` line there when the run sideloads; that file keeps every
+   other line and mode 0600. It recreates the platform container, which reads
+   the password file at start.
+8. It waits for `/api/auth/`, which answers before anyone signs in.
 
-The password line marks a finished hand-over, so it is written after the store
+The password file marks a finished hand-over, so it is written after the store
 is in place.
 
 There may be no store to carry over: there may be no stack, the stack may have
@@ -942,8 +951,8 @@ Docker image from a tarball instead of pulling it from GHCR. Both
 from GHCR at that tag (§3.6), so a sideloaded image is loaded on the platform VM
 only. A sideloaded `board`, `corp`, `corp-db`, `kali`, `waf` or `edge` never
 reaches the range; push the commit and let `images.yml` publish its images
-instead. The rebuild still writes `CR_SIDELOADED=<names>` beside the password
-in `/opt/cr/openstack.env`, and a hand-over that `up` redoes on a standing VM
+instead. The rebuild still writes `CR_SIDELOADED=<names>` in
+`/opt/cr/openstack.env`, and a hand-over that `up` redoes on a standing VM
 keeps the line. To see the names, run
 `sudo docker exec cr-platform env | grep CR_SIDELOADED` on the VM.
 
@@ -1108,6 +1117,52 @@ That fits the quota exactly: the platform VM (2 cores, 8 GB), two slots of four
 `m1.medium` VMs (16 cores, 32 GB) and `cr-range` on `dba.range` (6 cores,
 16 GB) are 24 cores and 56 GB of the 24 cores and 57344 MB (§3.2). The cloud
 now runs `cr-platform` and `cr-range`.
+
+### 5.6 Sign-in and the stack's credentials
+
+Every console page and every `/api/` endpoint needs a signed-in session
+(Django's session cookie, `cr_session`). The platform's first start makes
+the account `admin` with the password `123456`; nothing asks for it to be
+changed. To change it:
+
+```bash
+sudo docker exec -it -u cr cr-platform python manage.py changepassword admin
+```
+
+A script signs in over REST: `GET /api/auth/` gives a CSRF token, `POST
+/api/auth/login/` with `{"username", "password"}` and the header
+`X-CSRFToken` opens the session and answers the next token, which every
+POST, PUT and DELETE sends as `X-CSRFToken`. `redteam/signin.py` does this
+for `bin/cloud`, `bin/verify`, `bin/acceptance`, `redteam/run.py` and
+`test/`. They sign in as `CR_ADMIN_USER` / `CR_ADMIN_PASSWORD`, by default
+`admin` / `123456`. With curl:
+
+```bash
+T=$(curl -s -c jar http://$ADDRESS:8000/api/auth/ | jq -r .csrf_token)
+curl -s -b jar -c jar -H "X-CSRFToken: $T" -H 'Content-Type: application/json' \
+  -d '{"username": "admin", "password": "123456"}' http://$ADDRESS:8000/api/auth/login/
+curl -s -b jar http://$ADDRESS:8000/api/range/ready/
+```
+
+`/vm-terminal/`, `/kibana/` and port 8002 ask nginx's `auth_request` to the
+platform's `/auth-check/` first, so the same session opens them.
+
+Elasticsearch runs with security on. The platform's entrypoint makes the
+`elastic` password once, mode 0600, in `/data/elastic` on the volume
+`cr_platformdata`; Elasticsearch, Kibana and the collector mount that
+directory, or Kibana's part of it, read from a volume subpath.
+Elasticsearch's start script makes Kibana's service account token
+(`elastic/kibana/cr-kibana`) beside it. At every start the platform puts the
+ingest pipeline, the role `cr_viewer` (read on `logs-*`, Discover in Kibana)
+and the user `cr-viewer`, whose password it keeps in
+`/data/kibana-viewer-password` (0600). nginx hands Kibana that user's
+credentials on each request the session check let through, so the learner
+never signs in to Kibana. An operator on the ssh tunnel to 5601 signs in as
+`elastic`:
+
+```bash
+sudo docker exec cr-elasticsearch cat /run/cr-elastic/elastic-password
+```
 
 ## 6. The range (substrate openstack)
 
@@ -1351,8 +1406,8 @@ case's alerts.
 ## 7. Verification
 
 ```bash
-curl -s http://$ADDRESS:8000/api/range/ready/          # the slot's readiness
-curl -s http://$ADDRESS:8000/api/range/fabric/ | jq .clean
+curl -s -b jar http://$ADDRESS:8000/api/range/ready/          # signed in as in §5.6
+curl -s -b jar http://$ADDRESS:8000/api/range/fabric/ | jq .clean
 ssh ubuntu@$ADDRESS 'cd /opt/cr && CR_PLATFORM_URL=http://'$ADDRESS':8000 bin/verify'
 ```
 
@@ -1436,8 +1491,9 @@ We did not check whether that OPNsense edge survived an OPNsense update.
   admin-only Heat resource.
 - `platform.ref` is required (example value `dev`; `--ref` overrides it). The VM
   sees only pushed commits.
-- The project password is plain text in `/opt/cr/openstack.env` and in the
-  platform container's environment.
+- The project password is plain text in `/opt/cr/openstack-password` (0600,
+  uid 10001) on the platform VM and in the platform container's mount of it,
+  `/run/secrets/openstack_password`. It is in no container's environment.
 - Kali's origin addresses exist only inside the range host's slot networks,
   so they never meet the Docker networks `compose.yaml` declares on the
   platform VM. The platform reaches Kali only through `docker exec` on the

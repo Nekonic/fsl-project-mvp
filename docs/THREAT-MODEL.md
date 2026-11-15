@@ -63,8 +63,12 @@ like an attack: a search for `O'Brien` (`board-normal-search-with-apostrophe`).
 These cases catch a rule that fires on everything. They do not estimate a false
 positive rate.
 
-**The platform API checks where a request comes from, but it does not
-authenticate the caller.** The platform stands on the management network only,
+**The platform API authenticates the caller and checks where the request
+comes from.** Every console page and every `/api/` endpoint needs a signed-in
+Django session; the terminals, `/kibana/` and port 8002 ask the same session
+through nginx's `auth_request`. The first start makes `admin` with the password
+`123456`, and nothing makes anyone change it, so the password stops nobody who
+knows the default. The platform stands on the management network only,
 and no slot container has a route to it: every slot network is internal and its
 bridge carries no address of the range host. If a container did reach it, the
 attacker's shell could call `POST /api/rules/apply/` and rewrite the detector
@@ -81,9 +85,20 @@ the range. The check has three limits:
 - Nothing stops a host in the range from sending with another host's address.
 
 The target is not published. Port 8000 is the console. The XSS cases make the
-target run script in any browser that loads its pages. For that reason the API
-also refuses cross-origin writes and any write whose body is not
-`application/json`.
+target run script in any browser that loads its pages, and the Website pane
+serves the target on port 8002 of the same host, so that script runs in the
+operator's signed-in browser, one port away from the console. Cookies are kept
+per host, not per port, so the session cookie reaches 8002. What keeps the
+script from the API:
+
+- The session cookie is HttpOnly, and the CSRF token lives in the session, not
+  in a cookie, so the script reads neither.
+- The platform sends no CORS header, so the browser hands the script no answer
+  from 8000.
+- Every write needs the CSRF token, and the API refuses a cross-origin write
+  and any write whose body is not `application/json` before that.
+- nginx drops the `Cookie` header before it hands a request on 8002 to the
+  site proxy and never passes the target's `Set-Cookie` to the browser.
 
 **The learner map is a page of the console (`/map/<session>/`).**
 
@@ -203,9 +218,9 @@ What is tested:
 - No test runs an escape. The kernel is the boundary, and its bugs are not
   something the range can show.
 
-**One operator, one session.** There are no accounts and no roles. Nothing
-stops two browser windows from driving the same session. We decided this to
-limit scope.
+**One account, one operator.** There is one account, `admin`, and no roles.
+Nothing stops two browser windows from driving the same session. We decided
+this to limit scope.
 
 **A closed session's records last an hour.**
 
