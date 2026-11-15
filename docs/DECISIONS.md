@@ -8523,3 +8523,35 @@ covers every route with `session_id` in one place, and new routes inherit
 it); moving the range-address refusal into nginx (the platform's list of
 range addresses lives in Django and changes per slot). Left open: Kibana is
 not split by session, so a learner reads every session's logs there.
+
+## 2026-11-16 — `test_corp_authz` runs its two corp sessions side by side and batches range commands: 182 s to 67 s
+
+Measured live on the platform VM (module alone, three tests). Opening a corp
+session took 5–7 s: slots stand warm and `slot.sh` restores corp-db and
+corp-wp from the pristine copy, so no WordPress install or healthcheck wait
+is on the path. The time went to range commands: each `run()` is a
+`manage.py run_on_role` process costing about 3.3 s (1.0 s Django system
+checks, 1.8 s imports, 1.5 s OpenStack API reads to find the range host,
+0.3 s ssh and `docker exec`), and the two sessions made about 30 of them in
+series, plus the 2 s and 7 s sleeps and the case POSTs (4–9 s each, since
+recording a case observes objectives from the binlog).
+
+- `corp_sessions` opens both corp sessions at once (two threads) and returns
+  `rogue_admin_session` and `option_flip_session`; `test_corp_authz` joins
+  `TWO_SESSIONS` in `bin/acceptance`, so it takes two slots.
+- A nonce is read and spent in one attacker call (`with_nonce`, `grep -oP`);
+  the two option flips share that call. Reads that answer no later step run
+  in one call (`run_side_by_side`), and each cleanup is one call per host
+  (`run_in_turn`, new in `test/range.py`, sequential with the same part
+  marks). In-window reads run beside the case POST.
+- The 2 s settle and 7 s window gap are waited only for what the calls
+  before them did not already take.
+
+Kept: two sessions. One session would cost about 12 s more than two side by
+side and would drop a check: objectives are unique per session and key, so
+whichever breach goes second could not show it credits only its own
+objective (the flip's `credited == {"corp-self-registration"}`, or the rogue
+pair's exact set). Every assertion is unchanged. Left open: `run_on_role`'s
+3.3 s floor is platform-side (`requires_system_checks`, the OpenStack lookup
+per process) and would speed every acceptance module, but it needs a
+platform image to measure.

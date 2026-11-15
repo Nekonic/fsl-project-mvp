@@ -6,7 +6,7 @@
   "test_board_loot": 43,
   "test_bufferless_rule": 125,
   "test_concurrent_sessions": 246,
-  "test_corp_authz": 387,
+  "test_corp_authz": 67,
   "test_disabled_rule": 108,
   "test_evasion": 0,
   "test_event_time": 10,

@@ -80,7 +80,11 @@ These fixtures serve these tests:
 | `option_flip_session` | `test_corp_authz`: the option flip, which sets `default_role=administrator` and so keeps a corp session of its own |
 
 `test_corp_authz` reads each corp breach from the target's own rows and
-checks the exact set of objectives each session credited.
+checks the exact set of objectives each session credited. `corp_sessions`
+opens both corp sessions at once and runs them side by side, so the module
+takes two slots. Each range command costs about three seconds, so commands
+on one host that need no answer in between go in one call (`run_in_turn`,
+`run_side_by_side`), and a nonce is read and spent in the same call.
 `test_concurrent_sessions` opens one pair of sessions: the guided one takes
 the attack, the other is read before it fires its own case, then both tune
 their WAF and sensor.
@@ -139,7 +143,7 @@ The split follows these rules:
   `shared_sessions.py` and `conftest.py` as text. Every other module is a group
   of its own. Each group is one pytest process.
 - **Queue.** A group that holds two sessions at once (`TWO_SESSIONS`:
-  `test_concurrent_sessions`) takes two slots; every other group takes one.
+  `test_concurrent_sessions`, `test_corp_authz`) takes two slots; every other group takes one.
   Two-slot groups go first, then the rest heaviest first by the seconds in
   `durations.json`. A group starts as soon as the slots it takes are free, so
   N groups run at once and the next starts when one ends; there are no fixed

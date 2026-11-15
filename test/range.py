@@ -190,5 +190,17 @@ def run_side_by_side(role: str, commands: dict, timeout: float = 60.0, session: 
     ran = run(role, side_by_side([commands[key] for key in keys]), timeout=timeout, session=session)
     return dict(zip(keys, parts(ran.stdout, len(keys))))
 
+def in_turn(commands: list[list[str]]) -> list[str]:
+    steps = " ".join(
+        f'printf "{PART_MARK}{n}\\n"; ( {shlex.join(argv)} ) 2>/dev/null; printf "\\n{CODE_MARK}%s\\n" "$?";'
+        for n, argv in enumerate(commands)
+    )
+    return ["sh", "-c", steps]
+
+def run_in_turn(role: str, commands: dict, timeout: float = 60.0, session: int | None = None) -> dict:
+    keys = list(commands)
+    ran = run(role, in_turn([commands[key] for key in keys]), timeout=timeout, session=session)
+    return dict(zip(keys, parts(ran.stdout, len(keys))))
+
 def start_hint() -> str:
     return "bin/cloud up, then wait for GET /api/range/ready/ to say ready"

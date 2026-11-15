@@ -31,6 +31,7 @@ IDLE = (
 )
 TWO_SESSIONS = (
     "test_concurrent_sessions",
+    "test_corp_authz",
 )
 STANDING_STACK = (
     "test_board_exfil",
