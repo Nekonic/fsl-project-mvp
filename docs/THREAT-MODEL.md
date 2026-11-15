@@ -103,8 +103,9 @@ several). Their limits:
 The platform stands on the management network only,
 and no slot container has a route to it: every slot network but the 관제망 is
 internal and its bridge carries no address of the range host. The 관제망 lets
-out one path, the log server's 5140/udp to the collector, and no learner-facing
-container is on it. If a container did reach it, the
+out one path, the log server's 5140/udp to the collector; the one
+learner-facing container on it is the WAF, whose filter drops everything but
+that path from other addresses. If a container did reach it, the
 attacker's shell could call `POST /api/rules/apply/` and rewrite the detector
 that scores the attacker. The API therefore also refuses any request from the
 address of a host in the range: the range host's management address and every
@@ -188,7 +189,8 @@ How the containers are set up (`deploy/range-host/slot.yaml`,
   follows the link: `slot.sh reset` (root) emptied
   `/var/log/cr/sN/waf/audit.log` with `: >`, and the range host's rsyslog
   (`syslog`, in `adm`) read the same name with `imfile` (since 2026-11-15 the
-  slot's WAF shipper reads it, from its own read-only mount of the file), which reads a symlinked file as if it
+  slot's WAF shipper reads it, in the WAF's network namespace but from its own
+  read-only mount of the file), which reads a symlinked file as if it
   were the file ("For symlink-ed files this does **not** contain name of the
   actual file", rsyslog's imfile documentation, Metadata). A link to
   `/etc/passwd` would have had the next reset truncate it; a link to another
@@ -209,17 +211,21 @@ How the containers are set up (`deploy/range-host/slot.yaml`,
   (`sN_mgmt`) is NATed so the log server can reach the platform's collector;
   `slot.sh` installs its filter before compose creates it: INPUT drops
   everything from `sN-mgmt`, and DOCKER-USER passes only `sN-mgmt` to itself
-  and the log server's address to the collector's 5140/udp. No learner-facing
-  container is on the 관제망; it holds the sensors, the shippers and the log
-  server, none of which a learner gets a shell in.
+  and the log server's address to the collector's 5140/udp. The 관제망 holds
+  the sensor, the log server and the WAF's management interface. The WAF is
+  the one learner-facing container on it: it holds neither `NET_RAW` nor
+  `NET_ADMIN`, so it sends from its own address only, and the log server names
+  every log by the address it came from, so the WAF can write only the WAF's
+  log, which it already writes. From the 관제망 it reaches the log server's
+  514/tcp and nothing listening on the sensor.
 - The range host's `mgmt` port is in `cr-mgmt`, which only the platform
   reaches. While it sets itself up it has a second port, on the platform's
   network, in `cr-egress`, which admits nothing inbound; the range host uses it
   to pull images. Once the setup reports ready, the platform detaches that
   port, so a set-up range host has no way to the Internet and no DNS
   resolver.
-- The two Suricata sensors of each slot are slot containers on the bridge
-  they watch (an interface with no address, fed by `tc mirred`) and on the
+- Each slot's one Suricata sensor is a slot container on the two bridges it
+  watches (interfaces with no address, fed by `tc mirred`) and on the
   관제망, with `NET_ADMIN`, `NET_RAW` and `SYS_NICE` under the same user
   namespace remap as every other container. The log server and the shippers
   hold no capability and mount only read-only files. No learner is given a
