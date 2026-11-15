@@ -27,7 +27,7 @@ pytestmark = pytest.mark.django_db
 
 ROOT = Path(__file__).resolve().parents[2]
 SQLMAP_AGENT = "sqlmap/1.8.4#stable (https://sqlmap.org)"
-BOARD = "10.30.0.184"
+BOARD = "10.32.0.59"
 WAF = "10.30.0.177"
 CUSTOMER = "73.0.0.10"
 KALI = "5.188.10.10"
@@ -188,11 +188,11 @@ def test_the_reference_s_address_table_lists_the_addresses_the_learner_s_map_dra
         listed = client.get(f"/api/sessions/{session.pk}/lesson/addresses/").json()["addresses"]
 
     rows = {(one["host"], one["zone"], one["address"]) for one in listed}
-    assert {("kali", "internet", KALI), ("waf", "dmz", WAF), ("board.com", "dmz", BOARD),
+    assert {("kali", "internet", KALI), ("waf", "dmz", WAF), ("board.com", "web", BOARD),
             ("board.com", "database", "172.18.0.3")} <= rows, "every link the map labels"
     networks = {(one["host"], one["zone"]): one["network"] for one in listed}
     assert networks[("kali", "internet")] == ""
-    assert networks[("board.com", "dmz")] == str(ipaddress.ip_interface(f"{BOARD}/24").network)
+    assert networks[("board.com", "web")] == str(ipaddress.ip_interface(f"{BOARD}/24").network)
 
 @pytest.mark.parametrize("lesson_id, step_id, url, status, right, wrong, reason", [
     ("f2", "path", "/search/?q=hello", 200, "/search/", "board.com/search/", "lesson.http.wrong.path.host"),

@@ -108,73 +108,50 @@ services:
         ipv4_address: "@estate@.247"
       web:
         ipv4_address: "@web@.247"
+      mgmt:
+        ipv4_address: "172.29.@slot@.12"
+        interface_name: mgmt
     extra_hosts:
       - "board:@web@.59"
       - "corp-wp:@web@.60"
     volumes:
       - /var/log/cr/s@slot@/waf/audit.log:/var/log/modsecurity/audit/audit.log
 
-  edge-sensor:
+  waf-shipper:
+    <<: *rsyslog
+    container_name: s@slot@-waf-shipper
+    network_mode: "service:waf"
+    volumes:
+      - /opt/cr/s@slot@/rsyslog/waf-shipper.conf:/etc/rsyslog.conf:ro
+      - /var/log/cr/s@slot@/waf/audit.log:/var/log/cr/s@slot@/waf/audit.log:ro
+    depends_on: [waf, log-server]
+
+  sensor:
     <<: *sensor
-    container_name: s@slot@-edge-sensor
-    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet=sniff"]
+    container_name: s@slot@-sensor
+    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet"]
     networks:
-      internet:
-        interface_name: sniff
+      estate:
+        interface_name: dmz
+      web:
+        interface_name: web
       mgmt:
         ipv4_address: "172.29.@slot@.11"
         interface_name: mgmt
     volumes:
-      - /opt/cr/s@slot@/edge-sensor.yaml:/etc/suricata/suricata.yaml
-      - /opt/cr/s@slot@/edge-rules:/var/lib/suricata/rules
-      - /var/log/cr/s@slot@/edge:/var/log/suricata
-    depends_on: [edge]
+      - /opt/cr/s@slot@/sensor.yaml:/etc/suricata/suricata.yaml
+      - /opt/cr/s@slot@/sensor-rules:/var/lib/suricata/rules
+      - /var/log/cr/s@slot@/sensor:/var/log/suricata
+    depends_on: [edge, waf]
 
-  edge-sensor-shipper:
+  sensor-shipper:
     <<: *rsyslog
-    container_name: s@slot@-edge-sensor-shipper
-    network_mode: "service:edge-sensor"
+    container_name: s@slot@-sensor-shipper
+    network_mode: "service:sensor"
     volumes:
-      - /opt/cr/s@slot@/rsyslog/edge-sensor-shipper.conf:/etc/rsyslog.conf:ro
-      - /var/log/cr/s@slot@/edge:/var/log/cr/s@slot@/edge:ro
-    depends_on: [edge-sensor, log-server]
-
-  estate-sensor:
-    <<: *sensor
-    container_name: s@slot@-estate-sensor
-    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet=sniff"]
-    networks:
-      web:
-        interface_name: sniff
-      mgmt:
-        ipv4_address: "172.29.@slot@.12"
-        interface_name: mgmt
-    volumes:
-      - /opt/cr/s@slot@/estate-sensor.yaml:/etc/suricata/suricata.yaml
-      - /opt/cr/s@slot@/estate-rules:/var/lib/suricata/rules
-      - /var/log/cr/s@slot@/estate:/var/log/suricata
-    depends_on: [waf]
-
-  estate-sensor-shipper:
-    <<: *rsyslog
-    container_name: s@slot@-estate-sensor-shipper
-    network_mode: "service:estate-sensor"
-    volumes:
-      - /opt/cr/s@slot@/rsyslog/estate-sensor-shipper.conf:/etc/rsyslog.conf:ro
-      - /var/log/cr/s@slot@/estate:/var/log/cr/s@slot@/estate:ro
-    depends_on: [estate-sensor, log-server]
-
-  waf-shipper:
-    <<: *rsyslog
-    container_name: s@slot@-waf-shipper
-    hostname: waf-shipper
-    networks:
-      mgmt:
-        ipv4_address: "172.29.@slot@.13"
-    volumes:
-      - /opt/cr/s@slot@/rsyslog/waf-shipper.conf:/etc/rsyslog.conf:ro
-      - /var/log/cr/s@slot@/waf/audit.log:/var/log/cr/s@slot@/waf/audit.log:ro
-    depends_on: [log-server]
+      - /opt/cr/s@slot@/rsyslog/sensor-shipper.conf:/etc/rsyslog.conf:ro
+      - /var/log/cr/s@slot@/sensor:/var/log/cr/s@slot@/sensor:ro
+    depends_on: [sensor, log-server]
 
   log-server:
     <<: *rsyslog

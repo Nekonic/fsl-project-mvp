@@ -22,8 +22,7 @@ ROLE = "wargames"
 TEMPLATE = "deploy/range-host/slot.yaml"
 SETUP = "deploy/range-host/setup.sh"
 SLOT_SCRIPT = "deploy/range-host/slot.sh"
-EDGE_SENSOR = "deploy/range-host/edge-sensor.yaml"
-ESTATE_SENSOR = "deploy/suricata/suricata.yaml"
+SENSOR_CONFIG = "deploy/suricata/suricata.yaml"
 YAML_HEADER = "%YAML 1.1\n---\n"
 BASELINE_RULES = "deploy/suricata/rules/local.rules"
 COMPOSE = "wargames/{wargame}/compose.yaml"
@@ -42,11 +41,10 @@ INTERNET = "internet"
 UP_TIMEOUT = 900.0
 RESET_TIMEOUT = 600.0
 USER_DATA_LIMIT = 65535
-SENSORS = ("edge-sensor", "estate-sensor")
+SENSOR = "sensor"
 LOG_FILES = "/var/log/cr/s{slot}"
-LOGS = {"edge-sensor": "edge/eve.json", "estate-sensor": "estate/eve.json", "waf": "waf/audit.log"}
+LOGS = {"sensor": "sensor/eve.json", "waf": "waf/audit.log"}
 MGMT = "mgmt"
-SNIFF = "sniff"
 LOG_SERVER = "log-server"
 SHIPPER = "{service}-shipper"
 SHARED = re.compile(r"^service:(?P<service>\S+)$")
@@ -291,34 +289,33 @@ def forwarding(document: dict, slot: Slot, collector: str, port: int,
     return files
 
 
-def edge_sensor(source: Path, slot: Slot) -> str:
-    return _filled((Path(source) / EDGE_SENSOR).read_text(), slot)
+def sniffed(document: dict) -> list[str]:
+    return [str(attached["interface_name"])
+            for attached in (document["services"][SENSOR].get("networks") or {}).values()
+            if isinstance(attached, dict) and attached.get("interface_name") and not attached.get("ipv4_address")]
 
 
-def estate_sensor(source: Path, slot: Slot, fronts: list[str]) -> str:
-    config = yaml.safe_load((Path(source) / ESTATE_SENSOR).read_text().removeprefix(YAML_HEADER))
+def sensor_config(source: Path, slot: Slot, document: dict) -> str:
+    config = yaml.safe_load((Path(source) / SENSOR_CONFIG).read_text().removeprefix(YAML_HEADER))
     config["stats"] = {"enabled": True, "interval": 5}
     config["af-packet"] = [{
-        "interface": SNIFF,
-        "cluster-id": int(f"{slot.number}72"),
+        "interface": interface,
+        "cluster-id": int(f"{slot.number}{71 + at}"),
         "cluster-type": "cluster_flow",
         "defrag": True,
         "threads": 1,
-        "bpf-filter": " or ".join(f"host {address}" for address in fronts),
-    }]
+    } for at, interface in enumerate(sniffed(document))]
     return YAML_HEADER + yaml.dump(config, Dumper=_Unaliased, sort_keys=False)
 
 
 def slot_files(source: Path, slot: Slot, wargames, origins, default_origin: str,
                collector: str, port: int, senders: dict[str, tuple[str, str]]) -> dict[str, bytes]:
     document = compose(source, slot, wargames)
-    fronts = front_addresses(document)
     shipped = forwarding(document, slot, collector, port, senders)
     return {
         **{name: text.encode() for name, text in shipped.items()},
         "compose.yaml": dumped(document),
-        "edge-sensor.yaml": edge_sensor(source, slot).encode(),
-        "estate-sensor.yaml": estate_sensor(source, slot, fronts).encode(),
+        "sensor.yaml": sensor_config(source, slot, document).encode(),
         "kali.ip": kali_addresses(origins, default_origin).encode(),
         "edge.ip": edge_addresses(origins, slot).encode(),
         "local.rules": (Path(source) / BASELINE_RULES).read_bytes(),
@@ -335,11 +332,6 @@ def wargame_services(document: dict) -> set[str]:
 
 def fronted(document: dict) -> set[str]:
     return set(addressed(document, WEB)) & wargame_services(document)
-
-
-def front_addresses(document: dict) -> list[str]:
-    return sorted(address for name, address in addressed(document, WEB).items()
-                  if name in wargame_services(document))
 
 
 def archive(files: dict[str, bytes]) -> bytes:
@@ -453,7 +445,7 @@ def setup_state() -> list[str]:
 
 
 FORWARDING = f"{INSTALLED}/{{project}}/{SHIPPING}"
-SNIFFS = re.compile(r"^--af-packet=(?P<bridge>\S+)$")
+SNIFFS = re.compile(r"^--af-packet(=(?P<bridge>\S+))?$")
 WIRING = r"""p=$1; f=$2
 docker network ls --filter label=com.docker.compose.project=$p --format '{{.Name}}' | while read -r n; do
   echo "@network $n $(docker network inspect -f '{{.Id}} {{with index .Options "com.docker.network.bridge.name"}}{{.}}{{else}}-{{end}} {{range .IPAM.Config}}{{.Subnet}} {{end}}' "$n")"
@@ -468,6 +460,7 @@ for c in $(docker ps -q --filter label=com.docker.compose.project=$p); do
 done
 [ ! -d "$f" ] || sed -n 's/.*File="\([^"]*\)".*/@forward \1/p' "$f"/*-shipper.conf
 [ ! -f "$f/log-server.conf" ] || sed -n 's/^input(type="im\([a-z]*\)" port="\([0-9]*\)".*/@port \2\/\1/p' "$f/log-server.conf"
+[ ! -f "$f/log-server.conf" ] || sed -n 's/.*type="omfwd" Target="\([^"]*\)" Port="\([0-9]*\)" Protocol="\([a-z]*\)".*/@uplink \1:\2\/\3/p' "$f/log-server.conf" | head -n 1
 """
 
 

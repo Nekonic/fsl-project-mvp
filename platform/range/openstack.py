@@ -80,11 +80,10 @@ SEGMENT_TAG = fabric.TAG
 ATTACKER_ROLE = "attacker"
 SCORER_ROLE = "scorer"
 GATEWAY_ROLE = "gateway"
-SENSOR_ROLES = ("sensor", "estate-sensor")
+SENSOR_ROLES = ("sensor",)
 GONE_WAIT = 300
 GONE_POLL = 3
-COLLECTED = {"edge-sensor": ("sensor", "suricata"), "estate-sensor": ("estate-sensor", "suricata"),
-             "waf": (GATEWAY_ROLE, "modsecurity")}
+COLLECTED = {"sensor": ("sensor", "suricata"), "waf": (GATEWAY_ROLE, "modsecurity")}
 
 SETTINGS = {
     "keystone": "CR_OPENSTACK_KEYSTONE",

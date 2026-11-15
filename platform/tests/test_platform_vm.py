@@ -123,8 +123,8 @@ def test_the_platform_reads_the_image_sources_it_bundles():
     }
     from range import rangehost
 
-    for path in (rangehost.SETUP, rangehost.SLOT_SCRIPT, rangehost.TEMPLATE, rangehost.EDGE_SENSOR,
-                 rangehost.ESTATE_SENSOR, rangehost.BASELINE_RULES, "wargames/board/compose.yaml"):
+    for path in (rangehost.SETUP, rangehost.SLOT_SCRIPT, rangehost.TEMPLATE, rangehost.SENSOR_CONFIG,
+                 rangehost.BASELINE_RULES, "wargames/board/compose.yaml"):
         assert any(f"{source}/{path}".startswith(f"{m}/") or f"{source}/{path}" == m
                    for m in mounted), path
 

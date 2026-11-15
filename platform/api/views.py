@@ -1833,7 +1833,7 @@ def _session_logs(session):
 
 def _session_view_ready(session, index, again=False):
     drawn = maps.learner(session.scenario)
-    return kibana.session_view_ready(index, drawn.sensors, drawn.roles.get("gateway", ""), again=again)
+    return kibana.session_view_ready(index, drawn.roles.get("gateway", ""), again=again)
 
 def _discover(session, narrowed=None, everything=False, since=None, until=None):
     index = _session_index(session)

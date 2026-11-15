@@ -9,9 +9,8 @@ from tests import composed
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 LEARNER_FACING = ("kali", "waf", "board", "board-db", "corp-wp", "corp-db")
-MONITORING = ("edge-sensor", "estate-sensor", "edge-sensor-shipper", "estate-sensor-shipper", "waf-shipper",
-              "log-server")
-LOGGING = ("edge-sensor-shipper", "estate-sensor-shipper", "waf-shipper", "log-server")
+MONITORING = ("sensor", "sensor-shipper", "waf-shipper", "log-server")
+LOGGING = ("sensor-shipper", "waf-shipper", "log-server")
 CAPABILITIES = {
     "kali": {"NET_RAW", "NET_ADMIN", "SETUID", "SETGID", "CHOWN", "DAC_OVERRIDE", "FOWNER", "KILL", "AUDIT_WRITE"},
     "waf": {"NET_BIND_SERVICE", "SETUID", "SETGID", "CHOWN", "DAC_OVERRIDE"},
@@ -89,13 +88,17 @@ def test_every_slot_network_but_the_management_one_is_internal_with_no_host_addr
             f"{key} puts a range host address on its bridge, which a container reaches the host's sshd through")
 
 
-def test_the_management_network_s_way_out_is_filtered_before_any_container_joins_it_and_no_learner_stands_on_it():
+def test_the_management_network_s_way_out_is_filtered_before_any_container_joins_it_and_only_the_waf_of_the_learner_s_boxes_stands_on_it():
     services = slot_document()["services"]
     script = (ROOT / "deploy/range-host/slot.sh").read_text()
     up = script[script.index("\nup() {"):]
     uplinked = script[script.index("\nuplinked() {"):script.index("\n}\n", script.index("\nuplinked() {"))]
 
-    assert not {name for name in LEARNER_FACING if rangehost.MGMT in (services[name].get("networks") or {})}
+    on_mgmt = {name for name in LEARNER_FACING if rangehost.MGMT in (services[name].get("networks") or {})}
+    assert on_mgmt == {"waf"}, on_mgmt
+    assert not {"NET_RAW", "NET_ADMIN"} & set(services["waf"]["cap_add"]), (
+        "the WAF ships its own log from its management interface; without raw sockets or address changes "
+        "it cannot send as another device, and the log server names every log by the address it came from")
     assert up.index("uplinked") < up.index("compose up"), (
         "the management network routes out through the range host, so its filter goes in before it exists")
     assert "INPUT -i \"$bridge\" -j DROP" in uplinked and "DOCKER-USER -i \"$bridge\" -j DROP" in uplinked
@@ -127,20 +130,19 @@ def test_each_slot_s_networks_and_names_are_its_own():
         "s3_internet", "s3_estate", "s3_web", "s3_mgmt"}
 
 
-def test_the_sensors_watch_the_slot_s_bridges_and_are_no_shell_a_learner_gets():
+def test_the_sensor_watches_the_slot_s_bridges_and_is_no_shell_a_learner_gets():
     services = slot_document()["services"]
     stack = declared.read()
 
-    for name in ("edge-sensor", "estate-sensor"):
-        sensor = services[name]
-        assert not sensor.get("privileged") and "no-new-privileges:true" in sensor["security_opt"]
-        assert set(sensor["cap_add"]) == {"NET_ADMIN", "NET_RAW", "SYS_NICE"}
-        assert not sensor.get("network_mode") and not sensor.get("userns_mode"), (
-            f"{name} shares the range host's network or user namespace")
-        assert not [v for v in sensor["volumes"] if "docker.sock" in v]
+    sensor = services["sensor"]
+    assert not sensor.get("privileged") and "no-new-privileges:true" in sensor["security_opt"]
+    assert set(sensor["cap_add"]) == {"NET_ADMIN", "NET_RAW", "SYS_NICE"}
+    assert not sensor.get("network_mode") and not sensor.get("userns_mode"), (
+        "the sensor shares the range host's network or user namespace")
+    assert not [v for v in sensor["volumes"] if "docker.sock" in v]
     terminals = {stack.roles[role] for role in ("attacker", "gateway")}
     assert {stack.compose[role] for role, host in stack.roles.items() if host in terminals} >= {"kali", "waf"}
-    assert not {"edge-sensor", "estate-sensor"} & {stack.compose[role] for role in ("attacker", "gateway")}
+    assert "sensor" not in {stack.compose[role] for role in ("attacker", "gateway")}
 
 
 def test_every_slot_container_runs_on_docker_s_default_runtime():

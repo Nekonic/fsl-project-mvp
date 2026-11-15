@@ -119,11 +119,8 @@ def test_the_discover_link_opens_the_session_view_inside_its_own_space():
     assert "_index" not in closed and "logs'" not in closed, "no link reaches the shared view or another index"
 
 
-SENSORS = {"cr-edge": "router", "cr-wargame-host": "board.com"}
-
-
-def a_session_view(pattern="logs-2-*", sensors=SENSORS):
-    return kibana.session_view(pattern, sensors, "waf", kibana.shared_runtime(OBJECTS.read_bytes()))
+def a_session_view(pattern="logs-2-*"):
+    return kibana.session_view(pattern, "waf", kibana.shared_runtime(OBJECTS.read_bytes()))
 
 
 def test_the_session_data_view_shows_its_name_not_its_pattern_and_hides_what_learners_must_not_read():
@@ -153,21 +150,12 @@ def test_the_session_data_view_keeps_the_shared_columns_and_adds_the_engine_the_
 
     assert {"rule", "rule_id", "source_ip", "destination", "url", "status", "log_source", "sensor",
             "request_headers"} <= set(runtime)
-    assert '"edge": "router"' in observer and '"wargame-host": "board.com"' in observer, (
-        "sensor is the map name of the host whose sensor wrote the event, found by the host name without its first part"
+    assert "in_iface" in observer, (
+        "sensor is the leg the one IDS saw the event on, its sniffing interface: dmz before the WAF, web after it"
     )
     assert "emit(\"waf\")" in observer, "a ModSecurity record is written by the WAF"
     assert '"x-request-id"' in runtime["request_headers"]["script"]["source"], (
         "the request headers are shown without the step marker"
-    )
-
-
-def test_a_sensor_is_found_by_its_host_name_with_or_without_the_first_part_and_the_slot_number():
-    observer = kibana.sensor_script(SENSORS, "waf")
-
-    assert observer.index("shown.containsKey(host)") < observer.index("shown.containsKey(rest)")
-    assert "host.substring(0, dash)" in observer and "host.indexOf('.')" in observer, (
-        "edge, edge-2.localdomain and cr-wargame-host-2 all reach their map name"
     )
 
 
@@ -179,19 +167,11 @@ def test_the_operator_objects_carry_no_platform_name_and_hide_the_same_fields_as
     assert json.loads(view["attributes"]["sourceFilters"]) == json.loads(a_session_view()["attributes"]["sourceFilters"])
 
 
-def test_one_sensor_names_the_events_that_carry_no_sensor_host():
-    single = kibana.sensor_script({"cr-suricata": "waf"}, "waf")
-    several = kibana.sensor_script(SENSORS, "waf")
-
-    assert "host == '' ? \"waf\"" in single, "docker's one Suricata writes a file, not syslog, so no host is named"
-    assert "host == '' ? \"\"" in several
-
-
 def test_opening_the_session_view_makes_its_space_and_imports_the_view_and_the_route_into_it():
     fake = FakeKibana()
 
     with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.object(kibana, "OBJECTS", str(OBJECTS)):
-        made = kibana.ensure_session_view("logs-2-*", SENSORS, "waf", fake)
+        made = kibana.ensure_session_view("logs-2-*", "waf", fake)
 
     space, imported, route = fake.sent
     base = "http://kibana:5601/kibana"
@@ -228,7 +208,7 @@ def test_a_space_that_exists_is_updated_not_recreated():
         return {"success": True}
 
     with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.object(kibana, "OBJECTS", str(OBJECTS)):
-        kibana.ensure_session_view("logs-2-*", SENSORS, "waf", send)
+        kibana.ensure_session_view("logs-2-*", "waf", send)
 
     assert sent[1] == ("PUT", "http://kibana:5601/kibana/api/spaces/space/soc-logs-2")
     assert len(sent) == 4, "the view and the route are still written"
@@ -236,7 +216,7 @@ def test_a_space_that_exists_is_updated_not_recreated():
 
 def test_a_refused_session_view_does_not_stop_the_session():
     with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.object(kibana, "OBJECTS", str(OBJECTS)):
-        assert kibana.ensure_session_view("logs-2-*", SENSORS, "waf", FakeKibana(success=False)) is None
+        assert kibana.ensure_session_view("logs-2-*", "waf", FakeKibana(success=False)) is None
 
 
 @pytest.mark.django_db
@@ -363,9 +343,3 @@ def test_nothing_a_learner_can_open_in_kibana_names_the_platform():
     )
     assert not re.search(r"\bcr[-_.]", json.dumps(kibana.session_search(view)).lower())
     assert kibana.SPACE_NAME == "SOC" and kibana.session_view_id("logs-2-*") == "soc-logs-2"
-
-
-def test_a_sensor_whose_host_name_is_its_map_name_is_found_by_that_name():
-    observer = kibana.sensor_script(SENSORS, "waf")
-
-    assert '"router": "router"' in observer and '"edge": "router"' in observer

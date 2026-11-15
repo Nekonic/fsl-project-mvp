@@ -18,8 +18,7 @@ PLATFORM = {"id": "srv-platform", "name": "cr-platform", "status": "ACTIVE", "me
             "addresses": {"cr-mgmt": [{"addr": "10.31.0.2", "OS-EXT-IPS:type": "fixed", "version": 4}]}}
 
 
-SENDERS = {"edge-sensor": ("cr-edge", "suricata"), "estate-sensor": ("cr-range", "suricata"),
-           "waf": ("cr-waf", "modsecurity")}
+SENDERS = {"sensor": ("cr-range", "suricata"), "waf": ("cr-waf", "modsecurity")}
 
 
 def laid(number=2):
@@ -126,16 +125,18 @@ def test_a_slot_s_files_put_the_edge_and_the_waf_on_its_estate_and_the_targets_b
     assert not [left for left in ("${", "@slot@", "@estate@", "@web@", "@mtu@") if left in files["compose.yaml"].decode()]
 
 
-def test_the_estate_sensor_sees_the_waf_s_traffic_to_the_targets():
+def test_one_sensor_sniffs_the_dmz_before_the_waf_and_the_web_network_after_it():
     files = slot_files()
-    config = yaml.safe_load(files["estate-sensor.yaml"].decode().removeprefix(rangehost.YAML_HEADER))
-    [capture] = config["af-packet"]
-    compose = yaml.safe_load(files["compose.yaml"])
+    config = yaml.safe_load(files["sensor.yaml"].decode().removeprefix(rangehost.YAML_HEADER))
+    sensor = yaml.safe_load(files["compose.yaml"])["services"]["sensor"]
 
-    assert capture["interface"] == "sniff" == compose["services"]["estate-sensor"]["networks"]["web"]["interface_name"]
-    assert f"--af-packet={capture['interface']}" in compose["services"]["estate-sensor"]["command"]
-    assert capture["bpf-filter"] == "host 10.30.130.59 or host 10.30.130.60", (
-        "the web network carries only the WAF's traffic to the targets, which the wargame host's NIC saw")
+    assert [capture["interface"] for capture in config["af-packet"]] == ["dmz", "web"]
+    assert sensor["networks"]["estate"] == {"interface_name": "dmz"} and sensor["networks"]["web"] == {
+        "interface_name": "web"}, "a sniffing interface holds no address"
+    assert sensor["networks"]["mgmt"]["interface_name"] == "mgmt" and sensor["networks"]["mgmt"]["ipv4_address"]
+    assert "internet" not in sensor["networks"], "the sensor watches inside the perimeter, not the Internet side"
+    assert len({capture["cluster-id"] for capture in config["af-packet"]}) == 2
+    assert "--af-packet" in sensor["command"]
     assert config["stats"]["interval"] == 5, "kernel_drops is read from the counters"
 
 
@@ -154,10 +155,10 @@ def test_each_slot_s_logs_reach_the_collector_under_a_name_that_keeps_its_slot()
 
     assert " cr-waf modsecurity " in one["rsyslog/log-server.conf"].decode()
     assert 'File="/var/log/cr/s1/waf/audit.log"' in one["rsyslog/waf-shipper.conf"].decode()
-    assert " cr-edge-2 suricata " in relay and " cr-range-2 suricata " in relay and " cr-waf-2 modsecurity " in relay
-    assert 'File="/var/log/cr/s2/edge/eve.json"' in two["rsyslog/edge-sensor-shipper.conf"].decode()
-    assert 'reopenOnTruncate="on"' in two["rsyslog/edge-sensor-shipper.conf"].decode(), "a reset empties the logs in place"
-    assert relay.count('Target="10.31.0.2" Port="5140" Protocol="udp"') == 3
+    assert " cr-range-2 suricata " in relay and " cr-waf-2 modsecurity " in relay
+    assert 'File="/var/log/cr/s2/sensor/eve.json"' in two["rsyslog/sensor-shipper.conf"].decode()
+    assert 'reopenOnTruncate="on"' in two["rsyslog/sensor-shipper.conf"].decode(), "a reset empties the logs in place"
+    assert relay.count('Target="10.31.0.2" Port="5140" Protocol="udp"') == 2
 
 
 def test_the_log_server_names_each_log_by_the_management_address_it_came_from():
@@ -166,16 +167,16 @@ def test_the_log_server_names_each_log_by_the_management_address_it_came_from():
     relay = files["rsyslog/log-server.conf"].decode()
     on_mgmt = rangehost.addressed(compose, rangehost.MGMT)
 
-    for service, shipper in (("edge-sensor", "edge-sensor"), ("estate-sensor", "estate-sensor"), ("waf", "waf-shipper")):
+    for service in ("sensor", "waf"):
         shipped = files[f"rsyslog/{service}-shipper.conf"].decode()
         assert f'Target="{on_mgmt["log-server"]}" Port="514" Protocol="tcp"' in shipped
-        assert f'$fromhost-ip == "{on_mgmt[shipper]}"' in relay
+        assert f'$fromhost-ip == "{on_mgmt[service]}"' in relay
+        assert compose["services"][f"{service}-shipper"]["network_mode"] == f"service:{service}", (
+            "a log leaves from the management interface of the device that wrote it")
         source = compose["services"][f"{service}-shipper"]
         mounted = {str(volume).split(":")[1] for volume in source["volumes"]}
         assert f"{rangehost.LOG_FILES.format(slot=2)}/{rangehost.LOGS[service]}".startswith(
             tuple(path for path in mounted if path.startswith("/var/log/cr/")))
-    assert compose["services"]["edge-sensor-shipper"]["network_mode"] == "service:edge-sensor", (
-        "the sensor's log leaves from its own management interface")
     assert files["uplink"] == f'{on_mgmt["log-server"]} 10.31.0.2 5140\n'.encode()
 
 
@@ -273,7 +274,7 @@ def test_what_the_vm_range_left_is_listed_and_removed_servers_first():
     assert "srv-1" not in cloud.deleted and "img-own" not in cloud.deleted, "the range host and other images stay"
 
 
-def test_a_reset_is_the_slot_s_own_fast_reset_then_the_baseline_rules_on_both_sensors():
+def test_a_reset_is_the_slot_s_own_fast_reset_then_the_baseline_rules_on_the_sensor():
     cloud = Cloud()
     range_ = adapter(cloud).in_slot(2)
     range_.ensure_slot()
@@ -291,7 +292,7 @@ def test_a_reset_is_the_slot_s_own_fast_reset_then_the_baseline_rules_on_both_se
 
     assert ran[0] == ("", ["test", "-f", "/opt/cr/s2/compose.yaml"])
     assert ran[1] == ("", ["sudo", "sh", "/opt/cr/s2/slot.sh", "reset"])
-    assert {container for container, _ in ran[2:]} == {"s2-edge-sensor", "s2-estate-sensor"}
+    assert {container for container, _ in ran[2:]} == {"s2-sensor"}
     assert done[0] == ("cr-range", ("reset slot 2",)) and range_.reset_slot() == [], (
         "nothing is rebuilt by Nova: the slot's own containers are recreated on the range host")
 

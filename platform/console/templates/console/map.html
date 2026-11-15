@@ -23,7 +23,7 @@
 <script>
 const SYMBOLS = {
   kali: "host-kali.svg", router: "host-router.svg", waf: "host-shield.svg", server: "host-server.svg",
-  database: "host-storage.svg", logs: "host-statistics.svg", sensor: "host-inspect.svg", switch: "switch.svg",
+  database: "host-storage.svg", logs: "host-statistics.svg", sensor: "host-inspect.svg", switch: "switch.svg", collector: "host-server.svg",
   host: "host-server.svg",
 };
 const COLOURS = { internet: "#b03a2e", dmz: "#2e6da4", web: "#2f7a6b", database: "#4a6fa5", mgmt: "#6b5b95" };
@@ -46,6 +46,7 @@ function captioned(zone) {
 function named(node) {
   if (node.kind === "sensor") return t("topology.sensor");
   if (node.kind === "logs") return [node.name, t("topology.collector", node.port)].join("\n");
+  if (node.kind === "collector") return t("topology.uplink", node.address);
   if (node.customers && node.customers.address) {
     const note = node.customers.more ? t("topology.customers_more", node.customers.address, node.customers.more)
       : t("topology.customers", node.customers.address);

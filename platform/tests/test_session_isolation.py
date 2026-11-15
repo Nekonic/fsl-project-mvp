@@ -50,7 +50,7 @@ def test_rules_act_on_the_sensor_of_the_session_asked_for(client):
 
     read.call_args.args[0](["true"])
     applied.call_args.args[1](["true"])
-    assert sensors.ran_in[-2:] == [("sensor", "slot-1"), ("estate-sensor", "slot-1")], (
+    assert sensors.ran_in[-2:] == [("sensor", "slot-1"), ("sensor", "slot-1")], (
         "a rule written for one session's sensor reached the newest session's"
     )
 

@@ -44,8 +44,14 @@ class Container:
     links: tuple[tuple[str, str], ...] = ()
 
     @property
-    def sniffs(self) -> str:
-        return next((found["bridge"] for found in map(rangehost.SNIFFS.match, self.args) if found), "")
+    def sniffs(self) -> tuple[str, ...]:
+        captured = [found for found in map(rangehost.SNIFFS.match, self.args) if found]
+        if not captured:
+            return ()
+        if captured[0]["bridge"]:
+            return (captured[0]["bridge"],)
+        addressed = {name for name, _ in self.addresses}
+        return tuple(name for name, _ in self.links if name not in addressed)
 
     def keeps(self, path: str) -> bool:
         return any(path == mount or path.startswith(mount.rstrip("/") + "/") for mount in self.mounts)
@@ -57,6 +63,7 @@ class Wiring:
     containers: tuple[Container, ...] = ()
     forwarded: tuple[str, ...] = ()
     port: str = ""
+    uplink: str = ""
 
     def network(self, key: str) -> Network | None:
         return next((network for network in self.networks if network.key == key), None)
@@ -109,7 +116,7 @@ def _network(project: str, fields: list[str]) -> Network:
 
 
 def wiring(output: str, project: str) -> Wiring:
-    networks, containers, forwarded, port = [], [], [], ""
+    networks, containers, forwarded, port, uplink = [], [], [], "", ""
     current: dict | None = None
 
     def close():
@@ -139,7 +146,10 @@ def wiring(output: str, project: str) -> Wiring:
             forwarded.append(line.removeprefix("@forward ").strip())
         elif line.startswith("@port "):
             port = line.removeprefix("@port ").strip()
+        elif line.startswith("@uplink "):
+            uplink = line.removeprefix("@uplink ").strip()
         elif current is not None:
             current["lines"].append(line)
     close()
-    return Wiring(networks=tuple(networks), containers=tuple(containers), forwarded=tuple(forwarded), port=port)
+    return Wiring(networks=tuple(networks), containers=tuple(containers), forwarded=tuple(forwarded), port=port,
+                  uplink=uplink)

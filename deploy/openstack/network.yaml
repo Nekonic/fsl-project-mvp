@@ -51,15 +51,13 @@ slots:                            # docker networks on cr-range, not Neutron net
   containers:
     sN-kali:  { sN_internet: "172.30.N.10 and the origin source addresses (per-country SNAT)" }
     sN-edge:  { wan: "172.30.N.1 and the .1 of each origin /24", lan: 10.30.N.1 }   # nftables router, no NAT
-    sN-waf:   { sN_estate: 10.30.N.247, sN_web: 10.30.N+128.247 }                # ModSecurity reverse-proxy, fronts the targets
+    sN-waf:   { sN_estate: 10.30.N.247, sN_web: 10.30.N+128.247, sN_mgmt: 172.29.N.12 }   # ModSecurity reverse-proxy, fronts the targets; ships its audit log from mgmt
     sN-board:   { sN_web: 10.30.N+128.59, board-default: "with sN-board-db" }
     sN-corp-wp: { sN_web: 10.30.N+128.60, corp-default: "with sN-corp-db" }
-    sN-edge-sensor:   { sN_internet: "sniff, no address, tc mirred of every other port", sN_mgmt: 172.29.N.11 }
-    sN-estate-sensor: { sN_web: "sniff, no address, tc mirred of every other port", sN_mgmt: 172.29.N.12 }
-    sN-waf-shipper:   { sN_mgmt: 172.29.N.13 }   # reads the WAF audit log file read-only
-    sN-log-server:    { sN_mgmt: 172.29.N.10 }   # rsyslog, 514/tcp in, 5140/udp to the platform
+    sN-sensor:     { sN_estate: "dmz, no address, tc mirred of every other port", sN_web: "web, the same", sN_mgmt: 172.29.N.11 }   # one Suricata, both legs of the WAF
+    sN-log-server: { sN_mgmt: 172.29.N.10 }   # rsyslog, 514/tcp in, 5140/udp to the platform
   paths:
     external: "operator (through the VPN) -> FIP 192.168.2.247 -> platform (console :8000)"
     attack:   "sN-kali -> sN_internet (spoofed origin) -> sN-edge -> sN_estate -> WAF -> sN_web -> board/corp"
     mgmt:     "platform -> cr-mgmt -> ssh to cr-range -> docker exec sN-<service>"
-  collector_port: 5140            # syslog UDP: slot log-server (sensors + WAF, over sN_mgmt) -> range host NAT -> platform Filebeat -> Elasticsearch -> Kibana
+  collector_port: 5140            # syslog UDP: slot log-server (sensor + WAF, over sN_mgmt) -> range host NAT -> platform Filebeat -> Elasticsearch -> Kibana

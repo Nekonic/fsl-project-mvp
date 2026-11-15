@@ -21,7 +21,7 @@ def test_the_new_benign_cases_are_ordinary_requests_and_the_comment_has_the_xss_
     assert set(comment["request"]["json"]) == set(xss["request"]["json"])
 
 def test_rule_validation_reports_suricata_s_error_lines_from_the_sensor_that_printed_them(client, settings):
-    settings.CR_EXTRA_SENSORS = (("estate-sensor", "/var/lib/suricata/rules/local.rules", ("reload",)),)
+    settings.CR_EXTRA_SENSORS = (("second-sensor", "/var/lib/suricata/rules/local.rules", ("reload",)),)
     quiet = "Info: conf-yaml-loader: Including configuration file conf.d/cr.yaml.\n"
     loud = ("Info: suricata: This is Suricata version 7.0.8 RELEASE running in SYSTEM mode\n"
             "Error: detect-parse: unknown rule keyword 'contnet'.\n"

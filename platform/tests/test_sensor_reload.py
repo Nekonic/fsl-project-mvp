@@ -93,7 +93,7 @@ def test_the_rules_go_to_the_path_the_sensor_reads_and_roll_back_there():
     assert sensor.files[suricata.RULE_PATH] == BEFORE
     assert sensor.writes == [AFTER, BEFORE]
 
-def test_on_openstack_the_rules_editor_writes_and_reloads_what_the_edge_loads():
+def test_on_openstack_the_rules_editor_writes_and_reloads_what_the_sensor_loads():
     import os
     import pathlib
     import subprocess
@@ -109,9 +109,9 @@ def test_on_openstack_the_rules_editor_writes_and_reloads_what_the_edge_loads():
     assert read.returncode == 0, read.stderr[-300:]
 
     rules, reload = read.stdout.strip().splitlines()
-    edge_sensor = (pathlib.Path(__file__).resolve().parents[2] / "deploy/range-host/edge-sensor.yaml").read_text()
-    loaded = yaml.safe_load(edge_sensor.split("\n", 2)[2])
+    sensor = (pathlib.Path(__file__).resolve().parents[2] / "deploy/suricata/suricata.yaml").read_text()
+    loaded = yaml.safe_load(sensor.split("\n", 2)[2])
     assert rules == f"{loaded['default-rule-path']}/{loaded['rule-files'][0]}", (
-        "the editor must write the file the edge sensor's Suricata loads"
+        "the editor must write the file the sensor's Suricata loads"
     )
     assert reload == "suricatasc -c reload-rules"

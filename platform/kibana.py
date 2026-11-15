@@ -177,35 +177,15 @@ def _literal(text):
     return json.dumps(text)
 
 
-def _after_first_dash(host):
-    return host.split("-", 1)[-1]
-
-
 def log_source_script():
     return f"String module = {_value('event.module')}; if (module != '') {{ emit(module); }}"
 
 
-def sensor_script(sensors, waf):
-    named = {_after_first_dash(host): name for host, name in sensors.items()}
-    for name in sensors.values():
-        named.setdefault(name, name)
-    shown = ", ".join(f"{_literal(host)}: {_literal(name)}" for host, name in sorted(named.items())) or ":"
-    alone = sorted(set(sensors.values()))
-    fallback = _literal(alone[0] if len(alone) == 1 else "")
+def sensor_script(waf):
     return (
         f"String module = {_value('event.module')}; "
         f"if (module == 'modsecurity') {{ emit({_literal(waf)}); }} "
-        f"else if (module == 'suricata') {{ "
-        f"String host = {_value('log.syslog.hostname')}; "
-        "int dot = host.indexOf('.'); if (dot >= 0) { host = host.substring(0, dot); } "
-        "int dash = host.lastIndexOf('-'); boolean numbered = dash > 0 && dash < host.length() - 1; "
-        "for (int i = dash + 1; numbered && i < host.length(); ++i) { numbered = Character.isDigit(host.charAt(i)); } "
-        "if (numbered) { host = host.substring(0, dash); } "
-        "int first = host.indexOf('-'); String rest = first >= 0 ? host.substring(first + 1) : host; "
-        f"Map shown = [{shown}]; "
-        "String name = shown.containsKey(host) ? (String) shown.get(host) : "
-        f"(shown.containsKey(rest) ? (String) shown.get(rest) : (host == '' ? {fallback} : '')); "
-        "if (name != '') { emit(name); } }"
+        f"else if (module == 'suricata') {{ String leg = {_value('in_iface')}; if (leg != '') {{ emit(leg); }} }}"
     )
 
 
@@ -284,12 +264,12 @@ def shared_runtime(ndjson):
     raise Refused(f"the saved objects hold no {DATA_VIEW} data view to take the runtime fields from")
 
 
-def session_view(pattern, sensors, waf, runtime):
+def session_view(pattern, waf, runtime):
     fields = dict(runtime) | {
         "rule": {"type": "keyword", "script": {"source": rule_script()}},
         "rule_id": {"type": "keyword", "script": {"source": rule_id_script()}},
         "log_source": {"type": "keyword", "script": {"source": log_source_script()}},
-        "sensor": {"type": "keyword", "script": {"source": sensor_script(sensors, waf)}},
+        "sensor": {"type": "keyword", "script": {"source": sensor_script(waf)}},
         "request_headers": {"type": "keyword", "script": {"source": request_headers_script()}},
         "request_header": {
             "type": "composite", "script": {"source": request_header_script()},
@@ -338,10 +318,10 @@ def session_search(view):
     }
 
 
-def ensure_session_view(pattern, sensors, waf, send=None):
+def ensure_session_view(pattern, waf, send=None):
     try:
         with open(OBJECTS, "rb") as objects:
-            view = session_view(pattern, sensors, waf, shared_runtime(objects.read()))
+            view = session_view(pattern, waf, shared_runtime(objects.read()))
         send = send or send_json
         ensure_space(URL, view["id"], send)
         lines = "\n".join(json.dumps(found) for found in (view, session_search(view))).encode()
@@ -355,10 +335,10 @@ def ensure_session_view(pattern, sensors, waf, send=None):
         return None
 
 
-def session_view_ready(pattern, sensors, waf, send=None, now=time.monotonic, again=False):
+def session_view_ready(pattern, waf, send=None, now=time.monotonic, again=False):
     made, at = VIEWS.get(pattern, (False, None))
     if again or not made and (at is None or now() - at >= VIEW_RETRY):
-        made = ensure_session_view(pattern, sensors, waf, send) is not None
+        made = ensure_session_view(pattern, waf, send) is not None
         VIEWS[pattern] = (made, now())
     return made
 

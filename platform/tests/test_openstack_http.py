@@ -212,9 +212,7 @@ def test_describe_runs_end_to_end_over_http_against_reference_shapes(cloud):
     assert [(n.name, n.address) for n in management.nodes] == [
         ("cr-platform", "10.31.0.2"), ("cr-range", "10.31.0.40"),
     ]
-    assert sorted((s.name, s.watches) for s in shape.sensors) == [
-        ("cr-edge", "cr-edge"), ("cr-range", "cr-range")
-    ]
+    assert sorted((s.name, s.watches) for s in shape.sensors) == [("cr-range", "cr-waf")]
 
 
 CATALOG = {

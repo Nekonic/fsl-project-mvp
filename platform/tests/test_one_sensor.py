@@ -8,11 +8,11 @@ from range import declared
 from tests.test_rules_port import RELOAD, RULE, Sensor
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-EXTRA = (("estate-sensor", "/var/lib/suricata/rules/local.rules", RELOAD),)
+EXTRA = (("second-sensor", "/var/lib/suricata/rules/local.rules", RELOAD),)
 
 class Standing:
     def __init__(self, edge, estate):
-        self.sensors = {"sensor": edge, "estate-sensor": estate}
+        self.sensors = {"sensor": edge, "second-sensor": estate}
 
     def __call__(self):
         return self
@@ -24,24 +24,25 @@ def sensors():
     return yaml.safe_load((ROOT / "deploy/range-host/slot.yaml").read_text())["services"]
 
 
-def test_both_legs_run_the_pinned_sensor_image_on_their_slot_s_bridge():
-    for name, bridge in (("edge-sensor", "internet"), ("estate-sensor", "web")):
-        sensor = sensors()[name]
+def test_the_one_sensor_runs_the_pinned_image_on_both_legs_of_the_waf():
+    sensor = sensors()["sensor"]
 
-        assert sensor["image"] == (
-            "jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840"
-        ), "both legs are judged by one Suricata build, which moves only when this pin does"
-        assert sensor["networks"][bridge]["interface_name"] == "sniff" and "--af-packet=sniff" in sensor["command"]
-        assert sensor["networks"]["mgmt"]["interface_name"] == "mgmt"
-        assert sensor["volumes"][0].endswith(":/etc/suricata/suricata.yaml")
+    assert sensor["image"] == (
+        "jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840"
+    ), "both legs are judged by one Suricata build, which moves only when this pin does"
+    assert sensor["networks"]["estate"] == {"interface_name": "dmz"} and sensor["networks"]["web"] == {
+        "interface_name": "web"}
+    assert sensor["networks"]["mgmt"]["interface_name"] == "mgmt"
+    assert sensor["volumes"][0].endswith(":/etc/suricata/suricata.yaml")
 
 
-def test_the_estate_sensor_starts_on_the_shipped_baseline_rules():
-    entry = declared.read().hosts["cr-range"]
-    volumes = sensors()["estate-sensor"]["volumes"]
+def test_the_sensor_starts_on_the_shipped_baseline_rules():
+    stack = declared.read()
+    entry = stack.hosts[stack.roles["sensor"]]
+    volumes = sensors()["sensor"]["volumes"]
 
-    assert "/opt/cr/s@slot@/estate-rules:/var/lib/suricata/rules" in volumes, (
-        "the ready check reads every sensor's rules against local.rules; a sensor started "
+    assert "/opt/cr/s@slot@/sensor-rules:/var/lib/suricata/rules" in volumes, (
+        "the ready check reads the sensor's rules against local.rules; a sensor started "
         "with none kept the range out of READY"
     )
     assert entry.rules == "/var/lib/suricata/rules/local.rules"

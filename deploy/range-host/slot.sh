@@ -60,16 +60,14 @@ prepare() {
   owner=$(( ${shift_by:-0} ))
   www=$(( ${shift_by:-0} + 33 ))
   adm=$(( ${shift_by:-0} + 4 ))
-  install -d -m 0755 "$d/edge-rules" "$d/estate-rules" "$logs" "$logs/edge" "$logs/estate" "$logs/waf"
+  install -d -m 0755 "$d/sensor-rules" "$logs" "$logs/sensor" "$logs/waf"
   chown -h root:root "$logs/waf"
   find "$logs/waf" -mindepth 1 -maxdepth 1 ! \( -name audit.log -type f \) -exec rm -rf {} +
   [ -f "$logs/waf/audit.log" ] || install -m 0644 -o "$www" -g "$adm" /dev/null "$logs/waf/audit.log"
   chown -h "$www:$adm" "$logs/waf/audit.log"
   chmod 0644 "$logs/waf/audit.log"
-  for leg in edge estate; do
-    install -m 0644 -o "$owner" -g "$owner" "$d/local.rules" "$d/$leg-rules/local.rules"
-    chown -h "$owner:$owner" "$d/$leg-sensor.yaml" "$d/$leg-rules" "$logs/$leg"
-  done
+  install -m 0644 -o "$owner" -g "$owner" "$d/local.rules" "$d/sensor-rules/local.rules"
+  chown -h "$owner:$owner" "$d/sensor.yaml" "$d/sensor-rules" "$logs/sensor"
 }
 
 restore() {
@@ -115,9 +113,9 @@ port_of() {
 
 spanned() {
   bridge=s$n-$1
-  sensor=$(port_of "$project-$2" sniff)
+  sensor=$(port_of "$project-sensor" "$2")
   [ -n "$sensor" ]
-  inside "$project-$2" ip addr flush dev sniff
+  inside "$project-sensor" ip addr flush dev "$2"
   bridge link set dev "$sensor" learning off flood off mcast_flood off bcast_flood off
   for port in $(ls "/sys/class/net/$bridge/brif"); do
     tc qdisc replace dev "$port" clsact
@@ -131,8 +129,8 @@ spanned() {
 }
 
 mirrored() {
-  spanned inet edge-sensor
-  spanned web estate-sensor
+  spanned estate dmz
+  spanned web web
 }
 
 kept() {
@@ -157,10 +155,8 @@ unlinked() {
 }
 
 logs_emptied() {
-  for leg in edge estate; do
-    : > "$logs/$leg/eve.json"
-    docker exec "$project-$leg-sensor" suricatasc -c reopen-log-files >/dev/null
-  done
+  : > "$logs/sensor/eve.json"
+  docker exec "$project-sensor" suricatasc -c reopen-log-files >/dev/null
   : > "$logs/waf/audit.log"
 }
 
@@ -191,7 +187,7 @@ reset() {
   prepare
   targets_reset > "$d/targets.log" 2>&1 &
   targets=$!
-  compose up -d --force-recreate --no-deps --wait --wait-timeout "$WAIT" --pull never kali waf
+  compose up -d --force-recreate --no-deps --wait --wait-timeout "$WAIT" --pull never kali waf waf-shipper
   address_kali
   routed waf
   inside "$project-edge" ip neigh flush all
