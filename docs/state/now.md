@@ -5,8 +5,8 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-15, round 21 deployed (the range is one range host, `cr-range`, running four
-slots as compose projects; on `dev`).
+Updated: 2026-11-15, uv, the Nova keypair and the RC-file identity deployed (the range is one
+range host, `cr-range`, running four slots as compose projects; on `dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
@@ -191,6 +191,22 @@ Internet.
   746 s and 665 s across 14 processes (1101 s before); unit and API 1517
   passed in two processes beside it; ratchet no regression (`core_loc` 584,
   `dependencies` 6, `services` 5).
+- uv, the Nova keypair and the RC file (2026-11-15, `docs/DECISIONS.md`
+  "Virtualenvs are made with uv", "The platform VM's key is a Nova keypair",
+  "Example addresses are 10.10.10.0/24", "KVM is recommended, not required",
+  "The identity comes from an RC file on the controller node"). Store copied
+  first to `~/.cache/fsl-work/backup-safe/db-20261115T032144Z.sqlite3`.
+  Checked live: the sideload path's `VENV_COMMAND` on the standing VM made a
+  uv `/opt/cr/.venv` (uv 0.13.8, CPython 3.12.3, no `pip`) and
+  `bin/verify --fast` passed on it (909 + 669); `bin/cloud up --replace`
+  at the uv commit (25 min) and again at the RC commit (37 min 49 s, the
+  RC file loaded, `bin/cloud` refused first without it, naming all eight
+  `OS_*` variables) left four slots READY and the platform answering at
+  :8000. On the rebuilt VM cloud-init installed uv 0.13.8 (checksum OK) and
+  no `python3-venv`, `cr-venv` made `.venv`, `openstack.env` has
+  `CR_OPENSTACK_DOMAIN=fsl` and the platform signs in by domain name;
+  `ensure_keypair` found `fsl-claude` matching `~/.ssh/fsl_claude.pub`; the
+  password is in neither run's log. The live platform runs `range-host-live`.
 - Live paths run end to end on 2026-11-13: `bin/cloud up --replace` from the
   VM range (25 min, the range host replaced as stale, the leftovers removed
   after READY); a stale range host replaced by `POST slot/`; `bin/cloud down`
@@ -229,7 +245,9 @@ them.
   `manage.py run_on_role wargames '<json argv>' --slot N`.
 
 `bin/cloud` needs three gitignored files in the checkout that runs it:
-`deploy/openstack/cloud.yaml`, `.venv` and the newest copy in `backups/`. This
+`deploy/openstack/cloud.yaml`, `.venv` and the newest copy in `backups/`, and
+the project user's RC file loaded in its shell:
+`~/.cache/fsl-work/fsl-range-openrc.sh` (mode 0600; `os.sh` loads it too). This
 worktree has them (the newest copy from the last `bin/cloud up --replace`); the old cloud's `cloud.yaml` is kept outside the repo in
 `~/.cache/fsl-work/old-cloud/`. A worktree that is cleaned up loses these
 files, so copy them before working in a new one. Older store copies are in

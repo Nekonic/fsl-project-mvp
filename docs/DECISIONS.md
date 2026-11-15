@@ -7537,3 +7537,152 @@ only. `README.md` and `docs/ARCHITECTURE.md` now hold the former `.ko.md`
 text, and the English versions and the `.ko.md` files are gone. Keeping two
 languages in step cost a review pass per change and drifted in every docs
 review round. Every other repo file stays English, as before.
+
+## 2026-11-15 — Virtualenvs are made with uv
+
+The user asked for uv in place of `python3 -m venv` and pip wherever the repo
+builds a Python environment.
+
+- The platform VM's cloud-init no longer installs `python3-venv`. It downloads
+  uv 0.13.8's `uv-x86_64-unknown-linux-gnu.tar.gz` from the GitHub release,
+  checks it against the release's published SHA-256
+  (`5acfd917...57387d91`) and unpacks `uv` into `/usr/local/bin`. uv's
+  installation page lists GitHub Releases as a way to install it and pins a
+  version in the installer URL; the tarball and its checksum are used rather
+  than piping `install.sh` so that the download is checked, as the platform
+  image already does for ttyd.
+- `cr-venv` at first boot and `cr-venv-checkout` after a sideload run the same
+  `VENV_COMMAND`: `uv venv --clear --python /usr/bin/python3 /opt/cr/.venv`,
+  then `uv pip install --python /opt/cr/.venv/bin/python -r
+  platform/requirements.txt`. `--clear` is needed because `uv venv` refuses an
+  existing environment (`python3 -m venv` reused it); the second run therefore
+  rebuilds the environment from the requirements instead of upgrading in
+  place. `.venv` stays at the same paths, so `bin/verify` and
+  `.venv/bin/python` are unchanged. A uv environment has no `pip`;
+  `.venv/bin/pip` no longer exists.
+- No lockfile: `uv pip install -r platform/requirements.txt` resolves the same
+  ranges pip did.
+- The operator machine: `uv venv .venv`, then `uv pip install --python
+  .venv/bin/python -r platform/requirements.txt python-openstackclient
+  python-heatclient` (README step 3, `bin/verify`'s hint,
+  `bin/platform-rebuild`'s missing-CLI message). `bin/check-topology` makes
+  its per-release gns3-server environments with uv.
+- Images. The platform and gns3 images install with `uv pip install --system
+  --no-cache --compile-bytecode`, uv mounted for that one `RUN` from
+  `ghcr.io/astral-sh/uv:0.13.8` pinned by digest (uv's Docker guide, "Using uv
+  temporarily"), so uv is not in the image. Built by `images.yml` at the
+  change: platform 88,144,333 bytes of compressed layers (91,327,086 before),
+  gns3 250,373,788 (253,505,773 before). The board target keeps `pip install`:
+  it stands for a deployed Django site, and its Dockerfile is part of the
+  target, not of the platform's tooling. The Kolla-Ansible venvs in
+  `docs/OPENSTACK.md` §2.1 and §9 stay as the upstream quickstart writes them:
+  they run on the cloud's controller, not in this repo, and §9 records a run.
+- The ratchet: `dependencies` counts the lines of `platform/requirements.txt`
+  (`bin/measure`), so uv is not counted; it is a tool on the machine, like git
+  and Docker, not a package the platform imports. `dependencies` stays 6.
+- Live, 2026-11-15. Sideload path: on the standing VM, the uv install and
+  `VENV_COMMAND` (as `cr-venv-checkout`) made `/opt/cr/.venv` (uv 0.13.8,
+  CPython 3.12.3, no `pip`) and `bin/verify --fast` passed on it (909 + 669
+  in 4 min 14 s). First boot: `bin/cloud up --replace` twice, at the uv
+  commit (24 min 59 s) and at the RC-file commit (37 min 49 s); each time
+  cloud-init finished `done`, `python3-venv` was not installed, `cr-venv`
+  made `.venv` in about 2 s of CPU, four slots came up READY and the platform
+  answered 200 at :8000. `docker compose run --rm --no-deps --user cr
+  --entrypoint sh -v ./backups:/backups:ro platform` (README's restore) ran
+  as `cr` with `/data` and `/backups` mounted.
+
+## 2026-11-15 — The platform VM's key is a Nova keypair: `keys.key_name` and `keys.key_file`
+
+The user asked what the "operator key" (운영자 키) was. It was the Nova
+keypair the platform VM boots with and the private key `bin/cloud` and
+`bin/platform-rebuild` ssh with, under a name the field does not use. The
+config now uses OpenStack's own term: `keys.key_name` (the server's
+`key_name`, as the Heat parameter already was) and `keys.key_file` (that
+keypair's private key); in code `Cloud.key_name` and `Cloud.key_file`. The old
+keys are not read: the loader refuses `keys.operator` as an unknown setting and
+names the new ones. The live `deploy/openstack/cloud.yaml` (git-ignored) was
+updated in place; its copy before is in
+`~/.cache/fsl-work/backup-safe/cloud-yaml-20261115/`. The docs say "Nova
+keypair" / "Nova 키페어" and show both forms of python-openstackclient's
+`openstack keypair create`: `--public-key <file>` ("Filename for public key to
+add") and `--private-key <file>` ("Filename for private key to save").
+
+The user then called README step 6, a hand-written `export OS_AUTH_URL=...
+OS_PASSWORD="$(cat ...)"` followed by `openstack keypair create`, slop that
+nobody writes by hand. The keypair step is gone:
+
+- `bin/cloud up` and `bin/platform-rebuild` import the keypair themselves
+  before they create the stack (`ensure_keypair`): `openstack keypair list`,
+  then, when the project has no keypair named `keys.key_name`,
+  `openstack keypair create --public-key <key_file>.pub`. A keypair of that
+  name holding another public key (`openstack keypair show --public-key`)
+  stops them with the name and is never overwritten, since whatever booted
+  with it would lose its key. The platform's `IMPORT_KEYPAIR` was not reused:
+  it is the platform's own Nova call from inside the VM, and these scripts
+  drive the openstack CLI from the operator machine before any VM exists.
+- Credentials follow the next entry (an RC file); a `clouds.yaml` entry
+  printed by `bin/cloud` was built first and dropped the same day when the
+  user ruled for RC files.
+- The same sweep replaced README's restore block (`docker run` on the image
+  read back with `docker inspect`) with `docker compose run --rm --no-deps`
+  on the `platform` service, and dropped a `PATH=` prefix from the cutover
+  steps that the scripts never needed.
+
+## 2026-11-15 — Example addresses are 10.10.10.0/24
+
+The user ruled that 10.10.10.x is the default, so examples use it.
+`cloud.example.yaml`'s Keystone is `http://10.10.10.10:5000`; the example
+plan in `docs/OPENSTACK.md` §2.5 and §9 is the network 10.10.10.0/24, gateway
+10.10.10.1, the all-in-one host and Keystone VIP 10.10.10.10 and the
+floating-IP pool 10.10.10.20 to 10.10.10.99; README uses the same Keystone;
+test fixtures that stand for a floating IP use 10.10.10.21. Values that record
+the real cloud stay (Keystone 10.0.0.10, the provider network 192.168.2.0/24,
+the platform's 192.168.2.247, `deploy/openstack/network.yaml`, history), and so
+do range-internal addresses (10.20/10.30/10.31 and Docker's pools).
+
+## 2026-11-15 — KVM is recommended, not required
+
+The user: "kvm 안써도 돌아가잖아 느리게". This supersedes the 2026-10-20 ruling
+"OpenStack only" in one point, `nova_compute_virt_type: "kvm"` "(never
+`qemu`)": KVM stays Kolla's default and the recommendation, and a compute host
+without VT-x or AMD-V may run `nova_compute_virt_type: "qemu"`, under which
+the platform VM and the range host run under plain QEMU emulation, slower.
+`docs/OPENSTACK.md` §2.2 and §9 say so; README already did.
+
+## 2026-11-15 — The identity comes from an RC file on the controller node
+
+The user ruled how credentials work: the operator runs everything on the
+OpenStack controller node with an RC file, and `clouds.yaml` / `--os-cloud`
+are not used.
+
+- Admin steps run in a shell that has loaded `/etc/kolla/admin-openrc.sh`,
+  which `kolla-ansible post-deploy` writes.
+- The project user has an RC file of the same shape, for example
+  `~/fsl-range-openrc.sh`: Kolla's variables with the user, the project and
+  the password changed, and `OS_INTERFACE=public` because the platform VM
+  calls the same interface and reaches the public endpoints. README shows it
+  once and loads it once (`source`, install step 6); later steps show only
+  their own command.
+- `cloud.yaml` loses its `identity` section (`keystone`, `region`,
+  `interface`, `domain`, `project`, `user`, `password_file`,
+  `password_env`); the loader now refuses that section as unknown.
+  `bin/cloud` and `bin/platform-rebuild` read `OS_AUTH_URL`, `OS_USERNAME`,
+  `OS_PASSWORD`, `OS_PROJECT_NAME`, `OS_USER_DOMAIN_NAME`,
+  `OS_PROJECT_DOMAIN_NAME`, `OS_REGION_NAME` and `OS_INTERFACE`
+  (`cloud.identity`), and stop before any change, naming every missing one.
+  A trailing `/v3` on `OS_AUTH_URL` is dropped, since Kolla's RC has none and
+  others do. `Identity`'s repr leaves the password out.
+- The password still reaches the platform VM as before, over ssh into
+  `openstack.env`; only its source changed, to `OS_PASSWORD`.
+- The RC file names domains (`OS_USER_DOMAIN_NAME`), where `cloud.yaml` held
+  the domain's id. The Heat parameter `domain` and so `CR_OPENSTACK_DOMAIN`
+  now carry the user domain's name, and the platform signs in with
+  `{"domain": {"name": ...}}` (`range/openstack._signed_in`); Keystone takes
+  either. A VM made before this change holds the id and needs the rebuild
+  (`bin/cloud up --replace`) that brings the new image anyway.
+- Live: the operator's RC file is `~/.cache/fsl-work/fsl-range-openrc.sh`
+  (mode 0600, written from the old password file without printing it), and
+  `~/.cache/fsl-work/os.sh` loads it instead of reading the password file.
+  The live `cloud.yaml` lost its `identity` section; its copy before is in
+  `~/.cache/fsl-work/backup-safe/cloud-yaml-20261115/`.
+

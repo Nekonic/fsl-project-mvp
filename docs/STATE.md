@@ -21,7 +21,7 @@ P6 removed the older lessons 0-5 and 7 and the Lesson / Practice / Wargame rungs
 on 2026-10-14 (`docs/DECISIONS.md`). On 2026-10-18 the foundations were rebuilt
 as attack and defence lessons that run back to back in one session, and on
 2026-10-19 four live review rounds (2-5) tuned them. On 2026-10-20 the user
-ruled the product OpenStack-only (Kolla-Ansible 2026.1, kvm; widened on 2026-10-24 to 2025.1 or later,
+ruled the product OpenStack-only (Kolla-Ansible 2026.1, kvm; widened on 2026-10-24 to 2025.1 or later and on 2026-11-15 to KVM recommended, plain QEMU allowed,
 `docs/DECISIONS.md`) and the newcomer
 bring-up was fixed and rewritten. Later the same day the user moved the
 product to a new OpenStack cloud (`docs/DECISIONS.md` 2026-10-20, "The product
@@ -107,6 +107,15 @@ the wargame host are gone, and `bin/cloud up --replace` removed the old slot
 VMs, their networks and the role images. Detection matched the VM range case
 for case (board 18, corp 7); ten slots run at once on the range host
 (`docs/state/now.md`).
+
+On 2026-11-15 virtualenvs moved to uv (the platform VM installs uv 0.13.8
+from its checked release tarball; the platform and gns3 images install with
+a build-time uv mount), the platform VM's key became the Nova keypair
+`keys.key_name` / `keys.key_file` that `bin/cloud up` imports itself, the
+examples moved to 10.10.10.0/24, KVM became recommended rather than required,
+and the OpenStack identity moved out of `cloud.yaml` into the project user's
+RC file on the controller node (`docs/DECISIONS.md`, the five 2026-11-15
+entries from "Virtualenvs are made with uv").
 
 ## The objective model (done 2026-10-04)
 

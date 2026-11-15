@@ -324,7 +324,7 @@ an allowlist, also allow the hosts the registries redirect to.
 |---|---|---|
 | platform VM (cloud-init, `cr-platform.service`) | the Ubuntu archive; github.com; ghcr.io; docker.elastic.co; geoip.elastic.co | `apt` (Docker, git, chrony); `git clone` of `platform.repository`; `cr-platform` and `cr-gns3`; Elasticsearch, Kibana and Filebeat; `bin/fetch-geoip` |
 | the range host (`deploy/range-host/setup.sh`) | the Ubuntu archive; ghcr.io; Docker Hub | `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog`; `cr-kali`, `cr-waf`, `cr-edge`, `cr-board`, `cr-corp`, `cr-corp-db`; the pinned Suricata (`jasonish/suricata`) and MySQL images |
-| the operator machine | the cloud's API; the floating IP; github.com; ghcr.io | `bin/cloud`; the check that the images can be pulled |
+| the controller node, where `bin/cloud` runs | the cloud's API; the floating IP; github.com; ghcr.io | `bin/cloud`; the check that the images can be pulled |
 
 The range host reaches the Internet only through its second port, on the
 platform's own network (`CR_OPENSTACK_BUILD_NETWORK`), in the security group
