@@ -1,9 +1,41 @@
 from functools import wraps
 
 from django.contrib.auth import get_user_model
-from django.http import JsonResponse
+from django.http import HttpResponseNotFound, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
+
+from api.models import Detection, Session
+
+
+READS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def not_theirs(request):
+    if request.path.startswith("/api/"):
+        return JsonResponse({"detail": "no such session of yours"}, status=404)
+    return HttpResponseNotFound()
+
+
+class OwnSessionsOnly:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        return self.get_response(request)
+
+    def process_view(self, request, view, args, kwargs):
+        user = request.user
+        if not user.is_authenticated or user.is_staff:
+            return None
+        if request.path.startswith("/api/range/") and request.method not in READS:
+            return JsonResponse({"detail": "only an admin changes the range"}, status=403)
+        if "session_id" in kwargs and not Session.objects.filter(pk=kwargs["session_id"], owner=user).exists():
+            return not_theirs(request)
+        if "detection_id" in kwargs and not Detection.objects.filter(
+                pk=kwargs["detection_id"], session__owner=user).exists():
+            return not_theirs(request)
+        return None
 
 
 def staff_only(view):

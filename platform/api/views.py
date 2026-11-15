@@ -213,7 +213,7 @@ def sessions(request):
         except ValueError:
             limit = SESSION_PAGE
 
-        found = Session.objects.order_by("-id")
+        found = _visible_sessions(request.user).order_by("-id")
         state = request.GET.get("state")
         if state == "open":
             found = found.filter(ended_at=None)
@@ -1178,17 +1178,25 @@ def _range(session=None, adapter=None):
         return adapter.in_slot(_slot_of(_newest(session)) if adapter.slots > 1 else 1)
     return adapter
 
+def _visible_sessions(user):
+    return Session.objects.all() if user.is_staff else Session.objects.filter(owner=user)
+
 def _asked_session(request):
     given = request.GET.get("session")
     if given is None and request.method == "POST":
         given = _payload(request).get("session")
-    if given in (None, ""):
+    if given in (None, "") and request.user.is_staff:
         return None
+    if given in (None, ""):
+        own = _visible_sessions(request.user).order_by("ended_at", "-id").first()
+        if own is None:
+            raise Conflict("you hold no session; open one first")
+        return own
     try:
         wanted = int(given)
     except (TypeError, ValueError, OverflowError):
         raise BadRequest(f'"session" must be a session id, got {given!r}')
-    return get_object_or_404(Session, pk=wanted)
+    return get_object_or_404(_visible_sessions(request.user), pk=wanted)
 
 def _written(request):
     asked = _asked_session(request)

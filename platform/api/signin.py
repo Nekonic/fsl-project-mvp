@@ -1,7 +1,9 @@
 import json
 import math
+import re
 import time
 from datetime import datetime, timezone
+from urllib.parse import parse_qs, urlsplit
 
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.forms import UserCreationForm
@@ -11,6 +13,10 @@ from django.http import HttpResponse, JsonResponse
 from django.middleware.csrf import get_token
 from django.views.decorators.http import require_GET, require_POST
 
+from api.models import Session
+
+SITE_SESSION = re.compile(r"^/site/(?P<session>\d+)/")
+TERMINALS = "/vm-terminal/"
 OPEN = frozenset({
     "/login/", "/signup/", "/api/auth/", "/api/auth/login/", "/api/auth/signup/", "/auth-check/",
 })
@@ -157,6 +163,26 @@ def sign_out(request):
     return JsonResponse(_signed_in(request))
 
 
+def _session_named_by(uri):
+    parts = urlsplit(uri)
+    site = SITE_SESSION.match(parts.path)
+    if site:
+        return site["session"]
+    if parts.path.startswith(TERMINALS):
+        named = parse_qs(parts.query).get("arg", [])
+        return named[0] if len(named) == 1 and named[0].isdigit() else ""
+    return None
+
+
 def check(request):
-    return HttpResponse(status=204 if request.user.is_authenticated else 401)
+    user = request.user
+    if not user.is_authenticated:
+        return HttpResponse(status=401)
+    if user.is_staff:
+        return HttpResponse(status=204)
+    named = _session_named_by(request.headers.get("X-Original-URI", ""))
+    if named is None:
+        return HttpResponse(status=204)
+    theirs = named != "" and Session.objects.filter(pk=int(named), owner=user).exists()
+    return HttpResponse(status=204 if theirs else 403)
 

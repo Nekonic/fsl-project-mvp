@@ -159,13 +159,18 @@ def test_the_front_s_checks_reach_the_platform_s_session_check_and_the_world_doe
     assert "return 404;" in location("/auth-check/")
     assert "/api/attacker/" not in text
 
-def test_the_front_keeps_the_session_check_s_answer_a_few_seconds_per_session_cookie():
+def test_the_front_keeps_the_session_check_s_answer_per_cookie_address_and_session_asked():
     text = FRONT.read_text()
     checks = re.findall(r"location = /signed-in \{(.*?)\}", text, re.S)
 
     assert "keys_zone=signed_in:" in text
     for check in checks:
-        assert "proxy_cache signed_in;" in check and "proxy_cache_key $cookie_cr_session;" in check
+        assert "proxy_cache signed_in;" in check
+        assert 'proxy_cache_key "$cookie_cr_session|$remote_addr|$session_asked";' in check, (
+            "a key without the address lets a cached yes skip the platform's refusal of range "
+            "addresses; a key without the session lets one session's yes open another's"
+        )
+        assert "proxy_set_header X-Original-URI $request_uri;" in check
         assert re.search(r"proxy_cache_valid 204 401 [1-9]s;", check), (
             "Kibana's first load is over a hundred requests, each one a session check in Django"
         )

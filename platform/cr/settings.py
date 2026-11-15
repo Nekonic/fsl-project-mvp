@@ -42,6 +42,7 @@ MIDDLEWARE = [
     "api.refusals.SameOriginOnly",
     "api.reachability.not_from_inside_the_range",
     "api.signin.SignedInOnly",
+    "api.accounts.OwnSessionsOnly",
     "api.refusals.Refusals",
 ]
 
