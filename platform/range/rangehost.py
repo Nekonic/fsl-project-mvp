@@ -254,7 +254,7 @@ def shipper_conf(slot: Slot, service: str, tag: str, server: str) -> str:
         'global(maxMessageSize="64k" workDirectory="/tmp")\n'
         'module(load="imfile")\n'
         f'input(type="imfile" File="{LOG_FILES.format(slot=slot.number)}/{LOGS[service]}" Tag="{tag}" '
-        'Facility="local2" Severity="info" reopenOnTruncate="on")\n'
+        'Facility="local2" Severity="info" reopenOnTruncate="on" freshStartTail="on")\n'
         f'action(type="omfwd" Target="{server}" Port="{SHIPPED_PORT}" Protocol="tcp" '
         'Template="RSYSLOG_SyslogProtocol23Format" action.resumeRetryCount="-1")\n'
     )

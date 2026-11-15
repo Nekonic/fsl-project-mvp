@@ -158,6 +158,9 @@ def test_each_slot_s_logs_reach_the_collector_under_a_name_that_keeps_its_slot()
     assert " cr-range-2 suricata " in relay and " cr-waf-2 modsecurity " in relay
     assert 'File="/var/log/cr/s2/sensor/eve.json"' in two["rsyslog/sensor-shipper.conf"].decode()
     assert 'reopenOnTruncate="on"' in two["rsyslog/sensor-shipper.conf"].decode(), "a reset empties the logs in place"
+    assert 'freshStartTail="on"' in two["rsyslog/waf-shipper.conf"].decode(), (
+        "a reset recreates the WAF's shipper before it empties the audit log; starting from the top, the new "
+        "shipper sent the closed session's 9,400 WAF records a second time (measured on session 2201)")
     assert relay.count('Target="10.31.0.2" Port="5140" Protocol="udp"') == 2
 
 
