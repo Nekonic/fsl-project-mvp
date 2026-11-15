@@ -53,6 +53,8 @@ parameters:
     type: string
   slots:
     type: string
+  allowed:
+    type: comma_delimited_list
 
 conditions:
   zoned: {not: {equals: [{get_param: availability_zone}, ""]}}
@@ -91,10 +93,13 @@ resources:
     properties:
       name: cr-platform
       rules:
-        - {protocol: tcp, port_range_min: 22, port_range_max: 22}
-        - {protocol: tcp, port_range_min: 8000, port_range_max: 8000}
-        - {protocol: tcp, port_range_min: 8002, port_range_max: 8002}
-        - {protocol: icmp}
+        list_concat:
+          - repeat:
+              for_each:
+                "<%cidr%>": {get_param: allowed}
+                "<%port%>": ["22", "8000", "8002"]
+              template: {protocol: tcp, port_range_min: "<%port%>", port_range_max: "<%port%>", remote_ip_prefix: "<%cidr%>"}
+          - - {protocol: icmp}
 
   port:
     type: OS::Neutron::Port
@@ -229,6 +234,7 @@ resources:
               - [sh, -c, "echo CR_OPENSTACK_PLATFORM=$(cloud-init query instance_id) >> /opt/cr/openstack.env"]
               - [networkctl, reload]
               - [chown, -R, "ubuntu:ubuntu", /opt/cr]
+              - [install, -m, "600", -o, "10001", /dev/null, /opt/cr/openstack-password]
               - [usermod, -aG, docker, ubuntu]
               - [systemctl, daemon-reload]
               - [systemctl, enable, --now, cr-platform.service]

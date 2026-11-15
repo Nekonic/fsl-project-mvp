@@ -90,7 +90,7 @@ SETTINGS = {
     "keystone": "CR_OPENSTACK_KEYSTONE",
     "user": "CR_OPENSTACK_USER",
     "domain": "CR_OPENSTACK_DOMAIN",
-    "password": "CR_OPENSTACK_PASSWORD",
+    "password": "CR_OPENSTACK_PASSWORD_FILE",
     "project": "CR_OPENSTACK_PROJECT",
     "ssh_user": "CR_OPENSTACK_SSH_USER",
     "ssh_key": "CR_OPENSTACK_SSH_KEY",

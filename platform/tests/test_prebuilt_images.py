@@ -360,6 +360,10 @@ class NewPlatform:
     def settings_fed(self):
         return next(stdin for command, stdin in self.fed.items() if "openstack.env.kept" in command)
 
+    def password_fed(self):
+        [fed] = [stdin for command, stdin in self.fed.items() if "openstack-password" in command]
+        return fed
+
 
 COMPOSE_2_40_DOCKER = """#!/bin/sh
 case "$*" in
@@ -515,7 +519,8 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
         "bind-mounted into a running container keeps the cloned commit's copy after the checkout, so the "
         "collector ran the old filebeat.yml until each service was recreated"
     )
-    assert platform.settings_fed() == b"CR_OPENSTACK_PASSWORD=secret\nCR_SIDELOADED=edge\n", (
+    assert platform.password_fed() == b"secret"
+    assert platform.settings_fed() == b"CR_SIDELOADED=edge\n", (
         "the platform ships a sideloaded wargame image to the wargame host's builder instead of GHCR's copy "
         "at the same tag, so it has to know which images were sideloaded"
     )
@@ -530,8 +535,15 @@ def test_without_a_sideload_the_rebuild_pulls_everything_and_restarts_only_the_p
     module.hand_over(platform, "secret", key, None)
 
     assert not [command for command in platform.ran if "docker load" in command or "git " in command]
-    assert platform.ran[-1].endswith("up -d platform")
-    assert platform.settings_fed() == b"CR_OPENSTACK_PASSWORD=secret\n"
+    assert platform.ran[-1].endswith("up -d --force-recreate platform"), (
+        "the password file keeps its inode, so compose sees no change and would keep the platform that read it empty"
+    )
+    assert platform.settings_fed() == b""
+    assert platform.password_fed() == b"secret"
+    [written] = [command for command in platform.ran if "openstack-password" in command]
+    assert "install -m 600 -o 10001 /dev/null /opt/cr/openstack-password" in written and "cat > /opt/cr/openstack-password" in written, (
+        "the platform reads the file as cr (uid 10001), and nothing else may read it"
+    )
 
 
 class Probed:
@@ -658,7 +670,6 @@ def test_a_second_hand_over_leaves_one_password_line_and_keeps_every_line_it_doe
 
     assert settings == (
         "CR_OPENSTACK_USER=cr\nCR_SIDELOADED=board,platform\nCR_OPENSTACK_PLATFORM=srv\n"
-        "CR_OPENSTACK_PASSWORD=secret\n"
     ), (
         "plain up redoes the hand-over on a VM that was sideloaded; dropping CR_SIDELOADED made the "
         "platform pull GHCR's wargame images over the sideloaded ones and rebuild the wargame host"
@@ -672,9 +683,8 @@ def test_a_sideloading_hand_over_rewrites_the_sideloaded_line_too(monkeypatch, t
 
     _, settings = rewritten_settings(monkeypatch, tmp_path, sideload)
 
-    assert settings == (
-        "CR_OPENSTACK_USER=cr\nCR_OPENSTACK_PLATFORM=srv\n"
-        "CR_OPENSTACK_PASSWORD=secret\nCR_SIDELOADED=edge\n"
+    assert settings == "CR_OPENSTACK_USER=cr\nCR_OPENSTACK_PLATFORM=srv\nCR_SIDELOADED=edge\n", (
+        "the password leaves the environment file for its own file"
     )
 
 
@@ -711,7 +721,8 @@ def test_a_platform_container_that_will_not_start_stops_the_hand_over_before_any
 
     with pytest.raises(module.Refused, match=r"cr-platform container on ubuntu@203.0.113.7 is not running.*dependency failed"):
         module.hand_over(platform, "secret", key, None)
-    assert not [command for command in platform.ran if "docker exec" in command or "openstack.env" in command]
+    assert not [command for command in platform.ran
+                if "docker exec" in command or "openstack.env" in command or "openstack-password" in command]
 
 
 def test_the_password_that_marks_a_finished_hand_over_is_written_after_the_store_is_restored(tmp_path):
@@ -725,7 +736,7 @@ def test_the_password_that_marks_a_finished_hand_over_is_written_after_the_store
     module.hand_over(platform, "secret", key, store)
 
     restore = next(i for i, command in enumerate(platform.ran) if "docker run" in command)
-    marked = next(i for i, command in enumerate(platform.ran) if "openstack.env.kept" in command)
+    marked = next(i for i, command in enumerate(platform.ran) if "openstack-password" in command)
     assert restore < marked < len(platform.ran) - 1, (
         "plain up takes a VM with the password line as handed over and restores nothing; a hand-over "
         "that broke before its store was in place must not leave that line behind"
@@ -733,7 +744,7 @@ def test_the_password_that_marks_a_finished_hand_over_is_written_after_the_store
 
 
 @pytest.mark.parametrize("code, done", [(0, True), (1, False)])
-def test_the_hand_over_counts_as_done_only_when_the_password_line_is_found(code, done):
+def test_the_hand_over_counts_as_done_only_when_the_password_file_holds_one(code, done):
     assert rebuild().hand_over_done(Probed(code)) is done
 
 
@@ -745,7 +756,7 @@ def test_a_hand_over_that_cannot_be_checked_is_never_redone(code, said):
         module.hand_over_done(Probed(code, b"", said.encode()))
 
 
-def test_the_hand_over_check_reads_a_missing_settings_file_as_not_done(monkeypatch, tmp_path):
+def test_the_hand_over_check_reads_a_missing_or_empty_password_file_as_not_done(monkeypatch, tmp_path):
     module = rebuild()
     checkout = tmp_path / "cr"
     checkout.mkdir()
@@ -762,10 +773,10 @@ def test_the_hand_over_check_reads_a_missing_settings_file_as_not_done(monkeypat
             return subprocess.run(["/bin/sh", "-c", command], env={"PATH": f"{bin_dir}:/usr/bin:/bin"},
                                   capture_output=True)
 
-    assert module.hand_over_done(Shell()) is False, "cloud-init has not moved openstack.env into place yet"
-    (checkout / "openstack.env").write_text("CR_OPENSTACK_USER=cr\n")
-    assert module.hand_over_done(Shell()) is False
-    (checkout / "openstack.env").write_text("CR_OPENSTACK_USER=cr\nCR_OPENSTACK_PASSWORD=secret\n")
+    assert module.hand_over_done(Shell()) is False, "cloud-init has not made the password file yet"
+    (checkout / "openstack-password").write_text("")
+    assert module.hand_over_done(Shell()) is False, "cloud-init makes it empty; the hand-over fills it"
+    (checkout / "openstack-password").write_text("secret")
     assert module.hand_over_done(Shell()) is True
 
 

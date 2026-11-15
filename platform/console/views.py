@@ -1,6 +1,9 @@
 from django.shortcuts import render
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 
+def login(request):
+    return render(request, "console/login.html")
+
 def main(request):
     return render(request, "console/main.html")
 

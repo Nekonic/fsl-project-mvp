@@ -130,3 +130,43 @@ def test_kibana_is_published_on_the_platform_host_s_loopback_only_for_the_operat
     assert ports == ["127.0.0.1:5601:5601"], (
         "the learner-facing /kibana/ refuses administration; an operator reaches Kibana whole through an ssh tunnel"
     )
+
+def block_after(marker):
+    return FRONT.read_text().split(marker, 1)[1].split("\n        }", 1)[0]
+
+SITE = "(?<site>[a-z0-9.-]+)(/.*)?$ {"
+KIBANA_SETTINGS = "internal/kibana/settings$ {"
+
+def test_every_web_surface_beside_the_console_asks_the_platform_for_a_signed_in_session_first():
+    gated = {
+        "the Kali terminal": location("/vm-terminal/kali/"),
+        "the WAF terminal": location("/vm-terminal/waf/"),
+        "Kibana": block_after("location /kibana/ {"),
+        "Kibana's settings read": block_after(KIBANA_SETTINGS),
+        "the site port": block_after(SITE),
+    }
+
+    for name, block in gated.items():
+        assert re.search(r"auth_request /(terminal|kibana)-allowed;", block), f"{name} skips the sign-in"
+        assert "error_page 401 = @sign-in;" in block, f"{name} shows a bare 401 instead of the login page"
+
+def test_the_front_s_checks_reach_the_platform_s_session_check_and_the_world_does_not():
+    text = FRONT.read_text()
+    checks = re.findall(r"location = /(?:terminal|kibana)-allowed \{(.*?)\}", text, re.S)
+
+    assert len(checks) == 3
+    assert all("internal;" in check and "proxy_pass http://127.0.0.1:8001/auth-check/" in check for check in checks)
+    assert "return 404;" in location("/auth-check/")
+    assert "/api/attacker/" not in text
+
+def test_kibana_gets_the_viewer_s_credential_from_the_check_never_from_the_browser():
+    for block in (block_after("location /kibana/ {"), block_after(KIBANA_SETTINGS)):
+        assert "auth_request_set $kibana_authorization $upstream_http_x_kibana_authorization;" in block
+        assert "proxy_set_header Authorization $kibana_authorization;" in block
+
+def test_the_site_port_forwards_none_of_the_console_s_cookies_and_keeps_none_of_the_target_s():
+    site = block_after(SITE)
+
+    assert 'proxy_set_header Cookie "";' in site
+    assert "proxy_hide_header Set-Cookie;" in site
+    assert "Access-Control" not in FRONT.read_text()

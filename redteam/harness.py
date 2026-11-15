@@ -75,8 +75,9 @@ def run(
     tool_target_url: str = DEFAULT_TOOL_TARGET,
     scenario: str = "board",
     announce=lambda session_id: None,
+    http: requests.Session | None = None,
 ) -> int:
-    http = requests.Session()
+    http = http or requests.Session()
     platform_url = platform_url.rstrip("/")
     opened = http.post(
         f"{platform_url}/api/sessions/",

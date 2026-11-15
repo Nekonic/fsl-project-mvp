@@ -4,15 +4,19 @@ import re
 import pytest
 from django.test import Client
 
+from tests.conftest import signed_in
+
 pytestmark = pytest.mark.django_db
 
 PAGES = ["/", "/session/1/", "/red/1/", "/blue/1/"]
 
 @pytest.fixture
-def client():
-    return Client()
+def client(db):
+    return signed_in(Client())
 
-def test_pages_do_not_query_the_database(client):
+SIGN_IN_TABLES = ('"django_session"', '"auth_user"')
+
+def test_pages_query_the_database_only_to_check_the_sign_in(client):
     from django.db import connection
     from django.test.utils import CaptureQueriesContext
 
@@ -20,7 +24,8 @@ def test_pages_do_not_query_the_database(client):
         for path in PAGES:
             client.get(path)
 
-    assert len(queries) == 0
+    asked = [query["sql"] for query in queries.captured_queries]
+    assert asked and all(any(table in sql for table in SIGN_IN_TABLES) for sql in asked), asked
 
 
 CONSOLE = pathlib.Path(__file__).resolve().parent.parent / "console/templates/console"

@@ -49,7 +49,7 @@ def _paged_index(started, count, size):
     held = [(f"doc-{n}", {"@timestamp": stamp.isoformat()}) for n, stamp in enumerate(stamps)]
     asked = []
 
-    def fetch(url, index, start, end, newest_first=False):
+    def fetch(url, index, start, end, newest_first=False, auth=None):
         asked.append(start)
         window = [doc for doc in held if start <= datetime.fromisoformat(doc[1]["@timestamp"]) <= end]
         return window[:size], (size, len(window)) if len(window) > size else None
@@ -79,7 +79,7 @@ def test_an_ingest_pages_through_a_window_one_read_cannot_hold(client):
 
 def test_a_window_that_will_not_advance_is_still_reported_as_cut(client):
     session = a_session(client)
-    flat = lambda url, index, start, end, newest_first=False: (
+    flat = lambda url, index, start, end, newest_first=False, auth=None: (
         [(f"same-{n}", {"@timestamp": session.started_at.isoformat()}) for n in range(2)], (2, 7))
 
     with patch("api.views.elastic.fetch", side_effect=flat), \

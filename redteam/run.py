@@ -20,7 +20,7 @@ from django.conf import settings
 from api.models import Session
 from range import substrate
 from wargames import WARGAMES
-from redteam import harness
+from redteam import harness, signin
 
 DEFAULT_CASES = Path(__file__).resolve().parent / "cases" / "board.yaml"
 
@@ -67,8 +67,11 @@ def main() -> int:
     try:
         session_id = harness.run(
             cases, args.platform, launch, args.tool_target, scenario,
-            announce=opened,
+            announce=opened, http=signin.signed_in(args.platform),
         )
+    except signin.Refused as refused:
+        print(refused, file=sys.stderr)
+        return 1
     except requests.HTTPError as refused:
         print(f"{refused}: {refused.response.text}", file=sys.stderr)
         return 1

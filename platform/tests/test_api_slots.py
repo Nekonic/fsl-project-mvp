@@ -185,8 +185,10 @@ def test_a_close_does_not_wait_while_another_open_reads_the_range(client, cloud)
         return verdict
 
     answers = []
+    another = type(client)()
+    another.cookies = client.cookies
     with patch("api.views._readiness", slow_readiness):
-        opening = threading.Thread(target=lambda: answers.append(type(client)().post_json("/api/sessions/", {})))
+        opening = threading.Thread(target=lambda: answers.append(another.post_json("/api/sessions/", {})))
         opening.start()
         reading.wait(5)
         started = time.monotonic()

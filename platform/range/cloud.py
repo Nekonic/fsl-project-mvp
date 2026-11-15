@@ -28,6 +28,7 @@ ENTRY = {
     "project_domain": ("auth", "project_domain_name"), "region": ("region_name",),
 }
 PROJECT = "fsl-range"
+OPEN_TO_ALL = ["0.0.0.0/0"]
 NEEDS = {"platform": {"ram": 8192, "vcpus": 2, "disk": 40}, "range": {"ram": 16384, "vcpus": 6, "disk": 40}}
 SETTING = re.compile(r"^(?P<indent> *)(?P<key>[A-Za-z_][A-Za-z0-9_-]*):(?P<gap> *)(?P<value>[^#]*?)(?P<comment> +#.*)?$")
 
@@ -207,6 +208,7 @@ class Cloud:
     dns: tuple[str, ...] = ()
     inside: dict[str, str] = field(default_factory=dict)
     flavors: dict[str, str] = field(default_factory=dict)
+    allowed: tuple[str, ...] = tuple(OPEN_TO_ALL)
     slots: int = 1
     backups_keep: int = 1
     signed_in: Identity | None = None
@@ -227,6 +229,7 @@ class Cloud:
             "range_flavor": self.flavors["range"], "subnets": joined(self.inside),
             "management": self.inside["mgmt"],
             "range_mtu": str(self.mtu), "slots": str(self.slots),
+            "allowed": ",".join(self.allowed),
         }
 
 
@@ -290,6 +293,19 @@ def _dns(value) -> str | None:
     return None
 
 
+def _allowed(value) -> str | None:
+    if not isinstance(value, list) or not value:
+        return "must be a list of at least one IPv4 network, such as [0.0.0.0/0]"
+    for entry in value:
+        try:
+            network = ipaddress.ip_network(str(entry), strict=True)
+        except ValueError:
+            return f"holds {entry!r}, which is not an IPv4 network such as 203.0.113.0/24"
+        if network.version != 4:
+            return f"holds {entry!r}, which is not an IPv4 network"
+    return None
+
+
 def _address(value) -> str | None:
     try:
         ipaddress.IPv4Address(str(value))
@@ -327,6 +343,7 @@ SCHEMA = {
     "network": {
         "external": (_name, True), "address": (_address, False), "dns": (_dns, True), "mtu": (_mtu, True),
         "platform": (_cidr, True), "estate": (_estate, True), "mgmt": (_cidr, True),
+        "allowed": (_allowed, False),
     },
     "compute": {
         "base_image": (_name, True), "availability_zone": (_optional_name, False),
@@ -437,6 +454,7 @@ def parse(document, source: str = "cloud.yaml") -> Cloud:
         base_image=compute["base_image"],
         availability_zone=compute.get("availability_zone") or "",
         flavors={str(role): name for role, name in compute["flavors"].items()},
+        allowed=tuple(map(str, network.get("allowed") or OPEN_TO_ALL)),
         slots=compute.get("slots") or 1,
         key_name=keys["key_name"], key_file=keys["key_file"],
         range_key=keys["range"],

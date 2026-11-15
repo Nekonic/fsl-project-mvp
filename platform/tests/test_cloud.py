@@ -152,3 +152,21 @@ def test_a_cloud_yaml_written_before_the_backups_section_still_parses_and_keeps_
     assert cloud.parse(document).backups_keep == 1, (
         "every cloud.yaml in use predates backups.keep; refusing it would stop bin/cloud before anything runs"
     )
+
+
+def test_the_platform_takes_ssh_and_its_ports_from_the_allowed_networks_open_to_all_unless_narrowed(tmp_path):
+    entry = cloud.signed_in("fsl-range", written_clouds(tmp_path, **{"fsl-range": ENTRY}))
+    older = copy.deepcopy(DOCUMENT)
+    del older["network"]["allowed"]
+
+    assert DOCUMENT["network"]["allowed"] == ["0.0.0.0/0"]
+    assert dataclasses.replace(cloud.parse(older), signed_in=entry).heat_parameters()["allowed"] == "0.0.0.0/0"
+    narrowed = cloud.parse(changed(network__allowed=["203.0.113.0/24", "198.51.100.7/32"]))
+    assert dataclasses.replace(narrowed, signed_in=entry).heat_parameters()["allowed"] == (
+        "203.0.113.0/24,198.51.100.7/32"
+    )
+
+
+@pytest.mark.parametrize("allowed", [[], "0.0.0.0/0", ["203.0.113.1/24"], ["not-a-network"], ["::/0"]])
+def test_an_allowed_list_that_is_not_ipv4_networks_is_refused(allowed):
+    assert "network.allowed" in refusal(changed(network__allowed=allowed))

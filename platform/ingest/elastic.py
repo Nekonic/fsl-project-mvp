@@ -21,6 +21,7 @@ def fetch(
     end: datetime,
     size: int = 5000,
     newest_first: bool = False,
+    auth: tuple[str, str] | None = None,
 ) -> tuple[list[tuple[str, dict[str, Any]]], tuple[int, int] | None]:
     query = {
         "size": size,
@@ -40,6 +41,7 @@ def fetch(
         response = requests.post(
             f"{url.rstrip('/')}/{index}/_search?allow_partial_search_results=false",
             json=query,
+            auth=auth,
             timeout=FETCH_TIMEOUT,
         )
     except requests.RequestException as exc:

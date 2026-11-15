@@ -86,6 +86,7 @@
     <nav id="crumbs" class="flex items-center gap-2 text-muted text-[13px] min-w-0 truncate"></nav>
     <div class="ml-auto flex items-center gap-4 text-[13px] text-muted shrink-0">
       <span id="range-health" class="hidden items-center gap-1.5"></span>
+      {% block account %}<button type="button" id="sign-out" data-t="auth.sign_out" class="hover:text-heading"></button>{% endblock %}
     </div>
   </header>
   <main class="{% block main_class %}max-w-[1120px] mx-auto px-4 sm:px-6 py-8{% endblock %}">
@@ -99,11 +100,38 @@
     const PATIENCE = 90 * 1000;
     const PATIENCE_FOR_RANGE_WORK = 15 * 60 * 1000;
 
+    const READS = new Set(["GET", "HEAD", "OPTIONS"]);
+    let csrfAsked = null;
+
+    function csrf(renew) {
+      if (!csrfAsked || renew) {
+        csrfAsked = fetch("/api/auth/").then((answer) => answer.json())
+          .then((said) => said.csrf_token || "").catch(() => "");
+      }
+      return csrfAsked;
+    }
+    csrf();
+
+    const signIn = () =>
+      location.assign(`/login/?next=${encodeURIComponent(location.pathname + location.search)}`);
+
     async function api(path, options, patience = PATIENCE) {
       const abandon = new AbortController();
       const timer = setTimeout(() => abandon.abort(), patience);
+      const given = options || {};
+      const writes = !READS.has(String(given.method || "GET").toUpperCase());
+      const send = async (renew) => fetch(path, {
+        ...given,
+        headers: writes ? { ...(given.headers || {}), "X-CSRFToken": await csrf(renew) } : given.headers,
+        signal: abandon.signal,
+      });
       try {
-        const response = await fetch(path, { ...options, signal: abandon.signal });
+        let response = await send(false);
+        if (writes && response.status === 403
+            && String((await response.clone().json().catch(() => ({}))).detail || "").includes("CSRF")) {
+          response = await send(true);
+        }
+        if (response.status === 401 && location.pathname !== "/login/") signIn();
         const body = await response.json().catch(() => ({}));
         if (!abandon.signal.aborted) return { ok: response.ok, status: response.status, body };
       } catch (error) {
@@ -250,6 +278,14 @@
       if (status >= 200 && status < 300) return { text: t("outcome.served"), tone: malicious ? "warn" : "ok" };
       if (status) return { text: `HTTP ${status}`, tone: "neutral" };
       return { text: t("outcome.sent"), tone: "neutral" };
+    }
+
+    const signOut = document.getElementById("sign-out");
+    if (signOut) {
+      signOut.addEventListener("click", async () => {
+        await post("/api/auth/logout/");
+        location.assign("/login/");
+      });
     }
 
     applyStrings();

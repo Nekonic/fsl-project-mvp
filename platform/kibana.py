@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import re
@@ -30,6 +31,14 @@ SPACE_FEATURES_OFF = (
     "guidedOnboardingFeature", "rulesSettings", "maintenanceWindow", "stackAlerts", "fleetv2", "fleet", "monitoring",
 )
 URL = os.environ.get("KIBANA_URL", "")
+ADMIN = (os.environ.get("ELASTIC_USER") or "elastic", os.environ.get("ELASTIC_PASSWORD", ""))
+VIEWER = os.environ.get("CR_KIBANA_VIEWER") or "cr-viewer"
+VIEWER_ROLE = "cr_viewer"
+VIEWER_PASSWORD_FILE = os.environ.get("CR_KIBANA_VIEWER_PASSWORD_FILE") or "/data/kibana-viewer-password"
+VIEWER_PRIVILEGES = {
+    "indices": [{"names": ["logs-*"], "privileges": ["read", "view_index_metadata"]}],
+    "applications": [{"application": "kibana-.kibana", "privileges": ["feature_discover.all"], "resources": ["*"]}],
+}
 SESSION_VIEW_NAME = "logs-*"
 SPACE_NAME = "SOC"
 SPACE_PREFIX = "soc-"
@@ -118,7 +127,25 @@ def settle(base, ndjson, send):
     return imported.get("successCount", 0)
 
 
+def basic(user, password):
+    return "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
+
+
+def viewer_password():
+    with open(VIEWER_PASSWORD_FILE, encoding="utf-8") as kept:
+        return kept.read().strip()
+
+
+def viewer_authorization():
+    try:
+        return basic(VIEWER, viewer_password())
+    except OSError:
+        return ""
+
+
 def send_json(request):
+    if ADMIN[1]:
+        request.add_header("Authorization", basic(*ADMIN))
     with urllib.request.urlopen(request, timeout=10) as answer:
         return json.loads(answer.read() or b"{}")
 

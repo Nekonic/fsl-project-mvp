@@ -63,19 +63,29 @@ def test_the_template_takes_exactly_cloud_yaml_s_values_under_names_heat_accepts
         "Heat refuses a template whose parameter shares a name with a resource"
     )
 
-def test_a_browser_reaches_the_platform_at_the_floating_ip():
+def rules_for(allowed):
     [group] = resources_of("OS::Neutron::SecurityGroup")
+    repeated, fixed = group["rules"]["list_concat"]
+    loop = repeated["repeat"]
+    assert loop["for_each"]["<%cidr%>"] == {"get_param": "allowed"}
+    made = [
+        {key: value.replace("<%cidr%>", cidr).replace("<%port%>", port) for key, value in loop["template"].items()}
+        for cidr in allowed for port in loop["for_each"]["<%port%>"]
+    ]
+    return made + fixed
+
+def test_a_browser_reaches_the_platform_at_the_floating_ip_from_the_allowed_networks_only():
+    rules = rules_for(["203.0.113.0/24", "198.51.100.7/32"])
     opened = {
-        (rule["protocol"], rule.get("port_range_min"), rule.get("port_range_max"))
-        for rule in group["rules"]
+        (rule["protocol"], int(rule.get("port_range_min") or 0), rule.get("remote_ip_prefix"))
+        for rule in rules
         if rule.get("direction", "ingress") == "ingress"
     }
 
     assert opened == {
-        ("tcp", 22, 22),
-        ("tcp", 8000, 8000),
-        ("tcp", 8002, 8002),
-        ("icmp", None, None),
+        ("tcp", 22, "203.0.113.0/24"), ("tcp", 8000, "203.0.113.0/24"), ("tcp", 8002, "203.0.113.0/24"),
+        ("tcp", 22, "198.51.100.7/32"), ("tcp", 8000, "198.51.100.7/32"), ("tcp", 8002, "198.51.100.7/32"),
+        ("icmp", 0, None),
     }, opened
 
 def test_the_password_never_enters_the_user_data():

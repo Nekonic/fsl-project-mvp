@@ -29,6 +29,7 @@ LOADER = ROOT / "platform/range/cloud.py"
 BACKUP = ROOT / "bin/backup"
 BACKUPS = ROOT / "backups"
 PLATFORM_KEY = "/data/ssh/id_ed25519"
+PLATFORM_UID = 10001
 CHECKOUT = "/opt/cr"
 VENV_COMMAND = (
     "exec 9>/tmp/cr-venv.lock && flock 9 && "
@@ -511,9 +512,19 @@ def side_load(new: Host, sideload: Sideload) -> None:
                 f"{image}:$(sed -n 's/^CR_IMAGE_TAG=//p' {CHECKOUT}/.env)")
 
 
-def platform_settings(password: str, sideload: Sideload | None) -> str:
-    named = f"CR_SIDELOADED={','.join(sorted(sideload.tarballs))}\n" if sideload else ""
-    return f"CR_OPENSTACK_PASSWORD={password}\n{named}"
+def platform_settings(sideload: Sideload | None) -> str:
+    return f"CR_SIDELOADED={','.join(sorted(sideload.tarballs))}\n" if sideload else ""
+
+
+def password_file() -> str:
+    return f"{CHECKOUT}/openstack-password"
+
+
+def password_write() -> str:
+    kept = password_file()
+    return "sudo sh -c " + shlex.quote(
+        f"[ -e {kept} ] || install -m 600 -o {PLATFORM_UID} /dev/null {kept}; cat > {kept}"
+    )
 
 
 def settings_rewrite(sideload: Sideload | None) -> str:
@@ -572,12 +583,13 @@ def hand_over(new: Host, password: str, range_key: Path, store: Path | None,
             "$(sudo docker inspect --format '{{.Config.Image}}' cr-platform) -c "
             + shlex.quote(f"rm -f /data/db.sqlite3-journal && cp /backups/{store.name} /data/db.sqlite3")
         )
-    new.ssh(settings_rewrite(sideload), platform_settings(password, sideload).encode())
-    new.ssh(f"cd {CHECKOUT} && {compose} up -d" + (" --force-recreate" if sideload else " platform"))
+    new.ssh(settings_rewrite(sideload), platform_settings(sideload).encode())
+    new.ssh(password_write(), password.encode())
+    new.ssh(f"cd {CHECKOUT} && {compose} up -d --force-recreate" + ("" if sideload else " platform"))
 
 
 def api_answers(address: str) -> bool:
-    url = f"http://{address}:8000/api/sessions/"
+    url = f"http://{address}:8000/api/auth/"
     try:
         with urllib.request.urlopen(url, timeout=10) as answer:
             return answer.status == 200
@@ -589,17 +601,15 @@ def wait_for_api(address: str) -> None:
     deadline = time.monotonic() + API_WAIT
     while True:
         if api_answers(address):
-            print(f"http://{address}:8000/api/sessions/ answers")
+            print(f"http://{address}:8000/api/auth/ answers")
             return
         if time.monotonic() > deadline:
-            raise Refused(f"platform-rebuild: http://{address}:8000/api/sessions/ did not answer within {API_WAIT}s")
+            raise Refused(f"platform-rebuild: http://{address}:8000/api/auth/ did not answer within {API_WAIT}s")
         time.sleep(10)
 
 
 def hand_over_done(host: Host) -> bool:
-    settings = f"{CHECKOUT}/openstack.env"
-    asked = host.ssh(f"sudo test -e {settings} || exit 1; sudo grep -q '^CR_OPENSTACK_PASSWORD=' {settings}",
-                     check=False)
+    asked = host.ssh(f"sudo test -s {password_file()}", check=False)
     if asked.returncode in (0, 1):
         return asked.returncode == 0
     said = asked.stderr.decode(errors="replace").strip()

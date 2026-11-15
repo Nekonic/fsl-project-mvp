@@ -13,6 +13,7 @@ network:
   platform: 10.20.0.0/24                # the platform VM's network
   estate: 10.30.0.0/16                 # slot N's estate is its Nth /24 (10.30.N.0/24): the targets and the WAF
   mgmt: 10.31.0.0/24                    # out-of-band: ssh and syslog only
+  allowed: [0.0.0.0/0]                  # source networks the platform VM takes ssh, 8000 and 8002 from; keep the one bin/cloud runs in
 
 compute:
   base_image: ubuntu-24.04              # the stock noble-server-cloudimg-amd64.img, uploaded as is

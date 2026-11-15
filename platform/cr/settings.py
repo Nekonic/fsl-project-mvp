@@ -18,19 +18,33 @@ ALLOWED_HOSTS = [
 ]
 
 INSTALLED_APPS = [
+    "django.contrib.auth",
     "django.contrib.contenttypes",
+    "django.contrib.sessions",
     "django.contrib.staticfiles",
     "api",
     "console",
 ]
 
 MIDDLEWARE = [
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "api.refusals.SameOriginOnly",
     "api.reachability.not_from_inside_the_range",
+    "api.signin.SignedInOnly",
     "api.refusals.Refusals",
 ]
+
+LOGIN_URL = "/login/"
+SESSION_COOKIE_NAME = "cr_session"
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_USE_SESSIONS = True
+CSRF_FAILURE_VIEW = "api.signin.csrf_refused"
+AUTH_PASSWORD_VALIDATORS = []
 
 ROOT_URLCONF = "cr.urls"
 
@@ -81,6 +95,7 @@ WARGAME_CASES_DIR = os.environ.get(
 
 ELASTIC_URL = os.environ.get("ELASTIC_URL", "http://elasticsearch:9200")
 ELASTIC_INDEX = os.environ.get("ELASTIC_INDEX", "logs-*")
+ELASTIC_AUTH = (os.environ.get("ELASTIC_USER") or "elastic", os.environ["ELASTIC_PASSWORD"]) if os.environ.get("ELASTIC_PASSWORD") else None
 ELASTIC_SESSION_INDEX = os.environ.get(
     "ELASTIC_SESSION_INDEX",
     {"range.openstack.connect": "logs-{slot}-*"}.get(CR_SUBSTRATE, ""),
@@ -118,6 +133,14 @@ def waf_layout(shape):
 CR_WAF = waf_layout(RANGE)
 CR_SOURCE = os.environ.get("CR_SOURCE", str(BASE_DIR.parent))
 
+OPENSTACK_PASSWORD_FILE = os.environ.get("CR_OPENSTACK_PASSWORD_FILE") or "/run/secrets/openstack_password"
+
+def kept_secret(path):
+    try:
+        return Path(path).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
 CR_SUBSTRATE_OPTIONS = dict(
     {
         "range.openstack.connect": {
@@ -125,7 +148,6 @@ CR_SUBSTRATE_OPTIONS = dict(
             for name, variable in {
                 "keystone": "CR_OPENSTACK_KEYSTONE",
                 "user": "CR_OPENSTACK_USER",
-                "password": "CR_OPENSTACK_PASSWORD",
                 "domain": "CR_OPENSTACK_DOMAIN",
                 "project": "CR_OPENSTACK_PROJECT",
                 "ssh_user": "CR_OPENSTACK_SSH_USER",
@@ -142,7 +164,7 @@ CR_SUBSTRATE_OPTIONS = dict(
                 "image_tag": "CR_IMAGE_TAG",
                 "slots": "CR_OPENSTACK_SLOTS",
             }.items()
-        } | {"source": CR_SOURCE},
+        } | {"source": CR_SOURCE, "password": kept_secret(OPENSTACK_PASSWORD_FILE)},
     }.get(CR_SUBSTRATE, {}),
     declared=RANGE,
 )

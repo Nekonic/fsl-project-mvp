@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.util
-import json
 import os
 import secrets
 import sys
@@ -17,6 +16,12 @@ from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+import requests
+
+from redteam import signin
+
 REBUILD = ROOT / "bin/platform-rebuild"
 CALL_TIMEOUT = 1800
 SLOT_WAIT = 1800
@@ -69,24 +74,24 @@ def arguments(argv: list[str]) -> argparse.Namespace:
 
 class Platform:
     def __init__(self, address: str):
-        self.base = f"http://{address}:8000/api/range"
+        self.url = f"http://{address}:8000"
+        self.base = f"{self.url}/api/range"
+        self.http = None
 
     def __call__(self, verb: str, path: str) -> tuple[int, dict]:
-        request = urllib.request.Request(
-            self.base + path, method=verb, data=b"{}" if verb == "POST" else None,
-            headers={"Content-Type": "application/json"},
-        )
         try:
-            with urllib.request.urlopen(request, timeout=CALL_TIMEOUT) as answer:
-                return answer.status, json.load(answer)
-        except urllib.error.HTTPError as refused:
-            said = refused.read().decode(errors="replace")
-            try:
-                return refused.code, json.loads(said)
-            except ValueError:
-                return refused.code, {"detail": said[:500]}
-        except OSError as gone:
+            self.http = self.http or signin.signed_in(self.url)
+            answer = self.http.request(verb, self.base + path, json={} if verb == "POST" else None,
+                                       timeout=CALL_TIMEOUT)
+        except (requests.RequestException, ValueError, KeyError, signin.Refused) as gone:
+            self.http = None
             return 0, {"detail": f"could not reach {self.base}: {gone}"}
+        if answer.status_code in (401, 403):
+            self.http = None
+        try:
+            return answer.status_code, answer.json()
+        except ValueError:
+            return answer.status_code, {"detail": answer.text[:500]}
 
 
 def _done(call, verb: str, path: str) -> dict:
@@ -462,6 +467,7 @@ def init(args: argparse.Namespace) -> None:
         ("cloud",): name, ("network", "external"): external, ("compute", "base_image"): image,
         ("compute", "flavors", "platform"): chosen["platform"]["name"],
         ("compute", "flavors", "range"): chosen["range"]["name"],
+        ("network", "allowed"): network.get("allowed") or settings.OPEN_TO_ALL,
     })
     print("init is done; bin/cloud up brings the platform and the range up")
 

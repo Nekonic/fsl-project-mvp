@@ -17,9 +17,15 @@ class ApiClient(Client):
             path, json.dumps(payload or {}), content_type="application/json"
         )
 
+def signed_in(client):
+    from django.contrib.auth import get_user_model
+
+    client.force_login(get_user_model().objects.get_or_create(username="admin")[0])
+    return client
+
 @pytest.fixture
-def client():
-    return ApiClient()
+def client(db):
+    return signed_in(ApiClient())
 
 @pytest.fixture(autouse=True)
 def nothing_remembered_between_tests():

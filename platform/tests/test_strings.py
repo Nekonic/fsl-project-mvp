@@ -7,6 +7,7 @@ from django.test import Client
 
 import traffic
 from console import strings
+from tests.conftest import signed_in
 
 pytestmark = pytest.mark.django_db
 
@@ -66,8 +67,8 @@ def test_a_string_with_placeholders_is_called_with_arguments():
     )
 
 @pytest.fixture
-def client():
-    return Client()
+def client(db):
+    return signed_in(Client())
 
 
 def test_the_blue_page_ships_no_withheld_answer_or_pass_line(client):

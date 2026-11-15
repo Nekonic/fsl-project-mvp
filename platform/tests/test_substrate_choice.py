@@ -25,13 +25,14 @@ def test_the_cli_fires_from_the_slot_the_session_was_given(monkeypatch, db):
         def launcher(self, segment_id):
             return lambda image, argv, timeout=600.0: fired_on.append(self.number)
 
-    def run(cases, platform_url, launch, tool_target, scenario, announce):
+    def run(cases, platform_url, launch, tool_target, scenario, announce, http=None):
         announce(opened.pk)
         launch("cr-kali", ["curl"])
         return opened.pk
 
     monkeypatch.setattr(cli, "substrate", Slotted)
     monkeypatch.setattr(cli.harness, "run", run)
+    monkeypatch.setattr(cli.signin, "signed_in", lambda platform_url: None)
     monkeypatch.setattr(sys, "argv", ["run.py"])
 
     assert cli.main() == 0
