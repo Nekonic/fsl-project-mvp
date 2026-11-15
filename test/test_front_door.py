@@ -9,8 +9,8 @@ EDGE = ipaddress.ip_network("5.188.10.0/24")
 
 def _outside(alerts):
     return {
-        a.get("xff") or a["src_ip"] for a in alerts
-        if ipaddress.ip_address(a.get("xff") or a["src_ip"]) in EDGE
+        a["attributed"] for a in alerts
+        if ipaddress.ip_address(a["attributed"]) in EDGE
     }
 
 def _raised(alerts):
@@ -21,14 +21,14 @@ def _inside(alerts, inside):
     return {
         a["src_ip"] for a in alerts
         if a.get("src_ip") and ipaddress.ip_address(a["src_ip"]) in inside
-        and a.get("xff") and ipaddress.ip_address(a["xff"]) in EDGE
+        and ipaddress.ip_address(a["attributed"]) in EDGE
     }
 
 
 def _ids_alerts(session_id):
     listed = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120).json()
-    return [requests.get(f"{PLATFORM_URL}/api/detections/{d['id']}/", timeout=60).json()["raw"]
-            for d in listed if d["source"] == "suricata"]
+    return [dict(requests.get(f"{PLATFORM_URL}/api/detections/{d['id']}/", timeout=60).json()["raw"],
+                 attributed=d["src_ip"]) for d in listed if d["source"] == "suricata"]
 
 @pytest.fixture
 def probe(terminal_session):
@@ -58,5 +58,5 @@ def test_the_inside_leg_is_still_the_inside(past_the_waf):
 
     assert _inside(detections, inside), (
         f"an attack the WAF let through drew no IDS alert from inside {inside} naming the attacker in "
-        f"X-Forwarded-For: {sorted({(d.get('src_ip'), d.get('xff')) for d in detections})}"
+        f"X-Forwarded-For: {sorted({(d.get('src_ip'), d['attributed']) for d in detections})}"
     )

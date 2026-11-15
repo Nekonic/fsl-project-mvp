@@ -154,8 +154,8 @@ def alerts_mentioning(token, session, wait=90):
         found = [d for d in detections_of(session)
                  if d["source"] == "suricata" and token in (d.get("path") or "")]
         if found or time.time() >= deadline:
-            return [requests.get(f"{PLATFORM_URL}/api/detections/{d['id']}/", timeout=60).json()["raw"]
-                    for d in found]
+            return [dict(requests.get(f"{PLATFORM_URL}/api/detections/{d['id']}/", timeout=60).json()["raw"],
+                         attributed=d["src_ip"]) for d in found]
         time.sleep(3)
 
 

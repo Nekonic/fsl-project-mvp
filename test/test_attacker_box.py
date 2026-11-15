@@ -22,7 +22,7 @@ def test_choosing_an_origin_moves_the_source_without_renaming_the_site(terminal_
     assert alerts, f"nothing alerted on the probe {token}"
 
     subnet = ipaddress.ip_network(elsewhere["subnet"])
-    sources = {a.get("xff") or a["src_ip"] for a in alerts}
+    sources = {a["attributed"] for a in alerts}
 
     assert any(ipaddress.ip_address(ip) in subnet for ip in sources), (
         f"asked the shell to leave by {elsewhere['label']} ({subnet}) and the "

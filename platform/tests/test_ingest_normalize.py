@@ -34,10 +34,18 @@ def test_suricata_alert_becomes_one_detection():
     assert det["detection_id"] == "es1"
     assert det["raw"] == suricata_alert()
 
-def test_an_alert_behind_the_waf_is_attributed_to_the_client_suricata_read_from_x_forwarded_for():
-    [det] = normalize("es1", suricata_alert(src_ip="10.30.129.247", xff="5.188.10.10"))
+def test_an_alert_behind_the_waf_is_attributed_to_the_client_its_transaction_names_in_x_forwarded_for():
+    from ingest.elastic import normalize_all
 
-    assert det["src_ip"] == "5.188.10.10"
+    alert = suricata_alert(src_ip="10.30.129.247", flow_id=7, tx_id=0)
+    request = {"event": {"module": "suricata"}, "event_type": "http", "flow_id": 7, "tx_id": 0,
+               "src_ip": "10.30.129.247", "xff": "5.188.10.10"}
+
+    [det] = normalize_all([("es1", alert), ("es2", request)])
+
+    assert det["src_ip"] == "5.188.10.10", (
+        "Suricata raises a URI alert before it has read the headers, so only the transaction's http record "
+        "carries the X-Forwarded-For address")
 
 def test_suricata_non_alert_events_are_dropped():
     assert normalize("es1", suricata_alert(event_type="http")) == []

@@ -65,6 +65,7 @@ def normalize_all(
     documents: Sequence[tuple[str, dict[str, Any]]],
 ) -> list[dict[str, Any]]:
     markers = _transaction_markers(documents)
+    forwarded = {_transaction_key(doc): doc["xff"] for _, doc in documents if doc.get("xff") and _transaction_key(doc)}
 
     detections: list[dict[str, Any]] = []
     for doc_id, doc in documents:
@@ -72,6 +73,8 @@ def normalize_all(
         for detection in normalize(doc_id, doc):
             if detection["marker"] is None and key is not None:
                 detection["marker"] = markers.get(key)
+            if detection["source"] == "suricata" and key in forwarded:
+                detection["src_ip"] = forwarded[key]
             detections.append(detection)
     return detections
 
@@ -118,7 +121,7 @@ def _normalize_suricata(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]
             "signature": alert.get("signature", ""),
             "severity": alert.get("severity"),
             "timestamp": _parse_time(doc.get("timestamp")),
-            "src_ip": doc.get("xff") or doc.get("src_ip"),
+            "src_ip": doc.get("src_ip"),
             "marker": suricata_marker(doc.get("http") or {}),
             "raw": doc,
         }
