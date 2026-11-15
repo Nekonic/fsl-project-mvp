@@ -40,8 +40,31 @@ sources listed at the end.
 ## Target: one-click build
 
 The end state is one command that builds the whole environment. Nothing is
-compiled or installed by hand on the cloud. You upload exactly one image by
-hand, the stock Ubuntu 24.04 cloud image.
+compiled or installed by hand on the cloud. The cloud holds exactly one
+uploaded image, the stock Ubuntu 24.04 cloud image, which `bin/cloud init`
+uploads.
+
+On the controller node, after `kolla-ansible post-deploy`:
+
+```bash
+git clone https://github.com/Nekonic/fsl-project-mvp.git && cd fsl-project-mvp
+uv run bin/cloud init
+uv run bin/cloud up
+```
+
+`uv run` reads the PEP 723 inline script metadata at the top of `bin/cloud`
+and `bin/platform-rebuild` (openstacksdk, python-openstackclient,
+python-heatclient, PyYAML) and runs the script in an environment that has
+them; "When using inline script metadata, even if `uv run` is used in a
+project, the project's dependencies will be ignored" [U3]. The scripts carry
+`#!/usr/bin/env -S uv run --script`, the shebang that guide shows, so
+`uv run bin/cloud` (which spawns the executable file) and `bin/cloud` both end
+up there. The repo's `.venv` and `bin/verify` are unchanged and do not need
+the OpenStack clients.
+
+`bin/cloud init` runs with admin credentials and prepares what a member user
+cannot (§3): the project and its user, the clouds.yaml entry that holds the
+user's password, flavor access, the base image and `cloud.yaml` (§4).
 
 1. `bin/cloud up` reads `deploy/openstack/cloud.yaml` (§4). It has Heat create
    the platform VM (`deploy/openstack/platform.yaml`). On first boot the VM pulls
@@ -57,9 +80,9 @@ hand, the stock Ubuntu 24.04 cloud image.
 | Piece | Status | Where |
 |---|---|---|
 | Kolla-Ansible cloud with Heat, Glance, Nova, Neutron (ML2/OVN) | done (this cloud) | §2 |
-| Project `fsl-range`, member user, quotas, flavors | done by hand, admin only | §3 |
-| One base image, stock Ubuntu 24.04, upload with checksum check | by hand, once per cloud; done (this cloud, 2026-10-20) | §3.6 |
-| `cloud.yaml`: every cloud-specific value, validated | done (this cloud, 2026-10-20) | §4 |
+| Project `fsl-range`, member user, clouds.yaml entry, quota check, flavor choice | `bin/cloud init` as admin (2026-11-15); flavors and quotas are never created or raised by it | §3 |
+| One base image, stock Ubuntu 24.04, upload with checksum check | `bin/cloud init` when missing; done (this cloud, 2026-10-20) | §3.6 |
+| `cloud.yaml`: every cloud-specific value, validated | written by `bin/cloud init` (2026-11-15) | §4 |
 | Platform and range images on GHCR (`.github/workflows/images.yml`) | done (public, pulled 2026-10-11; `cr-kali`, `cr-waf` and `cr-edge` added with the range host) | §5 |
 | Heat stack pulls images instead of `--build` | done (2026-10-11) | §5 |
 | `bin/platform-rebuild`: replace the VM without losing data (store and range key carried over), driven by `cloud.yaml` | done (2026-10-15, `bin/cloud up --replace --sideload` twice, 28 and 55 min with a 6 GB store; the range stood through) | §5 |
@@ -69,9 +92,9 @@ hand, the stock Ubuntu 24.04 cloud image.
 | Slots as Compose projects on the range host via `POST /api/range/configure/` | done; reset in place at close (§6.1) | §6 |
 | Acceptance on the OpenStack substrate | done; the latest full run is in `docs/state/now.md` | §7 |
 
-Steps below are tagged **[one-click]** where the script does them for you. They
-are tagged **[admin, once]** where you must do them by hand because a member
-user cannot.
+Steps below are tagged **[one-click]** where `bin/cloud up` does them for you,
+**[init]** where `bin/cloud init` does them with admin credentials, and
+**[admin, once]** where an admin does them by hand.
 
 ## 1. What this project needs from OpenStack
 
@@ -183,8 +206,10 @@ Three details in these lines each fixed a failure in the 2026-10-20 trial (§9):
 - `post-deploy` needs `-i ./all-in-one`. Without it, it looks for
   `/etc/kolla/ansible/inventory/all-in-one` and stops.
 
-The kolla venv has no Heat client. Run Heat from a separate venv that has
-`python-openstackclient` and `python-heatclient`.
+The kolla venv has no Heat client. `bin/cloud` does not need it: `uv run`
+installs its own clients (Target, above). `post-deploy` also writes
+`/etc/kolla/clouds.yaml`, whose `kolla-admin` entry `bin/cloud init` signs in
+with [K10].
 
 ### 2.2 globals.yml
 
@@ -216,7 +241,8 @@ runs is amd64.
 On an all-in-one cloud without HAProxy and keepalived, set `enable_haproxy:
 "no"`. Set `kolla_internal_vip_address` to the IP of `network_interface` itself
 [K2]. The API endpoints are then that address. Keystone is on port 5000. This is
-the project user's `OS_AUTH_URL` (`http://ADDRESS:5000`, §4).
+the `auth_url` of the project user's clouds.yaml entry (`http://ADDRESS:5000`,
+§4).
 
 Set `enable_proxysql: "no"` beside it. ProxySQL is enabled with MariaDB, not
 with HAProxy, and it binds port 3306 on the VIP. Here the VIP is the host's own
@@ -336,12 +362,17 @@ every slot network is an internal Docker network with no host address (§6).
 
 ## 3. Project, user, quotas, flavors, keys, groups, images
 
-Everything runs on the controller node. The steps marked [admin] run in a shell
-that has loaded the admin RC file `kolla-ansible post-deploy` writes,
-`/etc/kolla/admin-openrc.sh` [K1][K9]. Everything else runs as the project user,
-in a shell that has loaded that user's RC file (§4, README step 6).
+Everything runs on the controller node. `bin/cloud init` does §3.1, §3.2's
+check, §3.3's choice, §3.4's key file and §3.6's upload. It signs in as admin
+with the `kolla-admin` entry of `/etc/kolla/clouds.yaml`, which
+`kolla-ansible post-deploy` writes [K10]; when the shell has `OS_AUTH_URL` set
+(after `source /etc/kolla/admin-openrc.sh` [K1][K9]), it uses those `OS_*`
+variables instead. It leaves what exists in place, so it can run again at any
+time. The commands below are what it does, for a cloud where an admin does it
+by hand. `bin/cloud up` and `bin/platform-rebuild` then sign in as the project
+user from that user's clouds.yaml entry (§4).
 
-### 3.1 Project and user [admin, once]
+### 3.1 Project and user [init]
 
 ```bash
 openstack project create fsl-range
@@ -349,14 +380,30 @@ openstack user create --project fsl-range --password-prompt fsl-range
 openstack role add --project fsl-range --user fsl-range member
 ```
 
+`init` makes the project and the user when they are missing, gives the user
+`member` on the project, and writes the user's credentials into
+`~/.config/openstack/clouds.yaml` as the entry `cloud.yaml` names (`cloud:
+fsl-range`), mode 0600, merged into the file without touching its other
+entries. The password is random (`secrets.token_urlsafe`) and never printed or
+logged. An entry that already signs in is kept. A user that exists while no
+working entry holds its password stops `init`; `--reset-password` gives the user
+a new one, which a standing platform VM learns only through
+`bin/cloud up --replace`. The domains are the entry's `user_domain_name` and
+`project_domain_name` when an entry exists, `Default` otherwise.
+
 **(this cloud)** The project and the user sit in the domain `fsl` (id
 `c72af53edecb4e31a5645fdd9a07f0f9`), so the commands above also take `--domain
-fsl`, and the project user's RC file sets `OS_USER_DOMAIN_NAME` and
-`OS_PROJECT_DOMAIN_NAME` to `fsl`. The project `fsl-range`
+fsl`, and the clouds.yaml entry sets `user_domain_name` and
+`project_domain_name` to `fsl`. The project `fsl-range`
 has the id `3c82e428f6cc4997949a89f5fdee68c7`. The user `fsl-range` is a member
 of it. The platform signs in as this member user, never as admin.
 
-### 3.2 Quotas [admin, once]
+### 3.2 Quotas [admin, once; init checks]
+
+`init` reads the project's limits (`instances`, `cores`, `ram`,
+`floating_ips`) and stops, naming each one short, unless they hold 2 instances,
+the two chosen flavors' vCPU and RAM, and 1 floating IP. It compares limits,
+not usage, and never raises a quota.
 
 The platform VM and the range host are the project's only two instances,
 however many slots run. With the example flavors they need 8 vCPU, 24 GB RAM, 2
@@ -394,10 +441,22 @@ openstack quota show fsl-range
 openstack quota set --cores 24 --ram 65536 --instances 12 fsl-range   # example
 ```
 
-### 3.3 Flavors [admin, once]
+### 3.3 Flavors [admin, once; init chooses]
 
-A member user cannot create flavors. `compute.flavors` in `cloud.yaml` names
-exactly two:
+A member user cannot create flavors, and `init` never creates one: the user
+ruled that flavors are not created for them. `init` lists every flavor as
+admin, public and private, and picks for each role the smallest that fits,
+by RAM, then vCPU, then disk. A flavor `cloud.yaml` already names is kept when
+it fits. It prints each choice, makes a private flavor visible to the project
+(`openstack flavor set --project`), and stops, printing the
+`openstack flavor create` an admin would run, when none fits.
+
+| Role | vCPU | RAM | Disk |
+|---|---|---|---|
+| `platform` | 2 or more | 8 GB or more | 40 GB or more |
+| `range` | 6 or more | 16 GB or more | 40 GB or more |
+
+`compute.flavors` in `cloud.yaml` names exactly two:
 
 | Key | Use | Notes |
 |---|---|---|
@@ -416,16 +475,17 @@ openstack flavor create --ram 8192 --vcpus 2 --disk 60 m1.large
 openstack flavor create --ram 16384 --vcpus 6 --disk 60 dba.range
 ```
 
-A new cloud makes these two flavors, and `cloud.example.yaml` names them.
+A new cloud that has no fitting flavor makes these two; `cloud.example.yaml`
+names them, so `init` keeps them.
 
 ### 3.4 Keypairs
 
 - `fsl-claude` is the Nova keypair the platform VM boots with: the server's
   `key_name`, which is `keys.key_name` in `cloud.yaml` and the stack parameter
   `key_name`. Its private key is `keys.key_file`, the key `bin/cloud` and
-  `bin/platform-rebuild` ssh to the VM with. Make the key
-  (`ssh-keygen -t ed25519 -N "" -f ~/.ssh/fsl_claude`); nothing else is done by
-  hand. Before they create the stack, both scripts look the keypair up
+  `bin/platform-rebuild` ssh to the VM with. `init` makes the key when the
+  file is missing (`ssh-keygen -t ed25519 -N "" -f ~/.ssh/fsl_claude`); nothing
+  else is done by hand. Before they create the stack, both scripts look the keypair up
   (`openstack keypair list`) and, when the project has none of that name,
   import `<key_file>.pub` with `openstack keypair create --public-key` [O1]
   (`ensure_keypair` in `bin/platform-rebuild`). A keypair of that name that
@@ -493,26 +553,30 @@ openstack security group rule create --protocol tcp --dst-port 3080 cr-platform
 
 ### 3.6 Images
 
-The cloud holds exactly one image that you upload by hand: Canonical's Ubuntu
-24.04 cloud image, unmodified. Nothing is baked into it, and the platform
+The cloud holds exactly one uploaded image: Canonical's Ubuntu 24.04 cloud
+image, unmodified, which `init` uploads. Nothing is baked into it, and the platform
 builds no Glance image. cloud-init installs or writes every package, tool, key
 and setting at boot (the platform VM, the range host). The platform does the
 rest over ssh (`configure/`).
 
 | Image | How it gets there | One-click |
 |---|---|---|
-| `compute.base_image` (e.g. `ubuntu-24.04`) | the stock `noble-server-cloudimg-amd64.img`, checksum verified, uploaded as is (below) | by hand, once |
+| `compute.base_image` (e.g. `ubuntu-24.04`) | the stock `noble-server-cloudimg-amd64.img`, checksum verified, uploaded as is (below) | `bin/cloud init`, once |
 | the slots' container images | pulled from GHCR and Docker Hub by the range host at its first boot (below) | yes |
 
-Upload the base image as admin with `--public`, on a machine that has the
-openstack CLI.
+`init` looks the image up by `compute.base_image`. When there is none it
+downloads `noble-server-cloudimg-amd64.img` from
+`https://cloud-images.ubuntu.com/noble/current/`, compares its SHA-256 with
+that directory's `SHA256SUMS` and uploads it as qcow2, public. An image that
+the project cannot see (neither public nor the project's) is made public. Two
+images of that name stop it. By hand, as admin:
 
 - `SHA256SUMS` lists one line per file of that build. `--ignore-missing` checks
   only the file you downloaded [U1].
 - Without `--public`, an admin's image belongs to the admin project and
   `fsl-range` does not see it. The stack then fails on its `image`, and the
   platform finds none.
-- As `fsl-range` (its RC file loaded, §3), the same command without
+- As `fsl-range` (`--os-cloud fsl-range`, §4), the same command without
   `--public` works, because the image then belongs to the project.
 
 ```bash
@@ -589,30 +653,39 @@ edge or target reaches the range only through a pushed commit whose images
 
 ## 4. cloud.yaml
 
-`deploy/openstack/cloud.example.yaml` is committed. Copy it to
-`deploy/openstack/cloud.yaml` (git ignores that file) and fill it in. No secret
-goes in it, only where to read the password. `platform/range/cloud.py` reads the
+`deploy/openstack/cloud.example.yaml` is committed. `bin/cloud init` writes
+`deploy/openstack/cloud.yaml` (git ignores that file) from it, and on later runs
+changes only the keys it owns, `cloud`, `network.external`,
+`compute.base_image` and `compute.flavors.*`, line by line, keeping every other
+value and every comment. No secret goes in it, only the name of the clouds.yaml
+entry that holds the password. `platform/range/cloud.py` reads the
 file. It refuses the file before touching anything and names every problem by
 its dotted key. The problems it finds include an unknown key, a missing key,
 overlapping CIDRs and an `identity` section or a password written into the file.
 
-The identity is not in `cloud.yaml`. It comes from the project user's RC file,
-the same variables as Kolla's `admin-openrc.sh` with the user, the project and
-the password changed (README step 6), loaded once in the shell that runs
-`bin/cloud` and `bin/platform-rebuild`. They read `OS_AUTH_URL`, `OS_USERNAME`,
-`OS_PASSWORD`, `OS_PROJECT_NAME`, `OS_USER_DOMAIN_NAME`, `OS_PROJECT_DOMAIN_NAME`,
-`OS_REGION_NAME` and `OS_INTERFACE` (`cloud.identity`), and stop before any
-change, naming each variable that is missing. `OS_AUTH_URL` is Keystone's base
-URL, `http://10.10.10.10:5000` in the example (**(this cloud)**
-`http://10.0.0.10:5000`); a trailing `/v3` is dropped. `OS_USER_DOMAIN_NAME`
-is the user's domain, by name (**(this cloud)** `fsl`); the platform signs in
-with it. `OS_INTERFACE` is the catalogue interface the CLI and the platform
-call: Kolla's admin RC says `internal`, and the platform VM needs one it
-reaches, `public` here. `OS_PASSWORD` reaches the platform VM over ssh, as the
-VM's `openstack.env` (§5.1); it is never on a command line or in a log.
+The identity is not in `cloud.yaml`. It is the entry of the standard
+OpenStack client configuration, `~/.config/openstack/clouds.yaml`, that the
+key `cloud` names (`fsl-range`); `init` writes it (§3.1). `bin/cloud` and
+`bin/platform-rebuild` read `auth.auth_url`, `auth.username`, `auth.password`,
+`auth.project_name`, `auth.user_domain_name`, `auth.project_domain_name`,
+`region_name` and `interface` (`public` when absent) from it
+(`cloud.signed_in`), and stop before any change when the entry is missing,
+saying to run `bin/cloud init`, or when one of them is, naming it. They need no
+RC file and no `OS_*` variables: they drop every `OS_*` variable from their own
+environment and run the openstack CLI with `OS_CLOUD=<entry>` and
+`OS_CLIENT_CONFIG_FILE=<that file>`, so a sourced RC cannot override the entry.
+`auth_url` is Keystone's base URL, `http://10.10.10.10:5000` in the example
+(**(this cloud)** `http://10.0.0.10:5000`); a trailing `/v3` is dropped.
+`user_domain_name` is the user's domain, by name (**(this cloud)** `fsl`); the
+platform signs in with it. `interface` is the catalogue interface the CLI and
+the platform call; the platform VM needs one it reaches, `public` here. The
+password reaches the platform VM over ssh stdin, as the VM's `openstack.env`
+(§5.1); it is never on a command line or in a log.
 
 | Key | Example | Used by |
 |---|---|---|
+| `cloud` | `fsl-range` | the clouds.yaml entry to sign in with |
+
 | `network.external` | `provider` | the stack's router and floating IP |
 | `network.address` | `""` (**(this cloud)** `192.168.2.247`) | optional; a floating IP the project already holds. The stack associates it and never releases it, so the address survives `bin/cloud down` and every rebuild. If empty, the stack allocates a new one (§5.1) |
 | `network.dns` | `[8.8.8.8, 8.8.4.4]` | the platform network's DNS |
@@ -629,11 +702,11 @@ VM's `openstack.env` (§5.1); it is never on a command line or in a log.
 
 Where each value goes:
 
-- `bin/platform-rebuild` and `bin/cloud` run the openstack CLI with the RC
-  file's `OS_*` variables.
-- They pass every Heat parameter from the file and the RC file's identity
+- `bin/platform-rebuild` and `bin/cloud` run the openstack CLI with the
+  clouds.yaml entry (`OS_CLOUD`, `OS_CLIENT_CONFIG_FILE`).
+- They pass every Heat parameter from the file and the entry's identity
   (`Cloud.heat_parameters()`: `keystone`, `user`, `domain`, `region`,
-  `interface` come from the RC file).
+  `interface` come from the entry).
 - The template has no defaults. It writes the values into
   `/opt/cr/openstack.env` as `CR_OPENSTACK_*`.
 - The platform reads those variables (`settings.py`). If one it needs is
@@ -697,17 +770,13 @@ there.
 
 ### 5.2 One command [one-click]
 
-Run this on the controller node, in the shell that has loaded the project
-user's RC file (§4). `python-openstackclient` and
-`python-heatclient` must be installed in the repo's `.venv`, which has PyYAML
-(`README.md` step 3: `uv venv .venv`, then `uv pip install --python
-.venv/bin/python -r platform/requirements.txt python-openstackclient
-python-heatclient`). The scripts find the `openstack` command beside
-`.venv/bin/python`.
+Run this on the controller node after `bin/cloud init` (§3). `uv run`
+installs the clients (Target, above); the scripts find the `openstack` command
+beside the Python they run under.
 
 ```bash
-.venv/bin/python bin/cloud up            # --replace to replace a standing platform; --cloud, --ref, --sideload as in §5.3
-.venv/bin/python bin/cloud down
+uv run bin/cloud up            # --replace to replace a standing platform; --cloud, --ref, --sideload as in §5.3
+uv run bin/cloud down
 ```
 
 `up` does these steps in order:
@@ -787,7 +856,7 @@ If a stack is not `*_FAILED` but its `address` output cannot be read, `up` and
 ### 5.3 Rebuild and delete — lossless
 
 ```bash
-.venv/bin/python bin/platform-rebuild    # --cloud PATH, --ref REF, --sideload NAME=TARBALL
+uv run bin/platform-rebuild    # --cloud PATH, --ref REF, --sideload NAME=TARBALL
 ```
 
 This command replaces the platform VM without losing data. It does these steps:
@@ -903,7 +972,7 @@ Build a tarball on any x86_64 Docker host from a clean export of the commit:
 git archive $C platform | tar -x -C ctx
 docker build --platform linux/amd64 -t ghcr.io/nekonic/cr-platform:$C ctx/platform
 docker save -o cr-platform-$C.tar ghcr.io/nekonic/cr-platform:$C
-.venv/bin/python bin/cloud up --replace --sideload platform=cr-platform-$C.tar
+uv run bin/cloud up --replace --sideload platform=cr-platform-$C.tar
 ```
 
 The `gns3` image goes the same way. The refusal names every image whose build
@@ -983,8 +1052,8 @@ code cannot see them, so take them down with the code that made them, once:
    The server and network lists are empty and the keypairs are `fsl-claude`
    alone when the old range is gone.
 4. In `cloud.yaml` set `platform.stack: cr-platform`.
-5. Bring the cloud up from this checkout: `.venv/bin/python bin/cloud up`
-   (the scripts find `openstack` beside `.venv/bin/python`, §5.2). `platform.ref`
+5. Bring the cloud up from this checkout: `uv run bin/cloud up`
+   (the scripts find `openstack` beside the Python they run under, §5.2). `platform.ref`
    must be a ref name with no `/` in it; push a branch so named if the working
    branch has one. It creates `cr-platform`, restores the newest backup in
    `backups/` and builds the fabric, the range host and the slots under the new
@@ -1010,7 +1079,7 @@ edge. A cloud that still runs that range moves to the range host with one
    a flavor big enough for every slot under `range` (§3.3), make
    `network.estate` a /16 (`10.30.0.0/16`) and delete the `opnsense` section.
    The platform refuses the old keys and names them.
-3. Run `.venv/bin/python bin/cloud up --replace`. The platform VM is replaced
+3. Run `uv run bin/cloud up --replace`. The platform VM is replaced
    with its store and range key (§5.3). `POST fabric/` makes the group
    `cr-egress` and lists the old range networks as leftovers, not drift. `POST
    slot/` boots `cr-range` beside the old VMs, which keep running until the end.
@@ -1549,23 +1618,23 @@ Stay in that shell as admin. Do these steps:
 
 1. Create the external network on the second adapter's network, with the plan's
    subnet and pool (§2.5).
-2. Create the project, user, quota, flavors and base image. Upload the base image
-   with `--public` (§3.1, §3.3, §3.6). Nova's default quotas already cover the
-   two VMs (§3.2).
+2. Create the two flavors when the cloud has none that fits (§3.3). Nova's
+   default quotas already cover the two VMs (§3.2).
 
-In the project user's RC file, `OS_AUTH_URL` is `http://10.10.10.10:5000`.
-
-Then open a new shell. The admin shell holds the Kolla venv and the admin `OS_*`
-variables from `admin-openrc.sh`; the new shell loads the project user's RC
-file once (README step 6). Follow
-`README.md` from step 2 in that new shell, in the same VM and as your own user. The browser of step 8 is the host's browser. It opens the
-floating IP that `bin/cloud up` prints. The external network makes that address
-reachable on the host's network.
+Then open a new shell, as the same user, so that the admin `OS_*` variables
+from `admin-openrc.sh` are gone, and run README's 설치: clone, then
+`uv run bin/cloud init`, which signs in with `/etc/kolla/clouds.yaml` and makes
+the project, the user and the base image, then `uv run bin/cloud up`. The
+clouds.yaml entry's `auth_url` is `http://10.10.10.10:5000`. The browser that
+checks the result is the host's browser. It opens the floating IP that
+`bin/cloud up` prints. The external network makes that address reachable on the
+host's network.
 
 ## Sources
 
 - [K1] Kolla-Ansible 2025.2 quickstart — https://docs.openstack.org/kolla-ansible/2025.2/user/quickstart.html
 - [K9] kolla-ansible stable/2025.2 `ansible/post-deploy.yml` (writes `admin-openrc.sh` into `/etc/kolla`) and `ansible/roles/common/templates/admin-openrc.sh.j2` (the `OS_*` variables it exports) — https://opendev.org/openstack/kolla-ansible/src/branch/stable/2025.2/ansible/roles/common/templates/admin-openrc.sh.j2
+- [K10] kolla-ansible `ansible/post-deploy.yml`, task "Template out clouds.yaml" (`dest: "{{ node_config }}/clouds.yaml"`, mode 0600; `node_config` defaults to `/etc/kolla` in `ansible/group_vars/all/common.yml`), and `ansible/roles/common/templates/clouds.yaml.j2`, whose first entry is `kolla-admin` (Keystone's public URL, the admin user and project, domain `Default`, `region_name`); the same on stable/2025.2 and unmaintained/2025.1 — https://opendev.org/openstack/kolla-ansible/src/branch/stable/2025.2/ansible/post-deploy.yml, https://opendev.org/openstack/kolla-ansible/src/branch/stable/2025.2/ansible/roles/common/templates/clouds.yaml.j2
 - [K2] kolla-ansible stable/2025.2 `etc/kolla/globals.yml` — https://opendev.org/openstack/kolla-ansible/src/branch/stable/2025.2/etc/kolla/globals.yml
 - [K7] Kolla-Ansible 2025.2, Libvirt guide (`nova_compute_virt_type`: kvm is the default) — https://docs.openstack.org/kolla-ansible/2025.2/reference/compute/libvirt-guide.html
 - [K8] Kolla-Ansible 2025.2, Neutron networking (`neutron_external_interface` goes on `br-ex`, physical network `physnet1`; the page says an interface plugged into a bridge cannot hold a usable IP address) — https://docs.openstack.org/kolla-ansible/2025.2/reference/networking/neutron.html
@@ -1581,4 +1650,5 @@ reachable on the host's network.
 - [H1] Heat `OS::Nova::Server` (`flavor_update_policy` RESIZE|REPLACE, default RESIZE; `user_data_update_policy` default REPLACE) — https://opendev.org/openstack/heat/src/branch/master/heat/engine/resources/openstack/nova/server.py
 - [U1] Ubuntu 24.04 cloud images and their `SHA256SUMS` — https://cloud-images.ubuntu.com/noble/current/
 - [U2] uv, Installation ("Request a specific version by including it in the URL"; release artifacts "can be downloaded directly from GitHub Releases") — https://docs.astral.sh/uv/getting-started/installation/; the 0.13.8 release and its `uv-x86_64-unknown-linux-gnu.tar.gz.sha256` — https://github.com/astral-sh/uv/releases/tag/0.13.8
+- [U3] uv, Running scripts: "Declaring script dependencies" (the `# /// script` block, "uv will automatically create an environment with the dependencies necessary to run the script"), "When using inline script metadata, even if `uv run` is used in a project, the project's dependencies will be ignored", and the shebang `#!/usr/bin/env -S uv run --script` — https://docs.astral.sh/uv/guides/scripts/
 - [O1] python-openstackclient, `keypair create` (`--public-key <file>`: "Filename for public key to add"; `--private-key <file>`: "Filename for private key to save") — https://docs.openstack.org/python-openstackclient/latest/cli/command-objects/keypair.html

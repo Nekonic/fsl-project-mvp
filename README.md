@@ -52,10 +52,9 @@ Kolla-Ansible 2025.1 이상으로 구축한 OpenStack에서 돌아갑니다.
 OpenStack 컨트롤러 노드(`bin/cloud` 실행 위치):
 
 - `git`, `ssh`, `ssh-keygen`
-- Python 3.10 이상
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - 클라우드 API와 플랫폼 VM floating IP로 가는 네트워크 경로
-- github.com, ghcr.io 접속
+- github.com, ghcr.io, cloud-images.ubuntu.com 접속
 
 클라우드:
 
@@ -63,178 +62,131 @@ OpenStack 컨트롤러 노드(`bin/cloud` 실행 위치):
 - compute node는 KVM 권장
 - Heat 필요
 - [외부 네트워크](docs/OPENSTACK.md#25-external-network-and-floating-ips-admin-once): floating IP 풀, [인터넷 연결](docs/OPENSTACK.md#26-internet-egress)
-- VM 2대분 자원
+- 아래 조건에 맞는 [flavor](docs/OPENSTACK.md#33-flavors-admin-once-init-chooses) 2개. `init`은 flavor를 만들지 않음
 
-| VM | flavor 키 | 예제 값 |
-|---|---|---|
-| 플랫폼 VM | `compute.flavors.platform` | `m1.large`: 2 vCPU, RAM 8 GB, 디스크 60 GB. RAM 8 GB 이상 필요 |
-| 훈련 환경 호스트 | `compute.flavors.range` | `dba.range`: 6 vCPU, RAM 16 GB, 디스크 60 GB |
+| VM | flavor 키 | vCPU | RAM | 디스크 |
+|---|---|---|---|---|
+| 플랫폼 VM | `compute.flavors.platform` | 2 이상 | 8 GB 이상 | 40 GB 이상 |
+| 훈련 환경 호스트 | `compute.flavors.range` | 6 이상 | 16 GB 이상 | 40 GB 이상 |
 
-- 합계: vCPU 8, RAM 24 GB, 인스턴스 2, floating IP 1. Nova 기본 quota로 충분
-- compute node 디스크 120 GB
+- 예: `m1.large`(2 vCPU, 8 GB, 60 GB)와 `dba.range`(6 vCPU, 16 GB, 60 GB). 합계 vCPU 8, RAM 24 GB, 인스턴스 2, floating IP 1. Nova 기본 quota로 충분
+- compute node 디스크는 두 flavor 디스크의 합
 - 슬롯당 RAM 약 1.2 GB. 슬롯을 늘려도 VM은 그대로
 
 VM 1대에 클라우드 전체를 올려 시험하려면 [VM 1대로 시험하기](docs/OPENSTACK.md#9-try-it-in-one-vm-virtualbox-or-vmware)를 보세요.
 
 ## 설치
 
-1. **클라우드 준비(관리자, 최초 1회).** 명령은 [외부 네트워크](docs/OPENSTACK.md#25-external-network-and-floating-ips-admin-once), [프로젝트와 사용자](docs/OPENSTACK.md#31-project-and-user-admin-once), [flavor](docs/OPENSTACK.md#33-flavors-admin-once), [이미지](docs/OPENSTACK.md#36-images)에 있습니다. 관리자 인증은 `kolla-ansible post-deploy`가 만든
-   `/etc/kolla/admin-openrc.sh`를 씁니다.
+컨트롤러 노드에서 `kolla-ansible post-deploy`를 실행한 계정으로 실행합니다.
 
-   - 외부 네트워크
-   - 프로젝트 `fsl-range`, member 사용자 `fsl-range`
-   - flavor `m1.large`, `dba.range`
-   - 베이스 이미지 `ubuntu-24.04`. 관리자 계정으로 올릴 때 `--public`을 붙여야
-     `fsl-range`에서 보입니다.
+```bash
+git clone https://github.com/Nekonic/fsl-project-mvp.git && cd fsl-project-mvp
+uv run bin/cloud init
+uv run bin/cloud up
+```
 
-2. **clone.**
+- virtualenv는 만들지 않습니다. `uv run`이 `bin/cloud` 앞부분의 의존성 목록을 읽어 OpenStack SDK와 CLI를 설치합니다.
+- `up`이 끝나면 `the range is ready; the platform is at http://ADDRESS:8000/`를 출력합니다.
+- 첫 `up`은 오래 걸립니다. 훈련 환경 호스트 부팅, Docker 설치, 이미지 pull이 끝나야 첫 슬롯이 뜹니다.
 
-   ```bash
-   git clone https://github.com/Nekonic/fsl-project-mvp.git && cd fsl-project-mvp
-   ```
+### init
 
-3. **virtualenv 생성, OpenStack CLI 설치.** 이후 명령은 `.venv/bin/`으로 실행하므로
-   activate하지 않아도 됩니다.
+관리자 인증 정보는 `/etc/kolla/clouds.yaml`의 `kolla-admin` 항목에서 읽습니다. 이 파일이 없으면 `source /etc/kolla/admin-openrc.sh`를 먼저 실행합니다.
 
-   ```bash
-   uv venv .venv
-   uv pip install --python .venv/bin/python -r platform/requirements.txt python-openstackclient python-heatclient
-   ```
+있는 것은 그대로 두고 없는 것만 만듭니다. 다시 실행해도 됩니다.
 
-4. **Nova 키페어용 ssh 키 생성.** 플랫폼 VM에 ssh로 접속할 때 씁니다.
+| 항목 | 동작 |
+|---|---|
+| 외부 네트워크 | `router:external`인 네트워크를 씀 |
+| 프로젝트, 사용자 | 프로젝트 `fsl-range`, member 사용자 `fsl-range`가 없으면 만듦. 비밀번호는 무작위, 출력하지 않음 |
+| 인증 정보 | `~/.config/openstack/clouds.yaml`의 `fsl-range` 항목에 씀. 모드 0600. 다른 항목은 그대로 |
+| flavor | 조건에 맞는 것 중 가장 작은 것을 골라 출력. private flavor는 프로젝트에 접근 권한을 줌 |
+| 베이스 이미지 | `ubuntu-24.04`가 없으면 noble amd64 클라우드 이미지를 받아 `SHA256SUMS`로 확인하고 public으로 올림 |
+| quota | 인스턴스 2, 두 flavor의 vCPU·RAM, floating IP 1이 들어가는지 확인 |
+| ssh 키 | `~/.ssh/fsl_claude`가 없으면 `ssh-keygen`으로 만듦 |
+| `cloud.yaml` | `deploy/openstack/cloud.yaml`에 찾은 값을 씀. 파일이 있으면 `cloud`, `network.external`, `compute.base_image`, `compute.flavors`만 바꿈 |
 
-   ```bash
-   ssh-keygen -t ed25519 -N "" -f ~/.ssh/fsl_claude
-   ```
+`init`이 멈추는 경우:
 
-   키페어는 따로 등록하지 않습니다. 7단계 `bin/cloud up`에서 `keys.key_name`
-   이름의 Nova 키페어가 없으면 `keys.key_file`의 공개키(`~/.ssh/fsl_claude.pub`)로
-   등록합니다. 같은 이름의 키페어에 다른 공개키가 있으면 덮어쓰지 않고 키페어 이름을
-   출력한 뒤 멈춥니다.
+| 출력 | 조치 |
+|---|---|
+| `no admin credentials` | `source /etc/kolla/admin-openrc.sh` 후 다시 실행 |
+| `are not an admin's` | 셸의 `OS_*`가 관리자 계정이 아님. 새 셸에서 실행 |
+| `no external network` | [외부 네트워크](docs/OPENSTACK.md#25-external-network-and-floating-ips-admin-once)를 만든 뒤 다시 실행 |
+| `more than one external network` | 출력된 이름 하나를 `cloud.yaml`의 `network.external`에 적고 다시 실행 |
+| `no flavor fits` | 출력된 `openstack flavor create` 명령으로 관리자가 flavor를 만든 뒤 다시 실행 |
+| `not active` | 업로드가 끊긴 이미지. 출력된 `openstack image delete` 명령으로 지운 뒤 다시 실행 |
+| `cannot hold the platform and the range host` | 출력된 항목만큼 `openstack quota set`으로 올린 뒤 다시 실행 |
+| `no working entry fsl-range` | 다른 노드의 `fsl-range` 항목을 복사하거나 `uv run bin/cloud init --reset-password` 실행. 떠 있는 플랫폼 VM은 `up --replace` 뒤에 새 비밀번호를 씀 |
 
-   플랫폼이 훈련 환경 호스트에 접속하는 키(`~/.ssh/fsl-platform`)는 만들지 않아도
-   됩니다. 처음 `bin/cloud up`을 실행할 때 생성합니다.
+### up
 
-5. **`deploy/openstack/cloud.yaml` 작성.**
+- 인증 정보는 `cloud.yaml`의 `cloud`가 가리키는 `clouds.yaml` 항목에서 읽습니다. RC 파일과 `OS_*` 변수는 필요 없습니다.
+- 항목이 없으면 아무것도 바꾸지 않고 `run bin/cloud init first`를 출력합니다.
+- `keys.key_name`의 Nova 키페어가 없으면 `keys.key_file`의 공개키로 등록합니다. 같은 이름에 다른 공개키가 있으면 키페어 이름을 출력하고 멈춥니다.
 
-   ```bash
-   cp deploy/openstack/cloud.example.yaml deploy/openstack/cloud.yaml
-   ```
+### 동작 확인
 
-   - `network.external`: 1단계에서 만든 외부 네트워크 이름
-   - 인증 정보와 비밀번호는 이 파일에 넣지 않습니다. 6단계 RC 파일에 넣습니다.
+브라우저로 `up`이 출력한 주소에 접속합니다.
 
-   나머지 키는 1~4단계의 이름과 같으므로 그대로 둡니다. 키 설명은
-   [cloud.yaml](docs/OPENSTACK.md#4-cloudyaml)에 있습니다. 값이 잘못되면 아무것도 바꾸기 전에 거부하고
-   해당 키를 출력합니다.
+- 홈 화면 **대상 시스템** 아래에 커뮤니티 게시판이 보이는지 확인합니다.
+- 첫 과정 **로그 분석 기초**의 **레슨 1**에서 **시작**을 누릅니다.
+- 몇 초 안에 블루팀 콘솔이 과정 안내 화면으로 열립니다.
+- **시작**을 누르면 **구성도** 창이 뜨고, 레슨 노트에 첫 단계가 나옵니다.
+- 훈련 네트워크가 준비되지 않았다고 나오면 기다립니다. 닫힌 세션의 슬롯은
+  초기화를 먼저 거칩니다.
 
-6. **`fsl-range` RC 파일 작성.** Kolla의 `/etc/kolla/admin-openrc.sh`와 같은
-   변수를 쓰고 사용자, 프로젝트, 비밀번호만 바꿉니다. 파일 이름은 예를 들어
-   `~/fsl-range-openrc.sh`로 합니다.
+터미널에서는 레슨 시작 전에 아래를 실행합니다. 빈 슬롯이 있으면
+`"ready": true`입니다.
 
-   ```bash
-   export OS_PROJECT_DOMAIN_NAME='Default'
-   export OS_USER_DOMAIN_NAME='Default'
-   export OS_PROJECT_NAME='fsl-range'
-   export OS_USERNAME='fsl-range'
-   export OS_PASSWORD='<fsl-range 비밀번호>'
-   export OS_AUTH_URL='http://10.10.10.10:5000'
-   export OS_INTERFACE='public'
-   export OS_IDENTITY_API_VERSION='3'
-   export OS_REGION_NAME='RegionOne'
-   : "${_OS_OLD_PS1:=$PS1}"
-   PS1="\[\e[1;33m\](${OS_PROJECT_NAME})\[\e[0m\] ${_OS_OLD_PS1}"
-   ```
+```bash
+curl -s http://ADDRESS:8000/api/range/ready/
+```
 
-   마지막 두 줄은 venv처럼 프롬프트 앞에 지금 쓰는 프로젝트를 노란색으로 붙입니다.
-   다른 RC를 다시 source해도 표시가 겹치지 않습니다.
+슬롯이 1개면 세션이 열려 있는 동안 `false`입니다. 세션을 닫고 슬롯 초기화가
+끝나면 `true`로 돌아옵니다.
 
-   ```bash
-   chmod 600 ~/fsl-range-openrc.sh
-   source ~/fsl-range-openrc.sh
-   ```
+### 실패 시
 
-   - `source`는 이 셸에서 한 번만 합니다. 이후 단계는 같은 셸에서 실행합니다.
-   - `bin/cloud`와 `bin/platform-rebuild`의 인증 정보는 이 `OS_*` 변수에서만
-     읽습니다. 하나라도 빠지면 아무것도 바꾸기 전에 멈추고 빠진 변수 이름을
-     출력합니다.
-   - `OS_INTERFACE`: Kolla의 admin RC는 `internal`입니다. 플랫폼 VM도 같은
-     interface로 API를 부르므로 VM에서 닿는 `public`을 씁니다.
-   - `OS_PASSWORD`는 플랫폼 VM에 ssh로 넘깁니다. 명령줄과 로그에는 남지 않습니다.
-   - 예제 주소 `http://10.10.10.10:5000`은 [VM 1대로 시험하기](docs/OPENSTACK.md#9-try-it-in-one-vm-virtualbox-or-vmware)의 예시 대역
-     10.10.10.0/24 기준입니다.
+- `bin/cloud up`은 처음 실패한 지점에서 멈추고 원인을 출력합니다.
+- `cloud.yaml` 키, 없는 flavor·이미지, public이 아닌 GHCR 패키지는 이름까지
+  출력합니다.
+- 훈련 환경 호스트 설정이 실패하면 슬롯 단계 `SETUP_FAILED`와 그 호스트의
+  `/var/log/cr-setup.log`를 알려 줍니다.
+- 원인을 고친 뒤 같은 명령을 다시 실행하면 멈춘 지점부터 이어 갑니다.
+- 설정에 실패했거나 이미지 태그·설정 번들이 바뀐 훈련 환경 호스트는 그 실행에서
+  지우고 다시 만듭니다. 열린 세션이 있으면 그대로 둡니다.
 
-7. **`bin/cloud up` 실행.**
+어디를 볼지:
 
-   ```bash
-   .venv/bin/python bin/cloud up
-   ```
+- 플랫폼 VM: `ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS`로 접속해 아래를
+  확인합니다.
+  - `systemctl status cr-platform`: 마지막 부팅의 시작 결과
+  - `sudo cloud-init status --long`
+  - `sudo docker logs cr-platform`
+- Heat 스택:
+  `uvx --from python-openstackclient --with python-heatclient openstack --os-cloud fsl-range stack failures list cr-platform`
+- `sudo docker ps`에 `cr-platform`이 없음: 플랫폼이 한 번도 뜨지 않은 상태입니다.
+  원인은 `sudo cloud-init status --long`에 나옵니다. 대개 VM이 인터넷에 나가지
+  못한 경우입니다([인터넷 연결](docs/OPENSTACK.md#26-internet-egress)).
+  - 첫 부팅이 느렸을 뿐이면 `uv run bin/cloud up`을 다시 실행합니다.
+  - 아니면 원인을 고치고 `uv run bin/cloud up --replace`를 실행합니다.
+    이 VM에는 데이터가 없으므로 백업 없이 교체합니다.
+- 새 플랫폼 VM이 이전 VM의 DB를 넘겨받지 못한 경우(위 경우, `down` 직후):
+  `bin/cloud up`이 `backups/db-<UTC 시각>.sqlite3` 중 행이 있는 가장 최근 백업을
+  복원하고 파일 이름을 출력합니다. 그런 백업이 없으면 빈 DB로 시작한다고
+  출력합니다.
 
-   - 단계마다 진행 상황을 출력합니다.
-   - 첫 실행은 오래 걸립니다. 훈련 환경 호스트 부팅, Docker 설치, 훈련 환경 이미지
-     pull이 끝나야 첫 슬롯이 뜹니다.
-   - 끝나면 `the range is ready; the platform is at http://ADDRESS:8000/`를
-     출력합니다.
+처음부터 다시 하려면 `uv run bin/cloud down`을 실행한 뒤 `uv run bin/cloud up`을
+실행합니다. `down` 동작:
 
-8. **동작 확인.** 브라우저로 그 주소에 접속합니다.
-
-   - 홈 화면 **대상 시스템** 아래에 커뮤니티 게시판이 보이는지 확인합니다.
-   - 첫 과정 **로그 분석 기초**의 **레슨 1**에서 **시작**을 누릅니다.
-   - 몇 초 안에 블루팀 콘솔이 과정 안내 화면으로 열립니다.
-   - **시작**을 누르면 **구성도** 창이 뜨고, 레슨 노트에 첫 단계가 나옵니다.
-   - 훈련 네트워크가 준비되지 않았다고 나오면 기다립니다. 닫힌 세션의 슬롯은
-     초기화를 먼저 거칩니다.
-
-   터미널에서는 레슨 시작 전에 아래를 실행합니다. 빈 슬롯이 있으면
-   `"ready": true`입니다.
-
-   ```bash
-   curl -s http://ADDRESS:8000/api/range/ready/
-   ```
-
-   슬롯이 1개면 세션이 열려 있는 동안 `false`입니다. 세션을 닫고 슬롯 초기화가
-   끝나면 `true`로 돌아옵니다.
-
-9. **실패 시.**
-
-   - `bin/cloud up`은 처음 실패한 지점에서 멈추고 원인을 출력합니다.
-   - `cloud.yaml` 키, 없는 flavor·이미지, public이 아닌 GHCR 패키지는 이름까지
-     출력합니다.
-   - 훈련 환경 호스트 설정이 실패하면 슬롯 단계 `SETUP_FAILED`와 그 호스트의
-     `/var/log/cr-setup.log`를 알려 줍니다.
-   - 원인을 고친 뒤 같은 명령을 다시 실행하면 멈춘 지점부터 이어 갑니다.
-   - 설정에 실패했거나 이미지 태그·설정 번들이 바뀐 훈련 환경 호스트는 그 실행에서
-     지우고 다시 만듭니다. 열린 세션이 있으면 그대로 둡니다.
-
-   어디를 볼지:
-
-   - 플랫폼 VM: `ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS`로 접속해 아래를
-     확인합니다.
-     - `systemctl status cr-platform`: 마지막 부팅의 시작 결과
-     - `sudo cloud-init status --long`
-     - `sudo docker logs cr-platform`
-   - Heat 스택: `.venv/bin/openstack stack failures list cr-platform`
-   - `sudo docker ps`에 `cr-platform`이 없음: 플랫폼이 한 번도 뜨지 않은 상태입니다.
-     원인은 `sudo cloud-init status --long`에 나옵니다. 대개 VM이 인터넷에 나가지
-     못한 경우입니다([인터넷 연결](docs/OPENSTACK.md#26-internet-egress)).
-     - 첫 부팅이 느렸을 뿐이면 `bin/cloud up`을 다시 실행합니다.
-     - 아니면 원인을 고치고 `.venv/bin/python bin/cloud up --replace`를 실행합니다.
-       이 VM에는 데이터가 없으므로 백업 없이 교체합니다.
-   - 새 플랫폼 VM이 이전 VM의 DB를 넘겨받지 못한 경우(위 경우, `down` 직후):
-     `bin/cloud up`이 `backups/db-<UTC 시각>.sqlite3` 중 행이 있는 가장 최근 백업을
-     복원하고 파일 이름을 출력합니다. 그런 백업이 없으면 빈 DB로 시작한다고
-     출력합니다.
-
-   처음부터 다시 하려면 `.venv/bin/python bin/cloud down`을 실행한 뒤
-   `bin/cloud up`을 실행합니다. `down` 동작:
-
-   - 훈련 환경과 스택을 지웁니다. 키페어와 `~/.ssh/fsl-platform`은 남깁니다.
-   - 플랫폼 VM에 DB가 있으면 먼저 백업합니다. 백업에 실패하면 아무것도 지우지
-     않고 멈춥니다.
-   - 스택이 실패했거나 VM에 플랫폼 컨테이너도 DB도 없으면 스택만 지웁니다.
-   - 플랫폼 컨테이너가 멈춰 있으면 먼저 띄웁니다.
-   - VM의 ssh나 Docker가 응답하지 않거나 컨테이너가 뜨지 않으면 멈춥니다. ssh(키,
-     보안 그룹, 네트워크 경로)부터 고치세요.
+- 훈련 환경과 스택을 지웁니다. 키페어와 `~/.ssh/fsl-platform`은 남깁니다.
+- 플랫폼 VM에 DB가 있으면 먼저 백업합니다. 백업에 실패하면 아무것도 지우지
+  않고 멈춥니다.
+- 스택이 실패했거나 VM에 플랫폼 컨테이너도 DB도 없으면 스택만 지웁니다.
+- 플랫폼 컨테이너가 멈춰 있으면 먼저 띄웁니다.
+- VM의 ssh나 Docker가 응답하지 않거나 컨테이너가 뜨지 않으면 멈춥니다. ssh(키,
+  보안 그룹, 네트워크 경로)부터 고치세요.
 
 ## 전체 구성
 
@@ -448,12 +400,13 @@ flowchart LR
 
 ### cloud.yaml
 
-클라우드마다 다른 값은 `deploy/openstack/cloud.yaml`에 둡니다. 인증 정보만 예외로,
-RC 파일의 `OS_*` 변수에서 읽습니다(설치 6단계). 스크립트와 Heat 스택 모두 두 곳의
-값을 씁니다.
+클라우드마다 다른 값은 `deploy/openstack/cloud.yaml`에 둡니다. `bin/cloud init`이
+씁니다. 인증 정보는 `~/.config/openstack/clouds.yaml`에서 `cloud`가 가리키는 항목에
+있습니다.
 
 | 섹션 | 항목 |
 |---|---|
+| `cloud` | `clouds.yaml` 항목 이름(`fsl-range`) |
 | `network` | 외부 네트워크, 고정 floating IP(`address`), DNS, 테넌트 MTU, platform·estate·mgmt CIDR |
 | `compute` | 베이스 이미지, availability zone, 슬롯 수, flavor 2개(`platform`, `range`) |
 | `keys` | Nova 키페어 이름(`key_name`)과 그 개인키 경로(`key_file`), 플랫폼의 훈련 환경 ssh 키(`range`) |
@@ -466,8 +419,8 @@ RC 파일의 `OS_*` 변수에서 읽습니다(설치 6단계). 스크립트와 H
 ### 베이스 이미지
 
 클라우드에 올리는 이미지는 Canonical의 Ubuntu 24.04 클라우드 이미지뿐입니다.
-수정하지 않고 `compute.base_image`의 이름으로 올립니다. 다운로드, 체크섬,
-`openstack image create` 명령은 `docs/OPENSTACK.md`에 있습니다. VM 2대 모두 이
+`bin/cloud init`이 수정하지 않고 `compute.base_image`의 이름으로 올립니다. 손으로
+올리는 명령은 [이미지](docs/OPENSTACK.md#36-images)에 있습니다. VM 2대 모두 이
 이미지로 부팅하고 cloud-init으로 설정합니다.
 
 - 플랫폼 VM: 저장소 clone, `compose.yaml`로 플랫폼 시작
@@ -477,12 +430,12 @@ RC 파일의 `OS_*` 변수에서 읽습니다(설치 6단계). 스크립트와 H
 
 ### bin/cloud
 
-컨트롤러 노드에서 실행합니다. `.venv`에 OpenStack CLI가 있고(설치 3단계) RC 파일을
-읽어 둔 셸(설치 6단계)이어야 합니다.
+컨트롤러 노드에서 실행합니다.
 
 ```bash
-.venv/bin/python bin/cloud up        # 플랫폼 VM, 그다음 훈련 환경 전체
-.venv/bin/python bin/cloud down      # DB 백업, 키 보관, 훈련 환경과 스택 제거
+uv run bin/cloud init      # 관리자 권한: 프로젝트, 사용자, clouds.yaml 항목, cloud.yaml
+uv run bin/cloud up        # 플랫폼 VM, 그다음 훈련 환경 전체
+uv run bin/cloud down      # DB 백업, 키 보관, 훈련 환경과 스택 제거
 ```
 
 `up` 순서:
@@ -508,7 +461,7 @@ drift, 막힌 슬롯, 실패한 설정, 거부된 configure 중 하나라도 나
 플랫폼 VM만 만들거나 교체할 때 씁니다.
 
 ```bash
-.venv/bin/python bin/platform-rebuild            # --cloud PATH, --ref REF
+uv run bin/platform-rebuild            # --cloud PATH, --ref REF
 ```
 
 1. ref 커밋의 이미지 8개를 ghcr.io에서 로그인 없이 pull할 수 있는지 확인합니다.

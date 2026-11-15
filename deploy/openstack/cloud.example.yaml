@@ -1,7 +1,9 @@
-# Everything that differs between OpenStack clouds, except the identity.
-# Copy to cloud.yaml (ignored by git), fill in, then run bin/cloud up.
-# The identity and the password come from the sourced RC file (OS_AUTH_URL,
-# OS_USERNAME, OS_PASSWORD, ...), never from this file.
+# Everything that differs between OpenStack clouds, and no secret.
+# bin/cloud init writes cloud.yaml (ignored by git) from this file, filling in
+# cloud, network.external, compute.base_image and compute.flavors from what it
+# finds; every other key keeps the value it has here or in cloud.yaml.
+
+cloud: fsl-range                        # the entry in ~/.config/openstack/clouds.yaml that holds the identity and the password
 
 network:
   external: provider                    # the external network floating IPs come from

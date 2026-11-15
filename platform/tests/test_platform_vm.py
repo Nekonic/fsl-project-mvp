@@ -45,11 +45,11 @@ def example():
 
     from range import cloud
 
-    return dataclasses.replace(cloud.read(cloud.EXAMPLE), signed_in=cloud.identity({
-        "OS_AUTH_URL": "http://10.10.10.10:5000", "OS_USERNAME": "fsl-range", "OS_PASSWORD": "secret",
-        "OS_PROJECT_NAME": "fsl-range", "OS_USER_DOMAIN_NAME": "Default",
-        "OS_PROJECT_DOMAIN_NAME": "Default", "OS_REGION_NAME": "RegionOne", "OS_INTERFACE": "public",
-    }))
+    return dataclasses.replace(cloud.read(cloud.EXAMPLE), signed_in=cloud.Identity(
+        cloud="fsl-range", file="clouds.yaml", keystone="http://10.10.10.10:5000", user="fsl-range",
+        password="secret", project="fsl-range", user_domain="Default", project_domain="Default",
+        region="RegionOne", interface="public",
+    ))
 
 def test_the_template_takes_exactly_cloud_yaml_s_values_under_names_heat_accepts():
     defaulted = [name for name, entry in template()["parameters"].items() if "default" in entry]

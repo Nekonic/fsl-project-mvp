@@ -21,11 +21,15 @@ RANGE_HOST_POOL = "10.40.0.0/16"
 DOCKER_DEFAULT_POOLS = ("172.17.0.0/16", "172.18.0.0/16", "172.19.0.0/16", "172.20.0.0/14",
                         "172.24.0.0/14", "172.28.0.0/14", "192.168.0.0/16")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
-RC = {
-    "keystone": "OS_AUTH_URL", "user": "OS_USERNAME", "password": "OS_PASSWORD",
-    "project": "OS_PROJECT_NAME", "user_domain": "OS_USER_DOMAIN_NAME",
-    "project_domain": "OS_PROJECT_DOMAIN_NAME", "region": "OS_REGION_NAME", "interface": "OS_INTERFACE",
+CLOUDS = Path("~/.config/openstack/clouds.yaml")
+ENTRY = {
+    "keystone": ("auth", "auth_url"), "user": ("auth", "username"), "password": ("auth", "password"),
+    "project": ("auth", "project_name"), "user_domain": ("auth", "user_domain_name"),
+    "project_domain": ("auth", "project_domain_name"), "region": ("region_name",),
 }
+PROJECT = "fsl-range"
+NEEDS = {"platform": {"ram": 8192, "vcpus": 2, "disk": 40}, "range": {"ram": 16384, "vcpus": 6, "disk": 40}}
+SETTING = re.compile(r"^(?P<indent> *)(?P<key>[A-Za-z_][A-Za-z0-9_-]*):(?P<gap> *)(?P<value>[^#]*?)(?P<comment> +#.*)?$")
 
 
 class Invalid(ValueError):
@@ -34,6 +38,8 @@ class Invalid(ValueError):
 
 @dataclass(frozen=True)
 class Identity:
+    cloud: str
+    file: str
     keystone: str
     user: str
     password: str = field(repr=False)
@@ -44,33 +50,149 @@ class Identity:
     interface: str
 
     def cli_environment(self) -> dict[str, str]:
-        return {
-            "OS_AUTH_URL": self.keystone, "OS_IDENTITY_API_VERSION": "3",
-            "OS_USERNAME": self.user, "OS_PASSWORD": self.password,
-            "OS_PROJECT_NAME": self.project, "OS_USER_DOMAIN_NAME": self.user_domain,
-            "OS_PROJECT_DOMAIN_NAME": self.project_domain, "OS_REGION_NAME": self.region,
-            "OS_INTERFACE": self.interface,
-        }
+        return {"OS_CLOUD": self.cloud, "OS_CLIENT_CONFIG_FILE": self.file}
 
 
-def identity(environ=os.environ) -> Identity:
-    missing = [variable for variable in RC.values() if not environ.get(variable, "").strip()]
+def entries(path: Path = CLOUDS) -> dict:
+    path = Path(path).expanduser()
+    if not path.is_file():
+        return {}
+    try:
+        document = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as error:
+        raise Invalid(f"{path} is not YAML: {error}") from error
+    clouds = document.get("clouds") if isinstance(document, dict) else None
+    return clouds if isinstance(clouds, dict) else {}
+
+
+def _setting(entry: dict, path: tuple[str, ...]):
+    for key in path:
+        entry = entry.get(key) if isinstance(entry, dict) else None
+    return entry
+
+
+def signed_in(name: str, path: Path = CLOUDS) -> Identity:
+    path = Path(path).expanduser()
+    entry = entries(path).get(name)
+    if not isinstance(entry, dict):
+        raise Invalid(f"{path} has no entry {name}, so nothing was changed; run bin/cloud init first")
+    found = {field_name: _setting(entry, where) for field_name, where in ENTRY.items()}
+    missing = [".".join(ENTRY[field_name]) for field_name, value in found.items() if not value]
     if missing:
-        raise Invalid(
-            f"the environment has no {', '.join(missing)}; source the project user's RC file "
-            f"(README, install step 6) before bin/cloud or bin/platform-rebuild"
-        )
-    keystone = environ["OS_AUTH_URL"].strip().rstrip("/").removesuffix("/v3")
+        raise Invalid(f"{path}: the entry {name} has no {', '.join(missing)}; run bin/cloud init to rewrite it")
+    keystone = found.pop("keystone").rstrip("/").removesuffix("/v3")
     complaint = _url(keystone)
     if complaint:
-        raise Invalid(f"OS_AUTH_URL {complaint}")
-    return Identity(keystone=keystone, **{
-        name: environ[variable].strip() for name, variable in RC.items() if name != "keystone"
-    })
+        raise Invalid(f"{path}: clouds.{name}.auth.auth_url {complaint}")
+    return Identity(cloud=name, file=str(path), keystone=keystone,
+                    interface=_setting(entry, ("interface",)) or "public", **found)
+
+
+def merged_clouds(text: str | None, name: str, entry: dict) -> str:
+    document = (yaml.safe_load(text) if text else None) or {}
+    if not isinstance(document, dict) or not isinstance(document.get("clouds", {}), dict):
+        raise Invalid("the clouds.yaml there holds no clouds: mapping, so it was left as it is")
+    clouds = document.setdefault("clouds", {}) or {}
+    document["clouds"] = {**clouds, name: entry}
+    return yaml.safe_dump(document, sort_keys=False, default_flow_style=False)
+
+
+def write_clouds(path: Path, name: str, entry: dict) -> None:
+    path = Path(path).expanduser()
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    text = merged_clouds(path.read_text(encoding="utf-8") if path.is_file() else None, name, entry)
+    staged = path.with_name(path.name + ".new")
+    descriptor = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(descriptor, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as written:
+        written.write(text)
+    os.replace(staged, path)
+
+
+def external_network(networks: list[dict], named: str = "") -> str:
+    external = [network["name"] for network in networks if network.get("external")]
+    if named in external:
+        return named
+    if len(external) == 1:
+        return external[0]
+    if external:
+        raise Invalid("more than one external network (router:external): " + ", ".join(sorted(external))
+                      + "; set network.external in cloud.yaml to one of them and run init again")
+    names = ", ".join(sorted(network["name"] for network in networks)) or "none at all"
+    raise Invalid(f"no external network (router:external); the networks are: {names}. "
+                  "An admin creates one first (docs/OPENSTACK.md §2.5)")
+
+
+def _fits(flavor: dict, role: str) -> bool:
+    return all((flavor.get(measure) or 0) >= least for measure, least in NEEDS[role].items())
+
+
+def fitting_flavor(flavors: list[dict], role: str, named: str = "") -> dict:
+    kept = [flavor for flavor in flavors if flavor["name"] == named and _fits(flavor, role)]
+    if kept:
+        return kept[0]
+    fitting = sorted((flavor for flavor in flavors if _fits(flavor, role)),
+                     key=lambda flavor: (flavor["ram"], flavor["vcpus"], flavor["disk"], flavor["name"]))
+    if not fitting:
+        need = NEEDS[role]
+        raise Invalid(f"no flavor fits the {role} VM, which needs RAM {need['ram']} MB, {need['vcpus']} vCPU "
+                      f"and a {need['disk']} GB disk or more; an admin creates one (openstack flavor create "
+                      f"--ram {need['ram']} --vcpus {need['vcpus']} --disk {need['disk']} <name>), init never does")
+    return fitting[0]
+
+
+def quota_shortfall(limits: dict, flavors: dict[str, dict]) -> list[str]:
+    needed = {
+        "instances": len(flavors), "cores": sum(flavor["vcpus"] for flavor in flavors.values()),
+        "ram": sum(flavor["ram"] for flavor in flavors.values()), "floating_ips": 1,
+    }
+    return [f"{name}: the quota is {limits.get(name)}, the platform and the range host need {need}"
+            for name, need in needed.items()
+            if limits.get(name) is not None and 0 <= limits[name] < need]
+
+
+def _scalar(value) -> str:
+    return value if isinstance(value, str) and NAME.fullmatch(value) else yaml.safe_dump(
+        value, default_flow_style=True, width=1000).removesuffix("\n...\n").strip()
+
+
+def with_settings(text: str, settings: dict[tuple[str, ...], object]) -> str:
+    lines = text.splitlines()
+    for path, value in settings.items():
+        lines = _set(lines, path, _scalar(value))
+    return "\n".join(lines) + "\n"
+
+
+def _set(lines: list[str], path: tuple[str, ...], value: str) -> list[str]:
+    stack: list[tuple[int, str]] = []
+    seen = {(): -1}
+    for at, line in enumerate(lines):
+        found = SETTING.match(line)
+        if not found:
+            continue
+        while stack and stack[-1][0] >= len(found["indent"]):
+            stack.pop()
+        stack.append((len(found["indent"]), found["key"]))
+        here = tuple(key for _, key in stack)
+        seen[here] = at
+        if here == path:
+            start = f"{found['indent']}{found['key']}: {value}"
+            comment = found["comment"] or ""
+            lines[at] = start.ljust(len(line) - len(comment)) + comment if comment else start
+            return lines
+    depth = max(depth for depth in range(len(path)) if path[:depth] in seen)
+    added = [f"{'  ' * level}{key}:" for level, key in enumerate(path[:-1]) if level >= depth]
+    added.append(f"{'  ' * (len(path) - 1)}{path[-1]}: {value}")
+    at = seen[path[:depth]]
+    if at < 0:
+        at = next((n for n, line in enumerate(lines) if SETTING.match(line)), len(lines))
+        return lines[:at] + added + [""] + lines[at:]
+    return lines[:at + 1] + added + lines[at + 1:]
 
 
 @dataclass(frozen=True)
 class Cloud:
+    cloud: str
     external_network: str
     platform_cidr: str
     mtu: int
@@ -92,7 +214,7 @@ class Cloud:
 
     def heat_parameters(self, floating_ip_id: str = "") -> dict[str, str]:
         if self.signed_in is None:
-            raise Invalid("no OpenStack identity: source the project user's RC file first")
+            raise Invalid(f"no OpenStack identity: clouds.yaml's entry {self.cloud} was not read")
         signed_in = self.signed_in
         return {
             "keystone": signed_in.keystone, "user": signed_in.user, "domain": signed_in.user_domain,
@@ -215,13 +337,18 @@ SCHEMA = {
     "platform": {"stack": (_name, True), "repository": (_url, True), "ref": (_name, True)},
     "backups": {"keep": (_keep, False)},
 }
+SETTINGS = ("cloud",)
 
 
 def _complaints(document) -> list[str]:
     if not isinstance(document, dict):
         return ["the file holds no mapping of sections"]
     said = [f"{section}: not a section this file has (expected one of {', '.join(SCHEMA)})"
-            for section in document if section not in SCHEMA]
+            for section in document if section not in SCHEMA and section not in SETTINGS]
+    if document.get("cloud") in ("", None):
+        said.append("cloud: missing, the clouds.yaml entry to sign in with; bin/cloud init writes it")
+    elif _name(document["cloud"]):
+        said.append(f"cloud: {_name(document['cloud'])}")
     for section, keys in SCHEMA.items():
         entries = document.get(section)
         if entries is None and section in OPTIONAL_SECTIONS:
@@ -303,6 +430,7 @@ def parse(document, source: str = "cloud.yaml") -> Cloud:
     keys, platform = document["keys"], document["platform"]
     backups = document.get("backups") or {}
     return Cloud(
+        cloud=document["cloud"],
         external_network=network["external"], address=str(network.get("address") or ""),
         dns=tuple(map(str, network["dns"])),
         mtu=network["mtu"], platform_cidr=network["platform"],
@@ -321,10 +449,7 @@ def parse(document, source: str = "cloud.yaml") -> Cloud:
 def read(path: Path = CONFIGURED) -> Cloud:
     path = Path(path)
     if not path.is_file():
-        raise Invalid(
-            f"{path} does not exist; copy {EXAMPLE.name} beside it to {path.name} "
-            f"and fill in this cloud's values"
-        )
+        raise Invalid(f"{path} does not exist; bin/cloud init writes it")
     try:
         document = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as error:

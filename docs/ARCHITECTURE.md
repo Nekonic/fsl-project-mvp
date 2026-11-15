@@ -1924,26 +1924,34 @@ OpenStack 구축은 `docs/STATE.md` 백로그의 OpenStack 항목 순서를 따�
 
 훈련 환경은 프로젝트 `fsl-range`에 두고, member 역할 사용자 `fsl-range`로 조작합니다. 사용자에게 Horizon은 노출하지 않습니다.
 
-클라우드별 값은 `deploy/openstack/cloud.yaml`에 둡니다.
+클라우드별 값은 `deploy/openstack/cloud.yaml`에 둡니다. 관리자 권한으로 `uv run bin/cloud init`을 실행하면 `cloud.example.yaml`에서 이 파일을 만듭니다. 파일이 있으면 init이 맡은 키(`cloud`, `network.external`, `compute.base_image`, `compute.flavors`)만 줄 단위로 바꾸고 다른 값과 주석은 그대로 둡니다.
 
-```
-cp deploy/openstack/cloud.example.yaml deploy/openstack/cloud.yaml
-```
+키:
 
-고칠 키:
-
+- `cloud`: 인증 정보가 든 `clouds.yaml` 항목 이름(`fsl-range`)
 - `network`: `external`, `address`, `dns`, `mtu`, `platform`, `estate`, `mgmt`
 - `compute`: `base_image`, `availability_zone`, `slots`, `flavors.platform`, `flavors.range`
 - `keys`: `key_name`(플랫폼 VM의 Nova 키페어 이름), `key_file`(그 개인키 경로), `range`
 - `platform`: `stack`, `repository`, `ref`
 - `backups`: `keep`
 
-인증 정보는 이 파일에 없습니다. 프로젝트 사용자 RC 파일의 `OS_AUTH_URL`, `OS_USERNAME`, `OS_PASSWORD`, `OS_PROJECT_NAME`, `OS_USER_DOMAIN_NAME`, `OS_PROJECT_DOMAIN_NAME`, `OS_REGION_NAME`, `OS_INTERFACE`에서 읽습니다(`cloud.identity`). 하나라도 없으면 아무것도 바꾸기 전에 멈추고 빠진 변수 이름을 출력합니다. 플랫폼 VM은 `OS_USER_DOMAIN_NAME`의 도메인 이름으로 로그인합니다.
+인증 정보는 이 파일에 없습니다. OpenStack 클라이언트 표준 설정 파일 `~/.config/openstack/clouds.yaml`에서 `cloud`가 가리키는 항목을 읽습니다(`cloud.signed_in`). init이 이 항목을 모드 0600으로 쓰고, 파일의 다른 항목은 건드리지 않습니다. 비밀번호는 무작위로 만들고 출력하지 않습니다. 항목이 없으면 `up`, `down`, `platform-rebuild`는 아무것도 바꾸기 전에 멈추고 `bin/cloud init`을 실행하라고 출력합니다. 셸의 `OS_*` 변수는 지우고 `OS_CLOUD`, `OS_CLIENT_CONFIG_FILE`만 openstack CLI에 넘깁니다. 플랫폼 VM은 항목의 `user_domain_name` 도메인으로 로그인합니다.
+
+init이 하는 일(`bin/cloud`의 `init`, 관리자 인증은 `/etc/kolla/clouds.yaml`의 `kolla-admin` 항목 또는 셸의 `OS_*`):
+
+- `router:external` 외부 네트워크 하나를 찾음. 없거나 여럿이면 목록을 출력하고 멈춤
+- 프로젝트 `fsl-range`, member 사용자 `fsl-range`가 없으면 만듦
+- flavor는 만들지 않음. 조건(플랫폼 2 vCPU·8 GB·40 GB, 훈련 환경 호스트 6 vCPU·16 GB·40 GB 이상)에 맞는 것 중 가장 작은 것을 고름. private flavor는 프로젝트에 접근 권한을 줌
+- quota가 인스턴스 2, 두 flavor의 vCPU·RAM, floating IP 1을 담지 못하면 모자란 항목을 출력하고 멈춤
+- `ubuntu-24.04`가 없으면 noble amd64 클라우드 이미지를 받아 `SHA256SUMS`와 대조한 뒤 public으로 올림
+- `keys.key_file`이 없으면 `ssh-keygen`으로 만듦
+
+`bin/cloud`와 `bin/platform-rebuild`는 첫머리의 PEP 723 inline script metadata로 의존성(openstacksdk, python-openstackclient, python-heatclient, PyYAML)을 적습니다. `uv run`이 이 목록대로 환경을 만들어 실행하므로 virtualenv를 따로 만들지 않습니다. 저장소의 `.venv`와 `bin/verify`는 그대로입니다.
 
 이 파일을 쓰는 곳:
 
-- `platform/range/cloud.py`: 파일 검사. 문제는 키별로 모두 보고
-- `bin/platform-rebuild`, `bin/cloud`: 이 값으로 openstack CLI와 Heat 파라미터를 채워 실행. 스택을 배포하면 값이 플랫폼의 `openstack.env`에 기록됨
+- `platform/range/cloud.py`: 파일 검사. 문제는 키별로 모두 보고. `clouds.yaml` 항목 읽기와 병합, init의 외부 네트워크·flavor 선택도 여기 있음
+- `bin/platform-rebuild`, `bin/cloud`: 이 값과 `clouds.yaml` 항목으로 openstack CLI와 Heat 파라미터를 채워 실행. 스택을 배포하면 값이 플랫폼의 `openstack.env`에 기록됨
 
 `bin/cloud up`의 순서:
 

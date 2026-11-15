@@ -7731,3 +7731,72 @@ Judgement calls, decided:
 - c2 L3 s8's "403" wording while sqlmap saw 500s, the 30 s close, rings on
   answer spots without text, the reload dropping half-picked order chips, the
   WAF terminal header: left.
+
+## 2026-11-15 — Four commands on the controller: `bin/cloud init`, credentials in clouds.yaml
+
+This supersedes "The identity comes from an RC file on the controller node"
+(same day). The user: "자동화로 하면 rc 필요 없으니까 yaml로 그냥 처리해".
+The manual setup was README steps 1 to 6 (admin commands, a venv, a key, a
+copied `cloud.yaml`, a hand-written RC file); it is now, on the controller
+node:
+
+```bash
+git clone https://github.com/Nekonic/fsl-project-mvp.git && cd fsl-project-mvp
+uv run bin/cloud init
+uv run bin/cloud up
+```
+
+- **`uv run`, no venv step.** `bin/cloud` and `bin/platform-rebuild` carry PEP
+  723 inline script metadata (openstacksdk, python-openstackclient,
+  python-heatclient, PyYAML) and the shebang `#!/usr/bin/env -S uv run
+  --script`, both from uv's scripts guide
+  (https://docs.astral.sh/uv/guides/scripts/: "uv will automatically create an
+  environment with the dependencies necessary to run the script"; "even if
+  `uv run` is used in a project, the project's dependencies will be ignored").
+  `uv run bin/cloud` on an executable file without `.py` spawns it as a
+  command (checked with uv 0.13.7), so the shebang is what gets the script
+  environment; `bin/cloud` alone works the same. The metadata block is
+  comment syntax; it is the format, not commentary, so the no-comments rule
+  does not cover it. `.venv`, `bin/verify` and the platform VM's venv are
+  unchanged; `dependencies` counts `platform/requirements.txt` only, so the
+  ratchet does not move.
+- **`bin/cloud init`, admin, idempotent.** Admin credentials come from the
+  `kolla-admin` entry of `/etc/kolla/clouds.yaml`, which Kolla-Ansible's
+  `post-deploy.yml` writes ("Template out clouds.yaml", `dest: "{{ node_config
+  }}/clouds.yaml"`, mode 0600, `node_config` defaulting to `/etc/kolla`;
+  template `roles/common/templates/clouds.yaml.j2`, first entry `kolla-admin`)
+  on both stable/2025.2 and unmaintained/2025.1, so no `source` is needed.
+  With `OS_AUTH_URL` set in the shell (after `source
+  /etc/kolla/admin-openrc.sh`) it uses those variables instead. It finds the
+  one `router:external` network (or the one `network.external` names); makes
+  project and member user `fsl-range` when missing, with a
+  `secrets.token_urlsafe(32)` password that is never printed; writes the user
+  into `~/.config/openstack/clouds.yaml` as entry `fsl-range`, mode 0600,
+  merged without touching other entries, right after the user is made so a
+  later failure cannot lose the password; keeps an entry that signs in; stops
+  when the user exists and no working entry holds its password, unless
+  `--reset-password`. It never creates a flavor (the user ruled flavors are
+  not created for them): it picks the smallest fitting existing one by RAM,
+  vCPU, disk, keeping one `cloud.yaml` names when it fits, and gives a
+  private one's access to the project. The platform needs 2 vCPU, 8 GB, 40
+  GB; the range host 6 vCPU, 16 GB and also 40 GB of disk, which the plan did
+  not state but a range host on a 0 GB flavor would not hold its images. It
+  checks quota limits (2 instances, both flavors' cores and RAM, 1 floating
+  IP), uploads `noble-server-cloudimg-amd64.img` as public `ubuntu-24.04`
+  after matching `SHA256SUMS` when missing, makes `keys.key_file` with
+  `ssh-keygen`, and writes `deploy/openstack/cloud.yaml` from
+  `cloud.example.yaml`, changing only `cloud`, `network.external`,
+  `compute.base_image` and `compute.flavors.*` line by line in an existing
+  file so its comments and other values stay. It uses openstacksdk, not the
+  CLI, so the new password is never on a command line.
+- **`up`, `down`, `platform-rebuild` read clouds.yaml.** `cloud.yaml` gains
+  the required top-level `cloud:` (the entry name). `cloud.signed_in` reads
+  that entry (`auth.auth_url`, `username`, `password`, `project_name`,
+  `user_domain_name`, `project_domain_name`, `region_name`, `interface`
+  defaulting to `public`) and stops before any change when it is missing,
+  saying to run `bin/cloud init`. The scripts drop every `OS_*` variable from
+  their environment and run the CLI with `OS_CLOUD` and
+  `OS_CLIENT_CONFIG_FILE`, because openstackclient's argparse defaults read
+  `OS_*` and would override the entry. The password still reaches the
+  platform VM over ssh stdin. The RC code path (`cloud.identity`) and its docs,
+  the README step 6 RC file and its PS1 snippet, are gone.

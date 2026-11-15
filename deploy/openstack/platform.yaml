@@ -4,7 +4,7 @@ description: >
   The platform VM: the stock Ubuntu 24.04 cloud image whose first boot installs
   Docker, clones the repo and brings the whole platform up with docker compose
   from images prebuilt on ghcr.io. Every parameter comes from cloud.yaml and
-  the sourced RC file (bin/platform-rebuild); the API password and the range ssh key are added
+  the clouds.yaml entry cloud.yaml names (bin/platform-rebuild); the API password and the range ssh key are added
   over ssh. With floating_ip_id set the stack only associates that floating
   IP, so deleting the stack disassociates it and leaves it in the project.
   chrony keeps its clock and serves it over NTP to the range's management

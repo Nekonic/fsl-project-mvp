@@ -1,4 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "openstacksdk>=4",
+#     "python-openstackclient>=7",
+#     "python-heatclient>=4",
+#     "PyYAML>=6,<7",
+# ]
+# ///
 
 from __future__ import annotations
 
@@ -69,9 +78,9 @@ def arguments(argv: list[str]) -> argparse.Namespace:
         prog="platform-rebuild",
         description="Create the platform VM's Heat stack, or replace a standing one "
                     "and carry its store and its range ssh key across. The identity "
-                    "comes from the sourced RC file's OS_* variables, every other "
-                    "cloud value from cloud.yaml; needs the openstack CLI with "
-                    "python-heatclient and PyYAML (run it with .venv/bin/python).",
+                    "comes from the clouds.yaml entry cloud.yaml names, every other "
+                    "cloud value from cloud.yaml. Run it with uv run, which installs "
+                    "what it needs.",
     )
     parser.add_argument("--cloud", type=Path, default=CLOUD,
                         help="the cloud settings file (default deploy/openstack/cloud.yaml)")
@@ -95,7 +104,7 @@ def settings_module():
     try:
         import yaml  # noqa: F401
     except ImportError as missing:
-        raise Refused("platform-rebuild: PyYAML is missing; run it with .venv/bin/python") from missing
+        raise Refused(f"{Path(sys.argv[0]).name}: PyYAML is missing; run it with uv run") from missing
     spec = importlib.util.spec_from_file_location("cr_cloud", LOADER)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -103,22 +112,28 @@ def settings_module():
     return module
 
 
-def load(args: argparse.Namespace, environ=os.environ, which=shutil.which):
+def load(args: argparse.Namespace, clouds: Path | None = None, which=shutil.which):
     module = settings_module()
     try:
         cloud = module.read(args.cloud)
         if args.ref:
             cloud = dataclasses.replace(cloud, ref=args.ref)
-        cloud = dataclasses.replace(cloud, signed_in=module.identity(environ))
+        cloud = dataclasses.replace(cloud, signed_in=module.signed_in(cloud.cloud, clouds or module.CLOUDS))
         environment = cloud.signed_in.cli_environment()
     except module.Invalid as invalid:
         raise Refused(f"{Path(sys.argv[0]).name}: {invalid}") from invalid
     if openstack_cli(which) is None:
         raise Refused(
-            f"{Path(sys.argv[0]).name}: no openstack CLI beside {Path(sys.executable).parent} or on PATH "
-            f"(uv pip install --python {sys.executable} python-openstackclient python-heatclient)"
+            f"{Path(sys.argv[0]).name}: no openstack CLI beside {Path(sys.executable).parent} or on PATH; "
+            f"run it with uv run, which installs it"
         )
     return cloud, environment
+
+
+def sign_in(environment: dict[str, str], environ=os.environ) -> None:
+    for name in [name for name in environ if name.startswith("OS_")]:
+        del environ[name]
+    environ.update(environment)
 
 
 def openstack_cli(which=shutil.which) -> str | None:
@@ -621,12 +636,12 @@ def resume(cloud, environment: dict[str, str], address: str, sideload_pairs: lis
             if holding:
                 start_platform(host)
             keep_range_key(range_key, host if holding else None, first=not holding)
-            hand_over(host, environment["OS_PASSWORD"], range_key, None if holding else store_to_restore(None))
+            hand_over(host, cloud.signed_in.password, range_key, None if holding else store_to_restore(None))
     wait_for_api(address)
 
 
 def rebuild(cloud, environment: dict[str, str], sideload_pairs: list[str] = ()) -> str:
-    os.environ.update(environment)
+    sign_in(environment)
     base = commit_of(cloud.repository, cloud.ref)
     range_key = Path(cloud.range_key).expanduser()
     identity = Path(cloud.key_file).expanduser()
@@ -655,7 +670,7 @@ def rebuild(cloud, environment: dict[str, str], sideload_pairs: list[str] = ()) 
         address = replace_stack(cloud, existed=status is not None)
         new = Host("ubuntu", address, known_hosts, identity)
         new.wait()
-        hand_over(new, environment["OS_PASSWORD"], range_key, store, sideload)
+        hand_over(new, cloud.signed_in.password, range_key, store, sideload)
         wait_for_api(address)
     return address
 

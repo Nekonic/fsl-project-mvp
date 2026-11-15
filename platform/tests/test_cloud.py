@@ -7,11 +7,24 @@ import yaml
 from range import cloud, openstack
 
 DOCUMENT = yaml.safe_load(cloud.EXAMPLE.read_text())
-RC = {
-    "OS_AUTH_URL": "http://10.10.10.10:5000", "OS_USERNAME": "fsl-range", "OS_PASSWORD": "secret",
-    "OS_PROJECT_NAME": "fsl-range", "OS_USER_DOMAIN_NAME": "Default", "OS_PROJECT_DOMAIN_NAME": "Default",
-    "OS_REGION_NAME": "RegionOne", "OS_INTERFACE": "public",
+ENTRY = {
+    "auth": {"auth_url": "http://10.10.10.10:5000/v3/", "username": "fsl-range", "password": "secret",
+             "project_name": "fsl-range", "user_domain_name": "Default", "project_domain_name": "Default"},
+    "region_name": "RegionOne",
 }
+FLAVORS = [
+    {"name": "m1.small", "ram": 2048, "vcpus": 1, "disk": 20},
+    {"name": "m1.xlarge", "ram": 16384, "vcpus": 8, "disk": 160},
+    {"name": "m1.large", "ram": 8192, "vcpus": 4, "disk": 80},
+    {"name": "dba.platform", "ram": 8192, "vcpus": 2, "disk": 40},
+    {"name": "dba.range", "ram": 16384, "vcpus": 6, "disk": 60},
+]
+
+
+def written_clouds(tmp_path, **clouds):
+    path = tmp_path / "clouds.yaml"
+    path.write_text(yaml.safe_dump({"clouds": clouds}))
+    return path
 
 
 def changed(**edits):
@@ -40,14 +53,65 @@ def test_a_password_in_the_file_is_refused_by_name_and_never_echoed():
     assert "hunter2" not in said
 
 
-def test_the_identity_comes_from_the_sourced_rc_file_and_a_missing_variable_is_named():
-    signed_in = cloud.identity({**RC, "OS_AUTH_URL": "http://10.10.10.10:5000/v3/"})
+def test_the_identity_comes_from_the_clouds_yaml_entry_and_never_shows_its_password(tmp_path):
+    signed_in = cloud.signed_in("fsl-range", written_clouds(tmp_path, **{"fsl-range": ENTRY}))
 
     assert signed_in.keystone == "http://10.10.10.10:5000"
     assert signed_in.user_domain == "Default" and signed_in.interface == "public"
+    assert signed_in.cli_environment() == {"OS_CLOUD": "fsl-range", "OS_CLIENT_CONFIG_FILE": str(tmp_path / "clouds.yaml")}
     assert "secret" not in repr(signed_in), "an Identity printed in a traceback would show the password"
-    with pytest.raises(cloud.Invalid, match="OS_PASSWORD, OS_REGION_NAME; source the project user's RC file"):
-        cloud.identity({name: value for name, value in RC.items() if name not in ("OS_PASSWORD", "OS_REGION_NAME")})
+
+
+def test_a_missing_clouds_yaml_entry_stops_before_any_change_and_names_init(tmp_path):
+    with pytest.raises(cloud.Invalid, match="has no entry fsl-range, so nothing was changed; run bin/cloud init"):
+        cloud.signed_in("fsl-range", written_clouds(tmp_path, other=ENTRY))
+    with pytest.raises(cloud.Invalid, match="has no entry fsl-range"):
+        cloud.signed_in("fsl-range", tmp_path / "absent.yaml")
+
+
+def test_the_entry_is_merged_into_clouds_yaml_without_touching_the_others_and_kept_private(tmp_path):
+    path = written_clouds(tmp_path, **{"kolla-admin": {"auth": {"password": "admin-secret"}}, "fsl-range": {"old": 1}})
+
+    cloud.write_clouds(path, "fsl-range", ENTRY)
+
+    held = yaml.safe_load(path.read_text())["clouds"]
+    assert held == {"kolla-admin": {"auth": {"password": "admin-secret"}}, "fsl-range": ENTRY}
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_the_one_external_network_is_found_and_none_or_two_stop_init_with_the_list():
+    networks = [{"name": "provider", "external": True}, {"name": "demo-net", "external": False}]
+
+    assert cloud.external_network(networks) == "provider"
+    with pytest.raises(cloud.Invalid, match="no external network .* the networks are: demo-net"):
+        cloud.external_network(networks[1:])
+    two = [*networks, {"name": "public", "external": True}]
+    with pytest.raises(cloud.Invalid, match="more than one external network .*: provider, public"):
+        cloud.external_network(two)
+    assert cloud.external_network(two, "public") == "public", "a network cloud.yaml already names is kept"
+
+
+def test_the_smallest_fitting_flavor_is_chosen_and_none_fitting_stops_init():
+    assert cloud.fitting_flavor(FLAVORS, "platform")["name"] == "dba.platform"
+    assert cloud.fitting_flavor(FLAVORS, "range")["name"] == "dba.range"
+    assert cloud.fitting_flavor(FLAVORS, "platform", "m1.large")["name"] == "m1.large", "a fitting choice is kept"
+    assert cloud.fitting_flavor(FLAVORS, "platform", "m1.small")["name"] == "dba.platform"
+    with pytest.raises(cloud.Invalid, match="no flavor fits the range VM, which needs RAM 16384 MB, 6 vCPU"):
+        cloud.fitting_flavor([FLAVORS[0], *FLAVORS[2:4]], "range")
+
+
+def test_init_sets_only_its_own_keys_in_cloud_yaml_and_keeps_the_comments():
+    text = cloud.EXAMPLE.read_text().replace("cloud: fsl-range", "").replace("  slots: 1", "  slots: 3")
+
+    written = cloud.with_settings(text, {("cloud",): "fsl-range", ("network", "external"): "public",
+                                         ("compute", "flavors", "range"): "dba.range2"})
+
+    document = yaml.safe_load(written)
+    assert document["cloud"] == "fsl-range" and document["network"]["external"] == "public"
+    assert document["compute"]["flavors"] == {"platform": "m1.large", "range": "dba.range2"}
+    assert document["compute"]["slots"] == 3
+    assert "public                      # the external network floating IPs come from" in written
+    assert cloud.with_settings(written, {("network", "external"): "public"}) == written
 
 
 @pytest.mark.parametrize("network, cidr, clash", [
@@ -70,8 +134,9 @@ def test_the_estate_is_wide_enough_for_a_slash_24_per_slot():
     assert "network.estate: must be a /16 or wider" in refusal(changed(network__estate="10.30.0.0/24"))
 
 
-def test_the_settings_survive_the_trip_through_heat_and_the_environment():
-    found = dataclasses.replace(cloud.parse(changed(compute__slots=2)), signed_in=cloud.identity(RC))
+def test_the_settings_survive_the_trip_through_heat_and_the_environment(tmp_path):
+    found = dataclasses.replace(cloud.parse(changed(compute__slots=2)),
+                                signed_in=cloud.signed_in("fsl-range", written_clouds(tmp_path, **{"fsl-range": ENTRY})))
 
     carried = found.heat_parameters()
 
