@@ -16,6 +16,7 @@ from conftest import (
 from range import ATTACKER, BOARD, missing, run, run_in_turn, run_side_by_side, start_hint
 
 CONTROL = "board-sqli-search"
+SECOND_SHAPE = "board-sqli-union-search"
 UNION = "board-sqli-union-search"
 BENIGN_SEARCH = "board-normal-search"
 SQLMAP = "board-sqli-orderby-sqlmap"
@@ -298,11 +299,12 @@ def tuned_session(stack_is_up):
             f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=60
         ).json()["map"]["zones"] if zone["caption"] == "web")
         case_id = fired_case_id(session_id, CONTROL)
+        second = fired_case_id(session_id, SECOND_SHAPE)
         close_session(session_id)
 
-        score = score_when_ready(
-            session_id, until=lambda totals: seen_by_both_engines(session_id, totals, case_id=case_id)
-        )
+        score = score_when_ready(session_id, until=lambda totals: all(
+            seen_by_both_engines(session_id, totals, case_id=one) for one in (case_id, second)))
+        seen["score"] = score
         seen["own"] = {
             d["src_ip"] for d in credited_to(session_id, score, case_id=case_id) if d["src_ip"]
         }
@@ -444,6 +446,7 @@ def terminal_windows(stack_is_up):
         assert attacker.ok, f"the attacker box is not available: {attacker.text}. Run `{start_hint()}`."
         source_ip = attacker.json()["source_ip"]
 
+        time.sleep(TERMINAL_GAP_SECONDS)
         started = datetime.now(timezone.utc)
         from_attacker(TERMINAL_BENIGN, session=session_id)
         record_terminal_window(session_id, "terminal-benign", False, source_ip, started, datetime.now(timezone.utc))

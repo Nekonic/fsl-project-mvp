@@ -1,20 +1,11 @@
 import pytest
 
-from conftest import score_when_ready, seen_by_both_engines
-from shared_sessions import close_session, detections_of, fired_case_id, passed_to_the_ids, shared_session
-
 CONTROL = "board-sqli-search"
 SECOND_SHAPE = "board-sqli-union-search"
 
 @pytest.fixture(scope="module")
-def fired(stack_is_up):
-    with shared_session() as session_id:
-        passed_to_the_ids(session_id)
-        case_ids = [fired_case_id(session_id, case) for case in (CONTROL, SECOND_SHAPE)]
-        close_session(session_id)
-        score = score_when_ready(session_id, until=lambda totals: all(
-            seen_by_both_engines(session_id, totals, case_id=case_id) for case_id in case_ids))
-        return score, {d["detection_id"]: d for d in detections_of(session_id)}
+def fired(tuned_session):
+    return tuned_session["score"], {d["detection_id"]: d for d in tuned_session["listed"]}
 
 def _case(fired, name):
     score, _ = fired
