@@ -296,7 +296,7 @@ def pristine(source: Path, wargames, tag: str, mtu: int) -> dict:
             if name in wargame_services(document)}
     for name, service in kept.items():
         service["container_name"] = f"pristine-{name}"
-        service["networks"] = {key: {} for key in service["networks"] if key.endswith("-default")}
+        service["networks"] = {key: value for key, value in service["networks"].items() if key.endswith("-default")}
     networks = {key: value for key, value in document["networks"].items() if key.endswith("-default")}
     return {"name": "pristine", "services": kept, "networks": networks}
 

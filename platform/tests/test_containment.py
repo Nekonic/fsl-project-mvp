@@ -97,6 +97,24 @@ def test_a_target_finds_its_neighbours_by_a_fixed_address_not_by_docker_s_dns(na
     )
 
 
+@pytest.mark.parametrize("document", ["slot", "pristine"])
+def test_every_name_a_target_holds_in_etc_hosts_is_an_address_its_neighbour_holds(document):
+    stack = declared.read()
+    wargames = stack.hosts[stack.range_host].wargames
+    services = (slot_document() if document == "slot" else rangehost.pristine(ROOT, wargames, "abc", 1442))["services"]
+    held = {name: {(settings or {}).get("ipv4_address") for settings in (service.get("networks") or {}).values()}
+            for name, service in services.items()}
+
+    for name in ("board", "board-db", "corp-wp", "corp-db"):
+        for entry in services[name]["extra_hosts"]:
+            other, _, address = entry.partition(":")
+            if other in held:
+                assert address in held[other], (
+                    f"{document}: {name} names {other} at {address}, which {other} does not hold, so the pristine "
+                    f"board failed with Can't connect to server on 'board-db' (115)"
+                )
+
+
 def test_the_edge_and_the_sensors_stay_on_runc_and_dockerd_knows_runsc_with_raw_sockets():
     services = slot_document()["services"]
     stack = declared.read()

@@ -7916,3 +7916,95 @@ Not chosen: containerlab or netlab (their graphs read only containerlab
 labels, or a file), NetBox (three more services), draw.io and NeXt UI
 (a document look, or unmaintained since 2017), keeping GNS3 with built-in
 nodes (still placeholders).
+
+## 2026-11-15 — Every surface signs in; Elasticsearch, the project password, ingress and the slots' kernel hardened
+
+The user: "보안조치 싹다 하고 … 기능 안되는거 없어야한다", "초기 비밀번호는
+admin/123456 무조건", and "Docker 소켓, 커널 공유도 보안 해".
+
+- **Sign-in.** Django auth and sessions. `api.signin.SignedInOnly` answers
+  401 to `/api/` and sends a page to `/login/` until the session is signed
+  in; open are only `/login/`, `GET /api/auth/` (user and CSRF token) and
+  `POST /api/auth/login/`. Migration 0030 makes `admin` / `123456` once;
+  nothing asks for a change (the user's ruling), so THREAT-MODEL says the
+  default stops nobody who knows it. Agents sign in over the same REST
+  (`redteam/signin.py`, `CR_ADMIN_USER` / `CR_ADMIN_PASSWORD`, default
+  admin/123456): `bin/cloud`, `bin/verify`, `bin/acceptance`,
+  `redteam/run.py` and `test/conftest.py`, which routes `requests` through
+  one signed-in session. Readiness polls ask `GET /api/auth/`, which answers
+  before anyone signs in, so `bin/cloud up` still needs no person.
+- **The other web surfaces.** `/vm-terminal/`, `/kibana/` and 8002's
+  `/site/` take nginx `auth_request` to `/auth-check/` (Django, internal
+  only; 8000 answers 404 to it from outside), which also keeps the range-host
+  refusal it had through `/api/attacker/`. A 401 becomes a redirect to the
+  login page.
+- **XSS on 8002.** Cookies are per host, so the session cookie reaches 8002.
+  It is HttpOnly; the CSRF token is kept in the session (`CSRF_USE_SESSIONS`),
+  so no cookie hands it to page script; every unsafe method needs it; the
+  platform sends no CORS header; nginx drops `Cookie` before the site proxy
+  and never passes the target's `Set-Cookie`. `test_signin.py` refuses a
+  cross-origin POST without the token.
+- **Elasticsearch security on.** The platform's root entrypoint makes the
+  `elastic` password once, 0600, in `/data/elastic` on `cr_platformdata`;
+  Elasticsearch, Kibana and the collector mount that directory (Kibana only
+  its `kibana/` part) by volume subpath, so none of them sees the store. For
+  that, Elasticsearch now waits for the platform's health check (the file
+  exists) instead of the platform waiting for Elasticsearch, and the
+  platform's own registration retries for five minutes. `deploy/elastic/start.sh`
+  hands the password through `ELASTIC_PASSWORD_FILE` and makes Kibana's
+  service account token (`elastic/kibana/cr-kibana`) with
+  `elasticsearch-service-tokens`, kept beside the password. No password or
+  token is in `compose.yaml` or a container's configured environment.
+  Learners never sign in to Kibana: `register_pipeline.py` PUTs the role
+  `cr_viewer` (read on `logs-*`, Discover) and the user `cr-viewer`, and
+  nginx passes that user's `Authorization` from `/auth-check/kibana/` on each
+  request. Kibana accepts Basic on that header because its basic provider is
+  on (`autoSchemesEnabled`); checked live, `internal/security/me` answered
+  `cr-viewer` through the `http` provider. `ingest/elastic.fetch` takes an
+  `auth` argument: `core_loc` 584 -> 587 (+2 there, +1 for `harness.run`'s
+  `http` argument, which `redteam/run.py` fills with its signed-in session).
+- **Project password.** `/opt/cr/openstack-password`, 0600 and owned by uid
+  10001 (the platform's `cr`), cloud-init makes it empty, the hand-over
+  writes it in place over ssh stdin, compose mounts it as the secret
+  `openstack_password`; it left `openstack.env` and the environment. The
+  hand-over now recreates the platform, since a file written in place is no
+  change compose sees.
+- **Ingress.** `network.allowed` in `cloud.yaml` (a list of IPv4 networks,
+  default `[0.0.0.0/0]`, written by `init`) becomes one rule per network for
+  22, 8000 and 8002 (`repeat` in the Heat template).
+- **Docker socket.** The live-map entry removed the platform's socket and
+  GNS3; no compose service mounts it and `test_containment` keeps it out of
+  every slot container.
+- **Kernel sharing.** gVisor release 20261026.0 (gvisor.dev
+  "Installation"; `gvisor.tar.bz2`, SHA-512 in `setup.sh`), registered as
+  `runsc` with `--net-raw` beside `userns-remap`. Kali, the WAF, board,
+  board-db, corp-wp and corp-db run on it; checked live on a slot: an nmap
+  SYN scan, curl through the WAF (XSS refused 403), sqlmap, the WAF's
+  `nginx -s reload`, MySQL, the WAF audit log reaching the host file, and
+  `docker exec -t` into Kali. What it took:
+  - gVisor copies a sandbox's interfaces into its own netstack at start and
+    removes the addresses from the host namespace, so `nsenter` changes
+    nothing it sees. `slot.sh` enters a sandbox with `docker exec
+    --privileged` (that one process gets every capability inside gVisor),
+    and gVisor refuses `ip addr flush` (`Operation not supported`), so Kali's
+    addresses are deleted one by one. board and corp now carry `iproute2`
+    for their route through the edge. The wiring read uses `docker exec`
+    for a sandbox and `docker inspect` for one without `ip`.
+  - Docker's embedded DNS at 127.0.0.11 is out of gVisor's reach: board
+    first exited with `Unknown server host 'board-db' (-3)`. Each backend
+    network now has a fixed /28 (10.40.N+1.0/28 for board, .16/28 for corp,
+    kept off 10.40.0.0/24 where docker0 takes the pool's first /28), every
+    service a fixed address, and the others' names in `extra_hosts`.
+  - On runc stay the two sensors (af-packet on the host network reads the
+    slot's bridges; gVisor's netstack has no view of them) and the edge
+    (forwarding and filtering by the kernel's nftables and sysctls). No
+    learner has a shell in either.
+  - Measured on slot 8 of eight with Kali, the WAF and both databases on
+    runsc: `slot.sh reset` 48.3 s on runc, 55.6 s on runsc; the range host's
+    used memory 10,180 MB -> 10,841 MB (+661 MB, gVisor's guest memory shows
+    as shared), the WAF 40 -> 297 MiB, each database about +30 MiB.
+
+Not chosen: runsc `--network=host` (the container would share the range
+host's network stack); a resolv.conf pointed at a resolver (gVisor's FAQ:
+names of other containers still fail); a forced password change (the
+user's ruling).
