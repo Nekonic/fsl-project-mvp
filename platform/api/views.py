@@ -225,6 +225,10 @@ def sessions(request):
         return _reply([_described(s, judged=s.ended_at is not None) for s in found[:limit]])
 
     body = _payload(request)
+    held = None if request.user.is_staff else Session.objects.filter(owner=request.user, ended_at=None).first()
+    if held is not None:
+        return _reply({"detail": f"you already hold open session {held.pk}; close it before opening another",
+                       "open_session": held.pk}, status=409)
     scenario = body.get("scenario")
     if scenario is None:
         scenario = "board"
@@ -240,6 +244,7 @@ def sessions(request):
     adapter = substrate()
     session = _opened_on_a_ready_slot(adapter, dict(
         scenario=scenario, baseline=[], guidance=guidance, lesson=taught, defense=defense, course_scenario=played,
+        owner=request.user,
         lessons=[{"id": taught, "started_at": timezone.now().isoformat()}] if guidance and not played else [],
     ))
     try:

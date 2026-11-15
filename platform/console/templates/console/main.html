@@ -167,6 +167,7 @@
   }
 
   function refusedLine(started) {
+    if (started.body.open_session) return t("main.one_open_session");
     if (started.status !== 409) return t("main.start_failed", operatorView ? detail(started) : t("range.blocked"));
     if (capacity !== null && running.length >= capacity) return t("main.start_failed.full", running.length, capacity);
     if (rangeReady) return t("main.start_again");
@@ -199,7 +200,13 @@
     card.querySelectorAll(".start").forEach((each) => { each.disabled = !rangeReady; });
     const full = started.status === 409 && capacity !== null && running.length >= capacity;
     const settling = started.status === 409 && !full;
-    failure.querySelector("[data-failure-text]").textContent = refusedLine(started);
+    const refused = failure.querySelector("[data-failure-text]");
+    refused.textContent = refusedLine(started);
+    const held = Number(started.body.open_session);
+    if (held) {
+      refused.insertAdjacentHTML("beforeend",
+        ` <a href="/session/${held}/" class="font-semibold underline">${esc(t("main.go_to_open_session"))}</a>`);
+    }
     failure.querySelector("[data-close-open]").classList.toggle("hidden", !full);
     failure.querySelector("[data-open-list]").classList.add("hidden");
     toned(failure, settling ? "warning" : "danger");

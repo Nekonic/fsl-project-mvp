@@ -54,7 +54,9 @@
       document.getElementById("sign-up-pending").classList.remove("hidden");
       return;
     }
-    const reasons = said.body.errors ? [...new Set(said.body.errors.map(refusal))] : [detail(said)];
+    const reasons = said.body.errors ? [...new Set(said.body.errors.map(refusal))]
+      : said.body.closed ? [t("signup.closed")]
+      : said.status === 429 ? [t("auth.too_many")] : [detail(said)];
     failed.innerHTML = reasons.map((reason) => `<li>${esc(reason)}</li>`).join("");
     failed.classList.remove("hidden");
   });

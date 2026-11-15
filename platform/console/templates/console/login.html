@@ -59,6 +59,8 @@
       return;
     }
     failed.textContent = said.body.pending ? t("auth.pending")
+      : said.body.locked_until ? t("auth.locked", clock(said.body.locked_until))
+      : said.status === 429 ? t("auth.too_many")
       : said.status === 401 ? t("auth.wrong") : detail(said);
     failed.classList.remove("hidden");
   });
