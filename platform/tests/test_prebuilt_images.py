@@ -57,11 +57,15 @@ def rebuild():
     return module
 
 
+RC = {
+    "OS_AUTH_URL": "http://10.10.10.10:5000", "OS_USERNAME": "fsl-range", "OS_PASSWORD": "secret",
+    "OS_PROJECT_NAME": "fsl-range", "OS_USER_DOMAIN_NAME": "Default", "OS_PROJECT_DOMAIN_NAME": "Default",
+    "OS_REGION_NAME": "RegionOne", "OS_INTERFACE": "public",
+}
+
+
 def written_cloud(tmp_path, **changed):
     document = yaml.safe_load((ROOT / "deploy/openstack/cloud.example.yaml").read_text())
-    password = tmp_path / "password"
-    password.write_text("secret\n")
-    document["identity"]["password_file"] = str(password)
     for dotted, value in changed.items():
         section, key = dotted.split("__")
         document[section][key] = value
@@ -163,28 +167,28 @@ def test_the_range_key_never_enters_the_user_data():
     assert "PRIVATE KEY" not in yaml.safe_dump(config)
 
 
-@pytest.mark.parametrize("changed, which, said", [
-    ({"identity__password_file": "/nonexistent"}, "/bin/openstack", "/nonexistent, which does not exist"),
-    ({"identity__keystone": "http://keystone:5000/v3"}, "/bin/openstack", "without /v3"),
-    ({"network__estate": "10.20.0.0/24"}, "/bin/openstack", "overlaps"),
-    ({}, None, "openstack CLI"),
+@pytest.mark.parametrize("changed, environ, which, said", [
+    ({}, {"OS_PASSWORD": ""}, "/bin/openstack", "the environment has no OS_PASSWORD"),
+    ({}, {"OS_AUTH_URL": "keystone:5000"}, "/bin/openstack", "OS_AUTH_URL must be an http"),
+    ({"network__estate": "10.20.0.0/24"}, {}, "/bin/openstack", "overlaps"),
+    ({}, {}, None, "openstack CLI"),
 ])
-def test_the_rebuild_refuses_before_touching_the_cloud(tmp_path, monkeypatch, changed, which, said):
+def test_the_rebuild_refuses_before_touching_the_cloud(tmp_path, monkeypatch, changed, environ, which, said):
     module = rebuild()
     monkeypatch.setattr(module.sys, "executable", str(tmp_path / "python"))
 
     with pytest.raises(module.Refused, match=said):
-        module.load(written_cloud(tmp_path, **changed), {}, lambda _: which)
+        module.load(written_cloud(tmp_path, **changed), {**RC, **environ}, lambda _: which)
 
 
-def test_the_openstack_cli_is_driven_by_cloud_yaml_not_an_openrc(tmp_path):
+def test_the_openstack_cli_and_the_stack_take_the_identity_from_the_sourced_rc_file(tmp_path):
     module = rebuild()
 
-    cloud, environment = module.load(written_cloud(tmp_path), {}, lambda _: "/bin/openstack")
+    cloud, environment = module.load(written_cloud(tmp_path), RC, lambda _: "/bin/openstack")
 
-    assert environment["OS_AUTH_URL"] == "http://10.10.10.10:5000/v3"
+    assert environment["OS_AUTH_URL"] == "http://10.10.10.10:5000"
     assert environment["OS_PASSWORD"] == "secret"
-    assert environment["OS_PROJECT_NAME"] == cloud.project
+    assert environment["OS_USER_DOMAIN_NAME"] == "Default"
     parameters = module.stack_arguments(cloud)
     assert "flavor=m1.large" in parameters and "image=ubuntu-24.04" in parameters
 
@@ -280,7 +284,7 @@ class FloatingIps:
 
 def test_the_reserved_floating_ip_is_found_by_its_address(tmp_path):
     module = rebuild()
-    cloud, _ = module.load(written_cloud(tmp_path, network__address="10.10.10.21"), {},
+    cloud, _ = module.load(written_cloud(tmp_path, network__address="10.10.10.21"), RC,
                            lambda _: "/bin/openstack")
     cli = FloatingIps(b"fip-210\n")
 
@@ -330,7 +334,7 @@ def test_the_platform_vm_s_nova_keypair_is_imported_when_missing_and_never_overw
 
 def test_an_address_the_project_does_not_hold_stops_the_rebuild(tmp_path):
     module = rebuild()
-    cloud, _ = module.load(written_cloud(tmp_path, network__address="10.10.10.21"), {},
+    cloud, _ = module.load(written_cloud(tmp_path, network__address="10.10.10.21"), RC,
                            lambda _: "/bin/openstack")
 
     with pytest.raises(module.Refused, match="holds no floating IP at"):
@@ -794,7 +798,7 @@ class Resumed:
         self.backups = tmp_path / "backups"
         monkeypatch.setattr(module, "BACKUPS", self.backups)
         self.cloud, self.environment = module.load(
-            written_cloud(tmp_path, keys__range=str(tmp_path / "range-key")), {}, lambda _: "/bin/openstack")
+            written_cloud(tmp_path, keys__range=str(tmp_path / "range-key")), RC, lambda _: "/bin/openstack")
         monkeypatch.setattr(module, "api_answers", lambda address: answers)
         monkeypatch.setattr(module.Host, "wait", lambda host: self.calls.append("ssh"))
         monkeypatch.setattr(module, "hand_over_done", lambda host: done)
@@ -866,7 +870,7 @@ class Replacing:
         self.backups = tmp_path / "backups"
         monkeypatch.setattr(module, "BACKUPS", self.backups)
         self.cloud, self.environment = module.load(
-            written_cloud(tmp_path, keys__range=str(tmp_path / "range-key")), {}, lambda _: "/bin/openstack")
+            written_cloud(tmp_path, keys__range=str(tmp_path / "range-key")), RC, lambda _: "/bin/openstack")
         monkeypatch.setattr(module, "commit_of", lambda repository, ref: "a" * 40)
         monkeypatch.setattr(module, "refuse_unless_published", lambda *args, **kwargs: None)
         monkeypatch.setattr(module, "ensure_keypair", lambda name, key_file: None)

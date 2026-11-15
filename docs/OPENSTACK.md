@@ -216,7 +216,7 @@ runs is amd64.
 On an all-in-one cloud without HAProxy and keepalived, set `enable_haproxy:
 "no"`. Set `kolla_internal_vip_address` to the IP of `network_interface` itself
 [K2]. The API endpoints are then that address. Keystone is on port 5000. This is
-the `identity.keystone` value in `cloud.yaml` (`http://ADDRESS:5000`).
+the project user's `OS_AUTH_URL` (`http://ADDRESS:5000`, §4).
 
 Set `enable_proxysql: "no"` beside it. ProxySQL is enabled with MariaDB, not
 with HAProxy, and it binds port 3306 on the VIP. Here the VIP is the host's own
@@ -295,8 +295,9 @@ network. A fresh
 Kolla-Ansible cloud has none.
 
 Kolla maps `neutron_external_interface` to the physical network `physnet1` on
-`br-ex` [K8]. Run these as admin (`source /etc/kolla/admin-openrc.sh`, which
-`kolla-ansible post-deploy` writes). Use the subnet, gateway and pool of the
+`br-ex` [K8]. Run these as admin, in a shell that has loaded
+`/etc/kolla/admin-openrc.sh`, which `kolla-ansible post-deploy` writes (§3). Use
+the subnet, gateway and pool of the
 network that interface is wired to:
 
 ```bash
@@ -335,11 +336,10 @@ every slot network is an internal Docker network with no host address (§6).
 
 ## 3. Project, user, quotas, flavors, keys, groups, images
 
-Run the steps marked [admin] with the credentials `kolla-ansible post-deploy`
-writes: `source /etc/kolla/admin-openrc.sh`, or copy `/etc/kolla/clouds.yaml`
-to `~/.config/openstack/` and pass `--os-cloud kolla-admin` [K1][K9]. Run the
-project user's commands with `--os-cloud fsl-range`, the `clouds.yaml` entry
-`bin/cloud clouds` prints from `cloud.yaml` (README step 6) [O2].
+Everything runs on the controller node. The steps marked [admin] run in a shell
+that has loaded the admin RC file `kolla-ansible post-deploy` writes,
+`/etc/kolla/admin-openrc.sh` [K1][K9]. Everything else runs as the project user,
+in a shell that has loaded that user's RC file (§4, README step 6).
 
 ### 3.1 Project and user [admin, once]
 
@@ -351,7 +351,8 @@ openstack role add --project fsl-range --user fsl-range member
 
 **(this cloud)** The project and the user sit in the domain `fsl` (id
 `c72af53edecb4e31a5645fdd9a07f0f9`), so the commands above also take `--domain
-fsl`, and `identity.domain` in `cloud.yaml` is that id. The project `fsl-range`
+fsl`, and the project user's RC file sets `OS_USER_DOMAIN_NAME` and
+`OS_PROJECT_DOMAIN_NAME` to `fsl`. The project `fsl-range`
 has the id `3c82e428f6cc4997949a89f5fdee68c7`. The user `fsl-range` is a member
 of it. The platform signs in as this member user, never as admin.
 
@@ -511,7 +512,7 @@ openstack CLI.
 - Without `--public`, an admin's image belongs to the admin project and
   `fsl-range` does not see it. The stack then fails on its `image`, and the
   platform finds none.
-- As `fsl-range` (`--os-cloud fsl-range`, §3), the same command without
+- As `fsl-range` (its RC file loaded, §3), the same command without
   `--public` works, because the image then belongs to the project.
 
 ```bash
@@ -592,17 +593,26 @@ edge or target reaches the range only through a pushed commit whose images
 `deploy/openstack/cloud.yaml` (git ignores that file) and fill it in. No secret
 goes in it, only where to read the password. `platform/range/cloud.py` reads the
 file. It refuses the file before touching anything and names every problem by
-its dotted key. The problems it finds include an unknown key, a missing key, a
-Keystone URL that ends in `/v3`, overlapping CIDRs and a password written into
-the file.
+its dotted key. The problems it finds include an unknown key, a missing key,
+overlapping CIDRs and an `identity` section or a password written into the file.
+
+The identity is not in `cloud.yaml`. It comes from the project user's RC file,
+the same variables as Kolla's `admin-openrc.sh` with the user, the project and
+the password changed (README step 6), loaded once in the shell that runs
+`bin/cloud` and `bin/platform-rebuild`. They read `OS_AUTH_URL`, `OS_USERNAME`,
+`OS_PASSWORD`, `OS_PROJECT_NAME`, `OS_USER_DOMAIN_NAME`, `OS_PROJECT_DOMAIN_NAME`,
+`OS_REGION_NAME` and `OS_INTERFACE` (`cloud.identity`), and stop before any
+change, naming each variable that is missing. `OS_AUTH_URL` is Keystone's base
+URL, `http://10.10.10.10:5000` in the example (**(this cloud)**
+`http://10.0.0.10:5000`); a trailing `/v3` is dropped. `OS_USER_DOMAIN_NAME`
+is the user's domain, by name (**(this cloud)** `fsl`); the platform signs in
+with it. `OS_INTERFACE` is the catalogue interface the CLI and the platform
+call: Kolla's admin RC says `internal`, and the platform VM needs one it
+reaches, `public` here. `OS_PASSWORD` reaches the platform VM over ssh, as the
+VM's `openstack.env` (§5.1); it is never on a command line or in a log.
 
 | Key | Example | Used by |
 |---|---|---|
-| `identity.keystone` | `http://10.10.10.10:5000` (**(this cloud)** `http://10.0.0.10:5000`) | Keystone base URL without `/v3`; CLI and platform |
-| `identity.region`, `identity.interface` | `RegionOne`, `public` | the catalogue endpoints the CLI and the platform call |
-| `identity.domain` | `default` (**(this cloud)** `c72af53edecb4e31a5645fdd9a07f0f9`, the domain `fsl`) | the id of the user's and the project's domain |
-| `identity.project`, `identity.user` | `fsl-range` | the member user the CLI and the platform sign in as |
-| `identity.password_file` or `identity.password_env` | `~/.config/fsl/fsl-range.password` | set exactly one; read on the operator's machine and appended to the VM's `openstack.env` over ssh |
 | `network.external` | `provider` | the stack's router and floating IP |
 | `network.address` | `""` (**(this cloud)** `192.168.2.247`) | optional; a floating IP the project already holds. The stack associates it and never releases it, so the address survives `bin/cloud down` and every rebuild. If empty, the stack allocates a new one (§5.1) |
 | `network.dns` | `[8.8.8.8, 8.8.4.4]` | the platform network's DNS |
@@ -619,9 +629,11 @@ the file.
 
 Where each value goes:
 
-- `bin/platform-rebuild` and `bin/cloud` set the openstack CLI's `OS_*`
-  variables from `identity`, so no openrc file is needed.
-- They pass every Heat parameter from the file (`Cloud.heat_parameters()`).
+- `bin/platform-rebuild` and `bin/cloud` run the openstack CLI with the RC
+  file's `OS_*` variables.
+- They pass every Heat parameter from the file and the RC file's identity
+  (`Cloud.heat_parameters()`: `keystone`, `user`, `domain`, `region`,
+  `interface` come from the RC file).
 - The template has no defaults. It writes the values into
   `/opt/cr/openstack.env` as `CR_OPENSTACK_*`.
 - The platform reads those variables (`settings.py`). If one it needs is
@@ -685,7 +697,8 @@ there.
 
 ### 5.2 One command [one-click]
 
-Run this from the operator's machine. `python-openstackclient` and
+Run this on the controller node, in the shell that has loaded the project
+user's RC file (§4). `python-openstackclient` and
 `python-heatclient` must be installed in the repo's `.venv`, which has PyYAML
 (`README.md` step 3: `uv venv .venv`, then `uv pip install --python
 .venv/bin/python -r platform/requirements.txt python-openstackclient
@@ -695,7 +708,6 @@ python-heatclient`). The scripts find the `openstack` command beside
 ```bash
 .venv/bin/python bin/cloud up            # --replace to replace a standing platform; --cloud, --ref, --sideload as in §5.3
 .venv/bin/python bin/cloud down
-.venv/bin/python bin/cloud clouds          # cloud.yaml's project user as a clouds.yaml entry, no password (§3)
 ```
 
 `up` does these steps in order:
@@ -962,7 +974,6 @@ code cannot see them, so take them down with the code that made them, once:
    range host needs none of these images (§3.6).
 
    ```bash
-   export OS_CLOUD=fsl-range
    .venv/bin/openstack image delete fsl-kali fsl-waf fsl-wargame-host fsl-opnsense-<version>
    .venv/bin/openstack security group delete fsl-build
    .venv/bin/openstack server list --name '^fsl-'; .venv/bin/openstack network list --name fsl-internet
@@ -1542,11 +1553,11 @@ Stay in that shell as admin. Do these steps:
    with `--public` (§3.1, §3.3, §3.6). Nova's default quotas already cover the
    two VMs (§3.2).
 
-In `cloud.yaml`, `identity.keystone` is `http://10.10.10.10:5000`.
+In the project user's RC file, `OS_AUTH_URL` is `http://10.10.10.10:5000`.
 
 Then open a new shell. The admin shell holds the Kolla venv and the admin `OS_*`
-variables from `admin-openrc.sh`; the new shell reaches the cloud as `fsl-range`
-through `--os-cloud fsl-range` (README step 6). Follow
+variables from `admin-openrc.sh`; the new shell loads the project user's RC
+file once (README step 6). Follow
 `README.md` from step 2 in that new shell, in the same VM and as your own user. The browser of step 8 is the host's browser. It opens the
 floating IP that `bin/cloud up` prints. The external network makes that address
 reachable on the host's network.
@@ -1554,7 +1565,7 @@ reachable on the host's network.
 ## Sources
 
 - [K1] Kolla-Ansible 2025.2 quickstart — https://docs.openstack.org/kolla-ansible/2025.2/user/quickstart.html
-- [K9] kolla-ansible stable/2025.2 `ansible/post-deploy.yml` (writes `admin-openrc.sh` and `clouds.yaml` into `/etc/kolla`) and `ansible/roles/common/templates/clouds.yaml.j2` (the entry `kolla-admin`) — https://opendev.org/openstack/kolla-ansible/src/branch/stable/2025.2/ansible/roles/common/templates/clouds.yaml.j2
+- [K9] kolla-ansible stable/2025.2 `ansible/post-deploy.yml` (writes `admin-openrc.sh` into `/etc/kolla`) and `ansible/roles/common/templates/admin-openrc.sh.j2` (the `OS_*` variables it exports) — https://opendev.org/openstack/kolla-ansible/src/branch/stable/2025.2/ansible/roles/common/templates/admin-openrc.sh.j2
 - [K2] kolla-ansible stable/2025.2 `etc/kolla/globals.yml` — https://opendev.org/openstack/kolla-ansible/src/branch/stable/2025.2/etc/kolla/globals.yml
 - [K7] Kolla-Ansible 2025.2, Libvirt guide (`nova_compute_virt_type`: kvm is the default) — https://docs.openstack.org/kolla-ansible/2025.2/reference/compute/libvirt-guide.html
 - [K8] Kolla-Ansible 2025.2, Neutron networking (`neutron_external_interface` goes on `br-ex`, physical network `physnet1`; the page says an interface plugged into a bridge cannot hold a usable IP address) — https://docs.openstack.org/kolla-ansible/2025.2/reference/networking/neutron.html
@@ -1570,5 +1581,4 @@ reachable on the host's network.
 - [H1] Heat `OS::Nova::Server` (`flavor_update_policy` RESIZE|REPLACE, default RESIZE; `user_data_update_policy` default REPLACE) — https://opendev.org/openstack/heat/src/branch/master/heat/engine/resources/openstack/nova/server.py
 - [U1] Ubuntu 24.04 cloud images and their `SHA256SUMS` — https://cloud-images.ubuntu.com/noble/current/
 - [U2] uv, Installation ("Request a specific version by including it in the URL"; release artifacts "can be downloaded directly from GitHub Releases") — https://docs.astral.sh/uv/getting-started/installation/; the 0.13.8 release and its `uv-x86_64-unknown-linux-gnu.tar.gz.sha256` — https://github.com/astral-sh/uv/releases/tag/0.13.8
-- [O2] python-openstackclient, Configuration (`clouds.yaml` in the current directory, `~/.config/openstack` or `/etc/openstack`; `--os-cloud`) — https://docs.openstack.org/python-openstackclient/latest/configuration/index.html; openstacksdk, Configuration (`secure.yaml` "will take precedence over anything in the `clouds.yaml` file") — https://docs.openstack.org/openstacksdk/latest/user/config/configuration.html
 - [O1] python-openstackclient, `keypair create` (`--public-key <file>`: "Filename for public key to add"; `--private-key <file>`: "Filename for private key to save") — https://docs.openstack.org/python-openstackclient/latest/cli/command-objects/keypair.html

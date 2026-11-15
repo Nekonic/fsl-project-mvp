@@ -21,7 +21,11 @@ RANGE_HOST_POOL = "10.40.0.0/16"
 DOCKER_DEFAULT_POOLS = ("172.17.0.0/16", "172.18.0.0/16", "172.19.0.0/16", "172.20.0.0/14",
                         "172.24.0.0/14", "172.28.0.0/14", "192.168.0.0/16")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
-ENVIRONMENT = re.compile(r"[A-Z_][A-Z0-9_]*")
+RC = {
+    "keystone": "OS_AUTH_URL", "user": "OS_USERNAME", "password": "OS_PASSWORD",
+    "project": "OS_PROJECT_NAME", "user_domain": "OS_USER_DOMAIN_NAME",
+    "project_domain": "OS_PROJECT_DOMAIN_NAME", "region": "OS_REGION_NAME", "interface": "OS_INTERFACE",
+}
 
 
 class Invalid(ValueError):
@@ -29,13 +33,44 @@ class Invalid(ValueError):
 
 
 @dataclass(frozen=True)
-class Cloud:
+class Identity:
     keystone: str
+    user: str
+    password: str = field(repr=False)
+    project: str
+    user_domain: str
+    project_domain: str
     region: str
     interface: str
-    domain: str
-    project: str
-    user: str
+
+    def cli_environment(self) -> dict[str, str]:
+        return {
+            "OS_AUTH_URL": self.keystone, "OS_IDENTITY_API_VERSION": "3",
+            "OS_USERNAME": self.user, "OS_PASSWORD": self.password,
+            "OS_PROJECT_NAME": self.project, "OS_USER_DOMAIN_NAME": self.user_domain,
+            "OS_PROJECT_DOMAIN_NAME": self.project_domain, "OS_REGION_NAME": self.region,
+            "OS_INTERFACE": self.interface,
+        }
+
+
+def identity(environ=os.environ) -> Identity:
+    missing = [variable for variable in RC.values() if not environ.get(variable, "").strip()]
+    if missing:
+        raise Invalid(
+            f"the environment has no {', '.join(missing)}; source the project user's RC file "
+            f"(README, install step 6) before bin/cloud or bin/platform-rebuild"
+        )
+    keystone = environ["OS_AUTH_URL"].strip().rstrip("/").removesuffix("/v3")
+    complaint = _url(keystone)
+    if complaint:
+        raise Invalid(f"OS_AUTH_URL {complaint}")
+    return Identity(keystone=keystone, **{
+        name: environ[variable].strip() for name, variable in RC.items() if name != "keystone"
+    })
+
+
+@dataclass(frozen=True)
+class Cloud:
     external_network: str
     platform_cidr: str
     mtu: int
@@ -46,8 +81,6 @@ class Cloud:
     stack: str
     repository: str
     ref: str
-    password_file: str = ""
-    password_env: str = ""
     availability_zone: str = ""
     address: str = ""
     dns: tuple[str, ...] = ()
@@ -55,22 +88,15 @@ class Cloud:
     flavors: dict[str, str] = field(default_factory=dict)
     slots: int = 1
     backups_keep: int = 1
-
-    def password(self, environ=os.environ) -> str:
-        if self.password_env:
-            found = environ.get(self.password_env, "")
-            if not found:
-                raise Invalid(f"identity.password_env names {self.password_env}, which is unset")
-            return found
-        path = Path(self.password_file).expanduser()
-        if not path.is_file():
-            raise Invalid(f"identity.password_file names {path}, which does not exist")
-        return path.read_text(encoding="utf-8-sig").strip()
+    signed_in: Identity | None = None
 
     def heat_parameters(self, floating_ip_id: str = "") -> dict[str, str]:
+        if self.signed_in is None:
+            raise Invalid("no OpenStack identity: source the project user's RC file first")
+        signed_in = self.signed_in
         return {
-            "keystone": self.keystone, "user": self.user, "domain": self.domain,
-            "region": self.region, "interface": self.interface,
+            "keystone": signed_in.keystone, "user": signed_in.user, "domain": signed_in.user_domain,
+            "region": signed_in.region, "interface": signed_in.interface,
             "image": self.base_image, "flavor": self.flavors["platform"],
             "key_name": self.key_name, "external_network": self.external_network,
             "floating_address": self.address, "floating_ip_id": floating_ip_id,
@@ -82,15 +108,6 @@ class Cloud:
             "range_mtu": str(self.mtu), "slots": str(self.slots),
         }
 
-    def cli_environment(self, environ=os.environ) -> dict[str, str]:
-        return {
-            "OS_AUTH_URL": f"{self.keystone}/v3", "OS_IDENTITY_API_VERSION": "3",
-            "OS_USERNAME": self.user, "OS_PASSWORD": self.password(environ),
-            "OS_PROJECT_NAME": self.project, "OS_USER_DOMAIN_ID": self.domain,
-            "OS_PROJECT_DOMAIN_ID": self.domain, "OS_REGION_NAME": self.region,
-            "OS_INTERFACE": self.interface,
-        }
-
 
 def joined(pairs: dict[str, str]) -> str:
     return " ".join(f"{key}={value}" for key, value in pairs.items())
@@ -99,15 +116,6 @@ def joined(pairs: dict[str, str]) -> str:
 def _url(value) -> str | None:
     if not isinstance(value, str) or not value.startswith(("http://", "https://")):
         return "must be an http:// or https:// URL"
-    return None
-
-
-def _keystone(value) -> str | None:
-    said = _url(value)
-    if said:
-        return said
-    if value.rstrip("/").endswith("/v3"):
-        return "is Keystone's base URL without /v3"
     return None
 
 
@@ -194,16 +202,7 @@ def _keep(value) -> str | None:
     return None
 
 
-def _environment(value) -> str | None:
-    return None if isinstance(value, str) and ENVIRONMENT.fullmatch(value) else "must be an environment variable name"
-
-
 SCHEMA = {
-    "identity": {
-        "keystone": (_keystone, True), "region": (_name, True), "interface": (_name, True),
-        "domain": (_name, True), "project": (_name, True), "user": (_name, True),
-        "password_file": (_text, False), "password_env": (_environment, False),
-    },
     "network": {
         "external": (_name, True), "address": (_address, False), "dns": (_dns, True), "mtu": (_mtu, True),
         "platform": (_cidr, True), "estate": (_estate, True), "mgmt": (_cidr, True),
@@ -240,10 +239,6 @@ def _complaints(document) -> list[str]:
             complaint = check(entries[key])
             if complaint:
                 said.append(f"{section}.{key}: {complaint}")
-    identity = document.get("identity") if isinstance(document.get("identity"), dict) else {}
-    if bool(identity.get("password_file")) == bool(identity.get("password_env")):
-        said.append("identity: give exactly one of password_file and password_env; "
-                    "the password itself never goes in this file")
     return said + _overlaps(document.get("network"))
 
 
@@ -304,15 +299,10 @@ def parse(document, source: str = "cloud.yaml") -> Cloud:
     said = _complaints(document)
     if said:
         raise Invalid(f"{source} is not usable:\n  " + "\n  ".join(said))
-    identity, network, compute = document["identity"], document["network"], document["compute"]
+    network, compute = document["network"], document["compute"]
     keys, platform = document["keys"], document["platform"]
     backups = document.get("backups") or {}
     return Cloud(
-        keystone=identity["keystone"].rstrip("/"), region=identity["region"],
-        interface=identity["interface"], domain=identity["domain"],
-        project=identity["project"], user=identity["user"],
-        password_file=identity.get("password_file") or "",
-        password_env=identity.get("password_env") or "",
         external_network=network["external"], address=str(network.get("address") or ""),
         dns=tuple(map(str, network["dns"])),
         mtu=network["mtu"], platform_cidr=network["platform"],

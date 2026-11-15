@@ -1,16 +1,7 @@
-# Everything that differs between OpenStack clouds, in one file.
+# Everything that differs between OpenStack clouds, except the identity.
 # Copy to cloud.yaml (ignored by git), fill in, then run bin/cloud up.
-# No secret goes here: only where to read the password from.
-
-identity:
-  keystone: http://10.10.10.10:5000     # Keystone's base URL, without /v3
-  region: RegionOne
-  interface: public                     # the catalogue interface the platform calls
-  domain: default                       # the id of the user's and the project's domain
-  project: fsl-range                    # a project this member user belongs to
-  user: fsl-range                       # a member, never admin
-  password_file: ~/.config/fsl/fsl-range.password
-  # password_env: CR_OPENSTACK_PASSWORD   # instead of password_file
+# The identity and the password come from the sourced RC file (OS_AUTH_URL,
+# OS_USERNAME, OS_PASSWORD, ...), never from this file.
 
 network:
   external: provider                    # the external network floating IPs come from

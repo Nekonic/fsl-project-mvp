@@ -331,16 +331,3 @@ def test_a_range_host_that_failed_its_setup_stops_up_with_why():
         converge(platform)
     assert ("POST", "/configure/") not in platform.calls
 
-
-def test_clouds_prints_the_project_user_as_a_clouds_yaml_entry_without_the_password(capsys):
-    import yaml
-
-    module = command()
-    module.main(["clouds", "--cloud", str(ROOT / "deploy/openstack/cloud.example.yaml")])
-    printed = capsys.readouterr().out
-
-    entry = yaml.safe_load(printed)["clouds"]["fsl-range"]
-    assert entry["auth"]["auth_url"] == "http://10.10.10.10:5000/v3"
-    assert entry["auth"]["username"] == entry["auth"]["project_name"] == "fsl-range"
-    assert entry["region_name"] == "RegionOne" and entry["interface"] == "public"
-    assert "password" not in printed, "clouds.yaml is printed to a terminal; the password stays in its file"

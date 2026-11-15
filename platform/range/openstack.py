@@ -223,7 +223,7 @@ def discover(
     region: str = "RegionOne",
     interface: str = "public",
     timeout: float = 30.0,
-    domain: str = "default",
+    domain: str = "Default",
 ) -> "Cloud":
     answered = _signed_in(keystone, user, password, project, timeout, domain)
 
@@ -242,7 +242,7 @@ def discover(
 
 
 def _signed_in(keystone: str, user: str, password: str, project: str, timeout: float,
-               domain: str = "default"):
+               domain: str = "Default"):
     body = {
         "auth": {
             "identity": {
@@ -250,7 +250,7 @@ def _signed_in(keystone: str, user: str, password: str, project: str, timeout: f
                 "password": {
                     "user": {
                         "name": user,
-                        "domain": {"id": domain},
+                        "domain": {"name": domain},
                         "password": password,
                     }
                 },
@@ -383,7 +383,7 @@ class Cloud:
     ssh_key: str
     ssh_config: str = ""
     glance: str = ""
-    domain: str = "default"
+    domain: str = "Default"
 
 
 @dataclass(frozen=True)

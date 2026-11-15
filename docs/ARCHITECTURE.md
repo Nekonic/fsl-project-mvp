@@ -1921,18 +1921,18 @@ cp deploy/openstack/cloud.example.yaml deploy/openstack/cloud.yaml
 
 고칠 키:
 
-- `identity`: `keystone`, `region`, `interface`, `domain`, `project`, `user`, `password_file`. 비밀번호는 이 파일에 넣지 않고 `password_file`이 가리키는 파일에 둠
 - `network`: `external`, `address`, `dns`, `mtu`, `platform`, `estate`, `mgmt`
 - `compute`: `base_image`, `availability_zone`, `slots`, `flavors.platform`, `flavors.range`
 - `keys`: `key_name`(플랫폼 VM의 Nova 키페어 이름), `key_file`(그 개인키 경로), `range`
 - `platform`: `stack`, `repository`, `ref`
 - `backups`: `keep`
 
+인증 정보는 이 파일에 없습니다. 프로젝트 사용자 RC 파일의 `OS_AUTH_URL`, `OS_USERNAME`, `OS_PASSWORD`, `OS_PROJECT_NAME`, `OS_USER_DOMAIN_NAME`, `OS_PROJECT_DOMAIN_NAME`, `OS_REGION_NAME`, `OS_INTERFACE`에서 읽습니다(`cloud.identity`). 하나라도 없으면 아무것도 바꾸기 전에 멈추고 빠진 변수 이름을 출력합니다. 플랫폼 VM은 `OS_USER_DOMAIN_NAME`의 도메인 이름으로 로그인합니다.
+
 이 파일을 쓰는 곳:
 
 - `platform/range/cloud.py`: 파일 검사. 문제는 키별로 모두 보고
 - `bin/platform-rebuild`, `bin/cloud`: 이 값으로 openstack CLI와 Heat 파라미터를 채워 실행. 스택을 배포하면 값이 플랫폼의 `openstack.env`에 기록됨
-- `bin/cloud clouds`: `identity` 값을 `clouds.yaml` 항목 `fsl-range`로 출력. 비밀번호는 넣지 않음. 프로젝트 사용자 권한으로 `openstack --os-cloud fsl-range`를 쓸 때 필요
 
 `bin/cloud up`의 순서:
 

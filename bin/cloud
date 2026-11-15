@@ -42,10 +42,10 @@ def arguments(argv: list[str]) -> argparse.Namespace:
         description="Bring the whole OpenStack environment up from cloud.yaml, or take it "
                     "down: the platform VM's Heat stack, then the range through the "
                     "platform's own API. Run it with .venv/bin/python; it needs the "
-                    "openstack CLI with python-heatclient. clouds prints cloud.yaml's "
-                    "project user as a clouds.yaml entry for openstack --os-cloud.",
+                    "openstack CLI with python-heatclient, and the project user's RC "
+                    "file sourced (OS_AUTH_URL, OS_USERNAME, OS_PASSWORD and the rest).",
     )
-    parser.add_argument("action", choices=("up", "down", "clouds"))
+    parser.add_argument("action", choices=("up", "down"))
     parser.add_argument("--cloud", type=Path, default=rebuild.CLOUD,
                         help="the cloud settings file (default deploy/openstack/cloud.yaml)")
     parser.add_argument("--ref", help="the branch, tag or commit to clone instead of platform.ref")
@@ -189,32 +189,9 @@ def down(args: argparse.Namespace) -> None:
     print("the platform and the range are gone")
 
 
-def clouds_entry(cloud) -> dict:
-    return {"clouds": {cloud.project: {
-        "auth": {
-            "auth_url": f"{cloud.keystone}/v3", "username": cloud.user, "project_name": cloud.project,
-            "user_domain_id": cloud.domain, "project_domain_id": cloud.domain,
-        },
-        "region_name": cloud.region, "interface": cloud.interface, "identity_api_version": 3,
-    }}}
-
-
-def print_clouds(args: argparse.Namespace) -> None:
-    import yaml
-
-    settings = rebuild.settings_module()
-    try:
-        cloud = settings.read(args.cloud)
-    except settings.Invalid as invalid:
-        raise Refused(f"cloud: {invalid}") from invalid
-    print(yaml.safe_dump(clouds_entry(cloud), sort_keys=False), end="")
-
-
 def main(argv: list[str]) -> int:
     args = arguments(argv)
-    if args.action == "clouds":
-        print_clouds(args)
-    elif args.action == "up":
+    if args.action == "up":
         address = up(args)
         print(f"the range is ready; the platform is at http://{address}:8000/")
     else:

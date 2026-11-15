@@ -68,8 +68,9 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="platform-rebuild",
         description="Create the platform VM's Heat stack, or replace a standing one "
-                    "and carry its store and its range ssh key across. Every cloud "
-                    "value comes from cloud.yaml; needs the openstack CLI with "
+                    "and carry its store and its range ssh key across. The identity "
+                    "comes from the sourced RC file's OS_* variables, every other "
+                    "cloud value from cloud.yaml; needs the openstack CLI with "
                     "python-heatclient and PyYAML (run it with .venv/bin/python).",
     )
     parser.add_argument("--cloud", type=Path, default=CLOUD,
@@ -108,7 +109,8 @@ def load(args: argparse.Namespace, environ=os.environ, which=shutil.which):
         cloud = module.read(args.cloud)
         if args.ref:
             cloud = dataclasses.replace(cloud, ref=args.ref)
-        environment = cloud.cli_environment(environ)
+        cloud = dataclasses.replace(cloud, signed_in=module.identity(environ))
+        environment = cloud.signed_in.cli_environment()
     except module.Invalid as invalid:
         raise Refused(f"{Path(sys.argv[0]).name}: {invalid}") from invalid
     if openstack_cli(which) is None:

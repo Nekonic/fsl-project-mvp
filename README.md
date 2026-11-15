@@ -34,7 +34,7 @@ WAF(ModSecurity)와 IDS(Suricata)로 방어합니다.
 
 Kolla-Ansible 2025.1 이상으로 구축한 OpenStack에서 돌아갑니다.
 
-1. 로컬 PC에서 `bin/cloud up`을 실행하면 Heat 스택으로 플랫폼 VM을 만듭니다.
+1. 컨트롤러 노드에서 `bin/cloud up`을 실행하면 Heat 스택으로 플랫폼 VM을 만듭니다.
 2. 플랫폼 VM은 GHCR 이미지를 pull해 `docker compose`로 플랫폼을 띄웁니다.
 3. 플랫폼은 OpenStack API로 훈련 환경 호스트 VM을 한 대 더 만듭니다.
 4. 훈련 환경 호스트에서 슬롯마다 훈련 환경을 컨테이너로 띄웁니다.
@@ -53,7 +53,7 @@ Kolla-Ansible 2025.1 이상으로 구축한 OpenStack에서 돌아갑니다.
 
 ## 요구 사항
 
-로컬 PC(`bin/cloud` 실행 위치):
+OpenStack 컨트롤러 노드(`bin/cloud` 실행 위치):
 
 - `git`, `ssh`, `ssh-keygen`
 - Python 3.10 이상
@@ -91,7 +91,8 @@ VirtualBox나 VMware VM 1대에 클라우드 전체를 올려 시험하려면 `d
 ## 설치
 
 1. **클라우드 준비(관리자, 최초 1회).** 명령은 `docs/OPENSTACK.md` §2.5, §3.1, §3.3,
-   §3.6에 있습니다.
+   §3.6에 있습니다. 관리자 인증은 `kolla-ansible post-deploy`가 만든
+   `/etc/kolla/admin-openrc.sh`를 씁니다.
 
    - 외부 네트워크
    - 프로젝트 `fsl-range`, member 사용자 `fsl-range`
@@ -131,39 +132,45 @@ VirtualBox나 VMware VM 1대에 클라우드 전체를 올려 시험하려면 `d
 
    ```bash
    cp deploy/openstack/cloud.example.yaml deploy/openstack/cloud.yaml
-   mkdir -p ~/.config/fsl && (umask 077; touch ~/.config/fsl/fsl-range.password)
    ```
 
-   - `~/.config/fsl/fsl-range.password`: `fsl-range` 사용자 비밀번호 한 줄
-   - `cloud.yaml`의 `identity.keystone`: Keystone URL. `/v3`는 뺌. 예제 값
-     `http://10.10.10.10:5000`은 `docs/OPENSTACK.md` §9의 예시 대역 10.10.10.0/24 기준
-   - `cloud.yaml`의 `network.external`: 1단계에서 만든 외부 네트워크 이름
+   - `network.external`: 1단계에서 만든 외부 네트워크 이름
+   - 인증 정보와 비밀번호는 이 파일에 넣지 않습니다. 6단계 RC 파일에 넣습니다.
 
    나머지 키는 1~4단계의 이름과 같으므로 그대로 둡니다. 키 설명은
    `docs/OPENSTACK.md` §4에 있습니다. 값이 잘못되면 아무것도 바꾸기 전에 거부하고
    해당 키를 출력합니다.
 
-6. **`openstack` CLI용 `clouds.yaml` 작성.** 7단계에는 필요 없습니다. 스택이나
-   서버를 `fsl-range` 사용자로 직접 볼 때 씁니다.
+6. **`fsl-range` RC 파일 작성.** Kolla의 `/etc/kolla/admin-openrc.sh`와 같은
+   변수를 쓰고 사용자, 프로젝트, 비밀번호만 바꿉니다. 파일 이름은 예를 들어
+   `~/fsl-range-openrc.sh`로 합니다.
 
    ```bash
-   mkdir -p ~/.config/openstack
-   .venv/bin/python bin/cloud clouds > ~/.config/openstack/clouds.yaml
-   .venv/bin/openstack --os-cloud fsl-range stack list
+   export OS_PROJECT_DOMAIN_NAME='Default'
+   export OS_USER_DOMAIN_NAME='Default'
+   export OS_PROJECT_NAME='fsl-range'
+   export OS_USERNAME='fsl-range'
+   export OS_PASSWORD='<fsl-range 비밀번호>'
+   export OS_AUTH_URL='http://10.10.10.10:5000'
+   export OS_INTERFACE='public'
+   export OS_IDENTITY_API_VERSION='3'
+   export OS_REGION_NAME='RegionOne'
    ```
 
-   - `bin/cloud clouds`로 `cloud.yaml`의 `identity` 값을 `clouds.yaml` 항목
-     `fsl-range`로 출력합니다. 비밀번호는 넣지 않습니다.
-   - `~/.config/openstack/clouds.yaml`이 이미 있으면 덮어쓰지 말고 `clouds:` 아래에
-     `fsl-range` 항목만 추가합니다.
-   - 비밀번호는 명령을 실행할 때 입력합니다. 매번 입력하지 않으려면
-     `~/.config/openstack/secure.yaml`(권한 600)의 `clouds.fsl-range.auth.password`에
-     넣습니다.
-   - `export OS_CLOUD=fsl-range`를 해 두면 `--os-cloud`는 빼도 됩니다.
-   - 참고: python-openstackclient 설정 문서
-     (https://docs.openstack.org/python-openstackclient/latest/configuration/index.html),
-     `secure.yaml`은 openstacksdk 설정 문서
-     (https://docs.openstack.org/openstacksdk/latest/user/config/configuration.html)
+   ```bash
+   chmod 600 ~/fsl-range-openrc.sh
+   source ~/fsl-range-openrc.sh
+   ```
+
+   - `source`는 이 셸에서 한 번만 합니다. 이후 단계는 같은 셸에서 실행합니다.
+   - `bin/cloud`와 `bin/platform-rebuild`의 인증 정보는 이 `OS_*` 변수에서만
+     읽습니다. 하나라도 빠지면 아무것도 바꾸기 전에 멈추고 빠진 변수 이름을
+     출력합니다.
+   - `OS_INTERFACE`: Kolla의 admin RC는 `internal`입니다. 플랫폼 VM도 같은
+     interface로 API를 부르므로 VM에서 닿는 `public`을 씁니다.
+   - `OS_PASSWORD`는 플랫폼 VM에 ssh로 넘깁니다. 명령줄과 로그에는 남지 않습니다.
+   - 예제 주소 `http://10.10.10.10:5000`은 `docs/OPENSTACK.md` §9의 예시 대역
+     10.10.10.0/24 기준입니다.
 
 7. **`bin/cloud up` 실행.**
 
@@ -214,8 +221,7 @@ VirtualBox나 VMware VM 1대에 클라우드 전체를 올려 시험하려면 `d
      - `systemctl status cr-platform`: 마지막 부팅의 시작 결과
      - `sudo cloud-init status --long`
      - `sudo docker logs cr-platform`
-   - Heat 스택: `.venv/bin/openstack --os-cloud fsl-range stack failures list cr-platform`
-     (6단계의 `clouds.yaml`)
+   - Heat 스택: `.venv/bin/openstack stack failures list cr-platform`
    - `sudo docker ps`에 `cr-platform`이 없음: 플랫폼이 한 번도 뜨지 않은 상태입니다.
      원인은 `sudo cloud-init status --long`에 나옵니다. 대개 VM이 인터넷에 나가지
      못한 경우입니다(`docs/OPENSTACK.md` §2.6).
@@ -450,12 +456,12 @@ flowchart LR
 
 ### cloud.yaml
 
-클라우드마다 다른 값은 모두 `deploy/openstack/cloud.yaml`에 둡니다. 스크립트와 Heat
-스택 모두 이 파일을 읽습니다.
+클라우드마다 다른 값은 `deploy/openstack/cloud.yaml`에 둡니다. 인증 정보만 예외로,
+RC 파일의 `OS_*` 변수에서 읽습니다(설치 6단계). 스크립트와 Heat 스택 모두 두 곳의
+값을 씁니다.
 
 | 섹션 | 항목 |
 |---|---|
-| `identity` | Keystone URL, region, interface, domain, 프로젝트, member 사용자, 비밀번호 위치(`password_file` 또는 `password_env`). 비밀번호 자체는 넣지 않음 |
 | `network` | 외부 네트워크, 고정 floating IP(`address`), DNS, 테넌트 MTU, platform·estate·mgmt CIDR |
 | `compute` | 베이스 이미지, availability zone, 슬롯 수, flavor 2개(`platform`, `range`) |
 | `keys` | Nova 키페어 이름(`key_name`)과 그 개인키 경로(`key_file`), 플랫폼의 훈련 환경 ssh 키(`range`) |
@@ -479,12 +485,12 @@ flowchart LR
 
 ### bin/cloud
 
-로컬 PC에서 `.venv`에 OpenStack CLI를 설치한 상태(설치 3단계)로 실행합니다.
+컨트롤러 노드에서 실행합니다. `.venv`에 OpenStack CLI가 있고(설치 3단계) RC 파일을
+읽어 둔 셸(설치 6단계)이어야 합니다.
 
 ```bash
 .venv/bin/python bin/cloud up        # 플랫폼 VM, 그다음 훈련 환경 전체
 .venv/bin/python bin/cloud down      # DB 백업, 키 보관, 훈련 환경과 스택 제거
-.venv/bin/python bin/cloud clouds    # clouds.yaml 항목 출력(설치 6단계)
 ```
 
 `up` 순서:
@@ -535,7 +541,7 @@ drift, 막힌 슬롯, 실패한 설정, 거부된 configure 중 하나라도 나
 모든 프로세스에 user data를 내줍니다. 컨테이너도 마찬가지입니다. 스택에 넣은 비밀은
 VM 안 어디서든 읽힙니다.
 
-훈련 환경 ssh 키는 로컬 PC의 `keys.range` 파일(모드 0600)입니다. 이 파일이 없을 때:
+훈련 환경 ssh 키는 컨트롤러 노드의 `keys.range` 파일(모드 0600)입니다. 이 파일이 없을 때:
 
 - 스택이 없거나 VM에 DB가 없음: `ssh-keygen`(ed25519)으로 새로 생성
 - DB가 있는 VM 교체: 실행 중인 플랫폼에서 복사

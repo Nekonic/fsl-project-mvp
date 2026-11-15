@@ -1,4 +1,5 @@
 import copy
+import dataclasses
 
 import pytest
 import yaml
@@ -6,6 +7,11 @@ import yaml
 from range import cloud, openstack
 
 DOCUMENT = yaml.safe_load(cloud.EXAMPLE.read_text())
+RC = {
+    "OS_AUTH_URL": "http://10.10.10.10:5000", "OS_USERNAME": "fsl-range", "OS_PASSWORD": "secret",
+    "OS_PROJECT_NAME": "fsl-range", "OS_USER_DOMAIN_NAME": "Default", "OS_PROJECT_DOMAIN_NAME": "Default",
+    "OS_REGION_NAME": "RegionOne", "OS_INTERFACE": "public",
+}
 
 
 def changed(**edits):
@@ -26,10 +32,22 @@ def refusal(document) -> str:
 
 
 def test_a_password_in_the_file_is_refused_by_name_and_never_echoed():
-    said = refusal(changed(identity__password="hunter2"))
+    document = changed()
+    document["identity"] = {"password": "hunter2"}
+    said = refusal(document)
 
-    assert "identity.password: not a setting this section has" in said
+    assert "identity: not a section this file has" in said
     assert "hunter2" not in said
+
+
+def test_the_identity_comes_from_the_sourced_rc_file_and_a_missing_variable_is_named():
+    signed_in = cloud.identity({**RC, "OS_AUTH_URL": "http://10.10.10.10:5000/v3/"})
+
+    assert signed_in.keystone == "http://10.10.10.10:5000"
+    assert signed_in.user_domain == "Default" and signed_in.interface == "public"
+    assert "secret" not in repr(signed_in), "an Identity printed in a traceback would show the password"
+    with pytest.raises(cloud.Invalid, match="OS_PASSWORD, OS_REGION_NAME; source the project user's RC file"):
+        cloud.identity({name: value for name, value in RC.items() if name not in ("OS_PASSWORD", "OS_REGION_NAME")})
 
 
 @pytest.mark.parametrize("network, cidr, clash", [
@@ -53,7 +71,7 @@ def test_the_estate_is_wide_enough_for_a_slash_24_per_slot():
 
 
 def test_the_settings_survive_the_trip_through_heat_and_the_environment():
-    found = cloud.parse(changed(compute__slots=2))
+    found = dataclasses.replace(cloud.parse(changed(compute__slots=2)), signed_in=cloud.identity(RC))
 
     carried = found.heat_parameters()
 
