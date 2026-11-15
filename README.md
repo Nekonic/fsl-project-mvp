@@ -46,12 +46,13 @@ flowchart TB
       inet --- edge["에지 라우터"]
       edge --- estate["브리지 sN-estate"]
       estate --- waf["WAF"]
-      estate --- board["board"]
-      estate --- corp["corp"]
+      waf --- web["브리지 sN-web"]
+      web --- board["board"]
+      web --- corp["corp"]
       board --- boarddb["board-db"]
       corp --- corpdb["corp-db"]
       ids1["Suricata"] -. 미러링 .- inet
-      ids2["Suricata"] -. 미러링 .- estate
+      ids2["Suricata"] -. 미러링 .- web
     end
   end
 ```
@@ -66,6 +67,8 @@ flowchart TB
   `cr-range`를 만듭니다.
 - 슬롯은 `cr-range` 안의 compose 프로젝트 `sN`입니다. 브리지와 DB 연결은 그 안의 Docker
   네트워크입니다.
+- board와 corp는 WAF와만 이어진 `sN-web`에 있습니다. Kali의 공격은 모두 WAF를
+  지나갑니다.
 - 세션 하나가 슬롯 하나를 씁니다.
 
 자세한 구성은 [ARCHITECTURE.md](docs/ARCHITECTURE.md)에 있습니다.
@@ -185,8 +188,8 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체
   씁니다.
 - push하지 않은 이미지를 올릴 때는 `--sideload NAME=TARBALL`을 씁니다. 절차는
   [재구축과 삭제](docs/OPENSTACK.md#53-rebuild-and-delete--lossless)에 있습니다.
-- 슬롯 수는 `cloud.yaml`의 `compute.slots`입니다. 바꾼 뒤 `uv run bin/cloud up`을
-  실행합니다.
+- 슬롯 수는 `cloud.yaml`의 `compute.slots`입니다. 테스트 클라우드는 8개입니다.
+  바꾼 뒤 `uv run bin/cloud up`을 실행합니다.
 
 `cloud.yaml` 항목:
 
