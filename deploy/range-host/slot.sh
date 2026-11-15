@@ -67,7 +67,7 @@ prepare() {
   chown -h "$www:$adm" "$logs/waf/audit.log"
   chmod 0644 "$logs/waf/audit.log"
   for leg in edge estate; do
-    install -m 0644 -o "$owner" "$d/local.rules" "$d/$leg-rules/local.rules"
+    install -m 0644 -o "$owner" -g "$owner" "$d/local.rules" "$d/$leg-rules/local.rules"
     chown -h "$owner:$owner" "$d/$leg-sensor.yaml" "$d/$leg-rules" "$logs/$leg"
   done
 }
