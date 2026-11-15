@@ -1,7 +1,6 @@
 import ipaddress
 import json
 import pathlib
-import re
 
 import pytest
 
@@ -78,85 +77,6 @@ def test_a_learner_facing_container_mounts_nothing_of_the_host_beyond_its_own_lo
             f"most its own log file")
 
 
-SANDBOXED = ("kali",)
-ON_RUNC = {
-    "waf": "its sandbox exited during the lessons' nginx reloads under the eight-slot acceptance load "
-           "(containerManager.WaitPID failed: EOF), in three of three runs",
-    "board": "on gVisor each target held about half a vCPU and a slot reset took six to eight minutes",
-    "board-db": "on gVisor each target held about half a vCPU and a slot reset took six to eight minutes",
-    "corp-wp": "on gVisor each target held about half a vCPU and a slot reset took six to eight minutes",
-    "corp-db": "on gVisor each target held about half a vCPU and a slot reset took six to eight minutes",
-}
-
-
-@pytest.mark.parametrize("name", SANDBOXED)
-def test_the_attacker_box_the_learner_holds_root_in_runs_on_gvisor_s_kernel(name):
-    assert slot_document()["services"][name].get("runtime") == rangehost.SANDBOX, (
-        f"{name} runs on runc, so one kernel bug reachable through its seccomp profile reaches the range host"
-    )
-
-
-@pytest.mark.parametrize("name", sorted(ON_RUNC))
-def test_what_gvisor_could_not_carry_stays_on_runc_with_its_reason(name):
-    assert set(SANDBOXED) | set(ON_RUNC) == set(LEARNER_FACING)
-    assert not slot_document()["services"][name].get("runtime"), ON_RUNC[name]
-
-
-@pytest.mark.parametrize("name", ["board", "board-db", "corp-wp", "corp-db"])
-def test_a_target_finds_its_neighbours_by_a_fixed_address_not_by_docker_s_dns(name):
-    services = slot_document()["services"]
-    backends = {network for network in services[name]["networks"] if network.endswith("-default")}
-    [backend] = backends
-    neighbours = {other: service["networks"][backend]["ipv4_address"] for other, service in services.items()
-                  if backend in (service.get("networks") or {}) and other != name}
-
-    assert neighbours and services[name]["networks"][backend]["ipv4_address"]
-    assert {f"{other}:{address}" for other, address in neighbours.items()} <= set(services[name]["extra_hosts"]), (
-        "gVisor's netstack never reaches docker's embedded DNS at 127.0.0.11, so on runsc board exited with "
-        "Unknown server host 'board-db'; the name has to be in /etc/hosts"
-    )
-
-
-@pytest.mark.parametrize("document", ["slot", "pristine"])
-def test_every_name_a_target_holds_in_etc_hosts_is_an_address_its_neighbour_holds(document):
-    stack = declared.read()
-    wargames = stack.hosts[stack.range_host].wargames
-    services = (slot_document() if document == "slot" else rangehost.pristine(ROOT, wargames, "abc", 1442))["services"]
-    held = {name: {(settings or {}).get("ipv4_address") for settings in (service.get("networks") or {}).values()}
-            for name, service in services.items()}
-
-    for name in ("board", "board-db", "corp-wp", "corp-db"):
-        for entry in services[name]["extra_hosts"]:
-            other, _, address = entry.partition(":")
-            if other in held:
-                assert address in held[other], (
-                    f"{document}: {name} names {other} at {address}, which {other} does not hold, so the pristine "
-                    f"board failed with Can't connect to server on 'board-db' (115)"
-                )
-
-
-def test_the_edge_and_the_sensors_stay_on_runc_and_dockerd_knows_runsc_with_raw_sockets():
-    services = slot_document()["services"]
-    stack = declared.read()
-    daemon = json.loads(rangehost.bundle(ROOT, stack.hosts[stack.range_host].wargames, "abc", 1442)["daemon.json"])
-
-    assert not [name for name in ("edge", "edge-sensor", "estate-sensor") if services[name].get("runtime")], (
-        "the sensors read the host's bridges with af-packet and the edge filters with nftables, "
-        "which gVisor's netstack does not offer"
-    )
-    assert daemon["runtimes"][rangehost.SANDBOX] == {"path": rangehost.RUNSC, "runtimeArgs": ["--net-raw", "--platform=kvm"]}, (
-        "without --net-raw gVisor refuses raw sockets, and Kali's SYN scan needs them"
-    )
-
-
-def test_the_range_host_installs_one_pinned_gvisor_release_checked_by_its_sha512():
-    setup = (ROOT / rangehost.SETUP).read_text()
-
-    assert re.search(r"releases/release/\d{8}\.\d+/x86_64/gvisor\.tar\.bz2", setup)
-    assert re.search(r'GVISOR_SHA512=[0-9a-f]{128}\n', setup) and "sha512sum -c -" in setup
-    assert setup.index("sha512sum -c -") < setup.index("install -m 0644 daemon.json /etc/docker/daemon.json")
-
-
 def test_every_slot_network_but_the_management_one_is_internal_with_no_host_address_and_no_route_out():
     document = slot_document()
 
@@ -221,6 +141,14 @@ def test_the_sensors_watch_the_slot_s_bridges_and_are_no_shell_a_learner_gets():
     terminals = {stack.roles[role] for role in ("attacker", "gateway")}
     assert {stack.compose[role] for role, host in stack.roles.items() if host in terminals} >= {"kali", "waf"}
     assert not {"edge-sensor", "estate-sensor"} & {stack.compose[role] for role in ("attacker", "gateway")}
+
+
+def test_every_slot_container_runs_on_docker_s_default_runtime():
+    stack = declared.read()
+    daemon = json.loads(rangehost.bundle(ROOT, stack.hosts[stack.range_host].wargames, "abc", 1442)["daemon.json"])
+
+    assert not [name for name, service in slot_document()["services"].items() if service.get("runtime")]
+    assert "runtimes" not in daemon
 
 
 def test_the_range_host_s_docker_maps_container_root_to_an_unprivileged_host_user():

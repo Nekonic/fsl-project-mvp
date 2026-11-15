@@ -22,11 +22,8 @@ COPY kali/bashrc /root/.bashrc
 COPY proxy/stamp.py /usr/local/lib/web-proxy.py
 COPY kali/operator-log.sh /usr/local/lib/shell-hook.sh
 COPY kali/set-origin /usr/local/sbin/set-origin
-COPY kali/unbound-source /usr/local/sbin/unbound-source
 
-RUN chmod 0755 /usr/local/sbin/set-origin /usr/local/sbin/unbound-source \
- && update-alternatives --set iptables /usr/sbin/iptables-legacy \
- && update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy \
+RUN chmod 0755 /usr/local/sbin/set-origin \
  && install -d -m 0711 /var/lib/session \
  && install -m 0600 /dev/null /var/lib/session/active \
  && install -m 0600 /dev/null /var/log/commands.log \

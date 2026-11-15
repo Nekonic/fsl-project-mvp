@@ -63,7 +63,6 @@ services:
     build: {context: .., dockerfile: kali/Dockerfile}
     container_name: s@slot@-kali
     hostname: kali
-    runtime: runsc
     cap_add: [NET_RAW, NET_ADMIN, SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER, KILL, AUDIT_WRITE]
     mem_limit: 1g
     pids_limit: 512

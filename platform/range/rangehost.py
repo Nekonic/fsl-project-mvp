@@ -21,8 +21,6 @@ from range.ports import RangeUnavailable
 ROLE = "wargames"
 TEMPLATE = "deploy/range-host/slot.yaml"
 SETUP = "deploy/range-host/setup.sh"
-SANDBOX = "runsc"
-RUNSC = "/usr/local/bin/runsc"
 SLOT_SCRIPT = "deploy/range-host/slot.sh"
 EDGE_SENSOR = "deploy/range-host/edge-sensor.yaml"
 ESTATE_SENSOR = "deploy/suricata/suricata.yaml"
@@ -40,8 +38,6 @@ FRONT = "estate"
 WEB = "web"
 WEB_OFFSET = 128
 BACKEND = "{wargame}-default"
-BACKEND_PREFIX = 28
-BACKEND_SIZE = 16
 INTERNET = "internet"
 UP_TIMEOUT = 900.0
 RESET_TIMEOUT = 600.0
@@ -89,11 +85,6 @@ class Slot:
         return f"{self.project}_{key}"
 
 
-def backend(number: int, index: int) -> ipaddress.IPv4Network:
-    pool = ipaddress.ip_network(cloud.RANGE_HOST_POOL)
-    return ipaddress.ip_network(f"{pool[(number + 1) * 256 + index * BACKEND_SIZE]}/{BACKEND_PREFIX}")
-
-
 def estate(base: str, number: int) -> ipaddress.IPv4Network:
     network = ipaddress.ip_network(base)
     if network.prefixlen > 16:
@@ -120,23 +111,19 @@ def _wargame_services(source: Path, wargames, slot: Slot, declared: dict,
     limits = declared.get("limits") or {}
     extra = declared.get("extra_hosts") or {}
     services, networks = {}, {}
-    for index, wargame in enumerate(wargames):
+    for wargame in wargames:
         path = Path(source) / COMPOSE.format(wargame=wargame)
         if not path.is_file():
             raise RangeUnavailable(f"the range host runs {wargame!r} and {path} does not exist")
-        name_of = BACKEND.format(wargame=wargame)
-        subnet = backend(slot.number, index)
-        networks[name_of] = {
+        backend = BACKEND.format(wargame=wargame)
+        networks[backend] = {
             "internal": True,
             "driver_opts": {
                 "com.docker.network.driver.mtu": str(slot.mtu),
                 "com.docker.network.bridge.gateway_mode_ipv4": "isolated",
             },
-            "ipam": {"config": [{"subnet": str(subnet), "gateway": str(subnet[1])}]},
         }
-        declared_services = yaml.safe_load(path.read_text()).get("services") or {}
-        placed = {name: str(subnet[2 + n]) for n, name in enumerate(declared_services)}
-        for name, service in declared_services.items():
+        for name, service in (yaml.safe_load(path.read_text()).get("services") or {}).items():
             kept = {key: value for key, value in service.items() if key not in DROPPED}
             kept["image"] = TAG.sub(slot.tag, kept["image"])
             kept["container_name"] = slot.container(name)
@@ -145,11 +132,11 @@ def _wargame_services(source: Path, wargames, slot: Slot, declared: dict,
             kept.update(limits.get(name) or {})
             if kept.get("healthcheck"):
                 kept["healthcheck"] = {**kept["healthcheck"], **(declared.get("healthcheck") or {})}
-            attached = {name_of: {"ipv4_address": placed[name]}}
+            attached = {backend: {}}
             if name in fronts:
                 attached[WEB] = {"ipv4_address": f"{slot.web_prefix}.{fronts[name]}"}
-            kept["extra_hosts"] = [f"{other}:{address}" for other, address in placed.items() if other != name]
-            kept["extra_hosts"] += list(extra.get(name) or [])
+            if extra.get(name):
+                kept["extra_hosts"] = list(extra[name])
             kept["networks"] = attached
             services[name] = kept
     return services, networks
@@ -386,7 +373,7 @@ def pristine(source: Path, wargames, tag: str, mtu: int) -> dict:
             if name in wargame_services(document)}
     for name, service in kept.items():
         service["container_name"] = f"pristine-{name}"
-        service["networks"] = {key: value for key, value in service["networks"].items() if key.endswith("-default")}
+        service["networks"] = {key: {} for key in service["networks"] if key.endswith("-default")}
     networks = {key: value for key, value in document["networks"].items() if key.endswith("-default")}
     return {"name": "pristine", "services": kept, "networks": networks}
 
@@ -410,7 +397,6 @@ def bundle(source: Path, wargames, tag: str, mtu: int) -> dict[str, bytes]:
             "log-driver": "local",
             "log-opts": {"max-size": "10m", "max-file": "2"},
             "userns-remap": "default",
-            "runtimes": {SANDBOX: {"path": RUNSC, "runtimeArgs": ["--net-raw", "--platform=kvm"]}},
         }, sort_keys=True).encode(),
     }
 
@@ -473,12 +459,11 @@ docker network ls --filter label=com.docker.compose.project=$p --format '{{.Name
   echo "@network $n $(docker network inspect -f '{{.Id}} {{with index .Options "com.docker.network.bridge.name"}}{{.}}{{else}}-{{end}} {{range .IPAM.Config}}{{.Subnet}} {{end}}' "$n")"
 done
 for c in $(docker ps -q --filter label=com.docker.compose.project=$p); do
-  set -- $(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}} {{.State.Pid}} {{.HostConfig.NetworkMode}} {{.HostConfig.Runtime}}' "$c")
+  set -- $(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}} {{.State.Pid}} {{.HostConfig.NetworkMode}}' "$c")
   echo "@container $1 $3"
   docker inspect -f '@args {{join .Args " "}}{{println}}{{range .Mounts}}@mount {{.Source}}{{println}}{{end}}{{range $n, $e := .NetworkSettings.Networks}}@leg {{$n}} {{$e.MacAddress}}{{println}}{{end}}' "$c"
   if [ "$3" = host ] || [ "${3#container:}" != "$3" ]; then :
-  elif [ "$4" != runsc ]; then nsenter -t "$2" -n sh -c 'ip -o link show; ip -o -4 addr show'
-  else docker exec "$c" sh -c 'ip -o link show; ip -o -4 addr show' 2>/dev/null || docker inspect -f '{{range $n, $e := .NetworkSettings.Networks}}0: {{$n}}: <UP> link/ether {{$e.MacAddress}}{{println}}0: {{$n}} inet {{$e.IPAddress}}/{{$e.IPPrefixLen}}{{println}}{{end}}' "$c"
+  else nsenter -t "$2" -n sh -c 'ip -o link show; ip -o -4 addr show'
   fi
 done
 [ ! -d "$f" ] || sed -n 's/.*File="\([^"]*\)".*/@forward \1/p' "$f"/*-shipper.conf

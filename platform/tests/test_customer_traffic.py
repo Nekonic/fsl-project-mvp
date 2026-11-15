@@ -118,19 +118,16 @@ def test_customers_never_take_an_address_the_attacker_sends_from(on_openstack):
     assert worn["kr"] not in found["kr"] and worn["us"] not in found["us"]
     assert found["kr"] and found["us"]
 
-def test_the_unbound_source_is_the_address_the_box_s_own_stack_picks_for_the_target(on_openstack):
+def test_the_unbound_source_is_read_from_the_boxs_route_to_the_target(on_openstack):
     seen = []
 
     def box(argv, stdin=None, timeout=60.0):
         from range.ports import Ran
         seen.append(argv)
-        return Ran(0, "1.128.0.10\n")
+        return Ran(0, "10.30.0.102 via 1.128.0.1 dev ens3 src 1.128.0.10 uid 0 \\    cache\n")
 
-    assert attacker.unbound_source(box) == "1.128.0.10", (
-        "gVisor picks the source by the longest prefix shared with the target, not by the route's src, "
-        "so ip route get named 73.0.0.10 while the box sent from 14.160.0.10"
-    )
-    assert seen[0][:3] == ["sudo", "sh", "-c"] and "/usr/local/sbin/unbound-source board.com" in seen[0][3]
+    assert attacker.unbound_source(box) == "1.128.0.10"
+    assert seen[0][:3] == ["sudo", "sh", "-c"] and "board.com" in seen[0][3]
 
 def test_the_customers_run_as_their_own_account_that_the_origin_rewrite_passes_by(on_openstack):
     from range.ports import Ran
@@ -144,9 +141,7 @@ def test_the_customers_run_as_their_own_account_that_the_origin_rewrite_passes_b
     assert attacker.run_customers(box, "{}") is True
     placed, ran = seen[0][0][3], seen[1][0][3]
 
-    assert "useradd --system" in placed and "iptables" not in placed, (
-        "gVisor stores an owner match it cannot apply, and with it in POSTROUTING no packet left the box"
-    )
+    assert "-m owner --uid-owner cr-users -j RETURN" in placed and "-I POSTROUTING 1" in placed
     assert seen[0][1] == "print()" and seen[1][1] == "{}"
     assert "setpriv --reuid=cr-users" in ran and "setsid" in ran
 
@@ -155,7 +150,7 @@ def test_the_website_pane_leaves_kali_as_the_customers_account_so_the_attacker_o
     argv = attacker.as_customer("73.0.0.10", "10.30.0.102", 80)
 
     assert argv[:3] == ["sudo", "sh", "-c"]
-    assert "iptables" not in argv[3], "the rewrite matches only the unbound source, so the customers need no exemption"
+    assert "iptables -t nat -C POSTROUTING -m owner --uid-owner cr-users" in argv[3]
     assert "setpriv --reuid=cr-users" in argv[3] and argv[3].endswith("73.0.0.10 10.30.0.102 80")
 
 def test_the_attackers_own_rewrite_stays_after_the_customers_exemption():

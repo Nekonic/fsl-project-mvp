@@ -66,8 +66,7 @@ def find(described, origin_id: str | None) -> dict:
     )
 
 def wear_origin(chosen: dict, box) -> None:
-    ran = box(["sudo", "/usr/local/sbin/set-origin", chosen["source_ip"],
-               urlsplit(settings.ATTACKER_TARGET_URL).hostname or ""])
+    ran = box(["sudo", "/usr/local/sbin/set-origin", chosen["source_ip"]])
     if not ran.ok:
         raise AttackerUnavailable(
             f"the box could not wear {chosen['source_ip']}: {ran.output.strip()[:200]}"
@@ -101,7 +100,7 @@ CUSTOMERS_PID = f"{CUSTOMERS_HOME}/pid"
 CUSTOMERS_LOG = f"{CUSTOMERS_HOME}/log"
 CUSTOMERS_RUNNING = f'[ -f {CUSTOMERS_PID} ] && kill -0 "$(cat {CUSTOMERS_PID})" 2>/dev/null'
 CUSTOMERS_STOP_WAIT = 50
-UNBOUND_SOURCE = re.compile(r"^(\d+\.\d+\.\d+\.\d+)\s*$", re.M)
+ROUTE_SOURCE = re.compile(r"\bsrc (\S+)")
 RECORDS_BEGIN = "cr.records="
 RECORDS_END = "=cr.records"
 
@@ -116,8 +115,9 @@ def _ran(box, script: str, what: str, stdin: str | None = None, timeout: float =
 
 def unbound_source(box) -> str:
     host = shlex.quote(urlsplit(settings.ATTACKER_TARGET_URL).hostname or "")
-    ran = _ran(box, f"/usr/local/sbin/unbound-source {host}", "say which address it sends from")
-    found = UNBOUND_SOURCE.search(ran.output)
+    ran = _ran(box, f"ip -o route get \"$(getent ahostsv4 {host} | awk 'NR==1{{print $1}}')\"",
+               "say which address it sends from")
+    found = ROUTE_SOURCE.search(ran.output)
     if found is None:
         raise AttackerUnavailable(f"the box named no source address for {host}: {ran.output.strip()[:200]}")
     return found[1]
@@ -166,6 +166,8 @@ def _customers_account() -> str:
     return (
         f"id -u {CUSTOMERS_ACCOUNT} >/dev/null 2>&1 || useradd --system --no-create-home "
         f"--shell /usr/sbin/nologin {CUSTOMERS_ACCOUNT}; "
+        f"iptables -t nat -C POSTROUTING -m owner --uid-owner {CUSTOMERS_ACCOUNT} -j RETURN 2>/dev/null "
+        f"|| iptables -t nat -I POSTROUTING 1 -m owner --uid-owner {CUSTOMERS_ACCOUNT} -j RETURN; "
     )
 
 def as_customer(source: str, address: str, port: int) -> list[str]:

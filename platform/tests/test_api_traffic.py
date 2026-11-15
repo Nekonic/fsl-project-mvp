@@ -34,8 +34,8 @@ class Box:
 
     def __call__(self, argv, stdin=None, timeout=60.0):
         script = argv[-1]
-        if "unbound-source" in script:
-            return Ran(0, "5.188.10.5\n")
+        if "route get" in script:
+            return Ran(0, "5.188.10.1 dev eth0 src 5.188.10.5 uid 0\n")
         if "cr.records=" in script:
             offset = int(re.search(r"tail -c \+(\d+)", script)[1]) - 1
             limit = int(re.search(r"head -c (\d+)", script)[1])
