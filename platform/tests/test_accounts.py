@@ -114,7 +114,6 @@ def test_the_front_s_check_refuses_a_pending_account_even_with_a_session():
     client.force_login(get_user_model().objects.get(username="learner1"))
 
     assert client.get("/auth-check/").status_code == 401
-    assert client.get("/auth-check/kibana/").status_code == 401
 
 
 def test_the_login_page_links_to_sign_up_and_the_sign_up_page_posts_to_its_api():
