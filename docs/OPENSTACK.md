@@ -359,7 +359,7 @@ an allowlist, also allow the hosts the registries redirect to.
 | Who | Reaches | For |
 |---|---|---|
 | platform VM (cloud-init, `cr-platform.service`) | the Ubuntu archive; github.com; ghcr.io; docker.elastic.co; geoip.elastic.co | `apt` (Docker, git, chrony); `git clone` of `platform.repository`; `cr-platform`; Elasticsearch, Kibana and Filebeat; `bin/fetch-geoip` |
-| the range host (`deploy/range-host/setup.sh`) | the Ubuntu archive; ghcr.io; Docker Hub | `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog`; `cr-kali`, `cr-waf`, `cr-edge`, `cr-board`, `cr-corp`, `cr-corp-db`; the pinned Suricata (`jasonish/suricata`) and MySQL images |
+| the range host (`deploy/range-host/setup.sh`) | the Ubuntu archive; ghcr.io; Docker Hub | `docker.io`, `docker-compose-v2`, `ethtool`; `cr-kali`, `cr-waf`, `cr-edge`, `cr-board`, `cr-corp`, `cr-corp-db`; the pinned Suricata (`jasonish/suricata`), rsyslog (`rsyslog/rsyslog-minimal`) and MySQL images |
 | the controller node, where `bin/cloud` runs | the cloud's API; the floating IP; github.com; ghcr.io | `bin/cloud`; the check that the images can be pulled |
 
 The range host reaches the Internet only through its second port, on the
@@ -368,7 +368,9 @@ platform's own network (`CR_OPENSTACK_BUILD_NETWORK`), in the security group
 host sets itself up: once its setup reports ready, the platform detaches it
 (`_close_egress` in `platform/range/openstack.py`). A set-up range host has
 only `cr-range.mgmt`, no way to the Internet and no DNS resolver. The slots' containers have no Internet:
-every slot network is an internal Docker network with no host address (§6).
+every slot network but the 관제망 `sN_mgmt` is an internal Docker network
+with no host address, and `sN_mgmt` lets out only the log server's 5140/udp to
+the collector (§6).
 
 ## 3. Project, user, quotas, flavors, keys, groups, images
 
@@ -627,8 +629,7 @@ bundle holds `deploy/range-host/setup.sh` and files the platform generates:
 `setup.sh` does these steps while the range host has its egress port:
 
 1. It enables `universe`, purges `snapd` and `modemmanager`, and installs
-   `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog`, `bzip2` and
-   `curl`.
+   `docker.io`, `docker-compose-v2`, `ethtool`, `bzip2` and `curl`.
 2. It raises the inotify limits and sshd's `MaxSessions` and `MaxStartups`,
    because the platform runs many commands at once over one shared ssh
    connection.
@@ -641,7 +642,6 @@ bundle holds `deploy/range-host/setup.sh` and files the platform generates:
 5. It brings the targets up once as the Compose project `pristine`, waits until
    they are healthy, stops them and copies their volumes to
    `/opt/cr/pristine/<service><path>`. Then it removes them with `down -v`.
-6. It loads rsyslog's `imfile` module.
 
 cloud-init then marks `/var/lib/cr/ready`, or `/var/lib/cr/failed` with the
 last lines of `/var/log/cr-setup.log` on the console. Until then the platform
@@ -1233,8 +1233,11 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
 | `sN-kali` | `cr-kali` (`deploy/kali/Dockerfile`) | `sN_internet`, about 100 origin addresses |
 | `sN-edge` | `cr-edge` (`deploy/edge/`: Alpine and nftables) | `sN_internet` (`wan`, every origin's `.1`) and `sN_estate` (`lan`, `.1`) |
 | `sN-waf` | `cr-waf` (`deploy/waf/Dockerfile`: nginx, ModSecurity, CRS) | `sN_estate` `.247` and `sN_web` `.247` |
-| `sN-edge-sensor` | `jasonish/suricata`, pinned by digest | host network, `af-packet` on the bridge `sN-inet` |
-| `sN-estate-sensor` | the same | host network, `af-packet` on the bridge `sN-web`, with a BPF filter on the board's and corp-wp's addresses |
+| `sN-edge-sensor` | `jasonish/suricata`, pinned by digest | `sN_internet` (`sniff`, no address, `af-packet`) and `sN_mgmt` `.11` |
+| `sN-estate-sensor` | the same | `sN_web` (`sniff`, no address, `af-packet` with a BPF filter on the board's and corp-wp's addresses) and `sN_mgmt` `.12` |
+| `sN-log-server` | `rsyslog/rsyslog-minimal`, pinned by digest | `sN_mgmt` `.10` |
+| `sN-edge-sensor-shipper`, `sN-estate-sensor-shipper` | the same | the sensor's own network namespace |
+| `sN-waf-shipper` | the same | `sN_mgmt` `.13` |
 | `sN-board`, `sN-board-db` | `cr-board`, `mysql` | `sN_web` `.59` (board) and `board-default` |
 | `sN-corp-wp`, `sN-corp-db` | `cr-corp`, `cr-corp-db` | `sN_web` `.60` (corp-wp) and `corp-default` |
 
@@ -1242,10 +1245,15 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
   that exists only on the range host. `sN_estate` is the bridge `sN-estate` on
   slot N's /24 of `network.estate` (10.30.N.0/24); `sN_web` is the bridge
   `sN-web` on the /24 128 above it (10.30.N+128.0/24). Each wargame's backend
-  is its own `<w>-default` network.
-- Every slot network is `internal`, with `gateway_mode_ipv4: isolated`, so the
-  range host holds no address on any bridge, and has the tenant MTU. No
-  container publishes a port and nothing is NATed.
+  is its own `<w>-default` network. `sN_mgmt` is the bridge `sN-mgmt` on
+  172.29.N.0/24, the slot's 관제망.
+- Every slot network but `sN_mgmt` is `internal`, with `gateway_mode_ipv4:
+  isolated`, so the range host holds no address on those bridges, and has the
+  tenant MTU. No container publishes a port.
+- `sN_mgmt` is NATed, for the log server's way to the collector. `slot.sh`
+  filters it before compose creates it: INPUT drops everything from
+  `sN-mgmt`, DOCKER-USER passes `sN-mgmt` to itself and the log server to the
+  collector's 5140/udp and drops the rest; `slot.sh down` removes the rules.
 - The edge forwards between its two legs (nftables `forward` policy accept)
   and accepts nothing addressed to itself (`input` policy drop). It holds only
   `NET_ADMIN`.
@@ -1256,17 +1264,23 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
   through the `board` role, not over a port. corp's effect reader gets
   `corp-db`'s binary log the same way, and so does the harness's
   `run_on_role`.
-- Each sensor runs one thread with `cluster_flow`. The estate sensor's config
+- Each sensor captures on its `sniff` interface, which `slot.sh` strips of its
+  address. The bridge's other ports are mirrored to the sensor's port with
+  `tc` (ingress `matchall`, `mirred egress mirror`); the sensor's port learns
+  nothing, floods nothing and drops what the sensor sends, so it is a
+  receive-only SPAN port. Each sensor runs one thread with `cluster_flow`. The estate sensor's config
   is `deploy/suricata/suricata.yaml` with the slot's `af-packet` entry; the
   edge sensor's is `deploy/range-host/edge-sensor.yaml`. Their rule files are
   `/opt/cr/sN/{edge,estate}-rules/local.rules`.
-- rsyslog on the range host reads `/var/log/cr/sN/edge/eve.json`,
-  `/var/log/cr/sN/estate/eve.json` and `/var/log/cr/sN/waf/audit.log`
-  (`/etc/rsyslog.d/60-cr-sN.conf`) and forwards them over UDP 5140 to the
+- A shipper per log reads `/var/log/cr/sN/edge/eve.json`,
+  `/var/log/cr/sN/estate/eve.json` and `/var/log/cr/sN/waf/audit.log` with
+  `imfile` and sends it to the log server over TCP 514 on the 관제망; the
+  sensors' shippers run in the sensor's network namespace, the WAF's is its
+  own container. The log server (`/opt/cr/sN/rsyslog/log-server.conf`) names
+  each log by the address it came from and forwards it over UDP 5140 to the
   platform's `mgmt` address. Each slot has fixed sender names: `cr-edge`,
   `cr-range` and `cr-waf` for slot 1, `cr-edge-N`, `cr-range-N` and `cr-waf-N`
-  for slot N. The logs are under `/var/log` because Ubuntu's rsyslog runs as
-  the `syslog` user, which AppArmor confines there.
+  for slot N.
 
 `configure/` does these steps for each slot:
 
@@ -1278,10 +1292,11 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
       log directory `/var/log/cr/sN/waf` it removes every name but a regular
       file `audit.log`, and creates that file if missing, owned by the
       remapped range's `www-data` and `adm` (`0644`), so nginx's master, root
-      in the container, opens it and `syslog` reads it. The WAF mounts that file alone, so it cannot plant a link
+      in the container, opens it and the WAF shipper reads it through a
+      read-only mount. The WAF mounts that file alone, so it cannot plant a link
       in the directory (`docs/THREAT-MODEL.md`).
-   2. `docker compose up --no-start --pull never` creates the containers and
-      their new, empty volumes.
+   2. It installs the 관제망 filter, then `docker compose up --no-start --pull
+      never` creates the containers and their new, empty volumes.
    3. It copies the targets' pristine data (§3.6) into each empty volume of a
       container that has never run.
    4. `up -d --wait --pull never` starts the slot. MySQL finds an initialised
@@ -1293,12 +1308,13 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
    6. It routes the WAF through the edge. The targets get no default route;
       they answer only the WAF.
    7. It switches TSO, GSO and GRO off on every interface the sensors watch:
-      the containers' interfaces, both bridges and their ports.
+      the containers' interfaces, the three slot bridges `sN-inet`,
+      `sN-estate` and `sN-web`, and their ports.
    8. It lets each bridge forward to itself past Docker's isolation rules
       (`DOCKER-USER`).
-   9. It installs the slot's rsyslog file and restarts rsyslog, only when the
-      file changed or rsyslog is not running, and one slot at a time (`flock
-      /run/cr-rsyslog.lock`, `systemctl reset-failed` first).
+   9. It strips each sensor's `sniff` interface of its address and mirrors
+      the watched bridge's other ports to it; a reset does this again for the
+      containers it recreated.
 3. It seeds both sensors with the baseline rules through `rules/suricata.py`.
 
 Secrets stay per session. The board's `seed` sets each seeded account's

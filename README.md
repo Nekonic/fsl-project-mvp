@@ -53,7 +53,13 @@ flowchart TB
       corp --- corpdb["corp-db"]
       ids1["Suricata"] -. 미러링 .- inet
       ids2["Suricata"] -. 미러링 .- web
+      ids1 --- mgmtbr["관제망 sN-mgmt"]
+      ids2 --- mgmtbr
+      wafship["WAF shipper"] --- mgmtbr
+      waf -. audit log 파일 .- wafship
+      mgmtbr --- logsrv["log-server"]
     end
+    logsrv -->|"5140/udp"| collector
   end
 ```
 
@@ -61,7 +67,8 @@ flowchart TB
 |---|---|
 | 브라우저 → 콘솔 | floating IP의 8000, 8002 |
 | 플랫폼 → 훈련 환경 호스트 | `cr-mgmt`로 ssh, `docker exec` |
-| 훈련 환경 호스트 → collector | `cr-mgmt`로 syslog 5140/udp(센서 경보, WAF audit log) |
+| 센서·WAF shipper → log-server | 슬롯 관제망 `sN-mgmt`로 syslog 514/tcp |
+| log-server → collector | 훈련 환경 호스트 NAT, `cr-mgmt`로 syslog 5140/udp(센서 경보, WAF audit log) |
 
 - `bin/cloud up`이 Heat 스택으로 VM `cr-platform`을 만들고, 플랫폼이 OpenStack API로 VM
   `cr-range`를 만듭니다.
@@ -69,6 +76,9 @@ flowchart TB
   네트워크입니다.
 - board와 corp는 WAF와만 이어진 `sN-web`에 있습니다. Kali의 공격은 모두 WAF를
   지나갑니다.
+- 센서는 감시하는 브리지(`sN-inet`, `sN-web`)에 주소 없는 인터페이스로 붙고, `tc mirred`로
+  브리지의 다른 포트 트래픽을 모두 받습니다(SPAN). 관제망 `sN-mgmt`에도 붙습니다.
+- 슬롯의 log-server가 센서 경보와 WAF audit log를 관제망으로 받아 collector에 넘깁니다.
 - 세션 하나가 슬롯 하나를 씁니다.
 
 자세한 구성은 [ARCHITECTURE.md](docs/ARCHITECTURE.md)에 있습니다.
@@ -211,7 +221,7 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체
 |---|---|---|
 | 8000 | 콘솔, `/api/`, 구성도(`/map/`), Kibana(`/kibana/`), 터미널(`/vm-terminal/`) | 브라우저 |
 | 8002 | 대상 사이트(`/site/<세션 id>/<host>/<path>`) | 콘솔 안의 iframe |
-| 5140/udp | collector | 훈련 환경 호스트의 rsyslog |
+| 5140/udp | collector | 슬롯 log-server(훈련 환경 호스트에서 NAT) |
 | 5601 | Kibana 직접 접속, VM loopback 전용 | ssh 터널, `elastic`으로 로그인 |
 | 9200 | Elasticsearch, VM loopback 전용 | acceptance 테스트, `elastic`으로 인증 |
 

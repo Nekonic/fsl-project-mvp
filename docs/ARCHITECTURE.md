@@ -119,8 +119,11 @@
 | `kali` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-kali`(`deploy/kali/Dockerfile`). Ubuntu 24.04, 공격 도구, 마커 프록시 | internet | |
 | `edge` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-edge`(`deploy/edge/Dockerfile`). Alpine, nftables 라우터 | internet, estate | |
 | `waf` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-waf`(`deploy/waf/Dockerfile`). nginx 1.24, ModSecurity v3, CRS | estate, web | |
-| `edge-sensor` | 훈련 환경 호스트, 슬롯 N | digest 고정 `jasonish/suricata`. 브리지 `sN-inet` 감시(`deploy/range-host/edge-sensor.yaml`) | 호스트 네트워크 | |
-| `estate-sensor` | 훈련 환경 호스트, 슬롯 N | digest 고정 `jasonish/suricata`. 브리지 `sN-web` 감시(`deploy/suricata/suricata.yaml`) | 호스트 네트워크 | |
+| `edge-sensor` | 훈련 환경 호스트, 슬롯 N | digest 고정 `jasonish/suricata`. 브리지 `sN-inet` 감시(`deploy/range-host/edge-sensor.yaml`) | internet(`sniff`, 주소 없음), 관제망 .11 | |
+| `estate-sensor` | 훈련 환경 호스트, 슬롯 N | digest 고정 `jasonish/suricata`. 브리지 `sN-web` 감시(`deploy/suricata/suricata.yaml`) | web(`sniff`, 주소 없음), 관제망 .12 | |
+| `log-server` | 훈련 환경 호스트, 슬롯 N | digest 고정 `rsyslog/rsyslog-minimal`. 514/tcp로 받아 collector 5140/udp로 전달 | 관제망 .10 | |
+| `edge-sensor-shipper`, `estate-sensor-shipper` | 훈련 환경 호스트, 슬롯 N | 같은 rsyslog 이미지. 센서의 `eve.json`을 읽어 log-server로 보냄 | 센서의 네트워크 네임스페이스 | |
+| `waf-shipper` | 훈련 환경 호스트, 슬롯 N | 같은 rsyslog 이미지. WAF audit 로그를 읽기 전용으로 읽어 log-server로 보냄 | 관제망 .13 | |
 | `board` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-board`(`wargames/board/app`). gunicorn, Django, 포트 8000 | web, `board-default` | |
 | `board-db` | 훈련 환경 호스트, 슬롯 N | digest 고정 `mysql` | `board-default` | |
 | `corp-wp` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-corp`(`wargames/corp/app`). WordPress 6.6.2, 취약 버전 고정 플러그인 3개, `Host` 헤더 `corp.com` | web, `corp-default` | |
@@ -137,18 +140,19 @@
 - 9200, 5601: loopback에만 바인딩
 - 훈련 환경 호스트: publish하는 포트 없음
 
-슬롯 컨테이너 이름은 `sN-<service>`(`s1-kali`)이고, 슬롯 네트워크는 모두 internal입니다.
+슬롯 컨테이너 이름은 `sN-<service>`(`s1-kali`)입니다. 슬롯 네트워크는 관제망 `sN_mgmt`만 빼고 모두 internal입니다.
 
 | 구간 | 서브넷 | 이름 |
 |---|---|---|
 | `internet` | 출발지마다 /24, 총 30개(`declaration.yaml`). 예: `ru` 5.188.10.0/24, `us` 73.0.0.0/24. 슬롯 브리지 `sN-inet` | 인터넷 |
 | `estate` | `cloud.yaml`의 `estate` /16에서 슬롯 N에 준 /24(10.30.N.0/24). 슬롯 브리지 `sN-estate` | DMZ |
 | `web` | 같은 /16에서 estate보다 128 위의 /24(10.30.N+128.0/24). 슬롯 브리지 `sN-web`. 그래서 슬롯 번호는 1~127 | 웹 서버 구간 |
+| 슬롯 `mgmt` | 172.29.N.0/24. 슬롯 브리지 `sN-mgmt`. 센서, shipper, log-server | 관제망 |
 | `mgmt` | `cloud.yaml`의 `mgmt` CIDR. fabric이 만드는 Neutron 네트워크는 이것뿐 | 관리망 |
 
 출발지 국가는 서브넷의 GeoIP 정보로 정해집니다. 그래서 출발지 서브넷은 `declaration.yaml`에 고정합니다.
 
-`mgmt`는 모든 슬롯이 공유합니다. 플랫폼은 이 망으로 훈련 환경 호스트에 접속합니다. 훈련 환경 호스트는 이 망으로 모든 슬롯의 syslog를 collector에 보냅니다(`docs/DECISIONS.md`, 2026-10-10).
+`mgmt`는 모든 슬롯이 공유합니다. 플랫폼은 이 망으로 훈련 환경 호스트에 접속합니다. 슬롯 log-server의 syslog는 훈련 환경 호스트의 NAT를 거쳐 이 망으로 collector에 갑니다(`docs/DECISIONS.md`, 2026-10-10, 2026-11-15).
 
 플랫폼 VM의 compose 네트워크 이름도 `mgmt`입니다. 별개의 Docker 브리지이며, `cloud.yaml`의 CIDR과 겹치면 안 됩니다.
 
@@ -163,8 +167,8 @@
 
 망 분리는 슬롯의 docker 네트워크로 합니다. 훈련 환경 호스트 바깥은 fabric의 보안 그룹으로 막습니다.
 
-- 슬롯 네트워크는 모두 `internal`, `gateway_mode_ipv4: isolated`
-- 훈련 환경 호스트는 슬롯 브리지에 주소가 없음. 어느 슬롯 네트워크에도 외부 경로나 NAT 없음
+- 관제망을 뺀 슬롯 네트워크는 모두 `internal`, `gateway_mode_ipv4: isolated`. 훈련 환경 호스트는 그 브리지에 주소가 없고 외부 경로나 NAT도 없음
+- 관제망 `sN_mgmt`만 예외. 호스트가 게이트웨이 .254를 갖고 NAT로 collector에 보냄. 허용하는 길은 log-server→collector 5140/udp 하나("훈련 환경 슬롯" 절의 관제망 필터)
 - Kali는 `internet`에만 붙음. 아는 이름은 `board.com`, `corp.com`뿐이고 둘 다 WAF를 가리킴
 - 에지는 `internet`과 `estate` 사이를 NAT 없이 라우팅. `web`으로 가는 경로는 없음
 - board와 corp-wp는 `web`과 자기 DB 망에만 붙음. Kali에서 대상 시스템으로 가는 길은 WAF뿐
@@ -196,7 +200,7 @@
 
 `deploy/suricata/suricata.yaml`은 estate 센서 설정입니다.
 
-- `rangehost.estate_sensor`에서 af-packet 인터페이스를 슬롯 브리지 `sN-web` 하나로 바꿈
+- `rangehost.estate_sensor`에서 af-packet 인터페이스를 센서 자신의 `sniff`로 바꿈. `sniff`는 `sN-web`에 붙은 주소 없는 인터페이스
 - 스레드 1개. board와 corp-wp의 web 주소만 받는 BPF 필터
 - `HOME_NET`은 10/8, 172.16/12, 192.168/16. 출발지 대역이 빠져 있어 공격자 주소는 외부로 잡힘(`docs/DECISIONS.md`, 2026-10-21, "The estate sensor's HOME_NET and a repeated lesson move")
 
@@ -288,24 +292,24 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 **읽기.** `rangehost.WIRING`은 훈련 환경 호스트에서 `sudo sh -c`로 도는 셸 스크립트입니다. `OpenStack.wiring()`이 ssh 한 번으로 실행합니다.
 
 - 슬롯 compose 프로젝트의 Docker 네트워크마다 `@network <이름> <id> <브리지 이름> <서브넷>`. 브리지 이름은 `com.docker.network.bridge.name` 옵션(`sN-inet`, `sN-estate`, `sN-web`)이고, 없으면 Docker 규칙대로 `br-<id 12자>`
-- 실행 중인 컨테이너마다 `@container <서비스> <NetworkMode>`, `@args`(`docker inspect`의 `Args`), `@mount`(마운트 원본 경로). 호스트 네트워크가 아니면 `ip -o link show`와 `ip -o -4 addr show` 출력. runc 컨테이너는 `nsenter -t <pid> -n`으로, gVisor 컨테이너는 `docker exec`로 읽음. `ip`가 없는 gVisor 컨테이너(두 DB)는 `docker inspect`의 네트워크별 MAC과 주소를 같은 형식으로 냄
-- 슬롯의 rsyslog 전달 설정(`/etc/rsyslog.d/60-cr-sN.conf`)의 `@forward <파일>`, `@port <포트>`
+- 실행 중인 컨테이너마다 `@container <서비스> <NetworkMode>`, `@args`(`docker inspect`의 `Args`), `@mount`(마운트 원본 경로). 호스트 네트워크가 아니면 `ip -o link show`와 `ip -o -4 addr show` 출력. 다른 컨테이너의 네트워크 네임스페이스를 쓰는 컨테이너(shipper)는 따로 읽지 않음. runc 컨테이너는 `nsenter -t <pid> -n`으로, gVisor 컨테이너는 `docker exec`로 읽음. `ip`가 없는 gVisor 컨테이너(두 DB)는 `docker inspect`의 네트워크별 MAC과 주소를 같은 형식으로 냄
+- 슬롯의 shipper 설정(`/opt/cr/sN/rsyslog/*-shipper.conf`)이 읽는 파일 `@forward <파일>`, log-server 설정의 받는 포트 `@port <포트>/<프로토콜>`
 
 `interfaces.wiring`이 이 출력을 `Wiring`으로 풉니다.
 
 - 인터페이스의 망: 그 인터페이스 주소 중 하나를 품은 Docker 네트워크. 그래서 kali `eth0`에 함께 붙은 출발지 주소(5.188.10.10, 고객 주소)도 인터넷 구간에 속함
-- 센서: `Args`의 `--af-packet=<브리지>`(`rangehost.SNIFFS`)로 감시하는 망을 찾음
-- 로그를 보내는 컨테이너: rsyslog가 보내는 파일이 그 컨테이너의 마운트 아래에 있음
+- 센서: `Args`의 `--af-packet=<인터페이스>`(`rangehost.SNIFFS`)로 감시하는 망을 찾음. 센서의 인터페이스는 학습자 호스트의 주소로 치지 않음
+- 로그를 보내는 컨테이너: shipper가 읽는 파일이 그 컨테이너의 마운트 아래에 있음
 - `OpenStack.wiring()`은 서비스 이름을 선언된 호스트 이름(`cr-kali`, `board`)으로 바꿔 붙임. 훈련 환경 호스트가 답하지 않으면 `RangeUnavailable`
 
 **그리기.** `topology.graph(learner, wiring)`가 콘솔이 그릴 그래프를 만듭니다.
 
-- 영역(`zones`): 학습자 워게임의 장비가 하나라도 붙은 Docker 네트워크. 망 이름으로 정하지 않고 붙은 장비로 캡션을 정함(`topology.captions`): kali가 있으면 `internet`, 라우터가 있으면 `dmz`, 워게임 DB가 있고 WAF가 없으면 `database`, 나머지는 `web`. 이 순서로 왼쪽에서 오른쪽에 놓음. 한국어는 `strings.html`의 `topology.zone.*`. 인터넷 구간에는 대역을 붙이지 않음
+- 영역(`zones`): 학습자 워게임의 장비가 하나라도 붙은 Docker 네트워크. 망 이름으로 정하지 않고 붙은 장비로 캡션을 정함(`topology.captions`): kali가 있으면 `internet`, 라우터가 있으면 `dmz`, log-server가 있으면 `mgmt`(관제망), 워게임 DB가 있고 WAF가 없으면 `database`, 나머지는 `web`. 이 순서로 왼쪽에서 오른쪽에 놓음. 한국어는 `strings.html`의 `topology.zone.*`. 인터넷 구간에는 대역을 붙이지 않음
 - 스위치: 영역마다 하나(`switch:<망>`). 리눅스 브리지는 L2 스위치. 이름은 붙이지 않음
 - 장비: 브리지에 인터페이스가 있는 컨테이너. 이름은 `topology.learner`의 학습자 이름(`kali`, `router`, `waf`, `board.com`, `board-db`). `kind`로 아이콘을 고름
 - 선(`link`): 장비가 그 브리지에 가진 인터페이스마다 하나. `address`는 그 인터페이스에서 고른 주소(`link_heads`. kali와 라우터 wan은 기본 출발지 대역의 주소, 나머지는 망의 주소)
-- 센서(`sensor:<서비스>`): 감시하는 브리지의 스위치에 `mirror` 선
-- 로그 수집기(`log-server`, `port`는 `5140/udp`): 로그를 보내는 컨테이너마다 `logs` 선
+- 센서(`sensor:<서비스>`): 감시하는 브리지의 스위치에 `mirror` 선, 관제망 스위치에 `link` 선(관제망 주소)
+- 로그 서버(`log-server`, `port`는 `514/tcp`): 관제망의 장비. 관제망에 없는 장비(WAF)의 로그에만 `logs` 선. 센서 로그는 이미 그린 관제망 선으로 감
 - customers: 노드가 아님. kali 노드의 `customers`에 고객 대역의 첫 주소와 나머지 개수
 - 숨김: 다른 워게임의 컨테이너와 네트워크, 관리망, 플랫폼, 컨테이너·브리지의 실제 이름. 실행 중이 아닌 컨테이너는 읽히지 않으므로 그리지 않음. 상태는 표시하지 않음
 
@@ -319,9 +323,10 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
   - 영역은 캡션 순서(인터넷(모의), DMZ, 웹 서버 구간, DB존)로 왼쪽에서 오른쪽. 스위치는 영역 안 한 줄(y 0)에 놓음
   - 두 영역에 붙은 장비(라우터, WAF, board.com)는 두 영역 상자 사이 경계에 같은 줄로 놓고 양쪽 스위치에 선을 하나씩 그음
   - 한 영역에만 붙은 장비: 맨 왼쪽 영역이면 스위치 왼쪽, 맨 오른쪽 영역이면 스위치 오른쪽 같은 줄. 가운데 영역이면 스위치 아래에 좌우로 벌려 놓고 글자는 바깥쪽
-  - 센서는 영역 밖, 감시하는 스위치 바로 아래에 놓고 미러링 점선으로 이음. 감시하는 망은 `--af-packet=`이 가리키는 브리지, 또는 센서가 자기 인터페이스를 가리키면 그 인터페이스가 붙은 망
-  - 로그 수집기는 센서 아래, 첫 경계 장비(라우터)와 같은 x. 로그 선은 직각으로 꺾여 선마다 다른 높이의 길로 가서 로그 수집기 위쪽의 서로 다른 점에 닿음. 다른 장비나 남의 영역을 지나지 않음
-  - 주소 글자는 장비 쪽 끝. 장비 이름은 줄 위, 한 영역에만 붙어 아래에 놓인 장비는 바깥쪽 옆, 센서는 오른쪽
+  - 관제망은 모든 영역 아래 가로 띠. 캡션은 왼쪽. 센서는 그 안, 감시하는 스위치 바로 아래에 놓고 미러링 점선으로 이음. 감시하는 망은 `--af-packet=`이 가리키는 브리지, 또는 센서가 자기 인터페이스를 가리키면 그 인터페이스가 붙은 망
+  - 관제망 스위치는 센서와 같은 줄, 첫 경계 장비(라우터)와 같은 x. 로그 서버는 그 아래. WAF의 로그 선은 직각으로 내려와 로그 서버 옆에 닿고 다른 장비를 지나지 않음
+  - 관제망이 없는 배선(2026-11-15 이전)이면 센서는 영역 밖, 로그 수집기는 센서 아래이고 로그 선은 선마다 다른 높이의 길로 감
+  - 주소 글자는 장비 쪽 끝. 장비 이름은 줄 위, 한 영역에만 붙어 아래에 놓인 장비는 바깥쪽 옆, 관제망의 센서는 아래
 - 아이콘: GNS3 affinity 글리프를 정사각형 틀에 넣은 `host-*.svg`와 스위치 아이콘. 출처와 라이선스는 같은 폴더의 `SOURCES`, Kali 드래곤 로고의 상표 고지는 `host-kali.txt`
 - 읽기 전용: `autoungrabify`, `autounselectify`, 상자 선택 끔. 이동과 확대·축소만 됨
 - 콘솔과의 메시지: 첫 맞춤 뒤 `{map: "drawn"}`, 이후 `{fit}`를 받아 맞출 때마다 `{map: "fitted"}`. `{locate: {node|zone|label}}`에는 사각형, 영역 사각형(`zones`), 글자 사각형(`text`)으로 답함. 같은 origin의 메시지만 받음
@@ -333,14 +338,14 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | 관심사 | 담당 파일 | 알려진 예외 |
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`: 시작 시 `geoip` ingest 파이프라인, Kibana 읽기 전용 역할 `cr_viewer`와 사용자 `cr-viewer` PUT. `platform/entrypoint.sh`: `elastic` 비밀번호를 한 번 생성해 `/data/elastic`에 둠. `deploy/elastic/start.sh`: 그 비밀번호를 Elasticsearch에 넘기고 Kibana 서비스 계정 토큰 생성 |
-| Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`: Kibana API 경로를 앎. 관리용 API, Default space, space 접두어 없는 경로, `?namespaces=` 거부. `GET /kibana/s/<space>/api/spaces/space`에는 SOC space만 담은 응답을 직접 반환. `/auth-check/kibana/`가 준 `cr-viewer` 인증 헤더를 Kibana 요청에 붙임 |
+| Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`: Kibana API 경로를 앎. 관리용 API, Default space, space 접두어 없는 경로, `?namespaces=` 거부. `GET /kibana/s/<space>/api/spaces/space`에는 SOC space만 담은 응답을 직접 반환. `/auth-check/kibana/`가 준 `cr-viewer` 인증 헤더를 Kibana 요청에 붙임. `console/templates/console/blue.html`: Kibana의 localStorage 키를 미리 채움 |
 | 슬롯 배선 읽기 | `platform/range/rangehost.py`(`WIRING`) | 없음. 출력 해석은 `platform/range/interfaces.py`, 학습자 이름과 그래프는 `platform/topology.py` |
-| CRS 설정과 nginx reload | `platform/rules/crs.py` | `entrypoint.sh`: `vm-terminal.sh cr-waf`로 슬롯 WAF 컨테이너 쉘 제공(훈련 환경 호스트로 ssh 후 `sudo docker exec -it sN-waf bash -l`). `range/rangehost.forwarding`: 훈련 환경 호스트에 audit 로그 rsyslog 전달 설정 작성. `deploy/range-host/slot.yaml`: `rangehost.LOGS` 경로로 WAF audit 로그 파일 마운트. 둘 다 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 `platform/tests/test_range_host.py`의 `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it`로 확인. F6의 WAF 창 단계 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`): `wargames.lesson`에서 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 채움. 플랫폼은 터미널을 조작하지 않음 |
+| CRS 설정과 nginx reload | `platform/rules/crs.py` | `entrypoint.sh`: `vm-terminal.sh cr-waf`로 슬롯 WAF 컨테이너 쉘 제공(훈련 환경 호스트로 ssh 후 `sudo docker exec -it sN-waf bash -l`). `range/rangehost.forwarding`: 슬롯의 WAF shipper와 log-server 설정 작성(audit 로그 경로). `deploy/range-host/slot.yaml`: `rangehost.LOGS` 경로로 WAF audit 로그 파일 마운트. 둘 다 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 `platform/tests/test_range_host.py`의 `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it`로 확인. F6의 WAF 창 단계 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`): `wargames.lesson`에서 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 채움. 플랫폼은 터미널을 조작하지 않음 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `declaration.yaml`의 각 센서 호스트(`sensor`는 `cr-edge`, `estate-sensor`는 `cr-range`): `suricata.py`에 넘길 룰 파일과 reload 명령 지정. `platform/range/rangehost.py`: 두 센서 설정(`deploy/range-host/edge-sensor.yaml`, `deploy/suricata/suricata.yaml`)과 compose 서비스 렌더링. `deploy/range-host/slot.sh`: 슬롯과 함께 센서 시작·정지, 초기화 때 센서 로그 파일 다시 열기, 에지 라우터 설정. 이후 기본 룰 적용은 `suricata.py` |
 | 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`: `/var/log/commands.log` 읽기. 터미널 연결 설정에 `cr-kali` 지정, `entrypoint.sh`에서 `vm-terminal.sh cr-kali` 실행. 웹사이트 창(`platform/api/site.py`)은 예외가 아님. 박스 접근은 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(훈련 환경 호스트 ssh 스트림으로 슬롯 Kali 컨테이너 접속)로만 함 |
 | 대상 시스템 데이터 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음. `loot.py`는 `board` 역할 runner로 board 컨테이너 안 `127.0.0.1`에 HTTP 요청. `effect.py`는 `corp-db`에 `docker exec`하는 runner로 접근 |
 
-`platform/tests/test_isolation_seams.py`가 `platform/` 코드를 관심사별 문자열로 훑어, 담당 파일과 알려진 예외 밖에서 그 관심사를 다루는 파일이 있으면 실패합니다. 담당 파일이 없어지면 그 관심사는 검사하지 않습니다.
+`platform/tests/test_isolation_seams.py`가 `platform/` 코드를 관심사별 문자열로 훑어, 담당 파일과 알려진 예외 밖에서 그 관심사를 다루는 파일이 있으면 실패합니다. 담당 파일이 없어지면 담당 파일이 그 관심사를 아는지는 검사하지 않습니다. 다른 파일이 그 관심사를 알면 여전히 실패합니다.
 
 ## 파일
 
@@ -428,7 +433,7 @@ Kali 창은 세션 API의 `kali_terminal` URL(`GET /api/sessions/<id>/`)을 프�
 - WAF: 슬롯 WAF 컨테이너의 root 로그인 셸. 호스트 이름 `waf`. 그래서 레슨의 reload 명령에 `sudo`가 없음(`nginx -t && nginx -s reload`)
 - 두 셸 모두 `TERM=xterm-256color`, `TZ=KST-9`(POSIX 시간대 문자열). WAF 이미지에 tzdata가 없어 `TZ=Asia/Seoul`은 "Asia"라는 이름의 UTC로 읽힘
 - WAF의 nginx와 ModSecurity는 UTC. 수집 파이프라인이 audit 로그의 시간대 없는 `time_stamp`를 UTC로 읽음
-- syslog 송신자 이름은 훈련 환경 호스트의 rsyslog 템플릿에서 슬롯마다 고정(`cr-waf`, `cr-waf-2`). Filebeat는 송신자 이름으로 슬롯을 구분
+- syslog 송신자 이름은 슬롯 log-server의 rsyslog 템플릿에서 슬롯마다 고정(`cr-waf`, `cr-waf-2`). Filebeat는 송신자 이름으로 슬롯을 구분
 
 블루팀 콘솔의 WAF 창은 세션 API의 `waf_terminal` URL(`GET /api/sessions/<id>/`)을 프레임으로 띄웁니다. URL은 `/vm-terminal/waf/?arg=<세션 id>`이고, 같은 `auth_request /terminal-allowed`로 보호합니다. 이 검사는 플랫폼의 `/auth-check/`에 로그인 세션이 있는지 묻고, 훈련 환경 호스트 주소에서 온 요청은 거부합니다. 로그인하지 않았으면 로그인 페이지로 보냅니다.
 
@@ -1919,7 +1924,7 @@ fabric이 만드는 네트워크는 `mgmt`뿐입니다. 슬롯의 `internet`과 
 
 `setup.sh`의 작업:
 
-- `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog` 설치
+- `docker.io`, `docker-compose-v2`, `ethtool` 설치
 - sshd의 `MaxSessions`, `MaxStartups`와 inotify 한도를 올림
 - 플랫폼의 `CR_IMAGE_TAG`로 GHCR에서 이미지를 모두 pull
 - 대상 시스템의 pristine 볼륨을 `/opt/cr/pristine`에 저장
@@ -1944,9 +1949,10 @@ Docker와 메타데이터:
 **훈련 환경 슬롯.** 동시에 띄울 슬롯 수는 `cloud.yaml`의 `compute.slots`(기본 1, 플랫폼에서는 `CR_OPENSTACK_SLOTS`)입니다. `max_sessions`도 이 값입니다.
 
 - 슬롯 N은 훈련 환경 호스트의 docker compose 프로젝트 `sN`. `platform/range/rangehost.py`에서 `deploy/range-host/slot.yaml`과 워게임별 `wargames/<w>/compose.yaml`로 렌더링
-- 컨테이너: `sN-kali`, `sN-edge`, `sN-waf`, `sN-edge-sensor`, `sN-estate-sensor`, `sN-board`, `sN-board-db`, `sN-corp-wp`, `sN-corp-db`
-- 네트워크: `sN_internet`(브리지 `sN-inet`, 172.30.N.0/24), `sN_estate`(브리지 `sN-estate`, 10.30.N.0/24: 에지 .1, WAF .247), `sN_web`(브리지 `sN-web`, 10.30.N+128.0/24: WAF .247, board .59, corp-wp .60), 워게임별 DB용 `<wargame>-default`
-- 모든 네트워크: `internal`, `gateway_mode_ipv4: isolated`, 테넌트 MTU. publish한 포트도 NAT도 없음
+- 컨테이너: `sN-kali`, `sN-edge`, `sN-waf`, `sN-edge-sensor`, `sN-estate-sensor`, `sN-board`, `sN-board-db`, `sN-corp-wp`, `sN-corp-db`, 관제용 `sN-log-server`, `sN-edge-sensor-shipper`, `sN-estate-sensor-shipper`, `sN-waf-shipper`
+- 네트워크: `sN_internet`(브리지 `sN-inet`, 172.30.N.0/24), `sN_estate`(브리지 `sN-estate`, 10.30.N.0/24: 에지 .1, WAF .247), `sN_web`(브리지 `sN-web`, 10.30.N+128.0/24: WAF .247, board .59, corp-wp .60), 워게임별 DB용 `<wargame>-default`, 관제망 `sN_mgmt`(브리지 `sN-mgmt`, 172.29.N.0/24: log-server .10, 에지 센서 .11, estate 센서 .12, WAF shipper .13)
+- 관제망을 뺀 모든 네트워크: `internal`, `gateway_mode_ipv4: isolated`, 테넌트 MTU. publish한 포트도 NAT도 없음
+- 관제망만 밖으로 나가는 길이 있음. log-server가 훈련 환경 호스트의 NAT로 플랫폼 수집기에 보내기 때문. `slot.sh`가 네트워크를 만들기 전에 필터를 넣음: `INPUT`에서 `sN-mgmt`발 전부 drop(호스트에 닿지 않음), `DOCKER-USER`에서 `sN-mgmt` 안끼리와 log-server→수집기 5140/udp만 허용하고 나머지 drop. `down`이 이 룰을 지움
 - 대상 시스템과 센서의 healthcheck: 평소 60초, 시작 구간 1초 간격(`slot.yaml`의 `x-wargames.healthcheck`가 워게임 자체 주기를 덮어씀). 쉬는 슬롯이 바쁜 슬롯에 CPU를 양보하게 하는 값
 - 슬롯마다 `internet` 브리지에 같은 출발지 서브넷 30개가 올라감. 어느 슬롯에서든 경보 출발지가 같은 국가로 분류됨
 - 슬롯 어댑터(`OpenStack.in_slot(n)`)는 자기 compose 프로젝트만 다룸. 역할, runner, 구성도는 모든 슬롯이 같음
@@ -1963,19 +1969,19 @@ Docker와 메타데이터:
 **configure.** `POST /api/range/configure/`(`configure_slot()`)의 처리:
 
 - 수집기 룰 열기와 훈련 환경 호스트의 시간 소스 설정을 병렬로 처리. 둘 다 호스트 세대와 수집기 주소 조합마다 한 번만
-- 슬롯 파일을 훈련 환경 호스트의 `slot.sh up N`에 넘김. compose 파일, 두 센서 설정, Kali와 에지의 주소, rsyslog 설정, 기본 룰, 스크립트 자체
+- 슬롯 파일을 훈련 환경 호스트의 `slot.sh up N`에 넘김. compose 파일, 두 센서 설정, Kali와 에지의 주소, log-server와 shipper의 rsyslog 설정(`rsyslog/`), 관제망 출구(`uplink`), 기본 룰, 스크립트 자체
 
 `slot.sh up`의 처리 순서:
 
 1. 슬롯 디렉터리를 모두 root 소유로 바꿉니다.
-2. WAF 로그 디렉터리 `/var/log/cr/sN/waf`에서 일반 파일 `audit.log`만 남기고 모두 지웁니다. 이 파일이 없으면 remap된 범위의 `www-data`·`adm` 소유(`0644`)로 만듭니다. 컨테이너 안에서 root로 도는 nginx 마스터가 파일을 열고, `syslog`도 읽을 수 있게 하기 위해서입니다.
-3. 컨테이너를 만들고(`up --no-start --pull never`), 한 번도 실행하지 않은 대상 시스템의 빈 볼륨마다 초기 데이터를 복사합니다.
+2. WAF 로그 디렉터리 `/var/log/cr/sN/waf`에서 일반 파일 `audit.log`만 남기고 모두 지웁니다. 이 파일이 없으면 remap된 범위의 `www-data`·`adm` 소유(`0644`)로 만듭니다. 컨테이너 안에서 root로 도는 nginx 마스터가 파일을 열고, WAF shipper가 읽기 전용 마운트로 읽습니다.
+3. 관제망 필터를 넣습니다(위 "관제망만 밖으로"). 그다음 컨테이너를 만들고(`up --no-start --pull never`), 한 번도 실행하지 않은 대상 시스템의 빈 볼륨마다 초기 데이터를 복사합니다.
 4. 컨테이너를 띄웁니다(`up -d --wait`).
 5. Kali에 출발지 주소들과 기본 출발지 게이트웨이로 가는 default route를, 에지의 `wan`에 출발지별 게이트웨이 주소를 붙입니다(`ip -batch`). runc 컨테이너에는 `nsenter`로, gVisor 컨테이너에는 `docker exec --privileged`로 들어갑니다. gVisor는 시작할 때 인터페이스 설정을 자기 네트워크 스택으로 가져가므로 호스트에서 `nsenter`로 바꿔도 반영되지 않습니다. gVisor가 `ip addr flush`를 거부해 Kali의 기존 주소는 하나씩 지웁니다.
 6. WAF가 에지의 estate 주소로 라우팅하게 합니다. 대상 시스템에는 default route가 없고 WAF에만 응답합니다.
 7. 모든 브리지와 그 포트, 컨테이너 인터페이스에서 TSO, GSO, GRO를 끕니다. 센서가 실제로 오간 그대로의 패킷을 보게 합니다.
 8. `DOCKER-USER`에 브리지별로 같은 브리지로의 forward 허용 룰을 넣습니다.
-9. `/etc/rsyslog.d/60-cr-sN.conf`를 설치하고 rsyslog를 재시작합니다. 파일이 바뀌었거나 rsyslog가 돌지 않을 때만 합니다. 슬롯 하나씩 차례로 처리합니다(`flock /run/cr-rsyslog.lock`, 먼저 `systemctl reset-failed`).
+9. 센서 미러링(SPAN)을 겁니다(`mirrored`). 센서의 `sniff` 주소를 지우고, 감시하는 브리지의 다른 포트마다 ingress `tc` `matchall` → `mirred egress mirror dev <센서 포트>`. 센서 포트는 learning, flood를 끄고 ingress를 drop해 받기만 함. 초기화 때 새로 만든 컨테이너의 포트에도 다시 겁니다.
 
 그 뒤 플랫폼이 `rules/suricata.py`로 두 센서에 기본 룰을 넣습니다.
 
@@ -1993,7 +1999,7 @@ Docker와 메타데이터:
 - 마커를 붙이는 프록시가 컨테이너의 메인 프로세스
 - 등록된 이름은 `board.com`과 `corp.com`. 둘 다 WAF의 estate 주소
 
-**센서.** `sN-edge-sensor`와 `sN-estate-sensor`는 digest 고정 `jasonish/suricata`입니다. 호스트 네트워크와 호스트 user namespace(`userns_mode: host`)에서 `NET_ADMIN`, `NET_RAW`, `SYS_NICE`로 돕니다. 센서마다 브리지 하나를 af-packet 스레드 하나로 봅니다.
+**센서.** `sN-edge-sensor`와 `sN-estate-sensor`는 digest 고정 `jasonish/suricata`입니다. 감시하는 브리지에 붙은 슬롯 컨테이너이고 `NET_ADMIN`, `NET_RAW`, `SYS_NICE`로 돕니다(다른 컨테이너처럼 `userns-remap`). 센서마다 인터페이스 둘: 감시용 `sniff`(주소 없음, af-packet 스레드 하나, `--af-packet=sniff`), 관제망의 `mgmt`.
 
 - 에지 센서: 인터넷 구간 `sN-inet`. 설정은 `deploy/range-host/edge-sensor.yaml`. `HOME_NET`은 슬롯의 estate /24
 - estate 센서: `sN-web`에서 board와 corp-wp 주소로 BPF 필터를 걸어 WAF→대상 시스템 구간을 봄. 설정은 `deploy/suricata/suricata.yaml`로 렌더링
@@ -2005,9 +2011,10 @@ Docker와 메타데이터:
 
 - WAF의 호스트 경로 마운트는 이것 하나이고, 마운트 대상도 이 파일뿐
 - 디렉터리가 root 소유라, WAF 안의 root는 호스트 root 프로세스가 따라갈 링크를 그 안에 만들 수 없음(`docs/THREAT-MODEL.md`)
-- `/etc/rsyslog.d/60-cr-sN.conf`(`rangehost.forwarding`)에서 세 파일을 `imfile`로 읽어 플랫폼 `mgmt` 주소의 5140으로 UDP 전달
-- 송신자 이름은 파일별로 고정. 슬롯 1은 `cr-edge`, `cr-range`, `cr-waf`. 슬롯 N은 `cr-edge-N`, `cr-range-N`, `cr-waf-N`. Filebeat의 슬롯 정규식이 이 이름으로 슬롯을 읽음
-- 파일을 `/var/log` 아래에 두는 이유: Ubuntu의 rsyslog는 `syslog` 사용자로 권한을 낮추고, AppArmor 프로파일은 읽을 위치를 그 아래로 묶음
+- 로그 서버 `sN-log-server`(digest 고정 `rsyslog/rsyslog-minimal`)가 관제망에서 514/tcp로 받아 플랫폼 `mgmt` 주소의 5140으로 UDP 전달(`rangehost.forwarding`, `/opt/cr/sN/rsyslog/log-server.conf`)
+- 파일마다 shipper(같은 이미지, `imfile`)가 읽어 log-server로 보냄. 센서 shipper는 센서의 네트워크 네임스페이스를 같이 씀(`network_mode: service:<센서>`). 그래서 센서 로그는 센서 자신의 관제망 인터페이스로 나감. WAF shipper는 관제망의 별도 컨테이너로, WAF의 audit 로그 파일을 읽기 전용으로 마운트. WAF는 관제망에 붙지 않음
+- log-server는 보낸 주소(`$fromhost-ip`)로 송신자 이름과 태그를 정함. 슬롯 1은 `cr-edge`, `cr-range`, `cr-waf`. 슬롯 N은 `cr-edge-N`, `cr-range-N`, `cr-waf-N`. Filebeat의 슬롯 정규식이 이 이름으로 슬롯을 읽음
+- shipper와 log-server는 capability 없음(`cap_drop: ALL`), 마운트는 모두 읽기 전용
 
 **격리.** 학습자가 만지는 컨테이너(Kali, WAF, 에지, 대상 시스템)는 `cap_drop: ALL`에 필요한 capability만 더해 돌립니다.
 
@@ -2021,12 +2028,13 @@ Docker와 메타데이터:
 
 - 모두 `no-new-privileges`, Docker 기본 seccomp·AppArmor 프로파일, 메모리·pids 한도
 - privileged 컨테이너, Docker 소켓 마운트, 호스트 network·pid·ipc 네임스페이스 공유는 없음. 호스트 경로 마운트는 WAF의 audit 로그 파일 하나
-- dockerd는 `userns-remap`. 컨테이너 안의 root는 호스트에서 권한 없는 사용자. 호스트 user namespace를 쓰는 것은 센서뿐
+- dockerd는 `userns-remap`. 컨테이너 안의 root는 호스트에서 권한 없는 사용자. 호스트 user namespace를 쓰는 컨테이너는 없음
 - 공격 박스 Kali는 gVisor(`runtime: runsc`) 위에서 돎. 학습자의 Kali root 셸은 호스트 커널이 아니라 gVisor 커널을 만남
 - WAF는 runc. gVisor에서는 8슬롯 acceptance 부하 중 레슨의 방어 설정 변경(nginx reload)에서 샌드박스가 종료됨(`containerManager.WaitPID failed: EOF`, 세 번 중 세 번, 2026-11-15)
 - 대상 시스템(`board`, `board-db`, `corp-wp`, `corp-db`)은 runc. gVisor에서도 동작했지만 컨테이너마다 vCPU 반 정도를 계속 써서, 6 vCPU 훈련 환경 호스트에서 슬롯 초기화가 1분 미만에서 6~8분으로 늘고 8슬롯 acceptance가 끝나지 않음(2026-11-15 측정)
 - gVisor 네트워크 스택은 Docker 내장 DNS(127.0.0.11)에 닿지 않음. 처음 runsc로 돌렸을 때 board는 `Unknown server host 'board-db'`로 종료됨. 그래서 워게임 백엔드 네트워크마다 고정 /28(슬롯 N은 10.40.N+1.0/28, 10.40.N+1.16/28, `rangehost.backend`)을 주고, 서비스마다 고정 주소를 주고, 서로의 이름을 `extra_hosts`로 `/etc/hosts`에 적음. 슬롯 안에서 DNS로 이름을 찾는 곳은 없음
-- 센서(호스트 네트워크에서 af-packet으로 브리지를 읽음)와 에지(커널 nftables와 sysctl로 포워딩·필터링)도 runc. 둘 다 학습자 셸이 없음
+- 센서(브리지에 붙은 `sniff`에서 af-packet으로 읽음), 로그 서버와 shipper, 에지(커널 nftables와 sysctl로 포워딩·필터링)도 runc. 모두 학습자 셸이 없음
+- 학습자가 만지는 컨테이너는 관제망에 붙지 않음
 - 렌더링한 슬롯 compose 파일이 이 중 하나라도 어기면 `platform/tests/test_containment.py`에서 `bin/verify` 실패
 - 실환경 검사는 `test/test_range_isolation.py`. 컨테이너를 탈출하면 어디까지 닿는지는 `docs/THREAT-MODEL.md`
 
@@ -2034,15 +2042,16 @@ Docker와 메타데이터:
 
 - `reset_in_place()`에서 `slot.sh reset N` 실행
 - Kali와 WAF는 이미지에서 새로 만듦. 동시에 대상 시스템은 볼륨째 지우고 초기 데이터로 다시 띄움
-- 에지의 neighbour 테이블을 비우고, 슬롯 로그 파일을 그 자리에서 비우고, 두 센서가 로그 파일을 다시 열게 함
+- 에지의 neighbour 테이블을 비우고, 슬롯 로그 파일을 그 자리에서 비우고, 두 센서가 로그 파일을 다시 열게 함. shipper는 비워진 파일을 처음부터 다시 읽음(`reopenOnTruncate`)
+- 새로 만든 컨테이너의 브리지 포트에 미러링을 다시 검
 - 그 뒤 플랫폼이 두 센서에 기본 룰을 다시 넣음
-- 에지와 센서는 내리지 않음
+- 에지, 센서, 로그 서버, shipper는 내리지 않음
 - 슬롯 파일이 훈련 환경 호스트에서 사라졌으면(`/opt/cr/sN/compose.yaml` 없음) 초기화 대신 슬롯을 configure
 - 앞 세션에서 수정한 룰이나 심어 둔 데이터는 다음 세션에 남지 않음
 
 슬롯 내리기:
 
-- `POST /api/range/slot/rebuild/`(`rebuild_slot()`): `slot.sh down N`. `compose down -v`를 하고 rsyslog 파일, 슬롯 파일, 로그를 지움. 다시 올리는 것은 `POST /api/range/configure/`
+- `POST /api/range/slot/rebuild/`(`rebuild_slot()`): `slot.sh down N`. `compose down -v`를 하고 관제망 필터, 슬롯 파일, 로그를 지움. 다시 올리는 것은 `POST /api/range/configure/`
 - `DELETE /api/range/slot/`: 모든 슬롯을 내림. `?slot` 없이 부르면 훈련 환경 호스트와 그 `mgmt` 포트까지 지움
 
 모든 세션은 같은 초기 데이터에서 시작하지만 비밀 값은 새로 만듭니다.
@@ -2110,22 +2119,23 @@ Docker와 메타데이터:
        v
      edge: nftables router; its wan holds each subnet's gateway address
            and routes on without NAT, so country sources survive
-     edge-sensor (Suricata) on sN-inet: detects
+     edge-sensor (Suricata) on sN-inet (sniff, tc mirred): detects
        |
        v
-   sN_estate (bridge sN-estate, 10.30.N.0/24)
+   sN_estate (bridge sN-estate, 10.30.N.0/24): edge lan, waf
      waf: nginx + ModSecurity v3 + CRS
           (SecRuleEngine On; the learner tunes CRS to block)
        |
        v
+   sN_web (bridge sN-web, 10.30.N+128.0/24): waf, board, corp-wp
      board (+ board-db on board-default), corp-wp (+ corp-db on corp-default)
-     estate-sensor (Suricata) on sN-estate: the WAF-to-target leg
+     estate-sensor (Suricata) on sN-web (sniff, tc mirred): the WAF-to-target leg
 
- Evidence (rsyslog imfile on the range host, UDP 5140 over mgmt):
-   edge-sensor eve.json ------------> Filebeat --+
-   waf ModSecurity audit log --------------------+
-   estate-sensor eve.json -----------------------+
-                                                 v
+ Evidence (sN_mgmt 관제망 172.29.N.0/24, then the range host's NAT and mgmt):
+   edge-sensor eve.json ---- shipper --+
+   estate-sensor eve.json -- shipper --+-- 514/tcp --> log-server -- 5140/udp --> Filebeat
+   waf audit log ------- waf-shipper --+                                             |
+                                                                                     v
    Elasticsearch --> platform ingest --> scoring
    Elasticsearch ----------------> Kibana --> blue team
 ```

@@ -27,8 +27,8 @@ bring-up was fixed and rewritten. Later the same day the user moved the
 product to a new OpenStack cloud (`docs/DECISIONS.md` 2026-10-20, "The product
 moved to a new OpenStack cloud"). The old cloud is in other use and is not
 touched. The platform VM is now 192.168.2.247 (Keystone 10.0.0.10, reached
-through the user's VPN), two slots from 2026-10-21 and four since 2026-11-13
-(`compute.slots: 4`). On 2026-10-21 the docker substrate was
+through the user's VPN), two slots from 2026-10-21, four from 2026-11-13 and eight since 2026-11-15
+(`compute.slots: 8`). On 2026-10-21 the docker substrate was
 removed from the code (the removal commit, then the documents) and
 proven live on the new cloud.
 On 2026-11-13 the code's names moved from `fsl` to `cr` and the live cloud
@@ -785,8 +785,8 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   Suricata sensors and the wargames' GHCR containers) through `/configure/`,
   reaching the range host over ssh on `mgmt` (backlog 2). Until 2026-11-13
   each slot was four VMs (the OPNsense edge, the WAF, Kali and
-  `cr-wargame-host`) built from golden images. Four slots on the current cloud
-  (`compute.slots: 4`); two from 2026-10-21.
+  `cr-wargame-host`) built from golden images. Eight slots on the current cloud
+  (`compute.slots: 8`) since 2026-11-15; four from 2026-11-13, two from 2026-10-21.
 
 ## Backlog
 

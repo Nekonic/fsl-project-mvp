@@ -69,8 +69,10 @@ Django session; the terminals, `/kibana/` and port 8002 ask the same session
 through nginx's `auth_request`. The first start makes `admin` with the password
 `123456`, and nothing makes anyone change it, so the password stops nobody who
 knows the default. The platform stands on the management network only,
-and no slot container has a route to it: every slot network is internal and its
-bridge carries no address of the range host. If a container did reach it, the
+and no slot container has a route to it: every slot network but the 관제망 is
+internal and its bridge carries no address of the range host. The 관제망 lets
+out one path, the log server's 5140/udp to the collector, and no learner-facing
+container is on it. If a container did reach it, the
 attacker's shell could call `POST /api/rules/apply/` and rewrite the detector
 that scores the attacker. The API therefore also refuses any request from the
 address of a host in the range: the range host's management address and every
@@ -109,7 +111,7 @@ script from the API:
 - To draw it, the platform runs one read-only script on the range host over
   the ssh key it already holds for `sudo docker`: `docker network inspect`,
   `docker inspect`, `nsenter -n ip -o -4 addr` and a `sed` of the slot's
-  rsyslog file. The platform container holds no Docker socket and its image
+  shipper and log-server rsyslog files. The platform container holds no Docker socket and its image
   no Docker client (until 2026-11-15 it held the platform host's socket, and
   the GNS3 server held it too, with `pid: host`, `CAP_NET_ADMIN` and
   `/dev/net/tun`).
@@ -123,7 +125,8 @@ script from the API:
   address, the syslog collector. chrony accepts that subnet (`allow`) and has
   no `cmdallow`, so its command port stays on loopback.
 - The slots' containers reach neither: their networks have no route off the
-  range host.
+  range host, except the log server's filtered 5140/udp to the collector over
+  the 관제망.
 
 **Kali runs on gVisor; the WAF, the targets, the edge and the sensors share
 the range host's kernel.** The range is one VM, `cr-range`, and each slot is a Docker
@@ -195,8 +198,9 @@ What stands between them (`deploy/range-host/slot.yaml`,
   any host directory mounted into it, because the directory belongs to the
   remapped range. A host process that later opens a name in that directory
   follows the link: `slot.sh reset` (root) emptied
-  `/var/log/cr/sN/waf/audit.log` with `: >`, and rsyslog (`syslog`, in `adm`)
-  read the same name with `imfile`, which reads a symlinked file as if it
+  `/var/log/cr/sN/waf/audit.log` with `: >`, and the range host's rsyslog
+  (`syslog`, in `adm`) read the same name with `imfile` (since 2026-11-15 the
+  slot's WAF shipper reads it, from its own read-only mount of the file), which reads a symlinked file as if it
   were the file ("For symlink-ed files this does **not** contain name of the
   actual file", rsyslog's imfile documentation, Metadata). A link to
   `/etc/passwd` would have had the next reset truncate it; a link to another
@@ -212,18 +216,26 @@ What stands between them (`deploy/range-host/slot.yaml`,
   learner's boxes (`operator_log` reading Kali's `/var/log/commands.log`, the
   loot and effect paths) run inside the container through `docker exec`, so a
   link there resolves in the container's own filesystem.
-- Every slot network is internal and its bridge has no host address
-  (`gateway_mode_ipv4` isolated). Nothing is published and nothing is NATed, so
-  a container has no route out and no address of the range host to reach.
+- Every slot network but the 관제망 is internal and its bridge has no host
+  address (`gateway_mode_ipv4` isolated). Nothing is published. The 관제망
+  (`sN_mgmt`) is NATed so the log server can reach the platform's collector;
+  `slot.sh` installs its filter before compose creates it: INPUT drops
+  everything from `sN-mgmt`, and DOCKER-USER passes only `sN-mgmt` to itself
+  and the log server's address to the collector's 5140/udp. No learner-facing
+  container is on the 관제망; it holds the sensors, the shippers and the log
+  server, none of which a learner gets a shell in.
 - The range host's `mgmt` port is in `cr-mgmt`, which only the platform
   reaches. While it sets itself up it has a second port, on the platform's
   network, in `cr-egress`, which admits nothing inbound; the range host uses it
   to pull images. Once the setup reports ready, the platform detaches that
   port, so a set-up range host has no way to the Internet and no DNS
   resolver.
-- The two Suricata sensors of each slot run on the host network with
-  `NET_ADMIN`, `NET_RAW` and `SYS_NICE` and no user namespace remap. No learner
-  is given a shell in them.
+- The two Suricata sensors of each slot are slot containers on the bridge
+  they watch (an interface with no address, fed by `tc mirred`) and on the
+  관제망, with `NET_ADMIN`, `NET_RAW` and `SYS_NICE` under the same user
+  namespace remap as every other container. The log server and the shippers
+  hold no capability and mount only read-only files. No learner is given a
+  shell in any of them.
 
 What a container escape reaches: with no host path a root operation follows
 on the learner's say, leaving Kali takes a bug in gVisor and then a host kernel
@@ -245,7 +257,7 @@ What is tested:
   keeping default capabilities, gaining one not listed, missing
   `no-new-privileges` or a limit, leaving a default profile, sharing a host
   namespace, publishing a port, holding the Docker socket or mounting a host
-  path beyond its own log file; a slot network not internal or with a host address;
+  path beyond its own log file; a slot network other than the 관제망 not internal or with a host address;
   two slots sharing a subnet or a name; dockerd without `userns-remap`.
 - `test/test_range_isolation.py` checks a live slot from Kali, the WAF and the
   board: none reaches the range host's sshd, the platform, the Internet, the

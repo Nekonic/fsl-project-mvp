@@ -35,7 +35,7 @@ substrate was removed on 2026-10-21, so a laptop with Docker cannot run it.
 
 `bin/verify --fast` skips the acceptance suite. `bin/verify --changed [BASE]`
 runs only the unit tests the change reaches and lists the acceptance modules it
-reaches. Add `--live` to run those modules too. The suite collects 87 tests;
+reaches. Add `--live` to run those modules too. The suite collects 96 tests;
 `test_lesson.py`'s F1 map test runs once per course and skips for a course that
 does not start with F1 (`c2` starts with F4), so a full run reports one skip.
 
