@@ -8469,4 +8469,23 @@ What changed:
 - `slot.sh up` now removes containers the slot no longer declares and the
   mirror on `sN-inet`, so a slot re-renders in place.
 
-Parity against the two-sensor slots (same red-team files): PARITY_PENDING.
+Parity against the two-sensor slots (same red-team files): the board's
+verdicts are the same, TP 12, FP 0, FN 0, TN 6, every TP corroborated;
+Suricata alerts 5,268 before and 5,266 after (sid 9000001 5,255 -> 5,253,
+9000002 1, 9000003 6, 9000004 6); HTTP events on the DMZ leg 13,692 (seen
+on `sN-inet` before) and 13,691, on the web leg 60 and 60; corp TP 0, FP 0,
+FN 3, TN 4 both times. No alert was seen only on `sN-inet` beyond run-to-run
+variance. kernel_drops 0 (568,800 packets on `s1-sensor`). RAM per slot about
+1,146 MiB before and 1,126 MiB after (host used 10,452 -> 10,076 MiB, eight
+slots).
+
+Two shipping faults were found on the way, both at reset, where the WAF and
+its shipper are recreated: started at the top of `audit.log`, the new shipper
+sent the closed session's ~9,400 WAF records a second time (session 2201), so
+the shipper starts at the end of its file (`freshStartTail`); then, started
+at the end of a full log that `slot.sh` emptied afterwards, it read nothing
+the new WAF wrote (session 2222: Suricata's alerts and no ModSecurity record),
+so `reset` now empties `audit.log` before it recreates the WAF and its
+shipper. Full `bin/verify` on the VM after both: 550 s, acceptance 95 passed,
+0 failed, 1 skipped in 488 s across 12 processes, unit and API 833 + 830,
+`core_loc` 585, `dependencies` 6, `services` 4.

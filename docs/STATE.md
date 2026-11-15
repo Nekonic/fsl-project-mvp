@@ -794,10 +794,12 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   each slot was four VMs (the OPNsense edge, the WAF, Kali and
   `cr-wargame-host`) built from golden images. Eight slots on the current cloud
   (`compute.slots: 8`) since 2026-11-15; four from 2026-11-13, two from 2026-10-21.
-- **Monitoring per slot** (2026-11-16): the two sensors stand on the bridges
-  they watch (`tc mirred` SPAN) and on the slot's 관제망 `sN_mgmt`, where a log
-  server takes the sensors' and the WAF's logs and forwards them to the
-  platform collector; the live map draws the 관제망.
+- **Monitoring per slot** (2026-11-16): one Suricata sensor per slot sniffs
+  both legs of the WAF (`dmz` on `sN-estate`, `web` on `sN-web`, `tc mirred`
+  SPAN, no address) and stands on the slot's 관제망 `sN_mgmt`, where a log
+  server takes the sensor's and the WAF's logs (each shipped from its own
+  network namespace) and forwards them to the platform collector; no sensor on
+  `sN-inet`; the live map draws the 관제망.
 
 ## Backlog
 

@@ -15,6 +15,20 @@ Internet.
 
 ## Where things stand
 
+- 2026-11-16, one sensor per slot (`docs/DECISIONS.md` "One sensor per slot
+  on both legs of the WAF"): one Suricata container sniffs `dmz` on
+  `sN-estate` and `web` on `sN-web` and stands on the 관제망 at .11; the WAF
+  has a 관제망 interface (.12) and ships its own audit log from its network
+  namespace; the edge router and `sN-inet` carry no sensor. Same verdicts as
+  the two-sensor slots on board and corp, kernel_drops 0, RAM per slot about
+  1,146 -> 1,126 MiB. A reset now empties `audit.log` before it recreates the
+  WAF and its shipper (a shipper started at the end of a full log missed every
+  later record). Live: range host 10.31.0.223, slots re-rendered in place,
+  the platform VM at this commit. Full `bin/verify` on the VM: 550 s,
+  acceptance 95 passed, 0 failed, 1 skipped in 488 s across 12 processes,
+  unit and API 833 + 830, `core_loc` 585. A map redraw (both targets, host
+  parts at the device end, the IDS under the DMZ switch) is being reviewed
+  with the user as local renders on the branch `map-redraw`, not deployed.
 - 2026-11-16, fake-risk measures removed (`docs/DECISIONS.md` "gVisor and
   Elasticsearch security removed"): no gVisor (every slot container on
   Docker's default runtime, Kali's origin rewrite and the targets' Docker DNS
