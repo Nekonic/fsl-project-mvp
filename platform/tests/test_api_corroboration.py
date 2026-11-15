@@ -182,3 +182,16 @@ def test_a_terminal_window_is_not_judged_by_the_case_file_it_happens_to_be_named
         "was scored by the case file as it is now - a file that no longer "
         "parses took the score down with it"
     )
+
+
+def test_a_request_nginx_refused_is_ingested_and_listed_with_its_method_and_path(client, session_id):
+    refused = ("es9", {"event": {"module": "nginx"}, "time": (T0 + timedelta(seconds=1)).isoformat(),
+                       "client_ip": "5.188.10.10", "status": 400,
+                       "request": "GET /static/..%2F..%2Fetc/passwd HTTP/1.1"})
+    with patch("api.views.elastic.fetch", return_value=([refused], None)):
+        ingested = client.post_json(f"/api/sessions/{session_id}/ingest/")
+    listed = client.get(f"/api/sessions/{session_id}/detections/").json()
+
+    assert ingested.status_code == 200, ingested.content
+    assert [(d["source"], d["method"], d["path"]) for d in listed] == [
+        ("nginx", "GET", "/static/..%2F..%2Fetc/passwd")]

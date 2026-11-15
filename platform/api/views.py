@@ -147,6 +147,9 @@ def _request_of(raw):
         return (http.get("http_method") or "", http.get("url") or "",
                 raw.get("dest_ip") or "", raw.get("dest_port"))
     request = raw.get("request") or {}
+    if isinstance(request, str):
+        method, _, line = request.partition(" ")
+        return method, line.rpartition(" ")[0] or line, "", None
     return (request.get("method") or "", request.get("uri") or "",
             raw.get("host_ip") or "", raw.get("host_port"))
 

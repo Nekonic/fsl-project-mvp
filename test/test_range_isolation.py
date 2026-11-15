@@ -275,6 +275,6 @@ def test_a_link_planted_in_the_waf_neither_reaches_a_host_file_at_reset_nor_ship
     assert started.strip() != waf_before, f"slot {slot}'s WAF was not recreated, so no reset ran"
     assert kept.strip() == canary, f"the reset wrote through a link the learner planted: {CANARY} is now {kept!r}"
     entries = listed.strip().splitlines()
-    assert entries[0].startswith("audit.log f ") and entries[1:] == ["root 755"], (
-        f"the WAF's log directory on the range host holds more than its own log file: {listed}")
+    assert sorted(entry.rsplit(" ", 1)[0] for entry in entries[:-1]) == ["audit.log f", "refused.log f"] and (
+        entries[-1] == "root 755"), f"the WAF's log directory on the range host holds more than its own log files: {listed}"
     assert not _shipped(f"canary-{token}"), "a host file reached Elasticsearch after the reset"
