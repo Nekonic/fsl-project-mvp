@@ -60,6 +60,9 @@ def test_the_platform_makes_the_password_once_mode_0600_before_elasticsearch_sta
 
     assert 'install -d -o "$ELASTIC_UID" -g 0 -m 700 "$ELASTIC_KEPT"' in start
     assert "umask 077" in start and '[ ! -s "$ELASTIC_KEPT/elastic-password" ]' in start
+    assert 'install -o cr -m 600 "$ELASTIC_KEPT/elastic-password" /data/elastic-password' in start, (
+        "manage.py run by docker exec gets no environment the entrypoint exported, so it reads a copy cr owns"
+    )
     assert elastic["depends_on"] == {"platform": {"condition": "service_healthy"}}
     assert composed.services()["platform"]["healthcheck"]["test"][-1] == "/data/elastic/elastic-password"
     assert "depends_on" not in composed.services()["platform"]
