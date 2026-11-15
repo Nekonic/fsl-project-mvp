@@ -7917,6 +7917,50 @@ labels, or a file), NetBox (three more services), draw.io and NeXt UI
 (a document look, or unmaintained since 2017), keeping GNS3 with built-in
 nodes (still placeholders).
 
+## 2026-11-15 — The live map is laid out by the platform: zone columns, boundary devices, sensors below their bridge
+
+The user rejected the live map's drawing ("야 저 구성도가 말이 된다
+생각해?"): the sensors stood inside the internet and DMZ zone boxes, the log
+arrows ran diagonally through devices and zones, board.com sat deep in the
+DMZ with a long line reaching into the DB zone. The data was right; only the
+layout changed. A follow-up ruling ("실제랑 같아야 그게 말이 되는거지")
+limits the work to layout: nothing is drawn that has no counterpart in the
+running slot, so no monitoring-network area, no cloud symbol for the internet
+bridge (it is a real bridge), and no single bundled log edge.
+
+- **Positions are computed in `topology.laid_out` and sent with the graph**
+  (node `x`, `y`, `label` side; zone `box`; a log edge's `route` and `end`),
+  so the layout rules are tested from the graph and the page only draws them
+  with cytoscape's `preset` layout. Positions depend on membership alone, so
+  the same wiring looks the same on every read and every slot.
+- **Zone columns in traffic order**: the caption order (internet, dmz, web,
+  database) left to right, every bridge on one row. A device on two zones
+  stands in the gap between their boxes on that row, one link into each.
+  A device on one zone stands on the row beside its bridge in the first or
+  last zone (kali left, board-db right) and fans out below the bridge in a
+  middle zone, its name on the outer side.
+- **Sensors outside every zone**: a sensor is on no network (host network),
+  so it stands below all zones, straight under the bridge it sniffs, joined
+  by the dashed 미러링 edge whose label sits between the zone and the sensor.
+  The bridge is the one `--af-packet=` names, or, for a sensor that runs in
+  its own network namespace and names its own interface, the network that
+  interface is on; a sensor moved into a slot container on the bridge needs
+  no layout change.
+- **Log edges at right angles**: the log server stands below the sensors at
+  the first boundary device's x (the router). Each log edge drops from its
+  source, runs on its own lane and enters a separate point on the log
+  server's top, so the edges stay separate and none crosses a device or
+  another zone.
+- **Caption**: the internet zone reads 인터넷(모의), and the coach lines that
+  named it follow.
+- **Both wirings tested**: today's (board on `sN-estate` and its database
+  bridge) and the coming WAF backend (`sN-estate` with only the edge `lan` and
+  the WAF, `sN-web` with the WAF, board and corp) render with no special case;
+  five tests hold the column order, sensors outside zones, devices inside only
+  their own zone or on the boundary, log routes, and slot-independence.
+  A rendering of both fixtures at 1600x1000 compared every label's box with
+  every other label, icon, line and zone border and found no overlap.
+
 ## 2026-11-15 — Every surface signs in; Elasticsearch, the project password, ingress and the slots' kernel hardened
 
 The user: "보안조치 싹다 하고 … 기능 안되는거 없어야한다", "초기 비밀번호는

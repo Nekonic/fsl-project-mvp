@@ -99,10 +99,10 @@ def slot_shape():
     ), sensors=())
 
 
-def slot_adapter(without=(), output=None):
+def slot_adapter(without=(), output=None, slot=1):
     adapter = object.__new__(openstack.OpenStack)
     adapter.declared = declared.read()
-    adapter.slot = 1
+    adapter.slot = slot
     adapter.build = openstack.Build(source=str(ROOT), inside={"estate": "10.30.0.0/16", "mgmt": "10.31.0.0/24"},
                                     image_tag="dev", mtu=1442)
     fake = FakeSlot(without, output)
@@ -121,8 +121,8 @@ def board_learner():
     return topology.learner(stack, "board", stack.roles["attacker"], ("175.192.0.0/24", "73.0.0.0/24"))
 
 
-def board_map(without=(), output=None):
-    adapter, _ = slot_adapter(without, output)
+def board_map(without=(), output=None, slot=1):
+    adapter, _ = slot_adapter(without, output, slot)
     return topology.graph(board_learner(), adapter.wiring())
 
 
@@ -134,6 +134,28 @@ def fronted_by_the_waf():
     return moved.replace("5: eth0@if13    inet 10.30.0.177/24 brd 10.30.0.255 scope global eth0",
                          "5: eth0@if13    inet 10.30.0.177/24 brd 10.30.0.255 scope global eth0\n"
                          "12: eth1@if20    inet 10.40.1.2/24 brd 10.40.1.255 scope global eth1")
+
+
+def behind_one_web_bridge():
+    moved = said().replace("@network s1_board-default", "@network s1_web 9e1c0d2e3a5b6c7d8e9f00112233445566778899aabbccddeeff001122334455 s1-web 10.32.0.0/24 \n@network s1_board-default")
+    for mac, old, new in (("b8", "10.30.0.184/24 brd 10.30.0.255 scope global eth1", "10.32.0.59/24 brd 10.32.0.255 scope global eth1"),
+                          ("b9", "10.30.0.185/24 brd 10.30.0.255 scope global eth1", "10.32.0.60/24 brd 10.32.0.255 scope global eth1")):
+        moved = moved.replace(f"@leg s1_estate 02:42:0a:1e:00:{mac}", f"@leg s1_web 02:42:0a:1e:00:{mac}").replace(old, new)
+    moved = moved.replace("--af-packet=s1-estate", "--af-packet=s1-web")
+    return moved.replace("5: eth0@if13    inet 10.30.0.177/24 brd 10.30.0.255 scope global eth0",
+                         "5: eth0@if13    inet 10.30.0.177/24 brd 10.30.0.255 scope global eth0\n"
+                         "12: eth1@if20    inet 10.32.0.2/24 brd 10.32.0.255 scope global eth1")
+
+
+def sensor_attached_to_the_web_bridge():
+    return behind_one_web_bridge().replace(
+        "@container estate-sensor host\n@args -c /etc/suricata/suricata.yaml --af-packet=s1-web\n"
+        "@mount /var/log/cr/s1/estate\n@leg host \n",
+        "@container estate-sensor s1_web\n@args -c /etc/suricata/suricata.yaml --af-packet=eth0\n"
+        "@mount /var/log/cr/s1/estate\n@leg s1_web 02:42:0a:20:00:05\n"
+        "2: eth0@if30: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1442 qdisc noqueue state UP mode DEFAULT group default"
+        " \\    link/ether 02:42:0a:20:00:05 brd ff:ff:ff:ff:ff:ff link-netnsid 0\n"
+        "2: eth0@if30    inet 10.32.0.5/24 brd 10.32.0.255 scope global eth0\n")
 
 
 def links(drawn):
@@ -213,6 +235,15 @@ def test_a_sensor_hangs_off_the_bridge_it_sniffs_and_the_logs_go_to_the_collecto
     assert next(node for node in drawn["nodes"] if node["id"] == "log-server")["port"] == "5140/udp"
 
 
+def test_a_sensor_hangs_off_the_bridge_it_sniffs_by_name_or_by_its_own_interface_on_it():
+    def mirrored(output):
+        return {(edge["source"], edge["target"]) for edge in board_map(output=output)["edges"]
+                if edge["kind"] == "mirror"}
+
+    assert ("sensor:estate-sensor", "switch:web") in mirrored(behind_one_web_bridge())
+    assert mirrored(sensor_attached_to_the_web_bridge()) == mirrored(behind_one_web_bridge())
+
+
 def test_customers_are_addresses_on_kali_and_not_a_device():
     drawn = board_map()
     kali = next(node for node in drawn["nodes"] if node["id"] == "kali")
@@ -235,6 +266,86 @@ def test_a_stopped_container_is_not_drawn():
 
     assert "waf" not in {node["id"] for node in drawn["nodes"]}
     assert ("waf", "log-server") not in {(edge["source"], edge["target"]) for edge in drawn["edges"]}
+
+
+WIRINGS = pytest.mark.parametrize("output", [None, behind_one_web_bridge()], ids=["estate-shared", "web-bridge"])
+
+
+def inside(node, box):
+    return box[0] < node["x"] < box[2] and box[1] < node["y"] < box[3]
+
+
+def nodes_of(drawn):
+    return {node["id"]: node for node in drawn["nodes"]}
+
+
+@WIRINGS
+def test_zones_stand_left_to_right_in_the_order_traffic_reaches_them(output):
+    zones = board_map(output=output)["zones"]
+    order = [zone["caption"] for zone in sorted(zones, key=lambda zone: zone["box"][0])]
+
+    assert order == sorted(order, key=topology.CAPTIONS.index)
+    assert all(one["box"][2] < other["box"][0] for one, other in zip(zones, zones[1:]))
+
+
+@WIRINGS
+def test_a_sensor_stands_outside_every_zone_straight_below_the_bridge_it_mirrors(output):
+    drawn = board_map(output=output)
+    placed = nodes_of(drawn)
+    mirrors = [edge for edge in drawn["edges"] if edge["kind"] == "mirror"]
+
+    assert mirrors
+    for edge in mirrors:
+        sensor, bridge = placed[edge["source"]], placed[edge["target"]]
+        assert not any(inside(sensor, zone["box"]) for zone in drawn["zones"]), sensor
+        assert sensor["x"] == bridge["x"] and sensor["y"] > max(zone["box"][3] for zone in drawn["zones"])
+
+
+@WIRINGS
+def test_a_device_stands_inside_its_only_zone_or_on_the_boundary_between_its_zones(output):
+    drawn = board_map(output=output)
+    boxes = {zone["id"]: zone["box"] for zone in drawn["zones"]}
+
+    for node in drawn["nodes"]:
+        held = node.get("zones") or ([node["zone"]] if node["kind"] == "switch" else [])
+        within = {zone for zone, box in boxes.items() if inside(node, box)}
+        assert within == (set(held) if len(held) == 1 else set()), node
+        if len(held) > 1:
+            assert boxes[held[0]][2] < node["x"] < boxes[held[-1]][0], node
+
+
+@WIRINGS
+def test_a_log_edge_turns_at_right_angles_and_crosses_no_other_device_or_zone(output):
+    drawn = board_map(output=output)
+    placed = nodes_of(drawn)
+    half = topology.ICON_HALF
+
+    for edge in (edge for edge in drawn["edges"] if edge["kind"] == "logs"):
+        source, target = placed[edge["source"]], placed[edge["target"]]
+        points = [(source["x"], source["y"]), *map(tuple, edge["route"]),
+                  (target["x"] + edge["end"][0], target["y"] + edge["end"][1])]
+        own = [zone["box"] for zone in drawn["zones"] if inside(source, zone["box"])]
+        for (x1, y1), (x2, y2) in zip(points, points[1:]):
+            assert x1 == x2 or y1 == y2, edge
+            for node in drawn["nodes"]:
+                if node["id"] not in (source["id"], target["id"]):
+                    assert not (min(x1, x2) < node["x"] + half and node["x"] - half < max(x1, x2)
+                                and min(y1, y2) < node["y"] + half and node["y"] - half < max(y1, y2)), (edge, node)
+            for zone in drawn["zones"]:
+                box = zone["box"]
+                if box not in own:
+                    assert not (min(x1, x2) < box[2] and box[0] < max(x1, x2)
+                                and min(y1, y2) < box[3] and box[1] < max(y1, y2)), (edge, zone["id"])
+
+
+def test_the_same_wiring_is_laid_out_the_same_on_every_slot_and_every_read():
+    def where(drawn):
+        return ({node["id"]: (node["x"], node["y"]) for node in drawn["nodes"]},
+                {zone["caption"]: zone["box"] for zone in drawn["zones"]})
+
+    second = said().replace("s1", "s2").replace("10.30.0.", "10.30.1.")
+
+    assert where(board_map()) == where(board_map()) == where(board_map(output=second, slot=2))
 
 
 @pytest.mark.django_db
