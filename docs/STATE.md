@@ -1546,6 +1546,15 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       no longer freezes a step; one Next/Skip button, a lesson end that
       waits, scoring internals and repeated callouts removed. Checked live
       with Playwright on the deployed range.
+- [x] 2026-11-15: the answer-blind walk of round 21 (`docs/DECISIONS.md`
+      "Answer-blind walk round 21"): scenario 1.1's final check waits for
+      unjudged items and the judge pane keeps re-reading after an attack
+      verdict; c1 L3's and-not query must drop the waf's leg; c2's DevTools
+      answers need the row; a rule whose sid the platform cannot read is
+      refused; Korean result labels, no stale `no_benign`, an already closed
+      session reads as closed, Korean time in the WAF shell, lessons open on
+      the console. Checked live with Playwright and the API; full
+      `bin/verify` green.
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 

@@ -5,7 +5,7 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-15, round 20 deployed (the range is one range host, `cr-range`, running four
+Updated: 2026-11-15, round 21 deployed (the range is one range host, `cr-range`, running four
 slots as compose projects; on `dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
@@ -154,6 +154,32 @@ Internet.
   acceptance 91 passed, 0 failed, 0 errors, 1 skipped in 726 s across 14
   processes; unit and API 1562 passed (896 + 666); ratchet no regression
   (`core_loc` 584, `dependencies` 6, `services` 5).
+- Answer-blind walk round 21 (2026-11-15, `docs/DECISIONS.md`
+  "Answer-blind walk round 21"): its 17 findings fixed; scoring meaning
+  unchanged, `core_loc` still 584 (the unread-sid check lives in
+  `disable.py`: Suricata 8 loads `sid:N rev:1;`, measured live). Store
+  copied first to `~/.cache/fsl-work/backup-safe/db-20261115T0019Z-r21.sqlite3`.
+  Deployed: `range-host-live` at 82c3d64 with images by that commit, so
+  `POST slot/` replaced the range host and `configure/` left four slots
+  READY. Checked live (Playwright and the API, sessions 1898-1903): scenario
+  1.1 listed an item that arrived 16 s after the attack verdict without a
+  reload, refused the final check with one item unjudged
+  (`scenario.done.unjudged`), then passed; the guided steps said "items so
+  far", passed the last step on the started check and ended with
+  `scenario.note.done`; the debrief counted 11 of 11 like the headline; a
+  second close on a stale page said the session is closed and hid the
+  button; labels read passed/failed in Korean; no `no_benign` warning.
+  c1 L3's and-not query with board.com's address failed and with the waf's
+  passed; c2's `%3C` and sort answers failed without the DevTools row and
+  passed with it; the unsplit-sid rule got 400 `unread_sid` at the syntax
+  check and apply; the example word got its line at once; `Total Score: 20`
+  and `(Total Score: 20)` passed; f4's first ring sat on the DevTools toggle
+  with no callout; a lesson's Start opened `/blue/<id>/`; the WAF shell's
+  `TZ=KST-9` printed 09:38 KST where `TZ=Asia/Seoul` printed 00:38 "Asia".
+  Full `bin/verify` on the platform VM at 82c3d64: 770 s start to result;
+  acceptance 91 passed, 0 failed, 0 errors, 1 skipped in 719 s across 14
+  processes; unit and API 1578 passed (904 + 674); ratchet no regression
+  (`core_loc` 584, `dependencies` 6, `services` 5).
 - Test speed (on `dev`, `docs/DECISIONS.md` "The acceptance
   suite runs one sqlmap case and fills the slots as they free"): the
   red-team run fires one sqlmap case (the dump; `CR_SQLMAP_VARIANTS=1` fires
@@ -218,10 +244,11 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 1. The live cloud on `dev`: set `platform.ref` back to `dev` and
    `compute.slots` as the user wants (four now).
 2. A fresh answer-blind review round of both courses and a scenario on the
-   round-20 fixes (`docs/DECISIONS.md` "Answer-blind walk round 20"):
-   the single Next/Skip button, the lesson end that waits, the trimmed F6
-   objectives table and result page, and the c2 brief's address line; then
-   the user's own test. The live map now shows the router's own symbol (`host-router.svg`).
+   round-21 fixes (`docs/DECISIONS.md` "Answer-blind walk round 21"): the
+   final check that waits for unjudged items, the console-first lesson start,
+   the DevTools gates in course 2, the unread-sid refusal; then the user's own
+   test. Seen in round 21's live check and not yet ruled: a fresh browser on
+   an open scenario reopens the note at step 1, not the furthest step. The live map now shows the router's own symbol (`host-router.svg`).
 3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
    or `union select` even where it is loaded: a detection gap to measure
    (round 16, `docs/DECISIONS.md`).
