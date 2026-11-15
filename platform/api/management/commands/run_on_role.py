@@ -11,6 +11,7 @@ ANSWER = "cr.platform.answer="
 
 class Command(BaseCommand):
     help = "Run a command on the host filling a role, through the range adapter."
+    requires_system_checks = []
 
     def add_arguments(self, parser):
         parser.add_argument("role")

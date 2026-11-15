@@ -106,7 +106,7 @@ FIRST_BOOT = "2026-09-23T10:00:00.000000"
 
 
 def adapter(
-    host, server_id="kali-1", launched_at=FIRST_BOOT, **cloud
+    host, server_id="kali-1", launched_at=FIRST_BOOT, seen="", asked=None, **cloud
 ) -> openstack.OpenStack:
     declaration = replace(
         declared.read(), origins=(), segments=(Segment(id="mgmt", name="Management"),)
@@ -139,6 +139,8 @@ def adapter(
     }
 
     def get(call):
+        if asked is not None:
+            asked.append(call)
         if "/v2.0/networks" in call:
             return networks
         if "/v2.0/subnets" in call:
@@ -156,7 +158,7 @@ def adapter(
         "ssh_config": str(host["home"] / "ssh_config"),
         **cloud,
     })
-    return openstack.OpenStack(declaration, reaching, get=get)
+    return openstack.OpenStack(declaration, reaching, get=get, build=openstack.Build(seen=seen))
 
 
 def attacker(host):
@@ -246,3 +248,40 @@ def test_a_rebuilt_instance_or_a_new_one_on_an_old_address_is_reached_again(host
 def test_a_command_that_outlives_its_timeout_is_named_as_such(host):
     with pytest.raises(RangeUnavailable, match="did not finish within 1s"):
         attacker(host)(["sleep", "5"], timeout=1)
+
+
+def test_a_second_process_reaches_the_range_host_by_the_address_the_first_read(host):
+    seen = str(host["home"] / "range-host.json")
+    assert adapter(host, seen=seen).runner(rangehost.ROLE)(["true"]).exit_code == 0
+
+    asked = []
+    ran = adapter(host, seen=seen, asked=asked).runner(rangehost.ROLE)(["echo", "reached"])
+
+    assert (ran.output, asked) == ("reached\n", []), (
+        "every manage.py run_on_role is a new process, and reading networks, servers "
+        "and subnets from the cloud to find one address cost 1.5 s of each 3 s command"
+    )
+
+
+def test_a_stale_record_of_the_range_host_is_read_from_the_cloud_again(host):
+    seen = host["home"] / "range-host.json"
+    assert adapter(host, seen=str(seen)).runner(rangehost.ROLE)(["true"]).exit_code == 0
+    held = openstack.json.loads(seen.read_text())
+    seen.write_text(openstack.json.dumps(held | {"read_at": held["read_at"] - openstack.SEEN_FOR - 1}))
+
+    asked = []
+    assert adapter(host, seen=str(seen), asked=asked).runner(rangehost.ROLE)(["true"]).exit_code == 0
+
+    assert asked, "a range host rebuilt on a new address would be unreachable for as long as the record stood"
+
+
+def test_a_command_that_never_reports_drops_the_record_of_the_range_host(host):
+    seen = host["home"] / "range-host.json"
+    assert adapter(host, seen=str(seen)).runner(rangehost.ROLE)(["true"]).exit_code == 0
+    host["daemon"].kill()
+    host["daemon"].wait()
+
+    with pytest.raises(RangeUnavailable):
+        adapter(host, seen=str(seen)).runner(rangehost.ROLE)(["true"])
+
+    assert not seen.exists(), "the next command would try the same dead address until the record aged out"

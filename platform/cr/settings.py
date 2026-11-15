@@ -169,6 +169,7 @@ CR_SUBSTRATE_OPTIONS = dict(
                 "platform": "CR_OPENSTACK_PLATFORM",
                 "image_tag": "CR_IMAGE_TAG",
                 "slots": "CR_OPENSTACK_SLOTS",
+                "seen": "CR_RANGE_HOST_SEEN",
             }.items()
         } | {"source": CR_SOURCE, "password": kept_secret(OPENSTACK_PASSWORD_FILE)},
     }.get(CR_SUBSTRATE, {}),

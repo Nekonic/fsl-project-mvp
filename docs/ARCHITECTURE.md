@@ -1982,6 +1982,7 @@ Docker와 메타데이터:
 - close 때는 그 슬롯만 초기화하고, 그 슬롯에서 비활성화한 룰만 다시 활성화. 초기화 상태도 슬롯별(`api/reset.py`)
 - 룰 변경은 슬롯별 차례로 처리. 한 슬롯의 초기화가 다른 슬롯의 세션을 붙잡지 않음
 - `run_on_role`은 `--session`이나 `--slot`을 받음. 슬롯이 둘 이상인데 둘 다 없으면 실행하지 않음
+- `run_on_role`은 명령마다 새 프로세스라서 Django 시스템 체크를 건너뜀. 어댑터는 클라우드에 처음 물을 때 Keystone에 로그인하고, 클라우드를 읽을 때마다 훈련 환경 호스트의 관리망 주소와 호스트 키 별칭을 `CR_RANGE_HOST_SEEN`(`/data/range-host.json`)에 남김. 60초 안의 기록이 있으면 클라우드를 다시 읽지 않고 그 주소로 접속하고, 명령이 끝났다는 보고 없이 끊기면 기록을 지움
 - 콘솔의 VM 터미널은 `?arg=<id>`(ttyd `-a`)로 세션을 받아 그 슬롯의 컨테이너를 엶
 
 **configure.** `POST /api/range/configure/`(`configure_slot()`)의 처리:

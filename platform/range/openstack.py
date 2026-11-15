@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import ipaddress
+import json
+import os
 import shlex
 import shutil
 import socket
@@ -74,6 +76,7 @@ SERVER_ALIVE_INTERVAL = 15
 SERVER_ALIVE_COUNT_MAX = 3
 SHARED_CONNECTIONS = "/tmp/cr-ssh-%C"
 SHARED_FOR = 60
+SEEN_FOR = 60
 NOVA_MICROVERSION = "2.1"
 SUBJECT_TOKEN = "X-Subject-Token"
 SEGMENT_TAG = fabric.TAG
@@ -149,6 +152,7 @@ def connect(
     platform: str = "",
     image_tag: str = "",
     slots: str = "",
+    seen: str = "",
 ) -> "OpenStack":
     given = {
         "keystone": keystone, "user": user, "password": password,
@@ -177,15 +181,48 @@ def connect(
             source=source, base_image=base_image, flavor=flavor,
             availability_zone=availability_zone, inside=pairs(subnets),
             mtu=int(mtu or 0), network=build_network, platform=platform, image_tag=image_tag,
-            slots=_count(slots or "1"),
+            slots=_count(slots or "1"), seen=seen,
         )
     except ValueError as error:
         raise RangeUnavailable(
             f"the cloud settings ({', '.join(SETTINGS[n] for n in ('subnets', 'mtu', 'slots'))}) "
             f"do not parse: {error}; they come from cloud.yaml through the Heat stack"
         ) from error
-    cloud, reader = _connected.get(known) or rediscover()
-    return OpenStack(declared, cloud, get=reader, rediscover=rediscover, build=build)
+    cloud, reader = _connected.get(known) or (None, None)
+    reach = Cloud(keystone=keystone, neutron="", nova="", project=project, user=user,
+                  ssh_user=ssh_user, ssh_key=ssh_key, domain=domain)
+    return OpenStack(declared, cloud, get=reader, rediscover=rediscover, build=build, reach=reach)
+
+
+def seen_range_host(path: str, host: str) -> tuple[str, str] | None:
+    if not path:
+        return None
+    try:
+        held = json.loads(Path(path).read_text())
+        fresh = 0 <= time.time() - float(held["read_at"]) < SEEN_FOR
+        address, alias = str(held["address"]), str(held.get("alias") or "")
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+    if not fresh or held.get("host") != host or not address:
+        return None
+    return address, alias
+
+
+def remember_range_host(path: str, host: str, address: str, alias: str) -> None:
+    if not path:
+        return
+    written = Path(f"{path}.{os.getpid()}.{threading.get_ident()}")
+    try:
+        written.write_text(json.dumps({"host": host, "address": address, "alias": alias,
+                                       "read_at": time.time()}))
+        os.replace(written, path)
+    except OSError:
+        written.unlink(missing_ok=True)
+
+
+def forget_range_host(path: str) -> None:
+    if path:
+        Path(path).unlink(missing_ok=True)
 
 
 def _count(text: str) -> int:
@@ -360,6 +397,16 @@ def collected(declared) -> dict[str, str]:
     return {service: declared.host(role) for service, role in COLLECTED.items()}
 
 
+def _on_management(shape: Shape, host: str) -> str:
+    for segment in shape.segments:
+        if segment.id != fabric.MANAGEMENT:
+            continue
+        for node in segment.nodes:
+            if node.name == host:
+                return node.address
+    return ""
+
+
 def _generations(servers: list[dict]) -> dict[str, str]:
     found = {}
     for server in servers:
@@ -400,6 +447,7 @@ class Build:
     platform: str = ""
     image_tag: str = ""
     slots: int = 1
+    seen: str = ""
 
     def placed(self, server: dict) -> dict:
         return {**server, "availability_zone": self.availability_zone} if self.availability_zone else server
@@ -407,18 +455,41 @@ class Build:
 
 class OpenStack:
     def __init__(
-        self, declared: Declaration, cloud: Cloud, get, rediscover=None,
-        build: Build = Build(), slot: int = 1,
+        self, declared: Declaration, cloud: Cloud | None, get, rediscover=None,
+        build: Build = Build(), slot: int = 1, reach: Cloud | None = None,
     ):
         self.declared = declared
-        self.cloud = cloud
+        self._cloud = cloud
         self.build = build
-        self.get = get
+        self._get = get
         self.rediscover = rediscover
         self.slot = slot
+        self.reach = reach or cloud
         self._shape: Shape | None = None
         self._generations: dict[str, str] = {}
-        self._range_address = ""
+
+    @property
+    def cloud(self) -> Cloud:
+        if self._cloud is None:
+            self._cloud, self._get = self.rediscover()
+        return self._cloud
+
+    @cloud.setter
+    def cloud(self, value: Cloud) -> None:
+        self._cloud = value
+
+    @property
+    def get(self):
+        if self._get is None:
+            self._cloud, self._get = self.rediscover()
+        return self._get
+
+    @get.setter
+    def get(self, value) -> None:
+        self._get = value
+
+    def _reaching(self) -> Cloud:
+        return self._cloud or self.reach or self.cloud
 
     @property
     def slots(self) -> int:
@@ -433,7 +504,8 @@ class OpenStack:
             raise RangeUnavailable(
                 f"slot {number} is not one of the {self.slots} slot(s) the cloud settings ask for"
             )
-        return OpenStack(self.declared, self.cloud, self.get, self.rediscover, self.build, slot=number)
+        return OpenStack(self.declared, self._cloud, self._get, self.rediscover, self.build,
+                         slot=number, reach=self.reach)
 
     def every_slot(self) -> list["OpenStack"]:
         return [self.in_slot(number) for number in range(1, self.slots + 1)]
@@ -475,6 +547,10 @@ class OpenStack:
                 self.cloud, self.get = self.rediscover()
                 shape = self._read()
             self._shape = shape
+            address = _on_management(shape, self.range_host)
+            if address:
+                remember_range_host(self.build.seen, self.range_host, address,
+                                    self._generations.get(address, ""))
         return shape
 
     def segments(self) -> tuple[Segment, ...]:
@@ -544,13 +620,20 @@ class OpenStack:
         return tuple(sorted(found, key=lambda node: node.name))
 
     def _address(self, host: str) -> str:
-        for segment in self.describe().segments:
-            if segment.id != fabric.MANAGEMENT:
-                continue
-            for node in segment.nodes:
-                if node.name == host:
-                    return node.address
-        raise RangeUnavailable(f"{host} stands on no {fabric.MANAGEMENT} address this platform can reach")
+        address = _on_management(self.describe(), host)
+        if not address:
+            raise RangeUnavailable(f"{host} stands on no {fabric.MANAGEMENT} address this platform can reach")
+        return address
+
+    def _range_host_address(self) -> str:
+        if self._shape is None:
+            seen = seen_range_host(self.build.seen, self.range_host)
+            if seen:
+                address, alias = seen
+                if alias:
+                    self._generations[address] = alias
+                return address
+        return self._address(self.range_host)
 
     def address(self, role: str) -> str:
         host = self.declared.host(role)
@@ -572,7 +655,7 @@ class OpenStack:
 
     def _shell(self, container: str = ""):
         def run(argv: list[str], stdin: str | None = None, timeout: float = 60.0) -> Ran:
-            address = self._address(self.range_host)
+            address = self._range_host_address()
             with tempfile.TemporaryDirectory() as scratch:
                 said = Path(scratch) / "ssh.log"
                 config = self._config(Path(scratch) / "ssh_config", address)
@@ -589,6 +672,7 @@ class OpenStack:
                 )))
             ran = reported(done)
             if ran is None:
+                forget_range_host(self.build.seen)
                 raise RangeUnavailable(
                     f"{container or self.range_host} at {address} never reported the command finishing: "
                     + (complaint[:1000] or "the connection ended before it did")
@@ -602,7 +686,7 @@ class OpenStack:
                      if filled == host and role in self.declared.compose), "")
         if not role:
             raise RangeUnavailable(f"{host} has no container in the slot to open a terminal in")
-        address = self._address(self.range_host)
+        address = self._range_host_address()
         return address, self._generations.get(address, "") or address, self._container(role)
 
     def wiring(self) -> interfaces.Wiring:
@@ -621,19 +705,20 @@ class OpenStack:
         if not reads_input:
             command.append("-n")
         return command + [
-            "-i", self.cloud.ssh_key,
+            "-i", self._reaching().ssh_key,
             "-E", str(log),
             "-o", "BatchMode=yes",
             "-o", "IdentitiesOnly=yes",
             "-o", "LogLevel=ERROR",
-            f"{self.cloud.ssh_user}@{address}",
+            f"{self._reaching().ssh_user}@{address}",
         ]
 
     def _config(self, written: Path, address: str) -> Path:
         included = []
-        if self.cloud.ssh_config:
+        reaching = self._reaching()
+        if reaching.ssh_config:
             linked = written.with_name("deployment_ssh_config")
-            linked.symlink_to(Path(self.cloud.ssh_config).expanduser().resolve())
+            linked.symlink_to(Path(reaching.ssh_config).expanduser().resolve())
             included.append(f'Include "{linked}"')
         defaults = [
             "Host *",
@@ -675,7 +760,7 @@ class OpenStack:
         return self.runner(ATTACKER_ROLE)
 
     def opened(self, role: str, argv: list[str]) -> socket.socket:
-        address = self._address(self.range_host)
+        address = self._range_host_address()
         container = self._container(role)
         scratch = Path(tempfile.mkdtemp())
         config = self._config(scratch / "ssh_config", address)
