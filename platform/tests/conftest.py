@@ -20,7 +20,8 @@ class ApiClient(Client):
 def signed_in(client):
     from django.contrib.auth import get_user_model
 
-    client.force_login(get_user_model().objects.get_or_create(username="admin")[0])
+    client.force_login(get_user_model().objects.get_or_create(
+        username="admin", defaults={"is_staff": True, "is_superuser": True})[0])
     return client
 
 @pytest.fixture
@@ -29,8 +30,11 @@ def client(db):
 
 @pytest.fixture(autouse=True)
 def nothing_remembered_between_tests():
+    from django.core.cache import cache
+
     from api import reset, site, views
 
+    cache.clear()
     reset._states.clear()
     views._segments_kept.clear()
     views._found_kept.clear()

@@ -12,7 +12,7 @@ from tests.conftest import ApiClient
 
 pytestmark = pytest.mark.django_db
 
-OPEN = {"/login/", "/api/auth/", "/api/auth/login/", "/auth-check/"}
+OPEN = {"/login/", "/signup/", "/api/auth/", "/api/auth/login/", "/api/auth/signup/", "/auth-check/"}
 SITE_PROXY = "site-proxy/"
 
 

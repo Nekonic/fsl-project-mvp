@@ -51,7 +51,13 @@ SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_USE_SESSIONS = True
 CSRF_FAILURE_VIEW = "api.signin.csrf_refused"
-AUTH_PASSWORD_VALIDATORS = []
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": f"django.contrib.auth.password_validation.{name}"}
+    for name in (
+        "UserAttributeSimilarityValidator", "MinimumLengthValidator",
+        "CommonPasswordValidator", "NumericPasswordValidator",
+    )
+]
 
 ROOT_URLCONF = "cr.urls"
 

@@ -8287,3 +8287,75 @@ Full `bin/verify` on the platform VM at the deployed commit: 553 s,
 acceptance 95 passed, 0 failed, 1 skipped in 497 s across 12 processes, unit
 and API 849 + 814, ratchet no regression; during it `GET /` p95 2.6 s and
 `GET /api/range/ready/` p95 6.1 s with eight slots.
+
+## 2026-11-16 — Sign-up waits for an admin's approval; sign-in, sign-up, the API and sessions are rate limited
+
+The user: "회원가입을 해도, 관리자가 직접 승인해야 하는거로 해놔." and "진짜
+보안 위협은 rate limit 같은걸 해야지".
+
+- `POST /api/auth/signup/` (`username`, `password`, `password_confirm`) runs
+  Django's `UserCreationForm` and the four default password validators,
+  which `AUTH_PASSWORD_VALIDATORS` now lists (it was empty). The account is
+  made with `is_active=False`, not staff. Refusals carry Django's error codes
+  (`errors[].code`) and the page looks each up in the string table, so the
+  learner reads Korean and an agent reads codes. The validators do not touch
+  `admin` / `123456`: migration 0030 hashes it directly, and
+  `changepassword` asks before it bypasses them.
+- `ModelBackend` refuses an inactive user, so a pending account cannot sign
+  in, and a session it holds is anonymous to `/auth-check/`. Sign-in tells a
+  pending account apart (403 `{"pending": true}`) only when its password is
+  right, so the answer names no account to a guesser.
+- Staff get `/users/` (the account screen, linked in the header when `GET /api/auth/`
+  says `staff`), backed by `GET /api/users/`, `POST /api/users/<id>/approve/`
+  and `POST /api/users/<id>/reject/`. Reject deletes and takes only a pending
+  account (409 otherwise), so no admin can remove themself. No roles beyond
+  staff and learner, no email.
+- Limits, with the reason for each number:
+  - Sign-in, nginx: 5 POSTs a minute per address, burst 5. A person who
+    mistypes a few times is never held; a guesser gets about 300 tries an hour.
+  - Sign-in, Django: 10 wrong passwords for one username lock it for 15
+    minutes (429, `locked_until`, `Retry-After`). Ten is past any honest typo
+    streak; 15 minutes holds a guesser to about 40 tries an hour per
+    username whatever addresses it uses, and a locked-out learner waits
+    no longer than a break. The cost: anyone can lock `admin` for 15 minutes; acceptance runs on the VM
+    and signs in with the right password, so it is held only if someone
+    else locked the account.
+  - Sign-up, nginx: 1 POST a minute per address, burst 3. nginx counts per
+    second or per minute only, so an hourly cap lives in Django.
+  - Sign-up, Django: 5 accounts an hour per address, and none while 50 wait
+    for approval (503 `{"closed": true}`). Five covers a class signing up
+    behind one NAT in turns; fifty is more than one admin reviews in a sitting
+    and bounds what a spammer leaves in the table.
+  - `/api/`, nginx: 20 requests a second per session cookie (burst 40) and
+    100 per address (burst 200). The console's busiest page polls a handful
+    of endpoints every few seconds; the per-cookie key keeps a classroom
+    behind one NAT apart, the per-address key catches a client that rotates
+    cookies.
+  - Terminals and port 8002, nginx: 10 open connections per session cookie.
+    A learner holds two terminal WebSockets and the site pane's few loads;
+    ten keeps one client from tying up the front's connections and the 16
+    waitress threads behind `/site/`.
+  - Sessions: a learner holds one open session; a second
+    `POST /api/sessions/` is 409 `{"open_session": <id>}` and the main page
+    links to it. Staff are exempt, because acceptance opens one session per
+    worker as `admin`. `Session.owner` (migration 0031) records who opened it.
+- Exempt from nginx's limits: loopback, the Docker gateway `172.31.0.1`, and
+  the IP literals in `DJANGO_ALLOWED_HOSTS`, which `entrypoint.sh` writes to
+  `/tmp/nginx-platform-addresses.conf` before `nginx -t`. Measured on the VM
+  (2026-11-16, `/proc/net/tcp` in `cr-platform`): a connection from the VM to
+  its floating IP arrives from `192.168.2.247`, to its fixed IP from
+  `10.20.0.61`, and the operator's machine over the VPN from `10.10.10.3`.
+  `DJANGO_ALLOWED_HOSTS` already holds the floating IP (the only address
+  `bin/verify` can use, since Django refuses the fixed one), so it names the
+  platform's own address without a new setting.
+- The counters are in Django's default local-memory cache: one waitress
+  process, so its threads share them; a restart forgets them. No new
+  dependency (django-axes and django-ratelimit were not added).
+
+Not chosen: a CAPTCHA (no new dependency, and the approval already stops a
+bot's account from doing anything); locking by address and username together
+(an attacker with many addresses would never lock, and nginx already limits
+per address); `select_for_update` for the one-session check (SQLite ignores
+it). The check runs again inside `SLOT_CHOICE`, the in-process lock that
+already serialises the slot choice, so parallel opens by one learner get one
+session.

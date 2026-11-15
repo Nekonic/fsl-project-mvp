@@ -1,5 +1,6 @@
 import secrets
 
+from django.conf import settings
 from django.db import models
 
 from scoring.types import CaseRecord, DetectionRecord
@@ -30,6 +31,8 @@ class Session(models.Model):
     traffic = models.JSONField(null=True, blank=True, default=None)
     course_scenario = models.CharField(max_length=32, blank=True, default="")
     scenario_state = models.JSONField(null=True, blank=True, default=None)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, default=None, on_delete=models.SET_NULL, related_name="+")
 
     class Meta:
         ordering = ["-started_at"]

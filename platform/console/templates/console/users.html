@@ -1,0 +1,101 @@
+{% extends "console/base.html" %}
+{% block content %}
+<p id="users-error" class="text-danger text-[13px] mb-6 hidden"></p>
+
+<section id="pending-panel" class="mb-8 hidden">
+  <h2 data-t="users.pending" class="font-semibold text-heading mb-3"></h2>
+  <div class="card overflow-x-auto">
+    <table class="w-full text-[13px]">
+      <thead class="table-head">
+        <tr>
+          <th data-t="auth.username" class="pl-5"></th>
+          <th data-t="users.col.joined"></th>
+          <th class="pr-5"></th>
+        </tr>
+      </thead>
+      <tbody id="pending"></tbody>
+    </table>
+  </div>
+</section>
+<p id="pending-none" data-t="users.pending_none" class="text-muted text-[13px] mb-8 hidden"></p>
+
+<section id="active-panel" class="hidden">
+  <h2 data-t="users.active" class="font-semibold text-heading mb-3"></h2>
+  <div class="card overflow-x-auto">
+    <table class="w-full text-[13px]">
+      <thead class="table-head">
+        <tr>
+          <th data-t="auth.username" class="pl-5"></th>
+          <th data-t="users.col.role"></th>
+          <th data-t="users.col.joined" class="pr-5"></th>
+        </tr>
+      </thead>
+      <tbody id="active"></tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+{% block script %}
+<script>
+  crumbs([{ label: t("users.title"), href: "/users/" }]);
+  document.title = t("users.title");
+
+  const field = (id) => document.getElementById(id);
+  const joined = (instant) => new Date(instant).toLocaleDateString("ko-KR");
+
+  function showError(text) {
+    field("users-error").textContent = text;
+    field("users-error").classList.remove("hidden");
+  }
+
+  function pendingRow(user) {
+    return `
+      <tr class="table-row" data-user="${user.id}">
+        <td class="pl-5 font-semibold text-heading">${esc(user.username)}</td>
+        <td>${esc(joined(user.joined))}</td>
+        <td class="pr-5 text-right whitespace-nowrap">
+          <button data-approve="${user.id}" class="btn btn-sm btn-blue">${esc(t("users.approve"))}</button>
+          <button data-reject="${user.id}" class="btn btn-sm btn-ghost ml-2">${esc(t("users.reject"))}</button>
+        </td>
+      </tr>`;
+  }
+
+  function activeRow(user) {
+    return `
+      <tr class="table-row">
+        <td class="pl-5 font-semibold text-heading">${esc(user.username)}</td>
+        <td>${badge(t(user.staff ? "users.role.staff" : "users.role.learner"), user.staff ? "blue" : "neutral")}</td>
+        <td class="pr-5">${esc(joined(user.joined))}</td>
+      </tr>`;
+  }
+
+  async function load() {
+    const said = await api("/api/users/");
+    if (!said.ok) {
+      showError(said.status === 403 ? t("users.staff_only") : t("users.unread", detail(said)));
+      return;
+    }
+    field("users-error").classList.add("hidden");
+    const pending = said.body.users.filter((user) => !user.active);
+    const active = said.body.users.filter((user) => user.active);
+    field("pending").innerHTML = pending.map(pendingRow).join("");
+    field("pending-panel").classList.toggle("hidden", !pending.length);
+    field("pending-none").classList.toggle("hidden", Boolean(pending.length));
+    field("active").innerHTML = active.map(activeRow).join("");
+    field("active-panel").classList.remove("hidden");
+  }
+
+  field("pending").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-approve], button[data-reject]");
+    if (!button) return;
+    const id = button.dataset.approve || button.dataset.reject;
+    const action = button.dataset.approve ? "approve" : "reject";
+    button.disabled = true;
+    const said = await post(`/api/users/${id}/${action}/`);
+    if (!said.ok) showError(t("users.failed", detail(said)));
+    await load();
+  });
+
+  load();
+</script>
+{% endblock %}

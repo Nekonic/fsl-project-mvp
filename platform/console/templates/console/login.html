@@ -17,6 +17,10 @@
     <p id="sign-in-error" class="text-danger text-[13px] hidden"></p>
     <button id="sign-in-submit" data-t="auth.submit" class="btn btn-blue w-full justify-center"></button>
   </form>
+  <p class="mt-5 text-[13px] text-muted">
+    <span data-t="auth.no_account"></span>
+    <a id="sign-up-link" href="/signup/" data-t="auth.sign_up" class="text-primary font-semibold ml-1"></a>
+  </p>
 </section>
 {% endblock %}
 {% block script %}
@@ -54,7 +58,10 @@
       location.replace(landing());
       return;
     }
-    failed.textContent = said.status === 401 ? t("auth.wrong") : detail(said);
+    failed.textContent = said.body.pending ? t("auth.pending")
+      : said.body.locked_until ? t("auth.locked", clock(said.body.locked_until))
+      : said.status === 429 ? t("auth.too_many")
+      : said.status === 401 ? t("auth.wrong") : detail(said);
     failed.classList.remove("hidden");
   });
 

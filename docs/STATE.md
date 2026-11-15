@@ -1936,8 +1936,9 @@ binary log via a substrate runner, proven end to end against the live stack.
 
 ### 5. Left by the hardening (2026-11-15)
 
-- [ ] Sign-in has no rate limit, and `admin` / `123456` is never forced to
-      change (the user's ruling). A password change is
+- [ ] `admin` / `123456` is never forced to change (the user's ruling). The
+      sign-in limits of 2026-11-16 slow guessing; they do not help against a
+      default anyone can read. A password change is
       `manage.py changepassword admin` in the platform container.
 
 ## Known gaps

@@ -86,7 +86,8 @@
     <nav id="crumbs" class="flex items-center gap-2 text-muted text-[13px] min-w-0 truncate"></nav>
     <div class="ml-auto flex items-center gap-4 text-[13px] text-muted shrink-0">
       <span id="range-health" class="hidden items-center gap-1.5"></span>
-      {% block account %}<button type="button" id="sign-out" data-t="auth.sign_out" class="hover:text-heading"></button>{% endblock %}
+      {% block account %}<a id="manage-users" href="/users/" data-t="users.title" class="hidden hover:text-heading"></a>
+      <button type="button" id="sign-out" data-t="auth.sign_out" class="hover:text-heading"></button>{% endblock %}
     </div>
   </header>
   <main class="{% block main_class %}max-w-[1120px] mx-auto px-4 sm:px-6 py-8{% endblock %}">
@@ -106,7 +107,11 @@
     function csrf(renew) {
       if (!csrfAsked || renew) {
         csrfAsked = fetch("/api/auth/").then((answer) => answer.json())
-          .then((said) => said.csrf_token || "").catch(() => "");
+          .then((said) => {
+            const manageUsers = document.getElementById("manage-users");
+            if (manageUsers) manageUsers.classList.toggle("hidden", !said.staff);
+            return said.csrf_token || "";
+          }).catch(() => "");
       }
       return csrfAsked;
     }
