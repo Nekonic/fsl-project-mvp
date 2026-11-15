@@ -255,6 +255,8 @@ def sessions(request):
         return holding.reply()
     try:
         adapter = _range(session, adapter)
+        if hasattr(adapter, "play"):
+            adapter.play(scenario)
         _aim_attacker(adapter)
         _take_defense(session, adapter, posture)
         session.baseline = _baseline(adapter, scenario)

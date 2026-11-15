@@ -254,6 +254,13 @@ def test_the_map_draws_every_target_the_slot_runs_and_nothing_outside_the_slot()
     assert not {node["id"] for node in drawn["nodes"]} & {"sw1", "sw2", "sw3", "internet"}
 
 
+def test_a_board_session_s_slot_draws_board_alone_once_corp_is_stopped():
+    drawn = board_map(without=("corp-wp", "corp-db"))
+
+    assert not {"corp.com", "corp-db"} & {node["id"] for node in drawn["nodes"]}
+    assert [zone.get("owner") for zone in drawn["zones"] if zone["caption"] == "database"] == ["board"]
+
+
 def test_a_stopped_container_is_not_drawn():
     drawn = board_map(without=("waf",))
 

@@ -390,6 +390,29 @@ def test_reading_the_slots_plans_does_not_rebuild_the_range_bundle(monkeypatch):
     assert len(built) <= 1, f"every readiness read rebuilt the range bundle: {len(built)} builds"
 
 
+def test_a_session_leaves_only_its_own_wargame_running_and_a_reset_starts_every_wargame_again():
+    import subprocess
+
+    script = (ROOT / rangehost.SLOT_SCRIPT).read_text()
+    play = script[script.index("\nplay() {"):script.index("\n}\n", script.index("\nplay() {")) + 3]
+    stubs = ("compose() { echo \"$@\"; }\n"
+             "wargames() { printf 'board\\nboard-db\\ncorp-wp\\ncorp-db\\n'; }\n")
+    stopped = subprocess.run(["sh", "-c", stubs + play + 'play "$@"', "sh", "board", "board-db"],
+                             capture_output=True, text=True, check=True).stdout.split()
+    cloud = Cloud()
+    range_ = adapter(cloud).in_slot(2)
+    range_.ensure_slot()
+    ran = []
+    range_._shell = lambda container="": lambda argv, stdin=None, timeout=60: ran.append(argv) or Ran(0, "")
+    range_.play("corp")
+    reset = script[script.index("\ntargets_reset() {"):script.index("\n}\n", script.index("\ntargets_reset() {"))]
+
+    assert stopped == ["stop", "-t", "1", "corp-wp", "corp-db"]
+    assert ran == [["sudo", "sh", "/opt/cr/s2/slot.sh", "play", "2", "corp-wp", "corp-db"]]
+    assert "compose up -d --wait" in reset and "$(wargames)" in reset, (
+        "a slot stands ready for either wargame; the session's open stops the other")
+
+
 def test_a_reset_empties_the_waf_audit_log_before_it_recreates_the_waf_and_its_shipper():
     script = (ROOT / rangehost.SLOT_SCRIPT).read_text()
     reset = script[script.index("\nreset() {"):script.index("\n}\n", script.index("\nreset() {"))]

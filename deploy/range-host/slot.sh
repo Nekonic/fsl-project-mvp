@@ -4,7 +4,7 @@ set -eu
 BASE=/opt/cr
 KEPT=$BASE/pristine
 WAIT=600
-verb=${1:?slot.sh up|reset|down <slot>}
+verb=${1:?slot.sh up|reset|down|play <slot> [service...]}
 n=${2:?slot number}
 d=$BASE/s$n
 logs=/var/log/cr/s$n
@@ -210,6 +210,17 @@ reset() {
   mirrored
 }
 
+play() {
+  stopped=
+  for service in $(wargames); do
+    case " $* " in
+      *" $service "*) ;;
+      *) stopped="$stopped $service" ;;
+    esac
+  done
+  [ -z "$stopped" ] || compose stop -t 1 $stopped
+}
+
 down() {
   [ ! -f "$d/compose.yaml" ] || compose down -v --remove-orphans --timeout 1
   unlinked
@@ -218,5 +229,6 @@ down() {
 
 case "$verb" in
   up|reset|down) "$verb" ;;
-  *) echo "slot.sh up|reset|down <slot>" >&2; exit 2 ;;
+  play) shift 2; play "$@" ;;
+  *) echo "slot.sh up|reset|down|play <slot> [service...]" >&2; exit 2 ;;
 esac

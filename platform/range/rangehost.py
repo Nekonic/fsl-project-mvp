@@ -434,6 +434,10 @@ def reset(slot: Slot) -> list[str]:
     return ["sudo", "sh", f"{SLOT_FILES.format(slot=slot.number)}/{SCRIPT}", "reset", str(slot.number)]
 
 
+def play(slot: Slot, services) -> list[str]:
+    return ["sudo", "sh", f"{SLOT_FILES.format(slot=slot.number)}/{SCRIPT}", "play", str(slot.number), *services]
+
+
 def standing(slot: Slot) -> list[str]:
     return ["test", "-f", f"{SLOT_FILES.format(slot=slot.number)}/compose.yaml"]
 

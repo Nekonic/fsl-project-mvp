@@ -1085,6 +1085,13 @@ class OpenStack:
     def reset_slot(self) -> list[tuple[str, str]]:
         return []
 
+    def play(self, wargame: str) -> None:
+        services = [self.declared.compose[role] for role in (wargame, f"{wargame}-db") if role in self.declared.compose]
+        ran = self._shell()(rangehost.play(self._laid_out(), services), timeout=120)
+        if not ran.ok:
+            raise RangeUnavailable(f"{self.range_host} did not leave only {wargame} running in slot {self.slot} "
+                                   f"(exit {ran.exit_code}): {ran.output[-300:]}")
+
     def reset_in_place(self, rebuilt=()) -> list[tuple[str, tuple[str, ...]]]:
         self.describe()
         if not self._shell()(rangehost.standing(self._laid_out()), timeout=60).ok:
