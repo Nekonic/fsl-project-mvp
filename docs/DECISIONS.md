@@ -7977,8 +7977,9 @@ admin/123456 무조건", and "Docker 소켓, 커널 공유도 보안 해".
   every slot container.
 - **Kernel sharing.** gVisor release 20261026.0 (gvisor.dev
   "Installation"; `gvisor.tar.bz2`, SHA-512 in `setup.sh`), registered as
-  `runsc` with `--net-raw` and `--platform=kvm` beside `userns-remap`. Kali, the WAF, board,
-  board-db, corp-wp and corp-db run on it; checked live on a slot: an nmap
+  `runsc` with `--net-raw` and `--platform=kvm` beside `userns-remap`. Kali
+  and the WAF, where the learner holds root shells, run on it; the four
+  targets ran on it too and work there, but stay on runc for now (below); checked live on a slot: an nmap
   SYN scan, curl through the WAF (XSS refused 403), sqlmap, the WAF's
   `nginx -s reload`, MySQL, the WAF audit log reaching the host file, and
   `docker exec -t` into Kali. What it took:
@@ -8018,6 +8019,14 @@ admin/123456 무조건", and "Docker 소켓, 커널 공유도 보안 해".
     platform's 16 waitress threads queued and every request timed out.
     The range host has `/dev/kvm`, and on `--platform=kvm` the eight idle
     slots left the CPU 67 % idle at load 5.
+  - With all six learner-facing containers on runsc (KVM platform), the
+    eight-slot acceptance suite still drove the range host to load 48 to 67:
+    board and corp-wp each held about half a vCPU, slot resets took six to
+    eight minutes (under one on runc), and a `docker exec` into the WAF
+    died with `urpc method "containerManager.WaitPID" failed: EOF` while
+    its slot reset. The four targets went back to runc; Kali and the WAF
+    stayed on gVisor. Moving the targets needs a range host with more CPU,
+    a decision about the flavor that is the user's (`docs/STATE.md`).
   - Measured on slot 8 of eight with Kali, the WAF and both databases on
     runsc: `slot.sh reset` 48.3 s on runc, 55.6 s on runsc; the range host's
     used memory 10,180 MB -> 10,841 MB (+661 MB, gVisor's guest memory shows

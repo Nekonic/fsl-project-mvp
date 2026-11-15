@@ -125,8 +125,8 @@ script from the API:
 - The slots' containers reach neither: their networks have no route off the
   range host.
 
-**The learner-facing containers run on gVisor; the edge and the sensors share
-the range host's kernel.** The range is one VM, `cr-range`, and each slot is a Docker
+**The learner's root shells run on gVisor; the targets, the edge and the
+sensors share the range host's kernel.** The range is one VM, `cr-range`, and each slot is a Docker
 Compose project on it. The earlier range
 gave each slot its own VMs, so reaching another slot meant breaking out of the
 hypervisor. Now a learner holds a root shell in the Kali container and in the
@@ -136,10 +136,9 @@ starts as root), and one kernel separates that shell from every other slot.
 What stands between them (`deploy/range-host/slot.yaml`,
 `platform/range/rangehost.py`):
 
-- Kali, the WAF, `board`, `board-db`, `corp-wp` and `corp-db` run on gVisor
-  (`runsc`, release 20261026.0, pinned by SHA-512 in
-  `deploy/range-host/setup.sh`). gVisor answers their system calls in its own
-  user-space kernel, so the learner's root shells and the targets reach the
+- Kali and the WAF run on gVisor (`runsc`, release 20261026.0, pinned by
+  SHA-512 in `deploy/range-host/setup.sh`). gVisor answers their system
+  calls in its own user-space kernel, so the learner's root shells reach the
   range host's kernel only through gVisor. `runsc` runs with `--net-raw`,
   since Kali's SYN scan needs raw sockets, and `--platform=kvm`.
 - gVisor's netstack never reaches Docker's embedded DNS at 127.0.0.11, which
@@ -151,8 +150,14 @@ What stands between them (`deploy/range-host/slot.yaml`,
   10.40.N+1.16/28 for slot N), every service on it a fixed address, and each
   service names the others in `/etc/hosts` (`extra_hosts`). Nothing in a slot
   resolves a name through DNS.
-- Two stay on runc and share the range host's kernel. No learner has a shell
-  in either:
+- These stay on runc and share the range host's kernel:
+  - The targets (`board`, `board-db`, `corp-wp`, `corp-db`). They ran on
+    gVisor and worked, with the fixed addresses below, but on `runsc` board, corp's WordPress and the two databases each kept about
+  half a vCPU busy on the six-vCPU range host (KVM platform, nested), a slot
+  reset took six to eight minutes instead of under one, and the eight-slot
+  acceptance suite could not finish (measured 2026-11-15).
+    No learner has a shell in them; a target bug that ran code would land on
+    runc.
   - The two Suricata sensors, which read the slot's host bridges with
     af-packet on the host network; gVisor's netstack offers no view of the
     host's bridges.
@@ -216,8 +221,9 @@ What stands between them (`deploy/range-host/slot.yaml`,
   is given a shell in them.
 
 What a container escape reaches: with no host path a root operation follows
-on the learner's say, leaving Kali, the WAF or a target takes a bug in gVisor and
-then a host kernel bug reachable from gVisor's own seccomp filter, which puts the learner on the range host
+on the learner's say, leaving Kali or the WAF takes a bug in gVisor and then a
+host kernel bug reachable from gVisor's own seccomp filter; leaving a target
+takes a kernel bug reachable through the default seccomp profile, which puts the learner on the range host
 as the remapped user, and a second bug as root. From there every other slot on the host is open, including
 its board's `auth_user` secret, its sensors and its logs, and so is the range
 host's syslog stream to the platform. It reaches no way out: the range host's

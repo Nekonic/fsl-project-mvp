@@ -2012,9 +2012,10 @@ Docker와 메타데이터:
 - 모두 `no-new-privileges`, Docker 기본 seccomp·AppArmor 프로파일, 메모리·pids 한도
 - privileged 컨테이너, Docker 소켓 마운트, 호스트 network·pid·ipc 네임스페이스 공유는 없음. 호스트 경로 마운트는 WAF의 audit 로그 파일 하나
 - dockerd는 `userns-remap`. 컨테이너 안의 root는 호스트에서 권한 없는 사용자. 호스트 user namespace를 쓰는 것은 센서뿐
-- Kali, WAF, `board`, `board-db`, `corp-wp`, `corp-db`는 gVisor(`runtime: runsc`) 위에서 돎. 학습자의 root 셸과 대상 시스템은 호스트 커널이 아니라 gVisor 커널을 만남
+- 학습자가 root 셸을 쥐는 Kali, WAF는 gVisor(`runtime: runsc`) 위에서 돎. 그 셸은 호스트 커널이 아니라 gVisor 커널을 만남
+- 대상 시스템(`board`, `board-db`, `corp-wp`, `corp-db`)은 runc. gVisor에서도 동작했지만 컨테이너마다 vCPU 반 정도를 계속 써서, 6 vCPU 훈련 환경 호스트에서 슬롯 초기화가 1분 미만에서 6~8분으로 늘고 8슬롯 acceptance가 끝나지 않음(2026-11-15 측정)
 - gVisor 네트워크 스택은 Docker 내장 DNS(127.0.0.11)에 닿지 않음. 처음 runsc로 돌렸을 때 board는 `Unknown server host 'board-db'`로 종료됨. 그래서 워게임 백엔드 네트워크마다 고정 /28(슬롯 N은 10.40.N+1.0/28, 10.40.N+1.16/28, `rangehost.backend`)을 주고, 서비스마다 고정 주소를 주고, 서로의 이름을 `extra_hosts`로 `/etc/hosts`에 적음. 슬롯 안에서 DNS로 이름을 찾는 곳은 없음
-- runc에 남는 것은 센서(호스트 네트워크에서 af-packet으로 브리지를 읽음)와 에지(커널 nftables와 sysctl로 포워딩·필터링)뿐. 둘 다 학습자 셸이 없음
+- 센서(호스트 네트워크에서 af-packet으로 브리지를 읽음)와 에지(커널 nftables와 sysctl로 포워딩·필터링)도 runc. 둘 다 학습자 셸이 없음
 - 렌더링한 슬롯 compose 파일이 이 중 하나라도 어기면 `platform/tests/test_containment.py`에서 `bin/verify` 실패
 - 실환경 검사는 `test/test_range_isolation.py`. 컨테이너를 탈출하면 어디까지 닿는지는 `docs/THREAT-MODEL.md`
 

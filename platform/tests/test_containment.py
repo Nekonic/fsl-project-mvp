@@ -75,10 +75,23 @@ def test_a_learner_facing_container_mounts_nothing_of_the_host_beyond_its_own_lo
             f"most its own log file")
 
 
-@pytest.mark.parametrize("name", LEARNER_FACING)
-def test_every_learner_facing_container_runs_on_gvisor_s_kernel_not_the_range_host_s(name):
+SHELLS = ("kali", "waf")
+TARGETS = ("board", "board-db", "corp-wp", "corp-db")
+
+
+@pytest.mark.parametrize("name", SHELLS)
+def test_the_containers_a_learner_has_a_root_shell_in_run_on_gvisor_s_kernel(name):
     assert slot_document()["services"][name].get("runtime") == rangehost.SANDBOX, (
         f"{name} runs on runc, so one kernel bug reachable through its seccomp profile reaches the range host"
+    )
+
+
+@pytest.mark.parametrize("name", TARGETS)
+def test_the_targets_stay_on_runc_until_the_range_host_has_the_cpu_for_gvisor(name):
+    assert set(SHELLS) | set(TARGETS) == set(LEARNER_FACING)
+    assert not slot_document()["services"][name].get("runtime"), (
+        f"{name} on runsc burned about half a vCPU each on the six-vCPU range host, a slot reset took six to "
+        f"eight minutes instead of under one, and the eight-slot acceptance suite could not finish"
     )
 
 
