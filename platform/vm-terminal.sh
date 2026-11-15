@@ -37,7 +37,7 @@ alias="$2"
 container="$3"
 [ -n "$addr" ] && [ -n "$container" ] || failed "no range host address or container for $host"
 options="-t -i /data/ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o HostKeyAlias=$alias -o LogLevel=ERROR -o ConnectTimeout=10 -o ServerAliveInterval=30"
-ssh $options "ubuntu@${addr}" "sudo docker exec -it -e TERM=xterm-256color -e TZ=Asia/Seoul -w /root $container bash -l" 2>>"$log"
+ssh $options "ubuntu@${addr}" "sudo docker exec -it -e TERM=xterm-256color -e TZ=KST-9 -w /root $container bash -l" 2>>"$log"
 status=$?
 [ "$status" -ne 255 ] || failed "ssh to $host at $addr ended with 255"
 exit "$status"

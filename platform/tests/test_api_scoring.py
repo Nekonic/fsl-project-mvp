@@ -97,3 +97,18 @@ def _row_counts(connection):
             cursor.execute(f"SELECT COUNT(*) FROM {table}")
             counts[table] = cursor.fetchone()[0]
     return counts
+
+def test_a_session_whose_customers_sent_requests_is_not_told_it_sent_no_normal_requests(client):
+    from api.models import CustomerRequest, Session
+
+    session_id = open_session(client)
+    fire(client, session_id, ATTACK, "sqli", True)
+    ingest(client, session_id, [es_alert(ATTACK)])
+    alone = client.get(f"/api/sessions/{session_id}/score/").json()["warnings"]
+    CustomerRequest.objects.create(session=Session.objects.get(pk=session_id), marker="c1", action="search",
+                                   step="search", user="u01", origin="kr", source_ip="175.192.0.10", method="GET",
+                                   path="/search/?q=a", status=200, sent_at=T0)
+    served = client.get(f"/api/sessions/{session_id}/score/").json()["warnings"]
+
+    assert ["score.warning.no_benign"] in alone
+    assert ["score.warning.no_benign"] not in served

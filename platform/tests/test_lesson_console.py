@@ -1126,7 +1126,7 @@ def test_the_stretch_task_sits_right_under_the_step_card_so_a_finished_lesson_sh
 
 LOCATORS = {"panel", "map", "site", "dev", "kibana", "term"}
 POINT_KEYS = LOCATORS | {"opens", "until", "then", "keep"}
-UNTIL = {"sent", "applied"}
+UNTIL = {"sent", "applied", "dev_open"}
 LOCATOR_PANES = {"map": "topology", "site": "site", "dev": "site", "kibana": "elk"}
 DEV_NAMES = {"toggle", "row", "tab.headers", "tab.payload", "tab.preview", "tab.response", "general.url",
              "general.method", "general.status", "general.remote", "payload.query"}
@@ -1722,24 +1722,19 @@ def test_the_course_summary_lists_the_lessons_and_repeats_nothing_the_result_pag
     assert seen["errors"] == []
     assert seen["result"] == {"values": False, "note": False, "close": worded("lesson.course.close"), "scored": 0}
 
-def test_a_developer_tools_callout_keeps_off_the_sibling_tabs_and_the_other_requests(client):
+def test_a_developer_tools_tab_stage_rings_the_tab_without_a_callout_repeating_the_step(client):
     seen = open_page(client, "/blue/1/", setup=served() + DEV, scenario=f"""
-      STRINGS['lesson.dev.tab.headers'] = 'Press this tab';
       {to("method")}
       await browser.click('step-open');
       browser.element('site-dev-toggle').setAttribute('aria-pressed', 'true');
       listRows('true');
       showTabs('tab.payload');
       await frames();
-      const spot = callout();
-      const others = [...document.querySelectorAll('[data-coach="row"], [data-coach="tab.payload"], [data-coach="general.method"], [data-coach="payload.query"]')]
-        .map((one) => RECTS.get(one));
-      return {{text: browser.text('coach-callout'), spot, over: others.some((one) => meets(spot, one))}};
+      return {{text: browser.text('coach-callout'), ring: shown('coach-ring')}};
     """)
 
     assert seen["errors"] == []
-    assert seen["result"]["text"] == "Press this tab" and seen["result"]["spot"] is not None
-    assert seen["result"]["over"] is False
+    assert seen["result"] == {"text": "", "ring": True}
 
 def test_a_hit_count_callout_keeps_off_the_toolbar_buttons_beside_the_count(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
@@ -1788,7 +1783,6 @@ document.createElement = (tag) => (tag === 'canvas' ? {getContext: () => ({measu
 
 def test_the_rules_step_rings_the_editor_s_last_line_until_the_text_changes_then_the_apply_button_off_the_editor(client):
     seen = open_page(client, "/blue/1/", setup=RULES + served(), scenario=f"""
-      STRINGS['lesson.rules.add_line'] = 'Add one rule line here.';
       STRINGS['lesson.rules.press_apply'] = 'Press Apply';
       {to("write")}
       await frames(4);
@@ -1810,7 +1804,7 @@ def test_the_rules_step_rings_the_editor_s_last_line_until_the_text_changes_then
     result = seen["result"]
 
     assert seen["errors"] == []
-    assert result["adding"]["text"] == "Add one rule line here."
+    assert result["adding"]["text"] == "", "the step already says to add a line"
     assert result["adding"]["ring"]["top"] == 500 + 8 + 1 + 16, "the last line of the loaded rules, not the Apply button"
     assert result["adding"]["ring"]["height"] == 16, "the ring stays inside the empty line and covers no rule above it"
     assert result["addingOver"] is False
@@ -2203,25 +2197,6 @@ def test_a_callout_for_the_objectives_card_leaves_the_title_line_when_its_leader
     assert seen["errors"] == []
     assert seen["result"]["heading"]["top"] == 246
     assert seen["result"]["moved"]["top"] >= 400, "below the card, where the leader crosses no header"
-
-def test_a_developer_tools_callout_also_keeps_off_the_toolbar_controls_and_the_tabs_it_does_not_point_at(client):
-    seen = open_page(client, "/blue/1/", setup=served() + DEV, scenario=f"""
-      STRINGS['lesson.dev.tab.headers'] = 'Press this tab';
-      {to("method")}
-      await browser.click('step-open');
-      browser.element('site-dev-toggle').setAttribute('aria-pressed', 'true');
-      listRows('true');
-      showTabs('tab.payload');
-      await frames();
-      const first = callout();
-      RECTS.set(browser.element('site-dev-throttle'), {{...first, right: first.left + first.width, bottom: first.top + first.height}});
-      await frames();
-      const second = callout();
-      return {{first, second, over: meets(first, second)}};
-    """)
-
-    assert seen["errors"] == []
-    assert seen["result"]["second"] is not None and seen["result"]["over"] is False
 
 def test_the_map_is_not_asked_to_fit_again_after_it_drew_or_when_a_lesson_ends_at_the_size_it_was_fitted_to(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
@@ -2722,3 +2697,24 @@ def test_a_sidebar_step_rings_the_line_saying_how_many_records_the_top_values_co
 
     assert seen["errors"] == []
     assert seen["result"] == 96 + 540 - 1, "the step asks for the record count under the values, not the values"
+
+PROBE = [{"id": "probe", "point": {"opens": "site", "dev": "toggle", "until": "dev_open", "then": {"site": "input[name=q]"}},
+          "check": {"kind": "sent", "match": "<script"}},
+         {"id": "db_ip", "solo": True, "point": {"opens": "topology"}, "check": {"kind": "answer"}}]
+
+def test_a_step_that_says_open_devtools_first_rings_the_toggle_until_it_is_open_then_the_search_box(client):
+    seen = open_page(client, "/blue/1/", setup=served(steps=PROBE) + DEV, scenario="""
+      await browser.click('[data-step="0"]');
+      await frames();
+      await browser.click('step-open');
+      const closed = await ringAt();
+      const located = () => (posted.filter((one) => one.frame === 'site' && one.data.locate).pop() || {data: {}}).data.locate;
+      const before = located();
+      browser.element('site-dev-toggle').setAttribute('aria-pressed', 'true');
+      await frames(3);
+      return {closed, before: before || null, after: located()};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"closed": 974, "before": None, "after": "input[name=q]"}
+    assert wargames.lesson("board", lesson_id="f4")["steps"][0]["point"] == PROBE[0]["point"]

@@ -196,6 +196,13 @@ def _settle(pk, n, **changed) -> None:
         state["schedule"][n].update(changed)
     _update(pk, settle)
 
+def unjudged(session, now=None) -> int:
+    if declared_of(session)["task_class"] != "judgement":
+        return 0
+    now = now or timezone.now()
+    triage = (session.scenario_state or {}).get("triage") or {}
+    return sum(1 for item in _items(session) if item["first"] < now and item["item"] not in triage)
+
 def start_window(session, by, now=None):
     now = now or timezone.now()
     declared = declared_of(session)
@@ -397,6 +404,8 @@ def _succeeded(session, case) -> bool:
                                      achieved_at__lte=case.ended_at + scoreboard.CLOCK_SKEW).exists()
 
 def triage_passed(session, judged) -> bool:
+    if judged == "verified":
+        return bool((session.scenario_state or {}).get("windows"))
     truths = _truths(session)
     shown = {item["item"] for item in _items(session)}
     triage = (session.scenario_state or {}).get("triage") or {}
@@ -514,6 +523,10 @@ def scenario_start(request, session_id):
 def verify_window(request, session_id):
     session = _scenario_session(session_id)
     views._refuse_closed(session)
+    left = unjudged(session)
+    if left:
+        return views._reply({"detail": f"{left} items listed so far are not judged yet; judge them before the final check",
+                             "unjudged": left}, status=409)
     session = start_clock(session)
     session, window = start_window(session, "learner")
     ensure_running()
@@ -602,11 +615,15 @@ def debrief(session) -> dict:
             "blocked_actions": customers.availability(session, set())["blocked_actions"],
         },
         "timeline": timeline,
-        "triage": {"right": sum(1 for one in triage.values() if one["right"]),
-                   "first_try": sum(1 for one in triage.values() if one.get("first_right")),
-                   "judged": len(triage), "items": len(_items(session))},
+        "triage": _triage_tally(triage, judged[-1].get("items") if judged else None, session),
         "at": {"opened": state["opened_at"], "verified": judged[-1]["ends_at"] if judged else None},
     }
+
+def _triage_tally(triage, listed, session) -> dict:
+    items = listed if listed is not None else [item["item"] for item in _items(session)]
+    kept = [triage[item] for item in items if item in triage]
+    return {"right": sum(1 for one in kept if one["right"]), "first_try": sum(1 for one in kept if one.get("first_right")),
+            "judged": len(kept), "items": len(items)}
 
 def _sensed_by(session, declared):
     detector = declared["completion"].get("detected_by")

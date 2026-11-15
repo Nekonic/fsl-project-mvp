@@ -98,6 +98,7 @@ OBJECTIVE_FACTS = ("lost_points", "detected_penalty")
 _segments_kept: dict = {}
 DISABLE_MINUTES = 60
 DEFAULT_RULES = "local.rules"
+EXCLUDED_DESTINATION = re.compile(r'(?i)\bnot\s*\(?\s*destination\s*:\s*"?(\d{1,3}(?:\.\d{1,3}){3})')
 RULE_ERROR = re.compile(r"\b(Error|ERRCODE)\b|<Error>")
 RULE_CHANGES = threading.RLock()
 SLOT_CHOICE = threading.Lock()
@@ -541,7 +542,8 @@ def _judge(session, taught, step, body, kept):
             raise BadRequest(f'"answer" must be the text given for step {step_id!r}, got {given!r}')
         if "kql" in check and QUOTED_WILDCARD.search(str(body.get("query") or "")):
             return False, ["lesson.check.wrong.kql_quoted", []]
-        if "kql" in check and not re.search(check["kql"], str(body.get("query") or "")):
+        if "kql" in check and (not re.search(check["kql"], str(body.get("query") or ""))
+                               or _excludes_the_site(session, check, str(body.get("query") or ""))):
             return False, [f"{prefix}.wrong.{step_id}.kql", []]
         accepted = _accepted(session, check, taught)
         if not accepted:
@@ -565,7 +567,10 @@ def _judge(session, taught, step, body, kept):
             return False, [f"{failed}.rev", [", ".join(map(str, needed))]], {"added": added}
         return bool(needed), [failed, []], {"added": added}
     if kind == "sent":
-        return bool(_site_requests(session, check["match"])), [failed, []]
+        if _site_requests(session, check["match"]):
+            return True, [failed, []]
+        said = next((rule["says"] for rule in check.get("wrong_if", []) if _site_requests(session, rule["match"])), None)
+        return (False, [f"{prefix}.wrong.{step_id}.{said}", []], {"loud": True}) if said else (False, [failed, []])
     if kind == "kali":
         return _kali_check(session, step, kept)
     if kind == "loot":
@@ -726,6 +731,10 @@ def _map_found(session):
     except RangeUnavailable:
         return []
 
+def _excludes_the_site(session, check, query):
+    excluded = set(EXCLUDED_DESTINATION.findall(query))
+    return check.get("leg") == "upstream" and bool(excluded) and bool(excluded & _site_addresses(session))
+
 def _site_addresses(session):
     site = wargames.host(session.scenario)
     found = {one.address.partition("/")[0] for (name, _), one in
@@ -761,8 +770,9 @@ def _request_fact(session, check, taught):
         found = {sid for record in records for sid in _alerted_sids(session, record)}
         return [lesson.PRESENT if found & added else lesson.ABSENT]
     if of == "anomaly_total":
-        return sorted({total for record in records for total in lesson.anomaly_totals(
+        totals = sorted({total for record in records for total in lesson.anomaly_totals(
             [detection.signature or "" for detection in _browsed(session, record) if detection.source == "modsecurity"])})
+        return [said for total in totals for said in (total, f"Total Score: {total}", f"(Total Score: {total})")]
     record = records[-1]
     url = urlsplit(record["url"])
     if of in ("status", "method", "path", "parameter", "param_value"):
@@ -2207,8 +2217,10 @@ def session_score(request, session_id):
     breaches = _breaches(session, cases, result)
     keep_ids = request.GET.get("brief") != "1"
     board = scoreboard.tally(breaches, totals.fp)
+    served = session.customer_requests.exists()
     warnings = [warning for warning in list(totals.warnings) + _wrong_reason_warnings(per_case)
-                if not (session.guidance and not session.course_scenario and warning[0] in OPERATOR_WARNINGS)]
+                if not (session.guidance and not session.course_scenario and warning[0] in OPERATOR_WARNINGS)
+                and not (served and warning[0] == "score.warning.no_benign")]
     if session.read_of:
         read, total = session.read_of or [0, 0]
         warnings.append(("score.warning.truncated", read, total))
@@ -2397,6 +2409,8 @@ def validate_rules(request):
         outcomes = [suricata.validate(content, runner)
                     for runner, _, _ in _sensors(_range(session))]
     failed = [o for o in outcomes if not o.ok]
+    if not failed and disable.unread(content):
+        return _reply({"ok": False, "output": "", "errors": disable.unread(content), "unread_sid": True}, status=400)
     outcome = max(failed, key=lambda o: len(_rule_errors(o.output)), default=outcomes[0])
     errors = list(dict.fromkeys(line for o in failed for line in _rule_errors(o.output)))
     payload = {"ok": outcome.ok, "output": outcome.output.strip(), "errors": errors}
@@ -2572,6 +2586,9 @@ def apply_rules(request):
                     "the sensor's rules changed since this copy was loaded "
                     f"(loaded {base or 'nothing'}, live {live}); reload them and edit again"
                 )
+        if disable.unread(content):
+            raise BadRequest(f"every rule needs an option sid:<number>; ending in ';', and these have none the "
+                             f"platform can read: {disable.unread(content)}")
         _apply(content, session)
     ruleset = RuleSet.objects.create(session=session, content=content, applied_at=timezone.now())
     return _reply(_shape(ruleset, RULESET_FIELDS))

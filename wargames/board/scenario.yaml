@@ -86,7 +86,7 @@ scenarios:
         check: {kind: triage, judged: all}
       - id: done
         point: {panel: "#scenario-done"}
-        check: {kind: click}
+        check: {kind: triage, judged: verified}
   - id: "2.1"
     order: 4
     text: scenario.korean
@@ -206,7 +206,7 @@ scenarios:
         check: {kind: rules}
       - id: done
         point: {panel: "#scenario-done"}
-        check: {kind: click}
+        check: {kind: triage, judged: verified}
   - id: "3.2"
     order: 8
     text: scenario.writerule
@@ -360,7 +360,7 @@ foundations:
     steps:
       - id: search
         point: {opens: site, site: "input[name=q]"}
-        check: {kind: sent, match: '[?&]q=(?!kim0413(&|$))[A-Za-z0-9]{4,}(&|$)'}
+        check: {kind: sent, match: '[?&]q=(?!kim0413(&|$))[A-Za-z0-9]{4,}(&|$)', wrong_if: [{match: '[?&]q=kim0413(&|$)', says: example}]}
       - id: count
         point: {opens: elk, kibana: {hits: true, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
         check: {kind: answer, of: hits, about: search, leg: both, kql: '(?i)\burl\s*:\s*"?\*?[A-Za-z0-9]{4,}'}
@@ -385,7 +385,7 @@ foundations:
     cases: [board-normal-search]
     steps:
       - id: probe
-        point: {opens: site, site: "input[name=q]"}
+        point: {opens: site, dev: toggle, until: dev_open, then: {site: "input[name=q]"}}
         check: {kind: sent, match: '<script'}
       - id: encoded
         point: {opens: site, dev: general.url}
@@ -394,6 +394,7 @@ foundations:
           of: escaped
           char: "<"
           about: probe
+          dev: '^/search/\?(.*&)?q=[^&]*<script'
           wrong_if:
             - {match: '(?i)^%3c.', says: more}
             - {match: '^<', says: same}
@@ -448,7 +449,7 @@ foundations:
     steps:
       - id: sort
         point: {opens: site, site: "form:has(select[name=sort])", until: sent, then: {dev: payload.query}}
-        check: {kind: answer, of: param_value, name: sort, match: '[?&]sort='}
+        check: {kind: answer, of: param_value, name: sort, match: '[?&]sort=', dev: '[?&]sort='}
       - id: error
         point: {opens: site, panel: "#site-address", until: sent, then: {dev: general.status}}
         command: 'http://board.com/?sort=posts_post.id)'

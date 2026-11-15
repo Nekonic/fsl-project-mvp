@@ -120,3 +120,16 @@ def test_a_kept_terminal_reattaches_to_one_tmux_session_per_learner_session_so_a
 
     assert seen.read_text().split("\n")[:-1] == [
         "-f", "/app/tmux.conf", "new-session", "-A", "-s", "kali-3", str(SCRIPT), "cr-kali", "3"]
+
+
+def test_the_shell_s_clock_is_korean_time_even_in_a_box_without_a_time_zone_database(tmp_path):
+    seen = tmp_path / "ssh-argv"
+    env = _fakes(tmp_path, python="cat >/dev/null; echo '10.31.0.180 cr-range-1 s3-waf'",
+                 ssh=f'printf "%s\\n" "$@" > {seen}')
+
+    subprocess.run(["sh", str(SCRIPT), "cr-waf", "3"], capture_output=True, text=True, env=env)
+    zone = next(word.removeprefix("TZ=") for word in seen.read_text().split("\n")[-2].split() if word.startswith("TZ="))
+    offset = subprocess.run(["date", "+%z"], capture_output=True, text=True,
+                            env={"TZ": zone, "TZDIR": str(tmp_path / "no-zoneinfo")}).stdout.strip()
+
+    assert "/" not in zone and offset == "+0900", "the WAF image has no tzdata, so TZ=Asia/Seoul read as UTC with the zone name 'Asia'"

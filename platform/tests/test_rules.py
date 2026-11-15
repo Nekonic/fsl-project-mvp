@@ -57,7 +57,7 @@ def test_apply_endpoint_stores_and_marks_applied(client):
 
     with patch("api.views.suricata.apply", side_effect=RuleApplyError("bad rule")), \
             patch("api.views.suricata.current", return_value=""):
-        refused = client.post_json("/api/rules/apply/", {"content": "x"})
+        refused = client.post_json("/api/rules/apply/", {"content": 'alert http any any -> any any (bogus; sid:1;)'})
 
     assert refused.status_code == 400
     assert "bad rule" in refused.json()["detail"]
@@ -89,3 +89,16 @@ def test_a_sensor_that_does_not_load_its_seed_fails_the_open():
 
     with pytest.raises(RuleApplyError, match="starting rule set"):
         suricata.seed(GOOD_RULE, sensor, RELOAD)
+
+def test_a_rule_whose_sid_has_no_semicolon_after_it_fails_the_syntax_check_and_apply_though_suricata_loads_it(client):
+    from api.models import RuleSet
+
+    unsplit = 'alert http any any -> any any (msg:"x"; http.uri; content:"vb83kx"; nocase; sid:9100001 rev:1;)\n'
+    with patch("api.views.suricata.validate", return_value=Ran(0, "1 rules successfully loaded")):
+        checked = client.post_json("/api/rules/validate/", {"content": GOOD_RULE + unsplit})
+    with patch("api.views.suricata.apply") as applier, patch("api.views.suricata.current", return_value=""):
+        applied = client.post_json("/api/rules/apply/", {"content": GOOD_RULE + unsplit})
+
+    assert checked.status_code == 400
+    assert checked.json()["unread_sid"] is True and checked.json()["errors"] == [unsplit.strip()]
+    assert applied.status_code == 400 and not applier.called and RuleSet.objects.count() == 0

@@ -129,10 +129,18 @@ async function scenarioRead() {
 
 async function scenarioDone() {
   field("scenario-done").disabled = true;
+  const said = field("scenario-done-said");
   const started = await post(scenarioPath("scenario/verify-window/"));
+  const left = started.body && started.body.unjudged;
+  said.textContent = left ? t("scenario.done.unjudged", left) : started.ok ? "" : detail(started);
+  said.classList.toggle("hidden", !said.textContent);
   if (started.ok) {
     scenario = started.body;
     scenarioReadAt = Date.now();
+  }
+  if (left) {
+    if (!paneOpen("triage")) paneTab("triage").click();
+    triageOpen();
   }
   stripShow();
 }
@@ -142,7 +150,7 @@ function verdictBox(state) {
   const reasons = state.completion.reasons.map(([key, values]) => t(key, ...values));
   const fix = state.completion.fix ? `${t(`lesson.fix.${state.completion.fix}`)} ${t("lesson.fix.note")}` : "";
   field("scenario-verdict").innerHTML = `
-    <span class="badge ${passed ? "badge-pass" : "badge-fail"} h-8 px-4 text-[14px]">${passed ? "PASS" : "FAIL"}</span>
+    <span class="badge ${passed ? "badge-pass" : "badge-fail"} h-8 px-4 text-[14px]">${esc(t(passed ? "scenario.phase.passed" : "scenario.phase.failed"))}</span>
     <div class="min-w-0 flex-1">
       <div class="font-bold text-[15px] text-heading">${esc(t(passed ? "scenario.verdict.passed" : "scenario.verdict.failed", scenarioTitle()))}</div>
       ${reasons.map((line) => `<p class="text-muted mt-0.5" data-reason>${esc(line)}</p>`).join("")}
@@ -211,6 +219,8 @@ async function triageJudge(row, verdict, succeeded) {
   said.textContent = t(answer.right ? "triage.said.right" : !answer.verdict_right ? "triage.said.verdict"
     : answer.pattern_right === false ? "triage.said.pattern" : "triage.said.succeeded");
   row.querySelector("[data-judged]").innerHTML = badge(t(answer.right ? "triage.right" : "triage.wrong"), answer.right ? "ok" : "red");
+  row.querySelectorAll("[data-got-in], [data-kind-of]").forEach((asked) => shownIn(asked, false));
+  field("scenario-done-said").classList.add("hidden");
   if (typeof answer.right_so_far === "number" && triageTotal !== null) field("triage-count").textContent = t("triage.count", answer.right_so_far, triageTotal);
   changed.forEach((then) => then("triage"));
   scenarioRead();

@@ -144,8 +144,8 @@ a single VM on VirtualBox or VMware.
    - The home page lists the community board under its target systems
      heading. Under its first course (log analysis basics), press **Start** on
      **Lesson 1**. The console is in Korean; the labels here are translations.
-   - The session page opens within seconds. Press **Open blue console**. The
-     console opens on the course briefing; press **Start**. It then shows the
+   - The blue console opens within seconds, on the course briefing; press
+     **Start**. It then shows the
      **Map** pane with the company network drawn on it, and beside it the lesson
      note names the first step.
    - If the page says the practice network is not ready, wait. A closed session
@@ -782,7 +782,9 @@ attacker use the board while the learner defends with the real tools.
 - "Start final check" (or the schedule) opens a final check of a few minutes.
   The platform judges it by task class:
   - judgement: passes when the learner judges right every alerted item listed
-    when the check started. Blocked customers are reported but do not count;
+    when the check started. The learner's "Start final check" waits while an
+    item listed so far has no verdict, and says how many are left. Blocked
+    customers are reported but do not count;
   - availability and unknown: pass when no customer is blocked and every attack
     is held. Scenario 2.3 also needs anomaly thresholds of at most 5/4;
   - detection: passes when every attack draws a corroborated Suricata alert and

@@ -16,6 +16,10 @@ def sids(content: str) -> set[int]:
     return {sid for line in content.splitlines()
             if line.strip() and not line.lstrip().startswith("#") and (sid := _sid(line)) is not None}
 
+def unread(content: str) -> list[str]:
+    return [line.strip() for line in content.splitlines()
+            if line.strip() and not line.lstrip().startswith("#") and _sid(line) is None]
+
 def comment_out(content: str, sid: int, until: str) -> str:
     lines = content.splitlines(keepends=True)
     at = _active(lines, sid)

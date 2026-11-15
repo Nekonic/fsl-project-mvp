@@ -191,7 +191,7 @@
     starting = false;
     if (started.ok && started.body.id) {
       rememberSession(started.body.id);
-      location.href = button.dataset.course ? `/blue/${started.body.id}/` : `/session/${started.body.id}/`;
+      location.href = button.dataset.course || button.dataset.lesson ? `/blue/${started.body.id}/` : `/session/${started.body.id}/`;
       return;
     }
     button.textContent = label;
@@ -232,7 +232,7 @@
     const id = button.dataset.close;
     await post(`/api/sessions/${id}/ingest/`);
     const closed = await post(`/api/sessions/${id}/close/`);
-    if (!closed.ok) {
+    if (!closed.ok && !(await alreadyClosed(id))) {
       button.disabled = false;
       button.textContent = t("main.close_this");
       failure.querySelector("[data-failure-text]").textContent = t("session.close.failed", detail(closed));
@@ -298,7 +298,7 @@
     const result = session.result || {};
     const judged = result.scenario;
     if (judged) {
-      return (judged.passed ? badge("PASS", "ok-strong") : badge("FAIL", "red-strong")) + (judged.helped || []).map((kind) =>
+      return (judged.passed ? badge(t("scenario.phase.passed"), "ok-strong") : badge(t("scenario.phase.failed"), "red-strong")) + (judged.helped || []).map((kind) =>
         ` <span class="text-muted text-[12px]">${esc(t(`result.helped.${kind}`))}</span>`).join("");
     }
     const objectives = result.objectives;

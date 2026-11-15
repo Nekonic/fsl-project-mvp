@@ -239,7 +239,7 @@
     banner.classList.toggle("border-l-success", judged.passed);
     banner.classList.toggle("border-l-danger", !judged.passed);
     banner.innerHTML = `
-      <span class="badge ${judged.passed ? "badge-pass" : "badge-fail"} h-8 px-4 text-[14px]">${judged.passed ? "PASS" : "FAIL"}</span>
+      <span class="badge ${judged.passed ? "badge-pass" : "badge-fail"} h-8 px-4 text-[14px]">${esc(t(judged.passed ? "scenario.phase.passed" : "scenario.phase.failed"))}</span>
       ${(judged.helped || []).map((kind) => `<span class="text-muted">${esc(t(`result.helped.${kind}`))}</span>`).join("")}
       <div class="min-w-0 flex-1">
         <div class="font-bold text-[15px] text-heading">${esc(t(judged.passed ? "scenario.verdict.passed" : "scenario.verdict.failed",
@@ -494,7 +494,7 @@
     const asked = session.course_scenario ? { scenario: session.course_scenario } : { scenario: session.scenario, ...settings };
     const started = await post("/api/sessions/", asked, PATIENCE_FOR_RANGE_WORK);
     if (started.ok && started.body.id) {
-      location.href = `/session/${started.body.id}/`;
+      location.href = asked.guidance || session.course_scenario ? `/blue/${started.body.id}/` : `/session/${started.body.id}/`;
       return;
     }
     button.disabled = false;
@@ -556,13 +556,14 @@
   field("confirm-close").addEventListener("click", async () => {
     await post(`/api/sessions/${id}/ingest/`);
     const result = await post(`/api/sessions/${id}/close/`);
+    const closed = result.ok || await alreadyClosed(id);
     show("confirm", false);
     const note = field("closed");
-    note.textContent = result.ok ? t("session.close.done") : t("session.close.failed", detail(result));
-    note.classList.toggle("text-danger", !result.ok);
-    note.classList.toggle("text-muted", result.ok);
+    note.textContent = closed ? t("session.close.done") : t("session.close.failed", detail(result));
+    note.classList.toggle("text-danger", !closed);
+    note.classList.toggle("text-muted", closed);
     show("closed", true);
-    if (result.ok) render();
+    if (closed) render();
     else show("close", true);
   });
 

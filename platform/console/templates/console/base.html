@@ -129,6 +129,11 @@
     const withOptionsWhole = (text) =>
       esc(text).replace(/(^|\s)(--?[A-Za-z]\S*)/g, '$1<span class="cli-option">$2</span>');
 
+    const alreadyClosed = async (id) => {
+      const read = await api(`/api/sessions/${id}/`);
+      return read.ok && Boolean(read.body.ended_at);
+    };
+
     const post = (path, payload, patience) => api(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

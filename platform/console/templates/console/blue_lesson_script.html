@@ -1218,13 +1218,12 @@ const POLL_SECONDS = 5;
 const MISSING_AFTER_FRAMES = 120;
 const SITE_SILENT_MS = 3000;
 const STAGE_KEYS = {
-  open: "lesson.dev.open", row: "lesson.dev.row", "tab.headers": "lesson.dev.tab.headers", "tab.payload": "lesson.dev.tab.payload",
+  open: "lesson.dev.open", row: "lesson.dev.row",
   query: "lesson.kibana.query", write: "lesson.kibana.write", top: "lesson.kibana.top_values", expand: "lesson.kibana.expand", field: "lesson.kibana.field", covered: "lesson.kibana.covered",
   other: "lesson.kibana.other", none: "lesson.kibana.none", prompt: "lesson.term.prompt",
-  apply: "lesson.rules.press_apply", add: "lesson.rules.add_line", verify: "lesson.kibana.verify", run_done: "lesson.kali.press",
+  apply: "lesson.rules.press_apply", verify: "lesson.kibana.verify", run_done: "lesson.kali.press",
 };
 const STAGE_FALLBACKS = {
-  add: "Add one rule line here.",
   verify: "Type destination in the field search and read this event's destination IP. If it is not the right address, switch to the other event with the arrows.",
   run_done: "The run has finished. Press 'Check the run'.",
 };
@@ -1583,7 +1582,7 @@ function coach(prefix, declared) {
   }
 
   function finishedText() {
-    return t(courseEnd() ? `${courseText}.done` : "lesson.done");
+    return t(courseEnd() ? `${courseText}.done` : session && session.course_scenario ? "scenario.note.done" : "lesson.done");
   }
 
   function nextStyled() {
@@ -1639,7 +1638,9 @@ function coach(prefix, declared) {
     const box = field("lesson-rules-text");
     return rulesAdded.length > 0 && Boolean(box) && box.value === rulesText;
   };
-  const reached = (point) => Boolean(point.then) && ((point.until === "sent" && sentSince) || (point.until === "applied" && rulesApplied()));
+  const devOpen = () => field("site-dev-toggle").getAttribute("aria-pressed") === "true";
+  const reached = (point) => Boolean(point.then) && ((point.until === "sent" && sentSince) || (point.until === "applied" && rulesApplied())
+    || (point.until === "dev_open" && devOpen()));
 
   function stageOf(step) {
     let point = step.point;
@@ -1842,7 +1843,7 @@ function coach(prefix, declared) {
     }
     await post(lessonPath("ingest/"));
     const closed = await post(lessonPath("close/"), {}, PATIENCE_FOR_RANGE_WORK);
-    if (closed.ok) {
+    if (closed.ok || await alreadyClosed(sessionId())) {
       location.href = `/session/${sessionId()}/`;
       return;
     }
@@ -2106,7 +2107,8 @@ async function validateRules() {
     status.textContent = t("lesson.rules.failed", detail(checked));
     return false;
   }
-  status.textContent = t(showRuleErrors(checked).length ? "lesson.rules.invalid" : "lesson.rules.no_error");
+  const listed = showRuleErrors(checked).length;
+  status.textContent = t(checked.body.unread_sid ? "lesson.rules.sid_unread" : listed ? "lesson.rules.invalid" : "lesson.rules.no_error");
   return false;
 }
 

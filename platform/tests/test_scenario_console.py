@@ -168,3 +168,55 @@ def test_the_count_of_right_judgements_moves_with_the_right_mark_it_counts(clien
     assert seen["result"]["before"] == worded("triage.count", 0, len(ITEMS))
     assert seen["result"]["after"] == worded("triage.count", 1, len(ITEMS)), (
         "the item said right while the header still counted none right until the next click")
+
+LATE = {**ITEMS[0], "item": "c3", "first": "2026-10-13T06:05:00+00:00", "request": {"method": "GET", "path": "/search/?q=late"}}
+
+def test_an_item_that_arrives_after_the_attack_is_judged_is_listed_without_a_reload(client):
+    seen = open_page(client, "/blue/1/", setup=serving(status(JUDGEMENT, id="1.1")), scenario="""
+      await browser.click('briefing-start');
+      await browser.click('[data-pane="triage"]');
+      await browser.click('[data-item="b2"] [data-judge="attack"]');
+      await browser.click('[data-item="b2"] [data-succeeded="false"]');
+      await browser.settle();
+      range.items = [...range.items, %s];
+      await browser.wait(16000);
+      await browser.settle();
+      return browser.text('triage-list').includes('/search/?q=late');
+    """ % js(LATE))
+
+    assert seen["errors"] == []
+    assert seen["result"] is True, "the poll stopped once the attack's got-in buttons were shown, so new items waited for a reload"
+
+def test_a_final_check_refused_for_unjudged_items_says_how_many_and_lists_them(client):
+    refusing = serving(status(JUDGEMENT, id="1.1")).replace(
+        'if (request.route === "/api/sessions/1/scenario/verify-window/") {',
+        'if (request.route === "/api/sessions/1/scenario/verify-window/" && range.items.length > 2) {\n'
+        '    return {status: 409, body: {detail: "not judged", unjudged: 1}};\n  }\n'
+        '  if (request.route === "/api/sessions/1/scenario/verify-window/") {')
+    seen = open_page(client, "/blue/1/", setup=refusing, scenario="""
+      await browser.click('briefing-start');
+      range.items = [...range.items, %s];
+      await browser.click('scenario-done');
+      await browser.settle();
+      return {said: browser.text('scenario-done-said'), listed: browser.text('triage-list').includes('/search/?q=late'),
+              windowed: range.windowed};
+    """ % js(LATE))
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"said": worded("scenario.done.unjudged", 1), "listed": True, "windowed": 0}
+
+def test_the_note_at_the_end_of_a_guided_scenario_speaks_of_the_scenario_not_a_lesson(client):
+    lesson = {"id": "1.1", "text": "scenario.shift",
+              "steps": [{"id": "done", "point": {"panel": "#scenario-done"}, "check": {"kind": "triage", "judged": "verified"}}]}
+    seen = open_page(client, "/blue/1/", setup=serving(status(JUDGEMENT, id="1.1"), lesson=lesson), scenario="""
+      await browser.click('briefing-start');
+      await browser.click('scenario-done');
+      for (let i = 0; i < 4; i += 1) await browser.wait(5000);
+      await browser.click('step-next');
+      await browser.settle();
+      return {task: browser.text('step-task'), said: browser.text('step-status') + browser.text('lesson-body')};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["task"] == worded("scenario.note.done")
+    assert worded("lesson.done") not in seen["result"]["said"]

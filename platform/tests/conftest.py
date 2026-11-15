@@ -23,8 +23,9 @@ def client():
 
 @pytest.fixture(autouse=True)
 def nothing_remembered_between_tests():
-    from api import site, views
+    from api import reset, site, views
 
+    reset._states.clear()
     views._segments_kept.clear()
     views._found_kept.clear()
     site._records.clear()

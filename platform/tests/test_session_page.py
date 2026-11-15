@@ -437,3 +437,59 @@ def test_the_kali_trademark_notice_is_in_the_home_page_footer_and_not_under_the_
 
     assert "topology.trademark" not in (console / "blue_topology.html").read_text()
     assert 'data-t="topology.trademark"' in client.get("/").content.decode()
+
+def test_starting_or_restarting_a_lesson_opens_its_console_not_a_page_holding_one_button(client):
+    restart = open_page(client, "/session/1/", setup=COURSE, scenario="""
+      await browser.click('restart');
+      await browser.settle();
+      return location.href;
+    """)
+    start = open_page(client, "/", setup=READY.replace("LOCATION", "").replace(
+        'if (request.route === "/api/sessions/") return {body: []};',
+        'if (request.route === "/api/sessions/" && request.method === "POST") return {status: 201, body: {id: 5}};\n'
+        '  if (request.route === "/api/sessions/") return {body: []};'), scenario="""
+      await browser.wait(500);
+      await browser.click('[data-lesson-id="f1"]');
+      await browser.settle();
+      return location.href;
+    """)
+
+    assert restart["errors"] == [] and start["errors"] == []
+    assert restart["result"] == "/blue/2/" and start["result"] == "/blue/5/"
+
+CLOSED_ELSEWHERE = """
+const range = {ended: null};
+browser.serve((request) => {
+  if (request.route === "/api/sessions/1/") {
+    return {body: {id: 1, scenario: "board", kind: "scenario", course_scenario: "1.1", ready: true, lesson: {text: "scenario.shift", steps: []},
+      started_at: "2026-10-18T09:00:00Z", ended_at: range.ended,
+      result: {objectives: {lost: 0, total: 0}, scenario: range.ended ? {passed: false, helped: []} : null}}};
+  }
+  if (request.route === "/api/sessions/1/close/") {
+    range.ended = "2026-10-18T09:07:00Z";
+    return {status: 409, body: {detail: "session 1 closed at 2026-10-18T09:07:00+00:00"}};
+  }
+  if (request.route === "/api/sessions/1/ingest/") return {body: {ingested: 0}};
+  if (request.route === "/api/wargames/") return {body: [{id: "board", name: "Board", public_url: "http://board.com", foundations: []}]};
+  if (request.route === "/api/wargames/board/objectives/") return {body: []};
+  if (request.route === "/api/sessions/1/score/") return {body: {breaches: [], per_case: [], warnings: [], customers: {sent: 0, blocked: 0, blocked_actions: {}}}};
+  if (request.route === "/api/sessions/1/scenario/debrief/") return {status: 409, body: {detail: "x"}};
+  if (request.route === "/api/sessions/1/activity/") return {body: {events: []}};
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+def test_ending_a_session_already_closed_says_it_is_closed_in_korean_and_hides_the_end_button(client):
+    seen = open_page(client, "/session/1/", setup=CLOSED_ELSEWHERE, scenario="""
+      for (let i = 0; i < 4; i += 1) await browser.settle();
+      await browser.click('close');
+      await browser.click('confirm-close');
+      for (let i = 0; i < 6; i += 1) await browser.settle();
+      return {note: browser.text('closed'), close: browser.element('close').classList.contains('hidden'),
+              verdict: browser.text('verdict')};
+    """)
+    shown = seen["result"]
+
+    assert seen["errors"] == []
+    assert shown["note"] == worded("session.close.done") and shown["close"] is True
+    assert worded("scenario.phase.failed") in shown["verdict"] and "FAIL" not in shown["verdict"]

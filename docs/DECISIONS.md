@@ -7454,3 +7454,78 @@ Judgement calls, decided:
   the expanded document is where later steps read fields.
 - The last step's pass line below the next-lesson button: left by round 19's
   ruling (S12).
+
+## 2026-11-15 — Answer-blind walk round 21: what changed in the lessons and why
+
+An answer-blind walk of both courses and scenario 1.1 on the live range (at
+b392748, images 7529bee) found 17 countable findings and no hard blocker; #8
+could fail a learner who did everything right and #1 accepted wrong work. The
+rules are round 20's: no answer before its step, a step that teaches a tool
+needs it, what the console shows is true, a reload loses no work, slop is
+removed rather than reworded. What either score means is unchanged, and the
+target still decides every objective.
+
+| # | Finding | Cause | What changed |
+|---|---|---|---|
+| 8 | Scenario 1.1: the note said every item was judged right, then the final check failed 16 of 17 | A customer item arrived after the last list read. The judge pane's 15 s re-read is skipped while an item's follow-up buttons show, and a judged attack's "did it get in" buttons stayed shown, so after the attack verdict the list never re-read until a reload | A verdict closes its follow-up buttons, so the re-read goes on. The learner's `verify-window` answers 409 with `unjudged` while an item listed so far has no verdict (`scenario_run.unjudged`); the console lists the items again and says how many are left (`scenario.done.unjudged`). The guided "start the final check" step is `triage` with `judged: verified` and passes once a window opened, not on the click; 3.1's done step too. The pass line of the all-items step says the items so far (`scenario.shift.ok.all`). The window still judges the items listed when it opened, as the briefing's measure says; the schedule's own window opens regardless |
+| 1 | c1 L3 step 3 passed `not destination : <board.com>` and explained it as the waf's leg | The `kql` pattern only required `not destination:`, and both queries give one hit | On a `leg: upstream` check, a query whose excluded destination is board.com's own address (`views._site_addresses`, from the map) fails with the step's `kql` line (`views._excludes_the_site`). The pattern stays static; no slot address is written into the catalogue |
+| 2 | c2 L1 step 2 (`%3C`) passed with DevTools never opened | f4 `encoded` had no `dev` | `dev: '^/search/\?(.*&)?q=[^&]*<script'`; the shown check carries `dev: true` (round 20, F1) |
+| 3 | c2 L2 step 1 (sort value) passed with DevTools closed | f5 `sort` had no `dev` | `dev: '[?&]sort='` |
+| 4 | A rule missing the `;` after `sid:` passed the syntax check and Apply, then the check said no rule was added | Not the hypothesis: `suricata -T` on the live sensor (Suricata 8.0.7) loads `... nocase; sid:9100001 rev:1;)` as one valid rule ("1 rules successfully loaded, 0 rules failed"), so there was no warning to catch. The platform reads a sid only as `sid:<n>` followed by `;` or `)` (`disable._SID`), so it saw no new rule | The syntax check and apply refuse a file with an active line whose sid the platform cannot read (`disable.unread`); the check answers `unread_sid: true` with the lines and the console says to end each option with `;` (`lesson.rules.sid_unread`). This lives in the platform's rule reading, not in `rules/suricata.py`, since Suricata accepts the rule: `core_loc` stays 584 |
+| 5 | c1 L3 step 1 sat on "checking" with the example word | The `sent` check matched nothing and said nothing | A `sent` check takes `wrong_if`; a sent request matching it answers `<text>.wrong.<step>.<says>` with `loud: true` (`lesson.logs.wrong.search.example`) |
+| 6 | c1 L2 sort hint said the new row appears at the bottom | The panel clears on navigation, so the row is the first | `lesson.http.nudge.sort` says the panel clears and the `?` row is at the top |
+| 7 | `Total Score: 20` rejected though it is the rule value's own text | `anomaly_total` accepted the number alone | It also accepts `Total Score: N` and `(Total Score: N)` |
+| 9 | Two totals for one judgement on the result page (17 and 27, later 31) | The debrief counted every item at read time; the headline the window's list | The debrief's triage line counts the last judged window's items (`scenario_run._triage_tally`); all items only with no judged window |
+| 10 | "Lesson over" in a scenario | `finishedText` had no scenario case | A scenario says `scenario.note.done` |
+| 11 | "The final check is running" after its result | The done step's pass line was about a moment | `scenario.shift.ok.done` and `scenario.fixrule.ok.done` say the final check was started |
+| 12 | "No benign request was sent" beside 1372 customer requests | `scoring/metrics.py` warns when no benign case was correlated; customer traffic is not a case | The score API drops `no_benign` when the session has customer requests (`views.session_score`). `scoring/` is unchanged; the warning is still true and shown for a session with neither |
+| 13 | A closed session's page kept its end button and showed "session N closed at <ISO time>" | A second close (double press) got the 409 and the page showed its detail and the button again | On a failed close the page reads the session; if it has `ended_at` it says it is closed and renders the result (`alreadyClosed` in `base.html`, used by the session page, the main page and the lesson end) |
+| 14 | "PASS"/"FAIL" labels | Hard-coded English | `scenario.phase.passed` and `scenario.phase.failed` on the scenario banner, the session page and the home table |
+| 15 | WAF `date` read "Asia" and UTC, 9 h behind Kali and Kibana | The WAF image has no tzdata, so `TZ=Asia/Seoul` became UTC named "Asia" | `vm-terminal.sh` sets `TZ=KST-9`, a POSIX zone that needs no tzdata. nginx's own error log and ModSecurity's audit log stay UTC: the ingest pipeline reads the audit log's zoneless `time_stamp` as UTC, and moving the process's zone would shift every WAF alert |
+| 16 | A lesson's session page held one button | Lesson starts went to the session page; scenario starts already opened the console | A lesson's Start, and Start again on a lesson or scenario, open the blue console. The session page stays for the running list, closing and the result |
+| 17 | Callouts repeating the step; c2 L1 step 1's ring on the search box while the card says to open DevTools first | Round 20 left the DevTools tab and rule-line callouts | `lesson.dev.tab.headers`, `lesson.dev.tab.payload` and `lesson.rules.add_line` are gone (ring only), with the English fallback for the rule line. f4 `probe` points `dev: toggle, until: dev_open` and then the search box (`until: dev_open`, new) |
+
+Also fixed: `tests/conftest.py` clears `reset._states` between tests. A test
+in `test_session_close.py` left slot 1 "resetting", so `test_api_ready.py`
+failed whenever the size-ordered split put the two in one process; the new
+tests changed file sizes and exposed it.
+
+Judgement calls, decided:
+
+- c1 L2 step 5 passing on the right row's Headers tab without opening
+  Payload: kept. The `dev` gate makes the learner pick the row; the step
+  teaches reading the request, and `q` is in the URL on the same row.
+- c1 L3 step 5 passing without expanding the row: kept (round 20).
+- c1 L1 step 3's edge across the "1" and the green-arrow hint: kept (round 20).
+- c2 L3 step 3: a 1-row or 2-row paste not flipping "some accounts" or
+  "admin account": kept. The objectives follow the target's own rules for
+  what was taken; the platform does not decide them from the paste.
+- The loot pass line saying "match" twice: fixed; `lesson.loot.matched` is
+  the matched accounts in brackets after the pass line.
+- c1's end naming course 2 with only an end button: kept. One session per
+  course; course 2 starts from the catalogue after this one closes.
+- The lesson end after skips not saying so: kept; the result page shows
+  "n of N steps passed".
+- Difficulty and penalty columns and alert counts per run on the c2 result:
+  kept by round 20's rulings (F22, F23); a run's alert count is the evidence
+  that one case counts once however many alerts it drew. The learner's XSS
+  searches are not attack runs (round 18).
+- Scenario: the red "no attack judged right yet" for one poll beside the
+  card's "right": left; the next poll replaces it. "Objectives lost 0" in the
+  strip: kept; it is the live state a defender watches, and an attack's
+  verdict needs whether it got in, which the strip does not say per item.
+- Scenario briefing labels, pills, "from:" labels, rule lines and the
+  evidence log: kept by round 20's ruling; they are the evidence a judgement
+  is made from.
+- 1342 + 29 = 1371 of 1372: true; one request had no answer when counted.
+  The session page's "step 4/4 · 0/3" with no verdict: left; the verdict is
+  on the result.
+- The home list missing session 1890: not reproduced; the list asks the ten
+  newest closed sessions.
+- Plain "wrong" for `created_at` and for a wrong count: kept by round 20's
+  ruling (a line for each near miss teaches by elimination).
+- c2 L3 step 8's text saying the attack is stopped with 403 while 10 sqlmap
+  requests reached the app (500): left; the check is the replay's verdict
+  (the run blocked, no loot), and the walk saw it pass.
+- The c2 intro's XSS line under the CRS heading and the sqlmap option
+  reference: left (round 20).

@@ -154,7 +154,7 @@ def test_every_step_opens_a_pane_points_at_one_element_and_the_last_is_solo_with
             assert len(LOCATORS & set(point)) == 1, (taught["id"], shown["id"])
             stage = point
             while stage.get("then"):
-                assert stage.get("until") in ("sent", "applied"), (taught["id"], shown["id"])
+                assert stage.get("until") in ("sent", "applied", "dev_open"), (taught["id"], shown["id"])
                 stage = stage["then"]
                 assert len(LOCATORS & set(stage)) == 1 and set(stage) - LOCATORS <= {"until", "then"}
     Session.objects.filter(pk=session.pk).update(lesson="f6", defense="overbroad")
@@ -798,3 +798,49 @@ def test_a_quoted_wildcard_in_kql_gets_a_line_saying_the_star_is_literal_there(c
     reply = answer(client, session, "count", "0", query='url : "*lee0921*"')
 
     assert reply["passed"] is False and reply["reason"] == ["lesson.check.wrong.kql_quoted", []]
+
+def test_the_and_not_query_that_drops_board_com_s_address_instead_of_the_waf_s_does_not_pass(client):
+    session = opened("f3")
+    marker = session.browse_marker
+    legs = [http_event(marker, "/search/?q=lee2026", 200, host="cr-edge", src_ip=CUSTOMER, dest_ip=WAF, dest_port=80),
+            http_event(marker, "/search/?q=lee2026", 200, src_ip=WAF, dest_ip=BOARD, xff=CUSTOMER)]
+    with on_the_range(), on_map(read_slot()), patch.object(site, "kept", return_value=[browsed("/search/?q=lee2026", 200)]), \
+            indexed(*legs):
+        board = step(client, session, "upstream", body={"answer": "1", "query": f"url : *lee2026* and not destination : {BOARD}"}).json()
+        waf = step(client, session, "upstream", body={"answer": "1", "query": f"url : *lee2026* and not destination : {WAF}"}).json()
+
+    assert (board["passed"], board["reason"]) == (False, ["lesson.logs.wrong.upstream.kql", []])
+    assert waf["passed"] is True
+
+@pytest.mark.parametrize("lesson_id, step_id, url, status, given", [
+    ("f4", "encoded", "/search/?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E", 403, "%3C"),
+    ("f5", "sort", "/?sort=created_at", 200, "created_at"),
+], ids=["xss-encoded", "sqli-sort"])
+def test_course_2_s_devtools_answers_need_the_request_s_row_picked_in_devtools(client, lesson_id, step_id, url, status,
+                                                                                given):
+    session = opened(lesson_id)
+    kept = [browsed("/", 200, request_id=0), browsed(url, status)]
+    with patch.object(site, "kept", return_value=kept), quietly():
+        unpicked = answer(client, session, step_id, given, dev_request=None)
+        picked = answer(client, session, step_id, given, dev_request=1)
+
+    assert unpicked["reason"] == ["lesson.check.wrong.dev", []]
+    assert picked["passed"] is True
+
+def test_searching_the_example_word_says_so_at_once_instead_of_waiting_silently(client):
+    session = opened("f3")
+    with patch.object(site, "kept", return_value=[browsed("/search/?q=kim0413", 200)]):
+        polled = step(client, session, "search", body={"poll": True}).json()
+
+    assert (polled["passed"], polled["reason"]) == (False, ["lesson.logs.wrong.search.example", []])
+    assert polled["loud"] is True
+
+def test_the_total_score_is_accepted_as_written_in_the_rule_value(client):
+    session = opened("f4")
+    detected(session, "total", "modsecurity", session.browse_marker,
+             "Inbound Anomaly Score Exceeded (Total Score: 20)", details={"ruleId": "949110"})
+    with patch.object(site, "kept", return_value=[browsed(SCRIPT_SEARCH, 403)]), quietly():
+        said = {given: answer(client, session, "score", given)["passed"]
+                for given in ("Total Score: 20", "(Total Score: 20)", "20", "Total Score: 21")}
+
+    assert said == {"Total Score: 20": True, "(Total Score: 20)": True, "20": True, "Total Score: 21": False}

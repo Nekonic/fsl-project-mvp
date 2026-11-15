@@ -287,3 +287,47 @@ def test_an_ordered_answer_still_splits_on_commas():
 
     check = {"form": "order", "accept": ["1", "292"]}
     assert lesson.answered(check, "1,292", "lesson.wrong.order")[0] is True
+
+def an_alerted_customer(session, ago):
+    marker = str(uuid.uuid4())
+    customer(session, timezone.now() - ago, status=403, marker=marker)
+    alert(session, marker, at=timezone.now() - ago)
+    return next(item["item"] for item in scenario_run._items(session)
+                if item["item"] == scenarios.item_id(session.browse_marker, marker))
+
+def test_the_final_check_does_not_start_while_an_item_listed_so_far_is_unjudged(client):
+    session = opened("1.1")
+    item = an_alerted_customer(session, timedelta(seconds=20))
+    path = f"/api/sessions/{session.pk}/scenario/verify-window/"
+    with patch("api.scenario_run.ensure_running", lambda: None):
+        refused = client.post_json(path)
+        client.post_json(f"/api/sessions/{session.pk}/triage/", {"item": item, "verdict": "customer"})
+        started = client.post_json(path)
+
+    assert refused.status_code == 409 and refused.json()["unjudged"] == 1
+    assert started.status_code == 201, started.content
+
+def test_the_last_guided_step_passes_once_the_final_check_has_started_not_on_the_click():
+    session = opened("1.1")
+    before = scenario_run.triage_passed(session, "verified")
+    scenario_run.start_window(session, "learner")
+    session.refresh_from_db()
+
+    assert before is False and scenario_run.triage_passed(session, "verified") is True
+    assert next(step for step in wargames.scenario_run("1.1")["steps"] if step["id"] == "done")["check"] == {
+        "kind": "triage", "judged": "verified"}
+
+def test_the_debrief_counts_the_items_the_final_check_judged_like_its_headline():
+    session = opened("1.1")
+    item = an_alerted_customer(session, timedelta(minutes=3))
+    scenario_run._update(session.pk, lambda state, held: state["triage"].update(
+        {item: {"verdict": "customer", "succeeded": None, "right": True, "tries": 1, "wrong": 0, "first_right": True,
+                "at": "x"}}))
+    session.refresh_from_db()
+    scenario_run.start_window(session, "learner", timezone.now() - timedelta(minutes=2))
+    an_alerted_customer(session, timedelta(seconds=30))
+    scenario_run._update(session.pk, lambda state, held: state["windows"][-1].update(
+        {"result": {"passed": True, "reasons": [], "fix": None}}))
+    session.refresh_from_db()
+
+    assert scenario_run.debrief(session)["triage"] == {"right": 1, "first_try": 1, "judged": 1, "items": 1}
