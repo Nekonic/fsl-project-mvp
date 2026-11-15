@@ -81,9 +81,9 @@ def test_choosing_an_origin_wears_its_source_address(client):
 
     assert response.status_code == 200
     [(argv, stdin)] = worn
-    assert argv == ["sudo", "/usr/local/sbin/set-origin", "172.20.0.7"], (
+    assert argv == ["sudo", "/usr/local/sbin/set-origin", "172.20.0.7", "board.com"], (
         "the box's outgoing source is rewritten to the origin's address, "
-        "which the port already owns"
+        "which the port already owns, for what it sends to the target unbound"
     )
     assert stdin is None
 

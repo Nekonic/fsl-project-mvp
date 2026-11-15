@@ -357,7 +357,7 @@ class Range:
         from range.ports import Ran
 
         def run(argv, stdin=None, timeout=60.0):
-            return Ran(exit_code=0, output="5.188.10.10 via 10.0.0.1 dev ens3 src 1.128.0.10 uid 1000")
+            return Ran(exit_code=0, output="1.128.0.10\n")
         return run
 
     def opened(self, role, argv):

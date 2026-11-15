@@ -41,3 +41,19 @@ def test_the_waf_answers_to_waf_and_its_log_sender_name_keeps_its_slot():
     assert " cr-waf-2 " in rangehost.forwarding(slot, "10.31.0.2", 5140, {"waf": ("cr-waf", "modsecurity")}), (
         "Filebeat takes the slot from the syslog host name, which the fixed name would erase"
     )
+
+
+def test_the_origin_rewrite_is_one_gvisor_takes_and_touches_only_what_the_box_sends_unbound():
+    image = (DEPLOY / "kali/Dockerfile").read_text()
+    script = (DEPLOY / "kali/set-origin").read_text()
+
+    assert "update-alternatives --set iptables /usr/sbin/iptables-legacy" in image, (
+        "gVisor implements the legacy iptables socket options; iptables-nft failed with Protocol not supported"
+    )
+    assert 'for proto in tcp udp; do' in script and '-p "$proto" -j SNAT' in script, (
+        "gVisor refuses a SNAT rule that names no protocol (Invalid argument)"
+    )
+    assert '-s "$unbound"' in script and "/usr/local/sbin/unbound-source" in script, (
+        "gVisor ignores the owner match, so only the unbound source is rewritten and the customers' "
+        "bound addresses pass as they are"
+    )

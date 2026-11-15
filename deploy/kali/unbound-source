@@ -1,0 +1,7 @@
+#!/usr/bin/python3
+import socket
+import sys
+
+probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+probe.connect((socket.gethostbyname(sys.argv[1]), 80))
+print(probe.getsockname()[0])
