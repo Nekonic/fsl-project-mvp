@@ -30,11 +30,6 @@ const COLOURS = { internet: "#b03a2e", dmz: "#2e6da4", web: "#2f7a6b", database:
 const LINK = "#1b4f8a";
 const MIRROR = "#8a5a00";
 const LOGS = "#5b6770";
-const GAP = 140;
-const ROW = 150;
-const ZONE_GAP = 120;
-const SENSOR_RISE = 120;
-const COLLECTOR_DROP = 230;
 const MARGIN = 24;
 const LOCATE_EVERY_MS = 150;
 const session = location.pathname.split("/")[2];
@@ -59,88 +54,72 @@ function named(node) {
   return node.name || "";
 }
 
-const ACROSS = ["kali", "router", "waf", "server", "database"];
-const rankOf = (node) => (ACROSS.includes(node.kind) ? ACROSS.indexOf(node.kind) : ACROSS.length);
+const SIDES = {
+  above: { "text-valign": "top", "text-halign": "center", "text-margin-x": 0, "text-margin-y": -6 },
+  below: { "text-valign": "bottom", "text-halign": "center", "text-margin-x": 0, "text-margin-y": 6 },
+  left: { "text-valign": "center", "text-halign": "left", "text-margin-x": -8, "text-margin-y": 0 },
+  right: { "text-valign": "center", "text-halign": "right", "text-margin-x": 8, "text-margin-y": 0 },
+};
 
-function laidOut(map) {
-  const placed = {};
-  const homes = {};
-  const zones = map.zones.map((zone) => zone.id);
-  const between = [];
-  map.nodes.filter((node) => node.zones).forEach((node) => {
-    if (node.zones.length > 1 && node.zones.includes("internet")) between.push(node);
-    else homes[node.id] = node.zones[0];
-  });
-  let x = 0;
-  zones.forEach((zone, index) => {
-    if (index === 1) between.forEach((node, at) => {
-      placed[node.id] = { x: x + ZONE_GAP / 2, y: at * ROW };
-      x += ZONE_GAP;
-    });
-    const members = map.nodes.filter((node) => homes[node.id] === zone)
-      .sort((one, other) => rankOf(one) - rankOf(other) || one.id.localeCompare(other.id));
-    const width = Math.max(1, members.length) * GAP;
-    const centre = x + width / 2;
-    placed[switchId(zone)] = { x: centre, y: 0 };
-    members.forEach((node, at) => { placed[node.id] = { x: x + GAP / 2 + at * GAP, y: ROW }; });
-    map.nodes.filter((node) => node.kind === "sensor" && node.zone === zone)
-      .forEach((node, at) => { placed[node.id] = { x: centre + at * GAP, y: -SENSOR_RISE }; });
-    x += width + ZONE_GAP;
-  });
-  const logged = map.edges.filter((edge) => edge.kind === "logs").map((edge) => edge.source);
-  const sources = logged.map((id) => placed[id]).filter(Boolean);
-  map.nodes.filter((node) => node.kind === "logs").forEach((node) => {
-    const centre = sources.reduce((sum, at) => sum + at.x, 0) / Math.max(1, sources.length);
-    const gate = between.length ? placed[between[0].id].x : centre;
-    placed[node.id] = { x: gate, y: ROW + COLLECTOR_DROP };
-  });
-  return placed;
+function bends(route, from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return route.map(([x, y]) => ({
+    weight: ((x - from.x) * dx + (y - from.y) * dy) / (length * length),
+    distance: ((y - from.y) * dx - (x - from.x) * dy) / length,
+  }));
 }
 
 function elements(map) {
-  const placed = laidOut(map);
-  const parentOf = (node) => {
-    if (node.kind === "switch" || node.kind === "sensor") return zoneId(node.zone);
-    if (!node.zones || (node.zones.length > 1 && node.zones.includes("internet"))) return undefined;
-    return zoneId(node.zones[0]);
-  };
-  const zones = map.zones.map((zone) => ({ group: "nodes", classes: "zone",
-    data: { id: zoneId(zone.id), label: captioned(zone), colour: COLOURS[zone.caption] || LOGS } }));
+  const at = Object.fromEntries(map.nodes.map((node) => [node.id, { x: node.x || 0, y: node.y || 0 }]));
+  const zones = map.zones.map((zone) => {
+    const [x1, y1, x2, y2] = zone.box;
+    return { group: "nodes", classes: "zone", position: { x: (x1 + x2) / 2, y: (y1 + y2) / 2 },
+      data: { id: zoneId(zone.id), label: captioned(zone), colour: COLOURS[zone.caption] || LOGS,
+              width: x2 - x1, height: y2 - y1 } };
+  });
   const nodes = map.nodes.map((node) => ({ group: "nodes", classes: node.kind === "switch" ? "switch" : `device ${node.kind}`,
-    position: placed[node.id] || { x: 0, y: 0 },
-    data: { id: node.id, parent: parentOf(node), label: named(node), name: node.name || "",
+    position: at[node.id],
+    data: { id: node.id, label: named(node), name: node.name || "", side: node.label || "below",
             symbol: `/static/map/symbols/${SYMBOLS[node.kind] || SYMBOLS.host}` } }));
-  const edges = map.edges.map((edge) => ({ group: "edges", classes: edge.kind,
-    data: { id: edge.id, source: edge.source, target: edge.target, address: edge.address || "",
-            label: edge.kind === "mirror" ? t("topology.mirror") : "" } }));
+  const edges = map.edges.map((edge) => {
+    const route = edge.route ? bends(edge.route, at[edge.source], at[edge.target]) : [];
+    return { group: "edges", classes: edge.kind,
+      data: { id: edge.id, source: edge.source, target: edge.target, address: edge.address || "",
+              mirror: edge.kind === "mirror" ? t("topology.mirror") : "",
+              weights: route.map((bend) => bend.weight), distances: route.map((bend) => bend.distance),
+              end: edge.end ? `${edge.end[0]}px ${edge.end[1]}px` : "outside-to-node" } };
+  });
   return [...zones, ...nodes, ...edges];
 }
 
 const STYLE = [
   { selector: "node", style: { "font-family": font, "font-size": 11, color: "#0F172A" } },
   { selector: "node.zone", style: {
-    shape: "rectangle", "background-color": "data(colour)", "background-opacity": 0.06,
-    "border-width": 2, "border-color": "data(colour)", label: "data(label)", "text-valign": "top",
-    "text-halign": "center", "font-size": 13, "font-weight": "bold", color: "data(colour)",
-    "text-margin-y": 10, "text-background-color": "#FFFFFF",
-    "text-background-opacity": 1, "text-background-padding": 3, padding: 28 } },
+    shape: "rectangle", width: "data(width)", height: "data(height)", "background-color": "data(colour)",
+    "background-opacity": 0.06, "border-width": 2, "border-color": "data(colour)", label: "data(label)",
+    "text-valign": "top", "text-halign": "center", "font-size": 13, "font-weight": "bold", color: "data(colour)",
+    "text-margin-y": 10, "text-background-color": "#FFFFFF", "text-background-opacity": 1,
+    "text-background-padding": 3, "z-compound-depth": "bottom", "z-index": 0, events: "no" } },
   { selector: "node.device, node.switch", style: {
     shape: "rectangle", width: 52, height: 52, "background-opacity": 0, "border-width": 0,
-    "background-image": "data(symbol)", "background-fit": "contain", "background-clip": "none" } },
-  { selector: "node.device", style: {
-    label: "data(label)", "text-valign": "bottom", "text-halign": "center", "text-margin-y": 6,
-    "text-wrap": "wrap", "line-height": 1.35 } },
+    "background-image": "data(symbol)", "background-fit": "contain", "background-clip": "none", "z-index": 10 } },
+  { selector: "node.device", style: { label: "data(label)", "text-wrap": "wrap", "line-height": 1.35 } },
+  ...Object.entries(SIDES).map(([side, style]) => ({ selector: `node.device[side = "${side}"]`, style })),
   { selector: "edge", style: { width: 2, "curve-style": "straight", "line-color": LINK, "font-family": font,
-    "font-size": 10 } },
+    "font-size": 10, "z-index": 5 } },
   { selector: "edge.link", style: {
-    "source-label": "data(address)", "source-text-offset": 52, color: LINK, "z-index": 3,
+    "source-label": "data(address)", "source-text-offset": 52, color: LINK,
     "text-background-color": "#FFFFFF", "text-background-opacity": 1, "text-background-padding": 2 } },
   { selector: "edge.mirror", style: {
-    "line-color": MIRROR, "line-style": "dashed", label: "data(label)", color: MIRROR, "z-index": 3,
-    "text-background-color": "#FFFFFF", "text-background-opacity": 1, "text-background-padding": 2 } },
+    "line-color": MIRROR, "line-style": "dashed", "source-label": "data(mirror)", "source-text-offset": 32,
+    color: MIRROR, "text-background-color": "#FFFFFF", "text-background-opacity": 1,
+    "text-background-padding": 2 } },
   { selector: "edge.logs", style: {
-    "line-color": LOGS, "line-style": "dashed", "curve-style": "straight", "z-index": 1,
-    "target-arrow-shape": "triangle", "target-arrow-color": LOGS, "arrow-scale": 0.9 } },
+    "line-color": LOGS, "line-style": "dashed", "curve-style": "segments", "edge-distances": "node-position",
+    "segment-weights": "data(weights)", "segment-distances": "data(distances)", "target-endpoint": "data(end)",
+    width: 1.5, "target-arrow-shape": "triangle", "target-arrow-color": LOGS, "arrow-scale": 0.9 } },
 ];
 
 function boxOf(ele, only) {
