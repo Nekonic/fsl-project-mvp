@@ -55,7 +55,12 @@ forwarded() {
   done
 }
 
+named() {
+  grep -q "[[:space:]]$(hostname)\$" /etc/hosts || printf '127.0.1.1 %s\n' "$(hostname)" >> /etc/hosts
+}
+
 prepare() {
+  named
   shift_by=$(remapped)
   owner=$(( ${shift_by:-0} ))
   www=$(( ${shift_by:-0} + 33 ))

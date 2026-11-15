@@ -376,3 +376,14 @@ def test_reading_the_slots_plans_does_not_rebuild_the_range_bundle(monkeypatch):
         range_of_four.plan_slots()
 
     assert len(built) <= 1, f"every readiness read rebuilt the range bundle: {len(built)} builds"
+
+
+def test_the_range_host_finds_its_own_name_in_etc_hosts_before_a_slot_comes_up():
+    script = (ROOT / rangehost.SLOT_SCRIPT).read_text()
+    prepare = script[script.index("\nprepare() {"):script.index("\n}\n", script.index("\nprepare() {"))]
+
+    assert "printf '127.0.1.1 %s\\n' \"$(hostname)\" >> /etc/hosts" in script
+    assert prepare.lstrip("\n").splitlines()[1].strip() == "named", (
+        "sudo looks up the host's own name on every command; with no DNS and no /etc/hosts line, "
+        "systemd-resolved's answer took 21.8 s on a range host with eight slots, so every docker exec "
+        "the platform sent waited that long")
