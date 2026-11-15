@@ -155,3 +155,35 @@ def test_a_stopped_sensor_does_not_open_the_judge_to_the_range(client):
         f"the attacker box reached the rules API ({answered.status_code}). "
         f"Who stands inside the range does not depend on where the sensor is"
     )
+
+
+def test_callers_that_find_the_range_unread_wait_for_one_read():
+    import threading
+    import time
+
+    from api import reachability
+
+    started = threading.Barrier(8)
+
+    class Slow(Stub):
+        reads = 0
+
+        def segments(self):
+            Slow.reads += 1
+            time.sleep(0.2)
+            return SHAPE.segments
+
+    def ask():
+        started.wait()
+        found.append(reachability.scored_hosts())
+
+    found = []
+    with patch("api.reachability.substrate", Slow):
+        callers = [threading.Thread(target=ask) for _ in range(8)]
+        for caller in callers:
+            caller.start()
+        for caller in callers:
+            caller.join()
+
+    assert Slow.reads == 1, f"{Slow.reads} callers each read the whole range at once"
+    assert len(found) == 8 and all("5.188.10.2" in one for one in found)

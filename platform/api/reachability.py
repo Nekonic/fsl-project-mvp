@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 
 from django.conf import settings
@@ -11,13 +12,22 @@ from range.ports import RangeUnavailable
 TTL = 30.0
 
 _cached: tuple[float, frozenset[str]] = (0.0, frozenset())
+_refreshing = threading.Lock()
+
+def _fresh() -> frozenset[str] | None:
+    age, known = _cached
+    return known if age and time.monotonic() - age < TTL else None
 
 def scored_hosts() -> frozenset[str]:
-    global _cached
-
-    age, known = _cached
-    if time.monotonic() - age < TTL:
+    known = _fresh()
+    if known is not None:
         return known
+    with _refreshing:
+        known = _fresh()
+        return known if known is not None else _read()
+
+def _read() -> frozenset[str]:
+    global _cached
 
     adapter = substrate()
     segments = []

@@ -869,7 +869,8 @@ class OpenStack:
         servers = self._all(SERVERS, "servers")
         server = self._range_server(servers)
         statuses = {server["id"]: self._setup_status(server)} if server else {}
-        digest = rangehost.digest(self._bundle())
+        digest = rangehost.bundle_digest(Path(self.build.source), self._wargames(), self.build.image_tag,
+                                         self.build.mtu)
         return [self.in_slot(number)._plan(servers, digest, statuses) for number in range(1, self.slots + 1)]
 
     def ensure_slot(self, renew: bool = True) -> slot.Plan:

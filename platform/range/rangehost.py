@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import hashlib
 import io
 import ipaddress
@@ -8,6 +9,7 @@ import json
 import re
 import shlex
 import tarfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -154,7 +156,48 @@ def dumped(document: dict) -> bytes:
     return yaml.dump(document, Dumper=_Unaliased, sort_keys=True).encode()
 
 
+_rendered: dict[tuple, tuple[tuple, object]] = {}
+_rendering = threading.Lock()
+
+
+def _stamp(path: Path) -> tuple:
+    try:
+        found = path.stat()
+    except OSError:
+        return (str(path),)
+    return (str(path), found.st_mtime_ns, found.st_size)
+
+
+def _read_from(source: Path, wargames) -> tuple:
+    return (_stamp(source / TEMPLATE), _stamp(source / SETUP),
+            *(_stamp(source / COMPOSE.format(wargame=wargame)) for wargame in wargames))
+
+
+def _kept(what: tuple, source: Path, wargames, make):
+    read = _read_from(source, wargames)
+    with _rendering:
+        held = _rendered.get(what)
+        if held is not None and held[0] == read:
+            return held[1]
+    made = make()
+    with _rendering:
+        _rendered[what] = (read, made)
+    return made
+
+
 def compose(source: Path, slot: Slot, wargames) -> dict:
+    source, wargames = Path(source), tuple(wargames)
+    return copy.deepcopy(_kept(("compose", str(source), slot, wargames), source, wargames,
+                               lambda: _composed(source, slot, wargames)))
+
+
+def bundle_digest(source: Path, wargames, tag: str, mtu: int) -> str:
+    source, wargames = Path(source), tuple(wargames)
+    return _kept(("bundle", str(source), wargames, tag, mtu), source, wargames,
+                 lambda: digest(bundle(source, wargames, tag, mtu)))
+
+
+def _composed(source: Path, slot: Slot, wargames) -> dict:
     document = yaml.safe_load(_filled((Path(source) / TEMPLATE).read_text(), slot))
     declared = document.pop("x-wargames", {}) or {}
     contained = dict(document.get("x-contained") or {})

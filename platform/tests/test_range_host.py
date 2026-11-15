@@ -310,3 +310,38 @@ def test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it():
     mounted = dict(volume.split(":")[1::-1] for volume in document["services"]["waf"]["volumes"])
 
     assert mounted.get(written) == f"{rangehost.LOG_FILES.format(slot=1)}/{rangehost.LOGS['waf']}"
+
+
+def test_a_slot_s_compose_is_parsed_once_and_again_only_when_its_files_change(tmp_path, monkeypatch):
+    import shutil
+
+    for name in (rangehost.TEMPLATE, rangehost.SETUP, *(rangehost.COMPOSE.format(wargame=w) for w in WARGAMES)):
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(ROOT / name, tmp_path / name)
+    parsed = []
+    real = rangehost.yaml.safe_load
+    monkeypatch.setattr(rangehost.yaml, "safe_load", lambda text: parsed.append(1) or real(text))
+
+    first = rangehost.compose(tmp_path, laid(3), WARGAMES)
+    first["services"].clear()
+    again = rangehost.compose(tmp_path, laid(3), WARGAMES)
+    once = len(parsed)
+    template = tmp_path / rangehost.TEMPLATE
+    template.write_text(template.read_text().replace("mem_limit: 64m", "mem_limit: 65m"))
+    changed = rangehost.compose(tmp_path, laid(3), WARGAMES)
+
+    assert once == 1 + len(WARGAMES), "the second read of an unchanged slot parsed its YAML again"
+    assert again["services"], "a caller's change to the document reached the next caller"
+    assert changed["services"]["edge"]["mem_limit"] == "65m" and len(parsed) > once
+
+
+def test_reading_the_slots_plans_does_not_rebuild_the_range_bundle(monkeypatch):
+    built = []
+    real = rangehost.bundle
+    monkeypatch.setattr(rangehost, "bundle", lambda *a, **k: built.append(1) or real(*a, **k))
+    range_of_four = adapter(Cloud(), slots=4)
+
+    for _ in range(3):
+        range_of_four.plan_slots()
+
+    assert len(built) <= 1, f"every readiness read rebuilt the range bundle: {len(built)} builds"
