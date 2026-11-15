@@ -1,6 +1,10 @@
 import ipaddress
 
 import pytest
+import requests
+
+from conftest import PLATFORM_URL
+from shared_sessions import shared_session
 
 @pytest.fixture(scope="module")
 def drawn(full_run):
@@ -40,14 +44,22 @@ def test_the_running_range_matches_what_was_declared(full_run):
     )
 
 
-def test_the_live_map_draws_each_container_on_the_bridge_it_stands_on_with_an_address_of_that_bridge(drawn):
-    live = drawn["map"]
-    subnets = {zone["id"]: zone["subnet"] for zone in live["zones"]}
-    linked = {(edge["source"], edge["target"].removeprefix("switch:")): edge["address"]
-              for edge in live["edges"] if edge["kind"] == "link"}
+@pytest.fixture(scope="module")
+def live_map(stack_is_up):
+    with shared_session() as session_id:
+        return requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=120).json()["map"]
 
-    assert {("kali", "internet"), ("router", "internet"), ("router", "estate"), ("waf", "estate"),
-            ("board.com", "estate"), ("board-db", "board-default")} <= set(linked), linked
-    for (host, zone), address in linked.items():
-        if subnets[zone]:
-            assert ipaddress.ip_address(address) in ipaddress.ip_network(subnets[zone]), (host, zone, address)
+
+def test_the_live_map_draws_each_container_on_the_bridge_it_stands_on_with_an_address_of_that_bridge(live_map):
+    subnets = {zone["id"]: zone["subnet"] for zone in live_map["zones"]}
+    zones_of = {}
+    for edge in live_map["edges"]:
+        if edge["kind"] == "link":
+            zone = edge["target"].removeprefix("switch:")
+            zones_of.setdefault(edge["source"], set()).add(zone)
+            if subnets[zone]:
+                assert ipaddress.ip_address(edge["address"]) in ipaddress.ip_network(subnets[zone]), edge
+
+    assert {"internet"} <= zones_of["kali"] and {"internet"} < zones_of["router"], zones_of
+    assert zones_of["waf"] & zones_of["board.com"] and zones_of["board.com"] & zones_of["board-db"], zones_of
+    assert {zone["caption"] for zone in live_map["zones"]} >= {"internet", "dmz", "database"}
