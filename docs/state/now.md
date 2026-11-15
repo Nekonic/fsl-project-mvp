@@ -15,6 +15,13 @@ Internet.
 
 ## Where things stand
 
+- 2026-11-16, a session's slot runs only its own wargame (`docs/DECISIONS.md`
+  "A session's slot runs only that session's wargame"): opening a session
+  stops the other wargame's containers (`slot.sh play`); a reset starts both
+  again. The map of a board session shows only board.com and board-db.
+  Session open 8-17 s before and after. Full `bin/verify` on the VM: 494 s,
+  acceptance 94 passed, 0 failed, 1 skipped in 417 s across 12 processes,
+  unit and API 808 + 878.
 - 2026-11-16, the IDS behind the WAF and the map redrawn (`docs/DECISIONS.md`
   "The IDS stands behind the WAF; nginx's own refusals are WAF evidence; the
   live map redrawn"): the sensor sniffs only `web` on `sN-web`; Suricata adds
