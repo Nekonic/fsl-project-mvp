@@ -161,7 +161,6 @@ unlinked() {
 logs_emptied() {
   : > "$logs/sensor/eve.json"
   docker exec "$project-sensor" suricatasc -c reopen-log-files >/dev/null
-  : > "$logs/waf/audit.log"
 }
 
 up() {
@@ -192,6 +191,7 @@ reset() {
   prepare
   targets_reset > "$d/targets.log" 2>&1 &
   targets=$!
+  : > "$logs/waf/audit.log"
   compose up -d --force-recreate --no-deps --wait --wait-timeout "$WAIT" --pull never kali waf waf-shipper
   address_kali
   routed waf

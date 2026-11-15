@@ -159,8 +159,8 @@ def test_each_slot_s_logs_reach_the_collector_under_a_name_that_keeps_its_slot()
     assert 'File="/var/log/cr/s2/sensor/eve.json"' in two["rsyslog/sensor-shipper.conf"].decode()
     assert 'reopenOnTruncate="on"' in two["rsyslog/sensor-shipper.conf"].decode(), "a reset empties the logs in place"
     assert 'freshStartTail="on"' in two["rsyslog/waf-shipper.conf"].decode(), (
-        "a reset recreates the WAF's shipper before it empties the audit log; starting from the top, the new "
-        "shipper sent the closed session's 9,400 WAF records a second time (measured on session 2201)")
+        "starting from the top, a recreated shipper sent the closed session's 9,400 WAF records a second time "
+        "(measured on session 2201)")
     assert relay.count('Target="10.31.0.2" Port="5140" Protocol="udp"') == 2
 
 
@@ -380,6 +380,17 @@ def test_reading_the_slots_plans_does_not_rebuild_the_range_bundle(monkeypatch):
         range_of_four.plan_slots()
 
     assert len(built) <= 1, f"every readiness read rebuilt the range bundle: {len(built)} builds"
+
+
+def test_a_reset_empties_the_waf_audit_log_before_it_recreates_the_waf_and_its_shipper():
+    script = (ROOT / rangehost.SLOT_SCRIPT).read_text()
+    reset = script[script.index("\nreset() {"):script.index("\n}\n", script.index("\nreset() {"))]
+    emptied = script[script.index("\nlogs_emptied() {"):script.index("\n}\n", script.index("\nlogs_emptied() {"))]
+
+    assert reset.index(': > "$logs/waf/audit.log"') < reset.index("kali waf waf-shipper"), (
+        "a shipper that starts at the end of a full audit log and sees it emptied afterwards read nothing "
+        "the new WAF wrote: session 2222 got Suricata's alerts and no ModSecurity record")
+    assert "waf" not in emptied
 
 
 def test_the_range_host_finds_its_own_name_in_etc_hosts_before_a_slot_comes_up():
