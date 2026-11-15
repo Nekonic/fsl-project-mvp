@@ -7847,3 +7847,72 @@ install -r platform/requirements.txt` of "Virtualenvs are made with uv".
 - `.claude/settings.json` still allows `uv venv*` and `uv pip install*`; it
   was left as it is, since permission settings change only on the user's
   word.
+
+## 2026-11-15 — The learner map is the slot's live wiring
+
+The user: "이게 진짜 구성도를 해야지 가짜로 하면 의미 자체가 없어". The GNS3
+learner map's hosts were idle busybox containers on the platform VM's own
+Docker daemon, drawn from a hand-made `.gns3` file; only the link labels came
+from the range. Its switches were not real either: `sw1` joined the router,
+the WAF and board.com at once, `sw3` joined them to a log server, and
+board.com hung off three switches.
+
+The 2026-10-13 ruling against a topology drawn by the platform was about
+invented elements, not about who draws it. The user: "ai slop이니까
+못쓰게 한거지". A map in which every element comes from `docker network
+inspect`, `docker inspect` and `ip addr` on the range host invents nothing,
+so it meets that ruling; this entry applies it, it does not overturn it.
+
+Built:
+
+- `rangehost.WIRING`, one ssh round trip per read: the slot project's Docker
+  networks (bridge name, subnet), each running container's service, network
+  mode, `Args` and mount sources, `nsenter -n ip -o -4 addr` for each
+  container not on the host network, and the `File=`/`Port=` lines of the
+  slot's rsyslog file. `interfaces.wiring` parses it; `OpenStack.wiring()`
+  runs it; `topology.graph` names it for the learner.
+- What the map draws: each Docker bridge is one switch; each container
+  interface on it is one link, labelled with its address; nothing else is a
+  link. The Suricata sensors are on the host network, so each hangs off the
+  bridge its `--af-packet=` names by a dashed 미러링 edge. Log forwarding is a
+  dashed arrow from every container whose mount holds a file rsyslog
+  forwards (both sensors and the WAF) to `log-server`, captioned 로그 수집기
+  (5140/udp). `sw3` is gone: it was never a network. Customers are extra
+  source addresses on the Kali container, so they are a line under the kali
+  node, not a device.
+- Zone captions come from who stands on the network, not from its name:
+  kali makes it the 인터넷 구간, the router the DMZ, the wargame's database
+  without the WAF the DB존, anything else the 웹 서버 구간. The slot
+  agent's move of the web services behind the WAF (the user's ruling that
+  Kali must not reach board or corp except through the WAF) therefore needs
+  no special case: the map shows whatever the inspect shows.
+- No live state: the user ruled that a stopped container means a broken
+  range, so the map is read once when the pane opens; a container that is not
+  running is not drawn.
+- `GET /api/sessions/<id>/topology/` carries the graph as `map`; the console
+  frames `/map/<session>/`, which draws it with cytoscape.js 3.34.4 (MIT,
+  vendored, SHA-256 `081591ab…6cd8`) and the affinity symbols the GNS3 image
+  built (Unlicense; the Kali dragon keeps its notice), read only, and answers
+  the coach's `locate` and `fit` messages as the GNS3 page did.
+- F1: the path now starts at kali (`kali > router > waf > board.com`), the
+  board address is board.com's on the network it shares with the WAF, and
+  the DMZ question reads the WAF's estate network, so neither layout breaks
+  them.
+- Removed: the `gns3` service and image, port 3080 and its security-group
+  rule, `deploy/gns3`, `deploy/topology`, `bin/check-topology`,
+  `platform/gns3.py`, the map publishing at start, and the platform's Docker
+  socket, its docker group setup and the Docker client in its image. The
+  socket was mounted only for `interfaces.on_this_host`, which read the
+  platform VM's own NICs for a log-server label the map never showed; the
+  platform VM's addresses already come from the OpenStack API (`describe`).
+  `services` 5 -> 4, `dependencies` 6, `core_loc` 584.
+
+Seen in the live wiring before the slot agent's change: board (10.30.N.59)
+and corp-wp (.60) stand on `sN-estate` with the edge router's `lan`
+(10.30.N.1), and `deploy/edge/edge.nft` forwards everything, so Kali could
+reach board by address without the WAF. The map drew it as it stood.
+
+Not chosen: containerlab or netlab (their graphs read only containerlab
+labels, or a file), NetBox (three more services), draw.io and NeXt UI
+(a document look, or unmaintained since 2017), keeping GNS3 with built-in
+nodes (still placeholders).
