@@ -388,3 +388,14 @@ def test_the_range_host_finds_its_own_name_in_etc_hosts_before_a_slot_comes_up()
         "sudo looks up the host's own name on every command; with no DNS and no /etc/hosts line, "
         "systemd-resolved's answer took 21.8 s on a range host with eight slots, so every docker exec "
         "the platform sent waited that long")
+
+
+def test_bringing_a_slot_up_restarts_its_log_server_and_shippers_on_the_files_just_written():
+    script = (ROOT / rangehost.SLOT_SCRIPT).read_text()
+    up = script[script.index("\nup() {"):script.index("\n}\n", script.index("\nup() {"))]
+
+    assert "--force-recreate --no-deps" in up and "$(logging)" in up, (
+        "rsyslog reads its config at start and a bind-mounted file keeps the inode it was created with; "
+        "re-rendered in place, the log server kept naming 172.29.N.12 as the old estate sensor and the WAF's "
+        "audit log reached Elasticsearch as Suricata's")
+    assert "grep -e '^log-server$' -e '-shipper$'" in script

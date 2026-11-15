@@ -14,6 +14,7 @@ compose() { docker compose -p "$project" -f "$d/compose.yaml" "$@"; }
 pid() { docker inspect -f '{{.State.Pid}}' "$1"; }
 inside() { c=$1; shift; nsenter -t "$(pid "$c")" -n "$@"; }
 wargames() { cat "$BASE/wargames.txt"; }
+logging() { compose config --services | grep -e '^log-server$' -e '-shipper$'; }
 fronts() { cat "$d/fronts"; }
 remapped() { awk -F: '$1 == "dockremap" { print $2; exit }' /etc/subuid 2>/dev/null; }
 
@@ -169,6 +170,7 @@ up() {
   compose up --no-start --pull never --remove-orphans
   restore $(wargames)
   compose up -d --wait --wait-timeout "$WAIT" --pull never
+  compose up -d --force-recreate --no-deps --wait --wait-timeout "$WAIT" --pull never $(logging)
   address_kali
   address_edge
   routed waf
