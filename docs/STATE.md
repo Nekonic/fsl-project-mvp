@@ -122,6 +122,13 @@ the controller"). The repo is a uv project (`pyproject.toml`, `uv.lock`); every
 environment, the images included, syncs from the lock with `uv sync
 --frozen` ("The repo is a uv project").
 
+On 2026-11-16 the user ruled gVisor and Elasticsearch authentication fake
+risks raised by the AI and both went (`docs/DECISIONS.md` "gVisor and
+Elasticsearch security removed"): every slot container runs on Docker's
+default runtime, Elasticsearch and Kibana run without security on the
+platform VM's loopback, and nginx caches the session check five seconds per
+session cookie.
+
 ## The objective model (done 2026-10-04)
 
 The attacker proves possession. The objective layer used to read Juice Shop's

@@ -8359,3 +8359,58 @@ per address); `select_for_update` for the one-session check (SQLite ignores
 it). The check runs again inside `SLOT_CHOICE`, the in-process lock that
 already serialises the slot choice, so parallel opens by one learner get one
 session.
+
+## 2026-11-16 — gVisor and Elasticsearch security removed: they answered a fake risk
+
+The user: "보안과 성능에서 성능을 더 신경써", "커널 공유를 받아들인 위험
+자체가 아니잖아. 의미가 없다니까", "성능 때문에 gVisor를 뺀게 아니잖아", and
+"ai의 가짜 위험. slop 위험이라고 적어." The kernel-sharing and
+container-escape threat that brought in gVisor on 2026-11-15 was raised by the
+AI, not by anything in this product: AI slop. So was the Elasticsearch
+authentication. Both are gone. What the product already is makes them
+pointless: the range host is its own OpenStack VM, so the hypervisor is the
+boundary; it holds only the slots; it is rebuilt from the stock Ubuntu image;
+its only way toward the platform is the collector port (and NTP); and only
+signed-in users an admin approved reach the range at all. Elasticsearch and
+Kibana listen on the platform VM's loopback only, the range has no route to
+them, and nginx already refuses Kibana's management and dev tools APIs.
+
+- **gVisor.** No `runsc` install, SHA pin or `runtimes` entry in
+  `daemon.json`; every slot container runs on Docker's default runtime.
+  Undone with it, because they existed only for gVisor: `slot.sh` enters
+  every container with `nsenter` again (no `docker exec --privileged`, Kali's
+  addresses flushed in one step), the wiring read uses `nsenter` only, board
+  and corp drop `iproute2`, the targets find each other by Docker's embedded
+  DNS again (no fixed backend /28, no `extra_hosts` for neighbours), and Kali
+  wears its origin as before 2026-11-15: nft iptables, one SNAT rule for all
+  protocols, the unbound source read from `ip route get`, and the customers'
+  `-m owner --uid-owner cr-users -j RETURN` exemption back in `POSTROUTING`.
+  `test_containment` asserts that no slot container names a runtime and
+  `daemon.json` registers none.
+- **Elasticsearch security.** `xpack.security.enabled: "false"` again; gone
+  are the `elastic` password and its cr-owned copy, `deploy/elastic/start.sh`,
+  Kibana's service account token, the `cr_viewer` role and `cr-viewer` user,
+  `/auth-check/kibana/` and nginx's `Authorization` injection, and the `auth`
+  arguments in the collector, `register_pipeline.py`, `ingest/elastic.py`,
+  the views and `test/conftest.py`. `core_loc` 587 -> 585. Sign-in on every
+  surface, CSRF, the project password file, `network.allowed` and the
+  removed Docker socket stay.
+- **The session check is cached.** Every `/kibana/`, terminal and `/site/`
+  request ran an `auth_request` subrequest into Django with no cache, and
+  Kibana's Discover loads 322 requests. nginx now keeps the check's answer in
+  `proxy_cache signed_in`, keyed by `$cookie_cr_session`, `proxy_cache_valid
+  204 401 5s` (nginx docs, "ngx_http_proxy_module": `proxy_cache_key`,
+  `proxy_cache_valid`), with `proxy_ignore_headers Vary` because Django's
+  session middleware sends `Vary: Cookie`. Measured live 2026-11-16, three
+  first loads of `/kibana/s/soc-logs-1/app/discover` in a fresh headless
+  Chromium each, with a temporary subrequest log: without the cache 963
+  checks reached Django, with it 16 (1 MISS, 15 EXPIRED, 958 HIT). The load
+  time did not change (5.9-6.7 s without, 5.8-9.1 s with; 6.2-11.1 s on the
+  old stack): Kibana's own assets dominate it, not the check. A sign-out
+  stays honoured within five seconds, since Django gives the browser a new
+  session key at sign-in and sign-out.
+- **Measured on the range host** (eight slots, 13 containers each, the
+  range host replaced by `bin/cloud up` because `setup.sh`, `daemon.json`
+  and the images changed): `slot.sh reset 8` 41.9 s and 46.8 s on runc
+  against 50.1 s with Kali on runsc the same night; available memory with
+  eight idle slots 5,674 MB against 4,869 MB.

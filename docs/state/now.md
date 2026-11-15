@@ -5,16 +5,30 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-16, each slot's monitoring made real: sensors on the bridges
-they watch by `tc mirred`, a 관제망 `sN_mgmt` and a log server per slot (the
-range is one range host, `cr-range`, running eight slots as compose projects;
-on `dev`).
+Updated: 2026-11-16, gVisor and Elasticsearch security removed as fake risks,
+the session check cached, sign-up with admin approval merged (the range is one
+range host, `cr-range`, running eight slots as compose projects on runc; on
+`dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
 
 ## Where things stand
 
+- 2026-11-16, fake-risk measures removed (`docs/DECISIONS.md` "gVisor and
+  Elasticsearch security removed"): no gVisor (every slot container on
+  Docker's default runtime, Kali's origin rewrite and the targets' Docker DNS
+  as before 2026-11-15), no Elasticsearch or Kibana authentication, and nginx
+  keeps the session check five seconds per session cookie (Django's checks for
+  three Kibana first loads 963 -> 16). Sign-up with admin approval and the
+  abuse limits from `signup-approval` are merged. Live: the platform VM runs
+  `/opt/cr` at that merge with its images; `bin/cloud up` replaced the range
+  host (10.31.0.223) from the new bundle in 16 min. Eight idle slots leave
+  5,674 MB available (4,869 MB with Kali on runsc); `slot.sh reset 8` 41.9 s
+  and 46.8 s (50.1 s before). Full `bin/verify` on the VM: 563 s, acceptance
+  95 passed, 0 failed, 1 skipped in 505 s across 12 processes, unit and API
+  800 + 870, `core_loc` 587 -> 585, `dependencies` 6, `services` 4; nothing
+  throttled by the new limits.
 - 2026-11-16, the monitoring is real (`docs/DECISIONS.md` "Each slot's
   monitoring is real"): both Suricata sensors are slot containers on the
   bridge they watch (`sniff`, no address, every other port mirrored to them by
@@ -43,19 +57,15 @@ Internet.
   `123456`, made at first start, never forced to change); `/vm-terminal/`,
   `/kibana/` and 8002 check the same session through nginx `auth_request`;
   the session cookie is HttpOnly, the CSRF token lives in the session, no
-  CORS; Elasticsearch runs with security on (password made at first start in
-  `/data/elastic`, Kibana on a service account token, learners on the
-  read-only `cr-viewer`); the project password is `/opt/cr/openstack-password`
-  mounted as a compose secret; `network.allowed` narrows the platform's
-  ingress; Kali runs on gVisor (`runsc`, KVM platform). Checked live:
+  CORS; the project password is `/opt/cr/openstack-password` mounted as a
+  compose secret; `network.allowed` narrows the platform's ingress (the
+  Elasticsearch security and gVisor of that day were removed on 2026-11-16).
+  Checked live:
   `uv run bin/cloud up --replace --ref harden` end to end; the full
   `bin/verify` on the platform VM, acceptance 92 passed, 1 skipped (F1's
   course skip), unit 888 + 759, ratchet `core_loc` 584 -> 587 recorded; an
   unsigned browser got the login page on 8000, 8002, both terminals and
-  `/kibana/`. On the deployed range host the runsc runtime arguments
-  (`--platform=kvm`) and the runc split (Kali alone on runsc) were applied
-  in place and every slot reset, without a second bring-up; the next
-  `bin/cloud up` renders the same from `dev`.
+  `/kibana/`.
 
 - Versions: commits, branches, tags and pushes to `dev` need no gate; `main`
   takes only a tagged best version after gate 2 (CLAUDE.md, "How work runs
