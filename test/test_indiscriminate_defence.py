@@ -1,47 +1,5 @@
 import pytest
-import requests
 
-from conftest import PLATFORM_URL, runs_the_declared_rules
-
-CATCH_ALL = (
-    'alert http any any -> any any (msg:"SQL XSS traversal Restricted File"; '
-    'flow:established,to_server; http.uri; content:"/"; sid:9009997; rev:1;)\n'
-)
-CASES = [
-    "board-sqli-search", "board-xss-script-tag-in-search", "board-path-traversal-static",
-    "board-normal-search", "board-normal-search-with-apostrophe",
-]
-
-def rules():
-    return requests.get(f"{PLATFORM_URL}/api/rules/", timeout=60).json()["content"]
-
-def apply_rules(content, session_id):
-    applied = requests.post(
-        f"{PLATFORM_URL}/api/rules/apply/",
-        json={"content": content, "session": session_id}, timeout=180,
-    )
-    assert applied.ok, applied.text
-
-def fire_and_score(session_id):
-    for name in CASES:
-        sent = requests.post(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/",
-            json={"case": name}, timeout=300,
-        )
-        assert sent.status_code == 201, sent.text
-
-    from conftest import score_when_ready
-
-    return score_when_ready(
-        session_id, lambda totals: totals["tp"] > 0 and totals["fp"] > 0
-    )
-
-def signatures(session_id):
-    listed = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
-    ).json()
-    rows = listed if isinstance(listed, list) else listed["detections"]
-    return {d["detection_id"]: d["signature"] for d in rows}
 
 def indiscriminate(totals, sigs):
     found = set()
@@ -50,22 +8,24 @@ def indiscriminate(totals, sigs):
             found |= {sigs[i] for i in case["detection_ids"] if i in sigs}
     return found
 
+
 @pytest.fixture(scope="module")
-def block_everything(stack_is_up):
-    session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
-    ).json()["id"]
-    baseline_rules = runs_the_declared_rules(session_id)
-    apply_rules(CATCH_ALL, session_id)
-    try:
-        totals = fire_and_score(session_id)
-        yield totals, signatures(session_id)
-    finally:
-        apply_rules(baseline_rules, session_id)
+def block_everything(rules_session):
+    after = rules_session["after"]
+    phase = [case for case in after["per_case"] if case["case_id"] in rules_session["catch_all"]]
+    totals = {
+        "per_case": phase,
+        "tp": sum(case["verdict"] == "TP" for case in phase),
+        "fp": sum(case["verdict"] == "FP" for case in phase),
+        "warnings": after["warnings"],
+    }
+    return totals, {d["detection_id"]: d["signature"] for d in rules_session["listed"]}
+
 
 def test_the_experiment_is_valid_at_all(block_everything):
     totals, sigs = block_everything
 
+    assert len(totals["per_case"]) == 5, totals["per_case"]
     assert totals["fp"] > 0 and totals["tp"] > 0, (
         f"the catch-all rule did not fire on both attacks and benign traffic, "
         f"so nothing below proves anything: {totals['tp']}/{totals['fp']}"
@@ -73,6 +33,7 @@ def test_the_experiment_is_valid_at_all(block_everything):
     assert indiscriminate(totals, sigs), (
         "no signature fired on both, so there is no indiscriminate defence here"
     )
+
 
 def test_nothing_is_credited_to_a_signature_that_also_fires_on_benign_traffic(
     block_everything,
@@ -90,6 +51,7 @@ def test_nothing_is_credited_to_a_signature_that_also_fires_on_benign_traffic(
             f"The defence writes that text, so a block-everything rule set "
             f"wins the one number meant to stop it"
         )
+
 
 def test_a_defence_with_nothing_but_noise_is_called_out(block_everything):
     totals, sigs = block_everything
@@ -111,6 +73,8 @@ def test_a_defence_with_nothing_but_noise_is_called_out(block_everything):
             f"{name} drew nothing but indiscriminate alerts and still reports "
             f"corroborated={case['corroborated']!r}"
         )
-    assert any(
-        w[0] == "score.warning.wrong_reason" for w in totals["warnings"]
+    wrong = [c["name"] for c in totals["per_case"] if c["detected"] and c["corroborated"] is False]
+    assert wrong and any(
+        w[0] == "score.warning.wrong_reason" and all(name in w[1] for name in wrong)
+        for w in totals["warnings"]
     ), totals["warnings"]

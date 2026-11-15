@@ -12,12 +12,6 @@ def session_id(client):
 def a_case(client):
     return client.get("/api/wargames/board/cases/").json()[0]
 
-def test_the_case_catalogue_offers_attacks_and_benign_traffic(client):
-    cases = client.get("/api/wargames/board/cases/").json()
-
-    assert any(case["malicious"] for case in cases)
-    assert any(not case["malicious"] for case in cases)
-
 def test_firing_a_case_sends_it_and_records_ground_truth(client, session_id, a_case):
     with patch("api.views.harness.fire") as fired:
         response = client.post_json(

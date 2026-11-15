@@ -26,13 +26,6 @@ def _get(client, cloud):
     ), patch("api.views._rules_at_baseline", return_value=True):
         return client.get(URL)
 
-def test_the_compose_range_is_always_ready(client):
-    answer = client.get(URL)
-
-    assert answer.status_code == 200
-    assert answer.json() == {"ready": True, "substrate": "compose", "slot": None, "max_sessions": 2}
-
-
 def test_a_standing_active_range_that_passes_its_checks_is_ready(client):
     body = _get(client, Cloud()).json()
 

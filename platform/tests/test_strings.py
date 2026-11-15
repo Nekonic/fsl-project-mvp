@@ -145,6 +145,13 @@ def test_no_korean_is_written_outside_the_string_table():
         f"CLAUDE.md confines Korean to the string table; these carry it inline: {offenders}"
     )
 
+def test_no_shown_string_labels_a_detection_result_with_the_english_abbreviations():
+    abbreviated = re.compile(r"(?<![A-Za-z0-9_])(?:TP|FP|FN|TN)(?![A-Za-z0-9_])")
+
+    assert not {key: text for key, text in tables().items() if abbreviated.search(text)}, (
+        "a detection result is labelled with the Korean practitioner terms (docs/DECISIONS.md), "
+        "never TP, FP, FN or TN")
+
 def test_nothing_the_platform_sends_to_the_page_is_prose():
     from datetime import datetime, timezone
 

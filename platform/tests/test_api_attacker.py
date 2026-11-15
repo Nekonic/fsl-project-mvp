@@ -6,7 +6,7 @@ from range.ports import Ran, Shape
 
 pytestmark = pytest.mark.django_db
 
-HOME = [{"id": "edge", "label": "Moscow, Russia", "source_ip": "172.20.0.7", "direct_ip": "172.20.0.7",
+HOME = [{"id": "edge", "label": "Moscow, Russia", "source_ip": "172.20.0.7", "direct_ip": "172.20.0.9",
          "target_url": "http://5.188.10.9:8080", "subnet": "", "network": "cr_edge",
          "address": "5.188.10.9", "default": True}]
 REFUSED = "iptables: Permission denied (you must be root)"
@@ -33,6 +33,7 @@ def test_attacker_reports_the_address_alerts_will_carry(client):
 
     assert response.status_code == 200
     assert response.json()["source_ip"] == "172.20.0.7"
+    assert response.json()["direct_ip"] == "172.20.0.9"
     assert response.json()["terminal_url"]
     assert "container" not in response.json()
 
@@ -50,24 +51,6 @@ def test_a_label_or_origin_the_proxy_did_not_take_is_503_with_its_reason(client,
         f"so the console believed the terminal was stamped or moved when it was not"
     )
     assert REFUSED in response.json()["detail"]
-
-def test_a_terminal_window_is_recorded_as_a_window_case(client):
-    session_id = client.post_json("/api/sessions/", {}).json()["id"]
-
-    created = client.post_json(f"/api/sessions/{session_id}/cases/", {
-        "case_id": "44444444-4444-4444-8444-444444444444",
-        "name": "manual-sqlmap",
-        "malicious": True,
-        "correlation": "window",
-        "source_ip": "172.20.0.7", "direct_ip": "172.20.0.7",
-        "started_at": "2026-09-20T12:00:00Z",
-        "ended_at": "2026-09-20T12:02:00Z",
-    })
-
-    assert created.status_code == 201
-    assert created.json()["correlation"] == "window"
-    assert created.json()["source_ip"] == "172.20.0.7"
-
 
 def test_choosing_an_origin_wears_its_source_address(client):
     worn = []

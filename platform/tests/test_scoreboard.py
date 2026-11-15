@@ -1,4 +1,4 @@
-from scoreboard import DETECTED_WEIGHT, Breach, tally
+from scoreboard import Breach, tally
 
 def breach(difficulty, detected, key="k"):
     return Breach(
@@ -16,13 +16,14 @@ def test_an_untouched_session_has_no_coverage_figure_and_all_lost_unseen_is_zero
     assert scored.damage == 0
     assert tally([breach(3, detected=False)], false_positives=0).coverage == 0.0
 
-def test_an_undetected_breach_costs_more_than_a_detected_one():
+def test_an_objective_lost_and_undetected_counts_double():
     seen = tally([breach(4, detected=True)], false_positives=0)
     missed = tally([breach(4, detected=False)], false_positives=0)
 
-    assert missed.damage > seen.damage
-    assert seen.damage == 4 * DETECTED_WEIGHT
     assert missed.damage == 4
+    assert missed.damage == 2 * seen.damage, (
+        "one objective lost and undetected must cost twice one lost and seen"
+    )
 
 def test_coverage_weighs_by_difficulty_not_by_count():
     scored = tally(

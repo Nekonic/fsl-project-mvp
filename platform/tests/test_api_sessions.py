@@ -82,14 +82,15 @@ def test_a_session_for_a_wargame_that_does_not_exist_is_refused(client, scenario
     )
     assert not Session.objects.exists()
 
-def test_record_case_then_read_it_back(client):
+@pytest.mark.parametrize("correlation", ["marker", "window"])
+def test_record_case_then_read_it_back(client, correlation):
     session_id = client.post_json("/api/sessions/", {}).json()["id"]
     payload = {
         "case_id": "11111111-1111-4111-8111-111111111111",
         "name": "sqli-login-bypass",
         "malicious": True,
         "technique": "SQLi",
-        "correlation": "marker",
+        "correlation": correlation,
         "source_ip": "172.20.0.5",
         "started_at": "2026-09-18T12:00:00Z",
         "ended_at": "2026-09-18T12:00:03Z",
@@ -104,6 +105,7 @@ def test_record_case_then_read_it_back(client):
     assert len(listed.json()) == 1
     assert listed.json()[0]["name"] == "sqli-login-bypass"
     assert listed.json()[0]["malicious"] is True
+    assert (listed.json()[0]["correlation"], listed.json()[0]["source_ip"]) == (correlation, "172.20.0.5")
 
 def test_case_rejects_unknown_correlation_strategy(client):
     session_id = client.post_json("/api/sessions/", {}).json()["id"]

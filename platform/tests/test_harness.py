@@ -210,3 +210,25 @@ def test_a_run_that_fails_midway_still_closes_its_session_and_said_which_it_was(
     assert posts[-1].endswith("/api/sessions/9/close/"), (
         "a run that failed midway left its session open, holding a place under the cap"
     )
+
+BENIGN_KEPT = {
+    "board.yaml": {
+        "board-normal-search", "board-normal-search-with-apostrophe", "board-normal-post-list",
+        "board-normal-sort", "board-normal-search-korean", "board-normal-comment",
+    },
+    "corp.yaml": {
+        "corp-normal-home", "corp-normal-registration-page", "corp-normal-search", "corp-normal-registration",
+    },
+}
+
+def test_every_case_file_keeps_its_benign_cases():
+    files = sorted(DEFAULT_CASES.parent.glob("*.yaml"))
+
+    assert sorted(path.name for path in files) == sorted(BENIGN_KEPT), (
+        "a case file without a committed list of its benign cases can lose them unseen")
+    for path in files:
+        benign = {case["name"] for case in load_cases(path) if not case["malicious"]}
+        assert benign, f"{path.name} has no benign case, so a rule set that blocks everything scores perfectly"
+        assert BENIGN_KEPT[path.name] <= benign, (
+            f"{path.name} lost the benign cases {sorted(BENIGN_KEPT[path.name] - benign)}; "
+            f"removing one makes the score look better and the platform pointless")

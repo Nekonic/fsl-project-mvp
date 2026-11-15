@@ -84,7 +84,6 @@ RANGE = declared.read()
 
 ATTACKER_CONTAINER = RANGE.roles["attacker"]
 ATTACKER_SOURCE_CONTAINER = RANGE.roles["proxy"]
-ATTACKER_LABEL_FILE = "/var/lib/session/active"
 ATTACKER_TERMINAL_URL = "/vm-terminal/kali/"
 ATTACKER_SESSION_TERMINAL_URL = "/vm-terminal/kali/?arg={session}"
 WAF_TERMINAL_URL = "/vm-terminal/waf/"
@@ -126,12 +125,12 @@ CR_SENSOR_RULES = (
 CR_SENSOR_RELOAD = tuple((
     os.environ.get("CR_SENSOR_RELOAD")
     or (SENSOR_HOST and SENSOR_HOST.reload)
-    or "suricatasc -c reload-rules"
+    or ""
 ).split())
 
 def _sensing(role):
     host = RANGE.hosts.get(RANGE.roles[role]) or declared.Host()
-    return role, host.rules or RULE_PATH, tuple((host.reload or "suricatasc -c reload-rules").split())
+    return role, host.rules or RULE_PATH, tuple(host.reload.split())
 
 CR_EXTRA_SENSORS = tuple(_sensing(role) for role in sorted(RANGE.watches) if role != "sensor")
 

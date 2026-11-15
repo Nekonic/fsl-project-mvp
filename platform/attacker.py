@@ -9,6 +9,8 @@ from django.conf import settings
 
 from range.ports import RangeUnavailable
 
+LABEL_FILE = "/var/lib/session/active"
+
 class AttackerUnavailable(RangeUnavailable):
     pass
 
@@ -72,7 +74,7 @@ def wear_origin(chosen: dict, box) -> None:
         )
 
 def set_label(case_id: str | None, proxy) -> None:
-    _write(proxy, settings.ATTACKER_LABEL_FILE, case_id)
+    _write(proxy, LABEL_FILE, case_id)
 
 SQLMAP_HOMES = ("/root", "/home/*")
 SQLMAP_OUTPUTS = (".local/share/sqlmap/output", ".sqlmap/output")

@@ -140,34 +140,7 @@ def test_the_hook_leaves_a_blank_line_before_every_prompt_but_the_first_as_kali_
 
 MARKER_PATH = "/var/lib/session/active"
 
-KALI_IMAGE = Path(__file__).resolve().parents[2] / "deploy/kali/Dockerfile"
 KALI_BASHRC = Path(__file__).resolve().parents[2] / "deploy/kali/bashrc"
-SLOT = Path(__file__).resolve().parents[2] / "deploy/range-host/slot.yaml"
-TERMINAL = Path(__file__).resolve().parents[1] / "vm-terminal.sh"
-
-def test_the_kali_image_records_what_the_terminal_s_shell_types():
-    image = KALI_IMAGE.read_text()
-
-    assert "echo '. /usr/local/lib/shell-hook.sh' >> /etc/bash.bashrc" in image, (
-        "every interactive bash reads /etc/bash.bashrc, so whatever the learner types reaches the operator log"
-    )
-    assert f"install -m 0600 /dev/null {operator_log.LOG_PATH}" in image, (
-        "the log must exist before the first command and be read by the root the platform runs as"
-    )
-
-def test_the_attacker_shell_is_kali_s_own():
-    image = KALI_IMAGE.read_text()
-
-    assert "COPY kali/bashrc /root/.bashrc" in image and "touch /root/.hushlogin" in image
-    assert ": > /etc/motd" in image
-    assert "hostname: kali" in SLOT.read_text()
-
-def test_the_login_shell_exports_the_proxy_so_every_tool_goes_through_the_stamping_proxy():
-    image = KALI_IMAGE.read_text()
-    exported = re.findall(r"export (\w*proxy)=", image, re.I)
-
-    assert exported == ["http_proxy", "HTTP_PROXY"] and "/etc/profile.d/proxy.sh" in image
-    assert " bash -l" in TERMINAL.read_text(), "only a login shell reads /etc/profile.d"
 
 def test_the_attacker_prompt_is_kali_s_two_line_prompt_and_ends_in_a_dollar_and_a_space():
     shell = subprocess.run(

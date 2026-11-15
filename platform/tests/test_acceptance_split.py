@@ -66,7 +66,8 @@ def test_the_red_team_run_is_shared_by_the_modules_that_read_it():
     assert "full_run" in shared["test_acceptance"]
     assert "full_run" in shared["test_strategy_honesty"]
     assert "board_session" in shared["test_board_loot"]
-    assert not shared["test_window_correlation"], (
+    assert shared["test_window_correlation"] == shared["test_strategy_comparison"] == {"terminal_windows"}
+    assert not shared["test_concurrent_sessions"], (
         "a helper's session_id argument was read as the red-team fixture"
     )
 

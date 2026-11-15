@@ -24,23 +24,6 @@ def _verdict(ready, blocked=()):
                  "standing": [], "checks": {}, "blocked": list(blocked)},
     }
 
-class Shared:
-    def runner(self, role):
-        return lambda *a, **k: None
-
-def test_starting_refuses_a_second_open_session_on_a_shared_range(client):
-    with patch("api.views.substrate", lambda: Shared()):
-        first = client.post_json("/api/sessions/", {})
-        second = client.post_json("/api/sessions/", {})
-
-    assert first.status_code == 201
-    assert second.status_code == 409, (
-        "a range with one target for every session would score the second "
-        "session against the first one's traffic"
-    )
-    assert "already open" in second.json()["detail"]
-    assert Session.objects.filter(ended_at=None).count() == 1
-
 def test_starting_refuses_a_slot_that_is_not_ready(client):
     with patch("api.views.substrate", lambda: Cloud()), patch(
         "api.views._range_ready", return_value=_verdict(False, ["cr-waf is REBUILD"])
@@ -50,17 +33,6 @@ def test_starting_refuses_a_slot_that_is_not_ready(client):
     assert response.status_code == 409
     assert "cr-waf is REBUILD" in response.json()["detail"]
     assert Session.objects.count() == 0, "a not-ready start must create no row"
-
-def test_starting_refuses_a_second_open_session_on_the_cloud(client):
-    Session.objects.create(scenario="board", baseline=[])
-    with patch("api.views.substrate", lambda: Cloud()), patch(
-        "api.views._range_ready", return_value=_verdict(True)
-    ):
-        response = client.post_json("/api/sessions/", {})
-
-    assert response.status_code == 409
-    assert "already open" in response.json()["detail"]
-    assert Session.objects.count() == 1
 
 def test_closing_a_session_frees_a_place_under_the_cap(client):
     first, _ = [client.post_json("/api/sessions/", {}).json()["id"] for _ in range(2)]

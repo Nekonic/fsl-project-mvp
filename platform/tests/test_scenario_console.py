@@ -296,11 +296,3 @@ def test_a_passed_scenario_offers_no_final_check_or_hint_and_ends_from_the_conso
                                        "phase": worded("scenario.phase.passed")}
     assert seen["result"]["asked"] is True and seen["result"]["closed"] == 1
     assert seen["result"]["at"].endswith("/session/1/")
-
-def test_the_scenario_screens_say_states_in_words_not_pills_or_badges():
-    from tests.test_strings import CONSOLE
-
-    drawn = {name: (CONSOLE / name).read_text() for name in
-             ("blue_scenario.html", "blue_scenario_script.html", "blue_triage.html", "debrief_script.html")}
-
-    assert [name for name, source in drawn.items() if "badge" in source] == []

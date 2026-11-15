@@ -175,9 +175,9 @@ def test_the_address_a_vm_publishes_on_stays_out_of_git():
 
     assert ignored.returncode == 0
 
-def test_the_openstack_waf_vm_blocks_as_the_container_does():
+def test_the_waf_blocks_rather_than_detects():
     shipped = (COMPOSE.parent / "deploy/waf/modsecurity.conf").read_text()
 
     assert "SecRuleEngine On" in shipped.splitlines(), (
-        "the VM ran DetectionOnly, so the lesson's attacks went through on OpenStack"
+        "a WAF in DetectionOnly lets the lesson's attacks through"
     )

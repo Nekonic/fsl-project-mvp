@@ -424,13 +424,27 @@ def test_a_lost_objective_row_in_the_catalogue_is_one_phrase_with_nothing_joined
     assert seen["errors"] == []
     assert rows[worded("common.session", 8)] == [worded("course.attack.title"), worded("result.lost", 3, 3)]
 
-def test_one_end_session_confirmation_is_said_the_same_on_the_session_page_and_in_the_console():
-    console = TEMPLATES
-    session_page = (console / "session.html").read_text()
-    lesson = (console / "blue_lesson_script.html").read_text()
+def test_one_end_session_confirmation_is_said_the_same_on_the_session_page_and_in_the_console(client):
+    from tests.test_lesson_console import RIGHT, answering, served, to
 
-    assert session_page.count('data-t="session.close.') == 4 and 'data-t="session.close.consequence"' in session_page
-    assert 't("session.close.consequence")' in lesson and "close_confirm" not in lesson
+    page = open_page(client, "/session/1/", setup=CLOSED_ELSEWHERE, scenario="""
+      for (let i = 0; i < 4; i += 1) await browser.settle();
+      await browser.click('close');
+      const asked = document.querySelector('#confirm');
+      return {said: asked.querySelector('p').textContent.trim(), shown: !asked.classList.contains('hidden')};
+    """)
+    console = open_page(client, "/blue/1/", setup=served(next_lesson=None), scenario=f"""
+      {to("db_ip")}
+      {answering(RIGHT["db_ip"])}
+      await browser.wait(2500);
+      document.querySelector('#step-act [data-act="close"]').click();
+      await browser.settle();
+      const asked = document.querySelector('#step-act [data-act="confirm"]');
+      return {{said: asked.querySelector('p').textContent.trim(), shown: !asked.classList.contains('hidden')}};
+    """)
+
+    assert page["errors"] == [] and console["errors"] == []
+    assert page["result"] == console["result"] == {"said": worded("session.close.consequence"), "shown": True}
 
 def test_the_kali_trademark_notice_is_in_the_home_page_footer_and_not_under_the_map(client):
     console = TEMPLATES

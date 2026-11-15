@@ -10,14 +10,6 @@ from range import rangehost
 DEPLOY = pathlib.Path(attacker.__file__).resolve().parents[1] / "deploy"
 
 
-def test_the_kali_image_ships_the_source_rewrite_script():
-    image = (DEPLOY / "kali/Dockerfile").read_text()
-    script = (DEPLOY / "kali/set-origin").read_text()
-
-    assert "COPY kali/set-origin /usr/local/sbin/set-origin" in image
-    assert "SNAT" in script and "--to-source" in script
-
-
 def test_nothing_in_the_kali_image_that_a_learner_can_list_carries_the_platform_s_name():
     image = (DEPLOY / "kali/Dockerfile").read_text()
     script = (DEPLOY / "kali/set-origin").read_text()

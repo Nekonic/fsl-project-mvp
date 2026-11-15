@@ -318,7 +318,7 @@ def test_the_edge_is_the_way_in_and_the_target_is_a_name(settings):
     assert set(found) == {"us", "tw"}, "the estate is not an origin"
     assert found["us"]["source_ip"] == "73.0.0.10", "the attack comes from the Kali box"
     assert found["us"]["target_url"] == "http://shop.com", (
-        "the target is reached by name through the OPNsense edge, not by a per-origin WAF address"
+        "the target is reached by name through the edge, not by a per-origin WAF address"
     )
     assert found["us"]["address"] == "73.0.0.1", "the way in is the edge's gateway"
 

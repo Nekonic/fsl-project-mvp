@@ -1,4 +1,5 @@
 import pathlib
+import re
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -100,8 +101,9 @@ def test_on_openstack_the_waf_terminal_is_a_shell_in_the_slot_s_waf_container(cl
         session, = opened_sessions(1)
         assert client.get(f"/api/sessions/{session.pk}/").json()["waf_terminal"] == "/vm-terminal/waf/"
 
-    assert "ttyd -W -a -b /vm-terminal/waf -t disableResizeOverlay=true -t disableLeaveAlert=true -i 127.0.0.1 -p 7692 /app/vm-terminal.sh cr-waf" in (
-        ROOT / "platform/entrypoint.sh").read_text()
+    served = [line for line in (ROOT / "platform/entrypoint.sh").read_text().splitlines()
+              if re.search(r"\bttyd\b.*-b /vm-terminal/waf\b", line)]
+    assert len(served) == 1 and served[0].rstrip(" &\\").endswith("/app/vm-terminal.sh cr-waf"), served
     assert declared.read().compose["gateway"] == "waf"
     shell = (ROOT / "platform/vm-terminal.sh").read_text()
     assert ".terminal(wanted)" in shell and '"ubuntu@${addr}"' in shell and "sudo docker exec -it" in shell, (

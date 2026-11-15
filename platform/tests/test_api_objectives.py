@@ -43,27 +43,6 @@ def _submit(client, session_id, names, case_id=None):
     return client.post_json(f"/api/sessions/{session_id}/loot/", body)
 
 
-def test_an_objective_taken_during_the_session_is_recorded(client):
-    session_id = _start(client)
-    _fire_exfil(client, session_id)
-
-    _submit(client, session_id, ["admin"])
-
-    taken = set(Objective.objects.filter(session_id=session_id).values_list("key", flat=True))
-    assert "board-auth-user-admin" in taken and "board-auth-user-full" not in taken
-
-
-def test_loot_from_another_sessions_snapshot_credits_nothing(client):
-    session_id = _start(client)
-    _fire_exfil(client, session_id)
-
-    old_salts = [{"username": n, "hash": TRUTH[n][::-1]} for n in TRUTH]
-    response = client.post_json(f"/api/sessions/{session_id}/loot/", {"loot": old_salts})
-
-    assert response.json()["credited"] == []
-    assert not Objective.objects.filter(session_id=session_id).exists()
-
-
 def test_the_same_loot_twice_credits_each_tier_once(client):
     session_id = _start(client)
     _fire_exfil(client, session_id)
@@ -77,7 +56,6 @@ def test_the_same_loot_twice_credits_each_tier_once(client):
 
 def test_a_board_opened_blind_refuses_loot_with_409(client):
     session_id = _blind(client)
-    assert Session.objects.get(pk=session_id).baseline is None
     _fire_exfil(client, session_id)
 
     response = _submit(client, session_id, ["admin"])

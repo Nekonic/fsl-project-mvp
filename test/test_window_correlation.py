@@ -1,104 +1,28 @@
-import time
-import uuid
-from datetime import datetime, timezone
+from shared_sessions import verdicts_of
 
-import pytest
-import requests
 
-from conftest import (
-    PLATFORM_URL, from_attacker, score_when_ready, seen_by_both_engines,
-)
-from range import ATTACKER, start_hint
+def test_an_unlabelled_attack_is_scored_by_time_and_source(terminal_windows):
+    assert verdicts_of(terminal_windows["score"])["terminal-sqli"] == "TP"
 
-GAP_SECONDS = 6
 
-ATTACK_PATH = "/search/?q=%27%20OR%201%3D1--"
-BENIGN_PATH = "/search/?q=release"
-
-def _now():
-    return datetime.now(timezone.utc)
-
-def _record_window(session_id, name, malicious, source_ip, started_at, ended_at):
-    response = requests.post(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/cases/",
-        json={
-            "case_id": str(uuid.uuid4()),
-            "name": name,
-            "malicious": malicious,
-            "correlation": "window",
-            "source_ip": source_ip,
-            "started_at": started_at.isoformat(),
-            "ended_at": ended_at.isoformat(),
-        },
-        timeout=30,
-    )
-    assert response.status_code == 201, response.text
-
-@pytest.fixture(scope="module")
-def window_session(stack_is_up):
-    session_id = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
-    ).json()["id"]
-
-    attacker = requests.get(
-        f"{PLATFORM_URL}/api/attacker/", params={"session": session_id}, timeout=60
-    )
-    assert attacker.ok, (
-        f"the attacker box is not available: {attacker.text}. "
-        f"Run `{start_hint()}`."
-    )
-    source_ip = attacker.json()["source_ip"]
-
-    started = _now()
-    from_attacker(BENIGN_PATH, session=session_id)
-    _record_window(session_id, "terminal-benign", False, source_ip, started, _now())
-
-    time.sleep(GAP_SECONDS)
-
-    started = _now()
-    from_attacker(ATTACK_PATH, session=session_id)
-    _record_window(session_id, "terminal-sqli", True, source_ip, started, _now())
-
-    requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", timeout=30)
-    return session_id
-
-@pytest.fixture(scope="module")
-def window_score(window_session):
-    def ready(totals):
-        verdicts = {case["name"]: case["verdict"] for case in totals["per_case"]}
-        return verdicts.get("terminal-sqli") == "TP" and seen_by_both_engines(
-            window_session, totals, name="terminal-sqli"
-        )
-
-    return score_when_ready(window_session, until=ready)
-
-def test_an_unlabelled_attack_is_scored_by_time_and_source(window_score):
-    verdicts = {case["name"]: case["verdict"] for case in window_score["per_case"]}
-
-    assert verdicts["terminal-sqli"] == "TP"
-
-def test_benign_terminal_traffic_in_its_own_window_stays_clean(window_session, window_score):
-    assert seen_by_both_engines(window_session, window_score, name="terminal-sqli"), (
+def test_benign_terminal_traffic_in_its_own_window_stays_clean(terminal_windows):
+    assert terminal_windows["sqli_seen_by_both"], (
         "the attack sent after the benign request was not seen by both engines, "
         "so an alert the benign request drew may not have landed yet and a clean "
         "benign window proves nothing"
     )
-    verdicts = {case["name"]: case["verdict"] for case in window_score["per_case"]}
 
-    assert verdicts["terminal-benign"] == "TN"
+    assert verdicts_of(terminal_windows["score"])["terminal-benign"] == "TN"
 
-def test_the_match_was_made_without_a_marker(window_session, window_score):
+
+def test_the_match_was_made_without_a_marker(terminal_windows):
     matched = {
         detection_id
-        for case in window_score["per_case"]
+        for case in terminal_windows["score"]["per_case"]
         if case["name"] == "terminal-sqli"
         for detection_id in case["detection_ids"]
     }
     assert matched, "nothing was attributed to the attack window"
 
-    detections = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{window_session}/detections/", timeout=30
-    ).json()
-
-    markers = {d["marker"] for d in detections if d["detection_id"] in matched}
+    markers = {d["marker"] for d in terminal_windows["detections"] if d["detection_id"] in matched}
     assert markers == {None}, f"expected unlabelled traffic, saw markers {markers}"

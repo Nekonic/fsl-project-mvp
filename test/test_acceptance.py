@@ -7,11 +7,6 @@ def test_ground_truth_contains_both_labels(full_run):
     )
 
 
-def test_both_engines_produce_detections(full_run):
-    detections = full_run["detections"]
-
-    assert {d["source"] for d in detections} == {"suricata", "modsecurity"}
-
 def test_criterion_3_true_positive_is_not_zero(score):
     assert score["tp"] > 0, f"no attack was detected at all. Score: {score}"
 

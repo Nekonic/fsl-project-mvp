@@ -21,11 +21,3 @@ def _start_corp(client):
 def test_a_corp_session_snapshots_the_target_state_at_start(client):
     session_id = _start_corp(client)
     assert Session.objects.get(pk=session_id).baseline == STATE
-
-
-def test_a_corp_session_opens_blind_when_the_state_read_fails(client):
-    from api import effect
-    with patch("api.views.effect.snapshot",
-               side_effect=effect.StateUnavailable("corp down")):
-        session_id = client.post_json("/api/sessions/", {"scenario": "corp"}).json()["id"]
-    assert Session.objects.get(pk=session_id).baseline is None

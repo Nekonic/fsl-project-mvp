@@ -1,6 +1,5 @@
 import json
 import re
-from pathlib import Path
 
 import pytest
 
@@ -1157,12 +1156,6 @@ def test_the_last_foundation_says_the_course_is_done_only_when_the_session_took_
     assert seen["errors"] == []
     assert seen["result"] == {"said": worded("lesson.done"), "course": ["f9"]}, (
         "a session that took only the last lesson finished that lesson, not every foundation lesson")
-
-def test_the_stretch_task_sits_right_under_the_step_card_so_a_finished_lesson_shows_it_without_scrolling():
-    note = (Path(__file__).resolve().parents[1] / "console/templates/console/blue_note.html").read_text()
-    order = [note.index(f'id="{card}"') for card in ("step-card", "stretch-card", "lesson-objectives")]
-
-    assert order == sorted(order)
 
 LOCATORS = {"panel", "map", "site", "dev", "kibana", "term"}
 POINT_KEYS = LOCATORS | {"opens", "until", "then", "keep"}

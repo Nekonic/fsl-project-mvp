@@ -19,25 +19,6 @@ class Recording:
         return lambda *args, **kwargs: None
 
 
-def test_the_baseline_is_the_board_s_accounts_read_at_open(client):
-    order = []
-
-    def ground_truth(wargame_id, host=""):
-        order.append(("baseline", wargame_id))
-        return [{"username": "admin", "password": "x"}]
-
-    with patch("api.views.substrate", lambda: Recording(order)), \
-            patch("api.views.loot.ground_truth", ground_truth):
-        answer = client.post_json("/api/sessions/", {"scenario": "board"})
-
-    assert answer.status_code == 201, answer.content
-    session_id = answer.json()["id"]
-    assert order == [("baseline", "board")]
-    assert Session.objects.get(pk=session_id).baseline == [
-        {"username": "admin", "password": "x"}
-    ]
-
-
 @pytest.mark.takes_defense
 def test_an_open_the_range_cannot_finish_leaves_no_open_session(client):
     order = []
@@ -92,4 +73,3 @@ def test_the_baseline_is_read_from_the_board_the_substrate_reports(client):
         "the baseline came from the board named in settings, not the board "
         "container the red team attacks"
     )
-

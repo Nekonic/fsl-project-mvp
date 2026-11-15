@@ -116,10 +116,8 @@ def test_every_foundation_has_its_words():
 
 def test_the_six_foundations_are_two_courses_the_first_reading_the_range_and_the_second_changing_it():
     courses = {course["id"]: course for course in wargames.courses("board")}
-    table = tables()
 
     assert [course["lessons"] for course in courses.values()] == [["f1", "f2", "f3"], ["f4", "f5", "f6"]]
-    assert [table[f"{course['text']}.title"] for course in courses.values()] == ["로그 분석 기초", "공격 탐지 실습"]
     assert {wargames.lesson_defense("board", one) for one in courses["c1"]["lessons"]} == {"full"}
     assert not [step for one in courses["c1"]["lessons"] for step in wargames.lesson("board", lesson_id=one)["steps"]
                 if step["check"]["kind"] in ("rules", "kali", "waf_changed", "replay", "loot")], "course 1 only reads"

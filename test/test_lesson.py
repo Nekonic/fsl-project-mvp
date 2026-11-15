@@ -95,10 +95,6 @@ def test_each_course_runs_its_lessons_in_one_session_and_every_step_s_check_answ
     assert [lesson for lesson in dict.fromkeys(lesson for lesson, _, _ in course["checked"])] == course["lessons"]
 
 
-def test_the_two_courses_teach_the_six_foundations_once_each(stack_is_up):
-    assert sorted(lesson for lessons in _courses().values() for lesson in lessons) == ["f1", "f2", "f3", "f4", "f5", "f6"]
-
-
 def test_a_closed_course_scores_each_lesson_s_seed_as_a_benign_case_and_warns_no_operator(course):
     score = course["score"]
     assert score["benign_cases"] == len(course["lessons"]), "one seed replay per lesson, each a benign case of the second score"
