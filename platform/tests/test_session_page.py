@@ -492,4 +492,34 @@ def test_ending_a_session_already_closed_says_it_is_closed_in_korean_and_hides_t
 
     assert seen["errors"] == []
     assert shown["note"] == worded("session.close.done") and shown["close"] is True
-    assert worded("scenario.phase.failed") in shown["verdict"] and "FAIL" not in shown["verdict"]
+    assert worded("scenario.verdict.failed", "1.1") in shown["verdict"] and "FAIL" not in shown["verdict"]
+
+TWO_RUNS = SCENARIO_RESULT.replace("per_case: [], warnings: []", """per_case: [
+      {name: "board-sqli-orderby-sqlmap", malicious: true, detected: true, detections: 20687, started_at: "2026-10-18T09:02:33Z"},
+      {name: "board-sqli-orderby-sqlmap", malicious: true, detected: true, detections: 20687, started_at: "2026-10-18T09:13:06Z"}],
+    warnings: []""")
+
+def test_two_runs_of_one_scheduled_attack_are_told_apart_by_when_they_ran(client):
+    seen = open_page(client, "/session/1/", setup=TWO_RUNS, scenario="""
+      for (let i = 0; i < 6; i += 1) await browser.settle();
+      return document.querySelectorAll('#case-rows tr').map((row) => row.querySelector('td').textContent);
+    """)
+
+    assert seen["errors"] == []
+    named = seen["result"]
+    assert len(named) == 2 and named[0] != named[1], "two rows with one name read as one run counted twice"
+
+RUNNING_PASSED = SCENARIO_RESULT.replace('ended_at: "2026-10-18T09:07:00Z", result: {objectives: {lost: 0, total: 0}, scenario: null}',
+                                         'ended_at: null, result: {objectives: {lost: 0, total: 3}, scenario: {passed: true, fix: null, windows: 1, helped: []}}')
+
+def test_an_open_scenario_that_passed_shows_its_result_beside_the_end_button(client):
+    seen = open_page(client, "/session/1/", setup=RUNNING_PASSED, scenario="""
+      for (let i = 0; i < 6; i += 1) await browser.settle();
+      const hidden = (id) => browser.element(id).classList.contains('hidden');
+      return {verdict: hidden('scoreboard') || hidden('verdict') ? "" : browser.text('verdict'), close: !hidden('close'),
+              debrief: !hidden('debrief'), scores: !hidden('score-panels')};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"verdict": worded("scenario.verdict.passed", "1.1"), "close": True, "debrief": True,
+                              "scores": False}, "the page holding the end button said nothing about the pass"

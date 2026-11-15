@@ -247,7 +247,18 @@ def judge_window(session) -> dict:
     def keep(state, held):
         state["windows"][-1]["result"] = result
     _update(session.pk, keep)
+    if result["passed"]:
+        _shift_over(session)
     return result
+
+def _shift_over(session) -> None:
+    session.refresh_from_db()
+    if not (session.traffic or {}).get("running"):
+        return
+    try:
+        customers.stop(session, views._range(session))
+    except RangeUnavailable:
+        pass
 
 def _person_attacks(session, start, end) -> list[dict]:
     fired = [case for case in session.cases.filter(malicious=True, started_at__gte=start, started_at__lt=end)
@@ -523,6 +534,8 @@ def scenario_start(request, session_id):
 def verify_window(request, session_id):
     session = _scenario_session(session_id)
     views._refuse_closed(session)
+    if _completion((session.scenario_state["windows"] or [None])[-1])["state"] == "passed":
+        raise Conflict(f"session {session.pk} already passed its final check")
     left = unjudged(session)
     if left:
         return views._reply({"detail": f"{left} items listed so far are not judged yet; judge them before the final check",

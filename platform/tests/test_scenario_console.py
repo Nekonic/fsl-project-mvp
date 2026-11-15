@@ -33,7 +33,8 @@ ITEMS = [
 
 def serving(state, items=ITEMS, lesson=None):
     return f"""
-const range = {{state: {js(state)}, items: {js(items)}, posted: [], hinted: 0, windowed: 0, steps: []}};
+const range = {{state: {js(state)}, items: {js(items)}, posted: [], hinted: 0, windowed: 0, steps: [], checks: [],
+               passing: true, closed: 0}};
 browser.serve((request) => {{
   if (request.route === "/api/sessions/1/") return {{body: {{id: 1, scenario: "board", course_scenario: range.state.id,
     kind: "scenario", ended_at: null, guidance: Boolean({js(lesson)}), mode: "guided", lesson: {js(lesson)},
@@ -62,10 +63,18 @@ browser.serve((request) => {{
     return {{body: range.state}};
   }}
   if (request.route === "/api/sessions/1/ingest/") return {{body: {{ingested: 0}}}};
+  if (request.route === "/api/sessions/1/close/") {{
+    range.closed += 1;
+    return {{body: {{id: 1}}}};
+  }}
   if (request.route.startsWith("/api/sessions/1/lesson/steps/")) {{
     range.steps.push(request.route);
-    const passed = request.route.endsWith("/check/");
-    return {{body: {{passed, reason: null, progress: passed ? {{[request.route.split("/")[6]]: {{passed: true}}}} : {{}}}}}};
+    const checked = request.route.endsWith("/check/");
+    if (checked) range.checks.push(request.body);
+    const passed = checked && range.passing;
+    const id = request.route.split("/")[6];
+    return {{body: {{passed, reason: passed ? null : [`scenario.shift.fail.${{id}}`, []],
+                    progress: passed ? {{[id]: {{passed: true}}}} : {{}}}}}};
   }}
   return {{status: 404, body: {{detail: "not served"}}}};
 }});
@@ -199,11 +208,12 @@ def test_a_final_check_refused_for_unjudged_items_says_how_many_and_lists_them(c
       await browser.click('scenario-done');
       await browser.settle();
       return {said: browser.text('scenario-done-said'), listed: browser.text('triage-list').includes('/search/?q=late'),
-              windowed: range.windowed};
+              windowed: range.windowed, squeezed: browser.element('scenario-strip').contains(browser.element('scenario-done-said'))};
     """ % js(LATE))
 
     assert seen["errors"] == []
-    assert seen["result"] == {"said": worded("scenario.done.unjudged", 1), "listed": True, "windowed": 0}
+    assert seen["result"] == {"said": worded("scenario.done.unjudged", 1), "listed": True, "windowed": 0, "squeezed": False}, (
+        "the refusal sat in the one-line status bar and was cut off")
 
 def test_the_note_at_the_end_of_a_guided_scenario_speaks_of_the_scenario_not_a_lesson(client):
     lesson = {"id": "1.1", "text": "scenario.shift",
@@ -220,3 +230,77 @@ def test_the_note_at_the_end_of_a_guided_scenario_speaks_of_the_scenario_not_a_l
     assert seen["errors"] == []
     assert seen["result"]["task"] == worded("scenario.note.done")
     assert worded("lesson.done") not in seen["result"]["said"]
+
+TRIAGE_STEPS = [{"id": "attack", "point": {"panel": "#triage-list", "opens": "triage"}, "check": {"kind": "triage", "judged": "attack"}},
+                {"id": "all", "point": {"panel": "#triage-list", "opens": "triage"}, "check": {"kind": "triage", "judged": "all"}},
+                {"id": "done", "point": {"panel": "#scenario-done"}, "check": {"kind": "triage", "judged": "verified"}}]
+
+def guided(steps=TRIAGE_STEPS):
+    return {"id": "1.1", "text": "scenario.shift", "steps": steps}
+
+def test_a_customer_verdict_on_the_attack_step_checks_it_silently_and_shows_no_failure(client):
+    seen = open_page(client, "/blue/1/", setup=serving(status(JUDGEMENT, id="1.1"), lesson=guided()), scenario="""
+      range.passing = false;
+      await browser.click('[data-pane="triage"]');
+      await browser.click('[data-item="a1"] [data-judge="customer"]');
+      for (let i = 0; i < 3; i += 1) await browser.settle();
+      return {checks: range.checks, said: browser.element('step-said').classList.contains('hidden') ? "" : browser.text('step-said')};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["checks"] and all(body == {"poll": True} for body in seen["result"]["checks"]), (
+        "a customer verdict ran the attack step's check as the learner's own try")
+    assert seen["result"]["said"] == ""
+
+def test_a_passed_triage_step_goes_back_to_unpassed_when_its_next_check_fails(client):
+    later = [TRIAGE_STEPS[1], TRIAGE_STEPS[2]]
+    seen = open_page(client, "/blue/1/", setup=serving(status(JUDGEMENT, id="1.1"), lesson=guided(later)), scenario="""
+      for (let i = 0; i < 5; i += 1) await browser.wait(1000);
+      const passed = {said: browser.text('step-said'), next: browser.text('step-next')};
+      range.passing = false;
+      for (let i = 0; i < 5; i += 1) await browser.wait(1000);
+      return {passed, lapsed: {said: browser.element('step-said').classList.contains('hidden') ? "" : browser.text('step-said'),
+                               next: browser.text('step-next')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["passed"]["next"] == worded("lesson.coach.next")
+    assert seen["result"]["lapsed"] == {"said": "", "next": worded("lesson.skip")}, (
+        "the note kept saying every item was judged right after a new item came in")
+
+def test_a_scenario_already_started_opens_on_the_console_not_the_briefing(client):
+    seen = open_page(client, "/blue/1/", setup=serving(status(JUDGEMENT, id="1.1", started=True)), scenario="""
+      return browser.element('briefing').classList.contains('hidden');
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] is True, "a fresh browser showed the briefing's start button for a scenario already running"
+
+def test_a_passed_scenario_offers_no_final_check_or_hint_and_ends_from_the_console(client):
+    passed = status(JUDGEMENT, id="1.1", started=True, phase="passed", windows=1,
+                    hints={"offer": {"reason": "check", "about": "attack", "at": "x"}, "opened": [], "left": 3},
+                    completion={"state": "passed", "reasons": [], "fix": None})
+    seen = open_page(client, "/blue/1/", setup=serving(passed), scenario="""
+      const hidden = (id) => browser.element(id).classList.contains('hidden');
+      const shown = {done: !hidden('scenario-done'), offer: !hidden('scenario-offer'), clock: !hidden('scenario-clock'),
+                     end: !hidden('scenario-end'), phase: browser.text('scenario-phase')};
+      await browser.click('scenario-end');
+      const asked = !hidden('scenario-end-confirm') && range.closed === 0;
+      await browser.click('scenario-end-yes');
+      for (let i = 0; i < 3; i += 1) await browser.settle();
+      return {shown, asked, closed: range.closed, at: location.href};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["shown"] == {"done": False, "offer": False, "clock": False, "end": True,
+                                       "phase": worded("scenario.phase.passed")}
+    assert seen["result"]["asked"] is True and seen["result"]["closed"] == 1
+    assert seen["result"]["at"].endswith("/session/1/")
+
+def test_the_scenario_screens_say_states_in_words_not_pills_or_badges():
+    from tests.test_strings import CONSOLE
+
+    drawn = {name: (CONSOLE / name).read_text() for name in
+             ("blue_scenario.html", "blue_scenario_script.html", "blue_triage.html", "debrief_script.html")}
+
+    assert [name for name, source in drawn.items() if "badge" in source] == []

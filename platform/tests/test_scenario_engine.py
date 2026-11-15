@@ -428,6 +428,37 @@ def test_a_triage_step_passes_on_the_learner_s_right_verdicts(client):
     judging(client, session, item, "customer")
     assert (check("customer"), check("attack"), check("all")) == (True, False, True)
 
+def test_a_judgement_that_leaves_a_triage_step_unpassed_is_no_failed_check_and_offers_no_hint(client):
+    session = opened("1.1", guidance=True, lesson="1.1")
+    for _ in range(3):
+        marker = str(uuid.uuid4())
+        customer(session, timezone.now(), status=403, marker=marker)
+        alert(session, marker)
+    for listed in client.get(f"/api/sessions/{session.pk}/triage/").json()["items"]:
+        judging(client, session, listed["item"], "customer")
+        assert client.post_json(f"/api/sessions/{session.pk}/lesson/steps/attack/check/").json()["passed"] is False
+
+    session.refresh_from_db()
+    kept = session.lesson_steps["1.1"]["attack"]
+    assert (kept.get("tries"), kept.get("wrong")) == (None, None)
+    assert session.scenario_state["offer"] is None and session.scenario_state["stuck"] == [], (
+        "each customer verdict ran the attack step's check and counted it as a failed try")
+
+def test_a_passed_triage_step_lapses_once_a_new_item_is_left_unjudged(client):
+    session = opened("1.1", guidance=True, lesson="1.1")
+    marker = str(uuid.uuid4())
+    customer(session, timezone.now(), status=403, marker=marker)
+    alert(session, marker)
+    judging(client, session, client.get(f"/api/sessions/{session.pk}/triage/").json()["items"][0]["item"], "customer")
+    check = lambda: client.post_json(f"/api/sessions/{session.pk}/lesson/steps/all/check/", {"poll": True}).json()
+    assert check()["progress"]["all"]["passed"]
+
+    later = str(uuid.uuid4())
+    customer(session, timezone.now(), status=403, marker=later)
+    alert(session, later)
+
+    assert check()["progress"]["all"]["passed"] is None, "the note kept saying every item was judged right"
+
 def test_opening_a_hint_records_it_and_clears_the_offer(client):
     session = opened()
     scenario_run.stuck(session, "idle", "")

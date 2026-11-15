@@ -307,6 +307,19 @@ def test_the_final_check_does_not_start_while_an_item_listed_so_far_is_unjudged(
     assert refused.status_code == 409 and refused.json()["unjudged"] == 1
     assert started.status_code == 201, started.content
 
+def test_a_passed_final_check_ends_the_shift_and_no_second_final_check_starts(client):
+    session = opened("1.1", traffic={"running": True})
+    stopped = []
+    with patch("api.scenario_run.customers.stop", lambda session, adapter: stopped.append(session.pk)), \
+            patch("api.views._range", lambda session, adapter=None: None):
+        result = window_judged(session)
+    with patch("api.scenario_run.ensure_running", lambda: None):
+        again = client.post_json(f"/api/sessions/{session.pk}/scenario/verify-window/")
+
+    assert result["passed"] is True
+    assert stopped == [session.pk], "customers kept arriving after the pass, so the finished scenario looked unfinished"
+    assert again.status_code == 409
+
 def test_the_last_guided_step_passes_once_the_final_check_has_started_not_on_the_click():
     session = opened("1.1")
     before = scenario_run.triage_passed(session, "verified")

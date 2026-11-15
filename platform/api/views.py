@@ -497,7 +497,9 @@ def lesson_step_check(request, session_id, step_id):
     except harness.ToolUnavailable as exc:
         return _reply({"detail": str(exc)}, status=503)
     chose = (body["answer"].strip() if step["check"]["kind"] == "choice" else _outcome(session, step["check"])) if passed else None
-    judged = _judged_step(session, step_id, passed, reason, body.get("poll") is True, chose) | dict(*seen)
+    standing = step["check"]["kind"] == "triage"
+    judged = _judged_step(session, step_id, passed, reason, body.get("poll") is True or standing, chose,
+                          lapses=standing) | dict(*seen)
     _seed_once_worked(session)
     return _reply(judged)
 
@@ -505,7 +507,7 @@ def _posture_rules(session):
     declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense) or {}
     return (Path(settings.CR_SOURCE) / "deploy/suricata/rules" / declared.get("suricata", DEFAULT_RULES)).read_text()
 
-def _judged_step(session, step_id, passed, reason, poll, chose=None):
+def _judged_step(session, step_id, passed, reason, poll, chose=None, lapses=False):
     now = timezone.now().isoformat()
 
     def mark(kept, held):
@@ -514,6 +516,8 @@ def _judged_step(session, step_id, passed, reason, poll, chose=None):
             if chose:
                 kept["chose"] = chose
             return
+        if lapses:
+            kept.pop("passed", None)
         if poll:
             return
         kept["tries"] = kept.get("tries", 0) + 1
@@ -2355,6 +2359,7 @@ def _expected(scenario, cases):
 
 def _per_case(result, expectations, signatures, cases=()):
     meta = {case.case_id: case.meta or {} for case in cases}
+    started = {case.case_id: case.started_at.isoformat() for case in cases}
     indiscriminate = {
         signatures[d]
         for m in result.matches if not m.malicious
@@ -2373,6 +2378,7 @@ def _per_case(result, expectations, signatures, cases=()):
             "lesson": meta.get(m.case_id, {}).get("lesson"),
             "step": meta.get(m.case_id, {}).get("kali"),
             "seed": bool(meta.get(m.case_id, {}).get("seed")),
+            "started_at": started.get(m.case_id),
             "corroborated": scoreboard.corroborated(
                 expectations.get(m.case_id),
                 [signatures[d] for d in m.detection_ids if d in signatures],

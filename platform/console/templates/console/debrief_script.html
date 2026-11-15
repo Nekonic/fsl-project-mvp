@@ -1,5 +1,6 @@
 const OUTCOME_WORDS = { held: "lesson.check.held", leaked: "outcome.leaked" };
-const DEBRIEF_TONE = { held: "ok", leaked: "red" };
+const DEBRIEF_TONE = { held: "text-success", leaked: "text-danger" };
+const toned = (text, tone) => `<span class="${tone}">${esc(text)}</span>`;
 
 function debriefSection(name, inner, heading = `lesson.debrief.${name}`) {
   return `<section class="flex flex-col gap-1.5" data-debrief="${name}">
@@ -7,7 +8,7 @@ function debriefSection(name, inner, heading = `lesson.debrief.${name}`) {
 }
 
 function debriefOutcome(outcome) {
-  return outcome ? badge(t(OUTCOME_WORDS[outcome] || "outcome.inconclusive"), DEBRIEF_TONE[outcome] || "warn")
+  return outcome ? toned(t(OUTCOME_WORDS[outcome] || "outcome.inconclusive"), DEBRIEF_TONE[outcome] || "text-warning")
     : `<span class="text-faint">—</span>`;
 }
 
@@ -38,15 +39,15 @@ function debriefTimeline(timeline) {
   return `<ol class="flex flex-col gap-1.5 text-[12px]">${timeline.map((entry) => {
     const after = `${Math.floor(entry.at / 60)}:${String(entry.at % 60).padStart(2, "0")}`;
     const state = entry.state === "fired" ? debriefOutcome(entry.outcome)
-      : badge(t(`scenario.debrief.state.${entry.state}`), entry.state === "failed" ? "warn" : "neutral");
+      : toned(t(`scenario.debrief.state.${entry.state}`), entry.state === "failed" ? "text-warning" : "text-muted");
     return `<li data-timeline class="flex flex-wrap items-center gap-2">
       <span class="font-mono text-faint">${esc(after)}</span>
       <span class="text-heading">${esc(localized(`case.${entry.case}`, entry.case))}</span>
       ${entry.origin ? `<span class="text-muted">${esc(t("scenario.debrief.from", localized(`scenario.origin.${entry.origin}`, entry.origin)))}</span>` : ""}
-      ${entry.in_window ? badge(t("scenario.debrief.in_window"), "blue") : ""}
+      ${entry.in_window ? toned(t("scenario.debrief.in_window"), "text-primary") : ""}
       ${state}
-      ${entry.state === "fired" ? badge(t(entry.detected ? "scenario.debrief.alerted" : "scenario.debrief.no_alert"),
-        entry.detected ? "ok" : "red") : ""}
+      ${entry.state === "fired" ? toned(t(entry.detected ? "scenario.debrief.alerted" : "scenario.debrief.no_alert"),
+        entry.detected ? "text-success" : "text-danger") : ""}
       ${entry.leaked.length ? `<span class="text-danger">${esc(t("scenario.debrief.leaked", entry.leaked.join(", ")))}</span>` : ""}
     </li>`;
   }).join("")}</ol>`;

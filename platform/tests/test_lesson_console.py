@@ -376,6 +376,47 @@ def test_a_pass_is_said_on_the_passed_step_and_the_next_step_opens_on_a_clean_ca
         "a pass stays on its step with the tick until Next, so a Next pressed after the tick never skips a step")
     assert (result["next"], result["said"]) == ("lesson.demo.label.path", False)
 
+def test_an_answer_sent_while_the_last_one_is_checked_is_checked_next_and_no_old_verdict_sits_under_new_text(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("board_ip")}
+      const value = () => document.querySelector('#step-act [data-act="value"]');
+      const submit = () => document.querySelector('#step-act [data-act="answer"]').dispatchEvent({{type: 'submit', preventDefault() {{}}}});
+      let release;
+      range.hold = new Promise((resolve) => {{ release = resolve; }});
+      value().value = "10.30.0.1";
+      submit();
+      await browser.settle();
+      value().value = {json.dumps(RIGHT["board_ip"])};
+      submit();
+      range.hold = null;
+      release();
+      for (let i = 0; i < 4; i += 1) await browser.settle();
+      return {{queued: {{answers: range.answers.map((one) => one[1]), said: browser.text('step-said')}}}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["queued"] == {"answers": ["10.30.0.1", RIGHT["board_ip"]], "said": "✓ board_ip passed"}, (
+        "the corrected answer sent during the check was dropped and the old verdict stood beside it")
+
+def test_an_answer_edited_while_it_is_checked_gets_no_verdict_line_meant_for_the_old_text(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("board_ip")}
+      const value = () => document.querySelector('#step-act [data-act="value"]');
+      let release;
+      range.hold = new Promise((resolve) => {{ release = resolve; }});
+      value().value = "10.30.0.1";
+      document.querySelector('#step-act [data-act="answer"]').dispatchEvent({{type: 'submit', preventDefault() {{}}}});
+      await browser.settle();
+      value().value = "10.30.0.6";
+      range.hold = null;
+      release();
+      for (let i = 0; i < 4; i += 1) await browser.settle();
+      return {{said: shown('step-said') ? browser.text('step-said') : ""}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["said"] == "", "a verdict on 10.30.0.1 showed under the 10.30.0.6 the learner had typed since"
+
 def test_the_order_picker_posts_the_hosts_in_the_order_pressed_and_a_second_press_takes_one_out(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       {to("path")}
@@ -2477,7 +2518,7 @@ def test_a_callout_for_a_button_in_the_step_card_sits_under_it_instead_of_on_the
     assert seen["result"] == {"text": "Press the button.", "floating": False, "below": True}, (
         "a callout on the card heading draws its leader across every line of the task")
 
-def test_an_answer_being_checked_disables_its_submit_button_and_a_second_submit_posts_nothing(client):
+def test_an_answer_being_checked_keeps_its_submit_button_and_the_same_answer_sent_again_posts_nothing(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       {to("method")}
       let release;
@@ -2493,7 +2534,7 @@ def test_an_answer_being_checked_disables_its_submit_button_and_a_second_submit_
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"during": {"status": worded("lesson.status.checking"), "disabled": True}, "checks": 1,
+    assert seen["result"] == {"during": {"status": worded("lesson.status.checking"), "disabled": False}, "checks": 1,
                               "after": False}
 
 DEV_GUARDED = [{"id": "method", "point": {"opens": "site", "dev": "general.method"},

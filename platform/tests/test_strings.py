@@ -103,6 +103,19 @@ def test_every_foundation_step_has_its_text_and_a_withheld_pass_line():
 
     assert missing == [], f"a foundation step would show its raw key or no pass line: {missing}"
 
+FAILS_UNDER_ITS_OWN_KEY = ("rules", "sent", "loot", "waf_changed", "triage")
+
+def test_every_step_whose_check_can_fail_under_its_own_key_has_that_line():
+    import wargames
+
+    stepped = [taught for wargame_id in wargames.WARGAMES
+               for taught in wargames.foundations(wargame_id) + wargames.stepped_scenarios(wargame_id)]
+    reaching = [f"{taught['text']}.fail.{step['id']}" for taught in stepped for step in taught.get("steps", [])
+                if step["check"]["kind"] in FAILS_UNDER_ITS_OWN_KEY or step["check"].get("of") == "alerted_destination"]
+
+    assert reaching and [key for key in reaching if key not in tables()] == [], (
+        "views._judge answers <text>.fail.<step> and the console shows the raw key")
+
 def test_a_foundation_ends_on_a_solo_step_with_no_help_written_for_it():
     table = tables()
     helped = [f"{taught['text']}.{part}.{step['id']}" for taught, step, solo in foundation_steps() if solo

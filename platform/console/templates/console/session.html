@@ -227,6 +227,7 @@
     }).join("");
   }
 
+  const caseWhen = (row) => runLabel(row) || (session.course_scenario && row.started_at ? clock(row.started_at) : "");
   const objectiveName = (tier) => localized(`objective.${tier.key}`, tier.name);
   const caseLabel = (name) => localized(`case.${name}`, name);
   const named = (row) => (runLabel(row) ? t("session.run.named", runLabel(row), caseLabel(row.name)) : caseLabel(row.name));
@@ -239,11 +240,10 @@
     banner.classList.toggle("border-l-success", judged.passed);
     banner.classList.toggle("border-l-danger", !judged.passed);
     banner.innerHTML = `
-      <span class="badge ${judged.passed ? "badge-pass" : "badge-fail"} h-8 px-4 text-[14px]">${esc(t(judged.passed ? "scenario.phase.passed" : "scenario.phase.failed"))}</span>
-      ${(judged.helped || []).map((kind) => `<span class="text-muted">${esc(t(`result.helped.${kind}`))}</span>`).join("")}
       <div class="min-w-0 flex-1">
-        <div class="font-bold text-[15px] text-heading">${esc(t(judged.passed ? "scenario.verdict.passed" : "scenario.verdict.failed",
+        <div class="font-bold text-[15px] ${judged.passed ? "text-success" : "text-danger"}">${esc(t(judged.passed ? "scenario.verdict.passed" : "scenario.verdict.failed",
           session.course_scenario))}</div>
+        ${(judged.helped || []).map((kind) => `<p class="text-muted mt-0.5">${esc(t(`result.helped.${kind}`))}</p>`).join("")}
         ${judged.fix ? `<p class="text-[12px] text-muted mt-0.5" data-fix>${esc(`${t(`lesson.fix.${judged.fix}`)} ${t("lesson.fix.note")}`)}</p>` : ""}
       </div>`;
   }
@@ -279,13 +279,10 @@
     }).join("") || `<tr class="table-row"><td class="pl-5 text-muted" colspan="4">${esc(t("score.no_objectives"))}</td></tr>`;
   }
 
-  function judgementBlock(count, sentence, wrong) {
+  function judgementBlock(sentence, wrong) {
     return `
       <div>
-        <div class="flex flex-wrap items-baseline gap-2">
-          <span class="text-[18px] font-bold text-heading">${esc(count[0])}<span class="text-faint text-[14px] font-semibold"> / ${esc(count[1])}</span></span>
-          <span class="font-semibold text-heading">${esc(sentence)}</span>
-        </div>
+        <div class="font-semibold text-heading">${esc(sentence)}</div>
         <ul class="mt-2 space-y-1 text-[12px]">
           ${wrong.map((line) => `<li class="text-danger">${esc(line)}</li>`).join("")}
         </ul>
@@ -303,12 +300,12 @@
     const parts = [];
     if (attacks.length) {
       const sentence = t("score.attacks", attacks.length, caught.length);
-      parts.push(judgementBlock([caught.length, attacks.length], sentence,
+      parts.push(judgementBlock(sentence,
         missed.map((row) => t("score.no_alert", named(row)))));
     }
     if (benign.length) {
       const sentence = t("score.benign", benign.length, passed.length);
-      parts.push(judgementBlock([passed.length, benign.length], sentence,
+      parts.push(judgementBlock(sentence,
         blocked.map((row) => t("score.drew_alerts", named(row), row.detections))));
     }
     const customers = score.customers || {};
@@ -316,8 +313,7 @@
       const wrong = Object.entries(customers.blocked_actions || {})
         .map(([action, count]) => t("score.customers_action", localized(`traffic.action.${action}`, action), count));
       if (customers.unanswered) wrong.push(t("score.customers_unanswered", customers.unanswered));
-      parts.push(judgementBlock([customers.blocked, customers.sent],
-        t("score.customers", customers.sent, customers.blocked), wrong));
+      parts.push(judgementBlock(t("score.customers", customers.sent, customers.blocked), wrong));
     }
     const nothing = t(session.course_scenario ? "score.no_attacks_run" : "score.no_cases");
     if (!parts.length) parts.push(`<p class="text-muted">${esc(nothing)}</p>`);
@@ -334,7 +330,7 @@
       return `
         <tr class="table-row">
           <td class="pl-5 text-heading"${lessonSession() ? "" : ` title="${esc(row.name)}"`}>${esc(caseLabel(row.name))}${
-            runLabel(row) ? `<span class="block text-[12px] text-muted">${esc(runLabel(row))}</span>` : ""}</td>
+            caseWhen(row) ? `<span class="block text-[12px] text-muted">${esc(caseWhen(row))}</span>` : ""}</td>
           <td>${esc(t(seeded(row) ? "score.kind.auto_benign" : row.malicious ? "score.kind.attack" : "score.kind.benign"))}</td>
           <td>${esc(row.detections)}</td>
           <td>${outcome}</td>
@@ -530,6 +526,12 @@
       return;
     }
     show("close", true);
+    const judgedScenario = Boolean(session.course_scenario && session.result && session.result.scenario);
+    verdictBanner();
+    show("scoreboard", judgedScenario);
+    show("score-panels", false);
+    show("score-cases", false);
+    if (judgedScenario) showScenarioDebrief(field("debrief"));
     show("red", session.kind === "wargame");
     await activity();
     show("loading", false);

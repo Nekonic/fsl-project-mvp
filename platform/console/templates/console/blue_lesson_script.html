@@ -1206,6 +1206,7 @@ function highlight(rect, callout, options = {}) {
 const AUTOMATIC = ["rules", "sent", "triage", "replay", "waf_changed"];
 const BENIGN_UNSENT = "lesson.check.replay_benign";
 const POLLED = ["sent", "triage", "replay", "waf_changed", "kali"];
+const STANDING = ["triage"];
 const firesCheck = (step) => step.check.kind === "rules" && Boolean(step.check.match);
 const ANSWERED = ["answer", "choice", "loot"];
 const SENT_SETTLES_MS = 1500;
@@ -1256,7 +1257,8 @@ function coach(prefix, declared) {
   let level = 0;
   let seconds = 0;
   let checking = false;
-  let answering = false;
+  let answering = "";
+  let queued = null;
   let saidFor = null;
   let offered = false;
   let finished = false;
@@ -1916,38 +1918,55 @@ function coach(prefix, declared) {
   }
 
   async function run(step, loud) {
-    if (checking || steps[at] !== step || finished || done(step)) return;
+    const held = done(step);
+    if (checking || steps[at] !== step || finished || (held && !STANDING.includes(step.check.kind))) return;
     checking = true;
     if (loud) status(t("lesson.status.checking"));
     try {
-      settle(step, await judged(step, loud ? {} : { poll: true }), loud);
+      const verdict = await judged(step, loud ? {} : { poll: true });
+      if (!held) settle(step, verdict, loud);
+      else if (verdict && !verdict.passed && steps[at] === step && !finished) lapse();
     } finally {
       checking = false;
     }
   }
 
-  const answerControls = () => Array.from(field("step-act").querySelectorAll(
-    '[data-act="answer"] button, [data-act="loot"] button, [data-act="choose"], [data-act="pick"], [data-act="order"]'));
+  function lapse() {
+    say("", "");
+    show();
+  }
+
+  const typedNow = () => {
+    const typed = field("step-act").querySelector('[data-act="value"]');
+    return typed ? typed.value.trim() : null;
+  };
 
   async function answer(given) {
     const step = steps[at];
     const value = String(given || "").trim();
-    if (!value || answering) return;
-    answering = true;
-    const controls = answerControls();
-    controls.forEach((control) => { control.disabled = true; });
+    if (!value) return;
+    if (answering) {
+      queued = value === answering ? null : { step, value };
+      return;
+    }
+    answering = value;
+    queued = null;
     status(t("lesson.status.checking"));
     try {
       const query = readsKibana(step.point) ? kibanaQueryNow() : null;
       const devRequest = step.check.dev && typeof dev !== "undefined" && dev.open ? dev.picked : null;
       const verdict = await judged(step, { answer: value, ...(query !== null ? { query } : {}),
         ...(step.check.dev ? { dev_request: devRequest } : {}) });
-      saidFor = verdict && !verdict.passed ? { step, query } : null;
-      if (!verdict) status(standing(step));
-      settle(step, verdict, true);
+      const typed = typedNow();
+      const stale = verdict && !verdict.passed && ((queued && queued.step === step) || (typed !== null && typed !== value));
+      saidFor = verdict && !verdict.passed && !stale ? { step, query } : null;
+      if (!verdict || stale) status(standing(step));
+      if (!stale) settle(step, verdict, true);
     } finally {
-      answering = false;
-      if (steps[at] === step && !done(step)) controls.forEach((control) => { control.disabled = false; });
+      answering = "";
+      const next = queued;
+      queued = null;
+      if (next && next.step === step && steps[at] === step && !done(step)) answer(next.value);
     }
   }
 
@@ -2014,7 +2033,7 @@ function coach(prefix, declared) {
     const step = steps[at];
     if (step.check.kind !== what) return;
     if (firesCheck(step)) sentSince = false;
-    run(step, !firesCheck(step));
+    run(step, !firesCheck(step) && !STANDING.includes(what));
   });
 
   field("step-back").addEventListener("click", () => go(at - 1));
