@@ -5,9 +5,9 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-15, the four-command bring-up (`uv run bin/cloud init`, `uv run bin/cloud up`,
-credentials in clouds.yaml, the repo a uv project) deployed after round 22 (the range is one
-range host, `cr-range`, running four slots as compose projects; on `dev`).
+Updated: 2026-11-15, the learner map drawn from the slot's live wiring and GNS3
+removed (the range is one range host, `cr-range`, running eight slots as compose
+projects; on `dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
@@ -258,6 +258,25 @@ Internet.
   member's `OS_*` it stopped with "not an admin's" and changed nothing.
   The live platform runs 84b32f0 from the branch `uv-project`; `dev` and
   `range-host-live` hold the same commit and later docs.
+- The learner map is the slot's live wiring (2026-11-15, `docs/DECISIONS.md`
+  "The learner map is the slot's live wiring"): one ssh read per map
+  (`rangehost.WIRING`), drawn by `/map/<session>/` with cytoscape.js; the
+  `gns3` service, port 3080 and the platform's Docker socket are gone
+  (`services` 4). Store copied first to
+  `~/.cache/fsl-work/backup-safe/db-20261115T070528Z-livemap.sqlite3`.
+  `uv run bin/cloud up --replace --ref range-host-live` ran twice untouched
+  (24 min 10 s at b72b81d, 23 min 44 s at 08c6006), both exit 0 with four
+  slots READY; the VM runs four containers (no `cr-gns3`), no Docker socket
+  mount, no Docker client in the platform image, nothing listening on 3080.
+  The first run found the edge's and Kali's interfaces held none of the
+  internet network's subnet (the slot rewrites them), so legs now join by
+  MAC. Checked live with Playwright on sessions 1988-1991 (slots 1-4, three
+  board and one corp): every link address equals `docker network inspect`
+  on the range host, nodes cannot be dragged, zoom works, the map reads the
+  topology once and nothing requests port 3080. Live wiring before the slot
+  agent's WAF-only change: board and corp-wp stand on `sN-estate` beside the
+  edge's `lan`, and the edge forwards everything; the map draws it so.
+  Full `bin/verify` on the VM with eight slots (`compute.slots` 8 in the live `cloud.yaml`): at 08c6006 the new map acceptance test failed (it read `full_run`'s topology after that session closed, when its slot was being reset), fixed at 94418ed to read its own open session; at 94418ed run 2 lost the red-team fixture (`POST /cases/` read timeout 15 s, 15 errors) and run 3 lost every group's `GET /` reach check (3 s, 73 errors), and run 4 passed: acceptance 92 passed, 0 failed, 1 skipped in 591 s, unit and API 881 + 666, ratchet `core_loc` 584, `dependencies` 6, `services` 4, 654 s. Runs 2 and 3 are one defect, not a flake: py-spy on the platform during run 4 showed `waitress` at one full core, `GET /` stalling up to 15.8 s, and 54 % of the GIL in `rangehost.compose` YAML parsing, mostly from `reachability.scored_hosts` (a 30 s cache with no lock, refreshed by every waiting request, each refresh one `describe` per slot) and `range/ready/`'s `plan_slots` bundle; neither changed here, and eight slots doubles both (Next, item 4).
 - Live paths run end to end on 2026-11-13: `bin/cloud up --replace` from the
   VM range (25 min, the range host replaced as stale, the leftovers removed
   after READY); a stale range host replaced by `POST slot/`; `bin/cloud down`
@@ -324,11 +343,17 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
    stopped traffic after a pass, the answer queue; then the user's own test.
    Seen in round 22's live check and not ruled: the judge pane's header can
    still say all items right for up to 15 s after the note went back to
-   unpassed (the list re-reads every 15 s). The live map now shows the router's own symbol (`host-router.svg`).
+   unpassed (the list re-reads every 15 s). F1's map questions changed with the live map (the path starts
+   at kali; the DMZ question reads the WAF's network): walk them again.
 3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
    or `union select` even where it is loaded: a detection gap to measure
    (round 16, `docs/DECISIONS.md`).
-4. Ingest re-reading the whole window: `POST /ingest/` took 22-42 s on a
+4. The platform's CPU under eight slots: `reachability.scored_hosts` refreshes
+   with no lock and parses every slot's compose YAML per refresh, and
+   `range/ready/` builds the range bundle per call; with eight slots two of
+   four full verifies on 2026-11-15 lost requests to 3-15 s stalls (the live
+   map entry above). Cache the parsed compose and refresh under one lock.
+   Ingest re-reading the whole window: `POST /ingest/` took 22-42 s on a
    closed red-team session while the suite ran, and every score wait calls it.
    More slots (`compute.slots`; ten fit on `dba.range`) would shorten the
    acceptance run further; a slot reset is now its floor (43 s alone in the
