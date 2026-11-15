@@ -337,8 +337,8 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 
 | 관심사 | 담당 파일 | 알려진 예외 |
 |---|---|---|
-| Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`: 시작 시 `geoip` ingest 파이프라인, Kibana 읽기 전용 역할 `cr_viewer`와 사용자 `cr-viewer` PUT. `platform/entrypoint.sh`: `elastic` 비밀번호를 한 번 생성해 `/data/elastic`에 둠. `deploy/elastic/start.sh`: 그 비밀번호를 Elasticsearch에 넘기고 Kibana 서비스 계정 토큰 생성 |
-| Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`: Kibana API 경로를 앎. 관리용 API, Default space, space 접두어 없는 경로, `?namespaces=` 거부. `GET /kibana/s/<space>/api/spaces/space`에는 SOC space만 담은 응답을 직접 반환. `/auth-check/kibana/`가 준 `cr-viewer` 인증 헤더를 Kibana 요청에 붙임. `console/templates/console/blue.html`: Kibana의 localStorage 키를 미리 채움 |
+| Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`: 시작 시 `geoip` ingest 파이프라인 PUT |
+| Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`: Kibana API 경로를 앎. 관리용 API, Default space, space 접두어 없는 경로, `?namespaces=` 거부. `GET /kibana/s/<space>/api/spaces/space`에는 SOC space만 담은 응답을 직접 반환. `console/templates/console/blue.html`: Kibana의 localStorage 키를 미리 채움 |
 | 슬롯 배선 읽기 | `platform/range/rangehost.py`(`WIRING`) | 없음. 출력 해석은 `platform/range/interfaces.py`, 학습자 이름과 그래프는 `platform/topology.py` |
 | CRS 설정과 nginx reload | `platform/rules/crs.py` | `entrypoint.sh`: `vm-terminal.sh cr-waf`로 슬롯 WAF 컨테이너 쉘 제공(훈련 환경 호스트로 ssh 후 `sudo docker exec -it sN-waf bash -l`). `range/rangehost.forwarding`: 슬롯의 WAF shipper와 log-server 설정 작성(audit 로그 경로). `deploy/range-host/slot.yaml`: `rangehost.LOGS` 경로로 WAF audit 로그 파일 마운트. 둘 다 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 `platform/tests/test_range_host.py`의 `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it`로 확인. F6의 WAF 창 단계 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`): `wargames.lesson`에서 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 채움. 플랫폼은 터미널을 조작하지 않음 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `declaration.yaml`의 각 센서 호스트(`sensor`는 `cr-edge`, `estate-sensor`는 `cr-range`): `suricata.py`에 넘길 룰 파일과 reload 명령 지정. `platform/range/rangehost.py`: 두 센서 설정(`deploy/range-host/edge-sensor.yaml`, `deploy/suricata/suricata.yaml`)과 compose 서비스 렌더링. `deploy/range-host/slot.sh`: 슬롯과 함께 센서 시작·정지, 초기화 때 센서 로그 파일 다시 열기, 에지 라우터 설정. 이후 기본 룰 적용은 `suricata.py` |
@@ -435,7 +435,7 @@ Kali 창은 세션 API의 `kali_terminal` URL(`GET /api/sessions/<id>/`)을 프�
 - WAF의 nginx와 ModSecurity는 UTC. 수집 파이프라인이 audit 로그의 시간대 없는 `time_stamp`를 UTC로 읽음
 - syslog 송신자 이름은 슬롯 log-server의 rsyslog 템플릿에서 슬롯마다 고정(`cr-waf`, `cr-waf-2`). Filebeat는 송신자 이름으로 슬롯을 구분
 
-블루팀 콘솔의 WAF 창은 세션 API의 `waf_terminal` URL(`GET /api/sessions/<id>/`)을 프레임으로 띄웁니다. URL은 `/vm-terminal/waf/?arg=<세션 id>`이고, 같은 `auth_request /terminal-allowed`로 보호합니다. 이 검사는 플랫폼의 `/auth-check/`에 로그인 세션이 있는지 묻고, 훈련 환경 호스트 주소에서 온 요청은 거부합니다. 로그인하지 않았으면 로그인 페이지로 보냅니다.
+블루팀 콘솔의 WAF 창은 세션 API의 `waf_terminal` URL(`GET /api/sessions/<id>/`)을 프레임으로 띄웁니다. URL은 `/vm-terminal/waf/?arg=<세션 id>`이고, 같은 `auth_request /signed-in`로 보호합니다. 이 검사는 플랫폼의 `/auth-check/`에 로그인 세션이 있는지 묻고, 훈련 환경 호스트 주소에서 온 요청은 거부합니다. 로그인하지 않았으면 로그인 페이지로 보냅니다.
 
 블루팀 콘솔의 웹사이트 창은 콘솔 안의 브라우저입니다.
 
@@ -449,7 +449,7 @@ Kali 창은 세션 API의 `kali_terminal` URL(`GET /api/sessions/<id>/`)을 프�
 board.com과 corp.com은 훈련 환경 안에서만 응답합니다. 학습자 브라우저는 플랫폼의 8002번 포트 nginx를 거쳐 접근합니다.
 
 - 경로: `/site/<세션>/<호스트>/<경로>`
-- nginx는 터미널과 같은 `auth_request /terminal-allowed`를 거친 뒤 플랫폼의 기록기로 넘김. 로그인하지 않았으면 8000의 로그인 페이지로 보냄
+- nginx는 터미널과 같은 `auth_request /signed-in`를 거친 뒤 플랫폼의 기록기로 넘김. 로그인하지 않았으면 8000의 로그인 페이지로 보냄
 - 쿠키는 포트가 아니라 호스트 단위라 8000의 세션 쿠키가 8002에도 실림. nginx는 검사에만 쓰고 기록기로 넘기기 전에 `Cookie`를 지움. 대상의 `Set-Cookie`는 브라우저로 보내지 않음
 - 세션 쿠키는 HttpOnly이고 CSRF 토큰은 쿠키가 아니라 세션에 있음. 그래서 8002에서 도는 XSS 스크립트는 둘 다 읽지 못함. 플랫폼은 CORS 헤더를 보내지 않아 8002의 스크립트가 8000 응답을 읽지 못하고, 쓰기 요청은 CSRF 토큰과 같은 출처(`Origin`)가 없으면 403
 - 기록기 경로는 `/site-proxy/<세션>/<호스트>/`(`platform/api/site.py`). 원래 경로와 쿼리는 `X-Site-Uri`에 담김
@@ -1680,10 +1680,10 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 - sqlmap은 아무것도 찾지 못하면 0이 아닌 코드로 끝나지만, 트래픽은 이미 나간 뒤임
 - HTTP 케이스의 curl이 0이 아닌 코드로 끝나면 요청이 대상에 닿지 않은 것으로 보고 예외 처리
 
-**Kibana는 compose에 들어 있고 Elasticsearch 보안 기능을 켠 채 돕니다.** Kibana는 서비스 계정 토큰(`elastic/kibana/cr-kibana`)으로 Elasticsearch에 붙습니다. 학습자는 Kibana에 따로 로그인하지 않습니다. nginx가 콘솔 로그인을 확인한 뒤 읽기 전용 사용자 `cr-viewer`의 인증 헤더를 붙입니다. 이 사용자의 역할 `cr_viewer`는 `logs-*` 읽기와 Kibana Discover만 가집니다.
+**Kibana는 compose에 들어 있고 Elasticsearch 보안 기능 없이 돕니다.** 9200, 5601은 플랫폼 VM의 루프백에만 열려 있고, 훈련 환경에서는 경로가 없습니다. 학습자는 콘솔 로그인으로 `/kibana/`에 들어옵니다.
 
 - 접속: 플랫폼 8000번 포트의 `/kibana/`. 로그인 세션이 없으면 로그인 페이지로. Discover 밖의 요청은 앞단 nginx에서 거부(아래)
-- 운영자: 플랫폼 호스트의 루프백 127.0.0.1:5601에 ssh 터널로 접속해 `elastic`으로 로그인(`docs/OPENSTACK.md` §5.6)
+- 운영자: 플랫폼 호스트의 루프백 127.0.0.1:5601에 ssh 터널로 접속
 - 블루팀 콘솔: Kibana를 프레임으로 띄움
 
 시작 시 가져오기:
@@ -1709,7 +1709,7 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 
 nginx 차단:
 
-`cr-viewer`의 역할이 막지 못하는 경로와, 기능 설정으로 끌 수 없는 것은 `platform/nginx.conf`에서 막습니다.
+Kibana를 보안 기능 없이 돌리므로, 기능 설정으로 끌 수 없는 것은 `platform/nginx.conf`에서 막습니다.
 
 - Elasticsearch·Kibana 관리 API는 403: console 프록시, ingest pipelines, index management, snapshot and restore, transforms, rollups, remote clusters, license, upgrade assistant, index lifecycle, watcher, data views API, security API, settings API, saved objects import·export, spaces API
 - spaces API 중 예외: `_active_space`, nginx가 space 하나로 직접 응답하는 `api/spaces/space` GET

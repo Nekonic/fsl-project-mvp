@@ -1149,24 +1149,14 @@ curl -s -b jar http://$ADDRESS:8000/api/range/ready/
 ```
 
 `/vm-terminal/`, `/kibana/` and port 8002 ask nginx's `auth_request` to the
-platform's `/auth-check/` first, so the same session opens them.
+platform's `/auth-check/` first, so the same session opens them. nginx keeps
+the check's answer for five seconds per session cookie (`proxy_cache
+signed_in`), so a page that loads a hundred assets asks Django once.
 
-Elasticsearch runs with security on. The platform's entrypoint makes the
-`elastic` password once, mode 0600, in `/data/elastic` on the volume
-`cr_platformdata`; Elasticsearch, Kibana and the collector mount that
-directory, or Kibana's part of it, read from a volume subpath.
-Elasticsearch's start script makes Kibana's service account token
-(`elastic/kibana/cr-kibana`) beside it. At every start the platform puts the
-ingest pipeline, the role `cr_viewer` (read on `logs-*`, Discover in Kibana)
-and the user `cr-viewer`, whose password it keeps in
-`/data/kibana-viewer-password` (0600). nginx hands Kibana that user's
-credentials on each request the session check let through, so the learner
-never signs in to Kibana. An operator on the ssh tunnel to 5601 signs in as
-`elastic`:
-
-```bash
-sudo docker exec cr-elasticsearch cat /run/cr-elastic/elastic-password
-```
+Elasticsearch and Kibana run without security. They listen on the platform
+VM's loopback only (127.0.0.1:9200 and 127.0.0.1:5601), the range has no
+route to them, and nginx refuses Kibana's management and dev tools APIs. An
+operator reaches them over an ssh tunnel.
 
 ## 6. The range (substrate openstack)
 
