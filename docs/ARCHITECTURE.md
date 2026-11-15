@@ -292,7 +292,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 **읽기.** `rangehost.WIRING`은 훈련 환경 호스트에서 `sudo sh -c`로 도는 셸 스크립트입니다. `OpenStack.wiring()`이 ssh 한 번으로 실행합니다.
 
 - 슬롯 compose 프로젝트의 Docker 네트워크마다 `@network <이름> <id> <브리지 이름> <서브넷>`. 브리지 이름은 `com.docker.network.bridge.name` 옵션(`sN-inet`, `sN-estate`, `sN-web`)이고, 없으면 Docker 규칙대로 `br-<id 12자>`
-- 실행 중인 컨테이너마다 `@container <서비스> <NetworkMode>`, `@args`(`docker inspect`의 `Args`), `@mount`(마운트 원본 경로). 호스트 네트워크가 아니면 `ip -o link show`와 `ip -o -4 addr show` 출력. 다른 컨테이너의 네트워크 네임스페이스를 쓰는 컨테이너(shipper)는 따로 읽지 않음. runc 컨테이너는 `nsenter -t <pid> -n`으로, gVisor 컨테이너는 `docker exec`로 읽음. `ip`가 없는 gVisor 컨테이너(두 DB)는 `docker inspect`의 네트워크별 MAC과 주소를 같은 형식으로 냄
+- 실행 중인 컨테이너마다 `@container <서비스> <NetworkMode>`, `@args`(`docker inspect`의 `Args`), `@mount`(마운트 원본 경로). 호스트 네트워크가 아니면 `nsenter -t <pid> -n`으로 읽은 `ip -o link show`와 `ip -o -4 addr show` 출력. 다른 컨테이너의 네트워크 네임스페이스를 쓰는 컨테이너(shipper)는 따로 읽지 않음
 - 슬롯의 shipper 설정(`/opt/cr/sN/rsyslog/*-shipper.conf`)이 읽는 파일 `@forward <파일>`, log-server 설정의 받는 포트 `@port <포트>/<프로토콜>`
 
 `interfaces.wiring`이 이 출력을 `Wiring`으로 풉니다.
@@ -1461,9 +1461,8 @@ board 세션에는 고객을 붙일 수 있습니다. 세션 내내 글을 둘�
 생성기는 슬롯의 Kali 컨테이너에서 시스템 계정 `cr-users`로 돕니다.
 
 - 페르소나마다 컨테이너의 출발지 주소 하나에 바인딩. 요청의 출발지 주소는 그 출발지의 주소
-- 공격자와 분리함. 기본 출발지, 공격자가 쓰는 출발지의 `source_ip`, 컨테이너의 바인딩되지 않은 출발 주소를 쓰지 않음. 바인딩되지 않은 출발 주소는 `/usr/local/sbin/unbound-source`가 대상으로 UDP 소켓을 connect해 `getsockname`으로 읽음. gVisor는 경로의 `src`가 아니라 대상과 앞자리가 가장 길게 같은 주소를 고르므로 `ip route get`은 다른 주소를 말함(73.0.0.10이라고 했지만 실제로는 14.160.0.10에서 나감)
-- `set-origin`의 SNAT는 바인딩되지 않은 출발 주소에서 나가는 TCP, UDP에만 걸림(`-s <주소> -p tcp|udp -j SNAT`). gVisor는 프로토콜이 없는 SNAT 룰을 `Invalid argument`로 거부하고, owner 매치는 받기만 하고 적용하지 않음. 그래서 고객의 바인딩된 주소는 SNAT를 거치지 않음. 계정별 예외(`-m owner --uid-owner cr-users -j RETURN`)는 지움. gVisor는 이 룰을 받아 두기만 하는데, 이 룰이 `POSTROUTING`에 있으면 박스에서 어떤 패킷도 나가지 않았음
-- Kali는 legacy iptables를 씀. gVisor는 nftables를 구현하지 않아 iptables-nft는 `Protocol not supported`로 실패
+- 공격자와 분리함. 기본 출발지, 공격자가 쓰는 출발지의 `source_ip`, 컨테이너의 바인딩되지 않은 출발 주소(대상으로 `ip route get`)를 쓰지 않음
+- `POSTROUTING -m owner --uid-owner cr-users -j RETURN`이 `ORIGIN-SNAT` SNAT 점프 앞에 있음. 공격자의 출발지 변환은 고객에게 적용되지 않음
 
 박스에서 실행하는 명령은 모두 `platform/attacker.py`에 있습니다.
 
@@ -1938,8 +1937,7 @@ fabric이 만드는 네트워크는 `mgmt`뿐입니다. 슬롯의 `internet`과 
 
 Docker와 메타데이터:
 
-- `daemon.json`: 테넌트 MTU(`mtu`, `default-network-opts`), /28 단위 주소 풀 10.40.0.0/16, `local` 로그 드라이버, `userns-remap: default`, 런타임 `runsc`(gVisor, `--net-raw`, `--platform=kvm`)
-- `setup.sh`는 gVisor 릴리스 하나(20261026.0)를 받아 `setup.sh`에 적은 SHA-512로 확인한 뒤 `/usr/local/bin`에 풂
+- `daemon.json`: 테넌트 MTU(`mtu`, `default-network-opts`), /28 단위 주소 풀 10.40.0.0/16, `local` 로그 드라이버, `userns-remap: default`
 - 서버 메타데이터: `cr_host`, `cr_tag`(이미지 태그), `cr_bundle`(번들 digest). digest는 파일별 이름과 내용의 해시
 - 태그나 digest가 플랫폼과 다르면 그 호스트는 `stale`. 열린 세션이 없으면 `POST /api/range/slot/`에서 VM을 지우고 다시 부팅. 세션이 열려 있으면 슬롯을 blocked로 보고
 - Glance 이미지는 만들지 않음. 훈련 환경 호스트의 이미지는 GHCR에서만 pull
@@ -1977,7 +1975,7 @@ Docker와 메타데이터:
 2. WAF 로그 디렉터리 `/var/log/cr/sN/waf`에서 일반 파일 `audit.log`만 남기고 모두 지웁니다. 이 파일이 없으면 remap된 범위의 `www-data`·`adm` 소유(`0644`)로 만듭니다. 컨테이너 안에서 root로 도는 nginx 마스터가 파일을 열고, WAF shipper가 읽기 전용 마운트로 읽습니다.
 3. 관제망 필터를 넣습니다(위 "관제망만 밖으로"). 그다음 컨테이너를 만들고(`up --no-start --pull never`), 한 번도 실행하지 않은 대상 시스템의 빈 볼륨마다 초기 데이터를 복사합니다.
 4. 컨테이너를 띄웁니다(`up -d --wait`).
-5. Kali에 출발지 주소들과 기본 출발지 게이트웨이로 가는 default route를, 에지의 `wan`에 출발지별 게이트웨이 주소를 붙입니다(`ip -batch`). runc 컨테이너에는 `nsenter`로, gVisor 컨테이너에는 `docker exec --privileged`로 들어갑니다. gVisor는 시작할 때 인터페이스 설정을 자기 네트워크 스택으로 가져가므로 호스트에서 `nsenter`로 바꿔도 반영되지 않습니다. gVisor가 `ip addr flush`를 거부해 Kali의 기존 주소는 하나씩 지웁니다.
+5. Kali에 출발지 주소들과 기본 출발지 게이트웨이로 가는 default route를, 에지의 `wan`에 출발지별 게이트웨이 주소를 붙입니다(`nsenter`로 `ip -batch`).
 6. WAF가 에지의 estate 주소로 라우팅하게 합니다. 대상 시스템에는 default route가 없고 WAF에만 응답합니다.
 7. 모든 브리지와 그 포트, 컨테이너 인터페이스에서 TSO, GSO, GRO를 끕니다. 센서가 실제로 오간 그대로의 패킷을 보게 합니다.
 8. `DOCKER-USER`에 브리지별로 같은 브리지로의 forward 허용 룰을 넣습니다.
@@ -2029,14 +2027,10 @@ Docker와 메타데이터:
 - 모두 `no-new-privileges`, Docker 기본 seccomp·AppArmor 프로파일, 메모리·pids 한도
 - privileged 컨테이너, Docker 소켓 마운트, 호스트 network·pid·ipc 네임스페이스 공유는 없음. 호스트 경로 마운트는 WAF의 audit 로그 파일 하나
 - dockerd는 `userns-remap`. 컨테이너 안의 root는 호스트에서 권한 없는 사용자. 호스트 user namespace를 쓰는 컨테이너는 없음
-- 공격 박스 Kali는 gVisor(`runtime: runsc`) 위에서 돎. 학습자의 Kali root 셸은 호스트 커널이 아니라 gVisor 커널을 만남
-- WAF는 runc. gVisor에서는 8슬롯 acceptance 부하 중 레슨의 방어 설정 변경(nginx reload)에서 샌드박스가 종료됨(`containerManager.WaitPID failed: EOF`, 세 번 중 세 번, 2026-11-15)
-- 대상 시스템(`board`, `board-db`, `corp-wp`, `corp-db`)은 runc. gVisor에서도 동작했지만 컨테이너마다 vCPU 반 정도를 계속 써서, 6 vCPU 훈련 환경 호스트에서 슬롯 초기화가 1분 미만에서 6~8분으로 늘고 8슬롯 acceptance가 끝나지 않음(2026-11-15 측정)
-- gVisor 네트워크 스택은 Docker 내장 DNS(127.0.0.11)에 닿지 않음. 처음 runsc로 돌렸을 때 board는 `Unknown server host 'board-db'`로 종료됨. 그래서 워게임 백엔드 네트워크마다 고정 /28(슬롯 N은 10.40.N+1.0/28, 10.40.N+1.16/28, `rangehost.backend`)을 주고, 서비스마다 고정 주소를 주고, 서로의 이름을 `extra_hosts`로 `/etc/hosts`에 적음. 슬롯 안에서 DNS로 이름을 찾는 곳은 없음
-- 센서(브리지에 붙은 `sniff`에서 af-packet으로 읽음), 로그 서버와 shipper, 에지(커널 nftables와 sysctl로 포워딩·필터링)도 runc. 모두 학습자 셸이 없음
+- 센서, 로그 서버와 shipper, 에지에는 학습자 셸이 없음
 - 학습자가 만지는 컨테이너는 관제망에 붙지 않음
 - 렌더링한 슬롯 compose 파일이 이 중 하나라도 어기면 `platform/tests/test_containment.py`에서 `bin/verify` 실패
-- 실환경 검사는 `test/test_range_isolation.py`. 컨테이너를 탈출하면 어디까지 닿는지는 `docs/THREAT-MODEL.md`
+- 실환경 검사는 `test/test_range_isolation.py`
 
 **초기화.** `POST /api/sessions/<id>/close/`는 슬롯을 그 자리에서 초기화합니다. VM은 재구축하지 않습니다.
 

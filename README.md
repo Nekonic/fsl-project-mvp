@@ -318,10 +318,10 @@ sudo docker compose start platform
 | 콘솔(8000)과 `/api/` | Django 로그인. 세션 쿠키는 HttpOnly, SameSite=Lax. 쓰기 요청은 CSRF 토큰과 같은 출처 필요. CORS 헤더 없음 |
 | `/vm-terminal/`, `/kibana/`, 8002(`/site/...`) | nginx `auth_request`로 같은 로그인 세션 확인. 없으면 로그인 페이지로 |
 | 8002의 대상 사이트 | 콘솔 쿠키를 지운 뒤 대상에 넘기고, 대상의 `Set-Cookie`는 브라우저로 보내지 않음. 사이트의 스크립트는 세션 쿠키도 CSRF 토큰도 읽지 못함 |
-| Elasticsearch, Kibana | 보안 기능 켬. `elastic` 비밀번호는 첫 시작 때 만들어 플랫폼 데이터 볼륨에 0600으로 둠. Kibana는 서비스 계정 토큰으로 접속. 학습자에게는 읽기 전용 계정 `cr-viewer`를 nginx가 붙여 줌. 9200, 5601은 VM loopback 전용 |
+| Elasticsearch, Kibana | 9200, 5601은 플랫폼 VM loopback에만 열림. 인증은 켜지 않음. Kibana의 관리·개발 도구 API는 nginx가 거부 |
 | 프로젝트 비밀번호 | `/opt/cr/openstack-password`(0600)를 compose secret으로 읽기 전용 마운트. 컨테이너 환경 변수에는 없음 |
 | 플랫폼 VM 인바운드 | ssh, 8000, 8002는 `cloud.yaml`의 `network.allowed`에서만. 기본값 `[0.0.0.0/0]` |
-| 슬롯의 학습자용 컨테이너 | 공격 박스 Kali는 gVisor(`runsc`) 위에서 돎. WAF는 gVisor에서 nginx reload 중 샌드박스가 죽어 runc, 대상 시스템(board, corp, 두 DB)은 gVisor에서 슬롯 초기화가 6~8분 걸려 runc. 모두 capability 최소화, `no-new-privileges`, userns-remap. 센서(af-packet)와 에지 라우터(nftables)도 runc |
+| 슬롯의 학습자용 컨테이너 | Docker 기본 런타임. capability 최소화, `no-new-privileges`, userns-remap |
 | Docker 소켓 | 플랫폼 VM의 어떤 서비스에도 마운트하지 않음 |
 
 초기 계정은 `admin` / `123456`입니다. 비밀번호를 바꾸라고 요구하지 않습니다. 바꾸려면:

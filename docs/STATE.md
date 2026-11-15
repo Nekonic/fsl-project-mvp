@@ -1936,16 +1936,6 @@ binary log via a substrate runner, proven end to end against the live stack.
 
 ### 5. Left by the hardening (2026-11-15)
 
-- [ ] The WAF and the four targets on gVisor. Only Kali runs on `runsc`
-      today: the WAF's sandbox exited during the lessons' nginx reloads under
-      the eight-slot acceptance load, and the targets held about half a vCPU
-      each, so a slot reset took six to eight minutes on the six-vCPU
-      `dba.range` (`docs/DECISIONS.md` 2026-11-15, "Every surface signs
-      in"). What carries it is the user's call: a range host with more CPU,
-      fewer slots, or a gVisor release whose exec survives the reload. The
-      targets already need no DNS (fixed backend addresses in `/etc/hosts`)
-      and carry `iproute2`, and `slot.sh` reaches into a sandbox, so moving
-      them is a change to `slot.yaml` and `test_containment.py`.
 - [ ] Sign-in has no rate limit, and `admin` / `123456` is never forced to
       change (the user's ruling). A password change is
       `manage.py changepassword admin` in the platform container.
