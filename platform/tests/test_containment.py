@@ -75,24 +75,28 @@ def test_a_learner_facing_container_mounts_nothing_of_the_host_beyond_its_own_lo
             f"most its own log file")
 
 
-SHELLS = ("kali", "waf")
-TARGETS = ("board", "board-db", "corp-wp", "corp-db")
+SANDBOXED = ("kali",)
+ON_RUNC = {
+    "waf": "its sandbox exited during the lessons' nginx reloads under the eight-slot acceptance load "
+           "(containerManager.WaitPID failed: EOF), in three of three runs",
+    "board": "on gVisor each target held about half a vCPU and a slot reset took six to eight minutes",
+    "board-db": "on gVisor each target held about half a vCPU and a slot reset took six to eight minutes",
+    "corp-wp": "on gVisor each target held about half a vCPU and a slot reset took six to eight minutes",
+    "corp-db": "on gVisor each target held about half a vCPU and a slot reset took six to eight minutes",
+}
 
 
-@pytest.mark.parametrize("name", SHELLS)
-def test_the_containers_a_learner_has_a_root_shell_in_run_on_gvisor_s_kernel(name):
+@pytest.mark.parametrize("name", SANDBOXED)
+def test_the_attacker_box_the_learner_holds_root_in_runs_on_gvisor_s_kernel(name):
     assert slot_document()["services"][name].get("runtime") == rangehost.SANDBOX, (
         f"{name} runs on runc, so one kernel bug reachable through its seccomp profile reaches the range host"
     )
 
 
-@pytest.mark.parametrize("name", TARGETS)
-def test_the_targets_stay_on_runc_until_the_range_host_has_the_cpu_for_gvisor(name):
-    assert set(SHELLS) | set(TARGETS) == set(LEARNER_FACING)
-    assert not slot_document()["services"][name].get("runtime"), (
-        f"{name} on runsc burned about half a vCPU each on the six-vCPU range host, a slot reset took six to "
-        f"eight minutes instead of under one, and the eight-slot acceptance suite could not finish"
-    )
+@pytest.mark.parametrize("name", sorted(ON_RUNC))
+def test_what_gvisor_could_not_carry_stays_on_runc_with_its_reason(name):
+    assert set(SANDBOXED) | set(ON_RUNC) == set(LEARNER_FACING)
+    assert not slot_document()["services"][name].get("runtime"), ON_RUNC[name]
 
 
 @pytest.mark.parametrize("name", ["board", "board-db", "corp-wp", "corp-db"])

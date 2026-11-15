@@ -1351,10 +1351,10 @@ These trade-offs are recorded. They are not verified threats:
 
 - The edge and the sensors are not recreated between sessions. No learner has
   a shell on them; the platform alone reaches them.
-- Kali and the WAF, where a learner holds a root shell, run on gVisor
-  (`runsc`), so that shell meets gVisor's kernel, not the range host's. The
-  targets, the edge and the sensors run on runc and share the range host's
-  kernel (`docs/THREAT-MODEL.md`).
+- Kali runs on gVisor (`runsc`), so the learner's attacker shell meets
+  gVisor's kernel, not the range host's. The WAF, the targets, the edge and
+  the sensors run on runc and share the range host's kernel
+  (`docs/THREAT-MODEL.md`).
 - The target data every session starts from is the same copy, made at the
   range host's setup. What a learner could reuse across sessions is renewed at
   each start: the board's password salts, corp's keys and salts, and corp's
