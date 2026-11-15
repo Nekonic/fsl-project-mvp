@@ -113,9 +113,12 @@ from its checked release tarball; the platform and gns3 images install with
 a build-time uv mount), the platform VM's key became the Nova keypair
 `keys.key_name` / `keys.key_file` that `bin/cloud up` imports itself, the
 examples moved to 10.10.10.0/24, KVM became recommended rather than required,
-and the OpenStack identity moved out of `cloud.yaml` into the project user's
-RC file on the controller node (`docs/DECISIONS.md`, the five 2026-11-15
-entries from "Virtualenvs are made with uv").
+and the OpenStack identity moved out of `cloud.yaml`, first into an RC file
+and then, the same day, into the `~/.config/openstack/clouds.yaml` entry that
+`bin/cloud init` writes: the manual setup is now `git clone`, `uv run
+bin/cloud init` (admin) and `uv run bin/cloud up` (`docs/DECISIONS.md`, the
+2026-11-15 entries from "Virtualenvs are made with uv", and "Four commands on
+the controller").
 
 ## The objective model (done 2026-10-04)
 
