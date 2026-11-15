@@ -8489,3 +8489,37 @@ so `reset` now empties `audit.log` before it recreates the WAF and its
 shipper. Full `bin/verify` on the VM after both: 550 s, acceptance 95 passed,
 0 failed, 1 skipped in 488 s across 12 processes, unit and API 833 + 830,
 `core_loc` 585, `dependencies` 6, `services` 4.
+
+## 2026-11-16 — A learner sees only their own sessions; the cached session check is keyed on address and session too
+
+A docs review of `dev` found that an approved learner could list and drive
+any session (no owner check in `api/views.py`; the sign-up live check saw
+another account's session 2207 on a learner's main page), and that the
+front's five-second cache of `/signed-in`, keyed on the session cookie alone,
+let a cached 204 skip Django's refusal of range-host addresses.
+
+- `api.accounts.OwnSessionsOnly` (middleware, `process_view`): for a
+  non-staff user, a view whose URL carries `session_id` or `detection_id`
+  answers 404 unless the session (or the detection's session) is theirs;
+  `/api/range/` writes answer 403. Staff pass. `GET /api/sessions/` lists a
+  learner's own; `_asked_session` resolves a missing `session` to the
+  learner's open session, else their newest, else 409, and a named one
+  through the learner's own sessions. Every request that acts on "the newest
+  session" goes through it, so a learner never falls through to another's.
+- `/auth-check/` reads `X-Original-URI` (nginx sets it from `$request_uri` in
+  the `/signed-in` subrequest). A learner gets 403 for `/site/<id>/` or a
+  terminal `?arg=<id>` naming another's session, for a terminal with no
+  `arg`, and for more than one `arg` (ttyd hands the first to
+  `vm-terminal.sh`, a pattern would read the last). Other URLs (Kibana) pass
+  on the session alone.
+- The cache key is `$cookie_cr_session|$remote_addr|$session_asked`, where
+  `$session_asked` maps the URL to `site:<id>`, `terminal:<query>` or `""`.
+  A range address never reuses another address's 204, and one session's 204
+  never opens another's. Still 5 s, still 204 and 401 only.
+- Acceptance and agents sign in as `admin` (staff) and are unaffected.
+
+Not chosen: an owner check in each of the ~40 session views (the middleware
+covers every route with `session_id` in one place, and new routes inherit
+it); moving the range-address refusal into nginx (the platform's list of
+range addresses lives in Django and changes per slot). Left open: Kibana is
+not split by session, so a learner reads every session's logs there.

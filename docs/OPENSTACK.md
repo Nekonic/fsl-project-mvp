@@ -617,7 +617,8 @@ bundle holds `deploy/range-host/setup.sh` and files the platform generates:
 - `images.txt`: every image the slots run, at the platform's tag
   (`CR_IMAGE_TAG`, the commit of the platform checkout, from `/opt/cr/.env`):
   `ghcr.io/nekonic/cr-kali`, `cr-waf`, `cr-edge`, `cr-board`, `cr-corp`,
-  `cr-corp-db`, and the pinned `jasonish/suricata` and `mysql`.
+  `cr-corp-db`, and the pinned `jasonish/suricata`, `mysql` and
+  `rsyslog/rsyslog-minimal`.
 - `pristine.yaml` and `wargames.txt`: the targets, rendered once to make their
   pristine data.
 - `daemon.json` for Docker: the tenant MTU (`network.mtu`), the address pool

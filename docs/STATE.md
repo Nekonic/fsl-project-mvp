@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-11-15
+Updated: 2026-11-16
 
 ## Where things stand
 
@@ -127,7 +127,10 @@ risks raised by the AI and both went (`docs/DECISIONS.md` "gVisor and
 Elasticsearch security removed"): every slot container runs on Docker's
 default runtime, Elasticsearch and Kibana run without security on the
 platform VM's loopback, and nginx caches the session check five seconds per
-session cookie.
+session cookie, client address and the session the URL names. The same day
+sign-up with an admin's approval, the abuse limits and per-learner sessions
+landed (`docs/DECISIONS.md` "Sign-up waits for an admin's approval" and
+"A learner sees only their own sessions").
 
 ## The objective model (done 2026-10-04)
 
@@ -447,7 +450,7 @@ geolocated TW.
   Docker host restarts, and inode identity re-shipped both logs. 8.15
   does not migrate the registry, so changing identity again re-ships once.
   Ingest drops an alert whose event time is outside the window, as `stale`.
-- **The ingest pipeline is registered at bring-up** (`entrypoint.sh:35` runs
+- **The ingest pipeline is registered at bring-up** (`entrypoint.sh:28` runs
   `register_pipeline.py`) and geolocates `src_ip` and ModSecurity's
   `transaction.client_ip`. Two ways carry it to a doc: filebeat's
   `output.pipeline: geoip` per request (the Docker path), and the
@@ -480,8 +483,8 @@ geolocated TW.
 - **Published ports.** By default 8000 (platform), 9200
   (Elasticsearch) and 5140/udp (syslog) are on `127.0.0.1`. On the platform VM
   cloud-init sets `CR_PUBLISH` to the VM's address, so 8000 opens to
-  any address with no login (the user, 2026-10-01), and `CR_SYSLOG_PUBLISH` to
-  `0.0.0.0` for 5140/udp (`platform.yaml:145`); 9200 stays on loopback. Django
+  `network.allowed` behind a sign-in, and `CR_SYSLOG_PUBLISH` to
+  `0.0.0.0` for 5140/udp (`platform.yaml:212`); 9200 stays on loopback. Django
   answers to the floating IP. Before, each segment's gateway
   forwarded 8000, 9200, 7681 and 8080 into the platform from inside the range
   (8 of 8 reached). Django runs with DEBUG off. Another
@@ -493,9 +496,9 @@ geolocated TW.
   sets to `$remote_addr` and waitress trusts only from `127.0.0.1`; anything
   that reads `REMOTE_ADDR` sees the real client. `/vm-terminal/kali/` and
   `/vm-terminal/waf/` go to ttyd
-  only after `auth_request` to `/api/attacker/` answers 2xx; a 403 passes
-  through, and any other answer (Django's 400 for a Host it does not allow)
-  becomes nginx's 500, still refused.
+  only after `auth_request /signed-in` (Django's `/auth-check/`) answers 204;
+  a 401 becomes a redirect to `/login/`, a 403 (a learner naming another's
+  session, a range address) passes through.
 - **The platform refuses any address standing in the range** (403;
   participants cached 30 s). The operator arrives from a segment's gateway
   (`5.188.10.1`), the attacker box as a node (`5.188.10.2`). The rule reads
@@ -738,8 +741,9 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
 - **Range**: an Internet segment with thirty declared origin countries, the
   internal network (`estate`) and management. Kali knows the targets by name
   only through the WAF, `http://board.com` and `http://corp.com`; the edge
-  routes `internet` to `estate` without NAT or filtering, so Kali also reaches
-  the board's estate address (`docs/ARCHITECTURE.md`).
+  routes `internet` to `estate` without NAT or filtering, but the board and
+  corp-wp sit only on the web network and their own database network, so Kali
+  reaches the targets only through the WAF (`docs/ARCHITECTURE.md`).
 - **Red team**: one Kali image, driven from the red console's terminal in a wargame or the
   blue console's Kali pane in a lesson or scenario; the
   cases stay for the API, the harness and the scenario engine's attacker; each
@@ -1965,9 +1969,6 @@ binary log via a substrate runner, proven end to end against the live stack.
 - The platform holds the ssh key that runs `sudo docker` on the range host:
   whoever takes the platform container is root on the range host. The
   platform VM's own Docker socket is no longer mounted anywhere (2026-11-15).
-- The ttyd terminals at `/vm-terminal/kali/` and `/vm-terminal/waf/` are
-  unauthenticated shells for whoever reaches the platform's port: the VM's
-  address (`CR_PUBLISH`) on the platform VM.
 - `elastic.fetch` reads at most 5000 documents per call, oldest first, `http`
   records included. Since 2026-10-13 a full ingest pages by `@timestamp`
   (`api/views.py` `_fetched`, up to 41 reads, about 205,000 documents); past
@@ -1982,8 +1983,9 @@ binary log via a substrate runner, proven end to end against the live stack.
   seconds let sessions under a second apart claim each other's commands.
 - Two labelled windows under four seconds apart overlap (`WINDOW_SLACK` is two
   seconds each end), and the console does not say so.
-- Nothing stops two people opening the same session in four windows. One user,
-  one session was a deliberate scope decision.
+- A learner opens only their own sessions (one at a time); an admin opens
+  any, and nothing stops one account using a session in four windows.
+  Kibana is not split by session, so a learner reads every session's logs.
 - A range host can send with another's address, and one recreated within the
   30 s cache keeps its old answer (`docs/THREAT-MODEL.md`).
 - OpenStack host keys are trust-on-first-use per generation, kept in the

@@ -411,9 +411,9 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 
 ## Next, in order
 
-1. The live cloud on `dev`: `platform.ref` is `dev` in `cloud.yaml`; the VM was
-   built with `--ref uv-project` (the same commit). `compute.slots` as the
-   user wants (four now). Run `uv run bin/cloud init` once as admin on con01
+1. The live cloud on `dev`: `platform.ref` is `dev` in `cloud.yaml`; the VM
+   runs `/opt/cr` at the merge above. `compute.slots` as the user wants
+   (eight now). Run `uv run bin/cloud init` once as admin on con01
    (`/etc/kolla/clouds.yaml`) to see it report everything present.
 2. A fresh answer-blind review round of both courses and a scenario on the
    round-22 fixes (`docs/DECISIONS.md` "Answer-blind walk round 22"): the
@@ -426,12 +426,10 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
    or `union select` even where it is loaded: a detection gap to measure
    (round 16, `docs/DECISIONS.md`).
-4. The platform's CPU under eight slots: `reachability.scored_hosts` refreshes
-   with no lock and parses every slot's compose YAML per refresh, and
-   `range/ready/` builds the range bundle per call; with eight slots two of
-   four full verifies on 2026-11-15 lost requests to 3-15 s stalls (the live
-   map entry above). Cache the parsed compose and refresh under one lock.
-   Ingest re-reading the whole window: `POST /ingest/` took 22-42 s on a
+4. The platform's CPU under eight slots: with eight slots two of four full
+   verifies on 2026-11-15 lost requests to 3-15 s stalls (the live map entry
+   above); since `bc0847ec` the slot compose and the bundle digest are cached
+   and `reachability.scored_hosts` refreshes under one lock. Ingest re-reading the whole window: `POST /ingest/` took 22-42 s on a
    closed red-team session while the suite ran, and every score wait calls it.
    More slots (`compute.slots`; ten fit on `dba.range`) would shorten the
    acceptance run further; a slot reset is now its floor (43 s alone in the

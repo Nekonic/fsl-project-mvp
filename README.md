@@ -222,8 +222,8 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체
 | 8000 | 콘솔, `/api/`, 구성도(`/map/`), Kibana(`/kibana/`), 터미널(`/vm-terminal/`) | 브라우저 |
 | 8002 | 대상 사이트(`/site/<세션 id>/<host>/<path>`) | 콘솔 안의 iframe |
 | 5140/udp | collector | 슬롯 log-server(훈련 환경 호스트에서 NAT) |
-| 5601 | Kibana 직접 접속, VM loopback 전용 | ssh 터널, `elastic`으로 로그인 |
-| 9200 | Elasticsearch, VM loopback 전용 | acceptance 테스트, `elastic`으로 인증 |
+| 5601 | Kibana 직접 접속, VM loopback 전용 | ssh 터널, 인증 없음 |
+| 9200 | Elasticsearch, VM loopback 전용 | acceptance 테스트, 인증 없음 |
 
 - 8002는 콘솔과 다른 origin이라 대상 사이트의 스크립트가 콘솔을 읽지 못합니다. 로그인은 8000과 같이 씁니다.
 - `board.com`과 `corp.com`은 훈련 환경 안에서만 응답합니다. 8002는 요청을 그 세션의
@@ -322,7 +322,7 @@ sudo docker compose start platform
 | 회원가입 요청 | IP당 분당 1회(버스트 3), 같은 주소에서 시간당 5개까지. 승인 대기 계정이 50개면 가입을 받지 않음 |
 | `/api/` 요청량 | 로그인 세션당 초당 20회(버스트 40), IP당 초당 100회(버스트 200). 넘으면 429 |
 | 터미널, 8002 사이트 연결 | 로그인 세션당 동시 연결 10개 |
-| 학습자 세션 | 계정 하나에 열린 세션 하나. 관리자 계정은 제한 없음 |
+| 학습자 세션 | 계정 하나에 열린 세션 하나. 자기 세션만 보고 다룸(남의 세션은 404, 터미널과 8002는 403). 훈련 환경 변경은 관리자만. 관리자 계정은 모든 세션을 봄 |
 | 제한 제외 | 플랫폼 VM 자신이 보낸 요청(loopback, Docker 게이트웨이, `DJANGO_ALLOWED_HOSTS`의 IP)은 nginx 제한을 받지 않음. VM에서 도는 `bin/verify` 수락 테스트가 여기에 해당 |
 | 8002의 대상 사이트 | 콘솔 쿠키를 지운 뒤 대상에 넘기고, 대상의 `Set-Cookie`는 브라우저로 보내지 않음. 사이트의 스크립트는 세션 쿠키도 CSRF 토큰도 읽지 못함 |
 | Elasticsearch, Kibana | 9200, 5601은 플랫폼 VM loopback에만 열림. 인증은 켜지 않음. Kibana의 관리·개발 도구 API는 nginx가 거부 |

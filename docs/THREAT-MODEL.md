@@ -71,8 +71,13 @@ through nginx's `auth_request`. The first start makes `admin` with the password
 knows the default. Anyone who reaches port 8000 can sign up, but a sign-up
 makes an inactive account that cannot sign in, open a session or pass
 `auth_request` until an admin approves it on the console's account screen (`/users/`); a rejected one is
-deleted. An approved learner can do everything the console offers except
-manage accounts, including changing the shared rules of a session.
+deleted. An approved learner sees and drives only the sessions they opened:
+every API and page that names a session or a detection answers 404 for
+another learner's, a request that names none acts on the learner's own, and
+the front's session check refuses a terminal or `/site/` URL that names
+another's session (403). Only staff change the range (`/api/range/` writes) or
+manage accounts; staff see every session. Kibana is not split by session, so
+a learner reads every session's logs there.
 
 Abuse limits. nginx answers 429 past 5 sign-in POSTs a minute per address
 (burst 5), 1 sign-up POST a minute (burst 3), 20 `/api/` requests a second
@@ -111,13 +116,17 @@ that scores the attacker. The API therefore also refuses any request from the
 address of a host in the range: the range host's management address and every
 address the slots' containers report. The operator's console reaches the API
 through the platform's floating address, from an address that is not a host in
-the range. The check has three limits:
+the range. The check has four limits:
 
 - The platform caches the list of range hosts for 30 seconds. A host that is
   recreated within that time keeps its old answer.
 - If the platform cannot read the list of hosts, the list is empty for those
   30 seconds and the check lets every request through.
 - Nothing stops a host in the range from sending with another host's address.
+- nginx keeps the session check's answer for the terminals, `/kibana/` and
+  port 8002 five seconds, keyed on the session cookie, the client's address
+  and the session the URL names, so a cached yes is never reused for a range
+  address or for another session.
 
 The target is not published. Port 8000 is the console. The XSS cases make the
 target run script in any browser that loads its pages, and the Website pane
@@ -253,9 +262,10 @@ What is tested:
   canary unchanged, nothing of it in Elasticsearch, and the WAF's host log
   directory root's and holding only `audit.log`.
 
-**One account, one operator.** There is one account, `admin`, and no roles.
-Nothing stops two browser windows from driving the same session. We decided
-this to limit scope.
+**Accounts are staff or learner.** Staff (`admin` and any account made staff
+in Django) manage accounts, change the range and see every session; a
+learner holds one open session and reaches only their own. Nothing stops two
+browser windows of one account from driving the same session.
 
 **A closed session's records last an hour.**
 

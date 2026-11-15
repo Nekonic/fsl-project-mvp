@@ -106,6 +106,8 @@
 
 남용 제한은 두 층입니다. nginx(`platform/nginx.conf`)는 `POST /api/auth/login/` IP당 5r/m(버스트 5), `POST /api/auth/signup/` IP당 1r/m(버스트 3), `/api/` 세션 쿠키당 20r/s(버스트 40)와 IP당 100r/s(버스트 200), 터미널과 8002 사이트에 세션 쿠키당 동시 연결 10개를 둡니다. 넘으면 429입니다. 플랫폼 VM 자신(loopback, Docker 게이트웨이 172.31.0.1, `entrypoint.sh`가 `DJANGO_ALLOWED_HOSTS`의 IP로 만드는 `/tmp/nginx-platform-addresses.conf`)은 제외합니다. Django(`api/signin.py`, 기본 로컬 메모리 캐시)는 같은 아이디로 10번 틀리면 15분 잠그고(429, `locked_until`, `Retry-After`), 같은 주소의 가입을 시간당 5개로, 승인 대기 계정을 50개로 묶습니다(넘으면 503 `{"closed": true}`). 학습자 계정은 열린 세션을 하나만 가집니다. 두 번째 `POST /api/sessions/`는 409 `{"open_session": <id>}`입니다(`Session.owner`, 마이그레이션 0031). 관리자는 제한이 없어 수락 테스트가 세션 여럿을 엽니다.
 
+학습자는 자기 세션만 보고 움직입니다(`api/accounts.py`의 `OwnSessionsOnly`). URL에 세션이나 탐지 id가 있는 API와 콘솔 페이지(목록, 상세, 점수, 구성도, 종료, 레드·블루 콘솔)는 남의 것이면 404입니다. `session`을 주지 않은 요청은 자기 세션 중 열린 것, 없으면 가장 최근 것에 적용하고, 세션이 하나도 없으면 409입니다. `/api/range/` 쓰기 요청은 관리자만 할 수 있습니다(학습자는 403). 관리자는 모든 세션을 봅니다. Kibana는 세션별로 나뉘지 않아 학습자도 모든 세션의 로그를 봅니다.
+
 훈련 환경을 바꾸는 엔드포인트는 쿼리나 본문으로 `session`을 받습니다. rules, validate, 룰 비활성화, `/api/attacker/`, origin, label, canary가 해당합니다.
 
 - `session`이 없는 쓰기 요청: 가장 최근에 연 세션에 적용. 열린 세션이 없으면 409
@@ -349,7 +351,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`: `/var/log/commands.log` 읽기. 터미널 연결 설정에 `cr-kali` 지정, `entrypoint.sh`에서 `vm-terminal.sh cr-kali` 실행. 웹사이트 창(`platform/api/site.py`)은 예외가 아님. 박스 접근은 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(훈련 환경 호스트 ssh 스트림으로 슬롯 Kali 컨테이너 접속)로만 함 |
 | 대상 시스템 데이터 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음. `loot.py`는 `board` 역할 runner로 board 컨테이너 안 `127.0.0.1`에 HTTP 요청. `effect.py`는 `corp-db`에 `docker exec`하는 runner로 접근 |
 
-`platform/tests/test_isolation_seams.py`가 `platform/` 코드를 관심사별 문자열로 훑어, 담당 파일과 알려진 예외 밖에서 그 관심사를 다루는 파일이 있으면 실패합니다. 담당 파일이 없어지면 담당 파일이 그 관심사를 아는지는 검사하지 않습니다. 다른 파일이 그 관심사를 알면 여전히 실패합니다.
+`platform/tests/test_isolation_seams.py`가 `platform/` 코드를 관심사별 문자열로 훑어, 담당 파일과 알려진 예외 밖에서 그 관심사를 다루는 파일이 있으면 실패합니다. 담당 파일이 없어지면 담당 파일이 그 관심사를 아는지는 검사하지 않습니다. 다른 파일이 그 관심사를 알면 여전히 실패합니다. 슬롯 배선 읽기 행은 이 테스트에 없어서 검사하지 않습니다.
 
 ## 파일
 
@@ -378,7 +380,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | `platform/api/refusals.py` | 예외를 HTTP 상태 코드로 변환(`/api/` 아래 404는 JSON). 변경 요청(POST 등)의 동일 출처 검사 |
 | `platform/api/reachability.py` | 슬롯이 보고하는 모든 주소(채점 서버 제외)에서 온 요청을 거부하는 미들웨어 |
 | `platform/api/signin.py` | 로그인, 로그아웃, 회원가입, 로그인 잠금, nginx `auth_request`가 묻는 세션 확인 |
-| `platform/api/accounts.py` | 계정 관리 API: 계정 목록, 승인, 거절(관리자 전용) |
+| `platform/api/accounts.py` | 계정 관리 API(계정 목록, 승인, 거절. 관리자 전용). 학습자가 남의 세션과 훈련 환경 변경에 닿지 못하게 막는 미들웨어 |
 | `platform/range/declared.py` | `declaration.yaml`을 읽어 `Declaration`으로 변환 |
 | `platform/range/openstack.py` | OpenStack 어댑터(`connect`): Keystone, Neutron, Nova, ssh |
 | `bin/verify` | ratchet 검사(게이트 대상 수치가 커지는 변경 거부, `CLAUDE.md`)와 변경이 닿는 테스트 실행(`--changed`, `--fast`. 테스트 선택은 `bin/select-tests`) |
@@ -440,7 +442,7 @@ Kali 창은 세션 API의 `kali_terminal` URL(`GET /api/sessions/<id>/`)을 프�
 - WAF의 nginx와 ModSecurity는 UTC. 수집 파이프라인이 audit 로그의 시간대 없는 `time_stamp`를 UTC로 읽음
 - syslog 송신자 이름은 슬롯 log-server의 rsyslog 템플릿에서 슬롯마다 고정(`cr-waf`, `cr-waf-2`). Filebeat는 송신자 이름으로 슬롯을 구분
 
-블루팀 콘솔의 WAF 창은 세션 API의 `waf_terminal` URL(`GET /api/sessions/<id>/`)을 프레임으로 띄웁니다. URL은 `/vm-terminal/waf/?arg=<세션 id>`이고, 같은 `auth_request /signed-in`로 보호합니다. 이 검사는 플랫폼의 `/auth-check/`에 로그인 세션이 있는지 묻고, 훈련 환경 호스트 주소에서 온 요청은 거부합니다. 로그인하지 않았으면 로그인 페이지로 보냅니다.
+블루팀 콘솔의 WAF 창은 세션 API의 `waf_terminal` URL(`GET /api/sessions/<id>/`)을 프레임으로 띄웁니다. URL은 `/vm-terminal/waf/?arg=<세션 id>`이고, 같은 `auth_request /signed-in`로 보호합니다. 이 검사는 플랫폼의 `/auth-check/`에 원래 URL(`X-Original-URI`)을 넘겨 묻습니다. 로그인하지 않았으면 401이고 로그인 페이지로 보냅니다. 훈련 환경 호스트 주소에서 온 요청은 거부합니다. 학습자 계정은 자기 세션만 열 수 있습니다. 터미널 URL의 `arg`나 `/site/<세션 id>/`가 남의 세션이면 403이고, 터미널에 `arg`가 없거나 둘 이상이어도 403입니다. 관리자는 모든 세션을 엽니다. nginx는 이 답(204, 401)을 5초 동안 캐시합니다. 키는 세션 쿠키, 클라이언트 주소, URL이 가리키는 세션(`$session_asked`)이라서, 캐시된 허용이 다른 주소나 다른 세션에 쓰이지 않습니다.
 
 블루팀 콘솔의 웹사이트 창은 콘솔 안의 브라우저입니다.
 
@@ -1837,7 +1839,7 @@ Heat 템플릿 `deploy/openstack/platform.yaml`이 만드는 리소스:
 
 - 네트워크와 서브넷 `cr-platform`
 - 외부 네트워크로 나가는 라우터와 floating IP. `network.address`를 지정하면 프로젝트에 있는 floating IP를 연결만 함. 스택을 지워도 이 floating IP는 남음
-- tcp/22, tcp/8000, tcp/8002, ICMP를 모든 주소에 여는 보안 그룹
+- 보안 그룹: tcp/22, tcp/8000, tcp/8002는 `network.allowed`에서만, ICMP는 모든 주소에서 받음
 - config drive를 붙인 Nova 서버 `cr-platform`
 
 템플릿에는 기본값이 없습니다. 파라미터는 모두 `deploy/openstack/cloud.yaml`에서 받습니다([cloud.yaml](OPENSTACK.md#4-cloudyaml)).
@@ -1867,7 +1869,7 @@ systemd 유닛 `cr-platform.service`는 부팅할 때마다 `compose.yaml`의 �
 - cloud-init에서 `CR_PUBLISH`를 VM 고정 주소로 설정. 8000, 8002가 그 주소에 publish되고 보안 그룹에서도 열림. 브라우저는 floating IP로 콘솔에 접속
 - 보안 그룹 `cr-platform`은 ssh, 8000, 8002를 `cloud.yaml`의 `network.allowed`에 적은 네트워크에서만 받음. 기본은 `[0.0.0.0/0]`이고 `init`이 이 값을 씀
 - `CR_SYSLOG_PUBLISH=0.0.0.0`: 훈련 환경 호스트의 syslog를 받으려고 5140/udp를 모든 주소에 publish
-- 9200, 5601: loopback에만. Elasticsearch는 보안 기능을 켜고 돎
+- 9200, 5601: loopback에만. Elasticsearch는 보안 기능 없이 돎
 
 `openstack.env`:
 
