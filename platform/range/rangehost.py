@@ -320,7 +320,7 @@ def bundle(source: Path, wargames, tag: str, mtu: int) -> dict[str, bytes]:
             "log-driver": "local",
             "log-opts": {"max-size": "10m", "max-file": "2"},
             "userns-remap": "default",
-            "runtimes": {SANDBOX: {"path": RUNSC, "runtimeArgs": ["--net-raw"]}},
+            "runtimes": {SANDBOX: {"path": RUNSC, "runtimeArgs": ["--net-raw", "--platform=kvm"]}},
         }, sort_keys=True).encode(),
     }
 

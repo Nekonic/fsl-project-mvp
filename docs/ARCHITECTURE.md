@@ -1446,8 +1446,9 @@ board 세션에는 고객을 붙일 수 있습니다. 세션 내내 글을 둘�
 생성기는 슬롯의 Kali 컨테이너에서 시스템 계정 `cr-users`로 돕니다.
 
 - 페르소나마다 컨테이너의 출발지 주소 하나에 바인딩. 요청의 출발지 주소는 그 출발지의 주소
-- 공격자와 분리함. 기본 출발지, 공격자가 쓰는 출발지의 `source_ip`, 컨테이너의 바인딩되지 않은 출발 주소(대상으로 `ip route get`)를 쓰지 않음
-- `POSTROUTING -m owner --uid-owner cr-users -j RETURN`이 `ORIGIN-SNAT` SNAT 점프 앞에 있음. 공격자의 출발지 변환은 고객에게 적용되지 않음
+- 공격자와 분리함. 기본 출발지, 공격자가 쓰는 출발지의 `source_ip`, 컨테이너의 바인딩되지 않은 출발 주소를 쓰지 않음. 바인딩되지 않은 출발 주소는 `/usr/local/sbin/unbound-source`가 대상으로 UDP 소켓을 connect해 `getsockname`으로 읽음. gVisor는 경로의 `src`가 아니라 대상과 앞자리가 가장 길게 같은 주소를 고르므로 `ip route get`은 다른 주소를 말함(73.0.0.10이라고 했지만 실제로는 14.160.0.10에서 나감)
+- `set-origin`의 SNAT는 바인딩되지 않은 출발 주소에서 나가는 TCP, UDP에만 걸림(`-s <주소> -p tcp|udp -j SNAT`). gVisor는 프로토콜이 없는 SNAT 룰을 `Invalid argument`로 거부하고, owner 매치는 받기만 하고 적용하지 않음. 그래서 고객의 바인딩된 주소는 SNAT를 거치지 않음. `POSTROUTING -m owner --uid-owner cr-users -j RETURN`도 그대로 둠
+- Kali는 legacy iptables를 씀. gVisor는 nftables를 구현하지 않아 iptables-nft는 `Protocol not supported`로 실패
 
 박스에서 실행하는 명령은 모두 `platform/attacker.py`에 있습니다.
 
@@ -1922,7 +1923,7 @@ fabric이 만드는 네트워크는 `mgmt`뿐입니다. 슬롯의 `internet`과 
 
 Docker와 메타데이터:
 
-- `daemon.json`: 테넌트 MTU(`mtu`, `default-network-opts`), /28 단위 주소 풀 10.40.0.0/16, `local` 로그 드라이버, `userns-remap: default`, 런타임 `runsc`(gVisor, `--net-raw`)
+- `daemon.json`: 테넌트 MTU(`mtu`, `default-network-opts`), /28 단위 주소 풀 10.40.0.0/16, `local` 로그 드라이버, `userns-remap: default`, 런타임 `runsc`(gVisor, `--net-raw`, `--platform=kvm`)
 - `setup.sh`는 gVisor 릴리스 하나(20261026.0)를 받아 `setup.sh`에 적은 SHA-512로 확인한 뒤 `/usr/local/bin`에 풂
 - 서버 메타데이터: `cr_host`, `cr_tag`(이미지 태그), `cr_bundle`(번들 digest). digest는 파일별 이름과 내용의 해시
 - 태그나 digest가 플랫폼과 다르면 그 호스트는 `stale`. 열린 세션이 없으면 `POST /api/range/slot/`에서 VM을 지우고 다시 부팅. 세션이 열려 있으면 슬롯을 blocked로 보고

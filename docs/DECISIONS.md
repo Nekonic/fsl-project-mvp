@@ -7977,7 +7977,7 @@ admin/123456 무조건", and "Docker 소켓, 커널 공유도 보안 해".
   every slot container.
 - **Kernel sharing.** gVisor release 20261026.0 (gvisor.dev
   "Installation"; `gvisor.tar.bz2`, SHA-512 in `setup.sh`), registered as
-  `runsc` with `--net-raw` beside `userns-remap`. Kali, the WAF, board,
+  `runsc` with `--net-raw` and `--platform=kvm` beside `userns-remap`. Kali, the WAF, board,
   board-db, corp-wp and corp-db run on it; checked live on a slot: an nmap
   SYN scan, curl through the WAF (XSS refused 403), sqlmap, the WAF's
   `nginx -s reload`, MySQL, the WAF audit log reaching the host file, and
@@ -7990,6 +7990,18 @@ admin/123456 무조건", and "Docker 소켓, 커널 공유도 보안 해".
     addresses are deleted one by one. board and corp now carry `iproute2`
     for their route through the edge. The wiring read uses `docker exec`
     for a sandbox and `docker inspect` for one without `ip`.
+  - Kali wears its origin by SNAT. In gVisor iptables-nft failed with
+    `Protocol not supported`, so Kali uses legacy iptables; gVisor refuses a
+    SNAT rule that names no protocol (`Invalid argument`), so `set-origin`
+    writes one per TCP and UDP; gVisor takes the owner match but never
+    applies it, so the customers' exemption by account no longer held, and
+    the rewrite now matches only the address Kali sends from unbound to the
+    target. gVisor picks that address by the longest prefix it shares with
+    the target, not by the route's `src` (`ip route replace ... src` answers
+    `Operation not supported`; `ip route get` named 73.0.0.10 while the box
+    sent from 14.160.0.10), so `unbound-source` reads it with a connected UDP
+    socket's `getsockname`, and `attacker.unbound_source` asks the same
+    script.
   - Docker's embedded DNS at 127.0.0.11 is out of gVisor's reach: board
     first exited with `Unknown server host 'board-db' (-3)`. Each backend
     network now has a fixed /28 (10.40.N+1.0/28 for board, .16/28 for corp,
@@ -7999,6 +8011,13 @@ admin/123456 무조건", and "Docker 소켓, 커널 공유도 보안 해".
     slot's bridges; gVisor's netstack has no view of them) and the edge
     (forwarding and filtering by the kernel's nftables and sysctls). No
     learner has a shell in either.
+  - The default platform, systrap, did not carry eight slots: during the
+    first full `bin/verify` the range host's load average reached 66 to
+    131 on six vCPUs (47.9 % system time, about 1,000 `gvisor_sentry`
+    threads) and one `docker exec` into a board took 35.5 s, so the
+    platform's 16 waitress threads queued and every request timed out.
+    The range host has `/dev/kvm`, and on `--platform=kvm` the eight idle
+    slots left the CPU 67 % idle at load 5.
   - Measured on slot 8 of eight with Kali, the WAF and both databases on
     runsc: `slot.sh reset` 48.3 s on runc, 55.6 s on runsc; the range host's
     used memory 10,180 MB -> 10,841 MB (+661 MB, gVisor's guest memory shows

@@ -124,7 +124,7 @@ def test_the_edge_and_the_sensors_stay_on_runc_and_dockerd_knows_runsc_with_raw_
         "the sensors read the host's bridges with af-packet and the edge filters with nftables, "
         "which gVisor's netstack does not offer"
     )
-    assert daemon["runtimes"][rangehost.SANDBOX] == {"path": rangehost.RUNSC, "runtimeArgs": ["--net-raw"]}, (
+    assert daemon["runtimes"][rangehost.SANDBOX] == {"path": rangehost.RUNSC, "runtimeArgs": ["--net-raw", "--platform=kvm"]}, (
         "without --net-raw gVisor refuses raw sockets, and Kali's SYN scan needs them"
     )
 

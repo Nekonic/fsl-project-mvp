@@ -141,7 +141,7 @@ What stands between them (`deploy/range-host/slot.yaml`,
   `deploy/range-host/setup.sh`). gVisor answers their system calls in its own
   user-space kernel, so the learner's root shells and the targets reach the
   range host's kernel only through gVisor. `runsc` runs with `--net-raw`,
-  since Kali's SYN scan needs raw sockets.
+  since Kali's SYN scan needs raw sockets, and `--platform=kvm`.
 - gVisor's netstack never reaches Docker's embedded DNS at 127.0.0.11, which
   Docker serves through iptables rules in the container's network namespace:
   on `runsc` board first exited with `Unknown server host 'board-db' (-3)`

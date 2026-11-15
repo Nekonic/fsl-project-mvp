@@ -617,7 +617,9 @@ bundle holds `deploy/range-host/setup.sh` and files the platform generates:
 - `daemon.json` for Docker: the tenant MTU (`network.mtu`), the address pool
   10.40.0.0/16 cut into /28s, the `local` log driver, `userns-remap:
   default`, so a container's root is an unprivileged user on the host, and
-  the runtime `runsc` (gVisor) with `--net-raw`, which Kali's SYN scan needs.
+  the runtime `runsc` (gVisor) with `--net-raw`, which Kali's SYN scan needs,
+  and `--platform=kvm`, which runs the sandboxes on the range host's
+  `/dev/kvm` (nested virtualization).
 
 `setup.sh` does these steps while the range host has its egress port:
 
