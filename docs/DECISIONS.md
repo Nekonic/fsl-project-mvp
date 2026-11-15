@@ -1127,6 +1127,8 @@ Rulings by the user:
   many alerts it drew. The API keeps `tp`/`fp`/`fn`/`tn` and `game` for agents.
   `test_strings.py` fails on those tokens in any string-table value; 172 dead
   keys (the removed blue dashboard and the zero-sum scoreboard) went with them.
+  (The label part superseded 2026-11-15: "Detection results are labelled
+  정탐, 오탐, 미탐 and 정상 통과".)
 - R2. The guide itself says exactly what to type. A terminal step's popover
   shows the command in a copyable block and one line on what it does, placed
   in the pane's bottom right so it does not cover the output. The commands
@@ -2367,7 +2369,8 @@ only; nothing run live):
   (`docs/vocabulary.md`) as score labels, so `score.caught` is the Korean for
   "detected" and the parenthetical Korean FN/FP words left the score labels;
   the Korean false positive remains only as the CRS term in the lesson's
-  cards.
+  cards. (Superseded 2026-11-15: "Detection results are labelled 정탐, 오탐,
+  미탐 and 정상 통과".)
 - PG-1: `fsl-opened-sessions` in localStorage and `GET /api/sessions/?ids=`.
 - OP-P3: lesson commands and rendering tested over every lesson and both
   declaration flavors; `settings.waf_layout` derives `FSL_WAF`.
@@ -5094,7 +5097,8 @@ redeploy; none came from the sweep's sessions (777-840, all closed).
   and the `fsl-mgmt` security group (2026-10-12). The tests that hold them
   already exist: `platform/tests/test_internal_blocked_at_waf.py`,
   `test/test_board_exfil.py` (two cases from Kali) and
-  `test/test_attacker_reach.py`; no test added. The board answers
+  `test/test_attacker_reach.py` (folded into `test/test_range_isolation.py`
+  on 2026-11-15); no test added. The board answers
   `/internal/auth-users` with no authentication of its own (`docs/STATE.md`
   backlog), so the WAF rule and the security group are the only guards.
 - **Open.** In a wargame both players' Website panes share the session's site
@@ -8094,3 +8098,102 @@ Not chosen: runsc `--network=host` (the container would share the range
 host's network stack); a resolv.conf pointed at a resolver (gVisor's FAQ:
 names of other containers still fail); a forced password change (the
 user's ruling).
+
+## 2026-11-15 — Detection results are labelled 정탐, 오탐, 미탐 and 정상 통과
+
+Supersedes the label part of R1 (2026-10-11, "No TP/FP/FN/TN labels anywhere
+a person reads") and KO-K1 (R1 read as covering the Korean words for TP, FN
+and FP as score labels). The rest of R1 stands: the primary score leads, and a
+case counts once however many alerts it drew.
+
+The user, reading the labels, asked "명칭이 이게 하… 명칭뭐 다른거없어?" and then
+accepted 정탐/오탐/미탐. The ruling: the detection result (탐지 결과) of a case reads 정탐 (TP), 오탐 (FP),
+미탐 (FN) or 정상 통과 (TN). What the user objects to is the English
+abbreviations, so those stay out of anything a person reads; the API keeps
+`tp`/`fp`/`fn`/`tn` for agents.
+
+`test_strings.py::test_no_shown_string_labels_a_detection_result_with_the_english_abbreviations`
+fails on TP, FP, FN or TN as a word in any string-table value; the Korean
+terms are allowed. The guard R1 named had been deleted on 2026-10-16
+(58d151c) and nothing caught the labels after it.
+
+## 2026-11-15 — The web services stand behind the WAF alone
+
+The test audit found that `test/test_range_isolation.py` asserted, on
+purpose, that Kali reaches the board on 8000 through the edge, past the WAF.
+The user ruled: "칼리에서 와프 안거치고 바로 때릴 수 있으면 안되잖아. 그럼 와프
+룰설정이 뭔의미야" (if Kali can hit the board without going through the WAF,
+the WAF's rules mean nothing).
+
+What changed:
+
+| | before | now |
+|---|---|---|
+| `board`, `corp-wp` | on `sN_estate` (10.30.N.59, .60) beside the edge's `lan` | on `sN_web` (10.30.N+128.59, .60), which only the WAF shares; still on `<wargame>-default` with their database |
+| WAF | `sN_estate` 10.30.N.247 | the same, plus `sN_web` 10.30.N+128.247; `extra_hosts` `board` and `corp-wp` point at the web network |
+| edge | routes `sN_internet` and `sN_estate` | unchanged; it has no route to `sN_web`, so Kali reaches a target only through the WAF |
+| estate sensor | `--af-packet=sN-estate`, bpf on the targets' addresses | `--af-packet=sN-web`, the same bpf on their new addresses: the WAF-to-target leg it watched before |
+| target default route | via the edge (`slot.sh routed`) | none; a target answers only the WAF. `slot.sh` still turns its offloads off |
+| slots per range host | 1 to 255 | 1 to 127: slot N's web /24 is 128 above its estate /24 in `network.estate` |
+
+Kept: the edge's nftables have no DNAT and forward everything they route,
+which no longer includes the targets. The loot path and the effect path read
+inside the board and corp-db containers and do not cross a network. The
+live map (drawn from `docker network inspect`) draws the web network as its
+own zone.
+
+Tests: `test_range_isolation.py::test_the_attacker_reaches_the_sites_only_through_the_waf`
+reads the WAF's own upstream addresses and fails if Kali reaches either of
+them, or resolves `board`, `corp-wp`, `board-db` or `corp-db`. It replaces
+`test/test_attacker_reach.py`, whose claim held only because those names do
+not resolve on Kali. `test_judge_isolation.py` probes a role's default
+gateways if it has any, as a target has none now. `test_range_host.py`,
+`test_containment.py` and `test_estate_sensor.py` pin the new addresses,
+networks and bridge.
+
+## 2026-11-15 — Test audit applied
+
+An audit of every test module (37 findings in six categories) was applied to
+`dev`. Each finding was checked against the code first.
+
+| # | finding | action |
+|---|---|---|
+| 1.1 | `test_scoreboard` "undetected costs more" was relative to `DETECTED_WEIGHT` | asserts lost-and-undetected is exactly twice lost-and-seen |
+| 1.2 | `test_api_attacker` stub gave `source_ip` = `direct_ip` | different stub addresses, each field asserted |
+| 1.3 | `test_api_objectives` asserted the row it had just created | line deleted |
+| 2.1 | exact course titles in `test_foundations` | line deleted |
+| 2.2 | exact zone captions in `test_gns3_topology` | deleted (the live map replaces the file) |
+| 2.3 | `cr/wsgi.py` source line grep | imports `cr.wsgi` with `Thread` patched |
+| 2.4 | `data-t` count in `session.html` | both rendered pages show the same confirmation |
+| 2.5 | `auditor.html` source line | deleted |
+| 2.6 | Kali Dockerfile greps (3) | deleted; live tests cover them |
+| 2.7 | `set-origin` COPY grep | deleted; live tests cover it |
+| 2.8 | whole ttyd command line | asserts only `/vm-terminal/waf` runs `vm-terminal.sh cr-waf` |
+| 2.9 | "badge" absent from template source | deleted |
+| 2.10 | template id order | deleted |
+| 2.11 | WAF conf regex for `/internal/` | kept as the cheap guard beside the live test |
+| 2.12 | "openstack WAF VM" name | renamed `test_the_waf_blocks_rather_than_detects` |
+| 3.1 | `test_corp_observe_live` = `test_corp_authz` | folded in with the exact credited sets |
+| 3.2, 4.5 | three copies of "baseline read at open"; one with a refused stub shape | `test_loot_session_start.py` and the `test_session_stack` copy deleted |
+| 3.3 | catalogue labels twice | `test_api_redteam` copy deleted |
+| 3.4 | two `test_api_objectives` tests inside `test_loot_submit` | deleted |
+| 3.5 | corp blind open twice | `test_corp_session_start` copy deleted |
+| 3.6 | second open refused twice | `test_session_start` copy deleted |
+| 3.7 | `test_lesson_flavors` :20 inside :24 | deleted; "WAF VM" message reworded |
+| 3.8 | both engines present, inside `test_evasion` | acceptance copy deleted |
+| 3.9 | six foundations once each, inside `test_foundations` | acceptance copy deleted |
+| 3.10 | window case POST twice | `test_api_sessions` covers `window`; `test_api_attacker` copy deleted |
+| 4.1, 5.4 | `test_attacker_reach` claimed nothing past the WAF was reachable | module deleted; the check is in `test_range_isolation`, and the wiring closed the bypass (entry above) |
+| 4.2 | compose range always ready | deleted (substrate removed 2026-10-21) |
+| 4.3 | shared range refuses a second open | deleted (same) |
+| 4.4 | FreeBSD sh option terminator | deleted (OPNsense removed 2026-11-13); "OPNsense edge" message reworded |
+| 5.1 | four sessions in `test_concurrent_sessions` | one pair |
+| 5.2 | three corp sessions | two: the content overwrite runs in `rogue_admin_session` |
+| 5.3 | two terminal-window sessions | one `terminal_windows` session; the strategy test reads the labelled case's verdict |
+| 5.5 | `test_indiscriminate_defence` in its own session | third phase of `rules_session`, scoped to its case ids; criterion 4 reads the benign case's own `FP` |
+| 6.1 | benign cases could be deleted with every test green | `test_harness` pins each case file's benign names |
+| 6.2 | no test held the isolation seams | `test_isolation_seams.py`: a static scan per seam, owners plus the CLAUDE.md exceptions; a missing owner file is nothing to scan. It found the attacker's label path in `cr/settings.py` (moved to `attacker.py`) and a `suricatasc` fallback there (removed; the declaration's sensor hosts name their reload, now checked) |
+| 6.3 | the R1 label guard was gone | ruling above; guard back for the English tokens |
+
+The unit note (`test_range_host.py:161` waiting 10 s of real time) was not in
+the categories applied.
