@@ -1,32 +1,31 @@
 # fsl-project-mvp
 
-사이버 공격·방어 훈련장입니다. 레드팀은 웹사이트 두 곳을 공격합니다.
+사이버 공격·방어 훈련 플랫폼입니다. 레드팀이 웹사이트 두 곳을 공격하고, 블루팀이
+WAF(ModSecurity)와 IDS(Suricata)로 방어합니다.
 
 - `board.com`: Django 게시판, MySQL
 - `corp.com`: WordPress 회사 사이트, MySQL
 
-두 사이트 앞단에는 WAF가 있습니다. 블루팀은 Suricata와 ModSecurity로 방어합니다.
-이 저장소는 버릴 프로토타입입니다. 실제 제품은 별도 저장소에서 개발합니다.
+화면, 채점, 구성은 이 저장소에서 먼저 만들어 검증하고 제품 저장소로 옮깁니다.
 
 ## 점수
 
-주 점수는 레드팀이 가져간 목표입니다. 성공 여부는 대상 시스템 자체 데이터로
-판정합니다. 플랫폼이 공격 성공을 추정하지 않습니다.
+주 점수는 레드팀이 달성한 목표입니다. 달성 여부는 대상 시스템의 데이터로
+판정합니다.
 
-- 게시판: 레드팀이 탈취한 계정 해시를 증거물(loot)로 제출합니다
-  (`POST /api/sessions/<id>/loot/`). 세션 시작 때 떠 둔 게시판 계정 스냅샷과
-  일치하면 그 목표를 잃은 것입니다.
-- corp: corp DB에서 관리자 계정 추가, 회원 가입 설정 변경, 글 생성·덮어쓰기가
-  확인되면 그 목표를 잃은 것입니다. 변경 내역은 MySQL 바이너리 로그로 읽습니다.
-- 블루팀이 알아채지 못한 채 잃은 목표는 두 배로 셉니다.
+- 게시판: 레드팀이 탈취한 계정 해시를 증거물로 제출합니다
+  (`POST /api/sessions/<id>/loot/`). 세션 시작 시점의 계정 해시와 같으면 달성입니다.
+- corp: MySQL 바이너리 로그에 관리자 계정 추가, 회원 가입 설정 변경, 글 생성·덮어쓰기가
+  남으면 달성입니다.
+- 블루팀이 탐지하지 못한 목표는 2배로 계산합니다.
 
-탐지 결과는 주 점수 옆에 따로 보여 줍니다. 주 점수에 합치지 않습니다.
+탐지 결과는 주 점수와 따로 표시합니다.
 
 - 정탐: 탐지한 공격
 - 미탐: 놓친 공격
 - 오탐: 경보가 나거나 차단된 정상 요청
 - 정상 통과: 경보 없이 통과한 정상 요청
-- 케이스 하나는 경보가 몇 건이 나든 1건으로 셉니다. sqlmap 케이스 하나가 WAF로
+- 케이스 하나는 경보가 몇 건이 나든 1건으로 계산합니다. sqlmap 케이스 하나가 WAF로
   요청 약 2,000건을 보내도 1건입니다.
 - 경보가 공격 수법을 짚지 않으면 탐지로 인정하지 않고 `corroborated: false`로
   표시합니다.
@@ -46,13 +45,13 @@ Kolla-Ansible 2025.1 이상으로 구축한 OpenStack에서 돌아갑니다.
 - `docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`:
   2026-10-08 승인 방향. 일부 미구현
 - `docs/ARCHITECTURE.md`: 훈련 환경 구성과 향후 방향
-- `docs/THREAT-MODEL.md`: 훈련 환경이 흉내 내는 것과 뺀 것
+- `docs/THREAT-MODEL.md`: 실제 환경과 같게 만든 부분과 뺀 부분
 - `docs/STATE.md`: 작업 현황
 - `docs/OPENSTACK.md`: 클라우드 요구 사항, 프로젝트, 플랫폼 VM, 훈련 환경, VM 1대
   체험 구성
 - `docs/TROUBLESHOOTING.md`: 훈련 환경에서 겪은 문제와 해결 방법(영어)
 
-## 필요한 것
+## 요구 사항
 
 로컬 PC(`bin/cloud` 실행 위치):
 
@@ -85,7 +84,7 @@ Kolla-Ansible 2025.1 이상으로 구축한 OpenStack에서 돌아갑니다.
 VirtualBox나 VMware VM 1대에 클라우드 전체를 올려 시험하려면 `docs/OPENSTACK.md` §9를
 보세요.
 
-## 기동
+## 설치
 
 1. **클라우드 준비(관리자, 최초 1회).** 명령은 `docs/OPENSTACK.md` §2.5, §3.1, §3.3,
    §3.6에 있습니다.
@@ -193,7 +192,7 @@ VirtualBox나 VMware VM 1대에 클라우드 전체를 올려 시험하려면 `d
 
    - 플랫폼 VM: `ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS`로 접속해 아래를
      확인합니다.
-     - `systemctl status cr-platform`: 마지막 부팅의 기동 결과
+     - `systemctl status cr-platform`: 마지막 부팅의 시작 결과
      - `sudo cloud-init status --long`
      - `sudo docker logs cr-platform`
    - Heat 스택: 6단계의 셸에서
@@ -343,7 +342,7 @@ compose 프로젝트 `sN`입니다.
 - 그 뒤 세션을 케이스, 탐지 기록, 고객 요청, 목표와 함께 지웁니다.
 - 플랫폼 시작 시와 세션을 닫을 때마다 확인합니다. 열린 세션은 지우지 않습니다.
 
-워게임을 추가할 때 필요한 것:
+워게임을 추가하려면:
 
 - `wargames/` 아래 폴더. `compose.yaml`, `scenario.yaml`, `objectives.yaml` 포함
 - `redteam/cases/` 아래 케이스 파일
@@ -454,14 +453,14 @@ flowchart LR
 `openstack image create` 명령은 `docs/OPENSTACK.md`에 있습니다. VM 2대 모두 이
 이미지로 부팅하고 cloud-init으로 설정합니다.
 
-- 플랫폼 VM: 저장소 clone, `compose.yaml` 기동
+- 플랫폼 VM: 저장소 clone, `compose.yaml`로 플랫폼 시작
 - 훈련 환경 호스트: Nova user data로 설정 번들(`deploy/range-host/setup.sh`) 수신,
   Docker 설치, 플랫폼의 `CR_IMAGE_TAG`로 GHCR에서 훈련 환경 이미지 전체 pull,
   초기화용 대상 시스템 볼륨 원본 생성
 
 ### bin/cloud
 
-로컬 PC에서 `.venv`에 OpenStack CLI를 설치한 상태(기동 3단계)로 실행합니다.
+로컬 PC에서 `.venv`에 OpenStack CLI를 설치한 상태(설치 3단계)로 실행합니다.
 
 ```bash
 .venv/bin/python bin/cloud up        # 플랫폼 VM, 그다음 훈련 환경 전체
@@ -555,7 +554,7 @@ pull하면서 sideload한 이미지를 덮어쓸 수 있습니다. push한 뒤 �
 - 9200, 5601은 VM loopback에만 열립니다. 5140/udp는 VM의 모든 주소에서 받습니다.
 - 체크아웃 위치는 `/opt/cr`(소유자 `ubuntu`)입니다. compose, `bin/backup`, 복원
   절차는 이 디렉터리에서 실행합니다.
-- 마지막 부팅의 기동 결과는 `systemctl status cr-platform`으로 봅니다.
+- 마지막 부팅의 시작 결과는 `systemctl status cr-platform`으로 봅니다.
 
 ### 훈련 환경 API
 
@@ -604,7 +603,7 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
 1. `deploy/range-host/slot.yaml`과 `wargames/<w>/compose.yaml`로 슬롯 compose 파일
    생성
 2. ssh로 훈련 환경 호스트에 올리고 `deploy/range-host/slot.sh up N` 실행
-   - compose 프로젝트 `sN` 기동
+   - compose 프로젝트 `sN` 시작
    - Kali와 에지에 출발지 주소 추가
    - 훈련 환경 호스트의 rsyslog에 슬롯 로그 전달 설정
 3. 두 센서에 기본 룰 적용
@@ -659,7 +658,7 @@ curl -s -X POST -H "Content-Type: application/json" -d "{}" http://ADDRESS:8000/
   `?slot=` 없이 보내면 훈련 환경 호스트까지 지웁니다.
 
 스택은 `keys.operator`의 키페어로 부팅합니다. 이 키페어는 프로젝트에 먼저 등록해야
-합니다(기동 6단계).
+합니다(설치 6단계).
 
 ## 포트
 
@@ -750,9 +749,8 @@ publish 주소:
 블루팀 콘솔은 `/api/`에서 아래를 가져옵니다. 세션, 사이트 요청, 레슨·시나리오의
 단계와 힌트, 시나리오 상태, 경보 판단, ingest, 탐지 기록입니다.
 
-세션을 닫으면 세션 페이지에 결과가 나옵니다. 잃은 목표가 먼저 나옵니다. 이어서
-탐지 결과를 문장으로 보여 줍니다. 공격 n건 중 정탐 건수, 미탐한 공격 이름, 오탐한
-정상 요청입니다.
+세션을 닫으면 세션 페이지에 결과가 나옵니다. 레드팀이 달성한 목표가 먼저 나오고,
+이어서 탐지 결과(정탐 건수, 미탐한 공격, 오탐한 정상 요청)가 나옵니다.
 
 **방어 설정.**
 
