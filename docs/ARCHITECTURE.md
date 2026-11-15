@@ -29,7 +29,8 @@
 - **마커**: 케이스 요청에 붙는 `X-Request-ID` 값. 경보와 케이스를 이 값으로 매칭
 - **대상 시스템 데이터**: 대상 앱이 직접 저장한 데이터. 공격 성공 판정의 기준. board는 계정 정보, corp는 DB binlog
 - **substrate**: 훈련 환경을 올리는 기반. `CR_SUBSTRATE`로 고르며 OpenStack만 지원
-- **`estate`**: 대상 앱이 있는 내부망
+- **`estate`**: 에지와 WAF가 있는 DMZ
+- **`web`**: WAF와 대상 앱만 붙는 망. 에지에서 가는 경로가 없음
 - **슬롯**: 훈련 환경 호스트의 docker compose 프로젝트 `sN`. 세션 하나가 슬롯 하나를 씀
 - **방어 설정**(`posture`): 세션 시작 시점의 WAF 설정과 IDS 룰 파일. 워게임이 `defense:` 맵에 선언하고 세션은 그중 하나로 시작
 - **코치**(`coach`): 레슨 단계가 다루는 화면 요소에 원을 두르고 한 줄 안내를 붙이는 기능
@@ -89,9 +90,9 @@
 
 - `wargames/<id>/`의 `scenario.yaml`, `objectives.yaml`, `compose.yaml`, `redteam/cases/`의 케이스 파일
 - `declaration.yaml`: 훈련 환경 호스트의 `wargames:` 목록에 워게임 이름, `cr-waf`의 `names:` 목록에 사이트 이름
-- `deploy/range-host/slot.yaml`의 `x-wargames.fronts`: WAF가 프록시하는 서비스별 estate 주소 마지막 옥텟
+- `deploy/range-host/slot.yaml`의 `x-wargames.fronts`: WAF가 프록시하는 서비스별 web 주소 마지막 옥텟
 - `deploy/range-host/slot.yaml`의 `x-wargames.limits`: 서비스별 `cap_add`와 자원 제한
-- `deploy/range-host/slot.yaml`의 `waf` 서비스 `extra_hosts`에 서비스 이름과 estate 주소, `kali` 서비스 `extra_hosts`에 사이트 이름
+- `deploy/range-host/slot.yaml`의 `waf` 서비스 `extra_hosts`에 서비스 이름과 web 주소, `kali` 서비스 `extra_hosts`에 사이트 이름
 - `platform/tests/test_containment.py`의 `LEARNER_FACING`과 `CAPABILITIES`에 서비스
 - `deploy/waf/board.com.conf`에 `server` 블록
 
@@ -117,12 +118,12 @@
 |---|---|---|---|---|
 | `kali` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-kali`(`deploy/kali/Dockerfile`). Ubuntu 24.04, 공격 도구, 마커 프록시 | internet | |
 | `edge` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-edge`(`deploy/edge/Dockerfile`). Alpine, nftables 라우터 | internet, estate | |
-| `waf` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-waf`(`deploy/waf/Dockerfile`). nginx 1.24, ModSecurity v3, CRS | estate | |
+| `waf` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-waf`(`deploy/waf/Dockerfile`). nginx 1.24, ModSecurity v3, CRS | estate, web | |
 | `edge-sensor` | 훈련 환경 호스트, 슬롯 N | digest 고정 `jasonish/suricata`. 브리지 `sN-inet` 감시(`deploy/range-host/edge-sensor.yaml`) | 호스트 네트워크 | |
-| `estate-sensor` | 훈련 환경 호스트, 슬롯 N | digest 고정 `jasonish/suricata`. 브리지 `sN-estate` 감시(`deploy/suricata/suricata.yaml`) | 호스트 네트워크 | |
-| `board` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-board`(`wargames/board/app`). gunicorn, Django, 포트 8000 | estate, `board-default` | |
+| `estate-sensor` | 훈련 환경 호스트, 슬롯 N | digest 고정 `jasonish/suricata`. 브리지 `sN-web` 감시(`deploy/suricata/suricata.yaml`) | 호스트 네트워크 | |
+| `board` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-board`(`wargames/board/app`). gunicorn, Django, 포트 8000 | web, `board-default` | |
 | `board-db` | 훈련 환경 호스트, 슬롯 N | digest 고정 `mysql` | `board-default` | |
-| `corp-wp` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-corp`(`wargames/corp/app`). WordPress 6.6.2, 취약 버전 고정 플러그인 3개, `Host` 헤더 `corp.com` | estate, `corp-default` | |
+| `corp-wp` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-corp`(`wargames/corp/app`). WordPress 6.6.2, 취약 버전 고정 플러그인 3개, `Host` 헤더 `corp.com` | web, `corp-default` | |
 | `corp-db` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-corp-db`(`wargames/corp/db`). MySQL 8.4, binlog `ROW` | `corp-default` | |
 | `cr-elasticsearch` | 플랫폼 VM | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `cr-collector` | 플랫폼 VM | `filebeat:8.15.0`. syslog 입력만 사용 | mgmt | 5140/udp |
@@ -141,7 +142,8 @@
 | 구간 | 서브넷 | 이름 |
 |---|---|---|
 | `internet` | 출발지마다 /24, 총 30개(`declaration.yaml`). 예: `ru` 5.188.10.0/24, `us` 73.0.0.0/24. 슬롯 브리지 `sN-inet` | 인터넷 |
-| `estate` | `cloud.yaml`의 `estate` /16에서 슬롯 N에 준 /24(10.30.N.0/24). 슬롯 브리지 `sN-estate` | 서비스망 |
+| `estate` | `cloud.yaml`의 `estate` /16에서 슬롯 N에 준 /24(10.30.N.0/24). 슬롯 브리지 `sN-estate` | DMZ |
+| `web` | 같은 /16에서 estate보다 128 위의 /24(10.30.N+128.0/24). 슬롯 브리지 `sN-web`. 그래서 슬롯 번호는 1~127 | 웹 서버 구간 |
 | `mgmt` | `cloud.yaml`의 `mgmt` CIDR. fabric이 만드는 Neutron 네트워크는 이것뿐 | 관리망 |
 
 출발지 국가는 서브넷의 GeoIP 정보로 정해집니다. 그래서 출발지 서브넷은 `declaration.yaml`에 고정합니다.
@@ -164,15 +166,15 @@
 - 슬롯 네트워크는 모두 `internal`, `gateway_mode_ipv4: isolated`
 - 훈련 환경 호스트는 슬롯 브리지에 주소가 없음. 어느 슬롯 네트워크에도 외부 경로나 NAT 없음
 - Kali는 `internet`에만 붙음. 아는 이름은 `board.com`, `corp.com`뿐이고 둘 다 WAF를 가리킴
-- 에지는 `internet`과 `estate` 사이를 NAT 없이 라우팅
+- 에지는 `internet`과 `estate` 사이를 NAT 없이 라우팅. `web`으로 가는 경로는 없음
+- board와 corp-wp는 `web`과 자기 DB 망에만 붙음. Kali에서 대상 시스템으로 가는 길은 WAF뿐
 - DB는 자기 워게임의 `<wargame>-default` 네트워크에만 붙음
 
 격리 검사:
 
-- `test/test_attacker_reach.py`: 실환경에서 Kali가 `board:8000`과 `corp-wp`에 이름으로 닿지 않는지 확인
 - `test/test_board_exfil.py`: `board.com`을 거쳐 board에 접근
 - `test/test_range_isolation.py`: Kali, WAF, board 각각에서 격리 확인. 훈련 환경 호스트 sshd, 플랫폼, 인터넷, 메타데이터 서비스, 다른 슬롯에 닿지 않아야 함
-- 같은 테스트에서 Kali는 WAF에 닿고, 에지를 거쳐 board의 estate 주소에도 닿음. `board-db`는 이름이 풀리지 않음. SYN 스캔은 동작
+- 같은 테스트에서 Kali는 WAF 80번에 닿고, WAF가 프록시하는 board와 corp-wp 주소에는 닿지 않음. `board`, `corp-wp`, `board-db`, `corp-db`는 Kali에서 이름이 풀리지 않음. SYN 스캔은 동작
 - 같은 테스트에서 Kali로 훈련 환경 호스트, 플랫폼, 훈련 환경 호스트의 `mgmt` 망을 포트 스캔
 - `platform/tests/test_containment.py`: 렌더링한 슬롯 compose 파일이 격리 조건을 어기면 `bin/verify` 실패("OpenStack" 절)
 - `test/test_concurrent_sessions.py`: 동시에 연 두 세션이 서로 보이지 않는지 확인
@@ -186,7 +188,7 @@
 
 플랫폼과 훈련 환경 사이는 `mgmt`로만 통합니다.
 
-- 공격자 트래픽은 에지를 거쳐야만 `estate`에 들어옴
+- 공격자 트래픽은 에지를 거쳐 `estate`의 WAF로 들어오고, WAF를 거쳐 `web`의 대상 시스템으로 감
 - 플랫폼은 `cr-reach` 포트로 훈련 환경 호스트에 접속
 - 훈련 환경 호스트에서 플랫폼으로 여는 연결은 NTP와 5140/udp syslog뿐("OpenStack" 절). 그래도 API에서 호출자를 직접 검사(`docs/THREAT-MODEL.md`)
 
@@ -194,13 +196,13 @@
 
 `deploy/suricata/suricata.yaml`은 estate 센서 설정입니다.
 
-- `rangehost.estate_sensor`에서 af-packet 인터페이스를 슬롯 브리지 `sN-estate` 하나로 바꿈
-- 스레드 1개. board와 corp-wp의 estate 주소만 받는 BPF 필터
+- `rangehost.estate_sensor`에서 af-packet 인터페이스를 슬롯 브리지 `sN-web` 하나로 바꿈
+- 스레드 1개. board와 corp-wp의 web 주소만 받는 BPF 필터
 - `HOME_NET`은 10/8, 172.16/12, 192.168/16. 출발지 대역이 빠져 있어 공격자 주소는 외부로 잡힘(`docs/DECISIONS.md`, 2026-10-21, "The estate sensor's HOME_NET and a repeated lesson move")
 
 WAF는 `board.com`을 `board:8000`으로, `corp.com`을 `corp-wp:80`으로 넘깁니다. 설정은 `deploy/waf/board.com.conf`이고 corp는 두 번째 vhost입니다.
 
-- `board`와 `corp-wp`의 estate 주소 .59, .60은 WAF의 `extra_hosts`에 있음
+- `board`와 `corp-wp`의 web 주소 .59, .60은 WAF의 `extra_hosts`에 있음
 - `/internal/`은 board에 없는 경로로 보냄. board의 404가 그대로 나감
 
 첫 번째 워게임은 board입니다.
@@ -285,7 +287,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 
 **읽기.** `rangehost.WIRING`은 훈련 환경 호스트에서 `sudo sh -c`로 도는 셸 스크립트입니다. `OpenStack.wiring()`이 ssh 한 번으로 실행합니다.
 
-- 슬롯 compose 프로젝트의 Docker 네트워크마다 `@network <이름> <id> <브리지 이름> <서브넷>`. 브리지 이름은 `com.docker.network.bridge.name` 옵션(`sN-inet`, `sN-estate`)이고, 없으면 Docker 규칙대로 `br-<id 12자>`
+- 슬롯 compose 프로젝트의 Docker 네트워크마다 `@network <이름> <id> <브리지 이름> <서브넷>`. 브리지 이름은 `com.docker.network.bridge.name` 옵션(`sN-inet`, `sN-estate`, `sN-web`)이고, 없으면 Docker 규칙대로 `br-<id 12자>`
 - 실행 중인 컨테이너마다 `@container <서비스> <NetworkMode>`, `@args`(`docker inspect`의 `Args`), `@mount`(마운트 원본 경로). 호스트 네트워크가 아니면 `ip -o link show`와 `ip -o -4 addr show` 출력. runc 컨테이너는 `nsenter -t <pid> -n`으로, gVisor 컨테이너는 `docker exec`로 읽음. `ip`가 없는 gVisor 컨테이너(두 DB)는 `docker inspect`의 네트워크별 MAC과 주소를 같은 형식으로 냄
 - 슬롯의 rsyslog 전달 설정(`/etc/rsyslog.d/60-cr-sN.conf`)의 `@forward <파일>`, `@port <포트>`
 
@@ -337,6 +339,8 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | Suricata 프로세스 | `platform/rules/suricata.py` | `declaration.yaml`의 각 센서 호스트(`sensor`는 `cr-edge`, `estate-sensor`는 `cr-range`): `suricata.py`에 넘길 룰 파일과 reload 명령 지정. `platform/range/rangehost.py`: 두 센서 설정(`deploy/range-host/edge-sensor.yaml`, `deploy/suricata/suricata.yaml`)과 compose 서비스 렌더링. `deploy/range-host/slot.sh`: 슬롯과 함께 센서 시작·정지, 초기화 때 센서 로그 파일 다시 열기, 에지 라우터 설정. 이후 기본 룰 적용은 `suricata.py` |
 | 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`: `/var/log/commands.log` 읽기. 터미널 연결 설정에 `cr-kali` 지정, `entrypoint.sh`에서 `vm-terminal.sh cr-kali` 실행. 웹사이트 창(`platform/api/site.py`)은 예외가 아님. 박스 접근은 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(훈련 환경 호스트 ssh 스트림으로 슬롯 Kali 컨테이너 접속)로만 함 |
 | 대상 시스템 데이터 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음. `loot.py`는 `board` 역할 runner로 board 컨테이너 안 `127.0.0.1`에 HTTP 요청. `effect.py`는 `corp-db`에 `docker exec`하는 runner로 접근 |
+
+`platform/tests/test_isolation_seams.py`가 `platform/` 코드를 관심사별 문자열로 훑어, 담당 파일과 알려진 예외 밖에서 그 관심사를 다루는 파일이 있으면 실패합니다. 담당 파일이 없어지면 그 관심사는 검사하지 않습니다.
 
 ## 파일
 
@@ -1941,7 +1945,7 @@ Docker와 메타데이터:
 
 - 슬롯 N은 훈련 환경 호스트의 docker compose 프로젝트 `sN`. `platform/range/rangehost.py`에서 `deploy/range-host/slot.yaml`과 워게임별 `wargames/<w>/compose.yaml`로 렌더링
 - 컨테이너: `sN-kali`, `sN-edge`, `sN-waf`, `sN-edge-sensor`, `sN-estate-sensor`, `sN-board`, `sN-board-db`, `sN-corp-wp`, `sN-corp-db`
-- 네트워크: `sN_internet`(브리지 `sN-inet`, 172.30.N.0/24), `sN_estate`(브리지 `sN-estate`, 10.30.N.0/24: 에지 .1, WAF .247, board .59, corp-wp .60), 워게임별 DB용 `<wargame>-default`
+- 네트워크: `sN_internet`(브리지 `sN-inet`, 172.30.N.0/24), `sN_estate`(브리지 `sN-estate`, 10.30.N.0/24: 에지 .1, WAF .247), `sN_web`(브리지 `sN-web`, 10.30.N+128.0/24: WAF .247, board .59, corp-wp .60), 워게임별 DB용 `<wargame>-default`
 - 모든 네트워크: `internal`, `gateway_mode_ipv4: isolated`, 테넌트 MTU. publish한 포트도 NAT도 없음
 - 대상 시스템과 센서의 healthcheck: 평소 60초, 시작 구간 1초 간격(`slot.yaml`의 `x-wargames.healthcheck`가 워게임 자체 주기를 덮어씀). 쉬는 슬롯이 바쁜 슬롯에 CPU를 양보하게 하는 값
 - 슬롯마다 `internet` 브리지에 같은 출발지 서브넷 30개가 올라감. 어느 슬롯에서든 경보 출발지가 같은 국가로 분류됨
@@ -1968,7 +1972,7 @@ Docker와 메타데이터:
 3. 컨테이너를 만들고(`up --no-start --pull never`), 한 번도 실행하지 않은 대상 시스템의 빈 볼륨마다 초기 데이터를 복사합니다.
 4. 컨테이너를 띄웁니다(`up -d --wait`).
 5. Kali에 출발지 주소들과 기본 출발지 게이트웨이로 가는 default route를, 에지의 `wan`에 출발지별 게이트웨이 주소를 붙입니다(`ip -batch`). runc 컨테이너에는 `nsenter`로, gVisor 컨테이너에는 `docker exec --privileged`로 들어갑니다. gVisor는 시작할 때 인터페이스 설정을 자기 네트워크 스택으로 가져가므로 호스트에서 `nsenter`로 바꿔도 반영되지 않습니다. gVisor가 `ip addr flush`를 거부해 Kali의 기존 주소는 하나씩 지웁니다.
-6. WAF와 `estate`의 대상 시스템이 에지의 estate 주소로 라우팅하게 합니다.
+6. WAF가 에지의 estate 주소로 라우팅하게 합니다. 대상 시스템에는 default route가 없고 WAF에만 응답합니다.
 7. 모든 브리지와 그 포트, 컨테이너 인터페이스에서 TSO, GSO, GRO를 끕니다. 센서가 실제로 오간 그대로의 패킷을 보게 합니다.
 8. `DOCKER-USER`에 브리지별로 같은 브리지로의 forward 허용 룰을 넣습니다.
 9. `/etc/rsyslog.d/60-cr-sN.conf`를 설치하고 rsyslog를 재시작합니다. 파일이 바뀌었거나 rsyslog가 돌지 않을 때만 합니다. 슬롯 하나씩 차례로 처리합니다(`flock /run/cr-rsyslog.lock`, 먼저 `systemctl reset-failed`).
@@ -1992,7 +1996,7 @@ Docker와 메타데이터:
 **센서.** `sN-edge-sensor`와 `sN-estate-sensor`는 digest 고정 `jasonish/suricata`입니다. 호스트 네트워크와 호스트 user namespace(`userns_mode: host`)에서 `NET_ADMIN`, `NET_RAW`, `SYS_NICE`로 돕니다. 센서마다 브리지 하나를 af-packet 스레드 하나로 봅니다.
 
 - 에지 센서: 인터넷 구간 `sN-inet`. 설정은 `deploy/range-host/edge-sensor.yaml`. `HOME_NET`은 슬롯의 estate /24
-- estate 센서: `sN-estate`에서 board와 corp-wp 주소로 BPF 필터를 걸어 WAF→대상 시스템 구간을 봄. 설정은 `deploy/suricata/suricata.yaml`로 렌더링
+- estate 센서: `sN-web`에서 board와 corp-wp 주소로 BPF 필터를 걸어 WAF→대상 시스템 구간을 봄. 설정은 `deploy/suricata/suricata.yaml`로 렌더링
 - 둘 다 `/var/lib/suricata/rules/local.rules`에서 룰을 읽고 `suricatasc -c reload-rules`로 reload. 이 경로와 명령은 호스트 항목 `cr-edge`와 `cr-range`에 있음(estate 센서는 `settings.CR_EXTRA_SENSORS`)
 - 룰 넣기, 검증, 변경, 기준선 검사는 모두 두 센서에 적용
 - EVE 경보와 HTTP 기록: `/var/log/cr/sN/edge/eve.json`, `/var/log/cr/sN/estate/eve.json`
