@@ -41,8 +41,17 @@ flowchart TB
     end
     pvm --- mgmt["cr-mgmt 네트워크 10.31.0.0/24"]
     mgmt --- rvm
-    subgraph rvm["VM cr-range"]
-      slots["슬롯 s1 ~ sN<br/>Kali, 에지 라우터, WAF, board, corp, DB, Suricata 2개"]
+    subgraph rvm["VM cr-range: 슬롯마다 아래 구성 1벌 (s1 ~ sN)"]
+      kali["Kali"] --- inet["브리지 sN-inet"]
+      inet --- edge["에지 라우터"]
+      edge --- estate["브리지 sN-estate"]
+      estate --- waf["WAF"]
+      estate --- board["board"]
+      estate --- corp["corp"]
+      board --- boarddb["board-db"]
+      corp --- corpdb["corp-db"]
+      ids1["Suricata"] -. 미러링 .- inet
+      ids2["Suricata"] -. 미러링 .- estate
     end
   end
 ```
@@ -55,8 +64,8 @@ flowchart TB
 
 - `bin/cloud up`이 Heat 스택으로 VM `cr-platform`을 만들고, 플랫폼이 OpenStack API로 VM
   `cr-range`를 만듭니다.
-- 슬롯은 `cr-range` 안의 compose 프로젝트 `sN`입니다. 인터넷 구간, DMZ, DB존은 그 안의
-  Docker 네트워크입니다.
+- 슬롯은 `cr-range` 안의 compose 프로젝트 `sN`입니다. 브리지와 DB 연결은 그 안의 Docker
+  네트워크입니다.
 - 세션 하나가 슬롯 하나를 씁니다.
 
 자세한 구성은 [ARCHITECTURE.md](docs/ARCHITECTURE.md)에 있습니다.
