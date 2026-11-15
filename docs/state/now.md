@@ -297,6 +297,17 @@ Internet.
   agent's WAF-only change: board and corp-wp stand on `sN-estate` beside the
   edge's `lan`, and the edge forwards everything; the map draws it so.
   Full `bin/verify` on the VM with eight slots (`compute.slots` 8 in the live `cloud.yaml`): at 08c6006 the new map acceptance test failed (it read `full_run`'s topology after that session closed, when its slot was being reset), fixed at 94418ed to read its own open session; at 94418ed run 2 lost the red-team fixture (`POST /cases/` read timeout 15 s, 15 errors) and run 3 lost every group's `GET /` reach check (3 s, 73 errors), and run 4 passed: acceptance 92 passed, 0 failed, 1 skipped in 591 s, unit and API 881 + 666, ratchet `core_loc` 584, `dependencies` 6, `services` 4, 654 s. Runs 2 and 3 are one defect, not a flake: py-spy on the platform during run 4 showed `waitress` at one full core, `GET /` stalling up to 15.8 s, and 54 % of the GIL in `rangehost.compose` YAML parsing, mostly from `reachability.scored_hosts` (a 30 s cache with no lock, refreshed by every waiting request, each refresh one `describe` per slot) and `range/ready/`'s `plan_slots` bundle; neither changed here, and eight slots doubles both (Next, item 4).
+- The live map's layout (2026-11-15, `docs/DECISIONS.md` "The live map is
+  laid out by the platform"): `topology.laid_out` places zones left to right
+  in traffic order, two-zone devices on the boundary, sensors outside every
+  zone under the bridge they sniff, and log edges at right angles; layout
+  only, nothing drawn without a counterpart in the slot. Deployed:
+  `uv run bin/cloud up --replace --ref range-host-live` at d927d757 (26 min,
+  exit 0; store kept in
+  `~/.cache/fsl-work/backup-safe/db-20261115T150353Z-maplayout.sqlite3`).
+  Checked live with Playwright on sessions 2127 (board, slot 1) and 2128
+  (corp, slot 2), both closed: zones in order, no label on another label, an
+  icon, a line or a zone border.
 - Live paths run end to end on 2026-11-13: `bin/cloud up --replace` from the
   VM range (25 min, the range host replaced as stale, the leftovers removed
   after READY); a stale range host replaced by `POST slot/`; `bin/cloud down`
