@@ -29,29 +29,35 @@ WAF(ModSecurity)와 IDS(Suricata)로 방어합니다.
 ## 구성
 
 ```mermaid
-flowchart LR
-  op["컨트롤러 노드<br/>bin/cloud"] -->|Heat 스택| pvm
-  subgraph pvm["플랫폼 VM"]
-    console["콘솔, /api/"]
-    es["Elasticsearch, Kibana"]
-    col["collector"]
+flowchart TB
+  user(["브라우저"]) -->|"8000, 8002"| fip["floating IP<br/>provider 네트워크"]
+  subgraph os["OpenStack 프로젝트 fsl-range"]
+    fip --- pnet["cr-platform 네트워크 10.20.0.0/24"]
+    pnet --- pvm
+    subgraph pvm["VM cr-platform"]
+      platform["platform: 콘솔, API, 채점"]
+      elk["Elasticsearch, Kibana"]
+      collector["collector"]
+    end
+    pvm --- mgmt["cr-mgmt 네트워크 10.31.0.0/24"]
+    mgmt --- rvm
+    subgraph rvm["VM cr-range"]
+      slots["슬롯 s1 ~ sN<br/>Kali, 에지 라우터, WAF, board, corp, DB, Suricata 2개"]
+    end
   end
-  console -->|OpenStack API| rvm
-  subgraph rvm["훈련 환경 호스트"]
-    s1["슬롯 s1"]
-    s2["슬롯 s2 ..."]
-  end
-  rvm -->|"syslog 5140/udp"| col
-  browser(["브라우저"]) -->|":8000"| console
 ```
 
-- 플랫폼 VM은 GHCR 이미지를 pull해 `docker compose`로 플랫폼을 띄웁니다.
-- 플랫폼은 OpenStack API로 훈련 환경 호스트 VM을 만들고, 슬롯마다 compose 프로젝트
-  `sN`을 띄웁니다.
-- 슬롯 하나에 Kali, 에지 라우터, WAF, board, corp, 각 DB, Suricata 2개가 있습니다.
-  세션 하나가 슬롯 하나를 씁니다.
-- 센서 경보와 WAF audit log는 훈련 환경 호스트의 rsyslog가 플랫폼 VM의 collector로
-  보내고, collector가 Elasticsearch에 넣습니다.
+| 연결 | 경로 |
+|---|---|
+| 브라우저 → 콘솔 | floating IP의 8000, 8002 |
+| 플랫폼 → 훈련 환경 호스트 | `cr-mgmt`로 ssh, `docker exec` |
+| 훈련 환경 호스트 → collector | `cr-mgmt`로 syslog 5140/udp(센서 경보, WAF audit log) |
+
+- `bin/cloud up`이 Heat 스택으로 VM `cr-platform`을 만들고, 플랫폼이 OpenStack API로 VM
+  `cr-range`를 만듭니다.
+- 슬롯은 `cr-range` 안의 compose 프로젝트 `sN`입니다. 인터넷 구간, DMZ, DB존은 그 안의
+  Docker 네트워크입니다.
+- 세션 하나가 슬롯 하나를 씁니다.
 
 자세한 구성은 [ARCHITECTURE.md](docs/ARCHITECTURE.md)에 있습니다.
 
