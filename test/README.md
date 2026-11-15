@@ -127,7 +127,7 @@ totals of all of them, taken from each process's JUnit report.
 The split follows these rules:
 
 - **Slots.** N is `max_sessions` from `GET /api/range/ready/`: the number of
-  slots (`compute.slots`, four on the test cloud since 2026-11-13). `--workers N`
+  slots (`compute.slots`, eight on the test cloud since 2026-11-15). `--workers N`
   overrides it. With N = 1, one process runs every session module in the order
   `pytest test/` would.
 - **No range host.** `test_geoip_durable`, `test_origin_placement` and

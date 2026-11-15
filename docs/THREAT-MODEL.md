@@ -250,7 +250,8 @@ What is tested:
 - `test/test_range_isolation.py` checks a live slot from Kali, the WAF and the
   board: none reaches the range host's sshd, the platform, the Internet, the
   metadata service or another slot's WAF; Kali reaches `board.com` (the WAF)
-  and the board through the edge; `board-db` does not resolve from Kali; a SYN
+  and neither target past it, by the WAF's own upstream addresses; `board`,
+  `corp-wp`, `board-db` and `corp-db` do not resolve from Kali; a SYN
   scan runs; Kali finds no open service port on the range host, the platform
   or the range host's `mgmt` network. Its last test opens a session, has the
   WAF plant links to a host canary file, to `/etc/passwd` and to another

@@ -21,7 +21,10 @@ Words used in this file:
   estate network, an Alpine container with nftables. Two Suricata containers
   watch the slot's bridges.
 - **Estate network** (`sN_estate`): the slot's Docker network behind the edge.
-  It holds the WAF and the targets' front ends.
+  It holds the edge's `lan` leg and the WAF.
+- **Web network** (`sN_web`): the slot's Docker network between the WAF and the
+  targets' front ends. The edge has no route to it, so the targets are reached
+  only through the WAF.
 - **Fabric**: the management network, security groups and keypair the platform
   creates before the range host (`POST /api/range/fabric/`).
 - **Store**: the platform's SQLite database (`db.sqlite3`).
@@ -438,7 +441,7 @@ off).
   2026-11-13). It was Nova's default, 20 / 51200 / 10, until 2026-10-24.
 - The range needs less: the platform VM (2 cores, 8 GB) and the range host on
   `dba.range` (6 cores, 16 GB) bring the project to 8 cores, 24 GB and 2
-  instances. `compute.slots` is 4.
+  instances. `compute.slots` is 8.
 - The fabric holds 1 network (`cr-mgmt`) with 1 subnet, and the groups
   `cr-reach`, `cr-mgmt` and `cr-egress`. The stack also needs 1 network, 1
   router and 1 floating IP.
@@ -712,7 +715,7 @@ in a container's environment.
 | `compute.base_image` | `ubuntu-24.04` | the platform VM and the range host |
 | `compute.availability_zone` | `""` | the platform VM and the range host; if empty, Nova chooses |
 | `compute.flavors` | `platform`, `range`, exactly these two | §3.3 |
-| `compute.slots` | `1` (**(this cloud)** `4`) | optional; how many slots the range host runs, which is how many sessions can run at once (§6.4); `CR_OPENSTACK_SLOTS` |
+| `compute.slots` | `1` (**(this cloud)** `8`) | optional; how many slots the range host runs, which is how many sessions can run at once (§6.4); `CR_OPENSTACK_SLOTS` |
 | `keys.key_name`, `keys.key_file` | `fsl-claude`, `~/.ssh/fsl_claude` | the Nova keypair the platform VM boots with (its `key_name`, §3.4), and that keypair's private key, for ssh to the VM |
 | `keys.range` | `~/.ssh/fsl-platform` | the platform's range key, kept across rebuilds |
 | `platform.stack`, `.repository`, `.ref` | `cr-platform`, this repo, `dev` | the stack, and the checkout it clones |
@@ -1229,16 +1232,17 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
 |---|---|---|
 | `sN-kali` | `cr-kali` (`deploy/kali/Dockerfile`) | `sN_internet`, about 100 origin addresses |
 | `sN-edge` | `cr-edge` (`deploy/edge/`: Alpine and nftables) | `sN_internet` (`wan`, every origin's `.1`) and `sN_estate` (`lan`, `.1`) |
-| `sN-waf` | `cr-waf` (`deploy/waf/Dockerfile`: nginx, ModSecurity, CRS) | `sN_estate` `.247` |
+| `sN-waf` | `cr-waf` (`deploy/waf/Dockerfile`: nginx, ModSecurity, CRS) | `sN_estate` `.247` and `sN_web` `.247` |
 | `sN-edge-sensor` | `jasonish/suricata`, pinned by digest | host network, `af-packet` on the bridge `sN-inet` |
-| `sN-estate-sensor` | the same | host network, `af-packet` on the bridge `sN-estate`, with a BPF filter on the board's and corp-wp's addresses |
-| `sN-board`, `sN-board-db` | `cr-board`, `mysql` | `sN_estate` `.59` (board) and `board-default` |
-| `sN-corp-wp`, `sN-corp-db` | `cr-corp`, `cr-corp-db` | `sN_estate` `.60` (corp-wp) and `corp-default` |
+| `sN-estate-sensor` | the same | host network, `af-packet` on the bridge `sN-web`, with a BPF filter on the board's and corp-wp's addresses |
+| `sN-board`, `sN-board-db` | `cr-board`, `mysql` | `sN_web` `.59` (board) and `board-default` |
+| `sN-corp-wp`, `sN-corp-db` | `cr-corp`, `cr-corp-db` | `sN_web` `.60` (corp-wp) and `corp-default` |
 
 - `sN_internet` is the bridge `sN-inet` on 172.30.N.0/24, an address range
   that exists only on the range host. `sN_estate` is the bridge `sN-estate` on
-  slot N's /24 of `network.estate` (10.30.N.0/24). Each wargame's backend is
-  its own `<w>-default` network.
+  slot N's /24 of `network.estate` (10.30.N.0/24); `sN_web` is the bridge
+  `sN-web` on the /24 128 above it (10.30.N+128.0/24). Each wargame's backend
+  is its own `<w>-default` network.
 - Every slot network is `internal`, with `gateway_mode_ipv4: isolated`, so the
   range host holds no address on any bridge, and has the tenant MTU. No
   container publishes a port and nothing is NATed.
@@ -1286,7 +1290,8 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
       corp skips its install but sets a new admin password hash.
    5. It gives Kali its origin addresses and default route, and the edge every
       origin's gateway, with `nsenter ... ip -batch`.
-   6. It routes the WAF and the targets' front ends through the edge.
+   6. It routes the WAF through the edge. The targets get no default route;
+      they answer only the WAF.
    7. It switches TSO, GSO and GRO off on every interface the sensors watch:
       the containers' interfaces, both bridges and their ports.
    8. It lets each bridge forward to itself past Docker's isolation rules
@@ -1386,9 +1391,10 @@ nothing drifts.
 `compute.slots: N` sets how many slots the range host runs.
 
 - Slot N is the Compose project `sN`: containers `sN-*`, networks
-  `sN_internet` (172.30.N.0/24) and `sN_estate` (10.30.N.0/24), and its files
+  `sN_internet` (172.30.N.0/24), `sN_estate` (10.30.N.0/24) and `sN_web`
+  (10.30.N+128.0/24), and its files
   in `/opt/cr/sN/` and `/var/log/cr/sN/`. A slot has no Neutron resource of its
-  own, and `network.estate` as a /16 holds slots 1 to 255.
+  own, and `network.estate` as a /16 holds slots 1 to 127.
 - The platform gives each session the first free READY slot and keeps it for the
   life of the session. The close resets only that slot.
 - The collector writes each slot's syslog to `logs-N-*`. It tells the slots apart
@@ -1507,9 +1513,11 @@ We did not check whether that OPNsense edge survived an OPNsense update.
   so they never meet the Docker networks `compose.yaml` declares on the
   platform VM. The platform reaches Kali only through `docker exec` on the
   range host.
-- The edge forwards whatever reaches it, so Kali reaches the board's estate
-  address on port 8000 past the WAF, as `test/test_range_isolation.py`
-  asserts. By name Kali reaches only `board.com` and `corp.com`, the WAF.
+- The edge forwards whatever it routes, and it has no route to `sN_web`, so
+  Kali reaches neither target past the WAF, by address or by name, as
+  `test/test_range_isolation.py` asserts (until 2026-11-15 the targets stood
+  on the estate and Kali reached the board on 8000 through the edge). By name
+  Kali reaches only `board.com` and `corp.com`, the WAF.
 - Fixed 2026-10-12 on the VM range, after we measured it first. Kali had a
   `mgmt` port. While
   every range port sat in `cr-range`, an nmap from Kali found these open ports
@@ -1526,8 +1534,8 @@ We did not check whether that OPNsense edge survived an OPNsense update.
   metadata service or another slot (14 passed on the live range). Its
   `test_the_attacker_reaches_no_service_on_the_range_host_the_platform_or_their_network`
   scans the range host, the platform and the `mgmt` network from Kali.
-  `test/test_attacker_reach.py` keeps one test: no target reached past the
-  WAF by name.
+  Its `test_the_attacker_reaches_the_sites_only_through_the_waf` checks that
+  Kali reaches neither target past the WAF, by address or by name.
 - On the VM range a server's `/etc/hosts` came from the user data it was booted
   with, and a Nova rebuild passed none, so on 2026-10-12 the WAF and Kali kept
   an old board address. The containers' names now come from the rendered slot

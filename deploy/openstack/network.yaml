@@ -43,17 +43,19 @@ slots:                            # docker networks on cr-range, not Neutron net
     origins: "the same 30 origin /24s in every slot (simulated), default ru 5.188.10.0/24"
   sN_estate:                      # bridge sN-estate
     subnet: 10.30.N.0/24         # slot N's /24 of network.estate 10.30.0.0/16
+  sN_web:                         # bridge sN-web; only the WAF and the targets, no route from the edge
+    subnet: 10.30.N+128.0/24     # the /24 128 above the estate, so slots 1 to 127
   "<wargame>-default": "one per wargame, its app and its database"
   containers:
     sN-kali:  { sN_internet: "172.30.N.10 and the origin source addresses (per-country SNAT)" }
     sN-edge:  { wan: "172.30.N.1 and the .1 of each origin /24", lan: 10.30.N.1 }   # nftables router, no NAT
-    sN-waf:   { sN_estate: 10.30.N.247 }                                         # ModSecurity reverse-proxy, fronts the targets
-    sN-board:   { sN_estate: 10.30.N.59, board-default: "with sN-board-db" }
-    sN-corp-wp: { sN_estate: 10.30.N.60, corp-default: "with sN-corp-db" }
+    sN-waf:   { sN_estate: 10.30.N.247, sN_web: 10.30.N+128.247 }                # ModSecurity reverse-proxy, fronts the targets
+    sN-board:   { sN_web: 10.30.N+128.59, board-default: "with sN-board-db" }
+    sN-corp-wp: { sN_web: 10.30.N+128.60, corp-default: "with sN-corp-db" }
     sN-edge-sensor:   "host network, af-packet on sN-inet"
-    sN-estate-sensor: "host network, af-packet on sN-estate"
+    sN-estate-sensor: "host network, af-packet on sN-web"
   paths:
     external: "operator (through the VPN) -> FIP 192.168.2.247 -> platform (console :8000)"
-    attack:   "sN-kali -> sN_internet (spoofed origin) -> sN-edge -> sN_estate -> WAF -> board/corp"
+    attack:   "sN-kali -> sN_internet (spoofed origin) -> sN-edge -> sN_estate -> WAF -> sN_web -> board/corp"
     mgmt:     "platform -> cr-mgmt -> ssh to cr-range -> docker exec sN-<service>"
   collector_port: 5140            # syslog UDP: cr-range rsyslog (sensors + WAF) -> platform Filebeat -> Elasticsearch -> Kibana
