@@ -206,9 +206,8 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체
 
 | 포트 | 서비스 | 접속 |
 |---|---|---|
-| 8000 | 콘솔, `/api/`, Kibana(`/kibana/`), 터미널(`/vm-terminal/`) | 브라우저 |
+| 8000 | 콘솔, `/api/`, 구성도(`/map/`), Kibana(`/kibana/`), 터미널(`/vm-terminal/`) | 브라우저 |
 | 8002 | 대상 사이트(`/site/<세션 id>/<host>/<path>`) | 콘솔 안의 iframe |
-| 3080 | GNS3 구성도 | 콘솔 안의 iframe |
 | 5140/udp | collector | 훈련 환경 호스트의 rsyslog |
 | 5601 | Kibana 직접 접속, VM loopback 전용 | ssh 터널 |
 | 9200 | Elasticsearch, VM loopback 전용 | acceptance 테스트 |
@@ -304,7 +303,6 @@ sudo docker compose start platform
 - 콘솔(8000)과 `/vm-terminal/`에 로그인이 없습니다. 터미널은 슬롯의 Kali·WAF root
   셸입니다.
 - Elasticsearch 보안 기능이 꺼져 있습니다. 9200, 5601은 VM loopback에만 열립니다.
-- 플랫폼과 GNS3 컨테이너에 Docker 소켓이 마운트되어 있습니다.
 - 학습자용 컨테이너는 capability를 최소로 두고 `no-new-privileges`, user namespace
   remap으로 돕니다. 슬롯은 훈련 환경 호스트의 커널을 공유합니다.
 - 프로젝트 비밀번호가 `/opt/cr/openstack.env`에 평문으로 있습니다.

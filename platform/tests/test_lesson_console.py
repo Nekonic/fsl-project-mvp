@@ -13,7 +13,7 @@ pytestmark = pytest.mark.django_db
 TEXT = "lesson.demo"
 SEARCH = r"^/search/\?(.*&)?q=."
 STEPS = [
-    {"id": "board_ip", "point": {"opens": "topology", "map": {"label": ["board.com", "sw1"]}},
+    {"id": "board_ip", "point": {"opens": "topology", "map": {"label": ["board.com", "estate"]}},
      "check": {"kind": "answer"}},
     {"id": "path", "point": {"opens": "topology", "map": {"zone": "internet"}},
      "check": {"kind": "answer", "form": "order", "options": ["board.com", "customers", "router", "waf"]}},
@@ -136,7 +136,6 @@ browser.serve((request) => {
   if (request.route === "/api/wargames/board/objectives/") {
     return {body: [{key: "t-a", difficulty: 3}, {key: "t-b", difficulty: 4}, {key: "t-c", difficulty: 5}]};
   }
-  if (request.route === "/api/topology/") return {body: {source: "gns3", web_ui: {port: 3080, path: "/static/web-ui/map.html?project=p"}}};
   if (request.route === "/api/sessions/1/ingest/") return {body: {ingested: 0}};
   if (request.route === "/api/sessions/1/lesson/addresses/") return {body: {addresses: [{host: "waf", zone: "DMZ", address: "10.30.0.177"}]}};
   if (request.route === "/api/sessions/1/lesson/") {
@@ -712,7 +711,7 @@ def test_the_website_and_the_map_are_asked_where_the_target_is_and_their_answer_
     result = seen["result"]
 
     assert seen["errors"] == []
-    assert (result["mapAsked"], result["mapOrigin"]) == ({"label": ["board.com", "sw1"]}, "http://console.test:3080")
+    assert (result["mapAsked"], result["mapOrigin"]) == ({"label": ["board.com", "estate"]}, "http://console.test")
     assert result["onMap"] == {"left": 454, "top": 295, "width": 102, "height": 18}
     assert result["stopped"] is True, "the map stops answering once the step no longer points at it"
     assert (result["siteAsked"], result["siteOrigin"]) == ("input[name=q]", "http://console.test:8002")

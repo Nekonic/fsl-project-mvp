@@ -38,3 +38,16 @@ def test_the_running_range_matches_what_was_declared(full_run):
         f"no origin network carries the default origin "
         f"{declared['default_origin']!r}; standing: {sorted(standing)}"
     )
+
+
+def test_the_live_map_draws_each_container_on_the_bridge_it_stands_on_with_an_address_of_that_bridge(drawn):
+    live = drawn["map"]
+    subnets = {zone["id"]: zone["subnet"] for zone in live["zones"]}
+    linked = {(edge["source"], edge["target"].removeprefix("switch:")): edge["address"]
+              for edge in live["edges"] if edge["kind"] == "link"}
+
+    assert {("kali", "internet"), ("router", "internet"), ("router", "estate"), ("waf", "estate"),
+            ("board.com", "estate"), ("board-db", "board-default")} <= set(linked), linked
+    for (host, zone), address in linked.items():
+        if subnets[zone]:
+            assert ipaddress.ip_address(address) in ipaddress.ip_network(subnets[zone]), (host, zone, address)

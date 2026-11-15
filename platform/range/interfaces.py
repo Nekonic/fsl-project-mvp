@@ -4,13 +4,11 @@ import ipaddress
 import re
 from dataclasses import dataclass
 
-LISTED = "ip -o -4 addr show 2>/dev/null || ifconfig -a inet"
-BUSYBOX = "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"
 IP_LINE = re.compile(r"^\d+:\s+(?P<name>[^\s@]+)(?:@\S+)?\s+inet\s+(?P<address>\d+\.\d+\.\d+\.\d+/\d+)")
-IFCONFIG_NAME = re.compile(r"^(?P<name>[A-Za-z0-9_.]+):\s+flags=")
-IFCONFIG_INET = re.compile(r"^\s+inet\s+(?P<address>\d+\.\d+\.\d+\.\d+)\s+netmask\s+0x(?P<mask>[0-9a-fA-F]{8})")
 LOOPBACK = ipaddress.ip_network("127.0.0.0/8")
-BRIDGE_PREFIX = "br-"
+SNIFFS = re.compile(r"^--af-packet=(?P<bridge>\S+)$")
+DEFAULT_BRIDGE = "br-{id}"
+BRIDGE_ID = 12
 
 
 @dataclass(frozen=True)
@@ -21,48 +19,110 @@ class Interface:
     segment: str = ""
 
 
-def on_this_host(command: str) -> list[str]:
-    return ["docker", "run", "--rm", "--network", "host", BUSYBOX, "sh", "-c", command]
+@dataclass(frozen=True)
+class Network:
+    key: str
+    bridge: str
+    subnets: tuple[str, ...]
+
+    def holds(self, address: str) -> bool:
+        ip = ipaddress.ip_interface(address).ip
+        return any(ip in ipaddress.ip_network(subnet, strict=False) for subnet in self.subnets)
 
 
-def listed(output: str) -> list[tuple[str, str]]:
-    found, current = [], ""
+@dataclass(frozen=True)
+class Container:
+    service: str
+    mode: str
+    args: tuple[str, ...] = ()
+    mounts: tuple[str, ...] = ()
+    addresses: tuple[tuple[str, str], ...] = ()
+    host: str = ""
+
+    @property
+    def sniffs(self) -> str:
+        return next((found["bridge"] for found in map(SNIFFS.match, self.args) if found), "")
+
+    def keeps(self, path: str) -> bool:
+        return any(path == mount or path.startswith(mount.rstrip("/") + "/") for mount in self.mounts)
+
+
+@dataclass(frozen=True)
+class Wiring:
+    networks: tuple[Network, ...] = ()
+    containers: tuple[Container, ...] = ()
+    forwarded: tuple[str, ...] = ()
+    port: str = ""
+
+    def network(self, key: str) -> Network | None:
+        return next((network for network in self.networks if network.key == key), None)
+
+    def bridged(self, bridge: str) -> Network | None:
+        return next((network for network in self.networks if network.bridge == bridge), None)
+
+    def legs(self, container: Container) -> dict[str, str]:
+        found = {}
+        for name, address in container.addresses:
+            network = next((network for network in self.networks if network.holds(address)), None)
+            if network is not None:
+                found.setdefault(name, network.key)
+        return found
+
+    def interfaces(self) -> list[Interface]:
+        found = []
+        for container in self.containers:
+            legs = self.legs(container)
+            found += [Interface(container.host or container.service, name, address, legs.get(name, ""))
+                      for name, address in container.addresses]
+        return found
+
+    def logging(self) -> list[Container]:
+        return [container for container in self.containers
+                if any(container.keeps(path) for path in self.forwarded)]
+
+
+def addressed(output: str) -> list[tuple[str, str]]:
+    found = []
     for line in output.splitlines():
-        line = line.replace("\\", " ")
-        matched = IP_LINE.match(line)
-        if matched:
+        matched = IP_LINE.match(line.replace("\\", " "))
+        if matched and ipaddress.ip_interface(matched["address"]).ip not in LOOPBACK:
             found.append((matched["name"], matched["address"]))
-            continue
-        named = IFCONFIG_NAME.match(line)
-        if named:
-            current = named["name"]
-            continue
-        inet = IFCONFIG_INET.match(line)
-        if inet and current:
-            found.append((current, f"{inet['address']}/{bin(int(inet['mask'], 16)).count('1')}"))
-    return [(name, address) for name, address in found
-            if ipaddress.ip_interface(address).ip not in LOOPBACK]
+    return found
 
 
-def on_segment(address: str, subnets: list[tuple[str, str]]) -> str:
-    ip = ipaddress.ip_interface(address).ip
-    return next((segment for subnet, segment in subnets
-                 if subnet and ip in ipaddress.ip_network(subnet, strict=False)), "")
+def _network(project: str, fields: list[str]) -> Network:
+    name, identity, bridge, *subnets = fields + ["-"] * max(0, 3 - len(fields))
+    return Network(key=name.removeprefix(f"{project}_"),
+                   bridge=bridge if bridge != "-" else DEFAULT_BRIDGE.format(id=identity[:BRIDGE_ID]),
+                   subnets=tuple(subnets))
 
 
-def placed(host: str, output: str, subnets: list[tuple[str, str]]) -> list[Interface]:
-    return [Interface(host, name, address, on_segment(address, subnets)) for name, address in listed(output)]
+def wiring(output: str, project: str) -> Wiring:
+    networks, containers, forwarded, port = [], [], [], ""
+    current: dict | None = None
 
+    def close():
+        if current and current["service"]:
+            containers.append(Container(service=current["service"], mode=current["mode"],
+                                        args=tuple(current["args"]), mounts=tuple(current["mounts"]),
+                                        addresses=tuple(addressed("\n".join(current["lines"])))))
 
-def slot_listed(output: str, project: str) -> tuple[list[tuple[str, str]], dict[str, str]]:
-    networks, sections, current = [], {}, ""
     for line in output.splitlines():
         if line.startswith("@network "):
-            _, name, *subnets = line.split()
-            networks += [(name.removeprefix(f"{project}_"), subnet) for subnet in subnets]
+            networks.append(_network(project, line.split()[1:]))
         elif line.startswith("@container "):
-            current = line.split(" ", 1)[1].strip()
-            sections.setdefault(current, [])
-        elif current:
-            sections[current].append(line)
-    return networks, {service: "\n".join(lines) for service, lines in sections.items() if service}
+            close()
+            service, _, mode = line.removeprefix("@container ").strip().partition(" ")
+            current = {"service": service, "mode": mode.strip(), "args": [], "mounts": [], "lines": []}
+        elif line.startswith("@args") and current is not None:
+            current["args"] = line.removeprefix("@args").split()
+        elif line.startswith("@mount ") and current is not None:
+            current["mounts"].append(line.removeprefix("@mount ").strip())
+        elif line.startswith("@forward "):
+            forwarded.append(line.removeprefix("@forward ").strip())
+        elif line.startswith("@port "):
+            port = line.removeprefix("@port ").strip()
+        elif current is not None:
+            current["lines"].append(line)
+    close()
+    return Wiring(networks=tuple(networks), containers=tuple(containers), forwarded=tuple(forwarded), port=port)

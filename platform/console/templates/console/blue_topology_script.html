@@ -1,12 +1,9 @@
-const topo = { read: false, asking: false, web: null, drawn: false, waiting: false, fitTimer: null, waitTimer: null, drawnHeard: [], fitBox: "" };
+const topo = { read: false, drawn: false, waiting: false, fitTimer: null, waitTimer: null, drawnHeard: [], fitBox: "" };
 const MAP_WAIT_MS = 30000;
 const MAP_FIT_WAIT_MS = 8000;
 const REFIT_SETTLES_MS = 250;
 
-const topologyOrigin = () => {
-  const src = field("topology-frame").getAttribute("src");
-  return src ? new URL(src, location.href).origin : "";
-};
+const topologyOrigin = () => (field("topology-frame").getAttribute("src") ? location.origin : "");
 
 function topologyFit() {
   const frame = field("topology-frame");
@@ -53,36 +50,21 @@ function topologyFitShown() {
 }
 
 function topologyShow() {
-  field("topology-fit").style.display = topo.web ? "" : "none";
-  field("topology-frame").style.display = topo.web ? "block" : "none";
-  if (topo.web && !field("topology-frame").getAttribute("src")) {
-    const at = new URL(location.href);
-    at.port = String(topo.web.port);
+  field("topology-fit").style.display = "";
+  field("topology-frame").style.display = "block";
+  if (!field("topology-frame").getAttribute("src")) {
     topologyWait(MAP_WAIT_MS);
-    field("topology-frame").src = at.origin + topo.web.path;
-  } else if (topo.web && topo.drawn && rounded(boxOf(field("topology-frame"))) !== topo.fitBox) {
+    field("topology-frame").src = `/map/${sessionId()}/`;
+  } else if (topo.drawn && rounded(boxOf(field("topology-frame"))) !== topo.fitBox) {
     topologyWait(MAP_FIT_WAIT_MS);
     topologyFitShown();
   }
   if (!topo.drawn || rounded(boxOf(field("topology-frame"))) !== topo.fitBox) topologyRefit();
 }
 
-async function topologyOpen() {
+function topologyOpen() {
   if (!topo.read) {
-    if (topo.asking) return;
-    topo.asking = true;
-    topologyWait();
-    const project = await api(`/api/topology/?session=${sessionId()}`);
-    topo.asking = false;
-    topologyFitted();
-    if (!project.ok) {
-      field("topology-said").textContent = (project.body && project.body.detail) || String(project.status);
-      return;
-    }
     topo.read = true;
-    topo.web = project.body.web_ui;
-    field("topology-said").textContent = topo.web ? "" : t("topology.no_web_ui");
-    field("topology-said").title = project.body.detail || "";
     field("topology-fit").addEventListener("click", topologyFit);
     window.addEventListener("message", topologyHeard);
     if (typeof ResizeObserver === "function") new ResizeObserver(topologyRefit).observe(field("topology"));

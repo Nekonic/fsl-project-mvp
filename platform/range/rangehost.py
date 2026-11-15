@@ -362,19 +362,20 @@ def setup_state() -> list[str]:
                         f"tail -n 20 /var/log/cr-setup.log; else echo setting-up; fi"]
 
 
-LISTED = (
-    "docker network ls --filter label=com.docker.compose.project={project} --format '{{{{.Name}}}}' "
-    "| while read -r n; do echo \"@network $n $(docker network inspect -f "
-    "'{{{{range .IPAM.Config}}}}{{{{.Subnet}}}} {{{{end}}}}' \"$n\")\"; done\n"
-    "for c in $(docker ps -q --filter label=com.docker.compose.project={project}); do\n"
-    "  set -- $(docker inspect -f '{{{{index .Config.Labels \"com.docker.compose.service\"}}}} "
-    "{{{{.State.Pid}}}} {{{{.HostConfig.NetworkMode}}}}' \"$c\")\n"
-    "  [ \"$3\" = host ] && continue\n"
-    "  echo \"@container $1\"\n"
-    "  nsenter -t \"$2\" -n ip -o -4 addr show\n"
-    "done"
-)
+FORWARDING = "/etc/rsyslog.d/60-cr-{project}.conf"
+WIRING = r"""p=$1; f=$2
+docker network ls --filter label=com.docker.compose.project=$p --format '{{.Name}}' | while read -r n; do
+  echo "@network $n $(docker network inspect -f '{{.Id}} {{with index .Options "com.docker.network.bridge.name"}}{{.}}{{else}}-{{end}} {{range .IPAM.Config}}{{.Subnet}} {{end}}' "$n")"
+done
+for c in $(docker ps -q --filter label=com.docker.compose.project=$p); do
+  set -- $(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}} {{.State.Pid}} {{.HostConfig.NetworkMode}}' "$c")
+  echo "@container $1 $3"
+  docker inspect -f '@args {{join .Args " "}}{{println}}{{range .Mounts}}@mount {{.Source}}{{println}}{{end}}' "$c"
+  [ "$3" = host ] || nsenter -t "$2" -n ip -o -4 addr show
+done
+[ ! -f "$f" ] || sed -n -e 's/.*File="\([^"]*\)".*/@forward \1/p' -e 's/.*Port="\([^"]*\)".*/@port \1/p' "$f"
+"""
 
 
-def listed(project: str) -> list[str]:
-    return ["sudo", "sh", "-c", LISTED.format(project=project)]
+def wiring(project: str) -> list[str]:
+    return ["sudo", "sh", "-c", WIRING, "sh", project, FORWARDING.format(project=project)]

@@ -99,9 +99,6 @@ services:
       WARGAME_CASES_DIR: "/app/redteam/cases"
       CR_SOURCE: "/src"
       CR_IMAGE_TAG: "${CR_IMAGE_TAG:-dev}"
-      CR_GNS3_URL: "http://gns3:3080"
-      CR_GNS3_AUDITOR_PASSWORD: "${CR_GNS3_AUDITOR_PASSWORD:-}"
-      CR_GNS3_ADMIN_PASSWORD: "${CR_GNS3_ADMIN_PASSWORD:-}"
       CR_RETAIN_CLOSED_MINUTES: "${CR_RETAIN_CLOSED_MINUTES:-60}"
     env_file:
       - path: ./openstack.env
@@ -112,25 +109,5 @@ services:
       - ./redteam:/app/redteam:ro
       - ./deploy:/src/deploy:ro
       - ./wargames:/src/wargames:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /var/lib/cr-gns3:/run/cr-gns3:ro
       - platformdata:/data
 
-  gns3:
-    platform: linux/amd64
-    build: {context: ., dockerfile: deploy/gns3/Dockerfile}
-    image: ghcr.io/nekonic/cr-gns3:${CR_IMAGE_TAG:-dev}
-    container_name: cr-gns3
-    networks: [mgmt]
-    pid: host
-    ports:
-      - "${CR_PUBLISH:-127.0.0.1}:3080:3080"
-    environment:
-      CR_GNS3_ADMIN_PASSWORD: "${CR_GNS3_ADMIN_PASSWORD:-}"
-      CR_GNS3_AUDITOR_PASSWORD: "${CR_GNS3_AUDITOR_PASSWORD:-}"
-    cap_add: [NET_ADMIN]
-    devices:
-      - /dev/net/tun:/dev/net/tun
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /var/lib/cr-gns3:/var/lib/cr-gns3

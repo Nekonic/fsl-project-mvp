@@ -50,14 +50,10 @@ The product itself is Korean-only: everything a learner or operator sees in
 the console and on the learner map is Korean, and there is no English version
 or language switch. This is about the product, not the working language.
 
-Korean belongs in exactly four places among the documentation and the console:
+Korean belongs in exactly three places among the documentation and the console:
 
 - `README.md` and `docs/ARCHITECTURE.md` — the Korean-only documents. Do not
   add an English version or a `.ko.md` beside any document.
-- `deploy/topology/range-openstack.gns3` — the learner map, whose drawing
-  text is Korean. It is the only learner map; the system map
-  (`deploy/topology/system/range-openstack.gns3`) stays English and is never
-  shown to learners.
 - `platform/console/templates/console/strings.html` — the console's string
   table, Korean only, the only console template allowed Korean, enforced by a
   test.
@@ -112,9 +108,9 @@ alert that does not mention the attack's mechanism is reported
   Elasticsearch, `rules/suricata.py` the only one that knows the Suricata
   process, `rules/crs.py` the only one that knows the CRS/ModSecurity
   configuration and the nginx reload, `kibana.py` the only one that knows the
-  Kibana API, `gns3.py` the only one that knows the GNS3 API (its container's
-  own `deploy/gns3/provision.py` and `auditor.html`, served as `map.html`,
-  aside), `attacker.py` the only one that knows the attacker box, and the loot
+  Kibana API, `range/rangehost.py` the only one that reads the slot's live
+  wiring the learner map draws (`interfaces.py` parses it, `topology.py` names
+  it for the learner), `attacker.py` the only one that knows the attacker box, and the loot
   path (`api/loot.py`, the board) and the effect path (`api/effect.py`, corp)
   the only ones that read the target's ground truth. Keep them the only ones.
   Known exceptions in code today; do not add more, and whether to move them is
@@ -174,8 +170,8 @@ range-facing logic changed, and before a push.
   runs every slot as a compose project, and the platform VM runs the shared control plane from `compose.yaml`. Bring-up
   pulls prebuilt images from GHCR (built by `.github/workflows/images.yml` on
   push to `dev`): `docker compose pull && docker compose up -d` starts the
-  control plane (it sets up the docker socket group and registers the
-  Elasticsearch ingest pipeline). Local development runs the unit tests, not
+  control plane (it registers the Elasticsearch ingest pipeline; no service
+  holds the Docker socket). Local development runs the unit tests, not
   the range. The `build:` keys stay because the CI build test checks them. The
   platform VM is rebuilt, never patched in place: `bin/platform-rebuild`;
   the whole cloud side comes up with `uv run bin/cloud init` (admin, once)

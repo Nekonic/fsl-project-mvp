@@ -81,7 +81,6 @@ ATTACKER_ROLE = "attacker"
 SCORER_ROLE = "scorer"
 GATEWAY_ROLE = "gateway"
 SENSOR_ROLES = ("sensor", "estate-sensor")
-OWN_LISTED_TIMEOUT = 60
 GONE_WAIT = 300
 GONE_POLL = 3
 COLLECTED = {"edge-sensor": ("sensor", "suricata"), "estate-sensor": ("estate-sensor", "suricata"),
@@ -603,42 +602,22 @@ class OpenStack:
         address = self._address(self.range_host)
         return address, self._generations.get(address, "") or address, self._container(role)
 
-    def interfaces(self, hosts=None, skip_unanswered=True) -> list[interfaces.Interface]:
-        origins = {origin.id: origin.segment for origin in self.declared.origins}
-        subnets = [(segment.subnet, origins.get(segment.id, segment.id)) for segment in self.describe().segments]
-        found = []
+    def wiring(self, skip_unanswered=True) -> interfaces.Wiring:
+        project = self._laid_out().project
         try:
-            listed = self._shell()(rangehost.listed(self._laid_out().project), timeout=60).output
+            said = self._shell()(rangehost.wiring(project), timeout=60).output
         except RangeUnavailable:
             if not skip_unanswered:
                 raise
-            listed = ""
-        names = self._service_hosts()
-        project = self._laid_out().project
-        networks, inside = interfaces.slot_listed(listed, project)
-        unanswered = sorted(name for name, service in self._document()["services"].items()
-                            if service.get("networks") and name not in inside)
+            said = ""
+        read = interfaces.wiring(said, project)
+        standing = {container.service for container in read.containers}
+        unanswered = sorted(name for name in self._document()["services"] if name not in standing)
         if unanswered and not skip_unanswered:
             raise RangeUnavailable(f"{', '.join(unanswered)} did not answer in slot {self.slot}")
-        here = subnets + [(subnet, key) for key, subnet in networks
-                          if key not in (rangehost.INTERNET, rangehost.FRONT)]
-        for service, said in sorted(inside.items()):
-            host = names.get(service, service)
-            if hosts is None or host in hosts:
-                found += interfaces.placed(host, said, here)
-        scorer = self.declared.host(SCORER_ROLE)
-        if hosts is not None and scorer in hosts:
-            found += interfaces.placed(scorer, self._own_listed(), subnets)
-        return found
-
-    @staticmethod
-    def _own_listed() -> str:
-        try:
-            done = subprocess.run(interfaces.on_this_host(interfaces.LISTED), capture_output=True, text=True,
-                                  timeout=OWN_LISTED_TIMEOUT)
-        except (OSError, subprocess.TimeoutExpired):
-            return ""
-        return done.stdout if done.returncode == 0 else ""
+        names = self._service_hosts()
+        return replace(read, containers=tuple(replace(container, host=names.get(container.service, container.service))
+                                              for container in read.containers))
 
     def _ssh(self, address: str, reads_input: bool, log: Path, config: Path) -> list[str]:
         command = ["ssh", "-F", str(config)]

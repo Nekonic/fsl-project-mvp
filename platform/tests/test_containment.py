@@ -5,6 +5,7 @@ import pathlib
 import pytest
 
 from range import declared, rangehost
+from tests import composed
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 LEARNER_FACING = ("kali", "waf", "board", "board-db", "corp-wp", "corp-db")
@@ -117,3 +118,10 @@ def test_the_range_host_s_docker_maps_container_root_to_an_unprivileged_host_use
     assert ipaddress.ip_network(daemon["default-address-pools"][0]["base"]).overlaps(
         ipaddress.ip_network("10.0.0.0/8")) and not ipaddress.ip_network(
         daemon["default-address-pools"][0]["base"]).overlaps(ipaddress.ip_network("172.30.0.0/16"))
+
+
+def test_no_control_plane_service_holds_the_docker_socket_the_host_s_pids_or_a_capability():
+    for name, service in composed.services().items():
+        assert not [volume for volume in service.get("volumes") or () if "docker.sock" in str(volume)], (
+            f"{name} holds the platform VM's docker socket, which is root on the VM")
+        assert service.get("pid") != "host" and not service.get("privileged") and not service.get("cap_add"), name

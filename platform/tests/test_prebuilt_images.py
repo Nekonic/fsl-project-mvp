@@ -414,33 +414,33 @@ def saved(tmp_path, name, *tags):
 
 def test_a_sideloaded_image_is_not_looked_for_on_ghcr_and_the_others_are(tmp_path):
     module = rebuild()
-    tarball = saved(tmp_path, "gns3.tar", f"ghcr.io/nekonic/cr-gns3:{HEAD}")
+    tarball = saved(tmp_path, "edge.tar", f"ghcr.io/nekonic/cr-edge:{HEAD}")
     asked = []
 
-    tarballs = module.sideloaded([f"gns3={tarball}"])
+    tarballs = module.sideloaded([f"edge={tarball}"])
     module.refuse_unless_published(BASE, lambda name, tag: asked.append((name, tag)), sideloaded=tarballs)
 
-    assert tarballs == {"gns3": module.Tarball(tarball, HEAD)}
-    assert asked == [(name, BASE) for name in module.IMAGES if name != "gns3"]
+    assert tarballs == {"edge": module.Tarball(tarball, HEAD)}
+    assert asked == [(name, BASE) for name in module.IMAGES if name != "edge"]
 
 
 @pytest.mark.parametrize("pair, said", [
-    ("gns3={missing}", "does not exist, so nothing was deleted"),
+    ("edge={missing}", "does not exist, so nothing was deleted"),
     ("opnsense={tarball}", "NAME one of"),
-    ("gns3", "NAME one of"),
-    ("gns3={wrong}", "holds no single ghcr.io/nekonic/cr-gns3:<commit>"),
-    ("gns3={two}", "holds no single ghcr.io/nekonic/cr-gns3:<commit>"),
-    ("gns3={unreadable}", "not a docker save tarball"),
+    ("edge", "NAME one of"),
+    ("edge={wrong}", "holds no single ghcr.io/nekonic/cr-edge:<commit>"),
+    ("edge={two}", "holds no single ghcr.io/nekonic/cr-edge:<commit>"),
+    ("edge={unreadable}", "not a docker save tarball"),
 ])
 def test_the_rebuild_refuses_a_sideload_it_cannot_run_before_deleting_anything(tmp_path, pair, said):
     module = rebuild()
     paths = {
         "missing": tmp_path / "absent.tar",
-        "tarball": saved(tmp_path, "gns3.tar", f"ghcr.io/nekonic/cr-gns3:{HEAD}"),
+        "tarball": saved(tmp_path, "edge.tar", f"ghcr.io/nekonic/cr-edge:{HEAD}"),
         "wrong": saved(tmp_path, "platform.tar", f"ghcr.io/nekonic/cr-platform:{HEAD}",
-                       "ghcr.io/nekonic/cr-gns3:dev"),
-        "two": saved(tmp_path, "both.tar", f"ghcr.io/nekonic/cr-gns3:{HEAD}",
-                     f"ghcr.io/nekonic/cr-gns3:{BASE}"),
+                       "ghcr.io/nekonic/cr-edge:dev"),
+        "two": saved(tmp_path, "both.tar", f"ghcr.io/nekonic/cr-edge:{HEAD}",
+                     f"ghcr.io/nekonic/cr-edge:{BASE}"),
         "unreadable": tmp_path / "plain.tar",
     }
     paths["unreadable"].write_text("not a tar")
@@ -463,15 +463,15 @@ class ChangedContexts:
 def test_every_image_must_be_built_from_what_head_holds():
     module = rebuild()
     built = "3" * 40
-    platform_sources, gns3_sources = "platform pyproject.toml uv.lock", "deploy/gns3 pyproject.toml uv.lock"
-    git = ChangedContexts({(BASE, platform_sources), (BASE, gns3_sources)})
+    platform_sources = "platform pyproject.toml uv.lock"
+    git = ChangedContexts({(BASE, platform_sources), (BASE, "deploy/edge")})
     platform = {"platform": module.Tarball(Path("p.tar"), built)}
 
-    with pytest.raises(module.Refused, match=rf"sideload them:\n  gns3: {gns3_sources} differs between {BASE} and HEAD$"):
+    with pytest.raises(module.Refused, match=rf"sideload them:\n  edge: deploy/edge differs between {BASE} and HEAD$"):
         module.refuse_unless_unchanged(BASE, HEAD, platform, git)
     assert (built, platform_sources) in git.compared and (BASE, "wargames/corp/db") in git.compared
     module.refuse_unless_unchanged(
-        BASE, HEAD, {**platform, "gns3": module.Tarball(Path("g.tar"), built)}, git)
+        BASE, HEAD, {**platform, "edge": module.Tarball(Path("g.tar"), built)}, git)
     with pytest.raises(module.Refused, match=f"platform: {platform_sources} differs between {built} and HEAD"):
         module.refuse_unless_unchanged(BASE, HEAD, platform, ChangedContexts({(built, platform_sources)}))
     assert set(module.build_contexts()) == set(module.IMAGES)
@@ -492,7 +492,7 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
     key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
     bundle = tmp_path / f"cr-{HEAD}.bundle"
     built = "3" * 40
-    sideload = module.Sideload(HEAD, bundle, {"gns3": module.Tarball(tmp_path / "gns3.tar", built)})
+    sideload = module.Sideload(HEAD, bundle, {"edge": module.Tarball(tmp_path / "edge.tar", built)})
     platform = NewPlatform()
 
     module.hand_over(platform, "secret", key, store, sideload)
@@ -505,8 +505,8 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
         "a sideload checkout can change uv.lock, and the sync must not hold up the hand-over"
     )
     [load] = [command for command in ran if "docker load" in command]
-    assert f"/tmp/gns3.tar" in load
-    assert (f"docker tag ghcr.io/nekonic/cr-gns3:{built} ghcr.io/nekonic/cr-gns3:"
+    assert f"/tmp/edge.tar" in load
+    assert (f"docker tag ghcr.io/nekonic/cr-edge:{built} ghcr.io/nekonic/cr-edge:"
             "$(sed -n 's/^CR_IMAGE_TAG=//p' /opt/cr/.env)") in load
     restore = next(i for i, command in enumerate(ran) if "docker run" in command)
     assert checkout < ran.index(load) < restore
@@ -515,7 +515,7 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
         "bind-mounted into a running container keeps the cloned commit's copy after the checkout, so the "
         "collector ran the old filebeat.yml until each service was recreated"
     )
-    assert platform.settings_fed() == b"CR_OPENSTACK_PASSWORD=secret\nCR_SIDELOADED=gns3\n", (
+    assert platform.settings_fed() == b"CR_OPENSTACK_PASSWORD=secret\nCR_SIDELOADED=edge\n", (
         "the platform ships a sideloaded wargame image to the wargame host's builder instead of GHCR's copy "
         "at the same tag, so it has to know which images were sideloaded"
     )
@@ -668,13 +668,13 @@ def test_a_second_hand_over_leaves_one_password_line_and_keeps_every_line_it_doe
 def test_a_sideloading_hand_over_rewrites_the_sideloaded_line_too(monkeypatch, tmp_path):
     module = rebuild()
     sideload = module.Sideload(HEAD, tmp_path / "head.bundle",
-                               {"gns3": module.Tarball(tmp_path / "gns3.tar", "3" * 40)})
+                               {"edge": module.Tarball(tmp_path / "edge.tar", "3" * 40)})
 
     _, settings = rewritten_settings(monkeypatch, tmp_path, sideload)
 
     assert settings == (
         "CR_OPENSTACK_USER=cr\nCR_OPENSTACK_PLATFORM=srv\n"
-        "CR_OPENSTACK_PASSWORD=secret\nCR_SIDELOADED=gns3\n"
+        "CR_OPENSTACK_PASSWORD=secret\nCR_SIDELOADED=edge\n"
     )
 
 

@@ -16,7 +16,7 @@ import wargames
 from api import site, views
 from api.models import Case, Detection, Objective, Session
 from console import strings
-from range.interfaces import Interface
+from range.interfaces import Container, Network, Wiring
 from tests.test_lesson_api import WRITTEN
 
 pytestmark = pytest.mark.django_db
@@ -339,18 +339,20 @@ def test_the_slot_s_interfaces_read_for_the_map_answer_the_session_s_address_que
     reads = []
 
     class Slot:
-        def interfaces(self, hosts):
-            reads.append(hosts)
-            return [Interface("cr-wargame-host", "ens3", "10.30.0.48/24", "estate")] if len(reads) > 1 else []
+        def wiring(self, skip_unanswered=True):
+            reads.append(skip_unanswered)
+            return Wiring(networks=(Network("estate", "s1-estate", ("10.30.0.0/24",)),), containers=(
+                Container("board", "s1_estate", addresses=(("eth0", "10.30.0.48/24"),), host="board"),
+            ) if len(reads) > 1 else ())
 
     with patch("api.views._range", lambda session=None, adapter=None: Slot()):
         unreachable = views._map_found(session)
-        views._map_read(session)()
+        views._wired(session)
         kept = [views._map_found(session) for _ in range(3)]
         with patch("api.views._range_fact", lambda session, check, taught: []):
             views._accepted(session, {"of": "address", "host": "board.com"})
         dropped = session.pk not in views._found_kept
-        views._map_read(session)()
+        views._wired(session)
     client.post_json(f"/api/sessions/{session.pk}/close/")
 
     assert unreachable == [] and len(reads) == 3, "an empty read is not kept; three checks read nothing"

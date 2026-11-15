@@ -1,6 +1,5 @@
 FROM python:3.13-slim
 
-COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
 RUN apt-get update \
  && apt-get install -y --no-install-recommends openssh-client gosu nginx curl ca-certificates tmux \
  && curl -fsSL -o /usr/local/bin/ttyd \

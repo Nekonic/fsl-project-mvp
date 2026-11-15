@@ -1,18 +1,6 @@
 #!/bin/sh
 set -e
 
-SOCK=/var/run/docker.sock
-if [ -S "$SOCK" ]; then
-  gid=$(stat -c %g "$SOCK")
-  if [ "$gid" != 0 ] && ! getent group "$gid" >/dev/null; then
-    groupadd -g "$gid" dockersock
-  fi
-  group=$(getent group "$gid" | cut -d: -f1)
-  if [ -n "$group" ] && ! id -nG cr | tr ' ' '\n' | grep -qx "$group"; then
-    usermod -aG "$group" cr
-  fi
-fi
-
 nginx -t -q -c /app/nginx.conf
 (
   until python -c 'import socket; socket.create_connection(("127.0.0.1", 8001), 1).close()' 2>/dev/null; do

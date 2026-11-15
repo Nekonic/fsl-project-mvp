@@ -28,7 +28,6 @@ from django.views.decorators.http import require_http_methods
 
 import attacker
 import game
-import gns3
 import kibana
 import lesson
 import scoreboard
@@ -51,6 +50,7 @@ from ingest import elastic
 from redteam import harness, tools
 import operator_log
 from range import substrate
+from range.interfaces import Wiring
 from range.ports import Drifted, RangeUnavailable, Shape
 from rules import crs, suricata
 from scoring.correlate import correlate
@@ -59,8 +59,6 @@ from scoring.types import CORRELATION_STRATEGIES, DetectionRecord
 
 log = logging.getLogger(__name__)
 
-MAP_START_RETRY_SECONDS = 30
-MAP_START_ATTEMPTS = 30
 SESSION_FIELDS = ("id", "scenario", "started_at", "ended_at", "guidance", "defense")
 CASE_FIELDS = (
     "id", "case_id", "name", "malicious", "stage", "technique", "pattern",
@@ -86,7 +84,6 @@ WORKED_MARKS = ("passed", "skipped", "hint")
 RECENT_ALERTS = 600
 SHOWN_CHECK = ("form", "options", "leg")
 QUOTED_WILDCARD = re.compile(r':\s*"[^"]*\*[^"]*"')
-SWITCH_OF = re.compile(r"\{switch:([\w.-]+)\}")
 OPERATOR_WARNINGS = ("score.warning.no_marker", "score.warning.no_benign")
 SCHEDULE = ("attacks", "completion")
 REPLAY_MARKS = ("seed", "verify", "check", "replay")
@@ -256,7 +253,6 @@ def sessions(request):
         _session_logs(session)
         session.ready_at = timezone.now()
         session.save(update_fields=["ready_at"])
-        _map_begin(session, adapter)
         if played:
             scenario_run.begin(session, adapter, posture)
     except (harness.ToolUnavailable, loot.GroundTruthUnavailable, traffic.NoOrigin, RangeUnavailable) as exc:
@@ -371,8 +367,7 @@ def lesson_hints(request, session_id):
 def lesson_addresses(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
     _taught(session)
-    return _reply({"addresses": topology.addresses(maps.template(session.scenario), maps.learner(session.scenario),
-                                                   _map_found(session))})
+    return _reply({"addresses": topology.addresses(maps.learner(session.scenario), _map_found(session))})
 
 def _lesson_of(session):
     try:
@@ -589,7 +584,7 @@ def _whose_address(session, given):
     if not lesson.an_address(given):
         return None
     try:
-        found = topology.addresses(maps.template(session.scenario), maps.learner(session.scenario), _map_found(session))
+        found = topology.addresses(maps.learner(session.scenario), _map_found(session))
     except (KeyError, ValueError):
         return None
     host = next((one["host"] for one in found if one["address"] == given), None)
@@ -714,15 +709,15 @@ def _range_fact(session, check, taught):
             return []
         points = lesson.detected_penalty(wargames.objectives(session.scenario)["tiers"], check.get("objective", ""))
         return [str(points)] if points is not None else []
-    project, drawn = maps.template(session.scenario), maps.learner(session.scenario)
+    drawn = maps.learner(session.scenario)
     if of == "logs":
-        return [name for name in topology.hosts(project) if name == topology.LOG_SERVER]
+        return [name for name in topology.hosts(drawn) if name == topology.LOG_SERVER]
     if of == "path":
-        return topology.route(drawn, wargames.host(session.scenario), check.get("from", topology.CUSTOMERS))
+        return topology.route(drawn, wargames.host(session.scenario), check.get("from", topology.ATTACKER))
     found = _map_found(session)
     if of == "subnet":
-        return topology.subnet(project, drawn, found, check["host"])
-    return topology.address(project, drawn, found, check["host"], check.get("zone"))
+        return topology.subnet(drawn, found, check["host"])
+    return topology.address(drawn, found, check["host"], check.get("zone"))
 
 _found_kept = {}
 
@@ -731,7 +726,7 @@ def _map_found(session):
     if held:
         return held
     try:
-        return _map_read(session)()
+        return _wired(session).interfaces()
     except RangeUnavailable:
         return []
 
@@ -1298,85 +1293,21 @@ def session_top(request, session_id):
         "paths": top(paths.values()),
     })
 
-@require_http_methods(["GET"])
-def range_topology(request):
-    asked = request.GET.get("session")
-    if asked is None:
-        return _reply(gns3.project())
-    if not asked.isdigit():
-        raise BadRequest(f'"session" must be a session id, got {asked!r}')
-    session = get_object_or_404(Session, pk=int(asked))
-    key = _map_key(session)
-    if key is None or not settings.CR_GNS3_URL:
-        return _reply(gns3.project(maps.template(session.scenario)))
-    return _reply(maps.served(key, _map_read(session, skip_unanswered=False)))
+def _wired(session, skip_unanswered=True):
+    adapter = _range(session)
+    if not hasattr(adapter, "wiring"):
+        return Wiring()
+    wired = adapter.wiring(skip_unanswered)
+    found = wired.interfaces()
+    if found and session.ended_at is None:
+        _found_kept[session.pk] = found
+    return wired
 
-def _map_key(session, adapter=None):
-    adapter = adapter or substrate()
-    if not hasattr(adapter, "interfaces") or not _slotted(adapter):
-        return None
-    return maps.called(maps.SLOT, _slot_of(session), session.scenario)
-
-def _newest_in_each_slot(adapter) -> list:
-    newest = (Session.objects.filter(Q(slot=number) | (Q(slot=None) if number == 1 else Q(pk__in=[])))
-              .order_by("-pk").first() for number in range(1, adapter.slots + 1))
-    return [session for session in newest if session]
-
-def _maps_live(adapter) -> list[str]:
-    return [maps.called(maps.SLOT, _slot_of(session), session.scenario) for session in _newest_in_each_slot(adapter)]
-
-def _map_read(session, skip_unanswered=True):
-    drawn = maps.learner(session.scenario)
-    on_map = set(drawn.hosts) | set(drawn.logs_from)
-    asked = {} if skip_unanswered else {"skip_unanswered": False}
-
-    def read():
-        found = _range(session).interfaces(on_map, **asked)
-        if found and session.ended_at is None:
-            _found_kept[session.pk] = found
-        return found
-    return read
-
-def _map_begin(session, adapter):
-    key = _map_key(session, adapter)
-    if key is not None and settings.CR_GNS3_URL:
-        return maps.begin(key, _map_read(session, skip_unanswered=False), maps.SLOT, _maps_live(adapter))
-    return None
-
-def publish_maps(pause=time.sleep):
-    if not settings.CR_GNS3_URL:
-        return
-    for attempt in range(MAP_START_ATTEMPTS):
-        if attempt:
-            pause(MAP_START_RETRY_SECONDS)
-        if _slot_maps_loaded():
-            return
-    log.warning("the slot maps did not all load in %d tries at start; each loads when its session asks",
-                MAP_START_ATTEMPTS)
-
-def _slot_maps_loaded() -> bool:
-    loading = {}
+def _map(session):
     try:
-        cloud = substrate()
-        if not _slotted(cloud):
-            return True
-        for session in _newest_in_each_slot(cloud):
-            adapter = _in_slot(cloud, _slot_of(session))
-            key = _map_key(session, adapter)
-            if key is not None and not maps.loaded(key):
-                loading[key] = _map_begin(session, adapter)
-    except (RangeUnavailable, DatabaseError) as exc:
-        log.warning("the slot maps could not be read at start: %s", exc)
-        return False
-    for worker in filter(None, loading.values()):
-        worker.join()
-    unloaded = [key for key in loading if not maps.loaded(key)]
-    for key in unloaded:
-        log.warning("the map of %s did not load at start: %s", key, maps.failure(key) or "another load was in flight")
-    return not unloaded
-
-def _drawn(session, described):
-    return topology.overlay(maps.template(session.scenario), described, maps.learner(session.scenario))
+        return topology.graph(maps.learner(session.scenario), _wired(session))
+    except RangeUnavailable as exc:
+        return {"zones": [], "nodes": [], "edges": [], "detail": str(exc)[:300]}
 
 @require_http_methods(["GET"])
 def session_topology(request, session_id):
@@ -1404,8 +1335,7 @@ def session_topology(request, session_id):
         else:
             zone["alerts"] += 1
 
-    return _reply({**shape, "unplaced": unplaced,
-                   "project": topology.shown(_drawn(session, described), maps.template(session.scenario))})
+    return _reply({**shape, "unplaced": unplaced, "map": _map(session)})
 
 @require_http_methods(["GET"])
 def origins(request):
@@ -1831,7 +1761,7 @@ def _shown_step(session, step, taught=None):
 def _shown_check(session, taught, check):
     shown = {"kind": check["kind"], **{key: check[key] for key in SHOWN_CHECK if key in check}}
     if check.get("form") == "order" and session:
-        shown["options"] = topology.hosts(maps.template(session.scenario))
+        shown["options"] = topology.hosts(maps.learner(session.scenario))
     about = check.get("about")
     match = (check.get("match") or (check.get("benign") or {}).get("sent")
              or (_taught_check(taught, about).get("match") if taught and isinstance(about, str) else None))
@@ -1839,10 +1769,9 @@ def _shown_check(session, taught, check):
 
 def _shown_point(session, point):
     zone = ((point or {}).get("map") or {}).get("zone")
-    found = SWITCH_OF.fullmatch(zone) if session and isinstance(zone, str) else None
-    if not found:
+    if not session or not isinstance(zone, str):
         return point
-    return dict(point, map={"zone": topology.switch_of(maps.template(session.scenario), found[1])})
+    return dict(point, map={"zone": maps.learner(session.scenario).zones.get(zone, zone)})
 
 def _lesson_objectives(session, every=False):
     taught = _lesson_of(session) if session.guidance else None
@@ -1948,8 +1877,7 @@ def _rebuilt_on_close(session, adapter, closed_at, claimed, reply):
     if not hasattr(adapter, "configure_slot"):
         return None
     _enabled_by_the_rebuild(closed_at, _slot_of(session))
-    return claimed and reset.begin(adapter, turn, rebuilt, claimed=True,
-                                   then=lambda: _map_begin(session, adapter))
+    return claimed and reset.begin(adapter, turn, rebuilt, claimed=True)
 
 def resume_resets():
     numbers = reset.owed()

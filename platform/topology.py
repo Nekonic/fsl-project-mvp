@@ -1,13 +1,8 @@
 from __future__ import annotations
 
 import ipaddress
-import json
-import math
-import uuid
 from dataclasses import dataclass
-from xml.etree import ElementTree
 
-from range.interfaces import BRIDGE_PREFIX, BUSYBOX
 from range.slot import NAMED_ON
 
 def shape(described, declared=None) -> dict:
@@ -54,10 +49,9 @@ def shape(described, declared=None) -> dict:
         ),
     }
 
-SWITCH = "ethernet_switch"
 TRANSIT = ("edge", "gateway", "wargames")
 DATABASE_SUFFIX = "-db"
-BRIDGE_SUFFIX = "-default"
+BACKEND_SUFFIX = "-default"
 LOG_STORE = "cr-elasticsearch"
 ATTACKER = "kali"
 CUSTOMERS = "customers"
@@ -65,12 +59,11 @@ ROUTER = "router"
 WAF = "waf"
 LOG_SERVER = "log-server"
 INTERNET = "internet"
-SERVICE = "sw1"
-DATABASE_SWITCH = "sw2"
-MONITORING = "sw3"
-SCORER = "scorer"
-UNLABELLED = frozenset({DATABASE_SWITCH})
-DISPLAY_IMAGE = BUSYBOX
+SERVICE = NAMED_ON
+SWITCH = "switch:{zone}"
+SENSOR = "sensor:{service}"
+CAPTIONS = {"internet": "internet", "service": "dmz", "database": "database"}
+FORWARDED = "udp"
 
 @dataclass(frozen=True)
 class Learner:
@@ -78,14 +71,21 @@ class Learner:
     hosts: dict[str, tuple[str, ...]]
     roles: dict[str, str]
     switches: dict[str, str]
-    shared: frozenset[str]
     sensors: dict[str, str]
     hidden: frozenset[str]
     prefers: dict[str, tuple[str, ...]]
-    logs_from: tuple[str, ...]
+    zones: dict[str, str]
+    kinds: dict[str, str]
 
     def shown(self, real: str) -> str:
         return (self.hosts.get(real) or (real,))[0]
+
+    @property
+    def order(self) -> list[str]:
+        return list(self.zones.values())
+
+    def caption(self, zone: str) -> str:
+        return next((CAPTIONS[named] for named, held in self.zones.items() if held == zone), zone)
 
 def domains(declared) -> dict[str, str]:
     gateway = declared.hosts.get(declared.roles.get("gateway", ""))
@@ -128,11 +128,11 @@ def learner(declared, wargame: str, customers_from: str = "", customers_prefer: 
     if customers_prefer:
         placed[CUSTOMERS] = CUSTOMERS
 
+    backend = f"{wargame}{BACKEND_SUFFIX}"
     switches = {origin.id: INTERNET for origin in declared.origins}
     switches.update({origin.segment: INTERNET for origin in declared.origins})
-    switches[NAMED_ON] = SERVICE
-    shared = frozenset(switches.values())
-    switches[f"{wargame}{BRIDGE_SUFFIX}"] = DATABASE_SWITCH
+    switches[SERVICE] = SERVICE
+    switches[backend] = backend
 
     sensors = {roles[sensing]: (hosts.get(roles.get(sensed, "")) or ("",))[0]
                for sensing, sensed in sorted(declared.watches.items()) if sensing in roles}
@@ -141,112 +141,48 @@ def learner(declared, wargame: str, customers_from: str = "", customers_prefer: 
         hidden.add(CUSTOMERS)
     first = next((origin.subnet for origin in declared.origins if origin.id == declared.default_origin), "")
     prefers = {ATTACKER: (first,), CUSTOMERS: tuple(customers_prefer), "": (first,)}
-    logs_from = tuple(dict.fromkeys(filter(None, (LOG_STORE, roles.get(SCORER, "")))))
+    kinds = {ATTACKER: "kali", ROUTER: "router", WAF: "waf", sites[wargame]: "server", database: "database",
+             LOG_SERVER: "logs"}
     return Learner(wargame=wargame, hosts={real: tuple(shown) for real, shown in hosts.items()}, roles=placed,
-                   switches=switches, shared=shared, sensors=sensors, hidden=frozenset(hidden), prefers=prefers,
-                   logs_from=logs_from)
+                   switches=switches, sensors=sensors, hidden=frozenset(hidden), prefers=prefers,
+                   zones={"internet": INTERNET, "service": SERVICE, "database": backend}, kinds=kinds)
 
-def _wired(project) -> dict[str, set[str]]:
-    named = {node["node_id"]: node["name"] for node in project["topology"]["nodes"]}
-    near = {name: set() for name in named.values()}
-    for link in project["topology"]["links"]:
-        one, other = (named[end["node_id"]] for end in link["nodes"])
-        near[one].add(other)
-        near[other].add(one)
-    return near
+def hosts(learner) -> list[str]:
+    return sorted({shown for names in learner.hosts.values() for shown in names
+                   if shown != CUSTOMERS and shown not in learner.hidden})
 
-def _kinds(project) -> dict[str, str]:
-    return {node["name"]: node["node_type"] for node in project["topology"]["nodes"]}
-
-def overlay(project, described, learner) -> dict:
-    seen: dict[str, dict[str, list[str]]] = {}
-    for segment in described.segments:
-        on = learner.switches.get(segment.id, segment.id)
-        for node in segment.nodes:
-            for shown in (learner.hosts.get(node.name) or (node.name,)):
-                held = seen.setdefault(shown, {}).setdefault(on, [])
-                if node.address and node.address not in held:
-                    held.append(node.address)
-    nodes = {}
-    for name, kind in _kinds(project).items():
-        if kind == SWITCH:
-            continue
-        found = seen.get(name)
-        nodes[name] = {"status": "running" if found is not None else "not reported",
-                       "addresses": found or {}}
-    return {"project_id": project["project_id"], "nodes": nodes}
-
-def shown(drawn, project) -> dict:
-    kinds = _kinds(project)
-    return {**drawn, "nodes": {
-        name: {**node, "addresses": {on: held for on, held in node["addresses"].items() if kinds.get(on) == SWITCH}}
-        for name, node in drawn["nodes"].items() if name in kinds}}
-
-ZONES = {"service": SERVICE, "database": DATABASE_SWITCH, "monitoring": MONITORING}
-
-def hosts(project) -> list[str]:
-    return sorted(name for name, kind in _kinds(project).items() if kind != SWITCH)
-
-def switch_of(project, host: str) -> str:
-    kinds = _kinds(project)
-    return min((name for name in _wired(project).get(host, ()) if kinds[name] == SWITCH), default="")
-
-def route(learner, site: str, start: str = CUSTOMERS) -> list[str]:
+def route(learner, site: str, start: str = ATTACKER) -> list[str]:
     return list(dict.fromkeys([start, *(learner.roles[role] for role in TRANSIT if role in learner.roles), site]))
-
-def addresses(project, learner, found) -> list[dict]:
-    placed = {node["name"]: (node["x"], node["y"]) for node in project["topology"]["nodes"]}
-    named = {switch: _shape(caption)[1].text.strip() for switch, caption in captions(project).items()}
-    return [{"host": host, "zone": named.get(switch, switch), "address": one.address.partition("/")[0],
-             "network": "" if switch == INTERNET else str(ipaddress.ip_interface(one.address).network)}
-            for (host, switch), one in sorted(link_heads(learner, found).items(),
-                                              key=lambda pair: (placed.get(pair[0][0], (0, 0)), pair[0][1]))
-            if host in placed and switch in placed and switch not in UNLABELLED]
 
 def link_heads(learner, found) -> dict[tuple[str, str], object]:
     held: dict[tuple[str, str], list] = {}
     for one in found:
         switch = learner.switches.get(one.segment)
-        if switch and not one.name.startswith(BRIDGE_PREFIX):
+        if switch:
             for name in learner.hosts.get(one.host, ()):
                 held.setdefault((name, switch), []).append(one)
     return {pair: head for pair, kept in held.items()
             if (head := _head(kept, learner.prefers.get(pair[0], learner.prefers[""]), strict=pair[0] == CUSTOMERS))}
 
-def address(project, learner, found, host: str, zone: str | None = None) -> list[str]:
-    one = link_heads(learner, found).get((host, ZONES.get(zone or "") or switch_of(project, host)))
+def switch_of(learner, found, host: str) -> str:
+    on = {zone for name, zone in link_heads(learner, found) if name == host}
+    return next((zone for zone in learner.order if zone in on), "")
+
+def address(learner, found, host: str, zone: str | None = None) -> list[str]:
+    one = link_heads(learner, found).get((host, learner.zones.get(zone or "") or switch_of(learner, found, host)))
     return [one.address, one.address.partition("/")[0]] if one else []
 
-def subnet(project, learner, found, host: str) -> list[str]:
-    one = link_heads(learner, found).get((host, switch_of(project, host)))
+def subnet(learner, found, host: str) -> list[str]:
+    one = link_heads(learner, found).get((host, switch_of(learner, found, host)))
     return [str(ipaddress.ip_interface(one.address).network)] if one else []
 
-LABEL_STYLE = "font-family: Noto Sans;font-size: 10.0;fill: #1b4f8a;fill-opacity: 1.0;"
-SWITCH_LABEL_STYLE = "font-family: Noto Sans;font-size: 10.0;fill: #5b6770;fill-opacity: 1.0;"
-STARTS = "text-anchor: start;"
-ENDS = "text-anchor: end;"
-SYMBOL_SIZE = 60
-LABEL_GAP = 6
-LABEL_RISE = 32
-LABEL_FALL = 6
-LABEL_ASIDE = 10
-LABEL_BELOW = 64
-LABEL_ABOVE = -60
-LABEL_CHAR = 7
-NAME_CHAR = 9
-LABEL_CLEAR = 3
-STATUS_MARK_ALONG = 60
-STATUS_MARK_RADIUS = 6
-GLYPH_TOP = 4
-GLYPH_BOTTOM = 23
-NAME_TOP = 1
-NAME_BOTTOM = 22
-LABEL_NUDGE = 3
-CAPTION_CHAR = 0.62
-NETWORKS_JOINED = ", "
-
-def renamed(value: str, salt: str) -> str:
-    return str(uuid.uuid5(uuid.UUID(value), salt))
+def addresses(learner, found) -> list[dict]:
+    order = {zone: at for at, zone in enumerate(learner.order)}
+    return [{"host": host, "zone": learner.caption(zone), "address": one.address.partition("/")[0],
+             "network": "" if zone == INTERNET else str(ipaddress.ip_interface(one.address).network)}
+            for (host, zone), one in sorted(link_heads(learner, found).items(),
+                                            key=lambda pair: (order.get(pair[0][1], len(order)), pair[0][0]))
+            if host not in learner.hidden]
 
 def _ip(one):
     return ipaddress.ip_interface(one.address).ip
@@ -259,161 +195,51 @@ def _head(found, prefers, strict=False):
     ranked = [one for one in found if not strict or _rank(one, prefers) < len(prefers)]
     return min(ranked, key=lambda one: (_rank(one, prefers), one.name, _ip(one)), default=None)
 
-def leaving(node, other) -> tuple[int, int]:
-    dx, dy = other["x"] - node["x"], other["y"] - node["y"]
-    if abs(dx) >= abs(dy):
-        return (1 if dx > 0 else -1), 0
-    return 0, (1 if dy > 0 else -1)
+def _customers(learner, found, host: str) -> dict:
+    head = link_heads(learner, found).get((CUSTOMERS, INTERNET))
+    if head is None or CUSTOMERS not in learner.hosts.get(host, ()):
+        return {}
+    held = [one for one in found if one.host == host and _rank(one, learner.prefers[CUSTOMERS]) < len(
+        learner.prefers[CUSTOMERS])]
+    return {"address": head.address.partition("/")[0], "more": max(0, len(held) - 1)}
 
-def heading(node, other) -> tuple[float, float]:
-    dx, dy = other["x"] - node["x"], other["y"] - node["y"]
-    length = math.hypot(dx, dy) or 1.0
-    return dx / length, dy / length
-
-def _apart(one, other) -> float:
-    return math.acos(max(-1.0, min(1.0, one[0] * other[0] + one[1] * other[1])))
-
-def _roomier(sides, others):
-    room = [min((_apart(side, other) for other in others), default=math.pi) for side in sides]
-    return sides[1] if room[1] > room[0] else sides[0]
-
-def named_above(node) -> bool:
-    return (node.get("label") or {}).get("x") is None
-
-def _box(x, y, anchor, width) -> tuple[float, float, float, float]:
-    left = x + LABEL_NUDGE - (width if anchor == ENDS else 0)
-    return left, y + GLYPH_TOP, left + width, y + GLYPH_BOTTOM
-
-def label_box(label) -> tuple[float, float, float, float]:
-    return _box(label["x"], label["y"], ENDS if ENDS in label["style"] else STARTS, len(label["text"]) * LABEL_CHAR)
-
-def name_box(node) -> tuple[float, float, float, float]:
-    label = node.get("label") or {}
-    width = len(label.get("text") or "") * NAME_CHAR
-    x = (SYMBOL_SIZE - width) / 2 if label.get("x") is None else label["x"]
-    y = label.get("y") or 0
-    return x + LABEL_NUDGE, y + NAME_TOP, x + LABEL_NUDGE + width, y + NAME_BOTTOM
-
-def _covers(one, other) -> bool:
-    return (one[0] - LABEL_CLEAR < other[2] and other[0] < one[2] + LABEL_CLEAR
-            and one[1] - LABEL_CLEAR < other[3] and other[1] < one[3] + LABEL_CLEAR)
-
-def _placed_label(node, other, others, text) -> tuple[int, int, str]:
-    half = SYMBOL_SIZE // 2
-    dx, dy = other["x"] - node["x"], other["y"] - node["y"]
-    if abs(dx) >= abs(dy):
-        near = half + LABEL_GAP
-        mark = STATUS_MARK_ALONG * abs(dx) / math.hypot(dx, dy) + STATUS_MARK_RADIUS
-        crossed = [half + dy / abs(dx) * reach for reach in (near, max(near + len(text) * LABEL_CHAR, mark))]
-        under, over = (0, 1), (0, -1)
-        first = _roomier((under, over) if dy < 0 else (over, under), others)
-        placed = []
-        for side in (first, under if first == over else over):
-            y = round(min(crossed) - LABEL_RISE if side == over else max(crossed) + LABEL_FALL)
-            placed.append((SYMBOL_SIZE + LABEL_GAP - LABEL_NUDGE, y, STARTS) if dx > 0
-                          else (-LABEL_GAP - LABEL_NUDGE, y, ENDS))
-        return next((one for one in placed if not _covers(_box(*one, len(text) * LABEL_CHAR), name_box(node))),
-                    placed[0])
-    if dy < 0 and named_above(node):
-        return SYMBOL_SIZE + LABEL_GAP - LABEL_NUDGE, LABEL_FALL, STARTS
-    top = LABEL_BELOW if dy > 0 else LABEL_ABOVE
-    crossed = [half + dx / dy * (y - half)
-               for y in (top + GLYPH_TOP - STATUS_MARK_RADIUS, top + GLYPH_BOTTOM + STATUS_MARK_RADIUS)]
-    if _roomier(((1, 0), (-1, 0)), others) == (1, 0):
-        return round(max(crossed) + LABEL_ASIDE) - LABEL_NUDGE, top, STARTS
-    return round(min(crossed) - LABEL_ASIDE) - LABEL_NUDGE, top, ENDS
-
-def _shape(drawing) -> tuple[ElementTree.Element, ElementTree.Element]:
-    svg = ElementTree.fromstring(drawing["svg"])
-    return svg, svg[0]
-
-def _area(drawing) -> tuple[float, float, float, float]:
-    svg, _ = _shape(drawing)
-    return drawing["x"], drawing["y"], drawing["x"] + float(svg.get("width")), drawing["y"] + float(svg.get("height"))
-
-def _within(x, y, area) -> bool:
-    return area[0] <= x <= area[2] and area[1] <= y <= area[3]
-
-def _smallest(x, y, zones):
-    holding = [zone for zone in zones if _within(x, y, _area(zone))]
-    return min(holding, key=lambda zone: (_area(zone)[2] - _area(zone)[0]) * (_area(zone)[3] - _area(zone)[1]),
-               default=None)
-
-def _zones(document) -> tuple[list, list]:
-    drawings = document["topology"]["drawings"]
-    return ([drawing for drawing in drawings if _shape(drawing)[1].tag == "rect"],
-            [drawing for drawing in drawings if _shape(drawing)[1].tag == "text"])
-
-def captions(document) -> dict[str, dict]:
-    zones, texts = _zones(document)
-    titled = {id(_smallest(text["x"], text["y"], zones)): text
-              for text in sorted(texts, key=lambda text: (text["y"], text["x"]), reverse=True)}
-    found = {}
-    for node in document["topology"]["nodes"]:
-        if node["node_type"] == SWITCH:
-            zone = _smallest(node["x"] + SYMBOL_SIZE / 2, node["y"] + SYMBOL_SIZE / 2, zones)
-            if zone is not None and id(zone) in titled:
-                found[node["name"]] = titled[id(zone)]
-    return found
-
-def for_wargame(project, learner) -> dict:
-    document = json.loads(json.dumps(project))
-    topology = document["topology"]
-    gone = {node["node_id"] for node in topology["nodes"] if node["name"] in learner.hidden}
-    holds = lambda zone, nodes: any(_within(node["x"] + SYMBOL_SIZE / 2, node["y"] + SYMBOL_SIZE / 2, _area(zone))
-                                    for node in nodes)
-    zones, _ = _zones(document)
-    held = [zone for zone in zones if holds(zone, topology["nodes"])]
-    topology["nodes"] = [node for node in topology["nodes"] if node["node_id"] not in gone]
-    topology["links"] = [link for link in topology["links"] if not {end["node_id"] for end in link["nodes"]} & gone]
-    emptied = [zone for zone in held if not holds(zone, topology["nodes"])]
-    topology["drawings"] = [drawing for drawing in topology["drawings"] if not any(
-        drawing is zone or _within(drawing["x"], drawing["y"], _area(zone)) for zone in emptied)]
-    return document
-
-def _captioned(drawing, networks) -> None:
-    svg, text = _shape(drawing)
-    added = " " + NETWORKS_JOINED.join(networks)
-    text.text = (text.text or "") + added
-    svg.set("width", str(round(float(svg.get("width")) + len(added) * float(text.get("font-size")) * CAPTION_CHAR)))
-    drawing["svg"] = ElementTree.tostring(svg, encoding="unicode")
-
-def labelled(project, learner, found, salt: str, called: str) -> dict:
-    document = for_wargame(project, learner)
-    document["project_id"] = renamed(document["project_id"], salt)
-    document["name"] = f"{document['name']} {called}"
-    document["show_interface_labels"] = True
-    by_id = {node["node_id"]: node for node in document["topology"]["nodes"]}
+def graph(learner, wiring) -> dict:
+    found = wiring.interfaces()
     heads = link_heads(learner, found)
-    toward: dict[str, list[tuple[str, tuple[float, float]]]] = {}
-    for link in document["topology"]["links"]:
-        one, other = (by_id[end["node_id"]] for end in link["nodes"])
-        toward.setdefault(one["node_id"], []).append((link["link_id"], heading(one, other)))
-        toward.setdefault(other["node_id"], []).append((link["link_id"], heading(other, one)))
-    networks: dict[str, list[str]] = {}
-    for link in document["topology"]["links"]:
-        ends = [by_id[end["node_id"]] for end in link["nodes"]]
-        for end, node, other in ((link["nodes"][0], ends[0], ends[1]), (link["nodes"][1], ends[1], ends[0])):
-            switching = node["node_type"] == SWITCH
-            head = None if switching or other["name"] in UNLABELLED else heads.get((node["name"], other["name"]))
-            text = head.address.partition("/")[0] if head else ""
-            if head:
-                network = str(ipaddress.ip_interface(head.address).network)
-                if network not in networks.setdefault(other["name"], []):
-                    networks[other["name"]].append(network)
-            others = [way for linked, way in toward[node["node_id"]] if linked != link["link_id"]]
-            x, y, anchor = _placed_label(node, other, others, text)
-            end["label"] = {"text": text, "style": (SWITCH_LABEL_STYLE if switching else LABEL_STYLE) + anchor,
-                            "x": x, "y": y, "rotation": 0}
-        link["link_id"] = renamed(link["link_id"], salt)
-    for switch, caption in captions(document).items():
-        if switch != INTERNET and networks.get(switch):
-            _captioned(caption, networks[switch])
-    for node in document["topology"]["nodes"]:
-        node["node_id"] = renamed(node["node_id"], salt)
-    for link in document["topology"]["links"]:
-        for end in link["nodes"]:
-            end["node_id"] = renamed(end["node_id"], salt)
-    for drawing in document["topology"]["drawings"]:
-        drawing["drawing_id"] = renamed(drawing["drawing_id"], salt)
-    return document
+    zones = [zone for zone in learner.order if wiring.network(zone)]
+    nodes = [{"id": SWITCH.format(zone=zone), "kind": "switch", "zone": zone} for zone in zones]
+    edges = []
+    drawn: dict[str, str] = {}
+    for container in sorted(wiring.containers, key=lambda one: one.service):
+        if container.sniffs:
+            network = wiring.bridged(container.sniffs)
+            if network is not None and network.key in zones:
+                drawn[container.service] = SENSOR.format(service=container.service)
+                nodes.append({"id": drawn[container.service], "kind": "sensor", "zone": network.key})
+                edges.append({"source": drawn[container.service], "target": SWITCH.format(zone=network.key),
+                              "kind": "mirror"})
+            continue
+        named = [shown for shown in learner.hosts.get(container.host, ()) if shown != CUSTOMERS]
+        if not named or named[0] in learner.hidden:
+            continue
+        name, legs = named[0], wiring.legs(container)
+        on = [zone for zone in zones if zone in legs.values()]
+        if not on:
+            continue
+        drawn[container.service] = name
+        nodes.append({"id": name, "kind": learner.kinds.get(name, "host"), "name": name, "zones": on,
+                      "customers": _customers(learner, found, container.host)})
+        for zone in on:
+            head = heads.get((name, zone))
+            edges.append({"source": name, "target": SWITCH.format(zone=zone), "kind": "link",
+                          "address": head.address.partition("/")[0] if head else ""})
+    logging = [drawn[one.service] for one in wiring.logging() if one.service in drawn]
+    if logging:
+        nodes.append({"id": LOG_SERVER, "kind": "logs", "name": LOG_SERVER,
+                      "port": f"{wiring.port}/{FORWARDED}" if wiring.port else ""})
+        edges += [{"source": source, "target": LOG_SERVER, "kind": "logs"} for source in logging]
+    return {"zones": [{"id": zone, "caption": learner.caption(zone),
+                       "subnet": "" if zone == INTERNET else next(iter(wiring.network(zone).subnets), "")}
+                      for zone in zones],
+            "nodes": nodes,
+            "edges": [{"id": f"{edge['kind']}:{edge['source']}:{edge['target']}", **edge} for edge in edges]}

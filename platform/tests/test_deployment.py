@@ -52,29 +52,13 @@ def test_the_platform_serves_as_a_non_root_user():
 
     assert "gosu cr" in steps and "waitress-serve" in steps, steps
     assert steps.index("gosu cr") < steps.index("waitress-serve"), (
-        "the platform mounts the docker socket; serving as root makes a "
-        "container escape a root escape. It drops to cr before waitress"
+        "serving as root makes a bug in the platform a root shell in its container; "
+        "it drops to cr before waitress"
     )
     assert "USER root" not in DOCKERFILE.read_text()
 
-def test_socket_access_is_granted_by_a_group_resolved_at_start_that_may_already_exist():
-    steps = ENTRYPOINT.read_text()
-
-    assert "/var/run/docker.sock" in steps and "stat -c %g" in steps, (
-        "the socket's group differs per host; the platform reads it at start "
-        "rather than being handed it, so a plain `docker compose up` works"
-    )
-    assert "usermod" in steps and "gosu cr" in steps, (
-        "granting the socket by running as root makes a container escape a "
-        "root escape; cr joins the socket's group instead"
-    )
-    assert "getent group" in steps, (
-        "groupadd fails when the gid is already a group, and on some hosts the "
-        "socket gid is one the image already uses; guard it with getent first"
-    )
-    assert "DOCKER_GID" not in DOCKERFILE.read_text(), (
-        "a required build argument breaks `docker compose up` on a fresh host"
-    )
+def test_the_platform_image_carries_no_docker_client_and_joins_no_socket_group():
+    assert "docker.sock" not in ENTRYPOINT.read_text() and "docker" not in DOCKERFILE.read_text().lower()
 
 def test_acceptance_does_not_run_against_a_target_that_is_not_up_yet():
     verify = (ROOT / "bin/verify").read_text()

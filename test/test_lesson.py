@@ -44,25 +44,23 @@ def _courses() -> dict:
     return {course["id"]: course["lessons"] for course in board["courses"]}
 
 
-def _drawn_address(listed: list, project: dict, host: str, switch: str) -> str:
-    on = {address.partition("/")[0]: address for address in project["nodes"][host]["addresses"].get(switch, [])}
-    return next(on[row["address"]] for row in listed if row["host"] == host and row["address"] in on)
+def _drawn_address(drawn: dict, host: str, zone: str) -> str:
+    return next(edge["address"] for edge in drawn["edges"]
+                if edge["kind"] == "link" and edge["source"] == host and edge["target"] == f"switch:{zone}")
 
 
 def _map_answers(session_id: int) -> dict:
-    project = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=120).json()["project"]
-    listed = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/lesson/addresses/", timeout=120).json()["addresses"]
+    drawn = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=120).json()["map"]
     steps = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/", timeout=60).json()["lesson"]["steps"]
     hosts = next(step["check"]["options"] for step in steps if step["id"] == "path")
-    route = ["customers", *(["router"] if "router" in hosts else []), "waf", "board.com"]
-    board = _drawn_address(listed, project, "board.com", "sw1")
+    route = ["kali", *(["router"] if "router" in hosts else []), "waf", "board.com"]
     given = {
-        "kali_ip": _drawn_address(listed, project, "kali", "internet").partition("/")[0],
-        "board_ip": board.partition("/")[0],
+        "kali_ip": _drawn_address(drawn, "kali", "internet"),
+        "board_ip": _drawn_address(drawn, "board.com", "estate"),
         "path": " > ".join(route),
-        "dmz": next(row["network"] for row in listed if row["host"] == "board.com" and row["network"]),
-        "log_host": "log-server",
-        "waf_ip": _drawn_address(listed, project, "waf", "sw1").partition("/")[0],
+        "dmz": next(zone["subnet"] for zone in drawn["zones"] if zone["id"] == "estate"),
+        "log_host": next(node["name"] for node in drawn["nodes"] if node["kind"] == "logs"),
+        "waf_ip": _drawn_address(drawn, "waf", "estate"),
     }
     assert set(given) == {step["id"] for step in steps}, "F1's steps changed; this test answers each one"
     return {step: _post(f"{session_id}/lesson/steps/{step}/check/", {"answer": answer}).json()["passed"]

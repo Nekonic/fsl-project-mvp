@@ -85,31 +85,19 @@ target run script in any browser that loads its pages. For that reason the API
 also refuses cross-origin writes and any write whose body is not
 `application/json`.
 
-**Anyone who can reach port 3080 can read the GNS3 server.**
+**The learner map is a page of the console (`/map/<session>/`).**
 
-- Its sign-in page (`/static/web-ui/map.html`) holds the learner's password.
-  Bring-up generates that password. It is not a shipped default.
-- The learner has only GNS3's built-in Auditor role, which is read-only. The
-  Auditor was refused every write we tried: start, open, close, delete, node and
-  drawing create, image pull and user create all returned 403 (measured
-  2026-10-13).
-- The Auditor can read the host's Docker image list
-  (`GET /v3/computes/local/docker/images`).
-- The admin password is `CR_GNS3_ADMIN_PASSWORD`, or it is generated into
-  `/var/lib/cr-gns3/admin-password`. It is never given to learners. API keys
-  for MCP are made only with `docker exec` on the platform host.
-- **GNS3's admin controls the platform host's Docker daemon, and so does the
-  platform container.** To open the projects, the container holds the Docker
-  socket, `CAP_NET_ADMIN` and `/dev/net/tun`. A `docker` node in GNS3 is a
-  privileged container on the host's daemon.
-- Every time the platform loads a learner map, `platform/gns3.py` starts every
-  node of that map. Each node is an idle container of one pinned busybox image
-  (`topology.DISPLAY_IMAGE`). A test checks that pin.
-- An admin who adds a node with another image, or starts one, runs code as root
-  on the host.
-- The sign-in page turns off the web UI's usage statistics
-  (`statistics_command` false), so the console's Map pane sends nothing to
-  Google Analytics.
+- It reads `GET /api/sessions/<id>/topology/` and nothing else, and draws with
+  a vendored cytoscape.js. It sends nothing to a third party.
+- It answers only messages from its own origin and is framed only by it
+  (`X-Frame-Options: SAMEORIGIN`).
+- To draw it, the platform runs one read-only script on the range host over
+  the ssh key it already holds for `sudo docker`: `docker network inspect`,
+  `docker inspect`, `nsenter -n ip -o -4 addr` and a `sed` of the slot's
+  rsyslog file. The platform container holds no Docker socket and its image
+  no Docker client (until 2026-11-15 it held the platform host's socket, and
+  the GNS3 server held it too, with `pid: host`, `CAP_NET_ADMIN` and
+  `/dev/net/tun`).
 
 **On OpenStack the platform answers NTP (time) requests from the range host.**
 

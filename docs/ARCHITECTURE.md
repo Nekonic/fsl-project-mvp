@@ -17,7 +17,6 @@
 
 - 플랫폼 VM: 플랫폼 서비스
 - 훈련 환경 호스트: 모든 슬롯의 컨테이너
-- GNS3: 구성도의 표시용 노드
 
 로컬 개발 환경에서는 유닛 테스트만 돌립니다. OpenStack 구성은 마지막 "OpenStack" 절에 있고, 구축한 부분과 계획 단계인 부분을 나눠 적었습니다(`docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`).
 
@@ -42,7 +41,7 @@
 
 ## 훈련 환경
 
-플랫폼 VM은 컨트롤 플레인 `compose.yaml`(프로젝트 `cr`)을 돌립니다. 이 프로젝트는 항상 하나만 떠 있습니다. 서비스는 플랫폼, Elasticsearch, Kibana, `collector`, GNS3 서버이고 모두 `mgmt` 네트워크에 붙습니다. `bin/measure`는 이 파일로 서비스 수를 계산합니다.
+플랫폼 VM은 컨트롤 플레인 `compose.yaml`(프로젝트 `cr`)을 돌립니다. 이 프로젝트는 항상 하나만 떠 있습니다. 서비스는 플랫폼, Elasticsearch, Kibana, `collector` 4개이고 모두 `mgmt` 네트워크에 붙습니다. `bin/measure`는 이 파일로 서비스 수를 계산합니다.
 
 훈련 환경은 별도 VM인 훈련 환경 호스트 `cr-range`에서 슬롯마다 compose 프로젝트로 띄웁니다("OpenStack" 절).
 
@@ -98,7 +97,7 @@
 
 `fronts`와 `limits`는 `rangehost.compose`에서 슬롯을 렌더링할 때 읽습니다.
 
-워게임 `compose.yaml`에는 `container_name`을 쓰지 않습니다. 컨테이너 이름은 슬롯에서 `sN-<service>`로 붙습니다(`s1-board`, `s2-corp-wp`). 호스트 이름은 서비스 이름 그대로입니다. 고정 이름은 컨트롤 플레인의 `cr-platform`, `cr-elasticsearch`, `cr-kibana`, `cr-collector`, `cr-gns3`뿐입니다. 아래 서비스 표도 이 이름을 씁니다.
+워게임 `compose.yaml`에는 `container_name`을 쓰지 않습니다. 컨테이너 이름은 슬롯에서 `sN-<service>`로 붙습니다(`s1-board`, `s2-corp-wp`). 호스트 이름은 서비스 이름 그대로입니다. 고정 이름은 컨트롤 플레인의 `cr-platform`, `cr-elasticsearch`, `cr-kibana`, `cr-collector`뿐입니다. 아래 서비스 표도 이 이름을 씁니다.
 
 훈련 환경을 바꾸는 엔드포인트는 쿼리나 본문으로 `session`을 받습니다. rules, validate, 룰 비활성화, `/api/attacker/`, origin, label, canary가 해당합니다.
 
@@ -127,11 +126,10 @@
 | `cr-collector` | 플랫폼 VM | `filebeat:8.15.0`. syslog 입력만 사용 | mgmt | 5140/udp |
 | `cr-kibana` | 플랫폼 VM | `kibana:8.15.0`. `/kibana/` 경로로 제공 | mgmt | 5601 |
 | `cr-platform` | 플랫폼 VM | `platform/`. waitress, Django, 앞단 nginx. nginx가 `/kibana/`의 Kibana, `/vm-terminal/kali/`와 `/vm-terminal/waf/`의 VM 터미널도 제공 | mgmt | 8000, 8002 |
-| `cr-gns3` | 플랫폼 VM | `ghcr.io/nekonic/cr-gns3`(`deploy/gns3`). gns3-server 3.1.0a6, qemu, uBridge 1.2.3, busybox-static, docker-cli. 플랫폼이 올린 학습자 구성도를 보관. `CAP_NET_ADMIN`, `/dev/net/tun`, Docker 소켓, 호스트 pid 네임스페이스 사용 | mgmt | 3080 |
 
 포트 바인딩:
 
-- 8000, 8002, 3080: `CR_PUBLISH`. 기본값 127.0.0.1
+- 8000, 8002: `CR_PUBLISH`. 기본값 127.0.0.1
 - 5140/udp: `CR_SYSLOG_PUBLISH`. 기본값 127.0.0.1
 - 9200, 5601: loopback에만 바인딩
 - 훈련 환경 호스트: publish하는 포트 없음
@@ -277,211 +275,46 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 - launcher: `runner("attacker")`로 슬롯의 Kali 컨테이너에서 도구 실행. 넘겨받은 구간은 거부 메시지에만 씀. 출발 국가는 `set-origin` SNAT로 정해짐. 다른 이미지는 거부
 - 테스트: 공개 API 레퍼런스와 로컬 sshd로 만든 fake를 대상으로 한 유닛 테스트
 
-플랫폼 컨테이너에는 Docker 소켓을 마운트합니다. entrypoint에서 플랫폼 사용자를 소켓 그룹에 넣습니다. 플랫폼은 이 소켓으로 자기 NIC를 읽고, GNS3는 표시용 노드를 띄웁니다. 이 소켓은 컨테이너 탈출 경로입니다. 아직 없애지 않았고, 남은 작업은 `docs/STATE.md`의 "The substrate seam" 항목에 있습니다.
+플랫폼 컨테이너에는 Docker 소켓이 없고 이미지에 Docker 클라이언트도 없습니다. 플랫폼 VM의 주소는 OpenStack API(Neutron 서브넷, Nova 서버 주소)에서 읽습니다(`describe`). 슬롯 컨테이너는 훈련 환경 호스트에 ssh로 접속해 `sudo docker`로 다룹니다. 2026-11-15까지는 플랫폼 VM의 NIC를 읽으려고 소켓을 마운트했고 GNS3도 같은 소켓으로 표시용 노드를 띄웠습니다.
 
 ## 네트워크 구성도
 
-네트워크 구성은 GNS3 프로젝트 파일로 관리합니다. `revision` 9라서 GNS3 2.2에서 열리고, 3.x에서는 불러올 때 업그레이드됩니다. 구성도는 두 개입니다.
+학습자용 구성도는 세션 슬롯에서 지금 돌고 있는 컨테이너와 Docker 네트워크를 읽어 그립니다. 구성도 파일은 없습니다. 2026-11-15에 GNS3 표시용 구성도를 대체했습니다(`docs/DECISIONS.md`, "The learner map is the slot's live wiring").
 
-- **시스템 구성도** `deploy/topology/system/range-openstack.gns3`: 선언의 전체 배선. 관리 구간, 플랫폼 VM, 훈련 환경 호스트 `cr-range`, 슬롯 1개 분량 컨테이너. 영어로만 작성. 개발과 GNS3 MCP용. GNS3 서비스는 레포의 구성도를 읽지 않으므로 학습자에게 보이지 않음
-- **학습자용 구성도** `deploy/topology/range-openstack.gns3`: 학습자가 방어하는 회사 웹 서비스 네트워크. 실습 토폴로지 방식(Cisco NetAcad lab topology, NSRC 워크숍 logical diagram)의 논리 구성도
+**읽기.** `rangehost.WIRING`은 훈련 환경 호스트에서 `sudo sh -c`로 도는 셸 스크립트입니다. `OpenStack.wiring()`이 ssh 한 번으로 실행합니다.
 
-학습자용 구성도의 구성 요소:
+- 슬롯 compose 프로젝트의 Docker 네트워크마다 `@network <이름> <id> <브리지 이름> <서브넷>`. 브리지 이름은 `com.docker.network.bridge.name` 옵션(`sN-inet`, `sN-estate`)이고, 없으면 Docker 규칙대로 `br-<id 12자>`
+- 실행 중인 컨테이너마다 `@container <서비스> <NetworkMode>`, `@args`(`docker inspect`의 `Args`), `@mount`(마운트 원본 경로). 호스트 네트워크가 아니면 `nsenter -t <pid> -n ip -o -4 addr show` 출력
+- 슬롯의 rsyslog 전달 설정(`/etc/rsyslog.d/60-cr-sN.conf`)의 `@forward <파일>`, `@port <포트>`
 
-- 아이콘 위에 역할 호스트 이름
-- 호스트 쪽 링크 끝마다 주소만 표기(`10.30.1.59`). 인터페이스, 포트, 프리픽스는 없음
-- 스위치 쪽 끝, 관리 링크, DB 스위치로 가는 링크(주소가 Docker 브리지 대역)에는 라벨 없음
-- 영역: KISA ISMS-P 2.6.1의 영역 이름(DMZ, DB존), 인터넷, 관리망. 라벨 붙은 링크가 있는 영역은 캡션에 네트워크를 덧붙임(`DMZ 10.30.1.0/24`)
-- IDS: 별도 센서 상자("IDS"). 감시하는 호스트와 점선으로 연결. 대상은 `router`(슬롯 `internet` 브리지를 보는 에지 센서)와 사이트(슬롯 `estate` 브리지를 보는 estate 센서). Kibana의 `sensor` 값이 가리키는 호스트와 같음
-- 요청 흐름: 초록 화살표와 "웹 요청" 글자. internet → router → waf → 사이트
+`interfaces.wiring`이 이 출력을 `Wiring`으로 풉니다.
 
-그 밖에는 넣지 않습니다. 제목, 범례, 기계 이름, `cr-`, 관리 주소, Docker 브리지는 모두 없습니다.
+- 인터페이스의 망: 그 인터페이스 주소 중 하나를 품은 Docker 네트워크. 그래서 kali `eth0`에 함께 붙은 출발지 주소(5.188.10.10, 고객 주소)도 인터넷 구간에 속함
+- 센서: `Args`의 `--af-packet=<브리지>`로 감시하는 망을 찾음
+- 로그를 보내는 컨테이너: rsyslog가 보내는 파일이 그 컨테이너의 마운트 아래에 있음
+- `OpenStack.wiring()`은 서비스 이름을 선언된 호스트 이름(`cr-kali`, `board`)으로 바꿔 붙임. `skip_unanswered=False`면 compose 파일의 서비스 중 실행 중이 아닌 것을 이름으로 알리고 실패
 
-- 흐름은 왼쪽에서 오른쪽으로 한 줄(internet, router, waf, 사이트). `sw1`은 그 줄 위, `sw3`은 아래. 링크끼리 겹치지 않음
-- `topology.for_wargame`은 워게임 노드가 하나도 없는 영역만 그 안쪽 그림과 함께 지움. 영역 밖의 선, 센서 상자, 글자는 남김
+**그리기.** `topology.graph(learner, wiring)`가 콘솔이 그릴 그래프를 만듭니다.
 
-학습자용 구성도의 노드:
+- 영역(`zones`): 학습자 워게임에 해당하는 Docker 네트워크. 순서는 `internet`, `estate`, `<워게임>-default`. 캡션 키는 `internet`, `dmz`, `database`이고 한국어는 `strings.html`의 `topology.zone.*`. 인터넷 구간에는 대역을 붙이지 않음
+- 스위치: 영역마다 하나(`switch:<망>`). 리눅스 브리지는 L2 스위치. 이름은 붙이지 않음
+- 장비: 브리지에 인터페이스가 있는 컨테이너. 이름은 `topology.learner`의 학습자 이름(`kali`, `router`, `waf`, `board.com`, `board-db`). `kind`로 아이콘을 고름
+- 선(`link`): 장비가 그 브리지에 가진 인터페이스마다 하나. `address`는 그 인터페이스에서 고른 주소(`link_heads`. kali와 라우터 wan은 기본 출발지 대역의 주소, 나머지는 망의 주소)
+- 센서(`sensor:<서비스>`): 감시하는 브리지의 스위치에 `mirror` 선
+- 로그 수집기(`log-server`, `port`는 `5140/udp`): 로그를 보내는 컨테이너마다 `logs` 선
+- customers: 노드가 아님. kali 노드의 `customers`에 고객 대역의 첫 주소와 나머지 개수
+- 숨김: 다른 워게임의 컨테이너와 네트워크, 관리망, 플랫폼, 컨테이너·브리지의 실제 이름. 실행 중이 아닌 컨테이너는 읽히지 않으므로 그리지 않음. 상태는 표시하지 않음
 
-- `customers`, `kali`(공격자 Kali 박스): `internet` 스위치에 연결
-- `router`: 슬롯의 에지 라우터 컨테이너. 에지 센서는 옆에 IDS 상자로 그림
-- `sw1`: 서비스 구간. `waf`와 사이트(`board.com` 또는 `corp.com`, WAF 호스트에 선언된 이름) 연결
-- `sw2`: DB 구간. 사이트 뒤에서 DB(`board-db`) 연결
-- `sw3`: 관제 구간. `log-server`(Elasticsearch)와 기록을 보내는 라우터, WAF, 사이트 연결. 두 센서의 eve.json과 WAF audit 로그는 훈련 환경 호스트에서 전달
+**API.** `GET /api/sessions/<id>/topology/`의 `map`이 이 그래프입니다. 훈련 환경 호스트를 읽지 못하면 `map`은 빈 그래프와 `detail`입니다. 같은 응답의 `segments`, `sensors`, `unplaced`는 그대로입니다. 읽은 인터페이스는 세션이 끝날 때까지 보관해 주소를 묻는 단계의 답으로 씁니다(`views._map_found`, `_found_kept`).
 
-스위치 번호는 실습 토폴로지 관례(`sw1`, `sw2`, `sw3`, NSRC의 `sw1`)를 따릅니다. 순서는 서비스, DB, 관제로 고정입니다.
+**페이지.** 블루팀 콘솔의 구성도 창은 `/map/<세션 id>/`(`console/templates/console/map.html`, `X-Frame-Options: SAMEORIGIN`)를 iframe으로 띄웁니다.
 
-템플릿에는 두 워게임의 사이트와 DB를 모두 그려 둡니다(둘 다 `sw2`). `topology.for_wargame`에서 세션 워게임 것만 남깁니다. 고객을 선언하지 않은 워게임(`corp`, `traffic.yaml` 없음)에는 `customers` 노드가 없습니다.
-
-`topology.learner(declaration, wargame)`는 훈련 환경의 이름을 구성도 이름으로 바꿉니다.
-
-- 호스트: `cr-kali`는 `kali`. 그 호스트에서 고객 트래픽을 만들면 `customers`이기도 함. `cr-edge`는 `router`. 훈련 환경 호스트와 사이트 컨테이너는 사이트. `cr-elasticsearch`는 `log-server`
-- 역할
-- 구간 → 스위치: 출발지는 `internet`, estate는 `sw1`, 워게임 compose 네트워크는 `sw2`, 관리 구간은 `sw3`(NIC 이름만 씀)
-- 센서 → 그 센서가 NIC를 쓰는 노드
-
-오버레이, 레슨의 훈련 환경 질문, 인터페이스 읽기는 모두 이 매핑을 거칩니다. 오버레이는 `GET /api/sessions/<id>/topology/`가 주는 실시간 주소 붙은 호스트 목록입니다(아래 설명).
-
-그리기 규칙:
-
-- 링크는 모두 직선(수평, 수직, 대각선). 다른 링크나 노드를 가로지르지 않음
-- 링크가 바로 위에서 들어오는 노드는 이름을 옆에 둠
-- 호스트는 모두 크기와 선 굵기가 같은 정사각형 틀(`host-*.svg`). GNS3 이미지 빌드 때 `deploy/gns3/symbols.py`로 만들고 `provision.py`로 업로드
-- 틀 안에는 GNS3 번들 affinity 글리프. 틀 색은 공격자 빨강, WAF(방패) 초록, 라우터와 사이트·DB 파랑, 고객과 로그 서버 회색
-- 스위치와 인터넷은 GNS3 번들의 정사각형 스위치와 지구본 아이콘 그대로
-- `kali` 틀에는 OffSec의 Kali 드래곤. 프레스 팩의 `kali-dragon-black.svg`를 고정 커밋에서 받아 sha256으로 확인하고 수정 없이 넣음. 상표 표기는 `host-kali.txt`와 메인 페이지 하단(`topology.trademark`)
-
-**학습자용 구성도의 호스트는 모두 표시용 컨테이너입니다.**
-
-- GNS3는 노드 상태로 링크 끝 색을 칠함. 멈춘 노드는 링크 끝이 전부 빨강
-- 그래서 호스트마다 고정 이미지(`busybox`, `topology.DISPLAY_IMAGE`)의 `docker` 노드로 둠. `sleep`만 실행하고 콘솔 없음
-- 실제 기계는 훈련 환경에서 돌고, 구성도 노드는 표시만 함
-
-시스템 구성도의 구간은 `ethernet_switch` 노드입니다. 나머지:
-
-- OpenStack VM `cr-platform`, `cr-range`: 디스크 이미지 없는 `qemu` 노드
-- 슬롯 1개 분량 컨테이너(`cr-kali`, `cr-edge`, `cr-waf`, 두 센서, 대상 시스템): 실제 이미지를 지정했지만 시작하지 않는 `docker` 노드
-- 에지는 NIC 두 개(`wan`, `lan`). 대상 시스템은 워게임 네트워크별 스위치(`board-default`, `corp-default`)에 연결
-- 호스트 네트워크에서 도는 센서는 NIC가 없음. 옆 메모에 감시하는 노드를 적음
-- 선언된 구간마다 스위치를 감싼 제목 붙은 사각형(Internet, Application estate, Management and monitoring)
-- 컨테이너와 VM마다 설명 메모. GNS3 3.1에서는 노드 라벨이 노드 이름
-
-구성도 검사는 `platform/tests/test_gns3_topology.py`입니다.
-
-- `declaration.yaml`과 워게임 compose 파일에서 시스템 구성도에 있어야 할 노드와 링크를 도출하고 GNS3 구조 규칙을 검사
-- 학습자용 구성도는 시스템 구성도를 줄인 것이라 시스템 구성도와 대조. 노드, 링크(`topology.learner`를 거쳐 대조), 로그 링크, 배치, 표시용 노드를 검사
-
-`bin/check-topology`는 gns3-server 2.2.61과 3.1.0a6을 `~/.cache/fsl/check-topology` 아래 venv에 설치합니다. 릴리스별로 각 파일 사본에 `load_topology`를 돌립니다. 학습자용 구성도마다 픽스처 훈련 환경으로 만든 워게임별 구성도에도 돌립니다. 노드가 지정한 번들 심볼이 그 릴리스에 모두 있는지도 확인합니다.
-
-### 훈련 환경 자체의 구성도
-
-학습자에게는 자기 훈련 환경의 주소가 보입니다. 이 구성도는 `api/maps.py`에서 학습자용 구성도로 만듭니다. 슬롯과 세션 워게임마다(`slot 1 board`, `slot 2 corp`) 프로젝트가 따로 있습니다(`topology.labelled`). 링크 양 끝에 모두 라벨을 붙입니다.
-
-라벨:
-
-- 호스트 쪽 끝: 그 스위치 구간의 주소. 프리픽스 없음(`10.30.1.247`). 값은 `topology.learner`로 읽음
-- 공격자는 기본 출발지 주소. 고객은 가장 많이 쓰는 출발지 주소(`traffic.yaml` 가중치 기준, `attacker.customer_origins`처럼 기본 출발지 제외)
-- 주소가 없으면 라벨 없음
-- 스위치 쪽, `sw3` 쪽, DB 스위치 쪽 끝(`topology.UNLABELLED`): 라벨 없음
-- 인터페이스, 포트, Docker 브리지 이름은 적지 않음
-
-영역 캡션:
-
-- 캡션 뒤에 그 스위치에 붙은 라벨의 네트워크를 덧붙임(`DMZ 10.30.1.0/24`)
-- 스위치의 캡션은 그 스위치를 감싼 가장 작은 상자의 텍스트(`topology.captions`)
-- 인터넷, DB존, 관리망 캡션은 이름만
-- 같은 주소를 `GET /api/sessions/<id>/lesson/addresses/`에서 `{host, zone, address}` 행으로도 줌(`topology.addresses`). 참고 열의 주소 카드가 씀
-
-라벨 위치(`topology.leaving`):
-
-- 링크가 나가는 쪽 노드 옆에 수평으로 놓음
-- 수평이거나 완만한 링크: 선 위나 아래. 노드의 다른 링크를 보고 공간이 더 남는 쪽. 글자 밑으로 선이 지나가지 않게 함
-- 가파른 링크: 노드 아래. 노드 이름이 옆에 있으면 노드 위에 두고, 같은 규칙으로 선 왼쪽이나 오른쪽을 고름. 이름이 위에 있는 노드는 노드 오른쪽
-- 피할 것: 모든 선, GNS3 상태 표시(3.1 웹 UI 기준 지름 6 단위 원, 노드 중심에서 선을 따라 60 단위 지점), 노드 이름, 영역 테두리와 캡션
-- 글자 폭은 글자당 7 단위로 어림. 웹 UI에서 `font-size: 10.0`이 13.3px로 렌더링됨
-- 완만한 링크의 라벨이 자기 노드 이름과 겹치면 선 반대쪽으로 옮김
-- 왼쪽에 놓는 라벨은 `text-anchor: end`로 오른쪽 정렬
-
-프로젝트 id는 `uuid5(<learner id>, "slot-<n>-<wargame>")`입니다. 노드와 링크 id는 적재할 때마다 새로 만듭니다(`gns3.fresh_ids`, 아래 3단계). 프로젝트 이름에 키를 붙이고 `show_interface_labels`를 켭니다.
-
-인터페이스는 어댑터의 `interfaces()`로 읽습니다.
-
-- 훈련 환경 호스트: 명령 한 번(`rangehost.listed`)으로 슬롯의 docker 네트워크와 서브넷을 나열. 슬롯 컨테이너마다 `nsenter`로 들어가 `ip -o -4 addr`을 읽음. 호스트 네트워크 컨테이너(센서)는 건너뜀
-- 플랫폼 VM 자체의 NIC: 호스트 네트워크로 띄운 `busybox` 컨테이너에서 같은 `ip` 명령으로 읽음(`interfaces.on_this_host`). 플랫폼에는 SSH로 접속하지 않음
-- 세션 구성도를 만들 때 읽은 인터페이스는 세션이 끝날 때까지 보관. 주소를 묻는 단계의 답으로 씀(`_map_found`)
-- 슬롯은 세션을 닫을 때만 초기화하므로, 세션 동안 주소는 바뀌지 않음
-- 빈 결과는 보관하지 않음. 보관한 결과로 답할 수 없는 질문이 오면 슬롯을 다시 읽음. 세션을 닫으면 보관한 값도 지움
-
-`gns3.publish`는 다음 순서로 프로젝트를 GNS3에 올립니다.
-
-1. GNS3 admin으로 로그인합니다. 비밀번호는 `CR_GNS3_ADMIN_PASSWORD`나 `/run/cr-gns3/admin-password`에서 읽습니다. GNS3 데이터 디렉터리는 읽기 전용 마운트이고, 이 파일 권한은 Docker 소켓 그룹 기준 0640입니다.
-2. 프로젝트 목록에 같은 프로젝트가 있으면 삭제합니다. 없는 프로젝트를 DELETE하면 GNS3에 ERROR 로그가 남습니다.
-3. 노드와 링크 id를 새로 만들어 portable 프로젝트로 가져옵니다. `gns3.fresh_ids`는 적재마다 뽑은 nonce로 id마다 uuid5를 만듭니다. `project.gns3`의 프로젝트 id는 URL의 값을 그대로 씁니다.
-4. `auto_close`를 끕니다. 가져온 프로젝트는 파일 내용과 상관없이 이 값이 켜진 채 만들어집니다. 켜져 있으면 마지막 웹 클라이언트가 나갈 때 프로젝트가 닫히고 노드도 멈춥니다.
-5. 프로젝트를 열고 노드를 시작합니다.
-6. 적재에 실패하면 2단계부터 다시 합니다. 최대 `gns3.LOAD_TRIES`(3)번, `LOAD_PAUSE`(3초) 간격입니다.
-
-직전 적재의 id는 다시 쓰지 않습니다. GNS3는 스위치의 커널 브리지와 TAP 이름을 노드 id로 짓습니다. 적재가 중간에 실패하면 이 브리지와 TAP이 사용 중으로 남습니다.
-
-구성도를 올리는 시점:
-
-- 세션을 열 때
-- 슬롯을 초기화한 뒤
-- 구성도 창의 요청(`GET /api/topology/?session=`)이 왔는데 GNS3에 그 구성도가 열려 있지 않을 때
-
-바뀌지 않은 구성도는 다시 올리지 않습니다. 슬롯마다 최근 세션의 구성도만 남기고 나머지는 삭제합니다. 생성한 구성도는 커밋하지 않습니다. GNS3에서 불러오지 못하면 엔드포인트는 세션 워게임의 학습자용 구성도를 파일에서 읽어 주고, 이유를 `detail`에 적습니다.
-
-학습자용 구성도는 한국어로 그립니다. 제품이 한국어 전용입니다(`docs/DECISIONS.md`, 2026-11-13).
-
-- 영역 캡션은 `docs/vocabulary.md`의 용어. 노드 이름은 역할 이름 그대로. 호스트·네트워크 이름과 IDS는 장비에서 쓰는 이름 그대로
-- id는 시스템 구성도와 다르게 씀. GNS3 compute는 노드를 id만으로 관리해서, 열린 두 프로젝트가 같은 id를 쓸 수 없음
-
-`gns3` 서비스(`deploy/gns3`, MCP extra를 포함한 gns3-server 3.1.0a6)는 시작할 때 다음을 합니다.
-
-- 플랫폼이 올린 구성도만 둠. 템플릿 하나로 모든 워게임을 그리므로 따로 복사해 넣는 구성도는 없음
-- 컨트롤러 DB를 만들기 전에 admin 비밀번호 설정(`CR_GNS3_ADMIN_PASSWORD`. 없으면 `/var/lib/cr-gns3/admin-password`에 한 번만 생성)
-- learner 사용자에게 `/` 경로의 내장 Auditor 역할 부여(`CR_GNS3_AUDITOR_PASSWORD`. 없으면 `/var/lib/cr-gns3/auditor-password`에 한 번만 생성. 플랫폼은 같은 마운트에서 읽음)
-- 제목이 Map인 `/static/web-ui/map.html` 작성
-
-`map.html`의 동작:
-
-- learner로 로그인한 뒤, 번들 웹 UI가 컨트롤러 정보를 읽는 `localStorage`의 `controller-1`, `controllerIds`에 토큰을 넣음
-- `showInterfaceLabels`는 켜고 `integrateLinkLabelsToLinks`는 끔. 링크 끝 라벨이 프로젝트가 지정한 위치에 그려짐
-- `statistics_command`는 `false`. 웹 UI가 학습자 브라우저에서 사용 통계를 보내지 않음
-- 같은 출처 프레임 안에서 프로젝트를 열고, 구성도가 그려지기 전에 보기 전용으로 바꿈
-
-보기 전용 처리:
-
-- 스타일시트로 편집 요소를 모두 숨김. 제목 표시줄, 도구 열, 컨텍스트 메뉴, 토폴로지 요약, 대화 상자, Angular CDK 오버레이. `svg.map` 안의 모든 요소에서 포인터 이벤트 제거
-- 프레임 window에 캡처 단계 리스너를 걸어 trusted 클릭, 더블클릭, 컨텍스트 메뉴, 키 입력, 드롭을 막음. mousedown은 `svg.map` 자체를 왼쪽 버튼으로 누른 경우만 허용
-- 페이지가 만든 합성 이벤트는 trusted가 아님. 숨긴 컨트롤을 페이지가 직접 누르는 동작은 그대로 됨
-
-구성도가 그려진 뒤 처리:
-
-- 토폴로지 요약 창을 닫음. 3.1.0a6 번들에서는 이 창의 표시 여부가 상수
-- 웹 UI 이동 모드를 계속 켜 둠. 끌면 화면 이동, 휠로 확대·축소
-- 확대 비율 초기화
-- 그림이 화면에 다 들어올 때까지 웹 UI의 축소 버튼을 누름(한 번에 0.1). 웹 UI가 프로젝트의 `zoom` 값을 읽지 않음
-- mousemove를 한 번 보내 그림을 가운데로 옮김. 웹 UI는 `movementX`/`movementY`만큼 화면을 이동
-
-페이지와 콘솔 사이 메시지:
-
-- 창의 "화면에 맞추기" 버튼은 프레임에 `fit`을 보내 초기화와 맞춤을 다시 함. 콘솔은 창을 열 때와 창 크기가 바뀔 때마다 `fit`을 보냄
-- 콘솔은 창을 열 때마다 불러오는 중으로 표시. 페이지에서 `{map: "drawn"}`(첫 맞춤 뒤)이나 `{map: "fitted"}`(이후 맞춤마다)가 올 때까지 프레임을 숨김. 이후 맞춤은 그림이 프레임 안에 들어올 때까지 재시도
-- 코치의 `{locate}`에는 노드, 링크, 링크 끝 라벨, 영역의 창 안 사각형으로 답함. 링크 끝 라벨 위치는 Auditor 토큰으로 `/v3/projects/<id>/nodes`와 `/links`를 한 번 읽어 구함
-- 말풍선이 구성도 글자를 가리지 않도록 모든 영역 사각형(`zones`)과 모든 노드·인터페이스 라벨·영역 캡션 사각형(`text`)도 보냄
-- 이와 별개로 서버는 Auditor 역할의 모든 쓰기를 거부
-
-개발용 MCP(`/v3/mcp/`) API 키는 `docker exec cr-gns3 python /opt/cr-gns3/provision.py api-key <name>`으로 발급합니다. 콘솔에는 MCP를 노출하지 않습니다. 콘솔의 구성도 탭 이름은 "구성도"(`blue.pane.topology`)입니다. 학습자가 읽는 문구에서 GNS3라는 이름은 구성도가 열려 있지 않을 때의 안내(`topology.no_web_ui`)에만 나옵니다.
-
-Auditor 사용자에게는 프로젝트를 열 권한(`Project.Allocate`)이 없습니다. 그래서 프로젝트는 플랫폼만 올립니다. `gns3.publish`가 admin으로 프로젝트를 열고 노드를 시작합니다. `provision.py`는 아무것도 열거나 시작하지 않습니다. Auditor 화면에서는 프로젝트가 열려 있고 초록색으로 보입니다.
-
-서비스 요구 사항:
-
-- uBridge 1.2.3: 릴리스 태그로 빌드, `cap_net_admin,cap_net_raw` 파일 capability
-- `ethernet_switch` 노드용 `CAP_NET_ADMIN`과 `/dev/net/tun`. 3.1은 스위치마다 컨테이너 네트워크 네임스페이스 안에 커널 브리지와 TAP을 만듦
-- `docker` 노드용 호스트 Docker 소켓. 노드마다 호스트 데몬에 `GNS3.<node>.<project id>` 컨테이너가 생김
-- Debian `docker-cli`: GNS3가 docker 노드를 `docker exec`로 닫음
-- `busybox-static`: GNS3가 docker 노드마다 복사해 넣음
-- 호스트 pid 네임스페이스(`pid: host`): uBridge가 노드 인터페이스를 컨테이너의 호스트 pid 네임스페이스로 옮김
-- `qemu-system-x86`: 시스템 구성도의 `qemu` 노드용
-
-이미지 관련:
-
-- 3.1.0a6은 `[ai-features]` extra 없이는 시작하지 않음. 이 extra의 copilot은 시작할 때 skills 레포를 clone함. 이미지에서 `skills_config.py`의 `enabled`를 `False`로 바꿈. 그 줄이 없어지면 이미지 빌드 실패
-- 호스트 데몬은 bind mount를 호스트 경로로 해석. 그래서 데이터 디렉터리는 양쪽 모두 `/var/lib/cr-gns3`
-- 서버는 `gns3` 사용자로 돎. 플랫폼의 `cr`처럼 시작할 때 소켓 그룹에 들어감
-
-`GET /api/topology/`는 substrate의 학습자용 구성도를 반환합니다. `?session=<id>`를 붙이면 그 세션 워게임의 구성도를 반환합니다.
-
-- 구성도는 GNS3(`platform/gns3.py`)나 레포 파일에서 가져옴
-- `web_ui`는 GNS3 웹 UI의 해당 프로젝트를 가리킴. GNS3에서 프로젝트 상태가 `opened`일 때만 줌. 없으면 콘솔은 구성도가 열려 있지 않다고 표시
-- 구성도 창에는 이 구성도만 보임. 창 구성은 프레임 안 GNS3 웹 UI와 맞추기 버튼
-
-`GET /api/sessions/<id>/topology/`는 세션 워게임의 학습자용 구성도에 `project.nodes`를 덧붙입니다.
-
-- `project.nodes`: 같은 훈련 환경 조회에서 얻은 호스트 노드별·스위치별 주소, `running` 또는 `not reported` 상태
-- 오버레이에는 구성도에 있는 호스트와 구성도에 있는 스위치의 주소만 나열
-- 호스트는 훈련 환경이 보고한 이름으로 배치. 슬롯 컨테이너는 선언된 호스트 이름(`cr-kali`, `cr-waf`)으로 보고됨. 슬롯 접미사는 syslog 송신자 이름(`cr-waf-2`)에만 붙음
+- 창을 열 때 `/api/sessions/<id>/topology/`를 한 번 읽음. 주기적으로 다시 읽지 않음
+- cytoscape.js 3.34.4(`platform/console/static/map/cytoscape.min.js`, SHA-256 `081591ab735b2b6a3b31a3c60f8f3a3e2fee8c92939e0c7820ad1208571b6cd8`, MIT)로 그림. nginx가 `/static/map/`을 `/app/console/static/map/`에서 직접 줌
+- 배치: 영역을 왼쪽에서 오른쪽으로 놓음. 영역마다 스위치가 위, 장비가 아래 한 줄. 인터넷 구간과 다른 영역에 함께 붙은 장비(라우터)는 두 영역 사이. 센서는 스위치 위, 로그 수집기는 맨 위
+- 아이콘: GNS3 affinity 글리프를 정사각형 틀에 넣은 `host-*.svg`와 스위치 아이콘. 출처와 라이선스는 같은 폴더의 `SOURCES`, Kali 드래곤 로고의 상표 고지는 `host-kali.txt`
+- 읽기 전용: `autoungrabify`, `autounselectify`, 상자 선택 끔. 이동과 확대·축소만 됨
+- 콘솔과의 메시지: 첫 맞춤 뒤 `{map: "drawn"}`, 이후 `{fit}`를 받아 맞출 때마다 `{map: "fitted"}`. `{locate: {node|zone|label}}`에는 사각형, 영역 사각형(`zones`), 글자 사각형(`text`)으로 답함. 같은 origin의 메시지만 받음
 
 ## 격리 경계
 
@@ -491,7 +324,7 @@ Auditor 사용자에게는 프로젝트를 열 권한(`Project.Allocate`)이 없
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`: 시작 시 `geoip` ingest 파이프라인 PUT |
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`: Kibana API 경로를 앎. 관리용 API, Default space, space 접두어 없는 경로, `?namespaces=` 거부. `GET /kibana/s/<space>/api/spaces/space`에는 SOC space만 담은 응답을 직접 반환 |
-| GNS3 API | `platform/gns3.py` | `deploy/gns3/provision.py`(GNS3 컨테이너 안): admin으로 로그인해 학습자 계정 생성, 심볼 업로드. `deploy/gns3/auditor.html`(`/static/web-ui/map.html`로 서빙): learner로 로그인해 `/v3/projects/<id>/nodes`와 `/links` 읽기. 콘솔 구성도 창은 `gns3.py`가 준 포트와 경로의 웹 UI를 프레임으로 띄움 |
+| 슬롯 배선 읽기 | `platform/range/rangehost.py`(`WIRING`) | 없음. 출력 해석은 `platform/range/interfaces.py`, 학습자 이름과 그래프는 `platform/topology.py` |
 | CRS 설정과 nginx reload | `platform/rules/crs.py` | `entrypoint.sh`: `vm-terminal.sh cr-waf`로 슬롯 WAF 컨테이너 쉘 제공(훈련 환경 호스트로 ssh 후 `sudo docker exec -it sN-waf bash -l`). `range/rangehost.forwarding`: 훈련 환경 호스트에 audit 로그 rsyslog 전달 설정 작성. `deploy/range-host/slot.yaml`: `rangehost.LOGS` 경로로 WAF audit 로그 파일 마운트. 둘 다 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 `platform/tests/test_range_host.py`의 `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it`로 확인. F6의 WAF 창 단계 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`): `wargames.lesson`에서 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 채움. 플랫폼은 터미널을 조작하지 않음 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `declaration.yaml`의 각 센서 호스트(`sensor`는 `cr-edge`, `estate-sensor`는 `cr-range`): `suricata.py`에 넘길 룰 파일과 reload 명령 지정. `platform/range/rangehost.py`: 두 센서 설정(`deploy/range-host/edge-sensor.yaml`, `deploy/suricata/suricata.yaml`)과 compose 서비스 렌더링. `deploy/range-host/slot.sh`: 슬롯과 함께 센서 시작·정지, 초기화 때 센서 로그 파일 다시 열기, 에지 라우터 설정. 이후 기본 룰 적용은 `suricata.py` |
 | 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`: `/var/log/commands.log` 읽기. 터미널 연결 설정에 `cr-kali` 지정, `entrypoint.sh`에서 `vm-terminal.sh cr-kali` 실행. 웹사이트 창(`platform/api/site.py`)은 예외가 아님. 박스 접근은 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(훈련 환경 호스트 ssh 스트림으로 슬롯 Kali 컨테이너 접속)로만 함 |
@@ -1031,7 +864,7 @@ WAF 상태 스냅숏:
 
 세션 API는 단계 정보 중 아래 값만 브라우저로 보냅니다.
 
-- 보내는 것: check의 `kind`와 `form`, `options`(`form: order`면 학습자용 구성도에서 스위치를 뺀 모든 호스트), 단계 자신의 `match`나 `about`으로 가리킨 단계의 `match`, check에 `dev`가 있을 때 `dev: true`(정규식은 안 보냄), 기초 레슨 마지막 단계의 `solo`
+- 보내는 것: check의 `kind`와 `form`, `options`(`form: order`면 학습자 워게임의 장비 이름. customers는 빠짐), 단계 자신의 `match`나 `about`으로 가리킨 단계의 `match`, check에 `dev`가 있을 때 `dev: true`(정규식은 안 보냄), 기초 레슨 마지막 단계의 `solo`
 - `accept` 목록이나 정답 규칙은 브라우저로 나가지 않음
 - 단계의 `command`는 `progress`에 그 단계 진입이 기록된 뒤에야 응답에 들어감. 입력할 문구라 실행 버튼이나 복사 버튼은 없음
 - 통과 문장(`<text>.ok.<step>`, 선택형 단계에서 답에 따라 다르면 `<text>.ok.<step>.<option>`)과 단계형 시나리오의 정답은 `strings.html` 끝의 `{% comment %}` 구역에 둠. Django가 렌더링하지 않음
@@ -1169,8 +1002,8 @@ Kibana 쿼리와 개발자 도구 답:
 로케이터 종류:
 
 - `panel`: 콘솔 요소. 사이트 주소창, 룰 편집기, 목표 행 등
-- `map`: `node`, `link`, `label: [host, switch]`, `zone`. `{switch:<host>}`는 서버에서 풂
-- `map`의 `{locate}`에는 `deploy/gns3/auditor.html`이 `postMessage`로 답함. `node`는 장비 아이콘과 이름만 포함하고 링크의 주소 라벨은 뺌. board.com 테두리 안에 그 단계가 묻는 주소가 보이지 않음
+- `map`: `node`, `label: [host, 망]`, `zone`. `zone`의 `service`, `database`, `internet`은 서버에서 그 세션의 망 이름으로 풂
+- `map`의 `{locate}`에는 `console/templates/console/map.html`이 `postMessage`로 답함. `node`는 장비 아이콘과 그 아래 글자. 링크의 주소 라벨은 선의 장비 쪽 끝에 있어 테두리 밖
 - `map`의 답: 사각형, 모든 영역 도형 사각형(`zones`), 노드·인터페이스 라벨·영역 캡션 사각형(`text`. 말풍선이 이들을 가리지 않게 함)
 - 이 페이지는 `{fit}`를 받으면 다시 맞춤. 첫 맞춤 뒤 `{map: "drawn"}`, 이후 맞출 때마다 `{map: "fitted"}`
 - `site`: 출처가 다른 사이트 프레임 안의 선택자. nginx가 주입한 스크립트가 응답
@@ -1276,13 +1109,13 @@ board의 `scenario.yaml`에 `foundations:` 목록을 선언합니다. discovery 
 **f1 구성도 읽기**(`lesson.map`). defense `full`, 구성도 창에서 시작.
 
 - kali와 board.com의 주소를 읽음
-- customers의 요청이 거치는 호스트를 순서대로 고름(`path`, 출발지 `customers`)
+- 웹 요청이 거치는 호스트를 순서대로 고름(`path`, 출발지 `kali`. 고객 주소도 kali에 붙어 있음)
 - DMZ 네트워크를 읽고, 로그를 모으는 호스트를 답함
 - 혼자 푸는 단계: waf의 주소. 호스트가 어느 영역에 있는지는 묻지 않음
 - 답은 세션의 학습자용 구성도에서 읽음(`views._range_fact`: `topology.learner`를 거친 `topology.address`, `topology.subnet`, `topology.route`, `topology.hosts`)
   - `address`: 링크 라벨의 주소. 프리픽스 길이는 있어도 없어도 됨
-  - `subnet`: 호스트가 붙은 스위치의 네트워크
-  - `path`: 단계의 `from`(기본 `customers`), 구성도에 있는 경유 역할, 사이트 순(`customers > router > waf > board.com`)
+  - `subnet`: 호스트가 붙은 첫 영역(인터넷 구간, DMZ, DB존 순)의 네트워크
+  - `path`: 단계의 `from`(기본 `kali`), 구성도에 있는 경유 역할, 사이트 순(`kali > router > waf > board.com`)
   - `logs`: `log-server` 노드
 
 **f2 개발자 도구로 HTTP 요청 읽기**(`lesson.http`). defense `full`, 웹사이트 창에서 시작.
@@ -1980,7 +1813,7 @@ Heat 템플릿 `deploy/openstack/platform.yaml`이 만드는 리소스:
 
 - 네트워크와 서브넷 `cr-platform`
 - 외부 네트워크로 나가는 라우터와 floating IP. `network.address`를 지정하면 프로젝트에 있는 floating IP를 연결만 함. 스택을 지워도 이 floating IP는 남음
-- tcp/22, tcp/8000, tcp/8002, tcp/3080, ICMP를 모든 주소에 여는 보안 그룹
+- tcp/22, tcp/8000, tcp/8002, ICMP를 모든 주소에 여는 보안 그룹
 - config drive를 붙인 Nova 서버 `cr-platform`
 
 템플릿에는 기본값이 없습니다. 파라미터는 모두 `deploy/openstack/cloud.yaml`에서 받습니다([cloud.yaml](OPENSTACK.md#4-cloudyaml)).
@@ -2007,7 +1840,7 @@ systemd 유닛 `cr-platform.service`는 부팅할 때마다 `compose.yaml`의 �
 
 포트:
 
-- cloud-init에서 `CR_PUBLISH`를 VM 고정 주소로 설정. 8000, 8002, 3080이 그 주소에 publish되고 보안 그룹에서도 열림. 브라우저는 floating IP로 콘솔에 접속
+- cloud-init에서 `CR_PUBLISH`를 VM 고정 주소로 설정. 8000, 8002가 그 주소에 publish되고 보안 그룹에서도 열림. 브라우저는 floating IP로 콘솔에 접속
 - `CR_SYSLOG_PUBLISH=0.0.0.0`: 훈련 환경 호스트의 syslog를 받으려고 5140/udp를 모든 주소에 publish
 - 9200: loopback에만
 

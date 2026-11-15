@@ -24,7 +24,7 @@ tenant:                           # fsl-range — two VMs on `com01`
     cr-platform: 10.20.0.0/24    # the Heat stack's network; the floating IP terminates here
     cr-mgmt:     10.31.0.0/24    # the fabric's only network (fabric.py CARRIED), tagged cr.segment.id=mgmt; DHCP, no gateway
   security_groups:
-    cr-platform: "the platform VM's port on cr-platform: tcp 22, 8000, 8002, 3080, icmp (Heat stack)"
+    cr-platform: "the platform VM's port on cr-platform: tcp 22, 8000, 8002, icmp (Heat stack)"
     cr-reach:    "the platform's cr-mgmt port: NTP udp 123 from cr-mgmt members, syslog udp 5140 from the range host"
     cr-mgmt:     "the range host's cr-mgmt port: only members of cr-reach"
     cr-egress:   "the range host's cr-platform port, no ingress; detached once its setup reports ready"

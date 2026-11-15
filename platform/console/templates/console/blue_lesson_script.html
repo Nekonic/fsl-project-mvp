@@ -206,7 +206,7 @@ async function addressesFill() {
   const read = await api(lessonPath("lesson/addresses/"));
   const listed = read.ok && read.body && Array.isArray(read.body.addresses) ? read.body.addresses : [];
   const rows = listed.length ? listed.map((one) =>
-    `<tr class="border-t border-line"><td class="py-1 pr-2 font-mono text-heading">${esc(one.host)}</td><td class="py-1 pr-2 text-muted">${esc(one.zone)}</td><td class="py-1 font-mono text-heading">${esc(one.address)}</td></tr>`).join("")
+    `<tr class="border-t border-line"><td class="py-1 pr-2 font-mono text-heading">${esc(one.host)}</td><td class="py-1 pr-2 text-muted">${esc(t(`topology.zone.${one.zone}`))}</td><td class="py-1 font-mono text-heading">${esc(one.address)}</td></tr>`).join("")
     : `<tr><td class="py-1 text-muted">${esc(t("lesson.ref.addresses.none"))}</td></tr>`;
   tables.forEach((table) => { table.querySelector("tbody").innerHTML = rows; });
 }

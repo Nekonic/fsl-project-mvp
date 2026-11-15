@@ -18,7 +18,7 @@ from api.models import Case, Detection, Objective, RuleSet, Session
 from console import strings
 from range import declared
 from range.ports import Ran
-from tests.test_gns3_maps import read_slot
+from tests.test_live_map import read_slot
 from tests.test_lesson_api import DUMPED, TRUTH, WRITTEN, Stand, attacker, one_slot
 from tests.test_scenario_discovery import A_SCENARIO
 from tests.test_strings import tables
@@ -26,7 +26,6 @@ from tests.test_strings import tables
 pytestmark = pytest.mark.django_db
 
 ROOT = Path(__file__).resolve().parents[2]
-TOPOLOGY = ROOT / "deploy" / "topology" / "range-openstack.gns3"
 SQLMAP_AGENT = "sqlmap/1.8.4#stable (https://sqlmap.org)"
 BOARD = "10.30.0.184"
 WAF = "10.30.0.177"
@@ -73,7 +72,7 @@ def on_map(found):
     return patch("api.views._map_found", lambda session: found)
 
 def on_the_range():
-    return override_settings(CR_TOPOLOGY=TOPOLOGY, RANGE=declared.read())
+    return override_settings(RANGE=declared.read())
 
 def detected(session, detection_id, source, marker, signature="", src_ip=None, **raw):
     return Detection.objects.create(session=session, detection_id=detection_id, source=source, signature=signature,
@@ -162,7 +161,7 @@ def test_every_step_opens_a_pane_points_at_one_element_and_the_last_is_solo_with
     assert [one["solo"] for one in steps] == [False] * 7 + [True]
 
 def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_learner_s_map_shows(client):
-    route = "customers > router > waf > board.com"
+    route = "kali > router > waf > board.com"
     session = opened("f1")
     with on_the_range(), on_map(read_slot()):
         given = {
@@ -173,16 +172,17 @@ def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_lear
             "waf_ip": [answer(client, session, "waf_ip", one)["passed"] for one in (WAF, BOARD)],
         }
         reordered = answer(client, session, "path", " > ".join(reversed(route.split(" > "))))
-        from_kali = answer(client, session, "path", "kali > router > waf > board.com")
+        from_customers = answer(client, session, "path", "customers > router > waf > board.com")
         right = answer(client, session, "path", route)
         shown = {one["id"]: one for one in client.get(f"/api/sessions/{session.pk}/").json()["lesson"]["steps"]}
 
     assert given == {"kali_ip": [True, False], "board_ip": [True, True, False], "dmz": [True, False],
                      "log_host": [True, False], "waf_ip": [True, False]}
     assert reordered["reason"] == ["lesson.map.wrong.path.order", []], "right hosts in the wrong order say so"
-    assert from_kali["passed"] is False and right["passed"] is True
-    assert set(route.split(" > ")) <= set(shown["path"]["check"]["options"]) and "sw1" not in shown["path"]["check"]["options"]
-    assert shown["dmz"]["point"]["map"] == {"zone": "sw1"}
+    assert from_customers["passed"] is False and right["passed"] is True, "customers are addresses on kali"
+    assert set(route.split(" > ")) <= set(shown["path"]["check"]["options"])
+    assert not {"customers", "sw1", "internet"} & set(shown["path"]["check"]["options"])
+    assert shown["dmz"]["point"]["map"] == {"zone": "estate"}
 
 def test_the_reference_s_address_table_lists_the_addresses_the_learner_s_map_draws(client):
     session = opened("f3")
@@ -190,11 +190,11 @@ def test_the_reference_s_address_table_lists_the_addresses_the_learner_s_map_dra
         listed = client.get(f"/api/sessions/{session.pk}/lesson/addresses/").json()["addresses"]
 
     rows = {(one["host"], one["zone"], one["address"]) for one in listed}
-    assert {("kali", "인터넷", KALI), ("waf", "DMZ", WAF), ("board.com", "DMZ", BOARD)} <= rows
-    assert not [one for one in listed if one["address"].startswith("172.18.")], "no Docker bridge address"
-    networks = {one["host"]: one["network"] for one in listed}
-    assert networks["kali"] == ""
-    assert networks["board.com"] == str(ipaddress.ip_interface(f"{BOARD}/24").network)
+    assert {("kali", "internet", KALI), ("waf", "dmz", WAF), ("board.com", "dmz", BOARD),
+            ("board.com", "database", "172.18.0.3")} <= rows, "every link the map labels"
+    networks = {(one["host"], one["zone"]): one["network"] for one in listed}
+    assert networks[("kali", "internet")] == ""
+    assert networks[("board.com", "dmz")] == str(ipaddress.ip_interface(f"{BOARD}/24").network)
 
 @pytest.mark.parametrize("lesson_id, step_id, url, status, right, wrong, reason", [
     ("f2", "path", "/search/?q=hello", 200, "/search/", "board.com/search/", "lesson.http.wrong.path.host"),

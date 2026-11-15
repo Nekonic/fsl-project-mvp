@@ -42,7 +42,6 @@ urlpatterns = [
     path("api/sessions/<int:session_id>/site/requests/<int:request_id>/", site.site_request),
     path("site-proxy/<int:session_id>/<str:host>/", site.proxy),
     path("api/detections/<int:detection_id>/", views.detection_detail),
-    path("api/topology/", views.range_topology),
     path("api/range/fabric/", views.range_fabric),
     path("api/range/leftovers/", views.range_leftovers),
     path("api/range/slot/", views.range_slot),
@@ -59,4 +58,5 @@ urlpatterns = [
     path("session/<int:session_id>/", console.session),
     path("red/<int:session_id>/", console.red),
     path("blue/<int:session_id>/", console.blue),
+    path("map/<int:session_id>/", console.network_map),
 ]

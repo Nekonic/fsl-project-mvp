@@ -70,9 +70,8 @@ what lets a piece be swapped without touching the rest.
 - `platform/rules/crs.py` — the CRS/ModSecurity configuration and the nginx
   reload.
 - `platform/kibana.py` — the Kibana API.
-- `platform/gns3.py` — the GNS3 API (its container's own
-  `deploy/gns3/provision.py` and `deploy/gns3/auditor.html`, served as
-  `map.html`, aside).
+- `platform/range/rangehost.py` — the read of the slot's live wiring that the
+  learner map draws (`WIRING`; `range/interfaces.py` parses it).
 - `platform/attacker.py` — the attacker box and its marker.
 - `platform/api/loot.py` — the board: reads the target's own records and
   matches submitted stolen data against them.

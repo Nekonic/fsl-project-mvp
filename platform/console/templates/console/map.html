@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title></title>
+<style>
+  :root {
+    --font-sans: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --panel: #FFFFFF;
+    --text-muted: #64748B;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--panel); font-family: var(--font-sans); }
+  #map { position: fixed; inset: 0; }
+  #said { position: fixed; left: 16px; top: 12px; color: var(--text-muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<p id="said"></p>
+{% include "console/strings.html" %}
+<script src="/static/map/cytoscape.min.js"></script>
+<script>
+const SYMBOLS = {
+  kali: "host-kali.svg", router: "host-router.svg", waf: "host-shield.svg", server: "host-server.svg",
+  database: "host-storage.svg", logs: "host-statistics.svg", sensor: "host-inspect.svg", switch: "switch.svg",
+  host: "host-server.svg",
+};
+const COLOURS = { internet: "#b03a2e", dmz: "#2e6da4", database: "#4a6fa5" };
+const LINK = "#1b4f8a";
+const MIRROR = "#8a5a00";
+const LOGS = "#5b6770";
+const GAP = 140;
+const ROW = 150;
+const ZONE_GAP = 120;
+const SENSOR_RISE = 120;
+const COLLECTOR_RISE = 270;
+const MARGIN = 24;
+const LOCATE_EVERY_MS = 150;
+const session = location.pathname.split("/")[2];
+const font = getComputedStyle(document.body).fontFamily;
+const view = { cy: null, told: false, asked: null, last: "", timer: null };
+
+const zoneId = (zone) => `zone:${zone}`;
+const switchId = (zone) => `switch:${zone}`;
+
+function captioned(zone) {
+  return [t(`topology.zone.${zone.caption}`), zone.subnet].filter(Boolean).join(" ");
+}
+
+function named(node) {
+  if (node.kind === "sensor") return t("topology.sensor");
+  if (node.kind === "logs") return [node.name, t("topology.collector", node.port)].join("\n");
+  if (node.customers && node.customers.address) {
+    const note = node.customers.more ? t("topology.customers_more", node.customers.address, node.customers.more)
+      : t("topology.customers", node.customers.address);
+    return [node.name, note].join("\n");
+  }
+  return node.name || "";
+}
+
+const ACROSS = ["kali", "router", "waf", "server", "database"];
+const rankOf = (node) => (ACROSS.includes(node.kind) ? ACROSS.indexOf(node.kind) : ACROSS.length);
+
+function laidOut(map) {
+  const placed = {};
+  const homes = {};
+  const zones = map.zones.map((zone) => zone.id);
+  const between = [];
+  map.nodes.filter((node) => node.zones).forEach((node) => {
+    if (node.zones.length > 1 && node.zones.includes("internet")) between.push(node);
+    else homes[node.id] = node.zones[0];
+  });
+  let x = 0;
+  zones.forEach((zone, index) => {
+    if (index === 1) between.forEach((node, at) => {
+      placed[node.id] = { x: x + ZONE_GAP / 2, y: at * ROW };
+      x += ZONE_GAP;
+    });
+    const members = map.nodes.filter((node) => homes[node.id] === zone)
+      .sort((one, other) => rankOf(one) - rankOf(other) || one.id.localeCompare(other.id));
+    const width = Math.max(1, members.length) * GAP;
+    const centre = x + width / 2;
+    placed[switchId(zone)] = { x: centre, y: 0 };
+    members.forEach((node, at) => { placed[node.id] = { x: x + GAP / 2 + at * GAP, y: ROW }; });
+    map.nodes.filter((node) => node.kind === "sensor" && node.zone === zone)
+      .forEach((node, at) => { placed[node.id] = { x: centre + at * GAP, y: -SENSOR_RISE }; });
+    x += width + ZONE_GAP;
+  });
+  const logged = map.edges.filter((edge) => edge.kind === "logs").map((edge) => edge.source);
+  const below = logged.filter((id) => !id.startsWith("sensor:")).map((id) => placed[id]).filter(Boolean);
+  const sources = logged.map((id) => placed[id]).filter(Boolean);
+  map.nodes.filter((node) => node.kind === "logs").forEach((node) => {
+    const centre = sources.reduce((sum, at) => sum + at.x, 0) / Math.max(1, sources.length);
+    placed[node.id] = { x: below.length ? below[0].x - GAP / 2 : centre, y: -COLLECTOR_RISE };
+  });
+  return placed;
+}
+
+function elements(map) {
+  const placed = laidOut(map);
+  const parentOf = (node) => {
+    if (node.kind === "switch" || node.kind === "sensor") return zoneId(node.zone);
+    if (!node.zones || (node.zones.length > 1 && node.zones.includes("internet"))) return undefined;
+    return zoneId(node.zones[0]);
+  };
+  const zones = map.zones.map((zone) => ({ group: "nodes", classes: "zone",
+    data: { id: zoneId(zone.id), label: captioned(zone), colour: COLOURS[zone.caption] || LOGS } }));
+  const nodes = map.nodes.map((node) => ({ group: "nodes", classes: node.kind === "switch" ? "switch" : `device ${node.kind}`,
+    position: placed[node.id] || { x: 0, y: 0 },
+    data: { id: node.id, parent: parentOf(node), label: named(node), name: node.name || "",
+            symbol: `/static/map/symbols/${SYMBOLS[node.kind] || SYMBOLS.host}` } }));
+  const edges = map.edges.map((edge) => ({ group: "edges", classes: edge.kind,
+    data: { id: edge.id, source: edge.source, target: edge.target, address: edge.address || "",
+            label: edge.kind === "mirror" ? t("topology.mirror") : "" } }));
+  return [...zones, ...nodes, ...edges];
+}
+
+const STYLE = [
+  { selector: "node", style: { "font-family": font, "font-size": 11, color: "#0F172A" } },
+  { selector: "node.zone", style: {
+    shape: "rectangle", "background-color": "data(colour)", "background-opacity": 0.06,
+    "border-width": 2, "border-color": "data(colour)", label: "data(label)", "text-valign": "top",
+    "text-halign": "center", "font-size": 13, "font-weight": "bold", color: "data(colour)",
+    "text-margin-y": 10, "text-background-color": "#FFFFFF",
+    "text-background-opacity": 1, "text-background-padding": 3, padding: 28 } },
+  { selector: "node.device, node.switch", style: {
+    shape: "rectangle", width: 52, height: 52, "background-opacity": 0, "border-width": 0,
+    "background-image": "data(symbol)", "background-fit": "contain", "background-clip": "none" } },
+  { selector: "node.device", style: {
+    label: "data(label)", "text-valign": "bottom", "text-halign": "center", "text-margin-y": 6,
+    "text-wrap": "wrap", "line-height": 1.35 } },
+  { selector: "node.device.logs", style: { "text-valign": "top", "text-margin-y": -6 } },
+  { selector: "edge", style: { width: 2, "curve-style": "straight", "line-color": LINK, "font-family": font,
+    "font-size": 10 } },
+  { selector: "edge.link", style: {
+    "source-label": "data(address)", "source-text-offset": 52, color: LINK, "z-index": 3,
+    "text-background-color": "#FFFFFF", "text-background-opacity": 1, "text-background-padding": 2 } },
+  { selector: "edge.mirror", style: {
+    "line-color": MIRROR, "line-style": "dashed", label: "data(label)", color: MIRROR, "z-index": 3,
+    "text-background-color": "#FFFFFF", "text-background-opacity": 1, "text-background-padding": 2 } },
+  { selector: "edge.logs", style: {
+    "line-color": LOGS, "line-style": "dashed", "curve-style": "straight", "z-index": 1,
+    "target-arrow-shape": "triangle", "target-arrow-color": LOGS, "arrow-scale": 0.9 } },
+];
+
+function boxOf(ele, only) {
+  const box = ele.renderedBoundingBox(only);
+  return box && box.w > 0 && box.h > 0
+    ? { x: Math.round(box.x1), y: Math.round(box.y1), w: Math.round(box.w), h: Math.round(box.h) } : null;
+}
+
+const LABELS = { includeNodes: false, includeEdges: false, includeLabels: true, includeOverlays: false };
+const BODY = { includeLabels: false, includeOverlays: false };
+
+function located(spec) {
+  const cy = view.cy;
+  if (!cy || !spec) return null;
+  if (spec.node) {
+    const node = cy.nodes(".device").filter((one) => one.data("name") === spec.node || one.id() === spec.node);
+    return node.nonempty() ? boxOf(node, { includeOverlays: false }) : null;
+  }
+  if (spec.zone) {
+    const zone = cy.getElementById(zoneId(spec.zone));
+    return zone.nonempty() ? boxOf(zone, BODY) : null;
+  }
+  if (Array.isArray(spec.label)) {
+    const edge = cy.edges(".link").filter((one) => one.source().data("name") === spec.label[0]
+      && one.target().id() === switchId(spec.label[1]));
+    return edge.nonempty() ? boxOf(edge, { includeNodes: false, includeEdges: false, includeLabels: true,
+                                         includeMainLabels: false, includeSourceLabels: true,
+                                         includeTargetLabels: false, includeOverlays: false }) : null;
+  }
+  return null;
+}
+
+function textRects() {
+  const cy = view.cy;
+  if (!cy) return [];
+  const nodes = cy.nodes(".device").map((node) => boxOf(node, { includeOverlays: false }));
+  const captions = cy.nodes(".zone").map((zone) => boxOf(zone, { ...LABELS, includeMainLabels: true }));
+  const ends = cy.edges(".link, .mirror").map((edge) => boxOf(edge, { ...LABELS, includeSourceLabels: true,
+                                                               includeMainLabels: true }));
+  return [...nodes, ...captions, ...ends].filter(Boolean);
+}
+
+function zoneRects() {
+  return view.cy ? view.cy.nodes(".zone").map((zone) => boxOf(zone, BODY)).filter(Boolean) : [];
+}
+
+function answerLocate(always) {
+  if (!view.asked || !view.cy) return;
+  const rect = located(view.asked.spec);
+  const zones = zoneRects();
+  const text = textRects();
+  const said = JSON.stringify([rect, zones, text]);
+  if (!always && said === view.last) return;
+  view.last = said;
+  view.asked.to.postMessage({ located: view.asked.id, rect, zones, text }, view.asked.origin);
+}
+
+function locateAsked(event) {
+  clearInterval(view.timer);
+  const spec = event.data.locate;
+  if (!spec) {
+    view.asked = null;
+    return;
+  }
+  view.asked = { spec, id: event.data.id, to: event.source, origin: event.origin };
+  view.last = "";
+  if (!view.cy) return;
+  answerLocate(true);
+  view.timer = setInterval(() => answerLocate(false), LOCATE_EVERY_MS);
+}
+
+function fitted() {
+  if (!view.cy) return;
+  view.cy.resize();
+  view.cy.fit(undefined, MARGIN);
+  window.parent.postMessage({ map: view.told ? "fitted" : "drawn" }, location.origin);
+  view.told = true;
+}
+
+window.addEventListener("message", (event) => {
+  if (event.source !== window.parent || event.origin !== location.origin) return;
+  const said = event.data;
+  if (said === "fit" || (said && typeof said === "object" && said.fit)) fitted();
+  if (said && typeof said === "object" && "locate" in said) locateAsked(event);
+});
+
+let refit = null;
+window.addEventListener("resize", () => {
+  clearTimeout(refit);
+  refit = setTimeout(fitted, 250);
+});
+
+(async () => {
+  document.title = t("topology.view.map");
+  const said = document.getElementById("said");
+  said.textContent = t("topology.loading");
+  let read;
+  try {
+    const answer = await fetch(`/api/sessions/${session}/topology/`);
+    read = { ok: answer.ok, status: answer.status, body: await answer.json().catch(() => ({})) };
+  } catch (error) {
+    read = { ok: false, status: 0, body: { detail: String(error) } };
+  }
+  const map = read.body && read.body.map;
+  if (!read.ok || !map || !map.nodes.length) {
+    said.textContent = t("topology.unread", (map && map.detail) || read.body.detail || read.status);
+    window.parent.postMessage({ map: "drawn" }, location.origin);
+    return;
+  }
+  said.remove();
+  view.cy = cytoscape({
+    container: document.getElementById("map"), elements: elements(map), style: STYLE, layout: { name: "preset" },
+    autoungrabify: true, autounselectify: true, boxSelectionEnabled: false, userPanningEnabled: true,
+    userZoomingEnabled: true, minZoom: 0.3, maxZoom: 2.5,
+  });
+  view.cy.on("viewport", () => answerLocate(false));
+  fitted();
+  if (view.asked) {
+    answerLocate(true);
+    clearInterval(view.timer);
+    view.timer = setInterval(() => answerLocate(false), LOCATE_EVERY_MS);
+  }
+})();
+</script>
+</body>
+</html>

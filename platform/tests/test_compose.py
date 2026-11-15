@@ -154,7 +154,7 @@ def test_every_wargame_is_one_folder():
         "the console offers a wargame with no folder, or a folder with no wargame"
     )
 
-def test_only_the_platform_the_gns3_server_and_the_syslog_collector_may_be_published_elsewhere_and_only_by_choice():
+def test_only_the_platform_and_the_syslog_collector_may_be_published_elsewhere_and_only_by_choice():
     chosen = {
         (name, entry)
         for name, service in composed.services().items()
@@ -165,7 +165,6 @@ def test_only_the_platform_the_gns3_server_and_the_syslog_collector_may_be_publi
     assert chosen == {
         ("platform", "${CR_PUBLISH:-127.0.0.1}:8000:8000"),
         ("platform", "${CR_PUBLISH:-127.0.0.1}:8002:8002"),
-        ("gns3", "${CR_PUBLISH:-127.0.0.1}:3080:3080"),
         ("collector", "${CR_SYSLOG_PUBLISH:-127.0.0.1}:5140:5140/udp"),
     }, chosen
 

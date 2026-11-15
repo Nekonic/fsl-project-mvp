@@ -117,15 +117,6 @@ def waf_layout(shape):
 
 CR_WAF = waf_layout(RANGE)
 CR_SOURCE = os.environ.get("CR_SOURCE", str(BASE_DIR.parent))
-CR_TOPOLOGY = Path(CR_SOURCE) / "deploy" / "topology" / "range-openstack.gns3"
-CR_GNS3_URL = os.environ.get("CR_GNS3_URL", "")
-CR_GNS3_USER = os.environ.get("CR_GNS3_AUDITOR_USER") or "learner"
-CR_GNS3_PASSWORD = os.environ.get("CR_GNS3_AUDITOR_PASSWORD", "")
-CR_GNS3_PASSWORD_FILE = Path(os.environ.get("CR_GNS3_AUDITOR_PASSWORD_FILE") or "/run/cr-gns3/auditor-password")
-CR_GNS3_WEB_PORT = int(os.environ.get("CR_GNS3_WEB_PORT") or 3080)
-CR_GNS3_ADMIN_USER = os.environ.get("CR_GNS3_ADMIN_USER") or "admin"
-CR_GNS3_ADMIN_PASSWORD = os.environ.get("CR_GNS3_ADMIN_PASSWORD", "")
-CR_GNS3_ADMIN_PASSWORD_FILE = Path(os.environ.get("CR_GNS3_ADMIN_PASSWORD_FILE") or "/run/cr-gns3/admin-password")
 
 CR_SUBSTRATE_OPTIONS = dict(
     {

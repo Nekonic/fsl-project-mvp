@@ -111,7 +111,7 @@ member user. cloud-init writes `CR_SUBSTRATE=range.openstack.connect` on the
 platform VM to select this.
 
 The platform VM runs only the control plane as containers: platform,
-Elasticsearch, Kibana, gns3 and the collector. `docker compose` pulls their
+Elasticsearch, Kibana and the collector. `docker compose` pulls their
 prebuilt images from GHCR. Every acceptance test runs and passes on OpenStack
 (`docs/DECISIONS.md` 2026-10-11, which replaced the 2026-10-08 spec's
 "OpenStack work, not MVP"); the one skip is by design (§7).
@@ -355,7 +355,7 @@ an allowlist, also allow the hosts the registries redirect to.
 
 | Who | Reaches | For |
 |---|---|---|
-| platform VM (cloud-init, `cr-platform.service`) | the Ubuntu archive; github.com; ghcr.io; docker.elastic.co; geoip.elastic.co | `apt` (Docker, git, chrony); `git clone` of `platform.repository`; `cr-platform` and `cr-gns3`; Elasticsearch, Kibana and Filebeat; `bin/fetch-geoip` |
+| platform VM (cloud-init, `cr-platform.service`) | the Ubuntu archive; github.com; ghcr.io; docker.elastic.co; geoip.elastic.co | `apt` (Docker, git, chrony); `git clone` of `platform.repository`; `cr-platform`; Elasticsearch, Kibana and Filebeat; `bin/fetch-geoip` |
 | the range host (`deploy/range-host/setup.sh`) | the Ubuntu archive; ghcr.io; Docker Hub | `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog`; `cr-kali`, `cr-waf`, `cr-edge`, `cr-board`, `cr-corp`, `cr-corp-db`; the pinned Suricata (`jasonish/suricata`) and MySQL images |
 | the controller node, where `bin/cloud` runs | the cloud's API; the floating IP; github.com; ghcr.io | `bin/cloud`; the check that the images can be pulled |
 
@@ -510,7 +510,7 @@ names them, so `init` keeps them.
 
 | Group | Made by | Rules |
 |---|---|---|
-| `cr-platform` | Heat stack | tcp 22, tcp 8000, tcp 8002, tcp 3080, icmp in |
+| `cr-platform` | Heat stack | tcp 22, tcp 8000, tcp 8002, icmp in |
 | `cr-reach` | fabric | on the platform's `mgmt` port; nothing in except udp 123 (NTP) from members of `cr-mgmt`, then udp 5140 from exactly the range host's `mgmt` address (`configure/`) |
 | `cr-mgmt` | fabric | on the range host's `mgmt` port; all IPv4 in, only from members of `cr-reach` (the platform's `mgmt` port) |
 | `cr-egress` | fabric | on the range host's port on the platform's network, which it pulls its images over; no rule in |
@@ -550,13 +550,9 @@ printf 'allow 10.31.0.0/24\nlocal stratum 10\n' | sudo tee /etc/chrony/conf.d/cr
 sudo apt-get -y install chrony
 ```
 
-Port 3080 is the GNS3 server (`compose.yaml` `gns3`). The blue console's Map
-pane shows its web UI in a frame. A platform stack made before P1 of the
-scenario course lacks the rule. Add it by hand:
-
-```bash
-openstack security group rule create --protocol tcp --dst-port 3080 cr-platform
-```
+Port 3080 served the GNS3 map until 2026-11-15. The map is now a page on port
+8000 (`/map/<session>/`), and the Heat template no longer opens 3080; a stack
+update removes the rule from a stack made before.
 
 ### 3.6 Images
 
@@ -871,7 +867,7 @@ uv run bin/platform-rebuild    # --cloud PATH, --ref REF, --sideload NAME=TARBAL
 This command replaces the platform VM without losing data. It does these steps:
 
 1. It refuses unless every image `images.yml` publishes (`platform`, `board`,
-   `corp`, `corp-db`, `gns3`, `kali`, `waf`, `edge`) is public on GHCR for the
+   `corp`, `corp-db`, `kali`, `waf`, `edge`) is public on GHCR for the
    ref's commit, except the ones it sideloads.
 2. It keeps the range key (`keys.range`), which it takes once from the running
    platform.
@@ -984,7 +980,7 @@ docker save -o cr-platform-$C.tar ghcr.io/nekonic/cr-platform:$C
 uv run bin/cloud up --replace --sideload platform=cr-platform-$C.tar
 ```
 
-The `gns3` image goes the same way. The refusal names every image whose build
+Every other image goes the same way. The refusal names every image whose build
 context differs from HEAD.
 
 A sideloaded VM that reboots runs `cr-platform.service` again. Its `compose
