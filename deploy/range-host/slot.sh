@@ -129,6 +129,9 @@ spanned() {
 }
 
 mirrored() {
+  for port in $(ls "/sys/class/net/s$n-inet/brif" 2>/dev/null); do
+    tc qdisc del dev "$port" clsact 2>/dev/null || true
+  done
   spanned estate dmz
   spanned web web
 }
@@ -163,7 +166,7 @@ logs_emptied() {
 up() {
   prepare
   uplinked
-  compose up --no-start --pull never
+  compose up --no-start --pull never --remove-orphans
   restore $(wargames)
   compose up -d --wait --wait-timeout "$WAIT" --pull never
   address_kali
