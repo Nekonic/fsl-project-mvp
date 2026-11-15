@@ -209,10 +209,10 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체
 | 8000 | 콘솔, `/api/`, 구성도(`/map/`), Kibana(`/kibana/`), 터미널(`/vm-terminal/`) | 브라우저 |
 | 8002 | 대상 사이트(`/site/<세션 id>/<host>/<path>`) | 콘솔 안의 iframe |
 | 5140/udp | collector | 훈련 환경 호스트의 rsyslog |
-| 5601 | Kibana 직접 접속, VM loopback 전용 | ssh 터널 |
-| 9200 | Elasticsearch, VM loopback 전용 | acceptance 테스트 |
+| 5601 | Kibana 직접 접속, VM loopback 전용 | ssh 터널, `elastic`으로 로그인 |
+| 9200 | Elasticsearch, VM loopback 전용 | acceptance 테스트, `elastic`으로 인증 |
 
-- 8002는 콘솔과 다른 origin이라 대상 사이트의 스크립트가 콘솔을 읽지 못합니다.
+- 8002는 콘솔과 다른 origin이라 대상 사이트의 스크립트가 콘솔을 읽지 못합니다. 로그인은 8000과 같이 씁니다.
 - `board.com`과 `corp.com`은 훈련 환경 안에서만 응답합니다. 8002는 요청을 그 세션의
   Kali 컨테이너에서 고객 주소로 내보냅니다.
 
@@ -298,14 +298,24 @@ sudo docker compose start platform
 
 ## 보안
 
-실습 전용 환경입니다. 현재 상태:
+실습 전용 환경입니다. 표면마다 막는 장치는 다음과 같습니다.
 
-- 콘솔(8000)과 `/vm-terminal/`에 로그인이 없습니다. 터미널은 슬롯의 Kali·WAF root
-  셸입니다.
-- Elasticsearch 보안 기능이 꺼져 있습니다. 9200, 5601은 VM loopback에만 열립니다.
-- 학습자용 컨테이너는 capability를 최소로 두고 `no-new-privileges`, user namespace
-  remap으로 돕니다. 슬롯은 훈련 환경 호스트의 커널을 공유합니다.
-- 프로젝트 비밀번호가 `/opt/cr/openstack.env`에 평문으로 있습니다.
+| 표면 | 보호 |
+|---|---|
+| 콘솔(8000)과 `/api/` | Django 로그인. 세션 쿠키는 HttpOnly, SameSite=Lax. 쓰기 요청은 CSRF 토큰과 같은 출처 필요. CORS 헤더 없음 |
+| `/vm-terminal/`, `/kibana/`, 8002(`/site/...`) | nginx `auth_request`로 같은 로그인 세션 확인. 없으면 로그인 페이지로 |
+| 8002의 대상 사이트 | 콘솔 쿠키를 지운 뒤 대상에 넘기고, 대상의 `Set-Cookie`는 브라우저로 보내지 않음. 사이트의 스크립트는 세션 쿠키도 CSRF 토큰도 읽지 못함 |
+| Elasticsearch, Kibana | 보안 기능 켬. `elastic` 비밀번호는 첫 시작 때 만들어 플랫폼 데이터 볼륨에 0600으로 둠. Kibana는 서비스 계정 토큰으로 접속. 학습자에게는 읽기 전용 계정 `cr-viewer`를 nginx가 붙여 줌. 9200, 5601은 VM loopback 전용 |
+| 프로젝트 비밀번호 | `/opt/cr/openstack-password`(0600)를 compose secret으로 읽기 전용 마운트. 컨테이너 환경 변수에는 없음 |
+| 플랫폼 VM 인바운드 | ssh, 8000, 8002는 `cloud.yaml`의 `network.allowed`에서만. 기본값 `[0.0.0.0/0]` |
+| 슬롯의 학습자용 컨테이너 | Kali, WAF, 두 DB는 gVisor(`runsc`) 위에서 돎. board, corp 웹 앱은 DB를 이름으로 찾는데 gVisor에서는 Docker 내장 DNS에 닿지 않아 runc. 모두 capability 최소화, `no-new-privileges`, userns-remap. 센서와 에지 라우터는 runc |
+| Docker 소켓 | 플랫폼 VM의 어떤 서비스에도 마운트하지 않음 |
+
+초기 계정은 `admin` / `123456`입니다. 비밀번호를 바꾸라고 요구하지 않습니다. 바꾸려면:
+
+```bash
+sudo docker exec -it -u cr cr-platform python manage.py changepassword admin
+```
 
 위협 모델은 [THREAT-MODEL.md](docs/THREAT-MODEL.md)에 있습니다.
 

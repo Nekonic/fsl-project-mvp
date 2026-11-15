@@ -75,10 +75,23 @@ def test_a_learner_facing_container_mounts_nothing_of_the_host_beyond_its_own_lo
             f"most its own log file")
 
 
-@pytest.mark.parametrize("name", LEARNER_FACING)
-def test_every_learner_facing_container_runs_on_gvisor_s_kernel_not_the_range_host_s(name):
+SANDBOXED = ("kali", "waf", "board-db", "corp-db")
+RESOLVE_THEIR_DATABASE_BY_NAME = ("board", "corp-wp")
+
+
+@pytest.mark.parametrize("name", SANDBOXED)
+def test_the_learner_s_shells_and_the_databases_run_on_gvisor_s_kernel_not_the_range_host_s(name):
     assert slot_document()["services"][name].get("runtime") == rangehost.SANDBOX, (
         f"{name} runs on runc, so one kernel bug reachable through its seccomp profile reaches the range host"
+    )
+
+
+@pytest.mark.parametrize("name", RESOLVE_THEIR_DATABASE_BY_NAME)
+def test_the_applications_stay_on_runc_while_they_reach_their_database_by_name(name):
+    assert set(SANDBOXED) | set(RESOLVE_THEIR_DATABASE_BY_NAME) == set(LEARNER_FACING)
+    assert not slot_document()["services"][name].get("runtime"), (
+        f"{name} finds its database through docker's embedded DNS at 127.0.0.11, which gVisor's netstack "
+        f"does not reach; on runsc it exits with Unknown server host"
     )
 
 
