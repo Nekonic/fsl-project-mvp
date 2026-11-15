@@ -1946,8 +1946,9 @@ binary log via a substrate runner, proven end to end against the live stack.
       targets already need no DNS (fixed backend addresses in `/etc/hosts`)
       and carry `iproute2`, and `slot.sh` reaches into a sandbox, so moving
       them is a change to `slot.yaml` and `test_containment.py`.
-- [ ] Sign-in has no rate limit, and `admin` / `123456` is never forced to
-      change (the user's ruling). A password change is
+- [ ] `admin` / `123456` is never forced to change (the user's ruling). The
+      sign-in limits of 2026-11-16 slow guessing; they do not help against a
+      default anyone can read. A password change is
       `manage.py changepassword admin` in the platform container.
 
 ## Known gaps

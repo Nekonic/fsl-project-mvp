@@ -68,7 +68,37 @@ comes from.** Every console page and every `/api/` endpoint needs a signed-in
 Django session; the terminals, `/kibana/` and port 8002 ask the same session
 through nginx's `auth_request`. The first start makes `admin` with the password
 `123456`, and nothing makes anyone change it, so the password stops nobody who
-knows the default. The platform stands on the management network only,
+knows the default. Anyone who reaches port 8000 can sign up, but a sign-up
+makes an inactive account that cannot sign in, open a session or pass
+`auth_request` until an admin approves it on the console's account screen (`/users/`); a rejected one is
+deleted. An approved learner can do everything the console offers except
+manage accounts, including changing the shared rules of a session.
+
+Abuse limits. nginx answers 429 past 5 sign-in POSTs a minute per address
+(burst 5), 1 sign-up POST a minute (burst 3), 20 `/api/` requests a second
+per session cookie (burst 40) and 100 per address (burst 200), and 10 open
+connections per session cookie to the terminals and port 8002. Django locks a
+username for 15 minutes after 10 wrong passwords, takes 5 sign-ups an hour
+from one address and stops taking them while 50 wait for approval, and lets a
+learner hold one open session (staff are exempt, so acceptance can open
+several). Their limits:
+
+- The lock is per username, so anyone can lock `admin` out for 15 minutes by
+  failing 10 times; the per-address limit makes that take about a minute
+  from one address.
+- The counters live in Django's local-memory cache and reset when the platform
+  restarts. One waitress process holds them, so its threads share them.
+- The per-cookie keys trust a cookie the client chooses; a client that sends a
+  new cookie each time is held by the per-address limits only.
+- Requests from the platform host itself (loopback, the Docker gateway
+  `172.31.0.1`, the IP literals in `DJANGO_ALLOWED_HOSTS`) are not limited by
+  nginx, so `bin/verify` on the VM is not throttled. Through the floating IP
+  the VM reaches itself with that address as the source; anything else that
+  reached the platform from it would be spared too.
+- One open session per learner is checked before the session is created, not
+  under a lock; two requests at the same instant can both pass.
+
+The platform stands on the management network only,
 and no slot container has a route to it: every slot network but the 관제망 is
 internal and its bridge carries no address of the range host. The 관제망 lets
 out one path, the log server's 5140/udp to the collector, and no learner-facing

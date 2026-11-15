@@ -100,7 +100,11 @@
 
 워게임 `compose.yaml`에는 `container_name`을 쓰지 않습니다. 컨테이너 이름은 슬롯에서 `sN-<service>`로 붙습니다(`s1-board`, `s2-corp-wp`). 호스트 이름은 서비스 이름 그대로입니다. 고정 이름은 컨트롤 플레인의 `cr-platform`, `cr-elasticsearch`, `cr-kibana`, `cr-collector`뿐입니다. 아래 서비스 표도 이 이름을 씁니다.
 
-모든 콘솔 페이지와 `/api/` 엔드포인트는 로그인을 요구합니다(`api/signin.py`의 `SignedInOnly`). 로그인 없이 열리는 것은 로그인 페이지 `/login/`, `GET /api/auth/`(현재 사용자와 CSRF 토큰), `POST /api/auth/login/`뿐입니다. 로그인하지 않은 API 요청은 401, 페이지 요청은 로그인 페이지로 갑니다. POST, PUT, DELETE는 `X-CSRFToken` 헤더가 있어야 합니다. 토큰은 쿠키가 아니라 세션에 둡니다(`CSRF_USE_SESSIONS`). 첫 시작 때 `admin` / `123456` 계정을 만듭니다(마이그레이션 0030). 에이전트도 같은 REST로 로그인합니다(`redteam/signin.py`, `CR_ADMIN_USER`, `CR_ADMIN_PASSWORD`).
+모든 콘솔 페이지와 `/api/` 엔드포인트는 로그인을 요구합니다(`api/signin.py`의 `SignedInOnly`). 로그인 없이 열리는 것은 로그인 페이지 `/login/`, 회원가입 페이지 `/signup/`, `GET /api/auth/`(현재 사용자, 관리자 여부, CSRF 토큰), `POST /api/auth/login/`, `POST /api/auth/signup/`뿐입니다. 로그인하지 않은 API 요청은 401, 페이지 요청은 로그인 페이지로 갑니다. POST, PUT, DELETE는 `X-CSRFToken` 헤더가 있어야 합니다. 토큰은 쿠키가 아니라 세션에 둡니다(`CSRF_USE_SESSIONS`). 첫 시작 때 `admin` / `123456` 계정을 만듭니다(마이그레이션 0030). 에이전트도 같은 REST로 로그인합니다(`redteam/signin.py`, `CR_ADMIN_USER`, `CR_ADMIN_PASSWORD`).
+
+회원가입(`username`, `password`, `password_confirm`)은 Django `UserCreationForm`과 기본 비밀번호 검사기 넷으로 확인한 뒤 `is_active=False`, 비관리자 계정을 만들고 201 `{"pending": true}`를 돌려줍니다. 거부 사유는 `errors[].code`(Django 오류 코드)로 오고, 화면은 이 코드로 문구를 찾습니다. 승인 전 계정이 맞는 비밀번호로 로그인하면 403 `{"pending": true}`입니다. 비활성 계정은 세션이 있어도 `/auth-check/`에서 401입니다. 관리자(`is_staff`)는 `/users/`(계정 관리, 상단 링크)에서 `GET /api/users/`, `POST /api/users/<id>/approve/`, `POST /api/users/<id>/reject/`(승인 대기 계정만, 삭제)를 씁니다. 관리자가 아니면 403, 사용 중인 계정 거절은 409라서 관리자가 자기 계정을 없앨 수 없습니다.
+
+남용 제한은 두 층입니다. nginx(`platform/nginx.conf`)는 `POST /api/auth/login/` IP당 5r/m(버스트 5), `POST /api/auth/signup/` IP당 1r/m(버스트 3), `/api/` 세션 쿠키당 20r/s(버스트 40)와 IP당 100r/s(버스트 200), 터미널과 8002 사이트에 세션 쿠키당 동시 연결 10개를 둡니다. 넘으면 429입니다. 플랫폼 VM 자신(loopback, Docker 게이트웨이 172.31.0.1, `entrypoint.sh`가 `DJANGO_ALLOWED_HOSTS`의 IP로 만드는 `/tmp/nginx-platform-addresses.conf`)은 제외합니다. Django(`api/signin.py`, 기본 로컬 메모리 캐시)는 같은 아이디로 10번 틀리면 15분 잠그고(429, `locked_until`, `Retry-After`), 같은 주소의 가입을 시간당 5개로, 승인 대기 계정을 50개로 묶습니다(넘으면 503 `{"closed": true}`). 학습자 계정은 열린 세션을 하나만 가집니다. 두 번째 `POST /api/sessions/`는 409 `{"open_session": <id>}`입니다(`Session.owner`, 마이그레이션 0031). 관리자는 제한이 없어 수락 테스트가 세션 여럿을 엽니다.
 
 훈련 환경을 바꾸는 엔드포인트는 쿼리나 본문으로 `session`을 받습니다. rules, validate, 룰 비활성화, `/api/attacker/`, origin, label, canary가 해당합니다.
 
@@ -374,6 +378,8 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | `platform/cr/urls.py` | 전체 엔드포인트 라우트 표 |
 | `platform/api/refusals.py` | 예외를 HTTP 상태 코드로 변환(`/api/` 아래 404는 JSON). 변경 요청(POST 등)의 동일 출처 검사 |
 | `platform/api/reachability.py` | 슬롯이 보고하는 모든 주소(채점 서버 제외)에서 온 요청을 거부하는 미들웨어 |
+| `platform/api/signin.py` | 로그인, 로그아웃, 회원가입, 로그인 잠금, nginx `auth_request`가 묻는 세션 확인 |
+| `platform/api/accounts.py` | 계정 관리 API: 계정 목록, 승인, 거절(관리자 전용) |
 | `platform/range/declared.py` | `declaration.yaml`을 읽어 `Declaration`으로 변환 |
 | `platform/range/openstack.py` | OpenStack 어댑터(`connect`): Keystone, Neutron, Nova, ssh |
 | `bin/verify` | ratchet 검사(게이트 대상 수치가 커지는 변경 거부, `CLAUDE.md`)와 변경이 닿는 테스트 실행(`--changed`, `--fast`. 테스트 선택은 `bin/select-tests`) |
