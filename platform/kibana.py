@@ -214,6 +214,8 @@ def request_header_script():
         "if (header instanceof Map && header['name'] != null) { "
         "String key = String.valueOf(header['name']).toLowerCase(); "
         "if (shown.containsKey(key)) { emit((String) shown.get(key), String.valueOf(header['value'])); } } } } "
+        "else if (params['_source']['xff'] != null && shown.containsKey('x-forwarded-for')) { "
+        "emit((String) shown.get('x-forwarded-for'), String.valueOf(params['_source']['xff'])); } "
         "def transaction = params['_source']['transaction']; "
         "def sent = transaction instanceof Map && transaction['request'] instanceof Map "
         "? transaction['request']['headers'] : null; "

@@ -70,6 +70,19 @@ def test_the_saved_objects_parse_and_hang_off_the_one_data_view():
         assert any(r["id"] == kibana.DATA_VIEW for r in item["references"]), item["id"]
 
 
+def test_a_request_nginx_refused_fills_the_columns_a_waf_row_fills_and_an_ids_row_names_its_client():
+    view = next(item for item in saved_objects() if item["id"] == kibana.DATA_VIEW)
+    fields = json.loads(view["attributes"]["runtimeFieldMap"])
+
+    assert "doc['client_ip']" in fields["source_ip"]["script"]["source"]
+    assert "doc['request']" in fields["url"]["script"]["source"]
+    assert "doc['status']" in fields["status"]["script"]["source"]
+    assert "doc['src_ip']" in fields["source_ip"]["script"]["source"].split("else")[0], (
+        "an IDS row's source_ip stays the address the packet came from, the WAF behind it; F3 reads it")
+    assert "params['_source']['xff']" in kibana.request_header_script(), (
+        "an IDS alert behind the WAF carries the client only in xff; request_header.x_forwarded_for shows it")
+
+
 def test_no_saved_object_id_names_the_platform():
     assert not [item["id"] for item in saved_objects() if re.search(r"\bcr[-_.]", item["id"])], (
         "a lookup in the learner's space prints the ids"

@@ -302,8 +302,9 @@ def test_the_waf_stands_in_the_dmz_the_web_servers_in_their_segment_and_the_rout
     assert inside(placed["board-db"], boxes["board-default"]) and inside(placed["corp-db"], boxes["corp-default"])
 
 
-def test_no_two_zone_boxes_overlap_and_no_two_captions_read_the_same():
-    drawn = board_map()
+@pytest.mark.parametrize("without", [(), ("corp-wp", "corp-db")], ids=["both-targets", "board-alone"])
+def test_no_two_zone_boxes_overlap_and_no_two_captions_read_the_same(without):
+    drawn = board_map(without=without)
     boxes = [zone["box"] for zone in drawn["zones"]]
 
     for at, one in enumerate(boxes):
@@ -313,8 +314,9 @@ def test_no_two_zone_boxes_overlap_and_no_two_captions_read_the_same():
     assert len(set(named)) == len(named)
 
 
-def test_every_line_turns_at_right_angles_and_runs_through_no_icon_and_no_box_it_does_not_belong_to():
-    drawn = board_map()
+@pytest.mark.parametrize("without", [(), ("corp-wp", "corp-db")], ids=["both-targets", "board-alone"])
+def test_every_line_turns_at_right_angles_and_runs_through_no_icon_and_no_box_it_does_not_belong_to(without):
+    drawn = board_map(without=without)
     placed = nodes_of(drawn)
     boxes = {zone["id"]: zone["box"] for zone in drawn["zones"]}
     half = topology.ICON_HALF
@@ -335,8 +337,9 @@ def test_every_line_turns_at_right_angles_and_runs_through_no_icon_and_no_box_it
                     assert not crosses(segment, box), (edge["id"], zone)
 
 
-def test_no_two_lines_run_side_by_side():
-    drawn = board_map()
+@pytest.mark.parametrize("without", [(), ("corp-wp", "corp-db")], ids=["both-targets", "board-alone"])
+def test_no_two_lines_run_side_by_side(without):
+    drawn = board_map(without=without)
     placed = nodes_of(drawn)
     runs = [(edge["id"], segment) for edge in drawn["edges"]
             for segment in zip(points(edge, placed), points(edge, placed)[1:])]
@@ -351,8 +354,9 @@ def test_no_two_lines_run_side_by_side():
                 assert min(max(a1, a2), max(c1, c2)) - max(min(a1, a2), min(c1, c2)) < 80, (one, other)
 
 
-def test_address_labels_do_not_overlap_each_other_or_an_icon():
-    drawn = board_map()
+@pytest.mark.parametrize("without", [(), ("corp-wp", "corp-db")], ids=["both-targets", "board-alone"])
+def test_address_labels_do_not_overlap_each_other_or_an_icon(without):
+    drawn = board_map(without=without)
     labels = [node for node in drawn["nodes"] if node["kind"] == "address"]
     icons = [node for node in drawn["nodes"] if node["kind"] != "address"]
     half, line = topology.ICON_HALF, topology.LINE

@@ -46,6 +46,11 @@ outputs:
     types:
     - alert:
         metadata: true
+        xff:
+          enabled: true
+          mode: extra-data
+          deployment: reverse
+          header: X-Forwarded-For
     - http:
         extended: true
         dump-all-headers: request

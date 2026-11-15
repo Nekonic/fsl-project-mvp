@@ -271,6 +271,7 @@ SPAN = 200
 DB_SPAN = 230
 TIER = 440
 DROP = 480
+DROP_ONE = 380
 WEB_SPAN = 250
 BAND_GAP = 90
 BAND_DROP = -160
@@ -339,13 +340,14 @@ def laid_out(zones, nodes, edges) -> list[dict]:
             node.update(x=column + SPAN * (k + 2), y=0, label="below")
         column = max([column + SPAN] + [node["x"] for node in held[dmz]])
     if web:
-        switch[web].update(x=column if held.get(dmz) else column + SPAN, y=DROP)
         servers = held[web]
+        drop = DROP if len(servers) > 1 else DROP_ONE
+        switch[web].update(x=column if held.get(dmz) else column + SPAN, y=drop)
         for k, node in enumerate(servers):
-            node.update(x=switch[web]["x"] + WEB_SPAN, y=DROP + round((k - (len(servers) - 1) / 2) * TIER), label="below")
+            node.update(x=switch[web]["x"] + WEB_SPAN, y=drop + round((k - (len(servers) - 1) / 2) * TIER), label="below")
         for zone in by.get("database", ()):
             server = next((node for node in servers if zone in node["zones"]), None)
-            at = server or {"x": switch[web]["x"] + WEB_SPAN, "y": DROP}
+            at = server or {"x": switch[web]["x"] + WEB_SPAN, "y": drop}
             switch[zone].update(x=at["x"] + DB_SPAN, y=at["y"])
             for k, node in enumerate(held[zone]):
                 node.update(x=switch[zone]["x"] + SPAN * (k + 1), y=at["y"], label="below")
