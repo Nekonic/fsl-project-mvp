@@ -9,19 +9,26 @@ EDGE = ipaddress.ip_network("5.188.10.0/24")
 
 def _outside(alerts):
     return {
-        a["src_ip"] for a in alerts
-        if ipaddress.ip_address(a["src_ip"]) in EDGE
+        a.get("xff") or a["src_ip"] for a in alerts
+        if ipaddress.ip_address(a.get("xff") or a["src_ip"]) in EDGE
     }
 
 def _raised(alerts):
     assert alerts, "the probe raised no alert at all, so nothing can be said about it"
     return alerts
 
-def _inside(detections, inside):
+def _inside(alerts, inside):
     return {
-        d["src_ip"] for d in detections
-        if d["src_ip"] and ipaddress.ip_address(d["src_ip"]) in inside
+        a["src_ip"] for a in alerts
+        if a.get("src_ip") and ipaddress.ip_address(a["src_ip"]) in inside
+        and a.get("xff") and ipaddress.ip_address(a["xff"]) in EDGE
     }
+
+
+def _ids_alerts(session_id):
+    listed = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120).json()
+    return [requests.get(f"{PLATFORM_URL}/api/detections/{d['id']}/", timeout=60).json()["raw"]
+            for d in listed if d["source"] == "suricata"]
 
 @pytest.fixture
 def probe(terminal_session):
@@ -33,14 +40,10 @@ def past_the_waf(tuned_session):
     inside = ipaddress.ip_network(tuned_session["inside"])
 
     def crossed(totals):
-        return bool(_inside(requests.get(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
-        ).json(), inside))
+        return bool(_inside(_ids_alerts(session_id), inside))
 
     score_when_ready(session_id, until=crossed)
-    return inside, requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
-    ).json()
+    return inside, _ids_alerts(session_id)
 
 def test_the_front_door_is_on_the_outside(probe):
     sources = {a["src_ip"] for a in probe}
@@ -54,6 +57,6 @@ def test_the_inside_leg_is_still_the_inside(past_the_waf):
     inside, detections = past_the_waf
 
     assert _inside(detections, inside), (
-        f"an attack the WAF let through drew no alert from inside {inside}: "
-        f"{sorted({d['src_ip'] for d in detections if d['src_ip']})}"
+        f"an attack the WAF let through drew no IDS alert from inside {inside} naming the attacker in "
+        f"X-Forwarded-For: {sorted({(d.get('src_ip'), d.get('xff')) for d in detections})}"
     )

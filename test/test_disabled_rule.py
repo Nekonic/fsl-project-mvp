@@ -1,11 +1,11 @@
 import pytest
 import requests
 
-from conftest import PLATFORM_URL, runs_the_declared_rules, score_when_ready, seen_by_both_engines
+from conftest import PLATFORM_URL, credited_to, runs_the_declared_rules, score_when_ready
+from shared_sessions import passed_to_the_ids
 
-SID = 9000004
-DISABLED_CASE = "board-path-traversal-static"
-CONTROL_CASE = "board-sqli-search"
+SID = 9000001
+DISABLED_CASE = "board-sqli-search"
 
 def _open():
     return requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600).json()["id"]
@@ -24,11 +24,11 @@ def _fire(cases, session_id):
         )
         assert fired.status_code == 201, fired.text
 
-def _control_seen_by_both(session_id):
-    return lambda totals: seen_by_both_engines(session_id, totals, name=CONTROL_CASE)
+def _seen_by_the_waf(session_id):
+    return lambda totals: "modsecurity" in {d["source"] for d in credited_to(session_id, totals, name=DISABLED_CASE)}
 
-def _verdict(score, name):
-    return next(c["verdict"] for c in score["per_case"] if c["name"] == name)
+def _engines(session_id, score):
+    return {d["source"] for d in credited_to(session_id, score, name=DISABLED_CASE)}
 
 def _enable(record):
     enabled = requests.post(
@@ -45,6 +45,7 @@ def _enable(record):
 def disabled(stack_is_up):
     session_id = _open()
     try:
+        passed_to_the_ids(session_id)
         baseline = runs_the_declared_rules(session_id)
     except AssertionError:
         _close(session_id)
@@ -63,30 +64,24 @@ def disabled(stack_is_up):
             f"{PLATFORM_URL}/api/rules/disabled/", timeout=120
         ).json()
         record["rules_while_disabled"] = _rules(session_id)
-        _fire([DISABLED_CASE, CONTROL_CASE], session_id)
-        score_when_ready(session_id, until=_control_seen_by_both(session_id))
+        _fire([DISABLED_CASE], session_id)
+        score_when_ready(session_id, until=_seen_by_the_waf(session_id))
         record["enabled"] = _enable(record)
         record["rules_after_enabling"] = _rules(session_id)
     finally:
         _close(session_id)
         if "enabled" not in record:
             _enable(record)
-    record["scored"] = (session_id, score_when_ready(session_id, until=_control_seen_by_both(session_id)))
+    record["scored"] = (session_id, score_when_ready(session_id, until=_seen_by_the_waf(session_id)))
     return record
 
-def test_disabling_the_rule_turns_the_attack_into_a_miss(disabled):
+def test_disabling_the_rule_silences_the_ids_on_the_attack_the_waf_still_logs(disabled):
     session_id, after = disabled["scored"]
 
-    assert seen_by_both_engines(session_id, after, name=CONTROL_CASE), (
-        f"{CONTROL_CASE} was fired after {DISABLED_CASE} and never reached the "
-        f"score from both engines, so an alert for the disabled case may simply "
-        f"not have landed yet and a miss here proves nothing"
+    assert _engines(session_id, after) == {"modsecurity"}, (
+        f"with sid {SID} disabled the IDS behind the WAF still alerted on {DISABLED_CASE}, or the WAF's own "
+        f"record of it never landed, so a silent IDS here proves nothing"
     )
-    assert _verdict(after, DISABLED_CASE) == "FN", (
-        "the rule was disabled and the attack was still detected - either the "
-        "reload did not happen or something else catches it"
-    )
-    assert _verdict(after, CONTROL_CASE) == "TP"
 
 def test_a_disabled_rule_is_on_the_books_with_a_deadline(disabled):
     listed = disabled["listed"]

@@ -59,7 +59,7 @@ def _map_answers(session_id: int) -> dict:
         "board_ip": _drawn_address(drawn, "board.com", "web"),
         "path": " > ".join(route),
         "dmz": next(zone["subnet"] for zone in drawn["zones"] if zone["id"] == "estate"),
-        "log_host": next(node["name"] for node in drawn["nodes"] if node["kind"] == "logs"),
+        "log_host": _drawn_address(drawn, "log-server", "mgmt"),
         "waf_ip": _drawn_address(drawn, "waf", "estate"),
     }
     assert set(given) == {step["id"] for step in steps}, "F1's steps changed; this test answers each one"

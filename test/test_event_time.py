@@ -40,6 +40,7 @@ def _since(module: str, since: datetime) -> list[dict]:
 def after_a_fresh_attack(stack_is_up):
     since = datetime.now(timezone.utc) - timedelta(seconds=2)
     from_attacker("/search/?q=%27%20OR%201%3D1--%20")
+    from_attacker("/search/?q=eventtime")
     deadline = time.time() + 60
     while time.time() < deadline:
         if _since("suricata", since) and _since("modsecurity", since):

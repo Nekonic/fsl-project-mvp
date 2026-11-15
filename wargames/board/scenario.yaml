@@ -305,7 +305,7 @@ foundations:
         check: {kind: answer, of: subnet, host: waf, zone: service, wrong_if: [{match: '^\d{1,3}(\.\d{1,3}){3}$', says: prefix}]}
       - id: log_host
         point: {opens: topology, map: {node: log-server}}
-        check: {kind: answer, of: logs}
+        check: {kind: answer, of: address, host: log-server}
       - id: waf_ip
         point: {opens: topology}
         check: {kind: answer, of: address, host: waf, zone: service}

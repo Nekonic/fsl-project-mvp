@@ -421,3 +421,6 @@ def test_bringing_a_slot_up_restarts_its_log_server_and_shippers_on_the_files_ju
         "re-rendered in place, the log server kept naming 172.29.N.12 as the old estate sensor and the WAF's "
         "audit log reached Elasticsearch as Suricata's")
     assert "grep -e '^log-server$' -e '-shipper$'" in script
+    assert "--pull never sensor $(logging)" in up, (
+        "Suricata reads its outputs only at start; re-rendered in place with xff turned on, the running "
+        "sensor kept writing alerts without the client's address")

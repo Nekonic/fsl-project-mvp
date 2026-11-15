@@ -172,7 +172,7 @@ up() {
   compose up --no-start --pull never --remove-orphans
   restore $(wargames)
   compose up -d --wait --wait-timeout "$WAIT" --pull never
-  compose up -d --force-recreate --no-deps --wait --wait-timeout "$WAIT" --pull never $(logging)
+  compose up -d --force-recreate --no-deps --wait --wait-timeout "$WAIT" --pull never sensor $(logging)
   address_kali
   address_edge
   routed waf

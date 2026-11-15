@@ -36,7 +36,7 @@ PATTERN_JUDGED = "judged"
 REDS = ("schedule", "person")
 SCENARIO_ID = re.compile(r"[0-9]+(\.[0-9]+)+", re.ASCII)
 ANSWERS_OF = ("rule", "rule_matched")
-RANGE_FACTS = ("address", "subnet", "path", "logs", "excluded_target", "lost_points",
+RANGE_FACTS = ("address", "subnet", "path", "excluded_target", "lost_points",
                "detected_penalty")
 REQUEST_FACTS = ("status", "method", "path", "parameter", "param_value", "escaped", "sensor_source", "forwarded_for",
                  "waf_detected", "anomaly_total", "alerted", "alerted_destination", "alerted_sid_present", "hits")

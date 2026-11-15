@@ -21,15 +21,12 @@ def test_it_is_placed_where_the_attacker_actually_is_with_coordinates_a_map_can_
     assert -180 <= point["lon"] <= 180
     assert point["detections"] > 0
 
-def test_traffic_inside_the_estate_is_counted_but_not_placed(drawn):
+def test_every_detection_is_placed_or_counted_as_unlocated(drawn):
     placed = {ip for point in drawn["every_point"] for ip in point["ips"]}
     unplaced = [d for d in drawn["listed"] if d["src_ip"] not in placed]
 
-    assert unplaced, (
-        "every detection in the session was placed, so nothing here shows "
-        "what the map does with traffic it cannot locate. Suricata's alerts "
-        "on the inside leg, from the WAF to the target, should be among them"
-    )
+    assert not [d for d in drawn["listed"] if d["source"] == "suricata" and d["src_ip"] not in placed], (
+        "an IDS alert behind the WAF is credited to the client X-Forwarded-For names, which the map places")
     assert drawn["unlocated"] == len(unplaced), (
         f"{len(unplaced)} detections come from no placed address and the map "
         f"reports {drawn['unlocated']} unlocated"

@@ -166,7 +166,7 @@ def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_lear
             "kali_ip": [answer(client, session, "kali_ip", one)["passed"] for one in (KALI, CUSTOMER)],
             "board_ip": [answer(client, session, "board_ip", one)["passed"] for one in (BOARD, f"{BOARD}/24", WAF)],
             "dmz": [answer(client, session, "dmz", one)["passed"] for one in ("10.30.0.0/24", BOARD)],
-            "log_host": [answer(client, session, "log_host", one)["passed"] for one in ("log-server", "waf")],
+            "log_host": [answer(client, session, "log_host", one)["passed"] for one in ("172.29.1.10", "log-server")],
             "waf_ip": [answer(client, session, "waf_ip", one)["passed"] for one in (WAF, BOARD)],
         }
         reordered = answer(client, session, "path", " > ".join(reversed(route.split(" > "))))

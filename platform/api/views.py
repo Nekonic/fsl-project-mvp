@@ -733,8 +733,6 @@ def _range_fact(session, check, taught):
         points = lesson.detected_penalty(wargames.objectives(session.scenario)["tiers"], check.get("objective", ""))
         return [str(points)] if points is not None else []
     drawn = maps.learner(session.scenario)
-    if of == "logs":
-        return [name for name in topology.hosts(drawn) if name == topology.LOG_SERVER]
     if of == "path":
         return topology.route(drawn, wargames.host(session.scenario), check.get("from", topology.ATTACKER))
     found = _map_found(session)
@@ -2840,6 +2838,12 @@ CANARY_CASE = {
         "params": {"q": "' OR 1=1--"},
     },
 }
+CANARY_PASSED = {
+    "name": "range-canary-passed",
+    "malicious": False,
+    "correlation": "marker",
+    "request": {"method": "GET", "path": "/search/", "params": {"q": "canary"}},
+}
 
 def _canary_blocked(reason: str) -> dict:
     return {"corroborated": False, "suricata": False, "modsecurity": False,
@@ -2856,10 +2860,11 @@ def _range_canary(adapter, session=None) -> dict:
     except RangeUnavailable as exc:
         return _canary_blocked(f"could not set the canary origin: {exc}")
 
-    case = dict(CANARY_CASE, case_id=token)
+    passed = f"{token}-passed"
     fired_at = timezone.now()
     try:
-        harness.fire(case, adapter.launcher(origin["id"]), origin["target_url"])
+        for case in (dict(CANARY_CASE, case_id=token), dict(CANARY_PASSED, case_id=passed)):
+            harness.fire(case, adapter.launcher(origin["id"]), origin["target_url"])
     except harness.ToolUnavailable as exc:
         return _canary_blocked(f"the canary did not fire: {exc}")
 
@@ -2878,7 +2883,9 @@ def _range_canary(adapter, session=None) -> dict:
         reach = []
         marked = [d for d in elastic.normalize_all(documents)
                   if d["marker"] == token and d["timestamp"]]
-        suricata_at = min((d["timestamp"] for d in marked if d["source"] == "suricata"),
+        suricata_at = min((_event_time(doc) for _, doc in documents
+                           if (doc.get("event") or {}).get("module") == "suricata" and doc.get("event_type") == "http"
+                           and elastic.suricata_marker(doc.get("http") or {}) == passed and _event_time(doc)),
                           default=None)
         modsec_at = min((d["timestamp"] for d in marked if d["source"] == "modsecurity"),
                         default=None)
@@ -2889,7 +2896,7 @@ def _range_canary(adapter, session=None) -> dict:
             if suricata_at and modsec_at else None)
     blocked = list(reach)
     if suricata_at is None:
-        blocked.append("Suricata did not alert on the canary")
+        blocked.append("Suricata behind the WAF did not log the canary request the WAF passed")
     if modsec_at is None:
         blocked.append("ModSecurity did not alert on the canary")
     if skew is not None and skew > settings.READY_SKEW:
@@ -2904,6 +2911,12 @@ def _range_canary(adapter, session=None) -> dict:
         "skew_seconds": skew,
         "blocked": blocked,
     }
+
+def _event_time(doc):
+    try:
+        return datetime.fromisoformat(str(doc.get("timestamp")))
+    except ValueError:
+        return None
 
 @require_http_methods(["POST"])
 def range_canary(request):
