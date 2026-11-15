@@ -21,8 +21,7 @@ nginx -t -q -c /app/nginx.conf
 gosu cr env TERMINAL_KEEP=1 ttyd -W -a -b /vm-terminal/kali -t disableResizeOverlay=true -t disableLeaveAlert=true -i 127.0.0.1 -p 7691 /app/vm-terminal.sh cr-kali &
 gosu cr env TERMINAL_KEEP=1 ttyd -W -a -b /vm-terminal/waf -t disableResizeOverlay=true -t disableLeaveAlert=true -i 127.0.0.1 -p 7692 /app/vm-terminal.sh cr-waf &
 
-ELASTIC_PASSWORD="$(cat "$ELASTIC_KEPT/elastic-password")"
-export ELASTIC_PASSWORD
+install -o cr -m 600 "$ELASTIC_KEPT/elastic-password" /data/elastic-password
 
 exec gosu cr sh -c '
   if [ -z "${DJANGO_SECRET_KEY:-}" ]; then

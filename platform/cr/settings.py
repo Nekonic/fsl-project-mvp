@@ -7,6 +7,13 @@ from rules.suricata import RULE_PATH
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+def kept_secret(path):
+    try:
+        return Path(path).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
 DEBUG = os.environ.get("DJANGO_DEBUG", "") == "1"
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "") or "insecure-lab-key"
@@ -95,7 +102,9 @@ WARGAME_CASES_DIR = os.environ.get(
 
 ELASTIC_URL = os.environ.get("ELASTIC_URL", "http://elasticsearch:9200")
 ELASTIC_INDEX = os.environ.get("ELASTIC_INDEX", "logs-*")
-ELASTIC_AUTH = (os.environ.get("ELASTIC_USER") or "elastic", os.environ["ELASTIC_PASSWORD"]) if os.environ.get("ELASTIC_PASSWORD") else None
+ELASTIC_PASSWORD = os.environ.get("ELASTIC_PASSWORD") or kept_secret(
+    os.environ.get("ELASTIC_PASSWORD_FILE") or "/data/elastic-password")
+ELASTIC_AUTH = (os.environ.get("ELASTIC_USER") or "elastic", ELASTIC_PASSWORD) if ELASTIC_PASSWORD else None
 ELASTIC_SESSION_INDEX = os.environ.get(
     "ELASTIC_SESSION_INDEX",
     {"range.openstack.connect": "logs-{slot}-*"}.get(CR_SUBSTRATE, ""),
@@ -134,12 +143,6 @@ CR_WAF = waf_layout(RANGE)
 CR_SOURCE = os.environ.get("CR_SOURCE", str(BASE_DIR.parent))
 
 OPENSTACK_PASSWORD_FILE = os.environ.get("CR_OPENSTACK_PASSWORD_FILE") or "/run/secrets/openstack_password"
-
-def kept_secret(path):
-    try:
-        return Path(path).read_text(encoding="utf-8").strip()
-    except OSError:
-        return ""
 
 CR_SUBSTRATE_OPTIONS = dict(
     {

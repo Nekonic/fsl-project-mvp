@@ -38,8 +38,9 @@ def puts(base: str, pipeline: bytes, password: str) -> list[tuple[str, bytes]]:
 
 def put(url: str, body: bytes) -> bool:
     request = urllib.request.Request(url, data=body, method="PUT", headers={"Content-Type": "application/json"})
-    if kibana.ADMIN[1]:
-        request.add_header("Authorization", kibana.basic(*kibana.ADMIN))
+    user, password = kibana.admin()
+    if password:
+        request.add_header("Authorization", kibana.basic(user, password))
     try:
         with urllib.request.urlopen(request, timeout=5) as answer:
             return answer.status < 300
