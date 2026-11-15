@@ -423,7 +423,7 @@ def exec_in(container: str, argv: list[str], reads_input: bool, tty: bool = Fals
 
 def up(slot: Slot) -> list[str]:
     return ["sudo", "sh", "-c",
-            f"set -e; d={SLOT_FILES.format(slot=slot.number)}; mkdir -p \"$d\"; "
+            f"set -e; d={SLOT_FILES.format(slot=slot.number)}; mkdir -p \"$d\"; rm -rf \"$d/{SHIPPING}\"; "
             f"base64 -d | tar -xzf - -C \"$d\"; exec sh \"$d/{SCRIPT}\" up {slot.number}"]
 
 
