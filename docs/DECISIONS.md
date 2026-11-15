@@ -8414,3 +8414,59 @@ them, and nginx already refuses Kibana's management and dev tools APIs.
   and the images changed): `slot.sh reset 8` 41.9 s and 46.8 s on runc
   against 50.1 s with Kali on runsc the same night; available memory with
   eight idle slots 5,674 MB against 4,869 MB.
+
+## 2026-11-16 — One sensor per slot on both legs of the WAF; the WAF on the 관제망; the log server's uplink drawn
+
+The user rejected the first 관제망 ("관제망이 이상하잖아", "실무처럼 하라고"): a
+dashed line ran from the WAF to the log server though the WAF had no
+interface there, the logs stopped at the log server, and two sensors (one on
+the Internet side) are not how a monitored network is built. The design
+follows the practitioner sources:
+
+- Security Onion 2.4, Hardware: a sensor has "one or more interfaces
+  dedicated to sniffing (no IP address)" and "one wired network interface
+  dedicated to management (preferably connected to a dedicated management
+  network)", and should "collect from inside the NAT boundary so that you see
+  the true internal IP addresses" (https://docs.securityonion.net/en/2.4/hardware.html).
+  `so-monitor-add` adds further sniffing interfaces to the one sensor
+  (https://docs.securityonion.net/en/2.4/so-monitor-add.html).
+- NIST SP 800-94, §3.1 (a sensor's management interface), §4.2 (sensors at
+  the divisions between networks and on key segments such as a DMZ) and
+  §4.3.3.4 (watching traffic after TLS is terminated)
+  (https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-94.pdf).
+
+What changed:
+
+- **One Suricata sensor per slot** (`sN-sensor`), two sniffing interfaces with
+  no address: `dmz` on `sN-estate` (the edge router to the WAF, before the
+  WAF) and `web` on `sN-web` (the WAF to the web servers, after it), each fed
+  by `tc mirred`, and one management interface on `sN_mgmt` (.11). No sensor
+  on `sN-inet` (outside the perimeter). One rule file, one reload: the
+  `sensor` role is on `cr-range`, `cr-edge` names no rule file, the
+  `estate-sensor` role is gone. The config is `deploy/suricata/suricata.yaml`,
+  now the full Suricata configuration the edge sensor ran, with `HOME_NET` the
+  private ranges, `EXTERNAL_NET any` (so the WAF's requests to the targets on
+  the web leg match the `$EXTERNAL_NET -> $HOME_NET` rules, as the estate
+  sensor's did) and `HTTP_PORTS` 80 and 8000; one `af-packet` entry per
+  sniffing interface. Lessons tell the legs apart by destination, as before;
+  Kibana's `sensor` field is now the leg an IDS event was seen on (`in_iface`,
+  `dmz` or `web`), and `waf` for ModSecurity.
+- **The WAF ships its own log**: a management interface on `sN_mgmt` (.12)
+  and its shipper in the WAF's network namespace (`network_mode:
+  service:waf`), like the sensor's; the standalone `waf-shipper` container and
+  its address are gone. A reset recreates the shipper with the WAF. The WAF is
+  the one learner-facing container on the 관제망: it has neither `NET_RAW` nor
+  `NET_ADMIN`, so it sends from its own address only, and the log server names
+  every log by the address it came from.
+- **The edge router stays off the 관제망**: nothing reads its logs.
+- **The map**: every edge is an interface link, a mirror or the log server's
+  uplink. The sensor's legs are its interfaces with no address; the 관제망
+  switch sits under the WAF's management link; the uplink goes out of the
+  관제망 to a node showing the address and port the log server forwards to
+  (`10.31.0.x:5140/udp`, Filebeat on the platform), read from the log server's
+  configuration. No log edge remains, since every log source has its own
+  management link.
+- `slot.sh up` now removes containers the slot no longer declares and the
+  mirror on `sN-inet`, so a slot re-renders in place.
+
+Parity against the two-sensor slots (same red-team files): PARITY_PENDING.
