@@ -974,7 +974,7 @@ The rule editor (`#lesson-rules`, ruling D3) sits in the blue console's IDS rule
 
 - It reads `GET /api/rules/?session=<id>`.
 - It checks with `POST /api/rules/validate/` and writes with `POST /api/rules/apply/` on the version it loaded.
-- Check rules answers `errors`: the lines carrying Suricata's `Error` from every sensor that refused. `output` is the refusing sensor's output with the most of them.
+- Check rules answers `errors`: the lines carrying Suricata's `Error` from every sensor that refused. `output` is the refusing sensor's output with the most of them. When no sensor refused but a rule's sid cannot be read, it answers `unread_sid: true`, `errors` holds those rule lines and `output` is empty.
 - Both sensors run the same Suricata image with console logging on, so each prints its `-T` errors.
 
 ### Foundations F1-F6 in two courses

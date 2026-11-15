@@ -974,7 +974,7 @@ check는 스스로 실행됩니다.
 
 - `GET /api/rules/?session=<id>`로 읽습니다.
 - `POST /api/rules/validate/`로 검사하고, 불러온 버전을 기준으로 `POST /api/rules/apply/`로 씁니다.
-- 룰 검사는 `errors`로 응답합니다. 거부한 모든 센서의 출력에서 Suricata `Error`가 들어 있는 줄들입니다. `output`은 그런 줄이 가장 많은 거부 센서의 출력입니다.
+- 룰 검사는 `errors`로 응답합니다. 거부한 모든 센서의 출력에서 Suricata `Error`가 들어 있는 줄들입니다. `output`은 그런 줄이 가장 많은 거부 센서의 출력입니다. 거부한 센서는 없지만 sid를 읽을 수 없는 룰이 있으면 `unread_sid: true`로 응답하고, `errors`에는 그 룰 줄이, `output`에는 빈 문자열이 들어갑니다.
 - 두 센서는 콘솔 로그를 켠 같은 Suricata 이미지라서 각자 `-T` 오류 줄을 출력합니다.
 
 ### 기초 레슨 F1-F6과 두 과정
