@@ -1714,7 +1714,8 @@ def _record_case(session, case, started_at, ended_at, meta):
         pattern=case.get("pattern") or "",
         expect=case.get("expect") or "",
         correlation=case["correlation"],
-        source_ip=case.get("source_ip"),
+        source_ip=case.get("source_ip") or (attacker.find(_standing(session), None)["source_ip"]
+                                            if case["correlation"] == CORRELATION_WINDOW else None),
         started_at=started_at,
         ended_at=ended_at,
         meta=meta,
@@ -1948,8 +1949,6 @@ def session_cases(request, session_id):
     errors = _case_errors(body)
     if errors:
         return _reply(errors, status=400)
-    if body.get("correlation") == CORRELATION_WINDOW and not body.get("source_ip"):
-        body = dict(body, source_ip=attacker.find(_standing(session), None)["source_ip"])
 
     try:
         case = _record_case(
