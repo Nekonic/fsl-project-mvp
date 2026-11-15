@@ -35,7 +35,7 @@ substrate was removed on 2026-10-21, so a laptop with Docker cannot run it.
 
 `bin/verify --fast` skips the acceptance suite. `bin/verify --changed [BASE]`
 runs only the unit tests the change reaches and lists the acceptance modules it
-reaches. Add `--live` to run those modules too. The suite collects 92 tests;
+reaches. Add `--live` to run those modules too. The suite collects 87 tests;
 `test_lesson.py`'s F1 map test runs once per course and skips for a course that
 does not start with F1 (`c2` starts with F4), so a full run reports one skip.
 
@@ -69,16 +69,21 @@ These fixtures serve these tests:
 
 | Fixture | Tests it serves |
 |---|---|
-| `full_run` (the red-team run) | `test_acceptance` (criteria 3, both engines, the real rule set's credit), topology, evasion, strategy honesty, the board attack and the check before silencing |
-| `rules_session` | `test_rule_changes` (criterion 4, the invalid rule), the buffer-less rule and the ported rule |
+| `full_run` (the red-team run) | `test_acceptance` (criteria 3, the real rule set's credit), topology, evasion (both engines), strategy honesty, the board attack and the check before silencing |
+| `rules_session` | `test_rule_changes` (criterion 4 on the benign case's own verdict, the invalid rule), the buffer-less rule, the ported rule and, in a third phase on its own case ids, the catch-all rule of `test_indiscriminate_defence` |
 | `board_session` | loot, objectives (with the empty-objectives check), score reveal and the canary |
 | `origins_session` | origins and the tool case |
 | `tuned_session` | the map and the check that an attack passes the WAF to the inside |
 | `terminal_session` | the operator log, the attacker box and the check that an attack through the published port arrives from the outside |
+| `terminal_windows` | `test_window_correlation` (a benign window, an unlabelled SQLi window) and `test_strategy_comparison` (a labelled window, read by its own verdict under each strategy) |
+| `rogue_admin_session` | `test_corp_authz`: the rogue administrator and, in its own window after it, the content overwrite |
+| `option_flip_session` | `test_corp_authz`: the option flip, which sets `default_role=administrator` and so keeps a corp session of its own |
 
-The corp rogue-admin exploit and the corp option-flip exploit each get one
-session. `test_corp_observe_live` reads them from the target's binlog, and
-`test_corp_authz` reads them from the target's own rows.
+`test_corp_authz` reads each corp breach from the target's own rows and
+checks the exact set of objectives each session credited.
+`test_concurrent_sessions` opens one pair of sessions: the guided one takes
+the attack, the other is read before it fires its own case, then both tune
+their WAF and sensor.
 
 A module that would ask for two of these fixtures, or for one of them and a
 session of its own, ties them into one process, so each test asks for one
@@ -143,8 +148,7 @@ The split follows these rules:
 - **Standing stack.** Beside another process, a call that names no session
   cannot use the newest session, because that session may hold another slot.
   Some modules need a stack but open no session (`STANDING_STACK` in
-  `bin/acceptance`: the reach, exfiltration, event-time and containment
-  checks). They are one group and run in that order. They get a session the
+  `bin/acceptance`: the exfiltration, event-time and containment checks). They are one group and run in that order. They get a session the
   group holds until it opens its own; `range.py` sends a call that has no
   `session=` to that session and fails a call that names no session while the
   process has one of its own open. The last containment test plants links in
