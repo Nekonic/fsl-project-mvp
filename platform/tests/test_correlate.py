@@ -63,6 +63,18 @@ def test_window_case_matches_on_ip_and_time():
 
     assert result.matches[0].detected is True
 
+def test_a_window_case_leaves_a_record_another_request_s_marker_names_to_that_request():
+    result = correlate(
+        [case(case_id="c1", correlation="window", source_ip="10.0.0.1", start=0, end=5)],
+        [det(detection_id="own", src_ip="10.0.0.1", at=3), det(detection_id="labelled", marker="c1",
+                                                                 src_ip="10.0.0.1", at=3),
+         det(detection_id="sqlmap", marker="another-case", src_ip="10.0.0.1", at=4)],
+    )
+
+    assert result.matches[0].detection_ids == ("own", "labelled"), (
+        "board run 2274 credited the traversal case with 214 ModSecurity records of the sqlmap and XSS cases "
+        "fired from the same address in its 2 s slack")
+
 def test_window_case_rejects_different_ip():
     result = correlate(
         [case(correlation="window", source_ip="10.0.0.1", start=0, end=5)],

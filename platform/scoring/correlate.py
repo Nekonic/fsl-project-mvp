@@ -56,7 +56,7 @@ def _matches(case: CaseRecord, detection: DetectionRecord) -> bool:
     if case.correlation == CORRELATION_MARKER:
         return detection.marker is not None and detection.marker == case.case_id
 
-    if case.source_ip is None or detection.src_ip != case.source_ip:
+    if case.source_ip is None or detection.src_ip != case.source_ip or detection.marker not in (None, case.case_id):
         return False
     return (
         case.started_at - WINDOW_SLACK

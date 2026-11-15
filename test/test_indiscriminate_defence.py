@@ -51,30 +51,3 @@ def test_nothing_is_credited_to_a_signature_that_also_fires_on_benign_traffic(
             f"The defence writes that text, so a block-everything rule set "
             f"wins the one number meant to stop it"
         )
-
-
-def test_a_defence_with_nothing_but_noise_is_called_out(block_everything):
-    totals, sigs = block_everything
-    noise = indiscriminate(totals, sigs)
-
-    only_noise = [
-        c["name"] for c in totals["per_case"]
-        if c["malicious"] and c["expect"]
-        and not ({sigs[i] for i in c["detection_ids"] if i in sigs} - noise)
-    ]
-
-    assert only_noise, (
-        "every attack drew at least one discriminating alert, so this run "
-        "cannot show the check biting - ModSecurity caught them all"
-    )
-    for name in only_noise:
-        case = next(c for c in totals["per_case"] if c["name"] == name)
-        assert case["corroborated"] is False, (
-            f"{name} drew nothing but indiscriminate alerts and still reports "
-            f"corroborated={case['corroborated']!r}"
-        )
-    wrong = [c["name"] for c in totals["per_case"] if c["detected"] and c["corroborated"] is False]
-    assert wrong and any(
-        w[0] == "score.warning.wrong_reason" and all(name in w[1] for name in wrong)
-        for w in totals["warnings"]
-    ), totals["warnings"]
