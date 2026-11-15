@@ -61,14 +61,17 @@ def said(without=()):
 
 
 class FakeSlot:
-    def __init__(self, without):
+    def __init__(self, without, output=None):
         self.without = without
+        self.output = output
         self.ran = []
 
     def shell(self, container=""):
         def run(argv, stdin=None, timeout=60.0):
             self.ran.append((container, argv))
-            return Ran(0, said(self.without))
+            if self.output is RangeUnavailable:
+                raise RangeUnavailable("cr-range at 10.31.0.5 never reported the command finishing")
+            return Ran(0, self.output if self.output is not None else said(self.without))
         return run
 
 
@@ -80,13 +83,13 @@ def slot_shape():
     ), sensors=())
 
 
-def slot_adapter(without=()):
+def slot_adapter(without=(), output=None):
     adapter = object.__new__(openstack.OpenStack)
     adapter.declared = declared.read()
     adapter.slot = 1
     adapter.build = openstack.Build(source=str(ROOT), inside={"estate": "10.30.0.0/16", "mgmt": "10.31.0.0/24"},
                                     image_tag="dev", mtu=1442)
-    fake = FakeSlot(without)
+    fake = FakeSlot(without, output)
     adapter._shell = fake.shell
     adapter.describe = slot_shape
     return adapter, fake
@@ -102,9 +105,18 @@ def board_learner():
     return topology.learner(stack, "board", stack.roles["attacker"], ("175.192.0.0/24", "73.0.0.0/24"))
 
 
-def board_map(without=()):
-    adapter, _ = slot_adapter(without)
+def board_map(without=(), output=None):
+    adapter, _ = slot_adapter(without, output)
     return topology.graph(board_learner(), adapter.wiring())
+
+
+def fronted_by_the_waf():
+    moved = said().replace("@network s1_board-default", "@network s1_board-web 8d1c0d2e3a5b6c7d8e9f00112233445566778899aabbccddeeff001122334455 - 10.40.1.0/24 \n@network s1_board-default")
+    moved = moved.replace("7: eth1@if15    inet 10.30.0.184/24 brd 10.30.0.255 scope global eth1",
+                          "7: eth1@if15    inet 10.40.1.3/24 brd 10.40.1.255 scope global eth1")
+    return moved.replace("5: eth0@if13    inet 10.30.0.177/24 brd 10.30.0.255 scope global eth0",
+                         "5: eth0@if13    inet 10.30.0.177/24 brd 10.30.0.255 scope global eth0\n"
+                         "12: eth1@if20    inet 10.40.1.2/24 brd 10.40.1.255 scope global eth1")
 
 
 def links(drawn):
@@ -134,12 +146,22 @@ def test_a_sensor_is_read_with_the_bridge_it_sniffs_and_the_logs_by_the_files_rs
     assert wired.network("board-default").bridge == "br-6b1c0d2e3a5b", "Docker's own name for an unnamed bridge"
 
 
-def test_a_container_that_is_not_running_is_left_off_and_named_when_every_one_must_answer():
-    adapter, _ = slot_adapter(without=("edge",))
+def test_a_range_host_that_does_not_answer_is_an_outage_not_an_empty_slot():
+    adapter, _ = slot_adapter(output=RangeUnavailable)
 
-    assert "cr-edge" not in {one.host for one in adapter.wiring().interfaces()}
-    with pytest.raises(RangeUnavailable, match="edge did not answer"):
-        adapter.wiring(skip_unanswered=False)
+    with pytest.raises(RangeUnavailable, match="never reported"):
+        adapter.wiring()
+
+
+def test_web_services_behind_the_waf_are_drawn_on_the_bridge_they_share_with_it():
+    drawn = board_map(output=fronted_by_the_waf())
+
+    assert [(zone["id"], zone["caption"]) for zone in drawn["zones"]] == [
+        ("internet", "internet"), ("estate", "dmz"), ("board-web", "web"), ("board-default", "database")]
+    assert {pair for pair in links(drawn) if pair[1] in ("switch:estate", "switch:board-web")} == {
+        ("router", "switch:estate"), ("waf", "switch:estate"), ("waf", "switch:board-web"),
+        ("board.com", "switch:board-web")}
+    assert links(drawn)[("board.com", "switch:board-web")] == "10.40.1.3"
 
 
 def test_each_bridge_is_one_switch_and_each_interface_on_it_is_one_link_to_it():
@@ -215,14 +237,13 @@ def test_the_session_topology_carries_the_live_map_of_its_slot(client, monkeypat
 def test_a_range_host_that_cannot_be_read_gives_an_empty_map_that_says_why(client, monkeypatch):
     from api import views
 
-    adapter, _ = slot_adapter()
-    adapter.wiring = lambda skip_unanswered=True: (_ for _ in ()).throw(RangeUnavailable("cr-range did not answer"))
+    adapter, _ = slot_adapter(output=RangeUnavailable)
     session_id = open_session(client)
     monkeypatch.setattr(views, "_range", lambda session=None, **_: adapter)
 
     drawn = client.get(f"/api/sessions/{session_id}/topology/").json()["map"]
 
-    assert drawn["nodes"] == [] and "cr-range did not answer" in drawn["detail"]
+    assert drawn["nodes"] == [] and "never reported the command finishing" in drawn["detail"]
 
 
 def test_the_map_page_is_framed_only_by_its_own_origin(client):

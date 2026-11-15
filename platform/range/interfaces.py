@@ -4,9 +4,10 @@ import ipaddress
 import re
 from dataclasses import dataclass
 
+from range import rangehost
+
 IP_LINE = re.compile(r"^\d+:\s+(?P<name>[^\s@]+)(?:@\S+)?\s+inet\s+(?P<address>\d+\.\d+\.\d+\.\d+/\d+)")
 LOOPBACK = ipaddress.ip_network("127.0.0.0/8")
-SNIFFS = re.compile(r"^--af-packet=(?P<bridge>\S+)$")
 DEFAULT_BRIDGE = "br-{id}"
 BRIDGE_ID = 12
 
@@ -41,7 +42,7 @@ class Container:
 
     @property
     def sniffs(self) -> str:
-        return next((found["bridge"] for found in map(SNIFFS.match, self.args) if found), "")
+        return next((found["bridge"] for found in map(rangehost.SNIFFS.match, self.args) if found), "")
 
     def keeps(self, path: str) -> bool:
         return any(path == mount or path.startswith(mount.rstrip("/") + "/") for mount in self.mounts)

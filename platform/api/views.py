@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from django.conf import settings
 from django.core.exceptions import BadRequest
-from django.db import DatabaseError, IntegrityError, connection, transaction
+from django.db import IntegrityError, connection, transaction
 from django.db.models import Count, F, Max, Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
@@ -716,7 +716,7 @@ def _range_fact(session, check, taught):
         return topology.route(drawn, wargames.host(session.scenario), check.get("from", topology.ATTACKER))
     found = _map_found(session)
     if of == "subnet":
-        return topology.subnet(drawn, found, check["host"])
+        return topology.subnet(drawn, found, check["host"], check.get("zone"))
     return topology.address(drawn, found, check["host"], check.get("zone"))
 
 _found_kept = {}
@@ -1293,11 +1293,11 @@ def session_top(request, session_id):
         "paths": top(paths.values()),
     })
 
-def _wired(session, skip_unanswered=True):
+def _wired(session):
     adapter = _range(session)
     if not hasattr(adapter, "wiring"):
         return Wiring()
-    wired = adapter.wiring(skip_unanswered)
+    wired = adapter.wiring()
     found = wired.interfaces()
     if found and session.ended_at is None:
         _found_kept[session.pk] = found

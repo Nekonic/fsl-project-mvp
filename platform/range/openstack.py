@@ -602,19 +602,13 @@ class OpenStack:
         address = self._address(self.range_host)
         return address, self._generations.get(address, "") or address, self._container(role)
 
-    def wiring(self, skip_unanswered=True) -> interfaces.Wiring:
+    def wiring(self) -> interfaces.Wiring:
         project = self._laid_out().project
-        try:
-            said = self._shell()(rangehost.wiring(project), timeout=60).output
-        except RangeUnavailable:
-            if not skip_unanswered:
-                raise
-            said = ""
-        read = interfaces.wiring(said, project)
-        standing = {container.service for container in read.containers}
-        unanswered = sorted(name for name in self._document()["services"] if name not in standing)
-        if unanswered and not skip_unanswered:
-            raise RangeUnavailable(f"{', '.join(unanswered)} did not answer in slot {self.slot}")
+        ran = self._shell()(rangehost.wiring(project), timeout=60)
+        if not ran.ok:
+            raise RangeUnavailable(f"{self.range_host} did not list slot {self.slot}'s wiring "
+                                   f"(exit {ran.exit_code}): {ran.output[-300:]}")
+        read = interfaces.wiring(ran.output, project)
         names = self._service_hosts()
         return replace(read, containers=tuple(replace(container, host=names.get(container.service, container.service))
                                               for container in read.containers))

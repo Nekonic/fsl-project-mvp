@@ -363,6 +363,7 @@ def setup_state() -> list[str]:
 
 
 FORWARDING = "/etc/rsyslog.d/60-cr-{project}.conf"
+SNIFFS = re.compile(r"^--af-packet=(?P<bridge>\S+)$")
 WIRING = r"""p=$1; f=$2
 docker network ls --filter label=com.docker.compose.project=$p --format '{{.Name}}' | while read -r n; do
   echo "@network $n $(docker network inspect -f '{{.Id}} {{with index .Options "com.docker.network.bridge.name"}}{{.}}{{else}}-{{end}} {{range .IPAM.Config}}{{.Subnet}} {{end}}' "$n")"

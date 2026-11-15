@@ -62,7 +62,7 @@ INTERNET = "internet"
 SERVICE = NAMED_ON
 SWITCH = "switch:{zone}"
 SENSOR = "sensor:{service}"
-CAPTIONS = {"internet": "internet", "service": "dmz", "database": "database"}
+CAPTIONS = ("internet", "dmz", "web", "database")
 FORWARDED = "udp"
 
 @dataclass(frozen=True)
@@ -80,12 +80,8 @@ class Learner:
     def shown(self, real: str) -> str:
         return (self.hosts.get(real) or (real,))[0]
 
-    @property
-    def order(self) -> list[str]:
-        return list(self.zones.values())
-
-    def caption(self, zone: str) -> str:
-        return next((CAPTIONS[named] for named, held in self.zones.items() if held == zone), zone)
+    def named(self, kind: str) -> set[str]:
+        return {name for name, held in self.kinds.items() if held == kind}
 
 def domains(declared) -> dict[str, str]:
     gateway = declared.hosts.get(declared.roles.get("gateway", ""))
@@ -131,8 +127,6 @@ def learner(declared, wargame: str, customers_from: str = "", customers_prefer: 
     backend = f"{wargame}{BACKEND_SUFFIX}"
     switches = {origin.id: INTERNET for origin in declared.origins}
     switches.update({origin.segment: INTERNET for origin in declared.origins})
-    switches[SERVICE] = SERVICE
-    switches[backend] = backend
 
     sensors = {roles[sensing]: (hosts.get(roles.get(sensed, "")) or ("",))[0]
                for sensing, sensed in sorted(declared.watches.items()) if sensing in roles}
@@ -157,29 +151,53 @@ def route(learner, site: str, start: str = ATTACKER) -> list[str]:
 def link_heads(learner, found) -> dict[tuple[str, str], object]:
     held: dict[tuple[str, str], list] = {}
     for one in found:
-        switch = learner.switches.get(one.segment)
+        switch = learner.switches.get(one.segment, one.segment)
         if switch:
             for name in learner.hosts.get(one.host, ()):
                 held.setdefault((name, switch), []).append(one)
     return {pair: head for pair, kept in held.items()
             if (head := _head(kept, learner.prefers.get(pair[0], learner.prefers[""]), strict=pair[0] == CUSTOMERS))}
 
-def switch_of(learner, found, host: str) -> str:
-    on = {zone for name, zone in link_heads(learner, found) if name == host}
-    return next((zone for zone in learner.order if zone in on), "")
+def captions(learner, found) -> dict[str, str]:
+    members: dict[str, set[str]] = {}
+    for name, zone in link_heads(learner, found):
+        members.setdefault(zone, set()).add(name)
+    found_captions = {}
+    for zone, names in members.items():
+        if ATTACKER in names:
+            found_captions[zone] = "internet"
+        elif ROUTER in names:
+            found_captions[zone] = "dmz"
+        elif names & learner.named("database") and WAF not in names:
+            found_captions[zone] = "database"
+        else:
+            found_captions[zone] = "web"
+    return found_captions
+
+def ordered(learner, found) -> list[str]:
+    named = captions(learner, found)
+    return sorted(named, key=lambda zone: (CAPTIONS.index(named[zone]), zone))
+
+def switch_of(learner, found, host: str, zone: str | None = None) -> str:
+    on = {held for name, held in link_heads(learner, found) if name == host}
+    asked = learner.zones.get(zone or "", zone or "")
+    if asked in on:
+        return asked
+    return next((held for held in ordered(learner, found) if held in on), "")
 
 def address(learner, found, host: str, zone: str | None = None) -> list[str]:
-    one = link_heads(learner, found).get((host, learner.zones.get(zone or "") or switch_of(learner, found, host)))
+    one = link_heads(learner, found).get((host, switch_of(learner, found, host, zone)))
     return [one.address, one.address.partition("/")[0]] if one else []
 
-def subnet(learner, found, host: str) -> list[str]:
-    one = link_heads(learner, found).get((host, switch_of(learner, found, host)))
+def subnet(learner, found, host: str, zone: str | None = None) -> list[str]:
+    one = link_heads(learner, found).get((host, switch_of(learner, found, host, zone)))
     return [str(ipaddress.ip_interface(one.address).network)] if one else []
 
 def addresses(learner, found) -> list[dict]:
-    order = {zone: at for at, zone in enumerate(learner.order)}
-    return [{"host": host, "zone": learner.caption(zone), "address": one.address.partition("/")[0],
-             "network": "" if zone == INTERNET else str(ipaddress.ip_interface(one.address).network)}
+    named = captions(learner, found)
+    order = {zone: at for at, zone in enumerate(ordered(learner, found))}
+    return [{"host": host, "zone": named[zone], "address": one.address.partition("/")[0],
+             "network": "" if named[zone] == "internet" else str(ipaddress.ip_interface(one.address).network)}
             for (host, zone), one in sorted(link_heads(learner, found).items(),
                                             key=lambda pair: (order.get(pair[0][1], len(order)), pair[0][0]))
             if host not in learner.hidden]
@@ -206,7 +224,8 @@ def _customers(learner, found, host: str) -> dict:
 def graph(learner, wiring) -> dict:
     found = wiring.interfaces()
     heads = link_heads(learner, found)
-    zones = [zone for zone in learner.order if wiring.network(zone)]
+    captioned = captions(learner, found)
+    zones = [zone for zone in ordered(learner, found) if wiring.network(zone)]
     nodes = [{"id": SWITCH.format(zone=zone), "kind": "switch", "zone": zone} for zone in zones]
     edges = []
     drawn: dict[str, str] = {}
@@ -238,8 +257,8 @@ def graph(learner, wiring) -> dict:
         nodes.append({"id": LOG_SERVER, "kind": "logs", "name": LOG_SERVER,
                       "port": f"{wiring.port}/{FORWARDED}" if wiring.port else ""})
         edges += [{"source": source, "target": LOG_SERVER, "kind": "logs"} for source in logging]
-    return {"zones": [{"id": zone, "caption": learner.caption(zone),
-                       "subnet": "" if zone == INTERNET else next(iter(wiring.network(zone).subnets), "")}
+    return {"zones": [{"id": zone, "caption": captioned[zone],
+                       "subnet": "" if captioned[zone] == "internet" else next(iter(wiring.network(zone).subnets), "")}
                       for zone in zones],
             "nodes": nodes,
             "edges": [{"id": f"{edge['kind']}:{edge['source']}:{edge['target']}", **edge} for edge in edges]}

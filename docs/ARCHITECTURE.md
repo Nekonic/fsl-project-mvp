@@ -290,13 +290,13 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 `interfaces.wiring`이 이 출력을 `Wiring`으로 풉니다.
 
 - 인터페이스의 망: 그 인터페이스 주소 중 하나를 품은 Docker 네트워크. 그래서 kali `eth0`에 함께 붙은 출발지 주소(5.188.10.10, 고객 주소)도 인터넷 구간에 속함
-- 센서: `Args`의 `--af-packet=<브리지>`로 감시하는 망을 찾음
+- 센서: `Args`의 `--af-packet=<브리지>`(`rangehost.SNIFFS`)로 감시하는 망을 찾음
 - 로그를 보내는 컨테이너: rsyslog가 보내는 파일이 그 컨테이너의 마운트 아래에 있음
-- `OpenStack.wiring()`은 서비스 이름을 선언된 호스트 이름(`cr-kali`, `board`)으로 바꿔 붙임. `skip_unanswered=False`면 compose 파일의 서비스 중 실행 중이 아닌 것을 이름으로 알리고 실패
+- `OpenStack.wiring()`은 서비스 이름을 선언된 호스트 이름(`cr-kali`, `board`)으로 바꿔 붙임. 훈련 환경 호스트가 답하지 않으면 `RangeUnavailable`
 
 **그리기.** `topology.graph(learner, wiring)`가 콘솔이 그릴 그래프를 만듭니다.
 
-- 영역(`zones`): 학습자 워게임에 해당하는 Docker 네트워크. 순서는 `internet`, `estate`, `<워게임>-default`. 캡션 키는 `internet`, `dmz`, `database`이고 한국어는 `strings.html`의 `topology.zone.*`. 인터넷 구간에는 대역을 붙이지 않음
+- 영역(`zones`): 학습자 워게임의 장비가 하나라도 붙은 Docker 네트워크. 망 이름으로 정하지 않고 붙은 장비로 캡션을 정함(`topology.captions`): kali가 있으면 `internet`, 라우터가 있으면 `dmz`, 워게임 DB가 있고 WAF가 없으면 `database`, 나머지는 `web`. 이 순서로 왼쪽에서 오른쪽에 놓음. 한국어는 `strings.html`의 `topology.zone.*`. 인터넷 구간에는 대역을 붙이지 않음
 - 스위치: 영역마다 하나(`switch:<망>`). 리눅스 브리지는 L2 스위치. 이름은 붙이지 않음
 - 장비: 브리지에 인터페이스가 있는 컨테이너. 이름은 `topology.learner`의 학습자 이름(`kali`, `router`, `waf`, `board.com`, `board-db`). `kind`로 아이콘을 고름
 - 선(`link`): 장비가 그 브리지에 가진 인터페이스마다 하나. `address`는 그 인터페이스에서 고른 주소(`link_heads`. kali와 라우터 wan은 기본 출발지 대역의 주소, 나머지는 망의 주소)
@@ -1113,8 +1113,8 @@ board의 `scenario.yaml`에 `foundations:` 목록을 선언합니다. discovery 
 - DMZ 네트워크를 읽고, 로그를 모으는 호스트를 답함
 - 혼자 푸는 단계: waf의 주소. 호스트가 어느 영역에 있는지는 묻지 않음
 - 답은 세션의 학습자용 구성도에서 읽음(`views._range_fact`: `topology.learner`를 거친 `topology.address`, `topology.subnet`, `topology.route`, `topology.hosts`)
-  - `address`: 링크 라벨의 주소. 프리픽스 길이는 있어도 없어도 됨
-  - `subnet`: 호스트가 붙은 첫 영역(인터넷 구간, DMZ, DB존 순)의 네트워크
+  - `address`: 링크 라벨의 주소. 프리픽스 길이는 있어도 없어도 됨. 고르는 망은 `subnet`과 같음. board.com은 waf와 함께 붙은 망의 주소
+  - `subnet`: 단계의 `zone`(`service`는 `estate`)에 호스트가 붙어 있으면 그 망, 아니면 호스트가 붙은 첫 영역(인터넷 구간, DMZ, 웹 서버 구간, DB존 순)의 네트워크. F1 `dmz`는 waf의 `estate` 대역
   - `path`: 단계의 `from`(기본 `kali`), 구성도에 있는 경유 역할, 사이트 순(`kali > router > waf > board.com`)
   - `logs`: `log-server` 노드
 

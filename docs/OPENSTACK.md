@@ -1028,7 +1028,7 @@ runs the old names: stack `fsl-platform`, `/opt/fsl`, the volume
 code cannot see them, so take them down with the code that made them, once:
 
 1. Push the renamed code to `dev` and wait for `images.yml`. Make the new
-   packages public (README, "Package settings"): `cr-platform`, `cr-gns3`,
+   packages public (README, "Package settings"): `cr-platform`,
    `cr-board`, `cr-corp`, `cr-corp-db`, and since the range host also
    `cr-kali`, `cr-waf` and `cr-edge`.
 2. Check out the last commit before the rename beside this checkout, give it

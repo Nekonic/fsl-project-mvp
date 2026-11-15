@@ -92,7 +92,7 @@ terminal and a Website pane, plus the objectives and the loot submission; it fir
 What is typed in Kali is stamped with the session's marker by the attacker's
 stamp proxy. The blue console is a sidebar that
 frames the real tools (Kibana, a WAF terminal, a Website pane: a site browser
-with developer tools, and the Map pane: the GNS3 map, read-only) and calls
+with developer tools, and the Map pane: the slot's live wiring, read-only) and calls
 `/api/` for the session, the site's
 requests, the steps and hints of a foundation or worked scenario, a scenario's status and triage, ingest and
 detections. The only rule editor is the Suricata one in the IDS rules pane, which F4 and the detection and unknown scenarios show (`/api/rules/`, D3 of the 2026-10-13 course design); CRS stays exclusions, level and anomaly thresholds. The session page's confirm-close calls
@@ -109,7 +109,7 @@ for case (board 18, corp 7); ten slots run at once on the range host
 (`docs/state/now.md`).
 
 On 2026-11-15 virtualenvs moved to uv (the platform VM installs uv 0.13.8
-from its checked release tarball; the platform and gns3 images install with
+from its checked release tarball; the platform image installs with
 a build-time uv mount), the platform VM's key became the Nova keypair
 `keys.key_name` / `keys.key_file` that `bin/cloud up` imports itself, the
 examples moved to 10.10.10.0/24, KVM became recommended rather than required,
@@ -457,9 +457,9 @@ geolocated TW.
   sent through to the target it alerted every ten seconds and used up a
   session's 5,000-document read in about 14 hours.
 - **Bring-up of the platform VM's control plane is `docker compose pull && docker compose up -d`** (`build:` is for local development). The platform's
-  entrypoint reads the docker socket's group from the socket at start, adds
-  `cr` to it, drops root with `gosu`, and registers the `geoip` ingest
-  pipeline itself, so a fresh host needs no build argument and no manual PUT.
+  entrypoint drops root with `gosu` and registers the `geoip` ingest pipeline
+  itself, so a fresh host needs no build argument and no manual PUT. No
+  control-plane service holds the Docker socket (since 2026-11-15).
 - **The store is the named volume `cr_platformdata`**, not `./data` of
   whichever checkout ran `compose up`; `./data/label` is still a bind mount.
   `bin/backup` copies the store live with `VACUUM INTO` and keeps the newest
@@ -756,7 +756,7 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
 - **Console**: the landing page `/` (sessions), a red console (objectives,
   loot submission, Kali terminal, Website pane) and a blue console that is a sidebar framing Kibana, a WAF
   terminal, a Website pane (site browser with developer tools), the Map
-  pane (the GNS3 map) and, below a divider in lessons and scenarios, the Kali
+  pane (the slot's live wiring, drawn by the console) and, below a divider in lessons and scenarios, the Kali
   pane; the Alerts and IDS rules panes show where a scenario or F4 uses them;
   the course's coach steps through each foundation and stepped scenario, with
   a hint ladder whose last rung is Skip (it did the step for the learner until
@@ -774,8 +774,7 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   and `traffic.py`, judged at a final check).
 - **Stack**: every service `linux/amd64`. On the platform VM,
   `cr-platform.service` runs `docker compose pull` and `up -d` for the
-  control plane (the platform entrypoint sets the socket group and registers
-  the ingest pipeline). The product is OpenStack-only since 2026-10-20; the
+  control plane (the platform entrypoint registers the ingest pipeline). The product is OpenStack-only since 2026-10-20; the
   docker substrate (`platform/range/docker.py`, `session.yaml`) was removed on
   2026-10-21.
 - **Platform VM**: `deploy/openstack/platform.yaml` boots the whole stack on
@@ -1943,8 +1942,9 @@ binary log via a substrate runner, proven end to end against the live stack.
   if the platform VM loses its upstream, the range follows the platform's
   clock, which is what scoring compares against, not true time. A host whose
   time source does not answer within 30 s fails its configure step.
-- The platform and gns3 containers mount the Docker socket (the platform
-  non-root, via the socket's group): an escape path, on the platform VM too.
+- The platform holds the ssh key that runs `sudo docker` on the range host:
+  whoever takes the platform container is root on the range host. The
+  platform VM's own Docker socket is no longer mounted anywhere (2026-11-15).
 - The ttyd terminals at `/vm-terminal/kali/` and `/vm-terminal/waf/` are
   unauthenticated shells for whoever reaches the platform's port: the VM's
   address (`CR_PUBLISH`) on the platform VM.

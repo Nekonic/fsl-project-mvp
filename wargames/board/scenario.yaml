@@ -296,13 +296,13 @@ foundations:
         check: {kind: answer, of: address, host: kali}
       - id: board_ip
         point: {opens: topology, map: {node: board.com}}
-        check: {kind: answer, of: address, host: board.com, zone: service}
+        check: {kind: answer, of: address, host: board.com}
       - id: path
         point: {opens: topology, map: {node: kali}}
         check: {kind: answer, of: path, form: order}
       - id: dmz
         point: {opens: topology, map: {zone: service}}
-        check: {kind: answer, of: subnet, host: board.com, wrong_if: [{match: '^\d{1,3}(\.\d{1,3}){3}$', says: prefix}]}
+        check: {kind: answer, of: subnet, host: waf, zone: service, wrong_if: [{match: '^\d{1,3}(\.\d{1,3}){3}$', says: prefix}]}
       - id: log_host
         point: {opens: topology, map: {node: log-server}}
         check: {kind: answer, of: logs}
