@@ -277,7 +277,7 @@ bin/verify             # acceptance까지. 플랫폼 VM에서 실행
 ```
 
 - 플랫폼 VM에서는 `CR_PLATFORM_URL=http://<address>:8000 bin/verify`로 실행합니다.
-- 전체 실행은 약 12분 걸리고 skip이 1개 나옵니다(`test_lesson.py`의 F1 구성도 테스트,
+- 전체 실행은 약 9분 걸리고 skip이 1개 나옵니다(`test_lesson.py`의 F1 구성도 테스트,
   F4로 시작하는 과정 2).
 - sqlmap 변형 6개를 모두 쏘려면 `CR_SQLMAP_VARIANTS=1 bin/verify`로 실행합니다.
 - acceptance 분할 방식은 [test/README.md](test/README.md)에 있습니다.

@@ -8197,3 +8197,93 @@ An audit of every test module (37 findings in six categories) was applied to
 
 The unit note (`test_range_host.py:161` waiting 10 s of real time) was not in
 the categories applied.
+
+## 2026-11-16 — Each slot's monitoring is real: sensors on the bridges they watch, a 관제망 and a log server
+
+Approved by the user. The live map draws only real wiring, and the sensors
+(host network, sniffing the bridge device) and the log path (the range host's
+own rsyslog reading files and forwarding them) had no place on a believable
+company network. Each slot now runs its monitoring as containers.
+
+- **Sensors are slot containers on the bridge they watch.** The edge sensor
+  joins `sN-inet`, the internal sensor `sN-web`, each through an interface
+  named `sniff` that `slot.sh` strips of its address (`--af-packet=sniff`).
+  Each also has a `mgmt` interface on the new `sN_mgmt` (bridge `sN-mgmt`,
+  172.29.N.0/24), the 관제망. They left the host network and the host user
+  namespace and run under `userns-remap` like every other container, with
+  the same capabilities (NET_ADMIN, NET_RAW, SYS_NICE). The image's
+  entrypoint chowns its config, rule and log paths, so `slot.sh` hands them
+  to the remapped root (owner and group; with the group left as host root,
+  the first live run failed with `chown ... Operation not permitted`).
+- **SPAN by `tc mirred`, measured against hub mode.** Every other port of the
+  watched bridge gets an ingress `matchall` with `mirred egress mirror` to the
+  sensor's port; the sensor's port learns nothing, floods nothing and drops
+  what the sensor sends, so it is a receive-only port and each frame reaches
+  the sensor once, from the port it entered by. `slot.sh` applies it on `up`
+  and again at the end of `reset` for the recreated containers' ports. Hub
+  mode (`ageing_time 0`, sensor port flooding) was run on slot 1 with the same
+  red-team file: the edge sensor saw 150,197 packets and 5,267 alerts against
+  150,066 and 5,267 with mirroring, the internal sensor 827 and 812 packets,
+  13,691 and 60 HTTP events on both, kernel_drops 0 on both. Equal capture,
+  so `tc mirred` stays: hub mode floods every frame to every port, so corp
+  would receive every frame meant for board and the edge every frame meant for
+  Kali.
+- **A log server on the 관제망.** `rsyslog/rsyslog-minimal` pinned by digest
+  (`sN-log-server`, .10). A shipper per log runs the same image with
+  `imfile`: the sensors' shippers share the sensor's network namespace
+  (`network_mode: service:<sensor>`), so a sensor's log leaves from its own
+  관제망 interface; the WAF's shipper is its own container on the 관제망 (.13)
+  reading the WAF's audit log through a read-only mount. That is the simpler
+  of the two options and keeps the WAF, a learner's root shell, off the
+  관제망 (its namespace was also on gVisor when this was chosen). Shippers send
+  over TCP 514 so the in-slot hop pushes back instead of dropping; the log
+  server names each log by the address it came from (`$fromhost-ip`), with the
+  host names and tags the range host used (`cr-edge-N`, `cr-range-N`,
+  `cr-waf-N`; `suricata`, `modsecurity`), and forwards to the platform
+  collector on 5140/udp as the range host did, so `ingest/` and the event
+  shapes do not change. The range host's per-slot rsyslog forwarding and its
+  `rsyslog` package are gone. Each of the four rsyslog containers takes about
+  1 MiB (cgroup).
+- **The 관제망 is the one slot network with a way out.** The log server reaches
+  the collector through the range host's NAT. `slot.sh` installs the filter
+  before compose creates the network: INPUT drops everything from `sN-mgmt`,
+  DOCKER-USER passes `sN-mgmt` to itself and the log server to the
+  collector's 5140/udp and drops the rest; `down` removes the rules.
+  `test_range_isolation.py` now probes from a sensor and the log server too.
+- **The map reads the new facts.** A sensor's other legs are links to their
+  switches; the log server is a node on the 관제망 (role `log-server`),
+  labelled with the port it listens on (514/tcp, read from its config); a
+  sensor's own interfaces are no learner host's address. A log edge is drawn
+  only for a device off the log server's network (the WAF), since a sensor's
+  log goes over the 관제망 link already drawn. The 관제망 is a band under every
+  zone holding the sensors (straight below the bridge each mirrors), its
+  switch at the router's x and the log server below it; its caption sits at
+  its left. The coach line for F1's log question follows.
+
+- **The range host names itself in `/etc/hosts`.** The first full verify on
+  the new range host hung: every acceptance group waited for a slot while
+  waitress held 80-odd queued requests and about 150 ssh commands to the
+  range host, each a readiness read (the board's ground truth, both sensors'
+  rules). `sudo` looks up the host's own name; the range host has no DNS once
+  its egress port is gone and no `/etc/hosts` line for `cr-range`, and
+  systemd-resolved's synthesized answer (about 190 link-local addresses)
+  took 21.8 s, so every `sudo docker exec` waited that long. With
+  `127.0.1.1 cr-range` the lookup takes 0.2 s and `GET /api/range/ready/`
+  4.5 s with eight idle slots. `slot.sh` adds the line first thing on every
+  `up` and `reset`, so a standing host gets it at its next configure and no
+  host replacement is needed.
+
+Measured on the live range (eight slots, `dba.range`), the same
+`redteam/cases/board.yaml` run before (session 2129, slot 3, d927d757) and
+after (session 2130, slot 1): every case the same verdict and `corroborated`
+(TP 12, FP 0, FN 0, TN 6); suricata detections 5,272 and 5,267, ModSecurity
+45,989 and 45,974 (sqlmap's random agent and tamper vary run to run); edge
+sensor 149,823 and 150,066 packets, 5,271 and 5,267 alerts, 13,695 and 13,691
+HTTP events; internal sensor 825 and 812 packets, 60 and 60 HTTP events;
+`capture.kernel_drops` 0 on every sensor of every slot. Range host memory
+with eight idle slots: 10,724 MiB used before, 10,627 after; per slot (sum
+of its containers' cgroups) 1,179 MiB before and 1,183 after.
+Full `bin/verify` on the platform VM at the deployed commit: 553 s,
+acceptance 95 passed, 0 failed, 1 skipped in 497 s across 12 processes, unit
+and API 849 + 814, ratchet no regression; during it `GET /` p95 2.6 s and
+`GET /api/range/ready/` p95 6.1 s with eight slots.

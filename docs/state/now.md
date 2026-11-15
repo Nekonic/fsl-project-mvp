@@ -5,16 +5,39 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-15, the hardening: sign-in on every surface, Elasticsearch
-security, the project password as a secret file, configurable ingress, Kali on
-gVisor (the range is one range host, `cr-range`, running eight slots as compose
-projects; on `dev`).
+Updated: 2026-11-16, each slot's monitoring made real: sensors on the bridges
+they watch by `tc mirred`, a 관제망 `sN_mgmt` and a log server per slot (the
+range is one range host, `cr-range`, running eight slots as compose projects;
+on `dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
 
 ## Where things stand
 
+- 2026-11-16, the monitoring is real (`docs/DECISIONS.md` "Each slot's
+  monitoring is real"): both Suricata sensors are slot containers on the
+  bridge they watch (`sniff`, no address, every other port mirrored to them by
+  `tc mirred`) and on the 관제망 `sN_mgmt` (172.29.N.0/24); a log server
+  (`rsyslog/rsyslog-minimal`) on the 관제망 takes the sensors' and the WAF's
+  logs from shippers over 514/tcp and forwards them to the collector on
+  5140/udp as before; the range host's own rsyslog forwarding is gone. The
+  live map shows the 관제망 band with the sensors and the log server. Live on
+  the range host 10.31.0.248 (replaced by `POST slot/`, then `configure/`;
+  the platform VM runs `/opt/cr` at the branch `monitoring-real`, images
+  d927d757). Same red-team file before and after: every verdict the same,
+  kernel_drops 0; hub mode measured equal and not kept. RAM per slot 1,179
+  MiB before, 1,183 after. The first full verify hung: `sudo` on the new
+  range host waited 21.8 s on its own name (no `/etc/hosts` line, no DNS), so
+  readiness reads piled up; `slot.sh` now writes `127.0.1.1 cr-range`. Three
+  acceptance tests still read the estate where the WAF-only change put board
+  on `sN-web` (F1's board address, the inside leg) or ran the probe in an
+  image with no `timeout` (the log server, now probed through `nsenter`);
+  fixed. Full `bin/verify` on the VM then: 553 s, acceptance 95 passed, 0
+  failed, 1 skipped in 497 s across 12 processes, unit and API 849 + 814,
+  ratchet `core_loc` 587, `dependencies` 6, `services` 4. During it, p95 of
+  `GET /` 2.6 s and of `GET /api/range/ready/` 6.1 s (32 samples each, 15 s
+  apart, eight slots).
 - 2026-11-15, the hardening (`docs/DECISIONS.md` "Every surface signs in"):
   every console page and `/api/` needs a signed-in session (`admin` /
   `123456`, made at first start, never forced to change); `/vm-terminal/`,
