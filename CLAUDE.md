@@ -29,8 +29,7 @@ state to `dev` as a fast-forward, keep as many branches as the work needs, and
 tag a version (`vMAJOR.MINOR.PATCH`) when a verified state is worth keeping.
 `main` holds only the best version: a tagged state that passed the full
 `bin/verify`, a live review round with zero countable findings, and a docs
-review that found no document out of step with the code (both languages of
-every `.ko.md` pair), moved there as a fast-forward after gate 2. Never force-push `dev` or `main`.
+review that found no document out of step with the code, moved there as a fast-forward after gate 2. Never force-push `dev` or `main`.
 
 Replies are short — the result and the reason, no restatement, no analogy;
 detail goes in the commit and `docs/DECISIONS.md`. Use the words practitioners
@@ -42,6 +41,9 @@ primary source rather than your own sense of the vocabulary.
 Reply to the user in Korean; write English in every repo file — code, commit
 messages, PR descriptions, documents, the state and decision files — because
 Korean costs about twice the tokens per line and every session re-reads them.
+The two exceptions are `README.md` and `docs/ARCHITECTURE.md`, which are
+written in Korean only; there is no English version and no `.ko.md` pair
+(2026-11-15, the user's ruling).
 Code carries no comments in any language.
 
 The product itself is Korean-only: everything a learner or operator sees in
@@ -50,10 +52,8 @@ or language switch. This is about the product, not the working language.
 
 Korean belongs in exactly four places among the documentation and the console:
 
-- `*.ko.md` — a document for Korean readers. The English file is canonical; add
-  a `.ko.md` beside it only when the user asks (as with `README.ko.md` and
-  `docs/ARCHITECTURE.ko.md`). When a change touches a document that has a
-  `.ko.md`, update both together so the pair never drifts.
+- `README.md` and `docs/ARCHITECTURE.md` — the Korean-only documents. Do not
+  add an English version or a `.ko.md` beside any document.
 - `deploy/topology/range-openstack.gns3` — the learner map, whose drawing
   text is Korean. It is the only learner map; the system map
   (`deploy/topology/system/range-openstack.gns3`) stays English and is never

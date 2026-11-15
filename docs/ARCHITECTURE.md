@@ -1,635 +1,635 @@
-# Architecture
+# 아키텍처
 
-This document explains how the range is built, how traffic and evidence move through it, and why it was designed this way. `CLAUDE.md` defines the score. `docs/STATE.md` lists open problems and measured quirks.
+이 문서는 훈련 환경이 어떻게 구성되어 있는지, 트래픽과 증거가 그 안에서 어떻게 이동하는지, 왜 그렇게 설계했는지를 설명합니다. 점수의 정의는 `CLAUDE.md`에 있습니다. 미해결 문제와 측정으로 확인한 특이 사항은 `docs/STATE.md`에 있습니다.
 
-The product runs only on OpenStack. The docker substrate was removed on 2026-10-21 (`docs/DECISIONS.md`). Docker still runs the platform's own services on the platform VM, every slot's containers on the range host and the GNS3 display nodes. Local development runs the unit tests, not the range. The last section, "OpenStack", describes the range. It separates what is built from what is planned (`docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`).
+훈련 환경은 OpenStack에서만 돌립니다. docker substrate는 2026-10-21에 삭제했습니다(`docs/DECISIONS.md`). Docker는 지금도 플랫폼 VM에서 플랫폼 자신의 서비스를, 훈련 환경 호스트에서 모든 슬롯의 컨테이너를, GNS3의 표시용 노드를 실행합니다. 로컬 개발에서는 훈련 환경이 아니라 유닛 테스트를 실행합니다. 마지막 절 "OpenStack"은 훈련 환경을 설명하며, 이미 구축한 것과 계획만 있는 것을 구분해 적습니다(`docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`).
 
-The repo started from one hypothesis. Red team attacks can be labelled with ground truth, and Suricata and ModSecurity alerts can be matched to those labels automatically. Then false positives and false negatives can be scored mechanically. The objective score was added after that held.
+이 레포는 가설 하나에서 출발했습니다. 레드팀 공격에는 정답 데이터(ground truth) 라벨을 붙일 수 있습니다. Suricata와 ModSecurity 경보는 그 라벨에 자동으로 맞출 수 있습니다. 그러면 오탐과 미탐을 기계적으로 채점할 수 있습니다. 목표 점수는 이 가설이 맞는 것을 확인한 뒤에 추가했습니다.
 
-Words used throughout:
+문서 전체에서 쓰는 용어는 다음과 같습니다.
 
-- **Range**: the whole training environment, meaning its networks, hosts and target apps.
-- **Session**: one run of the range, shared by the red team that attacks and the blue team that defends.
-- **Wargame**: one target app with its objectives and its cases. The two wargames are `board` and `corp`.
-- **Case**: one attack or one benign request set that the harness sends. A case counts as one decision however many alerts it draws.
-- **Marker**: the `X-Request-ID` value on a case's requests. It lets the platform match an alert to its case.
-- **Ground truth**: the target's own stored data. It shows what the attacker really took. For the board it is the secret that submitted loot is matched against; for corp it is the changes in its database log.
-- **Substrate**: what the platform builds the range on, chosen by `CR_SUBSTRATE`. The only one is OpenStack.
-- **`estate`**: the internal network that holds the target apps.
-- **Slot**: one complete copy of the range, the docker compose project `sN` on the range host. One session uses one slot.
-- **Posture**: a named starting state of the defence (WAF tuning plus an IDS rule file). The wargame declares it in its `defense:` map, and a session starts from one.
-- **Coach**: the lesson highlight. It draws a ring around the screen element a step is about and puts a one-line note beside it.
-- **Isolation seam**: the rule that one file owns one concern. The "Isolation seams" section lists them.
-- **Store**: the platform's SQLite database, `/data/db.sqlite3`.
-- **Unit**: one foundation lesson or worked scenario, as the step engine runs it.
-- **Box**: the container that fills a role, such as the attacker box (Kali).
-- **Range host**: the one VM, `cr-range`, that runs every slot's containers.
+- **훈련 환경**(range): 네트워크, 호스트, 대상 앱을 모두 합친 전체입니다.
+- **세션**: 공격하는 레드팀과 방어하는 블루팀이 훈련 환경을 함께 한 번 쓰는 단위입니다.
+- **워게임**: 대상 앱 하나와 그 목표, 케이스입니다. 워게임은 `board`와 `corp` 두 개입니다.
+- **케이스**: harness가 보내는 공격 또는 정상 요청 묶음입니다. 경보가 몇 건이든 판정 하나로 셉니다.
+- **마커**: 케이스의 요청에 붙는 `X-Request-ID` 값입니다. 플랫폼은 이 값으로 경보를 케이스에 맞춥니다.
+- **정답 데이터**(ground truth): 대상 시스템이 직접 저장한 데이터입니다. 공격자가 실제로 무엇을 빼앗았는지 보여 줍니다. board에서는 제출한 탈취 데이터를 대조하는 비밀 값이고, corp에서는 DB 변경 로그입니다.
+- **substrate**: 플랫폼이 훈련 환경을 올리는 기반으로, `CR_SUBSTRATE`로 고릅니다. 지원하는 것은 OpenStack뿐입니다.
+- **`estate`**: 대상 앱이 있는 내부 네트워크입니다.
+- **슬롯**: 훈련 환경 한 벌로, 훈련 환경 호스트 위의 docker compose 프로젝트 `sN`입니다. 세션 하나가 슬롯 하나를 씁니다.
+- **방어 설정**(posture): 시작 방어 상태입니다. WAF 설정과 IDS 룰 파일로 이루어지며, 워게임이 `defense:` 맵에 선언하고 세션은 그중 하나로 시작합니다. 코드에서는 posture라고 부릅니다.
+- **코치**(coach): 레슨 강조 기능입니다. 단계가 다루는 화면 요소에 원을 두르고 그 옆에 한 줄 안내를 붙입니다.
+- **격리 경계**(isolation seam): 한 관심사를 한 파일만 다루게 하는 규칙입니다. "격리 경계" 절에 목록이 있습니다.
+- **플랫폼 DB**(store): 플랫폼의 SQLite 데이터베이스, `/data/db.sqlite3`입니다.
+- **유닛**(unit): 단계 엔진이 실행하는 기초 레슨 또는 시나리오 하나입니다. 본문에서는 대개 "레슨"이라고 씁니다.
+- **박스**(box): 역할 하나를 맡는 컨테이너입니다. 공격 박스(Kali)가 한 예입니다.
+- **훈련 환경 호스트**(range host): 모든 슬롯의 컨테이너를 실행하는 VM 하나, `cr-range`입니다.
 
-## The range
+## 훈련 환경
 
-The platform VM runs one compose file, `compose.yaml`, project `cr`. It is the control plane: one long-lived copy that runs the platform, Elasticsearch, Kibana, the `collector` and the GNS3 server on one network, `mgmt`. `bin/measure` counts its services. The range itself runs on one more VM, the range host `cr-range`, as one compose project per slot ("OpenStack").
+플랫폼 VM은 compose 파일 하나, `compose.yaml`(프로젝트 `cr`)을 실행합니다. 이것이 컨트롤 플레인이며, 오래 떠 있는 사본 하나가 플랫폼, Elasticsearch, Kibana, `collector`, GNS3 서버를 네트워크 `mgmt` 하나 위에서 실행합니다. `bin/measure`가 이 파일의 서비스 수를 셉니다. 훈련 환경 자체는 VM 하나를 더 써서, 훈련 환경 호스트 `cr-range`에서 슬롯마다 compose 프로젝트 하나로 돕니다("OpenStack" 절).
 
-Opening a session (`POST /api/sessions/`) starts no stack.
+세션을 열면(`POST /api/sessions/`) 스택을 띄우지 않습니다.
 
-- It binds the session to the first free slot that is READY.
-- It seeds the sensors and writes the WAF tuning for the session's defense.
-- It reads the baseline, the snapshot of the target's data that scoring compares against later.
+- 준비된 빈 슬롯 중 첫 번째에 세션을 묶습니다.
+- 센서에 룰을 넣고, 세션의 defense에 맞는 WAF 설정을 씁니다.
+- baseline을 읽습니다. baseline은 나중에 채점이 비교하는 기준이 되는, 대상 시스템 데이터의 스냅숏입니다.
 
-Sessions run at the same time, one per slot. `max_sessions` is the number of slots, and an open past it answers 409. Closing a session resets only its slot.
+세션은 슬롯마다 하나씩 동시에 실행됩니다. `max_sessions`는 슬롯 수이고, 그보다 많이 열려 하면 409로 응답합니다. 세션을 닫으면 그 슬롯만 리셋합니다.
 
-The store keeps a closed session for `CR_RETAIN_CLOSED_MINUTES` (default 60, set in `compose.yaml`).
+플랫폼 DB는 닫힌 세션을 `CR_RETAIN_CLOSED_MINUTES`분(기본 60, `compose.yaml`에서 설정) 동안 보관합니다.
 
-- `platform/api/retention.py` deletes older closed sessions, with everything that belongs to them. It runs at start (`cr/wsgi.py`) and after each close.
-- It deletes a session's detections and customer requests 2,000 rows per transaction, then the session. A large prune therefore never holds the store's write lock for long.
-- The store is SQLite with `transaction_mode: IMMEDIATE` (`cr/settings.py`). A read-then-write transaction takes the write lock at its start. It waits out the 30 s busy timeout instead of failing at once with `database is locked`.
-- `bin/backup` snapshots the store with `VACUUM INTO` and keeps the newest `--keep` copies (default 1). For `bin/platform-rebuild` and `bin/cloud down`, the value is `backups: {keep}` in `cloud.yaml`.
+- `platform/api/retention.py`는 그보다 오래된 닫힌 세션을 거기에 속한 모든 데이터와 함께 삭제합니다. 시작할 때(`cr/wsgi.py`)와 세션을 닫을 때마다 실행합니다.
+- 세션의 탐지 기록과 고객 요청을 트랜잭션당 2,000행씩 지운 다음 세션을 지웁니다. 그래서 한꺼번에 많이 정리해도 플랫폼 DB의 쓰기 잠금을 오래 잡지 않습니다.
+- 플랫폼 DB는 `transaction_mode: IMMEDIATE`(`cr/settings.py`)로 설정한 SQLite입니다. 읽은 뒤 쓰는 트랜잭션은 시작할 때 쓰기 잠금을 잡습니다. `database is locked`로 바로 실패하지 않고 30초 busy timeout 동안 기다립니다.
+- `bin/backup`은 `VACUUM INTO`로 플랫폼 DB의 스냅숏을 만들고, 가장 최근 사본 `--keep`개를 남깁니다(기본 1). `bin/platform-rebuild`와 `bin/cloud down`에서는 `cloud.yaml`의 `backups: {keep}` 값을 씁니다.
 
-The wargames run in each slot on the range host, as GHCR containers.
+워게임은 훈련 환경 호스트의 각 슬롯에서 GHCR 컨테이너로 돕니다.
 
-- The readiness probe and the session baseline read the board inside the board's own container, through the `board` role's runner (`sudo docker exec sN-board`). `loot.ground_truth` asks `127.0.0.1` there at the port of `BOARD_API_URL`. No port of the board is published.
+- 준비 상태 점검과 세션 baseline은 `board` 역할의 runner(`sudo docker exec sN-board`)로 board 컨테이너 안에서 board를 읽습니다. `loot.ground_truth`는 그 안에서 `BOARD_API_URL`의 포트로 `127.0.0.1`에 요청합니다. board의 포트는 어디에도 publish하지 않습니다.
 
-Each target is a wargame, a folder under `wargames/` whose `compose.yaml` every slot runs. There are two:
+대상 시스템은 워게임이고, `wargames/` 아래 폴더 하나입니다. 모든 슬롯이 그 폴더의 `compose.yaml`을 실행합니다. 워게임은 둘입니다.
 
-- `board` (Django and MySQL, `loot_verified`).
-- `corp` (WordPress and MySQL, `effect_observed`).
+- `board`(Django와 MySQL, `loot_verified`)
+- `corp`(WordPress와 MySQL, `effect_observed`)
 
-The platform finds each wargame from `wargames/<id>/scenario.yaml` (`platform/wargames.py`).
+플랫폼은 각 워게임을 `wargames/<id>/scenario.yaml`에서 찾습니다(`platform/wargames.py`).
 
-- Required fields: `name`, `description`, `image`, `public_url`, `objective_model`, `case_file`.
-- Optional fields `category`, `difficulty` (easy, medium, hard) and `minutes`. The API carries them; the console shows none of them (2026-11-14).
-- Optional fields `defense`, `foundations` and `scenarios`. They are described under "Sessions, WAF tuning and the step engine" and "Scenarios".
-- Nothing reads `image` yet.
+- 필수 필드는 `name`, `description`, `image`, `public_url`, `objective_model`, `case_file`입니다.
+- 선택 필드 `category`, `difficulty`(easy, medium, hard), `minutes`가 있습니다. API에는 실리지만 콘솔은 어느 것도 보여 주지 않습니다(2026-11-14).
+- 선택 필드 `defense`, `foundations`, `scenarios`는 "세션, WAF 설정 조정, 단계 엔진"과 "시나리오"에서 설명합니다.
+- `image`는 아직 읽는 곳이 없습니다.
 
-The images are built and pulled as follows.
+이미지는 다음과 같이 만들고 가져옵니다.
 
-- CI (`.github/workflows/images.yml`) builds each app image.
-- CI also builds the range's own images: Kali (`deploy/kali/Dockerfile`), the WAF (`deploy/waf/Dockerfile`) and the edge (`deploy/edge/Dockerfile`).
-- The range host pulls each as `ghcr.io/nekonic/cr-<name>:<CR_IMAGE_TAG>`. The platform writes its own tag into the host's setup bundle and into each slot's compose file.
-- Tool cases run in the attacker container (`redteam/tools.py`, whose `TOOL_IMAGE` defaults to `cr-kali`).
+- 앱 이미지는 CI(`.github/workflows/images.yml`)가 빌드합니다.
+- 훈련 환경 자체의 이미지도 CI가 빌드합니다: Kali(`deploy/kali/Dockerfile`), WAF(`deploy/waf/Dockerfile`), 에지(`deploy/edge/Dockerfile`).
+- 훈련 환경 호스트가 각 이미지를 `ghcr.io/nekonic/cr-<name>:<CR_IMAGE_TAG>`로 pull합니다. 플랫폼이 자신의 태그를 호스트의 설치 번들과 슬롯마다의 compose 파일에 적어 넣습니다.
+- 도구 케이스는 공격 컨테이너에서 실행합니다(`redteam/tools.py`, `TOOL_IMAGE`의 기본값은 `cr-kali`).
 
-A new wargame needs the following.
+새 워게임을 추가하려면 다음이 필요합니다.
 
-- `scenario.yaml`, `objectives.yaml` and `compose.yaml` in its folder under `wargames/`, and a case file under `redteam/cases/`.
-- In `declaration.yaml`, its name in the `wargames:` list of the range host and its site name in the `names:` list of `cr-waf`.
-- In `deploy/range-host/slot.yaml`, the last octet of the estate address of each service the WAF proxies to under `x-wargames.fronts`, each service's `cap_add` and limits under `x-wargames.limits`, the service's name and estate address in the `waf` service's `extra_hosts`, and the site name in the `kali` service's `extra_hosts`. `rangehost.compose` reads `fronts` and `limits` when it renders a slot.
-- Its services in `LEARNER_FACING` and `CAPABILITIES` in `platform/tests/test_containment.py`.
-- A `server` block in `deploy/waf/board.com.conf`.
+- `wargames/` 아래 폴더 안의 `scenario.yaml`, `objectives.yaml`, `compose.yaml`, 그리고 `redteam/cases/` 아래의 케이스 파일.
+- `declaration.yaml`에서 훈련 환경 호스트의 `wargames:` 목록에 넣을 이름과 `cr-waf`의 `names:` 목록에 넣을 사이트 이름.
+- `deploy/range-host/slot.yaml`에서 WAF가 프록시하는 서비스마다 `x-wargames.fronts` 아래에 넣는 estate 주소의 마지막 옥텟, 서비스마다 `x-wargames.limits` 아래에 넣는 `cap_add`와 자원 제한, `waf` 서비스의 `extra_hosts`에 넣는 서비스 이름과 estate 주소, `kali` 서비스의 `extra_hosts`에 넣는 사이트 이름. 슬롯을 렌더링할 때 `rangehost.compose`가 `fronts`와 `limits`를 읽습니다.
+- `platform/tests/test_containment.py`의 `LEARNER_FACING`과 `CAPABILITIES`에 넣는 서비스.
+- `deploy/waf/board.com.conf`의 `server` 블록.
 
-Nothing in a wargame's `compose.yaml` pins `container_name`. Each slot names a container `sN-<service>` (`s1-board`, `s2-corp-wp`) and gives it its service as hostname. The control plane keeps fixed names: `cr-platform`, `cr-elasticsearch`, `cr-kibana`, `cr-collector` and `cr-gns3`. The first table below lists each service by that name.
+워게임의 `compose.yaml`은 `container_name`을 고정하지 않습니다. 슬롯은 컨테이너 이름을 `sN-<service>`(`s1-board`, `s2-corp-wp`)로 붙이고, 호스트 이름은 서비스 이름으로 줍니다. 고정 이름은 컨트롤 플레인에만 있습니다: `cr-platform`, `cr-elasticsearch`, `cr-kibana`, `cr-collector`, `cr-gns3`. 아래 첫 번째 표는 서비스를 이 이름으로 적습니다.
 
-Every endpoint that acts on the range takes `session` from the query or the body. These endpoints are rules, validate, disabled rules, `/api/attacker/`, origin, label and canary.
+훈련 환경에 작용하는 엔드포인트는 쿼리나 본문에서 `session`을 받습니다. 해당 엔드포인트는 rules, validate, 룰 비활성화, `/api/attacker/`, origin, label, canary입니다.
 
-- Without `session`, a write goes to the newest open session. It answers 409 when none is open.
-- Without `session`, a read uses the newest session.
-- A write that names a closed session is refused.
-- A disabled rule is stored with its session (migration 0014). Migration 0028 renamed the model `Suppression` to `DisabledRule` and `restored_at` to `enabled_at`; the stored rows are kept.
+- `session`을 지정하지 않으면 쓰기는 가장 최근에 열린 세션으로 갑니다. 열린 세션이 없으면 409로 응답합니다.
+- `session`을 지정하지 않은 읽기는 가장 최근 세션을 씁니다.
+- 닫힌 세션을 지정한 쓰기는 거부합니다.
+- 비활성화한 룰은 세션과 함께 저장합니다(마이그레이션 0014). 마이그레이션 0028에서 모델 이름을 `Suppression`에서 `DisabledRule`로, `restored_at`을 `enabled_at`으로 바꿨습니다. 저장된 행은 그대로 남습니다.
 
-Each slot's sensors keep their own live rule files.
+각 슬롯의 센서는 실제로 적용 중인 룰 파일을 따로 가집니다.
 
-- At open, a slot's sensors are seeded with the defense's rule file, unless it is `local.rules` ("Sessions, WAF tuning and the step engine").
-- A rule applied to one slot is absent from the others (measured 2026-10-13).
+- 세션을 열 때 슬롯의 센서에 그 defense의 룰 파일을 넣습니다. 룰 파일이 `local.rules`이면 넣지 않습니다("세션, WAF 설정 조정, 단계 엔진" 참고).
+- 한 슬롯에 적용한 룰은 다른 슬롯에 없습니다(2026-10-13 측정).
 
-| Service | Runs on | Image | Network | Host port |
+| 서비스 | 실행 위치 | 이미지 | 네트워크 | 호스트 포트 |
 |---|---|---|---|---|
-| `kali` | range host, slot N | `ghcr.io/nekonic/cr-kali` from `deploy/kali/Dockerfile` (Ubuntu 24.04 with the attack tools and the marker proxy) | internet | |
-| `edge` | range host, slot N | `ghcr.io/nekonic/cr-edge` from `deploy/edge/Dockerfile` (Alpine and nftables, a router) | internet, estate | |
-| `waf` | range host, slot N | `ghcr.io/nekonic/cr-waf` from `deploy/waf/Dockerfile` (nginx 1.24, ModSecurity v3, CRS) | estate | |
-| `edge-sensor` | range host, slot N | `jasonish/suricata` by digest, on the bridge `sN-inet` (`deploy/range-host/edge-sensor.yaml`) | host network | |
-| `estate-sensor` | range host, slot N | `jasonish/suricata` by digest, on the bridge `sN-estate` (`deploy/suricata/suricata.yaml`) | host network | |
-| `board` | range host, slot N | `ghcr.io/nekonic/cr-board` from `wargames/board/app` (Django under gunicorn, port 8000) | estate, `board-default` | |
-| `board-db` | range host, slot N | `mysql` by digest | `board-default` | |
-| `corp-wp` | range host, slot N | `ghcr.io/nekonic/cr-corp` from `wargames/corp/app` (WordPress 6.6.2, three pinned vulnerable plugins; `corp.com` by `Host` header) | estate, `corp-default` | |
-| `corp-db` | range host, slot N | `ghcr.io/nekonic/cr-corp-db` from `wargames/corp/db` (MySQL 8.4, binlog `ROW`) | `corp-default` | |
-| `cr-elasticsearch` | platform VM | `elasticsearch:8.15.0` | mgmt | 9200 |
-| `cr-collector` | platform VM | `filebeat:8.15.0`, the syslog input only | mgmt | 5140/udp |
-| `cr-kibana` | platform VM | `kibana:8.15.0`, served at `/kibana/` | mgmt | 5601 |
-| `cr-platform` | platform VM | `platform/` (Django under waitress, behind nginx). nginx also serves Kibana at `/kibana/` and the VM terminals at `/vm-terminal/kali/` and `/vm-terminal/waf/` | mgmt | 8000, 8002 |
-| `cr-gns3` | platform VM | `ghcr.io/nekonic/cr-gns3` from `deploy/gns3` (gns3-server 3.1.0a6, qemu, uBridge 1.2.3, busybox-static, docker-cli). It holds the learner maps the platform loads, opens and starts. It has `CAP_NET_ADMIN`, `/dev/net/tun`, the Docker socket and the host's pid namespace | mgmt | 3080 |
+| `kali` | 훈련 환경 호스트, 슬롯 N | `deploy/kali/Dockerfile`에서 빌드한 `ghcr.io/nekonic/cr-kali` (공격 도구와 마커 프록시를 넣은 Ubuntu 24.04) | internet | |
+| `edge` | 훈련 환경 호스트, 슬롯 N | `deploy/edge/Dockerfile`에서 빌드한 `ghcr.io/nekonic/cr-edge` (Alpine과 nftables로 만든 라우터) | internet, estate | |
+| `waf` | 훈련 환경 호스트, 슬롯 N | `deploy/waf/Dockerfile`에서 빌드한 `ghcr.io/nekonic/cr-waf` (nginx 1.24, ModSecurity v3, CRS) | estate | |
+| `edge-sensor` | 훈련 환경 호스트, 슬롯 N | digest로 고정한 `jasonish/suricata`, 브리지 `sN-inet` 감시(`deploy/range-host/edge-sensor.yaml`) | 호스트 네트워크 | |
+| `estate-sensor` | 훈련 환경 호스트, 슬롯 N | digest로 고정한 `jasonish/suricata`, 브리지 `sN-estate` 감시(`deploy/suricata/suricata.yaml`) | 호스트 네트워크 | |
+| `board` | 훈련 환경 호스트, 슬롯 N | `wargames/board/app`에서 빌드한 `ghcr.io/nekonic/cr-board` (gunicorn 위의 Django, 포트 8000) | estate, `board-default` | |
+| `board-db` | 훈련 환경 호스트, 슬롯 N | digest로 고정한 `mysql` | `board-default` | |
+| `corp-wp` | 훈련 환경 호스트, 슬롯 N | `wargames/corp/app`에서 빌드한 `ghcr.io/nekonic/cr-corp` (WordPress 6.6.2, 취약 버전으로 고정한 플러그인 세 개. `Host` 헤더가 `corp.com`) | estate, `corp-default` | |
+| `corp-db` | 훈련 환경 호스트, 슬롯 N | `wargames/corp/db`에서 빌드한 `ghcr.io/nekonic/cr-corp-db` (MySQL 8.4, binlog `ROW`) | `corp-default` | |
+| `cr-elasticsearch` | 플랫폼 VM | `elasticsearch:8.15.0` | mgmt | 9200 |
+| `cr-collector` | 플랫폼 VM | `filebeat:8.15.0`, syslog 입력만 사용 | mgmt | 5140/udp |
+| `cr-kibana` | 플랫폼 VM | `kibana:8.15.0`, `/kibana/`에서 제공 | mgmt | 5601 |
+| `cr-platform` | 플랫폼 VM | `platform/` (waitress 위의 Django, nginx 뒤에서 동작). nginx는 `/kibana/`의 Kibana, `/vm-terminal/kali/`와 `/vm-terminal/waf/`의 VM 터미널도 제공 | mgmt | 8000, 8002 |
+| `cr-gns3` | 플랫폼 VM | `deploy/gns3`에서 빌드한 `ghcr.io/nekonic/cr-gns3` (gns3-server 3.1.0a6, qemu, uBridge 1.2.3, busybox-static, docker-cli). 플랫폼이 올리고 열고 시작한 학습자 구성도를 들고 있음. `CAP_NET_ADMIN`, `/dev/net/tun`, Docker 소켓, 호스트의 pid 네임스페이스가 있음 | mgmt | 3080 |
 
-Ports 8000, 8002 and 3080 bind to `CR_PUBLISH`. Port 5140/udp binds to `CR_SYSLOG_PUBLISH`. Both variables default to 127.0.0.1. Ports 9200 and 5601 bind to loopback only. The range host publishes no port: each slot container in the table is `sN-<service>` (`s1-kali`), and every slot network is internal.
+8000, 8002, 3080은 `CR_PUBLISH`에, 5140/udp는 `CR_SYSLOG_PUBLISH`에 바인딩합니다. 두 변수의 기본값은 모두 127.0.0.1입니다. 9200과 5601은 loopback에만 바인딩합니다. 훈련 환경 호스트는 포트를 하나도 publish하지 않습니다. 표의 슬롯 컨테이너 이름은 `sN-<service>`(`s1-kali`)이고, 슬롯 네트워크는 모두 internal입니다.
 
-| Segment | Subnet | Name |
+| 구간 | 서브넷 | 이름 |
 |---|---|---|
-| `internet` | one /24 per origin, thirty in all (`declaration.yaml`), such as `ru` 5.188.10.0/24 and `us` 73.0.0.0/24, on the slot's bridge `sN-inet` | Internet |
-| `estate` | slot N's /24 of the `estate` /16 in `cloud.yaml` (10.30.N.0/24), the slot's bridge `sN-estate` | Application estate |
-| `mgmt` | the `mgmt` CIDR in `cloud.yaml`, the one Neutron network the fabric makes | Management |
+| `internet` | 출발지마다 /24 하나, 모두 서른 개(`declaration.yaml`). 예: `ru` 5.188.10.0/24, `us` 73.0.0.0/24. 슬롯의 브리지 `sN-inet` 위 | 인터넷 |
+| `estate` | `cloud.yaml`의 `estate` /16 중 슬롯 N의 /24(10.30.N.0/24), 슬롯의 브리지 `sN-estate` | 애플리케이션 estate (서비스망) |
+| `mgmt` | `cloud.yaml`의 `mgmt` CIDR. fabric이 만드는 유일한 Neutron 네트워크 | 관리망 |
 
-The origin subnets are fixed in `declaration.yaml`, because the subnet carries the origin for GeoIP.
+출발지 서브넷은 `declaration.yaml`에 고정합니다. GeoIP용 출발지 정보가 서브넷에 담기기 때문입니다.
 
-`mgmt` carries every slot. The platform reaches the range host on it, and the range host sends every slot's syslog to the collector on it (`docs/DECISIONS.md`, 2026-10-10).
+`mgmt` 하나가 모든 슬롯을 맡습니다. 플랫폼은 이 네트워크로 훈련 환경 호스트에 접속하고, 훈련 환경 호스트는 모든 슬롯의 syslog를 이 네트워크로 collector에 보냅니다(`docs/DECISIONS.md`, 2026-10-10).
 
-The platform VM's own compose network is also called `mgmt`. It is a separate Docker bridge, and `cloud.yaml` may not overlap it.
+플랫폼 VM의 compose 네트워크도 이름이 `mgmt`입니다. 이것은 별개의 Docker 브리지이며, `cloud.yaml`의 CIDR은 이 브리지와 겹칠 수 없습니다.
 
-The declaration lists thirty origins on one Internet segment.
+선언은 인터넷 구간 하나에 출발지 서른 개를 나열합니다.
 
-- They are the top thirty countries by Cloudflare Radar's share of HTTP requests.
-- Each has a /24 that GeoIP places in that country, and a share of about 100 attack addresses.
-- Each slot's `internet` bridge carries all thirty. `deploy/range-host/slot.sh` gives the edge every origin's gateway address and Kali its share of each origin's addresses (`ip -batch` through `nsenter`). The bridge's own subnet, 172.30.N.0/24, is a throwaway that nothing reads.
-- `bin/pick-origins` reproduces the table. An acceptance test checks every subnet against the pipeline that scoring reads.
+- Cloudflare Radar 기준 HTTP 요청 점유율 상위 서른 개 국가입니다.
+- 각 출발지는 GeoIP가 그 국가로 판정하는 /24 하나를 갖고, 약 100개의 공격 주소 중 일부를 배정받습니다.
+- 슬롯마다 `internet` 브리지 하나에 서른 개가 모두 올라갑니다. `deploy/range-host/slot.sh`가 에지에는 출발지마다 게이트웨이 주소를, Kali에는 출발지마다 배정된 주소를 붙입니다(`nsenter`로 `ip -batch` 실행). 브리지 자체의 서브넷 172.30.N.0/24는 아무도 읽지 않는 자리 채움용입니다.
+- `bin/pick-origins`로 이 표를 다시 만들 수 있습니다. acceptance 테스트는 모든 서브넷을 점수 계산이 읽는 파이프라인과 대조합니다.
 
-Segmentation is the slot's docker networks on the range host, and the fabric's security groups around the host.
+망 분리는 훈련 환경 호스트 위 슬롯의 docker 네트워크가 하고, 호스트 바깥은 fabric의 보안 그룹이 막습니다.
 
-- Every slot network is `internal`, with `gateway_mode_ipv4: isolated`: the range host holds no address on any slot bridge, and no slot network has a route out or NAT.
-- Kali stands on `internet` only and knows two names, `board.com` and `corp.com`, both the WAF. The edge routes between `internet` and `estate` without NAT. A database stands only on its wargame's `<wargame>-default` network.
-- `test/test_attacker_reach.py` checks against the live range that Kali reaches neither `board:8000` nor `corp-wp` by name. Its port scan moved to `test/test_range_isolation.py`, which scans the range host, the platform and the range host's `mgmt` network from Kali. `test/test_board_exfil.py` reaches the board through `board.com`.
-- `test/test_range_isolation.py` is the live containment evidence. It asserts the containment from Kali, the WAF and the board: no range host sshd, no platform, no Internet, no metadata service, no other slot. Kali reaches the WAF and, through the edge, the board's estate address; `board-db` does not resolve; a SYN scan works.
-- `platform/tests/test_containment.py` fails `bin/verify` when the rendered slot compose file breaks the containment ("OpenStack").
-- `test/test_concurrent_sessions.py` asserts that two concurrent sessions do not see each other.
-- The origin subnets and each slot's addresses are fixed by the declaration, `cloud.yaml` and `deploy/range-host/slot.yaml`. Neutron assigns the range host's `mgmt` address, so the views build a new adapter and read the addresses on every request.
-- The rule that refuses requests from the range's hosts (every address the slots report except the scorer's, the range host's `mgmt` address included) caches their addresses for 30 s. When it cannot reach the substrate, it treats the range as empty and lets the request through (`docs/THREAT-MODEL.md`).
+- 슬롯 네트워크는 모두 `internal`이고 `gateway_mode_ipv4: isolated`입니다. 훈련 환경 호스트는 슬롯 브리지에 주소를 갖지 않고, 어느 슬롯 네트워크에도 밖으로 나가는 경로나 NAT가 없습니다.
+- Kali는 `internet`에만 붙어 있고, 아는 이름은 `board.com`과 `corp.com` 둘뿐이며 둘 다 WAF입니다. 에지는 `internet`과 `estate` 사이를 NAT 없이 라우팅합니다. DB는 자기 워게임의 `<wargame>-default` 네트워크에만 붙습니다.
+- `test/test_attacker_reach.py`는 실제 훈련 환경에서 Kali가 `board:8000`에도 `corp-wp`에도 이름으로 접근하지 못하는지 확인합니다. 포트 스캔은 `test/test_range_isolation.py`로 옮겼고, 여기서 Kali가 훈련 환경 호스트와 플랫폼, 훈련 환경 호스트의 `mgmt` 네트워크를 훑습니다. `test/test_board_exfil.py`는 `board.com`을 거쳐 board에 접근합니다.
+- 실제 훈련 환경의 격리 증거는 `test/test_range_isolation.py`입니다. Kali, WAF, board에서 격리를 검증합니다. 훈련 환경 호스트의 sshd, 플랫폼, 인터넷, 메타데이터 서비스, 다른 슬롯 어디에도 닿지 않아야 합니다. Kali는 WAF에 닿고, 에지를 거쳐 board의 estate 주소에도 닿습니다. `board-db`는 이름이 풀리지 않고, SYN 스캔은 동작합니다.
+- `platform/tests/test_containment.py`는 렌더링한 슬롯 compose 파일이 격리 조건을 어기면 `bin/verify`를 실패시킵니다("OpenStack" 절).
+- `test/test_concurrent_sessions.py`는 동시에 연 두 세션이 서로를 보지 못함을 검증합니다.
+- 출발지 서브넷과 슬롯 안의 주소는 선언, `cloud.yaml`, `deploy/range-host/slot.yaml`이 정합니다. 훈련 환경 호스트의 `mgmt` 주소는 Neutron이 할당하므로, 뷰는 요청마다 새 어댑터를 만들어 주소를 읽습니다.
+- 훈련 환경 안에서 온 요청(채점 서버를 뺀, 슬롯이 보고하는 모든 주소. 훈련 환경 호스트의 `mgmt` 주소도 포함)을 거부하는 규칙은 그 주소를 30초 동안 캐시합니다. substrate에 연결할 수 없으면 훈련 환경이 비어 있다고 보고 요청을 허용합니다(`docs/THREAT-MODEL.md`).
 
-The platform reaches the range on `mgmt` only.
+플랫폼은 훈련 환경에 `mgmt`로만 닿습니다.
 
-- The attacker's traffic enters the internal network (`estate`) only through the edge.
-- The platform reaches the range host on `mgmt`, through a port in `cr-reach`. The range host may open a connection to the platform only for NTP and for syslog to 5140/udp ("OpenStack"). The API still checks the caller itself (`docs/THREAT-MODEL.md`).
+- 공격자의 트래픽은 에지를 거쳐서만 내부망(`estate`)으로 들어옵니다.
+- 플랫폼은 `cr-reach`에 속한 포트로 `mgmt`의 훈련 환경 호스트에 접속합니다. 훈련 환경 호스트가 플랫폼으로 여는 연결은 NTP와 5140/udp syslog뿐입니다("OpenStack" 절). 그래도 API가 호출자를 직접 검사합니다(`docs/THREAT-MODEL.md`).
 
-"The range on OpenStack: the target structure", near the end of this document, draws the whole path.
+경로 전체는 이 문서 끝쪽의 "OpenStack 훈련 환경: 목표 구조"에 그림으로 있습니다.
 
-`deploy/suricata/suricata.yaml` is the estate sensor's configuration. `rangehost.estate_sensor` replaces its af-packet entry with one for the slot's bridge `sN-estate`: one thread, and a BPF filter on the board's and corp-wp's estate addresses. Its `HOME_NET` is 10/8, 172.16/12 and 192.168/16, and it holds no origin: the attacker's addresses are outside (`docs/DECISIONS.md`, 2026-10-21, "The estate sensor's HOME_NET and a repeated lesson move").
+`deploy/suricata/suricata.yaml`은 estate 센서의 설정 파일입니다. `rangehost.estate_sensor`가 af-packet 항목을 슬롯의 브리지 `sN-estate` 하나로 바꿉니다. 스레드는 하나이고, board와 corp-wp의 estate 주소만 받는 BPF 필터를 겁니다. `HOME_NET`은 10/8, 172.16/12, 192.168/16이며 출발지 대역은 들어 있지 않습니다. 공격자 주소는 바깥으로 취급합니다(`docs/DECISIONS.md`, 2026-10-21, "The estate sensor's HOME_NET and a repeated lesson move").
 
-The WAF sends `board.com` to `board:8000` (its `extra_hosts` name `board` and `corp-wp` at their estate addresses, .59 and .60). It sends `/internal/` to a path the board does not serve, so the answer is the board's own 404, byte for byte (`deploy/waf/board.com.conf`). `corp.com` is a second vhost in the same file. It goes to `corp-wp:80`.
+WAF는 `board.com`을 `board:8000`으로 보냅니다(WAF의 `extra_hosts`가 `board`와 `corp-wp`를 estate 주소 .59와 .60으로 정합니다). `/internal/`은 board가 서비스하지 않는 경로로 보내서, board 자신의 404 응답이 그대로 나가게 합니다(`deploy/waf/board.com.conf`). `corp.com`은 같은 파일에 있는 두 번째 vhost이며 `corp-wp:80`으로 갑니다.
 
-The board is the first wargame.
+board는 첫 번째 워게임입니다.
 
-- It runs Django 3.2.4 under gunicorn, on MySQL pinned by digest. This Django version is unpatched and has a known `order_by` SQL injection flaw (CVE-2021-35042).
-- It migrates and seeds itself on start.
-- Neither the board nor its database is reachable from outside the range. No port of either is published on the range host.
-- It is scored by exfiltrated credentials. When a session starts, the platform reads the board's `auth_user` usernames and password hashes from `/internal/auth-users` and keeps them as the session's snapshot.
-- The platform reads that path inside the board's container, at `127.0.0.1`, through the `board` role's runner, and the WAF never forwards it. The read therefore crosses no slot bridge, and neither the WAF nor an IDS sees it.
+- gunicorn 위에서 Django 3.2.4가 돌고, digest로 고정한 MySQL을 씁니다. 이 Django 버전은 패치하지 않은 버전이며, 알려진 `order_by` SQL Injection 취약점(CVE-2021-35042)이 있습니다.
+- 시작할 때 스스로 마이그레이션과 시드 데이터 입력을 수행합니다.
+- board도 그 데이터베이스도 훈련 환경 밖에서는 접근할 수 없습니다. 둘 다 훈련 환경 호스트에 포트를 publish하지 않습니다.
+- 탈취된 계정 정보로 채점합니다. 세션이 시작되면 플랫폼이 `/internal/auth-users`에서 board의 `auth_user` 사용자 이름과 비밀번호 해시를 읽어 세션의 스냅숏으로 보관합니다.
+- 플랫폼은 `board` 역할의 runner로 board 컨테이너 안에서 `127.0.0.1`의 이 경로를 읽고, WAF는 이 경로를 전달하지 않습니다. 이 읽기는 슬롯 브리지를 지나지 않으므로 WAF도 IDS도 보지 못합니다.
 
-The corp wargame is the second. It is WordPress 6.6.2 (`corp-wp`) with three plugins pinned to unpatched versions:
+corp 워게임은 두 번째 워게임입니다. WordPress 6.6.2(`corp-wp`)에 플러그인 세 개를 미패치 버전으로 고정했습니다.
 
-- Ultimate Member 2.6.6 (CVE-2023-3460): a registration flaw that injects `wp_capabilities` to grant administrator.
-- WP GDPR Compliance 1.4.2 (CVE-2018-19207): an unauthenticated option change that opens admin self-registration.
-- Easy Post Submission 2.3.0 (CVE-2026-4431): an unauthenticated post overwrite.
+- Ultimate Member 2.6.6(CVE-2023-3460): 가입 요청에 `wp_capabilities`를 주입해 administrator 권한을 얻는 취약점
+- WP GDPR Compliance 1.4.2(CVE-2018-19207): 인증 없이 옵션을 바꿔 관리자 자가 가입을 여는 취약점
+- Easy Post Submission 2.3.0(CVE-2026-4431): 인증 없이 글을 덮어쓰는 취약점
 
-None of the three triggers the default OWASP CRS. The database, `corp-db`, is MySQL 8.4 run with `--binlog-format=ROW`. WordPress itself is not instrumented. corp is scored by the changes an attack commits to its database (see "How the scores are computed").
+셋 모두 기본 OWASP CRS에서 탐지되지 않습니다. 데이터베이스 `corp-db`는 `--binlog-format=ROW`로 실행하는 MySQL 8.4입니다. WordPress 자체에는 계측 코드를 넣지 않았습니다. corp는 공격이 데이터베이스에 커밋한 변경으로 채점합니다("점수 계산 방식" 참고).
 
-## The declaration and the substrate seam
+## 선언과 substrate 경계
 
-The "substrate seam" is the interface between the platform and the adapter that talks to OpenStack. `platform/range/ports.py` defines it.
+"substrate 경계"(seam)는 플랫폼과, OpenStack과 통신하는 어댑터 사이의 인터페이스입니다. `platform/range/ports.py`가 정의합니다.
 
-OpenStack is the only substrate (2026-10-20 ruling, superseding 2026-10-11). The docker adapter was removed on 2026-10-21.
+지원하는 substrate는 OpenStack 하나입니다(2026-10-20 결정, 2026-10-11 결정을 대체). docker 어댑터는 2026-10-21에 삭제했습니다.
 
-The platform does not ask OpenStack what the range means. It reads that from `platform/range/declaration.yaml`. The file holds:
+플랫폼은 훈련 환경이 무엇을 뜻하는지 OpenStack에 묻지 않고 `platform/range/declaration.yaml`에서 읽습니다. 이 파일에는 다음이 있습니다.
 
-- per segment, an id, a display name and an attack origin;
-- a role table: attacker, scorer (the platform), gateway, proxy, sensor, edge, estate-sensor, wargames, board, board-db, corp and corp-db;
-- the hosts, each with its segments (`hosts:`): the range host `cr-range`, the only one with a `setup` script and the `wargames` it runs, and the slot's `cr-waf`, `cr-edge` and `cr-kali`;
-- the compose service of the slot that each role maps to (`compose:`);
-- the host each sensor watches (`watches:`);
-- the default origin;
-- the defended site (Seoul).
+- 구간별 id, 표시 이름, 공격 출발지
+- 역할 표: attacker, scorer(플랫폼), gateway, proxy, sensor, edge, estate-sensor, wargames, board, board-db, corp, corp-db
+- 호스트별 구간(`hosts:`): 설치 스크립트(`setup`)와 실행할 `wargames`를 가진 유일한 호스트인 훈련 환경 호스트 `cr-range`, 그리고 슬롯의 `cr-waf`, `cr-edge`, `cr-kali`
+- 각 역할이 대응하는 슬롯의 compose 서비스(`compose:`)
+- 센서마다 감시하는 호스트(`watches:`)
+- 기본 출발지
+- 방어 대상 사이트(서울)
 
-Only a segment that declares an origin is outside.
+출발지를 선언한 구간만 외부 구간입니다.
 
-The declaration holds no address for `estate` or `mgmt` and none for a host. `cloud.yaml` gives the estate /16 and `mgmt`, the slot template gives the slot's addresses, and Neutron assigns the range host's `mgmt` address, so the platform takes them from the substrate. If the declaration named a subnet and the cloud assigned a different one, alerts would be grouped under a subnet where no host is.
+선언에는 `estate`와 `mgmt`의 주소도, 호스트 주소도 없습니다. estate /16과 `mgmt`는 `cloud.yaml`이, 슬롯 안 주소는 슬롯 템플릿이, 훈련 환경 호스트의 `mgmt` 주소는 Neutron이 정하므로 플랫폼이 substrate에서 가져옵니다. 선언에 서브넷을 적었는데 클라우드가 다른 서브넷을 할당하면, 호스트가 하나도 없는 서브넷으로 경보가 묶이게 됩니다.
 
-The platform finds segments by a tag.
+플랫폼은 구간을 태그로 찾습니다.
 
-- Only `mgmt` is a Neutron network, tagged `cr.segment.id=mgmt`. The adapter fetches only tagged networks. A slot's `internet` and `estate` segments come from its rendered compose file (`_read` in `platform/range/openstack.py`).
-- Matching by name broke on Heat stack suffixes and on non-unique Neutron names.
-- A role names a host the declaration gives. The adapter finds the range host as the server whose `cr_host` metadata is `cr-range` (`slot.host_of`); the other hosts are the slot's containers.
-- A role that `compose:` maps to a service runs in that slot container (`sudo docker exec sN-<service>` on the range host). The `wargames` role runs on the range host itself.
+- Neutron 네트워크는 `mgmt` 하나뿐이고 `cr.segment.id=mgmt` 태그가 붙어 있습니다. 어댑터는 태그가 붙은 네트워크만 가져옵니다. 슬롯의 `internet`과 `estate` 구간은 렌더링한 슬롯 compose 파일에서 옵니다(`platform/range/openstack.py`의 `_read`).
+- 이름으로 맞추는 방식은 Heat 스택 접미사와 유일하지 않은 Neutron 이름 때문에 깨졌습니다.
+- 역할은 선언이 지정한 호스트를 가리킵니다. 어댑터는 메타데이터 `cr_host`가 `cr-range`인 서버를 훈련 환경 호스트로 찾고(`slot.host_of`), 나머지 호스트는 슬롯의 컨테이너입니다.
+- `compose:`가 서비스에 대응시킨 역할은 그 슬롯 컨테이너 안에서 실행됩니다(훈련 환경 호스트에서 `sudo docker exec sN-<service>`). `wargames` 역할은 훈련 환경 호스트 자체에서 실행됩니다.
 
-Core code and most of the platform use only four methods of that interface:
+코어 코드와 플랫폼 대부분은 이 인터페이스의 메서드 네 개만 씁니다.
 
-- `describe()` returns the shape: segments, their nodes and addresses, and sensors.
-- `segments()` returns which host is on which segment, without the sensor check.
-- `runner(role, segment)` runs a command in a standing container or on the range host. The roles it serves include the sensors, the proxy, the attacker (whose command log the platform reads), the board and corp-db.
-- `launcher(segment)` runs a one-shot tool on a segment and returns its output.
+- `describe()`는 구조를 반환합니다: 구간, 각 구간의 노드와 주소, 센서.
+- `segments()`는 센서 검사 없이 어느 호스트가 어느 구간에 있는지 반환합니다.
+- `runner(role, segment)`는 떠 있는 컨테이너나 훈련 환경 호스트에서 명령을 실행합니다. 대상 역할에는 센서, 프록시, 플랫폼이 명령 로그를 읽는 공격 박스, board, corp-db가 있습니다.
+- `launcher(segment)`는 한 구간에서 일회성 도구를 실행하고 그 출력을 반환합니다.
 
-`range.substrate()` builds the adapter named by `CR_SUBSTRATE` (default `range.openstack.connect`). It passes the options that `CR_SUBSTRATE_OPTIONS` keeps under that name, plus `declared=RANGE`.
+`range.substrate()`는 `CR_SUBSTRATE`가 지정한 어댑터(기본값 `range.openstack.connect`)를 만듭니다. `CR_SUBSTRATE_OPTIONS`가 그 이름 아래에 둔 옵션에 `declared=RANGE`를 더해 넘깁니다.
 
-- It takes `CR_OPENSTACK_KEYSTONE`, `_USER`, `_PASSWORD`, `_PROJECT`, `_SSH_USER`, `_SSH_KEY`, `_REGION`, `_INTERFACE` and `_DOMAIN`. It refuses by name any that is missing.
-- It also takes the values that shape the range: `_BASE_IMAGE`, `_FLAVOR` (the range host's flavor), `_AVAILABILITY_ZONE`, `_SUBNETS`, `_MTU`, `_SLOTS`, `_BUILD_NETWORK` (the platform's own network, which the range host pulls its images over) and `_PLATFORM`. It refuses by name where they are used.
-- It takes `CR_IMAGE_TAG` as well, for the range host's images. The tag is written to `/opt/cr/.env` at boot.
-- None has a default in code. All come from `deploy/openstack/cloud.yaml` through the Heat stack. `platform/range/cloud.py` reads and validates that file.
-- `redteam/harness.py` is handed a launcher and `platform/rules/suricata.py` is handed a runner. Neither imports `subprocess` or names a substrate.
+- `CR_OPENSTACK_KEYSTONE`, `_USER`, `_PASSWORD`, `_PROJECT`, `_SSH_USER`, `_SSH_KEY`, `_REGION`, `_INTERFACE`, `_DOMAIN`을 받습니다. 하나라도 없으면 그 이름을 밝혀 거부합니다.
+- 훈련 환경의 모양을 정하는 값 `_BASE_IMAGE`, `_FLAVOR`(훈련 환경 호스트의 flavor), `_AVAILABILITY_ZONE`, `_SUBNETS`, `_MTU`, `_SLOTS`, `_BUILD_NETWORK`(훈련 환경 호스트가 이미지를 받아 오는 플랫폼 자신의 네트워크), `_PLATFORM`도 받습니다. 이 값들은 쓰이는 곳에서 이름을 밝혀 거부합니다.
+- `CR_IMAGE_TAG`도 받습니다. 훈련 환경 호스트의 이미지에 쓰며, 부팅할 때 `/opt/cr/.env`에 기록합니다.
+- 코드에 기본값이 있는 값은 없습니다. 모두 Heat 스택을 거쳐 `deploy/openstack/cloud.yaml`에서 옵니다. `platform/range/cloud.py`가 그 파일을 읽고 검증합니다.
+- `redteam/harness.py`는 launcher를, `platform/rules/suricata.py`는 runner를 전달받습니다. 둘 다 `subprocess`를 import하지 않고 substrate 이름도 쓰지 않습니다.
 
-How the adapter answers each call:
+어댑터가 각 호출에 답하는 방식은 다음과 같습니다.
 
-- Shape: Keystone v3, Neutron with `tags-any` and Nova for `mgmt`; the slot's `internet` and `estate`, with their nodes and addresses, come from the slot's rendered compose file (`rangehost.compose`).
-- Sensor: it reports both sensors whenever the range host stands. Nothing confirms that it sees the gateway's traffic.
-- Runner: `ssh` to the range host's `mgmt` address, one shared connection per host (`ControlMaster auto`, `ControlPersist 60`). A role that `compose:` maps to a service runs in that slot container (`sudo docker exec sN-<service>`, `range/rangehost.exec_in`).
-- Address: the range host's `mgmt` address, for every role the range fills.
-- Launcher: `runner("attacker")` runs the tool in the slot's Kali container. It does not check the segment it is given, which only appears in the refusal; the source country comes from `set-origin` SNAT. Any other image is refused: a tool runs in the slot's attacker container and in no other.
-- Tested against: unit tests on fakes built from the published API reference and a local sshd. Before the range host, on 2026-10-08, the VM range on the `fsl-range` cloud was built through `/api/range/` and `launcher()` fired sqlmap from the `ru` and `tw` origins.
+- 구조: `mgmt`는 Keystone v3, `tags-any`를 쓰는 Neutron, Nova로 읽습니다. 슬롯의 `internet`과 `estate`, 그 노드와 주소는 렌더링한 슬롯 compose 파일(`rangehost.compose`)에서 옵니다.
+- 센서: 훈련 환경 호스트가 떠 있으면 두 센서를 모두 보고합니다. 센서가 gateway의 트래픽을 실제로 보는지는 확인하지 않습니다.
+- runner: 훈련 환경 호스트의 `mgmt` 주소로 `ssh`하며, 호스트마다 연결 하나를 같이 씁니다(`ControlMaster auto`, `ControlPersist 60`). `compose:`가 서비스에 대응시킨 역할은 그 슬롯 컨테이너 안에서 실행합니다(`sudo docker exec sN-<service>`, `range/rangehost.exec_in`).
+- address: 훈련 환경이 맡는 모든 역할에 대해 훈련 환경 호스트의 `mgmt` 주소
+- launcher: `runner("attacker")`가 슬롯의 Kali 컨테이너에서 도구를 실행합니다. 넘겨받은 구간은 확인하지 않고 거부 메시지에만 쓰며, 출발 국가는 `set-origin` SNAT가 정합니다. 다른 이미지는 거부합니다. 도구는 슬롯의 공격 컨테이너에서만 돕니다.
+- 검증 대상: 공개 API 레퍼런스와 로컬 sshd로 만든 fake에 대한 유닛 테스트. 훈련 환경 호스트 이전인 2026-10-08에는 `fsl-range` 클라우드의 VM 훈련 환경을 `/api/range/`로 구축했고, `launcher()`가 `ru`와 `tw` 출발지에서 sqlmap을 실행함
 
-Compose mounts the Docker socket into the platform, and the entrypoint adds the platform user to the socket's group. The platform uses the socket to read its own NICs. GNS3 uses it for its display nodes. This is a container escape path, and nothing removes it yet. `docs/STATE.md` lists, under "The substrate seam", what is left.
+compose는 Docker 소켓을 플랫폼에 마운트하고, entrypoint가 플랫폼 사용자를 그 소켓의 그룹에 추가합니다. 플랫폼은 이 소켓으로 자기 NIC를 읽으며, GNS3는 표시용 노드를 띄웁니다. 이는 컨테이너 탈출 경로이며, 아직 없애지 않았습니다. 남은 작업은 `docs/STATE.md`의 "The substrate seam" 항목에 있습니다.
 
-## The topology
+## 네트워크 구성도
 
-The range's topology is kept as GNS3 project files. They use `revision` 9, so GNS3 2.2 opens them and 3.x upgrades them on load. There are two kinds.
+훈련 환경의 네트워크 구성은 GNS3 프로젝트 파일로 보관합니다. `revision` 9이므로 GNS3 2.2가 열 수 있고, 3.x는 불러올 때 업그레이드합니다. 두 종류가 있습니다.
 
-- **The system map**, `deploy/topology/system/range-openstack.gns3`, shows the full wiring of the declaration. It includes the management segment, the platform VM, the range host `cr-range` and one slot's containers on it. It is English only, for development and GNS3's MCP. The GNS3 service never sees the repo's maps, so learners are never offered it.
-- **The learner map**, `deploy/topology/range-openstack.gns3`, shows the company web-service network the learner defends. It is a logical diagram, drawn the way lab topologies are drawn (Cisco NetAcad lab topology, NSRC workshop logical diagram). The rules below describe what the learner map contains.
+- **시스템 구성도**, `deploy/topology/system/range-openstack.gns3`: 선언의 전체 배선을 보여 줍니다. 관리 구간, 플랫폼 VM, 훈련 환경 호스트 `cr-range`와 그 위의 슬롯 하나 분량 컨테이너가 들어 있습니다. 영어로만 있으며 개발과 GNS3의 MCP용입니다. GNS3 서비스는 레포의 구성도를 보지 않으므로 학습자에게는 제공되지 않습니다.
+- **학습자용 구성도**, `deploy/topology/range-openstack.gns3`: 학습자가 방어하는 회사 웹 서비스 네트워크를 보여 줍니다. 실습 토폴로지를 그리는 방식(Cisco NetAcad lab topology, NSRC 워크숍 logical diagram)의 논리 구성도입니다. 구성도에 들어가는 것은 아래와 같습니다.
 
-What the learner map shows, drawn as an enterprise logical diagram:
+학습자용 구성도에 있는 것(기업 논리 구성도 방식):
 
-- Role hostnames above the icons.
-- At each host's link end, the address alone (`10.30.1.59`): no interface, port or prefix. Switch ends and management links carry no label, and the links to the database switch carry none either, since their addresses are a Docker bridge's.
-- Four zones. Two are captioned with KISA's ISMS-P 2.6.1 names for network zones (DMZ and the DB zone). The other two are the internet and the management network. A zone with labelled links gains its network in the caption (`DMZ 10.30.1.0/24`).
-- Each IDS is its own sensor box ("IDS") joined by a dashed line to the host whose traffic it is fed. That is `router` (the edge sensor on the slot's `internet` bridge) and the site (the estate sensor on the slot's `estate` bridge), the hosts Kibana's `sensor` names.
-- Green arrows with drawn arrowheads, and a Korean caption that says web request, show the request flow internet → router → waf → site.
+- 아이콘 위의 역할 호스트 이름
+- 호스트 쪽 링크 끝마다 주소만(`10.30.1.59`). 인터페이스, 포트, 프리픽스는 적지 않습니다. 스위치 쪽 끝과 관리 링크, DB 스위치로 가는 링크(주소가 Docker 브리지 것)에는 라벨이 없습니다.
+- 영역 넷: KISA ISMS-P 2.6.1이 부르는 영역 이름(DMZ, DB존)과 인터넷, 관리망. 라벨이 붙은 링크가 있는 영역은 캡션에 네트워크를 덧붙입니다(`DMZ 10.30.1.0/24`).
+- IDS는 따로 그린 센서 상자("IDS")이고, 트래픽을 받아 보는 호스트와 점선으로 잇습니다. `router`(슬롯 `internet` 브리지를 보는 에지 센서)과 사이트(슬롯 `estate` 브리지를 보는 estate 센서)이며, Kibana의 `sensor`가 부르는 호스트와 같습니다.
+- 초록 화살표(선으로 그린 화살촉)와 "웹 요청" 글자가 internet → router → waf → 사이트 순서의 요청 흐름을 보여 줍니다.
 
-It shows nothing else: no title, legend, machine's own name, `cr-`, management address or Docker bridge.
+그 밖에는 아무것도 없습니다. 제목, 범례, 기계 자체의 이름, `cr-`, 관리 주소, Docker 브리지가 모두 없습니다.
 
-- The flow runs left to right along one row (internet, router, waf, site), with `sw1` above the row and `sw3` below it, so no link crosses another.
-- `topology.for_wargame` drops a zone and the drawings inside it only when the zone held nodes and none is left for the wargame; lines, sensor boxes and texts outside such a zone stay.
+- 흐름은 한 줄로 왼쪽에서 오른쪽(internet, router, waf, 사이트)이고, `sw1`은 그 줄 위, `sw3`은 아래에 있어 링크가 서로 겹치지 않습니다.
+- `topology.for_wargame`은 노드가 있던 영역에 그 워게임의 노드가 하나도 남지 않을 때만 그 영역과 안쪽 그림을 지웁니다. 그런 영역 밖의 선, 센서 상자, 글자는 남습니다.
 
-The nodes of the learner map:
+학습자용 구성도의 노드:
 
-- `customers` and `kali` (the attacker's Kali box) are on the `internet` switch.
-- `router` is the slot's edge router container. The edge sensor is drawn as the IDS sensor box beside it.
-- `sw1` is the service segment. The `waf` and the site (`board.com` or `corp.com`, the WAF host's declared names) are on it.
-- `sw2` is the database segment. It sits behind the site and holds the database (`board-db`).
-- `sw3` is monitoring. It links the `log-server` (Elasticsearch) to the hosts whose records reach it: the router, the WAF and the site. The range host forwards both sensors' eve.json and the WAF's audit log.
+- `customers`와 `kali`(공격자의 Kali 박스)는 `internet` 스위치에 붙습니다.
+- `router`는 슬롯의 에지 라우터 컨테이너입니다. 에지 센서는 옆의 IDS 센서 상자로 그립니다.
+- `sw1`은 서비스 구간입니다. `waf`와 사이트(`board.com` 또는 `corp.com`, WAF 호스트의 선언된 이름)가 붙습니다.
+- `sw2`는 데이터베이스 구간입니다. 사이트 뒤에 있고 데이터베이스(`board-db`)가 붙습니다.
+- `sw3`은 관제 구간입니다. `log-server`(Elasticsearch)를 기록을 보내는 호스트인 라우터, WAF, 사이트와 잇습니다. 두 센서의 eve.json과 WAF의 audit 로그는 훈련 환경 호스트가 전달합니다.
 
-Switches are numbered the way lab topologies number them (`sw1`, `sw2`, `sw3`, as in NSRC's `sw1`), in a fixed order: service, database, monitoring. The zone captions say which segment each switch is.
+스위치 번호는 실습 토폴로지가 붙이는 방식(`sw1`, `sw2`, `sw3`, NSRC의 `sw1`)을 따르고, 순서는 서비스, 데이터베이스, 관제로 고정합니다. 각 스위치가 어느 구간인지는 영역 캡션이 알려 줍니다.
 
-A template draws both wargames' site and database in one place (both on `sw2`). `topology.for_wargame` keeps the session's own. A wargame that declares no customers (`corp`, which has no `traffic.yaml`) has no `customers` node.
+템플릿은 두 워게임의 사이트와 데이터베이스를 한곳에 그립니다(둘 다 `sw2`). `topology.for_wargame`이 세션의 워게임 것만 남깁니다. 고객을 선언하지 않은 워게임(`corp`, `traffic.yaml` 없음)에는 `customers` 노드가 없습니다.
 
-`topology.learner(declaration, wargame)` maps the range's names to the map's names.
+`topology.learner(declaration, wargame)`는 훈련 환경의 이름을 구성도의 이름으로 옮깁니다.
 
-- Hosts: `cr-kali` is `kali`, and also `customers` where the customers run on it. `cr-edge` is `router`. The range host and its site container are the site. `cr-elasticsearch` is `log-server`.
-- Roles.
-- Segments to switches: origins to `internet`, the estate to `sw1`, a wargame's compose network to `sw2`, and the management segment to `sw3` for the NIC name alone.
-- Each sensor to the node whose NIC it uses.
+- 호스트: `cr-kali`는 `kali`입니다. 고객 트래픽을 그 호스트에서 생성하면 `customers`이기도 합니다. `cr-edge`는 `router`입니다. 훈련 환경 호스트와 그 사이트 컨테이너는 사이트입니다. `cr-elasticsearch`는 `log-server`입니다.
+- 역할
+- 구간에서 스위치로: 출발지는 `internet`, estate는 `sw1`, 워게임의 compose 네트워크는 `sw2`, 관리 구간은 NIC 이름만 쓰는 `sw3`
+- 각 센서에서 그 센서가 NIC를 쓰는 노드로
 
-The overlay, the lesson's range questions and the interface read all go through this mapping. (The overlay is the host list with live addresses that `GET /api/sessions/<id>/topology/` returns, described below.)
+오버레이, 레슨의 훈련 환경 질문, 인터페이스 읽기는 모두 이 매핑을 거칩니다. 오버레이는 `GET /api/sessions/<id>/topology/`가 돌려주는, 실시간 주소가 붙은 호스트 목록입니다(아래에서 설명).
 
-Drawing rules:
+그리기 규칙:
 
-- Every link is one straight line, level, upright or diagonal. No link crosses another link or a node.
-- A node that a link reaches from straight above carries its name beside it.
-- Every host is one square frame of one size and line weight (`host-*.svg`). `deploy/gns3/symbols.py` builds the frames when the GNS3 image is built, and `provision.py` uploads them.
-- Inside the frame is GNS3's bundled affinity glyph. The frame is red for the attacker, green for the WAF (the shield), blue for the router (affinity's router glyph) and for the sites and their databases, and gray for customers and the log server.
-- Switches and the internet keep GNS3's bundled square switch and globe.
-- `kali`'s frame holds OffSec's Kali dragon. It is the press pack's `kali-dragon-black.svg` at a pinned commit, checked by sha256 and placed unmodified inside the frame. `host-kali.txt` and the main page's footer (`topology.trademark`) say whose trademark it is.
+- 모든 링크는 직선 하나(수평, 수직, 대각선)입니다. 다른 링크나 노드를 가로지르지 않습니다.
+- 링크가 바로 위에서 들어오는 노드는 이름을 옆에 둡니다.
+- 모든 호스트는 크기와 선 굵기가 같은 정사각형 틀 하나입니다(`host-*.svg`). GNS3 이미지를 빌드할 때 `deploy/gns3/symbols.py`가 만들고, `provision.py`가 업로드합니다.
+- 틀 안에는 GNS3에 번들된 affinity 글리프가 들어갑니다. 틀 색은 공격자 빨강, WAF(방패) 초록, 라우터(affinity 라우터 글리프)와 사이트·DB 파랑, 고객과 로그 서버 회색입니다.
+- 스위치와 인터넷은 GNS3 번들의 정사각형 스위치와 지구본 아이콘을 그대로 씁니다.
+- `kali`의 틀에는 OffSec의 Kali 드래곤이 들어갑니다. 프레스 팩의 `kali-dragon-black.svg`를 고정 커밋에서 가져와 sha256으로 확인하고, 수정하지 않은 채 틀 안에 배치합니다. `host-kali.txt`와 메인 페이지 하단(`topology.trademark`)에 누구의 상표인지 표시합니다.
 
-**Every learner-map host is a display container.**
+**학습자용 구성도의 호스트는 모두 표시용 컨테이너입니다.**
 
-- GNS3 colours a link end by its node's status, so a stopped node draws every end red.
-- Each host is therefore a `docker` node of one pinned image (`busybox`, `topology.DISPLAY_IMAGE`). It only runs `sleep` and has no console.
-- The real machines run in the range. The map's nodes only display them.
-- Measured on the platform VM with a board map on slot 1 and a corp map on slot 2, both languages (before the product became Korean-only): 26 display containers, 115 MB PSS for their processes and runc shims, and 12 MB for their uBridge processes (`docs/DECISIONS.md`).
+- GNS3는 링크 끝을 노드 상태에 따라 칠하므로, 멈춘 노드는 모든 링크 끝이 빨강으로 그려집니다.
+- 그래서 각 호스트는 고정한 이미지 하나(`busybox`, `topology.DISPLAY_IMAGE`)의 `docker` 노드입니다. `sleep`만 실행하고 콘솔이 없습니다.
+- 실제 기계는 훈련 환경에서 실행됩니다. 구성도의 노드는 이를 표시만 합니다.
+- 플랫폼 VM에서 슬롯 1에 board 구성도, 슬롯 2에 corp 구성도를 두 언어로 올려 측정한 값(제품을 한국어 전용으로 바꾸기 전): 표시용 컨테이너 26개, 그 프로세스와 runc shim의 PSS 115MB, uBridge 프로세스 12MB(`docs/DECISIONS.md`).
 
-Segments are `ethernet_switch` nodes. The system map draws the rest as follows.
+구간은 `ethernet_switch` 노드입니다. 시스템 구성도는 나머지를 다음과 같이 그립니다.
 
-- The two OpenStack VMs, `cr-platform` and `cr-range`, are `qemu` nodes with no disk image.
-- One slot's containers (`cr-kali`, `cr-edge`, `cr-waf`, the two sensors and the four targets) are `docker` nodes that carry their real images and are never started. The edge has two NICs, `wan` and `lan`. The targets hang off one switch per wargame network (`board-default`, `corp-default`).
-- A sensor that runs on the host network has no NIC. A note beside it says whose network it watches.
-- Each declared segment is a titled rectangle that holds its switch (Internet, Application estate, Management and monitoring).
-- Each container or VM has a plain-words note. GNS3 3.1 makes a node's label its name.
+- OpenStack VM 두 대, `cr-platform`과 `cr-range`는 디스크 이미지 없는 `qemu` 노드입니다.
+- 슬롯 하나 분량의 컨테이너(`cr-kali`, `cr-edge`, `cr-waf`, 두 센서, 대상 시스템 넷)는 실제 이미지를 지정했지만 시작하지 않는 `docker` 노드입니다. 에지는 NIC 두 개, `wan`과 `lan`을 가집니다. 대상 시스템은 워게임 네트워크마다 스위치 하나(`board-default`, `corp-default`)에 연결됩니다.
+- 호스트 네트워크에서 실행되는 센서는 NIC가 없습니다. 옆의 메모가 어느 노드의 네트워크를 감시하는지 알려 줍니다.
+- 선언된 구간마다 그 스위치를 담은 제목 붙은 사각형이 있습니다(Internet, Application estate, Management and monitoring).
+- 컨테이너와 VM마다 쉬운 말로 쓴 메모가 붙습니다. GNS3 3.1에서는 노드의 라벨이 곧 노드 이름입니다.
 
-`platform/tests/test_gns3_topology.py` checks the maps.
+`platform/tests/test_gns3_topology.py`가 구성도를 검사합니다.
 
-- It derives the system maps' expected nodes and links from `declaration.yaml` and the wargame compose files, and checks GNS3's structural rules.
-- It checks each wargame's learner map against the system map, which the learner map is a reduced copy of. It checks the nodes, the links against the system map's wiring through `topology.learner`, the log links, the geometry and the display nodes.
+- `declaration.yaml`과 워게임 compose 파일에서 시스템 구성도의 기대 노드와 링크를 도출하고, GNS3의 구조 규칙을 검사합니다.
+- 각 워게임의 학습자용 구성도는 시스템 구성도를 줄여 놓은 것이므로 시스템 구성도와 대조합니다. 노드, `topology.learner`를 거쳐 시스템 구성도의 배선과 대조한 링크, 로그 링크, 배치, 표시용 노드를 검사합니다.
 
-`bin/check-topology` installs gns3-server 2.2.61 and 3.1.0a6 into venvs under `~/.cache/fsl/check-topology`. For each release it runs `load_topology` on a copy of each file, and on a range map generated for each wargame from each learner map with a fixture range. It also checks that every bundled symbol a node names exists in that release.
+`bin/check-topology`는 gns3-server 2.2.61과 3.1.0a6을 `~/.cache/fsl/check-topology` 아래 venv에 설치합니다. 각 릴리스에서 `load_topology`를 각 파일의 사본에 실행하고, 각 학습자용 구성도에서 픽스처 훈련 환경으로 워게임마다 생성한 훈련 환경 구성도에도 실행합니다. 노드가 지정한 번들 심볼이 해당 릴리스에 모두 있는지도 확인합니다.
 
-### A range's own map
+### 훈련 환경 자체의 구성도
 
-The learner sees the addresses of their own range. `api/maps.py` derives the maps from the learner map. For each slot, and for the session's wargame (`slot 1 board`, `slot 2 corp`), it makes one project (`topology.labelled`). Every link is labelled at both ends, as a lab topology labels it.
+학습자는 자기 훈련 환경의 주소를 봅니다. `api/maps.py`가 학습자용 구성도에서 이 구성도를 만듭니다. 슬롯마다, 그리고 그 세션의 워게임마다(`slot 1 board`, `slot 2 corp`) 프로젝트 하나를 만듭니다(`topology.labelled`). 실습 토폴로지처럼 모든 링크의 양 끝에 라벨을 붙입니다.
 
-Labels:
+라벨:
 
-- A host's end carries its address on that switch's segment without the prefix (`10.30.1.247`), read through `topology.learner`. The attacker's is the one in the default origin; the customers' is the one in their busiest origin (the weights in `traffic.yaml`, leaving the default origin out, as `attacker.customer_origins` does), and no label where the box holds none.
-- A switch's end, a `sw3` end and an end on the database switch (`topology.UNLABELLED`) carry an empty label. No label names an interface, a port or a Docker bridge.
+- 호스트 쪽 끝에는 그 스위치 구간의 주소를 프리픽스 없이 적습니다(`10.30.1.247`). `topology.learner`를 거쳐 읽습니다. 공격자는 기본 출발지의 주소, 고객은 가장 많이 쓰는 출발지의 주소입니다(`traffic.yaml`의 가중치, `attacker.customer_origins`처럼 기본 출발지 제외). 그런 주소가 없으면 라벨을 붙이지 않습니다.
+- 스위치 쪽 끝, `sw3` 쪽 끝, DB 스위치 쪽 끝(`topology.UNLABELLED`)의 라벨은 비어 있습니다. 인터페이스, 포트, Docker 브리지 이름을 적는 라벨은 없습니다.
 
-Zone captions:
+영역 캡션:
 
-- Each zone caption gains the networks of the labels on its switch (`DMZ 10.30.1.0/24`).
-- The caption of a switch is the text in the smallest box that holds it (`topology.captions`).
-- The internet, DB zone and management network zones keep their name alone.
-- `GET /api/sessions/<id>/lesson/addresses/` returns the same addresses as rows `{host, zone, address}` (`topology.addresses`) for the reference column's address card.
+- 각 영역 캡션에는 그 스위치에 붙은 라벨의 네트워크를 덧붙입니다(`DMZ 10.30.1.0/24`).
+- 스위치의 캡션은 그 스위치를 담은 가장 작은 상자의 텍스트입니다(`topology.captions`).
+- 인터넷, DB존, 관리망 캡션은 이름만 둡니다.
+- `GET /api/sessions/<id>/lesson/addresses/`는 같은 주소를 `{host, zone, address}` 행으로 돌려줍니다(`topology.addresses`). 참고 열의 주소 카드가 씁니다.
 
-Where a label sits (`topology.leaving`):
+라벨의 위치(`topology.leaving`):
 
-- A label lies level beside its node, on the side its link leaves.
-- On a level or shallow link, it goes above or below the line, on whichever side the node's other links leave more room. It stays clear of where the line runs under the text.
-- On a steep link, it goes below the node, or above it where the node's name is beside it. It sits left or right of the line by the same rule, and right of the node where its name is above.
-- It stays clear of every line, of GNS3's status mark (6 units round, 60 along the line from the node's centre in the 3.1 web UI), of a node's name, and of a zone's edge and its caption.
-- The text width is estimated at 7 units a character, because the web UI renders `font-size: 10.0` at 13.3 px.
-- A shallow label goes to the other side of its line where it would touch its node's name.
-- A label on the left is right-aligned with `text-anchor: end`.
+- 라벨은 링크가 나가는 쪽의 노드 옆에 수평으로 놓습니다.
+- 수평이거나 완만한 링크에서는 선의 위나 아래에 둡니다. 노드의 다른 링크가 더 많은 공간을 남기는 쪽을 고르고, 글자 밑으로 선이 지나지 않게 합니다.
+- 가파른 링크에서는 노드 아래에 둡니다. 노드 이름이 옆에 있으면 노드 위에 두고, 같은 규칙으로 선의 왼쪽이나 오른쪽에 놓습니다. 이름이 위에 있는 노드는 노드 오른쪽에 놓습니다.
+- 라벨은 모든 선, GNS3의 상태 표시(3.1 웹 UI에서 6 단위 크기의 원형, 노드 중심에서 선을 따라 60 단위 위치), 노드 이름, 영역 테두리와 그 캡션을 피합니다.
+- 글자 폭은 한 글자에 7 단위로 어림합니다. 웹 UI가 `font-size: 10.0`을 13.3px로 렌더링하기 때문입니다.
+- 완만한 링크의 라벨이 자기 노드 이름과 겹치면 선의 반대쪽으로 옮깁니다.
+- 왼쪽에 놓는 라벨은 `text-anchor: end`로 오른쪽 정렬합니다.
 
-Ids and names: the project id is `uuid5(<learner id>, "slot-<n>-<wargame>")`. Node and link ids are fresh on every load (`gns3.fresh_ids`, step 3 below). The name gets the key. `show_interface_labels` is on.
+id와 이름: 프로젝트 id는 `uuid5(<learner id>, "slot-<n>-<wargame>")`입니다. 노드와 링크 id는 적재할 때마다 새로 만듭니다(`gns3.fresh_ids`, 아래 3단계). 프로젝트 이름에는 키가 붙습니다. `show_interface_labels`를 켭니다.
 
-The adapter reads the interfaces with `interfaces()`:
+인터페이스는 어댑터가 `interfaces()`로 읽습니다.
 
-- One command on the range host (`rangehost.listed`) lists the slot's docker networks with their subnets and, through `nsenter`, every slot container's `ip -o -4 addr`. A container on the host network (a sensor) is skipped.
-- The platform VM's own NICs are read with the same `ip` in a `busybox` container on the host network (`interfaces.on_this_host`). The platform takes no SSH.
-- The read a session's map makes is kept for the session and answers its address questions (`_map_found`). The slot is reset only when its session closes, so its addresses do not change while the session holds it. An empty read is not kept, and a question the kept read cannot answer reads the slot again. Close drops it.
+- 훈련 환경 호스트에서 명령 하나(`rangehost.listed`)로 슬롯의 docker 네트워크와 그 서브넷을 나열하고, `nsenter`로 슬롯 컨테이너마다 `ip -o -4 addr`을 읽습니다. 호스트 네트워크를 쓰는 컨테이너(센서)는 건너뜁니다.
+- 플랫폼 VM 자신의 NIC는 호스트 네트워크의 `busybox` 컨테이너에서 같은 `ip`로 읽습니다(`interfaces.on_this_host`). 플랫폼에는 SSH를 쓰지 않습니다.
+- 세션의 구성도를 만들 때 읽은 인터페이스는 세션이 끝날 때까지 두고, 주소를 묻는 단계의 답으로 씁니다(`_map_found`). 슬롯은 세션을 닫을 때만 초기화되므로, 세션이 슬롯을 쓰는 동안 주소는 바뀌지 않습니다. 빈 결과는 두지 않고, 둔 결과로 답할 수 없는 질문이 오면 슬롯을 다시 읽습니다. 세션을 닫으면 지웁니다.
 
-`gns3.publish` loads a project into GNS3 in these steps:
+`gns3.publish`는 다음 순서로 프로젝트를 GNS3에 올립니다.
 
-1. It signs in as GNS3's admin. The password comes from `CR_GNS3_ADMIN_PASSWORD` or `/run/cr-gns3/admin-password`. The GNS3 data directory is mounted read-only, and the file is 0640 to the Docker socket's group.
-2. It deletes the project if GNS3 lists it. A DELETE of a project GNS3 never held is logged at ERROR.
-3. It imports the project as a portable project with fresh node and link ids (`gns3.fresh_ids`: the uuid5 of each id under a nonce drawn for this load). Its `project.gns3` keeps the URL's project id. GNS3 names a switch's kernel bridge and TAPs from its node id, and a half-done load left them busy, so no load reuses the last one's ids.
-4. It turns `auto_close` off. An import is made with it on, whatever the file says, and a project closed when the last web client leaves stops its nodes.
-5. It opens the project and starts its nodes.
-6. A load that fails is tried again from step 2, up to `gns3.LOAD_TRIES` (3) times, `LOAD_PAUSE` (3 s) apart.
+1. GNS3 admin으로 로그인합니다. 비밀번호는 `CR_GNS3_ADMIN_PASSWORD` 또는 `/run/cr-gns3/admin-password`에서 읽습니다. GNS3 데이터 디렉터리를 읽기 전용으로 마운트하며, 이 파일의 권한은 Docker 소켓 그룹에 대해 0640입니다.
+2. GNS3가 해당 프로젝트를 목록에 갖고 있으면 삭제합니다. GNS3가 가진 적 없는 프로젝트를 DELETE하면 ERROR 로그가 남습니다.
+3. 노드와 링크 id를 새로 만들어 portable 프로젝트로 가져옵니다(`gns3.fresh_ids`: 이번 적재에서 뽑은 nonce로 각 id의 uuid5를 만듦). 프로젝트 id는 URL의 것이 `project.gns3`에 그대로 들어갑니다. GNS3는 스위치의 커널 브리지와 TAP 이름을 노드 id로 짓는데, 적재가 중간에 실패하면 이것들이 사용 중으로 남습니다. 그래서 직전 적재의 id를 다시 쓰지 않습니다.
+4. `auto_close`를 끕니다. 가져온 프로젝트는 파일 내용과 관계없이 이 값이 켜진 채 만들어지고, 마지막 웹 클라이언트가 떠날 때 닫힌 프로젝트는 노드를 멈추기 때문입니다.
+5. 프로젝트를 열고 노드를 시작합니다.
+6. 적재가 실패하면 2단계부터 다시 합니다. 최대 `gns3.LOAD_TRIES`(3)번, `LOAD_PAUSE`(3초) 간격입니다.
 
-When the platform loads a map:
+구성도를 올리는 때:
 
-- at session open;
-- after a slot's reset;
-- when the Map pane asks (`GET /api/topology/?session=`) and GNS3 does not hold it open.
+- 세션을 열 때
+- 슬롯 초기화 후
+- 구성도 창이 요청했는데(`GET /api/topology/?session=`) GNS3가 그 구성도를 열어 두지 않았을 때
 
-An unchanged map is not loaded again. The platform keeps the newest session's map of each slot and deletes the others. Generated maps are never committed. If GNS3 cannot load a map, the endpoint serves the session's wargame's learner map from the file and says why in `detail`.
+바뀌지 않은 구성도는 다시 올리지 않습니다. 플랫폼은 슬롯마다 가장 최근 세션의 구성도를 남기고 나머지는 삭제합니다. 생성한 구성도는 커밋하지 않습니다. GNS3가 구성도를 불러오지 못하면 엔드포인트는 세션 워게임의 학습자용 구성도를 파일에서 제공하고, 그 이유를 `detail`에 적습니다.
 
-The learner map is drawn in Korean; the product is Korean-only (`docs/DECISIONS.md`, 2026-11-13).
+학습자용 구성도는 한국어로 그립니다. 제품은 한국어 전용입니다(`docs/DECISIONS.md`, 2026-11-13).
 
-- The zone captions are in Korean, in the terms of `docs/vocabulary.md`. Node names stay the role names, and host and network names and IDS are drawn as the machine knows them.
-- Its ids differ from the system map's. GNS3's compute keeps nodes by node id alone, so two open projects may not share one.
+- 영역 캡션은 `docs/vocabulary.md`의 용어를 써서 한국어로 적습니다. 노드 이름은 역할 이름 그대로 두고, 호스트·네트워크 이름과 IDS는 장비가 아는 이름 그대로 적습니다.
+- id는 시스템 구성도와 다릅니다. GNS3의 compute는 노드를 노드 id만으로 관리하므로, 열린 두 프로젝트가 같은 id를 공유할 수 없기 때문입니다.
 
-The `gns3` service (`deploy/gns3`, gns3-server 3.1.0a6 with its MCP extra) does the following at start.
+`gns3` 서비스(`deploy/gns3`, MCP extra를 포함한 gns3-server 3.1.0a6)는 시작할 때 다음을 합니다.
 
-- It holds only the maps the platform loads. A template draws every wargame, so none is copied in.
-- It sets the admin password before the controller database exists (`CR_GNS3_ADMIN_PASSWORD`, or generated once into `/var/lib/cr-gns3/admin-password`).
-- It gives the learner user the built-in Auditor role on `/` (`CR_GNS3_AUDITOR_PASSWORD`, or generated once into `/var/lib/cr-gns3/auditor-password`, which the platform reads from the same mount).
-- It writes `/static/web-ui/map.html`, titled Map. The page signs in as the learner and stores the token where the bundled web UI reads its controller (`controller-1`, `controllerIds` in `localStorage`). It sets `showInterfaceLabels` on and `integrateLinkLabelsToLinks` off, so each link end's label is drawn where the project puts it. It sets `statistics_command` to `false`, so the web UI sends no usage statistics from the learner's browser.
+- 플랫폼이 올린 구성도만 갖습니다. 템플릿 하나가 모든 워게임을 그리므로 복사해 넣는 구성도는 없습니다.
+- 컨트롤러 데이터베이스가 생기기 전에 admin 비밀번호를 설정합니다(`CR_GNS3_ADMIN_PASSWORD`, 없으면 `/var/lib/cr-gns3/admin-password`에 한 번 생성).
+- learner 사용자에게 `/`에 대한 내장 Auditor 역할을 부여합니다(`CR_GNS3_AUDITOR_PASSWORD`, 없으면 `/var/lib/cr-gns3/auditor-password`에 한 번 생성하고 플랫폼은 같은 마운트에서 읽음).
+- 제목이 Map인 `/static/web-ui/map.html`을 작성합니다. 이 페이지는 learner로 로그인해 번들 웹 UI가 컨트롤러를 읽는 위치(`localStorage`의 `controller-1`, `controllerIds`)에 토큰을 저장합니다. `showInterfaceLabels`는 켜고 `integrateLinkLabelsToLinks`는 꺼서 링크 끝 라벨을 프로젝트가 지정한 위치에 그립니다. `statistics_command`를 `false`로 설정해 웹 UI가 학습자의 브라우저에서 사용 통계를 보내지 않게 합니다.
 
-The page opens the project in a same-origin frame and makes it view-only before the map draws.
+이 페이지는 같은 출처(same-origin) 프레임 안에서 프로젝트를 열고, 구성도가 그려지기 전에 보기 전용으로 만듭니다.
 
-- A stylesheet hides every piece of editing chrome: the title bar, the tool column, context menus, the topology summary, dialogs and the Angular CDK overlay. It also takes pointer events off everything inside `svg.map`.
-- Capture-phase listeners on the frame's window swallow every trusted click, double-click, context menu, key and drop. They also swallow every mousedown except a left press on `svg.map` itself.
-- The page's own synthetic events are not trusted, so its clicks on the hidden controls still land.
+- 스타일시트가 편집용 화면 요소를 모두 숨깁니다. 제목 표시줄, 도구 열, 컨텍스트 메뉴, 토폴로지 요약, 대화 상자, Angular CDK 오버레이입니다. `svg.map` 안의 모든 요소에서는 포인터 이벤트도 제거합니다.
+- 프레임 window의 캡처 단계 리스너는 신뢰된(trusted) 클릭, 더블클릭, 컨텍스트 메뉴, 키 입력, 드롭을 모두 삼킵니다. `svg.map` 자체를 왼쪽 버튼으로 누른 경우를 뺀 모든 mousedown도 삼킵니다.
+- 페이지가 직접 만든 합성 이벤트는 신뢰된 이벤트가 아니므로, 숨긴 컨트롤에 대한 페이지 자신의 클릭은 그대로 동작합니다.
 
-Once the map is drawn, the page does this:
+구성도가 그려지면 페이지는 다음을 합니다.
 
-- It closes the topology summary. Its visibility is a constant in the 3.1.0a6 bundle.
-- It turns the web UI's moving mode on for good. A drag on the map pans and the wheel zooms.
-- It resets the zoom.
-- It zooms out with the web UI's own button (0.1 a step) until the drawing fits. The web UI never reads the project's `zoom`.
-- It centres the drawing with one mousemove. The web UI pans by `movementX`/`movementY`.
+- 토폴로지 요약을 닫습니다. 3.1.0a6 번들에서 이 창의 표시 여부는 상수입니다.
+- 웹 UI의 이동 모드를 계속 켜 둡니다. 구성도를 끌면 이동하고 휠은 확대·축소합니다.
+- 확대 비율을 초기화합니다.
+- 그림이 화면에 들어올 때까지 웹 UI 자체의 축소 버튼을 누릅니다(한 번에 0.1). 웹 UI는 프로젝트의 `zoom`을 읽지 않습니다.
+- mousemove 한 번으로 그림을 가운데로 옮깁니다. 웹 UI는 `movementX`/`movementY`만큼 이동합니다.
 
-The page and the console cooperate as follows.
+페이지와 콘솔은 다음과 같이 맞물립니다.
 
-- The pane's Fit to view button posts `fit` to the frame, which runs the same reset and fit. The console also posts `fit` on every pane open and resize.
-- On every open, the console shows "Loading the map..." and keeps the frame hidden until the page posts `{map: "drawn"}` (after its first fit) or `{map: "fitted"}` (after every later one). After a later fit, the page retries until the drawing lies inside the frame.
-- The page answers the lesson coach's `{locate}` for a node, a link, a link end's label or a zone. It answers with the rectangle in the pane. It reads the link ends' labels once from `/v3/projects/<id>/nodes` and `/links` with the Auditor's token.
-- It also sends every zone drawing's rectangle (`zones`) and the boxes of every node, interface label and zone caption (`text`), so that callouts stay off the map's text.
-- The Auditor role still refuses every write on the server.
+- 창의 "화면에 맞추기" 버튼은 프레임에 `fit`을 보내 같은 초기화와 맞춤을 실행합니다. 콘솔은 창을 열 때와 크기가 바뀔 때마다도 `fit`을 보냅니다.
+- 콘솔은 창을 열 때마다 불러오는 중이라고 표시하고, 페이지가 `{map: "drawn"}`(첫 맞춤 뒤) 또는 `{map: "fitted"}`(그 뒤 맞춤마다)를 보낼 때까지 프레임을 숨겨 둡니다. 그 뒤 맞춤에서는 그림이 프레임 안에 들어올 때까지 다시 시도합니다.
+- 페이지는 코치의 `{locate}`에 노드, 링크, 링크 끝 라벨, 영역의 창 안 사각형으로 답합니다. 링크 끝 라벨은 Auditor 토큰으로 `/v3/projects/<id>/nodes`와 `/links`를 한 번 읽어 압니다.
+- 모든 영역 도형의 사각형(`zones`)과 모든 노드·인터페이스 라벨·영역 캡션의 사각형(`text`)도 함께 보냅니다. 말풍선이 구성도의 글자를 가리지 않게 하기 위해서입니다.
+- 서버에서는 여전히 Auditor 역할이 모든 쓰기를 거부합니다.
 
-For development MCP use (`/v3/mcp/`), `docker exec cr-gns3 python /opt/cr-gns3/provision.py api-key <name>` prints an API key. Nothing in the console exposes MCP. The console's tab for the map is labelled with one Korean word for map (`blue.pane.topology`). No word a learner reads names GNS3.
+개발용 MCP(`/v3/mcp/`)를 쓰려면 `docker exec cr-gns3 python /opt/cr-gns3/provision.py api-key <name>`으로 API 키를 출력합니다. 콘솔에는 MCP를 노출하는 곳이 없습니다. 콘솔의 구성도 탭 이름은 한 단어, 구성도(`blue.pane.topology`)입니다. 학습자가 읽는 문구 어디에도 GNS3라는 이름은 나오지 않습니다.
 
-A read-only user cannot open a project (`Project.Allocate`). So the platform is the one loader: `gns3.publish` opens each project as admin and starts its nodes, and the Map pane's request loads a project GNS3 does not hold open. `provision.py` opens nothing and starts nothing. The Auditor then sees the projects open and green.
+읽기 전용 사용자는 프로젝트를 열 수 없습니다(`Project.Allocate`). 그래서 프로젝트를 올리는 쪽은 플랫폼 하나뿐입니다. `gns3.publish`가 admin으로 프로젝트를 열고 노드를 시작하며, 구성도 창의 요청은 GNS3가 열어 두지 않은 프로젝트를 올립니다. `provision.py`는 아무것도 열거나 시작하지 않습니다. 그러면 Auditor에게는 프로젝트가 열려 있고 초록으로 보입니다.
 
-What the service needs:
+서비스에 필요한 것:
 
-- uBridge 1.2.3, built from its release tag with `cap_net_admin,cap_net_raw` file capabilities.
-- `CAP_NET_ADMIN` and `/dev/net/tun` for the `ethernet_switch` nodes. GNS3 3.1 backs each with a kernel bridge and TAPs inside the container's own network namespace.
-- For the `docker` nodes, the host's Docker socket. Each node is a container `GNS3.<node>.<project id>` on the host's daemon.
-- Debian's `docker-cli`, because GNS3 closes a docker node with `docker exec`.
-- `busybox-static`, because GNS3 copies it into every docker node it starts.
-- The host's pid namespace (`pid: host`), because uBridge moves a started node's interface into the namespace of the container's host pid.
-- `qemu-system-x86`, kept for the system maps' `qemu` nodes.
+- 릴리스 태그에서 빌드하고 `cap_net_admin,cap_net_raw` 파일 capability를 준 uBridge 1.2.3
+- `ethernet_switch` 노드를 위한 `CAP_NET_ADMIN`과 `/dev/net/tun`. 3.1은 스위치마다 컨테이너 자신의 네트워크 네임스페이스 안에 커널 브리지와 TAP을 만듭니다.
+- `docker` 노드를 위한 호스트의 Docker 소켓. 노드마다 호스트 데몬의 컨테이너 `GNS3.<node>.<project id>`가 됩니다.
+- Debian의 `docker-cli`. GNS3가 `docker exec`로 docker 노드를 닫기 때문입니다.
+- `busybox-static`. GNS3가 시작하는 docker 노드마다 복사해 넣기 때문입니다.
+- 호스트의 pid 네임스페이스(`pid: host`). uBridge가 시작된 노드의 인터페이스를 컨테이너의 호스트 pid 네임스페이스로 옮기기 때문입니다.
+- `qemu-system-x86`. 시스템 구성도의 `qemu` 노드를 위해 남겨 둡니다.
 
-Other facts about the image:
+이미지에 관한 그 밖의 사실:
 
-- The `[ai-features]` extra is needed, or 3.1.0a6 does not start. It brings a copilot that clones a skills repository at start. The image sets its `enabled` to `False` in `skills_config.py`, and the image build fails if that line is gone.
-- The host daemon resolves the containers' bind mounts on the host, so the data directory has the same path on both sides (`/var/lib/cr-gns3`).
-- The server runs as the user `gns3`, which joins the socket's group at start, as `cr` does in the platform.
-- `GET /api/topology/` offers the web UI (`web_ui`) only while GNS3 reports the project `opened`. Otherwise the console's Map pane says the map is not open.
+- `[ai-features]` extra가 없으면 3.1.0a6이 시작하지 않습니다. 이 extra는 시작할 때 skills 레포를 clone하는 copilot을 함께 가져옵니다. 이미지는 `skills_config.py`에서 그 `enabled`를 `False`로 설정하며, 그 줄이 없어지면 이미지 빌드가 실패합니다.
+- 호스트 데몬은 컨테이너의 bind mount를 호스트 기준으로 해석합니다. 그래서 데이터 디렉터리는 양쪽에서 같은 경로(`/var/lib/cr-gns3`)입니다.
+- 서버는 `gns3` 사용자로 실행되며, 플랫폼의 `cr`처럼 시작할 때 소켓의 그룹에 참여합니다.
+- `GET /api/topology/`는 GNS3가 프로젝트를 `opened`로 보고하는 동안에만 웹 UI(`web_ui`)를 제공합니다. 그렇지 않으면 콘솔의 구성도 창에 구성도가 열려 있지 않다고 표시합니다.
 
-`GET /api/topology/` returns the substrate's learner map. With `?session=<id>`, it returns that session's map for its wargame, described above.
+`GET /api/topology/`는 substrate의 학습자용 구성도를 반환합니다. `?session=<id>`를 붙이면 위에서 설명한, 그 세션 워게임의 구성도를 반환합니다.
 
-- The map comes from GNS3 (`platform/gns3.py`) or from the repo's file.
-- `web_ui` deep-links the GNS3 web UI to that project's id.
-- The Map pane is that map alone: the framed GNS3 web UI and its fit button.
+- 구성도는 GNS3(`platform/gns3.py`)나 레포 파일에서 가져옵니다.
+- `web_ui`는 GNS3 웹 UI의 해당 프로젝트 id로 바로 연결합니다.
+- 구성도 창은 이 구성도 하나만 보여 줍니다: 프레임 안의 GNS3 웹 UI와 맞추기 버튼.
 
-`GET /api/sessions/<id>/topology/` reads the learner map of the session's wargame and adds `project.nodes`.
+`GET /api/sessions/<id>/topology/`는 세션 워게임의 학습자용 구성도를 읽고 `project.nodes`를 더합니다.
 
-- `project.nodes` holds each host node's addresses per switch, from the same range read, and the state `running` or `not reported`.
-- The session overlay lists only the map's hosts and their addresses on the map's switches.
-- The overlay places hosts by the names the range reports them under. Every slot reports its containers by their declared host names (`cr-kali`, `cr-waf`). Only the syslog sender names have the slot suffix (`cr-waf-2`).
+- `project.nodes`에는 같은 훈련 환경 읽기에서 얻은 호스트 노드별, 스위치별 주소와 `running` 또는 `not reported` 상태가 들어갑니다.
+- 세션 오버레이는 구성도에 있는 호스트와, 구성도에 있는 스위치 위의 주소만 나열합니다.
+- 오버레이는 훈련 환경이 보고하는 이름으로 호스트를 배치합니다. 슬롯마다 컨테이너를 선언된 호스트 이름(`cr-kali`, `cr-waf`)으로 보고합니다. 슬롯 접미사는 syslog 송신자 이름(`cr-waf-2`)에만 붙습니다.
 
-## Isolation seams
+## 격리 경계
 
-An isolation seam is a rule that only one file may handle one concern. For example, only `platform/ingest/elastic.py` talks to Elasticsearch. The table gives each concern, its owning file and the places in code today that break the rule (the known exceptions).
+격리 경계는 한 관심사를 한 파일만 다루게 하는 규칙입니다. 예를 들어 Elasticsearch와 통신하는 파일은 `platform/ingest/elastic.py` 하나뿐입니다. 아래 표는 관심사마다 담당 파일과, 현재 코드에서 이 규칙을 어기는 곳(알려진 예외)을 적습니다.
 
-| Concern | Owning file | Known exceptions |
+| 관심사 | 담당 파일 | 알려진 예외 |
 |---|---|---|
-| Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py` PUTs the `geoip` ingest pipeline at bring-up |
-| The Kibana HTTP API, its saved objects and the Discover link | `platform/kibana.py` | `platform/nginx.conf` knows Kibana's API paths. It refuses the administration APIs, the Default space, unprefixed paths and `?namespaces=`. It answers `GET /kibana/s/<space>/api/spaces/space` itself with the one SOC space |
-| The GNS3 API | `platform/gns3.py` | `deploy/gns3/provision.py`, inside the GNS3 container, signs in as admin to provision the learner and upload the symbols. `deploy/gns3/auditor.html`, served by GNS3 as `/static/web-ui/map.html`, signs in as the learner and reads `/v3/projects/<id>/nodes` and `/links`. The console's Map pane frames the web UI at the port and path `gns3.py` returns |
-| CRS configuration and the nginx reload | `platform/rules/crs.py` | `entrypoint.sh` starts `vm-terminal.sh cr-waf`, which opens a shell in the slot's WAF container for the person (ssh to the range host, then `sudo docker exec -it sN-waf bash -l`). `range/rangehost.forwarding` writes the audit log's rsyslog forwarding on the range host. `deploy/range-host/slot.yaml` mounts the WAF's audit log file, at the path `rangehost.LOGS` names; `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it` in `platform/tests/test_range_host.py` ties both to `SecAuditLog` in `deploy/waf/modsecurity.conf`. F6's WAF-pane steps show the commands the learner types (`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`). `wargames.lesson` fills them in from the declared exclusion file and reload command (`settings.CR_WAF`). The platform does not drive the terminal |
-| The Suricata process | `platform/rules/suricata.py` | Each sensor host in `declaration.yaml` (`cr-edge` for `sensor`, `cr-range` for `estate-sensor`) names the rule file and reload command that `suricata.py` is handed. `platform/range/rangehost.py` renders both sensors' configuration (`deploy/range-host/edge-sensor.yaml`, `deploy/suricata/suricata.yaml`) and their compose services; `deploy/range-host/slot.sh` starts and stops them with the slot, reopens their log files at a reset, and configures the edge router. Their baseline rules then go through `suricata.py` |
-| The attacker box | `platform/attacker.py` | `platform/operator_log.py` reads `/var/log/commands.log`. The terminal wiring names `cr-kali`: `entrypoint.sh` starts `vm-terminal.sh cr-kali`. The Website pane (`platform/api/site.py`) is not an exception: it reaches the box only through `attacker.py` (`customer_origins`, `unbound_source`, `as_customer`, which holds the command) and the substrate's `opened` (an ssh stream to the range host, into the slot's Kali container) |
-| The target's own records | `platform/api/loot.py` (board), `platform/api/effect.py` (corp) | None. `loot.py` reads the board over HTTP at `127.0.0.1` inside the board's container, through the `board` role's runner, and `effect.py` reaches corp through the runner, which `docker exec`s into `corp-db` |
+| Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`가 기동 시 `geoip` ingest 파이프라인을 PUT합니다 |
+| Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`가 Kibana API 경로를 압니다. 관리용 API, Default space, space 접두어 없는 경로, `?namespaces=`를 거부하고, `GET /kibana/s/<space>/api/spaces/space`에는 SOC space 하나만 담은 응답을 직접 돌려줍니다 |
+| GNS3 API | `platform/gns3.py` | GNS3 컨테이너 안의 `deploy/gns3/provision.py`가 admin으로 로그인해 학습자 계정을 만들고 심볼을 올립니다. GNS3가 `/static/web-ui/map.html`로 제공하는 `deploy/gns3/auditor.html`이 learner로 로그인해 `/v3/projects/<id>/nodes`와 `/links`를 읽습니다. 콘솔의 구성도 창은 `gns3.py`가 돌려주는 포트와 경로의 웹 UI를 프레임으로 띄웁니다 |
+| CRS 설정과 nginx reload | `platform/rules/crs.py` | `entrypoint.sh`가 `vm-terminal.sh cr-waf`를 실행하고, 이것이 사용자에게 슬롯 WAF 컨테이너의 쉘을 열어 줍니다(훈련 환경 호스트로 ssh한 뒤 `sudo docker exec -it sN-waf bash -l`). audit 로그의 rsyslog 전달 설정은 훈련 환경 호스트에서 `range/rangehost.forwarding`이 씁니다. WAF의 audit 로그 파일은 `deploy/range-host/slot.yaml`이 `rangehost.LOGS`가 정한 경로에서 마운트하며, `platform/tests/test_range_host.py`의 `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it`가 둘 다 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 확인합니다. F6의 WAF 창 단계는 학습자가 입력할 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`)을 보여 줍니다. `wargames.lesson`이 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 이 명령을 채웁니다. 플랫폼은 터미널을 조작하지 않습니다 |
+| Suricata 프로세스 | `platform/rules/suricata.py` | `declaration.yaml`의 각 센서 호스트(`sensor`는 `cr-edge`, `estate-sensor`는 `cr-range`)가 `suricata.py`에 넘길 룰 파일과 reload 명령을 지정합니다. `platform/range/rangehost.py`는 두 센서의 설정(`deploy/range-host/edge-sensor.yaml`, `deploy/suricata/suricata.yaml`)과 compose 서비스를 렌더링하고, `deploy/range-host/slot.sh`는 슬롯과 함께 센서를 띄우고 내리며, 초기화 때 센서의 로그 파일을 다시 열게 하고, 에지 라우터를 설정합니다. 그 뒤 기본 룰은 `suricata.py`를 거쳐 적용됩니다 |
+| 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`가 `/var/log/commands.log`를 읽습니다. 터미널 연결 설정은 `cr-kali`를 지정합니다. `entrypoint.sh`가 `vm-terminal.sh cr-kali`를 실행합니다. 웹사이트 창(`platform/api/site.py`)은 예외가 아닙니다. 박스에는 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(훈련 환경 호스트로 연 ssh 스트림으로 슬롯의 Kali 컨테이너에 들어감)만 거쳐 닿습니다 |
+| 대상 시스템 자체의 기록 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음. `loot.py`는 `board` 역할의 runner로 board 컨테이너 안에서 `127.0.0.1`에 HTTP 요청을 보내고, `effect.py`는 `corp-db`에 `docker exec`하는 runner로 corp에 접근합니다 |
 
-## Files
+## 파일
 
-Important files that this document does not otherwise name.
+이 문서가 달리 언급하지 않는 주요 파일입니다.
 
-| File | What it does |
+| 파일 | 하는 일 |
 |---|---|
-| `deploy/filebeat/filebeat.yml` | The collector configuration. It sets `event.module`, tags the slot (`cr_slot`) and writes `logs-<slot>-sensors` |
-| `deploy/elastic/ingest-pipeline.json` | The `geoip` ingest pipeline. It puts the event time into `@timestamp`, adds GeoIP of `src_ip` and drops `cr_slot` |
-| `deploy/proxy/stamp.py` | The mitmdump script that stamps `X-Request-ID`. The Kali image installs it as `/usr/local/lib/web-proxy.py` |
-| `deploy/kali/operator-log.sh` | Kali's shell hook. It appends each command with its marker to `/var/log/commands.log` |
-| `deploy/kali/Dockerfile`, `deploy/waf/Dockerfile`, `deploy/edge/Dockerfile` | The slot's Kali, WAF and edge images, built by `.github/workflows/images.yml` and pulled from GHCR |
-| `deploy/edge/edge.nft` | The edge's nftables rules: input dropped but loopback, forward accepted |
-| `deploy/range-host/setup.sh` | The range host's setup, run once from the Nova user data: packages, Docker's `daemon.json`, sshd and inotify limits, the images, the pristine volumes |
-| `deploy/range-host/slot.yaml` | The template of one slot's compose project, which `range/rangehost.py` fills and joins with each wargame's `compose.yaml` |
-| `deploy/range-host/slot.sh` | Runs on the range host: `up`, `reset` and `down` of slot N |
-| `deploy/range-host/edge-sensor.yaml` | The edge sensor's Suricata configuration |
-| `platform/range/rangehost.py` | Renders the range host's setup bundle and user data, each slot's compose file and files, and the commands that run them |
-| `platform/tests/test_containment.py` | Fails `bin/verify` when the rendered slot compose file breaks the containment |
-| `test/test_range_isolation.py` | The live containment check from Kali, the WAF and the board |
-| `platform/scoring/` | `correlate.py` matches detections to cases by marker or window. `metrics.py` counts TP, FP, FN and TN |
-| `platform/scoreboard.py` | Objective scoring. It attributes detections to attempts, decides `corroborated` and tallies the lost objectives |
-| `platform/game.py` | The game score (speed, accuracy, coverage, response) in the score's `game` block |
-| `platform/disable.py` | Disables a Suricata rule by commenting it out until a time, and enables it again (`# cr-disabled`) |
-| `platform/api/models.py` | The Django models: `Session`, `Case`, `CustomerRequest`, `Detection`, `Objective`, `RuleSet`, `DisabledRule` |
-| `platform/cr/urls.py` | The route table of every endpoint |
-| `platform/api/refusals.py` | Maps exceptions to HTTP statuses (a 404 under `/api/` is JSON). It also holds the same-origin check for unsafe methods |
-| `platform/api/reachability.py` | The middleware that refuses requests from every address the slots report, except the scorer's |
-| `platform/range/declared.py` | Reads `declaration.yaml` into `Declaration` |
-| `platform/range/openstack.py` | The OpenStack adapter (`connect`): Keystone, Neutron, Nova and ssh |
-| `bin/verify` | The ratchet check, which refuses a change that grows a gated size number (see `CLAUDE.md`), and the tests a change reaches (`--changed`, `--fast`; `bin/select-tests` picks them) |
+| `deploy/filebeat/filebeat.yml` | collector의 Filebeat 설정. `event.module`을 붙이고, 슬롯(`cr_slot`) 태그를 달고, `logs-<slot>-sensors` 인덱스에 씁니다 |
+| `deploy/elastic/ingest-pipeline.json` | `geoip` ingest 파이프라인. 이벤트 시각을 `@timestamp`로 옮기고, `src_ip`의 GeoIP를 붙이고, `cr_slot`을 지웁니다 |
+| `deploy/proxy/stamp.py` | `X-Request-ID`를 붙이는 mitmdump 스크립트. Kali 이미지가 `/usr/local/lib/web-proxy.py`로 설치합니다 |
+| `deploy/kali/operator-log.sh` | Kali 쉘 훅. 입력한 명령을 마커와 함께 `/var/log/commands.log`에 덧붙입니다 |
+| `deploy/kali/Dockerfile`, `deploy/waf/Dockerfile`, `deploy/edge/Dockerfile` | 슬롯의 Kali, WAF, 에지 이미지. `.github/workflows/images.yml`이 빌드하고 GHCR에서 pull합니다 |
+| `deploy/edge/edge.nft` | 에지의 nftables 룰. loopback 외 input은 drop, forward는 accept |
+| `deploy/range-host/setup.sh` | Nova user data로 한 번 실행하는 훈련 환경 호스트 설치 스크립트. 패키지, Docker `daemon.json`, sshd와 inotify 한도, 이미지, pristine 볼륨 |
+| `deploy/range-host/slot.yaml` | 슬롯 하나의 compose 프로젝트 템플릿. `range/rangehost.py`가 값을 채우고 워게임마다의 `compose.yaml`과 합칩니다 |
+| `deploy/range-host/slot.sh` | 훈련 환경 호스트에서 슬롯 N의 `up`, `reset`, `down`을 실행합니다 |
+| `deploy/range-host/edge-sensor.yaml` | 에지 센서의 Suricata 설정 |
+| `platform/range/rangehost.py` | 훈련 환경 호스트의 설치 번들과 user data, 슬롯마다의 compose 파일과 파일들, 그리고 이를 실행하는 명령을 만듭니다 |
+| `platform/tests/test_containment.py` | 렌더링한 슬롯 compose 파일이 격리 조건을 어기면 `bin/verify`를 실패시킵니다 |
+| `test/test_range_isolation.py` | Kali, WAF, board에서 격리를 확인하는 실제 환경 검사 |
+| `platform/scoring/` | `correlate.py`는 마커나 시간 창으로 탐지를 케이스에 매칭하고, `metrics.py`는 TP, FP, FN, TN을 셉니다 |
+| `platform/scoreboard.py` | 목표 점수. 탐지를 시도에 귀속시키고, `corroborated`를 판정하고, 탈취된 목표를 집계합니다 |
+| `platform/game.py` | 게임 점수(speed, accuracy, coverage, response). 점수의 `game` 블록에 들어갑니다 |
+| `platform/disable.py` | Suricata 룰을 정해진 시각까지 주석 처리해 비활성화하고, 다시 활성화합니다(`# cr-disabled`) |
+| `platform/api/models.py` | Django 모델: `Session`, `Case`, `CustomerRequest`, `Detection`, `Objective`, `RuleSet`, `DisabledRule` |
+| `platform/cr/urls.py` | 모든 엔드포인트의 라우트 표 |
+| `platform/api/refusals.py` | 예외를 HTTP 상태 코드로 바꿉니다(`/api/` 아래의 404는 JSON). 변경 요청(POST 등)의 동일 출처 검사도 합니다 |
+| `platform/api/reachability.py` | 슬롯이 보고하는 모든 주소(채점 서버 주소는 제외)에서 온 요청을 거부하는 미들웨어 |
+| `platform/range/declared.py` | `declaration.yaml`을 읽어 `Declaration`으로 만듭니다 |
+| `platform/range/openstack.py` | OpenStack 어댑터(`connect`): Keystone, Neutron, Nova, ssh |
+| `bin/verify` | ratchet 검사(게이트 대상 수치가 커지는 변경을 거부합니다. `CLAUDE.md` 참고)와 변경이 닿는 테스트 실행(`--changed`, `--fast`. 테스트 선택은 `bin/select-tests`) |
 
-## Where requests come from
+## 요청의 출처
 
-| Route | Sender | Source address in the alert | Marker |
+| 경로 | 발신자 | 경보에 찍히는 출발지 주소 | 마커 |
 |---|---|---|---|
-| Terminal, HTTP | Kali, through its own proxy (`127.0.0.1:8081`) | Kali, on the chosen origin | added by the proxy |
-| Terminal, raw TCP | Kali directly, past the proxy | Kali, on the chosen origin | none |
-| Fired case, HTTP | the attacker box: the platform runs `curl` there through the launcher (`views._fire`: scenario schedule, lesson seed, `POST /api/sessions/<id>/attacks/`) | the attacker box, on the chosen origin | added by the harness |
-| Fired case, tool | the attacker box: the platform runs the tool there through the launcher | the attacker box, on the chosen origin | sqlmap `--headers=` |
-| CLI run, HTTP | the attacker box: `redteam/run.py` runs `curl` there through `launcher(<declared default origin>)` | the attacker box, on the default origin | added by the harness |
-| CLI run, tool | the attacker box, from `launcher(<declared default origin>)` | the attacker box, on the default origin | sqlmap `--headers=` |
-| Site browser | the learner's browser, through the platform's nginx on port 8002 and `platform/api/site.py` | a customers address: an address Kali holds, sent as the `cr-users` account so it crosses the edge | the session's secret `browse-<hex>`, set by `site.py`; the API shows it as `browse` |
-| Customers | `deploy/traffic/users.py`, as `cr-users` in the Kali container | the persona's own address on a non-default origin, never one the attacker sends from | a fresh UUID per request |
+| 터미널, HTTP | Kali, 자체 프록시(`127.0.0.1:8081`)를 거침 | Kali, 선택한 출발지에서 | 프록시가 추가 |
+| 터미널, raw TCP | Kali가 직접, 프록시를 거치지 않음 | Kali, 선택한 출발지에서 | 없음 |
+| API로 실행한 케이스, HTTP | 공격 박스. 플랫폼이 launcher로 거기서 `curl`을 실행함(`views._fire`: 시나리오 일정, 레슨 시드, `POST /api/sessions/<id>/attacks/`) | 공격 박스, 선택한 출발지에서 | harness가 추가 |
+| API로 실행한 케이스, 도구 | 공격 박스. 플랫폼이 launcher로 거기서 도구를 실행함 | 공격 박스, 선택한 출발지에서 | sqlmap `--headers=` |
+| CLI 실행, HTTP | 공격 박스. `redteam/run.py`가 `launcher(<선언된 기본 출발지>)`로 거기서 `curl`을 실행함 | 공격 박스, 기본 출발지에서 | harness가 추가 |
+| CLI 실행, 도구 | 공격 박스, `launcher(<선언된 기본 출발지>)`에서 | 공격 박스, 기본 출발지에서 | sqlmap `--headers=` |
+| 사이트 브라우저 | 학습자의 브라우저, 플랫폼 nginx의 8002번 포트와 `platform/api/site.py`를 거침 | 고객 주소. Kali가 가진 주소이며, `cr-users` 계정으로 보내 에지를 지남 | 세션의 비밀값 `browse-<hex>`, `site.py`가 설정. API에는 `browse`로 표시 |
+| 고객 | `deploy/traffic/users.py`, Kali 컨테이너의 `cr-users`로 | 기본이 아닌 출발지에 있는 페르소나 자신의 주소. 공격자가 요청을 보내는 주소는 쓰지 않음 | 요청마다 새 UUID |
 
-The proxy is a `mitmdump` script.
+프록시는 `mitmdump` 스크립트입니다.
 
-- It is the Kali container's main process: the image's `CMD` runs `mitmdump` on 127.0.0.1:8081 with `/usr/local/lib/web-proxy.py`.
-- `/var/lib/session/active` and `/var/log/commands.log` are mode 0600 for root. The platform's commands and the learner's shell both run as root in the container.
-- The proxy sets `X-Request-ID` from `/var/lib/session/active` on a request that carries none.
-- The platform writes `active` through `runner("proxy")`, over ssh to the range host and `docker exec` into Kali.
-- There is no TLS interception. The proxy is only an environment variable and enforces nothing: `curl --noproxy '*'` skips it.
-- `/etc/profile.d/proxy.sh` sets `http_proxy` and `HTTP_PROXY` for login shells.
+- Kali 컨테이너의 메인 프로세스입니다. 이미지의 `CMD`가 `/usr/local/lib/web-proxy.py`로 127.0.0.1:8081에서 `mitmdump`를 띄웁니다.
+- `/var/lib/session/active`와 `/var/log/commands.log`는 root 전용 0600입니다. 플랫폼의 명령도 학습자의 셸도 컨테이너 안에서 root로 돕니다.
+- 프록시는 `X-Request-ID`가 없는 요청에 `/var/lib/session/active`의 값으로 그 헤더를 설정합니다.
+- 플랫폼은 `active` 파일을 `runner("proxy")`로, 훈련 환경 호스트로 ssh한 뒤 Kali에 `docker exec`해서 씁니다.
+- TLS 가로채기를 하지 않습니다. 프록시는 환경 변수로 지정될 뿐 아무것도 강제하지 않습니다. `curl --noproxy '*'`로 보내면 프록시를 거치지 않습니다.
+- `/etc/profile.d/proxy.sh`가 로그인 셸에 `http_proxy`와 `HTTP_PROXY`를 지정합니다.
 
-The terminal also records what the operator types.
+터미널은 사용자가 입력한 명령도 기록합니다.
 
-- Kali's shell appends each command, with the current `/var/lib/session/active` marker, to `/var/log/commands.log`.
-- The platform reads that file through `runner("attacker")` and serves it at `GET /api/sessions/<id>/commands/`.
+- Kali의 쉘은 명령마다 현재 `/var/lib/session/active` 마커를 붙여 `/var/log/commands.log`에 덧붙입니다.
+- 플랫폼은 이 파일을 `runner("attacker")`로 읽어 `GET /api/sessions/<id>/commands/`로 제공합니다.
 
-The Kali pane (the red console's, and the blue console's in a lesson or scenario session) frames the URL that the session API names (`kali_terminal` in `GET /api/sessions/<id>/`).
+Kali 창(레드팀 콘솔의 창, 그리고 레슨·시나리오 세션에서 블루팀 콘솔의 창)은 세션 API가 알려 주는 URL(`GET /api/sessions/<id>/`의 `kali_terminal`)을 프레임으로 띄웁니다.
 
-- The URL is `/vm-terminal/kali/?arg=<session id>`. It is a ttyd inside the platform that runs `platform/vm-terminal.sh`, started with `-t disableLeaveAlert=true` so leaving the page (the next lesson, a session close) raises no browser "leave site?" dialog. The script connects over ssh to the range host's mgmt address and runs `sudo docker exec -it ... sN-kali bash -l` for the session's slot.
-- `entrypoint.sh` starts both ttyds with `TERMINAL_KEEP=1`. The script then runs itself inside `tmux new-session -A -s <host>-<session id>` (`platform/tmux.conf`: no status line, no alternate screen, so the output stays in xterm's scrollback). The host in the session name has no `cr-` prefix, for example `kali-12`. A reload reattaches to the same shell, so a running sqlmap and its output survive it. The session id must be digits to name a tmux session. If tmux is missing, a kept terminal opens the plain shell, which a reload does not keep.
+- URL은 `/vm-terminal/kali/?arg=<세션 id>`입니다. 플랫폼 안의 ttyd가 `platform/vm-terminal.sh`를 실행합니다. ttyd는 `-t disableLeaveAlert=true`로 띄워, 다음 레슨으로 넘어가거나 세션을 종료할 때 브라우저의 "사이트에서 나가시겠습니까?" 창이 뜨지 않습니다. 이 스크립트는 훈련 환경 호스트의 mgmt 주소로 ssh 접속해, 세션 슬롯의 `sudo docker exec -it ... sN-kali bash -l`을 실행합니다.
+- `entrypoint.sh`는 두 ttyd를 `TERMINAL_KEEP=1`로 띄웁니다. 그러면 스크립트는 자신을 `tmux new-session -A -s <host>-<세션 id>` 안에서 실행합니다(`platform/tmux.conf`: 상태 줄 없음, 대체 화면 없음. 출력이 xterm 스크롤백에 남습니다). 세션 이름의 호스트에는 `cr-`가 붙지 않습니다(예: `kali-12`). 새로고침하면 같은 셸에 다시 붙으므로 실행 중인 sqlmap과 그 출력이 남습니다. tmux 세션 이름에 쓰려면 세션 id가 숫자여야 합니다. tmux가 없으면 유지 터미널도 일반 셸로 열리고, 새로고침하면 셸이 유지되지 않습니다.
 
-`vm-terminal.sh` checks the host key under the alias that the platform's runner uses for the range host, `cr-<server id>-<launch time>` (`OpenStack.host_key_alias`), with `StrictHostKeyChecking=accept-new`.
+`vm-terminal.sh`는 플랫폼의 runner가 훈련 환경 호스트에 쓰는 별칭 `cr-<server id>-<launch time>`(`OpenStack.host_key_alias`)으로 호스트 키를 확인합니다. `StrictHostKeyChecking=accept-new`를 씁니다.
 
-- A range host booted again gets a new alias. Its new key is learnt without the "REMOTE HOST IDENTIFICATION HAS CHANGED" warning.
-- A changed key under an alias already known is refused.
+- 훈련 환경 호스트를 다시 부팅해 새로 만들면 별칭이 바뀝니다. 그래서 "REMOTE HOST IDENTIFICATION HAS CHANGED" 경고 없이 새 키를 등록합니다.
+- 이미 알고 있는 별칭에서 키가 바뀌면 접속을 거부합니다.
 
-How each terminal logs in:
+터미널별 로그인 방식:
 
-- Kali gets a login shell as root in `/root`: hostname `kali`, Kali's own two-line prompt (`deploy/kali/bashrc`), no motd. `no-new-privileges` leaves `sudo` nothing to gain, so the shell is root. `/etc/profile.d/proxy.sh` (`http_proxy`) and the command hook (`/usr/local/lib/shell-hook.sh`, `__log_command`, sourced from `/etc/bash.bashrc`) apply as at any login.
-- The WAF gets a login shell as root in the slot's WAF container, hostname `waf`. The reload command it is taught has no `sudo` (`nginx -t && nginx -s reload`).
-- Both shells carry `TERM=xterm-256color` and `TZ=KST-9`, a POSIX zone string: the WAF image has no tzdata, so `TZ=Asia/Seoul` read as UTC under the name "Asia" (round 21). The WAF's nginx and ModSecurity stay on UTC: the ingest pipeline reads the audit log's zoneless `time_stamp` as UTC.
-- The syslog sender names are fixed per slot by the range host's rsyslog template (`cr-waf`, `cr-waf-2`), so Filebeat reads the slot from the sender name.
+- Kali는 `/root`에서 root 로그인 셸을 받습니다(호스트 이름 `kali`, Kali 자체의 두 줄 프롬프트(`deploy/kali/bashrc`), motd 없음). `no-new-privileges` 때문에 `sudo`로 얻을 것이 없으므로 처음부터 root 셸입니다. `/etc/profile.d/proxy.sh`(`http_proxy`)와 명령 훅(`/usr/local/lib/shell-hook.sh`의 `__log_command`, `/etc/bash.bashrc`에서 불러옴)이 로그인했을 때처럼 적용됩니다.
+- WAF는 슬롯 WAF 컨테이너의 root 로그인 셸을 받습니다(호스트 이름 `waf`). 가르치는 reload 명령에 `sudo`가 없습니다(`nginx -t && nginx -s reload`).
+- 두 셸 모두 `TERM=xterm-256color`, `TZ=KST-9`(POSIX 시간대 문자열)로 엽니다. WAF 이미지에는 tzdata가 없어서 `TZ=Asia/Seoul`이 "Asia"라는 이름의 UTC로 읽혔습니다(21회차). WAF의 nginx와 ModSecurity는 UTC 그대로 둡니다. 수집 파이프라인이 감사 로그의 시간대 없는 `time_stamp`를 UTC로 읽기 때문입니다.
+- syslog 송신자 이름은 훈련 환경 호스트의 rsyslog 템플릿이 슬롯마다 고정합니다(`cr-waf`, `cr-waf-2`). 그래서 Filebeat가 송신자 이름에서 슬롯을 읽습니다.
 
-The blue console's WAF pane frames the URL that the session API names (`waf_terminal` in `GET /api/sessions/<id>/`).
+블루팀 콘솔의 WAF 창은 세션 API가 알려 주는 URL(`GET /api/sessions/<id>/`의 `waf_terminal`)을 프레임으로 띄웁니다.
 
-- The URL is `/vm-terminal/waf/?arg=<session id>`. The same `auth_request /terminal-allowed` guards it.
+- URL은 `/vm-terminal/waf/?arg=<세션 id>`입니다. 같은 `auth_request /terminal-allowed`로 이 경로를 보호합니다.
 
-The blue console's Website pane is a browser inside the console. It has:
+블루팀 콘솔의 웹사이트 창은 콘솔 안의 브라우저입니다. 구성은 다음과 같습니다.
 
-- back, forward and reload, with a stop button and a thin progress bar while a page loads;
-- an address bar that shows the full URL (`http://board.com/<path>`) with Chrome's "Not secure" marker for http. It takes a URL or a path and Enter;
-- the page in an iframe;
-- a "Developer tools" toggle (also F12, inside the page too).
+- 뒤로, 앞으로, 새로 고침. 페이지를 불러오는 동안에는 중지 버튼과 얇은 진행 막대가 나옵니다.
+- 전체 URL(`http://board.com/<경로>`)을 보여 주는 주소창. http에는 Chrome처럼 "주의 요함" 표시를 붙이고, URL이나 경로를 입력하고 Enter를 누를 수 있습니다.
+- iframe 안의 페이지
+- "개발자 도구" 토글. F12로도 열리며, 페이지 안에서 눌러도 됩니다.
 
-An address for another host shows Chrome's "This site can't be reached" page.
+다른 호스트의 주소를 넣으면 Chrome의 "사이트에 연결할 수 없음" 페이지가 나옵니다.
 
-The target is not published. So nginx on 8002 passes `/site/<session>/<host>/<path>` to the platform's recorder, behind the same `auth_request /terminal-allowed` as the terminals. The recorder is `/site-proxy/<session>/<host>/` (`platform/api/site.py`), and the exact path and query travel in `X-Site-Uri`.
+대상 시스템은 외부에 공개되지 않습니다. 그래서 8002의 nginx가 `/site/<세션>/<호스트>/<경로>`를 플랫폼의 기록기로 넘깁니다. 이때 터미널과 같은 `auth_request /terminal-allowed`를 거칩니다. 기록기는 `/site-proxy/<세션>/<호스트>/`(`platform/api/site.py`)이고, 정확한 경로와 쿼리는 `X-Site-Uri`에 담깁니다.
 
-The recorder sends the request from the customers side of the range (below) as Chrome would.
+기록기는 이 요청을 훈련 환경의 고객 쪽에서(아래) Chrome처럼 보냅니다.
 
-- It sends `Host: <host>`, `Connection: keep-alive` and `Accept-Encoding: gzip, deflate`. The recorder decodes the answer before streaming it on.
-- It sends `Upgrade-Insecure-Requests: 1` on a navigation, and the session's cookies for that host.
-- It uses Chrome's header order (`CHROME_ORDER`). It follows no redirect.
-- Of the browser's own headers it passes on only `Accept`, `Accept-Language`, `Content-Type`, `User-Agent`, `Referer` and `Origin`. It rewrites the last two to what a browser on `http://<host>/` would send (`as_browsed`).
-- `X-Forwarded-For` is not among them. The WAF therefore adds the customers address, and the target never sees the learner's LAN address.
+- `Host: <호스트>`, `Connection: keep-alive`, `Accept-Encoding: gzip, deflate`를 보냅니다. 응답은 기록기가 압축을 풀어 넘깁니다.
+- 페이지 이동이면 `Upgrade-Insecure-Requests: 1`을 보내고, 그 호스트에 대해 세션이 받아 둔 쿠키도 붙입니다.
+- 헤더 순서는 Chrome을 따릅니다(`CHROME_ORDER`). 리다이렉트는 따라가지 않습니다.
+- 브라우저가 보낸 헤더 중 넘기는 것은 `Accept`, `Accept-Language`, `Content-Type`, `User-Agent`, `Referer`, `Origin`뿐입니다. 뒤의 두 헤더는 `http://<호스트>/`의 브라우저가 보낼 값으로 고쳐 씁니다(`as_browsed`).
+- `X-Forwarded-For`는 넘기지 않습니다. 그래서 WAF가 고객 주소를 붙이고, 대상 시스템에는 학습자의 LAN 주소가 남지 않습니다.
 
-The recorder's answers:
+기록기의 응답:
 
-- 404 for a session that does not exist, and 409 for a closed one, without calling the WAF.
-- 400 for a path that is not a valid request target.
-- 502 ("board.com did not answer") when nothing answers within 3 s to connect or 20 s to read.
-- The page is streamed to the browser as it arrives.
+- 존재하지 않는 세션에는 404를, 닫힌 세션에는 409를 WAF를 호출하지 않고 응답합니다.
+- 요청 대상으로 쓸 수 없는 경로에는 400을 응답합니다.
+- 연결 3초, 읽기 20초 안에 응답이 없으면 502("board.com did not answer")를 응답합니다.
+- 페이지는 도착하는 대로 브라우저에 스트리밍합니다.
 
-Other facts about the route:
+이 경로에 관한 그 밖의 사실:
 
-- nginx on 8000 answers 404 for `/site-proxy/`.
-- The platform's same-origin check for POSTs skips that path, so a form on the target can still be submitted.
-- The WAF judges every page. A block is the WAF's own 403 page, and it lands in Kibana.
-- The path and query go on exactly as the browser sent them (a `map` on `$request_uri`).
+- 8000의 nginx는 `/site-proxy/`에 404를 응답합니다.
+- 플랫폼의 POST 동일 출처 검사는 이 경로를 건너뜁니다. 그래서 대상 시스템의 폼도 제출할 수 있습니다.
+- 모든 페이지는 WAF가 판정합니다. 차단되면 WAF 자체의 403 페이지가 보이고, 그 기록이 Kibana에 남습니다.
+- 경로와 쿼리는 브라우저가 보낸 그대로 전달합니다(`$request_uri`에 대한 `map`).
 
-nginx rewrites what would leave the prefix.
+nginx는 접두사를 벗어나게 될 값을 고쳐 씁니다.
 
-- `Location` headers are rewritten (`proxy_redirect`).
-- In HTML, `href="/`, `src="/`, `action="/`, `http://<host>/` and `http://<host>"` are rewritten (`sub_filter`, with the upstream asked for no compression). WordPress's escaped `http:\/\/corp.com\/` is rewritten too.
+- `Location` 헤더를 고칩니다(`proxy_redirect`).
+- HTML 안의 `href="/`, `src="/`, `action="/`, `http://<호스트>/`, `http://<호스트>"`를 고칩니다(`sub_filter`, 이를 위해 업스트림에 압축하지 말라고 요청). WordPress가 이스케이프한 `http:\/\/corp.com\/`도 고칩니다.
 
-Cookies:
+쿠키:
 
-- nginx strips the browser's `Cookie` and the answer's `Set-Cookie`. The platform's cookies therefore never reach the target, and no target cookie reaches the browser.
-- The recorder keeps the target's cookies itself, per session and host (`site._keep_cookies`). It drops `Secure` cookies, removes expired ones and forgets them at close. It sends them back as `Cookie`, so a sign-in made from this pane holds for the session.
-- Stripping does not stop a script on the target page. The script runs on the platform's host (port 8002), and cookies are not isolated by port. `document.cookie` could therefore set a cookie that the console on 8000 would send.
-- The console uses no cookies today. One added later would be reachable this way.
+- nginx는 브라우저의 `Cookie`와 응답의 `Set-Cookie`를 지웁니다. 그래서 플랫폼의 쿠키는 대상 시스템으로 가지 않고, 대상 시스템의 쿠키도 브라우저에 닿지 않습니다.
+- 대신 기록기가 대상 시스템의 쿠키를 세션·호스트별로 보관합니다(`site._keep_cookies`). `Secure` 쿠키는 버리고 만료된 쿠키는 지우며, 세션을 닫으면 잊습니다. 이 쿠키를 이후 요청에 `Cookie`로 붙이므로, 이 창에서 로그인하면 세션 동안 유지됩니다.
+- 쿠키를 지운다고 대상 페이지의 스크립트까지 막지는 못합니다. 그 스크립트는 플랫폼 호스트(8002번 포트)에서 실행되고, 쿠키는 포트별로 분리되지 않습니다. 그래서 `document.cookie`로 8000의 콘솔이 보낼 쿠키를 설정할 수 있습니다.
+- 현재 콘솔은 쿠키를 쓰지 않습니다. 나중에 쿠키를 추가하면 이 방법으로 접근할 수 있게 됩니다.
 
-nginx also appends a script before `</body>`.
+nginx는 `</body>` 앞에 스크립트도 하나 붙입니다.
 
-- The script posts `location.pathname + search` to the parent. This is how the address bar and the history follow a link clicked inside the page.
-- It passes F12 up.
-- It answers the lesson coach's `{locate: <selector>}` with the element's rectangle (again on scroll and resize). It answers only a message from its parent whose origin is the console's host.
-- It adds no request of its own.
-- It shows each link as `http://<site>/...`. The markup nginx rewrote keeps the proxy path, so a hover shows the address the customer would see. A plain click on such a link goes through the proxy path.
+- 이 스크립트는 `location.pathname + search`를 부모 창에 post합니다. 페이지 안에서 링크를 눌렀을 때 주소창과 방문 기록이 따라가는 것은 이 덕분입니다.
+- F12를 부모 창으로 넘깁니다.
+- 코치의 `{locate: <selector>}`에 그 요소의 사각형으로 답합니다(스크롤과 크기 변경 때도 다시). 답하는 대상은 출처가 콘솔 호스트인 부모 창의 메시지뿐입니다.
+- 스크립트가 따로 요청을 보내지는 않습니다.
+- 링크를 `http://<site>/...` 주소로 보이게 바꿉니다. nginx가 고친 마크업에는 프록시 경로가 남아 있어서, 마우스를 올리면 고객이 보게 될 주소가 나옵니다. 그런 링크의 일반 클릭은 프록시 경로로 보냅니다.
 
-The Website pane's egress (`site.found_egress`, once per session) leaves from a customers address. Its requests therefore take the customers' path, and the sensors see them as they see the customers. The address is in the origin that the scenario's customer traffic weights most (`customers.declared`, else the first by id) among `attacker.customer_origins`.
+웹사이트 창의 출구(`site.found_egress`, 세션마다 한 번)는 고객 주소입니다. 그래서 창의 요청은 고객과 같은 경로를 거치고, 센서도 고객 요청과 똑같이 봅니다. 출발지는 `attacker.customer_origins` 가운데 시나리오의 고객 트래픽이 가장 큰 비중을 둔 출발지(`customers.declared`, 없으면 id 순으로 첫 번째)입니다.
 
-- The recorder opens an ssh stdio stream to Kali (`OpenStack.opened`) that runs `attacker.as_customer`.
-  - `as_customer` is a Python bridge. It runs as the `cr-users` account, which Kali's origin SNAT leaves alone. The account is created with its exemption when the customers never ran on the slot.
-  - The bridge binds to that origin's first address and connects to the WAF's `estate` address on port 80.
-  - The request crosses the edge, routed without NAT. The edge sensor sees it on its way to `waf`. The estate sensor sees `waf` send it on to `board.com` with the customers address in `X-Forwarded-For`.
-- No container or `mgmt` address is named.
+- 기록기가 Kali로 ssh stdio 스트림을 열고(`OpenStack.opened`) 거기서 `attacker.as_customer`를 실행합니다.
+  - `as_customer`는 Python 브리지입니다. Kali의 출발지 SNAT가 건드리지 않는 `cr-users` 계정으로 돕니다. 그 슬롯에서 고객 트래픽을 한 번도 돌리지 않았다면 계정과 예외 규칙을 만듭니다.
+  - 브리지는 그 출발지의 첫 주소에 바인드해 WAF의 `estate` 주소 80번 포트로 연결합니다.
+  - 요청은 에지를 NAT 없이 라우팅되어 지납니다. 에지 센서는 `waf`로 가는 요청을 봅니다. estate 센서는 `waf`가 `X-Forwarded-For`에 고객 주소를 담아 `board.com`으로 보내는 것을 봅니다.
+- 컨테이너 이름이나 `mgmt` 주소는 쓰지 않습니다.
 
-The route is served on its own port, 8002, a different origin from the console's 8000. Every response carries `Content-Security-Policy: sandbox allow-forms allow-scripts allow-same-origin`.
+이 경로는 콘솔의 8000과 출처가 다른 별도 포트 8002에서 서비스합니다. 모든 응답에 `Content-Security-Policy: sandbox allow-forms allow-scripts allow-same-origin`을 붙입니다.
 
-- The red team can plant script in the target. On the console's origin, that script could read and drive the console and its APIs.
-- A sandbox without `allow-same-origin` (an opaque origin) would block that even on port 8000, but Chromium-based embedded browsers refuse such a frame (`ERR_BLOCKED_BY_CLIENT` in the Claude desktop browser), so the site gets its own port instead.
-- `SITE_PORT` is 8002.
-- The session API gives `site: {port, path}` or `null`, and the console hides the pane without it.
-- The platform template's security group opens 8002 (`docs/OPENSTACK.md` §3.5).
+- 대상 시스템은 레드팀이 스크립트를 심을 수 있는 곳입니다. 콘솔과 같은 출처라면 그 스크립트가 콘솔과 그 API를 읽고 조작할 수 있습니다.
+- `allow-same-origin` 없는 sandbox(불투명 출처)라면 8000번 포트에서도 이를 막을 수 있습니다. 그러나 Chromium 기반 내장 브라우저는 그런 프레임을 거부합니다(Claude 데스크톱 브라우저에서 `ERR_BLOCKED_BY_CLIENT`). 그래서 사이트는 별도 포트를 씁니다.
+- `SITE_PORT`는 8002입니다.
+- 세션 API는 `site: {port, path}` 또는 `null`을 줍니다. 이 값이 없으면 콘솔은 창을 숨깁니다.
+- 플랫폼 템플릿의 security group이 8002를 엽니다(`docs/OPENSTACK.md` §3.5).
 
-The recorder keeps each session's last 200 requests in the platform's memory. They are lost on restart and forgotten when the session closes. Each request holds:
+기록기는 세션마다 마지막 요청 200개를 플랫폼 메모리에 보관합니다. 재시작하면 사라지고, 세션이 닫히면 지웁니다. 요청 하나에는 다음이 들어 있습니다.
 
-- method, `http://<host><path>`, status and its text;
-- type and category (from `Sec-Fetch-Dest`, else the content type);
-- initiator, transferred size, time;
-- the egress address, the remote address, the referrer policy the page set;
-- the request headers as sent, without the marker;
-- the response headers as received (`Set-Cookie` included, as Chrome's panel shows them);
-- the decoded bodies, each cut to 64 KB. The response is streamed and only its first 64 KB kept.
+- 메서드, `http://<호스트><경로>`, 상태 코드와 그 문구
+- 유형과 분류(`Sec-Fetch-Dest`, 없으면 content type으로 정함)
+- 개시자, 전송 크기, 시간
+- 출구 주소, 원격 주소, 페이지가 정한 리퍼러 정책
+- 마커를 뺀, 보낸 그대로의 요청 헤더
+- 받은 그대로의 응답 헤더(Chrome 패널처럼 `Set-Cookie` 포함)
+- 압축을 푼 본문. 각각 64 KB로 자릅니다. 응답은 스트리밍하면서 앞 64 KB만 남깁니다.
 
-Besides the learner's requests, the list shows two more kinds of row:
+학습자의 요청 말고도 목록에는 행이 두 종류 더 나옵니다.
 
-- `/favicon.ico`, fetched once per session and host after the first page.
-- A `disk cache` row (`cache: "disk"`, size 0) for each same-host stylesheet, script or image that a page names, that was fetched with 200 before and is not asked for again within 1.5 s.
+- 첫 페이지 뒤 세션·호스트마다 한 번 가져오는 `/favicon.ico`
+- 페이지가 가리키는 같은 호스트의 스타일시트·스크립트·이미지 중 전에 200으로 받았고 1.5초 안에 다시 요청되지 않은 것마다 넣는 `disk cache` 행(`cache: "disk"`, 크기 0)
 
-`GET /api/sessions/<id>/site/requests/?after=<id>` lists the requests. `.../site/requests/<id>/` gives one in full.
+`GET /api/sessions/<id>/site/requests/?after=<id>`가 목록을 주고, `.../site/requests/<id>/`가 요청 하나의 전체 내용을 줍니다.
 
-The Developer tools panel is Chrome's Network panel, docked under the page. Its top edge drags taller or shorter.
+개발자 도구 패널은 Chrome의 네트워크 패널입니다. 페이지 아래에 붙어 있고, 위쪽 가장자리를 끌어 높이를 조절합니다.
 
-- While the panel is open, the tab is visible and the session is open, it polls the list every 2 s. A closed session answers 409 and the polling stops.
-- The columns are Name (the last path segment and query, with the full URL on hover), Status (4xx and 5xx in red), Type, Initiator, Size and Time.
-- The toolbar has clear, a filter, Preserve log (off: a navigation clears the list) and type chips (All, Fetch/XHR, Doc, CSS, JS, Img).
-- A selected row has these tabs: Headers, Payload, Preview and Response.
-  - Headers shows General (Request URL, Request Method, Status Code, Remote Address, Referrer Policy), then Response Headers and Request Headers, each with a raw view.
-  - Payload shows the Query String Parameters decoded, with source and URL-encoded views, and a form body.
-- Rows, tabs and lines carry `data-coach` for the coach.
-- The labels are Chrome's own Korean (`front_end/core/i18n/locales/ko.json`). Nothing in the panel says "WAF".
+- 패널이 열려 있고 탭이 보이며 세션이 열려 있는 동안 2초마다 목록을 가져옵니다. 닫힌 세션은 409를 응답하고 폴링이 멈춥니다.
+- 열은 이름(경로의 마지막 부분과 쿼리, 마우스를 올리면 전체 URL), 상태(4xx와 5xx는 빨간색), 유형, 개시자, 크기, 시간입니다.
+- 도구 모음에는 지우기, 필터, 로그 보관(끄면 페이지를 이동할 때 목록을 지움), 유형 칩(모두, Fetch/XHR, 문서, CSS, JS, 이미지)이 있습니다.
+- 행을 선택하면 헤더, 페이로드, 미리보기, 응답 탭이 나옵니다.
+  - 헤더에는 일반(요청 URL, 요청 메서드, 상태 코드, 원격 주소, 리퍼러 정책), 응답 헤더, 요청 헤더가 나오고, 각각 원본 보기가 있습니다.
+  - 페이로드에는 디코딩한 쿼리 문자열 매개변수(소스 보기와 인코딩된 URL 보기)와 폼 본문이 나옵니다.
+- 행, 탭, 줄에는 코치를 위한 `data-coach`가 붙어 있습니다.
+- 라벨은 Chrome 자체의 한국어 문구(`front_end/core/i18n/locales/ko.json`)입니다. 패널 어디에도 "WAF"라는 말은 없습니다.
 
-Browsing is marked with the session's own secret.
+브라우징 요청에는 세션 자신의 비밀값이 마커로 붙습니다.
 
-- The secret is `Session.browse_marker`: `browse-` and 32 random hex digits, made when the session is created. The recorder replaces whatever `X-Request-ID` the browser sent.
-- The request comes from a customers address (above).
-- Its alerts are ingested and listed like any other. The learner finds them in Kibana and in `/detections/`.
-- `/score/` leaves out detections that carry that session's secret, the way it leaves out replays (`views.REPLAY_MARKS`). Browsing is not a case, so it is neither a true or false positive nor an unattributed alert.
-- A literal `X-Request-ID: browse` sent by hand is just an unknown marker and is scored.
-- `POST /api/attacker/label/` refuses labels that start with `browse`.
-- The API never shows the secret. `/detections/`, `/api/detections/<id>/` (including `raw`) and the Network panel show `browse` in its place. Kibana shows the secret, because it is the blue team's tool.
-- The red console's Website pane is the same pane on the same session. In a wargame, the attacker's browsing carries the session's secret too. It is therefore left out of `/score/` like the defender's, and the defender's Network panel lists it. Still open: the person-against-person wargame, 4.2, is not built.
+- 비밀값은 `Session.browse_marker`이고, `browse-`와 무작위 16진수 32자리입니다. 세션을 만들 때 생성합니다. 브라우저가 보낸 `X-Request-ID`는 기록기가 덮어씁니다.
+- 요청은 고객 주소에서 나갑니다(위).
+- 이 요청의 경보도 다른 경보와 똑같이 수집되고 목록에 나옵니다. 학습자는 Kibana와 `/detections/`에서 찾을 수 있습니다.
+- `/score/`는 재실행(`views.REPLAY_MARKS`)을 빼는 것과 같은 방식으로, 그 세션의 비밀값이 붙은 탐지 기록을 뺍니다. 브라우징은 케이스가 아니므로 정탐도 오탐도 아니고, 출처를 알 수 없는 경보도 아닙니다.
+- 손으로 보낸 `X-Request-ID: browse`는 알 수 없는 마커일 뿐이어서 점수에 들어갑니다.
+- `POST /api/attacker/label/`은 `browse`로 시작하는 label을 거부합니다.
+- API는 비밀값을 보여 주지 않습니다. `/detections/`, `/api/detections/<id>/`(`raw` 포함), 네트워크 패널에는 그 자리에 `browse`가 나옵니다. Kibana에는 비밀값이 보입니다. Kibana는 블루팀의 도구이기 때문입니다.
+- 레드팀 콘솔의 웹사이트 창은 같은 세션의 같은 창입니다. 워게임에서는 공격자의 브라우징에도 세션의 비밀값이 붙습니다. 그래서 방어자의 브라우징처럼 `/score/`에서 빠지고, 방어자의 네트워크 패널에 나옵니다. 미해결: 사람 대 사람 워게임인 4.2는 아직 만들지 않았습니다.
 
-A fired HTTP case carries the `Host` of the session's wargame, `board.com`, whether or not an origin was chosen.
+API로 실행한 HTTP 케이스는 출발지를 선택했는지와 관계없이 세션 워게임의 `Host`인 `board.com`을 싣습니다.
 
-- Choosing an origin runs `set-origin` on the attacker box, which rewrites the box's source address to the origin's (SNAT). The target URL is the same for every origin (`ATTACKER_TARGET_URL`).
-- `rotate` is a per-session round robin, not a random pick.
+- 출발지를 선택하면 공격 박스에서 `set-origin`을 실행해 박스의 출발 주소를 그 출발지의 주소로 바꿉니다(SNAT). 대상 URL은 어느 출발지든 같습니다(`ATTACKER_TARGET_URL`).
+- `rotate`는 무작위 선택이 아니라 세션별 라운드 로빈입니다.
 
-A fired tool case is pointed at the origin's target URL. With no origin chosen, it is pointed at `TARGET_URL` (`http://board.com`) from the declared default origin.
+API로 실행한 도구 케이스는 출발지의 대상 URL을 향합니다. 출발지를 선택하지 않았으면 선언된 기본 출발지에서 `TARGET_URL`(`http://board.com`)을 향합니다.
 
-The target is not host-published, so the command-line harness reaches it from inside the range too.
+대상 시스템은 호스트에 publish되지 않으므로 명령줄 harness도 훈련 환경 내부에서 접근합니다.
 
-- `redteam/run.py` runs on the platform, the way the acceptance suite drives it.
-- It has no origin option.
-- Its `--target` defaults to the `public_url` of the scenario that its `--cases` file belongs to (`http://board.com` for board). That name resolves to the WAF on port 80.
-- `--tool-target` defaults to `http://board.com`.
+- `redteam/run.py`는 플랫폼에서 실행됩니다. acceptance 테스트가 구동하는 방식과 같습니다.
+- 출발지 옵션이 없습니다.
+- `--target`의 기본값은 `--cases` 파일이 속한 시나리오의 `public_url`(board는 `http://board.com`)입니다. 이 주소는 포트 80의 WAF로 해석됩니다.
+- `--tool-target`의 기본값은 `http://board.com`입니다.
 
-The WAF container runs CRS with `SecRuleEngine On` in `deploy/waf/modsecurity.conf`, CRS's default threshold 5 and Paranoia Level 1.
+WAF 컨테이너는 CRS를 `deploy/waf/modsecurity.conf`의 `SecRuleEngine On`, CRS 기본 임계치 5, Paranoia Level 1로 실행합니다.
 
-- Its paranoia level and rule exclusions are the session's own (`Session.waf`). They are written at open from the scenario's defense and changed through `/api/sessions/<id>/waf/` ("Sessions, WAF tuning and the step engine").
-- `GET` reads the file with a 10 s timeout, so a poll never holds a server thread longer.
-- Every Suricata rule is `alert`, so the WAF is the only part of the range that blocks.
+- Paranoia Level과 룰 예외는 세션마다 따로 둡니다(`Session.waf`). 세션을 열 때 시나리오의 defense로 쓰고, `/api/sessions/<id>/waf/`로 바꿉니다("세션, WAF 설정 조정, 단계 엔진").
+- `GET`은 10초 timeout으로 파일을 읽으므로 폴링 한 번이 서버 스레드를 그보다 오래 잡고 있지 않습니다.
+- Suricata 룰은 모두 `alert`이므로 훈련 환경에서 차단하는 것은 WAF뿐입니다.
 
-## Where alerts go
+## 경보의 경로
 
 ```
 WAF (ModSecurity) -> audit.log --+
@@ -642,999 +642,999 @@ Suricata ---------> eve.json ----+-> Filebeat -> Elasticsearch, logs-<slot>-sens
              as Detection rows in SQLite
 ```
 
-Callers of `ingest/`:
+`ingest/`를 호출하는 곳:
 
-- `test/conftest.py` and the session page's confirm-close call it.
-- `redteam/run.py` prints the curl.
-- A wargame session ingests at close.
-- A lesson or scenario also ingests while it runs. The scenario engine ingests every 15 s (the last 180 s). Each step check that reads records ingests the last 600 s.
-- Alerts that arrive after the close are not ingested.
+- `test/conftest.py`와 세션 화면의 종료 확인이 호출합니다.
+- `redteam/run.py`는 curl 명령을 출력합니다.
+- 워게임 세션은 종료할 때 한 번 수집합니다.
+- 레슨과 시나리오는 진행 중에도 수집합니다. 시나리오 엔진은 15초마다 최근 180초를 수집합니다. 기록을 읽는 단계 점검은 그때마다 최근 600초를 수집합니다.
+- 종료 뒤에 들어온 경보는 수집하지 않습니다.
 
-How an alert gets its marker:
+경보가 마커를 얻는 방법:
 
-- ModSecurity's audit log carries the request headers, so its alerts carry the marker directly.
-- Suricata's alert events carry no request headers. Only its `http` events do (with `dump-all-headers: request`; `custom: [X-Request-ID]` has no effect).
-- Ingest copies the marker from the `http` event onto the alert with the same `(flow_id, tx_id)`. Joining on `flow_id` alone attributed every alert on a keep-alive connection to its first case.
+- ModSecurity의 audit log에는 요청 헤더가 있으므로, 그 경보에는 마커가 바로 붙어 있습니다.
+- Suricata의 alert 이벤트에는 요청 헤더가 없습니다. 요청 헤더는 `http` 이벤트에만 있습니다(`dump-all-headers: request` 설정 시. `custom: [X-Request-ID]`는 효과가 없습니다).
+- 수집(ingest)은 `(flow_id, tx_id)`가 같은 `http` 이벤트의 마커를 alert로 복사합니다. `flow_id`만으로 조인했을 때는 keep-alive 연결의 모든 경보가 그 연결의 첫 케이스로 귀속되었습니다.
 
-Each ingest call does the following.
+ingest 호출마다 다음을 수행합니다.
 
-- It first enables again the rules whose disable has expired.
-- It reads `logs-<N>-*` (`ELASTIC_SESSION_INDEX`, where N is the session's slot).
-  - The shared collector tags each syslog line with the slot that its sender's hostname names (`-N` before the domain, slot 1 otherwise). It writes the line to that slot's index, and the ingest pipeline removes the tag before the document is stored.
-  - Filebeat sets `event.module` (`suricata` or `modsecurity`) on every event. It drops a syslog line that is neither.
-  - An index therefore holds only the two engines' events. No field, index or header that a learner can open in Kibana names the platform (the case marker travels as an `X-Request-ID` header).
-- It asks Elasticsearch for `@timestamp` from the session's start minus a minute to its end (or now) plus a minute.
-  - The `geoip` pipeline sets `@timestamp` from the event's own clock (Suricata's `timestamp`, ModSecurity's `transaction.time_stamp`).
-  - The window therefore selects events by when they happened, not when Filebeat read them.
-- It reads 5000 hits at a time, oldest first.
-  - When a read is cut, it asks again from the newest `@timestamp` it got (`api/views.py` `_fetched`, at most 40 more reads). It skips documents already read by `_id`.
-  - A window it still cannot finish, or one whose 5000 hits share one timestamp, makes the reply carry `truncated` and the session record `read_of`. That adds `score.warning.truncated` to the score.
-  - One sqlmap case leaves more than 5000 records. So while ingest read only once, every case fired after it was scored as a false negative.
-- It keeps Suricata's `alert` events. It turns ModSecurity's record into one Detection per matched rule message, with id `<Elasticsearch _id>:<n>`.
-- It drops alerts whose own event time falls outside the window, and counts them as `stale`.
-- It writes markers found later onto stored rows that had none.
-- It fills `src_host` and `dest_host` from the substrate's segments. The fields stay empty if the substrate cannot be reached.
-  - Ingest and `/detections/` reuse an open session's segments until it closes. This avoids reading the cloud on every step poll and answer check.
-  - `/top/`, `/map/` and `/topology/` read the segments fresh.
+- 먼저 비활성화 시간이 지난 룰을 다시 활성화합니다.
+- `logs-<N>-*`를 읽습니다(`ELASTIC_SESSION_INDEX`, N은 세션의 슬롯).
+  - 공유 수집기가 syslog 줄마다 송신자 hostname이 가리키는 슬롯(도메인 앞의 `-N`, 없으면 슬롯 1)을 태그로 붙여 그 슬롯의 인덱스에 씁니다. ingest 파이프라인이 문서를 저장하기 전에 그 태그를 지웁니다.
+  - Filebeat는 모든 이벤트에 `event.module`(`suricata` 또는 `modsecurity`)을 붙이고, 둘 다 아닌 syslog 줄은 버립니다.
+  - 그래서 인덱스에는 두 엔진의 이벤트만 있습니다. 학습자가 Kibana에서 열 수 있는 필드, 인덱스, 헤더 어디에도 플랫폼 이름이 나오지 않습니다(케이스 마커는 `X-Request-ID` 헤더로 갑니다).
+- 세션 시작 1분 전부터 종료 시각(또는 현재) 1분 후까지의 `@timestamp`를 Elasticsearch에 요청합니다.
+  - `geoip` 파이프라인은 `@timestamp`를 이벤트 자체의 시각(Suricata의 `timestamp`, ModSecurity의 `transaction.time_stamp`)으로 설정합니다.
+  - 그래서 이 조회 기간은 Filebeat가 읽은 시점이 아니라 이벤트가 발생한 시점으로 이벤트를 고릅니다.
+- 오래된 것부터 한 번에 5000건씩 읽습니다.
+  - 결과가 잘리면 받은 것 중 가장 새로운 `@timestamp`부터 다시 요청합니다(`api/views.py` `_fetched`, 최대 40번 더). 이미 읽은 문서는 `_id`로 건너뜁니다.
+  - 그래도 조회 기간을 다 읽지 못하거나 5000건이 모두 같은 시각이면 응답에 `truncated`가 실리고 세션에 `read_of`가 기록됩니다. 그러면 점수에 `score.warning.truncated`가 추가됩니다.
+  - sqlmap 케이스 하나가 5000건 넘는 기록을 남깁니다. 그래서 한 번만 읽던 때는 그 뒤에 실행한 케이스가 모두 FN이 되었습니다.
+- Suricata의 `alert` 이벤트는 그대로 두고, ModSecurity 기록은 매칭된 룰 메시지마다 `Detection` 하나(id `<Elasticsearch _id>:<n>`)로 바꿉니다.
+- 이벤트 자체의 시각이 조회 기간 밖인 경보는 버리고 `stale`로 셉니다.
+- 나중에 찾은 마커를 마커가 없던 저장된 행에 기록합니다.
+- `src_host`와 `dest_host`를 substrate의 구간 정보로 채웁니다. substrate에 접근할 수 없으면 비워 둡니다.
+  - ingest와 `/detections/`는 열린 세션의 구간 정보를 세션이 닫힐 때까지 재사용합니다. 단계 폴링과 답 확인 때마다 클라우드를 읽지 않기 위해서입니다.
+  - `/top/`, `/map/`, `/topology/`는 매번 새로 읽습니다.
 
-Elasticsearch is used for storage and for GeoIP enrichment at index time, which is why there is no Logstash.
+Elasticsearch는 저장과 색인 시점의 GeoIP 보강에 쓰며, 그래서 Logstash가 없습니다.
 
-- Nothing uses its query engine beyond a time-range search.
-- `GET /api/sessions/<id>/map/` and `/top/` compute in Python over the SQLite copy.
-- `src_geo.location` is mapped as two floats, not a `geo_point`.
-- `bin/worldmap` generates an Equal Earth map cut at 60 degrees south. No console page draws it since the blue dashboard was removed.
+- 조회 기간 검색 외에는 쿼리 엔진을 쓰지 않습니다.
+- `GET /api/sessions/<id>/map/`과 `/top/`은 SQLite 사본을 대상으로 Python에서 계산합니다.
+- `src_geo.location`은 `geo_point`가 아니라 float 두 개로 매핑합니다.
+- `bin/worldmap`은 남위 60도에서 자른 Equal Earth 도법의 월드맵을 생성합니다. 블루팀 대시보드를 없앤 뒤로 이를 그리는 콘솔 화면은 없습니다.
 
-Two geoip processors write `src_geo`: one on `src_ip` (Suricata) and one on `transaction.client_ip` (ModSecurity).
+geoip 프로세서 두 개가 `src_geo`를 씁니다. 하나는 `src_ip`(Suricata), 다른 하나는 `transaction.client_ip`(ModSecurity)에 적용합니다.
 
-- Compose turns the managed downloader off and bind-mounts `./config/ingest-geoip`, which `bin/fetch-geoip` fills. `GeoLite2-City.mmdb` therefore survives a container recreate.
-- The entrypoint registers the pipeline at bring-up (`platform/register_pipeline.py`). It runs in the background, like `kibana.py`, so the platform serves while Elasticsearch is still coming up.
-- waitress serves the platform with 16 threads on 127.0.0.1:8001.
-- The entrypoint tests nginx's configuration and starts nginx only once that port accepts. nginx therefore never answers 502 for a platform that is still starting.
-- nginx sets `proxy_max_temp_file_size 0` for every location and a 1 MB request body buffer. No proxied response or request body is written to a temporary file.
+- compose는 관리형 다운로더를 끄고 `./config/ingest-geoip`를 bind-mount합니다. 이 디렉터리는 `bin/fetch-geoip`가 채웁니다. 그래서 `GeoLite2-City.mmdb`는 컨테이너를 다시 만들어도 남습니다.
+- entrypoint가 기동 시 파이프라인을 등록합니다(`platform/register_pipeline.py`). `kibana.py`처럼 백그라운드에서 실행하므로, Elasticsearch가 아직 올라오는 중에도 플랫폼은 서비스합니다.
+- waitress가 스레드 16개로 127.0.0.1:8001에서 플랫폼을 서비스합니다.
+- entrypoint는 nginx 설정을 검사하고, 그 포트가 연결을 받은 뒤에야 nginx를 시작합니다. 그래서 nginx가 아직 시작 중인 플랫폼 때문에 502를 응답하는 일은 없습니다.
+- nginx는 모든 location에 `proxy_max_temp_file_size 0`과 1 MB 요청 본문 버퍼를 설정합니다. 프록시한 응답이나 요청 본문을 임시 파일로 쓰지 않습니다.
 
-Django runs with `DEBUG` off unless `DJANGO_DEBUG=1`.
+Django는 `DJANGO_DEBUG=1`이 아니면 `DEBUG`를 끈 채 실행합니다.
 
-- With no `DJANGO_SECRET_KEY`, the entrypoint generates a key once into `/data/secret-key` (mode 600).
-- `cr/wsgi.py` refuses to serve with `DEBUG` off and no key.
-- A 404 under `/api/` is JSON `{detail}` (`api/refusals.py`).
+- `DJANGO_SECRET_KEY`가 없으면 entrypoint가 `/data/secret-key`(모드 600)에 키를 한 번 생성합니다.
+- `cr/wsgi.py`는 `DEBUG`가 꺼져 있는데 키가 없으면 서비스를 거부합니다.
+- `/api/` 아래의 404는 JSON `{detail}`로 응답합니다(`api/refusals.py`).
 
-## Sessions, WAF tuning and the step engine
+## 세션, WAF 설정 조정, 단계 엔진
 
-A session is opened with `POST /api/sessions/` `{scenario, guidance, lesson, defense}`. These fields are stored on the session (migrations 0015, 0022).
+세션은 `POST /api/sessions/` `{scenario, guidance, lesson, defense}`로 엽니다. 이 값은 세션에 저장됩니다(마이그레이션 0015, 0022).
 
-- `scenario` names a wargame (default `board`) or a scenario id. A scenario open refuses `lesson`, `guidance` and `defense` ("Scenarios").
-- On a wargame, `defense` names one of its `defense` entries (default `full`).
-- `guidance` is off by default and on when `lesson` is given. It needs the wargame to declare `foundations`. A `lesson` with `guidance: false` is refused.
-- `{"lesson": "f1"}` to `"f6"` opens that foundation unit. `{"guidance": true}` alone opens the first unit by `order` (f1).
-- The unit is kept as `Session.lesson` and reported as `lesson_id`. A guided open that names no defense takes the unit's declared `defense`.
-- A session's `kind` is `scenario`, `lesson` (guided) or `wargame`.
-- A session whose stored lesson id names no unit any more reads `lesson: null` and `lesson_id: null`, and keeps kind `lesson`. This happens with a session from the older course (`docs/DECISIONS.md` 2026-10-14).
-- Migration 0026 dropped `Session.mode` and cleared `Session.result_cache`. Stored results are therefore scored again, without a lesson verdict. A `mode` in the body is ignored.
-- `GET /api/sessions/?ids=1,2` narrows the session list to the ids given.
+- `scenario`는 워게임(기본값 `board`)이나 시나리오 id를 가리킵니다. 시나리오로 열 때는 `lesson`, `guidance`, `defense`를 거부합니다("시나리오").
+- 워게임에서 `defense`는 그 워게임의 `defense` 항목 중 하나를 가리킵니다(기본값 `full`).
+- `guidance`는 기본값이 꺼짐이고, `lesson`을 주면 켜집니다. 워게임이 `foundations`를 선언해야 쓸 수 있습니다. `guidance: false`와 함께 준 `lesson`은 거부합니다.
+- `{"lesson": "f1"}`부터 `"f6"`까지는 해당 기초 레슨을 엽니다. `{"guidance": true}`만 주면 `order`가 첫 번째인 레슨(f1)을 엽니다.
+- 레슨은 `Session.lesson`에 저장되고 `lesson_id`로 보고됩니다. defense를 지정하지 않은 가이드 세션은 레슨에 선언된 `defense`를 씁니다.
+- 세션의 `kind`는 `scenario`, `lesson`(가이드), `wargame` 중 하나입니다.
+- 저장된 레슨 id가 더는 어떤 레슨도 가리키지 않는 세션은 `lesson: null`, `lesson_id: null`로 읽히고 kind는 `lesson`으로 남습니다. 이전 과정의 세션이 그렇습니다(`docs/DECISIONS.md` 2026-10-14).
+- 마이그레이션 0026은 `Session.mode`를 지우고 `Session.result_cache`를 비웠습니다. 그래서 저장된 결과는 레슨 판정 없이 다시 채점됩니다. 요청 본문의 `mode`는 무시합니다.
+- `GET /api/sessions/?ids=1,2`는 세션 목록을 주어진 id로 좁힙니다.
 
-The board declares these defenses.
+board는 다음 defense를 선언합니다.
 
-| Defense | Setting |
+| defense | 설정 |
 |---|---|
 | `minimal` | CRS paranoia level 4, `local.rules` |
-| `full` | paranoia level 1, the same `local.rules` |
-| `ids` | paranoia level 1, `no-uri-sqli.rules` (`local.rules` without sid 9000001) |
-| `xss-gap`, `overbroad` | see "Foundations F1-F6" |
-| `level2`, `level3`, `inherited`, `untuned`, `broken-rule`, `spelled` | the scenario postures, see "Scenarios" |
-
-Discovery checks each unit's `defense` against this list. No unit or scenario starts from `minimal`, so it is reached only by naming it.
-
-What the open path does:
-
-- It seeds the sensor with the defense's rule file, or with `local.rules` when there is no defense (`suricata.seed`).
-- It writes the CRS tuning when there is a defense (`crs.apply`).
-- For a guided session, it replays the unit's `cases` once (`meta.seed`, with the status curl reported and `blocked` set on a 403). The session's ModSecurity and Suricata records are then in Kibana when the learner arrives. A worked scenario does not replay.
-
-The seed is skipped when the rule file is `local.rules`, because readiness offered the slot only once every sensor held it. Each slot's sensors hold their own rule files (measured 2026-10-13: a sid applied to slot 1 was absent from slot 2). Any other rule file is therefore seeded into that slot's sensors only.
-
-If a replay at open cannot run, the open answers 503 and the session is closed.
-
-`platform/rules/crs.py` renders the tuning into `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`. This is the CRS hook that loads after `crs-setup.conf` and before the rules. The file contains:
-
-- a `SecAction` that sets `tx.blocking_paranoia_level` and `tx.detection_paranoia_level`;
-- one runtime exclusion per entry, with ids 10000 to 10020. The exclusion is `ctl:ruleRemoveTargetById=<id>;<target>`, `ctl:ruleRemoveById=<id>`, or `ctl:ruleRemoveTargetByTag=<tag>;<target>` for an entry that names a CRS `tag` with its target, such as `OWASP_CRS`. When a path is given, it is scoped by `SecRule REQUEST_FILENAME "@beginsWith <path>"`.
-
-How the platform applies the file:
-
-1. It writes the file into the session's WAF with `runner("gateway")`.
-2. It runs `nginx -t && nginx -s reload`. If nginx refuses, it restores the previous file.
-3. It returns once a worker that was not there before the reload is up. It reads worker PIDs from `/proc` by parent PID. New connections therefore meet the new tuning, though old workers may still drain a slow request.
-4. If no new worker appears within 5 s, the reload did not happen. It restores the previous file, reloads and refuses.
-
-It validates the input before it writes anything:
-
-- paranoia 1-4;
-- a rule id 900000-999999, or a tag of letters, `_` and `-` with a target;
-- a target `ARGS`, `ARGS_GET`, `ARGS_POST`, `ARGS_NAMES`, `REQUEST_COOKIES` or `REQUEST_HEADERS` with an optional `:name`, or `REQUEST_URI_RAW` (the Korean search at PL3 also matches 920272 there), or `REQUEST_BODY`;
-- a path of `[A-Za-z0-9_./-]`;
-- at most 20 entries;
-- optional `thresholds` `{inbound, outbound}` (1-100000). They are set as `tx.inbound_anomaly_score_threshold` and `tx.outbound_anomaly_score_threshold` on the same `SecAction` as the level, and read back.
-
-A `PUT` that leaves `thresholds` out keeps the ones in force. `"thresholds": null` clears them.
-
-`PUT /api/sessions/<id>/waf/` changes the tuning. This is the agent path, and no console screen calls it.
-
-`GET` reads the file in the session's WAF back through `crs.read`. It parses the paranoia level and every `ctl:ruleRemove*` line, skips commented lines and joins continued lines. It therefore reports an edit made in the WAF terminal, which is where the learner tunes.
-
-Snapshots of the WAF state:
-
-- Each scenario final check, when its window is judged, takes a snapshot of what `crs.read` reads. So does each close, before the slot is reset.
-- The snapshots are kept in `Session.waf_snapshots` (migration 0021): `{at, scenario_window|closed, waf}`. Sessions from the older course also hold `{at, run, waf}` from their VERIFY runs.
-- The latest snapshot is also `Session.waf`. A closed session therefore reports the learner's last configuration, file included (`file: null` when none was ever read).
-- A WAF that cannot be read takes no snapshot, and stops neither the check nor the close.
-
-The fix class (`lesson.fix_class(waf, posture)`, ruling D1) names what the learner changed against the session's declared posture. A posture is the defense the session started from. The result is one of these, checked in this order:
-
-1. `level`: the paranoia level is below the posture's. A file with no level counts as CRS's default 1.
-2. `threshold`: an anomaly threshold is above the posture's. CRS's 5 inbound and 4 outbound count when none is set.
-3. `rule`: an exclusion the posture lacks removes a whole rule.
-4. `target`: an added exclusion removes a target on every path.
-5. `path_target`: every added exclusion removes a target on one path only.
-6. null: nothing was added.
-
-The scenario final check reports the fix class beside its verdict (`result.fix`, `result.scenario.fix`). It never changes the verdict.
-
-`platform/lesson.py` holds the fix class together with:
-
-- the step-answer helpers: `answered`, `status_said`, `an_address`, `alerts_on`, `rules_named`, `added_rules`, `raised_rev`, `pasted_rows`, `server_errors`, `server_error_sources`, `alerted_by`, `detected_penalty`, `objective_outcome`;
-- the help counts;
-- the exclusions added and removed, and the file diff that the scenario debrief shows (`exclusions_changed`, `config_diff`).
-
-A case marked with any of `views.REPLAY_MARKS` (`seed`, `verify`, `check`, `replay`) is left out of `/score/` (TP/FP/FN/TN, the alerts it drew, and the game). It is also left out of the windows that corp's effect observation attributes changes to.
-
-- The exception is a benign `seed` case. A lesson's seed replay is scored as a benign case (2026-10-18), so a lesson session has a true negative.
-- Only `seed` is still written. `verify`, `check` and `replay` stay listed so that the replays older sessions hold stay out of both scores.
-
-The console is four screens, and every one is filled from `/api/`. It follows a static mockup the user approved, with two rulings on top (`docs/DECISIONS.md`, 2026-10-11, console redesign). The palette and component classes are in `base.html` and `platform/console/components.css`, which `bin/build-css` puts into `tailwind.css`. The header carries the breadcrumb and the range state. The console is Korean only and has no language switch.
-
-- **Main** (`/`):
-  - It lists running sessions by what was taken (the course title, or the lesson title for a lesson outside a course; scenario number and title; or wargame and target), the step a foundation session reached, and, only while opening (`ready`, from `Session.ready_at`), "Preparing ns" (no estimate: the 80 s was a guess).
-  - It lists wargame cards (name and a one-line description) under "Target systems", with the counts of attack cases, benign cases and objectives from `GET /api/wargames/` for the operator only. There is no page title, time estimate, category, difficulty, class or guidance chip (2026-11-14).
-  - Under each card come the foundations block, the scenarios block ("Scenarios"), and the wargame block. Every row's button reads Start.
-    - The foundations block shows each lesson as "Lesson n" and its title. Its Start button posts `{scenario, guidance: true, lesson, defense}` with the unit's declared defense and opens the blue console, as a scenario's Start does; the session page, which held only the console button while a lesson ran, is skipped (2026-11-15).
-    - A scenario row shows its number and title. The one-line `practise` text is gone: three of them restated the title, and one named `?sort=`, the answer of course 1's sort step (2026-11-15).
-    - The wargame block is `[data-wargame-start]`: its heading and Start, which posts `{scenario}`, so there is no guidance and the defense is `full`.
-  - The cards grid aligns its items to the start, so a short card keeps its own height.
-  - The rows no longer show the newest run among the sessions this browser opened ("last session: n (lesson) closed"): the finished-sessions table already lists them (2026-11-15). The session and blue pages still write `cr-opened-sessions`.
-  - A finished lesson session's row names its course (or the lesson, outside a course). Its result cell shows the objectives only when the course card's `scored` flag is set (`wargames._course_scored`: a course with a `kali` or `replay` check); course 1 shows "—".
-  - It lists finished sessions by what was taken, with their `result`: passed or failed (`scenario.phase.passed`, `scenario.phase.failed`, no English label) from the scenario's last final check (`result.scenario`), or the objectives lost of the total (`result.lost`, which no longer adds how many went unnoticed).
-  - The result is scored once and stored (`Session.result_cache`, migration 0018) with the inputs it was scored from: `ended_at`, the hint count, and each final check's verdict. The inputs also include, for each of detections, cases and objectives, the last id and the row count (for detections, also the rows with a marker).
-  - A list reads three aggregates per session. It scores again only a session whose inputs changed, such as after a late ingest.
-  - A refused start is explained under the button that was pressed. On 409, "Close open sessions" lists the open ones, and each is closed through `ingest/` then `close/`. `GET /api/range/ready/` names `max_sessions`.
-  - Its footer carries the Kali trademark notice (`topology.trademark`), which used to sit under the Map pane.
-  - The range controls (the alert pipeline check, the open-session count, the range's health and the counts on a wargame card) show only with `?operator`.
-- **Session** (`/session/<id>/`):
-  - The header shows the step a guided session reached (`main.step`, no label and no lesson number) and objectives lost while open (not on the result, where the primary score shows it). It names no kind, does not repeat the target the breadcrumb names, and shows a state only while the session is opening. Its line names the course or the lesson and the time; an open scenario shows only its start, since its clock starts at the briefing's Start, not at the session's opening.
-  - It shows an "Open blue console" button and, for a wargame session only, an "Open red console" button.
-  - A wargame session shows recent cases from `GET /api/sessions/<id>/cases/`. A lesson hides its automatic requests while open, and a scenario hides its scheduled attacks, so neither has an activity panel (a scenario's said "no attack yet" while its console listed alerts).
-  - Once the session is closed, it shows these in order:
-    1. a scenario's verdict banner and its debrief ("Scenarios");
-    2. the primary score: every tier with one result column (kept, lost and detected, lost and undetected) and the penalty (difficulty x1 or x2), and one line on how a loss is decided;
-    3. under "Detection results", plain counts of what the defence judged, such as "Caught 7 of 8 attacks" and "3 of 4 benign requests passed", with what went wrong listed once under them. No line says that a run counts once, and no column says whether a detection named the attack's mechanism (`corroborated` stays in the API). A scenario's result leaves the customers' blocked requests to its debrief, says "no attack ran" when none did, and hides the per-request table when it is empty. The per-request outcomes are coloured words, not pills; an objective's result reads "lost, detected" or "lost, undetected".
-    A scenario's debrief leaves out an empty section (no logged attack, no request judged before and after, no remaining risk) and a zero final-check count, names an attack's origin as a country (`scenario.origin.<code>`), and says "the WAF settings were not changed" in scenario words.
-  - TP/FP/FN/TN and the game's balance stay in the API. No string a person reads names them (`test_strings.py`).
-  - A lesson session's page names each run by its case name. For a Kali run it says "Lesson n · step m" (`per_case[].lesson`, `.step`, `.seed`). It never names a run by case id. Its course card lists every lesson taken with its steps passed (no skipped count).
-  - "Start again" reopens the same scenario, the same unit (`{scenario, guidance: true, lesson, defense}` when `lesson_id` is set) or the same wargame; a lesson or scenario opens on its blue console.
-  - Ending a session that is already closed (a second press, or another tab) reads the session again and, when it has `ended_at`, says it is closed and shows the result instead of the 409's English detail (`alreadyClosed` in `base.html`; also on the main page and at the lesson end).
-- **Blue** (`/blue/<id>/`):
-  - It has a rail and a pane. The rail holds Kibana, Website, Map, then Alerts for a judgement scenario, IDS rules for a detection or unknown scenario or for a lesson with a step on it (F4), WAF, then a divider and Kali.
-  - Kali shows only when the session's `kind` is `lesson` or `scenario`. In a `wargame` session a person attacks from the red console, and the defender does not hold the attacker's shell.
-  - The Kali pane has its own frame, loaded once, so a running sqlmap survives a switch to another pane.
-  - On the WAF pane, a banner names only the box (`waf_box`, `waf`) and the CRS rules directory (`waf_rules`). That is the directory of the declared exclusion file, `settings.CR_WAF.rules`.
-- **Red** (`/red/<id>/`):
-  - It shows the session and wargame name, the objectives (Korean names under `objective.<key>`) and "Submit stolen hashes" at the top.
-  - Its rail has two panes: the session's Kali terminal and the Website pane (address bar and developer tools, the blue console's own scripts).
-  - It runs no prepared attack: no case list, run buttons, recording window or source picker (2026-10-18).
-  - Narrow widths stack the rail above the pane. The red and blue pages do not scroll sideways.
-
-In a guided session (a foundation or a worked scenario), the lesson note is a column beside the pane and never over it.
-
-- It is 340 px wide (300 px at 1280 px or less). It folds to a 44 px strip ("step n/N"). Below 1024 px it is a panel under the pane. Its heading is "Lesson note" in a lesson and "Scenario note" in a scenario, with no subtitle.
-- From the top, the note holds:
-  - the step card: step n/N, the step's title, the task, the command to type once the step is reached, an "Open <pane>" button when the step's pane is not shown, the question and its input, the status line, the help, and Back and one Next button (`step-next`), which reads `lesson.coach.next` on a passed step and `lesson.skip` otherwise;
-  - F6's objectives card follows the step card and the stretch card; there is no theory card (2026-11-13, the reference column and the course briefing hold what was theory);
-  - F6's objectives card (`lesson_objectives`), which lists every objective with its difficulty, whether it was lost since the lesson started, and whether that loss was detected (no penalty column and no total);
-  - a worked scenario's cards and hints;
-  - F4's and F6's ungraded "Do it yourself" card;
-  - the folded step list.
-- The step list ticks a step only when `progress` says it passed. It marks a step left unpassed as "skipped".
-- The note's folding is kept per viewer (`cr-lesson-note`). The step shown is kept in `cr-lesson-step-<id>-<lesson>`, which the main and session pages read for "step n/N". A browser without that record (a new browser, a cleared store) opens on the furthest step the server recorded as `reached` (2026-11-14).
-
-Progress itself belongs to the session and is kept per unit (`Session.lesson_steps[<lesson>][<step>]`, migrations 0020 and 0027).
-
-- Per step it records `reached`, `passed`, `skipped` (times), `hint` (the level shown) and `tries` (wrong answers, never reset; a step passed after one counts as `retried` in the session's `course` rows).
-- It is reported for the session's current unit as `progress` in `GET /api/sessions/<id>/` and in every step and hint response.
-- A step's record also carries what the step has earned: `command` once the step is reached, `ok` (the line said on a pass) once it is passed, and in a worked scenario `answer` once its hint level reaches 3 (`lesson.ANSWER`).
-- `POST /api/sessions/<id>/lesson/steps/<step>/ {state: reached|skipped}` records a step as reached or left unpassed. Reaching a step whose check names a Kali case gives the step a marker and writes that marker to the stamp proxy's `/var/lib/session/active`.
-- The console sends `skipped` on Next or a list jump from a step not passed. It never sends it on Back or a pass.
-- A pass is said on the passed step. The next step opens on a clean card.
-
-The steps are declared in the unit (`steps` of a foundation or a worked scenario in `scenario.yaml`). A step has:
-
-- an `id`;
-- a `check` whose `kind` is one of `click`, `answer`, `choice`, `rules`, `sent`, `kali`, `loot`, `triage`, `waf_changed` or `replay` (`wargames.CHECK_KINDS`, validated at discovery);
-- a `point`;
-- a terminal `command` when the learner types one. `wargames.lesson` fills `{waf_rules}`, `{waf_reload}` and `{sudo}` in it from the declared WAF layout (`settings.CR_WAF`).
-
-A foundation step has no Kibana `query`. A Kibana point may carry `kql:`, a regular expression the learner's own submitted query (the Discover URL's `query`, else the query bar) must match, case-insensitively, before the ring leaves the query bar (stage `write`, which draws the ring with no callout). So no highlight shows an answer before the learner has written the query.
-
-The session API shows only what the browser needs.
-
-- It shows a check's `kind` only, plus `form`, `options` (for `form: order`, every non-switch host on the learner map), the step's own `match` or the `match` of the step it is `about`, `dev: true` when the check has `dev` (never its pattern), and `solo` on a foundation's last step.
-- No `accept` list or answer rule reaches the browser.
-- A step's `command` is in the payload only once `progress` records the step as reached. It is text to type, with no button that runs or copies it.
-- The pass lines (`<text>.ok.<step>`, or `<text>.ok.<step>.<option>` when a choice step's line depends on the option the learner chose) and a worked scenario's answers sit in a `{% comment %}` section at the end of `strings.html`, which Django never renders. `console/strings.py` reads them, and the step's `progress` record carries them once earned.
-- A step's check does not advance it: after a pass the learner presses Next. Only the last step goes on by itself, to the lesson's end card (see the pass line below). Back and Next also move without a check.
-
-How each check kind passes:
-
-- `answer` and `choice` pass when the text given equals an accepted value, ignoring case and spaces (`lesson.answered`).
-  - `form: order` compares the hosts in the order given, split on spaces, commas, `>` and `→`. When the hosts are right and the order is not, it says `<text>.wrong.<step>.order`.
-  - A `wrong_if` rule whose `match` fits the answer says `<text>.wrong.<step>.<says>`.
-  - A value listed in `known` gets its own `<text>.wrong.<step>.<value>`.
-  - The accepted values are the `accept` list, or they are read `of:` the session's records ("Foundations F1-F6").
-  - On a map address step (`of: address`), a wrong IPv4 address that the learner map gives to a host says `lesson.check.wrong.address_of` (`views._whose_address`): another device's address, without naming the device or repeating the address, since the waf's address is F1's last answer. Other steps keep their own messages.
-  - `status` accepts the code alone or with its reason phrase, as DevTools shows it (`200 OK`; `lesson.status_said`).
-  - `of: rule` (`wargames.ANSWERS_OF`) takes the `path` of the request with `marker: browse` for the learner's own request, or `marker: step:<id>` for a Kali step's run. It may be narrowed to a rule `family`. The platform ingests the last 600 s, takes the session's ModSecurity detections of that request or run, drops the CRS totals (rule ids starting 949, 959 or 980) and accepts each remaining `ruleId` (`lesson.rules_named`). With nothing recorded, the reason is `lesson.check.unrecorded`.
-  - `of: rule_matched` with `rule: <id>` reads the same detections and accepts `present` or `absent` for that one rule. A recorded run with no detection is `absent`.
-  - A recorded Kali run's detections are not ingested again once the session holds some of them: the run was recorded after its logs had settled for `RUN_SETTLED`, and the ingest at its recording read them.
-- A rule file is refused at the syntax check and at apply when an active line has no `sid:<n>` the platform can read, ending in `;` or `)` (`disable.unread`): Suricata 8 loads `sid:9100001 rev:1;` (measured with `suricata -T` on the live sensor, 2026-11-15), but the platform would not see the sid, so a check would say no rule was added. The syntax check answers `{ok: false, unread_sid: true, errors: [the lines]}` after Suricata accepts the file.
-- `rules` passes once the sensor's file (`GET /api/rules/`) holds a sid that the posture's rule file does not hold, or holds with other text (`lesson.added_rules`, `disable.sids`). It answers `added`. `needs: nocase` also wants that rule to carry `nocase` or a pcre with the `i` flag (`lesson.ignores_case`). With a `match`, the rule must also have fired: a Website pane request matching it, sent after this session's last apply (`RuleSet.applied_at` of the session's own `RuleSet`), drew an alert from one of those sids. Otherwise it answers `<fail>.unsent` (no such request), `lesson.check.unrecorded` (the sensor has not logged the request yet), or `<fail>.silent` with the sids, or `<fail>.elsewhere` with the sids and a URL they alerted on instead. `quiet_on:` lists ordinary request URIs: a rule whose URI contents all appear in one of them (`lesson.alerts_on`; a rule with a pcre is not judged this way) fails at once with `<fail>.broad`, the sids and the first listed URI the rule matches, since it would alert on every plain search. A rule with no URI content (only `http.header`, say) is not judged broad.
-- `triage` (`judged: customer | attack | all`) passes on the learner's right verdicts ("Scenarios"); `judged: verified` passes once the scenario's final check has started.
-- `sent` passes once a Website pane request matches `match`. A `wrong_if` rule whose `match` fits a sent request instead says `<text>.wrong.<step>.<says>` with `loud: true` (F3's search on the card's example word).
-- `waf_changed` (`removed_target`) passes once no exclusion in the WAF's file targets that variable, while the posture declared one, and the file's paranoia level line still sets the posture's level. A deleted or changed level line fails with `<fail>.paranoia` and the line to put back (`crs.rendered` of the posture without its exclusions).
-- `replay` passes once, after the step named `after` passed, when both of these hold:
-  - an attack (a `sent` regex, or a `kali` case) meets its `expect`: an alert from one of the learner's added sids, or the run blocked (949110 among its detections) with no loot credited;
-  - a benign request after the same time meets its own `expect`: its `status_class`, no added sid alerting, or no WAF record.
-  The reason names the half that is missing (`lesson.check.replay_attack`, `lesson.check.replay_benign`). When the benign request was sent but fails, the reason says how, with the request: `lesson.check.replay_benign.status` (not 2xx), `.alerted` (an added sid alerted on it) or `.waf_logged` (`views._benign_fault`).
-- `click` passes as soon as the check is called. The platform tests no condition.
-
-The platform judges every check, with `POST /api/sessions/<id>/lesson/steps/<step>/check/`.
-
-- The body is `{answer}` for an answer, a choice or a pasted table, or `{poll: true}` for a background poll.
-- The call records `passed` and answers `{passed, reason, hint, hints, progress}`. A `rules` check adds `added`, a `kali` or `replay` check adds `kali`, and a `loot` check adds `loot`. A definite fault found by a poll (a benign replay request that failed, a deleted paranoia level line) adds `loud: true`.
-- `reason` is a `strings.html` key with its values.
-- A failed check that is not a poll counts as wrong. Two wrong checks raise the step's hint level and record the hint. In a worked scenario they offer the scenario's next hint instead (`scenario_run.stuck`).
-
-Checks run by themselves.
-
-- `sent`, `triage`, `kali`, `replay` and `waf_changed` are polled silently every 5 s while their step is shown, the tab is visible and the session is open. A poll (`{poll: true}`) waits the normal 90 s (`PATIENCE`), not the longer patience for range work, so a hung poll does not hold the step. The page re-reads the session every 30 s to notice a close. A poll writes nothing unless its answer carries `loud`; then the reason is said as a wrong answer is, and a replay's benign line reads "problem" instead of "checking".
-- `sent` and `replay` also run 1.5 s after the Website pane shows a path that matches the step's `match` (for `replay`, its benign request's `sent`).
-- `rules` also runs when the rule editor applies a file. A `rules` step with a `match` runs then silently and shows its own check button, which the learner presses after sending the request.
-- A pass says the step's `ok` line on the passed step and stays there with Next highlighted; the learner presses Next. No pass line says to press Next. The last step's pass goes to the lesson's end card, which waits for its button.
-- The card's open-pane button for the Website pane also loads the board's front page when the pane shows another page (a 403 page left by an XSS search, for one), since the steps after it search in the board's own search box.
-- A Kali step's card shows its run's row as a plain line, with no border and no case name: the still-running line and "Open Kibana at this run's time" (no "recorded run" label). Neither the step texts nor the still-running line say the run is checked when it ends. A later step does not repeat the row; a Kibana step after it carries the run's window on its open button. The link opens the run's window with an empty query. A poll of the Kali check reads the row again after a reload, and whenever the row held has no window (a run still being collected when the learner pressed Next); a verdict that arrives after the learner moved on still updates the row. A Kali step passes on its own poll once the run ends; its check button only checks sooner.
-- Every answer to a step whose point, or a later phase of it, opens Kibana carries `query`, the query Kibana holds. A check with `kql` fails unless that query matches it (`<text>.wrong.<step>.kql`). A query with a quoted wildcard (`: "...*..."`, `views.QUOTED_WILDCARD`) fails first with `lesson.check.wrong.kql_quoted`. Every foundation answer read in Kibana carries `kql`, so none passes on a value guessed from the map, the reference or an earlier card. On a `leg: upstream` check, a query whose `not destination : <address>` names board.com's own address also fails with the `kql` reason (`views._excludes_the_site`), since it drops the leg the step keeps.
-- A check with `dev`, a regular expression, is read in the Website pane's DevTools. The console sends `dev_request`, the id of the request row picked in DevTools while it is open (`null` otherwise). The answer fails with `lesson.check.wrong.dev` unless that row is a recorded request of the session whose path matches `dev` (`views._dev_picked`). F2's method, path, status, parameter, sort and missing-post steps, F4's encoded step and F5's sort and error steps carry it.
-- An answer that is a number followed by a unit word of one or two letters (for example the words for points or records) is read as the number (`lesson._unit_dropped`); a `%` is not a unit.
-- On the last step, a foundation says "Lesson over." and its button names the next lesson ("Next lesson: <title>"), and waits for that button ("One session per course"). After the course's last lesson (F3 in course 1, F6 in course 2), the card lists the course's lessons taken with the steps each passed, and an "End session" button closes the session. The card repeats no score: the result page shows them. A worked scenario's last step says the guided steps are done (`scenario.note.done`).
-- The pass line stays where it is, under the question, on the last step too. A wrong answer's line goes when the learner types again or picks another option, and a KQL fault's line goes when the Kibana query changes.
-- The order picker shows the order only as the numbers on the pressed buttons, with no joined line under them; the question says how to take a button back.
-- The reference column's open state is kept per session and lesson (`cr-lesson-reference-<session>-<lesson>`), so a new lesson opens with it closed.
-- An unapplied edit in the rule editor is kept in localStorage (`cr-rules-draft-<session>`, with the version it was based on) and put back after a reload, saying so; applying the rules drops it. A draft based on another version is not restored.
-- A `click` step whose pane is already open passes when it is reached. Scenario 1.1 has no step that opens the Alerts pane: it opens on it, so its first step judges the customers.
-- A wrong answer says what is wrong.
-- A recent ingest (`within`) reads the newest records of the window first and records no truncation, because one sqlmap case leaves more than 5000.
-
-Each step offers help in a fixed order. The next level opens when the learner presses "Show a hint", or after two wrong answers or failed checks.
-
-- In a foundation the rungs are the nudge (`<text>.nudge.<step>`, where to look), then the hint (`<text>.hint.<step>`, how to read it, never the answer); the hint button goes at level 3 (`lesson.SKIP_OFFERED_IN_FOUNDATIONS`).
-- A worked scenario keeps its answer rung (`lesson.ANSWER`, `lesson.SKIP_OFFERED`).
-- Skipping is not behind the rungs: the one Next button reads `lesson.skip` on any step not passed, and records it as skipped.
-- Each press is `POST /api/sessions/<id>/lesson/hints/ {step, level: "hint"}`. It raises the step's `hint` level. The first press is recorded in `Session.hints` with its unit (`{lesson, step, level}`; migrations 0017 and 0027). It answers 400 for a session that is not guided, or for a step or level the unit does not have, and 409 when the session is closed.
-- After 60 s on a step, the button only changes to "Show the new hint". Nothing is recorded until the learner presses it.
-- A foundation's last step is solo: no highlight, no nudge, no hint.
-- A skip is `POST /api/sessions/<id>/lesson/steps/<step>/ {state: skipped}`, and the next step is reached. On the last step, the skip records the skip and shows the lesson's end card, which waits for its button as after a pass. In a worked scenario it closes the step.
-- Nothing is entered, fired, applied or credited for the learner. A later step that reads a skipped step's record therefore stays unanswered until the learner does that step or skips it too. Examples are an answer about a request never sent, or the loot of a run never made.
-- `result.scenario.helped` (`["hint"]` or none) puts "hints used" beside passed or failed on the main page and the closed session's page.
-
-Each lesson opens on the pane that its first step names (`opens`). The console code names no lesson step and no CSS selector. Where a step points is its `point` in `scenario.yaml`: one locator, plus `opens`, the pane it needs. The highlight that shows it is called the coach.
-
-The locators are:
-
-- `panel`: a console element, such as the site's address bar, the rule editor or an objective's row.
-- `map`: a `node`, `link`, `label: [host, switch]` or `zone`, which the server resolves from `{switch:<host>}`.
-  - `deploy/gns3/auditor.html` answers `{locate}` by `postMessage`. A `node` is the device's icon and name, not the address labels on its links, so a ring on board.com does not show the address its step asks. The answer holds the rectangle, every zone drawing's rectangle (`zones`) and the boxes of the nodes, interface labels and zone captions (`text`, so that callouts stay off them).
-  - The page refits on `{fit}`. It posts `{map: "drawn"}` after its first fit and `{map: "fitted"}` after each later one.
-- `site`: a selector inside the cross-origin site frame, answered by the script nginx injects.
-- `dev`: a `data-coach` name in the developer tools, such as the toggle, the matching row, a tab or a line.
-- `kibana`: a target in the same-origin Kibana frame. The forms are:
-  - `query`;
-  - `hits`, with `discoverNoResults` as its fallback (its own stage). The ring holds the count alone;
-  - `doc: <field>`, a field's row in the document flyout, brought into view through the flyout's field filter;
-  - `sidebar: <field>`. Once the field's popover is open, it rings the popover's "calculated from N records" line (`dscFieldStats-statsFooter`) when present, else its Top values;
-  - any of these with `kql: <pattern>`, which holds the ring on the query bar until the learner's own query matches.
-  On a step whose check names a `leg`, the coach rings the expand toggle of the row on that leg and the flyout's arrow while the other event is open. The row on a leg is the one whose source is another row's destination, or the reverse. When that row cannot be found, or the open document's position is unknown, the coach rings the field filter and never a value. `keep: true` on the point leaves the flyout open on arrival.
-- `term`: `{pane: kali | waf, match}`, the row of the xterm buffer that matches. An optional `done` pattern, once printed after the last typed command, moves the ring to the step's check button, but only when that command holds every word of the step's own command (quotes aside), so an earlier step's finished run does not say this one finished. While the step's command runs, the run card's "still running" line is the only message: the "collecting" status and an earlier red "no run yet" are cleared. A callout on a bare prompt sits below the prompt line, where the command is not typed.
-
-A two-phase point holds the first target `until: sent` and then points at `then` (the select, then the payload line). `until: applied` holds until the step's added rule is applied and the editor holds no unapplied change. `until: dev_open` holds until DevTools is open; F4's probe step rings the DevTools toggle, then the search box, since its card says to open DevTools before searching. An apply marks the sids of the learner's own new lines as added in the console at once, so the ring leaves Apply without waiting for the check's reply. A `then` may carry its own `until` and `then`; F4's rule step rings the rule editor, then the site's search box, then its check button (`#step-act`).
-
-How the highlight draws:
-
-- It dims the pane alone (`pointer-events: none`). It rings the target in the primary colour and puts a one-line callout beside it (`<text>.callout.<step>`, and `.callout.<step>.then` for the second phase, `.then.then` for the third). Since 2026-11-15 no lesson step has its own callout: each one only named what the ring showed or repeated the card. Stage callouts stay only where the ring does not say what to do: the expand toggle of a row on a leg, the flyout's field, closing the open document flyout (`covered`), stepping to the next document (`other`), the event to check on a leg (`verify.<leg>`) and the Kali check button. Opening DevTools, picking the row, the DevTools tab, writing or running the query, expanding a row with no leg, the rule line to add and pressing Apply have no string (the tab and the rule line went in round 21: the step card already says them), and a stage with no string draws only the ring.
-- The callout is flipped or shifted inside the pane. It never covers the target, the rail, the bars or the note. It also never covers the text and controls that the site frame or the Kibana frame report around the target (Kibana's leaf text and controls within 220 px of the ring, skipping what the document flyout covers).
-- With no one-line spot free, it wraps to two or three lines.
-- A flyout step (the next-event arrow) looks inside the flyout first.
-- A target in the note card gets its callout in the pane beside the card.
-- The leader line crosses no text. It is left out when the callout is within 48 px of the ring.
-- A ring on the map shrinks its padding until it clears the map text beside the node (`clearOfText`), down to the node's own box.
-- The hint says "Look at the highlighted spot." when the step has a locator.
-- While the step's pane is not shown, the step card shows the "Open <pane>" button (`lesson.open.<pane>`), ringed with no callout, since the button says what it opens (none on the last step). A step's own callout is optional: a ring that only names what it rings (the search box, kali, the DMZ) has no text.
-- With no target for about 2 s, the card says where to look (`lesson.coach.missing`).
-- The map refits when its pane's size differs from the size it was last fitted at (a pane open or a resize). A step change or a lesson's last step alone does not redraw it.
-
-`test_every_point_a_foundation_or_scenario_step_names_resolves_on_the_blue_console` holds every `point` of every foundation and stepped scenario to the console as rendered.
-
-The rule editor (`#lesson-rules`, ruling D3) sits in the blue console's IDS rules pane, which `rulesPane()` shows for a scenario of class `detection` or `unknown`.
-
-- It reads `GET /api/rules/?session=<id>`.
-- It checks with `POST /api/rules/validate/` and writes with `POST /api/rules/apply/` on the version it loaded.
-- Check rules answers `errors`: the lines carrying Suricata's `Error` from every sensor that refused. `output` is the refusing sensor's output with the most of them. When no sensor refused but a rule's sid cannot be read, it answers `unread_sid: true`, `errors` holds those rule lines and `output` is empty.
-- Both sensors run the same Suricata image with console logging on, so each prints its `-T` errors.
-
-### Foundations F1-F6 in two courses
-
-The design is phase P2 of `docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`. It was rebuilt on 2026-10-18 as attack and defence lessons (`docs/DECISIONS.md`, "Foundations rebuilt as integrated attack and defence lessons").
-
-The board's `scenario.yaml` declares a `foundations:` list. Discovery checks it: ids must be unique across the foundations and the scenarios (`wargames.checked_groups`). The foundations are the taught units. The worked scenarios 1.1 and 3.1 run their steps on the same engine.
-
-It also declares `courses:` (`wargames.checked_courses`): every foundation in exactly one course, each course an `id`, a string key `text` and its `reference` cards. Course `c1` (`course.logs.title`) is f1-f3 and only reads the range (defense `full`, no rule, Kali or WAF change); course `c2` (`course.attack.title`) is f4-f6 and changes it (`docs/DECISIONS.md`, "The six foundations become two courses"). A course 1 step finds the learner's own request by the learner's own search word or marker and never needs a fresh range or the absence of other traffic.
-
-- `GET /api/wargames/` lists `courses` (`id`, `title`, `lessons`, `scored`); the main page shows one section per course with its lessons. `scored` (`wargames._course_scored`) is true for a course with a `kali` or `replay` check, and decides whether its lesson sessions show scores.
-- `GET /api/sessions/<id>/` carries `lesson_course` (`id`, `text`, `lessons`, `reference`).
-- The first lesson of a course opens on a briefing over the pane (`<course>.brief` and the course's reference cards, folded) while no step of it is reached; Start reaches the first step (`POST .../steps/<id>/ {state: reached}`), which an agent sends directly. Course 2's brief says the addresses can differ from one session to the next.
-- The rail's reference button (`lesson.ref.heading`) opens a left column with the course's cards and the lesson's own `reference:` cards (`lesson.ref.<id>.title`, `.body`, `.rows`); the `addresses` card is filled from `GET .../lesson/addresses/`. F1 has no address card, since its questions are the addresses.
-
-- `wargames.foundations()` lists the foundations by `order`.
-- `wargames.lesson(lesson_id=...)` finds a foundation or a scenario with steps, refuses any other id, and marks a foundation `group: foundations`.
-- `GET /api/wargames/` lists `foundations` (`wargames._foundation_card`). Each card has `id`, `order`, the `title` string key, `minutes`, `level`, `defense`, `prerequisites`, the step count, `step_ids` and `changes_waf`.
-- The main page lists the foundations first, as lessons, each with its number, title and a Start button (a guided open of that unit).
-- Every unit seeds `board-normal-search`: the first at open, a unit moved to on the learner's first pass, skip or hint in it (`views._seed_once_worked`, the same work the result page's `begun()` counts), so a unit the console moved to and the learner left unworked adds no benign case. The seed is a benign case and counts in the second score (`views._replayed` keeps a benign `meta.seed` case). A closed course therefore has a true negative, and `no_benign` and `no_marker` are not shown in a lesson session.
-
-Each unit below lists its defense and opening pane, what the learner does, and where the answers are read from.
-
-**f1 Reading the network map** (`lesson.map`). Defense `full`, opens on Map.
-
-- The learner reads kali's and board.com's addresses, picks in order the hosts a request from customers passes (`path`, from `customers`), reads the DMZ network and names the host that collects the logs. The solo step asks for waf's address. No step asks which zone a host is in.
-- Answers are read from the session's learner map (`views._range_fact`: `topology.address`, `topology.subnet`, `topology.route` and `topology.hosts`, through `topology.learner`):
-  - `address`: the link-label addresses, with or without the prefix length;
-  - `subnet`: the network of the host's switch;
-  - `path`: the step's `from` (default `customers`), then the transit roles present, then the site (`customers > router > waf > board.com`);
-  - `logs`: the `log-server` node.
-
-**f2 Reading HTTP requests in DevTools** (`lesson.http`). Defense `full`, opens on Website.
-
-- The learner searches with the board's search box. They read method, parameter, path and status in the Network panel, then the parameter behind the board's sort control. The solo step asks for the status of `/posts/9999/`; neither the card nor the HTTP reference says the post is missing or what 404 means.
-- Answers are read from the learner's own Website pane records: `method`, `parameter`, `path` (exactly as the request URL shows it; a `wrong_if` says when the answer carries the host or the query or drops the trailing slash) and `status`.
-
-**f3 Finding your requests in Kibana** (`lesson.logs`). Defense `full`, opens on Website.
-
-- The learner searches a word of their own, of letters and digits (not the example word `kim0413`, which the search step rejects), and writes `url : *word*` in Kibana. They then read, each card restating the query and naming the column the screen shows:
-  - the count Kibana shows (both legs of every search with the word);
-  - the count of a query the learner writes with `and` and `not`: their word, and `destination` not waf's address. Its check carries `kql`, a regular expression the Kibana query must match: the console sends the query Kibana holds with every answer of a step that opens Kibana, and an answer sent with a query that does not match fails (`lesson.logs.wrong.upstream.kql`) whatever the number. The count's pass line says only that the url query found the learner's logs, so it does not tell how many rows each leg leaves;
-  - the `source_ip` of the row that query leaves (waf's own address).
-  The first count's check carries `kql` too (a `url` condition), and so does the source step, whose answer is on the reference's address table. The X-Forwarded-For step's `kql` needs a `x_forwarded_for` condition beside the url one (`request_header.x_forwarded_for : *`), since a url query left from the earlier steps would otherwise satisfy it.
-  The solo step asks that row's `request_header.x_forwarded_for` (the customers address), read in the Document flyout. Its pass line is the first text that says the Website pane browses from the customers place.
-- Answers are read from the sensors' http events of the record (`sensor_source`, `forwarded_for`), split by leg.
-  - A leg is `upstream` when `dest_ip` is one of board.com's addresses (waf sends it on). Otherwise it is `inbound` (the request arrives at waf). `leg: both` takes the events of both legs.
-  - `hits` counts the http events on the leg whose url holds the word of the learner's newest search, since the unit (or the session) started.
-
-**f4 Blocking an XSS request and writing an IDS rule** (`lesson.xss`). Defense `xss-gap`, opens on Website.
-
-- The learner sends `<script>alert(1)</script>` and reads in DevTools what `<` became in the request URL (`%3C`; the address bar shows `<`, and the pane shows nginx's 403 page, so the status is no longer asked), then one detecting rule and the Total Score. They send the mixed-case probe and read its Total Score in Kibana (the CRS reference no longer says CRS ignores case), and say whether either drew an IDS alert. They write a rule for `<script` in the URI, apply it, search `<script>alert(1)</script>` and press the check, which passes only when that rule alerted on the search. They read the alert's `destination` in Kibana (waf's address: only the sensor on the way in saw the request, since the WAF blocked it), see the mixed case slip past, and add `nocase` with `rev` raised. The Suricata reference card shows the rule's form with square-bracket blanks, not a complete rule, and does not say which string matches a `%3C` in Kibana's url. The Kibana steps hold the ring on the query bar until the learner's own query names the WAF log and script (or alert), and their checks carry the same `kql`. The probe card says to open DevTools first: the panel lists what it captures while open. `rules` with `match: '<script'` and the `nocase` step carry `quiet_on` (two plain searches), so a rule such as `content:"/search/"` that alerts on every search fails with the reason. The solo step replays the mixed case and an ordinary search; a plain search that drew the learner's rule is said at once (`lesson.check.replay_benign.alerted`).
-- Answers are read from:
-  - `escaped` with `char: "<"`: the percent escape of the character (`%3C`), when the record's query holds it;
-  - `rule`: the ModSecurity rule ids of the request, 949110 excluded;
-  - `anomaly_total`: 949110's `Total Score: N`;
-  - `alerted`, `alerted_destination` (the `dest_ip` of the alerts the learner's own rules raised), `alerted_sid_present`: the Suricata alerts in the record's window whose url is the record's, against `lesson.added_rules` (`views._alerts_for`). An alert with no url counts when it carries the browse marker. Matching on the marker alone charged an ordinary search sent seconds after the attack with the attack's alert, so a replay's benign search never passed (round 17);
-  - `rules` with `match: '<script'`, and `rules` with `needs: nocase`, which also needs the rule's `rev` above its last case-sensitive version applied in the session (`lesson.raised_rev`; `lesson.xss.fail.nocase.rev` otherwise). A rule written with `nocase` from the start has nothing to raise;
-  - `replay`.
-
-**f5 Analysing SQL injection on the sort parameter** (`lesson.sqli`). Defense `full`, opens on Website.
-
-- The learner reads the sort value. They add `)` in the address bar and read the status, then say whether a WAF rule detected it. They type sqlmap in the Kali pane and read its verdict, how many WAF records the run left (the source_ip Top values' "Calculated from N records", or the Documents count; the source itself is kali's, on the map), and the rule that named the scanner. The record-count step's `kql` needs a `source_ip` condition beside the WAF one, so the step's own query is written, not the one left from the undetected step. They rerun with `--random-agent`. The solo step asks whether 913100 appears in the rerun's WAF logs. The CRS reference no longer lists the 913 family and the solo step's title no longer names 913100, so neither gives the scanner answer away. Every Kibana answer carries `kql`.
-- Answers are read from:
-  - `param_value` and `status`;
-  - `waf_detected`: the ModSecurity detections of the request. A 500 is logged with no rule, which is no detection;
-  - `sqlmap_found`: `attacker.sqlmap_found` reads `<home>/.local/share/sqlmap/output/<host>/log` on the box and looks for a `Parameter:` line;
-  - `run_records`: the number of ModSecurity records in the run's Kibana window, or of those carrying the run's marker (a wrong_if says an address or a share is not a count);
-  - `rule` with `marker: step:<id>` and `family: "913"` (the scanner), then `rule_matched` with `rule: "913100"` on the rerun (`absent` when the new User-Agent no longer matched it).
-
-**f6 Finding the attack an over-broad exception let through** (`lesson.miss`). Defense `overbroad`, opens on WAF.
-
-- The learner greps the exclusion file for the parameter that was left out. They dump the accounts with sqlmap and paste the table. They say which engines alerted, and how many WAF log records with status 500 the run left (their rule_id is `-`: logged, but no rule matched). They say the penalty the admin objective would carry if detected. They delete the exception and reload nginx. The solo step replays the dump and sorts once.
-- Answers are read from:
-  - `excluded_target`: the parameter name in the WAF file in force (`sort`; `ARGS:sort` says `lesson.miss.wrong.excluded.prefix`);
-  - `loot`: against the session's snapshot;
-  - `alerted_by`: none, IDS only, WAF only, or both, from the run's detections;
-  - `server_errors`: the number of WAF (ModSecurity) log records with status 500 in the window Kibana opens on (`lesson.server_errors`). The source IP is no longer asked: it is kali's address, on the map and asked in F5. sqlmap prints the same count at the end of its run; the pass line asks the learner to compare the two. The rule_id is not asked: the step before already says `-` means no rule matched;
-  - `detected_penalty` with `objective:`: the objective's difficulty x 1, the penalty it would carry if detected. The tier is read from `wargames.objectives`, and the value is empty when the scenario is not judged. Its pass line follows the objective's row when it passed (`lesson.miss.ok.cost.undetected`, `.detected` or `.kept`, `views._outcome`), so it never says 8 points were deducted when the admin account was not lost;
-  - `waf_changed`, which also keeps the paranoia level line (the card says to leave it);
-  - `replay`: the run blocked with no loot, and an ordinary sort 2xx with no WAF record.
-
-The postures `xss-gap` and `overbroad`:
-
-- `xss-gap` is CRS paranoia level 1 with `no-xss.rules` (`local.rules` without sid 9000003).
-- `overbroad` is level 1 with `no-uri-sqli.rules` and one exclusion, `{tag: OWASP_CRS, target: "ARGS:sort"}`. In the WAF file this is `SecAction "id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetByTag=OWASP_CRS;ARGS:sort"`, so every CRS rule skips `sort`.
-
-F6's sqlmap command carries `--skip-waf`. Without it, sqlmap's own WAF-detection request would trip IDS 9000003 and 9000004 and one CRS rule, and the run would count as detected. No unit question carries an `accept` list.
-
-One session per course. `POST /api/sessions/<id>/lesson/ {"lesson": "<id>"}` moves an open guided session to any foundation in place. The console's next lesson stays inside the session's course (`views._next_lesson`), and the course summary lists only that course's lessons; course 1 ends on `course.logs.done`, course 2 on `course.attack.done`, each saying that the last lesson ended. Course 1's line also names course 2. The result page shows course 2's scores. It does the following:
-
-- When that unit's declared defense differs from `Session.defense`, it writes the unit's CRS tuning (`crs.apply`, as `PUT /waf/` does). It seeds the sensors only when the posture's rule file changes.
-- It sets `Session.lesson` and `Session.defense`.
-- It appends `{id, started_at}` to `Session.lessons` (migration 0027). A foundation open writes the first entry.
-- It clears the stamp proxy's label.
-- It does not replay the unit's `cases`; the learner's first pass, skip or hint in the unit does.
-- It answers the session detail.
-
-It refuses a closed session, a scenario session and an unguided one with 409. It refuses an id that is not a foundation with 400.
-
-The detail carries:
-
-- `lessons`;
-- `next_lesson` (`{id, text}` of the next foundation of the session's course by `order`, or null after the course's last lesson);
-- `course` (`[{id, text, steps, passed, skipped, hints, retried}]` for every unit taken; `retried` counts the steps passed after a wrong answer, so trying the other option of a two-way choice shows on the result page).
-
-The console offers only the next unit.
-
-- When a foundation's last step passes or is skipped, the card says "Lesson over." with a "Next lesson: <title>" button. Nothing moves on by itself: the console posts the switch and reloads the page into the new unit only when the learner presses the button.
-- After the course's last lesson, the card lists the course's lessons taken, read from the session's `course` rows (no `/api/wargames/` read), each with "n of N steps passed" (no check mark: a lesson whose steps were all skipped shows 0). When the session took every lesson of its course, the card's title is the course's title and its line the course's own `<course>.done`; otherwise "Lesson over." The stretch card sits right under the step card. Its button first asks with the session page's one confirmation (`session.close.consequence`), then ingests, closes the session through `POST /close/` and opens the session page. A lesson session whose course is not `scored` (course 1, which only reads the range) shows no score on that page: no objectives, detection or per-request tables and no lost-objectives figure. No line on that page says which searches are left out of the second score. That page's course card lists each lesson's steps passed (and retried), and labels each Kali run "Lesson n · step m".
-- Restarting starts the first lesson the learner worked in (the page's `begun()`: passed, skipped or hinted, or the lesson the session opened on) with its own defense. The button reads "Start again".
-
-Nothing is reset between units. The board allows this, because its objective layer is exfiltration only (loot matched against the snapshot taken at open). A unit therefore leaves the ground truth as it found it. F4 and F6 change the posture in place, and F5 returns it to `full`.
-
-A unit judges only what happened since it started (`views._lesson_started`, the last `Session.lessons` entry once there is more than one).
-
-- A `sent` check counts only Website pane requests made after the start.
-- The `rule` answer counts only ModSecurity records after the start.
-- A `kali` check reads the sensor from the later of the step's `reached` and the unit's start.
-- `lost_points` counts only objectives achieved after the start.
-- The Kibana links open from the start.
-- Step records belong to the unit, so F3's `search` is not passed by F2's.
-
-Three check kinds follow the learner's own actions.
-
-- `sent` passes when the session's Website pane kept a request whose decoded path and query match the step's `match` regular expression.
-- `kali` names a tool case of the case file.
-  - Reaching the step gives it a marker. The platform writes the marker to the stamp proxy's `/var/lib/session/active` (cleared on a lesson switch and at close). What the learner types in the Kali pane therefore goes out marked, through Kali's `http_proxy`.
-  - The step's `command` is plain text to type.
-  - The check passes when the sensor's http records carry the marker and the tool's user agent (any user agent with `ua: any`, for `--random-agent`).
-  - It then records the run as an ordinary malicious case (`meta.kali` and `meta.lesson`, no replay mark). The case counts in both scores like any other red action. It then ingests the session.
-  - A learner who unsets `http_proxy` sends unmarked requests, and the step does not pass.
-- `loot` takes the pasted table (`tools.dumped`, or `name:hash` and `| name | hash |` lines). It credits the table as `POST /loot/` does, attributed to the kali case. `_credit_loot` keeps the matched accounts on the case it was attributed to (`meta.loot`). It passes only when the matched accounts cover every account in the session's snapshot; fewer fail with `<fail>.partial` and the matched and total counts, and the box stays open, so a later paste adds the rest. A partial paste still credits what it matched: the objectives follow the target's data, and the step only asks for the whole table.
-
-An answer reads one of these facts. `wargames.read_from_record` refuses anything else at discovery.
-
-- `of:` a range fact: `address`, `subnet`, `path`, `logs`, `excluded_target`, `lost_points`, `detected_penalty`.
-- `of:` a request fact, `about:` a step that has a `match` (or with its own `match`, taking the latest Website pane record that matches it): `status`, `method`, `path`, `parameter`, `param_value`, `escaped`, `sensor_source`, `forwarded_for`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_destination`, `alerted_sid_present`, `hits`.
-- `of:` a Kali fact, `about:` a `kali` step: `sqlmap_found`, `run_records` (its WAF records), `alerted_by`, `server_errors` (its 500 records).
-- `rule`, with the request's `path` or a `step:` marker (above).
-
-## How the scores are computed
-
-**Objectives.** The board is a `loot_verified` target.
-
-- `wargames/board/objectives.yaml` names the secret: the `auth_user` username and password columns, read from `/internal/auth-users`.
-- It declares three tiers, by how much of the secret the attacker holds: any one hash (difficulty 2), the `admin` account's hash (4), and every account's hash (5).
-- The attacker exfiltrates hashes and submits them with `POST /api/sessions/<id>/loot/`, from the red console's loot panel. The panel is shown only for `loot_verified` scenarios.
-- The platform credits a tier only for submitted `(username, hash)` pairs that match the session's start-of-session snapshot exactly, and only once the session has fired a malicious case.
-- The platform never credits an objective from its own belief about what an attack did. The ground truth is the target's own records, which the detectors do not see.
-
-A credited tier becomes an Objective row dated by the submission. The row has a window:
-
-- If the submission names a malicious case (`case_id`), the window runs from 100 ms before that case started to 100 ms after it ended.
-- Otherwise it runs from 2 minutes before the submission to 100 ms after.
-
-The snapshot is taken once, when the session starts.
-
-- If the accounts cannot be read, the session is still created, with no snapshot. `POST /api/sessions/<id>/loot/` answers 409 for it.
-- Nothing reads the board afterwards. `GET /api/wargames/<id>/objectives/` lists the tiers from `objectives.yaml`. `GET /api/sessions/<id>/objectives/` reports the stored rows.
-- `POST /api/sessions/<id>/objectives/` observes, and does nothing for a `loot_verified` wargame.
-
-The corp wargame is an `effect_observed` target. It is scored from the rows the target commits to its own database, and the attacker submits nothing.
-
-- `wargames/corp/objectives.yaml` declares the read channel (`estate://corp-db`, scope `wp_state`) and three tiers:
-  - a rogue administrator (`rogue_admin`, difficulty 5);
-  - the site opened to self-registration (`option_flip`, 4);
-  - unauthorized content written (`content_write`, 3).
-- At session start, the platform snapshots the existing admins, the watched `wp_options` and the published posts. It uses read-only `mysql` SELECTs against corp-db (`platform/api/effect.py`), run through `runner("corp-db")` and not over the network.
-- On `POST /api/sessions/<id>/objectives/`, the platform reads corp-db's binary log with `mysqlbinlog`. It credits a tier for each committed change whose timestamp falls inside a malicious case's window. The changes are:
-  - a `wp_usermeta` admin grant to a user not in the snapshot;
-  - a `wp_options` change of `users_can_register` or `default_role`;
-  - a new or overwritten `wp_posts` row.
-- As with the board, the detectors do not see this read.
-
-A taken objective goes to a malicious case whose run overlaps the objective's window. Among several, the case that started latest gets it.
-
-- The objective counts as detected only if that case was detected.
-- An objective that no case overlaps counts as undetected.
-- Attribution is by time only. Scoring does not read a case's `takes:` field.
-
-In the score's `objectives` block:
-
-- `coverage` is detected difficulty over total difficulty. It is `null` when nothing was taken.
-- `false_positives` is FP.
-- `damage` is undetected difficulty plus half of detected difficulty. This is how an undetected loss counts double.
-
-**Detection.** A case is matched to alerts by one of two strategies, declared per case:
-
-- `marker`: the alert carries the case's `X-Request-ID` value.
-- `window`: the alert's source address matches the case's, and its time falls within the case's start and end, with two seconds of slack on each side.
-
-There is no fallback from one to the other. A marker case whose marker was lost should show up as a miss and not be covered by the window. Terminal cases carry both a marker and a window.
-
-- `?correlation=marker` or `?correlation=window` on the score endpoint forces a strategy. Any other value is a 400.
-- No console page passes it (`session.html` requests `/score/` without it).
-- To compare the two, call the endpoint once per strategy. A disagreement says something about the scoring method and not about the defence.
-
-Each `per_case` entry carries `expect` and `corroborated`.
-
-- `expect` is a substring that a signature of the case should match.
-- `corroborated` is true when `expect` appears, ignoring case, in the signature of some matched alert. A signature that also matched a benign case in the same session does not count.
-- `corroborated` is `null` when the case has no `expect`. This is always so for window cases recorded through `POST /api/sessions/<id>/cases/`, which carry none.
-- A detected case that is not corroborated adds `score.warning.wrong_reason`.
-
-A case's `expect` is stored with the case when it is fired. Editing the case file therefore does not re-judge a finished session. Rows recorded before migration 0009 have no stored `expect` and are still judged against the current case file. Alert severity and rule type are not used.
-
-**The game.** The score's `game` block is `{"revealed": false}` until the session closes. Then it carries four components, their weights and a balance:
-
-- speed (0.25): per malicious case, 1 if its first matched alert came within 10 s of its start, and 0 at 120 s or later, linear in between. The cases are averaged.
-- accuracy (0.30): recall minus false-positive rate, floored at 0.
-- coverage (0.20): the attack stages (`platform/lifecycle.py`) with a detected malicious case, over the stages attacked. It is 0 when none was attacked. It is not the `objectives` block's `coverage`.
-- response (0.25): the share of malicious cases blocked minus the share of benign cases blocked.
-  - It is `null`, and the other weights are renormalised, until some case has `meta["blocked"]`.
-  - Scheduled attacks set it (a 403, or sqlmap's own not-injectable conclusion), and so do a lesson's seed replays (a 403). Other fired cases leave it unset.
-
-`attacker` is the difficulty of the taken objectives, halved when detected. It is the same sum as `damage`. `defender` is the weighted mean of the components times the difficulty taken, minus 1 per FP. `balance` is `defender - attacker`. When nothing is taken, the balance is minus FP. The weights and dwell times are v1 defaults (`docs/superpowers/specs/2026-09-29-zero-sum-scoring-design.md`).
-
-**Customers.** The score's `customers` block counts the customer requests that the session recorded (see "Customer traffic"):
-
-- `sent`;
-- `served` (2xx and 3xx);
-- `blocked` (403, except Django's own CSRF refusal, which the generator marks `refused_by: "app"`);
-- `unanswered` (no answer within 10 s, status 0);
-- `other` (any other 4xx or 5xx);
-- `alerted` (customer requests whose marker some alert carries);
-- `blocked_actions`.
-
-Each request counts once. A customer request is not a case, so the `per_case` list and TP/FP/FN/TN are unchanged. An alert that a customer request drew is not counted in `unattributed`. The console's second score says "Customer requests blocked: N of M" beside the case sentences.
-
-The score endpoint is read-only and keeps no history.
-
-## Customer traffic
-
-A board session can carry its customers: Korean community users who browse, search, sign in and comment for the whole session.
-
-The mix is declared in `wargames/board/traffic.yaml`: users, origin weights, the seeded accounts, posts 1-3, browser User-Agents, search terms, comment texts, and profiles of action weights.
-
-`platform/traffic.py` renders it into:
-
-- twelve personas allocated to origins by the declared weights (largest remainder), each with its own source address, browser and language;
-- 2,000 flows of steps that the box cycles through.
-
-Sign-in and comments are form posts. The flow first GETs the page. The box takes `csrfmiddlewaretoken` from it, sends it with the `csrftoken` cookie, and follows the 302. A flow whose page carried no token (the GET was blocked) stops there, as a browser would.
-
-`deploy/traffic/users.py` is the generator.
-
-- It uses Python's standard library only.
-- It is paced to the plan's rate across threads.
-- It puts one fresh UUID in `X-Request-ID` per request. This has the same shape as a case's marker, so a learner cannot tell a customer from an attack by it.
-- It writes one JSON line per request to `records.jsonl`.
-- It re-reads the plan when the file changes, and stops when the file is removed or on SIGTERM.
-
-The generator runs in the slot's Kali container, as the system account `cr-users`.
-
-- Each persona is bound to one of the container's origin addresses, so its source address is that origin's.
-- The generator is kept apart from the attacker. The default origin is not used. Neither is any origin's `source_ip` the attacker wears, nor the container's unbound source (`ip route get` to the target). `POSTROUTING -m owner --uid-owner cr-users -j RETURN` is inserted before the `ORIGIN-SNAT` SNAT jump, so the attacker's origin rewrite never applies to customers.
-
-`platform/attacker.py` holds every command run on the box:
-
-- `place_customers`: the account, the NAT exemption and the program, through `sudo` in the container;
-- `run_customers`: writes the plan, and starts the program with `setsid` and `setpriv` if it is not running;
-- `stop_customers`;
-- `customer_records`.
-
-The platform ships the program at each start. It is not baked into the Kali image, because the container is recreated from its image at every close and a change to the program would then wait for a new image.
-
-The API is in `platform/api/customers.py` and `views.session_traffic`:
-
-- `PUT /api/sessions/<id>/traffic/ {rate, profile}` starts the customers, or changes a running generator's rate and profile (same personas).
-  - `rate` is requests per second, default 1, at most 50.
-  - `profile` is one of the wargame's declared profiles. On the board these are `community` (default), `plain` (no unusual searches), `readers` (`plain` without comments) and `club` (`community` plus code questions in comments).
-  - It answers 404 for a wargame with no `traffic.yaml`, 409 for a closed session, and 503 when the box or the origins are not there.
-- `GET` reads the new records first. It then returns:
-  - `declared`, `profiles`, `running`, `rate`, `profile`, `started_at`, `stopped_at`, `error`;
-  - the counts `sent`, `served`, `blocked` (403 from the defence, not the app), `unanswered` and `other`;
-  - `sources` (origin, address, requests);
-  - `by_action` (sent and blocked per action).
-- `DELETE` stops the generator and reads what it sent last. Closing the session does the same before the slot is reset. If the box is unreachable, the close goes on and the error is kept in `traffic.error`.
-
-The platform pulls the records by byte offset (`tail -c`, at most 1 MiB a call, whole lines only) into `CustomerRequest` rows, with one `bulk_create` per call. The offset lives in `Session.traffic`.
-
-The session page offers the traffic switch only with `?traffic` in its URL, for testing. A scenario starts the traffic itself.
-
-The generator tells the board's own CSRF refusal (`refused_by: "app"`, not counted as blocked) by Django's failure page, `<span>(403)</span></h1>`, as well as by its English sentence. The board answers in the customer's language, and a Korean customer's refusal is in Korean. Such a refusal happens when two flows of one persona race the token rotation at sign-in.
-
-## Scenarios
-
-A scenario is a timed exercise on the range. Customers and an attacker use the board while the learner defends with the real tools, and the platform judges the result over a final verification window.
-
-The design is phase P4 of `docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`. The rulings are the 2026-10-13 "scenario course" entries in `docs/DECISIONS.md`.
-
-**Descriptor.** `scenarios:` in a wargame's `scenario.yaml` holds the descriptors. `wargames.checked_scenarios` validates them.
-
-| Field | Meaning |
+| `full` | paranoia level 1, 같은 `local.rules` |
+| `ids` | paranoia level 1, `no-uri-sqli.rules` (sid 9000001을 뺀 `local.rules`) |
+| `xss-gap`, `overbroad` | "기초 레슨 F1-F6" 참고 |
+| `level2`, `level3`, `inherited`, `untuned`, `broken-rule`, `spelled` | 시나리오용 방어 설정, "시나리오" 참고 |
+
+discovery 시점에 레슨마다 `defense`를 이 목록과 대조합니다. 어떤 레슨이나 시나리오도 `minimal`에서 시작하지 않으므로, `minimal`은 이름을 지정해야만 쓸 수 있습니다.
+
+세션을 여는 경로가 하는 일:
+
+- 센서에 그 defense의 룰 파일을 넣습니다. defense가 없으면 `local.rules`를 넣습니다(`suricata.seed`).
+- defense가 있으면 CRS 설정을 씁니다(`crs.apply`).
+- 가이드 세션은 이어서 레슨의 `cases`를 한 번 재실행합니다(`meta.seed`, curl이 보고한 상태 코드를 기록하고 403이면 `blocked`). 그래서 학습자가 들어왔을 때 ModSecurity와 Suricata 기록이 이미 Kibana에 있습니다. 단계형 시나리오는 재실행하지 않습니다.
+
+룰 파일이 `local.rules`이면 센서에 넣는 과정을 건너뜁니다. 준비 확인(readiness)이 모든 센서가 그 파일을 갖춘 뒤에야 슬롯을 내주기 때문입니다. 슬롯마다 센서가 자기 룰 파일을 따로 가집니다(2026-10-13 측정: 슬롯 1에 적용한 sid가 슬롯 2에는 없었습니다). 그래서 다른 룰 파일은 그 슬롯의 센서에만 넣습니다.
+
+세션을 열 때 재실행을 할 수 없으면 503을 응답하고 세션을 닫습니다.
+
+`platform/rules/crs.py`는 설정을 `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`로 생성합니다. 이 파일은 `crs-setup.conf` 다음, 룰보다 먼저 로드되는 CRS hook입니다. 파일 내용은 다음과 같습니다.
+
+- `tx.blocking_paranoia_level`과 `tx.detection_paranoia_level`을 설정하는 `SecAction` 하나
+- 항목마다 런타임 예외 규칙 하나. id는 10000~10020을 씁니다. 예외 규칙은 `ctl:ruleRemoveTargetById=<id>;<target>`, `ctl:ruleRemoveById=<id>`, 또는 CRS `tag`와 target을 지정한 항목(예: `OWASP_CRS`)이면 `ctl:ruleRemoveTargetByTag=<tag>;<target>`입니다. 경로가 있으면 `SecRule REQUEST_FILENAME "@beginsWith <path>"`로 범위를 좁힙니다.
+
+플랫폼이 파일을 적용하는 순서:
+
+1. `runner("gateway")`로 세션의 WAF에 파일을 씁니다.
+2. `nginx -t && nginx -s reload`를 실행합니다. nginx가 거부하면 이전 파일로 되돌립니다.
+3. reload 전에 없던 워커가 올라오면 반환합니다. 워커 PID는 `/proc`에서 부모 PID로 찾습니다. 그래서 새 연결에는 새 설정이 적용됩니다. 이전 워커는 느린 요청을 마저 처리할 수 있습니다.
+4. 5초 안에 새 워커가 나타나지 않으면 reload가 일어나지 않은 것입니다. 이전 파일로 되돌리고 다시 reload한 뒤 요청을 거부합니다.
+
+입력은 쓰기 전에 검증합니다.
+
+- paranoia는 1-4
+- 룰 id는 900000-999999, 또는 영문자·`_`·`-`로 된 tag와 target
+- target은 `ARGS`, `ARGS_GET`, `ARGS_POST`, `ARGS_NAMES`, `REQUEST_COOKIES`, `REQUEST_HEADERS`(선택적으로 `:이름`을 붙임), `REQUEST_URI_RAW`(PL3에서는 한글 검색어가 이 대상에서도 920272에 매칭됩니다), `REQUEST_BODY` 중 하나
+- 경로는 `[A-Za-z0-9_./-]`
+- 항목은 최대 20개
+- 선택 항목인 `thresholds` `{inbound, outbound}`(1-100000). 레벨과 같은 `SecAction`에 `tx.inbound_anomaly_score_threshold`와 `tx.outbound_anomaly_score_threshold`로 설정하고 다시 읽어 확인합니다.
+
+`thresholds`를 뺀 `PUT`은 현재 적용 중인 값을 유지합니다. `"thresholds": null`은 값을 지웁니다.
+
+`PUT /api/sessions/<id>/waf/`로 설정을 바꿉니다. 에이전트용 경로이며, 이를 호출하는 콘솔 화면은 없습니다.
+
+`GET`은 세션 WAF의 파일을 `crs.read`로 다시 읽습니다. `crs.read`는 Paranoia Level과 모든 `ctl:ruleRemove*` 줄을 파싱합니다. 주석 처리된 줄은 건너뛰고 이어지는 줄은 합칩니다. 그래서 학습자가 설정을 조정하는 곳인 WAF 터미널에서 고친 내용도 보고합니다.
+
+WAF 상태 스냅샷:
+
+- 시나리오 최종 점검마다 그 구간을 판정할 때, 그리고 세션을 닫을 때마다 슬롯을 초기화하기 전에 `crs.read`가 읽은 내용을 스냅샷으로 남깁니다.
+- 스냅샷은 `Session.waf_snapshots`에 쌓입니다(마이그레이션 0021): `{at, scenario_window|closed, waf}`. 이전 과정의 세션에는 VERIFY 실행에서 남은 `{at, run, waf}`도 있습니다.
+- 가장 최근 스냅샷이 `Session.waf`이기도 합니다. 그래서 닫힌 세션은 파일을 포함해 학습자의 마지막 설정을 보고합니다(한 번도 읽지 못했으면 `file: null`).
+- WAF를 읽을 수 없으면 스냅샷을 남기지 않으며, 최종 점검도 세션 종료도 막지 않습니다.
+
+조치 유형(`lesson.fix_class(waf, posture)`, 결정 D1)은 학습자가 세션에 선언된 방어 설정(posture)과 비교해 무엇을 바꿨는지를 나타냅니다. posture는 세션이 시작한 defense입니다. 결과는 다음 중 하나이며, 이 순서로 확인합니다.
+
+1. `level`: Paranoia Level이 방어 설정보다 낮습니다. 레벨이 없는 파일은 CRS 기본값 1로 봅니다.
+2. `threshold`: anomaly 임계치가 방어 설정보다 높습니다. 설정하지 않았으면 CRS 기본값 inbound 5, outbound 4로 봅니다.
+3. `rule`: 방어 설정에 없던 예외 규칙이 룰 전체를 뺍니다.
+4. `target`: 추가한 예외 규칙이 모든 경로에서 target을 뺍니다.
+5. `path_target`: 추가한 예외 규칙이 모두 경로 하나에서만 target을 뺍니다.
+6. null: 추가한 것이 없습니다.
+
+시나리오 최종 점검은 조치 유형을 판정 옆에 보고합니다(`result.fix`, `result.scenario.fix`). 이 값이 판정을 바꾸지는 않습니다.
+
+`platform/lesson.py`에는 조치 유형 함수와 함께 다음이 있습니다.
+
+- 단계 답을 다루는 함수: `answered`, `status_said`, `an_address`, `alerts_on`, `rules_named`, `added_rules`, `raised_rev`, `pasted_rows`, `server_errors`, `server_error_sources`, `alerted_by`, `detected_penalty`, `objective_outcome`
+- 도움 사용 횟수
+- 시나리오 디브리핑에 나오는 추가·삭제한 예외 규칙과 파일 diff(`exclusions_changed`, `config_diff`)
+
+`views.REPLAY_MARKS`(`seed`, `verify`, `check`, `replay`) 중 하나가 마커로 붙은 케이스는 `/score/`(TP/FP/FN/TN, 그 케이스가 일으킨 경보, 게임)에서 빠집니다. corp의 효과 관찰이 변화를 귀속시키는 시간 구간에서도 빠집니다.
+
+- 정상 `seed` 케이스는 예외입니다. 레슨의 seed 재실행은 정상 케이스로 채점하므로(2026-10-18) 레슨 세션에는 TN이 생깁니다.
+- 지금도 쓰는 것은 `seed`뿐입니다. `verify`, `check`, `replay`는 이전 세션에 남은 재실행이 두 점수 모두에서 계속 빠질 수 있게 목록에 남겨 둡니다.
+
+콘솔은 화면 네 개로 구성되며, 모든 화면은 `/api/`에서 데이터를 가져옵니다. 사용자가 승인한 정적 시안에 사용자 결정 두 가지를 더했습니다(`docs/DECISIONS.md` 2026-10-11, 콘솔 재설계). 색상 팔레트와 컴포넌트 클래스는 `base.html`과 `platform/console/components.css`에 있고, `bin/build-css`가 이를 `tailwind.css`에 넣습니다. 머리글에는 경로 표시(breadcrumb)와 훈련 환경 상태가 있습니다. 콘솔은 한국어 전용이며 언어 전환이 없습니다.
+
+- **메인**(`/`):
+  - 진행 중인 세션을 진행한 내용(과정 이름, 과정에 속하지 않은 레슨은 레슨 이름, 시나리오 번호와 제목, 또는 워게임과 대상 시스템), 기초 레슨 세션이 진행 중인 단계와 함께 보여 줍니다. 세션을 여는 중일 때만(`ready`, `Session.ready_at` 기준) "준비 중 n초"를 표시합니다(80초라는 예상치는 추측이라 뺐습니다).
+  - "대상 시스템" 아래에 워게임 카드(이름과 한 줄 설명)를 보여 줍니다. `GET /api/wargames/`의 공격 케이스·정상 케이스·목표 수는 운영자에게만 보입니다. 페이지 제목, 예상 소요 시간, 분류, 난이도, 시나리오 유형·안내 수준 칩은 없습니다(2026-11-14).
+  - 카드마다 아래에 기초 레슨 묶음, 시나리오 묶음("시나리오"), 워게임 묶음이 있습니다. 모든 행의 버튼은 "시작"입니다.
+    - 기초 레슨 묶음은 레슨마다 "레슨 n"과 제목을 보여 줍니다. 시작 버튼은 레슨에 선언된 defense로 `{scenario, guidance: true, lesson, defense}`를 보내고, 시나리오의 시작처럼 블루팀 콘솔을 엽니다. 레슨 중에는 콘솔 버튼 하나만 있던 세션 화면은 거치지 않습니다(2026-11-15).
+    - 시나리오 행은 번호와 제목을 보여 줍니다. 실습 내용 한 줄(`practise`)은 뺐습니다. 셋은 제목을 되풀이했고, 하나는 과정 1 정렬 단계의 답인 `?sort=`를 보여 줬습니다(2026-11-15).
+    - 워게임 묶음은 `[data-wargame-start]`입니다. 제목과 시작 버튼만 있고, 시작은 `{scenario}`를 보내므로 가이드가 없고 defense는 `full`입니다.
+  - 카드 그리드는 항목을 위쪽에 맞추므로 짧은 카드가 긴 카드 높이로 늘어나지 않습니다.
+  - 이 브라우저가 연 가장 최근 실행("마지막 세션: n번 (레슨) 종료") 줄은 뺐습니다. 끝난 세션 표가 이미 보여 줍니다(2026-11-15). 세션 화면과 블루팀 화면은 여전히 `cr-opened-sessions`를 씁니다.
+  - 끝난 레슨 세션 행은 과정 이름(과정 밖이면 레슨 이름)을 보여 줍니다. 결과 칸은 과정 카드의 `scored`가 켜져 있을 때만 목표를 보여 주고(`wargames._course_scored`: `kali`나 `replay` check가 있는 과정), 과정 1은 "—"입니다.
+  - 끝난 세션은 진행한 내용과 `result`를 함께 나열합니다. 시나리오의 마지막 최종 점검 결과인 통과·미통과(`scenario.phase.passed`, `scenario.phase.failed`. 영어 표시 없음)(`result.scenario`), 아니면 전체 목표 중 탈취된 목표 수입니다(`result.lost`. 그중 알아채지 못한 수는 더 이상 붙이지 않습니다).
+  - 결과는 한 번 채점해 채점에 쓴 입력과 함께 저장합니다(`Session.result_cache`, 마이그레이션 0018). 입력은 `ended_at`, 힌트 수, 최종 점검마다의 판정입니다. 탐지 기록, 케이스, 목표는 각각 마지막 id와 행 수가 입력에 들어가며, 탐지 기록은 마커가 있는 행 수도 들어갑니다.
+  - 목록은 세션마다 집계값 세 개를 읽습니다. 늦은 수집처럼 입력이 바뀐 세션만 다시 채점합니다.
+  - 시작이 거부되면 누른 버튼 아래에 그 사실을 표시합니다. 409이면 "열린 세션 종료"가 열린 세션을 나열하고, 각각 `ingest/` 다음 `close/`로 닫습니다. `GET /api/range/ready/`가 `max_sessions`를 알려 줍니다.
+  - 하단에 Kali 상표 고지(`topology.trademark`)가 있습니다. 전에는 구성도 창 아래에 있었습니다.
+  - 훈련 환경 관리 항목(경보 수집 확인, 열린 세션 수, 훈련 환경 상태, 워게임 카드의 개수)은 `?operator`일 때만 보입니다.
+- **세션**(`/session/<id>/`):
+  - 머리글에 가이드 세션이 진행 중인 단계(`main.step`. 라벨도 레슨 번호도 없이)와 진행 중일 때의 탈취된 목표(결과 화면에서는 주 점수에 나오므로 빼고)가 나옵니다. 세션 종류는 쓰지 않고, 경로 표시가 이미 보여 주는 대상 시스템은 되풀이하지 않으며, 상태는 세션을 여는 중일 때만 보여 줍니다. 그 아래 줄은 과정이나 레슨 이름과 시각입니다. 진행 중인 시나리오는 시작 시각만 보여 줍니다. 시나리오 시계는 세션이 열릴 때가 아니라 상황 설명의 시작을 누를 때 시작하기 때문입니다.
+  - "블루팀 콘솔 열기" 버튼이 있고, 워게임 세션에서만 "레드팀 콘솔 열기" 버튼이 있습니다.
+  - 워게임 세션은 `GET /api/sessions/<id>/cases/`의 최근 케이스를 보여 줍니다. 레슨은 진행 중에 자동 요청을 숨기고 시나리오는 예정된 공격을 숨기므로, 둘 다 최근 활동 패널이 없습니다(시나리오에서는 콘솔에 경보가 있는데 "아직 공격이 없다"고 나왔습니다).
+  - 세션이 닫히면 다음 순서로 보여 줍니다.
+    1. 시나리오의 판정 배너와 디브리핑("시나리오")
+    2. 주 점수: 모든 등급의 목표에 대해 결과 열 하나(지킴, 탈취됨 · 탐지, 탈취됨 · 미탐)와 감점(난이도 ×1 또는 ×2), 탈취 판정 방법 한 줄
+    3. "탐지 결과" 아래에 방어 판단을 센 것. 예를 들면 "공격 8건 중 7건 정탐", "정상 요청 4건 중 3건 경보 없이 통과"이고, 잘못된 것은 그 아래에 한 번만 나열합니다. 실행 한 번을 1건으로 센다는 줄은 없고, 탐지가 공격 기법을 짚었는지 보여 주는 열도 없습니다(`corroborated`는 API에만 남습니다). 시나리오 결과는 차단된 고객 요청을 결과 보고에만 두고, 실행된 공격이 없으면 그렇다고 말하며, 요청별 표가 비면 숨깁니다. 요청별 결과는 배지가 아니라 색 글자이고, 목표 결과는 "탈취됨, 탐지"나 "탈취됨, 미탐"입니다.
+    시나리오 결과 보고는 빈 항목(기록된 공격 로그, 적용 전·후로 판정한 요청, 남은 위험이 없을 때)과 0회인 최종 점검 횟수를 빼고, 공격 출발지를 나라 이름으로 보여 주며(`scenario.origin.<code>`), "웹방화벽 설정을 바꾸지 않았습니다"처럼 시나리오에 맞는 말을 씁니다.
+  - TP/FP/FN/TN과 게임 밸런스는 API에만 있고, 사람이 읽는 문구에는 나오지 않습니다(`test_strings.py`).
+  - 레슨 세션의 화면은 실행마다 케이스 이름으로 부릅니다. Kali 실행은 "레슨 n · m단계"로 부르며(`per_case[].lesson`, `.step`, `.seed`) 케이스 id는 쓰지 않습니다. 레슨 카드에는 들은 레슨마다 통과한 단계가 나옵니다(건너뛴 수는 없음).
+  - "다시 시작"은 같은 시나리오, 같은 레슨(`lesson_id`가 있으면 `{scenario, guidance: true, lesson, defense}`), 또는 같은 워게임을 다시 엽니다. 레슨과 시나리오는 블루팀 콘솔에서 열립니다.
+  - 이미 닫힌 세션을 종료하면(두 번 누르거나 다른 탭에서 닫은 경우) 세션을 다시 읽고, `ended_at`이 있으면 409의 영어 메시지 대신 종료됐다고 알리고 결과를 보여 줍니다(`base.html`의 `alreadyClosed`. 메인 화면과 레슨 끝에서도 같습니다).
+- **블루팀**(`/blue/<id>/`):
+  - 왼쪽 메뉴와 창으로 이루어집니다. 메뉴에는 Kibana, 웹사이트, 구성도가 있고, 그다음 `judgement` 시나리오의 경보, `detection`·`unknown` 시나리오나 그 창을 쓰는 단계가 있는 레슨(F4)의 IDS 룰, WAF가 있습니다. 그 아래 구분선과 Kali가 있습니다.
+  - Kali는 세션의 `kind`가 `lesson`이나 `scenario`일 때만 보입니다. `wargame` 세션에서는 사람이 레드팀 콘솔에서 공격하므로, 방어자에게 공격자의 쉘을 주지 않습니다.
+  - Kali 창은 한 번만 불러오는 별도 프레임입니다. 다른 창으로 옮겨도 실행 중인 sqlmap이 끊기지 않습니다.
+  - WAF 창의 배너에는 WAF 박스(`waf_box`, `waf`)와 CRS 룰 디렉터리(`waf_rules`)만 나옵니다. 이 디렉터리는 선언된 예외 파일 `settings.CR_WAF.rules`의 디렉터리입니다.
+- **레드팀**(`/red/<id>/`):
+  - 위쪽에 세션과 워게임 이름, 목표(한국어 이름은 `objective.<key>`), "탈취한 해시 제출"이 있습니다.
+  - 왼쪽 메뉴에는 창 두 개가 있습니다. 세션의 Kali 터미널과 웹사이트 창(주소 표시줄과 개발자 도구, 블루팀 콘솔과 같은 스크립트)입니다.
+  - 미리 준비한 공격은 실행하지 않습니다. 케이스 목록, 실행 버튼, 기록 창, 출발지 선택이 없습니다(2026-10-18).
+  - 화면 폭이 좁으면 메뉴가 창 위로 쌓입니다. 레드팀·블루팀 화면은 가로로 스크롤되지 않습니다.
+
+가이드 세션(기초 레슨이나 단계형 시나리오)에서 레슨 노트는 창 옆의 열이며, 창을 덮지 않습니다.
+
+- 너비는 340 px(1280 px 이하에서는 300 px)입니다. 접으면 44 px 띠("단계 n/N")가 됩니다. 1024 px 미만에서는 창 아래의 패널이 됩니다. 머리글은 레슨에서 "레슨 노트", 시나리오에서 "시나리오 노트"이고 부제는 없습니다.
+- 노트는 위에서부터 다음으로 이루어집니다.
+  - 단계 카드: 단계 n/N, 단계 제목, 할 일, 단계에 진입한 뒤 입력할 명령, 단계의 창이 보이지 않을 때 "<창> 열기" 버튼, 질문과 입력란, 상태 줄, 도움말, 이전, 다음 버튼 하나(`step-next`. 통과한 단계에서는 `lesson.coach.next`, 아니면 `lesson.skip`으로 읽힘)
+  - F6의 목표 카드는 단계 카드와 직접 해 보기 카드 다음에 옵니다. 이론 카드는 없습니다(2026-11-13, 이론이던 내용은 참고 열과 과정 안내에 있습니다).
+  - F6의 목표 카드(`lesson_objectives`): 모든 목표를 난이도와 함께 나열하고, 목표마다 레슨을 시작한 뒤 탈취됐는지와 그 탈취가 탐지됐는지를 보여 줍니다. 감점 열과 합계는 없습니다.
+  - 단계형 시나리오의 카드와 힌트
+  - F4와 F6의 채점하지 않는 "직접 해보기" 카드
+  - 접힌 단계 목록
+- 단계 목록은 `progress`가 통과라고 할 때만 체크 표시를 합니다. 통과하지 않고 넘어간 단계는 "건너뜀"으로 표시합니다.
+- 노트의 접힘 상태는 사용자별로 남습니다(`cr-lesson-note`). 보고 있던 단계는 `cr-lesson-step-<id>-<lesson>`에 남습니다. 메인과 세션 화면이 이 값을 읽어 "단계 n/N"을 표시합니다. 이 기록이 없는 브라우저(새 브라우저, 지운 저장소)는 서버가 `reached`로 기록한 가장 뒤 단계에서 엽니다(2026-11-14).
+
+진행 상황은 세션에 속하며 레슨별로 저장합니다(`Session.lesson_steps[<lesson>][<step>]`, 마이그레이션 0020과 0027).
+
+- 단계마다 `reached`, `passed`, `skipped`(시각), `hint`(보여 준 힌트 단계), `tries`(틀린 답 수, 초기화하지 않음)를 남깁니다. 틀린 뒤 통과한 단계는 세션 `course` 행의 `retried`로 셉니다.
+- 세션의 현재 레슨 것을 `GET /api/sessions/<id>/`와 모든 단계·힌트 응답의 `progress`로 보고합니다.
+- 단계 기록에는 그 단계에서 얻은 것도 실립니다. 단계에 진입하면 `command`, 통과하면 `ok`(통과할 때 보여 주는 문장), 단계형 시나리오에서는 힌트 단계가 3(`lesson.ANSWER`)이 되면 `answer`입니다.
+- `POST /api/sessions/<id>/lesson/steps/<step>/ {state: reached|skipped}`는 단계에 진입했음 또는 통과하지 않고 넘어갔음을 기록합니다. check가 Kali 케이스를 가리키는 단계에 진입하면 단계가 마커를 받고, 플랫폼이 그 마커를 스탬프 프록시의 `/var/lib/session/active`에 씁니다.
+- 콘솔은 통과하지 않은 단계에서 다음을 누르거나 목록으로 이동할 때 `skipped`를 보냅니다. 이전을 누르거나 통과했을 때는 보내지 않습니다.
+- 통과 문장은 통과한 단계에 보여 줍니다. 다음 단계는 깨끗한 카드로 시작합니다.
+
+단계는 레슨에 선언합니다(`scenario.yaml`에서 기초 레슨이나 단계형 시나리오의 `steps`). 단계에는 다음이 있습니다.
+
+- `id`
+- `kind`가 `click`, `answer`, `choice`, `rules`, `sent`, `kali`, `loot`, `triage`, `waf_changed`, `replay` 중 하나인 `check`(`wargames.CHECK_KINDS`, discovery 시점에 검증)
+- `point`
+- 학습자가 입력할 터미널 `command`. `command`의 `{waf_rules}`, `{waf_reload}`, `{sudo}`는 `wargames.lesson`이 선언된 WAF 구성(`settings.CR_WAF`)으로 채웁니다.
+
+기초 레슨의 단계에는 Kibana `query`가 없습니다. Kibana 대상에는 `kql:`을 붙일 수 있습니다. 학습자가 직접 제출한 쿼리(Discover URL의 `query`, 없으면 쿼리 입력창)가 이 정규식에 맞을 때까지(대소문자 무시) 강조는 쿼리 입력창에만 머뭅니다(단계 `write`. 말풍선 없이 테두리만 그림). 그래서 학습자가 쿼리를 쓰기 전에는 어떤 강조도 답을 보여 주지 않습니다.
+
+세션 API는 브라우저에 필요한 것만 보여 줍니다.
+
+- check의 `kind`와 `form`, `options`(`form: order`이면 학습자용 구성도의 스위치가 아닌 모든 호스트), 단계 자신의 `match` 또는 `about`으로 가리키는 단계의 `match`, check에 `dev`가 있으면 `dev: true`(정규식 자체는 보내지 않음), 그리고 기초 레슨 마지막 단계의 `solo`만 보여 줍니다.
+- `accept` 목록이나 정답 규칙은 브라우저로 가지 않습니다.
+- 단계의 `command`는 `progress`에 그 단계 진입이 기록된 뒤에야 응답에 들어갑니다. 입력할 문구일 뿐이고, 실행하거나 복사하는 버튼은 없습니다.
+- 통과 문장(`<text>.ok.<step>`, 선택형 단계에서 학습자가 고른 답에 따라 문장이 달라지면 `<text>.ok.<step>.<option>`)과 단계형 시나리오의 정답은 `strings.html` 끝의 `{% comment %}` 구역에 있어 Django가 렌더링하지 않습니다. `console/strings.py`가 이를 읽고, 학습자가 얻은 시점에 단계의 `progress` 기록에 싣습니다.
+- check를 통과해도 단계는 넘어가지 않습니다. 통과한 뒤 학습자가 '다음'을 누릅니다. 마지막 단계만 저절로 레슨 끝 카드로 넘어갑니다(아래 통과 문장 항목 참고). 이전/다음은 check 없이도 이동합니다.
+
+check 종류별 통과 조건:
+
+- `answer`와 `choice`는 입력한 텍스트가 허용 값 중 하나와 대소문자·공백 구분 없이 같으면 통과합니다(`lesson.answered`).
+  - `form: order`는 입력한 순서대로 호스트(공백, 쉼표, `>`, `→`로 나눔)를 비교합니다. 호스트는 맞고 순서만 틀리면 `<text>.wrong.<step>.order`라고 알려 줍니다.
+  - `wrong_if` 규칙의 `match`가 답에 맞으면 `<text>.wrong.<step>.<says>`를 보여 줍니다.
+  - `known`에 있는 값에는 `<text>.wrong.<step>.<value>`를 보여 줍니다.
+  - 허용 값은 `accept` 목록이거나 `of:`로 세션의 기록에서 읽습니다("기초 레슨 F1-F6").
+  - 구성도 주소 단계(`of: address`)에서 틀린 IPv4 주소가 학습자 구성도에서 어떤 장비의 주소이면 `lesson.check.wrong.address_of`로 다른 장비의 주소라고만 알려 줍니다(`views._whose_address`). waf 주소가 F1 마지막 단계의 답이므로 장비 이름과 주소는 되풀이하지 않습니다. 다른 단계는 자기 문장을 씁니다.
+  - `status`는 코드만 써도, 개발자 도구에 보이는 대로 사유 문구를 붙여도(`200 OK`) 받습니다(`lesson.status_said`).
+  - `of: rule`(`wargames.ANSWERS_OF`)은 학습자 자신의 요청이면 요청의 `path`와 `marker: browse`를, Kali 단계의 실행이면 `marker: step:<id>`를 받습니다. 룰 `family`로 좁힐 수 있습니다. 플랫폼은 최근 600초를 수집하고, 그 요청이나 실행에 대한 세션의 ModSecurity 탐지 기록을 모읍니다. 그중 CRS 합계 룰(949, 959, 980으로 시작하는 id)을 빼고, 남은 `ruleId`를 모두 허용 값으로 받습니다(`lesson.rules_named`). 기록된 것이 없으면 사유는 `lesson.check.unrecorded`입니다.
+  - `rule: <id>`가 붙은 `of: rule_matched`는 같은 탐지 기록을 읽어 그 룰 하나에 대해 `present`나 `absent`를 허용 값으로 받습니다. 기록된 실행에 탐지가 하나도 없으면 `absent`입니다.
+  - 기록된 Kali 실행의 탐지 기록이 세션에 이미 있으면 다시 수집하지 않습니다. 실행은 로그가 `RUN_SETTLED` 동안 조용해진 뒤에 기록되고, 기록할 때 한 수집이 그 로그를 읽었기 때문입니다.
+- 활성 줄 중에 플랫폼이 읽을 수 있는 `sid:<숫자>`(뒤에 `;`나 `)`)가 없는 줄이 있으면 문법 검사와 적용에서 룰 파일을 거부합니다(`disable.unread`). Suricata 8은 `sid:9100001 rev:1;`도 불러오지만(2026-11-15 라이브 센서에서 `suricata -T`로 확인), 플랫폼은 그 sid를 보지 못해 확인 단계가 룰을 추가하지 않았다고 말하게 됩니다. 문법 검사는 Suricata가 파일을 받아들인 뒤 `{ok: false, unread_sid: true, errors: [해당 줄]}`로 답합니다.
+- `rules`는 센서의 룰 파일(`GET /api/rules/`)에 방어 설정의 룰 파일에 없는 sid나 내용이 다른 sid가 생기면 통과합니다(`lesson.added_rules`, `disable.sids`). `added`로 응답합니다. `needs: nocase`이면 그 룰에 `nocase`나 `i` 플래그가 붙은 pcre도 있어야 합니다(`lesson.ignores_case`). `match`가 있으면 그 룰이 실제로 경보를 내야 합니다. 이 세션의 마지막 적용(그 세션 `RuleSet`의 `applied_at`) 뒤에 웹사이트 창에서 보낸 요청 중 `match`에 맞는 요청에 그 sid의 경보가 있어야 통과합니다. 아니면 `<fail>.unsent`(그런 요청이 없음), `lesson.check.unrecorded`(센서가 아직 그 요청을 기록하지 않음), sid를 담은 `<fail>.silent`, 또는 sid와 대신 경보를 낸 URL을 담은 `<fail>.elsewhere`로 응답합니다. `quiet_on:`은 평범한 요청 URI 목록입니다. 룰의 URI content가 그중 하나에 모두 들어 있으면(`lesson.alerts_on`, pcre가 있는 룰은 이렇게 판정하지 않음) 모든 평범한 검색에 경보를 낼 룰이므로, 경보를 읽기 전에 sid와, 목록에서 룰이 처음 맞는 URI를 담은 `<fail>.broad`로 바로 실패합니다. URI content가 없는 룰(`http.header`만 쓰는 룰 등)은 넓다고 판정하지 않습니다.
+- `triage`(`judged: customer | attack | all`)는 학습자가 옳게 판정하면 통과합니다("시나리오"). `judged: verified`는 시나리오의 최종 점검이 시작되면 통과합니다.
+- `sent`는 웹사이트 창에서 보낸 요청이 `match`에 맞으면 통과합니다. 보낸 요청이 `wrong_if` 규칙의 `match`에 맞으면 그 대신 `loud: true`와 함께 `<text>.wrong.<step>.<says>`를 보여 줍니다(카드의 예시 단어로 검색한 F3의 검색 단계).
+- `waf_changed`(`removed_target`)는 방어 설정이 선언한 예외의 target을 WAF 파일의 어떤 예외도 더는 가리키지 않고, 파일의 Paranoia Level 줄이 여전히 방어 설정의 단계를 정하고 있으면 통과합니다. Level 줄을 지우거나 바꾸면 되살릴 줄(예외를 뺀 방어 설정의 `crs.rendered`)을 담은 `<fail>.paranoia`로 실패합니다.
+- `replay`는 `after`로 지정한 단계를 통과한 뒤에 다음 두 조건이 모두 맞으면 통과합니다.
+  - 공격(`sent` 정규식이나 `kali` 케이스)이 `expect`를 만족합니다. 학습자가 추가한 sid의 경보가 있거나, 실행이 차단되어(탐지 기록에 949110) 탈취 데이터가 인정되지 않습니다.
+  - 같은 시각 이후의 정상 요청이 자기 `expect`를 만족합니다. `status_class`가 맞거나, 추가한 sid의 경보가 없거나, WAF 기록이 없습니다.
+  사유는 빠진 쪽을 알려 줍니다(`lesson.check.replay_attack`, `lesson.check.replay_benign`). 정상 요청을 보냈는데 맞지 않으면 그 요청과 함께 어떻게 틀렸는지 알려 줍니다. `lesson.check.replay_benign.status`(2xx가 아님), `.alerted`(추가한 sid가 경보를 냄), `.waf_logged`(`views._benign_fault`)입니다.
+- `click`은 check가 호출되면 바로 통과합니다. 플랫폼이 따로 확인하는 조건은 없습니다.
+
+모든 check는 플랫폼이 `POST /api/sessions/<id>/lesson/steps/<step>/check/`로 판정합니다.
+
+- 본문은 답, 선택지, 붙여 넣은 표이면 `{answer}`, 백그라운드 폴링이면 `{poll: true}`입니다.
+- 이 호출이 `passed`를 기록하고 `{passed, reason, hint, hints, progress}`로 응답합니다. `rules` check는 `added`, `kali`와 `replay` check는 `kali`, `loot` check는 `loot`도 함께 응답합니다. 폴링이 확실한 잘못(정상 replay 요청의 실패, 지워진 Paranoia Level 줄)을 찾으면 `loud: true`도 붙입니다.
+- `reason`은 값이 딸린 `strings.html` 키입니다.
+- 폴링이 아닌 check가 실패하면 오답으로 셉니다. 오답이 두 번이면 단계의 힌트 단계를 올리고 힌트를 기록합니다. 단계형 시나리오에서는 대신 시나리오의 다음 힌트를 제안합니다(`scenario_run.stuck`).
+
+check는 스스로 실행됩니다.
+
+- `sent`, `triage`, `kali`, `replay`, `waf_changed`는 단계가 보이고 탭이 보이며 세션이 열려 있는 동안 5초마다 조용히 폴링합니다. 폴링(`{poll: true}`)은 훈련 환경 작업용의 긴 대기 시간이 아니라 보통의 90초(`PATIENCE`)만 기다리므로, 응답 없는 폴링이 단계를 붙잡지 않습니다. 화면은 닫힌 것을 알아채려고 30초마다 세션을 다시 읽습니다. 폴링은 응답에 `loud`가 없으면 아무것도 쓰지 않습니다. `loud`가 있으면 오답처럼 사유를 보여 주고, replay의 정상 요청 줄은 "확인 중" 대신 "문제 있음"이 됩니다.
+- `sent`와 `replay`는 웹사이트 창에 단계의 `match`(`replay`는 정상 요청의 `sent`)에 맞는 경로가 나타나고 1.5초 뒤에도 실행됩니다.
+- `rules`는 룰 편집기가 파일을 적용할 때도 실행됩니다. `match`가 있는 `rules` 단계는 이때 조용히 실행되고, 따로 확인 버튼을 보여 줍니다. 학습자는 요청을 보낸 뒤 이 버튼을 누릅니다.
+- 통과하면 통과한 단계에 `ok` 문장을 보여 주고 '다음'을 강조한 채 그 단계에 머뭅니다. 학습자가 '다음'을 누릅니다. '다음'을 누르라는 통과 문장은 없습니다. 마지막 단계를 통과하면 레슨 끝 카드로 가고, 이 카드는 버튼을 누를 때까지 기다립니다.
+- 카드의 창 열기 버튼 중 웹사이트 창 버튼은 창에 다른 페이지(XSS 검색이 남긴 403 페이지 등)가 떠 있으면 게시판 첫 화면도 다시 엽니다. 그 뒤 단계들이 게시판 검색창에서 검색하기 때문입니다.
+- Kali 단계 카드에는 그 실행의 행이 테두리도 케이스 이름도 없는 한 줄로 나옵니다. 실행 중 문장과 "Kibana에서 이 실행 시간대 열기"이고 "기록된 실행" 라벨은 없습니다. 단계 문구에도 실행 중 문장에도 실행이 끝나면 확인한다는 말은 없습니다. 다음 단계는 이 행을 되풀이하지 않고, 그 뒤 Kibana 단계의 열기 버튼이 실행 시간대를 엽니다. 이 링크는 실행 시간대를 빈 쿼리로 엽니다. 다시 불러오면 Kali check를 폴링해 이 행을 다시 읽고, 가진 행에 시간대가 없을 때(학습자가 기록을 모으는 중에 '다음'을 누른 경우)도 다시 읽습니다. 학습자가 넘어간 뒤에 도착한 결과도 행을 고칩니다. Kali 단계는 실행이 끝나면 폴링으로 스스로 통과하고, 확인 버튼은 더 빨리 확인할 때만 씁니다.
+- 대상이나 그 뒤 단계가 Kibana를 여는 단계의 답에는 Kibana에 들어 있는 쿼리 `query`가 함께 갑니다. `kql`이 있는 check는 그 쿼리가 정규식에 맞지 않으면 통과하지 않습니다(`<text>.wrong.<step>.kql`). 따옴표 안에 와일드카드를 넣은 쿼리(`: "...*..."`, `views.QUOTED_WILDCARD`)는 그보다 먼저 `lesson.check.wrong.kql_quoted`로 실패합니다. Kibana에서 읽는 기초 레슨의 답에는 모두 `kql`이 있어서, 구성도나 참고, 앞 카드에서 짐작한 값으로는 통과하지 않습니다. `leg: upstream` check에서 `not destination : <주소>`에 board.com 자신의 주소를 쓴 쿼리도 `kql` 이유로 실패합니다(`views._excludes_the_site`). 단계가 남겨야 할 구간을 빼기 때문입니다.
+- `dev`(정규식)가 있는 check는 웹사이트 창의 개발자 도구에서 읽는 답입니다. 콘솔은 개발자 도구가 열려 있을 때 고른 요청 행의 id를 `dev_request`로 보내고(아니면 `null`), 그 행이 세션에 기록된 요청이고 경로가 `dev`에 맞을 때만 통과합니다. 행을 고르지 않았거나, 기록된 요청이 아니거나, 경로가 맞지 않으면 `lesson.check.wrong.dev`로 실패합니다(`views._dev_picked`). F2의 메서드, 경로, 상태 코드, 파라미터, 정렬, 없는 글 단계, F4의 인코딩 단계, F5의 정렬 단계와 오류 단계에 있습니다.
+- 숫자 뒤에 한두 글자짜리 단위 말("20점", "1973건" 같은)이 붙은 답은 숫자로 읽습니다(`lesson._unit_dropped`). `%`는 단위로 보지 않습니다.
+- 마지막 단계에서 기초 레슨은 "레슨이 끝났습니다."를 보여 주고, 버튼이 다음 레슨 이름을 담고("다음 레슨: <제목>") 학습자가 누를 때까지 기다립니다("과정마다 세션 하나"). 과정의 마지막 레슨(과정 1은 F3, 과정 2는 F6) 뒤에는 카드에 그 과정에서 들은 레슨을 레슨마다 통과한 단계 수와 함께 나열하고, "세션 종료" 버튼으로 세션을 닫습니다. 점수는 결과 화면에 있으므로 이 카드에서 되풀이하지 않습니다. 단계형 시나리오의 마지막 단계는 안내 단계를 마쳤다고 알립니다(`scenario.note.done`).
+- 통과 문장은 마지막 단계에서도 질문 아래 제자리에 있습니다. 틀린 답의 문장은 학습자가 다시 입력하거나 다른 선택지를 누르면 사라지고, KQL 문제를 알리는 문장은 Kibana 쿼리가 바뀌면 사라집니다.
+- 순서 고르기는 누른 버튼의 번호로만 순서를 보여 주고, 그 아래에 이어 붙인 줄은 없습니다. 버튼을 다시 누르면 빠진다는 말은 질문에 있습니다.
+- 참고 칸의 열림 상태는 세션과 레슨마다 따로 둡니다(`cr-lesson-reference-<session>-<lesson>`). 그래서 새 레슨은 참고가 닫힌 채로 열립니다.
+- 룰 편집기에서 적용하지 않은 수정은 localStorage(`cr-rules-draft-<session>`, 기준 버전과 함께)에 두었다가 다시 불러오면 되살리고 그렇다고 알립니다. 적용하면 지웁니다. 기준 버전이 다른 초안은 되살리지 않습니다.
+- 대상 창이 이미 열려 있는 `click` 단계는 도달하면 바로 통과합니다. 시나리오 1.1에는 경보 창을 여는 단계가 없습니다. 경보 창이 열린 채로 시작하므로 첫 단계부터 고객 요청을 판정합니다.
+- 오답이면 무엇이 틀렸는지 알려 줍니다.
+- 최근 수집(`within`)은 구간의 최신 기록부터 읽고 잘림을 기록하지 않습니다. sqlmap 케이스 하나가 5000건 넘는 기록을 남기기 때문입니다.
+
+도움말은 단계마다 정해진 순서로 열립니다. "힌트 보기"를 누르거나 오답·실패한 check가 두 번 나오면 다음 수준의 도움말이 열립니다.
+
+- 기초 레슨에서는 넛지(`<text>.nudge.<step>`, 어디를 볼지), 그다음 힌트(`<text>.hint.<step>`, 어떻게 읽는지. 정답은 말하지 않음)입니다. 3단계(`lesson.SKIP_OFFERED_IN_FOUNDATIONS`)가 되면 힌트 버튼이 사라집니다.
+- 단계형 시나리오는 정답 단계를 유지합니다(`lesson.ANSWER`, `lesson.SKIP_OFFERED`).
+- 건너뛰기는 도움말 단계 뒤에 있지 않습니다. 통과하지 않은 단계에서는 하나뿐인 다음 버튼이 `lesson.skip`으로 읽히고, 누르면 그 단계를 건너뜀으로 기록합니다.
+- 누를 때마다 `POST /api/sessions/<id>/lesson/hints/ {step, level: "hint"}`가 단계의 `hint` 단계를 올립니다. 처음 한 번은 레슨과 함께 `Session.hints`에 기록합니다(`{lesson, step, level}`. 마이그레이션 0017과 0027). 가이드 세션이 아니거나 레슨에 없는 단계·단계값이면 400, 닫힌 세션이면 409를 응답합니다.
+- 한 단계에 60초가 지나면 버튼만 "새 힌트 보기"로 바뀝니다. 학습자가 누르기 전에는 아무것도 기록하지 않습니다.
+- 기초 레슨의 마지막 단계는 혼자 푸는 단계입니다. 강조 표시, 넛지, 힌트가 없습니다.
+- 건너뛰기는 `POST /api/sessions/<id>/lesson/steps/<step>/ {state: skipped}`와 다음 단계 진입입니다. 마지막 단계에서는 건너뜀을 기록하고 레슨 끝 카드를 보여 줍니다. 이 카드는 통과했을 때처럼 버튼을 누를 때까지 기다립니다. 단계형 시나리오면 단계를 닫습니다.
+- 학습자 대신 입력하거나, 실행하거나, 적용하거나, 인정하는 것은 없습니다. 그래서 건너뛴 단계의 기록을 읽는 뒤 단계는 학습자가 그 단계를 하거나 함께 건너뛸 때까지 답할 수 없습니다. 보내지 않은 요청에 대한 답이나, 실행하지 않은 공격의 탈취 데이터가 그 예입니다.
+- `result.scenario.helped`(`["hint"]` 또는 없음)는 메인 화면과 닫힌 세션 화면의 통과·미통과 옆에 "힌트 사용"을 붙입니다.
+
+레슨은 첫 단계가 지정한 창(`opens`)으로 열립니다. 콘솔 코드에는 레슨 단계 이름도 CSS 선택자도 들어 있지 않습니다. 단계가 가리키는 곳은 `scenario.yaml`의 `point`이며, 로케이터 하나와 필요한 창 `opens`로 이루어집니다. 이렇게 가리키는 강조 표시를 코치라고 부릅니다.
+
+로케이터 종류:
+
+- `panel`: 콘솔 요소입니다. 사이트 주소창, 룰 편집기, 목표 행이 그 예입니다.
+- `map`: `node`, `link`, `label: [host, switch]`, `zone`입니다. 서버가 `{switch:<host>}`를 풀어 줍니다.
+  - `deploy/gns3/auditor.html`이 `postMessage`로 `{locate}`에 답합니다. `node`는 장비 아이콘과 이름만이고 링크의 주소 라벨은 넣지 않으므로, board.com 테두리 안에 그 단계가 묻는 주소가 보이지 않습니다. 답에는 사각형, 모든 영역(zone) 도형의 사각형(`zones`), 노드·인터페이스 라벨·영역 캡션의 사각형(`text`, 말풍선이 이들을 가리지 않도록)이 들어갑니다.
+  - 이 페이지는 `{fit}`를 받으면 화면을 다시 맞춥니다. 처음 화면 맞춤이 끝나면 `{map: "drawn"}`을, 그 뒤 맞춤마다 `{map: "fitted"}`를 보냅니다.
+- `site`: 출처가 다른 사이트 프레임 안의 선택자입니다. nginx가 붙인 스크립트가 답합니다.
+- `dev`: 개발자 도구의 `data-coach` 이름입니다. 토글, 맞는 행, 탭, 줄이 그 예입니다.
+- `kibana`: 출처가 같은 Kibana 프레임 안의 대상입니다. 형태는 다음과 같습니다.
+  - `query`
+  - `hits`: 결과가 없으면 `discoverNoResults`를 대신 가리킵니다(그 경우용 단계). 테두리는 건수만 두릅니다.
+  - `doc: <field>`: 문서 플라이아웃에서 필드 행을 가리킵니다. 플라이아웃의 필드 필터로 행을 화면에 불러옵니다.
+  - `sidebar: <field>`: 필드 팝오버가 열리면 팝오버의 "N개 레코드에서 계산" 줄(`dscFieldStats-statsFooter`)을, 없으면 Top values를 가리킵니다.
+  - 위 형태 어느 것이든 `kql: <pattern>`을 붙이면 학습자의 쿼리가 맞을 때까지 쿼리 입력창을 가리킵니다.
+  단계의 체크가 `leg`을 지정하면, 코치는 그 구간 행의 펼치기 버튼을 가리킵니다. 다른 이벤트가 열려 있으면 플라이아웃의 화살표도 가리킵니다. 그 구간 행은 출발지가 다른 행의 목적지인 행, 또는 그 반대입니다. 그 구간 행을 못 찾거나 열린 문서의 순서를 알 수 없으면 값이 아니라 필드 필터를 가리킵니다. `point`에 `keep: true`가 있으면 도착한 뒤에도 플라이아웃을 열어 둡니다.
+- `term`: `{pane: kali | waf, match}`로, xterm 버퍼에서 맞는 줄입니다. 선택 항목 `done` 패턴이 마지막으로 입력한 명령 뒤에 출력되면 테두리가 단계의 확인 버튼으로 옮겨 갑니다. 단, 그 명령에 단계 명령의 낱말이 모두(따옴표 제외) 들어 있을 때만입니다. 그래서 앞 단계에서 끝난 실행을 이 단계가 끝났다고 말하지 않습니다. 단계 명령이 실행되는 동안에는 실행 카드의 "아직 실행 중" 줄만 말합니다. "기록을 모으는 중" 상태 줄과 앞서 나온 빨간 "실행 기록 없음"은 지웁니다. 빈 프롬프트를 가리키는 말풍선은 명령을 입력하는 자리를 가리지 않도록 프롬프트 줄 아래에 둡니다.
+
+두 단계 로케이터는 첫 대상을 `until: sent`까지 가리킨 뒤 `then`을 가리킵니다(정렬 선택 상자, 그다음 페이로드의 줄). `until: applied`는 단계에서 추가한 룰이 적용되고 편집기에 적용하지 않은 변경이 없을 때까지 첫 대상을 가리킵니다. `until: dev_open`은 개발자 도구가 열릴 때까지 첫 대상을 가리킵니다. F4의 탐색 단계는 카드가 검색 전에 개발자 도구를 열라고 하므로 개발자 도구 버튼, 그다음 검색창을 가리킵니다. 적용하면 콘솔이 학습자가 새로 쓴 줄의 sid를 곧바로 추가된 것으로 표시하므로, check 응답을 기다리지 않고 테두리가 적용 버튼을 떠납니다. `then` 안에 다시 `until`과 `then`을 둘 수 있습니다. F4의 룰 단계는 룰 편집기, 사이트 검색창, 확인 버튼(`#step-act`) 순서로 가리킵니다.
+
+강조 표시를 그리는 방식:
+
+- 창만 어둡게 하고(`pointer-events: none`), 대상에 기본 색 테두리를 두릅니다. 그 옆에 한 줄 콜아웃을 붙입니다(`<text>.callout.<step>`, 두 번째 대상에는 `.callout.<step>.then`, 세 번째 대상에는 `.then.then`). 2026-11-15부터 레슨 단계에는 자기 콜아웃이 없습니다. 모두 테두리가 보여 주는 것을 이름으로 부르거나 카드를 되풀이했기 때문입니다. 단계 콜아웃은 테두리만으로는 할 일이 드러나지 않는 곳에만 남았습니다. 구간 행의 펼치기 버튼, 플라이아웃의 필드, 열린 문서 플라이아웃 닫기(`covered`), 다음 문서로 넘기기(`other`), 구간별로 확인할 이벤트(`verify.<leg>`), Kali 확인 버튼입니다. 개발자 도구 열기, 행 고르기, 개발자 도구 탭, 쿼리 쓰기·실행, 구간 없는 행 펼치기, 추가할 룰 줄, 적용 누르기에는 문구가 없고(탭과 룰 줄은 21회차에 뺐습니다. 단계 카드가 이미 말합니다), 문구가 없는 단계는 테두리만 그립니다.
+- 콜아웃은 창 안에서 뒤집거나 밀어서 놓습니다. 대상, 왼쪽 메뉴, 툴바, 노트를 덮지 않습니다. 사이트 프레임이나 Kibana 프레임이 대상 주변에서 알려 주는 글자와 컨트롤도 덮지 않습니다(Kibana는 테두리에서 220px 안의 글자와 컨트롤이며, 문서 플라이아웃이 가린 것은 뺍니다).
+- 한 줄로 놓을 자리가 없으면 두세 줄로 줄바꿈합니다.
+- 플라이아웃 단계(다음 이벤트 화살표)는 플라이아웃 안을 먼저 찾습니다.
+- 노트 카드 안의 대상은 카드 옆 창에 콜아웃을 둡니다.
+- 지시선은 글자를 가로지르지 않습니다. 콜아웃이 테두리에서 48px 안이면 그리지 않습니다.
+- 구성도 위 테두리는 노드 옆 구성도 글자에 닿지 않을 때까지 여백을 줄입니다(`clearOfText`). 가장 작게는 노드 자체의 사각형입니다.
+- 로케이터가 있는 단계의 힌트는 "표시한 곳을 확인해 보세요."라고 합니다.
+- 단계의 창이 보이지 않으면 단계 카드에 "<창> 열기" 버튼(`lesson.open.<pane>`)이 나옵니다. 버튼이 무엇을 여는지 말하므로 강조 표시만 하고 콜아웃은 붙이지 않습니다(마지막 단계에는 강조도 없음). 단계의 콜아웃은 선택 사항입니다. 강조한 대상의 이름만 말하는 콜아웃(검색창, kali, DMZ)은 쓰지 않습니다.
+- 약 2초 동안 대상을 찾지 못하면 카드가 어디를 볼지 알려 줍니다(`lesson.coach.missing`).
+- 구성도는 창 크기가 마지막으로 맞춘 크기와 다를 때(창을 열거나 크기가 바뀔 때)만 화면에 맞춥니다. 단계가 바뀌거나 레슨의 마지막 단계가 되는 것만으로는 다시 그리지 않습니다.
+
+`test_every_point_a_foundation_or_scenario_step_names_resolves_on_the_blue_console`이 모든 기초 레슨과 단계형 시나리오 단계의 `point`가 렌더링된 콘솔에서 찾아지는지 확인합니다.
+
+룰 편집기(`#lesson-rules`, 결정 D3)는 블루팀 콘솔의 IDS 룰 창에 있습니다. `rulesPane()`이 `detection`이나 `unknown` 유형의 시나리오에서 이 창을 보여 줍니다.
+
+- `GET /api/rules/?session=<id>`로 읽습니다.
+- `POST /api/rules/validate/`로 검사하고, 불러온 버전을 기준으로 `POST /api/rules/apply/`로 씁니다.
+- 룰 검사는 `errors`로 응답합니다. 거부한 모든 센서의 출력에서 Suricata `Error`가 들어 있는 줄들입니다. `output`은 그런 줄이 가장 많은 거부 센서의 출력입니다. 거부한 센서는 없지만 sid를 읽을 수 없는 룰이 있으면 `unread_sid: true`로 응답하고, `errors`에는 그 룰 줄이, `output`에는 빈 문자열이 들어갑니다.
+- 두 센서는 콘솔 로그를 켠 같은 Suricata 이미지라서 각자 `-T` 오류 줄을 출력합니다.
+
+### 기초 레슨 F1-F6과 두 과정
+
+설계는 `docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`의 P2 단계입니다. 2026-10-18에 공격과 방어를 함께 다루는 레슨으로 다시 만들었습니다(`docs/DECISIONS.md`, "Foundations rebuilt as integrated attack and defence lessons").
+
+board의 `scenario.yaml`은 `foundations:` 목록을 선언합니다. discovery 시점에 이 목록을 검사하며, id는 기초 레슨과 시나리오 전체에서 유일해야 합니다(`wargames.checked_groups`). 가르치는 레슨은 기초 레슨입니다. 단계형 시나리오 1.1과 3.1도 같은 엔진에서 단계를 실행합니다.
+
+`courses:`도 선언합니다(`wargames.checked_courses`). 모든 기초 레슨은 정확히 한 과정에 속하고, 과정마다 `id`, 문자열 키 `text`, `reference` 카드가 있습니다. 과정 `c1` "로그 분석 기초"는 f1-f3이고 훈련 환경을 읽기만 합니다(defense `full`, 룰, Kali, WAF 변경 없음). 과정 `c2` "공격 탐지 실습"은 f4-f6이고 훈련 환경을 바꿉니다(`docs/DECISIONS.md`, "The six foundations become two courses"). 과정 1의 단계는 학습자 자신의 검색어나 마커로 자기 요청을 찾으며, 새로 만든 훈련 환경이나 다른 트래픽이 없다는 것에 기대지 않습니다.
+
+- `GET /api/wargames/`는 `courses`(`id`, `title`, `lessons`, `scored`)를 나열합니다. 메인 페이지는 과정마다 구역 하나에 레슨을 보여 줍니다. `scored`(`wargames._course_scored`)는 `kali`나 `replay` check가 있는 과정에서 true이고, 그 과정의 레슨 세션이 점수를 보여 줄지 정합니다.
+- `GET /api/sessions/<id>/`에는 `lesson_course`(`id`, `text`, `lessons`, `reference`)가 있습니다.
+- 과정의 첫 레슨은 단계에 하나도 진입하지 않은 동안 창 위에 과정 안내(`<course>.brief`와 접힌 참고 카드)를 띄웁니다. 시작을 누르면 첫 단계에 진입합니다(`POST .../steps/<id>/ {state: reached}`). 에이전트는 이 요청을 바로 보냅니다. 과정 2의 안내는 주소가 세션마다 다를 수 있다고 알려 줍니다.
+- 레일의 참고 버튼은 왼쪽 열을 열고, 과정 카드와 레슨 자신의 `reference:` 카드(`lesson.ref.<id>.title`, `.body`, `.rows`)를 보여 줍니다. `addresses` 카드는 `GET .../lesson/addresses/`로 채웁니다. F1은 주소를 묻는 레슨이라 주소 카드가 없습니다.
+
+- `wargames.foundations()`는 기초 레슨을 `order` 순으로 나열합니다.
+- `wargames.lesson(lesson_id=...)`은 기초 레슨이나 단계가 있는 시나리오를 찾고, 그 밖의 id는 거부하며, 기초 레슨에는 `group: foundations`를 붙입니다.
+- `GET /api/wargames/`는 `foundations`를 나열합니다(`wargames._foundation_card`). 카드에는 `id`, `order`, `title` 문자열 키, `minutes`, `level`, `defense`, `prerequisites`, 단계 수, `step_ids`, `changes_waf`가 들어 있습니다.
+- 메인 페이지는 기초 레슨을 레슨으로 맨 앞에 보여 줍니다. 소요 시간, 학습 내용, 시작 버튼(해당 레슨을 안내와 함께 엽니다)이 함께 나옵니다.
+- 모든 레슨은 `board-normal-search`를 시드로 재생합니다. 첫 레슨은 열 때, 나중에 넘어간 레슨은 학습자가 그 레슨에서 처음 통과하거나 건너뛰거나 힌트를 볼 때 재생합니다(`views._seed_once_worked`, 결과 화면의 `begun()`이 세는 것과 같은 기준). 그래서 콘솔이 자동으로 넘어간 뒤 학습자가 손대지 않은 레슨은 정상 케이스를 더하지 않습니다. 이 시드는 정상 케이스로 두 번째 점수에 들어갑니다(`views._replayed`가 정상 `meta.seed` 케이스를 남김). 그래서 닫힌 레슨 세션에는 TN이 생기고, 레슨 세션에서는 `no_benign`과 `no_marker`를 보여 주지 않습니다.
+
+아래에서 레슨마다 defense와 여는 창, 학습자가 하는 일, 답을 읽는 곳을 적습니다.
+
+**f1 구성도 읽기**(`lesson.map`). defense `full`, 구성도 창에서 시작합니다.
+
+- 학습자는 kali와 board.com의 주소를 읽고, customers의 요청이 거치는 호스트를 순서대로 고르고(`path`, 출발지 `customers`), DMZ 네트워크를 읽고, 로그를 모으는 호스트를 답합니다. 혼자 푸는 단계에서는 waf의 주소를 묻습니다. 호스트가 어느 영역에 있는지는 묻지 않습니다.
+- 답은 세션의 학습자용 구성도에서 읽습니다(`views._range_fact`: `topology.learner`를 거친 `topology.address`, `topology.subnet`, `topology.route`, `topology.hosts`).
+  - `address`: 링크 라벨의 주소. 프리픽스 길이는 있어도 없어도 됩니다.
+  - `subnet`: 호스트가 붙은 스위치의 네트워크
+  - `path`: 단계의 `from`(기본 `customers`), 그다음 구성도에 있는 경유 역할, 그다음 사이트 순서입니다(`customers > router > waf > board.com`).
+  - `logs`: `log-server` 노드
+
+**f2 개발자 도구로 HTTP 요청 읽기**(`lesson.http`). defense `full`, 웹사이트 창에서 시작합니다.
+
+- 학습자는 게시판 검색창으로 검색합니다. 네트워크 패널에서 메서드, 파라미터, 경로, 상태 코드를 읽은 뒤, 게시판 정렬 기능이 쓰는 파라미터를 찾습니다. 혼자 푸는 단계에서는 `/posts/9999/`의 상태 코드를 묻습니다. 카드도 HTTP 참고도 그 글이 없다거나 404가 무슨 뜻인지 말하지 않습니다.
+- 답은 학습자가 웹사이트 창에서 보낸 요청 기록에서 읽습니다: `method`, `parameter`, `path`(요청 URL에 적힌 그대로. 답에 호스트나 쿼리가 들어가거나 끝의 /가 빠지면 `wrong_if`가 알려 줌), `status`.
+
+**f3 Kibana에서 내 요청 찾기**(`lesson.logs`). defense `full`, 웹사이트 창에서 시작합니다.
+
+- 학습자는 영문자와 숫자로 된 자기만의 단어로 검색하고(예시 단어 `kim0413`은 검색 단계가 받지 않음) Kibana에 `url : *단어*`를 씁니다. 카드마다 쿼리를 다시 적고 화면의 열 이름을 그대로 써서 아래를 묻습니다.
+  - Kibana가 보여 주는 건수(그 단어로 한 모든 검색의 두 구간)
+  - 학습자가 `and`와 `not`으로 쓴 쿼리(내 단어이면서 `destination`이 waf 주소가 아닌 것)의 건수. 이 단계의 check에는 Kibana 쿼리가 맞아야 하는 정규식 `kql`이 있습니다. 콘솔은 Kibana를 여는 단계의 답을 보낼 때마다 Kibana에 들어 있는 쿼리를 함께 보내고, 쿼리가 맞지 않으면 숫자와 상관없이 틀린 답으로 처리합니다(`lesson.logs.wrong.upstream.kql`). 앞 건수 단계의 통과 문장은 url 쿼리로 내 로그를 찾았다는 말만 하고, 구간마다 몇 줄이 남는지는 말하지 않습니다.
+  - 그 쿼리가 남긴 행의 `source_ip`(waf 자신의 주소)
+  첫 건수 단계의 check에도 `kql`(`url` 조건)이 있고, 답이 참고의 주소 표에 있는 출발지 단계에도 있습니다. X-Forwarded-For 단계의 `kql`은 url 조건과 함께 `x_forwarded_for` 조건(`request_header.x_forwarded_for : *`)을 요구합니다. 그렇지 않으면 앞 단계에서 남은 url 쿼리만으로 통과합니다.
+  혼자 푸는 단계에서는 그 행의 `request_header.x_forwarded_for`(customers 주소)를 Document 창에서 읽게 합니다. 웹사이트 창이 customers 자리에서 접속한다고 처음 말하는 글이 이 단계의 통과 문장입니다.
+- 답은 기록에 있는 센서의 http 이벤트에서 구간별로 읽습니다(`sensor_source`, `forwarded_for`).
+  - `dest_ip`가 board.com의 주소이면 `upstream`(waf가 넘긴 요청), 아니면 `inbound`(waf에 도착한 요청)입니다. `leg: both`는 두 구간을 모두 씁니다.
+  - `hits`는 레슨(또는 세션)이 시작된 뒤, 학습자의 가장 최근 검색 단어가 url에 든 그 구간의 http 이벤트 수입니다.
+
+**f4 XSS 요청 차단과 IDS 룰 작성**(`lesson.xss`). defense `xss-gap`, 웹사이트 창에서 시작합니다.
+
+- 학습자는 `<script>alert(1)</script>`를 보내 개발자 도구의 요청 URL에서 `<`가 무엇으로 바뀌었는지(`%3C`) 읽습니다. 주소창에는 `<`로 보이고 화면에는 nginx의 403 페이지가 나오므로 상태 코드는 더 묻지 않습니다. 이어서 탐지한 룰 하나와 Total Score를 읽습니다. 대소문자를 섞은 요청을 보내 Kibana에서 그 Total Score를 읽고(CRS 참고는 더 이상 CRS가 대소문자를 가리지 않는다고 말하지 않습니다), 두 요청에 IDS 경보가 있었는지 답합니다. URI의 `<script`를 잡는 룰을 쓰고 적용한 뒤 `<script>alert(1)</script>`를 검색하고 확인 버튼을 누릅니다. 그 룰이 이 검색에 경보를 냈을 때만 통과합니다. 이어서 Kibana에서 그 경보의 `destination`을 읽고(waf 주소입니다. 웹방화벽이 요청을 막아서 들어오는 구간의 센서만 요청을 봤습니다), 대소문자를 섞은 요청이 빠져나가는 것을 본 뒤 `nocase`를 붙이고 `rev`를 올립니다. Suricata 참고 카드는 완성된 룰이 아니라 대괄호로 빈칸을 둔 룰 형태를 보여 주고, Kibana url의 `%3C`를 어떤 문자열로 찾는지는 말하지 않습니다. Kibana 단계는 학습자의 쿼리가 웹방화벽 로그와 script(또는 alert)를 지정할 때까지 쿼리 입력창만 가리키고, 그 check에도 같은 `kql`이 있습니다. 첫 카드는 개발자 도구를 먼저 열라고 합니다. 네트워크 패널은 열려 있는 동안 받은 요청을 보여 주기 때문입니다. `match: '<script'`가 붙은 `rules`와 `nocase` 단계에는 `quiet_on`(평범한 검색 두 개)이 있어서, `content:"/search/"`처럼 모든 검색에 경보를 내는 룰은 사유와 함께 실패합니다. 혼자 푸는 단계에서는 대소문자를 섞은 요청과 일반 검색을 다시 보냅니다. 일반 검색에 내 룰이 경보를 내면 바로 알려 줍니다(`lesson.check.replay_benign.alerted`).
+- 답은 다음에서 읽습니다.
+  - `char: "<"`가 붙은 `escaped`: 기록의 쿼리에 그 문자의 퍼센트 인코딩(`%3C`)이 있으면 그 값
+  - `rule`: 요청의 ModSecurity 룰 id. 949110은 제외합니다.
+  - `anomaly_total`: 949110의 `Total Score: N`
+  - `alerted`, `alerted_destination`(학습자가 추가한 룰이 낸 경보의 `dest_ip`), `alerted_sid_present`: 기록 시간대의 Suricata 경보 중 url이 그 기록의 url과 같은 것을 `lesson.added_rules`와 대조합니다(`views._alerts_for`). url이 없는 경보는 browse 마커가 있으면 셉니다. 마커만으로 맞추던 때에는 공격 몇 초 뒤에 보낸 일반 검색이 공격의 경보를 뒤집어써서 replay의 일반 검색이 통과하지 못했습니다(17회차).
+  - `match: '<script'`가 붙은 `rules`, `needs: nocase`가 붙은 `rules`. 뒤의 것은 세션에서 마지막으로 적용한, 대소문자를 구분하던 판보다 룰의 `rev`가 커야 통과합니다(`lesson.raised_rev`, 아니면 `lesson.xss.fail.nocase.rev`). 처음부터 `nocase`로 쓴 룰은 올릴 판이 없습니다.
+  - `replay`
+
+**f5 sort 파라미터 SQL Injection 분석**(`lesson.sqli`). defense `full`, 웹사이트 창에서 시작합니다.
+
+- 학습자는 sort 값을 읽습니다. 주소창에서 `)`를 붙여 상태 코드를 읽고, WAF 룰이 탐지했는지 답합니다. Kali 창에 sqlmap을 입력해 판정, 실행이 남긴 WAF 기록 수(source_ip Top values의 "Calculated from N records"나 Documents 건수. 출발지 자체는 구성도에 있는 kali 주소입니다), 스캐너를 알아본 룰을 읽습니다. 기록 수 단계의 `kql`은 웹방화벽 조건과 함께 `source_ip` 조건을 요구하므로, 앞 단계에서 남은 쿼리가 아니라 이 단계의 쿼리를 직접 써야 합니다. `--random-agent`를 붙여 다시 실행합니다. 혼자 푸는 단계에서는 다시 실행한 기록의 웹방화벽 로그에 913100이 있는지 묻습니다. CRS 참고에서 913 계열 줄을 빼고 혼자 푸는 단계의 제목에서 913100을 빼서, 스캐너 룰의 답을 미리 보여 주지 않습니다. Kibana에서 읽는 답에는 모두 `kql`이 있습니다.
+- 답은 다음에서 읽습니다.
+  - `param_value`, `status`
+  - `waf_detected`: 요청의 ModSecurity 탐지 기록. 500은 룰 없이 기록되며 탐지가 아닙니다.
+  - `sqlmap_found`: `attacker.sqlmap_found`가 박스의 `<home>/.local/share/sqlmap/output/<host>/log`를 읽어 `Parameter:` 줄이 있는지 봅니다.
+  - `run_records`: 실행의 Kibana 조회 기간에 든 ModSecurity 기록 수, 또는 실행 마커가 붙은 기록 수(주소나 비율을 입력하면 wrong_if가 건수를 입력하라고 알려 줌)
+  - `marker: step:<id>`와 `family: "913"`(스캐너)이 붙은 `rule`. 그다음 다시 실행한 기록에 대한 `rule: "913100"`이 붙은 `rule_matched`(새 User-Agent에 더는 매칭되지 않으면 `absent`)
+
+**f6 넓은 예외 처리로 놓친 공격 확인하기**(`lesson.miss`). defense `overbroad`, WAF 창에서 시작합니다.
+
+- 학습자는 예외 파일을 grep해 빠진 파라미터를 찾습니다. sqlmap으로 계정을 덤프해 표를 붙여 넣습니다. 어느 엔진이 경보를 냈는지, 실행이 WAF 로그에 남긴 status 500 기록이 몇 건인지(이 기록의 rule_id는 `-`: 기록은 됐지만 매칭된 룰 없음), 관리자 목표가 탐지되었을 때 붙는 감점을 답합니다. 그다음 예외를 지우고 nginx를 reload합니다. 혼자 푸는 단계에서는 덤프를 다시 실행하고 정렬을 한 번 바꿉니다.
+- 답은 다음에서 읽습니다.
+  - `excluded_target`: 적용 중인 WAF 파일의 파라미터 이름(`sort`. `ARGS:sort`는 `lesson.miss.wrong.excluded.prefix`)
+  - `loot`: 세션 스냅샷과 대조합니다.
+  - `alerted_by`: 실행의 탐지 기록으로 없음, IDS만, WAF만, 둘 다를 구분합니다.
+  - `server_errors`: Kibana가 열리는 조회 기간의 WAF(ModSecurity) 로그 중 status 500인 기록의 수입니다(`lesson.server_errors`). 출발지 IP는 더 묻지 않습니다. kali의 주소라 구성도에 있고 F5에서 이미 물었기 때문입니다. sqlmap도 실행 끝에 같은 수를 출력하고, 통과 문장은 두 값을 맞춰 보라고 합니다. rule_id도 묻지 않습니다. 앞 단계가 이미 `-`는 매칭된 룰이 없다는 뜻이라고 알려 주기 때문입니다.
+  - `objective:`가 붙은 `detected_penalty`: 그 목표가 탐지되었을 때 붙는 감점, 곧 난이도 ×1입니다. 값은 `wargames.objectives`의 등급에서 읽고, 채점하지 않는 시나리오에서는 비어 있습니다. 통과 문장은 통과한 때의 목표 행을 따릅니다(`lesson.miss.ok.cost.undetected`, `.detected`, `.kept`, `views._outcome`). 관리자 계정이 탈취되지 않았는데 8점이 감점됐다고 말하지 않습니다.
+  - `waf_changed`. Paranoia Level 줄도 그대로 있어야 합니다(카드가 그 줄은 두라고 함).
+  - `replay`: 실행이 차단되고 탈취 데이터가 없는지, 일반 정렬이 2xx이고 WAF 기록이 없는지
+
+방어 설정 `xss-gap`과 `overbroad`:
+
+- `xss-gap`은 CRS paranoia level 1에 `no-xss.rules`(sid 9000003을 뺀 `local.rules`)입니다.
+- `overbroad`는 level 1에 `no-uri-sqli.rules`와 예외 하나, `{tag: OWASP_CRS, target: "ARGS:sort"}`입니다. WAF 파일에서는 `SecAction "id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetByTag=OWASP_CRS;ARGS:sort"`이고, 모든 CRS 룰이 `sort`를 검사하지 않습니다.
+
+F6의 sqlmap 명령에는 `--skip-waf`가 붙습니다. 그러지 않으면 sqlmap이 WAF를 확인하려고 보내는 요청 하나가 IDS 9000003, 9000004와 CRS 룰 하나에 걸려서, 실행이 탐지된 것으로 셉니다. 어떤 레슨 질문에도 `accept` 목록은 없습니다.
+
+과정마다 세션 하나. `POST /api/sessions/<id>/lesson/ {"lesson": "<id>"}`는 열려 있는 가이드 세션을 그 자리에서 다른 기초 레슨으로 옮깁니다. 콘솔의 다음 레슨은 세션의 과정 안에서만 이어지고(`views._next_lesson`), 과정 요약은 그 과정의 레슨만 보여 줍니다. 과정 1은 `course.logs.done`으로, 과정 2는 `course.attack.done`으로 끝나며, 둘 다 마지막 레슨이 끝났다고 알립니다. 과정 1의 문구는 다음 과정인 과정 2도 알려 줍니다. 과정 2의 점수는 결과 화면에 있습니다. 하는 일은 다음과 같습니다.
+
+- 그 레슨이 선언한 방어 설정이 `Session.defense`와 다르면 레슨의 CRS 설정을 씁니다(`PUT /waf/`처럼 `crs.apply`). 센서 룰 파일은 방어 설정의 룰 파일이 바뀔 때만 다시 넣습니다.
+- `Session.lesson`과 `Session.defense`를 바꿉니다.
+- `Session.lessons`에 `{id, started_at}`를 덧붙입니다(마이그레이션 0027). 기초 레슨을 열 때 첫 항목을 씁니다.
+- 스탬프 프록시의 라벨을 지웁니다.
+- 레슨의 `cases`는 재생하지 않습니다. 학습자가 그 레슨에서 처음 통과하거나 건너뛰거나 힌트를 볼 때 재생합니다.
+- 세션 상세를 응답합니다.
+
+닫힌 세션, 시나리오 세션, 가이드가 없는 세션은 409로 거부합니다. 기초 레슨이 아닌 id는 400으로 거부합니다.
+
+상세에는 다음이 실립니다.
+
+- `lessons`
+- `next_lesson`(세션 과정 안에서 `order` 순서로 다음 기초 레슨의 `{id, text}`, 과정의 마지막 레슨 뒤에는 null)
+- `course`(들은 레슨마다 `[{id, text, steps, passed, skipped, hints, retried}]`. `retried`는 틀린 뒤 통과한 단계 수라서, 둘 중 하나를 고르는 문항에서 다른 쪽을 다시 고른 것도 결과 화면에 남습니다)
+
+콘솔은 다음 레슨만 제안합니다.
+
+- 기초 레슨의 마지막 단계를 통과하거나 건너뛰면 카드가 "레슨이 끝났습니다."와 "다음 레슨: <제목>" 버튼을 보여 줍니다. 저절로 넘어가지 않습니다. 학습자가 버튼을 눌러야 콘솔이 전환을 요청하고, 화면을 다시 불러와 새 레슨을 엽니다.
+- 과정의 마지막 레슨 뒤에는 카드가 그 과정에서 들은 레슨을 세션의 `course` 행에서 읽어(`/api/wargames/`는 읽지 않음) "N개 단계 중 n개 통과"와 함께 나열합니다(체크 표시는 없습니다. 단계를 모두 건너뛴 레슨은 0으로 나옵니다). 세션이 그 과정의 레슨을 모두 들었으면 카드 제목이 과정 제목이 되고 문장은 과정의 마침 문장(`<course>.done`)이며, 아니면 "레슨이 끝났습니다."가 보입니다. "직접 해 보기" 카드는 단계 카드 바로 아래에 있습니다. 그 버튼은 세션 화면과 같은 종료 확인 하나(`session.close.consequence`)로 먼저 확인을 받은 뒤, 수집하고 `POST /close/`로 세션을 종료하고 세션 화면을 엽니다. 과정이 `scored`가 아닌 레슨 세션(훈련 환경을 읽기만 하는 과정 1)은 그 화면에 점수를 보여 주지 않습니다. 목표, 탐지, 요청별 표와 탈취된 목표 수가 없습니다. 어떤 검색이 탐지 결과에서 빠지는지 알려 주는 문장은 그 화면에 없습니다. 세션 화면의 레슨 카드는 레슨마다 통과한 단계(와 다시 시도한 단계)를 보여 주고, Kali 실행마다 "레슨 n · m단계"라고 붙입니다.
+- 다시 시작하면 학습자가 손댄 첫 레슨(화면의 `begun()`: 통과, 건너뜀, 힌트가 있거나 세션을 연 레슨)을 그 레슨의 방어 설정으로 엽니다. 버튼은 "다시 시작"입니다.
+
+레슨 사이에는 아무것도 초기화하지 않습니다. board가 이를 허용합니다. board의 목표 계층은 유출만 다루기 때문입니다(세션을 열 때 찍은 스냅샷과 탈취 데이터를 대조). 그래서 레슨이 정답 데이터를 처음 상태 그대로 둡니다. F4와 F6이 방어 설정을 그 자리에서 바꾸고, F5가 `full`로 되돌립니다.
+
+레슨은 시작한 뒤에 일어난 일만 판정합니다(`views._lesson_started`, 항목이 둘 이상일 때 `Session.lessons`의 마지막 항목).
+
+- `sent` check는 시작 뒤 웹사이트 창에서 보낸 요청만 셉니다.
+- `rule` 답은 시작 뒤 ModSecurity 기록만 셉니다.
+- `kali` check는 단계의 `reached`와 레슨 시작 중 늦은 시각부터 센서를 읽습니다.
+- `lost_points`는 시작 뒤에 탈취된 목표만 셉니다.
+- Kibana 링크도 시작 시각부터 엽니다.
+- 단계 기록은 레슨마다 따로 둡니다. 그래서 F2의 `search` 통과가 F3의 `search`를 통과시키지 않습니다.
+
+학습자 자신의 행동을 따라가는 점검 종류는 세 가지입니다.
+
+- `sent`는 세션의 웹사이트 창이 보관한 요청 중 디코딩한 경로와 쿼리가 단계의 `match` 정규식과 일치하는 요청이 있으면 통과합니다.
+- `kali`는 케이스 파일의 도구 케이스를 지정합니다.
+  - 학습자가 해당 단계에 들어서면 마커가 생성되고, 플랫폼이 그 마커를 스탬프 프록시의 `/var/lib/session/active`에 씁니다(레슨을 바꿀 때와 세션을 닫을 때 지움). 그래서 학습자가 Kali 창에 입력한 명령은 Kali의 `http_proxy`를 거치며 마커가 붙어 나갑니다.
+  - 단계의 `command`는 입력할 문구일 뿐입니다.
+  - 센서의 http 기록에 마커와 도구의 user agent가 함께 있으면 통과합니다. `--random-agent`용으로 `ua: any`이면 user agent는 상관없습니다.
+  - 통과하면 이 실행을 일반 악성 케이스로 기록합니다(`meta.kali`와 `meta.lesson`, 재생 표시 없음). 그래서 다른 레드팀 행동처럼 두 점수에 모두 들어갑니다. 그다음 세션을 수집(ingest)합니다.
+  - 학습자가 `http_proxy`를 지우면 마커 없이 요청이 나가 단계를 통과하지 못합니다.
+- `loot`는 붙여 넣은 테이블(`tools.dumped`, 또는 `name:hash` 줄과 `| name | hash |` 줄)을 받아 `POST /loot/`와 같은 방식으로 인정하고 kali 케이스에 귀속합니다. `_credit_loot`는 일치한 계정을 귀속된 케이스에 남깁니다(`meta.loot`). 일치한 계정이 세션 스냅숏의 계정을 모두 덮을 때만 통과합니다. 모자라면 일치한 수와 전체 수를 담은 `<fail>.partial`로 실패하고 입력 칸은 열려 있으므로, 나머지를 다시 붙여 넣으면 됩니다. 일부만 붙여 넣어도 일치한 만큼은 인정합니다. 목표는 대상 시스템의 데이터를 따르고, 이 단계는 표 전체를 요구할 뿐입니다.
+
+답은 다음 중 하나를 읽습니다. 그 밖의 값은 `wargames.read_from_record`가 discovery 시점에 거부합니다.
+
+- `of:`가 훈련 환경 사실인 경우: `address`, `subnet`, `path`, `logs`, `excluded_target`, `lost_points`, `detected_penalty`
+- `of:`가 요청 사실이고 `about:`이 `match`가 있는 단계를 가리키거나 단계 자신의 `match`가 있는 경우(그 단계와 일치하는 가장 최근 웹사이트 창 기록을 읽음): `status`, `method`, `path`, `parameter`, `param_value`, `escaped`, `sensor_source`, `forwarded_for`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_destination`, `alerted_sid_present`, `hits`
+- `of:`가 Kali 사실이고 `about:`이 `kali` 단계를 가리키는 경우: `sqlmap_found`, `run_records`(실행의 WAF 기록 수), `alerted_by`, `server_errors`(실행의 500 기록에서)
+- 요청의 `path`나 `step:` 마커와 함께 쓰는 `rule`(위)
+
+## 점수 계산 방식
+
+**목표.** board는 `loot_verified` 대상입니다.
+
+- `wargames/board/objectives.yaml`은 비밀을 정합니다. 비밀은 `auth_user`의 사용자 이름과 비밀번호 컬럼이며, `/internal/auth-users`에서 읽습니다.
+- 공격자가 그중 얼마나 손에 넣었는지에 따라 세 등급을 둡니다: 해시 하나(난이도 2), `admin` 계정의 해시(4), 모든 계정의 해시(5).
+- 공격자는 해시를 빼낸 뒤 레드팀 콘솔의 '탈취한 해시 제출' 패널에서 `POST /api/sessions/<id>/loot/`로 제출합니다. 이 패널은 `loot_verified` 시나리오에서만 표시합니다.
+- 플랫폼은 제출된 `(username, hash)` 쌍이 세션 시작 시점 스냅샷과 정확히 일치할 때만, 그리고 세션이 악성 케이스를 한 번 이상 실행한 뒤에만 등급을 인정합니다.
+- 플랫폼이 공격이 무엇을 했는지 스스로 판단해서 목표를 인정하는 일은 없습니다. 정답 데이터는 대상 시스템 자체의 기록이며, 탐지 장비는 이 기록을 보지 못합니다.
+
+인정된 등급은 제출 시각이 찍힌 Objective 행이 됩니다. 이 행에는 시간 범위가 있습니다.
+
+- 제출이 악성 케이스(`case_id`)를 지정하면, 해당 케이스 시작 100ms 전부터 종료 100ms 후까지입니다.
+- 지정하지 않으면, 제출 2분 전부터 제출 100ms 후까지입니다.
+
+스냅샷은 세션이 시작될 때 한 번만 만듭니다.
+
+- 계정을 읽을 수 없으면 스냅샷 없이 세션을 그대로 생성합니다. 이 세션의 `POST /api/sessions/<id>/loot/`는 409로 응답합니다.
+- 그 뒤로 board를 읽는 곳은 없습니다. `GET /api/wargames/<id>/objectives/`는 `objectives.yaml`의 등급을 나열하고, `GET /api/sessions/<id>/objectives/`는 저장된 행을 보고합니다.
+- `POST /api/sessions/<id>/objectives/`는 관찰을 수행하며, `loot_verified` 워게임에서는 아무 일도 하지 않습니다.
+
+corp 워게임은 `effect_observed` 대상입니다. 공격자가 제출하는 것 없이, 대상 시스템이 자체 데이터베이스에 커밋한 행으로 채점합니다.
+
+- `wargames/corp/objectives.yaml`은 읽기 채널(`estate://corp-db`, scope `wp_state`)과 세 등급을 선언합니다.
+  - 무단 관리자 계정(`rogue_admin`, 난이도 5)
+  - 자가 가입이 열린 사이트(`option_flip`, 4)
+  - 무단 콘텐츠 작성(`content_write`, 3)
+- 세션이 시작되면 플랫폼은 기존 관리자, 감시 대상 `wp_options`, 게시된 글을 스냅샷합니다. corp-db에 대한 읽기 전용 `mysql` SELECT를 쓰며(`platform/api/effect.py`), 네트워크가 아니라 `runner("corp-db")`로 실행합니다.
+- `POST /api/sessions/<id>/objectives/`가 호출되면 corp-db의 바이너리 로그를 `mysqlbinlog`로 읽습니다. 커밋된 변경 가운데 타임스탬프가 악성 케이스의 시간 범위 안에 드는 것마다 등급을 인정합니다. 변경의 종류는 다음과 같습니다.
+  - 스냅샷에 없던 사용자에게 준 `wp_usermeta` 관리자 권한
+  - `users_can_register` 또는 `default_role`의 `wp_options` 변경
+  - 새로 쓰거나 덮어쓴 `wp_posts` 행
+- board와 마찬가지로 탐지 장비는 이 읽기를 보지 못합니다.
+
+탈취된 목표는 실행 구간이 목표의 시간 범위와 겹치는 악성 케이스에 귀속합니다. 그런 케이스가 여럿이면 가장 늦게 시작한 케이스에 귀속합니다.
+
+- 그 케이스가 탐지되었을 때만 목표도 탐지된 것으로 셉니다.
+- 겹치는 케이스가 없는 목표는 탐지되지 않은 것으로 셉니다.
+- 귀속은 시간만으로 정합니다. 케이스의 `takes:` 필드는 채점에서 읽지 않습니다.
+
+점수의 `objectives` 블록에서:
+
+- `coverage`는 전체 난이도 대비 탐지된 난이도입니다. 탈취된 것이 없으면 `null`입니다.
+- `false_positives`는 FP입니다.
+- `damage`는 탐지되지 않은 난이도에 탐지된 난이도의 절반을 더한 값입니다. 탐지되지 않은 손실이 두 배로 계산되는 방식이 바로 이것입니다.
+
+**탐지.** 케이스는 케이스마다 선언한 두 전략 중 하나로 경보와 매칭합니다.
+
+- `marker`: 경보에 케이스의 `X-Request-ID` 값이 들어 있습니다.
+- `window`: 경보의 출발지 주소가 케이스의 출발지 주소와 일치하고, 경보 시각이 케이스의 시작과 끝 사이(앞뒤로 2초 여유)에 있습니다.
+
+한 전략에서 다른 전략으로 대체(fallback)하지 않습니다. 마커가 유실된 marker 케이스는 window로 메워지지 않고 미탐으로 드러나야 합니다. 터미널 케이스는 마커와 시간 구간을 모두 갖습니다.
+
+- 점수 엔드포인트에 `?correlation=marker` 또는 `?correlation=window`를 붙이면 전략을 강제합니다. 그 밖의 값은 400입니다.
+- 이 파라미터를 넘기는 콘솔 페이지는 없습니다(`session.html`은 파라미터 없이 `/score/`를 요청합니다).
+- 두 전략을 비교하려면 전략마다 엔드포인트를 한 번씩 호출합니다. 두 결과가 다르다면 이는 방어가 아니라 채점 방식에 대해 알려 주는 것입니다.
+
+각 `per_case` 항목에는 `expect`와 `corroborated`가 있습니다.
+
+- `expect`는 케이스의 시그니처가 포함해야 할 부분 문자열입니다.
+- `corroborated`는 매칭된 경보 중 하나의 시그니처에 `expect`가 대소문자 구분 없이 나타나면 true입니다. 같은 세션에서 정상 케이스에도 매칭된 시그니처는 세지 않습니다.
+- 케이스에 `expect`가 없으면 `null`입니다. `POST /api/sessions/<id>/cases/`로 기록한 window 케이스는 `expect`가 없으므로 항상 그렇습니다.
+- 탐지되었지만 corroborated가 아닌 케이스는 `score.warning.wrong_reason`을 추가합니다.
+
+케이스의 `expect`는 케이스를 실행할 때 케이스와 함께 저장합니다. 그래서 케이스 파일을 수정해도 끝난 세션을 다시 판정하지 않습니다. 마이그레이션 0009 이전에 기록된 행에는 저장된 `expect`가 없어서 지금의 케이스 파일로 판정합니다. 경보 위험도와 룰 유형은 쓰지 않습니다.
+
+**게임.** 점수의 `game` 블록은 세션이 닫힐 때까지 `{"revealed": false}`입니다. 닫힌 뒤에는 네 구성 요소와 각 가중치, 그리고 balance를 담습니다.
+
+- speed (0.25): 악성 케이스마다 첫 번째 매칭 경보가 케이스 시작 10초 이내에 나오면 1, 120초 이후면 0, 그 사이는 선형으로 계산합니다. 케이스별 값을 평균냅니다.
+- accuracy (0.30): 재현율에서 오탐률을 뺀 값이며, 하한은 0입니다.
+- coverage (0.20): 공격받은 공격 단계(`platform/lifecycle.py`) 중 탐지된 악성 케이스가 있는 단계의 비율입니다. 공격받은 단계가 없으면 0입니다. `objectives` 블록의 `coverage`와는 다릅니다.
+- response (0.25): 차단된 악성 케이스 비율에서 차단된 정상 케이스 비율을 뺀 값입니다.
+  - 어떤 케이스에 `meta["blocked"]`가 생기기 전까지는 `null`이고, 나머지 가중치를 재정규화합니다.
+  - 예정된 공격(403, 또는 sqlmap 자체의 주입 불가 결론)과 레슨의 시드 재실행(403)이 이 값을 설정합니다. 그 밖에 실행한 케이스는 설정하지 않습니다.
+
+`attacker`는 탈취된 목표의 난이도 합이며, 탐지된 목표는 절반으로 셉니다. `damage`와 같은 합입니다. `defender`는 구성 요소의 가중 평균에 탈취된 난이도를 곱하고 FP 하나마다 1을 뺀 값입니다. `balance`는 `defender - attacker`입니다. 탈취된 것이 없으면 balance는 FP의 음수입니다. 가중치와 체류 시간은 v1 기본값입니다(`docs/superpowers/specs/2026-09-29-zero-sum-scoring-design.md`).
+
+**고객.** 점수의 `customers` 블록은 세션이 기록한 고객 요청을 셉니다("고객 트래픽" 참고).
+
+- `sent`
+- `served`(2xx와 3xx)
+- `blocked`(403. 단, Django 자체의 CSRF 거부는 생성기가 `refused_by: "app"`으로 표시하므로 제외)
+- `unanswered`(10초 안에 응답 없음, status 0)
+- `other`(그 밖의 4xx, 5xx)
+- `alerted`(어떤 경보에 그 마커가 들어 있는 고객 요청)
+- `blocked_actions`
+
+요청 하나는 한 번만 셉니다. 고객 요청은 케이스가 아니므로 `per_case` 목록과 TP/FP/FN/TN은 바뀌지 않습니다. 고객 요청이 일으킨 경보는 `unattributed`에 세지 않습니다. 콘솔의 두 번째 점수는 케이스 문장 옆에 "차단된 고객 요청: M건 중 N건"을 표시합니다.
+
+점수 엔드포인트는 읽기 전용이며 이력을 보관하지 않습니다.
+
+## 고객 트래픽
+
+board 세션에는 고객을 둘 수 있습니다. 세션 내내 둘러보고, 검색하고, 로그인하고, 댓글을 다는 한국 커뮤니티 사용자들입니다.
+
+구성은 `wargames/board/traffic.yaml`에 선언합니다: 사용자 수, 출발지 가중치, 시드 계정, 글 1-3, 브라우저 User-Agent, 검색어, 댓글 내용, 행동 가중치 프로필.
+
+`platform/traffic.py`가 이를 다음으로 렌더링합니다.
+
+- 선언된 가중치에 따라 출발지에 배분한(최대 잉여 방식) 페르소나 12명. 각자 출발지 주소, 브라우저, 언어를 갖습니다.
+- 박스가 순환하며 실행하는, 단계로 이루어진 흐름 2,000개
+
+로그인과 댓글은 폼 POST입니다. 흐름은 먼저 페이지를 GET합니다. 박스가 그 페이지에서 `csrfmiddlewaretoken`을 꺼내 `csrftoken` 쿠키와 함께 보낸 뒤 302를 따라갑니다. 페이지에 토큰이 없으면(GET이 차단되었으면) 그 흐름은 브라우저와 마찬가지로 거기서 멈춥니다.
+
+`deploy/traffic/users.py`가 생성기입니다.
+
+- Python 표준 라이브러리만 씁니다.
+- 여러 스레드로 계획의 속도에 맞춰 요청을 보냅니다.
+- 요청마다 새 UUID 하나를 `X-Request-ID`에 넣습니다. 케이스 마커와 같은 형태라서, 학습자는 이 값으로 고객과 공격을 구분할 수 없습니다.
+- 요청마다 JSON 한 줄을 `records.jsonl`에 씁니다.
+- 계획 파일이 바뀌면 다시 읽고, 파일이 삭제되거나 SIGTERM을 받으면 멈춥니다.
+
+고객 트래픽 생성기는 슬롯의 Kali 컨테이너에서 시스템 계정 `cr-users`로 실행합니다.
+
+- 페르소나마다 컨테이너의 출발지 주소 중 하나에 바인딩하므로, 출발지 주소는 그 출발지의 것입니다.
+- 공격자와 분리합니다. 기본 출발지를 쓰지 않고, 공격자가 쓰는 어떤 출발지의 `source_ip`나 컨테이너의 바인딩되지 않은 출발 주소(대상으로 `ip route get`)도 쓰지 않습니다. `POSTROUTING -m owner --uid-owner cr-users -j RETURN`을 `ORIGIN-SNAT` SNAT 점프 앞에 넣으므로 공격자의 출발지 변환은 고객에게 적용되지 않습니다.
+
+`platform/attacker.py`가 박스에서 실행하는 모든 명령을 담습니다.
+
+- `place_customers`: 계정, NAT 예외, 프로그램을 배치합니다. 컨테이너 안에서 `sudo`로 합니다.
+- `run_customers`: 계획을 쓰고, 프로그램이 실행 중이 아니면 `setsid`와 `setpriv`로 시작합니다.
+- `stop_customers`
+- `customer_records`
+
+프로그램은 시작할 때마다 플랫폼이 보냅니다. Kali 이미지에 넣어 두지 않습니다. 컨테이너는 닫힐 때마다 이미지에서 새로 만들어지므로, 이미지에 넣으면 프로그램을 고칠 때마다 새 이미지를 기다려야 하기 때문입니다.
+
+API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
+
+- `PUT /api/sessions/<id>/traffic/ {rate, profile}`은 고객을 시작하거나, 실행 중인 생성기의 속도와 프로필을 바꿉니다(페르소나는 그대로).
+  - `rate`는 초당 요청 수로 기본값 1, 최대 50입니다.
+  - `profile`은 워게임이 선언한 프로필 중 하나입니다. board에는 `community`(기본값), `plain`(특이한 검색 없음), `readers`(댓글을 뺀 `plain`), `club`(`community`에 댓글 속 코드 질문을 더함)이 있습니다.
+  - `traffic.yaml`이 없는 워게임은 404, 닫힌 세션은 409, 박스나 출발지가 없으면 503입니다.
+- `GET`은 새 기록을 먼저 읽은 뒤 다음을 돌려줍니다.
+  - `declared`, `profiles`, `running`, `rate`, `profile`, `started_at`, `stopped_at`, `error`
+  - 건수 `sent`, `served`, `blocked`(앱이 아니라 방어 설정이 낸 403), `unanswered`, `other`
+  - `sources`(출발지, 주소, 요청 수)
+  - `by_action`(행동별 보낸 수와 차단된 수)
+- `DELETE`는 생성기를 멈추고 마지막으로 보낸 기록까지 읽습니다. 세션을 닫을 때도 슬롯을 초기화하기 전에 같은 일을 합니다. 박스에 연결할 수 없으면 닫기는 계속 진행하고 오류를 `traffic.error`에 남깁니다.
+
+기록은 바이트 오프셋 기준으로 가져와(`tail -c`, 호출당 최대 1 MiB, 완전한 줄만) 호출마다 `bulk_create` 한 번으로 `CustomerRequest` 행에 넣습니다. 오프셋은 `Session.traffic`에 둡니다.
+
+세션 페이지는 테스트용으로 URL에 `?traffic`이 있을 때만 고객 트래픽 스위치를 보여 줍니다. 시나리오는 고객을 스스로 시작합니다.
+
+생성기는 board 자체의 CSRF 거부(`refused_by: "app"`, 차단으로 세지 않음)를 영어 문장뿐 아니라 Django 실패 페이지의 `<span>(403)</span></h1>`로도 구분합니다. board는 고객의 언어로 응답하므로, 한국어 사용 고객이 받는 거부는 한국어로 옵니다. 이런 거부는 한 페르소나의 두 흐름이 로그인 시 토큰 교체와 경합할 때 생깁니다.
+
+## 시나리오
+
+시나리오는 훈련 환경에서 시간을 정해 진행하는 실습입니다. 고객과 공격자가 board를 쓰는 동안 학습자는 실제 도구로 방어하고, 플랫폼은 마지막의 최종 점검 구간(final verification window)으로 결과를 판정합니다.
+
+설계는 `docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`의 P4 단계입니다. 결정은 `docs/DECISIONS.md`의 2026-10-13 "scenario course" 항목에 있습니다.
+
+**기술자(descriptor).** 워게임 `scenario.yaml`의 `scenarios:`가 기술자를 담고, `wargames.checked_scenarios`가 검증합니다.
+
+| 필드 | 의미 |
 |---|---|
-| `id`, `order` | `1.1`, `2.1`, ... Ids share one namespace with the foundations |
-| `task_class` | `judgement`, `availability`, `detection` or `unknown` |
-| `guidance` | `worked` (may declare `steps`, which run on the step engine), `faded` or `none` |
-| `text`, `briefing` | `text` is the strings prefix. `briefing` maps `situation`, `goal` and `measured_by` to string keys |
-| `minutes`, `window_minutes` | the scenario's length and its final verification window |
-| `defense` | a posture from the wargame's `defense:` map (CRS level, exclusions, thresholds, and the Suricata ruleset) |
-| `traffic` | `{profile, rate}` for the customers (`traffic.yaml`) |
-| `red` | `schedule` (the default) or `person`. With `person`, a person uses the red console and the scenario may declare no attacks |
-| `attacks` | `[{at, case, origin}]`: seconds after open (within `minutes`), a malicious case, and an optional origin. Hidden from the learner |
-| `completion` | per class. Judgement: `{judged: all}`, optionally `pattern: judged`. Availability: `{served: all, held: all}`, optionally `thresholds: {inbound, outbound}`. Unknown: `{served: all, held: all}`. Detection: `{detected_by: suricata}` |
-| `cards` | `[{id, when}]`, where `when` is one of `start`, `alert`, `blocked`, `window` |
-| `hints` | hint ids, offered one at a time |
+| `id`, `order` | `1.1`, `2.1`, ... id는 기초 레슨과 같은 네임스페이스를 씁니다 |
+| `task_class` | `judgement`, `availability`, `detection`, `unknown` 중 하나 |
+| `guidance` | `worked`(`steps`를 선언할 수 있으며 단계 엔진에서 실행), `faded`, `none` |
+| `text`, `briefing` | `text`는 문자열 키 접두어입니다. `briefing`은 `situation`, `goal`, `measured_by`를 문자열 키에 연결합니다 |
+| `minutes`, `window_minutes` | 시나리오 길이와 최종 점검 구간 길이 |
+| `defense` | 워게임 `defense:` 맵에 있는 방어 설정 하나(CRS 수준, 예외 규칙, 임계치, Suricata 룰셋) |
+| `traffic` | 고객용 `{profile, rate}`(`traffic.yaml`) |
+| `red` | `schedule`(기본값) 또는 `person`. `person`이면 사람이 레드팀 콘솔을 쓰며, 시나리오에 공격을 하나도 선언하지 않아도 됩니다 |
+| `attacks` | `[{at, case, origin}]`: 연 뒤 몇 초(`minutes` 이내), 악성 케이스, 선택 사항인 출발지. 학습자에게는 보이지 않습니다 |
+| `completion` | 종류별. judgement: `{judged: all}`, 선택으로 `pattern: judged`. availability: `{served: all, held: all}`, 선택으로 `thresholds: {inbound, outbound}`. unknown: `{served: all, held: all}`. detection: `{detected_by: suricata}` |
+| `cards` | `[{id, when}]`, `when`은 `start`, `alert`, `blocked`, `window` 중 하나 |
+| `hints` | 한 번에 하나씩 제안하는 힌트 id |
 
-`GET /api/wargames/` lists each scenario's card (`wargames.scenario_card`) without `attacks`. `GET /api/sessions/<id>/` drops `attacks` and `completion` from a worked scenario's `lesson` and empties its `cases`.
+`GET /api/wargames/`는 각 시나리오의 카드(`wargames.scenario_card`)를 `attacks` 없이 나열합니다. `GET /api/sessions/<id>/`는 단계형 시나리오의 `lesson`에서 `attacks`와 `completion`을 빼고 `cases`를 비웁니다.
 
-**Opening.** `POST /api/sessions/ {"scenario": "2.1"}` does the following:
+**열기.** `POST /api/sessions/ {"scenario": "2.1"}`은 다음을 합니다.
 
-1. It resolves the wargame from the scenario id.
-2. It refuses `lesson`, `guidance` and `defense`.
-3. It takes the declared posture, as any session does.
-4. `scenario_run.begin` starts the customers and writes `Session.scenario_state` (migration 0025, beside `Session.course_scenario`). The state holds the schedule with each attack's absolute due time, the windows, the verdicts, the hint offer and the WAF versions seen.
+1. 시나리오 id로 워게임을 찾습니다.
+2. `lesson`, `guidance`, `defense`를 거부합니다.
+3. 다른 세션과 마찬가지로 선언된 방어 설정을 적용합니다.
+4. `scenario_run.begin`이 고객을 시작하고 `Session.scenario_state`(마이그레이션 0025, `Session.course_scenario` 옆)를 씁니다. 여기에는 공격마다 절대 예정 시각을 붙인 일정, 점검 구간, 판정 결과, 힌트 제안, 지금까지 확인한 WAF 버전이 들어갑니다.
 
-A worked scenario sets `guidance` true and `lesson` to its id. Its steps then run on `/lesson/steps/` without seeding replays. Customers that cannot start close the session with 503.
+단계형 시나리오는 `guidance`를 true로, `lesson`을 자기 id로 설정합니다. 그래서 단계는 재생 시드 없이 `/lesson/steps/`에서 실행됩니다. 고객을 시작하지 못하면 세션을 닫고 503을 돌려줍니다.
 
-**The engine** is `platform/api/scenario_run.py`, with the pure rules in `platform/scenarios.py`. It is one thread in the platform process. It starts on the first scenario and at boot, from `cr/wsgi.py` (`resume` marks an attack that was interrupted while firing as due again). A failure of a tick, or of the connection cleanup after it, is logged on its own and does not end the thread.
+**엔진**은 `platform/api/scenario_run.py`이고, 순수 규칙은 `platform/scenarios.py`에 있습니다. 플랫폼 프로세스 안의 스레드 하나입니다. 첫 시나리오가 열릴 때, 그리고 부팅할 때 `cr/wsgi.py`가 시작합니다(`resume`: 실행 도중 중단된 공격을 다시 예정 상태로 돌립니다). 틱 하나나 그 뒤의 연결 정리가 실패하면 따로 로그를 남기며, 스레드는 끝나지 않습니다.
 
-Every `CR_SCENARIO_TICK` (2 s), for each open scenario session, the engine does the following.
+`CR_SCENARIO_TICK`(2초)마다 열린 시나리오 세션 각각에 대해 엔진은 다음을 합니다.
 
-- It does nothing for a session whose clock has not started. `begin` writes `started: false`; the briefing's Start posts `POST .../scenario/start/`, which sets `opened_at`, the window time, the end and the attack schedule from that moment, once (2026-11-14). Until then `time_left` is the whole `minutes`. `verify-window` starts the clock first if it has not.
-- It opens the window at its scheduled time (`minutes - window_minutes` after the clock started) if the learner has not.
-- It claims each due attack and fires it on a pool of four through `views._fire`, marked `meta.scheduled`. This is not a replay mark, so the attack counts in both scores.
-  - A sqlmap dump goes through `views._credit_loot`, attributed to that case. The first score therefore counts a loss only when the board's own accounts match.
-  - The entry keeps `outcome`, held or leaked.
-  - The case keeps sqlmap's conclusion lines and its 403 count (`meta.conclusions`, `meta.forbidden`, not judged).
-  - `meta.blocked` is set on a 403, or on sqlmap's own not-injectable conclusion after a clean exit with no dumped row (`tools.found_not_injectable`).
-  - The sqlmap cases decline sqlmap's offer to crack the hashes (`--answers=crack=N`). The dumped cells are therefore the raw hashes that `loot.matched` compares.
-- Every `CR_SCENARIO_OBSERVE` (15 s), it pulls the customers' records and ingests the last 180 s.
-- Every `CR_SCENARIO_WAF_POLL` (20 s), it reads the WAF file to notice a change made in the terminal.
-- It judges an open window once the window has ended and every attack due inside it has fired or failed.
+- 시계가 시작되지 않은 세션에는 아무것도 하지 않습니다. `begin`은 `started: false`를 쓰고, 상황 설명 화면의 시작이 `POST .../scenario/start/`를 보내면 그 순간을 기준으로 `opened_at`, 점검 구간 시각, 끝 시각, 공격 일정을 한 번 정합니다(2026-11-14). 그 전까지 `time_left`는 `minutes` 전체입니다. `verify-window`는 시계가 시작되지 않았으면 먼저 시작합니다.
+- 학습자가 점검 구간을 열지 않았으면 예정 시각(시계 시작 뒤 `minutes - window_minutes`)에 엽니다.
+- 예정 시각이 된 공격을 하나씩 가져와 워커 4개짜리 풀에서 `views._fire`로 실행하고, `meta.scheduled`로 표시합니다. 재생 표시가 아니므로 두 점수에 모두 들어갑니다.
+  - sqlmap 덤프는 해당 케이스에 귀속해 `views._credit_loot`를 거칩니다. 그래서 첫 번째 점수는 board 자체의 계정과 일치할 때만 손실로 셉니다.
+  - 일정 항목에는 `outcome` held 또는 leaked가 남습니다.
+  - 케이스에는 sqlmap의 결론 줄과 403 횟수가 남습니다(`meta.conclusions`, `meta.forbidden`, 판정에는 쓰지 않음).
+  - `meta.blocked`는 403이 있었거나, 덤프한 행 없이 정상 종료한 sqlmap이 스스로 주입 불가로 결론 낸 경우(`tools.found_not_injectable`)에 설정합니다.
+  - sqlmap 케이스는 해시를 크랙하겠느냐는 sqlmap의 제안을 거절합니다(`--answers=crack=N`). 그래서 덤프한 칸에는 `loot.matched`가 비교하는 원래 해시가 그대로 남습니다.
+- `CR_SCENARIO_OBSERVE`(15초)마다 고객 기록을 가져와 최근 180초를 수집(ingest)합니다.
+- `CR_SCENARIO_WAF_POLL`(20초)마다 WAF 파일을 읽어 터미널에서 한 변경을 알아챕니다.
+- 열린 점검 구간이 끝났고 그 안에 예정된 공격이 모두 실행되었거나 실패했으면 그 구간을 판정합니다.
 
-Closing cancels the attacks still due. An attack already firing finishes and is recorded.
+세션을 닫으면 아직 예정 상태인 공격은 취소합니다. 이미 실행 중인 공격은 끝까지 진행하고 기록합니다.
 
-**The final verification window.** `POST .../scenario/verify-window/` ("Start final check") or the schedule opens the window for `window_minutes`. In a judgement scenario the learner's call answers 409 with `unjudged`, the count, while an item listed so far has no verdict (`scenario_run.unjudged`); the console then lists the items again and says how many are left. The schedule's window opens regardless. The engine adds one entry inside it for every attack case the schedule names that is not already due there.
+**최종 점검 구간.** `POST .../scenario/verify-window/`("최종 점검 시작") 또는 일정이 이 구간을 `window_minutes` 동안 엽니다. 판정 시나리오에서 지금까지 나온 항목 중 판단하지 않은 항목이 있으면 학습자의 요청은 409와 그 개수 `unjudged`로 답합니다(`scenario_run.unjudged`). 콘솔은 항목을 다시 불러오고 남은 개수를 알려 줍니다. 일정에 따른 구간은 그대로 열립니다. 엔진은 일정에 있는 공격 케이스 중 구간 안에 아직 예정되지 않은 케이스마다 하나씩 구간 안에 항목을 추가합니다.
 
-The window judges the class's `completion`:
+구간은 시나리오 종류의 `completion`을 판정합니다.
 
-- `served`: no customer request was blocked by the defence within the window (a 403, not the app's).
-- `held`: every attack inside the window fired and was held (no loot match, no effect).
-- `judged`: every item listed when the window opened was judged right. The list is kept with the window. Verdicts given during the window count. An item that reaches the records later with an earlier time is not added.
-- `detected_by`: every attack inside the window drew a corroborated Suricata alert, and no customer request did.
-- `thresholds`: the CRS anomaly thresholds in force at the window's WAF snapshot are at most the ones named. A tuning without thresholds runs at the CRS defaults, 5 inbound and 4 outbound.
+- `served`: 구간 안에서 방어 설정이 차단한 고객 요청(앱이 아닌 403)이 없어야 합니다.
+- `held`: 구간 안의 모든 공격이 실행되었고 막혔어야 합니다(탈취 데이터 일치 없음, 영향 없음).
+- `judged`: 구간이 열릴 때 목록에 있던 모든 항목을 맞게 판정해야 합니다. 목록은 구간과 함께 보관합니다. 구간 중에 내린 판정도 인정합니다. 나중에 더 이른 시각으로 기록에 들어온 항목은 추가하지 않습니다.
+- `detected_by`: 구간 안의 모든 공격이 corroborated인 Suricata 경보를 일으키고, 고객 요청은 경보를 일으키지 않아야 합니다.
+- `thresholds`: 구간의 WAF 스냅샷 시점에 적용 중인 CRS 이상 점수 임계치가 지정한 값 이하여야 합니다. 임계치를 지정하지 않은 설정은 CRS 기본값인 인바운드 5, 아웃바운드 4로 동작합니다.
 
-Other rules of the window:
+구간의 그 밖의 규칙:
 
-- With `red: person`, the window also judges, like scheduled ones, the malicious cases the person fired inside it that are not replays.
-- A judgement scenario is judged on its verdicts alone, as the design's class table says. Customers blocked during its window are reported beside the result and not counted against it.
-- The result names the fix (`lesson.fix_class` on the WAF snapshot taken then: `level`, `threshold`, `rule`, `target`, `path_target`; see "Sessions, WAF tuning and the step engine").
-- A failed window can be followed by another.
+- `red: person`이면 구간 안에서 그 사람이 실행한, 재생이 아닌 악성 케이스도 예정된 공격과 똑같이 판정합니다.
+- judgement 시나리오는 설계의 종류 표에 따라 판정 결과만으로 판정합니다. 구간 중에 차단된 고객은 결과 옆에 보고할 뿐 실패로 세지 않습니다.
+- 결과에는 조치 유형이 표시됩니다(그때 찍은 WAF 스냅샷에 대한 `lesson.fix_class`: `level`, `threshold`, `rule`, `target`, `path_target`. "세션, WAF 설정 조정, 단계 엔진" 참고).
+- 실패한 구간 뒤에 새 구간을 열 수 있습니다.
 
-**Judging alerts** (`GET/POST /api/sessions/<id>/triage/`). The learner judges alerts one item at a time.
+**경보 판단**(`GET/POST /api/sessions/<id>/triage/`). 학습자는 경보를 항목 하나씩 판정합니다.
 
-- There is one item per marker that drew alerts: each customer request, and each attack case however many requests it sent (one case is one decision).
-- The item id is a hash of the marker with the session's browse marker, so it cannot be matched to `/cases/`.
-- An item shows the first and last alert, the alert count, source addresses, one request, the WAF verdict (`blocked` when a 949/959 total fired, `logged` or `none`), the status, and up to 12 rules with engine, id, message and count. It never shows the case name or a label.
-- Replays and the learner's own Website pane requests are left out.
-- A verdict is `{item, verdict: attack|customer, succeeded}`. The platform judges `verdict` against the record (a case's `malicious`, or a customer row), and `succeeded` against the target (loot matched on the case, or an objective in its window). The answer carries `right_so_far`, and the console's right-verdict count updates from it.
-- A scenario whose completion has `pattern: judged` also asks an attack's `pattern`. This is one of the CAPEC ids of the case file's malicious cases, listed in the scenario card's `patterns`. The platform judges it against the case's own `pattern`. It is kept with the verdict and never shown on an item.
-- The step check kind `triage` (`judged: customer | attack | all`) passes on the learner's right verdicts; `judged: verified` passes once a window has opened, so the guided "press final check" step passes on a check that started, not on the click.
-- The judge pane re-reads the items every 15 s while open and while no item is half-judged; a judged attack's follow-up buttons close, so the re-read goes on.
-- The debrief's judgement line counts the items the last judged window listed, the same total its headline names; with no judged window, every item.
+- 경보를 일으킨 마커마다 항목이 하나입니다. 고객 요청은 요청마다 하나, 공격 케이스는 요청을 몇 개 보냈든 케이스마다 하나입니다(케이스 하나는 판정 하나).
+- 항목 id는 마커를 세션의 browse 마커와 함께 해시한 값이므로 `/cases/`와 대조할 수 없습니다.
+- 항목에는 첫 경보와 마지막 경보, 경보 수, 출발지 주소, 요청 하나, WAF 판정(949/959 합계 룰이 동작했으면 `blocked`, `logged`, `none`), 상태 코드, 엔진·ID·메시지·건수가 붙은 룰 최대 12개가 표시됩니다. 케이스 이름이나 라벨은 절대 표시하지 않습니다.
+- 재생 요청과 학습자 자신의 웹사이트 창 요청은 제외합니다.
+- 판정은 `{item, verdict: attack|customer, succeeded}`입니다. 플랫폼은 `verdict`를 기록(케이스의 `malicious` 또는 고객 행)과 대조하고, `succeeded`는 대상 시스템(케이스에 일치한 탈취 데이터, 또는 시간 범위 안의 목표)과 대조합니다. 응답에는 `right_so_far`가 있고, 콘솔의 맞힌 판정 수는 이 값으로 갱신됩니다.
+- completion에 `pattern: judged`가 있는 시나리오는 공격의 `pattern`도 묻습니다. 케이스 파일 악성 케이스의 CAPEC id 중 하나이며, 시나리오 카드의 `patterns`에 나열합니다. 플랫폼은 이를 케이스 자신의 `pattern`과 대조합니다. 이 값은 판정과 함께 보관하고 항목에는 표시하지 않습니다.
+- 단계 점검 종류 `triage`(`judged: customer | attack | all`)는 학습자의 맞는 판정으로 통과합니다. `judged: verified`는 구간이 열리면 통과하므로, "최종 점검 시작" 안내 단계는 클릭이 아니라 실제로 시작된 점검으로 통과합니다.
+- 판정 창은 열려 있고 판단 중인 항목이 없으면 15초마다 항목을 다시 읽습니다. 공격으로 판정한 뒤에는 이어지는 질문 버튼을 닫으므로 다시 읽기가 멈추지 않습니다.
+- 결과 보고의 판정 줄은 마지막으로 판정된 구간이 나열한 항목만 세므로, 맨 위 결과와 합계가 같습니다. 판정된 구간이 없으면 모든 항목을 셉니다.
 
-**Status, hints, debrief.** `GET .../scenario/` returns:
+**상태, 힌트, 결과 보고(debrief).** `GET .../scenario/`는 다음을 돌려줍니다.
 
-- the scenario card;
-- `phase` (running, window, passed, failed, closed) and `time_left`;
-- `started`: false while the briefing is open and the clock has not begun (`time_left` is then the whole run);
-- the last minute's blocked customers and alerted requests (`alerted_per_minute`: distinct markers that drew an alert, each customer request and each attack case once however many requests it sent);
-- objectives lost, the window and the completion;
-- the cards due and the hint offer.
+- 시나리오 카드
+- `phase`(running, window, passed, failed, closed)와 `time_left`
+- `started`: 상황 설명이 열려 있고 시계가 시작되지 않았으면 false(이때 `time_left`는 실행 시간 전체)
+- 직전 1분 동안 차단된 고객과 경보가 발생한 요청(`alerted_per_minute`: 경보를 일으킨 서로 다른 마커 수. 고객 요청은 요청마다, 공격 케이스는 요청을 몇 개 보냈든 한 번)
+- 탈취된 목표, 점검 구간, 완료 조건
+- 표시할 카드와 힌트 제안
 
-A hint is offered (not recorded) when any of these happens:
+힌트는 다음 중 하나가 일어나면 제안합니다(기록하지는 않습니다).
 
-- a step check fails twice;
-- the same item is judged wrong twice;
-- a `PUT /waf/` writes the file already in force;
-- five minutes pass without a WAF change while customers are blocked.
+- 단계 점검이 두 번 실패한다.
+- 같은 항목을 두 번 틀리게 판정한다.
+- `PUT /waf/`가 이미 적용 중인 파일을 그대로 쓴다.
+- 고객이 차단되는 동안 5분 동안 WAF 변경이 없다.
 
-`POST .../scenario/hints/` opens the next hint and records it in `Session.hints`.
+`POST .../scenario/hints/`는 다음 힌트를 열고 `Session.hints`에 기록합니다.
 
-`GET .../scenario/debrief/` answers 409 until a window is judged or the session closes, so the schedule stays hidden. Then it returns these parts, in the Igloo/ASEC report order:
+`GET .../scenario/debrief/`는 점검 구간이 판정되거나 세션이 닫히기 전에는 409를 돌려줍니다. 일정이 드러나지 않게 하기 위해서입니다. 그 뒤에는 Igloo/ASEC 보고서 순서로 다음을 돌려줍니다.
 
-- `overview`: the last final check's verdict, its fix class and reasons, the number of checks judged, steps passed of the total, and the hints used;
-- `evidence`: at most 20 of the session's own detections from the scheduled attacks, from the completion's detector when it names one, with rule, request and case. It makes no Elasticsearch read;
-- `change`: the declared posture against the last WAF snapshot. It lists the exclusions added and removed, both levels, and a line diff of the exclusion file against what `crs.rendered` writes for the posture;
-- `cases`: each scheduled case before and inside the judged windows, held or leaked;
-- `risk`: a string key named by the fix class;
-- `customers`;
-- the attack `timeline`;
-- `triage`;
-- `at`, which carries the open and last-judged times for agents.
+- `overview`: 마지막 최종 점검의 판정, 조치 유형과 사유, 판정한 점검 수, 전체 단계 중 통과한 단계 수, 사용한 힌트
+- `evidence`: 예정된 공격에서 나온 세션 자체의 탐지 기록 최대 20개. 완료 조건이 탐지기를 지정하면 그 탐지기의 기록이며, 룰·요청·케이스를 포함합니다. Elasticsearch는 읽지 않습니다.
+- `change`: 선언된 방어 설정과 마지막 WAF 스냅샷의 비교. 추가·삭제된 예외 규칙, 양쪽의 수준, 그리고 해당 방어 설정에 대해 `crs.rendered`가 생성하는 내용과 예외 파일의 줄 단위 diff가 들어 있습니다.
+- `cases`: 예정된 각 케이스의 판정된 구간 이전과 구간 안 결과, held 또는 leaked
+- `risk`: 조치 유형이 정하는 문자열 키
+- `customers`
+- 공격 `timeline`
+- `triage`
+- `at`: 에이전트용으로 시작 시각과 마지막 판정 시각이 들어 있습니다.
 
-The console renders the debrief with `debrief_script.html` on the blue console and on the closed session's page.
+콘솔은 결과 보고를 `debrief_script.html`로 블루팀 콘솔과 닫힌 세션 페이지에 렌더링합니다.
 
-**Console.** The home page lists the scenarios under each wargame. Start opens the blue console on the briefing: title, situation, goal, how it is measured and the time, with no class or guidance chip. Its Start starts the clock.
+**콘솔.** 홈 페이지는 워게임마다 시나리오를 나열합니다. 시작을 누르면 블루팀 콘솔이 상황 설명 화면(제목, 상황, 목표, 평가 방법, 시간)으로 열리며, 유형·안내 수준 칩은 없습니다. 이 화면의 시작이 시계를 시작합니다.
 
-- A strip above the panes shows the time left, customers blocked and alerted requests per minute, objectives lost, the hint offer and Start final check.
-- A judgement scenario adds the Alerts pane. The pane keeps its list clear: the cards and the opened hints sit in the lesson note's column beside the pane, and the highlight's callout stays inside the pane.
-- A detection or unknown scenario adds the IDS rules pane (the rule editor on `/api/rules/`).
-- Cards appear when their moment comes. The debrief opens when the window is judged.
-- A worked scenario's steps run on the note with its hint list empty. Its hints are the scenario's offer.
+- 창 위의 띠에는 남은 시간, 분당 차단된 고객과 경보가 발생한 요청, 탈취된 목표, 힌트 제안, 최종 점검 시작 버튼이 표시됩니다.
+- judgement 시나리오에는 경보 창이 추가됩니다. 이 창은 목록을 가리지 않습니다. 카드와 연 힌트는 창 옆의 레슨 노트 열에 있고, 강조 표시의 콜아웃은 창 안에 머뭅니다.
+- detection 또는 unknown 시나리오에는 IDS 룰 창(`/api/rules/`를 쓰는 룰 편집기)이 추가됩니다.
+- 카드는 정해진 때가 되면 나타납니다. 구간이 판정되면 결과 보고가 열립니다.
+- 단계형 시나리오의 단계는 레슨 노트에서 실행되며 힌트 목록은 비어 있습니다. 힌트는 시나리오의 힌트 제안으로 받습니다.
 
-**On the board.** The board has eleven scenarios. The home page lists them by task class after the foundations (`order`). "Posture" is the defense the scenario starts from.
+**board의 시나리오.** board에는 시나리오가 열한 개 있습니다. 홈 페이지에 기초 레슨 다음으로, 과제 종류 순서대로 나열합니다(`order`). "방어 설정"은 시나리오가 시작하는 defense입니다.
 
-| Id | Title | Class, guidance | Posture | Customers | Attacks (hidden) |
+| Id | 제목 | 종류, 안내 방식 | 방어 설정 | 고객 | 공격(비공개) |
 |---|---|---|---|---|---|
-| 1.1 | Telling customer requests from attacks | judgement, worked | `level2`: PL2 | `community` 2/s | sqlmap at 150 s (`ru`) |
-| 1.2 | Judging alerts the WAF only logs | judgement, faded | `inherited`: PL2, 949110 and 959100 removed | `community` 2/s | sqlmap at 120 s, a search injection at 300 s (`ru`) |
-| 1.3 | Telling attack types apart | judgement, none. It judges the pattern too | `inherited` | `community` 4/s | eight cases from 90 to 660 s, all from `kr`: sqlmap stock and tamper, search, union and sign-in injections, two XSS, path traversal |
-| 2.1 | Fixing false positives on Korean search | availability, faded | `level3`: PL3 | `readers` 2/s | sqlmap at 240 s (`ru`) |
-| 2.2 | Fixing false positives on tags and links | availability, faded | `level2` | `community` 2/s | sqlmap at 240 s (`ru`) |
-| 2.3 | Lowering the anomaly threshold | availability, none. The final check runs at thresholds 5/4 | `untuned`: PL3, thresholds 10,000/10,000 | `plain` 2/s | sqlmap at 600 s (`ru`) |
-| 3.1 | Fixing a detection rule | detection, worked | `broken-rule`: PL1, `broken-sort.rules` (sid 9000101 reads `http.request_body`) | `plain` 2/s | sqlmap at 120 s (`ru`) |
-| 3.2 | Writing a rule for the sort attack | detection, faded | `ids`: PL1, `no-uri-sqli.rules` | `plain` 2/s | sqlmap at 120 s (`ru`) |
-| 3.3 | Detecting a variant of an attack | detection, faded | `spelled`: PL1, `spaced-sort.rules` (SQL words between spaces) | `plain` 2/s | sqlmap at 120 s, the tamper variant at 300 s (`ru`) |
-| 3.4 | Writing a rule for XSS in comments | detection, none | `full`: PL1, `local.rules` | `plain` 2/s | the comment XSS at 120 s, the search XSS at 240 s (`ru`) |
-| 4.1 | Combined exercise | unknown, none (no cards, no hints) | `full` | `club` 2/s (adds code questions in comments) | `board-sqli-orderby-sqlmap-versioned` at 300 s, sqlmap at 600 s (`us`) |
+| 1.1 | 고객 요청과 공격 구분하기 | judgement, worked | `level2`: PL2 | `community` 초당 2건 | 150초에 sqlmap(`ru`) |
+| 1.2 | 차단되지 않은 WAF 경보 판단 | judgement, faded | `inherited`: PL2, 949110과 959100 제거 | `community` 초당 2건 | 120초에 sqlmap, 300초에 검색 인젝션(`ru`) |
+| 1.3 | 공격 유형 구분하기 | judgement, none. 공격 패턴도 판정 | `inherited` | `community` 초당 4건 | 90초부터 660초까지 케이스 8개, 모두 `kr`에서: sqlmap 기본과 tamper, 검색·union·로그인 인젝션, XSS 2개, 경로 순회(path traversal) |
+| 2.1 | 한글 검색 오탐 해결 | availability, faded | `level3`: PL3 | `readers` 초당 2건 | 240초에 sqlmap(`ru`) |
+| 2.2 | 태그·링크 검색 오탐 해결 | availability, faded | `level2` | `community` 초당 2건 | 240초에 sqlmap(`ru`) |
+| 2.3 | 이상 점수 임계치 낮추기 | availability, none. 최종 점검은 임계치 5/4 | `untuned`: PL3, 임계치 10,000/10,000 | `plain` 초당 2건 | 600초에 sqlmap(`ru`) |
+| 3.1 | 탐지 룰 수정하기 | detection, worked | `broken-rule`: PL1, `broken-sort.rules`(sid 9000101이 `http.request_body`를 읽음) | `plain` 초당 2건 | 120초에 sqlmap(`ru`) |
+| 3.2 | sort 공격 탐지 룰 작성하기 | detection, faded | `ids`: PL1, `no-uri-sqli.rules` | `plain` 초당 2건 | 120초에 sqlmap(`ru`) |
+| 3.3 | 변형된 공격 탐지하기 | detection, faded | `spelled`: PL1, `spaced-sort.rules`(앞뒤가 공백인 SQL 단어) | `plain` 초당 2건 | 120초에 sqlmap, 300초에 tamper 변형(`ru`) |
+| 3.4 | 댓글 XSS 탐지 룰 작성하기 | detection, none | `full`: PL1, `local.rules` | `plain` 초당 2건 | 120초에 댓글 XSS, 240초에 검색 XSS(`ru`) |
+| 4.1 | 종합 실습 | unknown, none(카드·힌트 없음) | `full` | `club` 초당 2건(댓글에 코드 질문 추가) | 300초에 `board-sqli-orderby-sqlmap-versioned`, 600초에 sqlmap(`us`) |
 
-Which CRS rules refuse the customers' requests:
+고객 요청을 차단하는 CRS 룰:
 
-- At PL3, rule 920272 and rule 942460 refuse a Korean search on `ARGS:q` (920272 also on `REQUEST_URI_RAW` once those are excluded). Rule 920272 on `REQUEST_HEADERS:Referer` refuses every page a customer opens after such a search. A Korean comment is refused by 920272 on `REQUEST_BODY` and 942460 on `ARGS:body`.
-- At PL2, the `<b>` search is refused by 941320 and the YouTube link by 931130, both on `ARGS:q`.
-- At PL1, the code questions in `club` profile comments are refused by 942100, 942190, 941100, 941110 and 941160 on `ARGS:body`.
+- PL3에서 한글 검색은 `ARGS:q`에 대한 920272와 942460에 차단됩니다(이 둘을 예외 처리하면 `REQUEST_URI_RAW`에 대한 920272에 차단). 한글 검색을 한 번 한 뒤 고객이 여는 모든 페이지는 `REQUEST_HEADERS:Referer`에 대한 920272에 차단됩니다. 한글 댓글은 `REQUEST_BODY`에 대한 920272와 `ARGS:body`에 대한 942460에 차단됩니다.
+- PL2에서는 `<b>` 검색이 941320에, 유튜브 링크가 931130에 차단됩니다. 둘 다 `ARGS:q`에서입니다.
+- PL1에서는 `club` 프로필 댓글의 코드 질문이 `ARGS:body`에 대한 942100, 942190, 941100, 941110, 941160에 차단됩니다.
 
-Scenario 4.2 (a person on the red console against the learner) is not declared, because it needs a second person. The engine accepts `red: person`.
+시나리오 4.2(레드팀 콘솔을 쓰는 사람과 학습자의 대결)는 선언되어 있지 않습니다. 두 번째 사람이 필요하기 때문입니다. 엔진은 `red: person`을 받습니다.
 
-## Decisions
+## 결정
 
-- **One case file per wargame**, with attacks and benign traffic together: `redteam/cases/board.yaml` for the board, `redteam/cases/corp.yaml` for corp. Separate files make it easy to forget the benign cases. The CLI reads `board.yaml` unless `--cases` names another file. It opens the session of the scenario whose `case_file` matches that file's basename (board for an unknown one).
-- **The harness refuses to send a rewritten path.** `requests` turns `/static/../../etc/passwd` into `/etc/passwd`. Sending that would record an attack that never left, and would score the harness's failure as the defence's. Percent-encoding differences are allowed.
-- **A tool that cannot start raises. A tool that exits non-zero counts.** sqlmap exits non-zero when it finds nothing, but its traffic went out.
-- **Kibana is in compose, with full access** (not a read-only role). It reads the same Elasticsearch that the platform ingests from.
-  - It is reached through the platform's port 8000 at `/kibana/`, where nginx in front of it refuses everything but Discover (below). An operator reaches it by an ssh tunnel to 127.0.0.1:5601 on the platform host's loopback. The blue console frames it.
-  - **Bring-up import.** `platform/kibana.py` runs in the background at bring-up. It asks `/api/status` first and imports only once Kibana answers. It retries while Kibana cannot be reached or answers 502/503/504. It reports any other HTTP error once, with its status and body. A starting Kibana answers a multipart import with 415.
-  - The import takes `deploy/kibana/objects.ndjson` with overwrite. It contains:
-    - the data view `logs-*` on `@timestamp`. Its runtime fields fold each Suricata/ModSecurity pair into one column (`rule`, `rule_id`, `source_ip`, `destination`, `url`, `status`);
-    - the "Alerts" search and the "Overview" dashboard. Their titles and the data view's `sourceFilters` name no platform.
-  - `kibana.py` sets `defaultRoute` to that search. An existing data view is what keeps Kibana's Welcome screen away. It also drops `_index` from Kibana's `metaFields`.
-  - **Per-session space.** When a session opens, `kibana.py` imports a data view of its own in a Kibana space of its own (`ensure_session_view`, which needs `KIBANA_URL`, set by `compose.yaml`).
-    - The space and the data view share the id `soc-<pattern>`.
-    - The space disables every feature but Discover (dashboards, visualize, dev tools and the rest).
-    - Its settings turn ES|QL off (`enableESQL`, which reads every index past the view's pattern and hidden fields) and set `defaultColumns` to the session columns.
-    - They set `defaultRoute` to the space's own saved search "Events" (the session columns, newest first). The learner therefore never reaches the operator objects, which stay in the default space.
-  - **What nginx refuses.** Kibana runs without security, so nginx refuses what the features cannot switch off. `platform/nginx.conf`:
-    - answers 403 to the Kibana APIs of Elasticsearch and Kibana administration. These are the console proxy, ingest pipelines, index management, snapshot and restore, transforms, rollups, remote clusters, license, upgrade assistant, index lifecycle, watcher, the data views API, the security API, the settings API, saved objects import and export, and the spaces API. The spaces API has two exceptions: `_active_space`, and a GET of `api/spaces/space`, which nginx answers with the one space;
-    - refuses the Default space (`s/default/...`) and every path without a space prefix under `app`, `spaces`, `api` and `internal`;
-    - redirects the pages `app/management`, `app/dev_tools`, `app/home`, `app/observability`, `app/security` and `app/kibana_overview` to Discover of the same space.
-    Every call that Discover makes goes through. The platform's own setup (`KIBANA_URL`) reaches Kibana directly.
-  - **What the learner sees.**
-    - The space is named "SOC".
-    - The data view is on the session's index pattern. It is shown by its name `logs-*` and never by the pattern.
-    - It has the shared runtime fields plus these:
-      - `log_source` (`suricata` or `modsecurity`);
-      - `sensor`: the map name of the sensor, matched on the sender's host name without its domain and slot number, with or without its first dash-separated part. The script therefore names no `cr` host, and the edge's `edge` still reads as its map name. The names are `router` and `board.com` for Suricata and `waf` for every ModSecurity record, with slot suffixes stripped;
-      - `request_headers`: one `Name: value` per request header, `X-Request-ID` left out;
-      - `request_header`: a composite with one keyword per common header (`request_header.host`, `.user_agent`, `.referer`, `.cookie`, `.x_forwarded_for`, and the rest of `kibana.REQUEST_HEADERS_SHOWN`). It comes from Suricata's `http.request_headers` or ModSecurity's `transaction.request.headers`.
-    - `sourceFilters` hide `_index`, `event.*`, `log.*`, `message`, `agent.*`, `ecs.*`, `host`, `host.*`, `input.*`, `error.*`, `http.*`, `transaction.*`, `metadata.*`, `data_stream.*`, `flow_id`, `tx_id`, `pcap_cnt`, `in_iface`, `pkt_src`, `community_id`, `src_ip`, `dest_ip`, `alert.signature` and `alert.signature_id` (`kibana.HIDDEN_FIELDS`). KQL on them still works.
-  - A refused import is logged and does not stop the session.
-  - **Discover link.** `GET /api/sessions/<id>/` carries `discover`: an unsaved Discover state on that view, at `/kibana/s/<space>/app/discover`.
-    - It starts at the current unit's start. Its columns are `event_type, source_ip, destination, url, status, rule_id, rule` (`kibana.SESSION_COLUMNS`, fixed widths). It has no filter, because Filebeat keeps the range hosts' own syslog lines out of the index.
-    - A lesson opens it with an empty query. A scenario or a wargame opens it with the alert query.
-    - While the space or view is not ready, or without `KIBANA_URL`, `discover` is null. It is never the shared operator view. The ELK pane then shows a preparing line and polls the session until the link arrives. The import is retried every 10 seconds.
-    - The ELK pane opens the link. It is not the saved search with an overriding query, which Kibana badges "Unsaved changes".
-  - Before the pane loads, the blue console marks Kibana's first-visit callouts as seen in the shared same-origin localStorage (`discover:docExplorerUpdateCalloutClosed`, `discover:docExplorerCalloutClosed`, `data.noDataPopover`). On every load (a session opened, a lesson switched) it also removes `discover:searchText`, the Document panel's field search, which Kibana keeps across sessions and would otherwise prefill a word typed in an earlier lesson.
-- **Elasticsearch is a single node with a 512 MB heap.**
-- **Missing data is an error, not a zero, with stated exceptions.**
-  - An unreachable Elasticsearch or substrate, and an unreadable rule file, answer 503.
-  - Session create tolerates an unreachable target. The session starts with no snapshot, and the board's `loot/` answers 409.
-  - Firing or recording a case, and close, read no target. Firing still answers 503 when it needs the substrate for an origin or a tool.
-  - Enabling expired disabled rules inside ingest, and placing alerts on segments and hosts, tolerate an unreachable substrate. The placement comes back empty, so a session can still start and stop.
-  - A ratio with a zero denominator is 0.0, not null. This covers precision, recall, F1 and FPR, and the game's speed, coverage and accuracy. Only the `objectives` block's `coverage` is null.
-- **A score lists what it cannot vouch for.** It carries a warning in each of these cases:
-  - there are no benign cases (`no_benign`); the score API leaves it out when the session's customers sent requests, which are benign traffic not recorded as cases;
-  - there are marker cases and no marker on any alert (`no_marker`);
-  - a window case has no source address (`no_source_ip`);
-  - a detected case is not corroborated (`wrong_reason`);
-  - Elasticsearch holds more hits than ingest read (`truncated`).
-- **Cases fired through the API** (`views._fire`) send one case per HTTP connection, while the CLI keeps one connection for a whole run. Measured on the case set of the time (twelve cases), both gave identical scores and per-case alert counts. The acceptance tests drive the CLI, so the shared-connection path stays tested.
+- **워게임마다 케이스 파일 하나**에 공격과 정상 트래픽을 함께 둡니다. board는 `redteam/cases/board.yaml`, corp는 `redteam/cases/corp.yaml`입니다. 파일을 나누면 정상 케이스를 빠뜨리기 쉽습니다. CLI는 `--cases`로 다른 파일을 지정하지 않으면 `board.yaml`을 읽습니다. `case_file`이 그 파일의 basename과 일치하는 시나리오의 세션을 엽니다(알 수 없는 파일이면 board).
+- **harness는 재작성된 경로를 보내지 않고 거부합니다.** `requests`는 `/static/../../etc/passwd`를 `/etc/passwd`로 바꿉니다. 이대로 보내면 실제로는 나가지 않은 공격을 기록하고, harness의 실패를 방어의 실패로 채점하게 됩니다. 퍼센트 인코딩 차이는 허용합니다.
+- **시작하지 못하는 도구는 예외를 발생시키고, 0이 아닌 코드로 종료한 도구는 실행으로 셉니다.** sqlmap은 아무것도 찾지 못하면 0이 아닌 코드로 종료하지만, 트래픽은 이미 나갔습니다.
+- **Kibana는 compose에 들어 있으며 전체 권한**으로 동작합니다(읽기 전용 역할이 아닙니다). 플랫폼이 수집하는 것과 같은 Elasticsearch를 읽습니다.
+  - 플랫폼의 8000번 포트 `/kibana/`로 접속하되, 앞단의 nginx가 Discover 밖의 요청을 거부합니다(아래). 운영자는 플랫폼 호스트의 루프백 127.0.0.1:5601에 ssh 터널로 접속합니다. 블루팀 콘솔이 Kibana를 프레임으로 띄웁니다.
+  - **기동 시 가져오기.** `platform/kibana.py`는 기동 시 백그라운드에서 실행됩니다. 먼저 `/api/status`를 확인해 Kibana가 응답한 뒤에 가져옵니다. Kibana에 연결할 수 없거나 502/503/504로 응답하는 동안은 재시도합니다. 그 밖의 HTTP 오류는 상태와 본문을 한 번 보고합니다. 기동 중인 Kibana는 multipart 가져오기에 415로 응답합니다.
+  - 가져오는 것은 `deploy/kibana/objects.ndjson`이고, overwrite로 가져옵니다. 내용은 다음과 같습니다.
+    - `@timestamp` 기준 data view `logs-*`. runtime field로 Suricata/ModSecurity 필드 쌍을 각각 한 열로 합칩니다(`rule`, `rule_id`, `source_ip`, `destination`, `url`, `status`).
+    - "Alerts" 검색과 "Overview" 대시보드. 제목과 data view의 `sourceFilters`에 플랫폼 이름이 나오지 않습니다.
+  - `kibana.py`는 `defaultRoute`를 그 검색으로 설정합니다. data view가 있어야 Kibana의 Welcome 화면이 나오지 않습니다. Kibana의 `metaFields`에서 `_index`도 뺍니다.
+  - **세션별 space.** 세션을 열 때 `kibana.py`는 그 세션만의 Kibana space를 만들고 그 안에 data view를 가져옵니다(`ensure_session_view`. `KIBANA_URL`이 필요하며 `compose.yaml`이 설정함).
+    - space와 data view의 id는 같은 `soc-<pattern>`입니다.
+    - space는 Discover 말고는 모든 기능(대시보드, visualize, dev tools 등)을 끕니다.
+    - space 설정은 ES|QL을 끄고(`enableESQL`. ES|QL은 data view의 패턴과 숨긴 필드를 건너뛰고 모든 인덱스를 읽음), `defaultColumns`를 세션 열로 둡니다.
+    - `defaultRoute`는 그 space의 저장된 검색 "Events"(세션 열, 최신순)로 지정합니다. 그래서 학습자가 default space에 남아 있는 운영자 객체에 닿지 못합니다.
+  - **nginx가 거부하는 것.** Kibana는 보안 없이 돌아가므로, 기능으로 끌 수 없는 것은 nginx가 막습니다. `platform/nginx.conf`는 다음을 합니다.
+    - Elasticsearch와 Kibana 관리용 API에 403을 답합니다. console 프록시, ingest pipelines, index management, snapshot and restore, transforms, rollups, remote clusters, license, upgrade assistant, index lifecycle, watcher, data views API, security API, settings API, saved objects import·export, 그리고 spaces API입니다. spaces API 가운데 `_active_space`와, nginx가 space 하나로 직접 응답하는 `api/spaces/space` GET은 예외입니다.
+    - Default space(`s/default/...`)와 space 접두어 없는 `app`, `spaces`, `api`, `internal` 경로를 403으로 막습니다.
+    - 페이지 `app/management`, `app/dev_tools`, `app/home`, `app/observability`, `app/security`, `app/kibana_overview`는 같은 space의 Discover로 리다이렉트합니다.
+    Discover가 부르는 호출은 모두 통과합니다. 플랫폼 자신의 설정(`KIBANA_URL`)은 Kibana에 직접 닿습니다.
+  - **학습자에게 보이는 것.**
+    - space 이름은 "SOC"입니다.
+    - data view는 세션의 인덱스 패턴 위에 있으며, 패턴이 아니라 이름 `logs-*`로 보입니다.
+    - 공유 runtime field에 다음 필드를 더합니다.
+      - `log_source`(`suricata` 또는 `modsecurity`)
+      - `sensor`: 센서의 구성도 이름입니다. 송신자 호스트 이름에서 도메인과 슬롯 번호를 떼고, 첫 번째 `-` 앞부분은 있든 없든 맞춥니다. 그래서 스크립트에 `cr` 호스트 이름이 나오지 않고, 에지의 `edge`도 구성도 이름으로 읽힙니다. 이름은 Suricata 기록에서는 `router`와 `board.com`, 모든 ModSecurity 기록에서는 `waf`이며, 슬롯 접미사는 뗍니다.
+      - `request_headers`: 요청 헤더마다 `Name: value` 하나. `X-Request-ID`는 뺍니다.
+      - `request_header`: 자주 쓰는 헤더마다 keyword 하나를 두는 composite field입니다(`request_header.host`, `.user_agent`, `.referer`, `.cookie`, `.x_forwarded_for` 등 `kibana.REQUEST_HEADERS_SHOWN`). Suricata의 `http.request_headers`나 ModSecurity의 `transaction.request.headers`에서 읽습니다.
+    - `sourceFilters`는 `_index`, `event.*`, `log.*`, `message`, `agent.*`, `ecs.*`, `host`, `host.*`, `input.*`, `error.*`, `http.*`, `transaction.*`, `metadata.*`, `data_stream.*`, `flow_id`, `tx_id`, `pcap_cnt`, `in_iface`, `pkt_src`, `community_id`, `src_ip`, `dest_ip`, `alert.signature`, `alert.signature_id`를 숨깁니다(`kibana.HIDDEN_FIELDS`). KQL로는 여전히 검색됩니다.
+  - 가져오기가 거부되면 로그만 남기고 세션은 그대로 진행합니다.
+  - **Discover 링크.** `GET /api/sessions/<id>/`는 `discover`를 담습니다. 이는 `/kibana/s/<space>/app/discover`의 그 data view 위의, 저장되지 않은 Discover 상태입니다.
+    - 현재 레슨의 시작부터이고, 열은 `event_type, source_ip, destination, url, status, rule_id, rule`입니다(`kibana.SESSION_COLUMNS`, 열 너비 고정). 필터는 쓰지 않습니다. 훈련 환경 호스트 자체의 syslog 줄은 Filebeat가 인덱스에 넣지 않기 때문입니다.
+    - 레슨은 빈 쿼리로, 시나리오와 워게임은 경보 쿼리로 엽니다.
+    - space나 data view가 아직 준비되지 않았거나 `KIBANA_URL`이 없으면 `discover`는 null이며, 공유 운영자 data view로 대신하지 않습니다. 그러면 ELK 창은 준비 중 문구를 보이고 링크가 생길 때까지 세션을 다시 읽습니다. 가져오기는 10초마다 재시도합니다.
+    - ELK 창이 이 링크를 엽니다. 저장된 검색에 쿼리를 덮어쓴 형태가 아닙니다. 그런 형태에는 Kibana가 "Unsaved changes" 배지를 붙입니다.
+  - 창이 로드되기 전에 블루팀 콘솔은 같은 출처(same-origin)로 공유하는 localStorage에 Kibana의 첫 방문 안내를 이미 본 것으로 표시합니다(`discover:docExplorerUpdateCalloutClosed`, `discover:docExplorerCalloutClosed`, `data.noDataPopover`). 콘솔을 불러올 때마다(세션을 열거나 레슨을 바꿀 때) `discover:searchText`도 지웁니다. Document 창의 필드 검색어인데, Kibana가 세션이 바뀌어도 남겨 두어서 앞 레슨에서 입력한 단어가 그대로 채워지기 때문입니다.
+- **Elasticsearch는 512 MB 힙의 단일 노드**입니다.
+- **누락된 데이터는 0이 아니라 오류로 처리하며, 예외는 명시합니다.**
+  - Elasticsearch나 substrate에 연결할 수 없거나 룰 파일을 읽을 수 없으면 503으로 응답합니다.
+  - 세션 생성은 대상 시스템에 연결할 수 없어도 진행합니다. 세션은 스냅샷 없이 시작하고 board의 `loot/`는 409로 응답합니다.
+  - 케이스 실행이나 기록, 세션 닫기는 대상 시스템을 읽지 않습니다. 단, 실행에 출발지나 도구 때문에 substrate가 필요하면 503으로 응답합니다.
+  - ingest 안에서 시간이 지난 룰을 다시 활성화하는 작업과, 경보를 구간·호스트에 배치하는 작업은 substrate에 연결할 수 없어도 진행합니다. 배치 결과는 비어 있게 됩니다. 그래서 세션은 시작하고 멈출 수 있습니다.
+  - 분모가 0인 비율은 null이 아니라 0.0입니다. 정밀도, 재현율, F1, FPR, 그리고 게임의 speed, coverage, accuracy가 그렇습니다. `objectives` 블록의 `coverage`만 null입니다.
+- **점수는 보증할 수 없는 부분을 밝힙니다.** 다음 경우마다 경고를 담습니다.
+  - 정상 케이스가 없습니다(`no_benign`). 세션의 고객이 요청을 보냈으면 점수 API가 이 경고를 빼습니다. 고객 요청은 케이스로 기록되지 않는 정상 트래픽입니다.
+  - marker 케이스가 있는데 마커가 붙은 경보가 하나도 없습니다(`no_marker`).
+  - 출발지 주소가 없는 window 케이스가 있습니다(`no_source_ip`).
+  - 탐지되었지만 corroborated가 아닌 케이스가 있습니다(`wrong_reason`).
+  - Elasticsearch의 hit가 ingest가 읽은 것보다 많습니다(`truncated`).
+- **API로 실행한 케이스**(`views._fire`)는 HTTP 연결 하나에 케이스 하나를 보내고, CLI는 한 번 실행하는 동안 연결 하나를 유지합니다. 당시의 케이스 세트(케이스 12개)로 측정했을 때 두 방식의 점수와 케이스별 경보 수가 같았습니다. acceptance 테스트는 CLI를 구동하므로 연결을 공유하는 경로도 계속 테스트됩니다.
 
 ## OpenStack
 
-The build follows the OpenStack item of the backlog in `docs/STATE.md`, in its order. This section describes what is built, run on the cloud or against fakes. What is left is listed at the end. The reasoning is in `docs/STATE.md` ("Decided on 2026-09-30"), `docs/superpowers/specs/2026-09-30-openstack-range-placement.md` and `docs/superpowers/specs/2026-09-30-waf-console-and-tutorial.md`. This section records only the structure.
+OpenStack 구축은 `docs/STATE.md` 백로그의 OpenStack 항목을 그 순서대로 따릅니다. 이 절은 구축한 것을 설명하며, 각 항목은 클라우드에서 또는 fake를 상대로 실행해 확인했습니다. 남은 작업은 이 절 끝에 있습니다. 근거는 `docs/STATE.md`("Decided on 2026-09-30"), `docs/superpowers/specs/2026-09-30-openstack-range-placement.md`, `docs/superpowers/specs/2026-09-30-waf-console-and-tutorial.md`에 있습니다. 이 절은 구조만 기록합니다.
 
-The first cloud was one KVM compute node (8 vCPU, 64 GB) running kolla-ansible 2026.1 with ML2/Open vSwitch. The cloud now in use has three nodes, runs Kolla 2025.2 with ML2/OVN, and the product supports Kolla-Ansible 2025.1 or later (`docs/OPENSTACK.md` §2). The range lives in project `fsl-range`, driven by the member-role user `fsl-range`. Horizon is never shown to users.
+처음 쓴 클라우드는 ML2/Open vSwitch 위에서 kolla-ansible 2026.1을 운영하는 KVM 컴퓨트 노드 한 대(8 vCPU, 64 GB)였습니다. 지금 쓰는 클라우드는 노드가 세 대이고 Kolla 2025.2에 ML2/OVN을 쓰며, 제품은 Kolla-Ansible 2025.1 이상을 지원합니다(`docs/OPENSTACK.md` §2). 훈련 환경은 프로젝트 `fsl-range`에 있고, member 역할 사용자 `fsl-range`가 이를 조작합니다. 사용자에게 Horizon은 보여 주지 않습니다.
 
-Everything that differs between clouds is in `deploy/openstack/cloud.yaml`. It is copied from the committed `cloud.example.yaml`, ignored by git, and holds no secrets. It holds identity, networks and MTU, base image, zone, slots, the two flavors (`platform` and `range`), keys, the platform's stack and ref, and backups.
+클라우드마다 달라지는 값은 모두 `deploy/openstack/cloud.yaml`에 있습니다. 커밋된 `cloud.example.yaml`을 복사한 파일이며, git이 무시하고 비밀 값은 없습니다. identity, 네트워크와 MTU, 베이스 이미지, zone, 슬롯 수, flavor 두 개(`platform`, `range`), 키, 플랫폼의 스택과 ref, 백업 설정이 들어 있습니다.
 
-- `platform/range/cloud.py` validates the file and reports every problem by key.
-- `bin/platform-rebuild` and `bin/cloud` drive the openstack CLI and the Heat parameters from it. The stack writes the values into the platform's `openstack.env`.
-- `bin/cloud up` creates the stack, then posts `/api/range/fabric/`, then `/api/range/slot/` (which boots or replaces the range host), waits until the range host stands and is set up, posts `/api/range/configure/`, waits until `/api/range/ready/` reports every slot READY, and last sends `DELETE /api/range/leftovers/`.
-- `bin/cloud down` keeps the key, backs the store up (`bin/backup`, keeping `backups.keep` copies) and removes the slots and the range host, the fabric and the stack.
-- A `*_FAILED` stack is deleted (any builder server first). `up` creates it again, and `down` deletes it.
-- A stack whose VM has no running `cr-platform` container and no store file has nothing to back up. `down` and `up --replace` then skip the backup, though they still refuse when ssh to the VM does not answer. A store beside a stopped `cr-platform` container is not a refusal: `down` starts the container (the backup runs through `docker exec`), backs up, waits for the API, then removes the range. Plain `up` asks the VM about its hand-over every time, whether or not the API answers, and a VM that never took it (no `CR_OPENSTACK_PASSWORD` in its `openstack.env`) gets the hand-over then. It writes the password and the range key, making the key if it is missing and the VM holds no store. It restores the newest backup that holds rows when the VM holds no store.
+- `platform/range/cloud.py`가 이 파일을 검사해 문제를 키별로 모두 보고합니다.
+- `bin/platform-rebuild`와 `bin/cloud`는 이 파일의 값으로 openstack CLI와 Heat 파라미터를 구동합니다. 스택은 이 값을 플랫폼의 `openstack.env`에 씁니다.
+- `bin/cloud up`은 스택을 만든 뒤 `/api/range/fabric/`을 POST하고, `/api/range/slot/`을 POST해 훈련 환경 호스트를 부팅하거나 교체합니다. 호스트가 뜨고 설치가 끝나기를 기다려 `/api/range/configure/`를 POST하고, `/api/range/ready/`가 모든 슬롯을 READY로 보고할 때까지 기다린 뒤, 마지막으로 `DELETE /api/range/leftovers/`를 보냅니다.
+- `bin/cloud down`은 키는 남겨 두고, 플랫폼 DB를 백업한 뒤(`bin/backup`, 사본은 `backups.keep`개까지 보관) 슬롯과 훈련 환경 호스트, fabric, 스택을 지웁니다.
+- `*_FAILED` 상태의 스택은 `up`이 (남은 빌더 서버부터) 지우고 다시 만들며, `down`은 지웁니다.
+- VM에 실행 중인 `cr-platform` 컨테이너도 플랫폼 DB 파일도 없는 스택은 백업할 것이 없습니다. 그러면 `down`과 `up --replace`가 백업을 건너뜁니다. VM에 ssh가 닿지 않으면 여전히 거부합니다. 플랫폼 DB는 있는데 `cr-platform` 컨테이너가 멈춰 있어도 거부하지 않습니다. `down`이 컨테이너를 시작하고(백업은 `docker exec`로 실행됨), 백업한 뒤 API가 응답하기를 기다렸다가 훈련 환경을 지웁니다. `up`은 API가 응답하든 않든 매번 VM에 인계(hand-over) 여부를 물어서, 인계를 받지 못한 VM(`openstack.env`에 `CR_OPENSTACK_PASSWORD`가 없음)에는 그때 인계를 합니다. 비밀번호와 훈련 환경 키를 넣고(키가 없고 VM에 플랫폼 DB도 없으면 새로 만듦), VM에 플랫폼 DB가 없으면 행이 있는 가장 최근 백업을 복원합니다.
 
-### Built: the platform VM
+### 구축됨: 플랫폼 VM
 
-`deploy/openstack/platform.yaml` is a Heat template. It creates:
+`deploy/openstack/platform.yaml`은 Heat 템플릿이며 다음을 만듭니다.
 
-- network and subnet `cr-platform`;
-- a router to the external network, and a floating IP. With `network.address` set, it associates one the project already holds instead. A stack delete leaves that address in place;
-- a security group that opens tcp/22, tcp/8000, tcp/8002, tcp/3080 and ICMP to any address;
-- the Nova server `cr-platform`, with a config drive.
+- 네트워크와 서브넷 `cr-platform`
+- 외부 네트워크로 나가는 라우터와 floating IP. `network.address`를 지정하면 프로젝트가 이미 가진 floating IP를 연결만 하며, 스택을 지워도 이 floating IP는 그대로 남습니다.
+- 모든 주소에 tcp/22, tcp/8000, tcp/8002, tcp/3080, ICMP를 여는 보안 그룹
+- config drive를 붙인 Nova 서버 `cr-platform`
 
-The template has no defaults. Every parameter comes from `deploy/openstack/cloud.yaml` (see `docs/OPENSTACK.md` §4).
+템플릿에는 기본값이 없습니다. 모든 파라미터는 `deploy/openstack/cloud.yaml`에서 옵니다(`docs/OPENSTACK.md` §4 참고).
 
-cloud-init does the following on the platform VM:
+플랫폼 VM에서 cloud-init이 하는 일:
 
-- installs `docker.io`, `docker-compose-v2` and `git`;
-- adds 4 GB of swap;
-- sets Docker's MTU to the Neutron network's, for the default bridge (`mtu`) and for every new bridge network, compose's included (`default-network-opts`);
-- clones `repository` at `ref` into `/opt/cr`;
-- writes `CR_IMAGE_TAG=<the checkout's commit>` to `/opt/cr/.env`;
-- fetches the GeoIP database (`bin/fetch-geoip`). It needs no credential: Elastic's GeoIP endpoint serves GeoLite2 to anyone who accepts its terms in the URL;
-- adds `ubuntu` to the `docker` group.
+- `docker.io`, `docker-compose-v2`, `git`을 설치합니다.
+- 4 GB 스왑을 추가합니다.
+- Docker의 MTU를 Neutron 네트워크의 MTU에 맞춥니다. 기본 브리지는 `mtu`로, compose가 만드는 것을 포함한 모든 새 브리지 네트워크는 `default-network-opts`로 맞춥니다.
+- `repository`의 `ref`를 `/opt/cr`에 클론합니다.
+- `/opt/cr/.env`에 `CR_IMAGE_TAG=<체크아웃의 커밋>`을 씁니다.
+- GeoIP 데이터베이스를 받습니다(`bin/fetch-geoip`). 자격 증명이 필요 없습니다. Elastic의 GeoIP 엔드포인트는 URL에 약관 동의를 담으면 누구에게나 GeoLite2를 제공합니다.
+- `ubuntu`를 `docker` 그룹에 추가합니다.
 
-A systemd unit, `cr-platform.service`, pulls the images of `compose.yaml` and runs `docker compose -f /opt/cr/compose.yaml up -d` on every boot. It builds nothing. A failed pull does not stop the unit (`ExecStartPre=-`). `up` then builds what is missing from the checkout. `bin/platform-rebuild` avoids that by checking ghcr.io first.
+systemd 유닛 `cr-platform.service`는 부팅할 때마다 `compose.yaml`의 이미지를 pull하고 `docker compose -f /opt/cr/compose.yaml up -d`를 실행합니다. 이 유닛은 아무것도 빌드하지 않습니다. pull이 실패해도 유닛은 멈추지 않으며(`ExecStartPre=-`), 이때는 `up`이 없는 이미지를 체크아웃에서 빌드합니다. `bin/platform-rebuild`는 ghcr.io를 먼저 확인해 이런 빌드를 피합니다.
 
-The platform VM runs only the platform's containers (`compose.yaml`). The board's ground truth is read inside the board's container on the range host.
+플랫폼 VM은 플랫폼 컨테이너(`compose.yaml`)만 돌립니다. board의 정답 데이터는 훈련 환경 호스트 위 board 컨테이너 안에서 읽습니다.
 
-cloud-init sets `CR_PUBLISH` to the VM's fixed address. Ports 8000, 8002 and 3080 are therefore published there and opened in the security group, and a browser reaches the console at the floating IP. `CR_SYSLOG_PUBLISH=0.0.0.0` publishes 5140/udp on every address, for the range host's syslog. Port 9200 stays on loopback.
+cloud-init이 `CR_PUBLISH`를 VM의 고정 주소로 설정합니다. 그래서 8000, 8002, 3080이 그 주소에 publish되고 보안 그룹에서도 열려 있어, 브라우저는 floating IP로 콘솔에 접속합니다. `CR_SYSLOG_PUBLISH=0.0.0.0`은 훈련 환경 호스트의 syslog를 받기 위해 5140/udp를 모든 주소에 publish합니다. 9200은 loopback에만 둡니다.
 
-Every parameter of the template comes from `deploy/openstack/cloud.yaml` (`bin/platform-rebuild`, `bin/cloud`).
+템플릿의 파라미터는 모두 `deploy/openstack/cloud.yaml`에서 옵니다(`bin/platform-rebuild`, `bin/cloud`).
 
-- cloud-init writes those values as `CR_OPENSTACK_*`, plus `_PROJECT` (the stack's own project), `_SSH_USER=ubuntu` and `_SSH_KEY=/data/ssh/id_ed25519`. It writes them to `/root/openstack.env` with mode 0600, then moves the file to `/opt/cr/openstack.env`, which git ignores.
-- The password is not in the template. Nova keeps the user data, and its metadata service serves it to whatever runs on the VM, the platform's containers included.
-- `bin/platform-rebuild` appends `CR_OPENSTACK_PASSWORD` over ssh once the VM is up. In the same way it writes the range ssh key into the platform's data volume (`README.md`).
-- The platform service reads the file with `env_file` (`required: false`, `format: raw`). Compose passes it through without interpolating or unquoting.
+- cloud-init은 그 값을 `CR_OPENSTACK_*`로 씁니다. 여기에 `_PROJECT`(스택 자신의 프로젝트), `_SSH_USER=ubuntu`, `_SSH_KEY=/data/ssh/id_ed25519`를 더해 모드 0600으로 `/root/openstack.env`에 쓴 뒤, git이 무시하는 `/opt/cr/openstack.env`로 옮깁니다.
+- 비밀번호는 템플릿에 넣지 않습니다. Nova가 user data를 보관하고, 메타데이터 서비스가 플랫폼의 컨테이너를 포함해 VM에서 실행되는 모든 것에 이를 제공하기 때문입니다.
+- `bin/platform-rebuild`는 VM이 뜬 뒤 ssh로 `CR_OPENSTACK_PASSWORD`를 덧붙입니다. 훈련 환경용 ssh 키도 같은 방식으로 플랫폼의 데이터 볼륨에 씁니다(`README.md`).
+- 플랫폼 서비스는 이 파일을 `env_file`(`required: false`, `format: raw`)로 읽습니다. compose는 변수 치환이나 따옴표 제거 없이 값을 그대로 전달합니다.
 
-The platform on the VM uses the OpenStack adapter (`CR_SUBSTRATE=range.openstack.connect`, written by cloud-init). It builds the range's network itself through `/api/range/fabric/`, planned by `range/fabric.py`:
+VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init이 쓴 `CR_SUBSTRATE=range.openstack.connect`). 훈련 환경의 네트워크는 `/api/range/fabric/`으로 직접 만들며, 계획은 `range/fabric.py`가 세웁니다.
 
-- `mgmt` (DHCP on, no gateway), on the CIDR that `cloud.yaml` gives. The loader refuses CIDRs that overlap each other, the platform's network, Docker's default local address pools (172.17.0.0/16 to 172.31.0.0/16 and 192.168.0.0/16; moby `daemon/libnetwork/ipamutils/utils.go`), a network that `compose.yaml` declares, a declared origin, or the range host's Docker address pool 10.40.0.0/16 (`cloud.RANGE_HOST_POOL`). It also refuses an `estate` narrower than a /16;
-- the keypair `cr-platform`, from the key at `/data/ssh/id_ed25519`;
-- three security groups, below.
+- `mgmt`(DHCP 켬, 게이트웨이 없음). CIDR은 `cloud.yaml`이 정합니다. 로더는 서로 겹치거나, 플랫폼 네트워크, Docker 기본 로컬 주소 풀(172.17.0.0/16~172.31.0.0/16, 192.168.0.0/16, moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`이 선언한 네트워크, 선언된 출발지, 훈련 환경 호스트의 Docker 주소 풀 10.40.0.0/16(`cloud.RANGE_HOST_POOL`)과 겹치는 CIDR을 거부합니다. /16보다 좁은 `estate`도 거부합니다.
+- `/data/ssh/id_ed25519`의 키로 만드는 키페어 `cr-platform`
+- 아래의 보안 그룹 세 개
 
-The fabric carries `mgmt` only. The slots' `internet` and `estate` are docker networks on the range host, not Neutron networks.
+fabric이 만드는 네트워크는 `mgmt` 하나입니다. 슬롯의 `internet`과 `estate`는 Neutron 네트워크가 아니라 훈련 환경 호스트 위의 docker 네트워크입니다.
 
-The platform makes that key only when it is absent at the first fabric POST. `bin/platform-rebuild` keeps a copy on the operator's machine and writes it into every new platform VM. A replaced VM therefore keeps the key that the keypair and the range host trust.
+플랫폼은 첫 fabric POST 시점에 그 키가 없을 때만 키를 만듭니다. `bin/platform-rebuild`는 운영자 컴퓨터에 사본을 두고 새 플랫폼 VM마다 써 넣습니다. 그래서 VM을 교체해도 키페어와 훈련 환경 호스트가 믿는 키가 유지됩니다.
 
-The three security groups:
+보안 그룹 세 개:
 
-- `cr-reach`: the platform's own `mgmt` port. It lets in only NTP (udp 123) from members of `cr-mgmt`, and syslog (udp 5140) from the range host's `mgmt` address.
-- `cr-mgmt`: the range host's `mgmt` port. It lets in only members of `cr-reach`.
-- `cr-egress`: the range host's port on the platform's network, which it pulls its images over. It has no ingress rule. The port exists only while the range host sets itself up: once the setup reports ready, the platform detaches it (`_close_egress`).
+- `cr-reach`: 플랫폼 자신의 `mgmt` 포트. `cr-mgmt` 멤버가 보내는 NTP(udp 123)와, 훈련 환경 호스트의 `mgmt` 주소가 보내는 syslog(udp 5140)만 들입니다.
+- `cr-mgmt`: 훈련 환경 호스트의 `mgmt` 포트. `cr-reach` 멤버만 들입니다.
+- `cr-egress`: 훈련 환경 호스트가 이미지를 받아 오는, 플랫폼 네트워크 쪽 포트. 인바운드 룰이 없습니다. 이 포트는 훈련 환경 호스트가 설치하는 동안에만 있습니다. 설치가 ready를 알리면 플랫폼이 포트를 뗍니다(`_close_egress`).
 
-The platform attaches itself to `mgmt` through a port in `cr-reach`, found by its own server id (`CR_OPENSTACK_PLATFORM`, written at boot). It can therefore ssh to the range host, while the range host can open a connection to it only for NTP and syslog.
+플랫폼은 자기 서버 id(부팅 때 기록하는 `CR_OPENSTACK_PLATFORM`)로 찾은 `cr-reach` 포트를 통해 `mgmt`에 붙습니다. 그래서 플랫폼은 훈련 환경 호스트에 ssh할 수 있고, 훈련 환경 호스트가 플랫폼으로 여는 연결은 NTP와 syslog뿐입니다.
 
-The range has no Internet and so no time source of its own. The scorer (the platform) compares target and sensor times with case windows on its own clock. The platform therefore serves time to the range:
+훈련 환경에는 인터넷이 없으므로 자체 시간 출처도 없습니다. 채점기(플랫폼)는 대상 시스템과 센서의 시각을 자기 시계 기준의 케이스 시간 구간과 비교합니다. 그래서 플랫폼이 훈련 환경에 시간을 제공합니다.
 
-- The platform VM runs chrony (cloud-init: `allow <network.mgmt>`, `local stratum 10`).
-- The range host keeps time by the platform's `mgmt` address. `range/clock.py` writes a `systemd-timesyncd` drop-in and waits for the first answer (`keep_time()`). The platform sets it, and opens the collector's rule, once per range-host generation and collector address (`_heard_and_timed`), so a rebuilt platform with a new collector address gets both at its next configure. The containers share the host's clock.
+- 플랫폼 VM은 chrony를 실행합니다(cloud-init: `allow <network.mgmt>`, `local stratum 10`).
+- 훈련 환경 호스트는 플랫폼의 `mgmt` 주소로 시간을 맞춥니다. `range/clock.py`가 `systemd-timesyncd` drop-in을 쓰고 첫 응답을 기다립니다(`keep_time()`). 플랫폼은 이 설정과 수집기 룰 열기를 훈련 환경 호스트 세대와 수집기 주소 조합마다 한 번만 합니다(`_heard_and_timed`). 그래서 수집기 주소가 바뀐 재구축 플랫폼은 다음 configure에서 둘 다 다시 받습니다. 컨테이너는 호스트의 시계를 같이 씁니다.
 
-**The range host.** One VM, `cr-range`, runs every slot. It is managed through `/api/range/slot/` and planned by `range/slot.py`.
+**훈련 환경 호스트.** VM 하나, `cr-range`가 모든 슬롯을 돌립니다. `/api/range/slot/`으로 관리하고, 계획은 `range/slot.py`가 세웁니다.
 
-- `POST /api/range/slot/` boots it when it is absent: the stock Ubuntu image (`compute.base_image`), the flavor `compute.flavors.range` (`CR_OPENSTACK_FLAVOR`), a config drive and the keypair `cr-platform`. It has two ports: `cr-range.mgmt` on `mgmt` in `cr-mgmt`, and one on the platform's network (`CR_OPENSTACK_BUILD_NETWORK`) in `cr-egress`. When the setup reports ready, the platform detaches the second port. A set-up range host has only `cr-range.mgmt`: no way to the Internet and no DNS resolver.
-- Its Nova user data carries the setup bundle (`rangehost.bundle()`, `rangehost.user_data()`): `deploy/range-host/setup.sh`, the image list, Docker's `daemon.json`, and the compose file and list of the pristine wargames. The encoded user data must fit Nova's 65,535 bytes.
-- `setup.sh` installs `docker.io`, `docker-compose-v2`, `ethtool` and `rsyslog`. It raises sshd's `MaxSessions` and `MaxStartups` and the inotify limits. It pulls every image from GHCR by the platform's `CR_IMAGE_TAG`. It keeps the targets' pristine volumes in `/opt/cr/pristine`. The user-data script that runs `setup.sh` then marks `/var/lib/cr/ready`, or `/var/lib/cr/failed` with the log's tail on the console (`rangehost.user_data`).
-- Until then the platform reports the range host `SETTING_UP` or `SETUP_FAILED` in place of Nova's `ACTIVE`. A failed setup makes the slot phase `SETUP_FAILED` in `/api/range/ready/`, naming `/var/log/cr-setup.log` on the range host, and `bin/cloud up` stops on it with that reason. The next `POST /api/range/slot/` deletes a range host that failed its setup and boots it again when no session is open (`ensure_slot`).
-- `daemon.json` gives Docker the tenant MTU (`mtu` and `default-network-opts`), the address pool 10.40.0.0/16 in /28s, the `local` log driver and `userns-remap: default`.
-- The server carries `cr_host`, `cr_tag` (the image tag) and `cr_bundle` (the bundle's digest) in its metadata. The digest hashes each file's name and content. A range host whose tag or digest differs from the platform's is `stale`. `POST /api/range/slot/` then deletes it and boots it again when no session is open, and reports the slot blocked while one is.
-- No Glance image is built. The range host pulls only from GHCR.
+- `POST /api/range/slot/`은 이 VM이 없으면 부팅합니다. 손대지 않은 Ubuntu 이미지(`compute.base_image`), flavor `compute.flavors.range`(`CR_OPENSTACK_FLAVOR`), config drive, 키페어 `cr-platform`을 씁니다. 포트는 둘입니다. `mgmt` 위 `cr-mgmt`에 속한 `cr-range.mgmt`, 그리고 플랫폼 네트워크(`CR_OPENSTACK_BUILD_NETWORK`) 위 `cr-egress`에 속한 포트입니다. 설치가 ready를 알리면 플랫폼이 두 번째 포트를 뗍니다. 설치를 마친 훈련 환경 호스트에는 `cr-range.mgmt`만 남아 인터넷으로 나갈 길도, DNS 리졸버도 없습니다.
+- Nova user data에 설치 번들을 담습니다(`rangehost.bundle()`, `rangehost.user_data()`). `deploy/range-host/setup.sh`, 이미지 목록, Docker `daemon.json`, pristine 워게임의 compose 파일과 목록입니다. 인코딩한 user data는 Nova 한도인 65,535바이트 안에 들어가야 합니다.
+- `setup.sh`는 `docker.io`, `docker-compose-v2`, `ethtool`, `rsyslog`를 설치합니다. sshd의 `MaxSessions`, `MaxStartups`와 inotify 한도를 올립니다. 플랫폼의 `CR_IMAGE_TAG`로 GHCR에서 이미지를 모두 pull합니다. 대상 시스템의 pristine 볼륨을 `/opt/cr/pristine`에 떠 둡니다. 그다음 `setup.sh`를 실행한 user-data 스크립트가 `/var/lib/cr/ready`를 남기고, 실패하면 `/var/lib/cr/failed`를 남기고 로그 끝부분을 콘솔에 출력합니다(`rangehost.user_data`).
+- 그 전까지 플랫폼은 Nova의 `ACTIVE` 대신 `SETTING_UP`이나 `SETUP_FAILED`로 훈련 환경 호스트를 보고합니다. 설치가 실패하면 `/api/range/ready/`의 슬롯 단계가 `SETUP_FAILED`가 되고 훈련 환경 호스트의 `/var/log/cr-setup.log`를 가리키며, `bin/cloud up`은 그 이유와 함께 멈춥니다. 다음 `POST /api/range/slot/`은 열린 세션이 없으면 설치에 실패한 훈련 환경 호스트를 지우고 다시 부팅합니다(`ensure_slot`).
+- `daemon.json`은 Docker에 테넌트 MTU(`mtu`, `default-network-opts`), /28 단위의 주소 풀 10.40.0.0/16, `local` 로그 드라이버, `userns-remap: default`를 줍니다.
+- 서버 메타데이터에 `cr_host`, `cr_tag`(이미지 태그), `cr_bundle`(번들 digest)을 둡니다. digest는 파일마다 이름과 내용을 해시합니다. 태그나 digest가 플랫폼과 다른 훈련 환경 호스트는 `stale`입니다. 그러면 `POST /api/range/slot/`이 열린 세션이 없을 때 그 VM을 지우고 다시 부팅하며, 세션이 열려 있으면 슬롯을 blocked로 보고합니다.
+- Glance 이미지는 만들지 않습니다. 훈련 환경 호스트는 GHCR에서만 pull합니다.
 
-The pristine data is made once, by `setup.sh`: it brings every wargame up once as the compose project `pristine`, waits until it is healthy, stops it, copies each container's volumes to `/opt/cr/pristine/<service><path>`, and removes it with `down -v`.
+초기 데이터 사본은 `setup.sh`가 한 번 만듭니다. 모든 워게임을 compose 프로젝트 `pristine`으로 한 번 띄워 healthy가 될 때까지 기다린 뒤 멈추고, 컨테이너마다 볼륨을 `/opt/cr/pristine/<service><path>`로 복사한 다음 `down -v`로 지웁니다.
 
-**Range slots.** `compute.slots` in `cloud.yaml` (default 1, `CR_OPENSTACK_SLOTS` on the platform) sets how many copies of the range stand at once. `max_sessions` is that count.
+**훈련 환경 슬롯.** `cloud.yaml`의 `compute.slots`(기본 1, 플랫폼에서는 `CR_OPENSTACK_SLOTS`)가 동시에 띄울 훈련 환경 사본 수를 정합니다. `max_sessions`가 이 값입니다.
 
-- Slot N is the docker compose project `sN` on the range host, rendered by `platform/range/rangehost.py` from `deploy/range-host/slot.yaml` and each wargame's `wargames/<w>/compose.yaml`. Its containers are `sN-kali`, `sN-edge`, `sN-waf`, `sN-edge-sensor`, `sN-estate-sensor`, `sN-board`, `sN-board-db`, `sN-corp-wp` and `sN-corp-db`.
-- Its networks are `sN_internet` (bridge `sN-inet`, 172.30.N.0/24), `sN_estate` (bridge `sN-estate`, 10.30.N.0/24: the edge .1, the WAF .247, the board .59, corp-wp .60) and one `<wargame>-default` per wargame for its database. Every one is `internal`, with `gateway_mode_ipv4: isolated` and the tenant MTU. No port is published and nothing is NATed.
-- Steady healthchecks of the targets and the sensors run every 60 s, with a 1 s start interval (`slot.yaml`'s `x-wargames.healthcheck` overrides the wargames' own interval), so idle slots leave the CPU to busy ones.
-- Every slot's `internet` bridge carries the same thirty origin subnets, so an alert's source is sorted to the same country in every slot.
-- A slot adapter (`OpenStack.in_slot(n)`) works on its own compose project. Roles, runners and topology are the same in every slot.
-- The platform binds a session to a slot at open (`Session.slot`, one open session per slot by a unique constraint). It takes the first free slot that is READY, chosen under a lock.
-- Every per-session range call goes to that slot. The close resets only that slot and marks only its disabled rules enabled. Its reset state is its own (`api/reset.py`). Rule changes take that slot's turn, so one slot's reset does not hold the other slot's session.
-- `run_on_role` takes `--session` or `--slot`, and it refuses to run with neither when there is more than one slot.
-- The console's VM terminals take the session as `?arg=<id>` (ttyd `-a`) and open its slot's container.
+- 슬롯 N은 훈련 환경 호스트 위의 docker compose 프로젝트 `sN`입니다. `platform/range/rangehost.py`가 `deploy/range-host/slot.yaml`과 워게임마다의 `wargames/<w>/compose.yaml`로 렌더링합니다. 컨테이너는 `sN-kali`, `sN-edge`, `sN-waf`, `sN-edge-sensor`, `sN-estate-sensor`, `sN-board`, `sN-board-db`, `sN-corp-wp`, `sN-corp-db`입니다.
+- 네트워크는 `sN_internet`(브리지 `sN-inet`, 172.30.N.0/24), `sN_estate`(브리지 `sN-estate`, 10.30.N.0/24: 에지 .1, WAF .247, board .59, corp-wp .60), 그리고 워게임마다 DB용 `<wargame>-default` 하나입니다. 모두 `internal`이고 `gateway_mode_ipv4: isolated`이며 테넌트 MTU를 씁니다. publish한 포트도 NAT도 없습니다.
+- 표적과 센서의 평상시 healthcheck는 60초마다, 시작 구간에는 1초마다 돕니다(`slot.yaml`의 `x-wargames.healthcheck`가 워게임 자체의 주기를 덮어씀). 그래서 쉬는 슬롯은 바쁜 슬롯에 CPU를 내줍니다.
+- 슬롯마다 `internet` 브리지에 같은 출발지 서브넷 서른 개가 올라가므로, 경보의 출발지는 어느 슬롯에서나 같은 국가로 분류됩니다.
+- 슬롯 어댑터(`OpenStack.in_slot(n)`)는 자기 compose 프로젝트만 다룹니다. 역할, runner, 구성도는 모든 슬롯에서 같습니다.
+- 플랫폼은 세션을 열 때 슬롯 하나에 묶습니다(`Session.slot`, unique 제약으로 슬롯마다 열린 세션 하나). 비어 있고 READY인 첫 번째 슬롯을 잠금 아래에서 고릅니다.
+- 세션별 훈련 환경 호출은 모두 그 슬롯으로 갑니다. close는 그 슬롯만 초기화하고, 그 슬롯의 비활성화 룰만 활성화 상태로 돌립니다. 초기화 상태도 슬롯마다 따로입니다(`api/reset.py`). 룰 변경은 그 슬롯의 차례를 잡으므로, 한 슬롯의 초기화가 다른 슬롯의 세션을 붙잡지 않습니다.
+- `run_on_role`은 `--session`이나 `--slot`을 받고, 슬롯이 둘 이상인데 둘 다 없으면 실행을 거부합니다.
+- 콘솔의 VM 터미널은 세션을 `?arg=<id>`(ttyd `-a`)로 받아 그 슬롯의 컨테이너를 엽니다.
 
-**Configure.** `POST /api/range/configure/` (`configure_slot()`) opens the collector's rule and sets the range host's time source side by side, once per range-host generation and collector address. It then pipes the slot's files to `slot.sh up N` on the range host: the compose file, both sensor configurations, Kali's and the edge's addresses, the rsyslog configuration, the baseline rules and the script itself. `slot.sh up`:
+**configure.** `POST /api/range/configure/`(`configure_slot()`)는 수집기 룰을 여는 일과 훈련 환경 호스트의 시간 출처 설정을 나란히 처리합니다. 둘 다 훈련 환경 호스트 세대와 수집기 주소 조합마다 한 번만 합니다. 그다음 슬롯의 파일을 훈련 환경 호스트의 `slot.sh up N`에 넘깁니다. compose 파일, 두 센서의 설정, Kali와 에지의 주소, rsyslog 설정, 기본 룰, 스크립트 자신입니다. `slot.sh up`은 다음을 합니다.
 
-1. makes the slot's directories, all root's. In the WAF's log directory `/var/log/cr/sN/waf` it removes every name but a regular file `audit.log` and creates that file if missing, owned by the remapped range's `www-data` and `adm` (`0644`), so nginx's master, root in the container, opens it and `syslog` reads it;
-2. creates the containers (`up --no-start --pull never`) and copies the pristine data into each empty volume of a target that has never run;
-3. starts them (`up -d --wait`);
-4. gives Kali its origin addresses and its default route through the default origin's gateway, and gives the edge every origin's gateway address on `wan` (`ip -batch` through `nsenter`);
-5. routes the WAF and the targets on `estate` through the edge's estate address;
-6. switches TSO, GSO and GRO off on every bridge, its ports and every container interface, so the sensors see packets as they were sent;
-7. lets each bridge forward to itself in `DOCKER-USER`;
-8. installs `/etc/rsyslog.d/60-cr-sN.conf` and restarts rsyslog, only when the file changed or rsyslog is not running, and one slot at a time (`flock /run/cr-rsyslog.lock`, `systemctl reset-failed` first).
+1. 슬롯 디렉터리를 모두 root 소유로 만듭니다. WAF 로그 디렉터리 `/var/log/cr/sN/waf`에서는 일반 파일 `audit.log` 말고는 모두 지우고, 그 파일이 없으면 remap된 범위의 `www-data`와 `adm` 소유(`0644`)로 만듭니다. 그래서 컨테이너 안에서 root인 nginx 마스터가 열 수 있고 `syslog`가 읽을 수 있습니다.
+2. 컨테이너를 만들고(`up --no-start --pull never`), 한 번도 실행하지 않은 대상 시스템의 빈 볼륨마다 초기 데이터를 복사합니다.
+3. 컨테이너를 띄웁니다(`up -d --wait`).
+4. Kali에 출발지 주소와 기본 출발지 게이트웨이로 가는 기본 경로를, 에지의 `wan`에 출발지마다 게이트웨이 주소를 붙입니다(`nsenter`로 `ip -batch` 실행).
+5. WAF와 `estate`의 대상 시스템이 에지의 estate 주소로 라우팅하게 합니다.
+6. 모든 브리지와 그 포트, 컨테이너 인터페이스에서 TSO, GSO, GRO를 끕니다. 센서가 보낸 그대로의 패킷을 보게 하려는 것입니다.
+7. `DOCKER-USER`에서 브리지마다 같은 브리지로의 forward를 허용합니다.
+8. `/etc/rsyslog.d/60-cr-sN.conf`를 설치하고 rsyslog를 재시작합니다. 파일이 바뀌었거나 rsyslog가 돌고 있지 않을 때만 하고, 한 번에 한 슬롯씩 합니다(`flock /run/cr-rsyslog.lock`, 먼저 `systemctl reset-failed`).
 
-The platform then seeds both sensors' baseline rules through `rules/suricata.py`.
+그 뒤 플랫폼이 `rules/suricata.py`로 두 센서에 기본 룰을 넣습니다.
 
-**The edge.** `sN-edge` (`deploy/edge/`) is Alpine with nftables, holding `NET_ADMIN` only. Its `wan` is on `sN-inet`, its `lan` on `sN-estate`. It forwards with `rp_filter` off and no NAT, so the country sources reach the WAF. `deploy/edge/edge.nft` drops input but loopback and accepts forward.
+**에지.** `sN-edge`(`deploy/edge/`)는 nftables를 넣은 Alpine이며 `NET_ADMIN`만 가집니다. `wan`은 `sN-inet`에, `lan`은 `sN-estate`에 붙습니다. `rp_filter`를 끄고 NAT 없이 forward하므로 출발 국가 주소가 그대로 WAF에 닿습니다. `deploy/edge/edge.nft`는 loopback 외 input을 drop하고 forward는 accept합니다.
 
-**Kali.** One Kali image serves every origin. `slot.sh` adds the ~100 per-country addresses to its `eth0`. `/usr/local/sbin/set-origin` SNATs the container's outgoing source per country, so every tool leaves as the chosen country. The marker-adding proxy is the container's main process. Kali knows two names, `board.com` and `corp.com`, both the WAF's estate address.
+**Kali.** Kali 이미지 하나가 모든 출발지를 맡습니다. `slot.sh`가 국가별 주소 약 100개를 `eth0`에 붙입니다. `/usr/local/sbin/set-origin`이 컨테이너의 출발 주소를 국가별로 SNAT하므로, 모든 도구가 고른 국가에서 나갑니다. 마커를 붙이는 프록시는 컨테이너의 메인 프로세스입니다. Kali가 아는 이름은 `board.com`과 `corp.com` 둘이고, 둘 다 WAF의 estate 주소입니다.
 
-**The sensors.** `sN-edge-sensor` and `sN-estate-sensor` run `jasonish/suricata` pinned by digest, on the host network, in the host's user namespace (`userns_mode: host`), with `NET_ADMIN`, `NET_RAW` and `SYS_NICE`. Each runs af-packet with one thread on one bridge.
+**센서.** `sN-edge-sensor`와 `sN-estate-sensor`는 digest로 고정한 `jasonish/suricata`를 호스트 네트워크와 호스트 user namespace(`userns_mode: host`)에서 `NET_ADMIN`, `NET_RAW`, `SYS_NICE`로 돌립니다. 각각 브리지 하나에서 스레드 하나로 af-packet을 씁니다.
 
-- The edge sensor watches `sN-inet`, the Internet leg. Its configuration is `deploy/range-host/edge-sensor.yaml`, with the slot's estate /24 as `HOME_NET`.
-- The estate sensor watches `sN-estate`, with a BPF filter on the board's and corp-wp's addresses: the WAF-to-target leg. Its configuration is rendered from `deploy/suricata/suricata.yaml`.
-- Each reads its rules from `/var/lib/suricata/rules/local.rules` and reloads with `suricatasc -c reload-rules`. The host entries `cr-edge` and `cr-range` name both (`settings.CR_EXTRA_SENSORS` for the estate sensor). Every rule seed, validation, change and baseline check goes to both sensors.
-- Each writes EVE alerts and HTTP records to `/var/log/cr/sN/edge/eve.json` or `/var/log/cr/sN/estate/eve.json`.
+- 에지 센서는 `sN-inet`, 곧 인터넷 구간을 봅니다. 설정은 `deploy/range-host/edge-sensor.yaml`이고, `HOME_NET`은 슬롯의 estate /24입니다.
+- estate 센서는 `sN-estate`를 보며, board와 corp-wp 주소로 BPF 필터를 겁니다. 곧 WAF→대상 시스템 구간입니다. 설정은 `deploy/suricata/suricata.yaml`로 렌더링합니다.
+- 둘 다 `/var/lib/suricata/rules/local.rules`에서 룰을 읽고 `suricatasc -c reload-rules`로 reload합니다. 호스트 항목 `cr-edge`와 `cr-range`가 이 둘을 지정합니다(estate 센서는 `settings.CR_EXTRA_SENSORS`). 룰 넣기, 검증, 변경, 기준선 검사는 모두 두 센서에 갑니다.
+- EVE 경보와 HTTP 기록은 `/var/log/cr/sN/edge/eve.json`이나 `/var/log/cr/sN/estate/eve.json`에 씁니다.
 
-**Logs.** The WAF writes its audit log to `/var/log/cr/sN/waf/audit.log` on the range host, its one host-path mount, which is that file alone: the directory is root's, so root in the WAF cannot plant a link there for a root process on the host to follow (`docs/THREAT-MODEL.md`). `/etc/rsyslog.d/60-cr-sN.conf` (`rangehost.forwarding`) reads the three files with `imfile` and forwards them over UDP to 5140 on the platform's `mgmt` address. Each file has a fixed sender name: `cr-edge`, `cr-range` and `cr-waf` for slot 1, `cr-edge-N`, `cr-range-N` and `cr-waf-N` for slot N. Filebeat's slot regex therefore reads the slot as before. The files live under `/var/log` because Ubuntu's rsyslog drops to the `syslog` user and AppArmor confines it there.
+**로그.** WAF는 audit 로그를 훈련 환경 호스트의 `/var/log/cr/sN/waf/audit.log`에 씁니다. 이것이 WAF의 유일한 호스트 경로 마운트이고, 그 파일 하나만 마운트합니다. 디렉터리는 root 소유라서 WAF 안의 root가 호스트의 root 프로세스가 따라갈 링크를 그 안에 만들 수 없습니다(`docs/THREAT-MODEL.md`). `/etc/rsyslog.d/60-cr-sN.conf`(`rangehost.forwarding`)가 세 파일을 `imfile`로 읽어 플랫폼 `mgmt` 주소의 5140으로 UDP 전달합니다. 파일마다 송신자 이름이 고정입니다. 슬롯 1은 `cr-edge`, `cr-range`, `cr-waf`, 슬롯 N은 `cr-edge-N`, `cr-range-N`, `cr-waf-N`입니다. 그래서 Filebeat의 슬롯 정규식이 예전처럼 슬롯을 읽습니다. 파일을 `/var/log` 아래에 두는 것은 Ubuntu의 rsyslog가 `syslog` 사용자로 권한을 낮추고 AppArmor가 그 위치로 묶어 두기 때문입니다.
 
-**Containment.** The learner-facing containers (Kali, the WAF, the edge and the four targets) run with `cap_drop: ALL` and a listed set of capabilities:
+**격리.** 학습자가 만지는 컨테이너(Kali, WAF, 에지, 대상 시스템 넷)는 `cap_drop: ALL`에 필요한 capability만 더해 돕니다.
 
-| Container | Capabilities |
+| 컨테이너 | capability |
 |---|---|
 | `kali` | `NET_RAW`, `NET_ADMIN`, `SETUID`, `SETGID`, `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `KILL`, `AUDIT_WRITE` |
 | `waf` | `NET_BIND_SERVICE`, `SETUID`, `SETGID`, `CHOWN`, `DAC_OVERRIDE` |
 | `edge` | `NET_ADMIN` |
 | `board`, `board-db`, `corp-db` | `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETUID`, `SETGID` |
-| `corp-wp` | the same, and `NET_BIND_SERVICE` |
+| `corp-wp` | 위와 같고 `NET_BIND_SERVICE` 추가 |
 
-- Each also runs with `no-new-privileges`, Docker's default seccomp and AppArmor profiles, and memory and pids limits.
-- None is privileged, mounts the Docker socket, shares the host's network, pid or ipc namespace, or mounts a host path, except the WAF's audit log file.
-- dockerd runs with `userns-remap`, so root in a container is an unprivileged user on the host. Only the sensors run in the host's user namespace.
-- `platform/tests/test_containment.py` fails `bin/verify` when the rendered slot compose file breaks any of this. `test/test_range_isolation.py` is the live check. `docs/THREAT-MODEL.md` has what a container escape would reach.
+- 모두 `no-new-privileges`, Docker 기본 seccomp·AppArmor 프로파일, 메모리·pids 한도를 씁니다.
+- privileged인 것, Docker 소켓을 마운트한 것, 호스트의 network·pid·ipc 네임스페이스를 같이 쓰는 것은 없습니다. 호스트 경로 마운트는 WAF의 audit 로그 파일 하나뿐입니다.
+- dockerd는 `userns-remap`으로 돌기 때문에 컨테이너 안의 root는 호스트에서 권한 없는 사용자입니다. 호스트 user namespace를 쓰는 것은 센서뿐입니다.
+- `platform/tests/test_containment.py`는 렌더링한 슬롯 compose 파일이 이 중 하나라도 어기면 `bin/verify`를 실패시킵니다. 실제 환경 검사는 `test/test_range_isolation.py`입니다. 컨테이너 탈출이 어디까지 닿는지는 `docs/THREAT-MODEL.md`에 있습니다.
 
-**Reset.** `POST /api/sessions/<id>/close/` resets the slot in place. No VM is rebuilt.
+**초기화.** `POST /api/sessions/<id>/close/`는 슬롯을 제자리에서 초기화합니다. VM은 재구축하지 않습니다.
 
-- `reset_in_place()` runs `slot.sh reset N`. It recreates Kali and the WAF from their images. In parallel, it removes the targets with their volumes and starts them again on the pristine data. It flushes the edge's neighbour table, empties the slot's log files in place and has both sensors reopen theirs.
-- The platform then seeds both sensors' baseline rules again.
-- The edge and the sensors keep running.
-- A reset owed to a slot whose files are gone from the range host (`/opt/cr/sN/compose.yaml` missing) configures the slot instead.
-- A session therefore leaves the next one no edited rule or planted data.
+- `reset_in_place()`가 `slot.sh reset N`을 실행합니다. Kali와 WAF를 이미지에서 새로 만듭니다. 동시에 대상 시스템을 볼륨째 지우고 초기 데이터로 다시 띄웁니다. 에지의 neighbour 테이블을 비우고, 슬롯의 로그 파일을 제자리에서 비운 뒤 두 센서가 로그 파일을 다시 열게 합니다.
+- 그 뒤 플랫폼이 두 센서에 기본 룰을 다시 넣습니다.
+- 에지와 센서는 계속 돌고 있습니다.
+- 초기화할 슬롯의 파일이 훈련 환경 호스트에서 사라졌으면(`/opt/cr/sN/compose.yaml` 없음) 초기화 대신 슬롯을 configure합니다.
+- 그래서 한 세션이 다음 세션에 수정한 룰이나 심어 둔 데이터를 남기지 않습니다.
 
-`POST /api/range/slot/rebuild/` (`rebuild_slot()`) takes a slot down with `slot.sh down N`: `compose down -v`, its rsyslog file, its files and its logs. `POST /api/range/configure/` brings it up again. `DELETE /api/range/slot/` takes every slot down and, without `?slot`, deletes the range host and its `mgmt` port.
+`POST /api/range/slot/rebuild/`(`rebuild_slot()`)는 `slot.sh down N`으로 슬롯을 내립니다. `compose down -v`를 하고 rsyslog 파일, 슬롯 파일, 로그를 지웁니다. `POST /api/range/configure/`가 다시 올립니다. `DELETE /api/range/slot/`은 모든 슬롯을 내리고, `?slot` 없이 부르면 훈련 환경 호스트와 그 `mgmt` 포트도 지웁니다.
 
-Every session starts on the same pristine data, with fresh secrets:
+모든 세션은 같은 초기 데이터에서 시작하되 비밀 값은 새로 만듭니다.
 
-- The board's `seed` sets each seeded account's password on every start, so each session's hashes have new salts, and a hash stolen in one session does not match the next session's ground truth. It also moves the seeded posts' dates to today.
-- corp's entrypoint deletes `wp-config.php` before the image's entrypoint runs, so the image writes a new one with new random keys and salts. On restored data it also sets the admin password again, which gives a new hash. It skips the install and the plugin setup, which the restored database already holds.
+- board의 `seed`는 시작할 때마다 시드 계정의 비밀번호를 새로 설정합니다. 그래서 세션마다 해시의 salt가 새로 바뀌고, 한 세션에서 훔친 해시는 다음 세션의 정답 데이터와 맞지 않습니다. 시드 글의 날짜도 오늘로 옮깁니다.
+- corp의 entrypoint는 이미지의 entrypoint가 실행되기 전에 `wp-config.php`를 지웁니다. 그래서 이미지가 무작위 키와 salt로 새 파일을 씁니다. 복원한 데이터에서는 관리자 비밀번호도 다시 설정해 새 해시가 생깁니다. 설치와 플러그인 설정은 복원한 DB에 이미 있으므로 건너뜁니다.
 
-After a close, the platform does the reset itself. `platform/api/reset.py` starts a background thread that runs the reset under one hold of the rules lock. It retries while the range host does not answer ssh (up to 30 minutes). The first failure fails the reset.
+세션을 닫으면 플랫폼이 직접 초기화합니다. `platform/api/reset.py`가 백그라운드 스레드를 띄워, 룰 잠금을 한 번 잡은 채로 초기화를 실행합니다. 훈련 환경 호스트가 ssh에 응답하지 않는 동안 재시도합니다(최대 30분). 처음 발생한 실패가 초기화를 실패로 만듭니다.
 
-The close answers at once. The reset state (idle, running, failed and why) is held in the platform process. A reset also leaves a file `slot-N` under `CR_RESET_OWED_DIR` (`/data/reset-owed`) from the moment it is claimed until it succeeds. At boot `cr/wsgi.py` does the reset again for each owed slot, as a close does, so a restart does not leave the slot refusing sessions; a failed reset keeps its file. `POST /api/range/configure/` stays the manual retry and clears a failed reset.
+close는 즉시 응답합니다. 초기화 상태(idle, running, failed와 그 이유)는 플랫폼 프로세스가 보관합니다. 초기화는 시작을 잡은 때부터 성공할 때까지 `CR_RESET_OWED_DIR`(`/data/reset-owed`)에 `slot-N` 파일을 남깁니다. 부팅할 때 `cr/wsgi.py`가 이 파일이 남은 슬롯마다 close와 똑같이 초기화를 다시 하므로, 재시작해도 슬롯이 세션을 거부하는 상태로 남지 않습니다. 실패한 초기화는 파일을 그대로 둡니다. 수동 재시도는 여전히 `POST /api/range/configure/`이며, 실패한 초기화 상태도 지웁니다.
 
-**Readiness.** Session create answers 409 while every slot is held or no free slot is ready.
+**준비 상태.** 모든 슬롯이 잡혀 있거나 비어 있는 슬롯 중 준비된 것이 없으면 세션 생성은 409로 응답합니다.
 
-`GET /api/range/ready/` reports every slot under `slots`:
+`GET /api/range/ready/`는 `slots` 아래에 슬롯마다 다음을 보고합니다.
 
-- its number and the session holding it;
-- its phase: `IN_USE` while a session holds it, `RESETTING` while its reset runs, `RESET_FAILED` with its reason if it failed, otherwise `NOT_STANDING`, `STALE` (a range host on images or slot files older than the platform's), `SETUP_FAILED` (the range host failed its setup; `/var/log/cr-setup.log` on it says why), `REBUILDING` (the range host not yet `ACTIVE` and set up), `CHECKING` or `READY`;
-- its reset state;
-- three checks: the range host ACTIVE and set up, the board's ground truth readable, and the sensor rules at baseline with no rule of that slot disabled.
+- 번호와 그 슬롯을 잡은 세션
+- 단계: 세션이 잡고 있으면 `IN_USE`, 초기화가 진행 중이면 `RESETTING`, 초기화가 실패했으면 그 이유와 함께 `RESET_FAILED`, 그 밖에는 `NOT_STANDING`, `STALE`(플랫폼보다 오래된 이미지나 슬롯 파일로 도는 훈련 환경 호스트), `SETUP_FAILED`(훈련 환경 호스트가 설치에 실패함. 이유는 그 호스트의 `/var/log/cr-setup.log`), `REBUILDING`(훈련 환경 호스트가 아직 `ACTIVE`가 아니거나 설치가 끝나지 않음), `CHECKING`, `READY`
+- 초기화 상태
+- 세 가지 검사: 훈련 환경 호스트가 ACTIVE이고 설치가 끝남, board의 정답 데이터를 읽을 수 있음, 센서 룰이 기준선이며 그 슬롯에 비활성화한 룰이 없음
 
-The top-level `ready` and `slot` are the slot that the next open would take. With more than one slot, the platform checks the slots side by side.
+최상위의 `ready`와 `slot`은 다음 세션 열기가 가져갈 슬롯입니다. 슬롯이 둘 이상이면 플랫폼은 슬롯을 나란히 검사합니다.
 
-`/api/range/slot/`, `slot/rebuild/` and `configure/` take `?slot=N`. Without it they act on every slot.
+`/api/range/slot/`, `slot/rebuild/`, `configure/`는 `?slot=N`을 받습니다. 없으면 모든 슬롯에 적용합니다.
 
-`POST /api/range/canary/` fires a marked case and reports whether Suricata and ModSecurity both alerted and how far their clocks differ. It is not part of the ready check. The landing page calls both.
+`POST /api/range/canary/`는 마커를 붙인 케이스를 보내고 Suricata와 ModSecurity가 둘 다 경보를 냈는지, 둘의 시계가 얼마나 차이 나는지 보고합니다. 준비 상태 검사에는 들어가지 않습니다. 첫 화면이 둘 다 호출합니다.
 
-**Leftovers.** `GET /api/range/leftovers/` lists what the VM range, before the range host, left in the project, and `DELETE` removes it: slot VMs by their `cr_host` metadata, image builders, the ports, subnets and networks of retired segments, the security groups `cr-range` and `cr-build`, and project images that carry the `cr_bundle` property. `bin/cloud up` calls `DELETE` last.
+**남은 자원.** `GET /api/range/leftovers/`는 훈련 환경 호스트 이전의 VM 훈련 환경이 프로젝트에 남긴 것을 나열하고, `DELETE`가 지웁니다. `cr_host` 메타데이터로 찾은 슬롯 VM, 이미지 빌더, 폐기한 구간의 포트·서브넷·네트워크, 보안 그룹 `cr-range`와 `cr-build`, `cr_bundle` 속성을 가진 프로젝트 이미지입니다. `bin/cloud up`이 마지막에 `DELETE`를 호출합니다.
 
-### The range on OpenStack: the target structure
+### OpenStack 훈련 환경: 목표 구조
 
-The user decided the range on 2026-09-30, with the 2026-10-08 changes. One range host now runs every slot as containers in place of a VM per role.
+사용자가 2026-09-30에 정하고 2026-10-08에 바꾼 구조입니다. 지금은 역할마다 VM을 두는 대신 훈련 환경 호스트 하나가 모든 슬롯을 컨테이너로 돌립니다.
 
 ```
  OpenStack project fsl-range.
@@ -1679,11 +1679,12 @@ The user decided the range on 2026-09-30, with the 2026-10-08 changes. One range
    Elasticsearch ----------------> Kibana --> blue team
 ```
 
-Left to build:
+남은 작업:
 
-- Session lifecycle: check WAF mode and clock skew as part of readiness.
-- Blocking is built. The WAF runs `SecRuleEngine On`. The learner tunes CRS in the WAF terminal or through `PUT /api/sessions/<id>/waf/`. A fired case is marked `meta["blocked"]` from its 403, not from the target side.
-  - The starting paranoia level was measured on 2026-10-10 (`docs/DECISIONS.md`). PL1 already blocks the board SQLi and passes O'Brien.
-  - A posture meant to over-block therefore starts above PL1 (the scenarios' `level2` and `level3`). The learner tunes it with a lower PL, a threshold or a rule exclusion.
 
-`docs/STATE.md` lists the decisions still open for a person ("Decisions left for a person").
+- 세션 수명 주기: WAF 모드와 시계 차이를 준비 상태 검사에 포함하기.
+- 차단은 구축되었습니다. WAF는 `SecRuleEngine On`으로 동작하고, 학습자는 WAF 터미널이나 `PUT /api/sessions/<id>/waf/`로 CRS를 조정합니다. 실행한 케이스의 `meta["blocked"]`는 대상 시스템이 아니라 403 응답으로 정합니다.
+  - 시작 paranoia level은 2026-10-10에 측정했습니다(`docs/DECISIONS.md`). PL1만으로도 board의 SQLi는 차단되고 O'Brien은 통과합니다.
+  - 그래서 과차단하도록 만든 방어 설정은 PL1보다 높은 단계에서 시작합니다(시나리오의 `level2`, `level3`). 학습자는 더 낮은 PL, 임계치, 예외 규칙으로 설정을 조정합니다.
+
+사람이 결정해야 할 남은 사항은 `docs/STATE.md`("Decisions left for a person")에 있습니다.

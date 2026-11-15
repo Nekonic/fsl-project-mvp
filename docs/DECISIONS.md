@@ -7529,3 +7529,11 @@ Judgement calls, decided:
   (the run blocked, no loot), and the walk saw it pass.
 - The c2 intro's XSS line under the CRS heading and the sqlmap option
   reference: left (round 20).
+
+## 2026-11-15 — README and ARCHITECTURE are Korean only
+
+The user ruled that the two documents kept in both languages are now Korean
+only. `README.md` and `docs/ARCHITECTURE.md` now hold the former `.ko.md`
+text, and the English versions and the `.ko.md` files are gone. Keeping two
+languages in step cost a review pass per change and drifted in every docs
+review round. Every other repo file stays English, as before.
