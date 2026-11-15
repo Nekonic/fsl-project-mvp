@@ -7686,7 +7686,6 @@ are not used.
   The live `cloud.yaml` lost its `identity` section; its copy before is in
   `~/.cache/fsl-work/backup-safe/cloud-yaml-20261115/`.
 
-
 ## 2026-11-15 — Answer-blind walk round 22: what changed in the scenario and why
 
 An answer-blind walk of both courses and scenario 1.1 on the live range (at
