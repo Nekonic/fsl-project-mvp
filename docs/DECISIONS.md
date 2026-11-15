@@ -8653,3 +8653,35 @@ nothing outside the slot (no range host, platform VM or collector), no ports,
 no legend, no parentheses; the IDS's link to the web switch is an ordinary
 solid line, since no source gives a convention for a SPAN link. Names are
 Korean role names (라우터, 로그 서버) and proper names (Kali, WAF, IDS).
+
+## 2026-11-16 — `run_on_role` skips system checks and finds the range host from a 60 s record: 3.0 s to 1.3 s a call
+
+Each acceptance range command is one `manage.py run_on_role` process. It ran
+Django's system checks (about 1 s, the URL check importing every view) and
+signed in to Keystone and read networks, servers and subnets to find one
+management address (about 1.5 s). Now the command sets
+`requires_system_checks = []`; the OpenStack adapter signs in only when it
+first asks the cloud; every cloud read writes the range host's address and
+host key alias to `CR_RANGE_HOST_SEEN` (`/data/range-host.json`, the
+platform's data volume), and an adapter that has read nothing itself uses a
+record younger than 60 s. A command that never reports finishing deletes
+the record, so a range host rebuilt on another address is read again on
+the next call. No new dependency; deployed by fast-forwarding `/opt/cr` and
+recreating the platform container (the code is bind-mounted).
+
+Measured on the platform VM, each module alone, no session open at start:
+
+| | before | after |
+|---|---|---|
+| one `run_on_role` call | 2.7–3.5 s | 1.15–1.35 s |
+| `test_corp_authz` | 78 s | 90 s, then 61 s |
+| `test_acceptance` | 109 s | 123 s, then 97 s |
+| `test_concurrent_sessions` | 63 s | 46 s |
+| `test_lesson` | 97 s | 81 s |
+
+The first run after the platform restart was slower than before for two
+modules; the repeat was faster, so module times vary by about 15 s between
+runs. Left in each call: about 0.4 s of `django.setup()`, 0.5 s of imports
+(Django's management package, the adapter and `requests`), 0.2 s of ssh
+and `docker exec` on the range host, 0.15 s of `docker exec` into the
+platform. Under a second needs an entry point that does not boot Django.
