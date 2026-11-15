@@ -24,14 +24,13 @@ def sensors():
     return yaml.safe_load((ROOT / "deploy/range-host/slot.yaml").read_text())["services"]
 
 
-def test_the_one_sensor_runs_the_pinned_image_on_both_legs_of_the_waf():
+def test_the_one_sensor_runs_the_pinned_image_behind_the_waf():
     sensor = sensors()["sensor"]
 
     assert sensor["image"] == (
         "jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840"
-    ), "both legs are judged by one Suricata build, which moves only when this pin does"
-    assert sensor["networks"]["estate"] == {"interface_name": "dmz"} and sensor["networks"]["web"] == {
-        "interface_name": "web"}
+    ), "every slot is judged by one Suricata build, which moves only when this pin does"
+    assert sensor["networks"]["web"] == {"interface_name": "web"} and "estate" not in sensor["networks"]
     assert sensor["networks"]["mgmt"]["interface_name"] == "mgmt"
     assert sensor["volumes"][0].endswith(":/etc/suricata/suricata.yaml")
 

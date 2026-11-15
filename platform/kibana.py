@@ -11,7 +11,7 @@ OBJECTS = f"{os.environ.get('CR_SOURCE', '/app')}/deploy/kibana/objects.ndjson"
 BASE_PATH = "/kibana"
 DATA_VIEW = "logs"
 ALERT_SEARCH = "alerts"
-ALERTS_QUERY = 'event_type : "alert" or event.module : "modsecurity"'
+ALERTS_QUERY = 'event_type : "alert" or event.module : "modsecurity" or event.module : "nginx"'
 SESSION_COLUMNS = ("event_type", "source_ip", "destination", "url", "status", "rule_id", "rule")
 ALERT_COLUMNS = SESSION_COLUMNS
 SESSION_SEARCH = "events"
@@ -184,7 +184,7 @@ def log_source_script():
 def sensor_script(waf):
     return (
         f"String module = {_value('event.module')}; "
-        f"if (module == 'modsecurity') {{ emit({_literal(waf)}); }} "
+        f"if (module == 'modsecurity' || module == 'nginx') {{ emit({_literal(waf)}); }} "
         f"else if (module == 'suricata') {{ String leg = {_value('in_iface')}; if (leg != '') {{ emit(leg); }} }}"
     )
 

@@ -18,7 +18,7 @@ PLATFORM = {"id": "srv-platform", "name": "cr-platform", "status": "ACTIVE", "me
             "addresses": {"cr-mgmt": [{"addr": "10.31.0.2", "OS-EXT-IPS:type": "fixed", "version": 4}]}}
 
 
-SENDERS = {"sensor": ("cr-range", "suricata"), "waf": ("cr-waf", "modsecurity")}
+SENDERS = {"sensor": "cr-range", "waf": "cr-waf"}
 
 
 def laid(number=2):
@@ -125,17 +125,20 @@ def test_a_slot_s_files_put_the_edge_and_the_waf_on_its_estate_and_the_targets_b
     assert not [left for left in ("${", "@slot@", "@estate@", "@web@", "@mtu@") if left in files["compose.yaml"].decode()]
 
 
-def test_one_sensor_sniffs_the_dmz_before_the_waf_and_the_web_network_after_it():
+def test_one_sensor_sniffs_the_web_servers_network_behind_the_waf_and_not_the_dmz():
     files = slot_files()
     config = yaml.safe_load(files["sensor.yaml"].decode().removeprefix(rangehost.YAML_HEADER))
     sensor = yaml.safe_load(files["compose.yaml"])["services"]["sensor"]
 
-    assert [capture["interface"] for capture in config["af-packet"]] == ["dmz", "web"]
-    assert sensor["networks"]["estate"] == {"interface_name": "dmz"} and sensor["networks"]["web"] == {
-        "interface_name": "web"}, "a sniffing interface holds no address"
+    assert [capture["interface"] for capture in config["af-packet"]] == ["web"]
+    assert sensor["networks"]["web"] == {"interface_name": "web"}, "a sniffing interface holds no address"
+    assert config["outputs"][0]["eve-log"]["xff"] == {
+        "enabled": True, "mode": "extra-data", "deployment": "reverse", "header": "X-Forwarded-For"}, (
+        "behind the WAF every packet comes from the WAF; the attacker's address is the last X-Forwarded-For entry")
+    assert "estate" not in sensor["networks"], (
+        "on both legs every request the WAF passed was logged twice; what the WAF stops is in the WAF's own logs")
     assert sensor["networks"]["mgmt"]["interface_name"] == "mgmt" and sensor["networks"]["mgmt"]["ipv4_address"]
     assert "internet" not in sensor["networks"], "the sensor watches inside the perimeter, not the Internet side"
-    assert len({capture["cluster-id"] for capture in config["af-packet"]}) == 2
     assert "--af-packet" in sensor["command"]
     assert config["stats"]["interval"] == 5, "kernel_drops is read from the counters"
 
@@ -161,7 +164,11 @@ def test_each_slot_s_logs_reach_the_collector_under_a_name_that_keeps_its_slot()
     assert 'freshStartTail="on"' in two["rsyslog/waf-shipper.conf"].decode(), (
         "starting from the top, a recreated shipper sent the closed session's 9,400 WAF records a second time "
         "(measured on session 2201)")
-    assert relay.count('Target="10.31.0.2" Port="5140" Protocol="udp"') == 2
+    assert relay.count('Target="10.31.0.2" Port="5140" Protocol="udp"') == 3
+    assert 'File="/var/log/cr/s2/waf/refused.log" Tag="nginx"' in two["rsyslog/waf-shipper.conf"].decode()
+    assert ' cr-waf-2 nginx ' in relay and '$programname == "nginx"' in relay, (
+        "a sender keeps only the tags its own logs carry, so a learner who is root in the WAF cannot pass "
+        "a line off as Suricata's")
 
 
 def test_the_log_server_names_each_log_by_the_management_address_it_came_from():
@@ -178,8 +185,9 @@ def test_the_log_server_names_each_log_by_the_management_address_it_came_from():
             "a log leaves from the management interface of the device that wrote it")
         source = compose["services"][f"{service}-shipper"]
         mounted = {str(volume).split(":")[1] for volume in source["volumes"]}
-        assert f"{rangehost.LOG_FILES.format(slot=2)}/{rangehost.LOGS[service]}".startswith(
-            tuple(path for path in mounted if path.startswith("/var/log/cr/")))
+        for _, log in rangehost.LOGS[service]:
+            assert f"{rangehost.LOG_FILES.format(slot=2)}/{log}".startswith(
+                tuple(path for path in mounted if path.startswith("/var/log/cr/")))
     assert files["uplink"] == f'{on_mgmt["log-server"]} 10.31.0.2 5140\n'.encode()
 
 
@@ -344,7 +352,7 @@ def test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it():
     document = rangehost.compose(ROOT, laid(1), WARGAMES)
     mounted = dict(volume.split(":")[1::-1] for volume in document["services"]["waf"]["volumes"])
 
-    assert mounted.get(written) == f"{rangehost.LOG_FILES.format(slot=1)}/{rangehost.LOGS['waf']}"
+    assert mounted.get(written) == f"{rangehost.LOG_FILES.format(slot=1)}/{dict(rangehost.LOGS['waf'])['modsecurity']}"
 
 
 def test_a_slot_s_compose_is_parsed_once_and_again_only_when_its_files_change(tmp_path, monkeypatch):

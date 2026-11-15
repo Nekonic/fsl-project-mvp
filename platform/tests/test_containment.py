@@ -20,7 +20,7 @@ CAPABILITIES = {
     "corp-wp": {"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETUID", "SETGID", "NET_BIND_SERVICE"},
     "corp-db": {"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETUID", "SETGID"},
 }
-MOUNTS = {"waf": {"/var/log/modsecurity/audit/audit.log"}}
+MOUNTS = {"waf": {"/var/log/modsecurity/audit/audit.log", "/var/log/nginx/refused.log"}}
 UNCONFINED = ("seccomp=unconfined", "seccomp:unconfined", "apparmor=unconfined", "apparmor:unconfined",
               "systempaths=unconfined")
 
@@ -67,7 +67,7 @@ def test_a_learner_facing_container_mounts_nothing_of_the_host_beyond_its_own_lo
 
     assert not [volume for volume in mounts if "docker.sock" in str(volume)], f"{name} holds the docker socket"
     assert bound <= MOUNTS.get(name, set()), f"{name} mounts {sorted(bound)} from the range host"
-    own_logs = {f"{rangehost.LOG_FILES.format(slot=3)}/{log}" for log in rangehost.LOGS.values()}
+    own_logs = {f"{rangehost.LOG_FILES.format(slot=3)}/{log}" for logs in rangehost.LOGS.values() for _, log in logs}
     for volume in mounts:
         source = str(volume).split(":")[0]
         assert not source.startswith("/") or source in own_logs, (

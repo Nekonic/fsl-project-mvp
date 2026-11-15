@@ -43,7 +43,8 @@ RESET_TIMEOUT = 600.0
 USER_DATA_LIMIT = 65535
 SENSOR = "sensor"
 LOG_FILES = "/var/log/cr/s{slot}"
-LOGS = {"sensor": "sensor/eve.json", "waf": "waf/audit.log"}
+LOGS = {"sensor": (("suricata", "sensor/eve.json"),),
+        "waf": (("modsecurity", "waf/audit.log"), ("nginx", "waf/refused.log"))}
 MGMT = "mgmt"
 LOG_SERVER = "log-server"
 SHIPPER = "{service}-shipper"
@@ -249,35 +250,37 @@ def shipped_from(document: dict, service: str) -> str:
     return addressed(document, MGMT)[shared["service"] if shared else shipper]
 
 
-def shipper_conf(slot: Slot, service: str, tag: str, server: str) -> str:
+def shipper_conf(slot: Slot, service: str, server: str) -> str:
     return (
         'global(maxMessageSize="64k" workDirectory="/tmp")\n'
         'module(load="imfile")\n'
-        f'input(type="imfile" File="{LOG_FILES.format(slot=slot.number)}/{LOGS[service]}" Tag="{tag}" '
-        'Facility="local2" Severity="info" reopenOnTruncate="on" freshStartTail="on")\n'
-        f'action(type="omfwd" Target="{server}" Port="{SHIPPED_PORT}" Protocol="tcp" '
+        + "".join(f'input(type="imfile" File="{LOG_FILES.format(slot=slot.number)}/{log}" Tag="{tag}" '
+                  'Facility="local2" Severity="info" reopenOnTruncate="on" freshStartTail="on")\n'
+                  for tag, log in LOGS[service])
+        + f'action(type="omfwd" Target="{server}" Port="{SHIPPED_PORT}" Protocol="tcp" '
         'Template="RSYSLOG_SyslogProtocol23Format" action.resumeRetryCount="-1")\n'
     )
 
 
 def forwarding(document: dict, slot: Slot, collector: str, port: int,
-               senders: dict[str, tuple[str, str]]) -> dict[str, str]:
+               senders: dict[str, str]) -> dict[str, str]:
     server = addressed(document, MGMT)[LOG_SERVER]
     files, templates, relays = {}, [], []
-    for service, (host, tag) in sorted(senders.items()):
-        template = f"cr-{slot.project}-{service}"
-        files[f"{SHIPPING}/{SHIPPER.format(service=service)}.conf"] = shipper_conf(slot, service, tag, server)
-        templates.append(
-            f'template(name="{template}" type="string" '
-            f'string="<%PRI%>1 %TIMESTAMP:::date-rfc3339% {sender(host, slot.number)} {tag} %PROCID% %MSGID% '
-            f'%STRUCTURED-DATA% %msg%\\n")\n'
-        )
-        relays.append(
-            f'    if $fromhost-ip == "{shipped_from(document, service)}" then {{\n'
-            f'        action(type="omfwd" Target="{collector}" Port="{port}" Protocol="udp" Template="{template}")\n'
-            '        stop\n'
-            '    }\n'
-        )
+    for service, host in sorted(senders.items()):
+        files[f"{SHIPPING}/{SHIPPER.format(service=service)}.conf"] = shipper_conf(slot, service, server)
+        for tag, _ in LOGS[service]:
+            template = f"cr-{slot.project}-{service}-{tag}"
+            templates.append(
+                f'template(name="{template}" type="string" '
+                f'string="<%PRI%>1 %TIMESTAMP:::date-rfc3339% {sender(host, slot.number)} {tag} %PROCID% %MSGID% '
+                f'%STRUCTURED-DATA% %msg%\\n")\n'
+            )
+            relays.append(
+                f'    if $fromhost-ip == "{shipped_from(document, service)}" and $programname == "{tag}" then {{\n'
+                f'        action(type="omfwd" Target="{collector}" Port="{port}" Protocol="udp" Template="{template}")\n'
+                '        stop\n'
+                '    }\n'
+            )
     files[f"{SHIPPING}/{LOG_SERVER}.conf"] = (
         'global(maxMessageSize="64k")\n'
         'module(load="imtcp")\n'
@@ -309,7 +312,7 @@ def sensor_config(source: Path, slot: Slot, document: dict) -> str:
 
 
 def slot_files(source: Path, slot: Slot, wargames, origins, default_origin: str,
-               collector: str, port: int, senders: dict[str, tuple[str, str]]) -> dict[str, bytes]:
+               collector: str, port: int, senders: dict[str, str]) -> dict[str, bytes]:
     document = compose(source, slot, wargames)
     shipped = forwarding(document, slot, collector, port, senders)
     return {
@@ -444,25 +447,21 @@ def setup_state() -> list[str]:
                         f"tail -n 20 /var/log/cr-setup.log; else echo setting-up; fi"]
 
 
-FORWARDING = f"{INSTALLED}/{{project}}/{SHIPPING}"
 SNIFFS = re.compile(r"^--af-packet(=(?P<bridge>\S+))?$")
-WIRING = r"""p=$1; f=$2
+WIRING = r"""p=$1
 docker network ls --filter label=com.docker.compose.project=$p --format '{{.Name}}' | while read -r n; do
   echo "@network $n $(docker network inspect -f '{{.Id}} {{with index .Options "com.docker.network.bridge.name"}}{{.}}{{else}}-{{end}} {{range .IPAM.Config}}{{.Subnet}} {{end}}' "$n")"
 done
 for c in $(docker ps -q --filter label=com.docker.compose.project=$p); do
   set -- $(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}} {{.State.Pid}} {{.HostConfig.NetworkMode}}' "$c")
   echo "@container $1 $3"
-  docker inspect -f '@args {{join .Args " "}}{{println}}{{range .Mounts}}@mount {{.Source}}{{println}}{{end}}{{range $n, $e := .NetworkSettings.Networks}}@leg {{$n}} {{$e.MacAddress}}{{println}}{{end}}' "$c"
+  docker inspect -f '@args {{join .Args " "}}{{println}}{{range $n, $e := .NetworkSettings.Networks}}@leg {{$n}} {{$e.MacAddress}}{{println}}{{end}}' "$c"
   if [ "$3" = host ] || [ "${3#container:}" != "$3" ]; then :
   else nsenter -t "$2" -n sh -c 'ip -o link show; ip -o -4 addr show'
   fi
 done
-[ ! -d "$f" ] || sed -n 's/.*File="\([^"]*\)".*/@forward \1/p' "$f"/*-shipper.conf
-[ ! -f "$f/log-server.conf" ] || sed -n 's/^input(type="im\([a-z]*\)" port="\([0-9]*\)".*/@port \2\/\1/p' "$f/log-server.conf"
-[ ! -f "$f/log-server.conf" ] || sed -n 's/.*type="omfwd" Target="\([^"]*\)" Port="\([0-9]*\)" Protocol="\([a-z]*\)".*/@uplink \1:\2\/\3/p' "$f/log-server.conf" | head -n 1
 """
 
 
 def wiring(project: str) -> list[str]:
-    return ["sudo", "sh", "-c", WIRING, "sh", project, FORWARDING.format(project=project)]
+    return ["sudo", "sh", "-c", WIRING, "sh", project]

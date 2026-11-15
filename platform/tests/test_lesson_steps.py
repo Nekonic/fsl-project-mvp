@@ -257,8 +257,8 @@ def test_a_fact_about_a_kali_step_that_recorded_nothing_sends_the_learner_back_t
     assert (before["passed"], before["reason"]) == (False, ["lesson.check.kali_first", []])
     assert after["passed"] is True
 
-@pytest.mark.parametrize("word, others, expected", [("word0", ["/search/?q=other"], "6"), ("notes", [], "7")])
-def test_the_count_of_my_searches_is_the_http_events_of_both_legs_the_kibana_view_of_this_lesson_shows_for_my_word(
+@pytest.mark.parametrize("word, others, expected", [("word0", ["/search/?q=other"], "3"), ("notes", [], "4")])
+def test_the_count_of_my_searches_is_the_http_events_the_ids_behind_the_waf_logged_for_my_word(
         client, word, others, expected):
     now = timezone.now()
     session = taught("f3", lessons=[{"id": "f2", "started_at": (now - timedelta(minutes=10)).isoformat()},
@@ -266,13 +266,14 @@ def test_the_count_of_my_searches_is_the_http_events_of_both_legs_the_kibana_vie
     searched = [{"at": (now - timedelta(seconds=170)).timestamp(), "method": "GET", "status": 200,
                  "url": f"http://board.com/search/?q={word}"}]
     mine = [http_event(session.browse_marker, f"/search/?q={word}", now - timedelta(seconds=120 - n), 200,
-                       src_ip=CUSTOMER, dest_ip=WAF) for n in range(3)]
-    upstream = [dict(one, src_ip=WAF, dest_ip=BOARD) for one in mine]
-    earlier = http_event(session.browse_marker, f"/search/?q={word}", now - timedelta(minutes=5), 200, src_ip=CUSTOMER)
-    seed = http_event("seed-case-uuid", "/search/?q=release notes", now - timedelta(seconds=179), 200, dest_ip=WAF)
-    unrelated = [http_event(session.browse_marker, url, now - timedelta(seconds=100), 200, src_ip=CUSTOMER, dest_ip=WAF)
+                       src_ip=WAF, dest_ip=BOARD) for n in range(3)]
+    earlier = http_event(session.browse_marker, f"/search/?q={word}", now - timedelta(minutes=5), 200,
+                         src_ip=WAF, dest_ip=BOARD)
+    seed = http_event("seed-case-uuid", "/search/?q=release notes", now - timedelta(seconds=179), 200,
+                      src_ip=WAF, dest_ip=BOARD)
+    unrelated = [http_event(session.browse_marker, url, now - timedelta(seconds=100), 200, src_ip=WAF, dest_ip=BOARD)
                  for url in ("/?sort=title", *others)]
-    with quietly(), behind_the_waf(), indexed(*mine, *upstream, earlier, seed, *unrelated), \
+    with quietly(), behind_the_waf(), indexed(*mine, earlier, seed, *unrelated), \
             patch.object(site, "kept", return_value=searched):
         lesson = wargames.lesson("board", lesson_id="f3")
         accepted = views._accepted(session, next(one["check"] for one in lesson["steps"] if one["id"] == "count"), lesson)
@@ -280,7 +281,8 @@ def test_the_count_of_my_searches_is_the_http_events_of_both_legs_the_kibana_vie
         wrong = check(client, session, "count", {"answer": "9"}).json()
 
     assert accepted == [expected], (
-        "my word's http events on both legs, as event_type : http and url : *word* shows them, not the searches I made")
+        "my word's http events behind the WAF, as event_type : http and url : *word* shows them, "
+        "not the searches I made")
     assert right["passed"] is True
     assert (wrong["passed"], wrong["reason"]) == (False, ["lesson.check.wrong", []])
 

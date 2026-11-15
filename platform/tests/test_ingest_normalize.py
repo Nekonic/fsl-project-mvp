@@ -34,6 +34,11 @@ def test_suricata_alert_becomes_one_detection():
     assert det["detection_id"] == "es1"
     assert det["raw"] == suricata_alert()
 
+def test_an_alert_behind_the_waf_is_attributed_to_the_client_suricata_read_from_x_forwarded_for():
+    [det] = normalize("es1", suricata_alert(src_ip="10.30.129.247", xff="5.188.10.10"))
+
+    assert det["src_ip"] == "5.188.10.10"
+
 def test_suricata_non_alert_events_are_dropped():
     assert normalize("es1", suricata_alert(event_type="http")) == []
 
@@ -306,3 +311,14 @@ def test_a_failed_search_is_reported_as_unavailable_not_as_no_records(post, said
     with patch("ingest.elastic.requests.post", _failing(**post)):
         with pytest.raises(elastic.ElasticUnavailable, match=said):
             elastic.fetch("http://es:9200", "logs-*", *WINDOW)
+
+
+def test_a_request_nginx_refused_before_modsecurity_saw_it_is_waf_evidence_with_the_client_s_address():
+    doc = {"event": {"module": "nginx"}, "time": "2026-11-16T05:40:01+00:00", "client_ip": "5.188.10.10",
+           "request": "GET /static/..%2F..%2F..%2F..%2Fetc/passwd HTTP/1.1", "status": 400}
+
+    [det] = normalize("es9", doc)
+
+    assert det["source"] == "nginx" and det["src_ip"] == "5.188.10.10" and det["marker"] is None
+    assert det["signature"] == "400 GET /static/..%2F..%2F..%2F..%2Fetc/passwd HTTP/1.1"
+    assert det["timestamp"] == datetime(2026, 11, 16, 5, 40, 1, tzinfo=timezone.utc)

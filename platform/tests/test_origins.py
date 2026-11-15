@@ -331,3 +331,18 @@ def test_an_origin_the_attacker_has_no_address_on_is_not_offered():
 
     listed = [o["id"] for o in attacker.origins(Shape(segments=no_kali, sensors=()))]
     assert listed == ["us"]
+
+
+@pytest.mark.django_db
+def test_a_window_case_recorded_without_its_source_is_matched_against_the_default_origin(client, session_id):
+    with stub(), patch("api.views._observe_objectives", return_value={"achieved": 0}):
+        recorded = client.post_json(f"/api/sessions/{session_id}/cases/", {
+            "case_id": "66666666-6666-4666-8666-666666666666", "name": "board-path-traversal-static",
+            "malicious": True, "correlation": "window",
+            "started_at": "2026-11-16T05:40:00Z", "ended_at": "2026-11-16T05:40:01Z",
+        })
+
+    assert recorded.status_code == 201, recorded.content
+    assert recorded.json()["source_ip"] == "5.188.10.10", (
+        "nginx refuses a malformed path before it reads any header, so its record carries no marker; "
+        "the case is found by the address the harness sent it from")

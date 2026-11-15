@@ -63,10 +63,12 @@ prepare() {
   adm=$(( ${shift_by:-0} + 4 ))
   install -d -m 0755 "$d/sensor-rules" "$logs" "$logs/sensor" "$logs/waf"
   chown -h root:root "$logs/waf"
-  find "$logs/waf" -mindepth 1 -maxdepth 1 ! \( -name audit.log -type f \) -exec rm -rf {} +
-  [ -f "$logs/waf/audit.log" ] || install -m 0644 -o "$www" -g "$adm" /dev/null "$logs/waf/audit.log"
-  chown -h "$www:$adm" "$logs/waf/audit.log"
-  chmod 0644 "$logs/waf/audit.log"
+  find "$logs/waf" -mindepth 1 -maxdepth 1 ! \( \( -name audit.log -o -name refused.log \) -type f \) -exec rm -rf {} +
+  for log in audit.log refused.log; do
+    [ -f "$logs/waf/$log" ] || install -m 0644 -o "$www" -g "$adm" /dev/null "$logs/waf/$log"
+    chown -h "$www:$adm" "$logs/waf/$log"
+    chmod 0644 "$logs/waf/$log"
+  done
   install -m 0644 -o "$owner" -g "$owner" "$d/local.rules" "$d/sensor-rules/local.rules"
   chown -h "$owner:$owner" "$d/sensor.yaml" "$d/sensor-rules" "$logs/sensor"
 }
@@ -130,10 +132,11 @@ spanned() {
 }
 
 mirrored() {
-  for port in $(ls "/sys/class/net/s$n-inet/brif" 2>/dev/null); do
-    tc qdisc del dev "$port" clsact 2>/dev/null || true
+  for bridge in inet estate; do
+    for port in $(ls "/sys/class/net/s$n-$bridge/brif" 2>/dev/null); do
+      tc qdisc del dev "$port" clsact 2>/dev/null || true
+    done
   done
-  spanned estate dmz
   spanned web web
 }
 
@@ -192,6 +195,7 @@ reset() {
   targets_reset > "$d/targets.log" 2>&1 &
   targets=$!
   : > "$logs/waf/audit.log"
+  : > "$logs/waf/refused.log"
   compose up -d --force-recreate --no-deps --wait --wait-timeout "$WAIT" --pull never kali waf waf-shipper
   address_kali
   routed waf

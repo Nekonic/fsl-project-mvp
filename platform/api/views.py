@@ -55,7 +55,7 @@ from range.ports import Drifted, RangeUnavailable, Shape
 from rules import crs, suricata
 from scoring.correlate import correlate
 from scoring.metrics import score as compute_score
-from scoring.types import CORRELATION_STRATEGIES, DetectionRecord
+from scoring.types import CORRELATION_STRATEGIES, CORRELATION_WINDOW, DetectionRecord
 
 log = logging.getLogger(__name__)
 
@@ -1947,6 +1947,8 @@ def session_cases(request, session_id):
     errors = _case_errors(body)
     if errors:
         return _reply(errors, status=400)
+    if body.get("correlation") == CORRELATION_WINDOW and not body.get("source_ip"):
+        body = dict(body, source_ip=attacker.find(_standing(session), None)["source_ip"])
 
     try:
         case = _record_case(

@@ -38,6 +38,11 @@ outputs:
     enabled: true
     filetype: regular
     filename: eve.json
+    xff:
+      enabled: true
+      mode: extra-data
+      deployment: reverse
+      header: X-Forwarded-For
     types:
     - alert:
         metadata: true

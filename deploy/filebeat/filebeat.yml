@@ -51,6 +51,23 @@ filebeat.inputs:
               fields:
                 event:
                   module: modsecurity
+      - if:
+          and:
+            - equals:
+                log.syslog.appname: nginx
+            - regexp:
+                message: '^\{'
+        then:
+          - decode_json_fields:
+              fields: [message]
+              target: ""
+              overwrite_keys: true
+              add_error_key: true
+          - add_fields:
+              target: ""
+              fields:
+                event:
+                  module: nginx
       - drop_event:
           when:
             not:

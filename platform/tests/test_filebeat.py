@@ -42,7 +42,7 @@ def test_suricata_and_modsecurity_lines_are_decoded_into_the_documents_ingest_re
         assert "decode_json_fields" in names
         decoded[appname] = tagged
 
-    assert decoded == {"suricata": "suricata", "modsecurity": "modsecurity"}, (
+    assert decoded == {"suricata": "suricata", "modsecurity": "modsecurity", "nginx": "nginx"}, (
         "ingest normalizes a document by event.module"
     )
 

@@ -83,7 +83,7 @@ GATEWAY_ROLE = "gateway"
 SENSOR_ROLES = ("sensor",)
 GONE_WAIT = 300
 GONE_POLL = 3
-COLLECTED = {"sensor": ("sensor", "suricata"), "waf": (GATEWAY_ROLE, "modsecurity")}
+COLLECTED = {"sensor": "sensor", "waf": GATEWAY_ROLE}
 
 SETTINGS = {
     "keystone": "CR_OPENSTACK_KEYSTONE",
@@ -356,8 +356,8 @@ def _detached(port: dict) -> bool:
     return not port.get("device_id") and not port.get("device_owner")
 
 
-def collected(declared) -> dict[str, tuple[str, str]]:
-    return {service: (declared.host(role), tag) for service, (role, tag) in COLLECTED.items()}
+def collected(declared) -> dict[str, str]:
+    return {service: declared.host(role) for service, role in COLLECTED.items()}
 
 
 def _generations(servers: list[dict]) -> dict[str, str]:

@@ -214,22 +214,21 @@ def test_a_question_is_judged_from_the_learner_s_own_website_pane_request(client
     assert (before["passed"], before["reason"]) == (False, ["lesson.check.unrecorded", []])
     assert (judged[right]["passed"], judged[wrong]["passed"], judged[wrong]["reason"]) == (True, False, [reason, []])
 
-def test_f3_reads_the_two_legs_of_one_search_by_destination_and_counts_both_legs_of_each_search(client):
+def test_f3_reads_the_one_copy_of_a_search_the_ids_behind_the_waf_sees_and_counts_it_once(client):
     session = opened("f3")
     marker = session.browse_marker
     searched = [browsed("/search/?q=kim2026", 200), browsed("/search/?q=lee2026", 200, request_id=2)]
-    legs = [event for word in ("kim2026", "lee2026") for event in (
-        http_event(marker, f"/search/?q={word}", 200, host="cr-edge", src_ip=CUSTOMER, dest_ip=WAF, dest_port=80),
-        http_event(marker, f"/search/?q={word}", 200, src_ip=WAF, dest_ip=BOARD, xff=CUSTOMER))]
+    legs = [http_event(marker, f"/search/?q={word}", 200, src_ip=WAF, dest_ip=BOARD, xff=CUSTOMER)
+            for word in ("kim2026", "lee2026")]
     with on_the_range(), on_map(read_slot()), patch.object(site, "kept", return_value=searched), indexed(*legs):
         step(client, session, "search")
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("site_source", WAF), ("xff", CUSTOMER), ("count", "2"))}
+            ("site_source", WAF), ("xff", CUSTOMER), ("count", "1"))}
         written = f"url : *lee2026* and not destination : {WAF}"
         counted = {query: step(client, session, "upstream", body={"answer": "1", "query": query}).json()
                    for query in (written, "url : *lee2026*", "")}
         wrong = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("site_source", CUSTOMER), ("xff", WAF), ("count", "1"))}
+            ("site_source", CUSTOMER), ("xff", WAF), ("count", "2"))}
         upstream_wrong = step(client, session, "upstream", body={"answer": "2", "query": written}).json()["passed"]
 
     assert said == {"site_source": True, "xff": True, "count": True}, (

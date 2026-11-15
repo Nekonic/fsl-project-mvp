@@ -100,12 +100,14 @@ def test_a_case_the_catalogue_does_not_know_is_not_judged(client, session_id):
 
 CASES_DIR = Path(__file__).resolve().parents[2] / "redteam/cases"
 MATCHING = "path traversal attempt"
+FIRED = "board-sqli-search"
+FIRED_MATCHING = "SQLi attempt - URI"
 
 def edited_catalogue(directory):
     edited = load_cases(CASES_DIR / "board.yaml")
     for case in edited:
-        if case["name"] == CASE:
-            case["expect"] = "SQL"
+        if case["name"] == FIRED:
+            case["expect"] = "traversal"
     directory.mkdir()
     (directory / "board.yaml").write_text(yaml.safe_dump(edited))
     return str(directory)
@@ -120,8 +122,8 @@ def judged(response):
         (c["name"], c["expect"], c["corroborated"]) for c in response.json()["per_case"]
     ]
 
-def rescored_after_the_catalogue_changes(client, session_id, case_id, settings, tmp_path):
-    with patch("api.views.elastic.fetch", return_value=([alert(case_id, MATCHING)], None)):
+def rescored_after_the_catalogue_changes(client, session_id, case_id, settings, tmp_path, matching=MATCHING):
+    with patch("api.views.elastic.fetch", return_value=([alert(case_id, matching)], None)):
         client.post_json(f"/api/sessions/{session_id}/ingest/")
     client.post_json(f"/api/sessions/{session_id}/close/")
     scored = [judged(client.get(f"/api/sessions/{session_id}/score/"))]
@@ -135,14 +137,14 @@ def test_an_attack_fired_from_the_console_keeps_the_expectation_it_was_fired_und
     client, session_id, settings, tmp_path
 ):
     with patch("api.views.harness.fire"):
-        fired = client.post_json(f"/api/sessions/{session_id}/attacks/", {"case": CASE}).json()
+        fired = client.post_json(f"/api/sessions/{session_id}/attacks/", {"case": FIRED}).json()
 
     scored = rescored_after_the_catalogue_changes(
-        client, session_id, fired["case_id"], settings, tmp_path
+        client, session_id, fired["case_id"], settings, tmp_path, FIRED_MATCHING
     )
 
-    assert fired["expect"] == "traversal"
-    assert scored == [(200, [(CASE, "traversal", True)])] * 3, (
+    assert fired["expect"] == "SQL"
+    assert scored == [(200, [(FIRED, "SQL", True)])] * 3, (
         "a closed session was scored against the case file as it is now: editing "
         "an expectation rewrote an old verdict, and a file that no longer parses "
         "took every old score down with it"

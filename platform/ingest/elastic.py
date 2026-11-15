@@ -100,6 +100,10 @@ def normalize(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
         return _normalize_suricata(doc_id, doc)
     if source == "modsecurity":
         return _normalize_modsecurity(doc_id, doc)
+    if source == "nginx":
+        return [{"detection_id": doc_id, "source": "nginx",
+                 "signature": f"{doc.get('status')} {doc.get('request', '')}", "severity": None, "timestamp": _parse_time(doc.get("time")), "src_ip": doc.get("client_ip"),
+                 "marker": None, "raw": doc}]
     return []
 
 def _normalize_suricata(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
@@ -114,7 +118,7 @@ def _normalize_suricata(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]
             "signature": alert.get("signature", ""),
             "severity": alert.get("severity"),
             "timestamp": _parse_time(doc.get("timestamp")),
-            "src_ip": doc.get("src_ip"),
+            "src_ip": doc.get("xff") or doc.get("src_ip"),
             "marker": suricata_marker(doc.get("http") or {}),
             "raw": doc,
         }

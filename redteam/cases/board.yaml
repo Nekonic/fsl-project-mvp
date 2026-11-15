@@ -188,7 +188,7 @@
   technique: T1190
   pattern: CAPEC-126
   expect: "traversal"
-  correlation: marker
+  correlation: window
   request:
     method: GET
     path: /static/%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2fetc/passwd

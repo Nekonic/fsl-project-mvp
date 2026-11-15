@@ -363,7 +363,7 @@ foundations:
         check: {kind: sent, match: '[?&]q=(?!kim0413(&|$))[A-Za-z0-9]{4,}(&|$)', wrong_if: [{match: '[?&]q=kim0413(&|$)', says: example}]}
       - id: count
         point: {opens: elk, kibana: {hits: true, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
-        check: {kind: answer, of: hits, about: search, leg: both, kql: '(?i)\burl\s*:\s*"?\*?[A-Za-z0-9]{4,}'}
+        check: {kind: answer, of: hits, about: search, leg: upstream, kql: '(?i)\burl\s*:\s*"?\*?[A-Za-z0-9]{4,}'}
       - id: upstream
         point: {opens: elk, kibana: {hits: true, kql: '(?is)^(?=.*\burl\s*:)(?=.*\bnot\s*\(?\s*destination\s*:)'}}
         check: {kind: answer, of: hits, about: search, leg: upstream, kql: '(?is)^(?=.*\burl\s*:)(?=.*\bnot\s*\(?\s*destination\s*:)'}
