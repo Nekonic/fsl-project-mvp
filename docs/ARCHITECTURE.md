@@ -311,7 +311,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 
 - 창을 열 때 `/api/sessions/<id>/topology/`를 한 번 읽음. 주기적으로 다시 읽지 않음
 - cytoscape.js 3.34.4(`platform/console/static/map/cytoscape.min.js`, SHA-256 `081591ab735b2b6a3b31a3c60f8f3a3e2fee8c92939e0c7820ad1208571b6cd8`, MIT)로 그림. nginx가 `/static/map/`을 `/app/console/static/map/`에서 직접 줌
-- 배치: 영역을 왼쪽에서 오른쪽으로 놓음. 영역마다 스위치가 위, 장비가 아래 한 줄. 인터넷 구간과 다른 영역에 함께 붙은 장비(라우터)는 두 영역 사이. 센서는 스위치 위, 로그 수집기는 맨 위
+- 배치: 영역을 왼쪽에서 오른쪽으로 놓음. 영역마다 스위치가 위, 장비가 아래 한 줄. 인터넷 구간과 다른 영역에 함께 붙은 장비(라우터)는 두 영역 사이. 센서는 스위치 위, 로그 수집기는 라우터 아래 맨 밑
 - 아이콘: GNS3 affinity 글리프를 정사각형 틀에 넣은 `host-*.svg`와 스위치 아이콘. 출처와 라이선스는 같은 폴더의 `SOURCES`, Kali 드래곤 로고의 상표 고지는 `host-kali.txt`
 - 읽기 전용: `autoungrabify`, `autounselectify`, 상자 선택 끔. 이동과 확대·축소만 됨
 - 콘솔과의 메시지: 첫 맞춤 뒤 `{map: "drawn"}`, 이후 `{fit}`를 받아 맞출 때마다 `{map: "fitted"}`. `{locate: {node|zone|label}}`에는 사각형, 영역 사각형(`zones`), 글자 사각형(`text`)으로 답함. 같은 origin의 메시지만 받음

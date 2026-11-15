@@ -34,7 +34,7 @@ const GAP = 140;
 const ROW = 150;
 const ZONE_GAP = 120;
 const SENSOR_RISE = 120;
-const COLLECTOR_RISE = 270;
+const COLLECTOR_DROP = 230;
 const MARGIN = 24;
 const LOCATE_EVERY_MS = 150;
 const session = location.pathname.split("/")[2];
@@ -88,11 +88,11 @@ function laidOut(map) {
     x += width + ZONE_GAP;
   });
   const logged = map.edges.filter((edge) => edge.kind === "logs").map((edge) => edge.source);
-  const below = logged.filter((id) => !id.startsWith("sensor:")).map((id) => placed[id]).filter(Boolean);
   const sources = logged.map((id) => placed[id]).filter(Boolean);
   map.nodes.filter((node) => node.kind === "logs").forEach((node) => {
     const centre = sources.reduce((sum, at) => sum + at.x, 0) / Math.max(1, sources.length);
-    placed[node.id] = { x: below.length ? below[0].x - GAP / 2 : centre, y: -COLLECTOR_RISE };
+    const gate = between.length ? placed[between[0].id].x : centre;
+    placed[node.id] = { x: gate, y: ROW + COLLECTOR_DROP };
   });
   return placed;
 }
@@ -130,7 +130,6 @@ const STYLE = [
   { selector: "node.device", style: {
     label: "data(label)", "text-valign": "bottom", "text-halign": "center", "text-margin-y": 6,
     "text-wrap": "wrap", "line-height": 1.35 } },
-  { selector: "node.device.logs", style: { "text-valign": "top", "text-margin-y": -6 } },
   { selector: "edge", style: { width: 2, "curve-style": "straight", "line-color": LINK, "font-family": font,
     "font-size": 10 } },
   { selector: "edge.link", style: {
