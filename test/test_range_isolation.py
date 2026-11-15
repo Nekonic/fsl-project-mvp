@@ -98,13 +98,22 @@ def probes(facts) -> dict[str, list[tuple[str, int]]]:
 ATTACKER_ONLY = ("way in", "past the waf")
 
 
+def from_the_log_server(facts, argv: list[str]) -> list[str]:
+    return ["sudo", "sh", "-c", f'exec nsenter -t "$(docker inspect -f {{{{.State.Pid}}}} s{facts["slot"]}-log-server)" '
+            f'-n {shlex.join(argv)}']
+
+
 @pytest.fixture(scope="module")
 def reached(facts):
     found = {}
     for role in PROBERS:
         targets = sorted({target for what, listed in probes(facts).items() for target in listed
                           if what not in ATTACKER_ONLY or role == ATTACKER})
-        ran = run_side_by_side(role, {target: connect(*target) for target in targets}, timeout=120)
+        if role == LOG_SERVER:
+            ran = run_side_by_side(RANGE_HOST, {target: from_the_log_server(facts, connect(*target))
+                                                for target in targets}, timeout=120)
+        else:
+            ran = run_side_by_side(role, {target: connect(*target) for target in targets}, timeout=120)
         found[role] = {target for target, result in ran.items() if result.ok}
     return found
 

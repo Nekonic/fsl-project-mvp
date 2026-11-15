@@ -56,7 +56,7 @@ def _map_answers(session_id: int) -> dict:
     route = ["kali", *(["router"] if "router" in hosts else []), "waf", "board.com"]
     given = {
         "kali_ip": _drawn_address(drawn, "kali", "internet"),
-        "board_ip": _drawn_address(drawn, "board.com", "estate"),
+        "board_ip": _drawn_address(drawn, "board.com", "web"),
         "path": " > ".join(route),
         "dmz": next(zone["subnet"] for zone in drawn["zones"] if zone["id"] == "estate"),
         "log_host": next(node["name"] for node in drawn["nodes"] if node["kind"] == "logs"),

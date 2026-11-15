@@ -161,10 +161,6 @@ def typed(command, session_id):
     return run(ATTACKER, ["bash", "-c", shell], timeout=120, session=session_id)
 
 
-def subnet_of(shape, segment):
-    return next(s["subnet"] for s in shape["segments"] if s["id"] == segment)
-
-
 @pytest.fixture(scope="session")
 def full_run(stack_is_up):
     session_id = run_redteam()
@@ -290,9 +286,9 @@ def tuned_session(stack_is_up):
             if target_code(reload_probe, session=session_id) != 403:
                 break
             time.sleep(1)
-        seen["estate"] = subnet_of(requests.get(
+        seen["inside"] = next(zone["subnet"] for zone in requests.get(
             f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=60
-        ).json(), "estate")
+        ).json()["map"]["zones"] if zone["caption"] == "web")
         case_id = fired_case_id(session_id, CONTROL)
         close_session(session_id)
 

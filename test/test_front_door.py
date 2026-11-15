@@ -17,10 +17,10 @@ def _raised(alerts):
     assert alerts, "the probe raised no alert at all, so nothing can be said about it"
     return alerts
 
-def _inside(detections, estate):
+def _inside(detections, inside):
     return {
         d["src_ip"] for d in detections
-        if d["src_ip"] and ipaddress.ip_address(d["src_ip"]) in estate
+        if d["src_ip"] and ipaddress.ip_address(d["src_ip"]) in inside
     }
 
 @pytest.fixture
@@ -30,15 +30,15 @@ def probe(terminal_session):
 @pytest.fixture
 def past_the_waf(tuned_session):
     session_id = tuned_session["session_id"]
-    estate = ipaddress.ip_network(tuned_session["estate"])
+    inside = ipaddress.ip_network(tuned_session["inside"])
 
     def crossed(totals):
         return bool(_inside(requests.get(
             f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
-        ).json(), estate))
+        ).json(), inside))
 
     score_when_ready(session_id, until=crossed)
-    return estate, requests.get(
+    return inside, requests.get(
         f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
     ).json()
 
@@ -51,9 +51,9 @@ def test_the_front_door_is_on_the_outside(probe):
     )
 
 def test_the_inside_leg_is_still_the_inside(past_the_waf):
-    estate, detections = past_the_waf
+    inside, detections = past_the_waf
 
-    assert _inside(detections, estate), (
-        f"an attack the WAF let through drew no alert from inside {estate}: "
+    assert _inside(detections, inside), (
+        f"an attack the WAF let through drew no alert from inside {inside}: "
         f"{sorted({d['src_ip'] for d in detections if d['src_ip']})}"
     )
