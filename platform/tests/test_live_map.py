@@ -141,9 +141,21 @@ def behind_one_web_bridge():
     for mac, old, new in (("b8", "10.30.0.184/24 brd 10.30.0.255 scope global eth1", "10.32.0.59/24 brd 10.32.0.255 scope global eth1"),
                           ("b9", "10.30.0.185/24 brd 10.30.0.255 scope global eth1", "10.32.0.60/24 brd 10.32.0.255 scope global eth1")):
         moved = moved.replace(f"@leg s1_estate 02:42:0a:1e:00:{mac}", f"@leg s1_web 02:42:0a:1e:00:{mac}").replace(old, new)
+    moved = moved.replace("--af-packet=s1-estate", "--af-packet=s1-web")
     return moved.replace("5: eth0@if13    inet 10.30.0.177/24 brd 10.30.0.255 scope global eth0",
                          "5: eth0@if13    inet 10.30.0.177/24 brd 10.30.0.255 scope global eth0\n"
                          "12: eth1@if20    inet 10.32.0.2/24 brd 10.32.0.255 scope global eth1")
+
+
+def sensor_attached_to_the_web_bridge():
+    return behind_one_web_bridge().replace(
+        "@container estate-sensor host\n@args -c /etc/suricata/suricata.yaml --af-packet=s1-web\n"
+        "@mount /var/log/cr/s1/estate\n@leg host \n",
+        "@container estate-sensor s1_web\n@args -c /etc/suricata/suricata.yaml --af-packet=eth0\n"
+        "@mount /var/log/cr/s1/estate\n@leg s1_web 02:42:0a:20:00:05\n"
+        "2: eth0@if30: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1442 qdisc noqueue state UP mode DEFAULT group default"
+        " \\    link/ether 02:42:0a:20:00:05 brd ff:ff:ff:ff:ff:ff link-netnsid 0\n"
+        "2: eth0@if30    inet 10.32.0.5/24 brd 10.32.0.255 scope global eth0\n")
 
 
 def links(drawn):
@@ -221,6 +233,15 @@ def test_a_sensor_hangs_off_the_bridge_it_sniffs_and_the_logs_go_to_the_collecto
     assert {(source, target) for kind, source, target in edges if kind == "logs"} == {
         ("sensor:edge-sensor", "log-server"), ("sensor:estate-sensor", "log-server"), ("waf", "log-server")}
     assert next(node for node in drawn["nodes"] if node["id"] == "log-server")["port"] == "5140/udp"
+
+
+def test_a_sensor_hangs_off_the_bridge_it_sniffs_by_name_or_by_its_own_interface_on_it():
+    def mirrored(output):
+        return {(edge["source"], edge["target"]) for edge in board_map(output=output)["edges"]
+                if edge["kind"] == "mirror"}
+
+    assert ("sensor:estate-sensor", "switch:web") in mirrored(behind_one_web_bridge())
+    assert mirrored(sensor_attached_to_the_web_bridge()) == mirrored(behind_one_web_bridge())
 
 
 def test_customers_are_addresses_on_kali_and_not_a_device():

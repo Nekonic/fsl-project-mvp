@@ -7942,6 +7942,10 @@ bridge (it is a real bridge), and no single bundled log edge.
 - **Sensors outside every zone**: a sensor is on no network (host network),
   so it stands below all zones, straight under the bridge it sniffs, joined
   by the dashed 미러링 edge whose label sits between the zone and the sensor.
+  The bridge is the one `--af-packet=` names, or, for a sensor that runs in
+  its own network namespace and names its own interface, the network that
+  interface is on; a sensor moved into a slot container on the bridge needs
+  no layout change.
 - **Log edges at right angles**: the log server stands below the sensors at
   the first boundary device's x (the router). Each log edge drops from its
   source, runs on its own lane and enters a separate point on the log

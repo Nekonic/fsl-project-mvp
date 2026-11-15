@@ -231,7 +231,8 @@ def graph(learner, wiring) -> dict:
     drawn: dict[str, str] = {}
     for container in sorted(wiring.containers, key=lambda one: one.service):
         if container.sniffs:
-            network = wiring.bridged(container.sniffs)
+            network = wiring.bridged(container.sniffs) or wiring.network(
+                wiring.legs(container).get(container.sniffs, ""))
             if network is not None and network.key in zones:
                 drawn[container.service] = SENSOR.format(service=container.service)
                 nodes.append({"id": drawn[container.service], "kind": "sensor", "zone": network.key})
