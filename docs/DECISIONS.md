@@ -7954,7 +7954,10 @@ admin/123456 무조건", and "Docker 소켓, 커널 공유도 보안 해".
   hands the password through `ELASTIC_PASSWORD_FILE` and makes Kibana's
   service account token (`elastic/kibana/cr-kibana`) with
   `elasticsearch-service-tokens`, kept beside the password. No password or
-  token is in `compose.yaml` or a container's configured environment.
+  token is in `compose.yaml` or a container's configured environment. The
+  entrypoint copies the password to `/data/elastic-password` (owner `cr`,
+  0600), which the platform reads, so `manage.py` run by `docker exec`
+  reaches Elasticsearch as the server does.
   Learners never sign in to Kibana: `register_pipeline.py` PUTs the role
   `cr_viewer` (read on `logs-*`, Discover) and the user `cr-viewer`, and
   nginx passes that user's `Authorization` from `/auth-check/kibana/` on each
@@ -8003,6 +8006,11 @@ admin/123456 무조건", and "Docker 소켓, 커널 공유도 보안 해".
     sent from 14.160.0.10), so `unbound-source` reads it with a connected UDP
     socket's `getsockname`, and `attacker.unbound_source` asks the same
     script.
+    gVisor keeps an owner-match rule it cannot apply (`-m owner [unsupported
+    revision]`), and with that rule in `POSTROUTING` no packet left Kali at
+    all (the Website pane said `board.com did not answer`), so the
+    customers' exemption by account is gone; the rewrite matching only the
+    unbound source is what spares them.
   - Docker's embedded DNS at 127.0.0.11 is out of gVisor's reach: board
     first exited with `Unknown server host 'board-db' (-3)`. Each backend
     network now has a fixed /28 (10.40.N+1.0/28 for board, .16/28 for corp,
