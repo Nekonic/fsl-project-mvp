@@ -35,6 +35,8 @@ SLOT_FILES = f"{INSTALLED}/s{{slot}}"
 TAG = re.compile(r"\$\{CR_IMAGE_TAG(?::-[^}]*)?\}")
 DROPPED = ("build", "networks", "platform")
 FRONT = "estate"
+WEB = "web"
+WEB_OFFSET = 128
 BACKEND = "{wargame}-default"
 BACKEND_PREFIX = 28
 BACKEND_SIZE = 16
@@ -62,6 +64,14 @@ class Slot:
     def prefix(self) -> str:
         return str(self.estate.network_address).rsplit(".", 1)[0]
 
+    @property
+    def web(self) -> ipaddress.IPv4Network:
+        return ipaddress.ip_network(f"{self.estate.network_address + WEB_OFFSET * 256}/24")
+
+    @property
+    def web_prefix(self) -> str:
+        return str(self.web.network_address).rsplit(".", 1)[0]
+
     def container(self, service: str) -> str:
         return f"{self.project}-{service}"
 
@@ -80,14 +90,16 @@ def estate(base: str, number: int) -> ipaddress.IPv4Network:
         raise RangeUnavailable(
             f"the estate network {base} is narrower than a /16; each slot takes its own /24 of it, "
             f"so set network.estate in cloud.yaml to a /16 such as 10.30.0.0/16")
-    if not 1 <= number <= 255:
-        raise RangeUnavailable(f"slot {number} has no /24 of {base}; a range host holds slots 1 to 255")
+    if not 1 <= number < WEB_OFFSET:
+        raise RangeUnavailable(f"slot {number} has no /24 of {base}; a range host holds slots 1 to "
+                               f"{WEB_OFFSET - 1}, and slot N's web servers take the /24 {WEB_OFFSET} above its own")
     return next(subnet for at, subnet in enumerate(network.subnets(new_prefix=24)) if at == number)
 
 
 def _filled(text: str, slot: Slot) -> str:
     filled = TAG.sub(slot.tag, text)
-    for name, value in (("slot", slot.number), ("estate", slot.prefix), ("mtu", slot.mtu)):
+    for name, value in (("slot", slot.number), ("estate", slot.prefix), ("web", slot.web_prefix),
+                        ("mtu", slot.mtu)):
         filled = filled.replace(f"@{name}@", str(value))
     return filled
 
@@ -125,7 +137,7 @@ def _wargame_services(source: Path, wargames, slot: Slot, declared: dict,
                 kept["healthcheck"] = {**kept["healthcheck"], **(declared.get("healthcheck") or {})}
             attached = {name_of: {"ipv4_address": placed[name]}}
             if name in fronts:
-                attached[FRONT] = {"ipv4_address": f"{slot.prefix}.{fronts[name]}"}
+                attached[WEB] = {"ipv4_address": f"{slot.web_prefix}.{fronts[name]}"}
             kept["extra_hosts"] = [f"{other}:{address}" for other, address in placed.items() if other != name]
             kept["extra_hosts"] += list(extra.get(name) or [])
             kept["networks"] = attached
@@ -223,7 +235,7 @@ def estate_sensor(source: Path, slot: Slot, fronts: list[str]) -> str:
     config = yaml.safe_load((Path(source) / ESTATE_SENSOR).read_text().removeprefix(YAML_HEADER))
     config["stats"] = {"enabled": True, "interval": 5}
     config["af-packet"] = [{
-        "interface": f"{slot.project}-estate",
+        "interface": f"{slot.project}-{WEB}",
         "cluster-id": int(f"{slot.number}72"),
         "cluster-type": "cluster_flow",
         "defrag": True,
@@ -257,11 +269,11 @@ def wargame_services(document: dict) -> set[str]:
 
 
 def fronted(document: dict) -> set[str]:
-    return set(addressed(document, FRONT)) & wargame_services(document)
+    return set(addressed(document, WEB)) & wargame_services(document)
 
 
 def front_addresses(document: dict) -> list[str]:
-    return sorted(address for name, address in addressed(document, FRONT).items()
+    return sorted(address for name, address in addressed(document, WEB).items()
                   if name in wargame_services(document))
 
 

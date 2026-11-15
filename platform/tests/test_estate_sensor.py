@@ -25,7 +25,7 @@ def sensors():
 
 
 def test_both_legs_run_the_pinned_sensor_image_on_their_slot_s_bridge():
-    for name, bridge in (("edge-sensor", "inet"), ("estate-sensor", "estate")):
+    for name, bridge in (("edge-sensor", "inet"), ("estate-sensor", "web")):
         sensor = sensors()[name]
 
         assert sensor["image"] == (

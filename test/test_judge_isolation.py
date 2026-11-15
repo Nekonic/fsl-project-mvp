@@ -44,13 +44,10 @@ def platform_addresses(session):
     return found
 
 
-def gateway_of(role: str, session: int) -> str:
+def gateways_of(role: str, session: int) -> set[str]:
     table = run(role, ["cat", "/proc/net/route"], session=session).stdout.splitlines()[1:]
-    for line in table:
-        fields = line.split()
-        if fields[1] == "00000000":
-            return str(ipaddress.IPv4Address(struct.pack("<I", int(fields[2], 16))))
-    pytest.fail(f"{role} has no default route: {table}")
+    return {str(ipaddress.IPv4Address(struct.pack("<I", int(fields[2], 16))))
+            for fields in map(str.split, table) if fields[1] == "00000000"}
 
 
 def fetch(url: str, *extra: str) -> list[str]:
@@ -66,7 +63,7 @@ def terminal(address: str, pane: str) -> list[str]:
 def answered(session, platform_addresses):
     found = {}
     for role in (ATTACKER, BOARD):
-        addresses = sorted({gateway_of(role, session)} | platform_addresses)
+        addresses = sorted(gateways_of(role, session) | platform_addresses)
         commands = {(address, port): fetch(f"http://{address}:{port}{PUBLISHED[port][0]}")
                     for address in addresses for port in PUBLISHED}
         if role == BOARD:

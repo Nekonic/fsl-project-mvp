@@ -33,8 +33,14 @@ quiet() {
   done
 }
 
+quieted() {
+  for service in "$@"; do
+    quiet "$project-$service"
+  done
+}
+
 quiet_bridges() {
-  for bridge in "s$n-inet" "s$n-estate"; do
+  for bridge in "s$n-inet" "s$n-estate" "s$n-web"; do
     ethtool -K "$bridge" tso off gso off gro off >/dev/null 2>&1 || true
     for port in $(ls "/sys/class/net/$bridge/brif" 2>/dev/null); do
       ethtool -K "$port" tso off gso off gro off >/dev/null 2>&1 || true
@@ -43,7 +49,7 @@ quiet_bridges() {
 }
 
 forwarded() {
-  for bridge in "s$n-inet" "s$n-estate"; do
+  for bridge in "s$n-inet" "s$n-estate" "s$n-web"; do
     iptables -C DOCKER-USER -i "$bridge" -o "$bridge" -j ACCEPT 2>/dev/null \
       || iptables -I DOCKER-USER -i "$bridge" -o "$bridge" -j ACCEPT 2>/dev/null || true
   done
@@ -132,7 +138,8 @@ up() {
   compose up -d --wait --wait-timeout "$WAIT" --pull never
   address_kali
   address_edge
-  routed waf $(fronts)
+  routed waf
+  quieted $(fronts)
   quiet_bridges
   forwarded
   logs_forwarded
@@ -143,7 +150,7 @@ targets_reset() {
   compose up --no-start --pull never $(wargames)
   restore $(wargames)
   compose up -d --wait --wait-timeout "$WAIT" --pull never --no-deps $(wargames)
-  routed $(fronts)
+  quieted $(fronts)
 }
 
 reset() {

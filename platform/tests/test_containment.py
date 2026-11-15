@@ -173,7 +173,8 @@ def test_each_slot_s_networks_and_names_are_its_own():
     assert not {a for a in subnets(one) for b in subnets(other) if a.overlaps(b)}
     assert not {s["container_name"] for s in one["services"].values()} & {
         s["container_name"] for s in other["services"].values()}
-    assert {network.get("name") for network in one["networks"].values()} - {None} == {"s3_internet", "s3_estate"}
+    assert {network.get("name") for network in one["networks"].values()} - {None} == {
+        "s3_internet", "s3_estate", "s3_web"}
 
 
 def test_the_sensors_watch_the_slot_s_bridges_and_are_no_shell_a_learner_gets():

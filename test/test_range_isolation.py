@@ -16,7 +16,11 @@ from range import ATTACKER, BOARD, run, run_side_by_side
 GATEWAY = "gateway"
 RANGE_HOST = "wargames"
 PROBERS = (ATTACKER, GATEWAY, BOARD)
-ESTATE = re.compile(r"inet (10\.\d+\.(\d+)\.\d+)/24")
+ESTATE = re.compile(r"^\d+:\s+(\S+)\s+inet (10\.\d+\.(\d+)\.\d+)/24", re.M)
+DEFAULT_DEV = re.compile(r"^default via \S+ dev (\S+)", re.M)
+UPSTREAM = re.compile(r"^(\S+)\s+(board|corp-wp)$", re.M)
+PAST_THE_WAF = {"board": 8000, "corp-wp": 80}
+NAMED_ONLY_INSIDE = ("board", "corp-wp", "board-db", "corp-db")
 COLLECTOR = re.compile(r'Target="([\d.]+)"')
 HOST_PORT = re.compile(r"^\d+:\s+(\S+)\s+inet\s+(\S+)", re.M)
 CONTAINER_SIDE = re.compile(r"^(lo|docker\d+|br-\w+|veth\w*|s\d+-\w+)$")
@@ -36,10 +40,24 @@ def connect(address: str, port: int) -> list[str]:
     return ["timeout", "5", "bash", "-c", f"exec 3<>/dev/tcp/{address}/{port}"]
 
 
+def waf_side(session: int | None = None) -> dict:
+    return run_side_by_side(GATEWAY, {
+        "addresses": ["ip", "-o", "-4", "addr", "show"],
+        "route": ["ip", "-4", "route", "show", "default"],
+        "upstreams": ["getent", "hosts", *PAST_THE_WAF],
+    }, session=session)
+
+
+def estate_of(waf: dict) -> tuple[str, str]:
+    default_dev = DEFAULT_DEV.search(waf["route"].stdout).group(1)
+    return next((address, slot) for dev, address, slot in ESTATE.findall(waf["addresses"].stdout)
+                if dev == default_dev)
+
+
 @pytest.fixture(scope="module")
 def facts():
-    waf = run(GATEWAY, ["ip", "-o", "-4", "addr", "show"]).stdout
-    own_address, own_slot = ESTATE.search(waf).groups()
+    waf = waf_side()
+    own_address, own_slot = estate_of(waf)
     host = run_side_by_side(RANGE_HOST, {
         "ports": ["ip", "-o", "-4", "addr", "show"],
         "names": ["sudo", "docker", "ps", "--format", "{{.Names}}"],
@@ -54,7 +72,7 @@ def facts():
     return {
         "slot": own_slot,
         "waf": own_address,
-        "board": own_address.rsplit(".", 1)[0] + ".59",
+        "upstreams": {name: address for address, name in UPSTREAM.findall(waf["upstreams"].stdout)},
         "range_host": [str(ipaddress.ip_interface(one).ip) for _, one in ports
                        if not ipaddress.ip_interface(one).ip.is_loopback],
         "platform": sorted({urlsplit(os.environ.get("CR_PLATFORM_URL", "")).hostname or "",
@@ -71,8 +89,12 @@ def probes(facts) -> dict[str, list[tuple[str, int]]]:
         "platform": [(address, port) for address in facts["platform"] for port in (8000, 22)],
         "outside": [("1.1.1.1", 443), ("169.254.169.254", 80)],
         "other slots": [(address, 80) for address in facts["other_slots"]],
-        "way in": [(facts["waf"], 80), (facts["board"], 8000)],
+        "way in": [(facts["waf"], 80)],
+        "past the waf": [(facts["upstreams"][name], port) for name, port in sorted(PAST_THE_WAF.items())],
     }
+
+
+ATTACKER_ONLY = ("way in", "past the waf")
 
 
 @pytest.fixture(scope="module")
@@ -80,7 +102,7 @@ def reached(facts):
     found = {}
     for role in PROBERS:
         targets = sorted({target for what, listed in probes(facts).items() for target in listed
-                          if what != "way in" or role == ATTACKER})
+                          if what not in ATTACKER_ONLY or role == ATTACKER})
         ran = run_side_by_side(role, {target: connect(*target) for target in targets}, timeout=120)
         found[role] = {target for target, result in ran.items() if result.ok}
     return found
@@ -120,11 +142,14 @@ def test_no_container_reaches_another_slot(reached, facts, role):
     assert not found, f"{role} in slot {facts['slot']} reaches another slot's WAF at {found}"
 
 
-def test_the_attacker_reaches_the_sites_through_the_waf_and_the_board_through_the_edge(reached, facts):
+def test_the_attacker_reaches_the_sites_only_through_the_waf(reached, facts):
+    assert sorted(facts["upstreams"]) == sorted(PAST_THE_WAF), f"the WAF names no upstream for {facts['upstreams']}"
     assert (facts["waf"], 80) in reached[ATTACKER], "the attack has no way in at all"
-    assert (facts["board"], 8000) in reached[ATTACKER], (
-        "the board stands behind the edge, not behind the WAF alone, as on the VM range")
-    assert run(ATTACKER, ["getent", "hosts", "board-db"]).exit_code != 0, "the database is named only on its own network"
+    past = reaching(reached, facts, ATTACKER, "past the waf")
+    assert not past, f"Kali reaches {past} through the edge without passing the WAF, so the WAF's rules decide nothing"
+    named = run_side_by_side(ATTACKER, {name: ["getent", "hosts", name] for name in NAMED_ONLY_INSIDE})
+    assert not [name for name, found in named.items() if found.exit_code == 0], (
+        "a target behind the WAF is named on Kali, so a URL by its name skips board.com and the WAF")
 
 
 def test_the_attacker_s_syn_scan_runs_with_the_capabilities_its_container_holds(facts):
@@ -202,7 +227,7 @@ def test_a_link_planted_in_the_waf_neither_reaches_a_host_file_at_reset_nor_ship
     own = json.dumps({"cr_probe": f"own-{token}"})
     session = _session_to_plant_in(standing_stack)
     try:
-        slot = ESTATE.search(run(GATEWAY, ["ip", "-o", "-4", "addr", "show"], session=session).stdout)[2]
+        _, slot = estate_of(waf_side(session))
         host_log = f"/var/log/cr/s{slot}/waf"
         written = run(RANGE_HOST, ["sudo", "sh", "-c", f"printf '%s\\n' {shlex.quote(canary)} > {CANARY} "
                                    f"&& chmod 0644 {CANARY} && ls /var/log/cr"], session=session)

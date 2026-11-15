@@ -92,33 +92,41 @@ def forgotten(monkeypatch):
     openstack.forget()
 
 
-def test_every_slot_s_estate_is_its_own_slash_24_of_the_declared_estate():
+def test_every_slot_s_estate_and_web_network_are_its_own_slash_24s_of_the_declared_estate():
     assert [str(rangehost.estate("10.30.0.0/16", n)) for n in (1, 2, 15)] == [
         "10.30.1.0/24", "10.30.2.0/24", "10.30.15.0/24"]
+    assert [str(laid(n).web) for n in (1, 2, 127)] == ["10.30.129.0/24", "10.30.130.0/24", "10.30.255.0/24"]
     with pytest.raises(Exception, match="narrower than a /16"):
         rangehost.estate("10.30.0.0/24", 1)
+    with pytest.raises(Exception, match="slots 1 to 127"):
+        rangehost.estate("10.30.0.0/16", 128)
 
 
-def test_a_slot_s_files_put_the_targets_the_waf_and_the_edge_on_its_own_estate():
+def test_a_slot_s_files_put_the_edge_and_the_waf_on_its_estate_and_the_targets_behind_the_waf_alone():
     files = rangehost.slot_files(ROOT, laid(2), WARGAMES, DECLARED.origins, DECLARED.default_origin, "")
     document = yaml.safe_load(files["compose.yaml"])
 
-    assert rangehost.addressed(document, "estate") == {
-        "edge": "10.30.2.1", "waf": "10.30.2.247", "board": "10.30.2.59", "corp-wp": "10.30.2.60"}
+    assert rangehost.addressed(document, "estate") == {"edge": "10.30.2.1", "waf": "10.30.2.247"}, (
+        "a target on the estate is reached from Kali through the edge, past the WAF")
+    assert rangehost.addressed(document, "web") == {
+        "waf": "10.30.130.247", "board": "10.30.130.59", "corp-wp": "10.30.130.60"}
+    assert sorted(document["services"]["waf"]["extra_hosts"]) == ["board:10.30.130.59", "corp-wp:10.30.130.60"]
     assert {s["container_name"] for s in document["services"].values()} == {
         f"s2-{name}" for name in document["services"]}
     assert files["fronts"] == b"board\ncorp-wp\n" and files["gateway"] == b"10.30.2.1\n"
-    assert not [left for left in ("${", "@slot@", "@estate@", "@mtu@") if left in files["compose.yaml"].decode()]
+    assert not [left for left in ("${", "@slot@", "@estate@", "@web@", "@mtu@") if left in files["compose.yaml"].decode()]
 
 
-def test_the_estate_sensor_sees_only_what_the_wargame_host_s_nic_saw():
+def test_the_estate_sensor_sees_the_waf_s_traffic_to_the_targets():
     files = rangehost.slot_files(ROOT, laid(2), WARGAMES, DECLARED.origins, DECLARED.default_origin, "")
     config = yaml.safe_load(files["estate-sensor.yaml"].decode().removeprefix(rangehost.YAML_HEADER))
     [capture] = config["af-packet"]
+    compose = yaml.safe_load(files["compose.yaml"])
 
-    assert capture["interface"] == "s2-estate"
-    assert capture["bpf-filter"] == "host 10.30.2.59 or host 10.30.2.60", (
-        "the estate bridge also carries the edge's traffic to the WAF, which the wargame host's NIC never saw")
+    assert capture["interface"] == "s2-web" == compose["networks"]["web"]["driver_opts"]["com.docker.network.bridge.name"]
+    assert f"--af-packet={capture['interface']}" in compose["services"]["estate-sensor"]["command"]
+    assert capture["bpf-filter"] == "host 10.30.130.59 or host 10.30.130.60", (
+        "the web network carries only the WAF's traffic to the targets, which the wargame host's NIC saw")
     assert config["stats"]["interval"] == 5, "kernel_drops is read from the counters"
 
 

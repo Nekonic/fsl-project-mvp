@@ -101,9 +101,11 @@ services:
     networks:
       estate:
         ipv4_address: "@estate@.247"
+      web:
+        ipv4_address: "@web@.247"
     extra_hosts:
-      - "board:@estate@.59"
-      - "corp-wp:@estate@.60"
+      - "board:@web@.59"
+      - "corp-wp:@web@.60"
     volumes:
       - /var/log/cr/s@slot@/waf/audit.log:/var/log/modsecurity/audit/audit.log
 
@@ -120,7 +122,7 @@ services:
   estate-sensor:
     <<: *sensor
     container_name: s@slot@-estate-sensor
-    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet=s@slot@-estate"]
+    command: ["-c", "/etc/suricata/suricata.yaml", "--af-packet=s@slot@-web"]
     volumes:
       - /opt/cr/s@slot@/estate-sensor.yaml:/etc/suricata/suricata.yaml
       - /opt/cr/s@slot@/estate-rules:/var/lib/suricata/rules
@@ -150,3 +152,14 @@ networks:
       config:
         - subnet: "@estate@.0/24"
           gateway: "@estate@.254"
+  web:
+    name: s@slot@_web
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: s@slot@-web
+      com.docker.network.driver.mtu: "@mtu@"
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+    ipam:
+      config:
+        - subnet: "@web@.0/24"
+          gateway: "@web@.254"
