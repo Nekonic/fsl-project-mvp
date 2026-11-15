@@ -54,20 +54,20 @@ uv run bin/cloud up
 
 The repo is a uv project: `pyproject.toml` at the root declares the
 platform's dependencies, the groups `dev` (pytest), `cloud` (openstacksdk,
-python-openstackclient, python-heatclient, what `bin/cloud` needs) and `gns3`
-(the gns3 image's server), and `uv.lock` pins them all. "When `uv run` is
+python-openstackclient, python-heatclient, what `bin/cloud` needs), and
+`uv.lock` pins them all. "When `uv run` is
 used, the project is locked and synced before invoking the requested command"
 [U3], so `uv run bin/cloud` makes or updates `.venv` at the repo root first
 and no separate `uv sync` is needed; `[tool.uv] default-groups` is `dev` and
 `cloud`. Everything else installs from the same lock with
 `uv sync --frozen` ("use the lockfile without checking if it is up-to-date"
 [U3]): `bin/verify`, the platform VM's `cr-venv` (§5.1) and the sideload
-hand-over, and the platform and gns3 images, which sync into the image's
+hand-over, and the platform image, which syncs into the image's
 system Python (`UV_PROJECT_ENVIRONMENT=/usr/local`, `--inexact` so the
-image's own pip stays) from the lock bind-mounted into the build. Those two
-images therefore build from the repo root (`.github/workflows/images.yml`,
-`compose.yaml`), and their matrix entries list `sources`, the paths a
-sideload compares (`platform` or `deploy/gns3`, `pyproject.toml`, `uv.lock`).
+image's own pip stays) from the lock bind-mounted into the build. That image
+therefore builds from the repo root (`.github/workflows/images.yml`,
+`compose.yaml`), and its matrix entry lists `sources`, the paths a sideload
+compares (`platform`, `pyproject.toml`, `uv.lock`).
 
 `bin/cloud init` runs with admin credentials and prepares what a member user
 cannot (§3): the project and its user, the clouds.yaml entry that holds the

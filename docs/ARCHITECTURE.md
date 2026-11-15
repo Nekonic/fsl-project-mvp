@@ -1779,7 +1779,7 @@ init이 하는 일(`bin/cloud`의 `init`, 관리자 인증은 `/etc/kolla/clouds
 - `ubuntu-24.04`가 없으면 noble amd64 클라우드 이미지를 받아 `SHA256SUMS`와 대조한 뒤 public으로 올림
 - `keys.key_file`이 없으면 `ssh-keygen`으로 만듦
 
-저장소는 uv 프로젝트입니다. 루트의 `pyproject.toml`에 플랫폼 의존성과 그룹 `dev`(pytest), `cloud`(`bin/cloud`가 쓰는 openstacksdk, python-openstackclient, python-heatclient), `gns3`(gns3 이미지의 서버)를 적고 `uv.lock`으로 고정합니다. `uv run`은 실행 전에 `.venv`를 lock에 맞추므로 `uv sync`를 따로 하지 않습니다. `bin/verify`, 플랫폼 VM의 `cr-venv`, sideload, platform·gns3 이미지는 같은 lock으로 `uv sync --frozen`을 씁니다.
+저장소는 uv 프로젝트입니다. 루트의 `pyproject.toml`에 플랫폼 의존성과 그룹 `dev`(pytest), `cloud`(`bin/cloud`가 쓰는 openstacksdk, python-openstackclient, python-heatclient)을 적고 `uv.lock`으로 고정합니다. `uv run`은 실행 전에 `.venv`를 lock에 맞추므로 `uv sync`를 따로 하지 않습니다. `bin/verify`, 플랫폼 VM의 `cr-venv`, sideload, platform 이미지는 같은 lock으로 `uv sync --frozen`을 씁니다.
 
 이 파일을 쓰는 곳:
 
