@@ -5,7 +5,7 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-15, uv, the Nova keypair and the RC-file identity deployed (the range is one
+Updated: 2026-11-15, round 22 deployed after uv, the Nova keypair and the RC-file identity (the range is one
 range host, `cr-range`, running four slots as compose projects; on `dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
@@ -180,6 +180,33 @@ Internet.
   acceptance 91 passed, 0 failed, 0 errors, 1 skipped in 719 s across 14
   processes; unit and API 1578 passed (904 + 674); ratchet no regression
   (`core_loc` 584, `dependencies` 6, `services` 5).
+- Answer-blind walk round 22 (2026-11-15, `docs/DECISIONS.md`
+  "Answer-blind walk round 22"): its 12 findings and the second-browser
+  briefing fixed; scoring meaning unchanged, `core_loc` 584. #7 was not a
+  double count: in the store each sqlmap run of session 1929 has its own
+  20687 alerts from 1973 requests; the rows now carry the run's time. Store
+  copied first to `~/.cache/fsl-work/backup-safe/db-20261115T0434Z-r22.sqlite3`.
+  Deployed: `range-host-live` at 802b690 with images by that commit, so
+  `POST slot/` replaced the range host and `configure/` left four slots
+  READY. Checked live with Playwright (sessions 1930-1935): customer
+  verdicts on the attack step left no tries, no hint offer and no red line;
+  step 3 passed, then went back to unpassed 24 s later when a new item came
+  in; step 3's text has no refresh button and there is none; with 2 items
+  unjudged the final check was refused with the full line under the strip
+  and the note on step 4 showed no raw key after the rest were judged;
+  after the pass the strip hid the final check, hint offer and clock and
+  showed the end button, customer traffic stopped (`stopped_at` set,
+  998 then 1008 pulled), a second `verify-window` got 409, the open session
+  page showed the verdict and the debrief, ending from the console asked
+  with `session.close.consequence` and opened the result, whose two sqlmap
+  rows read 13:56 and 14:00; a second browser on the running scenario got
+  no briefing; no `.badge` on the scenario screens or the result; none of
+  the listed glosses left in the string table. The answer queue and the
+  stale-line suppression are unit-tested; live, c1 L1 s1 checked in 0.5 s,
+  too fast to show the race. Full `bin/verify` on the platform VM at
+  802b690: 745 s start to result; acceptance 91 passed, 0 failed, 0 errors,
+  1 skipped in 693 s across 14 processes; unit and API 1593 passed (904 +
+  689); ratchet no regression (`core_loc` 584, `dependencies` 6, `services` 5).
 - Test speed (on `dev`, `docs/DECISIONS.md` "The acceptance
   suite runs one sqlmap case and fills the slots as they free"): the
   red-team run fires one sqlmap case (the dump; `CR_SQLMAP_VARIANTS=1` fires
@@ -262,11 +289,12 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 1. The live cloud on `dev`: set `platform.ref` back to `dev` and
    `compute.slots` as the user wants (four now).
 2. A fresh answer-blind review round of both courses and a scenario on the
-   round-21 fixes (`docs/DECISIONS.md` "Answer-blind walk round 21"): the
-   final check that waits for unjudged items, the console-first lesson start,
-   the DevTools gates in course 2, the unread-sid refusal; then the user's own
-   test. Seen in round 21's live check and not yet ruled: a fresh browser on
-   an open scenario reopens the note at step 1, not the furthest step. The live map now shows the router's own symbol (`host-router.svg`).
+   round-22 fixes (`docs/DECISIONS.md` "Answer-blind walk round 22"): the
+   triage steps whose pass follows the current state, the end button and the
+   stopped traffic after a pass, the answer queue; then the user's own test.
+   Seen in round 22's live check and not ruled: the judge pane's header can
+   still say all items right for up to 15 s after the note went back to
+   unpassed (the list re-reads every 15 s). The live map now shows the router's own symbol (`host-router.svg`).
 3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
    or `union select` even where it is loaded: a detection gap to measure
    (round 16, `docs/DECISIONS.md`).

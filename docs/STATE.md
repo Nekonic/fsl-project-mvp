@@ -1564,6 +1564,15 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       session reads as closed, Korean time in the WAF shell, lessons open on
       the console. Checked live with Playwright and the API; full
       `bin/verify` green.
+- [x] 2026-11-15: the answer-blind walk of round 22 (`docs/DECISIONS.md`
+      "Answer-blind walk round 22"): scenario 1.1's triage steps pass only
+      while true and a verdict is never a failed try; `fail.done` strings; a
+      passed final check stops customers, refuses a second one and offers
+      the end button in the console; the refusal line is uncut; the briefing
+      shows only before the clock starts; an answer sent during a check is
+      checked next; the open scenario page shows its verdict; repeated runs
+      carry their time; pills, badges, repeats and glosses removed. Checked
+      live with Playwright; full `bin/verify` on the VM.
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 
