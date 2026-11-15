@@ -27,8 +27,7 @@ CONTAINERS = {
 2: eth0@if10    inet 73.0.0.11/24 scope global secondary eth0
 2: eth0@if10    inet 175.192.0.10/24 scope global eth0
 2: eth0@if10    inet 5.188.10.10/24 scope global eth0\\       valid_lft forever preferred_lft forever"""),
-    "edge": ("s1_internet", "", (), """3: wan@if11    inet 172.30.1.1/24 brd 172.30.1.255 scope global wan
-3: wan@if11    inet 73.0.0.1/24 scope global wan
+    "edge": ("s1_estate", "", (), """3: wan@if11    inet 73.0.0.1/24 scope global wan
 3: wan@if11    inet 5.188.10.1/24 scope global wan
 4: lan@if12    inet 10.30.0.1/24 brd 10.30.0.255 scope global lan"""),
     "waf": ("s1_estate", "", ("/var/log/cr/s1/waf/audit.log",),
@@ -41,6 +40,17 @@ CONTAINERS = {
     "corp-db": ("s1_corp-default", "", (), """11: eth0@if19    inet 172.19.0.2/16 brd 172.19.255.255 scope global eth0"""),
     "edge-sensor": ("host", "-c /etc/suricata/suricata.yaml --af-packet=s1-inet", ("/var/log/cr/s1/edge",), ""),
     "estate-sensor": ("host", "-c /etc/suricata/suricata.yaml --af-packet=s1-estate", ("/var/log/cr/s1/estate",), ""),
+}
+LEGS = {
+    "kali": (("eth0", "internet", "02:42:ac:1e:01:0a"),),
+    "edge": (("wan", "internet", "02:42:ac:1e:01:01"), ("lan", "estate", "02:42:0a:1e:00:01")),
+    "waf": (("eth0", "estate", "02:42:0a:1e:00:b1"),),
+    "board": (("eth0", "board-default", "02:42:ac:12:00:03"), ("eth1", "estate", "02:42:0a:1e:00:b8")),
+    "board-db": (("eth0", "board-default", "02:42:ac:12:00:02"),),
+    "corp-wp": (("eth0", "corp-default", "02:42:ac:13:00:03"), ("eth1", "estate", "02:42:0a:1e:00:b9")),
+    "corp-db": (("eth0", "corp-default", "02:42:ac:13:00:02"),),
+    "edge-sensor": (("", "host", ""),),
+    "estate-sensor": (("", "host", ""),),
 }
 FORWARDED = """@forward /var/log/cr/s1/edge/eve.json
 @port 5140
@@ -55,8 +65,14 @@ def said(without=()):
     for service, (mode, args, mounts, addresses) in CONTAINERS.items():
         if service in without:
             continue
+        links = [f"{at}: {name}@if{at + 20}: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1442 qdisc noqueue state UP "
+                 f"mode DEFAULT group default \\    link/ether {mac} brd ff:ff:ff:ff:ff:ff link-netnsid 0"
+                 for at, (name, _, mac) in enumerate(LEGS[service], start=2) if mac]
         blocks.append("\n".join([f"@container {service} {mode}", f"@args {args}",
-                                 *(f"@mount {mount}" for mount in mounts), ""] + ([addresses] if addresses else [])))
+                                 *(f"@mount {mount}" for mount in mounts),
+                                 *(f"@leg {'s1_' + network if mac else network} {mac}"
+                                   for _, network, mac in LEGS[service]), ""]
+                                + ([*links, addresses] if addresses else [])))
     return "\n".join(blocks + [FORWARDED]) + "\n"
 
 
@@ -112,6 +128,7 @@ def board_map(without=(), output=None):
 
 def fronted_by_the_waf():
     moved = said().replace("@network s1_board-default", "@network s1_board-web 8d1c0d2e3a5b6c7d8e9f00112233445566778899aabbccddeeff001122334455 - 10.40.1.0/24 \n@network s1_board-default")
+    moved = moved.replace("@leg s1_estate 02:42:0a:1e:00:b8", "@leg s1_board-web 02:42:0a:1e:00:b8")
     moved = moved.replace("7: eth1@if15    inet 10.30.0.184/24 brd 10.30.0.255 scope global eth1",
                           "7: eth1@if15    inet 10.40.1.3/24 brd 10.40.1.255 scope global eth1")
     return moved.replace("5: eth0@if13    inet 10.30.0.177/24 brd 10.30.0.255 scope global eth0",

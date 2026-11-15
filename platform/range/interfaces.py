@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from range import rangehost
 
 IP_LINE = re.compile(r"^\d+:\s+(?P<name>[^\s@]+)(?:@\S+)?\s+inet\s+(?P<address>\d+\.\d+\.\d+\.\d+/\d+)")
+LINK_LINE = re.compile(r"^\d+:\s+(?P<name>[^\s@:]+)(?:@[^\s:]+)?:\s.*\slink/ether\s+(?P<mac>[0-9a-f]{2}(?::[0-9a-f]{2}){5})")
 LOOPBACK = ipaddress.ip_network("127.0.0.0/8")
 DEFAULT_BRIDGE = "br-{id}"
 BRIDGE_ID = 12
@@ -39,6 +40,8 @@ class Container:
     mounts: tuple[str, ...] = ()
     addresses: tuple[tuple[str, str], ...] = ()
     host: str = ""
+    attached: tuple[tuple[str, str], ...] = ()
+    links: tuple[tuple[str, str], ...] = ()
 
     @property
     def sniffs(self) -> str:
@@ -62,7 +65,8 @@ class Wiring:
         return next((network for network in self.networks if network.bridge == bridge), None)
 
     def legs(self, container: Container) -> dict[str, str]:
-        found = {}
+        by_mac = {mac: network for network, mac in container.attached if mac}
+        found = {name: by_mac[mac] for name, mac in container.links if mac in by_mac and self.network(by_mac[mac])}
         for name, address in container.addresses:
             network = next((network for network in self.networks if network.holds(address)), None)
             if network is not None:
@@ -91,6 +95,10 @@ def addressed(output: str) -> list[tuple[str, str]]:
     return found
 
 
+def linked(output: str) -> list[tuple[str, str]]:
+    return [(found["name"], found["mac"]) for found in map(LINK_LINE.match, output.splitlines()) if found]
+
+
 def _network(project: str, fields: list[str]) -> Network:
     name, identity, bridge, *subnets = fields + ["-"] * max(0, 3 - len(fields))
     return Network(key=name.removeprefix(f"{project}_"),
@@ -106,7 +114,9 @@ def wiring(output: str, project: str) -> Wiring:
         if current and current["service"]:
             containers.append(Container(service=current["service"], mode=current["mode"],
                                         args=tuple(current["args"]), mounts=tuple(current["mounts"]),
-                                        addresses=tuple(addressed("\n".join(current["lines"])))))
+                                        addresses=tuple(addressed("\n".join(current["lines"]))),
+                                        attached=tuple(current["attached"]),
+                                        links=tuple(linked("\n".join(current["lines"])))))
 
     for line in output.splitlines():
         if line.startswith("@network "):
@@ -114,9 +124,13 @@ def wiring(output: str, project: str) -> Wiring:
         elif line.startswith("@container "):
             close()
             service, _, mode = line.removeprefix("@container ").strip().partition(" ")
-            current = {"service": service, "mode": mode.strip(), "args": [], "mounts": [], "lines": []}
+            current = {"service": service, "mode": mode.strip(), "args": [], "mounts": [], "attached": [],
+                       "lines": []}
         elif line.startswith("@args") and current is not None:
             current["args"] = line.removeprefix("@args").split()
+        elif line.startswith("@leg ") and current is not None:
+            network, _, mac = line.removeprefix("@leg ").strip().partition(" ")
+            current["attached"].append((network.removeprefix(f"{project}_"), mac.strip().lower()))
         elif line.startswith("@mount ") and current is not None:
             current["mounts"].append(line.removeprefix("@mount ").strip())
         elif line.startswith("@forward "):

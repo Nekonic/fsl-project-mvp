@@ -371,8 +371,8 @@ done
 for c in $(docker ps -q --filter label=com.docker.compose.project=$p); do
   set -- $(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}} {{.State.Pid}} {{.HostConfig.NetworkMode}}' "$c")
   echo "@container $1 $3"
-  docker inspect -f '@args {{join .Args " "}}{{println}}{{range .Mounts}}@mount {{.Source}}{{println}}{{end}}' "$c"
-  [ "$3" = host ] || nsenter -t "$2" -n ip -o -4 addr show
+  docker inspect -f '@args {{join .Args " "}}{{println}}{{range .Mounts}}@mount {{.Source}}{{println}}{{end}}{{range $n, $e := .NetworkSettings.Networks}}@leg {{$n}} {{$e.MacAddress}}{{println}}{{end}}' "$c"
+  [ "$3" = host ] || nsenter -t "$2" -n sh -c 'ip -o link show; ip -o -4 addr show'
 done
 [ ! -f "$f" ] || sed -n -e 's/.*File="\([^"]*\)".*/@forward \1/p' -e 's/.*Port="\([^"]*\)".*/@port \1/p' "$f"
 """
