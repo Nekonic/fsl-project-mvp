@@ -4,9 +4,9 @@
 
 점수는 두 가지입니다.
 
-- 주 점수: 레드팀이 달성한 목표. 달성 여부는 대상 시스템의 데이터로 판정
-- board: 레드팀이 탈취한 계정 해시(loot)를 증거로 제출(`POST /api/sessions/<id>/loot/`). 세션 시작 시점의 계정 해시와 같으면 달성
-- corp: 공격으로 DB에 커밋된 변경이 있으면 달성
+- 주 점수: 레드팀의 공격 성공. 성공 여부는 대상 시스템의 데이터로 판정
+- board: 레드팀이 탈취한 계정 해시(loot)를 증거로 제출(`POST /api/sessions/<id>/loot/`). 세션 시작 시점의 계정 해시와 같으면 성공
+- corp: 공격으로 DB에 커밋된 변경이 있으면 성공
 - 블루팀이 탐지하지 못한 목표는 2배로 계산
 - 탐지 결과: 케이스마다 정탐, 미탐, 오탐, 정상 통과 중 하나. 주 점수에 합치지 않고 옆에 따로 보고
 - 케이스 하나는 경보가 몇 건 나오든 1건
@@ -28,7 +28,7 @@
 - **워게임**: 대상 앱과 그 목표, 케이스. `board`와 `corp` 두 개
 - **케이스**: harness가 보내는 공격 요청이나 정상 요청 묶음. 경보가 몇 건 나오든 판정은 1건
 - **마커**: 케이스 요청에 붙는 `X-Request-ID` 값. 경보와 케이스를 이 값으로 매칭
-- **대상 시스템 데이터**: 대상 앱이 직접 저장한 데이터. 목표 달성 판정의 기준. board는 계정 정보, corp는 DB binlog
+- **대상 시스템 데이터**: 대상 앱이 직접 저장한 데이터. 공격 성공 판정의 기준. board는 계정 정보, corp는 DB binlog
 - **substrate**: 훈련 환경을 올리는 기반. `CR_SUBSTRATE`로 고르며 OpenStack만 지원
 - **`estate`**: 대상 앱이 있는 내부망
 - **슬롯**: 훈련 환경 호스트의 docker compose 프로젝트 `sN`. 세션 하나가 슬롯 하나를 씀
@@ -660,7 +660,7 @@ nginx는 `</body>` 앞에 스크립트를 넣습니다.
 - `allow-same-origin` 없는 sandbox(불투명 출처)면 8000번 포트로도 막을 수 있음. 하지만 Chromium 기반 내장 브라우저는 그런 프레임을 거부함(Claude 데스크톱 브라우저에서 `ERR_BLOCKED_BY_CLIENT`). 그래서 포트를 분리함
 - `SITE_PORT`는 8002
 - 세션 API는 `site: {port, path}`나 `null`을 줌. 값이 없으면 콘솔에서 창을 숨김
-- 8002는 플랫폼 템플릿의 security group에서 엶(`docs/OPENSTACK.md` §3.5)
+- 8002는 플랫폼 템플릿의 security group에서 엶([보안 그룹](OPENSTACK.md#35-security-groups))
 
 기록기는 세션마다 최근 요청 200개를 플랫폼 메모리에 둡니다. 재시작하면 사라지고, 세션이 닫히면 지웁니다. 요청마다 남기는 것:
 
@@ -1476,9 +1476,9 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 
 ## 점수 계산 방식
 
-주 점수는 레드팀이 달성한 목표입니다. 달성 여부는 대상 시스템의 데이터로 판정합니다. 이 데이터는 탐지 장비에 보이지 않는 경로로 읽습니다.
+주 점수는 레드팀의 공격 성공입니다. 성공 여부는 대상 시스템의 데이터로 판정합니다. 이 데이터는 탐지 장비에 보이지 않는 경로로 읽습니다.
 
-**board 목표.** `loot_verified` 방식입니다. 레드팀이 탈취한 해시를 증거로 제출합니다. 세션 시작 시점의 계정 해시와 같으면 달성입니다.
+**board 목표.** `loot_verified` 방식입니다. 레드팀이 탈취한 해시를 증거로 제출합니다. 세션 시작 시점의 계정 해시와 같으면 성공입니다.
 
 - 비밀은 `wargames/board/objectives.yaml`에 정의. `/internal/auth-users`로 읽는 `auth_user`의 사용자 이름·비밀번호 컬럼
 - 등급: 아무 해시 1개(난이도 2), `admin` 계정의 해시(4), 전체 계정의 해시(5)
@@ -1513,7 +1513,7 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
   - 새로 쓰거나 덮어쓴 `wp_posts` 행
 - 이 읽기도 탐지 장비에 보이지 않음
 
-달성된 목표는 실행 구간이 목표의 시간 범위와 겹치는 악성 케이스에 귀속합니다. 겹치는 케이스가 여럿이면 가장 늦게 시작한 케이스입니다.
+성공한 목표는 실행 구간이 목표의 시간 범위와 겹치는 악성 케이스에 귀속합니다. 겹치는 케이스가 여럿이면 가장 늦게 시작한 케이스입니다.
 
 - 목표는 그 케이스가 탐지됐을 때만 탐지된 것으로 침
 - 겹치는 케이스가 없으면 미탐
@@ -1521,7 +1521,7 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 
 점수의 `objectives` 블록:
 
-- `coverage`: 전체 난이도 대비 탐지된 난이도. 달성된 목표가 없으면 `null`
+- `coverage`: 전체 난이도 대비 탐지된 난이도. 성공한 목표가 없으면 `null`
 - `false_positives`: 오탐 건수
 - `damage`: 미탐 목표의 난이도 + 탐지된 목표 난이도의 절반. 탐지하지 못한 목표를 2배로 계산하는 부분
 
@@ -1564,9 +1564,9 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 
 `game`의 나머지 값:
 
-- `attacker`: 달성된 목표의 난이도 합(탐지된 목표는 절반). `damage`와 같은 값
-- `defender`: 구성 요소의 가중 평균 × 달성된 목표 난이도 − 오탐 1건당 1
-- `balance`: `defender - attacker`. 달성된 목표가 없으면 오탐 건수의 음수
+- `attacker`: 성공한 목표의 난이도 합(탐지된 목표는 절반). `damage`와 같은 값
+- `defender`: 구성 요소의 가중 평균 × 성공한 목표 난이도 − 오탐 1건당 1
+- `balance`: `defender - attacker`. 성공한 목표가 없으면 오탐 건수의 음수
 - 가중치와 체류 시간은 v1 기본값(`docs/superpowers/specs/2026-09-29-zero-sum-scoring-design.md`)
 
 **고객.** 점수의 `customers` 블록은 세션에 기록된 고객 요청을 집계합니다("고객 트래픽" 절).
@@ -1920,7 +1920,7 @@ Discover 링크:
 
 OpenStack 구축은 `docs/STATE.md` 백로그의 OpenStack 항목 순서를 따릅니다. 이 절에는 구축을 마친 것만 적었고, 항목마다 클라우드나 fake 환경에서 돌려 확인했습니다. 남은 작업은 절 끝에 있습니다. 근거는 `docs/STATE.md`("Decided on 2026-09-30"), `docs/superpowers/specs/2026-09-30-openstack-range-placement.md`, `docs/superpowers/specs/2026-09-30-waf-console-and-tutorial.md`에 있습니다.
 
-지금 클라우드는 노드 세 대, Kolla 2025.2, ML2/OVN입니다. 제품이 지원하는 버전은 Kolla-Ansible 2025.1 이상입니다(`docs/OPENSTACK.md` §2).
+지금 클라우드는 노드 세 대, Kolla 2025.2, ML2/OVN입니다. 제품이 지원하는 버전은 Kolla-Ansible 2025.1 이상입니다([클라우드 요구 사항](OPENSTACK.md#2-what-the-cloud-needs-kolla-ansible-20251-or-later)).
 
 훈련 환경은 프로젝트 `fsl-range`에 두고, member 역할 사용자 `fsl-range`로 조작합니다. 사용자에게 Horizon은 노출하지 않습니다.
 
@@ -1975,7 +1975,7 @@ Heat 템플릿 `deploy/openstack/platform.yaml`이 만드는 리소스:
 - tcp/22, tcp/8000, tcp/8002, tcp/3080, ICMP를 모든 주소에 여는 보안 그룹
 - config drive를 붙인 Nova 서버 `cr-platform`
 
-템플릿에는 기본값이 없습니다. 파라미터는 모두 `deploy/openstack/cloud.yaml`에서 받습니다(`docs/OPENSTACK.md` §4).
+템플릿에는 기본값이 없습니다. 파라미터는 모두 `deploy/openstack/cloud.yaml`에서 받습니다([cloud.yaml](OPENSTACK.md#4-cloudyaml)).
 
 플랫폼 VM의 cloud-init 작업:
 

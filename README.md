@@ -6,18 +6,15 @@ WAF(ModSecurity)와 IDS(Suricata)로 방어합니다.
 - `board.com`: Django 게시판, MySQL
 - `corp.com`: WordPress 회사 사이트, MySQL
 
-화면, 채점, 구성은 이 저장소에서 먼저 만들어 검증하고 제품 저장소로 옮깁니다.
-
 ## 점수
 
-주 점수는 레드팀이 달성한 목표입니다. 달성 여부는 대상 시스템의 데이터로
-판정합니다.
+주 점수는 레드팀의 공격 성공입니다. 성공 여부는 대상 시스템의 데이터로 판정합니다.
 
 - 게시판: 레드팀이 탈취한 계정 해시를 증거물로 제출합니다
-  (`POST /api/sessions/<id>/loot/`). 세션 시작 시점의 계정 해시와 같으면 달성입니다.
+  (`POST /api/sessions/<id>/loot/`). 세션 시작 시점의 계정 해시와 같으면 성공입니다.
 - corp: MySQL 바이너리 로그에 관리자 계정 추가, 회원 가입 설정 변경, 글 생성·덮어쓰기가
-  남으면 달성입니다.
-- 블루팀이 탐지하지 못한 목표는 2배로 계산합니다.
+  남으면 성공입니다.
+- 블루팀이 탐지하지 못한 성공은 2배로 계산합니다.
 
 탐지 결과는 주 점수와 따로 표시합니다.
 
@@ -57,20 +54,16 @@ OpenStack 컨트롤러 노드(`bin/cloud` 실행 위치):
 
 - `git`, `ssh`, `ssh-keygen`
 - Python 3.10 이상
-- uv. virtualenv 생성과 패키지 설치에 씁니다. 설치 방법은 uv 공식 문서
-  (https://docs.astral.sh/uv/getting-started/installation/) 참고. 버전을 고정하려면
-  `curl -LsSf https://astral.sh/uv/0.13.8/install.sh | sh`처럼 URL에 버전을 넣습니다.
-  플랫폼 VM에도 0.13.8을 설치합니다.
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - 클라우드 API와 플랫폼 VM floating IP로 가는 네트워크 경로
 - github.com, ghcr.io 접속
 
 클라우드:
 
 - x86_64 호스트, Kolla-Ansible 2025.1 이상
-- 컴퓨트 노드는 `nova_compute_virt_type: kvm` 권장. `qemu`로도 돌지만 느림
-- Heat 필요(Kolla 기본값으로 켜짐). Cinder·Octavia·Designate 불필요
-- floating IP 풀이 있는 외부 네트워크. VM이 이 네트워크로 인터넷에 나갈 수 있어야
-  함(`docs/OPENSTACK.md` §2.5, §2.6)
+- compute node는 KVM 권장
+- Heat 필요
+- [외부 네트워크](docs/OPENSTACK.md#25-external-network-and-floating-ips-admin-once): floating IP 풀, [인터넷 연결](docs/OPENSTACK.md#26-internet-egress)
 - VM 2대분 자원
 
 | VM | flavor 키 | 예제 값 |
@@ -78,20 +71,15 @@ OpenStack 컨트롤러 노드(`bin/cloud` 실행 위치):
 | 플랫폼 VM | `compute.flavors.platform` | `m1.large`: 2 vCPU, RAM 8 GB, 디스크 60 GB. RAM 8 GB 이상 필요 |
 | 훈련 환경 호스트 | `compute.flavors.range` | `dba.range`: 6 vCPU, RAM 16 GB, 디스크 60 GB |
 
-- 예제 기준 합계는 vCPU 8, RAM 24 GB, 인스턴스 2, floating IP 1입니다. Nova 기본
-  quota(코어 20, RAM 51200 MB, 인스턴스 10)로 충분합니다.
-- Nova에는 디스크 quota가 없습니다. 컴퓨트 노드에 디스크 120 GB를 실제로 확보해야
-  합니다.
-- `compute.slots`를 늘려도 VM은 늘지 않습니다. 훈련 환경 호스트의 컨테이너만
-  늘어납니다. 슬롯당 RAM은 약 1.2 GB입니다.
+- 합계: vCPU 8, RAM 24 GB, 인스턴스 2, floating IP 1. Nova 기본 quota로 충분
+- compute node 디스크 120 GB
+- 슬롯당 RAM 약 1.2 GB. 슬롯을 늘려도 VM은 그대로
 
-VirtualBox나 VMware VM 1대에 클라우드 전체를 올려 시험하려면 `docs/OPENSTACK.md` §9를
-보세요.
+VM 1대에 클라우드 전체를 올려 시험하려면 [VM 1대로 시험하기](docs/OPENSTACK.md#9-try-it-in-one-vm-virtualbox-or-vmware)를 보세요.
 
 ## 설치
 
-1. **클라우드 준비(관리자, 최초 1회).** 명령은 `docs/OPENSTACK.md` §2.5, §3.1, §3.3,
-   §3.6에 있습니다. 관리자 인증은 `kolla-ansible post-deploy`가 만든
+1. **클라우드 준비(관리자, 최초 1회).** 명령은 [외부 네트워크](docs/OPENSTACK.md#25-external-network-and-floating-ips-admin-once), [프로젝트와 사용자](docs/OPENSTACK.md#31-project-and-user-admin-once), [flavor](docs/OPENSTACK.md#33-flavors-admin-once), [이미지](docs/OPENSTACK.md#36-images)에 있습니다. 관리자 인증은 `kolla-ansible post-deploy`가 만든
    `/etc/kolla/admin-openrc.sh`를 씁니다.
 
    - 외부 네트워크
@@ -138,7 +126,7 @@ VirtualBox나 VMware VM 1대에 클라우드 전체를 올려 시험하려면 `d
    - 인증 정보와 비밀번호는 이 파일에 넣지 않습니다. 6단계 RC 파일에 넣습니다.
 
    나머지 키는 1~4단계의 이름과 같으므로 그대로 둡니다. 키 설명은
-   `docs/OPENSTACK.md` §4에 있습니다. 값이 잘못되면 아무것도 바꾸기 전에 거부하고
+   [cloud.yaml](docs/OPENSTACK.md#4-cloudyaml)에 있습니다. 값이 잘못되면 아무것도 바꾸기 전에 거부하고
    해당 키를 출력합니다.
 
 6. **`fsl-range` RC 파일 작성.** Kolla의 `/etc/kolla/admin-openrc.sh`와 같은
@@ -174,7 +162,7 @@ VirtualBox나 VMware VM 1대에 클라우드 전체를 올려 시험하려면 `d
    - `OS_INTERFACE`: Kolla의 admin RC는 `internal`입니다. 플랫폼 VM도 같은
      interface로 API를 부르므로 VM에서 닿는 `public`을 씁니다.
    - `OS_PASSWORD`는 플랫폼 VM에 ssh로 넘깁니다. 명령줄과 로그에는 남지 않습니다.
-   - 예제 주소 `http://10.10.10.10:5000`은 `docs/OPENSTACK.md` §9의 예시 대역
+   - 예제 주소 `http://10.10.10.10:5000`은 [VM 1대로 시험하기](docs/OPENSTACK.md#9-try-it-in-one-vm-virtualbox-or-vmware)의 예시 대역
      10.10.10.0/24 기준입니다.
 
 7. **`bin/cloud up` 실행.**
@@ -229,7 +217,7 @@ VirtualBox나 VMware VM 1대에 클라우드 전체를 올려 시험하려면 `d
    - Heat 스택: `.venv/bin/openstack stack failures list cr-platform`
    - `sudo docker ps`에 `cr-platform`이 없음: 플랫폼이 한 번도 뜨지 않은 상태입니다.
      원인은 `sudo cloud-init status --long`에 나옵니다. 대개 VM이 인터넷에 나가지
-     못한 경우입니다(`docs/OPENSTACK.md` §2.6).
+     못한 경우입니다([인터넷 연결](docs/OPENSTACK.md#26-internet-egress)).
      - 첫 부팅이 느렸을 뿐이면 `bin/cloud up`을 다시 실행합니다.
      - 아니면 원인을 고치고 `.venv/bin/python bin/cloud up --replace`를 실행합니다.
        이 VM에는 데이터가 없으므로 백업 없이 교체합니다.
@@ -278,7 +266,7 @@ VirtualBox나 VMware VM 1대에 클라우드 전체를 올려 시험하려면 `d
 - VM의 컨테이너는 `cr-platform`, `cr-elasticsearch`, `cr-kibana`, `cr-gns3`,
   `cr-collector`입니다. 로그는 `sudo docker logs <컨테이너 이름>`으로 봅니다.
 - push하지 않은 커밋을 띄우려면 `--sideload`를 씁니다(아래 sideload,
-  `docs/OPENSTACK.md` §5.3).
+  [재구축과 삭제](docs/OPENSTACK.md#53-rebuild-and-delete--lossless)).
 
 GeoIP:
 
@@ -514,7 +502,7 @@ RC 파일의 `OS_*` 변수에서 읽습니다(설치 6단계). 스크립트와 H
    항목을 출력합니다.
 
 drift, 막힌 슬롯, 실패한 설정, 거부된 configure 중 하나라도 나오면 그 자리에서
-멈추고 이유를 출력합니다. 단계별 설명은 `docs/OPENSTACK.md` §5에 있습니다.
+멈추고 이유를 출력합니다. 단계별 설명은 [플랫폼 VM](docs/OPENSTACK.md#5-the-platform-vm)에 있습니다.
 
 ### bin/platform-rebuild
 
@@ -735,7 +723,7 @@ publish 주소:
 | 8000, 8002, 3080 | `CR_PUBLISH` | `127.0.0.1` | VM 자신의 주소 |
 | 5140/udp | `CR_SYSLOG_PUBLISH` | `127.0.0.1` | `0.0.0.0` |
 
-8000, 8002, 3080은 플랫폼 템플릿의 보안 그룹에서 엽니다(`docs/OPENSTACK.md` §3.5).
+8000, 8002, 3080은 플랫폼 템플릿의 보안 그룹에서 엽니다([보안 그룹](docs/OPENSTACK.md#35-security-groups)).
 
 ### 학습자용 구성도(3080)
 
@@ -785,7 +773,7 @@ publish 주소:
 블루팀 콘솔은 `/api/`에서 아래를 가져옵니다. 세션, 사이트 요청, 레슨·시나리오의
 단계와 힌트, 시나리오 상태, 경보 판단, ingest, 탐지 기록입니다.
 
-세션을 닫으면 세션 페이지에 결과가 나옵니다. 레드팀이 달성한 목표가 먼저 나오고,
+세션을 닫으면 세션 페이지에 결과가 나옵니다. 레드팀의 공격 성공이 먼저 나오고,
 이어서 탐지 결과(정탐 건수, 미탐한 공격, 오탐한 정상 요청)가 나옵니다.
 
 **방어 설정.**
