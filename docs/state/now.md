@@ -5,7 +5,8 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-15, round 22 deployed after uv, the Nova keypair and the RC-file identity (the range is one
+Updated: 2026-11-15, the four-command bring-up (`uv run bin/cloud init`, `uv run bin/cloud up`,
+credentials in clouds.yaml, the repo a uv project) deployed after round 22 (the range is one
 range host, `cr-range`, running four slots as compose projects; on `dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
@@ -233,7 +234,30 @@ Internet.
   no `python3-venv`, `cr-venv` made `.venv`, `openstack.env` has
   `CR_OPENSTACK_DOMAIN=fsl` and the platform signs in by domain name;
   `ensure_keypair` found `fsl-claude` matching `~/.ssh/fsl_claude.pub`; the
-  password is in neither run's log. The live platform runs `range-host-live`.
+  password is in neither run's log.
+- The four-command bring-up and the uv project (2026-11-15,
+  `docs/DECISIONS.md` "Four commands on the controller" and "The repo is a
+  uv project"). Store copied first to
+  `~/.cache/fsl-work/backup-safe/db-20261115T055518Z-uvproject.sqlite3` and
+  `db-20261115T060144Z-uvreplace.sqlite3`. The live setup moved to the new
+  flow: the clouds.yaml entry `fsl-range` written from the RC file's
+  password (not reset), `cloud: fsl-range` added to the live `cloud.yaml`.
+  CI built all eight images at 84b32f0 (platform and gns3 from the repo
+  root, `uv sync --frozen`: 10 and 167 packages). From an archive of HEAD
+  with no `.venv`, `uv run bin/cloud up --replace --ref uv-project` synced
+  65 packages, rebuilt the platform VM and left four slots READY (24 min
+  22 s); the password is not in its log. On the new VM `cr-venv` ran
+  `uv sync --frozen` (Result=success, `uv sync --check`: no changes); the
+  sideload command, run through `cr-venv-checkout` after deleting
+  `.venv`, made it again. Then plain `uv run bin/cloud up` (27 s, READY)
+  and the full `bin/verify` on the VM: acceptance 91 passed, 0 failed, 1
+  skipped in 728 s across 14 processes, unit and API 827 + 771, ratchet
+  `core_loc` 584, `dependencies` 6, `services` 5, 782 s in all. `bin/cloud
+  init` was not run as admin: no admin credentials are on this Mac (no
+  `/etc/kolla/clouds.yaml`; admin commands run on con01); with the
+  member's `OS_*` it stopped with "not an admin's" and changed nothing.
+  The live platform runs 84b32f0 from the branch `uv-project`; `dev` and
+  `range-host-live` hold the same commit and later docs.
 - Live paths run end to end on 2026-11-13: `bin/cloud up --replace` from the
   VM range (25 min, the range host replaced as stale, the leftovers removed
   after READY); a stale range host replaced by `POST slot/`; `bin/cloud down`
@@ -271,11 +295,15 @@ them.
   /data/ssh/id_ed25519 ubuntu@<cr-range mgmt address> '<cmd>'"`, or through
   `manage.py run_on_role wargames '<json argv>' --slot N`.
 
-`bin/cloud` needs three gitignored files in the checkout that runs it:
-`deploy/openstack/cloud.yaml`, `.venv` and the newest copy in `backups/`, and
-the project user's RC file loaded in its shell:
-`~/.cache/fsl-work/fsl-range-openrc.sh` (mode 0600; `os.sh` loads it too). This
-worktree has them (the newest copy from the last `bin/cloud up --replace`); the old cloud's `cloud.yaml` is kept outside the repo in
+`uv run bin/cloud` needs two gitignored files in the checkout that runs it,
+`deploy/openstack/cloud.yaml` (now with `cloud: fsl-range`) and the newest
+copy in `backups/`, and the clouds.yaml entry `fsl-range` in
+`~/.config/openstack/clouds.yaml` (mode 0600, written from the old RC file's
+password, which was not reset). No RC file and no `OS_*` variables: `os.sh`
+and `known-hosts.sh` sign in with `OS_CLOUD=fsl-range`; the old
+`fsl-range-openrc.sh` is unused, and the scripts' copies before are in
+`~/.cache/fsl-work/backup-safe/cloud-yaml-20261115-clouds/`. `uv run` makes
+`.venv` itself. This worktree has them (the newest copy from the last `bin/cloud up --replace`); the old cloud's `cloud.yaml` is kept outside the repo in
 `~/.cache/fsl-work/old-cloud/`. A worktree that is cleaned up loses these
 files, so copy them before working in a new one. Older store copies are in
 `~/.cache/fsl-work/backup-safe/`.
@@ -286,8 +314,10 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 
 ## Next, in order
 
-1. The live cloud on `dev`: set `platform.ref` back to `dev` and
-   `compute.slots` as the user wants (four now).
+1. The live cloud on `dev`: `platform.ref` is `dev` in `cloud.yaml`; the VM was
+   built with `--ref uv-project` (the same commit). `compute.slots` as the
+   user wants (four now). Run `uv run bin/cloud init` once as admin on con01
+   (`/etc/kolla/clouds.yaml`) to see it report everything present.
 2. A fresh answer-blind review round of both courses and a scenario on the
    round-22 fixes (`docs/DECISIONS.md` "Answer-blind walk round 22"): the
    triage steps whose pass follows the current state, the end button and the

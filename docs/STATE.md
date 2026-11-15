@@ -118,7 +118,9 @@ and then, the same day, into the `~/.config/openstack/clouds.yaml` entry that
 `bin/cloud init` writes: the manual setup is now `git clone`, `uv run
 bin/cloud init` (admin) and `uv run bin/cloud up` (`docs/DECISIONS.md`, the
 2026-11-15 entries from "Virtualenvs are made with uv", and "Four commands on
-the controller").
+the controller"). The repo is a uv project (`pyproject.toml`, `uv.lock`); every
+environment, the images included, syncs from the lock with `uv sync
+--frozen` ("The repo is a uv project").
 
 ## The objective model (done 2026-10-04)
 
