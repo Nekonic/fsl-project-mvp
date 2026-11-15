@@ -7686,3 +7686,49 @@ are not used.
   The live `cloud.yaml` lost its `identity` section; its copy before is in
   `~/.cache/fsl-work/backup-safe/cloud-yaml-20261115/`.
 
+
+## 2026-11-15 — Answer-blind walk round 22: what changed in the scenario and why
+
+An answer-blind walk of both courses and scenario 1.1 on the live range (at
+bc4dbc3, images 82c3d64) found 12 countable findings, mostly in scenario 1.1;
+both courses passed every step. The rules are round 21's: no answer before
+its step, a step that teaches a tool needs it, what the console shows is
+true, a reload loses no work, slop is removed rather than reworded. What
+either score means is unchanged, and the target still decides every
+objective.
+
+| # | Finding | Cause | What changed |
+|---|---|---|---|
+| 1 | The refused final check showed the raw key `scenario.shift.fail.done` | `views._judge` answers `<text>.fail.<step>` for a triage check; 1.1's and 3.1's last step is `done` and neither had the string. The red line came from a loud check (#3) | `scenario.shift.fail.done` and `scenario.fixrule.fail.done`. `test_strings.py` checks every step whose kind can fail under its own key (`rules`, `sent`, `loot`, `waf_changed`, `triage`, an `alerted_destination` answer) has that line |
+| 2 | The note said every item was judged right while the strip said 28 of 32 | `_judged_step` kept `passed` once set; `triage_passed(judged="all")` holds only for the moment it is read, and the console stopped checking a passed step | A failed `triage` check drops the step's `passed`. The console keeps polling a passed `triage` step while it is the current one and redraws it unpassed when a poll fails |
+| 3 | "Failed twice on this step" and a red "no attack judged right yet" before the attack item was touched | Verified in code and by test: each verdict calls `changed("triage")`, which ran the current step's check loud (not a poll). On the attack step every customer verdict failed it, `_judged_step` counted the failure, and the second raised `scenario_run.stuck(..., "check", ...)` | A `triage` check is never counted as a try (it is not an answer the learner gave), and the verdict-driven check runs as a silent poll |
+| 4 | Step 3 told the learner to press 새로고침, though new items appear by themselves | The judge pane re-reads every 15 s (round 21) | The button is gone; `scenario.shift.coach.all` says new items keep arriving |
+| 5 | After the pass the final check stayed active, the hint offer stayed, counters kept rising, and the console had no end button | Customer traffic ran on after the pass; the strip only disabled the button while a window was open | A passed window stops customer traffic (`scenario_run._shift_over`) and `verify-window` answers 409 after a pass. The strip hides the final check button, the hint offer and the clock once passed, and shows the end button once any window is judged; ending asks with `session.close.consequence`, closes and opens the result |
+| 6 | The open scenario's session page held one card and one button and said nothing of the pass | The page rendered the verdict only for closed sessions | An open scenario session with a judged window shows the verdict and the debrief beside its end button |
+| 7 | The result table showed 20687 alerts for both sqlmap runs, under one name | See the live check below | Rows of a scenario session carry the run's start time under the name (`per_case[].started_at`), so two runs of one case read as two runs |
+| 8 | The refusal reason was cut off with "…" and squeezed the title | It sat in the one-line strip as a truncated span | The reason is its own line under the strip |
+| 9 | A corrected answer sent during the ~6 s check was dropped, and the old verdict stood beside the new text | `answer()` returned while a check ran and disabled the submit button | The button stays; an answer sent during a check is checked next (the same answer again is not re-posted). A verdict is not shown when the field was edited during the check or a newer answer waits |
+| 10 | Pills and badges on the scenario screens | | Phase, WAF state, item verdicts and timeline states are coloured words; the verdict box and the session page's banner drop the 통과/미통과 pill |
+| 11 | A fact said twice | Badge plus sentence on each judged item and on the verdict; a big count plus its sentence on the detection card | One line each: the item's verdict line (`triage.said.right`, or `triage.said.wrong` when read back), the verdict sentence, the detection sentence |
+| 12 | Parenthetical glosses | | Rewritten without brackets: `lesson.ref.fields.rows`, `lesson.ref.kql.body`, `lesson.ref.sqlmap.rows`, `lesson.ref.exception.body`, `lesson.loot.matched`, `lesson.xss.fail.nocase.rev`, `triage.waf.logged` |
+| E01 | A second browser on a running scenario showed the briefing's Start | The briefing showed when this browser had no local "briefed" mark | The briefing shows only while the clock has not started (`started: false`); the local mark is gone |
+
+Judgement calls, decided:
+
+- c1 L2 s7 accepting `/posts/999/`, s5 passing on the Headers tab, the bare
+  "wrong" for near misses, partial loot pastes not flipping objectives, the
+  sqlmap option reference before L3, the c1 end naming course 2: kept by
+  rounds 20 and 21.
+- Suricata's raw English syntax errors: kept; they are the tool's own output.
+- The c2 result's per-run alert counts and the 난이도/감점 columns: kept
+  (rounds 20 and 21).
+- The scenario debrief's evidence log, hint count and window line: kept;
+  they are what the verdict was made from (round 21).
+- "✓ 최종 점검을 시작했습니다." after the pass: kept; it is true, and the
+  verdict now shows in the strip and the debrief.
+- c2 L1 s10 passing at once when the rule already had `nocase` at rev:1: kept;
+  the step's point is the case-insensitive match, and the no-`nocase` path
+  still requires the rev bump.
+- c2 L3 s8's "403" wording while sqlmap saw 500s, the 30 s close, rings on
+  answer spots without text, the reload dropping half-picked order chips, the
+  WAF terminal header: left.
