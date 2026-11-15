@@ -71,9 +71,12 @@ stack_down() {
   exit 1
 }
 
+if command -v uv >/dev/null && ! uv sync --quiet --frozen; then
+  echo "uv sync --frozen failed: .venv does not match uv.lock"
+  exit 1
+fi
 if [ ! -x "$PY" ]; then
-  echo "No virtualenv at .venv — run:"
-  echo "  uv venv .venv && uv pip install --python .venv/bin/python -r platform/requirements.txt"
+  echo "No .venv: install uv, then run uv sync --frozen"
   exit 1
 fi
 

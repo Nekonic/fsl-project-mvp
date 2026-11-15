@@ -454,7 +454,7 @@ class ChangedContexts:
         self.changed, self.broken, self.compared = changed, broken, []
 
     def __call__(self, argv, stdin=None, check=True):
-        source, context = argv[-4], argv[-1]
+        source, context = argv[argv.index("--") - 2], " ".join(argv[argv.index("--") + 1:])
         self.compared.append((source, context))
         code = 128 if self.broken else 1 if (source, context) in self.changed else 0
         return subprocess.CompletedProcess(argv, code, b"", b"")
@@ -463,16 +463,17 @@ class ChangedContexts:
 def test_every_image_must_be_built_from_what_head_holds():
     module = rebuild()
     built = "3" * 40
-    git = ChangedContexts({(BASE, "platform"), (BASE, "deploy/gns3")})
+    platform_sources, gns3_sources = "platform pyproject.toml uv.lock", "deploy/gns3 pyproject.toml uv.lock"
+    git = ChangedContexts({(BASE, platform_sources), (BASE, gns3_sources)})
     platform = {"platform": module.Tarball(Path("p.tar"), built)}
 
-    with pytest.raises(module.Refused, match=rf"sideload them:\n  gns3: deploy/gns3 differs between {BASE} and HEAD$"):
+    with pytest.raises(module.Refused, match=rf"sideload them:\n  gns3: {gns3_sources} differs between {BASE} and HEAD$"):
         module.refuse_unless_unchanged(BASE, HEAD, platform, git)
-    assert (built, "platform") in git.compared and (BASE, "wargames/corp/db") in git.compared
+    assert (built, platform_sources) in git.compared and (BASE, "wargames/corp/db") in git.compared
     module.refuse_unless_unchanged(
         BASE, HEAD, {**platform, "gns3": module.Tarball(Path("g.tar"), built)}, git)
-    with pytest.raises(module.Refused, match=f"platform: platform differs between {built} and HEAD"):
-        module.refuse_unless_unchanged(BASE, HEAD, platform, ChangedContexts({(built, "platform")}))
+    with pytest.raises(module.Refused, match=f"platform: {platform_sources} differs between {built} and HEAD"):
+        module.refuse_unless_unchanged(BASE, HEAD, platform, ChangedContexts({(built, platform_sources)}))
     assert set(module.build_contexts()) == set(module.IMAGES)
 
 
@@ -501,7 +502,7 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
     assert f"fetch -q /tmp/{bundle.name} HEAD" in ran[checkout]
     [venv] = [command for command in ran if "cr-venv-checkout" in command]
     assert ran.index(venv) > checkout and "--no-block" in venv and module.VENV_COMMAND in venv.replace("'", ""), (
-        "a sideload checkout can change platform/requirements.txt, and the install must not hold up the hand-over"
+        "a sideload checkout can change uv.lock, and the sync must not hold up the hand-over"
     )
     [load] = [command for command in ran if "docker load" in command]
     assert f"/tmp/gns3.tar" in load

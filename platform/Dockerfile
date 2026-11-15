@@ -11,10 +11,10 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY requirements.txt .
 RUN --mount=from=ghcr.io/astral-sh/uv:0.13.8@sha256:5cc1805e2426484abca4ad46ea783bab281fdb225fd82d8ce6d66a81254bac85,source=/uv,target=/bin/uv \
-    uv pip install --system --no-cache --compile-bytecode -r requirements.txt
-COPY . .
+    --mount=type=bind,source=pyproject.toml,target=/lock/pyproject.toml --mount=type=bind,source=uv.lock,target=/lock/uv.lock \
+    UV_PROJECT_ENVIRONMENT=/usr/local uv sync --frozen --inexact --no-default-groups --no-cache --compile-bytecode --project /lock
+COPY platform/ .
 
 RUN useradd --system --create-home --uid 10001 cr \
  && chown -R cr /app \

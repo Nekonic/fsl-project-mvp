@@ -7746,20 +7746,9 @@ uv run bin/cloud init
 uv run bin/cloud up
 ```
 
-- **`uv run`, no venv step.** `bin/cloud` and `bin/platform-rebuild` carry PEP
-  723 inline script metadata (openstacksdk, python-openstackclient,
-  python-heatclient, PyYAML) and the shebang `#!/usr/bin/env -S uv run
-  --script`, both from uv's scripts guide
-  (https://docs.astral.sh/uv/guides/scripts/: "uv will automatically create an
-  environment with the dependencies necessary to run the script"; "even if
-  `uv run` is used in a project, the project's dependencies will be ignored").
-  `uv run bin/cloud` on an executable file without `.py` spawns it as a
-  command (checked with uv 0.13.7), so the shebang is what gets the script
-  environment; `bin/cloud` alone works the same. The metadata block is
-  comment syntax; it is the format, not commentary, so the no-comments rule
-  does not cover it. `.venv`, `bin/verify` and the platform VM's venv are
-  unchanged; `dependencies` counts `platform/requirements.txt` only, so the
-  ratchet does not move.
+- **`uv run`, no venv step.** First built with PEP 723 inline script
+  metadata in `bin/cloud` and `bin/platform-rebuild`; replaced the same day
+  by the uv project (next entry).
 - **`bin/cloud init`, admin, idempotent.** Admin credentials come from the
   `kolla-admin` entry of `/etc/kolla/clouds.yaml`, which Kolla-Ansible's
   `post-deploy.yml` writes ("Template out clouds.yaml", `dest: "{{ node_config
@@ -7788,7 +7777,15 @@ uv run bin/cloud up
   `cloud.example.yaml`, changing only `cloud`, `network.external`,
   `compute.base_image` and `compute.flavors.*` line by line in an existing
   file so its comments and other values stay. It uses openstacksdk, not the
-  CLI, so the new password is never on a command line.
+  CLI, so the new password is never on a command line. A review found five
+  holes, fixed before the push: the clouds.yaml entry is written before the
+  role is given and the file is checked mergeable before the user is made,
+  so no failure leaves a user whose password no file holds; a non-active
+  image (a cut-short upload leaves it `queued`) stops init; only public or
+  project-owned images count as visible, since Glance lists hide community
+  images; an unreadable `/etc/kolla/clouds.yaml` is named (openstacksdk skips
+  it silently); a flow-style key that the line editor cannot set is refused
+  instead of raising.
 - **`up`, `down`, `platform-rebuild` read clouds.yaml.** `cloud.yaml` gains
   the required top-level `cloud:` (the entry name). `cloud.signed_in` reads
   that entry (`auth.auth_url`, `username`, `password`, `project_name`,
@@ -7800,3 +7797,53 @@ uv run bin/cloud up
   `OS_*` and would override the entry. The password still reaches the
   platform VM over ssh stdin. The RC code path (`cloud.identity`) and its docs,
   the README step 6 RC file and its PS1 snippet, are gone.
+
+## 2026-11-15 — The repo is a uv project: `pyproject.toml`, `uv.lock`, `uv sync --frozen`
+
+The user asked why the setup does not use `uv sync`. This replaces the PEP
+723 inline metadata of the entry above and every `uv venv` plus `uv pip
+install -r platform/requirements.txt` of "Virtualenvs are made with uv".
+
+- `pyproject.toml` at the root: `[project] dependencies` are the platform's
+  four (Django, PyYAML, requests, waitress); `[dependency-groups]` `dev`
+  (pytest, pytest-django), `cloud` (openstacksdk, python-openstackclient,
+  python-heatclient) and `gns3` (`gns3-server[ai-features]==3.1.0a6`, which
+  the gns3 image installed unlocked before). `[tool.uv] package = false`
+  (nothing to build) and `default-groups = ["dev", "cloud"]`. `uv.lock`
+  (216 packages, one universal resolution for Python 3.12 and later) is
+  committed. `platform/requirements.txt` is gone; nothing reads it.
+- Operator flow: uv's sync page says "when `uv run` is used, the project is
+  locked and synced before invoking the requested command"
+  (https://docs.astral.sh/uv/concepts/projects/sync/), so README keeps
+  `git clone && cd`, `uv run bin/cloud init`, `uv run bin/cloud up`, with no
+  `uv sync` line. The scripts' shebang is `python3` again; `uv run` puts
+  `.venv/bin` first on PATH.
+- Everything else syncs from the lock with `--frozen` ("use the lockfile
+  without checking if it is up-to-date"): `bin/verify` before its tests;
+  `VENV_COMMAND` (first-boot `cr-venv` and the sideload hand-over) as
+  `uv sync --quiet --frozen --project /opt/cr --python /usr/bin/python3`; and
+  the platform and gns3 images, which bind-mount `pyproject.toml` and
+  `uv.lock` and sync into the system Python with
+  `UV_PROJECT_ENVIRONMENT=/usr/local` (uv's project config page: "To target
+  the system environment, set `UV_PROJECT_ENVIRONMENT` to the prefix of the
+  Python installation", "on Debian-based systems, this is usually
+  `/usr/local`", warning that `uv sync` removes extraneous packages, hence
+  `--inexact`). The platform image takes `--no-default-groups` (the four
+  only), the gns3 image `--only-group gns3`. `.venv` stays at the repo root.
+- Both images now build from the repo root (`context: .` with `file:` in
+  `images.yml`, `build: {context: ., dockerfile: ...}` in `compose.yaml`;
+  their `COPY` lines name `platform/` and `deploy/gns3/`). So that a sideload
+  does not call every change in the repo a change to those images, their
+  matrix entries carry `sources` (`platform pyproject.toml uv.lock`,
+  `deploy/gns3 pyproject.toml uv.lock`), which `build_contexts` returns in
+  place of the context.
+- The ratchet's `dependencies` counted the six lines of
+  `platform/requirements.txt`; `bin/measure` now counts `[project]
+  dependencies` plus the `dev` group, the same six: 6 before, 6 after. The
+  `cloud` and `gns3` groups are not counted; before, the OpenStack clients
+  were installed by hand from README and gns3-server by the gns3 Dockerfile,
+  neither in the count. `bin/select-tests` runs the whole unit suite on a
+  change to `pyproject.toml` or `uv.lock`, as it did for `requirements.txt`.
+- `.claude/settings.json` still allows `uv venv*` and `uv pip install*`; it
+  was left as it is, since permission settings change only on the user's
+  word.

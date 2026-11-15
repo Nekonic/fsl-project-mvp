@@ -234,7 +234,7 @@ resources:
               - [systemctl, daemon-reload]
               - [systemctl, enable, --now, cr-platform.service]
               - [sh, -c, "curl -fsSL -o /tmp/uv.tar.gz https://github.com/astral-sh/uv/releases/download/0.13.8/uv-x86_64-unknown-linux-gnu.tar.gz && echo '5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91  /tmp/uv.tar.gz' | sha256sum -c - && tar -xzf /tmp/uv.tar.gz -C /usr/local/bin --strip-components=1 uv-x86_64-unknown-linux-gnu/uv && rm /tmp/uv.tar.gz"]
-              - [systemd-run, --collect, --no-block, --unit=cr-venv, --uid=ubuntu, --gid=ubuntu, sh, -c, "exec 9>/tmp/cr-venv.lock && flock 9 && /usr/local/bin/uv venv --quiet --clear --python /usr/bin/python3 /opt/cr/.venv && /usr/local/bin/uv pip install --quiet --python /opt/cr/.venv/bin/python -r /opt/cr/platform/requirements.txt"]
+              - [systemd-run, --collect, --no-block, --unit=cr-venv, --uid=ubuntu, --gid=ubuntu, sh, -c, "exec 9>/tmp/cr-venv.lock && flock 9 && /usr/local/bin/uv sync --quiet --frozen --project /opt/cr --python /usr/bin/python3"]
 
 outputs:
   address:

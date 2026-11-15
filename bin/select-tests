@@ -25,7 +25,8 @@ DOCS_EXACT = ("metrics.json",)
 
 WHOLE_UNIT_SUITE = (
     "platform/pytest.ini",
-    "platform/requirements.txt",
+    "pyproject.toml",
+    "uv.lock",
     "platform/tests/__init__.py",
     "platform/tests/conftest.py",
     "platform/cr/settings.py",

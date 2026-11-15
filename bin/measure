@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -76,14 +77,12 @@ def production_loc() -> tuple[int, int, dict[str, int]]:
     return core, sum(per_file.values()) - core, per_file
 
 def dependencies() -> int:
-    requirements = ROOT / "platform" / "requirements.txt"
-    if not requirements.exists():
+    project = ROOT / "pyproject.toml"
+    if not project.exists():
         return 0
-    return sum(
-        1
-        for line in requirements.read_text().splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    )
+    declared = tomllib.loads(project.read_text(encoding="utf-8"))
+    return len(declared["project"].get("dependencies") or []) + len(
+        (declared.get("dependency-groups") or {}).get("dev") or [])
 
 def tests() -> int:
     total = 0

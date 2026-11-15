@@ -85,7 +85,7 @@ uv run bin/cloud init
 uv run bin/cloud up
 ```
 
-- virtualenv는 만들지 않습니다. `uv run`이 `bin/cloud` 앞부분의 의존성 목록을 읽어 OpenStack SDK와 CLI를 설치합니다.
+- `uv sync`는 따로 하지 않습니다. `uv run`이 `uv.lock`대로 `.venv`를 맞춘 뒤 실행합니다.
 - `up`이 끝나면 `the range is ready; the platform is at http://ADDRESS:8000/`를 출력합니다.
 - 첫 `up`은 오래 걸립니다. 훈련 환경 호스트 부팅, Docker 설치, 이미지 pull이 끝나야 첫 슬롯이 뜹니다.
 

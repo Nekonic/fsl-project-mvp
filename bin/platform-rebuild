@@ -1,13 +1,4 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.10"
-# dependencies = [
-#     "openstacksdk>=4",
-#     "python-openstackclient>=7",
-#     "python-heatclient>=4",
-#     "PyYAML>=6,<7",
-# ]
-# ///
+#!/usr/bin/env python3
 
 from __future__ import annotations
 
@@ -41,8 +32,7 @@ PLATFORM_KEY = "/data/ssh/id_ed25519"
 CHECKOUT = "/opt/cr"
 VENV_COMMAND = (
     "exec 9>/tmp/cr-venv.lock && flock 9 && "
-    f"/usr/local/bin/uv venv --quiet --clear --python /usr/bin/python3 {CHECKOUT}/.venv && "
-    f"/usr/local/bin/uv pip install --quiet --python {CHECKOUT}/.venv/bin/python -r {CHECKOUT}/platform/requirements.txt"
+    f"/usr/local/bin/uv sync --quiet --frozen --project {CHECKOUT} --python /usr/bin/python3"
 )
 SSH_WAIT = 900
 API_WAIT = 1200
@@ -232,21 +222,21 @@ def head_commit(run=run) -> str:
     return run(["git", "-C", str(ROOT), "rev-parse", "HEAD"]).stdout.decode().strip()
 
 
-def build_contexts() -> dict[str, str]:
+def build_contexts() -> dict[str, list[str]]:
     import yaml
     matrix = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["image"]["strategy"]["matrix"]["include"]
-    return {entry["name"]: entry["context"] for entry in matrix}
+    return {entry["name"]: entry["sources"].split() if "sources" in entry else [entry["context"]] for entry in matrix}
 
 
 def refuse_unless_unchanged(base: str, commit: str, tarballs: dict[str, Tarball], run=run) -> None:
     changed = []
-    for name, context in build_contexts().items():
+    for name, paths in build_contexts().items():
         source = tarballs[name].built_from if name in tarballs else base
-        done = run(["git", "-C", str(ROOT), "diff", "--quiet", source, commit, "--", context], check=False)
+        done = run(["git", "-C", str(ROOT), "diff", "--quiet", source, commit, "--", *paths], check=False)
         if done.returncode > 1:
             raise Refused(f"platform-rebuild: cannot compare {source} with HEAD here; git fetch it first")
         if done.returncode:
-            changed.append(f"{name}: {context} differs between {source} and HEAD")
+            changed.append(f"{name}: {' '.join(paths)} differs between {source} and HEAD")
     if changed:
         raise Refused(
             "platform-rebuild: these images were not built from what HEAD holds; build them "

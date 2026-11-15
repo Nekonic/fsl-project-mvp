@@ -78,7 +78,7 @@ services:
 
   platform:
     platform: linux/amd64
-    build: ./platform
+    build: {context: ., dockerfile: platform/Dockerfile}
     image: ghcr.io/nekonic/cr-platform:${CR_IMAGE_TAG:-dev}
     container_name: cr-platform
     depends_on:
@@ -118,7 +118,7 @@ services:
 
   gns3:
     platform: linux/amd64
-    build: ./deploy/gns3
+    build: {context: ., dockerfile: deploy/gns3/Dockerfile}
     image: ghcr.io/nekonic/cr-gns3:${CR_IMAGE_TAG:-dev}
     container_name: cr-gns3
     networks: [mgmt]

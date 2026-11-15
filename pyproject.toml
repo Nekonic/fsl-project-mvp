@@ -1,0 +1,28 @@
+[project]
+name = "fsl-project-mvp"
+version = "0"
+requires-python = ">=3.12"
+dependencies = [
+    "Django>=5.2,<7",
+    "PyYAML>=6,<7",
+    "requests>=2.32,<3",
+    "waitress>=3,<4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<9",
+    "pytest-django>=4.9,<5",
+]
+cloud = [
+    "openstacksdk>=4",
+    "python-openstackclient>=7",
+    "python-heatclient>=4",
+]
+gns3 = [
+    "gns3-server[ai-features]==3.1.0a6",
+]
+
+[tool.uv]
+package = false
+default-groups = ["dev", "cloud"]

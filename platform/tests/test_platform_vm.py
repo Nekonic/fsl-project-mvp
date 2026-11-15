@@ -191,6 +191,5 @@ def test_the_platform_vm_makes_its_own_virtualenv_in_the_background_after_the_pl
     )
     assert module.VENV_COMMAND == (
         "exec 9>/tmp/cr-venv.lock && flock 9 && "
-        "/usr/local/bin/uv venv --quiet --clear --python /usr/bin/python3 /opt/cr/.venv && "
-        "/usr/local/bin/uv pip install --quiet --python /opt/cr/.venv/bin/python -r /opt/cr/platform/requirements.txt"
+        "/usr/local/bin/uv sync --quiet --frozen --project /opt/cr --python /usr/bin/python3"
     )

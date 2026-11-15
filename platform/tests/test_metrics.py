@@ -48,13 +48,13 @@ def test_attacks_with_no_benign_case_beside_them_are_warned_about(matches, warne
 
 
 def test_every_dependency_is_imported_by_something():
-    import pathlib, re
+    import pathlib, re, tomllib
 
     root = pathlib.Path(__file__).resolve().parent.parent.parent
+    declared = tomllib.loads((root / "pyproject.toml").read_text())
     listed = [
         re.split(r"[><=\[]", line, maxsplit=1)[0].strip().lower()
-        for line in (root / "platform/requirements.txt").read_text().splitlines()
-        if line.strip() and not line.startswith("#")
+        for line in declared["project"]["dependencies"] + declared["dependency-groups"]["dev"]
     ]
     sources = "\n".join(
         p.read_text()

@@ -19,11 +19,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {name: platform, context: platform}
+          - {name: platform, context: ., file: platform/Dockerfile, sources: platform pyproject.toml uv.lock}
           - {name: board, context: wargames/board/app}
           - {name: corp, context: wargames/corp/app}
           - {name: corp-db, context: wargames/corp/db}
-          - {name: gns3, context: deploy/gns3}
+          - {name: gns3, context: ., file: deploy/gns3/Dockerfile, sources: deploy/gns3 pyproject.toml uv.lock}
           - {name: kali, context: deploy, file: deploy/kali/Dockerfile}
           - {name: waf, context: deploy, file: deploy/waf/Dockerfile}
           - {name: edge, context: deploy/edge}

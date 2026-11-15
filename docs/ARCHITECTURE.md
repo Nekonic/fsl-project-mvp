@@ -1946,7 +1946,7 @@ init이 하는 일(`bin/cloud`의 `init`, 관리자 인증은 `/etc/kolla/clouds
 - `ubuntu-24.04`가 없으면 noble amd64 클라우드 이미지를 받아 `SHA256SUMS`와 대조한 뒤 public으로 올림
 - `keys.key_file`이 없으면 `ssh-keygen`으로 만듦
 
-`bin/cloud`와 `bin/platform-rebuild`는 첫머리의 PEP 723 inline script metadata로 의존성(openstacksdk, python-openstackclient, python-heatclient, PyYAML)을 적습니다. `uv run`이 이 목록대로 환경을 만들어 실행하므로 virtualenv를 따로 만들지 않습니다. 저장소의 `.venv`와 `bin/verify`는 그대로입니다.
+저장소는 uv 프로젝트입니다. 루트의 `pyproject.toml`에 플랫폼 의존성과 그룹 `dev`(pytest), `cloud`(`bin/cloud`가 쓰는 openstacksdk, python-openstackclient, python-heatclient), `gns3`(gns3 이미지의 서버)를 적고 `uv.lock`으로 고정합니다. `uv run`은 실행 전에 `.venv`를 lock에 맞추므로 `uv sync`를 따로 하지 않습니다. `bin/verify`, 플랫폼 VM의 `cr-venv`, sideload, platform·gns3 이미지는 같은 lock으로 `uv sync --frozen`을 씁니다.
 
 이 파일을 쓰는 곳:
 
@@ -1995,7 +1995,7 @@ Heat 템플릿 `deploy/openstack/platform.yaml`이 만드는 리소스:
 - GeoIP DB 다운로드(`bin/fetch-geoip`). 자격 증명 불필요. Elastic GeoIP 엔드포인트는 URL에 약관 동의를 담으면 GeoLite2를 내려 줌
 - `ubuntu`를 `docker` 그룹에 추가
 - uv 0.13.8 설치. GitHub 릴리스 tarball을 받아 공개된 SHA-256과 대조한 뒤 `/usr/local/bin/uv`에 풀어 놓음
-- 백그라운드 유닛 `cr-venv`에서 `/opt/cr/.venv` 생성. `uv venv --clear --python /usr/bin/python3` 다음에 `uv pip install -r platform/requirements.txt`. sideload 체크아웃 뒤에는 `bin/platform-rebuild`에서 같은 명령을 다시 실행
+- 백그라운드 유닛 `cr-venv`에서 `/opt/cr/.venv` 생성. `uv sync --frozen --project /opt/cr --python /usr/bin/python3`. sideload 체크아웃 뒤에는 `bin/platform-rebuild`에서 같은 명령을 다시 실행
 
 systemd 유닛 `cr-platform.service`는 부팅할 때마다 `compose.yaml`의 이미지를 pull하고 `docker compose -f /opt/cr/compose.yaml up -d`를 실행합니다.
 

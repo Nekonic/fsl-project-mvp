@@ -52,15 +52,22 @@ uv run bin/cloud init
 uv run bin/cloud up
 ```
 
-`uv run` reads the PEP 723 inline script metadata at the top of `bin/cloud`
-and `bin/platform-rebuild` (openstacksdk, python-openstackclient,
-python-heatclient, PyYAML) and runs the script in an environment that has
-them; "When using inline script metadata, even if `uv run` is used in a
-project, the project's dependencies will be ignored" [U3]. The scripts carry
-`#!/usr/bin/env -S uv run --script`, the shebang that guide shows, so
-`uv run bin/cloud` (which spawns the executable file) and `bin/cloud` both end
-up there. The repo's `.venv` and `bin/verify` are unchanged and do not need
-the OpenStack clients.
+The repo is a uv project: `pyproject.toml` at the root declares the
+platform's dependencies, the groups `dev` (pytest), `cloud` (openstacksdk,
+python-openstackclient, python-heatclient, what `bin/cloud` needs) and `gns3`
+(the gns3 image's server), and `uv.lock` pins them all. "When `uv run` is
+used, the project is locked and synced before invoking the requested command"
+[U3], so `uv run bin/cloud` makes or updates `.venv` at the repo root first
+and no separate `uv sync` is needed; `[tool.uv] default-groups` is `dev` and
+`cloud`. Everything else installs from the same lock with
+`uv sync --frozen` ("use the lockfile without checking if it is up-to-date"
+[U3]): `bin/verify`, the platform VM's `cr-venv` (§5.1) and the sideload
+hand-over, and the platform and gns3 images, which sync into the image's
+system Python (`UV_PROJECT_ENVIRONMENT=/usr/local`, `--inexact` so the
+image's own pip stays) from the lock bind-mounted into the build. Those two
+images therefore build from the repo root (`.github/workflows/images.yml`,
+`compose.yaml`), and their matrix entries list `sources`, the paths a
+sideload compares (`platform` or `deploy/gns3`, `pyproject.toml`, `uv.lock`).
 
 `bin/cloud init` runs with admin credentials and prepares what a member user
 cannot (§3): the project and its user, the clouds.yaml entry that holds the
@@ -176,7 +183,7 @@ These commands follow the 2025.2 quickstart [K1]:
 
 ```bash
 sudo apt install -y git python3-dev libffi-dev gcc libssl-dev libdbus-glib-1-dev python3-venv
-python3 -m venv /opt/kolla-venv && . /opt/kolla-venv/bin/activate
+python3 -m venv /opt/kolla-venv && export PATH=/opt/kolla-venv/bin:$PATH
 pip install -U pip
 pip install git+https://opendev.org/openstack/kolla-ansible@stable/2025.2
 pip install docker dbus-python
@@ -742,8 +749,8 @@ The server's cloud-init does these steps:
 8. Installs uv from its GitHub release tarball, pinned to one version and
    checked against that tarball's SHA-256, into `/usr/local/bin/uv` [U2].
 9. Makes `/opt/cr/.venv` in the background (the unit `cr-venv`):
-   `uv venv --clear --python /usr/bin/python3`, then
-   `uv pip install -r platform/requirements.txt`.
+   `uv sync --frozen --project /opt/cr --python /usr/bin/python3`, from the
+   checkout's `uv.lock`.
 
 When `network.address` is set, `bin/platform-rebuild` does this before it
 deletes anything:
@@ -1353,9 +1360,9 @@ curl -s http://$ADDRESS:8000/api/range/fabric/ | jq .clean
 ssh ubuntu@$ADDRESS 'cd /opt/cr && CR_PLATFORM_URL=http://'$ADDRESS':8000 bin/verify'
 ```
 
-`bin/verify` runs with the checkout's `.venv/bin/python`. The platform VM
-creates `/opt/cr/.venv` with uv at first boot (§5.1), and again after a
-sideload checkout. `bin/verify` restarts the platform and
+`bin/verify` runs `uv sync --frozen` and then the checkout's
+`.venv/bin/python`. The platform VM creates `/opt/cr/.venv` with uv at first
+boot (§5.1), and again after a sideload checkout. `bin/verify` restarts the platform and
 resets the range. Never run it against a stack that someone is using.
 
 `bin/verify --changed --live` runs only the acceptance modules that a change
@@ -1578,7 +1585,7 @@ emulation: everything works, more slowly.
 These are the quickstart's all-in-one steps [K1], run in `~`:
 
 ```bash
-python3 -m venv ~/kolla-venv && . ~/kolla-venv/bin/activate && pip install -U pip
+python3 -m venv ~/kolla-venv && export PATH=~/kolla-venv/bin:$PATH && pip install -U pip
 pip install git+https://opendev.org/openstack/kolla-ansible@stable/2025.2
 pip install docker dbus-python
 sudo mkdir -p /etc/kolla && sudo chown $USER:$USER /etc/kolla
@@ -1652,5 +1659,5 @@ host's network.
 - [H1] Heat `OS::Nova::Server` (`flavor_update_policy` RESIZE|REPLACE, default RESIZE; `user_data_update_policy` default REPLACE) — https://opendev.org/openstack/heat/src/branch/master/heat/engine/resources/openstack/nova/server.py
 - [U1] Ubuntu 24.04 cloud images and their `SHA256SUMS` — https://cloud-images.ubuntu.com/noble/current/
 - [U2] uv, Installation ("Request a specific version by including it in the URL"; release artifacts "can be downloaded directly from GitHub Releases") — https://docs.astral.sh/uv/getting-started/installation/; the 0.13.8 release and its `uv-x86_64-unknown-linux-gnu.tar.gz.sha256` — https://github.com/astral-sh/uv/releases/tag/0.13.8
-- [U3] uv, Running scripts: "Declaring script dependencies" (the `# /// script` block, "uv will automatically create an environment with the dependencies necessary to run the script"), "When using inline script metadata, even if `uv run` is used in a project, the project's dependencies will be ignored", and the shebang `#!/usr/bin/env -S uv run --script` — https://docs.astral.sh/uv/guides/scripts/
+- [U3] uv, Locking and syncing ("when `uv run` is used, the project is locked and synced before invoking the requested command"; `--frozen`: "To use the lockfile without checking if it is up-to-date"; "The `dev` group is special-cased and synced by default"; exact syncing removes unselected packages, "To retain extraneous packages, use the `--inexact` flag") — https://docs.astral.sh/uv/concepts/projects/sync/; Project configuration ("To target the system environment, set `UV_PROJECT_ENVIRONMENT` to the prefix of the Python installation", "on Debian-based systems, this is usually `/usr/local`") — https://docs.astral.sh/uv/concepts/projects/config/
 - [O1] python-openstackclient, `keypair create` (`--public-key <file>`: "Filename for public key to add"; `--private-key <file>`: "Filename for private key to save") — https://docs.openstack.org/python-openstackclient/latest/cli/command-objects/keypair.html
