@@ -837,12 +837,12 @@ def _alerted_sids(session, record):
     return [sid for detection in _alerts_for(session, record)
             if (sid := ((detection.raw or {}).get("alert") or {}).get("signature_id")) is not None]
 
-def _logged(session, start, end, source):
+def _logged(session, start, end, *sources):
     try:
         documents, _ = _fetched(_session_index(session) or settings.ELASTIC_INDEX, start, end, newest_first=False)
     except elastic.ElasticUnavailable:
         return []
-    return [doc for _, doc in documents if (doc.get("event") or {}).get("module") == source]
+    return [doc for _, doc in documents if (doc.get("event") or {}).get("module") in sources]
 
 def _waf_records(session, record):
     start, end = _window_of(record)
@@ -887,6 +887,18 @@ def _sensed(session, start, end, marker, path=""):
             found.append(doc)
     return found
 
+def _sent_by(session, start, end, marker):
+    sent = []
+    for doc in _logged(session, start, end, "suricata", "modsecurity"):
+        http = doc.get("http") or {}
+        if doc.get("event_type") == "http" and elastic.suricata_marker(http) == marker:
+            sent.append((_stamped(doc), str(http.get("http_user_agent") or "").lower()))
+        elif _waf_marked(doc, marker):
+            headers = ((doc.get("transaction") or {}).get("request") or {}).get("headers") or {}
+            agent = next((str(value) for name, value in headers.items() if str(name).lower() == "user-agent"), "")
+            sent.append((_stamped(doc), agent.lower()))
+    return sent
+
 def _kali_check(session, step, kept):
     recorded, shown = _kali_run(session, step["id"], step["check"], kept)
     if recorded is None:
@@ -906,10 +918,8 @@ def _kali_run(session, step_id, check, kept):
     since = _lesson_started(session) or session.started_at
     reached = max(parse_datetime(kept.get("reached") or "") or since, since)
     now = timezone.now()
-    events = _sensed(session, reached - RECORD_SLACK, now + RECORD_SLACK, marker)
-    ran = events if check.get("ua") == "any" else [
-        event for event in events if case["tool"] in str((event.get("http") or {}).get("http_user_agent", "")).lower()]
-    seen = sorted(stamp for event in ran if (stamp := _stamped(event)))
+    sent = _sent_by(session, reached - RECORD_SLACK, now + RECORD_SLACK, marker)
+    seen = sorted(stamp for stamp, agent in sent if stamp and (check.get("ua") == "any" or case["tool"] in agent))
     if not seen:
         return None, {"kali": {"name": case["name"]}}
     if now - seen[-1] < RUN_SETTLED:

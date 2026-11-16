@@ -244,6 +244,26 @@ def test_a_kali_step_waits_for_the_run_s_last_request_to_settle_then_opens_kiban
     assert (recorded.started_at, recorded.ended_at) == (first, last), "the run spans its first to its last request"
     assert window_of(done["kali"]["discover"]) == (first - views.RECORD_SLACK, last + views.RECORD_SLACK)
 
+def refused_request(marker, at, agent="sqlmap/1.8.4#stable (https://sqlmap.org)"):
+    return {"event": {"module": "modsecurity"}, "@timestamp": at.isoformat(),
+            "transaction": {"request": {"uri": "/?sort=posts_post.id", "headers": {"User-Agent": agent, "X-Request-ID": marker}},
+                            "response": {"http_code": 403}}}
+
+def test_a_kali_run_the_waf_refused_in_full_is_recorded_from_the_waf_s_records(client):
+    session = taught("f5")
+    Session.objects.filter(pk=session.pk).update(started_at=timezone.now() - timedelta(minutes=10))
+    now = timezone.now()
+    run_step(session, "f5", "sqlmap", "blocked-run", now - timedelta(minutes=3))
+    first, last = now - timedelta(seconds=120), now - timedelta(seconds=30)
+    with quietly(), indexed(refused_request("blocked-run", first), refused_request("blocked-run", last),
+                            refused_request("blocked-run", now - timedelta(seconds=60), agent="curl/8.0"),
+                            refused_request("other-run", now - timedelta(seconds=10))):
+        done = check(client, session, "sqlmap", {"poll": True}).json()
+    recorded = Case.objects.get(session=session, case_id="blocked-run")
+
+    assert done["passed"] is True
+    assert (recorded.started_at, recorded.ended_at) == (first, last)
+
 def test_a_fact_about_a_kali_step_that_recorded_nothing_sends_the_learner_back_to_that_step(client):
     session = taught("f5")
     run_step(session, "f5", "verdict", "unused", timezone.now())
