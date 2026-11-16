@@ -167,3 +167,17 @@ class DisabledRule(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
+class SignInBlock(models.Model):
+
+    kind = models.CharField(max_length=16)
+    value = models.CharField(max_length=64)
+    username = models.CharField(max_length=150, blank=True, default="")
+    reason = models.CharField(max_length=32)
+    failures = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    until = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-created_at"]
+        unique_together = [("kind", "value")]
+

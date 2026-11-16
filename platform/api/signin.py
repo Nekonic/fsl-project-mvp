@@ -1,8 +1,5 @@
 import json
-import math
 import re
-import time
-from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlsplit
 
 from django.contrib.auth import authenticate, get_user_model, login, logout
@@ -13,6 +10,7 @@ from django.http import HttpResponse, JsonResponse
 from django.middleware.csrf import get_token
 from django.views.decorators.http import require_GET, require_POST
 
+from api import blocks
 from api.models import Session
 
 SITE_SESSION = re.compile(r"^/site/(?P<session>\d+)/")
@@ -73,8 +71,6 @@ def _awaits_approval(username, password):
     return waiting is not None and waiting.check_password(password)
 
 
-FAILURES_BEFORE_LOCK = 10
-LOCKED_SECONDS = 15 * 60
 SIGN_UPS_PER_ADDRESS_PER_HOUR = 5
 PENDING_AT_MOST = 50
 
@@ -88,40 +84,22 @@ def _counted(key, seconds):
         return 1
 
 
-def _locked(username):
-    until = cache.get(f"sign-in-locked:{username}")
-    if until is None or until <= time.time():
-        return None
-    answer = JsonResponse({
-        "detail": "too many failed sign-ins for this account; try again later",
-        "locked_until": datetime.fromtimestamp(until, timezone.utc).isoformat(),
-    }, status=429)
-    answer["Retry-After"] = str(math.ceil(until - time.time()))
-    return answer
-
-
-def _failed(username):
-    if _counted(f"sign-in-failures:{username}", LOCKED_SECONDS) >= FAILURES_BEFORE_LOCK:
-        cache.set(f"sign-in-locked:{username}", time.time() + LOCKED_SECONDS, LOCKED_SECONDS)
-        cache.delete(f"sign-in-failures:{username}")
-
-
 @require_POST
 def sign_in(request):
     given = _given(request)
     if given is None:
         return JsonResponse({"detail": "send {\"username\": ..., \"password\": ...}"}, status=400)
     username, password = str(given.get("username") or ""), str(given.get("password") or "")
-    locked = _locked(username)
-    if locked is not None:
-        return locked
+    refused = blocks.standing(request)
+    if refused is not None:
+        return refused
     user = authenticate(request, username=username, password=password)
     if user is None and _awaits_approval(username, password):
         return JsonResponse({"detail": "this account waits for an admin's approval", "pending": True}, status=403)
     if user is None:
-        _failed(username)
-        return _locked(username) or JsonResponse({"detail": "wrong username or password"}, status=401)
-    cache.delete(f"sign-in-failures:{username}")
+        blocks.failed(request, username)
+        return blocks.standing(request) or JsonResponse({"detail": "wrong username or password"}, status=401)
+    blocks.succeeded(request)
     login(request, user)
     return JsonResponse(_signed_in(request))
 

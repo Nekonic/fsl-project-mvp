@@ -34,6 +34,24 @@
     </table>
   </div>
 </section>
+
+<section id="blocks-panel" class="mt-8 hidden">
+  <h2 data-t="users.blocks" class="font-semibold text-heading mb-3"></h2>
+  <div class="card overflow-x-auto">
+    <table class="w-full text-[13px]">
+      <thead class="table-head">
+        <tr>
+          <th data-t="users.col.blocked" class="pl-5"></th>
+          <th data-t="users.col.target"></th>
+          <th data-t="users.col.failures"></th>
+          <th data-t="users.col.until"></th>
+          <th class="pr-5"></th>
+        </tr>
+      </thead>
+      <tbody id="blocks"></tbody>
+    </table>
+  </div>
+</section>
 {% endblock %}
 {% block script %}
 <script>
@@ -83,7 +101,33 @@
     field("pending-none").classList.toggle("hidden", Boolean(pending.length));
     field("active").innerHTML = active.map(activeRow).join("");
     field("active-panel").classList.remove("hidden");
+    const standing = await api("/api/users/blocks/");
+    const blocks = standing.ok ? standing.body.blocks : [];
+    field("blocks").innerHTML = blocks.map(blockRow).join("");
+    field("blocks-panel").classList.toggle("hidden", !blocks.length);
   }
+
+  function blockRow(block) {
+    const what = block.kind === "address" ? block.value : `${block.value.slice(0, 12)}…`;
+    return `
+      <tr class="table-row">
+        <td class="pl-5"><span class="font-semibold text-heading">${esc(t(`users.block.${block.kind}`))}</span>
+          <span class="font-mono text-muted ml-2">${esc(what)}</span></td>
+        <td>${esc(block.username)}</td>
+        <td>${esc(block.failures)}</td>
+        <td>${esc(clock(block.until))}</td>
+        <td class="pr-5 text-right"><button data-unblock="${block.id}" class="btn btn-sm btn-ghost">${esc(t("users.unblock"))}</button></td>
+      </tr>`;
+  }
+
+  field("blocks").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-unblock]");
+    if (!button) return;
+    button.disabled = true;
+    const said = await post(`/api/users/blocks/${button.dataset.unblock}/unblock/`);
+    if (!said.ok) showError(t("users.failed", detail(said)));
+    await load();
+  });
 
   field("pending").addEventListener("click", async (event) => {
     const button = event.target.closest("button[data-approve], button[data-reject]");

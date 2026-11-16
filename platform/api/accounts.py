@@ -3,9 +3,10 @@ from functools import wraps
 from django.contrib.auth import get_user_model
 from django.http import HttpResponseNotFound, JsonResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
-from api.models import Detection, Session
+from api.models import Detection, Session, SignInBlock
 
 
 READS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -82,3 +83,25 @@ def reject(request, user_id):
         return JsonResponse({"detail": "only an account waiting for approval can be rejected"}, status=409)
     user.delete()
     return JsonResponse({"id": user_id, "rejected": True})
+
+
+def _shown_block(block):
+    return {
+        "id": block.pk, "kind": block.kind, "value": block.value, "username": block.username,
+        "reason": block.reason, "failures": block.failures,
+        "created_at": block.created_at.isoformat(), "until": block.until.isoformat(),
+    }
+
+
+@require_GET
+@staff_only
+def sign_in_blocks(request):
+    standing = SignInBlock.objects.filter(until__gt=timezone.now())
+    return JsonResponse({"blocks": [_shown_block(block) for block in standing]})
+
+
+@require_POST
+@staff_only
+def unblock(request, block_id):
+    get_object_or_404(SignInBlock, pk=block_id).delete()
+    return JsonResponse({"id": block_id, "unblocked": True})

@@ -11,6 +11,8 @@ urlpatterns = [
     path("api/users/", accounts.users),
     path("api/users/<int:user_id>/approve/", accounts.approve),
     path("api/users/<int:user_id>/reject/", accounts.reject),
+    path("api/users/blocks/", accounts.sign_in_blocks),
+    path("api/users/blocks/<int:block_id>/unblock/", accounts.unblock),
     path("auth-check/", signin.check),
     path("login/", console.login),
     path("signup/", console.signup),

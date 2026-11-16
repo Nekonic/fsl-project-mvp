@@ -6,7 +6,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
 
-from api import signin
+from api import blocks, signin
 from api.models import Session
 from tests.conftest import ApiClient
 
@@ -16,9 +16,14 @@ FRONT = pathlib.Path(__file__).resolve().parents[2] / "platform/nginx.conf"
 ENTRYPOINT = FRONT.parent / "entrypoint.sh"
 
 
-def signing_in(password):
-    return Client().post("/api/auth/login/", json.dumps({"username": "admin", "password": password}),
-                         content_type="application/json")
+CHROME = {"HTTP_USER_AGENT": "Mozilla/5.0 Chrome/131", "HTTP_ACCEPT_LANGUAGE": "ko-KR"}
+FIREFOX = {"HTTP_USER_AGENT": "Mozilla/5.0 Firefox/133", "HTTP_ACCEPT_LANGUAGE": "en-US"}
+
+
+def signing_in(password, address="203.0.113.5", username="admin", browser=CHROME):
+    return Client(REMOTE_ADDR=address, **browser).post(
+        "/api/auth/login/", json.dumps({"username": username, "password": password}),
+        content_type="application/json")
 
 
 def signing_up(number, address="198.51.100.7"):
@@ -27,22 +32,60 @@ def signing_up(number, address="198.51.100.7"):
     }), content_type="application/json")
 
 
-def test_ten_wrong_passwords_lock_the_account_for_fifteen_minutes_even_against_the_right_one():
-    answers = [signing_in("wrong") for _ in range(signin.FAILURES_BEFORE_LOCK)]
-    locked = signing_in("123456")
+def test_three_failures_against_admin_block_that_address_and_not_the_account():
+    answers = [signing_in("wrong") for _ in range(blocks.TIERS["staff"]["failures"])]
+    blocked = signing_in("123456")
+    elsewhere = signing_in("123456", address="198.51.100.20", browser=FIREFOX)
 
-    assert [answer.status_code for answer in answers[:-1]] == [401] * (signin.FAILURES_BEFORE_LOCK - 1)
-    assert answers[-1].status_code == 429 and locked.status_code == 429
-    assert locked.json()["locked_until"]
-    assert 14 * 60 < int(locked["Retry-After"]) <= 15 * 60
+    assert [answer.status_code for answer in answers] == [401, 401, 429]
+    assert blocked.status_code == 429 and blocked.json()["blocked_by"] == "address"
+    assert 59 * 60 < int(blocked["Retry-After"]) <= 60 * 60
+    assert elsewhere.status_code == 200, "nobody can lock admin out from another address"
+
+
+def test_a_client_that_changes_address_but_keeps_its_headers_is_blocked_by_its_fingerprint():
+    for number in range(blocks.TIERS["staff"]["failures"]):
+        signing_in("wrong", address=f"203.0.113.{10 + number}")
+
+    rotated = signing_in("123456", address="203.0.113.99")
+    other_browser = signing_in("123456", address="203.0.113.98", browser=FIREFOX)
+
+    assert rotated.status_code == 429 and rotated.json()["blocked_by"] == "fingerprint"
+    assert other_browser.status_code == 200
+
+
+def test_learner_names_take_ten_failures_and_the_platform_host_is_never_blocked():
+    get_user_model().objects.create_user("learner1", password="range-practice-42")
+    answers = [signing_in("wrong", username="learner1").status_code
+               for _ in range(blocks.TIERS["learner"]["failures"])]
+    from_the_vm = [signing_in("wrong", address="127.0.0.1").status_code for _ in range(5)]
+
+    assert answers == [401] * 9 + [429]
+    assert from_the_vm == [401] * 5
+    assert signing_in("123456", address="127.0.0.1").status_code == 200
 
 
 def test_a_successful_sign_in_forgets_the_failures_before_it():
-    for _ in range(signin.FAILURES_BEFORE_LOCK - 1):
-        signing_in("wrong")
+    signing_in("wrong")
+    signing_in("wrong")
 
     assert signing_in("123456").status_code == 200
     assert signing_in("wrong").status_code == 401
+
+
+def test_an_admin_lists_and_lifts_a_block_and_a_learner_cannot(client):
+    for _ in range(blocks.TIERS["staff"]["failures"]):
+        signing_in("wrong")
+    listed = client.get("/api/users/blocks/").json()["blocks"]
+    address = next(block for block in listed if block["kind"] == "address")
+    learner = ApiClient()
+    learner.force_login(get_user_model().objects.create_user("learner1", password="range-practice-42"))
+
+    assert address["value"] == "203.0.113.5" and address["username"] == "admin" and address["failures"] == 3
+    assert learner.get("/api/users/blocks/").status_code == 403
+    assert learner.post_json(f"/api/users/blocks/{address['id']}/unblock/").status_code == 403
+    assert client.post_json(f"/api/users/blocks/{address['id']}/unblock/").status_code == 200
+    assert signing_in("123456").status_code == 200
 
 
 def test_one_address_signs_up_a_few_times_an_hour_and_no_more():
