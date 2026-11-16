@@ -51,10 +51,10 @@ slots:                            # docker networks on cr-range, not Neutron net
   containers:
     sN-kali:  { sN_internet: "172.30.N.10 and the origin source addresses (per-country SNAT)" }
     sN-edge:  { wan: "172.30.N.1 and the .1 of each origin /24", lan: 10.30.N.1 }   # nftables router, no NAT
-    sN-waf:   { sN_estate: 10.30.N.247, sN_web: 10.30.N+128.247, sN_mgmt: 172.29.N.12 }   # ModSecurity reverse-proxy, fronts the targets; ships its audit log from mgmt
+    sN-waf:   { sN_estate: 10.30.N.247, sN_web: 10.30.N+128.247, sN_mgmt: 172.29.N.12 }   # ModSecurity reverse-proxy, fronts the targets; ships its audit and refused logs from mgmt
     sN-board:   { sN_web: 10.30.N+128.59, board-default: "with sN-board-db" }
     sN-corp-wp: { sN_web: 10.30.N+128.60, corp-default: "with sN-corp-db" }
-    sN-sensor:     { sN_estate: "dmz, no address, tc mirred of every other port", sN_web: "web, the same", sN_mgmt: 172.29.N.11 }   # one Suricata, both legs of the WAF
+    sN-sensor:     { sN_web: "web, no address, tc mirred of every other port", sN_mgmt: 172.29.N.11 }   # one Suricata, behind the WAF
     sN-log-server: { sN_mgmt: 172.29.N.10 }   # rsyslog, 514/tcp in, 5140/udp to the platform
   paths:
     external: "operator (through the VPN) -> FIP 192.168.2.247 -> platform (console :8000)"

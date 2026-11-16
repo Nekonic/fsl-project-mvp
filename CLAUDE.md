@@ -116,14 +116,13 @@ alert that does not mention the attack's mechanism is reported
   Known exceptions in code today; do not add more, and whether to move them is
   open (`docs/STATE.md` backlog 0):
   `register_pipeline.py` PUTs the ingest pipeline to Elasticsearch at bring-up;
-  each sensor host in `declaration.yaml` (`cr-edge` for the edge sensor,
-  `cr-range` for the estate sensor) names the rule file and reload command
-  `rules/suricata.py` is handed;
+  the sensor host `cr-range` in `declaration.yaml` names the rule file and
+  reload command `rules/suricata.py` is handed;
   `range/rangehost.py` (with `deploy/range-host/slot.sh`) renders and runs each
-  slot, starts and stops both Suricata sensors, configures the edge router and
-  names the sensors' and the WAF's log files it forwards, and
-  `deploy/range-host/slot.yaml` mounts the WAF's audit log file, both tied
-  to `deploy/waf/modsecurity.conf`'s `SecAuditLog` by a test in
+  slot, starts and stops the slot's Suricata sensor, configures the edge router
+  and names the sensor's and the WAF's log files it forwards, and
+  `deploy/range-host/slot.yaml` mounts the WAF's audit and refused log
+  files, both tied to `deploy/waf/modsecurity.conf`'s `SecAuditLog` by a test in
   `platform/tests/test_range_host.py`;
   `platform/nginx.conf` names the Kibana API routes
   it refuses and answers Kibana's `api/spaces/space` lookup itself, and

@@ -308,7 +308,7 @@ What is tested:
   keeping default capabilities, gaining one not listed, missing
   `no-new-privileges` or a limit, leaving a default profile, sharing a host
   namespace, publishing a port, holding the Docker socket or mounting a host
-  path beyond its own log file; a slot network other than the 관제망 not internal or with a host address;
+  path beyond its own two log files; a slot network other than the 관제망 not internal or with a host address;
   two slots sharing a subnet or a name; dockerd without `userns-remap`.
 - `test/test_range_isolation.py` checks a live slot from Kali, the WAF and the
   board: none reaches the range host's sshd, the platform, the Internet, the
@@ -321,7 +321,7 @@ What is tested:
   slot's log in its audit directory, waits for a line the WAF wrote to reach
   its own slot's index, closes the session and, after the reset, checks the
   canary unchanged, nothing of it in Elasticsearch, and the WAF's host log
-  directory root's and holding only `audit.log`.
+  directory root's and holding only `audit.log` and `refused.log`.
 
 **Accounts are staff or learner.** Staff (`admin` and any account made staff
 in Django) manage accounts, change the range and see every session; a

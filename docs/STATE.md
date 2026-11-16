@@ -1403,12 +1403,13 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       written by the platform VM's cloud-init since 2026-10-11) rather than
       from the substrate in code; decide which.
 - [ ] Seam exceptions: move the code or keep them recorded
-      (`register_pipeline.py` for Elasticsearch; the sensor hosts' rule paths
-      and reload commands in `declaration.yaml` (`cr-edge`, `cr-range`) for
-      Suricata; `range/rangehost.py` with `deploy/range-host/slot.sh`, which
-      render and run each slot, start and stop both Suricata sensors,
-      configure the edge router and name the forwarded log files, and
-      `deploy/range-host/slot.yaml`, which mounts the WAF's audit log file;
+      (`register_pipeline.py` for Elasticsearch; the sensor host's rule path
+      and reload command in `declaration.yaml` (`cr-range`) for Suricata;
+      `range/rangehost.py` with `deploy/range-host/slot.sh`, which render and
+      run each slot, start and stop the slot's Suricata sensor, configure the
+      edge router and name the forwarded log files, and
+      `deploy/range-host/slot.yaml`, which mounts the WAF's audit and refused
+      log files;
       `platform/nginx.conf` and `blue.html` for Kibana; `operator_log.py` and
       the `cr-kali` and `cr-waf` terminal wiring (`vm-terminal.sh`) for the
       attacker box and the WAF; F6's step commands naming the exclusion file

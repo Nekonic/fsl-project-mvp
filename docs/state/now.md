@@ -5,10 +5,11 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-16, gVisor and Elasticsearch security removed as fake risks,
-the session check cached, sign-up with admin approval merged (the range is one
-range host, `cr-range`, running eight slots as compose projects on runc; on
-`dev`).
+Updated: 2026-11-16, the Kibana gate keeps a learner to their session's slot,
+F4 and 3.4 run the WAF in DetectionOnly mode, a session's slot runs only its
+own wargame, and the map no longer answers 500 with a slot container down
+(the range is one range host, `cr-range`, running eight slots as compose
+projects on runc; on `dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
@@ -25,7 +26,10 @@ Internet.
   Discover showed the session's alert. Full `bin/verify` on the VM:
   acceptance 81 passed, 13 errors, 1 skipped; all 13 are one 500 from
   `/api/sessions/<id>/topology/` (`topology.py` `_boxed` KeyError `'x'`),
-  outside this change; unit and API 943 + 818.
+  outside this change; unit and API 943 + 818. The 500 is fixed in
+  `7152b54c` (`docs/TROUBLESHOOTING.md`, "The session map answered 500"):
+  reproduced live by stopping `s1-board-db`, 500 before the fix and 200
+  after; no full `bin/verify` recorded since.
 - 2026-11-16, F4 and 3.4 run the WAF in DetectionOnly mode and 3.1-3.3
   attack with `board-sqli-orderby-sqlmap-random-agent` (`docs/DECISIONS.md`
   "F4 and 3.4 run the WAF in DetectionOnly mode; 3.1-3.3 attack with
@@ -130,7 +134,9 @@ Internet.
   project") replaced the four VMs per slot. The cloud holds two VMs:
   `cr-platform` (`m1.large`, 192.168.2.247) and `cr-range` (`dba.range`,
   6 vCPU, 16 GB), which runs slot N as the compose project `sN` (Kali, the
-  nftables edge, the WAF, two Suricata sensors, board and corp). The old slot
+  nftables edge, the WAF, two Suricata sensors, board and corp, as of
+  2026-11-13; a slot now has one sensor behind the WAF, and a session's slot
+  runs only its own wargame). The old slot
   VMs, their networks, the role images and the OPNsense image were removed by
   `bin/cloud up --replace`'s leftovers step. The work is on `dev`; the live
   platform runs the branch `range-host-live` (no `/` in `platform.ref`),

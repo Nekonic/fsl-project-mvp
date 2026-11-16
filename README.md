@@ -229,8 +229,8 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체
 | 9200 | Elasticsearch, VM loopback 전용 | acceptance 테스트, 인증 없음 |
 
 - 8002는 콘솔과 다른 origin이라 대상 사이트의 스크립트가 콘솔을 읽지 못합니다. 로그인은 8000과 같이 씁니다.
-- `board.com`과 `corp.com`은 훈련 환경 안에서만 응답합니다. 8002는 요청을 그 세션의
-  Kali 컨테이너에서 고객 주소로 내보냅니다.
+- `board.com`과 `corp.com`은 훈련 환경 안에서만 응답합니다. 8002로 들어온 요청은 그 세션의
+  Kali 컨테이너를 거쳐 고객 주소로 나갑니다.
 
 ## 세션
 

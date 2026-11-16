@@ -104,7 +104,23 @@
 
 회원가입(`username`, `password`, `password_confirm`)은 Django `UserCreationForm`과 기본 비밀번호 검사기 넷으로 확인한 뒤 `is_active=False`, 비관리자 계정을 만들고 201 `{"pending": true}`를 돌려줍니다. 거부 사유는 `errors[].code`(Django 오류 코드)로 오고, 화면은 이 코드로 문구를 찾습니다. 승인 전 계정이 맞는 비밀번호로 로그인하면 403 `{"pending": true}`입니다. 비활성 계정은 세션이 있어도 `/auth-check/`에서 401입니다. 관리자(`is_staff`)는 `/users/`(계정 관리, 상단 링크)에서 `GET /api/users/`, `POST /api/users/<id>/approve/`, `POST /api/users/<id>/reject/`(승인 대기 계정만, 삭제)를 씁니다. 관리자가 아니면 403, 사용 중인 계정 거절은 409라서 관리자가 자기 계정을 없앨 수 없습니다.
 
-남용 제한은 두 층입니다. nginx(`platform/nginx.conf`)는 `POST /api/auth/login/` IP당 5r/m(버스트 5), `POST /api/auth/signup/` IP당 1r/m(버스트 3), `/api/` 세션 쿠키당 20r/s(버스트 40)와 IP당 100r/s(버스트 200), 터미널과 8002 사이트에 세션 쿠키당 동시 연결 10개를 둡니다. 넘으면 429입니다. 플랫폼 VM 자신(loopback, Docker 게이트웨이 172.31.0.1, `entrypoint.sh`가 `DJANGO_ALLOWED_HOSTS`의 IP로 만드는 `/tmp/nginx-platform-addresses.conf`)은 제외합니다. 로그인 실패는 계정이 아니라 시도한 쪽을 막습니다(`api/blocks.py`). 관리자(`is_staff`) 계정에 한 시간 안에 3번 틀린 IP는 1시간, 다른 아이디(없는 아이디 포함)에 10번 틀린 IP는 15분 동안 로그인할 수 없습니다. 브라우저가 보내는 헤더(User-Agent, Accept, Accept-Language, Accept-Encoding, `Sec-CH-UA` 계열)의 해시도 같은 횟수로 세고, 그 지문이 두 IP 이상에서 틀렸으면 지문을 막습니다. 막힌 쪽은 맞는 비밀번호도 429(`blocked_until`, `blocked_by`, `Retry-After`)입니다. 차단은 DB의 `SignInBlock`(마이그레이션 0032)에 남고, 관리자가 계정 관리에서 `GET /api/users/blocks/`로 보고 `POST /api/users/blocks/<id>/unblock/`으로 풉니다. 실패 횟수는 기본 로컬 메모리 캐시에 둡니다. 플랫폼 VM 자신은 세지도 막지도 않습니다. Django(`api/signin.py`)는 같은 주소의 가입을 시간당 5개로, 승인 대기 계정을 50개로 묶습니다(넘으면 503 `{"closed": true}`). 학습자 계정은 열린 세션을 하나만 가집니다. 두 번째 `POST /api/sessions/`는 409 `{"open_session": <id>}`입니다(`Session.owner`, 마이그레이션 0031). 관리자는 제한이 없어 수락 테스트가 세션 여럿을 엽니다.
+남용 제한은 nginx와 Django에 있습니다.
+
+- nginx(`platform/nginx.conf`)
+  - `POST /api/auth/login/` IP당 5r/m(버스트 5), `POST /api/auth/signup/` IP당 1r/m(버스트 3)
+  - `/api/` 세션 쿠키당 20r/s(버스트 40), IP당 100r/s(버스트 200)
+  - 터미널과 8002 사이트는 세션 쿠키당 동시 연결 10개
+  - 넘으면 429
+  - 플랫폼 VM 자신(loopback, Docker 게이트웨이 172.31.0.1, `entrypoint.sh`가 `DJANGO_ALLOWED_HOSTS`의 IP로 만드는 `/tmp/nginx-platform-addresses.conf`)은 제외
+- 로그인 실패 차단(`api/blocks.py`). 계정이 아니라 시도한 쪽을 막음
+  - 관리자(`is_staff`) 계정에 한 시간 안에 3번 틀린 IP는 1시간 동안 로그인 불가
+  - 다른 아이디(없는 아이디 포함)에 10번 틀린 IP는 15분 동안 로그인 불가
+  - 브라우저 헤더(User-Agent, Accept, Accept-Language, Accept-Encoding, `Sec-CH-UA` 계열)의 해시도 같은 횟수로 셈. 그 지문이 두 IP 이상에서 틀렸으면 지문을 막음
+  - 막힌 쪽은 맞는 비밀번호도 429(`blocked_until`, `blocked_by`, `Retry-After`)
+  - 차단은 DB의 `SignInBlock`(마이그레이션 0032)에 남음. 관리자가 계정 관리에서 `GET /api/users/blocks/`로 보고 `POST /api/users/blocks/<id>/unblock/`으로 풂
+  - 실패 횟수는 기본 로컬 메모리 캐시에 둠. 플랫폼 VM 자신은 세지도 막지도 않음
+- 가입 제한(`api/signin.py`). 같은 주소의 가입은 시간당 5개, 승인 대기 계정은 50개까지. 넘으면 503 `{"closed": true}`
+- 세션 소유. 학습자 계정은 열린 세션을 하나만 가짐. 두 번째 `POST /api/sessions/`는 409 `{"open_session": <id>}`(`Session.owner`, 마이그레이션 0031). 관리자는 제한이 없어 수락 테스트가 세션 여럿을 엶
 
 학습자는 자기 세션만 보고 움직입니다(`api/accounts.py`의 `OwnSessionsOnly`). URL에 세션이나 탐지 id가 있는 API와 콘솔 페이지(목록, 상세, 점수, 구성도, 종료, 레드·블루 콘솔)는 남의 것이면 404입니다. `session`을 주지 않은 요청은 자기 세션 중 열린 것, 없으면 가장 최근 것에 적용하고, 세션이 하나도 없으면 409입니다. `/api/range/` 쓰기 요청은 관리자만 할 수 있습니다(학습자는 403). 관리자는 모든 세션을 봅니다.
 
@@ -115,7 +131,7 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 - 호출이 지정하는 인덱스가 정확히 그 슬롯 패턴. 검색의 `params.index`, 필드 목록의 `pattern`, 값 추천 경로의 인덱스. 관리자는 아무 인덱스
 - 본문과 쿼리 문자열 어디에도 `index`, `_index`, `indices`, `namespace(s)` 키가 없음. terms lookup이나 다른 space 조회를 막음
 
-세션 space는 요청 묶음(`bfetch:disable`)을 꺼서 검색마다 요청 하나로 오고, 게이트가 그 본문 전체를 봅니다.
+세션 space에서는 `bfetch:disable`로 요청 묶음을 끕니다. 검색 한 번이 요청 한 건이라 게이트가 본문 전체를 봅니다.
 
 훈련 환경을 바꾸는 엔드포인트는 쿼리나 본문으로 `session`을 받습니다. rules, validate, 룰 비활성화, `/api/attacker/`, origin, label, canary가 해당합니다.
 
@@ -217,7 +233,7 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 - `rangehost.sensor_config`에서 af-packet 항목을 주소 없는 감시 인터페이스마다 하나씩 넣음. 지금은 `web`(`sN-web`) 하나
 - EVE 출력에 `xff`를 켬: `mode: extra-data`, `deployment: reverse`, `header: X-Forwarded-For`. http 기록의 `xff`에 클라이언트 주소가 남고, `src_ip`는 WAF 그대로
 - 인터페이스마다 스레드 1개, `cluster_flow`. BPF 필터 없음
-- `HOME_NET`은 10/8, 172.16/12, 192.168/16. 출발지 대역이 빠져 있어 공격자 주소는 외부로 잡힘(`docs/DECISIONS.md`, 2026-10-21, "The estate sensor's HOME_NET and a repeated lesson move"). `EXTERNAL_NET`은 `any`라 WAF가 board로 보내는 요청도 룰에 걸림. `HTTP_PORTS`는 80, 8000
+- `HOME_NET`은 10/8, 172.16/12, 192.168/16. 센서가 보는 출발지는 WAF의 web 주소라 HOME_NET 안임. `EXTERNAL_NET`은 `any`라 WAF가 board로 보내는 요청도 룰에 걸림. `HTTP_PORTS`는 80, 8000
 
 WAF는 `board.com`을 `board:8000`으로, `corp.com`을 `corp-wp:80`으로 넘깁니다. 설정은 `deploy/waf/board.com.conf`이고 corp는 두 번째 vhost입니다.
 
@@ -318,7 +334,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 
 **그리기.** `topology.graph(learner, wiring)`가 콘솔이 그릴 그래프를 만듭니다.
 
-- 영역(`zones`): 슬롯 워게임의 장비가 하나라도 붙은 Docker 네트워크. 망 이름으로 정하지 않고 붙은 장비로 캡션을 정함(`topology.captions`): kali가 있으면 `internet`, 라우터가 있으면 `dmz`, log-server가 있으면 `mgmt`(관제망), 워게임 DB가 있고 WAF가 없으면 `database`, 나머지는 `web`. 한국어는 `strings.html`의 `topology.zone.*`. 캡션은 영역 이름과 대역이고, 인터넷 구간에는 대역을 붙이지 않음. DB존에는 `owner`로 워게임 이름이 붙어 "board DB존", "corp DB존"으로 나옴
+- 영역(`zones`): 슬롯 워게임의 장비가 하나라도 붙은 Docker 네트워크. 캡션은 망으로 먼저 정하고, 그 밖의 망은 붙은 장비로 정함(`topology.captions`). `internet` 망이나 kali가 있으면 `internet`, `estate` 망이나 라우터가 있으면 `dmz`, `mgmt` 망이나 log-server가 있으면 `mgmt`(관제망), `-default`로 끝나는 망이나 워게임 DB가 있고 WAF가 없는 망은 `database`, 나머지는 `web`. 컨테이너 하나가 멈춰도 그 망의 캡션은 그대로임. 한국어는 `strings.html`의 `topology.zone.*`. 캡션은 영역 이름과 대역이고, 인터넷 구간에는 대역을 붙이지 않음. DB존에는 `owner`로 워게임 이름이 붙어 "board DB존", "corp DB존"으로 나옴
 - 스위치: 영역마다 하나(`switch:<망>`). 리눅스 브리지는 L2 스위치. 이름은 붙이지 않음
 - 장비: 브리지에 인터페이스가 있는 컨테이너. 이름은 `topology.learner`의 학습자 이름(`kali`, `router`, `waf`, `board.com`, `board-db`, `corp.com`, `corp-db`, `log-server`). 세션을 열면 슬롯에는 그 세션 워게임의 서버와 DB만 돌고 있으므로 그 둘만 그려짐. `kind`로 아이콘을 고름
 - 선(`link`): 장비가 그 브리지에 가진 인터페이스마다 하나. `address`는 그 인터페이스에서 고른 주소(`link_heads`. kali와 라우터 wan은 기본 출발지 대역의 주소, 나머지는 망의 주소)
@@ -711,7 +727,8 @@ board에 선언된 defense:
 | `minimal` | CRS paranoia level 4, `local.rules` |
 | `full` | paranoia level 1, 같은 `local.rules` |
 | `ids` | paranoia level 1, `no-uri-sqli.rules`(sid 9000001을 뺀 `local.rules`) |
-| `xss-gap`, `overbroad` | "기초 레슨 F1-F6" 절 |
+| `xss-watched` | paranoia level 1 DetectionOnly(차단하지 않고 기록만), `local.rules`. 시나리오 3.4 |
+| `xss-gap`, `overbroad` | "기초 레슨 F1-F6" 절. `xss-gap`도 DetectionOnly |
 | `level2`, `level3`, `inherited`, `untuned`, `broken-rule`, `spelled` | 시나리오용. "시나리오" 절 |
 
 레슨의 `defense`가 이 목록에 있는지는 discovery 시점에 대조합니다. `minimal`로 시작하는 레슨이나 시나리오는 없습니다. `minimal`은 이름을 직접 지정할 때만 씁니다.
@@ -1192,12 +1209,12 @@ board의 `scenario.yaml`에 `foundations:` 목록을 선언합니다. discovery 
 학습자가 하는 일:
 
 1. 첫 카드에서 개발자 도구를 엶. 네트워크 패널은 열려 있는 동안 받은 요청만 보여 줌
-2. `<script>alert(1)</script>`를 보내고, 개발자 도구의 요청 URL에서 `<`가 무엇으로 바뀌었는지(`%3C`) 읽음. 주소창에는 `<`로 보이고 화면에는 nginx 403 페이지가 뜨므로 상태 코드는 묻지 않음
+2. `<script>alert(1)</script>`를 보내고, 개발자 도구의 요청 URL에서 `<`가 무엇으로 바뀌었는지(`%3C`) 읽음. 주소창에는 `<`로 보임. WAF가 기록만 하고 통과시키므로 화면에는 검색 결과가 뜨고, 상태 코드는 묻지 않음
 3. 탐지한 룰 하나와 Total Score를 읽음
 4. 대소문자를 섞은 요청을 보내 Kibana에서 그 Total Score를 읽음. CRS 참고에는 CRS가 대소문자를 가리지 않는다는 설명이 없음
 5. 두 요청에 IDS 경보가 있었는지 답함
 6. URI의 `<script`를 잡는 룰을 작성·적용하고, `<script>alert(1)</script>`를 검색한 뒤 확인 버튼을 누름. 그 룰이 이 검색에 경보를 냈을 때만 통과
-7. Kibana에서 그 경보의 `destination`을 읽음. 답은 waf 주소. WAF가 요청을 막아 들어오는 구간의 센서만 요청을 봤음
+7. Kibana에서 그 경보의 `destination`을 읽음. 답은 board.com의 web 주소. 센서는 WAF 뒤에서 WAF가 넘긴 요청만 봄
 8. 대소문자를 섞은 요청이 빠져나가는 것을 확인하고, `nocase`를 붙이고 `rev`를 올림
 9. 혼자 푸는 단계: 대소문자를 섞은 요청과 일반 검색을 다시 보냄. 일반 검색에 내 룰이 경보를 내면 바로 알림(`lesson.check.replay_benign.alerted`)
 
@@ -1674,10 +1691,10 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 | 2.1 | 한글 검색 오탐 해결 | availability, faded | `level3`: PL3 | `readers` 초당 2건 | 240초에 sqlmap(`ru`) |
 | 2.2 | 태그·링크 검색 오탐 해결 | availability, faded | `level2` | `community` 초당 2건 | 240초에 sqlmap(`ru`) |
 | 2.3 | 이상 점수 임계치 낮추기 | availability, none. 최종 점검은 임계치 5/4 | `untuned`: PL3, 임계치 10,000/10,000 | `plain` 초당 2건 | 600초에 sqlmap(`ru`) |
-| 3.1 | 탐지 룰 수정하기 | detection, worked | `broken-rule`: PL1, `broken-sort.rules`(sid 9000101이 `http.request_body`를 읽음) | `plain` 초당 2건 | 120초에 sqlmap(`ru`) |
-| 3.2 | sort 공격 탐지 룰 작성하기 | detection, faded | `ids`: PL1, `no-uri-sqli.rules` | `plain` 초당 2건 | 120초에 sqlmap(`ru`) |
-| 3.3 | 변형된 공격 탐지하기 | detection, faded | `spelled`: PL1, `spaced-sort.rules`(앞뒤가 공백인 SQL 단어) | `plain` 초당 2건 | 120초에 sqlmap, 300초에 tamper 변형(`ru`) |
-| 3.4 | 댓글 XSS 탐지 룰 작성하기 | detection, none | `full`: PL1, `local.rules` | `plain` 초당 2건 | 120초에 댓글 XSS, 240초에 검색 XSS(`ru`) |
+| 3.1 | 탐지 룰 수정하기 | detection, worked | `broken-rule`: PL1, `broken-sort.rules`(sid 9000101이 `http.request_body`를 읽음) | `plain` 초당 2건 | 120초에 sqlmap `--random-agent`(`ru`) |
+| 3.2 | sort 공격 탐지 룰 작성하기 | detection, faded | `ids`: PL1, `no-uri-sqli.rules` | `plain` 초당 2건 | 120초에 sqlmap `--random-agent`(`ru`) |
+| 3.3 | 변형된 공격 탐지하기 | detection, faded | `spelled`: PL1, `spaced-sort.rules`(앞뒤가 공백인 SQL 단어) | `plain` 초당 2건 | 120초에 sqlmap `--random-agent`, 300초에 tamper 변형(`ru`) |
+| 3.4 | 댓글 XSS 탐지 룰 작성하기 | detection, none | `xss-watched`: PL1 DetectionOnly, `local.rules` | `plain` 초당 2건 | 120초에 댓글 XSS, 240초에 검색 XSS(`ru`) |
 | 4.1 | 종합 실습 | unknown, none(카드·힌트 없음) | `full` | `club` 초당 2건(댓글에 코드 질문 추가) | 300초에 `board-sqli-orderby-sqlmap-versioned`, 600초에 sqlmap(`us`) |
 
 고객 요청을 차단하는 CRS 룰:
@@ -1737,15 +1754,16 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 - `defaultColumns`는 세션 열
 - `defaultRoute`는 그 space의 저장된 검색 "Events"(세션 열, 최신순). 학습자가 default space의 운영자 객체에 닿지 못함
 
-nginx 차단:
+차단:
 
-Kibana를 보안 기능 없이 돌리므로, 기능 설정으로 끌 수 없는 것은 `platform/nginx.conf`에서 막습니다.
+Kibana를 보안 기능 없이 돌리므로, 관리 API는 막을 목록을 두지 않고 허용 목록으로 거릅니다. space 안의 `api`, `internal` 호출은 nginx가 모두 `/kibana-gate/`로 넘기고, `kibana.refusal`은 Discover가 부르는 호출(`DISCOVER_READS`, 검색, 필드 목록, 값 추천)만 통과시킵니다. 나머지는 403입니다(위 "Kibana도 슬롯별로 나뉩니다" 참고).
 
-- Elasticsearch·Kibana 관리 API는 403: console 프록시, ingest pipelines, index management, snapshot and restore, transforms, rollups, remote clusters, license, upgrade assistant, index lifecycle, watcher, data views API, security API, settings API, saved objects import·export, spaces API
-- spaces API 중 예외: `_active_space`, nginx가 space 하나로 직접 응답하는 `api/spaces/space` GET
-- Default space(`s/default/...`)와 space 접두어가 없는 `app`, `spaces`, `api`, `internal` 경로는 403
+nginx(`platform/nginx.conf`)에 남은 것:
+
+- Default space(`s/default/...`), space 접두어가 없는 `app`, `spaces`, `api`, `internal` 경로, space 안에 다시 `s/`를 넣은 경로는 403
+- `api/spaces/space`는 GET만 받고, nginx가 그 세션 space 하나로 직접 응답
 - `app/management`, `app/dev_tools`, `app/home`, `app/observability`, `app/security`, `app/kibana_overview`는 같은 space의 Discover로 리다이렉트
-- Discover가 부르는 호출은 모두 통과. 플랫폼 자체 설정(`KIBANA_URL`)은 Kibana에 직접 붙음
+- 플랫폼 자체 설정(`KIBANA_URL`)은 Kibana에 직접 붙음
 
 학습자 화면:
 
@@ -2046,7 +2064,7 @@ Docker와 메타데이터:
 - 장비마다 shipper(같은 이미지, `imfile`)가 그 장비의 로그 파일을 읽어 log-server로 보냄. shipper는 로그를 쓴 장비의 네트워크 네임스페이스를 같이 씀(`network_mode: service:sensor`, `service:waf`). 그래서 로그는 센서와 WAF 자신의 관제망 인터페이스로 나감. WAF는 관제망 .12
 - WAF shipper는 두 파일을 각자의 태그로 읽음: `audit.log`는 `modsecurity`, `refused.log`는 `nginx`. 센서 shipper의 태그는 `suricata`
 - log-server는 보낸 주소(`$fromhost-ip`)와 태그(`$programname`)가 둘 다 맞는 줄만 넘김. 송신자마다 자기 로그의 태그만 통과하므로 WAF 안의 root가 Suricata 기록인 척 줄을 보낼 수 없음
-- 넘길 때 송신자 이름과 태그는 log-server가 정한 값으로 씀. 슬롯 1은 `cr-edge`, `cr-range`, `cr-waf`. 슬롯 N은 `cr-edge-N`, `cr-range-N`, `cr-waf-N`. Filebeat의 슬롯 정규식이 이 이름으로 슬롯을 읽음
+- 넘길 때 송신자 이름과 태그는 log-server가 정한 값으로 씀. 슬롯 1은 `cr-range`(센서), `cr-waf`. 슬롯 N은 `cr-range-N`, `cr-waf-N`. Filebeat의 슬롯 정규식이 이 이름으로 슬롯을 읽음
 - shipper와 log-server는 capability 없음(`cap_drop: ALL`), 마운트는 모두 읽기 전용
 
 **격리.** 학습자가 만지는 컨테이너(Kali, WAF, 에지, 대상 시스템)는 `cap_drop: ALL`에 필요한 capability만 더해 돌립니다.

@@ -121,7 +121,7 @@ prebuilt images from GHCR. Every acceptance test runs and passes on OpenStack
 "OpenStack work, not MVP"); the one skip is by design (§7).
 
 The cloud therefore holds two VMs: the platform VM `cr-platform` and the range
-host `cr-range`. The edge, Kali, the WAF, the sensors and the targets of each
+host `cr-range`. The edge, Kali, the WAF, the sensor and the targets of each
 slot are containers on the range host (§6).
 
 The platform calls these APIs (`platform/range/openstack.py`):
@@ -1370,7 +1370,7 @@ not been timed here.
 
 These trade-offs are recorded. They are not verified threats:
 
-- The edge and the sensors are not recreated between sessions. No learner has
+- The edge and the sensor are not recreated between sessions. No learner has
   a shell on them; the platform alone reaches them.
 - The target data every session starts from is the same copy, made at the
   range host's setup. What a learner could reuse across sessions is renewed at
@@ -1410,7 +1410,7 @@ nothing drifts.
 - The platform gives each session the first free READY slot and keeps it for the
   life of the session. The close resets only that slot.
 - The collector writes each slot's syslog to `logs-N-*`. It tells the slots apart
-  by the sender's name (`cr-waf-2`, `cr-edge-2`, `cr-range-2`). A session reads
+  by the sender's name (`cr-waf-2`, `cr-range-2`). A session reads
   its slot's index.
 
 To add a slot to a standing range by hand (`bin/cloud up` does this for every
@@ -1460,7 +1460,7 @@ bundle's `pristine.yaml` or `images.txt` changes the bundle's digest, so the
 range host is stale the same way: an edit to `x-contained`, to
 `x-wargames.healthcheck`, `.limits` or `.extra_hosts`, or to any service's
 `image` (`rangehost.bundle`). Any other change to the slot's files (the rest of
-`slot.yaml`, `x-wargames.fronts`, the sensors' configs) reaches a slot at its
+`slot.yaml`, `x-wargames.fronts`, the sensor's config) reaches a slot at its
 next `configure/`, which renders the slot's compose file again
 (`rangehost.compose`).
 

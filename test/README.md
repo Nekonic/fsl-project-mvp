@@ -23,7 +23,7 @@ ssh ubuntu@<address> 'cd /opt/cr && CR_PLATFORM_URL=http://<address>:8000 bin/ve
 2. The acceptance suite, through `bin/acceptance`, which runs `python -m pytest test/`.
 3. The ratchet.
 
-Before the acceptance suite, `bin/verify` opens one session, has the sensors
+Before the acceptance suite, `bin/verify` opens one session, has the sensor
 of that session's slot validate `deploy/suricata/rules/local.rules`, and
 closes it. It does not wait for that slot's reset: each acceptance process
 waits for a slot that is ready.
@@ -82,7 +82,7 @@ These fixtures serve these tests:
 `test_corp_authz` reads each corp breach from the target's own rows and
 checks the exact set of objectives each session credited. `corp_sessions`
 opens both corp sessions at once and runs them side by side, so the module
-takes two slots. Each range command costs about three seconds, so commands
+takes two slots. Each range command costs about 1.3 seconds, so commands
 on one host that need no answer in between go in one call (`run_in_turn`,
 `run_side_by_side`), and a nonce is read and spent in the same call.
 `test_concurrent_sessions` opens one pair of sessions: the guided one takes
@@ -112,7 +112,7 @@ variant's real traffic.
 `range.run_side_by_side(role, {key: argv})` starts several commands in one
 shell on one host and returns each command's own output and exit code. Each
 `range.run` call starts a Django process in the platform container and an ssh
-to the range host, about 3 s before the command itself runs, so the
+to the range host, about 1.3 s before the command itself runs, so the
 containment checks (`test_range_isolation`, `test_judge_isolation`) send each
 host's probes in one call and the tests read their part of the answer.
 
