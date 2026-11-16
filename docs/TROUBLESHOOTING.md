@@ -258,3 +258,78 @@ Fix (`7152b54c`): a zone is captioned by its network first (`internet`,
 `estate`, `mgmt`, a `-default` backend) and by its members only after;
 `test_a_slot_with_any_one_container_down_still_draws_every_node_in_its_own_subnet`
 draws the slot with each container stopped in turn.
+
+## Answer-blind walk round 23: a refused Kali run, a 600 s sqlmap run, slow Discover
+
+### F5 step 4 waited forever on a run the WAF refused in full
+
+Symptom, 2026-11-16: the learner's stock sqlmap run ended with 1,973
+responses 403; the step stayed on "checking" for 8 minutes, then said no
+request was logged; steps 5-9 were unreachable and the result page had no
+attack case for the run. Elasticsearch held 1,973 `modsecurity` records with
+the step's `X-Request-ID` and 0 `suricata` records.
+
+Cause: `_kali_run` found a learner's run only in Suricata's `http` events.
+Since the sensor sniffs the web segment behind the WAF, a request the WAF
+refuses never reaches it.
+
+Fix: `_sent_by` reads the run from both the sensor's `http` events and the
+WAF's records carrying the marker (the tool is checked against either's
+User-Agent). Live: the same command on slot 1 passed the check 27 s after its
+last request (15 s of `RUN_SETTLED` included) and the score listed it as a TP.
+
+### 3.3's tamper run hit the 600 s tool timeout
+
+Symptom: the variant attack ended "run failed" after 600 s, the final check
+could not judge it, and the timer sat at 0:00 for about 13 minutes.
+
+Cause: the final check's own attack (`board-sqli-orderby-sqlmap-random-agent`)
+fired on the same Kali while the tamper run was going; both wrote to
+`~/.local/share/sqlmap/output/board.com/session.sqlite`, and the second's
+`--flush-session` removed the first's. The tamper run's records: 1,440 in its
+first minute, then 20 a minute (one every 3 s) until the timeout. Alone it
+takes 51 s; two runs at once with one session file on slot 8 broke the first
+(`disk I/O error`, `no such table: storage`).
+
+Fix: a fired sqlmap case writes to `/tmp/sqlmap-runs/<case id>`
+(`redteam/tools.py`). The same overlap with separate directories: 52 s and
+51 s, each run complete. Live, 3.3 with the final check pressed at 3:45 as in
+the walk: the tamper run 53.5 s overlapped by the window's run 48.0 s, both
+`held`, the window judged 5.2 s after it ended (failed as undetected, no rule
+was written).
+
+### Discover asked for 7,575 fields; a record took 4-8 s to be searchable
+
+Measured on slot 1: a WAF record reaches the collector 0.4 s after its
+request (file, log server, UDP 5140), is searchable in Elasticsearch 4-8 s
+after it (six samples), and Discover took 4.9 s for a `log_source :
+"modsecurity"` query and 10-13 s for its first load. The minute the walk saw
+was not reproduced: Kibana showed the new record 7 s and 21 s after the
+request before the fix.
+
+Cause: the template filebeat loaded was built from its whole `fields.yml`,
+every module's fields included (netflow 1,324, zeek 616, ...): 7,575 mapped
+fields, of which the documents carry 171. Discover asks for `fields: *` on 500
+rows; that query took 2.4 s against 0.16 s without it. Filebeat's template also
+sets a 5 s refresh.
+
+Fix: the collector filters `fields.yml` to the ECS and beat groups before it
+starts and loads that template over the old one, with a 1 s refresh. The same
+6,000 documents reindexed under both templates map each of their 171 fields
+the same; 1,821 fields; the Discover-shaped query 2.4 s -> 0.7-0.9 s. Live
+after the change and a rollover of each `logs-N-sensors`: searchable 3.3-5.0 s
+after the request (four samples, about 2 s of it the SSH hop of the
+measurement), Discover showed the record 4.8-7.8 s after it (three runs), the
+same query 2.5 s, first load 7.9-8.9 s. A data stream that already exists
+keeps the old mapping until it rolls over.
+
+### What is left (measured, not changed)
+
+- The F6 dump is about 1,150 requests at 13 a second, 4 min 41 s: sqlmap runs
+  one request at a time and each takes about 40 ms through the WAF; the lesson
+  command is left as taught.
+- A final check lasts the scenario's `window_minutes` (3 or 4) by design; the
+  windows of 3.1, 3.2 and 3.4 were judged 1.0-1.4 s after they ended.
+- Closing a session took 11.4 s (F5 lesson) and 20.7 s (3.3 scenario).
+- A Kali step's check reads every record of the window and took 0.7-9 s per
+  press during a 2,000-request run.
