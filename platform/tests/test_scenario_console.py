@@ -130,6 +130,23 @@ def test_the_judge_pane_lists_the_evidence_without_the_answer_and_posts_a_verdic
     assert result["posted"] == [{"item": "a1", "verdict": "customer"},
                                 {"item": "b2", "verdict": "attack", "succeeded": False}]
 
+def test_a_guide_card_shows_once_the_briefing_starts_and_stays_readable_in_the_note_after_it_is_dismissed(client):
+    waiting = status(started=False, cards=["blocked"])
+    seen = open_page(client, "/blue/1/", setup=serving(waiting), scenario="""
+      await browser.click('briefing-start');
+      const shown = document.querySelectorAll('#scenario-cards [data-card]').length;
+      await browser.click('#scenario-cards [data-card] button');
+      await browser.settle();
+      const read = document.querySelectorAll('#scenario-cards [data-read]').map((one) => one.textContent);
+      return {shown, read, hidden: browser.element('scenario-cards').classList.contains('hidden')};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["shown"] == 1, "the card shows on start, not on the next poll"
+    assert seen["result"]["hidden"] is False
+    assert [worded("scenario.korean.card.blocked.title") in one and worded("scenario.korean.card.blocked.body") in one
+            for one in seen["result"]["read"]] == [True]
+
 def test_a_judgement_scenario_that_asks_the_kind_posts_it_with_the_verdict(client):
     card = wargames.scenario_card(wargames.scenario_run("1.3"))
     seen = open_page(client, "/blue/1/", setup=serving(status(card, id="1.3", cards=[])), scenario="""

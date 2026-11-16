@@ -415,7 +415,7 @@ def test_an_answer_edited_while_it_is_checked_gets_no_verdict_line_meant_for_the
     assert seen["errors"] == []
     assert seen["result"]["said"] == "", "a verdict on 10.30.0.1 showed under the 10.30.0.6 the learner had typed since"
 
-def test_the_order_picker_posts_the_hosts_in_the_order_pressed_and_a_second_press_takes_one_out(client):
+def test_the_order_picker_posts_the_hosts_in_the_order_pressed_and_a_second_press_takes_one_out_keeping_map_names(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       {to("path")}
       const press = async (name) => browser.click(`#step-act [data-act="pick"][data-value="${{name}}"]`);
@@ -431,8 +431,10 @@ def test_the_order_picker_posts_the_hosts_in_the_order_pressed_and_a_second_pres
     assert seen["errors"] == []
     assert seen["result"]["answers"] == [["path", RIGHT["path"]]]
     assert seen["result"]["lines"] == 0, "the numbers on the buttons are the only place the order shows"
+    shown = lambda name: tables().get(f"topology.name.{name}", name)
     assert sorted(one for one in seen["result"]["picked"] if ". " in one) == [
-        f"{place}. {name}" for place, name in enumerate(RIGHT["path"].split(" > "), 1)]
+        f"{place}. {shown(name)}" for place, name in enumerate(RIGHT["path"].split(" > "), 1)]
+    assert not {"2. router", "3. waf"} & set(seen["result"]["picked"]), "the chips keep the names the map shows"
 
 def test_a_choice_shows_the_shared_label_of_each_option_and_posts_its_key(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""

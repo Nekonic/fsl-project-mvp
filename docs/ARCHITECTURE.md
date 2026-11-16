@@ -943,7 +943,7 @@ check 종류별 통과 조건:
 - `wrong_if` 규칙의 `match`가 답에 맞으면 `<text>.wrong.<step>.<says>`
 - `known`에 있는 값을 입력하면 `<text>.wrong.<step>.<value>`
 - 허용 값은 `accept` 목록이거나, `of:`로 세션 기록에서 읽음("기초 레슨 F1-F6" 절)
-- 구성도 주소 단계(`of: address`): 틀린 IPv4 주소가 학습자 구성도의 다른 장비 주소면 `lesson.check.wrong.address_of`로 "다른 장비의 주소"라고만 알림(`views._whose_address`). waf 주소가 F1 마지막 단계의 답이라 장비 이름과 주소는 되풀이하지 않음. 다른 단계는 각자의 문장을 씀
+- 구성도 주소 단계(`of: address`): 틀린 IPv4 주소가 학습자 구성도의 다른 장비 주소면 `lesson.check.wrong.address_of`로 "다른 장비의 주소"라고만 알림(`views._whose_address`). 묻는 장비의 다른 구간 쪽 주소면 `lesson.check.wrong.address_side`로 장비는 맞고 구간이 다르다고 알리고, 틀린 횟수에 넣지 않음. 선이 둘 이상인 장비(board.com, WAF)를 묻는 질문은 구간 이름을 적음. waf 주소가 F1 마지막 단계의 답이라 장비 이름과 주소는 되풀이하지 않음. 다른 단계는 각자의 문장을 씀
 - `status`: 코드만 입력해도, 개발자 도구에 보이는 대로 사유 문구를 붙여도(`200 OK`) 인정(`lesson.status_said`)
 - `of: rule`(`wargames.ANSWERS_OF`): 학습자 자신의 요청이면 요청의 `path`와 `marker: browse`, Kali 단계 실행이면 `marker: step:<id>`를 받음. 룰 `family`로 범위를 좁힐 수 있음
 - `of: rule` 판정: 최근 600초를 수집해 그 요청이나 실행의 ModSecurity 탐지 기록을 모음. CRS 합계 룰(id가 949, 959, 980으로 시작)을 뺀 `ruleId`를 모두 허용 값으로 인정(`lesson.rules_named`). 기록이 없으면 사유 `lesson.check.unrecorded`
@@ -1556,7 +1556,7 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 | `red` | `schedule`(기본값) 또는 `person`. `person`이면 사람이 레드팀 콘솔을 쓰고 공격 선언이 없어도 됨 |
 | `attacks` | `[{at, case, origin}]`: 연 뒤 몇 초(`minutes` 이내), 악성 케이스, 선택 출발지. 학습자에게 비공개 |
 | `completion` | 종류별. judgement: `{judged: all}`, 선택 `pattern: judged`. availability: `{served: all, held: all}`, 선택 `thresholds: {inbound, outbound}`. unknown: `{served: all, held: all}`. detection: `{detected_by: suricata}` |
-| `cards` | `[{id, when}]`. `when`은 `start`, `alert`, `blocked`, `window` 중 하나 |
+| `cards` | `[{id, when}]`. `when`은 `start`, `alert`, `blocked`, `window` 중 하나. 노트에는 아직 확인하지 않은 카드 하나가 맨 위에 펼쳐지고, 확인한 카드는 제목만 보이게 접혀 남음 |
 | `hints` | 하나씩 차례로 제안하는 힌트 id |
 
 `GET /api/wargames/`는 시나리오별 카드(`wargames.scenario_card`)를 `attacks` 없이 나열합니다. `GET /api/sessions/<id>/`는 단계형 시나리오의 `lesson`에서 `attacks`와 `completion`을 빼고 `cases`를 비워서 돌려줍니다.
