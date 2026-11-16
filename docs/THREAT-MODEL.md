@@ -76,8 +76,46 @@ every API and page that names a session or a detection answers 404 for
 another learner's, a request that names none acts on the learner's own, and
 the front's session check refuses a terminal or `/site/` URL that names
 another's session (403). Only staff change the range (`/api/range/` writes) or
-manage accounts; staff see every session. Kibana is not split by session, so
-a learner reads every session's logs there.
+manage accounts; staff see every session.
+
+**Kibana shows a learner their open session's slot only.** Elasticsearch
+and Kibana run without security, and Kibana's own documentation says spaces
+are no boundary without it: "Controlling feature visibility is not a
+security feature" (Kibana 8.15, Spaces). Each slot has a space
+(`soc-logs-N`) whose data view is `logs-N-*`; the boundary is the platform's
+gate in front of every Kibana API call in a space
+(`/kibana/s/<space>/api/` and `/internal/`, which nginx hands to Django's
+`/kibana-gate/` with the raw URI). The gate (`kibana.refusal`) forwards a
+call only when:
+
+- the space is that of a session the learner has open (staff: any space);
+- the call is on a short list of what Discover asks (capabilities, settings
+  read, the space's data view and saved search read, field list, value
+  suggestions, `ese` search and its polls and cancels); everything else is
+  403, among it `/internal/bsearch`, the `es`, `esql`, `sql` and `eql`
+  strategies, Dev Tools' console proxy, saved object and data view writes,
+  advanced settings writes and `resolve_index`;
+- every index the call names is exactly the slot's pattern (`params.index`
+  of a search, `pattern` of the field list, the index in the value
+  suggestions path), so a hand-typed `logs-2-*`, `logs-*`, a list, or a
+  backing index `.ds-logs-2-...` is refused;
+- nothing in the body or query names `index`, `_index`, `indices`,
+  `namespace` or `namespaces`, which shuts terms lookup, `more_like_this`
+  and cross-space reads.
+
+Request batching is off in the session spaces (`bfetch:disable`), so each
+search arrives as its own request and is checked whole. nginx refuses a
+Kibana path with `%`, a backslash or a dot segment before Kibana decodes it,
+any case of the default space or of a space inside a space, and the gate's
+own path from outside. Limits:
+
+- Staff are held to the same list of calls but may name any index, so a
+  staff Discover reads every slot.
+- A slot is reused: a learner who opens a session on a slot sees what an
+  earlier session on that slot left in `logs-N-*`, back to the index's
+  retention.
+- Kibana's page shell and bundles carry no data and stay open to any
+  signed-in user in any space.
 
 Abuse limits. nginx answers 429 past 5 sign-in POSTs a minute per address
 (burst 5), 1 sign-up POST a minute (burst 3), 20 `/api/` requests a second

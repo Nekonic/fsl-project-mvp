@@ -106,7 +106,16 @@
 
 남용 제한은 두 층입니다. nginx(`platform/nginx.conf`)는 `POST /api/auth/login/` IP당 5r/m(버스트 5), `POST /api/auth/signup/` IP당 1r/m(버스트 3), `/api/` 세션 쿠키당 20r/s(버스트 40)와 IP당 100r/s(버스트 200), 터미널과 8002 사이트에 세션 쿠키당 동시 연결 10개를 둡니다. 넘으면 429입니다. 플랫폼 VM 자신(loopback, Docker 게이트웨이 172.31.0.1, `entrypoint.sh`가 `DJANGO_ALLOWED_HOSTS`의 IP로 만드는 `/tmp/nginx-platform-addresses.conf`)은 제외합니다. 로그인 실패는 계정이 아니라 시도한 쪽을 막습니다(`api/blocks.py`). 관리자(`is_staff`) 계정에 한 시간 안에 3번 틀린 IP는 1시간, 다른 아이디(없는 아이디 포함)에 10번 틀린 IP는 15분 동안 로그인할 수 없습니다. 브라우저가 보내는 헤더(User-Agent, Accept, Accept-Language, Accept-Encoding, `Sec-CH-UA` 계열)의 해시도 같은 횟수로 세고, 그 지문이 두 IP 이상에서 틀렸으면 지문을 막습니다. 막힌 쪽은 맞는 비밀번호도 429(`blocked_until`, `blocked_by`, `Retry-After`)입니다. 차단은 DB의 `SignInBlock`(마이그레이션 0032)에 남고, 관리자가 계정 관리에서 `GET /api/users/blocks/`로 보고 `POST /api/users/blocks/<id>/unblock/`으로 풉니다. 실패 횟수는 기본 로컬 메모리 캐시에 둡니다. 플랫폼 VM 자신은 세지도 막지도 않습니다. Django(`api/signin.py`)는 같은 주소의 가입을 시간당 5개로, 승인 대기 계정을 50개로 묶습니다(넘으면 503 `{"closed": true}`). 학습자 계정은 열린 세션을 하나만 가집니다. 두 번째 `POST /api/sessions/`는 409 `{"open_session": <id>}`입니다(`Session.owner`, 마이그레이션 0031). 관리자는 제한이 없어 수락 테스트가 세션 여럿을 엽니다.
 
-학습자는 자기 세션만 보고 움직입니다(`api/accounts.py`의 `OwnSessionsOnly`). URL에 세션이나 탐지 id가 있는 API와 콘솔 페이지(목록, 상세, 점수, 구성도, 종료, 레드·블루 콘솔)는 남의 것이면 404입니다. `session`을 주지 않은 요청은 자기 세션 중 열린 것, 없으면 가장 최근 것에 적용하고, 세션이 하나도 없으면 409입니다. `/api/range/` 쓰기 요청은 관리자만 할 수 있습니다(학습자는 403). 관리자는 모든 세션을 봅니다. Kibana는 세션별로 나뉘지 않아 학습자도 모든 세션의 로그를 봅니다.
+학습자는 자기 세션만 보고 움직입니다(`api/accounts.py`의 `OwnSessionsOnly`). URL에 세션이나 탐지 id가 있는 API와 콘솔 페이지(목록, 상세, 점수, 구성도, 종료, 레드·블루 콘솔)는 남의 것이면 404입니다. `session`을 주지 않은 요청은 자기 세션 중 열린 것, 없으면 가장 최근 것에 적용하고, 세션이 하나도 없으면 409입니다. `/api/range/` 쓰기 요청은 관리자만 할 수 있습니다(학습자는 403). 관리자는 모든 세션을 봅니다.
+
+Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 그 data view는 `logs-N-*`입니다. Elasticsearch와 Kibana에 보안을 켜지 않았으므로 space 자체는 경계가 아닙니다. 경계는 플랫폼의 게이트입니다. nginx는 `/kibana/s/<space>/api/`와 `/internal/` 호출을 원래 URI 그대로 Django `/kibana-gate/`(`api/views.py`의 `kibana_gate`)로 넘기고, `kibana.refusal`이 다음을 모두 만족할 때만 Kibana로 전달합니다(`kibana.forward`).
+
+- space가 학습자가 연 세션의 슬롯 것. 관리자는 아무 space
+- Discover가 쓰는 호출 목록에 있음. `bsearch`, `es`·`esql`·`sql`·`eql` 검색, 개발 도구 콘솔, saved object·data view·고급 설정 쓰기, `resolve_index`는 403
+- 호출이 지정하는 인덱스가 정확히 그 슬롯 패턴. 검색의 `params.index`, 필드 목록의 `pattern`, 값 추천 경로의 인덱스. 관리자는 아무 인덱스
+- 본문과 쿼리 문자열 어디에도 `index`, `_index`, `indices`, `namespace(s)` 키가 없음. terms lookup이나 다른 space 조회를 막음
+
+세션 space는 요청 묶음(`bfetch:disable`)을 꺼서 검색마다 요청 하나로 오고, 게이트가 그 본문 전체를 봅니다.
 
 훈련 환경을 바꾸는 엔드포인트는 쿼리나 본문으로 `session`을 받습니다. rules, validate, 룰 비활성화, `/api/attacker/`, origin, label, canary가 해당합니다.
 
@@ -344,7 +353,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | 관심사 | 담당 파일 | 알려진 예외 |
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`: 시작 시 `geoip` ingest 파이프라인 PUT |
-| Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`: Kibana API 경로를 앎. 관리용 API, Default space, space 접두어 없는 경로, `?namespaces=` 거부. `GET /kibana/s/<space>/api/spaces/space`에는 SOC space만 담은 응답을 직접 반환. `console/templates/console/blue.html`: Kibana의 localStorage 키를 미리 채움 |
+| Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`: Kibana API 경로를 앎. Default space, space 안의 space, space 접두어 없는 API 경로, `%`·역슬래시·점 세그먼트가 든 경로, `?namespaces=` 거부. space 안의 API 호출은 `/kibana-gate/`로 넘김(호출 목록과 인덱스 검사는 `kibana.py`). `GET /kibana/s/<space>/api/spaces/space`에는 SOC space만 담은 응답을 직접 반환. `console/templates/console/blue.html`: Kibana의 localStorage 키를 미리 채움 |
 | 슬롯 배선 읽기 | `platform/range/rangehost.py`(`WIRING`) | 없음. 출력 해석은 `platform/range/interfaces.py`, 학습자 이름과 그래프는 `platform/topology.py` |
 | CRS 설정과 nginx reload | `platform/rules/crs.py` | `entrypoint.sh`: `vm-terminal.sh cr-waf`로 슬롯 WAF 컨테이너 쉘 제공(훈련 환경 호스트로 ssh 후 `sudo docker exec -it sN-waf bash -l`). `range/rangehost.forwarding`: 슬롯의 WAF shipper와 log-server 설정 작성(audit 로그와 nginx 거부 로그 경로). `deploy/range-host/slot.yaml`: `rangehost.LOGS` 경로로 WAF audit 로그 파일과 거부 로그 파일 마운트. audit 로그는 둘 다 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 `platform/tests/test_range_host.py`의 `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it`로 확인. F6의 WAF 창 단계 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`): `wargames.lesson`에서 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 채움. 플랫폼은 터미널을 조작하지 않음 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `declaration.yaml`의 센서 호스트(`sensor`는 `cr-range`): `suricata.py`에 넘길 룰 파일과 reload 명령 지정. `platform/range/rangehost.py`: 센서 설정(`deploy/suricata/suricata.yaml`)과 compose 서비스 렌더링. `deploy/range-host/slot.sh`: 슬롯과 함께 센서 시작·정지, 초기화 때 센서 로그 파일 다시 열기, 에지 라우터 설정. 이후 기본 룰 적용은 `suricata.py` |

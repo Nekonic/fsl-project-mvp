@@ -328,7 +328,7 @@ sudo docker compose start platform
 | 학습자 세션 | 계정 하나에 열린 세션 하나. 자기 세션만 보고 다룸(남의 세션은 404, 터미널과 8002는 403). 훈련 환경 변경은 관리자만. 관리자 계정은 모든 세션을 봄 |
 | 제한 제외 | 플랫폼 VM 자신이 보낸 요청(loopback, Docker 게이트웨이, `DJANGO_ALLOWED_HOSTS`의 IP)은 nginx 제한을 받지 않음. VM에서 도는 `bin/verify` 수락 테스트가 여기에 해당 |
 | 8002의 대상 사이트 | 콘솔 쿠키를 지운 뒤 대상에 넘기고, 대상의 `Set-Cookie`는 브라우저로 보내지 않음. 사이트의 스크립트는 세션 쿠키도 CSRF 토큰도 읽지 못함 |
-| Elasticsearch, Kibana | 9200, 5601은 플랫폼 VM loopback에만 열림. 인증은 켜지 않음. Kibana의 관리·개발 도구 API는 nginx가 거부 |
+| Elasticsearch, Kibana | 9200, 5601은 플랫폼 VM loopback에만 열림. 인증은 켜지 않음. space 안의 Kibana API 호출은 nginx가 플랫폼의 `/kibana-gate/`로 넘김. 학습자는 열린 자기 세션 슬롯의 space와 `logs-N-*`만 조회할 수 있고, Discover가 쓰지 않는 호출(개발 도구, `bsearch`, ES\|QL 등)은 403. 관리자는 모든 슬롯을 봄 |
 | 프로젝트 비밀번호 | `/opt/cr/openstack-password`(0600)를 compose secret으로 읽기 전용 마운트. 컨테이너 환경 변수에는 없음 |
 | 플랫폼 VM 인바운드 | ssh, 8000, 8002는 `cloud.yaml`의 `network.allowed`에서만. 기본값 `[0.0.0.0/0]` |
 | 슬롯의 학습자용 컨테이너 | Docker 기본 런타임. capability 최소화, `no-new-privileges`, userns-remap |
