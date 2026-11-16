@@ -80,6 +80,20 @@ def test_the_spelled_rule_catches_the_stock_run_and_misses_every_tamper_request(
     assert not any(pattern.search(uri) for uri in TAMPER + [SORTED])
     assert {attack["case"] for attack in one["attacks"]} == {PAST_THE_WAF, "board-sqli-orderby-sqlmap-tamper"}
 
+def test_the_variant_runs_before_a_final_check_started_at_three_minutes_and_the_check_sends_both_again():
+    one = wargames.scenario_run("3.3")
+    opened = timezone.now()
+    schedule = scenarios.schedule(one, opened)
+    started = opened + timedelta(minutes=3)
+    a_sqlmap_run = timedelta(seconds=60)
+
+    before = [entry["case"] for entry in schedule if scenarios.at(entry["due"]) + a_sqlmap_run <= started]
+    again = scenarios.window_attacks(one, schedule, started, opened)
+
+    assert set(before) == {PAST_THE_WAF, "board-sqli-orderby-sqlmap-tamper"}, (
+        "the brief says a second attacker is sending the variant, so it runs where the learner can look at it")
+    assert sorted(entry["case"] for entry in again) == sorted(before)
+
 @pytest.mark.parametrize("waf, refused", [
     ({"paranoia": 3, "exclusions": [], "thresholds": {"inbound": 5, "outbound": 4}}, None),
     ({"paranoia": 3, "exclusions": []}, None),
