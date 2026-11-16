@@ -1991,7 +1991,9 @@ binary log via a substrate runner, proven end to end against the live stack.
   seconds each end), and the console does not say so.
 - A learner opens only their own sessions (one at a time); an admin opens
   any, and nothing stops one account using a session in four windows.
-  Kibana is not split by session, so a learner reads every session's logs.
+  Kibana shows a learner only their open session's slot (the platform's
+  Kibana gate), but a slot is reused, so it also shows what an earlier
+  session on that slot left in `logs-N-*`.
 - A range host can send with another's address, and one recreated within the
   30 s cache keeps its old answer (`docs/THREAT-MODEL.md`).
 - OpenStack host keys are trust-on-first-use per generation, kept in the

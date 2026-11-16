@@ -8784,3 +8784,48 @@ alerted. The 3.1/3.2 text no longer says the WAF blocks the attack in full.
 
 The same rounds proved Suricata's alert `xff` live: an alert on slot 2 carries
 `"alert":{..."xff":"175.192.0.10"}` beside `http.xff`.
+
+## 2026-11-16 — Kibana keeps a learner to their open session's slot through a platform gate
+
+Kibana was shared: from a session's space (`soc-logs-1`) a signed-in learner
+could POST `/internal/search/es` with `"index": "logs-2-*"` and read slot 2's
+logs (live: 10053 hits), or batch the same through `/internal/bsearch`.
+Elasticsearch security stays off, and Kibana's own documentation says spaces
+are no boundary then: "Controlling feature visibility is not a security
+feature" (Kibana 8.15, Spaces). So the boundary is outside Kibana.
+
+nginx hands every `/kibana/s/<space>/api/` and `/internal/` call (case
+blind) to Django's `/kibana-gate/` with the raw `$request_uri`;
+`kibana.refusal` allows a call only on a list of what Discover asks, only in
+a space of a session the learner has open (staff: any), and only when every
+index named is exactly that slot's pattern; no key `index`, `_index`,
+`indices`, `namespace(s)` may appear in the body or query (terms lookup,
+`more_like_this`, cross-space reads). `kibana.forward` sends the call on
+with Kibana's own headers. The session spaces turn request batching off
+(`bfetch:disable`, Kibana source `bfetch-plugin/server/ui_settings.js`:
+"Disables requests batching"), so the search interceptor POSTs
+`/internal/search/ese[/<id>]` (Kibana source
+`data-plugin/public/search/search_interceptor/search_interceptor.js`) and
+each body is checked whole.
+
+Rejected: a denylist of administration routes (what nginx had: it let any
+index through search, value suggestions and field lists); rewriting the
+index in nginx (nginx cannot read a body before proxying; `auth_request`
+drops it); per-slot Kibana instances (a service per slot); Elasticsearch
+security (removed on purpose).
+
+Left refused because Discover works without them: `resolve_index` (would
+list every slot's index names), `internal/saved_query/_count` (its path
+matches the Elasticsearch seam's `/_count` pattern; the saved query menu
+shows nothing), and Discover's own `index: "*"` probe for the empty-result
+hint. Staff keep the same call list but may name any index.
+
+Live, as a learner with an open board session on slot 1: own-slot search
+200; typed `logs-2-*`, `logs-*`, `.ds-logs-2-...`, `logs-1-*,logs-2-*`,
+strategies `es`/`esql`/`sql`, `bsearch`, terms lookup into logs-2, Dev Tools
+console proxy, the other slot's space, field list and value suggestions of
+logs-2, `resolve_index`, a data view create, `_find?namespaces=*`, upper-case
+and dot-segment paths and an advanced-settings write all 403; Discover's
+data view editor cannot resolve `logs-2-*` and keeps "Use without saving"
+off. Discover in the blue console showed the session's own alert after a
+`board-sqli-search` run; staff read slot 2 from slot 1's space.

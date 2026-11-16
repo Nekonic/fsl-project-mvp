@@ -15,6 +15,17 @@ Internet.
 
 ## Where things stand
 
+- 2026-11-16, Kibana keeps a learner to their open session's slot
+  (`docs/DECISIONS.md` "Kibana keeps a learner to their open session's slot
+  through a platform gate"): nginx hands every space API call to Django's
+  `/kibana-gate/`; `kibana.refusal` allows Discover's calls only, in the
+  learner's own session space, naming only that slot's `logs-N-*`. Live as
+  a learner: own search 200; typed other patterns, `bsearch`, ES|QL, Dev
+  Tools, other spaces, terms lookup, path tricks 403; the blue console's
+  Discover showed the session's alert. Full `bin/verify` on the VM:
+  acceptance 81 passed, 13 errors, 1 skipped; all 13 are one 500 from
+  `/api/sessions/<id>/topology/` (`topology.py` `_boxed` KeyError `'x'`),
+  outside this change; unit and API 943 + 818.
 - 2026-11-16, F4 and 3.4 run the WAF in DetectionOnly mode and 3.1-3.3
   attack with `board-sqli-orderby-sqlmap-random-agent` (`docs/DECISIONS.md`
   "F4 and 3.4 run the WAF in DetectionOnly mode; 3.1-3.3 attack with
