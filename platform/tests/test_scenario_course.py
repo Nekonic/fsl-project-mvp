@@ -94,6 +94,27 @@ def test_the_variant_runs_before_a_final_check_started_at_three_minutes_and_the_
         "the brief says a second attacker is sending the variant, so it runs where the learner can look at it")
     assert sorted(entry["case"] for entry in again) == sorted(before)
 
+def test_a_scenario_lists_the_board_s_objectives_only_when_one_of_its_attacks_tries_to_take_the_accounts(client):
+    keys = lambda scenario: [tier["key"] for tier in client.get(f"/api/wargames/board/objectives/?scenario={scenario}").json()]
+    every = [tier["key"] for tier in client.get("/api/wargames/board/objectives/").json()]
+
+    assert keys("3.4") == [], "a comment XSS takes no account hash, so no account objective is at stake"
+    assert keys("3.2") == [], "sqlmap without --dump reads no account"
+    assert keys("3.3") == every == keys("1.1")
+    assert client.get("/api/wargames/board/objectives/?scenario=9.9").status_code == 400
+
+def test_a_closed_xss_scenario_counts_no_objective_but_one_the_target_lost_anyway(client):
+    session = opened("3.4")
+    Session.objects.filter(pk=session.pk).update(ended_at=timezone.now())
+
+    untouched = client.get(f"/api/sessions/{session.pk}/").json()["result"]["objectives"]
+    session.objectives.create(key="board-auth-user-partial", name="Board accounts (partial)", difficulty=2,
+                              achieved_at=timezone.now())
+    lost = client.get(f"/api/sessions/{session.pk}/").json()["result"]["objectives"]
+
+    assert (untouched["lost"], untouched["total"]) == (0, 0)
+    assert (lost["lost"], lost["total"]) == (1, 1), "the target's own record decides, whatever the scenario staked"
+
 @pytest.mark.parametrize("waf, refused", [
     ({"paranoia": 3, "exclusions": [], "thresholds": {"inbound": 5, "outbound": 4}}, None),
     ({"paranoia": 3, "exclusions": []}, None),

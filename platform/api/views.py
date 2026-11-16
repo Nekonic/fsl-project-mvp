@@ -362,7 +362,8 @@ def _judged(session):
         "objectives": {
             "lost": len(breaches),
             "undetected": sum(1 for breach in breaches if not breach.detected),
-            "total": len(wargames.objectives(session.scenario)["tiers"])
+            "total": len({tier["key"] for tier in wargames.at_stake(session.scenario, session.course_scenario)}
+                         | {breach.key for breach in breaches})
             if wargames.judged(session.scenario) else 0,
         },
         "scenario": _scenario_result(session),
@@ -1447,7 +1448,10 @@ def wargame_objectives(request, wargame_id):
     model = wargames.objective_model(wargame_id)
     if model == "none":
         return _reply([])
-    return _reply(_loot_catalogue(wargames.objectives(wargame_id)))
+    scenario = request.GET.get("scenario") or None
+    if scenario is not None and wargames.scenario_owner(scenario) != wargame_id:
+        raise BadRequest(f"{scenario!r} is not a scenario of {wargame_id!r}")
+    return _reply(_loot_catalogue({"tiers": wargames.at_stake(wargame_id, scenario)}))
 
 def _loot_catalogue(spec):
     return [
@@ -1843,7 +1847,8 @@ def _lesson_objectives(session, every=False):
     rows = [{"id": tier["key"], "difficulty": tier["difficulty"], "lost": tier["key"] in lost,
              "detected": tier["key"] in lost and lost[tier["key"]].detected,
              "points": lesson.penalty(tier["difficulty"], lost[tier["key"]].detected) if tier["key"] in lost else 0}
-            for tier in wargames.objectives(session.scenario)["tiers"]]
+            for tier in wargames.objectives(session.scenario)["tiers"]
+            if tier["key"] in lost or tier in wargames.at_stake(session.scenario, session.course_scenario)]
     return {"rows": rows, "total": sum(row["points"] for row in rows)}
 
 def _site(session):

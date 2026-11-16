@@ -254,8 +254,9 @@
     if (judged) scenarioBanner(judged);
   }
 
-  function objectiveTable(tiers, breaches) {
+  function objectiveTable(staked, breaches) {
     const lost = new Map(breaches.map((breach) => [breach.key, breach]));
+    const tiers = [...staked, ...breaches.filter((breach) => !staked.some((tier) => tier.key === breach.key))];
     const taken = tiers.filter((tier) => lost.has(tier.key)).length;
     field("lost-count").textContent = `${taken} / ${tiers.length}`;
     field("lost-count").className = `text-[22px] font-bold leading-tight ${taken ? "text-danger" : "text-success"}`;
@@ -380,7 +381,7 @@
     }
     const [score, tiers] = await Promise.all([
       api(`/api/sessions/${id}/score/?brief=1`),
-      api(`/api/wargames/${session.scenario}/objectives/`),
+      api(`/api/wargames/${session.scenario}/objectives/${session.course_scenario ? `?scenario=${encodeURIComponent(session.course_scenario)}` : ""}`),
     ]);
     if (run !== scoreRun) return;
     scoreAnswered();

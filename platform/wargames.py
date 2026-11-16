@@ -10,6 +10,7 @@ from django.conf import settings
 
 import lifecycle
 import traffic
+from redteam import tools
 from redteam.harness import is_tool_case, load_cases
 from rules import crs
 
@@ -402,6 +403,15 @@ WARGAMES = _discover()
 
 def objective_model(wargame_id: str) -> str:
     return WARGAMES[wargame_id]["objective_model"]
+
+def at_stake(wargame_id: str, scenario_id: str | None) -> list[dict[str, Any]]:
+    tiers = objectives(wargame_id)["tiers"]
+    if not scenario_id or objective_model(wargame_id) != "loot_verified":
+        return tiers
+    one = scenario_run(scenario_id)
+    taking = one.get("red") == "person" or any(tools.dumps(find_case(wargame_id, attack["case"]))
+                                                for attack in one.get("attacks") or [])
+    return tiers if taking else []
 
 def defense(wargame_id: str, name: str) -> dict[str, Any] | None:
     declared = WARGAMES[wargame_id].get("defense") or {}
