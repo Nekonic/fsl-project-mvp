@@ -313,7 +313,7 @@ takes 51 s; two runs at once with one session file on slot 8 broke the first
 (`disk I/O error`, `no such table: storage`).
 
 Fix: a fired sqlmap case writes to `/tmp/sqlmap-runs/<case id>`
-(`redteam/tools.py`). The same overlap with separate directories: 52 s and
+(`attacker.SQLMAP_RUNS`, handed to `redteam/tools.py`). The same overlap with separate directories: 52 s and
 51 s, each run complete. Live, 3.3 with the final check pressed at 3:45 as in
 the walk: the tamper run 53.5 s overlapped by the window's run 48.0 s, both
 `held`, the window judged 5.2 s after it ended (failed as undetected, no rule
@@ -334,8 +334,9 @@ fields, of which the documents carry 171. Discover asks for `fields: *` on 500
 rows; that query took 2.4 s against 0.16 s without it. Filebeat's template also
 sets a 5 s refresh.
 
-Fix: the collector filters `fields.yml` to the ECS and beat groups before it
-starts and loads that template over the old one, with a 1 s refresh. The same
+Fix: the collector filters `fields.yml` to the `ecs`, `beat`, `cloud`,
+`docker`, `host`, `kubernetes`, `process` and `log` groups before it starts
+(`compose.yaml`, written to `fields-lean.yml`) and loads that template over the old one, with a 1 s refresh. The same
 6,000 documents reindexed under both templates map each of their 171 fields
 the same; 1,821 fields; the Discover-shaped query 2.4 s -> 0.7-0.9 s. Live
 after the change and a rollover of each `logs-N-sensors`: searchable 3.3-5.0 s

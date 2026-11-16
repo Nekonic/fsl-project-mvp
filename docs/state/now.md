@@ -5,11 +5,10 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-16, the Kibana gate keeps a learner to their session's slot,
-F4 and 3.4 run the WAF in DetectionOnly mode, a session's slot runs only its
-own wargame, and the map no longer answers 500 with a slot container down
-(the range is one range host, `cr-range`, running eight slots as compose
-projects on runc; on `dev`).
+Updated: 2026-11-17, answer-blind walk rounds 23 and 24 fixed, staff can
+delete an approved learner, and the whole cloud rebuilt at 97db8909 with the
+full `bin/verify` green (the range is one range host, `cr-range`, running
+eight slots as compose projects on runc; on `dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
@@ -28,12 +27,20 @@ Internet.
   2:02); one customer's flows take turns, so the board's CSRF refusals after
   a sign-in are gone (session 2513: 956 customer requests, no 4xx); the
   debrief counts customers up to the final check's end (956 when judged and
-  956 after close). Deployed on the platform VM by checking `/opt/cr` out at the dev
-  commit and restarting `platform` (code only, images unchanged).
-  `bin/verify --changed c7036388 --live` on the VM: unit and API 664 + 714,
-  acceptance 71 passed, 1 skipped, 23 errors, all one fixture of
-  `test_range_isolation.py` whose `docker inspect` on the range host timed
-  out at 60 s under the parallel run; that module alone then passed 24 of 24.
+  956 after close). Live: `uv run bin/cloud up --replace` rebuilt the cloud
+  at 97db8909 (range host 10.31.0.212); the full `bin/verify` on it:
+  acceptance 94 passed, 0 failed, 1 skipped in 462 s; unit and API 1011 +
+  784; 537 s.
+- 2026-11-17, answer-blind walk round 23's findings fixed
+  (`docs/TROUBLESHOOTING.md` "Answer-blind walk round 23"): a Kali run the
+  WAF refused in full now passes its check, since `_sent_by` reads the WAF's
+  records with the marker as well as the sensor's; each fired sqlmap case
+  writes to its own output directory, so two runs on one Kali no longer share
+  a session file (3.3's tamper run had hit the 600 s timeout); the collector
+  loads a lean index template with a 1 s refresh (Discover's query 2.4 s ->
+  0.7-0.9 s). Staff can delete an approved learner, whose open sessions close
+  through the close path (`docs/DECISIONS.md` "Staff delete an approved
+  learner").
 
 - 2026-11-16, Kibana keeps a learner to their open session's slot
   (`docs/DECISIONS.md` "Kibana keeps a learner to their open session's slot
@@ -479,17 +486,11 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 ## Next, in order
 
 1. The live cloud on `dev`: `platform.ref` is `dev` in `cloud.yaml`; the VM
-   runs `/opt/cr` at the merge above. `compute.slots` as the user wants
+   runs `/opt/cr` at 97db8909. `compute.slots` as the user wants
    (eight now). Run `uv run bin/cloud init` once as admin on con01
    (`/etc/kolla/clouds.yaml`) to see it report everything present.
-2. A fresh answer-blind review round of both courses and a scenario on the
-   round-22 fixes (`docs/DECISIONS.md` "Answer-blind walk round 22"): the
-   triage steps whose pass follows the current state, the end button and the
-   stopped traffic after a pass, the answer queue; then the user's own test.
-   Seen in round 22's live check and not ruled: the judge pane's header can
-   still say all items right for up to 15 s after the note went back to
-   unpassed (the list re-reads every 15 s). F1's map questions changed with the live map (the path starts
-   at kali; the DMZ question reads the WAF's network): walk them again.
+2. Answer-blind walk round 25 of both courses and a scenario is running on
+   97db8909; then tag the state and take it through gate 2 (item 6).
 3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
    or `union select` even where it is loaded: a detection gap to measure
    (round 16, `docs/DECISIONS.md`).

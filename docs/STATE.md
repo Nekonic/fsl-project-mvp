@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-11-16
+Updated: 2026-11-17
 
 ## Where things stand
 
@@ -1601,6 +1601,21 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       checked next; the open scenario page shows its verdict; repeated runs
       carry their time; pills, badges, repeats and glosses removed. Checked
       live with Playwright; full `bin/verify` on the VM.
+- [x] 2026-11-17: the answer-blind walk of round 23
+      (`docs/TROUBLESHOOTING.md` "Answer-blind walk round 23"): a Kali run the
+      WAF refused in full passes its check from the WAF's records; each fired
+      sqlmap case has its own output directory; the collector's lean index
+      template and 1 s refresh make a record searchable sooner.
+- [x] 2026-11-17: staff delete an approved learner, closing their open
+      sessions through the close path (`docs/DECISIONS.md` "Staff delete an
+      approved learner").
+- [x] 2026-11-17: the answer-blind walk of round 24 (`docs/DECISIONS.md` and
+      `docs/TROUBLESHOOTING.md` "Answer-blind walk round 24"): a finished Kali
+      run passes after a short settle; the learner's own F4 XSS is an attack
+      case; a scenario lists only the objectives its attacks can take; 3.3's
+      variant runs before the check; a customer's flows take turns; the
+      debrief counts customers up to the check's end. Full `bin/verify` on the
+      rebuilt cloud.
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 

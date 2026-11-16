@@ -159,7 +159,7 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 | `corp-wp` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-corp`(`wargames/corp/app`). WordPress 6.6.2, 취약 버전 고정 플러그인 3개, `Host` 헤더 `corp.com` | web, `corp-default` | |
 | `corp-db` | 훈련 환경 호스트, 슬롯 N | `ghcr.io/nekonic/cr-corp-db`(`wargames/corp/db`). MySQL 8.4, binlog `ROW` | `corp-default` | |
 | `cr-elasticsearch` | 플랫폼 VM | `elasticsearch:8.15.0` | mgmt | 9200 |
-| `cr-collector` | 플랫폼 VM | `filebeat:8.15.0`. syslog 입력만 사용 | mgmt | 5140/udp |
+| `cr-collector` | 플랫폼 VM | `filebeat:8.15.0`. syslog 입력만 사용. 시작 전에 entrypoint가 `fields.yml`에서 `ecs`, `beat`, `cloud`, `docker`, `host`, `kubernetes`, `process`, `log` 그룹만 남겨 `data/fields-lean.yml`을 만듦 | mgmt | 5140/udp |
 | `cr-kibana` | 플랫폼 VM | `kibana:8.15.0`. `/kibana/` 경로로 제공 | mgmt | 5601 |
 | `cr-platform` | 플랫폼 VM | `platform/`. waitress, Django, 앞단 nginx. nginx가 `/kibana/`의 Kibana, `/vm-terminal/kali/`와 `/vm-terminal/waf/`의 VM 터미널도 제공 | mgmt | 8000, 8002 |
 
@@ -329,7 +329,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 `interfaces.wiring`이 이 출력을 `Wiring`으로 풉니다.
 
 - 인터페이스의 망: 그 인터페이스 주소 중 하나를 품은 Docker 네트워크. 그래서 kali `eth0`에 함께 붙은 출발지 주소(5.188.10.10, 고객 주소)도 인터넷 구간에 속함
-- 센서: `Args`에 `--af-packet`(`rangehost.SNIFFS`)이 있는 컨테이너. 감시하는 망은 주소 없는 인터페이스가 붙은 망(`--af-packet=<이름>`이면 그 브리지나 인터페이스). 센서의 인터페이스는 학습자 호스트의 주소로 치지 않음
+- 센서: `Args`에 `--af-packet`(`rangehost.SNIFFS`)이 있는 컨테이너. 감시하는 망은 주소 없는 인터페이스가 붙은 망(`--af-packet=<이름>`이면 그 브리지나 인터페이스). 센서의 인터페이스도 돌려주되 `sensor=True`로 표시(`Wiring.interfaces`). 선의 주소를 고르는 `link_heads`만 센서 인터페이스를 뺌
 - `OpenStack.wiring()`은 서비스 이름을 선언된 호스트 이름(`cr-kali`, `board`)으로 바꿔 붙임. 훈련 환경 호스트가 답하지 않으면 `RangeUnavailable`
 
 **그리기.** `topology.graph(learner, wiring)`가 콘솔이 그릴 그래프를 만듭니다.
@@ -342,6 +342,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 - 로그 서버(`log-server`): 관제망의 장비. 로그가 가는 선은 따로 그리지 않음
 - 그리지 않는 것: 훈련 환경 호스트, 플랫폼 VM, 수집기, 고객, 관리망, 컨테이너·브리지의 실제 이름. 실행 중이 아닌 컨테이너는 읽히지 않으므로 그리지 않음. 상태는 표시하지 않음
 - 단계의 답과 보기(`topology.addresses`, `topology.hosts`)에서는 다른 워게임의 장비를 여전히 뺌
+- 주소 표(`topology.addresses`, `GET .../lesson/addresses/`): 행마다 `host`, `kind`, `zone`, `address`, `network`, `more`(같은 인터페이스의 다른 주소 수), DB존이면 `owner`. 고객은 따로 행을 두지 않고 kali 행의 `more`에 들어감. 센서는 관제망 주소로 `kind: sensor` 행. 주소를 묻는 단계에서 다른 장비의 주소를 답하면 그 주소가 누구 것인지 알려 줌(`views._whose_address`). IDS 주소도 여기에 포함
 
 **API.** `GET /api/sessions/<id>/topology/`의 `map`이 이 그래프입니다. 훈련 환경 호스트를 읽지 못하면 `map`은 빈 그래프와 `detail`입니다. 같은 응답의 `segments`, `sensors`, `unplaced`는 그대로입니다. 읽은 인터페이스는 세션이 끝날 때까지 보관해 주소를 묻는 단계의 답으로 씁니다(`views._map_found`, `_found_kept`).
 
@@ -355,7 +356,8 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
   - 웹 서버 구간은 DMZ 아래. 스위치는 WAF 아래, board.com과 corp.com은 그 오른쪽에 위아래로 벌려 상자 안에 놓음. 서버마다 오른쪽에 그 워게임의 DB존
   - 관제망은 웹 서버 구간 왼쪽 상자. IDS와 로그 서버가 이 상자 안에 있음. IDS는 웹 서버 구간 스위치와 보통 실선으로, 관제망 스위치와 `link` 선으로 이어짐. 미러링 점선이나 문구는 없음
   - WAF의 관제망 선은 DMZ 상자 아래로 내려와 웹 서버 구간 상자 왼쪽으로 감
-  - 주소: 인터페이스마다 전체 주소를 장비 옆, 선이 나가는 쪽에 씀. 선이 장비의 영역 상자를 벗어나면 선이 들어가는 영역 상자 바로 안쪽에 씀. 선 위에는 주소를 쓰지 않음
+  - 주소: 인터페이스마다 전체 주소를 장비 옆, 선이 나가는 쪽에 씀(`_sided`). 주소 글자는 그 장비가 속한 영역에 두고, 영역 상자는 그 글자를 품도록 넓힘(`_fitted`). 라우터처럼 속한 영역이 없는 장비는 선이 들어가는 영역. 선이 같은 높이로 옆 영역에 들어가면 그 영역 상자를 넓어진 상자 오른쪽으로 밀어 겹치지 않게 함(`_abutted`). 선 위에는 주소를 쓰지 않음
+  - 같은 인터페이스에 주소가 더 있으면 "외 N개"를 붙임(`topology.extra_addresses`가 선과 주소 노드의 `more`로 실음, `map.html`의 `named`). kali `eth0`의 출발지·고객 주소가 그 예
   - 장비 이름은 아이콘 아래. `strings.html`의 `topology.name.<이름>`이 있으면 그것을 씀. 라우터와 로그 서버는 한국어 역할 이름, Kali, WAF, IDS는 고유 이름 그대로
   - 포트, 범례는 그리지 않음
 - 아이콘: GNS3 affinity 글리프를 정사각형 틀에 넣은 `host-*.svg`와 스위치 아이콘. 출처와 라이선스는 같은 폴더의 `SOURCES`, Kali 드래곤 로고의 상표 고지는 `host-kali.txt`
@@ -373,7 +375,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | 슬롯 배선 읽기 | `platform/range/rangehost.py`(`WIRING`) | 없음. 출력 해석은 `platform/range/interfaces.py`, 학습자 이름과 그래프는 `platform/topology.py` |
 | CRS 설정과 nginx reload | `platform/rules/crs.py` | `entrypoint.sh`: `vm-terminal.sh cr-waf`로 슬롯 WAF 컨테이너 쉘 제공(훈련 환경 호스트로 ssh 후 `sudo docker exec -it sN-waf bash -l`). `range/rangehost.forwarding`: 슬롯의 WAF shipper와 log-server 설정 작성(audit 로그와 nginx 거부 로그 경로). `deploy/range-host/slot.yaml`: `rangehost.LOGS` 경로로 WAF audit 로그 파일과 거부 로그 파일 마운트. audit 로그는 둘 다 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 `platform/tests/test_range_host.py`의 `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it`로 확인. F6의 WAF 창 단계 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`): `wargames.lesson`에서 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 채움. 플랫폼은 터미널을 조작하지 않음 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `declaration.yaml`의 센서 호스트(`sensor`는 `cr-range`): `suricata.py`에 넘길 룰 파일과 reload 명령 지정. `platform/range/rangehost.py`: 센서 설정(`deploy/suricata/suricata.yaml`)과 compose 서비스 렌더링. `deploy/range-host/slot.sh`: 슬롯과 함께 센서 시작·정지, 초기화 때 센서 로그 파일 다시 열기, 에지 라우터 설정. 이후 기본 룰 적용은 `suricata.py` |
-| 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`: `/var/log/commands.log` 읽기. 터미널 연결 설정에 `cr-kali` 지정, `entrypoint.sh`에서 `vm-terminal.sh cr-kali` 실행. 웹사이트 창(`platform/api/site.py`)은 예외가 아님. 박스 접근은 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(훈련 환경 호스트 ssh 스트림으로 슬롯 Kali 컨테이너 접속)로만 함 |
+| 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`: `/var/log/commands.log` 읽기. 터미널 연결 설정에 `cr-kali` 지정, `entrypoint.sh`에서 `vm-terminal.sh cr-kali` 실행. 웹사이트 창(`platform/api/site.py`)은 예외가 아님. 박스 접근은 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(훈련 환경 호스트 ssh 스트림으로 슬롯 Kali 컨테이너 접속)로만 함. 발사한 sqlmap 케이스가 쓰는 박스 안 출력 디렉터리(`SQLMAP_RUNS`, `/tmp/sqlmap-runs/<케이스 id>`)도 `attacker.py`가 정해 `harness.fire`에 넘김(`views._fire`, `redteam/run.py`) |
 | 대상 시스템 데이터 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음. `loot.py`는 `board` 역할 runner로 board 컨테이너 안 `127.0.0.1`에 HTTP 요청. `effect.py`는 `corp-db`에 `docker exec`하는 runner로 접근 |
 
 `platform/tests/test_isolation_seams.py`가 `platform/` 코드를 관심사별 문자열로 훑어, 담당 파일과 알려진 예외 밖에서 그 관심사를 다루는 파일이 있으면 실패합니다. 담당 파일이 없어지면 담당 파일이 그 관심사를 아는지는 검사하지 않습니다. 다른 파일이 그 관심사를 알면 여전히 실패합니다. 슬롯 배선 읽기 행은 이 테스트에 없어서 검사하지 않습니다.
@@ -384,7 +386,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 
 | 파일 | 하는 일 |
 |---|---|
-| `deploy/filebeat/filebeat.yml` | collector의 Filebeat 설정. `event.module`과 슬롯(`cr_slot`) 태그를 붙여 `logs-<slot>-sensors` 인덱스에 기록 |
+| `deploy/filebeat/filebeat.yml` | collector의 Filebeat 설정. `event.module`과 슬롯(`cr_slot`) 태그를 붙여 `logs-<slot>-sensors` 인덱스에 기록. 인덱스 템플릿은 `fields-lean.yml`로 만들어 기존 템플릿을 덮어씀(`setup.template.overwrite`), refresh 1초. 이미 있는 data stream은 rollover 전까지 예전 매핑을 유지 |
 | `deploy/elastic/ingest-pipeline.json` | `geoip` ingest 파이프라인. 이벤트 시각을 `@timestamp`로 옮기고, `src_ip`에 GeoIP를 붙이고, `cr_slot` 삭제 |
 | `deploy/proxy/stamp.py` | `X-Request-ID`를 붙이는 mitmdump 스크립트. Kali 이미지에 `/usr/local/lib/web-proxy.py`로 설치 |
 | `deploy/kali/operator-log.sh` | Kali 쉘 훅. 입력한 명령을 마커와 함께 `/var/log/commands.log`에 추가 |
@@ -858,7 +860,7 @@ WAF 상태 스냅숏:
 
 세션 화면의 나머지:
 
-- 레슨 세션: 실행마다 케이스 이름으로 부름. Kali 실행은 케이스 id 대신 "레슨 n · m단계"(`per_case[].lesson`, `.step`, `.seed`)
+- 레슨 세션: 실행마다 케이스 이름으로 부름. Kali 실행과 F4에서 웹사이트 창으로 보낸 XSS 케이스는 케이스 id 대신 "레슨 n · m단계"(`per_case[].lesson`, `.step`, `.seed`. `step`은 `meta.kali`나 `meta.site`)
 - 시나리오 세션: 같은 케이스가 여러 번 실행되면 이름 아래 실행 시각으로 구분(`per_case[].started_at`)
 - 진행 중인 시나리오 세션: 구간이 판정됐으면 종료 버튼 아래에 판정과 결과 보고를 보여 줌
 - 탐지 결과는 "공격 N건 중 M건 정탐" 같은 문장 하나. 같은 숫자를 큰 글씨로 한 번 더 쓰지 않음
@@ -1027,7 +1029,7 @@ Kibana 쿼리와 개발자 도구 답:
 - `leg: upstream` check에서 `not destination : <주소>`에 board.com 자신의 주소를 넣은 쿼리도 `kql` 사유로 실패(`views._excludes_the_site`). 남겨야 할 구간을 빼 버리기 때문
 - `dev`(정규식)가 있는 check는 개발자 도구에서 읽는 답. 개발자 도구가 열려 있으면 선택된 요청 행 id를 `dev_request`로 보냄(아니면 `null`)
 - `dev` 통과 조건: 그 행이 세션에 기록된 요청이고 경로가 `dev`에 맞음. 아니면 `lesson.check.wrong.dev`(`views._dev_picked`)
-- `dev` 적용 단계: F2의 메서드, 경로, 상태 코드, 파라미터, 정렬, 없는 글 단계. F4의 인코딩 단계. F5의 정렬·오류 단계
+- `dev` 적용 단계: F2의 메서드, 경로, 상태 코드, 파라미터, 없는 글 단계(정렬 단계는 `match`만). F4의 인코딩 단계. F5의 정렬·오류 단계
 - 숫자 뒤에 한두 글자 단위("20점", "1973건")가 붙은 답은 숫자로 읽음(`lesson._unit_dropped`). `%`는 단위로 보지 않음
 
 레슨 끝과 입력 표시:
@@ -1195,7 +1197,8 @@ board의 `scenario.yaml`에 `foundations:` 목록을 선언합니다. discovery 
 - 영문자와 숫자로 된 자기만의 단어로 검색. 예시 단어 `kim0413`은 검색 단계에서 인정하지 않음
 - Kibana에 `url : *단어*`를 입력. 카드마다 쿼리를 다시 적어 주고, 화면의 열 이름을 그대로 써서 묻는 것:
   - Kibana에 나오는 건수. 센서가 WAF 뒤만 보므로 그 단어로 한 검색 가운데 waf가 board.com에 넘긴 요청 수
-  - `and`와 `not`으로 작성한 쿼리(내 단어이면서 `destination`이 waf 주소가 아닌 것)의 건수
+  - 주소창으로 그 단어를 글 번호 자리에 넣어 없는 글(`/posts/<단어>/`)을 요청(`missing`, `sent` check). 이 요청도 url에 단어가 들어가 404로 기록됨
+  - `and`와 `not`으로 작성한 쿼리(`url`에 내 단어가 있고 `not status : 404`)의 건수(`upstream`)
   - 그 쿼리로 남은 행의 `source_ip`(waf 자신의 주소)
 - 건수 단계의 check에는 Kibana 쿼리가 맞아야 하는 정규식 `kql`이 있음. 쿼리가 맞지 않으면 숫자와 상관없이 오답(`lesson.logs.wrong.upstream.kql`)
 - 앞 건수 단계의 통과 문장은 url 쿼리로 내 로그를 찾았다는 말만 함. 구간마다 몇 줄이 남는지는 말하지 않음
@@ -1204,7 +1207,7 @@ board의 `scenario.yaml`에 `foundations:` 목록을 선언합니다. discovery 
 - 혼자 푸는 단계: 그 행의 `request_header.x_forwarded_for`(customers 주소)를 Document 창에서 읽음. 웹사이트 창이 customers 자리에서 접속한다는 사실은 이 단계의 통과 문장에서 처음 나옴
 - 답은 기록된 센서 http 이벤트에서 구간별로 읽음(`sensor_source`, `forwarded_for`)
   - `dest_ip`가 board.com 주소면 `upstream`(waf가 넘긴 요청), 아니면 `inbound`(waf에 도착한 요청). `leg: both`는 두 구간 모두. 센서가 WAF 뒤만 보므로 F3의 단계는 모두 `leg: upstream`
-  - `hits`: 레슨(또는 세션) 시작 이후, 학습자의 가장 최근 검색 단어가 url에 든 해당 구간 http 이벤트 수
+  - `hits`: 레슨(또는 세션) 시작 이후, 학습자의 가장 최근 검색 단어가 url에 든 해당 구간 http 이벤트 수. check에 `unless_status`가 있으면 그 상태 코드의 이벤트는 세지 않음(`upstream`은 `unless_status: 404`)
 
 **f4 XSS 요청 차단과 IDS 룰 작성**(`lesson.xss`). defense `xss-gap`, 웹사이트 창에서 시작.
 
@@ -1330,7 +1333,7 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 - "직접 해 보기" 카드는 단계 카드 바로 아래
 - "세션 종료" 버튼은 세션 화면과 같은 종료 확인(`session.close.consequence`)을 거친 뒤 수집하고 `POST /close/`로 닫고 세션 화면을 엶
 - `scored`가 아닌 과정(훈련 환경을 읽기만 하는 과정 1)의 레슨 세션은 점수를 표시하지 않음. 목표, 탐지, 요청별 표, 탈취된 목표 수가 없고, 어떤 검색이 탐지 결과에서 빠지는지 설명하는 문장도 없음
-- 세션 화면의 레슨 카드: 레슨별로 통과한 단계(와 다시 시도한 단계). Kali 실행마다 "레슨 n · m단계"
+- 세션 화면의 레슨 카드: 레슨별로 통과한 단계(와 다시 시도한 단계). Kali 실행과 F4의 웹사이트 창 XSS 케이스마다 "레슨 n · m단계"
 - "다시 시작": 학습자가 손댄 첫 레슨(화면의 `begun()`: 통과, 건너뜀, 힌트가 있거나 세션을 연 레슨)을 그 레슨의 방어 설정으로 엶
 
 레슨 사이에는 아무것도 초기화하지 않습니다. board 목표는 유출만 판정합니다(세션 시작 스냅숏과 탈취 데이터 대조). 레슨은 대상 시스템 데이터를 바꾸지 않습니다. 방어 설정은 F4와 F6이 그 자리에서 바꾸고 F5가 `full`로 되돌립니다.
@@ -1339,7 +1342,7 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 
 - `sent` check: 시작 이후 웹사이트 창에서 보낸 요청만 집계
 - `rule` 답: 시작 이후 ModSecurity 기록만 집계
-- `kali` check: 단계의 `reached`와 레슨 시작 중 늦은 시각부터 센서를 읽음
+- `kali` check: 단계의 `reached`와 레슨 시작 중 늦은 시각부터 센서와 WAF 기록을 읽음
 - `lost_points`: 시작 이후 탈취된 목표만 집계
 - Kibana 링크도 시작 시각부터 엶
 - 단계 기록은 레슨별로 따로 둠. F2의 `search`를 통과해도 F3의 `search`는 통과되지 않음
@@ -1353,7 +1356,7 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 - 학습자가 단계에 진입하면 마커를 만들어 스탬프 프록시의 `/var/lib/session/active`에 씀. 레슨 전환과 세션 종료 때 삭제
 - 학습자가 Kali 창에 입력한 명령은 Kali의 `http_proxy`를 거치며 마커가 붙어 나감
 - 단계의 `command`는 입력할 문구일 뿐
-- 센서의 http 기록에 마커와 도구의 user agent가 함께 있으면 통과. `--random-agent`용으로 `ua: any`를 주면 user agent는 보지 않음
+- 센서의 http 이벤트나 ModSecurity 기록에 마커와 도구의 user agent가 함께 있으면 통과(`views._sent_by`). ModSecurity 기록은 트랜잭션 요청 헤더의 `X-Request-ID`로 마커를, `User-Agent`로 user agent를 읽음. WAF가 막아 센서까지 가지 않은 요청도 셈. `--random-agent`용으로 `ua: any`를 주면 user agent는 보지 않음
 - 통과하면 이 실행을 일반 악성 케이스로 기록(`meta.kali`, `meta.lesson`, 재생 표시 없음). 다른 레드팀 행동처럼 두 점수에 모두 반영. 이어서 세션을 수집(ingest)
 - 학습자가 `http_proxy`를 지우면 요청이 마커 없이 나가 통과하지 못함
 
@@ -1391,7 +1394,7 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 
 - 계정을 읽지 못해도 세션은 스냅숏 없이 생성됨. 이 세션에서 `POST /api/sessions/<id>/loot/`를 호출하면 409
 - 이후 이 세션 때문에 board를 다시 읽지 않음. 슬롯 준비 점검의 `ground_truth`는 세션이 잡지 않은 슬롯에서만 board를 읽음
-- `GET /api/wargames/<id>/objectives/`: `objectives.yaml`의 등급 목록. `?scenario=<id>`를 붙이면 그 시나리오가 노리는 등급만(`wargames.at_stake`). `loot_verified` 워게임에서는 시나리오의 공격 중 하나라도 계정을 덤프(`--dump`)할 때만 전체 등급, 아니면 빈 목록(3.1, 3.2, 3.4). 결과 화면은 이 목록에 대상이 실제로 잃은 등급을 더해 보여 줌
+- `GET /api/wargames/<id>/objectives/`: `objectives.yaml`의 등급 목록. `?scenario=<id>`를 붙이면 그 시나리오가 노리는 등급만(`wargames.at_stake`). `loot_verified` 워게임에서는 시나리오의 공격 중 하나라도 계정을 덤프(`--dump`)하거나 레드팀이 사람(`red: person`)일 때만 전체 등급, 아니면 빈 목록(3.1, 3.2, 3.4). 결과 화면은 이 목록에 대상이 실제로 잃은 등급을 더해 보여 줌
 - `GET /api/sessions/<id>/objectives/`: 저장된 행
 - `POST /api/sessions/<id>/objectives/`: 관찰 수행. `loot_verified` 워게임에서는 아무 동작도 하지 않음
 
@@ -1661,11 +1664,11 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 
 - `overview`: 마지막 최종 점검의 판정, 조치 유형과 사유, 판정한 점검 수, 전체 단계 중 통과한 단계 수, 사용한 힌트
 - `evidence`: 예정된 공격에서 나온 세션의 탐지 기록 최대 20건. 완료 조건에 탐지기가 지정돼 있으면 그 탐지기의 기록. 룰·요청·케이스 포함. Elasticsearch는 조회하지 않음
-- `change`: 선언된 방어 설정과 마지막 WAF 스냅숏의 비교. 추가·삭제된 예외 규칙, 양쪽 수준, 그 방어 설정으로 `crs.rendered`가 만드는 내용과 예외 파일의 줄 단위 diff
+- `change`: 선언된 방어 설정과 마지막 WAF 스냅숏의 비교. 추가·삭제된 예외 규칙, 양쪽 수준, 그 방어 설정으로 `crs.rendered`가 만드는 내용과 예외 파일의 줄 단위 diff. `ids`는 방어 설정의 Suricata 룰과 마지막으로 적용한 룰 파일의 줄 단위 diff(`views._ids_change`). WAF 스냅숏이 없어도 `ids`는 있고, 결과 보고는 비어 있지 않을 때만 보여 줌
 - `cases`: 예정된 케이스별로 판정된 구간 이전과 구간 안의 결과(held 또는 leaked)
 - `risk`: 조치 유형에 따라 정해지는 문자열 키
-- `customers`: 마지막 최종 점검이 끝난 시각까지 보낸 고객 요청의 집계. 점검이 끝난 뒤 고객 트래픽을 멈추기까지 몇 초 더 간 요청은 세지 않아, 콘솔에서 읽어도 닫힌 세션에서 읽어도 같은 수
-- 공격 `timeline`
+- `customers`: 마지막 최종 점검이 끝난 시각까지 보낸 고객 요청의 집계(`sent`, `served`, `blocked`, 응답이 없던 `unanswered`, 그 밖의 4xx·5xx인 `other`). 점검이 끝난 뒤 고객 트래픽을 멈추기까지 몇 초 더 간 요청은 세지 않아, 콘솔에서 읽어도 닫힌 세션에서 읽어도 같은 수
+- 공격 `timeline`. `outcome`은 계정을 덤프하는 공격에만 있고, `loot_verified` 워게임에서 덤프하지 않는 공격은 `null`(`scenario_run._taking_the_secret`)
 - `triage`
 - `at`: 에이전트용. 시작 시각과 마지막 판정 시각
 
