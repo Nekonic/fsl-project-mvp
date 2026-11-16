@@ -8705,3 +8705,45 @@ before board 15.0 s and 16.6 s, corp 8.1 s and 10.4 s; after board 12.0 s and
 17.2 s, corp 16.5 s and 10.8 s. The stop adds at most a few seconds, within
 run-to-run spread. A board session's map: Kali, 라우터, WAF, board.com,
 board-db, IDS, 로그 서버; a corp session's the same with corp.com and corp-db.
+
+## 2026-11-16 — A failed sign-in blocks the client, not the account; staff accounts after three
+
+The user: "admin 은 3번 이상 IP 차단 및 가능하다면 핑거프린팅 기반 차단".
+
+The per-username lock of the same day (10 failures lock the name for 15
+minutes) let anyone lock `admin` out from anywhere. It is gone; `api/blocks.py`
+counts failures per client instead.
+
+- Against a staff account: 3 failures from one address within an hour block
+  that address from signing in for an hour. Three is the user's number; an
+  hour outlasts a scripted guesser's patience at nginx's 5 a minute and is
+  short enough that a mistyping operator is not shut out for the day.
+- Against any other name (a learner, or a name that does not exist): 10
+  failures block the address for 15 minutes, the numbers the old lock used,
+  because a per-name lock had the same abuse (anyone could lock a learner out).
+- Fingerprint: a SHA-256 of the headers the browser sends with the sign-in
+  (User-Agent, Accept, Accept-Language, Accept-Encoding, Sec-CH-UA,
+  Sec-CH-UA-Mobile, Sec-CH-UA-Platform), counted with the same thresholds and
+  blocked once it has failed from at least two addresses: the client that
+  rotates addresses and keeps its browser. One address alone never blocks a
+  fingerprint, so people sharing a browser build are not blocked by a single
+  mistyping colleague.
+- TLS fingerprints are not available: "JA4 looks at the TLS Client Hello
+  packet" (FoxIO, JA4 technical details), and port 8000 is plain HTTP.
+  Sec-CH-UA is "available only in secure contexts (HTTPS)" (MDN, Sec-CH-UA),
+  so over http those three headers are usually empty. All of the fingerprint
+  is chosen by the client: a script that changes its User-Agent with each
+  address is held only by the per-address count.
+- A blocked client is refused (429, `blocked_until`, `blocked_by`,
+  `Retry-After`) even with the right password. Blocks are `SignInBlock` rows
+  (migration 0032), listed by `GET /api/users/blocks/` and lifted by
+  `POST /api/users/blocks/<id>/unblock/` (staff only) on the account screen.
+  The failure counters stay in the local-memory cache.
+- The platform host (loopback, 172.31.0.1, the IP literals of
+  `DJANGO_ALLOWED_HOSTS`) is never counted or blocked, so acceptance and an
+  admin on the VM always sign in.
+
+Not chosen: locking the account after N failures (the abuse this replaces);
+a JavaScript canvas or font fingerprint (more code in the page, and just as
+client-chosen); JA4H, which hashes header names in order (WSGI hands Django
+the headers as a dictionary, so the order the client sent is not kept).

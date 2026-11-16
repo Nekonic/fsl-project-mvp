@@ -104,7 +104,7 @@
 
 회원가입(`username`, `password`, `password_confirm`)은 Django `UserCreationForm`과 기본 비밀번호 검사기 넷으로 확인한 뒤 `is_active=False`, 비관리자 계정을 만들고 201 `{"pending": true}`를 돌려줍니다. 거부 사유는 `errors[].code`(Django 오류 코드)로 오고, 화면은 이 코드로 문구를 찾습니다. 승인 전 계정이 맞는 비밀번호로 로그인하면 403 `{"pending": true}`입니다. 비활성 계정은 세션이 있어도 `/auth-check/`에서 401입니다. 관리자(`is_staff`)는 `/users/`(계정 관리, 상단 링크)에서 `GET /api/users/`, `POST /api/users/<id>/approve/`, `POST /api/users/<id>/reject/`(승인 대기 계정만, 삭제)를 씁니다. 관리자가 아니면 403, 사용 중인 계정 거절은 409라서 관리자가 자기 계정을 없앨 수 없습니다.
 
-남용 제한은 두 층입니다. nginx(`platform/nginx.conf`)는 `POST /api/auth/login/` IP당 5r/m(버스트 5), `POST /api/auth/signup/` IP당 1r/m(버스트 3), `/api/` 세션 쿠키당 20r/s(버스트 40)와 IP당 100r/s(버스트 200), 터미널과 8002 사이트에 세션 쿠키당 동시 연결 10개를 둡니다. 넘으면 429입니다. 플랫폼 VM 자신(loopback, Docker 게이트웨이 172.31.0.1, `entrypoint.sh`가 `DJANGO_ALLOWED_HOSTS`의 IP로 만드는 `/tmp/nginx-platform-addresses.conf`)은 제외합니다. Django(`api/signin.py`, 기본 로컬 메모리 캐시)는 같은 아이디로 10번 틀리면 15분 잠그고(429, `locked_until`, `Retry-After`), 같은 주소의 가입을 시간당 5개로, 승인 대기 계정을 50개로 묶습니다(넘으면 503 `{"closed": true}`). 학습자 계정은 열린 세션을 하나만 가집니다. 두 번째 `POST /api/sessions/`는 409 `{"open_session": <id>}`입니다(`Session.owner`, 마이그레이션 0031). 관리자는 제한이 없어 수락 테스트가 세션 여럿을 엽니다.
+남용 제한은 두 층입니다. nginx(`platform/nginx.conf`)는 `POST /api/auth/login/` IP당 5r/m(버스트 5), `POST /api/auth/signup/` IP당 1r/m(버스트 3), `/api/` 세션 쿠키당 20r/s(버스트 40)와 IP당 100r/s(버스트 200), 터미널과 8002 사이트에 세션 쿠키당 동시 연결 10개를 둡니다. 넘으면 429입니다. 플랫폼 VM 자신(loopback, Docker 게이트웨이 172.31.0.1, `entrypoint.sh`가 `DJANGO_ALLOWED_HOSTS`의 IP로 만드는 `/tmp/nginx-platform-addresses.conf`)은 제외합니다. 로그인 실패는 계정이 아니라 시도한 쪽을 막습니다(`api/blocks.py`). 관리자(`is_staff`) 계정에 한 시간 안에 3번 틀린 IP는 1시간, 다른 아이디(없는 아이디 포함)에 10번 틀린 IP는 15분 동안 로그인할 수 없습니다. 브라우저가 보내는 헤더(User-Agent, Accept, Accept-Language, Accept-Encoding, `Sec-CH-UA` 계열)의 해시도 같은 횟수로 세고, 그 지문이 두 IP 이상에서 틀렸으면 지문을 막습니다. 막힌 쪽은 맞는 비밀번호도 429(`blocked_until`, `blocked_by`, `Retry-After`)입니다. 차단은 DB의 `SignInBlock`(마이그레이션 0032)에 남고, 관리자가 계정 관리에서 `GET /api/users/blocks/`로 보고 `POST /api/users/blocks/<id>/unblock/`으로 풉니다. 실패 횟수는 기본 로컬 메모리 캐시에 둡니다. 플랫폼 VM 자신은 세지도 막지도 않습니다. Django(`api/signin.py`)는 같은 주소의 가입을 시간당 5개로, 승인 대기 계정을 50개로 묶습니다(넘으면 503 `{"closed": true}`). 학습자 계정은 열린 세션을 하나만 가집니다. 두 번째 `POST /api/sessions/`는 409 `{"open_session": <id>}`입니다(`Session.owner`, 마이그레이션 0031). 관리자는 제한이 없어 수락 테스트가 세션 여럿을 엽니다.
 
 학습자는 자기 세션만 보고 움직입니다(`api/accounts.py`의 `OwnSessionsOnly`). URL에 세션이나 탐지 id가 있는 API와 콘솔 페이지(목록, 상세, 점수, 구성도, 종료, 레드·블루 콘솔)는 남의 것이면 404입니다. `session`을 주지 않은 요청은 자기 세션 중 열린 것, 없으면 가장 최근 것에 적용하고, 세션이 하나도 없으면 409입니다. `/api/range/` 쓰기 요청은 관리자만 할 수 있습니다(학습자는 403). 관리자는 모든 세션을 봅니다. Kibana는 세션별로 나뉘지 않아 학습자도 모든 세션의 로그를 봅니다.
 
@@ -379,7 +379,8 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | `platform/cr/urls.py` | 전체 엔드포인트 라우트 표 |
 | `platform/api/refusals.py` | 예외를 HTTP 상태 코드로 변환(`/api/` 아래 404는 JSON). 변경 요청(POST 등)의 동일 출처 검사 |
 | `platform/api/reachability.py` | 슬롯이 보고하는 모든 주소(채점 서버 제외)에서 온 요청을 거부하는 미들웨어 |
-| `platform/api/signin.py` | 로그인, 로그아웃, 회원가입, 로그인 잠금, nginx `auth_request`가 묻는 세션 확인 |
+| `platform/api/signin.py` | 로그인, 로그아웃, 회원가입, nginx `auth_request`가 묻는 세션 확인 |
+| `platform/api/blocks.py` | 로그인 실패를 IP와 브라우저 헤더 지문별로 세고 차단 |
 | `platform/api/accounts.py` | 계정 관리 API(계정 목록, 승인, 거절. 관리자 전용). 학습자가 남의 세션과 훈련 환경 변경에 닿지 못하게 막는 미들웨어 |
 | `platform/range/declared.py` | `declaration.yaml`을 읽어 `Declaration`으로 변환 |
 | `platform/range/openstack.py` | OpenStack 어댑터(`connect`): Keystone, Neutron, Nova, ssh |

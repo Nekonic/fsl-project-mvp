@@ -82,17 +82,36 @@ a learner reads every session's logs there.
 Abuse limits. nginx answers 429 past 5 sign-in POSTs a minute per address
 (burst 5), 1 sign-up POST a minute (burst 3), 20 `/api/` requests a second
 per session cookie (burst 40) and 100 per address (burst 200), and 10 open
-connections per session cookie to the terminals and port 8002. Django locks a
-username for 15 minutes after 10 wrong passwords, takes 5 sign-ups an hour
-from one address and stops taking them while 50 wait for approval, and lets a
-learner hold one open session (staff are exempt, so acceptance can open
-several). Their limits:
+connections per session cookie to the terminals and port 8002. Django blocks
+the client, never the account (`api/blocks.py`): 3 wrong passwords against a
+staff account within an hour block that address from signing in for an hour;
+10 against any other name block it for 15 minutes. A fingerprint of the
+headers the browser sends with the sign-in (User-Agent, Accept,
+Accept-Language, Accept-Encoding and the `Sec-CH-UA` hints) is counted the
+same way and blocked once it has failed from at least two addresses, so a
+client that changes address but keeps its browser is held too. A blocked
+client is refused even with the right password; staff list and lift blocks
+on the account screen. Django also takes 5 sign-ups an hour from one address
+and stops taking them while 50 wait for approval, and lets a learner hold one
+open session (staff are exempt, so acceptance can open several). Their
+limits:
 
-- The lock is per username, so anyone can lock `admin` out for 15 minutes by
-  failing 10 times; the per-address limit makes that take about a minute
-  from one address.
-- The counters live in Django's local-memory cache and reset when the platform
-  restarts. One waitress process holds them, so its threads share them.
+- The fingerprint is made of headers the client chooses. A script that
+  changes its User-Agent or Accept-Language with each address is held only
+  by the per-address count. Browsers send `Sec-CH-UA` only to secure
+  origins, and port 8000 has no TLS, so on this platform the hints are
+  usually empty. TLS fingerprints such as JA4 need the TLS handshake ("JA4
+  looks at the TLS Client Hello packet", FoxIO's JA4 specification), which
+  plain HTTP on 8000 does not have.
+- Two people with the same browser, version and language share a
+  fingerprint: one of them failing against `admin` from two addresses
+  blocks the other's sign-in too, until it expires or staff lift it.
+- A blocked address is every client behind that address: a classroom behind
+  one NAT is blocked together after three failures against `admin`.
+- An admin whose own address is blocked signs in from another address or
+  from the platform VM, which is never blocked.
+- The failure counters live in Django's local-memory cache and reset when
+  the platform restarts; blocks are rows in the database and survive it.
 - The per-cookie keys trust a cookie the client chooses; a client that sends a
   new cookie each time is held by the per-address limits only.
 - Requests from the platform host itself (loopback, the Docker gateway
