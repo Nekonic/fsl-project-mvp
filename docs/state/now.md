@@ -29,7 +29,8 @@ Internet.
   outside this change; unit and API 943 + 818. The 500 is fixed in
   `7152b54c` (`docs/TROUBLESHOOTING.md`, "The session map answered 500"):
   reproduced live by stopping `s1-board-db`, 500 before the fix and 200
-  after; no full `bin/verify` recorded since.
+  after; the full `bin/verify` on `7152b54c` passed: acceptance 94 passed,
+  0 failed, 1 skipped; unit and API 957 + 813; 506 s.
 - 2026-11-16, F4 and 3.4 run the WAF in DetectionOnly mode and 3.1-3.3
   attack with `board-sqli-orderby-sqlmap-random-agent` (`docs/DECISIONS.md`
   "F4 and 3.4 run the WAF in DetectionOnly mode; 3.1-3.3 attack with
