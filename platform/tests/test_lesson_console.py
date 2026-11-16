@@ -2354,6 +2354,26 @@ def test_a_finished_run_still_being_logged_does_not_tell_the_learner_to_press_th
         "the card says the run is still being logged once, not twice")
     assert seen["result"]["wrong"] == "The run has finished. Press Check."
 
+def test_a_run_the_terminal_shows_ended_is_checked_at_once_saying_it_ended(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("sqlmap")}
+      await browser.click('step-open');
+      RECTS.set(document.querySelector('[data-act="kali"]'), box(1060, 400, 130, 28));
+      kaliLines.splice(0, kaliLines.length, RAN, "[01:00:00] [INFO] testing");
+      await frames();
+      const before = range.checked.length;
+      range.passed = true;
+      kaliLines.splice(0, kaliLines.length, RAN, "[*] ending @ 10:00:00 /2026-10-19/", "", "ubuntu@kali:~$ ");
+      await frames();
+      await browser.settle();
+      return {{asked: range.checked.slice(before), said: browser.text('step-said')}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["asked"] == [["sqlmap", {"poll": True, "ended": True}]], (
+        "the end the terminal shows is checked without waiting for the next poll")
+    assert "sqlmap passed" in seen["result"]["said"]
+
 def test_a_passed_step_s_open_pane_button_is_secondary_so_next_is_the_one_call_to_action(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       {to("method")}

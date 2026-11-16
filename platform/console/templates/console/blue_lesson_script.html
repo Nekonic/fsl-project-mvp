@@ -1271,6 +1271,7 @@ function coach(prefix, declared) {
   let moving = false;
   let sentSince = false;
   let kaliSettling = false;
+  let runEnded = null;
   let reaching = Promise.resolve();
   let preparingFor = null;
   let last = "";
@@ -1739,6 +1740,10 @@ function coach(prefix, declared) {
     }
     const running = Boolean(target) && target.kind === "term" && Boolean(target.spec.done) && found.stage !== "run_done" && !done(step) && !finished;
     document.querySelectorAll("[data-running]").forEach((line) => line.classList.toggle("hidden", !running));
+    if (found.stage === "run_done" && step.check.kind === "kali" && runEnded !== step && !done(step) && !finished) {
+      runEnded = step;
+      run(step, false);
+    }
     if (running && field("step-status").textContent === t("lesson.check.kali_settling")) status("");
     if (found.typed && step.check.kind === "kali" && field("step-said").classList.contains("text-danger")) say("", "");
     lost = rect || !target || waiting || settling(target) ? 0 : lost + 1;
@@ -1813,6 +1818,7 @@ function coach(prefix, declared) {
     replayed = { attack: false, benign: false, seen: false };
     sentSince = false;
     kaliSettling = false;
+    runEnded = null;
     dismissed = -1;
     homed = -1;
     lined = -1;
@@ -1929,7 +1935,7 @@ function coach(prefix, declared) {
     checking = true;
     if (loud) status(t("lesson.status.checking"));
     try {
-      const verdict = await judged(step, loud ? {} : { poll: true });
+      const verdict = await judged(step, { ...(loud ? {} : { poll: true }), ...(runEnded === step ? { ended: true } : {}) });
       if (!held) settle(step, verdict, loud);
       else if (verdict && !verdict.passed && steps[at] === step && !finished) lapse();
     } finally {
@@ -2028,7 +2034,7 @@ function coach(prefix, declared) {
     if (!briefed || finished || sessionClosed() || document.hidden) return;
     seconds += 1;
     if (seconds >= HELP_AFTER_SECONDS && level < SKIP_OFFERED) offerHint();
-    if (POLLED.includes(check().kind) && seconds % POLL_SECONDS === 0) run(steps[at], false);
+    if (POLLED.includes(check().kind) && (seconds % POLL_SECONDS === 0 || runEnded === steps[at])) run(steps[at], false);
     if (saidFor && saidFor.step === steps[at] && saidFor.query !== null && kibanaQueryNow() !== saidFor.query) {
       saidFor = null;
       say("", "");

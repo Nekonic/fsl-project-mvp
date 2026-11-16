@@ -92,6 +92,7 @@ CHECK_TIMEOUT = 10.0
 RECORD_SLACK = timedelta(seconds=5)
 BENIGN_UNSENT = "lesson.check.replay_benign"
 RUN_SETTLED = timedelta(seconds=15)
+RUN_ENDED_SETTLED = timedelta(seconds=3)
 OBJECTIVE_FACTS = ("lost_points", "detected_penalty")
 _segments_kept: dict = {}
 DISABLE_MINUTES = 60
@@ -522,7 +523,8 @@ def lesson_step_check(request, session_id, step_id):
         return _reply({"detail": str(exc)}, status=503)
     chose = (body["answer"].strip() if step["check"]["kind"] == "choice" else _outcome(session, step["check"])) if passed else None
     standing = step["check"]["kind"] == "triage"
-    judged = _judged_step(session, step_id, passed, reason, body.get("poll") is True or standing, chose,
+    unsettled = not passed and step["check"]["kind"] == "kali"
+    judged = _judged_step(session, step_id, passed, reason, body.get("poll") is True or standing or unsettled, chose,
                           lapses=standing) | dict(*seen)
     _seed_once_worked(session)
     return _reply(judged)
@@ -600,13 +602,13 @@ def _judge(session, taught, step, body, kept):
         said = next((rule["says"] for rule in check.get("wrong_if", []) if _site_requests(session, rule["match"])), None)
         return (False, [f"{prefix}.wrong.{step_id}.{said}", []], {"loud": True}) if said else (False, [failed, []])
     if kind == "kali":
-        return _kali_check(session, step, kept)
+        return _kali_check(session, step, kept, body.get("ended") is True)
     if kind == "loot":
         return _loot_check(session, check, body.get("answer"), failed)
     if kind == "waf_changed":
         return _waf_changed(session, check["removed_target"], failed)
     if kind == "replay":
-        return _replay_check(session, step, kept)
+        return _replay_check(session, step, kept, body.get("ended") is True)
     return scenario_run.triage_passed(session, check["judged"]), [failed, []]
 
 def _whose_address(session, given):
@@ -901,15 +903,15 @@ def _sent_by(session, start, end, marker):
             sent.append((_stamped(doc), agent.lower()))
     return sent
 
-def _kali_check(session, step, kept):
-    recorded, shown = _kali_run(session, step["id"], step["check"], kept)
+def _kali_check(session, step, kept, ended=False):
+    recorded, shown = _kali_run(session, step["id"], step["check"], kept, ended)
     if recorded is None:
         tool = wargames.find_case(session.scenario, step["check"]["case"])["tool"]
         state = "kali_settling" if (shown.get("kali") or {}).get("settling") else "kali_none"
         return False, [f"lesson.check.{state}", [tool]], shown
     return True, None, shown
 
-def _kali_run(session, step_id, check, kept):
+def _kali_run(session, step_id, check, kept, ended=False):
     marker = kept.get("marker")
     if not marker:
         return None, {}
@@ -924,7 +926,7 @@ def _kali_run(session, step_id, check, kept):
     seen = sorted(stamp for stamp, agent in sent if stamp and (check.get("ua") == "any" or case["tool"] in agent))
     if not seen:
         return None, {"kali": {"name": case["name"]}}
-    if now - seen[-1] < RUN_SETTLED:
+    if now - seen[-1] < (RUN_ENDED_SETTLED if ended else RUN_SETTLED):
         return None, {"kali": {"name": case["name"], "settling": True}}
     recorded = _record_case(session, dict(case, case_id=marker, correlation="marker"), seen[0], seen[-1],
                             {"kali": step_id, "lesson": session.lesson, "launched_on": settings.RANGE.default_origin,
@@ -994,11 +996,11 @@ def _waf_changed(session, target, failed):
     targeted = lambda exclusions: any(entry.get("target") == target for entry in exclusions)
     return targeted(posture["exclusions"]) and not targeted(standing["exclusions"]), [failed, []]
 
-def _replay_check(session, step, kept):
+def _replay_check(session, step, kept, ended=False):
     check = step["check"]
     since = _passed_at(session, check["after"])
     attack, benign = check["attack"], check["benign"]
-    if since is None or not (_kali_replayed(session, step, kept, attack) if attack.get("kali")
+    if since is None or not (_kali_replayed(session, step, kept, attack, ended) if attack.get("kali")
                              else _sent_replayed(session, attack["sent"], since)):
         return False, ["lesson.check.replay_attack", []]
     fault = _benign_fault(session, benign, since)
@@ -1014,8 +1016,8 @@ def _sent_replayed(session, sent, since):
     _ingest(session, RECENT_ALERTS)
     return any(_added_alerted(session, record) for record in _site_requests(session, sent, since))
 
-def _kali_replayed(session, step, kept, attack):
-    recorded, _ = _kali_run(session, step["id"], {"case": attack["kali"], "ua": attack.get("ua")}, kept)
+def _kali_replayed(session, step, kept, attack, ended):
+    recorded, _ = _kali_run(session, step["id"], {"case": attack["kali"], "ua": attack.get("ua")}, kept, ended)
     if recorded is None:
         return False
     _ingest(session, RECENT_ALERTS)

@@ -244,6 +244,22 @@ def test_a_kali_step_waits_for_the_run_s_last_request_to_settle_then_opens_kiban
     assert (recorded.started_at, recorded.ended_at) == (first, last), "the run spans its first to its last request"
     assert window_of(done["kali"]["discover"]) == (first - views.RECORD_SLACK, last + views.RECORD_SLACK)
 
+def test_a_run_the_terminal_shows_ended_is_recorded_after_a_short_quiet_and_a_press_before_it_is_no_wrong_try(client):
+    session = taught("f5")
+    Session.objects.filter(pk=session.pk).update(started_at=timezone.now() - timedelta(minutes=10))
+    now = timezone.now()
+    run_step(session, "f5", "sqlmap", "ended-run", now - timedelta(minutes=2))
+    run = [http_event("ended-run", "/?sort=posts_post.id1", now - timedelta(seconds=60), 403),
+           http_event("ended-run", "/?sort=posts_post.id2", now - timedelta(seconds=5), 403)]
+    with quietly(), indexed(*run):
+        pressed = check(client, session, "sqlmap", {}).json()
+        ended = check(client, session, "sqlmap", {"poll": True, "ended": True}).json()
+    session.refresh_from_db()
+
+    assert (pressed["passed"], pressed["reason"]) == (False, ["lesson.check.kali_settling", ["sqlmap"]])
+    assert ended["passed"] is True, "a few seconds of quiet after the terminal showed the end is enough"
+    assert "tries" not in session.lesson_steps["f5"]["sqlmap"], "pressing while the run settles is not a wrong try"
+
 def refused_request(marker, at, agent="sqlmap/1.8.4#stable (https://sqlmap.org)"):
     return {"event": {"module": "modsecurity"}, "@timestamp": at.isoformat(),
             "transaction": {"request": {"uri": "/?sort=posts_post.id", "headers": {"User-Agent": agent, "X-Request-ID": marker}},
