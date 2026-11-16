@@ -347,7 +347,7 @@ foundations:
         check: {kind: answer, of: parameter, about: search, dev: '^/search/\?(.*&)?q=.', wrong_if: [{match: '=', says: equals}]}
       - id: sort
         point: {opens: site, site: "form:has(select[name=sort])", until: sent, then: {dev: payload.query}}
-        check: {kind: answer, of: parameter, match: '[?&]sort=', dev: '[?&]sort='}
+        check: {kind: answer, of: parameter, match: '[?&]sort='}
       - id: missing
         point: {opens: site}
         check: {kind: answer, of: status, match: '^/posts/\d+/', dev: '^/posts/\d+/'}
@@ -367,9 +367,13 @@ foundations:
       - id: count
         point: {opens: elk, kibana: {hits: true, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
         check: {kind: answer, of: hits, about: search, leg: upstream, kql: '(?i)\burl\s*:\s*"?\*?[A-Za-z0-9]{4,}'}
+      - id: missing
+        point: {opens: site, panel: "#site-address"}
+        check: {kind: sent, match: '^/posts/(?!\d+/)[A-Za-z0-9]{4,}/'}
       - id: upstream
-        point: {opens: elk, kibana: {hits: true, kql: '(?is)^(?=.*\burl\s*:)(?=.*\bnot\s*\(?\s*destination\s*:)'}}
-        check: {kind: answer, of: hits, about: search, leg: upstream, kql: '(?is)^(?=.*\burl\s*:)(?=.*\bnot\s*\(?\s*destination\s*:)'}
+        point: {opens: elk, kibana: {hits: true, kql: '(?is)^(?=.*\burl\s*:)(?=.*\bnot\s*\(?\s*status\s*:\s*"?404)'}}
+        check: {kind: answer, of: hits, about: search, leg: upstream, unless_status: 404,
+                kql: '(?is)^(?=.*\burl\s*:)(?=.*\bnot\s*\(?\s*status\s*:\s*"?404)'}
       - id: site_source
         point: {opens: elk, kibana: {doc: source_ip, kql: 'url\s*:\s*"?\*?[A-Za-z0-9]{4,}'}}
         check: {kind: answer, of: sensor_source, about: search, leg: upstream, kql: '(?i)\burl\s*:',

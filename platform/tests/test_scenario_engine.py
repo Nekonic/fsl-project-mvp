@@ -510,6 +510,24 @@ def test_the_debrief_stays_closed_until_the_window_is_judged_then_shows_the_time
     assert told["customers"]["blocked"] == 2 and told["customers"]["in_window"] == [0]
     assert told["cases"] == [{"name": SQLMAP, "malicious": True, "before": "held", "after": "held"}]
 
+def test_the_debrief_names_an_ids_rule_change_and_no_hash_outcome_for_an_attack_that_dumps_nothing(client):
+    from api.models import RuleSet
+    from api.views import _posture_rules
+
+    session = opened("3.4")
+    added = 'alert http any any -> any any (msg:"XSS in a comment"; content:"onerror"; sid:9000200; rev:1;)'
+    RuleSet.objects.create(session=session, content=_posture_rules(session) + "\n" + added + "\n",
+                           applied_at=timezone.now())
+    run_at(session, 120)
+    run_at(session, 240)
+    window_judged(session)
+    told = client.get(f"/api/sessions/{session.pk}/scenario/debrief/").json()
+
+    assert told["change"]["ids"] == ["+" + added], "a learner who changed only an IDS rule sees that change"
+    assert {entry["outcome"] for entry in told["timeline"]} == {None}, (
+        "an XSS attack never dumps the account table, so the account-hash objective says nothing about it")
+    assert all(row["before"] is None and row["after"] is None for row in told["cases"])
+
 def test_a_put_without_thresholds_keeps_the_thresholds_in_force(client):
     from tests.test_lesson_api import Stand, one_slot
 

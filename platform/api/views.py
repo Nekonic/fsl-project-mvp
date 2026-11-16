@@ -859,7 +859,9 @@ def _hits(session, check, records):
     since = _lesson_started(session) or session.started_at
     events = _on_leg(session, _suricata_http(session, since - RECORD_SLACK, timezone.now() + RECORD_SLACK),
                      check.get("leg", "inbound"))
-    count = sum(1 for event in events if word in str((event.get("http") or {}).get("url") or ""))
+    dropped = check.get("unless_status")
+    count = sum(1 for event in events if word in str((event.get("http") or {}).get("url") or "")
+                and (dropped is None or (event.get("http") or {}).get("status") != dropped))
     return [str(count)] if count else []
 
 def _window_of(record):
@@ -1648,12 +1650,18 @@ def _seeded(ran):
 
 EVIDENCE_ROWS = 20
 
+def _ids_change(session):
+    applied = RuleSet.objects.filter(session=session, applied_at__isnull=False).order_by("-applied_at").first()
+    changed = lesson.config_diff(_posture_rules(session), applied.content) if applied else []
+    return [line for line in changed if line[1:].strip()]
+
 def _change(session, waf):
     declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense)
     before = crs.checked(declared["waf"]) if declared else {"paranoia": None, "exclusions": []}
     if not waf:
-        return {"before": before, "after": None, "added": [], "removed": [], "diff": []}
+        return {"before": before, "after": None, "added": [], "removed": [], "diff": [], "ids": _ids_change(session)}
     return {
+        "ids": _ids_change(session),
         "before": before,
         "after": {"paranoia": waf.get("paranoia"), "exclusions": waf.get("exclusions") or []},
         **lesson.exclusions_changed(before["exclusions"], waf.get("exclusions") or []),

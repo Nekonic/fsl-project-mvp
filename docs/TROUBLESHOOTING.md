@@ -258,3 +258,24 @@ Fix (`7152b54c`): a zone is captioned by its network first (`internet`,
 `estate`, `mgmt`, a `-default` backend) and by its members only after;
 `test_a_slot_with_any_one_container_down_still_draws_every_node_in_its_own_subnet`
 draws the slot with each container stopped in turn.
+
+## Every `status` query in Kibana found nothing
+
+Symptom, 2026-11-17, answer-blind walk round 23: `status : 404`,
+`status >= 500` and F6 step 5's `log_source : modsecurity and status : 500`
+returned no results while the WAF log held about 1,300 records with response
+code 500; the `status` column showed `-` on every row.
+
+Cause: the data view's runtime field `status` ends in
+`doc['status']`, the field nginx's refused log writes. Once a document with
+that field was indexed, `status` became a mapped field the runtime field of
+the same name shadows, so `doc['status']` read the runtime field itself.
+Elasticsearch fails the shard on any document without `http.status` or
+`transaction.response.http_code` (`script_exception` in
+`SearchLookup.forkAndTrackFieldReferences`); 8 of 9 shards failed. Reproduced
+read-only against the cloud Elasticsearch: the same script under another
+name aggregates 403, 200, 500, 302, 400, 404; under `status` 8 shards fail.
+
+Fix: the last branch reads `params['_source']['status']`; under the name
+`status` all 9 shards answer with the same buckets. A new session's data view
+takes the field from `deploy/kibana/objects.ndjson`.

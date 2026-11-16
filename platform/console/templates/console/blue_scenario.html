@@ -19,9 +19,12 @@
 
 <div id="scenario-debrief" class="hidden absolute inset-0 z-[37] bg-page overflow-auto">
   <div class="max-w-[760px] mx-auto p-6 flex flex-col gap-4">
+    <div class="flex flex-wrap items-center gap-2">
+      <button type="button" id="scenario-debrief-close" class="btn btn-ghost" data-t="scenario.debrief.back"></button>
+      <button type="button" id="scenario-debrief-end" class="hidden btn btn-ghost" data-t="session.close.button"></button>
+    </div>
     <div id="scenario-verdict" class="card p-4 flex flex-wrap items-start gap-3"></div>
     <div id="scenario-debrief-body" class="card p-5 flex flex-col gap-3 text-[13px]"></div>
-    <button type="button" id="scenario-debrief-close" class="self-start btn btn-ghost" data-t="scenario.debrief.back"></button>
   </div>
 </div>
 

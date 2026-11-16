@@ -585,9 +585,11 @@ def debrief(session) -> dict:
     cases = {case.case_id: case for case in session.cases.all()}
     sensed = _sensed_by(session, declared)
     marked = set(sensed.filter(marker__in=list(cases)).order_by().values_list("marker", flat=True).distinct())
+    taking = _taking_the_secret(session, {entry["case"] for entry in state["schedule"]})
     timeline = [
         {"n": entry["n"], "case": entry["case"], "origin": entry["origin"], "state": entry["state"],
-         "in_window": entry["in_window"], "outcome": entry.get("outcome"), "leaked": entry.get("leaked") or [],
+         "in_window": entry["in_window"], "outcome": entry.get("outcome") if entry["case"] in taking else None,
+         "leaked": entry.get("leaked") or [],
          "at": round((scenarios.at(entry["fired_at"]) - opened).total_seconds()) if entry.get("fired_at") else entry["at"],
          "detected": entry.get("case_id") in marked, "error": entry.get("error") or ""}
         for entry in state["schedule"]
@@ -622,7 +624,7 @@ def debrief(session) -> dict:
                   for name in dict.fromkeys(entry["case"] for entry in timeline)],
         "risk": [[f"scenario.risk.{last['fix']}", []]] if last and last["fix"] else [],
         "customers": {
-            **{key: everything[key] for key in ("sent", "served", "blocked")},
+            **{key: everything[key] for key in ("sent", "served", "blocked", "unanswered", "other")},
             "in_window": [_blocked_between(session, scenarios.at(window["started_at"]), scenarios.at(window["ends_at"]))
                           for window in judged],
             "blocked_actions": customers.availability(session, set())["blocked_actions"],
@@ -631,6 +633,11 @@ def debrief(session) -> dict:
         "triage": _triage_tally(triage, judged[-1].get("items") if judged else None, session),
         "at": {"opened": state["opened_at"], "verified": judged[-1]["ends_at"] if judged else None},
     }
+
+def _taking_the_secret(session, names) -> set:
+    if wargames.objective_model(session.scenario) != "loot_verified":
+        return set(names)
+    return {name for name in names if tools.dumps(wargames.find_case(session.scenario, name))}
 
 def _triage_tally(triage, listed, session) -> dict:
     items = listed if listed is not None else [item["item"] for item in _items(session)]

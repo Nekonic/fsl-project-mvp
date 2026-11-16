@@ -296,3 +296,36 @@ def test_a_passed_scenario_offers_no_final_check_or_hint_and_ends_from_the_conso
                                        "phase": worded("scenario.phase.passed")}
     assert seen["result"]["asked"] is True and seen["result"]["closed"] == 1
     assert seen["result"]["at"].endswith("/session/1/")
+
+DEBRIEF = """const DEBRIEF = {overview: {verified: 1, steps: {passed: 0, total: 0}, help: {hints: 0}, fix: null},
+  customers: {sent: 10, served: 9, blocked: 0, unanswered: 1, other: 0, in_window: [0], blocked_actions: {}},
+  timeline: [], task_class: "detection", triage: {right: 0, items: 0, first_try: 0}, evidence: [],
+  change: {before: {paranoia: 1}, after: {paranoia: 1}, diff: [], ids: ["+alert http any any -> any any (sid:9000200;)"]},
+  cases: [], risk: []};
+"""
+
+def test_the_result_report_keeps_ending_the_session_one_click_away_and_says_what_changed_on_the_ids(client):
+    passed = status(JUDGEMENT, id="1.1", started=True, phase="passed", windows=1,
+                    completion={"state": "passed", "reasons": [], "fix": None})
+    served = DEBRIEF + serving(passed).replace(
+        'if (request.route === "/api/sessions/1/ingest/")',
+        'if (request.route === "/api/sessions/1/scenario/debrief/") return {body: DEBRIEF};\n  '
+        'if (request.route === "/api/sessions/1/ingest/")')
+    seen = open_page(client, "/blue/1/", setup=served, scenario="""
+      const hidden = (id) => browser.element(id).classList.contains('hidden');
+      await browser.click('scenario-phase');
+      for (let i = 0; i < 3; i += 1) await browser.settle();
+      const report = {open: !hidden('scenario-debrief'), end: !hidden('scenario-debrief-end'),
+                      text: browser.text('scenario-debrief-body')};
+      await browser.click('scenario-debrief-end');
+      return {report, asked: !hidden('scenario-end-confirm'), covered: !hidden('scenario-debrief')};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["report"]["open"] is True and seen["result"]["report"]["end"] is True
+    assert worded("lesson.debrief.change.ids") in seen["result"]["report"]["text"]
+    assert worded("lesson.debrief.change.none") not in seen["result"]["report"]["text"]
+    assert worded("scenario.debrief.customers.rest", 1, 0) in seen["result"]["report"]["text"]
+    assert (seen["result"]["asked"], seen["result"]["covered"]) == (True, False), (
+        "the report covered the strip, and with it the button that ends the session")
+

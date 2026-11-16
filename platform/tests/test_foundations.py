@@ -217,22 +217,26 @@ def test_a_question_is_judged_from_the_learner_s_own_website_pane_request(client
 def test_f3_reads_the_one_copy_of_a_search_the_ids_behind_the_waf_sees_and_counts_it_once(client):
     session = opened("f3")
     marker = session.browse_marker
-    searched = [browsed("/search/?q=kim2026", 200), browsed("/search/?q=lee2026", 200, request_id=2)]
+    searched = [browsed("/search/?q=kim2026", 200), browsed("/search/?q=lee2026", 200, request_id=2),
+                browsed("/posts/lee2026/", 404, request_id=3)]
     legs = [http_event(marker, f"/search/?q={word}", 200, src_ip=WAF, dest_ip=BOARD, xff=CUSTOMER)
             for word in ("kim2026", "lee2026")]
+    legs += [http_event(marker, "/posts/lee2026/", 404, src_ip=WAF, dest_ip=BOARD, xff=CUSTOMER)]
     with on_the_range(), on_map(read_slot()), patch.object(site, "kept", return_value=searched), indexed(*legs):
         step(client, session, "search")
+        step(client, session, "missing")
         said = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("site_source", WAF), ("xff", CUSTOMER), ("count", "1"))}
-        written = f"url : *lee2026* and not destination : {WAF}"
+            ("site_source", WAF), ("xff", CUSTOMER), ("count", "2"))}
+        written = "url : *lee2026* and not status : 404"
         counted = {query: step(client, session, "upstream", body={"answer": "1", "query": query}).json()
                    for query in (written, "url : *lee2026*", "")}
         wrong = {name: answer(client, session, name, given)["passed"] for name, given in (
-            ("site_source", CUSTOMER), ("xff", WAF), ("count", "2"))}
+            ("site_source", CUSTOMER), ("xff", WAF), ("count", "1"))}
         upstream_wrong = step(client, session, "upstream", body={"answer": "2", "query": written}).json()["passed"]
 
     assert said == {"site_source": True, "xff": True, "count": True}, (
-        "a count reads the newest search word, not another learner's or an older one")
+        "a count reads the newest search word, not another learner's or an older one, and counts every request "
+        "url : *word* finds, the 404 included")
     assert counted[written]["passed"] is True
     assert [(counted[query]["passed"], counted[query]["reason"]) for query in ("url : *lee2026*", "")] == [
         (False, ["lesson.logs.wrong.upstream.kql", []])] * 2, (
@@ -796,18 +800,21 @@ def test_a_quoted_wildcard_in_kql_gets_a_line_saying_the_star_is_literal_there(c
 
     assert reply["passed"] is False and reply["reason"] == ["lesson.check.wrong.kql_quoted", []]
 
-def test_the_and_not_query_that_drops_board_com_s_address_instead_of_the_waf_s_does_not_pass(client):
+def test_the_and_not_query_passes_only_when_it_drops_the_404_and_then_counts_the_search_alone(client):
     session = opened("f3")
     marker = session.browse_marker
-    legs = [http_event(marker, "/search/?q=lee2026", 200, host="cr-edge", src_ip=CUSTOMER, dest_ip=WAF, dest_port=80),
-            http_event(marker, "/search/?q=lee2026", 200, src_ip=WAF, dest_ip=BOARD, xff=CUSTOMER)]
-    with on_the_range(), on_map(read_slot()), patch.object(site, "kept", return_value=[browsed("/search/?q=lee2026", 200)]), \
-            indexed(*legs):
-        board = step(client, session, "upstream", body={"answer": "1", "query": f"url : *lee2026* and not destination : {BOARD}"}).json()
-        waf = step(client, session, "upstream", body={"answer": "1", "query": f"url : *lee2026* and not destination : {WAF}"}).json()
+    legs = [http_event(marker, "/search/?q=lee2026", 200, src_ip=WAF, dest_ip=BOARD, xff=CUSTOMER),
+            http_event(marker, "/posts/lee2026/", 404, src_ip=WAF, dest_ip=BOARD, xff=CUSTOMER)]
+    kept = [browsed("/search/?q=lee2026", 200), browsed("/posts/lee2026/", 404, request_id=2)]
+    with on_the_range(), on_map(read_slot()), patch.object(site, "kept", return_value=kept), indexed(*legs):
+        address = step(client, session, "upstream", body={"answer": "1", "query": f"url : *lee2026* and not destination : {WAF}"}).json()
+        both = step(client, session, "upstream", body={"answer": "2", "query": "url : *lee2026* and not status : 404"}).json()
+        dropped = step(client, session, "upstream", body={"answer": "1", "query": "url : *lee2026* and not status : 404"}).json()
 
-    assert (board["passed"], board["reason"]) == (False, ["lesson.logs.wrong.upstream.kql", []])
-    assert waf["passed"] is True
+    assert (address["passed"], address["reason"]) == (False, ["lesson.logs.wrong.upstream.kql", []]), (
+        "the IDS sees one leg, so an address condition removes nothing and teaches nothing")
+    assert both["passed"] is False, "the 404 the not condition dropped is not counted"
+    assert dropped["passed"] is True
 
 @pytest.mark.parametrize("lesson_id, step_id, url, status, given", [
     ("f4", "encoded", "/search/?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E", 403, "%3C"),
@@ -823,6 +830,13 @@ def test_course_2_s_devtools_answers_need_the_request_s_row_picked_in_devtools(c
 
     assert unpicked["reason"] == ["lesson.check.wrong.dev", []]
     assert picked["passed"] is True
+
+def test_the_sort_parameter_s_name_is_judged_on_the_answer_without_a_devtools_row(client):
+    session = opened("f2")
+    with patch.object(site, "kept", return_value=[browsed("/?sort=created_at", 200)]):
+        unpicked = answer(client, session, "sort", "sort", dev_request=None)
+
+    assert unpicked["passed"] is True, "the name shows in the address bar too; a right answer is not marked wrong"
 
 def test_searching_the_example_word_says_so_at_once_instead_of_waiting_silently(client):
     session = opened("f3")

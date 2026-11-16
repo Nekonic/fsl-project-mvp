@@ -1411,7 +1411,7 @@ function coach(prefix, declared) {
 
   function orderPicker(options) {
     return `<div class="flex flex-wrap gap-1.5">${options.map((option) =>
-        `<button type="button" data-act="pick" data-value="${esc(option)}" aria-pressed="false" class="order-chip btn btn-sm btn-ghost font-mono">${esc(option)}</button>`).join("")}</div>
+        `<button type="button" data-act="pick" data-value="${esc(option)}" aria-pressed="false" class="order-chip btn btn-sm btn-ghost">${esc(localized(`topology.name.${option}`, option))}</button>`).join("")}</div>
       <button type="button" data-act="order" class="self-start btn btn-sm btn-blue">${esc(t("lesson.answer.submit"))}</button>`;
   }
 
