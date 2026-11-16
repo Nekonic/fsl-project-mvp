@@ -606,7 +606,9 @@ def debrief(session) -> dict:
     steps = {step["id"] for step in declared.get("steps") or []}
     triage = state["triage"]
     waf = next((taken["waf"] for taken in reversed(session.waf_snapshots or []) if taken.get("waf")), None)
-    everything = customers.counted(session.customer_requests.all())
+    shift = session.customer_requests.filter(sent_at__lt=scenarios.at(judged[-1]["ends_at"])) if judged \
+        else session.customer_requests.all()
+    everything = customers.counted(shift)
     return {
         "scenario": declared["id"],
         "title": f"{declared['text']}.title",
@@ -627,7 +629,7 @@ def debrief(session) -> dict:
             **{key: everything[key] for key in ("sent", "served", "blocked", "unanswered", "other")},
             "in_window": [_blocked_between(session, scenarios.at(window["started_at"]), scenarios.at(window["ends_at"]))
                           for window in judged],
-            "blocked_actions": customers.availability(session, set())["blocked_actions"],
+            "blocked_actions": customers.blocked_actions(shift),
         },
         "timeline": timeline,
         "triage": _triage_tally(triage, judged[-1].get("items") if judged else None, session),

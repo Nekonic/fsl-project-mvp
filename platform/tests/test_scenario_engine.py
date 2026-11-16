@@ -510,6 +510,18 @@ def test_the_debrief_stays_closed_until_the_window_is_judged_then_shows_the_time
     assert told["customers"]["blocked"] == 2 and told["customers"]["in_window"] == [0]
     assert told["cases"] == [{"name": SQLMAP, "malicious": True, "before": "held", "after": "held"}]
 
+def test_the_debrief_counts_the_customers_up_to_the_final_check_s_end_so_it_reads_the_same_when_read_later(client):
+    session = opened()
+    run_at(session, 240)
+    window_judged(session)
+    first = client.get(f"/api/sessions/{session.pk}/scenario/debrief/").json()["customers"]
+    ended = scenarios.at(Session.objects.get(pk=session.pk).scenario_state["windows"][-1]["ends_at"])
+    customer(session, ended + timedelta(seconds=3))
+    customer(session, ended + timedelta(seconds=4), status=403)
+    later = client.get(f"/api/sessions/{session.pk}/scenario/debrief/").json()["customers"]
+
+    assert later == first, "requests sent after the final check ended until the customers stopped are not the shift"
+
 def test_the_debrief_names_an_ids_rule_change_and_no_hash_outcome_for_an_attack_that_dumps_nothing(client):
     from api.models import RuleSet
     from api.views import _posture_rules

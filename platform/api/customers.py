@@ -173,11 +173,8 @@ def alerted_markers(session) -> set[str]:
 
 def availability(session, alerted: set[str]) -> dict:
     requests = session.customer_requests.all()
+    return {**counted(requests), "alerted": len(alerted), "blocked_actions": blocked_actions(requests)}
+
+def blocked_actions(requests) -> dict:
     blocked = requests.filter(status=BLOCKED).exclude(refused_by=REFUSED_BY_APP)
-    return {
-        **counted(requests),
-        "alerted": len(alerted),
-        "blocked_actions": {
-            row["action"]: row["n"] for row in blocked.values("action").annotate(n=Count("id"))
-        },
-    }
+    return {row["action"]: row["n"] for row in blocked.values("action").annotate(n=Count("id"))}
