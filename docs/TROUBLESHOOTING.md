@@ -238,3 +238,23 @@ busy for about 10 s while the board ran `migrate` and `seed` and corp ran
   after the core quota was raised to 24. One slot took 79 s and 78 s, two at
   once 99 s, the same as on 2 vCPUs: the CPU-bound 10 s was not on the
   critical path's longest part, MySQL's start waiting on the disk.
+
+## The session map answered 500 (`KeyError: 'x'`) while a slot container was down
+
+Symptom, 2026-11-16: a full `bin/verify` on `aa60f63e` had 13 acceptance
+errors, every one `GET /api/sessions/<id>/topology/` -> 500 from
+`topology._boxed`. The verify before it, on `255c8469`, was green.
+
+Cause: `topology.captions` named a zone only by the containers running on it
+(the attacker makes it the Internet, the router the DMZ, the log server the
+management network, a database the backend). With `board-db` stopped, its
+`board-default` network held only board.com and was captioned `web`; the
+layout places one web segment, so the second was never given a position.
+The same followed for the router, the attacker or the log server being down.
+Reproduced live on slot 1 by stopping `s1-board-db` under an open board
+session: 500 before the fix, 200 after.
+
+Fix (`7152b54c`): a zone is captioned by its network first (`internet`,
+`estate`, `mgmt`, a `-default` backend) and by its members only after;
+`test_a_slot_with_any_one_container_down_still_draws_every_node_in_its_own_subnet`
+draws the slot with each container stopped in turn.
