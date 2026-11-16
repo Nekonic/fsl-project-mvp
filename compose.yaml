@@ -51,6 +51,15 @@ services:
     networks: [mgmt]
     ports:
       - "${CR_SYSLOG_PUBLISH:-127.0.0.1}:5140:5140/udp"
+    entrypoint:
+      - /usr/bin/tini
+      - --
+      - sh
+      - -c
+      - >-
+        awk '/^- key: /{kept = ($$3 ~ /^(ecs|beat|cloud|docker|host|kubernetes|process|log)$$/)} kept'
+        fields.yml > data/fields-lean.yml && exec /usr/local/bin/docker-entrypoint "$$@"
+      - collector
     command: ["--strict.perms=false", "-e"]
     volumes:
       - ./deploy/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro

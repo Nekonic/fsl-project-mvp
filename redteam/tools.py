@@ -20,6 +20,8 @@ CONCLUSIONS_KEPT = 4
 LINE_KEPT = 160
 ABORTED = re.compile(r"\[CRITICAL\][^\n]*does not exist|Traceback|user (quit|aborted)", re.IGNORECASE)
 
+SQLMAP_RUNS = "/tmp/sqlmap-runs"
+
 TOOL_IMAGE = os.environ.get("CR_TOOL_IMAGE", "cr-kali")
 
 class ToolUnavailable(RuntimeError):
@@ -103,6 +105,8 @@ def tool_argv(case: dict[str, Any], target_url: str) -> tuple[str, list[str]]:
 
     if case.get("correlation") == "marker":
         args.append(f"--headers={MARKER_HEADER}: {case['case_id']}")
+        if case["tool"] == "sqlmap":
+            args.append(f"--output-dir={SQLMAP_RUNS}/{case['case_id']}")
 
     return TOOL_IMAGE, [case["tool"], *args]
 

@@ -77,8 +77,11 @@ queue.mem.flush.timeout: 1s
 
 setup.template.name: logs-sensors
 setup.template.pattern: logs-*
+setup.template.fields: "${path.home}/data/fields-lean.yml"
+setup.template.overwrite: true
 setup.template.settings:
   index.default_pipeline: geoip
+  index.refresh_interval: 1s
 setup.ilm.enabled: false
 
 output.elasticsearch:

@@ -86,6 +86,23 @@ def test_a_small_batch_of_events_is_published_within_a_second():
     )
 
 
+def test_the_template_maps_the_ecs_and_beat_fields_alone_and_a_record_is_searchable_within_a_second():
+    import re
+    config = flattened(yaml.safe_load(FILEBEAT.read_text()))
+    compose = yaml.safe_load((FILEBEAT.parents[2] / "compose.yaml").read_text())
+    [script] = [part for part in compose["services"]["collector"]["entrypoint"] if "awk" in part]
+    kept = set(re.search(r"\^\((.*?)\)\$", script)[1].split("|"))
+
+    assert config["setup.template.fields"].endswith("/" + script.split("> ")[1].split()[0])
+    assert config["setup.template.overwrite"] is True
+    assert kept == {"ecs", "beat", "cloud", "docker", "host", "kubernetes", "process", "log"}, (
+        "filebeat's whole fields.yml mapped 7,575 fields, every module's among them; Discover asks for every "
+        "field of 500 rows and took 2.4 s for WAF records against 0.7 s with these groups alone, the same mapping "
+        "for each of the 171 fields the documents carry"
+    )
+    assert config["setup.template.settings.index.refresh_interval"] == "1s"
+
+
 def slot_rule():
     import re
     [heard] = syslog_inputs()
