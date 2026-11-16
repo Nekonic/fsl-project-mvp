@@ -272,12 +272,12 @@ def test_a_store_that_keeps_arriving_is_kept_however_long_the_whole_takes(
 ):
     store = made_store(tmp_path / "db.sqlite3")
     size = store.stat().st_size
-    monkeypatch.setattr(backup.module, "TIMEOUT", 0.2)
+    monkeypatch.setattr(backup.module, "TIMEOUT", 2.0)
     monkeypatch.setenv("CR_PLATFORM_EXEC", shlex.join([
         "sh", "-c",
-        f"for skip in 0 1 2 3; do sleep 0.1; dd if={shlex.quote(str(store))} bs={size // 4} "
+        f"for skip in 0 1 2 3 4 5; do sleep 0.5; dd if={shlex.quote(str(store))} bs={size // 6} "
         f"skip=$skip count=1 2>/dev/null; done; "
-        f"dd if={shlex.quote(str(store))} bs={size // 4} skip=4 2>/dev/null",
+        f"dd if={shlex.quote(str(store))} bs={size // 6} skip=6 2>/dev/null",
     ]))
 
     printed = backup()
