@@ -1377,6 +1377,10 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       SQLi meta-characters for CRS. Only sqlmap's noisy stock probes are caught.
       This is the intended "hard to detect" lesson case; note it when wiring
       step 7 so it is not mistaken for a coverage bug.
+- [x] 2026-11-16: with the IDS behind the WAF, stock sqlmap never reaches
+      board.com (913100 on its User-Agent blocks every request at PL1), so
+      3.1-3.3 attack with `--random-agent` and F4 and 3.4 run the WAF in
+      DetectionOnly mode; all five verified live (`docs/DECISIONS.md`).
 - [x] corp cases fire real exploits. All three corp CVEs verified live (local
       WordPress 6.6.2 build): post 1 defaced, users_can_register flipped, a new
       unauth user made administrator. The cases were non-functional as written

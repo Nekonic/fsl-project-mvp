@@ -15,6 +15,12 @@ Internet.
 
 ## Where things stand
 
+- 2026-11-16, F4 and 3.4 run the WAF in DetectionOnly mode and 3.1-3.3
+  attack with `board-sqli-orderby-sqlmap-random-agent` (`docs/DECISIONS.md`
+  "F4 and 3.4 run the WAF in DetectionOnly mode; 3.1-3.3 attack with
+  sqlmap's `--random-agent`"): stock sqlmap is blocked in full at PL1 by its
+  User-Agent; with the solution rules 3.1, 3.2 and 3.3 each passed live.
+  Suricata's alert `xff` proven live. `core_loc` 592 -> 597.
 - 2026-11-16, a session's slot runs only its own wargame (`docs/DECISIONS.md`
   "A session's slot runs only that session's wargame"): opening a session
   stops the other wargame's containers (`slot.sh play`); a reset starts both

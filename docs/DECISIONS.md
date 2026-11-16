@@ -8749,3 +8749,38 @@ client-chosen); JA4H, FoxIO's fingerprint of "the HTTP client based on each
 HTTP request" (JA4H technical details), not implemented here: Django sees the
 headers only after the WSGI server has parsed them into a dictionary, and a
 JA4H value would be as client-chosen as the hash above.
+
+## 2026-11-16 — F4 and 3.4 run the WAF in DetectionOnly mode; 3.1-3.3 attack with sqlmap's `--random-agent`
+
+With the IDS behind the WAF (the entry above "The IDS stands behind the WAF"),
+the IDS sees only what the WAF passes. Four exercises asked the IDS to catch
+attacks the WAF blocks in full at paranoia 1, so they could not be completed.
+The user ruled both kinds stay.
+
+F4 and 3.4 (XSS, every request blocked at PL1): their defenses (`xss-gap`,
+and `xss-watched` for 3.4) set the WAF posture's new `detection_only: true`,
+which `rules/crs.py` writes as `ctl:ruleEngine=DetectionOnly` on the posture's
+`SecAction` (ModSecurity's DetectionOnly: rules are processed, disruptive
+actions are not). The WAF records the request and lets it through; the IDS
+behind it must catch it. F4's text now says so; its `fired` step's
+destination is board.com's address, no longer the WAF's. Live on 2026-11-16
+(sessions 2368-2370): `<script>` and `<ScRiPt>` searches answered 200, the
+audit log still carries 949110 "Inbound Anomaly Score Exceeded (Total Score:
+20)", F4's `rule` and `ids_none` steps pass, and the learner's rule alerted
+with `dest_ip` board.com's address on the `web` segment. `core_loc` 592 -> 597.
+
+3.1-3.3 (sort-parameter sqlmap, "the attack slips past the WAF"): measured
+first with the solution rules (an `http.uri` allow-list on `sort`), all three
+failed with `board-sqli-orderby-sqlmap` undetected (sessions 2363, 2364,
+2366): sqlmap's stock User-Agent draws 913100 "Found User-Agent associated
+with security scanner" (5 points) on every request, so every request is
+blocked at PL1 and none reaches board.com. Real attackers pass
+`--random-agent`; the three scenarios now attack with
+`board-sqli-orderby-sqlmap-random-agent`. Live with the solution rules
+(sessions 2371-2373), each final check passed: about 2,350 requests blocked
+by 949110 and 8 that reached board.com and drew the IDS alert per
+random-agent case; in 3.3 the tamper case had about 2,400 blocked and 14
+alerted. The 3.1/3.2 text no longer says the WAF blocks the attack in full.
+
+The same rounds proved Suricata's alert `xff` live: an alert on slot 2 carries
+`"alert":{..."xff":"175.192.0.10"}` beside `http.xff`.
