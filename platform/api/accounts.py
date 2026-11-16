@@ -6,7 +6,9 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
+from api import views
 from api.models import Detection, Session, SignInBlock
+from api.refusals import Conflict
 
 
 READS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -83,6 +85,25 @@ def reject(request, user_id):
         return JsonResponse({"detail": "only an account waiting for approval can be rejected"}, status=409)
     user.delete()
     return JsonResponse({"id": user_id, "rejected": True})
+
+
+@require_POST
+@staff_only
+def delete(request, user_id):
+    user = get_object_or_404(get_user_model(), pk=user_id)
+    if user.pk == request.user.pk:
+        return JsonResponse({"detail": "an admin cannot delete their own account"}, status=409)
+    if user.is_staff:
+        return JsonResponse({"detail": "an admin account cannot be deleted here"}, status=409)
+    closed = []
+    for session in Session.objects.filter(owner=user, ended_at=None):
+        try:
+            views.close_session(request, session.pk)
+        except Conflict:
+            pass
+        closed.append(session.pk)
+    user.delete()
+    return JsonResponse({"id": user_id, "deleted": True, "closed_sessions": closed})
 
 
 def _shown_block(block):

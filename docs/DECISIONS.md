@@ -8829,3 +8829,17 @@ and dot-segment paths and an advanced-settings write all 403; Discover's
 data view editor cannot resolve `logs-2-*` and keeps "Use without saving"
 off. Discover in the blue console showed the session's own alert after a
 `board-sqli-search` run; staff read slot 2 from slot 1's space.
+
+## 2026-11-17 — Staff delete an approved learner; their open sessions close through the close path
+
+An answer-blind walk left an approved account (`walk23-697305`) that the
+account screen could approve or reject but never remove. `POST
+/api/users/<id>/delete/` (staff only, the approve/reject style) deletes a
+non-staff account and answers 409 for any staff account and for the caller's
+own. Before the delete it calls `close_session` for each of that learner's
+open sessions, so the slot is rebuilt and released exactly as when the
+learner closes it; deleting the user alone would leave the session open on
+the books (owner set null by `on_delete=SET_NULL`), holding its slot with no
+one to close it. Closed sessions stay with a null owner, as the foreign key
+already allowed, so scores and detections are kept. The users page shows a
+delete button on learner rows of the active table, behind a `confirm()`.

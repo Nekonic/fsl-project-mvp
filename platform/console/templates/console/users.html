@@ -27,7 +27,8 @@
         <tr>
           <th data-t="auth.username" class="pl-5"></th>
           <th data-t="users.col.role"></th>
-          <th data-t="users.col.joined" class="pr-5"></th>
+          <th data-t="users.col.joined"></th>
+          <th class="pr-5"></th>
         </tr>
       </thead>
       <tbody id="active"></tbody>
@@ -83,7 +84,9 @@
       <tr class="table-row">
         <td class="pl-5 font-semibold text-heading">${esc(user.username)}</td>
         <td>${badge(t(user.staff ? "users.role.staff" : "users.role.learner"), user.staff ? "blue" : "neutral")}</td>
-        <td class="pr-5">${esc(joined(user.joined))}</td>
+        <td>${esc(joined(user.joined))}</td>
+        <td class="pr-5 text-right">${user.staff ? "" :
+          `<button data-delete="${user.id}" data-name="${esc(user.username)}" class="btn btn-sm btn-ghost">${esc(t("users.delete"))}</button>`}</td>
       </tr>`;
   }
 
@@ -136,6 +139,15 @@
     const action = button.dataset.approve ? "approve" : "reject";
     button.disabled = true;
     const said = await post(`/api/users/${id}/${action}/`);
+    if (!said.ok) showError(t("users.failed", detail(said)));
+    await load();
+  });
+
+  field("active").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-delete]");
+    if (!button || !confirm(t("users.delete_confirm", button.dataset.name))) return;
+    button.disabled = true;
+    const said = await post(`/api/users/${button.dataset.delete}/delete/`);
     if (!said.ok) showError(t("users.failed", detail(said)));
     await load();
   });

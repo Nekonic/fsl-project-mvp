@@ -1,9 +1,12 @@
 import json
 
+from unittest.mock import patch
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
 
+from api.models import Session
 from tests.test_signin import signed_in_client
 
 pytestmark = pytest.mark.django_db
@@ -96,6 +99,54 @@ def test_a_rejected_sign_up_is_deleted_and_an_active_account_cannot_be_rejected(
     assert get_user_model().objects.get(username="admin").is_active
 
 
+def approved_learner():
+    signed_up()
+    get_user_model().objects.filter(username=LEARNER["username"]).update(is_active=True)
+    return learner_id()
+
+
+def test_the_admin_deletes_an_approved_learner_and_keeps_their_closed_sessions():
+    user_id = approved_learner()
+    played = Session.objects.create(owner_id=user_id, ended_at="2026-11-16T00:00:00Z")
+
+    answer = sent(admin(), f"/api/users/{user_id}/delete/")
+
+    assert answer.status_code == 200 and answer.json()["deleted"] is True
+    assert not get_user_model().objects.filter(pk=user_id).exists()
+    played.refresh_from_db()
+    assert played.owner is None
+
+
+def test_deleting_a_learner_closes_their_open_session_through_the_close_path():
+    user_id = approved_learner()
+    held = Session.objects.create(owner_id=user_id)
+
+    with patch("api.views.retention.prune_quietly") as close_ran:
+        answer = sent(admin(), f"/api/users/{user_id}/delete/")
+
+    held.refresh_from_db()
+    assert answer.json()["closed_sessions"] == [held.pk]
+    assert held.ended_at is not None and close_ran.called
+
+
+def test_an_admin_account_cannot_be_deleted():
+    other = get_user_model().objects.create_user("second-admin", password="range-practice-42", is_staff=True)
+
+    answer = sent(admin(), f"/api/users/{other.pk}/delete/")
+
+    assert answer.status_code == 409
+    assert get_user_model().objects.filter(pk=other.pk).exists()
+
+
+def test_an_admin_cannot_delete_their_own_account():
+    itself = get_user_model().objects.get(username="admin").pk
+
+    answer = sent(admin(), f"/api/users/{itself}/delete/")
+
+    assert answer.status_code == 409 and "own" in answer.json()["detail"]
+    assert get_user_model().objects.filter(pk=itself).exists()
+
+
 def test_the_admin_lists_accounts_and_a_learner_is_refused_every_account_route():
     signed_up()
     listed = admin().get("/api/users/").json()["users"]
@@ -106,6 +157,7 @@ def test_the_admin_lists_accounts_and_a_learner_is_refused_every_account_route()
     assert learner.get("/api/users/").status_code == 403
     assert sent(learner, f"/api/users/{learner_id()}/approve/").status_code == 403
     assert sent(learner, f"/api/users/{learner_id()}/reject/").status_code == 403
+    assert sent(learner, f"/api/users/{learner_id()}/delete/").status_code == 403
 
 
 def test_the_front_s_check_refuses_a_pending_account_even_with_a_session():

@@ -102,7 +102,7 @@
 
 모든 콘솔 페이지와 `/api/` 엔드포인트는 로그인을 요구합니다(`api/signin.py`의 `SignedInOnly`). 로그인 없이 열리는 것은 로그인 페이지 `/login/`, 회원가입 페이지 `/signup/`, `GET /api/auth/`(현재 사용자, 관리자 여부, CSRF 토큰), `POST /api/auth/login/`, `POST /api/auth/signup/`뿐입니다. 로그인하지 않은 API 요청은 401, 페이지 요청은 로그인 페이지로 갑니다. POST, PUT, DELETE는 `X-CSRFToken` 헤더가 있어야 합니다. 토큰은 쿠키가 아니라 세션에 둡니다(`CSRF_USE_SESSIONS`). 첫 시작 때 `admin` / `123456` 계정을 만듭니다(마이그레이션 0030). 에이전트도 같은 REST로 로그인합니다(`redteam/signin.py`, `CR_ADMIN_USER`, `CR_ADMIN_PASSWORD`).
 
-회원가입(`username`, `password`, `password_confirm`)은 Django `UserCreationForm`과 기본 비밀번호 검사기 넷으로 확인한 뒤 `is_active=False`, 비관리자 계정을 만들고 201 `{"pending": true}`를 돌려줍니다. 거부 사유는 `errors[].code`(Django 오류 코드)로 오고, 화면은 이 코드로 문구를 찾습니다. 승인 전 계정이 맞는 비밀번호로 로그인하면 403 `{"pending": true}`입니다. 비활성 계정은 세션이 있어도 `/auth-check/`에서 401입니다. 관리자(`is_staff`)는 `/users/`(계정 관리, 상단 링크)에서 `GET /api/users/`, `POST /api/users/<id>/approve/`, `POST /api/users/<id>/reject/`(승인 대기 계정만, 삭제)를 씁니다. 관리자가 아니면 403, 사용 중인 계정 거절은 409라서 관리자가 자기 계정을 없앨 수 없습니다.
+회원가입(`username`, `password`, `password_confirm`)은 Django `UserCreationForm`과 기본 비밀번호 검사기 넷으로 확인한 뒤 `is_active=False`, 비관리자 계정을 만들고 201 `{"pending": true}`를 돌려줍니다. 거부 사유는 `errors[].code`(Django 오류 코드)로 오고, 화면은 이 코드로 문구를 찾습니다. 승인 전 계정이 맞는 비밀번호로 로그인하면 403 `{"pending": true}`입니다. 비활성 계정은 세션이 있어도 `/auth-check/`에서 401입니다. 관리자(`is_staff`)는 `/users/`(계정 관리, 상단 링크)에서 `GET /api/users/`, `POST /api/users/<id>/approve/`, `POST /api/users/<id>/reject/`(승인 대기 계정만, 삭제), `POST /api/users/<id>/delete/`(승인된 학습자 계정 삭제)를 씁니다. 삭제는 그 학습자의 열린 세션을 세션 종료 경로(`close_session`)로 먼저 닫아 슬롯을 재구축에 돌려준 뒤 계정을 지우고, 지난 세션은 소유자 없이 남습니다. 관리자가 아니면 403, 사용 중인 계정 거절과 관리자 계정·자기 계정 삭제는 409라서 관리자가 자기 계정을 없앨 수 없습니다.
 
 남용 제한은 nginx와 Django에 있습니다.
 
