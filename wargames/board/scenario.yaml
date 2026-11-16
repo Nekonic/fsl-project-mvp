@@ -191,7 +191,7 @@ scenarios:
     defense: broken-rule
     traffic: {profile: plain, rate: 2}
     attacks:
-      - {at: 120, case: board-sqli-orderby-sqlmap, origin: ru}
+      - {at: 120, case: board-sqli-orderby-sqlmap-random-agent, origin: ru}
     completion: {detected_by: suricata}
     cards:
       - {id: detect, when: start}
@@ -221,7 +221,7 @@ scenarios:
     defense: ids
     traffic: {profile: plain, rate: 2}
     attacks:
-      - {at: 120, case: board-sqli-orderby-sqlmap, origin: ru}
+      - {at: 120, case: board-sqli-orderby-sqlmap-random-agent, origin: ru}
     completion: {detected_by: suricata}
     cards:
       - {id: missed, when: alert}
@@ -239,7 +239,7 @@ scenarios:
     defense: spelled
     traffic: {profile: plain, rate: 2}
     attacks:
-      - {at: 120, case: board-sqli-orderby-sqlmap, origin: ru}
+      - {at: 120, case: board-sqli-orderby-sqlmap-random-agent, origin: ru}
       - {at: 300, case: board-sqli-orderby-sqlmap-tamper, origin: ru}
     completion: {detected_by: suricata}
     cards:

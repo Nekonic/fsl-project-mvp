@@ -18,6 +18,7 @@ from tests.test_scenario_engine import (COURSE, DUMPED, HELD, SQLMAP, Stack, ale
                                         opened, window_judged)
 
 pytestmark = pytest.mark.django_db
+PAST_THE_WAF = "board-sqli-orderby-sqlmap-random-agent"
 
 RULES = Path(__file__).resolve().parents[2] / "deploy" / "suricata" / "rules"
 TRAFFIC = traffic.checked(wargames.yaml.safe_load((Path(__file__).resolve().parents[2] / "wargames" / "board" /
@@ -77,7 +78,7 @@ def test_the_spelled_rule_catches_the_stock_run_and_misses_every_tamper_request(
     assert buffer == "http.uri" and wargames.defense("board", one["defense"])["suricata"] == "spaced-sort.rules"
     assert all(pattern.search(uri) for uri in STOCK)
     assert not any(pattern.search(uri) for uri in TAMPER + [SORTED])
-    assert {attack["case"] for attack in one["attacks"]} == {SQLMAP, "board-sqli-orderby-sqlmap-tamper"}
+    assert {attack["case"] for attack in one["attacks"]} == {PAST_THE_WAF, "board-sqli-orderby-sqlmap-tamper"}
 
 @pytest.mark.parametrize("waf, refused", [
     ({"paranoia": 3, "exclusions": [], "thresholds": {"inbound": 5, "outbound": 4}}, None),
@@ -174,7 +175,7 @@ def detection_window(session, *, alerted_by, customer_alert=False):
 
 @pytest.mark.parametrize("alerted_by, customer_alert, refused", [
     ("suricata", False, None),
-    ("modsecurity", False, ["scenario.fail.undetected", [SQLMAP]]),
+    ("modsecurity", False, ["scenario.fail.undetected", [PAST_THE_WAF]]),
     ("suricata", True, ["scenario.fail.noisy", [1]]),
 ], ids=["ids-saw-it", "only-the-waf-saw-it", "a-customer-drew-an-ids-alert"])
 def test_a_detection_window_passes_only_when_the_ids_sees_every_attack_and_no_customer(
