@@ -22,8 +22,11 @@ defense:
     waf: {paranoia: 1}
     suricata: no-uri-sqli.rules
   xss-gap:
-    waf: {paranoia: 1}
+    waf: {paranoia: 1, detection_only: true}
     suricata: no-xss.rules
+  xss-watched:
+    waf: {paranoia: 1, detection_only: true}
+    suricata: local.rules
   overbroad:
     waf:
       paranoia: 1
@@ -251,7 +254,7 @@ scenarios:
     minutes: 15
     window_minutes: 3
     briefing: {situation: scenario.body.situation, goal: scenario.body.goal, measured_by: scenario.body.measured_by}
-    defense: full
+    defense: xss-watched
     traffic: {profile: plain, rate: 2}
     attacks:
       - {at: 120, case: board-xss-img-onerror-in-comment, origin: ru}

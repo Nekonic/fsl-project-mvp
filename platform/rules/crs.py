@@ -48,8 +48,11 @@ def checked(tuning) -> dict:
             type(score) is int and 1 <= score <= HIGHEST_THRESHOLD for score in thresholds.values()):
         raise TuningRefused(f'"thresholds" maps inbound and outbound to an anomaly score from 1 to '
                             f'{HIGHEST_THRESHOLD}, got {thresholds!r}')
+    if type(tuning.get("detection_only", False)) is not bool:
+        raise TuningRefused(f'"detection_only" is true or false, got {tuning["detection_only"]!r}')
     return {"paranoia": paranoia, "exclusions": [_exclusion(entry) for entry in exclusions],
-            **({"thresholds": thresholds} if thresholds else {})}
+            **({"thresholds": thresholds} if thresholds else {}),
+            **({"detection_only": True} if tuning.get("detection_only") else {})}
 
 def _exclusion(entry) -> dict:
     entry = entry if isinstance(entry, dict) else {}
@@ -70,7 +73,8 @@ def rendered(tuning: dict) -> str:
         f'SecAction "id:{FIRST_ID},phase:1,pass,nolog,'
         f'setvar:tx.blocking_paranoia_level={level},setvar:tx.detection_paranoia_level={level}'
         + "".join(f",setvar:tx.{way}_anomaly_score_threshold={score}"
-                  for way, score in sorted(tuning.get("thresholds", {}).items())) + '"'
+                  for way, score in sorted(tuning.get("thresholds", {}).items()))
+        + (",ctl:ruleEngine=DetectionOnly" if tuning.get("detection_only") else "") + '"'
     ]
     for offset, entry in enumerate(tuning["exclusions"], start=1):
         control = (f"ruleRemoveTargetByTag={entry['tag']};{entry['target']}" if entry.get("tag")
@@ -96,7 +100,8 @@ def parsed(text: str) -> dict:
                               | {"path": path.group(1) if path else ""})
     thresholds = {way: int(score) for way, score in THRESHOLD.findall("\n".join(lines))}
     return {"paranoia": int(level.group(1)) if level else None, "exclusions": exclusions,
-            **({"thresholds": thresholds} if thresholds else {})}
+            **({"thresholds": thresholds} if thresholds else {}),
+            **({"detection_only": True} if "ctl:ruleEngine=DetectionOnly" in "\n".join(lines) else {})}
 
 def apply(tuning, gateway, layout: Layout = Layout()) -> dict:
     tuning = checked(tuning)

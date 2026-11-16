@@ -141,14 +141,18 @@ EVERY_RULE_OFF_FOR_SORT = {"paranoia": 1, "exclusions": [{"tag": "OWASP_CRS", "t
      '"id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=920272;REQUEST_BODY"'),
     (SQLI_FAMILY_OFF_FOR_SORT, 1,
      'SecAction "id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetByTag=attack-sqli;ARGS:sort"'),
-], ids=["paranoia", "thresholds", "target-under-path", "rule-everywhere", "raw-uri", "whole-body", "tag-everywhere"])
+    ({"paranoia": 1, "detection_only": True}, 0,
+     'SecAction "id:10000,phase:1,pass,nolog,'
+     'setvar:tx.blocking_paranoia_level=1,setvar:tx.detection_paranoia_level=1,ctl:ruleEngine=DetectionOnly"'),
+], ids=["paranoia", "thresholds", "target-under-path", "rule-everywhere", "raw-uri", "whole-body", "tag-everywhere",
+        "detection-only"])
 def test_a_tuning_is_written_as_the_modsecurity_directive_crs_reads(tuning, line, directive):
     assert crs.rendered(crs.checked(tuning)).splitlines()[line] == directive
 
 @pytest.mark.parametrize("tuning", [
     KOREAN_SEARCH_AT_PL3, BODY_UNDER_COMMENTS, {"paranoia": 2, "exclusions": [{"rule_id": 949110}]},
-    SQLI_FAMILY_OFF_FOR_SORT, EVERY_RULE_OFF_FOR_SORT,
-], ids=["raw-uri-and-thresholds", "whole-body", "no-thresholds", "tag", "every-crs-rule-tag"])
+    SQLI_FAMILY_OFF_FOR_SORT, EVERY_RULE_OFF_FOR_SORT, {"paranoia": 1, "detection_only": True},
+], ids=["raw-uri-and-thresholds", "whole-body", "no-thresholds", "tag", "every-crs-rule-tag", "detection-only"])
 def test_a_written_tuning_reads_back_as_written(tuning):
     checked = crs.checked(tuning)
 
