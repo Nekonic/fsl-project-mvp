@@ -73,6 +73,7 @@ class Customers:
         self.taken = 0
         self.jars = {}
         self.pages = {}
+        self.turns = {}
         self.workers = []
         self.out = open(records_path, "a+", encoding="ascii")
         self.out.seek(0, os.SEEK_END)
@@ -129,7 +130,10 @@ class Customers:
                 plan = self.plan
                 flow = plan["flows"][self.taken % len(plan["flows"])]
                 self.taken += 1
-            self.perform(plan, flow)
+                turn = self.turns.setdefault(flow["user"], threading.Lock())
+            with turn:
+                if not self.stopping.is_set():
+                    self.perform(plan, flow)
 
     def perform(self, plan, flow):
         answer = None

@@ -302,3 +302,53 @@ def test_the_board_s_csrf_refusal_in_the_customer_s_language_is_the_app_s_not_th
 
     refused = [record for record in records if record["method"] == "POST"]
     assert refused and {(record["status"], record["refused_by"]) for record in refused} == {(403, "app")}
+
+class RotatingBoard(Board):
+    issued = 0
+    lock = threading.Lock()
+
+    def _fresh(self):
+        with RotatingBoard.lock:
+            RotatingBoard.issued += 1
+            return f"T{RotatingBoard.issued}"
+
+    def do_GET(self):
+        self._note()
+        held = self._cookies().get("csrftoken")
+        token = held or self._fresh()
+        time.sleep(0.05)
+        self._answer(200, f'<input type="hidden" name="csrfmiddlewaretoken" value="{token}">'.encode(),
+                     [] if held else [("Set-Cookie", f"csrftoken={token}; Path=/")])
+
+    def do_POST(self):
+        self._note()
+        form = self._form()
+        held = self._cookies().get("csrftoken")
+        if not held or form.get("csrfmiddlewaretoken") != [held]:
+            return self._answer(403, b"<h1>Forbidden</h1><p>CSRF verification failed. Request aborted.</p>")
+        if self.path == "/accounts/login/":
+            return self._answer(302, headers=[("Location", "/"), ("Set-Cookie", f"csrftoken={self._fresh()}; Path=/"),
+                                              ("Set-Cookie", "sessionid=S1; Path=/")])
+        return self._answer(302, headers=[("Location", self.path.removesuffix("comments/"))])
+
+def test_one_customer_s_flows_take_turns_so_a_sign_in_that_rotates_the_csrf_token_never_breaks_another_form(tmp_path):
+    RotatingBoard.seen, RotatingBoard.issued = [], 0
+    server = ThreadingHTTPServer(("127.0.0.1", 0), RotatingBoard)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    member = {"id": "u01", "origin": "kr", "bind": "127.0.0.1", "target": f"http://127.0.0.1:{server.server_address[1]}",
+              "agent": "Mozilla/5.0", "language": "ko-KR", "account": {"username": "jiwoo", "password": "jiwoo1234"}}
+    rng = random.Random("1")
+    flows = [{"user": 0, "action": "login", "steps": traffic.steps(mix(), "login", member, rng)},
+             {"user": 0, "action": "comment", "steps": traffic.steps(mix(), "comment", member, rng)}]
+    plan = {"host": "board.com", "rate": 40, "profile": "community", "users": [member], "flows": flows}
+
+    try:
+        records = _run(tmp_path, plan, lambda: sum(1 for r in RotatingBoard.seen if r["method"] == "POST") >= 30)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    posted = [record for record in records if record["method"] == "POST"]
+    assert len(posted) >= 30
+    assert [record for record in posted if record["status"] == 403] == [], (
+        "Django rotates the CSRF token at sign-in, so a form fetched before another flow's sign-in is refused")
