@@ -200,13 +200,19 @@ function referenceHtml(id, titled = true) {
     ${id === "addresses" ? '<table data-addresses class="w-full text-[12px]"><tbody></tbody></table>' : ""}`;
 }
 
+function addressHolder(one) {
+  const key = one.kind === "sensor" ? "topology.sensor" : `topology.name.${one.host}`;
+  const shown = t(key);
+  return shown === key ? one.host : shown;
+}
+
 async function addressesFill() {
   const tables = Array.from(document.querySelectorAll("[data-addresses]"));
   if (!tables.length) return;
   const read = await api(lessonPath("lesson/addresses/"));
   const listed = read.ok && read.body && Array.isArray(read.body.addresses) ? read.body.addresses : [];
   const rows = listed.length ? listed.map((one) =>
-    `<tr class="border-t border-line"><td class="py-1 pr-2 font-mono text-heading">${esc(one.host)}</td><td class="py-1 pr-2 text-muted">${esc(t(`topology.zone.${one.zone}`))}</td><td class="py-1 font-mono text-heading">${esc(one.address)}</td></tr>`).join("")
+    `<tr class="border-t border-line"><td class="py-1 pr-2 font-mono text-heading">${esc(addressHolder(one))}</td><td class="py-1 pr-2 text-muted">${esc(t(`topology.zone.${one.zone}`, one.owner || ""))}</td><td class="py-1 font-mono text-heading">${esc(one.more ? t("topology.address.more", one.address, one.more) : one.address)}</td></tr>`).join("")
     : `<tr><td class="py-1 text-muted">${esc(t("lesson.ref.addresses.none"))}</td></tr>`;
   tables.forEach((table) => { table.querySelector("tbody").innerHTML = rows; });
 }

@@ -43,7 +43,7 @@ function captioned(zone) {
 }
 
 function named(node) {
-  if (node.kind === "address") return node.text;
+  if (node.kind === "address") return node.more ? t("topology.address.more", node.text, node.more) : node.text;
   const key = node.kind === "sensor" ? "topology.sensor" : `topology.name.${node.name}`;
   const shown = t(key);
   return shown === key ? node.name || "" : shown;
