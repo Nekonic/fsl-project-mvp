@@ -354,3 +354,47 @@ keeps the old mapping until it rolls over.
 - Closing a session took 11.4 s (F5 lesson) and 20.7 s (3.3 scenario).
 - A Kali step's check reads every record of the window and took 0.7-9 s per
   press during a 2,000-request run.
+
+## Answer-blind walk round 24: a slow Kali check, two customer counts, 4xx from the board
+
+### A finished sqlmap run took about 20 s to pass its check
+
+Symptom, 2026-11-17: after sqlmap's `[*] ending @` line the F5 check passed
+18.8 and 19.3 s later, and a press in between was counted as a wrong try
+("틀린 뒤 통과 3개" for lesson 2).
+
+How it was measured: the same command from a browser on session 2494, polled
+every 2 s: the terminal showed the end 66.9 s after Enter and the step passed
+at 89.0 s, 22 s later, without a press.
+
+Cause: the server records a run only when its newest request is
+`RUN_SETTLED` (15 s) old, because sqlmap's time-based tests leave gaps of
+several seconds; the console polled every 5 s. Every non-passing press of a
+Kali check added to the step's `tries`.
+
+Fix: once the terminal shows the step's end line the console checks at once
+and then every second with `ended: true`, and the server waits
+`RUN_ENDED_SETTLED` (3 s) for such a check; a Kali check that has no recorded
+run yet is never a wrong try.
+
+### The console's report said 729 customer requests, the result page 737
+
+Session 2490 (3.1): the final check was judged at 20:14:02, the customers were
+stopped at 20:14:13, and 7 requests were sent after the judgment. The report
+the console read at the judgment counted what had been pulled by then; the
+result page read later counted everything. The debrief now counts requests
+sent before the end of the last final check.
+
+### "4xx-5xx responses not from the WAF" in 3.2 and 3.3
+
+The rows (platform DB): 3.2, two `POST /posts/<n>/comments/` and 3.3, one
+`POST /accounts/login/`, all customer u01, status 403, `refused_by: app` (the
+board's CSRF refusal). u01 signs in and comments; the generator ran several
+flows of one customer at once on one cookie jar, and Django rotates the CSRF
+token at sign-in ("For security reasons, CSRF tokens are rotated each time a
+user logs in", Django 5.2 reference, "Cross Site Request Forgery
+protection", "Why might a user encounter a CSRF validation failure after
+logging in?"), so a form token fetched by one flow went stale when another
+flow of the same customer signed in. Fix: a customer's flows take turns
+(`Customers.turns`); a test board that rotates the token at sign-in refused
+none of 30 posts with the fix and some without it.

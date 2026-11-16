@@ -583,6 +583,7 @@ nginx는 `</body>` 앞에 스크립트를 넣습니다.
 - 이 요청의 경보도 다른 경보처럼 수집됨. 학습자는 Kibana와 `/detections/`에서 볼 수 있음
 - `/score/`에서는 이 비밀값이 붙은 탐지 기록을 뺌. 재실행(`views.REPLAY_MARKS`)을 빼는 방식과 같음
 - 브라우징은 케이스가 아님. 탐지 결과에 들어가지 않고, 출처를 알 수 없는 경보로도 치지 않음
+- 예외: 레슨 단계의 확인(`sent`, `answer`, `choice`, `rules`의 `match`, `replay`의 `attack.sent`)에 `case:`가 있으면, 그 단계를 통과할 때 단계에 도달한 뒤 그 패턴에 맞게 보낸 요청을 그 케이스의 공격 하나로 기록(`views._record_sent`, `meta.site`에 단계 id, `meta.sent`에 요청 시각과 URL). 같은 URL이고 요청 시각 ±5초 안의 브라우징 탐지 기록은 `/score/`에서 그 케이스의 것으로 셈(`views._sent_by_site`). F4의 XSS 단계 다섯 곳이 `board-xss-script-tag-in-search`를 씀
 - 손으로 보낸 `X-Request-ID: browse`는 알 수 없는 마커로 점수에 들어감
 - `POST /api/attacker/label/`은 `browse`로 시작하는 label을 거부
 - API에는 비밀값이 나오지 않음. `/detections/`, `/api/detections/<id>/`(`raw` 포함), 네트워크 패널에는 그 자리에 `browse`가 나옴
@@ -948,7 +949,8 @@ check 종류별 통과 조건:
 - `of: rule`(`wargames.ANSWERS_OF`): 학습자 자신의 요청이면 요청의 `path`와 `marker: browse`, Kali 단계 실행이면 `marker: step:<id>`를 받음. 룰 `family`로 범위를 좁힐 수 있음
 - `of: rule` 판정: 최근 600초를 수집해 그 요청이나 실행의 ModSecurity 탐지 기록을 모음. CRS 합계 룰(id가 949, 959, 980으로 시작)을 뺀 `ruleId`를 모두 허용 값으로 인정(`lesson.rules_named`). 기록이 없으면 사유 `lesson.check.unrecorded`
 - `of: rule_matched`(`rule: <id>`): 같은 탐지 기록에서 그 룰 하나만 보고 `present`나 `absent`를 허용 값으로 정함. 기록된 실행에 탐지가 하나도 없으면 `absent`
-- 기록된 Kali 실행의 탐지 기록이 세션에 이미 있으면 다시 수집하지 않음. 실행은 로그가 `RUN_SETTLED` 동안 조용해진 뒤에 기록하고, 기록 시점의 수집이 이미 그 로그를 읽었음
+- 기록된 Kali 실행의 탐지 기록이 세션에 이미 있으면 다시 수집하지 않음. 실행은 로그가 `RUN_SETTLED`(15초) 동안 조용해진 뒤에 기록하고, 기록 시점의 수집이 이미 그 로그를 읽었음. 터미널에 그 단계 명령의 종료 줄(`done`)이 보이면 콘솔이 바로, 그 뒤 1초마다 `ended: true`로 확인하고 서버는 `RUN_ENDED_SETTLED`(3초)만 기다림
+- `kali` 단계는 기록된 실행이 없어 통과하지 못한 확인을 틀린 시도로 세지 않음
 
 `rules`: 센서의 룰 파일(`GET /api/rules/`)에 방어 설정의 룰 파일에 없는 sid나 내용이 바뀐 sid가 생기면 통과(`lesson.added_rules`, `disable.sids`). 응답에 `added`가 붙습니다.
 
@@ -1389,7 +1391,7 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 
 - 계정을 읽지 못해도 세션은 스냅숏 없이 생성됨. 이 세션에서 `POST /api/sessions/<id>/loot/`를 호출하면 409
 - 이후 이 세션 때문에 board를 다시 읽지 않음. 슬롯 준비 점검의 `ground_truth`는 세션이 잡지 않은 슬롯에서만 board를 읽음
-- `GET /api/wargames/<id>/objectives/`: `objectives.yaml`의 등급 목록
+- `GET /api/wargames/<id>/objectives/`: `objectives.yaml`의 등급 목록. `?scenario=<id>`를 붙이면 그 시나리오가 노리는 등급만(`wargames.at_stake`). `loot_verified` 워게임에서는 시나리오의 공격 중 하나라도 계정을 덤프(`--dump`)할 때만 전체 등급, 아니면 빈 목록(3.1, 3.2, 3.4). 결과 화면은 이 목록에 대상이 실제로 잃은 등급을 더해 보여 줌
 - `GET /api/sessions/<id>/objectives/`: 저장된 행
 - `POST /api/sessions/<id>/objectives/`: 관찰 수행. `loot_verified` 워게임에서는 아무 동작도 하지 않음
 
@@ -1502,7 +1504,7 @@ board 세션에는 고객을 붙일 수 있습니다. 세션 내내 글을 둘�
 - 요청마다 JSON 한 줄을 `records.jsonl`에 기록
 - 계획 파일이 바뀌면 다시 읽음. 파일이 삭제되거나 SIGTERM을 받으면 종료
 - board 자체의 CSRF 거부(`refused_by: "app"`, 차단으로 세지 않음)는 영어 문구와 Django 실패 페이지의 `<span>(403)</span></h1>`로 식별. board는 고객의 언어로 응답하므로 한국어 고객에게는 거부 메시지도 한국어
-- 이런 거부는 같은 페르소나의 두 흐름이 로그인 시점의 토큰 교체와 경합할 때 생김
+- 한 페르소나의 흐름은 차례로 돎(`Customers.turns`). Django는 로그인할 때 CSRF 토큰을 바꾸므로, 같은 페르소나의 다른 흐름이 받아 둔 폼 토큰은 그 순간 무효가 되어 board가 403으로 거부했음(라운드 24: 3.2 댓글 2건, 3.3 로그인 1건)
 
 생성기는 슬롯의 Kali 컨테이너에서 시스템 계정 `cr-users`로 돕니다.
 
@@ -1662,7 +1664,7 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 - `change`: 선언된 방어 설정과 마지막 WAF 스냅숏의 비교. 추가·삭제된 예외 규칙, 양쪽 수준, 그 방어 설정으로 `crs.rendered`가 만드는 내용과 예외 파일의 줄 단위 diff
 - `cases`: 예정된 케이스별로 판정된 구간 이전과 구간 안의 결과(held 또는 leaked)
 - `risk`: 조치 유형에 따라 정해지는 문자열 키
-- `customers`
+- `customers`: 마지막 최종 점검이 끝난 시각까지 보낸 고객 요청의 집계. 점검이 끝난 뒤 고객 트래픽을 멈추기까지 몇 초 더 간 요청은 세지 않아, 콘솔에서 읽어도 닫힌 세션에서 읽어도 같은 수
 - 공격 `timeline`
 - `triage`
 - `at`: 에이전트용. 시작 시각과 마지막 판정 시각

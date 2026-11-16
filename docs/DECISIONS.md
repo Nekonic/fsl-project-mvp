@@ -8843,3 +8843,38 @@ the books (owner set null by `on_delete=SET_NULL`), holding its slot with no
 one to close it. Closed sessions stay with a null owner, as the foreign key
 already allowed, so scores and detections are kept. The users page shows a
 delete button on learner rows of the active table, behind a `confirm()`.
+
+## 2026-11-17 — Answer-blind walk round 24: the learner's own XSS is a case, a scenario lists the objectives its attacks can take, 3.3's variant runs before the check
+
+- **The XSS a learner sends from the website pane is an attack case.** The
+  course 2 result listed four sqlmap runs and none of lesson F4's XSS requests,
+  though the learner's rule 9100001 had alerted on them: browsing carries the
+  session's browse marker and `/score/` drops it whole, so a learner's
+  deliberate attack and an ordinary page view looked alike. A lesson check
+  that names `case:` (F4's probe, upper, write, slipped and replay steps,
+  `board-xss-script-tag-in-search`) now records, when the step passes, one
+  case of the requests its pattern matched since the step was reached, with
+  each request's time and URL in `meta.sent`. In `/score/` a browse-marker
+  detection whose URL is one of those requests and whose time is within 5 s
+  of it counts for that case; every other browsing detection is still left
+  out. The case is judged like any other: TP if any detector alerted,
+  `corroborated` against the case's `expect` ("XSS"). Rejected: one case per
+  lesson (a probe the IDS missed and a replay it caught are two decisions),
+  and a fresh marker per request (the proxy cannot tell an attack from a page
+  view; the lesson's own pattern can).
+- **A scenario lists the objectives its attacks can take.** 3.4 (comment XSS)
+  showed the three account objectives as "지킴". The board's objectives are
+  its account hashes, and only an attack that dumps them (`--dump`, the same
+  test the debrief's `_taking_the_secret` already uses) can take them, so
+  `GET /api/wargames/<id>/objectives/?scenario=` lists the tiers only when one
+  of the scenario's attacks dumps (3.3, 1.x, 2.x, 4.1) and none for 3.1, 3.2
+  and 3.4. Crediting is unchanged: the target's ground truth still decides,
+  and a tier the target lost is listed and counted whatever the scenario
+  staked. No new declaration was added to `scenario.yaml`; the case file
+  already says what each attack does.
+- **3.3's variant runs before a final check started at three minutes.** The
+  brief says a second attacker is sending a differently shaped request; the
+  walk started the check at 3:20 and the tamper run, due at 300 s, first ran
+  inside the check. The plain run is now due at 45 s and the variant at
+  120 s (each about 50 s), and the final check, which re-sends every case
+  not already inside it, sends both again.
