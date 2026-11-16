@@ -20,10 +20,11 @@ from django.conf import settings
 from django.core.exceptions import BadRequest
 from django.db import IntegrityError, connection, transaction
 from django.db.models import Count, F, Max, Q
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 import attacker
@@ -1846,6 +1847,28 @@ def _session_logs(session):
 def _session_view_ready(session, index, again=False):
     drawn = maps.learner(session.scenario)
     return kibana.session_view_ready(index, drawn.roles.get("gateway", ""), again=again)
+
+def _kibana_spaces(user):
+    if user.is_staff:
+        return None
+    opened = (_session_index(session) for session in Session.objects.filter(owner=user, ended_at=None))
+    return {kibana.session_view_id(index): index for index in opened if index}
+
+@csrf_exempt
+def kibana_gate(request):
+    uri = request.headers.get("X-Kibana-Uri", "")
+    refused = kibana.refusal(request.method, uri, request.body, _kibana_spaces(request.user))
+    if refused:
+        return JsonResponse({"statusCode": 403, "error": "Forbidden", "message": refused}, status=403)
+    try:
+        status, headers, body = kibana.forward(request.method, uri, request.headers, request.body)
+    except (OSError, ValueError) as exc:
+        return JsonResponse({"statusCode": 502, "error": "Bad Gateway", "message": f"Kibana did not answer: {exc}"},
+                            status=502)
+    answer = HttpResponse(body, status=status)
+    for name, value in headers:
+        answer[name] = value
+    return answer
 
 def _discover(session, narrowed=None, everything=False, since=None, until=None):
     index = _session_index(session)

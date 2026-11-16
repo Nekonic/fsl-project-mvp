@@ -21,7 +21,7 @@ SETTINGS = {
 }
 SPACE_SETTINGS = {
     "defaultRoute": f"/app/discover#/view/{SESSION_SEARCH}", "metaFields": ["_source"], "dateFormat:tz": "Asia/Seoul",
-    "enableESQL": False, "defaultColumns": list(SESSION_COLUMNS),
+    "enableESQL": False, "defaultColumns": list(SESSION_COLUMNS), "bfetch:disable": True,
 }
 SPACE_FEATURES_OFF = (
     "enterpriseSearch", "dashboard", "canvas", "maps", "ml", "logs", "visualize", "infrastructure", "apm", "uptime",
@@ -54,6 +54,29 @@ NOT_READY = (502, 503, 504)
 PAUSE = 5
 VIEW_RETRY = 10
 VIEWS = {}
+GATED = re.compile(r"/kibana/s/(?P<space>[a-z0-9-]+)/(?P<route>(?:api|internal)(?:/[A-Za-z0-9_=*-]+)+)")
+DISCOVER_READS = {
+    "GET": frozenset({
+        "api/banners/info", "api/licensing/info", "api/saved_objects_tagging/tags",
+        "api/index_patterns/has_user_index_pattern", "internal/data_views/has_data_views",
+        "internal/spaces/_active_space", "internal/telemetry/config",
+        "internal/kibana/settings", "internal/security/me", "internal/security/session",
+        "internal/security/user_profile", "internal/security/security_checkup/state",
+    }),
+    "POST": frozenset({
+        "api/core/capabilities", "api/ui_counters/_report", "internal/licensing/feature_usage/register",
+        "api/content_management/rpc/get", "api/content_management/rpc/search", "api/content_management/rpc/mSearch",
+    }),
+}
+PATTERN_IN_QUERY = frozenset({("GET", "internal/data_views/fields"), ("POST", "internal/data_views/_fields_for_wildcard")})
+SUGGESTIONS = re.compile(r"internal/kibana/suggestions/values/(?P<index>[a-z0-9*-]+)")
+SEARCH = re.compile(r"internal/search/ese(?:/(?P<id>[A-Za-z0-9_=-]+))?")
+QUERY_PAIR = re.compile(r"(?P<name>[A-Za-z_]+)=(?P<value>[^&]*)")
+REACHES_PAST_THE_INDEX = frozenset({"index", "_index", "indices", "namespace", "namespaces"})
+FORWARDED_HEADERS = frozenset({"content-type", "accept", "elastic-api-version"})
+FORWARDED_PREFIXES = ("kbn-", "x-elastic-", "x-kbn-")
+ANSWER_HEADERS = ("Content-Type", "elastic-api-version", "kbn-license-sig", "kbn-name", "Cache-Control")
+GATE_TIMEOUT = 120
 
 
 class Refused(Exception):
@@ -343,6 +366,84 @@ def session_view_ready(pattern, waf, send=None, now=time.monotonic, again=False)
         made = ensure_session_view(pattern, waf, send) is not None
         VIEWS[pattern] = (made, now())
     return made
+
+
+def _reaches_past_the_index(given):
+    if isinstance(given, dict):
+        named = REACHES_PAST_THE_INDEX & set(given)
+        if named:
+            return f"the request names {sorted(named)[0]!r}, which reads outside the session's indices"
+        given = list(given.values())
+    if isinstance(given, list):
+        return next((found for found in map(_reaches_past_the_index, given) if found), None)
+    return None
+
+
+def _ours(index, pattern):
+    return isinstance(index, str) and (pattern is None or index == pattern)
+
+
+def _query_pairs(query):
+    pairs = [QUERY_PAIR.fullmatch(part) for part in query.split("&") if part]
+    return None if not all(pairs) else [(pair["name"], pair["value"]) for pair in pairs]
+
+
+def _search_refusal(method, found, given, body, pattern):
+    if method == "DELETE":
+        return None if found["id"] and not body else "a search is cancelled by its id alone"
+    params = given.get("params") if isinstance(given, dict) else None
+    if not isinstance(params, dict) or not _ours(params.get("index"), pattern):
+        return f"a search here reads {pattern or 'one index pattern'} alone"
+    return _reaches_past_the_index([{key: value for key, value in given.items() if key != "params"},
+                                    {key: value for key, value in params.items() if key != "index"}])
+
+
+def refusal(method, uri, body, patterns):
+    path, _, query = uri.partition("?")
+    asked = GATED.fullmatch(path)
+    if not asked:
+        return f"{path} is not a call Discover makes"
+    space, route = asked["space"], asked["route"]
+    if patterns is not None and space not in patterns:
+        return f"the space {space} is not the space of a session you have open"
+    pattern = None if patterns is None else patterns[space]
+    pairs = _query_pairs(query)
+    if pairs is None or REACHES_PAST_THE_INDEX & {name for name, _ in pairs}:
+        return "the query string names something outside the session's indices"
+    try:
+        given = json.loads(body) if body else None
+    except ValueError:
+        return "the body is not JSON"
+    if (method, route) in PATTERN_IN_QUERY:
+        named = [value for name, value in pairs if name == "pattern"]
+        if len(named) != 1 or not _ours(named[0], pattern):
+            return f"fields are listed for {pattern or 'one index pattern'} alone"
+        return _reaches_past_the_index(given)
+    found = SUGGESTIONS.fullmatch(route)
+    if method == "POST" and found:
+        if not _ours(found["index"], pattern):
+            return f"values are suggested from {pattern} alone"
+        return _reaches_past_the_index(given)
+    found = SEARCH.fullmatch(route)
+    if method in ("POST", "DELETE") and found:
+        return _search_refusal(method, found, given, body, pattern)
+    if route in DISCOVER_READS.get(method, ()):
+        return _reaches_past_the_index(given)
+    return f"{method} {route} is not a call Discover makes"
+
+
+def forward(method, uri, headers, body, send=urllib.request.urlopen):
+    origin = "{0.scheme}://{0.netloc}".format(urllib.parse.urlsplit(URL))
+    sent = {name: value for name, value in headers.items()
+            if name.lower() in FORWARDED_HEADERS or name.lower().startswith(FORWARDED_PREFIXES)}
+    request = urllib.request.Request(origin + uri, data=body or None, method=method, headers=sent)
+    try:
+        answer = send(request, timeout=GATE_TIMEOUT)
+    except urllib.error.HTTPError as exc:
+        answer = exc
+    with answer:
+        kept = [(name, answer.headers[name]) for name in ANSWER_HEADERS if answer.headers.get(name)]
+        return answer.getcode(), kept, answer.read()
 
 
 def main():
