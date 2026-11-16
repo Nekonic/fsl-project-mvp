@@ -8745,5 +8745,7 @@ counts failures per client instead.
 
 Not chosen: locking the account after N failures (the abuse this replaces);
 a JavaScript canvas or font fingerprint (more code in the page, and just as
-client-chosen); JA4H, which hashes header names in order (WSGI hands Django
-the headers as a dictionary, so the order the client sent is not kept).
+client-chosen); JA4H, FoxIO's fingerprint of "the HTTP client based on each
+HTTP request" (JA4H technical details), not implemented here: Django sees the
+headers only after the WSGI server has parsed them into a dictionary, and a
+JA4H value would be as client-chosen as the hash above.
