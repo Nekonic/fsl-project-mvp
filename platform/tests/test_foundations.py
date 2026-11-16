@@ -764,6 +764,31 @@ def test_a_wrong_map_address_says_it_is_another_device_s_without_naming_it_and_a
     assert mapped["reason"] == ["lesson.check.wrong.address_of", []], "the waf address is the last step's answer"
     assert read["reason"] == ["lesson.logs.wrong.site_source.row", []]
 
+def test_the_asked_device_s_address_on_another_side_says_the_device_is_right_and_is_not_counted_wrong(client):
+    import topology
+    from api import maps
+
+    session = opened("f1")
+    found = read_slot()
+    other = next(row["address"] for row in topology.addresses(maps.learner("board"), found)
+                 if row["host"] == "waf" and row["zone"] != "dmz")
+    with on_the_range(), on_map(found):
+        judged = answer(client, session, "waf_ip", other)
+    session.refresh_from_db()
+
+    assert judged["reason"] == ["lesson.check.wrong.address_side", []]
+    assert "tries" not in session.lesson_steps["f1"]["waf_ip"]
+
+def test_a_lesson_whose_waf_blocks_after_one_that_only_logged_says_so_on_its_first_step():
+    defenses = wargames.WARGAMES["board"]["defense"]
+    logs_only = lambda lesson_id: bool(defenses[wargames.lesson_defense("board", lesson_id)]["waf"].get("detection_only"))
+    switched = [later for course in wargames.courses("board") for earlier, later in zip(course["lessons"], course["lessons"][1:])
+                if logs_only(earlier) and not logs_only(later)]
+    first = {taught["id"]: f"{taught['text']}.coach.{taught['steps'][0]['id']}" for taught in wargames.foundations("board")}
+
+    assert switched == ["f5"]
+    assert all("DetectionOnly" in tables()[first[lesson_id]] for lesson_id in switched)
+
 def test_a_step_passed_after_a_wrong_answer_is_counted_as_retried(client):
     session = opened("f6")
     standing = {"paranoia": 1, "exclusions": [{"tag": "OWASP_CRS", "target": "ARGS:sort", "path": ""}]}

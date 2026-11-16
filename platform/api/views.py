@@ -91,6 +91,7 @@ REPLAY_MARKS = ("seed", "verify", "check", "replay")
 CHECK_TIMEOUT = 10.0
 RECORD_SLACK = timedelta(seconds=5)
 BENIGN_UNSENT = "lesson.check.replay_benign"
+ADDRESS_SIDE = "lesson.check.wrong.address_side"
 RUN_SETTLED = timedelta(seconds=15)
 RUN_ENDED_SETTLED = timedelta(seconds=3)
 OBJECTIVE_FACTS = ("lost_points", "detected_penalty")
@@ -525,9 +526,10 @@ def lesson_step_check(request, session_id, step_id):
     chose = (body["answer"].strip() if step["check"]["kind"] == "choice" else _outcome(session, step["check"])) if passed else None
     standing = step["check"]["kind"] == "triage"
     unsettled = not passed and step["check"]["kind"] == "kali"
+    near = bool(reason) and reason[0] == ADDRESS_SIDE
     if passed and not kept.get("passed"):
         _record_sent(session, step, kept)
-    judged = _judged_step(session, step_id, passed, reason, body.get("poll") is True or standing or unsettled, chose,
+    judged = _judged_step(session, step_id, passed, reason, body.get("poll") is True or standing or unsettled or near, chose,
                           lapses=standing) | dict(*seen)
     _seed_once_worked(session)
     return _reply(judged)
@@ -615,7 +617,7 @@ def _judge(session, taught, step, body, kept):
             return False, ["lesson.check.wrong.dev", []]
         passed, reason = lesson.answered(dict(check, accept=accepted), given.strip(), f"{prefix}.wrong.{step_id}")
         named = check.get("of") == "address" and reason == ["lesson.check.wrong", []]
-        return passed, _whose_address(session, given.strip()) or reason if named else reason
+        return passed, _whose_address(session, check["host"], given.strip()) or reason if named else reason
     if kind == "rules":
         live = _live_rules(session)
         added = lesson.added_rules(live, _posture_rules(session))
@@ -644,7 +646,7 @@ def _judge(session, taught, step, body, kept):
         return _replay_check(session, step, kept, body.get("ended") is True)
     return scenario_run.triage_passed(session, check["judged"]), [failed, []]
 
-def _whose_address(session, given):
+def _whose_address(session, asked, given):
     if not lesson.an_address(given):
         return None
     try:
@@ -652,7 +654,9 @@ def _whose_address(session, given):
     except (KeyError, ValueError):
         return None
     host = next((one["host"] for one in found if one["address"] == given), None)
-    return ["lesson.check.wrong.address_of", []] if host else None
+    if not host:
+        return None
+    return [ADDRESS_SIDE if host == asked else "lesson.check.wrong.address_of", []]
 
 def _dev_picked(session, wanted, request_id):
     pattern = re.compile(wanted)

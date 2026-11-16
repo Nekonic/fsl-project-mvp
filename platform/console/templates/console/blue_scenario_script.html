@@ -76,7 +76,12 @@ async function briefingClose() {
       scenarioReadAt = Date.now();
     }
     stripShow();
+    cardsShow();
   }
+}
+
+function cardText(id, part) {
+  return t(`${scenario.text}.card.${id}.${part}`);
 }
 
 function cardsShow() {
@@ -87,17 +92,25 @@ function cardsShow() {
     const card = document.createElement("div");
     card.className = "card p-3 flex flex-col gap-1 text-[12.5px]";
     card.dataset.card = next;
-    card.innerHTML = `<b class="text-heading">${esc(t(`${scenario.text}.card.${next}.title`))}</b>
-      <p class="text-body leading-relaxed">${esc(t(`${scenario.text}.card.${next}.body`))}</p>
+    card.innerHTML = `<b class="text-heading">${esc(cardText(next, "title"))}</b>
+      <p class="text-body leading-relaxed">${esc(cardText(next, "body"))}</p>
       <button type="button" class="self-end btn btn-sm btn-ghost">${esc(t("scenario.card.dismiss"))}</button>`;
     card.querySelector("button").addEventListener("click", () => {
       remember(CARDS_KEY(sessionId()), [...remembered(CARDS_KEY(sessionId()), []), next]);
       card.remove();
       cardsShow();
     });
-    stack.appendChild(card);
+    stack.prepend(card);
   }
-  const any = Boolean(stack.querySelector("[data-card]"));
+  scenario.cards.filter((id) => dismissed.includes(id) && !stack.querySelector(`[data-read="${id}"]`)).forEach((id) => {
+    const read = document.createElement("details");
+    read.className = "card p-3 text-[12.5px]";
+    read.dataset.read = id;
+    read.innerHTML = `<summary class="cursor-pointer font-semibold text-heading">${esc(cardText(id, "title"))}</summary>
+      <p class="text-body leading-relaxed mt-1">${esc(cardText(id, "body"))}</p>`;
+    stack.appendChild(read);
+  });
+  const any = Boolean(stack.querySelector("[data-card], [data-read]"));
   stack.classList.toggle("hidden", !any);
   stack.classList.toggle("flex", any);
 }

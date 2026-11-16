@@ -220,3 +220,16 @@ def test_no_pass_line_names_an_option_a_later_step_of_its_lesson_offers():
                           if table.get(f"lesson.choice.{option}") in words]
 
     assert named == [], f"a pass line stays on screen while a later step asks, and gives its answer away: {named}"
+
+def test_no_shown_sentence_glosses_a_phrase_in_parentheses():
+    gloss = re.compile(r"\S*\s?\((?!예: |msg:)[^)]*[\uac00-\ud7a3][^)]*\)")
+    mimicked = "site.dev."
+
+    assert not {key: found for key, text in tables().items() if not key.startswith(mimicked)
+                and (found := gloss.findall(text))}, "a sentence says it in its own words, not in a parenthetical gloss"
+
+def test_no_shown_sentence_names_a_device_by_its_internal_name():
+    internal = re.compile(r"(?<![\w.:/\-])(?:kali|waf|router|log-server)(?=의|에서| 주소|가 |는 |를 |로 |와 |과 )")
+
+    assert not {key: text for key, text in tables().items() if internal.search(text)}, (
+        "a sentence names a device as the map does: Kali, WAF, not the internal host name")
