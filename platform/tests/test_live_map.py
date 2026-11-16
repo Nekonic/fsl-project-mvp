@@ -261,6 +261,16 @@ def test_a_board_session_s_slot_draws_board_alone_once_corp_is_stopped():
     assert [zone.get("owner") for zone in drawn["zones"] if zone["caption"] == "database"] == ["board"]
 
 
+@pytest.mark.parametrize("stopped", [one for one in CONTAINERS if not one.endswith("-shipper")])
+def test_a_slot_with_any_one_container_down_still_draws_every_node_in_its_own_subnet(stopped):
+    drawn = board_map(without=(stopped,))
+
+    assert all("x" in node and "y" in node for node in drawn["nodes"])
+    assert {zone["id"]: zone["caption"] for zone in drawn["zones"]}.items() <= {
+        "internet": "internet", "estate": "dmz", "web": "web", "board-default": "database",
+        "corp-default": "database", "mgmt": "mgmt"}.items()
+
+
 def test_a_stopped_container_is_not_drawn():
     drawn = board_map(without=("waf",))
 

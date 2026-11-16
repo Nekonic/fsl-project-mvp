@@ -166,13 +166,13 @@ def captions(learner, found) -> dict[str, str]:
         members.setdefault(zone, set()).add(name)
     found_captions = {}
     for zone, names in members.items():
-        if ATTACKER in names:
+        if zone == INTERNET or ATTACKER in names:
             found_captions[zone] = "internet"
-        elif ROUTER in names:
+        elif zone == SERVICE or ROUTER in names:
             found_captions[zone] = "dmz"
-        elif LOG_SERVER in names:
+        elif zone == BAND or LOG_SERVER in names:
             found_captions[zone] = "mgmt"
-        elif names & learner.named("database") and WAF not in names:
+        elif zone.endswith(BACKEND_SUFFIX) or names & learner.named("database") and WAF not in names:
             found_captions[zone] = "database"
         else:
             found_captions[zone] = "web"
