@@ -36,6 +36,9 @@ def unavailable(case_name: str, detail: str) -> ToolUnavailable:
 def is_tool_case(case: dict[str, Any]) -> bool:
     return bool(case.get("tool"))
 
+def dumps(case: dict[str, Any]) -> bool:
+    return "--dump" in (case.get("args") or [])
+
 def fetch_argv(url: str, timeout: float, headers: dict | None = None) -> tuple[str, list[str]]:
     argv = ["curl", "-sS", "--max-time", str(int(timeout))]
     for name, value in (headers or {}).items():

@@ -13,16 +13,21 @@ function debriefOutcome(outcome) {
 }
 
 function debriefChange(change) {
+  const ids = change.ids || [];
+  const idsLines = ids.length ? `<p class="text-muted">${esc(t("lesson.debrief.change.ids"))}</p>
+    <pre class="code" data-diff="ids">${esc(ids.join("\n"))}</pre>` : "";
   const after = change.after;
-  if (!after) return `<p class="text-muted">${esc(t("lesson.debrief.change.unread"))}</p>`;
+  if (!after) return `<p class="text-muted">${esc(t("lesson.debrief.change.unread"))}</p>${idsLines}`;
   const lines = [];
   if (after.paranoia !== change.before.paranoia) {
     lines.push(`<p>${esc(t("lesson.debrief.change.level", change.before.paranoia ?? "—", after.paranoia ?? "—"))}</p>`);
   }
   if (change.diff.length) {
-    lines.push(`<pre class="code" data-diff>${esc(change.diff.join("\n"))}</pre>`);
+    lines.push(`<pre class="code" data-diff="waf">${esc(change.diff.join("\n"))}</pre>`);
   }
-  return lines.join("") || `<p class="text-muted">${esc(t("lesson.debrief.change.none"))}</p>`;
+  if (!lines.length && !ids.length) return `<p class="text-muted">${esc(t("lesson.debrief.change.none"))}</p>`;
+  const waf = lines.length ? `<p class="text-muted">${esc(t("lesson.debrief.change.waf"))}</p>${lines.join("")}` : "";
+  return waf + idsLines;
 }
 
 function debriefCustomers(customers) {
@@ -30,6 +35,7 @@ function debriefCustomers(customers) {
     `${localized(`traffic.action.${action}`, action)} ${count}`).join(", ");
   return [
     t("scenario.debrief.customers.line", customers.sent, customers.served, customers.blocked),
+    customers.unanswered || customers.other ? t("scenario.debrief.customers.rest", customers.unanswered || 0, customers.other || 0) : "",
     ...customers.in_window.map((count, n) => t("scenario.debrief.customers.window", n + 1, count)),
     actions ? t("scenario.debrief.customers.actions", actions) : "",
   ].filter(Boolean).map((line) => `<p>${esc(line)}</p>`).join("");
@@ -38,7 +44,7 @@ function debriefCustomers(customers) {
 function debriefTimeline(timeline) {
   return `<ol class="flex flex-col gap-1.5 text-[12px]">${timeline.map((entry) => {
     const after = `${Math.floor(entry.at / 60)}:${String(entry.at % 60).padStart(2, "0")}`;
-    const state = entry.state === "fired" ? debriefOutcome(entry.outcome)
+    const state = entry.state === "fired" ? (entry.outcome ? debriefOutcome(entry.outcome) : "")
       : toned(t(`scenario.debrief.state.${entry.state}`), entry.state === "failed" ? "text-warning" : "text-muted");
     return `<li data-timeline class="flex flex-wrap items-center gap-2">
       <span class="font-mono text-faint">${esc(after)}</span>

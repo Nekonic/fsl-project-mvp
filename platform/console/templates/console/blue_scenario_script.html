@@ -187,6 +187,7 @@ async function scenarioDebrief() {
   if (!told.ok) return;
   verdictBox(scenario);
   renderDebrief(field("scenario-debrief-body"), told.body);
+  field("scenario-debrief-end").classList.toggle("hidden", scenario.phase === "closed");
   field("scenario-debrief").classList.remove("hidden");
 }
 
@@ -320,6 +321,10 @@ async function scenarioStart(started) {
     if (ENDED.includes(scenario.completion.state) || scenario.phase === "closed") scenarioDebrief();
   });
   field("scenario-debrief-close").addEventListener("click", () => field("scenario-debrief").classList.add("hidden"));
+  field("scenario-debrief-end").addEventListener("click", () => {
+    field("scenario-debrief").classList.add("hidden");
+    scenarioEndAsked(true);
+  });
   setInterval(() => {
     if (!scenario || document.hidden) return;
     field("scenario-left").textContent = minutesAndSeconds(scenarioLeft());
