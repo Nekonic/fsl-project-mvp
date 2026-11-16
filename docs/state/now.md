@@ -16,6 +16,25 @@ Internet.
 
 ## Where things stand
 
+- 2026-11-17, answer-blind walk round 24's result, scenario and run-check
+  findings fixed (`docs/DECISIONS.md` "Answer-blind walk round 24",
+  `docs/TROUBLESHOOTING.md` "Answer-blind walk round 24"): a Kali run the
+  terminal shows ended passes after 3 s of quiet (live, F5 sqlmap: 7.7 s after
+  the end line, was 22 s), and a press before that is no wrong try; the XSS a
+  learner sends in F4 is an attack case of the result (live session 2514: TP,
+  5 WAF alerts, "레슨 1 · 1단계"); a scenario lists the account objectives
+  only when one of its attacks dumps them (3.1, 3.2, 3.4 none); 3.3 sends
+  its plain run at 45 s and the variant at 120 s (live session 2513: 0:48 and
+  2:02); one customer's flows take turns, so the board's CSRF refusals after
+  a sign-in are gone (session 2513: 956 customer requests, no 4xx); the
+  debrief counts customers up to the final check's end (956 when judged and
+  956 after close). Deployed on the platform VM by checking `/opt/cr` out at the dev
+  commit and restarting `platform` (code only, images unchanged).
+  `bin/verify --changed c7036388 --live` on the VM: unit and API 664 + 714,
+  acceptance 71 passed, 1 skipped, 23 errors, all one fixture of
+  `test_range_isolation.py` whose `docker inspect` on the range host timed
+  out at 60 s under the parallel run; that module alone then passed 24 of 24.
+
 - 2026-11-16, Kibana keeps a learner to their open session's slot
   (`docs/DECISIONS.md` "Kibana keeps a learner to their open session's slot
   through a platform gate"): nginx hands every space API call to Django's
