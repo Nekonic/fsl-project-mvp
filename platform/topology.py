@@ -154,7 +154,7 @@ def link_heads(learner, found) -> dict[tuple[str, str], object]:
     held: dict[tuple[str, str], list] = {}
     for one in found:
         switch = learner.switches.get(one.segment, one.segment)
-        if switch:
+        if switch and not one.sensor:
             for name in learner.hosts.get(one.host, ()):
                 held.setdefault((name, switch), []).append(one)
     return {pair: head for pair, kept in held.items()
@@ -197,14 +197,22 @@ def subnet(learner, found, host: str, zone: str | None = None) -> list[str]:
     one = link_heads(learner, found).get((host, switch_of(learner, found, host, zone)))
     return [str(ipaddress.ip_interface(one.address).network)] if one else []
 
+def extra_addresses(found, one) -> int:
+    return sum(1 for other in found if other.host == one.host and other.name == one.name) - 1
+
+
 def addresses(learner, found) -> list[dict]:
     named = captions(learner, found)
     order = {zone: at for at, zone in enumerate(ordered(learner, found))}
-    return [{"host": host, "zone": named[zone], "address": one.address.partition("/")[0],
-             "network": "" if named[zone] == "internet" else str(ipaddress.ip_interface(one.address).network)}
-            for (host, zone), one in sorted(link_heads(learner, found).items(),
-                                            key=lambda pair: (order.get(pair[0][1], len(order)), pair[0][0]))
-            if host not in learner.hidden]
+    listed = [(host, learner.kinds.get(host, "host"), zone, one)
+              for (host, zone), one in link_heads(learner, found).items()
+              if host not in learner.hidden and host != CUSTOMERS]
+    listed += [(one.host, "sensor", one.segment, one) for one in found if one.sensor and one.segment in named]
+    return [{"host": host, "kind": kind, "zone": named[zone], "address": one.address.partition("/")[0],
+             "network": "" if named[zone] == "internet" else str(ipaddress.ip_interface(one.address).network),
+             "more": extra_addresses(found, one),
+             **({"owner": zone.removesuffix(BACKEND_SUFFIX)} if named[zone] == "database" else {})}
+            for host, kind, zone, one in sorted(listed, key=lambda row: (order.get(row[2], len(order)), row[0]))]
 
 def _ip(one):
     return ipaddress.ip_interface(one.address).ip
@@ -217,8 +225,9 @@ def _head(found, prefers, strict=False):
     ranked = [one for one in found if not strict or _rank(one, prefers) < len(prefers)]
     return min(ranked, key=lambda one: (_rank(one, prefers), one.name, _ip(one)), default=None)
 
-def _link(source: str, zone: str, address: str) -> dict:
-    return {"source": source, "target": SWITCH.format(zone=zone), "kind": "link", "address": address}
+def _link(source: str, zone: str, address: str, more: int = 0) -> dict:
+    return {"source": source, "target": SWITCH.format(zone=zone), "kind": "link", "address": address,
+            **({"more": more} if more else {})}
 
 def graph(learner, wiring) -> dict:
     found = wiring.interfaces()
@@ -250,9 +259,10 @@ def graph(learner, wiring) -> dict:
         on = [zone for zone in zones if zone in legs.values()]
         if not on:
             continue
-        held = {zone: head.address.partition("/")[0] if (head := heads.get((name, zone))) else "" for zone in on}
+        held = {zone: heads.get((name, zone)) for zone in on}
         nodes.append({"id": name, "kind": learner.kinds.get(name, "host"), "name": name, "zones": on})
-        edges += [_link(name, zone, address) for zone, address in held.items()]
+        edges += [_link(name, zone, head.address.partition("/")[0], extra_addresses(found, head)) if head
+                  else _link(name, zone, "") for zone, head in held.items()]
     drawn_zones = [{"id": zone, "caption": captioned[zone],
                     "subnet": "" if captioned[zone] == "internet" else next(iter(wiring.network(zone).subnets), ""),
                     **({"owner": zone.removesuffix(BACKEND_SUFFIX)} if captioned[zone] == "database" else {})}
@@ -268,11 +278,11 @@ PAD = 30
 CAPTION_WIDTH = 250
 CAPTION_CLEAR = 16
 SPAN = 200
-DB_SPAN = 230
+DB_SPAN = 210
 TIER = 440
 DROP = 480
 DROP_ONE = 380
-WEB_SPAN = 250
+WEB_SPAN = 200
 BAND_GAP = 90
 BAND_DROP = -160
 TURN = 34
@@ -281,6 +291,8 @@ BOX_GAP = 20
 ADDRESS_GAP = 6
 ADDRESS_RISE = 13
 CHAR_WIDTH = 8
+MORE_CHARS = 5
+LABEL_CLEAR = 16
 BAND = "mgmt"
 
 
@@ -288,12 +300,16 @@ def _below(node) -> int:
     return ICON_HALF + (0 if node["kind"] == "switch" else LABEL_GAP + LINE)
 
 
-def _width(text: str) -> int:
-    return len(text) * CHAR_WIDTH
+def _width(text: str, more: int = 0) -> int:
+    return (len(text) + (len(str(more)) + MORE_CHARS if more else 0)) * CHAR_WIDTH
+
+
+def _reach(edge) -> int:
+    return 2 * (ICON_HALF + ADDRESS_GAP) + _width(edge.get("address", ""), edge.get("more", 0)) + LABEL_CLEAR
 
 
 def _spans(label) -> tuple[int, int]:
-    width = _width(label["text"])
+    width = _width(label["text"], label.get("more", 0))
     return (label["x"], label["x"] + width) if label["label"] == "right" else (label["x"] - width, label["x"])
 
 
@@ -325,15 +341,19 @@ def laid_out(zones, nodes, edges) -> list[dict]:
     switch = {zone["id"]: where[SWITCH.format(zone=zone["id"])] for zone in zones}
     inet, dmz, web = (next(iter(by.get(caption, ())), None) for caption in ("internet", "dmz", "web"))
     column = 0
+    reach = {(edge["source"], edge["target"]): max(SPAN, _reach(edge)) for edge in edges if edge["kind"] == "link"}
     if inet:
-        switch[inet].update(x=SPAN, y=0)
+        inet_switch = SWITCH.format(zone=inet)
+        apart = max([SPAN] + [reach.get((node["id"], inet_switch), SPAN) for node in held[inet]])
+        switch[inet].update(x=apart, y=0)
         for k, node in enumerate(held[inet]):
-            node.update(x=SPAN - SPAN * (k + 1), y=0, label="below")
-        column = SPAN
+            node.update(x=apart - apart * (k + 1), y=0, label="below")
+        column = apart
     for node in nodes:
         if node["kind"] == "router":
-            node.update(x=column + SPAN, y=0, label="below")
-            column += SPAN
+            step = reach.get((node["id"], SWITCH.format(zone=inet)), SPAN) if inet else SPAN
+            node.update(x=column + step, y=0, label="below")
+            column += step
     if dmz:
         switch[dmz].update(x=column + SPAN, y=0)
         for k, node in enumerate(held[dmz]):
@@ -364,10 +384,15 @@ def laid_out(zones, nodes, edges) -> list[dict]:
         zone["box"] = _boxed([switch[band], *held[band]],
                              [label for label in _sided(nodes, edges, where, homes) if label["zone"] == band])
         _turned(edges, where, zones, homes, dmz)
+    labels = _sided(nodes, edges, where, homes)
+    for zone in zones:
+        zone["box"] = _fitted(zone["box"], [label for label in labels if label["zone"] == zone["id"]])
+    if band is not None:
+        _turned(edges, where, zones, homes, dmz)
     for zone in zones:
         _captioned(zone, edges, where)
-    entering = _entering(nodes, edges, where, homes, {zone["id"]: zone for zone in zones})
-    return _sided(nodes, edges, where, homes) + entering
+    _abutted(edges, where, homes, {zone["id"]: zone for zone in zones})
+    return labels
 
 
 def _routed(nodes, edges, where, switch, web, homes) -> None:
@@ -436,8 +461,6 @@ def _sided(nodes, edges, where, homes) -> list[dict]:
         source, target = where[edge["source"]], where[edge["target"]]
         if edge["kind"] != "link" or not edge.get("address") or "x" not in source or "x" not in target:
             continue
-        if homes[edge["source"]] not in (None, target["zone"]):
-            continue
         points = _points(edge, where)
         (x0, y0), (x1, y1) = points[0], points[1]
         if abs(x1 - x0) >= abs(y1 - y0):
@@ -445,39 +468,36 @@ def _sided(nodes, edges, where, homes) -> list[dict]:
             x = source["x"] + (1 if x1 > x0 else -1) * (ICON_HALF + ADDRESS_GAP)
             y = source["y"] - ADDRESS_RISE
         else:
-            side, x = "right", x0 + ADDRESS_GAP
+            side = "left" if x0 < source["x"] else "right"
+            x = x0 + (-1 if side == "left" else 1) * ADDRESS_GAP
             y = source["y"] + (_below(source) + ADDRESS_RISE if y1 > y0 else -ICON_HALF - ADDRESS_RISE)
-        placed.append(_label(edge, edge["address"], x, y, side, target["zone"]))
+        placed.append(_label(edge, x, y, side, homes[edge["source"]] or target["zone"]))
     return placed
 
 
-def _label(edge, text, x, y, side, zone) -> dict:
-    return {"id": f"address:{edge['source']}:{edge['target']}", "kind": "address", "text": text,
+def _label(edge, x, y, side, zone) -> dict:
+    return {"id": f"address:{edge['source']}:{edge['target']}", "kind": "address", "text": edge["address"],
+            **({"more": edge["more"]} if edge.get("more") else {}),
             "x": round(x), "y": round(y), "label": side, "zone": zone}
 
 
-def _entering(nodes, edges, where, homes, boxes) -> list[dict]:
-    placed = []
+def _fitted(box, labels) -> list[int]:
+    spans = [_spans(label) for label in labels]
+    return [min([box[0]] + [left - ADDRESS_GAP for left, _ in spans]),
+            min([box[1]] + [label["y"] - LINE for label in labels]),
+            max([box[2]] + [right + ADDRESS_GAP for _, right in spans]),
+            max([box[3]] + [label["y"] + LINE for label in labels])]
+
+
+def _abutted(edges, where, homes, boxes) -> None:
     for edge in edges:
         source, target = where[edge["source"]], where[edge["target"]]
         home = homes[edge["source"]]
-        if edge["kind"] != "link" or not edge.get("address") or home in (None, target["zone"]):
+        if edge["kind"] != "link" or home in (None, target["zone"]):
             continue
         box = boxes[target["zone"]]["box"]
         if source["y"] == target["y"] and source["x"] < box[0]:
             box[0] = min(box[0], boxes[home]["box"][2] + BOX_GAP)
-        points = _points(edge, where)
-        for (x0, y0), (x1, y1) in zip(points, points[1:]):
-            if x0 == x1 and y0 < box[1] <= y1:
-                box[1] = min(box[1], target["y"] - ICON_HALF - 2 * LINE - ADDRESS_GAP)
-                placed.append(_label(edge, edge["address"], x0 + ADDRESS_GAP, box[1] + LINE + ADDRESS_GAP // 2,
-                                     "right", target["zone"]))
-                break
-            if y0 == y1 and x0 < box[0] <= x1:
-                placed.append(_label(edge, edge["address"], box[0] + ADDRESS_GAP, y0 - ADDRESS_RISE, "right",
-                                     target["zone"]))
-                break
-    return placed
 
 
 def _captioned(zone, edges, where) -> None:

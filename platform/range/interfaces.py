@@ -19,6 +19,7 @@ class Interface:
     name: str
     address: str
     segment: str = ""
+    sensor: bool = False
 
 
 @dataclass(frozen=True)
@@ -76,10 +77,9 @@ class Wiring:
     def interfaces(self) -> list[Interface]:
         found = []
         for container in self.containers:
-            if container.sniffs:
-                continue
             legs = self.legs(container)
-            found += [Interface(container.host or container.service, name, address, legs.get(name, ""))
+            found += [Interface(container.host or container.service, name, address, legs.get(name, ""),
+                                sensor=bool(container.sniffs))
                       for name, address in container.addresses]
         return found
 

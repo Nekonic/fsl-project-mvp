@@ -163,7 +163,8 @@ def test_the_sensor_is_read_with_the_network_it_sniffs():
     sniffing = {one.service: sorted(wired.legs(one)[name] for name in one.sniffs)
                 for one in wired.containers if one.sniffs}
     assert sniffing == {"sensor": ["web"]}, "a sniffing interface is the sensor's one with no address"
-    assert "sensor" not in {one.host for one in wired.interfaces()}, "a sensor's own interfaces are no learner host's"
+    assert {(one.host, one.address) for one in wired.interfaces() if one.sensor} == {("sensor", "172.29.1.11/24")}
+    assert "sensor" not in {name for name, _ in topology.link_heads(board_learner(), wired.interfaces())}
     assert wired.network("board-default").bridge == "br-6b1c0d2e3a5b", "Docker's own name for an unnamed bridge"
 
 
@@ -198,23 +199,29 @@ def test_each_bridge_is_one_switch_and_each_interface_on_it_is_one_link_to_it():
     assert {edge["kind"] for edge in drawn["edges"]} == {"link", "mirror"}
 
 
-def test_each_interface_s_full_address_stands_beside_its_link_inside_the_box_of_its_subnet():
+def test_each_interface_s_full_address_stands_beside_its_device_inside_the_device_s_box():
     drawn = board_map()
     shown = links(drawn)
     labels = {node["id"]: node for node in drawn["nodes"] if node["kind"] == "address"}
     boxes = {zone["id"]: zone["box"] for zone in drawn["zones"]}
+    placed = nodes_of(drawn)
 
     assert shown[("kali", "switch:internet")] == "5.188.10.10", "the address kali's own traffic leaves from"
     assert shown[("router", "switch:internet")] == "5.188.10.1" and shown[("router", "switch:estate")] == "10.30.0.1"
     assert shown[("waf", "switch:estate")] == "10.30.0.177" and shown[("board.com", "switch:board-default")] == "172.18.0.3"
     assert [zone["subnet"] for zone in drawn["zones"]] == [
         "", "10.30.0.0/24", "10.32.0.0/24", "172.18.0.0/16", "172.19.0.0/16", "172.29.1.0/24"]
+    homes = {node["id"]: None if node["kind"] == "router" else (node.get("zones") or [None])[0]
+             for node in drawn["nodes"]}
     assert {(label["text"], label["zone"]) for label in labels.values()} == {
-        (address, target.removeprefix("switch:")) for (_, target), address in shown.items()}
+        (address, homes[source] or target.removeprefix("switch:")) for (source, target), address in shown.items()}
     for label in labels.values():
         left, right = topology._spans(label)
         box = boxes[label["zone"]]
         assert box[0] < left and right < box[2] and box[1] < label["y"] < box[3], label
+        device = placed[label["id"].split(":", 1)[1].rpartition(":switch:")[0]]
+        assert min(abs(left - device["x"]), abs(right - device["x"])) <= topology.ICON_HALF + topology.OFFSET + 8, label
+        assert abs(label["y"] - device["y"]) <= topology._below(device) + topology.ADDRESS_RISE, label
     assert not [edge for edge in drawn["edges"] if edge.get("label") or edge.get("host")], "nothing is written mid-line"
 
 
@@ -242,6 +249,30 @@ def test_customer_addresses_are_not_drawn_as_a_device_or_a_label():
     drawn = board_map()
 
     assert "customers" not in repr(drawn) and "175.192.0.10" not in repr(drawn)
+
+
+def test_an_interface_with_more_addresses_than_the_one_drawn_says_how_many_more():
+    drawn = board_map()
+    labels = {node["id"]: node for node in drawn["nodes"] if node["kind"] == "address"}
+
+    assert (labels["address:kali:switch:internet"]["text"], labels["address:kali:switch:internet"]["more"]) == (
+        "5.188.10.10", 4), "eth0 holds five addresses on the range host; the map names one and counts the rest"
+    assert labels["address:router:switch:internet"]["more"] == 1
+    assert "more" not in labels["address:waf:switch:estate"]
+
+
+def test_the_address_table_lists_every_address_the_map_draws_and_names_each_zone_in_full():
+    board_alone = ("corp-wp", "corp-db")
+    rows = topology.addresses(board_learner(), slot_adapter(board_alone)[0].wiring().interfaces())
+    drawn = board_map(without=board_alone)
+    labels = {(node["text"], node.get("more", 0)) for node in drawn["nodes"] if node["kind"] == "address"}
+
+    assert {(row["address"], row["more"]) for row in rows} == labels
+    assert ("sensor", "sensor", "mgmt", "172.29.1.11") in {
+        (row["host"], row["kind"], row["zone"], row["address"]) for row in rows}
+    assert {row.get("owner") for row in rows if row["zone"] == "database"} == {"board"}
+    assert not [row for row in rows if row["zone"] != "database" and "owner" in row]
+    assert "customers" not in {row["host"] for row in rows}
 
 
 def test_the_map_draws_every_target_the_slot_runs_and_nothing_outside_the_slot():
