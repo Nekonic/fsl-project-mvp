@@ -370,9 +370,20 @@ def checked_lesson(lesson: Any, known: set[str], source, defenses=(DEFAULT_DEFEN
                and (step["check"]["kind"] == "kali" or armed_case(step["check"]))]
     if unarmed:
         raise InvalidCatalogue(f"{source}: kali steps {', '.join(unarmed)} need case:, a tool case of the case file")
+    unsent = [step["id"] for step in steps if (sent_attack(step["check"]) or (None,))[0] not in {*known, None}]
+    if unsent:
+        raise InvalidCatalogue(f"{source}: steps {', '.join(unsent)} name a sent case that is not in the case file")
 
 def armed_case(check: dict) -> str | None:
     return check.get("case") if check["kind"] == "kali" else (check.get("attack") or {}).get("kali")
+
+def sent_attack(check: dict) -> tuple[str, str] | None:
+    if check["kind"] == "kali":
+        return None
+    replayed = check["kind"] == "replay"
+    sent = (check.get("attack") or {}) if replayed else check
+    pattern = sent.get("sent" if replayed else "match")
+    return (sent["case"], pattern) if sent.get("case") and pattern else None
 
 def _discover() -> dict[str, dict[str, Any]]:
     root = Path(settings.CR_SOURCE) / "wargames"

@@ -525,10 +525,42 @@ def lesson_step_check(request, session_id, step_id):
     chose = (body["answer"].strip() if step["check"]["kind"] == "choice" else _outcome(session, step["check"])) if passed else None
     standing = step["check"]["kind"] == "triage"
     unsettled = not passed and step["check"]["kind"] == "kali"
+    if passed and not kept.get("passed"):
+        _record_sent(session, step, kept)
     judged = _judged_step(session, step_id, passed, reason, body.get("poll") is True or standing or unsettled, chose,
                           lapses=standing) | dict(*seen)
     _seed_once_worked(session)
     return _reply(judged)
+
+def _record_sent(session, step, kept):
+    found = wargames.sent_attack(step["check"])
+    if found is None:
+        return
+    name, pattern = found
+    after = max(filter(None, (parse_datetime(kept.get("reached") or ""),
+                              _passed_at(session, step["check"].get("after") or ""))), default=None)
+    sent = _site_requests(session, pattern, after)
+    if not sent:
+        return
+    first, last = sent[0], sent[-1]
+    _record_case(session, dict(wargames.find_case(session.scenario, name), case_id=str(uuid.uuid4()), correlation="marker"),
+                 datetime.fromtimestamp(first["at"], tz=dt_timezone.utc),
+                 datetime.fromtimestamp(last["at"], tz=dt_timezone.utc) + timedelta(milliseconds=last.get("ms") or 0),
+                 {"site": step["id"], "lesson": session.lesson,
+                  "sent": [[record["at"], record.get("ms") or 0, _asked(record)] for record in sent]})
+
+def _sent_by_site(session, cases, rows):
+    sites = [case for case in cases if case.meta.get("sent")]
+    if not sites:
+        return list(rows)
+    raws = dict(session.detections.filter(marker=session.browse_marker).values_list("detection_id", "raw"))
+    slack = RECORD_SLACK.total_seconds()
+
+    def owner(row):
+        asked = unquote(str(_request_of(raws[row[0]] or {})[1])).replace("+", " ")
+        return next((case.case_id for case in sites for at, ms, url in case.meta["sent"]
+                     if url == asked and at - slack <= row[1].timestamp() <= at + ms / 1000 + slack), row[3])
+    return [(*row[:3], owner(row), *row[4:]) if row[0] in raws else row for row in rows]
 
 def _posture_rules(session):
     declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense) or {}
@@ -2282,7 +2314,8 @@ def session_traffic(request, session_id):
 def _evidence(session, forced=None):
     replayed = {case.case_id for case in session.cases.all() if _replayed(case)}
     cases = [case for case in session.cases.all() if case.case_id not in replayed]
-    rows = session.detections.values_list("detection_id", "timestamp", "src_ip", "marker", "signature")
+    rows = _sent_by_site(session, cases, session.detections.values_list("detection_id", "timestamp", "src_ip", "marker",
+                                                                          "signature"))
     detections = [DetectionRecord(*row[:4]) for row in rows
                   if row[3] not in replayed and row[3] != session.browse_marker]
     kept = {detection.detection_id for detection in detections}
@@ -2387,7 +2420,7 @@ def _per_case(result, expectations, signatures, cases=()):
             "detections": len(m.detection_ids),
             "expect": expectations.get(m.case_id) or "",
             "lesson": meta.get(m.case_id, {}).get("lesson"),
-            "step": meta.get(m.case_id, {}).get("kali"),
+            "step": meta.get(m.case_id, {}).get("kali") or meta.get(m.case_id, {}).get("site"),
             "seed": bool(meta.get(m.case_id, {}).get("seed")),
             "started_at": started.get(m.case_id),
             "corroborated": scoreboard.corroborated(

@@ -101,6 +101,30 @@ def blocked_by(session, detection_id, marker, uri, rule):
                              timestamp=timezone.now(), marker=marker,
                              raw={"request": {"method": "GET", "uri": uri}, "details": {"ruleId": rule}})
 
+def test_the_xss_the_learner_sends_from_the_website_pane_is_an_attack_case_of_the_result_with_its_own_alerts(client):
+    session = taught("f4")
+    step(client, session, "probe", body={"state": "reached"})
+    now = timezone.now()
+    attack = "/search/?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E"
+    browsed = [{"id": 1, "at": now.timestamp() + 1, "ms": 40, "method": "GET", "url": f"http://board.com{attack}", "status": 200},
+               {"id": 2, "at": now.timestamp() + 1.5, "ms": 30, "method": "GET", "url": "http://board.com/search/?q=hello",
+                "status": 200}]
+    Detection.objects.create(session=session, detection_id="xss", source="modsecurity", signature="XSS Attack Detected",
+                             timestamp=now + timedelta(seconds=1), marker=session.browse_marker,
+                             raw={"request": {"method": "GET", "uri": attack}, "details": {"ruleId": "941100"}})
+    Detection.objects.create(session=session, detection_id="hello", source="modsecurity", signature="Something else",
+                             timestamp=now + timedelta(seconds=1.5), marker=session.browse_marker,
+                             raw={"request": {"method": "GET", "uri": "/search/?q=hello"}, "details": {"ruleId": "920000"}})
+    with patch("api.views.site.kept", lambda session_id: browsed), patch("api.views._seed_once_worked", lambda session: None):
+        passed = check(client, session, "probe", {"poll": True}).json()
+        check(client, session, "probe", {"poll": True})
+    rows = client.get(f"/api/sessions/{session.pk}/score/").json()["per_case"]
+
+    assert passed["passed"] is True
+    assert [(row["name"], row["lesson"], row["step"], row["detection_ids"], row["corroborated"]) for row in rows] == [
+        ("board-xss-script-tag-in-search", "f4", "probe", ["xss"], True)], (
+        "one case for the step, holding the alert of its own request and not the alert of a plain search")
+
 def test_an_answer_is_judged_on_the_server_and_two_wrong_ones_record_a_hint(client):
     session = taught("f4")
     blocked_by(session, "attack", session.browse_marker, "/search/?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E", "941100")

@@ -393,7 +393,7 @@ foundations:
     steps:
       - id: probe
         point: {opens: site, dev: toggle, until: dev_open, then: {site: "input[name=q]"}}
-        check: {kind: sent, match: '<script'}
+        check: {kind: sent, match: '<script', case: board-xss-script-tag-in-search}
       - id: encoded
         point: {opens: site, dev: general.url}
         check:
@@ -416,7 +416,7 @@ foundations:
       - id: upper
         point: {opens: site, site: "input[name=q]", until: sent,
                 then: {kibana: {doc: rule, kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*ScRiPt)'}}}
-        check: {kind: answer, of: anomaly_total, match: '<(?!script)(?i:script)',
+        check: {kind: answer, of: anomaly_total, match: '<(?!script)(?i:script)', case: board-xss-script-tag-in-search,
                 kql: '^(?=.*log_source\s*:\s*"?modsecurity)(?=.*url\s*:\s*"?\*[^ ]*ScRiPt)'}
       - id: ids_none
         point: {opens: elk, kibana: {hits: true, kql: '^(?=.*event_type\s*:\s*"?alert)(?=.*url\s*:\s*"?\*[^ ]*alert)'}}
@@ -425,7 +425,7 @@ foundations:
       - id: write
         point: {opens: rules, panel: "#lesson-rules", until: applied,
                 then: {site: "input[name=q]", until: sent, then: {panel: "#step-act"}}}
-        check: {kind: rules, match: '<script', quiet_on: ["/search/?q=release notes", "/search/?q=hello"]}
+        check: {kind: rules, match: '<script', case: board-xss-script-tag-in-search, quiet_on: ["/search/?q=release notes", "/search/?q=hello"]}
       - id: fired
         point: {opens: elk, kibana: {doc: destination, kql: 'event_type\s*:\s*"?alert'}}
         check: {kind: answer, of: alerted_destination, about: write, kql: '(?i)event_type\s*:\s*"?alert'}
@@ -433,6 +433,7 @@ foundations:
         point: {opens: site, site: "input[name=q]", until: sent,
                 then: {kibana: {hits: true, kql: '^(?=.*event_type\s*:\s*"?alert)(?=.*url\s*:\s*"?\*[^ ]*ScRiPt)'}}}
         check: {kind: choice, of: alerted_sid_present, match: '<(?!script)(?i:script)', after: write, options: [present, absent],
+                case: board-xss-script-tag-in-search,
                 kql: '^(?=.*event_type\s*:\s*"?alert)(?=.*url\s*:\s*"?\*[^ ]*ScRiPt)'}
       - id: nocase
         point: {opens: rules, panel: "#lesson-rules"}
@@ -442,7 +443,7 @@ foundations:
         check:
           kind: replay
           after: nocase
-          attack: {sent: '<(?!script)(?i:script)'}
+          attack: {sent: '<(?!script)(?i:script)', case: board-xss-script-tag-in-search}
           expect: {alerted_sid: added}
           benign: {sent: '^/search/\?q=[^<>]*$', expect: {alerted_sid: none, status_class: 2xx}}
   - id: f5
