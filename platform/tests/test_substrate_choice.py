@@ -14,6 +14,7 @@ def test_the_cli_fires_from_the_slot_the_session_was_given(monkeypatch, db):
     spec.loader.exec_module(cli)
     opened = Session.objects.create(scenario="board", baseline=[], slot=2)
     fired_on = []
+    handed = []
 
     class Slotted:
         def __init__(self, number=None):
@@ -25,8 +26,9 @@ def test_the_cli_fires_from_the_slot_the_session_was_given(monkeypatch, db):
         def launcher(self, segment_id):
             return lambda image, argv, timeout=600.0: fired_on.append(self.number)
 
-    def run(cases, platform_url, launch, tool_target, scenario, announce, http=None):
+    def run(cases, platform_url, launch, tool_target, scenario, runs, announce, http=None):
         announce(opened.pk)
+        handed.append(runs)
         launch("cr-kali", ["curl"])
         return opened.pk
 
@@ -40,3 +42,4 @@ def test_the_cli_fires_from_the_slot_the_session_was_given(monkeypatch, db):
         "a session opened on slot 2 fired from slot 1's Kali, which a close had "
         "just sent to be rebuilt, so ssh was refused and the run failed"
     )
+    assert handed == ["/tmp/sqlmap-runs"], "the CLI's sqlmap cases must not share the box's default output"

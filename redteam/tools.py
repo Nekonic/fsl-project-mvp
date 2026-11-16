@@ -20,8 +20,6 @@ CONCLUSIONS_KEPT = 4
 LINE_KEPT = 160
 ABORTED = re.compile(r"\[CRITICAL\][^\n]*does not exist|Traceback|user (quit|aborted)", re.IGNORECASE)
 
-SQLMAP_RUNS = "/tmp/sqlmap-runs"
-
 TOOL_IMAGE = os.environ.get("CR_TOOL_IMAGE", "cr-kali")
 
 class ToolUnavailable(RuntimeError):
@@ -96,7 +94,7 @@ def curl_argv(prepared: Any, timeout: float) -> tuple[str, list[str]]:
     argv.append(prepared.url)
     return TOOL_IMAGE, argv
 
-def tool_argv(case: dict[str, Any], target_url: str) -> tuple[str, list[str]]:
+def tool_argv(case: dict[str, Any], target_url: str, runs: str | None = None) -> tuple[str, list[str]]:
     host = urlsplit(target_url).hostname or ""
     args = [
         str(a).replace("{target}", target_url.rstrip("/")).replace("{target_host}", host)
@@ -105,8 +103,8 @@ def tool_argv(case: dict[str, Any], target_url: str) -> tuple[str, list[str]]:
 
     if case.get("correlation") == "marker":
         args.append(f"--headers={MARKER_HEADER}: {case['case_id']}")
-        if case["tool"] == "sqlmap":
-            args.append(f"--output-dir={SQLMAP_RUNS}/{case['case_id']}")
+        if case["tool"] == "sqlmap" and runs:
+            args.append(f"--output-dir={runs}/{case['case_id']}")
 
     return TOOL_IMAGE, [case["tool"], *args]
 

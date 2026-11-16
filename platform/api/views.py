@@ -1671,7 +1671,7 @@ def _fire(session, name, requested_origin=None, witness=lambda ran: {}):
         case["request"] = spec
 
     started_at = timezone.now()
-    ran = harness.fire(case, adapter.launcher(launched_on), target_url)
+    ran = harness.fire(case, adapter.launcher(launched_on), target_url, attacker.SQLMAP_RUNS)
 
     finished_at = timezone.now()
     Session.objects.filter(pk=session.pk, ended_at__lt=finished_at).update(ended_at=finished_at)

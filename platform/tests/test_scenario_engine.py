@@ -45,7 +45,7 @@ def opened(scenario_id="2.1", **fields):
 def attacker(output):
     fired = []
 
-    def fire(case, launch, target_url):
+    def fire(case, launch, target_url, runs=None):
         fired.append(case["name"])
         return SimpleNamespace(exit_code=0, output=output)
 
@@ -243,7 +243,7 @@ def test_an_attack_that_cannot_launch_is_kept_as_failed_with_its_reason():
     session = opened()
     patches, _ = firing(HELD)
 
-    def broken(case, launch, target_url):
+    def broken(case, launch, target_url, runs=None):
         raise harness.ToolUnavailable("sqlmap is not on the attacker box")
 
     now = scenarios.at(session.scenario_state["opened_at"]) + timedelta(seconds=241)

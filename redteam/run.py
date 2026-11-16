@@ -17,6 +17,7 @@ django.setup()
 import requests
 from django.conf import settings
 
+import attacker
 from api.models import Session
 from range import substrate
 from wargames import WARGAMES
@@ -66,7 +67,7 @@ def main() -> int:
 
     try:
         session_id = harness.run(
-            cases, args.platform, launch, args.tool_target, scenario,
+            cases, args.platform, launch, args.tool_target, scenario, attacker.SQLMAP_RUNS,
             announce=opened, http=signin.signed_in(args.platform),
         )
     except signin.Refused as refused:

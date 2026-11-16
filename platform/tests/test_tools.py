@@ -21,11 +21,13 @@ CASE = {
 INTERNAL_TARGET = "http://waf:8080"
 
 def test_the_case_names_the_image_and_the_tool_and_only_a_marker_case_carries_the_marker_and_its_own_sqlmap_output():
-    assert tool_argv(CASE, INTERNAL_TARGET) == (TOOL_IMAGE, [
+    from attacker import SQLMAP_RUNS
+
+    assert tool_argv(CASE, INTERNAL_TARGET, SQLMAP_RUNS) == (TOOL_IMAGE, [
         "sqlmap", "-u", f"{INTERNAL_TARGET}/rest/products/search?q=1", "--batch",
         "--headers=X-Request-ID: abc-123", "--output-dir=/tmp/sqlmap-runs/abc-123",
     ])
-    _, window = tool_argv(dict(CASE, correlation="window"), INTERNAL_TARGET)
+    _, window = tool_argv(dict(CASE, correlation="window"), INTERNAL_TARGET, SQLMAP_RUNS)
     assert not any("X-Request-ID" in part or "--output-dir" in part for part in window)
 
 def test_tool_case_in_the_default_file_declares_args():

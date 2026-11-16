@@ -151,6 +151,7 @@ def test_an_attack_with_no_origin_still_leaves_by_the_front_door(client, session
 
     assert response.status_code == 201
     assert fired.call_args.args[2] == settings.TARGET_URL
+    assert fired.call_args.args[3] == "/tmp/sqlmap-runs", "a fired sqlmap case writes apart from the box's default sqlmap output"
     assert "origin" not in response.json()["meta"]
 
 def test_an_attack_leaves_by_the_origin_it_was_given(client, session_id):

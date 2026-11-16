@@ -73,7 +73,7 @@ def run(
     platform_url: str,
     launch,
     tool_target_url: str = DEFAULT_TOOL_TARGET,
-    scenario: str = "board",
+    scenario: str = "board", runs: str | None = None,
     announce=lambda session_id: None,
     http: requests.Session | None = None,
 ) -> int:
@@ -95,7 +95,7 @@ def run(
             case.setdefault("correlation", "marker")
 
             started_at = datetime.now(timezone.utc)
-            fire(case, launch, tool_target_url)
+            fire(case, launch, tool_target_url, runs)
             _record(http, platform_url, session_id, case, started_at, datetime.now(timezone.utc))
     finally:
         http.post(
@@ -103,9 +103,9 @@ def run(
         )
     return session_id
 
-def fire(case: dict[str, Any], launch, tool_target_url: str = DEFAULT_TOOL_TARGET):
+def fire(case: dict[str, Any], launch, tool_target_url: str = DEFAULT_TOOL_TARGET, runs: str | None = None):
     if is_tool_case(case):
-        return fire_tool(case, tool_target_url, launch)
+        return fire_tool(case, tool_target_url, launch, runs)
     case = apply_prefetch(case, tool_target_url, launch, REQUEST_TIMEOUT)
     prepared = build_request(case, tool_target_url)
     check_path_preserved(case["request"]["path"], prepared.url)
@@ -124,8 +124,8 @@ def fire_http(case: dict[str, Any], prepared: requests.PreparedRequest, launch):
             f"from the attacker box (curl exit {result.exit_code}): {result.output.strip()[:200]}")
     return result
 
-def fire_tool(case: dict[str, Any], target_url: str, launch):
-    result = _on_attacker(case, *tool_argv(case, target_url), launch)
+def fire_tool(case: dict[str, Any], target_url: str, launch, runs: str | None = None):
+    result = _on_attacker(case, *tool_argv(case, target_url, runs), launch)
     if result.exit_code == STARTUP_FAILURE:
         raise unavailable(case["name"], result.output.strip()[:200])
     if result.exit_code != 0:

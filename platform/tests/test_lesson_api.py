@@ -56,7 +56,7 @@ class Stand:
 def attacker(outputs):
     fired = []
 
-    def fire(case, launch, target_url):
+    def fire(case, launch, target_url, runs=None):
         fired.append(case["name"])
         return SimpleNamespace(exit_code=0, output=outputs.get(case["name"], "http_code=200\n"))
 
@@ -372,7 +372,7 @@ def test_old_lesson_replays_are_left_out_of_both_scores_and_loot_a_red_player_su
 def test_a_guided_open_whose_replay_cannot_run_is_refused_as_unavailable(client):
     from redteam.tools import ToolUnavailable
 
-    def fire(case, launch, target_url):
+    def fire(case, launch, target_url, runs=None):
         raise ToolUnavailable("sqlmap: the tool did not run")
 
     with patch("api.views.harness.fire", fire):
@@ -603,7 +603,7 @@ def test_a_seed_that_could_not_run_does_not_fail_the_learner_s_step_and_runs_on_
     session = foundation("f1", lessons=[{"id": "f1", "started_at": timezone.now().isoformat()}])
     fire, fired = attacker({})
 
-    def unavailable(case, launch, target_url):
+    def unavailable(case, launch, target_url, runs=None):
         raise ToolUnavailable("curl: the tool did not run")
 
     with one_slot(Stand()):
