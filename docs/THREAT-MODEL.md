@@ -243,10 +243,12 @@ so root on Kali or the WAF cannot change it:
   - The infra's two IDS legs on `web-outer` and `web-inner` have port
     security off, so the Linux bridge between them can forward the WAF's and
     the target's frames. No learner has a shell on the infra.
-- Each LAN has a security group of its own (`cr-slot-<n>-<lan>`) that admits
-  the LAN's own CIDRs, or `0.0.0.0/0` where a port on it carries an address
-  pair (`internet`, `dmz`). The slot's `mgmt` admits only tcp 514, the WAF's
-  logs to the log server.
+- Each LAN's ports are in a security group that admits the LAN's own CIDRs,
+  or `0.0.0.0/0` where a port on it carries an address pair (`internet`,
+  `dmz`). The slot's `mgmt` admits only tcp 514, the WAF's logs to the log
+  server. Every slot shares these groups (`cr-lan-<digest>`, one per rule
+  set); their rules name CIDRs, not groups, and each slot's LANs are networks
+  of its own, so sharing a group opens nothing between slots.
 - Every control port is in `cr-mgmt`, which admits only `cr-reach`, the
   platform. Kali reaches no other slot's VM and no service on `cr-mgmt`.
 - The edge on the infra VM (nftables) forwards tcp 80 on 121.134.88.42 to the

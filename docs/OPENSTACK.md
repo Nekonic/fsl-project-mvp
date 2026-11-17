@@ -92,14 +92,14 @@ user's password, flavor access, the base image and `cloud.yaml` (§4).
 | Kolla-Ansible cloud with Heat, Glance, Nova, Neutron (ML2/OVN) | done (this cloud) | §2 |
 | Project `fsl-range`, member user, clouds.yaml entry, quota check, flavor choice | `bin/cloud init` as admin (2026-11-15); flavors and quotas are never created or raised by it | §3 |
 | Base image, stock Ubuntu 24.04, upload with checksum check | `bin/cloud init` when missing; done (this cloud, 2026-10-20) | §3.6 |
-| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18) | §3.6 |
+| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18; the WAF's re-baked as `cr-waf-bake2`) | §3.6 |
 | `cloud.yaml`: every cloud-specific value, validated | written by `bin/cloud init` (2026-11-15) | §4 |
 | Platform and wargame images on GHCR (`.github/workflows/images.yml`) | done (public, pulled 2026-10-11) | §5 |
 | Heat stack pulls images instead of `--build` | done (2026-10-11) | §5 |
 | `bin/platform-rebuild`: replace the VM without losing data (store and range key carried over), driven by `cloud.yaml` | done (2026-10-15, `bin/cloud up --replace --sideload` twice, 28 and 55 min with a 6 GB store) | §5 |
 | `bin/cloud up`, `bin/cloud down` | done (2026-10-11); since 2026-10-20 `up` after `down` restores the newest backup that holds rows (run live 2026-10-20) | §5 |
 | Fabric via `POST /api/range/fabric/` | done | §6 |
-| Slots as Heat stacks `cr-slot-<n>` via `POST /api/range/slot/`, a pool per wargame, replaced at close | code and unit tests (2026-11-18); live run **[unverified]** | §6 |
+| Slots as Heat stacks `cr-slot-<n>` via `POST /api/range/slot/`, a pool per wargame, replaced at close | code and unit tests (2026-11-18); the first live pool fill created the four stacks (2026-11-18, §6.1); the rest of the live run **[unverified]** | §6 |
 | Acceptance on the OpenStack substrate | done on the range host; the latest full run is in `docs/state/now.md` | §7 |
 
 Steps below are tagged **[one-click]** where `bin/cloud up` does them for you,
@@ -433,14 +433,16 @@ platform VM and the pool: 1 + 4 × slots instances, the platform flavor's vCPU
 and RAM plus, per slot, the four role flavors' (`compute.flavors.<role>`), and
 1 floating IP; slots is the sum of `compute.pool` (`quota_shortfall` in
 `platform/range/cloud.py`). It compares limits, not usage, and never raises a
-quota. A shortfall names the remedy: an admin raises the quota, or
+quota. It does not read `security_groups`: the range takes the same number of
+groups for any pool size (below). A shortfall names the remedy: an admin raises the quota, or
 `compute.pool` asks for fewer slots.
 
 - The platform VM is 2 vCPU, 8 GB RAM and 60 GB disk (`m1.large`).
 - Each slot is four VMs, `kali`, `waf`, `infra` and `target`, on their role
   flavors (`dba.small` unless `cloud.yaml` names another, §3.3).
 - Each slot also has five networks, six subnets (the `internet` LAN holds
-  two), five security groups and 14 ports of its own (§6).
+  two) and 14 ports of its own (§6). Its LAN ports use the three groups
+  `cr-lan-<digest>` that every slot shares (§3.5).
 
 Nova has no per-project disk quota. The flavor disk of every VM is space that
 the compute node's instance storage must have, at a disk allocation ratio of
@@ -458,6 +460,12 @@ the compute node's instance storage must have, at a disk allocation ratio of
 - The fabric holds 1 network (`cr-mgmt`) with 1 subnet, and the groups
   `cr-reach`, `cr-mgmt`, `cr-egress` and `cr-senders`. The platform's stack
   also needs 1 network, 1 router and 1 floating IP.
+- The quota is 10 security groups and 100 security group rules (`openstack
+  quota show`, 2026-11-18). `default`, `cr-platform` and the fabric's four
+  groups hold 6; the three `cr-lan-` groups make 9, for any pool size. With
+  five groups per slot stack, as before, every stack of the pool of four
+  failed with `OverQuotaClient: Quota exceeded for resources:
+  ['security_group']` (`docs/DECISIONS.md`, 2026-11-18).
 
 ```bash
 openstack quota show fsl-range
@@ -486,7 +494,7 @@ flavor fits.
 | Key | Use | Notes |
 |---|---|---|
 | `platform` | platform VM | 8 GB RAM or more. With 4 GB, the OOM killer once killed Elasticsearch when sessions stacked up (DECISIONS 2026-10-10). Example `m1.large` (8 GB / 2 vCPU / 60 GB) |
-| `kali`, `waf`, `infra`, `target` | each slot VM of that role | optional; `dba.small` when left out, the WAF included (`docs/DECISIONS.md`, 2026-11-18). Kali's image has `min_disk` 25 GB, which `dba.small`'s 30 GB holds. The target runs the wargame's front and MySQL under Docker, with the memory limits of `deploy/roles/target/wargames.yaml` |
+| `kali`, `waf`, `infra`, `target` | each slot VM of that role | optional; `dba.small` when left out, the WAF included (`docs/DECISIONS.md`, 2026-11-18). Every role image has `min_disk` 30 GB, which `dba.small`'s 30 GB holds; an image baked on a larger disk does not fit it (§3.6). The target runs the wargame's front and MySQL under Docker, with the memory limits of `deploy/roles/target/wargames.yaml` |
 
 **(this cloud)** The cloud has `m1.large` (8 GB / 2 vCPU / 60 GB), `m1.medium`
 (4 GB / 2 vCPU / 30 GB), `dba.small`, `dba.medium` (8 GB / 4 vCPU / 40 GB) and
@@ -533,10 +541,11 @@ for the slot roles if it has no `dba.small`; name it in `compute.flavors`.
 | `cr-mgmt` | fabric | on every slot VM's control port; all IPv4 in, only from members of `cr-reach` (the platform's `cr-mgmt` port) |
 | `cr-senders` | fabric | also on each slot's infra control port, the only sender the collector takes; no rule in |
 | `cr-egress` | fabric | no rule in; the fabric creates it and no port uses it |
-| `cr-slot-<n>-<lan>` | the slot's stack | one per slot LAN (§6) |
+| `cr-lan-<digest>` | the platform, before it creates a slot stack | one per distinct LAN rule set, shared by every slot; `<digest>` is the first 12 hex of the rules' SHA-256. Three for board and corp alike: all IPv4 in (`internet`, `dmz`), all in from 10.30.128.0/24 (`web-outer`, `web-inner`), tcp 514 from 172.29.0.0/24 (`mgmt`) (§6) |
 
 `bin/cloud up` deletes the groups `cr-range` and `cr-build` of the ranges
-before (§5.5).
+before (§5.5). `DELETE fabric/` deletes the `cr-lan-` groups after the slots
+(§6.2).
 
 Port 8002 is the blue console's Website pane. The platform sends each request
 over an ssh stream to the slot's Kali VM (over `cr-mgmt`). Kali sends it from
@@ -590,7 +599,7 @@ Glance holds three kinds of image:
 |---|---|---|
 | `compute.base_image` (e.g. `ubuntu-24.04`) | the stock `noble-server-cloudimg-amd64.img`, checksum verified, uploaded as is (below) | `bin/cloud init`, once |
 | the Kali base | Kali's Generic Cloud image (`kali-linux-<ver>-cloud-genericcloud-amd64.tar.xz`), converted and uploaded once **[unverified]** | by hand, once |
-| `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1` | baked from `deploy/roles/<role>/install.sh` on a builder VM, then a Nova snapshot (below) | by hand, once per bake |
+| `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1` (**(this cloud)** the WAF's is `cr-waf-bake2`) | baked from `deploy/roles/<role>/install.sh` on a builder VM, then a Nova snapshot (below) | by hand, once per bake |
 
 The platform VM installs or writes every package, tool, key and setting at
 boot from the base image. The slot VMs boot from the baked images with no
@@ -645,29 +654,51 @@ each wargame's `compose.yaml`); copy the directory with the links resolved.
 | `target` | `compute.base_image` | Docker and Compose; board's and corp's compose files rendered for a VM (`render.py`: fronts published on the slot's addresses, databases on the internal `<w>_backend`), their images pulled from GHCR at `CR_IMAGE_TAG` (required), brought up once and their volumes kept as the pristine data, `wargames.service` |
 
 The Ubuntu roles point apt at the Kakao mirror, purge `snapd` and
-`modemmanager`, and retry `apt-get` up to ten times (§2.6). A bake by hand,
-for one role, goes like this; the builder needs a network with a router (the
-platform stack's `cr-platform`) and a way in for ssh, here the group
-`cr-platform` and a floating IP. As a procedure it is **[unverified]**:
+`modemmanager`, and retry `apt-get` up to ten times (§2.6).
+
+The builder's flavor sets the image's disk. A Nova snapshot takes the
+builder's root disk as the image's virtual size and `min_disk`, and Heat
+refuses a slot stack whose flavor has less disk than its image's `min_disk`
+(`StackValidationFailed: Image cr-waf-bake1 requires 40 GB minimum disk
+space. Flavor dba.small has only 30 GB.`). Bake on a flavor whose disk is no
+larger than the slot flavor's, 30 GB for `dba.small`. **(this cloud)**
+`m1.medium` (2 vCPU, 4 GB, 30 GB) fits and has more vCPU for the source builds
+than `dba.small`.
+
+A bake by hand, for one role, goes like this; the builder needs a network with
+a router (the platform stack's `cr-platform`) and a way in for ssh, here the
+group `cr-platform` and a floating IP. As a procedure it is **[unverified]**:
 
 ```bash
-openstack server create --image ubuntu-24.04 --flavor dba.small --network cr-platform \
-  --security-group cr-platform --key-name fsl-claude --wait cr-bake-waf
-openstack floating ip create provider; openstack server add floating ip cr-bake-waf <address>
+openstack server create --image ubuntu-24.04 --flavor m1.medium --network cr-platform \
+  --security-group cr-platform --key-name fsl-claude --wait cr-bake-waf2
+openstack floating ip create provider; openstack server add floating ip cr-bake-waf2 <address>
 scp -r deploy/roles/waf ubuntu@<address>:/tmp/waf          # scp -r follows the links
 ssh ubuntu@<address> 'sudo sh /tmp/waf/install.sh'          # the target: sudo env CR_IMAGE_TAG=<compute.target_tag> sh ...
-openstack server stop cr-bake-waf
-openstack server image create --wait --name cr-waf-bake1 cr-bake-waf
-openstack server delete cr-bake-waf; openstack floating ip delete <address>
+openstack server stop cr-bake-waf2
+openstack server image create --wait --name cr-waf-bake2 cr-bake-waf2
+openstack server delete cr-bake-waf2; openstack floating ip delete <address>
 ```
+
+The builder needs no floating IP when ssh reaches it through the platform VM,
+which has a port on `cr-platform`: the WAF re-bake of 2026-11-18 went that
+way.
 
 A builder named `cr-build-<...>` or carrying the `cr_image` property would be
 deleted by `DELETE leftovers/` and `bin/cloud down` as a builder of the VM
-range; name it otherwise. The four images `bake1` were baked by hand on
-2026-11-18 and are active in Glance (`docs/DECISIONS.md`); how long a bake
-takes and how long the Kali image takes to boot are **[unverified]**. The Kali
-image's `min_disk` is 25 GB, so its flavor needs at least that disk;
-`dba.small` has 30 GB (§3.3).
+range; name it otherwise.
+
+**(this cloud)** The four images `bake1` were baked by hand on 2026-11-18
+(`docs/DECISIONS.md`). `cr-waf-bake1` was baked on a builder with a 40 GB disk,
+so its `min_disk` is 40 GB and `dba.small` cannot boot it; it was baked again,
+unchanged from `deploy/roles/waf/`, as `cr-waf-bake2` on an `m1.medium`
+builder: `install.sh` took 12 min 53 s (ModSecurity built from source), the
+snapshot 2 min 30 s. `cloud.yaml` names `compute.images.waf: cr-waf-bake2`;
+`cr-waf-bake1` stays in Glance, unused. The slots boot `cr-kali-bake1`,
+`cr-waf-bake2`, `cr-infra-bake1` and `cr-target-bake1`, each of virtual size
+30 GB and `min_disk` 30 GB, which `dba.small`'s 30 GB holds (§3.3). How long
+the other bakes take and how long the Kali image takes to boot once it is
+cached on the compute node are **[unverified]**.
 
 A slot stack names its images by `compute.images`, and the stack's digest
 holds the names, not the content (§6, §7): bake a changed role under a new
@@ -677,7 +708,8 @@ bake's `CR_IMAGE_TAG` is the full commit `compute.target_tag` names (§4); a
 new target bake is a new image name and a new `target_tag`, both in the
 digest, so every slot is replaced. The target's boot refuses to report ready
 when an `image:` line in `/opt/wargames/*/compose.yaml` carries another tag,
-and writes those lines into `/var/lib/cr/failed` (§6).
+and writes those lines into `/var/lib/cr/failed` (§6). A line pinned by digest
+(`mysql@sha256:...`) has no tag and passes.
 
 ## 4. cloud.yaml
 
@@ -726,7 +758,7 @@ in a container's environment.
 | `compute.base_image` | `ubuntu-24.04` | the platform VM, and the builder of the Ubuntu role images (§3.6) |
 | `compute.availability_zone` | `""` | the platform VM and every slot VM; if empty, Nova chooses |
 | `compute.flavors` | `platform`, and `kali`, `waf`, `infra`, `target` | §3.3. A slot role left out takes `dba.small`; `CR_OPENSTACK_FLAVORS` |
-| `compute.images` | `cr-<role>-bake1` per role | optional; each slot role's Glance image, baked from `deploy/roles/<role>/` (§3.6); a role left out takes `cr-<role>-bake1`; `CR_OPENSTACK_IMAGES` |
+| `compute.images` | `cr-<role>-bake1` per role (**(this cloud)** `waf: cr-waf-bake2`) | optional; each slot role's Glance image, baked from `deploy/roles/<role>/` (§3.6); a role left out takes `cr-<role>-bake1`; `CR_OPENSTACK_IMAGES` |
 | `compute.pool` | `{board: 3, corp: 1}` | optional; how many slots stand ready for each wargame, each one Heat stack of four VMs, so how many sessions can run at once (§6.4); `CR_OPENSTACK_POOL` |
 | `compute.target_tag` | the commit the target image was baked at | optional; the full 40-hex commit whose board and corp images the target image pulled (its bake's `CR_IMAGE_TAG`, §3.6); a slot has no egress, so it runs only those. Without it, the commit `cr-target-bake1` was baked at; `CR_OPENSTACK_TARGET_TAG` |
 | `keys.key_name`, `keys.key_file` | `fsl-claude`, `~/.ssh/fsl_claude` | the Nova keypair the platform VM boots with (its `key_name`, §3.4), and that keypair's private key, for ssh to the VM |
@@ -1263,7 +1295,8 @@ Notes:
   touches `/var/lib/cr/ready`, or writes the units' status into
   `/var/lib/cr/failed`. Two nodes check more first. The target refuses ready
   when an `image:` line in `/opt/wargames/*/compose.yaml` carries another tag
-  than `compute.target_tag`, and writes those lines into `failed`. The infra
+  than `compute.target_tag`, and writes those lines into `failed`; a line
+  pinned by digest (`@sha256:`, the databases) passes. The infra
   reports ready only once `suricatasc -c uptime` answers (its node's
   `answers:` in `topology.yaml`, tried for up to 300 s), because configure
   loads the baseline rules through that socket next. The platform asks each
@@ -1292,8 +1325,9 @@ Notes:
 turns `wargames/<w>/topology.yaml` and the declaration's origins into a plan,
 and `platform/range/openstack.py` renders it as a Heat Orchestration Template
 (`template()`) and creates the stack with `disable_rollback` and a 30-minute
-timeout. The stack's parameters are the fabric's keypair, network and groups
-and each role's image and flavor (`compute.images`, `compute.flavors`). Every
+timeout. The stack's parameters are the fabric's keypair, network and groups,
+each role's image and flavor (`compute.images`, `compute.flavors`), and each
+LAN's `cr-lan-` group (`group_<lan>`). Every
 slot uses the same addresses; slots differ by network, not by CIDR.
 
 | LAN (`cr-slot-<n>-<lan>`) | Subnet | Members |
@@ -1307,7 +1341,7 @@ slot uses the same addresses; slots differ by network, not by CIDR.
 | VM (`cr-slot-<n>-<node>`) | Image | Learner |
 |---|---|---|
 | `kali` | `cr-kali-bake1`: Kali with `kali-linux-headless` and the tools | root, by web terminal and by ssh as `kali` (§3.5) |
-| `waf` | `cr-waf-bake1`: Ubuntu, nginx 1.24, ModSecurity 3.0.16, CRS 4.25.1 | root, by web terminal |
+| `waf` | `cr-waf-bake1` (**(this cloud)** `cr-waf-bake2`): Ubuntu, nginx 1.24, ModSecurity 3.0.16, CRS 4.25.1 | root, by web terminal |
 | `infra` | `cr-infra-bake1`: Ubuntu, nftables, Suricata (`jasonish/suricata`, pinned by digest), rsyslog | none |
 | `target` | `cr-target-bake1`: Ubuntu, Docker, board and corp at the baked tag | none |
 
@@ -1319,11 +1353,17 @@ slot uses the same addresses; slots differ by network, not by CIDR.
 - Each node also has a control port on the fabric's `cr-mgmt`, in the group
   `cr-mgmt`; the infra's is also in `cr-senders`, the only group the collector
   takes udp 5140 from (§3.5). The map draws it as the management link.
-- Each LAN has its own security group `cr-slot-<n>-<lan>`: in from the LAN's
-  subnets, from anywhere on a LAN where a port carries an address pair
-  (`internet`, `dmz`), and on `mgmt` only tcp 514 from its subnet. Neutron
-  enforces these outside the guest, so root in Kali or the WAF cannot change
-  them. The pair `0.0.0.0/0` lets Kali send from any origin address; port
+- Each LAN's secured ports are in a security group that admits in from the
+  LAN's subnets, from anywhere on a LAN where a port carries an address pair
+  (`internet`, `dmz`), and on `mgmt` only tcp 514 from its subnet. Every slot
+  uses the same addresses, so every slot has the same rule sets, and LANs with
+  equal rules share a group. The adapter (`lan_groups` and `_lan_group_ids` in
+  `platform/range/openstack.py`) makes each group `cr-lan-<digest>` once, under
+  a lock, before it creates a stack, and hands their ids to the stack; board
+  and corp take the same three (§3.5). The rules name CIDRs, not groups, and
+  each slot's LANs are networks of its own, so a shared group opens nothing
+  between slots. Neutron enforces these outside the guest, so root in Kali or
+  the WAF cannot change them. The pair `0.0.0.0/0` lets Kali send from any origin address; port
   security still binds Kali's port to the MAC Neutron gave it.
   `max_allowed_address_pair` is 10 on this cloud, so the 30 origin /24s cannot
   each be a pair.
@@ -1424,21 +1464,28 @@ the next `POST slot/` creates it again.
 How long a stack takes to delete and to come back ready, so how long a slot is
 away after a close, is **[unverified]**. The probe stack of 2026-11-18 (three
 Ubuntu VMs on `dba.small`) reached `CREATE_COMPLETE` in 29 s and answered ssh
-about 1 min 53 s after.
+about 1 min 53 s after. The first pool fill of 2026-11-18 created the four
+stacks at once with no image cached on com01: the 14 GB Kali image was copied
+to com01 first, the other VMs were `ACTIVE` after about 4 to 5 min, and the
+stacks reached `CREATE_COMPLETE` after about 12 to 13 min. The infra wrote
+ready about 3 min after its boot, the target about 2.5 min after (cloud-init
+finished at 151 s).
 
 ### 6.2 Teardown order
 
 Delete the slots, then the fabric. `DELETE $P/slot/` deletes every slot's
 stack; `DELETE $P/slot/?slot=N` deletes one. Heat deletes a stack's servers,
-ports, groups and networks itself. Each slot VM's control port stands on
+ports and networks itself; the `cr-lan-` groups are not the stack's and stay
+for the next stack. Each slot VM's control port stands on
 `cr-mgmt`, so `DELETE $P/fabric/` refuses while any server other than the
 platform has a port on it; `bin/cloud down` waits until `GET $P/slot/` lists
 no standing stack first. Teardown also deletes the ports that no server holds
 any more. Nova leaves the pre-created `cr-platform.mgmt` port standing when it
 deletes a platform VM; the next `POST fabric/` attaches that port to the new
 platform VM, so the platform keeps its `cr-mgmt` address, and deletes any
-further detached port of that name. It also deletes the groups `cr-range` and `cr-build` if
-they are still there.
+further detached port of that name. `DELETE $P/fabric/` deletes the `cr-lan-`
+groups after the slots (`fabric.LAN_GROUP_PREFIX`), and the groups `cr-range`
+and `cr-build` if they are still there.
 
 ### 6.3 Keypair drift
 

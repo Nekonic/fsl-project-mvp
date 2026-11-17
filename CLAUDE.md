@@ -185,7 +185,8 @@ range-facing logic changed, and before a push.
   of cloud-specific values (no secrets; init writes it from
   `cloud.example.yaml`), signing in with the `~/.config/openstack/clouds.yaml`
   entry it names; the cloud holds the stock Ubuntu 24.04 cloud image, uploaded
-  as is, and the four role images `cr-<role>-bake1`. OpenStack procedures are in
+  as is, and the four role images `compute.images` names (`cr-<role>-bake1`
+  by default). OpenStack procedures are in
   `docs/OPENSTACK.md`.
   `README.md` has the ports, `docs/ARCHITECTURE.md` the file map and the isolation seams,
   `docs/superpowers/specs/` the design.

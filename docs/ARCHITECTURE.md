@@ -38,7 +38,7 @@
 - **플랫폼 DB**: 플랫폼의 SQLite DB `/data/db.sqlite3`
 - **유닛**(`unit`): 단계 엔진이 실행하는 기초 레슨이나 시나리오. 본문에서는 주로 "레슨"
 - **박스**: 역할 하나를 맡는 VM이나 컨테이너. 예: 공격 박스(Kali VM)
-- **역할 이미지**: 슬롯 VM이 부팅하는 Glance 이미지 `cr-<role>-bake1`. `deploy/roles/<role>/install.sh`로 구움
+- **역할 이미지**: 슬롯 VM이 부팅하는 Glance 이미지. 이름은 `compute.images.<role>`, 기본값 `cr-<role>-bake1`. `deploy/roles/<role>/install.sh`로 구움
 - **풀**(pool): 워게임별로 미리 띄워 둔 슬롯. 크기는 `cloud.yaml`의 `compute.pool`
 
 ## 훈련 환경
@@ -83,12 +83,14 @@
 이미지:
 
 - 앱 이미지(platform, board, corp, corp-db)는 CI(`.github/workflows/images.yml`)에서 빌드해 GHCR에 올림
-- 슬롯 VM은 역할 이미지 네 개로 부팅: `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1`(`cloud.yaml`의 `compute.images.<role>`). 이미지마다 `deploy/roles/<role>/install.sh`를 인터넷이 되는 빌더 VM에서 root로 한 번 돌리고 Nova 스냅숏으로 Glance에 올림. 절차는 `docs/OPENSTACK.md`
+- 슬롯 VM은 역할 이미지 네 개로 부팅: 기본값 `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1`(`cloud.yaml`의 `compute.images.<role>`). 이 클라우드의 WAF는 `cr-waf-bake2`. 이미지마다 `deploy/roles/<role>/install.sh`를 인터넷이 되는 빌더 VM에서 root로 한 번 돌리고 Nova 스냅숏으로 Glance에 올림. 절차는 `docs/OPENSTACK.md`
 - `install.sh`는 여러 번 돌려도 결과가 같고, 마지막에 cloud-init 상태와 machine-id를 지워 그 스냅숏으로 뜬 VM이 모두 새 인스턴스가 됨. 슬롯마다 다른 값은 부팅 때 `/etc/slot.env`로 받고, 역할마다 있는 `slot-boot` 유닛이 이 파일을 읽음(빌더에는 이 파일이 없어 아무것도 하지 않음)
 - target 이미지는 구울 때의 `CR_IMAGE_TAG`로 board, corp 이미지를 받아 두고 초기 데이터 사본을 만듦. 슬롯은 부팅할 때 GHCR에서 아무것도 받지 않으므로 구운 이미지에 든 태그만 돌림
-- `cloud.yaml`의 `compute.target_tag`(전체 커밋. 기본값은 `cr-target-bake1`을 구운 커밋)가 그 태그이고 플랫폼에는 `CR_OPENSTACK_TARGET_TAG`로 감. target 부팅은 `/opt/wargames/*/compose.yaml`의 `image:` 줄에 다른 태그가 있으면 준비 완료를 쓰지 않고 그 줄들을 `/var/lib/cr/failed`에 남김
+- `cloud.yaml`의 `compute.target_tag`(전체 커밋. 기본값은 `cr-target-bake1`을 구운 커밋)가 그 태그이고 플랫폼에는 `CR_OPENSTACK_TARGET_TAG`로 감. target 부팅은 `/opt/wargames/*/compose.yaml`의 `image:` 줄에 다른 태그가 있으면 준비 완료를 쓰지 않고 그 줄들을 `/var/lib/cr/failed`에 남김. digest로 고정한 줄(`mysql@sha256:...`)은 태그가 없으므로 통과
 - 워게임 이미지를 바꾸면 target 이미지를 다른 이름으로 다시 굽고 `compute.images.target`과 `compute.target_tag`를 함께 바꿈. 둘 다 스택 digest에 들어가므로 모든 슬롯을 새로 만듦
-- 네 이미지 `bake1`은 손으로 구워 Glance에 `active`로 있음. 슬롯 역할 flavor 기본값 `dba.small`(디스크 30 GB)은 Kali 이미지의 `min_disk` 25 GB를 넘음
+- 네 이미지 `bake1`은 손으로 구워 Glance에 `active`로 있음. `cr-waf-bake1`은 디스크 40 GB 빌더에서 구워 `min_disk`가 40 GB라 `dba.small`로 뜨지 않음. 같은 `deploy/roles/waf/`로 `m1.medium`(2 vCPU, 4 GB, 30 GB) 빌더에서 `cr-waf-bake2`를 다시 구웠고, `cr-waf-bake1`은 쓰지 않고 남아 있음
+- Nova 스냅숏은 빌더의 루트 디스크 크기를 이미지의 virtual size와 `min_disk`로 가져감. 그래서 빌더 flavor의 디스크는 슬롯 flavor의 디스크(`dba.small` 30 GB)보다 크면 안 됨
+- 지금 슬롯이 쓰는 네 이미지는 모두 virtual size 30 GB, `min_disk` 30 GB. 슬롯 역할 flavor 기본값 `dba.small`(디스크 30 GB)에 맞음
 - 슬롯을 컨테이너로 돌리던 때부터 쓰던 파일은 복사하지 않고 링크로 둠(`deploy/roles/kali/stamp.py` → `deploy/proxy/stamp.py`, `deploy/roles/waf/modsecurity.conf` → `deploy/waf/modsecurity.conf`, `deploy/roles/target/board.yaml` → `wargames/board/compose.yaml` 등). `platform/tests/test_roles.py`가 버전 고정, 로그 경로, 태그, 자원 한도를 확인
 - 도구 케이스는 공격 박스(Kali VM)에서 실행(`redteam/tools.py`, `TOOL_IMAGE` 기본값 `cr-kali`)
 
@@ -156,7 +158,7 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 |---|---|---|---|---|
 | `kali` | 슬롯 N의 VM `cr-slot-N-kali` | 역할 이미지 `cr-kali-bake1`. Kali, `kali-linux-headless`와 공격 도구, 마커 프록시(`web-proxy.service`) | internet | |
 | `infra` | 슬롯 N의 VM `cr-slot-N-infra` | `cr-infra-bake1`. Ubuntu 24.04. nftables 라우터(장치 `cr-edge`), IDS 브리지 `br0`의 Suricata(장치 `cr-ids`, digest 고정 `jasonish/suricata` 컨테이너, `--network host`), rsyslog 로그 서버(장치 `log-server`). Suricata의 `suricata -T`와 소켓 명령은 `sensor` 컨테이너 안에 있고 호스트에는 `suricatasc` 래퍼만 있음. 학습자 셸 없음 | internet(`wan`), dmz(`lan`), web-outer·web-inner(IDS 다리, 주소 없음), 관제망 | |
-| `waf` | 슬롯 N의 VM `cr-slot-N-waf` | `cr-waf-bake1`. Ubuntu 24.04, 소스로 빌드한 nginx 1.24.0, ModSecurity 3.0.16, CRS 4.25.1. rsyslog로 audit 로그와 거부 로그를 로그 서버로 보냄 | dmz, web-outer, 관제망 | |
+| `waf` | 슬롯 N의 VM `cr-slot-N-waf` | `cr-waf-bake1`(이 클라우드는 `cr-waf-bake2`). Ubuntu 24.04, 소스로 빌드한 nginx 1.24.0, ModSecurity 3.0.16, CRS 4.25.1. rsyslog로 audit 로그와 거부 로그를 로그 서버로 보냄 | dmz, web-outer, 관제망 | |
 | `target` | 슬롯 N의 VM `cr-slot-N-target` | `cr-target-bake1`. Ubuntu 24.04, Docker, 워게임 compose(`wargames.service`). 학습자 셸 없음 | web-inner | |
 | `board` | board 슬롯의 target VM | `ghcr.io/nekonic/cr-board`(`wargames/board/app`). gunicorn, Django, 포트 8000 | `board_front`, `board_backend` | 8000(web-inner 주소 10.30.128.59에만) |
 | `board-db` | board 슬롯의 target VM | digest 고정 `mysql` | `board_backend` | |
@@ -210,7 +212,11 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 망 분리는 Neutron이 합니다. 보안 그룹과 포트 보안은 OVN이 게스트 밖에서 적용하므로, Kali나 WAF의 root 셸로 바꿀 수 없습니다.
 
 - 슬롯 LAN에는 Neutron 라우터가 없음. 슬롯 밖으로 나가는 경로는 control 포트(`cr-mgmt`)뿐이고, 그 망에도 게이트웨이가 없음
-- LAN마다 보안 그룹 하나(`cr-slot-<n>-<lan>`). 그 LAN 대역에서 오는 것만 받음. 주소 쌍이 있는 포트가 붙은 LAN(`internet`, `dmz`)은 모든 주소에서 받음. 관제망은 514/tcp만 받음
+- LAN 포트의 보안 그룹은 그 LAN 대역에서 오는 것만 받음. 주소 쌍이 있는 포트가 붙은 LAN(`internet`, `dmz`)은 모든 주소에서 받음. 관제망은 514/tcp만 받음
+- 슬롯마다 주소가 같으므로 룰도 같음. 룰이 같은 LAN끼리 그룹 하나를 쓰고, 모든 슬롯이 그 그룹을 같이 씀. board와 corp 모두 3개: 전부 받음(`internet`, `dmz`), 10.30.128.0/24에서 전부 받음(`web-outer`, `web-inner`), 172.29.0.0/24에서 514/tcp만 받음(`mgmt`)
+- 그룹 이름은 `cr-lan-<룰 sha256 앞 12자리>`. 어댑터(`platform/range/openstack.py`의 `lan_groups`, `_lan_group_ids`)가 스택을 만들기 전에 락을 잡고 없는 그룹만 만들고, 그 id를 스택 파라미터 `group_<lan>`으로 넘김
+- 룰은 그룹이 아니라 CIDR로 받으므로 그룹을 같이 써도 슬롯 사이에 열리는 길은 없음. 슬롯의 LAN은 슬롯마다 따로 있는 네트워크
+- 슬롯마다 그룹 다섯 개를 만들던 때는 이 클라우드의 보안 그룹 quota 10에 걸려 슬롯 4개의 스택이 모두 `OverQuotaClient`로 실패함. 지금은 풀 크기와 상관없이 9개(`default`, `cr-platform`, fabric 그룹 4개, `cr-lan-` 그룹 3개)
 - 포트 보안을 끈 포트는 IDS 다리 둘뿐(`topology.yaml`의 `ids: true`)
 - control 포트는 `cr-mgmt` 보안 그룹. `cr-reach`(플랫폼) 멤버에서 오는 것만 받음. infra의 control 포트는 `cr-senders`에도 속해 collector로 syslog를 보낼 수 있음
 - Kali는 `internet`에만 붙음. 아는 이름은 `board.com`, `corp.com`뿐이고 둘 다 라우터의 공인 IP를 가리킴(이미지의 `/etc/hosts`)
@@ -1905,6 +1911,7 @@ init이 하는 일(`bin/cloud`의 `init`, 관리자 인증은 `/etc/kolla/clouds
 - 프로젝트 `fsl-range`, member 사용자 `fsl-range`가 없으면 만듦
 - flavor는 만들지 않음. 플랫폼은 조건(2 vCPU·8 GB·40 GB 이상)에 맞는 것 중 가장 작은 것을 고름. 슬롯 역할은 `compute.flavors.<role>`에 적은 이름(기본 `dba.small`)이 없으면 멈춤. private flavor는 프로젝트에 접근 권한을 줌
 - quota가 인스턴스 1 + 4 × 슬롯 수, 플랫폼과 슬롯 VM 전부의 vCPU·RAM, floating IP 1을 담지 못하면 모자란 항목을 출력하고 멈춤. 슬롯 수는 `compute.pool`의 합계
+- 보안 그룹 quota는 보지 않음. 훈련 환경은 풀 크기와 상관없이 그룹 9개를 씀
 - `compute.base_image`(기본 `ubuntu-24.04`) 이미지가 없으면 noble amd64 클라우드 이미지를 받아 `SHA256SUMS`와 대조한 뒤 public으로 올림. 같은 이름이 여럿이거나 `active`가 아니면 거부. 프로젝트 소유가 아닌 기존 이미지는 public으로 바꿈
 - `keys.key_file`이 없으면 `ssh-keygen`으로 만듦
 
@@ -2011,6 +2018,7 @@ VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init의 `CR_SUBSTR
 - `cr-mgmt`: 슬롯 VM의 control 포트. `cr-reach` 멤버만 허용
 - `cr-senders`: infra의 control 포트. 수집기로 syslog를 보내는 쪽
 - `cr-egress`: 인바운드 룰 없는 그룹. fabric이 만들지만 슬롯 스택은 쓰지 않음
+- `cr-lan-<digest>`: 슬롯 LAN 포트의 그룹("훈련 환경" 절 참고). fabric이 아니라 어댑터가 슬롯 스택을 만들기 전에 만들고, fabric을 지울 때 슬롯 다음에 지움(`fabric.LAN_GROUP_PREFIX`)
 
 플랫폼은 자기 서버 id(부팅 때 기록하는 `CR_OPENSTACK_PLATFORM`)로 찾은 `cr-reach` 포트(`cr-platform.mgmt`)로 `cr-mgmt`에 붙습니다. 이 포트가 붙어 있지 않으면 fabric POST가 떨어져 있는 같은 이름의 포트를 붙이고(여럿이면 하나만 남김), 없을 때만 새로 만듭니다. 그래서 플랫폼 VM을 교체해도 `cr-mgmt` 주소가 바뀌지 않습니다. 플랫폼에서 슬롯 VM으로는 ssh할 수 있습니다. 반대 방향 연결은 NTP와 infra의 syslog뿐입니다.
 
@@ -2025,7 +2033,7 @@ VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init의 `CR_SUBSTR
 - 풀: `cloud.yaml`의 `compute.pool`(기본 `{board: 3, corp: 1}`, 플랫폼에서는 `CR_OPENSTACK_POOL`). 슬롯 번호를 차례로 워게임에 나눔(`pool.assigned`. 기본값이면 1~3이 board, 4가 corp). `max_sessions`는 합계
 - 풀 배정이 스택 태그 `cr.wargame`보다 우선. `compute.pool`을 바꾸면 세션이 잡지 않은 슬롯은 다음 `POST /api/range/slot/`에서 새 배정의 워게임으로 다시 만듦
 - 슬롯 수의 한도는 클라우드 용량. 프로젝트 quota와 com01의 남은 메모리가 정함
-- 스택 하나: LAN마다 `OS::Neutron::Net`, 서브넷(DHCP 끔, 게이트웨이 없음), LAN 보안 그룹. 노드마다 control 포트(`cr-mgmt`), LAN 포트(고정 IP, 태그), `OS::Nova::Server`(config drive, 키페어 `cr-platform`, 메타데이터 `cr_slot`, `cr_node`, `cr_wargame`)
+- 스택 하나: LAN마다 `OS::Neutron::Net`, 서브넷(DHCP 끔, 게이트웨이 없음). LAN 보안 그룹은 스택에 들지 않고 파라미터 `group_<lan>`으로 받음(모든 슬롯이 같이 쓰는 `cr-lan-` 그룹). 노드마다 control 포트(`cr-mgmt`), LAN 포트(고정 IP, 태그), `OS::Nova::Server`(config drive, 키페어 `cr-platform`, 메타데이터 `cr_slot`, `cr_node`, `cr_wargame`)
 - 서버 이름 `cr-slot-N-kali`, `cr-slot-N-infra`, `cr-slot-N-waf`, `cr-slot-N-target`. 이미지와 flavor는 역할별 파라미터(`image_<role>`, `flavor_<role>`. `CR_OPENSTACK_IMAGES`, `CR_OPENSTACK_FLAVORS`)
 - 스택 태그: `cr-range`, `cr.slot=N`, `cr.wargame=<wargame>`, `cr.digest=<템플릿과 파라미터의 해시>`. `timeout_mins` 30, `disable_rollback`
 - 고정 IP는 config drive의 `network_data.json`으로 cloud-init이 NIC에 설정(DHCP 끈 서브넷)
@@ -2037,7 +2045,7 @@ VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init의 `CR_SUBSTR
 - `/etc/slot.env`에 그 노드의 슬롯 값(`sandbox.environment`)을 씀. Kali는 `INTERNET_ADDRESS`, `ORIGINS`. WAF는 `GATEWAY`, `LOG_SERVER`, `BOARD_ADDRESS`, `CORP_ADDRESS`. infra는 `SLOT`, `WAF_FRONT`, `UPSTREAM`, `IDS_LEGS`, `LOG_SERVER`, `COLLECTOR`. target은 `WARGAMES`와 서비스 주소
 - 시간 소스 drop-in을 씀
 - 역할의 부팅 유닛을 `systemctl start`로 띄우고(`sandbox.BOOTS`: kali `slot-boot`, waf `slot-boot`과 `nginx`, infra `slot-boot`과 `sensor`, target `wargames`), 성공하면 `/var/lib/cr/ready`, 실패하면 유닛 상태를 `/var/lib/cr/failed`에 씀
-- target은 유닛을 띄우기 전에 `/opt/wargames/*/compose.yaml`의 `image:` 줄이 모두 `compute.target_tag`로 끝나는지 봄. 다른 태그가 있으면 준비 완료를 쓰지 않고, 슬롯이 요구한 태그와 찾은 줄들을 `/var/lib/cr/failed`에 씀
+- target은 유닛을 띄우기 전에 `/opt/wargames/*/compose.yaml`의 `image:` 줄이 모두 `compute.target_tag`로 끝나는지 봄. digest로 고정한 줄(`@sha256:`)은 통과. 다른 태그가 있으면 준비 완료를 쓰지 않고, 슬롯이 요구한 태그와 찾은 줄들을 `/var/lib/cr/failed`에 씀
 - topology의 노드에 `answers:`가 있으면 유닛을 띄운 뒤 그 명령이 답할 때까지 최대 300초 기다린 다음 준비 완료를 씀. infra는 `suricatasc -c uptime`. configure가 이어서 이 소켓으로 기본 룰을 넣기 때문
 
 설치 상태:

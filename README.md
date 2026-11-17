@@ -117,18 +117,19 @@ flowchart TB
 - Heat 필요
 - [외부 네트워크](docs/OPENSTACK.md#25-external-network-and-floating-ips-admin-once): floating IP 풀, [인터넷 연결](docs/OPENSTACK.md#26-internet-egress)
 - 아래 [flavor](docs/OPENSTACK.md#33-flavors-admin-once-init-chooses). `init`은 flavor를 만들지 않습니다.
-- Glance에 역할 이미지 4개(`cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1`).
+- Glance에 역할 이미지 4개(기본 이름 `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1`. 이름은 `compute.images`).
   `deploy/roles/<역할>/install.sh`를 인터넷에 나갈 수 있는 빌더 VM에서 실행하고 스냅샷을 뜹니다.
+  스냅샷의 `min_disk`는 빌더의 디스크 크기가 되므로, 빌더 flavor의 디스크가 슬롯 flavor보다 크면 슬롯이 뜨지 않습니다.
   절차는 [이미지](docs/OPENSTACK.md#36-images)에 있습니다. target 이미지는 구울 때 받은 board, corp
   이미지의 태그(그 커밋)를 `compute.target_tag`에 적습니다. 기본값은 `cr-target-bake1`을 구운 커밋입니다.
 
 | VM | flavor 키 | 조건 |
 |---|---|---|
 | 플랫폼 VM | `compute.flavors.platform` | 2 vCPU, 8 GB RAM, 40 GB 디스크 이상 |
-| 슬롯 VM(kali, waf, infra, target) | `compute.flavors.<역할>` | 디스크 25 GB 이상(Kali 이미지의 `min_disk`). 지정하지 않으면 `dba.small`(디스크 30 GB) |
+| 슬롯 VM(kali, waf, infra, target) | `compute.flavors.<역할>` | 디스크가 역할 이미지의 `min_disk` 이상(지금 이미지는 모두 30 GB). 지정하지 않으면 `dba.small`(디스크 30 GB) |
 
 - 예: 플랫폼 `m1.large`(2 vCPU, 8 GB, 60 GB)
-- quota: 인스턴스 1 + 4 × 슬롯 수, 그만큼의 vCPU와 RAM. 기본 풀(슬롯 4개)이면 인스턴스 17개
+- quota: 인스턴스 1 + 4 × 슬롯 수, 그만큼의 vCPU와 RAM. 기본 풀(슬롯 4개)이면 인스턴스 17개. 보안 그룹은 슬롯 수와 상관없이 9개
 - 슬롯 하나에 드는 RAM, `dba.small`로 target의 Docker와 MySQL이 충분한지는 아직 재지 않았습니다.
 
 VM 1대에 클라우드 전체를 올려 시험하려면 [VM 1대로 시험하기](docs/OPENSTACK.md#9-try-it-in-one-vm-virtualbox-or-vmware)를 보세요.

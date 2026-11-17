@@ -9426,3 +9426,60 @@ Heat range.
   collector and NTP server, so a new address would have made every slot stale.
 - **A missing role image blocks the slot before Heat is asked.** A slot with
   no stack is `NOT_STANDING` with the reason "no active image ... in Glance".
+
+## 2026-11-18 — The first live pool fill: shared LAN security groups, the WAF re-baked on a 30 GB builder, digest-pinned images pass the tag check
+
+Found on the first `POST /api/range/slot/` against this cloud, which created
+the four stacks of the pool `{board: 3, corp: 1}` at once. Decided while the
+user was away.
+
+- **The slots share one security group per LAN rule set.** Every stack failed
+  with `OverQuotaClient: Quota exceeded for resources: ['security_group']`.
+  The project's `security_groups` quota is 10 (`openstack quota show`);
+  `default`, `cr-platform`, `cr-reach`, `cr-mgmt`, `cr-senders` and
+  `cr-egress` hold 6, and five groups per stack put a pool of four at 26. Every
+  slot uses the same addresses, so every slot has the same rules, and two
+  pairs of LANs are equal: `internet` and `dmz` admit everything (Kali's and
+  the router's ports carry the pair `0.0.0.0/0`), both web legs admit
+  10.30.128.0/24. The adapter now makes each distinct rule set once as
+  `cr-lan-<first 12 hex of the rules' SHA-256>`, under a lock, before it
+  creates a stack, and hands the ids to the stack as `group_<lan>`; board and
+  corp take the same three, so the range holds 9 of 10 for any pool size. The
+  rules are unchanged, and they name CIDRs, not groups, so a shared group
+  opens nothing between slots. `fabric.teardown` deletes the `cr-lan-` groups
+  after the slots. Rejected: merging the equal groups within each stack (still
+  3 per stack, 12 + 6 > 10); port security off on the slot LANs (loses the
+  anti-spoofing on the WAF's ports, where the learner has root); asking for a
+  quota raise (admin only, and the user was away).
+- **The WAF image is re-baked on a builder with a 30 GB disk.** Heat refused
+  every stack with `StackValidationFailed: Image cr-waf-bake1 requires 40 GB
+  minimum disk space. Flavor dba.small has only 30 GB.` A Nova snapshot takes
+  the builder's root disk as its virtual size and `min_disk`, and
+  `cr-waf-bake1` was baked on a 40 GB builder. `cr-waf-bake2` was baked
+  unchanged from `deploy/roles/waf/` on an `m1.medium` builder (2 vCPU, 4 GB,
+  30 GB) on `cr-platform`, reached over ssh through the platform VM with no
+  floating IP: `install.sh` took 12 min 53 s (ModSecurity built from source),
+  the snapshot 2 min 30 s, and the image has virtual size 30 GB and `min_disk`
+  30 GB. This cloud's `cloud.yaml` names `compute.images.waf: cr-waf-bake2`;
+  `cloud.example.yaml` and the code default stay `cr-<role>-bake1`, and
+  `cr-waf-bake1` stays in Glance, unused. The rule: bake on a flavor whose
+  disk is no larger than the slot flavor's. The Kali image's `min_disk` is
+  30 GB, not 25 GB as recorded above; infra and target are 30 GB too.
+  Rejected: a 40 GB flavor for the WAF (`dba.medium`, 4 vCPU: the pool of four
+  would need 30 vCPU against the quota of 24).
+- **Digest-pinned images pass the target's tag check.** The baked compose files
+  pin MySQL by digest (`mysql@sha256:...`), which has no tag, so every target
+  wrote `/var/lib/cr/failed` and all four slots stood `SETUP_FAILED`. `booted`
+  in `platform/range/sandbox.py` now also passes an `image:` line ending in
+  `@sha256:<hex>`; a line with another tag still fails.
+- **A refused OpenStack call names the service's own message.** The 503 of
+  `POST /api/range/slot/` carried the first 200 characters of the body, which
+  for Heat's `StackValidationFailed` cut the reason off. It now gives the
+  `message` Heat (`error`), Nova (`badRequest`) and Neutron (`NeutronError`)
+  wrap their reason in, and the first 200 characters only when the body has
+  none.
+- **Measured on this fill.** With no image cached on com01, the 14 GB Kali
+  image was copied there first; the other VMs were `ACTIVE` after about 4 to
+  5 min and the stacks reached `CREATE_COMPLETE` after about 12 to 13 min. The
+  infra wrote ready about 3 min after its boot, the target about 2.5 min
+  (cloud-init finished at 151 s).
