@@ -392,7 +392,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`: `/var/log/commands.log` 읽기. 터미널 연결 설정에 `cr-kali` 지정, `entrypoint.sh`에서 `vm-terminal.sh cr-kali` 실행. 웹사이트 창(`platform/api/site.py`)은 예외가 아님. `redteam/tools.py`의 `TOOL_IMAGE`(`CR_TOOL_IMAGE`, 기본 `cr-kali`): 도구 케이스를 공격 박스에서 실행. 박스 접근은 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(훈련 환경 호스트 ssh 스트림으로 슬롯 Kali 컨테이너 접속)로만 함. 발사한 sqlmap 케이스가 쓰는 박스 안 출력 디렉터리(`SQLMAP_RUNS`, `/tmp/sqlmap-runs/<케이스 id>`)도 `attacker.py`가 정해 `harness.fire`에 넘김(`views._fire`, `redteam/run.py`) |
 | 대상 시스템 데이터 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음. `loot.py`는 `board` 역할 runner로 board 컨테이너 안 `127.0.0.1`에 HTTP 요청. `effect.py`는 `corp-db`에 `docker exec`하는 runner로 접근 |
 
-`platform/tests/test_isolation_seams.py`가 `platform/` 코드를 관심사별 문자열로 훑어, 담당 파일과 알려진 예외 밖에서 그 관심사를 다루는 파일이 있으면 실패합니다. 담당 파일이 없어지면 담당 파일이 그 관심사를 아는지는 검사하지 않습니다. 다른 파일이 그 관심사를 알면 여전히 실패합니다. 슬롯 배선 읽기 행은 이 테스트에 없어서 검사하지 않습니다. 테스트에는 없어진 `gns3.py`의 GNS3 API 행이 남아 있습니다.
+`platform/tests/test_isolation_seams.py`가 `platform/` 코드를 관심사별 문자열로 훑어, 담당 파일과 알려진 예외 밖에서 그 관심사를 다루는 파일이 있으면 실패합니다. 담당 파일이 없어지면 담당 파일이 그 관심사를 아는지는 검사하지 않습니다. 다른 파일이 그 관심사를 알면 여전히 실패합니다. 슬롯 배선 읽기 행은 이 테스트에 없어서 검사하지 않습니다.
 
 ## 파일
 
