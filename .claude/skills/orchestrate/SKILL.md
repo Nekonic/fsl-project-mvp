@@ -119,6 +119,12 @@ two facts are what make a green run mean something. Protect them:
   the run with "double-check" steps. Spend a separate reviewer where it earns
   its cost: a fresh-context agent reading the diff against the plan before
   gate 2, on anything beyond a trivial change.
+- The live review round is an answer-blind walk: agents that do not know the
+  answers take each course as a learner on the deployed range. Run one agent
+  per course, each on its own slot, side by side. An interim round re-checks
+  only the items the last round fixed; the last round before `main` walks
+  every course in full. Take screenshots only of findings and result pages;
+  record a passing step in text (`DECISIONS.md` 2026-11-18).
 
 ## Docs match the code
 

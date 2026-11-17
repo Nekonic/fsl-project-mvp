@@ -9207,3 +9207,74 @@ the next replace boots a new range host.
   detail carries `change` (`views.applied`, the same diff the scenario
   debrief shows: IDS rule lines and the WAF exclusion removed), rendered under
   the lesson card for a scored course.
+
+## 2026-11-17 — The learner map is drawn as practitioners draw it: what the 2026-11-16 rules left out
+
+The 2026-11-16 entry ("The IDS stands behind the WAF", "The map") records
+switches per subnet, addresses beside their device on the side the link
+leaves, nothing outside the slot, no legend and no parentheses. The user's
+rulings since add the following; the map is read by a learner who has never
+seen the range, so a mark that is not a device, a link or an address is
+noise, and text too small to read at the console's frame defeats the map.
+
+- **Full IPs, never under the name**: every address is the whole IP (no
+  shortened `.N`), and none stands under its device's name or at the switch
+  end of its link (`test_live_map.py` holds both).
+- **No dashed lines**: every edge is a solid interface link, the mirror and
+  management links included; the dashed 미러링 and log edges of 2026-11-15 are
+  gone.
+- **Korean names**: role names come from the string table
+  (`topology.name.*`); Kali, WAF and IDS keep their proper names.
+- **Size**: three rows (internet, router and DMZ; 관제망 and web segment; the
+  DB zone) so the drawing fills the frame and its text renders at 13 px or
+  more in the console's 1040 px pane (13.3 px measured).
+
+## 2026-11-17 — The 관제망 keeps its switch; the router stands free between the zones
+
+Completes "A zone box is its subnet; the IDS stands in the mgmt box". The
+관제망 switch stays: `sN_mgmt` is a real bridge, and every bridge is drawn as
+a switch (2026-11-15); the IDS's and the WAF's management links and the log
+server meet on it. The router has an address in two subnets (its `wan` public
+IP and its `lan` on the DMZ), so it belongs to neither box: it stands between
+the internet and DMZ boxes with both addresses outside them. This
+replaces the 2026-11-16 placement "the router on the boundary".
+
+## 2026-11-17 — Kali lists its default source first
+
+Kali's default route names `src 5.188.10.10` (recorded in "The edge router
+holds one public IP of its own"), and `hostname -i` and the map name the same
+address, but `ip addr` on Kali listed 73.0.0.10 first, because the kernel
+lists an interface's addresses in the order they are added and `kali.ip`
+added the origins in declaration order. A learner who reads `ip addr` saw a
+different address from the one their traffic leaves from. `rangehost` now
+writes the default origin's addresses first (tested in
+`test_range_host.py`); the address set and the route are unchanged.
+
+## 2026-11-17 — Both hosts install from mirror.kakao.com
+
+Two Ubuntu archive servers answered 404 for noble's `Release` for over half
+an hour and failed three platform VM boots in a row; ten tries 15 s apart did
+not outlast it. The platform VM (`platform.yaml`, `apt`
+primary and security) and the range host (`setup.sh`) now install from
+`http://mirror.kakao.com/ubuntu/`. The same mirror's lag between
+`InRelease` and a DEP-11 file then made `apt-get update` exit 100 while every
+package index had downloaded, so a try is judged by the install, not by
+`apt-get update` ("An apt try is decided by the install"). Rejected: keeping
+the default archive with longer retries, since the outage outran the
+retries.
+
+## 2026-11-18 — Answer-blind walks: interim rounds re-check only what was fixed; the walk runs per course in parallel
+
+The user's ruling, from round 29 on. A full walk of both courses on one slot
+runs every lesson and scenario in series, and a screenshot of a step that
+passes carries no finding; an interim round exists to confirm that the last
+round's findings are fixed.
+
+- **Interim rounds re-check only the fixed items**: each finding of the last
+  round is walked again on the deployed code, not the whole course.
+- **One agent per course, each on its own slot**, run side by side; the slots
+  are session-isolated, so the walks do not see each other.
+- **Screenshots only of findings and result pages**; a passing step is
+  recorded in text.
+- **The last round before `main` stays a full walk** of every course, so a
+  regression outside the fixed items is still caught before gate 2.

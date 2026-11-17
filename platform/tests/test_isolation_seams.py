@@ -22,9 +22,6 @@ SEAMS = {
     "the Kibana API": (
         {"kibana.py"}, {"nginx.conf", "console/templates/console/blue.html"},
         r"/api/saved_objects|kbn-xsrf|/api/spaces|/api/data_views|/api/index_patterns"),
-    "the GNS3 API": (
-        {"gns3.py"}, set(),
-        r"\+ \"/v3\"|/v3/projects/"),
     "the attacker box": (
         {"attacker.py"}, {"operator_log.py", "entrypoint.sh"},
         r"/usr/local/sbin/set-origin|/var/lib/session/|ORIGIN-SNAT"),

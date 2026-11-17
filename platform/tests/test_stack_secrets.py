@@ -37,10 +37,10 @@ def test_the_project_password_is_a_read_only_secret_file_not_an_environment_valu
     assert '"/run/secrets/openstack_password"' in SETTINGS.read_text()
 
 
-def test_no_service_holds_the_docker_socket_beside_the_ones_named_here():
+def test_no_service_holds_the_docker_socket():
     holding = sorted(
         name for name, service in composed.services().items()
         if any("docker.sock" in str(mount) for mount in service.get("volumes") or [])
     )
 
-    assert set(holding) <= {"platform", "gns3"}
+    assert holding == []

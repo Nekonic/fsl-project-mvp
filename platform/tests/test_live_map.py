@@ -336,7 +336,7 @@ def crosses(segment, box):
     return min(x1, x2) < box[2] and box[0] < max(x1, x2) and min(y1, y2) < box[3] and box[1] < max(y1, y2)
 
 
-def test_the_waf_stands_in_the_dmz_the_web_servers_in_their_segment_and_the_router_on_the_boundary():
+def test_the_waf_stands_in_the_dmz_the_web_servers_in_their_segment_and_the_router_free_between_the_zone_boxes():
     drawn = board_map()
     placed = nodes_of(drawn)
     boxes = {zone["id"]: zone["box"] for zone in drawn["zones"]}
