@@ -323,7 +323,7 @@ def test_a_failed_search_is_reported_as_unavailable_not_as_no_records(post, said
 
 def test_a_request_nginx_refused_before_modsecurity_saw_it_is_waf_evidence_with_the_client_s_address():
     doc = {"event": {"module": "nginx"}, "time": "2026-11-16T05:40:01+00:00", "client_ip": "5.188.10.10",
-           "request": "GET /static/..%2F..%2F..%2F..%2Fetc/passwd HTTP/1.1", "status": 400}
+           "request": "GET /static/..%2F..%2F..%2F..%2Fetc/passwd HTTP/1.1", "http": {"status": 400}}
 
     [det] = normalize("es9", doc)
 

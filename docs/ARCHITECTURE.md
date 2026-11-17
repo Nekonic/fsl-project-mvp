@@ -133,7 +133,7 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 
 이 문서 검색은 `kibana.shown_as_the_view_shows`가 고쳐서 넘깁니다. `_source`에서 `HIDDEN_FIELDS`를 빼고, `fields`는 data view의 runtime field만 요청합니다. 그래서 JSON 탭에도 표와 같은 필드만 나옵니다.
 
-다른 space를 열면 거부 화면이 한국어로 나옵니다. 학습자가 `/kibana/s/<space>/…` 문서를 열 때 `/auth-check/`가 그 space를 학습자의 열린 세션 space와 비교하고, 아니면 403입니다. nginx는 이 403과 Default space 등 `/kibana/` 아래의 다른 403을 콘솔의 `/kibana-refused/` 화면(`kibana.refused.*` 문구)으로 바꿉니다. 게이트 API도 다른 space 요청에는 `strings.html`의 `kibana.refused.space` 문구를 `message`로 돌려줍니다. 캐시 키의 `$session_asked`에 space가 들어가서 한 space의 허용이 다른 space에 쓰이지 않습니다.
+다른 space를 열면 거부 화면이 한국어로 나옵니다. 학습자가 `/kibana/s/<space>/…` 문서를 열 때 `/auth-check/`가 그 space를 학습자의 열린 세션 space와 비교하고, 아니면 403입니다. nginx는 이 403과 Default space 등 `/kibana/` 아래의 다른 403을 콘솔의 `/kibana-refused/` 화면(`kibana.refused.*` 문구)으로 바꿉니다. 게이트 API도 다른 space 요청에는 `strings.html`의 `kibana.refused.space` 문구를, `kibana.refusal`이 거부한 호출에는 `kibana.refused.call` 문구를 `message`로 돌려줍니다. 거부 이유(영어)는 플랫폼 로그에만 남깁니다. 캐시 키의 `$session_asked`에 space가 들어가서 한 space의 허용이 다른 space에 쓰이지 않습니다.
 
 세션 space에서는 `bfetch:disable`로 요청 묶음을 끕니다. 검색 한 번이 요청 한 건이라 게이트가 본문 전체를 봅니다.
 
@@ -684,6 +684,7 @@ ingest를 호출할 때마다 하는 일:
 
 - 공유 수집기는 syslog 줄마다 송신자 hostname으로 슬롯을 판별(도메인 앞의 `-N`, 없으면 슬롯 1). 태그를 붙여 그 슬롯의 인덱스에 씀. 태그는 ingest 파이프라인에서 저장 전에 지움
 - Filebeat는 syslog 태그로 `event.module`(`suricata`, `modsecurity`, `nginx`)을 붙임. 셋 다 아닌 syslog 줄은 버림
+- nginx 거부 기록의 `status`는 Filebeat가 Suricata HTTP 기록과 같은 `http.status`로 옮김. 최상위 `status`가 한 번이라도 매핑되면 Kibana가 같은 이름의 runtime field `status`를 검색에 넣지 않아서, `status : 404`가 IDS 기록과 WAF 기록에 맞지 않음
 - 인덱스에는 두 엔진의 이벤트와 nginx 거부 기록만 남음. 학습자가 Kibana에서 보는 필드·인덱스·헤더 어디에도 플랫폼 이름이 없음. 케이스 마커는 `X-Request-ID` 헤더에 실림
 
 조회 기간:

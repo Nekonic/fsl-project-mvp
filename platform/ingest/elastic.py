@@ -105,7 +105,7 @@ def normalize(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
         return _normalize_modsecurity(doc_id, doc)
     if source == "nginx":
         return [{"detection_id": doc_id, "source": "nginx",
-                 "signature": f"{doc.get('status')} {doc.get('request', '')}", "severity": None, "timestamp": _parse_time(doc.get("time")), "src_ip": doc.get("client_ip"),
+                 "signature": f"{(doc.get('http') or {}).get('status')} {doc.get('request', '')}", "severity": None, "timestamp": _parse_time(doc.get("time")), "src_ip": doc.get("client_ip"),
                  "marker": None, "raw": doc}]
     return []
 

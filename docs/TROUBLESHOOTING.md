@@ -519,3 +519,54 @@ passed.
 Fix: the note opens the developer tools before the sort request
 and says why, and the row-not-selected reply records no try, as the
 address-side reply already did (`UNTRIED_REASONS` in `api/views.py`).
+
+## Answer-blind walk round 28: `not status : 404` kept the 404 rows
+
+### F3 step 4's query excluded nothing on slots 1 and 8
+
+Symptom, 2026-11-18: `url : *word* and not status : 404` still listed the
+404 rows on slots 1 and 8; `status : 404` matched nothing there. F5 and F6's
+`status : 500` searches can fail the same way. Slot 2 answered correctly.
+
+Cause, confirmed read-only on the cloud stack: nginx's refused log writes
+`status` at the top level of its JSON. The first refused record in a slot's
+data stream made Elasticsearch map a top-level `status` as `long` (slots 1
+and 8 had one such record each, the path-traversal case's
+`GET /static/..%2F..%2F..%2F..%2Fetc/passwd` answered 400, sent on
+2026-11-17 during `bin/verify` runs; slot 2 had none).
+Kibana 8.15's `DataView.getRuntimeMappings` (in
+`@kbn/data-views-plugin/common/data_views/data_view.js`) leaves out every
+runtime field whose name is a mapped field ("do not include fields that are
+mapped"), so the data view's runtime `status` was no longer sent and KQL
+queried the mapped field, which only the refused records carry. Against
+Elasticsearch directly, `term status: 404` counted 0 on slot 1 without the
+runtime field and 3 (all Suricata) with it; `status: 500` counted 0 and 160.
+The round 23 fix (`params['_source']['status']`) only mattered while the
+runtime field was still sent; it never made the mapped field go away.
+
+Fix: Filebeat's `nginx` branch renames `status` to `http.status`, the field
+Suricata's HTTP records already use, so no record maps a top-level `status`
+and the runtime field reads `doc['http.status']` for both. `ingest/elastic.py`
+reads the refused record's status from `http.status`, and the runtime script
+drops its `_source` branch. `test_filebeat.py` checks that no field the
+refused log ships, after the collector's renames, has the name of a runtime
+field in the session data view.
+
+Existing data: a data stream keeps the mappings its backing index was made
+with, so slots 1 and 8 keep the top-level `status` until that data stream is
+deleted. `bin/cloud up --replace` deletes the platform stack and creates a
+new VM; Elasticsearch's data lives in the `esdata` Docker volume on that VM's
+disk and only the platform store is backed up and restored, so after a
+replace every data stream starts empty under the new collector config. A
+`bin/cloud up` that resumes a standing VM keeps the old data streams; delete
+`logs-1-sensors` and `logs-8-sensors` there by hand if they hold the mapping.
+
+### The Kibana gate's refusal was English
+
+Symptom: a Kibana call the gate refuses showed its reason in English on
+Kibana's error page ("... is not a call Discover makes"), while the space
+refusal and `/kibana-refused/` are Korean.
+
+Fix: the gate answers with `kibana.refused.call` from the string table and
+writes the English reason to the platform log (`api/views.py`
+`kibana_gate`).

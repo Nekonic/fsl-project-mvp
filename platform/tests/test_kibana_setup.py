@@ -76,7 +76,7 @@ def test_a_request_nginx_refused_fills_the_columns_a_waf_row_fills_and_an_ids_ro
 
     assert "doc['client_ip']" in fields["source_ip"]["script"]["source"]
     assert "doc['request']" in fields["url"]["script"]["source"]
-    assert "params['_source']['status']" in fields["status"]["script"]["source"]
+    assert "doc['http.status']" in fields["status"]["script"]["source"]
     assert "doc['status']" not in fields["status"]["script"]["source"], (
         "a runtime field named status that reads doc['status'] reads itself, and Elasticsearch fails every shard "
         "with a document that has neither http.status nor a WAF response code, so status : 500 finds nothing")

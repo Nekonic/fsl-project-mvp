@@ -244,10 +244,21 @@ def test_the_gate_lets_a_learner_search_their_open_session_s_slot_only(a_learner
 
     assert own.status_code == 200 and own.json()["rawResponse"]["hits"]["total"] == 1
     assert [closed.status_code, others.status_code, typed.status_code] == [403, 403, 403]
-    assert typed.json()["statusCode"] == 403 and "logs-1-*" in typed.json()["message"]
+    assert typed.json()["statusCode"] == 403 and typed.json()["message"] == strings.line("kibana.refused.call")
     assert closed.json()["message"] == strings.line("kibana.refused.space"), (
         "Kibana prints this message on its error page, which a learner reads")
     assert forwarded == [SPACE + "internal/search/ese"]
+
+
+def test_a_call_the_gate_refuses_tells_the_learner_in_korean_and_the_reason_goes_to_the_log(a_learner_on_slot_1,
+                                                                                            caplog):
+    with caplog.at_level("WARNING", logger="api.views"):
+        refused = gate(a_learner_on_slot_1, SPACE + "api/saved_objects/_find", {})
+
+    assert strings.line("kibana.refused.call") and refused.status_code == 403
+    assert refused.json()["message"] == strings.line("kibana.refused.call"), (
+        "Kibana prints this message on its error page, which a learner reads; the English reason is for the operator")
+    assert "api/saved_objects/_find is not a call Discover makes" in caplog.text
 
 
 def test_the_gate_lets_staff_into_every_slot_s_space(client, settings):
