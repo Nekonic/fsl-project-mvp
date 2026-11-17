@@ -569,4 +569,8 @@ refusal and `/kibana-refused/` are Korean.
 
 Fix: the gate answers with `kibana.refused.call` from the string table and
 writes the English reason to the platform log (`api/views.py`
-`kibana_gate`).
+`kibana_gate`). A Kibana that does not answer gets 502 with
+`kibana.unanswered`, the connection error going to the log. A non-GET to
+`api/spaces/space`, which nginx answered with its own English 403 page, now
+goes to the gate (`error_page 403 = @kibana-gate` in `platform/nginx.conf`)
+and gets the same Korean refusal.

@@ -261,6 +261,18 @@ def test_a_call_the_gate_refuses_tells_the_learner_in_korean_and_the_reason_goes
     assert "api/saved_objects/_find is not a call Discover makes" in caplog.text
 
 
+def test_a_kibana_that_does_not_answer_is_told_to_the_learner_in_korean(a_learner_on_slot_1, caplog):
+    def unanswered(*asked):
+        raise OSError("connection refused")
+
+    with patch.object(kibana, "forward", unanswered), caplog.at_level("WARNING", logger="api.views"):
+        answer = gate(a_learner_on_slot_1, SPACE + "internal/search/ese", searching("logs-1-*"))
+
+    assert strings.line("kibana.unanswered") and answer.status_code == 502
+    assert answer.json()["message"] == strings.line("kibana.unanswered")
+    assert "connection refused" in caplog.text and "connection refused" not in answer.content.decode()
+
+
 def test_the_gate_lets_staff_into_every_slot_s_space(client, settings):
     settings.ELASTIC_SESSION_INDEX = "logs-{slot}-*"
     with patch.object(kibana, "forward", lambda *asked: (200, [], b"{}")):
