@@ -16,9 +16,9 @@ def test_the_new_benign_cases_are_ordinary_requests_and_the_comment_has_the_xss_
 
     assert not korean["malicious"] and korean["request"]["params"] == {"q": KOREAN}
     assert not comment["malicious"]
-    assert {key: value for key, value in comment["request"].items() if key != "json"} == \
-        {key: value for key, value in xss["request"].items() if key != "json"}
-    assert set(comment["request"]["json"]) == set(xss["request"]["json"])
+    assert {key: value for key, value in comment["request"].items() if key != "data"} == \
+        {key: value for key, value in xss["request"].items() if key != "data"}
+    assert set(comment["request"]["data"]) == set(xss["request"]["data"])
 
 def test_rule_validation_reports_suricata_s_error_lines_from_the_sensor_that_printed_them(client, settings):
     settings.CR_EXTRA_SENSORS = (("second-sensor", "/var/lib/suricata/rules/local.rules", ("reload",)),)

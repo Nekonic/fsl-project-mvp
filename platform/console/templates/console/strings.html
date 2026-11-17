@@ -1018,7 +1018,7 @@
     "scenario.body.goal": "모든 XSS 시도에서 XSS가 언급된 IDS 경보가 발생하고, 고객의 댓글과 검색에는 경보가 발생하지 않게 하세요.",
     "scenario.body.measured_by": "최종 점검에서 고객이 댓글을 작성하는 동안 공격을 다시 보냅니다.",
     "scenario.body.hint.buffer": "sid 9000003은 http.uri만 검사합니다. 댓글은 요청 본문에 담겨 전송됩니다.",
-    "scenario.body.hint.handler": "on 뒤에 영문자와 =가 붙는 이벤트 핸들러 속성이나 \u003cscript를 탐지해 보세요. 평범한 댓글에는 둘 다 없습니다.",
+    "scenario.body.hint.handler": "댓글 폼은 URL 인코딩되어 전송되므로 본문에서 \u003c는 %3C, =는 %3D로 보입니다. on 뒤에 영문자와 %3D가 붙는 이벤트 핸들러 속성이나 %3Cscript를 대소문자 구분 없이 탐지해 보세요. 평범한 댓글에는 둘 다 없습니다.",
     "scenario.unknown.title": "종합 실습",
     "scenario.unknown.situation": "게시판 웹방화벽은 Paranoia Level 1입니다. 회원들이 SQL과 템플릿 관련 질문을 댓글로 올리는데, 일부 댓글이 차단되고 있습니다. 앞선 시나리오에서 다루지 않은 공격도 들어오고 있습니다.",
     "scenario.unknown.goal": "모든 고객 요청이 정상 처리되게 하고, 공격은 모두 차단하세요.",

@@ -40,26 +40,29 @@ def dumps(case: dict[str, Any]) -> bool:
     return "--dump" in (case.get("args") or [])
 
 def fetch_argv(url: str, timeout: float, headers: dict | None = None) -> tuple[str, list[str]]:
-    argv = ["curl", "-sS", "--max-time", str(int(timeout))]
+    argv = ["curl", "-sS", "-i", "--max-time", str(int(timeout))]
     for name, value in (headers or {}).items():
         argv += ["-H", f"{name}: {value}"]
     argv.append(url)
     return TOOL_IMAGE, argv
 
-def _inject(value: Any, token: str) -> Any:
+PLACEHOLDER = re.compile(r"\{(\w+)\}")
+
+def _inject(value: Any, tokens: dict[str, str]) -> Any:
     if isinstance(value, str):
-        return value.replace("{nonce}", token)
+        return PLACEHOLDER.sub(lambda found: tokens.get(found[1], found[0]), value)
     if isinstance(value, dict):
-        return {key: _inject(item, token) for key, item in value.items()}
+        return {key: _inject(item, tokens) for key, item in value.items()}
     if isinstance(value, list):
-        return [_inject(item, token) for item in value]
+        return [_inject(item, tokens) for item in value]
     return value
 
 def apply_prefetch(case: dict[str, Any], base_url: str, launch, timeout: float) -> dict[str, Any]:
     spec = (case.get("request") or {}).get("prefetch")
     if not spec:
         return case
-    headers = (case.get("request") or {}).get("headers")
+    headers = {name: value for name, value in ((case.get("request") or {}).get("headers") or {}).items()
+               if not PLACEHOLDER.search(str(value))}
     image, argv = fetch_argv(f"{base_url.rstrip('/')}{spec['from']}", timeout, headers)
     try:
         result = launch(image, argv, timeout=timeout)
@@ -77,7 +80,7 @@ def apply_prefetch(case: dict[str, Any], base_url: str, launch, timeout: float) 
             f"so the request would carry no nonce and the target would reject it."
         )
     request = {key: value for key, value in case["request"].items() if key != "prefetch"}
-    return dict(case, request=_inject(request, found.group(1)))
+    return dict(case, request=_inject(request, {"nonce": found.group(1), **found.groupdict()}))
 
 def curl_argv(prepared: Any, timeout: float) -> tuple[str, list[str]]:
     argv = [

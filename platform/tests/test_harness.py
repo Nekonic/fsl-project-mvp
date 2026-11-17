@@ -232,3 +232,21 @@ def test_every_case_file_keeps_its_benign_cases():
         assert BENIGN_KEPT[path.name] <= benign, (
             f"{path.name} lost the benign cases {sorted(BENIGN_KEPT[path.name] - benign)}; "
             f"removing one makes the score look better and the platform pointless")
+
+
+def test_the_comment_cases_post_the_form_with_the_cookie_and_the_token_the_form_page_gave():
+    page = ("HTTP/1.1 200 OK\r\nSet-Cookie: csrftoken=Cookie64; Path=/; SameSite=Lax\r\n\r\n"
+            '<form method="post"><input type="hidden" name="csrfmiddlewaretoken" value="Masked64"></form>')
+    cases = {case["name"]: case for case in harness.load_cases(DEFAULT_CASES)}
+    for name in ("board-xss-img-onerror-in-comment", "board-normal-comment"):
+        launch, launched = _launcher(output=page)
+        harness.fire(dict(cases[name], case_id="c"), launch, "http://board.com")
+
+        (_, fetched), (_, posted) = launched
+        assert "-i" in fetched and fetched[-1] == "http://board.com/posts/1/", "the form page's Set-Cookie is read"
+        assert not [part for part in fetched if "{" in part], "no placeholder goes out on the form page's GET"
+        assert "Cookie: csrftoken=Cookie64" in posted
+        body = posted[posted.index("--data-binary") + 1]
+        assert body.startswith("csrfmiddlewaretoken=Masked64&body="), (
+            "the board refuses a comment without the form's CSRF token 403, so the attack would never land")
+        assert "Content-Type: application/x-www-form-urlencoded" in posted, "the comment view reads request.POST"

@@ -179,7 +179,15 @@
   request:
     method: POST
     path: /posts/1/comments/
-    json:
+    prefetch:
+      from: /posts/1/
+      pattern: 'csrftoken=(?P<cookie>[A-Za-z0-9]+)[\s\S]*name="csrfmiddlewaretoken" value="(?P<token>[A-Za-z0-9]+)"'
+    headers:
+      Cookie: "csrftoken={cookie}"
+      Origin: "http://board.com"
+      Referer: "http://board.com/posts/1/"
+    data:
+      csrfmiddlewaretoken: "{token}"
       body: "<img src=x onerror=alert(1)>"
 
 - name: board-path-traversal-static
@@ -242,12 +250,22 @@
 
 # An ordinary comment in the same request shape as the XSS comment above: a
 # body rule keyed on the attack stays quiet on it, one keyed on any comment
-# does not.
+# does not. Both post the comment form as a browser does: the form page's
+# csrftoken cookie and the form's csrfmiddlewaretoken, form-encoded, so the
+# board stores the comment instead of refusing it 403.
 - name: board-normal-comment
   malicious: false
   correlation: marker
   request:
     method: POST
     path: /posts/1/comments/
-    json:
+    prefetch:
+      from: /posts/1/
+      pattern: 'csrftoken=(?P<cookie>[A-Za-z0-9]+)[\s\S]*name="csrfmiddlewaretoken" value="(?P<token>[A-Za-z0-9]+)"'
+    headers:
+      Cookie: "csrftoken={cookie}"
+      Origin: "http://board.com"
+      Referer: "http://board.com/posts/1/"
+    data:
+      csrfmiddlewaretoken: "{token}"
       body: "Thanks, the fix in the second reply worked for me."
