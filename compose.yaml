@@ -101,12 +101,14 @@ services:
     ports:
       - "${CR_PUBLISH:-127.0.0.1}:8000:8000"
       - "${CR_PUBLISH:-127.0.0.1}:8002:8002"
+      - "${CR_PUBLISH:-127.0.0.1}:2222:2222"
     environment:
       ELASTIC_URL: "http://elasticsearch:9200"
       ELASTIC_INDEX: "logs-*"
       KIBANA_URL: "http://kibana:5601/kibana"
       DJANGO_DB_PATH: "/data/db.sqlite3"
       CR_RESET_OWED_DIR: "/data/reset-owed"
+      CR_JUMP_DIR: "/data/jump"
       CR_RANGE_HOST_SEEN: "/data/range-host.json"
       TARGET_URL: "http://board.com"
       PUBLIC_TARGET_URL: "http://board.com"

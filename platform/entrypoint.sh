@@ -15,6 +15,14 @@ nginx -t -q -c /app/nginx.conf
   exec nginx -c /app/nginx.conf
 ) &
 
+jump="${CR_JUMP_DIR:-/data/jump}"
+install -d -m 0755 -o cr "$jump"
+install -d -m 0755 /run/sshd
+[ -s "$jump/ssh_host_ed25519_key" ] || ssh-keygen -q -t ed25519 -N '' -C cr-jump -f "$jump/ssh_host_ed25519_key"
+[ -e "$jump/authorized_keys" ] || install -m 0600 -o cr /dev/null "$jump/authorized_keys"
+python jump.py > /run/sshd-jump.conf
+(/usr/sbin/sshd -t -f /run/sshd-jump.conf && exec /usr/sbin/sshd -D -e -f /run/sshd-jump.conf) &
+
 gosu cr env TERMINAL_KEEP=1 ttyd -W -a -b /vm-terminal/kali -t disableResizeOverlay=true -t disableLeaveAlert=true -i 127.0.0.1 -p 7691 /app/vm-terminal.sh cr-kali &
 gosu cr env TERMINAL_KEEP=1 ttyd -W -a -b /vm-terminal/waf -t disableResizeOverlay=true -t disableLeaveAlert=true -i 127.0.0.1 -p 7692 /app/vm-terminal.sh cr-waf &
 

@@ -80,6 +80,9 @@ DATABASES = {
 }
 
 RESET_OWED_DIR = os.environ.get("CR_RESET_OWED_DIR", str(BASE_DIR / "reset-owed"))
+JUMP_DIR = os.environ.get("CR_JUMP_DIR", str(BASE_DIR / "jump"))
+JUMP_PORT = int(os.environ.get("CR_JUMP_PORT", "2222"))
+JUMP_HOST = os.environ.get("CR_JUMP_HOST", "")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 USE_TZ = True

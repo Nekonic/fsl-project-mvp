@@ -43,6 +43,7 @@ def nothing_remembered_between_tests():
 @pytest.fixture(autouse=True)
 def reset_markers_in_a_scratch_dir(settings, tmp_path):
     settings.RESET_OWED_DIR = str(tmp_path / "reset-owed")
+    settings.JUMP_DIR = str(tmp_path / "jump")
 
 @pytest.fixture(autouse=True)
 def no_scenario_engine_thread():

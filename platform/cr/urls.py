@@ -30,6 +30,7 @@ urlpatterns = [
     path("api/sessions/", views.sessions),
     path("api/sessions/<int:session_id>/", views.session_detail),
     path("api/sessions/<int:session_id>/close/", views.close_session),
+    path("api/sessions/<int:session_id>/ssh/", views.session_ssh),
     path("api/sessions/<int:session_id>/cases/", views.session_cases),
     path("api/sessions/<int:session_id>/attacks/", views.fire_attack),
     path("api/sessions/<int:session_id>/objectives/", views.session_objectives),
