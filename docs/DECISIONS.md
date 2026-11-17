@@ -9227,7 +9227,7 @@ noise, and text too small to read at the console's frame defeats the map.
   (`topology.name.*`); Kali, WAF and IDS keep their proper names.
 - **Size**: three rows (internet, router and DMZ; 관제망 and web segment; the
   DB zone) so the drawing fills the frame and its text renders at 13 px or
-  more in the console's 1040 px pane (13.3 px measured, aa83cb1d).
+  more in the console's 1040 px pane (13.3 px measured).
 
 ## 2026-11-17 — The 관제망 keeps its switch; the router stands free between the zones
 
@@ -9236,7 +9236,7 @@ Completes "A zone box is its subnet; the IDS stands in the mgmt box". The
 a switch (2026-11-15); the IDS's and the WAF's management links and the log
 server meet on it. The router has an address in two subnets (its `wan` public
 IP and its `lan` on the DMZ), so it belongs to neither box: it stands between
-the internet and DMZ boxes with both addresses outside them (aa83cb1d). This
+the internet and DMZ boxes with both addresses outside them. This
 replaces the 2026-11-16 placement "the router on the boundary".
 
 ## 2026-11-17 — Kali lists its default source first
@@ -9247,16 +9247,16 @@ address, but `ip addr` on Kali listed 73.0.0.10 first, because the kernel
 lists an interface's addresses in the order they are added and `kali.ip`
 added the origins in declaration order. A learner who reads `ip addr` saw a
 different address from the one their traffic leaves from. `rangehost` now
-writes the default origin's addresses first (f0c568bf, tested in
+writes the default origin's addresses first (tested in
 `test_range_host.py`); the address set and the route are unchanged.
 
 ## 2026-11-17 — Both hosts install from mirror.kakao.com
 
 Two Ubuntu archive servers answered 404 for noble's `Release` for over half
-an hour and failed three platform VM boots in a row; ten tries 15 s apart
-(80effb63) did not outlast it. The platform VM (`platform.yaml`, `apt`
+an hour and failed three platform VM boots in a row; ten tries 15 s apart did
+not outlast it. The platform VM (`platform.yaml`, `apt`
 primary and security) and the range host (`setup.sh`) now install from
-`http://mirror.kakao.com/ubuntu/` (d761b9f7). The same mirror's lag between
+`http://mirror.kakao.com/ubuntu/`. The same mirror's lag between
 `InRelease` and a DEP-11 file then made `apt-get update` exit 100 while every
 package index had downloaded, so a try is judged by the install, not by
 `apt-get update` ("An apt try is decided by the install"). Rejected: keeping

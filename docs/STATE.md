@@ -26,8 +26,8 @@ scenarios on live customer traffic run against two targets, the board
 public IP, the WAF, one Suricata sensor behind it on the web segment, a 관제망
 with its log server, and the wargames; the learner map draws that wiring.
 Every surface signs in; a learner signs up for an admin's approval and sees
-only their own sessions. Answer-blind walk round 27's fixes are live at
-5bb34b0a with the full `bin/verify` green; from round 29, interim rounds
+only their own sessions. Answer-blind walk round 27's fixes are live on the
+platform VM with the full `bin/verify` green; from round 29, interim rounds
 re-check only the fixed items (`docs/DECISIONS.md` 2026-11-18). The live
 state and the latest `bin/verify` numbers are in `docs/state/now.md`;
 `bin/measure` prints the metrics against `metrics.json`.
@@ -300,7 +300,7 @@ One line each; the detail is in `git log` and `docs/DECISIONS.md`.
 - [x] 2026-11-17: a zone box is its subnet; the IDS stands in the 관제망 box.
 - [x] 2026-11-17: the range images are tagged by the last range-side change; a platform-only replace keeps the range host.
 - [x] 2026-11-17: both hosts install from `mirror.kakao.com`; an apt try is judged by the install.
-- [x] 2026-11-18: answer-blind walks of rounds 25-27; live at 5bb34b0a with the full `bin/verify` green.
+- [x] 2026-11-18: answer-blind walks of rounds 25-27; deployed live with the full `bin/verify` green.
 - [x] Moot: the assessment's `REQUEST_URI_RAW` wording (no lesson runs at PL4); publishing the OPNsense image; the OPNsense update check.
 - [x] Moot: the live walker as a repo tool; the answer-blind walks drive the browser from per-round scripts, not `walker/walk.py`.
 
@@ -320,9 +320,9 @@ One line each; the detail is in `git log` and `docs/DECISIONS.md`.
   on NOK) and rolls back otherwise. The socket needs `unix-command: enabled:
   yes` at startup; a sensor started without it answers "Unable to connect
   socket" and rolls back every change until restarted. OK means the reload ran,
-  not that it worked, so `suricata -T` first still catches a bad rule. On
-  OpenStack set `CR_SENSOR_RELOAD="suricatasc -c reload-rules
-  /run/suricata/suricata-command.socket"`, with `sudo -n` in front if needed.
+  not that it worked, so `suricata -T` first still catches a bad rule. The
+  reload command comes from the sensor host in `declaration.yaml`
+  (`suricatasc -c reload-rules`); `CR_SENSOR_RELOAD` overrides it.
 - **Rules are written, validated and reloaded as commands through `runner`**
   with stdin, so the port has no rule verbs. Validation reads `/dev/stdin`,
   never a shared file. Rule changes take one process lock: enough for
@@ -330,84 +330,83 @@ One line each; the detail is in `git log` and `docs/DECISIONS.md`.
 - **A rules apply cannot overwrite a newer file.** `GET /api/rules/` returns a
   `version`; an apply whose `base` is not the live version, `null` included,
   is a 409. One with no `base` is unchecked, so the console always sends it.
-- **`$HTTP_PORTS` is `[80,8000]`**, the ports on the WAF's wire. Docker
-  translates `8080` before the sensor sees it (same rule A/B: `8080` 0 alerts,
-  `[80,8000]` 2, `any` 4).
+- **`$HTTP_PORTS` is `[80,8000]`** (`deploy/suricata/suricata.yaml`), the
+  ports on the web segment the sensor watches: the WAF proxies to the board on
+  8000 and to corp on 80. Historical (the compose range, 2026-10): a rule A/B
+  with `8080` in the list drew 0 alerts against 2 for `[80,8000]`.
 - **A rule experiment writes to the shipped rules file**, the live artifact,
   so it uses sids at or above 9009000 and `test_sensor_rules.py` refuses those.
   Before each half of an A/B, check the loaded config inside the container: a
   12-second wait that missed the sensor's start nearly buried the one above.
-- **Filebeat identifies files by fingerprint**: inodes are renumbered when the
-  Docker host restarts, and inode identity re-shipped both logs. 8.15
-  does not migrate the registry, so changing identity again re-ships once.
-  Ingest drops an alert whose event time is outside the window, as `stale`.
+- **Ingest drops an alert whose event time is outside the window**, counted
+  as `stale`. The collector (Filebeat 8.15) takes UDP syslog on 5140 and reads
+  no file; each slot's rsyslog shippers read the log files. Historical (the
+  compose range, before 2026-10-21): Filebeat read the files itself, and inode
+  identity re-shipped both logs after a Docker host restart until it
+  identified files by fingerprint.
 - **The ingest pipeline is registered at bring-up** (`entrypoint.sh:28` runs
   `register_pipeline.py`) and geolocates `src_ip` and ModSecurity's
-  `transaction.client_ip`. Two ways carry it to a doc: filebeat's
-  `output.pipeline: geoip` per request (the Docker path), and the
-  `logs-sensors` index template's `index.default_pipeline`, which filebeat writes
-  in only when it first creates the template; a long-running ES whose template
-  predates the setting keeps a template without it, so set
-  `index.default_pipeline` on the live data stream's write index there (the
-  cloud needed this; a fresh VM does not). Do not add
-  `setup.template.overwrite: true` to force it: filebeat 8.15 then fails every
-  write with "no matching index template found for data stream [logs-<slot>-sensors]".
-  Acceptance fails if the live pipeline or the sensor's `local.rules` differ
+  `transaction.client_ip`. Two ways carry it to a doc
+  (`deploy/filebeat/filebeat.yml`): `output.pipeline: geoip` per request, and
+  the `logs-sensors` index template's `index.default_pipeline`. Since
+  2026-11-17 the collector overwrites that template at every start
+  (`setup.template.overwrite: true`) with the ECS and beat field groups alone
+  and a 1 s refresh. Acceptance fails if the live pipeline or the sensor's `local.rules` differ
   from the committed ones.
-- **The WAF's health check asks `/healthz`**, which the WAF answers itself;
-  sent through to the target it alerted every ten seconds and used up a
-  session's 5,000-document read in about 14 hours.
+- **The WAF answers `/healthz` itself** (`deploy/waf/board.com.conf`); no
+  probe may be sent through to a target. Historical (the compose range,
+  2026-10): a health check that reached the target alerted every ten seconds
+  and used up a session's 5,000-document read in about 14 hours.
 - **Bring-up of the platform VM's control plane is `docker compose pull && docker compose up -d`** (`build:` is for local development). The platform's
   entrypoint drops root with `gosu` and registers the `geoip` ingest pipeline
   itself, so a fresh host needs no build argument and no manual PUT. No
   control-plane service holds the Docker socket (since 2026-11-15).
-- **The store is the named volume `cr_platformdata`**, not `./data` of
-  whichever checkout ran `compose up`; `./data/label` is still a bind mount.
+- **The store is the named volume `cr_platformdata`** (`/data` in the
+  platform container), not `./data` of whichever checkout ran `compose up`.
   `bin/backup` copies the store live with `VACUUM INTO` and keeps the newest
   `--keep` copies (default 1; `cloud.yaml` `backups: {keep: 1}`);
-  `bin/platform-rebuild` restored a 6 GB store on a new VM twice on 2026-10-15
-  (`docs/OPENSTACK.md` §5.3).
+  `bin/platform-rebuild` restores it on a new VM (`docs/OPENSTACK.md` §5.3;
+  a 6 GB store twice on 2026-10-15).
 - **Closed sessions are deleted after `CR_RETAIN_CLOSED_MINUTES`** (default
   60; `cr/settings.py`, `compose.yaml`): `platform/api/retention.py` runs at
   start and after every close, 2,000 rows per transaction; open sessions are
   never touched. SQLite transactions begin `IMMEDIATE`.
-- **Published ports.** By default 8000 (platform), 9200
-  (Elasticsearch) and 5140/udp (syslog) are on `127.0.0.1`. On the platform VM
-  cloud-init sets `CR_PUBLISH` to the VM's address, so 8000 opens to
-  `network.allowed` behind a sign-in, and `CR_SYSLOG_PUBLISH` to
-  `0.0.0.0` for 5140/udp (`platform.yaml:212`); 9200 stays on loopback. Django
-  answers to the floating IP. Before, each segment's gateway
-  forwarded 8000, 9200, 7681 and 8080 into the platform from inside the range
-  (8 of 8 reached). Django runs with DEBUG off. Another
-  machine needs a tunnel, not a wider `ALLOWED_HOSTS`: it is
-  `localhost,127.0.0.1,[::1]` (`DJANGO_ALLOWED_HOSTS` overrides) because at `*`
-  DNS rebinding passed the same-origin check, which trusts the request's Host.
-- **nginx inside the platform's image owns 8000.** waitress listens on
-  `127.0.0.1:8001` and takes the client from `X-Forwarded-For`, which nginx
+- **Published ports.** By default 8000 (the console and API), 8002 (the
+  Website pane's site proxy), 9200 (Elasticsearch) and 5140/udp (the
+  collector) are on `127.0.0.1`. On the platform VM cloud-init sets
+  `CR_PUBLISH` to the VM's fixed address, so 8000 and 8002 open to
+  `network.allowed` behind a sign-in, and `CR_SYSLOG_PUBLISH` to `0.0.0.0` for
+  5140/udp (`platform.yaml`); 9200 stays on loopback. Django runs with DEBUG
+  off. Another machine needs a tunnel, not a wider `ALLOWED_HOSTS`: it is
+  `localhost,127.0.0.1,[::1]` (`DJANGO_ALLOWED_HOSTS` overrides) because at
+  `*` DNS rebinding passed the same-origin check, which trusts the request's
+  Host.
+- **nginx inside the platform's image owns 8000 and 8002.** waitress listens
+  on `127.0.0.1:8001` and takes the client from `X-Forwarded-For`, which nginx
   sets to `$remote_addr` and waitress trusts only from `127.0.0.1`; anything
   that reads `REMOTE_ADDR` sees the real client. `/vm-terminal/kali/` and
-  `/vm-terminal/waf/` go to ttyd
-  only after `auth_request /signed-in` (Django's `/auth-check/`) answers 204;
-  a 401 becomes a redirect to `/login/`, a 403 (a learner naming another's
-  session, a range address) passes through.
-- **The platform refuses any address standing in the range** (403;
-  participants cached 30 s). The operator arrives from a segment's gateway
-  (`5.188.10.1`), the attacker box as a node (`5.188.10.2`). The rule reads
-  `segments()`, which needs no sensor. If that raises `RangeUnavailable` it
-  fails open for the 30 s the empty answer is cached; any other error is a 500.
-- **Same-site writes are refused too**: `:8080` and `:8000` are one site.
-  `:8080` served the target until 2026-10-02 and the pfSense proxy until 2026-10-08;
-  a page there must not be able to write to the API. A write with a body must
-  be `application/json`.
+  `/vm-terminal/waf/` go to ttyd only after `auth_request /signed-in`
+  (Django's `/auth-check/`) answers 204; a 401 becomes a redirect to the
+  sign-in page, a 403 (a learner naming another's session, a range address)
+  passes through.
+- **The platform refuses any address a slot's segments list as a node**
+  (403; `api/reachability.py`, every slot read side by side, cached 30 s), the
+  scorer excepted. A slot whose read raises `RangeUnavailable` counts as
+  empty, so the rule fails open for that slot for the 30 s the answer is
+  cached.
+- **Same-site writes are refused too**: `:8002` (the site proxy) and `:8000`
+  are one site, and a page there must not be able to write to the API
+  (`api/refusals.py`: a cross-site `Sec-Fetch-Site` or `Origin` is 403). A
+  write with a body must be `application/json` (415 otherwise).
 - **`bin/verify`** restarts the platform first (waitress never reloads), opens
   and closes one session to prove a session stack comes up (else TP 0 reads as
-  a failed defence) and that its sensors read the rule file, runs the unit
+  a failed defence) and that its sensor reads the rule file, runs the unit
   suite beside the acceptance suite at the lowest CPU priority, refuses a
-  stack another checkout brought up, and prunes
-  only the sessions its run listed in `CR_ACCEPTANCE_SESSIONS`. `--changed
-  [BASE]` (`bin/select-tests`) runs only the unit tests the change reaches and
-  the ratchet, `--live` adds the acceptance modules it reaches, `--fast` runs
-  every unit test; docs-only changes select nothing.
+  stack another checkout brought up, and prunes only the sessions its run
+  listed in `CR_ACCEPTANCE_SESSIONS`. `--changed [BASE]` (`bin/select-tests`)
+  runs only the unit tests the change reaches and the ratchet, `--live` adds
+  the acceptance modules it reaches, `--fast` runs every unit test; docs-only
+  changes select nothing.
 - **The ratchet.** `bin/measure` counts `git ls-files -z`, so verify fails on
   an untracked file. It refuses a compose override, follows a block-style
   `include:` of plain paths (each wargame's file), counts only
@@ -477,7 +476,8 @@ each client by X-Forwarded-For.
 - **Evidence is selected by event time (done 2026-10-02)**: the `fsl-geoip`
   pipeline sets `@timestamp` from Suricata's `timestamp` and ModSecurity's
   `transaction.time_stamp`, as ECS defines it and Elastic's own pipelines do,
-  with every range VM's clock kept by chrony. It was Filebeat's read time, 5 s
+  with the range host's clock kept from the platform VM's chrony. It was
+  Filebeat's read time, 5 s
   late median and 17 s worst.
 - **The console shows Korean time** (UTC on hover), and an undefined
   precision or recall shows `-`.
@@ -486,7 +486,7 @@ each client by X-Forwarded-For.
 - **Origins**: 30 countries from a public ranking of Internet traffic (no API
   token), each wherever GeoIP places it, Hong Kong and Taiwan included; about
   100 addresses, more to bigger traffic, at least one each.
-- **A tool's source address is set when it sends**: the attacker VM rewrites
+- **A tool's source address is set when it sends**: the attacker box rewrites
   its outgoing packets to the chosen country's address, so every tool gets it
   whether or not it has a source option.
 - **The terminal's moving WAF address** is a Docker artefact; on OpenStack
@@ -495,16 +495,17 @@ each client by X-Forwarded-For.
   `docker compose up` brings the whole platform up, cloud-native in feel;
   booting it should be all it takes (cloud-init runs the bring-up). It then
   reaches the OpenStack API from inside, and browsers reach it by a floating
-  IP, which the loopback-only ports and missing login do not allow yet.
+  IP (done: 8000 opens on the VM's address behind a sign-in).
 - **No Korean or commercial WAF**, to stay clear of licensing: the WAF is
   nginx + ModSecurity v3 + CRS (all Apache-2.0).
 - **pfSense goes in** as the edge firewall, and Suricata runs as its package,
-  managed in the pfSense GUI (placement spec, "pfSense"). Superseded in part on
-  2026-10-08: pfSense stays as the OpenStack edge and Suricata host, but the
-  firewall lesson and the pfSense GUI pane are out of scope.
+  managed in the pfSense GUI (placement spec, "pfSense"). Superseded: on
+  2026-10-08 the firewall lesson and the pfSense GUI pane went out of scope,
+  on 2026-10-11 OPNsense replaced pfSense, and on 2026-11-13 an nftables
+  router container replaced OPNsense; Suricata runs as the slot's own sensor.
 - **The blue team reads alerts in Kibana** (the real ELK with full access)
   and the custom dashboard goes (done 2026-10-05). Kibana is in compose (a gated
-  `services` 7 -> 8 the user's call justifies), reading the same Elasticsearch
+  `services` 7 -> 8 on 2026-10-05; `bin/measure` has today's count), reading the same Elasticsearch
   the platform ingests from, reached at `/kibana/` through the one port.
 - **The platform UI is a left sidebar with three panes shown inside the
   page**: pfSense, Kibana, a terminal. No new-tab buttons. Kibana is framed
@@ -524,7 +525,9 @@ each client by X-Forwarded-For.
   8080 publish was removed on 2026-10-02: the command-line cases and the
   acceptance suite reach the target from inside the range, through
   `test/range.py`'s runner. Host port 8080 served the pfSense proxy
-  from 2026-10-05 until its removal on 2026-10-08, and 5140/udp takes the edge's syslog.
+  from 2026-10-05 until its removal on 2026-10-08. Today 8000 is joined by
+  8002, the Website pane's site proxy, and 5140/udp takes the slots' log
+  servers' syslog.
 - **Session start/stop and the scoreboard stay on the landing page `/`**,
   outside the sidebar; the sidebar is only the work screen.
 - **Tap-as-a-Service is dropped from the design**: it was there for a sensor
