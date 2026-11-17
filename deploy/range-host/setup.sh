@@ -10,7 +10,7 @@ sed -i -e 's/^Components:.*/Components: main restricted universe/' -e 's#^URIs:.
 $APT purge snapd modemmanager
 printf 'Package: snapd modemmanager\nPin: release *\nPin-Priority: -1\n' > /etc/apt/preferences.d/no-snapd-modemmanager
 for attempt in 1 2 3 4 5 6 7 8 9 10; do
-  $APT update && $APT install docker.io docker-compose-v2 ethtool && break
+  $APT update || :; $APT install docker.io docker-compose-v2 ethtool && break
   [ "$attempt" -lt 10 ] || exit 1
   sleep 15
 done

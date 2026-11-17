@@ -357,18 +357,26 @@ The router gives the project's networks source NAT to the Internet. DNS is
 `network.dns`. The hosts below must be reachable through it. If you filter with
 an allowlist, also allow the hosts the registries redirect to.
 
-The platform VM's first boot and the range host's setup try `apt-get update`
-and their install up to ten times, 15 s apart. On 2026-11-17 two of the
+The platform VM's first boot and the range host's setup install from the
+Kakao mirror (`http://mirror.kakao.com/ubuntu/`, every pocket, `noble-security`
+included) instead of the archive. They try `apt-get update` and their install
+up to ten times, 15 s apart, and the install's exit decides each try: a failed
+`apt-get update` is not retried by itself. On 2026-11-17 two of the
 archive's servers (91.189.91.94 and .95, behind
 `nova.clouds.archive.ubuntu.com`) answered 404 for `dists/noble/Release` for
 more than half an hour while the others answered 200; `apt-get update` keeps
 the address it resolved, so a single try failed the platform VM's boot three
-times in a row, and a second `apt-get update` on the same VM succeeded.
+times in a row, and a second `apt-get update` on the same VM succeeded. The
+same day the Kakao mirror's `noble-security` `InRelease` was hours older than
+its `main/dep11/Components-amd64.yml.xz` (46,388 bytes against 46,360 in the
+`InRelease`, "Mirror sync in progress?"): `apt-get update` exited 100 on every
+try although every `Packages` index downloaded, and the install those indexes
+allow ran only once the install stopped waiting on the update's exit.
 
 | Who | Reaches | For |
 |---|---|---|
-| platform VM (cloud-init, `cr-platform.service`) | the Ubuntu archive; github.com; ghcr.io; docker.elastic.co; geoip.elastic.co | `apt` (Docker, git, chrony); `git clone` of `platform.repository`; `cr-platform`; Elasticsearch, Kibana and Filebeat; `bin/fetch-geoip` |
-| the range host (`deploy/range-host/setup.sh`) | the Ubuntu archive; ghcr.io; Docker Hub | `docker.io`, `docker-compose-v2`, `ethtool`; `cr-kali`, `cr-waf`, `cr-edge`, `cr-board`, `cr-corp`, `cr-corp-db`; the pinned Suricata (`jasonish/suricata`), rsyslog (`rsyslog/rsyslog-minimal`) and MySQL images |
+| platform VM (cloud-init, `cr-platform.service`) | mirror.kakao.com; github.com; ghcr.io; docker.elastic.co; geoip.elastic.co | `apt` (Docker, git, chrony); `git clone` of `platform.repository`; `cr-platform`; Elasticsearch, Kibana and Filebeat; `bin/fetch-geoip` |
+| the range host (`deploy/range-host/setup.sh`) | mirror.kakao.com; ghcr.io; Docker Hub | `docker.io`, `docker-compose-v2`, `ethtool`; `cr-kali`, `cr-waf`, `cr-edge`, `cr-board`, `cr-corp`, `cr-corp-db`; the pinned Suricata (`jasonish/suricata`), rsyslog (`rsyslog/rsyslog-minimal`) and MySQL images |
 | the controller node, where `bin/cloud` runs | the cloud's API; the floating IP; github.com; ghcr.io | `bin/cloud`; the check that the images can be pulled |
 
 The range host reaches the Internet only through its second port, on the
@@ -635,9 +643,10 @@ bundle holds `deploy/range-host/setup.sh` and files the platform generates:
 
 `setup.sh` does these steps while the range host has its egress port:
 
-1. It enables `universe`, purges `snapd` and `modemmanager`, and installs
-   `docker.io`, `docker-compose-v2` and `ethtool`, trying `apt-get update` and
-   the install up to ten times, 15 s apart.
+1. It points apt at the Kakao mirror, enables `universe`, purges `snapd` and
+   `modemmanager`, and installs `docker.io`, `docker-compose-v2` and
+   `ethtool`, trying `apt-get update` and the install up to ten times, 15 s
+   apart; the install's exit decides each try (§2.6).
 2. It raises the inotify limits and sshd's `MaxSessions` and `MaxStartups`,
    because the platform runs many commands at once over one shared ssh
    connection.
