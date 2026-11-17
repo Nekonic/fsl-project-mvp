@@ -219,6 +219,7 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 - 슬롯마다 그룹 다섯 개를 만들던 때는 이 클라우드의 보안 그룹 quota 10에 걸려 슬롯 4개의 스택이 모두 `OverQuotaClient`로 실패함. 지금은 풀 크기와 상관없이 9개(`default`, `cr-platform`, fabric 그룹 4개, `cr-lan-` 그룹 3개)
 - 포트 보안을 끈 포트는 IDS 다리 둘뿐(`topology.yaml`의 `ids: true`)
 - control 포트는 `cr-mgmt` 보안 그룹. `cr-reach`(플랫폼) 멤버에서 오는 것만 받음. infra의 control 포트는 `cr-senders`에도 속해 collector로 syslog를 보낼 수 있음
+- `cr-mgmt`와 `cr-senders`의 egress는 `cr-reach`(플랫폼)로 가는 것과 DHCP(udp 67)뿐. Neutron이 그룹을 만들 때 넣는 전체 허용 egress는 fabric이 지움. 슬롯 VM은 DHCP가 준 경로로 169.254.169.254를 `cr-mgmt`의 OVN 메타데이터 포트(10.31.0.1)에 보내는데, 이 egress 규칙에 걸려 버려짐. 슬롯 VM은 config drive로 부팅하므로 메타데이터 서비스가 필요 없음
 - Kali는 `internet`에만 붙음. 아는 이름은 `board.com`, `corp.com`뿐이고 둘 다 라우터의 공인 IP를 가리킴(이미지의 `/etc/hosts`)
 - 라우터는 공인 IP 80번 포트를 WAF로 DNAT하고, 출발지는 NAT 없이 그대로 넘김. web 구간으로 가는 경로는 없음
 - target VM은 `web-inner`에만 붙고 default route가 없어 WAF에만 응답함. Kali에서 대상 시스템으로 가는 길은 WAF뿐

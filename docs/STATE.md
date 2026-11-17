@@ -2009,15 +2009,19 @@ binary log via a substrate runner, proven end to end against the live stack.
       `cr-range` and filled the pool of four stacks; four faults fixed on the
       way (`docs/DECISIONS.md` "The first live pool fill").
 - [ ] P8's full `bin/verify` green on the live Heat range, and a walk; then
-      gate 2.
+      gate 2. Run 2: acceptance 71 passed, 5 failed, 6 errors, 1 skipped;
+      every red root-caused and fixed on `dev` (the retarget race, the slot
+      control ports' metadata egress, two acceptance tests reading the Docker
+      range's map), not yet run live (`docs/state/now.md`).
 - [ ] Measure on the cloud: how long a closed session's slot takes to be
       READY again, so the pool's refill time **[unverified]**; RAM per slot
       of four VMs on com01 **[unverified]**. Measured: the Kali VM boots and
       reports ready within a slot's 8 min 50 s with the images cached;
       `dba.small` holds the target's Docker and MySQL (0.8-0.9 GB of 2 GB in
       use).
-- [ ] The WAF tuning call answered 503 in `test_concurrent_sessions.py`
-      (`docs/state/now.md`).
+- [x] The WAF tuning call answered 503 in `test_concurrent_sessions.py`:
+      the retarget race, fixed on `dev` (`docs/DECISIONS.md` "A slot is
+      retargeted or opened on only while no session holds it").
 - [ ] Baking the role images is by hand (`docs/OPENSTACK.md` §3.6); no repo
       tool builds them.
 

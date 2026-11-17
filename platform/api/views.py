@@ -2830,6 +2830,7 @@ def _fabric_plan(plan):
         "groups": list(plan.groups),
         "reach": plan.reach,
         "ntp": plan.ntp,
+        "confine": list(plan.confine),
         "present": list(plan.present),
         "drifted": list(plan.drifted),
         "leftovers": list(plan.leftovers),

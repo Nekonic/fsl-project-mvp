@@ -16,15 +16,25 @@ refused while slots were retargeted to corp), `test_concurrent_sessions.py`
 `~/.cache/fsl-work/verify-heat-run1.tgz`. The second, on the readiness fix
 (`~/.cache/fsl-work/verify-heat.log`): acceptance 71 passed, 5 failed, 6
 errors, 1 skipped in 2153 s across 12 processes; unit and API 869 + 1059;
-ratchet no regression. Red: every slot VM role checked (Kali, the WAF, the
-target) reaches the metadata service 169.254.169.254:80
-(`test_range_isolation.py`, three); the ssh multiplexer's `Broken pipe
-Failed to connect to new control master` on a WAF command, and `cr-waf stands
-on no mgmt address this platform can reach`, failing session opens and the
-WAF tuning (`test_concurrent_sessions.py` three errors, course c1 in
-`test_lesson.py` three errors, `test_board_exfil.py`'s sort test); one
-`test_topology.py` map test, cause not read. `bin/verify --fast` on `dev`: unit and
-API 1928 passed in four processes, ratchet no regression (`core_loc` 604).
+ratchet no regression. Its red, each root-caused, and fixed on `dev` but not
+yet run live (`docs/DECISIONS.md` "A slot node's control port starts nothing
+but DHCP and traffic to the platform"): Kali, the WAF and board reach
+169.254.169.254:80 (`test_range_isolation.py`, three) through DHCP's route via
+10.31.0.1, the OVN metadata port on `cr-mgmt`, because `cr-mgmt` and
+`cr-senders` kept Neutron's open egress, now confined to `cr-reach` and DHCP
+at the next `bin/cloud up`; the session opens that answered 503
+(`test_concurrent_sessions.py` three errors, and `test_board_exfil.py`'s sort
+test, whose `mux_client_request_session ... Broken pipe` to `cr-waf` at
+10.31.0.31 came at about 23:14:04Z while slot 3's and slot 4's stacks were
+deleted at 23:13:49Z and 23:14:05Z) are the retarget race fixed in "A slot is
+retargeted or opened on only while no session holds it"; `test_topology.py`'s
+map test (KeyError `address`) and course c1 in `test_lesson.py` (three errors,
+StopIteration) read the Docker range's map: the IDS's links carry no address
+and the WAF reaches web-inner through the inline IDS, and the zones are named
+`dmz` and `web-inner`, not `estate` and `web`; both tests now walk through the
+sensor and find zones by caption, checked against slot 1's live map. `bin/verify
+--fast` on `dev`: unit and API 1931 passed in four processes, ratchet no
+regression (`core_loc` 604).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
@@ -61,13 +71,11 @@ Internet.
   `xss-watched` defense (session 2780, slot 2, WAF in DetectionOnly) Suricata
   sid 9000003 on the same URL in `logs-2-sensors`; `POST
   /api/sessions/2779/ssh/` issued a key and `ssh -J` through 2222 landed on
-  Kali as `kali`, while the jump itself gave no shell. Open:
-  `test_concurrent_sessions.py`'s `PUT /api/sessions/<id>/waf/` answered 503
-  in both full runs, once with the ssh multiplexer's `mux_client_request_session:
-  read from master failed: Broken pipe Failed to connect to new control
-  master` (`cr-waf` at 10.31.0.153) and once with `cr-waf stands on no mgmt
-  address this platform can reach`; that the session's slot was being
-  replaced, or that the call reached another slot, is **[unverified]**.
+  Kali as `kali`, while the jump itself gave no shell. The WAF tuning 503 of
+  `test_concurrent_sessions.py` in run 2 was the retarget race, as its
+  timestamps show (`docs/DECISIONS.md` "A slot is retargeted or opened on only
+  while no session holds it"); run 1's (`cr-waf` at 10.31.0.153) is the same
+  race **[unverified]**.
 - 2026-11-18, fixes from the docs pass (`docs/DECISIONS.md` "The baked images
   as they are"): `compute.target_tag` (`CR_OPENSTACK_TARGET_TAG`, by default
   the commit `cr-target-bake1` was baked at), and the target's boot refuses

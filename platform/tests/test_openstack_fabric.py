@@ -52,10 +52,14 @@ class Neutron:
         if verb == "POST" and resource == "v2.0/security-groups":
             made = dict(body["security_group"], id=f"sg-{next(self.ids)}")
             self.groups.append(made)
-            return {"security_group": made}
+            opened = [{"id": f"rule-{next(self.ids)}", "security_group_id": made["id"], "direction": "egress",
+                       "ethertype": ethertype, "protocol": None, "port_range_min": None, "port_range_max": None,
+                       "remote_group_id": None, "remote_ip_prefix": None} for ethertype in ("IPv4", "IPv6")]
+            self.rules += opened
+            return {"security_group": dict(made, security_group_rules=opened)}
         if verb == "POST" and resource == "v2.0/security-group-rules":
-            self.rules.append(dict(body["security_group_rule"]))
-            return {"security_group_rule": body["security_group_rule"]}
+            self.rules.append(dict(body["security_group_rule"], id=f"rule-{next(self.ids)}"))
+            return {"security_group_rule": self.rules[-1]}
         if verb == "POST" and resource == "v2.0/ports":
             made = dict(body["port"], id=f"port-{next(self.ids)}", device_id="", device_owner="")
             self.ports.append(made)
@@ -71,7 +75,7 @@ class Neutron:
             kind, ident = resource.rsplit("/", 2)[-2:]
             pool = {"networks": self.networks, "subnets": self.subnets,
                     "os-keypairs": self.keypairs, "ports": self.ports,
-                    "security-groups": self.groups}[kind]
+                    "security-groups": self.groups, "security-group-rules": self.rules}[kind]
             pool[:] = [r for r in pool if r.get("id", r.get("name")) != ident]
             return {}
         raise AssertionError(call)
@@ -108,7 +112,9 @@ def test_the_fabric_s_groups_admit_only_ntp_to_the_platform_and_only_the_platfor
 
     groups = {g["name"]: g["id"] for g in cloud.groups}
     assert set(groups) == {fabric.EGRESS_GROUP, fabric.REACH_GROUP, fabric.MANAGEMENT_GROUP, fabric.SENDERS_GROUP}
-    assert sorted(cloud.rules, key=repr) == sorted([
+    ingress = [{key: value for key, value in rule.items() if key != "id" and value is not None}
+               for rule in cloud.rules if rule["direction"] == "ingress"]
+    assert sorted(ingress, key=repr) == sorted([
         {"security_group_id": groups[fabric.REACH_GROUP], "direction": "ingress", "ethertype": "IPv4",
          "protocol": "udp", "port_range_min": 123, "port_range_max": 123,
          "remote_group_id": groups[fabric.MANAGEMENT_GROUP]},
@@ -121,6 +127,44 @@ def test_the_fabric_s_groups_admit_only_ntp_to_the_platform_and_only_the_platfor
         "a slot node's control port lets in only the platform, and the platform's port takes nothing a "
         "slot starts but NTP, and syslog from the infra nodes alone"
     )
+
+
+def _egress(cloud, group):
+    return sorted(({key: value for key, value in rule.items() if key not in ("id", "security_group_id")
+                    and value is not None} for rule in cloud.rules
+                   if rule["security_group_id"] == group and rule["direction"] == "egress"), key=repr)
+
+def test_a_slot_node_s_control_port_starts_nothing_but_dhcp_and_traffic_to_the_platform(cloud, adapter):
+    adapter.ensure_fabric()
+
+    groups = {g["name"]: g["id"] for g in cloud.groups}
+    for name in fabric.CONFINED_GROUPS:
+        assert _egress(cloud, groups[name]) == sorted([
+            {"direction": "egress", "ethertype": "IPv4", "remote_group_id": groups[fabric.REACH_GROUP]},
+            {"direction": "egress", "ethertype": "IPv4", "protocol": "udp", "port_range_min": 67, "port_range_max": 67},
+        ], key=repr), (
+            f"{name} holds Neutron's open egress, so a learner's shell reaches the cloud's metadata service "
+            f"through the slot node's control port"
+        )
+    assert _egress(cloud, groups[fabric.REACH_GROUP]) == [{"direction": "egress", "ethertype": "IPv4"},
+                                                           {"direction": "egress", "ethertype": "IPv6"}]
+
+def test_a_fabric_whose_slot_groups_still_hold_open_egress_is_confined_on_the_next_bring_up(cloud, adapter):
+    adapter.ensure_fabric()
+    groups = {g["name"]: g["id"] for g in cloud.groups}
+    cloud.rules = [rule for rule in cloud.rules
+                   if not (rule["direction"] == "egress" and rule["security_group_id"] in
+                           {groups[name] for name in fabric.CONFINED_GROUPS})]
+    cloud.rules += [{"id": f"open-{name}-{ethertype}", "security_group_id": groups[name], "direction": "egress",
+                     "ethertype": ethertype, "remote_ip_prefix": "0.0.0.0/0" if ethertype == "IPv4" else None}
+                    for name in fabric.CONFINED_GROUPS for ethertype in ("IPv4", "IPv6")]
+
+    assert set(adapter.plan_fabric().confine) == set(fabric.CONFINED_GROUPS)
+    assert not adapter.plan_fabric().clean
+    adapter.ensure_fabric()
+
+    assert adapter.plan_fabric().confine == ()
+    assert not any(rule["id"].startswith("open-") for rule in cloud.rules)
 
 def test_the_platform_joins_management_through_a_port_in_the_reach_group(cloud, platform):
     platform.ensure_fabric()

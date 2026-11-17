@@ -9521,3 +9521,23 @@ claims the slot under that lock and only when no open session holds it, and a
 session open under the same lock refuses a slot whose reset is running.
 Rejected: holding the lock across the readiness read (every open would wait
 on the cloud and on SSH for every slot).
+
+## 2026-11-18 — A slot node's control port starts nothing but DHCP and traffic to the platform
+
+Run 2 of the full verify on the Heat range: Kali, the WAF and board reached
+169.254.169.254:80. Read live: each slot VM routes it `via 10.31.0.1 dev ens3
+proto dhcp`, and 10.31.0.1 is the `network:distributed` port on `cr-mgmt`, the
+OVN metadata port; `cr-mgmt` and `cr-senders` held only Neutron's default
+egress (IPv4 and IPv6, anywhere). The slot VMs boot from config drive, so
+nothing in a slot needs the metadata service. `range/fabric.py` now wants two
+egress rules on each of those groups, IPv4 to the `cr-reach` group (NTP, and
+syslog from the infra) and udp 67 (DHCP on the control port), and the fabric
+bring-up deletes every other egress rule on them, on new groups and on the
+groups already standing (`Plan.confine`, so `POST /api/range/fabric/` fixes
+the live cloud at the next `bin/cloud up`). Board's container leaves through
+the target VM's control port, so the same rule closes it. Rejected: a route
+or firewall rule in each role image (a re-bake, and a learner with root on
+Kali removes it); disabling DHCP on `cr-mgmt` (the platform VM's port is on
+it too). That OVN applies the port's egress rules to traffic for its metadata
+port is the Neutron security-group model, **[unverified]** on this cloud until
+the next bring-up and `test_range_isolation.py`.

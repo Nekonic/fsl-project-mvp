@@ -49,6 +49,7 @@ DELETE_SERVER = "DELETE {nova}/servers/{server}"
 SECURITY_GROUPS = "GET {neutron}/v2.0/security-groups?project_id={project}"
 CREATE_GROUP = "POST {neutron}/v2.0/security-groups"
 CREATE_RULE = "POST {neutron}/v2.0/security-group-rules"
+DELETE_RULE = "DELETE {neutron}/v2.0/security-group-rules/{rule}"
 DELETE_GROUP = "DELETE {neutron}/v2.0/security-groups/{group}"
 CREATE_PORT = "POST {neutron}/v2.0/ports"
 DELETE_PORT = "DELETE {neutron}/v2.0/ports/{port}"
@@ -880,11 +881,11 @@ class OpenStack:
             self.get(self._call(IMPORT_KEYPAIR), {
                 "keypair": {"name": fabric.KEYPAIR, "public_key": public_key}
             })
+        held = {group["name"]: group for group in groups}
         named = {group["name"]: group["id"] for group in groups}
         for name in plan.groups:
-            named[name] = self.get(self._call(CREATE_GROUP), {
-                "security_group": {"name": name}
-            })["security_group"]["id"]
+            held[name] = self.get(self._call(CREATE_GROUP), {"security_group": {"name": name}})["security_group"]
+            named[name] = held[name]["id"]
             if name == fabric.MANAGEMENT_GROUP:
                 self.get(self._call(CREATE_RULE), {"security_group_rule": {
                     "security_group_id": named[name], "direction": "ingress",
@@ -896,10 +897,19 @@ class OpenStack:
         if plan.collector:
             self.get(self._call(CREATE_RULE), {"security_group_rule": fabric.collector_rule(
                 named[fabric.REACH_GROUP], named[fabric.SENDERS_GROUP])})
+        for name in fabric.CONFINED_GROUPS:
+            if name in plan.confine or name in plan.groups:
+                self._confine(held[name], named[fabric.REACH_GROUP])
         if plan.reach:
             self._attach(carriers[fabric.MANAGEMENT], named[fabric.REACH_GROUP])
         self._shape = None
         return plan
+
+    def _confine(self, group: dict, reach: str) -> None:
+        for rule in fabric.stray_egress(group, reach):
+            self.get(self._call(DELETE_RULE, rule=rule))
+        for rule in fabric.missing_egress(group, reach):
+            self.get(self._call(CREATE_RULE), {"security_group_rule": rule})
 
     def _reached(self, networks: list) -> bool:
         if not self.build.platform:

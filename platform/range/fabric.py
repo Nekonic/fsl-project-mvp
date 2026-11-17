@@ -17,8 +17,12 @@ SENDERS_GROUP = "cr-senders"
 GROUPS = (REACH_GROUP, MANAGEMENT_GROUP, EGRESS_GROUP, SENDERS_GROUP)
 RETIRED_GROUPS = ("cr-range", "cr-build")
 LAN_GROUP_PREFIX = "cr-lan-"
+CONFINED_GROUPS = (MANAGEMENT_GROUP, SENDERS_GROUP)
 COLLECTOR_PORT = 5140
 NTP_PORT = 123
+DHCP_SERVER_PORT = 67
+EGRESS_KEYS = ("ethertype", "protocol", "port_range_min", "port_range_max", "remote_group_id", "remote_ip_prefix")
+ANYWHERE = ("0.0.0.0/0", "::/0")
 
 
 @dataclass(frozen=True)
@@ -39,6 +43,7 @@ class Plan:
     reach: bool = False
     ntp: bool = False
     collector: bool = False
+    confine: tuple[str, ...] = ()
     present: tuple[str, ...] = ()
     drifted: tuple[str, ...] = ()
     leftovers: tuple[str, ...] = ()
@@ -46,7 +51,7 @@ class Plan:
     @property
     def clean(self) -> bool:
         return not (self.networks or self.subnets or self.keypair or self.groups
-                    or self.reach or self.ntp or self.collector or self.drifted)
+                    or self.reach or self.ntp or self.collector or self.confine or self.drifted)
 
 
 def network_name(segment: str) -> str:
@@ -171,6 +176,9 @@ def plan(declaration: Declaration, networks: list, subnets: list, keypairs: list
         reach=not reached,
         ntp=not _admits(named[REACH_GROUP], named[MANAGEMENT_GROUP], ntp_rule),
         collector=not _admits(named[REACH_GROUP], named[SENDERS_GROUP], collector_rule),
+        confine=tuple(name for name in CONFINED_GROUPS if len(named[name]) == 1 and len(named[REACH_GROUP]) == 1
+                      and (stray_egress(named[name][0], named[REACH_GROUP][0]["id"])
+                           or missing_egress(named[name][0], named[REACH_GROUP][0]["id"]))),
         present=tuple(present),
         drifted=tuple(dict.fromkeys(drifted)),
         leftovers=tuple(leftovers),
@@ -208,3 +216,28 @@ def _admits(reach: list[dict], remote: list[dict], rule) -> bool:
     wanted_rule = rule(reach[0]["id"], remote[0]["id"])
     return any(all(found.get(key) == value for key, value in wanted_rule.items())
                for found in reach[0].get("security_group_rules") or [])
+
+
+def egress_rules(group: str, reach: str) -> list[dict]:
+    return [{"security_group_id": group, "direction": "egress", "ethertype": "IPv4", "remote_group_id": reach},
+            {"security_group_id": group, "direction": "egress", "ethertype": "IPv4", "protocol": "udp",
+             "port_range_min": DHCP_SERVER_PORT, "port_range_max": DHCP_SERVER_PORT}]
+
+
+def _egress_shape(rule: dict) -> tuple:
+    return tuple(None if key == "remote_ip_prefix" and rule.get(key) in ANYWHERE else rule.get(key)
+                 for key in EGRESS_KEYS)
+
+
+def _egress_of(group: dict) -> list[dict]:
+    return [rule for rule in group.get("security_group_rules") or [] if rule.get("direction") == "egress"]
+
+
+def stray_egress(group: dict, reach: str) -> list[str]:
+    wanted = {_egress_shape(rule) for rule in egress_rules(group["id"], reach)}
+    return [rule["id"] for rule in _egress_of(group) if _egress_shape(rule) not in wanted]
+
+
+def missing_egress(group: dict, reach: str) -> list[dict]:
+    found = {_egress_shape(rule) for rule in _egress_of(group)}
+    return [rule for rule in egress_rules(group["id"], reach) if _egress_shape(rule) not in found]

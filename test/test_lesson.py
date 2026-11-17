@@ -44,9 +44,10 @@ def _courses() -> dict:
     return {course["id"]: course["lessons"] for course in board["courses"]}
 
 
-def _drawn_address(drawn: dict, host: str, zone: str) -> str:
+def _drawn_address(drawn: dict, host: str, caption: str) -> str:
+    zones = {f"switch:{zone['id']}" for zone in drawn["zones"] if zone["caption"] == caption}
     return next(edge["address"] for edge in drawn["edges"]
-                if edge["kind"] == "link" and edge["source"] == host and edge["target"] == f"switch:{zone}")
+                if edge["kind"] == "link" and edge["source"] == host and edge["target"] in zones)
 
 
 def _map_answers(session_id: int) -> dict:
@@ -58,9 +59,9 @@ def _map_answers(session_id: int) -> dict:
         "kali_ip": _drawn_address(drawn, "kali", "internet"),
         "board_ip": _drawn_address(drawn, "board.com", "web"),
         "path": " > ".join(route),
-        "dmz": next(zone["subnet"] for zone in drawn["zones"] if zone["id"] == "estate"),
+        "dmz": next(zone["subnet"] for zone in drawn["zones"] if zone["caption"] == "dmz"),
         "log_host": _drawn_address(drawn, "log-server", "mgmt"),
-        "waf_ip": _drawn_address(drawn, "waf", "estate"),
+        "waf_ip": _drawn_address(drawn, "waf", "dmz"),
     }
     assert set(given) == {step["id"] for step in steps}, "F1's steps changed; this test answers each one"
     return {step: _post(f"{session_id}/lesson/steps/{step}/check/", {"answer": answer}).json()["passed"]
