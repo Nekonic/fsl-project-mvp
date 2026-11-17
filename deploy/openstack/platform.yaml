@@ -159,6 +159,13 @@ resources:
             "%network%": {get_resource: network}
           template: |
             #cloud-config
+            apt:
+              primary:
+                - arches: [default]
+                  uri: http://mirror.kakao.com/ubuntu/
+              security:
+                - arches: [default]
+                  uri: http://mirror.kakao.com/ubuntu/
             swap:
               filename: /swapfile
               size: 4G

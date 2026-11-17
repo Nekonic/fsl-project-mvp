@@ -6,7 +6,7 @@ BASE=/opt/cr
 KEPT=$BASE/pristine
 
 export DEBIAN_FRONTEND=noninteractive
-sed -i 's/^Components:.*/Components: main restricted universe/' /etc/apt/sources.list.d/ubuntu.sources
+sed -i -e 's/^Components:.*/Components: main restricted universe/' -e 's#^URIs:.*#URIs: http://mirror.kakao.com/ubuntu/#' /etc/apt/sources.list.d/ubuntu.sources
 $APT purge snapd modemmanager
 printf 'Package: snapd modemmanager\nPin: release *\nPin-Priority: -1\n' > /etc/apt/preferences.d/no-snapd-modemmanager
 for attempt in 1 2 3 4 5 6 7 8 9 10; do
