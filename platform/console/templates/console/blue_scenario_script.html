@@ -110,7 +110,17 @@ function cardsShow() {
       <p class="text-body leading-relaxed mt-1">${esc(cardText(id, "body"))}</p>`;
     stack.appendChild(read);
   });
-  const any = Boolean(stack.querySelector("[data-card], [data-read]"));
+  let brief = stack.querySelector("[data-brief]");
+  if (!brief) {
+    brief = document.createElement("details");
+    brief.className = "card p-3 text-[12.5px]";
+    brief.dataset.brief = "goal";
+    brief.open = !stack.querySelector("[data-card], [data-read]");
+    brief.innerHTML = `<summary class="cursor-pointer font-semibold text-heading">${esc(t("scenario.briefing.goal"))}</summary>
+      <p class="text-body leading-relaxed mt-1">${esc(t(scenario.briefing.goal))}</p>`;
+  }
+  stack.appendChild(brief);
+  const any = Boolean(stack.querySelector("[data-card], [data-read], [data-brief]"));
   stack.classList.toggle("hidden", !any);
   stack.classList.toggle("flex", any);
 }

@@ -147,6 +147,17 @@ def test_a_guide_card_shows_once_the_briefing_starts_and_stays_readable_in_the_n
     assert [worded("scenario.korean.card.blocked.title") in one and worded("scenario.korean.card.blocked.body") in one
             for one in seen["result"]["read"]] == [True]
 
+def test_a_scenario_with_no_guide_card_due_shows_its_goal_in_the_note_instead_of_an_empty_panel(client):
+    seen = open_page(client, "/blue/1/", setup=serving(status(cards=[])), scenario="""
+      await browser.click('briefing-start');
+      const brief = document.querySelector('#scenario-cards [data-brief]');
+      return {text: brief.textContent, open: brief.open, hidden: browser.element('scenario-cards').classList.contains('hidden')};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["hidden"] is False and seen["result"]["open"] is True
+    assert worded(CARD["briefing"]["goal"]) in seen["result"]["text"]
+
 def test_a_judgement_scenario_that_asks_the_kind_posts_it_with_the_verdict(client):
     card = wargames.scenario_card(wargames.scenario_run("1.3"))
     seen = open_page(client, "/blue/1/", setup=serving(status(card, id="1.3", cards=[])), scenario="""

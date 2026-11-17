@@ -221,6 +221,16 @@ def test_no_pass_line_names_an_option_a_later_step_of_its_lesson_offers():
 
     assert named == [], f"a pass line stays on screen while a later step asks, and gives its answer away: {named}"
 
+def test_no_guide_card_due_on_the_first_alert_says_there_is_no_alert_yet():
+    import wargames
+
+    not_yet = re.compile(r"아직")
+    on_alert = [f"{one['text']}.card.{card['id']}.body" for scenarios in wargames.WARGAMES.values()
+                for one in scenarios.get("scenarios", []) for card in one.get("cards", []) if card["when"] == "alert"]
+
+    assert on_alert and not [key for key in on_alert if not_yet.search(tables()[key])], (
+        "the card stays in the note for the rest of the run, after the alerts it would deny")
+
 def test_no_shown_sentence_glosses_a_phrase_in_parentheses():
     gloss = re.compile(r"\S*\s?\((?!예: |msg:)[^)]*[\uac00-\ud7a3][^)]*\)")
     mimicked = "site.dev."

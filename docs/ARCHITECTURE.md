@@ -1033,8 +1033,8 @@ Kibana 쿼리와 개발자 도구 답:
 - 따옴표 안에 와일드카드를 넣은 쿼리(`: "...*..."`, `views.QUOTED_WILDCARD`)는 그보다 먼저 `lesson.check.wrong.kql_quoted`로 실패
 - Kibana에서 읽는 기초 레슨 답에는 모두 `kql`이 있음. 구성도·참고·앞 카드에서 짐작한 값으로는 통과할 수 없음
 - `leg: upstream` check에서 `not destination : <주소>`에 board.com 자신의 주소를 넣은 쿼리도 `kql` 사유로 실패(`views._excludes_the_site`). 남겨야 할 구간을 빼 버리기 때문
-- `dev`(정규식)가 있는 check는 개발자 도구에서 읽는 답. 개발자 도구가 열려 있으면 선택된 요청 행 id를 `dev_request`로 보냄(아니면 `null`)
-- `dev` 통과 조건: 그 행이 세션에 기록된 요청이고 경로가 `dev`에 맞음. 아니면 `lesson.check.wrong.dev`(`views._dev_picked`)
+- `dev`(정규식)가 있는 check는 개발자 도구에서 읽는 답. 개발자 도구가 열려 있으면 선택된 요청 행 id를 `dev_request`로 보냄(아니면 `null`). 선택한 행이 없으면 목록에 보이는 행 id들을 `dev_listed`로 함께 보냄
+- `dev` 통과 조건: 그 행이 세션에 기록된 요청이고 경로가 `dev`에 맞음. 상태 코드 단계(`of: status`)는 목록의 상태 열에서 읽을 수 있으므로 `dev_listed`의 행이 맞아도 통과. 아니면 `lesson.check.wrong.dev`(`views._dev_read`)
 - `dev` 적용 단계: F2의 메서드, 경로, 상태 코드, 파라미터, 없는 글 단계(정렬 단계는 `match`만). F4의 인코딩 단계. F5의 정렬·오류 단계
 - 숫자 뒤에 한두 글자 단위("20점", "1973건")가 붙은 답은 숫자로 읽음(`lesson._unit_dropped`). `%`는 단위로 보지 않음
 
@@ -1567,7 +1567,7 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 | `red` | `schedule`(기본값) 또는 `person`. `person`이면 사람이 레드팀 콘솔을 쓰고 공격 선언이 없어도 됨 |
 | `attacks` | `[{at, case, origin}]`: 연 뒤 몇 초(`minutes` 이내), 악성 케이스, 선택 출발지. 학습자에게 비공개 |
 | `completion` | 종류별. judgement: `{judged: all}`, 선택 `pattern: judged`. availability: `{served: all, held: all}`, 선택 `thresholds: {inbound, outbound}`. unknown: `{served: all, held: all}`. detection: `{detected_by: suricata}` |
-| `cards` | `[{id, when}]`. `when`은 `start`, `alert`, `blocked`, `window` 중 하나. 노트에는 아직 확인하지 않은 카드 하나가 맨 위에 펼쳐지고, 확인한 카드는 제목만 보이게 접혀 남음 |
+| `cards` | `[{id, when}]`. `when`은 `start`, `alert`, `blocked`, `window` 중 하나. 노트에는 아직 확인하지 않은 카드 하나가 맨 위에 펼쳐지고, 확인한 카드는 제목만 보이게 접혀 남음. 맨 아래에는 브리핑의 목표가 늘 남고, 처음 그릴 때 다른 카드가 없으면 펼쳐져 있음 |
 | `hints` | 하나씩 차례로 제안하는 힌트 id |
 
 `GET /api/wargames/`는 시나리오별 카드(`wargames.scenario_card`)를 `attacks` 없이 나열합니다. `GET /api/sessions/<id>/`는 단계형 시나리오의 `lesson`에서 `attacks`와 `completion`을 빼고 `cases`를 비워서 돌려줍니다.
