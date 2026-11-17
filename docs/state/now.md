@@ -13,9 +13,17 @@ after 12 min: acceptance idle 4 passed, the corp group 3 errors (its opens
 refused while slots were retargeted to corp), `test_concurrent_sessions.py`
 3 errors (the ssh multiplexer, below), and 3 failures in the
 `test_board_exfil.py` group whose detail the stop cut off; its log is
-`~/.cache/fsl-work/verify-heat-run1.tgz`. The second, on the readiness fix,
-writes `/tmp/verify-heat.log` on the platform VM (copied to
-`~/.cache/fsl-work/verify-heat.log`). `bin/verify --fast` on `dev`: unit and
+`~/.cache/fsl-work/verify-heat-run1.tgz`. The second, on the readiness fix
+(`~/.cache/fsl-work/verify-heat.log`): acceptance 71 passed, 5 failed, 6
+errors, 1 skipped in 2153 s across 12 processes; unit and API 869 + 1059;
+ratchet no regression. Red: every slot VM role checked (Kali, the WAF, the
+target) reaches the metadata service 169.254.169.254:80
+(`test_range_isolation.py`, three); the ssh multiplexer's `Broken pipe
+Failed to connect to new control master` on a WAF command, and `cr-waf stands
+on no mgmt address this platform can reach`, failing session opens and the
+WAF tuning (`test_concurrent_sessions.py` three errors, course c1 in
+`test_lesson.py` three errors, `test_board_exfil.py`'s sort test); one
+`test_topology.py` map test, cause not read. `bin/verify --fast` on `dev`: unit and
 API 1928 passed in four processes, ratchet no regression (`core_loc` 604).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
