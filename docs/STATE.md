@@ -37,11 +37,15 @@ was cut over the same day (`docs/OPENSTACK.md` §5.4): the old checkout's
 the old role images and `fsl-build` were deleted, and `bin/cloud up` with
 `platform.stack: cr-platform` (about 42 min) rebuilt the role images
 `cr-kali`, `cr-waf`, `cr-edge` and `cr-wargame-host` and replaced
-`fsl-opnsense-26.7` under the same name. The platform VM is now
-`cr-platform` (`m1.large`), checkout `/opt/cr` at 3a0df7d, every image pulled
-from GHCR (the `cr-*` images tagged with the commit SHA, built by `images.yml`
-through `workflow_dispatch` on the working branch `cr-rename`); nothing is
-sideloaded. Until the range host replaced them later on 2026-11-13, both slots
+`fsl-opnsense-26.7` under the same name. The platform VM is
+`cr-platform` (`m1.large`), a checkout of `dev` in `/opt/cr` that pulls every
+image from GHCR (`images.yml` builds them on a push to `dev`); nothing is
+sideloaded. The range host pulls the range images at `CR_RANGE_IMAGE_TAG`,
+the earliest commit whose range build contexts equal HEAD's and whose images
+are on GHCR (`bin/range-image-tag`), so a platform-only `bin/cloud up
+--replace` keeps the range host and its slots: 10 min 14 s against 25 min
+27 s when a new range host boots (`docs/DECISIONS.md` 2026-11-17, "The range
+host's images are tagged by the last range-side change"). Until the range host replaced them later on 2026-11-13, both slots
 ran as eight VMs on `m1.medium`; the store was restored. Since then the cloud
 holds two VMs: `cr-platform` and `cr-range` (`dba.range`, 6 vCPU, 16 GB), which
 runs slot N as the compose project `sN` (`docs/DECISIONS.md` "The range is one
@@ -131,6 +135,19 @@ session cookie, client address and the session the URL names. The same day
 sign-up with an admin's approval, the abuse limits and per-learner sessions
 landed (`docs/DECISIONS.md` "Sign-up waits for an admin's approval" and
 "A learner sees only their own sessions").
+
+On 2026-11-16 and 11-17 the slot took its present shape (`docs/DECISIONS.md`
+from "One sensor per slot" to "A zone box is its subnet"): one Suricata
+sensor behind the WAF on the web segment, reporting on the slot's 관제망; the
+edge router's `wan` holds one public IP, 121.134.88.42/29, which `board.com`
+and `corp.com` resolve to on Kali, port-forwards tcp 80 to the WAF and lets in
+from `wan` only replies and that forwarded port; Kali's default route leaves
+from 5.188.10.10, listed first on its `eth0`. The learner map draws that
+wiring as practitioners draw a logical diagram: a box per subnet, a switch
+per bridge, each device in the box of the subnet it has an address in, full
+addresses beside their device. Both hosts install from `mirror.kakao.com`,
+and an apt try is judged by the install. A scenario with `detected_by`
+counts only that detector across its result page.
 
 ## The objective model (done 2026-10-04)
 
@@ -738,12 +755,15 @@ through the scenarios' exclusions, level and thresholds (backlog 0).
 
 The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
 
-- **Range**: an Internet segment with thirty declared origin countries, the
-  internal network (`estate`) and management. Kali knows the targets by name
-  only through the WAF, `http://board.com` and `http://corp.com`; the edge
-  routes `internet` to `estate` without NAT or filtering, but the board and
-  corp-wp sit only on the web network and their own database network, so Kali
-  reaches the targets only through the WAF (`docs/ARCHITECTURE.md`).
+- **Range**: per slot, an Internet segment (`internet`) with thirty declared
+  origin countries on Kali, the DMZ (`estate`: the edge router's `lan` and the
+  WAF), the web segment (`web`: the WAF and the web servers), each wargame's
+  database network, and the 관제망 (`mgmt`: the sensor, the WAF's management
+  interface and the log server). The edge router's `wan` holds one public IP,
+  121.134.88.42/29; Kali resolves `board.com` and `corp.com` to it, the edge
+  forwards tcp 80 to the WAF (DNAT, no SNAT) and from `wan` passes only
+  replies and that forwarded port, so Kali reaches the targets only through
+  the router's public IP and the WAF (`docs/ARCHITECTURE.md`).
 - **Red team**: one Kali image, driven from the red console's terminal in a wargame or the
   blue console's Kali pane in a lesson or scenario; the
   cases stay for the API, the harness and the scenario engine's attacker; each
@@ -762,8 +782,11 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   catalogue to each other.
 - **Score**: objectives (exfiltrated data or observed effect, checked against
   the target's own records) beside detection TP/FP/FN/TN with the
-  `corroborated` gate; `platform/game.py` also computes a zero-sum balance,
-  withheld until close (backlog 1, partly superseded).
+  `corroborated` gate; one case is one decision whatever its alert count; a
+  scenario with `detected_by` (3.1-3.4: `suricata`) counts only that
+  detector in its cases, objectives' detected flag and customer FPs;
+  `platform/game.py` also computes a zero-sum balance, withheld until close
+  (backlog 1, partly superseded).
 - **Console**: the landing page `/` (sessions), a red console (objectives,
   loot submission, Kali terminal, Website pane) and a blue console that is a sidebar framing Kibana, a WAF
   terminal, a Website pane (site browser with developer tools), the Map
@@ -792,8 +815,9 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   the OpenStack cloud as one Heat stack (backlog 2, step 1).
 - **The range on OpenStack**: the platform builds the `mgmt` network and the
   range host `cr-range` through `/api/range/fabric/` and `/slot/`, and runs
-  each slot on it as a compose project (Kali, the nftables edge, the WAF, two
-  Suricata sensors and the wargames' GHCR containers) through `/configure/`,
+  each slot on it as a compose project (Kali, the nftables edge, the WAF, one
+  Suricata sensor, the log server and its shippers, and the wargames' GHCR
+  containers) through `/configure/`,
   reaching the range host over ssh on `mgmt` (backlog 2). Until 2026-11-13
   each slot was four VMs (the OPNsense edge, the WAF, Kali and
   `cr-wargame-host`) built from golden images. Eight slots on the current cloud
@@ -939,15 +963,12 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       benign cases, TP/TN) stay. Done 2026-10-16 (`docs/DECISIONS.md` "Test
       audit"): test functions 2,061 -> 1,051, and the test count is reported,
       not gated.
-- [x] Push to `dev` (e5c92c7), the `images` workflow green, the six GHCR
-      packages public; done 2026-10-11.
 - [x] First run on the cloud of everything built 2026-10-11: base image
       checked, `cloud.yaml`, `bin/cloud up|down` from a cleaned project, the
       OPNsense 26.7 image builder, Kali on Ubuntu, the edge's Suricata, the
       automatic reset after a close; obsolete VMs, images and the
       `fsl-acceptance` VM deleted with the user's yes. Results and the fixes
       it forced: `docs/OPENSTACK.md` §3.6, §5.2, §7; done 2026-10-11.
-- [x] The live-run fixes since e5c92c7 reached `dev` (2026-10-11).
 - [x] WAF tuning on OpenStack: `rules/crs.py` hard-coded the Docker image's
       CRS path and nginx pid. The WAF layout is named per host since 504ad9b
       ("WAF tuning and the WAF lesson work on the OpenStack WAF VM"; 72
@@ -1022,13 +1043,6 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       Proven live 2026-10-24: a `--replace` that built a new wargame host
       image read both slots `STALE`, then `RESETTING` for about 6 min, then
       `READY` with no configure by hand; `up` exited 0 in 36 min.
-- [ ] A two-arm WAF (option, 2026-10-15): the range wires the WAF one-arm,
-      on the service segment beside the sites, and the learner map draws it
-      so (`docs/DECISIONS.md`, 2026-10-15, uniform host symbols). Barracuda
-      calls its two-arm proxy the "Most secure deployment choice since
-      backend servers are completely isolated." Two-arm needs the sites on
-      a segment of their own behind the WAF: a range change on both
-      substrates, not scheduled.
 - [ ] Scenario 4.2 (a person as the red team) is not declared; the engine
       accepts `red: person`. Needs a second person to run live.
 - [x] Foundations in one session, the red console as Kali and a browser, and
@@ -1065,10 +1079,6 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       passed; acceptance 65 passed, 2 failed, 6 errors, 0 skipped in 10241 s;
       ratchet ok. Every failure comes from the single slot, none from the
       removal.
-- [x] The `images.yml` run for 3da925e was green (gh run 39421089777,
-      2026-10-20T12:17Z), and the new cloud's bring-up ran on those GHCR
-      images. The run for ee5e641 was green too. Still to do: check the run for
-      the push of 2026-11-13 (`docs/state/now.md` Next 1).
 - [ ] Foundations rebuild, remaining work (2026-10-19; round-5 fixes
       9f1f39d..60243e6 deployed as e4a467e, `docs/DECISIONS.md` "Foundations
       review loop, rounds 2-5"):
@@ -1147,9 +1157,6 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       let the Korean search and O'Brien through (200) while the SQLi search
       stays blocked (403); 942460 is not needed (`docs/DECISIONS.md`
       2026-10-22, "PL4 and the Korean search").
-- [ ] Whether the assessment and its lesson text should name the
-      `REQUEST_URI_RAW` exclusion for the Korean search at PL4 (a lesson
-      content change; measured above).
 - [ ] The unexplained `test_corp_*` nonce error, seen twice and passing on
       rerun both times: a "no `_wpnonce`" error once, and on 2026-10-20
       `test_corp_authz`'s live content overwrite got WordPress's
@@ -1252,12 +1259,8 @@ To do, found by the 2026-10-08 doc review (open until checked off):
 - [x] Floating IP 192.168.0.220 on the old cloud: dropped (2026-10-20). That
       address belongs to the old cloud, which is in other use and which we do
       not touch.
-- [x] Rebuild the platform VM without `--sideload`, from GHCR images. Done
-      once on 2026-10-21 (dev's head, 29 min, exit 0), then replaced by
-      sideloaded rebuilds from the working branch (the last on 2026-10-24,
-      65 min). Since the cut-over of 2026-11-13 the VM runs GHCR images only,
-      at 3a0df7d from the branch `cr-rename` (`images.yml` by
-      `workflow_dispatch`); running `dev` itself waits for the push to `dev`.
+- [x] Rebuild the platform VM without `--sideload`, from GHCR images: done
+      2026-10-21 (29 min, exit 0).
 - [x] Review of the seven-step lesson text: dropped with the lesson (P6).
 - [x] Publishing the OPNsense image: moot since 2026-11-13; the range has no
       OPNsense image (the edge is `deploy/edge`).
@@ -1371,6 +1374,8 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       whether to add a `http.request_body` XSS rule for symmetry (changes the
       detection score) or leave it WAF-only by design (step 7). Scenario
       3.4 has the learner write that rule; the shipped baseline is unchanged.
+      Since 2026-11-17 the comment posts URL-encoded with the board's CSRF
+      token and is stored, so that rule must match `%3D`, not `=`.
 - [ ] `board-sqli-orderby-sqlmap` evades both engines on a clean exploit:
       boolean/time ORDER BY payloads carry no `--`/`union`/quote grammar, so
       Suricata sid 9000001 is fragile, and the dotted-column CVE payload has no
@@ -1601,6 +1606,8 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       checked next; the open scenario page shows its verdict; repeated runs
       carry their time; pills, badges, repeats and glosses removed. Checked
       live with Playwright; full `bin/verify` on the VM.
+- [x] 2026-11-15: a two-arm WAF: the web servers stand on `web` behind the
+      WAF alone (`docs/DECISIONS.md` "The web services stand behind the WAF alone").
 - [x] 2026-11-17: the answer-blind walk of round 23
       (`docs/TROUBLESHOOTING.md` "Answer-blind walk round 23"): a Kali run the
       WAF refused in full passes its check from the WAF's records; each fired
@@ -1623,6 +1630,9 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       edge's inbound filter, the comment cases' CSRF token, Kali's address
       order, a late Kali pass and slow answers. Live at 5bb34b0a with the full
       `bin/verify` green.
+- [x] 2026-11-18: whether the assessment names the `REQUEST_URI_RAW`
+      exclusion at PL4: moot; the assessment went with P6 and no lesson or
+      scenario declares the PL4 posture (`minimal`).
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 
