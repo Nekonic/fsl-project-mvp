@@ -1,0 +1,61 @@
+#!/bin/sh
+set -eu
+
+BASE=/opt/wargames
+KEPT=$BASE/pristine
+SETTINGS=/etc/slot.env
+WAIT=600
+verb=${1:?wargames up|reset|down}
+. "$SETTINGS"
+
+compose() {
+  wargame=$1
+  shift
+  docker compose -p "$wargame" --env-file "$SETTINGS" -f "$BASE/$wargame/compose.yaml" "$@"
+}
+
+volumes() {
+  docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Destination}} {{.Source}}{{println}}{{end}}{{end}}' "$1"
+}
+
+restored() {
+  for service in $(compose "$1" config --services); do
+    [ "$(docker inspect --format '{{.State.Status}}' "$service")" = created ] || continue
+    volumes "$service" | while read -r path source; do
+      [ -n "$path" ] && [ -d "$KEPT/$service$path" ] || continue
+      [ -z "$(ls -A "$source")" ] || continue
+      cp -a "$KEPT/$service$path/." "$source/"
+    done
+  done
+}
+
+up() {
+  for wargame in $WARGAMES; do
+    compose "$wargame" up --no-start --pull never
+    restored "$wargame"
+  done
+  started=
+  for wargame in $WARGAMES; do
+    compose "$wargame" up -d --wait --wait-timeout "$WAIT" --pull never &
+    started="$started $!"
+  done
+  for job in $started; do
+    wait "$job"
+  done
+}
+
+down() {
+  for wargame in $WARGAMES; do
+    compose "$wargame" down -v --timeout 1
+  done
+}
+
+reset() {
+  down
+  up
+}
+
+case "$verb" in
+  up|reset|down) "$verb" ;;
+  *) echo "wargames up|reset|down" >&2; exit 2 ;;
+esac

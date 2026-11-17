@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+SHARE=/usr/local/share/slot
+. /etc/slot.env
+
+ip route replace default via "$GATEWAY"
+
+sed -i -e '/[[:space:]]board$/d' -e '/[[:space:]]corp-wp$/d' /etc/hosts
+printf '%s board\n%s corp-wp\n' "$BOARD_ADDRESS" "$CORP_ADDRESS" >> /etc/hosts
+
+sed -e "s/@log_server@/$LOG_SERVER/g" "$SHARE/log-shipper.conf" > /etc/rsyslog.d/60-waf-logs.conf
+rsyslogd -N1 -f /etc/rsyslog.conf
+systemctl restart rsyslog.service

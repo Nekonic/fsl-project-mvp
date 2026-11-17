@@ -1,0 +1,13 @@
+[Unit]
+Description=Origin addresses and the route to the internet
+Wants=network-online.target
+After=network-online.target cloud-init.service
+ConditionPathExists=/etc/slot.env
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/slot-boot
+
+[Install]
+WantedBy=multi-user.target

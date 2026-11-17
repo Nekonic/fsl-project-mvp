@@ -1,0 +1,7 @@
+{
+  "bridge": "none",
+  "iptables": false,
+  "ip6tables": false,
+  "log-driver": "local",
+  "log-opts": {"max-size": "10m", "max-file": "2"}
+}

@@ -1,0 +1,13 @@
+[Unit]
+Description=The slot's edge router, IDS bridge and log server
+Wants=network-online.target
+After=network-online.target cloud-init.service
+ConditionPathExists=/etc/slot.env
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/slot-boot
+
+[Install]
+WantedBy=multi-user.target

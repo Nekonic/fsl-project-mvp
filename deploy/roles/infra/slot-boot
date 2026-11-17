@@ -1,0 +1,67 @@
+#!/bin/sh
+set -eu
+
+ROUTER=121.134.88.42
+BRIDGE=br0
+SHARE=/usr/local/share/slot
+NETWORKD=/run/systemd/network
+. /etc/slot.env
+
+nic_holding() {
+  ip -o -4 addr show | awk -v wanted="$1" '{ split($4, held, "/") } held[1] == wanted { print $2; exit }'
+}
+
+held_by() {
+  nic=$(nic_holding "$1")
+  [ -n "$nic" ] || { echo "no NIC holds $1" >&2; exit 1; }
+  echo "$nic"
+}
+
+offloads_off() {
+  for dev in "$@"; do
+    ethtool -K "$dev" tso off gso off gro off lro off >/dev/null 2>&1 || true
+  done
+}
+
+legs_bridged() {
+  install -d "$NETWORKD"
+  printf '[NetDev]\nName=%s\nKind=bridge\n\n[Bridge]\nSTP=no\nForwardDelaySec=0\n' "$BRIDGE" > "$NETWORKD/08-ids-$BRIDGE.netdev"
+  printf '[Match]\nName=%s\n\n[Link]\nRequiredForOnline=no\n\n[Network]\nLinkLocalAddressing=no\nConfigureWithoutCarrier=yes\n' \
+    "$BRIDGE" > "$NETWORKD/08-ids-$BRIDGE.network"
+  for leg in "$@"; do
+    printf '[Match]\nName=%s\n\n[Link]\nRequiredForOnline=no\n\n[Network]\nBridge=%s\nLinkLocalAddressing=no\n' \
+      "$leg" "$BRIDGE" > "$NETWORKD/08-ids-$leg.network"
+  done
+  networkctl reload
+  networkctl reconfigure "$@"
+  for second in $(seq 30); do
+    enslaved=0
+    for leg in "$@"; do
+      [ "$(basename "$(readlink "/sys/class/net/$leg/master" 2>/dev/null)")" = "$BRIDGE" ] && enslaved=$((enslaved + 1))
+    done
+    [ "$enslaved" = "$#" ] && break
+    [ "$second" -lt 30 ] || { echo "the IDS legs $* did not join $BRIDGE" >&2; exit 1; }
+    sleep 1
+  done
+  for leg in "$@"; do
+    ip addr flush dev "$leg"
+  done
+  ip link set "$BRIDGE" up
+  offloads_off "$BRIDGE" "$@"
+}
+
+wan=$(held_by "$ROUTER")
+mgmt=$(held_by "$LOG_SERVER")
+set -- $IDS_LEGS
+[ "$#" = 2 ] || { echo "the slot names $# IDS leg addresses, not 2" >&2; exit 1; }
+leg_a=$(held_by "$1")
+leg_b=$(held_by "$2")
+legs_bridged "$leg_a" "$leg_b"
+
+ip route replace default via "$UPSTREAM" dev "$wan" onlink
+sed -e "s/@wan@/$wan/g" -e "s/@mgmt@/$mgmt/g" -e "s/@router@/$ROUTER/g" -e "s/@waf@/$WAF_FRONT/g" "$SHARE/edge.nft" | nft -f -
+
+sed -e "s/@slot@/$SLOT/g" -e "s/@log_server@/$LOG_SERVER/g" -e "s/@collector@/$COLLECTOR/g" "$SHARE/log-relay.conf" \
+  > /etc/rsyslog.d/60-log-relay.conf
+rsyslogd -N1 -f /etc/rsyslog.conf
+systemctl restart rsyslog.service
