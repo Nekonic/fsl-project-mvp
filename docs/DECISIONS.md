@@ -8919,3 +8919,16 @@ origin /24s, so replies to Kali's 100 addresses were on-link), and Kali's
   so Kali can also reach the WAF's private address directly; the isolation
   acceptance test probes that way in. Narrowing the edge's forward chain to
   forwarded connections only is a separate change.
+
+## 2026-11-17 — A zone box is its subnet; the IDS stands in the mgmt box
+
+The user's ruling: a zone box on the map is one subnet, and a device stands in
+the box of the subnet it has an address in. The IDS's only address
+(172.29.N.11) is on the mgmt network, so drawing it inside the web segment's
+box (10.30.N.0/24) contradicted the box. The IDS now stands in the 관제망 box,
+right under the web segment's switch; its mgmt link carries 172.29.N.11 beside
+the IDS as every other link does, and its unaddressed mirror link leaves the
+관제망 box straight up into the web switch. The two links part at a right angle
+at the IDS so it does not read as an inline device between the two switches.
+Rejected the same day: the IDS hanging inside the web box, and its address
+written under its name with neither link labelled.

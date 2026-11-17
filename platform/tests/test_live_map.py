@@ -210,7 +210,7 @@ def test_each_interface_s_full_address_stands_beside_its_device_inside_the_devic
     assert shown[("waf", "switch:estate")] == "10.30.0.177" and shown[("board.com", "switch:board-default")] == "172.18.0.3"
     assert [zone["subnet"] for zone in drawn["zones"]] == [
         "", "10.30.0.0/24", "10.32.0.0/24", "172.18.0.0/16", "172.19.0.0/16", "172.29.1.0/24"]
-    homes = {node["id"]: None if node["kind"] == "router" else node["zone"] if node["kind"] == "sensor"
+    homes = {node["id"]: None if node["kind"] == "router"
              else (node.get("zones") or [None])[0] for node in drawn["nodes"]}
     assert {(label["text"], label["zone"]) for label in labels.values()} == {
         (address, homes[source]) for (source, target), address in shown.items()}
@@ -346,10 +346,9 @@ def test_the_waf_stands_in_the_dmz_the_web_servers_in_their_segment_and_the_rout
     assert not any(inside(placed["router"], box) for box in boxes.values())
     assert boxes["internet"][2] + topology.CLEAR <= placed["router"]["x"] - topology.ICON_HALF
     assert placed["router"]["x"] + topology.ICON_HALF + topology.CLEAR <= boxes["estate"][0]
-    assert inside(placed["sensor:sensor"], boxes["web"]) and inside(placed["log-server"], boxes["mgmt"])
-    assert not inside(placed["sensor:sensor"], boxes["mgmt"])
-    assert placed["sensor:sensor"]["x"] == placed["switch:web"]["x"] < placed["board.com"]["x"]
-    assert placed["sensor:sensor"]["y"] > placed["switch:web"]["y"], "a sensor hangs below the switch it mirrors"
+    assert inside(placed["sensor:sensor"], boxes["mgmt"]) and inside(placed["log-server"], boxes["mgmt"]), (
+        "a device stands in the box of the subnet it has an address in")
+    assert not inside(placed["sensor:sensor"], boxes["web"])
     assert inside(placed["board-db"], boxes["board-default"]) and inside(placed["corp-db"], boxes["corp-default"])
 
 
@@ -401,6 +400,21 @@ def test_no_line_runs_through_a_zone_s_title(without):
             for (a1, b1), (a2, b2) in zip(points(edge, placed), points(edge, placed)[1:]):
                 if a1 == a2 and min(b1, b2) < top < max(b1, b2):
                     assert abs(a1 - middle) >= half + topology.CAPTION_CLEAR // 2, (zone["id"], edge["id"])
+
+
+@pytest.mark.parametrize("without", [(), ("corp-wp", "corp-db")], ids=["both-targets", "board-alone"])
+def test_the_ids_mirror_link_leaves_the_mgmt_box_for_the_web_switch_with_one_bend_at_most_and_no_address(without):
+    drawn = board_map(without=without)
+    placed = nodes_of(drawn)
+    mirror = next(edge for edge in drawn["edges"] if edge["kind"] == "mirror")
+    mgmt = next(edge for edge in drawn["edges"] if edge["id"] == "link:sensor:sensor:switch:mgmt")
+    run = points(mirror, placed)
+
+    assert mirror["target"] == "switch:web" and not mirror.get("address") and len(run) <= 3
+    assert mgmt["address"] == "172.29.1.11"
+    (a1, b1), (a2, b2) = run[0], run[1]
+    (c1, d1), (c2, d2) = points(mgmt, placed)[:2]
+    assert not ((a1 == a2 == c1 == c2) or (b1 == b2 == d1 == d2)), "the IDS does not stand inline between two switches"
 
 
 @pytest.mark.parametrize("without", [(), ("corp-wp", "corp-db")], ids=["both-targets", "board-alone"])
