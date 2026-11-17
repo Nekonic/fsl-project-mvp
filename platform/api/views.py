@@ -29,6 +29,7 @@ from django.views.decorators.http import require_http_methods
 
 import attacker
 import game
+import jump
 import kibana
 import lesson
 import scoreboard
@@ -1540,6 +1541,38 @@ def attacker_label(request):
     attacker.set_label(case_id or None, _range(_written(request)).runner("proxy"))
     return _reply({"ok": True})
 
+@require_http_methods(["GET", "POST"])
+def session_ssh(request, session_id):
+    session = get_object_or_404(Session, pk=session_id)
+    if session.owner_id is None or session.owner_id != request.user.pk:
+        return _reply({"detail": f"only the learner who opened session {session.pk} takes its ssh key"}, status=403)
+    jump_host = settings.JUMP_HOST or urlsplit(f"//{request.get_host()}").hostname
+    if request.method == "GET":
+        held = None if session.ended_at else jump.granted(session.pk)
+        return _reply(jump.shown(held, jump_host, session.scenario) if held else {"issued": False})
+    _refuse_closed(session)
+    adapter = _range(session)
+    issued = jump.issue(session.pk, adapter.address("attacker"))
+    try:
+        attacker.authorize_key(adapter.runner("attacker"), issued.grant.public_key, issued.grant.name)
+        if not Session.objects.filter(pk=session.pk, ended_at=None).exists():
+            session.refresh_from_db()
+            _refuse_closed(session)
+    except Exception:
+        _drop_ssh(session, adapter)
+        raise
+    return _reply({**jump.shown(issued.grant, jump_host, session.scenario), "private_key": issued.private_key},
+                  status=201)
+
+def _drop_ssh(session, adapter=None):
+    dropped = jump.revoke(session.pk)
+    if dropped is None:
+        return
+    try:
+        attacker.drop_key(_range(session, adapter).runner("attacker"), dropped.name)
+    except RangeUnavailable as exc:
+        log.warning("session %s: the jump refuses %s, but Kali kept it: %s", session.pk, dropped.name, exc)
+
 @require_http_methods(["GET"])
 def wargame_catalogue(request):
     return _reply(wargames.catalogue())
@@ -2087,6 +2120,7 @@ def close_session(request, session_id):
             _refuse_closed(session)
     session.ended_at = closed_at
     site.forget(session.pk)
+    _drop_ssh(session, adapter)
     _found_kept.pop(session.pk, None)
     _segments_kept.pop((session.pk, session.started_at), None)
     reply = _shape(session, SESSION_FIELDS)

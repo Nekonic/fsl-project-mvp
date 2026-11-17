@@ -126,6 +126,38 @@ def test_the_red_console_is_the_kali_terminal_and_the_website_and_runs_no_prepar
     assert not [asked for asked in result["asked"] if "/cases/" in asked or "/attacks/" in asked
                 or "/api/attacker/" in asked], result["asked"]
 
+SSH_SERVED = """
+      browser.serve((request) => {
+        if (request.route === "/api/sessions/7/") return {body: {id: 7, scenario: "board", kind: "wargame",
+          kali_terminal: "/vm-terminal/kali/?arg=7", site: {port: 8002, path: "/site/7/board.com/"}}};
+        const held = {issued: true, host: "board-kali", key_file: "~/.ssh/cr-session-7",
+                      fingerprint: "SHA256:abc", config: "Host board-kali\\n    ProxyJump board-kali-jump\\n"};
+        if (request.route === "/api/sessions/7/ssh/" && request.method === "GET") return {body: {issued: false}};
+        if (request.route === "/api/sessions/7/ssh/") return {status: 201, body: {...held, private_key: "PRIVATE"}};
+        return {status: 404, body: {detail: "not served"}};
+      });
+"""
+
+def test_the_kali_pane_issues_a_session_key_once_and_shows_the_ssh_config_to_use_it(client):
+    seen = open_page(client, "/red/7/", setup=SSH_SERVED, scenario="""
+      const before = browser.element('ssh-issue').textContent;
+      await browser.click('ssh-open');
+      const opened = !browser.element('ssh').classList.contains('hidden');
+      await browser.click('ssh-issue');
+      return {before, opened, key: browser.element('ssh-key').value,
+              config: browser.element('ssh-config').value, command: browser.element('ssh-command').textContent,
+              again: browser.element('ssh-issue').textContent,
+              asked: browser.requests.map((r) => r.method + " " + r.route).filter((r) => r.includes("/ssh/"))};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert (result["before"], result["again"]) == (worded("red.ssh.issue"), worded("red.ssh.reissue"))
+    assert result["opened"] and result["key"] == "PRIVATE"
+    assert result["config"].startswith("Host board-kali\n")
+    assert result["command"] == "chmod 600 ~/.ssh/cr-session-7\nssh board-kali"
+    assert result["asked"] == ["GET /api/sessions/7/ssh/", "POST /api/sessions/7/ssh/"]
+
 @pytest.mark.parametrize("kind, shown", [("lesson", True), ("scenario", True), ("wargame", False)])
 def test_the_blue_console_carries_kali_for_practice_and_not_in_a_wargame(client, kind, shown):
     seen = open_page(client, "/blue/7/", setup=_session_7(kind), scenario="""
