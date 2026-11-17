@@ -330,3 +330,11 @@ def test_a_refused_write_names_its_address_and_answer(cloud):
 
     with pytest.raises(RangeUnavailable, match="409.*overlaps"):
         reader(cloud)(f"POST http://127.0.0.1:{cloud.port}/v2.0/subnets", {"subnets": []})
+
+def test_a_refusal_whose_message_sits_past_the_first_200_characters_still_names_it(cloud):
+    message = "Image cr-waf-bake1 requires 40 GB minimum disk space. Flavor dba.small has only 30 GB."
+    cloud.write_answers = [(400, {"code": 400, "title": "Bad Request", "explanation": "x" * 200,
+                                  "error": {"type": "StackValidationFailed", "traceback": None, "message": message}})]
+
+    with pytest.raises(RangeUnavailable, match="400: Image cr-waf-bake1 requires 40 GB"):
+        reader(cloud)(f"POST http://127.0.0.1:{cloud.port}/v1/p/stacks", {"stack_name": "cr-slot-1"})

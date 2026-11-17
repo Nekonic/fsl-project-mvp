@@ -406,12 +406,21 @@ def http_reader(cloud: "Cloud", password: str, timeout: float = 30.0):
         if not answered.ok:
             refused = EndpointGone if answered.status_code == 404 else RangeUnavailable
             raise refused(
-                f"{verb} {url} answered {answered.status_code}: "
-                f"{answered.text.strip()[:200]}"
+                f"{verb} {url} answered {answered.status_code}: {_refusal(answered)}"
             )
         return answered.json() if answered.content else {}
 
     return send
+
+
+def _refusal(answered) -> str:
+    try:
+        body = answered.json()
+    except ValueError:
+        body = None
+    said = [value["message"] for value in body.values()
+            if isinstance(value, dict) and value.get("message")] if isinstance(body, dict) else []
+    return said[0] if said else answered.text.strip()[:200]
 
 
 def _send(verb: str, url: str, token: str | None, body, timeout: float):
