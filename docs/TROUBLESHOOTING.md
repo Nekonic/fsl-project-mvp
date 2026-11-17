@@ -276,7 +276,7 @@ Elasticsearch fails the shard on any document without `http.status` or
 read-only against the cloud Elasticsearch: the same script under another
 name aggregates 403, 200, 500, 302, 400, 404; under `status` 8 shards fail.
 
-Fix: the last branch reads `params['_source']['status']`; under the name
+Fix (`75963159`): the last branch reads `params['_source']['status']`; under the name
 `status` all 9 shards answer with the same buckets. A new session's data view
 takes the field from `deploy/kibana/objects.ndjson`.
 
@@ -294,7 +294,7 @@ Cause: `_kali_run` found a learner's run only in Suricata's `http` events.
 Since the sensor sniffs the web segment behind the WAF, a request the WAF
 refuses never reaches it.
 
-Fix: `_sent_by` reads the run from both the sensor's `http` events and the
+Fix (`9e3bc4e5`): `_sent_by` reads the run from both the sensor's `http` events and the
 WAF's records carrying the marker (the tool is checked against either's
 User-Agent). Live: the same command on slot 1 passed the check 27 s after its
 last request (15 s of `RUN_SETTLED` included) and the score listed it as a TP.
@@ -312,8 +312,9 @@ first minute, then 20 a minute (one every 3 s) until the timeout. Alone it
 takes 51 s; two runs at once with one session file on slot 8 broke the first
 (`disk I/O error`, `no such table: storage`).
 
-Fix: a fired sqlmap case writes to `/tmp/sqlmap-runs/<case id>`
-(`attacker.SQLMAP_RUNS`, handed to `redteam/tools.py`). The same overlap with separate directories: 52 s and
+Fix (`bfe451bb`, the directory named in `attacker.py` since `2a6e8756`): a
+fired sqlmap case writes to `/tmp/sqlmap-runs/<case id>`
+(`attacker.SQLMAP_RUNS`, handed through `harness.fire` to `redteam/tools.py`). The same overlap with separate directories: 52 s and
 51 s, each run complete. Live, 3.3 with the final check pressed at 3:45 as in
 the walk: the tamper run 53.5 s overlapped by the window's run 48.0 s, both
 `held`, the window judged 5.2 s after it ended (failed as undetected, no rule
@@ -334,7 +335,7 @@ fields, of which the documents carry 171. Discover asks for `fields: *` on 500
 rows; that query took 2.4 s against 0.16 s without it. Filebeat's template also
 sets a 5 s refresh.
 
-Fix: the collector filters `fields.yml` to the `ecs`, `beat`, `cloud`,
+Fix (`856277a8`): the collector filters `fields.yml` to the `ecs`, `beat`, `cloud`,
 `docker`, `host`, `kubernetes`, `process` and `log` groups before it starts
 (`compose.yaml`, written to `fields-lean.yml`) and loads that template over the old one, with a 1 s refresh. The same
 6,000 documents reindexed under both templates map each of their 171 fields
@@ -354,7 +355,8 @@ keeps the old mapping until it rolls over.
   windows of 3.1, 3.2 and 3.4 were judged 1.0-1.4 s after they ended.
 - Closing a session took 11.4 s (F5 lesson) and 20.7 s (3.3 scenario).
 - A Kali step's check reads every record of the window and took 0.7-9 s per
-  press during a 2,000-request run.
+  press during a 2,000-request run. Resolved in `de64f25e`: a poll now reads
+  the last 25 s (walk round 27 below).
 
 ## Answer-blind walk round 24: a slow Kali check, two customer counts, 4xx from the board
 
@@ -373,7 +375,7 @@ Cause: the server records a run only when its newest request is
 several seconds; the console polled every 5 s. Every non-passing press of a
 Kali check added to the step's `tries`.
 
-Fix: once the terminal shows the step's end line the console checks at once
+Fix (`c57083b5`): once the terminal shows the step's end line the console checks at once
 and then every second with `ended: true`, and the server waits
 `RUN_ENDED_SETTLED` (3 s) for such a check; a Kali check that has no recorded
 run yet is never a wrong try.
@@ -383,8 +385,8 @@ run yet is never a wrong try.
 Session 2490 (3.1): the final check was judged at 20:14:02, the customers were
 stopped at 20:14:13, and 7 requests were sent after the judgment. The report
 the console read at the judgment counted what had been pulled by then; the
-result page read later counted everything. The debrief now counts requests
-sent before the end of the last final check.
+result page read later counted everything. Fix (`63949acd`): the debrief now
+counts requests sent before the end of the last final check.
 
 ### "4xx-5xx responses not from the WAF" in 3.2 and 3.3
 
@@ -396,7 +398,7 @@ token at sign-in ("For security reasons, CSRF tokens are rotated each time a
 user logs in", Django 5.2 reference, "Cross Site Request Forgery
 protection", "Why might a user encounter a CSRF validation failure after
 logging in?"), so a form token fetched by one flow went stale when another
-flow of the same customer signed in. Fix: a customer's flows take turns
+flow of the same customer signed in. Fix (`2a6f7567`): a customer's flows take turns
 (`Customers.turns`); a test board that rotates the token at sign-in refused
 none of 30 posts with the fix and some without it.
 
@@ -432,7 +434,7 @@ acceptance load one record went past the client's 60 s.
 
 ### Fix
 
-`mysqlbinlog --start-datetime` from a minute before the session start, in
+`9417f343`: `mysqlbinlog --start-datetime` from a minute before the session start, in
 UTC (`TZ=UTC`: `mysqlbinlog` reads the value in its own local time zone; with
 `TZ=Asia/Seoul` the same value read the whole log, with `America/New_York`
 none of it). The Python filter by session start stays. Same slot, same
@@ -461,7 +463,7 @@ Measured in `test_lesson_steps.py`, first second after the run's last request
 at which a poll passes, terminal end not reported: 15 s before, 3 s after
 when the Kali box shows no sqlmap on a terminal; 15 s while it still does.
 
-Fix: a check without `ended` asks the Kali box (`attacker.typed_tool_running`,
+Fix (`44bb1395`): a check without `ended` asks the Kali box (`attacker.typed_tool_running`,
 `ps -eo tty=,args=`) whether the step's tool still runs on a terminal; once
 it does not, 3 s of quiet is enough. A tool the platform fired has no
 terminal and does not count; a box that does not answer keeps the 15 s rule.
@@ -472,7 +474,8 @@ Measured in the same file: late in a 5-minute run a poll read records from
 the step's start, a 6 min 10 s window, every 5 s; the passing check then
 ingested the session from its start. Now a poll reads `RUN_SETTLED` plus the
 5 s slack on each side (25 s) and the whole run only once that is quiet, and
-the passing check and the replay check ingest from the run's first request.
+the passing check and the replay check ingest from the run's first request
+(`de64f25e`).
 Round 23 measured 0.7-9 s per press during a 2,000-request run, which this
 read was.
 
@@ -496,7 +499,7 @@ requests by up to R; 6 of 35 over 2.5 s fits R of 5-6 s. The live refresh
 time was not measured here (no sign-in to the live platform from this
 change), so this is the likely cause, not a proven one.
 
-Fix: the slots are read at once (`ThreadPoolExecutor`, one worker per slot).
+Fix (`de64f25e`): the slots are read at once (`ThreadPoolExecutor`, one worker per slot).
 Measured in `test_judge_reachability.py` with 8 stub slots of 0.2 s each:
 1.63 s before, 0.21 s after.
 
@@ -505,3 +508,15 @@ first hint, skip or pass there, inside that request (`_seed_once_worked`,
 one harness fire through the range host), and the platform database is
 SQLite with no journal mode set in `cr/settings.py` (a rollback journal by
 default), where a write waits for the reads running at the time.
+
+### F5's first answer counted as a wrong try
+
+Symptom: a fresh F5 opens with the developer tools closed, and its first note
+did not say to open them; a request sent before they open is not listed, so
+a learner who answered the right sort value got `lesson.check.wrong.dev`,
+which counted as a try, and the result page showed the step failed, then
+passed.
+
+Fix (`54077787`): the note opens the developer tools before the sort request
+and says why, and the row-not-selected reply records no try, as the
+address-side reply already did (`UNTRIED_REASONS` in `api/views.py`).

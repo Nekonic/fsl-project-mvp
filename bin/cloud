@@ -54,17 +54,20 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="cloud",
         description="init, with admin credentials, prepares the project, its user, the "
-                    "clouds.yaml entry and cloud.yaml. up brings the whole OpenStack "
-                    "environment up from cloud.yaml and down takes it down: the platform "
-                    "VM's Heat stack, then the range through the platform's own API. "
-                    "Run it with uv run, which installs what it needs.",
+                    "clouds.yaml entry, the flavors' access, the base image and cloud.yaml. "
+                    "up brings the whole OpenStack environment up from cloud.yaml: the "
+                    "platform VM's Heat stack, then the range through the platform's own "
+                    "API. down backs the store up and takes the range down, then the stack. "
+                    "Every line starts with the local time. Run it with uv run, which "
+                    "installs what it needs.",
     )
     parser.add_argument("action", choices=("init", "up", "down"))
     parser.add_argument("--cloud", type=Path, default=rebuild.CLOUD,
                         help="the cloud settings file (default deploy/openstack/cloud.yaml)")
     parser.add_argument("--ref", help="the branch, tag or commit to clone instead of platform.ref")
     parser.add_argument("--replace", action="store_true",
-                        help="up: replace a standing platform VM, keeping its store and range key")
+                        help="up: replace a standing platform VM, keeping its store and range key; "
+                             "a range host whose images and setup bundle are unchanged stands through")
     parser.add_argument("--reset-password", action="store_true",
                         help="init: give the project user a new random password when no working "
                              "clouds.yaml entry holds its current one")

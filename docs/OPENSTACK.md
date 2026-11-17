@@ -57,7 +57,7 @@ uv run bin/cloud up
 ```
 
 The repo is a uv project: `pyproject.toml` at the root declares the
-platform's dependencies, the groups `dev` (pytest), `cloud` (openstacksdk,
+platform's dependencies, the groups `dev` (pytest, pytest-django), `cloud` (openstacksdk,
 python-openstackclient, python-heatclient, what `bin/cloud` needs), and
 `uv.lock` pins them all. "When `uv run` is
 used, the project is locked and synced before invoking the requested command"
@@ -96,8 +96,8 @@ user's password, flavor access, the base image and `cloud.yaml` (§4).
 | `cloud.yaml`: every cloud-specific value, validated | written by `bin/cloud init` (2026-11-15) | §4 |
 | Platform and range images on GHCR (`.github/workflows/images.yml`) | done (public, pulled 2026-10-11; `cr-kali`, `cr-waf` and `cr-edge` added with the range host) | §5 |
 | Heat stack pulls images instead of `--build` | done (2026-10-11) | §5 |
-| `bin/platform-rebuild`: replace the VM without losing data (store and range key carried over), driven by `cloud.yaml` | done (2026-10-15, `bin/cloud up --replace --sideload` twice, 28 and 55 min with a 6 GB store; the range stood through) | §5 |
-| `bin/cloud up|down` | done (2026-10-11); since 2026-10-20 `up` after `down` restores the newest backup that holds rows (run live 2026-10-20) | §5 |
+| `bin/platform-rebuild`: replace the VM without losing data (store and range key carried over), driven by `cloud.yaml` | done (2026-10-15, `bin/cloud up --replace --sideload` twice, 28 and 55 min with a 6 GB store; the range stood through); since 2026-11-17 a replace whose commit changes no range image or bundle file keeps the range host (10 min 14 s) | §5 |
+| `bin/cloud up`, `bin/cloud down` | done (2026-10-11); since 2026-10-20 `up` after `down` restores the newest backup that holds rows (run live 2026-10-20) | §5 |
 | Fabric via `POST /api/range/fabric/` | done | §6 |
 | Range host `cr-range` via `POST /api/range/slot/`: stock Ubuntu, set up from its user data, every image pulled from GHCR | done | §3.6, §6 |
 | Slots as Compose projects on the range host via `POST /api/range/configure/` | done; reset in place at close (§6.1) | §6 |
@@ -375,9 +375,9 @@ allow ran only once the install stopped waiting on the update's exit.
 
 | Who | Reaches | For |
 |---|---|---|
-| platform VM (cloud-init, `cr-platform.service`) | mirror.kakao.com; github.com; ghcr.io; docker.elastic.co; geoip.elastic.co | `apt` (Docker, git, chrony); `git clone` of `platform.repository`; `cr-platform`; Elasticsearch, Kibana and Filebeat; `bin/fetch-geoip` |
+| platform VM (cloud-init, `cr-platform.service`, `cr-venv`) | mirror.kakao.com; github.com; ghcr.io; docker.elastic.co; geoip.elastic.co; pypi.org and files.pythonhosted.org | `apt` (Docker, git, nodejs, chrony); `git clone` of `platform.repository` and the uv release tarball; `cr-platform`; Elasticsearch, Kibana and Filebeat; `bin/fetch-geoip`; `uv sync` into `/opt/cr/.venv` |
 | the range host (`deploy/range-host/setup.sh`) | mirror.kakao.com; ghcr.io; Docker Hub | `docker.io`, `docker-compose-v2`, `ethtool`; `cr-kali`, `cr-waf`, `cr-edge`, `cr-board`, `cr-corp`, `cr-corp-db`; the pinned Suricata (`jasonish/suricata`), rsyslog (`rsyslog/rsyslog-minimal`) and MySQL images |
-| the controller node, where `bin/cloud` runs | the cloud's API; the floating IP; github.com; ghcr.io | `bin/cloud`; the check that the images can be pulled |
+| the controller node, where `bin/cloud` runs | the cloud's API; the floating IP; github.com; ghcr.io; pypi.org and files.pythonhosted.org | `bin/cloud`; `git ls-remote` and the range images' tag; the check that the images can be pulled; `uv run`'s sync |
 
 The range host reaches the Internet only through its second port, on the
 platform's own network (`CR_OPENSTACK_BUILD_NETWORK`), in the security group
@@ -702,7 +702,8 @@ edge or target reaches the range only through a pushed commit whose images
 `deploy/openstack/cloud.example.yaml` is committed. `bin/cloud init` writes
 `deploy/openstack/cloud.yaml` (git ignores that file) from it, and on later runs
 changes only the keys it owns, `cloud`, `network.external`,
-`compute.base_image` and `compute.flavors.*`, line by line, keeping every other
+`compute.base_image` and `compute.flavors.*`, and writes `network.allowed`
+(its value, or `[0.0.0.0/0]` when it has none), line by line, keeping every other
 value and every comment. No secret goes in it, only the name of the clouds.yaml
 entry that holds the password. `platform/range/cloud.py` reads the
 file. It refuses the file before touching anything and names every problem by
@@ -735,7 +736,6 @@ in a container's environment.
 | Key | Example | Used by |
 |---|---|---|
 | `cloud` | `fsl-range` | the clouds.yaml entry to sign in with |
-
 | `network.external` | `provider` | the stack's router and floating IP |
 | `network.address` | `""` (**(this cloud)** `192.168.2.247`) | optional; a floating IP the project already holds. The stack associates it and never releases it, so the address survives `bin/cloud down` and every rebuild. If empty, the stack allocates a new one (§5.1) |
 | `network.dns` | `[8.8.8.8, 8.8.4.4]` | the platform network's DNS |
@@ -778,7 +778,8 @@ Where each value goes:
 
 The server's cloud-init does these steps:
 
-1. Installs Docker.
+1. Installs Docker, git, nodejs and chrony from the Kakao mirror, up to ten
+   tries (§2.6).
 2. Sets Docker's MTU to the network's MTU.
 3. Adds 4 GB of swap.
 4. Clones `repository` at `ref` into `/opt/cr`.
@@ -786,9 +787,12 @@ The server's cloud-init does these steps:
    password, and `CR_TOOL_IMAGE=cr-kali`, the attacker host the launcher runs
    tools on. It makes `/opt/cr/openstack-password` empty, mode 0600, owned by
    uid 10001; the hand-over fills it.
-6. Writes `/opt/cr/.env` with `CR_PUBLISH=<fixed IP>` and
-   `CR_SYSLOG_PUBLISH=0.0.0.0`.
-7. Enables `cr-platform.service`.
+6. Writes `/opt/cr/.env` with `CR_PUBLISH=<fixed IP>`,
+   `CR_SYSLOG_PUBLISH=0.0.0.0`, `CR_IMAGE_TAG` (the clone's commit) and
+   `CR_RANGE_IMAGE_TAG` (`bin/range-image-tag`, §3.6), and fetches the GeoIP
+   database (`bin/fetch-geoip`).
+7. Enables `cr-platform.service`, which runs `docker compose pull` and
+   `up -d`.
 8. Installs uv from its GitHub release tarball, pinned to one version and
    checked against that tarball's SHA-256, into `/usr/local/bin/uv` [U2].
 9. Makes `/opt/cr/.venv` in the background (the unit `cr-venv`):
@@ -868,7 +872,8 @@ It asks the platform's API every 5 s while it waits (`POLL`), and
    stops `up`, which prints the reason; the next `up` replaces that range host
    at step 6.
 8. It sends `POST configure/`. It retries while the answer is 503, which means
-   the range host's ssh is not up yet. It stops on 409.
+   the range host's ssh is not up yet, up to 60 tries. It stops on any other
+   answer but 200.
 9. It sends `GET ready/` until the range is ready. With more than one slot,
    the platform checks the slots side by side.
 10. It sends `DELETE leftovers/`, which removes what the VM range of before
@@ -930,16 +935,20 @@ This command replaces the platform VM without losing data. It does these steps:
    skips the backup and makes the range key if it is missing. If ssh to the old VM
    does not answer, it refuses.
 4. It deletes and recreates the stack.
-5. It starts the `cr-platform` container on the new VM if it is stopped, then
+5. It waits for the new VM's cloud-init and refuses when `cr-platform.service`
+   is not active, naming `cloud-init status --long` and
+   `journalctl -u cr-platform`; nothing is stored on that VM yet, so
+   `bin/cloud up --replace` makes it again.
+6. It starts the `cr-platform` container on the new VM if it is stopped, then
    writes the kept key to `/data/ssh/id_ed25519` through `docker exec`.
-6. It restores the store.
-7. It writes the password into `/opt/cr/openstack-password` in place, so the
+7. It restores the store.
+8. It writes the password into `/opt/cr/openstack-password` in place, so the
    file keeps mode 0600 and its owner. It drops a `CR_OPENSTACK_PASSWORD` line
    an older hand-over left in `/opt/cr/openstack.env` and writes the
    `CR_SIDELOADED` line there when the run sideloads; that file keeps every
    other line and mode 0600. It recreates the platform container, which reads
    the password file at start.
-8. It waits for `/api/auth/`, which answers before anyone signs in.
+9. It waits for `/api/auth/`, which answers before anyone signs in.
 
 The password file marks a finished hand-over, so it is written after the store
 is in place.
@@ -957,6 +966,12 @@ the stack's own network: the platform detached its egress port (§2.6) when its
 setup reported ready. When the new commit changes no range image's build
 context and no bundle file, the new platform plans the range host current
 (§3.6), and `bin/cloud up --replace` only configures the standing slots again.
+On 2026-11-17 such a replace (a docs-only commit) kept the range host and took
+10 min 14 s, 6.5 min of it the new VM's first boot and 1 min 12 s the
+converge; the replace before it, whose commit changed `setup.sh`, booted a new
+range host and took 25 min 27 s (`docs/DECISIONS.md`, 2026-11-17).
+`configure/` still recreates every slot's sensor, log server and shippers,
+because the collector is the new VM's `mgmt` address.
 
 `bin/backup` works like this:
 
@@ -1195,13 +1210,19 @@ curl -s -b jar http://$ADDRESS:8000/api/range/ready/
 
 `/vm-terminal/`, `/kibana/` and port 8002 ask nginx's `auth_request` to the
 platform's `/auth-check/` first, so the same session opens them. nginx keeps
-the check's answer for five seconds per session cookie (`proxy_cache
-signed_in`), so a page that loads a hundred assets asks Django once.
+the check's answer for five seconds per session cookie, client address and
+asked session, site or Kibana space (`proxy_cache signed_in`), so a page that
+loads a hundred assets asks Django once.
 
 Elasticsearch and Kibana run without security. They listen on the platform
-VM's loopback only (127.0.0.1:9200 and 127.0.0.1:5601), the range has no
-route to them, and nginx refuses Kibana's management and dev tools APIs. An
-operator reaches them over an ssh tunnel.
+VM's loopback only (127.0.0.1:9200 and 127.0.0.1:5601), and the range has no
+route to them. Through `/kibana/`, nginx refuses Kibana's API outside a space
+and the default space, sends the management and dev tools pages to Discover,
+and hands every API call inside a space to the platform's `/kibana-gate/`,
+which refuses another learner's space and any call `kibana.refusal` does not
+allow (a JSON 403); a path nginx itself refuses shows the Korean page
+`/kibana-refused/`. An operator
+reaches Elasticsearch and Kibana over an ssh tunnel.
 
 ## 6. The range (substrate openstack)
 
@@ -1258,8 +1279,8 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
 
 | Container | Image | On |
 |---|---|---|
-| `sN-kali` | `cr-kali` (`deploy/kali/Dockerfile`) | `sN_internet`, about 100 origin addresses |
-| `sN-edge` | `cr-edge` (`deploy/edge/`: Alpine and nftables) | `sN_internet` (`wan`, every origin's `.1`) and `sN_estate` (`lan`, `.1`) |
+| `sN-kali` | `cr-kali` (`deploy/kali/Dockerfile`) | `sN_internet`, about 100 origin addresses, the default origin's first (5.188.10.10) |
+| `sN-edge` | `cr-edge` (`deploy/edge/`: Alpine and nftables) | `sN_internet` (`wan`, the one public IP 121.134.88.42/29, `ROUTER_WAN` in `rangehost.py`) and `sN_estate` (`lan`, `.1`) |
 | `sN-waf` | `cr-waf` (`deploy/waf/Dockerfile`: nginx, ModSecurity, CRS) | `sN_estate` `.247`, `sN_web` `.247` and `sN_mgmt` `.12` |
 | `sN-sensor` | `jasonish/suricata`, pinned by digest | `sN_web` (`web`), no address, `af-packet`; `sN_mgmt` `.11` |
 | `sN-log-server` | `rsyslog/rsyslog-minimal`, pinned by digest | `sN_mgmt` `.10` |
@@ -1280,11 +1301,14 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
   filters it before compose creates it: INPUT drops everything from
   `sN-mgmt`, DOCKER-USER passes `sN-mgmt` to itself and the log server to the
   collector's 5140/udp and drops the rest; `slot.sh down` removes the rules.
-- The edge forwards between its two legs (nftables `forward` policy accept)
-  and accepts nothing addressed to itself (`input` policy drop). It holds only
-  `NET_ADMIN`.
-- Kali knows only `board.com` and `corp.com`, both the WAF's address. The WAF
-  reaches the targets by the names `board` and `corp-wp`.
+- The edge accepts nothing addressed to itself (`deploy/edge/edge.nft`,
+  `input` policy drop). The slot's `edge.nft` (`rangehost.edge_rules`)
+  port-forwards tcp 80 on the public IP to the WAF without SNAT, and from
+  `wan` forwards only replies (`ct state established,related`) and
+  port-forwarded connections (`ct status dnat`); from `lan` it forwards
+  everything. It holds only `NET_ADMIN`.
+- Kali resolves only `board.com` and `corp.com`, both to the edge's public
+  IP. The WAF reaches the targets by the names `board` and `corp-wp`.
 - The ground truth of the board (`/internal/auth-users`, the snapshot that
   submitted loot is checked against) is read inside the board container
   through the `board` role, not over a port. corp's effect reader gets
@@ -1345,8 +1369,12 @@ and each wargame's `wargames/<w>/compose.yaml`, and sends it over ssh with
       sensor, the log server and the shippers are recreated
       (`--force-recreate`), so they read the files just sent; Suricata reads
       its outputs only at start.
-   5. It gives Kali its origin addresses and default route, and the edge every
-      origin's gateway, with `nsenter ... ip -batch`.
+   5. With `nsenter ... ip -batch` it gives Kali its origin addresses, the
+      default origin's first, and a default route via the edge's public IP
+      (`onlink`, `src` the default origin's address); it gives the edge its
+      public IP on `wan` and a default route via Kali's default-origin address
+      (`onlink`), and loads the slot's `edge.nft`. Each container's
+      `/etc/hosts` line for its own address follows the new address.
    6. It routes the WAF through the edge. The targets get no default route;
       they answer only the WAF.
    7. It switches TSO, GSO and GRO off on the three slot bridges `sN-inet`,
@@ -1568,11 +1596,11 @@ We did not check whether that OPNsense edge survived an OPNsense update.
   so they never meet the Docker networks `compose.yaml` declares on the
   platform VM. The platform reaches Kali only through `docker exec` on the
   range host.
-- The edge forwards whatever it routes, and it has no route to `sN_web`, so
-  Kali reaches neither target past the WAF, by address or by name, as
-  `test/test_range_isolation.py` asserts (until 2026-11-15 the targets stood
-  on the estate and Kali reached the board on 8000 through the edge). By name
-  Kali reaches only `board.com` and `corp.com`, the WAF.
+- The edge has no route to `sN_web`, so Kali reaches neither target past the
+  WAF, by address or by name, as `test/test_range_isolation.py` asserts
+  (until 2026-11-15 the targets stood on the estate and Kali reached the
+  board on 8000 through the edge). By name Kali reaches only `board.com` and
+  `corp.com`, the edge's public IP, whose port 80 goes to the WAF.
 - Fixed 2026-10-12 on the VM range, after we measured it first. Kali had a
   `mgmt` port. While
   every range port sat in `cr-range`, an nmap from Kali found these open ports

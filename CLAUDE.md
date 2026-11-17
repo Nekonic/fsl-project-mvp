@@ -116,20 +116,25 @@ alert that does not mention the attack's mechanism is reported
   Known exceptions in code today; do not add more, and whether to move them is
   open (`docs/STATE.md` backlog 0):
   `register_pipeline.py` PUTs the ingest pipeline to Elasticsearch at bring-up;
-  the sensor host `cr-range` in `declaration.yaml` names the rule file and
-  reload command `rules/suricata.py` is handed;
+  in `declaration.yaml` the sensor host `cr-range` names the rule file and
+  reload command `rules/suricata.py` is handed, and the WAF host `cr-waf` the
+  exclusion file and nginx reload `rules/crs.py` is handed;
   `range/rangehost.py` (with `deploy/range-host/slot.sh`) renders and runs each
-  slot, starts and stops the slot's Suricata sensor, configures the edge router
-  and names the sensor's and the WAF's log files it forwards, and
+  slot, renders the sensor's config, starts and stops the slot's Suricata
+  sensor, configures the edge router and names the sensor's and the WAF's log
+  files it forwards, and
   `deploy/range-host/slot.yaml` mounts the WAF's audit and refused log
   files, both tied to `deploy/waf/modsecurity.conf`'s `SecAuditLog` by a test in
   `platform/tests/test_range_host.py`;
-  `platform/nginx.conf` names the Kibana API routes
-  it refuses and answers Kibana's `api/spaces/space` lookup itself, and
+  `platform/nginx.conf` names the Kibana API routes it refuses, hands every
+  other API call inside a space to the `kibana-gate` view and answers
+  Kibana's `api/spaces/space` lookup itself, and
   `blue.html` presets Kibana's localStorage keys;
   `operator_log.py` reads the attacker's command log, and the terminal wiring
   names `cr-kali` and `cr-waf` (`entrypoint.sh` starts
-  `vm-terminal.sh cr-kali` and `vm-terminal.sh cr-waf`); foundation F6's
+  `vm-terminal.sh cr-kali` and `vm-terminal.sh cr-waf`), and
+  `redteam/tools.py` names the box tool cases run on (`CR_TOOL_IMAGE`,
+  `cr-kali`); foundation F6's
   step commands name the exclusion file and the nginx reload, which
   `wargames.lesson` fills in from the declaration. `docs/ARCHITECTURE.md` keeps
   the table.
@@ -172,7 +177,9 @@ range-facing logic changed, and before a push.
   control plane (it registers the Elasticsearch ingest pipeline; no service
   holds the Docker socket). Local development runs the unit tests, not
   the range. The `build:` keys stay because the CI build test checks them. The
-  platform VM is rebuilt, never patched in place: `bin/platform-rebuild`;
+  platform VM is rebuilt, never patched in place: `bin/cloud up --replace`
+  (`bin/platform-rebuild`, then the range converges; the range host stands
+  through when the commit changes no range image or setup bundle file);
   the whole cloud side comes up with `uv run bin/cloud init` (admin, once)
   and `uv run bin/cloud up` from `deploy/openstack/cloud.yaml`, the one file
   of cloud-specific values (no secrets; init writes it from
