@@ -120,6 +120,14 @@ def apply(tuning, gateway, layout: Layout = Layout()) -> dict:
     gateway(["sh", "-c", layout.reload])
     raise TuningRefused("nginx started no worker on the new tuning, rolled back")
 
+def reloaded_since_written(gateway, layout: Layout = Layout()) -> bool:
+    said = gateway(["sh", "-c", f"date +%s.%N; date -r {layout.rules} +%s.%N; cut -d' ' -f1 /proc/uptime; getconf CLK_TCK; "
+                                f"for w in $({workers_of(layout.pid)}); do cut -d' ' -f22 /proc/$w/stat; done"]).output.split()
+    if len(said) < 5 or not all(re.fullmatch(r"\d+(\.\d+)?", word) for word in said):
+        return False
+    now, written, uptime, ticks, *started = map(float, said)
+    return any(uptime - start / ticks < now - written for start in started)
+
 def _workers(gateway, layout: Layout) -> set[str]:
     return set(gateway(["sh", "-c", workers_of(layout.pid)]).output.split())
 

@@ -311,6 +311,33 @@ def test_a_guided_open_on_a_slotted_range_takes_the_lesson_posture_and_seeds_the
         "the slot was offered only once its sensors held the baseline rules, so the open leaves them alone"
     )
 
+ROUND = 0.2
+
+@pytest.mark.takes_defense
+def test_a_guided_open_sets_up_the_waf_the_sensor_the_attacker_and_the_ground_truth_side_by_side(client):
+    stand = Stand()
+    called = stand.runner()
+
+    def runner(adapter, role, segment_id=""):
+        run = called(adapter, role, segment_id)
+        return lambda argv, stdin=None, timeout=60.0: time.sleep(ROUND) or run(argv, stdin, timeout)
+
+    fire, fired = attacker({})
+    with patch("api.views.substrate", lambda: OneSlot(SimpleNamespace(runner=lambda: runner))), \
+            patch("api.views.harness.fire", lambda *given, **named: time.sleep(ROUND) or fire(*given, **named)), \
+            patch("api.views.loot.ground_truth", lambda *given, **named: time.sleep(ROUND) or dict(TRUTH)), \
+            patch("api.views._aim_attacker", lambda adapter: adapter.runner("proxy")(["sudo", "/usr/local/sbin/set-origin"])):
+        began = time.monotonic()
+        answer = client.post_json("/api/sessions/", {"guidance": True, "defense": "ids"})
+        rounds = (time.monotonic() - began) / ROUND
+    calls = len(stand.calls) + len(fired) + 1
+
+    assert answer.status_code == 201, answer.content
+    assert {"sensor", "gateway", "proxy"} <= {call[1] for call in stand.calls}, "the open still sets up the whole slot"
+    assert rounds < calls - 2.5, (
+        f"walk round 28: start to console took 14-18.6 s; the open made {calls} range round trips one after "
+        f"another and now waits on {rounds:.1f}")
+
 def test_a_guided_open_that_names_no_defense_takes_the_one_its_lesson_declares(client):
     fire, _ = attacker({})
     with patch("api.views.harness.fire", fire):

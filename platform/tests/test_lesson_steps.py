@@ -318,6 +318,44 @@ def test_a_run_whose_tool_left_the_kali_terminal_passes_after_a_short_quiet_with
     assert running == views.RUN_SETTLED.seconds, "a sqlmap still on the learner's terminal is a run still going"
     assert fired == views.RUN_ENDED_SETTLED.seconds, "a sqlmap the platform fired has no terminal and is not the learner's"
 
+def replay_verdict(client, quiet, ingested):
+    session = taught("f6")
+    Session.objects.filter(pk=session.pk).update(started_at=timezone.now() - timedelta(minutes=10))
+    now = timezone.now()
+    marker = f"replay-{quiet}"
+    Session.objects.filter(pk=session.pk).update(lesson_steps={"f6": {"narrow": {"passed": (now - timedelta(minutes=6)).isoformat()}}})
+    session.refresh_from_db()
+    run_step(session, "f6", "replay", marker, now - timedelta(minutes=5))
+    blocked_by(session, f"block-{quiet}", marker, "/?sort=posts_post.id", lesson.BLOCKING_RULE)
+    run = [http_event(marker, "/?sort=posts_post.id1", now - timedelta(seconds=60), 403),
+           http_event(marker, "/?sort=posts_post.id2", now - timedelta(seconds=quiet), 403)]
+    sorted_ = {"id": 1, "at": now.timestamp(), "method": "GET", "url": "http://board.com/?sort=title", "status": 200, "ms": 40}
+    counted = lambda session, within=None, since=None: ingested.append(since) or {}
+    with patch("api.views._ingest", counted), indexed(*run), kali_box(TERMINAL_SHELL), \
+            patch.object(site, "kept", return_value=[sorted_]):
+        return check(client, session, "replay", {"poll": True}).json()
+
+def test_the_f6_replay_passes_within_a_few_seconds_of_sqlmap_s_exit_whenever_the_console_s_poll_falls(client):
+    ingested = []
+    verdicts = {quiet: replay_verdict(client, quiet, ingested) for quiet in range(0, 9)}
+    passing = len(ingested)
+    replay_verdict(client, 8, ingested)
+    ending = lambda quiet: (verdicts[quiet].get("kali") or {}).get("ending")
+
+    def passed_at(offset):
+        polled = offset
+        while not verdicts[polled]["passed"]:
+            polled = polled + 1 if ending(polled) else polled + 5
+        return polled
+
+    worst = max(passed_at(offset) for offset in range(5))
+
+    assert verdicts[1]["reason"] == ["lesson.check.kali_settling", ["sqlmap"]] and ending(1), (
+        "a second after sqlmap left the Kali terminal the run is ending, and the console then polls every second")
+    assert worst <= views.RUN_ENDED_SETTLED.seconds + 1, (
+        f"walk round 28: F6 step 8 passed 11.7 s after sqlmap exited, on the console's 5 s poll; now {worst} s")
+    assert len(ingested) - passing == 1, "the passing replay ingests the run once, not again after recording it"
+
 def test_a_kali_check_reads_the_last_seconds_while_the_run_goes_and_from_the_run_s_first_request_once_it_ends(client):
     session = taught("f6")
     Session.objects.filter(pk=session.pk).update(started_at=timezone.now() - timedelta(minutes=30))
