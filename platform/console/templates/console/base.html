@@ -244,17 +244,40 @@
 
     const SESSION_NAME_KEY = (id) => `cr-session-name-${id}`;
 
-    function sessionCrumb(id, session) {
+    function playedName(session, wargame) {
+      if (!session) return "";
+      const listed = (key) => (wargame && Array.isArray(wargame[key]) ? wargame[key] : []);
+      const cardOf = (lessonId) => listed("foundations").find((taught) => taught.id === lessonId) || null;
+      const courseOf = (lessonId) => listed("courses").find((course) => (course.lessons || []).includes(lessonId)) || null;
+      const taken = Array.isArray(session.lessons) ? session.lessons : [];
+      const worked = (lessonId) => (Array.isArray(session.course) ? session.course : [])
+        .some((row) => row.id === lessonId && (row.passed || row.skipped || row.hints));
+      const started = taken.filter((one, at) => at === 0 || worked(one.id) || (!session.ended_at && one.id === session.lesson_id));
+      const first = taken.length ? courseOf(taken[0].id) : null;
+      const course = first && taken.every((one) => courseOf(one.id) === first) ? first : null;
+      const text = session.lesson ? session.lesson.text : "";
+      if (session.course_scenario) {
+        const played = listed("scenarios").find((one) => one.id === session.course_scenario);
+        return played ? `${played.id} ${t(played.title)}` : session.course_scenario;
+      }
+      if (course) return t(course.title);
+      if (started.length === 1 && cardOf(started[0].id)) return t(cardOf(started[0].id).title);
+      if (started.length <= 1 && text) return localized(`${text}.title`, "");
+      return "";
+    }
+
+    function sessionCrumb(id, session, wargame) {
       const href = `/session/${id}/`;
       try {
         if (session && session.scenario) {
-          localStorage.setItem(SESSION_NAME_KEY(id), JSON.stringify({ scenario: session.scenario, kind: session.kind }));
+          localStorage.setItem(SESSION_NAME_KEY(id), JSON.stringify({ scenario: session.scenario, kind: session.kind,
+            played: playedName(session, wargame) }));
         }
         const kept = JSON.parse(localStorage.getItem(SESSION_NAME_KEY(id)));
         if (kept && kept.scenario) {
           const name = localized(`wargame.${kept.scenario}.name`, kept.scenario);
-          const kind = localized(`kind.${kept.kind}`, "");
-          return { label: kind ? `${name} · ${kind}` : name, href };
+          const kind = kept.played || localized(`kind.${kept.kind}`, "");
+          return { label: kind ? `${name} · ${kind}` : name, href, named: Boolean(kept.played) };
         }
       } catch (error) {
         return { label: localized("crumb.session", "Session"), href };

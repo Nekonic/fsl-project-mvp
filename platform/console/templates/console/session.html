@@ -190,13 +190,7 @@
     field("session-title").textContent = t("common.session", id);
     field("session-state").textContent = closed || session.ready ? ""
       : t("state.opening", secondsSince(session.started_at));
-    const parts = [];
-    const started = startedLessons();
-    const played = scenarioCard();
-    if (session.course_scenario) parts.push(played ? `${played.id} ${t(played.title)}` : session.course_scenario);
-    else if (takenCourse()) parts.push(t(takenCourse().title));
-    else if (started.length === 1 && cardOf(started[0].id)) parts.push(t(cardOf(started[0].id).title));
-    else if (started.length <= 1 && lessonText()) parts.push(localized(`${lessonText()}.title`, ""));
+    const parts = [playedName(session, wargame)];
     const began = clock(session.started_at);
     const ended = clock(session.ended_at);
     const took = minutesBetween(session.started_at, session.ended_at);
@@ -540,9 +534,8 @@
   async function render() {
     const [read, listed] = await Promise.all([api(`/api/sessions/${id}/`), api("/api/wargames/")]);
     session = read.ok ? read.body : null;
-    crumbs([sessionCrumb(id, session),
-            ...(session && session.ended_at ? [{ label: t("crumb.result") }] : [])]);
     if (!session) {
+      crumbs([sessionCrumb(id, null)]);
       show("loading", false);
       const retrying = read.status !== 404;
       field("unread").textContent = `${t("session.unread", detail(read))}${retrying ? ` ${t("score.retrying")}` : ""}`;
@@ -553,6 +546,7 @@
     show("unread", false);
     rememberSession(id);
     wargame = listed.ok && Array.isArray(listed.body) ? listed.body.find((w) => w.id === session.scenario) : null;
+    crumbs([sessionCrumb(id, session, wargame), ...(session.ended_at ? [{ label: t("crumb.result") }] : [])]);
     const result = session.result && session.result.objectives ? session.result.objectives : { lost: 0, total: 0 };
     header(result.lost, result.total);
     if (session.ended_at) {

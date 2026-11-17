@@ -74,7 +74,7 @@
 {% block script %}
 <script>
   document.title = t("common.red_team");
-  const redCrumbs = (known) => crumbs([sessionCrumb(sessionId(), known), { label: t("common.red_team") }]);
+  const redCrumbs = (known, wargame) => crumbs([sessionCrumb(sessionId(), known, wargame), { label: t("common.red_team") }]);
   redCrumbs();
 
   const field = (id) => document.getElementById(id);
@@ -137,6 +137,7 @@
     if (!listed.ok || !Array.isArray(listed.body)) return;
     const wargame = listed.body.find((w) => w.id === session.scenario);
     if (!wargame) return;
+    redCrumbs(session, wargame);
     field("red-context").textContent =
       `${t("common.session", sessionId())} · ${localized(`wargame.${wargame.id}.name`, wargame.name)}`;
     field("loot-open").classList.toggle("hidden", wargame.model !== "loot_verified");

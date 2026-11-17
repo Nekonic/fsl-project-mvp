@@ -546,6 +546,15 @@ def test_the_map_page_draws_from_the_api_with_the_vendored_library_and_lets_noth
     assert not re.search(r"setInterval\([^)]*fetch|topology/`\)[^;]*setInterval", page), "the wiring is read once"
 
 
+def test_the_map_asks_for_its_icons_before_the_library_loads_and_draws_once_they_are_in():
+    page = MAP_PAGE.read_text()
+    library = page.index('<script src="/static/map/cytoscape.min.js"></script>')
+
+    assert page.index("image.src = symbolUrl(file);") < library
+    assert page.index("fetch(`/api/sessions/${session}/topology/`)") < library
+    assert page.index("await symbolsLoaded;") < page.index("view.cy = cytoscape({"), (
+        "the frame is shown on the first draw, so a draw before the icons arrive shows a map without them")
+
 def test_the_vendored_cytoscape_is_the_pinned_release_and_every_symbol_the_page_names_is_served():
     assert hashlib.sha256((STATIC / "cytoscape.min.js").read_bytes()).hexdigest() == CYTOSCAPE_SHA256
     assert CYTOSCAPE_SHA256 in (STATIC / "SOURCES").read_text()

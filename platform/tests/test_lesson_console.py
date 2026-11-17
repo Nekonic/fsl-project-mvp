@@ -2465,10 +2465,11 @@ def test_the_objectives_card_keeps_the_detected_column_blank_until_the_step_aski
     """)
 
     assert seen["errors"] == [] and plain["errors"] == []
-    assert seen["result"]["before"] == ["—", "—"] and seen["result"]["asked"] == ["—", "—"], (
-        "the card would answer the question before it is asked")
-    assert seen["result"]["after"] == [worded("common.no"), "—"]
-    assert plain["result"] == [worded("common.no"), "—"], "a lesson that never asks which device alerted shows it from the start"
+    unasked, kept = worded("lesson.objectives.unasked"), worded("lesson.objectives.not_lost")
+    assert seen["result"]["before"] == [unasked, kept] and seen["result"]["asked"] == [unasked, kept], (
+        "the card would answer the question before it is asked, and a dash reads as data that failed to load")
+    assert seen["result"]["after"] == [worded("common.no"), kept], "an objective kept has no detection to report"
+    assert plain["result"] == [worded("common.no"), kept], "a lesson that never asks which device alerted shows it from the start"
 
 def test_the_stretch_card_shows_only_once_the_lesson_s_last_step_has_passed(client):
     seen = open_page(client, "/blue/1/", setup=served().replace('text: "lesson.demo"', 'text: "lesson.miss"'), scenario=f"""
