@@ -283,6 +283,7 @@ SPAN = 170
 ROW = 300
 DB_ROW = 210
 TIER = 220
+SENSOR_DROP = 170
 OFFSET = 22
 BOX_GAP = 40
 CLEAR = 24
@@ -387,11 +388,12 @@ def laid_out(zones, nodes, edges) -> list[dict]:
         sensors = [node for node in held[web] if node["kind"] == "sensor"]
         servers = [node for node in held[web] if node["kind"] != "sensor"]
         for k, node in enumerate(sensors):
-            node.update(x=under - SPAN * (k + 1), y=ROW)
-        out = max([SPAN] + [toward(node, web) for node in servers])
+            node.update(x=under, y=ROW + SENSOR_DROP * (k + 1))
+        out = max([SPAN] + [toward(node, web) for node in servers]) + (BOX_GAP if len(servers) > 1 else 0)
         for k, node in enumerate(servers):
             node.update(x=under + out, y=ROW + k * TIER)
     single = len(servers) == 1
+    low = ROW + SENSOR_DROP * len(sensors) + DB_ROW
     for zone in by.get("database", ()):
         server = next((node for node in servers if zone in node["zones"]), None)
         if server is not None and not single:
@@ -407,11 +409,11 @@ def laid_out(zones, nodes, edges) -> list[dict]:
         middle = (min(node["x"] for node in nodes if "x" in node) + max(node["x"] for node in nodes if "x" in node)) // 2
         at = min(middle + across // 2, server["x"] - ICON_HALF - PAD - BOX_GAP) if server is not None \
             else row3_left - BOX_GAP - PAD - ICON_HALF
-        switch[zone].update(x=at, y=ROW + DB_ROW)
+        switch[zone].update(x=at, y=low)
         x = at
         for node in held[zone]:
             x -= toward(node, zone)
-            node.update(x=x, y=ROW + DB_ROW)
+            node.update(x=x, y=low)
         row3_left = x - ICON_HALF - PAD
         if server is not None:
             for edge in links:
@@ -419,17 +421,22 @@ def laid_out(zones, nodes, edges) -> list[dict]:
                     edge.update(start=[0, ICON_HALF], route=[[server["x"], switch[zone]["y"]]], end=[ICON_HALF, 0])
     if band:
         base = switch[web]["x"] if web else under
-        left = min([base - ICON_HALF - PAD]
+        titled = next((zone for zone in zones if zone["id"] == web), None)
+        entered = [base + OFFSET - 2 * (_caption_width(titled) // 2 + CAPTION_CLEAR)] if titled and gate else []
+        left = min([base - ICON_HALF - PAD] + entered
                    + [node["x"] - _beside(widths.get((node["id"], switch[band]["id"]), 0)) - LABEL_PAD
                       for node in sensors])
-        switch[band].update(x=left - BOX_GAP - PAD - ICON_HALF, y=ROW)
+        switch[band].update(x=min([left - BOX_GAP - PAD - ICON_HALF] + [node["x"] for node in routers]), y=ROW)
         x = switch[band]["x"]
         for node in held[band]:
             x -= toward(node, band)
             node.update(x=x, y=ROW)
+        for edge in links:
+            if edge["target"] == switch[band]["id"] and where[edge["source"]]["kind"] == "sensor":
+                edge.update(route=[[switch[band]["x"], where[edge["source"]]["y"]]], end=[0, ICON_HALF])
     for node in nodes:
         node.setdefault("x", right)
-        node.setdefault("y", ROW + DB_ROW)
+        node.setdefault("y", low)
         if node["kind"] != "switch":
             node["label"] = "below"
     _routed(edges, where, switch, web, homes)
@@ -456,8 +463,9 @@ def _routed(edges, where, switch, web, homes) -> None:
             continue
         if web and edge["target"] == SWITCH.format(zone=web) and homes[edge["source"]] == web \
                 and source["y"] > target["y"]:
-            edge["route"] = [[target["x"], source["y"]]]
-            edge["end"] = [0, ICON_HALF]
+            middle = target["x"] + ICON_HALF + CAPTION_CLEAR
+            edge["route"] = [[middle, source["y"]], [middle, target["y"]]]
+            edge["end"] = [ICON_HALF, 0]
 
 
 def _turned(links, where, homes, dmz) -> list[dict]:
@@ -530,8 +538,11 @@ def _captioned(zone, edges, where, others) -> None:
             spots.append(min(max(middle, lowest), highest))
     if not spots:
         left, right = [crossing[0] - 2 * half, top, x2, zone["box"][3]], [x1, top, crossing[-1] + 2 * half, zone["box"][3]]
-        free = [box for box in (left, right) if not any(_overlaps(box, other) for other in others)] or [right]
-        zone["box"][:] = min(free, key=lambda box: box[2] - box[0])
+        free = [box for box in (left, right)
+                if not any(_overlaps(box, [other[0] - BOX_GAP, other[1], other[2] + BOX_GAP, other[3]]) for other in others)] \
+            or [right]
+        zone["box"][:] = min(free, key=lambda box: (max([box[2]] + [other[2] for other in others])
+                                                     - min([box[0]] + [other[0] for other in others]), box[2] - box[0]))
         x1, _, x2, _ = zone["box"]
         spots = [x1 + half if zone["box"] == left else x2 - half]
     zone["shift"] = min(spots, key=lambda at: abs(at - middle)) - (x1 + x2) // 2

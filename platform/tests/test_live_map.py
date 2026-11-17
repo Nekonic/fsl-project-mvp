@@ -348,6 +348,8 @@ def test_the_waf_stands_in_the_dmz_the_web_servers_in_their_segment_and_the_rout
     assert placed["router"]["x"] + topology.ICON_HALF + topology.CLEAR <= boxes["estate"][0]
     assert inside(placed["sensor:sensor"], boxes["web"]) and inside(placed["log-server"], boxes["mgmt"])
     assert not inside(placed["sensor:sensor"], boxes["mgmt"])
+    assert placed["sensor:sensor"]["x"] == placed["switch:web"]["x"] < placed["board.com"]["x"]
+    assert placed["sensor:sensor"]["y"] > placed["switch:web"]["y"], "a sensor hangs below the switch it mirrors"
     assert inside(placed["board-db"], boxes["board-default"]) and inside(placed["corp-db"], boxes["corp-default"])
 
 
@@ -399,6 +401,18 @@ def test_no_line_runs_through_a_zone_s_title(without):
             for (a1, b1), (a2, b2) in zip(points(edge, placed), points(edge, placed)[1:]):
                 if a1 == a2 and min(b1, b2) < top < max(b1, b2):
                     assert abs(a1 - middle) >= half + topology.CAPTION_CLEAR // 2, (zone["id"], edge["id"])
+
+
+def test_no_two_lines_cross_on_a_board_session_s_map():
+    drawn = board_map(without=("corp-wp", "corp-db"))
+    placed = nodes_of(drawn)
+    runs = [(edge["id"], segment) for edge in drawn["edges"]
+            for segment in zip(points(edge, placed), points(edge, placed)[1:])]
+
+    for one, ((a1, b1), (a2, b2)) in runs:
+        for other, ((c1, d1), (c2, d2)) in runs:
+            if one != other and a1 == a2 and d1 == d2:
+                assert not (min(c1, c2) < a1 < max(c1, c2) and min(b1, b2) < d1 < max(b1, b2)), (one, other)
 
 
 @pytest.mark.parametrize("without", [(), ("corp-wp", "corp-db")], ids=["both-targets", "board-alone"])
