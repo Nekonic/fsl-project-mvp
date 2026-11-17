@@ -56,6 +56,7 @@ ROUTER_WAN = "121.134.88.42/29"
 FORWARDED_PORTS = (80,)
 WAF = "waf"
 NAT_TABLE = "nat"
+FILTER_TABLE = "inbound"
 
 
 @dataclass(frozen=True)
@@ -251,13 +252,20 @@ def edge_addresses(origins, default_origin: str) -> str:
     return "".join(f"{line}\n" for line in lines)
 
 
-def port_forwards(document: dict) -> str:
+def _table(name: str, chain: str, hook: str, rules: str) -> str:
+    return (f"table ip {name}\ndelete table ip {name}\ntable ip {name} {{\n"
+            f"  chain {chain} {{\n    type {hook}; policy accept;\n" + rules + "  }\n}\n")
+
+
+def edge_rules(document: dict) -> str:
     waf = addressed(document, FRONT)[WAF]
     forwards = "".join(f'    iifname "wan" ip daddr {router_address()} tcp dport {port} dnat to {waf}\n'
                        for port in FORWARDED_PORTS)
-    return (f"table ip {NAT_TABLE}\ndelete table ip {NAT_TABLE}\ntable ip {NAT_TABLE} {{\n"
-            "  chain prerouting {\n    type nat hook prerouting priority dstnat; policy accept;\n"
-            + forwards + "  }\n}\n")
+    inbound = ('    iifname "wan" ct state established,related accept\n'
+               '    iifname "wan" ct status dnat accept\n'
+               '    iifname "wan" drop\n')
+    return (_table(NAT_TABLE, "prerouting", "nat hook prerouting priority dstnat", forwards)
+            + _table(FILTER_TABLE, "forward", "filter hook forward priority filter", inbound))
 
 
 def sender(host: str, number: int) -> str:
@@ -341,7 +349,7 @@ def slot_files(source: Path, slot: Slot, wargames, origins, default_origin: str,
         "sensor.yaml": sensor_config(source, slot, document).encode(),
         "kali.ip": kali_addresses(origins, default_origin).encode(),
         "edge.ip": edge_addresses(origins, default_origin).encode(),
-        "edge-nat.nft": port_forwards(document).encode(),
+        "edge.nft": edge_rules(document).encode(),
         "local.rules": (Path(source) / BASELINE_RULES).read_bytes(),
         SCRIPT: (Path(source) / SLOT_SCRIPT).read_bytes(),
         "fronts": "".join(f"{name}\n" for name in sorted(fronted(document))).encode(),

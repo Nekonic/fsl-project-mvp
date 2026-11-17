@@ -167,10 +167,23 @@ def test_the_edge_forwards_the_web_port_of_its_public_address_to_the_waf_and_kal
     router = rangehost.router_address()
     waf = document["services"]["waf"]["networks"]["estate"]["ipv4_address"]
 
-    assert f'iifname "wan" ip daddr {router} tcp dport 80 dnat to {waf}' in files["edge-nat.nft"].decode()
-    assert "snat" not in files["edge-nat.nft"].decode() and "masquerade" not in files["edge-nat.nft"].decode(), (
-        "the WAF sees each client's own address")
+    rules = files["edge.nft"].decode()
+    assert f'iifname "wan" ip daddr {router} tcp dport 80 dnat to {waf}' in rules
+    assert "snat" not in rules and "masquerade" not in rules, "the WAF sees each client's own address"
     assert set(document["services"]["kali"]["extra_hosts"]) == {f"board.com:{router}", f"corp.com:{router}"}
+
+
+def test_the_edge_lets_in_from_the_internet_only_replies_and_port_forwarded_connections():
+    rules = slot_files(2)["edge.nft"].decode()
+    forward = rules[rules.index("chain forward"):]
+
+    assert "type filter hook forward priority filter; policy accept;" in forward
+    assert [line.strip() for line in forward.splitlines() if line.strip().startswith('iifname "wan"')] == [
+        'iifname "wan" ct state established,related accept',
+        'iifname "wan" ct status dnat accept',
+        'iifname "wan" drop',
+    ], "a new connection from the Internet to a private address behind the router is dropped, as a company's edge drops it"
+    assert 'iifname "lan"' not in forward, "the estate's own connections out are not filtered"
 
 
 def test_each_slot_s_logs_reach_the_collector_under_a_name_that_keeps_its_slot():

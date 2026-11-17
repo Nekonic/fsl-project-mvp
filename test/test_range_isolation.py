@@ -22,6 +22,7 @@ DEFAULT_DEV = re.compile(r"^default via \S+ dev (\S+)", re.M)
 UPSTREAM = re.compile(r"^(\S+)\s+(board|corp-wp)$", re.M)
 PAST_THE_WAF = {"board": 8000, "corp-wp": 80}
 NAMED_ONLY_INSIDE = ("board", "corp-wp", "board-db", "corp-db")
+PUBLIC_NAME = "board.com"
 COLLECTOR = re.compile(r'Target="([\d.]+)"')
 HOST_PORT = re.compile(r"^\d+:\s+(\S+)\s+inet\s+(\S+)", re.M)
 CONTAINER_SIDE = re.compile(r"^(lo|docker\d+|br-\w+|veth\w*|s\d+-\w+)$")
@@ -70,9 +71,11 @@ def facts():
     other_wafs = run(RANGE_HOST, ["sudo", "docker", "inspect", "-f",
                                   "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", *others]
                      ).stdout.split() if others else []
+    public = run(ATTACKER, ["getent", "ahostsv4", PUBLIC_NAME]).stdout.split()
     return {
         "slot": own_slot,
         "waf": own_address,
+        "public": public[0] if public else "",
         "upstreams": {name: address for address, name in UPSTREAM.findall(waf["upstreams"].stdout)},
         "range_host": [str(ipaddress.ip_interface(one).ip) for _, one in ports
                        if not ipaddress.ip_interface(one).ip.is_loopback],
@@ -90,12 +93,13 @@ def probes(facts) -> dict[str, list[tuple[str, int]]]:
         "platform": [(address, port) for address in facts["platform"] for port in (8000, 22)],
         "outside": [("1.1.1.1", 443), ("169.254.169.254", 80)],
         "other slots": [(address, 80) for address in facts["other_slots"]],
-        "way in": [(facts["waf"], 80)],
+        "way in": [(facts["public"], 80)],
+        "behind the router": [(facts["waf"], 80)],
         "past the waf": [(facts["upstreams"][name], port) for name, port in sorted(PAST_THE_WAF.items())],
     }
 
 
-ATTACKER_ONLY = ("way in", "past the waf")
+ATTACKER_ONLY = ("way in", "behind the router", "past the waf")
 
 
 def from_the_log_server(facts, argv: list[str]) -> list[str]:
@@ -154,7 +158,12 @@ def test_no_container_reaches_another_slot(reached, facts, role):
 
 def test_the_attacker_reaches_the_sites_only_through_the_waf(reached, facts):
     assert sorted(facts["upstreams"]) == sorted(PAST_THE_WAF), f"the WAF names no upstream for {facts['upstreams']}"
-    assert (facts["waf"], 80) in reached[ATTACKER], "the attack has no way in at all"
+    assert (facts["public"], 80) in reached[ATTACKER], (
+        f"the attack has no way in at all: {PUBLIC_NAME} names {facts['public']!r} on Kali")
+    behind = reaching(reached, facts, ATTACKER, "behind the router")
+    assert not behind, (
+        f"Kali opens {behind}, the WAF's private address behind the router; an edge router lets in from the "
+        f"Internet only the port it forwards on its public address and the replies to connections from inside")
     past = reaching(reached, facts, ATTACKER, "past the waf")
     assert not past, f"Kali reaches {past} through the edge without passing the WAF, so the WAF's rules decide nothing"
     named = run_side_by_side(ATTACKER, {name: ["getent", "hosts", name] for name in NAMED_ONLY_INSIDE})
@@ -163,10 +172,13 @@ def test_the_attacker_reaches_the_sites_only_through_the_waf(reached, facts):
 
 
 def test_the_attacker_s_syn_scan_runs_with_the_capabilities_its_container_holds(facts):
-    scan = run(ATTACKER, ["nmap", "-n", "-Pn", "-sS", "-p", "80", facts["waf"]], timeout=120)
+    public = run(ATTACKER, ["nmap", "-n", "-Pn", "-sS", "-p", "80", facts["public"]], timeout=120)
+    behind = run(ATTACKER, ["nmap", "-n", "-Pn", "-sS", "-p", "80", facts["waf"]], timeout=120)
 
-    assert re.search(r"^80/tcp\s+open\b", scan.stdout, re.M), (
-        f"a SYN scan needs raw sockets, which NET_RAW in the Kali container gives root: {scan.stdout[-400:]}")
+    assert re.search(r"^80/tcp\s+open\b", public.stdout, re.M), (
+        f"a SYN scan needs raw sockets, which NET_RAW in the Kali container gives root: {public.stdout[-400:]}")
+    assert re.search(r"^80/tcp\s+filtered\b", behind.stdout, re.M), (
+        f"the edge answers a SYN scan of the WAF's private address; it drops it: {behind.stdout[-400:]}")
 
 
 def _scanned(targets: list[str]) -> tuple[dict[str, list[str]], list[str]]:

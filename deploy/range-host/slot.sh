@@ -122,7 +122,7 @@ address_edge() {
   inside "$project-edge" ip addr flush dev wan
   inside "$project-edge" ip -batch "$d/edge.ip"
   rehosted "$project-edge" "$assigned" "$(own "$project-edge" wan)"
-  docker exec -i "$project-edge" nft -f - < "$d/edge-nat.nft"
+  docker exec -i "$project-edge" nft -f - < "$d/edge.nft"
   quiet "$project-edge"
 }
 
