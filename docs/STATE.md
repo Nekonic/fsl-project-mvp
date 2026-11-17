@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-11-17
+Updated: 2026-11-18
 
 ## Where things stand
 
@@ -1616,6 +1616,13 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       variant runs before the check; a customer's flows take turns; the
       debrief counts customers up to the check's end. Full `bin/verify` on the
       rebuilt cloud.
+- [x] 2026-11-18: the answer-blind walks of rounds 25-27
+      (`docs/DECISIONS.md` "Walk round 25", "Answer-blind walk round 25";
+      `docs/TROUBLESHOOTING.md` "Answer-blind walk round 27"): lesson
+      and scenario notes, the result page per lesson and per scenario, the
+      edge's inbound filter, the comment cases' CSRF token, Kali's address
+      order, a late Kali pass and slow answers. Live at 5bb34b0a with the full
+      `bin/verify` green.
 
 ### 1. The scoring redesign (partly superseded 2026-10-08)
 

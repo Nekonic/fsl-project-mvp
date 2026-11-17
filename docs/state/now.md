@@ -5,8 +5,8 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-17, walk round 26's fixes are live: the cloud was rebuilt at
-f93fb9fe with the full `bin/verify` green (`cr-range` 10.31.0.242 kept, eight
+Updated: 2026-11-18, walk round 27's fixes are live: the cloud was rebuilt at
+5bb34b0a with the full `bin/verify` green (`cr-range` 10.31.0.242 kept, eight
 slots as compose projects on runc; on `dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
@@ -14,6 +14,25 @@ Internet.
 
 ## Where things stand
 
+- 2026-11-18, answer-blind walk round 27's fixes are live at 5bb34b0a
+  (`docs/TROUBLESHOOTING.md` "Answer-blind walk round 27"): f0c568bf (Kali's
+  `ip addr` lists 5.188.10.10 first, as on the map), 9d632e07, 1b6a65f4 and
+  f40262ea (the result page, the accounts page and the map; both consoles
+  name the played item from the API), 44bb1395 and de64f25e (a Kali check
+  passes 3 s after the run's last request once the tool has left the
+  terminals; answers after the 30 s reachability window wait for one slot's
+  read), 54077787 (F5's first note opens the developer tools first; an answer
+  without the request's row selected is no wrong try). `uv run bin/cloud up
+  --replace` at 5bb34b0a took 10 min 59 s and kept the range host
+  (10.31.0.242). The backup before it held 6 sessions, 25 cases, 67,281
+  detections, 2,790 customer requests, 3 objectives, 652 rule sets and 168
+  disabled rules (`db-20261117T150108Z.sqlite3`, also in
+  `~/.cache/fsl-work/backup-safe/`); after the restore retention removed the
+  four sessions closed more than 60 min before the start (2 sessions, 8
+  cases, 28,787 detections, 1,723 customer requests, 0 objectives; rule sets
+  and disabled rules unchanged). The full `bin/verify` on it: acceptance 94
+  passed, 0 failed, 0 errors, 1 skipped in 500 s; unit and API 975 + 886;
+  559 s start to result; ratchet no regression (`core_loc` 597).
 - 2026-11-17, answer-blind walk round 26's fixes are live at f93fb9fe:
   edd0584e (the result page: each lesson lists only its own change, a
   scenario counts one customer total, the header and breadcrumb name the
