@@ -5,16 +5,30 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-17, walk round 25's fixes are live: the cloud was rebuilt at
-9417f343 with the full `bin/verify` green, after the corp objectives were made
-to read the binary log from the session start (`cr-range` 10.31.0.242 kept,
-eight slots as compose projects on runc; on `dev`).
+Updated: 2026-11-17, walk round 26's fixes are live: the cloud was rebuilt at
+f93fb9fe with the full `bin/verify` green (`cr-range` 10.31.0.242 kept, eight
+slots as compose projects on runc; on `dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
 
 ## Where things stand
 
+- 2026-11-17, answer-blind walk round 26's fixes are live at f93fb9fe:
+  edd0584e (the result page: each lesson lists only its own change, a
+  scenario counts one customer total, the header and breadcrumb name the
+  course or scenario), 05d69493 (the lesson console's developer tools ring
+  keeps off the field below it), 978aa644 (the edge forwards from `wan` only
+  replies and port-forwarded connections, so Kali reaches the WAF only by the
+  router's public address), ea1bd91e (the comment cases post the comment form
+  with its CSRF cookie and token, so the board stores them) and 77ed8f33
+  (docs). `uv run bin/cloud up --replace` at f93fb9fe took 11 min 0 s and
+  kept the range host (10.31.0.242); the restore matched its backup (2
+  sessions, 5 cases, 0 detections, 0 customer requests, 643 rule sets, 167
+  disabled rules, before and after; `db-20261117T125650Z.sqlite3`, also in
+  `~/.cache/fsl-work/backup-safe/`). The full `bin/verify` on it: acceptance
+  94 passed, 0 failed, 0 errors, 1 skipped in 473 s; unit and API 964 + 884;
+  542 s.
 - 2026-11-17, answer-blind walk round 25's fixes on `dev`: 00ba77d5 (lesson
   and scenario note text), e2b6e8f5 (the result page), c9d3e9b4 (Kali's
   hosts file, the document JSON tab, a Korean Kibana refusal, a session opens
