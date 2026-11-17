@@ -93,6 +93,8 @@ KIBANA_REFUSED = "kibana.refused.space"
 RECORD_SLACK = timedelta(seconds=5)
 BENIGN_UNSENT = "lesson.check.replay_benign"
 ADDRESS_SIDE = "lesson.check.wrong.address_side"
+DEV_ROW_UNPICKED = "lesson.check.wrong.dev"
+UNTRIED_REASONS = (ADDRESS_SIDE, DEV_ROW_UNPICKED)
 RUN_SETTLED = timedelta(seconds=15)
 RUN_ENDED_SETTLED = timedelta(seconds=3)
 OBJECTIVE_FACTS = ("lost_points", "detected_penalty")
@@ -529,10 +531,10 @@ def lesson_step_check(request, session_id, step_id):
     chose = (body["answer"].strip() if step["check"]["kind"] == "choice" else _outcome(session, step["check"])) if passed else None
     standing = step["check"]["kind"] == "triage"
     unsettled = not passed and step["check"]["kind"] == "kali"
-    near = bool(reason) and reason[0] == ADDRESS_SIDE
+    untried = bool(reason) and reason[0] in UNTRIED_REASONS
     if passed and not kept.get("passed"):
         _record_sent(session, step, kept)
-    judged = _judged_step(session, step_id, passed, reason, body.get("poll") is True or standing or unsettled or near, chose,
+    judged = _judged_step(session, step_id, passed, reason, body.get("poll") is True or standing or unsettled or untried, chose,
                           lapses=standing) | dict(*seen)
     _seed_once_worked(session)
     return _reply(judged)
@@ -620,7 +622,7 @@ def _judge(session, taught, step, body, kept):
         if not accepted:
             return False, [_unrecorded(session, check, taught, failed), []]
         if "dev" in check and not _dev_read(session, check, body):
-            return False, ["lesson.check.wrong.dev", []]
+            return False, [DEV_ROW_UNPICKED, []]
         passed, reason = lesson.answered(dict(check, accept=accepted), given.strip(), f"{prefix}.wrong.{step_id}")
         named = check.get("of") == "address" and reason == ["lesson.check.wrong", []]
         return passed, _whose_address(session, check["host"], given.strip()) or reason if named else reason
