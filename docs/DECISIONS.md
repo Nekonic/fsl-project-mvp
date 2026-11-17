@@ -8896,8 +8896,14 @@ origin /24s, so replies to Kali's 100 addresses were on-link), and Kali's
 - **Reachability.** The two sides share the slot's `internet` bridge, so on-link
   routes are enough: Kali `default via 121.134.88.42 dev eth0 onlink`, the
   edge `default via 5.188.10.10 dev wan onlink` (Kali stands in for the
-  Internet beyond the router). Rejected: one route per origin /24 (30 routes
-  saying what one default route says).
+  Internet beyond the router). Kali's route names `src 5.188.10.10`: without
+  it the kernel preferred the first address on eth0 (73.0.0.10), the origin
+  SNAT rewrote nmap's raw SYN probes to the default origin's address, nmap's
+  capture saw the replies addressed to that address and reported port 80
+  filtered (the full live verify's SYN-scan test, reproduced on the range
+  host). The old route via 5.188.10.1 gave 5.188.10.10 as the source
+  implicitly; `attacker.unbound_source` reads the same address. Rejected: one
+  route per origin /24 (30 routes saying what one default route says).
 - **Port forwarding.** `rangehost.port_forwards` renders `edge-nat.nft`, a
   `table ip nat` prerouting `dnat` of `wan` tcp 80 on the public IP to the
   WAF's estate address; `slot.sh` loads it with `nft -f` inside the edge

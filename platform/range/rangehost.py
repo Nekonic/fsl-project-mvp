@@ -224,28 +224,29 @@ def origin_addresses(cidr: str, count: int) -> list[str]:
     return [str(address) for _, address in zip(range(9 + count), hosts)][9:]
 
 
-def wan_origin(origins, default_origin: str):
+def internet_side(origins, default_origin: str) -> str:
     by_id = {origin.id: origin for origin in origins}
-    return by_id.get(default_origin) or (origins[0] if origins else None)
+    chosen = by_id.get(default_origin) or (origins[0] if origins else None)
+    return origin_addresses(chosen.subnet, 1)[0] if chosen is not None else ""
 
 
 def router_address() -> str:
     return str(ipaddress.ip_interface(ROUTER_WAN).ip)
 
 
-def kali_addresses(origins) -> str:
+def kali_addresses(origins, default_origin: str) -> str:
     lines = [f"addr add {address}/{ipaddress.ip_network(origin.subnet).prefixlen} dev eth0"
              for origin in origins for address in origin_addresses(origin.subnet, origin.addresses)]
-    if lines:
-        lines.append(f"route replace default via {router_address()} dev eth0 onlink")
+    source = internet_side(origins, default_origin)
+    if source:
+        lines.append(f"route replace default via {router_address()} dev eth0 onlink src {source}")
     return "".join(f"{line}\n" for line in lines)
 
 
 def edge_addresses(origins, default_origin: str) -> str:
-    chosen = wan_origin(origins, default_origin)
-    if chosen is None:
+    upstream = internet_side(origins, default_origin)
+    if not upstream:
         return ""
-    upstream = origin_addresses(chosen.subnet, 1)[0]
     lines = [f"addr add {ROUTER_WAN} dev wan", f"route replace default via {upstream} dev wan onlink"]
     return "".join(f"{line}\n" for line in lines)
 
@@ -338,7 +339,7 @@ def slot_files(source: Path, slot: Slot, wargames, origins, default_origin: str,
         **{name: text.encode() for name, text in shipped.items()},
         "compose.yaml": dumped(document),
         "sensor.yaml": sensor_config(source, slot, document).encode(),
-        "kali.ip": kali_addresses(origins).encode(),
+        "kali.ip": kali_addresses(origins, default_origin).encode(),
         "edge.ip": edge_addresses(origins, default_origin).encode(),
         "edge-nat.nft": port_forwards(document).encode(),
         "local.rules": (Path(source) / BASELINE_RULES).read_bytes(),

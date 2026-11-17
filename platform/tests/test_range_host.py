@@ -150,7 +150,9 @@ def test_kali_holds_every_declared_origin_address_and_the_edge_one_public_addres
 
     assert len(kali) == sum(origin.addresses for origin in DECLARED.origins) + 1
     assert "addr add 5.188.10.10/24 dev eth0" in kali
-    assert kali[-1] == f"route replace default via {router.ip} dev eth0 onlink"
+    assert kali[-1] == f"route replace default via {router.ip} dev eth0 onlink src 5.188.10.10", (
+        "Kali's own traffic, nmap's raw SYN scan among it, leaves from the default origin's address, the one "
+        "its origin SNAT starts on; from any other, the SNAT rewrites a raw probe and nmap never sees the reply")
     assert edge == [f"addr add {router} dev wan", "route replace default via 5.188.10.10 dev wan onlink"], (
         "a company's edge router holds the one public address its ISP line gives it; "
         "Kali stands in for the Internet beyond it")
