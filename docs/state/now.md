@@ -5,15 +5,46 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-18, walk round 27's fixes are live: the cloud was rebuilt
-with them and the full `bin/verify` is green (`cr-range` 10.31.0.242 kept, eight
-slots as compose projects on runc; on `dev`).
+Updated: 2026-11-18, walk round 28's fixes are live: the cloud was rebuilt
+with them, the range host replaced (`cr-range` 10.31.0.147, eight slots as
+compose projects on runc), and the full `bin/verify` is green; on `dev`.
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
 
 ## Where things stand
 
+- 2026-11-18, answer-blind walk round 28's fixes are live
+  (`docs/TROUBLESHOOTING.md` "Answer-blind walk round 28"): the WAF logs
+  the request body (audit part C) and the session view shows it as
+  `request_body`; nginx's refused log ships its status as `http.status`;
+  the Kibana gate's refusals and its 502 are Korean; step checks wait for
+  their evidence; the console's flat pages. `uv run bin/cloud up --replace`
+  took 25 min 59 s and replaced the range host (new `deploy/waf`; now
+  10.31.0.147). The backup before it held 6 sessions, 25 cases, 67,280
+  detections, 2,815 customer requests, 3 objectives, 661 rule sets and 169
+  disabled rules (`db-20261117T170121Z.sqlite3`, also in
+  `~/.cache/fsl-work/backup-safe/`); after the restore retention removed the
+  four sessions closed more than 60 min before the start (2 sessions, 8
+  cases, 28,787 detections, 1,784 customer requests, 0 objectives; rule sets
+  and disabled rules unchanged). Live checks: scenario 3.4's comment case
+  (DetectionOnly, board answered 302) has an audit record, since CRS rules
+  941100/941120/941160/941390 and 949110 matched, with
+  `transaction.request.body` holding the form body, and the learner's
+  Discover shows it under `request_body` (`request_body : *onerror*`, 1
+  hit); no `logs-N-sensors` maps a top-level `status`, and after a 404, a
+  500 and a refused 400 sent in each slot `status : 404` and `status : 500`
+  match them in all eight (slot 1 in the learner's Discover, the rest with
+  Discover's query against Elasticsearch); the gate's refusals and its 502
+  with Kibana stopped answer in Korean. Open: `request_body : *` and
+  `request_header.user_agent : *` (an `exists` query on a runtime field
+  that reads `_source`) fail in Elasticsearch with
+  `index_out_of_bounds_exception` in the stored-fields reader, also when
+  sent to Elasticsearch directly; a value query such as `request_body :
+  *onerror*` works. nginx's own 502 page for a Kibana page is still
+  English. The full `bin/verify` on it: acceptance 94 passed, 0 failed, 0
+  errors, 1 skipped in 465 s; unit and API 1003 + 870; 519 s start to
+  result; ratchet no regression (`core_loc` 604).
 - 2026-11-18, answer-blind walk round 27's fixes are live
   (`docs/TROUBLESHOOTING.md` "Answer-blind walk round 27"): Kali's `ip addr`
   lists 5.188.10.10 first, as on the map; the result page, the accounts page
@@ -548,13 +579,13 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 ## Next, in order
 
 1. The live cloud on `dev`: `platform.ref` is `dev` in `cloud.yaml`; the VM
-   runs `/opt/cr` with walk round 27's fixes, the range host is 10.31.0.242. `compute.slots` as the user wants
+   runs `/opt/cr` with walk round 28's fixes, the range host is 10.31.0.147. `compute.slots` as the user wants
    (eight now). Run `uv run bin/cloud init` once as admin on con01
    (`/etc/kolla/clouds.yaml`) to see it report everything present.
-2. Answer-blind walk round 28 (2026-11-18) of both courses and scenarios
-   3.1-3.4 ran on the fixes of round 27; fix its findings, rebuild, verify
-   and walk again from the start; then tag the state and take it through
-   gate 2 (item 6).
+2. Answer-blind walk round 29 of both courses and scenarios 3.1-3.4 on the
+   fixes of round 28 (live); fix its findings, rebuild, verify and walk again
+   from the start; then tag the state and take it through gate 2 (item 6).
+   The `exists` failure on `_source` runtime fields (above) is open.
 3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
    or `union select` even where it is loaded: a detection gap to measure
    (round 16, `docs/DECISIONS.md`).
