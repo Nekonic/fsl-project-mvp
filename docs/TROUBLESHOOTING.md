@@ -437,3 +437,71 @@ UTC (`TZ=UTC`: `mysqlbinlog` reads the value in its own local time zone; with
 `TZ=Asia/Seoul` the same value read the whole log, with `America/New_York`
 none of it). The Python filter by session start stays. Same slot, same
 window: 91,277 bytes, read 0.28 s, parse 0.004 s, the same 22 changes.
+
+## Answer-blind walk round 27: a late Kali pass, slow answers, F5's first note
+
+### F6's sqlmap steps passed 20-30 s after sqlmap exited
+
+Symptom, 2026-11-17: in F6 step 2 (`dump`) sqlmap printed `[*] ending @
+22:47:14`; 20 s later the step still showed "아직 실행 중입니다" and it passed
+20-30 s after the exit. F5's Kali steps passed within 6 s. Step 8 (`replay`)
+behaved like step 2.
+
+Cause, from the code: "아직 실행 중입니다" (`lesson.kali.running`) is the
+console's own line, shown until it reads the step's end line after the
+command in the Kali terminal; only then does it check with `ended: true` and
+the server wait `RUN_ENDED_SETTLED` (3 s). Without it the server waited for
+`RUN_SETTLED` (15 s) of quiet after the run's last request, then the next 5 s
+poll, then the passing check's own work: 20-25 s and more. Step 8's point
+names no terminal, so it never sends `ended`. Why the console missed step 2's
+end line was not reproduced here; F6's command is about 240 characters and
+F5's about 120, and the command line is matched as one logical terminal line.
+
+Measured in `test_lesson_steps.py`, first second after the run's last request
+at which a poll passes, terminal end not reported: 15 s before, 3 s after
+when the Kali box shows no sqlmap on a terminal; 15 s while it still does.
+
+Fix: a check without `ended` asks the Kali box (`attacker.typed_tool_running`,
+`ps -eo tty=,args=`) whether the step's tool still runs on a terminal; once
+it does not, 3 s of quiet is enough. A tool the platform fired has no
+terminal and does not count; a box that does not answer keeps the 15 s rule.
+
+### Each Kali poll read the whole run; the pass ingested the whole session
+
+Measured in the same file: late in a 5-minute run a poll read records from
+the step's start, a 6 min 10 s window, every 5 s; the passing check then
+ingested the session from its start. Now a poll reads `RUN_SETTLED` plus the
+5 s slack on each side (25 s) and the whole run only once that is quiet, and
+the passing check and the replay check ingest from the run's first request.
+Round 23 measured 0.7-9 s per press during a 2,000-request run, which this
+read was.
+
+### Answer submissions took 3.9-5.7 s now and then
+
+Symptom: 6 of about 35 submissions in F5 and F6 waited over 2.5 s on
+"확인 중…" (F5 step 2 3.9 s, step 7 5.7 s); the rest were quick.
+
+Profiled locally with `platform/` as the working directory: the check for F5
+step 2 (`error`) does no Elasticsearch, Kibana or range call and took 1-7 ms;
+step 7 (`scanner`) reads the run's WAF detections from the platform database
+and took 0.12 s with 8,000 such rows held. Neither explains seconds.
+
+What every request pays, by the code: `api.reachability` runs on every
+request and caches the range's addresses for 30 s. The first request after
+that rebuilt the list by reading each slot's shape from the cloud API
+(networks, servers, the carried segments' subnets, and the slot's compose
+document) one slot after another, and every request arriving meanwhile waited
+on the same lock. A refresh of R seconds every 30 s delays about R/30 of all
+requests by up to R; 6 of 35 over 2.5 s fits R of 5-6 s. The live refresh
+time was not measured here (no sign-in to the live platform from this
+change), so this is the likely cause, not a proven one.
+
+Fix: the slots are read at once (`ThreadPoolExecutor`, one worker per slot).
+Measured in `test_judge_reachability.py` with 8 stub slots of 0.2 s each:
+1.63 s before, 0.21 s after.
+
+Not changed: a moved-to lesson sends its benign seed case on the learner's
+first hint, skip or pass there, inside that request (`_seed_once_worked`,
+one harness fire through the range host), and the platform database is
+SQLite with no journal mode set in `cr/settings.py` (a rollback journal by
+default), where a write waits for the reads running at the time.

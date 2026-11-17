@@ -66,7 +66,7 @@ def indexed(*events):
         [(f"doc-{position}", event) for position, event in enumerate(events)], None))
 
 def quietly():
-    return patch("api.views._ingest", lambda session, within=None: {})
+    return patch("api.views._ingest", lambda session, within=None, since=None: {})
 
 def on_map(found):
     return patch("api.views._map_found", lambda session: found)
@@ -842,6 +842,22 @@ def test_the_sqli_error_status_is_read_from_the_request_s_row_in_devtools(client
 
     assert unpicked["reason"] == ["lesson.check.wrong.dev", []], "the page itself prints the status the step reads in DevTools"
     assert picked["passed"] is True
+
+def test_f5_opens_the_developer_tools_before_the_sort_request_and_an_answer_without_its_row_is_no_wrong_try(client):
+    session = opened("f5")
+    with patch.object(site, "kept", return_value=[browsed("/?sort=created_at", 200)]):
+        unpicked = answer(client, session, "sort", "created_at", dev_request=None)
+        picked = answer(client, session, "sort", "created_at", dev_request=1)
+    session.refresh_from_db()
+    table = tables()
+    sort_note, still_note = table["lesson.sqli.coach.sort"], table["lesson.sqli.coach.still"]
+
+    assert unpicked["reason"] == ["lesson.check.wrong.dev", []] and picked["passed"] is True
+    assert lesson.help_counts(session.lesson_steps["f5"])["retried"] == 0, (
+        "walk round 27: the row-not-selected refusal counted as a wrong try, so the result page said failed then passed")
+    assert sort_note.index(table["site.dev.toggle"]) < sort_note.index("'정렬'"), (
+        "a fresh lesson opens with the developer tools closed, and a request sent before they open is not listed")
+    assert "0건" not in still_note, "saying what no results means told the learner the answer was absent"
 
 def test_a_quoted_wildcard_in_kql_gets_a_line_saying_the_star_is_literal_there(client):
     session = opened("f3")

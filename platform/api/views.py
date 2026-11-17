@@ -93,6 +93,8 @@ KIBANA_REFUSED = "kibana.refused.space"
 RECORD_SLACK = timedelta(seconds=5)
 BENIGN_UNSENT = "lesson.check.replay_benign"
 ADDRESS_SIDE = "lesson.check.wrong.address_side"
+DEV_ROW_UNPICKED = "lesson.check.wrong.dev"
+UNTRIED_REASONS = (ADDRESS_SIDE, DEV_ROW_UNPICKED)
 RUN_SETTLED = timedelta(seconds=15)
 RUN_ENDED_SETTLED = timedelta(seconds=3)
 OBJECTIVE_FACTS = ("lost_points", "detected_penalty")
@@ -529,10 +531,10 @@ def lesson_step_check(request, session_id, step_id):
     chose = (body["answer"].strip() if step["check"]["kind"] == "choice" else _outcome(session, step["check"])) if passed else None
     standing = step["check"]["kind"] == "triage"
     unsettled = not passed and step["check"]["kind"] == "kali"
-    near = bool(reason) and reason[0] == ADDRESS_SIDE
+    untried = bool(reason) and reason[0] in UNTRIED_REASONS
     if passed and not kept.get("passed"):
         _record_sent(session, step, kept)
-    judged = _judged_step(session, step_id, passed, reason, body.get("poll") is True or standing or unsettled or near, chose,
+    judged = _judged_step(session, step_id, passed, reason, body.get("poll") is True or standing or unsettled or untried, chose,
                           lapses=standing) | dict(*seen)
     _seed_once_worked(session)
     return _reply(judged)
@@ -620,7 +622,7 @@ def _judge(session, taught, step, body, kept):
         if not accepted:
             return False, [_unrecorded(session, check, taught, failed), []]
         if "dev" in check and not _dev_read(session, check, body):
-            return False, ["lesson.check.wrong.dev", []]
+            return False, [DEV_ROW_UNPICKED, []]
         passed, reason = lesson.answered(dict(check, accept=accepted), given.strip(), f"{prefix}.wrong.{step_id}")
         named = check.get("of") == "address" and reason == ["lesson.check.wrong", []]
         return passed, _whose_address(session, check["host"], given.strip()) or reason if named else reason
@@ -971,21 +973,34 @@ def _kali_run(session, step_id, check, kept, ended=False):
     since = _lesson_started(session) or session.started_at
     reached = max(parse_datetime(kept.get("reached") or "") or since, since)
     now = timezone.now()
-    sent = _sent_by(session, reached - RECORD_SLACK, now + RECORD_SLACK, marker)
-    seen = sorted(stamp for stamp, agent in sent if stamp and (check.get("ua") == "any" or case["tool"] in agent))
+    latest = _run_seen(session, check, case, marker, max(reached, now - RUN_SETTLED), now)
+    if latest and _run_settling(session, case, now - latest[-1], ended):
+        return None, {"kali": {"name": case["name"], "settling": True}}
+    seen = _run_seen(session, check, case, marker, reached, now)
     if not seen:
         return None, {"kali": {"name": case["name"]}}
-    if now - seen[-1] < (RUN_ENDED_SETTLED if ended else RUN_SETTLED):
-        return None, {"kali": {"name": case["name"], "settling": True}}
     recorded = _record_case(session, dict(case, case_id=marker, correlation="marker"), seen[0], seen[-1],
                             {"kali": step_id, "lesson": session.lesson, "launched_on": settings.RANGE.default_origin,
                              "command": _kali_command(session, case["name"])})
     _settle_and_observe(session)
     try:
-        _ingest(session)
+        _ingest(session, since=seen[0] - RECORD_SLACK)
     except elastic.ElasticUnavailable:
         pass
     return recorded, _run_shown(session, case, recorded)
+
+def _run_seen(session, check, case, marker, start, end):
+    sent = _sent_by(session, start - RECORD_SLACK, end + RECORD_SLACK, marker)
+    return sorted(stamp for stamp, agent in sent if stamp and (check.get("ua") == "any" or case["tool"] in agent))
+
+def _run_settling(session, case, quiet, ended):
+    return quiet < RUN_ENDED_SETTLED or (quiet < RUN_SETTLED and not ended and not _tool_exited(session, case["tool"]))
+
+def _tool_exited(session, tool):
+    try:
+        return attacker.typed_tool_running(_range(session).runner("attacker"), tool) is False
+    except RangeUnavailable:
+        return False
 
 def _run_shown(session, case, recorded):
     return {"kali": {"name": case["name"],
@@ -1069,7 +1084,7 @@ def _kali_replayed(session, step, kept, attack, ended):
     recorded, _ = _kali_run(session, step["id"], {"case": attack["kali"], "ua": attack.get("ua")}, kept, ended)
     if recorded is None:
         return False
-    _ingest(session, RECENT_ALERTS)
+    _ingest(session, since=recorded.started_at - RECORD_SLACK)
     blocked = lesson.BLOCKING_RULE in {str(((detection.raw or {}).get("details") or {}).get("ruleId"))
                                        for detection in session.detections.filter(marker=recorded.case_id)}
     return blocked and not recorded.meta.get("loot")
@@ -2181,11 +2196,13 @@ def _fetched(index, start, end, newest_first):
             break
     return documents, truncated
 
-def _ingest(session, within=None):
+def _ingest(session, within=None, since=None):
     start = session.started_at - timedelta(minutes=1)
     end = (session.ended_at or timezone.now()) + timedelta(minutes=1)
     if within is not None:
         start = max(start, timezone.now() - timedelta(seconds=within))
+    if since is not None:
+        start = max(start, since)
     try:
         enabled = _enable_expired()
     except (RangeUnavailable, suricata.RulesUnreadable):
@@ -2232,7 +2249,7 @@ def _ingest(session, within=None):
     ingested = session.detections.count() - before
 
     reply = {"ingested": ingested, "skipped": skipped, "stale": stale, "enabled": enabled}
-    if truncated and within is None:
+    if truncated and within is None and since is None:
         read, total = truncated
         reply["truncated"] = {"read": read, "total": total}
         session.read_of = [read, total]

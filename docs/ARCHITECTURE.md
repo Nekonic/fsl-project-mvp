@@ -418,7 +418,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | `platform/api/models.py` | Django 모델: `Session`, `Case`, `CustomerRequest`, `Detection`, `Objective`, `RuleSet`, `DisabledRule` |
 | `platform/cr/urls.py` | 전체 엔드포인트 라우트 표 |
 | `platform/api/refusals.py` | 예외를 HTTP 상태 코드로 변환(`/api/` 아래 404는 JSON). 변경 요청(POST 등)의 동일 출처 검사 |
-| `platform/api/reachability.py` | 슬롯이 보고하는 모든 주소(채점 서버 제외)에서 온 요청을 거부하는 미들웨어 |
+| `platform/api/reachability.py` | 슬롯이 보고하는 모든 주소(채점 서버 제외)에서 온 요청을 거부하는 미들웨어. 주소 목록은 30초 캐시하고, 만료되면 슬롯들의 구성을 동시에 읽음 |
 | `platform/api/signin.py` | 로그인, 로그아웃, 회원가입, nginx `auth_request`가 묻는 세션 확인 |
 | `platform/api/blocks.py` | 로그인 실패를 IP와 브라우저 헤더 지문별로 세고 차단 |
 | `platform/api/accounts.py` | 계정 관리 API(계정 목록, 승인, 거절. 관리자 전용). 학습자가 남의 세션과 훈련 환경 변경에 닿지 못하게 막는 미들웨어 |
@@ -967,7 +967,8 @@ check 종류별 통과 조건:
 - `of: rule`(`wargames.ANSWERS_OF`): 학습자 자신의 요청이면 요청의 `path`와 `marker: browse`, Kali 단계 실행이면 `marker: step:<id>`를 받음. 룰 `family`로 범위를 좁힐 수 있음
 - `of: rule` 판정: 최근 600초를 수집해 그 요청이나 실행의 ModSecurity 탐지 기록을 모음. CRS 합계 룰(id가 949, 959, 980으로 시작)을 뺀 `ruleId`를 모두 허용 값으로 인정(`lesson.rules_named`). 기록이 없으면 사유 `lesson.check.unrecorded`
 - `of: rule_matched`(`rule: <id>`): 같은 탐지 기록에서 그 룰 하나만 보고 `present`나 `absent`를 허용 값으로 정함. 기록된 실행에 탐지가 하나도 없으면 `absent`
-- 기록된 Kali 실행의 탐지 기록이 세션에 이미 있으면 다시 수집하지 않음. 실행은 로그가 `RUN_SETTLED`(15초) 동안 조용해진 뒤에 기록하고, 기록 시점의 수집이 이미 그 로그를 읽었음. 터미널에 그 단계 명령의 종료 줄(`done`)이 보이면 콘솔이 바로, 그 뒤 1초마다 `ended: true`로 확인하고 서버는 `RUN_ENDED_SETTLED`(3초)만 기다림
+- 기록된 Kali 실행의 탐지 기록이 세션에 이미 있으면 다시 수집하지 않음. 실행은 로그가 `RUN_SETTLED`(15초) 동안 조용해진 뒤에 기록하고, 기록 시점의 수집이 이미 그 로그를 읽었음. 터미널에 그 단계 명령의 종료 줄(`done`)이 보이면 콘솔이 바로, 그 뒤 1초마다 `ended: true`로 확인하고 서버는 `RUN_ENDED_SETTLED`(3초)만 기다림. 종료 줄 없이 온 확인도 Kali 박스에 터미널에 붙은 그 도구 프로세스가 더는 없으면 3초만 기다림(`attacker.typed_tool_running`이 `ps`로 확인). 플랫폼이 띄운 도구는 터미널이 없어 세지 않음
+- Kali 확인은 실행 중에는 최근 `RUN_SETTLED`+여유 5초씩 앞뒤(25초)의 기록만 읽고, 그 구간이 조용할 때만 실행 전체를 읽음. 기록한 뒤의 수집과 다시 실행 단계의 수집은 세션 전체나 최근 10분이 아니라 실행의 첫 요청부터 읽음(`_ingest(since=)`)
 - `kali` 단계는 기록된 실행이 없어 통과하지 못한 확인을 틀린 시도로 세지 않음
 
 `rules`: 센서의 룰 파일(`GET /api/rules/`)에 방어 설정의 룰 파일에 없는 sid나 내용이 바뀐 sid가 생기면 통과(`lesson.added_rules`, `disable.sids`). 응답에 `added`가 붙습니다.
@@ -1044,7 +1045,7 @@ Kibana 쿼리와 개발자 도구 답:
 - Kibana에서 읽는 기초 레슨 답에는 모두 `kql`이 있음. 구성도·참고·앞 카드에서 짐작한 값으로는 통과할 수 없음
 - `leg: upstream` check에서 `not destination : <주소>`에 board.com 자신의 주소를 넣은 쿼리도 `kql` 사유로 실패(`views._excludes_the_site`). 남겨야 할 구간을 빼 버리기 때문
 - `dev`(정규식)가 있는 check는 개발자 도구에서 읽는 답. 개발자 도구가 열려 있으면 선택된 요청 행 id를 `dev_request`로 보냄(아니면 `null`). 선택한 행이 없으면 목록에 보이는 행 id들을 `dev_listed`로 함께 보냄
-- `dev` 통과 조건: 그 행이 세션에 기록된 요청이고 경로가 `dev`에 맞음. 상태 코드 단계(`of: status`)는 목록의 상태 열에서 읽을 수 있으므로 `dev_listed`의 행이 맞아도 통과. 아니면 `lesson.check.wrong.dev`(`views._dev_read`)
+- `dev` 통과 조건: 그 행이 세션에 기록된 요청이고 경로가 `dev`에 맞음. 상태 코드 단계(`of: status`)는 목록의 상태 열에서 읽을 수 있으므로 `dev_listed`의 행이 맞아도 통과. 아니면 `lesson.check.wrong.dev`(`views._dev_read`). 이 거절은 틀린 횟수에 넣지 않음
 - `dev` 적용 단계: F2의 메서드, 경로, 상태 코드, 파라미터, 없는 글 단계(정렬 단계는 `match`만). F4의 인코딩 단계. F5의 정렬·오류 단계
 - 숫자 뒤에 한두 글자 단위("20점", "1973건")가 붙은 답은 숫자로 읽음(`lesson._unit_dropped`). `%`는 단위로 보지 않음
 
