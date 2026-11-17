@@ -22,7 +22,9 @@ class Cloud:
     def __init__(self):
         self.counter = itertools.count(1)
         self.networks, self.subnets, self.ports, self.groups = [], [], [], []
-        self.servers, self.keypairs, self.images, self.stacks = [], [], [], []
+        self.servers, self.keypairs, self.stacks = [], [], []
+        self.images = [{"id": f"img-{role}", "name": f"cr-{role}-bake1", "status": "active"}
+                       for role in ("kali", "waf", "infra", "target")]
         self.calls = []
         self.fail_next_stack = ""
         self.steps_to_complete = 1

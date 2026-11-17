@@ -179,8 +179,9 @@ def replaced(cloud, tmp_path, old):
         if port["device_id"] == old:
             port.update(device_id="", device_owner="")
 
-def test_a_replaced_platform_s_detached_management_port_is_deleted_before_the_new_one_is_made(cloud, platform, tmp_path):
+def test_a_replaced_platform_takes_over_the_detached_management_port_and_so_its_address(cloud, platform, tmp_path):
     replaced(cloud, tmp_path, "srv-old")
+    kept = [dict(p) for p in cloud.ports if p["name"] == f"{fabric.KEYPAIR}.{fabric.MANAGEMENT}"]
     replaced(cloud, tmp_path, "srv-older")
 
     platform.ensure_fabric()
@@ -190,6 +191,8 @@ def test_a_replaced_platform_s_detached_management_port_is_deleted_before_the_ne
         "Nova detaches a port it did not create when the server is deleted and leaves it standing; "
         "one left per up --replace kept the management subnet in use and bin/cloud down failed"
     )
+    assert [p["id"] for p in named] == [p["id"] for p in kept], (
+        "every slot's user data names the collector's address; a new address would make every slot stale")
 
 def test_taking_it_down_removes_detached_ports_that_hold_a_subnet_in_use(cloud, platform, tmp_path):
     replaced(cloud, tmp_path, "srv-old")

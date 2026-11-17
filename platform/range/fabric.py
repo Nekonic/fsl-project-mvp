@@ -130,7 +130,7 @@ def plan(declaration: Declaration, networks: list, subnets: list, keypairs: list
                 leftovers.append(f"network {network['name']} carries no {TAG}")
         elif retired(network):
             leftovers.append(f"network {network['name']} carries {TAG}={segment}, which the "
-                             f"range host's slots replaced")
+                             f"slot stacks replaced")
         elif segment in held:
             drifted.append(f"networks {held[segment]['name']} and {network['name']} both "
                            f"carry {TAG}={segment}")

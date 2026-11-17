@@ -20,6 +20,7 @@ ROLES = ("kali", "waf", "infra", "target")
 SLOT_FLAVOR = "dba.small"
 SLOT_IMAGE = "cr-{role}-bake1"
 POOL = {"board": 3, "corp": 1}
+TARGET_TAG = "cf8d735e66c5115ce3d8e06dbdef7967635532ef"
 RETIRED = {"network": ("estate", "mtu"), "compute": ("slots",), "flavors": ("range",)}
 DOCKER_DEFAULT_POOLS = ("172.17.0.0/16", "172.18.0.0/16", "172.19.0.0/16", "172.20.0.0/14",
                         "172.24.0.0/14", "172.28.0.0/14", "192.168.0.0/16")
@@ -213,6 +214,7 @@ class Cloud:
     flavors: dict[str, str] = field(default_factory=dict)
     images: dict[str, str] = field(default_factory=dict)
     pool: dict[str, int] = field(default_factory=lambda: dict(POOL))
+    target_tag: str = TARGET_TAG
     allowed: tuple[str, ...] = tuple(OPEN_TO_ALL)
     backups_keep: int = 1
     signed_in: Identity | None = None
@@ -231,7 +233,7 @@ class Cloud:
             "cidr": self.platform_cidr, "dns": ",".join(self.dns),
             "repository": self.repository, "ref": self.ref,
             "subnets": joined(self.inside), "management": self.inside["mgmt"],
-            "pool": joined(self.pool), "images": joined(self.images),
+            "pool": joined(self.pool), "images": joined(self.images), "target_tag": self.target_tag,
             "flavors": joined({role: name for role, name in self.flavors.items() if role in ROLES}),
             "allowed": ",".join(self.allowed),
         }
@@ -328,6 +330,11 @@ def _images(value) -> str | None:
     return _named_per(value, ROLES, "image")
 
 
+def _tag(value) -> str | None:
+    return None if isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value) else (
+        "must be the full commit the target image's wargame images were pulled at (CR_IMAGE_TAG of its bake)")
+
+
 def _pool(value) -> str | None:
     if not isinstance(value, dict) or not value:
         return "must map each wargame to its number of ready slots, such as {board: 3, corp: 1}"
@@ -352,6 +359,7 @@ SCHEMA = {
     "compute": {
         "base_image": (_name, True), "availability_zone": (_optional_name, False),
         "flavors": (_flavors, True), "images": (_images, False), "pool": (_pool, False),
+        "target_tag": (_tag, False),
     },
     "keys": {"key_name": (_name, True), "key_file": (_text, True), "range": (_text, True)},
     "platform": {"stack": (_name, True), "repository": (_url, True), "ref": (_name, True)},
@@ -459,6 +467,7 @@ def parse(document, source: str = "cloud.yaml") -> Cloud:
         flavors={**{role: SLOT_FLAVOR for role in ROLES}, **flavors},
         images={**{role: SLOT_IMAGE.format(role=role) for role in ROLES}, **(compute.get("images") or {})},
         pool={str(wargame): count for wargame, count in (compute.get("pool") or POOL).items()},
+        target_tag=compute.get("target_tag") or TARGET_TAG,
         allowed=tuple(map(str, network.get("allowed") or OPEN_TO_ALL)),
         key_name=keys["key_name"], key_file=keys["key_file"],
         range_key=keys["range"],

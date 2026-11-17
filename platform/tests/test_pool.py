@@ -48,7 +48,7 @@ def test_each_slot_is_one_stack_and_the_pool_spreads_the_wargames_over_the_slots
     created = stacks(cloud)["cr-slot-2"]
     assert created["parameters"]["control_network"] == "net-mgmt"
     assert created["parameters"]["senders_group"] == "g-" + fabric.SENDERS_GROUP
-    assert created["parameters"]["image_kali"] == "cr-kali" and created["parameters"]["flavor_waf"] == "dba.small"
+    assert created["parameters"]["image_kali"] == "cr-kali-bake1" and created["parameters"]["flavor_waf"] == "dba.small"
 
 
 def test_a_slot_is_ready_only_once_heat_completes_and_every_node_reports_its_boot(cloud):
@@ -92,6 +92,7 @@ def test_a_stack_heat_failed_is_deleted_by_the_next_ensure_and_created_again(clo
 
 def test_a_stack_from_another_template_or_image_is_stale_and_replaced_only_when_asked(cloud):
     fakecloud.adapter(cloud, slots=1).ensure_slot()
+    cloud.images.append({"id": "img-kali-2", "name": "cr-kali-2026.4", "status": "active"})
     newer = fakecloud.adapter(cloud, slots=1, images={"kali": "cr-kali-2026.4"})
     held = newer.plan_slot().stack_id
 
@@ -216,6 +217,27 @@ def test_a_session_for_a_wargame_no_slot_runs_rebuilds_a_free_slot_for_it(client
     assert begun == [(1, {"claimed": True, "wargame": "corp"})]
     assert reset.wanted(1) == "corp" and stacks(cloud)["cr-slot-1"]["stack_status"] == fakecloud.DELETING
     assert not Session.objects.exists()
+
+
+def test_a_stack_the_ensure_deletes_is_reported_rebuilt_so_a_refill_creates_it_again(cloud):
+    first = fakecloud.adapter(cloud, slots=1).ensure_slot()
+    retargeted = fakecloud.adapter(cloud, slots=1, pool=(("corp", 1),))
+
+    plan = retargeted.ensure_slot()
+
+    assert plan.rebuilt == (("cr-slot-1", first.stack_id),), (
+        "api/views.py starts the refill only for a plan that names what it rebuilt")
+    cloud.advance()
+    assert retargeted.ensure_slot().wargame == "corp", "a pool that changes a slot's wargame retargets it"
+
+
+def test_a_slot_whose_role_image_glance_does_not_hold_is_blocked_naming_it(cloud):
+    cloud.images = [image for image in cloud.images if image["name"] != "cr-target-bake1"]
+
+    assert fakecloud.adapter(cloud, slots=1).plan_slot().blocked == (
+        "no active image cr-target-bake1 in Glance for the slot's target; bake it from deploy/roles/target/ "
+        "or name another in compute.images.target",)
+    assert not [stack for stack in cloud.stacks], "Heat is asked for nothing it would fail on"
 
 
 def test_commands_to_a_ready_slot_ask_the_cloud_nothing_until_its_stack_is_created_again(cloud):

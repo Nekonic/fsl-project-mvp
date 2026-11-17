@@ -320,18 +320,16 @@ def test_the_slot_endpoints_act_on_one_slot_or_every_slot(client, cloud):
     assert client.get("/api/range/slot/?slot=3").status_code == 400
 
 
-def test_the_range_host_on_older_images_is_replaced_by_a_post_only_when_no_session_is_open(client, cloud):
+def test_a_stale_slot_stack_is_replaced_by_a_post_unless_a_session_holds_that_slot(client, cloud):
     held = opened(client)
     cloud.plans = [replace(plan, stale=("cr-waf",)) for plan in cloud.plans]
 
     answer = client.post_json("/api/range/slot/").json()
 
-    assert held.slot == 1 and cloud.renewed == [], (
-        "every slot runs on the one range host, so replacing it under any open session "
-        "wipes the containers that session's learner is using"
-    )
-    assert answer["stale"] == ["cr-waf", "cr-waf"]
-    assert all(f"session {held.pk} holds this slot" in reason for reason in answer["blocked"]), (
+    assert held.slot == 1 and cloud.renewed == [2], (
+        "each slot is its own stack, so a session holds only its own slot's VMs")
+    assert [slot["blocked"] for slot in answer["slots"]] == [
+        [f"session {held.pk} holds this slot, so the rebuild of cr-waf onto the ready image waits for its close"], []], (
         "bin/cloud up stops on a blocked slot instead of waiting for a READY that cannot come")
 
 

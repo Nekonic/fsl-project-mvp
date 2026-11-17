@@ -2916,7 +2916,7 @@ def range_slot(request):
     if request.method == "POST":
         held = _holders()
         return _reply(_slot_plans(_each_slot(
-            request, adapter, lambda one: _ensured(one, held.get(getattr(one, "slot", 1)) or min(held.values(), default=None), _turn(
+            request, adapter, lambda one: _ensured(one, held.get(getattr(one, "slot", 1)), _turn(
                 getattr(one, "slot", 1) if _slotted(adapter) else None)))))
     removed = [step for steps in _each_slot(request, adapter, lambda one: one.teardown_slot())
                for step in steps]

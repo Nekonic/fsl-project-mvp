@@ -49,6 +49,8 @@ parameters:
     type: string
   pool:
     type: string
+  target_tag:
+    type: string
   images:
     type: string
   flavors:
@@ -148,6 +150,7 @@ resources:
             "%subnets%": {get_param: subnets}
             "%management%": {get_param: management}
             "%pool%": {get_param: pool}
+            "%target_tag%": {get_param: target_tag}
             "%images%": {get_param: images}
             "%flavors%": {get_param: flavors}
             "%project%": {get_param: "OS::project_id"}
@@ -196,6 +199,7 @@ resources:
                   CR_OPENSTACK_AVAILABILITY_ZONE=%availability_zone%
                   CR_OPENSTACK_SUBNETS=%subnets%
                   CR_OPENSTACK_POOL=%pool%
+                  CR_OPENSTACK_TARGET_TAG=%target_tag%
                   CR_OPENSTACK_SSH_USER=ubuntu
                   CR_OPENSTACK_SSH_KEY=/data/ssh/id_ed25519
                   CR_OPENSTACK_IMAGES=%images%

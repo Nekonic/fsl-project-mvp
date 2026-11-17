@@ -397,7 +397,7 @@ def test_the_target_s_containers_are_the_devices_its_topology_names_and_fronts_t
     fronts = yaml.safe_load(text("target/wargames.yaml"))["fronts"]
 
     for wargame, document in rendered_wargames().items():
-        placed = {one.container for one in definition(wargame).devices.values() if one.container}
+        placed = {one.container for one in definition(wargame).devices.values() if one.container and one.node == "cr-target"}
         assert placed == set(document["services"]), "the map and ground truth find each container by name"
         assert {name for name in document["services"] if name in fronts} == {
             one.container for one in definition(wargame).devices.values() if wargame in one.roles}

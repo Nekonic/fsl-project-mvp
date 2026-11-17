@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from urllib.parse import quote
 
@@ -43,6 +43,7 @@ KEYPAIRS = "GET {nova}/os-keypairs"
 IMPORT_KEYPAIR = "POST {nova}/os-keypairs"
 DELETE_KEYPAIR = "DELETE {nova}/os-keypairs/{keypair}"
 OWN_IMAGES = "GET {glance}/v2/images?owner={project}&visibility=private&limit=100"
+IMAGES = "GET {glance}/v2/images?limit=100"
 DELETE_IMAGE = "DELETE {glance}/v2/images/{image}"
 DELETE_SERVER = "DELETE {nova}/servers/{server}"
 SECURITY_GROUPS = "GET {neutron}/v2.0/security-groups?project_id={project}"
@@ -69,7 +70,7 @@ OLD_HOST = "cr_host"
 OLD_BUNDLE = "cr_bundle"
 SLOT_KEY = "cr_slot"
 NODE_KEY = "cr_node"
-IMAGE = "cr-{role}"
+IMAGE = "cr-{role}-bake1"
 BASELINE_RULES = "deploy/suricata/rules/local.rules"
 STACK_TIMEOUT_MINUTES = 30
 
@@ -108,6 +109,7 @@ SETTINGS = {
     "subnets": "CR_OPENSTACK_SUBNETS",
     "platform": "CR_OPENSTACK_PLATFORM",
     "pool": "CR_OPENSTACK_POOL",
+    "target_tag": "CR_OPENSTACK_TARGET_TAG",
     "images": "CR_OPENSTACK_IMAGES",
     "flavors": "CR_OPENSTACK_FLAVORS",
 }
@@ -250,6 +252,7 @@ def connect(
     subnets: str = "",
     platform: str = "",
     pool: str = "",
+    target_tag: str = "",
     images: str = "",
     flavors: str = "",
 ) -> "OpenStack":
@@ -280,7 +283,7 @@ def connect(
         counts = _counts(pool)
         build = Build(
             source=source, flavor=flavor, availability_zone=availability_zone, inside=pairs(subnets),
-            platform=platform, slots=sum(count for _, count in counts) or 1, pool=counts,
+            platform=platform, slots=sum(count for _, count in counts) or 1, pool=counts, target_tag=target_tag,
             images=pairs(images), flavors=pairs(flavors),
         )
     except ValueError as error:
@@ -517,6 +520,7 @@ class Build:
     platform: str = ""
     slots: int = 1
     pool: tuple[tuple[str, int], ...] = ()
+    target_tag: str = ""
     images: dict = field(default_factory=dict)
     flavors: dict = field(default_factory=dict)
 
@@ -890,10 +894,11 @@ class OpenStack:
 
     def _attach(self, network: str, group: str) -> None:
         name = f"{fabric.KEYPAIR}.{fabric.MANAGEMENT}"
-        for left in self._all(PORTS, "ports", network=network):
-            if left.get("name") == name and _detached(left):
-                self.get(self._call(DELETE_PORT, port=left["id"]))
-        port = self.get(self._call(CREATE_PORT), {"port": {
+        left = [port["id"] for port in self._all(PORTS, "ports", network=network)
+                if port.get("name") == name and _detached(port)]
+        for extra in left[1:]:
+            self.get(self._call(DELETE_PORT, port=extra))
+        port = left[0] if left else self.get(self._call(CREATE_PORT), {"port": {
             "network_id": network, "name": name, "security_groups": [group],
         }})["port"]["id"]
         try:
@@ -901,7 +906,8 @@ class OpenStack:
                 "interfaceAttachment": {"port_id": port}
             })
         except RangeUnavailable:
-            self.get(self._call(DELETE_PORT, port=port))
+            if not left:
+                self.get(self._call(DELETE_PORT, port=port))
             raise
 
     def teardown_fabric(self) -> list[tuple[str, str]]:
@@ -982,7 +988,8 @@ class OpenStack:
 
     def _sandbox(self, wargame: str, collector: str) -> sandbox.Sandbox:
         return sandbox.plan(self._definition(wargame), self.slot, self.declared.origins,
-                            self.declared.default_origin, collector, (self._reaching().ssh_user, self._public_key()))
+                            self.declared.default_origin, collector, (self._reaching().ssh_user, self._public_key()),
+                            self.build.target_tag)
 
     def _chosen(self, plan: sandbox.Sandbox) -> dict[str, str]:
         roles = sorted({node.role for node in plan.nodes})
@@ -1019,6 +1026,10 @@ class OpenStack:
                            f"slot's logs and clock would reach nothing; build the fabric first")
         if not self.declared.wargames:
             reasons.append("no wargame has a topology.yaml, so a slot has nothing to run")
+        held = {image.get("name") for image in self._all(IMAGES, "images") if image.get("status") == "active"}
+        reasons += [f"no active image {self.build.image(role)} in Glance for the slot's {role}; bake it from "
+                    f"deploy/roles/{role}/ or name another in compute.images.{role}"
+                    for role in sandbox.ROLES if self.build.image(role) not in held]
         return reasons
 
     def _plan(self, stack: dict | None, servers: list[dict], collector: str) -> pool.Plan:
@@ -1056,7 +1067,9 @@ class OpenStack:
                      for entry in (server.get("addresses") or {}).get(network, [])
                      if entry.get(FIXED) == "fixed" and entry.get("version", 4) == 4}
         _held[self._key] = Held(stack, addresses, _generations(servers))
-        _held[self._key] = Held(stack, addresses, _generations(servers), self._docker_read() or None)
+        docker = self._docker_read()
+        if docker:
+            _held[self._key] = replace(_held[self._key], docker=docker)
 
     def plan_slot(self) -> pool.Plan:
         servers = self._all(SERVERS, "servers")
@@ -1073,14 +1086,16 @@ class OpenStack:
             plan = self.plan_slot()
             if plan.blocked:
                 raise Drifted("; ".join(plan.blocked))
-            wanted = wargame or plan.wargame or self.wargame
+            wanted = wargame or self.wargame or plan.wargame
+            deleted = ()
             if plan.boot:
                 self._create(wanted)
             elif renew and not plan.stack.startswith("DELETE") and (
                     plan.failures or plan.stale or not plan.serves(wanted)):
                 self._delete(plan.stack_id)
+                deleted = ((stack_name(self.slot), plan.stack_id),)
         self._shape = None
-        return self.plan_slot()
+        return replace(self.plan_slot(), rebuilt=deleted)
 
     def _create(self, wargame: str) -> None:
         _held.pop(self._key, None)

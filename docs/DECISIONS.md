@@ -9388,3 +9388,41 @@ Decided while the user was away, to have the range of
   the slot's WAF is a new VM (another boot id) without the file the last learner
   wrote. Dropped with the host: the probes of the range host itself and the
   planted links into its log files.
+
+## 2026-11-18 — The baked images as they are: the wargame tag, Suricata in its container, a slot rebuilt in one call
+
+Found while the role images were baked and the docs were made true for the
+Heat range.
+
+- **The target image's wargame tag is explicit.** `cr-target-bake1` holds board
+  and corp pulled at one `CR_IMAGE_TAG`, and a slot has no egress, so it runs
+  only those. `compute.target_tag` in `cloud.yaml` (the full commit; the
+  default is the tag `cr-target-bake1` was baked at) reaches the platform as
+  `CR_OPENSTACK_TARGET_TAG`. The target's boot refuses to report ready when an
+  image line in `/opt/wargames/*/compose.yaml` carries another tag, and writes
+  the lines it found into `/var/lib/cr/failed`. A new bake at another tag is a
+  new image name and a new `target_tag`; both are in the stack's digest, so
+  every slot is replaced. Rejected: pulling at boot (no egress), and following
+  the platform's own commit (a platform-only commit would fail every slot).
+- **Flavors.** Kali's image has `min_disk` 25 GB; `dba.small` has 30 GB, so
+  `dba.small` stays the default for every role.
+- **Suricata's commands run in its container.** The infra installs only the
+  `suricatasc` wrapper; `suricata -T` (rule validation) exists only in the
+  `sensor` container. The topology's `cr-ids` device names `container: sensor`,
+  so validate, read, write and reload all run through `docker exec sensor`, as
+  in the container range. The infra reports ready only once
+  `suricatasc -c uptime` answers (node `answers:` in `topology.yaml`, up to
+  300 s), because configure loads the baseline rules through that socket next.
+- **A slot the ensure deletes is created again by the refill.** `ensure_slot`
+  returns the deleted stack in `rebuilt`, which starts the refill thread that
+  creates it and configures it; before, a stale or failed slot stayed
+  `NOT_STANDING` until another call. The pool's assignment now wins over the
+  stack's tag, so a changed `compute.pool` retargets a free slot.
+- **An open session holds its own slot only.** `POST /api/range/slot/` treated
+  every slot as held while any session was open, a rule from the one range host.
+- **The platform keeps its `cr-mgmt` address across `--replace`.** The fabric
+  attaches the detached `cr-platform.mgmt` port to the new platform VM instead
+  of making another; every slot's user data names that address as its
+  collector and NTP server, so a new address would have made every slot stale.
+- **A missing role image blocks the slot before Heat is asked.** A slot with
+  no stack is `NOT_STANDING` with the reason "no active image ... in Glance".

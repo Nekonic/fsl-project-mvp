@@ -23,6 +23,8 @@ SHIPPED_PORT = 514
 USER_DATA_LIMIT = 65535
 BOOTS = {"kali": ("slot-boot.service",), "waf": ("slot-boot.service", "nginx.service"),
          "infra": ("slot-boot.service", "sensor.service"), "target": ("wargames.service",)}
+ANSWER_WAIT = 300
+WARGAME_COMPOSE = "/opt/wargames/*/compose.yaml"
 SUDO = "ALL=(ALL) NOPASSWD:ALL"
 
 
@@ -65,6 +67,7 @@ class Definition:
     ports: tuple[Port, ...]
     devices: dict[str, Device]
     watches: dict[str, str] = field(default_factory=dict)
+    answers: dict[str, str] = field(default_factory=dict)
 
     def filling(self, role: str) -> Device:
         found = [device for device in self.devices.values() if role in device.roles]
@@ -165,6 +168,8 @@ def read(source: Path, wargame: str) -> Definition:
                     for port in entry.get("ports") or ()),
         devices={name: _device(name, entry) for name, entry in (document.get("devices") or {}).items()},
         watches=dict(document.get("watches") or {}),
+        answers={name: str(entry["answers"]) for name, entry in (document.get("nodes") or {}).items()
+                 if entry.get("answers")},
     )
     found.check()
     return found
@@ -241,10 +246,15 @@ def slot_env(values: dict[str, str]) -> str:
     return "".join(f"{key}={shlex.quote(value)}\n" for key, value in values.items())
 
 
-def booted(role: str) -> str:
+def booted(role: str, tag: str = "", answers: str = "") -> str:
     units = " ".join(BOOTS[role])
-    return (f"install -d -m 0755 {STATE}; if systemctl start {units}; then touch {READY}; "
-            f"else systemctl --no-pager --lines=20 status {units} > {FAILED} 2>&1; touch {FAILED}; fi")
+    answered = (f" && for _ in $(seq {ANSWER_WAIT}); do {answers} >/dev/null 2>&1 && break; sleep 1; done"
+                f" && {answers}" if answers else "")
+    images = f"grep -h ' image: ' {WARGAME_COMPOSE}"
+    tagged = f"{images} >/dev/null && ! {images} | grep -v ':{tag}$' && " if role == "target" and tag else ""
+    shown = f"echo 'the slot asks for wargame images at {tag}:'; {images}; " if tagged else ""
+    return (f"install -d -m 0755 {STATE}; if {tagged}systemctl start {units}{answered}; then touch {READY}; "
+            f"else {{ {shown}systemctl --no-pager --lines=20 status {units}; }} > {FAILED} 2>&1; touch {FAILED}; fi")
 
 
 def managed_by(user: str, key: str) -> list:
@@ -252,13 +262,14 @@ def managed_by(user: str, key: str) -> list:
                         "ssh_authorized_keys": [key]}]
 
 
-def user_data(node: str, role: str, env: dict[str, str], collector: str, manager: tuple[str, str] = ("", "")) -> str:
+def user_data(node: str, role: str, env: dict[str, str], collector: str, manager: tuple[str, str] = ("", ""),
+              tag: str = "", answers: str = "") -> str:
     document = {"users": managed_by(*manager)} if all(manager) else {}
     document["write_files"] = [
         {"path": SLOT_ENV, "permissions": "0644", "content": slot_env(env)},
         {"path": clock.TIMESYNCD, "permissions": "0644", "content": clock.timesyncd(collector)},
     ]
-    document["runcmd"] = [["sh", "-c", booted(role)]]
+    document["runcmd"] = [["sh", "-c", booted(role, tag, answers)]]
     text = "#cloud-config\n" + yaml.safe_dump(document, sort_keys=False, width=1 << 16)
     encoded = len(base64.b64encode(text.encode()))
     if encoded > USER_DATA_LIMIT:
@@ -267,7 +278,7 @@ def user_data(node: str, role: str, env: dict[str, str], collector: str, manager
 
 
 def plan(definition: Definition, slot: int, origins, chosen_origin: str, collector: str,
-         manager: tuple[str, str] = ("", "")) -> Sandbox:
+         manager: tuple[str, str] = ("", ""), tag: str = "") -> Sandbox:
     if not origins:
         raise RangeUnavailable("the declaration names no origin, so Kali would stand on no Internet address")
     first = default_origin(origins, chosen_origin)
@@ -280,6 +291,7 @@ def plan(definition: Definition, slot: int, origins, chosen_origin: str, collect
     for name, role in definition.nodes.items():
         env = environment(definition, ports, role, slot, upstream, collector)
         nodes.append(Node(name=name, role=role, ports=tuple(port for port in ports if port.node == name),
-                          user_data=user_data(name, role, env, collector, manager), env=env))
+                          user_data=user_data(name, role, env, collector, manager, tag,
+                                              definition.answers.get(name, "")), env=env))
     logged = next(port.lan for port in ports if port.device == definition.filling("log-server").name)
     return Sandbox(slot=slot, wargame=definition.wargame, lans=lans, nodes=tuple(nodes), logged=logged)

@@ -121,10 +121,31 @@ def test_each_node_marks_itself_ready_or_failed_once_its_role_s_boot_has_run(rol
     [[shell, flag, script]] = yaml.safe_load(node.user_data)["runcmd"]
 
     assert (shell, flag) == ("sh", "-c")
-    assert f"if systemctl start {units}; then touch {sandbox.READY}; " in script
-    assert f"else systemctl --no-pager --lines=20 status {units} > {sandbox.FAILED} 2>&1; touch {sandbox.FAILED}; fi" \
+    assert script.startswith(f"install -d -m 0755 {sandbox.STATE}; if systemctl start {units}")
+    assert f"; then touch {sandbox.READY}; " in script
+    assert f"systemctl --no-pager --lines=20 status {units}; }} > {sandbox.FAILED} 2>&1; touch {sandbox.FAILED}; fi" \
         in script
-    assert script.startswith(f"install -d -m 0755 {sandbox.STATE}; ")
+
+
+def test_the_infra_is_ready_only_once_suricata_answers_on_its_command_socket():
+    [[_, _, script]] = yaml.safe_load(planned().node("cr-infra").user_data)["runcmd"]
+
+    assert ("systemctl start slot-boot.service sensor.service && for _ in $(seq 300); do suricatasc -c uptime "
+            ">/dev/null 2>&1 && break; sleep 1; done && suricatasc -c uptime; then") in script, (
+        "configure loads the baseline rules through that socket right after the slot is ready")
+
+
+def test_the_target_is_ready_only_when_its_image_holds_the_wargame_images_at_the_tag_the_slot_asks_for():
+    tag = "c" * 40
+    plan = sandbox.plan(sandbox.read(ROOT, "board"), 1, DECLARED.origins, DECLARED.default_origin, COLLECTOR,
+                        tag=tag)
+    [[_, _, script]] = yaml.safe_load(plan.node("cr-target").user_data)["runcmd"]
+    [[_, _, kali]] = yaml.safe_load(plan.node("cr-kali").user_data)["runcmd"]
+
+    images = "grep -h ' image: ' /opt/wargames/*/compose.yaml"
+    assert f"if {images} >/dev/null && ! {images} | grep -v ':{tag}$' && systemctl start wargames.service;" in script
+    assert f"echo 'the slot asks for wargame images at {tag}:'; {images};" in script
+    assert tag not in kali
 
 
 def test_a_definition_that_puts_a_port_outside_its_lan_or_without_an_address_is_refused(tmp_path):

@@ -192,3 +192,12 @@ def test_the_platform_takes_ssh_and_its_ports_from_the_allowed_networks_open_to_
 @pytest.mark.parametrize("allowed", [[], "0.0.0.0/0", ["203.0.113.1/24"], ["not-a-network"], ["::/0"]])
 def test_an_allowed_list_that_is_not_ipv4_networks_is_refused(allowed):
     assert "network.allowed" in refusal(changed(network__allowed=allowed))
+
+
+def test_the_wargame_tag_the_target_image_was_baked_at_is_explicit_and_reaches_the_platform(tmp_path):
+    entry = cloud.signed_in("fsl-range", written_clouds(tmp_path, **{"fsl-range": ENTRY}))
+
+    assert DOCUMENT["compute"]["target_tag"] == cloud.TARGET_TAG
+    older = dataclasses.replace(cloud.parse(changed(compute__target_tag=None)), signed_in=entry)
+    assert older.heat_parameters()["target_tag"] == cloud.TARGET_TAG
+    assert "compute.target_tag: must be the full commit" in refusal(changed(compute__target_tag="cf8d735e"))

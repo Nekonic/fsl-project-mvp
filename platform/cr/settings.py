@@ -167,6 +167,7 @@ CR_SUBSTRATE_OPTIONS = dict(
                 "subnets": "CR_OPENSTACK_SUBNETS",
                 "platform": "CR_OPENSTACK_PLATFORM",
                 "pool": "CR_OPENSTACK_POOL",
+                "target_tag": "CR_OPENSTACK_TARGET_TAG",
                 "images": "CR_OPENSTACK_IMAGES",
                 "flavors": "CR_OPENSTACK_FLAVORS",
             }.items()
