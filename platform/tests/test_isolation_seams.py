@@ -14,10 +14,10 @@ SEAMS = {
         {"ingest/elastic.py"}, {"register_pipeline.py"},
         r"/_search\b|/_bulk\b|/_ingest/|/_pit\b|/_count\b|^\s*(?:import|from) elasticsearch"),
     "the Suricata process": (
-        {"rules/suricata.py"}, {"range/declaration.yaml", "range/rangehost.py"},
+        {"rules/suricata.py"}, set(),
         r'"suricata", "-T"|suricatasc|reload-rules|"return":"OK"|af-packet'),
     "the CRS and ModSecurity configuration and the nginx reload": (
-        {"rules/crs.py"}, {"range/declaration.yaml", "range/rangehost.py"},
+        {"rules/crs.py"}, set(),
         r"nginx -s reload|REQUEST-9\d\d|modsecurity\.conf|SecRule|/etc/nginx/modsecurity|audit\.log"),
     "the Kibana API": (
         {"kibana.py"}, {"nginx.conf", "console/templates/console/blue.html"},
@@ -25,6 +25,9 @@ SEAMS = {
     "the attacker box": (
         {"attacker.py"}, {"operator_log.py", "entrypoint.sh"},
         r"/usr/local/sbin/set-origin|/var/lib/session/|ORIGIN-SNAT"),
+    "the OpenStack API": (
+        {"range/openstack.py"}, set(),
+        r"/v2\.0/|/servers/detail|/v3/auth/tokens|os-keypairs|\{heat\}/stacks"),
     "the target's ground truth": (
         {"api/loot.py", "api/effect.py"}, set(),
         r'\["secret"\]\["read_path"\]|binlog'),

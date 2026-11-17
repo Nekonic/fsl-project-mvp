@@ -19,7 +19,7 @@ from console import strings
 from range import declared
 from rules import crs
 from range.ports import Ran
-from tests.test_live_map import read_slot
+from tests.test_wiring import read_slot
 from tests.test_lesson_api import DUMPED, TRUTH, WRITTEN, Stand, attacker, one_slot
 from tests.test_scenario_discovery import A_SCENARIO
 from tests.test_strings import tables
@@ -28,8 +28,8 @@ pytestmark = pytest.mark.django_db
 
 ROOT = Path(__file__).resolve().parents[2]
 SQLMAP_AGENT = "sqlmap/1.8.4#stable (https://sqlmap.org)"
-BOARD = "10.32.0.59"
-WAF = "10.30.0.177"
+BOARD = "10.30.128.59"
+WAF = "10.30.0.247"
 CUSTOMER = "73.0.0.10"
 KALI = "5.188.10.10"
 
@@ -167,7 +167,7 @@ def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_lear
             "kali_ip": [answer(client, session, "kali_ip", one)["passed"] for one in (KALI, CUSTOMER)],
             "board_ip": [answer(client, session, "board_ip", one)["passed"] for one in (BOARD, f"{BOARD}/24", WAF)],
             "dmz": [answer(client, session, "dmz", one)["passed"] for one in ("10.30.0.0/24", BOARD)],
-            "log_host": [answer(client, session, "log_host", one)["passed"] for one in ("172.29.1.10", "log-server")],
+            "log_host": [answer(client, session, "log_host", one)["passed"] for one in ("172.29.0.10", "log-server")],
             "waf_ip": [answer(client, session, "waf_ip", one)["passed"] for one in (WAF, BOARD)],
         }
         reordered = answer(client, session, "path", " > ".join(reversed(route.split(" > "))))
@@ -181,7 +181,7 @@ def test_the_map_questions_are_answered_from_the_addresses_and_captions_the_lear
     assert from_customers["passed"] is False and right["passed"] is True, "customers are addresses on kali"
     assert set(route.split(" > ")) <= set(shown["path"]["check"]["options"])
     assert not {"customers", "sw1", "internet"} & set(shown["path"]["check"]["options"])
-    assert shown["dmz"]["point"]["map"] == {"zone": "estate"}
+    assert shown["dmz"]["point"]["map"] == {"zone": "dmz"}
 
 def test_the_reference_s_address_table_lists_the_addresses_the_learner_s_map_draws(client):
     session = opened("f3")
@@ -189,8 +189,8 @@ def test_the_reference_s_address_table_lists_the_addresses_the_learner_s_map_dra
         listed = client.get(f"/api/sessions/{session.pk}/lesson/addresses/").json()["addresses"]
 
     rows = {(one["host"], one["zone"], one["address"]) for one in listed}
-    assert {("kali", "internet", KALI), ("waf", "dmz", WAF), ("board.com", "web", BOARD),
-            ("board.com", "database", "172.18.0.3")} <= rows, "every link the map labels"
+    assert {("kali", "internet", KALI), ("waf", "dmz", WAF), ("board.com", "web", BOARD)} <= rows, (
+        "every link the map labels")
     networks = {(one["host"], one["zone"]): one["network"] for one in listed}
     assert networks[("kali", "internet")] == ""
     assert networks[("board.com", "web")] == str(ipaddress.ip_interface(f"{BOARD}/24").network)

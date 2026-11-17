@@ -53,7 +53,7 @@ REGISTRY = "ghcr.io"
 OWNER = "nekonic"
 BUILDER = "cr-build-"
 BUILDS = "cr_image"
-IMAGES = ("platform", "board", "corp", "corp-db", "kali", "waf", "edge")
+IMAGES = ("platform", "board", "corp", "corp-db")
 RANGE_IMAGES = tuple(name for name in IMAGES if name != "platform")
 MANIFESTS = ", ".join((
     "application/vnd.oci.image.index.v1+json",

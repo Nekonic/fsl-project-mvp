@@ -107,7 +107,6 @@ services:
       KIBANA_URL: "http://kibana:5601/kibana"
       DJANGO_DB_PATH: "/data/db.sqlite3"
       CR_RESET_OWED_DIR: "/data/reset-owed"
-      CR_RANGE_HOST_SEEN: "/data/range-host.json"
       TARGET_URL: "http://board.com"
       PUBLIC_TARGET_URL: "http://board.com"
       WARGAME_CASES_DIR: "/app/redteam/cases"

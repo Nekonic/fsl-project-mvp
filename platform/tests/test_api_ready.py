@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from api import loot
-from range import slot
+from range import pool
 from rules.suricata import RulesUnreadable
 
 URL = "/api/range/ready/"
@@ -12,7 +12,7 @@ pytestmark = pytest.mark.django_db
 
 class Cloud:
     def __init__(self, standing=(("cr-range", "s1", "ACTIVE"),), boot=(), blocked=(), stale=()):
-        self._plan = slot.Plan(boot=boot, standing=standing, blocked=blocked, stale=stale)
+        self._plan = pool.Plan(boot=boot, standing=standing, blocked=blocked, stale=stale)
 
     def plan_slot(self):
         return self._plan
@@ -41,7 +41,7 @@ def test_a_standing_active_range_that_passes_its_checks_is_ready(client):
     (Cloud(standing=(("cr-range", "s1", "SETTING_UP"),)), "REBUILDING", "cr-range is SETTING_UP"),
     (Cloud(boot=("cr-range",), blocked=("the range host pulls the images by the range images' tag",)), "NOT_STANDING",
      "the range host pulls the images"),
-    (Cloud(stale=("cr-range",)), "STALE", "cr-range runs images or slot files older than the platform's"),
+    (Cloud(stale=("cr-range",)), "STALE", "cr-range was created from another template"),
     (Cloud(standing=(("cr-range", "s1", "SETUP_FAILED"),)), "SETUP_FAILED", "cr-range failed its setup"),
 ], ids=["rebuilding", "to-boot", "older-image", "setup-failed"])
 def test_a_slot_not_standing_ready_is_not_ready_and_says_why(client, cloud, phase, reason):

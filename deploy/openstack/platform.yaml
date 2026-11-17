@@ -193,15 +193,14 @@ resources:
                   CR_OPENSTACK_PROJECT=%project%
                   CR_OPENSTACK_REGION=%region%
                   CR_OPENSTACK_INTERFACE=%interface%
-                  CR_OPENSTACK_BASE_IMAGE=%image%
                   CR_OPENSTACK_FLAVOR=%range_flavor%
                   CR_OPENSTACK_AVAILABILITY_ZONE=%availability_zone%
                   CR_OPENSTACK_SUBNETS=%subnets%
-                  CR_OPENSTACK_MTU=%range_mtu%
                   CR_OPENSTACK_SLOTS=%slots%
                   CR_OPENSTACK_SSH_USER=ubuntu
                   CR_OPENSTACK_SSH_KEY=/data/ssh/id_ed25519
-                  CR_OPENSTACK_BUILD_NETWORK=%network%
+                  CR_OPENSTACK_IMAGES=
+                  CR_OPENSTACK_FLAVORS=
               - path: /etc/systemd/network/90-cr-attached.network
                 content: |
                   [Match]

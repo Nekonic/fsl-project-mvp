@@ -121,10 +121,10 @@ def test_the_platform_reads_the_image_sources_it_bundles():
     mounted = {
         volume.split(":")[1] for volume in service["volumes"] if volume.startswith("./")
     }
-    from range import rangehost
+    from range import openstack, sandbox
 
-    for path in (rangehost.SETUP, rangehost.SLOT_SCRIPT, rangehost.TEMPLATE, rangehost.SENSOR_CONFIG,
-                 rangehost.BASELINE_RULES, "wargames/board/compose.yaml"):
+    for path in (openstack.BASELINE_RULES, sandbox.DEFINITION.format(wargame="board"),
+                 sandbox.DEFINITION.format(wargame="corp")):
         assert any(f"{source}/{path}".startswith(f"{m}/") or f"{source}/{path}" == m
                    for m in mounted), path
 

@@ -164,11 +164,15 @@ REAL_SHAPES = {
     "subnets": [{"cidr": "10.31.0.0/24", "gateway_ip": None,
                  "id": "sub-mgmt", "network_id": "net-mgmt", "ip_version": 4}],
     "servers": [
-        {"name": "cr-range", "id": "srv-range", "status": "ACTIVE", "metadata": {"cr_host": "cr-range"},
+        {"name": "cr-slot-1-waf", "id": "srv-waf", "status": "ACTIVE",
+         "metadata": {"cr_slot": "1", "cr_node": "cr-waf", "cr_wargame": "board"},
          "addresses": {"cr-mgmt": [
              {"addr": "10.31.0.40", "OS-EXT-IPS-MAC:mac_addr": "fa:16:3e:0d:11:74",
               "OS-EXT-IPS:type": "fixed", "version": 4}],
-             "cr-platform": [{"addr": "10.20.0.31", "OS-EXT-IPS:type": "fixed", "version": 4}]}},
+             "cr-slot-1-dmz": [{"addr": "10.30.0.247", "OS-EXT-IPS:type": "fixed", "version": 4}]}},
+        {"name": "cr-slot-2-waf", "id": "srv-waf-2", "status": "ACTIVE",
+         "metadata": {"cr_slot": "2", "cr_node": "cr-waf", "cr_wargame": "corp"},
+         "addresses": {"cr-mgmt": [{"addr": "10.31.0.41", "OS-EXT-IPS:type": "fixed", "version": 4}]}},
         {"name": "cr-platform", "id": "srv-platform", "status": "ACTIVE", "metadata": {},
          "addresses": {"cr-mgmt": [
              {"addr": "10.31.0.2", "OS-EXT-IPS:type": "fixed", "version": 4}]}},
@@ -197,6 +201,7 @@ def test_describe_runs_end_to_end_over_http_against_reference_shapes(cloud):
         only_management = type(one)(
             segments=tuple(s for s in one.segments if s.id == "mgmt"),
             roles=one.roles, watches=one.watches, hosts=one.hosts, compose=one.compose,
+            definitions=one.definitions,
         )
         cloudspec = openstack.Cloud(keystone=base, neutron=base, nova=base,
                                     project="cr", user="cr", ssh_user="cr", ssh_key="/k")
@@ -210,9 +215,9 @@ def test_describe_runs_end_to_end_over_http_against_reference_shapes(cloud):
     management = shape.segments[0]
     assert (management.id, management.subnet, management.gateway) == ("mgmt", "10.31.0.0/24", "")
     assert [(n.name, n.address) for n in management.nodes] == [
-        ("cr-platform", "10.31.0.2"), ("cr-range", "10.31.0.40"),
-    ]
-    assert sorted((s.name, s.watches) for s in shape.sensors) == [("cr-range", "cr-waf")]
+        ("cr-platform", "10.31.0.2"), ("cr-waf", "10.31.0.40"),
+    ], "slot 1 reads its own nodes and the platform, not slot 2's"
+    assert sorted((s.name, s.watches) for s in shape.sensors) == [("cr-ids", "cr-waf")]
 
 
 CATALOG = {
@@ -239,6 +244,11 @@ CATALOG = {
                  "url": "http://admin.example.com:9292"},
                 {"interface": "public", "region_id": "RegionOne",
                  "url": "http://example.com:9292"}]},
+            {"type": "orchestration", "name": "heat", "endpoints": [
+                {"interface": "admin", "region_id": "RegionOne",
+                 "url": "http://admin.example.com:8004/v1/cr"},
+                {"interface": "public", "region_id": "RegionOne",
+                 "url": "http://example.com:8004/v1/cr"}]},
         ],
     }
 }

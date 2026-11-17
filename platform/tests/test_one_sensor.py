@@ -2,9 +2,7 @@ import pathlib
 from unittest.mock import patch
 
 import pytest
-import yaml
-
-from range import declared
+from range import declared, openstack, sandbox
 from tests.test_rules_port import RELOAD, RULE, Sensor
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -20,32 +18,23 @@ class Standing:
     def runner(self, role, segment_id=""):
         return self.sensors[role]
 
-def sensors():
-    return yaml.safe_load((ROOT / "deploy/range-host/slot.yaml").read_text())["services"]
+def test_the_one_sensor_stands_inline_behind_the_waf_on_the_slot_s_infra_node():
+    for wargame in sandbox.wargames(ROOT):
+        definition = sandbox.read(ROOT, wargame)
+        sensor = definition.filling("sensor")
+        legs = [port for port in definition.ports if port.device == sensor.name]
 
-
-def test_the_one_sensor_runs_the_pinned_image_behind_the_waf():
-    sensor = sensors()["sensor"]
-
-    assert sensor["image"] == (
-        "jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840"
-    ), "every slot is judged by one Suricata build, which moves only when this pin does"
-    assert sensor["networks"]["web"] == {"interface_name": "web"} and "estate" not in sensor["networks"]
-    assert sensor["networks"]["mgmt"]["interface_name"] == "mgmt"
-    assert sensor["volumes"][0].endswith(":/etc/suricata/suricata.yaml")
+        assert sensor.node == "cr-infra" and {port.lan for port in legs} == {"web-outer", "web-inner"}
+        assert all(port.ids for port in legs), "the sensor's legs carry no address, so nothing reaches it on them"
 
 
 def test_the_sensor_starts_on_the_shipped_baseline_rules():
     stack = declared.read()
     entry = stack.hosts[stack.roles["sensor"]]
-    volumes = sensors()["sensor"]["volumes"]
 
-    assert "/opt/cr/s@slot@/sensor-rules:/var/lib/suricata/rules" in volumes, (
-        "the ready check reads the sensor's rules against local.rules; a sensor started "
-        "with none kept the range out of READY"
-    )
     assert entry.rules == "/var/lib/suricata/rules/local.rules"
-    assert "install -m 0644" in (ROOT / "deploy/range-host/slot.sh").read_text()
+    assert (ROOT / openstack.BASELINE_RULES).is_file(), (
+        "a slot's configure seeds the sensor from local.rules; the ready check reads the sensor's rules against it")
 
 
 @pytest.mark.django_db

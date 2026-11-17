@@ -38,7 +38,7 @@ def steps():
 
 def built_by_compose():
     found = set()
-    for path in [*composed.files(), ROOT / "deploy/range-host/slot.yaml"]:
+    for path in composed.files():
         for service in (yaml.safe_load(path.read_text()).get("services") or {}).values():
             if "build" in service:
                 build = service["build"]
@@ -434,33 +434,33 @@ def saved(tmp_path, name, *tags):
 
 def test_a_sideloaded_image_is_not_looked_for_on_ghcr_and_the_others_are(tmp_path):
     module = rebuild()
-    tarball = saved(tmp_path, "edge.tar", f"ghcr.io/nekonic/cr-edge:{HEAD}")
+    tarball = saved(tmp_path, "corp-db.tar", f"ghcr.io/nekonic/cr-corp-db:{HEAD}")
     asked = []
 
-    tarballs = module.sideloaded([f"edge={tarball}"])
+    tarballs = module.sideloaded([f"corp-db={tarball}"])
     module.refuse_unless_published(BASE, lambda name, tag: asked.append((name, tag)), sideloaded=tarballs)
 
-    assert tarballs == {"edge": module.Tarball(tarball, HEAD)}
-    assert asked == [(name, BASE) for name in module.IMAGES if name != "edge"]
+    assert tarballs == {"corp-db": module.Tarball(tarball, HEAD)}
+    assert asked == [(name, BASE) for name in module.IMAGES if name != "corp-db"]
 
 
 @pytest.mark.parametrize("pair, said", [
-    ("edge={missing}", "does not exist, so nothing was deleted"),
+    ("corp-db={missing}", "does not exist, so nothing was deleted"),
     ("opnsense={tarball}", "NAME one of"),
-    ("edge", "NAME one of"),
-    ("edge={wrong}", "holds no single ghcr.io/nekonic/cr-edge:<commit>"),
-    ("edge={two}", "holds no single ghcr.io/nekonic/cr-edge:<commit>"),
-    ("edge={unreadable}", "not a docker save tarball"),
+    ("corp-db", "NAME one of"),
+    ("corp-db={wrong}", "holds no single ghcr.io/nekonic/cr-corp-db:<commit>"),
+    ("corp-db={two}", "holds no single ghcr.io/nekonic/cr-corp-db:<commit>"),
+    ("corp-db={unreadable}", "not a docker save tarball"),
 ])
 def test_the_rebuild_refuses_a_sideload_it_cannot_run_before_deleting_anything(tmp_path, pair, said):
     module = rebuild()
     paths = {
         "missing": tmp_path / "absent.tar",
-        "tarball": saved(tmp_path, "edge.tar", f"ghcr.io/nekonic/cr-edge:{HEAD}"),
+        "tarball": saved(tmp_path, "corp-db.tar", f"ghcr.io/nekonic/cr-corp-db:{HEAD}"),
         "wrong": saved(tmp_path, "platform.tar", f"ghcr.io/nekonic/cr-platform:{HEAD}",
-                       "ghcr.io/nekonic/cr-edge:dev"),
-        "two": saved(tmp_path, "both.tar", f"ghcr.io/nekonic/cr-edge:{HEAD}",
-                     f"ghcr.io/nekonic/cr-edge:{BASE}"),
+                       "ghcr.io/nekonic/cr-corp-db:dev"),
+        "two": saved(tmp_path, "both.tar", f"ghcr.io/nekonic/cr-corp-db:{HEAD}",
+                     f"ghcr.io/nekonic/cr-corp-db:{BASE}"),
         "unreadable": tmp_path / "plain.tar",
     }
     paths["unreadable"].write_text("not a tar")
@@ -500,8 +500,8 @@ def test_a_platform_only_commit_keeps_the_range_images_tag_and_a_range_side_comm
     pushed = commit("platform/api/views.py", "1")
     platform_only = commit("platform/api/views.py", "2")
     openstack_only = commit("deploy/openstack/platform.yaml", "1")
-    kali = commit("deploy/kali/bashrc", "1")
-    published = {pushed, kali}
+    database = commit("wargames/corp/db/seed.sql", "1")
+    published = {pushed, database}
 
     def tag(commit):
         return module.range_image_tag(commit, tmp_path, lookup=lambda name, at: None if at in published else "missing")
@@ -510,21 +510,21 @@ def test_a_platform_only_commit_keeps_the_range_images_tag_and_a_range_side_comm
         f"{board} changed the board but GHCR holds no images for it; {pushed} holds the same range images and was pushed")
     assert tag(platform_only) == tag(openstack_only) == pushed, (
         "a commit that changes no range image's build context keeps the running range host and its slots")
-    assert tag(kali) == kali, "a changed Kali image is pulled by a new range host"
+    assert tag(database) == database, "a changed corp database image is pulled by a new slot"
 
 
 def test_every_image_must_be_built_from_what_head_holds():
     module = rebuild()
     built = "3" * 40
     platform_sources = "platform pyproject.toml uv.lock"
-    git = ChangedContexts({(BASE, platform_sources), (BASE, "deploy/edge")})
+    git = ChangedContexts({(BASE, platform_sources), (BASE, "wargames/corp/db")})
     platform = {"platform": module.Tarball(Path("p.tar"), built)}
 
-    with pytest.raises(module.Refused, match=rf"sideload them:\n  edge: deploy/edge differs between {BASE} and HEAD$"):
+    with pytest.raises(module.Refused, match=rf"sideload them:\n  corp-db: wargames/corp/db differs between {BASE} and HEAD$"):
         module.refuse_unless_unchanged(BASE, HEAD, platform, git)
     assert (built, platform_sources) in git.compared and (BASE, "wargames/corp/db") in git.compared
     module.refuse_unless_unchanged(
-        BASE, HEAD, {**platform, "edge": module.Tarball(Path("g.tar"), built)}, git)
+        BASE, HEAD, {**platform, "corp-db": module.Tarball(Path("g.tar"), built)}, git)
     with pytest.raises(module.Refused, match=f"platform: {platform_sources} differs between {built} and HEAD"):
         module.refuse_unless_unchanged(BASE, HEAD, platform, ChangedContexts({(built, platform_sources)}))
     assert set(module.build_contexts()) == set(module.IMAGES)
@@ -545,7 +545,7 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
     key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
     bundle = tmp_path / f"cr-{HEAD}.bundle"
     built = "3" * 40
-    sideload = module.Sideload(HEAD, bundle, {"edge": module.Tarball(tmp_path / "edge.tar", built)})
+    sideload = module.Sideload(HEAD, bundle, {"corp-db": module.Tarball(tmp_path / "corp-db.tar", built)})
     platform = NewPlatform()
 
     module.hand_over(platform, "secret", key, store, sideload)
@@ -558,8 +558,8 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
         "a sideload checkout can change uv.lock, and the sync must not hold up the hand-over"
     )
     [load] = [command for command in ran if "docker load" in command]
-    assert f"/tmp/edge.tar" in load
-    assert (f"docker tag ghcr.io/nekonic/cr-edge:{built} ghcr.io/nekonic/cr-edge:"
+    assert f"/tmp/corp-db.tar" in load
+    assert (f"docker tag ghcr.io/nekonic/cr-corp-db:{built} ghcr.io/nekonic/cr-corp-db:"
             "$(sed -n 's/^CR_IMAGE_TAG=//p' /opt/cr/.env)") in load
     restore = next(i for i, command in enumerate(ran) if "docker run" in command)
     assert checkout < ran.index(load) < restore
@@ -569,7 +569,7 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
         "collector ran the old filebeat.yml until each service was recreated"
     )
     assert platform.password_fed() == b"secret"
-    assert platform.settings_fed() == b"CR_SIDELOADED=edge\n", (
+    assert platform.settings_fed() == b"CR_SIDELOADED=corp-db\n", (
         "the platform ships a sideloaded wargame image to the wargame host's builder instead of GHCR's copy "
         "at the same tag, so it has to know which images were sideloaded"
     )
@@ -728,11 +728,11 @@ def test_a_second_hand_over_leaves_one_password_line_and_keeps_every_line_it_doe
 def test_a_sideloading_hand_over_rewrites_the_sideloaded_line_too(monkeypatch, tmp_path):
     module = rebuild()
     sideload = module.Sideload(HEAD, tmp_path / "head.bundle",
-                               {"edge": module.Tarball(tmp_path / "edge.tar", "3" * 40)})
+                               {"corp-db": module.Tarball(tmp_path / "corp-db.tar", "3" * 40)})
 
     _, settings = rewritten_settings(monkeypatch, tmp_path, sideload)
 
-    assert settings == "CR_OPENSTACK_USER=cr\nCR_OPENSTACK_PLATFORM=srv\nCR_SIDELOADED=edge\n", (
+    assert settings == "CR_OPENSTACK_USER=cr\nCR_OPENSTACK_PLATFORM=srv\nCR_SIDELOADED=corp-db\n", (
         "the password leaves the environment file for its own file"
     )
 

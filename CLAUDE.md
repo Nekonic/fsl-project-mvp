@@ -111,24 +111,18 @@ alert that does not mention the attack's mechanism is reported
   Elasticsearch, `rules/suricata.py` the only one that knows the Suricata
   process, `rules/crs.py` the only one that knows the CRS/ModSecurity
   configuration and the nginx reload, `kibana.py` the only one that knows the
-  Kibana API, `range/rangehost.py` the only one that reads the slot's live
-  wiring the learner map draws (`interfaces.py` parses it, `topology.py` names
-  it for the learner), `attacker.py` the only one that knows the attacker box, and the loot
+  Kibana API, `range/openstack.py` the only one that knows the OpenStack API
+  and the only one that reads the slot's live wiring the learner map draws
+  from Neutron (`range/wiring.py` parses it, `topology.py` names it for the
+  learner), `attacker.py` the only one that knows the attacker box, and the loot
   path (`api/loot.py`, the board) and the effect path (`api/effect.py`, corp)
   the only ones that read the target's ground truth. Keep them the only ones.
   Known exceptions in code today; do not add more, and whether to move them is
   open (`docs/STATE.md` backlog 0):
   `register_pipeline.py` PUTs the ingest pipeline to Elasticsearch at bring-up;
-  in `declaration.yaml` the sensor host `cr-range` names the rule file and
-  reload command `rules/suricata.py` is handed, and the WAF host `cr-waf` the
-  exclusion file and nginx reload `rules/crs.py` is handed;
-  `range/rangehost.py` (with `deploy/range-host/slot.sh`) renders and runs each
-  slot, renders the sensor's config, starts and stops the slot's Suricata
-  sensor, configures the edge router and names the sensor's and the WAF's log
-  files it forwards, and
-  `deploy/range-host/slot.yaml` mounts the WAF's audit and refused log
-  files, both tied to `deploy/waf/modsecurity.conf`'s `SecAuditLog` by a test in
-  `platform/tests/test_range_host.py`;
+  in each `wargames/<id>/topology.yaml` the sensor device `cr-ids` names the
+  rule file and reload command `rules/suricata.py` is handed, and the WAF
+  device `cr-waf` the exclusion file and nginx reload `rules/crs.py` is handed;
   `platform/nginx.conf` names the Kibana API routes it refuses, hands every
   other API call inside a space to the `kibana-gate` view and answers
   Kibana's `api/spaces/space` lookup itself, and

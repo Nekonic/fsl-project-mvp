@@ -20,7 +20,7 @@ class Slot:
         self.cloud, self.number = cloud, number
 
     def terminal(self, host):
-        return "10.31.0.9", "cr-range-generation", f"s{self.number}-{host.removeprefix('cr-')}"
+        return f"10.31.0.{self.number}", f"cr-srv-{self.number}", host
 
 
 class Cloud:
@@ -48,7 +48,7 @@ def _found(monkeypatch, capsys, slots, session):
 def test_the_shell_opens_on_the_slot_the_named_session_holds(monkeypatch, capsys):
     held = Session.objects.create(scenario="board", baseline=[], slot=2)
 
-    assert _found(monkeypatch, capsys, 2, str(held.pk))[:2] == (None, "10.31.0.9 cr-range-generation s2-waf")
+    assert _found(monkeypatch, capsys, 2, str(held.pk))[:2] == (None, "10.31.0.2 cr-srv-2 cr-waf")
 
 
 @pytest.mark.django_db
@@ -85,22 +85,22 @@ def test_a_refused_lookup_ends_the_shell_without_ssh_and_tells_the_learner_one_p
     assert "no open session 7" in (tmp_path / "terminal.log").read_text(), "the cause went nowhere"
 
 
-def test_each_pane_is_a_login_shell_in_its_slot_s_container_on_the_range_host(tmp_path):
+def test_each_pane_is_a_root_login_shell_on_its_slot_s_vm(tmp_path):
     seen = tmp_path / "ssh-argv"
-    env = _fakes(tmp_path, python="cat >/dev/null; echo '10.31.0.180 cr-range-1 s3-kali'",
+    env = _fakes(tmp_path, python="cat >/dev/null; echo '10.31.0.180 cr-srv-1 cr-kali'",
                  ssh=f'printf "%s\\n" "$@" > {seen}')
 
     subprocess.run(["sh", str(SCRIPT), "cr-kali", "3"], capture_output=True, text=True, env=env)
     kali = seen.read_text().split("\n")
 
-    assert "ubuntu@10.31.0.180" in kali and "HostKeyAlias=cr-range-1" in kali
-    assert kali[-2].startswith("sudo docker exec -it ") and kali[-2].endswith(" s3-kali bash -l"), (
-        "the shell must be a login shell inside the slot's own Kali, with its own prompt"
+    assert "ubuntu@10.31.0.180" in kali and "HostKeyAlias=cr-srv-1" in kali
+    assert kali[-2].startswith("sudo -i ") and kali[-2].endswith(" bash -l"), (
+        "the shell must be a root login shell on the slot's own Kali VM, with its own prompt"
     )
 
 
 def test_an_ssh_that_cannot_connect_ends_in_the_same_plain_line(tmp_path):
-    env = _fakes(tmp_path, python="cat >/dev/null; echo '10.31.0.180 cr-range-1 s3-kali'",
+    env = _fakes(tmp_path, python="cat >/dev/null; echo '10.31.0.180 cr-srv-1 cr-kali'",
                  ssh="echo 'ssh: connect to host 10.31.0.180 port 22: Connection timed out' >&2; exit 255")
 
     ran = subprocess.run(["sh", str(SCRIPT), "cr-kali", "3"], capture_output=True, text=True, env=env)

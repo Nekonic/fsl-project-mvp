@@ -1,6 +1,5 @@
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 
 from django.conf import settings
@@ -8,8 +7,7 @@ from django.conf import settings
 from range.ports import Drifted, RangeUnavailable
 
 RESET_WAIT = 1800
-RESET_POLL = 2.0
-REBUILD_SHOWN = 120
+RESET_POLL = 5.0
 
 IDLE = "idle"
 RUNNING = "running"
@@ -27,6 +25,12 @@ def owed() -> list[int]:
         return []
     return sorted(int(path.name.removeprefix("slot-")) for path in directory.glob("slot-*"))
 
+def wanted(slot: int) -> str:
+    try:
+        return _marker(slot).read_text().strip()
+    except OSError:
+        return ""
+
 def _of(slot: int) -> dict:
     return _states.setdefault(slot, {"state": IDLE, "reason": ""})
 
@@ -41,12 +45,12 @@ def configured_by_hand(slot: int = 1) -> None:
         if _of(slot)["state"] == IDLE:
             _marker(slot).unlink(missing_ok=True)
 
-def claim(slot: int) -> bool:
+def claim(slot: int, wargame: str = "") -> bool:
     with _guard:
         if _of(slot)["state"] == RUNNING:
             return False
         _marker(slot).parent.mkdir(parents=True, exist_ok=True)
-        _marker(slot).touch()
+        _marker(slot).write_text(wargame)
         _of(slot).update(state=RUNNING, reason="")
         return True
 
@@ -56,12 +60,12 @@ def release(slot: int) -> None:
 def failed(slot: int, reason: str) -> None:
     _set(slot, FAILED, reason)
 
-def begin(adapter, turn, rebuilt=None, claimed=False, then=None, in_place=True):
+def begin(adapter, turn, rebuilt=None, claimed=False, then=None, wargame=""):
     slot = getattr(adapter, "slot", 1)
-    if not claimed and not claim(slot):
+    if not claimed and not claim(slot, wargame):
         return None
     worker = threading.Thread(
-        target=_reset, args=(adapter, turn, rebuilt, then, in_place), name=f"cr-range-reset-{slot}",
+        target=_refill, args=(adapter, turn, rebuilt, then, wargame), name=f"cr-slot-refill-{slot}",
         daemon=True,
     )
     worker.start()
@@ -73,22 +77,14 @@ def _set(slot: int, state: str, reason: str) -> None:
         if state == IDLE:
             _marker(slot).unlink(missing_ok=True)
 
-def _reset(adapter, turn, rebuilt, then=None, in_place=True) -> None:
+def _refill(adapter, turn, rebuilt, then=None, wargame="") -> None:
     slot = getattr(adapter, "slot", 1)
     deadline = time.monotonic() + RESET_WAIT
-    servers = None if rebuilt is None else {server for _, server in rebuilt}
+    gone = {stack for _, stack in rebuilt or ()}
     try:
-        if in_place and hasattr(adapter, "reset_in_place"):
-            hosts = [host for host, _ in rebuilt or ()]
-            with turn:
-                _side_by_side(
-                    lambda: _until_answered(lambda: adapter.reset_in_place(hosts), deadline),
-                    lambda: _configure_once_active(
-                        adapter, deadline, servers, lambda: adapter.configure_rebuilt(hosts)),
-                )
-        else:
-            _configure_once_active(adapter, deadline, servers,
-                                   lambda: _holding(turn, adapter.configure_slot))
+        while not _refilled(adapter, turn, gone, wargame):
+            _pause_before(deadline, f"slot {slot}'s stack was not created and set up within {RESET_WAIT}s")
+        _until_answered(lambda: _holding(turn, adapter.configure_slot), deadline)
     except Exception as exc:
         _set(slot, FAILED, str(exc) or type(exc).__name__)
     else:
@@ -96,23 +92,19 @@ def _reset(adapter, turn, rebuilt, then=None, in_place=True) -> None:
         if then is not None:
             then()
 
+def _refilled(adapter, turn, gone: set[str], wargame: str) -> bool:
+    try:
+        with turn:
+            plan = adapter.ensure_slot(wargame=wargame)
+    except RangeUnavailable:
+        return False
+    if plan.failures:
+        raise Drifted("; ".join(plan.failures))
+    return plan.active and plan.stack_id not in gone
+
 def _holding(turn, step):
     with turn:
         return step()
-
-def _side_by_side(*steps) -> None:
-    with ThreadPoolExecutor(max_workers=len(steps), thread_name_prefix="cr-range-reset") as pool:
-        running = [pool.submit(step) for step in steps]
-        wait(running)
-    for done in running:
-        done.result()
-
-def _configure_once_active(adapter, deadline: float, servers, configure) -> None:
-    shown = time.monotonic() + REBUILD_SHOWN
-    left_active: set[str] = set()
-    while not _rebuilt(adapter, servers, left_active, shown):
-        _pause_before(deadline, f"the slot's VMs were not all ACTIVE within {RESET_WAIT}s")
-    _until_answered(configure, deadline)
 
 def _until_answered(step, deadline: float):
     while True:
@@ -120,23 +112,6 @@ def _until_answered(step, deadline: float):
             return step()
         except RangeUnavailable as exc:
             _pause_before(deadline, f"configure did not reach the slot within {RESET_WAIT}s: {exc}")
-
-def _rebuilt(adapter, servers, left_active: set[str], shown: float) -> bool:
-    try:
-        plan = adapter.plan_slot()
-    except RangeUnavailable:
-        return False
-    if plan.boot or plan.blocked:
-        raise Drifted("; ".join(plan.blocked) or f"{', '.join(plan.boot)} is not standing")
-    left_active.update(server for _, server, status in plan.standing if status != "ACTIVE")
-    unseen = [host for host, server, _ in plan.standing
-              if (servers is None or server in servers) and server not in left_active]
-    if unseen and time.monotonic() >= shown:
-        raise Drifted(
-            f"Nova never showed {', '.join(unseen)} rebuilding within {REBUILD_SHOWN}s, "
-            f"so the slot was not configured in case it is the VM from before the rebuild"
-        )
-    return plan.active and not unseen
 
 def _pause_before(deadline: float, gave_up: str) -> None:
     if time.monotonic() >= deadline:

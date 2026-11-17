@@ -140,7 +140,7 @@ def test_a_rendered_stack_is_the_same_for_the_same_inputs_and_another_for_anothe
     assert json.loads(json.dumps(one)) == one
     assert openstack.stack_digest(one, parameters) == openstack.stack_digest(again, parameters)
     assert openstack.stack_digest(one, parameters) != openstack.stack_digest(other, parameters)
-    body = openstack.stack_body(planned(slot=2), one, parameters, 30)
+    body = openstack.stack_body(planned(slot=2), one, parameters, openstack.stack_digest(one, parameters), 30)
     assert body["stack_name"] == "cr-slot-2" and body["disable_rollback"] is True
     assert body["tags"].split(",")[:3] == ["cr-range", "cr.slot=2", "cr.wargame=board"]
 

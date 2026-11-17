@@ -51,7 +51,8 @@ from ingest import elastic
 from redteam import harness, tools
 import operator_log
 from range import substrate
-from range.interfaces import Wiring
+from range.pool import phase as slot_phase
+from range.wiring import Wiring
 from range.ports import Drifted, RangeUnavailable, Shape
 from rules import crs, suricata
 from scoring.correlate import correlate
@@ -115,7 +116,6 @@ _SEEDING_BY_SESSION: dict[int, threading.Lock] = {}
 _TURNS_GUARD = threading.Lock()
 _SLOT_TURNS: dict[int, threading.RLock] = {}
 SETTLING_PHASES = ("RESETTING", "REBUILDING", "CHECKING")
-SETUP_FAILED = "SETUP_FAILED"
 
 def _turn(slot):
     if slot is None:
@@ -293,7 +293,7 @@ def sessions(request):
 def _opened_on_a_ready_slot(adapter, fields):
     for _ in range(getattr(adapter, "slots", 1) + 1):
         _refuse_a_full_range(adapter)
-        chosen = _ready_slot(adapter)
+        chosen = _ready_slot(adapter, fields.get("scenario") or "")
         with SLOT_CHOICE:
             _refuse_a_second_session(fields["owner"])
             _refuse_a_full_range(adapter)
@@ -326,13 +326,31 @@ def _refuse_a_full_range(adapter):
             f"already open on the range; close one first"
         )
 
-def _ready_slot(adapter):
+def _ready_slot(adapter, wargame=""):
     if not hasattr(adapter, "plan_slot"):
         return None
-    verdict = _readiness(adapter, first_ready=True)
+    verdict = _readiness(adapter, first_ready=True, wargame=wargame)
     if not verdict["ready"]:
+        spare = next((slot for slot in verdict["slots"] if slot["phase"] == "READY" and slot.get("session") is None
+                      and slot.get("wargame") not in ("", wargame)), None)
+        if wargame and spare is not None and _retargeted(adapter, spare["number"], wargame):
+            raise Conflict(f"the range is not ready: no slot runs {wargame}, so slot {spare['number']} is being "
+                           f"built again for it; open again once it is ready")
         raise Conflict("the range is not ready: " + "; ".join(verdict["slot"]["blocked"]))
     return verdict["slot"].get("number") if _slotted(adapter) else None
+
+def _retargeted(adapter, number, wargame) -> bool:
+    if not hasattr(adapter, "reset_slot") or not reset.claim(number, wargame):
+        return False
+    one, turn = _in_slot(adapter, number), _turn(number if _slotted(adapter) else None)
+    try:
+        with turn:
+            rebuilt = one.reset_slot()
+    except (Drifted, RangeUnavailable) as exc:
+        reset.failed(number, str(exc) or type(exc).__name__)
+        return False
+    reset.begin(one, turn, rebuilt, claimed=True, wargame=wargame)
+    return True
 
 def _asked_ids(given):
     try:
@@ -2061,7 +2079,7 @@ def close_session(request, session_id):
     number = _slot_of(session) if _slotted(adapter) and adapter.slots > 1 else 1
     closed_at = timezone.now()
     with SLOT_CHOICE:
-        claimed = resets and reset.claim(number)
+        claimed = resets and reset.claim(number, session.scenario)
         if not Session.objects.filter(pk=session.pk, ended_at=None).update(ended_at=closed_at):
             if claimed:
                 reset.release(number)
@@ -2105,7 +2123,7 @@ def _rebuilt_on_close(session, adapter, closed_at, claimed, reply):
     if not hasattr(adapter, "configure_slot"):
         return None
     _enabled_by_the_rebuild(closed_at, _slot_of(session))
-    return claimed and reset.begin(adapter, turn, rebuilt, claimed=True)
+    return claimed and reset.begin(adapter, turn, rebuilt, claimed=True, wargame=session.scenario)
 
 def resume_resets():
     numbers = reset.owed()
@@ -2113,10 +2131,11 @@ def resume_resets():
         return
     cloud = _built_by_the_cloud(substrate(), "configure_slot", "slot is")
     for number in numbers:
-        if reset.claim(number):
-            _reset_again(cloud, number)
+        wargame = reset.wanted(number)
+        if reset.claim(number, wargame):
+            _reset_again(cloud, number, wargame)
 
-def _reset_again(cloud, number):
+def _reset_again(cloud, number, wargame=""):
     try:
         adapter, turn = _in_slot(cloud, number), _turn(number if _slotted(cloud) else None)
         with turn:
@@ -2125,7 +2144,7 @@ def _reset_again(cloud, number):
     except Exception as exc:
         reset.failed(number, str(exc) or type(exc).__name__)
         return
-    reset.begin(adapter, turn, rebuilt, claimed=True)
+    reset.begin(adapter, turn, rebuilt, claimed=True, wargame=wargame)
 
 def _enabled_by_the_rebuild(rebuilt_at, number=1):
     DisabledRule.objects.filter(
@@ -2867,15 +2886,13 @@ def range_slot(request):
                 getattr(one, "slot", 1) if _slotted(adapter) else None)))))
     removed = [step for steps in _each_slot(request, adapter, lambda one: one.teardown_slot())
                for step in steps]
-    if request.GET.get("slot") in (None, "") and hasattr(adapter, "teardown_range_host"):
-        removed += adapter.teardown_range_host()
     return _reply({"removed": [{"kind": kind, "id": ident} for kind, ident in removed]})
 
 def _ensured(adapter, held, turn):
     if held is None:
         plan = adapter.ensure_slot()
         if plan.rebuilt and reset.claim(getattr(adapter, "slot", 1)):
-            reset.begin(adapter, turn, plan.rebuilt, claimed=True, in_place=False)
+            reset.begin(adapter, turn, plan.rebuilt, claimed=True)
         return plan
     plan = adapter.ensure_slot(renew=False)
     if not plan.stale:
@@ -2931,7 +2948,7 @@ def _holders() -> dict[int, int]:
     return {slot or 1: pk for slot, pk in
             Session.objects.filter(ended_at=None).order_by("pk").values_list("slot", "pk")}
 
-def _readiness(adapter, first_ready=False) -> dict:
+def _readiness(adapter, first_ready=False, wargame="") -> dict:
     held = _holders()
     numbers = range(1, getattr(adapter, "slots", 1) + 1)
     plans = adapter.plan_slots() if hasattr(adapter, "plan_slots") else [adapter.plan_slot()]
@@ -2940,7 +2957,7 @@ def _readiness(adapter, first_ready=False) -> dict:
         with ThreadPoolExecutor(max_workers=len(plans), thread_name_prefix="cr-ready") as pool:
             verdicts = list(pool.map(lambda pair: _checked_apart(adapter, *pair, held), zip(numbers, plans)))
     for number, plan in ([] if verdicts else zip(numbers, plans)):
-        verdicts.append(_range_ready(_in_slot(adapter, number), plan, held.get(number)))
+        verdicts.append(_range_ready(_in_slot(adapter, number), plan, held.get(number), wargame))
         if first_ready and verdicts[-1]["ready"]:
             return verdicts[-1] | {"slots": [verdict["slot"] for verdict in verdicts]}
     free = [verdict for verdict in verdicts if verdict["slot"].get("session") is None]
@@ -2955,7 +2972,7 @@ def _checked_apart(adapter, number, plan, held):
     finally:
         connection.close()
 
-def _range_ready(adapter, plan=None, held=None) -> dict:
+def _range_ready(adapter, plan=None, held=None, wargame="") -> dict:
     number = getattr(adapter, "slot", 1)
     plan = plan or adapter.plan_slot()
     resetting = reset.standing(number)
@@ -2968,41 +2985,10 @@ def _range_ready(adapter, plan=None, held=None) -> dict:
             "rules_baseline": None if unchecked else _rules_at_baseline(adapter),
         }
         checks["ground_truth"] = None if truth is None else truth.result()
-    blocked = []
-    if held is not None:
-        phase = "IN_USE"
-        blocked.append(f"session {held} holds this slot")
-    elif unchecked:
-        phase = "RESETTING"
-        blocked.append(
-            "the slot is resetting after a session closed (its Kali, WAF and targets recreated, "
-            "its sensors back on the baseline rules); wait for it, no need to call configure"
-        )
-    elif resetting["state"] == reset.FAILED:
-        phase = "RESET_FAILED"
-        blocked.append(
-            f"the range reset after the last session failed: {resetting['reason']}; "
-            f"POST /api/range/configure/ retries it"
-        )
-    elif plan.boot or plan.blocked:
-        phase = "NOT_STANDING"
-        blocked += list(plan.blocked) or [f"{host} is not standing" for host in plan.boot]
-    elif plan.stale:
-        phase = "STALE"
-        blocked += [f"{host} runs images or slot files older than the platform's; POST "
-                    f"/api/range/slot/ replaces it" for host in plan.stale]
-    elif any(status == SETUP_FAILED for _, _, status in plan.standing):
-        phase = SETUP_FAILED
-        blocked += [f"{host} failed its setup; /var/log/cr-setup.log on it says why"
-                    for host, _, status in plan.standing if status == SETUP_FAILED]
-    elif not plan.active:
-        phase = "REBUILDING"
-        blocked += [f"{host} is {status}" for host, _, status in plan.standing
-                    if status != "ACTIVE"]
-    elif not (checks["ground_truth"] and checks["rules_baseline"]):
-        phase = "CHECKING"
-    else:
-        phase = "READY"
+    phase, blocked = slot_phase(plan, held, resetting, checks, reset.RUNNING, reset.FAILED)
+    serves = plan.serves(wargame) if hasattr(plan, "serves") else True
+    if not serves:
+        blocked.append(f"the slot runs {plan.wargame}, not {wargame}")
     if checks["ground_truth"] is False:
         blocked.append("the target's ground truth could not be read")
     if checks["rules_baseline"] is False:
@@ -3010,12 +2996,13 @@ def _range_ready(adapter, plan=None, held=None) -> dict:
     if number != 1:
         blocked = [f"slot {number}: {reason}" for reason in blocked]
     return {
-        "ready": held is None and all(checks.values()) and resetting["state"] == reset.IDLE,
+        "ready": held is None and all(checks.values()) and resetting["state"] == reset.IDLE and serves,
         "substrate": "openstack",
         "slot": {
             "number": number,
             "session": held,
             "phase": phase,
+            "wargame": getattr(plan, "wargame", ""),
             "reset": resetting,
             "standing": [{"host": host, "server": server, "status": status}
                          for host, server, status in plan.standing],

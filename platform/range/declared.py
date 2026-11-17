@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
+from range import sandbox
 from range.ports import RangeUnavailable, Segment
 
 DECLARATION = Path(__file__).resolve().parent / "declaration.yaml"
+SOURCE = Path(__file__).resolve().parents[2]
 
 @dataclass(frozen=True)
 class Site:
@@ -25,13 +28,12 @@ class Origin:
 
 @dataclass(frozen=True)
 class Host:
-    setup: str = ""
+    node: str = ""
+    container: str = ""
     rules: str = ""
     reload: str = ""
     pid: str = ""
-    segments: tuple[str, ...] = ()
     names: tuple[str, ...] = ()
-    wargames: tuple[str, ...] = ()
 
 @dataclass(frozen=True)
 class Declaration:
@@ -43,6 +45,7 @@ class Declaration:
     hosts: dict[str, Host] = field(default_factory=dict)
     default_origin: str = ""
     defended_site: Site | None = None
+    definitions: dict[str, sandbox.Definition] = field(default_factory=dict)
 
     def check(self) -> None:
         site = self.defended_site
@@ -58,36 +61,6 @@ class Declaration:
                     f"{sensing!r} is declared to watch {sensed!r} and nothing "
                     f"fills {', '.join(sorted(missing))}"
                 )
-        unfilled = sorted(set(self.compose) - set(self.roles))
-        if unfilled:
-            raise ValueError(
-                f"compose services are mapped to {', '.join(unfilled)}, which "
-                f"no role names"
-            )
-        roleless = sorted(set(self.hosts) - set(self.roles.values()))
-        if roleless:
-            raise ValueError(
-                f"{', '.join(roleless)} is declared and no role names it, so nothing in "
-                f"the range would ever reach it"
-            )
-        machines = sorted(name for name, host in self.hosts.items() if host.setup)
-        if self.hosts and len(machines) != 1:
-            raise ValueError(
-                f"the range runs on one range host built from a setup script, and "
-                f"{len(machines)} hosts declare one: {machines}"
-            )
-        for name, host in sorted(self.hosts.items()):
-            if host.wargames and not host.setup:
-                raise ValueError(
-                    f"host {name!r} runs wargames and is no range host; the wargames run "
-                    f"on {machines[0]}"
-                )
-        for role, service in sorted(self.compose.items()):
-            if self.roles.get(role) not in self.hosts:
-                raise ValueError(
-                    f"role {role!r} runs in the slot's {service!r} container and its host "
-                    f"{self.roles.get(role)!r} is not declared"
-                )
         outside = {s.id for s in self.segments if s.outside}
         if self.default_origin and self.default_origin not in outside:
             raise ValueError(
@@ -96,14 +69,21 @@ class Declaration:
             )
 
     @property
-    def range_host(self) -> str:
-        return next(name for name, host in self.hosts.items() if host.setup)
+    def wargames(self) -> tuple[str, ...]:
+        return tuple(sorted(self.definitions))
 
     def host(self, role: str) -> str:
         host = self.roles.get(role)
         if host is None:
             raise RangeUnavailable(f"no host fills the role {role!r}")
         return host
+
+    def node(self, role: str) -> str:
+        host = self.host(role)
+        node = (self.hosts.get(host) or Host()).node
+        if not node:
+            raise RangeUnavailable(f"{host} fills {role!r} and runs on no node of a slot")
+        return node
 
     def watching(self) -> list[tuple[str, str]]:
         return [
@@ -144,24 +124,30 @@ def _segments(entry, origins: tuple[Origin, ...]) -> tuple[Segment, ...]:
         return tuple(Segment(id=o.id, name=name, origin=o.label) for o in origins)
     return (Segment(id=entry["id"], name=name, origin=entry.get("origin") or ""),)
 
-def _hosts(entries) -> dict[str, Host]:
-    return {
-        name: Host(
-            setup=entry.get("setup") or "",
-            rules=entry.get("rules") or "",
-            reload=entry.get("reload") or "",
-            pid=entry.get("pid") or "",
-            segments=tuple(entry.get("segments") or ()),
-            names=tuple(entry.get("names") or ()),
-            wargames=tuple(entry.get("wargames") or ()),
-        )
-        for name, entry in (entries or {}).items()
-    }
+def _merged(definitions: dict[str, sandbox.Definition]) -> tuple[dict, dict, dict, dict]:
+    roles, compose, hosts, watches = {}, {}, {}, {}
+    for wargame, definition in sorted(definitions.items()):
+        for device in definition.devices.values():
+            host = Host(node=device.node, container=device.container, rules=device.rules,
+                        reload=device.reload, pid=device.pid, names=device.names)
+            if hosts.setdefault(device.name, host) != host:
+                raise ValueError(f"{wargame}'s topology declares {device.name} unlike another wargame's")
+            for role in device.roles:
+                if roles.setdefault(role, device.name) != device.name:
+                    raise ValueError(f"{wargame}'s topology fills {role!r} with {device.name}, another wargame's "
+                                     f"with {roles[role]}")
+                if device.container:
+                    compose[role] = device.container
+        watches.update(definition.watches)
+    return roles, compose, hosts, watches
 
-def read(path: Path = DECLARATION) -> Declaration:
+def read(path: Path = DECLARATION, source: Path | None = None) -> Declaration:
+    source = Path(source or os.environ.get("CR_SOURCE") or SOURCE)
     document = yaml.safe_load(Path(path).read_text()) or {}
     entries = document.get("segments") or []
     origins = {entry["id"]: _origins(entry) for entry in entries}
+    definitions = {wargame: sandbox.read(source, wargame) for wargame in sandbox.wargames(source)}
+    roles, compose, hosts, watches = _merged(definitions)
     found = Declaration(
         segments=tuple(
             segment
@@ -169,12 +155,13 @@ def read(path: Path = DECLARATION) -> Declaration:
             for segment in _segments(entry, origins[entry["id"]])
         ),
         origins=tuple(origin for entry in entries for origin in origins[entry["id"]]),
-        roles=dict(document.get("roles") or {}),
-        compose=dict(document.get("compose") or {}),
-        watches=dict(document.get("watches") or {}),
-        hosts=_hosts(document.get("hosts")),
+        roles={**roles, **(document.get("roles") or {})},
+        compose=compose,
+        watches=watches,
+        hosts=hosts,
         default_origin=document.get("default_origin") or "",
         defended_site=_site(document.get("defended_site")),
+        definitions=definitions,
     )
     found.check()
     return found

@@ -182,7 +182,7 @@ def internet_side(origins, chosen: str) -> str:
     return origin_addresses(origin.subnet, 1)[0] if origin is not None else ""
 
 
-def _addressed(ports, origins, chosen: str) -> tuple[Port, ...]:
+def addressed(ports, origins, chosen: str) -> tuple[Port, ...]:
     placed = []
     source = internet_side(origins, chosen)
     ordered = sorted(origins, key=lambda origin: origin.id != chosen)
@@ -257,7 +257,7 @@ def plan(definition: Definition, slot: int, origins, chosen_origin: str, collect
     lans = tuple(Lan(name=name, cidrs=tuple(cidrs) + (
         (first.subnet,) if any(port.origins and port.lan == name for port in definition.ports) else ()))
         for name, cidrs in definition.lans.items())
-    ports = _addressed(definition.ports, origins, chosen_origin)
+    ports = addressed(definition.ports, origins, chosen_origin)
     upstream = internet_side(origins, chosen_origin)
     nodes = []
     for name, role in definition.nodes.items():

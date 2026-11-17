@@ -107,16 +107,19 @@ def test_the_fabric_s_groups_admit_only_ntp_to_the_platform_and_only_the_platfor
     adapter.ensure_fabric()
 
     groups = {g["name"]: g["id"] for g in cloud.groups}
-    assert set(groups) == {fabric.EGRESS_GROUP, fabric.REACH_GROUP, fabric.MANAGEMENT_GROUP}
+    assert set(groups) == {fabric.EGRESS_GROUP, fabric.REACH_GROUP, fabric.MANAGEMENT_GROUP, fabric.SENDERS_GROUP}
     assert sorted(cloud.rules, key=repr) == sorted([
         {"security_group_id": groups[fabric.REACH_GROUP], "direction": "ingress", "ethertype": "IPv4",
          "protocol": "udp", "port_range_min": 123, "port_range_max": 123,
          "remote_group_id": groups[fabric.MANAGEMENT_GROUP]},
+        {"security_group_id": groups[fabric.REACH_GROUP], "direction": "ingress", "ethertype": "IPv4",
+         "protocol": "udp", "port_range_min": 5140, "port_range_max": 5140,
+         "remote_group_id": groups[fabric.SENDERS_GROUP]},
         {"security_group_id": groups[fabric.MANAGEMENT_GROUP], "direction": "ingress",
          "ethertype": "IPv4", "remote_group_id": groups[fabric.REACH_GROUP]},
     ], key=repr), (
-        "the range host's management port lets in only the platform, its egress port "
-        "lets in nothing, and the platform's port takes nothing the range host starts but NTP"
+        "a slot node's control port lets in only the platform, and the platform's port takes nothing a "
+        "slot starts but NTP, and syslog from the infra nodes alone"
     )
 
 def test_the_platform_joins_management_through_a_port_in_the_reach_group(cloud, platform):

@@ -13,7 +13,7 @@ from django.core.management.base import CommandError
 from api import reachability, reset, views
 from api.management.commands import run_on_role
 from api.models import Session, DisabledRule
-from range import slot
+from range import pool
 from range.ports import Node, Ran, Segment
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -81,7 +81,7 @@ class Cloud(Slot):
         super().__init__(self, 1)
         self.count = slots
         self.max_sessions = slots
-        self.plans = [slot.Plan(standing=STANDING, slot=n) for n in range(1, slots + 1)]
+        self.plans = [pool.Plan(standing=STANDING, slot=n) for n in range(1, slots + 1)]
         self.ran, self.reset, self.configured, self.ensured, self.renewed = [], [], [], [], []
         self.hold = 0
 
@@ -178,8 +178,8 @@ def test_a_close_does_not_wait_while_another_open_reads_the_range(client, cloud)
     reading, done = threading.Event(), threading.Event()
     read = views._readiness
 
-    def slow_readiness(adapter, first_ready=False):
-        verdict = read(adapter, first_ready)
+    def slow_readiness(adapter, first_ready=False, wargame=""):
+        verdict = read(adapter, first_ready, wargame)
         reading.set()
         done.wait(5)
         return verdict
@@ -209,8 +209,8 @@ def test_an_open_whose_ready_slot_is_taken_as_it_reads_takes_the_next_ready_one(
     read = views._readiness
     raced = []
 
-    def taken_while_reading(adapter, first_ready=False):
-        verdict = read(adapter, first_ready)
+    def taken_while_reading(adapter, first_ready=False, wargame=""):
+        verdict = read(adapter, first_ready, wargame)
         if not raced:
             raced.append(Session.objects.create(scenario="board", baseline=[], slot=verdict["slot"]["number"]))
         return verdict

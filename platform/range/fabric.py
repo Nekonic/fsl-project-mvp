@@ -13,7 +13,8 @@ CARRIED = (MANAGEMENT,)
 REACH_GROUP = "cr-reach"
 MANAGEMENT_GROUP = "cr-mgmt"
 EGRESS_GROUP = "cr-egress"
-GROUPS = (REACH_GROUP, MANAGEMENT_GROUP, EGRESS_GROUP)
+SENDERS_GROUP = "cr-senders"
+GROUPS = (REACH_GROUP, MANAGEMENT_GROUP, EGRESS_GROUP, SENDERS_GROUP)
 RETIRED_GROUPS = ("cr-range", "cr-build")
 COLLECTOR_PORT = 5140
 NTP_PORT = 123
@@ -36,6 +37,7 @@ class Plan:
     groups: tuple[str, ...] = ()
     reach: bool = False
     ntp: bool = False
+    collector: bool = False
     present: tuple[str, ...] = ()
     drifted: tuple[str, ...] = ()
     leftovers: tuple[str, ...] = ()
@@ -43,7 +45,7 @@ class Plan:
     @property
     def clean(self) -> bool:
         return not (self.networks or self.subnets or self.keypair or self.groups
-                    or self.reach or self.ntp or self.drifted)
+                    or self.reach or self.ntp or self.collector or self.drifted)
 
 
 def network_name(segment: str) -> str:
@@ -166,7 +168,8 @@ def plan(declaration: Declaration, networks: list, subnets: list, keypairs: list
         keypair=key is None,
         groups=tuple(name for name, found in named.items() if not found),
         reach=not reached,
-        ntp=not _serves_time(named[REACH_GROUP], named[MANAGEMENT_GROUP]),
+        ntp=not _admits(named[REACH_GROUP], named[MANAGEMENT_GROUP], ntp_rule),
+        collector=not _admits(named[REACH_GROUP], named[SENDERS_GROUP], collector_rule),
         present=tuple(present),
         drifted=tuple(dict.fromkeys(drifted)),
         leftovers=tuple(leftovers),
@@ -191,29 +194,15 @@ def ntp_rule(reach: str, management: str) -> dict:
             "remote_group_id": management}
 
 
-def _serves_time(reach: list[dict], management: list[dict]) -> bool:
-    if len(reach) != 1 or len(management) != 1:
+def collector_rule(reach: str, senders: str) -> dict:
+    return {"security_group_id": reach, "direction": "ingress", "ethertype": "IPv4",
+            "protocol": "udp", "port_range_min": COLLECTOR_PORT, "port_range_max": COLLECTOR_PORT,
+            "remote_group_id": senders}
+
+
+def _admits(reach: list[dict], remote: list[dict], rule) -> bool:
+    if len(reach) != 1 or len(remote) != 1:
         return False
-    wanted_rule = ntp_rule(reach[0]["id"], management[0]["id"])
-    return any(all(rule.get(key) == value for key, value in wanted_rule.items())
-               for rule in reach[0].get("security_group_rules") or [])
-
-
-def _collector_rule(rule: dict) -> bool:
-    return (rule.get("direction") == "ingress" and rule.get("protocol") == "udp"
-            and rule.get("port_range_min") == COLLECTOR_PORT)
-
-
-def hearing(group: dict, senders: list[str]) -> tuple[list[dict], list[str]]:
-    wanted_prefixes = [f"{sender}/32" for sender in senders]
-    heard = {
-        rule.get("remote_ip_prefix"): rule["id"]
-        for rule in group.get("security_group_rules") or [] if _collector_rule(rule)
-    }
-    create = [
-        {"security_group_id": group["id"], "direction": "ingress", "ethertype": "IPv4",
-         "protocol": "udp", "port_range_min": COLLECTOR_PORT,
-         "port_range_max": COLLECTOR_PORT, "remote_ip_prefix": prefix}
-        for prefix in wanted_prefixes if prefix not in heard
-    ]
-    return create, [rule for prefix, rule in heard.items() if prefix not in wanted_prefixes]
+    wanted_rule = rule(reach[0]["id"], remote[0]["id"])
+    return any(all(found.get(key) == value for key, value in wanted_rule.items())
+               for found in reach[0].get("security_group_rules") or [])

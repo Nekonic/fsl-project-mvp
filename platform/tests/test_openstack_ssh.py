@@ -10,10 +10,11 @@ from dataclasses import replace
 
 import pytest
 
-from range import declared, openstack, rangehost, slot
+from range import declared, fabric, openstack
 from range.ports import RangeUnavailable, Segment
 
 SSHD = shutil.which("sshd") or "/usr/sbin/sshd"
+TARGET = "wargames"
 
 
 def free_port() -> int:
@@ -42,7 +43,7 @@ def start_sshd(home: pathlib.Path, port: int, host_key: pathlib.Path):
         "UsePAM no\n"
         "StrictModes no\n"
         "PermitUserRC no\n"
-        f"SetEnv ZDOTDIR={home}\n"
+        f"SetEnv ZDOTDIR={home} PATH={home / 'bin'}:/usr/bin:/bin:/usr/sbin:/sbin\n"
         f"PidFile {home / 'sshd.pid'}\n"
     )
     said = home / f"sshd-{host_key.name}.log"
@@ -80,6 +81,9 @@ def host(tmp_path):
             f"none at {SSHD}"
         )
     client = keygen(tmp_path / "client")
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "sudo").write_text('#!/bin/sh\nexec "$@"\n')
+    (tmp_path / "bin" / "sudo").chmod(0o755)
     (tmp_path / "authorized_keys").write_text(
         (tmp_path / "client.pub").read_text()
     )
@@ -105,46 +109,27 @@ def host(tmp_path):
 FIRST_BOOT = "2026-09-23T10:00:00.000000"
 
 
-def adapter(
-    host, server_id="kali-1", launched_at=FIRST_BOOT, seen="", asked=None, **cloud
-) -> openstack.OpenStack:
+def adapter(host, server_id="target-1", launched_at=FIRST_BOOT, **cloud) -> openstack.OpenStack:
     declaration = replace(
         declared.read(), origins=(), segments=(Segment(id="mgmt", name="Management"),)
     )
-    standing = declaration.segments[0].id
-    networks = {
-        "networks": [
-            {
-                "id": f"net-{segment.id}",
-                "name": f"net-{segment.id}",
-                "tags": [f"{openstack.SEGMENT_TAG}={segment.id}"],
-            }
-            for segment in declaration.segments
-        ]
-    }
+    network = fabric.network_name(fabric.MANAGEMENT)
+    networks = {"networks": [{"id": "net-mgmt", "name": network, "tags": [f"{openstack.SEGMENT_TAG}=mgmt"]}]}
     servers = {
         "servers": [
             {
                 "id": server_id,
-                "name": declaration.range_host,
-                "metadata": {slot.HOST: declaration.range_host},
+                "name": "cr-slot-1-target",
+                "metadata": {"cr_slot": "1", "cr_node": "cr-target"},
                 openstack.LAUNCHED: launched_at,
-                "addresses": {
-                    f"net-{standing}": [
-                        {"addr": "127.0.0.1", openstack.FIXED: "fixed"}
-                    ]
-                },
+                "addresses": {network: [{"addr": "127.0.0.1", openstack.FIXED: "fixed"}]},
             }
         ]
     }
 
     def get(call):
-        if asked is not None:
-            asked.append(call)
         if "/v2.0/networks" in call:
             return networks
-        if "/v2.0/subnets" in call:
-            return {"subnets": []}
         return servers
 
     reaching = openstack.Cloud(**{
@@ -158,11 +143,11 @@ def adapter(
         "ssh_config": str(host["home"] / "ssh_config"),
         **cloud,
     })
-    return openstack.OpenStack(declaration, reaching, get=get, build=openstack.Build(seen=seen))
+    return openstack.OpenStack(declaration, reaching, get=get)
 
 
 def attacker(host):
-    return adapter(host).runner(rangehost.ROLE)
+    return adapter(host).runner(TARGET)
 
 
 def test_an_argument_reaches_the_host_as_the_argument_it_was(host):
@@ -226,7 +211,7 @@ def test_another_machine_at_an_instance_s_address_is_refused(host):
     another_key_answers(host)
 
     with pytest.raises(RangeUnavailable, match="Host key verification failed"):
-        adapter(host).runner(rangehost.ROLE)(["true"])
+        adapter(host).runner(TARGET)(["true"])
 
 
 @pytest.mark.parametrize("generation", [
@@ -238,7 +223,7 @@ def test_a_rebuilt_instance_or_a_new_one_on_an_old_address_is_reached_again(host
 
     another_key_answers(host)
 
-    assert adapter(host, **generation).runner(rangehost.ROLE)(["true"]).exit_code == 0, (
+    assert adapter(host, **generation).runner(TARGET)(["true"]).exit_code == 0, (
         "a rebuild recreates the root disk and cloud-init makes new host keys, "
         "so every rebuild on a range that is rebuilt constantly locked the "
         "platform out of that role until someone edited known_hosts by hand"
@@ -248,40 +233,3 @@ def test_a_rebuilt_instance_or_a_new_one_on_an_old_address_is_reached_again(host
 def test_a_command_that_outlives_its_timeout_is_named_as_such(host):
     with pytest.raises(RangeUnavailable, match="did not finish within 1s"):
         attacker(host)(["sleep", "5"], timeout=1)
-
-
-def test_a_second_process_reaches_the_range_host_by_the_address_the_first_read(host):
-    seen = str(host["home"] / "range-host.json")
-    assert adapter(host, seen=seen).runner(rangehost.ROLE)(["true"]).exit_code == 0
-
-    asked = []
-    ran = adapter(host, seen=seen, asked=asked).runner(rangehost.ROLE)(["echo", "reached"])
-
-    assert (ran.output, asked) == ("reached\n", []), (
-        "every manage.py run_on_role is a new process, and reading networks, servers "
-        "and subnets from the cloud to find one address cost 1.5 s of each 3 s command"
-    )
-
-
-def test_a_stale_record_of_the_range_host_is_read_from_the_cloud_again(host):
-    seen = host["home"] / "range-host.json"
-    assert adapter(host, seen=str(seen)).runner(rangehost.ROLE)(["true"]).exit_code == 0
-    held = openstack.json.loads(seen.read_text())
-    seen.write_text(openstack.json.dumps(held | {"read_at": held["read_at"] - openstack.SEEN_FOR - 1}))
-
-    asked = []
-    assert adapter(host, seen=str(seen), asked=asked).runner(rangehost.ROLE)(["true"]).exit_code == 0
-
-    assert asked, "a range host rebuilt on a new address would be unreachable for as long as the record stood"
-
-
-def test_a_command_that_never_reports_drops_the_record_of_the_range_host(host):
-    seen = host["home"] / "range-host.json"
-    assert adapter(host, seen=str(seen)).runner(rangehost.ROLE)(["true"]).exit_code == 0
-    host["daemon"].kill()
-    host["daemon"].wait()
-
-    with pytest.raises(RangeUnavailable):
-        adapter(host, seen=str(seen)).runner(rangehost.ROLE)(["true"])
-
-    assert not seen.exists(), "the next command would try the same dead address until the record aged out"

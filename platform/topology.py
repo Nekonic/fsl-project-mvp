@@ -3,7 +3,6 @@ from __future__ import annotations
 import ipaddress
 from dataclasses import dataclass
 
-from range.slot import NAMED_ON
 
 def shape(described, declared=None) -> dict:
     sensor_host = (declared.roles.get("sensor", "") if declared else "")
@@ -59,7 +58,7 @@ ROUTER = "router"
 WAF = "waf"
 LOG_SERVER = "log-server"
 INTERNET = "internet"
-SERVICE = NAMED_ON
+SERVICE = "dmz"
 SWITCH = "switch:{zone}"
 SENSOR = "sensor:{service}"
 CAPTIONS = ("internet", "dmz", "web", "database", "mgmt")
@@ -113,7 +112,7 @@ def learner(declared, wargame: str, customers_from: str = "", customers_prefer: 
             put(compose.get(site, ""), domain)
             put(compose.get(f"{site}{DATABASE_SUFFIX}", ""), f"{site}{DATABASE_SUFFIX}")
     put(LOG_STORE, LOG_SERVER)
-    put(compose.get(LOG_SERVER, ""), LOG_SERVER)
+    put(roles.get(LOG_SERVER, ""), LOG_SERVER)
     for sensing, sensed in sorted(declared.watches.items()):
         if roles.get(sensing) and roles[sensing] not in hosts and roles.get(sensed) in hosts:
             put(roles[sensing], hosts[roles[sensed]][0])
@@ -229,40 +228,50 @@ def _link(source: str, zone: str, address: str, more: int = 0) -> dict:
     return {"source": source, "target": SWITCH.format(zone=zone), "kind": "link", "address": address,
             **({"more": more} if more else {})}
 
+def _sensed(learner, wiring) -> tuple[dict[str, list[str]], dict[str, str]]:
+    gateway = learner.roles.get("gateway", "")
+    sensors, wires = {}, {}
+    for container in wiring.containers:
+        if not container.sniffs:
+            continue
+        legs = wiring.legs(container)
+        sensor = SENSOR.format(service=container.service)
+        sensors[sensor] = [legs[name] for name in container.sniffs if legs.get(name)]
+        for network in sensors[sensor]:
+            if any(gateway in learner.hosts.get(other.host, ()) and network in wiring.legs(other).values()
+                   for other in wiring.containers if other is not container):
+                wires[network] = sensor
+    return sensors, wires
+
 def graph(learner, wiring) -> dict:
     found = wiring.interfaces()
     heads = link_heads(learner, found)
     captioned = captions(learner, found)
-    zones = [zone for zone in ordered(learner, found) if wiring.network(zone)]
+    sensors, wires = _sensed(learner, wiring)
+    zones = [zone for zone in ordered(learner, found) if wiring.network(zone) and zone not in wires]
     nodes = [{"id": SWITCH.format(zone=zone), "kind": "switch", "zone": zone} for zone in zones]
     edges = []
+    for sensor, networks in sorted(sensors.items()):
+        kept = [network for network in networks if network in zones]
+        if kept and any(network in wires for network in networks):
+            nodes.append({"id": sensor, "kind": "sensor", "zone": kept[0]})
+            edges += [{"source": sensor, "target": SWITCH.format(zone=zone), "kind": "link"} for zone in kept]
+    drawn = {node["id"] for node in nodes}
     for container in sorted(wiring.containers, key=lambda one: one.service):
-        if container.sniffs:
-            legs = wiring.legs(container)
-            mirrored = [network.key for name in container.sniffs
-                        if (network := wiring.bridged(name) or wiring.network(legs.get(name, ""))) is not None
-                        and network.key in zones]
-            if mirrored:
-                sensor = SENSOR.format(service=container.service)
-                linked = [(legs[name], address.partition("/")[0]) for name, address in container.addresses
-                          if legs.get(name) in zones and legs[name] not in mirrored]
-                nodes.append({"id": sensor, "kind": "sensor", "zone": mirrored[0],
-                              **({"zones": [zone for zone, _ in linked]} if linked else {})})
-                edges += [{"source": sensor, "target": SWITCH.format(zone=zone), "kind": "mirror"}
-                          for zone in mirrored]
-                edges += [_link(sensor, zone, address) for zone, address in linked]
-            continue
         named = [shown for shown in learner.hosts.get(container.host, ()) if shown != CUSTOMERS]
-        if not named:
+        if container.sniffs or not named:
             continue
         name, legs = named[0], wiring.legs(container)
         on = [zone for zone in zones if zone in legs.values()]
-        if not on:
+        through = [network for network in dict.fromkeys(legs.values()) if wires.get(network) in drawn]
+        if not on and not through:
             continue
-        held = {zone: heads.get((name, zone)) for zone in on}
+        held = {zone: heads.get((name, zone)) for zone in on + through}
         nodes.append({"id": name, "kind": learner.kinds.get(name, "host"), "name": name, "zones": on})
-        edges += [_link(name, zone, head.address.partition("/")[0], extra_addresses(found, head)) if head
-                  else _link(name, zone, "") for zone, head in held.items()]
+        for zone, head in held.items():
+            edge = (_link(name, zone, head.address.partition("/")[0], extra_addresses(found, head)) if head
+                    else _link(name, zone, ""))
+            edges.append({**edge, "target": wires[zone]} if zone in through else edge)
     drawn_zones = [{"id": zone, "caption": captioned[zone],
                     "subnet": "" if captioned[zone] == "internet" else next(iter(wiring.network(zone).subnets), ""),
                     **({"owner": zone.removesuffix(BACKEND_SUFFIX)} if captioned[zone] == "database" else {})}
@@ -381,7 +390,9 @@ def laid_out(zones, nodes, edges) -> list[dict]:
         right = x
     titles = {zone["id"]: 2 * (_caption_width(zone) // 2 + CAPTION_CLEAR) for zone in zones}
     servers = [node for node in held.get(web, ()) if node["kind"] != "sensor"] if web else []
-    sensors = [node for node in nodes if node["kind"] == "sensor"]
+    inline = [node for node in held.get(web, ()) if node["kind"] == "sensor"] if web else []
+    sensors = [node for node in nodes if node["kind"] == "sensor" and node not in inline]
+    below = SENSOR_DROP if inline else 0
     others = [node for node in held.get(band, ()) if node["kind"] != "sensor"] if band else []
     single = len(servers) <= 1
     western = -(ICON_HALF + PAD) if inet else 0
@@ -391,12 +402,14 @@ def laid_out(zones, nodes, edges) -> list[dict]:
         hub = western + reaching
     else:
         hub = western + ICON_HALF + PAD
-    lowest = ROW + max(len(servers) - 1, 0) * TIER + SENSOR_DROP
+    lowest = ROW + below + max(len(servers) - 1, 0) * TIER + SENSOR_DROP
     if web:
-        switch[web].update(x=hub, y=ROW)
+        for node in inline:
+            node.update(x=hub, y=ROW)
+        switch[web].update(x=hub, y=ROW + below)
         out = max([SPAN] + [toward(node, web) for node in servers]) + (0 if single else BOX_GAP)
         for k, node in enumerate(servers):
-            node.update(x=hub + out, y=ROW + k * TIER)
+            node.update(x=hub + out, y=ROW + below + k * TIER)
     east = max((node["x"] for node in nodes if "x" in node), default=0)
     for zone in by.get("database", ()):
         server = next((node for node in servers if zone in node["zones"]), None)

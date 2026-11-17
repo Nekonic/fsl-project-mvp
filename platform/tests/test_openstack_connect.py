@@ -84,6 +84,9 @@ class Cloud:
                     {"type": "image", "endpoints": [{
                         "interface": "public", "region_id": "RegionOne", "url": here,
                     }]},
+                    {"type": "orchestration", "endpoints": [{
+                        "interface": "public", "region_id": "RegionOne", "url": here,
+                    }]},
                 ]}}, {"X-Subject-Token": f"tok{cloud.tokens}"})
 
             def do_GET(self):
@@ -132,9 +135,7 @@ def options(cloud, **overrides):
         "interface": "public",
         "domain": "default",
         "source": str(ROOT),
-        "subnets": "estate=10.30.0.0/16 mgmt=10.31.0.0/24",
-        "mtu": "1442",
-        "image_tag": "abc",
+        "subnets": "mgmt=10.31.0.0/24",
         **overrides,
     }
 

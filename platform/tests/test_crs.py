@@ -87,11 +87,9 @@ def test_on_openstack_tuning_writes_where_the_waf_container_reads_and_reloads_it
     )
     assert read.returncode == 0, read.stderr[-300:]
     layout = crs.Layout(*read.stdout.strip().splitlines())
-    image = (pathlib.Path(__file__).resolve().parents[2] / "deploy/waf/Dockerfile").read_text()
     assert layout.rules.startswith("/etc/nginx/modsecurity/crs/rules/"), (
         "the WAF's modsecurity.conf includes /etc/nginx/modsecurity/crs/rules/*.conf"
     )
-    assert f"/dev/null {layout.rules}" in image, "the image ships the empty exclusion file a reset returns to"
 
     calls = []
 

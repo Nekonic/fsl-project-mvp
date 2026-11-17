@@ -5,13 +5,13 @@ import pytest
 from django.utils import timezone
 
 from api.models import Session
-from range import slot
+from range import pool
 
 pytestmark = pytest.mark.django_db
 
 class Cloud:
     def plan_slot(self):
-        return slot.Plan(standing=(("cr-waf", "s1", "ACTIVE"),))
+        return pool.Plan(standing=(("cr-waf", "s1", "ACTIVE"),))
 
     def runner(self, role):
         return lambda *a, **k: None

@@ -104,10 +104,10 @@ def test_on_openstack_the_waf_terminal_is_a_shell_in_the_slot_s_waf_container(cl
     served = [line for line in (ROOT / "platform/entrypoint.sh").read_text().splitlines()
               if re.search(r"\bttyd\b.*-b /vm-terminal/waf\b", line)]
     assert len(served) == 1 and served[0].rstrip(" &\\").endswith("/app/vm-terminal.sh cr-waf"), served
-    assert declared.read().compose["gateway"] == "waf"
+    assert declared.read().hosts[declared.read().roles["gateway"]].node == "cr-waf"
     shell = (ROOT / "platform/vm-terminal.sh").read_text()
-    assert ".terminal(wanted)" in shell and '"ubuntu@${addr}"' in shell and "sudo docker exec -it" in shell, (
-        "the shell is a docker exec into the slot's WAF on the range host's management address"
+    assert ".terminal(wanted)" in shell and '"ubuntu@${addr}"' in shell and "sudo -i" in shell, (
+        "the shell is a root login on the slot's WAF VM at its management address"
     )
     assert "StrictHostKeyChecking=accept-new" in shell and '-o HostKeyAlias=$alias' in shell, (
         "a rebuilt server is a new key under a new alias, so the terminal neither warns nor stops checking"

@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-from range import slot
+from range import pool
 
 pytestmark = pytest.mark.django_db
 
@@ -16,7 +16,7 @@ class Built:
         self.configured = 0
 
     def plan_slot(self):
-        return slot.Plan(
+        return pool.Plan(
             boot=("cr-range",),
             standing=(("cr-range", "srv-1", "ACTIVE"),),
         )
@@ -32,10 +32,6 @@ class Built:
     def rebuild_slot(self):
         self.rebuilt += 1
         return []
-
-    def teardown_range_host(self):
-        self.torn += 1
-        return [("server", "srv-1"), ("port", "port-1")]
 
     def configure_slot(self):
         self.configured += 1
@@ -60,7 +56,5 @@ def test_reading_the_slot_changes_nothing_and_only_a_post_or_delete_acts_on_the_
         "rebuilt": []}
     assert client.post_json("/api/range/configure/").json() == {
         "configured": [{"host": "cr-edge", "reported": ["logs 10.31.0.195:5140"]}]}
-    assert client.delete(URL).json()["removed"] == [{"kind": "project", "id": "s1"},
-                                                    {"kind": "server", "id": "srv-1"},
-                                                    {"kind": "port", "id": "port-1"}]
-    assert (built.ensured, built.torn, built.rebuilt, built.configured) == (1, 2, 1, 1)
+    assert client.delete(URL).json()["removed"] == [{"kind": "project", "id": "s1"}]
+    assert (built.ensured, built.torn, built.rebuilt, built.configured) == (1, 1, 1, 1)
