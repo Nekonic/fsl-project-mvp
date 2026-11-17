@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import ipaddress
 import json
 import os
@@ -18,7 +19,7 @@ from urllib.parse import quote
 
 import requests
 
-from range import clock, fabric, interfaces, rangehost, slot
+from range import clock, fabric, interfaces, rangehost, sandbox, slot
 from range.declared import Declaration
 from rules import suricata
 from range.ports import (
@@ -119,6 +120,107 @@ _heard: dict[tuple[str, str], list] = {}
 
 class EndpointGone(RangeUnavailable):
     pass
+
+
+HOT_VERSION = "2021-04-16"
+STACK = "cr-slot-{slot}"
+STACK_TAG = "cr-range"
+SLOT_TAG = "cr.slot={slot}"
+WARGAME_TAG = "cr.wargame="
+DIGEST_TAG = "cr.digest="
+CONTROL = "control"
+STACK_PARAMETERS = ("key_name", "control_network", "control_group", "senders_group")
+
+
+def stack_name(slot: int) -> str:
+    return STACK.format(slot=slot)
+
+
+def _tags(plan: sandbox.Sandbox, **marks: str) -> list[str]:
+    return [SLOT_TAG.format(slot=plan.slot), *(f"cr.{key}={value}" for key, value in marks.items())]
+
+
+def _lan_rules(plan: sandbox.Sandbox, lan: sandbox.Lan) -> list[dict]:
+    if lan.name == plan.logged:
+        return [{"direction": "ingress", "protocol": "tcp", "port_range_min": sandbox.SHIPPED_PORT,
+                 "port_range_max": sandbox.SHIPPED_PORT, "remote_ip_prefix": cidr} for cidr in lan.cidrs]
+    foreign = any(port.pairs for port in plan.ports if port.lan == lan.name)
+    return [{"direction": "ingress", "remote_ip_prefix": cidr}
+            for cidr in ((sandbox.EVERYWHERE,) if foreign else lan.cidrs)]
+
+
+def _port_name(port: sandbox.Port) -> str:
+    return f"port_{port.node}_{port.lan}"
+
+
+def _subnet_of(plan: sandbox.Sandbox, port: sandbox.Port) -> str:
+    lan = next(lan for lan in plan.lans if lan.name == port.lan)
+    at = next(at for at, cidr in enumerate(lan.cidrs)
+              if ipaddress.ip_address(port.address) in ipaddress.ip_network(cidr))
+    return f"subnet_{lan.name}_{at}"
+
+
+def template(plan: sandbox.Sandbox, availability_zone: str = "") -> dict:
+    prefix = stack_name(plan.slot)
+    roles = sorted({node.role for node in plan.nodes})
+    parameters = {name: {"type": "string"} for name in STACK_PARAMETERS}
+    parameters.update({f"{kind}_{role}": {"type": "string"} for kind in ("image", "flavor") for role in roles})
+    resources: dict[str, dict] = {}
+    for lan in plan.lans:
+        resources[f"net_{lan.name}"] = {"type": "OS::Neutron::Net", "properties": {
+            "name": f"{prefix}-{lan.name}", "tags": _tags(plan, lan=lan.name)}}
+        for at, cidr in enumerate(lan.cidrs):
+            resources[f"subnet_{lan.name}_{at}"] = {"type": "OS::Neutron::Subnet", "properties": {
+                "name": f"{prefix}-{lan.name}-{at}", "network": {"get_resource": f"net_{lan.name}"},
+                "cidr": cidr, "enable_dhcp": False, "gateway_ip": None}}
+        resources[f"group_{lan.name}"] = {"type": "OS::Neutron::SecurityGroup", "properties": {
+            "name": f"{prefix}-{lan.name}", "rules": _lan_rules(plan, lan)}}
+    for node in plan.nodes:
+        control_groups = [{"get_param": "control_group"}]
+        if node.role == "infra":
+            control_groups.append({"get_param": "senders_group"})
+        resources[f"port_{node.name}_{CONTROL}"] = {"type": "OS::Neutron::Port", "properties": {
+            "name": f"{prefix}-{node.name}-{CONTROL}", "network": {"get_param": "control_network"},
+            "security_groups": control_groups, "tags": _tags(plan, node=node.name, lan=CONTROL)}}
+        for port in node.ports:
+            properties = {
+                "name": f"{prefix}-{node.name}-{port.lan}", "network": {"get_resource": f"net_{port.lan}"},
+                "fixed_ips": [{"subnet": {"get_resource": _subnet_of(plan, port)}, "ip_address": port.address}],
+                "tags": _tags(plan, node=node.name, device=port.device, lan=port.lan),
+            }
+            if port.secured:
+                properties["security_groups"] = [{"get_resource": f"group_{port.lan}"}]
+            else:
+                properties["port_security_enabled"] = False
+            if port.pairs:
+                properties["allowed_address_pairs"] = [{"ip_address": pair} for pair in port.pairs]
+            resources[_port_name(port)] = {"type": "OS::Neutron::Port", "properties": properties}
+        server = {
+            "name": f"{prefix}-{node.name.removeprefix('cr-')}",
+            "image": {"get_param": f"image_{node.role}"}, "flavor": {"get_param": f"flavor_{node.role}"},
+            "key_name": {"get_param": "key_name"}, "config_drive": True,
+            "networks": [{"port": {"get_resource": f"port_{node.name}_{CONTROL}"}}]
+            + [{"port": {"get_resource": _port_name(port)}} for port in node.ports],
+            "user_data_format": "RAW", "user_data": node.user_data,
+            "metadata": {"cr_slot": str(plan.slot), "cr_node": node.name, "cr_wargame": plan.wargame},
+        }
+        if availability_zone:
+            server["availability_zone"] = availability_zone
+        resources[f"server_{node.name}"] = {"type": "OS::Nova::Server", "properties": server}
+    return {"heat_template_version": HOT_VERSION, "description": f"{prefix}: {plan.wargame}",
+            "parameters": parameters, "resources": resources}
+
+
+def stack_digest(rendered: dict, parameters: dict) -> str:
+    hashed = hashlib.sha256(json.dumps([rendered, parameters], sort_keys=True).encode())
+    return hashed.hexdigest()[:16]
+
+
+def stack_body(plan: sandbox.Sandbox, rendered: dict, parameters: dict, timeout_minutes: int) -> dict:
+    return {"stack_name": stack_name(plan.slot), "template": rendered, "parameters": parameters,
+            "tags": ",".join([STACK_TAG, SLOT_TAG.format(slot=plan.slot), WARGAME_TAG + plan.wargame,
+                              DIGEST_TAG + stack_digest(rendered, parameters)]),
+            "timeout_mins": timeout_minutes, "disable_rollback": True}
 
 
 def pairs(text: str) -> dict[str, str]:

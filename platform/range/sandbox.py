@@ -155,6 +155,7 @@ class Sandbox:
     wargame: str
     lans: tuple[Lan, ...]
     nodes: tuple[Node, ...]
+    logged: str = ""
 
     @property
     def ports(self) -> list[Port]:
@@ -260,7 +261,8 @@ def plan(definition: Definition, slot: int, origins, chosen_origin: str, collect
     nodes = tuple(Node(name=name, role=role, ports=tuple(port for port in ports if port.node == name),
                        user_data=context.user_data(name, role))
                   for name, role in definition.nodes.items())
-    return Sandbox(slot=slot, wargame=definition.wargame, lans=tuple(lans), nodes=nodes)
+    logged = next(port.lan for port in ports if port.device == definition.filling("log-server").name)
+    return Sandbox(slot=slot, wargame=definition.wargame, lans=tuple(lans), nodes=nodes, logged=logged)
 
 
 class _Literal(yaml.SafeDumper):
