@@ -211,14 +211,20 @@ def test_each_interface_s_full_address_stands_beside_its_device_inside_the_devic
     assert shown[("waf", "switch:estate")] == "10.30.0.177" and shown[("board.com", "switch:board-default")] == "172.18.0.3"
     assert [zone["subnet"] for zone in drawn["zones"]] == [
         "", "10.30.0.0/24", "10.32.0.0/24", "172.18.0.0/16", "172.19.0.0/16", "172.29.1.0/24"]
-    homes = {node["id"]: None if node["kind"] == "router" else (node.get("zones") or [None])[0]
-             for node in drawn["nodes"]}
+    homes = {node["id"]: None if node["kind"] == "router" else node["zone"] if node["kind"] == "sensor"
+             else (node.get("zones") or [None])[0] for node in drawn["nodes"]}
     assert {(label["text"], label["zone"]) for label in labels.values()} == {
-        (address, homes[source] or target.removeprefix("switch:")) for (source, target), address in shown.items()}
+        (address, homes[source]) for (source, target), address in shown.items()}
+    pad = topology.LABEL_PAD
     for label in labels.values():
         left, right = topology._spans(label)
-        box = boxes[label["zone"]]
-        assert box[0] < left and right < box[2] and box[1] < label["y"] < box[3], label
+        if label["zone"] is None:
+            assert not [box for box in boxes.values() if left - pad < box[2] and box[0] < right + pad
+                        and label["y"] - topology.LINE < box[3] and box[1] < label["y"] + topology.LINE], label
+        else:
+            box = boxes[label["zone"]]
+            assert box[0] + pad <= left and right + pad <= box[2], label
+            assert box[1] + pad <= label["y"] - topology.LINE // 2 and label["y"] + topology.LINE // 2 + pad <= box[3], label
         device = placed[label["id"].split(":", 1)[1].rpartition(":switch:")[0]]
         assert min(abs(left - device["x"]), abs(right - device["x"])) <= topology.ICON_HALF + topology.OFFSET + 8, label
         assert abs(label["y"] - device["y"]) <= topology._below(device) + topology.ADDRESS_RISE, label
@@ -230,6 +236,7 @@ def test_the_sensor_watches_the_web_servers_behind_the_waf_and_reports_on_the_ma
     edges = {(edge["kind"], edge["source"], edge["target"]) for edge in drawn["edges"]}
 
     assert {(source, target) for kind, source, target in edges if kind == "mirror"} == {("sensor:sensor", "switch:web")}
+    assert not [edge for edge in drawn["edges"] if edge["kind"] == "mirror" and edge.get("address")]
     assert {("link", "sensor:sensor", "switch:mgmt"), ("link", "waf", "switch:mgmt"),
             ("link", "log-server", "switch:mgmt")} <= edges
     assert not [node for node in drawn["nodes"] if node["kind"] in ("collector", "host")], (
@@ -337,9 +344,10 @@ def test_the_waf_stands_in_the_dmz_the_web_servers_in_their_segment_and_the_rout
     assert inside(placed["waf"], boxes["estate"]) and inside(placed["switch:estate"], boxes["estate"])
     assert inside(placed["board.com"], boxes["web"]) and inside(placed["corp.com"], boxes["web"])
     assert not any(inside(placed["router"], box) for box in boxes.values())
-    assert boxes["internet"][2] <= placed["router"]["x"] - topology.ICON_HALF
-    assert placed["router"]["x"] + topology.ICON_HALF <= boxes["estate"][0]
-    assert inside(placed["sensor:sensor"], boxes["mgmt"]) and inside(placed["log-server"], boxes["mgmt"])
+    assert boxes["internet"][2] + topology.CLEAR <= placed["router"]["x"] - topology.ICON_HALF
+    assert placed["router"]["x"] + topology.ICON_HALF + topology.CLEAR <= boxes["estate"][0]
+    assert inside(placed["sensor:sensor"], boxes["web"]) and inside(placed["log-server"], boxes["mgmt"])
+    assert not inside(placed["sensor:sensor"], boxes["mgmt"])
     assert inside(placed["board-db"], boxes["board-default"]) and inside(placed["corp-db"], boxes["corp-default"])
 
 
@@ -376,6 +384,21 @@ def test_every_line_turns_at_right_angles_and_runs_through_no_icon_and_no_box_it
             for zone, box in boxes.items():
                 if zone not in own:
                     assert not crosses(segment, box), (edge["id"], zone)
+
+
+@pytest.mark.parametrize("without", [(), ("corp-wp", "corp-db")], ids=["both-targets", "board-alone"])
+def test_no_line_runs_through_a_zone_s_title(without):
+    drawn = board_map(without=without)
+    placed = nodes_of(drawn)
+
+    for zone in drawn["zones"]:
+        x1, top, x2, _ = zone["box"]
+        middle = (x1 + x2) // 2 + zone["shift"]
+        half = topology._caption_width(zone) // 2
+        for edge in drawn["edges"]:
+            for (a1, b1), (a2, b2) in zip(points(edge, placed), points(edge, placed)[1:]):
+                if a1 == a2 and min(b1, b2) < top < max(b1, b2):
+                    assert abs(a1 - middle) >= half + topology.CAPTION_CLEAR // 2, (zone["id"], edge["id"])
 
 
 @pytest.mark.parametrize("without", [(), ("corp-wp", "corp-db")], ids=["both-targets", "board-alone"])
