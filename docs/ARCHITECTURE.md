@@ -1818,6 +1818,7 @@ nginx(`platform/nginx.conf`)에 남은 것:
   - `log_source`: `suricata`, `modsecurity`, `nginx` 중 하나
   - `sensor`: 기록을 남긴 쪽. Suricata 기록이면 센서가 본 구간(`in_iface`. 센서가 WAF 뒤만 보므로 언제나 `web`), ModSecurity와 nginx 기록이면 `waf`
   - `request_headers`: 요청 헤더별 `Name: value`. `X-Request-ID`는 제외
+  - `request_body`: 웹방화벽 감사 로그에 남은 요청 본문을 보낸 그대로, URL 인코딩된 채로 보여 줌. ModSecurity의 `transaction.request.body`에서 읽음. 감사 로그 파트는 `ABCEFHJZ`(`deploy/waf/modsecurity.conf`)이고, ModSecurity v3는 C 파트에서만 본문을 남김
   - `request_header`: 자주 쓰는 헤더별 keyword composite field(`request_header.host`, `.user_agent`, `.referer`, `.cookie`, `.x_forwarded_for` 등 `kibana.REQUEST_HEADERS_SHOWN`). Suricata의 `http.request_headers`나 ModSecurity의 `transaction.request.headers`에서 읽음
 - `sensor` 계산: Suricata 이벤트의 `in_iface` 값을 그대로 씀. 스크립트에 `cr` 호스트 이름이 드러나지 않음
 - `sourceFilters`로 숨기는 필드(`kibana.HIDDEN_FIELDS`): `_index`, `event.*`, `log.*`, `message`, `agent.*`, `ecs.*`, `host`, `host.*`, `input.*`, `error.*`, `http.*`, `transaction.*`, `metadata.*`, `data_stream.*`, `flow_id`, `tx_id`, `pcap_cnt`, `in_iface`, `pkt_src`, `community_id`, `src_ip`, `dest_ip`, `alert.signature`, `alert.signature_id`. KQL 검색은 그대로 됨

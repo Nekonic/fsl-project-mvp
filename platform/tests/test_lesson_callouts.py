@@ -63,10 +63,13 @@ def step_named(name, **point):
     return [{**step, "point": {**step["point"], **point}} if step["id"] == name else step for step in STEPS]
 
 def test_the_f5_sort_step_points_at_the_whole_control_so_its_label_is_inside_the_ring():
-    sorts = [step for lesson in wargames.foundations("board") for step in lesson["steps"] if step["id"] == "sort"]
+    def site_stage(point):
+        return point["site"] if "site" in point else site_stage(point["then"])
+    sorts = [site_stage(step["point"]) for lesson in wargames.foundations("board") for step in lesson["steps"]
+             if step["id"] == "sort"]
 
-    assert sorts and all("select[name=sort]" in step["point"]["site"] and step["point"]["site"].startswith("form")
-                         for step in sorts), "the label 정렬 beside the menu is part of what is ringed"
+    assert sorts and all("select[name=sort]" in ringed and ringed.startswith("form")
+                         for ringed in sorts), "the label 정렬 beside the menu is part of what is ringed"
 
 def test_the_f3_forwarded_for_step_is_its_solo_last_step_after_the_and_not_query_left_one_row():
     f3 = next(lesson for lesson in wargames.foundations("board") if lesson["id"] == "f3")

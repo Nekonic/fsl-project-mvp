@@ -914,8 +914,18 @@ def test_f5_opens_the_developer_tools_before_the_sort_request_and_an_answer_with
     assert lesson.help_counts(session.lesson_steps["f5"])["retried"] == 0, (
         "walk round 27: the row-not-selected refusal counted as a wrong try, so the result page said failed then passed")
     assert sort_note.index(table["site.dev.toggle"]) < sort_note.index("'정렬'"), (
-        "a fresh lesson opens with the developer tools closed, and a request sent before they open is not listed")
+        "a fresh lesson opens with the developer tools closed, so the note opens them before the sort request")
     assert "0건" not in still_note, "saying what no results means told the learner the answer was absent"
+
+def test_a_step_whose_note_opens_the_developer_tools_first_rings_the_toggle_until_they_are_open():
+    table = tables()
+    first = re.compile(f"'{re.escape(table['site.dev.toggle'])}'를 (먼저 [연열]|여세요)")
+    told = [(taught["id"], shown) for taught in wargames.foundations("board") for shown in taught["steps"]
+            if first.search(table.get(f"{taught['text']}.coach.{shown['id']}", ""))]
+
+    assert {(lesson_id, shown["id"]) for lesson_id, shown in told} >= {("f4", "probe"), ("f5", "sort")}
+    assert all((shown["point"].get("dev"), shown["point"].get("until")) == ("toggle", "dev_open") for _, shown in told), (
+        "walk round 28: F5's note said to open the developer tools first while the ring sat on the sort control")
 
 def test_a_quoted_wildcard_in_kql_gets_a_line_saying_the_star_is_literal_there(client):
     session = opened("f3")

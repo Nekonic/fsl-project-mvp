@@ -9293,3 +9293,21 @@ worker-PID set remembered in the view (it would put nginx process knowledge
 outside `crs.py`); joining lines elsewhere in core to keep the number flat
 (that hides the growth instead of recording it).
 
+## 2026-11-18 — The WAF records the request body; the session view shows it as `request_body`
+
+Scenario 3.4 asks for an IDS rule on a URL-encoded comment body, and no log a
+learner can read held one: the audit log parts `ABIJDEFHZ` came from
+ModSecurity v2, and v3 writes the request body only for part C and has no D,
+I or K (ModSecurity Reference Manual v3.x, `SecAuditLogParts`, default
+`ABCFHZ`). The WAF now logs `ABCEFHJZ` (`SecRequestBodyAccess On` already),
+and the session data view adds one runtime field, `request_body`, the body as
+sent (`transaction.request.body`); `transaction.*` stays hidden. 3.4's hint
+names the field, not the value.
+
+Rejected: Suricata's `http-body-printable` on alerts, which shows a body only
+once a rule already fires; CRS's matched data (`transaction.messages.details.data`),
+which is the decoded fragment, not what the IDS inspects; leaving the learner
+to reproduce the comment in the developer tools, which shows their own
+request, not the attacker's. The audit record now also carries bodies of
+other logged requests (4xx-5xx or a CRS match), such as a refused login's
+form; the range's accounts are seeded test accounts.

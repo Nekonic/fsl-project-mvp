@@ -1,4 +1,5 @@
 import copy
+import json
 import re
 import uuid
 from datetime import timedelta
@@ -8,6 +9,7 @@ from unittest.mock import patch
 import pytest
 from django.utils import timezone
 
+import kibana
 import scenarios
 import traffic
 import wargames
@@ -103,6 +105,18 @@ def test_a_scenario_lists_the_board_s_objectives_only_when_one_of_its_attacks_tr
     assert keys("3.3") == every == keys("1.1")
     assert client.get("/api/wargames/board/objectives/?scenario=9.9").status_code == 400
 
+def test_the_comment_xss_hints_send_the_learner_to_the_field_the_session_view_shows_the_body_in_not_its_value():
+    one = wargames.scenario_run("3.4")
+    table = strings.shown()
+    said = " ".join(table[f"{one['text']}.hint.{hint}"] for hint in one["hints"])
+    shown = json.loads(kibana.session_view("logs-2-*", "waf", kibana.shared_runtime(
+        (Path(__file__).resolve().parents[2] / "deploy" / "kibana" / "objects.ndjson").read_bytes()))
+        ["attributes"]["runtimeFieldMap"])
+
+    assert re.search(r"(?<![.\w])request_body(?![A-Za-z0-9_])", said) and "request_body" in shown, (
+        "walk round 28: the learner could only guess the comment body from the rule name")
+    assert not re.search(r"(?i)%3[cd]", said), "the hint names where the encoded body shows, not what it reads"
+
 def test_a_closed_xss_scenario_counts_no_objective_but_one_the_target_lost_anyway(client):
     session = opened("3.4")
     Session.objects.filter(pk=session.pk).update(ended_at=timezone.now())
@@ -184,7 +198,7 @@ def test_a_person_s_attack_inside_the_window_is_judged_like_a_scheduled_one(loot
 
     assert (result["passed"], result["attacks"]) == (passed, 1), result
 
-def detection_window(session, *, alerted_by, customer_alert=False):
+def detection_window(session, *, alerted_by, customer_alert=False, learner_alert=False):
     begun = scenarios.at(session.scenario_state["opened_at"]) + timedelta(seconds=300)
     scenario_run.start_window(session, "learner", begun)
     session.refresh_from_db()
@@ -200,6 +214,8 @@ def detection_window(session, *, alerted_by, customer_alert=False):
     sent = customer(session, start + timedelta(seconds=20))
     if customer_alert:
         alert(session, sent.marker, source="suricata", rule="9000102")
+    if learner_alert:
+        alert(session, session.browse_marker, source="suricata", rule="9000102", at=start + timedelta(seconds=30))
     signature = "SQLi attempt - sort is not a column name"
     session.detections.filter(source="suricata").update(signature=signature)
     with Stack(patches), patch("api.scenario_run.customers.refresh", lambda session, adapter: None), \
@@ -219,6 +235,13 @@ def test_a_detection_window_passes_only_when_the_ids_sees_every_attack_and_no_cu
 
     assert result["passed"] is (refused is None), result
     assert refused is None or refused in result["reasons"]
+
+def test_a_test_request_the_learner_sends_from_the_website_pane_is_no_customer_false_positive():
+    result = detection_window(opened("3.2"), alerted_by="suricata", learner_alert=True)
+
+    assert result["passed"] is True, (
+        "walk round 28: 3.4's hint has the learner post a comment to test the rule; its alert carries the browse "
+        "marker, not a customer request's", result)
 
 def test_an_availability_window_leaked_by_the_unseen_variant_fails_on_both_scores():
     result = window_judged(opened("4.1"), output=DUMPED)
