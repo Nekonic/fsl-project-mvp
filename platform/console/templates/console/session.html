@@ -185,22 +185,12 @@
     return t("main.step", lessonStep(id, session.lesson_id), lessonSteps());
   }
 
-  function playedName() {
-    const started = startedLessons();
-    const played = scenarioCard();
-    if (session.course_scenario) return played ? `${played.id} ${t(played.title)}` : session.course_scenario;
-    if (takenCourse()) return t(takenCourse().title);
-    if (started.length === 1 && cardOf(started[0].id)) return t(cardOf(started[0].id).title);
-    if (started.length <= 1 && lessonText()) return localized(`${lessonText()}.title`, "");
-    return "";
-  }
-
   function header(taken, total) {
     const closed = Boolean(session.ended_at);
     field("session-title").textContent = t("common.session", id);
     field("session-state").textContent = closed || session.ready ? ""
       : t("state.opening", secondsSince(session.started_at));
-    const parts = [playedName()];
+    const parts = [playedName(session, wargame)];
     const began = clock(session.started_at);
     const ended = clock(session.ended_at);
     const took = minutesBetween(session.started_at, session.ended_at);
@@ -556,7 +546,7 @@
     show("unread", false);
     rememberSession(id);
     wargame = listed.ok && Array.isArray(listed.body) ? listed.body.find((w) => w.id === session.scenario) : null;
-    crumbs([sessionCrumb(id, session, playedName()), ...(session.ended_at ? [{ label: t("crumb.result") }] : [])]);
+    crumbs([sessionCrumb(id, session, wargame), ...(session.ended_at ? [{ label: t("crumb.result") }] : [])]);
     const result = session.result && session.result.objectives ? session.result.objectives : { lost: 0, total: 0 };
     header(result.lost, result.total);
     if (session.ended_at) {

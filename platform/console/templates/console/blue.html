@@ -335,8 +335,9 @@
 {% include "console/blue_scenario_script.html" %}
 
   (async () => {
-    const read = await api(lessonPath(""));
+    const [read, listed] = await Promise.all([api(lessonPath("")), api("/api/wargames/")]);
     session = read.ok ? read.body : null;
+    const wargame = session && listed.ok && Array.isArray(listed.body) ? listed.body.find((w) => w.id === session.scenario) : null;
     if (session) rememberSession(sessionId());
     const kibana = paneTab("elk");
     if (session && session.discover) kibana.dataset.src = session.discover;
@@ -353,12 +354,12 @@
       field("waf-box").textContent = session.waf_box;
       field("waf-rules").textContent = `${session.waf_rules}/`;
     }
-    if (session && (session.lesson || session.course_scenario)) {
-      crumbs([sessionCrumb(sessionId(), session),
-              { label: t("blue.title"), href: `/blue/${sessionId()}/` },
+    const named = session ? sessionCrumb(sessionId(), session, wargame) : null;
+    if (named && !named.named && (session.lesson || session.course_scenario)) {
+      crumbs([named, { label: t("blue.title"), href: `/blue/${sessionId()}/` },
               { label: t(session.course_scenario ? "kind.scenario" : "crumb.lesson") }]);
-    } else if (session) {
-      crumbs([sessionCrumb(sessionId(), session), { label: t("blue.title") }]);
+    } else if (named) {
+      crumbs([named, { label: t("blue.title") }]);
     }
     const guided = Boolean(session && (session.lesson || session.course_scenario));
     if (guided) noteControls(session);

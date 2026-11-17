@@ -80,11 +80,18 @@ browser.serve((request) => {{
 }});
 """
 
-def test_a_scenario_without_steps_ends_its_console_breadcrumb_with_scenario_as_a_guided_one_does(client):
-    seen = open_page(client, "/blue/1/", setup=serving(status(started=False)), scenario="return browser.text('crumbs');")
+SCENARIO_ROUTE = 'if (request.route === "/api/sessions/1/scenario/") return'
 
-    assert seen["errors"] == []
-    assert seen["result"].endswith(f'{worded("blue.title")} / {worded("kind.scenario")}')
+def test_a_console_opened_from_the_start_button_names_the_scenario_in_its_breadcrumb_as_the_session_page_does(client):
+    catalogue = js([{"id": "board", "name": "Board", "scenarios": [{"id": CARD["id"], "title": CARD["title"]}]}])
+    setup = serving(status(started=False)).replace(
+        SCENARIO_ROUTE, f'if (request.route === "/api/wargames/") return {{body: {catalogue}}};\n  {SCENARIO_ROUTE}')
+    seen = open_page(client, "/blue/1/", setup=setup, scenario="return browser.text('crumbs');")
+
+    assert SCENARIO_ROUTE in serving(status()) and seen["errors"] == []
+    assert seen["result"] == " / ".join([
+        worded("crumb.home"), f'{worded("wargame.board.name")} · {CARD["id"]} {worded(CARD["title"])}',
+        worded("blue.title")]), "the name comes from the API, and no bare kind word follows it"
 
 def test_the_briefing_shows_the_full_length_until_start_and_start_begins_the_clock_once(client):
     waiting = status(started=False, time_left=CARD["minutes"] * 60)

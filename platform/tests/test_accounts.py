@@ -202,3 +202,32 @@ def test_a_deleted_account_s_row_says_it_is_being_deleted_until_the_api_answers(
 
     assert seen["errors"] == []
     assert seen["result"] == {"disabled": True, "text": worded("users.deleting"), "busy": "true"}
+
+
+@pytest.mark.parametrize("action, said", [("approve", "users.approving"), ("reject", "users.rejecting")])
+def test_an_approved_or_rejected_sign_up_s_row_says_so_until_the_api_answers(action, said):
+    seen = open_page(admin(), "/users/", setup="""
+      let answered = null;
+      browser.serve((request) => {
+        if (request.route === "/api/users/") {
+          return {body: {users: [{id: 8, username: "learner2", active: false, staff: false, joined: "2026-11-01T00:00:00Z"}]}};
+        }
+        if (request.route.startsWith("/api/users/8/")) return new Promise((resolve) => { answered = () => resolve({body: {}}); });
+        return {body: {blocks: []}};
+      });
+      window.answer = () => answered();
+    """, scenario="""
+      const button = document.querySelector('[data-ACTION="8"]');
+      const row = button.closest('tr');
+      browser.element('pending').dispatchEvent({type: 'click', target: button});
+      await browser.settle();
+      const shown = {text: button.textContent, busy: row.getAttribute('aria-busy'),
+                     disabled: row.querySelectorAll('button').map((one) => one.disabled)};
+      window.answer();
+      await browser.settle();
+      return shown;
+    """.replace("ACTION", action))
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"text": worded(said), "busy": "true", "disabled": [True, True]}, (
+        "the other button of the row would send a second decision while the first is pending")
