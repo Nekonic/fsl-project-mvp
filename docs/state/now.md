@@ -5,32 +5,58 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-18. On `range-heat-int`: the range as one Heat stack per
-slot, code, unit and API tests and documents done, not yet live. The live
-cloud still runs `dev` with walk round 28's fixes and the range host
-(`cr-range` 10.31.0.147, eight slots as compose projects), full `bin/verify`
-green.
+Updated: 2026-11-18. The live cloud runs the Heat range from `dev`: the
+platform VM and a pool of four slot stacks (`cr-slot-1`..`4`, three board and
+one corp, sixteen `dba.small` VMs); the range host `cr-range` is deleted.
+The first full `bin/verify` on it, before the readiness fix, was stopped
+after 12 min: acceptance idle 4 passed, the corp group 3 errors (its opens
+refused while slots were retargeted to corp), `test_concurrent_sessions.py`
+3 errors (the ssh multiplexer, below), and 3 failures in the
+`test_board_exfil.py` group whose detail the stop cut off; its log is
+`~/.cache/fsl-work/verify-heat-run1.tgz`. The second, on the readiness fix,
+writes `/tmp/verify-heat.log` on the platform VM (copied to
+`~/.cache/fsl-work/verify-heat.log`). `bin/verify --fast` on `dev`: unit and
+API 1928 passed in four processes, ratchet no regression (`core_loc` 604).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
 
 ## Where things stand
 
-- 2026-11-18, the Heat range on `range-heat-int`
-  (`docs/superpowers/specs/2026-11-18-heat-range-design.md`, phases P0-P7;
-  defaults in `docs/DECISIONS.md` "The Heat range comes up from cloud.yaml"):
-  a slot is one Heat stack `cr-slot-<n>` of four VMs (kali, waf, infra,
-  target) on five Neutron LANs of its own, rendered by `range/openstack.py`
-  from `wargames/<w>/topology.yaml` through `range/sandbox.py`; the pool is
-  `compute.pool` (`{board: 3, corp: 1}`), flavors `dba.small`, images
-  `cr-<role>-bake1` baked from `deploy/roles/<role>/install.sh`; cloud-init
-  starts each role's boot units and writes `/var/lib/cr/ready` or
-  `/var/lib/cr/failed`, and makes one sudo user `ubuntu` with the platform's
-  key; learners ssh to Kali as `kali` through the jump on port 2222. The
-  range host's code is deleted. Unit and API tests run against
-  `platform/tests/fakecloud.py`. On the cloud: the P0 probe stack (spec §11),
-  and the four images `cr-<role>-bake1`, baked by hand and active in Glance;
-  no slot stack has run yet. Not on `dev`.
+- 2026-11-18, the Heat range is live (P8; `docs/DECISIONS.md` "The first
+  live pool fill"): a slot is one Heat stack `cr-slot-<n>` of four VMs (kali,
+  waf, infra, target) on five Neutron LANs of its own, rendered by
+  `range/openstack.py` from `wargames/<w>/topology.yaml` through
+  `range/sandbox.py`; the pool is `compute.pool` (`{board: 3, corp: 1}`),
+  flavors `dba.small`; images `cr-kali-bake1`, `cr-waf-bake2`,
+  `cr-infra-bake1`, `cr-target-bake1` (the live `cloud.yaml` names
+  `compute.images.waf`; `cr-waf-bake1` was baked on a 40 GB builder and does
+  not fit `dba.small`'s 30 GB). The first fill found four faults, all fixed on
+  `dev`: Heat refused the WAF image's 40 GB `min_disk` (re-baked, 12 min 53 s
+  of `install.sh` on an `m1.medium` builder); five security groups per stack
+  overran the project's quota of 10 (now three shared `cr-lan-<digest>`
+  groups for the whole range, 9 of 10 used); the target's tag check refused
+  the digest-pinned MySQL image; readiness read board's ground truth on the
+  corp slot, so corp never became READY and corp opens retargeted board
+  slots. Timings: `bin/cloud up --replace` rebuilt the platform VM in 8 to
+  9 min each time (five runs); the first pool fill with nothing cached on
+  com01 took 12-13 min to `CREATE_COMPLETE` (the 14 GB Kali image copied
+  first); with the images cached the four stacks completed in under 2 min and
+  three slots were READY 8 min 50 s after the create. Live checks on board
+  slot 1 (session 2779, opened in 8.2 s): Kali `ping -c1 121.134.88.42`
+  answered (ttl 64, 3.2 ms), `traceroute` reached it in one hop, `curl
+  http://board.com/` gave 200 from 121.134.88.42, the WAF's 10.30.0.247 did
+  not answer (curl timeout, ping lost); the learner map drew internet, dmz,
+  web-inner, `board-backend` (172.18.0.0/16, board-db) and mgmt with the
+  router, WAF, IDS, board.com, board-db, log server and Kali; an XSS search
+  drew ModSecurity 941100 (403) in `logs-1-sensors`, and with the
+  `xss-watched` defense (session 2780, slot 2, WAF in DetectionOnly) Suricata
+  sid 9000003 on the same URL in `logs-2-sensors`; `POST
+  /api/sessions/2779/ssh/` issued a key and `ssh -J` through 2222 landed on
+  Kali as `kali`, while the jump itself gave no shell. Open: one acceptance
+  group lost a WAF command to the ssh multiplexer (`mux_client_request_session:
+  read from master failed: Broken pipe Failed to connect to new control
+  master`, `cr-waf` at 10.31.0.153, `test_concurrent_sessions.py`).
 - 2026-11-18, fixes from the docs pass (`docs/DECISIONS.md` "The baked images
   as they are"): `compute.target_tag` (`CR_OPENSTACK_TARGET_TAG`, by default
   the commit `cr-target-bake1` was baked at), and the target's boot refuses
@@ -40,8 +66,8 @@ Internet.
   pool's assignment retargets a free slot; an open session holds only its own
   slot; the platform reattaches its `cr-platform.mgmt` port on `--replace`, so
   its `cr-mgmt` address and the slots stay; a missing role image blocks the
-  slot before Heat is asked. `dba.small` (30 GB disk) stays: Kali's image
-  takes `min_disk` 25 GB.
+  slot before Heat is asked. `dba.small` (30 GB disk) stays: every role
+  image has `min_disk` 30 GB.
 - 2026-11-18, answer-blind walk round 28's fixes are live
   (`docs/TROUBLESHOOTING.md` "Answer-blind walk round 28"): the WAF logs
   the request body (audit part C) and the session view shows it as
@@ -582,8 +608,8 @@ them.
   Work goes to the VM with `git push cloud HEAD:refs/heads/work` and `git -C
   /opt/cr checkout --detach work` on the VM; the platform's code and `deploy/`
   are mounted from `/opt/cr`, so `docker compose restart platform` runs it.
-- The range host (on `dev`) and the slot VMs (on `range-heat-int`) have no
-  address the operator reaches: run their commands through the platform, `sh
+- The slot VMs have no address the operator reaches: run their commands
+  through the platform, `sh
   s.sh "sudo docker exec -i cr-platform ssh -i /data/ssh/id_ed25519
   ubuntu@<cr-mgmt address> '<cmd>'"`, or through `manage.py run_on_role
   <role> '<json argv>' --slot N`.
@@ -607,23 +633,21 @@ Nothing. Gate 2 is only for `main` (Next, item 7).
 
 ## Next, in order
 
-1. P8 of the Heat range, the live run of `range-heat-int`: Glance holds
-   `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1` and `cr-target-bake1`
-   (active; a missing one would read the slot `NOT_STANDING`), then `uv run
-   bin/cloud up --replace` with
-   `platform.ref` on the branch (the store is backed up first; `up` deletes
-   `cr-range` through `DELETE /api/range/leftovers/` before it fills the
-   pool), then the full `bin/verify` with acceptance and an answer-blind walk.
-   Unknowns it must measure: the Kali image's boot **[unverified]**; stack
-   delete and refill time **[unverified]**; RAM per slot on com01
-   **[unverified]**; whether `dba.small` holds the target's Docker and MySQL
-   **[unverified]**; that a second `--replace` keeps every slot (the
-   reattached `cr-platform.mgmt` port) **[unverified]**.
-2. The live cloud on `dev`: `platform.ref` is `dev` in `cloud.yaml`; the VM
-   runs `/opt/cr` with walk round 28's fixes, the range host is 10.31.0.147,
-   eight slots (`compute.slots`, which the Heat range ignores). Run `uv run
-   bin/cloud init` once as admin on con01 (`/etc/kolla/clouds.yaml`) to see it
-   report everything present.
+1. The rest of P8 on the live Heat range: the full `bin/verify` with acceptance green (the second run above); the ssh
+   multiplexer fault above (a stale or racing `ControlMaster` on
+   `/tmp/cr-ssh-%C` after a slot VM is replaced at the same `cr-mgmt`
+   address is the first thing to check **[unverified]**); an answer-blind
+   walk. Unknowns still to measure: how long a closed session's slot takes to
+   be READY again **[unverified]**; RAM per slot on com01 **[unverified]**.
+   Seen live: the platform's `cr-mgmt` port kept 10.31.0.158 across five
+   replaces, and the last platform-only replace kept the two slots whose
+   template and wargame were unchanged (slots 3 and 4).
+2. The stack digest covers the template, images and flavors, not the LAN
+   group ids: a change to `_lan_rules` alone makes a new `cr-lan-` group for
+   new stacks and leaves standing slots on the old one until they are
+   replaced; the old group stays until `bin/cloud down`. Run `uv run bin/cloud
+   init` once as admin on con01 (`/etc/kolla/clouds.yaml`) to see it report
+   everything present; it does not check `security_groups`.
 3. Answer-blind walk round 29 of both courses and scenarios 3.1-3.4 on the
    fixes of round 28 (live); fix its findings, rebuild, verify and walk again
    from the start; then tag the state and take it through gate 2 (item 7).

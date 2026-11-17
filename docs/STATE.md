@@ -139,7 +139,9 @@ port security for isolation, the edge, the inline IDS and the log server on an
 `infra` VM no learner has a shell on, and a pool of slots made ahead of the
 learner. Phases P0-P7 are done on `range-heat-int` (code, unit and API tests
 against `platform/tests/fakecloud.py`, the role images `bake1`, learner ssh
-to Kali through a jump on port 2222, the documents); P8, the live run, is not.
+to Kali through a jump on port 2222, the documents); P8, the live run, went
+live on 2026-11-18 (`docs/DECISIONS.md` "The first live pool fill"), with
+the open items in `docs/state/now.md`.
 The range host's code (`range/rangehost.py`, `deploy/range-host/`,
 `deploy/edge/`, the Kali and WAF Dockerfiles, `bin/range-image-tag`) is
 deleted. The defaults chosen for the run are in `docs/DECISIONS.md` "The Heat
@@ -2003,15 +2005,19 @@ binary log via a substrate runner, proven end to end against the live stack.
 `docs/superpowers/specs/2026-11-18-heat-range-design.md`; P0-P7 done on
 `range-heat-int`.
 
-- [ ] P8, the live run: with the four role images `cr-<role>-bake1` active
-      in Glance (baked by hand on 2026-11-18), `uv run bin/cloud up --replace`
-      (it deletes `cr-range` and fills the pool), then the full `bin/verify`
-      with acceptance and a walk; then gate 2.
-- [ ] Measure on the cloud: how long a slot's Kali VM takes to boot
-      **[unverified]**; how long a slot stack takes to delete and come
-      back READY, so the pool's refill time **[unverified]**; RAM per slot of
-      four VMs on com01 **[unverified]**; whether `dba.small` holds the
-      target's Docker and MySQL **[unverified]**.
+- [x] P8's pool fill (2026-11-18): `uv run bin/cloud up --replace` deleted
+      `cr-range` and filled the pool of four stacks; four faults fixed on the
+      way (`docs/DECISIONS.md` "The first live pool fill").
+- [ ] P8's full `bin/verify` green on the live Heat range, and a walk; then
+      gate 2.
+- [ ] Measure on the cloud: how long a closed session's slot takes to be
+      READY again, so the pool's refill time **[unverified]**; RAM per slot
+      of four VMs on com01 **[unverified]**. Measured: the Kali VM boots and
+      reports ready within a slot's 8 min 50 s with the images cached;
+      `dba.small` holds the target's Docker and MySQL (0.8-0.9 GB of 2 GB in
+      use).
+- [ ] An ssh multiplexer fault lost a WAF command in the acceptance suite
+      (`docs/state/now.md`).
 - [ ] Baking the role images is by hand (`docs/OPENSTACK.md` §3.6); no repo
       tool builds them.
 
