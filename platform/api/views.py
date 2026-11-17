@@ -616,7 +616,7 @@ def _judge(session, taught, step, body, kept):
         accepted = _accepted(session, check, taught)
         if not accepted:
             return False, [_unrecorded(session, check, taught, failed), []]
-        if "dev" in check and not _dev_picked(session, check["dev"], body.get("dev_request")):
+        if "dev" in check and not _dev_read(session, check, body):
             return False, ["lesson.check.wrong.dev", []]
         passed, reason = lesson.answered(dict(check, accept=accepted), given.strip(), f"{prefix}.wrong.{step_id}")
         named = check.get("of") == "address" and reason == ["lesson.check.wrong", []]
@@ -661,10 +661,16 @@ def _whose_address(session, asked, given):
         return None
     return [ADDRESS_SIDE if host == asked else "lesson.check.wrong.address_of", []]
 
-def _dev_picked(session, wanted, request_id):
-    pattern = re.compile(wanted)
-    return any(str(record.get("id")) == str(request_id) and pattern.search(_asked(record))
-               for record in site.kept(session.pk)) if request_id is not None else False
+def _dev_read(session, check, body):
+    picked, listed = body.get("dev_request"), body.get("dev_listed")
+    if picked is not None:
+        seen = {str(picked)}
+    elif check.get("of") == "status" and isinstance(listed, list):
+        seen = {str(one) for one in listed}
+    else:
+        return False
+    pattern = re.compile(check["dev"])
+    return any(str(record.get("id")) in seen and pattern.search(_asked(record)) for record in site.kept(session.pk))
 
 def _outcome(session, check):
     if check.get("of") != "detected_penalty":

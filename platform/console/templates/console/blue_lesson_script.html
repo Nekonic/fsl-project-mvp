@@ -1970,9 +1970,11 @@ function coach(prefix, declared) {
     status(t("lesson.status.checking"));
     try {
       const query = readsKibana(step.point) ? kibanaQueryNow() : null;
-      const devRequest = step.check.dev && typeof dev !== "undefined" && dev.open ? dev.picked : null;
+      const devOpen = step.check.dev && typeof dev !== "undefined" && dev.open;
+      const devRequest = devOpen ? dev.picked : null;
+      const devListed = devOpen && devRequest === null ? devShown().map((row) => row.id) : [];
       const verdict = await judged(step, { answer: value, ...(query !== null ? { query } : {}),
-        ...(step.check.dev ? { dev_request: devRequest } : {}) });
+        ...(step.check.dev ? { dev_request: devRequest, dev_listed: devListed } : {}) });
       const typed = typedNow();
       const stale = verdict && !verdict.passed && ((queued && queued.step === step) || (typed !== null && typed !== value));
       saidFor = verdict && !verdict.passed && !stale ? { step, query } : null;

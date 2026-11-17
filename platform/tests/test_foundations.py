@@ -809,6 +809,30 @@ def test_the_search_step_that_says_not_to_use_the_example_word_does_not_pass_on_
 
     assert example["passed"] is False and own["passed"] is True
 
+def test_a_status_read_off_the_devtools_list_passes_without_the_row_picked_but_a_method_still_needs_it(client):
+    session = opened("f2")
+    kept = [browsed("/", 200, request_id=0), browsed("/posts/9999/", 404), browsed("/search/?q=hello", 200, request_id=2)]
+    with patch.object(site, "kept", return_value=kept):
+        other_list = step(client, session, "missing", body={"answer": "404", "dev_request": None, "dev_listed": [0]}).json()
+        listed = step(client, session, "missing", body={"answer": "404", "dev_request": None, "dev_listed": [0, 1]}).json()
+        method = step(client, session, "method", body={"answer": "GET", "dev_request": None, "dev_listed": [2]}).json()
+
+    assert other_list["reason"] == ["lesson.check.wrong.dev", []]
+    assert listed["passed"] is True, "the list's status column shows the status the step asks for"
+    assert method["reason"] == ["lesson.check.wrong.dev", []], "the method shows only once the row is picked"
+
+def test_the_path_step_teaches_reading_the_map_and_names_the_route_only_after_a_right_answer():
+    coach, done = tables()["lesson.map.coach.path"], tables()["lesson.map.ok.path"]
+    route = [tables()["topology.name.router"], "WAF"]
+
+    assert not any(device in coach for device in route)
+    assert all(device in done for device in route)
+
+def test_the_ids_alert_s_explanation_places_the_ids_in_the_management_network_watching_the_web_segment():
+    explained = tables()["lesson.xss.ok.fired"]
+
+    assert tables()["topology.zone.mgmt"] in explained and tables()["topology.zone.web"] in explained
+
 def test_the_sqli_error_status_is_read_from_the_request_s_row_in_devtools(client):
     session = opened("f5")
     kept = [browsed("/", 200, request_id=0), browsed("/?sort=posts_post.id)", 500)]
