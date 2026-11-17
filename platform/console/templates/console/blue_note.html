@@ -6,22 +6,22 @@
       <button id="lesson-collapse" type="button" data-t-title="lesson.note.collapse" class="shrink-0 text-faint hover:text-heading text-[16px] leading-none px-1" aria-label="fold">»</button>
     </header>
     <div id="lesson-body" class="note-body">
-      <section id="step-card" class="card p-3 hidden flex-col gap-2">
+      <section id="step-card" class="hidden flex-col gap-2">
         <div class="flex items-center gap-2">
-          <span id="step-count" class="text-[12px] font-semibold text-primary"></span>
+          <span id="step-count" class="text-[13px] font-semibold text-primary"></span>
         </div>
         <h3 id="step-title" class="font-bold text-heading"></h3>
         <p id="step-task" class="text-body whitespace-pre-line"></p>
         <pre id="step-command" class="code command hidden"></pre>
         <button id="step-copy" type="button" class="self-start btn btn-sm btn-ghost hidden"></button>
         <button id="step-open" type="button" class="self-start btn btn-sm btn-blue hidden"></button>
-        <p id="step-coach" class="hidden text-[12px] font-semibold text-primary"></p>
+        <p id="step-coach" class="hidden text-[13px] font-semibold text-primary"></p>
         <p id="step-question" class="font-semibold text-heading hidden"></p>
         <div id="step-act" class="hidden flex-col gap-2"></div>
-        <p id="step-said" class="hidden text-[12.5px] rounded-md px-2.5 py-1.5"></p>
-        <p id="step-status" class="hidden text-[12px] text-muted whitespace-pre-line"></p>
-        <div id="step-help" class="hidden flex-col gap-1 text-[12.5px] text-body bg-subdued rounded-md px-2.5 py-1.5"></div>
-        <p id="step-missing" class="hidden text-[12px] text-muted"></p>
+        <p id="step-said" class="hidden text-[13px] rounded-md px-2.5 py-1.5"></p>
+        <p id="step-status" class="hidden text-[13px] text-muted whitespace-pre-line"></p>
+        <div id="step-help" class="hidden flex-col gap-1 text-[13px] text-body bg-subdued rounded-md px-2.5 py-1.5"></div>
+        <p id="step-missing" class="hidden text-[13px] text-muted"></p>
         <div class="flex items-center gap-2 flex-wrap">
           <button id="step-hint" type="button" data-t="lesson.hint.show" class="btn btn-sm btn-ghost"></button>
           <button id="step-back" type="button" data-t="lesson.coach.back" class="ml-auto btn btn-sm btn-ghost"></button>
@@ -29,13 +29,13 @@
         </div>
       </section>
 
-      <section id="stretch-card" class="hidden card p-3 flex-col gap-1">
+      <section id="stretch-card" class="hidden flex-col gap-1">
         <b data-t="lesson.stretch" class="text-heading"></b>
         <p id="stretch-text" class="text-body whitespace-pre-line"></p>
       </section>
 
-      <section id="lesson-objectives" class="card p-3 hidden flex-col gap-2">
-        <table class="w-full text-[12px]">
+      <section id="lesson-objectives" class="hidden flex-col gap-2">
+        <table class="w-full text-[13px]">
           <thead><tr id="lesson-objectives-head" class="text-left text-muted"></tr></thead>
           <tbody id="lesson-objectives-rows"></tbody>
         </table>
@@ -43,7 +43,7 @@
 
       <div id="scenario-cards" class="hidden flex-col gap-2"></div>
 
-      <section id="scenario-hints" class="hidden card p-3 flex-col gap-2 text-[12.5px]">
+      <section id="scenario-hints" class="hidden flex-col gap-2 text-[13px]">
         <div class="flex items-center">
           <b data-t="scenario.hint.heading" class="text-heading"></b>
           <button type="button" id="scenario-hints-close" class="ml-auto text-faint hover:text-heading text-[16px] leading-none" aria-label="close">×</button>
@@ -51,11 +51,11 @@
         <ol id="scenario-hint-list" class="flex flex-col gap-2"></ol>
       </section>
 
-      <section id="steps-card" class="card hidden flex-col">
-        <button id="steps-toggle" type="button" class="w-full text-left px-3 py-2 font-semibold text-heading flex items-center gap-2" aria-expanded="false">
-          <span data-t="lesson.tab.steps" class="flex-1"></span><span id="lesson-step-count" class="text-[12px] text-muted font-normal"></span>
+      <section id="steps-card" class="hidden flex-col">
+        <button id="steps-toggle" type="button" class="w-full text-left py-1 font-semibold text-heading flex items-center gap-2" aria-expanded="false">
+          <span data-t="lesson.tab.steps" class="flex-1"></span><span id="lesson-step-count" class="text-[13px] text-muted font-normal"></span>
         </button>
-        <ol id="lesson-step-list" class="hidden px-2 pb-2 flex-col gap-1"></ol>
+        <ol id="lesson-step-list" class="hidden -mx-2 pt-1 flex-col gap-1"></ol>
       </section>
     </div>
   </div>

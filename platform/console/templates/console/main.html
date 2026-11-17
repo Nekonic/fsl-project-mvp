@@ -1,9 +1,10 @@
 {% extends "console/base.html" %}
+{% block surface %}bg-panel{% endblock %}
 {% block content %}
 <div id="capacity" class="label text-right"></div>
 <p id="sessions-error" class="text-danger text-[13px] mb-6 hidden"></p>
 
-<section id="range-state" class="mb-6 hidden card border-warning-soft bg-warning-soft p-5">
+<section id="range-state" class="mb-8 hidden rounded-lg bg-warning-soft px-5 py-4">
   <h2 data-t="range.not_ready" class="font-semibold text-warning mb-2"></h2>
   <ul id="range-blocked" class="text-body text-[13px] list-disc pl-5 space-y-1"></ul>
 </section>
@@ -13,33 +14,33 @@
   <span id="canary-out" class="text-[13px] ml-2"></span>
 </section>
 
-<section id="running-panel" class="mb-8 hidden">
-  <h2 data-t="main.running" class="font-semibold text-heading mb-3"></h2>
-  <div id="running" class="card divide-y divide-line-subdued"></div>
+<section id="running-panel" class="mb-10 hidden">
+  <h2 data-t="main.running" class="text-[20px] font-bold text-heading mb-2"></h2>
+  <div id="running" class="divide-y divide-line border-y border-line"></div>
 </section>
 
-<h2 data-t="main.scenarios" class="font-semibold text-heading mb-3"></h2>
-<div id="wargames" class="grid gap-4 md:grid-cols-2 items-start mb-8"></div>
+<h2 data-t="main.scenarios" class="text-[20px] font-bold text-heading"></h2>
+<div id="wargames" class="flex flex-col mb-10"></div>
 <p id="start-error" class="text-danger text-[13px] mb-8 hidden"></p>
 
 <section id="finished-panel" class="hidden">
-  <h2 data-t="main.finished" class="font-semibold text-heading mb-3"></h2>
-  <div class="card overflow-x-auto">
-    <table class="w-full text-[13px]">
+  <h2 data-t="main.finished" class="text-[20px] font-bold text-heading mb-2"></h2>
+  <div class="overflow-x-auto">
+    <table class="w-full text-[13px] border-t border-line">
       <thead class="table-head">
         <tr>
-          <th data-t="main.col.session" class="pl-5"></th>
+          <th data-t="main.col.session"></th>
           <th data-t="main.col.scenario"></th>
           <th data-t="main.col.result"></th>
           <th data-t="main.col.took"></th>
-          <th data-t="main.col.ended" class="pr-5"></th>
+          <th data-t="main.col.ended"></th>
         </tr>
       </thead>
       <tbody id="finished"></tbody>
     </table>
   </div>
 </section>
-<footer class="mt-10 text-[11px] text-faint" data-t="topology.trademark"></footer>
+<footer class="mt-12 pt-4 border-t border-line text-[13px] text-muted" data-t="topology.trademark"></footer>
 {% endblock %}
 {% block script %}
 <script>
@@ -73,10 +74,10 @@
   function foundationsBlock(wargame) {
     const id = esc(wargame.id);
     const unit = (taught, index) => `
-      <li class="flex flex-col gap-1" data-foundation="${esc(taught.id)}">
-        <h4 class="font-semibold text-heading"><span class="text-muted font-normal mr-2">${esc(t("main.lesson_number", index + 1))}</span>${esc(t(taught.title))}</h4>
+      <li class="flex items-center gap-4 py-2" data-foundation="${esc(taught.id)}">
+        <h4 class="flex-1 min-w-0 text-heading"><span class="inline-block w-16 text-muted">${esc(t("main.lesson_number", index + 1))}</span>${esc(t(taught.title))}</h4>
         <button data-wargame="${id}" data-lesson="true" data-lesson-id="${esc(taught.id)}"
-          data-defense="${esc(taught.defense || "")}" class="start self-start btn btn-sm btn-blue">${esc(t("main.start"))}</button>
+          data-defense="${esc(taught.defense || "")}" class="start shrink-0 btn btn-sm btn-ghost">${esc(t("main.start"))}</button>
       </li>`;
     const taught = wargame.foundations || [];
     const grouped = (wargame.courses || []).length ? wargame.courses
@@ -84,9 +85,9 @@
     return grouped.map((course) => {
       const units = course.lessons.map((lessonId) => taught.find((one) => one.id === lessonId)).filter(Boolean).map(unit).join("");
       return `
-      <section class="pt-4 mt-4 border-t border-line-subdued" data-foundations="${id}" data-course="${esc(course.id)}">
-        <h4 class="text-[15px] font-bold text-heading">${esc(t(course.title))}</h4>
-        <ol class="mt-3 flex flex-col gap-4">${units}</ol>
+      <section class="mt-6" data-foundations="${id}" data-course="${esc(course.id)}">
+        <h4 class="font-semibold text-heading">${esc(t(course.title))}</h4>
+        <ol class="mt-1 divide-y divide-line border-y border-line">${units}</ol>
       </section>`;
     }).join("");
   }
@@ -94,14 +95,14 @@
   function scenariosBlock(wargame) {
     const id = esc(wargame.id);
     const runs = (wargame.scenarios || []).map((one) => `
-      <li class="flex flex-col gap-1" data-course-scenario="${esc(one.id)}">
-        <h4 class="font-semibold text-heading"><span class="text-muted font-normal mr-2">${esc(one.id)}</span>${esc(t(one.title))}</h4>
-        <button data-wargame="${id}" data-course="${esc(one.id)}" class="start self-start btn btn-sm btn-blue">${esc(t("main.start"))}</button>
+      <li class="flex items-center gap-4 py-2" data-course-scenario="${esc(one.id)}">
+        <h4 class="flex-1 min-w-0 text-heading"><span class="inline-block w-16 text-muted">${esc(one.id)}</span>${esc(t(one.title))}</h4>
+        <button data-wargame="${id}" data-course="${esc(one.id)}" class="start shrink-0 btn btn-sm btn-ghost">${esc(t("main.start"))}</button>
       </li>`).join("");
     return runs ? `
-      <section class="pt-4 mt-4 border-t border-line-subdued" data-scenarios="${id}">
-        <h4 class="text-[15px] font-bold text-heading">${esc(t("main.group.scenarios"))}</h4>
-        <ol class="mt-3 flex flex-col gap-4">${runs}</ol>
+      <section class="mt-6" data-scenarios="${id}">
+        <h4 class="font-semibold text-heading">${esc(t("main.group.scenarios"))}</h4>
+        <ol class="mt-1 divide-y divide-line border-y border-line">${runs}</ol>
       </section>` : "";
   }
 
@@ -109,19 +110,17 @@
     const id = esc(wargame.id);
     const counted = typeof wargame.attacks === "number";
     return `
-      <div class="card p-5 flex flex-col" data-scenario="${id}">
-        <h3 class="text-[16px] font-bold text-heading">${esc(scenarioName(wargame.id))}</h3>
+      <div class="py-6 border-b border-line last:border-b-0 flex flex-col max-w-[760px]" data-scenario="${id}">
+        <h3 class="text-[17px] font-bold text-heading">${esc(scenarioName(wargame.id))}</h3>
         <p class="text-muted mt-1 leading-relaxed">${esc(localized(`wargame.${wargame.id}.description`, wargame.description))}</p>
-        ${counted && operatorView ? `<p class="text-[12px] text-muted mt-3">${
+        ${counted && operatorView ? `<p class="text-[13px] text-muted mt-3">${
           esc(t("main.counts", wargame.attacks, wargame.benign, wargame.objectives))}</p>` : ""}
         ${foundationsBlock(wargame)}
         ${scenariosBlock(wargame)}
-        <div class="pt-4">
-          <section class="pt-4 border-t border-line-subdued flex flex-col gap-1" data-wargame-start="${id}">
-            <h4 class="text-[15px] font-bold text-heading">${esc(t("kind.wargame"))}</h4>
-            <button data-wargame="${id}" class="start self-start btn btn-sm btn-blue">${esc(t("main.start"))}</button>
-          </section>
-        </div>
+        <section class="mt-6 flex items-center gap-4" data-wargame-start="${id}">
+          <h4 class="flex-1 font-semibold text-heading">${esc(t("kind.wargame"))}</h4>
+          <button data-wargame="${id}" class="start shrink-0 btn btn-sm btn-ghost">${esc(t("main.start"))}</button>
+        </section>
         <div class="hidden mt-3 rounded-lg bg-danger-soft border border-danger-soft px-3 py-2.5 text-[13px]"
              data-failure="${id}">
           <div class="flex flex-wrap items-start gap-2">
@@ -129,7 +128,7 @@
             <p data-failure-text data-tone class="flex-1 text-danger min-w-0"></p>
             <button data-close-open class="btn btn-sm btn-ghost hidden">${esc(t("main.close_open"))}</button>
           </div>
-          <div data-open-list class="hidden mt-2 space-y-1"></div>
+          <div data-open-list class="hidden mt-2"></div>
         </div>
       </div>`;
   }
@@ -223,10 +222,10 @@
     const list = failure.querySelector("[data-open-list]");
     list.classList.remove("hidden");
     list.innerHTML = running.length ? running.map((session) => `
-      <div class="flex items-center gap-3 bg-panel rounded-md border border-line px-3 py-2">
+      <div class="flex items-center gap-3 py-2 border-t border-line">
         <span class="font-semibold text-heading">${esc(t("common.session", session.id))}</span>
         <span class="text-body truncate">${esc(takenName(session))}</span>
-        <span class="text-faint text-[12px] ml-auto">${esc(t("main.started_at", clock(session.started_at)))}</span>
+        <span class="text-faint text-[13px] ml-auto">${esc(t("main.started_at", clock(session.started_at)))}</span>
         <button data-close="${esc(session.id)}" class="btn btn-sm btn-ghost">${esc(t("main.close_this"))}</button>
       </div>`).join("") : `<p class="text-muted">${esc(t("main.none_open"))}</p>`;
     list.querySelectorAll("[data-close]").forEach((button) =>
@@ -286,7 +285,7 @@
     const steps = taught && taught.steps
       ? `<span class="text-muted text-[13px] hidden sm:inline">${esc(t("main.step", lessonStep(session.id, session.lesson_id), taught.steps))}</span>` : "";
     return `
-      <a href="/session/${esc(session.id)}/" class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3.5 hover:bg-subdued">
+      <a href="/session/${esc(session.id)}/" class="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 py-3 hover:bg-subdued">
         <span class="font-semibold text-heading w-20">${esc(t("common.session", session.id))}</span>
         <span class="text-body">${esc(takenName(session))}</span>
         ${steps}
@@ -305,8 +304,8 @@
     const result = session.result || {};
     const judged = result.scenario;
     if (judged) {
-      return (judged.passed ? badge(t("scenario.phase.passed"), "ok-strong") : badge(t("scenario.phase.failed"), "red-strong")) + (judged.helped || []).map((kind) =>
-        ` <span class="text-muted text-[12px]">${esc(t(`result.helped.${kind}`))}</span>`).join("");
+      return `<span class="font-semibold ${judged.passed ? "text-success" : "text-danger"}">${esc(t(judged.passed ? "scenario.phase.passed" : "scenario.phase.failed"))}</span>` + (judged.helped || []).map((kind) =>
+        ` <span class="text-muted text-[13px]">${esc(t(`result.helped.${kind}`))}</span>`).join("");
     }
     const objectives = result.objectives;
     if (!objectives || !objectives.total || !scored(session)) return `<span class="text-faint">—</span>`;
@@ -319,11 +318,11 @@
   function finishedRow(session) {
     return `
       <tr class="table-row hover:bg-subdued cursor-pointer" data-href="/session/${esc(session.id)}/">
-        <td class="pl-5 font-semibold text-heading"><a href="/session/${esc(session.id)}/">${esc(t("common.session", session.id))}</a></td>
+        <td class="font-semibold text-heading"><a href="/session/${esc(session.id)}/">${esc(t("common.session", session.id))}</a></td>
         <td>${esc(takenName(session))}</td>
         <td>${resultCell(session)}</td>
         <td>${esc(t("main.minutes_spent", minutesBetween(session.started_at, session.ended_at)))}</td>
-        <td class="text-muted pr-5">${esc(clock(session.ended_at))}</td>
+        <td class="text-muted">${esc(clock(session.ended_at))}</td>
       </tr>`;
   }
 

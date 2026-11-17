@@ -7,11 +7,12 @@
   .work { flex: 1 1 0%; min-width: 0; min-height: 0; display: flex; }
   .note-col { flex: none; width: 340px; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--border); }
   .note-col.folded { width: 44px; }
-  .note-strip { display: none; flex: 1 1 0%; align-items: flex-start; justify-content: center; padding-top: 12px; color: var(--primary-text); font-size: 12px; font-weight: 600; writing-mode: vertical-rl; }
+  .note-strip { display: none; flex: 1 1 0%; align-items: flex-start; justify-content: center; padding-top: 12px; color: var(--primary-text); font-size: 13px; font-weight: 600; writing-mode: vertical-rl; }
   .note-col.folded .note-strip { display: flex; }
   .note-col.folded .note-open { display: none; }
   .note-open { flex: 1 1 0%; min-height: 0; display: flex; flex-direction: column; }
-  .note-body { flex: 1 1 0%; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; line-height: 1.6; }
+  .note-body { flex: 1 1 0%; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 16px; font-size: 13px; line-height: 1.6; }
+  .note-body > :not(.hidden) ~ :not(.hidden), .ref-body > * + * { border-top: 1px solid var(--border); padding-top: 16px; }
   @media (max-width: 1280px) { .note-col { width: 300px; } }
   @media (max-width: 1023px) {
     .work { flex-direction: column; }
@@ -26,19 +27,19 @@
   .coach-leader { position: fixed; pointer-events: none; z-index: 42; height: 2px; background: var(--primary); transform-origin: 0 50%; opacity: 0.85; }
   .coach-leader.hidden { display: none; }
   .rail-btn:disabled { opacity: 0.35; cursor: default; }
-  .coach-callout { position: fixed; z-index: 42; pointer-events: none; max-width: 360px; padding: 5px 10px; border-radius: 6px; background: var(--primary); color: var(--text-inverse); font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: var(--shadow-pop); }
+  .coach-callout { position: fixed; z-index: 42; pointer-events: none; max-width: 360px; padding: 5px 10px; border-radius: 6px; background: var(--primary); color: var(--text-inverse); font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: var(--shadow-pop); }
   .order-chip[aria-pressed="true"] { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-text); }
   .term-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--terminal); color: var(--terminal-text); font-size: 13px; pointer-events: none; }
   .map-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--panel); color: var(--text-muted); font-size: 13px; pointer-events: none; }
   .note-col.hidden, .term-wait.hidden, .map-wait.hidden, .ref-col.hidden, .brief.hidden { display: none; }
   .ref-col { flex: none; width: 300px; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border); }
-  .ref-body { flex: 1 1 0%; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; line-height: 1.6; }
-  .ref-body pre, .brief pre { white-space: pre-wrap; font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; }
+  .ref-body { flex: 1 1 0%; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 16px; font-size: 13px; line-height: 1.6; }
+  .ref-body pre, .brief pre { white-space: pre-wrap; font-family: var(--font-mono, ui-monospace, monospace); font-size: 13px; }
   .brief { position: absolute; inset: 0; z-index: 30; overflow-y: auto; background: var(--page, var(--panel)); display: flex; justify-content: center; padding: 32px 16px; }
   .brief-card { width: 100%; max-width: 680px; height: max-content; padding: 24px; display: flex; flex-direction: column; gap: 12px; font-size: 13.5px; line-height: 1.65; }
   @media (max-width: 1023px) { .ref-col { width: auto; max-height: 40%; border-right: 0; border-bottom: 1px solid var(--border); } }
 </style>
-<nav id="rail" class="shrink-0 bg-panel border-b md:border-b-0 md:border-r border-line flex md:flex-col items-center gap-2 px-2 py-1 md:px-0 md:py-3 md:w-[60px]">
+<nav id="rail" class="shrink-0 bg-panel border-b md:border-b-0 md:border-r border-line flex md:flex-col items-center gap-2 px-2 py-1 md:px-0 md:py-3 md:w-[68px]">
   <button class="pane-tab rail-btn" data-pane="elk" data-src="">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
     <span>Kibana</span>
@@ -85,7 +86,7 @@
 <div id="work" class="work">
   <section id="pane" class="flex-1 min-h-0 min-w-0 relative bg-panel flex flex-col">
     {% include "console/blue_scenario.html" %}
-    <div id="waf-banner" class="hidden h-10 term-bar text-[12.5px] items-center px-4 gap-3 shrink-0 min-w-0">
+    <div id="waf-banner" class="hidden h-10 term-bar text-[13px] items-center px-4 gap-3 shrink-0 min-w-0">
       <span id="waf-box" class="font-mono text-inverse shrink-0"></span>
       <span class="text-faint">·</span>
       <span class="truncate"><span data-t="blue.waf.rules"></span> <span id="waf-rules" class="font-mono text-inverse"></span></span>
@@ -95,12 +96,12 @@
       <button type="button" id="site-forward" data-t-title="site.forward" class="btn btn-sm btn-ghost px-2" aria-label="forward">→</button>
       <button type="button" id="site-reload" data-t-title="site.reload" class="btn btn-sm btn-ghost px-2" aria-label="reload">↻</button>
       <div class="flex-1 min-w-0 h-7 flex items-center border border-line rounded-md bg-panel">
-        <span id="site-insecure" class="shrink-0 flex items-center gap-1 pl-2.5 pr-2 h-full border-r border-line text-danger text-[12px]">
+        <span id="site-insecure" class="shrink-0 flex items-center gap-1 pl-2.5 pr-2 h-full border-r border-line text-danger text-[13px]">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
           <span data-t="site.not_secure"></span>
         </span>
         <input id="site-address" data-t-title="site.address" autocomplete="off" spellcheck="false"
-               class="flex-1 min-w-0 h-full px-2 bg-transparent font-mono text-[12.5px] outline-none">
+               class="flex-1 min-w-0 h-full px-2 bg-transparent font-mono text-[13px] outline-none">
       </div>
       <button type="button" id="site-dev-toggle" data-coach="toggle" data-t="site.dev.toggle" aria-pressed="false" class="btn btn-sm btn-ghost shrink-0"></button>
     </form>
@@ -118,7 +119,7 @@
       {% include "console/blue_triage.html" %}
       {% include "console/blue_rules.html" %}
       <div id="lesson-brief" class="brief hidden">
-        <div class="brief-card card">
+        <div class="brief-card">
           <h2 id="brief-title" class="text-[18px] font-bold text-heading"></h2>
           <p id="brief-goal" class="text-body whitespace-pre-line"></p>
           <h3 data-t="lesson.brief.needed" class="font-semibold text-heading"></h3>

@@ -3,8 +3,8 @@ const DEBRIEF_TONE = { held: "text-success", leaked: "text-danger" };
 const toned = (text, tone) => `<span class="${tone}">${esc(text)}</span>`;
 
 function debriefSection(name, inner, heading = `lesson.debrief.${name}`) {
-  return `<section class="flex flex-col gap-1.5" data-debrief="${name}">
-    <h4 class="label">${esc(t(heading))}</h4>${inner}</section>`;
+  return `<section class="grid gap-x-6 gap-y-1.5 py-4 border-t border-line sm:grid-cols-[140px_minmax(0,1fr)]" data-debrief="${name}">
+    <h3 class="font-semibold text-heading">${esc(t(heading))}</h3><div class="flex flex-col gap-1.5 min-w-0">${inner}</div></section>`;
 }
 
 function debriefOutcome(outcome) {
@@ -42,7 +42,7 @@ function debriefCustomers(customers) {
 }
 
 function debriefTimeline(timeline, opened) {
-  return `<ol class="flex flex-col gap-1.5 text-[12px]">${timeline.map((entry) => {
+  return `<ol class="flex flex-col gap-1.5 text-[13px]">${timeline.map((entry) => {
     const after = clock(Date.parse(opened) + entry.at * 1000);
     const state = entry.state === "fired" ? (entry.outcome ? debriefOutcome(entry.outcome) : "")
       : toned(t(`scenario.debrief.state.${entry.state}`), entry.state === "failed" ? "text-warning" : "text-muted");
@@ -67,10 +67,10 @@ function renderDebrief(container, told) {
     t("scenario.debrief.help", overview.help.hints),
     overview.fix ? t(`lesson.fix.${overview.fix}`) : "",
   ].filter(Boolean);
-  const evidence = `<ul class="flex flex-col gap-1 font-mono text-[12px]">${told.evidence.map((row) =>
-    `<li data-evidence class="break-all">${esc([row.signature, `${row.method} ${row.path}`.trim(), t(`lesson.debrief.phase.${row.phase}`),
+  const evidence = `<ul class="flex flex-col gap-1 font-mono text-[13px]">${told.evidence.map((row) =>
+    `<li data-evidence class="[overflow-wrap:anywhere]">${esc([row.signature, `${row.method} ${row.path}`.trim(), t(`lesson.debrief.phase.${row.phase}`),
       localized(`case.${row.case}`, row.case)].filter(Boolean).join(" · "))}</li>`).join("")}</ul>${
-    told.evidence_total > told.evidence.length ? `<p class="text-muted text-[12px]" data-evidence-more>${
+    told.evidence_total > told.evidence.length ? `<p class="text-muted text-[13px]" data-evidence-more>${
       esc(t("scenario.debrief.evidence_more", told.evidence_total - told.evidence.length))}</p>` : ""}`;
   const alertWord = (alerted) => (alerted == null ? "" : toned(t(alerted ? "scenario.debrief.alerted" : "scenario.debrief.no_alert"),
     alerted ? "text-success" : "text-danger"));
@@ -84,12 +84,12 @@ function renderDebrief(container, told) {
     return [outcome ? debriefOutcome(outcome) : "", alertWord(alerted)].filter(Boolean).join(" · ") || unfired(row.name, inWindow);
   };
   const judgedCases = told.cases.filter((row) => row.before || row.after || row.alerted_before != null || row.alerted_after != null);
-  const cases = `<table class="w-full text-[12px]"><thead><tr class="text-left text-muted">
+  const cases = `<table class="w-full text-[13px]"><thead><tr class="text-left text-muted">
       <th class="font-normal">${esc(t("score.col.case"))}</th><th class="font-normal">${esc(t("scenario.debrief.before"))}</th>
       <th class="font-normal">${esc(t("scenario.debrief.after"))}</th></tr></thead><tbody>${judgedCases.map((row) =>
     `<tr data-case="${esc(row.name)}"><td class="py-1 pr-2">${esc(localized(`case.${row.name}`, row.name))}</td>
       <td data-before>${judgedCell(row, false)}</td><td data-after>${judgedCell(row, true)}</td></tr>`).join("")}</tbody></table>`;
-  container.innerHTML = `<h3 class="font-semibold text-heading">${esc(t("lesson.debrief.heading"))}</h3>` + [
+  container.innerHTML = `<h2 class="text-[17px] font-bold text-heading mb-2">${esc(t("lesson.debrief.heading"))}</h2>` + [
     debriefSection("overview", facts.map((line) => `<p>${esc(line)}</p>`).join("")),
     debriefSection("customers", debriefCustomers(told.customers)),
     debriefSection("timeline", debriefTimeline(told.timeline, told.at.opened)),

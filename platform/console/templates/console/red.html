@@ -21,18 +21,18 @@
       <h2 data-t="red.loot.heading" class="font-semibold text-heading"></h2>
       <button id="loot-close" class="ml-auto text-faint hover:text-heading text-[16px] leading-none">×</button>
     </div>
-    <p data-t="red.loot.hint" class="text-[12px] text-muted mt-1"></p>
+    <p data-t="red.loot.hint" class="text-[13px] text-muted mt-1"></p>
     <textarea id="loot-input" rows="5" placeholder='{"admin": "pbkdf2_sha256$..."}'
-      class="mt-2 w-full bg-panel border border-line rounded-md px-3 py-2 text-[12px] font-mono"></textarea>
+      class="mt-2 w-full bg-panel border border-line rounded-md px-3 py-2 text-[13px] font-mono"></textarea>
     <div class="flex items-center gap-3 mt-2">
       <button id="loot-submit" data-t="red.loot.submit" class="btn btn-sm btn-red"></button>
-      <p id="loot-said" class="text-[12px] text-muted"></p>
+      <p id="loot-said" class="text-[13px] text-muted"></p>
     </div>
   </div>
 </div>
 
 <div class="flex-1 min-h-0 flex flex-col md:flex-row">
-  <nav id="rail" class="shrink-0 bg-panel border-b md:border-b-0 md:border-r border-line flex md:flex-col items-center gap-2 px-2 py-1 md:px-0 md:py-3 md:w-[60px]">
+  <nav id="rail" class="shrink-0 bg-panel border-b md:border-b-0 md:border-r border-line flex md:flex-col items-center gap-2 px-2 py-1 md:px-0 md:py-3 md:w-[68px]">
     <button class="pane-tab rail-btn" data-pane="kali">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
       <span>Kali</span>
@@ -49,12 +49,12 @@
       <button type="button" id="site-forward" data-t-title="site.forward" class="btn btn-sm btn-ghost px-2" aria-label="forward">→</button>
       <button type="button" id="site-reload" data-t-title="site.reload" class="btn btn-sm btn-ghost px-2" aria-label="reload">↻</button>
       <div class="flex-1 min-w-0 h-7 flex items-center border border-line rounded-md bg-panel">
-        <span id="site-insecure" class="shrink-0 flex items-center gap-1 pl-2.5 pr-2 h-full border-r border-line text-danger text-[12px]">
+        <span id="site-insecure" class="shrink-0 flex items-center gap-1 pl-2.5 pr-2 h-full border-r border-line text-danger text-[13px]">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
           <span data-t="site.not_secure"></span>
         </span>
         <input id="site-address" data-t-title="site.address" autocomplete="off" spellcheck="false"
-               class="flex-1 min-w-0 h-full px-2 bg-transparent font-mono text-[12.5px] outline-none">
+               class="flex-1 min-w-0 h-full px-2 bg-transparent font-mono text-[13px] outline-none">
       </div>
       <button type="button" id="site-dev-toggle" data-t="site.dev.toggle" aria-pressed="false" class="btn btn-sm btn-ghost shrink-0"></button>
     </form>
@@ -147,7 +147,7 @@
     const result = await api(`/api/wargames/${session.scenario}/objectives/`);
     if (!result.ok || !Array.isArray(result.body)) {
       field("objectives").innerHTML =
-        `<span class="text-warning text-[12px]">${esc(t("red.error.objectives", detail(result)))}</span>`;
+        `<span class="text-warning text-[13px]">${esc(t("red.error.objectives", detail(result)))}</span>`;
       return;
     }
     tiers = [...result.body].sort((a, b) => a.difficulty - b.difficulty);
@@ -158,8 +158,7 @@
     const won = new Set(taken.map((o) => o.key));
     field("objectives").innerHTML = tiers.map((tier) => {
       const label = t("red.objective.chip", objectiveLabel(tier.key), tier.difficulty);
-      return `<span class="badge h-7 px-3 ${won.has(tier.key) ? "badge-red" : "badge-neutral"}">
-        <span class="dot ${won.has(tier.key) ? "dot-red" : "dot-neutral"}"></span>${esc(label)}</span>`;
+      return `<span class="badge h-7 px-3 ${won.has(tier.key) ? "badge-red" : "badge-neutral"}">${esc(label)}</span>`;
     }).join("");
     field("taken").innerHTML = tiers.length
       ? `${esc(t("red.taken"))} <b class="text-danger">${esc(won.size)}</b>/${esc(tiers.length)}` : "";

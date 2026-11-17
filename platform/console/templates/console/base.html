@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko" class="bg-page">
+<html lang="ko">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,8 +15,8 @@
       --border-subdued: #F1F5F9;
       --heading: #0F172A;
       --text: #334155;
-      --text-muted: #64748B;
-      --text-faint: #94A3B8;
+      --text-muted: #556275;
+      --text-faint: #647185;
       --text-inverse: #FFFFFF;
       --primary: #2563EB;
       --primary-hover: #1D4ED8;
@@ -32,7 +32,7 @@
       --warning-text: #B45309;
       --warning-soft: #FEF3C7;
       --warning-line: #FDE68A;
-      --success: #16A34A;
+      --success: #15803D;
       --success-text: #15803D;
       --success-soft: #F0FDF4;
       --success-line: #DCFCE7;
@@ -77,10 +77,13 @@
       word-break: keep-all;
       overflow-wrap: break-word;
     }
+    h1, h2, h3, h4 {
+      text-wrap: balance;
+    }
   </style>
   <style>{% include "console/tailwind.css" %}</style>
 </head>
-<body class="bg-page text-body font-sans text-[14px] {% block body_class %}{% endblock %}">
+<body class="{% block surface %}bg-page{% endblock %} text-body font-sans text-[14px] {% block body_class %}{% endblock %}">
   <header class="h-14 shrink-0 bg-panel border-b border-line px-4 sm:px-6 flex items-center gap-4 sm:gap-6">
     <a href="/" data-t="common.brand" class="font-bold text-[15px] text-heading shrink-0"></a>
     <nav id="crumbs" class="flex items-center gap-2 text-muted text-[13px] min-w-0 truncate"></nav>
