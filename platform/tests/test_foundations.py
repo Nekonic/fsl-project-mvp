@@ -446,11 +446,13 @@ def test_a_replay_passes_only_when_the_attack_after_the_fix_alerts_and_an_ordina
     session = opened("f4")
     posture = (ROOT / "deploy/suricata/rules/no-xss.rules").read_text()
     passed(session, "f4", nocase=timezone.now() - timedelta(minutes=1))
-    mixed, plain = browsed("/search/?q=%3CScRiPt%3E", 403), browsed("/search/?q=hello", 200, request_id=2)
+    mixed = browsed("/search/?q=%3CScRiPt%3E", 403, at=time.time() - 30)
+    plain = browsed("/search/?q=hello", 200, request_id=2, at=time.time() - 30)
     with quietly(), patch("api.views._live_rules", lambda session=None: posture + WITH_NOCASE):
         with patch.object(site, "kept", return_value=[mixed, plain]):
             unalerted = step(client, session, "replay").json()
-        detected(session, "mine", "suricata", session.browse_marker, "script", alert={"signature_id": 9100001})
+        mine = detected(session, "mine", "suricata", session.browse_marker, "script", alert={"signature_id": 9100001})
+        Detection.objects.filter(pk=mine.pk).update(timestamp=timezone.now() - timedelta(seconds=30))
         with patch.object(site, "kept", return_value=[mixed]):
             no_benign = step(client, session, "replay").json()
         with patch.object(site, "kept", return_value=[mixed, dict(plain, at=time.time() + 30)]):
@@ -459,6 +461,23 @@ def test_a_replay_passes_only_when_the_attack_after_the_fix_alerts_and_an_ordina
     assert unalerted["reason"] == ["lesson.check.replay_attack", []]
     assert no_benign["reason"] == ["lesson.check.replay_benign", []]
     assert done["passed"] is True
+
+def test_a_replay_checked_before_the_attack_s_alert_could_be_collected_waits_for_it_and_is_no_wrong_try(client):
+    session = opened("f4")
+    posture = (ROOT / "deploy/suricata/rules/no-xss.rules").read_text()
+    passed(session, "f4", nocase=timezone.now() - timedelta(minutes=1))
+    mixed = browsed("/search/?q=%3CScRiPt%3E", 403, at=time.time() - 1)
+    with quietly(), patch("api.views._live_rules", lambda session=None: posture + WITH_NOCASE), \
+            patch.object(site, "kept", return_value=[mixed]):
+        early = step(client, session, "replay").json()
+        with patch("api.views.time.time", return_value=mixed["at"] + 11):
+            late = step(client, session, "replay").json()
+    kept = Session.objects.get(pk=session.pk).lesson_steps["f4"]["replay"]
+
+    assert (early["passed"], early["reason"]) == (False, ["lesson.check.alert_pending", []]), (
+        "a second after the attack search its alert may still be on its way to Elasticsearch")
+    assert late["reason"] == ["lesson.check.replay_attack", []], "past the window no alert means the fix did not alert"
+    assert kept["tries"] == 1, "only the check past the window counted as a wrong try"
 
 def test_a_replay_s_ordinary_search_seconds_after_the_attack_is_not_charged_with_the_attack_s_alert(client):
     session = opened("f4")

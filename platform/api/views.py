@@ -1088,7 +1088,8 @@ def _replay_check(session, step, kept, ended=False):
         if (shown.get("kali") or {}).get("settling"):
             return False, [KALI_SETTLING, [wargames.find_case(session.scenario, attack["kali"])["tool"]]], shown
     if since is None or not (replayed if attack.get("kali") else _sent_replayed(session, attack["sent"], since)):
-        return False, ["lesson.check.replay_attack", []]
+        sent = [] if since is None or attack.get("kali") else _site_requests(session, attack["sent"], since)
+        return False, [ALERT_PENDING if sent and _alert_may_come(sent) else "lesson.check.replay_attack", []]
     fault = _benign_fault(session, benign, since)
     if fault:
         return False, fault, {"loud": fault[0] != BENIGN_UNSENT}

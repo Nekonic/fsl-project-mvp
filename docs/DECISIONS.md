@@ -9278,3 +9278,18 @@ round's findings are fixed.
   recorded in text.
 - **The last round before `main` stays a full walk** of every course, so a
   regression outside the fixed items is still caught before gate 2.
+
+## 2026-11-18 — core_loc rises by 7 for the F6 reload check
+
+F6 step 7 passed when nano saved the exclusion file, before `nginx -t` and
+the reload, so a file nginx refuses passed too (walk round 28). The check now
+asks whether an nginx worker started after the file was last written
+(`crs.reloaded_since_written`). It runs a command on the WAF's nginx
+processes, and `rules/crs.py` is the only file allowed to know the nginx
+reload, so the 7 lines go into core and core_loc goes from 597 to 604.
+Rejected: passing on the file alone (the walk's finding); a probe request
+through the WAF (it would add traffic to the learner's logs and score); a
+worker-PID set remembered in the view (it would put nginx process knowledge
+outside `crs.py`); joining lines elsewhere in core to keep the number flat
+(that hides the growth instead of recording it).
+

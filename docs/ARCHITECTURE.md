@@ -1007,6 +1007,7 @@ sid를 읽을 수 없는 룰 줄:
 `replay`: `after`로 지정한 단계를 통과한 뒤 두 조건이 모두 맞으면 통과합니다.
 
 - 공격: `sent` 정규식이면 학습자가 추가한 sid의 경보가 있어야 함. `kali` 케이스면 그 실행의 탐지 기록에 949110이 있고 탈취 데이터가 없어야 함. 공격 쪽 `expect`는 읽지 않음
+- `sent` 공격에 추가한 sid의 경보가 없어도, 그 공격 요청 중 가장 늦은 것이 끝난 지 10초가 안 됐으면 `lesson.check.alert_pending`으로 답하고 틀린 시도로 세지 않음(`rules` check와 같음)
 - `kali` 공격의 실행이 아직 기록 전이면 `lesson.check.kali_settling`과 `kali`를 응답하고 틀린 시도로 세지 않음. 실행을 기록할 때 이미 수집했으므로 949110이 세션에 없을 때만 다시 수집
 - 같은 시각 이후의 정상 요청 중 하나 이상이 `expect`의 조건을 모두 만족. `status_class`가 맞고, `alerted_sid: none`이면 추가한 sid의 경보가 없고, `waf_logged: false`면 WAF 기록이 없어야 함
 - 사유에 어느 쪽이 빠졌는지 나옴(`lesson.check.replay_attack`, `lesson.check.replay_benign`)

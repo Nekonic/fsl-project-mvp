@@ -538,8 +538,11 @@ check a second after the search could not see the alert yet.
 Fix: while the newest matching request is younger than `ALERT_ARRIVES`
 (10 s), a check with no alert answers `lesson.check.alert_pending`, records
 no try (`UNTRIED_REASONS`), and the console checks again every 2 s in the
-same way; only after the 10 s does a missing alert fail the rule. Test:
-`test_a_check_pressed_before_the_alert_could_be_collected_waits_for_it_and_is_no_wrong_try`.
+same way; only after the 10 s does a missing alert fail the rule. F4's last
+step (`replay`, `sent` attack) judged its attack search the same way and now
+answers the same. Tests:
+`test_a_check_pressed_before_the_alert_could_be_collected_waits_for_it_and_is_no_wrong_try`,
+`test_a_replay_checked_before_the_attack_s_alert_could_be_collected_waits_for_it_and_is_no_wrong_try`.
 
 ### F6 step 8 passed 11.7 s after sqlmap exited
 
