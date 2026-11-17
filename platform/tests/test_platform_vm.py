@@ -161,7 +161,7 @@ def test_the_platform_vm_serves_ntp_to_the_range_management_network_alone():
     [served] = [entry for entry in config["write_files"]
                 if entry["path"].startswith("/etc/chrony/conf.d/")]
 
-    assert "chrony" in config["packages"]
+    assert "chrony" in config["runcmd"][0][-1]
     assert served["path"].endswith(".conf"), "chrony reads only *.conf from its confdir"
     assert served["content"].splitlines() == ["allow %management%", "local stratum 10"], (
         "the range has no Internet, so the platform is its clock; it keeps serving its own "

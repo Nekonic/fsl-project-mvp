@@ -159,8 +159,6 @@ resources:
             "%network%": {get_resource: network}
           template: |
             #cloud-config
-            package_update: true
-            packages: [docker.io, docker-compose-v2, git, nodejs, chrony]
             swap:
               filename: /swapfile
               size: 4G
@@ -225,6 +223,7 @@ resources:
                   [Install]
                   WantedBy=multi-user.target
             runcmd:
+              - [sh, -c, "for attempt in 1 2 3 4 5 6 7 8 9 10; do apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -y -q docker.io docker-compose-v2 git nodejs chrony && exit 0; sleep 15; done; exit 1"]
               - [sysctl, --system]
               - [git, clone, --branch, "%ref%", "%repository%", /opt/cr]
               - [mv, /root/openstack.env, /opt/cr/openstack.env]

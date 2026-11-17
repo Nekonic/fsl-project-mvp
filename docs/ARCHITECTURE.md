@@ -1898,7 +1898,7 @@ Heat 템플릿 `deploy/openstack/platform.yaml`이 만드는 리소스:
 
 플랫폼 VM의 cloud-init 작업:
 
-- `docker.io`, `docker-compose-v2`, `git` 설치
+- `docker.io`, `docker-compose-v2`, `git`, `nodejs`, `chrony` 설치. `apt-get update`와 설치를 15초 간격으로 최대 10번 시도
 - 스왑 4 GB 추가
 - Docker MTU를 Neutron 네트워크 MTU에 맞춤. 기본 브리지는 `mtu`, compose가 만드는 것을 포함한 새 브리지 네트워크는 `default-network-opts`
 - `repository`의 `ref`를 `/opt/cr`에 클론
@@ -1982,7 +1982,7 @@ fabric이 만드는 네트워크는 `mgmt`뿐입니다. 슬롯의 `internet`과 
 
 `setup.sh`의 작업:
 
-- `docker.io`, `docker-compose-v2`, `ethtool` 설치
+- `docker.io`, `docker-compose-v2`, `ethtool` 설치. `apt-get update`와 설치를 15초 간격으로 최대 10번 시도
 - sshd의 `MaxSessions`, `MaxStartups`와 inotify 한도를 올림
 - `CR_RANGE_IMAGE_TAG`로 GHCR에서 이미지를 모두 pull
 - 대상 시스템의 pristine 볼륨을 `/opt/cr/pristine`에 저장

@@ -357,6 +357,14 @@ The router gives the project's networks source NAT to the Internet. DNS is
 `network.dns`. The hosts below must be reachable through it. If you filter with
 an allowlist, also allow the hosts the registries redirect to.
 
+The platform VM's first boot and the range host's setup try `apt-get update`
+and their install up to ten times, 15 s apart. On 2026-11-17 two of the
+archive's servers (91.189.91.94 and .95, behind
+`nova.clouds.archive.ubuntu.com`) answered 404 for `dists/noble/Release` for
+more than half an hour while the others answered 200; `apt-get update` keeps
+the address it resolved, so a single try failed the platform VM's boot three
+times in a row, and a second `apt-get update` on the same VM succeeded.
+
 | Who | Reaches | For |
 |---|---|---|
 | platform VM (cloud-init, `cr-platform.service`) | the Ubuntu archive; github.com; ghcr.io; docker.elastic.co; geoip.elastic.co | `apt` (Docker, git, chrony); `git clone` of `platform.repository`; `cr-platform`; Elasticsearch, Kibana and Filebeat; `bin/fetch-geoip` |
@@ -628,7 +636,8 @@ bundle holds `deploy/range-host/setup.sh` and files the platform generates:
 `setup.sh` does these steps while the range host has its egress port:
 
 1. It enables `universe`, purges `snapd` and `modemmanager`, and installs
-   `docker.io`, `docker-compose-v2` and `ethtool`.
+   `docker.io`, `docker-compose-v2` and `ethtool`, trying `apt-get update` and
+   the install up to ten times, 15 s apart.
 2. It raises the inotify limits and sshd's `MaxSessions` and `MaxStartups`,
    because the platform runs many commands at once over one shared ssh
    connection.
