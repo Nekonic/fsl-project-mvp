@@ -63,6 +63,12 @@ filebeat.inputs:
               target: ""
               overwrite_keys: true
               add_error_key: true
+          - rename:
+              fields:
+                - from: status
+                  to: http.status
+              ignore_missing: true
+              fail_on_error: false
           - add_fields:
               target: ""
               fields:

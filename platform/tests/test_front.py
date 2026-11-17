@@ -98,6 +98,11 @@ def test_the_space_switcher_lists_only_the_current_space_and_a_lookup_across_spa
     assert listing.match("/kibana/s/soc-logs-1/api/spaces/space").group("kibana_current") == "soc-logs-1"
     assert not listing.match("/kibana/s/soc-logs-1/api/spaces/space/soc-logs-2")
     assert "$request_method != GET" in block and '"name":"SOC"' in block
+    assert "error_page 403 = @kibana-gate;" in block, (
+        "nginx's own 403 page is English; the gate refuses the change with the console's Korean message")
+    gate = block_after("location @kibana-gate {")
+    assert "set $kibana_gate http://127.0.0.1:8001/kibana-gate/;" in gate and "proxy_pass $kibana_gate;" in gate
+    assert "proxy_set_header X-Kibana-Uri $request_uri;" in gate
 
     text = FRONT.read_text()
     assert re.search(r'location /kibana/ \{\s+if \(\$args ~\* "\(\^\|&\)namespaces="\) \{\s+return 403;', text)

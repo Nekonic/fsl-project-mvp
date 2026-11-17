@@ -133,7 +133,7 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 
 이 문서 검색은 `kibana.shown_as_the_view_shows`가 고쳐서 넘깁니다. `_source`에서 `HIDDEN_FIELDS`를 빼고, `fields`는 data view의 runtime field만 요청합니다. 그래서 JSON 탭에도 표와 같은 필드만 나옵니다.
 
-다른 space를 열면 거부 화면이 한국어로 나옵니다. 학습자가 `/kibana/s/<space>/…` 문서를 열 때 `/auth-check/`가 그 space를 학습자의 열린 세션 space와 비교하고, 아니면 403입니다. nginx는 이 403과 Default space 등 `/kibana/` 아래의 다른 403을 콘솔의 `/kibana-refused/` 화면(`kibana.refused.*` 문구)으로 바꿉니다. 게이트 API도 다른 space 요청에는 `strings.html`의 `kibana.refused.space` 문구를 `message`로 돌려줍니다. 캐시 키의 `$session_asked`에 space가 들어가서 한 space의 허용이 다른 space에 쓰이지 않습니다.
+다른 space를 열면 거부 화면이 한국어로 나옵니다. 학습자가 `/kibana/s/<space>/…` 문서를 열 때 `/auth-check/`가 그 space를 학습자의 열린 세션 space와 비교하고, 아니면 403입니다. nginx는 이 403과 Default space 등 `/kibana/` 아래의 다른 403을 콘솔의 `/kibana-refused/` 화면(`kibana.refused.*` 문구)으로 바꿉니다. 게이트 API도 다른 space 요청에는 `strings.html`의 `kibana.refused.space` 문구를, `kibana.refusal`이 거부한 호출에는 `kibana.refused.call` 문구를, Kibana가 응답하지 않으면 502와 `kibana.unanswered` 문구를 `message`로 돌려줍니다. 거부 이유와 연결 오류(영어)는 플랫폼 로그에만 남깁니다. 캐시 키의 `$session_asked`에 space가 들어가서 한 space의 허용이 다른 space에 쓰이지 않습니다.
 
 세션 space에서는 `bfetch:disable`로 요청 묶음을 끕니다. 검색 한 번이 요청 한 건이라 게이트가 본문 전체를 봅니다.
 
@@ -385,7 +385,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | 관심사 | 담당 파일 | 알려진 예외 |
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`: 시작 시 `geoip` ingest 파이프라인 PUT |
-| Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`: Kibana API 경로를 앎. Default space, space 안의 space, space 접두어 없는 API 경로, `%`·역슬래시·점 세그먼트가 든 경로, `?namespaces=` 거부. space 안의 API 호출은 `/kibana-gate/`로 넘김(호출 목록과 인덱스 검사는 `kibana.py`). `GET /kibana/s/<space>/api/spaces/space`에는 SOC space만 담은 응답을 직접 반환. `console/templates/console/blue.html`: Kibana의 localStorage 키를 미리 채움 |
+| Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`: Kibana API 경로를 앎. Default space, space 안의 space, space 접두어 없는 API 경로, `%`·역슬래시·점 세그먼트가 든 경로, `?namespaces=` 거부. space 안의 API 호출은 `/kibana-gate/`로 넘김(호출 목록과 인덱스 검사는 `kibana.py`). `GET /kibana/s/<space>/api/spaces/space`에는 SOC space만 담은 응답을 직접 반환. 다른 메서드는 `@kibana-gate`로 넘겨 게이트가 거부. `console/templates/console/blue.html`: Kibana의 localStorage 키를 미리 채움 |
 | 슬롯 배선 읽기 | `platform/range/rangehost.py`(`WIRING`) | 없음. 출력 해석은 `platform/range/interfaces.py`, 학습자 이름과 그래프는 `platform/topology.py` |
 | CRS 설정과 nginx reload | `platform/rules/crs.py` | `declaration.yaml`의 `cr-waf` 호스트: `crs.py`에 넘길 예외 파일(`rules`), reload 명령(`reload`), nginx pid 파일(`pid`) 지정. `entrypoint.sh`: `vm-terminal.sh cr-waf`로 슬롯 WAF 컨테이너 쉘 제공(훈련 환경 호스트로 ssh 후 `sudo docker exec -it sN-waf bash -l`). `range/rangehost.forwarding`: 슬롯의 WAF shipper와 log-server 설정 작성(audit 로그와 nginx 거부 로그 경로). `deploy/range-host/slot.yaml`: `rangehost.LOGS` 경로로 WAF audit 로그 파일과 거부 로그 파일 마운트. audit 로그는 둘 다 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 `platform/tests/test_range_host.py`의 `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it`로 확인. F6의 WAF 창 단계 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`): `wargames.lesson`에서 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 채움. 플랫폼은 터미널을 조작하지 않음 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `declaration.yaml`의 센서 호스트(`sensor`는 `cr-range`): `suricata.py`에 넘길 룰 파일과 reload 명령 지정. `platform/range/rangehost.py`: 센서 설정(`deploy/suricata/suricata.yaml`)과 compose 서비스 렌더링. `deploy/range-host/slot.sh`: 슬롯과 함께 센서 시작·정지, 초기화 때 센서 로그 파일 다시 열기, 에지 라우터 설정. 이후 기본 룰 적용은 `suricata.py` |
@@ -684,6 +684,7 @@ ingest를 호출할 때마다 하는 일:
 
 - 공유 수집기는 syslog 줄마다 송신자 hostname으로 슬롯을 판별(도메인 앞의 `-N`, 없으면 슬롯 1). 태그를 붙여 그 슬롯의 인덱스에 씀. 태그는 ingest 파이프라인에서 저장 전에 지움
 - Filebeat는 syslog 태그로 `event.module`(`suricata`, `modsecurity`, `nginx`)을 붙임. 셋 다 아닌 syslog 줄은 버림
+- nginx 거부 기록의 `status`는 Filebeat가 Suricata HTTP 기록과 같은 `http.status`로 옮김. 최상위 `status`가 한 번이라도 매핑되면 Kibana가 같은 이름의 runtime field `status`를 검색에 넣지 않아서, `status : 404`가 IDS 기록과 WAF 기록에 맞지 않음
 - 인덱스에는 두 엔진의 이벤트와 nginx 거부 기록만 남음. 학습자가 Kibana에서 보는 필드·인덱스·헤더 어디에도 플랫폼 이름이 없음. 케이스 마커는 `X-Request-ID` 헤더에 실림
 
 조회 기간:

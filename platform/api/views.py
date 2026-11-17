@@ -90,6 +90,8 @@ SCHEDULE = ("attacks", "completion")
 REPLAY_MARKS = ("seed", "verify", "check", "replay")
 CHECK_TIMEOUT = 10.0
 KIBANA_REFUSED = "kibana.refused.space"
+KIBANA_CALL_REFUSED = "kibana.refused.call"
+KIBANA_UNANSWERED = "kibana.unanswered"
 RECORD_SLACK = timedelta(seconds=5)
 BENIGN_UNSENT = "lesson.check.replay_benign"
 ADDRESS_SIDE = "lesson.check.wrong.address_side"
@@ -1998,11 +2000,14 @@ def kibana_gate(request):
                             status=403)
     refused = kibana.refusal(request.method, uri, request.body, spaces)
     if refused:
-        return JsonResponse({"statusCode": 403, "error": "Forbidden", "message": refused}, status=403)
+        log.warning("kibana gate refused %s %s: %s", request.method, uri, refused)
+        return JsonResponse({"statusCode": 403, "error": "Forbidden", "message": strings.line(KIBANA_CALL_REFUSED)},
+                            status=403)
     try:
         status, headers, body = kibana.forward(request.method, uri, request.headers, request.body)
     except (OSError, ValueError) as exc:
-        return JsonResponse({"statusCode": 502, "error": "Bad Gateway", "message": f"Kibana did not answer: {exc}"},
+        log.warning("kibana gate: Kibana did not answer %s %s: %s", request.method, uri, exc)
+        return JsonResponse({"statusCode": 502, "error": "Bad Gateway", "message": strings.line(KIBANA_UNANSWERED)},
                             status=502)
     answer = HttpResponse(body, status=status)
     for name, value in headers:

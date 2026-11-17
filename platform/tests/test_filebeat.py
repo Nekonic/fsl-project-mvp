@@ -137,3 +137,24 @@ def test_a_document_does_not_carry_the_management_address_it_was_received_from()
     [dropped] = [step["drop_fields"] for step in heard["processors"] if "drop_fields" in step]
 
     assert dropped["fields"] == ["log.source.address"] and dropped["ignore_missing"] is True
+
+
+def test_a_refused_request_s_status_lands_where_the_ids_record_s_does_so_no_runtime_field_is_mapped_away():
+    import json
+    import re
+    import kibana
+    root = FILEBEAT.parents[2]
+    logged = re.search(r"log_format refused escape=json '(\{.*\})';", (root / "deploy/waf/board.com.conf").read_text())
+    shipped = set(re.findall(r'"([A-Za-z_]+)":', logged[1]))
+    [heard] = syslog_inputs()
+    [nginx] = [step["then"] for step in heard["processors"] if "if" in step
+               and {"log.syslog.appname": "nginx"} in [each.get("equals") for each in step["if"]["and"]]]
+    for moved in (each for step in nginx for each in step.get("rename", {}).get("fields", [])):
+        shipped = shipped - {moved["from"]} | {moved["to"]}
+    runtime = json.loads(kibana.session_view("logs-1-sensors", "cr-waf", kibana.shared_runtime(
+        (root / "deploy/kibana/objects.ndjson").read_bytes()))["attributes"]["runtimeFieldMap"])
+
+    assert "http.status" in shipped and "doc['http.status']" in runtime["status"]["script"]["source"]
+    assert not shipped & set(runtime), (
+        "Kibana 8.15 leaves a runtime field out of runtime_mappings once an index maps a field of the same name; "
+        "one refused record mapped a top-level status in slots 1 and 8, and status : 404 then matched no IDS row")
