@@ -103,6 +103,19 @@ def test_a_scenario_lists_the_board_s_objectives_only_when_one_of_its_attacks_tr
     assert keys("3.3") == every == keys("1.1")
     assert client.get("/api/wargames/board/objectives/?scenario=9.9").status_code == 400
 
+def test_the_comment_xss_hints_send_the_learner_to_their_own_comment_s_form_source_since_no_log_keeps_a_body():
+    one = wargames.scenario_run("3.4")
+    table = strings.shown()
+    said = " ".join(table[f"{one['text']}.hint.{hint}"] for hint in one["hints"])
+    deploy = Path(__file__).resolve().parents[2] / "deploy"
+    parts = re.search(r"^SecAuditLogParts (\S+)", (deploy / "waf" / "modsecurity.conf").read_text(), re.M).group(1)
+    eve = (deploy / "suricata" / "suricata.yaml").read_text()
+
+    assert "C" not in parts and not re.search(r"^\s*(http-body|payload)(-printable)?:\s*(yes|true)", eve, re.M), (
+        "walk round 28: the hint says no log keeps the comment body, which holds while neither sensor records one")
+    assert all(table[key] in said for key in ("site.dev.tab.payload", "site.dev.form", "site.dev.view_source"))
+    assert not re.search(r"(?i)%3[cd]", said), "the hint names where the encoded body shows, not what it reads"
+
 def test_a_closed_xss_scenario_counts_no_objective_but_one_the_target_lost_anyway(client):
     session = opened("3.4")
     Session.objects.filter(pk=session.pk).update(ended_at=timezone.now())

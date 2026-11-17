@@ -260,7 +260,7 @@ scenarios:
       - {at: 120, case: board-xss-img-onerror-in-comment, origin: ru}
       - {at: 240, case: board-xss-script-tag-in-search, origin: ru}
     completion: {detected_by: suricata}
-    hints: [buffer, handler]
+    hints: [buffer, form]
   - id: "4.1"
     order: 11
     text: scenario.unknown
@@ -456,7 +456,8 @@ foundations:
     cases: [board-normal-search]
     steps:
       - id: sort
-        point: {opens: site, site: "form:has(select[name=sort])", until: sent, then: {dev: payload.query}}
+        point: {opens: site, dev: toggle, until: dev_open,
+                then: {site: "form:has(select[name=sort])", until: sent, then: {dev: payload.query}}}
         check: {kind: answer, of: param_value, name: sort, match: '[?&]sort=', dev: '[?&]sort='}
       - id: error
         point: {opens: site, panel: "#site-address", until: sent, then: {dev: general.status}}
