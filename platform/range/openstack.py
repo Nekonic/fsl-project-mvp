@@ -106,7 +106,7 @@ SETTINGS = {
     "mtu": "CR_OPENSTACK_MTU",
     "build_network": "CR_OPENSTACK_BUILD_NETWORK",
     "platform": "CR_OPENSTACK_PLATFORM",
-    "image_tag": "CR_IMAGE_TAG",
+    "image_tag": "CR_RANGE_IMAGE_TAG",
     "slots": "CR_OPENSTACK_SLOTS",
 }
 
@@ -945,7 +945,7 @@ class OpenStack:
             reasons.append(f"the range host pulls its images, so it needs a network that reaches the "
                            f"Internet; set {SETTINGS['build_network']}")
         if not self.build.image_tag:
-            reasons.append(f"the range host pulls the images by the platform's tag; set {SETTINGS['image_tag']}")
+            reasons.append(f"the range host pulls the images by the range images' tag; set {SETTINGS['image_tag']}")
         return reasons
 
     def plan_slot(self) -> slot.Plan:

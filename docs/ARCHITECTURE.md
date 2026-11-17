@@ -83,7 +83,7 @@
 
 - 앱 이미지와 훈련 환경 이미지는 CI(`.github/workflows/images.yml`)에서 빌드
 - 훈련 환경 이미지: Kali(`deploy/kali/Dockerfile`), WAF(`deploy/waf/Dockerfile`), 에지(`deploy/edge/Dockerfile`)
-- 훈련 환경 호스트는 `ghcr.io/nekonic/cr-<name>:<CR_IMAGE_TAG>`를 pull. 태그는 플랫폼 자신의 태그이고, 호스트 설치 번들과 슬롯 compose 파일에 들어감
+- 훈련 환경 호스트는 `ghcr.io/nekonic/cr-<name>:<CR_RANGE_IMAGE_TAG>`를 pull. 이 태그는 플랫폼 커밋이 아니라 훈련 환경 이미지 여섯 개의 빌드 컨텍스트(`images.yml`의 `sources`, 없으면 `context`)를 마지막으로 바꾼 커밋이고, 그 커밋 이미지가 GHCR에 없으면 그 뒤 컨텍스트가 같은 커밋 중 GHCR에 다 있는 첫 커밋(`bin/range-image-tag`). 호스트 설치 번들과 슬롯 compose 파일에 들어감. 플랫폼 쪽만 바꾼 커밋으로 플랫폼 VM을 다시 만들면 태그와 번들 digest가 그대로라 훈련 환경 호스트와 슬롯이 남음
 - 도구 케이스는 공격 컨테이너에서 실행(`redteam/tools.py`, `TOOL_IMAGE` 기본값 `cr-kali`)
 
 새 워게임 추가 요구 사항:
@@ -304,7 +304,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 
 - 접속 값: `CR_OPENSTACK_KEYSTONE`, `_USER`, `_PASSWORD`, `_PROJECT`, `_SSH_USER`, `_SSH_KEY`, `_REGION`, `_INTERFACE`, `_DOMAIN`. 하나라도 없으면 빠진 이름을 밝히고 거부
 - 구성 값: `_BASE_IMAGE`, `_FLAVOR`(훈련 환경 호스트 flavor), `_AVAILABILITY_ZONE`, `_SUBNETS`, `_MTU`, `_SLOTS`, `_BUILD_NETWORK`(훈련 환경 호스트가 이미지를 받는 플랫폼 네트워크), `_PLATFORM`. 실제로 쓰는 시점에 없으면 이름을 밝히고 거부
-- `CR_IMAGE_TAG`: 훈련 환경 호스트 이미지 태그. 부팅 때 `/opt/cr/.env`에 기록
+- `CR_RANGE_IMAGE_TAG`: 훈련 환경 호스트 이미지 태그. 부팅 때 `/opt/cr/.env`에 기록
 - 코드 기본값은 `_SLOTS`(비면 1)와 `_MTU`(비면 렌더링 때 1500)뿐. 나머지 값은 Heat 스택을 거쳐 `deploy/openstack/cloud.yaml`에서 옴. 이 파일은 `platform/range/cloud.py`에서 읽고 검증
 - `redteam/harness.py`는 launcher를, `platform/rules/suricata.py`는 runner를 받음. 둘 다 `subprocess`를 import하지 않고 substrate 이름도 모름
 
@@ -1862,7 +1862,7 @@ init이 하는 일(`bin/cloud`의 `init`, 관리자 인증은 `/etc/kolla/clouds
 이 파일을 쓰는 곳:
 
 - `platform/range/cloud.py`: 파일 검사. 문제는 키별로 모두 보고. `clouds.yaml` 항목 읽기와 병합, init의 외부 네트워크·flavor 선택도 여기 있음
-- `bin/platform-rebuild`, `bin/cloud`: 이 값과 `clouds.yaml` 항목으로 openstack CLI와 Heat 파라미터를 채워 실행. 스택을 배포하면 값이 플랫폼의 `openstack.env`에 기록됨
+- `bin/platform-rebuild`, `bin/cloud`: 이 값과 `clouds.yaml` 항목으로 openstack CLI와 Heat 파라미터를 채워 실행. 스택을 배포하면 값이 플랫폼의 `openstack.env`에 기록됨. `bin/cloud`는 출력하는 줄마다 앞에 `HH:MM:SS`를 붙이고, API는 5초마다 물음
 
 `bin/cloud up`의 순서:
 
@@ -1902,7 +1902,7 @@ Heat 템플릿 `deploy/openstack/platform.yaml`이 만드는 리소스:
 - 스왑 4 GB 추가
 - Docker MTU를 Neutron 네트워크 MTU에 맞춤. 기본 브리지는 `mtu`, compose가 만드는 것을 포함한 새 브리지 네트워크는 `default-network-opts`
 - `repository`의 `ref`를 `/opt/cr`에 클론
-- `/opt/cr/.env`에 `CR_IMAGE_TAG=<체크아웃의 커밋>` 기록
+- `/opt/cr/.env`에 `CR_IMAGE_TAG=<체크아웃의 커밋>`(플랫폼 이미지 태그)과 `CR_RANGE_IMAGE_TAG=<bin/range-image-tag 출력>`(훈련 환경 이미지 태그) 기록
 - GeoIP DB 다운로드(`bin/fetch-geoip`). 자격 증명 불필요. Elastic GeoIP 엔드포인트는 URL에 약관 동의를 담으면 GeoLite2를 내려 줌
 - `ubuntu`를 `docker` 그룹에 추가
 - uv 0.13.8 설치. GitHub 릴리스 tarball을 받아 공개된 SHA-256과 대조한 뒤 `/usr/local/bin/uv`에 풀어 놓음
@@ -1984,7 +1984,7 @@ fabric이 만드는 네트워크는 `mgmt`뿐입니다. 슬롯의 `internet`과 
 
 - `docker.io`, `docker-compose-v2`, `ethtool` 설치
 - sshd의 `MaxSessions`, `MaxStartups`와 inotify 한도를 올림
-- 플랫폼의 `CR_IMAGE_TAG`로 GHCR에서 이미지를 모두 pull
+- `CR_RANGE_IMAGE_TAG`로 GHCR에서 이미지를 모두 pull
 - 대상 시스템의 pristine 볼륨을 `/opt/cr/pristine`에 저장
 - 끝나면 `setup.sh`를 호출한 user-data 스크립트가 `/var/lib/cr/ready`를 남김. 실패하면 `/var/lib/cr/failed`를 남기고 로그 끝부분을 콘솔에 찍음(`rangehost.user_data`)
 

@@ -8938,3 +8938,51 @@ the IDS as every other link does, and its unaddressed mirror link leaves the
 at the IDS so it does not read as an inline device between the two switches.
 Rejected the same day: the IDS hanging inside the web box, and its address
 written under its name with neither link labelled.
+
+## 2026-11-17 — The range host's images are tagged by the last range-side change, so a platform-only replace keeps it
+
+A live `uv run bin/cloud up --replace` took 26 min: the backup 29 s, the
+stack, boot, cloud-init and hand-over 477 s, the API wait and converge 1055 s.
+Most of the 1055 s was a new range host. The range host pulled its images at
+`CR_IMAGE_TAG`, the platform's own commit, and carried it in `cr_tag`, so every
+new platform commit made it stale (`_plan` in `platform/range/openstack.py`)
+and `POST slot/` deleted it and booted another. Of the 249 commits on `dev`
+since 2026-11-10, 9 changed a range image's build context. The recorded intent
+was the other way: 2026-10-11 "so the range can stand through a replace", and
+`docs/OPENSTACK.md` §5.3 "You do not need to tear the slot down". §3.6's "A
+platform on a new commit … makes the range host stale" was a consequence of
+reusing the platform's tag, not a goal.
+
+- The range host's tag is `CR_RANGE_IMAGE_TAG`, written by the platform VM's
+  first boot with `bin/range-image-tag` (`range_image_tag` in
+  `bin/platform-rebuild`): in the `/opt/cr` clone, the last commit that changed
+  the build contexts `images.yml` gives the six range images, the paths the
+  sideload check (`refuse_unless_unchanged`) already compares. The platform's
+  image keeps `CR_IMAGE_TAG`. The bundle digest is unchanged, so a change to a
+  bundle file (setup, rendered pristine compose, `daemon.json`) still makes the
+  range host stale.
+- `images.yml` tags only the head commit of a push, so the last range-side
+  commit may have no images: 089717e, today's, has none; the next commit,
+  014bc78, has them. The tag is the first commit from the last range-side one
+  to HEAD whose range contexts equal HEAD's and for which GHCR has all six range
+  images. Later commits only add to the end of that list, so the choice holds
+  while the contexts do. When none qualifies, or GHCR does not answer, it is
+  HEAD, whose images `bin/platform-rebuild` checks before it deletes anything.
+  Rejected: CI also pushing each range image under the range-side commit. It
+  needs a YAML reader in the job (the runner's `python3` is not documented to
+  have PyYAML) and would overwrite an old tag with a rebuild whose digest can
+  differ.
+- Kali's and the WAF's build context is all of `deploy/`, so a change to
+  `deploy/openstack` or `deploy/range-host` would have moved the tag (66 of the
+  249 commits). `images.yml` now gives them `sources` (`deploy/kali
+  deploy/proxy`, `deploy/waf`), the files their Dockerfiles copy; a test holds
+  each narrowed `sources` to its Dockerfile's `COPY` lines. The sideload check
+  compares the same narrower paths.
+- `bin/cloud` asks the API every 5 s instead of 30 s (`POLL`; `configure/`
+  keeps its 300 s of 503 retries, 60 tries), and `bin/platform-rebuild` tries
+  ssh and `/api/auth/` every 2 s instead of 10 s. Every line `bin/cloud` prints
+  starts with `HH:MM:SS`, so the next run's log gives each step's time.
+- Unverified until a live replace: that a platform-only `up --replace` leaves
+  `cr-range` and its slots standing and converges with only `configure/` and
+  `ready/`. The first replace after this change still boots a new range host
+  once, because the standing one carries the old platform commit in `cr_tag`.

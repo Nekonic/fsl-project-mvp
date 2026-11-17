@@ -396,7 +396,7 @@ def pristine(source: Path, wargames, tag: str, mtu: int) -> dict:
 
 def bundle(source: Path, wargames, tag: str, mtu: int) -> dict[str, bytes]:
     if not tag:
-        raise RangeUnavailable("the range host pulls the images by the platform's own tag; set CR_IMAGE_TAG")
+        raise RangeUnavailable("the range host pulls the images by the range images' tag; set CR_RANGE_IMAGE_TAG")
     if not mtu:
         raise RangeUnavailable("the range host gives its networks the tenant MTU; set CR_OPENSTACK_MTU "
                                "(network.mtu in cloud.yaml)")

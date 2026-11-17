@@ -112,7 +112,7 @@ services:
       PUBLIC_TARGET_URL: "http://board.com"
       WARGAME_CASES_DIR: "/app/redteam/cases"
       CR_SOURCE: "/src"
-      CR_IMAGE_TAG: "${CR_IMAGE_TAG:-dev}"
+      CR_RANGE_IMAGE_TAG: "${CR_RANGE_IMAGE_TAG:-dev}"
       CR_RETAIN_CLOSED_MINUTES: "${CR_RETAIN_CLOSED_MINUTES:-60}"
     env_file:
       - path: ./openstack.env

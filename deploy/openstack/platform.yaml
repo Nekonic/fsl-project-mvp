@@ -230,6 +230,7 @@ resources:
               - [mv, /root/openstack.env, /opt/cr/openstack.env]
               - [mv, /root/compose.env, /opt/cr/.env]
               - [sh, -c, "echo CR_IMAGE_TAG=$(git -C /opt/cr rev-parse HEAD) >> /opt/cr/.env"]
+              - [sh, -c, "echo CR_RANGE_IMAGE_TAG=$(python3 /opt/cr/bin/range-image-tag) >> /opt/cr/.env"]
               - [python3, /opt/cr/bin/fetch-geoip]
               - [sh, -c, "echo CR_OPENSTACK_PLATFORM=$(cloud-init query instance_id) >> /opt/cr/openstack.env"]
               - [networkctl, reload]

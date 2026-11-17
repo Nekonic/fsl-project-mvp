@@ -102,6 +102,20 @@ def test_every_action_ci_uses_is_pinned_to_a_commit():
     assert not floating, f"a tag can be moved to other code under the same name: {floating}"
 
 
+def test_a_build_context_narrowed_by_sources_holds_everything_its_dockerfile_copies():
+    for entry in matrix():
+        if "sources" not in entry:
+            continue
+        dockerfile = (ROOT / (entry.get("file") or f"{entry['context']}/Dockerfile")).read_text()
+        copied = [words[-2] for words in (line.split() for line in dockerfile.splitlines())
+                  if words and words[0] in ("COPY", "ADD") and not any(w.startswith("--from") for w in words)]
+        outside = [path for path in copied
+                   if not any(Path(entry["context"], path).is_relative_to(source) for source in entry["sources"].split())]
+        assert copied and not outside, (
+            f"{entry['name']}: {outside} change the image but not its sources, so the range host would keep "
+            f"an image built from them")
+
+
 def test_the_rebuild_checks_every_image_ci_publishes():
     assert set(rebuild().IMAGES) == {entry["name"] for entry in matrix()}
 
@@ -121,8 +135,8 @@ def test_each_wargame_names_the_image_its_service_runs():
 def test_the_platform_hands_its_image_tag_to_the_range_it_builds():
     environment = composed.services()["platform"]["environment"]
 
-    assert environment["CR_IMAGE_TAG"] == "${CR_IMAGE_TAG:-dev}", (
-        "the platform ships the wargame images to the wargame host at this tag; "
+    assert environment["CR_RANGE_IMAGE_TAG"] == "${CR_RANGE_IMAGE_TAG:-dev}", (
+        "the platform ships the range images to the range host at this tag; "
         "without it the range would run :dev whatever the VM pulled"
     )
 
@@ -147,11 +161,13 @@ def test_the_platform_vm_runs_the_images_built_from_its_own_checkout():
     _, config = platform_vm_config()
     commands = [" ".join(map(str, c)) for c in config["runcmd"]]
     tagged = next(i for i, c in enumerate(commands) if "CR_IMAGE_TAG=" in c)
+    ranged = next(i for i, c in enumerate(commands) if "CR_RANGE_IMAGE_TAG=" in c)
     started = next(i for i, c in enumerate(commands) if "cr-platform.service" in c)
 
     assert "git -C /opt/cr rev-parse HEAD" in commands[tagged]
-    assert "/opt/cr/.env" in commands[tagged]
-    assert tagged < started
+    assert "/opt/cr/bin/range-image-tag" in commands[ranged]
+    assert "/opt/cr/.env" in commands[tagged] and "/opt/cr/.env" in commands[ranged]
+    assert tagged < started and ranged < started
 
 
 def test_the_platform_vm_fetches_its_geoip_database_before_starting():
@@ -462,6 +478,39 @@ class ChangedContexts:
         self.compared.append((source, context))
         code = 128 if self.broken else 1 if (source, context) in self.changed else 0
         return subprocess.CompletedProcess(argv, code, b"", b"")
+
+
+def test_a_platform_only_commit_keeps_the_range_images_tag_and_a_range_side_commit_moves_it(tmp_path):
+    module = rebuild()
+
+    def git(*argv):
+        return subprocess.run(["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@example.com",
+                               "-c", "commit.gpgsign=false", *argv],
+                              check=True, capture_output=True, text=True).stdout.strip()
+
+    def commit(path, text):
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_text(text)
+        git("add", "-A")
+        git("commit", "-q", "-m", path)
+        return git("rev-parse", "HEAD")
+
+    git("init", "-q")
+    board = commit("wargames/board/app/app.py", "1")
+    pushed = commit("platform/api/views.py", "1")
+    platform_only = commit("platform/api/views.py", "2")
+    openstack_only = commit("deploy/openstack/platform.yaml", "1")
+    kali = commit("deploy/kali/bashrc", "1")
+    published = {pushed, kali}
+
+    def tag(commit):
+        return module.range_image_tag(commit, tmp_path, lookup=lambda name, at: None if at in published else "missing")
+
+    assert tag(pushed) == pushed, (
+        f"{board} changed the board but GHCR holds no images for it; {pushed} holds the same range images and was pushed")
+    assert tag(platform_only) == tag(openstack_only) == pushed, (
+        "a commit that changes no range image's build context keeps the running range host and its slots")
+    assert tag(kali) == kali, "a changed Kali image is pulled by a new range host"
 
 
 def test_every_image_must_be_built_from_what_head_holds():

@@ -26,8 +26,8 @@ REBUILD = ROOT / "bin/platform-rebuild"
 CALL_TIMEOUT = 1800
 SLOT_WAIT = 1800
 READY_WAIT = 1800
-POLL = 30
-CONFIGURE_TRIES = 10
+POLL = 5
+CONFIGURE_TRIES = 60
 BOOTING = ("NOT_STANDING", "REBUILDING", "RESETTING", "STALE")
 KOLLA_CLOUDS = Path("/etc/kolla/clouds.yaml")
 KOLLA_ADMIN = "kolla-admin"
@@ -70,6 +70,22 @@ def arguments(argv: list[str]) -> argparse.Namespace:
                              "clouds.yaml entry holds its current one")
     rebuild.add_sideload(parser)
     return parser.parse_args(argv)
+
+
+class Stamped:
+    def __init__(self, stream, now=time.localtime):
+        self.stream, self.now, self.line_start = stream, now, True
+
+    def write(self, text: str) -> int:
+        for piece in text.splitlines(keepends=True):
+            if self.line_start:
+                self.stream.write(time.strftime("%H:%M:%S ", self.now()))
+            self.stream.write(piece)
+            self.line_start = piece.endswith("\n")
+        return len(text)
+
+    def __getattr__(self, name: str):
+        return getattr(self.stream, name)
 
 
 class Platform:
@@ -485,4 +501,5 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
+    sys.stdout, sys.stderr = Stamped(sys.stdout), Stamped(sys.stderr)
     sys.exit(main(sys.argv[1:]))

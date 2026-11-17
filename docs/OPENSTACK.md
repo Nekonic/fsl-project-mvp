@@ -614,8 +614,8 @@ with its setup bundle in the Nova user data
 data at 65535 bytes of base64, and the platform refuses a bigger bundle. The
 bundle holds `deploy/range-host/setup.sh` and files the platform generates:
 
-- `images.txt`: every image the slots run, at the platform's tag
-  (`CR_IMAGE_TAG`, the commit of the platform checkout, from `/opt/cr/.env`):
+- `images.txt`: every image the slots run, at the range images' tag
+  (`CR_RANGE_IMAGE_TAG` in `/opt/cr/.env`, below):
   `ghcr.io/nekonic/cr-kali`, `cr-waf`, `cr-edge`, `cr-board`, `cr-corp`,
   `cr-corp-db`, and the pinned `jasonish/suricata`, `mysql` and
   `rsyslog/rsyslog-minimal`.
@@ -646,11 +646,28 @@ phase `SETUP_FAILED` in `/api/range/ready/`, and `bin/cloud up` stops on it with
 the reason. The next `POST slot/` (the next `bin/cloud up`) deletes a range
 host that failed its setup and boots a new one, when no session holds a slot.
 
+**The range images' tag.** The platform VM's first boot writes
+`CR_RANGE_IMAGE_TAG` into `/opt/cr/.env` with `bin/range-image-tag`, beside
+`CR_IMAGE_TAG`, the commit of the clone, which tags the platform's own image.
+The range tag is not the platform's commit. `bin/range-image-tag`
+(`range_image_tag` in `bin/platform-rebuild`) reads the build contexts of the
+six range images from `.github/workflows/images.yml` (`sources`, else
+`context`; the same paths the sideload check compares) and, in `/opt/cr`, finds
+the last commit that changed any of them. `images.yml` publishes only the head
+commit of each push, so that commit may have no images on GHCR. It therefore
+takes the first commit from there to the clone's HEAD whose range build
+contexts equal HEAD's and for which GHCR has all six range images. If none has
+them, or GHCR does not answer, it takes HEAD, whose images `bin/platform-rebuild`
+checked before it made the VM (§5.3).
+
 The images must be public and exist for the tag. The tag and every bundle file
 are part of the bundle's digest, which the range host carries in its metadata
-(`cr_bundle`, beside the tag in `cr_tag`). A platform on a new commit, or a
-change to a file in the bundle, makes the range host stale, and `POST slot/`
-replaces it (§6). A tag that moves (`dev`) does not change the digest.
+(`cr_bundle`, beside the tag in `cr_tag`). A commit that changes a range image's
+build context, or a change to a file in the bundle, makes the range host stale,
+and `POST slot/` replaces it (§6). A platform VM replaced on a commit that
+changes neither (most commits change only `platform/`, the console or the docs)
+computes the same tag and digest, so the range host and its slots stand
+through the replace. A tag that moves (`dev`) does not change the digest.
 
 The bundle digest (`rangehost.digest`) hashes each file's name and content,
 not its mode. A checkout's umask therefore does not change it: a sideloaded
@@ -658,7 +675,7 @@ checkout (files 0664) and a cloud-init clone (files 0644) of one commit plan
 the same range host.
 
 A sideloaded image (§5.3) is loaded on the platform VM only. The range host
-pulls every slot image from GHCR at the platform's tag, so a changed Kali, WAF,
+pulls every slot image from GHCR at the range images' tag, so a changed Kali, WAF,
 edge or target reaches the range only through a pushed commit whose images
 `images.yml` has published.
 
@@ -796,6 +813,12 @@ uv run bin/cloud up            # --replace to replace a standing platform; --clo
 uv run bin/cloud down
 ```
 
+Every line `bin/cloud` prints, its own and `bin/platform-rebuild`'s, starts
+with the local time (`HH:MM:SS`), so a run's log shows how long each step took.
+It asks the platform's API every 5 s while it waits (`POLL`), and
+`bin/platform-rebuild` tries ssh and `/api/auth/` every 2 s (`SSH_POLL`,
+`API_POLL`).
+
 `up` does these steps in order:
 
 1. It refuses to run without a usable `cloud.yaml`.
@@ -817,8 +840,8 @@ uv run bin/cloud down
    differs from what the platform would create).
 6. It sends `POST slot/`. It stops when the slot is blocked. If no range host
    stands, this boots `cr-range` (§6). If the range host is stale, because the
-   platform's tag or the bundle's digest differs from the one it was booted
-   with, or its setup failed (`SETUP_FAILED`), this deletes it and boots a new
+   range images' tag or the bundle's digest differs from the one it was booted
+   with (§3.6), or its setup failed (`SETUP_FAILED`), this deletes it and boots a new
    one, but only when no session holds any slot. While a session holds one, a
    stale slot reads blocked and `up` stops.
 7. It sends `GET ready/` until no slot reads `NOT_STANDING`, `REBUILDING`,
@@ -913,7 +936,9 @@ store.
 Because the key is carried over, the fabric's `cr-platform` keypair stays valid.
 You do not need to tear the slot down. A set-up range host holds no port on
 the stack's own network: the platform detached its egress port (§2.6) when its
-setup reported ready.
+setup reported ready. When the new commit changes no range image's build
+context and no bundle file, the new platform plans the range host current
+(§3.6), and `bin/cloud up --replace` only configures the standing slots again.
 
 `bin/backup` works like this:
 
@@ -953,9 +978,9 @@ Docker image from a tarball instead of pulling it from GHCR. Both
    container, such as `filebeat.yml`, keeps the cloned commit's copy until the
    container is recreated.
 
-`CR_IMAGE_TAG` stays the cloned commit. The range host pulls every slot image
-from GHCR at that tag (§3.6), so a sideloaded image is loaded on the platform VM
-only. A sideloaded `board`, `corp`, `corp-db`, `kali`, `waf` or `edge` never
+`CR_IMAGE_TAG` and `CR_RANGE_IMAGE_TAG` stay what the clone gave them. The
+range host pulls every slot image from GHCR at the range images' tag (§3.6), so
+a sideloaded image is loaded on the platform VM only. A sideloaded `board`, `corp`, `corp-db`, `kali`, `waf` or `edge` never
 reaches the range; push the commit and let `images.yml` publish its images
 instead. The rebuild still writes `CR_SIDELOADED=<names>` in
 `/opt/cr/openstack.env`, and a hand-over that `up` redoes on a standing VM
@@ -963,7 +988,7 @@ keeps the line. To see the names, run
 `sudo docker exec cr-platform env | grep CR_SIDELOADED` on the VM.
 
 A pushed commit with a changed slot image reaches the range through `POST
-slot/`. The new tag makes the range host stale, and `POST slot/` deletes it and
+slot/`. The new range images' tag makes the range host stale, and `POST slot/` deletes it and
 boots a new one from the stock image, which pulls the new images (§3.6, §6).
 Every slot goes with it, so this waits until no session holds any slot. Until
 then `ready/` reads the slots `STALE`. `bin/cloud up` sends `POST slot/` and
@@ -1188,7 +1213,7 @@ Notes:
   name. The fabric needs the Neutron `standard-attr-tag` extension, which is on
   by default. The fabric carries only the `mgmt` segment. A range network of
   any other segment, or of a slot tag other than 1, is listed as a leftover.
-- Booting the range host needs `CR_OPENSTACK_BUILD_NETWORK`, `CR_IMAGE_TAG` and
+- Booting the range host needs `CR_OPENSTACK_BUILD_NETWORK`, `CR_RANGE_IMAGE_TAG` and
   exactly one `compute.base_image`. The template writes the stack's network,
   which has a router, into `CR_OPENSTACK_BUILD_NETWORK`; the range host pulls
   its images over it (§2.6).
@@ -1453,8 +1478,8 @@ with F4), so a full run reports one skip. `docs/state/now.md`
 has the latest full run.
 
 A change to a slot image (`deploy/kali`, `deploy/waf`, `deploy/edge`, a
-target) reaches the range only through a pushed commit: the new tag makes the
-range host stale, and `bin/cloud up` replaces it when no session holds a slot
+target) reaches the range only through a pushed commit: the new range images'
+tag makes the range host stale, and `bin/cloud up` replaces it when no session holds a slot
 (§5.3). A change to `deploy/range-host/slot.yaml` that changes the setup
 bundle's `pristine.yaml` or `images.txt` changes the bundle's digest, so the
 range host is stale the same way: an edit to `x-contained`, to

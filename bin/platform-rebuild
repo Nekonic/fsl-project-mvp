@@ -36,7 +36,9 @@ VENV_COMMAND = (
     f"/usr/local/bin/uv sync --quiet --frozen --project {CHECKOUT} --python /usr/bin/python3"
 )
 SSH_WAIT = 900
+SSH_POLL = 2
 API_WAIT = 1200
+API_POLL = 2
 CONTAINER_WAIT = 120
 STORE_DIRECTORY = "/var/lib/docker/volumes/cr_platformdata/_data"
 LEGACY_STORE = "/var/lib/docker/volumes/fsl_platformdata/_data/db.sqlite3"
@@ -52,6 +54,7 @@ OWNER = "nekonic"
 BUILDER = "cr-build-"
 BUILDS = "cr_image"
 IMAGES = ("platform", "board", "corp", "corp-db", "kali", "waf", "edge")
+RANGE_IMAGES = tuple(name for name in IMAGES if name != "platform")
 MANIFESTS = ", ".join((
     "application/vnd.oci.image.index.v1+json",
     "application/vnd.oci.image.manifest.v1+json",
@@ -229,6 +232,20 @@ def build_contexts() -> dict[str, list[str]]:
     return {entry["name"]: entry["sources"].split() if "sources" in entry else [entry["context"]] for entry in matrix}
 
 
+def range_image_tag(commit: str = "HEAD", root: Path = ROOT, run=run, lookup=published) -> str:
+    git = ["git", "-C", str(root)]
+    contexts = build_contexts()
+    paths = sorted({path for name in RANGE_IMAGES for path in contexts[name]})
+    head = run([*git, "rev-parse", commit]).stdout.decode().strip()
+    changed = run([*git, "log", "-1", "--format=%H", head, "--", *paths]).stdout.decode().strip() or head
+    later = run([*git, "rev-list", "--reverse", "--ancestry-path", f"{changed}..{head}"]).stdout.decode().split()
+    for candidate in (changed, *later):
+        same = run([*git, "diff", "--quiet", candidate, head, "--", *paths], check=False).returncode == 0
+        if same and not any(lookup(name, candidate) for name in RANGE_IMAGES):
+            return candidate
+    return head
+
+
 def refuse_unless_unchanged(base: str, commit: str, tarballs: dict[str, Tarball], run=run) -> None:
     changed = []
     for name, paths in build_contexts().items():
@@ -351,7 +368,7 @@ class Host:
                 said = tried.stderr.decode(errors="replace").strip()
                 raise Refused(f"platform-rebuild: {self.target} took no ssh within {SSH_WAIT}s; "
                               f"the last attempt said: {said[-400:] or 'nothing'}")
-            time.sleep(10)
+            time.sleep(SSH_POLL)
 
 
 def make_range_key(key: Path, run=run) -> None:
@@ -605,7 +622,7 @@ def wait_for_api(address: str) -> None:
             return
         if time.monotonic() > deadline:
             raise Refused(f"platform-rebuild: http://{address}:8000/api/auth/ did not answer within {API_WAIT}s")
-        time.sleep(10)
+        time.sleep(API_POLL)
 
 
 def hand_over_done(host: Host) -> bool:

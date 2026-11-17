@@ -23,8 +23,8 @@ jobs:
           - {name: board, context: wargames/board/app}
           - {name: corp, context: wargames/corp/app}
           - {name: corp-db, context: wargames/corp/db}
-          - {name: kali, context: deploy, file: deploy/kali/Dockerfile}
-          - {name: waf, context: deploy, file: deploy/waf/Dockerfile}
+          - {name: kali, context: deploy, file: deploy/kali/Dockerfile, sources: deploy/kali deploy/proxy}
+          - {name: waf, context: deploy, file: deploy/waf/Dockerfile, sources: deploy/waf}
           - {name: edge, context: deploy/edge}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

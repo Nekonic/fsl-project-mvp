@@ -167,7 +167,7 @@ CR_SUBSTRATE_OPTIONS = dict(
                 "mtu": "CR_OPENSTACK_MTU",
                 "build_network": "CR_OPENSTACK_BUILD_NETWORK",
                 "platform": "CR_OPENSTACK_PLATFORM",
-                "image_tag": "CR_IMAGE_TAG",
+                "image_tag": "CR_RANGE_IMAGE_TAG",
                 "slots": "CR_OPENSTACK_SLOTS",
                 "seen": "CR_RANGE_HOST_SEEN",
             }.items()

@@ -39,7 +39,7 @@ def test_a_standing_active_range_that_passes_its_checks_is_ready(client):
 
 @pytest.mark.parametrize("cloud, phase, reason", [
     (Cloud(standing=(("cr-range", "s1", "SETTING_UP"),)), "REBUILDING", "cr-range is SETTING_UP"),
-    (Cloud(boot=("cr-range",), blocked=("the range host pulls the images by the platform's tag",)), "NOT_STANDING",
+    (Cloud(boot=("cr-range",), blocked=("the range host pulls the images by the range images' tag",)), "NOT_STANDING",
      "the range host pulls the images"),
     (Cloud(stale=("cr-range",)), "STALE", "cr-range runs images or slot files older than the platform's"),
     (Cloud(standing=(("cr-range", "s1", "SETUP_FAILED"),)), "SETUP_FAILED", "cr-range failed its setup"),

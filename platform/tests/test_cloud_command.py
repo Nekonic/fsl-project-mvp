@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import itertools
 import subprocess
 from importlib.machinery import SourceFileLoader
@@ -331,3 +332,14 @@ def test_a_range_host_that_failed_its_setup_stops_up_with_why():
         converge(platform)
     assert ("POST", "/configure/") not in platform.calls
 
+
+
+def test_every_line_up_prints_starts_with_the_time_it_was_printed():
+    written = io.StringIO()
+    stamped = command().Stamped(written, now=lambda: (2026, 11, 17, 9, 5, 7, 0, 321, 0))
+
+    print("slot standing", file=stamped)
+    stamped.write("configure: 503\ntrying ")
+    stamped.write("again\n")
+
+    assert written.getvalue() == "09:05:07 slot standing\n09:05:07 configure: 503\n09:05:07 trying again\n"
