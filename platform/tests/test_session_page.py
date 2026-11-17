@@ -387,7 +387,8 @@ browser.serve((request) => {
       timeline: [{at: 150, case: "board-sqli-orderby-sqlmap", origin: "ru", state: "cancelled", in_window: false, leaked: []}],
       task_class: "judgement", triage: {right: 0, items: 14, first_try: 0}, evidence: [],
       change: {before: {paranoia: 2}, after: {paranoia: 2}, diff: []},
-      cases: [{name: "board-sqli-orderby-sqlmap", before: null, after: null}], risk: []}};
+      cases: [{name: "board-sqli-orderby-sqlmap", before: null, after: null}], risk: [],
+      at: {opened: "2026-10-18T09:00:00Z", verified: null}}};
   }
   return {status: 404, body: {detail: "not served"}};
 });
@@ -537,3 +538,98 @@ def test_an_open_scenario_that_passed_shows_its_result_beside_the_end_button(cli
     assert seen["errors"] == []
     assert seen["result"] == {"verdict": worded("scenario.verdict.passed", "1.1"), "close": True, "debrief": True,
                               "scores": False}, "the page holding the end button said nothing about the pass"
+
+DETECTION_RESULT = """
+browser.serve((request) => {
+  if (request.route === "/api/sessions/1/") {
+    return {body: {id: 1, scenario: "board", kind: "scenario", course_scenario: "3.3", ready: true, lesson: {text: "scenario.tamper", steps: []},
+      started_at: "2026-10-18T09:00:00Z", ended_at: "2026-10-18T09:08:00Z", result: {objectives: {lost: 0, total: 0}, scenario: null}}};
+  }
+  if (request.route === "/api/wargames/") return {body: [{id: "board", name: "Board", public_url: "http://board.com", foundations: []}]};
+  if (request.route === "/api/wargames/board/objectives/") return {body: []};
+  if (request.route === "/api/sessions/1/score/") {
+    return {body: {breaches: [], warnings: [], detected_by: "suricata",
+      per_case: [{name: "board-sqli-orderby-sqlmap-tamper", malicious: true, detected: false, detections: 0, started_at: "2026-10-18T09:02:01Z"},
+                 {name: "board-sqli-orderby-sqlmap-tamper", malicious: true, detected: true, detections: 14, started_at: "2026-10-18T09:06:10Z"}],
+      customers: {sent: 870, alerted: 1, blocked: 0, blocked_actions: {},
+                  alerted_requests: [{sent_at: "2026-10-18T09:03:00Z", action: "sort", method: "GET", path: "/?sort=-created_at"}]}}};
+  }
+  if (request.route === "/api/sessions/1/scenario/debrief/") {
+    return {body: {overview: {verified: 1, steps: {passed: 0, total: 0}, help: {hints: 0}, fix: null},
+      customers: {sent: 870, served: 870, blocked: 0, in_window: [0], blocked_actions: {}},
+      timeline: [{at: 121, case: "board-sqli-orderby-sqlmap-tamper", origin: "ru", state: "fired", in_window: false, leaked: [], outcome: "held", detected: false},
+                 {at: 370, case: "board-sqli-orderby-sqlmap-tamper", origin: "ru", state: "fired", in_window: true, leaked: [], outcome: "held", detected: true}],
+      task_class: "detection", triage: {right: 0, items: 0, first_try: 0}, evidence: [],
+      change: {before: {paranoia: 1}, after: {paranoia: 1}, diff: [], ids: []},
+      cases: [{name: "board-sqli-orderby-sqlmap-tamper", before: "held", after: "held", alerted_before: false, alerted_after: true}],
+      risk: [], at: {opened: "2026-10-18T09:00:00Z", verified: "2026-10-18T09:08:00Z"}}};
+  }
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+def detection_result(client, scenario):
+    seen = open_page(client, "/session/1/", setup=DETECTION_RESULT, scenario="for (let i = 0; i < 6; i += 1) await browser.settle();\n"
+                     + scenario)
+    assert seen["errors"] == []
+    return seen["result"]
+
+def local_clock(instant):
+    from datetime import datetime
+
+    return datetime.fromisoformat(instant).astimezone().strftime("%H:%M")
+
+def test_a_detection_scenario_result_shows_the_customer_requests_beside_the_attacks(client):
+    shown = detection_result(client, """
+      return {judged: browser.text('judgement'), row: document.querySelector('#case-rows [data-customers]').textContent};
+    """)
+
+    assert worded("score.customers_alerted", 870, 869) in shown["judged"]
+    assert worded("score.customer_alert", local_clock("2026-10-18T09:03:00+00:00"), "GET /?sort=-created_at") in shown["judged"]
+    assert worded("score.customers_row", 870) in shown["row"] and worded("score.wrongly_blocked") in shown["row"]
+
+def test_a_case_row_states_its_verdict_once_with_the_ids_alert_count_as_detail(client):
+    shown = detection_result(client, """
+      return {headers: document.querySelectorAll('#score-cases th').length, note: browser.text('score-counted-by'),
+              cells: document.querySelectorAll('#case-rows tr').map((row) => row.querySelectorAll('td')[2].textContent.trim())};
+    """)
+
+    assert shown["headers"] == 3, "the alert count is no column of its own"
+    assert shown["note"] == worded("score.counted_by.suricata")
+    assert shown["cells"][:2] == [worded("score.missed"), f'{worded("score.caught")} {worded("score.alert_count", 14)}']
+
+def test_a_scenario_without_objectives_shows_no_objectives_card(client):
+    shown = detection_result(client, "return !browser.element('objectives-card').classList.contains('hidden');")
+
+    assert shown is False
+
+def test_the_timeline_and_the_case_table_tell_the_same_wall_clock_time(client):
+    shown = detection_result(client, """
+      return {timeline: document.querySelectorAll('#debrief [data-timeline]').map((one) => one.textContent.trim()),
+              cases: browser.text('case-rows')};
+    """)
+    fired = local_clock("2026-10-18T09:02:01+00:00")
+
+    assert shown["timeline"][0].startswith(fired) and fired in shown["cases"]
+    assert "2:01" not in shown["timeline"][0]
+
+def test_before_and_after_says_whether_the_attack_drew_an_alert(client):
+    shown = detection_result(client, """
+      const row = document.querySelector('#debrief [data-case]');
+      return {before: row.querySelector('[data-before]').textContent, after: row.querySelector('[data-after]').textContent};
+    """)
+
+    assert worded("scenario.debrief.no_alert") in shown["before"] and worded("scenario.debrief.alerted") in shown["after"]
+
+def test_a_lesson_result_shows_the_change_it_applied(client):
+    applied = COURSE.replace("result: {objectives: {lost: 1, undetected: 1, total: 1}, scenario: null}}};",
+                             'result: {objectives: {lost: 1, undetected: 1, total: 1}, scenario: null}, change: {before: {paranoia: 1}, '
+                             'after: {paranoia: 1}, diff: [\'-SecAction "id:10001"\'], ids: ["+alert http any any -> any any (sid:9100001;)"]}}};')
+    seen = open_page(client, "/session/1/", setup=applied, scenario="""
+      return {shown: !browser.element('lesson-change').classList.contains('hidden'), text: browser.text('lesson-change')};
+    """)
+
+    assert applied != COURSE and seen["errors"] == []
+    assert seen["result"]["shown"] is True
+    assert all(part in seen["result"]["text"] for part in (worded("lesson.debrief.change"), worded("lesson.debrief.change.ids"),
+                                                           "sid:9100001", worded("lesson.debrief.change.waf"), "id:10001"))

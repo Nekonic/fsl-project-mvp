@@ -22,6 +22,7 @@ PULLING = threading.Lock()
 BLOCKED = 403
 REFUSED_BY_APP = "app"
 SHOWN_SOURCES = 40
+SHOWN_ALERTED = 20
 
 class NoTraffic(LookupError):
     pass
@@ -167,13 +168,15 @@ def status(session) -> dict:
         },
     }
 
-def alerted_markers(session) -> set[str]:
-    marked = session.detections.exclude(marker=None).values("marker")
+def alerted_markers(session, detections=None) -> set[str]:
+    marked = (session.detections if detections is None else detections).exclude(marker=None).values("marker")
     return set(session.customer_requests.filter(marker__in=marked).values_list("marker", flat=True))
 
 def availability(session, alerted: set[str]) -> dict:
     requests = session.customer_requests.all()
-    return {**counted(requests), "alerted": len(alerted), "blocked_actions": blocked_actions(requests)}
+    return {**counted(requests), "alerted": len(alerted), "blocked_actions": blocked_actions(requests),
+            "alerted_requests": list(requests.filter(marker__in=alerted).order_by("sent_at")
+                                     .values("sent_at", "action", "method", "path")[:SHOWN_ALERTED])}
 
 def blocked_actions(requests) -> dict:
     blocked = requests.filter(status=BLOCKED).exclude(refused_by=REFUSED_BY_APP)

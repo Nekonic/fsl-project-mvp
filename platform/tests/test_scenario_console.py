@@ -318,7 +318,7 @@ DEBRIEF = """const DEBRIEF = {overview: {verified: 1, steps: {passed: 0, total: 
   customers: {sent: 10, served: 9, blocked: 0, unanswered: 1, other: 0, in_window: [0], blocked_actions: {}},
   timeline: [], task_class: "detection", triage: {right: 0, items: 0, first_try: 0}, evidence: [],
   change: {before: {paranoia: 1}, after: {paranoia: 1}, diff: [], ids: ["+alert http any any -> any any (sid:9000200;)"]},
-  cases: [], risk: []};
+  cases: [], risk: [], at: {opened: "2026-10-18T09:00:00Z", verified: null}};
 """
 
 def test_the_result_report_keeps_ending_the_session_one_click_away_and_says_what_changed_on_the_ids(client):

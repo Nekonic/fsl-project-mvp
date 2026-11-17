@@ -1720,6 +1720,10 @@ def _change(session, waf):
         "diff": lesson.config_diff(crs.rendered(before) if before["paranoia"] else "", waf.get("file") or ""),
     }
 
+def applied(session):
+    return _change(session, next((taken["waf"] for taken in reversed(session.waf_snapshots or []) if taken.get("waf")),
+                                 None))
+
 @require_http_methods(["GET", "PUT"])
 def session_waf(request, session_id):
     session = get_object_or_404(Session, pk=session_id)
@@ -1826,6 +1830,7 @@ def _detail(session):
         "lesson_course": _lesson_course(session),
         "lesson_objectives": _lesson_objectives(session),
         "course": _course(session),
+        "change": applied(session) if session.ended_at and session.guidance and not session.course_scenario else None,
     }
 
 def _lesson_course(session):
@@ -2261,7 +2266,7 @@ def session_score(request, session_id):
     cases, detections, result, signatures = _evidence(session, forced)
     if (session.traffic or {}).get("running"):
         customers.refresh(session, _range(session))
-    alerted = customers.alerted_markers(session)
+    alerted = customers.alerted_markers(session, scenario_run.sensed(session))
     unmatched = set(result.unmatched_detection_ids)
     totals = compute_score(result)
     per_case = _per_case(result, _expected(session.scenario, cases), signatures, cases)
@@ -2282,6 +2287,7 @@ def session_score(request, session_id):
             "benign_cases": totals.fp + totals.tn,
             "unattributed": sum(1 for d in detections if d.detection_id in unmatched and d.marker not in alerted),
             "customers": customers.availability(session, alerted),
+            "detected_by": scenario_run.detector(session),
             "warnings": warnings,
             "per_case": per_case if keep_ids else [_without(row, "detection_ids") for row in per_case],
             "objectives": board.__dict__,
@@ -2318,8 +2324,8 @@ def session_traffic(request, session_id):
 def _evidence(session, forced=None):
     replayed = {case.case_id for case in session.cases.all() if _replayed(case)}
     cases = [case for case in session.cases.all() if case.case_id not in replayed]
-    rows = _sent_by_site(session, cases, session.detections.values_list("detection_id", "timestamp", "src_ip", "marker",
-                                                                          "signature"))
+    rows = _sent_by_site(session, cases, scenario_run.sensed(session).values_list("detection_id", "timestamp", "src_ip",
+                                                                                   "marker", "signature"))
     detections = [DetectionRecord(*row[:4]) for row in rows
                   if row[3] not in replayed and row[3] != session.browse_marker]
     kept = {detection.detection_id for detection in detections}
