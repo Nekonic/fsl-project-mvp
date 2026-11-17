@@ -298,7 +298,7 @@ def _opened_on_a_ready_slot(adapter, fields):
         with SLOT_CHOICE:
             _refuse_a_second_session(fields["owner"])
             _refuse_a_full_range(adapter)
-            if not hasattr(adapter, "plan_slot") or (chosen or 1) not in _holders():
+            if not hasattr(adapter, "plan_slot") or _free(chosen or 1):
                 try:
                     return Session.objects.create(slot=chosen, **fields)
                 except IntegrityError:
@@ -340,9 +340,15 @@ def _ready_slot(adapter, wargame=""):
         raise Conflict("the range is not ready: " + "; ".join(verdict["slot"]["blocked"]))
     return verdict["slot"].get("number") if _slotted(adapter) else None
 
+def _free(number: int) -> bool:
+    return number not in _holders() and reset.standing(number)["state"] != reset.RUNNING
+
 def _retargeted(adapter, number, wargame) -> bool:
-    if not hasattr(adapter, "reset_slot") or not reset.claim(number, wargame):
+    if not hasattr(adapter, "reset_slot"):
         return False
+    with SLOT_CHOICE:
+        if not _free(number) or not reset.claim(number, wargame):
+            return False
     one, turn = _in_slot(adapter, number), _turn(number if _slotted(adapter) else None)
     try:
         with turn:

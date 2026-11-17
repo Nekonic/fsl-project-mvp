@@ -9504,3 +9504,20 @@ user was away.
   restarts the platform; started while `bin/cloud up` still polled
   `GET /api/range/ready/`, it cut that poll off (`RemoteDisconnected`) and
   `up` exited 1 with the pool standing. Start the verify after `up` returns.
+
+## 2026-11-18 — A slot is retargeted or opened on only while no session holds it and no reset runs on it
+
+Both full verify runs of the day failed `test_concurrent_sessions.py` with a
+503 on the second session's `PUT .../waf/` (run 2: "cr-waf stands on no mgmt
+address this platform can reach"; run 1: the SSH control master to cr-waf
+broke). Run 2's record: session 2788 opened on slot 3 at 23:06:22Z; a corp
+session open answered 409 at 23:06:24Z; slot 3's board stack (created
+22:49:42Z) was gone by 23:06:38Z and a corp stack was created on slot 3 at
+23:06:44Z. The corp open read the readiness before session 2788 existed, saw
+slot 3 `READY` and free, and its retarget deleted the stack session 2788 then
+held. The readiness read is slow and runs outside the slot-choice lock, so
+neither the retarget nor a session open may trust it alone: the retarget now
+claims the slot under that lock and only when no open session holds it, and a
+session open under the same lock refuses a slot whose reset is running.
+Rejected: holding the lock across the readiness read (every open would wait
+on the cloud and on SSH for every slot).

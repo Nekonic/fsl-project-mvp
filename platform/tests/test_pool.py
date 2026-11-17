@@ -1,11 +1,12 @@
 import dataclasses
 import threading
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 import yaml
 
-from api import reset
+from api import reset, views
 from api.models import Session
 from range import fabric, openstack, pool, sandbox
 from tests import fakecloud
@@ -230,6 +231,23 @@ def test_a_session_for_a_wargame_no_slot_runs_rebuilds_a_free_slot_for_it(client
     assert begun == [(1, {"claimed": True, "wargame": "corp"})]
     assert reset.wanted(1) == "corp" and stacks(cloud)["cr-slot-1"]["stack_status"] == fakecloud.DELETING
     assert not Session.objects.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_slot_taken_after_the_readiness_read_is_neither_rebuilt_for_another_wargame_nor_opened_on(cloud):
+    adapter = fakecloud.adapter(cloud, slots=1)
+    adapter.ensure_slot()
+    Session.objects.create(slot=1, scenario="board", baseline=[])
+    with patch.dict(reset._states, clear=True):
+        assert not views._retargeted(adapter, 1, "corp")
+        assert reset.standing(1)["state"] == reset.IDLE
+        assert stacks(cloud)["cr-slot-1"]["stack_status"] == fakecloud.COMPLETE
+
+        Session.objects.update(ended_at="2026-11-18T00:00:00Z")
+        reset.claim(1, "corp")
+        with patch("api.views._ready_slot", lambda adapter, wargame: 1), \
+                pytest.raises(views.Conflict, match="taken by another session"):
+            views._opened_on_a_ready_slot(adapter, {"scenario": "board", "owner": SimpleNamespace(is_staff=True)})
 
 
 def test_a_stack_the_ensure_deletes_is_reported_rebuilt_so_a_refill_creates_it_again(cloud):
