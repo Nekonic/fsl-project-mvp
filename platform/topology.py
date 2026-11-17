@@ -326,9 +326,9 @@ def _boxed(held, labels=()) -> list[int]:
 
 
 def _home(node) -> str | None:
-    if node["kind"] == "sensor":
-        return node["zone"]
     held = node.get("zones") or []
+    if node["kind"] == "sensor":
+        return (held or [node["zone"]])[0]
     return None if node["kind"] in ("switch", "router") or not held else held[0]
 
 
@@ -381,21 +381,19 @@ def laid_out(zones, nodes, edges) -> list[dict]:
         right = x
     titles = {zone["id"]: 2 * (_caption_width(zone) // 2 + CAPTION_CLEAR) for zone in zones}
     servers = [node for node in held.get(web, ()) if node["kind"] != "sensor"] if web else []
-    sensors = [node for node in held.get(web, ()) if node["kind"] == "sensor"] if web else []
+    sensors = [node for node in nodes if node["kind"] == "sensor"]
+    others = [node for node in held.get(band, ()) if node["kind"] != "sensor"] if band else []
     single = len(servers) <= 1
-    tapped = max([ICON_HALF + PAD] + [_beside(widths.get((node["id"], switch[band]["id"]), 0)) + LABEL_PAD
-                                      for node in sensors]) if band else ICON_HALF + PAD
     western = -(ICON_HALF + PAD) if inet else 0
     if band:
-        reaching = max(PAD + ICON_HALF + sum(toward(node, band) for node in held[band]), titles[band])
-        hub = western + reaching + ICON_HALF + PAD + BOX_GAP + tapped
+        tapping = max([SPAN] + [toward(node, band) for node in sensors]) if sensors else 0
+        reaching = tapping + max(sum(toward(node, band) for node in others) + ICON_HALF + PAD, titles[band])
+        hub = western + reaching
     else:
-        hub = western + tapped
-    lowest = ROW + SENSOR_DROP * max(1, len(sensors))
+        hub = western + ICON_HALF + PAD
+    lowest = ROW + max(len(servers) - 1, 0) * TIER + SENSOR_DROP
     if web:
         switch[web].update(x=hub, y=ROW)
-        for k, node in enumerate(sensors):
-            node.update(x=hub, y=ROW + SENSOR_DROP * (k + 1))
         out = max([SPAN] + [toward(node, web) for node in servers]) + (0 if single else BOX_GAP)
         for k, node in enumerate(servers):
             node.update(x=hub + out, y=ROW + k * TIER)
@@ -421,11 +419,14 @@ def laid_out(zones, nodes, edges) -> list[dict]:
                 node.update(x=x, y=row)
         east = max([east, x] + [node["x"] for node in held[zone]])
     if band:
-        switch[band].update(x=hub - tapped - BOX_GAP - PAD - ICON_HALF, y=sensors[0]["y"] if sensors else ROW)
+        mgmt_row = ROW + max(len(servers) - 1, 0) * TIER + SENSOR_DROP
+        for k, node in enumerate(sensors):
+            node.update(x=hub + SPAN * k, y=mgmt_row)
+        switch[band].update(x=hub - tapping if sensors else hub - SPAN, y=mgmt_row)
         x = switch[band]["x"]
-        for node in held[band]:
+        for node in others:
             x -= toward(node, band)
-            node.update(x=x, y=switch[band]["y"])
+            node.update(x=x, y=mgmt_row)
     for node in nodes:
         node.setdefault("x", east)
         node.setdefault("y", lowest)
