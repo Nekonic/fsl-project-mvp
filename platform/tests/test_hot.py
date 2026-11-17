@@ -12,7 +12,7 @@ DECLARED = declared.read()
 
 def planned(wargame="board", slot=3):
     return sandbox.plan(sandbox.read(ROOT, wargame), slot, DECLARED.origins, DECLARED.default_origin,
-                        "10.31.0.2", 5140, "abc")
+                        "10.31.0.2")
 
 
 def rendered(wargame="board", slot=3, zone=""):

@@ -13,10 +13,10 @@ nodes:
   cr-infra:
     role: infra
     ports:
-      - {lan: internet, device: cr-edge, address: 121.134.88.42, as: wan}
-      - {lan: dmz, device: cr-edge, address: 10.30.0.1, as: lan, forwards: true}
+      - {lan: internet, device: cr-edge, address: 121.134.88.42}
+      - {lan: dmz, device: cr-edge, address: 10.30.0.1, forwards: true}
       - {lan: web-outer, device: cr-ids, address: 10.30.128.251, ids: true}
-      - {lan: web-inner, device: cr-ids, address: 10.30.128.252, ids: true, sniffed: true}
+      - {lan: web-inner, device: cr-ids, address: 10.30.128.252, ids: true}
       - {lan: mgmt, device: log-server, address: 172.29.0.10}
   cr-waf:
     role: waf
@@ -37,7 +37,6 @@ devices:
     roles: [sensor]
     rules: /var/lib/suricata/rules/local.rules
     reload: suricatasc -c reload-rules
-    logs: {suricata: /var/log/suricata/eve.json}
   log-server: {node: cr-infra, roles: [log-server]}
   cr-waf:
     node: cr-waf
@@ -46,10 +45,9 @@ devices:
     rules: /etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
     reload: nginx -t 2>&1 && nginx -s reload 2>&1
     pid: /run/nginx.pid
-    logs: {modsecurity: /var/log/modsecurity/audit/audit.log, nginx: /var/log/nginx/refused.log}
-    upstreams: {board: 10.30.128.59, corp-wp: 10.30.128.60}
+    upstreams: {board: 10.30.128.59, corp: 10.30.128.60}
   cr-target: {node: cr-target, roles: [wargames]}
-  board: {node: cr-target, container: board, roles: [board], publish: [8000]}
+  board: {node: cr-target, container: board, roles: [board]}
   board-db: {node: cr-target, container: board-db, roles: [board-db]}
 
 watches:

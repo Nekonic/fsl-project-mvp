@@ -14,7 +14,7 @@ SEAMS = {
         {"ingest/elastic.py"}, {"register_pipeline.py"},
         r"/_search\b|/_bulk\b|/_ingest/|/_pit\b|/_count\b|^\s*(?:import|from) elasticsearch"),
     "the Suricata process": (
-        {"rules/suricata.py"}, {"range/declaration.yaml", "range/rangehost.py", "range/sandbox.py"},
+        {"rules/suricata.py"}, {"range/declaration.yaml", "range/rangehost.py"},
         r'"suricata", "-T"|suricatasc|reload-rules|"return":"OK"|af-packet'),
     "the CRS and ModSecurity configuration and the nginx reload": (
         {"rules/crs.py"}, {"range/declaration.yaml", "range/rangehost.py"},
