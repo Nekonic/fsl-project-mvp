@@ -1,0 +1,14 @@
+[Unit]
+Description=The slot's gateway, upstreams and log server
+Wants=network-online.target
+After=network-online.target cloud-init.service
+Before=nginx.service
+ConditionPathExists=/etc/slot.env
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/slot-boot
+
+[Install]
+WantedBy=multi-user.target

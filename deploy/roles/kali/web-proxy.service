@@ -1,0 +1,12 @@
+[Unit]
+Description=Web proxy
+After=network.target
+
+[Service]
+Environment=HOME=/root
+ExecStart=/usr/bin/mitmdump -q --listen-port 8081 --set block_global=false -s /usr/local/lib/web-proxy.py
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

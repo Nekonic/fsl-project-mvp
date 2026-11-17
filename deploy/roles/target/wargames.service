@@ -1,0 +1,15 @@
+[Unit]
+Description=The slot's wargames, started from their pristine data
+Requires=docker.service
+Wants=network-online.target
+After=docker.service network-online.target cloud-init.service
+ConditionPathExists=/etc/slot.env
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/wargames up
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

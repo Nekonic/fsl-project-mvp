@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+ROUTER=121.134.88.42
+. /etc/slot.env
+
+nic_holding() {
+  ip -o -4 addr show | awk -v wanted="$1" '{ split($4, held, "/") } held[1] == wanted { print $2; exit }'
+}
+
+internet=$(nic_holding "$INTERNET_ADDRESS")
+[ -n "$internet" ] || { echo "no NIC holds the internet address $INTERNET_ADDRESS" >&2; exit 1; }
+
+source=
+for origin in $ORIGINS; do
+  ip addr replace "$origin" dev "$internet"
+  [ -n "$source" ] || source=${origin%/*}
+done
+[ -n "$source" ] || { echo "the slot names no origin address" >&2; exit 1; }
+ip route replace default via "$ROUTER" dev "$internet" onlink src "$source"
