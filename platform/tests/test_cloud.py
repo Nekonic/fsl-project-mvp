@@ -93,31 +93,40 @@ def test_the_one_external_network_is_found_and_none_or_two_stop_init_with_the_li
 
 def test_the_smallest_fitting_flavor_is_chosen_and_none_fitting_stops_init():
     assert cloud.fitting_flavor(FLAVORS, "platform")["name"] == "dba.platform"
-    assert cloud.fitting_flavor(FLAVORS, "range")["name"] == "dba.range"
     assert cloud.fitting_flavor(FLAVORS, "platform", "m1.large")["name"] == "m1.large", "a fitting choice is kept"
     assert cloud.fitting_flavor(FLAVORS, "platform", "m1.small")["name"] == "dba.platform"
-    with pytest.raises(cloud.Invalid, match="no flavor fits the range VM, which needs RAM 16384 MB, 6 vCPU"):
-        cloud.fitting_flavor([FLAVORS[0], *FLAVORS[2:4]], "range")
+    with pytest.raises(cloud.Invalid, match="no flavor fits the platform VM, which needs RAM 8192 MB, 2 vCPU"):
+        cloud.fitting_flavor(FLAVORS[:1], "platform")
+
+
+def test_the_quota_holds_the_platform_and_every_slot_s_four_vms_or_init_says_what_is_short():
+    small = {"name": "dba.small", "ram": 2048, "vcpus": 1, "disk": 20}
+    roles = {role: small for role in cloud.ROLES}
+    limits = {"instances": 17, "cores": 24, "ram": 57344, "floating_ips": 1}
+
+    assert cloud.quota_shortfall(limits, FLAVORS[2], roles, 4) == []
+    assert cloud.quota_shortfall(limits, FLAVORS[2], roles, 5) == [
+        "instances: the quota is 17, the platform and 5 slots of 4 VMs need 21"]
 
 
 def test_init_sets_only_its_own_keys_in_cloud_yaml_and_keeps_the_comments():
-    text = cloud.EXAMPLE.read_text().replace("cloud: fsl-range", "").replace("  slots: 1", "  slots: 3")
+    text = cloud.EXAMPLE.read_text().replace("cloud: fsl-range", "").replace("    board: 3", "    board: 2")
 
     written = cloud.with_settings(text, {("cloud",): "fsl-range", ("network", "external"): "public",
-                                         ("compute", "flavors", "range"): "dba.range2"})
+                                         ("compute", "flavors", "platform"): "m1.xlarge"})
 
     document = yaml.safe_load(written)
     assert document["cloud"] == "fsl-range" and document["network"]["external"] == "public"
-    assert document["compute"]["flavors"] == {"platform": "m1.large", "range": "dba.range2"}
-    assert document["compute"]["slots"] == 3
+    assert document["compute"]["flavors"] == {"platform": "m1.xlarge", **{role: "dba.small" for role in cloud.ROLES}}
+    assert document["compute"]["pool"] == {"board": 2, "corp": 1}
     assert "public                      # the external network floating IPs come from" in written
     assert cloud.with_settings(written, {("network", "external"): "public"}) == written
 
 
 @pytest.mark.parametrize("network, cidr, clash", [
-    ("estate", "10.20.0.0/24", "overlaps estate 10.20.0.0/24"),
+    ("mgmt", "10.20.0.0/24", "overlaps mgmt 10.20.0.0/24"),
     ("mgmt", "172.17.5.0/24", "overlaps docker's default address pool 172.17.0.0/16"),
-    ("estate", "172.29.4.0/24", "overlaps docker's default address pool 172.28.0.0/14"),
+    ("mgmt", "172.29.4.0/24", "overlaps docker's default address pool 172.28.0.0/14"),
     ("platform", "192.168.50.0/24", "overlaps docker's default address pool 192.168.0.0/16"),
     ("mgmt", "172.31.0.0/24", "overlaps the compose network mgmt 172.31.0.0/24"),
 ], ids=["each-other", "docker-bridge", "docker-pool", "docker-pool-192", "compose-mgmt"])
@@ -125,24 +134,37 @@ def test_networks_that_overlap_each_other_docker_or_compose_are_refused(network,
     assert clash in refusal(changed(**{f"network__{network}": cidr}))
 
 
-def test_a_flavor_for_a_vm_the_range_no_longer_has_is_refused():
-    assert "compute.flavors: names edge, which the range no longer has" in refusal(
-        changed(compute__flavors={"platform": "m1.large", "range": "dba.range", "edge": "m1.medium"}))
+def test_a_flavor_or_image_for_a_role_no_slot_has_is_refused():
+    assert "compute.flavors: names edge, which is none of platform, kali, waf, infra, target" in refusal(
+        changed(compute__flavors={"platform": "m1.large", "edge": "m1.medium"}))
+    assert "compute.images: names platform, which is none of kali, waf, infra, target" in refusal(
+        changed(compute__images={"platform": "ubuntu-24.04"}))
+    assert "compute.pool: holds no slot" in refusal(changed(compute__pool={"board": 0, "corp": 0}))
 
 
-def test_the_estate_is_wide_enough_for_a_slash_24_per_slot():
-    assert "network.estate: must be a /16 or wider" in refusal(changed(network__estate="10.30.0.0/24"))
+def test_a_cloud_yaml_of_the_range_host_still_parses_and_gets_the_default_pool_images_and_flavors():
+    older = changed(compute__pool=None, compute__images=None, compute__flavors={"platform": "m1.large", "range": "dba.range"},
+                    compute__slots=8)
+    older["network"].update(estate="10.30.0.0/16", mtu=1442)
+
+    found = cloud.parse(older)
+
+    assert found.pool == {"board": 3, "corp": 1} and found.slots == 4
+    assert found.flavors == {"platform": "m1.large", **{role: "dba.small" for role in cloud.ROLES}}
+    assert found.images == {role: f"cr-{role}-bake1" for role in cloud.ROLES}
 
 
 def test_the_settings_survive_the_trip_through_heat_and_the_environment(tmp_path):
-    found = dataclasses.replace(cloud.parse(changed(compute__slots=2)),
+    found = dataclasses.replace(cloud.parse(changed(compute__pool={"board": 2, "corp": 1})),
                                 signed_in=cloud.signed_in("fsl-range", written_clouds(tmp_path, **{"fsl-range": ENTRY})))
 
     carried = found.heat_parameters()
 
-    assert openstack.pairs(carried["subnets"]) == found.inside
-    assert carried["range_flavor"] == found.flavors["range"]
-    assert carried["slots"] == "2"
+    assert openstack.pairs(carried["subnets"]) == found.inside == {"mgmt": "10.31.0.0/24"}
+    assert openstack.pairs(carried["pool"]) == {"board": "2", "corp": "1"}
+    assert openstack.pairs(carried["images"]) == {role: f"cr-{role}-bake1" for role in cloud.ROLES}
+    assert openstack.pairs(carried["flavors"]) == {role: "dba.small" for role in cloud.ROLES}, (
+        "the platform's own flavor is the stack's, not a slot role's")
 
 
 def test_a_cloud_yaml_written_before_the_backups_section_still_parses_and_keeps_one_backup():

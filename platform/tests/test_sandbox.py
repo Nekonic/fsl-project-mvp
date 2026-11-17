@@ -100,6 +100,33 @@ def test_every_node_keeps_time_by_the_platform_and_fits_nova_s_user_data_limit()
         assert len(node.user_data.encode()) * 4 // 3 < sandbox.USER_DATA_LIMIT
 
 
+def test_every_node_takes_the_platform_s_ssh_as_one_sudo_user_and_keeps_its_image_s_default_user():
+    plan = sandbox.plan(sandbox.read(ROOT, "board"), 1, DECLARED.origins, DECLARED.default_origin, COLLECTOR,
+                        ("ubuntu", "ssh-ed25519 AAAA cr-platform"))
+
+    for node in plan.nodes:
+        users = yaml.safe_load(node.user_data)["users"]
+        assert users[0] == "default", f"{node.name}: Kali's learners ssh in as its default user kali"
+        assert users[1] == {"name": "ubuntu", "shell": "/bin/bash", "sudo": "ALL=(ALL) NOPASSWD:ALL",
+                            "lock_passwd": True, "ssh_authorized_keys": ["ssh-ed25519 AAAA cr-platform"]}
+    assert "users" not in yaml.safe_load(planned().node("cr-kali").user_data), "no key, no user"
+
+
+@pytest.mark.parametrize("role, units", [
+    ("kali", "slot-boot.service"), ("waf", "slot-boot.service nginx.service"),
+    ("infra", "slot-boot.service sensor.service"), ("target", "wargames.service"),
+])
+def test_each_node_marks_itself_ready_or_failed_once_its_role_s_boot_has_run(role, units):
+    [node] = [one for one in planned().nodes if one.role == role]
+    [[shell, flag, script]] = yaml.safe_load(node.user_data)["runcmd"]
+
+    assert (shell, flag) == ("sh", "-c")
+    assert f"if systemctl start {units}; then touch {sandbox.READY}; " in script
+    assert f"else systemctl --no-pager --lines=20 status {units} > {sandbox.FAILED} 2>&1; touch {sandbox.FAILED}; fi" \
+        in script
+    assert script.startswith(f"install -d -m 0755 {sandbox.STATE}; ")
+
+
 def test_a_definition_that_puts_a_port_outside_its_lan_or_without_an_address_is_refused(tmp_path):
     topology = yaml.safe_load((ROOT / sandbox.DEFINITION.format(wargame="board")).read_text())
     (tmp_path / "wargames/odd").mkdir(parents=True)

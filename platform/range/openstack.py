@@ -89,6 +89,9 @@ GONE_POLL = 3
 ELEVATED = ("sudo",)
 SET_UP = ["sh", "-c", f"if [ -f {sandbox.READY} ]; then echo ready; elif [ -f {sandbox.FAILED} ]; then echo failed; "
                       f"else echo setting-up; fi"]
+DOCKER_NETWORKS = ["sh", "-c", "docker network inspect $(docker network ls -q --filter driver=bridge)"]
+WARGAMES_ROLE = "wargames"
+MANAGER = "ubuntu"
 
 SETTINGS = {
     "keystone": "CR_OPENSTACK_KEYSTONE",
@@ -101,17 +104,17 @@ SETTINGS = {
     "region": "CR_OPENSTACK_REGION",
     "interface": "CR_OPENSTACK_INTERFACE",
     "source": "CR_SOURCE",
-    "flavor": "CR_OPENSTACK_FLAVOR",
     "availability_zone": "CR_OPENSTACK_AVAILABILITY_ZONE",
     "subnets": "CR_OPENSTACK_SUBNETS",
     "platform": "CR_OPENSTACK_PLATFORM",
-    "slots": "CR_OPENSTACK_SLOTS",
+    "pool": "CR_OPENSTACK_POOL",
     "images": "CR_OPENSTACK_IMAGES",
     "flavors": "CR_OPENSTACK_FLAVORS",
 }
 
 _connected: dict[tuple, tuple["Cloud", object]] = {}
 _set_up: set[str] = set()
+_held: dict[tuple[str, int], "Held"] = {}
 _booting = threading.Lock()
 
 
@@ -242,11 +245,11 @@ def connect(
     interface: str = "",
     domain: str = "",
     source: str = "",
-    flavor: str = "",
+    flavor: str = "dba.small",
     availability_zone: str = "",
     subnets: str = "",
     platform: str = "",
-    slots: str = "",
+    pool: str = "",
     images: str = "",
     flavors: str = "",
 ) -> "OpenStack":
@@ -255,6 +258,7 @@ def connect(
         "project": project, "ssh_user": ssh_user, "ssh_key": ssh_key,
         "region": region, "interface": interface, "domain": domain,
     }
+    given["ssh_user"] = ssh_user = ssh_user or MANAGER
     missing = [SETTINGS[name] for name, value in given.items() if not value]
     if missing:
         raise RangeUnavailable(
@@ -273,13 +277,15 @@ def connect(
         return _connected[known]
 
     try:
+        counts = _counts(pool)
         build = Build(
             source=source, flavor=flavor, availability_zone=availability_zone, inside=pairs(subnets),
-            platform=platform, slots=_count(slots or "1"), images=pairs(images), flavors=pairs(flavors),
+            platform=platform, slots=sum(count for _, count in counts) or 1, pool=counts,
+            images=pairs(images), flavors=pairs(flavors),
         )
     except ValueError as error:
         raise RangeUnavailable(
-            f"the cloud settings ({', '.join(SETTINGS[n] for n in ('subnets', 'slots', 'images', 'flavors'))}) "
+            f"the cloud settings ({', '.join(SETTINGS[n] for n in ('subnets', 'pool', 'images', 'flavors'))}) "
             f"do not parse: {error}; they come from cloud.yaml through the Heat stack"
         ) from error
     cloud, reader = _connected.get(known) or (None, None)
@@ -288,16 +294,17 @@ def connect(
     return OpenStack(declared, cloud, get=reader, rediscover=rediscover, build=build, reach=reach)
 
 
-def _count(text: str) -> int:
-    count = int(text)
-    if count < 1:
-        raise ValueError(f"{SETTINGS['slots']} is {count}; a range has one slot or more")
-    return count
+def _counts(text: str) -> tuple[tuple[str, int], ...]:
+    counts = tuple((wargame, int(count)) for wargame, count in pairs(text).items())
+    if any(count < 0 for _, count in counts) or (counts and not sum(count for _, count in counts)):
+        raise ValueError(f"{SETTINGS['pool']} is {text!r}; a pool holds one slot or more")
+    return counts
 
 
 def forget() -> None:
     _connected.clear()
     _set_up.clear()
+    _held.clear()
 
 
 def discover(
@@ -494,6 +501,14 @@ class Cloud:
 
 
 @dataclass(frozen=True)
+class Held:
+    stack: str
+    addresses: dict[str, str]
+    generations: dict[str, str]
+    docker: tuple | None = None
+
+
+@dataclass(frozen=True)
 class Build:
     source: str = ""
     flavor: str = ""
@@ -501,6 +516,7 @@ class Build:
     inside: dict = field(default_factory=dict)
     platform: str = ""
     slots: int = 1
+    pool: tuple[tuple[str, int], ...] = ()
     images: dict = field(default_factory=dict)
     flavors: dict = field(default_factory=dict)
 
@@ -570,7 +586,11 @@ class OpenStack:
 
     @property
     def wargame(self) -> str:
-        return pool.assigned(self.slot, self.declared.wargames)
+        return pool.assigned(self.slot, self.declared.wargames, self.build.pool)
+
+    @property
+    def _key(self) -> tuple[str, int]:
+        return self._reaching().project, self.slot
 
     def _definition(self, wargame: str) -> sandbox.Definition:
         definition = self.declared.definitions.get(wargame)
@@ -653,6 +673,10 @@ class OpenStack:
         return tuple(sorted(found, key=lambda node: node.name))
 
     def _address(self, host: str) -> str:
+        held = _held.get(self._key)
+        if held is not None and held.addresses.get(host):
+            self._generations.update(held.generations)
+            return held.addresses[host]
         address = _on_management(self.describe(), host)
         if not address:
             raise RangeUnavailable(f"{host} stands on no {fabric.MANAGEMENT} address this platform can reach")
@@ -715,7 +739,24 @@ class OpenStack:
         extra = {port.device: port.extra for port in kali if port.extra}
         return wiring.from_neutron(self._all(SLOT_NETWORKS, "networks", tags=tags),
                                    self._all(PROJECT_SUBNETS, "subnets"),
-                                   self._all(SLOT_PORTS, "ports", tags=tags), extra)
+                                   self._all(SLOT_PORTS, "ports", tags=tags), extra, self._docker())
+
+    def _docker(self) -> tuple:
+        held = _held.get(self._key)
+        if held is not None and held.docker is not None:
+            return held.docker
+        found = self._docker_read()
+        if held is not None and found:
+            _held[self._key] = Held(held.stack, held.addresses, held.generations, found)
+        return found
+
+    def _docker_read(self) -> tuple:
+        containers = {host.container: name for name, host in self.declared.hosts.items() if host.container}
+        try:
+            said = self.runner(WARGAMES_ROLE)(DOCKER_NETWORKS, timeout=30)
+            return wiring.from_docker(json.loads(said.output) if said.ok else [], containers)
+        except (RangeUnavailable, ValueError):
+            return ()
 
     def _ssh(self, address: str, reads_input: bool, log: Path, config: Path) -> list[str]:
         command = ["ssh", "-F", str(config)]
@@ -910,7 +951,7 @@ class OpenStack:
         )
 
     def _public_key(self, make: bool = False) -> str:
-        private = Path(self.cloud.ssh_key).expanduser()
+        private = Path(self._reaching().ssh_key).expanduser()
         public = private.with_name(private.name + ".pub")
         if make and not private.exists():
             private.parent.mkdir(parents=True, exist_ok=True)
@@ -941,7 +982,7 @@ class OpenStack:
 
     def _sandbox(self, wargame: str, collector: str) -> sandbox.Sandbox:
         return sandbox.plan(self._definition(wargame), self.slot, self.declared.origins,
-                            self.declared.default_origin, collector)
+                            self.declared.default_origin, collector, (self._reaching().ssh_user, self._public_key()))
 
     def _chosen(self, plan: sandbox.Sandbox) -> dict[str, str]:
         roles = sorted({node.role for node in plan.nodes})
@@ -995,11 +1036,27 @@ class OpenStack:
                          for server in mine) or ((name, stack["id"], pool.stack_state(status)),)
         failures = ((f"{name} is {status}: {stack.get('stack_status_reason') or 'Heat gave no reason'}",)
                     if pool.stack_state(status) == pool.FAILED else ())
+        self._hold(str(stack["id"]), mine if status == pool.COMPLETE and standing and all(
+            state == pool.ACTIVE for _, _, state in standing) else [])
         stale = ()
         if collector and wargame in self.declared.definitions and not status.startswith("DELETE"):
             stale = (name,) if _tag(stack, DIGEST_TAG) != self._rendered(wargame, collector)[2] else ()
         return pool.Plan(standing=standing, slot=self.slot, stale=stale, wargame=wargame, stack=status,
                          stack_id=str(stack["id"]), failures=failures)
+
+    def _hold(self, stack: str, servers: list[dict]) -> None:
+        held = _held.get(self._key)
+        if not servers:
+            _held.pop(self._key, None)
+            return
+        if held is not None and held.stack == stack:
+            return
+        network = fabric.network_name(fabric.MANAGEMENT)
+        addresses = {known_as(server): entry["addr"] for server in servers
+                     for entry in (server.get("addresses") or {}).get(network, [])
+                     if entry.get(FIXED) == "fixed" and entry.get("version", 4) == 4}
+        _held[self._key] = Held(stack, addresses, _generations(servers))
+        _held[self._key] = Held(stack, addresses, _generations(servers), self._docker_read() or None)
 
     def plan_slot(self) -> pool.Plan:
         servers = self._all(SERVERS, "servers")
@@ -1026,6 +1083,7 @@ class OpenStack:
         return self.plan_slot()
 
     def _create(self, wargame: str) -> None:
+        _held.pop(self._key, None)
         servers = self._all(SERVERS, "servers")
         plan, rendered, digest = self._rendered(wargame, self._collector(servers))
         self.get(self._call(CREATE_STACK), stack_body(plan, rendered, {**self._chosen(plan), **self._fabric_ids()},
@@ -1043,6 +1101,7 @@ class OpenStack:
                 "control_group": named[fabric.MANAGEMENT_GROUP], "senders_group": named[fabric.SENDERS_GROUP]}
 
     def _delete(self, stack: str) -> None:
+        _held.pop(self._key, None)
         self.get(self._call(DELETE_STACK, name=stack_name(self.slot), stack=stack))
         self._shape = None
 

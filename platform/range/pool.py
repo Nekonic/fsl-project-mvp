@@ -45,7 +45,13 @@ class Plan:
         return not self.wargame or not wargame or self.wargame == wargame
 
 
-def assigned(number: int, wargames: tuple[str, ...]) -> str:
+def assigned(number: int, wargames: tuple[str, ...], counts: tuple[tuple[str, int], ...] = ()) -> str:
+    for wargame, count in counts:
+        if number <= count:
+            return wargame
+        number -= count
+    if counts:
+        return ""
     return wargames[(number - 1) % len(wargames)] if wargames else ""
 
 

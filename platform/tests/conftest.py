@@ -33,8 +33,10 @@ def nothing_remembered_between_tests():
     from django.core.cache import cache
 
     from api import reset, site, views
+    from range import openstack
 
     cache.clear()
+    openstack.forget()
     reset._states.clear()
     views._segments_kept.clear()
     views._found_kept.clear()

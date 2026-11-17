@@ -1,4 +1,5 @@
 import hashlib
+import json
 import pathlib
 import re
 
@@ -7,7 +8,7 @@ import pytest
 import topology
 from range import declared, openstack, sandbox, wiring
 from range.ports import RangeUnavailable, Shape
-from tests import fakecloud
+from tests import docker_networks, fakecloud
 from tests.sessions import open_session
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -107,6 +108,39 @@ def test_a_slot_s_wiring_is_read_from_neutron_over_http(monkeypatch):
     assert {(one.host, one.address) for one in adapter.wiring().interfaces()} == {
         (one.host, one.address) for one in read_slot()}
     openstack.forget()
+
+
+def test_the_database_zone_is_the_target_s_internal_docker_network_and_its_front_bridge_is_not_drawn():
+    networks, subnets, ports = neutron()
+    containers = {host.container: name for name, host in DECLARED.hosts.items() if host.container}
+    wires = wiring.from_neutron(networks, subnets, ports, {}, wiring.from_docker(docker_networks.inspected(), containers))
+    drawn = topology.graph(learner(), wires)
+
+    assert [(zone["id"], zone["caption"], zone["subnet"], zone.get("owner")) for zone in drawn["zones"]
+            if zone["caption"] == "database"] == [("board-backend", "database", "172.18.0.0/16", "board")]
+    shown = links(drawn)
+    assert shown[("board-db", "switch:board-backend")] == "172.18.0.2"
+    assert shown[("board.com", "switch:board-backend")] == "172.18.0.3"
+    assert shown[("board.com", "switch:web-inner")] == "10.30.128.59"
+    assert "172.19.0.2" not in repr(drawn) and "172.17.0.0" not in repr(drawn), (
+        "the publish bridge and docker0 carry no traffic the WAF sends; the WAF reaches the Neutron port")
+
+
+def test_the_target_s_docker_networks_are_read_once_per_stack_over_ssh(monkeypatch):
+    cloud = fakecloud.Cloud()
+    fakecloud.serving(cloud)
+    runner = fakecloud.Runner()
+    monkeypatch.setattr(openstack, "execute", runner)
+    runner.answer(sandbox.READY, "ready\n")
+    runner.answer("docker network inspect", json.dumps(docker_networks.inspected()))
+    adapter = fakecloud.adapter(cloud, slots=1)
+    adapter.ensure_slot()
+
+    for _ in range(3):
+        drawn = topology.graph(learner(), fakecloud.adapter(cloud, slots=1).wiring())
+    assert links(drawn)[("board-db", "switch:board-backend")] == "172.18.0.2"
+    read = [sent for _, sent in runner.ran if "docker network inspect" in sent]
+    assert len(read) == 1 and runner.sent_to(cloud.control_address(1, "cr-target"))[-1] == read[0]
 
 
 def test_the_ids_stands_inline_between_the_waf_and_the_web_servers_switch():

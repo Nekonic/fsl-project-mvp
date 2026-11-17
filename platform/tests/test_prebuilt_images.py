@@ -132,15 +132,6 @@ def test_each_wargame_names_the_image_its_service_runs():
         assert image.removeprefix("ghcr.io/nekonic/cr-") in repositories, image
 
 
-def test_the_platform_hands_its_image_tag_to_the_range_it_builds():
-    environment = composed.services()["platform"]["environment"]
-
-    assert environment["CR_RANGE_IMAGE_TAG"] == "${CR_RANGE_IMAGE_TAG:-dev}", (
-        "the platform ships the range images to the range host at this tag; "
-        "without it the range would run :dev whatever the VM pulled"
-    )
-
-
 def platform_vm_config():
     template = yaml.safe_load((ROOT / "deploy/openstack/platform.yaml").read_text())
     [server] = [r["properties"] for r in template["resources"].values()
@@ -161,13 +152,11 @@ def test_the_platform_vm_runs_the_images_built_from_its_own_checkout():
     _, config = platform_vm_config()
     commands = [" ".join(map(str, c)) for c in config["runcmd"]]
     tagged = next(i for i, c in enumerate(commands) if "CR_IMAGE_TAG=" in c)
-    ranged = next(i for i, c in enumerate(commands) if "CR_RANGE_IMAGE_TAG=" in c)
     started = next(i for i, c in enumerate(commands) if "cr-platform.service" in c)
 
     assert "git -C /opt/cr rev-parse HEAD" in commands[tagged]
-    assert "/opt/cr/bin/range-image-tag" in commands[ranged]
-    assert "/opt/cr/.env" in commands[tagged] and "/opt/cr/.env" in commands[ranged]
-    assert tagged < started and ranged < started
+    assert "/opt/cr/.env" in commands[tagged] and tagged < started
+    assert not [c for c in commands if "RANGE_IMAGE_TAG" in c], "slot VMs boot from Glance images, not GHCR"
 
 
 def test_the_platform_vm_fetches_its_geoip_database_before_starting():
@@ -190,7 +179,7 @@ def test_the_range_key_never_enters_the_user_data():
 @pytest.mark.parametrize("changed, auth, which, said", [
     ({}, {"password": ""}, "/bin/openstack", "the entry fsl-range has no auth.password"),
     ({}, {"auth_url": "keystone:5000"}, "/bin/openstack", "auth_url must be an http"),
-    ({"network__estate": "10.20.0.0/24"}, {}, "/bin/openstack", "overlaps"),
+    ({"network__mgmt": "10.20.0.0/24"}, {}, "/bin/openstack", "overlaps"),
     ({}, {}, None, "openstack CLI"),
 ])
 def test_the_rebuild_refuses_before_touching_the_cloud(tmp_path, monkeypatch, changed, auth, which, said):
@@ -478,39 +467,6 @@ class ChangedContexts:
         self.compared.append((source, context))
         code = 128 if self.broken else 1 if (source, context) in self.changed else 0
         return subprocess.CompletedProcess(argv, code, b"", b"")
-
-
-def test_a_platform_only_commit_keeps_the_range_images_tag_and_a_range_side_commit_moves_it(tmp_path):
-    module = rebuild()
-
-    def git(*argv):
-        return subprocess.run(["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@example.com",
-                               "-c", "commit.gpgsign=false", *argv],
-                              check=True, capture_output=True, text=True).stdout.strip()
-
-    def commit(path, text):
-        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / path).write_text(text)
-        git("add", "-A")
-        git("commit", "-q", "-m", path)
-        return git("rev-parse", "HEAD")
-
-    git("init", "-q")
-    board = commit("wargames/board/app/app.py", "1")
-    pushed = commit("platform/api/views.py", "1")
-    platform_only = commit("platform/api/views.py", "2")
-    openstack_only = commit("deploy/openstack/platform.yaml", "1")
-    database = commit("wargames/corp/db/seed.sql", "1")
-    published = {pushed, database}
-
-    def tag(commit):
-        return module.range_image_tag(commit, tmp_path, lookup=lambda name, at: None if at in published else "missing")
-
-    assert tag(pushed) == pushed, (
-        f"{board} changed the board but GHCR holds no images for it; {pushed} holds the same range images and was pushed")
-    assert tag(platform_only) == tag(openstack_only) == pushed, (
-        "a commit that changes no range image's build context keeps the running range host and its slots")
-    assert tag(database) == database, "a changed corp database image is pulled by a new slot"
 
 
 def test_every_image_must_be_built_from_what_head_holds():

@@ -50,7 +50,7 @@ def shape(described, declared=None) -> dict:
 
 TRANSIT = ("edge", "gateway", "wargames")
 DATABASE_SUFFIX = "-db"
-BACKEND_SUFFIX = "-default"
+BACKEND_SUFFIX = "-backend"
 LOG_STORE = "cr-elasticsearch"
 ATTACKER = "kali"
 CUSTOMERS = "customers"

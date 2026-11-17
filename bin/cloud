@@ -25,6 +25,8 @@ from redteam import signin
 REBUILD = ROOT / "bin/platform-rebuild"
 CALL_TIMEOUT = 1800
 SLOT_WAIT = 1800
+GONE_WAIT = 1800
+SLOT_STACKS = "cr-range"
 READY_WAIT = 1800
 POLL = 5
 CONFIGURE_TRIES = 60
@@ -56,8 +58,9 @@ def arguments(argv: list[str]) -> argparse.Namespace:
         description="init, with admin credentials, prepares the project, its user, the "
                     "clouds.yaml entry, the flavors' access, the base image and cloud.yaml. "
                     "up brings the whole OpenStack environment up from cloud.yaml: the "
-                    "platform VM's Heat stack, then the range through the platform's own "
-                    "API. down backs the store up and takes the range down, then the stack. "
+                    "platform VM's Heat stack, then the range's pool of slot stacks through the "
+                    "platform's own API. down backs the store up and takes the slot stacks down, "
+                    "then the platform's stack. "
                     "Every line starts with the local time. Run it with uv run, which "
                     "installs what it needs.",
     )
@@ -67,7 +70,7 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--ref", help="the branch, tag or commit to clone instead of platform.ref")
     parser.add_argument("--replace", action="store_true",
                         help="up: replace a standing platform VM, keeping its store and range key; "
-                             "a range host whose images and setup bundle are unchanged stands through")
+                             "a slot stack built from the same template and images stands through")
     parser.add_argument("--reset-password", action="store_true",
                         help="init: give the project user a new random password when no working "
                              "clouds.yaml entry holds its current one")
@@ -139,7 +142,7 @@ def _standing(call):
     slots = _slots(_done(call, "GET", "/ready/"))
     failed = [reason for slot in slots if slot.get("phase") == "SETUP_FAILED" for reason in slot.get("blocked") or []]
     if failed:
-        raise Refused("cloud: the range host did not set itself up:\n  " + "\n  ".join(failed))
+        raise Refused("cloud: a slot did not set itself up:\n  " + "\n  ".join(failed))
     return slots if all(slot.get("phase") not in BOOTING for slot in slots) else None
 
 
@@ -163,16 +166,16 @@ def converge(call, sleep=time.sleep, clock=time.monotonic) -> dict:
     fabric = _done(call, "POST", "/fabric/")
     if fabric["drifted"]:
         raise Refused("cloud: the fabric drifted:\n  " + "\n  ".join(fabric["drifted"]))
+    removed = _done(call, "DELETE", "/leftovers/")["removed"]
+    if removed:
+        print("removed what an earlier range left: " + ", ".join(f"{r['kind']} {r['id']}" for r in removed),
+              flush=True)
     slot = _done(call, "POST", "/slot/")
     if slot["blocked"]:
         raise Refused("cloud: the slot is blocked:\n  " + "\n  ".join(slot["blocked"]))
     _until("the slot standing", SLOT_WAIT, sleep, clock, lambda: _standing(call))
     _configured(call, sleep)
-    ready = _until("the range ready", READY_WAIT, sleep, clock, lambda: _ready(call))
-    removed = _done(call, "DELETE", "/leftovers/")["removed"]
-    if removed:
-        print("removed what the VM range left: " + ", ".join(f"{r['kind']} {r['id']}" for r in removed), flush=True)
-    return ready
+    return _until("the range ready", READY_WAIT, sleep, clock, lambda: _ready(call))
 
 
 def up(args: argparse.Namespace) -> str:
@@ -187,14 +190,27 @@ def up(args: argparse.Namespace) -> str:
     return address
 
 
-def take_down(call, stack: str, run) -> None:
+def _gone(call):
+    return True if not _done(call, "GET", "/slot/")["standing"] else None
+
+
+def take_down(call, stack: str, run, sleep=time.sleep, clock=time.monotonic) -> None:
     _done(call, "DELETE", "/slot/")
+    _until("the slot stacks gone", GONE_WAIT, sleep, clock, lambda: _gone(call))
     _done(call, "DELETE", "/fabric/")
     rebuild.delete_stack(stack, run)
 
 
+def slot_stacks(run) -> list[str]:
+    listed = run(["openstack", "stack", "list", "--tags", SLOT_STACKS, "-f", "value", "-c", "ID"]).stdout
+    return listed.decode().split()
+
+
 def take_down_broken(stack: str, why: str, run) -> None:
-    print(f"stack {stack} {why}; removing its builders and the stack")
+    print(f"stack {stack} {why}; removing the slot stacks, its builders and the stack")
+    found = slot_stacks(run)
+    if found:
+        run(["openstack", "stack", "delete", "--yes", "--wait", *found])
     rebuild.delete_stack(stack, run)
 
 
@@ -347,6 +363,14 @@ def flavors_for(admin, named: dict, origin: str) -> dict[str, dict]:
              "disk": flavor.disk, "public": flavor.is_public}
             for flavor in admin.compute.flavors(is_public="none")]
     chosen = {}
+    for role in settings.ROLES:
+        wanted = named.get(role) or settings.SLOT_FLAVOR
+        flavor = next((flavor for flavor in held if flavor["name"] == wanted), None)
+        if flavor is None:
+            raise Refused(f"cloud: no flavor {wanted} for the slot role {role}; name one of "
+                          f"{', '.join(sorted(one['name'] for one in held))} in compute.flavors.{role}")
+        print(f"flavor {role}: {flavor['name']}, {flavor['vcpus']} vCPU, RAM {flavor['ram']} MB")
+        chosen[role] = flavor
     for role in settings.NEEDS:
         try:
             flavor = settings.fitting_flavor(held, role, named.get(role) or "")
@@ -370,16 +394,19 @@ def flavor_access(admin, chosen: dict[str, dict], project) -> None:
             print(f"flavor {flavor['name']}: private; access given to {project.name}")
 
 
-def quota(admin, project, chosen: dict[str, dict]) -> None:
+def quota(admin, project, chosen: dict[str, dict], slots: int) -> None:
     compute = admin.compute.get_quota_set(project.id)
     network = admin.network.get_quota(project.id)
     limits = {"instances": compute.instances, "cores": compute.cores, "ram": compute.ram,
               "floating_ips": network.floating_ips}
-    short = settings.quota_shortfall(limits, chosen)
+    roles = {role: chosen[role] for role in settings.ROLES}
+    short = settings.quota_shortfall(limits, chosen["platform"], roles, slots)
     if short:
-        raise Refused(f"cloud: the quota of {project.name} cannot hold the platform and the range host; "
-                      f"an admin raises it (openstack quota set):\n  " + "\n  ".join(short))
-    print(f"quota of {project.name}: holds both VMs ({', '.join(f'{k} {v}' for k, v in limits.items())})")
+        raise Refused(f"cloud: the quota of {project.name} cannot hold the platform and the pool; "
+                      f"an admin raises it (openstack quota set), or compute.pool asks for fewer slots:\n  "
+                      + "\n  ".join(short))
+    print(f"quota of {project.name}: holds the platform and {slots} slots "
+          f"({', '.join(f'{k} {v}' for k, v in limits.items())})")
 
 
 def download_image(scratch: Path) -> Path:
@@ -479,16 +506,15 @@ def init(args: argparse.Namespace) -> None:
     credentials(admin, name, held, project, user, project_domain, user_domain, password, args.reset_password)
     member_role(admin, project, user)
     flavor_access(admin, chosen, project)
-    quota(admin, project, chosen)
+    quota(admin, project, chosen, sum((compute.get("pool") or settings.POOL).values()))
     base_image(admin, image, project)
     key_pair_file(Path(keys.get("key_file") or "~/.ssh/fsl_claude").expanduser())
     write_cloud_yaml(path, text, {
         ("cloud",): name, ("network", "external"): external, ("compute", "base_image"): image,
         ("compute", "flavors", "platform"): chosen["platform"]["name"],
-        ("compute", "flavors", "range"): chosen["range"]["name"],
         ("network", "allowed"): network.get("allowed") or settings.OPEN_TO_ALL,
     })
-    print("init is done; bin/cloud up brings the platform and the range up")
+    print("init is done; bin/cloud up brings the platform and the range's pool up")
 
 
 def main(argv: list[str]) -> int:

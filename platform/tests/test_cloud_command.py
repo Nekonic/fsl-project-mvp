@@ -19,8 +19,9 @@ def command():
 
 
 class Platform:
-    def __init__(self, fabric=None, slot=None, ready=None, configure=None, removed=()):
+    def __init__(self, fabric=None, slot=None, ready=None, configure=None, removed=(), standing=()):
         self.calls = []
+        self.standing = iter(standing)
         self.removed = list(removed)
         self.fabric = fabric or {"drifted": [], "clean": True}
         self.slot = slot or {"blocked": [], "clean": True}
@@ -41,6 +42,8 @@ class Platform:
             return 200, next(self.ready)
         if (verb, path) == ("POST", "/configure/"):
             return next(self.configure)
+        if (verb, path) == ("GET", "/slot/"):
+            return 200, {"standing": next(self.standing, [])}
         return 200, {"removed": self.removed}
 
 
@@ -58,22 +61,22 @@ def test_up_builds_the_range_in_the_order_the_platform_requires():
     assert order == [("POST", "/fabric/"), ("POST", "/slot/"), ("POST", "/configure/")]
     first_configure = platform.calls.index(("POST", "/configure/"))
     assert platform.calls[first_configure - 1] == ("GET", "/ready/"), (
-        "configure ssh-es to the range host, so it waits until it stands and has set itself up"
+        "configure ssh-es to the slot VMs, so it waits until they stand and have set themselves up"
     )
 
 
-def test_what_the_vm_range_left_is_removed_only_once_the_range_host_s_slots_are_ready(capsys):
-    platform = Platform(removed=[{"kind": "server", "id": "srv-old-kali"}])
+def test_what_an_earlier_range_left_is_removed_before_the_pool_is_filled(capsys):
+    platform = Platform(removed=[{"kind": "server", "id": "srv-cr-range"}])
 
     converge(platform)
 
-    assert platform.calls.index(("DELETE", "/leftovers/")) > platform.calls.index(("POST", "/configure/"))
-    assert platform.calls[-1] == ("DELETE", "/leftovers/"), (
-        "the old slot VMs fill the quota beside the range host, and they go only once it is proven")
-    assert "server srv-old-kali" in capsys.readouterr().out
+    assert platform.calls[:3] == [("POST", "/fabric/"), ("DELETE", "/leftovers/"), ("POST", "/slot/")], (
+        "the old range host holds 6 vCPU and 16 GB of the quota the pool's slot VMs need")
+    assert platform.calls.count(("DELETE", "/leftovers/")) == 1
+    assert "server srv-cr-range" in capsys.readouterr().out
 
 
-def test_a_drifted_fabric_stops_up_before_the_range_host_boots():
+def test_a_drifted_fabric_stops_up_before_any_slot_boots():
     platform = Platform(fabric={"drifted": ["keypair cr-platform holds another public key"]})
 
     with pytest.raises(SystemExit, match="another public key"):
@@ -94,12 +97,15 @@ def test_configure_is_retried_while_the_vms_ssh_is_not_up_yet_and_a_refusal_stop
 
 class Cli:
     def __init__(self, servers=b"[]", status=b"CREATE_COMPLETE", address=b"203.0.113.7",
-                 network=b"net-stack"):
+                 network=b"net-stack", stacks=b""):
         self.ran = []
         self.answers = {"list": servers, "show": status, "output": address, "resource": network}
+        self.stacks = stacks
 
     def __call__(self, argv, stdin=None, check=True):
         self.ran.append(argv)
+        if argv[1:3] == ["stack", "list"]:
+            return subprocess.CompletedProcess(argv, 0, stdout=self.stacks)
         if argv[1:3] == ["network", "show"]:
             return subprocess.CompletedProcess(argv, 0, stdout=b"cr-platform\n")
         said = self.answers.get(argv[2], b"")
@@ -114,19 +120,25 @@ LEFT_BUILDER = (b'[{"ID": "srv-1", "Name": "cr-build-cr-edge", "Properties": {"c
                 b' "Networks": {"other-platform": ["10.40.0.9"]}}]')
 
 
-def test_down_removes_the_slot_then_the_fabric_then_the_stack():
-    platform, cli = Platform(), Cli()
+def take_down(platform, cli):
+    clock = itertools.count()
+    command().take_down(platform, "cr-platform", cli, sleep=lambda seconds: None, clock=lambda: next(clock))
 
-    command().take_down(platform, "cr-platform", cli)
 
-    assert platform.calls == [("DELETE", "/slot/"), ("DELETE", "/fabric/")]
+def test_down_deletes_the_slot_stacks_waits_for_them_then_removes_the_fabric_then_the_stack():
+    platform, cli = Platform(standing=[[{"host": "cr-slot-1", "status": "DELETING"}]]), Cli()
+
+    take_down(platform, cli)
+
+    assert platform.calls == [("DELETE", "/slot/"), ("GET", "/slot/"), ("GET", "/slot/"), ("DELETE", "/fabric/")], (
+        "a slot VM's control port stands on cr-mgmt until Heat has deleted its stack")
     assert cli.ran[-1] == ["openstack", "stack", "delete", "--yes", "--wait", "cr-platform"]
 
 
 def test_down_removes_builders_first_because_their_ports_hold_the_platform_network():
     cli = Cli(servers=LEFT_BUILDER)
 
-    command().take_down(Platform(), "cr-platform", cli)
+    take_down(Platform(), cli)
 
     assert cli.ran[-2:] == [["openstack", "server", "delete", "--wait", "srv-1"],
                             ["openstack", "stack", "delete", "--yes", "--wait", "cr-platform"]], (
@@ -157,11 +169,13 @@ def test_a_failed_stack_has_no_working_platform_so_up_rebuilds_it():
     assert not [argv for argv in cli.ran if argv[2] == "output"]
 
 
-def test_a_failed_stack_is_taken_down_without_asking_its_platform(capsys):
-    cli = Cli(servers=LEFT_BUILDER, status=b"DELETE_FAILED")
+def test_a_failed_stack_is_taken_down_without_asking_its_platform_and_its_slot_stacks_with_it(capsys):
+    cli = Cli(servers=LEFT_BUILDER, status=b"DELETE_FAILED", stacks=b"stack-1\nstack-4\n")
 
     command().take_down_broken("cr-platform", "is DELETE_FAILED and has no platform to ask", cli)
 
+    assert ["openstack", "stack", "list", "--tags", "cr-range", "-f", "value", "-c", "ID"] in cli.ran
+    assert ["openstack", "stack", "delete", "--yes", "--wait", "stack-1", "stack-4"] in cli.ran
     assert ["openstack", "server", "delete", "--wait", "srv-1"] in cli.ran
     assert cli.ran[-1][:3] == ["openstack", "stack", "delete"]
     assert "DELETE_FAILED" in capsys.readouterr().out
@@ -323,12 +337,12 @@ def test_up_on_a_standing_stack_finishes_its_hand_over_and_replace_makes_a_new_v
     assert calls == ["resume", "converge", "rebuild", "converge"]
 
 
-def test_a_range_host_that_failed_its_setup_stops_up_with_why():
+def test_a_slot_that_failed_its_setup_stops_up_with_why():
     platform = Platform(ready=[{"ready": False, "slot": {"phase": "SETUP_FAILED"},
-                                "slots": [{"phase": "SETUP_FAILED",
-                                           "blocked": ["cr-range failed its setup; /var/log/cr-setup.log on it says why"]}]}])
+                                "slots": [{"phase": "SETUP_FAILED", "blocked": [
+                                    "slot 2: cr-waf failed its setup; /var/log/cloud-init-output.log on it says why"]}]}])
 
-    with pytest.raises(SystemExit, match="cr-range failed its setup"):
+    with pytest.raises(SystemExit, match="(?s)a slot did not set itself up:.*slot 2: cr-waf failed its setup"):
         converge(platform)
     assert ("POST", "/configure/") not in platform.calls
 

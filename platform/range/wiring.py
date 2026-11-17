@@ -72,8 +72,23 @@ def _tagged(resource: dict, prefix: str) -> str:
     return next((tag[len(prefix):] for tag in resource.get("tags") or () if tag.startswith(prefix)), "")
 
 
+def from_docker(networks: list[dict], containers: dict[str, str]) -> tuple:
+    found = []
+    for network in sorted(networks, key=lambda one: str(one.get("Name") or "")):
+        cidrs = tuple(sorted(str(pool["Subnet"]) for pool in (network.get("IPAM") or {}).get("Config") or ()
+                             if ":" not in str(pool.get("Subnet") or ":")))
+        if not network.get("Internal") or not cidrs:
+            continue
+        members = tuple(sorted(
+            (containers[member["Name"]], member["IPv4Address"], str(member.get("MacAddress") or "").lower())
+            for member in (network.get("Containers") or {}).values()
+            if member.get("Name") in containers and member.get("IPv4Address")))
+        found.append((str(network["Name"]).replace("_", "-"), cidrs, members))
+    return tuple(found)
+
+
 def from_neutron(networks: list[dict], subnets: list[dict], ports: list[dict],
-                 extra: dict[str, tuple[str, ...]] | None = None) -> Wiring:
+                 extra: dict[str, tuple[str, ...]] | None = None, docker: tuple = ()) -> Wiring:
     lans = {network["id"]: _tagged(network, LAN_TAG) for network in networks if _tagged(network, LAN_TAG)}
     cidrs = {subnet["id"]: subnet["cidr"] for subnet in subnets if subnet.get("network_id") in lans}
     drawn = tuple(sorted((Network(key=lan, bridge=ident, subnets=tuple(sorted(
@@ -96,6 +111,12 @@ def from_neutron(networks: list[dict], subnets: list[dict], ports: list[dict],
                 entry["addresses"].append((lan, f"{fixed['ip_address']}/{ipaddress.ip_network(cidr).prefixlen}"))
         entry["addresses"] += [(lan, address) for address in (extra or {}).get(device, ())
                                if (lan, address) not in entry["addresses"]]
+    for key, cidrs, members in docker:
+        drawn += (Network(key=key, bridge=key, subnets=cidrs),)
+        for device, address, mac in members:
+            entry = held.setdefault(device, {"addresses": [], "attached": [], "sniffs": []})
+            entry["addresses"].append((key, address))
+            entry["attached"].append((key, mac))
     return Wiring(networks=drawn, containers=tuple(
         Container(service=device, host=device, addresses=tuple(entry["addresses"]), attached=tuple(entry["attached"]),
                   links=tuple(entry["attached"]), sniffs=tuple(entry["sniffs"]))

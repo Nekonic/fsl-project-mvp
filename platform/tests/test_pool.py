@@ -1,7 +1,9 @@
+import dataclasses
 import threading
 from unittest.mock import patch
 
 import pytest
+import yaml
 
 from api import reset
 from api.models import Session
@@ -214,3 +216,49 @@ def test_a_session_for_a_wargame_no_slot_runs_rebuilds_a_free_slot_for_it(client
     assert begun == [(1, {"claimed": True, "wargame": "corp"})]
     assert reset.wanted(1) == "corp" and stacks(cloud)["cr-slot-1"]["stack_status"] == fakecloud.DELETING
     assert not Session.objects.exists()
+
+
+def test_commands_to_a_ready_slot_ask_the_cloud_nothing_until_its_stack_is_created_again(cloud):
+    fakecloud.adapter(cloud, slots=1).ensure_slot()
+    asked = len(cloud.calls)
+    request = fakecloud.adapter(cloud, slots=1)
+
+    request.runner("attacker")(["true"])
+    request.runner("gateway")(["true"])
+    request.terminal("cr-waf")
+    assert len(cloud.calls) == asked, "the node addresses are held per stack, not looked up per command"
+    alias = request.terminal("cr-kali")[1]
+    request.teardown_slot()
+    assert openstack._held == {}, "a stack being deleted or created leaves no address behind"
+    cloud.advance()
+    request.ensure_slot()
+    assert request.address("attacker") == cloud.control_address(1, "cr-kali")
+    assert request.terminal("cr-kali")[1] != alias, "the new VM's host key is known under its own name"
+
+
+def test_every_node_of_a_stack_takes_the_platform_s_own_public_key_for_its_management_user(cloud, tmp_path):
+    (tmp_path / "id_ed25519").write_text("private")
+    (tmp_path / "id_ed25519.pub").write_text("ssh-ed25519 AAAA cr-platform\n")
+    adapter = fakecloud.adapter(cloud, slots=1)
+    adapter.cloud = dataclasses.replace(adapter.cloud, ssh_key=str(tmp_path / "id_ed25519"))
+    adapter.ensure_slot()
+
+    servers = [resource["properties"] for resource in stacks(cloud)["cr-slot-1"]["template"]["resources"].values()
+               if resource["type"] == "OS::Nova::Server"]
+    assert len(servers) == 4
+    for server in servers:
+        [_, user] = yaml.safe_load(server["user_data"])["users"]
+        assert user["name"] == "ubuntu" and user["ssh_authorized_keys"] == ["ssh-ed25519 AAAA cr-platform"]
+
+
+def test_the_pool_holds_as_many_slots_of_each_wargame_as_the_cloud_settings_ask_for(cloud):
+    declared = fakecloud.adapter(cloud).declared
+    signed = {"keystone": "http://127.0.0.1:1", "user": "u", "password": "p", "project": "cr",
+              "ssh_key": "/nonexistent", "region": "RegionOne", "interface": "public", "domain": "Default"}
+    adapter = openstack.connect(declared, pool="board=3 corp=1", **signed)
+
+    assert adapter.slots == 4 and adapter.reach.ssh_user == "ubuntu"
+    assert [one.wargame for one in adapter.every_slot()] == ["board", "board", "board", "corp"]
+    assert pool.assigned(5, ("board", "corp"), (("board", 3), ("corp", 1))) == ""
+    with pytest.raises(openstack.RangeUnavailable, match="CR_OPENSTACK_POOL"):
+        openstack.connect(declared, pool="board=0", **signed)

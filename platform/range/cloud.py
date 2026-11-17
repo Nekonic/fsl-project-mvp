@@ -14,10 +14,13 @@ EXAMPLE = FOLDER / "cloud.example.yaml"
 CONFIGURED = FOLDER / "cloud.yaml"
 COMPOSE = ROOT / "compose.yaml"
 DECLARATION = Path(__file__).resolve().parent / "declaration.yaml"
-INSIDE = ("estate", "mgmt")
+INSIDE = ("mgmt",)
 OPTIONAL_SECTIONS = ("backups",)
-REQUIRED_FLAVORS = ("platform", "range")
-RANGE_HOST_POOL = "10.40.0.0/16"
+ROLES = ("kali", "waf", "infra", "target")
+SLOT_FLAVOR = "dba.small"
+SLOT_IMAGE = "cr-{role}-bake1"
+POOL = {"board": 3, "corp": 1}
+RETIRED = {"network": ("estate", "mtu"), "compute": ("slots",), "flavors": ("range",)}
 DOCKER_DEFAULT_POOLS = ("172.17.0.0/16", "172.18.0.0/16", "172.19.0.0/16", "172.20.0.0/14",
                         "172.24.0.0/14", "172.28.0.0/14", "192.168.0.0/16")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
@@ -29,7 +32,7 @@ ENTRY = {
 }
 PROJECT = "fsl-range"
 OPEN_TO_ALL = ["0.0.0.0/0"]
-NEEDS = {"platform": {"ram": 8192, "vcpus": 2, "disk": 40}, "range": {"ram": 16384, "vcpus": 6, "disk": 40}}
+NEEDS = {"platform": {"ram": 8192, "vcpus": 2, "disk": 40}}
 SETTING = re.compile(r"^(?P<indent> *)(?P<key>[A-Za-z_][A-Za-z0-9_-]*):(?P<gap> *)(?P<value>[^#]*?)(?P<comment> +#.*)?$")
 
 
@@ -141,12 +144,13 @@ def fitting_flavor(flavors: list[dict], role: str, named: str = "") -> dict:
     return fitting[0]
 
 
-def quota_shortfall(limits: dict, flavors: dict[str, dict]) -> list[str]:
+def quota_shortfall(limits: dict, platform: dict, roles: dict[str, dict], slots: int) -> list[str]:
     needed = {
-        "instances": len(flavors), "cores": sum(flavor["vcpus"] for flavor in flavors.values()),
-        "ram": sum(flavor["ram"] for flavor in flavors.values()), "floating_ips": 1,
+        "instances": 1 + slots * len(roles),
+        "cores": platform["vcpus"] + slots * sum(flavor["vcpus"] for flavor in roles.values()),
+        "ram": platform["ram"] + slots * sum(flavor["ram"] for flavor in roles.values()), "floating_ips": 1,
     }
-    return [f"{name}: the quota is {limits.get(name)}, the platform and the range host need {need}"
+    return [f"{name}: the quota is {limits.get(name)}, the platform and {slots} slots of {len(roles)} VMs need {need}"
             for name, need in needed.items()
             if limits.get(name) is not None and 0 <= limits[name] < need]
 
@@ -195,7 +199,6 @@ class Cloud:
     cloud: str
     external_network: str
     platform_cidr: str
-    mtu: int
     base_image: str
     key_name: str
     key_file: str
@@ -208,8 +211,9 @@ class Cloud:
     dns: tuple[str, ...] = ()
     inside: dict[str, str] = field(default_factory=dict)
     flavors: dict[str, str] = field(default_factory=dict)
+    images: dict[str, str] = field(default_factory=dict)
+    pool: dict[str, int] = field(default_factory=lambda: dict(POOL))
     allowed: tuple[str, ...] = tuple(OPEN_TO_ALL)
-    slots: int = 1
     backups_keep: int = 1
     signed_in: Identity | None = None
 
@@ -226,14 +230,18 @@ class Cloud:
             "availability_zone": self.availability_zone,
             "cidr": self.platform_cidr, "dns": ",".join(self.dns),
             "repository": self.repository, "ref": self.ref,
-            "range_flavor": self.flavors["range"], "subnets": joined(self.inside),
-            "management": self.inside["mgmt"],
-            "range_mtu": str(self.mtu), "slots": str(self.slots),
+            "subnets": joined(self.inside), "management": self.inside["mgmt"],
+            "pool": joined(self.pool), "images": joined(self.images),
+            "flavors": joined({role: name for role, name in self.flavors.items() if role in ROLES}),
             "allowed": ",".join(self.allowed),
         }
 
+    @property
+    def slots(self) -> int:
+        return sum(self.pool.values())
 
-def joined(pairs: dict[str, str]) -> str:
+
+def joined(pairs: dict) -> str:
     return " ".join(f"{key}={value}" for key, value in pairs.items())
 
 
@@ -264,21 +272,6 @@ def _cidr(value) -> str | None:
         return "must be an IPv4 network such as 10.30.0.0/24"
     if network.version != 4 or not network.is_private:
         return "must be a private IPv4 network"
-    return None
-
-
-def _estate(value) -> str | None:
-    said = _cidr(value)
-    if said:
-        return said
-    if ipaddress.ip_network(str(value)).prefixlen > 16:
-        return "must be a /16 or wider: slot N's estate is its Nth /24, such as 10.30.0.0/16"
-    return None
-
-
-def _mtu(value) -> str | None:
-    if isinstance(value, bool) or not isinstance(value, int) or not 1280 <= value <= 9000:
-        return "must be a whole number between 1280 and 9000"
     return None
 
 
@@ -314,23 +307,35 @@ def _address(value) -> str | None:
     return None
 
 
-def _flavors(value) -> str | None:
+def _named_per(value, keys: tuple[str, ...], what: str, required: tuple[str, ...] = ()) -> str | None:
     if not isinstance(value, dict):
-        return "must map platform and range to flavor names"
-    missing = [key for key in REQUIRED_FLAVORS if key not in value]
+        return f"must map {', '.join(keys)} to {what} names"
+    missing = [key for key in required if key not in value]
     if missing:
         return f"lacks {', '.join(missing)}"
-    extra = [key for key in value if key not in REQUIRED_FLAVORS]
+    extra = [key for key in value if key not in keys and key not in RETIRED["flavors"]]
     if extra:
-        return f"names {', '.join(map(str, extra))}, which the range no longer has: one range host runs every slot"
-    wrong = [key for key, name in value.items() if _name(name) or _name(str(key))]
-    return f"has {', '.join(map(str, wrong))} not naming a flavor" if wrong else None
+        return f"names {', '.join(map(str, extra))}, which is none of {', '.join(keys)}"
+    wrong = [key for key, name in value.items() if key in keys and _name(name)]
+    return f"has {', '.join(map(str, wrong))} not naming a {what}" if wrong else None
 
 
-def _slots(value) -> str | None:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-        return "must be a whole number of range slots, 1 or more"
-    return None
+def _flavors(value) -> str | None:
+    return _named_per(value, ("platform", *ROLES), "flavor", ("platform",))
+
+
+def _images(value) -> str | None:
+    return _named_per(value, ROLES, "image")
+
+
+def _pool(value) -> str | None:
+    if not isinstance(value, dict) or not value:
+        return "must map each wargame to its number of ready slots, such as {board: 3, corp: 1}"
+    wrong = [str(key) for key, count in value.items()
+             if _name(str(key)) or isinstance(count, bool) or not isinstance(count, int) or count < 0]
+    if wrong:
+        return f"has {', '.join(wrong)} not mapped to a whole number of slots, 0 or more"
+    return None if sum(value.values()) else "holds no slot"
 
 
 def _keep(value) -> str | None:
@@ -341,13 +346,12 @@ def _keep(value) -> str | None:
 
 SCHEMA = {
     "network": {
-        "external": (_name, True), "address": (_address, False), "dns": (_dns, True), "mtu": (_mtu, True),
-        "platform": (_cidr, True), "estate": (_estate, True), "mgmt": (_cidr, True),
-        "allowed": (_allowed, False),
+        "external": (_name, True), "address": (_address, False), "dns": (_dns, True),
+        "platform": (_cidr, True), "mgmt": (_cidr, True), "allowed": (_allowed, False),
     },
     "compute": {
         "base_image": (_name, True), "availability_zone": (_optional_name, False),
-        "flavors": (_flavors, True), "slots": (_slots, False),
+        "flavors": (_flavors, True), "images": (_images, False), "pool": (_pool, False),
     },
     "keys": {"key_name": (_name, True), "key_file": (_text, True), "range": (_text, True)},
     "platform": {"stack": (_name, True), "repository": (_url, True), "ref": (_name, True)},
@@ -373,7 +377,7 @@ def _complaints(document) -> list[str]:
             said.append(f"{section}: missing, or not a mapping")
             continue
         said += [f"{section}.{key}: not a setting this section has (expected one of {', '.join(keys)})"
-                 for key in entries if key not in keys]
+                 for key in entries if key not in keys and key not in RETIRED.get(section, ())]
         for key, (check, required) in keys.items():
             if key not in entries or entries[key] in ("", None):
                 if required:
@@ -412,7 +416,6 @@ def taken() -> dict[str, ipaddress.IPv4Network]:
     return {
         **{f"docker's default address pool {pool}": ipaddress.ip_network(pool)
            for pool in DOCKER_DEFAULT_POOLS},
-        f"the range host's docker address pool {RANGE_HOST_POOL}": ipaddress.ip_network(RANGE_HOST_POOL),
         **_compose_networks(),
         **_origins(),
     }
@@ -445,17 +448,18 @@ def parse(document, source: str = "cloud.yaml") -> Cloud:
     network, compute = document["network"], document["compute"]
     keys, platform = document["keys"], document["platform"]
     backups = document.get("backups") or {}
+    flavors = {str(role): name for role, name in compute["flavors"].items() if role not in RETIRED["flavors"]}
     return Cloud(
         cloud=document["cloud"],
         external_network=network["external"], address=str(network.get("address") or ""),
-        dns=tuple(map(str, network["dns"])),
-        mtu=network["mtu"], platform_cidr=network["platform"],
+        dns=tuple(map(str, network["dns"])), platform_cidr=network["platform"],
         inside={segment: network[segment] for segment in INSIDE},
         base_image=compute["base_image"],
         availability_zone=compute.get("availability_zone") or "",
-        flavors={str(role): name for role, name in compute["flavors"].items()},
+        flavors={**{role: SLOT_FLAVOR for role in ROLES}, **flavors},
+        images={**{role: SLOT_IMAGE.format(role=role) for role in ROLES}, **(compute.get("images") or {})},
+        pool={str(wargame): count for wargame, count in (compute.get("pool") or POOL).items()},
         allowed=tuple(map(str, network.get("allowed") or OPEN_TO_ALL)),
-        slots=compute.get("slots") or 1,
         key_name=keys["key_name"], key_file=keys["key_file"],
         range_key=keys["range"],
         stack=platform["stack"], repository=platform["repository"], ref=platform["ref"],

@@ -1,5 +1,5 @@
 import importlib.util
-import ipaddress
+import json
 import re
 import shlex
 import subprocess
@@ -8,16 +8,17 @@ from pathlib import Path
 import pytest
 import yaml
 
-from range import fabric, rangehost
+from range import declared, fabric, sandbox
 from wargames import WARGAMES
 
 ROOT = Path(__file__).resolve().parents[2]
 ROLES = ROOT / "deploy/roles"
 SCRIPTS = ("kali/install.sh", "kali/slot-boot", "waf/install.sh", "waf/slot-boot", "infra/install.sh",
            "infra/slot-boot", "infra/suricatasc", "target/install.sh", "target/wargames")
-SLOT_TEMPLATE = ROOT / "deploy/range-host/slot.yaml"
 FILEBEAT = ROOT / "deploy/filebeat/filebeat.yml"
-DECLARATION = ROOT / "platform/range/declaration.yaml"
+DECLARED = declared.read()
+YAML_HEADER = "%YAML 1.1\n---\n"
+SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 def text(role_file: str) -> str:
@@ -29,13 +30,22 @@ def assigned(role_file: str) -> dict[str, str]:
             re.findall(r'^([A-Z_0-9]+)=("[^"]*"|\S+)$', text(role_file), re.M)}
 
 
-def dockerfile_args(path: str) -> dict[str, str]:
-    return dict(re.findall(r"^ARG (\w+)=(\S+)$", (ROOT / path).read_text(), re.M))
+def definition(wargame: str = "board") -> sandbox.Definition:
+    return sandbox.read(ROOT, wargame)
 
 
-def dockerfile_packages(path: str) -> set[str]:
-    run = (ROOT / path).read_text().split("apt-get install -y", 1)[1].split("&&", 1)[0]
-    return set(run.replace("\\", " ").split())
+def planned(wargame: str = "board") -> sandbox.Sandbox:
+    return sandbox.plan(definition(wargame), 1, DECLARED.origins, DECLARED.default_origin, "10.31.0.2")
+
+
+def device(name: str, wargame: str = "board") -> sandbox.Device:
+    return definition(wargame).devices[name]
+
+
+def router_address() -> str:
+    found = definition()
+    [port] = [one for one in found.ports if one.device == found.filling("edge").name and one.lan == "internet"]
+    return port.address
 
 
 def installed_sources(role: str) -> set[str]:
@@ -61,10 +71,6 @@ def filled(role_file: str, **values) -> str:
     for name, value in values.items():
         rendered = rendered.replace(f"@{name}@", str(value))
     return rendered
-
-
-def slot_template() -> dict:
-    return yaml.safe_load(SLOT_TEMPLATE.read_text())
 
 
 def render_module():
@@ -126,6 +132,19 @@ def test_the_boot_units_wait_for_the_slot_s_settings_and_do_nothing_on_the_build
     assert "WantedBy=multi-user.target" in written
 
 
+@pytest.mark.parametrize("role", sandbox.ROLES)
+def test_every_unit_a_node_waits_on_before_it_reports_ready_is_one_its_image_installs_and_enables(role):
+    script = text(f"{role}/install.sh")
+
+    for unit in sandbox.BOOTS[role]:
+        if unit == "nginx.service":
+            assert "nginx.service" in text("waf/slot-boot.service") and "systemctl enable nginx" in script
+            continue
+        assert (ROLES / role / unit).is_file(), f"{role} reports ready after {unit}, which it does not carry"
+        assert f"systemctl enable {unit}" in script or re.search(rf"systemctl enable [^\n]*\b{unit}\b", script), (
+            f"{unit} has to start at boot for {role} to report ready")
+
+
 @pytest.mark.parametrize("carried, source", [
     ("kali/bashrc", "deploy/kali/bashrc"),
     ("kali/operator-log.sh", "deploy/kali/operator-log.sh"),
@@ -138,18 +157,20 @@ def test_the_boot_units_wait_for_the_slot_s_settings_and_do_nothing_on_the_build
     ("target/board.yaml", "wargames/board/compose.yaml"),
     ("target/corp.yaml", "wargames/corp/compose.yaml"),
 ])
-def test_a_role_carries_the_file_the_container_range_runs_not_a_copy_that_could_drift(carried, source):
+def test_a_role_carries_the_file_the_platform_and_its_tests_read_not_a_copy_that_could_drift(carried, source):
     assert (ROLES / carried).resolve() == (ROOT / source).resolve()
 
 
-def test_kali_installs_the_headless_set_and_every_package_the_kali_container_has():
+def test_kali_installs_the_headless_set_the_tools_the_cases_run_and_sshd():
     named = assigned("kali/install.sh")
     installed = re.search(r"^installed (.+)$", text("kali/install.sh"), re.M)[1].split()
     packages = {word for word in installed if not word.startswith("$")}
     packages |= {package for word in installed if word.startswith("$") for package in named[word[1:]].split()}
+    tools = {case["tool"] for path in (ROOT / "redteam/cases").glob("*.yaml")
+             for case in yaml.safe_load(path.read_text()) or () if isinstance(case, dict) and case.get("tool")}
 
-    assert {"kali-linux-headless", "iputils-ping", "traceroute"} <= packages
-    assert dockerfile_packages("deploy/kali/Dockerfile") <= packages
+    assert {"kali-linux-headless", "iputils-ping", "traceroute", "openssh-server", "sudo"} <= packages
+    assert tools and tools <= packages, "every tool a case runs is installed on the attacker"
 
 
 def test_kali_keeps_the_files_the_platform_reads_and_writes_where_the_container_had_them():
@@ -178,12 +199,13 @@ def test_kali_s_web_proxy_listens_where_its_shell_sends_web_requests():
 
 
 def test_kali_resolves_the_sites_to_the_router_s_public_address_and_routes_through_it():
-    router = rangehost.router_address()
-    hosts = slot_template()["services"]["kali"]["extra_hosts"]
+    router = router_address()
 
+    assert router == "121.134.88.42"
     assert assigned("kali/install.sh")["ROUTER"] == router
     assert assigned("kali/slot-boot")["ROUTER"] == router
-    assert hosts == ["board.com:@router@", "corp.com:@router@"]
+    assert assigned("infra/slot-boot")["ROUTER"] == router
+    assert sorted(device("cr-waf").names) == ["board.com", "corp.com"]
     assert "'%s board.com\\n%s corp.com\\n'" in text("kali/install.sh")
     assert 'ip route replace default via "$ROUTER" dev "$internet" onlink src "$source"' in text("kali/slot-boot")
 
@@ -193,13 +215,16 @@ def test_nothing_kali_installs_that_a_learner_can_list_carries_the_platform_s_na
         assert not re.search(r"\bcr[-_.]", text(f"kali/{name}")), name
 
 
-def test_the_waf_builds_the_versions_the_waf_container_pins():
-    pinned = dockerfile_args("deploy/waf/Dockerfile")
+def test_the_waf_builds_pinned_versions_each_checked_by_its_sha256():
     built = assigned("waf/install.sh")
+    script = text("waf/install.sh")
 
-    for name in ("MODSECURITY", "MODSECURITY_SHA256", "CONNECTOR", "CONNECTOR_SHA256", "NGINX", "NGINX_SHA256",
-                 "CRS", "CRS_SHA256", "RELEASES", "CRS_RELEASES"):
-        assert built[name] == pinned[name], name
+    assert {name: built[name] for name in ("NGINX", "MODSECURITY", "CONNECTOR", "CRS")} == {
+        "NGINX": "1.24.0", "MODSECURITY": "3.0.16", "CONNECTOR": "1.0.4", "CRS": "4.25.1"}
+    for name in ("NGINX", "MODSECURITY", "CONNECTOR", "CRS"):
+        assert SHA256.fullmatch(built[f"{name}_SHA256"]), name
+        assert f"${name}_SHA256" in script, f"{name}'s download is checked against its digest"
+    assert built["RELEASES"].startswith("https://github.com/") and built["CRS_RELEASES"].startswith("https://github.com/")
 
 
 def test_the_waf_ships_the_audit_and_refused_logs_under_the_tags_filebeat_decodes():
@@ -210,7 +235,8 @@ def test_the_waf_ships_the_audit_and_refused_logs_under_the_tags_filebeat_decode
     filebeat = yaml.safe_dump(yaml.safe_load(FILEBEAT.read_text()))
 
     assert shipped == {"modsecurity": audit, "nginx": refused}
-    assert {tag for tag, _ in rangehost.LOGS["waf"]} == set(shipped)
+    assert re.findall(r'programname == "([a-z]+)"', text("infra/log-relay.conf")) == ["modsecurity", "nginx"], (
+        "the infra relays exactly the WAF's two logs")
     assert all(f"log.syslog.appname: {tag}" in filebeat for tag in shipped)
     assert assigned("waf/install.sh")["AUDIT_LOG"] == audit
     assert assigned("waf/install.sh")["REFUSED_LOG"] == refused
@@ -219,17 +245,19 @@ def test_the_waf_ships_the_audit_and_refused_logs_under_the_tags_filebeat_decode
 def test_the_waf_ships_to_the_slot_log_server_by_tcp_on_the_port_the_infra_listens_on():
     shipper = filled("waf/log-shipper.conf", log_server="10.40.0.10")
 
-    assert f'Target="10.40.0.10" Port="{rangehost.SHIPPED_PORT}" Protocol="tcp"' in shipper
-    assert f'port="{rangehost.SHIPPED_PORT}" ruleset="relayed"' in text("infra/log-relay.conf")
-    assert f'tcp dport {rangehost.SHIPPED_PORT} accept' in text("infra/edge.nft")
+    assert f'Target="10.40.0.10" Port="{sandbox.SHIPPED_PORT}" Protocol="tcp"' in shipper
+    assert f'port="{sandbox.SHIPPED_PORT}" ruleset="relayed"' in text("infra/log-relay.conf")
+    assert f'tcp dport {sandbox.SHIPPED_PORT} accept' in text("infra/edge.nft")
 
 
-def test_the_waf_validates_its_configuration_and_reloads_as_the_platform_asks():
-    declared = yaml.safe_load(DECLARATION.read_text())["hosts"]["cr-waf"]
+@pytest.mark.parametrize("wargame", sorted(WARGAMES))
+def test_the_waf_validates_its_configuration_and_reloads_as_the_platform_asks(wargame):
+    waf = device("cr-waf", wargame)
     script = text("waf/install.sh")
 
-    assert declared["rules"] == f"{assigned('waf/install.sh')['MODSEC_DIR']}/crs/rules/" \
-                                "REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf"
+    assert waf.rules == assigned("waf/install.sh")["EXCLUSIONS"].replace("$MODSEC_DIR",
+                                                                        assigned("waf/install.sh")["MODSEC_DIR"])
+    assert waf.reload.split()[:2] == ["nginx", "-t"] and "nginx -s reload" in waf.reload
     assert '[ -f "$EXCLUSIONS" ] || install -m 664 -g adm /dev/null "$EXCLUSIONS"' in script
     assert "nginx -t\n" in script
     assert "Before=nginx.service" in text("waf/slot-boot.service"), "nginx resolves board and corp-wp when it starts"
@@ -243,20 +271,22 @@ def test_the_waf_and_the_target_agree_on_the_names_of_the_wargames_addresses():
         assert f"${render.address_variable(wargame)}" in boot
 
 
-def test_the_infra_runs_the_sensor_image_the_container_range_pins():
-    image = slot_template()["x-sensor"]["image"]
+def test_the_infra_runs_the_sensor_image_pinned_by_its_digest():
+    image = assigned("infra/install.sh")["SENSOR_IMAGE"]
 
-    assert assigned("infra/install.sh")["SENSOR_IMAGE"] == image
+    name, _, digest = image.partition("@sha256:")
+    assert name == "jasonish/suricata" and SHA256.fullmatch(digest)
     assert f"  {image} \\\n" in text("infra/sensor.service")
 
 
-def test_the_infra_sensor_reads_its_rules_where_the_platform_writes_them_and_reloads_by_suricatasc():
-    declared = yaml.safe_load(DECLARATION.read_text())["hosts"]["cr-range"]
+@pytest.mark.parametrize("wargame", sorted(WARGAMES))
+def test_the_infra_sensor_reads_its_rules_where_the_platform_writes_them_and_reloads_by_suricatasc(wargame):
+    sensor = definition(wargame).filling("sensor")
     unit = text("infra/sensor.service")
     rules = assigned("infra/install.sh")["RULES_DIR"]
 
-    assert declared["rules"] == f"{rules}/local.rules"
-    assert declared["reload"].split()[0] == "suricatasc"
+    assert sensor.node == "cr-infra" and sensor.rules == f"{rules}/local.rules"
+    assert sensor.reload.split()[0] == "suricatasc"
     assert "install -m 0755 suricatasc /usr/local/bin/suricatasc" in text("infra/install.sh")
     assert "docker exec -i sensor suricatasc" in text("infra/suricatasc")
     assert f"-v {rules}:{rules}" in unit and "--name sensor" in unit
@@ -264,13 +294,12 @@ def test_the_infra_sensor_reads_its_rules_where_the_platform_writes_them_and_rel
 
 
 def test_the_infra_ships_the_eve_log_suricata_writes():
-    config = yaml.safe_load(text("infra/suricata.yaml").removeprefix(rangehost.YAML_HEADER))
+    config = yaml.safe_load(text("infra/suricata.yaml").removeprefix(YAML_HEADER))
     [eve] = [output["eve-log"] for output in config["outputs"] if "eve-log" in output]
     written = f"{config['default-log-dir'].rstrip('/')}/{eve['filename']}"
     relay = text("infra/log-relay.conf")
 
     assert f'File="{written}" Tag="suricata"' in relay
-    assert {tag for tag, _ in rangehost.LOGS["sensor"]} == {"suricata"}
     assert f"-v {assigned('infra/install.sh')['EVE_DIR']}:{config['default-log-dir'].rstrip('/')}" \
         in text("infra/sensor.service")
 
@@ -285,17 +314,21 @@ def test_every_line_the_infra_relays_names_a_sender_filebeat_takes_the_slot_from
     assert relay.count(f'Target="10.31.0.2" Port="{fabric.COLLECTOR_PORT}" Protocol="udp"') == 3
 
 
-def test_the_infra_edge_keeps_the_container_edge_s_forwarding_rules_and_answers_ping_and_traceroute():
-    slot = rangehost.Slot(1, ipaddress.ip_network("10.30.1.0/24"), "abc", 1442)
-    document = rangehost.compose(ROOT, slot, sorted(WARGAMES))
-    waf = rangehost.addressed(document, rangehost.FRONT)[rangehost.WAF]
-    expected = [line.strip() for line in rangehost.edge_rules(document).splitlines() if line.strip().startswith("iifname")]
-    edge = filled("infra/edge.nft", wan="wan", mgmt="mgmt", router=rangehost.router_address(), waf=waf)
+@pytest.mark.parametrize("wargame", sorted(WARGAMES))
+def test_the_infra_edge_forwards_the_web_port_to_the_waf_only_and_answers_ping_and_traceroute(wargame):
+    env = next(node.env for node in planned(wargame).nodes if node.role == "infra")
+    [(port, forwarded)] = device("cr-edge", wargame).forwards.items()
+    edge = filled("infra/edge.nft", wan="wan", mgmt="mgmt", router=router_address(), waf=env["WAF_FRONT"])
+    nat = edge.split("chain prerouting", 1)[1].split("}", 1)[0]
     forward = edge.split("chain forward", 1)[1].split("}", 1)[0]
     entered = edge.split("chain input", 1)[1].split("}", 1)[0]
 
-    assert all(line in edge for line in expected), expected
-    assert [line.strip() for line in forward.splitlines() if "iifname" in line] == expected[1:]
+    assert forwarded == "cr-waf" and env["WAF_FRONT"] == "10.30.0.247"
+    assert [line.strip() for line in nat.splitlines() if "iifname" in line] == [
+        f'iifname "wan" ip daddr {router_address()} tcp dport {port} dnat to 10.30.0.247']
+    assert [line.strip() for line in forward.splitlines() if "iifname" in line] == [
+        'iifname "wan" ct state established,related accept', 'iifname "wan" ct status dnat accept',
+        'iifname "wan" drop'], "nothing from the internet reaches the slot but the DNAT'd web port and replies"
     assert 'iifname "wan" meta l4proto icmp accept' in entered
     assert 'iifname "wan" meta l4proto udp reject' in entered, "traceroute's last probe is answered port unreachable"
     assert entered.index('meta l4proto udp reject') < entered.index('iifname "wan" drop')
@@ -312,24 +345,22 @@ def test_the_infra_bridges_the_two_ids_legs_with_no_address_on_them():
 
 
 def test_docker_on_the_infra_leaves_the_edge_s_forwarding_alone():
-    import json
-
     daemon = json.loads(text("infra/daemon.json"))
 
     assert daemon["iptables"] is False and daemon["bridge"] == "none"
 
 
-def test_the_target_runs_both_wargames_by_the_images_the_range_host_pulls():
+def test_the_target_runs_both_wargames_by_the_images_ci_builds_at_the_baked_tag():
     tag = "abc"
     rendered = rendered_wargames(tag)
     images = sorted({service["image"] for document in rendered.values() for service in document["services"].values()})
+    declared_images = sorted({re.sub(r"\$\{CR_IMAGE_TAG(?::-[^}]*)?\}", tag, service["image"])
+                              for wargame in WARGAMES
+                              for service in yaml.safe_load((ROOT / f"wargames/{wargame}/compose.yaml").read_text())[
+                                  "services"].values()})
 
     assert assigned("target/install.sh")["WARGAMES"].strip('"').split() == sorted(WARGAMES)
-    slot = rangehost.Slot(1, ipaddress.ip_network("10.30.1.0/24"), tag, 1442)
-    document = rangehost.compose(ROOT, slot, sorted(WARGAMES))
-    pulled_today = sorted({document["services"][name]["image"] for name in rangehost.wargame_services(document)})
-
-    assert images == pulled_today
+    assert images == declared_images
     for document in rendered.values():
         for name, service in document["services"].items():
             assert "build" not in service
@@ -353,16 +384,26 @@ def test_the_target_publishes_each_front_on_the_port_the_waf_proxies_to_and_keep
                 assert "ports" not in service and set(service["networks"]) == {render.BACKEND}
 
 
-def test_the_target_keeps_the_limits_the_range_host_gives_the_wargames():
-    template = slot_template()
-    declared = template["x-wargames"]
-    settings = yaml.safe_load(text("target/wargames.yaml"))
+def test_the_target_limits_every_wargame_container_and_drops_its_capabilities():
+    for wargame, document in rendered_wargames().items():
+        for name, service in document["services"].items():
+            assert service["cap_drop"] == ["ALL"] and "no-new-privileges:true" in service["security_opt"], name
+            assert service["mem_limit"] and service["pids_limit"] == 256, name
+            assert service["restart"] == "no", "a fresh stack is the pristine state; nothing restarts on its own"
 
-    assert settings["limits"] == declared["limits"]
-    assert settings["extra_hosts"] == declared["extra_hosts"]
-    assert settings["healthcheck"] == declared["healthcheck"]
-    assert settings["contained"] == template["x-contained"]
-    assert set(settings["fronts"]) == set(declared["fronts"])
+
+def test_the_target_s_containers_are_the_devices_its_topology_names_and_fronts_the_upstreams_the_waf_proxies():
+    render = render_module()
+    fronts = yaml.safe_load(text("target/wargames.yaml"))["fronts"]
+
+    for wargame, document in rendered_wargames().items():
+        placed = {one.container for one in definition(wargame).devices.values() if one.container}
+        assert placed == set(document["services"]), "the map and ground truth find each container by name"
+        assert {name for name in document["services"] if name in fronts} == {
+            one.container for one in definition(wargame).devices.values() if wargame in one.roles}
+        [port] = [one for one in definition(wargame).ports if one.node == "cr-target"]
+        assert device("cr-waf", wargame).upstreams[wargame] == port.address
+        assert render.address_variable(wargame) == f"{wargame.upper()}_ADDRESS"
 
 
 def test_the_target_keeps_pristine_data_and_restores_it_into_empty_volumes_only():

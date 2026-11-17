@@ -37,7 +37,7 @@ alias="$2"
 node="$3"
 [ -n "$addr" ] && [ -n "$node" ] || failed "no management address for $host"
 options="-t -i /data/ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o HostKeyAlias=$alias -o LogLevel=ERROR -o ConnectTimeout=10 -o ServerAliveInterval=30"
-ssh $options "ubuntu@${addr}" "sudo -i env TERM=xterm-256color TZ=KST-9 bash -l" 2>>"$log"
+ssh $options "${CR_OPENSTACK_SSH_USER:-ubuntu}@${addr}" "sudo -i env TERM=xterm-256color TZ=KST-9 bash -l" 2>>"$log"
 status=$?
 [ "$status" -ne 255 ] || failed "ssh to $host at $addr ended with 255"
 exit "$status"

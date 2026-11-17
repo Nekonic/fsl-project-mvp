@@ -21,6 +21,9 @@ READY = f"{STATE}/ready"
 FAILED = f"{STATE}/failed"
 SHIPPED_PORT = 514
 USER_DATA_LIMIT = 65535
+BOOTS = {"kali": ("slot-boot.service",), "waf": ("slot-boot.service", "nginx.service"),
+         "infra": ("slot-boot.service", "sensor.service"), "target": ("wargames.service",)}
+SUDO = "ALL=(ALL) NOPASSWD:ALL"
 
 
 @dataclass(frozen=True)
@@ -238,11 +241,24 @@ def slot_env(values: dict[str, str]) -> str:
     return "".join(f"{key}={shlex.quote(value)}\n" for key, value in values.items())
 
 
-def user_data(node: str, env: dict[str, str], collector: str) -> str:
-    document = {"write_files": [
+def booted(role: str) -> str:
+    units = " ".join(BOOTS[role])
+    return (f"install -d -m 0755 {STATE}; if systemctl start {units}; then touch {READY}; "
+            f"else systemctl --no-pager --lines=20 status {units} > {FAILED} 2>&1; touch {FAILED}; fi")
+
+
+def managed_by(user: str, key: str) -> list:
+    return ["default", {"name": user, "shell": "/bin/bash", "sudo": SUDO, "lock_passwd": True,
+                        "ssh_authorized_keys": [key]}]
+
+
+def user_data(node: str, role: str, env: dict[str, str], collector: str, manager: tuple[str, str] = ("", "")) -> str:
+    document = {"users": managed_by(*manager)} if all(manager) else {}
+    document["write_files"] = [
         {"path": SLOT_ENV, "permissions": "0644", "content": slot_env(env)},
         {"path": clock.TIMESYNCD, "permissions": "0644", "content": clock.timesyncd(collector)},
-    ]}
+    ]
+    document["runcmd"] = [["sh", "-c", booted(role)]]
     text = "#cloud-config\n" + yaml.safe_dump(document, sort_keys=False, width=1 << 16)
     encoded = len(base64.b64encode(text.encode()))
     if encoded > USER_DATA_LIMIT:
@@ -250,7 +266,8 @@ def user_data(node: str, env: dict[str, str], collector: str) -> str:
     return text
 
 
-def plan(definition: Definition, slot: int, origins, chosen_origin: str, collector: str) -> Sandbox:
+def plan(definition: Definition, slot: int, origins, chosen_origin: str, collector: str,
+         manager: tuple[str, str] = ("", "")) -> Sandbox:
     if not origins:
         raise RangeUnavailable("the declaration names no origin, so Kali would stand on no Internet address")
     first = default_origin(origins, chosen_origin)
@@ -263,6 +280,6 @@ def plan(definition: Definition, slot: int, origins, chosen_origin: str, collect
     for name, role in definition.nodes.items():
         env = environment(definition, ports, role, slot, upstream, collector)
         nodes.append(Node(name=name, role=role, ports=tuple(port for port in ports if port.node == name),
-                          user_data=user_data(name, env, collector), env=env))
+                          user_data=user_data(name, role, env, collector, manager), env=env))
     logged = next(port.lan for port in ports if port.device == definition.filling("log-server").name)
     return Sandbox(slot=slot, wargame=definition.wargame, lans=lans, nodes=tuple(nodes), logged=logged)

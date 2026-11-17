@@ -163,11 +163,10 @@ CR_SUBSTRATE_OPTIONS = dict(
                 "ssh_key": "CR_OPENSTACK_SSH_KEY",
                 "region": "CR_OPENSTACK_REGION",
                 "interface": "CR_OPENSTACK_INTERFACE",
-                "flavor": "CR_OPENSTACK_FLAVOR",
                 "availability_zone": "CR_OPENSTACK_AVAILABILITY_ZONE",
                 "subnets": "CR_OPENSTACK_SUBNETS",
                 "platform": "CR_OPENSTACK_PLATFORM",
-                "slots": "CR_OPENSTACK_SLOTS",
+                "pool": "CR_OPENSTACK_POOL",
                 "images": "CR_OPENSTACK_IMAGES",
                 "flavors": "CR_OPENSTACK_FLAVORS",
             }.items()
