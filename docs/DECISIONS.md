@@ -8986,3 +8986,41 @@ reusing the platform's tag, not a goal.
   `cr-range` and its slots standing and converges with only `configure/` and
   `ready/`. The first replace after this change still boots a new range host
   once, because the standing one carries the old platform commit in `cr_tag`.
+
+## 2026-11-17 — An apt try is decided by the install; the replace that boots a new range host takes 25 min
+
+The first replace on the Kakao mirror (d761b9f7) failed the platform VM's
+first boot: the mirror's `noble-security` `InRelease` (dated 02:02 UTC) listed
+`main/dep11/Components-amd64.yml.xz` at 46,360 bytes while the file served was
+46,388, so `apt-get update` exited 100 on all ten tries ("Mirror sync in
+progress?"), although every `Packages` index downloaded and a simulated
+install of the same packages on that VM succeeded. The archive and
+`security.ubuntu.com` served the 46,360-byte file. Each try now runs the
+install whatever `apt-get update` exits, and the install's exit decides the
+try (`platform.yaml` runcmd; `setup.sh`, with `|| :` because it runs under
+`set -e`). A failed `Release` download still fails the install on a new VM,
+which holds no older lists, so the retry still covers the 404s of the
+archive's servers. Rejected: taking `noble-security` from
+`security.ubuntu.com`, the server pool whose 404s the mirror was chosen to
+avoid; and turning off the DEP-11 index targets, which covers this file only.
+
+Run 1, `uv run bin/cloud up --replace` at 655e331a from the half-built VM of
+the interrupted 8bcbc9f9 replace (no store on it, so the newest backup with
+rows, `db-20261117T042204Z.sqlite3` from the VM that ran 6ba70c0c, was
+restored; 1 user, 608 rule sets and 162 disabled rules came back; its 2
+sessions, closed more than 60 min before, were removed by retention at start):
+
+| Step | Time |
+|---|---|
+| Checks (stack, `git ls-remote`, GHCR, keypair) | 19 s |
+| Store probe (nothing to back up) | 2 s |
+| Stack delete, create | 11 s, 30 s |
+| Server created to ssh | 28 s |
+| cloud-init and `cr-platform.service` | 6 min 24 s |
+| Hand-over (key, store upload and restore, password, recreate) | 24 s |
+| `/api/auth/` answers | 25 s |
+| Converge: a new range host (`setup.sh` changed, so stale), 8 slots, `configure/`, `ready/` | 16 min 36 s |
+| Total | 25 min 27 s |
+
+The platform VM's first apt try succeeded; both hosts' sources point at
+`http://mirror.kakao.com/ubuntu/`. The new range host is 10.31.0.242.
