@@ -364,7 +364,7 @@ class Range:
         self.lines.append((role, argv))
         return Line()
 
-def test_on_openstack_the_pane_leaves_kali_from_a_customers_address_and_goes_through_the_firewall_to_board_com(
+def test_on_openstack_the_pane_leaves_kali_from_a_customers_address_for_the_router_s_public_address(
         settings):
     from range import declared
     from range.ports import Node, Segment
@@ -374,10 +374,10 @@ def test_on_openstack_the_pane_leaves_kali_from_a_customers_address_and_goes_thr
     settings.ATTACKER_CONTAINER = "cr-kali"
     settings.ATTACKER_TARGET_URL = "http://board.com"
     kr = Segment(id="kr", name="Internet", origin="South Korea", subnet="175.192.0.0/24",
-                 nodes=(Node("cr-edge", "175.192.0.1"), Node("cr-kali", "175.192.0.10"),
+                 nodes=(Node("cr-edge", "121.134.88.42"), Node("cr-kali", "175.192.0.10"),
                         Node("cr-kali", "175.192.0.11")))
     ru = Segment(id="ru", name="Internet", origin="Russia", subnet="5.188.10.0/24",
-                 nodes=(Node("cr-edge", "5.188.10.1"), Node("cr-kali", "5.188.10.10")))
+                 nodes=(Node("cr-edge", "121.134.88.42"), Node("cr-kali", "5.188.10.10")))
     estate = Segment(id="estate", name="Application estate", subnet="10.30.0.0/24",
                      nodes=(Node("cr-edge", "10.30.0.1"), Node("cr-waf", "10.30.0.63")))
     session = Session.objects.create(scenario="board", baseline=[], slot=2)
@@ -386,8 +386,8 @@ def test_on_openstack_the_pane_leaves_kali_from_a_customers_address_and_goes_thr
     egress = site.found_egress(session, cloud)
     worn = {origin["id"]: origin["source_ip"] for origin in __import__("attacker").origins(shape(kr, ru, estate))}
 
-    assert egress.address == "10.30.0.63" and egress.port == 80, (
-        "Kali's /etc/hosts names board.com by the WAF's estate address; Kali's route to it runs through the firewall"
+    assert egress.address == "121.134.88.42" and egress.port == 80, (
+        "board.com is the company's public address on its edge router, which forwards port 80 to the WAF"
     )
     assert egress.source in {"175.192.0.10", "175.192.0.11"} - {worn["kr"]}, (
         "a customers address on Kali, never the one the attacker sends from"

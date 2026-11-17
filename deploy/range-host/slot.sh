@@ -102,6 +102,7 @@ address_kali() {
 address_edge() {
   inside "$project-edge" ip addr flush dev wan
   inside "$project-edge" ip -batch "$d/edge.ip"
+  docker exec -i "$project-edge" nft -f - < "$d/edge-nat.nft"
   quiet "$project-edge"
 }
 

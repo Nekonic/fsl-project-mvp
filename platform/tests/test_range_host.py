@@ -143,15 +143,32 @@ def test_one_sensor_sniffs_the_web_servers_network_behind_the_waf_and_not_the_dm
     assert config["stats"]["interval"] == 5, "kernel_drops is read from the counters"
 
 
-def test_kali_holds_every_declared_origin_address_and_the_edge_one_public_address_routed_to_the_internet():
+def test_kali_holds_every_declared_origin_address_and_the_edge_one_public_address_in_a_block_of_its_own():
     files = slot_files()
     kali, edge = files["kali.ip"].decode().splitlines(), files["edge.ip"].decode().splitlines()
+    router = ipaddress.ip_interface(rangehost.ROUTER_WAN)
 
     assert len(kali) == sum(origin.addresses for origin in DECLARED.origins) + 1
-    assert "addr add 5.188.10.10/24 dev eth0" in kali and kali[-1] == "route replace default via 5.188.10.1 dev eth0"
-    assert edge == ["addr add 5.188.10.1/24 dev wan", "route replace default via 5.188.10.10 dev wan"], (
-        "a corporate edge router holds one public address and reaches every other public network through its "
-        "upstream; Kali stands in for the Internet beyond it")
+    assert "addr add 5.188.10.10/24 dev eth0" in kali
+    assert kali[-1] == f"route replace default via {router.ip} dev eth0 onlink"
+    assert edge == [f"addr add {router} dev wan", "route replace default via 5.188.10.10 dev wan onlink"], (
+        "a company's edge router holds the one public address its ISP line gives it; "
+        "Kali stands in for the Internet beyond it")
+    assert not [origin.id for origin in DECLARED.origins
+                if ipaddress.ip_network(origin.subnet).overlaps(router.network)], (
+        "the company's address shares no block with the attacker's or the customers' addresses")
+
+
+def test_the_edge_forwards_the_web_port_of_its_public_address_to_the_waf_and_kali_names_the_sites_by_it():
+    files = slot_files(2)
+    document = yaml.safe_load(files["compose.yaml"])
+    router = rangehost.router_address()
+    waf = document["services"]["waf"]["networks"]["estate"]["ipv4_address"]
+
+    assert f'iifname "wan" ip daddr {router} tcp dport 80 dnat to {waf}' in files["edge-nat.nft"].decode()
+    assert "snat" not in files["edge-nat.nft"].decode() and "masquerade" not in files["edge-nat.nft"].decode(), (
+        "the WAF sees each client's own address")
+    assert set(document["services"]["kali"]["extra_hosts"]) == {f"board.com:{router}", f"corp.com:{router}"}
 
 
 def test_each_slot_s_logs_reach_the_collector_under_a_name_that_keeps_its_slot():

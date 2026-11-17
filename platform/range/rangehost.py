@@ -52,6 +52,10 @@ SHARED = re.compile(r"^service:(?P<service>\S+)$")
 SHIPPED_PORT = 514
 SHIPPING = "rsyslog"
 UPLINK = "uplink"
+ROUTER_WAN = "121.134.88.42/29"
+FORWARDED_PORTS = (80,)
+WAF = "waf"
+NAT_TABLE = "nat"
 
 
 @dataclass(frozen=True)
@@ -99,7 +103,7 @@ def estate(base: str, number: int) -> ipaddress.IPv4Network:
 def _filled(text: str, slot: Slot) -> str:
     filled = TAG.sub(slot.tag, text)
     for name, value in (("slot", slot.number), ("estate", slot.prefix), ("web", slot.web_prefix),
-                        ("mtu", slot.mtu)):
+                        ("mtu", slot.mtu), ("router", router_address())):
         filled = filled.replace(f"@{name}@", str(value))
     return filled
 
@@ -220,21 +224,20 @@ def origin_addresses(cidr: str, count: int) -> list[str]:
     return [str(address) for _, address in zip(range(9 + count), hosts)][9:]
 
 
-def gateway_of(cidr: str) -> str:
-    return str(next(ipaddress.ip_network(cidr).hosts()))
-
-
 def wan_origin(origins, default_origin: str):
     by_id = {origin.id: origin for origin in origins}
     return by_id.get(default_origin) or (origins[0] if origins else None)
 
 
-def kali_addresses(origins, default_origin: str) -> str:
+def router_address() -> str:
+    return str(ipaddress.ip_interface(ROUTER_WAN).ip)
+
+
+def kali_addresses(origins) -> str:
     lines = [f"addr add {address}/{ipaddress.ip_network(origin.subnet).prefixlen} dev eth0"
              for origin in origins for address in origin_addresses(origin.subnet, origin.addresses)]
-    chosen = wan_origin(origins, default_origin)
-    if chosen is not None:
-        lines.append(f"route replace default via {gateway_of(chosen.subnet)} dev eth0")
+    if lines:
+        lines.append(f"route replace default via {router_address()} dev eth0 onlink")
     return "".join(f"{line}\n" for line in lines)
 
 
@@ -243,9 +246,17 @@ def edge_addresses(origins, default_origin: str) -> str:
     if chosen is None:
         return ""
     upstream = origin_addresses(chosen.subnet, 1)[0]
-    lines = [f"addr add {gateway_of(chosen.subnet)}/{ipaddress.ip_network(chosen.subnet).prefixlen} dev wan",
-             f"route replace default via {upstream} dev wan"]
+    lines = [f"addr add {ROUTER_WAN} dev wan", f"route replace default via {upstream} dev wan onlink"]
     return "".join(f"{line}\n" for line in lines)
+
+
+def port_forwards(document: dict) -> str:
+    waf = addressed(document, FRONT)[WAF]
+    forwards = "".join(f'    iifname "wan" ip daddr {router_address()} tcp dport {port} dnat to {waf}\n'
+                       for port in FORWARDED_PORTS)
+    return (f"table ip {NAT_TABLE}\ndelete table ip {NAT_TABLE}\ntable ip {NAT_TABLE} {{\n"
+            "  chain prerouting {\n    type nat hook prerouting priority dstnat; policy accept;\n"
+            + forwards + "  }\n}\n")
 
 
 def sender(host: str, number: int) -> str:
@@ -327,8 +338,9 @@ def slot_files(source: Path, slot: Slot, wargames, origins, default_origin: str,
         **{name: text.encode() for name, text in shipped.items()},
         "compose.yaml": dumped(document),
         "sensor.yaml": sensor_config(source, slot, document).encode(),
-        "kali.ip": kali_addresses(origins, default_origin).encode(),
+        "kali.ip": kali_addresses(origins).encode(),
         "edge.ip": edge_addresses(origins, default_origin).encode(),
+        "edge-nat.nft": port_forwards(document).encode(),
         "local.rules": (Path(source) / BASELINE_RULES).read_bytes(),
         SCRIPT: (Path(source) / SLOT_SCRIPT).read_bytes(),
         "fronts": "".join(f"{name}\n" for name in sorted(fronted(document))).encode(),

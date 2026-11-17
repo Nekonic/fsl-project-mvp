@@ -192,7 +192,9 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 - 출발지마다 GeoIP상 그 나라로 나오는 /24 하나. 공격 주소 약 100개를 나눠 받음
 - 30개 모두 슬롯의 `internet` 브리지 하나에 올라감
 - `deploy/range-host/slot.sh`에서 Kali에 출발지별 주소를 붙임(`nsenter`로 `ip -batch` 실행). Kali는 라우터 바깥의 인터넷 역할
-- 라우터(에지) `wan`의 공인 주소는 기본 출발지의 게이트웨이(5.188.10.1/24) 하나. 실제 기업 경계 라우터처럼 다른 공인 대역은 default route로 업스트림(Kali의 5.188.10.10)에 넘김(`rangehost.edge_addresses`)
+- 라우터(에지) `wan`의 공인 IP는 121.134.88.42/29 하나(`rangehost.ROUTER_WAN`). KT 회선(KORNET, 121.128.0.0/11)에서 기업 회선에 주는 크기의 블록이고, Kali의 30개 /24 어느 것과도 겹치지 않음
+- 공인 IP와 출발지 대역이 서로 다른 블록이라 같은 브리지 위에서 onlink 경로로 닿음. 라우터는 `default via 5.188.10.10 dev wan onlink`(Kali가 라우터 바깥의 인터넷 역할), Kali는 `default via 121.134.88.42 dev eth0 onlink`(`rangehost.edge_addresses`, `kali_addresses`)
+- 라우터는 공인 IP의 80번 포트를 WAF의 estate 주소로 포트포워딩(DNAT, `rangehost.port_forwards`가 만드는 `edge-nat.nft`의 `table ip nat`). 출발지는 바꾸지 않음(SNAT 없음)
 - 브리지 서브넷 172.30.N.0/24는 쓰지 않음
 - 출발지 표는 `bin/pick-origins`로 다시 만듦. acceptance 테스트에서 모든 서브넷을 점수 파이프라인과 대조
 
@@ -200,8 +202,8 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 
 - 관제망을 뺀 슬롯 네트워크는 모두 `internal`, `gateway_mode_ipv4: isolated`. 훈련 환경 호스트는 그 브리지에 주소가 없고 외부 경로나 NAT도 없음
 - 관제망 `sN_mgmt`만 예외. 호스트가 게이트웨이 .254를 갖고 NAT로 collector에 보냄. 허용하는 길은 log-server→collector 5140/udp 하나("훈련 환경 슬롯" 절의 관제망 필터)
-- Kali는 `internet`에만 붙음. 아는 이름은 `board.com`, `corp.com`뿐이고 둘 다 WAF를 가리킴
-- 에지는 `internet`과 `estate` 사이를 NAT 없이 라우팅. `web`으로 가는 경로는 없음
+- Kali는 `internet`에만 붙음. 아는 이름은 `board.com`, `corp.com`뿐이고 둘 다 라우터의 공인 IP를 가리킴
+- 에지는 공인 IP 80번 포트를 WAF로 DNAT하고, 출발지는 NAT 없이 그대로 넘김. `web`으로 가는 경로는 없음
 - board와 corp-wp는 `web`과 자기 DB 망에만 붙음. Kali에서 대상 시스템으로 가는 길은 WAF뿐
 - DB는 자기 워게임의 `<wargame>-default` 네트워크에만 붙음
 
@@ -540,8 +542,8 @@ nginx는 `</body>` 앞에 스크립트를 넣습니다.
 
 - 기록기가 Kali로 ssh stdio 스트림을 열고(`OpenStack.opened`) 그 안에서 `attacker.as_customer` 실행
 - `as_customer`는 Python 브리지. Kali의 출발지 SNAT가 적용되지 않는 `cr-users` 계정으로 돎. 그 슬롯에서 고객 트래픽을 돌린 적이 없으면 계정과 예외 규칙을 만듦
-- 브리지는 그 출발지의 첫 주소에 바인드해 WAF의 `estate` 주소 80번 포트로 연결
-- 요청은 NAT 없이 에지를 지남. 센서에는 `waf`가 `X-Forwarded-For`에 고객 주소를 담아 `board.com`으로 보내는 요청이 보임. 에지와 WAF 사이는 센서가 보지 않음
+- 브리지는 그 출발지의 첫 주소에 바인드해 라우터의 공인 IP 80번 포트로 연결(그 출발지 구간에 있는 에지 노드의 주소). 개발자 도구의 원격 주소도 이 주소
+- 에지가 목적지만 WAF로 바꾸고(DNAT) 출발지는 그대로 둠. 센서에는 `waf`가 `X-Forwarded-For`에 고객 주소를 담아 `board.com`으로 보내는 요청이 보임. 에지와 WAF 사이는 센서가 보지 않음
 - 컨테이너 이름이나 `mgmt` 주소는 쓰지 않음
 
 이 경로는 콘솔(8000)과 출처가 다른 8002번 포트에서 서비스합니다. 모든 응답에 `Content-Security-Policy: sandbox allow-forms allow-scripts allow-same-origin`을 붙입니다.
@@ -2032,7 +2034,7 @@ Docker와 메타데이터:
 2. WAF 로그 디렉터리 `/var/log/cr/sN/waf`에서 일반 파일 `audit.log`와 `refused.log`만 남기고 모두 지웁니다. 없는 파일은 remap된 범위의 `www-data`·`adm` 소유(`0644`)로 만듭니다. 컨테이너 안에서 root로 도는 nginx 마스터가 파일을 열고, WAF shipper가 읽기 전용 마운트로 읽습니다.
 3. 관제망 필터를 넣습니다(위 "관제망만 밖으로"). 그다음 컨테이너를 만들고(`up --no-start --pull never`), 한 번도 실행하지 않은 대상 시스템의 빈 볼륨마다 초기 데이터를 복사합니다.
 4. 컨테이너를 띄웁니다(`up -d --wait`). 그다음 센서, log-server, shipper를 `--force-recreate`로 다시 만들어 방금 쓴 설정을 읽게 합니다. Suricata는 출력 설정을 시작할 때만 읽습니다.
-5. Kali에 출발지 주소들과 기본 출발지 게이트웨이로 가는 default route를 붙입니다. 에지의 `wan`에는 기본 출발지 게이트웨이 주소 하나와 Kali의 기본 출발지 주소로 가는 default route를 붙입니다(`nsenter`로 `ip -batch`). 다른 출발지 대역으로 가는 응답은 이 default route로 Kali에 갑니다.
+5. Kali에 출발지 주소들과 라우터 공인 IP로 가는 onlink default route를 붙입니다. 에지의 `wan`에는 공인 IP 하나와 Kali의 기본 출발지 주소(5.188.10.10)로 가는 onlink default route를 붙이고(`nsenter`로 `ip -batch`), 포트포워딩 룰 `edge-nat.nft`를 에지 안의 `nft -f`로 넣습니다. 출발지 대역으로 가는 응답은 모두 이 default route로 Kali에 갑니다.
 6. WAF가 에지의 estate 주소로 라우팅하게 합니다. 대상 시스템에는 default route가 없고 WAF에만 응답합니다.
 7. 모든 브리지와 그 포트, 컨테이너 인터페이스에서 TSO, GSO, GRO를 끕니다. 센서가 실제로 오간 그대로의 패킷을 보게 합니다.
 8. `DOCKER-USER`에 브리지별로 같은 브리지로의 forward 허용 룰을 넣습니다.
@@ -2044,8 +2046,8 @@ Docker와 메타데이터:
 
 - capability는 `NET_ADMIN`뿐
 - `wan`은 `sN-inet`, `lan`은 `sN-estate`에 붙음
-- `wan` 주소는 5.188.10.1/24 하나. default route는 Kali의 5.188.10.10
-- `rp_filter`를 끄고 NAT 없이 forward. 출발 국가 주소가 그대로 WAF까지 감
+- `wan` 주소는 공인 IP 121.134.88.42/29 하나. default route는 Kali의 5.188.10.10(onlink)
+- 공인 IP 80번 포트를 WAF estate 주소로 DNAT. `rp_filter`를 끄고 출발지 NAT 없이 forward. 출발 국가 주소가 그대로 WAF까지 감
 - `deploy/edge/edge.nft`: input은 loopback 외 drop, forward는 accept
 
 **Kali.** 모든 출발지를 Kali 이미지 하나로 처리합니다.
@@ -2053,7 +2055,7 @@ Docker와 메타데이터:
 - `slot.sh`에서 국가별 주소 약 100개를 `eth0`에 붙임
 - `/usr/local/sbin/set-origin`이 컨테이너의 출발 주소를 국가별로 SNAT. 어떤 도구든 고른 국가에서 나감
 - 마커를 붙이는 프록시가 컨테이너의 메인 프로세스
-- 등록된 이름은 `board.com`과 `corp.com`. 둘 다 WAF의 estate 주소
+- 등록된 이름은 `board.com`과 `corp.com`. 둘 다 라우터의 공인 IP(`slot.yaml`의 `@router@`, `rangehost.ROUTER_WAN`으로 채움)
 
 **센서.** 슬롯마다 Suricata 하나(`sN-sensor`, digest 고정 `jasonish/suricata`)가 WAF 뒤 웹 서버 구간을 봅니다. `NET_ADMIN`, `NET_RAW`, `SYS_NICE`로 돕니다(다른 컨테이너처럼 `userns-remap`). 인터페이스는 둘: 감시용 `web`(`sN-web`, WAF↔웹 서버, 주소 없음), 관리용 `mgmt`(관제망 .11). 에지와 WAF 사이 `sN-estate`와 인터넷 쪽 `sN-inet`에는 센서가 없음. WAF가 막은 요청은 센서에 닿지 않고 WAF 로그에 남음.
 
@@ -2174,9 +2176,10 @@ Docker와 메타데이터:
            to the chosen country's address as packets leave
        |
        v
-     edge: nftables router; its wan holds one public address (5.188.10.1)
-           with a default route to kali's 5.188.10.10, and routes on
-           without NAT, so country sources survive
+     edge: nftables router; its wan holds one public address,
+           121.134.88.42/29 (board.com and corp.com resolve to it),
+           port-forwards tcp 80 to the waf (DNAT, no SNAT), so
+           country sources survive; default route to kali's 5.188.10.10
        |
        v
    sN_estate (bridge sN-estate, 10.30.N.0/24): edge lan, waf

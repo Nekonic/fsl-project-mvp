@@ -70,8 +70,8 @@ services:
       internet:
         ipv4_address: "172.30.@slot@.10"
     extra_hosts:
-      - "board.com:@estate@.247"
-      - "corp.com:@estate@.247"
+      - "board.com:@router@"
+      - "corp.com:@router@"
 
   edge:
     <<: *contained

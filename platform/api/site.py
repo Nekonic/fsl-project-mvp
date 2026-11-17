@@ -23,10 +23,9 @@ from api import customers
 from api.models import Session
 from range import substrate
 from range.ports import RangeUnavailable, Shape
-from range.slot import NAMED_ON
 
 MARKER = "browse"
-GATEWAY_ROLE = "gateway"
+EDGE_ROLE = "edge"
 ATTACKER_ROLE = "attacker"
 SITE_PORT = 80
 MARKER_HEADER = "X-Request-ID"
@@ -104,12 +103,12 @@ def _customers_origin(session: Session, segments, unbound: str) -> dict:
 def found_egress(session: Session, adapter) -> Egress:
     declared = settings.RANGE
     segments = adapter.segments()
-    gateway = declared.host(GATEWAY_ROLE)
+    edge = declared.host(EDGE_ROLE)
     origin = _customers_origin(session, segments, attacker.unbound_source(adapter.runner(ATTACKER_ROLE)))
-    address = _standing(segments, NAMED_ON, gateway)
+    address = _standing(segments, origin["id"], edge)
     if not origin["addresses"] or not address:
-        raise RangeUnavailable(f"no customers address on {origin['id']!r}, or {gateway} has no {NAMED_ON} "
-                               f"address for board.com")
+        raise RangeUnavailable(f"no customers address on {origin['id']!r}, or {edge} has no public address "
+                               f"on it for board.com")
     return Egress(source=origin["addresses"][0], address=address, port=SITE_PORT)
 
 

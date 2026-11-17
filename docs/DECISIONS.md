@@ -8879,20 +8879,41 @@ delete button on learner rows of the active table, behind a `confirm()`.
   120 s (each about 50 s), and the final check, which re-sends every case
   not already inside it, sends both again.
 
-## 2026-11-17 — The edge router holds one public address on its WAN
+## 2026-11-17 — The edge router holds one public IP of its own and port-forwards to the WAF
 
-The user's ruling: a corporate edge router's WAN side holds one public
-address. The slot's `sN-edge` held 31 on `wan` (5.188.10.1 and the `.1` of
-each of the other 29 origin /24s), put there so replies to Kali's 100
-origin and customer addresses were on-link. `rangehost.edge_addresses` now
-gives `wan` the default origin's gateway alone (5.188.10.1/24) and a
-default route to Kali's address on that /24 (5.188.10.10); Kali stands in
-for the Internet beyond the router and keeps every origin address, so a
-reply to 73.0.0.10 leaves the edge toward 5.188.10.10 and arrives on the
-address it was sent from. Kali's own default route was already via
-5.188.10.1. Nothing else changes: the edge forwards without NAT, so the WAF
-and the sensor see the same sources and X-Forwarded-For as before. The map
-reads the live wiring, so the router's WAN label is "5.188.10.1" with no
-"외 N개"; Kali's eth0 keeps its count. Rejected: one static route per origin
-/24 via 5.188.10.10 (30 routes that say what one default route says, and
-an edge that has to be told about every new origin).
+The user's ruling: the router's WAN side holds one public IP, as a real
+company's edge router does; that IP must look like a company's line, in a
+block of its own (not in the attacker Kali's /24, not a `.1`); board.com and
+corp.com resolve to it, and the router port-forwards the web port to the WAF.
+Until now `sN-edge` held 31 addresses on `wan` (the `.1` of each of the 30
+origin /24s, so replies to Kali's 100 addresses were on-link), and Kali's
+`/etc/hosts` named both sites by the WAF's private estate address.
+
+- **Address.** `rangehost.ROUTER_WAN` is 121.134.88.42/29: whois places
+  121.128.0.0/11 with Korea Telecom (KORNET, KR), and a /29 is what an ISP
+  gives a business line (.41 its gateway, .42 the customer's router). It
+  overlaps none of the 30 origin /24s, which a unit test checks.
+- **Reachability.** The two sides share the slot's `internet` bridge, so on-link
+  routes are enough: Kali `default via 121.134.88.42 dev eth0 onlink`, the
+  edge `default via 5.188.10.10 dev wan onlink` (Kali stands in for the
+  Internet beyond the router). Rejected: one route per origin /24 (30 routes
+  saying what one default route says).
+- **Port forwarding.** `rangehost.port_forwards` renders `edge-nat.nft`, a
+  `table ip nat` prerouting `dnat` of `wan` tcp 80 on the public IP to the
+  WAF's estate address; `slot.sh` loads it with `nft -f` inside the edge
+  after addressing `wan`. No SNAT, so the WAF and the sensor see each
+  client's own address and X-Forwarded-For, customer attribution and scoring
+  are unchanged. The edge's own `edge.nft` (image) is untouched.
+- **Names.** `slot.yaml` gives Kali `board.com` and `corp.com` at `@router@`,
+  filled from `ROUTER_WAN`. The Website pane connects to the edge node's
+  address on the customers' origin segment (`site.found_egress`), which the
+  slot's shape now gives as the public IP (`openstack._read`), so its
+  remote address reads 121.134.88.42:80 as a browser's would.
+- **Map.** The map reads the live wiring, so the router's WAN label is
+  "121.134.88.42" with no "외 N개"; Kali's eth0 keeps its count. The path
+  lesson's coach and hint say the name points at the router's public IP and
+  the router forwards to the WAF.
+- **Left as is.** The edge still forwards anything from `wan` to the estate,
+  so Kali can also reach the WAF's private address directly; the isolation
+  acceptance test probes that way in. Narrowing the edge's forward chain to
+  forwarded connections only is a separate change.
