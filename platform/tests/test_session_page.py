@@ -367,7 +367,7 @@ def test_the_catalogue_names_a_lesson_session_by_its_course_and_claims_no_kept_o
     assert seen["errors"] == []
     assert rows[worded("common.session", 7)] == [worded("course.logs.title"), "—"], "course 1 has no score to keep"
     assert rows[worded("common.session", 8)] == [worded("course.attack.title"), worded("result.kept_all", 3)]
-    assert "items-start" in seen["result"]["grid"].split(), "a short card keeps its own height"
+    assert "flex-col" in seen["result"]["grid"].split(), "targets stack in one column, so a short one leaves no empty column beside a long one"
     assert worded("scenario.shift.title") in seen["result"]["cards"]
 
 SCENARIO_RESULT = """
@@ -587,6 +587,16 @@ def test_a_detection_scenario_result_shows_the_customer_requests_beside_the_atta
     assert worded("score.customers_alerted", 870, 869) in shown["judged"]
     assert worded("score.customer_alert", local_clock("2026-10-18T09:03:00+00:00"), "GET /?sort=-created_at") in shown["judged"]
     assert worded("score.customers_row", 870) in shown["row"] and worded("score.wrongly_blocked") in shown["row"]
+
+def test_a_missed_attack_in_the_detection_summary_says_when_it_ran_so_a_later_caught_run_of_it_is_not_read_as_missed(client):
+    judged = detection_result(client, "return browser.text('judgement');")
+    missed = local_clock("2026-10-18T09:02:01+00:00")
+    caught = local_clock("2026-10-18T09:06:10+00:00")
+    label = worded("case.board-sqli-orderby-sqlmap-tamper")
+
+    assert worded("score.no_alert", f"{missed} {label}") in judged
+    assert worded("score.no_alert", f"{caught} {label}") not in judged
+    assert "—" not in judged
 
 def test_a_case_row_states_its_verdict_once_with_the_ids_alert_count_as_detail(client):
     shown = detection_result(client, """

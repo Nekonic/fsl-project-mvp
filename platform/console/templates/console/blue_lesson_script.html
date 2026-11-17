@@ -108,7 +108,7 @@ const ranSeen = (run) => Boolean(run) && (Boolean(run.settling) || "discover" in
 const windowed = (run) => Boolean(run) && "discover" in run;
 
 function kaliRow(row, windowed = true) {
-  return `<li class="text-[12px] flex flex-wrap items-center gap-2" data-kali="${esc(row.name)}">
+  return `<li class="text-[13px] flex flex-wrap items-center gap-2" data-kali="${esc(row.name)}">
     ${windowed ? `<span data-running class="basis-full text-muted">${esc(localized("lesson.kali.running", ""))}</span>` : ""}
     ${windowed && row.discover ? `<button type="button" class="ml-auto text-primary hover:underline" data-discover="${esc(row.discover)}">${esc(t("lesson.kali.window"))}</button>` : ""}
   </li>`;
@@ -195,9 +195,9 @@ function referenceHtml(id, titled = true) {
   const rows = referenceRows(id);
   return `${titled ? `<b class="text-heading">${esc(t(`lesson.ref.${id}.title`))}</b>` : ""}
     ${body ? `<p class="whitespace-pre-line text-body">${esc(body)}</p>` : ""}
-    ${rows.length ? `<div class="flex flex-col text-[12px]">${rows.map(([code, meaning]) =>
+    ${rows.length ? `<div class="flex flex-col text-[13px]">${rows.map(([code, meaning]) =>
       `<div class="border-t border-line py-1"><code class="block font-mono text-heading whitespace-pre-wrap break-all">${esc(code)}</code><span class="block text-body">${esc(meaning || "")}</span></div>`).join("")}</div>` : ""}
-    ${id === "addresses" ? '<table data-addresses class="w-full text-[12px]"><tbody></tbody></table>' : ""}`;
+    ${id === "addresses" ? '<table data-addresses class="w-full text-[13px]"><tbody></tbody></table>' : ""}`;
 }
 
 function addressHolder(one) {
@@ -232,7 +232,7 @@ function reference(listed) {
   field("rail-ref").classList.toggle("hidden", !any);
   if (!any) return;
   field("ref-list").innerHTML = referenceShown.map((id) =>
-    `<section class="card p-3 flex flex-col gap-1" data-ref="${esc(id)}">${referenceHtml(id)}</section>`).join("");
+    `<section class="flex flex-col gap-1" data-ref="${esc(id)}">${referenceHtml(id)}</section>`).join("");
   field("rail-ref").addEventListener("click", () => referenceOpen(field("ref-col").classList.contains("hidden")));
   field("ref-close").addEventListener("click", () => referenceOpen(false));
   referenceOpen(kept(REF_KEY(), false) === true);
@@ -823,7 +823,7 @@ function mapFitSoon() {
   fitTimer = setTimeout(() => { if (paneOpen("topology")) mapFit(); }, 250);
 }
 
-const RULE_LINE = 16;
+const RULE_LINE = 20;
 const RULE_PAD = 8;
 let rulesKnown = null;
 let rulesText = "";
@@ -1356,9 +1356,9 @@ function coach(prefix, declared) {
       const mark = passed ? "✓" : skipped ? "○" : String(index + 1);
       const circle = passed ? "badge-pass" : current ? "bg-primary text-inverse" : skipped ? "border border-line text-faint" : "badge-muted";
       const words = current ? "font-semibold text-heading" : passed ? "text-muted" : "text-faint";
-      const help = skipped ? ` <span class="text-[11px] text-faint">· ${esc(t("lesson.skipped"))}</span>` : "";
+      const help = skipped ? ` <span class="text-[13px] text-faint">· ${esc(t("lesson.skipped"))}</span>` : "";
       return `<li><button type="button" data-step="${index}" class="w-full text-left flex items-center gap-2 rounded-md px-2 py-1 hover:bg-subdued">
-        <span class="w-5 h-5 shrink-0 rounded-full grid place-items-center text-[11px] font-bold ${circle}">${mark}</span>
+        <span class="w-6 h-6 shrink-0 rounded-full grid place-items-center text-[13px] font-bold ${circle}">${mark}</span>
         <span class="${words}">${esc(titleOf(step))}${help}</span></button></li>`;
     }).join("");
     field("lesson-step-list").querySelectorAll("[data-step]").forEach((button) =>
@@ -1442,10 +1442,10 @@ function coach(prefix, declared) {
   const courseEnd = () => foundation && courseWhole && !nextLesson;
 
   function courseSummary() {
-    return `<ul data-act="course" class="flex flex-col gap-1 text-[12.5px]"></ul>
+    return `<ul data-act="course" class="flex flex-col gap-1 text-[13px]"></ul>
       <button type="button" data-act="close" class="self-start btn btn-sm btn-blue">${esc(t("lesson.course.close"))}</button>
       <div data-act="confirm" class="hidden flex flex-col gap-2">
-        <p class="text-body text-[12.5px]">${esc(t("session.close.consequence"))}</p>
+        <p class="text-body text-[13px]">${esc(t("session.close.consequence"))}</p>
         <div class="flex gap-2">
           <button type="button" data-act="confirm-close" class="btn btn-sm btn-blue">${esc(t("session.close.confirm"))}</button>
           <button type="button" data-act="confirm-keep" class="btn btn-sm btn-ghost">${esc(t("session.close.keep"))}</button>
@@ -1474,7 +1474,7 @@ function coach(prefix, declared) {
       html = orderPicker(check().options || []);
     } else if (kind === "answer") {
       html = `<form data-act="answer" class="flex gap-2"><input data-act="value" autocomplete="off" spellcheck="false"
-        class="flex-1 min-w-0 h-8 border border-line rounded-md px-2 bg-panel font-mono text-[12.5px]"
+        class="flex-1 min-w-0 h-8 border border-line rounded-md px-2 bg-panel font-mono text-[13px]"
         placeholder="${esc(localized(`${prefix}.placeholder.${step.id}`, ""))}"><button class="btn btn-sm btn-blue">${esc(t("lesson.answer.submit"))}</button></form>`;
     } else if (kind === "choice") {
       html = `<div class="flex flex-wrap gap-1.5">${(check().options || []).map((option) =>
@@ -1487,7 +1487,7 @@ function coach(prefix, declared) {
         <ul data-act="rows" class="flex flex-col gap-2">${carried.has(step.id) ? kaliRow(carried.get(step.id)) : ""}</ul>`;
     } else if (kind === "loot") {
       html = `<form data-act="loot" class="flex flex-col gap-2"><textarea data-act="value" rows="4" spellcheck="false"
-        class="w-full border border-line rounded-md p-2 bg-panel font-mono text-[11.5px] leading-tight"
+        class="w-full border border-line rounded-md p-2 bg-panel font-mono text-[13px] leading-tight"
 ></textarea><button class="self-start btn btn-sm btn-blue">${
         esc(t("lesson.loot.submit"))}</button></form>`;
     }
@@ -2179,7 +2179,7 @@ function rulesEditor() {
   shownSection("lesson-rules");
   field("lesson-rules-box").innerHTML = `<textarea id="lesson-rules-text" spellcheck="false" autocomplete="off" rows="10" wrap="soft"
     class="w-full border border-line rounded-md bg-panel font-mono whitespace-pre-wrap overflow-y-auto"
-    style="padding: ${RULE_PAD}px; font-size: 11.5px; line-height: ${RULE_LINE}px; tab-size: 4"></textarea>`;
+    style="padding: ${RULE_PAD}px; font-size: 13px; line-height: ${RULE_LINE}px; tab-size: 4"></textarea>`;
   field("lesson-rules-text").addEventListener("input", () => {
     field("lesson-rules-status").textContent = "";
     keep(DRAFT_KEY(), { base: rulesVersion, text: field("lesson-rules-text").value });

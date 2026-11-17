@@ -1,16 +1,17 @@
 {% extends "console/base.html" %}
+{% block surface %}bg-panel{% endblock %}
 {% block content %}
 <p id="users-error" class="text-danger text-[13px] mb-6 hidden"></p>
 
-<section id="pending-panel" class="mb-8 hidden">
-  <h2 data-t="users.pending" class="font-semibold text-heading mb-3"></h2>
-  <div class="card overflow-x-auto">
-    <table class="w-full text-[13px]">
+<section id="pending-panel" class="mb-10 hidden">
+  <h2 data-t="users.pending" class="text-[20px] font-bold text-heading mb-2"></h2>
+  <div class="overflow-x-auto">
+    <table class="w-full text-[13px] border-t border-line">
       <thead class="table-head">
         <tr>
-          <th data-t="auth.username" class="pl-5"></th>
+          <th data-t="auth.username"></th>
           <th data-t="users.col.joined"></th>
-          <th class="pr-5"></th>
+          <th></th>
         </tr>
       </thead>
       <tbody id="pending"></tbody>
@@ -20,15 +21,15 @@
 <p id="pending-none" data-t="users.pending_none" class="text-muted text-[13px] mb-8 hidden"></p>
 
 <section id="active-panel" class="hidden">
-  <h2 data-t="users.active" class="font-semibold text-heading mb-3"></h2>
-  <div class="card overflow-x-auto">
-    <table class="w-full text-[13px]">
+  <h2 data-t="users.active" class="text-[20px] font-bold text-heading mb-2"></h2>
+  <div class="overflow-x-auto">
+    <table class="w-full text-[13px] border-t border-line">
       <thead class="table-head">
         <tr>
-          <th data-t="auth.username" class="pl-5"></th>
+          <th data-t="auth.username"></th>
           <th data-t="users.col.role"></th>
           <th data-t="users.col.joined"></th>
-          <th class="pr-5"></th>
+          <th></th>
         </tr>
       </thead>
       <tbody id="active"></tbody>
@@ -36,17 +37,17 @@
   </div>
 </section>
 
-<section id="blocks-panel" class="mt-8 hidden">
-  <h2 data-t="users.blocks" class="font-semibold text-heading mb-3"></h2>
-  <div class="card overflow-x-auto">
-    <table class="w-full text-[13px]">
+<section id="blocks-panel" class="mt-10 hidden">
+  <h2 data-t="users.blocks" class="text-[20px] font-bold text-heading mb-2"></h2>
+  <div class="overflow-x-auto">
+    <table class="w-full text-[13px] border-t border-line">
       <thead class="table-head">
         <tr>
-          <th data-t="users.col.blocked" class="pl-5"></th>
+          <th data-t="users.col.blocked"></th>
           <th data-t="users.col.target"></th>
           <th data-t="users.col.failures"></th>
           <th data-t="users.col.until"></th>
-          <th class="pr-5"></th>
+          <th></th>
         </tr>
       </thead>
       <tbody id="blocks"></tbody>
@@ -78,9 +79,9 @@
   function pendingRow(user) {
     return `
       <tr class="table-row" data-user="${user.id}">
-        <td class="pl-5 font-semibold text-heading">${esc(user.username)}</td>
+        <td class="font-semibold text-heading">${esc(user.username)}</td>
         <td>${esc(joined(user.joined))}</td>
-        <td class="pr-5 text-right whitespace-nowrap">
+        <td class="text-right whitespace-nowrap">
           <button data-approve="${user.id}" class="btn btn-sm btn-blue">${esc(t("users.approve"))}</button>
           <button data-reject="${user.id}" class="btn btn-sm btn-ghost ml-2">${esc(t("users.reject"))}</button>
         </td>
@@ -90,10 +91,10 @@
   function activeRow(user) {
     return `
       <tr class="table-row">
-        <td class="pl-5 font-semibold text-heading">${esc(user.username)}</td>
-        <td>${badge(t(user.staff ? "users.role.staff" : "users.role.learner"), user.staff ? "blue" : "neutral")}</td>
+        <td class="font-semibold text-heading">${esc(user.username)}</td>
+        <td>${esc(t(user.staff ? "users.role.staff" : "users.role.learner"))}</td>
         <td>${esc(joined(user.joined))}</td>
-        <td class="pr-5 text-right">${user.staff ? "" :
+        <td class="text-right">${user.staff ? "" :
           `<button data-delete="${user.id}" data-name="${esc(user.username)}" class="btn btn-sm btn-ghost">${esc(t("users.delete"))}</button>`}</td>
       </tr>`;
   }
@@ -122,12 +123,12 @@
     const what = block.kind === "address" ? block.value : `${block.value.slice(0, 12)}…`;
     return `
       <tr class="table-row">
-        <td class="pl-5"><span class="font-semibold text-heading">${esc(t(`users.block.${block.kind}`))}</span>
+        <td><span class="font-semibold text-heading">${esc(t(`users.block.${block.kind}`))}</span>
           <span class="font-mono text-muted ml-2">${esc(what)}</span></td>
         <td>${esc(block.username)}</td>
         <td>${esc(block.failures)}</td>
         <td>${esc(clock(block.until))}</td>
-        <td class="pr-5 text-right"><button data-unblock="${block.id}" class="btn btn-sm btn-ghost">${esc(t("users.unblock"))}</button></td>
+        <td class="text-right"><button data-unblock="${block.id}" class="btn btn-sm btn-ghost">${esc(t("users.unblock"))}</button></td>
       </tr>`;
   }
 
