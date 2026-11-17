@@ -2956,12 +2956,8 @@ def range_configure(request):
         {"host": host, "reported": list(reported)} for host, reported in done
     ]})
 
-def _ground_truth_readable(adapter) -> bool:
-    try:
-        _ground_truth(adapter, "board")
-        return True
-    except loot.GroundTruthUnavailable:
-        return False
+def _ground_truth_readable(adapter, wargame="board") -> bool:
+    return _baseline(adapter, wargame) is not None
 
 def _baseline_rules() -> str:
     return (Path(settings.CR_SOURCE) / "deploy/suricata/rules/local.rules").read_text()
@@ -3012,7 +3008,8 @@ def _range_ready(adapter, plan=None, held=None, wargame="") -> dict:
     resetting = reset.standing(number)
     unchecked = resetting["state"] == reset.RUNNING or held is not None
     with ThreadPoolExecutor(max_workers=1, thread_name_prefix="cr-truth") as pool:
-        truth = None if unchecked else pool.submit(_ground_truth_readable, adapter)
+        truth = None if unchecked else pool.submit(_ground_truth_readable, adapter,
+                                                   getattr(plan, "wargame", "") or "board")
         checks = {
             "active": plan.active,
             "ground_truth": None,

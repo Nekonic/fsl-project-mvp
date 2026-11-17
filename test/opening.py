@@ -1,6 +1,6 @@
 import time
 
-ROOM_REFUSALS = ("already open on the range", "resetting")
+ROOM_REFUSALS = ("already open on the range", "resetting", "is being built again for it")
 CAP_REFUSAL = "409 Client Error"
 SETTLING = ("RESETTING", "REBUILDING", "CHECKING")
 

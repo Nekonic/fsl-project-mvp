@@ -63,3 +63,19 @@ def test_an_unreadable_signal_degrades_to_not_ready_never_a_500(client):
     assert body["ready"] is False
     assert body["slot"]["checks"]["ground_truth"] is False
     assert body["slot"]["checks"]["rules_baseline"] is False
+
+def test_a_corp_slot_is_ready_once_corp_s_own_ground_truth_reads(client):
+    cloud = Cloud()
+    cloud._plan = pool.Plan(standing=(("cr-target", "s1", "ACTIVE"),), wargame="corp")
+    asked = []
+
+    def baseline(adapter, wargame):
+        asked.append(wargame)
+        return {"admins": [1]} if wargame == "corp" else None
+
+    with patch("api.views.substrate", lambda: cloud), patch("api.views._baseline", baseline), \
+            patch("api.views._rules_at_baseline", return_value=True):
+        body = client.get(URL).json()
+
+    assert asked == ["corp"], "a corp slot runs no board, so its board ground truth never reads"
+    assert body["slot"]["checks"]["ground_truth"] is True
