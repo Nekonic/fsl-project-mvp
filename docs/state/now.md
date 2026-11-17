@@ -53,10 +53,13 @@ Internet.
   `xss-watched` defense (session 2780, slot 2, WAF in DetectionOnly) Suricata
   sid 9000003 on the same URL in `logs-2-sensors`; `POST
   /api/sessions/2779/ssh/` issued a key and `ssh -J` through 2222 landed on
-  Kali as `kali`, while the jump itself gave no shell. Open: one acceptance
-  group lost a WAF command to the ssh multiplexer (`mux_client_request_session:
+  Kali as `kali`, while the jump itself gave no shell. Open:
+  `test_concurrent_sessions.py`'s `PUT /api/sessions/<id>/waf/` answered 503
+  in both full runs, once with the ssh multiplexer's `mux_client_request_session:
   read from master failed: Broken pipe Failed to connect to new control
-  master`, `cr-waf` at 10.31.0.153, `test_concurrent_sessions.py`).
+  master` (`cr-waf` at 10.31.0.153) and once with `cr-waf stands on no mgmt
+  address this platform can reach`; that the session's slot was being
+  replaced, or that the call reached another slot, is **[unverified]**.
 - 2026-11-18, fixes from the docs pass (`docs/DECISIONS.md` "The baked images
   as they are"): `compute.target_tag` (`CR_OPENSTACK_TARGET_TAG`, by default
   the commit `cr-target-bake1` was baked at), and the target's boot refuses
@@ -633,12 +636,14 @@ Nothing. Gate 2 is only for `main` (Next, item 7).
 
 ## Next, in order
 
-1. The rest of P8 on the live Heat range: the full `bin/verify` with acceptance green (the second run above); the ssh
-   multiplexer fault above (a stale or racing `ControlMaster` on
-   `/tmp/cr-ssh-%C` after a slot VM is replaced at the same `cr-mgmt`
-   address is the first thing to check **[unverified]**); an answer-blind
-   walk. Unknowns still to measure: how long a closed session's slot takes to
-   be READY again **[unverified]**; RAM per slot on com01 **[unverified]**.
+1. The rest of P8 on the live Heat range: the full `bin/verify` with
+   acceptance green (the second run above); the WAF tuning 503 above (a
+   stale or racing `ControlMaster` on `/tmp/cr-ssh-%C` after a slot VM is
+   replaced at the same `cr-mgmt` address is one thing to check
+   **[unverified]**); an answer-blind walk. Unknowns still to measure: how
+   long a closed session's slot takes to be READY again **[unverified]**
+   (two retargeted slots went from stack create to READY in about 4 min);
+   RAM per slot on com01 **[unverified]**.
    Seen live: the platform's `cr-mgmt` port kept 10.31.0.158 across five
    replaces, and the last platform-only replace kept the two slots whose
    template and wargame were unchanged (slots 3 and 4).

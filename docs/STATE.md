@@ -2016,7 +2016,7 @@ binary log via a substrate runner, proven end to end against the live stack.
       reports ready within a slot's 8 min 50 s with the images cached;
       `dba.small` holds the target's Docker and MySQL (0.8-0.9 GB of 2 GB in
       use).
-- [ ] An ssh multiplexer fault lost a WAF command in the acceptance suite
+- [ ] The WAF tuning call answered 503 in `test_concurrent_sessions.py` (ssh
       (`docs/state/now.md`).
 - [ ] Baking the role images is by hand (`docs/OPENSTACK.md` §3.6); no repo
       tool builds them.
