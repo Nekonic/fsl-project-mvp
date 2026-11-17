@@ -399,3 +399,41 @@ logging in?"), so a form token fetched by one flow went stale when another
 flow of the same customer signed in. Fix: a customer's flows take turns
 (`Customers.turns`); a test board that rotates the token at sign-in refused
 none of 30 posts with the fix and some without it.
+
+## A corp case record timed out at 60 s in the full verify
+
+### Symptom
+
+The full `bin/verify` on 8acbafcb, the first run on the rebuilt platform VM:
+acceptance 91 passed, 0 failed, 3 errors, 1 skipped. All three errors are the
+setup of `test/test_corp_authz.py`: `POST /api/sessions/2655/cases/` (the
+option-flip window, 09:42:37 UTC) read nothing for 60 s
+(`requests.exceptions.ReadTimeout`). No earlier kept verify log has this
+timeout.
+
+### How it was measured
+
+`POST cases/` records the case, then observes the objectives:
+`effect.read_changes` runs `mysqlbinlog` over every binary log of the slot's
+corp-db and parses the decoded text in Python, and only then drops changes
+before the session start. On slot 2 after the run, inside `cr-platform`
+(2 vCPUs), idle: 17,345,172 bytes, read 0.8-5.0 s, parse 2.9 s, 22 changes.
+Most of it is the target's set-up at the range host's boot (`binlog.000002`,
+2,997,096 bytes). The corp fixture runs two sessions side by side, and each
+fires `cases/` twice and then `POST objectives/`, `GET objectives/` and
+`GET score/` together, each with the same read and parse, beside eleven other
+acceptance processes; the red console polls the same read every 10 s.
+
+### Cause
+
+Every observation re-read and re-parsed the whole binary log, so its cost
+grew with the range host's age, not with the session, and under the
+acceptance load one record went past the client's 60 s.
+
+### Fix
+
+`mysqlbinlog --start-datetime` from a minute before the session start, in
+UTC (`TZ=UTC`: `mysqlbinlog` reads the value in its own local time zone; with
+`TZ=Asia/Seoul` the same value read the whole log, with `America/New_York`
+none of it). The Python filter by session start stays. Same slot, same
+window: 91,277 bytes, read 0.28 s, parse 0.004 s, the same 22 changes.

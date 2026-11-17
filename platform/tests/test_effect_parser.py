@@ -1,4 +1,4 @@
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -94,3 +94,9 @@ def test_credited_takes_nothing_without_a_snapshot():
 ])
 def test_a_published_or_draft_post_is_a_content_write(post_id, kind, status, post_type, credited):
     assert _credited_posts(_post_row(post_id, kind, status, post_type)) == credited
+
+
+def test_the_binary_log_is_read_from_a_minute_before_the_session_in_utc():
+    command = effect.binlog_command(datetime(2026, 11, 17, 18, 42, 18, 467877, tzinfo=timezone(timedelta(hours=9))))
+    assert command.startswith("TZ=UTC mysqlbinlog ")
+    assert "--start-datetime='2026-11-17 09:41:18'" in command

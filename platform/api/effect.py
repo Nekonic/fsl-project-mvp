@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 MYSQL = ["env", "MYSQL_PWD=wordpress", "mysql", "-N", "-uwordpress", "wordpress", "-e"]
 CLIENT_WARNING = "mysql: [Warning]"
@@ -81,13 +81,19 @@ def _value(raw: str) -> str:
 
 
 BINLOG_CMD = (
-    "mysqlbinlog --base64-output=DECODE-ROWS --verbose /var/lib/mysql/binlog.* 2>/dev/null"
+    "TZ=UTC mysqlbinlog --base64-output=DECODE-ROWS --verbose --start-datetime='{start}' "
+    "/var/lib/mysql/binlog.* 2>/dev/null"
 )
+BINLOG_LEAD = timedelta(minutes=1)
+
+
+def binlog_command(since: datetime) -> str:
+    return BINLOG_CMD.format(start=(since - BINLOG_LEAD).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
 
 
 def read_changes(runner, since: datetime) -> list[Change]:
     try:
-        ran = runner(["sh", "-c", BINLOG_CMD], timeout=60.0)
+        ran = runner(["sh", "-c", binlog_command(since)], timeout=60.0)
     except Exception as exc:
         raise StateUnavailable(f"could not read the binary log: {exc}") from exc
     return parse_binlog(getattr(ran, "output", None) or str(ran), since)

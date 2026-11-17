@@ -1419,7 +1419,7 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
   - 무단 콘텐츠 작성(`content_write`, 3)
 - 세션을 시작하면 기존 관리자, 감시 대상 `wp_options`, 게시된 글의 스냅숏을 저장
 - 스냅숏은 corp-db에 읽기 전용 `mysql` SELECT로 읽음(`platform/api/effect.py`). 네트워크를 거치지 않고 `runner("corp-db")`로 실행
-- `POST /api/sessions/<id>/objectives/`: corp-db의 바이너리 로그를 `mysqlbinlog`로 읽음. 커밋된 변경 중 타임스탬프가 악성 케이스의 시간 범위에 드는 것마다 등급을 인정
+- `POST /api/sessions/<id>/objectives/`: corp-db의 바이너리 로그를 `mysqlbinlog`로 읽음. 세션 시작 1분 전부터(`--start-datetime`, UTC)만 읽음. 커밋된 변경 중 타임스탬프가 악성 케이스의 시간 범위에 드는 것마다 등급을 인정
 - 대상 변경:
   - 스냅숏에 없던 사용자에게 준 `wp_usermeta` 관리자 권한
   - `users_can_register`나 `default_role`의 `wp_options` 변경
