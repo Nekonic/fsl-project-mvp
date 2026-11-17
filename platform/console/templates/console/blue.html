@@ -154,6 +154,16 @@
 
   crumbs([sessionCrumb(sessionId()), { label: t("blue.title") }]);
 
+  function blueCrumbs(wargame) {
+    const named = sessionCrumb(sessionId(), session, wargame);
+    if (!named.named && (session.lesson || session.course_scenario)) {
+      crumbs([named, { label: t("blue.title"), href: `/blue/${sessionId()}/` },
+              { label: t(session.course_scenario ? "kind.scenario" : "crumb.lesson") }]);
+    } else {
+      crumbs([named, { label: t("blue.title") }]);
+    }
+  }
+
   function showFrame(url) {
     field("pane-status").style.display = "none";
     if (frame.getAttribute("src") !== url) frame.src = url;
@@ -335,9 +345,9 @@
 {% include "console/blue_scenario_script.html" %}
 
   (async () => {
-    const [read, listed] = await Promise.all([api(lessonPath("")), api("/api/wargames/")]);
+    const catalogue = api("/api/wargames/");
+    const read = await api(lessonPath(""));
     session = read.ok ? read.body : null;
-    const wargame = session && listed.ok && Array.isArray(listed.body) ? listed.body.find((w) => w.id === session.scenario) : null;
     if (session) rememberSession(sessionId());
     const kibana = paneTab("elk");
     if (session && session.discover) kibana.dataset.src = session.discover;
@@ -354,12 +364,11 @@
       field("waf-box").textContent = session.waf_box;
       field("waf-rules").textContent = `${session.waf_rules}/`;
     }
-    const named = session ? sessionCrumb(sessionId(), session, wargame) : null;
-    if (named && !named.named && (session.lesson || session.course_scenario)) {
-      crumbs([named, { label: t("blue.title"), href: `/blue/${sessionId()}/` },
-              { label: t(session.course_scenario ? "kind.scenario" : "crumb.lesson") }]);
-    } else if (named) {
-      crumbs([named, { label: t("blue.title") }]);
+    if (session) {
+      blueCrumbs(null);
+      catalogue.then((listed) => {
+        if (listed.ok && Array.isArray(listed.body)) blueCrumbs(listed.body.find((w) => w.id === session.scenario) || null);
+      });
     }
     const guided = Boolean(session && (session.lesson || session.course_scenario));
     if (guided) noteControls(session);
