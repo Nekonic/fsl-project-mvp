@@ -8904,7 +8904,8 @@ origin /24s, so replies to Kali's 100 addresses were on-link), and Kali's
   host). The old route via 5.188.10.1 gave 5.188.10.10 as the source
   implicitly; `attacker.unbound_source` reads the same address. Rejected: one
   route per origin /24 (30 routes saying what one default route says).
-- **Port forwarding.** `rangehost.port_forwards` renders `edge-nat.nft`, a
+- **Port forwarding.** `rangehost.port_forwards` renders `edge-nat.nft` (since
+  2026-11-17 `rangehost.edge_rules` and `edge.nft`, below), a
   `table ip nat` prerouting `dnat` of `wan` tcp 80 on the public IP to the
   WAF's estate address; `slot.sh` loads it with `nft -f` inside the edge
   after addressing `wan`. No SNAT, so the WAF and the sensor see each
@@ -8921,10 +8922,72 @@ origin /24s, so replies to Kali's 100 addresses were on-link), and Kali's
   "121.134.88.42" with no "외 N개"; Kali's eth0 keeps its count. The path
   lesson's coach and hint say the name points at the router's public IP and
   the router forwards to the WAF.
-- **Left as is.** The edge still forwards anything from `wan` to the estate,
-  so Kali can also reach the WAF's private address directly; the isolation
-  acceptance test probes that way in. Narrowing the edge's forward chain to
-  forwarded connections only is a separate change.
+- **Left as is, then replaced the same day.** The edge forwarded anything
+  from `wan` to the estate, so Kali could also reach the WAF's private address
+  directly; the isolation acceptance test probed that way in. Replaced by the
+  next entry.
+
+## 2026-11-17 — The edge lets in from the Internet only replies and the forwarded port
+
+Walk round 26 finding 4: the lessons teach that Kali reaches the WAF only
+through the router's public IP, but from Kali `nmap` showed the WAF's DMZ
+address 10.30.1.247:80 open and `curl` got 200, because the edge's forward
+chain (`deploy/edge/edge.nft`) accepted everything. An edge router drops
+unsolicited inbound traffic to the private addresses behind it.
+
+- **Rule.** `rangehost.edge_rules` renders `edge.nft` (was `edge-nat.nft`):
+  the `table ip nat` port forward as before and a `table ip inbound` forward
+  chain: from `wan`, `ct state established,related accept`,
+  `ct status dnat accept`, then `drop`. `slot.sh` loads it with `nft -f` in
+  the edge after addressing `wan`, as before. A drop in any base chain on the
+  hook is final, so the image's accept-all forward chain is left as it is and
+  the range images (and the range host's tag) do not change.
+- **Outbound.** Nothing from `lan` is filtered: the WAF's replies are
+  conntrack-established and nothing in the slot opens a connection out
+  through the edge (log shipping goes over `mgmt`, not the edge).
+- **Who used the direct path.** Only the acceptance tests: the isolation
+  test's "way in" probe and its SYN scan went to the WAF's estate address,
+  and the exfil test named its address variable `waf` for what is the public
+  IP. They now go to the address `board.com` names on Kali (the public IP),
+  and the isolation test also probes the WAF's private address and requires
+  it closed (`connect` fails, SYN scan `filtered`). The harness, the
+  customers, the readiness canary and the Website pane already went by
+  `board.com` or the public IP; the platform's ground-truth reads go into the
+  target containers, not through the edge.
+- Measured live (slot 8, rules loaded the way `slot.sh` loads them): from
+  Kali `nmap -sS -p 22,80,443 10.30.8.247` all filtered, 121.134.88.42 80
+  open; `curl http://board.com/` and `http://corp.com/` 200, from a
+  non-default origin address 200; `curl` to 10.30.8.247 times out.
+
+## 2026-11-17 — The comment cases post the comment form as a browser does
+
+Walk round 26: in lesson 3.4 the WAF runs DetectionOnly, yet the attack
+comment showed 403 in the WAF log and in the IDS http log, so board.com
+itself refused it. Cause, in the case definition: `board-xss-img-onerror-in-comment`
+(and the benign `board-normal-comment` in its shape) sent a JSON body with
+no CSRF token. Django's `CsrfViewMiddleware` refused it 403, and even past it
+`add_comment` reads `request.POST`, which a JSON body never fills. The
+stored XSS never landed. Not a deliberate failure path.
+
+- **Case.** Both cases now `prefetch` `/posts/1/`, read the `csrftoken`
+  cookie from its `Set-Cookie` and the form's `csrfmiddlewaretoken`, and post
+  the form urlencoded with that cookie, the token, `Origin` and `Referer`,
+  as the browser sends the board's own comment form (the customers already
+  post it this way, `traffic.py`).
+- **Harness.** `tools.fetch_argv` reads the response with `curl -i`, so a
+  pattern can match a header; `apply_prefetch` fills `{name}` for each named
+  group of the pattern beside `{nonce}` for group 1, and leaves a header out
+  of the prefetch GET while it still holds a placeholder.
+- **Lesson 3.4.** The attack body is now what a browser sends:
+  `body=%3Cimg+src%3Dx+onerror%3Dalert%281%29%3E`. Suricata's
+  `http.request_body` is not URL-decoded: measured live, `pcre:"/on[a-z]+%3D/i"`
+  and `content:"onerror"` on `http.request_body` alert, `pcre:"/on[a-z]+=/i"`
+  does not. The `handler` hint now says the form arrives URL-encoded, `<` as
+  `%3C` and `=` as `%3D`.
+- Measured live (slot 1, WAF DetectionOnly): the attack comment answers 302
+  and is stored (`Comment` 32, body `<img src=x onerror=alert(1)>`); the
+  benign comment is stored too; with the WAF blocking (PL1) the attack is
+  refused by the WAF, not the board.
 
 ## 2026-11-17 — A zone box is its subnet; the IDS stands in the mgmt box
 

@@ -1365,7 +1365,7 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       route). Decided 2026-10-19: it stays as is (`docs/DECISIONS.md`
       "Foundations review loop, rounds 2-5").
 - [ ] Suricata XSS coverage is URI-only: `board-xss-img-onerror-in-comment`
-      carries the payload in the JSON body, but sid 9000003 inspects
+      carries the payload in the urlencoded form body, but sid 9000003 inspects
       `http.uri` only (SQLi has both a URI rule 9000001 and a body rule
       9000002; XSS has no body rule). That case is ModSecurity-only. Decide
       whether to add a `http.request_body` XSS rule for symmetry (changes the
