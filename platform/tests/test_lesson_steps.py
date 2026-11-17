@@ -17,7 +17,8 @@ from api import site, views
 from api.models import Case, Detection, Objective, Session
 from console import strings
 from range.interfaces import Container, Network, Wiring
-from tests.test_lesson_api import WRITTEN
+from range.ports import Ran
+from tests.test_lesson_api import WRITTEN, one_slot
 
 pytestmark = pytest.mark.django_db
 
@@ -283,6 +284,39 @@ def test_a_run_the_terminal_shows_ended_is_recorded_after_a_short_quiet_and_a_pr
     assert (pressed["passed"], pressed["reason"]) == (False, ["lesson.check.kali_settling", ["sqlmap"]])
     assert ended["passed"] is True, "a few seconds of quiet after the terminal showed the end is enough"
     assert "tries" not in session.lesson_steps["f5"]["sqlmap"], "pressing while the run settles is not a wrong try"
+
+TERMINAL_SHELL = "pts/0    -bash"
+TERMINAL_SQLMAP = "pts/0    /usr/bin/python3 /usr/bin/sqlmap -u http://board.com/?sort=posts_post.id* --batch"
+FIRED_SQLMAP = "?        python3 /usr/bin/sqlmap -u http://board.com/?q=1* --batch"
+
+def kali_box(*processes):
+    def run(argv, stdin=None, timeout=60.0):
+        return Ran(0, "\n".join(processes) if argv[0] == "ps" else "")
+    return one_slot(lambda adapter, role, segment_id="": run)
+
+def first_pass_after_the_last_request(client, processes):
+    for quiet in range(0, 21):
+        session = taught("f6")
+        Session.objects.filter(pk=session.pk).update(started_at=timezone.now() - timedelta(minutes=10))
+        now = timezone.now()
+        run_step(session, "f6", "dump", f"dump-{quiet}", now - timedelta(minutes=6))
+        run = [http_event(f"dump-{quiet}", "/?sort=posts_post.id1", now - timedelta(minutes=5)),
+               http_event(f"dump-{quiet}", "/?sort=posts_post.id2", now - timedelta(seconds=quiet))]
+        with quietly(), indexed(*run), kali_box(*processes):
+            if check(client, session, "dump", {"poll": True}).json()["passed"]:
+                return quiet
+    return None
+
+def test_a_run_whose_tool_left_the_kali_terminal_passes_after_a_short_quiet_without_the_terminal_s_end_line(client):
+    exited = first_pass_after_the_last_request(client, [TERMINAL_SHELL])
+    running = first_pass_after_the_last_request(client, [TERMINAL_SHELL, TERMINAL_SQLMAP])
+    fired = first_pass_after_the_last_request(client, [TERMINAL_SHELL, FIRED_SQLMAP])
+
+    assert exited == views.RUN_ENDED_SETTLED.seconds, (
+        "walk round 27: F6's dump passed 20-30 s after sqlmap exited; a check the console sent without the end line "
+        "waited for 15 s of quiet, and now asks the Kali box whether sqlmap still runs")
+    assert running == views.RUN_SETTLED.seconds, "a sqlmap still on the learner's terminal is a run still going"
+    assert fired == views.RUN_ENDED_SETTLED.seconds, "a sqlmap the platform fired has no terminal and is not the learner's"
 
 def refused_request(marker, at, agent="sqlmap/1.8.4#stable (https://sqlmap.org)"):
     return {"event": {"module": "modsecurity"}, "@timestamp": at.isoformat(),

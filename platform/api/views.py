@@ -975,7 +975,8 @@ def _kali_run(session, step_id, check, kept, ended=False):
     seen = sorted(stamp for stamp, agent in sent if stamp and (check.get("ua") == "any" or case["tool"] in agent))
     if not seen:
         return None, {"kali": {"name": case["name"]}}
-    if now - seen[-1] < (RUN_ENDED_SETTLED if ended else RUN_SETTLED):
+    quiet = now - seen[-1]
+    if quiet < RUN_ENDED_SETTLED or (quiet < RUN_SETTLED and not ended and not _tool_exited(session, case["tool"])):
         return None, {"kali": {"name": case["name"], "settling": True}}
     recorded = _record_case(session, dict(case, case_id=marker, correlation="marker"), seen[0], seen[-1],
                             {"kali": step_id, "lesson": session.lesson, "launched_on": settings.RANGE.default_origin,
@@ -986,6 +987,12 @@ def _kali_run(session, step_id, check, kept, ended=False):
     except elastic.ElasticUnavailable:
         pass
     return recorded, _run_shown(session, case, recorded)
+
+def _tool_exited(session, tool):
+    try:
+        return attacker.typed_tool_running(_range(session).runner("attacker"), tool) is False
+    except RangeUnavailable:
+        return False
 
 def _run_shown(session, case, recorded):
     return {"kali": {"name": case["name"],

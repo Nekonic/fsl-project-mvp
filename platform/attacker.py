@@ -85,6 +85,19 @@ def sqlmap_found(box, host: str) -> bool | None:
     ran = box(["sh", "-c", f"cat {logs} 2>/dev/null; true"])
     return bool(SQLMAP_INJECTABLE.search(ran.output)) if ran.ok else None
 
+NO_TERMINAL = "?"
+PROGRAM_WORDS = 3
+
+def typed_tool_running(box, tool: str) -> bool | None:
+    ran = box(["ps", "-eo", "tty=,args="])
+    if not ran.ok:
+        return None
+    return any(_runs_on_a_terminal(line.split(), tool) for line in ran.output.splitlines())
+
+def _runs_on_a_terminal(fields: list[str], tool: str) -> bool:
+    return (len(fields) > 1 and fields[0] != NO_TERMINAL
+            and any(word.rpartition("/")[2] in (tool, f"{tool}.py") for word in fields[1:1 + PROGRAM_WORDS]))
+
 def _write(proxy, where: str, value: str | None) -> None:
     ran = proxy(["sh", "-c", f"cat > {where}"], stdin=value or "")
     if not ran.ok:
