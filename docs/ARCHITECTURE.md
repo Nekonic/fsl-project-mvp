@@ -216,7 +216,7 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 격리 검사:
 
 - `test/test_board_exfil.py`: `board.com`을 거쳐 board에 접근
-- `test/test_range_isolation.py`: Kali, WAF, board 각각에서 격리 확인. 훈련 환경 호스트 sshd, 플랫폼, 인터넷, 메타데이터 서비스, 다른 슬롯에 닿지 않아야 함
+- `test/test_range_isolation.py`: Kali, WAF, board, 센서, log-server 각각에서 격리 확인. 훈련 환경 호스트 sshd, 플랫폼, 인터넷, 메타데이터 서비스, 다른 슬롯에 닿지 않아야 함
 - 같은 테스트에서 Kali는 WAF 80번에 닿고, WAF가 프록시하는 board와 corp-wp 주소에는 닿지 않음. `board`, `corp-wp`, `board-db`, `corp-db`는 Kali에서 이름이 풀리지 않음. SYN 스캔은 동작
 - 같은 테스트에서 Kali로 훈련 환경 호스트, 플랫폼, 훈련 환경 호스트의 `mgmt` 망을 포트 스캔
 - `platform/tests/test_containment.py`: 렌더링한 슬롯 compose 파일이 격리 조건을 어기면 `bin/verify` 실패("OpenStack" 절)
@@ -294,7 +294,8 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 구간은 태그로 찾습니다.
 
 - Neutron 네트워크는 `cr.segment.id=mgmt` 태그가 붙은 `mgmt` 하나뿐. 어댑터는 태그가 붙은 네트워크만 가져옴
-- 슬롯의 `internet`, `estate` 구간은 렌더링한 슬롯 compose 파일에서 읽음(`platform/range/openstack.py`의 `_read`)
+- 슬롯의 `internet` 구간은 선언된 출발지마다 하나(30개). 서브넷과 Kali 주소(서브넷의 10번째 호스트부터 `addresses`개, `rangehost.origin_addresses`)는 선언에서, 게이트웨이는 라우터 공인 IP(`rangehost.router_address`)에서 정함
+- 슬롯의 `estate` 구간의 노드와 주소는 렌더링한 슬롯 compose 파일에서 읽음(`platform/range/openstack.py`의 `_read`)
 - 이름 매칭은 쓰지 않음. Heat 스택 접미사와 Neutron 이름이 겹쳐 깨졌음
 - 역할은 선언에서 지정한 호스트를 가리킴. 메타데이터 `cr_host`가 `cr-range`인 서버가 훈련 환경 호스트(`slot.host_of`). 나머지 호스트는 슬롯 컨테이너
 - `compose:`로 서비스를 지정한 역할은 그 슬롯 컨테이너 안에서 실행(훈련 환경 호스트에서 `sudo docker exec sN-<service>`). `wargames` 역할은 훈련 환경 호스트에서 실행
@@ -303,20 +304,20 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 
 - `describe()`: 구간, 구간별 노드와 주소, 센서 구조를 반환
 - `segments()`: 센서 검사 없이 호스트별 구간을 반환
-- `runner(role, segment)`: 떠 있는 컨테이너나 훈련 환경 호스트에서 명령 실행. 대상 역할은 센서, 프록시, 공격 박스(명령 로그 읽기), board, corp-db
+- `runner(role, segment)`: 떠 있는 컨테이너나 훈련 환경 호스트에서 명령 실행. 대상 역할은 센서, 프록시, 공격 박스(명령 로그 읽기), WAF(`gateway`, CRS 설정 읽기와 적용), board, corp-db
 - `launcher(segment)`: 구간에서 일회성 도구를 실행하고 출력을 반환
 
 `range.substrate()`는 `CR_SUBSTRATE`의 어댑터(기본값 `range.openstack.connect`)를 생성합니다. 옵션은 `CR_SUBSTRATE_OPTIONS`에서 그 이름 아래 값에 `declared=RANGE`를 더해 넘깁니다.
 
-- 접속 값: `CR_OPENSTACK_KEYSTONE`, `_USER`, `_PASSWORD`, `_PROJECT`, `_SSH_USER`, `_SSH_KEY`, `_REGION`, `_INTERFACE`, `_DOMAIN`. 하나라도 없으면 빠진 이름을 밝히고 거부
-- 구성 값: `_BASE_IMAGE`, `_FLAVOR`(훈련 환경 호스트 flavor), `_AVAILABILITY_ZONE`, `_SUBNETS`, `_MTU`, `_SLOTS`, `_BUILD_NETWORK`(훈련 환경 호스트가 이미지를 받는 플랫폼 네트워크), `_PLATFORM`. 실제로 쓰는 시점에 없으면 이름을 밝히고 거부
+- 접속 값: `CR_OPENSTACK_KEYSTONE`, `_USER`, `_PASSWORD_FILE`(비밀번호 파일, 기본 `/run/secrets/openstack_password`), `_PROJECT`, `_SSH_USER`, `_SSH_KEY`, `_REGION`, `_INTERFACE`, `_DOMAIN`. 하나라도 없으면 빠진 이름을 밝히고 거부
+- 구성 값: `_BASE_IMAGE`, `_FLAVOR`(훈련 환경 호스트 flavor), `_AVAILABILITY_ZONE`, `_SUBNETS`, `_BUILD_NETWORK`(훈련 환경 호스트가 이미지를 받는 플랫폼 네트워크), `_PLATFORM`. 실제로 쓰는 시점에 없으면 이름을 밝히고 거부
 - `CR_RANGE_IMAGE_TAG`: 훈련 환경 호스트 이미지 태그. 부팅 때 `/opt/cr/.env`에 기록
 - 코드 기본값은 `_SLOTS`(비면 1)와 `_MTU`(비면 렌더링 때 1500)뿐. 나머지 값은 Heat 스택을 거쳐 `deploy/openstack/cloud.yaml`에서 옴. 이 파일은 `platform/range/cloud.py`에서 읽고 검증
 - `redteam/harness.py`는 launcher를, `platform/rules/suricata.py`는 runner를 받음. 둘 다 `subprocess`를 import하지 않고 substrate 이름도 모름
 
 어댑터의 호출별 동작:
 
-- 구조: `mgmt`는 Keystone v3, Neutron(`tags-any`), Nova에서 읽음. 슬롯의 `internet`, `estate`와 그 노드, 주소는 렌더링한 슬롯 compose 파일(`rangehost.compose`)에서 읽음
+- 구조: `mgmt`는 Keystone v3, Neutron(`tags-any`), Nova, 이미지는 Glance에서 읽음. 슬롯의 `internet`은 선언에서, `estate`와 그 노드, 주소는 렌더링한 슬롯 compose 파일(`rangehost.compose`)에서 읽음
 - 센서: 훈련 환경 호스트가 떠 있으면 센서를 보고. 센서가 gateway 트래픽을 실제로 보는지는 확인하지 않음
 - runner: 훈련 환경 호스트의 `mgmt` 주소로 `ssh`. 호스트마다 연결 공유(`ControlMaster auto`, `ControlPersist 60`). `compose:` 역할은 슬롯 컨테이너 안에서 실행(`sudo docker exec sN-<service>`, `range/rangehost.exec_in`)
 - address: 훈련 환경 역할마다 훈련 환경 호스트의 `mgmt` 주소
@@ -337,7 +338,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 
 `interfaces.wiring`이 이 출력을 `Wiring`으로 풉니다.
 
-- 인터페이스의 망: 그 인터페이스 주소 중 하나를 품은 Docker 네트워크. 그래서 kali `eth0`에 함께 붙은 출발지 주소(5.188.10.10, 고객 주소)도 인터넷 구간에 속함
+- 인터페이스의 망: 먼저 `@leg`의 MAC이 같은 Docker 네트워크(`Wiring.legs`), MAC으로 못 찾으면 그 인터페이스 주소 중 하나를 품은 Docker 네트워크. 주소 없는 센서의 `web` 인터페이스는 MAC으로만 찾음. 망은 인터페이스 단위라서 kali `eth0`에 함께 붙은 출발지 주소(5.188.10.10, 고객 주소)도 인터넷 구간에 속함
 - 센서: `Args`에 `--af-packet`(`rangehost.SNIFFS`)이 있는 컨테이너. 감시하는 망은 주소 없는 인터페이스가 붙은 망(`--af-packet=<이름>`이면 그 브리지나 인터페이스). 센서의 인터페이스도 돌려주되 `sensor=True`로 표시(`Wiring.interfaces`). 선의 주소를 고르는 `link_heads`만 센서 인터페이스를 뺌
 - `OpenStack.wiring()`은 서비스 이름을 선언된 호스트 이름(`cr-kali`, `board`)으로 바꿔 붙임. 훈련 환경 호스트가 답하지 않으면 `RangeUnavailable`
 
@@ -365,14 +366,14 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
   - 윗줄은 왼쪽부터 Kali와 인터넷 구간 스위치, 라우터, DMZ 스위치와 WAF. 라우터는 두 상자 사이에 따로 놓고, 라우터의 주소 두 개는 어느 상자에도 넣지 않으며 상자와 `CLEAR`만큼 띄움. WAF는 DMZ 상자 안
   - 가운뎃줄은 웹 서버 구간과 그 오른쪽의 DB존. 웹 서버 구간 스위치 오른쪽에 board.com, board.com에서 DB 스위치까지는 한 줄 직선이고 주소는 board.com 오른쪽. board-db는 DB 스위치 아래에 매달고 주소는 board-db 위, 선 오른쪽
   - 관제망은 아랫줄 왼쪽, 웹 서버 구간 아래. IDS는 주소(172.29.N.11)가 관제망에만 있으므로 관제망 상자 안, 오른쪽 끝에 두고 웹 서버 구간 스위치 바로 아래에 맞춤. 관제망 스위치는 IDS 왼쪽, 로그 서버는 그 왼쪽
-  - IDS의 관리 인터페이스 선은 왼쪽으로 관제망 스위치에 들어가고 172.29.N.11은 IDS 왼쪽, 그 선 위에 씀. 미러 선(`mirror`)은 IDS 위로 곧게 올라가 관제망 상자를 나와 웹 서버 구간 스위치 아래로 들어가며 주소가 없음. 두 선이 IDS에서 직각으로 갈리므로 IDS가 두 스위치 사이에 끼인 장비로 읽히지 않음. 미러링 점선이나 문구는 없음
+  - IDS의 관리 인터페이스 선은 왼쪽으로 관제망 스위치에 들어가고, 172.29.N.11은 선 위가 아니라 IDS 옆, 그 선이 나가는 왼쪽에 씀. 미러 선(`mirror`)은 IDS 위로 곧게 올라가 관제망 상자를 나와 웹 서버 구간 스위치 아래로 들어가며 주소가 없음. 두 선이 IDS에서 직각으로 갈리므로 IDS가 두 스위치 사이에 끼인 장비로 읽히지 않음. 미러링 점선이나 문구는 없음
   - WAF에서 아래로 가는 선(관제망, 웹 서버 구간)은 WAF 아래에서 좌우로 나뉘어 내려와 DMZ 상자와 가운뎃줄 사이를 층을 달리해 지나 각 스위치 위로 들어감. 더 왼쪽으로 가는 선이 위층이라 서로 교차하지 않음(`_dropping`)
   - 서버가 둘 이상이면(슬롯이 두 워게임을 다 돌릴 때) 서버를 위아래로 벌리고, 아래 서버의 선은 스위치 오른쪽으로 들어감. DB존은 서버마다 오른쪽에 두고 DB를 스위치 오른쪽에 놓음
   - 주소: 인터페이스마다 전체 주소를 장비 옆, 선이 나가는 쪽에 씀(`_sided`). 주소 글자는 그 장비가 속한 영역에 두고, 영역 상자는 그 글자를 `LABEL_PAD`만큼 띄워 품음(`_boxed`). 선 위에는 주소를 쓰지 않음
   - 같은 인터페이스에 주소가 더 있으면 "외 N개"를 붙임(`topology.extra_addresses`가 선과 주소 노드의 `more`로 실음, `map.html`의 `named`). kali `eth0`의 출발지·고객 주소가 그 예
   - 장비 이름은 아이콘 아래. `strings.html`의 `topology.name.<이름>`이 있으면 그것을 씀. 라우터와 로그 서버는 한국어 역할 이름, Kali, WAF, IDS는 고유 이름 그대로
   - 포트, 범례는 그리지 않음
-- 아이콘: GNS3 affinity 글리프를 정사각형 틀에 넣은 `host-*.svg`와 스위치 아이콘. 출처와 라이선스는 같은 폴더의 `SOURCES`, Kali 드래곤 로고의 상표 고지는 `host-kali.txt`
+- 아이콘: GNS3 affinity 글리프를 정사각형 틀에 넣은 `host-*.svg`와 스위치 아이콘. 아이콘은 `console/static/map/symbols/`에 있음. 출처와 라이선스는 한 단계 위 `console/static/map/`의 `SOURCES`, Kali 드래곤 로고의 상표 고지는 `symbols/host-kali.txt`
 - 읽기 전용: `autoungrabify`, `autounselectify`, 상자 선택 끔. 이동과 확대·축소만 됨
 - 아이콘은 cytoscape.js를 읽기 전에 요청하고, 다 받거나 5초가 지난 뒤에 그림. 콘솔은 `drawn`을 받을 때 창을 보여 주므로 아이콘 없는 첫 그림이 보이지 않음. 토폴로지 API도 cytoscape.js를 읽기 전에 요청함
 - 콘솔과의 메시지: 첫 맞춤 뒤 `{map: "drawn"}`, 이후 `{fit}`를 받아 맞출 때마다 `{map: "fitted"}`. `{locate: {node|zone|label}}`에는 사각형, 영역 사각형(`zones`), 글자 사각형(`text`)으로 답함. 같은 origin의 메시지만 받음
@@ -386,12 +387,12 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`: 시작 시 `geoip` ingest 파이프라인 PUT |
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`: Kibana API 경로를 앎. Default space, space 안의 space, space 접두어 없는 API 경로, `%`·역슬래시·점 세그먼트가 든 경로, `?namespaces=` 거부. space 안의 API 호출은 `/kibana-gate/`로 넘김(호출 목록과 인덱스 검사는 `kibana.py`). `GET /kibana/s/<space>/api/spaces/space`에는 SOC space만 담은 응답을 직접 반환. `console/templates/console/blue.html`: Kibana의 localStorage 키를 미리 채움 |
 | 슬롯 배선 읽기 | `platform/range/rangehost.py`(`WIRING`) | 없음. 출력 해석은 `platform/range/interfaces.py`, 학습자 이름과 그래프는 `platform/topology.py` |
-| CRS 설정과 nginx reload | `platform/rules/crs.py` | `entrypoint.sh`: `vm-terminal.sh cr-waf`로 슬롯 WAF 컨테이너 쉘 제공(훈련 환경 호스트로 ssh 후 `sudo docker exec -it sN-waf bash -l`). `range/rangehost.forwarding`: 슬롯의 WAF shipper와 log-server 설정 작성(audit 로그와 nginx 거부 로그 경로). `deploy/range-host/slot.yaml`: `rangehost.LOGS` 경로로 WAF audit 로그 파일과 거부 로그 파일 마운트. audit 로그는 둘 다 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 `platform/tests/test_range_host.py`의 `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it`로 확인. F6의 WAF 창 단계 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`): `wargames.lesson`에서 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 채움. 플랫폼은 터미널을 조작하지 않음 |
+| CRS 설정과 nginx reload | `platform/rules/crs.py` | `declaration.yaml`의 `cr-waf` 호스트: `crs.py`에 넘길 예외 파일(`rules`), reload 명령(`reload`), nginx pid 파일(`pid`) 지정. `entrypoint.sh`: `vm-terminal.sh cr-waf`로 슬롯 WAF 컨테이너 쉘 제공(훈련 환경 호스트로 ssh 후 `sudo docker exec -it sN-waf bash -l`). `range/rangehost.forwarding`: 슬롯의 WAF shipper와 log-server 설정 작성(audit 로그와 nginx 거부 로그 경로). `deploy/range-host/slot.yaml`: `rangehost.LOGS` 경로로 WAF audit 로그 파일과 거부 로그 파일 마운트. audit 로그는 둘 다 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 `platform/tests/test_range_host.py`의 `test_the_waf_s_audit_log_is_forwarded_from_where_modsecurity_writes_it`로 확인. F6의 WAF 창 단계 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`): `wargames.lesson`에서 선언된 예외 파일과 reload 명령(`settings.CR_WAF`)으로 채움. 플랫폼은 터미널을 조작하지 않음 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `declaration.yaml`의 센서 호스트(`sensor`는 `cr-range`): `suricata.py`에 넘길 룰 파일과 reload 명령 지정. `platform/range/rangehost.py`: 센서 설정(`deploy/suricata/suricata.yaml`)과 compose 서비스 렌더링. `deploy/range-host/slot.sh`: 슬롯과 함께 센서 시작·정지, 초기화 때 센서 로그 파일 다시 열기, 에지 라우터 설정. 이후 기본 룰 적용은 `suricata.py` |
-| 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`: `/var/log/commands.log` 읽기. 터미널 연결 설정에 `cr-kali` 지정, `entrypoint.sh`에서 `vm-terminal.sh cr-kali` 실행. 웹사이트 창(`platform/api/site.py`)은 예외가 아님. 박스 접근은 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(훈련 환경 호스트 ssh 스트림으로 슬롯 Kali 컨테이너 접속)로만 함. 발사한 sqlmap 케이스가 쓰는 박스 안 출력 디렉터리(`SQLMAP_RUNS`, `/tmp/sqlmap-runs/<케이스 id>`)도 `attacker.py`가 정해 `harness.fire`에 넘김(`views._fire`, `redteam/run.py`) |
+| 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`: `/var/log/commands.log` 읽기. 터미널 연결 설정에 `cr-kali` 지정, `entrypoint.sh`에서 `vm-terminal.sh cr-kali` 실행. 웹사이트 창(`platform/api/site.py`)은 예외가 아님. `redteam/tools.py`의 `TOOL_IMAGE`(`CR_TOOL_IMAGE`, 기본 `cr-kali`): 도구 케이스를 공격 박스에서 실행. 박스 접근은 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`)와 substrate의 `opened`(훈련 환경 호스트 ssh 스트림으로 슬롯 Kali 컨테이너 접속)로만 함. 발사한 sqlmap 케이스가 쓰는 박스 안 출력 디렉터리(`SQLMAP_RUNS`, `/tmp/sqlmap-runs/<케이스 id>`)도 `attacker.py`가 정해 `harness.fire`에 넘김(`views._fire`, `redteam/run.py`) |
 | 대상 시스템 데이터 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음. `loot.py`는 `board` 역할 runner로 board 컨테이너 안 `127.0.0.1`에 HTTP 요청. `effect.py`는 `corp-db`에 `docker exec`하는 runner로 접근 |
 
-`platform/tests/test_isolation_seams.py`가 `platform/` 코드를 관심사별 문자열로 훑어, 담당 파일과 알려진 예외 밖에서 그 관심사를 다루는 파일이 있으면 실패합니다. 담당 파일이 없어지면 담당 파일이 그 관심사를 아는지는 검사하지 않습니다. 다른 파일이 그 관심사를 알면 여전히 실패합니다. 슬롯 배선 읽기 행은 이 테스트에 없어서 검사하지 않습니다.
+`platform/tests/test_isolation_seams.py`가 `platform/` 코드를 관심사별 문자열로 훑어, 담당 파일과 알려진 예외 밖에서 그 관심사를 다루는 파일이 있으면 실패합니다. 담당 파일이 없어지면 담당 파일이 그 관심사를 아는지는 검사하지 않습니다. 다른 파일이 그 관심사를 알면 여전히 실패합니다. 슬롯 배선 읽기 행은 이 테스트에 없어서 검사하지 않습니다. 테스트에는 없어진 `gns3.py`의 GNS3 API 행이 남아 있습니다.
 
 ## 파일
 
@@ -400,37 +401,41 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | 파일 | 하는 일 |
 |---|---|
 | `deploy/filebeat/filebeat.yml` | collector의 Filebeat 설정. `event.module`과 슬롯(`cr_slot`) 태그를 붙여 `logs-<slot>-sensors` 인덱스에 기록. 인덱스 템플릿은 `fields-lean.yml`로 만들어 기존 템플릿을 덮어씀(`setup.template.overwrite`), refresh 1초. 이미 있는 data stream은 rollover 전까지 예전 매핑을 유지 |
-| `deploy/elastic/ingest-pipeline.json` | `geoip` ingest 파이프라인. 이벤트 시각을 `@timestamp`로 옮기고, `src_ip`에 GeoIP를 붙이고, `cr_slot` 삭제 |
+| `deploy/elastic/ingest-pipeline.json` | `geoip` ingest 파이프라인. 이벤트 시각을 `@timestamp`로 옮기고, `src_ip`와 `transaction.client_ip`의 GeoIP를 `src_geo`에 붙이고, `cr_slot` 삭제 |
 | `deploy/proxy/stamp.py` | `X-Request-ID`를 붙이는 mitmdump 스크립트. Kali 이미지에 `/usr/local/lib/web-proxy.py`로 설치 |
 | `deploy/kali/operator-log.sh` | Kali 쉘 훅. 입력한 명령을 마커와 함께 `/var/log/commands.log`에 추가 |
 | `deploy/kali/Dockerfile`, `deploy/waf/Dockerfile`, `deploy/edge/Dockerfile` | 슬롯의 Kali, WAF, 에지 이미지. `.github/workflows/images.yml`로 빌드, GHCR에서 pull |
-| `deploy/edge/edge.nft` | 에지 nftables 룰. loopback 외 input은 drop, forward는 accept |
+| `deploy/edge/edge.nft` | 에지 이미지의 기본 nftables 룰. loopback 외 input은 drop. 슬롯을 올릴 때 `slot.sh`가 `rangehost.edge_rules`로 만든 슬롯별 `edge.nft`(포트포워딩과 `wan` forward 필터)를 더 넣음 |
 | `deploy/range-host/setup.sh` | 훈련 환경 호스트 설치 스크립트. Nova user data로 한 번 실행. 패키지, Docker `daemon.json`, sshd와 inotify 한도, 이미지, pristine 볼륨 |
 | `deploy/range-host/slot.yaml` | 슬롯 compose 프로젝트 템플릿. `range/rangehost.py`에서 값을 채워 워게임별 `compose.yaml`과 합침 |
 | `deploy/range-host/slot.sh` | 훈련 환경 호스트에서 슬롯 N의 `up`, `reset`, `down`, `play` 실행 |
 | `platform/range/rangehost.py` | 훈련 환경 호스트 설치 번들과 user data, 슬롯별 compose 파일과 부속 파일, 실행 명령 생성 |
 | `platform/tests/test_containment.py` | 렌더링한 슬롯 compose 파일이 격리 조건을 어기면 `bin/verify` 실패 |
-| `test/test_range_isolation.py` | Kali, WAF, board에서 격리를 확인하는 실환경 검사 |
-| `platform/scoring/` | `correlate.py`: 마커나 시간 창으로 탐지를 케이스에 매칭. `metrics.py`: 케이스별 탐지 결과 집계 |
+| `test/test_range_isolation.py` | Kali, WAF, board, 센서, log-server에서 격리를 확인하는 실환경 검사 |
+| `platform/scoring/` | `correlate.py`: 마커나 시간 창으로 탐지를 케이스에 매칭. `metrics.py`: 케이스별 탐지 결과 집계. `types.py`: 케이스·탐지 레코드와 매칭 방식 이름 |
 | `platform/scoreboard.py` | 목표 점수. 탐지를 시도에 귀속, `corroborated` 판정, 탈취된 목표 집계 |
 | `platform/game.py` | 게임 점수(speed, accuracy, coverage, response). 점수의 `game` 블록 |
 | `platform/disable.py` | Suricata 룰을 정해진 시각까지 주석 처리해 비활성화하고 다시 활성화(`# cr-disabled`) |
-| `platform/api/models.py` | Django 모델: `Session`, `Case`, `CustomerRequest`, `Detection`, `Objective`, `RuleSet`, `DisabledRule` |
+| `platform/api/models.py` | Django 모델: `Session`, `Case`, `CustomerRequest`, `Detection`, `Objective`, `RuleSet`, `DisabledRule`, `SignInBlock` |
+| `platform/api/maps.py` | 워게임의 고객 출발지 비중을 더해 `topology.learner`를 부름. 구성도와 주소 단계는 이것을 씀 |
 | `platform/cr/urls.py` | 전체 엔드포인트 라우트 표 |
-| `platform/api/refusals.py` | 예외를 HTTP 상태 코드로 변환(`/api/` 아래 404는 JSON). 변경 요청(POST 등)의 동일 출처 검사 |
+| `platform/api/refusals.py` | 예외를 HTTP 상태 코드로 변환(`/api/` 아래 404는 JSON). 변경 요청(POST 등)의 동일 출처 검사, JSON이 아닌 본문은 415 |
 | `platform/api/reachability.py` | 슬롯이 보고하는 모든 주소(채점 서버 제외)에서 온 요청을 거부하는 미들웨어. 주소 목록은 30초 캐시하고, 만료되면 슬롯들의 구성을 동시에 읽음 |
 | `platform/api/signin.py` | 로그인, 로그아웃, 회원가입, nginx `auth_request`가 묻는 세션 확인 |
 | `platform/api/blocks.py` | 로그인 실패를 IP와 브라우저 헤더 지문별로 세고 차단 |
 | `platform/api/accounts.py` | 계정 관리 API(계정 목록, 승인, 거절. 관리자 전용). 학습자가 남의 세션과 훈련 환경 변경에 닿지 못하게 막는 미들웨어 |
 | `platform/range/declared.py` | `declaration.yaml`을 읽어 `Declaration`으로 변환 |
-| `platform/range/openstack.py` | OpenStack 어댑터(`connect`): Keystone, Neutron, Nova, ssh |
+| `platform/range/openstack.py` | OpenStack 어댑터(`connect`): Keystone, Neutron, Nova, Glance, ssh |
+| `deploy/openstack/network.yaml` | 실제 클라우드의 주소 배치를 사람이 읽도록 적은 그림. 설정 값은 `cloud.yaml` |
+| `deploy/range-host/proto/` | 훈련 환경 호스트 구조를 정하기 전 시제품 스크립트와 측정 결과. 제품 경로에서 쓰지 않음 |
+| `bin/prune` | 플랫폼 DB의 세션 정리(`--keep`, `--ids`, `--newest`, `--apply`). `bin/verify`가 acceptance에서 만든 세션을 지움 |
 | `bin/verify` | ratchet 검사(게이트 대상 수치가 커지는 변경 거부, `CLAUDE.md`)와 변경이 닿는 테스트 실행(`--changed`, `--fast`. 테스트 선택은 `bin/select-tests`) |
 
 ## 요청의 출처
 
 | 경로 | 발신자 | 경보에 찍히는 출발지 주소 | 마커 |
 |---|---|---|---|
-| 터미널, HTTP | Kali. 자체 프록시(`127.0.0.1:8081`) 경유 | Kali, 선택한 출발지 | 프록시가 추가 |
+| 터미널, HTTP | Kali. 자체 프록시(8081) 경유 | Kali, 선택한 출발지 | 프록시가 추가 |
 | 터미널, raw TCP | Kali에서 직접. 프록시 미경유 | Kali, 선택한 출발지 | 없음 |
 | API로 실행한 케이스, HTTP | 공격 박스. 플랫폼이 launcher로 박스에서 `curl` 실행(`views._fire`: 시나리오 일정, 레슨 시드, `POST /api/sessions/<id>/attacks/`) | 공격 박스, 선택한 출발지 | harness가 추가 |
 | API로 실행한 케이스, 도구 | 공격 박스. 플랫폼이 launcher로 박스에서 도구 실행 | 공격 박스, 선택한 출발지 | sqlmap `--headers=` |
@@ -441,7 +446,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 
 프록시는 `mitmdump` 스크립트입니다.
 
-- Kali 컨테이너의 메인 프로세스. 이미지 `CMD`에서 `/usr/local/lib/web-proxy.py`로 127.0.0.1:8081에 `mitmdump`를 띄움
+- Kali 컨테이너의 메인 프로세스. 이미지 `CMD`에서 `/usr/local/lib/web-proxy.py`로 8081 포트(모든 인터페이스)에 `mitmdump`를 띄움. 셸의 `http_proxy`는 `127.0.0.1:8081`(`/etc/profile.d/proxy.sh`)
 - `X-Request-ID`가 없는 요청에 `/var/lib/session/active`의 값을 그 헤더로 넣음
 - 플랫폼은 `runner("proxy")`로 훈련 환경 호스트에 ssh한 뒤 Kali에 `docker exec`해서 `active` 파일을 씀
 - `/var/lib/session/active`와 `/var/log/commands.log`는 root 전용 0600. 컨테이너 안에서는 플랫폼 명령도 학습자 셸도 root로 돎
@@ -505,7 +510,7 @@ board.com과 corp.com은 훈련 환경 안에서만 응답합니다. 학습자 �
 기록기는 훈련 환경의 고객 주소에서(아래 참고) Chrome처럼 요청을 보냅니다.
 
 - `Host: <호스트>`, `Connection: keep-alive`, `Accept-Encoding: gzip, deflate`를 보냄. 응답은 압축을 풀어 넘김
-- 페이지 이동이면 `Upgrade-Insecure-Requests: 1`과 세션이 그 호스트에서 받은 쿠키를 붙임
+- 세션이 그 호스트에서 받은 쿠키를 경로에 맞게 붙임. 페이지 이동이면 `Upgrade-Insecure-Requests: 1`도 붙임
 - 헤더 순서는 Chrome을 따름(`CHROME_ORDER`). 리다이렉트는 따라가지 않음
 - 브라우저 헤더 중 `Accept`, `Accept-Language`, `Content-Type`, `User-Agent`, `Referer`, `Origin`만 넘김
 - `Referer`, `Origin`은 `http://<호스트>/`에 접속한 브라우저가 보낼 값으로 고쳐 씀(`as_browsed`)
@@ -515,7 +520,7 @@ board.com과 corp.com은 훈련 환경 안에서만 응답합니다. 학습자 �
 
 - 없는 세션: 404, 닫힌 세션: 409. WAF를 호출하지 않음
 - 요청 대상으로 쓸 수 없는 경로: 400
-- 연결 3초, 읽기 20초 안에 응답이 없으면 502("board.com did not answer")
+- Kali 안의 중계가 10초 안에 연결하지 못하거나 20초 안에 응답이 없으면 502("board.com did not answer")
 - 페이지는 도착하는 대로 브라우저로 스트리밍
 
 이 경로의 기타 사항:
@@ -618,8 +623,7 @@ API로 실행한 도구 케이스는 출발지의 대상 URL로 보냅니다. �
 
 - `redteam/run.py`는 플랫폼에서 실행. acceptance 테스트도 같은 방식
 - 출발지 옵션 없음
-- `--target` 기본값은 `--cases` 파일이 속한 시나리오의 `public_url`(board는 `http://board.com`). 이 주소는 포트 80의 WAF로 해석됨
-- `--tool-target` 기본값은 `http://board.com`
+- HTTP 케이스와 도구 케이스 모두 `--tool-target`(기본 `http://board.com`)으로 보냄. corp 케이스 파일은 `--tool-target http://corp.com`을 줘야 corp로 감. 이 이름은 라우터 공인 IP로 풀리고 80번 포트가 WAF로 포트포워딩됨
 
 WAF 컨테이너는 `deploy/waf/modsecurity.conf`의 `SecRuleEngine On`, CRS 기본 임계치 5, Paranoia Level 1로 CRS를 돌립니다.
 
@@ -635,7 +639,7 @@ WAF (nginx, 400) --> refused.log -+
 Suricata ----------> eve.json ----+-> Filebeat -> Elasticsearch, logs-<slot>-sensors
                                       (event.module) pipeline geoip
                                                           |
-             POST /api/sessions/<id>/ingest/ (called by tests, at close, by the scenario engine and by lesson checks)
+             POST /api/sessions/<id>/ingest/ (called by tests, before close/, by the scenario engine and by lesson checks)
                                                           |
              parse per event.module, copy the marker onto alerts, store
              as Detection rows in SQLite
@@ -643,9 +647,9 @@ Suricata ----------> eve.json ----+-> Filebeat -> Elasticsearch, logs-<slot>-sen
 
 `ingest/` 호출 시점:
 
-- `test/conftest.py`와 세션 화면의 종료 확인에서 호출
+- `test/conftest.py`가 호출. 콘솔은 `close/` 직전에 호출(세션 화면의 종료 확인, 메인 화면의 열린 세션 종료, 레슨 과정 끝, 시나리오 끝). `close/`는 수집하지 않으므로 `close/`만 부르는 에이전트는 마지막 수집을 받지 못함
 - `redteam/run.py`는 호출하지 않고 curl 명령만 출력
-- 워게임 세션은 종료할 때 한 번 수집
+- 워게임 세션은 콘솔이 종료 직전에 한 번 수집
 - 레슨과 시나리오는 진행 중에도 수집. 시나리오 엔진은 15초마다 최근 180초, 기록을 읽는 단계 점검은 점검할 때마다 최근 600초
 - 종료 뒤에는 수집하지 않음. 이벤트 시각이 종료 1분 뒤보다 늦은 경보는 `ingest/`를 다시 호출해도 조회 기간 밖이라 들어오지 않음
 
@@ -696,7 +700,7 @@ ingest를 호출할 때마다 하는 일:
 구간 정보 캐시:
 
 - 단계 폴링과 답 확인마다 클라우드를 조회하지 않도록, ingest와 `/detections/`는 열린 세션의 구간 정보를 세션이 닫힐 때까지 재사용
-- `/top/`, `/map/`, `/topology/`는 매번 새로 조회
+- `/top/`, `/topology/`는 매번 새로 조회. `/map/`은 구간 정보를 쓰지 않음
 
 Elasticsearch는 저장과 색인 시점 GeoIP 보강에만 씁니다. 그래서 Logstash는 두지 않았습니다.
 
@@ -761,8 +765,8 @@ board에 선언된 defense:
 
 `platform/rules/crs.py`는 설정을 `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`로 생성합니다. `crs-setup.conf` 다음, 룰보다 먼저 로드되는 CRS hook입니다.
 
-- `tx.blocking_paranoia_level`과 `tx.detection_paranoia_level`을 설정하는 `SecAction`
-- 항목별 런타임 예외 규칙(id 10000~10020)
+- `tx.blocking_paranoia_level`과 `tx.detection_paranoia_level`을 설정하는 `SecAction`(id 10000). `detection_only: true`면 같은 `SecAction`에 `ctl:ruleEngine=DetectionOnly`를 붙여 기록만 하고 차단하지 않음
+- 항목별 런타임 예외 규칙(id 10001~10020)
 - 예외 형식: `ctl:ruleRemoveTargetById=<id>;<target>`, `ctl:ruleRemoveById=<id>`. CRS `tag`와 target을 지정한 항목(예: `OWASP_CRS`)은 `ctl:ruleRemoveTargetByTag=<tag>;<target>`
 - 경로가 있으면 `SecRule REQUEST_FILENAME "@beginsWith <path>"`로 범위를 좁힘
 
@@ -777,20 +781,23 @@ board에 선언된 defense:
 
 - paranoia: 1-4
 - 룰 id: 900000-999999. 또는 영문자·`_`·`-`로 된 tag와 target
-- target: `ARGS`, `ARGS_GET`, `ARGS_POST`, `ARGS_NAMES`, `REQUEST_COOKIES`, `REQUEST_HEADERS`(`:이름` 선택), `REQUEST_URI_RAW`, `REQUEST_BODY` 중 하나. PL3에서는 한글 검색어가 `REQUEST_URI_RAW`로도 920272에 매칭됨
-- 경로: `[A-Za-z0-9_./-]`
+- target: `ARGS`, `ARGS_GET`, `ARGS_POST`, `ARGS_NAMES`, `REQUEST_COOKIES`, `REQUEST_HEADERS`(이 여섯은 `:이름` 선택), `REQUEST_URI_RAW`, `REQUEST_BODY` 중 하나. PL3에서는 한글 검색어가 `REQUEST_URI_RAW`로도 920272에 매칭됨
+- 경로: `/`로 시작하고 `[A-Za-z0-9_./-]`로 된 값
 - 항목: 최대 20개
 - `thresholds` `{inbound, outbound}`(1-100000): 선택. 레벨과 같은 `SecAction`에 `tx.inbound_anomaly_score_threshold`, `tx.outbound_anomaly_score_threshold`로 넣고 다시 읽어 확인
 - `PUT`에서 `thresholds`를 빼면 현재 값 유지. `"thresholds": null`이면 값을 지움
+- `detection_only`(true/false): 선택. `thresholds`와 달리 `PUT`에서 빼면 유지하지 않음. `xss-watched`·`xss-gap` 세션에 이 값 없이 `PUT`하면 WAF가 다시 차단함
+- 닫힌 세션에 `PUT`하면 409
 
 설정 변경은 `PUT /api/sessions/<id>/waf/`로 합니다. 에이전트용 경로이고, 이를 호출하는 콘솔 화면은 없습니다.
 
-`GET`은 세션 WAF의 파일을 `crs.read`로 다시 읽습니다. `crs.read`는 Paranoia Level과 `ctl:ruleRemove*` 줄을 모두 파싱합니다. 주석 줄은 건너뛰고 이어지는 줄은 합칩니다. 학습자가 WAF 터미널에서 직접 고친 내용도 보고에 반영됩니다.
+`GET`은 세션 WAF의 파일을 `crs.read`로 다시 읽습니다. `crs.read`는 Paranoia Level, 임계치, `DetectionOnly`, `ctl:ruleRemove*` 줄을 모두 파싱합니다. 주석 줄은 건너뛰고 이어지는 줄은 합칩니다. 학습자가 WAF 터미널에서 직접 고친 내용도 보고에 반영됩니다.
 
 WAF 상태 스냅숏:
 
 - 시나리오 최종 점검에서 구간을 판정할 때마다, 세션을 닫을 때마다(슬롯 초기화 전) `crs.read` 결과를 스냅숏으로 남김
-- 스냅숏은 `Session.waf_snapshots`에 쌓임(마이그레이션 0021): `{at, scenario_window|closed, waf}`. 이전 과정의 세션에는 VERIFY 실행 때 남은 `{at, run, waf}`도 있음
+- 레슨을 옮길 때도 옮기기 전의 WAF를 스냅숏으로 남김
+- 스냅숏은 `Session.waf_snapshots`에 쌓임(마이그레이션 0021): `{at, scenario_window|closed|lesson, waf}`. 이전 과정의 세션에는 VERIFY 실행 때 남은 `{at, run, waf}`도 있음
 - 가장 최근 스냅숏은 `Session.waf`. 닫힌 세션도 파일을 포함한 학습자의 마지막 설정을 보고함. 한 번도 읽지 못했으면 `file: null`
 - WAF를 읽지 못하면 스냅숏은 남기지 않음. 최종 점검이나 세션 종료는 막히지 않음
 
@@ -836,7 +843,7 @@ WAF 상태 스냅숏:
 - 카드 그리드는 위쪽 정렬. 짧은 카드가 긴 카드 높이로 늘어나지 않음
 - `cr-opened-sessions`(localStorage): 이 브라우저에서 연 세션. 세션 화면과 블루팀 화면이 씀
 - 끝난 레슨 세션 행: 과정 이름(과정 밖이면 레슨 이름). 결과 칸은 과정 카드의 `scored`가 켜져 있을 때만 목표를 보여 줌(`wargames._course_scored`: `kali`나 `replay` check가 있는 과정). 과정 1은 "—"
-- 끝난 세션 목록: 진행 내용과 `result`. 시나리오면 마지막 최종 점검의 통과·미통과(`result.scenario`, 문구 `scenario.phase.passed`, `scenario.phase.failed`). 아니면 전체 목표 중 탈취된 목표 수(`result.lost`)
+- 끝난 세션 목록: 진행 내용과 `result`. 시나리오면 마지막 최종 점검의 통과·미통과(`result.scenario`, 문구 `scenario.phase.passed`, `scenario.phase.failed`). 아니면 전체 목표 중 탈취된 목표 수(`result.objectives.lost`, `.total`)
 - 결과는 한 번 채점해 채점 입력과 함께 저장(`Session.result_cache`, 마이그레이션 0018)
 - 채점 입력: `ended_at`, 힌트 수, 최종 점검별 판정. 탐지 기록·케이스·목표는 각각 마지막 id와 행 수. 탐지 기록은 마커가 있는 행 수도 포함
 - 목록을 그릴 때는 세션마다 집계값 세 개만 읽음. 늦은 수집처럼 입력이 바뀐 세션만 다시 채점
@@ -881,13 +888,13 @@ WAF 상태 스냅숏:
 - 진행 중인 시나리오 세션: 구간이 판정됐으면 종료 버튼 아래에 판정과 결과 보고를 보여 줌
 - 탐지 결과는 "공격 N건 중 M건 정탐" 같은 문장 하나. 같은 숫자를 큰 글씨로 한 번 더 쓰지 않음
 - 레슨 카드: 수강한 레슨마다 통과한 단계. 건너뛴 수는 없음
-- "다시 시작": 같은 시나리오, 같은 레슨(`lesson_id`가 있으면 `{scenario, guidance: true, lesson, defense}`), 같은 워게임을 다시 엶. 레슨과 시나리오는 블루팀 콘솔로 열림
+- "다시 시작": 같은 시나리오, 같은 워게임을 다시 엶. 레슨 세션은 그 세션에서 처음 시작한 레슨부터 다시 엶(`{scenario, guidance: true, lesson, defense}`. F3에서 끝난 과정 세션도 F1부터). `defense`는 그 레슨이 `lesson_id`면 세션의 것, 아니면 레슨 카드의 것. 레슨과 시나리오는 블루팀 콘솔로 열림
 - 이미 닫힌 세션을 종료하면(두 번 누름, 다른 탭에서 닫음) 세션을 다시 읽음. `ended_at`이 있으면 409 영어 메시지 대신 종료됐다고 알리고 결과를 보여 줌(`base.html`의 `alreadyClosed`). 메인 화면과 레슨 끝에서도 같음
 
 **블루팀**(`/blue/<id>/`):
 
-- 왼쪽 메뉴와 창. 메뉴 순서는 Kibana, 웹사이트, 구성도, `judgement` 시나리오의 경보, IDS 룰, WAF. 구분선 아래에 Kali
-- IDS 룰 창: `detection`·`unknown` 시나리오와 그 창을 쓰는 단계가 있는 레슨(F4)
+- 왼쪽 메뉴와 창. 메뉴 순서는 Kibana, 웹사이트, 구성도, `judgement` 시나리오의 경보, IDS 룰, WAF, 참고. 구분선 아래에 Kali
+- IDS 룰 창: `detection`·`unknown` 시나리오, 그리고 단계가 룰 창을 열거나 `rules` check를 쓰는 레슨(F4)에서 쓸 수 있음. 단계가 있는 다른 가이드 세션에서는 메뉴에 보이되 비활성
 - Kali: 세션 `kind`가 `lesson`이나 `scenario`일 때만. `wargame` 세션에서는 사람이 레드팀 콘솔에서 공격하므로 방어자에게 공격자 쉘을 주지 않음
 - Kali 창은 한 번만 로드하는 별도 프레임. 다른 창으로 옮겨도 돌던 sqlmap이 끊기지 않음
 - WAF 창 배너: WAF 박스(`waf_box`, `waf`)와 CRS 룰 디렉터리(`waf_rules`)만. 이 디렉터리는 선언된 예외 파일 `settings.CR_WAF.rules`가 있는 곳
@@ -917,7 +924,7 @@ WAF 상태 스냅숏:
 노트 상태:
 
 - 단계 목록의 체크 표시는 `progress`에서 통과로 판정한 단계에만 붙음. 통과하지 않고 넘어간 단계는 "건너뜀"
-- 노트 접힘 상태는 사용자별로 저장(`cr-lesson-note`)
+- 노트 접힘 상태는 브라우저에 하나로 저장(`cr-lesson-note`, localStorage). 세션·레슨마다 처음 들어올 때는 접힘 상태와 관계없이 노트를 엶(`cr-lesson-landed-<세션>-<레슨>`)
 - 보던 단계는 `cr-lesson-step-<id>-<lesson>`에 남음. 메인과 세션 화면이 이 값으로 "단계 n/N"을 표시
 - 이 기록이 없는 브라우저(새 브라우저, 저장소를 지운 경우)에서는 서버에 `reached`로 기록된 가장 뒤 단계부터 엶(2026-11-14)
 
@@ -946,10 +953,10 @@ WAF 상태 스냅숏:
 
 세션 API는 단계 정보 중 아래 값만 브라우저로 보냅니다.
 
-- 보내는 것: check의 `kind`와 `form`, `options`(`form: order`면 학습자 워게임의 장비 이름. customers는 빠짐), 단계 자신의 `match`나 `about`으로 가리킨 단계의 `match`, check에 `dev`가 있을 때 `dev: true`(정규식은 안 보냄), 기초 레슨 마지막 단계의 `solo`
+- 보내는 것: 단계에 `command`가 있는지(`has_command`), check의 `kind`, `form`, `leg`, `options`(`form: order`면 학습자 워게임의 장비 이름. customers는 빠짐), 단계 자신의 `match`나 `about`으로 가리킨 단계의 `match`, check에 `dev`가 있을 때 `dev: true`(정규식은 안 보냄), 기초 레슨 마지막 단계의 `solo`
 - `accept` 목록이나 정답 규칙은 브라우저로 나가지 않음
-- 단계의 `command`는 `progress`에 그 단계 진입이 기록된 뒤에야 응답에 들어감. 입력할 문구라 실행 버튼이나 복사 버튼은 없음
-- 통과 문장(`<text>.ok.<step>`, 선택형 단계에서 답에 따라 다르면 `<text>.ok.<step>.<option>`)과 단계형 시나리오의 정답은 `strings.html` 끝의 `{% comment %}` 구역에 둠. Django가 렌더링하지 않음
+- 단계의 `command`는 `progress`에 그 단계 진입이 기록된 뒤에야 응답에 들어감. 실행 버튼은 없고, 명령 아래에 복사 버튼(`lesson.command.copy`)이 있음
+- 통과 문장(기초 레슨은 `<text>.ok.<step>`, 선택형 단계에서 답에 따라 다르면 `<text>.ok.<step>.<option>`. 단계형 시나리오는 `<text>.line.<step>`이고 기록의 `line`에 들어감)과 단계형 시나리오의 정답은 `strings.html` 끝의 `{% comment %}` 구역에 둠. Django가 렌더링하지 않음
 - 이 구역은 `console/strings.py`가 읽어, 학습자가 얻은 시점에 단계의 `progress` 기록에 넣음
 - check를 통과해도 단계가 넘어가지 않음. 학습자가 '다음'을 눌러야 함. 마지막 단계만 레슨 끝 카드로 자동 전환
 - 이전/다음은 check 없이도 이동 가능
@@ -995,8 +1002,8 @@ sid를 읽을 수 없는 룰 줄:
 
 `replay`: `after`로 지정한 단계를 통과한 뒤 두 조건이 모두 맞으면 통과합니다.
 
-- 공격(`sent` 정규식이나 `kali` 케이스)이 `expect`를 만족. 학습자가 추가한 sid의 경보가 있거나, 실행이 차단되어(탐지 기록에 949110) 탈취 데이터가 인정되지 않아야 함
-- 같은 시각 이후의 정상 요청이 각자의 `expect`를 만족. `status_class`가 맞거나, 추가한 sid의 경보가 없거나, WAF 기록이 없어야 함
+- 공격: `sent` 정규식이면 학습자가 추가한 sid의 경보가 있어야 함. `kali` 케이스면 그 실행의 탐지 기록에 949110이 있고 탈취 데이터가 없어야 함. 공격 쪽 `expect`는 읽지 않음
+- 같은 시각 이후의 정상 요청 중 하나 이상이 `expect`의 조건을 모두 만족. `status_class`가 맞고, `alerted_sid: none`이면 추가한 sid의 경보가 없고, `waf_logged: false`면 WAF 기록이 없어야 함
 - 사유에 어느 쪽이 빠졌는지 나옴(`lesson.check.replay_attack`, `lesson.check.replay_benign`)
 - 정상 요청이 맞지 않으면 그 요청과 어긋난 내용을 함께 알림. 사유는 `lesson.check.replay_benign.status`(2xx 아님), `.alerted`(추가한 sid가 경보를 냄), `.waf_logged`(`views._benign_fault`)
 
@@ -1004,8 +1011,8 @@ check 판정은 모두 플랫폼에서 `POST /api/sessions/<id>/lesson/steps/<st
 
 - 본문: 답, 선택지, 붙여 넣은 표는 `{answer}`. 백그라운드 폴링은 `{poll: true}`
 - 이 호출로 `passed`를 기록하고 `{passed, reason, hint, hints, progress}`를 응답
-- 추가 필드: `rules` check는 `added`, `kali`와 `replay` check는 `kali`, `loot` check는 `loot`
-- 폴링에서 확실한 잘못(정상 replay 요청 실패, 지워진 Paranoia Level 줄)이 나오면 `loud: true`
+- 추가 필드: `rules` check는 `added`, `kali` check는 `kali`, `loot` check는 `loot`
+- 폴링에서 확실한 잘못(정상 replay 요청 실패, 지워진 Paranoia Level 줄, 일부만 붙여 넣은 loot, `wrong_if`에 걸린 `sent`)이 나오면 `loud: true`
 - `reason`은 값이 딸린 `strings.html` 키
 - 폴링이 아닌 check가 실패하면 오답으로 집계. 오답이 두 번이면 그 단계의 힌트 단계를 올리고 힌트를 기록. 단계형 시나리오에서는 그 대신 시나리오의 다음 힌트를 제안(`scenario_run.stuck`)
 - `triage` check는 예외. 학습자가 낸 답이 아니므로 실패해도 오답으로 세지 않음. 실패하면 그 단계의 `passed`를 지움. 통과 표시는 지금 상태를 따름
@@ -1055,7 +1062,7 @@ Kibana 쿼리와 개발자 도구 답:
 - 과정의 마지막 레슨(과정 1은 F3, 과정 2는 F6) 뒤: 들은 레슨을 레슨별 통과 단계 수와 함께 카드에 나열. "세션 종료" 버튼으로 세션을 닫음. 점수는 결과 화면에 있으니 싣지 않음
 - 단계형 시나리오 마지막 단계: 안내 단계를 마쳤다고 알림(`scenario.note.done`)
 - 통과 문장은 마지막 단계에서도 질문 아래 남음
-- 오답 문장은 다시 입력하거나 다른 선택지를 누르면 사라짐. KQL 문제를 알리는 문장은 Kibana 쿼리가 바뀌면 사라짐
+- 오답 문장은 다시 입력하거나 다른 선택지를 누르면 사라짐. Kibana를 읽는 단계의 오답 문장은 Kibana 쿼리가 바뀌면 사라짐
 - 순서 고르기는 누른 버튼에 번호를 매겨 표시. 다시 누르면 빠진다는 안내는 질문에 있음
 - 참고 칸 열림 상태는 세션·레슨별로 저장(`cr-lesson-reference-<session>-<lesson>`). 새 레슨은 참고가 닫힌 채 열림
 - 룰 편집기의 적용 안 한 수정은 localStorage(`cr-rules-draft-<session>`, 기준 버전 포함)에 보관. 다시 불러올 때 복원하고 알림. 적용하면 지움. 기준 버전이 다른 초안은 복원하지 않음
@@ -1069,7 +1076,7 @@ Kibana 쿼리와 개발자 도구 답:
 - 누를 때마다 `POST /api/sessions/<id>/lesson/hints/ {step, level: "hint"}`로 단계의 `hint` 단계를 올림
 - 처음 한 번은 레슨 정보와 함께 `Session.hints`에 기록(`{lesson, step, level}`, 마이그레이션 0017, 0027)
 - 가이드 세션이 아니거나 레슨에 없는 단계·단계값이면 400. 닫힌 세션이면 409
-- 한 단계에서 60초가 지나면 버튼 문구만 "새 힌트 보기"로 바뀜. 누르기 전에는 아무것도 기록하지 않음
+- 한 단계에서 60초가 지나면 힌트 버튼을 강조함(`btn-blue`). 문구는 그대로. 누르기 전에는 아무것도 기록하지 않음
 - 기초 레슨 마지막 단계는 혼자 푸는 단계. 강조 표시, 넛지, 힌트 없음
 - `result.scenario.helped`(`["hint"]` 또는 없음)가 있으면 메인 화면과 닫힌 세션 화면의 통과·미통과 옆에 "힌트 사용"
 
@@ -1135,14 +1142,14 @@ Kibana 쿼리와 개발자 도구 답:
 - 대상이 노트 카드 안에 있으면 콜아웃은 카드 옆 창에 둠
 - 지시선은 글자를 가로지르지 않음. 콜아웃이 테두리에서 48px 안에 있으면 그리지 않음
 - 구성도 위 테두리는 노드 옆 구성도 글자에 닿지 않을 때까지 여백을 줄임(`clearOfText`). 가장 작으면 노드 자체의 사각형
-- 로케이터가 있는 단계의 힌트는 "표시한 곳을 확인해 보세요."
+- 기초 레슨의 힌트는 늘 레슨 자신의 `<text>.nudge.<step>`, `.hint.<step>`. 단계형 시나리오에서 그 문구가 없고 로케이터가 있는 단계는 "표시한 곳을 확인해 보세요."(`lesson.hint.point`)
 - 단계의 창이 안 보이면 단계 카드에 "<창> 열기" 버튼(`lesson.open.<pane>`). 버튼 이름에 대상이 드러나므로 강조만 하고 콜아웃은 없음. 마지막 단계에는 강조도 없음
-- 약 2초 동안 대상을 찾지 못하면 카드에 어디를 볼지 안내(`lesson.coach.missing`)
+- 약 2초(120프레임) 동안 대상을 찾지 못하면 브라우저 콘솔에만 기록. 카드 문구는 웹사이트 창 대상이 홈으로 돌아간 경우의 `lesson.site.missing` 하나
 - 구성도는 창 크기가 마지막으로 맞춘 크기와 다를 때만 다시 맞춤(창을 열 때, 크기가 바뀔 때). 단계가 바뀌거나 마지막 단계에 이르는 것만으로는 다시 그리지 않음
 
 모든 기초 레슨과 단계형 시나리오 단계의 `point`가 렌더링된 콘솔에서 찾아지는지는 `test_every_point_a_foundation_or_scenario_step_names_resolves_on_the_blue_console`로 확인합니다.
 
-룰 편집기(`#lesson-rules`, 결정 D3)는 블루팀 콘솔의 IDS 룰 창에 있습니다. `detection`이나 `unknown` 유형 시나리오에서 `rulesPane()`으로 띄웁니다.
+룰 편집기(`#lesson-rules`, 결정 D3)는 블루팀 콘솔의 IDS 룰 창에 있습니다. `detection`이나 `unknown` 유형 시나리오, 그리고 단계가 룰 창을 열거나 `rules` check를 쓰는 레슨에서 `rulesPane()`으로 띄웁니다.
 
 - 읽기: `GET /api/rules/?session=<id>`
 - 검사: `POST /api/rules/validate/`. 쓰기: 불러온 버전을 기준으로 `POST /api/rules/apply/`
@@ -1178,7 +1185,7 @@ board의 `scenario.yaml`에 `foundations:` 목록을 선언합니다. discovery 
 - `wargames.foundations()`: 기초 레슨을 `order` 순으로 나열
 - `wargames.lesson(lesson_id=...)`: 기초 레슨이나 단계가 있는 시나리오를 찾음. 그 밖의 id는 거부. 기초 레슨에는 `group: foundations`를 붙임
 - `GET /api/wargames/`의 `foundations`(`wargames._foundation_card`): `id`, `order`, `title` 문자열 키, `minutes`, `level`, `defense`, `prerequisites`, 단계 수, `step_ids`, `changes_waf`
-- 메인 페이지는 기초 레슨을 레슨 목록 맨 앞에 두고 소요 시간, 학습 내용, 시작 버튼(그 레슨을 안내와 함께 엶)을 보여 줌
+- 메인 페이지는 기초 레슨을 레슨 목록 맨 앞에 과정별로 묶어 두고, 레슨마다 번호, 제목, 시작 버튼(그 레슨을 안내와 함께 엶)만 보여 줌. `minutes`, `level`은 API에만 있음
 
 시드 재생:
 
@@ -1211,7 +1218,7 @@ board의 `scenario.yaml`에 `foundations:` 목록을 선언합니다. discovery 
 
 **f3 Kibana에서 내 요청 찾기**(`lesson.logs`). defense `full`, 웹사이트 창에서 시작.
 
-- 영문자와 숫자로 된 자기만의 단어로 검색. 예시 단어 `kim0413`은 검색 단계에서 인정하지 않음
+- 영문자와 숫자 4자 이상으로 된 자기만의 단어로 검색. 예시 단어 `kim0413`은 검색 단계에서 인정하지 않음
 - Kibana에 `url : *단어*`를 입력. 카드마다 쿼리를 다시 적어 주고, 화면의 열 이름을 그대로 써서 묻는 것:
   - Kibana에 나오는 건수. 센서가 WAF 뒤만 보므로 그 단어로 한 검색 가운데 waf가 board.com에 넘긴 요청 수
   - 주소창으로 그 단어를 글 번호 자리에 넣어 없는 글(`/posts/<단어>/`)을 요청(`missing`, `sent` check). 이 요청도 url에 단어가 들어가 404로 기록됨
@@ -1249,9 +1256,10 @@ board의 `scenario.yaml`에 `foundations:` 목록을 선언합니다. discovery 
 답을 읽는 곳:
 
 - `escaped`(`char: "<"`): 기록된 쿼리에 그 문자의 퍼센트 인코딩(`%3C`)이 있으면 그 값
-- `rule`: 요청의 ModSecurity 룰 id. 949110은 제외
-- `anomaly_total`: 949110의 `Total Score: N`
-- `alerted`, `alerted_destination`(학습자가 추가한 룰이 낸 경보의 `dest_ip`), `alerted_sid_present`: 기록 시간대의 Suricata 경보 중 url이 그 기록의 url과 같은 것을 `lesson.added_rules`와 대조(`views._alerts_for`)
+- `rule`: 요청의 ModSecurity 룰 id. 949·959·980으로 시작하는 판정 룰은 제외(`lesson.rules_named`)
+- `anomaly_total`: 요청 시간대 ModSecurity 메시지의 `Total Score: N`. 답은 `N`, `Total Score: N`, `(Total Score: N)` 모두 인정
+- `alerted`: 기록 시간대의 Suricata 경보 중 url이 그 기록의 url과 같은 것이 있는지
+- `alerted_destination`(학습자가 추가한 룰이 낸 경보의 `dest_ip`), `alerted_sid_present`: 같은 경보를 `lesson.added_rules`와 대조(`views._alerts_for`)
 - url이 없는 경보는 browse 마커가 있을 때 셈. 마커만으로 맞추면 공격 몇 초 뒤 보낸 일반 검색이 공격 경보를 뒤집어써서 replay의 일반 검색이 통과하지 못함
 - `match: '<script'`가 붙은 `rules`, `needs: nocase`가 붙은 `rules`
 - `needs: nocase` 단계는 세션에서 마지막으로 적용한, 대소문자를 구분하던 판보다 룰의 `rev`가 커야 통과(`lesson.raised_rev`, 아니면 `lesson.xss.fail.nocase.rev`). 처음부터 `nocase`로 쓴 룰은 올릴 판이 없음
@@ -1306,11 +1314,11 @@ board의 `scenario.yaml`에 `foundations:` 목록을 선언합니다. discovery 
 - `detected_penalty`(`objective:`): 그 목표가 탐지됐을 때의 감점(난이도 ×1). 값은 `wargames.objectives`의 등급에서 읽음. 채점하지 않는 시나리오에서는 비어 있음
 - `detected_penalty`의 통과 문장은 통과 시점의 목표 행에 따라 다름(`lesson.miss.ok.cost.undetected`, `.detected`, `.kept`, `views._outcome`). 관리자 계정이 탈취되지 않았는데 8점이 감점됐다고 말하지 않음
 - `waf_changed`: Paranoia Level 줄도 그대로 남아 있어야 함. 카드에서 그 줄은 두라고 안내
-- `replay`: 실행이 차단되고 탈취 데이터가 없는지, 일반 정렬이 2xx이면서 WAF 기록이 없는지
+- `replay`: 재실행의 탐지 기록에 949110이 있고 탈취 데이터가 없는지, 일반 정렬이 2xx이면서 WAF 기록이 없는지
 
 방어 설정 `xss-gap`과 `overbroad`:
 
-- `xss-gap`: CRS paranoia level 1 + `no-xss.rules`(`local.rules`에서 sid 9000003을 뺀 파일)
+- `xss-gap`: CRS paranoia level 1, DetectionOnly(기록만 하고 차단하지 않음) + `no-xss.rules`(`local.rules`에서 sid 9000003을 뺀 파일)
 - `overbroad`: level 1 + `no-uri-sqli.rules` + 예외 `{tag: OWASP_CRS, target: "ARGS:sort"}`
 - `overbroad`의 예외는 WAF 파일에 `SecAction "id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetByTag=OWASP_CRS;ARGS:sort"`로 들어감. 그래서 CRS 룰 전체가 `sort`를 검사하지 않음
 
@@ -1326,6 +1334,8 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 
 전환 시 동작:
 
+- 요청한 레슨이 지금 레슨이면 아무것도 하지 않음
+- 옮기기 전의 WAF를 스냅숏으로 남김(`waf_snapshots[].lesson`)
 - 레슨이 선언한 방어 설정이 `Session.defense`와 다르면 레슨의 CRS 설정을 씀(`PUT /waf/`와 같은 `crs.apply`). 센서 룰 파일은 방어 설정의 룰 파일이 바뀔 때만 다시 넣음
 - `Session.lesson`과 `Session.defense` 갱신
 - `Session.lessons`에 `{id, started_at}` 추가(마이그레이션 0027). 첫 항목은 기초 레슨을 열 때 씀
@@ -1353,7 +1363,7 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 - 세션 화면의 레슨 카드: 레슨별로 통과한 단계(와 다시 시도한 단계). Kali 실행과 F4의 웹사이트 창 XSS 케이스마다 "레슨 n · m단계"
 - "다시 시작": 학습자가 손댄 첫 레슨(화면의 `begun()`: 통과, 건너뜀, 힌트가 있거나 세션을 연 레슨)을 그 레슨의 방어 설정으로 엶
 
-레슨 사이에는 아무것도 초기화하지 않습니다. board 목표는 유출만 판정합니다(세션 시작 스냅숏과 탈취 데이터 대조). 레슨은 대상 시스템 데이터를 바꾸지 않습니다. 방어 설정은 F4와 F6이 그 자리에서 바꾸고 F5가 `full`로 되돌립니다.
+레슨 사이에 대상 시스템 데이터는 초기화하지 않습니다. board 목표는 유출만 판정합니다(세션 시작 스냅숏과 탈취 데이터 대조). 레슨은 대상 시스템 데이터를 바꾸지 않습니다. 방어 설정은 다음 레슨의 것이 다르면 바뀝니다(F1~F3 `full`, F4 `xss-gap`, F5 `full`, F6 `overbroad`). CRS 설정을 다시 쓰고, 룰 파일이 다르면 센서 룰 파일도 다시 넣으므로 F4에서 학습자가 쓴 IDS 룰은 F5로 옮기면 사라집니다.
 
 레슨은 시작 이후에 일어난 일만 판정합니다(`views._lesson_started`. 항목이 둘 이상이면 `Session.lessons`의 마지막 항목).
 
@@ -1386,10 +1396,11 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 
 답으로 읽을 수 있는 값입니다. 그 밖의 값은 discovery 시점에 `wargames.read_from_record`에서 거부합니다.
 
-- `of:`가 훈련 환경 사실: `address`, `subnet`, `path`, `logs`, `excluded_target`, `lost_points`, `detected_penalty`
+- `of:`가 훈련 환경 사실: `address`, `subnet`, `path`, `excluded_target`, `lost_points`, `detected_penalty`. `lost_points`는 지금 쓰는 단계가 없음
 - `of:`가 요청 사실이고, `about:`이 `match`가 있는 단계를 가리키거나 단계 자체에 `match`가 있음(그 단계와 맞는 가장 최근 웹사이트 창 기록을 읽음): `status`, `method`, `path`, `parameter`, `param_value`, `escaped`, `sensor_source`, `forwarded_for`, `waf_detected`, `anomaly_total`, `alerted`, `alerted_destination`, `alerted_sid_present`, `hits`
 - `of:`가 Kali 사실이고 `about:`이 `kali` 단계를 가리킴: `sqlmap_found`, `run_records`(실행의 WAF 기록 수), `alerted_by`, `server_errors`(실행의 500 기록)
 - 요청의 `path`나 `step:` 마커와 함께 쓰는 `rule`(위)
+- `rule_matched`: `rule:`과 `step:` 마커가 있어야 함
 
 ## 점수 계산 방식
 
@@ -1423,10 +1434,10 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
   - 무단 콘텐츠 작성(`content_write`, 3)
 - 세션을 시작하면 기존 관리자, 감시 대상 `wp_options`, 게시된 글의 스냅숏을 저장
 - 스냅숏은 corp-db에 읽기 전용 `mysql` SELECT로 읽음(`platform/api/effect.py`). 네트워크를 거치지 않고 `runner("corp-db")`로 실행
-- `POST /api/sessions/<id>/objectives/`: corp-db의 바이너리 로그를 `mysqlbinlog`로 읽음. 세션 시작 1분 전부터(`--start-datetime`, UTC)만 읽음. 커밋된 변경 중 타임스탬프가 악성 케이스의 시간 범위에 드는 것마다 등급을 인정
+- `POST /api/sessions/<id>/objectives/`: corp-db의 바이너리 로그를 `mysqlbinlog`로 읽음. 세션 시작 1분 전부터(`--start-datetime`, UTC) 읽고, 세션 시작 전 변경은 버림. 커밋된 변경 중 타임스탬프가 악성 케이스의 시간 범위에 드는 것마다 등급을 인정
 - 대상 변경:
   - 스냅숏에 없던 사용자에게 준 `wp_usermeta` 관리자 권한
-  - `users_can_register`나 `default_role`의 `wp_options` 변경
+  - `wp_options`의 `users_can_register=1`이나 `default_role=administrator`. 스냅숏과 값이 같으면 인정하지 않음
   - 새로 쓰거나 덮어쓴 `wp_posts` 행
 - 이 읽기도 탐지 장비에 보이지 않음
 
@@ -1452,7 +1463,7 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 경보와 케이스는 케이스마다 선언한 두 전략 중 하나로 매칭합니다.
 
 - `marker`: 경보에 케이스의 `X-Request-ID` 값이 있으면 매칭
-- `window`: 경보의 출발지 주소가 케이스와 같고, 경보 시각이 케이스 시작~종료 사이(앞뒤 2초 여유)면 매칭
+- `window`: 경보의 출발지 주소가 케이스와 같고, 경보 시각이 케이스 시작~종료 사이(앞뒤 2초 여유)이고, 경보에 다른 마커가 붙어 있지 않으면 매칭. 다른 케이스나 고객 요청의 마커가 붙은 경보는 가져오지 않음
 
 전략 간 fallback은 없습니다. 마커가 유실된 marker 케이스는 window로 메우지 않고 미탐으로 드러나야 합니다. 터미널 케이스에는 마커와 시간 구간이 모두 있습니다.
 
@@ -1468,7 +1479,7 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 - `expect`: 케이스의 시그니처에 들어 있어야 할 부분 문자열
 - `corroborated`: 매칭된 경보 중 하나의 시그니처에 `expect`가 대소문자 구분 없이 들어 있으면 true. 같은 세션에서 정상 케이스에도 매칭된 시그니처는 제외
 - 정탐도 `expect`를 통과해야 함. 공격 기법을 짚지 않은 경보만 있으면 `corroborated: false`
-- 케이스에 `expect`가 없으면 `null`. `POST /api/sessions/<id>/cases/`로 기록한 window 케이스는 요청 본문에 `expect`를 넣지 않으면 `null`
+- 케이스에 `expect`가 없으면 `corroborated`는 `null`(`per_case[].expect`는 `""`). `POST /api/sessions/<id>/cases/`로 기록한 window 케이스는 요청 본문에 `expect`를 넣지 않으면 `null`
 - 탐지됐지만 corroborated가 아닌 케이스에는 `score.warning.wrong_reason`
 
 `expect`는 케이스를 실행할 때 함께 저장합니다. 케이스 파일을 고쳐도 끝난 세션은 다시 판정되지 않습니다. 마이그레이션 0009 이전 행은 저장된 `expect`가 없어 현재 케이스 파일로 판정합니다. 경보 위험도와 룰 유형은 쓰지 않습니다.
@@ -1500,9 +1511,9 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 - `blocked_actions`
 - `alerted_requests`(경보가 난 고객 요청의 시각, 동작, 메서드, 경로. 최대 20건)
 
-요청은 한 번씩만 집계합니다. 고객 요청은 케이스가 아닙니다. `per_case` 목록에 들어가지 않고, 고객 요청이 낸 경보도 `unattributed`에 넣지 않습니다. 콘솔의 탐지 결과에는 케이스 문장 옆에 "차단된 고객 요청: M건 중 N건"이 나옵니다.
+요청은 한 번씩만 집계합니다. 고객 요청은 케이스가 아닙니다. `per_case` 목록에 들어가지 않고, 고객 요청이 낸 경보도 `unattributed`에 넣지 않습니다. 워게임과 레슨 세션의 탐지 결과에는 케이스 문장 옆에 "차단된 고객 요청: M건 중 N건"이 나옵니다. `detected_by` 시나리오는 그 대신 경보 없이 통과한 고객 요청 수(`score.customers_alerted`)와 케이스 표의 고객 행을 보여 주고, 다른 시나리오는 둘 다 보여 주지 않습니다.
 
-완료 조건에 탐지기가 지정된 시나리오 세션(`detected_by`)은 그 탐지기의 경보만 셉니다(`scenario_run.sensed`). `per_case`, 목표의 탐지 여부, `customers.alerted`, 최종 점검 판정, 결과 보고의 타임라인이 모두 같은 정의를 쓰므로, 웹방화벽만 경보를 낸 공격은 어디서나 미탐입니다. 점수 응답의 `detected_by`가 그 탐지기를 밝힙니다.
+완료 조건에 탐지기가 지정된 시나리오 세션(`detected_by`)은 그 탐지기의 경보만 셉니다(`scenario_run.sensed`). `per_case`, 목표의 탐지 여부, `customers.alerted`, 최종 점검 판정, 결과 보고의 타임라인이 모두 같은 정의를 쓰므로, 웹방화벽만 경보를 낸 공격은 점수와 판정에서 미탐입니다. 점수 응답의 `detected_by`가 그 탐지기를 밝힙니다. 진행 중 카드의 `when: alert`와 `live.alerted_per_minute`는 모든 탐지기의 경보를 셉니다. 이 규칙은 시나리오 세션에만 적용합니다. 레슨 F4의 `detected_by: suricata`는 `rules` 단계를 허용하는 데만 쓰고, F4의 점수는 두 탐지기의 경보를 모두 셉니다.
 
 점수 엔드포인트는 읽기 전용이고 이력을 남기지 않습니다.
 
@@ -1510,7 +1521,7 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 
 board 세션에는 고객을 붙일 수 있습니다. 세션 내내 글을 둘러보고, 검색하고, 로그인하고, 댓글을 다는 국내 커뮤니티 사용자입니다.
 
-구성은 `wargames/board/traffic.yaml`에 선언합니다. 사용자 수, 출발지 가중치, 시드 계정, 글 1-3, 브라우저 User-Agent, 검색어, 댓글 내용, 행동 가중치 프로필이 들어갑니다.
+구성은 `wargames/board/traffic.yaml`에 선언합니다. 사용자 수, 출발지 가중치, 시드 계정, 글 1-15, 브라우저 User-Agent, 검색어, 댓글 내용, 행동 가중치 프로필이 들어갑니다.
 
 `platform/traffic.py`는 이 선언을 아래 형태로 렌더링합니다.
 
@@ -1557,7 +1568,7 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
   - `by_action`(행동별 전송 수와 차단 수)
 - `DELETE`: 생성기를 멈추고 마지막 기록까지 읽음. 세션을 닫을 때도 슬롯 초기화 전에 같은 처리. 박스에 연결되지 않으면 닫기는 진행하고 오류를 `traffic.error`에 남김
 
-기록은 바이트 오프셋 기준으로 가져옵니다(`tail -c`, 호출당 최대 1 MiB, 완전한 줄만). 호출마다 `bulk_create` 한 번으로 `CustomerRequest` 행에 넣고, 오프셋은 `Session.traffic`에 둡니다.
+기록은 바이트 오프셋 기준으로 가져옵니다(`tail -c`, 한 번에 최대 1 MiB, 완전한 줄만). 1 MiB보다 짧은 덩어리가 올 때까지 이어 읽고, 덩어리마다 `bulk_create`(`batch_size=500`)로 `CustomerRequest` 행에 넣고, 오프셋은 `Session.traffic`에 둡니다.
 
 고객 트래픽 스위치는 테스트용이라 세션 페이지 URL에 `?traffic`이 있을 때만 보입니다. 시나리오에서는 고객을 자동으로 시작합니다.
 
@@ -1632,9 +1643,9 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 구간에서는 시나리오 종류별 `completion`을 판정합니다.
 
 - `served`: 구간 안에서 방어 설정에 차단된 고객 요청(앱이 아닌 403)이 없어야 함
-- `held`: 구간 안의 공격이 모두 실행됐고 모두 막혔어야 함(탈취 데이터 일치 없음, 영향 없음)
+- `held`: 구간 안의 공격이 모두 실행됐고 모두 막혔어야 함(탈취 데이터 일치 없음, 영향 없음). 실행되지 않은 공격이 있으면 `scenario.fail.unfired`
 - `judged`: 구간이 열릴 때 목록에 있던 항목을 모두 맞게 판정해야 함. 목록은 구간과 함께 저장. 구간 중에 내린 판정도 인정. 나중에 더 이른 시각으로 기록에 들어온 항목은 추가하지 않음
-- `detected_by`: 구간 안의 공격마다 corroborated인 Suricata 경보가 있어야 함. 고객 요청에는 경보가 없어야 함
+- `detected_by`: 구간 안의 공격이 모두 실행됐고(아니면 `scenario.fail.unfired`), 공격마다 corroborated인 Suricata 경보가 있어야 함. 고객 요청에는 Suricata 경보가 없어야 함(`scenario_run.sensed`). 케이스에 `expect`가 없으면 Suricata 경보 하나로 충분하지만, 지금 쓰는 케이스에는 모두 `expect`가 있음
 - `thresholds`: 구간의 WAF 스냅숏 시점에 적용 중인 CRS 이상 점수 임계치가 지정값 이하여야 함. 임계치를 지정하지 않은 설정은 CRS 기본값(인바운드 5, 아웃바운드 4)
 
 구간의 기타 규칙:
@@ -1832,43 +1843,41 @@ Discover 링크:
 
 - `no_benign`: 정상 케이스 없음. 세션의 고객이 요청을 보냈으면 이 경고를 뺌. 고객 요청은 케이스로 기록되지 않는 정상 트래픽
 - `no_marker`: marker 케이스는 있는데 마커가 붙은 경보가 하나도 없음
+- 레슨 세션(시나리오가 아닌 가이드 세션)에서는 `no_benign`과 `no_marker`를 빼고 보냄
 - `no_source_ip`: 출발지 주소가 없는 window 케이스가 있음
 - `wrong_reason`: 탐지됐지만 corroborated가 아닌 케이스가 있음
 - `truncated`: Elasticsearch hit가 ingest에서 읽은 것보다 많음
 
-**API로 실행하는 케이스**(`views._fire`)는 HTTP 연결 하나에 케이스 하나씩 보냅니다. CLI는 한 번 실행하는 동안 연결 하나를 계속 씁니다.
-
-- 당시 케이스 세트(12개)로 측정했을 때 두 방식의 점수와 케이스별 경보 수는 같았음
-- acceptance 테스트에서 CLI를 돌리므로 연결을 공유하는 경로도 계속 테스트됨
+**케이스 발사.** API(`views._fire`)와 CLI(`redteam/run.py`) 모두 `harness.fire`를 거쳐 HTTP 케이스마다 공격 박스에서 `curl`을 따로 실행합니다. CLI의 `requests.Session`은 플랫폼 API에만 씁니다.
 
 ## OpenStack
 
-OpenStack 구축은 `docs/STATE.md` 백로그의 OpenStack 항목 순서를 따릅니다. 이 절에는 구축을 마친 것만 적었고, 항목마다 클라우드나 fake 환경에서 돌려 확인했습니다. 남은 작업은 절 끝에 있습니다. 근거는 `docs/STATE.md`("Decided on 2026-09-30"), `docs/superpowers/specs/2026-09-30-openstack-range-placement.md`, `docs/superpowers/specs/2026-09-30-waf-console-and-tutorial.md`에 있습니다.
+이 절에는 구축을 마친 것만 적었고, 항목마다 클라우드나 fake 환경에서 돌려 확인했습니다. 남은 작업은 절 끝에 있습니다. 근거는 `docs/DECISIONS.md`, `docs/superpowers/specs/2026-09-30-openstack-range-placement.md`, `docs/superpowers/specs/2026-09-30-waf-console-and-tutorial.md`에 있습니다.
 
 지금 클라우드는 노드 세 대, Kolla 2025.2, ML2/OVN입니다. 제품이 지원하는 버전은 Kolla-Ansible 2025.1 이상입니다([클라우드 요구 사항](OPENSTACK.md#2-what-the-cloud-needs-kolla-ansible-20251-or-later)).
 
 훈련 환경은 프로젝트 `fsl-range`에 두고, member 역할 사용자 `fsl-range`로 조작합니다. 사용자에게 Horizon은 노출하지 않습니다.
 
-클라우드별 값은 `deploy/openstack/cloud.yaml`에 둡니다. 관리자 권한으로 `uv run bin/cloud init`을 실행하면 `cloud.example.yaml`에서 이 파일을 만듭니다. 파일이 있으면 init이 맡은 키(`cloud`, `network.external`, `compute.base_image`, `compute.flavors`)만 줄 단위로 바꾸고 다른 값과 주석은 그대로 둡니다.
+클라우드별 값은 `deploy/openstack/cloud.yaml`에 둡니다. 관리자 권한으로 `uv run bin/cloud init`을 실행하면 `cloud.example.yaml`에서 이 파일을 만듭니다. 파일이 있으면 init이 맡은 키(`cloud`, `network.external`, `network.allowed`, `compute.base_image`, `compute.flavors`)만 줄 단위로 바꾸고 다른 값과 주석은 그대로 둡니다.
 
 키:
 
 - `cloud`: 인증 정보가 든 `clouds.yaml` 항목 이름(`fsl-range`)
-- `network`: `external`, `address`, `dns`, `mtu`, `platform`, `estate`, `mgmt`
+- `network`: `external`, `address`, `allowed`(선택, ssh·8000·8002를 열 CIDR, 기본 `[0.0.0.0/0]`), `dns`, `mtu`, `platform`, `estate`, `mgmt`
 - `compute`: `base_image`, `availability_zone`, `slots`, `flavors.platform`, `flavors.range`
 - `keys`: `key_name`(플랫폼 VM의 Nova 키페어 이름), `key_file`(그 개인키 경로), `range`
 - `platform`: `stack`, `repository`, `ref`
 - `backups`: `keep`
 
-인증 정보는 이 파일에 없습니다. OpenStack 클라이언트 표준 설정 파일 `~/.config/openstack/clouds.yaml`에서 `cloud`가 가리키는 항목을 읽습니다(`cloud.signed_in`). init이 이 항목을 모드 0600으로 쓰고, 파일의 다른 항목은 건드리지 않습니다. 비밀번호는 무작위로 만들고 출력하지 않습니다. 항목이 없으면 `up`, `down`, `platform-rebuild`는 아무것도 바꾸기 전에 멈추고 `bin/cloud init`을 실행하라고 출력합니다. 셸의 `OS_*` 변수는 지우고 `OS_CLOUD`, `OS_CLIENT_CONFIG_FILE`만 openstack CLI에 넘깁니다. 플랫폼 VM은 항목의 `user_domain_name` 도메인으로 로그인합니다.
+인증 정보는 이 파일에 없습니다. OpenStack 클라이언트 표준 설정 파일 `~/.config/openstack/clouds.yaml`에서 `cloud`가 가리키는 항목을 읽습니다(`cloud.signed_in`). init이 이 항목을 모드 0600으로 쓰고, 파일의 다른 항목은 건드리지 않습니다. 비밀번호는 무작위로 만들고 출력하지 않습니다. 항목으로 이미 로그인되면 그대로 둡니다. 사용자는 있는데 그 비밀번호를 가진 항목이 없으면 거부하고, `--reset-password`를 주면 새 비밀번호를 정합니다. 떠 있는 플랫폼은 `up --replace` 전까지 옛 비밀번호를 씁니다. 항목이 없으면 `up`, `down`, `platform-rebuild`는 아무것도 바꾸기 전에 멈추고 `bin/cloud init`을 실행하라고 출력합니다. 셸의 `OS_*` 변수는 지우고 `OS_CLOUD`, `OS_CLIENT_CONFIG_FILE`만 openstack CLI에 넘깁니다. 플랫폼 VM은 항목의 `user_domain_name` 도메인으로 로그인합니다.
 
 init이 하는 일(`bin/cloud`의 `init`, 관리자 인증은 `/etc/kolla/clouds.yaml`의 `kolla-admin` 항목 또는 셸의 `OS_*`):
 
-- `router:external` 외부 네트워크 하나를 찾음. 없거나 여럿이면 목록을 출력하고 멈춤
+- `router:external` 외부 네트워크 하나를 찾음. 없으면 멈추고, 여럿이면 `network.external`이 그중 하나를 가리킬 때만 그것을 쓰고 아니면 목록을 출력하고 멈춤
 - 프로젝트 `fsl-range`, member 사용자 `fsl-range`가 없으면 만듦
 - flavor는 만들지 않음. 조건(플랫폼 2 vCPU·8 GB·40 GB, 훈련 환경 호스트 6 vCPU·16 GB·40 GB 이상)에 맞는 것 중 가장 작은 것을 고름. private flavor는 프로젝트에 접근 권한을 줌
 - quota가 인스턴스 2, 두 flavor의 vCPU·RAM, floating IP 1을 담지 못하면 모자란 항목을 출력하고 멈춤
-- `ubuntu-24.04`가 없으면 noble amd64 클라우드 이미지를 받아 `SHA256SUMS`와 대조한 뒤 public으로 올림
+- `compute.base_image`(기본 `ubuntu-24.04`) 이미지가 없으면 noble amd64 클라우드 이미지를 받아 `SHA256SUMS`와 대조한 뒤 public으로 올림. 같은 이름이 여럿이거나 `active`가 아니면 거부. 프로젝트 소유가 아닌 기존 이미지는 public으로 바꿈
 - `keys.key_file`이 없으면 `ssh-keygen`으로 만듦
 
 저장소는 uv 프로젝트입니다. 루트의 `pyproject.toml`에 플랫폼 의존성과 그룹 `dev`(pytest), `cloud`(`bin/cloud`가 쓰는 openstacksdk, python-openstackclient, python-heatclient)을 적고 `uv.lock`으로 고정합니다. `uv run`은 실행 전에 `.venv`를 lock에 맞추므로 `uv sync`를 따로 하지 않습니다. `bin/verify`, 플랫폼 VM의 `cr-venv`, sideload, platform 이미지는 같은 lock으로 `uv sync --frozen`을 씁니다.
@@ -1878,23 +1887,28 @@ init이 하는 일(`bin/cloud`의 `init`, 관리자 인증은 `/etc/kolla/clouds
 - `platform/range/cloud.py`: 파일 검사. 문제는 키별로 모두 보고. `clouds.yaml` 항목 읽기와 병합, init의 외부 네트워크·flavor 선택도 여기 있음
 - `bin/platform-rebuild`, `bin/cloud`: 이 값과 `clouds.yaml` 항목으로 openstack CLI와 Heat 파라미터를 채워 실행. 스택을 배포하면 값이 플랫폼의 `openstack.env`에 기록됨. `bin/cloud`는 출력하는 줄마다 앞에 `HH:MM:SS`를 붙이고, API는 5초마다 물음
 
-`bin/cloud up`의 순서:
+`bin/cloud up`은 스택이 정상이고 `--replace`가 없으면 플랫폼 VM을 그대로 씁니다(`resume`: ssh 대기, 인계가 안 됐으면 인계, API 대기). 스택이 없거나 `*_FAILED`거나 `--replace`면 플랫폼 VM을 새로 만듭니다(`rebuild`): ref 커밋의 이미지 일곱 개가 GHCR에 있는지 먼저 확인하고, 옛 VM의 DB를 백업하고 훈련 환경 키를 받아 둔 뒤 스택을 교체합니다. 훈련 환경 호스트는 스택에 속하지 않아 남습니다. 새 플랫폼은 훈련 환경 이미지 태그(`bin/range-image-tag`)와 번들 digest가 같으면 그 호스트와 슬롯을 그대로 쓰고, 새 `cr-reach` 포트를 붙이고 수집기와 시간 소스를 다시 맞춥니다. 다르면 `stale`로 보고 다시 부팅합니다.
+
+새로 만들 때의 순서:
 
 1. `keys.key_name`의 Nova 키페어 확인. 없으면 `<key_file>.pub`로 `openstack keypair create --public-key` 실행. 같은 이름의 키페어에 다른 공개키가 있으면 덮어쓰지 않고 키페어 이름을 출력한 뒤 중단(`bin/platform-rebuild`의 `ensure_keypair`)
 2. 스택 생성
-3. `POST /api/range/fabric/`
-4. `POST /api/range/slot/`: 훈련 환경 호스트 부팅 또는 교체
-5. 호스트가 뜨고 설치가 끝나면 `POST /api/range/configure/`
+
+그다음은 두 경우 모두 같습니다(`converge`).
+
+3. `POST /api/range/fabric/`. fabric이 어긋나 있으면 멈춤
+4. `POST /api/range/slot/`: 훈련 환경 호스트 부팅 또는 교체. 슬롯이 blocked면 멈춤
+5. 호스트가 뜨고 설치가 끝나면 `POST /api/range/configure/`. 설치가 `SETUP_FAILED`면 멈춤. configure가 503이면 5초 간격으로 최대 60번 다시 시도
 6. `/api/range/ready/`에서 모든 슬롯이 READY가 될 때까지 대기
 7. `DELETE /api/range/leftovers/`
 
-`bin/cloud down`은 키를 남기고, 플랫폼 DB를 백업한 뒤(`bin/backup`, 사본은 `backups.keep`개까지) 슬롯, 훈련 환경 호스트, fabric, 스택을 지웁니다.
+`bin/cloud down`은 키를 남기고, 플랫폼 DB를 백업한 뒤(`bin/backup`, 사본은 `backups.keep`개까지) 슬롯, 훈련 환경 호스트, fabric, 스택을 지웁니다. 물어볼 플랫폼이 없으면(스택이 `*_FAILED`거나 VM에 플랫폼 DB 파일이 없음) 스택만 지우고 훈련 환경 호스트와 fabric은 프로젝트에 남깁니다.
 
 `up`과 `down`의 예외 처리:
 
-- 스택이 `*_FAILED`면 `up`은 지우고 다시 만듦(남은 빌더 서버부터). `down`은 지움
-- VM에 실행 중인 `cr-platform` 컨테이너도 플랫폼 DB 파일도 없으면 `down`과 `up --replace`에서 백업을 건너뜀
-- VM에 ssh가 닿지 않으면 거부
+- 스택이 `*_FAILED`면 `up`은 지우고 다시 만듦(남은 빌더 서버부터). `down`은 스택만 지움
+- VM에 플랫폼 DB 파일이 없으면 `down`과 `up --replace`에서 백업을 건너뜀
+- VM에 ssh가 닿지 않거나 `docker ps`가 실패하면 거부
 - 플랫폼 DB는 있고 `cr-platform` 컨테이너만 멈춰 있으면 `down`은 컨테이너를 시작해 백업함(`docker exec`로 실행). 그다음 API 응답을 기다렸다가 훈련 환경을 지움
 - `up`은 API 응답과 상관없이 매번 VM 인계 여부를 확인. 인계 전 VM(`/opt/cr/openstack-password`가 없거나 비어 있음)이면 그 자리에서 인계
 - 인계: 비밀번호와 훈련 환경 키를 넣음. 키가 없고 VM에 플랫폼 DB도 없으면 키를 새로 생성. VM에 플랫폼 DB가 없으면 행이 있는 가장 최근 백업을 복원
@@ -1996,7 +2010,8 @@ fabric이 만드는 네트워크는 `mgmt`뿐입니다. 슬롯의 `internet`과 
 
 `setup.sh`의 작업:
 
-- `docker.io`, `docker-compose-v2`, `ethtool`을 카카오 미러(`mirror.kakao.com`)에서 설치. `apt-get update`와 설치를 15초 간격으로 최대 10번 시도하고, 성공 여부는 설치 결과로 판단
+- apt 소스를 카카오 미러(`mirror.kakao.com`)의 `main restricted universe`로 바꾸고, `snapd`와 `modemmanager`를 지운 뒤 다시 설치되지 않게 고정. dpkg 잠금은 600초까지 기다림
+- `docker.io`, `docker-compose-v2`, `ethtool`을 설치. `apt-get update`와 설치를 15초 간격으로 최대 10번 시도하고, 성공 여부는 설치 결과로 판단
 - sshd의 `MaxSessions`, `MaxStartups`와 inotify 한도를 올림
 - `CR_RANGE_IMAGE_TAG`로 GHCR에서 이미지를 모두 pull
 - 대상 시스템의 pristine 볼륨을 `/opt/cr/pristine`에 저장
@@ -2010,7 +2025,7 @@ fabric이 만드는 네트워크는 `mgmt`뿐입니다. 슬롯의 `internet`과 
 
 Docker와 메타데이터:
 
-- `daemon.json`: 테넌트 MTU(`mtu`, `default-network-opts`), /28 단위 주소 풀 10.40.0.0/16, `local` 로그 드라이버, `userns-remap: default`
+- `daemon.json`: 테넌트 MTU(`mtu`, `default-network-opts`), /28 단위 주소 풀 10.40.0.0/16, `local` 로그 드라이버(`max-size` 10m, `max-file` 2), `userns-remap: default`
 - 서버 메타데이터: `cr_host`, `cr_tag`(이미지 태그), `cr_bundle`(번들 digest). digest는 파일별 이름과 내용의 해시
 - 태그나 digest가 플랫폼과 다르면 그 호스트는 `stale`. 열린 세션이 없으면 `POST /api/range/slot/`에서 VM을 지우고 다시 부팅. 세션이 열려 있으면 슬롯을 blocked로 보고
 - Glance 이미지는 만들지 않음. 훈련 환경 호스트의 이미지는 GHCR에서만 pull
@@ -2021,7 +2036,7 @@ Docker와 메타데이터:
 
 - 슬롯 N은 훈련 환경 호스트의 docker compose 프로젝트 `sN`. `platform/range/rangehost.py`에서 `deploy/range-host/slot.yaml`과 워게임별 `wargames/<w>/compose.yaml`로 렌더링
 - 컨테이너: `sN-kali`, `sN-edge`, `sN-waf`, `sN-sensor`, `sN-board`, `sN-board-db`, `sN-corp-wp`, `sN-corp-db`, 관제용 `sN-log-server`, `sN-sensor-shipper`, `sN-waf-shipper`
-- 네트워크: `sN_internet`(브리지 `sN-inet`, 172.30.N.0/24), `sN_estate`(브리지 `sN-estate`, 10.30.N.0/24: 에지 .1, WAF .247), `sN_web`(브리지 `sN-web`, 10.30.N+128.0/24: WAF .247, board .59, corp-wp .60), 워게임별 DB용 `<wargame>-default`, 관제망 `sN_mgmt`(브리지 `sN-mgmt`, 172.29.N.0/24: log-server .10, 센서 .11, WAF .12)
+- 네트워크: `sN_internet`(브리지 `sN-inet`. Docker 서브넷은 172.30.N.0/24지만 쓰지 않음. Kali는 출발지 주소 100개, 에지 `wan`은 121.134.88.42/29), `sN_estate`(브리지 `sN-estate`, 10.30.N.0/24: 에지 .1, WAF .247), `sN_web`(브리지 `sN-web`, 10.30.N+128.0/24: WAF .247, board .59, corp-wp .60), 워게임별 DB용 `<wargame>-default`, 관제망 `sN_mgmt`(브리지 `sN-mgmt`, 172.29.N.0/24: log-server .10, 센서 .11, WAF .12)
 - 관제망을 뺀 모든 네트워크: `internal`, `gateway_mode_ipv4: isolated`, 테넌트 MTU. publish한 포트도 NAT도 없음
 - 관제망만 밖으로 나가는 길이 있음. log-server가 훈련 환경 호스트의 NAT로 플랫폼 수집기에 보내기 때문. `slot.sh`가 네트워크를 만들기 전에 필터를 넣음: `INPUT`에서 `sN-mgmt`발 전부 drop(호스트에 닿지 않음), `DOCKER-USER`에서 `sN-mgmt` 안끼리와 log-server→수집기 5140/udp만 허용하고 나머지 drop. `down`이 이 룰을 지움
 - 대상 시스템과 센서의 healthcheck: 평소 60초, 시작 구간 1초 간격(`slot.yaml`의 `x-wargames.healthcheck`가 워게임 자체 주기를 덮어씀). 쉬는 슬롯이 바쁜 슬롯에 CPU를 양보하게 하는 값
@@ -2045,13 +2060,13 @@ Docker와 메타데이터:
 
 `slot.sh up`의 처리 순서:
 
-1. 슬롯 디렉터리를 모두 root 소유로 바꿉니다.
+1. 호스트 이름을 `/etc/hosts`에 넣고, `sensor-rules`, 센서·WAF 로그 디렉터리를 만듭니다. `sensor.yaml`, `sensor-rules`, 센서 로그 디렉터리는 remap된 root(dockremap) 소유, WAF 로그 디렉터리는 호스트 root 소유로 둡니다.
 2. WAF 로그 디렉터리 `/var/log/cr/sN/waf`에서 일반 파일 `audit.log`와 `refused.log`만 남기고 모두 지웁니다. 없는 파일은 remap된 범위의 `www-data`·`adm` 소유(`0644`)로 만듭니다. 컨테이너 안에서 root로 도는 nginx 마스터가 파일을 열고, WAF shipper가 읽기 전용 마운트로 읽습니다.
 3. 관제망 필터를 넣습니다(위 "관제망만 밖으로"). 그다음 컨테이너를 만들고(`up --no-start --pull never`), 한 번도 실행하지 않은 대상 시스템의 빈 볼륨마다 초기 데이터를 복사합니다.
 4. 컨테이너를 띄웁니다(`up -d --wait`). 그다음 센서, log-server, shipper를 `--force-recreate`로 다시 만들어 방금 쓴 설정을 읽게 합니다. Suricata는 출력 설정을 시작할 때만 읽습니다.
 5. Kali에 출발지 주소들과 라우터 공인 IP로 가는 onlink default route(출발지는 기본 출발지 주소 5.188.10.10)를 붙입니다. 에지의 `wan`에는 공인 IP 하나와 Kali의 기본 출발지 주소(5.188.10.10)로 가는 onlink default route를 붙이고(`nsenter`로 `ip -batch`), 포트포워딩과 인바운드 필터 룰 `edge.nft`를 에지 안의 `nft -f`로 넣습니다. 출발지 대역으로 가는 응답은 모두 이 default route로 Kali에 갑니다.
 6. WAF가 에지의 estate 주소로 라우팅하게 합니다. 대상 시스템에는 default route가 없고 WAF에만 응답합니다.
-7. 모든 브리지와 그 포트, 컨테이너 인터페이스에서 TSO, GSO, GRO를 끕니다. 센서가 실제로 오간 그대로의 패킷을 보게 합니다.
+7. `sN-inet`, `sN-estate`, `sN-web` 브리지와 그 포트, Kali·에지·WAF·대상 시스템의 인터페이스에서 TSO, GSO, GRO를 끕니다(관제망은 제외). 센서가 실제로 오간 그대로의 패킷을 보게 합니다.
 8. `DOCKER-USER`에 브리지별로 같은 브리지로의 forward 허용 룰을 넣습니다.
 9. 센서 미러링(SPAN)을 겁니다(`mirrored`). 먼저 `sN-inet`, `sN-estate` 포트에 남은 `tc` 설정을 지웁니다. 센서의 `web` 주소를 지우고, `sN-web`의 다른 포트마다 ingress `tc` `matchall` → `mirred egress mirror dev <센서 포트>`. 센서 포트는 learning, flood를 끄고 ingress를 drop해 받기만 함. 초기화 때 새로 만든 컨테이너의 포트에도 다시 겁니다.
 
@@ -2120,7 +2135,7 @@ Docker와 메타데이터:
 - 에지의 neighbour 테이블을 비우고, 슬롯 로그 파일(센서 `eve.json`, WAF `audit.log`와 `refused.log`)을 그 자리에서 비우고, 센서가 로그 파일을 다시 열게 함. shipper는 비워진 파일을 처음부터 다시 읽음(`reopenOnTruncate`). WAF shipper는 WAF와 함께 새로 만듦
 - 새로 만든 컨테이너의 브리지 포트에 미러링을 다시 검
 - 그 뒤 플랫폼이 센서에 기본 룰을 다시 넣음
-- 에지, 센서, 로그 서버, shipper는 내리지 않음
+- 에지, 센서, 로그 서버, 센서 shipper는 내리지 않음
 - 슬롯 파일이 훈련 환경 호스트에서 사라졌으면(`/opt/cr/sN/compose.yaml` 없음) 초기화 대신 슬롯을 configure
 - 앞 세션에서 수정한 룰이나 심어 둔 데이터는 다음 세션에 남지 않음
 
@@ -2219,7 +2234,7 @@ Docker와 메타데이터:
 
 차단은 구축했습니다. WAF는 `SecRuleEngine On`으로 돌고, 학습자는 WAF 터미널이나 `PUT /api/sessions/<id>/waf/`로 CRS를 조정합니다.
 
-- 실행한 케이스의 `meta["blocked"]`는 대상 시스템이 아니라 403 응답 여부로 정함
+- 실행한 케이스의 `meta["blocked"]`는 대상 시스템이 아니라 403 응답으로 정함. 예정된 sqlmap 공격은 주입 불가로 끝나도 `blocked`("점수 계산 방식" 절)
 - 시작 paranoia level은 2026-10-10에 측정(`docs/DECISIONS.md`). PL1만으로도 board의 SQLi는 차단되고 O'Brien은 통과
 - 그래서 과차단하도록 만든 방어 설정은 PL1보다 높은 단계에서 시작(시나리오의 `level2`, `level3`). 학습자는 PL을 낮추거나 임계치, 예외 규칙을 조정
 
@@ -2227,4 +2242,4 @@ Docker와 메타데이터:
 
 - 세션 수명 주기: WAF 모드와 시계 차이를 준비 상태 검사에 넣기
 
-사람이 결정해야 할 남은 사항은 `docs/STATE.md`("Decisions left for a person")에 있습니다.
+사람이 결정해야 할 남은 사항은 `docs/STATE.md`에 있습니다.
