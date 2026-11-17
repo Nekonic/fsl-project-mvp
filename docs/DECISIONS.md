@@ -9024,3 +9024,30 @@ sessions, closed more than 60 min before, were removed by retention at start):
 
 The platform VM's first apt try succeeded; both hosts' sources point at
 `http://mirror.kakao.com/ubuntu/`. The new range host is 10.31.0.242.
+
+Run 2, `uv run bin/cloud up --replace` at 2f2f4783, a docs-only commit, from
+run 1's VM (`CR_RANGE_IMAGE_TAG` 014bc78d on both, bundle unchanged):
+
+| Step | Run 1 (655e331a) | Run 2 (2f2f4783) |
+|---|---|---|
+| Checks (stack, `git ls-remote`, GHCR, keypair) | 19 s | 19 s |
+| Store probe and backup | 2 s (nothing to back up) | 5 s (1,646,592 bytes, integrity_check ok) |
+| Floating IP, network, builders | 8 s | 8 s |
+| Stack delete, create | 11 s, 30 s | 17 s, 24 s |
+| Server created to ssh | 28 s | 32 s |
+| cloud-init and `cr-platform.service` | 6 min 24 s | 6 min 29 s |
+| Hand-over | 24 s | 23 s |
+| `/api/auth/` answers | 25 s | 25 s |
+| Converge | 16 min 36 s (new range host) | 1 min 12 s (`configure/`, `ready/`) |
+| Total | 25 min 27 s | 10 min 14 s |
+
+Run 2 kept the range host: the same server (`cr-range`, 10.31.0.242, one
+Nova ID before and after) and every slot's board, board database, corp, corp
+database, Kali, WAF and edge router containers (56 of 88, same IDs and
+creation times). `configure/` recreated each slot's log server, sensor,
+sensor shipper and WAF shipper (32 of 88): `up` in `deploy/range-host/slot.sh`
+recreates the sensor and the logging containers on every run (`compose up
+--force-recreate ... sensor $(logging)`), and the collector they forward to is
+now the new platform VM's `mgmt` address (10.31.0.144 in run 1, 10.31.0.229
+in run 2). A platform-only replace now spends most of its time in the
+platform VM's first boot (6.5 min of 10).

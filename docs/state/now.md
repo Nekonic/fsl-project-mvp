@@ -5,16 +5,29 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-17, answer-blind walk rounds 23 and 24 fixed, staff can
-delete an approved learner, and the whole cloud rebuilt at 97db8909 with the
-full `bin/verify` green (the range is one range host, `cr-range`, running
-eight slots as compose projects on runc; on `dev`).
+Updated: 2026-11-17, the cloud recovered from an interrupted replace and
+rebuilt at 2f2f4783 with the full `bin/verify` green: both hosts install from
+the Kakao mirror (`mirror.kakao.com`), and a platform-only replace keeps the
+range host (`cr-range` 10.31.0.242, eight slots as compose projects on runc;
+on `dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
 
 ## Where things stand
 
+- 2026-11-17, the platform VM and the range host install from the Kakao
+  mirror, an apt try is decided by the install, and a platform-only replace
+  keeps the range host (`docs/DECISIONS.md` "An apt try is decided by the
+  install"). The interrupted 8bcbc9f9 replace left a VM without Docker; the
+  replace at d761b9f7 failed the same way on the mirror's out-of-step
+  `noble-security` index. Run 1 at 655e331a restored
+  `db-20261117T042204Z.sqlite3` (the VM that ran 6ba70c0c; also in
+  `~/.cache/fsl-work/backup-safe/`) in 25 min 27 s, 16 min 36 s of it a new
+  range host (10.31.0.242); run 2 at 2f2f4783, docs only, took 10 min 14 s and
+  kept the range host and every slot's targets, Kali, WAF and edge router.
+  The full `bin/verify` on 2f2f4783: acceptance 94 passed, 0 failed, 1
+  skipped in 492 s; unit and API 1024 + 783; 569 s.
 - 2026-11-17, answer-blind walk round 24's result, scenario and run-check
   findings fixed (`docs/DECISIONS.md` "Answer-blind walk round 24",
   `docs/TROUBLESHOOTING.md` "Answer-blind walk round 24"): a Kali run the
@@ -486,11 +499,12 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 ## Next, in order
 
 1. The live cloud on `dev`: `platform.ref` is `dev` in `cloud.yaml`; the VM
-   runs `/opt/cr` at 97db8909. `compute.slots` as the user wants
+   runs `/opt/cr` at 2f2f4783, the range host is 10.31.0.242. `compute.slots` as the user wants
    (eight now). Run `uv run bin/cloud init` once as admin on con01
    (`/etc/kolla/clouds.yaml`) to see it report everything present.
-2. Answer-blind walk round 25 of both courses and a scenario is running on
-   97db8909; then tag the state and take it through gate 2 (item 6).
+2. Answer-blind walk round 25 of both courses and a scenario, from the
+   start (the run on 97db8909 was stopped midway); then tag the state and take
+   it through gate 2 (item 6).
 3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
    or `union select` even where it is loaded: a detection gap to measure
    (round 16, `docs/DECISIONS.md`).
