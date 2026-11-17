@@ -147,6 +147,10 @@
     const button = event.target.closest("button[data-delete]");
     if (!button || !confirm(t("users.delete_confirm", button.dataset.name))) return;
     button.disabled = true;
+    button.textContent = t("users.deleting");
+    const row = button.closest("tr");
+    row.setAttribute("aria-busy", "true");
+    row.style.opacity = "0.5";
     const said = await post(`/api/users/${button.dataset.delete}/delete/`);
     if (!said.ok) showError(t("users.failed", detail(said)));
     await load();

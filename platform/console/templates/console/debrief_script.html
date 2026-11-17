@@ -69,17 +69,26 @@ function renderDebrief(container, told) {
   ].filter(Boolean);
   const evidence = `<ul class="flex flex-col gap-1 font-mono text-[12px]">${told.evidence.map((row) =>
     `<li data-evidence class="break-all">${esc([row.signature, `${row.method} ${row.path}`.trim(), t(`lesson.debrief.phase.${row.phase}`),
-      localized(`case.${row.case}`, row.case)].filter(Boolean).join(" · "))}</li>`).join("")}</ul>`;
+      localized(`case.${row.case}`, row.case)].filter(Boolean).join(" · "))}</li>`).join("")}</ul>${
+    told.evidence_total > told.evidence.length ? `<p class="text-muted text-[12px]" data-evidence-more>${
+      esc(t("scenario.debrief.evidence_more", told.evidence_total - told.evidence.length))}</p>` : ""}`;
   const alertWord = (alerted) => (alerted == null ? "" : toned(t(alerted ? "scenario.debrief.alerted" : "scenario.debrief.no_alert"),
     alerted ? "text-success" : "text-danger"));
-  const judgedCell = (outcome, alerted) => [outcome ? debriefOutcome(outcome) : "", alertWord(alerted)].filter(Boolean).join(" · ")
-    || debriefOutcome(null);
+  const failedIn = (name, inWindow) => told.timeline.some((entry) => entry.case === name
+    && Boolean(entry.in_window) === inWindow && entry.state === "failed");
+  const unfired = (name, inWindow) => (failedIn(name, inWindow) ? toned(t("scenario.debrief.state.failed"), "text-warning")
+    : toned(t("scenario.debrief.not_run"), "text-faint"));
+  const judgedCell = (row, inWindow) => {
+    const outcome = inWindow ? row.after : row.before;
+    const alerted = inWindow ? row.alerted_after : row.alerted_before;
+    return [outcome ? debriefOutcome(outcome) : "", alertWord(alerted)].filter(Boolean).join(" · ") || unfired(row.name, inWindow);
+  };
   const judgedCases = told.cases.filter((row) => row.before || row.after || row.alerted_before != null || row.alerted_after != null);
   const cases = `<table class="w-full text-[12px]"><thead><tr class="text-left text-muted">
       <th class="font-normal">${esc(t("score.col.case"))}</th><th class="font-normal">${esc(t("scenario.debrief.before"))}</th>
       <th class="font-normal">${esc(t("scenario.debrief.after"))}</th></tr></thead><tbody>${judgedCases.map((row) =>
     `<tr data-case="${esc(row.name)}"><td class="py-1 pr-2">${esc(localized(`case.${row.name}`, row.name))}</td>
-      <td data-before>${judgedCell(row.before, row.alerted_before)}</td><td data-after>${judgedCell(row.after, row.alerted_after)}</td></tr>`).join("")}</tbody></table>`;
+      <td data-before>${judgedCell(row, false)}</td><td data-after>${judgedCell(row, true)}</td></tr>`).join("")}</tbody></table>`;
   container.innerHTML = `<h3 class="font-semibold text-heading">${esc(t("lesson.debrief.heading"))}</h3>` + [
     debriefSection("overview", facts.map((line) => `<p>${esc(line)}</p>`).join("")),
     debriefSection("customers", debriefCustomers(told.customers)),

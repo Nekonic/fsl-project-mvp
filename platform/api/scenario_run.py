@@ -584,6 +584,7 @@ def debrief(session) -> dict:
     opened = scenarios.at(state["opened_at"])
     cases = {case.case_id: case for case in session.cases.all()}
     counted = sensed(session)
+    alerts = _attack_alerts(cases, counted)
     marked = set(counted.filter(marker__in=list(cases)).order_by().values_list("marker", flat=True).distinct())
     taking = _taking_the_secret(session, {entry["case"] for entry in state["schedule"]})
     timeline = [
@@ -621,7 +622,8 @@ def debrief(session) -> dict:
                                     if step_id in steps and kept.get("passed")), "total": len(steps)},
             "help": dict(help_steps, hints=help_steps["hints"] + len(state["hints"])),
         },
-        "evidence": _evidence(session, cases, counted),
+        "evidence": _evidence(cases, alerts),
+        "evidence_total": alerts.count(),
         "change": views.applied(session),
         "cases": [{"name": name, "malicious": True, "before": before.get(name), "after": after.get(name),
                    "alerted_before": alerted_before.get(name), "alerted_after": alerted_after.get(name)}
@@ -667,14 +669,15 @@ def sensed(session):
     counted = detector(session)
     return session.detections.filter(source=counted) if counted else session.detections.all()
 
-def _evidence(session, cases, sensed) -> list[dict]:
-    attacks = {case_id: case for case_id, case in cases.items() if case.meta.get("scheduled")}
-    found = sensed.filter(marker__in=list(attacks)).order_by("-timestamp")[:views.EVIDENCE_ROWS]
+def _attack_alerts(cases, sensed):
+    return sensed.filter(marker__in=[case_id for case_id, case in cases.items() if case.meta.get("scheduled")])
+
+def _evidence(cases, alerts) -> list[dict]:
     return [
         {"id": detection.id, "source": detection.source, "signature": detection.signature,
          "method": views._request_of(detection.raw or {})[0], "path": views._request_of(detection.raw or {})[1],
-         "phase": "attack", "case": attacks[detection.marker].name, "timestamp": detection.timestamp.isoformat()}
-        for detection in found
+         "phase": "attack", "case": cases[detection.marker].name, "timestamp": detection.timestamp.isoformat()}
+        for detection in alerts.order_by("-timestamp")[:views.EVIDENCE_ROWS]
     ]
 
 def end(session) -> None:

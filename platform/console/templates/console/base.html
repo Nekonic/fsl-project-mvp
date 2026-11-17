@@ -244,16 +244,18 @@
 
     const SESSION_NAME_KEY = (id) => `cr-session-name-${id}`;
 
-    function sessionCrumb(id, session) {
+    function sessionCrumb(id, session, played) {
       const href = `/session/${id}/`;
       try {
+        const known = JSON.parse(localStorage.getItem(SESSION_NAME_KEY(id)));
         if (session && session.scenario) {
-          localStorage.setItem(SESSION_NAME_KEY(id), JSON.stringify({ scenario: session.scenario, kind: session.kind }));
+          localStorage.setItem(SESSION_NAME_KEY(id), JSON.stringify({ scenario: session.scenario, kind: session.kind,
+            played: played || (known && known.scenario === session.scenario && known.played) || "" }));
         }
         const kept = JSON.parse(localStorage.getItem(SESSION_NAME_KEY(id)));
         if (kept && kept.scenario) {
           const name = localized(`wargame.${kept.scenario}.name`, kept.scenario);
-          const kind = localized(`kind.${kept.kind}`, "");
+          const kind = kept.played || localized(`kind.${kept.kind}`, "");
           return { label: kind ? `${name} · ${kind}` : name, href };
         }
       } catch (error) {

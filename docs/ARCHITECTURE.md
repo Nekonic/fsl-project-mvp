@@ -102,7 +102,7 @@
 
 모든 콘솔 페이지와 `/api/` 엔드포인트는 로그인을 요구합니다(`api/signin.py`의 `SignedInOnly`). 로그인 없이 열리는 것은 로그인 페이지 `/login/`, 회원가입 페이지 `/signup/`, `GET /api/auth/`(현재 사용자, 관리자 여부, CSRF 토큰), `POST /api/auth/login/`, `POST /api/auth/signup/`뿐입니다. 로그인하지 않은 API 요청은 401, 페이지 요청은 로그인 페이지로 갑니다. POST, PUT, DELETE는 `X-CSRFToken` 헤더가 있어야 합니다. 토큰은 쿠키가 아니라 세션에 둡니다(`CSRF_USE_SESSIONS`). 첫 시작 때 `admin` / `123456` 계정을 만듭니다(마이그레이션 0030). 에이전트도 같은 REST로 로그인합니다(`redteam/signin.py`, `CR_ADMIN_USER`, `CR_ADMIN_PASSWORD`).
 
-회원가입(`username`, `password`, `password_confirm`)은 Django `UserCreationForm`과 기본 비밀번호 검사기 넷으로 확인한 뒤 `is_active=False`, 비관리자 계정을 만들고 201 `{"pending": true}`를 돌려줍니다. 거부 사유는 `errors[].code`(Django 오류 코드)로 오고, 화면은 이 코드로 문구를 찾습니다. 승인 전 계정이 맞는 비밀번호로 로그인하면 403 `{"pending": true}`입니다. 비활성 계정은 세션이 있어도 `/auth-check/`에서 401입니다. 관리자(`is_staff`)는 `/users/`(계정 관리, 상단 링크)에서 `GET /api/users/`, `POST /api/users/<id>/approve/`, `POST /api/users/<id>/reject/`(승인 대기 계정만, 삭제), `POST /api/users/<id>/delete/`(승인된 학습자 계정 삭제)를 씁니다. 삭제는 그 학습자의 열린 세션을 세션 종료 경로(`close_session`)로 먼저 닫아 슬롯을 재구축에 돌려준 뒤 계정을 지우고, 지난 세션은 소유자 없이 남습니다. 관리자가 아니면 403, 사용 중인 계정 거절과 관리자 계정·자기 계정 삭제는 409라서 관리자가 자기 계정을 없앨 수 없습니다.
+회원가입(`username`, `password`, `password_confirm`)은 Django `UserCreationForm`과 기본 비밀번호 검사기 넷으로 확인한 뒤 `is_active=False`, 비관리자 계정을 만들고 201 `{"pending": true}`를 돌려줍니다. 거부 사유는 `errors[].code`(Django 오류 코드)로 오고, 화면은 이 코드로 문구를 찾습니다. 승인 전 계정이 맞는 비밀번호로 로그인하면 403 `{"pending": true}`입니다. 비활성 계정은 세션이 있어도 `/auth-check/`에서 401입니다. 관리자(`is_staff`)는 `/users/`(계정 관리, 상단 링크)에서 `GET /api/users/`, `POST /api/users/<id>/approve/`, `POST /api/users/<id>/reject/`(승인 대기 계정만, 삭제), `POST /api/users/<id>/delete/`(승인된 학습자 계정 삭제)를 씁니다. 삭제는 그 학습자의 열린 세션을 세션 종료 경로(`close_session`)로 먼저 닫아 슬롯을 재구축에 돌려준 뒤 계정을 지우고, 지난 세션은 소유자 없이 남습니다. 세션을 닫느라 응답이 몇 초 걸릴 수 있어, 화면은 응답이 올 때까지 그 행을 흐리게 하고 버튼을 "삭제 중…"으로 바꿉니다. 관리자가 아니면 403, 사용 중인 계정 거절과 관리자 계정·자기 계정 삭제는 409라서 관리자가 자기 계정을 없앨 수 없습니다.
 
 남용 제한은 nginx와 Django에 있습니다.
 
@@ -374,6 +374,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
   - 포트, 범례는 그리지 않음
 - 아이콘: GNS3 affinity 글리프를 정사각형 틀에 넣은 `host-*.svg`와 스위치 아이콘. 출처와 라이선스는 같은 폴더의 `SOURCES`, Kali 드래곤 로고의 상표 고지는 `host-kali.txt`
 - 읽기 전용: `autoungrabify`, `autounselectify`, 상자 선택 끔. 이동과 확대·축소만 됨
+- 아이콘은 cytoscape.js를 읽기 전에 요청하고, 다 받거나 5초가 지난 뒤에 그림. 콘솔은 `drawn`을 받을 때 창을 보여 주므로 아이콘 없는 첫 그림이 보이지 않음. 토폴로지 API도 cytoscape.js를 읽기 전에 요청함
 - 콘솔과의 메시지: 첫 맞춤 뒤 `{map: "drawn"}`, 이후 `{fit}`를 받아 맞출 때마다 `{map: "fitted"}`. `{locate: {node|zone|label}}`에는 사각형, 영역 사각형(`zones`), 글자 사각형(`text`)으로 답함. 같은 origin의 메시지만 받음
 
 ## 격리 경계
@@ -847,6 +848,7 @@ WAF 상태 스냅숏:
 
 - 머리글: 가이드 세션의 현재 단계(`main.step`. 라벨이나 레슨 번호 없음). 진행 중이면 탈취된 목표(결과 화면에서는 주 점수에 나오므로 생략)
 - 세션 종류는 쓰지 않음. 경로 표시에 있는 대상 시스템은 반복하지 않음. 상태는 세션을 여는 중일 때만
+- 경로 표시: 메인 / 워게임 · 그 아래 줄과 같은 이름(시나리오 번호와 제목, 과정 이름, 레슨 이름) / 결과(닫힌 세션). 이름은 `cr-session-name-<id>`(localStorage)에 남겨 블루팀·레드팀 콘솔의 경로 표시도 같은 이름을 씀. 세션 화면을 아직 열지 않은 세션은 세션 종류를 씀
 - 그 아래 줄: 과정이나 레슨 이름, 시각
 - 진행 중인 시나리오는 시작 시각만 보여 줌. 시나리오 시계는 세션을 열 때가 아니라 상황 설명에서 시작을 누를 때 돌기 시작함
 - "블루팀 콘솔 열기" 버튼. "레드팀 콘솔 열기"는 워게임 세션에만 있음
@@ -1680,9 +1682,9 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 `GET .../scenario/debrief/`는 점검 구간이 판정되거나 세션이 닫히기 전까지 409입니다. 일정이 드러나지 않게 하기 위해서입니다. 그 뒤에는 Igloo/ASEC 보고서 순서로 아래를 돌려줍니다.
 
 - `overview`: 마지막 최종 점검의 판정, 조치 유형과 사유, 판정한 점검 수, 전체 단계 중 통과한 단계 수, 사용한 힌트
-- `evidence`: 예정된 공격에서 나온 세션의 탐지 기록 최대 20건. 완료 조건에 탐지기가 지정돼 있으면 그 탐지기의 기록. 룰·요청·케이스 포함. Elasticsearch는 조회하지 않음
+- `evidence`: 예정된 공격에서 나온 세션의 탐지 기록 최대 20건. 완료 조건에 탐지기가 지정돼 있으면 그 탐지기의 기록. 룰·요청·케이스 포함. Elasticsearch는 조회하지 않음. `evidence_total`은 잘리기 전 전체 건수이고, 결과 보고는 20건을 넘으면 목록 아래에 "외 N건"을 붙임
 - `change`: 선언된 방어 설정과 마지막 WAF 스냅숏의 비교. 추가·삭제된 예외 규칙, 양쪽 수준, 그 방어 설정으로 `crs.rendered`가 만드는 내용과 예외 파일의 줄 단위 diff. `ids`는 방어 설정의 Suricata 룰과 마지막으로 적용한 룰 파일의 줄 단위 diff(`views._ids_change`). WAF 스냅숏이 없어도 `ids`는 있고, 결과 보고는 비어 있지 않을 때만 보여 줌
-- `cases`: 예정된 케이스별로 판정된 구간 이전과 구간 안의 결과(held 또는 leaked)와 경보 여부(`alerted_before`, `alerted_after`. 실행되지 않았으면 `null`)
+- `cases`: 예정된 케이스별로 판정된 구간 이전과 구간 안의 결과(held 또는 leaked)와 경보 여부(`alerted_before`, `alerted_after`. 실행되지 않았으면 `null`). 결과 보고의 적용 전·후 표는 그 구간에 실행되지 않은 칸에 "실행 안 함", 실행이 실패한 칸에 "실행 실패"를 씀
 - `risk`: 조치 유형에 따라 정해지는 문자열 키
 - `customers`: 마지막 최종 점검이 끝난 시각까지 보낸 고객 요청의 집계(`sent`, `served`, `blocked`, 응답이 없던 `unanswered`, 그 밖의 4xx·5xx인 `other`). 점검이 끝난 뒤 고객 트래픽을 멈추기까지 몇 초 더 간 요청은 세지 않아, 콘솔에서 읽어도 닫힌 세션에서 읽어도 같은 수
 - 공격 `timeline`. `outcome`은 계정을 덤프하는 공격에만 있고, `loot_verified` 워게임에서 덤프하지 않는 공격은 `null`(`scenario_run._taking_the_secret`)

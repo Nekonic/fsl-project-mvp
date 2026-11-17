@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client
 
 from api.models import Session
+from tests.browser import open_page, worded
 from tests.test_signin import signed_in_client
 
 pytestmark = pytest.mark.django_db
@@ -174,3 +175,30 @@ def test_the_login_page_links_to_sign_up_and_the_sign_up_page_posts_to_its_api()
 
     assert 'href="/signup/"' in login
     assert 'id="sign-up"' in signup and 'post("/api/auth/signup/"' in signup
+
+
+def test_a_deleted_account_s_row_says_it_is_being_deleted_until_the_api_answers():
+    seen = open_page(admin(), "/users/", setup="""
+      confirm = () => true;
+      let answered = null;
+      browser.serve((request) => {
+        if (request.route === "/api/users/") {
+          return {body: {users: [{id: 7, username: "learner1", active: true, staff: false, joined: "2026-11-01T00:00:00Z"}]}};
+        }
+        if (request.route === "/api/users/7/delete/") return new Promise((resolve) => { answered = () => resolve({body: {}}); });
+        return {body: {blocks: []}};
+      });
+      window.answer = () => answered();
+    """, scenario="""
+      const button = document.querySelector('[data-delete="7"]');
+      const row = button.closest('tr');
+      browser.element('active').dispatchEvent({type: 'click', target: button});
+      await browser.settle();
+      const pending = {disabled: button.disabled, text: button.textContent, busy: row.getAttribute('aria-busy')};
+      window.answer();
+      await browser.settle();
+      return pending;
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"disabled": True, "text": worded("users.deleting"), "busy": "true"}

@@ -290,6 +290,21 @@ def test_a_detection_debrief_counts_and_shows_only_the_ids_alerts(client):
     assert told["timeline"][0]["detected"] is True
     assert [row["source"] for row in told["evidence"]] == ["suricata"]
 
+def test_a_debrief_cut_at_its_evidence_rows_counts_every_attack_alert(client):
+    from api import views
+
+    session = opened("3.2")
+    case = Case.objects.create(session=session, case_id=str(uuid.uuid4()), name=SQLMAP, malicious=True,
+                               pattern="CAPEC-66", correlation="marker", started_at=timezone.now(),
+                               ended_at=timezone.now(), meta={"scheduled": "3.2"})
+    Session.objects.filter(pk=session.pk).update(ended_at=timezone.now())
+    for _ in range(views.EVIDENCE_ROWS + 2):
+        alert(session, case.case_id, source="suricata", rule="9000101")
+    alert(session, case.case_id, source="modsecurity", rule="942100")
+
+    told = client.get(f"/api/sessions/{session.pk}/scenario/debrief/").json()
+    assert (len(told["evidence"]), told["evidence_total"]) == (views.EVIDENCE_ROWS, views.EVIDENCE_ROWS + 2)
+
 DEFAULTS = {"paranoia": 2, "exclusions": []}
 
 @pytest.mark.parametrize("waf, posture, named", [

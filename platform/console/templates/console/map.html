@@ -19,19 +19,45 @@
 <div id="map"></div>
 <p id="said"></p>
 {% include "console/strings.html" %}
-<script src="/static/map/cytoscape.min.js"></script>
 <script>
 const SYMBOLS = {
   kali: "host-kali.svg", router: "host-router.svg", waf: "host-shield.svg", server: "host-server.svg",
   database: "host-storage.svg", logs: "host-statistics.svg", sensor: "host-inspect.svg", switch: "switch.svg",
   host: "host-server.svg",
 };
+const SYMBOLS_WAIT_MS = 5000;
+const session = location.pathname.split("/")[2];
+const symbolUrl = (file) => `/static/map/symbols/${file}`;
+const symbolsArriving = [...new Set(Object.values(SYMBOLS))].map((file) => {
+  const image = new Image();
+  const arrived = new Promise((resolve) => {
+    image.addEventListener("load", resolve);
+    image.addEventListener("error", resolve);
+  });
+  image.crossOrigin = "anonymous";
+  image.src = symbolUrl(file);
+  return arrived;
+});
+const symbolsLoaded = Promise.race([
+  Promise.all(symbolsArriving),
+  new Promise((resolve) => setTimeout(resolve, SYMBOLS_WAIT_MS)),
+]);
+const topologyRead = (async () => {
+  try {
+    const answer = await fetch(`/api/sessions/${session}/topology/`);
+    return { ok: answer.ok, status: answer.status, body: await answer.json().catch(() => ({})) };
+  } catch (error) {
+    return { ok: false, status: 0, body: { detail: String(error) } };
+  }
+})();
+</script>
+<script src="/static/map/cytoscape.min.js"></script>
+<script>
 const COLOURS = { internet: "#b03a2e", dmz: "#2e6da4", web: "#2f7a6b", database: "#4a6fa5", mgmt: "#6b5b95" };
 const LINK = "#1b4f8a";
 const LOGS = "#5b6770";
 const MARGIN = 24;
 const LOCATE_EVERY_MS = 150;
-const session = location.pathname.split("/")[2];
 const font = getComputedStyle(document.body).fontFamily;
 const view = { cy: null, told: false, asked: null, last: "", timer: null };
 
@@ -83,7 +109,7 @@ function elements(map) {
   const nodes = map.nodes.map((node) => ({ group: "nodes", classes: classed(node),
     position: at[node.id],
     data: { id: node.id, label: named(node), name: node.name || "", side: node.label || "below",
-            symbol: `/static/map/symbols/${SYMBOLS[node.kind] || SYMBOLS.host}` } }));
+            symbol: symbolUrl(SYMBOLS[node.kind] || SYMBOLS.host) } }));
   const edges = map.edges.map((edge) => {
     const route = edge.route ? bends(edge.route, at[edge.source], at[edge.target]) : [];
     return { group: "edges", classes: edge.route ? `${edge.kind} routed` : edge.kind,
@@ -216,19 +242,14 @@ window.addEventListener("resize", () => {
   document.title = t("topology.view.map");
   const said = document.getElementById("said");
   said.textContent = t("topology.loading");
-  let read;
-  try {
-    const answer = await fetch(`/api/sessions/${session}/topology/`);
-    read = { ok: answer.ok, status: answer.status, body: await answer.json().catch(() => ({})) };
-  } catch (error) {
-    read = { ok: false, status: 0, body: { detail: String(error) } };
-  }
+  const read = await topologyRead;
   const map = read.body && read.body.map;
   if (!read.ok || !map || !map.nodes.length) {
     said.textContent = t("topology.unread", (map && map.detail) || read.body.detail || read.status);
     window.parent.postMessage({ map: "drawn" }, location.origin);
     return;
   }
+  await symbolsLoaded;
   said.remove();
   view.cy = cytoscape({
     container: document.getElementById("map"), elements: elements(map), style: STYLE, layout: { name: "preset" },

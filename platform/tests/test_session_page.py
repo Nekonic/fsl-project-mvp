@@ -666,3 +666,38 @@ def test_a_lesson_result_shows_each_lesson_s_own_change_under_that_lesson(client
     assert all(part in seen["result"]["text"] for part in (worded("lesson.debrief.change.ids"), "sid:9100001",
                                                            worded("lesson.debrief.change.waf"), "id:10001"))
     assert worded("lesson.debrief.change.unread") not in seen["result"]["text"]
+
+def test_an_attack_not_run_before_the_final_check_says_so_in_the_before_column(client):
+    setup = DETECTION_RESULT.replace('before: "held", after: "held", alerted_before: false, alerted_after: true',
+                                     'before: null, after: "held", alerted_before: null, alerted_after: true')
+    seen = open_page(client, "/session/1/", setup=setup, scenario="""
+      for (let i = 0; i < 6; i += 1) await browser.settle();
+      return document.querySelector('#debrief [data-case] [data-before]').textContent;
+    """)
+
+    assert setup != DETECTION_RESULT and seen["errors"] == []
+    assert seen["result"] == worded("scenario.debrief.not_run"), "a dash reads as data that failed to load"
+
+def test_evidence_cut_at_its_row_limit_says_how_many_more_alerts_there_are(client):
+    rows = ", ".join('{signature: "SQLi sort", method: "GET", path: "/?sort=x", phase: "attack", '
+                     'case: "board-sqli-orderby-sqlmap-tamper"}' for _ in range(20))
+    setup = DETECTION_RESULT.replace("evidence: [],", f"evidence: [{rows}], evidence_total: 22,")
+    seen = open_page(client, "/session/1/", setup=setup, scenario="""
+      for (let i = 0; i < 6; i += 1) await browser.settle();
+      return {rows: document.querySelectorAll('#debrief [data-evidence]').length,
+              more: document.querySelector('#debrief [data-evidence-more]').textContent};
+    """)
+
+    assert setup != DETECTION_RESULT and seen["errors"] == []
+    assert seen["result"] == {"rows": 20, "more": worded("scenario.debrief.evidence_more", 2)}
+
+def test_a_scenario_result_s_breadcrumb_names_the_scenario_as_its_header_does(client):
+    setup = DETECTION_RESULT.replace('public_url: "http://board.com", foundations: []}',
+                                     'public_url: "http://board.com", foundations: [], '
+                                     'scenarios: [{id: "3.3", title: "scenario.tamper.title"}]}')
+    seen = open_page(client, "/session/1/", setup=setup, scenario="return browser.text('crumbs');")
+    played = f'3.3 {worded("scenario.tamper.title")}'
+
+    assert setup != DETECTION_RESULT and seen["errors"] == []
+    assert seen["result"] == " / ".join([worded("crumb.home"), f'{worded("wargame.board.name")} · {played}',
+                                         worded("crumb.result")])
