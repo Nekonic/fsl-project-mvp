@@ -43,17 +43,19 @@ If the range is down, these tests fail. They do not skip, because a skipped
 acceptance check reads as "passed".
 
 Tests that change the Suricata rules each use a session of their own. Closing
-the session resets its slot (one copy of the range), which undoes the change.
+the session resets its slot (one copy of the range, one Heat stack): the
+platform deletes the stack and creates a fresh one, which undoes the change.
 Each of those that captures a baseline first checks that its sensor runs the
 rule set this repo declares (`runs_the_declared_rules` in `conftest.py`); no
 session is opened only for that check. `test_concurrent_sessions` is the
 exception: it writes the repo's rule file plus a probe rule, so it captures no
 leftovers.
 
-Opening a session is the slow part of the suite: a close resets its slot,
-43 s alone in the capacity measurement and 53 s in the 2026-11-14 acceptance
-round (`docs/state/now.md`), and longer when several slots reset at once,
-and the next open waits for a ready slot. Tests whose claims hold on the
+Opening a session is the slow part of the suite: a close replaces its slot's
+stack, and the next open waits for a ready slot of its wargame. How long a
+stack takes to delete and come back ready is **[unverified]** (the container
+range's reset took 43-53 s; a Heat probe stack reached `CREATE_COMPLETE` in
+29 s and answered ssh about 1 min 53 s after, `docs/superpowers/specs/2026-11-18-heat-range-design.md` §11). Tests whose claims hold on the
 same traffic therefore share one session. `shared_sessions.py` holds these
 sessions as session-scoped fixtures. Each fixture does the following:
 
@@ -82,7 +84,8 @@ These fixtures serve these tests:
 `test_corp_authz` reads each corp breach from the target's own rows and
 checks the exact set of objectives each session credited. `corp_sessions`
 opens both corp sessions at once and runs them side by side, so the module
-takes two slots. Each range command costs about 1.3 seconds, so commands
+takes two slots. Each range command costs about 1.3 seconds (measured on the
+container range), so commands
 on one host that need no answer in between go in one call (`run_in_turn`,
 `run_side_by_side`), and a nonce is read and spent in the same call.
 `test_concurrent_sessions` opens one pair of sessions: the guided one takes
@@ -112,7 +115,8 @@ variant's real traffic.
 `range.run_side_by_side(role, {key: argv})` starts several commands in one
 shell on one host and returns each command's own output and exit code. Each
 `range.run` call starts a Django process in the platform container and an ssh
-to the range host, about 1.3 s before the command itself runs, so the
+to the slot VM's control address, about 1.3 s before the command itself runs
+on the container range, so the
 containment checks (`test_range_isolation`, `test_judge_isolation`) send each
 host's probes in one call and the tests read their part of the answer.
 
@@ -131,13 +135,13 @@ totals of all of them, taken from each process's JUnit report.
 The split follows these rules:
 
 - **Slots.** N is `max_sessions` from `GET /api/range/ready/`: the number of
-  slots (`compute.slots`, eight on the test cloud since 2026-11-15). `--workers N`
+  slots in the pool (the sum of `compute.pool`, four by default). `--workers N`
   overrides it. With N = 1, one process runs every session module in the order
   `pytest test/` would.
-- **No range host.** `test_geoip_durable`, `test_origin_placement` and
+- **No slot.** `test_geoip_durable`, `test_origin_placement` and
   `test_waf_geolocation` read only Elasticsearch and repo files. They run in a
   process of their own from the start, so they do not wait for a range reset.
-  Anything that runs a command on the range host needs the range up.
+  Anything that runs a command on a slot VM needs the range up.
 - **Groups.** For N > 1, the modules that share a session-scoped fixture are
   one group and run in one process. The script finds these fixtures by reading
   `shared_sessions.py` and `conftest.py` as text. Every other module is a group
@@ -155,8 +159,9 @@ The split follows these rules:
   `bin/acceptance`: the exfiltration, event-time and containment checks). They are one group and run in that order. They get a session the
   group holds until it opens its own; `range.py` sends a call that has no
   `session=` to that session and fails a call that names no session while the
-  process has one of its own open. The last containment test plants links in
-  that session's WAF and closes it to watch the reset.
+  process has one of its own open. The last containment test writes a file on
+  that session's WAF, closes the session and checks that the slot's WAF is a
+  new VM (another boot id) without the file.
 - **Room.** If the range is full or resetting, opening a session is refused with
   409. The test waits for room and retries. So does the red-team run.
 
@@ -170,11 +175,14 @@ compose-only mechanism instead of skipping it (2026-10-17).
 
 - It runs a role's command through the platform container's own range adapter
   (`manage.py run_on_role --session <id>`), which reaches the slot that session
-  holds. The only command it runs on the platform itself is the one for the
-  `scorer` role, with `docker exec` on the platform container.
+  holds; the adapter runs it over ssh on the slot VM that fills the role, with
+  `sudo`, and through `docker exec` for a target container. The only command it
+  runs on the platform itself is the one for the `scorer` role, with
+  `docker exec` on the platform container.
 - It runs the attacker's command in a login shell. The shell reads
   `/etc/profile.d/proxy.sh`, so the command gets the same `http_proxy` (the
-  stamping proxy) as the terminal's login shell (`docker exec ... bash -l`).
+  stamping proxy) as the terminal's login shell (`sudo -i ... bash -l` on the
+  Kali VM).
 - It reads alerts through the platform's API
   (`/api/sessions/<id>/detections/`), not from a sensor's log file.
 - Beside another process, it skips the wait for a range reset after each test.

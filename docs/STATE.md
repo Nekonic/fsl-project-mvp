@@ -6,7 +6,7 @@ and `docs/ARCHITECTURE.md`. The live state of work in flight is in
 `docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
 skill reads those, not this file. Keep the backlog here true.
 
-Updated: 2026-11-17
+Updated: 2026-11-18
 
 ## Where things stand
 
@@ -131,6 +131,19 @@ session cookie, client address and the session the URL names. The same day
 sign-up with an admin's approval, the abuse limits and per-learner sessions
 landed (`docs/DECISIONS.md` "Sign-up waits for an admin's approval" and
 "A learner sees only their own sessions").
+
+On 2026-11-18 the user approved the range as one Heat stack per slot, built
+the way KYPO builds it (`docs/superpowers/specs/2026-11-18-heat-range-design.md`):
+four VMs per slot on the slot's own Neutron LANs, Neutron security groups and
+port security for isolation, the edge, the inline IDS and the log server on an
+`infra` VM no learner has a shell on, and a pool of slots made ahead of the
+learner. Phases P0-P7 are done on `range-heat-int` (code, unit and API tests
+against `platform/tests/fakecloud.py`, the role images `bake1`, learner ssh
+to Kali through a jump on port 2222, the documents); P8, the live run, is not.
+The range host's code (`range/rangehost.py`, `deploy/range-host/`,
+`deploy/edge/`, the Kali and WAF Dockerfiles, `bin/range-image-tag`) is
+deleted. The defaults chosen for the run are in `docs/DECISIONS.md` "The Heat
+range comes up from cloud.yaml".
 
 ## The objective model (done 2026-10-04)
 
@@ -600,9 +613,9 @@ package, step 4), and one attacker for every origin (one Kali Internet port
 holding the ~100 origin addresses, step 5). Not re-checked since:
 
 4. **Roles are found by Nova server name**, which is not unique; segments are
-   bound by tag for that reason, roles not yet. Settled: the range host is
-   found by its `cr_host` metadata (`range/slot.py` `host_of`, read by
-   `range/openstack.py`), not by name. Credentials are settled:
+   bound by tag for that reason, roles not yet. Settled: a slot's stack is
+   found by its `cr.slot=<n>` tag and its VMs by their `cr_slot` and `cr_node`
+   metadata (`range/openstack.py`), not by name. Credentials are settled:
    `CR_SUBSTRATE=range.openstack.connect` and `CR_OPENSTACK_*`, each refused
    by name when missing.
 5. **Does the operator still look like an outsider?** The reachability rule
@@ -738,12 +751,15 @@ through the scenarios' exclusions, level and thresholds (backlog 0).
 
 The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
 
-- **Range**: an Internet segment with thirty declared origin countries, the
-  internal network (`estate`) and management. Kali knows the targets by name
-  only through the WAF, `http://board.com` and `http://corp.com`; the edge
-  routes `internet` to `estate` without NAT or filtering, but the board and
-  corp-wp sit only on the web network and their own database network, so Kali
-  reaches the targets only through the WAF (`docs/ARCHITECTURE.md`).
+- **Range**: per slot, five LANs (`internet` with thirty declared origin
+  countries, `dmz`, `web-outer`, `web-inner` and the slot's `mgmt`) and four
+  VMs (kali, waf, infra, target; `wargames/<id>/topology.yaml`). Kali knows
+  the targets by name only through the router's public address,
+  `http://board.com` and `http://corp.com`; the infra VM's edge forwards tcp
+  80 to the WAF's `dmz` address and lets in from `wan` only replies and that
+  forward, and the target sits only on `web-inner` behind the WAF and the
+  inline IDS bridge, so Kali reaches the targets only through the WAF
+  (`docs/ARCHITECTURE.md`).
 - **Red team**: one Kali image, driven from the red console's terminal in a wargame or the
   blue console's Kali pane in a lesson or scenario; the
   cases stay for the API, the harness and the scenario engine's attacker; each
@@ -755,10 +771,11 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   (three pinned-version CVEs, see "Sub-project B"): `effect_observed`, scored
   from `corp-db`'s own MySQL binary log. Each wargame is one folder,
   `wargames/<id>/`; the top `compose.yaml` does not include them but mounts
-  `./wargames` read-only into the platform, and `range/rangehost.py`
-  (`compose`) renders each wargame's `compose.yaml` into every slot's compose
-  project. `board` holds the board and its MySQL, `corp` the WordPress site
-  and its MySQL. `test_compose.py` holds the folders and the console's
+  `./wargames` read-only into the platform, and the target role's bake
+  (`deploy/roles/target/render.py`) renders each wargame's `compose.yaml` for
+  the target VM, the front published on the slot's address and the database on
+  an internal network. `board` holds the board and its MySQL, `corp` the
+  WordPress site and its MySQL; a slot runs one of them. `test_compose.py` holds the folders and the console's
   catalogue to each other.
 - **Score**: objectives (exfiltrated data or observed effect, checked against
   the target's own records) beside detection TP/FP/FN/TN with the
@@ -790,22 +807,29 @@ The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
   2026-10-21.
 - **Platform VM**: `deploy/openstack/platform.yaml` boots the whole stack on
   the OpenStack cloud as one Heat stack (backlog 2, step 1).
-- **The range on OpenStack**: the platform builds the `mgmt` network and the
-  range host `cr-range` through `/api/range/fabric/` and `/slot/`, and runs
-  each slot on it as a compose project (Kali, the nftables edge, the WAF, two
-  Suricata sensors and the wargames' GHCR containers) through `/configure/`,
-  reaching the range host over ssh on `mgmt` (backlog 2). Until 2026-11-13
-  each slot was four VMs (the OPNsense edge, the WAF, Kali and
-  `cr-wargame-host`) built from golden images. Eight slots on the current cloud
-  (`compute.slots: 8`) since 2026-11-15; four from 2026-11-13, two from 2026-10-21.
-- **Monitoring per slot** (2026-11-16): one Suricata sensor per slot sniffs
-  the web servers' segment behind the WAF (`web` on `sN-web`, `tc mirred`
-  SPAN, no address) and stands on the slot's 관제망 `sN_mgmt`, where a log
-  server takes the sensor's log and the WAF's two (ModSecurity's audit log
-  and nginx's own refusals), each shipped from its own network namespace, and
-  forwards them to the platform collector. An IDS alert is credited to the
-  X-Forwarded-For address of its transaction. The live map draws the slot's
-  real subnets, switches and interfaces.
+- **The range on OpenStack** (on `range-heat-int`, not yet live): the
+  platform builds the shared `cr-mgmt` network, its security groups and the
+  keypair through `/api/range/fabric/`, and each slot as one Heat stack
+  `cr-slot-<n>` through `/slot/` (`range/openstack.py` renders the template
+  from `range/sandbox.py`'s plan), booted from the role images
+  `cr-<role>-bake1` baked from `deploy/roles/`; `/configure/` seeds the
+  sensor's baseline rules. The platform reaches each slot VM over ssh on its
+  `cr-mgmt` control port as one sudo user. The pool is `compute.pool`
+  (`{board: 3, corp: 1}` by default); a close deletes the used stack and
+  creates a fresh one (`range/pool.py`). The live cloud still runs the range
+  host `cr-range` (eight slots as compose projects since 2026-11-15) until the
+  branch's first `bin/cloud up --replace`, which deletes it. Before:
+  2026-11-13 to the branch, one range host; until 2026-11-13, four VMs per slot
+  (the OPNsense edge, the WAF, Kali and `cr-wargame-host`) from golden images.
+- **Monitoring per slot**: one Suricata sensor per slot on the infra VM, inline
+  on the Linux bridge `br0` between `web-outer` and `web-inner` (the two legs'
+  port security off), so it sees every request between the WAF and the target.
+  The WAF ships ModSecurity's audit log and nginx's own refusals over the
+  slot's 관제망 `mgmt` to the infra's log server, which forwards them and
+  Suricata's EVE to the platform collector over `cr-mgmt`. An IDS alert is
+  credited to the X-Forwarded-For address of its transaction. The live map
+  draws the slot's Neutron networks and ports and the target's internal Docker
+  network (`range/wiring.py`).
 
 ## Backlog
 
@@ -1403,13 +1427,10 @@ To do, found by the 2026-10-08 doc review (open until checked off):
       written by the platform VM's cloud-init since 2026-10-11) rather than
       from the substrate in code; decide which.
 - [ ] Seam exceptions: move the code or keep them recorded
-      (`register_pipeline.py` for Elasticsearch; the sensor host's rule path
-      and reload command in `declaration.yaml` (`cr-range`) for Suricata;
-      `range/rangehost.py` with `deploy/range-host/slot.sh`, which render and
-      run each slot, start and stop the slot's Suricata sensor, configure the
-      edge router and name the forwarded log files, and
-      `deploy/range-host/slot.yaml`, which mounts the WAF's audit and refused
-      log files;
+      (`register_pipeline.py` for Elasticsearch; the sensor device `cr-ids`
+      and the WAF device `cr-waf` in each `wargames/<id>/topology.yaml`, which
+      name the rule files and reload commands `rules/suricata.py` and
+      `rules/crs.py` are handed;
       `platform/nginx.conf` and `blue.html` for Kibana; `operator_log.py` and
       the `cr-kali` and `cr-waf` terminal wiring (`vm-terminal.sh`) for the
       attacker box and the WAF; F6's step commands naming the exclusion file
@@ -1959,15 +1980,16 @@ binary log via a substrate runner, proven end to end against the live stack.
 
 - [ ] A real firewall product at the edge (OpenWrt with LuCI is the
       candidate), for a future corp or DMZ lesson that teaches a firewall's
-      own screens; the edge is an nftables router container until then (the
+      own screens; the edge is nftables on each slot's infra VM until then (the
       user's ruling, `docs/DECISIONS.md` 2026-11-13).
 - [ ] The corp WordPress install sends its pretty-permalink loopback test to
-      the real `corp.com`; the slot maps `corp.com` to 127.0.0.1 inside
-      `corp-wp` because the slot has no egress. Make the image's install not
+      the real `corp.com`; the target maps `corp.com` to 127.0.0.1 inside
+      `corp-wp` (`deploy/roles/target/wargames.yaml`) because the slot has no
+      egress. Make the image's install not
       depend on a request to its public name.
 - [ ] MySQL `performance_schema=OFF` (Next 5 in `docs/state/now.md`): the two
-      MySQL containers are the largest share of a slot's memory, and memory is
-      what caps the slots a range host holds.
+      MySQL container is the largest share of the target VM's memory, and
+      whether the target fits `dba.small` is **[unverified]**.
 
 ### 5. Left by the hardening (2026-11-15)
 
@@ -1975,6 +1997,23 @@ binary log via a substrate runner, proven end to end against the live stack.
       sign-in limits of 2026-11-16 slow guessing; they do not help against a
       default anyone can read. A password change is
       `manage.py changepassword admin` in the platform container.
+
+### 6. The Heat range (2026-11-18)
+
+`docs/superpowers/specs/2026-11-18-heat-range-design.md`; P0-P7 done on
+`range-heat-int`.
+
+- [ ] P8, the live run: the four role images `cr-<role>-bake1` present in
+      Glance, `uv run bin/cloud up --replace` (it deletes `cr-range` and
+      fills the pool), then the full `bin/verify` with acceptance and a walk;
+      then gate 2.
+- [ ] Measure on the cloud: the Kali image's boot (its import is P0-3, not
+      run) **[unverified]**; how long a slot stack takes to delete and come
+      back READY, so the pool's refill time **[unverified]**; RAM per slot of
+      four VMs on com01 **[unverified]**; whether `dba.small` holds the
+      target's Docker and MySQL **[unverified]**.
+- [ ] Baking the role images is by hand (`docs/OPENSTACK.md` §3.6); no repo
+      tool builds them.
 
 ## Known gaps
 
@@ -1984,12 +2023,13 @@ binary log via a substrate runner, proven end to end against the live stack.
   was not found; the output was truncated. It recurred on 2026-10-01 as two
   acceptance failures (one case of ten detected) that passed when rerun.
 - `test_declaration.py` compares two files, never the running range.
-- The range keeps time by the platform VM alone (chrony, `local stratum 10`):
-  if the platform VM loses its upstream, the range follows the platform's
-  clock, which is what scoring compares against, not true time. A host whose
-  time source does not answer within 30 s fails its configure step.
-- The platform holds the ssh key that runs `sudo docker` on the range host:
-  whoever takes the platform container is root on the range host. The
+- The range keeps time by the platform VM alone (chrony, `local stratum 10`;
+  each slot VM's user data points systemd-timesyncd at the platform's
+  `cr-mgmt` address): if the platform VM loses its upstream, the range follows
+  the platform's clock, which is what scoring compares against, not true time.
+- The platform holds the ssh key of the management user on every slot VM
+  (passwordless sudo): whoever takes the platform container is root on every
+  slot VM. The
   platform VM's own Docker socket is no longer mounted anywhere (2026-11-15).
 - `elastic.fetch` reads at most 5000 documents per call, oldest first, `http`
   records included. Since 2026-10-13 a full ingest pages by `@timestamp`
@@ -2010,8 +2050,10 @@ binary log via a substrate runner, proven end to end against the live stack.
   Kibana shows a learner only their open session's slot (the platform's
   Kibana gate), but a slot is reused, so it also shows what an earlier
   session on that slot left in `logs-N-*`.
-- A range host can send with another's address, and one recreated within the
-  30 s cache keeps its old answer (`docs/THREAT-MODEL.md`).
+- The API's refusal of range addresses reads the list of range hosts through
+  a 30 s cache, so a VM recreated within that time keeps its old answer
+  (`docs/THREAT-MODEL.md`). A slot VM's control port reaches the platform only
+  for NTP and syslog (`cr-reach`), so the refusal is the second line.
 - OpenStack host keys are trust-on-first-use per generation, kept in the
   platform user's home (lost with the container) unless the deployment's ssh
   config says otherwise. Reading them from `os-getConsoleOutput` is stronger,

@@ -5,15 +5,31 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-18, walk round 28's fixes are live: the cloud was rebuilt
-with them, the range host replaced (`cr-range` 10.31.0.147, eight slots as
-compose projects on runc), and the full `bin/verify` is green; on `dev`.
+Updated: 2026-11-18. On `range-heat-int`: the range as one Heat stack per
+slot, code, unit and API tests and documents done, not yet live. The live
+cloud still runs `dev` with walk round 28's fixes and the range host
+(`cr-range` 10.31.0.147, eight slots as compose projects), full `bin/verify`
+green.
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
 
 ## Where things stand
 
+- 2026-11-18, the Heat range on `range-heat-int`
+  (`docs/superpowers/specs/2026-11-18-heat-range-design.md`, phases P0-P7;
+  defaults in `docs/DECISIONS.md` "The Heat range comes up from cloud.yaml"):
+  a slot is one Heat stack `cr-slot-<n>` of four VMs (kali, waf, infra,
+  target) on five Neutron LANs of its own, rendered by `range/openstack.py`
+  from `wargames/<w>/topology.yaml` through `range/sandbox.py`; the pool is
+  `compute.pool` (`{board: 3, corp: 1}`), flavors `dba.small`, images
+  `cr-<role>-bake1` baked from `deploy/roles/<role>/install.sh`; cloud-init
+  starts each role's boot units and writes `/var/lib/cr/ready` or
+  `/var/lib/cr/failed`, and makes one sudo user `ubuntu` with the platform's
+  key; learners ssh to Kali as `kali` through the jump on port 2222. The
+  range host's code is deleted. Unit and API tests run against
+  `platform/tests/fakecloud.py`; on the cloud only the P0 probe stack has run
+  (spec §11). Not on `dev`.
 - 2026-11-18, answer-blind walk round 28's fixes are live
   (`docs/TROUBLESHOOTING.md` "Answer-blind walk round 28"): the WAF logs
   the request body (audit part C) and the session view shows it as
@@ -554,10 +570,11 @@ them.
   Work goes to the VM with `git push cloud HEAD:refs/heads/work` and `git -C
   /opt/cr checkout --detach work` on the VM; the platform's code and `deploy/`
   are mounted from `/opt/cr`, so `docker compose restart platform` runs it.
-- The range host has no address the operator reaches: run its commands
-  through the platform, `sh s.sh "sudo docker exec -i cr-platform ssh -i
-  /data/ssh/id_ed25519 ubuntu@<cr-range mgmt address> '<cmd>'"`, or through
-  `manage.py run_on_role wargames '<json argv>' --slot N`.
+- The range host (on `dev`) and the slot VMs (on `range-heat-int`) have no
+  address the operator reaches: run their commands through the platform, `sh
+  s.sh "sudo docker exec -i cr-platform ssh -i /data/ssh/id_ed25519
+  ubuntu@<cr-mgmt address> '<cmd>'"`, or through `manage.py run_on_role
+  <role> '<json argv>' --slot N`.
 
 `uv run bin/cloud` needs two gitignored files in the checkout that runs it,
 `deploy/openstack/cloud.yaml` (now with `cloud: fsl-range`) and the newest
@@ -574,33 +591,44 @@ files, so copy them before working in a new one. Older store copies are in
 
 ## Waiting for the user
 
-Nothing. Gate 2 is only for `main` (Next, item 6).
+Nothing. Gate 2 is only for `main` (Next, item 7).
 
 ## Next, in order
 
-1. The live cloud on `dev`: `platform.ref` is `dev` in `cloud.yaml`; the VM
-   runs `/opt/cr` with walk round 28's fixes, the range host is 10.31.0.147. `compute.slots` as the user wants
-   (eight now). Run `uv run bin/cloud init` once as admin on con01
-   (`/etc/kolla/clouds.yaml`) to see it report everything present.
-2. Answer-blind walk round 29 of both courses and scenarios 3.1-3.4 on the
+1. P8 of the Heat range, the live run of `range-heat-int`: check that Glance
+   holds `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1` and
+   `cr-target-bake1` (nothing in `init` or `up` checks them; a missing one
+   fails the slot stack in Heat), then `uv run bin/cloud up --replace` with
+   `platform.ref` on the branch (the store is backed up first; `up` deletes
+   `cr-range` through `DELETE /api/range/leftovers/` before it fills the
+   pool), then the full `bin/verify` with acceptance and an answer-blind walk.
+   Unknowns it must measure: the Kali image's boot **[unverified]**; stack
+   delete and refill time **[unverified]**; RAM per slot on com01
+   **[unverified]**; whether `dba.small` holds the target's Docker and MySQL
+   **[unverified]**; whether a new platform VM's `cr-mgmt` address (in every
+   slot's user data) makes every slot stale on `--replace` **[unverified]**.
+2. The live cloud on `dev`: `platform.ref` is `dev` in `cloud.yaml`; the VM
+   runs `/opt/cr` with walk round 28's fixes, the range host is 10.31.0.147,
+   eight slots (`compute.slots`, which the Heat range ignores). Run `uv run
+   bin/cloud init` once as admin on con01 (`/etc/kolla/clouds.yaml`) to see it
+   report everything present.
+3. Answer-blind walk round 29 of both courses and scenarios 3.1-3.4 on the
    fixes of round 28 (live); fix its findings, rebuild, verify and walk again
-   from the start; then tag the state and take it through gate 2 (item 6).
+   from the start; then tag the state and take it through gate 2 (item 7).
    The `exists` failure on `_source` runtime fields (above) is open.
-3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
+4. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
    or `union select` even where it is loaded: a detection gap to measure
    (round 16, `docs/DECISIONS.md`).
-4. The platform's CPU under eight slots: with eight slots two of four full
-   verifies on 2026-11-15 lost requests to 3-15 s stalls (the live map entry
-   above); since the lock fix the slot compose and the bundle digest are cached
-   and `reachability.scored_hosts` refreshes under one lock. Ingest re-reading the whole window: `POST /ingest/` took 22-42 s on a
-   closed red-team session while the suite ran, and every score wait calls it.
-   More slots (`compute.slots`; ten fit on `dba.range`) would shorten the
-   acceptance run further; a slot reset is now its floor (43 s alone in the
-   capacity measurement above, 53 s in the 2026-11-14 acceptance round's
-   entry in `docs/DECISIONS.md`; two sources, not yet measured side by side).
-5. MySQL `performance_schema=OFF`: memory caps the slots a range host holds
-   (`docs/STATE.md` backlog 4).
-6. Promotion to `main`: a tagged state, the full `bin/verify`, a live review
+5. The platform's CPU under many slots: on the range host, with eight slots
+   two of four full verifies on 2026-11-15 lost requests to 3-15 s stalls (the
+   live map entry above). Ingest re-reads the whole window: `POST /ingest/`
+   took 22-42 s on a closed red-team session while the suite ran, and every
+   score wait calls it. On the Heat range the pool is four slots, the whole
+   instance quota with the platform; a slot reset is the stack's delete and
+   refill **[unverified]**.
+6. MySQL `performance_schema=OFF`: on the Heat range it is the target VM's
+   memory (`docs/STATE.md` backlog 4).
+7. Promotion to `main`: a tagged state, the full `bin/verify`, a live review
    round with zero countable findings and a docs review with no drift
    (CLAUDE.md), through gate 2.
 

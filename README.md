@@ -31,31 +31,29 @@ WAF(ModSecurity)와 IDS(Suricata)로 방어합니다.
 
 ```mermaid
 flowchart TB
-  user(["브라우저"]) -->|"8000, 8002"| fip["floating IP<br/>provider 네트워크"]
+  user(["브라우저, ssh"]) -->|"8000, 8002, 2222"| fip["floating IP<br/>provider 네트워크"]
   subgraph os["OpenStack 프로젝트 fsl-range"]
     fip --- pnet["cr-platform 네트워크 10.20.0.0/24"]
     pnet --- pvm
     subgraph pvm["VM cr-platform"]
-      platform["platform: 콘솔, API, 채점"]
+      platform["platform: 콘솔, API, 채점, ssh 점프"]
       elk["Elasticsearch, Kibana"]
       collector["collector"]
     end
-    pvm --- mgmt["cr-mgmt 네트워크 10.31.0.0/24"]
-    mgmt --- rvm
-    subgraph rvm["VM cr-range: 슬롯마다 아래 구성 1벌 (s1 ~ sN)"]
-      kali["Kali<br/>출발지 주소 100개"] --- inet["인터넷 sN-inet"]
-      inet --- edge["라우터<br/>wan 121.134.88.42"]
-      edge --- estate["DMZ sN-estate<br/>10.30.N.0/24"]
-      estate --- waf["WAF .247"]
-      waf --- web["웹 서버 구간 sN-web<br/>10.30.(128+N).0/24"]
-      web --- board["board .59"]
-      web --- corp["corp .60"]
-      board --- boarddb["board-db"]
-      corp --- corpdb["corp-db"]
-      ids["Suricata"] -. 미러링 .- web
-      ids --- mgmtbr["관제망 sN-mgmt<br/>172.29.N.0/24"]
-      waf --- mgmtbr
-      mgmtbr --- logsrv["log-server .10"]
+    pvm --- mgmt["cr-mgmt 네트워크 10.31.0.0/24<br/>슬롯 VM마다 제어 포트 1개"]
+    mgmt --- stack
+    subgraph stack["Heat 스택 cr-slot-N: 슬롯마다 VM 4대, 슬롯끼리 같은 주소"]
+      kali["VM kali<br/>출발지 주소 100개"] --- inet["internet 121.134.88.40/29"]
+      inet --- edge["VM infra: 라우터<br/>wan .42"]
+      edge --- dmz["dmz 10.30.0.0/24"]
+      dmz --- waf["VM waf .247"]
+      waf --- outer["web-outer 10.30.128.0/24"]
+      outer --- ids["VM infra: Suricata 인라인 브리지 br0"]
+      ids --- inner["web-inner 10.30.128.0/24"]
+      inner --- target["VM target<br/>board .59 또는 corp .60"]
+      target --- db["DB 컨테이너<br/>Docker 내부망"]
+      waf --- smgmt["mgmt 172.29.0.0/24"]
+      smgmt --- logsrv["VM infra: log-server .10"]
     end
     logsrv -->|"5140/udp"| collector
   end
@@ -64,31 +62,41 @@ flowchart TB
 | 연결 | 경로 |
 |---|---|
 | 브라우저 → 콘솔 | floating IP의 8000, 8002 |
-| 플랫폼 → 훈련 환경 호스트 | `cr-mgmt`로 ssh, `docker exec` |
-| 센서·WAF → log-server | 슬롯 관제망 `sN-mgmt`로 syslog 514/tcp |
-| log-server → collector | 훈련 환경 호스트 NAT, `cr-mgmt`로 syslog 5140/udp(센서 경보, WAF audit log, nginx 거부 로그) |
+| 학습자 ssh → Kali | floating IP의 2222(플랫폼 컨테이너의 sshd) → `cr-mgmt`의 Kali 22번 |
+| 플랫폼 → 슬롯 VM | `cr-mgmt`의 제어 포트로 ssh. 관리 계정 `ubuntu`, 비밀번호 없는 sudo. 대상 컨테이너는 target VM에서 `docker exec` |
+| WAF → log-server | 슬롯 `mgmt`로 syslog 514/tcp |
+| log-server → collector | infra의 제어 포트에서 `cr-mgmt`로 syslog 5140/udp(센서 경보, WAF audit log, nginx 거부 로그) |
 
-- `bin/cloud up`이 Heat 스택으로 VM `cr-platform`을 만들고, 플랫폼이 OpenStack API로 VM
-  `cr-range`를 만듭니다.
-- 슬롯은 `cr-range` 안의 compose 프로젝트 `sN`입니다. 브리지와 DB 연결은 그 안의 Docker
-  네트워크입니다.
+- `bin/cloud up`이 Heat 스택 `cr-platform`으로 플랫폼 VM을 만들고, 플랫폼이 Heat API로
+  슬롯마다 스택 `cr-slot-<n>`을 만듭니다.
+- 슬롯 하나가 Heat 스택 하나입니다. VM은 kali, waf, infra, target 4대이고, LAN 5개(internet,
+  dmz, web-outer, web-inner, mgmt)는 슬롯마다 따로 만든 Neutron 네트워크입니다. 어느 LAN에도
+  Neutron 라우터가 없습니다. 슬롯은 네트워크로 나뉘므로 모든 슬롯이 같은 주소를 씁니다.
+- 슬롯 VM은 `deploy/roles/<역할>/install.sh`로 미리 구운 Glance 이미지(`cr-<역할>-bake1`)로
+  부팅합니다. 부팅할 때 인터넷에 나가지 않습니다.
+- 슬롯은 워게임별 풀에 미리 만들어 둡니다(`compute.pool`, 기본 board 3개, corp 1개). 세션을
+  닫으면 그 슬롯의 스택을 지우고 새로 만듭니다.
 - Kali는 인터넷 역할입니다. 출발지 30개국의 /24 대역에 걸친 주소 100개를 갖고, 기본 출발지
   주소 5.188.10.10을 첫 주소로 둡니다. 기본 경로는 라우터 공인 IP로 가는 onlink 경로이고
-  출발지는 5.188.10.10입니다.
-- 라우터의 `wan`은 공인 IP 121.134.88.42/29 하나입니다. 80/tcp를 WAF의 DMZ 주소로
-  포트포워딩하고, `wan`에서 들어오는 패킷은 맺어진 연결의 응답과 포트포워딩된 연결만 통과시킵니다.
-  Kali에서 `board.com`, `corp.com`은 이 공인 IP로 풀립니다.
-- board와 corp는 WAF와만 이어진 `sN-web`에 있습니다. Kali의 공격은 모두 WAF를
-  지나갑니다.
-- 센서는 슬롯마다 하나입니다. WAF 뒤 웹 서버 구간(`sN-web`)에만 주소 없는 인터페이스로
-  붙고, `tc mirred`로 그 브리지의 다른 포트 트래픽을 모두 받습니다(SPAN). 관리 인터페이스는
-  관제망 `sN-mgmt`의 .11입니다. WAF는 .12입니다.
+  출발지는 5.188.10.10입니다. Kali의 `internet` 포트는 address pair `0.0.0.0/0`으로 이 주소를
+  모두 쓰고, MAC은 Neutron이 준 것만 통과합니다.
+- 라우터는 infra VM의 nftables입니다. `wan`은 공인 IP 121.134.88.42/29 하나이고, 80/tcp를 WAF의
+  DMZ 주소로 포트포워딩합니다. `wan`에서 들어오는 패킷은 맺어진 연결의 응답과 포트포워딩된
+  연결만 통과시킵니다. ping과 traceroute에는 응답합니다. Kali에서 `board.com`, `corp.com`은 이
+  공인 IP로 풀립니다.
+- board와 corp는 target VM의 Docker 컨테이너이고, WAF 뒤 `web-inner`에 있습니다. board 슬롯은
+  board와 board-db를, corp 슬롯은 corp와 corp-db를 띄웁니다. DB는 target VM 안의 Docker
+  내부망에만 있습니다. Kali의 공격은 모두 WAF를 지나갑니다.
+- 센서는 슬롯마다 하나이고 infra VM에 있습니다. `web-outer`와 `web-inner`를 잇는 리눅스
+  브리지 `br0`에 인라인으로 붙어 af-packet으로 WAF와 대상 사이의 트래픽을 모두 봅니다. 브리지의
+  두 다리는 port security를 끈 포트입니다.
 - WAF가 막은 요청은 센서에 닿지 않습니다. 이런 요청은 WAF 로그에 남습니다.
 - 센서가 보는 요청의 출발지는 WAF입니다. 수집할 때 같은 요청의 X-Forwarded-For 주소를
   경보의 출발지로 씁니다.
-- WAF도 관제망에 관리 인터페이스가 있습니다. 센서와 WAF가 각자 로그를 log-server로 보내고,
-  log-server가 collector에 넘깁니다. WAF 로그는 ModSecurity audit log와, ModSecurity까지
-  가기 전에 nginx가 400으로 거부한 요청의 로그 두 가지입니다.
+- WAF는 슬롯 `mgmt`(.12)로 로그를 infra의 log-server(.10)에 보내고, log-server가 센서 경보와
+  함께 collector에 넘깁니다. WAF 로그는 ModSecurity audit log와, ModSecurity까지 가기 전에
+  nginx가 400으로 거부한 요청의 로그 두 가지입니다.
+- 격리는 Neutron 보안 그룹과 port security가 맡습니다. Kali나 WAF의 root 셸로는 바꿀 수 없습니다.
 - 세션 하나가 슬롯 하나를 씁니다.
 
 자세한 구성은 [ARCHITECTURE.md](docs/ARCHITECTURE.md)에 있습니다.
@@ -108,16 +116,19 @@ flowchart TB
 - compute node는 KVM 권장
 - Heat 필요
 - [외부 네트워크](docs/OPENSTACK.md#25-external-network-and-floating-ips-admin-once): floating IP 풀, [인터넷 연결](docs/OPENSTACK.md#26-internet-egress)
-- 아래 조건의 [flavor](docs/OPENSTACK.md#33-flavors-admin-once-init-chooses) 2개
+- 아래 [flavor](docs/OPENSTACK.md#33-flavors-admin-once-init-chooses). `init`은 flavor를 만들지 않습니다.
+- Glance에 역할 이미지 4개(`cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1`).
+  `deploy/roles/<역할>/install.sh`를 인터넷에 나갈 수 있는 빌더 VM에서 실행하고 스냅샷을 뜹니다.
+  절차는 [이미지](docs/OPENSTACK.md#36-images)에 있습니다.
 
-| VM | flavor 키 | vCPU | RAM | 디스크 |
-|---|---|---|---|---|
-| 플랫폼 VM | `compute.flavors.platform` | 2 이상 | 8 GB 이상 | 40 GB 이상 |
-| 훈련 환경 호스트 | `compute.flavors.range` | 6 이상 | 16 GB 이상 | 40 GB 이상 |
+| VM | flavor 키 | 조건 |
+|---|---|---|
+| 플랫폼 VM | `compute.flavors.platform` | 2 vCPU, 8 GB RAM, 40 GB 디스크 이상 |
+| 슬롯 VM(kali, waf, infra, target) | `compute.flavors.<역할>` | 지정하지 않으면 `dba.small` |
 
-- 예: `m1.large`(2 vCPU, 8 GB, 60 GB), `dba.range`(6 vCPU, 16 GB, 60 GB)
-- Nova 기본 quota로 충분
-- 슬롯 하나에 RAM 약 1.2 GB
+- 예: 플랫폼 `m1.large`(2 vCPU, 8 GB, 60 GB)
+- quota: 인스턴스 1 + 4 × 슬롯 수, 그만큼의 vCPU와 RAM. 기본 풀(슬롯 4개)이면 인스턴스 17개
+- 슬롯 하나에 드는 RAM, `dba.small`로 target의 Docker와 MySQL이 충분한지는 아직 재지 않았습니다.
 
 VM 1대에 클라우드 전체를 올려 시험하려면 [VM 1대로 시험하기](docs/OPENSTACK.md#9-try-it-in-one-vm-virtualbox-or-vmware)를 보세요.
 
@@ -132,8 +143,9 @@ uv run bin/cloud up
 ```
 
 `up`이 끝나면 `the range is ready; the platform is at http://ADDRESS:8000/`를
-출력합니다. 첫 `up`은 훈련 환경 호스트 부팅, Docker 설치, 이미지 pull 때문에 20분
-넘게 걸립니다. 두 VM 모두 apt 패키지를 카카오 미러(`mirror.kakao.com`)에서 받습니다.
+출력합니다. `up`은 플랫폼 스택, 공용 네트워크 `cr-mgmt`와 보안 그룹, 이전 훈련 환경이 남긴
+자원 정리, 슬롯 스택 생성, 슬롯 부팅 대기, IDS 기본 룰 적재 순서로 진행합니다. 플랫폼 VM과
+역할 이미지 빌드는 apt 패키지를 카카오 미러(`mirror.kakao.com`)에서 받습니다.
 
 ### init
 
@@ -145,9 +157,9 @@ uv run bin/cloud up
 | 외부 네트워크 | `router:external` 네트워크를 찾음 |
 | 프로젝트, 사용자 | `fsl-range` 프로젝트와 member 사용자 생성. 비밀번호는 무작위 |
 | 인증 정보 | `~/.config/openstack/clouds.yaml`의 `fsl-range` 항목(0600)에 씀 |
-| flavor | 조건에 맞는 것 중 가장 작은 것을 고름. private flavor는 프로젝트에 공유 |
+| flavor | 플랫폼은 조건에 맞는 것 중 가장 작은 것을, 슬롯 역할은 `compute.flavors.<역할>`(없으면 `dba.small`)을 고름. private flavor는 프로젝트에 공유 |
 | 베이스 이미지 | `ubuntu-24.04`가 없으면 noble amd64 클라우드 이미지를 받아 `SHA256SUMS`로 확인하고 public으로 올림 |
-| quota | 인스턴스 2개와 두 flavor가 들어가는지 확인 |
+| quota | 플랫폼 VM과 `compute.pool`의 슬롯(슬롯마다 VM 4대)이 들어가는지 확인 |
 | ssh 키 | `~/.ssh/fsl_claude`가 없으면 생성 |
 | `cloud.yaml` | `deploy/openstack/cloud.yaml`에 찾은 값을 씀 |
 
@@ -159,7 +171,8 @@ uv run bin/cloud up
 | `more than one external network` | 출력된 이름 하나를 `cloud.yaml`의 `network.external`에 적고 다시 실행 |
 | `no flavor fits` | 출력된 `openstack flavor create` 명령 실행 후 다시 실행 |
 | `not active` | 출력된 `openstack image delete` 명령 실행 후 다시 실행 |
-| `cannot hold the platform and the range host` | 출력된 값만큼 `openstack quota set` 후 다시 실행 |
+| `cannot hold the platform and the pool` | 출력된 값만큼 `openstack quota set` 후 다시 실행하거나 `compute.pool`의 슬롯 수를 줄임 |
+| `no flavor ... for the slot role` | 있는 flavor 이름을 `compute.flavors.<역할>`에 적고 다시 실행 |
 | `no working entry fsl-range` | `uv run bin/cloud init --reset-password` 실행 후 `uv run bin/cloud up --replace` |
 
 ### up
@@ -181,13 +194,15 @@ uv run bin/cloud up
 curl -s http://ADDRESS:8000/api/range/ready/
 ```
 
-닫은 세션의 슬롯은 초기화에 약 1분 걸립니다. 그동안 그 슬롯은 `RESETTING`입니다.
+닫은 세션의 슬롯은 스택을 지우고 새로 만듭니다. 그동안 그 슬롯은 `RESETTING`이고, 세션은 풀의 다른
+READY 슬롯에서 열립니다. 스택 삭제와 재생성에 걸리는 시간은 아직 재지 않았습니다.
 
 ## 문제 해결
 
 | 증상 | 확인 | 조치 |
 |---|---|---|
-| 슬롯이 `SETUP_FAILED` | 훈련 환경 호스트의 `/var/log/cr-setup.log` | 원인 수정 후 `uv run bin/cloud up` |
+| 슬롯이 `SETUP_FAILED` | 그 VM의 `/var/lib/cr/failed`(부팅 유닛의 `systemctl status`)와 `/var/log/cloud-init-output.log` | 원인 수정 후 `uv run bin/cloud up` |
+| 슬롯 스택이 `CREATE_FAILED` | `GET /api/range/ready/`의 이유(Heat의 `stack_status_reason`). 역할 이미지나 flavor 이름이 없으면 여기서 실패 | 원인 수정 후 `uv run bin/cloud up` |
 | 플랫폼이 응답하지 않음 | `ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS`에서 `systemctl status cr-platform`, `sudo docker logs cr-platform` | 원인 수정 후 `uv run bin/cloud up` |
 | `docker ps`에 `cr-platform`이 없음 | `sudo cloud-init status --long`. 대개 VM이 인터넷에 못 나감([인터넷 연결](docs/OPENSTACK.md#26-internet-egress)) | 원인 수정 후 `uv run bin/cloud up --replace` |
 | Heat 스택 생성 실패 | `uvx --from python-openstackclient --with python-heatclient openstack --os-cloud fsl-range stack failures list cr-platform` | 원인 수정 후 `uv run bin/cloud up` |
@@ -196,33 +211,35 @@ curl -s http://ADDRESS:8000/api/range/ready/
 ## 운영
 
 ```bash
-uv run bin/cloud up              # 없는 것만 만들고 슬롯을 띄움
-uv run bin/cloud up --replace    # 플랫폼 VM 교체 후 훈련 환경까지 맞춤. DB는 백업 후 복원
-uv run bin/cloud down            # DB 백업 후 훈련 환경과 플랫폼 VM 삭제
+uv run bin/cloud up              # 없는 것만 만들고 풀의 슬롯 스택을 띄움
+uv run bin/cloud up --replace    # 플랫폼 VM 교체 후 풀까지 맞춤. DB는 백업 후 복원
+uv run bin/cloud down            # DB 백업 후 슬롯 스택, cr-mgmt, 플랫폼 VM 삭제
 uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞추지 않음
 ```
 
 - `down`과 `--replace`는 먼저 DB를 `backups/db-<UTC 시각>.sqlite3`로 받습니다. 백업이
   실패하면 아무것도 지우지 않습니다.
 - 플랫폼 VM 교체는 보통 `uv run bin/cloud up --replace`로 합니다. 훈련 환경 ssh 키(`keys.range`)를
-  옮겨 주고, 훈련 환경 이미지 태그(`bin/range-image-tag`)와 설치 번들이 그대로면 훈련 환경 호스트와
-  슬롯도 그대로 씁니다. 다르면 훈련 환경 호스트를 다시 부팅합니다.
+  옮겨 주고, 템플릿·이미지·flavor가 같은 슬롯 스택은 그대로 씁니다. 다른 스택은 `STALE`이 되어
+  새로 만듭니다. 템플릿에는 플랫폼의 `cr-mgmt` 주소가 들어 있어서, 새 플랫폼 VM의 주소가 바뀌면
+  모든 슬롯을 새로 만듭니다.
 - push하지 않은 이미지를 올릴 때는 `--sideload NAME=TARBALL`을 씁니다. 절차는
   [재구축과 삭제](docs/OPENSTACK.md#53-rebuild-and-delete--lossless)에 있습니다.
-- 슬롯 수는 `cloud.yaml`의 `compute.slots`입니다. 바꾼 뒤 `uv run bin/cloud up`을 실행합니다.
+- 슬롯 수는 `cloud.yaml`의 `compute.pool`(워게임별 슬롯 수)입니다. 바꾼 뒤 `uv run bin/cloud up --replace`를
+  실행합니다. 플랫폼은 이 값을 Heat 스택 파라미터로 받습니다.
 
 `cloud.yaml` 항목:
 
 | 섹션 | 항목 |
 |---|---|
 | `cloud` | `clouds.yaml` 항목 이름 |
-| `network` | 외부 네트워크, 고정 floating IP, DNS, MTU, platform·estate·mgmt CIDR |
-| `compute` | 베이스 이미지, availability zone, 슬롯 수, flavor 2개 |
+| `network` | 외부 네트워크, 고정 floating IP, DNS, platform·mgmt CIDR, 플랫폼에 접속할 수 있는 대역 |
+| `compute` | 베이스 이미지, availability zone, 워게임별 슬롯 수(`pool`), 역할별 flavor와 이미지 |
 | `keys` | Nova 키페어 이름과 개인키 경로, 플랫폼의 훈련 환경 ssh 키 |
 | `platform` | 스택 이름, 저장소, ref |
 | `backups` | `backups/`에 남길 백업 수 |
 
-훈련 환경 API(`/api/range/fabric/`, `/slot/`, `/configure/`, `/slot/rebuild/`)는
+훈련 환경 API(`/api/range/fabric/`, `/leftovers/`, `/slot/`, `/configure/`, `/slot/rebuild/`)는
 [훈련 환경](docs/OPENSTACK.md#6-the-range-substrate-openstack)에 있습니다.
 
 ## 포트
@@ -232,13 +249,13 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 | 8000 | 콘솔, `/api/`, 구성도(`/map/`), Kibana(`/kibana/`), 터미널(`/vm-terminal/`) | 브라우저 |
 | 8002 | 대상 사이트(`/site/<세션 id>/<host>/<path>`) | 콘솔 안의 iframe |
 | 2222 | SSH 점프 호스트, 플랫폼 컨테이너 안의 sshd | 학습자 PC의 `ssh`. 세션 키로 그 세션 Kali의 22번으로만 포워딩, 셸 없음 |
-| 5140/udp | collector | 슬롯 log-server(훈련 환경 호스트에서 NAT) |
+| 5140/udp | collector | 슬롯 infra VM의 log-server, `cr-mgmt`에서만 |
 | 5601 | Kibana 직접 접속, VM loopback 전용 | ssh 터널, 인증 없음 |
 | 9200 | Elasticsearch, VM loopback 전용 | acceptance 테스트, 인증 없음 |
 
 - 8002는 콘솔과 다른 origin이라 대상 사이트의 스크립트가 콘솔을 읽지 못합니다. 로그인은 8000과 같이 씁니다.
 - `board.com`과 `corp.com`은 훈련 환경 안에서만 응답합니다. 8002로 들어온 요청은 그 세션의
-  Kali 컨테이너를 거쳐 고객 주소로 나갑니다.
+  Kali VM을 거쳐 고객 주소로 나갑니다.
 
 ## 세션
 
@@ -270,14 +287,16 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 
 ## 워게임 추가
 
-1. `wargames/<이름>/`에 `compose.yaml`, `scenario.yaml`, `objectives.yaml`
+1. `wargames/<이름>/`에 `compose.yaml`, `scenario.yaml`, `objectives.yaml`, `topology.yaml`(슬롯의
+   LAN, VM, 고정 IP, 장치와 역할)
 2. `redteam/cases/<이름>.yaml`에 공격 케이스와 정상 케이스
-3. `platform/range/declaration.yaml`의 `cr-range` `wargames:`에 워게임 이름, `cr-waf`
-   `names:`에 사이트 이름
-4. `deploy/range-host/slot.yaml`의 `x-wargames.fronts`, `x-wargames.limits`, `waf`와
-   `kali`의 `extra_hosts`
-5. `deploy/waf/`에 사이트의 `server` 블록
-6. `platform/tests/test_containment.py`의 `LEARNER_FACING`, `CAPABILITIES`
+3. 모든 워게임 `topology.yaml`의 `cr-waf`에서 `names:`에 사이트 이름, `upstreams:`에 대상 주소
+4. `deploy/roles/target/`에 compose 파일 링크 `<이름>.yaml`, `wargames.yaml`의 `fronts`와
+   `limits`, `install.sh`의 `WARGAMES`
+5. `deploy/waf/`에 사이트의 `server` 블록, `deploy/roles/waf/slot-boot`와
+   `deploy/roles/kali/install.sh`의 호스트 이름
+6. target, waf, kali 이미지를 다시 굽고 `cloud.yaml`의 `compute.images`에 새 이름,
+   `compute.pool`에 슬롯 수
 
 ## 검증
 
@@ -339,7 +358,7 @@ sudo docker compose start platform
 | Elasticsearch, Kibana | 9200, 5601은 플랫폼 VM loopback에만 열림. 인증은 켜지 않음. space 안의 Kibana API 호출은 nginx가 플랫폼의 `/kibana-gate/`로 넘김. 학습자는 열린 자기 세션 슬롯의 space와 `logs-N-*`만 조회할 수 있고, Discover가 쓰지 않는 호출(개발 도구, `bsearch`, ES\|QL 등)은 403. 관리자는 모든 슬롯을 봄 |
 | 프로젝트 비밀번호 | `/opt/cr/openstack-password`(0600)를 compose secret으로 읽기 전용 마운트. 컨테이너 환경 변수에는 없음 |
 | 플랫폼 VM 인바운드 | ssh, 2222, 8000, 8002는 `cloud.yaml`의 `network.allowed`에서만. 기본값 `[0.0.0.0/0]` |
-| 슬롯의 학습자용 컨테이너 | Docker 기본 런타임. capability 최소화, `no-new-privileges`, userns-remap |
+| 슬롯 VM | 학습자는 Kali와 WAF에서 root. 슬롯 사이, 슬롯과 플랫폼 사이의 격리는 VM 밖의 Neutron 보안 그룹과 port security가 맡음. target의 대상 컨테이너는 capability를 모두 빼고 `no-new-privileges` |
 | Docker 소켓 | 플랫폼 VM의 어떤 서비스에도 마운트하지 않음 |
 
 다른 계정은 로그인 화면의 회원가입으로 만들고, 관리자가 콘솔 상단의 계정 관리에서 승인합니다.
