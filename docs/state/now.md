@@ -5,17 +5,36 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-17, the cloud recovered from an interrupted replace and
-rebuilt at 2f2f4783 with the full `bin/verify` green: both hosts install from
-the Kakao mirror (`mirror.kakao.com`), and a platform-only replace keeps the
-range host (`cr-range` 10.31.0.242, eight slots as compose projects on runc;
-on `dev`).
+Updated: 2026-11-17, walk round 25's fixes are live: the cloud was rebuilt at
+9417f343 with the full `bin/verify` green, after the corp objectives were made
+to read the binary log from the session start (`cr-range` 10.31.0.242 kept,
+eight slots as compose projects on runc; on `dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
 
 ## Where things stand
 
+- 2026-11-17, answer-blind walk round 25's fixes on `dev`: 00ba77d5 (lesson
+  and scenario note text), e2b6e8f5 (the result page), c9d3e9b4 (Kali's
+  hosts file, the document JSON tab, a Korean Kibana refusal, a session opens
+  in about 10 s). `uv run bin/cloud up --replace` at 8acbafcb took 10 min
+  24 s and kept the range host (10.31.0.242): `slot.sh` reaches each slot at
+  `configure/`, not through the setup bundle, and all eight slots carried the
+  new one. Its full `bin/verify`: acceptance 91 passed, 0 failed, 3 errors, 1
+  skipped; the three were one `POST cases/` in the corp fixture past the
+  client's 60 s, because every objective observation re-read and re-parsed
+  the whole corp-db binary log (17 MB, about 3.7 s idle on the 2-vCPU VM).
+  9417f343 reads it from a minute before the session start
+  (`docs/TROUBLESHOOTING.md` "A corp case record timed out at 60 s"; 91 KB,
+  0.3 s, the same changes). The replace at 9417f343 took 10 min 24 s; the
+  full `bin/verify` on it: acceptance 94 passed, 0 failed, 1 skipped in
+  433 s; unit and API 975 + 863; 505 s. Each restore matched its backup
+  (8acbafcb: 7 sessions, 39,582 detections, 2,860 customer requests, 622
+  rule sets, 164 disabled rules, before and after); at 9417f343 retention
+  removed the backup's six sessions at start, closed 65-74 min before
+  (`CR_RETAIN_CLOSED_MINUTES` 60). Both backups are in
+  `~/.cache/fsl-work/backup-safe/`.
 - 2026-11-17, the platform VM and the range host install from the Kakao
   mirror, an apt try is decided by the install, and a platform-only replace
   keeps the range host (`docs/DECISIONS.md` "An apt try is decided by the
@@ -499,12 +518,12 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 ## Next, in order
 
 1. The live cloud on `dev`: `platform.ref` is `dev` in `cloud.yaml`; the VM
-   runs `/opt/cr` at 2f2f4783, the range host is 10.31.0.242. `compute.slots` as the user wants
+   runs `/opt/cr` at 9417f343, the range host is 10.31.0.242. `compute.slots` as the user wants
    (eight now). Run `uv run bin/cloud init` once as admin on con01
    (`/etc/kolla/clouds.yaml`) to see it report everything present.
-2. Answer-blind walk round 25 of both courses and a scenario, from the
-   start (the run on 97db8909 was stopped midway); then tag the state and take
-   it through gate 2 (item 6).
+2. Answer-blind walk round 26 of both courses and a scenario, from the
+   start, on the fixes of round 25 (live at 9417f343); then tag the state and
+   take it through gate 2 (item 6).
 3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
    or `union select` even where it is loaded: a detection gap to measure
    (round 16, `docs/DECISIONS.md`).
