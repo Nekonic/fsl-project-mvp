@@ -373,11 +373,10 @@ def test_on_openstack_the_pane_leaves_kali_from_a_customers_address_for_the_rout
     settings.ATTACKER_SOURCE_CONTAINER = "cr-kali"
     settings.ATTACKER_CONTAINER = "cr-kali"
     settings.ATTACKER_TARGET_URL = "http://board.com"
-    kr = Segment(id="kr", name="Internet", origin="South Korea", subnet="175.192.0.0/24",
-                 nodes=(Node("cr-edge", "121.134.88.42"), Node("cr-kali", "175.192.0.10"),
-                        Node("cr-kali", "175.192.0.11")))
-    ru = Segment(id="ru", name="Internet", origin="Russia", subnet="5.188.10.0/24",
-                 nodes=(Node("cr-edge", "121.134.88.42"), Node("cr-kali", "5.188.10.10")))
+    kr = Segment(id="kr", name="Internet", origin="South Korea", subnet="175.192.0.0/24", gateway="121.134.88.42",
+                 nodes=(Node("cr-kali", "175.192.0.10"), Node("cr-kali", "175.192.0.11")))
+    ru = Segment(id="ru", name="Internet", origin="Russia", subnet="5.188.10.0/24", gateway="121.134.88.42",
+                 nodes=(Node("cr-kali", "5.188.10.10"),))
     estate = Segment(id="estate", name="Application estate", subnet="10.30.0.0/24",
                      nodes=(Node("cr-edge", "10.30.0.1"), Node("cr-waf", "10.30.0.63")))
     session = Session.objects.create(scenario="board", baseline=[], slot=2)

@@ -580,12 +580,10 @@ class OpenStack:
         for declared in self.declared.segments:
             origin = origins.get(declared.id)
             if origin is not None:
-                way_in = rangehost.router_address()
-                nodes = [Node(name=edge, address=way_in)] + [
-                    Node(name=attacker, address=address)
-                    for address in rangehost.origin_addresses(origin.subnet, origin.addresses)]
+                nodes = [Node(name=attacker, address=address)
+                         for address in rangehost.origin_addresses(origin.subnet, origin.addresses)]
                 segments.append(replace(declared, subnet=origin.subnet, network=laid.network(rangehost.INTERNET),
-                                        gateway=way_in, nodes=tuple(sorted(nodes, key=lambda n: n.name))))
+                                        gateway=rangehost.router_address(), nodes=tuple(nodes)))
             elif declared.id == slot.NAMED_ON:
                 nodes = [Node(name=names.get(service, service), address=address)
                          for service, address in sorted(on_estate.items())]

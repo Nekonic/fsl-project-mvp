@@ -8905,10 +8905,12 @@ origin /24s, so replies to Kali's 100 addresses were on-link), and Kali's
   client's own address and X-Forwarded-For, customer attribution and scoring
   are unchanged. The edge's own `edge.nft` (image) is untouched.
 - **Names.** `slot.yaml` gives Kali `board.com` and `corp.com` at `@router@`,
-  filled from `ROUTER_WAN`. The Website pane connects to the edge node's
-  address on the customers' origin segment (`site.found_egress`), which the
-  slot's shape now gives as the public IP (`openstack._read`), so its
-  remote address reads 121.134.88.42:80 as a browser's would.
+  filled from `ROUTER_WAN`. Each origin segment of the slot's shape names
+  the public IP as its `gateway` and lists only Kali's addresses as nodes
+  (`openstack._read`; the router's address is on none of the origin /24s,
+  and the live acceptance test holds every drawn node to its segment's
+  subnet). The Website pane connects to that gateway (`site.found_egress`),
+  so its remote address reads 121.134.88.42:80 as a browser's would.
 - **Map.** The map reads the live wiring, so the router's WAN label is
   "121.134.88.42" with no "외 N개"; Kali's eth0 keeps its count. The path
   lesson's coach and hint say the name points at the router's public IP and
