@@ -191,7 +191,8 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 - Cloudflare Radar 기준 HTTP 요청 점유율 상위 30개국
 - 출발지마다 GeoIP상 그 나라로 나오는 /24 하나. 공격 주소 약 100개를 나눠 받음
 - 30개 모두 슬롯의 `internet` 브리지 하나에 올라감
-- `deploy/range-host/slot.sh`에서 에지에 출발지별 게이트웨이 주소를, Kali에 출발지별 주소를 붙임(`nsenter`로 `ip -batch` 실행)
+- `deploy/range-host/slot.sh`에서 Kali에 출발지별 주소를 붙임(`nsenter`로 `ip -batch` 실행). Kali는 라우터 바깥의 인터넷 역할
+- 라우터(에지) `wan`의 공인 주소는 기본 출발지의 게이트웨이(5.188.10.1/24) 하나. 실제 기업 경계 라우터처럼 다른 공인 대역은 default route로 업스트림(Kali의 5.188.10.10)에 넘김(`rangehost.edge_addresses`)
 - 브리지 서브넷 172.30.N.0/24는 쓰지 않음
 - 출발지 표는 `bin/pick-origins`로 다시 만듦. acceptance 테스트에서 모든 서브넷을 점수 파이프라인과 대조
 
@@ -2031,7 +2032,7 @@ Docker와 메타데이터:
 2. WAF 로그 디렉터리 `/var/log/cr/sN/waf`에서 일반 파일 `audit.log`와 `refused.log`만 남기고 모두 지웁니다. 없는 파일은 remap된 범위의 `www-data`·`adm` 소유(`0644`)로 만듭니다. 컨테이너 안에서 root로 도는 nginx 마스터가 파일을 열고, WAF shipper가 읽기 전용 마운트로 읽습니다.
 3. 관제망 필터를 넣습니다(위 "관제망만 밖으로"). 그다음 컨테이너를 만들고(`up --no-start --pull never`), 한 번도 실행하지 않은 대상 시스템의 빈 볼륨마다 초기 데이터를 복사합니다.
 4. 컨테이너를 띄웁니다(`up -d --wait`). 그다음 센서, log-server, shipper를 `--force-recreate`로 다시 만들어 방금 쓴 설정을 읽게 합니다. Suricata는 출력 설정을 시작할 때만 읽습니다.
-5. Kali에 출발지 주소들과 기본 출발지 게이트웨이로 가는 default route를, 에지의 `wan`에 출발지별 게이트웨이 주소를 붙입니다(`nsenter`로 `ip -batch`).
+5. Kali에 출발지 주소들과 기본 출발지 게이트웨이로 가는 default route를 붙입니다. 에지의 `wan`에는 기본 출발지 게이트웨이 주소 하나와 Kali의 기본 출발지 주소로 가는 default route를 붙입니다(`nsenter`로 `ip -batch`). 다른 출발지 대역으로 가는 응답은 이 default route로 Kali에 갑니다.
 6. WAF가 에지의 estate 주소로 라우팅하게 합니다. 대상 시스템에는 default route가 없고 WAF에만 응답합니다.
 7. 모든 브리지와 그 포트, 컨테이너 인터페이스에서 TSO, GSO, GRO를 끕니다. 센서가 실제로 오간 그대로의 패킷을 보게 합니다.
 8. `DOCKER-USER`에 브리지별로 같은 브리지로의 forward 허용 룰을 넣습니다.
@@ -2043,6 +2044,7 @@ Docker와 메타데이터:
 
 - capability는 `NET_ADMIN`뿐
 - `wan`은 `sN-inet`, `lan`은 `sN-estate`에 붙음
+- `wan` 주소는 5.188.10.1/24 하나. default route는 Kali의 5.188.10.10
 - `rp_filter`를 끄고 NAT 없이 forward. 출발 국가 주소가 그대로 WAF까지 감
 - `deploy/edge/edge.nft`: input은 loopback 외 drop, forward는 accept
 
@@ -2172,8 +2174,9 @@ Docker와 메타데이터:
            to the chosen country's address as packets leave
        |
        v
-     edge: nftables router; its wan holds each subnet's gateway address
-           and routes on without NAT, so country sources survive
+     edge: nftables router; its wan holds one public address (5.188.10.1)
+           with a default route to kali's 5.188.10.10, and routes on
+           without NAT, so country sources survive
        |
        v
    sN_estate (bridge sN-estate, 10.30.N.0/24): edge lan, waf

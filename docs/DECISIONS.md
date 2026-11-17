@@ -8878,3 +8878,21 @@ delete button on learner rows of the active table, behind a `confirm()`.
   inside the check. The plain run is now due at 45 s and the variant at
   120 s (each about 50 s), and the final check, which re-sends every case
   not already inside it, sends both again.
+
+## 2026-11-17 — The edge router holds one public address on its WAN
+
+The user's ruling: a corporate edge router's WAN side holds one public
+address. The slot's `sN-edge` held 31 on `wan` (5.188.10.1 and the `.1` of
+each of the other 29 origin /24s), put there so replies to Kali's 100
+origin and customer addresses were on-link. `rangehost.edge_addresses` now
+gives `wan` the default origin's gateway alone (5.188.10.1/24) and a
+default route to Kali's address on that /24 (5.188.10.10); Kali stands in
+for the Internet beyond the router and keeps every origin address, so a
+reply to 73.0.0.10 leaves the edge toward 5.188.10.10 and arrives on the
+address it was sent from. Kali's own default route was already via
+5.188.10.1. Nothing else changes: the edge forwards without NAT, so the WAF
+and the sensor see the same sources and X-Forwarded-For as before. The map
+reads the live wiring, so the router's WAN label is "5.188.10.1" with no
+"외 N개"; Kali's eth0 keeps its count. Rejected: one static route per origin
+/24 via 5.188.10.10 (30 routes that say what one default route says, and
+an edge that has to be told about every new origin).

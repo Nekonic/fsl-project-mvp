@@ -30,8 +30,7 @@ CONTAINERS = {
 2: eth0@if10    inet 73.0.0.11/24 scope global secondary eth0
 2: eth0@if10    inet 175.192.0.10/24 scope global eth0
 2: eth0@if10    inet 5.188.10.10/24 scope global eth0\\       valid_lft forever preferred_lft forever"""),
-    "edge": ("s1_estate", "", (), """3: wan@if11    inet 73.0.0.1/24 scope global wan
-3: wan@if11    inet 5.188.10.1/24 scope global wan
+    "edge": ("s1_estate", "", (), """3: wan@if11    inet 5.188.10.1/24 scope global wan
 4: lan@if12    inet 10.30.0.1/24 brd 10.30.0.255 scope global lan"""),
     "waf": ("s1_estate", "", ("/var/log/cr/s1/waf/audit.log",),
             """5: eth0@if13    inet 10.30.0.177/24 brd 10.30.0.255 scope global eth0
@@ -149,7 +148,7 @@ def test_one_read_on_the_range_host_gives_every_container_its_networks_and_addre
     found = {(one.host, one.name, one.address, one.segment) for one in adapter.wiring().interfaces()}
 
     assert {("cr-kali", "eth0", "5.188.10.10/24", "internet"), ("cr-kali", "eth0", "172.30.1.10/24", "internet"),
-            ("cr-edge", "wan", "73.0.0.1/24", "internet"), ("cr-edge", "lan", "10.30.0.1/24", "estate"),
+            ("cr-edge", "wan", "5.188.10.1/24", "internet"), ("cr-edge", "lan", "10.30.0.1/24", "estate"),
             ("cr-waf", "eth0", "10.30.0.177/24", "estate"), ("cr-waf", "eth1", "10.32.0.2/24", "web"),
             ("cr-waf", "mgmt", "172.29.1.12/24", "mgmt"), ("board", "eth1", "10.32.0.59/24", "web"),
             ("board", "eth0", "172.18.0.3/16", "board-default"),
@@ -264,7 +263,8 @@ def test_an_interface_with_more_addresses_than_the_one_drawn_says_how_many_more(
 
     assert (labels["address:kali:switch:internet"]["text"], labels["address:kali:switch:internet"]["more"]) == (
         "5.188.10.10", 4), "eth0 holds five addresses on the range host; the map names one and counts the rest"
-    assert labels["address:router:switch:internet"]["more"] == 1
+    assert (labels["address:router:switch:internet"]["text"], labels["address:router:switch:internet"].get("more")) == (
+        "5.188.10.1", None), "the edge router holds one public address"
     assert "more" not in labels["address:waf:switch:estate"]
 
 

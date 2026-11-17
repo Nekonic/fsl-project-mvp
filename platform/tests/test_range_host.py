@@ -143,13 +143,15 @@ def test_one_sensor_sniffs_the_web_servers_network_behind_the_waf_and_not_the_dm
     assert config["stats"]["interval"] == 5, "kernel_drops is read from the counters"
 
 
-def test_kali_holds_every_declared_origin_address_and_the_edge_every_origin_gateway():
+def test_kali_holds_every_declared_origin_address_and_the_edge_one_public_address_routed_to_the_internet():
     files = slot_files()
     kali, edge = files["kali.ip"].decode().splitlines(), files["edge.ip"].decode().splitlines()
 
     assert len(kali) == sum(origin.addresses for origin in DECLARED.origins) + 1
     assert "addr add 5.188.10.10/24 dev eth0" in kali and kali[-1] == "route replace default via 5.188.10.1 dev eth0"
-    assert len(edge) == len(DECLARED.origins) and "addr add 73.0.0.1/24 dev wan" in edge
+    assert edge == ["addr add 5.188.10.1/24 dev wan", "route replace default via 5.188.10.10 dev wan"], (
+        "a corporate edge router holds one public address and reaches every other public network through its "
+        "upstream; Kali stands in for the Internet beyond it")
 
 
 def test_each_slot_s_logs_reach_the_collector_under_a_name_that_keeps_its_slot():

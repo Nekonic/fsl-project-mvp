@@ -224,19 +224,27 @@ def gateway_of(cidr: str) -> str:
     return str(next(ipaddress.ip_network(cidr).hosts()))
 
 
+def wan_origin(origins, default_origin: str):
+    by_id = {origin.id: origin for origin in origins}
+    return by_id.get(default_origin) or (origins[0] if origins else None)
+
+
 def kali_addresses(origins, default_origin: str) -> str:
     lines = [f"addr add {address}/{ipaddress.ip_network(origin.subnet).prefixlen} dev eth0"
              for origin in origins for address in origin_addresses(origin.subnet, origin.addresses)]
-    by_id = {origin.id: origin for origin in origins}
-    chosen = by_id.get(default_origin) or (origins[0] if origins else None)
+    chosen = wan_origin(origins, default_origin)
     if chosen is not None:
         lines.append(f"route replace default via {gateway_of(chosen.subnet)} dev eth0")
     return "".join(f"{line}\n" for line in lines)
 
 
-def edge_addresses(origins, slot: Slot) -> str:
-    lines = [f"addr add {gateway_of(origin.subnet)}/{ipaddress.ip_network(origin.subnet).prefixlen} dev wan"
-             for origin in origins]
+def edge_addresses(origins, default_origin: str) -> str:
+    chosen = wan_origin(origins, default_origin)
+    if chosen is None:
+        return ""
+    upstream = origin_addresses(chosen.subnet, 1)[0]
+    lines = [f"addr add {gateway_of(chosen.subnet)}/{ipaddress.ip_network(chosen.subnet).prefixlen} dev wan",
+             f"route replace default via {upstream} dev wan"]
     return "".join(f"{line}\n" for line in lines)
 
 
@@ -320,7 +328,7 @@ def slot_files(source: Path, slot: Slot, wargames, origins, default_origin: str,
         "compose.yaml": dumped(document),
         "sensor.yaml": sensor_config(source, slot, document).encode(),
         "kali.ip": kali_addresses(origins, default_origin).encode(),
-        "edge.ip": edge_addresses(origins, slot).encode(),
+        "edge.ip": edge_addresses(origins, default_origin).encode(),
         "local.rules": (Path(source) / BASELINE_RULES).read_bytes(),
         SCRIPT: (Path(source) / SLOT_SCRIPT).read_bytes(),
         "fronts": "".join(f"{name}\n" for name in sorted(fronted(document))).encode(),
