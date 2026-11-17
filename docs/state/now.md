@@ -5,8 +5,8 @@ finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
-Updated: 2026-11-18, walk round 27's fixes are live: the cloud was rebuilt at
-5bb34b0a with the full `bin/verify` green (`cr-range` 10.31.0.242 kept, eight
+Updated: 2026-11-18, walk round 27's fixes are live: the cloud was rebuilt
+with them and the full `bin/verify` is green (`cr-range` 10.31.0.242 kept, eight
 slots as compose projects on runc; on `dev`).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
@@ -14,16 +14,15 @@ Internet.
 
 ## Where things stand
 
-- 2026-11-18, answer-blind walk round 27's fixes are live at 5bb34b0a
-  (`docs/TROUBLESHOOTING.md` "Answer-blind walk round 27"): f0c568bf (Kali's
-  `ip addr` lists 5.188.10.10 first, as on the map), 9d632e07, 1b6a65f4 and
-  f40262ea (the result page, the accounts page and the map; both consoles
-  name the played item from the API), 44bb1395 and de64f25e (a Kali check
-  passes 3 s after the run's last request once the tool has left the
-  terminals; answers after the 30 s reachability window wait for one slot's
-  read), 54077787 (F5's first note opens the developer tools first; an answer
-  without the request's row selected is no wrong try). `uv run bin/cloud up
-  --replace` at 5bb34b0a took 10 min 59 s and kept the range host
+- 2026-11-18, answer-blind walk round 27's fixes are live
+  (`docs/TROUBLESHOOTING.md` "Answer-blind walk round 27"): Kali's `ip addr`
+  lists 5.188.10.10 first, as on the map; the result page, the accounts page
+  and the map changed, and both consoles name the played item from the API;
+  a Kali check passes 3 s after the run's last request once the tool has
+  left the terminals, and answers after the 30 s reachability window wait
+  for one slot's read; F5's first note opens the developer tools first, and
+  an answer without the request's row selected is no wrong try. `uv run
+  bin/cloud up --replace` with them took 10 min 59 s and kept the range host
   (10.31.0.242). The backup before it held 6 sessions, 25 cases, 67,281
   detections, 2,790 customer requests, 3 objectives, 652 rule sets and 168
   disabled rules (`db-20261117T150108Z.sqlite3`, also in
@@ -33,52 +32,51 @@ Internet.
   and disabled rules unchanged). The full `bin/verify` on it: acceptance 94
   passed, 0 failed, 0 errors, 1 skipped in 500 s; unit and API 975 + 886;
   559 s start to result; ratchet no regression (`core_loc` 597).
-- 2026-11-17, answer-blind walk round 26's fixes are live at f93fb9fe:
-  edd0584e (the result page: each lesson lists only its own change, a
-  scenario counts one customer total, the header and breadcrumb name the
-  course or scenario), 05d69493 (the lesson console's developer tools ring
-  keeps off the field below it), 978aa644 (the edge forwards from `wan` only
-  replies and port-forwarded connections, so Kali reaches the WAF only by the
-  router's public address), ea1bd91e (the comment cases post the comment form
-  with its CSRF cookie and token, so the board stores them) and 77ed8f33
-  (docs). `uv run bin/cloud up --replace` at f93fb9fe took 11 min 0 s and
+- 2026-11-17, answer-blind walk round 26's fixes went live: on the result
+  page each lesson lists only its own change, a scenario counts one customer
+  total, and the header and breadcrumb name the course or scenario; the
+  lesson console's developer tools ring keeps off the field below it; the
+  edge forwards from `wan` only replies and port-forwarded connections, so
+  Kali reaches the WAF only by the router's public address; the comment
+  cases post the comment form with its CSRF cookie and token, so the board
+  stores them. `uv run bin/cloud up --replace` with them took 11 min 0 s and
   kept the range host (10.31.0.242); the restore matched its backup (2
   sessions, 5 cases, 0 detections, 0 customer requests, 643 rule sets, 167
   disabled rules, before and after; `db-20261117T125650Z.sqlite3`, also in
   `~/.cache/fsl-work/backup-safe/`). The full `bin/verify` on it: acceptance
   94 passed, 0 failed, 0 errors, 1 skipped in 473 s; unit and API 964 + 884;
   542 s.
-- 2026-11-17, answer-blind walk round 25's fixes on `dev`: 00ba77d5 (lesson
-  and scenario note text), e2b6e8f5 (the result page), c9d3e9b4 (Kali's
-  hosts file, the document JSON tab, a Korean Kibana refusal, a session opens
-  in about 10 s). `uv run bin/cloud up --replace` at 8acbafcb took 10 min
+- 2026-11-17, answer-blind walk round 25's fixes on `dev`: lesson and
+  scenario note text; the result page; Kali's hosts file, the document JSON
+  tab, a Korean Kibana refusal, and a session that opens in about 10 s.
+  `uv run bin/cloud up --replace` with them took 10 min
   24 s and kept the range host (10.31.0.242): `slot.sh` reaches each slot at
   `configure/`, not through the setup bundle, and all eight slots carried the
   new one. Its full `bin/verify`: acceptance 91 passed, 0 failed, 3 errors, 1
   skipped; the three were one `POST cases/` in the corp fixture past the
   client's 60 s, because every objective observation re-read and re-parsed
   the whole corp-db binary log (17 MB, about 3.7 s idle on the 2-vCPU VM).
-  9417f343 reads it from a minute before the session start
+  The fix reads it from a minute before the session start
   (`docs/TROUBLESHOOTING.md` "A corp case record timed out at 60 s"; 91 KB,
-  0.3 s, the same changes). The replace at 9417f343 took 10 min 24 s; the
+  0.3 s, the same changes). The replace with the fix took 10 min 24 s; the
   full `bin/verify` on it: acceptance 94 passed, 0 failed, 1 skipped in
   433 s; unit and API 975 + 863; 505 s. Each restore matched its backup
-  (8acbafcb: 7 sessions, 39,582 detections, 2,860 customer requests, 622
-  rule sets, 164 disabled rules, before and after); at 9417f343 retention
+  (the first: 7 sessions, 39,582 detections, 2,860 customer requests, 622
+  rule sets, 164 disabled rules, before and after); at the second, retention
   removed the backup's six sessions at start, closed 65-74 min before
   (`CR_RETAIN_CLOSED_MINUTES` 60). Both backups are in
   `~/.cache/fsl-work/backup-safe/`.
 - 2026-11-17, the platform VM and the range host install from the Kakao
   mirror, an apt try is decided by the install, and a platform-only replace
   keeps the range host (`docs/DECISIONS.md` "An apt try is decided by the
-  install"). The interrupted 8bcbc9f9 replace left a VM without Docker; the
-  replace at d761b9f7 failed the same way on the mirror's out-of-step
-  `noble-security` index. Run 1 at 655e331a restored
-  `db-20261117T042204Z.sqlite3` (the VM that ran 6ba70c0c; also in
+  install"). An interrupted replace left a VM without Docker; the
+  next replace failed the same way on the mirror's out-of-step
+  `noble-security` index. Run 1, with the install fix, restored
+  `db-20261117T042204Z.sqlite3` (the last good VM's store; also in
   `~/.cache/fsl-work/backup-safe/`) in 25 min 27 s, 16 min 36 s of it a new
-  range host (10.31.0.242); run 2 at 2f2f4783, docs only, took 10 min 14 s and
+  range host (10.31.0.242); run 2, docs only, took 10 min 14 s and
   kept the range host and every slot's targets, Kali, WAF and edge router.
-  The full `bin/verify` on 2f2f4783: acceptance 94 passed, 0 failed, 1
+  The full `bin/verify` on run 2: acceptance 94 passed, 0 failed, 1
   skipped in 492 s; unit and API 1024 + 783; 569 s.
 - 2026-11-17, answer-blind walk round 24's result, scenario and run-check
   findings fixed (`docs/DECISIONS.md` "Answer-blind walk round 24",
@@ -93,7 +91,7 @@ Internet.
   a sign-in are gone (session 2513: 956 customer requests, no 4xx); the
   debrief counts customers up to the final check's end (956 when judged and
   956 after close). Live: `uv run bin/cloud up --replace` rebuilt the cloud
-  at 97db8909 (range host 10.31.0.212); the full `bin/verify` on it:
+  (range host 10.31.0.212); the full `bin/verify` on it:
   acceptance 94 passed, 0 failed, 1 skipped in 462 s; unit and API 1011 +
   784; 537 s.
 - 2026-11-17, answer-blind walk round 23's findings fixed
@@ -117,10 +115,10 @@ Internet.
   Discover showed the session's alert. Full `bin/verify` on the VM:
   acceptance 81 passed, 13 errors, 1 skipped; all 13 are one 500 from
   `/api/sessions/<id>/topology/` (`topology.py` `_boxed` KeyError `'x'`),
-  outside this change; unit and API 943 + 818. The 500 is fixed in
-  `7152b54c` (`docs/TROUBLESHOOTING.md`, "The session map answered 500"):
+  outside this change; unit and API 943 + 818. The 500 is fixed
+  (`docs/TROUBLESHOOTING.md`, "The session map answered 500"):
   reproduced live by stopping `s1-board-db`, 500 before the fix and 200
-  after; the full `bin/verify` on `7152b54c` passed: acceptance 94 passed,
+  after; the full `bin/verify` on the fix passed: acceptance 94 passed,
   0 failed, 1 skipped; unit and API 957 + 813; 506 s.
 - 2026-11-16, F4 and 3.4 run the WAF in DetectionOnly mode and 3.1-3.3
   attack with `board-sqli-orderby-sqlmap-random-agent` (`docs/DECISIONS.md`
@@ -147,7 +145,7 @@ Internet.
   the DMZ, the servers inside the web segment, full addresses beside each
   link, no range host or platform. Parity with the two-leg sensor: board TP 12
   FP 0 FN 0 TN 6, corp TP 0 FP 0 FN 3 TN 4. `core_loc` 585 -> 592. Live: the
-  platform VM runs `/opt/cr` at the branch `map-redraw` with images 014bc78d;
+  platform VM runs `/opt/cr` at the branch `map-redraw` with images built from it;
   the range host 10.31.0.54. Full `bin/verify` on the VM: 563 s, acceptance
   94 passed, 0 failed, 1 skipped in 508 s across 12 processes, unit and API
   812 + 869. Next: one wargame per slot (the map then shows only the session's
@@ -190,7 +188,7 @@ Internet.
   live map shows the 관제망 band with the sensors and the log server. Live on
   the range host 10.31.0.248 (replaced by `POST slot/`, then `configure/`;
   the platform VM runs `/opt/cr` at the branch `monitoring-real`, images
-  d927d757). Same red-team file before and after: every verdict the same,
+  built from it). Same red-team file before and after: every verdict the same,
   kernel_drops 0; hub mode measured equal and not kept. RAM per slot 1,179
   MiB before, 1,183 after. The first full verify hung: `sudo` on the new
   range host waited 21.8 s on its own name (no `/etc/hosts` line, no DNS), so
@@ -264,7 +262,7 @@ Internet.
   (`docs/DECISIONS.md` "The WAF mounts its log file, not its log
   directory"); `test_range_isolation.py`'s last test plants the links and
   checks the canary after a reset.
-- Full `bin/verify` on the platform VM at 89b528c (2026-11-14, four slots,
+- Full `bin/verify` on the platform VM (2026-11-14, four slots,
   the range host replaced by `POST slot/` with the WAF log fix):
   unit and API 1498 passed (5:07); acceptance 91 passed, 0 failed, 0 errors,
   1 skipped in 1047 s across 6 processes; ratchet no regression (`core_loc`
@@ -280,8 +278,7 @@ Internet.
   `dependencies` 6, `services` 5).
 - Answer-blind walk round 17 (2026-11-14): its fifteen findings were fixed
   (`docs/DECISIONS.md` "Answer-blind walk round 17") and deployed (the live
-  platform runs `range-host-live` at e11eef8, images from GHCR by that
-  commit, the range host replaced by `POST slot/`). The stall on F4's last
+  platform runs `range-host-live`, images from GHCR built from it, the range host replaced by `POST slot/`). The stall on F4's last
   check was the server: an alert was matched to any request within 5 s, so a
   plain search 3.5 s after an attack inherited its alert; alerts now match a
   request by URL. The full `bin/verify` below ran with that deploy live.
@@ -293,7 +290,7 @@ Internet.
   a time, course 1's result shows no score, ttyd raises no leave-site
   dialog. Left by ruling: Next skipping steps, XSS not scored (wording only),
   wrong attempts shown on the result but not penalised. Deployed: the live platform
-  runs `range-host-live` at 8304864, images from GHCR by that commit, the
+  runs `range-host-live`, images from GHCR built from it, the
   range host replaced by `POST slot/` and four slots READY after
   `configure/` (store copied first to
   `~/.cache/fsl-work/backup-safe/db-20261114T1410Z-r18.sqlite3`). Full
@@ -315,7 +312,7 @@ Internet.
   four slots READY). The platform listens on its own address, not
   127.0.0.1: drive the API from the operator machine. Before and after
   screenshots are in the session scratchpad (`slop-after/`). Full
-  `bin/verify` on the platform VM at 53fd1c9: acceptance 91 passed,
+  `bin/verify` on the platform VM: acceptance 91 passed,
   0 failed, 0 errors, 1 skipped in 693 s across 14 processes; unit and API
   1535 passed (853 + 682); ratchet no regression (`core_loc` 584,
   `dependencies` 6, `services` 5; `product_loc` 27256, 191 below round 18).
@@ -330,9 +327,9 @@ Internet.
   repeated cards) went. Left: the "n" lines (not reproduced), `/search`
   strict, the F6 dash, the scenario console's missing end button. Store
   copied first to `~/.cache/fsl-work/backup-safe/db-20261114T1740Z-r19.sqlite3`.
-  Deployed: `range-host-live` at fc55570 with images by that commit
+  Deployed: `range-host-live` with images built from it
   (`CR_IMAGE_TAG` in `/opt/cr/.env`), so `POST slot/` replaced the range
-  host and `configure/` left four slots READY. Full `bin/verify` on the platform VM at fc55570: the first run had 7
+  host and `configure/` left four slots READY. Full `bin/verify` on the platform VM: the first run had 7
   setup errors in four modules (the platform did not answer `GET /` within
   3 s; the four passed when rerun alone), the second was all green: 12 min
   30 s start to result; acceptance 91 passed, 0 failed, 0 errors, 1 skipped
@@ -354,10 +351,10 @@ Internet.
   (session 1868). The other 25 findings and the slop list are in the
   entry; scoring meaning unchanged. Store copied first to
   `~/.cache/fsl-work/backup-safe/db-20261114T2113Z-r20.sqlite3`. Deployed:
-  `range-host-live` at 7529bee with images by that commit, so `POST slot/`
+  `range-host-live` with images built from it, so `POST slot/`
   replaced the range host and `configure/` left four slots READY; `cr-gns3`
   was recreated, which cleared slot 1's wedged switch TAPs. Full
-  `bin/verify` on the platform VM at a820c7c: 782 s start to result;
+  `bin/verify` on the platform VM: 782 s start to result;
   acceptance 91 passed, 0 failed, 0 errors, 1 skipped in 726 s across 14
   processes; unit and API 1562 passed (896 + 666); ratchet no regression
   (`core_loc` 584, `dependencies` 6, `services` 5).
@@ -366,7 +363,7 @@ Internet.
   unchanged, `core_loc` still 584 (the unread-sid check lives in
   `disable.py`: Suricata 8 loads `sid:N rev:1;`, measured live). Store
   copied first to `~/.cache/fsl-work/backup-safe/db-20261115T0019Z-r21.sqlite3`.
-  Deployed: `range-host-live` at 82c3d64 with images by that commit, so
+  Deployed: `range-host-live` with images built from it, so
   `POST slot/` replaced the range host and `configure/` left four slots
   READY. Checked live (Playwright and the API, sessions 1898-1903): scenario
   1.1 listed an item that arrived 16 s after the attack verdict without a
@@ -383,7 +380,7 @@ Internet.
   and `(Total Score: 20)` passed; f4's first ring sat on the DevTools toggle
   with no callout; a lesson's Start opened `/blue/<id>/`; the WAF shell's
   `TZ=KST-9` printed 09:38 KST where `TZ=Asia/Seoul` printed 00:38 "Asia".
-  Full `bin/verify` on the platform VM at 82c3d64: 770 s start to result;
+  Full `bin/verify` on the platform VM: 770 s start to result;
   acceptance 91 passed, 0 failed, 0 errors, 1 skipped in 719 s across 14
   processes; unit and API 1578 passed (904 + 674); ratchet no regression
   (`core_loc` 584, `dependencies` 6, `services` 5).
@@ -393,7 +390,7 @@ Internet.
   double count: in the store each sqlmap run of session 1929 has its own
   20687 alerts from 1973 requests; the rows now carry the run's time. Store
   copied first to `~/.cache/fsl-work/backup-safe/db-20261115T0434Z-r22.sqlite3`.
-  Deployed: `range-host-live` at 802b690 with images by that commit, so
+  Deployed: `range-host-live` with images built from it, so
   `POST slot/` replaced the range host and `configure/` left four slots
   READY. Checked live with Playwright (sessions 1930-1935): customer
   verdicts on the attack step left no tries, no hint offer and no red line;
@@ -410,8 +407,8 @@ Internet.
   no briefing; no `.badge` on the scenario screens or the result; none of
   the listed glosses left in the string table. The answer queue and the
   stale-line suppression are unit-tested; live, c1 L1 s1 checked in 0.5 s,
-  too fast to show the race. Full `bin/verify` on the platform VM at
-  802b690: 745 s start to result; acceptance 91 passed, 0 failed, 0 errors,
+  too fast to show the race. Full `bin/verify` on the platform VM:
+  745 s start to result; acceptance 91 passed, 0 failed, 0 errors,
   1 skipped in 693 s across 14 processes; unit and API 1593 passed (904 +
   689); ratchet no regression (`core_loc` 584, `dependencies` 6, `services` 5).
 - Test speed (on `dev`, `docs/DECISIONS.md` "The acceptance
@@ -448,7 +445,7 @@ Internet.
   `db-20261115T060144Z-uvreplace.sqlite3`. The live setup moved to the new
   flow: the clouds.yaml entry `fsl-range` written from the RC file's
   password (not reset), `cloud: fsl-range` added to the live `cloud.yaml`.
-  CI built all eight images at 84b32f0 (platform and gns3 from the repo
+  CI built all eight images (platform and gns3 from the repo
   root, `uv sync --frozen`: 10 and 167 packages). From an archive of HEAD
   with no `.venv`, `uv run bin/cloud up --replace --ref uv-project` synced
   65 packages, rebuilt the platform VM and left four slots READY (24 min
@@ -462,7 +459,7 @@ Internet.
   init` was not run as admin: no admin credentials are on this Mac (no
   `/etc/kolla/clouds.yaml`; admin commands run on con01); with the
   member's `OS_*` it stopped with "not an admin's" and changed nothing.
-  The live platform runs 84b32f0 from the branch `uv-project`; `dev` and
+  The live platform runs the branch `uv-project`; `dev` and
   `range-host-live` hold the same commit and later docs.
 - The learner map is the slot's live wiring (2026-11-15, `docs/DECISIONS.md`
   "The learner map is the slot's live wiring"): one ssh read per map
@@ -471,7 +468,7 @@ Internet.
   (`services` 4). Store copied first to
   `~/.cache/fsl-work/backup-safe/db-20261115T070528Z-livemap.sqlite3`.
   `uv run bin/cloud up --replace --ref range-host-live` ran twice untouched
-  (24 min 10 s at b72b81d, 23 min 44 s at 08c6006), both exit 0 with four
+  (24 min 10 s and 23 min 44 s), both exit 0 with four
   slots READY; the VM runs four containers (no `cr-gns3`), no Docker socket
   mount, no Docker client in the platform image, nothing listening on 3080.
   The first run found the edge's and Kali's interfaces held none of the
@@ -482,13 +479,13 @@ Internet.
   topology once and nothing requests port 3080. Live wiring before the slot
   agent's WAF-only change: board and corp-wp stand on `sN-estate` beside the
   edge's `lan`, and the edge forwards everything; the map draws it so.
-  Full `bin/verify` on the VM with eight slots (`compute.slots` 8 in the live `cloud.yaml`): at 08c6006 the new map acceptance test failed (it read `full_run`'s topology after that session closed, when its slot was being reset), fixed at 94418ed to read its own open session; at 94418ed run 2 lost the red-team fixture (`POST /cases/` read timeout 15 s, 15 errors) and run 3 lost every group's `GET /` reach check (3 s, 73 errors), and run 4 passed: acceptance 92 passed, 0 failed, 1 skipped in 591 s, unit and API 881 + 666, ratchet `core_loc` 584, `dependencies` 6, `services` 4, 654 s. Runs 2 and 3 are one defect, not a flake: py-spy on the platform during run 4 showed `waitress` at one full core, `GET /` stalling up to 15.8 s, and 54 % of the GIL in `rangehost.compose` YAML parsing, mostly from `reachability.scored_hosts` (a 30 s cache with no lock, refreshed by every waiting request, each refresh one `describe` per slot) and `range/ready/`'s `plan_slots` bundle; neither changed here, and eight slots doubles both (Next, item 4).
+  Full `bin/verify` on the VM with eight slots (`compute.slots` 8 in the live `cloud.yaml`): first the new map acceptance test failed (it read `full_run`'s topology after that session closed, when its slot was being reset), fixed to read its own open session; then run 2 lost the red-team fixture (`POST /cases/` read timeout 15 s, 15 errors) and run 3 lost every group's `GET /` reach check (3 s, 73 errors), and run 4 passed: acceptance 92 passed, 0 failed, 1 skipped in 591 s, unit and API 881 + 666, ratchet `core_loc` 584, `dependencies` 6, `services` 4, 654 s. Runs 2 and 3 are one defect, not a flake: py-spy on the platform during run 4 showed `waitress` at one full core, `GET /` stalling up to 15.8 s, and 54 % of the GIL in `rangehost.compose` YAML parsing, mostly from `reachability.scored_hosts` (a 30 s cache with no lock, refreshed by every waiting request, each refresh one `describe` per slot) and `range/ready/`'s `plan_slots` bundle; neither changed here, and eight slots doubles both (Next, item 4).
 - The live map's layout (2026-11-15, `docs/DECISIONS.md` "The live map is
   laid out by the platform"): `topology.laid_out` places zones left to right
   in traffic order, two-zone devices on the boundary, sensors outside every
   zone under the bridge they sniff, and log edges at right angles; layout
   only, nothing drawn without a counterpart in the slot. Deployed:
-  `uv run bin/cloud up --replace --ref range-host-live` at d927d757 (26 min,
+  `uv run bin/cloud up --replace --ref range-host-live` (26 min,
   exit 0; store kept in
   `~/.cache/fsl-work/backup-safe/db-20261115T150353Z-maplayout.sqlite3`).
   Checked live with Playwright on sessions 2127 (board, slot 1) and 2128
@@ -551,18 +548,19 @@ Nothing. Gate 2 is only for `main` (Next, item 6).
 ## Next, in order
 
 1. The live cloud on `dev`: `platform.ref` is `dev` in `cloud.yaml`; the VM
-   runs `/opt/cr` at 9417f343, the range host is 10.31.0.242. `compute.slots` as the user wants
+   runs `/opt/cr` with walk round 27's fixes, the range host is 10.31.0.242. `compute.slots` as the user wants
    (eight now). Run `uv run bin/cloud init` once as admin on con01
    (`/etc/kolla/clouds.yaml`) to see it report everything present.
-2. Answer-blind walk round 26 of both courses and a scenario, from the
-   start, on the fixes of round 25 (live at 9417f343); then tag the state and
-   take it through gate 2 (item 6).
+2. Answer-blind walk round 28 (2026-11-18) of both courses and scenarios
+   3.1-3.4 ran on the fixes of round 27; fix its findings, rebuild, verify
+   and walk again from the start; then tag the state and take it through
+   gate 2 (item 6).
 3. sid 9000001 misses sqlmap's ORDER BY payloads that carry no quote, `-- `
    or `union select` even where it is loaded: a detection gap to measure
    (round 16, `docs/DECISIONS.md`).
 4. The platform's CPU under eight slots: with eight slots two of four full
    verifies on 2026-11-15 lost requests to 3-15 s stalls (the live map entry
-   above); since `bc0847ec` the slot compose and the bundle digest are cached
+   above); since the lock fix the slot compose and the bundle digest are cached
    and `reachability.scored_hosts` refreshes under one lock. Ingest re-reading the whole window: `POST /ingest/` took 22-42 s on a
    closed red-team session while the suite ran, and every score wait calls it.
    More slots (`compute.slots`; ten fit on `dba.range`) would shorten the
