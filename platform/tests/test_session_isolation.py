@@ -96,7 +96,7 @@ def test_the_red_console_s_calls_act_on_its_own_session(client):
 
 
 @pytest.mark.django_db
-def test_on_openstack_the_waf_terminal_is_a_shell_in_the_slot_s_waf_container(client):
+def test_on_openstack_the_waf_terminal_is_a_root_shell_on_the_slot_s_waf_vm(client):
     with override_settings(WAF_SESSION_TERMINAL_URL=""):
         session, = opened_sessions(1)
         assert client.get(f"/api/sessions/{session.pk}/").json()["waf_terminal"] == "/vm-terminal/waf/"
@@ -106,7 +106,7 @@ def test_on_openstack_the_waf_terminal_is_a_shell_in_the_slot_s_waf_container(cl
     assert len(served) == 1 and served[0].rstrip(" &\\").endswith("/app/vm-terminal.sh cr-waf"), served
     assert declared.read().hosts[declared.read().roles["gateway"]].node == "cr-waf"
     shell = (ROOT / "platform/vm-terminal.sh").read_text()
-    assert ".terminal(wanted)" in shell and '"ubuntu@${addr}"' in shell and "sudo -i" in shell, (
+    assert ".terminal(wanted)" in shell and '"${CR_OPENSTACK_SSH_USER:-ubuntu}@${addr}"' in shell and "sudo -i" in shell, (
         "the shell is a root login on the slot's WAF VM at its management address"
     )
     assert "StrictHostKeyChecking=accept-new" in shell and '-o HostKeyAlias=$alias' in shell, (

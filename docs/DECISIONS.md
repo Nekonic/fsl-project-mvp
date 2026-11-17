@@ -9311,3 +9311,80 @@ to reproduce the comment in the developer tools, which shows their own
 request, not the attacker's. The audit record now also carries bodies of
 other logged requests (4xx-5xx or a CRS match), such as a refused login's
 form; the range's accounts are seeded test accounts.
+
+## 2026-11-18 — The Heat range comes up from cloud.yaml: the pool, the role images, the boot contract
+
+Decided while the user was away, to have the range of
+`docs/superpowers/specs/2026-11-18-heat-range-design.md` deployable with
+`uv run bin/cloud up --replace`.
+
+- **Pool `{board: 3, corp: 1}`** (`compute.pool`). Today's quota is about
+  24 vCPU, 56 GB and 17 instances; the platform VM (`m1.large`) takes 2 vCPU
+  and 8 GB; a slot is four VMs. Four slots are 16 VMs, with the platform 17
+  instances. Board gets three because the lessons and most acceptance modules
+  open board sessions; corp keeps one. The number is the cloud's capacity, set
+  in `cloud.yaml`, not a property of the design (KYPO pre-allocates pools sized
+  by operations).
+- **Flavors and images per role.** `compute.flavors.<role>` defaults to
+  `dba.small` for kali, waf, infra and target, the WAF included: nothing
+  measured says the WAF needs more than the others. `compute.images.<role>`
+  defaults to `cr-<role>-bake1`, the images baked from `deploy/roles/`. Both
+  reach the platform as `CR_OPENSTACK_FLAVORS` and `CR_OPENSTACK_IMAGES`, the
+  pool as `CR_OPENSTACK_POOL` (`board=3 corp=1`), through `platform.yaml`.
+- **A `cloud.yaml` written for the range host still parses.** `network.estate`,
+  `network.mtu`, `compute.slots` and `compute.flavors.range` are read and
+  ignored. `cloud.yaml` is per checkout and not in git; refusing it would stop
+  `bin/cloud up --replace` before anything runs, as with `backups.keep`.
+- **`bin/cloud up` removes what the range host left before it fills the pool**,
+  not after the range is ready: the old `cr-range` VM (6 vCPU, 16 GB) holds the
+  quota the slot VMs need. `DELETE /api/range/leftovers/` already lists it (its
+  `cr_host` metadata). `down` deletes the slot stacks through the API and waits
+  until none stands before it removes the fabric, because each slot VM's control
+  port holds `cr-mgmt`; with no platform to ask it deletes the stacks tagged
+  `cr-range` with the CLI.
+- **Ready and failed are written by cloud-init, not by `slot-boot`.** Each
+  node's user data ends with `systemctl start <its role's boot units>`, then
+  `touch /var/lib/cr/ready`, or writes the units' status into
+  `/var/lib/cr/failed`. The units are kali `slot-boot`, waf `slot-boot` and
+  `nginx`, infra `slot-boot` and `sensor`, target `wargames`. `systemctl start`
+  of a oneshot returns when it has run and says whether it failed. Why here: the
+  images baked now (`bake1`) work as they are, a re-bake needs no change, and one
+  place covers the target, whose boot is `wargames.service`, not `slot-boot`.
+- **One management user on every node.** The user data creates
+  `CR_OPENSTACK_SSH_USER` (default `ubuntu`) with the platform's public key and
+  passwordless sudo, after cloud-init's `default` user. On Ubuntu that is the same
+  user; on Kali the default user `kali` stays for learner ssh (P6). The key is in
+  the template, so a new platform key makes every slot stale and it is replaced.
+- **Node addresses are held per stack.** The readiness check already lists the
+  Nova servers; once every node of a `CREATE_COMPLETE` stack is ready, their
+  `cr-mgmt` addresses and host-key aliases are kept for that stack id. A command
+  then asks the cloud nothing (before, every command read networks, servers and
+  subnets, about 1.5 s in acceptance). Creating or deleting the slot's stack, or
+  a plan that finds the stack not complete, drops them. Kept in the API server's
+  memory; `vm-terminal.sh` runs its own process and looks up once per terminal
+  open. Rejected: fixed control addresses per slot (the `cr-mgmt` /24 would cap
+  the slot count and per-slot address arithmetic would come back); Heat stack
+  outputs (another call per plan).
+- **The DB zone is the target's Docker network.** The learner map draws what is
+  wired, so the database and its network come from the target VM: one
+  `docker network inspect` over ssh when the stack is first held, kept with the
+  addresses. Only internal networks are drawn (`<wargame>_backend`, rendered
+  `internal: true`), as zone `<wargame>-backend` with caption database; the
+  `<wargame>_front` bridge and `docker0` carry only the host's port publish, the
+  WAF reaches the target's Neutron port. Rejected: the database on its own
+  Neutron LAN, which needs a macvlan or another VM for the database container and
+  a change to every wargame's compose file, and would still need the container's
+  address.
+- **Gone with the range host:** `bin/range-image-tag`, `CR_RANGE_IMAGE_TAG`, the
+  `range_flavor`, `range_mtu` and `slots` parameters of `platform.yaml`,
+  `CR_OPENSTACK_FLAVOR` and `CR_OPENSTACK_SLOTS`. Slot VMs boot from Glance
+  images; nothing pulls from GHCR when a slot boots.
+- **Isolation, as acceptance checks it now.** From Kali: ping and traceroute to
+  121.134.88.42 answer; the WAF's private address is filtered; nothing on
+  `cr-mgmt` (every slot VM's control port and the platform's) takes a
+  connection; the internet and the metadata address are unreachable; a frame
+  from a MAC Neutron did not give Kali's port is dropped (the pair `0.0.0.0/0`
+  admits any source address, port security still binds the MAC). After a close,
+  the slot's WAF is a new VM (another boot id) without the file the last learner
+  wrote. Dropped with the host: the probes of the range host itself and the
+  planted links into its log files.

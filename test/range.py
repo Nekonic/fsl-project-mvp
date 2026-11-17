@@ -12,6 +12,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DECLARATION = REPO_ROOT / "platform" / "range" / "declaration.yaml"
+TOPOLOGIES = "wargames/*/topology.yaml"
 
 ATTACKER = "attacker"
 BOARD = "board"
@@ -61,11 +62,16 @@ def declared(key: str) -> dict[str, str]:
     document = yaml.safe_load(DECLARATION.read_text()) or {}
     return dict(document.get(key) or {})
 
+def topology_devices() -> dict[str, dict]:
+    return {name: entry or {} for path in sorted(REPO_ROOT.glob(TOPOLOGIES))
+            for name, entry in (yaml.safe_load(path.read_text()) or {}).get("devices", {}).items()}
+
 def declared_roles() -> dict[str, str]:
-    return declared("roles")
+    return {**{role: name for name, entry in topology_devices().items() for role in entry.get("roles") or ()},
+            **declared("roles")}
 
 def declared_hosts() -> set[str]:
-    return set(declared("hosts"))
+    return set(topology_devices()) | set(declared("roles").values())
 
 class Platform:
     def __init__(self, node=None, root=REPO_ROOT):

@@ -50,7 +50,7 @@ def live_map(stack_is_up):
         return requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=120).json()["map"]
 
 
-def test_the_live_map_draws_each_container_on_the_bridge_it_stands_on_with_an_address_of_that_bridge(live_map):
+def test_the_live_map_draws_each_device_on_the_network_it_stands_on_with_an_address_of_that_network(live_map):
     subnets = {zone["id"]: zone["subnet"] for zone in live_map["zones"]}
     zones_of = {}
     for edge in live_map["edges"]:

@@ -1,5 +1,4 @@
 import ipaddress
-import json
 import os
 import re
 import shlex
@@ -11,35 +10,39 @@ import pytest
 import requests
 
 from conftest import PLATFORM_URL, STANDING
-from range import ATTACKER, BOARD, SENSOR, run, run_side_by_side
+from range import ATTACKER, BOARD, run, run_side_by_side
 
 GATEWAY = "gateway"
-RANGE_HOST = "wargames"
 LOG_SERVER = "log-server"
-PROBERS = (ATTACKER, GATEWAY, BOARD, SENSOR, LOG_SERVER)
-ESTATE = re.compile(r"^\d+:\s+(\S+)\s+inet (10\.\d+\.(\d+)\.\d+)/24", re.M)
+PROBERS = (ATTACKER, GATEWAY, BOARD)
+ROUTER = "121.134.88.42"
+PUBLIC_NAME = "board.com"
 DEFAULT_DEV = re.compile(r"^default via \S+ dev (\S+)", re.M)
+ADDRESS = re.compile(r"^\d+:\s+(\S+)\s+inet\s+(\S+)", re.M)
 UPSTREAM = re.compile(r"^(\S+)\s+(board|corp-wp)$", re.M)
 PAST_THE_WAF = {"board": 8000, "corp-wp": 80}
 NAMED_ONLY_INSIDE = ("board", "corp-wp", "board-db", "corp-db")
-PUBLIC_NAME = "board.com"
 COLLECTOR = re.compile(r'Target="([\d.]+)"')
-HOST_PORT = re.compile(r"^\d+:\s+(\S+)\s+inet\s+(\S+)", re.M)
-CONTAINER_SIDE = re.compile(r"^(lo|docker\d+|br-\w+|veth\w*|s\d+-\w+)$")
-SERVICE_PORTS = "22,80,443,3306,5140,5601,8000,8080,9200"
+LOG_RELAY = "/etc/rsyslog.d/60-log-relay.conf"
+SERVICE_PORTS = "22,80,443,514,3306,5140,5601,8000,8080,9200"
 OPEN_PORT = re.compile(r"^(\d+)/tcp\s+open\b", re.M)
 SCANNED_HOST = re.compile(r"^Nmap scan report for (\S+)", re.M)
 SKIPPED_HOST = re.compile(r"^Skipping host (\S+) due to host timeout", re.M)
-ELASTIC = "http://localhost:9200"
+HOP = re.compile(r"^\s*(\d+)\s+(\S+)", re.M)
 CANARY = "/var/log/cr-isolation-canary.log"
-WAF_AUDIT = "/var/log/modsecurity/audit"
-SHIPPED_WITHIN = 180
-PLANTED_WAIT = 60
+BOOT_ID = "/proc/sys/kernel/random/boot_id"
+SPOOFED = "cr-spoof0"
+SPOOFED_MAC = "02:00:5e:10:00:01"
 SETTLE_WAIT = 1800
 
 
 def connect(address: str, port: int) -> list[str]:
     return ["timeout", "5", "bash", "-c", f"exec 3<>/dev/tcp/{address}/{port}"]
+
+
+def addresses_of(listed: str) -> list[ipaddress.IPv4Interface]:
+    return [ipaddress.ip_interface(address) for _, address in ADDRESS.findall(listed)
+            if not ipaddress.ip_interface(address).ip.is_loopback]
 
 
 def waf_side(session: int | None = None) -> dict:
@@ -50,49 +53,38 @@ def waf_side(session: int | None = None) -> dict:
     }, session=session)
 
 
-def estate_of(waf: dict) -> tuple[str, str]:
+def front_of(waf: dict) -> str:
     default_dev = DEFAULT_DEV.search(waf["route"].stdout).group(1)
-    return next((address, slot) for dev, address, slot in ESTATE.findall(waf["addresses"].stdout)
+    return next(str(ipaddress.ip_interface(address).ip) for dev, address in ADDRESS.findall(waf["addresses"].stdout)
                 if dev == default_dev)
+
+
+def slot_of(session: int | None = None) -> str:
+    return run(LOG_SERVER, ["sh", "-c", ". /etc/slot.env && echo $SLOT"], session=session).stdout.strip()
 
 
 @pytest.fixture(scope="module")
 def facts():
     waf = waf_side()
-    own_address, own_slot = estate_of(waf)
-    host = run_side_by_side(RANGE_HOST, {
-        "ports": ["ip", "-o", "-4", "addr", "show"],
-        "names": ["sudo", "docker", "ps", "--format", "{{.Names}}"],
-        "forwarded": ["sh", "-c", "sudo cat /opt/cr/s*/rsyslog/log-server.conf"],
-    })
-    ports = HOST_PORT.findall(host["ports"].stdout)
-    others = [name for name in host["names"].stdout.split()
-              if re.fullmatch(r"s\d+-waf", name) and name != f"s{own_slot}-waf"]
-    other_wafs = run(RANGE_HOST, ["sudo", "docker", "inspect", "-f",
-                                  "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", *others]
-                     ).stdout.split() if others else []
+    [collector] = sorted(set(COLLECTOR.findall(run(LOG_SERVER, ["cat", LOG_RELAY]).stdout)))
+    own = {role: addresses_of(run(role, ["ip", "-o", "-4", "addr", "show"]).stdout) for role in (ATTACKER, GATEWAY)}
+    control = next(one.network for one in own[ATTACKER] if ipaddress.ip_address(collector) in one.network)
     public = run(ATTACKER, ["getent", "ahostsv4", PUBLIC_NAME]).stdout.split()
     return {
-        "slot": own_slot,
-        "waf": own_address,
+        "waf": front_of(waf),
         "public": public[0] if public else "",
         "upstreams": {name: address for address, name in UPSTREAM.findall(waf["upstreams"].stdout)},
-        "range_host": [str(ipaddress.ip_interface(one).ip) for _, one in ports
-                       if not ipaddress.ip_interface(one).ip.is_loopback],
-        "platform": sorted({urlsplit(os.environ.get("CR_PLATFORM_URL", "")).hostname or "",
-                            *COLLECTOR.findall(host["forwarded"].stdout)} - {"", "localhost", "127.0.0.1"}),
-        "other_slots": other_wafs,
-        "host_networks": sorted({str(ipaddress.ip_interface(address).network) for name, address in ports
-                                 if not CONTAINER_SIDE.match(name)}),
+        "platform": sorted({urlsplit(os.environ.get("CR_PLATFORM_URL", "")).hostname or "", collector}
+                           - {"", "localhost", "127.0.0.1"}),
+        "control": control,
+        "own": {role: sorted(str(one.ip) for one in found) for role, found in own.items()},
     }
 
 
 def probes(facts) -> dict[str, list[tuple[str, int]]]:
     return {
-        "range host": [(address, 22) for address in facts["range_host"]],
         "platform": [(address, port) for address in facts["platform"] for port in (8000, 22)],
         "outside": [("1.1.1.1", 443), ("169.254.169.254", 80)],
-        "other slots": [(address, 80) for address in facts["other_slots"]],
         "way in": [(facts["public"], 80)],
         "behind the router": [(facts["waf"], 80)],
         "past the waf": [(facts["upstreams"][name], port) for name, port in sorted(PAST_THE_WAF.items())],
@@ -102,22 +94,13 @@ def probes(facts) -> dict[str, list[tuple[str, int]]]:
 ATTACKER_ONLY = ("way in", "behind the router", "past the waf")
 
 
-def from_the_log_server(facts, argv: list[str]) -> list[str]:
-    return ["sudo", "sh", "-c", f'exec nsenter -t "$(docker inspect -f {{{{.State.Pid}}}} s{facts["slot"]}-log-server)" '
-            f'-n {shlex.join(argv)}']
-
-
 @pytest.fixture(scope="module")
 def reached(facts):
     found = {}
     for role in PROBERS:
         targets = sorted({target for what, listed in probes(facts).items() for target in listed
                           if what not in ATTACKER_ONLY or role == ATTACKER})
-        if role == LOG_SERVER:
-            ran = run_side_by_side(RANGE_HOST, {target: from_the_log_server(facts, connect(*target))
-                                                for target in targets}, timeout=120)
-        else:
-            ran = run_side_by_side(role, {target: connect(*target) for target in targets}, timeout=120)
+        ran = run_side_by_side(role, {target: connect(*target) for target in targets}, timeout=120)
         found[role] = {target for target, result in ran.items() if result.ok}
     return found
 
@@ -127,38 +110,22 @@ def reaching(reached, facts, role: str, what: str) -> list[str]:
 
 
 @pytest.mark.parametrize("role", PROBERS)
-def test_no_container_reaches_the_range_host_itself(reached, facts, role):
-    found = reaching(reached, facts, role, "range host")
-
-    assert not found, (
-        f"{role} reaches the range host's sshd at {found}; a root shell one step from the host "
-        f"that runs every other slot")
-
-
-@pytest.mark.parametrize("role", PROBERS)
-def test_no_container_reaches_the_platform(reached, facts, role):
+def test_no_learner_shell_reaches_the_platform(reached, facts, role):
     found = reaching(reached, facts, role, "platform")
 
     assert facts["platform"] and not found, f"{role} reaches the platform at {found}"
 
 
 @pytest.mark.parametrize("role", PROBERS)
-def test_no_container_reaches_the_internet_or_the_cloud_s_metadata(reached, facts, role):
+def test_no_learner_shell_reaches_the_internet_or_the_cloud_s_metadata(reached, facts, role):
     found = reaching(reached, facts, role, "outside")
 
-    assert not found, f"{role} leaves the range for {found}"
-
-
-@pytest.mark.parametrize("role", PROBERS)
-def test_no_container_reaches_another_slot(reached, facts, role):
-    found = reaching(reached, facts, role, "other slots")
-
-    assert not found, f"{role} in slot {facts['slot']} reaches another slot's WAF at {found}"
+    assert not found, f"{role} leaves the slot for {found}"
 
 
 def test_the_attacker_reaches_the_sites_only_through_the_waf(reached, facts):
     assert sorted(facts["upstreams"]) == sorted(PAST_THE_WAF), f"the WAF names no upstream for {facts['upstreams']}"
-    assert (facts["public"], 80) in reached[ATTACKER], (
+    assert facts["public"] == ROUTER and (facts["public"], 80) in reached[ATTACKER], (
         f"the attack has no way in at all: {PUBLIC_NAME} names {facts['public']!r} on Kali")
     behind = reaching(reached, facts, ATTACKER, "behind the router")
     assert not behind, (
@@ -171,50 +138,64 @@ def test_the_attacker_reaches_the_sites_only_through_the_waf(reached, facts):
         "a target behind the WAF is named on Kali, so a URL by its name skips board.com and the WAF")
 
 
-def test_the_attacker_s_syn_scan_runs_with_the_capabilities_its_container_holds(facts):
+def test_the_attacker_pings_and_traces_the_router_s_public_address():
+    pinged = run(ATTACKER, ["ping", "-n", "-c", "3", "-W", "2", ROUTER], timeout=60)
+    traced = run(ATTACKER, ["traceroute", "-n", "-w", "2", "-q", "1", "-m", "5", ROUTER], timeout=60)
+
+    assert pinged.ok and " 0% packet loss" in pinged.stdout, pinged.output[-400:]
+    hops = HOP.findall(traced.stdout)
+    assert traced.ok and hops and hops[-1][1] == ROUTER, (
+        f"the router answers traceroute's last probe port unreachable, so the trace ends on it: {traced.output[-400:]}")
+
+
+def test_the_attacker_s_syn_scan_runs_as_root_and_the_waf_s_private_address_is_filtered(facts):
     public = run(ATTACKER, ["nmap", "-n", "-Pn", "-sS", "-p", "80", facts["public"]], timeout=120)
     behind = run(ATTACKER, ["nmap", "-n", "-Pn", "-sS", "-p", "80", facts["waf"]], timeout=120)
 
     assert re.search(r"^80/tcp\s+open\b", public.stdout, re.M), (
-        f"a SYN scan needs raw sockets, which NET_RAW in the Kali container gives root: {public.stdout[-400:]}")
+        f"a SYN scan needs raw sockets, which root on Kali has: {public.stdout[-400:]}")
     assert re.search(r"^80/tcp\s+filtered\b", behind.stdout, re.M), (
         f"the edge answers a SYN scan of the WAF's private address; it drops it: {behind.stdout[-400:]}")
 
 
-def _scanned(targets: list[str]) -> tuple[dict[str, list[str]], list[str]]:
-    scan = run(ATTACKER, ["sh", "-c",
-                          f"$(command -v sudo >/dev/null && echo sudo -n) nmap -n -Pn -sT --open -T4 "
-                          f"--max-retries 1 --max-rtt-timeout 500ms --host-timeout 90s "
-                          f"--min-hostgroup 256 --min-parallelism 256 "
-                          f"-p {SERVICE_PORTS} {' '.join(targets)}"], timeout=900).stdout
+def _scanned(role: str, targets: list[str], excluded: list[str]) -> tuple[dict[str, list[str]], list[str]]:
+    scan = run(role, ["sh", "-c",
+                      f"nmap -n -Pn -sT --open -T4 --max-retries 1 --max-rtt-timeout 500ms --host-timeout 90s "
+                      f"--min-hostgroup 256 --min-parallelism 256 -p {SERVICE_PORTS} "
+                      f"--exclude {','.join(excluded)} {' '.join(targets)}"], timeout=900).stdout
     reports = SCANNED_HOST.split(scan)
     opened = {host: OPEN_PORT.findall(body) for host, body in zip(reports[1::2], reports[2::2])
               if OPEN_PORT.findall(body)}
     return opened, SKIPPED_HOST.findall(scan)
 
 
-def test_the_attacker_reaches_no_service_on_the_range_host_the_platform_or_their_network(facts):
-    targets = sorted({*facts["range_host"], *facts["platform"], *facts["host_networks"]})
-
-    opened, skipped = _scanned(targets)
+def test_the_attacker_reaches_no_service_on_the_control_network_of_its_own_or_any_other_slot_or_the_platform(facts):
+    opened, skipped = _scanned(ATTACKER, [str(facts["control"]), *facts["platform"]], facts["own"][ATTACKER])
 
     assert not skipped, f"nmap gave up on {skipped} before scanning their ports, so they were never checked"
-    assert facts["host_networks"] and not opened, (
-        f"Kali reaches {opened} beyond its route to the sites; the range host, the platform and the "
-        f"management network they share take nothing from a slot")
+    assert not opened, (
+        f"Kali reaches {opened} on {facts['control']}, where every slot VM and the platform have their control "
+        f"port; those take ssh from the platform only")
 
 
-def _shipped(probe: str) -> list[str]:
-    found = requests.post(f"{ELASTIC}/logs-*-sensors/_search",
-                          json={"size": 20, "query": {"match_phrase": {"cr_probe": probe}}}, timeout=30).json()
-    return [hit["_index"] for hit in found.get("hits", {}).get("hits", [])]
+def test_the_attacker_cannot_send_from_a_mac_address_neutron_did_not_give_its_port(facts):
+    internet = run(ATTACKER, ["sh", "-c", f"ip -o -4 route get {ROUTER} | sed -n 's/.* dev \\([^ ]*\\).*/\\1/p'"])
+    dev = internet.stdout.strip()
+    source = next(address for address in facts["own"][ATTACKER]
+                  if not ipaddress.ip_address(address) in facts["control"])
+    spoofed = (f"ip link add {SPOOFED} link {dev} address {SPOOFED_MAC} type macvlan mode bridge && "
+               f"ip link set {SPOOFED} up && ping -n -c 3 -W 2 -I {SPOOFED} {ROUTER}; "
+               f"code=$?; ip link del {SPOOFED}; exit $code")
+    try:
+        own = run(ATTACKER, ["ping", "-n", "-c", "1", "-W", "2", "-I", source, ROUTER], timeout=60)
+        other = run(ATTACKER, ["sh", "-c", spoofed], timeout=60)
+    finally:
+        run(ATTACKER, ["sh", "-c", f"ip link del {SPOOFED} 2>/dev/null; true"])
 
-
-def _shipped_within(probe: str, seconds: float) -> list[str]:
-    deadline = time.monotonic() + seconds
-    while not (indices := _shipped(probe)) and time.monotonic() < deadline:
-        time.sleep(3)
-    return indices
+    assert dev and own.ok, f"Kali does not reach the router from its own port, so this proves nothing: {own.output}"
+    assert not other.ok, (
+        f"a frame from {SPOOFED_MAC} reached the router; port security lets Kali's port send only from the MAC "
+        f"Neutron gave it, whatever source IP the allowed address pair takes: {other.output[-400:]}")
 
 
 def _settled_after_close(slot: str) -> dict:
@@ -223,10 +204,10 @@ def _settled_after_close(slot: str) -> dict:
         every = requests.get(f"{PLATFORM_URL}/api/range/ready/", timeout=60).json().get("slots") or []
         mine = next((each for each in every if str(each.get("number")) == slot), {})
         settled = (mine.get("session") is None and (mine.get("reset") or {}).get("state") != "running"
-                   and mine.get("phase") not in ("RESETTING", "REBUILDING", "CHECKING"))
+                   and mine.get("phase") not in ("RESETTING", "REBUILDING", "CHECKING", "NOT_STANDING"))
         if settled or time.monotonic() > deadline:
             return mine
-        time.sleep(2)
+        time.sleep(5)
 
 
 def _session_to_plant_in(standing_stack) -> int:
@@ -243,50 +224,22 @@ def _closed(session: int):
     return requests.post(f"{PLATFORM_URL}/api/sessions/{session}/close/", json={}, timeout=120)
 
 
-def test_a_link_planted_in_the_waf_neither_reaches_a_host_file_at_reset_nor_ships_another_log(standing_stack):
+def test_a_reset_gives_the_next_session_a_new_waf_vm_with_nothing_the_last_learner_left(standing_stack):
     token = uuid.uuid4().hex
-    canary = json.dumps({"cr_probe": f"canary-{token}"})
-    own = json.dumps({"cr_probe": f"own-{token}"})
     session = _session_to_plant_in(standing_stack)
     try:
-        _, slot = estate_of(waf_side(session))
-        host_log = f"/var/log/cr/s{slot}/waf"
-        written = run(RANGE_HOST, ["sudo", "sh", "-c", f"printf '%s\\n' {shlex.quote(canary)} > {CANARY} "
-                                   f"&& chmod 0644 {CANARY} && ls /var/log/cr"], session=session)
-        assert written.ok, written.output
-        other = next((name for name in written.stdout.split() if name != f"s{slot}"), "s0")
-        waf_before = run(RANGE_HOST, ["sudo", "docker", "inspect", "-f", "{{.State.StartedAt}}",
-                                      f"s{slot}-waf"], session=session).stdout.strip()
-        wrote = run(GATEWAY, ["sh", "-c", f"printf '%s\\n' {shlex.quote(own)} >> {WAF_AUDIT}/audit.log"],
-                    session=session)
-        shipped_own = _shipped_within(f"own-{token}", SHIPPED_WITHIN)
-        assert shipped_own and all(f"logs-{slot}-sensors-" in f"{index}-" for index in shipped_own), (
-            f"a line the WAF wrote to its audit log did not reach slot {slot}'s index ({shipped_own}), "
-            f"so the rest of this test would prove nothing: {wrote.output[-300:]}")
-
-        planted = run(GATEWAY, ["sh", "-c",
-                                f"cd {WAF_AUDIT}; ln -sf {CANARY} audit.log; ln -s {CANARY} planted; "
-                                f"ln -s /var/log/cr/{other}/waf/audit.log other; ln -s /etc/passwd passwd; "
-                                f"ls -la"], session=session)
-
-        assert not _shipped_within(f"canary-{token}", PLANTED_WAIT), (
-            f"a host file reached Elasticsearch after the WAF planted links to it: {planted.output[-600:]}")
+        slot = slot_of(session)
+        planted = run(GATEWAY, ["sh", "-c", f"printf '%s\\n' {shlex.quote(token)} > {CANARY} && cat {BOOT_ID}"],
+                      session=session)
+        assert planted.ok, planted.output
+        booted = planted.stdout.strip()
     finally:
         closed = _closed(session)
     assert closed.status_code == 200, closed.text
 
     settled = _settled_after_close(slot)
-    host = run(RANGE_HOST, ["sudo", "sh", "-c",
-                            f"cat {CANARY}; echo --; find {host_log} -mindepth 1 -printf '%f %y %u\\n'; "
-                            f"stat -c '%U %a' {host_log}; echo --; "
-                            f"docker inspect -f '{{{{.State.StartedAt}}}}' s{slot}-waf; rm -f {CANARY}"],
-               slot=int(slot))
-    kept, listed, started = host.stdout.split("--\n")
+    after = run(GATEWAY, ["sh", "-c", f"cat {BOOT_ID}; cat {CANARY} 2>/dev/null; true"], slot=int(slot))
 
     assert settled.get("phase") == "READY", f"slot {slot} did not settle after its reset: {settled}"
-    assert started.strip() != waf_before, f"slot {slot}'s WAF was not recreated, so no reset ran"
-    assert kept.strip() == canary, f"the reset wrote through a link the learner planted: {CANARY} is now {kept!r}"
-    entries = listed.strip().splitlines()
-    assert sorted(entry.rsplit(" ", 1)[0] for entry in entries[:-1]) == ["audit.log f", "refused.log f"] and (
-        entries[-1] == "root 755"), f"the WAF's log directory on the range host holds more than its own log files: {listed}"
-    assert not _shipped(f"canary-{token}"), "a host file reached Elasticsearch after the reset"
+    assert booted not in after.stdout, f"slot {slot}'s WAF is the VM the last session had, so no reset ran"
+    assert token not in after.stdout, f"the file the last learner wrote on the WAF is still there: {after.stdout}"
