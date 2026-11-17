@@ -62,10 +62,11 @@
     <h2 data-t="session.course.heading" class="font-semibold text-heading mb-2"></h2>
     <ul id="course-rows" class="divide-y divide-line-subdued"></ul>
   </section>
+  <section id="lesson-change" class="hidden card p-5 mb-5 text-[13px]"></section>
   <div id="verdict" class="hidden card p-5 mb-5 flex flex-wrap items-center gap-5 border-l-4"></div>
   <section id="debrief" class="hidden card p-5 mb-5 flex flex-col gap-3 text-[13px]"></section>
   <div id="score-panels" class="grid lg:grid-cols-[1fr_400px] gap-5 items-start">
-    <div class="card">
+    <div id="objectives-card" class="card">
       <div class="px-5 pt-4 pb-3 flex items-end justify-between border-b border-line-subdued">
         <h2 data-t="score.primary.heading" class="font-bold text-[16px] text-heading"></h2>
         <div id="lost-count" class="text-[22px] font-bold leading-tight"></div>
@@ -103,13 +104,15 @@
     </div>
   </div>
   <div id="score-cases" class="card mt-5 overflow-x-auto">
-    <div data-t="score.cases.heading" class="px-5 py-3 font-semibold text-heading border-b border-line-subdued"></div>
+    <div class="px-5 py-3 border-b border-line-subdued">
+      <div data-t="score.cases.heading" class="font-semibold text-heading"></div>
+      <p id="score-counted-by" class="hidden text-[12px] text-muted mt-1"></p>
+    </div>
     <table class="w-full text-[13px]">
       <thead class="table-head">
         <tr>
           <th data-t="score.col.request" class="pl-5"></th>
           <th data-t="score.col.kind"></th>
-          <th data-t="score.col.rule_matches"></th>
           <th data-t="score.col.outcome"></th>
         </tr>
       </thead>
@@ -258,6 +261,7 @@
     const lost = new Map(breaches.map((breach) => [breach.key, breach]));
     const tiers = [...staked, ...breaches.filter((breach) => !staked.some((tier) => tier.key === breach.key))];
     const taken = tiers.filter((tier) => lost.has(tier.key)).length;
+    show("objectives-card", tiers.length > 0);
     field("lost-count").textContent = `${taken} / ${tiers.length}`;
     field("lost-count").className = `text-[22px] font-bold leading-tight ${taken ? "text-danger" : "text-success"}`;
     const penaltyOf = (tier) => {
@@ -310,6 +314,10 @@
         blocked.map((row) => t("score.drew_alerts", named(row), row.detections))));
     }
     const customers = score.customers || {};
+    if (customers.sent && score.detected_by) {
+      parts.push(judgementBlock(t("score.customers_alerted", customers.sent, customers.sent - customers.alerted),
+        (customers.alerted_requests || []).map((row) => t("score.customer_alert", clock(row.sent_at), `${row.method} ${row.path}`))));
+    }
     if (customers.sent && !session.course_scenario) {
       const wrong = Object.entries(customers.blocked_actions || {})
         .map(([action, count]) => t("score.customers_action", localized(`traffic.action.${action}`, action), count));
@@ -324,20 +332,28 @@
       <div class="text-[12px] text-muted leading-relaxed space-y-1">
         ${notes.map((note) => `<p>${esc(note)}</p>`).join("")}
       </div>`;
-    field("case-rows").innerHTML = perCase.map((row) => {
+    const counted = (right, word, alerts) => `<span class="${right ? "text-success" : "text-danger"}">${esc(t(word))}</span>${
+      alerts ? `<span class="block text-[12px] text-muted">${esc(t("score.alert_count", alerts))}</span>` : ""}`;
+    const customerRow = customers.sent && score.detected_by ? `
+        <tr class="table-row" data-customers>
+          <td class="pl-5 text-heading">${esc(t("score.customers_row", customers.sent))}</td>
+          <td>${esc(t("score.kind.customer"))}</td>
+          <td>${customers.alerted ? counted(false, "score.wrongly_blocked", customers.alerted) : counted(true, "score.passed", 0)}</td>
+        </tr>` : "";
+    field("score-counted-by").textContent = score.detected_by ? t(`score.counted_by.${score.detected_by}`) : "";
+    show("score-counted-by", Boolean(score.detected_by));
+    field("case-rows").innerHTML = (perCase.map((row) => {
       const right = row.malicious === Boolean(row.detected);
       const word = row.malicious ? (row.detected ? "score.caught" : "score.missed") : (row.detected ? "score.wrongly_blocked" : "score.passed");
-      const outcome = `<span class="${right ? "text-success" : "text-danger"}">${esc(t(word))}</span>`;
       return `
         <tr class="table-row">
           <td class="pl-5 text-heading"${lessonSession() ? "" : ` title="${esc(row.name)}"`}>${esc(caseLabel(row.name))}${
             caseWhen(row) ? `<span class="block text-[12px] text-muted">${esc(caseWhen(row))}</span>` : ""}</td>
           <td>${esc(t(seeded(row) ? "score.kind.auto_benign" : row.malicious ? "score.kind.attack" : "score.kind.benign"))}</td>
-          <td>${esc(row.detections)}</td>
-          <td>${outcome}</td>
+          <td>${counted(right, word, row.detections)}</td>
         </tr>`;
-    }).join("") || `<tr class="table-row"><td class="pl-5 text-muted" colspan="4">${esc(t("score.no_cases"))}</td></tr>`;
-    show("score-cases", showsScores() && (perCase.length > 0 || !session.course_scenario));
+    }).join("") + customerRow) || `<tr class="table-row"><td class="pl-5 text-muted" colspan="3">${esc(t("score.no_cases"))}</td></tr>`;
+    show("score-cases", showsScores() && (perCase.length > 0 || Boolean(customerRow) || !session.course_scenario));
   }
 
   const SCORE_TRIES = 4;
@@ -364,7 +380,7 @@
     show("penalty-total", false);
     field("objective-rows").innerHTML = `<tr class="table-row"><td class="pl-5 text-muted" colspan="4">${said}</td></tr>`;
     field("judgement").innerHTML = `<p class="text-muted">${said}</p>`;
-    field("case-rows").innerHTML = `<tr class="table-row"><td class="pl-5 text-muted" colspan="5">${said}</td></tr>`;
+    field("case-rows").innerHTML = `<tr class="table-row"><td class="pl-5 text-muted" colspan="3">${said}</td></tr>`;
   }
 
   function scoreAnswered() {
@@ -417,6 +433,12 @@
     }).join("");
   }
 
+  function lessonChange() {
+    const shown = lessonSession() && showsScores() && Boolean(session.change);
+    show("lesson-change", shown);
+    if (shown) field("lesson-change").innerHTML = debriefSection("change", debriefChange(session.change));
+  }
+
   function lessonScoreNote() {
     const notes = startedLessons()
       .map((one) => localized(`${lessonPrefix(cardOf(one.id))}.score_note`, ""))
@@ -438,6 +460,7 @@
     show("activity", false);
     show("traffic", false);
     courseSummary();
+    lessonChange();
     lessonScoreNote();
     verdictBanner();
     if (session.course_scenario) showScenarioDebrief(field("debrief"));

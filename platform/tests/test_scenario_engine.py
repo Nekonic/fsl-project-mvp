@@ -508,7 +508,8 @@ def test_the_debrief_stays_closed_until_the_window_is_judged_then_shows_the_time
     assert [(entry["case"], entry["in_window"], entry["outcome"]) for entry in told["timeline"]] == [
         (SQLMAP, False, "held"), (SQLMAP, True, "held")]
     assert told["customers"]["blocked"] == 2 and told["customers"]["in_window"] == [0]
-    assert told["cases"] == [{"name": SQLMAP, "malicious": True, "before": "held", "after": "held"}]
+    assert told["cases"] == [{"name": SQLMAP, "malicious": True, "before": "held", "after": "held",
+                             "alerted_before": False, "alerted_after": False}]
 
 def test_the_debrief_counts_the_customers_up_to_the_final_check_s_end_so_it_reads_the_same_when_read_later(client):
     session = opened()

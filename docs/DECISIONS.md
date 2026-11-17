@@ -9112,3 +9112,35 @@ another cold run, 1.9 s warm.
 
 `deploy/range-host/slot.sh` is in the slot bundle, so its digest changes and
 the next replace boots a new range host.
+
+## 2026-11-17 — Answer-blind walk round 25: a detection scenario counts its detector everywhere on the result page
+
+- **One detection definition per scenario.** 3.3's tamper run read "경보 없음"
+  on the timeline and "경보 6822건, 정탐" in the case table. In the store
+  (session 2628) that run drew 6822 ModSecurity alerts and no Suricata alert:
+  the timeline and the final check counted `completion.detected_by`
+  (Suricata), the table counted every detector. `scenario_run.sensed` now
+  scopes the detections a scenario with `detected_by` counts, and `/score/`
+  (cases, objectives' detected flag, alerted customers), the window judgement
+  and the debrief all read through it; `/score/` names the detector in
+  `detected_by` and the table says so in one line. Rejected: counting the WAF
+  on the timeline, because 3.1-3.4 are graded on the IDS rule the learner
+  writes, and a WAF alert would mark a missed rule as caught.
+- **A case is one row and one verdict.** The alert count is no longer a column
+  that reads like the score; it is a muted "경보 N건" under the verdict.
+- **The benign side of a detection scenario is shown.** 3.1, 3.2 and 3.4 grade
+  "no alert on a customer request", yet the result listed no customer at all.
+  The detection panel now says how many customer requests passed without an
+  alert and lists those that drew one (`customers.alerted_requests`, at most
+  20); the case table ends with one customer row, 통과 or 오탐.
+- **A scenario without objectives shows no objectives card.**
+- **One time format.** The timeline showed elapsed time (2:01) and the table
+  wall-clock (17:17); both now show wall-clock HH:MM (`at.opened` plus the
+  entry's offset), the format of the session header.
+- **적용 전·후 shows detection.** `cases[]` carries `alerted_before` and
+  `alerted_after`, and each cell shows the alert beside the hash outcome, so
+  3.3 reads 경보 없음 → 경보 발생 instead of the same "no hash taken" twice.
+- **A lesson result shows the change applied.** The closed lesson session's
+  detail carries `change` (`views.applied`, the same diff the scenario
+  debrief shows: IDS rule lines and the WAF exclusion removed), rendered under
+  the lesson card for a scored course.

@@ -380,3 +380,59 @@ def test_the_debrief_counts_the_items_the_final_check_judged_like_its_headline()
     session.refresh_from_db()
 
     assert scenario_run.debrief(session)["triage"] == {"right": 1, "first_try": 1, "judged": 1, "items": 1}
+
+def a_fired_attack(session, n=0):
+    case = Case.objects.create(session=session, case_id=str(uuid.uuid4()), name=SQLMAP, malicious=True,
+                               pattern="CAPEC-66", correlation="marker", started_at=timezone.now(),
+                               ended_at=timezone.now(), meta={"scheduled": session.course_scenario})
+    state = session.scenario_state
+    state["schedule"][n].update(state="fired", case_id=case.case_id, outcome="held", fired_at=timezone.now().isoformat())
+    Session.objects.filter(pk=session.pk).update(scenario_state=state, ended_at=timezone.now())
+    return case
+
+def test_a_detection_scenario_s_case_table_counts_the_ids_alerts_its_timeline_counts(client):
+    session = opened("3.2")
+    case = a_fired_attack(session)
+    alert(session, case.case_id, source="modsecurity", rule="942100")
+    score = client.get(f"/api/sessions/{session.pk}/score/").json()
+    told = client.get(f"/api/sessions/{session.pk}/scenario/debrief/").json()
+
+    assert score["detected_by"] == "suricata"
+    assert [(row["detected"], row["detections"]) for row in score["per_case"]] == [(False, 0)]
+    assert told["timeline"][0]["detected"] is False, "a WAF alert is no IDS detection on either side of the page"
+
+    alert(session, case.case_id, source="suricata", rule="9000101")
+    score = client.get(f"/api/sessions/{session.pk}/score/").json()
+    assert [(row["detected"], row["detections"]) for row in score["per_case"]] == [(True, 1)]
+
+def test_a_detection_scenario_s_score_lists_the_customer_requests_its_ids_alerted_on(client):
+    session = opened("3.1")
+    waf_only, ids_too = str(uuid.uuid4()), str(uuid.uuid4())
+    customer(session, timezone.now(), marker=waf_only)
+    customer(session, timezone.now(), marker=ids_too)
+    alert(session, waf_only, source="modsecurity", rule="942100")
+    alert(session, ids_too, source="suricata", rule="9000101")
+    customers = client.get(f"/api/sessions/{session.pk}/score/").json()["customers"]
+
+    assert (customers["sent"], customers["alerted"]) == (2, 1)
+    assert [(row["method"], row["path"]) for row in customers["alerted_requests"]] == [("GET", "/search/?q=%EA%B3%B5")]
+
+def test_the_debrief_says_whether_each_attack_drew_an_ids_alert_before_and_during_the_final_check(client):
+    session = opened("3.2")
+    case = a_fired_attack(session)
+    alert(session, case.case_id, source="suricata", rule="9000101")
+    scenario_run._update(session.pk, lambda state, held: state["windows"].append(
+        {"n": 0, "started_at": state["opened_at"], "ends_at": (timezone.now() + timedelta(minutes=5)).isoformat(),
+         "by": "learner", "result": {"passed": True, "reasons": [], "fix": None}}))
+    told = client.get(f"/api/sessions/{session.pk}/scenario/debrief/").json()
+
+    assert [(row["alerted_before"], row["alerted_after"]) for row in told["cases"]] == [(None, True)]
+
+def test_a_closed_lesson_session_carries_the_change_it_applied(client):
+    session = Session.objects.create(scenario="board", guidance=True, lesson="f6", defense="overbroad",
+                                     ended_at=timezone.now(), waf_snapshots=[{"at": "x", "closed": True, "waf": {
+                                         "paranoia": 1, "exclusions": [], "file": ""}}])
+    change = client.get(f"/api/sessions/{session.pk}/").json()["change"]
+
+    assert [row["target"] for row in change["removed"]] == [
+        row["target"] for row in wargames.defense("board", "overbroad")["waf"]["exclusions"]] == ["ARGS:sort"]

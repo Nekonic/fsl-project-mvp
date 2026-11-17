@@ -283,12 +283,12 @@ def _detection_reasons(session, entries, start, end) -> list:
     expected = wargames.expectations(session.scenario)
     missed = []
     for entry in fired:
-        signatures = list(session.detections.filter(source="suricata", marker=entry["case_id"]).order_by()
+        signatures = list(sensed(session).filter(marker=entry["case_id"]).order_by()
                           .values_list("signature", flat=True).distinct())
         if not signatures or scoreboard.corroborated(expected.get(entry["case"]), signatures, set()) is False:
             missed.append(entry["case"])
     served = session.customer_requests.filter(sent_at__gte=start, sent_at__lt=end).values("marker")
-    noisy = session.detections.filter(source="suricata", marker__in=served).order_by().values("marker").distinct().count()
+    noisy = sensed(session).filter(marker__in=served).order_by().values("marker").distinct().count()
     return ([["scenario.fail.undetected", [", ".join(missed)]]] if missed else []) + (
         [["scenario.fail.noisy", [noisy]]] if noisy else [])
 
@@ -583,8 +583,8 @@ def debrief(session) -> dict:
     last = judged[-1]["result"] if judged else None
     opened = scenarios.at(state["opened_at"])
     cases = {case.case_id: case for case in session.cases.all()}
-    sensed = _sensed_by(session, declared)
-    marked = set(sensed.filter(marker__in=list(cases)).order_by().values_list("marker", flat=True).distinct())
+    counted = sensed(session)
+    marked = set(counted.filter(marker__in=list(cases)).order_by().values_list("marker", flat=True).distinct())
     taking = _taking_the_secret(session, {entry["case"] for entry in state["schedule"]})
     timeline = [
         {"n": entry["n"], "case": entry["case"], "origin": entry["origin"], "state": entry["state"],
@@ -601,11 +601,13 @@ def debrief(session) -> dict:
     timeline.sort(key=lambda entry: entry["at"])
     before = {entry["case"]: entry["outcome"] for entry in timeline if not entry["in_window"] and entry["outcome"]}
     after = {entry["case"]: entry["outcome"] for entry in timeline if entry["in_window"] and entry["outcome"]}
+    fired = [entry for entry in timeline if entry["state"] == scenarios.FIRED]
+    alerted_before = {entry["case"]: entry["detected"] for entry in fired if not entry["in_window"]}
+    alerted_after = {entry["case"]: entry["detected"] for entry in fired if entry["in_window"]}
     records = lesson.records(session.lesson_steps, session.lesson)
     help_steps = lesson.help_counts(records) if records else {"hints": 0, "skipped": 0}
     steps = {step["id"] for step in declared.get("steps") or []}
     triage = state["triage"]
-    waf = next((taken["waf"] for taken in reversed(session.waf_snapshots or []) if taken.get("waf")), None)
     shift = session.customer_requests.filter(sent_at__lt=scenarios.at(judged[-1]["ends_at"])) if judged \
         else session.customer_requests.all()
     everything = customers.counted(shift)
@@ -620,9 +622,10 @@ def debrief(session) -> dict:
                                     if step_id in steps and kept.get("passed")), "total": len(steps)},
             "help": dict(help_steps, hints=help_steps["hints"] + len(state["hints"])),
         },
-        "evidence": _evidence(session, cases, sensed),
-        "change": views._change(session, waf),
-        "cases": [{"name": name, "malicious": True, "before": before.get(name), "after": after.get(name)}
+        "evidence": _evidence(session, cases, counted),
+        "change": views.applied(session),
+        "cases": [{"name": name, "malicious": True, "before": before.get(name), "after": after.get(name),
+                   "alerted_before": alerted_before.get(name), "alerted_after": alerted_after.get(name)}
                   for name in dict.fromkeys(entry["case"] for entry in timeline)],
         "risk": [[f"scenario.risk.{last['fix']}", []]] if last and last["fix"] else [],
         "customers": {
@@ -647,9 +650,17 @@ def _triage_tally(triage, listed, session) -> dict:
     return {"right": sum(1 for one in kept if one["right"]), "first_try": sum(1 for one in kept if one.get("first_right")),
             "judged": len(kept), "items": len(items)}
 
-def _sensed_by(session, declared):
-    detector = declared["completion"].get("detected_by")
-    return session.detections.filter(source=detector) if detector else session.detections.all()
+def detector(session) -> str | None:
+    if not session.course_scenario:
+        return None
+    try:
+        return declared_of(session)["completion"].get("detected_by")
+    except wargames.UnknownWargame:
+        return None
+
+def sensed(session):
+    counted = detector(session)
+    return session.detections.filter(source=counted) if counted else session.detections.all()
 
 def _evidence(session, cases, sensed) -> list[dict]:
     attacks = {case_id: case for case_id, case in cases.items() if case.meta.get("scheduled")}
