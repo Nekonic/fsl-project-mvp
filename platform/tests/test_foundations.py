@@ -66,7 +66,7 @@ def indexed(*events):
         [(f"doc-{position}", event) for position, event in enumerate(events)], None))
 
 def quietly():
-    return patch("api.views._ingest", lambda session, within=None: {})
+    return patch("api.views._ingest", lambda session, within=None, since=None: {})
 
 def on_map(found):
     return patch("api.views._map_found", lambda session: found)

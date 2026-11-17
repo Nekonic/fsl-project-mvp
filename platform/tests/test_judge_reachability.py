@@ -187,3 +187,28 @@ def test_callers_that_find_the_range_unread_wait_for_one_read():
 
     assert Slow.reads == 1, f"{Slow.reads} callers each read the whole range at once"
     assert len(found) == 8 and all("5.188.10.2" in one for one in found)
+
+
+def test_the_slots_are_read_at_once_so_a_request_after_the_cache_window_waits_for_one_slot_s_read():
+    import time
+
+    from api import reachability
+
+    class Slot(Stub):
+        def segments(self):
+            time.sleep(0.2)
+            return SHAPE.segments
+
+    class EightSlots(Stub):
+        def every_slot(self):
+            return [Slot() for _ in range(8)]
+
+    with patch("api.reachability.substrate", EightSlots):
+        began = time.monotonic()
+        found = reachability.scored_hosts()
+        took = time.monotonic() - began
+
+    assert "5.188.10.2" in found
+    assert took < 0.6, (
+        f"walk round 27: a request that found the {reachability.TTL:.0f} s cache expired read every slot's shape "
+        f"from the cloud one after another, and every request behind it waited; 8 slots of 0.2 s took {took:.2f} s")

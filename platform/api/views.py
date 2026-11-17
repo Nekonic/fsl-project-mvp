@@ -971,22 +971,28 @@ def _kali_run(session, step_id, check, kept, ended=False):
     since = _lesson_started(session) or session.started_at
     reached = max(parse_datetime(kept.get("reached") or "") or since, since)
     now = timezone.now()
-    sent = _sent_by(session, reached - RECORD_SLACK, now + RECORD_SLACK, marker)
-    seen = sorted(stamp for stamp, agent in sent if stamp and (check.get("ua") == "any" or case["tool"] in agent))
+    latest = _run_seen(session, check, case, marker, max(reached, now - RUN_SETTLED), now)
+    if latest and _run_settling(session, case, now - latest[-1], ended):
+        return None, {"kali": {"name": case["name"], "settling": True}}
+    seen = _run_seen(session, check, case, marker, reached, now)
     if not seen:
         return None, {"kali": {"name": case["name"]}}
-    quiet = now - seen[-1]
-    if quiet < RUN_ENDED_SETTLED or (quiet < RUN_SETTLED and not ended and not _tool_exited(session, case["tool"])):
-        return None, {"kali": {"name": case["name"], "settling": True}}
     recorded = _record_case(session, dict(case, case_id=marker, correlation="marker"), seen[0], seen[-1],
                             {"kali": step_id, "lesson": session.lesson, "launched_on": settings.RANGE.default_origin,
                              "command": _kali_command(session, case["name"])})
     _settle_and_observe(session)
     try:
-        _ingest(session)
+        _ingest(session, since=seen[0] - RECORD_SLACK)
     except elastic.ElasticUnavailable:
         pass
     return recorded, _run_shown(session, case, recorded)
+
+def _run_seen(session, check, case, marker, start, end):
+    sent = _sent_by(session, start - RECORD_SLACK, end + RECORD_SLACK, marker)
+    return sorted(stamp for stamp, agent in sent if stamp and (check.get("ua") == "any" or case["tool"] in agent))
+
+def _run_settling(session, case, quiet, ended):
+    return quiet < RUN_ENDED_SETTLED or (quiet < RUN_SETTLED and not ended and not _tool_exited(session, case["tool"]))
 
 def _tool_exited(session, tool):
     try:
@@ -1076,7 +1082,7 @@ def _kali_replayed(session, step, kept, attack, ended):
     recorded, _ = _kali_run(session, step["id"], {"case": attack["kali"], "ua": attack.get("ua")}, kept, ended)
     if recorded is None:
         return False
-    _ingest(session, RECENT_ALERTS)
+    _ingest(session, since=recorded.started_at - RECORD_SLACK)
     blocked = lesson.BLOCKING_RULE in {str(((detection.raw or {}).get("details") or {}).get("ruleId"))
                                        for detection in session.detections.filter(marker=recorded.case_id)}
     return blocked and not recorded.meta.get("loot")
@@ -2188,11 +2194,13 @@ def _fetched(index, start, end, newest_first):
             break
     return documents, truncated
 
-def _ingest(session, within=None):
+def _ingest(session, within=None, since=None):
     start = session.started_at - timedelta(minutes=1)
     end = (session.ended_at or timezone.now()) + timedelta(minutes=1)
     if within is not None:
         start = max(start, timezone.now() - timedelta(seconds=within))
+    if since is not None:
+        start = max(start, since)
     try:
         enabled = _enable_expired()
     except (RangeUnavailable, suricata.RulesUnreadable):
@@ -2239,7 +2247,7 @@ def _ingest(session, within=None):
     ingested = session.detections.count() - before
 
     reply = {"ingested": ingested, "skipped": skipped, "stale": stale, "enabled": enabled}
-    if truncated and within is None:
+    if truncated and within is None and since is None:
         read, total = truncated
         reply["truncated"] = {"read": read, "total": total}
         session.read_of = [read, total]

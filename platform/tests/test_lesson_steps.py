@@ -129,7 +129,7 @@ def test_the_xss_the_learner_sends_from_the_website_pane_is_an_attack_case_of_th
 def test_an_answer_is_judged_on_the_server_and_two_wrong_ones_record_a_hint(client):
     session = taught("f4")
     blocked_by(session, "attack", session.browse_marker, "/search/?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E", "941100")
-    with patch("api.views._ingest", lambda session, within=None: {}):
+    with patch("api.views._ingest", lambda session, within=None, since=None: {}):
         known = check(client, session, "rule", {"answer": "949110"}).json()
         other = check(client, session, "rule", {"answer": "1234"}).json()
         right = check(client, session, "rule", {"answer": " 941100 "}).json()
@@ -154,7 +154,7 @@ def test_steps_are_refused_without_an_answer_for_an_unknown_step_a_plain_session
 def test_the_rule_answer_reads_recent_records_and_takes_only_a_browse_record_of_the_attack(client):
     session = taught("f4")
     read = []
-    with patch("api.views._ingest", lambda session, within=None: read.append(within)):
+    with patch("api.views._ingest", lambda session, within=None, since=None: read.append(within)):
         step(client, session, "rule", body={"state": "reached"})
         blocked_by(session, "case", "a-case-uuid", "/search/?q=%3Cscript%3E", "941100")
         blocked_by(session, "other", session.browse_marker, "/search/?q=release", "941100")
@@ -225,7 +225,7 @@ def indexed(*events, asked=None):
     return patch("api.views._fetched", fetched)
 
 def quietly():
-    return patch("api.views._ingest", lambda session, within=None: {})
+    return patch("api.views._ingest", lambda session, within=None, since=None: {})
 
 def behind_the_waf():
     return patch("api.views._site_addresses", lambda session: {BOARD})
@@ -317,6 +317,26 @@ def test_a_run_whose_tool_left_the_kali_terminal_passes_after_a_short_quiet_with
         "waited for 15 s of quiet, and now asks the Kali box whether sqlmap still runs")
     assert running == views.RUN_SETTLED.seconds, "a sqlmap still on the learner's terminal is a run still going"
     assert fired == views.RUN_ENDED_SETTLED.seconds, "a sqlmap the platform fired has no terminal and is not the learner's"
+
+def test_a_kali_check_reads_the_last_seconds_while_the_run_goes_and_from_the_run_s_first_request_once_it_ends(client):
+    session = taught("f6")
+    Session.objects.filter(pk=session.pk).update(started_at=timezone.now() - timedelta(minutes=30))
+    now = timezone.now()
+    run_step(session, "f6", "dump", "dump-run", now - timedelta(minutes=6))
+    first = now - timedelta(seconds=300)
+    going = [http_event("dump-run", f"/?sort=posts_post.id{n}", first + timedelta(seconds=n)) for n in range(300)]
+    asked, ended = [], []
+    with indexed(*going, asked=asked):
+        polled = check(client, session, "dump", {"poll": True}).json()
+    with indexed(*going[:-20], asked=ended):
+        passed = check(client, session, "dump", {"poll": True}).json()
+    widest = max(end - start for start, end in asked)
+
+    assert (polled["passed"], passed["passed"]) == (False, True)
+    assert widest <= views.RUN_SETTLED + 2 * views.RECORD_SLACK, (
+        f"walk round 27: every poll of the F6 dump read the whole run so far, up to 6 min of records; now {widest}")
+    assert ended[-1][0] == first - views.RECORD_SLACK, (
+        "the passing check ingested the whole session from its start; now only the run")
 
 def refused_request(marker, at, agent="sqlmap/1.8.4#stable (https://sqlmap.org)"):
     return {"event": {"module": "modsecurity"}, "@timestamp": at.isoformat(),
@@ -420,7 +440,7 @@ def test_a_recorded_run_s_facts_are_read_without_ingesting_again_once_its_record
     recorded_run(session, "f5", "sqlmap", "probe-run", now - timedelta(minutes=2), now - timedelta(minutes=1))
     steps = {step["id"]: step["check"] for step in wargames.lesson("board", lesson_id="f5")["steps"]}
     ingested = []
-    with patch("api.views._ingest", lambda session, within=None: ingested.append(within) or {}):
+    with patch("api.views._ingest", lambda session, within=None, since=None: ingested.append(within) or {}):
         before = views._accepted(session, steps["scanner"])
         blocked_by(session, "probe-ua", "probe-run", "/?sort=posts_post.id", "913100")
         Detection.objects.filter(detection_id="probe-ua").update(src_ip="5.188.10.10")
