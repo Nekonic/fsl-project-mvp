@@ -1025,7 +1025,7 @@
     "scenario.body.goal": "모든 XSS 시도에서 XSS가 언급된 IDS 경보가 발생하고, 고객의 댓글과 검색에는 경보가 발생하지 않게 하세요.",
     "scenario.body.measured_by": "최종 점검에서 고객이 댓글을 작성하는 동안 공격을 다시 보냅니다.",
     "scenario.body.hint.buffer": "sid 9000003은 http.uri만 검사합니다. 댓글은 요청 본문에 담겨 전송됩니다.",
-    "scenario.body.hint.form": "Kibana의 로그에는 댓글 본문이 남지 않습니다. 웹사이트 화면에서 게시글에 직접 댓글을 달고, 개발자 도구에서 그 요청의 '페이로드' 탭을 열어 '양식 데이터'의 '소스 보기'를 누르세요. IDS의 http.request_body는 이 소스에 보이는 글자 그대로를 검사합니다.",
+    "scenario.body.hint.body": "Kibana에서 댓글을 보낸 요청의 웹방화벽 로그를 펼쳐 request_body를 보세요. 브라우저가 보낸 그대로 URL 인코딩된 본문이고, IDS의 http.request_body도 이 글자 그대로를 검사합니다. 룰을 고친 뒤에는 웹사이트 화면에서 직접 댓글을 달아 시험해 볼 수 있습니다.",
     "scenario.unknown.title": "종합 실습",
     "scenario.unknown.situation": "게시판 웹방화벽은 Paranoia Level 1입니다. 회원들이 SQL과 템플릿 관련 질문을 댓글로 올리는데, 일부 댓글이 차단되고 있습니다. 앞선 시나리오에서 다루지 않은 공격도 들어오고 있습니다.",
     "scenario.unknown.goal": "모든 고객 요청이 정상 처리되게 하고, 공격은 모두 차단하세요.",

@@ -175,6 +175,18 @@ def test_the_session_data_view_keeps_the_shared_columns_and_adds_the_engine_the_
     )
 
 
+def test_the_session_data_view_shows_the_waf_s_recorded_request_body_as_one_field_and_keeps_the_rest_hidden():
+    view = a_session_view()
+    runtime = json.loads(view["attributes"]["runtimeFieldMap"])
+    hidden = {entry["value"] for entry in json.loads(view["attributes"]["sourceFilters"])}
+    parts = re.search(r"^SecAuditLogParts (\S+)", (ROOT / "deploy/waf/modsecurity.conf").read_text(), re.M).group(1)
+
+    assert "C" in parts and not set(parts) & set("DGIK"), (
+        "ModSecurity v3 writes the request body only for part C and has no D, G, I or K; ABIJDEFHZ dropped the body")
+    assert "['transaction']" in runtime["request_body"]["script"]["source"]
+    assert "['body']" in runtime["request_body"]["script"]["source"]
+    assert "transaction.*" in hidden, "walk round 28: 3.4's comment body shows as request_body, the record stays hidden"
+
 def test_the_operator_objects_carry_no_platform_name_and_hide_the_same_fields_as_a_session_view():
     found = saved_objects()
     view = next(item for item in found if item["type"] == "index-pattern")

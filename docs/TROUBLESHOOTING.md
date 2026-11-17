@@ -519,3 +519,41 @@ passed.
 Fix: the note opens the developer tools before the sort request
 and says why, and the row-not-selected reply records no try, as the
 address-side reply already did (`UNTRIED_REASONS` in `api/views.py`).
+
+## Answer-blind walk round 28: F5's ring, the comment body in 3.4
+
+### F5's first note pointed one way and the ring another
+
+Symptom: F5 step 1's note says to open the developer tools first, but the
+ring sat on the sort control. The note also said a request sent before the
+developer tools open is not listed; the walker saw a `?sort=` request sent
+before opening them in the Network panel.
+
+Cause: the step declared the sort control as its first locator. The console
+keeps every site request from page load (`api/site.py`, `kept`), and opening
+the panel reads them from the start and keeps the current page's rows
+(`devPoll`, `devTake` in `blue_dev_script.html`), so a request sent before the
+panel opens is listed. The round-27 entry above repeated that claim.
+
+Fix: the step rings the developer tools toggle until they are open, then the
+sort control, then the Payload tab, as F4's first step does
+(`dev: toggle, until: dev_open`); the false sentence is dropped.
+
+### 3.4: the comment body was nowhere a learner could read
+
+Symptom: 3.4 asks for an IDS rule on the URL-encoded comment body, but the
+alert's JSON in Kibana carries no body, so the learner could only guess the
+payload from the WAF rule names.
+
+Cause: `SecAuditLogParts ABIJDEFHZ` is a ModSecurity v2 list. In v3 the
+request body is part C, and D, I and K are not implemented (Reference Manual
+v3.x, `SecAuditLogParts`; `transaction.cc` writes `request.body` only for
+part C), so the audit record had no body. The session view hides
+`transaction.*` as well, and Suricata's eve output logs no bodies.
+
+Fix: `SecAuditLogParts ABCEFHJZ`; the session view adds `request_body`, the
+body as sent, read from `transaction.request.body`, with the rest of
+`transaction.*` still hidden; 3.4's second hint sends the learner to that
+field. A test comment the learner posts from the website pane carries the
+browse marker, not a customer request's, so the final check does not count
+it as a customer false positive.

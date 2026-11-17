@@ -250,6 +250,15 @@ def request_header_script():
     )
 
 
+def request_body_script():
+    return (
+        "def transaction = params['_source']['transaction']; "
+        "def request = transaction instanceof Map ? transaction['request'] : null; "
+        "if (request instanceof Map && request['body'] != null && String.valueOf(request['body']) != '') { "
+        "emit(String.valueOf(request['body'])); }"
+    )
+
+
 def _each_waf_message(emitted):
     return (
         "def transaction = params['_source']['transaction']; "
@@ -298,6 +307,7 @@ def session_view(pattern, waf, runtime):
         "log_source": {"type": "keyword", "script": {"source": log_source_script()}},
         "sensor": {"type": "keyword", "script": {"source": sensor_script(waf)}},
         "request_headers": {"type": "keyword", "script": {"source": request_headers_script()}},
+        "request_body": {"type": "keyword", "script": {"source": request_body_script()}},
         "request_header": {
             "type": "composite", "script": {"source": request_header_script()},
             "fields": {header_field(name): {"type": "keyword"} for name in REQUEST_HEADERS_SHOWN},
