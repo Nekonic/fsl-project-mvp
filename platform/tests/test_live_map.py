@@ -403,6 +403,33 @@ def test_no_line_runs_through_a_zone_s_title(without):
                     assert abs(a1 - middle) >= half + topology.CAPTION_CLEAR // 2, (zone["id"], edge["id"])
 
 
+@pytest.mark.parametrize("without", [(), ("corp-wp", "corp-db")], ids=["both-targets", "board-alone"])
+def test_no_address_stands_under_its_device_s_name(without):
+    drawn = board_map(without=without)
+    placed = nodes_of(drawn)
+
+    for label in (node for node in drawn["nodes"] if node["kind"] == "address"):
+        device = placed[label["id"].split(":", 1)[1].rpartition(":switch:")[0]]
+        left, right = topology._spans(label)
+        name = len(device.get("name") or "IDS") * topology.CHAR_WIDTH // 2
+        if label["y"] > device["y"]:
+            assert right <= device["x"] - name or left >= device["x"] + name, label
+
+
+def test_a_server_reaches_its_db_zone_and_the_ids_reaches_the_mgmt_switch_in_one_straight_line():
+    drawn = board_map(without=("corp-wp", "corp-db"))
+    placed = nodes_of(drawn)
+    edges = {edge["id"]: edge for edge in drawn["edges"]}
+    labels = {node["id"]: node for node in drawn["nodes"] if node["kind"] == "address"}
+
+    for name in ("link:board.com:switch:board-default", "link:sensor:sensor:switch:mgmt"):
+        edge = edges[name]
+        assert not edge.get("route") and placed[edge["source"]]["y"] == placed[edge["target"]]["y"], name
+    assert labels["address:board.com:switch:board-default"]["label"] == "right"
+    assert placed["switch:board-default"]["x"] > placed["board.com"]["x"]
+    assert placed["switch:mgmt"]["x"] < placed["sensor:sensor"]["x"]
+
+
 def test_no_two_lines_cross_on_a_board_session_s_map():
     drawn = board_map(without=("corp-wp", "corp-db"))
     placed = nodes_of(drawn)

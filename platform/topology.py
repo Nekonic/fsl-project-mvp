@@ -277,13 +277,13 @@ LABEL_GAP = 8
 PAD = 30
 LABEL_PAD = 20
 CAPTION_CLEAR = 24
-CAPTION_CHAR = 10
+CAPTION_CHAR = 8
 CAPTION_NAMES = {"internet": 51, "dmz": 33, "web": 95, "database": 44, "mgmt": 51}
 SPAN = 170
-ROW = 300
+ROW = 320
 DB_ROW = 210
 TIER = 220
-SENSOR_DROP = 170
+SENSOR_DROP = 200
 OFFSET = 22
 BOX_GAP = 40
 CLEAR = 24
@@ -379,78 +379,71 @@ def laid_out(zones, nodes, edges) -> list[dict]:
             x += toward(node, dmz)
             node.update(x=x, y=0)
         right = x
-    gate = next((node for node in held.get(dmz, ()) if web in (node.get("zones") or ())), None) if dmz else None
-    under = gate["x"] if gate else right
-    servers, sensors = [], []
-    row3_left = under
+    titles = {zone["id"]: 2 * (_caption_width(zone) // 2 + CAPTION_CLEAR) for zone in zones}
+    servers = [node for node in held.get(web, ()) if node["kind"] != "sensor"] if web else []
+    sensors = [node for node in held.get(web, ()) if node["kind"] == "sensor"] if web else []
+    single = len(servers) <= 1
+    tapped = max([ICON_HALF + PAD] + [_beside(widths.get((node["id"], switch[band]["id"]), 0)) + LABEL_PAD
+                                      for node in sensors]) if band else ICON_HALF + PAD
+    western = -(ICON_HALF + PAD) if inet else 0
+    if band:
+        reaching = max(PAD + ICON_HALF + sum(toward(node, band) for node in held[band]), titles[band])
+        hub = western + reaching + ICON_HALF + PAD + BOX_GAP + tapped
+    else:
+        hub = western + tapped
+    lowest = ROW + SENSOR_DROP * max(1, len(sensors))
     if web:
-        switch[web].update(x=under, y=ROW)
-        sensors = [node for node in held[web] if node["kind"] == "sensor"]
-        servers = [node for node in held[web] if node["kind"] != "sensor"]
+        switch[web].update(x=hub, y=ROW)
         for k, node in enumerate(sensors):
-            node.update(x=under, y=ROW + SENSOR_DROP * (k + 1))
-        out = max([SPAN] + [toward(node, web) for node in servers]) + (BOX_GAP if len(servers) > 1 else 0)
+            node.update(x=hub, y=ROW + SENSOR_DROP * (k + 1))
+        out = max([SPAN] + [toward(node, web) for node in servers]) + (0 if single else BOX_GAP)
         for k, node in enumerate(servers):
-            node.update(x=under + out, y=ROW + k * TIER)
-    single = len(servers) == 1
-    low = ROW + SENSOR_DROP * len(sensors) + DB_ROW
+            node.update(x=hub + out, y=ROW + k * TIER)
+    east = max((node["x"] for node in nodes if "x" in node), default=0)
     for zone in by.get("database", ()):
         server = next((node for node in servers if zone in node["zones"]), None)
-        if server is not None and not single:
-            width = widths.get((server["id"], switch[zone]["id"]), 0)
+        if server is None:
+            switch[zone].update(x=east + 2 * (ICON_HALF + PAD) + BOX_GAP, y=ROW)
+            row = ROW
+        else:
+            width = max([0] + [widths.get((node["id"], switch[one]["id"]), 0)
+                               for node in servers for one in by.get("database", ())])
             switch[zone].update(x=server["x"] + _beside(width) + LABEL_PAD + BOX_GAP + PAD + ICON_HALF,
                                 y=server["y"])
-            x = switch[zone]["x"]
-            for node in held[zone]:
+            row = server["y"]
+        x = switch[zone]["x"]
+        for k, node in enumerate(held[zone]):
+            if single:
+                node.update(x=x, y=row + SENSOR_DROP * (k + 1))
+                lowest = max(lowest, node["y"])
+            else:
                 x += toward(node, zone)
-                node.update(x=x, y=server["y"])
-            continue
-        across = sum(toward(node, zone) for node in held[zone])
-        middle = (min(node["x"] for node in nodes if "x" in node) + max(node["x"] for node in nodes if "x" in node)) // 2
-        at = min(middle + across // 2, server["x"] - ICON_HALF - PAD - BOX_GAP) if server is not None \
-            else row3_left - BOX_GAP - PAD - ICON_HALF
-        switch[zone].update(x=at, y=low)
-        x = at
-        for node in held[zone]:
-            x -= toward(node, zone)
-            node.update(x=x, y=low)
-        row3_left = x - ICON_HALF - PAD
-        if server is not None:
-            for edge in links:
-                if edge["source"] == server["id"] and edge["target"] == switch[zone]["id"]:
-                    edge.update(start=[0, ICON_HALF], route=[[server["x"], switch[zone]["y"]]], end=[ICON_HALF, 0])
+                node.update(x=x, y=row)
+        east = max([east, x] + [node["x"] for node in held[zone]])
     if band:
-        base = switch[web]["x"] if web else under
-        titled = next((zone for zone in zones if zone["id"] == web), None)
-        entered = [base + OFFSET - 2 * (_caption_width(titled) // 2 + CAPTION_CLEAR)] if titled and gate else []
-        left = min([base - ICON_HALF - PAD] + entered
-                   + [node["x"] - _beside(widths.get((node["id"], switch[band]["id"]), 0)) - LABEL_PAD
-                      for node in sensors])
-        switch[band].update(x=min([left - BOX_GAP - PAD - ICON_HALF] + [node["x"] for node in routers]), y=ROW)
+        switch[band].update(x=hub - tapped - BOX_GAP - PAD - ICON_HALF, y=sensors[0]["y"] if sensors else ROW)
         x = switch[band]["x"]
         for node in held[band]:
             x -= toward(node, band)
-            node.update(x=x, y=ROW)
-        for edge in links:
-            if edge["target"] == switch[band]["id"] and where[edge["source"]]["kind"] == "sensor":
-                edge.update(route=[[switch[band]["x"], where[edge["source"]]["y"]]], end=[0, ICON_HALF])
+            node.update(x=x, y=switch[band]["y"])
     for node in nodes:
-        node.setdefault("x", right)
-        node.setdefault("y", low)
+        node.setdefault("x", east)
+        node.setdefault("y", lowest)
         if node["kind"] != "switch":
             node["label"] = "below"
     _routed(edges, where, switch, web, homes)
-    turning = _turned(links, where, homes, dmz)
+    dropping = _dropping(links, where, homes, dmz)
     labels = _sided(edges, where, homes)
     for zone in zones:
         zone["box"] = _boxed([switch[zone["id"]], *held[zone["id"]]],
                              [label for label in labels if label["zone"] == zone["id"]])
     boxes = {zone["id"]: zone["box"] for zone in zones}
-    if turning and dmz:
-        below = [boxes[zone][1] for zone in (web, band) if zone]
-        corridor = (boxes[dmz][3] + min(below)) // 2 if below else boxes[dmz][3] + PAD
-        for edge in turning:
-            edge["route"] = [[edge["route"][0][0], corridor], [where[edge["target"]]["x"], corridor]]
+    if dropping:
+        top = boxes[dmz][3]
+        floor = min([box[1] for zone, box in boxes.items() if zone not in (inet, dmz)] or [top + 2 * PAD])
+        for k, edge in enumerate(dropping):
+            level = top + (floor - top) * (k + 1) // (len(dropping) + 1)
+            edge["route"] = [[edge["route"][0][0], level], [where[edge["target"]]["x"], level]]
     for zone in zones:
         _captioned(zone, edges, where, [other["box"] for other in zones if other is not zone])
     return labels
@@ -462,27 +455,26 @@ def _routed(edges, where, switch, web, homes) -> None:
         if edge["kind"] != "link" or edge.get("route"):
             continue
         if web and edge["target"] == SWITCH.format(zone=web) and homes[edge["source"]] == web \
-                and source["y"] > target["y"]:
+                and source["y"] > target["y"] and source["kind"] != "sensor":
             middle = target["x"] + ICON_HALF + CAPTION_CLEAR
             edge["route"] = [[middle, source["y"]], [middle, target["y"]]]
             edge["end"] = [ICON_HALF, 0]
 
 
-def _turned(links, where, homes, dmz) -> list[dict]:
+def _dropping(links, where, homes, dmz) -> list[dict]:
+    falling = sorted((edge for edge in links if dmz and homes[edge["source"]] == dmz
+                      and where[edge["target"]]["y"] > where[edge["source"]]["y"]),
+                     key=lambda edge: where[edge["target"]]["x"])
     turning = []
-    for edge in links:
+    for k, edge in enumerate(falling):
         source, target = where[edge["source"]], where[edge["target"]]
-        if not dmz or homes[edge["source"]] != dmz or target["y"] <= source["y"] or target["x"] == source["x"]:
-            continue
-        edge["start"] = [-OFFSET, ICON_HALF]
-        middle = (source["y"] + target["y"]) // 2
-        edge["route"] = [[source["x"] - OFFSET, middle], [target["x"], middle]]
+        shift = OFFSET * (2 * k - (len(falling) - 1))
+        edge["start"] = [shift, ICON_HALF]
         edge["end"] = [0, -ICON_HALF]
+        if target["x"] == source["x"] + shift:
+            continue
+        edge["route"] = [[source["x"] + shift, target["y"]], [target["x"], target["y"]]]
         turning.append(edge)
-        for one in links:
-            if one["source"] == edge["source"] and where[one["target"]]["x"] == source["x"] \
-                    and where[one["target"]]["y"] > source["y"]:
-                one["start"], one["end"] = [OFFSET, ICON_HALF], [OFFSET, -ICON_HALF]
     return turning
 
 
@@ -507,7 +499,7 @@ def _sided(edges, where, homes) -> list[dict]:
             x = source["x"] + (1 if x1 > x0 else -1) * (ICON_HALF + ADDRESS_GAP)
             y = source["y"] - ADDRESS_RISE
         else:
-            side = "right" if x0 > source["x"] else "left"
+            side = "left" if x0 < source["x"] else "right"
             x = x0 + (-1 if side == "left" else 1) * ADDRESS_GAP
             y = source["y"] + (_below(source) + ADDRESS_RISE if y1 > y0 else -ICON_HALF - ADDRESS_RISE)
         placed.append(_label(edge, x, y, side, homes[edge["source"]]))
@@ -524,8 +516,13 @@ def _captioned(zone, edges, where, others) -> None:
     x1, top, x2, _ = zone["box"]
     width = _caption_width(zone)
     if x2 - x1 < width + 2 * CAPTION_CLEAR:
-        grow = (width + 2 * CAPTION_CLEAR - (x2 - x1) + 1) // 2
-        zone["box"][0], zone["box"][2] = x1, x2 = x1 - grow, x2 + grow
+        grow = width + 2 * CAPTION_CLEAR - (x2 - x1)
+        bottom = zone["box"][3]
+        tried = [[x1 - (grow + 1) // 2, top, x2 + (grow + 1) // 2, bottom], [x1, top, x2 + grow, bottom],
+                 [x1 - grow, top, x2, bottom]]
+        zone["box"][:] = next((box for box in tried if not any(
+            _overlaps(box, [other[0] - BOX_GAP, other[1], other[2] + BOX_GAP, other[3]]) for other in others)), tried[0])
+        x1, _, x2, _ = zone["box"]
     crossing = sorted(x0 for edge in edges for (x0, y0), (x1_, y1) in zip(_points(edge, where), _points(edge, where)[1:])
                       if x0 == x1_ and min(y0, y1) < top < max(y0, y1) and x1 < x0 < x2)
     half = width // 2 + CAPTION_CLEAR
