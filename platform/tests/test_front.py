@@ -137,6 +137,12 @@ def test_every_web_surface_beside_the_console_asks_the_platform_for_a_signed_in_
         assert "auth_request /signed-in;" in block, f"{name} skips the sign-in"
         assert "error_page 401 = @sign-in;" in block, f"{name} shows a bare 401 instead of the login page"
 
+def test_kibana_s_refusals_show_the_console_s_korean_page_not_kibana_s_or_nginx_s_english_one():
+    refused = FRONT.read_text().split("location ~* ^/kibana/(?:(?:app|spaces|api|internal)", 1)[1].split("}", 1)[0]
+
+    assert "error_page 403 /kibana-refused/;" in block_after("location /kibana/ {")
+    assert "error_page 403 /kibana-refused/;" in refused and "return 403;" in refused
+
 def test_the_front_s_checks_reach_the_platform_s_session_check_and_the_world_does_not():
     text = FRONT.read_text()
     checks = re.findall(r"location = /signed-in \{(.*?)\}", text, re.S)

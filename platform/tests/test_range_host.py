@@ -428,7 +428,8 @@ def test_a_session_leaves_only_its_own_wargame_running_and_a_reset_starts_every_
     range_.play("corp")
     reset = script[script.index("\ntargets_reset() {"):script.index("\n}\n", script.index("\ntargets_reset() {"))]
 
-    assert stopped == ["stop", "-t", "1", "corp-wp", "corp-db"]
+    assert stopped == ["kill", "corp-wp", "corp-db"], (
+        "the other wargame is deleted with its volumes at the next reset, so nothing waits for it to stop")
     assert ran == [["sudo", "sh", "/opt/cr/s2/slot.sh", "play", "2", "corp-wp", "corp-db"]]
     assert "compose up -d --wait" in reset and "$(wargames)" in reset, (
         "a slot stands ready for either wargame; the session's open stops the other")
@@ -468,3 +469,27 @@ def test_bringing_a_slot_up_restarts_its_log_server_and_shippers_on_the_files_ju
     assert "--pull never sensor $(logging)" in up, (
         "Suricata reads its outputs only at start; re-rendered in place with xff turned on, the running "
         "sensor kept writing alerts without the client's address")
+
+
+def test_a_readdressed_container_s_hosts_file_names_its_new_address_in_place(tmp_path):
+    import subprocess
+
+    script = (ROOT / rangehost.SLOT_SCRIPT).read_text()
+    rehosted = script[script.index("\nrehosted() {"):script.index("\n}\n", script.index("\nrehosted() {")) + 3]
+    hosts = tmp_path / "hosts"
+    hosts.write_text("127.0.0.1\tlocalhost\n121.134.88.42\tboard.com\n172.30.1.10\tkali\n10.30.136.1\tsensor\n")
+    inode = hosts.stat().st_ino
+    stub = f"docker() {{ echo {hosts}; }}\n"
+
+    def run(*argv):
+        subprocess.run(["sh", "-c", stub + rehosted + 'rehosted "$@"', "sh", *argv], check=True)
+
+    run("s1-kali", "172.30.1.10", "5.188.10.10")
+    run("s1-sensor", "10.30.136.1", "")
+    run("s1-kali", "", "5.188.10.10")
+
+    assert hosts.read_text() == "127.0.0.1\tlocalhost\n121.134.88.42\tboard.com\n5.188.10.10\tkali\n"
+    assert hosts.stat().st_ino == inode, "Docker bind-mounts the file, so a new inode would not reach the container"
+    for swapped in ("address_kali", "address_edge", "spanned"):
+        body = script[script.index(f"\n{swapped}() {{"):script.index("\n}\n", script.index(f"\n{swapped}() {{"))]
+        assert body.index("assigned=$(own") < body.index("addr flush") < body.index("rehosted"), swapped

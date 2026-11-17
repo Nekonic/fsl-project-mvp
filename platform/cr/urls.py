@@ -16,6 +16,7 @@ urlpatterns = [
     path("api/users/blocks/<int:block_id>/unblock/", accounts.unblock),
     path("auth-check/", signin.check),
     path("kibana-gate/", views.kibana_gate),
+    path("kibana-refused/", console.kibana_refused),
     path("login/", console.login),
     path("signup/", console.signup),
     path("users/", console.users),

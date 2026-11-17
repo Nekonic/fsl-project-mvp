@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 
 import kibana
 from api.models import Session
+from console import strings
 from tests.conftest import ApiClient
 
 MINE = {"soc-logs-1": "logs-1-*"}
@@ -115,6 +116,50 @@ def test_a_learner_reaches_no_index_beyond_the_session_s_own_slot(method, uri, s
     assert kibana.refusal(method, uri, sent, MINE)
 
 
+def one_document(backing):
+    return searching("logs-1-*", query={"bool": {"filter": [{"ids": {"values": ["YI-k6KEB4D26E1k_qnIo"]}},
+                                                            {"term": {"_index": backing}}]}},
+                     stored_fields=["*"], version=True, _source=True,
+                     fields=[{"field": "*", "include_unmapped": True}],
+                     runtime_mappings={"url": {"type": "keyword"}, "request_header": {"type": "composite"}})
+
+
+def test_the_document_flyout_reads_one_document_of_the_session_s_own_backing_index():
+    assert kibana.refusal("POST", SPACE + "internal/search/ese",
+                          one_document(".ds-logs-1-sensors-2026.11.17-000001"), MINE) is None
+    assert kibana.refusal("POST", SPACE + "internal/search/ese", one_document("logs-1-sensors"), MINE) is None
+
+
+@pytest.mark.parametrize("backing", [
+    ".ds-logs-2-sensors-2026.11.17-000001", ".ds-logs-10-sensors-2026.11.17-000001", ".kibana", "*",
+    ["logs-1-sensors"], {"value": ".ds-logs-1-sensors-2026.11.17-000001"},
+])
+def test_the_document_flyout_names_no_index_outside_the_session_s_pattern(backing):
+    assert kibana.refusal("POST", SPACE + "internal/search/ese", one_document(backing), MINE)
+
+
+def test_the_document_flyout_s_json_shows_only_what_the_data_view_shows():
+    sent = json.loads(kibana.shown_as_the_view_shows(
+        "POST", SPACE + "internal/search/ese", one_document(".ds-logs-1-sensors-2026.11.17-000001")))
+    search = sent["params"]["body"]
+
+    assert {"event", "log", "agent", "message", "http.request_headers*"} <= set(search["_source"]["excludes"])
+    assert not {"stored_fields", "docvalue_fields", "script_fields"} & set(search)
+    assert search["fields"] == [{"field": "url"}, {"field": "url.*"},
+                                {"field": "request_header"}, {"field": "request_header.*"}], (
+        "the fields API asked for * would hand back the raw syslog line and the request headers the data view "
+        "hides; the view's own runtime fields are what the table shows")
+    assert search["query"]["bool"]["filter"][0] == {"ids": {"values": ["YI-k6KEB4D26E1k_qnIo"]}}
+    assert kibana.shown_as_the_view_shows("POST", SPACE + "internal/search/ese", body(DISCOVER_SEARCH)) == body(
+        DISCOVER_SEARCH)
+
+
+def test_an_index_term_counts_only_as_a_whole_clause_of_its_own():
+    widened = searching("logs-1-*", query={"bool": {"filter": [
+        {"term": {"_index": ".ds-logs-1-sensors-2026.11.17-000001"}, "terms": {"x": {"index": "logs-2-x"}}}]}})
+    assert kibana.refusal("POST", SPACE + "internal/search/ese", widened, MINE)
+
+
 def test_staff_open_any_space_and_any_index_but_the_same_short_list_of_calls():
     assert kibana.refusal("POST", "/kibana/s/soc-logs-2/internal/search/ese", searching("logs-*"), None) is None
     assert kibana.refusal("GET", "/kibana/s/soc-logs-7/internal/data_views/fields?pattern=logs-*", b"", None) is None
@@ -200,6 +245,8 @@ def test_the_gate_lets_a_learner_search_their_open_session_s_slot_only(a_learner
     assert own.status_code == 200 and own.json()["rawResponse"]["hits"]["total"] == 1
     assert [closed.status_code, others.status_code, typed.status_code] == [403, 403, 403]
     assert typed.json()["statusCode"] == 403 and "logs-1-*" in typed.json()["message"]
+    assert closed.json()["message"] == strings.line("kibana.refused.space"), (
+        "Kibana prints this message on its error page, which a learner reads")
     assert forwarded == [SPACE + "internal/search/ese"]
 
 
@@ -211,3 +258,10 @@ def test_the_gate_lets_staff_into_every_slot_s_space(client, settings):
 
 def test_the_gate_asks_for_a_sign_in_first(db):
     assert gate(ApiClient(), SPACE + "internal/search/ese", searching("logs-1-*")).status_code == 302
+
+
+def test_a_kibana_page_a_learner_may_not_open_shows_the_console_s_own_refusal(a_learner_on_slot_1):
+    page = a_learner_on_slot_1.get("/kibana-refused/")
+
+    assert page.status_code == 403
+    assert 'data-t="kibana.refused.title"' in page.content.decode()

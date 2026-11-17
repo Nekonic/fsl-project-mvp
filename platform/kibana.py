@@ -1,3 +1,4 @@
+import fnmatch
 import json
 import os
 import re
@@ -73,6 +74,7 @@ SUGGESTIONS = re.compile(r"internal/kibana/suggestions/values/(?P<index>[a-z0-9*
 SEARCH = re.compile(r"internal/search/ese(?:/(?P<id>[A-Za-z0-9_=-]+))?")
 QUERY_PAIR = re.compile(r"(?P<name>[A-Za-z_]+)=(?P<value>[^&]*)")
 REACHES_PAST_THE_INDEX = frozenset({"index", "_index", "indices", "namespace", "namespaces"})
+BACKING_INDEX = ".ds-{}"
 FORWARDED_HEADERS = frozenset({"content-type", "accept", "elastic-api-version"})
 FORWARDED_PREFIXES = ("kbn-", "x-elastic-", "x-kbn-")
 ANSWER_HEADERS = ("Content-Type", "elastic-api-version", "kbn-license-sig", "kbn-name", "Cache-Control")
@@ -388,6 +390,24 @@ def _query_pairs(query):
     return None if not all(pairs) else [(pair["name"], pair["value"]) for pair in pairs]
 
 
+def _backing_index_of(named, pattern):
+    return isinstance(named, str) and (
+        pattern is None or any(fnmatch.fnmatchcase(named, own) for own in (pattern, BACKING_INDEX.format(pattern))))
+
+
+def _own_index_term(clause, pattern):
+    term = clause.get("term") if isinstance(clause, dict) and len(clause) == 1 else None
+    return isinstance(term, dict) and list(term) == ["_index"] and _backing_index_of(term["_index"], pattern)
+
+
+def _without_own_index_terms(given, pattern):
+    if isinstance(given, dict):
+        return {key: _without_own_index_terms(value, pattern) for key, value in given.items()}
+    if isinstance(given, list):
+        return [_without_own_index_terms(one, pattern) for one in given if not _own_index_term(one, pattern)]
+    return given
+
+
 def _search_refusal(method, found, given, body, pattern):
     if method == "DELETE":
         return None if found["id"] and not body else "a search is cancelled by its id alone"
@@ -395,7 +415,13 @@ def _search_refusal(method, found, given, body, pattern):
     if not isinstance(params, dict) or not _ours(params.get("index"), pattern):
         return f"a search here reads {pattern or 'one index pattern'} alone"
     return _reaches_past_the_index([{key: value for key, value in given.items() if key != "params"},
-                                    {key: value for key, value in params.items() if key != "index"}])
+                                    _without_own_index_terms(
+                                        {key: value for key, value in params.items() if key != "index"}, pattern)])
+
+
+def space_of(uri):
+    asked = GATED.fullmatch(uri.partition("?")[0])
+    return asked["space"] if asked else None
 
 
 def refusal(method, uri, body, patterns):
@@ -432,7 +458,35 @@ def refusal(method, uri, body, patterns):
     return f"{method} {route} is not a call Discover makes"
 
 
+def _names_an_index(given):
+    if isinstance(given, dict):
+        term = given.get("term")
+        return isinstance(term, dict) and "_index" in term or any(map(_names_an_index, given.values()))
+    return isinstance(given, list) and any(map(_names_an_index, given))
+
+
+def shown_as_the_view_shows(method, uri, body):
+    asked = GATED.fullmatch(uri.partition("?")[0])
+    if method != "POST" or not asked or not SEARCH.fullmatch(asked["route"]):
+        return body
+    try:
+        given = json.loads(body)
+    except ValueError:
+        return body
+    params = given.get("params") if isinstance(given, dict) else None
+    search = params.get("body") if isinstance(params, dict) else None
+    if not isinstance(search, dict) or not _names_an_index(search.get("query")):
+        return body
+    for listed in ("docvalue_fields", "stored_fields", "script_fields"):
+        search.pop(listed, None)
+    runtime = search.get("runtime_mappings") if isinstance(search.get("runtime_mappings"), dict) else {}
+    search["fields"] = [{"field": shown} for name in runtime for shown in (name, f"{name}.*")]
+    search["_source"] = {"excludes": [hidden.removesuffix(".*") for hidden in HIDDEN_FIELDS]}
+    return json.dumps(given).encode()
+
+
 def forward(method, uri, headers, body, send=urllib.request.urlopen):
+    body = shown_as_the_view_shows(method, uri, body)
     origin = "{0.scheme}://{0.netloc}".format(urllib.parse.urlsplit(URL))
     sent = {name: value for name, value in headers.items()
             if name.lower() in FORWARDED_HEADERS or name.lower().startswith(FORWARDED_PREFIXES)}

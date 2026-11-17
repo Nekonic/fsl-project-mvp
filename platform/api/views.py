@@ -89,6 +89,7 @@ OPERATOR_WARNINGS = ("score.warning.no_marker", "score.warning.no_benign")
 SCHEDULE = ("attacks", "completion")
 REPLAY_MARKS = ("seed", "verify", "check", "replay")
 CHECK_TIMEOUT = 10.0
+KIBANA_REFUSED = "kibana.refused.space"
 RECORD_SLACK = timedelta(seconds=5)
 BENIGN_UNSENT = "lesson.check.replay_benign"
 ADDRESS_SIDE = "lesson.check.wrong.address_side"
@@ -258,15 +259,17 @@ def sessions(request):
         return holding.reply()
     try:
         adapter = _range(session, adapter)
-        if hasattr(adapter, "play"):
-            adapter.play(scenario)
-        _aim_attacker(adapter)
-        _take_defense(session, adapter, posture)
-        session.baseline = _baseline(adapter, scenario)
-        session.save(update_fields=["baseline", "waf"])
-        if guidance and not played:
-            _seed_logs(session)
-        _session_logs(session)
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="cr-kibana") as pool:
+            kibana_view = pool.submit(_session_logs, session)
+            if hasattr(adapter, "play"):
+                adapter.play(scenario)
+            _aim_attacker(adapter)
+            _take_defense(session, adapter, posture)
+            session.baseline = _baseline(adapter, scenario)
+            session.save(update_fields=["baseline", "waf"])
+            if guidance and not played:
+                _seed_logs(session)
+            kibana_view.result()
         session.ready_at = timezone.now()
         session.save(update_fields=["ready_at"])
         if played:
@@ -1909,7 +1912,7 @@ def _session_view_ready(session, index, again=False):
     drawn = maps.learner(session.scenario)
     return kibana.session_view_ready(index, drawn.roles.get("gateway", ""), again=again)
 
-def _kibana_spaces(user):
+def kibana_spaces(user):
     if user.is_staff:
         return None
     opened = (_session_index(session) for session in Session.objects.filter(owner=user, ended_at=None))
@@ -1918,7 +1921,11 @@ def _kibana_spaces(user):
 @csrf_exempt
 def kibana_gate(request):
     uri = request.headers.get("X-Kibana-Uri", "")
-    refused = kibana.refusal(request.method, uri, request.body, _kibana_spaces(request.user))
+    spaces, asked = kibana_spaces(request.user), kibana.space_of(uri)
+    if spaces is not None and asked is not None and asked not in spaces:
+        return JsonResponse({"statusCode": 403, "error": "Forbidden", "message": strings.line(KIBANA_REFUSED)},
+                            status=403)
+    refused = kibana.refusal(request.method, uri, request.body, spaces)
     if refused:
         return JsonResponse({"statusCode": 403, "error": "Forbidden", "message": refused}, status=403)
     try:

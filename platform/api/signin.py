@@ -10,10 +10,11 @@ from django.http import HttpResponse, JsonResponse
 from django.middleware.csrf import get_token
 from django.views.decorators.http import require_GET, require_POST
 
-from api import blocks
+from api import blocks, views
 from api.models import Session
 
 SITE_SESSION = re.compile(r"^/site/(?P<session>\d+)/")
+KIBANA_SPACE = re.compile(r"^/kibana/s/(?P<space>[^/]+)(?:/|$)", re.IGNORECASE)
 TERMINALS = "/vm-terminal/"
 OPEN = frozenset({
     "/login/", "/signup/", "/api/auth/", "/api/auth/login/", "/api/auth/signup/", "/auth-check/",
@@ -158,6 +159,9 @@ def check(request):
         return HttpResponse(status=401)
     if user.is_staff:
         return HttpResponse(status=204)
+    space = KIBANA_SPACE.match(urlsplit(request.headers.get("X-Original-URI", "")).path)
+    if space:
+        return HttpResponse(status=204 if space["space"] in views.kibana_spaces(user) else 403)
     named = _session_named_by(request.headers.get("X-Original-URI", ""))
     if named is None:
         return HttpResponse(status=204)

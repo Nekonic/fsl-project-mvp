@@ -89,8 +89,26 @@ def test_the_front_s_check_opens_a_learner_s_own_session_only(client, two_learne
     assert client.get("/auth-check/", HTTP_X_ORIGINAL_URI=asked).status_code == 204
 
 
+def test_a_learner_opens_the_kibana_space_of_their_own_open_session_alone(client, settings):
+    settings.ELASTIC_SESSION_INDEX = "logs-{slot}-*"
+    mine, me = learner("learner1")
+    Session.objects.create(owner=me, slot=1)
+    Session.objects.create(owner=me, slot=2, ended_at=datetime(2026, 11, 16, tzinfo=timezone.utc))
+
+    def asked(uri, by=mine):
+        return by.get("/auth-check/", HTTP_X_ORIGINAL_URI=uri).status_code
+
+    assert asked("/kibana/s/soc-logs-1/app/discover#/view/events") == 204
+    assert asked("/kibana/s/soc-logs-2/app/discover") == 403
+    assert asked("/kibana/s/soc-logs-3") == 403
+    assert asked("/kibana/S/soc-logs-3/app/discover") == 403
+    assert asked("/kibana/s/soc-logs-3/app/discover", by=client) == 204
+
+
 def test_the_front_s_cache_tells_sessions_and_terminals_apart():
     text = FRONT.read_text()
+    assert "~*^/kibana/s/(?<asked_space>[^/?]+) kibana:$asked_space;" in text, (
+        "one space's cached yes would otherwise open another space for five seconds")
 
     assert "~^/site/(?<asked_site>\\d+)/ site:$asked_site;" in text
     assert "~^/vm-terminal/[^?]*\\?(?<asked_query>.*)$ terminal:$asked_query;" in text

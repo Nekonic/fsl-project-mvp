@@ -9051,3 +9051,64 @@ recreates the sensor and the logging containers on every run (`compose up
 now the new platform VM's `mgmt` address (10.31.0.144 in run 1, 10.31.0.229
 in run 2). A platform-only replace now spends most of its time in the
 platform VM's first boot (6.5 min of 10).
+
+## 2026-11-17 — Walk round 25: Kali's hosts file names its real address, the document JSON tab reads one document, a Kibana refusal is Korean, a session opens in about 10 s
+
+**Kali's `/etc/hosts`.** `hostname -i` on Kali printed 172.30.N.10, the
+address Docker gave the container on the `internet` network; `slot.sh`
+flushes `eth0` and adds the origin addresses, so that address is in neither
+`ip addr` nor the map. Docker writes the hosts file once, at create.
+`address_kali`, `address_edge` and `spanned` in `deploy/range-host/slot.sh`
+now note the Docker address before the flush and rewrite that line of the
+container's `HostsPath` in place afterwards (`cat >`, so the bind mount keeps
+its inode): Kali names its default source (5.188.10.10), the edge router its
+`wan` public IP, and the sensor's sniffing leg loses its line. Checked on
+slots 1 to 8 of the live range host: `hostname -i` on Kali is 5.188.10.10, on
+the edge router 121.134.88.42 and 10.30.N.1.
+
+**The JSON tab.** Expanding a log and opening the Document flyout's JSON tab
+showed "An Error Occurred". The tab runs its own search, `params.index` the
+slot pattern, filtered by `{"ids": …}` and `{"term": {"_index":
+".ds-logs-1-sensors-…"}}`; the gate refused it because the body names
+`_index`. `kibana.refusal` now lets that one clause through when it is a
+whole filter clause of its own and its value is the slot pattern or one of its
+backing indices; a term on another slot's index, a list, an object or a
+wildcard is still refused. Opened as it was, the tab printed the raw
+`_source`: the syslog line, `log.syslog.hostname: cr-waf`, filebeat's agent,
+the request headers with `X-Request-ID`, all of which the data view hides from
+the table and flyout (`HIDDEN_FIELDS`). `kibana.forward` therefore rewrites
+that search (`shown_as_the_view_shows`): `_source` excludes the hidden fields
+and `fields` asks for the data view's runtime fields alone, so the tab shows
+`src_geo`, `@timestamp` and `source_ip`, `url`, `status`, `rule_id`, `rule`,
+`request_header.*` and the rest the table shows.
+
+**The refusal page.** Opening another slot's space showed Kibana's own English
+error page with the gate's English reason. `/auth-check/` now answers 403 to a
+learner for a `/kibana/s/<space>/…` document whose space is not one of their
+open sessions' (staff pass), the nginx cache key carries the space, and nginx
+turns that 403 and the other `/kibana/` refusals (Default space, `app/`
+without a space) into the console page `/kibana-refused/`, written from
+`kibana.refused.*` in the string table. The gate answers a call into another
+space with the withheld line `kibana.refused.space` as Kibana's `message`.
+Nothing that was refused is now let through.
+
+**Opening a session.** POST `/api/sessions/` for scenario 1.1, profiled in the
+platform (cProfile around the view), before: 18.8 s, of which `play` 6.6 s,
+readiness 4.2 s (Nova server list 2.1 s, ground truth and sensor rules over
+ssh), the WAF posture 2.3 s, the Kibana space 1.7 s, customers 1.6 s, the
+attacker's origin 1.2 s, the baseline 0.7 s. `play` stopped the other wargame
+with `compose stop -t 1`: WordPress and then its database each waited out the
+second and were killed (exit 137), 4.5 s on the range host. Both are deleted
+with their volumes at the next reset, so `play` now runs `compose kill` (1.7 s
+on the range host). The Kibana space is made in a thread beside the range
+work. After, three runs: 12.7 s, 10.6 s, 10.7 s (`play` 4.2, 1.7, 2.0 s); in
+the browser the 201 came at 9.2 s against 13.2 s before. A lesson (f3): 14.4 s
+while another slot was resetting. What remains is the readiness guard (3 to
+4 s), the WAF posture (2.2 s: render and an nginx reload over ssh), customers
+(1.5 s), the origin (1.1 s) and the baseline read (0.7 s); none has a cause to
+cut without changing what is checked. Kibana's first open: 9.8 s in one run
+with a cold browser (276 bundles to 3 s, `data_views/fields` 4.5 s), 3.7 s in
+another cold run, 1.9 s warm.
+
+`deploy/range-host/slot.sh` is in the slot bundle, so its digest changes and
+the next replace boots a new range host.

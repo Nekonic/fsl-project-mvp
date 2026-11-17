@@ -23,5 +23,9 @@ def blue(request, session_id):
     return render(request, "console/blue.html")
 
 @xframe_options_sameorigin
+def kibana_refused(request):
+    return render(request, "console/kibana_refused.html", status=403)
+
+@xframe_options_sameorigin
 def network_map(request, session_id):
     return render(request, "console/map.html")

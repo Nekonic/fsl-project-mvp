@@ -93,15 +93,35 @@ routed() {
   done
 }
 
+own() {
+  inside "$1" ip -4 -o addr show dev "$2" | awk '{ split($4, at, "/"); print at[1]; exit }'
+}
+
+sourced() {
+  inside "$1" ip -4 route show default | awk '{ for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit } }'
+}
+
+rehosted() {
+  [ -n "$2" ] || return 0
+  hosts=$(docker inspect -f '{{.HostsPath}}' "$1")
+  awk -v was="$2" -v now="$3" '$1 == was { if (now == "") next; sub(/^[^[:space:]]+/, now) } { print }' "$hosts" > "$hosts.next"
+  cat "$hosts.next" > "$hosts"
+  rm -f "$hosts.next"
+}
+
 address_kali() {
+  assigned=$(own "$project-kali" eth0)
   inside "$project-kali" ip addr flush dev eth0
   inside "$project-kali" ip -batch "$d/kali.ip"
+  rehosted "$project-kali" "$assigned" "$(sourced "$project-kali")"
   quiet "$project-kali"
 }
 
 address_edge() {
+  assigned=$(own "$project-edge" wan)
   inside "$project-edge" ip addr flush dev wan
   inside "$project-edge" ip -batch "$d/edge.ip"
+  rehosted "$project-edge" "$assigned" "$(own "$project-edge" wan)"
   docker exec -i "$project-edge" nft -f - < "$d/edge-nat.nft"
   quiet "$project-edge"
 }
@@ -119,7 +139,9 @@ spanned() {
   bridge=s$n-$1
   sensor=$(port_of "$project-sensor" "$2")
   [ -n "$sensor" ]
+  assigned=$(own "$project-sensor" "$2")
   inside "$project-sensor" ip addr flush dev "$2"
+  rehosted "$project-sensor" "$assigned" ""
   bridge link set dev "$sensor" learning off flood off mcast_flood off bcast_flood off
   for port in $(ls "/sys/class/net/$bridge/brif"); do
     tc qdisc replace dev "$port" clsact
@@ -219,7 +241,7 @@ play() {
       *) stopped="$stopped $service" ;;
     esac
   done
-  [ -z "$stopped" ] || compose stop -t 1 $stopped
+  [ -z "$stopped" ] || compose kill $stopped
 }
 
 down() {

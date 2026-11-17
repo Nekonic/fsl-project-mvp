@@ -129,7 +129,11 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 - space가 학습자가 연 세션의 슬롯 것. 관리자는 아무 space
 - Discover가 쓰는 호출 목록에 있음. `bsearch`, `es`·`esql`·`sql`·`eql` 검색, 개발 도구 콘솔, saved object·data view·고급 설정 쓰기, `resolve_index`는 403
 - 호출이 지정하는 인덱스가 정확히 그 슬롯 패턴. 검색의 `params.index`, 필드 목록의 `pattern`, 값 추천 경로의 인덱스. 관리자는 아무 인덱스
-- 본문과 쿼리 문자열 어디에도 `index`, `_index`, `indices`, `namespace(s)` 키가 없음. terms lookup이나 다른 space 조회를 막음
+- 본문과 쿼리 문자열 어디에도 `index`, `_index`, `indices`, `namespace(s)` 키가 없음. terms lookup이나 다른 space 조회를 막음. 예외는 문서 하나를 읽는 검색의 필터 절 `{"term": {"_index": X}}` 하나뿐이고, X가 그 슬롯 패턴이나 그 백킹 인덱스(`.ds-logs-N-…`)일 때만 통과. Document 창의 JSON 탭이 이 검색을 씀
+
+이 문서 검색은 `kibana.shown_as_the_view_shows`가 고쳐서 넘깁니다. `_source`에서 `HIDDEN_FIELDS`를 빼고, `fields`는 data view의 runtime field만 요청합니다. 그래서 JSON 탭에도 표와 같은 필드만 나옵니다.
+
+다른 space를 열면 거부 화면이 한국어로 나옵니다. 학습자가 `/kibana/s/<space>/…` 문서를 열 때 `/auth-check/`가 그 space를 학습자의 열린 세션 space와 비교하고, 아니면 403입니다. nginx는 이 403과 Default space 등 `/kibana/` 아래의 다른 403을 콘솔의 `/kibana-refused/` 화면(`kibana.refused.*` 문구)으로 바꿉니다. 게이트 API도 다른 space 요청에는 `strings.html`의 `kibana.refused.space` 문구를 `message`로 돌려줍니다. 캐시 키의 `$session_asked`에 space가 들어가서 한 space의 허용이 다른 space에 쓰이지 않습니다.
 
 세션 space에서는 `bfetch:disable`로 요청 묶음을 끕니다. 검색 한 번이 요청 한 건이라 게이트가 본문 전체를 봅니다.
 
@@ -192,6 +196,7 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 - 출발지마다 GeoIP상 그 나라로 나오는 /24 하나. 공격 주소 약 100개를 나눠 받음
 - 30개 모두 슬롯의 `internet` 브리지 하나에 올라감
 - `deploy/range-host/slot.sh`에서 Kali에 출발지별 주소를 붙임(`nsenter`로 `ip -batch` 실행). Kali는 라우터 바깥의 인터넷 역할
+- 주소를 바꾼 뒤 그 컨테이너의 `/etc/hosts`(Docker의 `HostsPath`)에서 Docker가 처음 준 주소를 새 주소로 바꿈. Kali는 기본 출발지 주소(5.188.10.10), 에지는 `wan`의 공인 IP. 센서의 `web` 주소는 지움. 그래서 `hostname -i`가 구성도와 `ip addr`의 주소를 말함
 - 라우터(에지) `wan`의 공인 IP는 121.134.88.42/29 하나(`rangehost.ROUTER_WAN`). KT 회선(KORNET, 121.128.0.0/11)에서 기업 회선에 주는 크기의 블록이고, Kali의 30개 /24 어느 것과도 겹치지 않음
 - 공인 IP와 출발지 대역이 서로 다른 블록이라 같은 브리지 위에서 onlink 경로로 닿음. 라우터는 `default via 5.188.10.10 dev wan onlink`(Kali가 라우터 바깥의 인터넷 역할), Kali는 `default via 121.134.88.42 dev eth0 onlink src 5.188.10.10`(`rangehost.edge_addresses`, `kali_addresses`). `src`가 없으면 커널이 첫 주소 73.0.0.10을 고르고, 출발지 SNAT가 nmap SYN 스캔의 raw 패킷 출발지를 바꿔 nmap이 응답을 못 알아봄
 - 라우터는 공인 IP의 80번 포트를 WAF의 estate 주소로 포트포워딩(DNAT, `rangehost.port_forwards`가 만드는 `edge-nat.nft`의 `table ip nat`). 출발지는 바꾸지 않음(SNAT 없음)
@@ -2100,7 +2105,7 @@ Docker와 메타데이터:
 **초기화.** `POST /api/sessions/<id>/close/`는 슬롯을 그 자리에서 초기화합니다. VM은 재구축하지 않습니다.
 
 - `reset_in_place()`에서 `slot.sh reset N` 실행. reset은 모든 워게임을 다시 띄워 어느 워게임 세션이든 받을 수 있게 함
-- 세션을 열 때 `play(<워게임>)`이 `slot.sh play N <서비스...>`를 실행해 그 워게임의 서버와 DB만 남기고 다른 워게임 컨테이너를 멈춤(`compose stop -t 1`)
+- 세션을 열 때 `play(<워게임>)`이 `slot.sh play N <서비스...>`를 실행해 그 워게임의 서버와 DB만 남기고 다른 워게임 컨테이너를 멈춤(`compose kill`. 초기화 때 볼륨째 지우므로 정상 종료를 기다리지 않음)
 - Kali와 WAF는 이미지에서 새로 만듦. 동시에 대상 시스템은 볼륨째 지우고 초기 데이터로 다시 띄움
 - 에지의 neighbour 테이블을 비우고, 슬롯 로그 파일(센서 `eve.json`, WAF `audit.log`와 `refused.log`)을 그 자리에서 비우고, 센서가 로그 파일을 다시 열게 함. shipper는 비워진 파일을 처음부터 다시 읽음(`reopenOnTruncate`). WAF shipper는 WAF와 함께 새로 만듦
 - 새로 만든 컨테이너의 브리지 포트에 미러링을 다시 검
