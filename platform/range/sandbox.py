@@ -251,7 +251,8 @@ def booted(role: str, tag: str = "", answers: str = "") -> str:
     answered = (f" && for _ in $(seq {ANSWER_WAIT}); do {answers} >/dev/null 2>&1 && break; sleep 1; done"
                 f" && {answers}" if answers else "")
     images = f"grep -h ' image: ' {WARGAME_COMPOSE}"
-    tagged = f"{images} >/dev/null && ! {images} | grep -v ':{tag}$' && " if role == "target" and tag else ""
+    tagged = (f"{images} >/dev/null && ! {images} | grep -v -e ':{tag}$' -e '@sha256:[0-9a-f]*$' && "
+              if role == "target" and tag else "")
     shown = f"echo 'the slot asks for wargame images at {tag}:'; {images}; " if tagged else ""
     return (f"install -d -m 0755 {STATE}; if {tagged}systemctl start {units}{answered}; then touch {READY}; "
             f"else {{ {shown}systemctl --no-pager --lines=20 status {units}; }} > {FAILED} 2>&1; touch {FAILED}; fi")

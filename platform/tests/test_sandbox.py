@@ -1,6 +1,7 @@
 import ipaddress
 import pathlib
 import shlex
+import subprocess
 
 import pytest
 import yaml
@@ -143,9 +144,24 @@ def test_the_target_is_ready_only_when_its_image_holds_the_wargame_images_at_the
     [[_, _, kali]] = yaml.safe_load(plan.node("cr-kali").user_data)["runcmd"]
 
     images = "grep -h ' image: ' /opt/wargames/*/compose.yaml"
-    assert f"if {images} >/dev/null && ! {images} | grep -v ':{tag}$' && systemctl start wargames.service;" in script
+    assert (f"if {images} >/dev/null && ! {images} | grep -v -e ':{tag}$' -e '@sha256:[0-9a-f]*$' && "
+            f"systemctl start wargames.service;") in script
     assert f"echo 'the slot asks for wargame images at {tag}:'; {images};" in script
     assert tag not in kali
+
+
+def test_the_tag_check_passes_the_baked_compose_files_and_their_digest_pinned_databases(tmp_path):
+    tag = "c" * 40
+    (tmp_path / "board").mkdir()
+    (tmp_path / "board/compose.yaml").write_text(
+        f"services:\n  board:\n    image: ghcr.io/nekonic/cr-board:{tag}\n"
+        f"  board-db:\n    image: mysql@sha256:{'0' * 64}\n")
+    check = sandbox.booted("target", tag).split("if ", 1)[1].split(" systemctl start", 1)[0].removesuffix(" &&")
+    check = check.replace("/opt/wargames/*/compose.yaml", str(tmp_path / "*/compose.yaml"))
+
+    assert subprocess.run(["sh", "-c", check]).returncode == 0
+    (tmp_path / "board/compose.yaml").write_text("services:\n  board:\n    image: ghcr.io/nekonic/cr-board:dev\n")
+    assert subprocess.run(["sh", "-c", check], capture_output=True).returncode != 0
 
 
 def test_a_definition_that_puts_a_port_outside_its_lan_or_without_an_address_is_refused(tmp_path):
