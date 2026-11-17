@@ -1,8 +1,9 @@
 # The range as one Heat stack per slot (KYPO-style): design and gate-1 plan
 
-Gate 1, waiting for approval; the user's rulings of 2026-11-18. Replaces the container range of
+Gate 1, approved 2026-11-18; the user's rulings of 2026-11-18. Replaces the container range of
 `2026-11-13-container-range-design.md` (one range-host VM, slot = compose project `sN`).
-**[unverified]** marks what is not measured on this cloud; P0 checks what the design rests on.
+**[unverified]** marks what is not measured on this cloud; P0 measured what the design rests on
+(§11).
 
 ## 1. Direction (user rulings, 2026-11-18)
 
@@ -29,8 +30,8 @@ LANs, one Neutron network each, per slot, no Neutron router on any of them:
 |---|---|---|
 | `internet` | Kali, infra `wan` 121.134.88.42/29 | the fake internet; the 30 origin /24s of `platform/range/declaration.yaml` |
 | `dmz` | infra `lan` .1, WAF front .247 | |
-| `web-outer` | WAF back, infra IDS leg A | IDS leg: port security off |
-| `web-inner` | board .59, corp .60 (target VM), infra IDS leg B | IDS leg: port security off |
+| `web-outer` | WAF back, infra IDS leg A | IDS leg: port security off, a dummy fixed IP the boot flushes |
+| `web-inner` | board .59, corp .60 (target VM), infra IDS leg B | IDS leg: port security off, a dummy fixed IP the boot flushes |
 | `mgmt` (slot) | infra log server, WAF mgmt | the monitoring LAN the learner map draws |
 
 Every slot uses the same addresses, as the origins already do; slots differ by network, not CIDR,
@@ -51,14 +52,13 @@ What Neutron/Heat do (Heat resource types: https://docs.openstack.org/heat/lates
   instead of about 100 fixed IPs. Neutron's default policy lets the network owner set both this and
   `port_security_enabled` (`role:member and rule:network_owner`,
   https://docs.openstack.org/neutron/latest/configuration/policy.html). **Limit:**
-  `max_allowed_address_pair` defaults to 10
-  (https://docs.openstack.org/neutron/latest/configuration/neutron.html); 30 pairs need the admin
-  to raise it. Fallback without admin: one pair `0.0.0.0/0`, which changes nothing outside the slot
-  because the slot's `internet` has no router. The ~100 addresses and Kali's default route onlink
+  `max_allowed_address_pair` is 10 on this cloud (P0: 11 pairs answered 400 "exceeds the maximum
+  10"), so the 30 origins do not fit. Kali's `internet` port carries the one pair `0.0.0.0/0`,
+  which changes nothing outside the slot because the slot's `internet` has no router. The ~100 addresses and Kali's default route onlink
   to 121.134.88.42 stay a boot step of the Kali role, read from the declaration.
 - **Ordering and cleanup.** Heat creates in order and deletes the whole stack; `plan_leftovers`/`clean_leftovers` go.
 - **The map.** Networks and ports are tagged `cr.slot=<n>`; the learner map is read from Neutron
-  and Nova (the stack's resource list as fallback) **[unverified: `tags` on `OS::Neutron::Port`]**.
+  and Nova (the stack's resource list as fallback). Heat accepts `tags` on `OS::Neutron::Port` (P0).
 
 What stays in the `infra` guest, and why a member cannot have it from Neutron:
 
@@ -69,7 +69,9 @@ What stays in the `infra` guest, and why a member cannot have it from Neutron:
   `rule:admin_only`; a fake internet per slot with the same 121.134.88.42 cannot be one.
   The router answers ICMP and decrements TTL, so ping and traceroute from Kali work.
 - **IDS.** A Linux bridge between the `web-outer` and `web-inner` legs, port security off on both,
-  Suricata on the bridge with af-packet. OVN's mirroring (Neutron TaaS `tap_mirror`) is admin-only
+  Suricata on the bridge with af-packet. Nova refuses a port with no fixed IP ("requires a
+  FixedIP", P0), so each leg holds a dummy fixed IP the boot step flushes before it enslaves the
+  leg to the bridge. OVN's mirroring (Neutron TaaS `tap_mirror`) is admin-only
   (user's reading; the TaaS policy is not in the Neutron policy reference). Unlike today's
   `tc mirred` SPAN on `sN-web` (`deploy/range-host/slot.sh` `spanned`), the sensor is inline:
   F3's view (WAF to targets, with X-Forwarded-For) is unchanged.
@@ -192,9 +194,23 @@ Unit and API tests with fakes while working; no rebuild, replace, full `bin/veri
 
 ## 10. Unverified
 
-- OVN unknown-destination delivery to the IDS legs (P0-1); member port-security and pair limit
-  (P0-2); Kali image format, conversion and boot time (P0-3); static `network_data.json` (P0-4).
+- Kali image format, conversion and boot time (P0-3, not run).
 - That the platform's OpenStack user may create Heat stacks (the platform stack is created by
   `bin/platform-rebuild` with the `cloud.yaml` identity; check the platform's own credentials).
-- `tags` on `OS::Neutron::Port`; stack create and delete time, so the pool refill time; RAM per
-  slot of four VMs.
+- Stack delete time, so the full pool refill time; RAM per slot of four VMs.
+
+## 11. P0 results (2026-11-18)
+
+One throwaway stack `cr-probe-p0` (three Ubuntu 24.04 VMs on `dba.small`, two Neutron networks
+with the same CIDR 10.99.0.0/24, DHCP off, no gateway), 5 min 23 s from create to delete; every
+resource deleted after.
+
+| Check | Result |
+|---|---|
+| P0-1 OVN delivers unknown-destination frames to port-security-off ports | yes: a Linux bridge `br0` in the middle VM, between a leg on each network, carried client to server `curl` (http 200), ARP and the full TCP exchange, seen by `tcpdump` on the bridge leg; detaching a leg broke it |
+| P0-2 a member disables port security and sets address pairs | yes, `port_security_enabled: false` as a member; `max_allowed_address_pair` is 10 (11 pairs: 400 "exceeds the maximum 10"), so Kali takes `0.0.0.0/0` |
+| P0-3 Kali Generic Cloud import | not run |
+| P0-4 static `network_data.json` | yes: fixed IPs came up from the config drive's `network_data.json` with DHCP off |
+| Nova and a port without a fixed IP | refused ("requires a FixedIP"): the IDS legs get dummy fixed IPs that the infra boot step flushes |
+| `tags` on `OS::Neutron::Port` | accepted by Heat |
+| Timing | `CREATE_COMPLETE` in 29 s; the three VMs answered ssh about 1 min 53 s after |
