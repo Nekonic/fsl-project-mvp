@@ -116,6 +116,7 @@ SETTINGS = {
 
 _connected: dict[tuple, tuple["Cloud", object]] = {}
 _set_up: set[str] = set()
+_lan_groups_made = threading.Lock()
 _held: dict[tuple[str, int], "Held"] = {}
 _booting = threading.Lock()
 
@@ -151,6 +152,15 @@ def _lan_rules(plan: sandbox.Sandbox, lan: sandbox.Lan) -> list[dict]:
             for cidr in ((sandbox.EVERYWHERE,) if foreign else lan.cidrs)]
 
 
+def lan_groups(plan: sandbox.Sandbox) -> dict[str, tuple[str, list[dict]]]:
+    grouped = {}
+    for lan in plan.lans:
+        rules = _lan_rules(plan, lan)
+        digest = hashlib.sha256(json.dumps(rules, sort_keys=True).encode()).hexdigest()[:12]
+        grouped[lan.name] = (f"{fabric.LAN_GROUP_PREFIX}{digest}", rules)
+    return grouped
+
+
 def _port_name(port: sandbox.Port) -> str:
     return f"port_{port.node}_{port.lan}"
 
@@ -167,6 +177,7 @@ def template(plan: sandbox.Sandbox, availability_zone: str = "") -> dict:
     roles = sorted({node.role for node in plan.nodes})
     parameters = {name: {"type": "string"} for name in STACK_PARAMETERS}
     parameters.update({f"{kind}_{role}": {"type": "string"} for kind in ("image", "flavor") for role in roles})
+    parameters.update({f"group_{lan.name}": {"type": "string"} for lan in plan.lans})
     resources: dict[str, dict] = {}
     for lan in plan.lans:
         resources[f"net_{lan.name}"] = {"type": "OS::Neutron::Net", "properties": {
@@ -175,8 +186,6 @@ def template(plan: sandbox.Sandbox, availability_zone: str = "") -> dict:
             resources[f"subnet_{lan.name}_{at}"] = {"type": "OS::Neutron::Subnet", "properties": {
                 "name": f"{prefix}-{lan.name}-{at}", "network": {"get_resource": f"net_{lan.name}"},
                 "cidr": cidr, "enable_dhcp": False, "gateway_ip": None}}
-        resources[f"group_{lan.name}"] = {"type": "OS::Neutron::SecurityGroup", "properties": {
-            "name": f"{prefix}-{lan.name}", "rules": _lan_rules(plan, lan)}}
     for node in plan.nodes:
         control_groups = [{"get_param": "control_group"}]
         if node.role == "infra":
@@ -191,7 +200,7 @@ def template(plan: sandbox.Sandbox, availability_zone: str = "") -> dict:
                 "tags": _tags(plan, node=node.name, device=port.device, lan=port.lan),
             }
             if port.secured:
-                properties["security_groups"] = [{"get_resource": f"group_{port.lan}"}]
+                properties["security_groups"] = [{"get_param": f"group_{port.lan}"}]
             else:
                 properties["port_security_enabled"] = False
             if port.pairs:
@@ -1110,8 +1119,21 @@ class OpenStack:
         _held.pop(self._key, None)
         servers = self._all(SERVERS, "servers")
         plan, rendered, digest = self._rendered(wargame, self._collector(servers))
-        self.get(self._call(CREATE_STACK), stack_body(plan, rendered, {**self._chosen(plan), **self._fabric_ids()},
-                                                      digest, STACK_TIMEOUT_MINUTES))
+        parameters = {**self._chosen(plan), **self._fabric_ids(), **self._lan_group_ids(plan)}
+        self.get(self._call(CREATE_STACK), stack_body(plan, rendered, parameters, digest, STACK_TIMEOUT_MINUTES))
+
+    def _lan_group_ids(self, plan: sandbox.Sandbox) -> dict[str, str]:
+        with _lan_groups_made:
+            named = {group["name"]: group["id"] for group in self._all(SECURITY_GROUPS, "security_groups")}
+            for name, rules in lan_groups(plan).values():
+                if name in named:
+                    continue
+                named[name] = self.get(self._call(CREATE_GROUP), {"security_group": {"name": name}})[
+                    "security_group"]["id"]
+                for rule in rules:
+                    self.get(self._call(CREATE_RULE), {"security_group_rule": {
+                        "security_group_id": named[name], "ethertype": "IPv4", **rule}})
+            return {f"group_{lan}": named[name] for lan, (name, _) in lan_groups(plan).items()}
 
     def _fabric_ids(self) -> dict[str, str]:
         networks, _, _, groups = self._fabric_standing()

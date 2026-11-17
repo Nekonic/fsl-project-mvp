@@ -16,6 +16,7 @@ EGRESS_GROUP = "cr-egress"
 SENDERS_GROUP = "cr-senders"
 GROUPS = (REACH_GROUP, MANAGEMENT_GROUP, EGRESS_GROUP, SENDERS_GROUP)
 RETIRED_GROUPS = ("cr-range", "cr-build")
+LAN_GROUP_PREFIX = "cr-lan-"
 COLLECTOR_PORT = 5140
 NTP_PORT = 123
 
@@ -183,6 +184,7 @@ def teardown(declaration: Declaration, networks: list, subnets: list,
         [("subnet", s["id"]) for s in subnets if s["network_id"] in set(owned)]
         + [("network", network_id) for network_id in owned]
         + [("keypair", k["name"]) for k in keypairs if k["name"] == KEYPAIR]
+        + [("group", g["id"]) for g in groups if g["name"].startswith(LAN_GROUP_PREFIX)]
         + [("group", g["id"]) for name in (*reversed(GROUPS), *RETIRED_GROUPS)
            for g in groups if g["name"] == name]
     )

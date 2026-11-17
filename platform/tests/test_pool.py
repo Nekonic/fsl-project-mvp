@@ -51,6 +51,19 @@ def test_each_slot_is_one_stack_and_the_pool_spreads_the_wargames_over_the_slots
     assert created["parameters"]["image_kali"] == "cr-kali-bake1" and created["parameters"]["flavor_waf"] == "dba.small"
 
 
+def test_the_slots_share_three_lan_security_groups_and_the_fabric_teardown_removes_them(cloud):
+    adapter = fakecloud.adapter(cloud, slots=3)
+    for one in adapter.every_slot():
+        one.ensure_slot()
+
+    lan_groups = {group["id"]: group for group in cloud.groups if group["name"].startswith(fabric.LAN_GROUP_PREFIX)}
+    assert len(lan_groups) == 3, "a pool of any size adds three groups, not five per slot"
+    used = {group for port in cloud.ports for group in port.get("security_groups") or ()}
+    assert set(lan_groups) <= used
+    steps = fabric.teardown(adapter.declared, [], [], [], cloud.groups)
+    assert {("group", ident) for ident in lan_groups} <= set(steps)
+
+
 def test_a_slot_is_ready_only_once_heat_completes_and_every_node_reports_its_boot(cloud):
     cloud.steps_to_complete = 3
     cloud.runner.answer(sandbox.READY, "setting-up\n")

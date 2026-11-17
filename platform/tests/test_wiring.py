@@ -19,7 +19,8 @@ CYTOSCAPE_SHA256 = "081591ab735b2b6a3b31a3c60f8f3a3e2fee8c92939e0c7820ad1208571b
 DECLARED = declared.read()
 PARAMETERS = {"key_name": "cr-platform", "control_network": "net-mgmt", "control_group": "g-cr-mgmt",
               "senders_group": "g-cr-senders",
-              **{f"{kind}_{role}": f"{kind}-{role}" for kind in ("image", "flavor") for role in sandbox.ROLES}}
+              **{f"{kind}_{role}": f"{kind}-{role}" for kind in ("image", "flavor") for role in sandbox.ROLES},
+              **{f"group_{lan}": f"g-lan-{lan}" for lan in ("internet", "dmz", "web-outer", "web-inner", "mgmt")}}
 
 
 def neutron(wargame="board", slot=1):

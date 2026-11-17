@@ -41,8 +41,7 @@ def stack(request):
 def test_a_slot_is_one_net_per_lan_and_nothing_routes_or_floats(stack):
     kinds = {resource["type"] for resource in stack["resources"].values()}
 
-    assert kinds == {"OS::Neutron::Net", "OS::Neutron::Subnet", "OS::Neutron::SecurityGroup",
-                     "OS::Neutron::Port", "OS::Nova::Server"}, (
+    assert kinds == {"OS::Neutron::Net", "OS::Neutron::Subnet", "OS::Neutron::Port", "OS::Nova::Server"}, (
         "no Neutron router, router interface or floating IP: the slot's fake internet has no way out")
     assert sorted(net["name"] for net in of_type(stack, "OS::Neutron::Net").values()) == sorted(
         f"cr-slot-3-{lan}" for lan in ("internet", "dmz", "web-outer", "web-inner", "mgmt"))
@@ -58,6 +57,8 @@ def test_port_security_is_off_only_on_the_two_ids_legs(stack):
     assert unsecured == {"port_cr-infra_web-outer", "port_cr-infra_web-inner"}
     for name, port in of_type(stack, "OS::Neutron::Port").items():
         assert ("security_groups" in port) != (name in unsecured)
+        if name not in unsecured and lan_of(port) != "control":
+            assert port["security_groups"] == [{"get_param": f"group_{lan_of(port)}"}]
 
 
 def test_kali_stands_only_on_the_internet_and_the_platform_s_control_network(stack):
@@ -90,13 +91,23 @@ def test_the_web_leg_reaches_the_targets_only_across_the_ids_bridge(stack):
         "the WAF and the targets share no network, so every packet between them crosses the IDS")
 
 
-def test_the_slot_s_mgmt_lan_admits_only_the_waf_s_logs_to_the_log_server(stack):
-    rules = of_type(stack, "OS::Neutron::SecurityGroup")["group_mgmt"]["rules"]
+@pytest.mark.parametrize("wargame", ["board", "corp"])
+def test_the_slot_s_mgmt_lan_admits_only_the_waf_s_logs_to_the_log_server(wargame):
+    groups = openstack.lan_groups(planned(wargame))
 
-    assert rules == [{"direction": "ingress", "protocol": "tcp", "port_range_min": 514, "port_range_max": 514,
-                      "remote_ip_prefix": "172.29.0.0/24"}]
-    web = of_type(stack, "OS::Neutron::SecurityGroup")["group_web-outer"]["rules"]
-    assert web == [{"direction": "ingress", "remote_ip_prefix": "10.30.128.0/24"}]
+    assert groups["mgmt"][1] == [{"direction": "ingress", "protocol": "tcp", "port_range_min": 514,
+                                  "port_range_max": 514, "remote_ip_prefix": "172.29.0.0/24"}]
+    assert groups["web-outer"][1] == [{"direction": "ingress", "remote_ip_prefix": "10.30.128.0/24"}]
+
+
+def test_every_slot_shares_one_security_group_per_rule_set_so_the_pool_fits_the_group_quota():
+    named = {(wargame, slot): openstack.lan_groups(planned(wargame, slot))
+             for wargame in ("board", "corp") for slot in (1, 4)}
+
+    names = {name for groups in named.values() for name, _ in groups.values()}
+    assert len(names) == 3, "everywhere (internet, dmz), the web subnet (both legs), the logs on mgmt"
+    assert all(name.startswith("cr-lan-") for name in names)
+    assert named[("board", 1)] == named[("board", 4)] == named[("corp", 1)]
 
 
 def test_every_control_port_is_on_the_platform_s_network_and_only_the_infra_may_send_it_logs(stack):
