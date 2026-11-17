@@ -161,7 +161,8 @@
   const begun = (one, at) => at === 0 || worked(one.id) || (!session.ended_at && one.id === session.lesson_id);
   const startedLessons = () => takenLessons().filter(begun);
   const restartLesson = () => (startedLessons().length ? startedLessons()[0].id : session.lesson_id);
-  const courseNumbers = () => startedLessons().map((taken) => lessonNumber(taken.id)).filter(Boolean);
+  const scenarioCard = () => (wargame && Array.isArray(wargame.scenarios) ? wargame.scenarios : [])
+    .find((one) => one.id === session.course_scenario) || null;
   const showsScores = () => !lessonSession() || !takenCourse() || Boolean(takenCourse().scored);
   const lessonPrefix = (card) => String(card && card.title || "").replace(/\.title$/, "");
   const seeded = (row) => Boolean(row.seed || (row.meta && row.meta.seed));
@@ -190,11 +191,12 @@
     field("session-state").textContent = closed || session.ready ? ""
       : t("state.opening", secondsSince(session.started_at));
     const parts = [];
-    const course = courseNumbers();
-    const only = startedLessons().length === 1 ? cardOf(startedLessons()[0].id) : null;
-    if (course.length > 1) parts.push(takenCourse() ? t(takenCourse().title) : "");
-    else if (only) parts.push(t(only.title));
-    else if (lessonText()) parts.push(localized(`${lessonText()}.title`, ""));
+    const started = startedLessons();
+    const played = scenarioCard();
+    if (session.course_scenario) parts.push(played ? `${played.id} ${t(played.title)}` : session.course_scenario);
+    else if (takenCourse()) parts.push(t(takenCourse().title));
+    else if (started.length === 1 && cardOf(started[0].id)) parts.push(t(cardOf(started[0].id).title));
+    else if (started.length <= 1 && lessonText()) parts.push(localized(`${lessonText()}.title`, ""));
     const began = clock(session.started_at);
     const ended = clock(session.ended_at);
     const took = minutesBetween(session.started_at, session.ended_at);
@@ -433,10 +435,21 @@
     }).join("");
   }
 
+  const changeMade = (change) => change.ids.length > 0 || change.after === null
+    || Boolean(change.after && (change.diff.length || change.after.paranoia !== change.before.paranoia));
+
   function lessonChange() {
-    const shown = lessonSession() && showsScores() && Boolean(session.change);
+    const changes = Array.isArray(session.changes) ? session.changes : [];
+    const shown = lessonSession() && showsScores() && changes.length > 0;
     show("lesson-change", shown);
-    if (shown) field("lesson-change").innerHTML = debriefSection("change", debriefChange(session.change));
+    if (!shown) return;
+    const made = changes.filter(changeMade);
+    const lessonName = (change) => [t("session.run.lesson", lessonNumber(change.lesson)), cardOf(change.lesson) ? t(cardOf(change.lesson).title) : ""]
+      .filter(Boolean).join(" · ");
+    const inner = !made.length ? `<p class="text-muted">${esc(t("lesson.debrief.change.none"))}</p>`
+      : made.map((change) => `${changes.length > 1 ? `<p class="font-semibold text-heading" data-change-lesson>${esc(lessonName(change))}</p>` : ""}${
+        debriefChange(change)}`).join("");
+    field("lesson-change").innerHTML = debriefSection("change", inner);
   }
 
   function lessonScoreNote() {

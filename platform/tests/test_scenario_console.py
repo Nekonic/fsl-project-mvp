@@ -80,6 +80,12 @@ browser.serve((request) => {{
 }});
 """
 
+def test_a_scenario_without_steps_ends_its_console_breadcrumb_with_scenario_as_a_guided_one_does(client):
+    seen = open_page(client, "/blue/1/", setup=serving(status(started=False)), scenario="return browser.text('crumbs');")
+
+    assert seen["errors"] == []
+    assert seen["result"].endswith(f'{worded("blue.title")} / {worded("kind.scenario")}')
+
 def test_the_briefing_shows_the_full_length_until_start_and_start_begins_the_clock_once(client):
     waiting = status(started=False, time_left=CARD["minutes"] * 60)
     seen = open_page(client, "/blue/1/", setup=serving(waiting), scenario="""

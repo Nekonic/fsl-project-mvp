@@ -598,6 +598,33 @@ def test_a_case_row_states_its_verdict_once_with_the_ids_alert_count_as_detail(c
     assert shown["note"] == worded("score.counted_by.suricata")
     assert shown["cells"][:2] == [worded("score.missed"), f'{worded("score.caught")} {worded("score.alert_count", 14)}']
 
+def test_a_scenario_result_without_steps_names_the_scenario_in_its_header(client):
+    setup = DETECTION_RESULT.replace('lesson: {text: "scenario.tamper", steps: []},', "lesson: null,").replace(
+        'public_url: "http://board.com", foundations: []}', 'public_url: "http://board.com", foundations: [], '
+        'scenarios: [{id: "3.3", title: "scenario.tamper.title"}]}')
+    seen = open_page(client, "/session/1/", setup=setup, scenario="return browser.text('session-line');")
+
+    assert "lesson: null" in setup and seen["errors"] == []
+    assert seen["result"].startswith(f'3.3 {worded("scenario.tamper.title")} · ')
+
+def test_a_session_s_minutes_agree_with_the_start_and_end_times_it_shows(client):
+    setup = DETECTION_RESULT.replace('started_at: "2026-10-18T09:00:00Z", ended_at: "2026-10-18T09:08:00Z"',
+                                     'started_at: "2026-10-18T09:00:50Z", ended_at: "2026-10-18T09:03:11Z"')
+    seen = open_page(client, "/session/1/", setup=setup, scenario="return browser.text('session-line');")
+
+    assert setup != DETECTION_RESULT and seen["errors"] == []
+    assert seen["result"].endswith(worded("session.span", local_clock("2026-10-18T09:00:50+00:00"),
+                                          local_clock("2026-10-18T09:03:11+00:00"), 3))
+
+def test_a_one_lesson_session_of_a_course_is_named_by_its_course_as_a_longer_one_is(client):
+    setup = COURSE.replace('{id: "f5", started_at: "2026-10-18T09:10:00Z"},\n                {id: "f6", started_at: "2026-10-18T09:25:00Z"}', "").replace(
+        'public_url: "http://board.com", foundations:',
+        'public_url: "http://board.com", courses: [{id: "c2", title: "course.attack.title", lessons: ["f1", "f5", "f6"]}], foundations:')
+    seen = open_page(client, "/session/1/", setup=setup, scenario="return browser.text('session-line');")
+
+    assert "09:10:00Z" not in setup and "course.attack.title" in setup and seen["errors"] == []
+    assert seen["result"].startswith(f'{worded("course.attack.title")} · ')
+
 def test_a_scenario_without_objectives_shows_no_objectives_card(client):
     shown = detection_result(client, "return !browser.element('objectives-card').classList.contains('hidden');")
 
@@ -621,15 +648,21 @@ def test_before_and_after_says_whether_the_attack_drew_an_alert(client):
 
     assert worded("scenario.debrief.no_alert") in shown["before"] and worded("scenario.debrief.alerted") in shown["after"]
 
-def test_a_lesson_result_shows_the_change_it_applied(client):
+def test_a_lesson_result_shows_each_lesson_s_own_change_under_that_lesson(client):
     applied = COURSE.replace("result: {objectives: {lost: 1, undetected: 1, total: 1}, scenario: null}}};",
-                             'result: {objectives: {lost: 1, undetected: 1, total: 1}, scenario: null}, change: {before: {paranoia: 1}, '
-                             'after: {paranoia: 1}, diff: [\'-SecAction "id:10001"\'], ids: ["+alert http any any -> any any (sid:9100001;)"]}}};')
+                             'result: {objectives: {lost: 1, undetected: 1, total: 1}, scenario: null}, changes: ['
+                             '{lesson: "f1", ids: ["+alert http any any -> any any (sid:9100001;)"]}, {lesson: "f5", ids: []}, '
+                             '{lesson: "f6", ids: [], before: {paranoia: 1}, after: {paranoia: 1}, diff: [\'-SecAction "id:10001"\']}]}};')
     seen = open_page(client, "/session/1/", setup=applied, scenario="""
-      return {shown: !browser.element('lesson-change').classList.contains('hidden'), text: browser.text('lesson-change')};
+      return {shown: !browser.element('lesson-change').classList.contains('hidden'), text: browser.text('lesson-change'),
+              lessons: document.querySelectorAll('#lesson-change [data-change-lesson]').map((one) => one.textContent)};
     """)
 
     assert applied != COURSE and seen["errors"] == []
     assert seen["result"]["shown"] is True
-    assert all(part in seen["result"]["text"] for part in (worded("lesson.debrief.change"), worded("lesson.debrief.change.ids"),
-                                                           "sid:9100001", worded("lesson.debrief.change.waf"), "id:10001"))
+    assert seen["result"]["lessons"] == [f'{worded("session.run.lesson", 1)} · {worded("lesson.map.title")}',
+                                         f'{worded("session.run.lesson", 6)} · {worded("lesson.miss.title")}'], (
+        "a lesson the learner changed nothing in is left out; each change sits under the lesson it was made in")
+    assert all(part in seen["result"]["text"] for part in (worded("lesson.debrief.change.ids"), "sid:9100001",
+                                                           worded("lesson.debrief.change.waf"), "id:10001"))
+    assert worded("lesson.debrief.change.unread") not in seen["result"]["text"]

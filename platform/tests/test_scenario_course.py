@@ -12,7 +12,7 @@ import scenarios
 import traffic
 import wargames
 from api import scenario_run
-from api.models import Case, Session
+from api.models import Case, RuleSet, Session
 from console import strings
 from tests.test_scenario_engine import (COURSE, DUMPED, HELD, SQLMAP, Stack, alert, customer, firing, known,
                                         opened, window_judged)
@@ -417,6 +417,16 @@ def test_a_detection_scenario_s_score_lists_the_customer_requests_its_ids_alerte
     assert (customers["sent"], customers["alerted"]) == (2, 1)
     assert [(row["method"], row["path"]) for row in customers["alerted_requests"]] == [("GET", "/search/?q=%EA%B3%B5")]
 
+def test_the_score_and_the_debrief_count_the_same_customer_requests_up_to_the_final_check_s_end(client):
+    session = opened("3.1")
+    window_judged(session)
+    session.refresh_from_db()
+    customer(session, scenarios.at(session.scenario_state["windows"][-1]["ends_at"]) + timedelta(seconds=5))
+    score = client.get(f"/api/sessions/{session.pk}/score/").json()["customers"]
+    told = client.get(f"/api/sessions/{session.pk}/scenario/debrief/").json()["customers"]
+
+    assert score["sent"] == told["sent"] == session.customer_requests.count() - 1
+
 def test_the_debrief_says_whether_each_attack_drew_an_ids_alert_before_and_during_the_final_check(client):
     session = opened("3.2")
     case = a_fired_attack(session)
@@ -432,7 +442,20 @@ def test_a_closed_lesson_session_carries_the_change_it_applied(client):
     session = Session.objects.create(scenario="board", guidance=True, lesson="f6", defense="overbroad",
                                      ended_at=timezone.now(), waf_snapshots=[{"at": "x", "closed": True, "waf": {
                                          "paranoia": 1, "exclusions": [], "file": ""}}])
-    change = client.get(f"/api/sessions/{session.pk}/").json()["change"]
+    [change] = client.get(f"/api/sessions/{session.pk}/").json()["changes"]
 
     assert [row["target"] for row in change["removed"]] == [
         row["target"] for row in wargames.defense("board", "overbroad")["waf"]["exclusions"]] == ["ARGS:sort"]
+
+def test_a_lesson_course_s_change_lists_each_lesson_s_own_rules_against_that_lesson_s_default(client):
+    began = timezone.now() - timedelta(minutes=30)
+    switched = began + timedelta(minutes=10)
+    mine = "alert http any any -> any any (msg:\"mine\"; sid:9100001; rev:1;)"
+    session = Session.objects.create(scenario="board", guidance=True, lesson="f6", defense="overbroad",
+                                     ended_at=timezone.now(), lessons=[{"id": "f4", "started_at": began.isoformat()},
+                                                                       {"id": "f6", "started_at": switched.isoformat()}])
+    RuleSet.objects.create(session=session, content=(RULES / "no-xss.rules").read_text() + mine + "\n",
+                           applied_at=began + timedelta(minutes=5))
+    changes = client.get(f"/api/sessions/{session.pk}/").json()["changes"]
+
+    assert [(change["lesson"], change["ids"]) for change in changes] == [("f4", ["+" + mine]), ("f6", [])]

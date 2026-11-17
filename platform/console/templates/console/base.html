@@ -192,8 +192,10 @@
       return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
     };
 
+    const wholeMinute = (instant) => Math.floor(new Date(instant).getTime() / 60000);
+
     const minutesBetween = (from, to) =>
-      Math.max(0, Math.round((new Date(to || Date.now()) - new Date(from)) / 60000));
+      Math.max(0, wholeMinute(to || Date.now()) - wholeMinute(from));
 
     const secondsSince = (instant) =>
       Math.max(0, Math.round((Date.now() - new Date(instant)) / 1000));

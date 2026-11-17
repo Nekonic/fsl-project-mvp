@@ -558,6 +558,14 @@ def test_a_foundation_session_moves_to_the_next_lesson_in_place_taking_its_defen
         "the console moves on by itself after a lesson ends; the next lesson's benign case waits for the learner's work there")
     assert session.ended_at is None
 
+def test_moving_to_the_next_lesson_keeps_the_waf_the_learner_left_in_the_lesson_before(client):
+    session = foundation("f5", lessons=[{"id": "f5", "started_at": timezone.now().isoformat()}])
+    with one_slot(Stand()), patch("api.views.harness.fire", attacker({})[0]):
+        switch(client, session, "f6")
+    session.refresh_from_db()
+
+    assert [taken.get("lesson") for taken in session.waf_snapshots] == ["f5"]
+
 def test_moving_to_the_lesson_the_session_is_already_on_changes_nothing(client):
     session = foundation("f1", lessons=[{"id": "f1", "started_at": timezone.now().isoformat()}])
     stand = Stand()

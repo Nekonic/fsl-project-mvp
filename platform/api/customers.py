@@ -172,9 +172,8 @@ def alerted_markers(session, detections=None) -> set[str]:
     marked = (session.detections if detections is None else detections).exclude(marker=None).values("marker")
     return set(session.customer_requests.filter(marker__in=marked).values_list("marker", flat=True))
 
-def availability(session, alerted: set[str]) -> dict:
-    requests = session.customer_requests.all()
-    return {**counted(requests), "alerted": len(alerted), "blocked_actions": blocked_actions(requests),
+def availability(requests, alerted: set[str]) -> dict:
+    return {**counted(requests), "alerted": requests.filter(marker__in=alerted).count(), "blocked_actions": blocked_actions(requests),
             "alerted_requests": list(requests.filter(marker__in=alerted).order_by("sent_at")
                                      .values("sent_at", "action", "method", "path")[:SHOWN_ALERTED])}
 

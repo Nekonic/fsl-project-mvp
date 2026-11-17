@@ -608,8 +608,7 @@ def debrief(session) -> dict:
     help_steps = lesson.help_counts(records) if records else {"hints": 0, "skipped": 0}
     steps = {step["id"] for step in declared.get("steps") or []}
     triage = state["triage"]
-    shift = session.customer_requests.filter(sent_at__lt=scenarios.at(judged[-1]["ends_at"])) if judged \
-        else session.customer_requests.all()
+    shift = served_until_verified(session)
     everything = customers.counted(shift)
     return {
         "scenario": declared["id"],
@@ -638,6 +637,12 @@ def debrief(session) -> dict:
         "triage": _triage_tally(triage, judged[-1].get("items") if judged else None, session),
         "at": {"opened": state["opened_at"], "verified": judged[-1]["ends_at"] if judged else None},
     }
+
+def served_until_verified(session):
+    judged = [window for window in (session.scenario_state or {}).get("windows") or [] if window.get("result")]
+    if not (session.course_scenario and judged):
+        return session.customer_requests.all()
+    return session.customer_requests.filter(sent_at__lt=scenarios.at(judged[-1]["ends_at"]))
 
 def _taking_the_secret(session, names) -> set:
     if wargames.objective_model(session.scenario) != "loot_verified":

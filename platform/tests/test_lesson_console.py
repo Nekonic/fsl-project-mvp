@@ -774,8 +774,25 @@ def test_a_developer_tools_step_points_at_the_toggle_then_the_matching_row_then_
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"closed": 974, "noRow": 62, "rowTop": 619, "wrongTab": 494, "line": 614}, (
+    assert seen["result"] == {"closed": 974, "noRow": 62, "rowTop": 620, "wrongTab": 494, "line": 614}, (
         "closed DevTools: the toggle; no row picked: the last row of the step's request; wrong tab: the tab; then the line")
+
+def test_a_developer_tools_ring_on_a_two_line_field_stays_off_the_field_below(client):
+    seen = open_page(client, "/blue/1/", setup=served() + DEV, scenario=f"""
+      {to("method")}
+      await browser.click('step-open');
+      browser.element('site-dev-toggle').setAttribute('aria-pressed', 'true');
+      listRows('true');
+      showTabs('tab.headers');
+      browser.element('site-dev-detail').innerHTML += '<div data-coach="general.status"></div>';
+      RECTS.set(document.querySelector('[data-coach="general.method"]'), box(500, 620, 300, 34));
+      RECTS.set(document.querySelector('[data-coach="general.status"]'), box(500, 654, 300, 18));
+      await ringAt();
+      return {{ringed: shown('coach-ring'), covers: meets(styled('coach-ring'), box(500, 654, 300, 18))}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"ringed": True, "covers": False}
 
 def test_a_step_held_until_its_request_is_sent_then_points_at_what_follows(client):
     seen = open_page(client, "/blue/1/", setup=served() + DEV, scenario=f"""

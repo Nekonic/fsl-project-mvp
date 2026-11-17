@@ -1136,7 +1136,7 @@ function highlight(rect, callout, options = {}) {
   const inNote = !inPane && Boolean(noteBox) && within(centre, noteBox);
   const banded = options.kind === "term" || Boolean(options.line);
   const shape = banded ? { left: rect.left - RING_PAD, top: rect.top, width: rect.width + 2 * RING_PAD, height: rect.height }
-    : options.kind === "map" ? clearOfText(rect, options.crowd) : padded(rect);
+    : ["map", "dev"].includes(options.kind) ? clearOfText(rect, options.crowd) : padded(rect);
   const ringed = (inPane && clipped(shape, banded ? pane : grown(pane, -RING))) || shape;
   placed(ring, ringed);
   ring.classList.toggle("inset", banded);

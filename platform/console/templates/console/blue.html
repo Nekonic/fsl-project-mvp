@@ -353,7 +353,7 @@
       field("waf-box").textContent = session.waf_box;
       field("waf-rules").textContent = `${session.waf_rules}/`;
     }
-    if (session && session.lesson) {
+    if (session && (session.lesson || session.course_scenario)) {
       crumbs([sessionCrumb(sessionId(), session),
               { label: t("blue.title"), href: `/blue/${sessionId()}/` },
               { label: t(session.course_scenario ? "kind.scenario" : "crumb.lesson") }]);
