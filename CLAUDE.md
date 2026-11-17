@@ -129,6 +129,9 @@ alert that does not mention the attack's mechanism is reported
   `deploy/range-host/slot.yaml` mounts the WAF's audit and refused log
   files, both tied to `deploy/waf/modsecurity.conf`'s `SecAuditLog` by a test in
   `platform/tests/test_range_host.py`;
+  `range/sandbox.py` renders each node's boot for a Heat slot, the infra's
+  Suricata capture among it, from the rule file, reload and log files each
+  `wargames/<id>/topology.yaml` names;
   `platform/nginx.conf` names the Kibana API routes it refuses, hands every
   other API call inside a space to the `kibana-gate` view and answers
   Kibana's `api/spaces/space` lookup itself, and
