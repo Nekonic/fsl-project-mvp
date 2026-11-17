@@ -15,6 +15,7 @@ WAF(ModSecurity)와 IDS(Suricata)로 방어합니다.
 - corp: MySQL 바이너리 로그에 관리자 계정 추가, 회원 가입 설정 변경, 글 생성·덮어쓰기가
   남으면 성공입니다.
 - 블루팀이 탐지하지 못한 성공은 2배로 계산합니다.
+- IDS 룰을 다루는 시나리오(`completion`에 `detected_by: suricata`, 3.1~3.4)는 Suricata 경보만 탐지로 셉니다. WAF만 경보를 낸 공격은 미탐입니다.
 
 탐지 결과는 주 점수와 따로 표시합니다.
 
@@ -42,19 +43,19 @@ flowchart TB
     pvm --- mgmt["cr-mgmt 네트워크 10.31.0.0/24"]
     mgmt --- rvm
     subgraph rvm["VM cr-range: 슬롯마다 아래 구성 1벌 (s1 ~ sN)"]
-      kali["Kali"] --- inet["브리지 sN-inet"]
-      inet --- edge["에지 라우터"]
-      edge --- estate["브리지 sN-estate"]
-      estate --- waf["WAF"]
-      waf --- web["브리지 sN-web"]
-      web --- board["board"]
-      web --- corp["corp"]
+      kali["Kali<br/>출발지 주소 100개"] --- inet["인터넷 sN-inet"]
+      inet --- edge["라우터<br/>wan 121.134.88.42"]
+      edge --- estate["DMZ sN-estate<br/>10.30.N.0/24"]
+      estate --- waf["WAF .247"]
+      waf --- web["웹 서버 구간 sN-web<br/>10.30.(128+N).0/24"]
+      web --- board["board .59"]
+      web --- corp["corp .60"]
       board --- boarddb["board-db"]
       corp --- corpdb["corp-db"]
       ids["Suricata"] -. 미러링 .- web
-      ids --- mgmtbr["관제망 sN-mgmt"]
+      ids --- mgmtbr["관제망 sN-mgmt<br/>172.29.N.0/24"]
       waf --- mgmtbr
-      mgmtbr --- logsrv["log-server"]
+      mgmtbr --- logsrv["log-server .10"]
     end
     logsrv -->|"5140/udp"| collector
   end
@@ -71,11 +72,17 @@ flowchart TB
   `cr-range`를 만듭니다.
 - 슬롯은 `cr-range` 안의 compose 프로젝트 `sN`입니다. 브리지와 DB 연결은 그 안의 Docker
   네트워크입니다.
+- Kali는 인터넷 역할입니다. 출발지 30개국의 /24 대역에 걸친 주소 100개를 갖고, 기본 출발지
+  주소 5.188.10.10을 첫 주소로 둡니다. 기본 경로는 라우터 공인 IP로 가는 onlink 경로이고
+  출발지는 5.188.10.10입니다.
+- 라우터의 `wan`은 공인 IP 121.134.88.42/29 하나입니다. 80/tcp를 WAF의 DMZ 주소로
+  포트포워딩하고, `wan`에서 들어오는 패킷은 맺어진 연결의 응답과 포트포워딩된 연결만 통과시킵니다.
+  Kali에서 `board.com`, `corp.com`은 이 공인 IP로 풀립니다.
 - board와 corp는 WAF와만 이어진 `sN-web`에 있습니다. Kali의 공격은 모두 WAF를
   지나갑니다.
 - 센서는 슬롯마다 하나입니다. WAF 뒤 웹 서버 구간(`sN-web`)에만 주소 없는 인터페이스로
   붙고, `tc mirred`로 그 브리지의 다른 포트 트래픽을 모두 받습니다(SPAN). 관리 인터페이스는
-  관제망 `sN-mgmt`에 있습니다.
+  관제망 `sN-mgmt`의 .11입니다. WAF는 .12입니다.
 - WAF가 막은 요청은 센서에 닿지 않습니다. 이런 요청은 WAF 로그에 남습니다.
 - 센서가 보는 요청의 출발지는 WAF입니다. 수집할 때 같은 요청의 X-Forwarded-For 주소를
   경보의 출발지로 씁니다.
@@ -126,7 +133,7 @@ uv run bin/cloud up
 
 `up`이 끝나면 `the range is ready; the platform is at http://ADDRESS:8000/`를
 출력합니다. 첫 `up`은 훈련 환경 호스트 부팅, Docker 설치, 이미지 pull 때문에 20분
-넘게 걸립니다.
+넘게 걸립니다. 두 VM 모두 apt 패키지를 카카오 미러(`mirror.kakao.com`)에서 받습니다.
 
 ### init
 
@@ -190,19 +197,19 @@ curl -s http://ADDRESS:8000/api/range/ready/
 
 ```bash
 uv run bin/cloud up              # 없는 것만 만들고 슬롯을 띄움
-uv run bin/cloud up --replace    # 플랫폼 VM 교체. DB는 백업 후 복원
+uv run bin/cloud up --replace    # 플랫폼 VM 교체 후 훈련 환경까지 맞춤. DB는 백업 후 복원
 uv run bin/cloud down            # DB 백업 후 훈련 환경과 플랫폼 VM 삭제
-uv run bin/platform-rebuild      # 플랫폼 VM만 교체
+uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞추지 않음
 ```
 
 - `down`과 `--replace`는 먼저 DB를 `backups/db-<UTC 시각>.sqlite3`로 받습니다. 백업이
   실패하면 아무것도 지우지 않습니다.
-- 플랫폼 VM을 교체해도 훈련 환경 ssh 키(`keys.range`)를 옮겨 주므로 훈련 환경은 그대로
-  씁니다.
+- 플랫폼 VM 교체는 보통 `uv run bin/cloud up --replace`로 합니다. 훈련 환경 ssh 키(`keys.range`)를
+  옮겨 주고, 훈련 환경 이미지 태그(`bin/range-image-tag`)와 설치 번들이 그대로면 훈련 환경 호스트와
+  슬롯도 그대로 씁니다. 다르면 훈련 환경 호스트를 다시 부팅합니다.
 - push하지 않은 이미지를 올릴 때는 `--sideload NAME=TARBALL`을 씁니다. 절차는
   [재구축과 삭제](docs/OPENSTACK.md#53-rebuild-and-delete--lossless)에 있습니다.
-- 슬롯 수는 `cloud.yaml`의 `compute.slots`입니다. 테스트 클라우드는 8개입니다.
-  바꾼 뒤 `uv run bin/cloud up`을 실행합니다.
+- 슬롯 수는 `cloud.yaml`의 `compute.slots`입니다. 바꾼 뒤 `uv run bin/cloud up`을 실행합니다.
 
 `cloud.yaml` 항목:
 
