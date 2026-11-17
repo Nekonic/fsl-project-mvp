@@ -17,12 +17,12 @@ function debriefChange(change) {
   const idsLines = ids.length ? `<p class="text-muted">${esc(t("lesson.debrief.change.ids"))}</p>
     <pre class="code" data-diff="ids">${esc(ids.join("\n"))}</pre>` : "";
   const after = change.after;
-  if (!after) return `<p class="text-muted">${esc(t("lesson.debrief.change.unread"))}</p>${idsLines}`;
+  if (after === null) return `<p class="text-muted">${esc(t("lesson.debrief.change.unread"))}</p>${idsLines}`;
   const lines = [];
-  if (after.paranoia !== change.before.paranoia) {
+  if (after && after.paranoia !== change.before.paranoia) {
     lines.push(`<p>${esc(t("lesson.debrief.change.level", change.before.paranoia ?? "—", after.paranoia ?? "—"))}</p>`);
   }
-  if (change.diff.length) {
+  if (after && change.diff.length) {
     lines.push(`<pre class="code" data-diff="waf">${esc(change.diff.join("\n"))}</pre>`);
   }
   if (!lines.length && !ids.length) return `<p class="text-muted">${esc(t("lesson.debrief.change.none"))}</p>`;

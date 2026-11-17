@@ -568,7 +568,10 @@ def _sent_by_site(session, cases, rows):
     return [(*row[:3], owner(row), *row[4:]) if row[0] in raws else row for row in rows]
 
 def _posture_rules(session):
-    declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense) or {}
+    return _rules_of_defense(session.scenario, session.defense)
+
+def _rules_of_defense(scenario, defense):
+    declared = (wargames.WARGAMES[scenario].get("defense") or {}).get(defense) or {}
     return (Path(settings.CR_SOURCE) / "deploy/suricata/rules" / declared.get("suricata", DEFAULT_RULES)).read_text()
 
 def _judged_step(session, step_id, passed, reason, poll, chose=None, lapses=False):
@@ -1166,6 +1169,7 @@ def session_lesson(request, session_id):
         session.refresh_from_db()
         moved = asked != session.lesson
         if moved:
+            _snapshot_waf(session, lesson=session.lesson)
             if defense != session.defense:
                 before, after = (wargames.defense(session.scenario, name) for name in (session.defense, defense))
                 if _ruleset_of(before) != _ruleset_of(after):
@@ -1716,22 +1720,63 @@ def _ids_change(session):
     changed = lesson.config_diff(_posture_rules(session), applied.content) if applied else []
     return [line for line in changed if line[1:].strip()]
 
-def _change(session, waf):
-    declared = (wargames.WARGAMES[session.scenario].get("defense") or {}).get(session.defense)
+def _declared_waf(scenario, defense):
+    declared = (wargames.WARGAMES[scenario].get("defense") or {}).get(defense)
     before = crs.checked(declared["waf"]) if declared else {"paranoia": None, "exclusions": []}
+    return before | {"file": crs.rendered(before) if before["paranoia"] else ""}
+
+def _waf_change(before, waf):
+    shown = {key: value for key, value in before.items() if key != "file"}
     if not waf:
-        return {"before": before, "after": None, "added": [], "removed": [], "diff": [], "ids": _ids_change(session)}
+        return {"before": shown, "after": None, "added": [], "removed": [], "diff": []}
     return {
-        "ids": _ids_change(session),
-        "before": before,
+        "before": shown,
         "after": {"paranoia": waf.get("paranoia"), "exclusions": waf.get("exclusions") or []},
         **lesson.exclusions_changed(before["exclusions"], waf.get("exclusions") or []),
-        "diff": lesson.config_diff(crs.rendered(before) if before["paranoia"] else "", waf.get("file") or ""),
+        "diff": lesson.config_diff(before["file"], waf.get("file") or ""),
     }
 
+def _change(session, waf):
+    return {"ids": _ids_change(session), **_waf_change(_declared_waf(session.scenario, session.defense), waf)}
+
+def _last_waf(snapshots):
+    return next((taken["waf"] for taken in reversed(snapshots) if taken.get("waf")), None)
+
 def applied(session):
-    return _change(session, next((taken["waf"] for taken in reversed(session.waf_snapshots or []) if taken.get("waf")),
-                                 None))
+    return _change(session, _last_waf(session.waf_snapshots or []))
+
+def lesson_changes(session):
+    taken = session.lessons or [{"id": session.lesson, "started_at": session.started_at.isoformat()}]
+    written = list(RuleSet.objects.filter(session=session, applied_at__isnull=False).order_by("applied_at"))
+    changes, rules, waf, held = [], None, None, None
+    for at, one in enumerate(taken):
+        last = at + 1 == len(taken)
+        defense = session.defense if last else wargames.lesson_defense(session.scenario, one["id"])
+        began = parse_datetime(one["started_at"])
+        until = None if last else parse_datetime(taken[at + 1]["started_at"])
+        if rules is None or _reseeded(session.scenario, held, defense):
+            rules = _rules_of_defense(session.scenario, defense)
+        if waf is None or defense != held and wargames.defense(session.scenario, defense) is not None:
+            waf = _declared_waf(session.scenario, defense)
+        mine = [ruleset.content for ruleset in written if began <= ruleset.applied_at and (last or ruleset.applied_at < until)]
+        ended = _waf_at_lesson_end(session, one["id"], began, until)
+        changes.append({"lesson": one["id"],
+                        "ids": [line for line in lesson.config_diff(rules, mine[-1] if mine else rules) if line[1:].strip()],
+                        **(_waf_change(waf, ended) if ended or last else {})})
+        rules = mine[-1] if mine else rules
+        waf = ended | {"file": ended.get("file") or ""} if ended else waf
+        held = defense
+    return changes
+
+def _reseeded(scenario, held, defense):
+    return defense != held and _ruleset_of(wargames.defense(scenario, defense)) != _ruleset_of(wargames.defense(scenario, held))
+
+def _waf_at_lesson_end(session, lesson_id, began, until):
+    snapshots = session.waf_snapshots or []
+    if until is None:
+        return _last_waf([taken for taken in snapshots if not taken.get("lesson")])
+    return _last_waf([taken for taken in snapshots if taken.get("lesson") == lesson_id
+                      and began <= (parse_datetime(str(taken.get("at"))) or began) < until])
 
 @require_http_methods(["GET", "PUT"])
 def session_waf(request, session_id):
@@ -1839,7 +1884,7 @@ def _detail(session):
         "lesson_course": _lesson_course(session),
         "lesson_objectives": _lesson_objectives(session),
         "course": _course(session),
-        "change": applied(session) if session.ended_at and session.guidance and not session.course_scenario else None,
+        "changes": lesson_changes(session) if session.ended_at and session.guidance and not session.course_scenario else None,
     }
 
 def _lesson_course(session):
@@ -2299,7 +2344,7 @@ def session_score(request, session_id):
             **_shape(totals, SCORE_FIELDS),
             "benign_cases": totals.fp + totals.tn,
             "unattributed": sum(1 for d in detections if d.detection_id in unmatched and d.marker not in alerted),
-            "customers": customers.availability(session, alerted),
+            "customers": customers.availability(scenario_run.served_until_verified(session), alerted),
             "detected_by": scenario_run.detector(session),
             "warnings": warnings,
             "per_case": per_case if keep_ids else [_without(row, "detection_ids") for row in per_case],
