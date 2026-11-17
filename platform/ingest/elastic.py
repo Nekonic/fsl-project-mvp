@@ -61,9 +61,7 @@ def fetch(
     documents = [(hit["_id"], hit.get("_source", {})) for hit in hits]
     return documents, (len(hits), total) if total > len(hits) else None
 
-def normalize_all(
-    documents: Sequence[tuple[str, dict[str, Any]]],
-) -> list[dict[str, Any]]:
+def normalize_all(documents: Sequence[tuple[str, dict[str, Any]]]) -> list[dict[str, Any]]:
     markers = _transaction_markers(documents)
     forwarded = {_transaction_key(doc): doc["xff"] for _, doc in documents if doc.get("xff") and _transaction_key(doc)}
 
@@ -78,9 +76,7 @@ def normalize_all(
             detections.append(detection)
     return detections
 
-def _transaction_markers(
-    documents: Sequence[tuple[str, dict[str, Any]]],
-) -> dict[tuple[Any, Any], str]:
+def _transaction_markers(documents: Sequence[tuple[str, dict[str, Any]]]) -> dict[tuple[Any, Any], str]:
     markers: dict[tuple[Any, Any], str] = {}
     for _, doc in documents:
         key = _transaction_key(doc)
@@ -114,18 +110,9 @@ def _normalize_suricata(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]
         return []
 
     alert = doc.get("alert") or {}
-    return [
-        {
-            "detection_id": doc_id,
-            "source": "suricata",
-            "signature": alert.get("signature", ""),
-            "severity": alert.get("severity"),
-            "timestamp": _parse_time(doc.get("timestamp")),
-            "src_ip": doc.get("src_ip"),
-            "marker": suricata_marker(doc.get("http") or {}),
-            "raw": doc,
-        }
-    ]
+    return [{"detection_id": doc_id, "source": "suricata", "signature": alert.get("signature", ""),
+             "severity": alert.get("severity"), "timestamp": _parse_time(doc.get("timestamp")),
+             "src_ip": doc.get("src_ip"), "marker": suricata_marker(doc.get("http") or {}), "raw": doc}]
 
 def _normalize_modsecurity(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
     transaction = doc.get("transaction") or {}

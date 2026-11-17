@@ -760,6 +760,7 @@ board에 선언된 defense:
 - 가이드 세션은 레슨의 `cases`를 한 번 재실행(`meta.seed`). curl이 보고한 상태 코드를 기록하고, 403이면 `blocked`
 - 그래서 학습자가 들어올 때 Kibana에 이미 ModSecurity와 Suricata 기록이 있음. 단계형 시나리오는 재실행하지 않음
 - 재실행에 실패하면 503으로 응답하고 세션을 닫음
+- Kibana space 준비, 공격 출발지 지정, baseline 읽기, WAF 설정, 센서 룰 적재는 서로 기다리지 않고 함께 돌림. 레슨 기록 재실행만 WAF·센서·출발지가 끝난 뒤. 준비 확인의 ground truth 읽기와 센서 룰 읽기도 함께 돌림
 
 룰 파일이 `local.rules`이면 센서에 넣지 않습니다. 준비 확인(readiness)이 모든 센서에 이 파일이 들어간 뒤에야 슬롯을 내주기 때문입니다. 룰 파일은 슬롯의 센서마다 따로 있습니다(2026-10-13 측정: 슬롯 1에 넣은 sid가 슬롯 2에는 없었음). 그래서 다른 룰 파일은 그 슬롯의 센서에만 넣습니다.
 
@@ -974,6 +975,7 @@ check 종류별 통과 조건:
 - `of: rule`(`wargames.ANSWERS_OF`): 학습자 자신의 요청이면 요청의 `path`와 `marker: browse`, Kali 단계 실행이면 `marker: step:<id>`를 받음. 룰 `family`로 범위를 좁힐 수 있음
 - `of: rule` 판정: 최근 600초를 수집해 그 요청이나 실행의 ModSecurity 탐지 기록을 모음. CRS 합계 룰(id가 949, 959, 980으로 시작)을 뺀 `ruleId`를 모두 허용 값으로 인정(`lesson.rules_named`). 기록이 없으면 사유 `lesson.check.unrecorded`
 - `of: rule_matched`(`rule: <id>`): 같은 탐지 기록에서 그 룰 하나만 보고 `present`나 `absent`를 허용 값으로 정함. 기록된 실행에 탐지가 하나도 없으면 `absent`
+- 기록 전 확인의 `kali`에 `settling: true`가 붙음. 도구가 끝났고(`ended`나 `ps`) 마지막 요청 뒤 3초가 안 됐으면 `ending: true`도 붙고, 콘솔은 그동안 5초가 아니라 1초마다 확인
 - 기록된 Kali 실행의 탐지 기록이 세션에 이미 있으면 다시 수집하지 않음. 실행은 로그가 `RUN_SETTLED`(15초) 동안 조용해진 뒤에 기록하고, 기록 시점의 수집이 이미 그 로그를 읽었음. 터미널에 그 단계 명령의 종료 줄(`done`)이 보이면 콘솔이 바로, 그 뒤 1초마다 `ended: true`로 확인하고 서버는 `RUN_ENDED_SETTLED`(3초)만 기다림. 종료 줄 없이 온 확인도 Kali 박스에 터미널에 붙은 그 도구 프로세스가 더는 없으면 3초만 기다림(`attacker.typed_tool_running`이 `ps`로 확인). 플랫폼이 띄운 도구는 터미널이 없어 세지 않음
 - Kali 확인은 실행 중에는 최근 `RUN_SETTLED`+여유 5초씩 앞뒤(25초)의 기록만 읽고, 그 구간이 조용할 때만 실행 전체를 읽음. 기록한 뒤의 수집과 다시 실행 단계의 수집은 세션 전체나 최근 10분이 아니라 실행의 첫 요청부터 읽음(`_ingest(since=)`)
 - `kali` 단계는 기록된 실행이 없어 통과하지 못한 확인을 틀린 시도로 세지 않음
@@ -983,6 +985,7 @@ check 종류별 통과 조건:
 - `needs: nocase`: 그 룰에 `nocase`나 `i` 플래그를 단 pcre도 있어야 함(`lesson.ignores_case`)
 - `match`가 있으면 그 룰이 실제로 경보를 내야 함. 이 세션의 마지막 적용(세션 `RuleSet`의 `applied_at`) 이후 웹사이트 창에서 보낸 요청 중 `match`에 맞는 요청에 그 sid 경보가 있어야 통과
 - 실패 사유: `<fail>.unsent`(해당 요청 없음), `lesson.check.unrecorded`(센서가 아직 그 요청을 기록하지 않음), `<fail>.silent`(sid 포함), `<fail>.elsewhere`(sid와 대신 경보가 난 URL 포함)
+- 가장 늦은 요청이 끝난 지 `ALERT_ARRIVES`(10초)가 안 됐는데 경보가 없으면 판정하지 않고 `lesson.check.alert_pending`으로 답함. 틀린 시도로 세지 않고, 콘솔이 2초 뒤 같은 방식으로 다시 확인. 10초가 지나도 경보가 없을 때만 위 사유로 실패
 - `quiet_on:`은 평범한 요청 URI 목록. 룰의 URI content가 이 중 한 URI에 모두 들어가면(`lesson.alerts_on`) 평범한 검색마다 경보를 낼 룰로 봄. 경보를 읽기 전에 `<fail>.broad`(sid와 처음 걸린 URI 포함)로 바로 실패
 - pcre가 있는 룰과 URI content가 없는 룰(`http.header`만 쓰는 룰 등)은 넓은 룰로 판정하지 않음
 
@@ -998,11 +1001,13 @@ sid를 읽을 수 없는 룰 줄:
 - `sent`: 웹사이트 창에서 보낸 요청이 `match`에 맞으면 통과. `wrong_if` 규칙의 `match`에 걸리면 통과 대신 `loud: true`와 `<text>.wrong.<step>.<says>`(카드의 예시 단어로 검색한 F3 검색 단계)
 - `waf_changed`(`removed_target`): 방어 설정이 선언한 예외의 target을 WAF 파일의 어떤 예외도 가리키지 않고, Paranoia Level 줄이 여전히 방어 설정의 단계면 통과
 - `waf_changed`에서 Level 줄을 지우거나 바꾸면 `<fail>.paranoia`로 실패. 되살릴 줄(예외를 뺀 방어 설정의 `crs.rendered`)을 담음
+- 파일에서 예외가 빠져도 nginx가 그 파일을 다시 읽어야 통과. nginx 워커 중 하나가 파일을 마지막으로 저장한 뒤에 시작됐어야 함(`crs.reloaded_since_written`: 파일 수정 시각과 마스터의 자식 프로세스 시작 시각 비교). `nginx -t`가 실패하면 `&&` 뒤의 reload가 돌지 않아 통과하지 않음. 그동안은 `<fail>.reload`(`loud: true`)
 - `click`: check를 호출하면 바로 통과. 따로 확인하는 조건 없음
 
 `replay`: `after`로 지정한 단계를 통과한 뒤 두 조건이 모두 맞으면 통과합니다.
 
 - 공격: `sent` 정규식이면 학습자가 추가한 sid의 경보가 있어야 함. `kali` 케이스면 그 실행의 탐지 기록에 949110이 있고 탈취 데이터가 없어야 함. 공격 쪽 `expect`는 읽지 않음
+- `kali` 공격의 실행이 아직 기록 전이면 `lesson.check.kali_settling`과 `kali`를 응답하고 틀린 시도로 세지 않음. 실행을 기록할 때 이미 수집했으므로 949110이 세션에 없을 때만 다시 수집
 - 같은 시각 이후의 정상 요청 중 하나 이상이 `expect`의 조건을 모두 만족. `status_class`가 맞고, `alerted_sid: none`이면 추가한 sid의 경보가 없고, `waf_logged: false`면 WAF 기록이 없어야 함
 - 사유에 어느 쪽이 빠졌는지 나옴(`lesson.check.replay_attack`, `lesson.check.replay_benign`)
 - 정상 요청이 맞지 않으면 그 요청과 어긋난 내용을 함께 알림. 사유는 `lesson.check.replay_benign.status`(2xx 아님), `.alerted`(추가한 sid가 경보를 냄), `.waf_logged`(`views._benign_fault`)
@@ -1622,7 +1627,7 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 - 예정 시각이 된 공격을 하나씩 가져와 워커 4개짜리 풀에서 `views._fire`로 실행하고 `meta.scheduled`를 붙임. 재생 표시가 아니므로 두 점수 모두에 반영
 - `CR_SCENARIO_OBSERVE`(15초)마다 고객 기록을 가져오고 최근 180초를 수집(ingest)
 - `CR_SCENARIO_WAF_POLL`(20초)마다 WAF 파일을 읽어 터미널에서 바꾼 내용을 잡음
-- 열린 점검 구간이 끝났고, 구간 안에 예정된 공격이 모두 실행됐거나 실패했으면 그 구간을 판정
+- 열린 점검 구간이 끝났고, 구간 안에 예정된 공격이 모두 실행됐거나 실패했으면 그 구간을 판정. 판정은 같은 틱의 고객 기록·수집·WAF 읽기보다 먼저 함
 
 예정된 공격의 기록:
 
@@ -1711,6 +1716,7 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 - 구간이 판정되면 띠에 "세션 종료"가 나옴. 누르면 띠 아래에 종료 안내(`session.close.consequence`)와 확인 버튼. 종료하면 세션 페이지의 결과로 이동
 - 통과하면 띠에서 남은 시간, 힌트 제안, 최종 점검 시작 버튼을 숨김
 - 최종 점검 거부 사유는 띠 아래 한 줄에 줄임 없이 표시
+- 띠는 5초마다 상태를 다시 읽음. 점검 구간의 남은 시간이 0이 되면 판정이 나올 때까지 1초마다 읽고, 버튼 글자는 `scenario.done.judging`
 - 경보 항목과 결과 보고는 배지·알약 대신 글자. 판정한 항목에는 판정 줄 하나만 남김(새로 읽으면 `triage.said.right` 또는 `triage.said.wrong`). 다시 읽기 버튼은 없음. 목록은 15초마다 저절로 다시 읽음
 - judgement 시나리오: 경보 창 추가. 목록을 가리지 않도록 카드와 연 힌트는 창 옆 레슨 노트 열에 둠. 강조 표시의 콜아웃은 창 안에만
 - detection·unknown 시나리오: IDS 룰 창(`/api/rules/`를 쓰는 룰 편집기) 추가

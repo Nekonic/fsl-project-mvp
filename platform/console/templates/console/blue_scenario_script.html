@@ -7,6 +7,7 @@ const PHASE_TONE = { running: "text-primary", window: "text-warning", passed: "t
 const ENDED = ["passed", "failed"];
 let scenario = null;
 let scenarioReadAt = 0;
+let scenarioReading = false;
 
 function remembered(key, fallback) {
   try {
@@ -49,7 +50,7 @@ function stripShow() {
   const done = field("scenario-done");
   done.disabled = checking || scenario.phase === "closed";
   done.classList.toggle("hidden", passed);
-  done.textContent = t(checking ? "scenario.done.checking" : "scenario.done");
+  done.textContent = t(checking && scenarioLeft() === 0 ? "scenario.done.judging" : checking ? "scenario.done.checking" : "scenario.done");
   field("scenario-end").classList.toggle("hidden", !judged || !field("scenario-end-confirm").classList.contains("hidden"));
   if (passed) field("scenario-done-said").classList.add("hidden");
   const offer = passed ? null : scenario.hints.offer;
@@ -143,7 +144,8 @@ async function hintOpen() {
 }
 
 async function scenarioRead() {
-  const read = await api(scenarioPath("scenario/"));
+  scenarioReading = true;
+  const read = await api(scenarioPath("scenario/")).finally(() => { scenarioReading = false; });
   if (!read.ok) return false;
   scenario = read.body;
   scenarioReadAt = Date.now();
@@ -351,6 +353,7 @@ async function scenarioStart(started) {
   setInterval(() => {
     if (!scenario || document.hidden) return;
     field("scenario-left").textContent = minutesAndSeconds(scenarioLeft());
+    if (scenario.phase === "window" && scenarioLeft() === 0 && !scenarioReading) scenarioRead();
   }, 1000);
   setInterval(() => {
     if (!document.hidden && scenario && scenario.phase !== "closed") scenarioRead();

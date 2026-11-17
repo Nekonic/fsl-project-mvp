@@ -1212,6 +1212,8 @@ function highlight(rect, callout, options = {}) {
 
 const AUTOMATIC = ["rules", "sent", "triage", "replay", "waf_changed"];
 const BENIGN_UNSENT = "lesson.check.replay_benign";
+const ALERT_PENDING = "lesson.check.alert_pending";
+const ALERT_RECHECK_MS = 2000;
 const POLLED = ["sent", "triage", "replay", "waf_changed", "kali"];
 const STANDING = ["triage"];
 const firesCheck = (step) => step.check.kind === "rules" && Boolean(step.check.match);
@@ -1272,6 +1274,7 @@ function coach(prefix, declared) {
   let moving = false;
   let sentSince = false;
   let kaliSettling = false;
+  let kaliEnding = false;
   let runEnded = null;
   let reaching = Promise.resolve();
   let preparingFor = null;
@@ -1823,6 +1826,7 @@ function coach(prefix, declared) {
     replayed = { attack: false, benign: false, seen: false };
     sentSince = false;
     kaliSettling = false;
+    kaliEnding = false;
     runEnded = null;
     dismissed = -1;
     homed = -1;
@@ -1907,6 +1911,7 @@ function coach(prefix, declared) {
       if (!verdict.passed && replayLines(step)) status(replayLines(step));
     }
     kaliSettling = Boolean(verdict.kali && verdict.kali.settling && !verdict.passed);
+    kaliEnding = kaliSettling && Boolean(verdict.kali.ending);
     if (ranSeen(verdict.kali)) {
       carried.set(step.id, verdict.kali);
       const rows = field("step-act").querySelector('[data-act="rows"]');
@@ -1929,6 +1934,13 @@ function coach(prefix, declared) {
       if (loud) status(t(verdict.reason[0], ...(verdict.reason[1] || [])));
       return;
     }
+    if (Array.isArray(verdict.reason) && verdict.reason[0] === ALERT_PENDING) {
+      say("", "");
+      status(t(ALERT_PENDING));
+      setTimeout(() => run(step, loud), ALERT_RECHECK_MS);
+      return;
+    }
+    if (field("step-status").textContent === t(ALERT_PENDING)) status(standing(step));
     if (!loud && !verdict.loud) return;
     status(replayLines(step));
     if (verdict.reason) wrong(t(verdict.reason[0], ...(verdict.reason[1] || [])), verdict.hint);
@@ -2041,7 +2053,7 @@ function coach(prefix, declared) {
     if (!briefed || finished || sessionClosed() || document.hidden) return;
     seconds += 1;
     if (seconds >= HELP_AFTER_SECONDS && level < SKIP_OFFERED) offerHint();
-    if (POLLED.includes(check().kind) && (seconds % POLL_SECONDS === 0 || runEnded === steps[at])) run(steps[at], false);
+    if (POLLED.includes(check().kind) && (seconds % POLL_SECONDS === 0 || runEnded === steps[at] || kaliEnding)) run(steps[at], false);
     if (saidFor && saidFor.step === steps[at] && saidFor.query !== null && kibanaQueryNow() !== saidFor.query) {
       saidFor = null;
       say("", "");

@@ -17,6 +17,7 @@ from api import site
 from api.models import Case, Detection, Objective, RuleSet, Session
 from console import strings
 from range import declared
+from rules import crs
 from range.ports import Ran
 from tests.test_live_map import read_slot
 from tests.test_lesson_api import DUMPED, TRUTH, WRITTEN, Stand, attacker, one_slot
@@ -343,9 +344,9 @@ def test_f4_write_passes_only_when_the_learner_s_own_rule_alerted_on_a_script_se
     RuleSet.objects.create(session=session, content=posture + COPIED, applied_at=applied)
     RuleSet.objects.create(content=posture, applied_at=timezone.now())
     before = browsed(SCRIPT_SEARCH, 403, at=(applied - timedelta(minutes=1)).timestamp())
-    search = browsed(SCRIPT_SEARCH, 403, request_id=2)
+    search = browsed(SCRIPT_SEARCH, 403, request_id=2, at=time.time() - 30)
     logged = http_event(session.browse_marker, SCRIPT_SEARCH, 403, host="cr-edge", src_ip=CUSTOMER, dest_ip=WAF,
-                        dest_port=80)
+                        dest_port=80, at=timezone.now() - timedelta(seconds=30))
     with quietly():
         with ruled(posture), patch.object(site, "kept", return_value=[search]):
             unwritten = step(client, session, "write").json()
@@ -362,8 +363,9 @@ def test_f4_write_passes_only_when_the_learner_s_own_rule_alerted_on_a_script_se
                     Detection.objects.filter(pk=admin.pk).update(timestamp=applied + timedelta(seconds=10))
                     elsewhere = step(client, session, "write").json()
         with ruled(posture + NOCASE_LESS), patch.object(site, "kept", return_value=[before, search]), indexed(logged):
-            detected(session, "mine", "suricata", session.browse_marker, "script", alert={"signature_id": 9100001},
-                     http={"url": SCRIPT_SEARCH})
+            mine = detected(session, "mine", "suricata", session.browse_marker, "script",
+                            alert={"signature_id": 9100001}, http={"url": SCRIPT_SEARCH})
+            Detection.objects.filter(pk=mine.pk).update(timestamp=timezone.now() - timedelta(seconds=30))
             fired = step(client, session, "write").json()
 
     assert (unwritten["passed"], unwritten["reason"]) == (False, ["lesson.xss.fail.write", []])
@@ -373,6 +375,30 @@ def test_f4_write_passes_only_when_the_learner_s_own_rule_alerted_on_a_script_se
         "the copied /admin example is a valid rule that does not alert on <script")
     assert elsewhere["reason"] == ["lesson.xss.fail.write.elsewhere", ["9100001", "/admin/"]]
     assert fired["passed"] is True and fired["added"] == [9100001]
+
+def test_a_check_pressed_before_the_alert_could_be_collected_waits_for_it_and_is_no_wrong_try(client):
+    session = opened("f4")
+    posture = (ROOT / "deploy/suricata/rules/no-xss.rules").read_text()
+    RuleSet.objects.create(session=session, content=posture + NOCASE_LESS, applied_at=timezone.now() - timedelta(minutes=1))
+    sent_at = time.time() - 1
+    search = browsed(SCRIPT_SEARCH, 403, at=sent_at)
+    logged = http_event(session.browse_marker, SCRIPT_SEARCH, 403, host="cr-edge", src_ip=CUSTOMER, dest_ip=WAF,
+                        dest_port=80)
+    with quietly(), ruled(posture + NOCASE_LESS), patch.object(site, "kept", return_value=[search]), indexed(logged):
+        early = step(client, session, "write").json()
+        with patch("api.views.time.time", return_value=sent_at + 11):
+            late = step(client, session, "write").json()
+        detected(session, "mine", "suricata", session.browse_marker, "script", alert={"signature_id": 9100001},
+                 http={"url": SCRIPT_SEARCH})
+        fired = step(client, session, "write").json()
+    kept = Session.objects.get(pk=session.pk).lesson_steps["f4"]["write"]
+
+    assert (early["passed"], early["reason"]) == (False, ["lesson.check.alert_pending", []]), (
+        "a second after the search the alert may still be on its way to Elasticsearch")
+    assert late["reason"] == ["lesson.xss.fail.write.silent", ["9100001"]], "past the window no alert means the rule"
+    assert fired["passed"] is True
+    assert kept["tries"] == 1, "only the check past the window counted as a wrong try"
+    assert "lesson.check.alert_pending" in tables()
 
 def test_the_suricata_reference_gives_a_rule_form_to_fill_in_and_no_complete_rule_for_something_else():
     table = tables()
@@ -558,16 +584,29 @@ def test_the_penalty_counts_double_for_an_objective_lost_undetected_since_the_le
     assert [(row["id"], row["lost"], row["points"]) for row in card["rows"]] == [
         ("board-auth-user-partial", False, 0), ("board-auth-user-admin", True, 8), ("board-auth-user-full", True, 10)]
 
-def test_narrowing_passes_once_the_declared_exception_is_gone_from_the_waf_s_file(client):
+def test_narrowing_passes_once_the_declared_exception_is_gone_from_the_waf_s_file_and_nginx_reloaded_it(client):
     session = opened("f6")
-    broad = {"paranoia": 1, "exclusions": [{"tag": "OWASP_CRS", "target": "ARGS:sort", "path": ""}]}
-    narrow = {"paranoia": 1, "exclusions": [{"rule_id": 942100, "target": "ARGS:q", "path": "/search/"}]}
-    with patch("api.views._waf_in_force", lambda session: broad):
-        kept = step(client, session, "narrow").json()["passed"]
-    with patch("api.views._waf_in_force", lambda session: narrow):
-        removed = step(client, session, "narrow").json()["passed"]
+    waf = {"file": crs.rendered({"paranoia": 1, "exclusions": [{"tag": "OWASP_CRS", "target": "ARGS:sort", "path": ""}]}),
+           "file_age": 900.0, "worker_age": 600.0}
 
-    assert (kept, removed) == (False, True)
+    def gateway(argv, stdin=None, timeout=60.0):
+        if argv[-1].startswith("cat "):
+            return Ran(0, waf["file"])
+        now, uptime = 1_000_000.0, 5_000.0
+        return Ran(0, f"{now}\n{now - waf['file_age']}\n{uptime}\n100\n{(uptime - waf['worker_age']) * 100:.0f}\n")
+
+    with one_slot(lambda adapter, role, segment_id="": gateway):
+        kept = step(client, session, "narrow").json()
+        waf.update(file=crs.rendered({"paranoia": 1, "exclusions": []}), file_age=2.0)
+        saved = step(client, session, "narrow").json()
+        waf.update(worker_age=1.0)
+        reloaded = step(client, session, "narrow").json()
+
+    assert kept["reason"] == ["lesson.miss.fail.narrow", []]
+    assert (saved["passed"], saved["reason"], saved["loud"]) == (False, ["lesson.miss.fail.narrow.reload", []], True), (
+        "walk round 28: the step passed when nano saved the file, before nginx -t and the reload ran")
+    assert reloaded["passed"] is True, "nginx workers younger than the saved file mean the change is live"
+    assert crs.reloaded_since_written(lambda argv: Ran(1, "date: cannot stat 'x': No such file or directory")) is False
 
 def test_the_f6_replay_needs_the_run_blocked_with_no_loot_and_an_ordinary_sort_unlogged(client):
     session = opened("f6")
@@ -724,7 +763,7 @@ def test_a_replay_whose_plain_search_drew_the_learner_s_rule_says_so_at_once_ins
 ], ids=["level-deleted", "both-deleted", "untouched", "sort-deleted"])
 def test_narrowing_keeps_the_paranoia_level_line_and_says_so_when_it_was_deleted(client, standing, reason):
     session = opened("f6")
-    with patch("api.views._waf_in_force", lambda session: standing):
+    with patch("api.views._waf_in_force", lambda session: standing), patch("api.views._waf_reloaded", return_value=True):
         judged = step(client, session, "narrow", body={"poll": True}).json()
 
     if reason is None:

@@ -347,6 +347,28 @@ def test_the_window_waits_for_its_attacks_before_it_is_judged():
     session.refresh_from_db()
     assert session.scenario_state["windows"][-1]["result"] is None
 
+def test_a_window_whose_time_is_up_is_judged_before_the_engine_s_slower_observation_of_the_range():
+    session = opened()
+    patches, _ = firing(HELD)
+    run_at(session, 16 * 60)
+    run_at(session, 18 * 60)
+    end = scenarios.at(Session.objects.get(pk=session.pk).scenario_state["windows"][-1]["ends_at"])
+    judged_when_observed = []
+
+    def observe(session, now):
+        session.refresh_from_db()
+        judged_when_observed.append(session.scenario_state["windows"][-1]["result"] is not None)
+
+    scenario_run._observed.pop(session.pk, None)
+    with Stack(patches[:-1]), patch("api.scenario_run._observe", observe), \
+            patch("api.scenario_run.customers.refresh", lambda session, adapter: None), \
+            patch("api.views._snapshot_waf", lambda session, **taken: None):
+        scenario_run.tick(end + timedelta(seconds=1))
+
+    assert judged_when_observed == [True], (
+        "walk round 28: 3.2 said 'final check running' 18 s after 0:00; the tick that found the window over "
+        "first refreshed the customers, ingested 3 minutes of logs and read the WAF, then judged")
+
 def test_a_judgement_window_needs_every_earlier_item_judged_right():
     session = opened("1.1")
     marker = str(uuid.uuid4())

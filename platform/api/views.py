@@ -94,7 +94,10 @@ RECORD_SLACK = timedelta(seconds=5)
 BENIGN_UNSENT = "lesson.check.replay_benign"
 ADDRESS_SIDE = "lesson.check.wrong.address_side"
 DEV_ROW_UNPICKED = "lesson.check.wrong.dev"
-UNTRIED_REASONS = (ADDRESS_SIDE, DEV_ROW_UNPICKED)
+ALERT_PENDING = "lesson.check.alert_pending"
+ALERT_ARRIVES = timedelta(seconds=10)
+KALI_SETTLING = "lesson.check.kali_settling"
+UNTRIED_REASONS = (ADDRESS_SIDE, DEV_ROW_UNPICKED, ALERT_PENDING, KALI_SETTLING)
 RUN_SETTLED = timedelta(seconds=15)
 RUN_ENDED_SETTLED = timedelta(seconds=3)
 OBJECTIVE_FACTS = ("lost_points", "detected_penalty")
@@ -261,13 +264,14 @@ def sessions(request):
         return holding.reply()
     try:
         adapter = _range(session, adapter)
-        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="cr-kibana") as pool:
+        with ThreadPoolExecutor(max_workers=3, thread_name_prefix="cr-open") as pool:
             kibana_view = pool.submit(_session_logs, session)
             if hasattr(adapter, "play"):
                 adapter.play(scenario)
-            _aim_attacker(adapter)
+            aimed, truth = pool.submit(_aim_attacker, adapter), pool.submit(_baseline, adapter, scenario)
             _take_defense(session, adapter, posture)
-            session.baseline = _baseline(adapter, scenario)
+            aimed.result()
+            session.baseline = truth.result()
             session.save(update_fields=["baseline", "waf"])
             if guidance and not played:
                 _seed_logs(session)
@@ -695,11 +699,17 @@ def _rule_fired(session, match, mine, failed):
     _ingest(session, RECENT_ALERTS)
     if any(set(_alerted_sids(session, record)) & set(mine) for record in sent):
         return True, None
+    if _alert_may_come(sent):
+        return False, [ALERT_PENDING, []]
     if not any(_sensed_for(session, record) for record in sent):
         return False, ["lesson.check.unrecorded", []]
     sids = ", ".join(map(str, mine))
     elsewhere = _alerted_elsewhere(session, mine, applied, sent)
     return False, [f"{failed}.elsewhere", [sids, elsewhere[0]]] if elsewhere else [f"{failed}.silent", [sids]]
+
+def _alert_may_come(sent):
+    newest = max(record["at"] + (record.get("ms") or 0) / 1000 for record in sent)
+    return time.time() - newest < ALERT_ARRIVES.total_seconds()
 
 def _alerted_elsewhere(session, mine, since, sent):
     seen = {detection.pk for record in sent for detection in _alerts_for(session, record)}
@@ -974,8 +984,10 @@ def _kali_run(session, step_id, check, kept, ended=False):
     reached = max(parse_datetime(kept.get("reached") or "") or since, since)
     now = timezone.now()
     latest = _run_seen(session, check, case, marker, max(reached, now - RUN_SETTLED), now)
-    if latest and _run_settling(session, case, now - latest[-1], ended):
-        return None, {"kali": {"name": case["name"], "settling": True}}
+    quiet = now - latest[-1] if latest else RUN_SETTLED
+    exited = quiet >= RUN_SETTLED or ended or _tool_exited(session, case["tool"])
+    if quiet < RUN_ENDED_SETTLED or not exited:
+        return None, {"kali": {"name": case["name"], "settling": True, **({"ending": True} if exited else {})}}
     seen = _run_seen(session, check, case, marker, reached, now)
     if not seen:
         return None, {"kali": {"name": case["name"]}}
@@ -992,9 +1004,6 @@ def _kali_run(session, step_id, check, kept, ended=False):
 def _run_seen(session, check, case, marker, start, end):
     sent = _sent_by(session, start - RECORD_SLACK, end + RECORD_SLACK, marker)
     return sorted(stamp for stamp, agent in sent if stamp and (check.get("ua") == "any" or case["tool"] in agent))
-
-def _run_settling(session, case, quiet, ended):
-    return quiet < RUN_ENDED_SETTLED or (quiet < RUN_SETTLED and not ended and not _tool_exited(session, case["tool"]))
 
 def _tool_exited(session, tool):
     try:
@@ -1058,14 +1067,27 @@ def _waf_changed(session, target, failed):
         level_line = crs.rendered({**posture, "exclusions": []}).strip()
         return False, [f"{failed}.paranoia", [level_line]], {"loud": True}
     targeted = lambda exclusions: any(entry.get("target") == target for entry in exclusions)
-    return targeted(posture["exclusions"]) and not targeted(standing["exclusions"]), [failed, []]
+    removed = targeted(posture["exclusions"]) and not targeted(standing["exclusions"])
+    if removed and not _waf_reloaded(session):
+        return False, [f"{failed}.reload", []], {"loud": True}
+    return removed, [failed, []]
+
+def _waf_reloaded(session):
+    try:
+        return crs.reloaded_since_written(functools.partial(_range(session).runner("gateway"), timeout=CHECK_TIMEOUT),
+                                          settings.CR_WAF)
+    except RangeUnavailable:
+        return False
 
 def _replay_check(session, step, kept, ended=False):
     check = step["check"]
     since = _passed_at(session, check["after"])
     attack, benign = check["attack"], check["benign"]
-    if since is None or not (_kali_replayed(session, step, kept, attack, ended) if attack.get("kali")
-                             else _sent_replayed(session, attack["sent"], since)):
+    if since is not None and attack.get("kali"):
+        replayed, shown = _kali_replayed(session, step, kept, attack, ended)
+        if (shown.get("kali") or {}).get("settling"):
+            return False, [KALI_SETTLING, [wargames.find_case(session.scenario, attack["kali"])["tool"]]], shown
+    if since is None or not (replayed if attack.get("kali") else _sent_replayed(session, attack["sent"], since)):
         return False, ["lesson.check.replay_attack", []]
     fault = _benign_fault(session, benign, since)
     if fault:
@@ -1081,13 +1103,14 @@ def _sent_replayed(session, sent, since):
     return any(_added_alerted(session, record) for record in _site_requests(session, sent, since))
 
 def _kali_replayed(session, step, kept, attack, ended):
-    recorded, _ = _kali_run(session, step["id"], {"case": attack["kali"], "ua": attack.get("ua")}, kept, ended)
+    recorded, shown = _kali_run(session, step["id"], {"case": attack["kali"], "ua": attack.get("ua")}, kept, ended)
     if recorded is None:
-        return False
-    _ingest(session, since=recorded.started_at - RECORD_SLACK)
-    blocked = lesson.BLOCKING_RULE in {str(((detection.raw or {}).get("details") or {}).get("ruleId"))
-                                       for detection in session.detections.filter(marker=recorded.case_id)}
-    return blocked and not recorded.meta.get("loot")
+        return False, shown
+    blocked = lambda: lesson.BLOCKING_RULE in {str(((detection.raw or {}).get("details") or {}).get("ruleId"))
+                                               for detection in session.detections.filter(marker=recorded.case_id)}
+    if not blocked():
+        _ingest(session, since=recorded.started_at - RECORD_SLACK)
+    return blocked() and not recorded.meta.get("loot"), shown
 
 def _benign_fault(session, benign, since):
     expect = benign.get("expect") or {}
@@ -1143,10 +1166,12 @@ def _asked_lesson(scenario, asked):
 def _take_defense(session, adapter, posture):
     ruleset = _ruleset_of(posture)
     checked_at_baseline_when_ready = _slotted(adapter) and ruleset == DEFAULT_RULES
-    if not checked_at_baseline_when_ready:
-        _seed_ruleset(adapter, ruleset)
-    if posture is not None:
-        session.waf = crs.apply(posture["waf"], adapter.runner("gateway"), settings.CR_WAF)
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="cr-sensor") as pool:
+        seeded = None if checked_at_baseline_when_ready else pool.submit(_seed_ruleset, adapter, ruleset)
+        if posture is not None:
+            session.waf = crs.apply(posture["waf"], adapter.runner("gateway"), settings.CR_WAF)
+        if seeded is not None:
+            seeded.result()
 
 def _ruleset_of(posture):
     return (posture or {}).get("suricata", DEFAULT_RULES)
@@ -2929,11 +2954,14 @@ def _range_ready(adapter, plan=None, held=None) -> dict:
     plan = plan or adapter.plan_slot()
     resetting = reset.standing(number)
     unchecked = resetting["state"] == reset.RUNNING or held is not None
-    checks = {
-        "active": plan.active,
-        "ground_truth": None if unchecked else _ground_truth_readable(adapter),
-        "rules_baseline": None if unchecked else _rules_at_baseline(adapter),
-    }
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="cr-truth") as pool:
+        truth = None if unchecked else pool.submit(_ground_truth_readable, adapter)
+        checks = {
+            "active": plan.active,
+            "ground_truth": None,
+            "rules_baseline": None if unchecked else _rules_at_baseline(adapter),
+        }
+        checks["ground_truth"] = None if truth is None else truth.result()
     blocked = []
     if held is not None:
         phase = "IN_USE"

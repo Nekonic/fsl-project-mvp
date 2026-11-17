@@ -135,13 +135,13 @@ def _advance(session, now) -> None:
     for entry in scenarios.due_now(session.scenario_state["schedule"], now):
         if _claim(session.pk, entry["n"]):
             _submit(session.pk, entry["n"])
-    if time.monotonic() - _observed.get(session.pk, float("-inf")) >= settings.SCENARIO_OBSERVE:
-        _observed[session.pk] = time.monotonic()
-        _observe(session, now)
     session.refresh_from_db(fields=["scenario_state"])
     window = (session.scenario_state["windows"] or [None])[-1]
     if window and window.get("result") is None and scenarios.ready_to_judge(session.scenario_state["schedule"], window, now):
         judge_window(session)
+    if time.monotonic() - _observed.get(session.pk, float("-inf")) >= settings.SCENARIO_OBSERVE:
+        _observed[session.pk] = time.monotonic()
+        _observe(session, now)
 
 def _claim(pk, n) -> bool:
     def claim(state, held):

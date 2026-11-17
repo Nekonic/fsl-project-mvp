@@ -519,3 +519,105 @@ passed.
 Fix: the note opens the developer tools before the sort request
 and says why, and the row-not-selected reply records no try, as the
 address-side reply already did (`UNTRIED_REASONS` in `api/views.py`).
+
+## Answer-blind walk round 28: early rule checks, late passes, a slow verdict and open
+
+### F4 step 7 judged a correct rule wrong a second after the search
+
+Symptom, 2026-11-18: with a correct rule, "내 룰 경보 확인" pressed about
+1 s after the search answered `lesson.xss.fail.write.silent` ("content를
+확인하세요"); 3 s later it passed, and the result page showed the step as
+failed, then passed.
+
+Cause, from the code: `_rule_fired` ingested and, finding no alert for the
+learner's sid, judged at once: `silent` when the sensor's `http` event was
+already searchable, `unrecorded` when it was not, both counted as a wrong
+try. Round 23 measured a record searchable 3.3-5.0 s after its request, so a
+check a second after the search could not see the alert yet.
+
+Fix: while the newest matching request is younger than `ALERT_ARRIVES`
+(10 s), a check with no alert answers `lesson.check.alert_pending`, records
+no try (`UNTRIED_REASONS`), and the console checks again every 2 s in the
+same way; only after the 10 s does a missing alert fail the rule. Test:
+`test_a_check_pressed_before_the_alert_could_be_collected_waits_for_it_and_is_no_wrong_try`.
+
+### F6 step 8 passed 11.7 s after sqlmap exited
+
+Symptom: "공격 요청 차단: 확인됨" appeared about 11.7 s after sqlmap exited;
+step 2 passes in 7.3 s.
+
+Cause, from the code: step 8 (`replay`) has no terminal end line, so the
+console polled it every 5 s. A poll less than 3 s after the run's last
+request answered "settling" without asking the Kali box, so the pass waited
+for the next 5 s poll. The passing check then read the run from
+Elasticsearch three times: `_run_seen`, the ingest when the run is recorded,
+and a second ingest in `_kali_replayed`.
+
+Fix: a check whose tool has left the Kali terminal (`ps`) or whose end line
+was seen answers `kali.ending` while the 3 s of quiet run out, and the
+console then checks every second; the replay passes the run's `settling`
+state through and a press meanwhile is no wrong try; `_kali_replayed`
+ingests again only when the run's 949110 is not in the session yet.
+Measured in `test_lesson_steps.py` over each phase of the 5 s poll, worst
+second after the last request at which the replay passes: 7 before, 4 after
+(plus the check's own work); ingests of the run in the passing check: 2 ->
+1. Test:
+`test_the_f6_replay_passes_within_a_few_seconds_of_sqlmap_s_exit_whenever_the_console_s_poll_falls`.
+
+### F6 step 7 passed before nginx reloaded
+
+Symptom: the step passed the moment nano saved the exclusion file, before
+`nginx -t` and `nginx -s reload` ran; a file nginx refuses passed as well.
+
+Cause: `_waf_changed` read only the file.
+
+Fix: the step's note already says nano's exit runs the config test and the
+reload, so the check now needs both: the exception gone from the file and an
+nginx worker started after the file was last written
+(`crs.reloaded_since_written` compares the file's `date -r` time with the
+start of the master's children from `/proc/<pid>/stat`). A failed `nginx -t`
+stops the `&&` before the reload, so no new worker starts. Meanwhile the
+check answers `lesson.miss.fail.narrow.reload` (`loud`). Test:
+`test_narrowing_passes_once_the_declared_exception_is_gone_from_the_waf_s_file_and_nginx_reloaded_it`.
+
+### 3.2 said "최종 점검 중" 18 s after 0:00
+
+One observation (3.1 about 5 s, 3.3 about 3 s, 3.4 about 6 s). The window's
+own attack in 3.2 runs about 50 s from the window's midpoint, so it had
+settled long before the end; the judgment was not waiting on it.
+
+What the verdict waits on after the time is up, by the code: the engine's
+next tick (`CR_SCENARIO_TICK`, 2 s); in that tick, when the 15 s observation
+is due, `_observe` ran before the judgment: a customers refresh (a range
+call), `_ingest` of the last 180 s (one 5,000-document page, with a sqlmap
+run in it), and every 20 s a WAF read; then `judge_window` with its own
+customers refresh and WAF snapshot; then the console's next 5 s poll. A due
+observation, the judgment and a full poll interval together fit 18 s; which
+part was slow on the live range was not measured here.
+
+Fix: the tick judges a finished window before a due observation, and once
+the window's time is up the console reads the status every second and the
+button says `scenario.done.judging` ("결과 판정 중"). Test:
+`test_a_window_whose_time_is_up_is_judged_before_the_engine_s_slower_observation_of_the_range`.
+
+### Start to an open console took 14-18.6 s
+
+What the open does after choosing the slot, by the code, one after another:
+aim the attacker (a cloud read of the slot's shape and a proxy write), the
+WAF posture (`crs.apply`: read, list workers, write, `nginx -t` and reload,
+poll for new workers), the sensor's rule file when the posture has its own
+(write, `reload-rules`), the baseline (the board's accounts), then the
+lesson's seed case (one curl from Kali); the Kibana space was already set up
+beside these. Before the session row, the readiness check read the ground
+truth and the sensor rules one after the other.
+
+Fix: the attacker, the baseline, the WAF and the sensor run side by side;
+the seed waits for the WAF, the sensor and the attacker, so it still sees
+the lesson's posture; the readiness reads run side by side. Nothing the
+slot reset does was skipped; the slot is set up the same way. Measured in
+`test_lesson_api.py` with every range call costing one 0.2 s round trip, a
+guided open with its own sensor rules: 10.3-10.4 rounds before, 6.3 after
+(10 calls; the WAF's 5 calls and the seed are the chain left). The live
+cost of each call and the console's own load after the 201 (Kibana iframe,
+first reads) were not measured here. Test:
+`test_a_guided_open_sets_up_the_waf_the_sensor_the_attacker_and_the_ground_truth_side_by_side`.
