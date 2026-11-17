@@ -119,12 +119,13 @@ flowchart TB
 - 아래 [flavor](docs/OPENSTACK.md#33-flavors-admin-once-init-chooses). `init`은 flavor를 만들지 않습니다.
 - Glance에 역할 이미지 4개(`cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1`).
   `deploy/roles/<역할>/install.sh`를 인터넷에 나갈 수 있는 빌더 VM에서 실행하고 스냅샷을 뜹니다.
-  절차는 [이미지](docs/OPENSTACK.md#36-images)에 있습니다.
+  절차는 [이미지](docs/OPENSTACK.md#36-images)에 있습니다. target 이미지는 구울 때 받은 board, corp
+  이미지의 태그(그 커밋)를 `compute.target_tag`에 적습니다. 기본값은 `cr-target-bake1`을 구운 커밋입니다.
 
 | VM | flavor 키 | 조건 |
 |---|---|---|
 | 플랫폼 VM | `compute.flavors.platform` | 2 vCPU, 8 GB RAM, 40 GB 디스크 이상 |
-| 슬롯 VM(kali, waf, infra, target) | `compute.flavors.<역할>` | 지정하지 않으면 `dba.small` |
+| 슬롯 VM(kali, waf, infra, target) | `compute.flavors.<역할>` | 디스크 25 GB 이상(Kali 이미지의 `min_disk`). 지정하지 않으면 `dba.small`(디스크 30 GB) |
 
 - 예: 플랫폼 `m1.large`(2 vCPU, 8 GB, 60 GB)
 - quota: 인스턴스 1 + 4 × 슬롯 수, 그만큼의 vCPU와 RAM. 기본 풀(슬롯 4개)이면 인스턴스 17개
@@ -201,8 +202,9 @@ READY 슬롯에서 열립니다. 스택 삭제와 재생성에 걸리는 시간�
 
 | 증상 | 확인 | 조치 |
 |---|---|---|
-| 슬롯이 `SETUP_FAILED` | 그 VM의 `/var/lib/cr/failed`(부팅 유닛의 `systemctl status`)와 `/var/log/cloud-init-output.log` | 원인 수정 후 `uv run bin/cloud up` |
-| 슬롯 스택이 `CREATE_FAILED` | `GET /api/range/ready/`의 이유(Heat의 `stack_status_reason`). 역할 이미지나 flavor 이름이 없으면 여기서 실패 | 원인 수정 후 `uv run bin/cloud up` |
+| 슬롯이 `SETUP_FAILED` | 그 VM의 `/var/lib/cr/failed`(부팅 유닛의 `systemctl status`. target은 이미지 태그가 `compute.target_tag`와 다르면 그 `image:` 줄)와 `/var/log/cloud-init-output.log` | 원인 수정 후 `uv run bin/cloud up` |
+| 슬롯이 `NOT_STANDING`, `no active image ... in Glance` | `compute.images`의 이름과 Glance의 이미지 | 이미지를 굽거나 있는 이름을 `compute.images.<역할>`에 적고 `uv run bin/cloud up --replace` |
+| 슬롯 스택이 `CREATE_FAILED` | `GET /api/range/ready/`의 이유(Heat의 `stack_status_reason`) | 원인 수정 후 `uv run bin/cloud up` |
 | 플랫폼이 응답하지 않음 | `ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS`에서 `systemctl status cr-platform`, `sudo docker logs cr-platform` | 원인 수정 후 `uv run bin/cloud up` |
 | `docker ps`에 `cr-platform`이 없음 | `sudo cloud-init status --long`. 대개 VM이 인터넷에 못 나감([인터넷 연결](docs/OPENSTACK.md#26-internet-egress)) | 원인 수정 후 `uv run bin/cloud up --replace` |
 | Heat 스택 생성 실패 | `uvx --from python-openstackclient --with python-heatclient openstack --os-cloud fsl-range stack failures list cr-platform` | 원인 수정 후 `uv run bin/cloud up` |
@@ -220,13 +222,14 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 - `down`과 `--replace`는 먼저 DB를 `backups/db-<UTC 시각>.sqlite3`로 받습니다. 백업이
   실패하면 아무것도 지우지 않습니다.
 - 플랫폼 VM 교체는 보통 `uv run bin/cloud up --replace`로 합니다. 훈련 환경 ssh 키(`keys.range`)를
-  옮겨 주고, 템플릿·이미지·flavor가 같은 슬롯 스택은 그대로 씁니다. 다른 스택은 `STALE`이 되어
-  새로 만듭니다. 템플릿에는 플랫폼의 `cr-mgmt` 주소가 들어 있어서, 새 플랫폼 VM의 주소가 바뀌면
-  모든 슬롯을 새로 만듭니다.
+  옮겨 주고, 템플릿·이미지·flavor·`target_tag`가 같은 슬롯 스택은 그대로 씁니다. 다른 스택은
+  `STALE`이 되어 지우고 새로 만듭니다. 새 플랫폼 VM은 이전 VM의 `cr-mgmt` 포트(`cr-platform.mgmt`)를
+  그대로 붙이므로 `cr-mgmt` 주소가 바뀌지 않습니다.
 - push하지 않은 이미지를 올릴 때는 `--sideload NAME=TARBALL`을 씁니다. 절차는
   [재구축과 삭제](docs/OPENSTACK.md#53-rebuild-and-delete--lossless)에 있습니다.
 - 슬롯 수는 `cloud.yaml`의 `compute.pool`(워게임별 슬롯 수)입니다. 바꾼 뒤 `uv run bin/cloud up --replace`를
-  실행합니다. 플랫폼은 이 값을 Heat 스택 파라미터로 받습니다.
+  실행합니다. 플랫폼은 이 값을 Heat 스택 파라미터로 받고, 세션이 없는 슬롯은 새 배정에 맞는 워게임으로
+  다시 만듭니다.
 
 `cloud.yaml` 항목:
 
@@ -234,7 +237,7 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 |---|---|
 | `cloud` | `clouds.yaml` 항목 이름 |
 | `network` | 외부 네트워크, 고정 floating IP, DNS, platform·mgmt CIDR, 플랫폼에 접속할 수 있는 대역 |
-| `compute` | 베이스 이미지, availability zone, 워게임별 슬롯 수(`pool`), 역할별 flavor와 이미지 |
+| `compute` | 베이스 이미지, availability zone, 워게임별 슬롯 수(`pool`), 역할별 flavor와 이미지, target 이미지의 워게임 태그(`target_tag`) |
 | `keys` | Nova 키페어 이름과 개인키 경로, 플랫폼의 훈련 환경 ssh 키 |
 | `platform` | 스택 이름, 저장소, ref |
 | `backups` | `backups/`에 남길 백업 수 |

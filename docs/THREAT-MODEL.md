@@ -11,7 +11,7 @@ starts, and what the range cannot show.
 | **Attacker's position** | Outside the network. The attacker sends from one of the Internet origins the range builds (thirty, one /24 each). Each origin has its own address range and a declared country, and GeoIP gives the same country. At the start the attacker has no account on the target, no code running on it and no access to the internal network. |
 | **Command and control** | None. The attacks are requests sent from Kali or from the platform. Nothing left on the target calls back. |
 | **What the attacker is after** | On `board`, the password hashes in `auth_user`. The attacker steals them and submits them. The platform counts them only if they match the copy of `auth_user` the platform took from the target when the session opened (`loot_verified`). On `corp`, three changes to the WordPress database, listed in `wargames/corp/objectives.yaml`: a new administrator account, the `users_can_register` option turned on, and content written without permission. The platform finds these in `corp-db`'s own record of changes since the session started (`effect_observed`). |
-| **What the defence has** | Suricata on one leg, the web servers' segment behind the WAF, and ModSecurity with the Core Rule Set (CRS) in front of the application. A request the WAF blocks never reaches Suricata; the WAF's own logs record it: ModSecurity's audit log, and nginx's log of the requests it refuses with 400 before ModSecurity runs. Suricata sees every request coming from the WAF and credits each alert to the client address its `X-Forwarded-For` names. ModSecurity blocks (`SecRuleEngine On`, `deploy/waf/modsecurity.conf:1`). Both send their alerts to one Elasticsearch index. The defender can write and disable Suricata rules. The defender can tune the WAF through `PUT /api/sessions/<id>/waf/`: CRS paranoia level, anomaly thresholds and rule exclusions. The defender also has a root shell in the WAF container and, outside a wargame, a root shell in the Kali container for attacking the range as practice. The defender has nothing else. |
+| **What the defence has** | Suricata inline between the WAF and the web servers, on a bridge of the slot's infra VM, and ModSecurity with the Core Rule Set (CRS) in front of the application. A request the WAF blocks never reaches Suricata; the WAF's own logs record it: ModSecurity's audit log, and nginx's log of the requests it refuses with 400 before ModSecurity runs. Suricata sees every request coming from the WAF and credits each alert to the client address its `X-Forwarded-For` names. ModSecurity blocks (`SecRuleEngine On`, `deploy/waf/modsecurity.conf:1`). Both send their alerts to one Elasticsearch index. The defender can write and disable Suricata rules. The defender can tune the WAF through `PUT /api/sessions/<id>/waf/`: CRS paranoia level, anomaly thresholds and rule exclusions. The defender also has a root shell on the WAF VM and, outside a wargame, a root shell on the Kali VM for attacking the range as practice. The defender has nothing else. |
 
 ## The stages it reaches
 
@@ -36,7 +36,7 @@ part of an attack.
 - No case scans, so initial reconnaissance is missing.
 - Establish foothold, internal reconnaissance, move laterally and maintain
   presence are missing because no case runs code on the target. The databases
-  stand on networks the attacker's container is not on, so they can be reached
+  stand on an internal Docker network inside the target VM, so they can be reached
   only through the application, and the attacker never gets a foothold on the
   operating system.
 - Privilege escalation happens inside the application only. The Ultimate Member
@@ -162,24 +162,23 @@ limits:
   one session. The lock holds because one waitress process serves the API; a
   second process would need a database lock.
 
-The platform stands on the management network only,
-and no slot container has a route to it: every slot network but the 관제망 is
-internal and its bridge carries no address of the range host. The 관제망 lets
-out one path, the log server's 5140/udp to the collector; the one
-learner-facing container on it is the WAF, whose filter drops everything but
-that path from other addresses. If a container did reach it, the
-attacker's shell could call `POST /api/rules/apply/` and rewrite the detector
-that scores the attacker. The API therefore also refuses any request from the
-address of a host in the range: the range host's management address and every
-address the slots' containers report. The operator's console reaches the API
-through the platform's floating address, from an address that is not a host in
-the range. The check has four limits:
+The platform reaches the slots only over `cr-mgmt`, where every slot VM has
+one control port. The platform's port there is in `cr-reach`, which admits
+udp 123 (NTP) from members of `cr-mgmt` and udp 5140 (syslog) from members of
+`cr-senders`, the infra VM's control port, and nothing else; the slot LANs
+have no Neutron router, so no slot VM has another way to the platform. If a
+learner's shell did reach the API, it could call `POST /api/rules/apply/` and
+rewrite the detector that scores the attacker. The API therefore also refuses
+any request from the address of a host in the range: every address the slots
+report, the slot VMs' `cr-mgmt` addresses and Kali's origin addresses
+(`api/reachability.py`). The operator's console reaches the API through the
+platform's floating address, from an address that is not a host in the range.
+The check has three limits:
 
-- The platform caches the list of range hosts for 30 seconds. A host that is
+- The platform caches the list of range hosts for 30 seconds. A VM that is
   recreated within that time keeps its old answer.
 - If the platform cannot read the list of hosts, the list is empty for those
   30 seconds and the check lets every request through.
-- Nothing stops a host in the range from sending with another host's address.
 - nginx keeps the session check's answer for the terminals, `/kibana/` and
   port 8002 five seconds, keyed on the session cookie, the client's address
   and the session the URL names, so a cached yes is never reused for a range
@@ -207,121 +206,87 @@ script from the API:
   a vendored cytoscape.js. It sends nothing to a third party.
 - It answers only messages from its own origin and is framed only by it
   (`X-Frame-Options: SAMEORIGIN`).
-- To draw it, the platform runs one read-only script on the range host over
-  the ssh key it already holds for `sudo docker`: `docker network inspect`,
-  `docker inspect` and `nsenter -n ip -o -4 addr`. It reads no rsyslog file,
-  and the map shows nothing outside the slot: no range host, platform VM,
-  collector or customers. The platform container holds no Docker socket and its image
-  no Docker client (until 2026-11-15 it held the platform host's socket, and
-  the GNS3 server held it too, with `pid: host`, `CAP_NET_ADMIN` and
-  `/dev/net/tun`).
+- To draw it, the platform reads the slot's networks and ports from Neutron
+  (tagged `cr.slot=<n>`) and, once per stack, runs `docker network inspect`
+  on the target VM over ssh. The map shows nothing outside the slot: no
+  platform VM, collector or customers. The platform container holds no Docker
+  socket and its image no Docker client (until 2026-11-15 it held the platform
+  host's socket, and the GNS3 server held it too, with `pid: host`,
+  `CAP_NET_ADMIN` and `/dev/net/tun`).
 
-**On OpenStack the platform answers NTP (time) requests from the range host.**
+**On OpenStack the platform answers NTP (time) requests from the slot VMs.**
 
-- The security group `cr-mgmt` shields the range host's `mgmt` port so that
-  only the platform can reach it.
-- The ways back to the platform's `mgmt` port are udp 123 from members of
-  `cr-mgmt`, which chrony answers, and udp 5140 from the range host's own
-  address, the syslog collector. chrony accepts that subnet (`allow`) and has
-  no `cmdallow`, so its command port stays on loopback.
-- The slots' containers reach neither: their networks have no route off the
-  range host, except the log server's filtered 5140/udp to the collector over
-  the 관제망.
+- Each slot VM's user data points systemd-timesyncd at the platform's
+  `cr-mgmt` address. chrony accepts that subnet (`allow`) and has no
+  `cmdallow`, so its command port stays on loopback.
+- `cr-reach` admits udp 123 from members of `cr-mgmt` (every slot VM's
+  control port) and udp 5140 only from `cr-senders` (the infra VM's).
 
-**Each slot is a Docker Compose project on the range host.** The range is one
-VM, `cr-range`, and its containers run on Docker's default runtime. A learner
-holds a root shell in the Kali container and in the WAF container
-(no-new-privileges leaves `sudo` nothing to gain, so the shell starts as root).
+**Each slot is one Heat stack of four VMs.** `range/openstack.py` renders it
+from `wargames/<wargame>/topology.yaml`: kali, waf, infra and target, on five
+Neutron networks of the slot's own (`internet`, `dmz`, `web-outer`,
+`web-inner`, `mgmt`). A learner holds a root shell on the Kali VM (the web
+terminal, and ssh as `kali` with passwordless sudo through the platform's
+jump) and on the WAF VM (the web terminal). No learner has a shell on the
+infra or the target VM. Isolation is Neutron's, enforced outside the guest,
+so root on Kali or the WAF cannot change it:
 
-How the containers are set up (`deploy/range-host/slot.yaml`,
-`platform/range/rangehost.py`):
-
-- dockerd runs with `userns-remap`, so root in a container is an unprivileged
-  user on the range host.
-- Every learner-facing container (Kali, the WAF, the edge router and the four
-  targets) drops all capabilities and adds back only a listed few: Kali
-  `NET_RAW`, `NET_ADMIN`, `SETUID`, `SETGID`, `CHOWN`, `DAC_OVERRIDE`, `FOWNER`,
-  `KILL`, `AUDIT_WRITE`; the WAF `NET_BIND_SERVICE`, `SETUID`, `SETGID`,
-  `CHOWN`, `DAC_OVERRIDE`; the edge `NET_ADMIN`; the targets `CHOWN`,
-  `DAC_OVERRIDE`, `FOWNER`, `SETUID`, `SETGID`, and corp's WordPress also
-  `NET_BIND_SERVICE`.
-- Each runs with `no-new-privileges`, Docker's default seccomp and AppArmor
-  profiles, and a memory and process limit. None is privileged, holds the
-  Docker socket, shares the host's network, PID or IPC namespace, or mounts a
-  host path, except the WAF's two log files, its audit log and nginx's log of
-  refused requests.
-- No root operation on the range host goes through a path a learner can
-  alter. The WAF is root in its container, and its root may create links in
-  any host directory mounted into it, because the directory belongs to the
-  remapped range. A host process that later opens a name in that directory
-  follows the link: `slot.sh reset` (root) emptied
-  `/var/log/cr/sN/waf/audit.log` with `: >`, and the range host's rsyslog
-  (`syslog`, in `adm`) read the same name with `imfile` (since 2026-11-15 the
-  slot's WAF shipper reads it, in the WAF's network namespace but from its own
-  read-only mount of the file), which reads a symlinked file as if it
-  were the file ("For symlink-ed files this does **not** contain name of the
-  actual file", rsyslog's imfile documentation, Metadata). A link to
-  `/etc/passwd` would have had the next reset truncate it; a link to another
-  slot's log or to `/var/log/auth.log` would have shipped those lines as this
-  slot's. The WAF therefore mounts only the files
-  `/var/log/cr/sN/waf/audit.log` and `/var/log/cr/sN/waf/refused.log`; their
-  directory is root's (`0755`), so the WAF can write the files it holds and
-  can neither replace them nor add a name beside them. `slot.sh` makes the
-  directory root's, removes any other name in it and recreates each log that
-  is not a regular file before every `up` and `reset`. Kali, the edge and the targets mount no host path; the targets'
-  volumes are refilled from `/opt/cr/pristine` only while freshly created and
-  empty, before their container first runs. The platform's reads of the
-  learner's boxes (`operator_log` reading Kali's `/var/log/commands.log`, the
-  loot and effect paths) run inside the container through `docker exec`, so a
-  link there resolves in the container's own filesystem.
-- Every slot network but the 관제망 is internal and its bridge has no host
-  address (`gateway_mode_ipv4` isolated). Nothing is published. The 관제망
-  (`sN_mgmt`) is NATed so the log server can reach the platform's collector;
-  `slot.sh` installs its filter before compose creates it: INPUT drops
-  everything from `sN-mgmt`, and DOCKER-USER passes only `sN-mgmt` to itself
-  and the log server's address to the collector's 5140/udp. The 관제망 holds
-  the sensor, the log server and the WAF's management interface. The WAF is
-  the one learner-facing container on it: it holds neither `NET_RAW` nor
-  `NET_ADMIN`, so it sends from its own address only, and the log server names
-  every log by the address it came from and relays a sender's lines only under
-  the tags its own logs carry (`modsecurity` and `nginx` for the WAF), so the
-  WAF can write only the WAF's logs, which it already writes, and cannot pass
-  a line off as Suricata's. From the 관제망 it reaches the log server's
-  514/tcp and nothing listening on the sensor.
-- The range host's `mgmt` port is in `cr-mgmt`, which only the platform
-  reaches. While it sets itself up it has a second port, on the platform's
-  network, in `cr-egress`, which admits nothing inbound; the range host uses it
-  to pull images. Once the setup reports ready, the platform detaches that
-  port, so a set-up range host has no way to the Internet and no DNS
-  resolver.
-- Each slot's one Suricata sensor is a slot container on the one bridge it
-  watches, `sN-web` behind the WAF (an interface with no address, fed by
-  `tc mirred`), and on the 관제망, with `NET_ADMIN`, `NET_RAW` and `SYS_NICE` under the same user
-  namespace remap as every other container. The log server and the shippers
-  hold no capability and mount only read-only files. No learner is given a
-  shell in any of them.
+- No slot network has a Neutron router or a floating IP; the slot's only way
+  between its LANs is the infra VM.
+- Every port has port security on, so it sends only from the MAC and the
+  fixed IP Neutron gave it, except:
+  - Kali's `internet` port carries the allowed address pair `0.0.0.0/0`, so
+    it can send from the origin addresses `slot-boot` adds; port security
+    still binds its MAC.
+  - The infra's `dmz` port carries the same pair, because the edge forwards
+    packets from Kali's origin addresses to the WAF.
+  - The infra's two IDS legs on `web-outer` and `web-inner` have port
+    security off, so the Linux bridge between them can forward the WAF's and
+    the target's frames. No learner has a shell on the infra.
+- Each LAN has a security group of its own (`cr-slot-<n>-<lan>`) that admits
+  the LAN's own CIDRs, or `0.0.0.0/0` where a port on it carries an address
+  pair (`internet`, `dmz`). The slot's `mgmt` admits only tcp 514, the WAF's
+  logs to the log server.
+- Every control port is in `cr-mgmt`, which admits only `cr-reach`, the
+  platform. Kali reaches no other slot's VM and no service on `cr-mgmt`.
+- The edge on the infra VM (nftables) forwards tcp 80 on 121.134.88.42 to the
+  WAF's `dmz` address and lets in from `wan` only replies and that forward, so
+  Kali reaches the targets only through the WAF.
+- The WAF sends to the log server from its own address only (port security),
+  and the log server relays a sender's lines only under the tags the WAF's
+  logs carry (`modsecurity` and `nginx`), so the WAF cannot pass a line off as
+  Suricata's.
+- The target runs the wargame under Docker: every container drops all
+  capabilities and runs with `no-new-privileges`; the database is on an
+  internal Docker network inside the VM.
+- The platform's reads of the learner's boxes (`operator_log` reading Kali's
+  `/var/log/commands.log`, the loot and effect paths through `docker exec` on
+  the target) run on the VM over ssh.
+- A close deletes the slot's stack and creates a new one, so nothing a learner
+  wrote on Kali or the WAF reaches the next session.
+- The platform holds the ssh key of the management user on every slot VM
+  (passwordless sudo): whoever takes the platform container is root on every
+  slot VM.
 
 What is tested:
 
-- `platform/tests/test_containment.py` fails `bin/verify` when the rendered
-  slot compose breaks any rule above: a learner-facing container privileged,
-  keeping default capabilities, gaining one not listed, missing
-  `no-new-privileges` or a limit, leaving a default profile, sharing a host
-  namespace, publishing a port, holding the Docker socket or mounting a host
-  path beyond its own two log files; a slot network other than the 관제망 not internal or with a host address;
-  two slots sharing a subnet or a name; dockerd without `userns-remap`.
+- `platform/tests/test_hot.py` fails `bin/verify` when the rendered stack
+  breaks a rule above: a router or a floating IP in a slot, port security off
+  on any port but the two IDS legs, Kali on a network other than `internet`
+  and `cr-mgmt`, the WAF or the target with a way out but through the router,
+  the web leg reaching the targets other than across the IDS bridge, the slot
+  `mgmt` admitting more than the WAF's logs, a control port off `cr-mgmt` or a
+  slot VM other than the infra in `cr-senders`.
 - `test/test_range_isolation.py` checks a live slot from Kali, the WAF and the
-  board: none reaches the range host's sshd, the platform, the Internet, the
-  metadata service or another slot's WAF; Kali reaches `board.com` (the WAF)
-  and neither target past it, by the WAF's own upstream addresses; `board`,
-  `corp-wp`, `board-db` and `corp-db` do not resolve from Kali; a SYN
-  scan runs; Kali finds no open service port on the range host, the platform
-  or the range host's `mgmt` network. Its last test opens a session, has the
-  WAF plant links to a host canary file, to `/etc/passwd` and to another
-  slot's log in its audit directory, waits for a line the WAF wrote to reach
-  its own slot's index, closes the session and, after the reset, checks the
-  canary unchanged, nothing of it in Elasticsearch, and the WAF's host log
-  directory root's and holding only `audit.log` and `refused.log`.
+  board: none reaches the platform, the Internet or the metadata service;
+  Kali reaches `board.com` (the router's public address) and neither target
+  past it, nor the WAF's private address (a SYN scan, which runs as root,
+  reads it filtered); `board`, `corp-wp`, `board-db` and `corp-db` do not
+  resolve from Kali; ping and traceroute to 121.134.88.42 answer; Kali finds
+  no open service port on `cr-mgmt`; a frame from a MAC Neutron did not give
+  Kali's port does not reach the router. Its last test writes a file on the
+  WAF, closes the session and checks that the slot's WAF is a new VM (another
+  boot id) without the file.
 
 **Accounts are staff or learner.** Staff (`admin` and any account made staff
 in Django) manage accounts, change the range and see every session; a

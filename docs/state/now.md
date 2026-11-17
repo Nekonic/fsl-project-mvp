@@ -28,8 +28,20 @@ Internet.
   `/var/lib/cr/failed`, and makes one sudo user `ubuntu` with the platform's
   key; learners ssh to Kali as `kali` through the jump on port 2222. The
   range host's code is deleted. Unit and API tests run against
-  `platform/tests/fakecloud.py`; on the cloud only the P0 probe stack has run
-  (spec §11). Not on `dev`.
+  `platform/tests/fakecloud.py`. On the cloud: the P0 probe stack (spec §11),
+  and the four images `cr-<role>-bake1`, baked by hand and active in Glance;
+  no slot stack has run yet. Not on `dev`.
+- 2026-11-18, fixes from the docs pass (`docs/DECISIONS.md` "The baked images
+  as they are"): `compute.target_tag` (`CR_OPENSTACK_TARGET_TAG`, by default
+  the commit `cr-target-bake1` was baked at), and the target's boot refuses
+  ready on another wargame image tag; Suricata's commands run in the infra's
+  `sensor` container, and the infra reports ready once `suricatasc -c uptime`
+  answers; a slot the ensure deletes is created again by the refill, and the
+  pool's assignment retargets a free slot; an open session holds only its own
+  slot; the platform reattaches its `cr-platform.mgmt` port on `--replace`, so
+  its `cr-mgmt` address and the slots stay; a missing role image blocks the
+  slot before Heat is asked. `dba.small` (30 GB disk) stays: Kali's image
+  takes `min_disk` 25 GB.
 - 2026-11-18, answer-blind walk round 28's fixes are live
   (`docs/TROUBLESHOOTING.md` "Answer-blind walk round 28"): the WAF logs
   the request body (audit part C) and the session view shows it as
@@ -595,18 +607,18 @@ Nothing. Gate 2 is only for `main` (Next, item 7).
 
 ## Next, in order
 
-1. P8 of the Heat range, the live run of `range-heat-int`: check that Glance
-   holds `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1` and
-   `cr-target-bake1` (nothing in `init` or `up` checks them; a missing one
-   fails the slot stack in Heat), then `uv run bin/cloud up --replace` with
+1. P8 of the Heat range, the live run of `range-heat-int`: Glance holds
+   `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1` and `cr-target-bake1`
+   (active; a missing one would read the slot `NOT_STANDING`), then `uv run
+   bin/cloud up --replace` with
    `platform.ref` on the branch (the store is backed up first; `up` deletes
    `cr-range` through `DELETE /api/range/leftovers/` before it fills the
    pool), then the full `bin/verify` with acceptance and an answer-blind walk.
    Unknowns it must measure: the Kali image's boot **[unverified]**; stack
    delete and refill time **[unverified]**; RAM per slot on com01
    **[unverified]**; whether `dba.small` holds the target's Docker and MySQL
-   **[unverified]**; whether a new platform VM's `cr-mgmt` address (in every
-   slot's user data) makes every slot stale on `--replace` **[unverified]**.
+   **[unverified]**; that a second `--replace` keeps every slot (the
+   reattached `cr-platform.mgmt` port) **[unverified]**.
 2. The live cloud on `dev`: `platform.ref` is `dev` in `cloud.yaml`; the VM
    runs `/opt/cr` with walk round 28's fixes, the range host is 10.31.0.147,
    eight slots (`compute.slots`, which the Heat range ignores). Run `uv run

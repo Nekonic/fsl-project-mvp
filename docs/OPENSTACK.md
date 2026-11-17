@@ -92,7 +92,7 @@ user's password, flavor access, the base image and `cloud.yaml` (§4).
 | Kolla-Ansible cloud with Heat, Glance, Nova, Neutron (ML2/OVN) | done (this cloud) | §2 |
 | Project `fsl-range`, member user, clouds.yaml entry, quota check, flavor choice | `bin/cloud init` as admin (2026-11-15); flavors and quotas are never created or raised by it | §3 |
 | Base image, stock Ubuntu 24.04, upload with checksum check | `bin/cloud init` when missing; done (this cloud, 2026-10-20) | §3.6 |
-| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh` (2026-11-18) | §3.6 |
+| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18) | §3.6 |
 | `cloud.yaml`: every cloud-specific value, validated | written by `bin/cloud init` (2026-11-15) | §4 |
 | Platform and wargame images on GHCR (`.github/workflows/images.yml`) | done (public, pulled 2026-10-11) | §5 |
 | Heat stack pulls images instead of `--build` | done (2026-10-11) | §5 |
@@ -486,7 +486,7 @@ flavor fits.
 | Key | Use | Notes |
 |---|---|---|
 | `platform` | platform VM | 8 GB RAM or more. With 4 GB, the OOM killer once killed Elasticsearch when sessions stacked up (DECISIONS 2026-10-10). Example `m1.large` (8 GB / 2 vCPU / 60 GB) |
-| `kali`, `waf`, `infra`, `target` | each slot VM of that role | optional; `dba.small` when left out, the WAF included (`docs/DECISIONS.md`, 2026-11-18). The target runs the wargame's front and MySQL under Docker, with the memory limits of `deploy/roles/target/wargames.yaml` |
+| `kali`, `waf`, `infra`, `target` | each slot VM of that role | optional; `dba.small` when left out, the WAF included (`docs/DECISIONS.md`, 2026-11-18). Kali's image has `min_disk` 25 GB, which `dba.small`'s 30 GB holds. The target runs the wargame's front and MySQL under Docker, with the memory limits of `deploy/roles/target/wargames.yaml` |
 
 **(this cloud)** The cloud has `m1.large` (8 GB / 2 vCPU / 60 GB), `m1.medium`
 (4 GB / 2 vCPU / 30 GB), `dba.small`, `dba.medium` (8 GB / 4 vCPU / 40 GB) and
@@ -532,7 +532,7 @@ for the slot roles if it has no `dba.small`; name it in `compute.flavors`.
 | `cr-reach` | fabric | on the platform's `cr-mgmt` port; nothing in except udp 123 (NTP) from members of `cr-mgmt` and udp 5140 (the collector) from members of `cr-senders` |
 | `cr-mgmt` | fabric | on every slot VM's control port; all IPv4 in, only from members of `cr-reach` (the platform's `cr-mgmt` port) |
 | `cr-senders` | fabric | also on each slot's infra control port, the only sender the collector takes; no rule in |
-| `cr-egress` | fabric | no rule in; a group the range host's egress port took, kept by the fabric |
+| `cr-egress` | fabric | no rule in; the fabric creates it and no port uses it |
 | `cr-slot-<n>-<lan>` | the slot's stack | one per slot LAN (§6) |
 
 `bin/cloud up` deletes the groups `cr-range` and `cr-build` of the ranges
@@ -567,8 +567,9 @@ The range has no Internet, so the platform is its only time source.
   upstream time source.
 - Every slot VM takes its time from the platform's `cr-mgmt` address through
   a `systemd-timesyncd` drop-in (`/etc/systemd/timesyncd.conf.d/60-cr.conf`,
-  `NTP=<platform mgmt>`) in its user data. A rebuilt platform VM may have a new
-  `cr-mgmt` address, which makes the slots stale (§5.3).
+  `NTP=<platform mgmt>`) in its user data. A rebuilt platform VM keeps that
+  address: the fabric attaches the detached `cr-platform.mgmt` port to it
+  (§5.3).
 - A platform VM booted before 2026-10-15 lacks chrony. Run what cloud-init runs:
 
 ```bash
@@ -640,7 +641,7 @@ each wargame's `compose.yaml`); copy the directory with the links resolved.
 |---|---|---|
 | `kali` | the Kali base | `kali-linux-headless` and the tools of the Kali container before (nmap, sqlmap, nikto, whatweb, ffuf, gobuster, hydra, dirb, mitmproxy and others), the stamp proxy as `web-proxy.service`, the operator log hook, `set-origin`, `slot-boot`, and a key-only `kali` user with bash and passwordless sudo; `board.com` and `corp.com` resolve to 121.134.88.42 |
 | `waf` | `compute.base_image` | nginx 1.24 from Ubuntu, ModSecurity 3.0.16 and its nginx connector built from release tarballs checked by SHA-256, CRS 4.25.1, the repo's `modsecurity.conf` and `board.com.conf`, rsyslog, `slot-boot` |
-| `infra` | `compute.base_image` | nftables, bridge-utils, ethtool, rsyslog, Docker with `bridge: none` and no iptables, the pinned `jasonish/suricata` image (`suricata -T` run on the repo's config and rules), `suricatasc`, `edge.nft`, `sensor.service`, `slot-boot` |
+| `infra` | `compute.base_image` | nftables, bridge-utils, ethtool, rsyslog, Docker with `bridge: none` and no iptables, the pinned `jasonish/suricata` image (`suricata -T` run on the repo's config and rules), the `suricatasc` wrapper (`docker exec -i sensor suricatasc`), `edge.nft`, `sensor.service`, `slot-boot`; `suricata` itself is only in the `sensor` container |
 | `target` | `compute.base_image` | Docker and Compose; board's and corp's compose files rendered for a VM (`render.py`: fronts published on the slot's addresses, databases on the internal `<w>_backend`), their images pulled from GHCR at `CR_IMAGE_TAG` (required), brought up once and their volumes kept as the pristine data, `wargames.service` |
 
 The Ubuntu roles point apt at the Kakao mirror, purge `snapd` and
@@ -654,7 +655,7 @@ openstack server create --image ubuntu-24.04 --flavor dba.small --network cr-pla
   --security-group cr-platform --key-name fsl-claude --wait cr-bake-waf
 openstack floating ip create provider; openstack server add floating ip cr-bake-waf <address>
 scp -r deploy/roles/waf ubuntu@<address>:/tmp/waf          # scp -r follows the links
-ssh ubuntu@<address> 'sudo sh /tmp/waf/install.sh'          # the target: sudo env CR_IMAGE_TAG=<tag> sh ...
+ssh ubuntu@<address> 'sudo sh /tmp/waf/install.sh'          # the target: sudo env CR_IMAGE_TAG=<compute.target_tag> sh ...
 openstack server stop cr-bake-waf
 openstack server image create --wait --name cr-waf-bake1 cr-bake-waf
 openstack server delete cr-bake-waf; openstack floating ip delete <address>
@@ -662,14 +663,21 @@ openstack server delete cr-bake-waf; openstack floating ip delete <address>
 
 A builder named `cr-build-<...>` or carrying the `cr_image` property would be
 deleted by `DELETE leftovers/` and `bin/cloud down` as a builder of the VM
-range; name it otherwise. The images `bake1` were baked on 2026-11-18
-(`docs/DECISIONS.md`); how long a bake takes and how long the Kali image
-takes to boot are **[unverified]**.
+range; name it otherwise. The four images `bake1` were baked by hand on
+2026-11-18 and are active in Glance (`docs/DECISIONS.md`); how long a bake
+takes and how long the Kali image takes to boot are **[unverified]**. The Kali
+image's `min_disk` is 25 GB, so its flavor needs at least that disk;
+`dba.small` has 30 GB (§3.3).
 
 A slot stack names its images by `compute.images`, and the stack's digest
 holds the names, not the content (§6, §7): bake a changed role under a new
 name. The target holds the board and corp images it pulled at bake, so a
-changed wargame image reaches the range only through a new target bake.
+changed wargame image reaches the range only through a new target bake. That
+bake's `CR_IMAGE_TAG` is the full commit `compute.target_tag` names (§4); a
+new target bake is a new image name and a new `target_tag`, both in the
+digest, so every slot is replaced. The target's boot refuses to report ready
+when an `image:` line in `/opt/wargames/*/compose.yaml` carries another tag,
+and writes those lines into `/var/lib/cr/failed` (§6).
 
 ## 4. cloud.yaml
 
@@ -720,6 +728,7 @@ in a container's environment.
 | `compute.flavors` | `platform`, and `kali`, `waf`, `infra`, `target` | §3.3. A slot role left out takes `dba.small`; `CR_OPENSTACK_FLAVORS` |
 | `compute.images` | `cr-<role>-bake1` per role | optional; each slot role's Glance image, baked from `deploy/roles/<role>/` (§3.6); a role left out takes `cr-<role>-bake1`; `CR_OPENSTACK_IMAGES` |
 | `compute.pool` | `{board: 3, corp: 1}` | optional; how many slots stand ready for each wargame, each one Heat stack of four VMs, so how many sessions can run at once (§6.4); `CR_OPENSTACK_POOL` |
+| `compute.target_tag` | the commit the target image was baked at | optional; the full 40-hex commit whose board and corp images the target image pulled (its bake's `CR_IMAGE_TAG`, §3.6); a slot has no egress, so it runs only those. Without it, the commit `cr-target-bake1` was baked at; `CR_OPENSTACK_TARGET_TAG` |
 | `keys.key_name`, `keys.key_file` | `fsl-claude`, `~/.ssh/fsl_claude` | the Nova keypair the platform VM boots with (its `key_name`, §3.4), and that keypair's private key, for ssh to the VM |
 | `keys.range` | `~/.ssh/fsl-platform` | the platform's range key, kept across rebuilds; every slot VM takes it for the management user (§6) |
 | `platform.stack`, `.repository`, `.ref` | `cr-platform`, this repo, `dev` | the stack, and the checkout it clones |
@@ -762,8 +771,8 @@ The server's cloud-init does these steps:
 3. Adds 4 GB of swap.
 4. Clones `repository` at `ref` into `/opt/cr`.
 5. Writes `/opt/cr/openstack.env`. It holds every cloud value except the
-   password, among them `CR_OPENSTACK_POOL`, `CR_OPENSTACK_IMAGES` and
-   `CR_OPENSTACK_FLAVORS` (§4) and `CR_OPENSTACK_SSH_USER=ubuntu`, the slot
+   password, among them `CR_OPENSTACK_POOL`, `CR_OPENSTACK_TARGET_TAG`,
+   `CR_OPENSTACK_IMAGES` and `CR_OPENSTACK_FLAVORS` (§4) and `CR_OPENSTACK_SSH_USER=ubuntu`, the slot
    VMs' management user, and `CR_TOOL_IMAGE=cr-kali`, the attacker host the
    launcher runs tools on. It makes `/opt/cr/openstack-password` empty, mode 0600, owned by
    uid 10001; the hand-over fills it.
@@ -842,17 +851,21 @@ It asks the platform's API every 5 s while it waits (`POLL`), and
 6. It sends `DELETE leftovers/`, which removes what the ranges before this one
    left in the project (§5.5), the range host first, since it holds the quota
    the slot VMs need, and prints what it removed.
-7. It sends `POST slot/`. It stops when a slot is blocked. For each slot of the
-   pool with no stack, this creates `cr-slot-<n>` (§6). A stack that is stale,
-   because what the platform renders now has another digest than the one it
-   was created with (§6, §5.3), or that failed (`SETUP_FAILED`), is deleted and
-   created again, but only when no session holds that slot. While a session
-   holds it, the stale slot reads blocked and `up` stops.
+7. It sends `POST slot/`. It stops when a slot is blocked, for example by a
+   role image that Glance does not hold active ("no active image ... in
+   Glance"), which the platform checks before it asks Heat. For each slot of
+   the pool with no stack, this creates `cr-slot-<n>` (§6). A stack that is
+   stale, because what the platform renders now has another digest than the
+   one it was created with (§6, §5.3), that failed (`SETUP_FAILED`), or that
+   runs another wargame than the pool assigns the slot, is deleted, and the
+   slot's refill creates it again and configures it, but only when no session
+   holds that slot. While a session holds it, the stale slot reads blocked and
+   `up` stops.
 8. It sends `GET ready/` until no slot reads `NOT_STANDING`, `REBUILDING`,
    `RESETTING` or `STALE`. A stack still in progress, or a node still running
    its boot (`SETTING_UP`), reads `REBUILDING`. A slot that reads
-   `SETUP_FAILED` stops `up`, which prints the reason; the next `up` replaces
-   that stack at step 7.
+   `SETUP_FAILED` stops `up`, which prints the reason; the next `up` deletes
+   that stack at step 7 and the refill creates it again.
 9. It sends `POST configure/`. It retries while the answer is 503, which means
    a slot VM's ssh is not up yet, up to 60 tries. It stops on any other answer
    but 200.
@@ -949,11 +962,11 @@ own network. A slot stack stands through the replace when what the new
 platform renders for it has the same digest (§6), and `bin/cloud up --replace`
 then only configures it again. The digest holds the platform's `cr-mgmt`
 address, which every node's user data names as its log collector and time
-source; the new VM's port on `cr-mgmt` takes whatever address Neutron gives it
-(`_attach` in `platform/range/openstack.py` names none), so a replace that gets
-a new address makes every slot `STALE`, replaced as soon as no session holds
-it. How often the address stays the same, and how long a replace takes, are
-**[unverified]**; on the range host of 2026-11-17 a replace that kept the
+source. That address stays: the old VM's `cr-platform.mgmt` port is left
+detached when its server is deleted, and the fabric attaches that port to the
+new VM instead of making another (`_attach` in `platform/range/openstack.py`),
+so the slots stand through. How long a replace takes is **[unverified]**; on
+the range host of 2026-11-17 a replace that kept the
 range took 10 min 14 s and one that replaced it 25 min 27 s
 (`docs/DECISIONS.md`, 2026-11-17).
 
@@ -999,20 +1012,22 @@ Docker image from a tarball instead of pulling it from GHCR. Both
 the platform VM only: the slots boot from the baked Glance images, and the
 target's board and corp images are the ones pulled at bake (§3.6), so a
 sideloaded `board`, `corp` or `corp-db` never reaches the range; push the
-commit, let `images.yml` publish its images and bake the target again. The
+commit, let `images.yml` publish its images, bake the target again at that
+commit and name it in `compute.target_tag` (§3.6, §4). The
 rebuild still writes `CR_SIDELOADED=<names>` in `/opt/cr/openstack.env`, and a
 hand-over that `up` redoes on a standing VM keeps the line. To see the names,
 run `sudo docker exec cr-platform env | grep CR_SIDELOADED` on the VM.
 
 A new bake reaches the range through `POST slot/` once `compute.images` names
-it: the slots' digest changes, so every slot reads `STALE`, and `POST slot/`
-deletes each stack no session holds and creates it again from the new images
-(§6). A slot a session holds is replaced after its close. `bin/cloud up` sends
+it (and, for the target, `compute.target_tag` its commit): the slots' digest
+changes, so every slot reads `STALE`, and `POST slot/` deletes each stack no
+session holds; each slot's refill creates it again from the new images and
+configures it (§6). A slot a session holds is replaced after its close. `bin/cloud up` sends
 `POST slot/` and then `configure/`. By hand:
 
 ```bash
 P=http://ADDRESS:8000/api/range
-curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/        # deletes each stale stack no session holds, creates it again
+curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/        # deletes each stale stack no session holds; its refill creates it again
 curl -s $P/ready/                                                          # REBUILDING while the stacks build and the nodes read SETTING_UP
 curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/configure/   # every slot's sensor on the baseline rules
 ```
@@ -1135,8 +1150,9 @@ moves to the Heat range with one `bin/cloud up` on the new code:
 1. Bake the four role images (§3.6). `cloud.yaml` needs no edit: the keys the
    range host used (`network.estate`, `network.mtu`, `compute.slots`,
    `compute.flavors.range`) are read and ignored, and `compute.pool`,
-   `compute.flavors.<role>` and `compute.images.<role>` default to
-   `{board: 3, corp: 1}`, `dba.small` and `cr-<role>-bake1` (§4).
+   `compute.flavors.<role>`, `compute.images.<role>` and `compute.target_tag`
+   default to `{board: 3, corp: 1}`, `dba.small`, `cr-<role>-bake1` and the
+   commit `cr-target-bake1` was baked at (§4).
 2. Run `uv run bin/cloud up --replace`. The platform VM is replaced with its
    store and range key (§5.3). `POST fabric/` makes the group `cr-senders`.
 3. Before the slots, the same `up` sends `DELETE leftovers/`, because the
@@ -1216,8 +1232,8 @@ P=http://$ADDRESS:8000/api/range
 curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/fabric/     # cr-mgmt (DHCP on, no gateway), keypair cr-platform,
                                   # groups cr-reach/cr-mgmt/cr-egress/cr-senders, platform port cr-platform.mgmt
 curl -s -X DELETE $P/leftovers/   # what the ranges before this one left (§5.5)
-curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/       # creates each missing slot stack cr-slot-<n>;
-                                  # replaces a stale or failed one when no session holds it
+curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/       # creates each missing slot stack cr-slot-<n>; deletes a stale or failed
+                                  # one when no session holds it, and its refill creates it again
 curl -s $P/ready/                 # REBUILDING while a stack is in progress or a node reads SETTING_UP
 curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/configure/  # each slot: its sensor seeded with the baseline rules
 curl -s $P/ready/
@@ -1232,28 +1248,42 @@ Notes:
 - The platform finds the slot stacks by the Heat tag `cr-range` and tells them
   apart by `cr.slot=<n>`; `cr.wargame=<w>` says which wargame a stack runs and
   `cr.digest=<d>` what it was rendered from (the template and the role images'
-  and flavors' names). A stack whose digest differs from what the platform
-  renders now is stale. A stack beyond the pool's count is a leftover.
+  and flavors' names, and `compute.target_tag`). A stack whose digest differs
+  from what the platform renders now is stale. A stack beyond the pool's count
+  is a leftover. Which wargame a slot runs comes from the pool's assignment
+  (§6.4), not from the tag: a free slot whose stack runs another wargame is
+  replaced.
+- A slot with no stack is `NOT_STANDING` and blocked, before Heat is asked,
+  when Glance holds no active image of a role's `compute.images` name ("no
+  active image ... in Glance"), when the platform has no `cr-mgmt` address, or
+  when no wargame has a `topology.yaml`.
 - Every node's user data ends with `systemctl start` of its role's boot units
   (`BOOTS` in `platform/range/sandbox.py`: kali `slot-boot`; waf `slot-boot`
   and `nginx`; infra `slot-boot` and `sensor`; target `wargames`), then
   touches `/var/lib/cr/ready`, or writes the units' status into
-  `/var/lib/cr/failed`. The platform asks each node over ssh and reports it
+  `/var/lib/cr/failed`. Two nodes check more first. The target refuses ready
+  when an `image:` line in `/opt/wargames/*/compose.yaml` carries another tag
+  than `compute.target_tag`, and writes those lines into `failed`. The infra
+  reports ready only once `suricatasc -c uptime` answers (its node's
+  `answers:` in `topology.yaml`, tried for up to 300 s), because configure
+  loads the baseline rules through that socket next. The platform asks each
+  node over ssh and reports it
   `SETTING_UP` until one of the two exists. `/api/range/ready/` names
   `/var/log/cloud-init-output.log` on a node that failed, and `bin/cloud up`
   stops on it. A stack Heat reports `CREATE_FAILED` reads `SETUP_FAILED` with
-  Heat's reason. The next `POST slot/` deletes a failed or stale stack and
-  creates it again when no session holds the slot (`ensure_slot` in
-  `platform/range/openstack.py`).
+  Heat's reason. The next `POST slot/` deletes a failed or stale stack when no
+  session holds the slot (`ensure_slot` in `platform/range/openstack.py`
+  returns it in `rebuilt`), and the slot's refill thread (`api/reset.py`)
+  creates it again and configures it. An open session holds only its own slot.
 - The platform reaches each slot VM as `CR_OPENSTACK_SSH_USER` (`ubuntu`) on
   its control port on `cr-mgmt`, with the range key and one shared ssh
   connection per address (`ControlMaster auto`, `ControlPersist 60`). Each
   node's user data creates that user with the platform's public key and
   passwordless sudo, after cloud-init's default user; on Kali the default user
   `kali` stays for the learner's ssh (§3.5). A role a container fills (the
-  target's `board`, `board-db`, `corp-wp`, `corp-db`) runs its command with
-  `sudo docker exec <container>` on the target VM; every other role runs on its
-  VM with `sudo`. Once every node of a `CREATE_COMPLETE` stack is ready, the
+  target's `board`, `board-db`, `corp-wp`, `corp-db`, and the infra's Suricata
+  sensor `sensor`) runs its command with `sudo docker exec <container>` on its
+  VM; every other role runs on its VM with `sudo`. Once every node of a `CREATE_COMPLETE` stack is ready, the
   platform keeps their `cr-mgmt` addresses and host-key aliases for that stack
   id in the API server's memory, so a command asks the cloud nothing; creating
   or deleting the stack drops them.
@@ -1317,7 +1347,10 @@ slot uses the same addresses; slots differ by network, not by CIDR.
   `deployment: reverse`), so ingest credits each alert to the client's address
   (`docs/ARCHITECTURE.md`, the alert path). The rule file is
   `/var/lib/suricata/rules/local.rules`, reloaded with `suricatasc -c
-  reload-rules` (the device `cr-ids` in the topology).
+  reload-rules` (the device `cr-ids` in the topology). `cr-ids` names
+  `container: sensor`, so rule validation (`suricata -T`), reading and writing
+  the rule file and the reload all run through `docker exec sensor` on the
+  infra; the host has only the `suricatasc` wrapper.
 - The WAF's `slot-boot` routes it through the infra's `lan`, writes `board`
   and `corp-wp` into `/etc/hosts` with the target's addresses, and ships
   ModSecurity's audit log and nginx's refused log
@@ -1401,9 +1434,10 @@ ports, groups and networks itself. Each slot VM's control port stands on
 `cr-mgmt`, so `DELETE $P/fabric/` refuses while any server other than the
 platform has a port on it; `bin/cloud down` waits until `GET $P/slot/` lists
 no standing stack first. Teardown also deletes the ports that no server holds
-any more (Nova leaves the pre-created `cr-platform.mgmt` port standing when it
-deletes a platform VM), and the next attach deletes such a leftover before it
-makes a new port. It also deletes the groups `cr-range` and `cr-build` if
+any more. Nova leaves the pre-created `cr-platform.mgmt` port standing when it
+deletes a platform VM; the next `POST fabric/` attaches that port to the new
+platform VM, so the platform keeps its `cr-mgmt` address, and deletes any
+further detached port of that name. It also deletes the groups `cr-range` and `cr-build` if
 they are still there.
 
 ### 6.3 Keypair drift
@@ -1434,9 +1468,12 @@ for corp.
 
 To grow the pool, raise a count in `compute.pool` and run `uv run bin/cloud up
 --replace`: `POST slot/` creates the new slots. To shrink it, lower a count;
-`DELETE leftovers/` deletes the stacks numbered beyond the new total. A
-standing slot keeps the wargame its stack was built for (its `cr.wargame` tag)
-until a session open retargets it (§6.1). By hand on a standing platform:
+`DELETE leftovers/` deletes the stacks numbered beyond the new total. The
+pool's assignment decides which wargame a slot runs: when a count moves, the
+next `POST slot/` deletes each free slot whose stack runs another wargame, and
+its refill builds it for the assigned one; a slot a session holds follows after
+its close. A session open still takes a free slot of another wargame when none
+of its own is READY (§6.1). By hand on a standing platform:
 
 ```bash
 sed -i 's/^CR_OPENSTACK_POOL=.*/CR_OPENSTACK_POOL=board=3 corp=2/' /opt/cr/openstack.env
@@ -1478,9 +1515,10 @@ A change to a slot role (`deploy/roles/<role>/` or a file it links, such as
 wargame's `compose.yaml` and app image) reaches the range only through a new
 bake (§3.6). Slots boot from the Glance images `compute.images` names, and the
 stack's digest covers those names and the flavors, not the images' content:
-bake under a new name (`cr-<role>-bake2`), name it in `compute.images`, and
-`bin/cloud up --replace` makes every slot `STALE` and replaces each when no
-session holds it. A change that alters the rendered template does the same
+bake under a new name (`cr-<role>-bake2`), name it in `compute.images` (a
+target bake also its commit in `compute.target_tag`), and with the new names
+`bin/cloud up --replace` finds every slot `STALE`; each slot no session holds
+is deleted and its refill builds it again. A change that alters the rendered template does the same
 without a bake: `wargames/<w>/topology.yaml`, the declaration's origins, the
 user data `range/sandbox.py` writes, or the template `range/openstack.py`
 renders. The sensor's rules need no bake: `configure/` seeds the sensor with `deploy/suricata/rules/local.rules` from the platform's

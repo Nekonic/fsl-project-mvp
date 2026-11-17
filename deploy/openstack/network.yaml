@@ -35,10 +35,10 @@ tenant:                           # fsl-range — the platform VM and four VMs p
   hosts:
     cr-platform:                 # scorer, multi-homed (m1.large)
       cr-platform: "DHCP -> FIP 192.168.2.247 (console :8000, sites :8002, ssh jump :2222)"
-      cr-mgmt:     "port cr-platform.mgmt in cr-reach -> ssh to every slot VM, syslog :5140 collector, NTP"
+      cr-mgmt:     "port cr-platform.mgmt in cr-reach, reattached to the new VM on --replace so its address stays -> ssh to every slot VM, syslog :5140 collector, NTP"
 
 slots:                            # one Heat stack per slot; Neutron networks tagged cr.slot=<n>, DHCP off, no gateway
-  stack: cr-slot-<n>              # tags cr-range, cr.slot=<n>, cr.wargame=<wargame>, cr.digest=<template digest>
+  stack: cr-slot-<n>              # tags cr-range, cr.slot=<n>, cr.wargame=<wargame>, cr.digest=<template, images, flavors, target_tag>
   pool: "compute.pool, default board 3, corp 1: slots 1-3 board, slot 4 corp"
   addressing: "fixed IPs on OS::Neutron::Port, written to the config drive's network_data.json; the same in every slot"
   lans:
@@ -61,7 +61,7 @@ slots:                            # one Heat stack per slot; Neutron networks ta
       dmz:       10.30.0.1        # edge lan; address pair 0.0.0.0/0
       web-outer: "IDS leg A, port security off; the dummy fixed IP 10.30.128.251 is flushed at boot"
       web-inner: "IDS leg B, port security off; the dummy fixed IP 10.30.128.252 is flushed at boot"
-      bridge:    "br0 over both legs; Suricata (container sensor) on af-packet br0, inline between the WAF and the target"
+      bridge:    "br0 over both legs; Suricata (container sensor) on af-packet br0, inline between the WAF and the target; rule checks, writes and reloads run in the container"
       mgmt:      172.29.0.10      # log server: rsyslog, 514/tcp in, EVE and the WAF's logs to the platform's 5140/udp over cr-mgmt
     cr-slot-<n>-waf:    { dmz: 10.30.0.247, web-outer: 10.30.128.247, mgmt: 172.29.0.12 }   # nginx + ModSecurity reverse proxy, fronts the target
     cr-slot-<n>-target: { web-inner: "10.30.128.59 (board) or 10.30.128.60 (corp)" }      # Docker: the wargame's front published on this address, its database on <wargame>_backend

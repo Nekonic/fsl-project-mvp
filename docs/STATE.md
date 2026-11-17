@@ -2003,12 +2003,12 @@ binary log via a substrate runner, proven end to end against the live stack.
 `docs/superpowers/specs/2026-11-18-heat-range-design.md`; P0-P7 done on
 `range-heat-int`.
 
-- [ ] P8, the live run: the four role images `cr-<role>-bake1` present in
-      Glance, `uv run bin/cloud up --replace` (it deletes `cr-range` and
-      fills the pool), then the full `bin/verify` with acceptance and a walk;
-      then gate 2.
-- [ ] Measure on the cloud: the Kali image's boot (its import is P0-3, not
-      run) **[unverified]**; how long a slot stack takes to delete and come
+- [ ] P8, the live run: with the four role images `cr-<role>-bake1` active
+      in Glance (baked by hand on 2026-11-18), `uv run bin/cloud up --replace`
+      (it deletes `cr-range` and fills the pool), then the full `bin/verify`
+      with acceptance and a walk; then gate 2.
+- [ ] Measure on the cloud: how long a slot's Kali VM takes to boot
+      **[unverified]**; how long a slot stack takes to delete and come
       back READY, so the pool's refill time **[unverified]**; RAM per slot of
       four VMs on com01 **[unverified]**; whether `dba.small` holds the
       target's Docker and MySQL **[unverified]**.
