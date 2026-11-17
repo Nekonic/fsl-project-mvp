@@ -32,7 +32,10 @@ tag a version (`vMAJOR.MINOR.PATCH`) when a verified state is worth keeping.
 review that found no document out of step with the code, moved there as a fast-forward after gate 2. Never force-push `dev` or `main`.
 
 Replies are short — the result and the reason, no restatement, no analogy;
-detail goes in the commit and `docs/DECISIONS.md`. Use the words practitioners
+detail goes in the commit and `docs/DECISIONS.md`. Documents and replies carry
+no commit SHAs: `git log` holds them and a merge or rebase changes them; say
+what changed in words and name a version by its tag (2026-11-18, the user's
+ruling). Use the words practitioners
 use and do not invent terms; when the field already names a thing, quote a
 primary source rather than your own sense of the vocabulary.
 

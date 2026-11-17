@@ -1063,23 +1063,23 @@ archives without a registry "Image side-loading"
 (https://canonical.com/microk8s/docs/sideload).
 
 **Runs 2026-10-15.** We ran `bin/cloud up --replace --sideload platform=...
---sideload gns3=...` over `dev` = 8f9acb0, untouched. Both runs exited 0. Both
+--sideload gns3=...` over `dev`, untouched. Both runs exited 0. Both
 slots were READY and no session was open before each run.
 
-- Run 1 ran HEAD d20b35e from the previous platform VM.
-- Run 2 ran HEAD 412e379 (the backup fix that run 1's `bin/verify` found) from
+- Run 1 ran `dev`'s HEAD from the previous platform VM.
+- Run 2 ran HEAD with the backup fix that run 1's `bin/verify` found, from
   run 1's VM.
 - The platform image was built from each HEAD. The gns3 image was built from
-  1814e5c, whose `deploy/gns3` is the same.
+  an earlier commit whose `deploy/gns3` is the same.
 
 | Stage | Run 1 | Run 2 | Evidence |
 |---|---|---|---|
-| Refusal checks, GHCR, bundle | 15 s | 13 s | 5 images public at 8f9acb0; contexts equal |
+| Refusal checks, GHCR, bundle | 15 s | 13 s | 5 images public; contexts equal |
 | Backup (`bin/backup` over ssh) | 12 min 8 s | 7 min 50 s | 5,957,828,608 bytes, integrity_check ok; 1,878,072 detections |
 | Stack delete, create | 10 s, 23 s | 10 s, 22 s | reserved floating IP re-associated |
 | Server created to ssh | 21 s | about 20 s | |
-| cloud-init, `cr-platform.service` at 8f9acb0 | 2 min | 2 min | done, no errors; `python3-venv` 3.12.3, `nodejs` 18.19.1; `/etc/sysctl.d/90-cr-syslog.conf` applied (`net.core.rmem_max = 33554432`) |
-| HEAD bundle, two tarballs loaded | 2 min 29 s | 1 min 4 s | 111 MB and 241 MB; the containers run images labelled with HEAD and 1814e5c |
+| cloud-init, `cr-platform.service` | 2 min | 2 min | done, no errors; `python3-venv` 3.12.3, `nodejs` 18.19.1; `/etc/sysctl.d/90-cr-syslog.conf` applied (`net.core.rmem_max = 33554432`) |
+| HEAD bundle, two tarballs loaded | 2 min 29 s | 1 min 4 s | 111 MB and 241 MB; the containers run images labelled with HEAD and the earlier commit |
 | Password, range key | 1 s | 1 s | key fingerprint unchanged |
 | Store upload (`scp`) | 30 min 41 s | 14 min 39 s | 3.1 and 6.8 MB/s |
 | Restore, `compose up -d`, API | 1 min 3 s | 1 min 4 s | migrate: no migrations to apply (the store was already at 0026); 0020-0026 `[X]` |
@@ -1574,7 +1574,7 @@ We did not check whether that OPNsense edge survived an OPNsense update.
   `neutron-server` host (§2). The hosts' systemd-networkd sent that address out
   of `ens3`, so each lookup timed out (`getent` took 24.6 s). WordPress's
   healthcheck, `wp core is-installed` with a 5 s timeout, took 29.2 s.
-  - Fixed in commit 68efc7c: `platform/range/openstack.py` creates every range
+  - Fixed: `platform/range/openstack.py` creates every range
     subnet with the DNS server `0.0.0.0`, which announces no resolver. After the
     fix on the standing range, `getent` failed in 0.03 s and `wp core
     is-installed` took 1.9 s.
