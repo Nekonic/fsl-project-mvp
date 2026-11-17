@@ -236,8 +236,9 @@ def router_address() -> str:
 
 
 def kali_addresses(origins, default_origin: str) -> str:
+    default_first = sorted(origins, key=lambda origin: origin.id != default_origin)
     lines = [f"addr add {address}/{ipaddress.ip_network(origin.subnet).prefixlen} dev eth0"
-             for origin in origins for address in origin_addresses(origin.subnet, origin.addresses)]
+             for origin in default_first for address in origin_addresses(origin.subnet, origin.addresses)]
     source = internet_side(origins, default_origin)
     if source:
         lines.append(f"route replace default via {router_address()} dev eth0 onlink src {source}")

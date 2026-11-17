@@ -161,6 +161,15 @@ def test_kali_holds_every_declared_origin_address_and_the_edge_one_public_addres
         "the company's address shares no block with the attacker's or the customers' addresses")
 
 
+def test_kali_adds_the_default_origin_s_address_first_so_ip_addr_lists_the_address_the_map_draws_first():
+    kali = slot_files()["kali.ip"].decode().splitlines()
+    added = [line for line in kali if line.startswith("addr add ")]
+
+    assert added[0] == "addr add 5.188.10.10/24 dev eth0", (
+        "the kernel lists an interface's addresses in the order they were added, the first as primary; "
+        "ip addr in Kali then opens with the address the map draws and hostname -i prints")
+
+
 def test_the_edge_forwards_the_web_port_of_its_public_address_to_the_waf_and_kali_names_the_sites_by_it():
     files = slot_files(2)
     document = yaml.safe_load(files["compose.yaml"])

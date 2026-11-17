@@ -198,7 +198,7 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 - `deploy/range-host/slot.sh`에서 Kali에 출발지별 주소를 붙임(`nsenter`로 `ip -batch` 실행). Kali는 라우터 바깥의 인터넷 역할
 - 주소를 바꾼 뒤 그 컨테이너의 `/etc/hosts`(Docker의 `HostsPath`)에서 Docker가 처음 준 주소를 새 주소로 바꿈. Kali는 기본 출발지 주소(5.188.10.10), 에지는 `wan`의 공인 IP. 센서의 `web` 주소는 지움. 그래서 `hostname -i`가 구성도와 `ip addr`의 주소를 말함
 - 라우터(에지) `wan`의 공인 IP는 121.134.88.42/29 하나(`rangehost.ROUTER_WAN`). KT 회선(KORNET, 121.128.0.0/11)에서 기업 회선에 주는 크기의 블록이고, Kali의 30개 /24 어느 것과도 겹치지 않음
-- 공인 IP와 출발지 대역이 서로 다른 블록이라 같은 브리지 위에서 onlink 경로로 닿음. 라우터는 `default via 5.188.10.10 dev wan onlink`(Kali가 라우터 바깥의 인터넷 역할), Kali는 `default via 121.134.88.42 dev eth0 onlink src 5.188.10.10`(`rangehost.edge_addresses`, `kali_addresses`). `src`가 없으면 커널이 첫 주소 73.0.0.10을 고르고, 출발지 SNAT가 nmap SYN 스캔의 raw 패킷 출발지를 바꿔 nmap이 응답을 못 알아봄
+- 공인 IP와 출발지 대역이 서로 다른 블록이라 같은 브리지 위에서 onlink 경로로 닿음. 라우터는 `default via 5.188.10.10 dev wan onlink`(Kali가 라우터 바깥의 인터넷 역할), Kali는 `default via 121.134.88.42 dev eth0 onlink src 5.188.10.10`(`rangehost.edge_addresses`, `kali_addresses`). `kali_addresses`는 기본 출발지 대역(ru)의 주소부터 추가해서 Kali `ip addr`의 첫 주소(primary)가 구성도와 `hostname -i`에 나오는 5.188.10.10과 같음. 경로에도 `src`를 박아 둠. 다른 주소가 출발지로 잡히면 출발지 SNAT가 nmap SYN 스캔의 raw 패킷 출발지를 바꿔 nmap이 응답을 못 알아봄
 - 라우터는 공인 IP의 80번 포트를 WAF의 estate 주소로 포트포워딩(DNAT, `rangehost.edge_rules`가 만드는 `edge.nft`의 `table ip nat`). 출발지는 바꾸지 않음(SNAT 없음)
 - 같은 `edge.nft`의 `table ip inbound` forward 체인: `wan`에서 들어오는 패킷은 이미 맺어진 연결의 응답(`ct state established,related`)과 포트포워딩된 연결(`ct status dnat`)만 통과하고 나머지는 drop. Kali에서 WAF의 사설 주소(10.30.N.247)로는 연결이 안 됨(nmap에서 filtered). `lan`에서 나가는 연결은 막지 않음
 - 브리지 서브넷 172.30.N.0/24는 쓰지 않음
