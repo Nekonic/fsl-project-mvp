@@ -25,6 +25,20 @@ sites_named() {
   printf '%s board.com\n%s corp.com\n' "$ROUTER" "$ROUTER" >> "$1"
 }
 
+key_only_login_for() {
+  id -u "$1" >/dev/null 2>&1 || useradd -m -U -s /bin/bash -G adm,audio,cdrom,dialout,dip,floppy,plugdev,sudo,video "$1"
+  usermod -s /bin/bash "$1"
+  passwd -l "$1"
+  printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$1" > /etc/sudoers.d/90-default-user
+  chmod 0440 /etc/sudoers.d/90-default-user
+  visudo -cq
+  home=$(getent passwd "$1" | cut -d: -f6)
+  install -d -m 0700 -o "$1" -g "$(id -gn "$1")" "$home/.ssh"
+  [ -f "$home/.ssh/authorized_keys" ] || install -m 0600 -o "$1" -g "$(id -gn "$1")" /dev/null "$home/.ssh/authorized_keys"
+  printf 'PubkeyAuthentication yes\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\n' > /etc/ssh/sshd_config.d/10-key-only.conf
+  sshd -t
+}
+
 bashrc_for() {
   home=$(getent passwd "$1" | cut -d: -f6)
   [ -n "$home" ] && [ -d "$home" ] || return 0
@@ -50,6 +64,7 @@ touch /root/.hushlogin
 
 install -m 0644 bashrc /root/.bashrc
 install -m 0644 bashrc /etc/skel/.bashrc
+key_only_login_for kali
 bashrc_for kali
 
 install -m 0644 stamp.py /usr/local/lib/web-proxy.py
