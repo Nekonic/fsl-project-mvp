@@ -9483,3 +9483,24 @@ user was away.
   5 min and the stacks reached `CREATE_COMPLETE` after about 12 to 13 min. The
   infra wrote ready about 3 min after its boot, the target about 2.5 min
   (cloud-init finished at 151 s).
+- **A slot's readiness reads its own wargame's ground truth.** Readiness read
+  board's loot on every slot, a rule from the range host where every slot ran
+  both targets. A Heat slot runs only its wargame, so the corp slot stood
+  `CHECKING` ("the target's ground truth could not be read"), and every corp
+  session open in the acceptance suite retargeted a free board slot to corp
+  (409 "no slot runs corp, so slot 2 is being built again for it"), which the
+  suite took for a failure. Readiness now reads the slot's wargame through the
+  baseline a session open reads (board's loot, corp-db's state), and the
+  acceptance suite waits on that 409 as on a reset. Rejected: skipping the
+  check on corp slots (a corp slot whose database is down would read READY).
+- **Measured on the second fill**, with every image cached on com01: the four
+  stacks reached `CREATE_COMPLETE` in under 2 min, and three slots were
+  `READY` 8 min 50 s after the stack create (sixteen VMs booting at once; a
+  target's cloud-init still running at 4 min). A session open took 8.2 s. A
+  closed session's stack is deleted and created again; how long until that
+  slot is `READY` again is **[unverified]**. A target VM showed 0.8-0.9 GB of
+  its 2 GB in use with board or corp running (1.1 GB available).
+- **The platform's `up` and a verify run do not overlap.** A full `bin/verify`
+  restarts the platform; started while `bin/cloud up` still polled
+  `GET /api/range/ready/`, it cut that poll off (`RemoteDisconnected`) and
+  `up` exited 1 with the pool standing. Start the verify after `up` returns.
