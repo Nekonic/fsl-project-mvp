@@ -756,7 +756,7 @@ const showTabs = (selected) => {
 const ringAt = async () => { await frames(); return shown('coach-ring') ? styled('coach-ring').left : null; };
 """
 
-def test_a_developer_tools_step_points_at_the_toggle_then_the_matching_row_then_the_tab_then_the_line(client):
+def test_a_developer_tools_step_points_at_the_toggle_then_the_matching_row_then_the_tab_and_never_the_answer_s_line(client):
     seen = open_page(client, "/blue/1/", setup=served() + DEV, scenario=f"""
       {to("method")}
       await browser.click('step-open');
@@ -774,21 +774,19 @@ def test_a_developer_tools_step_points_at_the_toggle_then_the_matching_row_then_
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"closed": 974, "noRow": 62, "rowTop": 620, "wrongTab": 494, "line": 614}, (
-        "closed DevTools: the toggle; no row picked: the last row of the step's request; wrong tab: the tab; then the line")
+    assert seen["result"] == {"closed": 974, "noRow": 62, "rowTop": 620, "wrongTab": 494, "line": 494}, (
+        "closed DevTools: the toggle; no row picked: the last row of the step's request; then the tab. "
+        "Walk: a ring on the answer's own line (요청 메서드 GET) gave the answer away")
 
-def test_a_developer_tools_ring_on_a_two_line_field_stays_off_the_field_below(client):
+def test_a_developer_tools_ring_stays_off_every_line_of_the_answer_s_section(client):
     seen = open_page(client, "/blue/1/", setup=served() + DEV, scenario=f"""
       {to("method")}
       await browser.click('step-open');
       browser.element('site-dev-toggle').setAttribute('aria-pressed', 'true');
       listRows('true');
       showTabs('tab.headers');
-      browser.element('site-dev-detail').innerHTML += '<div data-coach="general.status"></div>';
-      RECTS.set(document.querySelector('[data-coach="general.method"]'), box(500, 620, 300, 34));
-      RECTS.set(document.querySelector('[data-coach="general.status"]'), box(500, 654, 300, 18));
       await ringAt();
-      return {{ringed: shown('coach-ring'), covers: meets(styled('coach-ring'), box(500, 654, 300, 18))}};
+      return {{ringed: shown('coach-ring'), covers: meets(styled('coach-ring'), box(620, 620, 50, 20))}};
     """)
 
     assert seen["errors"] == []
@@ -812,7 +810,7 @@ def test_a_step_held_until_its_request_is_sent_then_points_at_what_follows(clien
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"before": "select[name=sort]", "after": 674}
+    assert seen["result"] == {"before": "select[name=sort]", "after": 554}, "the Payload tab, not the parameter's line"
 
 def test_the_open_website_button_always_brings_the_board_s_front_page_back(client):
     seen = open_page(client, "/blue/1/", setup=served() + DEV, scenario=f"""

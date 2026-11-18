@@ -655,7 +655,8 @@ function devElement(name, step) {
   const tab = name.startsWith("general.") ? "tab.headers" : name.startsWith("payload.") ? "tab.payload" : "";
   const holder = tab ? named(tab) : null;
   if (holder && holder.getAttribute("aria-selected") !== "true") return { element: holder, stage: tab };
-  return { element: named(name), stage: "" };
+  const line = named(name);
+  return { element: line && holder ? holder : line, stage: "" };
 }
 
 const BAND_ROWS = 3;
