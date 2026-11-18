@@ -40,6 +40,7 @@ def nothing_remembered_between_tests():
     reset._states.clear()
     views._segments_kept.clear()
     views._found_kept.clear()
+    views._ready_kept.clear()
     site._records.clear()
 
 @pytest.fixture(autouse=True)

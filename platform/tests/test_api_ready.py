@@ -1,9 +1,11 @@
+import threading
 from unittest.mock import patch
 
 import pytest
 
-from api import loot
+from api import loot, views
 from range import pool
+from range.ports import RangeUnavailable
 from rules.suricata import RulesUnreadable
 
 URL = "/api/range/ready/"
@@ -79,3 +81,46 @@ def test_a_corp_slot_is_ready_once_corp_s_own_ground_truth_reads(client):
 
     assert asked == ["corp"], "a corp slot runs no board, so its board ground truth never reads"
     assert body["slot"]["checks"]["ground_truth"] is True
+
+class Counted(Cloud):
+    def __init__(self):
+        super().__init__()
+        self.asked = 0
+        self.failing = False
+
+    def plan_slot(self):
+        self.asked += 1
+        if self.failing:
+            raise RangeUnavailable("the cloud's API did not answer")
+        return super().plan_slot()
+
+def _refreshed_behind(client, cloud):
+    views._ready_kept["verdict"]["at"] -= views.READY_FRESH
+    with patch("api.views.substrate", lambda: cloud), patch(
+        "api.views._ground_truth_readable", return_value=True
+    ), patch("api.views._rules_at_baseline", return_value=True):
+        answer = client.get(URL)
+        for refresh in [thread for thread in threading.enumerate() if thread.name == "cr-ready-refresh"]:
+            refresh.join(5)
+    return answer
+
+def test_readiness_polls_reach_the_cloud_once_while_the_answer_is_fresh_and_a_stale_one_is_refreshed_behind_it(client):
+    cloud = Counted()
+    first, again = _get(client, cloud).json(), _get(client, cloud).json()
+    assert cloud.asked == 1 and first == again, (
+        "2026-11-18: every GET /api/range/ready/ listed the Heat stacks and read each free slot's target and sensor "
+        "over SSH, 13-26 s per call, holding one of the platform's 16 request threads each time")
+
+    stale = _refreshed_behind(client, cloud).json()
+
+    assert stale == first and cloud.asked == 2
+
+def test_a_refresh_the_cloud_refused_is_answered_as_refused_not_as_the_last_ready(client):
+    cloud = Counted()
+    assert _get(client, cloud).json()["ready"] is True
+    cloud.failing = True
+    _refreshed_behind(client, cloud)
+
+    answer = _get(client, cloud)
+
+    assert answer.status_code == 503 and "did not answer" in answer.json()["detail"]

@@ -233,6 +233,27 @@ def test_the_count_of_right_judgements_moves_with_the_right_mark_it_counts(clien
 
 LATE = {**ITEMS[0], "item": "c3", "first": "2026-10-13T06:05:00+00:00", "request": {"method": "GET", "path": "/search/?q=late"}}
 
+def test_a_status_or_triage_read_still_out_is_not_asked_again_by_the_next_poll(client):
+    stalled = ('if (range.stalled && request.method === "GET" && ["/api/sessions/1/scenario/", '
+               '"/api/sessions/1/triage/"].includes(request.route)) return new Promise(() => {});\n  ' + SCENARIO_ROUTE)
+    setup = serving(status(JUDGEMENT, id="1.1")).replace(SCENARIO_ROUTE, stalled)
+    seen = open_page(client, "/blue/1/", setup=setup, scenario="""
+      await browser.click('briefing-start');
+      await browser.click('[data-pane="triage"]');
+      await browser.settle();
+      range.stalled = true;
+      const from = browser.requests.length;
+      for (let i = 0; i < 12; i += 1) await browser.wait(5000);
+      const asked = browser.requests.slice(from).filter((request) => request.method === "GET");
+      return {scenario: asked.filter((request) => request.route === "/api/sessions/1/scenario/").length,
+              triage: asked.filter((request) => request.route === "/api/sessions/1/triage/").length};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"scenario": 1, "triage": 1}, (
+        "2026-11-18 06:49Z: with triage taking longer than its 15 s poll, each open console kept asking again every "
+        "5 s and 15 s while its earlier reads were still out, and the platform's queue grew to 83 requests")
+
 def test_an_item_that_arrives_after_the_attack_is_judged_is_listed_without_a_reload(client):
     seen = open_page(client, "/blue/1/", setup=serving(status(JUDGEMENT, id="1.1")), scenario="""
       await browser.click('briefing-start');

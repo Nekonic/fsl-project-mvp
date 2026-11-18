@@ -9634,3 +9634,59 @@ and a reader cannot be blocked by a writer in WAL mode whichever writer it is).
 
 - **The trademark footer goes, by the user's ruling.** The user asked for "KALI LINUX™는 OffSec의 상표입니다." to be removed from the console. The footer in `main.html`, the `topology.trademark` string and the test that pinned the footer are gone. The dragon's source record stays in `symbols/host-kali.txt`. This sets aside the 2026-10-15 entry's reading of OffSec's policy ("When using an OffSec trademark in written materials, you should include ... a trademark of OffSec") for the console page; the map still uses the unmodified press-pack logo.
 - **Debrief labels say the thing, not a frame around it.** "내 정·오탐 판단" is "정·오탐 판단"; "근거: 이 세션에서 실행된 공격의 로그" is "공격 로그"; the five `lesson.fix.*` lines drop "적용한 조치:" and say what was changed. The user called the old wording slop.
+
+
+## 2026-11-18 — Triage groups on a stored rule column, the console never re-asks a read still out, ingest commits in batches of 500, and readiness is answered from a kept verdict
+
+Scenario 1.3 (session 2851) stalled the platform from 06:49 to 07:04Z: waitress
+"Task queue depth is" rose from 13 at 06:49 to 83 at 07:02-07:04, the
+connection limit was reached from 07:02:40Z, scheduled attacks 6 and 7 failed
+at 06:50:33Z with `database is locked` on `_fire`'s `Session...update(ended_at=...)`
+after the 30 s busy timeout, and at 06:59:30Z a plain read (`GET
+/api/sessions/`, `session.cases.aggregate`) and the engine's ingest
+(`bulk_create`) failed the same way. The deployed store was still
+`journal_mode=delete` (WAL is on `dev` only). Measured afterwards, read-only
+on the live store (2 vCPU, 98,995 alerts in session 2851, 2.5 KB of raw JSON
+each, 217,557 in all, 961 MB): triage's `GROUP BY marker, source, signature,
+ruleId, signature_id` took 3.43 s on the idle VM, the same grouping without the
+two JSON paths 0.65 s, its other two reads 0.39 s and 0.36 s. Every open blue
+console asked `GET triage/` every 15 s and `GET scenario/` every 5 s whether or
+not its earlier read had come back, so once a read took longer than its poll,
+requests arrived faster than 16 threads on two cores could answer them. Under
+the rollback journal a writer's commit waits for every reader to finish and
+locks new readers out meanwhile, so multi-second triage reads stretched each
+commit, and a 13,000-alert-a-minute ingest held the write lock for its whole
+`bulk_create` while other writers queued **[the writer holding the lock at
+06:50:03-06:50:33Z is inferred, not logged]**. No `transaction.atomic` or
+`select_for_update` spans an ssh, Heat or Elasticsearch call (each was read
+again); the waits were on the lock, not inside it.
+
+- `Detection.rule` is a stored `GeneratedField`: `Coalesce` of
+  `raw.details.ruleId` and `raw.alert.signature_id`, computed by SQLite at
+  insert. Triage groups on it and parses no JSON per poll. Migration 0033
+  rebuilds `api_detection` once (Django remakes the table for a stored
+  generated column on SQLite); 217,557 such rows took 2.3 s on a laptop SSD,
+  the platform VM's time **[unverified]**.
+- The blue console's scenario and triage polls skip a turn while their last
+  read is still out.
+- `_ingest` stores new alerts in `bulk_create` calls of `INGEST_BATCH` (500)
+  rows, each its own transaction, so no insert holds the write lock for more
+  than one batch.
+- `GET /api/range/ready/` answers from a kept verdict while the sessions'
+  slots and the slots' reset states are unchanged; a verdict older than
+  `READY_FRESH` (15 s) is still answered while one background thread reads
+  again; a change of those inputs (an open, a close, a reset) reads again in
+  that request, one at a time. A read that raised is kept too and answered as
+  that error (503 for `RangeUnavailable`), never as the last ready verdict.
+  It took 13-26 s a call, each holding a request thread. The session open
+  still reads readiness itself: it must not hand out a slot on a verdict up
+  to 15 s old.
+
+Rejected: more waitress threads (two cores; more threads run more of the same
+reads at once); a covering index on `api_detection` (the JSON parse was the
+cost: 3.43 s against 0.65 s); a plain `rule` column filled by ingest (old rows
+would need the same backfill and `ingest/elastic.py` a new field). Open: a
+session open still takes 21-52 s (readiness, the attacker's aim, the
+baseline, the defence and the Kibana space). The lesson console's step poll
+already skips while a check is out; the session page's 10 s activity poll does
+not, and is left as it is.

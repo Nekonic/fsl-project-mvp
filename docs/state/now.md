@@ -682,11 +682,15 @@ on them:
   counts matched rules, not records (WIP); F1 step 5 says the IDS is on the
   관제망 switch, the map shows only the WAF; the cr-mgmt address on every
   VM is not on the map; F3 step 1 wording; F5 step 4 check once took 26 s.
-- Branch `fix-platform-stall` (pushed, not merged; WIP, untested): the
-  platform stalled about 15 min (06:49-07:04Z) in scenario 1.3, waitress
-  queue depth up to 83, `database is locked` on writes (`api/views.py`
-  `_fire`), two scheduled attacks lost; `/api/range/ready/` takes 13-26 s and
-  a session open 21-52 s.
+- On `dev`, not deployed: the platform stall of scenario 1.3 (06:49-07:04Z,
+  waitress queue depth up to 83, `database is locked` on `_fire`, scheduled
+  attacks 6 and 7 lost). Triage groups on a stored `rule` column (3.43 s
+  to 0.65 s on 98,995 alerts, measured read-only on the live store), the
+  console skips a scenario or triage poll while its last read is out, ingest
+  commits 500 rows at a time, and `/api/range/ready/` (13-26 s a call)
+  answers from a kept verdict (`docs/DECISIONS.md` "Triage groups on a stored
+  rule column"). Migration 0033 rebuilds `api_detection` once at the next
+  start. Open: a session open still takes 21-52 s.
 - Not started (scenario walk): "실습 환경를" typo and the reset notice that
   appears only after 90 s with 시작 disabled about 1 min after ready; 3.3 says
   "두 번째 공격자" but both attacks come from 5.188.10.10; result pages count
@@ -698,7 +702,7 @@ on them:
 - Walk reports and screenshots: the scratchpad folders `walk-heat-c1`,
   `walk-heat-c2`, `walk-heat-sc` of this session (temporary).
 
-To resume: finish both branches, rebase on `dev`, `bin/verify --fast` once,
+To resume: finish `fix-walk-heat`, rebase on `dev`, `bin/verify --fast` once,
 merge to `dev`, `uv run bin/cloud up --replace`, open one session, hand the
 range to the user for review.
 
