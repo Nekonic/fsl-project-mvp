@@ -520,6 +520,12 @@ def test_opening_a_hint_records_it_and_clears_the_offer(client):
         client.post_json(f"/api/sessions/{session.pk}/scenario/hints/")
     assert client.post_json(f"/api/sessions/{session.pk}/scenario/hints/").status_code == 409
 
+def test_the_status_counts_lost_objectives_only_for_a_scenario_whose_attacks_can_take_one(client):
+    lost = {scenario: client.get(f"/api/sessions/{opened(scenario).pk}/scenario/").json()["live"]["objectives_lost"]
+            for scenario in ("1.1", "3.4")}
+
+    assert lost == {"1.1": 0, "3.4": None}, "walk: 탈취된 목표 0 stood in the strip of a scenario with no objectives"
+
 def test_the_status_counts_the_last_minute_one_alerted_request_per_marker_and_hides_the_schedule(client):
     session = opened()
     now = timezone.now()

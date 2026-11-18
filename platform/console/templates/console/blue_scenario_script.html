@@ -46,7 +46,10 @@ function stripShow() {
   field("scenario-left").textContent = minutesAndSeconds(scenarioLeft());
   field("scenario-blocked").textContent = String(scenario.live.customers_blocked_per_minute);
   field("scenario-alerts").textContent = String(scenario.live.alerted_per_minute);
-  field("scenario-lost").textContent = String(scenario.live.objectives_lost);
+  const atStake = scenario.live.objectives_lost != null;
+  field("scenario-lost-shown").classList.toggle("hidden", !atStake);
+  field("scenario-lost-shown").classList.toggle("flex", atStake);
+  field("scenario-lost").textContent = String(scenario.live.objectives_lost ?? "");
   const checking = scenario.phase === "window";
   const done = field("scenario-done");
   done.disabled = checking || scenario.phase === "closed";

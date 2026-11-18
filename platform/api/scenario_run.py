@@ -498,7 +498,8 @@ def status(session) -> dict:
             "customers_blocked_per_minute": _blocked_between(session, now - MINUTE, now + MINUTE),
             "alerted_per_minute": session.detections.filter(timestamp__gte=now - MINUTE).exclude(marker=None)
             .order_by().values("marker").distinct().count(),
-            "objectives_lost": session.objectives.count(),
+            "objectives_lost": session.objectives.count() if wargames.at_stake(session.scenario, session.course_scenario)
+            else None,
             "customers": {key: value for key, value in customers.counted(session.customer_requests.all()).items()
                           if key in ("sent", "served", "blocked")},
         },

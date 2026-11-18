@@ -105,6 +105,16 @@ def test_a_console_opened_from_the_start_button_starts_without_the_catalogue_and
     assert seen["result"]["after"] == trail(f'{CARD["id"]} {worded(CARD["title"])}'), (
         "the catalogue's answer redraws the breadcrumb with the scenario's title, and no bare kind word follows it")
 
+@pytest.mark.parametrize("lost, shown", [(0, True), (None, False)])
+def test_the_strip_shows_lost_objectives_only_where_the_scenario_has_objectives(client, lost, shown):
+    live = {**status()["live"], "objectives_lost": lost}
+    seen = open_page(client, "/blue/1/", setup=serving(status(live=live)), scenario="""
+      for (let i = 0; i < 4; i += 1) await browser.settle();
+      return !browser.element('scenario-lost-shown').classList.contains('hidden');
+    """)
+
+    assert seen["errors"] == [] and seen["result"] is shown
+
 def test_the_briefing_shows_the_full_length_until_start_and_start_begins_the_clock_once(client):
     waiting = status(started=False, time_left=CARD["minutes"] * 60)
     seen = open_page(client, "/blue/1/", setup=serving(waiting), scenario="""
