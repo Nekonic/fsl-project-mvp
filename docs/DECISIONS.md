@@ -9690,3 +9690,53 @@ session open still takes 21-52 s (readiness, the attacker's aim, the
 baseline, the defence and the Kibana space). The lesson console's step poll
 already skips while a check is out; the session page's 10 s activity poll does
 not, and is left as it is.
+
+
+## 2026-11-18 — The first Heat walk's findings: what a count counts, the final check apart, Start per wargame
+
+The answer-blind walk of the Heat range (lessons c1, c2; scenarios 3.1-3.4,
+1.1, 1.2) reported the following; each is fixed at its cause.
+
+- **A result row counts alert records, not matched rules.** One XSS request
+  with one WAF record read 경보 5건 (five CRS rules on the record) and a
+  sqlmap run of 2,065 records read 8,581. The lessons teach the learner to
+  count Kibana records, so `per_case[].alerts` is the number of distinct log
+  records among the case's detections (a WAF detection id is the record id
+  and its message position), shown as 경보 기록 N건; `detections` keeps the
+  rule-match count for the API. The customer row's number is alerted
+  requests and says so (경보가 난 요청 N건).
+- **The final check is reported apart from what came before it.** 3.1, 3.3
+  and 3.4 are built so the first run is missed before the learner's change;
+  the result page read 공격 2건 중 1건 정탐 with that miss in red. The score
+  gives `per_case[].in_window` (the case's schedule entry falls in a judged
+  final check, the debrief's own rule), `final_checks` and
+  `customers.final_check`; the page writes the final check and the time
+  before it as two sentences and greys a miss or a customer alert before the
+  check. TP/FP/FN/TN are unchanged: the early miss is still FN.
+- **Benign rows on every scenario, and the debrief counts alerts too.** 3.2's
+  debrief said 0건 차단 while its result page listed 42 customer requests the
+  IDS alerted on (all while the learner was writing the rule, none in the
+  final check); 1.1 and 1.2 showed no customer row though the WAF blocked
+  customer requests. The debrief now counts the customer requests that drew
+  an alert, per final check, with a customer row in its before-and-after
+  table, and every scenario's result table carries the customer rows.
+- **Start says why at once and follows the pressed wargame's stack.** The
+  readiness verdict names any free ready stack; with a corp stack ready, a
+  board open refused for a reset said only 시작을 다시 누르세요 and the reset
+  notice came about 90 s later, after the 13-26 s readiness reads. A 409 for
+  a stack being reset or rebuilt carries `settling: true`, and the home page
+  enables each Start from the verdict's `slots` for its own wargame.
+- **3.3's second attacker has its own address.** The brief and card name a
+  second attacker; both runs wore `ru` (5.188.10.10). The tamper run now
+  comes from `us`.
+- **The map stays the defended network.** Every slot VM has a control port on
+  `cr-mgmt` (10.31.0.0/24) that `hostname -I` lists first. It is the
+  platform's network, not the company's, so the map does not draw it (the
+  2026-10-14 ruling: only the defended network); the lesson reference says
+  that Kali's and the WAF's shells show one address the map leaves out and
+  what it is. Neutron confirms the IDS has no 관제망 port: its two legs bridge
+  the WAF to the web segment, and its logs reach the log server on the same
+  VM, which is what F1's step 5 now says.
+- Also: F3's first step asks for a word not yet searched in this session;
+  the strip hides 탈취된 목표 where nothing is at stake (3.2, 3.4); 1.3's alert
+  list header asks for the attack type; two particle typos.
