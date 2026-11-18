@@ -2301,11 +2301,14 @@ def _ingest(session, within=None, since=None):
     documents, truncated = _fetched(_session_index(session) or settings.ELASTIC_INDEX, start, end,
                                     newest_first=within is not None)
 
-    held = dict(session.detections.values_list("detection_id", "marker"))
+    held = {detection_id: (marker, src_ip) for detection_id, marker, src_ip
+            in session.detections.values_list("detection_id", "marker", "src_ip")}
     known = set(held)
-    unmarked = {detection_id for detection_id, marker in held.items() if marker is None}
+    unmarked = {detection_id for detection_id, (marker, _) in held.items() if marker is None}
     stale = 0
     rows = []
+
+    _, hosts = _segments(session, recent=True)
 
     alerts = elastic.normalize_all(documents)
     for alert in alerts:
@@ -2313,11 +2316,12 @@ def _ingest(session, within=None, since=None):
             Detection.objects.filter(
                 session=session, detection_id=alert["detection_id"], marker=None
             ).update(marker=alert["marker"])
+        if _credited_since(alert, held.get(alert["detection_id"])):
+            Detection.objects.filter(session=session, detection_id=alert["detection_id"]).update(
+                src_ip=alert["src_ip"], src_host=hosts.get(alert["src_ip"], ""))
 
     productive = {a["detection_id"].split(":")[0] for a in alerts}
     skipped = sum(1 for doc_id, _ in documents if doc_id not in productive)
-
-    _, hosts = _segments(session, recent=True)
 
     for alert in alerts:
         if alert["detection_id"] in known or alert["timestamp"] is None:
@@ -2345,6 +2349,10 @@ def _ingest(session, within=None, since=None):
         session.read_of = [read, total]
         session.save(update_fields=["read_of"])
     return reply
+
+def _credited_since(alert, stored) -> bool:
+    return (stored is not None and alert["src_ip"] != stored[1]
+            and alert["src_ip"] != (alert.get("raw") or {}).get("src_ip"))
 
 @require_http_methods(["GET"])
 def session_detections(request, session_id):

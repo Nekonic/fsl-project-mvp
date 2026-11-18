@@ -112,3 +112,24 @@ def test_a_session_whose_customers_sent_requests_is_not_told_it_sent_no_normal_r
 
     assert ["score.warning.no_benign"] in alone
     assert ["score.warning.no_benign"] not in served
+
+def waf_alert(**overrides):
+    return ("es-alert", {
+        "event": {"module": "suricata"}, "event_type": "alert", "flow_id": 7, "tx_id": 0,
+        "timestamp": (T0 + timedelta(seconds=1)).isoformat(), "src_ip": "10.30.128.247",
+        "alert": {"signature": "SQLi", "severity": 1}, **overrides,
+    })
+
+def forwarded_for(client_ip):
+    return ("es-http", {"event": {"module": "suricata"}, "event_type": "http", "flow_id": 7, "tx_id": 0,
+                        "src_ip": "10.30.128.247", "xff": client_ip})
+
+def test_an_alert_ingested_before_its_http_record_is_credited_to_the_client_once_the_record_arrives(client):
+    session_id = open_session(client)
+
+    ingest(client, session_id, [waf_alert()])
+    ingest(client, session_id, [waf_alert(), forwarded_for("5.188.10.10")])
+    ingest(client, session_id, [waf_alert()])
+
+    [detection] = client.get(f"/api/sessions/{session_id}/detections/").json()
+    assert detection["src_ip"] == "5.188.10.10"
