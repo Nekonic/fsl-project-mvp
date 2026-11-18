@@ -61,6 +61,7 @@ INTERNET = "internet"
 SERVICE = "dmz"
 SWITCH = "switch:{zone}"
 SENSOR = "sensor:{service}"
+INLINE_SENSOR = "ids"
 CAPTIONS = ("internet", "dmz", "web", "database", "mgmt")
 
 @dataclass(frozen=True)
@@ -146,8 +147,15 @@ def hosts(learner) -> list[str]:
     return sorted({shown for names in learner.hosts.values() for shown in names
                    if shown != CUSTOMERS and shown not in learner.hidden})
 
-def route(learner, site: str, start: str = ATTACKER) -> list[str]:
-    return list(dict.fromkeys([start, *(learner.roles[role] for role in TRANSIT if role in learner.roles), site]))
+def path_choices(learner) -> list[str]:
+    return sorted({*hosts(learner), *([INLINE_SENSOR] if "sensor" in learner.roles else [])})
+
+def route(learner, site: str, start: str = ATTACKER, wiring=None) -> list[str]:
+    passed = [learner.roles[role] for role in TRANSIT if role in learner.roles]
+    gateway = learner.roles.get("gateway")
+    if wiring is not None and gateway in passed and _sensed(learner, wiring)[1]:
+        passed.insert(passed.index(gateway) + 1, INLINE_SENSOR)
+    return list(dict.fromkeys([start, *passed, site]))
 
 def link_heads(learner, found) -> dict[tuple[str, str], object]:
     held: dict[tuple[str, str], list] = {}

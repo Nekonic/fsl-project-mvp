@@ -832,7 +832,11 @@ def _range_fact(session, check, taught):
         return [str(points)] if points is not None else []
     drawn = maps.learner(session.scenario)
     if of == "path":
-        return topology.route(drawn, wargames.host(session.scenario), check.get("from", topology.ATTACKER))
+        try:
+            wiring = _wired(session)
+        except RangeUnavailable:
+            return []
+        return topology.route(drawn, wargames.host(session.scenario), check.get("from", topology.ATTACKER), wiring)
     found = _map_found(session)
     if of == "subnet":
         return topology.subnet(drawn, found, check["host"], check.get("zone"))
@@ -2031,7 +2035,7 @@ def _shown_step(session, step, taught=None):
 def _shown_check(session, taught, check):
     shown = {"kind": check["kind"], **{key: check[key] for key in SHOWN_CHECK if key in check}}
     if check.get("form") == "order" and session:
-        shown["options"] = topology.hosts(maps.learner(session.scenario))
+        shown["options"] = topology.path_choices(maps.learner(session.scenario))
     about = check.get("about")
     match = (check.get("match") or (check.get("benign") or {}).get("sent")
              or (_taught_check(taught, about).get("match") if taught and isinstance(about, str) else None))

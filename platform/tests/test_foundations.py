@@ -886,10 +886,14 @@ def test_the_path_step_teaches_reading_the_map_and_names_the_route_only_after_a_
     assert not any(device in coach for device in route)
     assert all(device in done for device in route)
 
-def test_the_ids_alert_s_explanation_places_the_ids_in_the_management_network_watching_the_web_segment():
-    explained = tables()["lesson.xss.ok.fired"]
+def test_no_lesson_text_says_the_ids_gets_its_traffic_by_port_mirroring_or_stands_on_the_management_network():
+    worded = tables()
+    said = {key: line for key, line in worded.items() if key.startswith("lesson.") and "IDS" in line}
 
-    assert tables()["topology.zone.mgmt"] in explained and tables()["topology.zone.web"] in explained
+    assert said and not [key for key, line in said.items() if "미러링" in line or "복사해" in line], (
+        "the IDS is a bridge between the WAF and the web segment, not a mirror port")
+    assert "IDS와 WAF는 관제망" not in worded["lesson.map.coach.log_host"]
+    assert "웹방화벽과 board.com 사이" in worded["lesson.xss.ok.fired"] and "board.com" in worded["lesson.xss.ok.fired"]
 
 def test_the_sqli_error_status_is_read_from_the_request_s_row_in_devtools(client):
     session = opened("f5")

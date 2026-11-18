@@ -96,6 +96,14 @@ def test_the_ids_is_read_with_its_two_legs_and_none_of_their_dummy_addresses():
     assert "10.30.128.251" not in repr(topology.graph(learner(), wires))
 
 
+def test_the_route_question_passes_the_ids_the_map_draws_between_the_waf_and_the_web_segment():
+    drawn = learner()
+
+    assert topology.route(drawn, "board.com", wiring=wired()) == ["kali", "router", "waf", "ids", "board.com"], (
+        "walk: the map drew the IDS on the line from the WAF to board.com and the path question left it out")
+    assert "ids" in topology.path_choices(drawn)
+
+
 def test_a_slot_s_wiring_is_read_from_neutron_over_http(monkeypatch):
     cloud = fakecloud.Cloud()
     fakecloud.serving(cloud)
