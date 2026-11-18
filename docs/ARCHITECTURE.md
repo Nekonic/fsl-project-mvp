@@ -388,7 +388,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
   - 같은 인터페이스에 주소가 더 있으면 "외 N개"를 붙임(`topology.extra_addresses`가 선과 주소 노드의 `more`로 실음, `map.html`의 `named`). kali 인터넷 구간 포트의 출발지·고객 주소가 그 예
   - 장비 이름은 아이콘 아래. `strings.html`의 `topology.name.<이름>`이 있으면 그것을 씀. 라우터와 로그 서버는 한국어 역할 이름, Kali, WAF, IDS는 고유 이름 그대로
   - 포트, 범례는 그리지 않음
-- 아이콘: GNS3 affinity 글리프를 정사각형 틀에 넣은 `host-*.svg`와 스위치 아이콘. 아이콘은 `console/static/map/symbols/`에 있음. 출처와 라이선스는 한 단계 위 `console/static/map/`의 `SOURCES`, Kali 드래곤 로고의 상표 고지는 `symbols/host-kali.txt`
+- 아이콘: GNS3 affinity 글리프를 정사각형 틀에 넣은 `host-*.svg`와 스위치 아이콘. 아이콘은 `console/static/map/symbols/`에 있음. 출처와 라이선스는 한 단계 위 `console/static/map/`의 `SOURCES`, Kali 드래곤 로고의 출처는 `symbols/host-kali.txt`
 - 읽기 전용: `autoungrabify`, `autounselectify`, 상자 선택 끔. 이동과 확대·축소만 됨
 - 아이콘은 cytoscape.js를 읽기 전에 요청하고, 다 받거나 5초가 지난 뒤에 그림. 콘솔은 `drawn`을 받을 때 창을 보여 주므로 아이콘 없는 첫 그림이 보이지 않음. 토폴로지 API도 cytoscape.js를 읽기 전에 요청함
 - 콘솔과의 메시지: 첫 맞춤 뒤 `{map: "drawn"}`, 이후 `{fit}`를 받아 맞출 때마다 `{map: "fitted"}`. `{locate: {node|zone|label}}`에는 사각형, 영역 사각형(`zones`), 글자 사각형(`text`)으로 답함. 같은 origin의 메시지만 받음
@@ -877,7 +877,6 @@ WAF 상태 스냅숏:
 - 채점 입력: `ended_at`, 힌트 수, 최종 점검별 판정. 탐지 기록·케이스·목표는 각각 마지막 id와 행 수. 탐지 기록은 마커가 있는 행 수도 포함
 - 목록을 그릴 때는 세션마다 집계값 세 개만 읽음. 늦은 수집처럼 입력이 바뀐 세션만 다시 채점
 - 시작이 거부되면 누른 버튼 아래에 알림. 훈련 환경이 가득 차 409면 "열린 세션 종료"에서 열린 세션을 나열하고 하나씩 `ingest/` 후 `close/`로 닫음. `max_sessions`는 `GET /api/range/ready/`로 받음. 학습자가 이미 세션을 가지고 있어 409(`open_session`)면 그 세션으로 가는 링크를 보여 줌
-- 하단: Kali 상표 고지(`topology.trademark`)
 - 훈련 환경 관리 항목(경보 수집 확인, 열린 세션 수, 훈련 환경 상태, 대상 시스템별 개수)은 `?operator`일 때만 보임
 
 **세션**(`/session/<id>/`):

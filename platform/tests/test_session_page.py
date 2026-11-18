@@ -447,12 +447,6 @@ def test_one_end_session_confirmation_is_said_the_same_on_the_session_page_and_i
     assert page["errors"] == [] and console["errors"] == []
     assert page["result"] == console["result"] == {"said": worded("session.close.consequence"), "shown": True}
 
-def test_the_kali_trademark_notice_is_in_the_home_page_footer_and_not_under_the_map(client):
-    console = TEMPLATES
-
-    assert "topology.trademark" not in (console / "blue_topology.html").read_text()
-    assert 'data-t="topology.trademark"' in client.get("/").content.decode()
-
 def test_starting_or_restarting_a_lesson_opens_its_console_not_a_page_holding_one_button(client):
     restart = open_page(client, "/session/1/", setup=COURSE, scenario="""
       await browser.click('restart');

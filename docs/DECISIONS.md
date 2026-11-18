@@ -9629,3 +9629,8 @@ Rejected: raising the busy timeout (the client's 30 s sign-in timeout would
 still lapse); logging the lock holder first (the cause is visible without it,
 and a reader cannot be blocked by a writer in WAL mode whichever writer it is).
 
+
+## 2026-11-18 — The home page drops the Kali trademark line; debrief labels lose their prefixes
+
+- **The trademark footer goes, by the user's ruling.** The user asked for "KALI LINUX™는 OffSec의 상표입니다." to be removed from the console. The footer in `main.html`, the `topology.trademark` string and the test that pinned the footer are gone. The dragon's source record stays in `symbols/host-kali.txt`. This sets aside the 2026-10-15 entry's reading of OffSec's policy ("When using an OffSec trademark in written materials, you should include ... a trademark of OffSec") for the console page; the map still uses the unmodified press-pack logo.
+- **Debrief labels say the thing, not a frame around it.** "내 정·오탐 판단" is "정·오탐 판단"; "근거: 이 세션에서 실행된 공격의 로그" is "공격 로그"; the five `lesson.fix.*` lines drop "적용한 조치:" and say what was changed. The user called the old wording slop.
