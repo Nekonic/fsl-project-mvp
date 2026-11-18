@@ -9559,3 +9559,31 @@ Neutron tag `cr.slot=N`, its Kibana space `soc-logs-N` and its log index
 `logs-N-*`, which a session borrows for its lifetime. Earlier entries in this
 file keep the word they were written with. Rejected: renaming the code
 identifiers (a migration, an API change and new stack names for wording only).
+
+## 2026-11-18 — An IDS alert is credited to its X-Forwarded-For client when its http record arrives after it
+
+The third full verify on the Heat range failed `test_map.py`'s check that
+every IDS alert behind the WAF is credited to the client X-Forwarded-For
+names: Suricata alert `t6u77KEBttGyDep4igCN` (flow 378853086090056, tx 0,
+03:37:37.767Z, `logs-3-sensors`) was stored with the WAF's 10.30.128.247,
+while its transaction's http record carries `xff` 5.188.10.10. Both are in
+Elasticsearch with the same `@timestamp`, but the alert's generated id is one
+step before the http record's and the ModSecurity record's (the two
+transactions either side have the alert and its http record under one id
+step), so they were indexed apart; an ingest that read the index between the
+two refreshes stored the alert uncredited **[unverified]**: the platform does
+not log its ingest calls. Ingest skipped every detection it already held, so
+the credit was never made. `_ingest` now moves a held detection's `src_ip` and
+`src_host` to the client a later fetch credits from the transaction's http
+record, only when the credited address differs from both the stored one and
+the alert's own `src_ip`, so an alert seen again without its http record keeps
+the client. Rejected: reading `alert.xff` in `ingest/elastic.py` (Suricata
+raises a URI alert before it reads the headers, so it is not always there,
+and `core_loc` is at its ceiling); waiting before the first ingest of an
+alert (every score read would wait).
+
+The same run confirms the control-port egress entry above: Kali, the WAF and
+board each time out on 169.254.169.254:80 (`bash -c 'exec
+3<>/dev/tcp/169.254.169.254/80'`, exit 124, on `cr-slot-3`) and
+`test_range_isolation.py` passed; `cr-mgmt` and `cr-senders` hold only the
+two egress rules (IPv4 to `cr-reach`, udp 67).

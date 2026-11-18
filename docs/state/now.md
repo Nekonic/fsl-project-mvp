@@ -6,35 +6,46 @@ problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
 log`. Numbers are in `metrics.json` (`bin/measure`).
 
 Updated: 2026-11-18. The live cloud runs the Heat range from `dev`: the
-platform VM and a pool of four slot stacks (`cr-slot-1`..`4`, three board and
-one corp, sixteen `dba.small` VMs); the range host `cr-range` is deleted.
-The first full `bin/verify` on it, before the readiness fix, was stopped
-after 12 min: acceptance idle 4 passed, the corp group 3 errors (its opens
-refused while slots were retargeted to corp), `test_concurrent_sessions.py`
-3 errors (the ssh multiplexer, below), and 3 failures in the
-`test_board_exfil.py` group whose detail the stop cut off; its log is
-`~/.cache/fsl-work/verify-heat-run1.tgz`. The second, on the readiness fix
-(`~/.cache/fsl-work/verify-heat.log`): acceptance 71 passed, 5 failed, 6
-errors, 1 skipped in 2153 s across 12 processes; unit and API 869 + 1059;
-ratchet no regression. Its red, each root-caused, and fixed on `dev` but not
-yet run live (`docs/DECISIONS.md` "A slot node's control port starts nothing
-but DHCP and traffic to the platform"): Kali, the WAF and board reach
-169.254.169.254:80 (`test_range_isolation.py`, three) through DHCP's route via
-10.31.0.1, the OVN metadata port on `cr-mgmt`, because `cr-mgmt` and
-`cr-senders` kept Neutron's open egress, now confined to `cr-reach` and DHCP
-at the next `bin/cloud up`; the session opens that answered 503
-(`test_concurrent_sessions.py` three errors, and `test_board_exfil.py`'s sort
-test, whose `mux_client_request_session ... Broken pipe` to `cr-waf` at
-10.31.0.31 came at about 23:14:04Z while slot 3's and slot 4's stacks were
-deleted at 23:13:49Z and 23:14:05Z) are the retarget race fixed in "A slot is
-retargeted or opened on only while no session holds it"; `test_topology.py`'s
-map test (KeyError `address`) and course c1 in `test_lesson.py` (three errors,
-StopIteration) read the Docker range's map: the IDS's links carry no address
-and the WAF reaches web-inner through the inline IDS, and the zones are named
-`dmz` and `web-inner`, not `estate` and `web`; both tests now walk through the
-sensor and find zones by caption, checked against slot 1's live map. `bin/verify
---fast` on `dev`: unit and API 1931 passed in four processes, ratchet no
-regression (`core_loc` 604).
+platform VM and a pool of four range stacks (`cr-slot-1`..`4`, `compute.pool`
+three board and one corp, sixteen `dba.small` VMs). `uv run bin/cloud up
+--replace` from `dev` (store backed up first, `db-20261118T030402Z.sqlite3`
+and `db-20261118T030433Z.sqlite3`, both in `~/.cache/fsl-work/backup-safe/`):
+the platform's API answered 9 min 37 s after the start (8 min 50 s after the
+stack create), "the range is ready" at 14 min 0 s; `cr-slot-1`..`3` stood
+through, `cr-slot-4` was created again; the fabric left `cr-mgmt` and
+`cr-senders` two egress rules each (IPv4 to `cr-reach`, udp 67). Live checks
+(sessions 2803 and 2804 opened at once, 8.2 s and 9.9 s): from Kali `curl -m5
+http://169.254.169.254/` timed out (curl 28) and `exec
+3<>/dev/tcp/169.254.169.254/80` timed out from Kali, the WAF and board
+(exit 124); `ping -c1 board.com` answered from 121.134.88.42 (5.2 ms) and
+`curl http://board.com/` gave 200 (from 121.134.88.42 with `--noproxy`; the
+learner shell sends HTTP through Kali's proxy on 127.0.0.1:8081);
+`PUT /api/sessions/2804/waf/` (paranoia 2) answered 200 in 4.3 s beside
+session 2803.
+Full `bin/verify` run 3 (`~/.cache/fsl-work/verify-heat3.log`): acceptance
+76 passed, 1 failed, 6 errors in 1899 s across 12 processes; unit and API
+867 + 1064; ratchet no regression. Its red, fixed on `dev`: `test_corp_authz.py`
+(three) and course c2 in `test_lesson.py` (three) had opens refused 409 "the
+range is not ready: ... cr-target is SETTING_UP" while every stack was held or
+settling (the resets of the live-check sessions were redone after verify's
+platform restart: `cr-slot-1` and `-2` deleted at 03:23:23Z and built again),
+and the suite did not count that refusal as a want of room (it now waits it
+out); `test_map.py`: an IDS alert stored with the WAF's address because its
+http record was indexed after it (`docs/DECISIONS.md` "An IDS alert is
+credited to its X-Forwarded-For client when its http record arrives after
+it"). Those three modules again: 10 passed, 1 skipped (c2 does not start with
+F1) in 522 s. The final full run (`~/.cache/fsl-work/verify-heat4.log`):
+acceptance 69 passed, 0 failed, 13 errors, 1 skipped in 1732 s across 12
+processes; unit and API 960 + 972; ratchet no regression (`core_loc` 604).
+Its 13 errors are one fixture: the red team run (`test_acceptance.py`,
+`test_board.py`, `test_strategy_honesty.py`, `test_topology.py`) failed at
+`redteam/signin.py`'s sign-in, a 30 s read timeout at about 04:35:20Z, while
+the platform's SQLite store was locked: `database is locked` after the 30 s
+busy timeout on the scenario tick at 04:35:22Z and on two
+`/api/range/ready/` reads at 04:35:45Z; no session was open then and two
+resets ran. What held the lock is **[unverified]**: the platform logs no
+request and no lock holder. Those four modules run again once: 14 passed in 153
+s (Next item 1).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
 Internet.
@@ -652,17 +663,24 @@ Nothing. Gate 2 is only for `main` (Next, item 7).
 
 ## Next, in order
 
-1. The rest of P8 on the live Heat range: the full `bin/verify` with
-   acceptance green (the second run above); the WAF tuning 503 above (a
-   stale or racing `ControlMaster` on `/tmp/cr-ssh-%C` after a slot VM is
-   replaced at the same `cr-mgmt` address is one thing to check
-   **[unverified]**); an answer-blind walk. Unknowns still to measure: how
-   long a closed session's slot takes to be READY again **[unverified]**
-   (two retargeted slots went from stack create to READY in about 4 min);
-   RAM per slot on com01 **[unverified]**.
-   Seen live: the platform's `cr-mgmt` port kept 10.31.0.158 across five
-   replaces, and the last platform-only replace kept the two slots whose
-   template and wargame were unchanged (slots 3 and 4).
+1. The rest of P8 on the live Heat range: the store lock that failed the final
+   run's red team sign-in (above): find what holds SQLite's write lock for
+   30 s or more with no session open (log statements over a second, or the
+   holder's stack, then fix it); the holder is **[unverified]**. The four
+   modules it errored, run again once: 14 passed in 153 s
+   (`~/.cache/fsl-work/rerun-heat4.log`); it did not recur. Then an
+   answer-blind walk.
+   Measured: a closed session's stack is READY again about 4-4.5 min after
+   the close (`cr-slot-1` closed 04:11:47Z, READY by 04:16:19Z; `cr-slot-3`,
+   retargeted to corp, closed 04:12:10Z, READY by 04:16:19Z); stack 2 after
+   `POST /api/range/slot/rebuild/?slot=2` in 3 min. Seen once: `cr-slot-2`'s
+   Kali (created 04:04:53Z) booted with its config drive attached but ran no
+   cloud-init unit (its console shows none; a READY Kali's shows all five and
+   `slot-boot`), so its control port never answered SSH and the reset waited
+   on SETTING_UP for 17 min until that rebuild; why cloud-init did not start
+   **[unverified]**. RAM per stack on com01 **[unverified]**.
+   Seen live: the platform's `cr-mgmt` port kept 10.31.0.158 across six
+   replaces.
 2. The stack digest covers the template, images and flavors, not the LAN
    group ids: a change to `_lan_rules` alone makes a new `cr-lan-` group for
    new stacks and leaves standing slots on the old one until they are

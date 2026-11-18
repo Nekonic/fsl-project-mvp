@@ -2009,19 +2009,30 @@ binary log via a substrate runner, proven end to end against the live stack.
       `cr-range` and filled the pool of four stacks; four faults fixed on the
       way (`docs/DECISIONS.md` "The first live pool fill").
 - [ ] P8's full `bin/verify` green on the live Heat range, and a walk; then
-      gate 2. Run 2: acceptance 71 passed, 5 failed, 6 errors, 1 skipped;
-      every red root-caused and fixed on `dev` (the retarget race, the slot
-      control ports' metadata egress, two acceptance tests reading the Docker
-      range's map), not yet run live (`docs/state/now.md`).
-- [ ] Measure on the cloud: how long a closed session's slot takes to be
-      READY again, so the pool's refill time **[unverified]**; RAM per slot
-      of four VMs on com01 **[unverified]**. Measured: the Kali VM boots and
-      reports ready within a slot's 8 min 50 s with the images cached;
-      `dba.small` holds the target's Docker and MySQL (0.8-0.9 GB of 2 GB in
-      use).
+      gate 2. Run 3, after the control-port egress fix and the retarget
+      fix went live: acceptance 76 passed, 1 failed, 6 errors; its red fixed
+      on `dev` (the suite waits out a refusal naming a stack still setting
+      up; an IDS alert is credited to its X-Forwarded-For client when its
+      http record arrives after it) and those modules passed again. The
+      final run: acceptance 69 passed, 13 errors (one red team fixture whose
+      sign-in timed out while the SQLite store was locked for 30 s or more;
+      the lock holder **[unverified]**; those four modules run again once:
+      14 passed), unit and API 1932, ratchet no regression
+      (`docs/state/now.md`).
+- [x] Learner shells reach no metadata service: Kali, the WAF and board time
+      out on 169.254.169.254:80 since `cr-mgmt` and `cr-senders` keep only
+      egress to `cr-reach` and DHCP (`test_range_isolation.py` passed).
+- [ ] Measure on the cloud: RAM per stack of four VMs on com01
+      **[unverified]**. Measured: a closed session's stack is READY again
+      about 4-4.5 min after the close; the Kali VM boots and reports ready
+      within a stack's 8 min 50 s with the images cached; `dba.small` holds
+      the target's Docker and MySQL (0.8-0.9 GB of 2 GB in use). Seen once: a
+      Kali VM that ran no cloud-init and stayed SETTING_UP until
+      `POST /api/range/slot/rebuild/`; the cause **[unverified]**.
 - [x] The WAF tuning call answered 503 in `test_concurrent_sessions.py`:
       the retarget race, fixed on `dev` (`docs/DECISIONS.md` "A slot is
-      retargeted or opened on only while no session holds it").
+      retargeted or opened on only while no session holds it"); passed live
+      in run 3 and the final run.
 - [ ] Baking the role images is by hand (`docs/OPENSTACK.md` §3.6); no repo
       tool builds them.
 
