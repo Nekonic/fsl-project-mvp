@@ -16,7 +16,7 @@
 훈련 환경은 OpenStack에서만 돌립니다. docker substrate는 2026-10-21에 삭제했습니다(`docs/DECISIONS.md`). Docker는 계속 씁니다.
 
 - 플랫폼 VM: 플랫폼 서비스
-- 슬롯 VM: 슬롯마다 Heat 스택 하나에 VM 네 대(kali, waf, infra, target). target VM이 워게임 컨테이너를 돌림
+- 훈련 환경 VM: 세션마다 Heat 스택 하나에 VM 네 대(kali, waf, infra, target). target VM이 워게임 컨테이너를 돌림
 
 로컬 개발 환경에서는 유닛 테스트만 돌립니다. OpenStack 구성은 마지막 "OpenStack" 절에 있고, 구축한 부분과 계획 단계인 부분을 나눠 적었습니다(`docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`).
 
@@ -31,29 +31,30 @@
 - **substrate**: 훈련 환경을 올리는 기반. `CR_SUBSTRATE`로 고르며 OpenStack만 지원
 - **`dmz`**: 라우터(infra의 `lan`)와 WAF 앞단이 있는 DMZ
 - **`web-outer`, `web-inner`**: WAF 뒷단과 대상 시스템 사이의 웹 서버 구간. infra의 IDS 브리지가 둘을 잇고, 라우터에서 가는 경로가 없음
-- **슬롯**: Heat 스택 `cr-slot-<n>` 하나. 세션 하나가 슬롯 하나를 씀
+- **스택**: 세션 하나가 쓰는 Heat 스택 `cr-slot-N`. VM 네 대와 LAN 다섯 개. 미리 띄워 둔 스택을 세션 시작 때 배정하고, 세션이 끝나면 지우고 새로 만듦
+- **스택 번호 N**: `cr-slot-N`, `soc-logs-N`, `logs-N-*`의 N. 다시 쓰는 번호이고, 이 번호로 스택 이름과 Neutron 태그 `cr.slot=N`(플랫폼이 그 스택의 포트와 주소를 찾는 태그), Kibana space `soc-logs-N`, 로그 인덱스 `logs-N-*`이 정해짐. 세션은 시작할 때 번호 하나를 받아 끝날 때까지 씀. 코드에서는 이 번호를 `slot`이라 부름(`Session.slot`, `/api/range/slot/`, `?slot=N`, `/etc/slot.env`)
 - **방어 설정**(`posture`): 세션 시작 시점의 WAF 설정과 IDS 룰 파일. 워게임이 `defense:` 맵에 선언하고 세션은 그중 하나로 시작
 - **코치**(`coach`): 레슨 단계가 다루는 화면 요소에 원을 두르고 한 줄 안내를 붙이는 기능
 - **격리 경계**: 관심사 하나를 파일 하나에서만 다루는 규칙. 목록은 "격리 경계" 절
 - **플랫폼 DB**: 플랫폼의 SQLite DB `/data/db.sqlite3`
 - **유닛**(`unit`): 단계 엔진이 실행하는 기초 레슨이나 시나리오. 본문에서는 주로 "레슨"
 - **박스**: 역할 하나를 맡는 VM이나 컨테이너. 예: 공격 박스(Kali VM)
-- **역할 이미지**: 슬롯 VM이 부팅하는 Glance 이미지. 이름은 `compute.images.<role>`, 기본값 `cr-<role>-bake1`. `deploy/roles/<role>/install.sh`로 구움
-- **풀**(pool): 워게임별로 미리 띄워 둔 슬롯. 크기는 `cloud.yaml`의 `compute.pool`
+- **역할 이미지**: 훈련 환경 VM이 부팅하는 Glance 이미지. 이름은 `compute.images.<role>`, 기본값 `cr-<role>-bake1`. `deploy/roles/<role>/install.sh`로 구움
+- **풀**(pool): 워게임별로 미리 띄워 둔 스택. 워게임별 스택 수는 `cloud.yaml`의 `compute.pool`
 
 ## 훈련 환경
 
 플랫폼 VM은 컨트롤 플레인 `compose.yaml`(프로젝트 `cr`)을 돌립니다. 이 프로젝트는 항상 하나만 떠 있습니다. 서비스는 플랫폼, Elasticsearch, Kibana, `collector` 4개이고 모두 `mgmt` 네트워크에 붙습니다. `bin/measure`는 이 파일로 서비스 수를 계산합니다.
 
-훈련 환경은 슬롯마다 Heat 스택 `cr-slot-<n>` 하나로 띄웁니다("OpenStack" 절). 슬롯은 워게임별 풀로 미리 띄워 둡니다(KYPO의 sandbox pool과 같은 방식).
+훈련 환경은 세션마다 Heat 스택 `cr-slot-N` 하나입니다("OpenStack" 절). 스택은 워게임별 풀에 미리 띄워 둡니다(KYPO의 sandbox pool과 같은 방식).
 
 세션을 열 때(`POST /api/sessions/`) 스택을 새로 띄우지 않습니다. 하는 일:
 
-- 그 워게임을 돌리는 준비된 빈 슬롯 중 첫 번째에 세션 할당
+- 그 워게임을 돌리는 준비된 빈 스택 중 첫 번째를 세션에 배정
 - 센서에 룰 적재, 세션 defense에 맞는 WAF 설정 작성
 - baseline 읽기. baseline은 채점 때 비교 기준이 되는 대상 시스템 데이터 스냅숏
 
-세션은 슬롯마다 하나씩 동시에 돕니다. `max_sessions`는 풀의 슬롯 수 합계와 같습니다. 그보다 많이 열면 409를 반환합니다. 세션을 닫으면 그 슬롯의 스택만 지우고 새로 만듭니다.
+동시에 열 수 있는 세션 수(`max_sessions`)는 풀의 스택 수 합계입니다. 그보다 많이 열면 409를 반환합니다. 세션을 닫으면 그 세션의 스택만 지우고 새로 만듭니다.
 
 닫힌 세션은 플랫폼 DB에 `CR_RETAIN_CLOSED_MINUTES`분 동안 남깁니다. 기본값은 60이고 `compose.yaml`에서 정합니다.
 
@@ -63,12 +64,12 @@
 - 잠금이 걸려 있으면 `database is locked`로 바로 실패하지 않고 busy timeout 30초까지 기다림
 - `bin/backup`: `VACUUM INTO`로 플랫폼 DB 스냅숏을 만들고 최근 `--keep`개(기본 1)만 남김. `bin/platform-rebuild`와 `bin/cloud down`은 `cloud.yaml`의 `backups: {keep}` 값을 씀
 
-워게임은 슬롯의 target VM에서 컨테이너로 돕니다. 이미지는 target 이미지를 구울 때 GHCR에서 받아 둔 것입니다.
+워게임은 세션 스택의 target VM에서 컨테이너로 돕니다. 이미지는 target 이미지를 구울 때 GHCR에서 받아 둔 것입니다.
 
 - 준비 상태 점검과 baseline 읽기는 board 컨테이너 안에서 실행. `board` 역할 runner(target VM에 ssh한 뒤 `sudo docker exec board`)를 씀
 - `loot.ground_truth`는 컨테이너 안에서 `127.0.0.1`의 `BOARD_API_URL` 포트로 요청. board 포트는 target VM의 `web-inner` 주소에만 publish
 
-워게임마다 `wargames/` 아래에 폴더가 있습니다. target VM은 그 폴더의 `compose.yaml`을 VM용으로 렌더링한 파일(`deploy/roles/target/render.py`)을 실행하고, 슬롯 구조는 같은 폴더의 `topology.yaml`이 정합니다.
+워게임마다 `wargames/` 아래에 폴더가 있습니다. target VM은 그 폴더의 `compose.yaml`을 VM용으로 렌더링한 파일(`deploy/roles/target/render.py`)을 실행하고, 스택 구조는 같은 폴더의 `topology.yaml`이 정합니다.
 
 - `board`: Django, MySQL. `objective_model: loot_verified`
 - `corp`: WordPress, MySQL. `objective_model: effect_observed`
@@ -83,21 +84,21 @@
 이미지:
 
 - 앱 이미지(platform, board, corp, corp-db)는 CI(`.github/workflows/images.yml`)에서 빌드해 GHCR에 올림
-- 슬롯 VM은 역할 이미지 네 개로 부팅: 기본값 `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1`(`cloud.yaml`의 `compute.images.<role>`). 이 클라우드의 WAF는 `cr-waf-bake2`. 이미지마다 `deploy/roles/<role>/install.sh`를 인터넷이 되는 빌더 VM에서 root로 한 번 돌리고 Nova 스냅숏으로 Glance에 올림. 절차는 `docs/OPENSTACK.md`
-- `install.sh`는 여러 번 돌려도 결과가 같고, 마지막에 cloud-init 상태와 machine-id를 지워 그 스냅숏으로 뜬 VM이 모두 새 인스턴스가 됨. 슬롯마다 다른 값은 부팅 때 `/etc/slot.env`로 받고, 역할마다 있는 `slot-boot` 유닛이 이 파일을 읽음(빌더에는 이 파일이 없어 아무것도 하지 않음)
-- target 이미지는 구울 때의 `CR_IMAGE_TAG`로 board, corp 이미지를 받아 두고 초기 데이터 사본을 만듦. 슬롯은 부팅할 때 GHCR에서 아무것도 받지 않으므로 구운 이미지에 든 태그만 돌림
+- 훈련 환경 VM은 역할 이미지 네 개로 부팅: 기본값 `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1`(`cloud.yaml`의 `compute.images.<role>`). 이 클라우드의 WAF는 `cr-waf-bake2`. 이미지마다 `deploy/roles/<role>/install.sh`를 인터넷이 되는 빌더 VM에서 root로 한 번 돌리고 Nova 스냅숏으로 Glance에 올림. 절차는 `docs/OPENSTACK.md`
+- `install.sh`는 여러 번 돌려도 결과가 같고, 마지막에 cloud-init 상태와 machine-id를 지워 그 스냅숏으로 뜬 VM이 모두 새 인스턴스가 됨. 스택마다 다른 값은 부팅 때 `/etc/slot.env`로 받고, 역할마다 있는 `slot-boot` 유닛이 이 파일을 읽음(빌더에는 이 파일이 없어 아무것도 하지 않음)
+- target 이미지는 구울 때의 `CR_IMAGE_TAG`로 board, corp 이미지를 받아 두고 초기 데이터 사본을 만듦. 스택은 부팅할 때 GHCR에서 아무것도 받지 않으므로 구운 이미지에 든 태그만 돌림
 - `cloud.yaml`의 `compute.target_tag`(전체 커밋. 기본값은 `cr-target-bake1`을 구운 커밋)가 그 태그이고 플랫폼에는 `CR_OPENSTACK_TARGET_TAG`로 감. target 부팅은 `/opt/wargames/*/compose.yaml`의 `image:` 줄에 다른 태그가 있으면 준비 완료를 쓰지 않고 그 줄들을 `/var/lib/cr/failed`에 남김. digest로 고정한 줄(`mysql@sha256:...`)은 태그가 없으므로 통과
-- 워게임 이미지를 바꾸면 target 이미지를 다른 이름으로 다시 굽고 `compute.images.target`과 `compute.target_tag`를 함께 바꿈. 둘 다 스택 digest에 들어가므로 모든 슬롯을 새로 만듦
+- 워게임 이미지를 바꾸면 target 이미지를 다른 이름으로 다시 굽고 `compute.images.target`과 `compute.target_tag`를 함께 바꿈. 둘 다 스택 digest에 들어가므로 모든 스택을 새로 만듦
 - 네 이미지 `bake1`은 손으로 구워 Glance에 `active`로 있음. `cr-waf-bake1`은 디스크 40 GB 빌더에서 구워 `min_disk`가 40 GB라 `dba.small`로 뜨지 않음. 같은 `deploy/roles/waf/`로 `m1.medium`(2 vCPU, 4 GB, 30 GB) 빌더에서 `cr-waf-bake2`를 다시 구웠고, `cr-waf-bake1`은 쓰지 않고 남아 있음
-- Nova 스냅숏은 빌더의 루트 디스크 크기를 이미지의 virtual size와 `min_disk`로 가져감. 그래서 빌더 flavor의 디스크는 슬롯 flavor의 디스크(`dba.small` 30 GB)보다 크면 안 됨
-- 지금 슬롯이 쓰는 네 이미지는 모두 virtual size 30 GB, `min_disk` 30 GB. 슬롯 역할 flavor 기본값 `dba.small`(디스크 30 GB)에 맞음
-- 슬롯을 컨테이너로 돌리던 때부터 쓰던 파일은 복사하지 않고 링크로 둠(`deploy/roles/kali/stamp.py` → `deploy/proxy/stamp.py`, `deploy/roles/waf/modsecurity.conf` → `deploy/waf/modsecurity.conf`, `deploy/roles/target/board.yaml` → `wargames/board/compose.yaml` 등). `platform/tests/test_roles.py`가 버전 고정, 로그 경로, 태그, 자원 한도를 확인
+- Nova 스냅숏은 빌더의 루트 디스크 크기를 이미지의 virtual size와 `min_disk`로 가져감. 그래서 빌더 flavor의 디스크는 훈련 환경 VM flavor의 디스크(`dba.small` 30 GB)보다 크면 안 됨
+- 지금 스택이 쓰는 네 이미지는 모두 virtual size 30 GB, `min_disk` 30 GB. 역할 flavor 기본값 `dba.small`(디스크 30 GB)에 맞음
+- 훈련 환경을 컨테이너로 돌리던 때부터 쓰던 파일은 복사하지 않고 링크로 둠(`deploy/roles/kali/stamp.py` → `deploy/proxy/stamp.py`, `deploy/roles/waf/modsecurity.conf` → `deploy/waf/modsecurity.conf`, `deploy/roles/target/board.yaml` → `wargames/board/compose.yaml` 등). `platform/tests/test_roles.py`가 버전 고정, 로그 경로, 태그, 자원 한도를 확인
 - 도구 케이스는 공격 박스(Kali VM)에서 실행(`redteam/tools.py`, `TOOL_IMAGE` 기본값 `cr-kali`)
 
 새 워게임 추가 요구 사항:
 
 - `wargames/<id>/`의 `scenario.yaml`, `objectives.yaml`, `compose.yaml`, `topology.yaml`, `redteam/cases/`의 케이스 파일
-- `topology.yaml`: 슬롯의 LAN, 노드와 포트의 고정 IP, 장치와 역할. WAF 장치 `cr-waf`의 `names:`에 사이트 이름, `upstreams:`에 서비스 주소
+- `topology.yaml`: 스택의 LAN, 노드와 포트의 고정 IP, 장치와 역할. WAF 장치 `cr-waf`의 `names:`에 사이트 이름, `upstreams:`에 서비스 주소
 - `deploy/roles/target/install.sh`의 `WARGAMES`, `deploy/roles/target/wargames.yaml`의 `fronts`(WAF가 프록시하는 서비스별 포트)와 `limits`(서비스별 `cap_add`와 자원 한도)
 - `deploy/roles/waf/slot-boot`의 `/etc/hosts` 항목, `deploy/roles/kali/install.sh`의 사이트 이름(`sites_named`)
 - `deploy/waf/board.com.conf`에 `server` 블록
@@ -107,7 +108,7 @@ target VM의 워게임 `compose.yaml`은 워게임마다 compose 프로젝트 �
 
 모든 콘솔 페이지와 `/api/` 엔드포인트는 로그인을 요구합니다(`api/signin.py`의 `SignedInOnly`). 로그인 없이 열리는 것은 로그인 페이지 `/login/`, 회원가입 페이지 `/signup/`, `GET /api/auth/`(현재 사용자, 관리자 여부, CSRF 토큰), `POST /api/auth/login/`, `POST /api/auth/signup/`뿐입니다. 로그인하지 않은 API 요청은 401, 페이지 요청은 로그인 페이지로 갑니다. POST, PUT, DELETE는 `X-CSRFToken` 헤더가 있어야 합니다. 토큰은 쿠키가 아니라 세션에 둡니다(`CSRF_USE_SESSIONS`). 첫 시작 때 `admin` / `123456` 계정을 만듭니다(마이그레이션 0030). 에이전트도 같은 REST로 로그인합니다(`redteam/signin.py`, `CR_ADMIN_USER`, `CR_ADMIN_PASSWORD`).
 
-회원가입(`username`, `password`, `password_confirm`)은 Django `UserCreationForm`과 기본 비밀번호 검사기 넷으로 확인한 뒤 `is_active=False`, 비관리자 계정을 만들고 201 `{"pending": true}`를 돌려줍니다. 거부 사유는 `errors[].code`(Django 오류 코드)로 오고, 화면은 이 코드로 문구를 찾습니다. 승인 전 계정이 맞는 비밀번호로 로그인하면 403 `{"pending": true}`입니다. 비활성 계정은 세션이 있어도 `/auth-check/`에서 401입니다. 관리자(`is_staff`)는 `/users/`(계정 관리, 상단 링크)에서 `GET /api/users/`, `POST /api/users/<id>/approve/`, `POST /api/users/<id>/reject/`(승인 대기 계정만, 삭제), `POST /api/users/<id>/delete/`(승인된 학습자 계정 삭제)를 씁니다. 삭제는 그 학습자의 열린 세션을 세션 종료 경로(`close_session`)로 먼저 닫아 슬롯을 재구축에 돌려준 뒤 계정을 지우고, 지난 세션은 소유자 없이 남습니다. 세션을 닫느라 응답이 몇 초 걸릴 수 있어, 화면은 응답이 올 때까지 그 행을 흐리게 하고 버튼을 "삭제 중…"으로 바꿉니다. 승인·거절도 같은 방식으로 "승인 중…", "거절 중…"을 보이고, 응답이 올 때까지 그 행의 두 버튼을 모두 막습니다. 관리자가 아니면 403, 사용 중인 계정 거절과 관리자 계정·자기 계정 삭제는 409라서 관리자가 자기 계정을 없앨 수 없습니다.
+회원가입(`username`, `password`, `password_confirm`)은 Django `UserCreationForm`과 기본 비밀번호 검사기 넷으로 확인한 뒤 `is_active=False`, 비관리자 계정을 만들고 201 `{"pending": true}`를 돌려줍니다. 거부 사유는 `errors[].code`(Django 오류 코드)로 오고, 화면은 이 코드로 문구를 찾습니다. 승인 전 계정이 맞는 비밀번호로 로그인하면 403 `{"pending": true}`입니다. 비활성 계정은 세션이 있어도 `/auth-check/`에서 401입니다. 관리자(`is_staff`)는 `/users/`(계정 관리, 상단 링크)에서 `GET /api/users/`, `POST /api/users/<id>/approve/`, `POST /api/users/<id>/reject/`(승인 대기 계정만, 삭제), `POST /api/users/<id>/delete/`(승인된 학습자 계정 삭제)를 씁니다. 삭제는 그 학습자의 열린 세션을 세션 종료 경로(`close_session`)로 먼저 닫아 스택을 재구축에 돌려준 뒤 계정을 지우고, 지난 세션은 소유자 없이 남습니다. 세션을 닫느라 응답이 몇 초 걸릴 수 있어, 화면은 응답이 올 때까지 그 행을 흐리게 하고 버튼을 "삭제 중…"으로 바꿉니다. 승인·거절도 같은 방식으로 "승인 중…", "거절 중…"을 보이고, 응답이 올 때까지 그 행의 두 버튼을 모두 막습니다. 관리자가 아니면 403, 사용 중인 계정 거절과 관리자 계정·자기 계정 삭제는 409라서 관리자가 자기 계정을 없앨 수 없습니다.
 
 남용 제한은 nginx와 Django에 있습니다.
 
@@ -129,12 +130,12 @@ target VM의 워게임 `compose.yaml`은 워게임마다 compose 프로젝트 �
 
 학습자는 자기 세션만 보고 움직입니다(`api/accounts.py`의 `OwnSessionsOnly`). URL에 세션이나 탐지 id가 있는 API와 콘솔 페이지(목록, 상세, 점수, 구성도, 종료, 레드·블루 콘솔)는 남의 것이면 404입니다. `session`을 주지 않은 요청은 자기 세션 중 열린 것, 없으면 가장 최근 것에 적용하고, 세션이 하나도 없으면 409입니다. `/api/range/` 쓰기 요청은 관리자만 할 수 있습니다(학습자는 403). 관리자는 모든 세션을 봅니다.
 
-Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 그 data view는 `logs-N-*`입니다. Elasticsearch와 Kibana에 보안을 켜지 않았으므로 space 자체는 경계가 아닙니다. 경계는 플랫폼의 게이트입니다. nginx는 `/kibana/s/<space>/api/`와 `/internal/` 호출을 원래 URI 그대로 Django `/kibana-gate/`(`api/views.py`의 `kibana_gate`)로 넘기고, `kibana.refusal`이 다음을 모두 만족할 때만 Kibana로 전달합니다(`kibana.forward`).
+Kibana도 세션별로 나뉩니다. 스택 N마다 space `soc-logs-N`이 있고 그 data view는 `logs-N-*`입니다. Elasticsearch와 Kibana에 보안을 켜지 않았으므로 space 자체는 경계가 아닙니다. 경계는 플랫폼의 게이트입니다. nginx는 `/kibana/s/<space>/api/`와 `/internal/` 호출을 원래 URI 그대로 Django `/kibana-gate/`(`api/views.py`의 `kibana_gate`)로 넘기고, `kibana.refusal`이 다음을 모두 만족할 때만 Kibana로 전달합니다(`kibana.forward`).
 
-- space가 학습자가 연 세션의 슬롯 것. 관리자는 아무 space
+- space가 학습자가 연 세션의 space. 관리자는 아무 space
 - Discover가 쓰는 호출 목록에 있음. `bsearch`, `es`·`esql`·`sql`·`eql` 검색, 개발 도구 콘솔, saved object·data view·고급 설정 쓰기, `resolve_index`는 403
-- 호출이 지정하는 인덱스가 정확히 그 슬롯 패턴. 검색의 `params.index`, 필드 목록의 `pattern`, 값 추천 경로의 인덱스. 관리자는 아무 인덱스
-- 본문과 쿼리 문자열 어디에도 `index`, `_index`, `indices`, `namespace(s)` 키가 없음. terms lookup이나 다른 space 조회를 막음. 예외는 문서 하나를 읽는 검색의 필터 절 `{"term": {"_index": X}}` 하나뿐이고, X가 그 슬롯 패턴이나 그 백킹 인덱스(`.ds-logs-N-…`)일 때만 통과. Document 창의 JSON 탭이 이 검색을 씀
+- 호출이 지정하는 인덱스가 정확히 그 세션의 패턴 `logs-N-*`. 검색의 `params.index`, 필드 목록의 `pattern`, 값 추천 경로의 인덱스. 관리자는 아무 인덱스
+- 본문과 쿼리 문자열 어디에도 `index`, `_index`, `indices`, `namespace(s)` 키가 없음. terms lookup이나 다른 space 조회를 막음. 예외는 문서 하나를 읽는 검색의 필터 절 `{"term": {"_index": X}}` 하나뿐이고, X가 그 세션의 패턴이나 그 백킹 인덱스(`.ds-logs-N-…`)일 때만 통과. Document 창의 JSON 탭이 이 검색을 씀
 
 이 문서 검색은 `kibana.shown_as_the_view_shows`가 고쳐서 넘깁니다. `_source`에서 `HIDDEN_FIELDS`를 빼고, `fields`는 data view의 runtime field만 요청합니다. 그래서 JSON 탭에도 표와 같은 필드만 나옵니다.
 
@@ -149,21 +150,21 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 - 닫힌 세션에 대한 쓰기 요청: 거부
 - 비활성화한 룰은 세션별로 저장(마이그레이션 0014). 0028에서 모델 이름 `Suppression`을 `DisabledRule`로, `restored_at`을 `enabled_at`으로 바꿈. 기존 행은 유지
 
-적용 중인 룰 파일은 슬롯의 센서마다 따로 있습니다.
+적용 중인 룰 파일은 세션의 센서마다 따로 있습니다.
 
-- 세션을 열 때 defense의 룰 파일을 슬롯 센서에 넣음. 룰 파일이 `local.rules`면 넣지 않음("세션, WAF 설정 조정, 단계 엔진" 절)
-- 한 슬롯에 넣은 룰은 다른 슬롯에 반영되지 않음(2026-10-13 측정)
+- 세션을 열 때 defense의 룰 파일을 그 세션의 센서에 넣음. 룰 파일이 `local.rules`면 넣지 않음("세션, WAF 설정 조정, 단계 엔진" 절)
+- 한 세션의 센서에 넣은 룰은 다른 세션의 센서에 반영되지 않음(2026-10-13 측정)
 
 | 서비스 | 실행 위치 | 이미지 | 네트워크 | 호스트 포트 |
 |---|---|---|---|---|
-| `kali` | 슬롯 N의 VM `cr-slot-N-kali` | 역할 이미지 `cr-kali-bake1`. Kali, `kali-linux-headless`와 공격 도구, 마커 프록시(`web-proxy.service`) | internet | |
-| `infra` | 슬롯 N의 VM `cr-slot-N-infra` | `cr-infra-bake1`. Ubuntu 24.04. nftables 라우터(장치 `cr-edge`), IDS 브리지 `br0`의 Suricata(장치 `cr-ids`, digest 고정 `jasonish/suricata` 컨테이너, `--network host`), rsyslog 로그 서버(장치 `log-server`). Suricata의 `suricata -T`와 소켓 명령은 `sensor` 컨테이너 안에 있고 호스트에는 `suricatasc` 래퍼만 있음. 학습자 셸 없음 | internet(`wan`), dmz(`lan`), web-outer·web-inner(IDS 다리, 주소 없음), 관제망 | |
-| `waf` | 슬롯 N의 VM `cr-slot-N-waf` | `cr-waf-bake1`(이 클라우드는 `cr-waf-bake2`). Ubuntu 24.04, 소스로 빌드한 nginx 1.24.0, ModSecurity 3.0.16, CRS 4.25.1. rsyslog로 audit 로그와 거부 로그를 로그 서버로 보냄 | dmz, web-outer, 관제망 | |
-| `target` | 슬롯 N의 VM `cr-slot-N-target` | `cr-target-bake1`. Ubuntu 24.04, Docker, 워게임 compose(`wargames.service`). 학습자 셸 없음 | web-inner | |
-| `board` | board 슬롯의 target VM | `ghcr.io/nekonic/cr-board`(`wargames/board/app`). gunicorn, Django, 포트 8000 | `board_front`, `board_backend` | 8000(web-inner 주소 10.30.128.59에만) |
-| `board-db` | board 슬롯의 target VM | digest 고정 `mysql` | `board_backend` | |
-| `corp-wp` | corp 슬롯의 target VM | `ghcr.io/nekonic/cr-corp`(`wargames/corp/app`). WordPress 6.6.2, 취약 버전 고정 플러그인 3개, `Host` 헤더 `corp.com` | `corp_front`, `corp_backend` | 80(web-inner 주소 10.30.128.60에만) |
-| `corp-db` | corp 슬롯의 target VM | `ghcr.io/nekonic/cr-corp-db`(`wargames/corp/db`). MySQL 8.4, binlog `ROW` | `corp_backend` | |
+| `kali` | VM `cr-slot-N-kali` | 역할 이미지 `cr-kali-bake1`. Kali, `kali-linux-headless`와 공격 도구, 마커 프록시(`web-proxy.service`) | internet | |
+| `infra` | VM `cr-slot-N-infra` | `cr-infra-bake1`. Ubuntu 24.04. nftables 라우터(장치 `cr-edge`), IDS 브리지 `br0`의 Suricata(장치 `cr-ids`, digest 고정 `jasonish/suricata` 컨테이너, `--network host`), rsyslog 로그 서버(장치 `log-server`). Suricata의 `suricata -T`와 소켓 명령은 `sensor` 컨테이너 안에 있고 호스트에는 `suricatasc` 래퍼만 있음. 학습자 셸 없음 | internet(`wan`), dmz(`lan`), web-outer·web-inner(IDS 다리, 주소 없음), 관제망 | |
+| `waf` | VM `cr-slot-N-waf` | `cr-waf-bake1`(이 클라우드는 `cr-waf-bake2`). Ubuntu 24.04, Ubuntu 패키지 nginx 1.24.0에 소스로 빌드한 ModSecurity 3.0.16 모듈, CRS 4.25.1. rsyslog로 audit 로그와 거부 로그를 로그 서버로 보냄 | dmz, web-outer, 관제망 | |
+| `target` | VM `cr-slot-N-target` | `cr-target-bake1`. Ubuntu 24.04, Docker, 워게임 compose(`wargames.service`). 학습자 셸 없음 | web-inner | |
+| `board` | board 스택의 target VM | `ghcr.io/nekonic/cr-board`(`wargames/board/app`). gunicorn, Django, 포트 8000 | `board_front`, `board_backend` | 8000(web-inner 주소 10.30.128.59에만) |
+| `board-db` | board 스택의 target VM | digest 고정 `mysql` | `board_backend` | |
+| `corp-wp` | corp 스택의 target VM | `ghcr.io/nekonic/cr-corp`(`wargames/corp/app`). WordPress 6.6.2, 취약 버전 고정 플러그인 3개, `Host` 헤더 `corp.com` | `corp_front`, `corp_backend` | 80(web-inner 주소 10.30.128.60에만) |
+| `corp-db` | corp 스택의 target VM | `ghcr.io/nekonic/cr-corp-db`(`wargames/corp/db`). MySQL 8.4, binlog `ROW` | `corp_backend` | |
 | `cr-elasticsearch` | 플랫폼 VM | `elasticsearch:8.15.0` | mgmt | 9200 |
 | `cr-collector` | 플랫폼 VM | `filebeat:8.15.0`. syslog 입력만 사용. 시작 전에 entrypoint가 `fields.yml`에서 `ecs`, `beat`, `cloud`, `docker`, `host`, `kubernetes`, `process`, `log` 그룹만 남겨 `data/fields-lean.yml`을 만듦 | mgmt | 5140/udp |
 | `cr-kibana` | 플랫폼 VM | `kibana:8.15.0`. `/kibana/` 경로로 제공 | mgmt | 5601 |
@@ -174,9 +175,9 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 - 8000, 8002, 2222: `CR_PUBLISH`. 기본값 127.0.0.1
 - 5140/udp: `CR_SYSLOG_PUBLISH`. 기본값 127.0.0.1
 - 9200, 5601: loopback에만 바인딩
-- 슬롯 VM: 플로팅 IP 없음. 슬롯 LAN에는 Neutron 라우터가 없음
+- 훈련 환경 VM: 플로팅 IP 없음. 스택의 LAN에는 Neutron 라우터가 없음
 
-슬롯의 LAN은 Neutron 네트워크 하나씩이고 슬롯마다 따로 만듭니다(`wargames/<wargame>/topology.yaml`의 `lans:`). 서브넷은 DHCP 없음, 게이트웨이 없음. 모든 슬롯이 같은 주소를 씁니다. 슬롯끼리는 네트워크가 달라 겹치지 않습니다.
+스택의 LAN은 Neutron 네트워크 하나씩이고 스택마다 따로 만듭니다(`wargames/<wargame>/topology.yaml`의 `lans:`). 서브넷은 DHCP 없음, 게이트웨이 없음. 모든 스택이 같은 주소를 씁니다. 스택끼리는 네트워크가 달라 겹치지 않습니다.
 
 | 구간 | 서브넷 | 붙는 포트 | 이름 |
 |---|---|---|---|
@@ -184,14 +185,14 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 | `dmz` | 10.30.0.0/24 | infra `lan` .1, WAF 앞단 .247 | DMZ |
 | `web-outer` | 10.30.128.0/24 | WAF 뒷단 .247, infra IDS 다리 A | 웹 서버 구간(WAF 쪽) |
 | `web-inner` | 10.30.128.0/24 | board .59 또는 corp .60(target VM), infra IDS 다리 B | 웹 서버 구간(서버 쪽) |
-| 슬롯 `mgmt` | 172.29.0.0/24 | infra 로그 서버 .10, WAF .12 | 관제망 |
-| `cr-mgmt` | `cloud.yaml`의 `network.mgmt`(10.31.0.0/24). 모든 슬롯이 공유. fabric이 만드는 Neutron 네트워크 | 슬롯 VM마다 control 포트 하나, 플랫폼 | 관리망 |
+| 스택의 `mgmt` | 172.29.0.0/24 | infra 로그 서버 .10, WAF .12 | 관제망 |
+| `cr-mgmt` | `cloud.yaml`의 `network.mgmt`(10.31.0.0/24). 모든 스택이 공유. fabric이 만드는 Neutron 네트워크 | 훈련 환경 VM마다 control 포트 하나, 플랫폼 | 관리망 |
 
 `web-outer`와 `web-inner`는 서브넷이 같고, infra의 IDS 브리지가 두 망을 L2로 잇습니다. WAF와 대상 시스템 사이 패킷은 모두 이 브리지를 지납니다.
 
 출발지 국가는 서브넷의 GeoIP 정보로 정해집니다. 그래서 출발지 서브넷은 `declaration.yaml`에 고정합니다.
 
-`cr-mgmt`는 모든 슬롯이 공유합니다. 플랫폼은 이 망으로 슬롯 VM에 ssh합니다. 슬롯의 syslog는 infra의 control 포트에서 이 망으로 collector에 갑니다(`docs/DECISIONS.md` 2026-10-10, `docs/superpowers/specs/2026-11-18-heat-range-design.md` §2).
+`cr-mgmt`는 모든 스택이 공유합니다. 플랫폼은 이 망으로 훈련 환경 VM에 ssh합니다. 스택의 syslog는 infra의 control 포트에서 이 망으로 collector에 갑니다(`docs/DECISIONS.md` 2026-10-10, `docs/superpowers/specs/2026-11-18-heat-range-design.md` §2).
 
 플랫폼 VM의 compose 네트워크 이름도 `mgmt`입니다. 별개의 Docker 브리지이며, `cloud.yaml`의 CIDR과 겹치면 안 됩니다.
 
@@ -199,8 +200,8 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 
 - Cloudflare Radar 기준 HTTP 요청 점유율 상위 30개국
 - 출발지마다 GeoIP상 그 나라로 나오는 /24 하나. 공격 주소 약 100개를 나눠 받음
-- 30개 모두 슬롯의 `internet` 망 하나에 올라감
-- Kali의 `internet` 포트는 고정 IP 하나(기본 출발지의 첫 주소 5.188.10.10)와 `allowed_address_pairs` `0.0.0.0/0`을 받음. 이 클라우드의 `max_allowed_address_pair`가 10이라 출발지 30개를 따로 넣을 수 없음. `internet` 망에 라우터가 없어 이 쌍이 슬롯 밖에 영향을 주지 않음. 포트 보안은 그대로라 Neutron이 준 MAC 외의 MAC으로는 보낼 수 없음
+- 30개 모두 스택의 `internet` 망 하나에 올라감
+- Kali의 `internet` 포트는 고정 IP 하나(기본 출발지의 첫 주소 5.188.10.10)와 `allowed_address_pairs` `0.0.0.0/0`을 받음. 이 클라우드의 `max_allowed_address_pair`가 10이라 출발지 30개를 따로 넣을 수 없음. `internet` 망에 라우터가 없어 이 쌍이 스택 밖에 영향을 주지 않음. 포트 보안은 그대로라 Neutron이 준 MAC 외의 MAC으로는 보낼 수 없음
 - 나머지 출발지 주소는 Kali의 `slot-boot`가 `/etc/slot.env`의 `ORIGINS`(서브넷의 10번째 호스트부터 `addresses`개, `sandbox.origin_addresses`)로 붙임. 기본 출발지 대역(ru)의 주소부터 붙여 Kali `ip addr`의 첫 주소(primary)가 구성도의 5.188.10.10과 같음
 - 라우터(infra) `wan`의 공인 IP는 121.134.88.42/29 하나. KT 회선(KORNET, 121.128.0.0/11)에서 기업 회선에 주는 크기의 블록이고, Kali의 30개 /24 어느 것과도 겹치지 않음
 - 공인 IP와 출발지 대역이 서로 다른 블록이라 같은 망 위에서 onlink 경로로 닿음. 라우터는 `default via 5.188.10.10 dev <wan> onlink`(Kali가 라우터 바깥의 인터넷 역할), Kali는 `default via 121.134.88.42 dev <internet> onlink src 5.188.10.10`. 경로에 `src`를 박아 둔 이유: 다른 주소가 출발지로 잡히면 출발지 SNAT가 nmap SYN 스캔의 raw 패킷 출발지를 바꿔 nmap이 응답을 못 알아봄
@@ -211,15 +212,15 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 
 망 분리는 Neutron이 합니다. 보안 그룹과 포트 보안은 OVN이 게스트 밖에서 적용하므로, Kali나 WAF의 root 셸로 바꿀 수 없습니다.
 
-- 슬롯 LAN에는 Neutron 라우터가 없음. 슬롯 밖으로 나가는 경로는 control 포트(`cr-mgmt`)뿐이고, 그 망에도 게이트웨이가 없음
+- 스택의 LAN에는 Neutron 라우터가 없음. 스택 밖으로 나가는 경로는 control 포트(`cr-mgmt`)뿐이고, 그 망에도 게이트웨이가 없음
 - LAN 포트의 보안 그룹은 그 LAN 대역에서 오는 것만 받음. 주소 쌍이 있는 포트가 붙은 LAN(`internet`, `dmz`)은 모든 주소에서 받음. 관제망은 514/tcp만 받음
-- 슬롯마다 주소가 같으므로 룰도 같음. 룰이 같은 LAN끼리 그룹 하나를 쓰고, 모든 슬롯이 그 그룹을 같이 씀. board와 corp 모두 3개: 전부 받음(`internet`, `dmz`), 10.30.128.0/24에서 전부 받음(`web-outer`, `web-inner`), 172.29.0.0/24에서 514/tcp만 받음(`mgmt`)
+- 스택마다 주소가 같으므로 룰도 같음. 룰이 같은 LAN끼리 그룹 하나를 쓰고, 모든 스택이 그 그룹을 같이 씀. board와 corp 모두 3개: 전부 받음(`internet`, `dmz`), 10.30.128.0/24에서 전부 받음(`web-outer`, `web-inner`), 172.29.0.0/24에서 514/tcp만 받음(`mgmt`)
 - 그룹 이름은 `cr-lan-<룰 sha256 앞 12자리>`. 어댑터(`platform/range/openstack.py`의 `lan_groups`, `_lan_group_ids`)가 스택을 만들기 전에 락을 잡고 없는 그룹만 만들고, 그 id를 스택 파라미터 `group_<lan>`으로 넘김
-- 룰은 그룹이 아니라 CIDR로 받으므로 그룹을 같이 써도 슬롯 사이에 열리는 길은 없음. 슬롯의 LAN은 슬롯마다 따로 있는 네트워크
-- 슬롯마다 그룹 다섯 개를 만들던 때는 이 클라우드의 보안 그룹 quota 10에 걸려 슬롯 4개의 스택이 모두 `OverQuotaClient`로 실패함. 지금은 풀 크기와 상관없이 9개(`default`, `cr-platform`, fabric 그룹 4개, `cr-lan-` 그룹 3개)
+- 룰은 그룹이 아니라 CIDR로 받으므로 그룹을 같이 써도 스택 사이에 열리는 길은 없음. 스택의 LAN은 스택마다 따로 있는 네트워크
+- 스택마다 그룹 다섯 개를 만들던 때는 이 클라우드의 보안 그룹 quota 10에 걸려 스택 4개가 모두 `OverQuotaClient`로 실패함. 지금은 풀 크기와 상관없이 9개(`default`, `cr-platform`, fabric 그룹 4개, `cr-lan-` 그룹 3개)
 - 포트 보안을 끈 포트는 IDS 다리 둘뿐(`topology.yaml`의 `ids: true`)
 - control 포트는 `cr-mgmt` 보안 그룹. `cr-reach`(플랫폼) 멤버에서 오는 것만 받음. infra의 control 포트는 `cr-senders`에도 속해 collector로 syslog를 보낼 수 있음
-- `cr-mgmt`와 `cr-senders`의 egress는 `cr-reach`(플랫폼)로 가는 것과 DHCP(udp 67)뿐. Neutron이 그룹을 만들 때 넣는 전체 허용 egress는 fabric이 지움. 슬롯 VM은 DHCP가 준 경로로 169.254.169.254를 `cr-mgmt`의 OVN 메타데이터 포트(10.31.0.1)에 보내는데, 이 egress 규칙에 걸려 버려짐. 슬롯 VM은 config drive로 부팅하므로 메타데이터 서비스가 필요 없음
+- `cr-mgmt`와 `cr-senders`의 egress는 `cr-reach`(플랫폼)로 가는 것과 DHCP(udp 67)뿐. Neutron이 그룹을 만들 때 넣는 전체 허용 egress는 fabric이 지움. 훈련 환경 VM은 DHCP가 준 경로로 169.254.169.254를 `cr-mgmt`의 OVN 메타데이터 포트(10.31.0.1)에 보내는데, 이 egress 규칙에 걸려 버려짐. 훈련 환경 VM은 config drive로 부팅하므로 메타데이터 서비스가 필요 없음
 - Kali는 `internet`에만 붙음. 아는 이름은 `board.com`, `corp.com`뿐이고 둘 다 라우터의 공인 IP를 가리킴(이미지의 `/etc/hosts`)
 - 라우터는 공인 IP 80번 포트를 WAF로 DNAT하고, 출발지는 NAT 없이 그대로 넘김. web 구간으로 가는 경로는 없음
 - target VM은 `web-inner`에만 붙고 default route가 없어 WAF에만 응답함. Kali에서 대상 시스템으로 가는 길은 WAF뿐
@@ -228,23 +229,23 @@ Kibana도 슬롯별로 나뉩니다. 슬롯마다 space `soc-logs-N`이 있고 �
 격리 검사:
 
 - `test/test_board_exfil.py`: `board.com`을 거쳐 board에 접근
-- `test/test_range_isolation.py`: Kali에서 ping과 traceroute로 121.134.88.42가 답하는지, SYN 스캔이 root로 돌고 WAF의 사설 주소가 filtered인지, Kali가 WAF를 거쳐서만 사이트에 닿는지, `cr-mgmt`의 어느 주소(자기 슬롯과 다른 슬롯의 control 포트, 플랫폼)에도 연결되지 않는지, 인터넷과 메타데이터 주소에 닿지 않는지, Neutron이 준 것과 다른 MAC으로 보낸 프레임이 버려지는지 확인. 학습자 셸(Kali, WAF)에서 플랫폼, 인터넷, 메타데이터에 닿지 않는지도 확인
+- `test/test_range_isolation.py`: Kali에서 ping과 traceroute로 121.134.88.42가 답하는지, SYN 스캔이 root로 돌고 WAF의 사설 주소가 filtered인지, Kali가 WAF를 거쳐서만 사이트에 닿는지, `cr-mgmt`의 어느 주소(자기 스택과 다른 스택의 control 포트, 플랫폼)에도 연결되지 않는지, 인터넷과 메타데이터 주소에 닿지 않는지, Neutron이 준 것과 다른 MAC으로 보낸 프레임이 버려지는지 확인. 학습자 셸(Kali, WAF)에서 플랫폼, 인터넷, 메타데이터에 닿지 않는지도 확인
 - 같은 테스트에서 세션을 닫은 뒤의 WAF가 새 VM(다른 boot id)이고 앞 학습자가 쓴 파일이 없는지 확인
-- `platform/tests/test_hot.py`: 렌더링한 Heat 템플릿이 격리 조건(슬롯 망에 라우터 없음, 포트 보안은 IDS 다리 둘에서만 끔, Kali의 보안 그룹)을 어기면 `bin/verify` 실패
+- `platform/tests/test_hot.py`: 렌더링한 Heat 템플릿이 격리 조건(스택의 LAN에 라우터 없음, 포트 보안은 IDS 다리 둘에서만 끔, Kali의 보안 그룹)을 어기면 `bin/verify` 실패
 - `test/test_concurrent_sessions.py`: 동시에 연 두 세션이 서로 보이지 않는지 확인
 
 주소와 출처 검사:
 
-- 출발지 서브넷은 선언(`declaration.yaml`)에서, 슬롯 내부 주소는 `topology.yaml`에서 정함
-- 슬롯 VM의 `cr-mgmt` 주소는 Neutron이 할당. 스택이 `CREATE_COMPLETE`이고 모든 노드가 준비되면 플랫폼이 그 주소를 스택 id별로 메모리에 들고 있음("OpenStack" 절)
-- 훈련 환경 내부 주소에서 온 요청은 거부. 대상은 슬롯이 보고하는 모든 주소(채점 서버 제외, 슬롯 VM의 `cr-mgmt` 주소 포함)
+- 출발지 서브넷은 선언(`declaration.yaml`)에서, 스택 내부 주소는 `topology.yaml`에서 정함
+- 훈련 환경 VM의 `cr-mgmt` 주소는 Neutron이 할당. 스택이 `CREATE_COMPLETE`이고 모든 노드가 준비되면 플랫폼이 그 주소를 스택 id별로 메모리에 들고 있음("OpenStack" 절)
+- 훈련 환경 내부 주소에서 온 요청은 거부. 대상은 스택이 보고하는 모든 주소(채점 서버 제외, 훈련 환경 VM의 `cr-mgmt` 주소 포함)
 - 이 주소 목록은 30초간 캐시. substrate에 연결하지 못하면 훈련 환경이 비었다고 보고 요청을 허용(`docs/THREAT-MODEL.md`)
 
 플랫폼과 훈련 환경 사이는 `cr-mgmt`로만 통합니다.
 
 - 공격자 트래픽은 라우터를 거쳐 `dmz`의 WAF로 들어오고, WAF에서 IDS 브리지를 지나 `web-inner`의 대상 시스템으로 감
-- 플랫폼은 `cr-reach` 포트로 슬롯 VM에 ssh
-- 슬롯에서 플랫폼으로 여는 연결은 NTP와 infra의 5140/udp syslog뿐("OpenStack" 절). 그래도 API에서 호출자를 직접 검사(`docs/THREAT-MODEL.md`)
+- 플랫폼은 `cr-reach` 포트로 훈련 환경 VM에 ssh
+- 스택에서 플랫폼으로 여는 연결은 NTP와 infra의 5140/udp syslog뿐("OpenStack" 절). 그래도 API에서 호출자를 직접 검사(`docs/THREAT-MODEL.md`)
 
 전체 경로 그림은 끝부분 "OpenStack 훈련 환경: 구조"에 있습니다.
 
@@ -294,8 +295,8 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 
 `wargames/<wargame>/topology.yaml`(워게임마다 하나, `range/sandbox.py`가 읽고 검사):
 
-- `lans:` 슬롯의 LAN과 CIDR(`internet`, `dmz`, `web-outer`, `web-inner`, `mgmt`)
-- `nodes:` 슬롯 VM(`cr-kali`, `cr-infra`, `cr-waf`, `cr-target`)과 역할(`kali`, `infra`, `waf`, `target`), VM마다 LAN 포트와 고정 IP. `ids: true`는 IDS 다리(포트 보안 끔), `origins: true`는 출발지 주소를 받는 Kali 포트, `forwards: true`는 포트포워딩한 연결을 넘기는 포트(주소 쌍 `0.0.0.0/0`)
+- `lans:` 스택의 LAN과 CIDR(`internet`, `dmz`, `web-outer`, `web-inner`, `mgmt`)
+- `nodes:` 훈련 환경 VM(`cr-kali`, `cr-infra`, `cr-waf`, `cr-target`)과 역할(`kali`, `infra`, `waf`, `target`), VM마다 LAN 포트와 고정 IP. `ids: true`는 IDS 다리(포트 보안 끔), `origins: true`는 출발지 주소를 받는 Kali 포트, `forwards: true`는 포트포워딩한 연결을 넘기는 포트(주소 쌍 `0.0.0.0/0`)
 - `devices:` 장치와 그 장치가 도는 노드, 역할 표(attacker, proxy, edge, sensor, log-server, gateway, wargames, board, board-db, corp, corp-db). 컨테이너 장치는 `container:`(`board`, `board-db`). 센서 `cr-ids`와 WAF `cr-waf`는 `suricata.py`, `crs.py`에 넘길 룰 파일(`rules`), reload 명령(`reload`), WAF는 nginx pid 파일(`pid`), 사이트 이름(`names`), 서비스 주소(`upstreams`)
 - `watches:` 센서별 감시 대상 역할
 
@@ -306,16 +307,16 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 선언에는 `mgmt` CIDR과 VM 주소를 적지 않습니다. 플랫폼은 이 값을 substrate에서 읽습니다.
 
 - `mgmt` CIDR: `cloud.yaml`의 `network.mgmt`
-- 슬롯 LAN의 주소: `topology.yaml`
-- 슬롯 VM의 `cr-mgmt` 주소: Neutron
+- 스택 LAN의 주소: `topology.yaml`
+- 훈련 환경 VM의 `cr-mgmt` 주소: Neutron
 
 선언의 서브넷이 클라우드가 할당한 서브넷과 다르면, 경보가 호스트 없는 서브넷에 묶입니다.
 
 구간은 태그로 찾습니다.
 
 - fabric의 Neutron 네트워크는 `cr.segment.id=mgmt` 태그가 붙은 `cr-mgmt` 하나뿐. 어댑터는 태그가 붙은 네트워크만 가져옴
-- 슬롯의 `internet` 구간은 선언된 출발지마다 하나(30개). 서브넷과 Kali 주소(서브넷의 10번째 호스트부터 `addresses`개, `sandbox.origin_addresses`)는 선언에서, 게이트웨이는 라우터 공인 IP(`topology.yaml`의 infra `wan` 주소)에서 정함
-- 슬롯의 네트워크와 포트는 `cr.slot=<n>`, `cr.lan=<lan>`, `cr.device=<장치>`, `cr.node=<노드>` 태그로 찾음. 서버는 메타데이터 `cr_slot`, `cr_node`, `cr_wargame`으로 찾음
+- 스택의 `internet` 구간은 선언된 출발지마다 하나(30개). 서브넷과 Kali 주소(서브넷의 10번째 호스트부터 `addresses`개, `sandbox.origin_addresses`)는 선언에서, 게이트웨이는 라우터 공인 IP(`topology.yaml`의 infra `wan` 주소)에서 정함
+- 스택의 네트워크와 포트는 `cr.slot=<n>`, `cr.lan=<lan>`, `cr.device=<장치>`, `cr.node=<노드>` 태그로 찾음. 서버는 메타데이터 `cr_slot`, `cr_node`, `cr_wargame`으로 찾음
 - 이름 매칭은 쓰지 않음. Heat 스택 접미사와 Neutron 이름이 겹쳐 깨졌음
 - 역할은 장치를 가리키고, 장치는 노드(VM)를 가리킴. `container:`가 있는 역할은 그 노드의 컨테이너 안에서 실행(`sudo docker exec <container>`. target VM의 board, corp, DB와 infra VM의 `sensor`). 나머지는 VM에서 `sudo`로 실행
 
@@ -323,30 +324,30 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 
 - `describe()`: 구간, 구간별 노드와 주소, 센서 구조를 반환
 - `segments()`: 센서 검사 없이 호스트별 구간을 반환
-- `runner(role, segment)`: 역할이 도는 슬롯 VM이나 그 VM의 컨테이너에서 명령 실행. 대상 역할은 센서, 프록시, 공격 박스(명령 로그 읽기), WAF(`gateway`, CRS 설정 읽기와 적용), board, corp-db
+- `runner(role, segment)`: 역할이 도는 훈련 환경 VM이나 그 VM의 컨테이너에서 명령 실행. 대상 역할은 센서, 프록시, 공격 박스(명령 로그 읽기), WAF(`gateway`, CRS 설정 읽기와 적용), board, corp-db
 - `launcher(segment)`: 구간에서 일회성 도구를 실행하고 출력을 반환
 
 `range.substrate()`는 `CR_SUBSTRATE`의 어댑터(기본값 `range.openstack.connect`)를 생성합니다. 옵션은 `CR_SUBSTRATE_OPTIONS`에서 그 이름 아래 값에 `declared=RANGE`를 더해 넘깁니다.
 
-- 접속 값: `CR_OPENSTACK_KEYSTONE`, `_USER`, `_PASSWORD_FILE`(비밀번호 파일, 기본 `/run/secrets/openstack_password`), `_PROJECT`, `_SSH_KEY`, `_REGION`, `_INTERFACE`, `_DOMAIN`. 하나라도 없으면 빠진 이름을 밝히고 거부. `_SSH_USER`는 슬롯 VM의 관리 사용자이고 기본값 `ubuntu`
-- 구성 값: `_POOL`(워게임별 슬롯 수, `board=3 corp=1`), `_IMAGES`(역할별 Glance 이미지), `_FLAVORS`(역할별 flavor), `_TARGET_TAG`(target 이미지에 든 워게임 이미지 태그), `_AVAILABILITY_ZONE`, `_SUBNETS`, `_PLATFORM`. 형식이 틀리면 이름을 밝히고 거부
-- `_POOL`이 비면 슬롯 하나, 워게임은 번호 순으로 돌아가며 정함. `_IMAGES`에 없는 역할은 `cr-<role>-bake1`, `_FLAVORS`에 없는 역할은 `dba.small`. 값은 Heat 스택을 거쳐 `deploy/openstack/cloud.yaml`에서 옴. 이 파일은 `platform/range/cloud.py`에서 읽고 검증하며, 빠진 역할의 이미지와 flavor는 여기서 기본값(`cr-<role>-bake1`, `dba.small`)으로 채움
+- 접속 값: `CR_OPENSTACK_KEYSTONE`, `_USER`, `_PASSWORD_FILE`(비밀번호 파일, 기본 `/run/secrets/openstack_password`), `_PROJECT`, `_SSH_KEY`, `_REGION`, `_INTERFACE`, `_DOMAIN`. 하나라도 없으면 빠진 이름을 밝히고 거부. `_SSH_USER`는 훈련 환경 VM의 관리 사용자이고 기본값 `ubuntu`
+- 구성 값: `_POOL`(워게임별 스택 수, `board=3 corp=1`), `_IMAGES`(역할별 Glance 이미지), `_FLAVORS`(역할별 flavor), `_TARGET_TAG`(target 이미지에 든 워게임 이미지 태그), `_AVAILABILITY_ZONE`, `_SUBNETS`, `_PLATFORM`. 형식이 틀리면 이름을 밝히고 거부
+- `_POOL`이 비면 스택 하나, 워게임은 번호 순으로 돌아가며 정함. `_IMAGES`에 없는 역할은 `cr-<role>-bake1`, `_FLAVORS`에 없는 역할은 `dba.small`. 값은 Heat 스택을 거쳐 `deploy/openstack/cloud.yaml`에서 옴. 이 파일은 `platform/range/cloud.py`에서 읽고 검증하며, 빠진 역할의 이미지와 flavor는 여기서 기본값(`cr-<role>-bake1`, `dba.small`)으로 채움
 - `redteam/harness.py`는 launcher를, `platform/rules/suricata.py`는 runner를 받음. 둘 다 `subprocess`를 import하지 않고 substrate 이름도 모름
 
 어댑터의 호출별 동작(`platform/range/openstack.py`. Keystone, Heat, Nova, Neutron, Glance를 `requests`로 부름):
 
-- 구조: `cr-mgmt`는 Neutron(`tags-any`)과 Nova 서버 주소에서, 슬롯의 `internet`은 선언과 `topology.yaml`에서 읽음
-- 센서: 슬롯 서버가 떠 있으면 센서를 보고. 센서가 gateway 트래픽을 실제로 보는지는 확인하지 않음
+- 구조: `cr-mgmt`는 Neutron(`tags-any`)과 Nova 서버 주소에서, 스택의 `internet`은 선언과 `topology.yaml`에서 읽음
+- 센서: 스택의 서버가 떠 있으면 센서를 보고. 센서가 gateway 트래픽을 실제로 보는지는 확인하지 않음
 - runner: 노드의 `cr-mgmt` 주소로 `ssh <관리 사용자>@<주소>` 후 `sudo`. 노드마다 연결 공유(`ControlMaster auto`, `ControlPersist 60`). `container:` 역할은 `sudo docker exec <container>`
 - address: 노드의 `cr-mgmt` 주소. 스택이 `CREATE_COMPLETE`이고 모든 노드가 준비되면 주소와 호스트 키 별칭을 스택 id별로 API 서버 메모리에 둠(`Held`). 그 뒤 명령은 클라우드에 묻지 않음. 스택을 만들거나 지우거나, 계획에서 스택이 완료 상태가 아니면 버림
-- launcher: `runner("attacker")`로 슬롯의 Kali VM에서 도구 실행. 넘겨받은 구간은 거부 메시지에만 씀. 출발 국가는 `set-origin` SNAT로 정해짐. 공격 박스가 아닌 이미지는 거부
+- launcher: `runner("attacker")`로 스택의 Kali VM에서 도구 실행. 넘겨받은 구간은 거부 메시지에만 씀. 출발 국가는 `set-origin` SNAT로 정해짐. 공격 박스가 아닌 이미지는 거부
 - 테스트: `platform/tests/fakecloud.py`(Keystone, Heat, Nova, Neutron, Glance를 흉내 내는 HTTP 서버. 스택을 만들면 HOT를 메모리의 네트워크·포트·서버에 적용하고 `CREATE_IN_PROGRESS`에서 `CREATE_COMPLETE`로 감)와 로컬 sshd를 대상으로 한 유닛 테스트
 
 플랫폼 컨테이너에는 Docker 소켓이 없고 이미지에 Docker 클라이언트도 없습니다. 플랫폼 VM의 주소는 OpenStack API(Neutron 서브넷, Nova 서버 주소)에서 읽습니다(`describe`). target VM의 컨테이너는 그 VM에 ssh로 접속해 `sudo docker`로 다룹니다.
 
 ## 네트워크 구성도
 
-학습자용 구성도는 세션 슬롯의 Neutron 네트워크와 포트, target VM의 Docker 네트워크를 읽어 그립니다. 구성도 파일은 없습니다. 2026-11-15에 GNS3 표시용 구성도를 대체했습니다(`docs/DECISIONS.md`, "The learner map is the slot's live wiring"). 2026-11-18부터는 슬롯이 Heat 스택이라 Neutron에서 읽습니다.
+학습자용 구성도는 세션 스택의 Neutron 네트워크와 포트, target VM의 Docker 네트워크를 읽어 그립니다. 구성도 파일은 없습니다. 2026-11-15에 GNS3 표시용 구성도를 대체했습니다(`docs/DECISIONS.md`, "The learner map is the slot's live wiring"). 2026-11-18부터는 훈련 환경이 Heat 스택이라 Neutron에서 읽습니다.
 
 **읽기.** `OpenStack.wiring()`이 읽고 `range/wiring.py`가 `Wiring`으로 풉니다.
 
@@ -358,9 +359,9 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 
 **그리기.** `topology.graph(learner, wiring)`가 콘솔이 그릴 그래프를 만듭니다.
 
-- 영역(`zones`): 슬롯 워게임의 장비가 하나라도 붙은 LAN과 Docker 네트워크. 캡션은 망으로 먼저 정하고, 그 밖의 망은 붙은 장비로 정함(`topology.captions`). `internet` 망이나 kali가 있으면 `internet`, `dmz` 망이나 라우터가 있으면 `dmz`, `mgmt` 망이나 log-server가 있으면 `mgmt`(관제망), `-backend`로 끝나는 망이나 워게임 DB가 있고 WAF가 없는 망은 `database`, 나머지는 `web`. IDS가 WAF와 이어 주는 `web-outer`는 영역으로 그리지 않음(아래 센서). 한국어는 `strings.html`의 `topology.zone.*`. 캡션은 영역 이름과 대역이고, 인터넷 구간에는 대역을 붙이지 않음. DB존에는 `owner`로 워게임 이름이 붙어 "board DB존", "corp DB존"으로 나옴
+- 영역(`zones`): 세션 워게임의 장비가 하나라도 붙은 LAN과 Docker 네트워크. 캡션은 망으로 먼저 정하고, 그 밖의 망은 붙은 장비로 정함(`topology.captions`). `internet` 망이나 kali가 있으면 `internet`, `dmz` 망이나 라우터가 있으면 `dmz`, `mgmt` 망이나 log-server가 있으면 `mgmt`(관제망), `-backend`로 끝나는 망이나 워게임 DB가 있고 WAF가 없는 망은 `database`, 나머지는 `web`. IDS가 WAF와 이어 주는 `web-outer`는 영역으로 그리지 않음(아래 센서). 한국어는 `strings.html`의 `topology.zone.*`. 캡션은 영역 이름과 대역이고, 인터넷 구간에는 대역을 붙이지 않음. DB존에는 `owner`로 워게임 이름이 붙어 "board DB존", "corp DB존"으로 나옴
 - 스위치: 영역마다 하나(`switch:<망>`). Neutron 네트워크와 Docker 브리지는 L2 스위치. 이름은 붙이지 않음
-- 장비: 그 망에 포트가 있는 장치. 이름은 `topology.learner`의 학습자 이름(`kali`, `router`, `waf`, `board.com`, `board-db`, `corp.com`, `corp-db`, `log-server`). 슬롯은 워게임 하나만 돌리므로 그 워게임의 서버와 DB만 그려짐. `kind`로 아이콘을 고름
+- 장비: 그 망에 포트가 있는 장치. 이름은 `topology.learner`의 학습자 이름(`kali`, `router`, `waf`, `board.com`, `board-db`, `corp.com`, `corp-db`, `log-server`). 스택은 워게임 하나만 돌리므로 그 워게임의 서버와 DB만 그려짐. `kind`로 아이콘을 고름
 - 선(`link`): 장비가 그 망에 가진 포트마다 하나. `address`는 그 포트에서 고른 주소(`link_heads`. kali와 라우터 wan은 기본 출발지 대역의 주소, 나머지는 망의 주소)
 - 센서(`sensor:cr-ids`): WAF와 웹 서버 사이에 인라인으로 그림(`topology._sensed`). WAF의 뒷단 선은 스위치가 아니라 IDS로 들어가고(주소 10.30.128.247), IDS에서 `web-inner` 스위치로 주소 없는 선 하나. WAF 뒷단과 IDS 다리만 붙은 `web-outer`는 케이블이라 스위치로 그리지 않음
 - 로그 서버(`log-server`): 관제망의 장비(infra의 관제망 포트). 로그가 가는 선은 따로 그리지 않음
@@ -368,13 +369,13 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 - 단계의 답과 보기(`topology.addresses`, `topology.hosts`)에서는 다른 워게임의 장비를 여전히 뺌
 - 주소 표(`topology.addresses`, `GET .../lesson/addresses/`): 행마다 `host`, `kind`, `zone`, `address`, `network`, `more`(같은 인터페이스의 다른 주소 수), DB존이면 `owner`. 고객은 따로 행을 두지 않고 kali 행의 `more`에 들어감. IDS는 주소가 없어 행이 없음. 주소를 묻는 단계에서 다른 장비의 주소를 답하면 그 주소가 누구 것인지 알려 줌(`views._whose_address`)
 
-**API.** `GET /api/sessions/<id>/topology/`의 `map`이 이 그래프입니다. 슬롯을 읽지 못하면 `map`은 빈 그래프와 `detail`입니다. 같은 응답의 `segments`, `sensors`, `unplaced`는 그대로입니다. 읽은 인터페이스는 세션이 끝날 때까지 보관해 주소를 묻는 단계의 답으로 씁니다(`views._map_found`, `_found_kept`).
+**API.** `GET /api/sessions/<id>/topology/`의 `map`이 이 그래프입니다. 스택을 읽지 못하면 `map`은 빈 그래프와 `detail`입니다. 같은 응답의 `segments`, `sensors`, `unplaced`는 그대로입니다. 읽은 인터페이스는 세션이 끝날 때까지 보관해 주소를 묻는 단계의 답으로 씁니다(`views._map_found`, `_found_kept`).
 
 **페이지.** 블루팀 콘솔의 구성도 창은 `/map/<세션 id>/`(`console/templates/console/map.html`, `X-Frame-Options: SAMEORIGIN`)를 iframe으로 띄웁니다.
 
 - 창을 열 때 `/api/sessions/<id>/topology/`를 한 번 읽음. 주기적으로 다시 읽지 않음
 - cytoscape.js 3.34.4(`platform/console/static/map/cytoscape.min.js`, SHA-256 `081591ab735b2b6a3b31a3c60f8f3a3e2fee8c92939e0c7820ad1208571b6cd8`, MIT)로 그림. nginx가 `/static/map/`을 `/app/console/static/map/`에서 직접 줌
-- 배치: 위치는 `topology.laid_out`이 정해 그래프에 실음(장비 `x`, `y`, 글자 쪽 `label`, 영역 `box`와 캡션 위치 `shift`, 꺾이는 선의 `route`, 시작점 `start`, 끝점 `end`). 주소 글자도 `kind: address` 노드로 실음. 페이지는 그 위치를 그대로 씀(`preset`). 붙은 장비만으로 정하므로 같은 배선이면 어느 슬롯에서 몇 번 읽어도 같은 그림
+- 배치: 위치는 `topology.laid_out`이 정해 그래프에 실음(장비 `x`, `y`, 글자 쪽 `label`, 영역 `box`와 캡션 위치 `shift`, 꺾이는 선의 `route`, 시작점 `start`, 끝점 `end`). 주소 글자도 `kind: address` 노드로 실음. 페이지는 그 위치를 그대로 씀(`preset`). 붙은 장비만으로 정하므로 같은 배선이면 어느 스택에서 몇 번 읽어도 같은 그림
   - 영역 상자 하나가 서브넷 하나. 장비는 주소가 있는 서브넷의 상자 안에 둠. 주소가 없는 IDS는 웹 서버 구간 상자 안. 선은 다른 상자로 나갈 수 있음
   - 영역마다 상자. 캡션은 상자 위 가운데이고, 그 자리를 선이 지나면 선과 `CAPTION_CLEAR`만큼 떨어진 가장 가까운 자리로 비켜 놓음. 비킬 자리가 없으면 다른 상자와 겹치지 않는 쪽으로 상자를 넓힘(`_captioned`). 캡션 폭은 `_caption_width`로 어림함
   - 윗줄은 왼쪽부터 Kali와 인터넷 구간 스위치, 라우터, DMZ 스위치와 WAF. 라우터는 두 상자 사이에 따로 놓고, 라우터의 주소 두 개는 어느 상자에도 넣지 않으며 상자와 `CLEAR`만큼 띄움. WAF는 DMZ 상자 안
@@ -399,8 +400,8 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 |---|---|---|
 | Elasticsearch | `platform/ingest/elastic.py` | `platform/register_pipeline.py`: 시작 시 `geoip` ingest 파이프라인 PUT |
 | Kibana HTTP API, saved object, Discover 링크 | `platform/kibana.py` | `platform/nginx.conf`: Kibana API 경로를 앎. Default space, space 안의 space, space 접두어 없는 API 경로, `%`·역슬래시·점 세그먼트가 든 경로, `?namespaces=` 거부. space 안의 API 호출은 `/kibana-gate/`로 넘김(호출 목록과 인덱스 검사는 `kibana.py`). `GET /kibana/s/<space>/api/spaces/space`에는 SOC space만 담은 응답을 직접 반환. 다른 메서드는 `@kibana-gate`로 넘겨 게이트가 거부. `console/templates/console/blue.html`: Kibana의 localStorage 키를 미리 채움 |
-| OpenStack API, 슬롯 배선 읽기 | `platform/range/openstack.py`(Keystone, Heat, Nova, Neutron, Glance, 슬롯 VM으로의 ssh) | 없음. Heat 템플릿의 재료가 되는 슬롯 계획은 `platform/range/sandbox.py`, 배선 해석은 `platform/range/wiring.py`, 학습자 이름과 그래프는 `platform/topology.py`, fabric 계획은 `platform/range/fabric.py`. 이 파일들은 OpenStack API를 부르지 않음 |
-| CRS 설정과 nginx reload | `platform/rules/crs.py` | `wargames/<wargame>/topology.yaml`의 WAF 장치 `cr-waf`: `crs.py`에 넘길 예외 파일(`rules`), reload 명령(`reload`), nginx pid 파일(`pid`) 지정. `entrypoint.sh`: `vm-terminal.sh cr-waf`로 슬롯 WAF VM의 root 셸 제공(WAF VM에 ssh 후 `sudo -i`). `deploy/roles/waf/`: WAF 이미지가 audit 로그와 거부 로그 파일을 만들고 `log-shipper.conf`가 그 경로를 읽음. audit 로그 경로는 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 `platform/tests/test_roles.py`의 `test_the_waf_ships_the_audit_and_refused_logs_under_the_tags_filebeat_decodes`로 확인. F6의 WAF 창 단계 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`): `wargames.lesson`에서 topology의 예외 파일과 reload 명령(`settings.CR_WAF`)으로 채움. 플랫폼은 터미널을 조작하지 않음 |
+| OpenStack API, 스택의 배선 읽기 | `platform/range/openstack.py`(Keystone, Heat, Nova, Neutron, Glance, 훈련 환경 VM으로의 ssh) | 없음. Heat 템플릿의 재료가 되는 스택 계획은 `platform/range/sandbox.py`, 배선 해석은 `platform/range/wiring.py`, 학습자 이름과 그래프는 `platform/topology.py`, fabric 계획은 `platform/range/fabric.py`. 이 파일들은 OpenStack API를 부르지 않음 |
+| CRS 설정과 nginx reload | `platform/rules/crs.py` | `wargames/<wargame>/topology.yaml`의 WAF 장치 `cr-waf`: `crs.py`에 넘길 예외 파일(`rules`), reload 명령(`reload`), nginx pid 파일(`pid`) 지정. `entrypoint.sh`: `vm-terminal.sh cr-waf`로 세션의 WAF VM에 root 셸 제공(WAF VM에 ssh 후 `sudo -i`). `deploy/roles/waf/`: WAF 이미지가 audit 로그와 거부 로그 파일을 만들고 `log-shipper.conf`가 그 경로를 읽음. audit 로그 경로는 `deploy/waf/modsecurity.conf`의 `SecAuditLog`와 맞는지 `platform/tests/test_roles.py`의 `test_the_waf_ships_the_audit_and_refused_logs_under_the_tags_filebeat_decodes`로 확인. F6의 WAF 창 단계 명령(`grep -n ruleRemove {waf_rules}`, `{sudo}nano {waf_rules} && {waf_reload}`): `wargames.lesson`에서 topology의 예외 파일과 reload 명령(`settings.CR_WAF`)으로 채움. 플랫폼은 터미널을 조작하지 않음 |
 | Suricata 프로세스 | `platform/rules/suricata.py` | `wargames/<wargame>/topology.yaml`의 센서 장치 `cr-ids`: `suricata.py`에 넘길 룰 파일(`/var/lib/suricata/rules/local.rules`)과 reload 명령(`suricatasc -c reload-rules`) 지정. 장치에 `container: sensor`가 있어 검증(`suricata -T`), 룰 읽기·쓰기, reload 모두 infra VM에서 `docker exec sensor`로 실행. `deploy/roles/infra/`: infra 이미지의 `sensor.service`가 IDS 브리지에서 센서 컨테이너를 시작하고 `slot-boot`가 IDS 브리지와 라우터 설정을 함. 이후 기본 룰 적용은 `suricata.py` |
 | 공격 박스 | `platform/attacker.py` | `platform/operator_log.py`: `/var/log/commands.log` 읽기. 터미널 연결 설정에 `cr-kali` 지정, `entrypoint.sh`에서 `vm-terminal.sh cr-kali` 실행. 웹사이트 창(`platform/api/site.py`)은 예외가 아님. `redteam/tools.py`의 `TOOL_IMAGE`(`CR_TOOL_IMAGE`, 기본 `cr-kali`): 도구 케이스를 공격 박스에서 실행. 박스 접근은 `attacker.py`(`customer_origins`, `unbound_source`, 명령을 담은 `as_customer`, 학습자 ssh 키를 넣고 빼는 `authorize_key`, `drop_key`)와 substrate의 `opened`(Kali VM으로 여는 ssh 스트림)로만 함. 발사한 sqlmap 케이스가 쓰는 박스 안 출력 디렉터리(`SQLMAP_RUNS`, `/tmp/sqlmap-runs/<케이스 id>`)도 `attacker.py`가 정해 `harness.fire`에 넘김(`views._fire`, `redteam/run.py`) |
 | 대상 시스템 데이터 | `platform/api/loot.py`(board), `platform/api/effect.py`(corp) | 없음. `loot.py`는 `board` 역할 runner로 board 컨테이너 안 `127.0.0.1`에 HTTP 요청. `effect.py`는 target VM에서 `corp-db`에 `docker exec`하는 runner로 접근 |
@@ -413,23 +414,23 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 
 | 파일 | 하는 일 |
 |---|---|
-| `deploy/filebeat/filebeat.yml` | collector의 Filebeat 설정. `event.module`과 슬롯(`cr_slot`) 태그를 붙여 `logs-<slot>-sensors` 인덱스에 기록. 인덱스 템플릿은 `fields-lean.yml`로 만들어 기존 템플릿을 덮어씀(`setup.template.overwrite`), refresh 1초. 이미 있는 data stream은 rollover 전까지 예전 매핑을 유지 |
+| `deploy/filebeat/filebeat.yml` | collector의 Filebeat 설정. `event.module`과 스택 번호 태그(`cr_slot`)를 붙여 `logs-N-sensors` 인덱스에 기록. 인덱스 템플릿은 `fields-lean.yml`로 만들어 기존 템플릿을 덮어씀(`setup.template.overwrite`), refresh 1초. 이미 있는 data stream은 rollover 전까지 예전 매핑을 유지 |
 | `deploy/elastic/ingest-pipeline.json` | `geoip` ingest 파이프라인. 이벤트 시각을 `@timestamp`로 옮기고, `src_ip`와 `transaction.client_ip`의 GeoIP를 `src_geo`에 붙이고, `cr_slot` 삭제 |
 | `deploy/proxy/stamp.py` | `X-Request-ID`를 붙이는 mitmdump 스크립트. Kali 이미지에 `/usr/local/lib/web-proxy.py`로 설치(`deploy/roles/kali/stamp.py` 링크) |
 | `deploy/kali/operator-log.sh` | Kali 쉘 훅. 입력한 명령을 마커와 함께 `/var/log/commands.log`에 추가 |
 | `deploy/roles/kali/` | Kali 이미지: `install.sh`(`kali-linux-headless`와 도구, key 전용 `kali` 계정과 sshd, 마커 프록시 `web-proxy.service`, 명령 훅, `set-origin`), `slot-boot`(출발지 주소와 라우터로 가는 default route) |
-| `deploy/roles/waf/` | WAF 이미지: `install.sh`(nginx, ModSecurity, CRS를 sha256 확인 후 소스로 빌드), `slot-boot`(default route, 서비스 이름, 로그 shipper 설정), `log-shipper.conf` |
+| `deploy/roles/waf/` | WAF 이미지: `install.sh`(Ubuntu의 nginx에 ModSecurity와 커넥터를 sha256 확인 후 소스로 빌드해 붙이고 CRS를 넣음), `slot-boot`(default route, 서비스 이름, 로그 shipper 설정), `log-shipper.conf` |
 | `deploy/roles/infra/` | infra 이미지: `install.sh`(nftables, Docker, Suricata 이미지, rsyslog), `slot-boot`(IDS 다리를 `br0`에 묶고 다리 주소를 지움, `edge.nft`로 DNAT와 `wan` 필터, 로그 중계 설정), `sensor.service`, `edge.nft`, `log-relay.conf` |
 | `deploy/roles/target/` | target 이미지: `install.sh`(Docker, 구울 때의 태그로 워게임 이미지 pull, 초기 데이터 사본), `render.py`(워게임 compose를 VM용으로 렌더링), `wargames`와 `wargames.service`(부팅 때 빈 볼륨에 초기 데이터를 넣고 워게임을 띄움) |
-| `wargames/<wargame>/topology.yaml` | 슬롯의 LAN, VM, 포트와 고정 IP, 장치와 역할, IDS 다리 |
-| `platform/range/sandbox.py` | `topology.yaml`과 선언으로 슬롯 계획(LAN, 노드, 포트, 노드별 `/etc/slot.env`와 cloud-init user data)을 만듦 |
-| `platform/range/pool.py` | 슬롯 계획(`Plan`), 풀의 슬롯 번호를 워게임에 배정(`assigned`), 스택 상태와 준비 단계(`phase`) |
+| `wargames/<wargame>/topology.yaml` | 스택의 LAN, VM, 포트와 고정 IP, 장치와 역할, IDS 다리 |
+| `platform/range/sandbox.py` | `topology.yaml`과 선언으로 스택 계획(LAN, 노드, 포트, 노드별 `/etc/slot.env`와 cloud-init user data)을 만듦 |
+| `platform/range/pool.py` | 스택 계획(`Plan`), 풀의 스택 번호를 워게임에 배정(`assigned`), 스택 상태와 준비 단계(`phase`) |
 | `platform/range/wiring.py` | Neutron 포트와 target VM의 Docker 네트워크를 학습자 구성도가 그리는 `Wiring`으로 바꿈 |
-| `platform/range/fabric.py` | 모든 슬롯이 함께 쓰는 부분의 계획: `cr-mgmt` 네트워크, 보안 그룹, 키페어 `cr-platform` |
+| `platform/range/fabric.py` | 모든 스택이 함께 쓰는 부분의 계획: `cr-mgmt` 네트워크, 보안 그룹, 키페어 `cr-platform` |
 | `platform/range/cloud.py` | `cloud.yaml` 읽기와 검사, `clouds.yaml` 항목, init의 flavor 선택과 quota 계산 |
 | `platform/jump.py` | Kali ssh용 점프 sshd 설정과 세션별 키 발급·회수 |
 | `platform/tests/test_hot.py` | 렌더링한 Heat 템플릿이 격리 조건을 어기면 `bin/verify` 실패 |
-| `test/test_range_isolation.py` | 슬롯 VM에서 격리를 확인하는 실환경 검사 |
+| `test/test_range_isolation.py` | 훈련 환경 VM에서 격리를 확인하는 실환경 검사 |
 | `platform/scoring/` | `correlate.py`: 마커나 시간 창으로 탐지를 케이스에 매칭. `metrics.py`: 케이스별 탐지 결과 집계. `types.py`: 케이스·탐지 레코드와 매칭 방식 이름 |
 | `platform/scoreboard.py` | 목표 점수. 탐지를 시도에 귀속, `corroborated` 판정, 탈취된 목표 집계 |
 | `platform/game.py` | 게임 점수(speed, accuracy, coverage, response). 점수의 `game` 블록 |
@@ -438,12 +439,12 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | `platform/api/maps.py` | 워게임의 고객 출발지 비중을 더해 `topology.learner`를 부름. 구성도와 주소 단계는 이것을 씀 |
 | `platform/cr/urls.py` | 전체 엔드포인트 라우트 표 |
 | `platform/api/refusals.py` | 예외를 HTTP 상태 코드로 변환(`/api/` 아래 404는 JSON). 변경 요청(POST 등)의 동일 출처 검사, JSON이 아닌 본문은 415 |
-| `platform/api/reachability.py` | 슬롯이 보고하는 모든 주소(채점 서버 제외)에서 온 요청을 거부하는 미들웨어. 주소 목록은 30초 캐시하고, 만료되면 슬롯들의 구성을 동시에 읽음 |
+| `platform/api/reachability.py` | 스택이 보고하는 모든 주소(채점 서버 제외)에서 온 요청을 거부하는 미들웨어. 주소 목록은 30초 캐시하고, 만료되면 스택들의 구성을 동시에 읽음 |
 | `platform/api/signin.py` | 로그인, 로그아웃, 회원가입, nginx `auth_request`가 묻는 세션 확인 |
 | `platform/api/blocks.py` | 로그인 실패를 IP와 브라우저 헤더 지문별로 세고 차단 |
 | `platform/api/accounts.py` | 계정 관리 API(계정 목록, 승인, 거절. 관리자 전용). 학습자가 남의 세션과 훈련 환경 변경에 닿지 못하게 막는 미들웨어 |
 | `platform/range/declared.py` | `declaration.yaml`과 워게임마다의 `topology.yaml`을 읽어 `Declaration`으로 변환 |
-| `platform/range/openstack.py` | OpenStack 어댑터(`connect`): Keystone, Heat(슬롯 계획을 HOT로 렌더링, 스택 생성·삭제·상태), Nova, Neutron, Glance, 슬롯 VM으로의 ssh |
+| `platform/range/openstack.py` | OpenStack 어댑터(`connect`): Keystone, Heat(스택 계획을 HOT로 렌더링, 스택 생성·삭제·상태), Nova, Neutron, Glance, 훈련 환경 VM으로의 ssh |
 | `deploy/openstack/network.yaml` | 실제 클라우드의 주소 배치를 사람이 읽도록 적은 그림. 설정 값은 `cloud.yaml` |
 | `bin/prune` | 플랫폼 DB의 세션 정리(`--keep`, `--ids`, `--newest`, `--apply`). `bin/verify`가 acceptance에서 만든 세션을 지움 |
 | `bin/verify` | ratchet 검사(게이트 대상 수치가 커지는 변경 거부, `CLAUDE.md`)와 변경이 닿는 테스트 실행(`--changed`, `--fast`. 테스트 선택은 `bin/select-tests`) |
@@ -481,7 +482,7 @@ Kali 창은 세션 API의 `kali_terminal` URL(`GET /api/sessions/<id>/`)을 프�
 
 - URL은 `/vm-terminal/kali/?arg=<세션 id>`. 플랫폼 안의 ttyd가 `platform/vm-terminal.sh`를 실행
 - ttyd는 `-t disableLeaveAlert=true`로 띄움. 다음 레슨으로 넘어가거나 세션을 끝낼 때 브라우저의 "사이트에서 나가시겠습니까?" 창이 뜨지 않음
-- 스크립트는 세션 슬롯 Kali VM의 `cr-mgmt` 주소로 관리 사용자(`CR_OPENSTACK_SSH_USER`, 기본 `ubuntu`)로 ssh 접속해 `sudo -i env TERM=xterm-256color TZ=KST-9 bash -l`을 실행. 주소는 터미널을 열 때마다 한 번 클라우드에서 찾음(`vm-terminal.sh`는 API 서버와 다른 프로세스라 API 서버 메모리의 주소를 쓰지 못함)
+- 스크립트는 세션의 Kali VM `cr-mgmt` 주소로 관리 사용자(`CR_OPENSTACK_SSH_USER`, 기본 `ubuntu`)로 ssh 접속해 `sudo -i env TERM=xterm-256color TZ=KST-9 bash -l`을 실행. 주소는 터미널을 열 때마다 한 번 클라우드에서 찾음(`vm-terminal.sh`는 API 서버와 다른 프로세스라 API 서버 메모리의 주소를 쓰지 못함)
 
 `entrypoint.sh`는 두 ttyd를 `TERMINAL_KEEP=1`로 띄웁니다. 그러면 스크립트가 자신을 `tmux new-session -A -s <host>-<세션 id>` 안에서 다시 실행합니다.
 
@@ -493,7 +494,7 @@ Kali 창은 세션 API의 `kali_terminal` URL(`GET /api/sessions/<id>/`)을 프�
 
 `vm-terminal.sh`는 호스트 키를 별칭 `cr-<server id>-<launch time>`(`OpenStack.host_key_alias`)으로 확인합니다. 플랫폼 runner와 같은 별칭이고, `StrictHostKeyChecking=accept-new`를 씁니다.
 
-- 슬롯 VM을 재부팅하거나 스택을 새로 만들면 별칭이 바뀜. "REMOTE HOST IDENTIFICATION HAS CHANGED" 경고 없이 새 키가 등록됨
+- 훈련 환경 VM을 재부팅하거나 스택을 새로 만들면 별칭이 바뀜. "REMOTE HOST IDENTIFICATION HAS CHANGED" 경고 없이 새 키가 등록됨
 - 이미 아는 별칭인데 키가 바뀌었으면 접속 거부
 
 학습자는 자기 PC에서 세션의 Kali에 ssh로도 들어갑니다(`POST /api/sessions/<id>/ssh/`, 세션을 연 학습자만).
@@ -507,12 +508,12 @@ Kali 창은 세션 API의 `kali_terminal` URL(`GET /api/sessions/<id>/`)을 프�
 
 - Kali: root 로그인 셸(`sudo -i`). 호스트 이름은 Nova 서버 이름(`cr-slot-<n>-kali`), Kali 기본 두 줄 프롬프트(`deploy/kali/bashrc`), motd 없음
 - Kali 로그인 때 `/etc/profile.d/proxy.sh`(`http_proxy`)와 명령 훅(`/usr/local/lib/shell-hook.sh`의 `__log_command`, `/etc/bash.bashrc`에서 로드)이 적용됨
-- WAF: 슬롯 WAF VM의 root 로그인 셸(`sudo -i`). 호스트 이름 `cr-slot-<n>-waf`. 그래서 레슨의 reload 명령에 `sudo`가 없음(`nginx -t && nginx -s reload`)
+- WAF: 세션의 WAF VM에 root 로그인 셸(`sudo -i`). 호스트 이름 `cr-slot-<n>-waf`. 그래서 레슨의 reload 명령에 `sudo`가 없음(`nginx -t && nginx -s reload`)
 - 두 셸 모두 `TERM=xterm-256color`, `TZ=KST-9`(POSIX 시간대 문자열)
 - WAF VM의 시간대는 UTC. 수집 파이프라인이 audit 로그의 시간대 없는 `time_stamp`를 UTC로 읽음
-- syslog 송신자 이름은 infra 로그 서버의 rsyslog 템플릿에서 슬롯마다 고정(`waf-<n>`, `infra-<n>`). Filebeat는 송신자 이름으로 슬롯을 구분
+- syslog 송신자 이름은 infra 로그 서버의 rsyslog 템플릿에서 스택마다 고정(`waf-<n>`, `infra-<n>`). Filebeat는 송신자 이름으로 스택 번호를 구분
 
-블루팀 콘솔의 WAF 창은 세션 API의 `waf_terminal` URL(`GET /api/sessions/<id>/`)을 프레임으로 띄웁니다. URL은 `/vm-terminal/waf/?arg=<세션 id>`이고, 같은 `auth_request /signed-in`로 보호합니다. 이 검사는 플랫폼의 `/auth-check/`에 원래 URL(`X-Original-URI`)을 넘겨 묻습니다. 로그인하지 않았으면 401이고 로그인 페이지로 보냅니다. 슬롯 VM 주소에서 온 요청은 거부합니다. 학습자 계정은 자기 세션만 열 수 있습니다. 터미널 URL의 `arg`나 `/site/<세션 id>/`가 남의 세션이면 403이고, 터미널에 `arg`가 없거나 둘 이상이어도 403입니다. 관리자는 모든 세션을 엽니다. nginx는 이 답(204, 401)을 5초 동안 캐시합니다. 키는 세션 쿠키, 클라이언트 주소, URL이 가리키는 세션(`$session_asked`)이라서, 캐시된 허용이 다른 주소나 다른 세션에 쓰이지 않습니다.
+블루팀 콘솔의 WAF 창은 세션 API의 `waf_terminal` URL(`GET /api/sessions/<id>/`)을 프레임으로 띄웁니다. URL은 `/vm-terminal/waf/?arg=<세션 id>`이고, 같은 `auth_request /signed-in`로 보호합니다. 이 검사는 플랫폼의 `/auth-check/`에 원래 URL(`X-Original-URI`)을 넘겨 묻습니다. 로그인하지 않았으면 401이고 로그인 페이지로 보냅니다. 훈련 환경 VM 주소에서 온 요청은 거부합니다. 학습자 계정은 자기 세션만 열 수 있습니다. 터미널 URL의 `arg`나 `/site/<세션 id>/`가 남의 세션이면 403이고, 터미널에 `arg`가 없거나 둘 이상이어도 403입니다. 관리자는 모든 세션을 엽니다. nginx는 이 답(204, 401)을 5초 동안 캐시합니다. 키는 세션 쿠키, 클라이언트 주소, URL이 가리키는 세션(`$session_asked`)이라서, 캐시된 허용이 다른 주소나 다른 세션에 쓰이지 않습니다.
 
 블루팀 콘솔의 웹사이트 창은 콘솔 안의 브라우저입니다.
 
@@ -578,7 +579,7 @@ nginx는 `</body>` 앞에 스크립트를 넣습니다.
 웹사이트 창의 출구(`site.found_egress`, 세션마다 한 번 결정)는 고객 주소입니다. 창의 요청은 고객과 같은 경로를 지나고, 센서에도 고객 요청과 똑같이 보입니다. 출발지는 `attacker.customer_origins` 중 시나리오 고객 트래픽 비중이 가장 큰 곳입니다(`customers.declared`. 없으면 id 순 첫 번째).
 
 - 기록기가 Kali로 ssh stdio 스트림을 열고(`OpenStack.opened`) 그 안에서 `attacker.as_customer` 실행
-- `as_customer`는 Python 브리지. Kali의 출발지 SNAT가 적용되지 않는 `cr-users` 계정으로 돎. 그 슬롯에서 고객 트래픽을 돌린 적이 없으면 계정과 예외 규칙을 만듦
+- `as_customer`는 Python 브리지. Kali의 출발지 SNAT가 적용되지 않는 `cr-users` 계정으로 돎. 그 스택에서 고객 트래픽을 돌린 적이 없으면 계정과 예외 규칙을 만듦
 - 브리지는 그 출발지의 첫 주소에 바인드해 라우터의 공인 IP 80번 포트로 연결(그 출발지 구간의 `gateway`). 개발자 도구의 원격 주소도 이 주소
 - 라우터가 목적지만 WAF로 바꾸고(DNAT) 출발지는 그대로 둠. 센서에는 `waf`가 `X-Forwarded-For`에 고객 주소를 담아 `board.com`으로 보내는 요청이 보임. 라우터와 WAF 사이는 센서가 보지 않음
 - VM 이름이나 `cr-mgmt` 주소는 쓰지 않음
@@ -660,7 +661,7 @@ WAF는 `deploy/waf/modsecurity.conf`의 `SecRuleEngine On`, CRS 기본 임계치
 ```
 WAF (ModSecurity) -> audit.log ---+
 WAF (nginx, 400) --> refused.log -+
-Suricata ----------> eve.json ----+-> Filebeat -> Elasticsearch, logs-<slot>-sensors
+Suricata ----------> eve.json ----+-> Filebeat -> Elasticsearch, logs-N-sensors
                                       (event.module) pipeline geoip
                                                           |
              POST /api/sessions/<id>/ingest/ (called by tests, before close/, by the scenario engine and by lesson checks)
@@ -695,7 +696,7 @@ Suricata ----------> eve.json ----+-> Filebeat -> Elasticsearch, logs-<slot>-sen
 ingest를 호출할 때마다 하는 일:
 
 - 비활성화 시간이 지난 룰부터 다시 활성화
-- `logs-<N>-*` 읽기(`ELASTIC_SESSION_INDEX`, N은 세션의 슬롯)
+- `logs-<N>-*` 읽기(`ELASTIC_SESSION_INDEX`, N은 세션의 스택 번호)
 - Elasticsearch는 세션 시작 1분 전부터 종료 시각(또는 현재) 1분 뒤까지의 `@timestamp`로 조회
 - 오래된 순으로 5000건씩 읽음
 - Suricata `alert` 이벤트는 그대로 씀. ModSecurity 기록은 매칭된 룰 메시지마다 `Detection`(id `<Elasticsearch _id>:<n>`)으로 나눔
@@ -704,9 +705,9 @@ ingest를 호출할 때마다 하는 일:
 - 마커 없이 저장된 행에 나중에 찾은 마커를 채움
 - `src_host`와 `dest_host`는 substrate의 구간 정보로 채움. substrate에 접근할 수 없으면 비워 둠
 
-인덱스와 슬롯:
+인덱스와 스택 번호:
 
-- 공유 수집기는 syslog 줄마다 송신자 hostname으로 슬롯을 판별(도메인 앞의 `-N`, 없으면 슬롯 1). 태그를 붙여 그 슬롯의 인덱스에 씀. 태그는 ingest 파이프라인에서 저장 전에 지움
+- 공유 수집기는 syslog 줄마다 송신자 hostname으로 스택 번호를 판별(도메인 앞의 `-N`, 없으면 1). 태그를 붙여 그 번호의 인덱스에 씀. 태그는 ingest 파이프라인에서 저장 전에 지움
 - Filebeat는 syslog 태그로 `event.module`(`suricata`, `modsecurity`, `nginx`)을 붙임. 셋 다 아닌 syslog 줄은 버림
 - nginx 거부 기록의 `status`는 Filebeat가 Suricata HTTP 기록과 같은 `http.status`로 옮김. 최상위 `status`가 한 번이라도 매핑되면 Kibana가 같은 이름의 runtime field `status`를 검색에 넣지 않아서, `status : 404`가 IDS 기록과 WAF 기록에 맞지 않음
 - 인덱스에는 두 엔진의 이벤트와 nginx 거부 기록만 남음. 학습자가 Kibana에서 보는 필드·인덱스·헤더 어디에도 플랫폼 이름이 없음. 케이스 마커는 `X-Request-ID` 헤더에 실림
@@ -787,7 +788,7 @@ board에 선언된 defense:
 - 재실행에 실패하면 503으로 응답하고 세션을 닫음
 - Kibana space 준비, 공격 출발지 지정, baseline 읽기, WAF 설정, 센서 룰 적재는 서로 기다리지 않고 함께 돌림. 레슨 기록 재실행만 WAF·센서·출발지가 끝난 뒤. 준비 확인의 ground truth 읽기와 센서 룰 읽기도 함께 돌림
 
-룰 파일이 `local.rules`이면 센서에 넣지 않습니다. 준비 확인(readiness)이 모든 센서에 이 파일이 들어간 뒤에야 슬롯을 내주기 때문입니다. 룰 파일은 슬롯의 센서마다 따로 있습니다(2026-10-13 측정: 슬롯 1에 넣은 sid가 슬롯 2에는 없었음). 그래서 다른 룰 파일은 그 슬롯의 센서에만 넣습니다.
+룰 파일이 `local.rules`이면 센서에 넣지 않습니다. 준비 확인(readiness)이 모든 센서에 이 파일이 들어간 뒤에야 스택을 세션에 내주기 때문입니다. 룰 파일은 세션의 센서마다 따로 있습니다(2026-10-13 측정: 한 세션의 센서에 넣은 sid가 다른 세션의 센서에는 없었음). 그래서 다른 룰 파일은 그 세션의 센서에만 넣습니다.
 
 `platform/rules/crs.py`는 설정을 `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`로 생성합니다. `crs-setup.conf` 다음, 룰보다 먼저 로드되는 CRS hook입니다.
 
@@ -821,7 +822,7 @@ board에 선언된 defense:
 
 WAF 상태 스냅숏:
 
-- 시나리오 최종 점검에서 구간을 판정할 때마다, 세션을 닫을 때마다(슬롯 초기화 전) `crs.read` 결과를 스냅숏으로 남김
+- 시나리오 최종 점검에서 구간을 판정할 때마다, 세션을 닫을 때마다(스택 초기화 전) `crs.read` 결과를 스냅숏으로 남김
 - 레슨을 옮길 때도 옮기기 전의 WAF를 스냅숏으로 남김
 - 스냅숏은 `Session.waf_snapshots`에 쌓임(마이그레이션 0021): `{at, scenario_window|closed|lesson, waf}`. 이전 과정의 세션에는 VERIFY 실행 때 남은 `{at, run, waf}`도 있음
 - 가장 최근 스냅숏은 `Session.waf`. 닫힌 세션도 파일을 포함한 학습자의 마지막 설정을 보고함. 한 번도 읽지 못했으면 `file: null`
@@ -1453,7 +1454,7 @@ F6의 sqlmap 명령에는 `--skip-waf`를 붙입니다. 없으면 sqlmap이 WAF 
 스냅숏은 세션 시작 때 한 번만 만듭니다.
 
 - 계정을 읽지 못해도 세션은 스냅숏 없이 생성됨. 이 세션에서 `POST /api/sessions/<id>/loot/`를 호출하면 409
-- 이후 이 세션 때문에 board를 다시 읽지 않음. 슬롯 준비 점검의 `ground_truth`는 세션이 잡지 않은 슬롯에서만 board를 읽음
+- 이후 이 세션 때문에 board를 다시 읽지 않음. 스택 준비 점검의 `ground_truth`는 세션이 잡지 않은 스택에서만 board를 읽음
 - `GET /api/wargames/<id>/objectives/`: `objectives.yaml`의 등급 목록. `?scenario=<id>`를 붙이면 그 시나리오가 노리는 등급만(`wargames.at_stake`). `loot_verified` 워게임에서는 시나리오의 공격 중 하나라도 계정을 덤프(`--dump`)하거나 레드팀이 사람(`red: person`)일 때만 전체 등급, 아니면 빈 목록(3.1, 3.2, 3.4). 결과 화면은 이 목록에 대상이 실제로 잃은 등급을 더해 보여 줌
 - `GET /api/sessions/<id>/objectives/`: 저장된 행
 - `POST /api/sessions/<id>/objectives/`: 관찰 수행. `loot_verified` 워게임에서는 아무 동작도 하지 않음
@@ -1572,7 +1573,7 @@ board 세션에는 고객을 붙일 수 있습니다. 세션 내내 글을 둘�
 - board 자체의 CSRF 거부(`refused_by: "app"`, 차단으로 세지 않음)는 영어 문구와 Django 실패 페이지의 `<span>(403)</span></h1>`로 식별. board는 고객의 언어로 응답하므로 한국어 고객에게는 거부 메시지도 한국어
 - 한 페르소나의 흐름은 차례로 돎(`Customers.turns`). Django는 로그인할 때 CSRF 토큰을 바꾸므로, 같은 페르소나의 다른 흐름이 받아 둔 폼 토큰은 그 순간 무효가 되어 board가 403으로 거부했음(라운드 24: 3.2 댓글 2건, 3.3 로그인 1건)
 
-생성기는 슬롯의 Kali VM에서 시스템 계정 `cr-users`로 돕니다.
+생성기는 스택의 Kali VM에서 시스템 계정 `cr-users`로 돕니다.
 
 - 페르소나마다 Kali의 출발지 주소 하나에 바인딩. 요청의 출발지 주소는 그 출발지의 주소
 - 공격자와 분리함. 기본 출발지, 공격자가 쓰는 출발지의 `source_ip`, Kali의 바인딩되지 않은 출발 주소(대상으로 `ip route get`)를 쓰지 않음
@@ -1598,7 +1599,7 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
   - 건수 `sent`, `served`, `blocked`(앱이 아니라 방어 설정이 낸 403), `unanswered`, `other`
   - `sources`(출발지, 주소, 요청 수)
   - `by_action`(행동별 전송 수와 차단 수)
-- `DELETE`: 생성기를 멈추고 마지막 기록까지 읽음. 세션을 닫을 때도 슬롯 초기화 전에 같은 처리. 박스에 연결되지 않으면 닫기는 진행하고 오류를 `traffic.error`에 남김
+- `DELETE`: 생성기를 멈추고 마지막 기록까지 읽음. 세션을 닫을 때도 스택 초기화 전에 같은 처리. 박스에 연결되지 않으면 닫기는 진행하고 오류를 `traffic.error`에 남김
 
 기록은 바이트 오프셋 기준으로 가져옵니다(`tail -c`, 한 번에 최대 1 MiB, 완전한 줄만). 1 MiB보다 짧은 덩어리가 올 때까지 이어 읽고, 덩어리마다 `bulk_create`(`batch_size=500`)로 `CustomerRequest` 행에 넣고, 오프셋은 `Session.traffic`에 둡니다.
 
@@ -1825,7 +1826,7 @@ API는 `platform/api/customers.py`와 `views.session_traffic`에 있습니다.
 
 차단:
 
-Kibana를 보안 기능 없이 돌리므로, 관리 API는 막을 목록을 두지 않고 허용 목록으로 거릅니다. space 안의 `api`, `internal` 호출은 nginx가 모두 `/kibana-gate/`로 넘기고, `kibana.refusal`은 Discover가 부르는 호출(`DISCOVER_READS`, 검색, 필드 목록, 값 추천)만 통과시킵니다. 나머지는 403입니다(위 "Kibana도 슬롯별로 나뉩니다" 참고).
+Kibana를 보안 기능 없이 돌리므로, 관리 API는 막을 목록을 두지 않고 허용 목록으로 거릅니다. space 안의 `api`, `internal` 호출은 nginx가 모두 `/kibana-gate/`로 넘기고, `kibana.refusal`은 Discover가 부르는 호출(`DISCOVER_READS`, 검색, 필드 목록, 값 추천)만 통과시킵니다. 나머지는 403입니다(위 "Kibana도 스택별로 나뉩니다" 참고).
 
 nginx(`platform/nginx.conf`)에 남은 것:
 
@@ -1852,7 +1853,7 @@ Discover 링크:
 - `GET /api/sessions/<id>/` 응답의 `discover`: `/kibana/s/<space>/app/discover`에서 그 data view를 쓰는, 저장하지 않은 Discover 상태
 - 범위는 현재 레슨 시작 시점부터
 - 열: `event_type, source_ip, destination, url, status, rule_id, rule`(`kibana.SESSION_COLUMNS`, 열 너비 고정)
-- 필터는 없음. 슬롯 VM 자체의 syslog 줄은 infra가 중계하지 않아 인덱스에 들어가지 않음
+- 필터는 없음. 훈련 환경 VM 자체의 syslog 줄은 infra가 중계하지 않아 인덱스에 들어가지 않음
 - 레슨은 빈 쿼리로, 시나리오와 워게임은 경보 쿼리로 엶
 - space나 data view가 준비되지 않았거나 `KIBANA_URL`이 없으면 `discover`는 null. 공유 운영자 data view로 대신하지 않음
 - 이때 ELK 창에는 준비 중 문구가 뜨고, 링크가 생길 때까지 세션을 다시 읽음. 가져오기는 10초마다 재시도
@@ -1886,7 +1887,7 @@ Discover 링크:
 
 ## OpenStack
 
-이 절에는 구축을 마친 것만 적었고, 항목마다 클라우드나 fake 환경에서 돌려 확인했습니다. 슬롯을 Heat 스택으로 만드는 부분(2026-11-18)은 `platform/tests/fakecloud.py`를 상대로 한 유닛 테스트로 확인했습니다. 역할 이미지 네 개는 손으로 구워 Glance에 올렸고, 실제 클라우드에서 확인할 항목은 `docs/state/now.md`에 있습니다. 남은 작업은 절 끝에 있습니다. 근거는 `docs/DECISIONS.md`, `docs/superpowers/specs/2026-11-18-heat-range-design.md`(슬롯 하나를 Heat 스택 하나로), `docs/superpowers/specs/2026-09-30-waf-console-and-tutorial.md`에 있습니다.
+이 절에는 구축을 마친 것만 적었고, 항목마다 클라우드나 fake 환경에서 돌려 확인했습니다. 세션마다 Heat 스택 하나를 쓰는 구조는 2026-11-18부터 실제 클라우드에서 돌고, 그날 전체 `bin/verify`를 두 번 돌렸습니다. 결과와 아직 실환경에서 돌리지 않은 수정은 `docs/state/now.md`에 있습니다. 역할 이미지 네 개는 손으로 구워 Glance에 올렸습니다. 남은 작업은 절 끝에 있습니다. 근거는 `docs/DECISIONS.md`, `docs/superpowers/specs/2026-11-18-heat-range-design.md`(세션마다 Heat 스택 하나), `docs/superpowers/specs/2026-09-30-waf-console-and-tutorial.md`에 있습니다.
 
 지금 클라우드는 노드 세 대, Kolla 2025.2, ML2/OVN입니다. 제품이 지원하는 버전은 Kolla-Ansible 2025.1 이상입니다([클라우드 요구 사항](OPENSTACK.md#2-what-the-cloud-needs-kolla-ansible-20251-or-later)).
 
@@ -1898,8 +1899,8 @@ Discover 링크:
 
 - `cloud`: 인증 정보가 든 `clouds.yaml` 항목 이름(`fsl-range`)
 - `network`: `external`, `address`, `allowed`(선택, ssh·2222·8000·8002를 열 CIDR, 기본 `[0.0.0.0/0]`), `dns`, `platform`, `mgmt`(`cr-mgmt`의 CIDR)
-- `compute`: `base_image`, `availability_zone`, `pool`(워게임별 슬롯 수, 기본 `{board: 3, corp: 1}`), `flavors.platform`, `flavors.<role>`(kali, waf, infra, target. 기본 `dba.small`), `images.<role>`(기본 `cr-<role>-bake1`), `target_tag`(target 이미지가 board, corp 이미지를 받은 전체 커밋. 기본값은 `cr-target-bake1`을 구운 커밋)
-- 훈련 환경 호스트(VM 한 대에 모든 슬롯을 컨테이너로 돌리던 구조)를 쓰던 때의 키 `network.estate`, `network.mtu`, `compute.slots`, `compute.flavors.range`는 읽고 무시함. `cloud.yaml`은 체크아웃마다 있고 git에 없어서, 거부하면 `bin/cloud up --replace`가 시작도 못 함
+- `compute`: `base_image`, `availability_zone`, `pool`(워게임별 스택 수, 기본 `{board: 3, corp: 1}`), `flavors.platform`, `flavors.<role>`(kali, waf, infra, target. 기본 `dba.small`), `images.<role>`(기본 `cr-<role>-bake1`), `target_tag`(target 이미지가 board, corp 이미지를 받은 전체 커밋. 기본값은 `cr-target-bake1`을 구운 커밋)
+- 훈련 환경 호스트(VM 한 대에 모든 세션을 컨테이너로 돌리던 구조)를 쓰던 때의 키 `network.estate`, `network.mtu`, `compute.slots`, `compute.flavors.range`는 읽고 무시함. `cloud.yaml`은 체크아웃마다 있고 git에 없어서, 거부하면 `bin/cloud up --replace`가 시작도 못 함
 - `keys`: `key_name`(플랫폼 VM의 Nova 키페어 이름), `key_file`(그 개인키 경로), `range`
 - `platform`: `stack`, `repository`, `ref`
 - `backups`: `keep`
@@ -1910,8 +1911,8 @@ init이 하는 일(`bin/cloud`의 `init`, 관리자 인증은 `/etc/kolla/clouds
 
 - `router:external` 외부 네트워크 하나를 찾음. 없으면 멈추고, 여럿이면 `network.external`이 그중 하나를 가리킬 때만 그것을 쓰고 아니면 목록을 출력하고 멈춤
 - 프로젝트 `fsl-range`, member 사용자 `fsl-range`가 없으면 만듦
-- flavor는 만들지 않음. 플랫폼은 조건(2 vCPU·8 GB·40 GB 이상)에 맞는 것 중 가장 작은 것을 고름. 슬롯 역할은 `compute.flavors.<role>`에 적은 이름(기본 `dba.small`)이 없으면 멈춤. private flavor는 프로젝트에 접근 권한을 줌
-- quota가 인스턴스 1 + 4 × 슬롯 수, 플랫폼과 슬롯 VM 전부의 vCPU·RAM, floating IP 1을 담지 못하면 모자란 항목을 출력하고 멈춤. 슬롯 수는 `compute.pool`의 합계
+- flavor는 만들지 않음. 플랫폼은 조건(2 vCPU·8 GB·40 GB 이상)에 맞는 것 중 가장 작은 것을 고름. 훈련 환경 VM은 역할마다 `compute.flavors.<role>`에 적은 이름(기본 `dba.small`)이 없으면 멈춤. private flavor는 프로젝트에 접근 권한을 줌
+- quota가 인스턴스 1 + 4 × 스택 수, 플랫폼과 훈련 환경 VM 전부의 vCPU·RAM, floating IP 1을 담지 못하면 모자란 항목을 출력하고 멈춤. 스택 수는 `compute.pool`의 합계
 - 보안 그룹 quota는 보지 않음. 훈련 환경은 풀 크기와 상관없이 그룹 9개를 씀
 - `compute.base_image`(기본 `ubuntu-24.04`) 이미지가 없으면 noble amd64 클라우드 이미지를 받아 `SHA256SUMS`와 대조한 뒤 public으로 올림. 같은 이름이 여럿이거나 `active`가 아니면 거부. 프로젝트 소유가 아닌 기존 이미지는 public으로 바꿈
 - `keys.key_file`이 없으면 `ssh-keygen`으로 만듦
@@ -1923,7 +1924,7 @@ init이 하는 일(`bin/cloud`의 `init`, 관리자 인증은 `/etc/kolla/clouds
 - `platform/range/cloud.py`: 파일 검사. 문제는 키별로 모두 보고. `clouds.yaml` 항목 읽기와 병합, init의 외부 네트워크·flavor 선택도 여기 있음
 - `bin/platform-rebuild`, `bin/cloud`: 이 값과 `clouds.yaml` 항목으로 openstack CLI와 Heat 파라미터를 채워 실행. 스택을 배포하면 값이 플랫폼의 `openstack.env`에 기록됨. `bin/cloud`는 출력하는 줄마다 앞에 `HH:MM:SS`를 붙이고, API는 5초마다 물음
 
-`bin/cloud up`은 스택이 정상이고 `--replace`가 없으면 플랫폼 VM을 그대로 씁니다(`resume`: ssh 대기, 인계가 안 됐으면 인계, API 대기). 스택이 없거나 `*_FAILED`거나 `--replace`면 플랫폼 VM을 새로 만듭니다(`rebuild`): ref 커밋의 이미지 네 개(platform, board, corp, corp-db)가 GHCR에 있는지 먼저 확인하고, 옛 VM의 DB를 백업하고 훈련 환경 키를 받아 둔 뒤 스택을 교체합니다. 슬롯 스택은 플랫폼 스택에 속하지 않아 남습니다. 새 플랫폼은 슬롯 스택의 digest 태그(`cr.digest=`, 렌더링한 템플릿과 이미지·flavor 파라미터의 해시)가 자기가 렌더링한 것과 같으면 그 스택을 그대로 씁니다. 다르면 `STALE`입니다. 템플릿에는 플랫폼의 공개키, `cr-mgmt` 주소(수집기와 시간 소스), `compute.target_tag`가 들어 있습니다. 공개키(훈련 환경 키)는 교체 때 옮겨 주고, fabric은 옛 VM에서 떨어진 `cr-platform.mgmt` 포트를 새 VM에 다시 붙여 `cr-mgmt` 주소도 그대로이므로, 교체만으로는 슬롯이 `STALE`이 되지 않습니다.
+`bin/cloud up`은 스택이 정상이고 `--replace`가 없으면 플랫폼 VM을 그대로 씁니다(`resume`: ssh 대기, 인계가 안 됐으면 인계, API 대기). 스택이 없거나 `*_FAILED`거나 `--replace`면 플랫폼 VM을 새로 만듭니다(`rebuild`): ref 커밋의 이미지 네 개(platform, board, corp, corp-db)가 GHCR에 있는지 먼저 확인하고, 옛 VM의 DB를 백업하고 훈련 환경 키를 받아 둔 뒤 스택을 교체합니다. 세션 스택은 플랫폼 스택에 속하지 않아 남습니다. 새 플랫폼은 세션 스택의 digest 태그(`cr.digest=`, 렌더링한 템플릿과 이미지·flavor 파라미터의 해시)가 자기가 렌더링한 것과 같으면 그 스택을 그대로 씁니다. 다르면 `STALE`입니다. 템플릿에는 플랫폼의 공개키, `cr-mgmt` 주소(수집기와 시간 소스), `compute.target_tag`가 들어 있습니다. 공개키(훈련 환경 키)는 교체 때 옮겨 주고, fabric은 옛 VM에서 떨어진 `cr-platform.mgmt` 포트를 새 VM에 다시 붙여 `cr-mgmt` 주소도 그대로이므로, 교체만으로는 스택이 `STALE`이 되지 않습니다.
 
 새로 만들 때의 순서:
 
@@ -1933,17 +1934,17 @@ init이 하는 일(`bin/cloud`의 `init`, 관리자 인증은 `/etc/kolla/clouds
 그다음은 두 경우 모두 같습니다(`converge`).
 
 3. `POST /api/range/fabric/`. fabric이 어긋나 있으면 멈춤
-4. `DELETE /api/range/leftovers/`: 앞 구조가 남긴 자원을 지움. 훈련 환경 호스트 `cr-range`(6 vCPU, 16 GB)가 슬롯 VM에 필요한 quota를 잡고 있으므로 풀을 채우기 전에 지움
-5. `POST /api/range/slot/`: 슬롯마다 스택이 없으면 만들고, 실패했거나 `STALE`이거나 풀 배정과 다른 워게임을 돌리는 스택은 지운 뒤 refill 스레드가 다시 만들고 기본 룰까지 넣음. 세션이 잡고 있는 슬롯은 그 슬롯만 지우지 않고 `STALE`을 blocked로 보고. 역할 이미지가 Glance에 `active`로 없으면 Heat에 묻기 전에 그 슬롯이 `NOT_STANDING`으로 막힘("no active image ... in Glance"). 슬롯이 blocked면 멈춤
-6. `/api/range/ready/`에서 어느 슬롯도 `NOT_STANDING`, `REBUILDING`, `RESETTING`, `STALE`이 아닐 때까지 대기. `SETUP_FAILED`면 이유를 출력하고 멈춤
+4. `DELETE /api/range/leftovers/`: 앞 구조가 남긴 자원을 지움. 남은 서버가 훈련 환경 VM에 필요한 quota를 잡을 수 있으므로 풀을 채우기 전에 지움. 2026-11-18에 훈련 환경 호스트 `cr-range`(6 vCPU, 16 GB)를 이 단계에서 지웠음
+5. `POST /api/range/slot/`: 풀의 번호마다 스택이 없으면 만들고, 실패했거나 `STALE`이거나 풀 배정과 다른 워게임을 돌리는 스택은 지운 뒤 refill 스레드가 다시 만들고 기본 룰까지 넣음. 세션이 쓰고 있는 스택은 지우지 않고 `STALE`을 blocked로 보고. 역할 이미지가 Glance에 `active`로 없으면 Heat에 묻기 전에 그 스택이 `NOT_STANDING`으로 막힘("no active image ... in Glance"). 스택이 blocked면 멈춤
+6. `/api/range/ready/`에서 어느 스택도 `NOT_STANDING`, `REBUILDING`, `RESETTING`, `STALE`이 아닐 때까지 대기. `SETUP_FAILED`면 이유를 출력하고 멈춤
 7. `POST /api/range/configure/`. 503이면 5초 간격으로 최대 60번 다시 시도
-8. `/api/range/ready/`에서 모든 슬롯이 READY가 될 때까지 대기
+8. `/api/range/ready/`에서 모든 스택이 READY가 될 때까지 대기
 
-`bin/cloud down`은 키를 남기고, 플랫폼 DB를 백업한 뒤(`bin/backup`, 사본은 `backups.keep`개까지) 슬롯 스택을 지우고(`DELETE /api/range/slot/`), 남은 스택이 없을 때까지 기다린 뒤 fabric과 플랫폼 스택을 지웁니다. 슬롯 VM의 control 포트가 `cr-mgmt`를 잡고 있어 순서가 이렇습니다. 물어볼 플랫폼이 없으면(스택이 `*_FAILED`거나 VM에 플랫폼 DB 파일이 없음) 태그 `cr-range`가 붙은 슬롯 스택을 openstack CLI로 지운 뒤 플랫폼 스택을 지우고, fabric은 프로젝트에 남깁니다.
+`bin/cloud down`은 키를 남기고, 플랫폼 DB를 백업한 뒤(`bin/backup`, 사본은 `backups.keep`개까지) 세션용 스택을 모두 지우고(`DELETE /api/range/slot/`), 남은 스택이 없을 때까지 기다린 뒤 fabric과 플랫폼 스택을 지웁니다. 훈련 환경 VM의 control 포트가 `cr-mgmt`를 잡고 있어 순서가 이렇습니다. 물어볼 플랫폼이 없으면(스택이 `*_FAILED`거나 VM에 플랫폼 DB 파일이 없음) 태그 `cr-range`가 붙은 세션 스택을 openstack CLI로 지운 뒤 플랫폼 스택을 지우고, fabric은 프로젝트에 남깁니다.
 
 `up`과 `down`의 예외 처리:
 
-- 스택이 `*_FAILED`면 `up`은 지우고 다시 만듦(남은 빌더 서버부터). `down`은 슬롯 스택과 플랫폼 스택만 지움
+- 스택이 `*_FAILED`면 `up`은 지우고 다시 만듦(남은 빌더 서버부터). `down`은 세션용 스택과 플랫폼 스택만 지움
 - VM에 플랫폼 DB 파일이 없으면 `down`과 `up --replace`에서 백업을 건너뜀
 - VM에 ssh가 닿지 않거나 `docker ps`가 실패하면 거부
 - 플랫폼 DB는 있고 `cr-platform` 컨테이너만 멈춰 있으면 `down`은 컨테이너를 시작해 백업함(`docker exec`로 실행). 그다음 API 응답을 기다렸다가 훈련 환경을 지움
@@ -1979,13 +1980,13 @@ systemd 유닛 `cr-platform.service`는 부팅할 때마다 `compose.yaml`의 �
 - pull이 실패해도 유닛은 멈추지 않음(`ExecStartPre=-`). 이때 `up`은 없는 이미지를 체크아웃으로 빌드
 - `bin/platform-rebuild`는 이런 빌드를 피하려고 ghcr.io를 먼저 확인
 
-플랫폼 VM에서는 플랫폼 컨테이너(`compose.yaml`)만 돌립니다. board의 대상 시스템 데이터는 슬롯 target VM의 board 컨테이너 안에서 읽습니다.
+플랫폼 VM에서는 플랫폼 컨테이너(`compose.yaml`)만 돌립니다. board의 대상 시스템 데이터는 세션 스택의 target VM에 있는 board 컨테이너 안에서 읽습니다.
 
 포트:
 
 - cloud-init에서 `CR_PUBLISH`를 VM 고정 주소로 설정. 8000, 8002, 2222가 그 주소에 publish되고 보안 그룹에서도 열림. 브라우저는 floating IP로 콘솔에 접속
 - 보안 그룹 `cr-platform`은 ssh, 2222, 8000, 8002를 `cloud.yaml`의 `network.allowed`에 적은 네트워크에서만 받음. 기본은 `[0.0.0.0/0]`이고 `init`이 이 값을 씀
-- `CR_SYSLOG_PUBLISH=0.0.0.0`: 슬롯 infra의 syslog를 받으려고 5140/udp를 모든 주소에 publish
+- `CR_SYSLOG_PUBLISH=0.0.0.0`: 각 스택 infra의 syslog를 받으려고 5140/udp를 모든 주소에 publish
 - 9200, 5601: loopback에만. Elasticsearch는 보안 기능 없이 돎
 
 `openstack.env`:
@@ -1996,9 +1997,9 @@ systemd 유닛 `cr-platform.service`는 부팅할 때마다 `compose.yaml`의 �
 - 프로젝트 비밀번호는 이 파일에 없음. cloud-init이 빈 `/opt/cr/openstack-password`(0600, uid 10001)를 만들고, VM이 뜬 뒤 `bin/platform-rebuild`가 ssh 표준 입력으로 그 파일을 채움. compose가 이 파일을 secret `openstack_password`로 플랫폼에 읽기 전용 마운트하고(`/run/secrets/openstack_password`), 플랫폼은 시작할 때 읽음. 컨테이너 환경 변수에는 없음. 훈련 환경용 ssh 키도 ssh로 플랫폼 데이터 볼륨에 씀(`README.md`)
 - 플랫폼 서비스는 이 파일을 `env_file`(`required: false`, `format: raw`)로 읽음. compose는 변수 치환이나 따옴표 제거 없이 값을 그대로 넘김
 
-VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init의 `CR_SUBSTRATE=range.openstack.connect`). 모든 슬롯이 함께 쓰는 부분(fabric)은 `/api/range/fabric/`으로 만들고, 계획은 `range/fabric.py`에서 세웁니다.
+VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init의 `CR_SUBSTRATE=range.openstack.connect`). 모든 스택이 함께 쓰는 부분(fabric)은 `/api/range/fabric/`으로 만들고, 계획은 `range/fabric.py`에서 세웁니다.
 
-- `cr-mgmt`: DHCP 켬, 게이트웨이 없음. CIDR은 `cloud.yaml`의 `network.mgmt`. 슬롯 VM마다 control 포트 하나가 여기에 붙음
+- `cr-mgmt`: DHCP 켬, 게이트웨이 없음. CIDR은 `cloud.yaml`의 `network.mgmt`. 훈련 환경 VM마다 control 포트 하나가 여기에 붙음
 - `/data/ssh/id_ed25519` 키로 만드는 키페어 `cr-platform`
 - 아래 보안 그룹
 
@@ -2009,70 +2010,70 @@ VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init의 `CR_SUBSTR
 - Docker 기본 로컬 주소 풀(172.17.0.0/16~172.31.0.0/16, 192.168.0.0/16. moby `daemon/libnetwork/ipamutils/utils.go`)과 겹치는 CIDR
 - `compose.yaml`에 선언된 네트워크, 선언된 출발지와 겹치는 CIDR
 
-슬롯의 LAN은 fabric이 아니라 슬롯 스택이 만듭니다.
+스택의 LAN은 fabric이 아니라 그 스택이 만듭니다.
 
-키는 첫 fabric POST 때 없을 경우에만 플랫폼에서 만듭니다. `bin/platform-rebuild`는 운영자 PC에 사본을 두고 새 플랫폼 VM마다 넣습니다. VM을 교체해도 키페어와 슬롯 VM의 관리 사용자가 신뢰하는 키가 그대로입니다.
+키는 첫 fabric POST 때 없을 경우에만 플랫폼에서 만듭니다. `bin/platform-rebuild`는 운영자 PC에 사본을 두고 새 플랫폼 VM마다 넣습니다. VM을 교체해도 키페어와 훈련 환경 VM의 관리 사용자가 신뢰하는 키가 그대로입니다.
 
 보안 그룹:
 
 - `cr-reach`: 플랫폼 자신의 `cr-mgmt` 포트. `cr-mgmt` 멤버의 NTP(udp 123)와 `cr-senders` 멤버의 syslog(udp 5140)만 허용
-- `cr-mgmt`: 슬롯 VM의 control 포트. `cr-reach` 멤버만 허용
-- `cr-senders`: infra의 control 포트. 수집기로 syslog를 보내는 쪽
-- `cr-egress`: 인바운드 룰 없는 그룹. fabric이 만들지만 슬롯 스택은 쓰지 않음
-- `cr-lan-<digest>`: 슬롯 LAN 포트의 그룹("훈련 환경" 절 참고). fabric이 아니라 어댑터가 슬롯 스택을 만들기 전에 만들고, fabric을 지울 때 슬롯 다음에 지움(`fabric.LAN_GROUP_PREFIX`)
+- `cr-mgmt`: 훈련 환경 VM의 control 포트. `cr-reach` 멤버에서 오는 것만 받고, 나가는 것은 `cr-reach`와 DHCP(udp 67)로만 보냄
+- `cr-senders`: infra의 control 포트. 수집기로 syslog를 보내는 쪽. egress는 `cr-mgmt`와 같음
+- `cr-egress`: 인바운드 룰 없는 그룹. fabric이 만들지만 어느 포트도 쓰지 않음
+- `cr-lan-<digest>`: 스택 LAN 포트의 그룹("훈련 환경" 절 참고). fabric이 아니라 어댑터가 스택을 만들기 전에 만들고, fabric을 지울 때 스택 다음에 지움(`fabric.LAN_GROUP_PREFIX`)
 
-플랫폼은 자기 서버 id(부팅 때 기록하는 `CR_OPENSTACK_PLATFORM`)로 찾은 `cr-reach` 포트(`cr-platform.mgmt`)로 `cr-mgmt`에 붙습니다. 이 포트가 붙어 있지 않으면 fabric POST가 떨어져 있는 같은 이름의 포트를 붙이고(여럿이면 하나만 남김), 없을 때만 새로 만듭니다. 그래서 플랫폼 VM을 교체해도 `cr-mgmt` 주소가 바뀌지 않습니다. 플랫폼에서 슬롯 VM으로는 ssh할 수 있습니다. 반대 방향 연결은 NTP와 infra의 syslog뿐입니다.
+플랫폼은 자기 서버 id(부팅 때 기록하는 `CR_OPENSTACK_PLATFORM`)로 찾은 `cr-reach` 포트(`cr-platform.mgmt`)로 `cr-mgmt`에 붙습니다. 이 포트가 붙어 있지 않으면 fabric POST가 떨어져 있는 같은 이름의 포트를 붙이고(여럿이면 하나만 남김), 없을 때만 새로 만듭니다. 그래서 플랫폼 VM을 교체해도 `cr-mgmt` 주소가 바뀌지 않습니다. 플랫폼에서 훈련 환경 VM으로는 ssh할 수 있습니다. 반대 방향 연결은 NTP와 infra의 syslog뿐입니다.
 
 훈련 환경에는 인터넷이 없어 시간 소스도 없습니다. 채점은 대상 시스템과 센서의 시각을 플랫폼 시계 기준의 케이스 시간 구간과 비교합니다. 그래서 시간은 플랫폼이 제공합니다.
 
 - 플랫폼 VM에서 chrony 실행(cloud-init: `allow <network.mgmt>`, `local stratum 10`)
-- 슬롯 VM은 플랫폼의 `cr-mgmt` 주소로 시간을 맞춤. cloud-init user data가 `systemd-timesyncd` drop-in(`/etc/systemd/timesyncd.conf.d/60-cr.conf`, `range/clock.py`)을 씀
+- 훈련 환경 VM은 플랫폼의 `cr-mgmt` 주소로 시간을 맞춤. cloud-init user data가 `systemd-timesyncd` drop-in(`/etc/systemd/timesyncd.conf.d/60-cr.conf`, `range/clock.py`)을 씀
 - target VM의 컨테이너는 VM 시계를 그대로 씀
 
-**슬롯 스택.** 슬롯 N은 Heat 스택 `cr-slot-N` 하나입니다. 관리는 `/api/range/slot/`으로 하고, 계획은 `range/sandbox.py`, 렌더링과 스택 호출은 `range/openstack.py`, 풀의 상태는 `range/pool.py`가 맡습니다.
+**세션 스택.** 세션은 Heat 스택 `cr-slot-N` 하나를 씁니다(N은 스택 번호, 용어 참고). 관리는 `/api/range/slot/`으로 하고, 계획은 `range/sandbox.py`, 렌더링과 스택 호출은 `range/openstack.py`, 풀의 상태는 `range/pool.py`가 맡습니다.
 
-- 풀: `cloud.yaml`의 `compute.pool`(기본 `{board: 3, corp: 1}`, 플랫폼에서는 `CR_OPENSTACK_POOL`). 슬롯 번호를 차례로 워게임에 나눔(`pool.assigned`. 기본값이면 1~3이 board, 4가 corp). `max_sessions`는 합계
-- 풀 배정이 스택 태그 `cr.wargame`보다 우선. `compute.pool`을 바꾸면 세션이 잡지 않은 슬롯은 다음 `POST /api/range/slot/`에서 새 배정의 워게임으로 다시 만듦
-- 슬롯 수의 한도는 클라우드 용량. 프로젝트 quota와 com01의 남은 메모리가 정함
-- 스택 하나: LAN마다 `OS::Neutron::Net`, 서브넷(DHCP 끔, 게이트웨이 없음). LAN 보안 그룹은 스택에 들지 않고 파라미터 `group_<lan>`으로 받음(모든 슬롯이 같이 쓰는 `cr-lan-` 그룹). 노드마다 control 포트(`cr-mgmt`), LAN 포트(고정 IP, 태그), `OS::Nova::Server`(config drive, 키페어 `cr-platform`, 메타데이터 `cr_slot`, `cr_node`, `cr_wargame`)
+- 풀: `cloud.yaml`의 `compute.pool`(기본 `{board: 3, corp: 1}`, 플랫폼에서는 `CR_OPENSTACK_POOL`). 스택 번호를 차례로 워게임에 나눔(`pool.assigned`. 기본값이면 1~3이 board, 4가 corp). `max_sessions`는 합계
+- 풀 배정이 스택 태그 `cr.wargame`보다 우선. `compute.pool`을 바꾸면 세션이 잡지 않은 스택은 다음 `POST /api/range/slot/`에서 새 배정의 워게임으로 다시 만듦
+- 스택 수의 한도는 클라우드 용량. 프로젝트 quota와 com01의 남은 메모리가 정함
+- 스택 하나: LAN마다 `OS::Neutron::Net`, 서브넷(DHCP 끔, 게이트웨이 없음). LAN 보안 그룹은 스택에 들지 않고 파라미터 `group_<lan>`으로 받음(모든 스택이 같이 쓰는 `cr-lan-` 그룹). 노드마다 control 포트(`cr-mgmt`), LAN 포트(고정 IP, 태그), `OS::Nova::Server`(config drive, 키페어 `cr-platform`, 메타데이터 `cr_slot`, `cr_node`, `cr_wargame`)
 - 서버 이름 `cr-slot-N-kali`, `cr-slot-N-infra`, `cr-slot-N-waf`, `cr-slot-N-target`. 이미지와 flavor는 역할별 파라미터(`image_<role>`, `flavor_<role>`. `CR_OPENSTACK_IMAGES`, `CR_OPENSTACK_FLAVORS`)
 - 스택 태그: `cr-range`, `cr.slot=N`, `cr.wargame=<wargame>`, `cr.digest=<템플릿과 파라미터의 해시>`. `timeout_mins` 30, `disable_rollback`
 - 고정 IP는 config drive의 `network_data.json`으로 cloud-init이 NIC에 설정(DHCP 끈 서브넷)
-- 슬롯 어댑터(`OpenStack.in_slot(n)`)는 자기 스택만 다룸. 역할, runner, 구성도 읽기는 모든 슬롯이 같음
+- 번호 하나에 묶인 어댑터(`OpenStack.in_slot(n)`)는 자기 스택만 다룸. 역할, runner, 구성도 읽기는 모든 스택이 같음
 
 **부팅.** 노드마다 cloud-init user data(`sandbox.user_data`)가 다음을 합니다. 인코딩한 user data는 Nova 한도 65,535바이트를 넘으면 안 됩니다.
 
 - 관리 사용자 `CR_OPENSTACK_SSH_USER`(기본 `ubuntu`)를 만들고 플랫폼의 공개키, 비밀번호 없는 sudo를 줌. cloud-init의 `default` 사용자 다음에 만듦. Ubuntu에서는 같은 사용자이고, Kali에서는 기본 사용자 `kali`가 따로 남아 학습자 ssh에 쓰임
-- `/etc/slot.env`에 그 노드의 슬롯 값(`sandbox.environment`)을 씀. Kali는 `INTERNET_ADDRESS`, `ORIGINS`. WAF는 `GATEWAY`, `LOG_SERVER`, `BOARD_ADDRESS`, `CORP_ADDRESS`. infra는 `SLOT`, `WAF_FRONT`, `UPSTREAM`, `IDS_LEGS`, `LOG_SERVER`, `COLLECTOR`. target은 `WARGAMES`와 서비스 주소
+- `/etc/slot.env`에 그 노드의 값(`sandbox.environment`)을 씀. Kali는 `INTERNET_ADDRESS`, `ORIGINS`. WAF는 `GATEWAY`, `LOG_SERVER`, `BOARD_ADDRESS`, `CORP_ADDRESS`. infra는 `SLOT`, `WAF_FRONT`, `UPSTREAM`, `IDS_LEGS`, `LOG_SERVER`, `COLLECTOR`. target은 `WARGAMES`와 서비스 주소
 - 시간 소스 drop-in을 씀
 - 역할의 부팅 유닛을 `systemctl start`로 띄우고(`sandbox.BOOTS`: kali `slot-boot`, waf `slot-boot`과 `nginx`, infra `slot-boot`과 `sensor`, target `wargames`), 성공하면 `/var/lib/cr/ready`, 실패하면 유닛 상태를 `/var/lib/cr/failed`에 씀
-- target은 유닛을 띄우기 전에 `/opt/wargames/*/compose.yaml`의 `image:` 줄이 모두 `compute.target_tag`로 끝나는지 봄. digest로 고정한 줄(`@sha256:`)은 통과. 다른 태그가 있으면 준비 완료를 쓰지 않고, 슬롯이 요구한 태그와 찾은 줄들을 `/var/lib/cr/failed`에 씀
+- target은 유닛을 띄우기 전에 `/opt/wargames/*/compose.yaml`의 `image:` 줄이 모두 `compute.target_tag`로 끝나는지 봄. digest로 고정한 줄(`@sha256:`)은 통과. 다른 태그가 있으면 준비 완료를 쓰지 않고, 스택이 요구한 태그와 찾은 줄들을 `/var/lib/cr/failed`에 씀
 - topology의 노드에 `answers:`가 있으면 유닛을 띄운 뒤 그 명령이 답할 때까지 최대 300초 기다린 다음 준비 완료를 씀. infra는 `suricatasc -c uptime`. configure가 이어서 이 소켓으로 기본 룰을 넣기 때문
 
 설치 상태:
 
 - 스택이 `CREATE_COMPLETE`가 된 뒤 플랫폼이 노드마다 ssh로 `/var/lib/cr/ready`나 `/var/lib/cr/failed`를 확인. 그 전에는 노드 상태를 Nova의 `ACTIVE`가 아니라 `SETTING_UP`으로 보고
-- `failed`면 그 슬롯 단계가 `SETUP_FAILED`가 되고 노드의 `/var/log/cloud-init-output.log`를 가리킴. 스택이 `CREATE_FAILED`여도 `SETUP_FAILED`이고 Heat의 이유를 보고. `bin/cloud up`은 이유를 출력하고 멈춤
-- 다음 `POST /api/range/slot/`에서 그 슬롯을 잡은 세션이 없으면 실패한 스택을 지움(`ensure_slot`). 지운 스택은 응답의 `rebuilt`로 넘어가고, refill 스레드가 같은 슬롯에 스택을 다시 만들고 준비되면 기본 룰을 넣음
+- `failed`면 그 스택 단계가 `SETUP_FAILED`가 되고 노드의 `/var/log/cloud-init-output.log`를 가리킴. 스택이 `CREATE_FAILED`여도 `SETUP_FAILED`이고 Heat의 이유를 보고. `bin/cloud up`은 이유를 출력하고 멈춤
+- 다음 `POST /api/range/slot/`에서 그 스택을 잡은 세션이 없으면 실패한 스택을 지움(`ensure_slot`). 지운 스택은 응답의 `rebuilt`로 넘어가고, refill 스레드가 같은 번호로 스택을 다시 만들고 준비되면 기본 룰을 넣음
 - 모든 노드가 준비되면 노드의 `cr-mgmt` 주소와 호스트 키 별칭을 스택 id별로 플랫폼 메모리에 둠. target VM의 Docker 네트워크도 이때 한 번 읽어 둠
 
 **infra.** 학습자 셸이 없는 VM입니다. 멤버 권한으로 Neutron에 맡길 수 없는 것만 여기서 합니다(KYPO의 LAN Management Node 역할).
 
-- 라우터: `wan` 121.134.88.42/29, `lan` 10.30.0.1. 공인 IP 80번 포트를 WAF DMZ 주소로 DNAT, 출발지 NAT 없음, `rp_filter` 끔, `ip_forward` 켬. `wan`에서 새로 들어오는 연결은 DNAT된 것만 forward(`deploy/roles/infra/edge.nft`). default route는 Kali의 5.188.10.10(onlink). 플로팅 IP 포트포워딩은 외부 네트워크에만 있고, 멤버는 외부 네트워크를 만들 수 없음(`create_network:router:external`은 `rule:admin_only`). 슬롯마다 같은 121.134.88.42인 가짜 인터넷은 외부 네트워크가 될 수 없음
+- 라우터: `wan` 121.134.88.42/29, `lan` 10.30.0.1. 공인 IP 80번 포트를 WAF DMZ 주소로 DNAT, 출발지 NAT 없음, `rp_filter` 끔, `ip_forward` 켬. `wan`에서 새로 들어오는 연결은 DNAT된 것만 forward(`deploy/roles/infra/edge.nft`). default route는 Kali의 5.188.10.10(onlink). 플로팅 IP 포트포워딩은 외부 네트워크에만 있고, 멤버는 외부 네트워크를 만들 수 없음(`create_network:router:external`은 `rule:admin_only`). 스택마다 같은 121.134.88.42인 가짜 인터넷은 외부 네트워크가 될 수 없음
 - IDS: `web-outer`와 `web-inner` 다리를 리눅스 브리지 `br0`에 묶음. 다리는 포트 보안을 끈 포트이고, Nova가 고정 IP 없는 포트를 받지 않아 고정 IP가 하나씩 있으며 `slot-boot`가 브리지에 넣은 뒤 지움. 브리지와 다리의 TSO, GSO, GRO, LRO를 끔. OVN이 포트 보안을 끈 포트에 목적지 모르는 프레임을 넘기는 것은 2026-11-18에 확인(설계 문서 §11)
 - 센서: `sensor.service`가 digest 고정 `jasonish/suricata`를 `--network host`, `NET_ADMIN`, `NET_RAW`, `SYS_NICE`, `--af-packet=br0`으로 띄움. Docker는 `bridge: none`, `iptables: false`라 라우터의 forward를 건드리지 않음. 센서는 인라인이라 WAF와 대상 시스템 사이의 모든 패킷을 봄. 라우터와 WAF 사이, 인터넷 쪽에는 센서가 없음. WAF가 막은 요청은 센서에 닿지 않고 WAF 로그에 남음
 - `/var/lib/suricata/rules/local.rules`에서 룰을 읽고 `suricatasc -c reload-rules`로 reload. 이 경로와 명령은 topology의 장치 `cr-ids`에 있음. 룰 파일 하나, reload 하나. 룰 넣기, 검증, 변경, 기준선 검사도 이 센서 하나에 함
 - EVE 경보와 HTTP 기록: infra의 `/var/log/suricata/eve.json`. 센서가 보는 요청의 출발지는 WAF. http 기록의 `xff`에 클라이언트 주소가 남고, ingest가 이 주소를 경보의 출발지로 씀("경보의 경로" 절)
 - 로그 서버: rsyslog가 관제망 주소 172.29.0.10의 514/tcp로 WAF 로그를 받고, `eve.json`은 `imfile`로 읽음. 둘 다 플랫폼 `cr-mgmt` 주소의 5140/udp로 넘김(`deploy/roles/infra/log-relay.conf`)
 
-**WAF.** Ubuntu 24.04에 nginx 1.24.0, ModSecurity 3.0.16(커넥터 1.0.4), CRS 4.25.1을 소스로 빌드해 넣은 VM입니다. 내려받는 파일마다 sha256을 확인합니다.
+**WAF.** Ubuntu 24.04의 nginx 1.24.0 패키지에 ModSecurity 3.0.16과 커넥터 1.0.4를 소스로 빌드해 동적 모듈로 붙이고 CRS 4.25.1을 넣은 VM입니다. 내려받는 파일마다 sha256을 확인합니다.
 
 - `dmz` 10.30.0.247(앞단), `web-outer` 10.30.128.247(뒷단), 관제망 172.29.0.12. default route는 infra의 10.30.0.1
 - `audit.log`: ModSecurity audit 로그(`/var/log/modsecurity/audit/audit.log`)
 - `refused.log`: nginx가 400으로 거부한 요청. ModSecurity가 돌기 전, 헤더를 읽기 전에 거부한 요청이 남음. 예: `/static/..%2F..%2F..%2F..%2Fetc/passwd`처럼 잘못된 경로. `deploy/waf/board.com.conf`의 `map $status $refused`와 `log_format refused`로 JSON 한 줄씩(`time`, `client_ip`, `request`, `status`)
 - rsyslog가 두 파일을 각자의 태그로 읽어 로그 서버로 보냄: `audit.log`는 `modsecurity`, `refused.log`는 `nginx`(`deploy/roles/waf/log-shipper.conf`)
 - 로그 서버는 관제망 입력에서 태그가 `modsecurity`나 `nginx`인 줄만 넘기고, Suricata 기록은 infra 자신의 `eve.json`에서만 읽음. 그래서 WAF의 root가 Suricata 기록인 척 줄을 보낼 수 없음. 관제망에 붙은 학습자 VM은 WAF뿐이고, 관제망 보안 그룹은 514/tcp만 받음
-- 넘길 때 송신자 이름은 로그 서버의 템플릿이 정함: `waf-N`(ModSecurity, nginx), `infra-N`(Suricata). Filebeat의 슬롯 정규식(`-(\d+)`)이 이 이름으로 슬롯을 읽음
+- 넘길 때 송신자 이름은 로그 서버의 템플릿이 정함: `waf-N`(ModSecurity, nginx), `infra-N`(Suricata). Filebeat의 정규식(`-(\d+)`)이 이 이름에서 스택 번호를 읽음
 
 **Kali.** 모든 출발지를 Kali VM 하나로 처리합니다. 이미지는 Kali Generic Cloud에 `kali-linux-headless`와 케이스가 쓰는 도구를 넣은 것입니다.
 
@@ -2084,7 +2085,7 @@ VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init의 `CR_SUBSTR
 
 **target.** Docker와 워게임 compose를 넣은 VM입니다. 학습자 셸이 없습니다.
 
-- `wargames.service`가 `/etc/slot.env`의 `WARGAMES`(그 슬롯의 워게임 하나)를 띄움. 워게임마다 compose 프로젝트 하나, 이미지는 구울 때 받아 둔 것(`--pull never`)
+- `wargames.service`가 `/etc/slot.env`의 `WARGAMES`(그 스택의 워게임 하나)를 띄움. 워게임마다 compose 프로젝트 하나, 이미지는 구울 때 받아 둔 것(`--pull never`)
 - 네트워크: `<wargame>_front`(서버만, 포트를 VM의 `web-inner` 주소에 publish), `<wargame>_backend`(internal, 서버와 DB). DB는 `_backend`에만 붙음
 - 모든 컨테이너: `cap_drop: ALL`에 필요한 것만 더함(board, board-db, corp-db는 `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETUID`, `SETGID`, corp-wp는 여기에 `NET_BIND_SERVICE`), `no-new-privileges`, 메모리 512~768 MB, pids 256, `restart: "no"`, healthcheck 60초 간격(`deploy/roles/target/wargames.yaml`)
 - 초기 데이터 사본: 구울 때 워게임마다 한 번 띄워 healthy가 되면 멈추고, 컨테이너별 볼륨을 `/opt/wargames/pristine/<service><path>`로 복사한 뒤 `down -v`로 지움. 부팅 때 `wargames up`이 빈 볼륨에만 사본을 넣고 띄움
@@ -2092,33 +2093,33 @@ VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init의 `CR_SUBSTR
 **격리.** 학습자 셸이 있는 VM은 Kali와 WAF 둘입니다. 둘 다 root가 됩니다. 경계는 게스트 밖에 있습니다.
 
 - 보안 그룹과 포트 보안은 OVN이 적용. 게스트의 root로 바꿀 수 없음
-- 슬롯 LAN에 라우터 없음. control 포트는 플랫폼에서 오는 연결만 받음
+- 스택의 LAN에 라우터 없음. control 포트는 플랫폼에서 오는 연결만 받고, 플랫폼과 DHCP로만 보냄
 - 포트 보안을 끈 포트는 infra의 IDS 다리 둘뿐이고, infra에는 학습자 셸이 없음
 - Kali의 주소 쌍 `0.0.0.0/0`은 출발지 주소만 풀어 줌. MAC은 Neutron이 준 것만 나감
 - 렌더링한 Heat 템플릿이 이 중 하나라도 어기면 `platform/tests/test_hot.py`에서 `bin/verify` 실패
 - 실환경 검사는 `test/test_range_isolation.py`
 
-**초기화.** `POST /api/sessions/<id>/close/`는 슬롯의 스택을 지우고 같은 워게임으로 새로 만듭니다(`reset_slot()`, `api/reset.py`의 refill). 다음 세션은 새 VM 네 대에서 시작합니다.
+**초기화.** `POST /api/sessions/<id>/close/`는 그 세션의 스택을 지우고 같은 워게임으로 새로 만듭니다(`reset_slot()`, `api/reset.py`의 refill). 다음 세션은 새 VM 네 대에서 시작합니다.
 
 - 앞 세션에서 수정한 룰, WAF 설정, Kali와 WAF에 남긴 파일, 대상 시스템에 심은 데이터는 다음 세션에 남지 않음
 - 그 세션의 학습자 ssh 키를 점프와 Kali에서 지움
 - 새 스택이 준비되면 플랫폼이 센서에 기본 룰을 다시 넣음(`configure_slot()`)
 
-슬롯 내리기:
+스택 지우기:
 
-- `POST /api/range/slot/rebuild/`(`rebuild_slot()`): 그 슬롯의 스택을 지움. 다시 만드는 것은 `POST /api/range/slot/`
-- `DELETE /api/range/slot/`: 슬롯 스택을 모두 지움(`?slot=N`이면 그 슬롯만)
+- `POST /api/range/slot/rebuild/`(`rebuild_slot()`): 그 번호의 스택을 지움. 다시 만드는 것은 `POST /api/range/slot/`
+- `DELETE /api/range/slot/`: 세션용 스택을 모두 지움(`?slot=N`이면 스택 N만)
 
-**configure.** `POST /api/range/configure/`(`configure_slot()`)는 센서에 기본 룰(`deploy/suricata/rules/local.rules`)을 넣습니다(`suricata.seed`). 기본 룰을 받지 못하면 그 슬롯은 `Drifted`입니다.
+**configure.** `POST /api/range/configure/`(`configure_slot()`)는 센서에 기본 룰(`deploy/suricata/rules/local.rules`)을 넣습니다(`suricata.seed`). 기본 룰을 받지 못하면 그 스택은 `Drifted`입니다.
 
-**세션과 슬롯.**
+**세션과 스택.**
 
-- 세션을 열 때 세션을 슬롯 하나에 묶음(`Session.slot`, unique 제약으로 슬롯당 열린 세션 하나). 잠금을 잡고 그 워게임을 돌리는, 비어 있으며 READY인 첫 슬롯을 고름
-- 그 워게임의 슬롯이 없고 다른 워게임을 돌리는 빈 READY 슬롯이 있으면 그 슬롯을 이 워게임으로 다시 만들기 시작하고 409로 답함
-- 세션별 훈련 환경 호출은 모두 그 슬롯으로 감
-- 룰 변경은 슬롯별 차례로 처리. 한 슬롯의 초기화가 다른 슬롯의 세션을 붙잡지 않음
-- `run_on_role`은 `--session`이나 `--slot`을 받음. 슬롯이 둘 이상인데 둘 다 없으면 실행하지 않음. 명령마다 새 프로세스라서 Django 시스템 체크를 건너뛰고, 클라우드에서 노드 주소를 찾음
-- 콘솔의 VM 터미널은 `?arg=<id>`(ttyd `-a`)로 세션을 받아 그 슬롯의 VM을 엶
+- 세션을 열 때 스택 번호 하나를 세션에 줌(`Session.slot`, unique 제약으로 번호마다 열린 세션 하나). 잠금(`SLOT_CHOICE`)을 잡고 그 워게임을 돌리는, 비어 있으며 READY인 첫 스택을 고름. 잠금 안에서 다시 보아 열린 세션이 있거나 초기화가 도는 스택이면 열지 않음
+- 그 워게임의 스택이 없고 다른 워게임을 돌리는 빈 READY 스택이 있으면 그 스택을 이 워게임으로 다시 만들기 시작하고 409로 답함. 다시 만들기 전에 같은 잠금 안에서 열린 세션이 그 스택을 쓰지 않는지 확인함. 준비 상태는 잠금 밖에서 읽으므로, 그사이 세션이 연 스택을 지우지 않기 위해서임
+- 세션별 훈련 환경 호출은 모두 그 스택으로 감
+- 룰 변경은 스택마다 차례로 처리. 한 스택의 초기화가 다른 스택의 세션을 붙잡지 않음
+- `run_on_role`은 `--session`이나 `--slot`을 받음. 풀에 스택이 둘 이상인데 둘 다 없으면 실행하지 않음. 명령마다 새 프로세스라서 Django 시스템 체크를 건너뛰고, 클라우드에서 노드 주소를 찾음
+- 콘솔의 VM 터미널은 `?arg=<id>`(ttyd `-a`)로 세션을 받아 그 스택의 VM을 엶
 
 모든 세션은 같은 초기 데이터에서 시작하지만 비밀 값은 새로 만듭니다.
 
@@ -2133,36 +2134,36 @@ VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init의 `CR_SUBSTR
 - 새 스택이 만들어지고 모든 노드가 준비될 때까지 최대 30분 기다림(`RESET_WAIT`). 스택이 실패하면 그 이유가 초기화 실패
 - close는 즉시 응답. 초기화 상태(idle, running, failed와 이유)는 플랫폼 프로세스에 보관
 - 초기화를 시작한 때부터 성공할 때까지 `CR_RESET_OWED_DIR`(`/data/reset-owed`)에 `slot-N` 파일이 남음. 파일 내용은 다시 만들 워게임
-- 부팅할 때 `cr/wsgi.py`가 이 파일이 남은 슬롯마다 close와 똑같이 초기화를 다시 함. 재시작해도 슬롯이 세션을 거부하는 상태로 남지 않음
+- 부팅할 때 `cr/wsgi.py`가 이 파일이 남은 스택마다 close와 똑같이 초기화를 다시 함. 재시작해도 스택이 세션을 거부하는 상태로 남지 않음
 - 초기화가 실패하면 파일은 그대로 둠
 - 수동 재시도는 `POST /api/range/configure/`. 실패한 초기화 상태도 이것으로 지워짐
 
-**준비 상태.** 모든 슬롯이 사용 중이거나 빈 슬롯 중 준비된 것이 없으면 세션 생성은 409입니다.
+**준비 상태.** 모든 스택을 세션이 쓰고 있거나 빈 스택 중 준비된 것이 없으면 세션 생성은 409입니다.
 
-`GET /api/range/ready/`는 `slots` 아래에 슬롯별로 다음을 보고합니다.
+`GET /api/range/ready/`는 `slots` 아래에 스택마다 다음을 보고합니다.
 
-- 번호와 그 슬롯을 잡은 세션
+- 스택 번호와 그 스택을 쓰는 세션
 - 단계: 세션이 잡고 있으면 `IN_USE`, 초기화 중이면 `RESETTING`, 초기화가 실패했으면 이유와 함께 `RESET_FAILED`
 - 그 밖의 단계: `NOT_STANDING`(스택 없음. 역할 이미지가 Glance에 `active`로 없으면 "no active image ... in Glance"를 이유로 막고 Heat에 스택을 요청하지 않음), `STALE`(플랫폼과 다른 템플릿이나 파라미터로 만든 스택. 이미지 이름, flavor, `target_tag`가 바뀌어도 해당), `SETUP_FAILED`(스택 `CREATE_FAILED`나 노드 부팅 실패. 이유는 Heat의 이유나 그 노드의 `/var/log/cloud-init-output.log`), `REBUILDING`(스택을 만들거나 지우는 중이거나 노드가 아직 준비 전), `CHECKING`, `READY`
 - 초기화 상태
-- 그 슬롯이 돌리는 워게임(`wargame`). 세션이 묻는 워게임과 다르면 그 세션에는 준비되지 않은 것으로 봄
-- 검사 세 가지: 노드가 모두 ACTIVE이고 준비가 끝났는지, board의 대상 시스템 데이터를 읽을 수 있는지, 센서 룰이 기준선이고 그 슬롯에 비활성화한 룰이 없는지
+- 그 스택이 돌리는 워게임(`wargame`). 세션이 묻는 워게임과 다르면 그 세션에는 준비되지 않은 것으로 봄
+- 검사 세 가지: 노드가 모두 ACTIVE이고 준비가 끝났는지, board의 대상 시스템 데이터를 읽을 수 있는지, 센서 룰이 기준선이고 그 스택에 비활성화한 룰이 없는지
 
-최상위의 `ready`와 `slot`은 다음 세션에 배정될 슬롯입니다. 슬롯이 둘 이상이면 슬롯 검사를 병렬로 돌립니다.
+최상위의 `ready`와 `slot`은 다음 세션에 배정될 스택입니다. 스택이 둘 이상이면 검사를 병렬로 돌립니다.
 
-`/api/range/slot/`, `slot/rebuild/`, `configure/`는 `?slot=N`을 받습니다. 없으면 모든 슬롯에 적용합니다.
+`/api/range/slot/`, `slot/rebuild/`, `configure/`는 `?slot=N`을 받습니다. 없으면 모든 스택에 적용합니다.
 
 `POST /api/range/canary/`는 마커를 붙인 요청 두 개를 보냅니다. 먼저 WAF가 막는 SQLi 요청, 바로 뒤에 WAF가 통과시키는 `/search/?q=canary`입니다. ModSecurity가 첫 요청에 경보를 내고 Suricata가 둘째 요청의 http 기록을 남겼는지, 둘의 시계 차이가 기준 안인지 보고합니다. 센서는 WAF 뒤에 있어 막힌 요청을 보지 못하기 때문입니다. 준비 상태 검사에는 들어가지 않습니다. 첫 화면에서 둘 다 호출합니다.
 
 **남은 자원.** `GET /api/range/leftovers/`는 앞 구조들이 프로젝트에 남긴 자원을 나열하고, `DELETE`로 지웁니다.
 
-- 대상: 풀 크기를 넘는 번호의 슬롯 스택, `cr_host` 메타데이터로 찾은 서버(훈련 환경 호스트 `cr-range`와 그 전의 VM 훈련 환경), 이미지 빌더(`cr_image` 메타데이터), 폐기한 구간의 포트·서브넷·네트워크, 보안 그룹 `cr-range`와 `cr-build`, `cr_bundle` 속성이 있는 프로젝트 이미지
+- 대상: 풀 크기를 넘는 번호의 스택, `cr_host` 메타데이터로 찾은 서버(훈련 환경 호스트 `cr-range`와 그 전의 VM 훈련 환경), 이미지 빌더(`cr_image` 메타데이터), 폐기한 구간의 포트·서브넷·네트워크, 보안 그룹 `cr-range`와 `cr-build`, `cr_bundle` 속성이 있는 프로젝트 이미지
 - 서버를 지운 뒤 Nova에서 사라질 때까지 기다리고 나머지를 지움
 - `DELETE`는 `bin/cloud up`이 fabric 다음, 풀을 채우기 전에 호출
 
 ### OpenStack 훈련 환경: 구조
 
-사용자가 2026-09-30에 정하고 2026-11-18에 바꾼 구조입니다. 슬롯 하나가 Heat 스택 하나이고, KYPO Cyber Range처럼 Neutron과 Heat가 멤버 권한으로 할 수 있는 일은 모두 거기에 맡기고 나머지만 infra VM에서 합니다.
+사용자가 2026-09-30에 정하고 2026-11-18에 바꾼 구조입니다. 세션마다 Heat 스택 하나이고, KYPO Cyber Range처럼 Neutron과 Heat가 멤버 권한으로 할 수 있는 일은 모두 거기에 맡기고 나머지만 infra VM에서 합니다.
 
 ```
  OpenStack project fsl-range.
@@ -2176,9 +2177,9 @@ VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init의 `CR_SUBSTR
    ssh jump on 2222 (in the platform container): learner ssh to the session's Kali
      |
      +--OpenStack API, as member fsl-range--> Heat stacks, networks, VMs
-     +--cr-mgmt (shared), ssh--------------> each slot VM's control port
+     +--cr-mgmt (shared), ssh--------------> each range VM's control port
 
- Heat stack cr-slot-N (one per slot, pool per wargame), no Neutron router:
+ Heat stack cr-slot-N (one per session, a ready pool per wargame), no Neutron router:
 
    internet (121.134.88.40/29 + the default origin /24)
      kali VM: holds every attack address (address pair 0.0.0.0/0); the
@@ -2205,7 +2206,7 @@ VM 위의 플랫폼은 OpenStack 어댑터를 씁니다(cloud-init의 `CR_SUBSTR
      target VM: docker compose; board .59 (+ board-db on board_backend)
                 or corp-wp .60 (+ corp-db on corp_backend)
 
- Evidence (slot mgmt 관제망 172.29.0.0/24, then cr-mgmt):
+ Evidence (the stack's mgmt 관제망 172.29.0.0/24, then cr-mgmt):
    waf audit log, --- rsyslog on the waf -- 514/tcp --> infra log server -- 5140/udp --> Filebeat
    nginx refused.log                                    ^                                    |
    sensor eve.json (on the infra) ---- imfile ----------+                                    v
