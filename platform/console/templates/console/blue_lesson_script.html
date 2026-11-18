@@ -146,7 +146,7 @@ function folding(toggle, body, mark, heard = () => {}) {
     body.classList.toggle("hidden", !opened);
     body.classList.toggle("flex", opened);
     toggle.setAttribute("aria-expanded", String(opened));
-    if (mark) mark.textContent = opened ? "▴" : "▾";
+    if (mark) mark.textContent = opened ? "▼" : "▶";
   };
   toggle.addEventListener("click", () => {
     const opened = toggle.getAttribute("aria-expanded") !== "true";
@@ -165,7 +165,7 @@ function noteControls(started) {
   field("note-strip-text").textContent = heading;
   field("lesson-collapse").addEventListener("click", () => setNote({ open: false }));
   field("note-strip").addEventListener("click", () => setNote({ open: true }));
-  folding(field("steps-toggle"), field("lesson-step-list"));
+  folding(field("steps-toggle"), field("lesson-step-list"), field("steps-mark"));
   placeNote();
 }
 
@@ -1626,6 +1626,7 @@ function coach(prefix, declared) {
     keepLessonStep(sessionId(), lessonId(), at + 1);
     field("note-strip-text").textContent = t("lesson.note.strip", at + 1, steps.length);
     shownSection("step-card");
+    lessonEnd();
     field("step-count").textContent = `${at + 1} / ${steps.length}`;
     field("step-count").classList.toggle("hidden", finished);
     field("step-title").textContent = finished && foundation ? t(courseEnd() ? `${courseText}.title` : `${prefix}.title`) : titleOf(step);
@@ -1865,6 +1866,12 @@ function coach(prefix, declared) {
       say(t("lesson.next.failed", detail(moved)), "fail");
       return;
     }
+    await closeLesson();
+  }
+
+  async function closeLesson() {
+    moving = true;
+    status(t("main.closing"));
     await post(lessonPath("ingest/"));
     const closed = await post(lessonPath("close/"), {}, PATIENCE_FOR_RANGE_WORK);
     if (closed.ok || await alreadyClosed(sessionId())) {
@@ -1874,6 +1881,10 @@ function coach(prefix, declared) {
     moving = false;
     status("");
     say(t("session.close.failed", detail(closed)), "fail");
+  }
+
+  function lessonEnd() {
+    shownSection("lesson-end", !finished && !sessionClosed() && !(session && session.course_scenario));
   }
 
   function pass(step) {
@@ -2098,6 +2109,17 @@ function coach(prefix, declared) {
     paneTab("rules").disabled = !editsRules;
   }
   shownSection("steps-card");
+  const endAsked = (asked) => {
+    shownSection("lesson-end-confirm", asked);
+    field("lesson-end-open").classList.toggle("hidden", asked);
+  };
+  field("lesson-end-open").addEventListener("click", () => endAsked(true));
+  field("lesson-end-keep").addEventListener("click", () => endAsked(false));
+  field("lesson-end-yes").addEventListener("click", async () => {
+    field("lesson-end-yes").disabled = true;
+    if (!moving && !sessionClosed()) await closeLesson();
+    field("lesson-end-yes").disabled = false;
+  });
   level = Math.min(SKIP_OFFERED, Number(recordOf(steps[at]).hint) || 0);
   const begin = () => {
     briefed = true;

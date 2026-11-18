@@ -53,9 +53,20 @@
 
       <section id="steps-card" class="hidden flex-col">
         <button id="steps-toggle" type="button" class="w-full text-left py-1 font-semibold text-heading flex items-center gap-2" aria-expanded="false">
-          <span data-t="lesson.tab.steps" class="flex-1"></span><span id="lesson-step-count" class="text-[13px] text-muted font-normal"></span>
+          <span id="steps-mark" class="text-[11px] text-muted">▶</span><span data-t="lesson.tab.steps" class="flex-1"></span><span id="lesson-step-count" class="text-[13px] text-muted font-normal"></span>
         </button>
         <ol id="lesson-step-list" class="hidden -mx-2 pt-1 flex-col gap-1"></ol>
+      </section>
+
+      <section id="lesson-end" class="hidden flex-col gap-2 pt-2 border-t border-line">
+        <button id="lesson-end-open" type="button" data-t="session.close.button" class="self-start btn btn-sm btn-ghost"></button>
+        <div id="lesson-end-confirm" class="hidden flex-col gap-2">
+          <p data-t="session.close.consequence" class="text-body text-[13px]"></p>
+          <div class="flex gap-2">
+            <button id="lesson-end-yes" type="button" data-t="session.close.confirm" class="btn btn-sm btn-blue"></button>
+            <button id="lesson-end-keep" type="button" data-t="session.close.keep" class="btn btn-sm btn-ghost"></button>
+          </div>
+        </div>
       </section>
     </div>
   </div>

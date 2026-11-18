@@ -1162,6 +1162,22 @@ def test_a_finished_foundation_starts_the_next_lesson_and_the_last_one_ends_on_a
         assert (result["moved"], result["closed"]) == ([], 1)
         assert result["href"].endswith("/session/1/")
 
+def test_a_lesson_closes_from_the_note_at_any_step_after_a_confirm(client):
+    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
+      {to("search")}
+      const shown = !browser.element('lesson-end').classList.contains('hidden');
+      await browser.click('lesson-end-open');
+      const asked = browser.requests.filter((r) => r.route.endsWith('/close/')).length;
+      await browser.click('lesson-end-yes');
+      await browser.settle();
+      return {{shown, asked, closed: browser.requests.filter((r) => r.route.endsWith('/close/')).length, href: location.href}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["shown"] is True, "walk: 세션 종료 was reachable only after the course's last step"
+    assert (seen["result"]["asked"], seen["result"]["closed"]) == (0, 1), "closing asks first, then closes"
+    assert seen["result"]["href"].endswith("/session/1/")
+
 def test_the_last_foundation_says_the_course_is_done_only_when_the_session_took_every_foundation(client):
     seen = open_page(client, "/blue/1/", setup=served(next_lesson=None).replace(
         'const TAKEN = [{id: "f1"}, {id: "f9"}];', 'const TAKEN = [{id: "f9"}];'), scenario=f"""

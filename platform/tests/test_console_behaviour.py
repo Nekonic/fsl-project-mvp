@@ -282,6 +282,34 @@ browser.serve((request) => {
 });
 """
 
+def test_a_running_session_on_the_home_page_closes_from_its_row_after_a_confirm(client):
+    seen = open_page(client, "/", setup="""
+      const range = {open: [{id: 7, scenario: "board", kind: "wargame", ready: true, started_at: "2026-10-26T10:00:00Z"}],
+                     posted: []};
+      browser.serve((request) => {
+        if (request.route === "/api/wargames/") return {body: [{id: "board", name: "Board", description: "", cases: 1}]};
+        if (request.route === "/api/range/ready/") return {body: {ready: true, max_sessions: 2}};
+        if (request.method === "POST") {
+          range.posted.push(request.route);
+          if (request.route === "/api/sessions/7/close/") range.open = [];
+          return {body: {}};
+        }
+        if (request.route === "/api/sessions/") return {body: request.query.state === "open" ? range.open : []};
+        return {status: 404, body: {detail: "not served"}};
+      });
+    """, scenario="""
+      await browser.wait(0);
+      await browser.click('[data-running="7"] [data-end]');
+      const asked = range.posted.length === 0 && !document.querySelector('[data-end-asked]').classList.contains('hidden');
+      await browser.click('[data-running="7"] [data-end-yes]');
+      for (let i = 0; i < 3; i += 1) await browser.settle();
+      return {asked, posted: range.posted, left: document.querySelectorAll('[data-running]').length};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"asked": True, "posted": ["/api/sessions/7/ingest/", "/api/sessions/7/close/"], "left": 0}, (
+        "walk: a learner mid-lesson found no way to close the session from the home page's running row")
+
 def refused_open(client, refuse_with, status=409, open_sessions=0, operator=False, then=""):
     setup = REFUSED.replace("LOCATION", 'location.search = "?operator";' if operator else "")
     seen = open_page(client, "/", setup=setup, scenario=f"""

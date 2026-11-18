@@ -52,7 +52,7 @@ function stripShow() {
   done.disabled = checking || scenario.phase === "closed";
   done.classList.toggle("hidden", passed);
   done.textContent = t(checking && scenarioLeft() === 0 ? "scenario.done.judging" : checking ? "scenario.done.checking" : "scenario.done");
-  field("scenario-end").classList.toggle("hidden", !judged || !field("scenario-end-confirm").classList.contains("hidden"));
+  field("scenario-end").classList.toggle("hidden", scenario.phase === "closed" || !field("scenario-end-confirm").classList.contains("hidden"));
   if (passed) field("scenario-done-said").classList.add("hidden");
   const offer = passed ? null : scenario.hints.offer;
   field("scenario-offer").classList.toggle("hidden", !offer);

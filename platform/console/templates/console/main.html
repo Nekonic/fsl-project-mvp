@@ -284,18 +284,54 @@
     const steps = taught && taught.steps
       ? `<span class="text-muted text-[13px] hidden sm:inline">${esc(t("main.step", lessonStep(session.id, session.lesson_id), taught.steps))}</span>` : "";
     return `
-      <a href="/session/${esc(session.id)}/" class="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 py-3 hover:bg-subdued">
-        <span class="font-semibold text-heading w-20">${esc(t("common.session", session.id))}</span>
-        <span class="text-body">${esc(takenName(session))}</span>
-        ${steps}
-        <span class="ml-auto">${openingLine(session)}</span>
-        <span class="text-faint text-[13px] w-24 text-right">${esc(t("main.started_at", clock(session.started_at)))}</span>
-      </a>`;
+      <div class="flex items-center gap-3 px-1 hover:bg-subdued" data-running="${esc(session.id)}">
+        <a href="/session/${esc(session.id)}/" class="flex-1 min-w-0 flex flex-wrap items-center gap-x-4 gap-y-1 py-3">
+          <span class="font-semibold text-heading w-20">${esc(t("common.session", session.id))}</span>
+          <span class="text-body">${esc(takenName(session))}</span>
+          ${steps}
+          <span class="ml-auto">${openingLine(session)}</span>
+          <span class="text-faint text-[13px] w-24 text-right">${esc(t("main.started_at", clock(session.started_at)))}</span>
+        </a>
+        <button type="button" data-end class="btn btn-sm btn-ghost">${esc(t("main.close_this"))}</button>
+        <span data-end-asked class="hidden flex items-center gap-2">
+          <button type="button" data-end-yes class="btn btn-sm btn-blue">${esc(t("session.close.confirm"))}</button>
+          <button type="button" data-end-keep class="btn btn-sm btn-ghost">${esc(t("session.close.keep"))}</button>
+        </span>
+      </div>
+      <p data-end-said="${esc(session.id)}" class="hidden px-1 pb-2 text-[13px] text-danger"></p>`;
+  }
+
+  function endAsked(row, asked) {
+    row.querySelector("[data-end]").classList.toggle("hidden", asked);
+    row.querySelector("[data-end-asked]").classList.toggle("hidden", !asked);
+  }
+
+  async function endRunning(row) {
+    const id = row.dataset.running;
+    const yes = row.querySelector("[data-end-yes]");
+    yes.disabled = true;
+    yes.textContent = t("main.closing");
+    await post(`/api/sessions/${id}/ingest/`);
+    const closed = await post(`/api/sessions/${id}/close/`);
+    if (!closed.ok && !(await alreadyClosed(id))) {
+      yes.disabled = false;
+      yes.textContent = t("session.close.confirm");
+      const said = field("running").querySelector(`[data-end-said="${id}"]`);
+      said.textContent = t("session.close.failed", detail(closed));
+      said.classList.remove("hidden");
+      return;
+    }
+    await refreshSessions();
   }
 
   function renderRunning() {
     field("running-panel").classList.toggle("hidden", running.length === 0);
     field("running").innerHTML = running.map(runningRow).join("");
+    field("running").querySelectorAll("[data-running]").forEach((row) => {
+      row.querySelector("[data-end]").addEventListener("click", () => endAsked(row, true));
+      row.querySelector("[data-end-keep]").addEventListener("click", () => endAsked(row, false));
+      row.querySelector("[data-end-yes]").addEventListener("click", () => endRunning(row));
+    });
     field("capacity").textContent = capacity === null || !operatorView ? "" : t("main.capacity", running.length, capacity);
   }
 
