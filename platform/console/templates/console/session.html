@@ -299,7 +299,7 @@
     if (benign.length) {
       const sentence = t("score.benign", benign.length, passed.length);
       parts.push(judgementBlock(sentence,
-        blocked.map((row) => t("score.drew_alerts", named(row), row.detections))));
+        blocked.map((row) => t("score.drew_alerts", named(row), row.alerts))));
     }
     const customers = score.customers || {};
     if (customers.sent && score.detected_by) {
@@ -338,7 +338,7 @@
           <td class="text-heading"${lessonSession() ? "" : ` title="${esc(row.name)}"`}>${esc(caseLabel(row.name))}${
             caseWhen(row) ? `<span class="block text-[13px] text-muted">${esc(caseWhen(row))}</span>` : ""}</td>
           <td>${esc(t(seeded(row) ? "score.kind.auto_benign" : row.malicious ? "score.kind.attack" : "score.kind.benign"))}</td>
-          <td>${counted(right, word, row.detections)}</td>
+          <td>${counted(right, word, row.alerts)}</td>
         </tr>`;
     }).join("") + customerRow) || `<tr class="table-row"><td class="text-muted" colspan="3">${esc(t("score.no_cases"))}</td></tr>`;
     show("score-cases", showsScores() && (perCase.length > 0 || Boolean(customerRow) || !session.course_scenario));

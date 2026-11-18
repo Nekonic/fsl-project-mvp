@@ -2630,6 +2630,7 @@ def _per_case(result, expectations, signatures, cases=()):
             "verdict": _verdict(m.malicious, m.detected),
             "detection_ids": list(m.detection_ids),
             "detections": len(m.detection_ids),
+            "alerts": len({detection.split(":")[0] for detection in m.detection_ids}),
             "expect": expectations.get(m.case_id) or "",
             "lesson": meta.get(m.case_id, {}).get("lesson"),
             "step": meta.get(m.case_id, {}).get("kali") or meta.get(m.case_id, {}).get("site"),

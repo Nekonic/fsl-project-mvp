@@ -33,11 +33,11 @@ browser.serve((request) => {
       breaches: [{key: "board-auth-user-admin", difficulty: 4, detected: false}],
       per_case: [
         ...["a1", "a2", "a3", "a4", "a5", "a6", "a7"].map((name) => ({name, malicious: true, detected: true,
-          detections: 1, corroborated: name !== "a7"})),
-        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: false, detections: 0, corroborated: null},
-        {name: "board-normal-search-with-apostrophe", malicious: false, detected: true, detections: 2,
+          detections: 1, alerts: 1, corroborated: name !== "a7"})),
+        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: false, detections: 0, alerts: 0, corroborated: null},
+        {name: "board-normal-search-with-apostrophe", malicious: false, detected: true, detections: 2, alerts: 2,
          corroborated: null},
-        ...["b1", "b2", "b3"].map((name) => ({name, malicious: false, detected: false, detections: 0,
+        ...["b1", "b2", "b3"].map((name) => ({name, malicious: false, detected: false, detections: 0, alerts: 0,
           corroborated: null})),
       ],
       game: {revealed: true, balance: 3.5}}};

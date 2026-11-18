@@ -72,6 +72,19 @@ def test_a_brief_score_counts_the_alerts_per_case_without_listing_their_ids(clie
     assert {key: value for key, value in brief.items() if key not in ("per_case", "breaches")} == \
         {key: value for key, value in full.items() if key not in ("per_case", "breaches")}
 
+def test_a_case_s_alert_count_is_its_alerting_log_records_not_the_rules_they_matched(client, session_with_cases):
+    record = ("waf1", {"event": {"module": "modsecurity"}, "@timestamp": (T0 + timedelta(seconds=1)).isoformat(),
+                       "transaction": {"client_ip": "172.20.0.5", "request": {"headers": {"X-Request-ID": ATTACK}},
+                                       "messages": [{"message": f"rule {n}", "details": {"ruleId": str(n)}}
+                                                    for n in range(5)]}})
+    ingest(client, session_with_cases, [record, es_alert(ATTACK)])
+
+    attack = next(entry for entry in client.get(f"/api/sessions/{session_with_cases}/score/").json()["per_case"]
+                  if entry["name"] == "sqli")
+
+    assert (attack["detections"], attack["alerts"]) == (6, 2), (
+        "walk: one WAF record that matched five rules showed as 경보 5건; the lessons count log records")
+
 def test_reading_the_score_writes_nothing(client, session_with_cases):
     from django.db import connection
 

@@ -41,11 +41,11 @@ browser.serve((request) => {
     return {body: {tp: 1, fp: 0, fn: 1, tn: 1, warnings: [["score.warning.wrong_reason", "board-sqli-orderby-sqlmap"]],
       breaches: [{key: "board-auth-user-admin", difficulty: 4, detected: false}],
       per_case: [
-        {name: "board-normal-search", malicious: false, detected: false, detections: 0, corroborated: null,
+        {name: "board-normal-search", malicious: false, detected: false, detections: 0, alerts: 0, corroborated: null,
          lesson: "f1", step: null, seed: true},
-        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: true, detections: 1, corroborated: false,
+        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: true, detections: 1, alerts: 1, corroborated: false,
          lesson: "f5", step: "sqlmap", seed: false},
-        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: false, detections: 0, corroborated: null,
+        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: false, detections: 0, alerts: 0, corroborated: null,
          lesson: "f6", step: "dump", seed: false},
       ]}};
   }
@@ -75,7 +75,7 @@ def test_a_closed_course_names_each_run_by_lesson_and_step_and_never_by_case_id(
     assert worded("session.course.steps", 9, 8) in shown["course"]
     assert worded("wargame.board.name") not in shown["line"], "the breadcrumb already names the target"
 
-F6_RUN = """        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: false, detections: 0, corroborated: null,
+F6_RUN = """        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: false, detections: 0, alerts: 0, corroborated: null,
          lesson: "f6", step: "dump", seed: false},
 """
 LOSS = 'breaches: [{key: "board-auth-user-admin", difficulty: 4, detected: false}],'
@@ -331,10 +331,10 @@ def test_a_course_s_result_numbers_its_lessons_as_the_catalogue_does_and_shows_a
     assert worded("session.lost") not in read["figures"]
 
 def test_one_case_sent_in_each_lesson_is_listed_per_lesson_in_the_table_and_not_restated_under_the_count(client):
-    three = ATTACK_COURSE.replace('''        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: true, detections: 1, corroborated: false,
-         lesson: "f5", step: "sqlmap", seed: false},''', '''        {name: "board-normal-search", malicious: false, detected: false, detections: 0, corroborated: null,
+    three = ATTACK_COURSE.replace('''        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: true, detections: 1, alerts: 1, corroborated: false,
+         lesson: "f5", step: "sqlmap", seed: false},''', '''        {name: "board-normal-search", malicious: false, detected: false, detections: 0, alerts: 0, corroborated: null,
          lesson: "f5", step: null, seed: true},
-        {name: "board-normal-search", malicious: false, detected: false, detections: 0, corroborated: null,
+        {name: "board-normal-search", malicious: false, detected: false, detections: 0, alerts: 0, corroborated: null,
          lesson: "f6", step: null, seed: true},''')
     seen = open_page(client, "/session/1/", setup=three, scenario=SHOWN)
 
@@ -504,8 +504,8 @@ def test_ending_a_session_already_closed_says_it_is_closed_in_korean_and_hides_t
     assert worded("scenario.verdict.failed", "1.1") in shown["verdict"] and "FAIL" not in shown["verdict"]
 
 TWO_RUNS = SCENARIO_RESULT.replace("per_case: [], warnings: []", """per_case: [
-      {name: "board-sqli-orderby-sqlmap", malicious: true, detected: true, detections: 20687, started_at: "2026-10-18T09:02:33Z"},
-      {name: "board-sqli-orderby-sqlmap", malicious: true, detected: true, detections: 20687, started_at: "2026-10-18T09:13:06Z"}],
+      {name: "board-sqli-orderby-sqlmap", malicious: true, detected: true, detections: 20687, alerts: 20687, started_at: "2026-10-18T09:02:33Z"},
+      {name: "board-sqli-orderby-sqlmap", malicious: true, detected: true, detections: 20687, alerts: 20687, started_at: "2026-10-18T09:13:06Z"}],
     warnings: []""")
 
 def test_two_runs_of_one_scheduled_attack_are_told_apart_by_when_they_ran(client):
@@ -543,8 +543,8 @@ browser.serve((request) => {
   if (request.route === "/api/wargames/board/objectives/") return {body: []};
   if (request.route === "/api/sessions/1/score/") {
     return {body: {breaches: [], warnings: [], detected_by: "suricata",
-      per_case: [{name: "board-sqli-orderby-sqlmap-tamper", malicious: true, detected: false, detections: 0, started_at: "2026-10-18T09:02:01Z"},
-                 {name: "board-sqli-orderby-sqlmap-tamper", malicious: true, detected: true, detections: 14, started_at: "2026-10-18T09:06:10Z"}],
+      per_case: [{name: "board-sqli-orderby-sqlmap-tamper", malicious: true, detected: false, detections: 0, alerts: 0, started_at: "2026-10-18T09:02:01Z"},
+                 {name: "board-sqli-orderby-sqlmap-tamper", malicious: true, detected: true, detections: 14, alerts: 14, started_at: "2026-10-18T09:06:10Z"}],
       customers: {sent: 870, alerted: 1, blocked: 0, blocked_actions: {},
                   alerted_requests: [{sent_at: "2026-10-18T09:03:00Z", action: "sort", method: "GET", path: "/?sort=-created_at"}]}}};
   }
