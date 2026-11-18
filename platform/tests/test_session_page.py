@@ -544,7 +544,7 @@ browser.serve((request) => {
   if (request.route === "/api/sessions/1/score/") {
     return {body: {breaches: [], warnings: [], detected_by: "suricata",
       per_case: [{name: "board-sqli-orderby-sqlmap-tamper", malicious: true, detected: false, detections: 0, alerts: 0, started_at: "2026-10-18T09:02:01Z"},
-                 {name: "board-sqli-orderby-sqlmap-tamper", malicious: true, detected: true, detections: 14, alerts: 14, started_at: "2026-10-18T09:06:10Z"}],
+                 {name: "board-sqli-orderby-sqlmap-tamper", malicious: true, detected: true, detections: 14, alerts: 3, started_at: "2026-10-18T09:06:10Z"}],
       customers: {sent: 870, alerted: 1, blocked: 0, blocked_actions: {},
                   alerted_requests: [{sent_at: "2026-10-18T09:03:00Z", action: "sort", method: "GET", path: "/?sort=-created_at"}]}}};
   }
@@ -600,7 +600,8 @@ def test_a_case_row_states_its_verdict_once_with_the_ids_alert_count_as_detail(c
 
     assert shown["headers"] == 3, "the alert count is no column of its own"
     assert shown["note"] == worded("score.counted_by.suricata")
-    assert shown["cells"][:2] == [worded("score.missed"), f'{worded("score.caught")} {worded("score.alert_count", 14)}']
+    assert shown["cells"][:2] == [worded("score.missed"), f'{worded("score.caught")} {worded("score.alert_count", 3)}'], (
+        "the row counts alert records, not the rules they matched")
 
 def test_a_scenario_result_without_steps_names_the_scenario_in_its_header(client):
     setup = DETECTION_RESULT.replace('lesson: {text: "scenario.tamper", steps: []},', "lesson: null,").replace(

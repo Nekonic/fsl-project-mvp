@@ -320,13 +320,13 @@
       <div class="text-[13px] text-muted leading-relaxed space-y-1">
         ${notes.map((note) => `<p>${esc(note)}</p>`).join("")}
       </div>`;
-    const counted = (right, word, alerts) => `<span class="${right ? "text-success" : "text-danger"}">${esc(t(word))}</span>${
-      alerts ? `<span class="block text-[13px] text-muted">${esc(t("score.alert_count", alerts))}</span>` : ""}`;
+    const counted = (right, word, alerts, unit = "score.alert_count") => `<span class="${right ? "text-success" : "text-danger"}">${esc(t(word))}</span>${
+      alerts ? `<span class="block text-[13px] text-muted">${esc(t(unit, alerts))}</span>` : ""}`;
     const customerRow = customers.sent && score.detected_by ? `
         <tr class="table-row" data-customers>
           <td class="text-heading">${esc(t("score.customers_row", customers.sent))}</td>
           <td>${esc(t("score.kind.customer"))}</td>
-          <td>${customers.alerted ? counted(false, "score.wrongly_blocked", customers.alerted) : counted(true, "score.passed", 0)}</td>
+          <td>${customers.alerted ? counted(false, "score.wrongly_blocked", customers.alerted, "score.alerted_requests") : counted(true, "score.passed", 0)}</td>
         </tr>` : "";
     field("score-counted-by").textContent = score.detected_by ? t(`score.counted_by.${score.detected_by}`) : "";
     show("score-counted-by", Boolean(score.detected_by));
