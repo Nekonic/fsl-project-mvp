@@ -726,3 +726,73 @@ body as sent, read from `transaction.request.body`, with the rest of
 field. A test comment the learner posts from the website pane carries the
 browse marker, not a customer request's, so the final check does not count
 it as a customer false positive.
+
+## A Kali VM booted without cloud-init
+
+### Symptom
+
+2026-11-18, on the Heat range: a slot's Kali booted, logged root in on
+ttyS0, started ssh and `web-proxy.service`, and ran no cloud-init unit, so
+its control port never took the platform's key or `/etc/slot.env` and the
+platform reported `cr-kali is SETTING_UP` until the stack was rebuilt (the
+reset waits 1800 s). Seen on `cr-slot-2`'s Kali created 04:04:53Z, and on
+the Kalis of `cr-slot-2` (stack created 04:47:52Z) and `cr-slot-3`
+(05:31:42Z) at once, both stuck until rebuilt at about 11:20Z: two of four
+stacks. A rebuild of the same server from the same image booted fine, so
+the fault is in the boot, not the image.
+
+### How it was measured
+
+The Nova console logs of one stuck Kali (the one created 04:04:53Z; its
+clock was set to 04:05:17Z at boot) and three READY ones from `cr-kali-bake1`, and on a READY Kali `/run/cloud-init/ds-identify.log`,
+`/run/cloud-init/cloud-init-generator.log` and the unit files.
+
+| | stuck | READY |
+|---|---|---|
+| systemd's generators, switch-root to unit loading | 17.87 s to 37.57 s | 8.01 s to 9.67 s |
+| `systemd-sslh-generator` | `'/usr/lib/systemd/system-generators/systemd-sslh-generator' terminated by signal ABRT.` at 20.62 s | no such line |
+| cloud-init lines on the console | 0 | 121; `Datasource DataSourceConfigDrive [net,ver=2][source=/dev/sr0]` |
+| config drive | `sr0` probed at 6.15 s in the initrd | `sr0` probed at 4.88 s |
+
+On a READY Kali `cloud-init.target` is `enabled-runtime`: the only link that
+pulls it in is `/run/systemd/generator.early/multi-user.target.wants/cloud-init.target`,
+which `cloud-init-generator` writes after `ds-identify` returns 0 (its log:
+`ds-identify rc=0`, `enabled via /run/systemd/generator.early/...`). The
+unit file says so: "cloud-init.target is enabled by cloud-init-generator".
+`ds-identify` itself found `ConfigDrive` (`ISO9660_DEVS=/dev/sr0=config-2`)
+and would have found `OpenStack` by DMI (`DMI_PRODUCT_NAME=OpenStack Nova`)
+without the drive, so a datasource miss does not explain a boot with no
+cloud-init unit.
+
+### Cause
+
+systemd runs the generators in parallel and stops waiting for the rest
+when one dies by a signal. In systemd's `src/shared/exec-util.c`
+(`do_execute`, main branch read 2026-11-18) the parallel wait loop is
+`r = pidref_wait_for_terminate_and_check(t, pidref, WAIT_LOG); if (r < 0)
+return r;`, and `src/basic/process-util.c` returns `-EPROTO` with
+`'%s' terminated by signal %s.` for a child killed or dumped by a signal,
+which `EXEC_DIR_IGNORE_ERRORS` does not cover; each generator is forked
+with `FORK_DEATHSIG_SIGTERM`, so the ones still running get SIGTERM when
+their parent returns. The stuck boot printed that very line for
+`systemd-sslh-generator`, on a boot about twice as slow as a READY one,
+which leaves `cloud-init-generator` (`ds-identify` took 0.6 s on a fast
+boot) still running when sslh's generator died; it never wrote its link.
+`systemd-sslh-generator` belongs to the `sslh` package, which
+`kali-linux-headless` depends on; the Kali has no `/etc/sslh/` and
+`sslh.service` is disabled. Why it aborts after printing "Configuration
+directory '/etc/sslh/' does not exist! No units generated." is
+**[unverified]**; that the stuck Kalis of 04:47:52Z and 05:31:42Z died the
+same way is **[unverified]** (their consoles were not kept).
+
+### Fix
+
+`deploy/roles/kali/install.sh` (`cloud_init_on_every_boot`) masks sslh's
+generator with a link to `/dev/null` in `/etc/systemd/system-generators/`
+(systemd.generator(7): "A symlink to /dev/null or an empty file can be used
+to mask a generator"), and links `cloud-init.target` into
+`/etc/systemd/system/multi-user.target.wants/`, so cloud-init runs even if
+another generator dies and takes `cloud-init-generator` with it. This needs
+a new Kali bake (`docs/OPENSTACK.md` §3.6) under a new name, `cr-kali-bake2`,
+and `compute.images.kali: cr-kali-bake2` in `cloud.yaml`; the stacks still
+on `cr-kali-bake1` keep the race until they are replaced.

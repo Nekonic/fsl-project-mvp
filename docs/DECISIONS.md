@@ -9740,3 +9740,26 @@ The answer-blind walk of the Heat range (lessons c1, c2; scenarios 3.1-3.4,
 - Also: F3's first step asks for a word not yet searched in this session;
   the strip hides 탈취된 목표 where nothing is at stake (3.2, 3.4); 1.3's alert
   list header asks for the attack type; two particle typos.
+
+## 2026-11-18 — The Kali image masks sslh's generator and wants cloud-init.target itself
+
+Two of four Kali VMs from `cr-kali-bake1` booted with no cloud-init unit and
+stayed SETTING_UP; a rebuild of the same server booted fine. The stuck
+boot's console shows `systemd-sslh-generator` "terminated by signal ABRT"
+while the generators ran, and systemd stops waiting for the other parallel
+generators when one dies by a signal, SIGTERMing those still running, so
+`cloud-init-generator` never linked `cloud-init.target` into
+`multi-user.target` (`docs/TROUBLESHOOTING.md` "A Kali VM booted without
+cloud-init" has the console lines and the systemd source). sslh comes with
+`kali-linux-headless` and the range never runs it. `install.sh` now links
+`/etc/systemd/system-generators/systemd-sslh-generator` to `/dev/null` and
+`cloud-init.target` into `/etc/systemd/system/multi-user.target.wants/`;
+the second link keeps cloud-init on even when some other generator dies,
+at the cost of bypassing `ds-identify`'s "no datasource, disable" verdict,
+which a VM that boots only on Nova with a config drive does not need.
+Rejected: purging `sslh` (`kali-linux-headless` depends on it, so the
+metapackage would go with it); a boot unit that runs
+`cloud-init` by hand (a second way to start it, beside systemd's); a retry
+on the platform side (the reset already waits 1800 s; a rebuild costs a
+stack). Needs a re-bake as `cr-kali-bake2` and `compute.images.kali` naming
+it; the image name is in the stack digest, so every stack is replaced.

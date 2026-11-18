@@ -45,6 +45,12 @@ bashrc_for() {
   install -m 0644 -o "$1" -g "$(id -gn "$1")" bashrc "$home/.bashrc"
 }
 
+cloud_init_on_every_boot() {
+  install -d -m 0755 /etc/systemd/system-generators /etc/systemd/system/multi-user.target.wants
+  ln -sfn /dev/null /etc/systemd/system-generators/systemd-sslh-generator
+  ln -sfn /usr/lib/systemd/system/cloud-init.target /etc/systemd/system/multi-user.target.wants/cloud-init.target
+}
+
 sealed_for_snapshot() {
   cloud-init clean --logs
   : > /etc/machine-id
@@ -85,5 +91,6 @@ systemctl daemon-reload
 systemctl enable ssh.service web-proxy.service slot-boot.service
 systemctl restart web-proxy.service
 systemctl is-active --quiet web-proxy.service
+cloud_init_on_every_boot
 
 sealed_for_snapshot

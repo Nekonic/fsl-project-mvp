@@ -715,12 +715,15 @@ range to the user for review.
    Measured: a closed session's stack is READY again about 4-4.5 min after
    the close (`cr-slot-1` closed 04:11:47Z, READY by 04:16:19Z; `cr-slot-3`,
    retargeted to corp, closed 04:12:10Z, READY by 04:16:19Z); stack 2 after
-   `POST /api/range/slot/rebuild/?slot=2` in 3 min. Seen once: `cr-slot-2`'s
-   Kali (created 04:04:53Z) booted with its config drive attached but ran no
-   cloud-init unit (its console shows none; a READY Kali's shows all five and
-   `slot-boot`), so its control port never answered SSH and the reset waited
-   on SETTING_UP for 17 min until that rebuild; why cloud-init did not start
-   **[unverified]**. RAM per stack on com01 **[unverified]**.
+   `POST /api/range/slot/rebuild/?slot=2` in 3 min. Kalis from `cr-kali-bake1`
+   booted with no cloud-init unit and stayed SETTING_UP (`cr-slot-2`'s of
+   04:04:53Z; `cr-slot-2` and `-3` of 04:47:52Z and 05:31:42Z at once, until
+   rebuilt at about 11:20Z): sslh's systemd generator died by SIGABRT and
+   systemd stopped waiting for `cloud-init-generator` (`docs/TROUBLESHOOTING.md`
+   "A Kali VM booted without cloud-init"). Fixed in `deploy/roles/kali/install.sh`
+   on `dev`, not yet baked: bake Kali as `cr-kali-bake2` (`docs/OPENSTACK.md`
+   §3.6, from `cr-kali-base`), set `compute.images.kali: cr-kali-bake2` in
+   `cloud.yaml` and `uv run bin/cloud up`; every stack is replaced. RAM per stack on com01 **[unverified]**.
    Seen live: the platform's `cr-mgmt` port kept 10.31.0.158 across six
    replaces.
 2. The stack digest covers the template, images and flavors, not the LAN

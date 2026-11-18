@@ -210,6 +210,24 @@ def test_kali_resolves_the_sites_to_the_router_s_public_address_and_routes_throu
     assert 'ip route replace default via "$ROUTER" dev "$internet" onlink src "$source"' in text("kali/slot-boot")
 
 
+def test_kali_boots_into_cloud_init_even_when_a_generator_dies(tmp_path):
+    script = text("kali/install.sh")
+    body = re.search(r"^cloud_init_on_every_boot\(\) \{\n.*?^\}\n", script, re.M | re.S)[0]
+    rooted = body.replace(" /etc/", f" {tmp_path}/etc/").replace(" /usr/", f" {tmp_path}/usr/")
+
+    subprocess.run(["sh", "-euc", f"{rooted}cloud_init_on_every_boot"], check=True)
+
+    generators = tmp_path / "etc/systemd/system-generators"
+    wanted = tmp_path / "etc/systemd/system/multi-user.target.wants/cloud-init.target"
+    assert (generators / "systemd-sslh-generator").readlink() == Path("/dev/null"), (
+        "sslh's generator, pulled in by kali-linux-headless, aborted on a slow boot and systemd stopped waiting "
+        "for cloud-init's generator"
+    )
+    assert wanted.readlink() == tmp_path / "usr/lib/systemd/system/cloud-init.target"
+    order = script.rstrip().splitlines()
+    assert order.index("cloud_init_on_every_boot") < order.index("sealed_for_snapshot")
+
+
 def test_nothing_kali_installs_that_a_learner_can_list_carries_the_platform_s_name():
     for name in ("install.sh", "slot-boot", "slot-boot.service", "web-proxy.service"):
         assert not re.search(r"\bcr[-_.]", text(f"kali/{name}")), name
