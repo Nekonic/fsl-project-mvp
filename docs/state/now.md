@@ -673,15 +673,22 @@ on them:
 
 - On `dev`, not deployed: SQLite WAL; the console drops the Kali trademark
   footer and the debrief label prefixes.
-- Branch `fix-walk-heat` (pushed, not merged; last commit is WIP and
-  untested): a new session deletes its stack's earlier logs; a Kali run's
-  Kibana window ends at its last logged request (F5 graded 1,548 of 2,065);
-  a learner can close a session at any step; the DevTools coach no longer
-  rings the answer's own line; lesson text says the IDS is a bridge between
-  the WAF and the web segment, not port mirroring. Open: debrief "경보 N건"
-  counts matched rules, not records (WIP); F1 step 5 says the IDS is on the
-  관제망 switch, the map shows only the WAF; the cr-mgmt address on every
-  VM is not on the map; F3 step 1 wording; F5 step 4 check once took 26 s.
+- On `dev`, not deployed (the walk's fixes, `docs/DECISIONS.md` "The first
+  Heat walk's findings"): a new session deletes its stack's earlier logs; a
+  Kali run's Kibana window ends at its last logged request (F5 graded 1,548
+  of 2,065); a learner can close a session at any step; the DevTools coach no
+  longer rings the answer's own line; lesson text says the IDS bridges the
+  WAF to the web segment and F1 step 5 no longer puts it on the 관제망
+  switch; the lesson reference explains the `cr-mgmt` address a shell lists
+  and the map leaves out; F3 step 1 wording; a result row counts alert
+  records (경보 기록 N건), not matched rules; the result page and the debrief
+  report the final check apart from what came before it, with customer rows
+  on every scenario and customer alerts in the debrief; an open refused for
+  a reset says so at once and Start follows the pressed wargame's stack;
+  3.3's tamper run comes from `us`; the strip hides 탈취된 목표 where nothing
+  is at stake; 1.3's list header asks for the attack type; the particle
+  typos. Open: F5 step 4 check once took 26 s; `cr-slot-2` sat RESET_FAILED
+  through the walk.
 - On `dev`, not deployed: the platform stall of scenario 1.3 (06:49-07:04Z,
   waitress queue depth up to 83, `database is locked` on `_fire`, scheduled
   attacks 6 and 7 lost). Triage groups on a stored `rule` column (3.43 s
@@ -691,19 +698,11 @@ on them:
   answers from a kept verdict (`docs/DECISIONS.md` "Triage groups on a stored
   rule column"). Migration 0033 rebuilds `api_detection` once at the next
   start. Open: a session open still takes 21-52 s.
-- Not started (scenario walk): "실습 환경를" typo and the reset notice that
-  appears only after 90 s with 시작 disabled about 1 min after ready; 3.3 says
-  "두 번째 공격자" but both attacks come from 5.188.10.10; result pages count
-  the attack a scenario is built to miss as 미탐; 3.2's console debrief shows
-  no FP rows though its result page has 42; 1.1/1.2 tables have no customer
-  rows; "탈취된 목표 0" on scenarios with no objectives; the notes' 단계 has
-  no expand marker; 1.3's list header asks only 탈취 여부; `cr-slot-2` sat
-  RESET_FAILED through the walk.
 - Walk reports and screenshots: the scratchpad folders `walk-heat-c1`,
   `walk-heat-c2`, `walk-heat-sc` of this session (temporary).
 
-To resume: finish `fix-walk-heat`, rebase on `dev`, `bin/verify --fast` once,
-merge to `dev`, `uv run bin/cloud up --replace`, open one session, hand the
+To resume: `uv run bin/cloud up --replace` from `dev`, open one session,
+walk the fixed items once (the scenarios after 1.2 were not walked), hand the
 range to the user for review.
 
 ## Next, in order
