@@ -112,7 +112,7 @@ alert that does not mention the attack's mechanism is reported
   process, `rules/crs.py` the only one that knows the CRS/ModSecurity
   configuration and the nginx reload, `kibana.py` the only one that knows the
   Kibana API, `range/openstack.py` the only one that knows the OpenStack API
-  and the only one that reads the slot's live wiring the learner map draws
+  and the only one that reads the session stack's live wiring the learner map draws
   from Neutron and the target VM's Docker networks (`range/wiring.py` parses
   it, `topology.py` names it for the learner), `attacker.py` the only one that knows the attacker box, and the loot
   path (`api/loot.py`, the board) and the effect path (`api/effect.py`, corp)
@@ -167,10 +167,12 @@ range-facing logic changed, and before a push.
   does. Exceptions: `deploy/suricata/rules/`, where a commented-out rule is how
   a rule is disabled, and the header Django writes into generated migrations.
 - The target is not published; the harness fires from inside the range.
-  The product runs only on OpenStack: the range is one Heat stack per slot
-  (`cr-slot-<n>`: the VMs kali, waf, infra and target on the slot's own
+  The product runs only on OpenStack: the range is one Heat stack per session
+  (`cr-slot-<n>`: the VMs kali, waf, infra and target on the stack's own
   Neutron LANs, booted from role images baked from `deploy/roles/` into
-  Glance), kept ready in a pool per wargame (`compute.pool`), and the platform
+  Glance), kept ready in a pool per wargame (`compute.pool`), given to a
+  session when it opens and deleted and built again when it closes; `<n>` is
+  the reused stack number (`docs/ARCHITECTURE.md` glossary), and the platform
   VM runs the shared control plane from `compose.yaml`. Bring-up
   pulls prebuilt images from GHCR (built by `.github/workflows/images.yml` on
   push to `dev`): `docker compose pull && docker compose up -d` starts the
@@ -178,7 +180,7 @@ range-facing logic changed, and before a push.
   holds the Docker socket). Local development runs the unit tests, not
   the range. The `build:` keys stay because the CI build test checks them. The
   platform VM is rebuilt, never patched in place: `bin/cloud up --replace`
-  (`bin/platform-rebuild`, then the pool converges; a slot stack rendered from
+  (`bin/platform-rebuild`, then the pool converges; a session stack rendered from
   the same template, images and flavors stands through);
   the whole cloud side comes up with `uv run bin/cloud init` (admin, once)
   and `uv run bin/cloud up` from `deploy/openstack/cloud.yaml`, the one file

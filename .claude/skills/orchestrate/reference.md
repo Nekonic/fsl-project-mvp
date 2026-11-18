@@ -77,9 +77,10 @@ what lets a piece be swapped without touching the rest.
 - `platform/rules/crs.py` — the CRS/ModSecurity configuration and the nginx
   reload.
 - `platform/kibana.py` — the Kibana API.
-- `platform/range/rangehost.py` — the read of the slot's live wiring that the
-  learner map draws (`WIRING`; `range/interfaces.py` parses it,
-  `topology.py` names it for the learner).
+- `platform/range/openstack.py` — the OpenStack API, and the read of the
+  session stack's live wiring that the learner map draws (Neutron and the
+  target VM's Docker networks; `range/wiring.py` parses it, `topology.py`
+  names it for the learner).
 - `platform/attacker.py` — the attacker box and its marker.
 - `platform/api/loot.py` — the board: reads the target's own records and
   matches submitted stolen data against them.

@@ -49,7 +49,7 @@ session, and you do not make the user say "continue".
    deployment before it is pushed; `--changed` lists the acceptance modules the
    change needs, and `--changed --live` runs only those. Acceptance is not the only live path: list
    every path the change can affect — `bin/cloud up --replace` (backup, new VM,
-   store restore), `bin/cloud down`/`up`, a slot reset — and run each one end to
+   store restore), `bin/cloud down`/`up`, a session's stack reset — and run each one end to
    end, untouched, before the push; a step finished by hand does not count, and
    a path a doc marks "not checked live" blocks the push until it has run.
    Show the command and its output, not a claim that it passed. If it is red or a gated metric grew, fix it or `git reset --hard`
@@ -121,7 +121,7 @@ two facts are what make a green run mean something. Protect them:
   gate 2, on anything beyond a trivial change.
 - The live review round is an answer-blind walk: agents that do not know the
   answers take each course as a learner on the deployed range. Run one agent
-  per course, each on its own slot, side by side. An interim round re-checks
+  per course, each in its own session, side by side. An interim round re-checks
   only the items the last round fixed; the last round before `main` walks
   every course in full. Take screenshots only of findings and result pages;
   record a passing step in text (`DECISIONS.md` 2026-11-18).
