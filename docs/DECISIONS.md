@@ -9763,3 +9763,70 @@ metapackage would go with it); a boot unit that runs
 on the platform side (the reset already waits 1800 s; a rebuild costs a
 stack). Needs a re-bake as `cr-kali-bake2` and `compute.images.kali` naming
 it; the image name is in the stack digest, so every stack is replaced.
+
+## 2026-11-18 — The second Heat walk's findings
+
+An answer-blind walk of courses c1 and c2 on the live Heat range
+(screenshots in `~/.cache/fsl-work/walk-heat2/c/`).
+
+- **세션 종료 on every lesson screen.** The note's close section hid once a
+  lesson finished, so the end card of F1, F2, F4 and F5 had none and the
+  learner went home to close. It now stays on the end card; only the course
+  summary, which has its own close button, hides it.
+- **The coach rings at most the tool or tab, never the answer.** The
+  earlier ruling (DevTools rings the tab, not the line) now holds for every
+  locator. DevTools: while a request row has to be picked, the ring sits on
+  the Network panel tab, not on the row (F2 step 6's `?sort=title`, F5 step
+  2's 500). Kibana: `doc` rings the flyout's field filter, not the value;
+  `hits` rings nothing once the query is new (the count and "no results"
+  are the answer; a panel over the count still rings its close button);
+  `sidebar` rings the field in the list, not Top values or the record-count
+  line (this reverses F12). Terminal: lessons ring only the prompt; F5's
+  verdict and F6's account table open the pane only, F6's exception step
+  rings the WAF prompt. F6's cost step rings the objectives card, not the
+  admin row. The map's node rings stay: the address label lies outside the
+  ring. Rejected: ringing the whole request list (it holds the row and its
+  status). Eight tests that asserted the old rings were removed or
+  rewritten; `test_no_lesson_step_rings_a_line_of_terminal_output_...`
+  guards the lesson file.
+- **No "label: value" strings.** `CRS 설정: <path>`, the reference's
+  `nano: Ctrl+K` rows, the replay lines (`공격 요청 차단: 대기 중`), the
+  report's `<case>: 경보 없음` / `경보 기록 N건`, `차단된 고객 요청: …`,
+  `검증 완료: …`, `시나리오 1.1: …`, `출발지: …`, `탐지 근거 부족: …`,
+  `남은 시간: …`, `고객 동작별 차단: …` and `다음 레슨: <제목>` are
+  sentences, a heading or a table column now. The next lesson is named in
+  the end line (`lesson.next.named`); its button says 다음 레슨 시작, so it
+  no longer overflows the note by the title's length. `test_strings.py`
+  refuses a value opening with a short Korean label and a colon. The
+  DevTools imitation keeps Chrome's own wording (`적용 범위: N/A`).
+- **The reset notice shows once.** A refused open says 초기화하는 중 beside the
+  pressed Start; the home page's banner hides while its reasons are all
+  told there.
+- **The learner VMs carry their role as hostname.** The WAF prompt read
+  `root@cr-slot-1-waf` (cloud-init took Nova's server name) while Kali's
+  read `kali`. Each node's cloud-config sets `hostname` to its role
+  (`kali`, `waf`, `infra`, `target`); the Nova names and every lookup by
+  tag or metadata are unchanged; syslog sender names are fixed in the log
+  server's template, not taken from the hostname. The user data is in the
+  stack digest, so every stack is replaced once.
+- **A lesson's minutes add up to the session's.** The first lesson's
+  `started_at` was stamped before the slot was chosen (23 s on the walk), so
+  c1's lessons summed to 6 min against 5. It is now the session's
+  `started_at`.
+- **The close-time ingest leaves out Filebeat's raw line.** Closing c2 took
+  14.1 s (c1 6.0 s). The ingest before `close/` reads the whole session
+  again: re-run read-only on session 2852, 10,818 documents, 9.24 s to
+  fetch, of about 80 MB 38 MB was the top-level `message` field, which no
+  detection reads; `close/` itself about 3.5 s. `elastic.fetch` now asks
+  for `_source` without `message` (`core_loc` 601 -> 602). Expected about
+  4 s less on c2 **[unverified]**. Rejected for now: an incremental
+  close-time read (the re-read is what credits late markers and
+  X-Forwarded-For to stored alerts).
+- **The 8-minute refusal was not the reset.** The c2 close's new stack and
+  the board slot retargeted for the next open both got Kalis that booted
+  without cloud-init (sslh's generator, "The Kali image masks sslh's
+  generator" above), so no board slot was READY until another session's
+  slot was rebuilt. A healthy reset measured on slot 2: delete 28 s, Heat
+  create 43 s, boot to the readiness file 114 s, platform poll and
+  baseline at most 80 s, 3-4.4 min in all. No platform change: the fix is
+  the `cr-kali-bake2` bake.

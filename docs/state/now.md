@@ -698,6 +698,21 @@ on them:
   answers from a kept verdict (`docs/DECISIONS.md` "Triage groups on a stored
   rule column"). Migration 0033 rebuilds `api_detection` once at the next
   start. Open: a session open still takes 21-52 s.
+- On `dev`, not deployed (the second walk of c1 and c2, `docs/DECISIONS.md`
+  "The second Heat walk's findings"): 세션 종료 stays on a finished lesson's
+  end card; the coach rings at most the tool or tab (the Network tab, not
+  the request row; Kibana's field filter, not the value; no ring on a hit
+  count or Top values; lessons ring only a shell prompt; the objectives
+  card, not its row); the "label: value" strings are sentences, and the
+  next lesson is named in the end line, not on its button; the home page
+  tells a reset refusal once; the VMs' hostnames are their roles (`waf`,
+  `kali`; every stack is replaced once); the first lesson starts with the
+  session; the ingest search leaves out Filebeat's `message`. Open: c2's
+  close took 14.1 s, about 9 s of it the close-time ingest re-reading 80 MB
+  (the fix should save about 4 s, **[unverified]**), and `close/` 3.5 s;
+  the 8 min refusal after it was two Kalis without cloud-init (the
+  `cr-kali-bake2` bake, Next item 1); the open that followed spent 23 s
+  choosing a slot **[unverified: SSH probes of the stuck VMs]**.
 - Walk reports and screenshots: the scratchpad folders `walk-heat-c1`,
   `walk-heat-c2`, `walk-heat-sc` of this session (temporary).
 
