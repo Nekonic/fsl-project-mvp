@@ -115,6 +115,28 @@ def test_the_strip_shows_lost_objectives_only_where_the_scenario_has_objectives(
 
     assert seen["errors"] == [] and seen["result"] is shown
 
+BUSY = wargames.scenario_card(wargames.scenario_run("1.3"))
+
+@pytest.mark.parametrize("card, intro", [(JUDGEMENT, "triage.intro"), (BUSY, "triage.intro.pattern")])
+def test_the_alert_list_header_asks_for_the_attack_type_only_where_the_items_ask_for_it(client, card, intro):
+    seen = open_page(client, "/blue/1/", setup=serving(status(card)), scenario="""
+      for (let i = 0; i < 4; i += 1) await browser.settle();
+      return browser.text('triage-intro');
+    """)
+
+    assert seen["errors"] == [] and seen["result"] == worded(intro), (
+        "walk: 1.3's list header asked only whether data was taken while each item also asks the attack type")
+
+def test_the_steps_header_carries_the_same_open_and_closed_marker_as_the_goal(client):
+    seen = open_page(client, "/blue/1/", setup=serving(status()), scenario="""
+      for (let i = 0; i < 4; i += 1) await browser.settle();
+      const closed = browser.text('steps-mark');
+      await browser.click('steps-toggle');
+      return [closed, browser.text('steps-mark')];
+    """)
+
+    assert seen["errors"] == [] and seen["result"] == ["\u25b6", "\u25bc"], "walk: 단계 had no marker while 목표 had one"
+
 def test_the_briefing_shows_the_full_length_until_start_and_start_begins_the_clock_once(client):
     waiting = status(started=False, time_left=CARD["minutes"] * 60)
     seen = open_page(client, "/blue/1/", setup=serving(waiting), scenario="""

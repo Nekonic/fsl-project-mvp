@@ -37,6 +37,7 @@ function stripShow() {
   strip.classList.remove("hidden");
   strip.classList.add("flex");
   field("scenario-name").textContent = scenarioTitle();
+  field("triage-intro").textContent = t((scenario.patterns || []).length ? "triage.intro.pattern" : "triage.intro");
   const phase = field("scenario-phase");
   phase.textContent = t(`scenario.phase.${scenario.phase}`);
   phase.className = `shrink-0 font-semibold ${PHASE_TONE[scenario.phase] || "text-muted"}`;
