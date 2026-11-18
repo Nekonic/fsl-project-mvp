@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title></title>
+<style>
+  :root {
+    --font-sans: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --panel: #FFFFFF;
+    --text-muted: #64748B;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--panel); font-family: var(--font-sans); }
+  #map { position: fixed; inset: 0; }
+  #said { position: fixed; left: 16px; top: 12px; color: var(--text-muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<p id="said"></p>
+{% include "console/strings.html" %}
+<script>
+const SYMBOLS = {
+  kali: "host-kali.svg", router: "host-router.svg", waf: "host-shield.svg", server: "host-server.svg",
+  database: "host-storage.svg", logs: "host-statistics.svg", sensor: "host-inspect.svg", switch: "switch.svg",
+  host: "host-server.svg",
+};
+const SYMBOLS_WAIT_MS = 5000;
+const session = location.pathname.split("/")[2];
+const symbolUrl = (file) => `/static/map/symbols/${file}`;
+const symbolsArriving = [...new Set(Object.values(SYMBOLS))].map((file) => {
+  const image = new Image();
+  const arrived = new Promise((resolve) => {
+    image.addEventListener("load", resolve);
+    image.addEventListener("error", resolve);
+  });
+  image.crossOrigin = "anonymous";
+  image.src = symbolUrl(file);
+  return arrived;
+});
+const symbolsLoaded = Promise.race([
+  Promise.all(symbolsArriving),
+  new Promise((resolve) => setTimeout(resolve, SYMBOLS_WAIT_MS)),
+]);
+const topologyRead = (async () => {
+  try {
+    const answer = await fetch(`/api/sessions/${session}/topology/`);
+    return { ok: answer.ok, status: answer.status, body: await answer.json().catch(() => ({})) };
+  } catch (error) {
+    return { ok: false, status: 0, body: { detail: String(error) } };
+  }
+})();
+</script>
+<script src="/static/map/cytoscape.min.js"></script>
+<script>
+const COLOURS = { internet: "#b03a2e", dmz: "#2e6da4", web: "#2f7a6b", database: "#4a6fa5", mgmt: "#6b5b95" };
+const LINK = "#1b4f8a";
+const LOGS = "#5b6770";
+const MARGIN = 24;
+const LOCATE_EVERY_MS = 150;
+const font = getComputedStyle(document.body).fontFamily;
+const view = { cy: null, told: false, asked: null, last: "", timer: null };
+
+const zoneId = (zone) => `zone:${zone}`;
+const switchId = (zone) => `switch:${zone}`;
+
+function captioned(zone) {
+  return [t(`topology.zone.${zone.caption}`, zone.owner || ""), zone.subnet].filter(Boolean).join(" ");
+}
+
+function named(node) {
+  if (node.kind === "address") return node.more ? t("topology.address.more", node.text, node.more) : node.text;
+  const key = node.kind === "sensor" ? "topology.sensor" : `topology.name.${node.name}`;
+  const shown = t(key);
+  return shown === key ? node.name || "" : shown;
+}
+
+function classed(node) {
+  if (node.kind === "switch" || node.kind === "address") return node.kind;
+  return `device ${node.kind}`;
+}
+
+
+const SIDES = {
+  above: { "text-valign": "top", "text-halign": "center", "text-margin-x": 0, "text-margin-y": -6 },
+  below: { "text-valign": "bottom", "text-halign": "center", "text-margin-x": 0, "text-margin-y": 6 },
+  left: { "text-valign": "center", "text-halign": "left", "text-margin-x": -8, "text-margin-y": 0 },
+  right: { "text-valign": "center", "text-halign": "right", "text-margin-x": 8, "text-margin-y": 0 },
+};
+
+function bends(route, from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return route.map(([x, y]) => ({
+    weight: ((x - from.x) * dx + (y - from.y) * dy) / (length * length),
+    distance: ((y - from.y) * dx - (x - from.x) * dy) / length,
+  }));
+}
+
+function elements(map) {
+  const at = Object.fromEntries(map.nodes.map((node) => [node.id, { x: node.x || 0, y: node.y || 0 }]));
+  const zones = map.zones.map((zone) => {
+    const [x1, y1, x2, y2] = zone.box;
+    return { group: "nodes", classes: "zone", position: { x: (x1 + x2) / 2, y: (y1 + y2) / 2 },
+      data: { id: zoneId(zone.id), label: captioned(zone), colour: COLOURS[zone.caption] || LOGS, shift: zone.shift || 0,
+              width: x2 - x1, height: y2 - y1 } };
+  });
+  const nodes = map.nodes.map((node) => ({ group: "nodes", classes: classed(node),
+    position: at[node.id],
+    data: { id: node.id, label: named(node), name: node.name || "", side: node.label || "below",
+            symbol: symbolUrl(SYMBOLS[node.kind] || SYMBOLS.host) } }));
+  const edges = map.edges.map((edge) => {
+    const route = edge.route ? bends(edge.route, at[edge.source], at[edge.target]) : [];
+    return { group: "edges", classes: edge.route ? `${edge.kind} routed` : edge.kind,
+      data: { id: edge.id, source: edge.source, target: edge.target,
+              weights: route.map((bend) => bend.weight), distances: route.map((bend) => bend.distance),
+              start: edge.start ? `${edge.start[0]}px ${edge.start[1]}px` : "outside-to-node",
+              end: edge.end ? `${edge.end[0]}px ${edge.end[1]}px` : "outside-to-node" } };
+  });
+  return [...zones, ...nodes, ...edges];
+}
+
+const STYLE = [
+  { selector: "node", style: { "font-family": font, "font-size": 15, color: "#0F172A" } },
+  { selector: "node.zone", style: {
+    shape: "rectangle", width: "data(width)", height: "data(height)", "background-color": "data(colour)",
+    "background-opacity": 0.06, "border-width": 2, "border-color": "data(colour)", label: "data(label)",
+    "text-valign": "top", "text-halign": "center", "font-size": 16, "font-weight": "bold", color: "data(colour)",
+    "text-margin-x": "data(shift)", "text-margin-y": 10, "text-background-color": "#FFFFFF",
+    "text-background-opacity": 1, "text-background-padding": 3, "z-compound-depth": "bottom", "z-index": 0,
+    events: "no" } },
+  { selector: "node.device, node.switch", style: {
+    shape: "rectangle", width: 52, height: 52, "background-opacity": 0, "border-width": 0,
+    "background-image": "data(symbol)", "background-fit": "contain", "background-clip": "none", "z-index": 10 } },
+  { selector: "node.device", style: { label: "data(label)", "text-wrap": "wrap", "line-height": 1.35,
+    "text-background-color": "#FFFFFF", "text-background-opacity": 1, "text-background-padding": 1 } },
+  ...Object.entries(SIDES).map(([side, style]) => ({ selector: `node.device[side = "${side}"]`, style })),
+  { selector: "edge", style: { width: 2, "curve-style": "straight", "line-color": LINK, "font-family": font,
+    "z-index": 5, "source-endpoint": "data(start)", "target-endpoint": "data(end)" } },
+  { selector: "edge.routed", style: {
+    "curve-style": "segments", "edge-distances": "node-position", "segment-weights": "data(weights)",
+    "segment-distances": "data(distances)" } },
+  { selector: "node.address", style: { width: 1, height: 1, "background-opacity": 0, "border-width": 0,
+    label: "data(label)", "text-valign": "center", color: LINK, "text-background-color": "#FFFFFF",
+    "text-background-opacity": 1, "text-background-padding": 1, events: "no" } },
+  { selector: 'node.address[side = "right"]', style: { "text-halign": "right" } },
+  { selector: 'node.address[side = "left"]', style: { "text-halign": "left" } },
+];
+
+function boxOf(ele, only) {
+  const box = ele.renderedBoundingBox(only);
+  return box && box.w > 0 && box.h > 0
+    ? { x: Math.round(box.x1), y: Math.round(box.y1), w: Math.round(box.w), h: Math.round(box.h) } : null;
+}
+
+const LABELS = { includeNodes: false, includeEdges: false, includeLabels: true, includeOverlays: false };
+const BODY = { includeLabels: false, includeOverlays: false };
+
+function located(spec) {
+  const cy = view.cy;
+  if (!cy || !spec) return null;
+  if (spec.node) {
+    const node = cy.nodes(".device").filter((one) => one.data("name") === spec.node || one.id() === spec.node);
+    return node.nonempty() ? boxOf(node, { includeOverlays: false }) : null;
+  }
+  if (spec.zone) {
+    const zone = cy.getElementById(zoneId(spec.zone));
+    return zone.nonempty() ? boxOf(zone, BODY) : null;
+  }
+  if (Array.isArray(spec.label)) {
+    const edge = cy.edges(".link").filter((one) => one.source().data("name") === spec.label[0]
+      && one.target().id() === switchId(spec.label[1]));
+    return edge.nonempty() ? boxOf(edge, { includeNodes: false, includeEdges: false, includeLabels: true,
+                                         includeMainLabels: false, includeSourceLabels: true,
+                                         includeTargetLabels: false, includeOverlays: false }) : null;
+  }
+  return null;
+}
+
+function textRects() {
+  const cy = view.cy;
+  if (!cy) return [];
+  const nodes = cy.nodes(".device, .address").map((node) => boxOf(node, { includeOverlays: false }));
+  const captions = cy.nodes(".zone").map((zone) => boxOf(zone, { ...LABELS, includeMainLabels: true }));
+  const ends = cy.edges(".link, .mirror").map((edge) => boxOf(edge, { ...LABELS, includeSourceLabels: true,
+                                                               includeMainLabels: true }));
+  return [...nodes, ...captions, ...ends].filter(Boolean);
+}
+
+function zoneRects() {
+  return view.cy ? view.cy.nodes(".zone").map((zone) => boxOf(zone, BODY)).filter(Boolean) : [];
+}
+
+function answerLocate(always) {
+  if (!view.asked || !view.cy) return;
+  const rect = located(view.asked.spec);
+  const zones = zoneRects();
+  const text = textRects();
+  const said = JSON.stringify([rect, zones, text]);
+  if (!always && said === view.last) return;
+  view.last = said;
+  view.asked.to.postMessage({ located: view.asked.id, rect, zones, text }, view.asked.origin);
+}
+
+function locateAsked(event) {
+  clearInterval(view.timer);
+  const spec = event.data.locate;
+  if (!spec) {
+    view.asked = null;
+    return;
+  }
+  view.asked = { spec, id: event.data.id, to: event.source, origin: event.origin };
+  view.last = "";
+  if (!view.cy) return;
+  answerLocate(true);
+  view.timer = setInterval(() => answerLocate(false), LOCATE_EVERY_MS);
+}
+
+function fitted() {
+  if (!view.cy) return;
+  view.cy.resize();
+  view.cy.fit(undefined, MARGIN);
+  window.parent.postMessage({ map: view.told ? "fitted" : "drawn" }, location.origin);
+  view.told = true;
+}
+
+window.addEventListener("message", (event) => {
+  if (event.source !== window.parent || event.origin !== location.origin) return;
+  const said = event.data;
+  if (said === "fit" || (said && typeof said === "object" && said.fit)) fitted();
+  if (said && typeof said === "object" && "locate" in said) locateAsked(event);
+});
+
+let refit = null;
+window.addEventListener("resize", () => {
+  clearTimeout(refit);
+  refit = setTimeout(fitted, 250);
+});
+
+(async () => {
+  document.title = t("topology.view.map");
+  const said = document.getElementById("said");
+  said.textContent = t("topology.loading");
+  const read = await topologyRead;
+  const map = read.body && read.body.map;
+  if (!read.ok || !map || !map.nodes.length) {
+    said.textContent = t("topology.unread", (map && map.detail) || read.body.detail || read.status);
+    window.parent.postMessage({ map: "drawn" }, location.origin);
+    return;
+  }
+  await symbolsLoaded;
+  said.remove();
+  view.cy = cytoscape({
+    container: document.getElementById("map"), elements: elements(map), style: STYLE, layout: { name: "preset" },
+    autoungrabify: true, autounselectify: true, boxSelectionEnabled: false, userPanningEnabled: true,
+    userZoomingEnabled: true, minZoom: 0.3, maxZoom: 2.5,
+  });
+  view.cy.on("viewport", () => answerLocate(false));
+  fitted();
+  if (view.asked) {
+    answerLocate(true);
+    clearInterval(view.timer);
+    view.timer = setInterval(() => answerLocate(false), LOCATE_EVERY_MS);
+  }
+})();
+</script>
+</body>
+</html>

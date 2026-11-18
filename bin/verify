@@ -1,0 +1,338 @@
+#!/usr/bin/env bash
+
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+PY="$ROOT/.venv/bin/python"
+FAST=0
+CHANGED=0
+LIVE=0
+BASE=""
+PLATFORM="${CR_PLATFORM_URL:-http://localhost:8000}"
+export CR_PLATFORM_URL="$PLATFORM"
+FAILED=0
+
+case "${1:-}" in
+  --fast) FAST=1 ;;
+  --changed)
+    CHANGED=1
+    shift
+    for argument in "$@"; do
+      case "$argument" in
+        --live) LIVE=1 ;;
+        *) BASE="$argument" ;;
+      esac
+    done
+    ;;
+esac
+
+UNIT_JOBS="${CR_UNIT_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)}"
+[ "$UNIT_JOBS" -gt 4 ] && UNIT_JOBS=4
+UNIT_NICE=""
+
+unit_suite() {
+  local dir n=0 code=0 file list
+  dir="$(mktemp -d)"
+  for file in $(cd platform && ls -S "$@"); do
+    echo "$file" >> "$dir/$((n % UNIT_JOBS)).files"
+    n=$((n + 1))
+  done
+  if [ "$n" = 0 ]; then
+    echo "no unit test files among: $*"
+    rm -rf "$dir"
+    return 1
+  fi
+  for list in "$dir"/*.files; do
+    (cd platform && $UNIT_NICE "$PY" -m pytest $(cat "$list") -q -p no:cacheprovider \
+      > "${list%.files}.log" 2>&1; echo $? > "${list%.files}.code") &
+  done
+  wait
+  for list in "$dir"/*.files; do
+    if [ "$(cat "${list%.files}.code")" = 0 ]; then
+      tail -1 "${list%.files}.log"
+    else
+      code=1
+      cat "${list%.files}.log"
+    fi
+  done
+  rm -rf "$dir"
+  return "$code"
+}
+
+section() { printf '\n\033[1m== %s\033[0m\n' "$1"; }
+fail()    { printf '\033[31mFAIL\033[0m %s\n' "$1"; FAILED=1; }
+ok()      { printf '\033[32mok\033[0m   %s\n' "$1"; }
+stack_down() {
+  fail "$1"
+  echo
+  echo "Skipping acceptance tests: the stack must be up."
+  exit 1
+}
+
+if command -v uv >/dev/null && ! uv sync --quiet --frozen; then
+  echo "uv sync --frozen failed: .venv does not match uv.lock"
+  exit 1
+fi
+if [ ! -x "$PY" ]; then
+  echo "No .venv: install uv, then run uv sync --frozen"
+  exit 1
+fi
+
+if [ "$CHANGED" = 1 ]; then
+  section "selection"
+  PLAN="$(mktemp)"
+  if ! "$PY" bin/select-tests ${BASE:+"$BASE"} --plan "$PLAN"; then
+    fail "bin/select-tests crashed - run bin/verify --fast instead"
+    exit 1
+  fi
+  unit_kind="$(sed -n 's/^unit //p' "$PLAN")"
+  unit_files="$(sed -n 's/^unit-file //p' "$PLAN")"
+  acceptance_kind="$(sed -n 's/^acceptance //p' "$PLAN")"
+  acceptance_modules="$(sed -n 's/^acceptance-module //p' "$PLAN" | paste -sd, -)"
+fi
+
+section "unit + API tests"
+if [ "$CHANGED" = 1 ] && [ "$unit_kind" = none ]; then
+  ok "no unit test reaches the change"
+elif [ "$CHANGED" = 1 ] && [ "$unit_kind" = some ]; then
+  if unit_suite $unit_files; then
+    ok "platform/tests, the files the change reaches"
+  else
+    fail "platform/tests, the files the change reaches"
+  fi
+elif [ "$FAST" = 0 ] && [ "$CHANGED" = 0 ]; then
+  UNIT_LOG="$(mktemp)"
+  UNIT_NICE="nice -n 19"
+  (unit_suite $(cd platform && ls tests/test_*.py) > "$UNIT_LOG" 2>&1; echo $? >> "$UNIT_LOG.code") &
+  UNIT_PID=$!
+  echo "running in $UNIT_JOBS processes beside the acceptance suite, at the lowest CPU priority"
+elif unit_suite $(cd platform && ls tests/test_*.py); then
+  ok "platform/tests"
+else
+  fail "platform/tests"
+fi
+
+if [ "$FAST" = 1 ]; then
+  section "metrics (not gated in --fast)"
+  ./bin/measure || fail "measure crashed - the full run will fail on it too"
+  [ "$FAILED" = 0 ] && printf '\n\033[32mfast check passed\033[0m — run bin/verify before committing\n'
+  exit "$FAILED"
+fi
+
+live_acceptance() {
+only="$1"
+section "stack"
+owner="$(docker inspect cr-platform --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null)"
+if [ -z "$owner" ]; then
+  stack_down 'cr-platform is not there — docker compose up -d --build'
+fi
+if [ "$(cd "$owner" 2>/dev/null && pwd -P)" != "$(pwd -P)" ]; then
+  fail "the stack was brought up from $owner, not from $ROOT"
+  echo "     restarting it would run that tree's code and call it this one's."
+  echo "     Run bin/verify there, or, if nobody is using that stack,"
+  echo '     docker compose up -d --build from here.'
+  exit 1
+fi
+open_sessions="$("$PY" - <<'OPENCHECK' 2>/dev/null
+import os, sys
+from redteam import signin
+try:
+    platform = os.environ["CR_PLATFORM_URL"]
+    rows = signin.signed_in(platform).get(platform + "/api/sessions/?state=open", timeout=5).json()
+except Exception:
+    sys.exit(0)
+print(" ".join(str(row.get("id")) for row in rows if isinstance(row, dict)))
+OPENCHECK
+)"
+if [ -n "$open_sessions" ]; then
+  fail "a session is open (ids: $open_sessions)"
+  echo "     bin/verify restarts the platform and prunes sessions, which would"
+  echo "     disrupt an open one. Close it first, or wait for it to finish."
+  exit 1
+fi
+if ! docker compose restart platform >/dev/null 2>&1; then
+  stack_down 'platform could not be restarted — docker compose up -d --build'
+fi
+for _ in $(seq 60); do
+  curl -fs -o /dev/null --max-time 5 "$PLATFORM/api/auth/" && break
+  sleep 1
+done
+if curl -fsS -o /dev/null --max-time 5 "$PLATFORM/api/auth/"; then
+  ok "platform restarted on the tree being verified"
+else
+  stack_down "platform not responding after a restart — docker compose logs platform"
+fi
+
+CR_ACCEPTANCE_SESSIONS="$(mktemp)"
+export CR_ACCEPTANCE_SESSIONS
+
+RULES_SAID="$(mktemp)"
+opened="$("$PY" - "$RULES_SAID" <<'OPENSTACK'
+import json, os, pathlib, sys, urllib.error, urllib.request
+from redteam import signin
+
+SIGNED = signin.signed_in(os.environ["CR_PLATFORM_URL"])
+HEADERS = {
+    "Content-Type": "application/json", "X-CSRFToken": SIGNED.headers["X-CSRFToken"],
+    "Cookie": "; ".join(f"{cookie.name}={cookie.value}" for cookie in SIGNED.cookies),
+}
+
+def post(path, body, timeout=900):
+    request = urllib.request.Request(
+        os.environ["CR_PLATFORM_URL"] + path, json.dumps(body).encode(), HEADERS,
+    )
+    return json.load(urllib.request.urlopen(request, timeout=timeout))
+
+def refused(error):
+    if isinstance(error, urllib.error.HTTPError):
+        return json.load(error).get("detail") or error
+    return error
+
+def rules_read(session_id):
+    content = pathlib.Path("deploy/suricata/rules/local.rules").read_text()
+    try:
+        return "ok" if post("/api/rules/validate/", {"content": content, "session": session_id}, 60)["ok"] else "not ok"
+    except urllib.error.HTTPError as answer:
+        said = json.load(answer)
+        return said.get("output") or said.get("detail") or str(answer)
+    except OSError as error:
+        return str(error)
+
+try:
+    session = post("/api/sessions/", {})
+except OSError as error:
+    print(refused(error), file=sys.stderr)
+    sys.exit(1)
+with open(os.environ["CR_ACCEPTANCE_SESSIONS"], "a") as ids:
+    ids.write(f"{session['id']}\n")
+print(session["id"])
+pathlib.Path(sys.argv[1]).write_text(rules_read(session["id"]))
+try:
+    post(f"/api/sessions/{session['id']}/close/", {})
+except OSError as error:
+    print(refused(error), file=sys.stderr)
+    sys.exit(2)
+OPENSTACK
+)"
+warmed=$?
+if [ "$warmed" -eq 0 ]; then
+  ok "session $opened opened its stack and the target is healthy"
+elif [ "$warmed" -eq 2 ]; then
+  fail "session $opened opened its stack but did not close (reason above);"
+  echo "     the next session would get 409 - close it or check the platform log."
+  exit 1
+else
+  fail "no session stack came up (reason above) - attacks would leave and hit"
+  echo "     nothing, and the acceptance run would report TP 0 as if the"
+  echo "     defence had failed."
+  exit 1
+fi
+
+if [ "$(cat "$RULES_SAID")" = ok ]; then
+  ok "suricata can read its config"
+else
+  cat "$RULES_SAID"
+  echo
+  fail "suricata could not validate deploy/suricata/rules/local.rules on session $opened's sensors (reason above)"
+fi
+rm -f "$RULES_SAID"
+
+section "acceptance (live stack)"
+if "$PY" bin/acceptance ${only:+--only "$only"}; then
+  ok "test/"
+else
+  fail "test/"
+fi
+
+section "housekeeping"
+if pruned="$(./bin/prune --ids "$CR_ACCEPTANCE_SESSIONS" --apply 2>&1)"; then
+  ok "$(printf '%s\n' "$pruned" | head -1) - only sessions this run made"
+else
+  printf '     could not prune the sessions this run made; their ids are in %s\n' "$CR_ACCEPTANCE_SESSIONS"
+fi
+}
+
+if [ "$CHANGED" = 0 ]; then
+  live_acceptance ""
+  section "unit + API tests (beside the acceptance suite)"
+  wait "$UNIT_PID"
+  cat "$UNIT_LOG"
+  if [ "$(cat "$UNIT_LOG.code")" = 0 ]; then
+    ok "platform/tests"
+  else
+    fail "platform/tests"
+  fi
+  rm -f "$UNIT_LOG" "$UNIT_LOG.code"
+elif [ "$acceptance_kind" != none ] && [ "$LIVE" = 1 ]; then
+  live_acceptance "$acceptance_modules"
+elif [ "$acceptance_kind" != none ]; then
+  section "acceptance (not run)"
+  echo "the change reaches the range; the acceptance tests it needs are listed above."
+  echo "run them with: bin/verify --changed${BASE:+ $BASE} --live"
+fi
+
+section "ratchet"
+untracked="$(git ls-files --others --exclude-standard)"
+if [ -n "$untracked" ]; then
+  fail "untracked files - metrics would not count them:"
+  echo "$untracked" | sed 's/^/       /'
+  echo "     git add them, then run bin/verify again"
+else
+  ok "nothing untracked"
+fi
+
+./bin/measure
+if "$PY" - <<'PY'
+import json, subprocess, sys, pathlib
+baseline_path = pathlib.Path("metrics.json")
+measured = subprocess.run(["./bin/measure", "--json"], capture_output=True, text=True)
+if measured.returncode:
+    said = measured.stderr.strip().splitlines() or [f"exit {measured.returncode}"]
+    print(f"\nmeasure crashed, so nothing was compared:\n  {said[-1]}")
+    sys.exit(3)
+current = json.loads(measured.stdout)
+if not baseline_path.exists():
+    print("\nno metrics.json yet — run: bin/measure --save")
+    sys.exit(0)
+baseline = json.loads(baseline_path.read_text())
+
+GATED = ("core_loc", "dependencies", "services")
+
+moved = {k: (baseline[k], v) for k, v in current.items() if v != baseline.get(k, v)}
+worse = {k: m for k, m in moved.items() if k in GATED and m[1] > m[0]}
+smaller = {k: m for k, m in moved.items() if m[1] < m[0]}
+
+def show(heading, found, *advice):
+    print(heading)
+    for name, (was, now) in found.items():
+        print(f"  {name}: {was} -> {now}")
+    print(*advice, sep="\n")
+
+if worse:
+    show("\nthis change grows a gated number:", worse,
+         "\nThat is not an improvement. Either shrink it back, or if the growth",
+         "is genuinely necessary, edit metrics.json by hand.")
+if smaller and not worse:
+    show("\nsmaller:", smaller, "\nRecord it: bin/measure --save")
+
+sys.exit(1 if worse else 0)
+PY
+then
+  ok "no regression"
+elif [ $? = 3 ]; then
+  fail "measure crashed"
+else
+  fail "metrics regressed"
+fi
+
+section "result"
+if [ "$FAILED" = 0 ] && [ "$CHANGED" = 1 ]; then
+  printf '\033[32mthe tests the change reaches are green\033[0m — bin/verify --fast before a commit that touches shared code\n'
+elif [ "$FAILED" = 0 ]; then
+  printf '\033[32mall green\033[0m — safe to commit\n'
+else
+  printf '\033[31msomething failed\033[0m — do not commit\n'
+fi
+exit "$FAILED"

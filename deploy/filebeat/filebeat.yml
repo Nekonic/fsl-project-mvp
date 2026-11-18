@@ -1,0 +1,101 @@
+filebeat.inputs:
+  - type: udp
+    id: range-syslog
+    host: "0.0.0.0:5140"
+    max_message_size: 64KiB
+    read_buffer: 32MiB
+    processors:
+      - syslog:
+          field: message
+      - script:
+          lang: javascript
+          source: >
+            function process(event) {
+              var slot = /^[^.]*-(\d+)(\.|$)/.exec(event.Get("log.syslog.hostname") || "");
+              event.Put("cr_slot", slot ? slot[1] : "1");
+            }
+      - drop_fields:
+          fields: [log.source.address]
+          ignore_missing: true
+      - if:
+          and:
+            - equals:
+                log.syslog.appname: suricata
+            - regexp:
+                message: '^\{'
+        then:
+          - decode_json_fields:
+              fields: [message]
+              target: ""
+              overwrite_keys: true
+              add_error_key: true
+          - add_fields:
+              target: ""
+              fields:
+                event:
+                  module: suricata
+      - if:
+          and:
+            - equals:
+                log.syslog.appname: modsecurity
+            - regexp:
+                message: '^\{'
+        then:
+          - decode_json_fields:
+              fields: [message]
+              target: ""
+              overwrite_keys: true
+              add_error_key: true
+          - add_fields:
+              target: ""
+              fields:
+                event:
+                  module: modsecurity
+      - if:
+          and:
+            - equals:
+                log.syslog.appname: nginx
+            - regexp:
+                message: '^\{'
+        then:
+          - decode_json_fields:
+              fields: [message]
+              target: ""
+              overwrite_keys: true
+              add_error_key: true
+          - rename:
+              fields:
+                - from: status
+                  to: http.status
+              ignore_missing: true
+              fail_on_error: false
+          - add_fields:
+              target: ""
+              fields:
+                event:
+                  module: nginx
+      - drop_event:
+          when:
+            not:
+              has_fields: ["event.module"]
+
+queue.mem.flush.timeout: 1s
+
+setup.template.name: logs-sensors
+setup.template.pattern: logs-*
+setup.template.fields: "${path.home}/data/fields-lean.yml"
+setup.template.overwrite: true
+setup.template.settings:
+  index.default_pipeline: geoip
+  index.refresh_interval: 1s
+setup.ilm.enabled: false
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+  index: "logs-${CR_SESSION:shared}-sensors"
+  indices:
+    - index: "logs-%{[cr_slot]}-sensors"
+      when.has_fields: ["cr_slot"]
+  pipeline: geoip
+
+logging.level: warning

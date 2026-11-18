@@ -1,0 +1,643 @@
+{% extends "console/base.html" %}
+{% block surface %}bg-panel{% endblock %}
+{% block content %}
+<p id="unread" class="hidden text-danger text-[13px]"></p>
+<header id="session-card" class="hidden flex flex-wrap items-center gap-x-6 gap-y-3 pb-5 border-b border-line">
+  <div class="min-w-0">
+    <div class="flex flex-wrap items-center gap-2">
+      <h1 id="session-title" class="text-[22px] font-bold text-heading"></h1>
+      <span id="session-state" class="text-warning text-[13px]"></span>
+    </div>
+    <p id="session-line" class="text-muted mt-1"></p>
+  </div>
+  <div id="session-figures" class="sm:ml-auto flex flex-wrap items-center gap-6 text-[13px]"></div>
+  <div class="flex gap-2">
+    <button id="restart" class="btn btn-blue hidden"></button>
+    <button id="close" data-t="session.close.button" class="btn btn-ghost hidden"></button>
+  </div>
+</header>
+<p id="restart-failed" class="text-danger text-[13px] mt-3 hidden"></p>
+
+<div id="confirm" class="hidden mt-5 max-w-xl rounded-lg bg-subdued px-4 py-3">
+  <p data-t="session.close.consequence" class="text-body text-[13px] mb-3"></p>
+  <div class="flex gap-3">
+    <button id="confirm-close" data-t="session.close.confirm" class="btn btn-sm btn-red"></button>
+    <button id="confirm-keep" data-t="session.close.keep" class="btn btn-sm btn-ghost"></button>
+  </div>
+</div>
+
+<p id="closed" class="text-muted text-[13px] mt-5 hidden"></p>
+
+<p id="loading" class="text-muted text-[13px] mt-5"></p>
+
+<section id="traffic" class="hidden mt-5 max-w-xl rounded-lg bg-subdued px-4 py-3 text-[13px]">
+  <h2 data-t="traffic.heading" class="font-semibold text-heading mb-2"></h2>
+  <div class="flex flex-wrap items-end gap-3">
+    <label class="flex flex-col gap-1"><span data-t="traffic.rate" class="label"></span>
+      <input id="traffic-rate" type="number" min="0.1" max="50" step="0.1" value="1" class="border border-line rounded-md px-2 h-8 bg-panel text-[13px]"></label>
+    <label class="flex flex-col gap-1"><span data-t="traffic.profile" class="label"></span>
+      <select id="traffic-profile" class="border border-line rounded-md px-2 h-8 bg-panel text-[13px]"></select></label>
+    <button id="traffic-start" data-t="traffic.start" class="btn btn-sm btn-blue"></button>
+    <button id="traffic-stop" data-t="traffic.stop" class="btn btn-sm btn-ghost"></button>
+  </div>
+  <p id="traffic-status" class="text-muted mt-2"></p>
+</section>
+
+<div id="consoles" class="hidden mt-6 flex flex-wrap gap-3">
+  <a id="blue" href="#" data-t="session.blue.title" class="btn btn-blue"></a>
+  <a id="red" href="#" data-t="session.red.title" class="hidden btn btn-red"></a>
+</div>
+
+<section id="activity" class="hidden mt-10">
+  <h2 data-t="session.activity" class="text-[17px] font-bold text-heading mb-2"></h2>
+  <ul id="activity-list" class="text-[13px] divide-y divide-line border-t border-line"></ul>
+  <p id="activity-empty" data-t="session.activity.empty" class="text-muted text-[13px]"></p>
+</section>
+
+<section id="scoreboard" class="hidden">
+  <div id="score-slow" class="hidden mt-6 rounded-lg bg-danger-soft px-4 py-3 flex flex-wrap items-center gap-3 text-[13px]">
+    <span id="score-slow-text" class="text-danger"></span>
+    <button id="score-retry" class="btn btn-sm btn-ghost"></button>
+  </div>
+  <div id="verdict" class="hidden mt-6"></div>
+  <section id="course" class="hidden mt-10 text-[13px]">
+    <h2 data-t="session.course.heading" class="text-[17px] font-bold text-heading mb-2"></h2>
+    <ul id="course-rows" class="divide-y divide-line border-t border-line"></ul>
+  </section>
+  <section id="lesson-change" class="hidden mt-10 text-[13px]"></section>
+  <section id="debrief" class="hidden mt-10 flex flex-col text-[13px]"></section>
+  <div id="score-panels" class="mt-10 grid lg:grid-cols-[1fr_380px] gap-x-12 gap-y-10 items-start">
+    <section id="objectives-card">
+      <div class="flex items-baseline justify-between gap-4 mb-2">
+        <h2 data-t="score.primary.heading" class="text-[17px] font-bold text-heading"></h2>
+        <div id="lost-count" class="text-[22px] font-bold leading-tight"></div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-[13px] border-t border-line">
+          <thead class="table-head">
+            <tr>
+              <th data-t="score.col.objective"></th>
+              <th data-t="score.col.difficulty"></th>
+              <th data-t="score.col.result"></th>
+              <th data-t="score.col.penalty" class="text-right"></th>
+            </tr>
+          </thead>
+          <tbody id="objective-rows"></tbody>
+          <tfoot id="penalty-total" class="hidden">
+            <tr class="table-row">
+              <td data-t="session.score1.penalty_total" class="py-2.5 font-semibold text-heading" colspan="3"></td>
+              <td id="penalty-total-value" class="py-2.5 text-right font-bold text-heading"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div class="pt-3 text-[13px] text-muted border-t border-line">
+        <p id="score-lesson-note" class="hidden text-body mb-2"></p>
+        <p id="score-lesson-lost" data-t="score.lesson_lost_note" class="hidden text-muted mb-2"></p>
+        <p data-t="score.primary.how"></p>
+      </div>
+    </section>
+    <section>
+      <h2 data-t="score.second.heading" class="text-[17px] font-bold text-heading mb-2"></h2>
+      <div id="judgement" class="border-t border-line pt-4 space-y-4 text-[13px]"></div>
+    </section>
+  </div>
+  <section id="score-cases" class="mt-10 overflow-x-auto">
+    <h2 data-t="score.cases.heading" class="text-[17px] font-bold text-heading"></h2>
+    <p id="score-counted-by" class="hidden text-[13px] text-muted mt-1"></p>
+    <table class="w-full text-[13px] mt-2 border-t border-line">
+      <thead class="table-head">
+        <tr>
+          <th data-t="score.col.request"></th>
+          <th data-t="score.col.kind"></th>
+          <th data-t="score.col.outcome"></th>
+        </tr>
+      </thead>
+      <tbody id="case-rows"></tbody>
+    </table>
+  </section>
+</section>
+{% endblock %}
+{% block script %}
+<script>
+{% include "console/debrief_script.html" %}
+
+  const id = sessionId();
+  const field = (name) => document.getElementById(name);
+  const show = (name, visible) => field(name).classList.toggle("hidden", !visible);
+  document.title = t("common.session", id);
+  field("loading").textContent = t("session.loading");
+  field("red").href = `/red/${id}/`;
+  field("blue").href = `/blue/${id}/`;
+
+  let session = null;
+  let wargame = null;
+
+  const figure = (label, value, tone) => `
+    <div><div class="label">${esc(label)}</div><div class="font-semibold mt-0.5 ${tone || "text-heading"}">${value}</div></div>`;
+
+  const lessonText = () => (session && session.lesson ? session.lesson.text : "");
+  const lessonSteps = () => (session && session.lesson && session.lesson.steps ? session.lesson.steps.length : 0);
+  const lessonSession = () => Boolean(session && session.kind === "lesson");
+  const foundations = () => (wargame && Array.isArray(wargame.foundations) ? wargame.foundations : []);
+  const courses = () => (wargame && Array.isArray(wargame.courses) ? wargame.courses : []);
+  const cardOf = (lessonId) => foundations().find((taught) => taught.id === lessonId) || null;
+  const courseOf = (lessonId) => courses().find((course) => (course.lessons || []).includes(lessonId)) || null;
+  const takenLessons = () => (session && Array.isArray(session.lessons) ? session.lessons : []);
+  const takenCourse = () => {
+    const course = takenLessons().length ? courseOf(takenLessons()[0].id) : null;
+    return course && takenLessons().every((one) => courseOf(one.id) === course) ? course : null;
+  };
+  const lessonNumber = (lessonId) => {
+    const course = takenCourse();
+    return course && course.lessons.includes(lessonId) ? course.lessons.indexOf(lessonId) + 1
+      : foundations().findIndex((taught) => taught.id === lessonId) + 1;
+  };
+  const worked = (lessonId) => (Array.isArray(session.course) ? session.course : [])
+    .some((row) => row.id === lessonId && (row.passed || row.skipped || row.hints));
+  const begun = (one, at) => at === 0 || worked(one.id) || (!session.ended_at && one.id === session.lesson_id);
+  const startedLessons = () => takenLessons().filter(begun);
+  const restartLesson = () => (startedLessons().length ? startedLessons()[0].id : session.lesson_id);
+  const scenarioCard = () => (wargame && Array.isArray(wargame.scenarios) ? wargame.scenarios : [])
+    .find((one) => one.id === session.course_scenario) || null;
+  const showsScores = () => !lessonSession() || !takenCourse() || Boolean(takenCourse().scored);
+  const lessonPrefix = (card) => String(card && card.title || "").replace(/\.title$/, "");
+  const seeded = (row) => Boolean(row.seed || (row.meta && row.meta.seed));
+
+  function runLabel(row) {
+    const number = row.lesson ? lessonNumber(row.lesson) : 0;
+    if (!number) return "";
+    const card = cardOf(row.lesson);
+    const step = row.step && Array.isArray(card.step_ids) ? card.step_ids.indexOf(row.step) + 1 : 0;
+    return step ? t("session.run.step", number, step) : t("session.run.lesson", number);
+  }
+
+  const keyed = (key, fallback, ...values) => {
+    const text = t(key, ...values);
+    return text === key ? fallback : text;
+  };
+
+  function lessonProgress() {
+    return t("main.step", lessonStep(id, session.lesson_id), lessonSteps());
+  }
+
+  function header(taken, total) {
+    const closed = Boolean(session.ended_at);
+    field("session-title").textContent = t("common.session", id);
+    field("session-state").textContent = closed || session.ready ? ""
+      : t("state.opening", secondsSince(session.started_at));
+    const parts = [playedName(session, wargame)];
+    const began = clock(session.started_at);
+    const ended = clock(session.ended_at);
+    const took = minutesBetween(session.started_at, session.ended_at);
+    parts.push(closed ? t("session.span", began, ended, took)
+      : session.course_scenario ? t("main.started_at", began) : t("session.since", began, took));
+    field("session-line").textContent = parts.filter(Boolean).join(" · ");
+    const figures = [];
+    if (lessonSteps() && !closed) figures.push(`<div class="font-semibold text-heading">${esc(lessonProgress())}</div>`);
+    if (total && showsScores() && !closed) figures.push(figure(t("session.lost"), esc(`${taken}/${total}`), taken ? "text-danger" : "text-heading"));
+    field("session-figures").innerHTML = figures.join("");
+    show("session-card", true);
+  }
+
+  const quietActivity = () => lessonSession() || Boolean(session.course_scenario);
+
+  async function activity() {
+    if (quietActivity()) return;
+    const cases = await api(`/api/sessions/${id}/cases/`);
+    const hidden = (row) => !session.ended_at && session.course_scenario && row.meta && row.meta.scheduled;
+    const rows = cases.ok && Array.isArray(cases.body) ? cases.body.filter((row) => !hidden(row)).slice(-8).reverse() : [];
+    show("activity-empty", rows.length === 0);
+    field("activity-list").innerHTML = rows.map((row) => {
+      const outcome = caseOutcome(row.malicious, row.meta);
+      const why = row.meta && row.meta.verify ? t("session.activity.verify") : "";
+      return `
+        <li class="py-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span class="text-faint w-12">${esc(clock(row.started_at))}</span>
+          <span class="text-heading" title="${esc(row.name)}">${esc(caseLabel(row.name))}</span>
+          ${badge(outcome.text, outcome.tone)}
+          ${why ? `<span class="text-faint text-[13px]">${esc(why)}</span>` : ""}
+        </li>`;
+    }).join("");
+  }
+
+  const caseWhen = (row) => runLabel(row) || (session.course_scenario && row.started_at ? clock(row.started_at) : "");
+  const objectiveName = (tier) => localized(`objective.${tier.key}`, tier.name);
+  const caseLabel = (name) => localized(`case.${name}`, name);
+  const named = (row) => (runLabel(row) ? t("session.run.named", runLabel(row), caseLabel(row.name))
+    : [caseWhen(row), caseLabel(row.name)].filter(Boolean).join(" "));
+  const NAMES_LISTED = ["score.warning.wrong_reason", "score.warning.no_source_ip"];
+  const warningValues = (key, values) => (NAMES_LISTED.includes(key)
+    ? [String(values[0]).split(", ").map(caseLabel).join(", "), ...values.slice(1)] : values);
+
+  function scenarioBanner(judged) {
+    field("verdict").innerHTML = `
+      <p class="font-bold text-[18px] ${judged.passed ? "text-success" : "text-danger"}">${esc(t(judged.passed ? "scenario.verdict.passed" : "scenario.verdict.failed",
+        session.course_scenario))}</p>
+      ${(judged.helped || []).map((kind) => `<p class="text-muted mt-1">${esc(t(`result.helped.${kind}`))}</p>`).join("")}
+      ${judged.fix ? `<p class="text-[13px] text-muted mt-1" data-fix>${esc(`${t(`lesson.fix.${judged.fix}`)} ${t("lesson.fix.note")}`)}</p>` : ""}`;
+  }
+
+  function verdictBanner() {
+    const judged = session.result && session.result.scenario;
+    show("verdict", Boolean(judged));
+    if (judged) scenarioBanner(judged);
+  }
+
+  function objectiveTable(staked, breaches) {
+    const lost = new Map(breaches.map((breach) => [breach.key, breach]));
+    const tiers = [...staked, ...breaches.filter((breach) => !staked.some((tier) => tier.key === breach.key))];
+    const taken = tiers.filter((tier) => lost.has(tier.key)).length;
+    show("objectives-card", tiers.length > 0);
+    field("score-panels").classList.toggle("lg:grid-cols-[1fr_380px]", tiers.length > 0);
+    field("lost-count").textContent = `${taken} / ${tiers.length}`;
+    field("lost-count").className = `text-[22px] font-bold leading-tight ${taken ? "text-danger" : "text-success"}`;
+    const penaltyOf = (tier) => {
+      const breach = lost.get(tier.key);
+      return !breach ? 0 : tier.difficulty * (breach.detected ? 1 : 2);
+    };
+    show("penalty-total", tiers.length > 0);
+    field("penalty-total-value").textContent = String(tiers.reduce((sum, tier) => sum + penaltyOf(tier), 0));
+    field("objective-rows").innerHTML = tiers.map((tier) => {
+      const breach = lost.get(tier.key);
+      const outcome = !breach ? t("score.kept") : t(breach.detected ? "score.lost_seen" : "score.lost_unseen");
+      const penalty = penaltyOf(tier);
+      return `
+        <tr class="table-row">
+          <td class="font-semibold text-heading">${esc(objectiveName(tier))}</td>
+          <td>${esc(tier.difficulty)}</td>
+          <td class="${breach ? "text-danger" : "text-success"}">${esc(outcome)}</td>
+          <td class="text-right">${esc(penalty)}</td>
+        </tr>`;
+    }).join("") || `<tr class="table-row"><td class="text-muted" colspan="4">${esc(t("score.no_objectives"))}</td></tr>`;
+  }
+
+  function judgementBlock(sentence, wrong, tone = "text-danger") {
+    return `
+      <div>
+        <div class="font-semibold text-heading">${esc(sentence)}</div>
+        <ul class="mt-2 space-y-1 text-[13px]">
+          ${wrong.map((line) => `<li class="${tone}">${esc(line)}</li>`).join("")}
+        </ul>
+      </div>`;
+  }
+
+  function judgement(score) {
+    const perCase = score.per_case || [];
+    const attacks = perCase.filter((row) => row.malicious);
+    const benign = perCase.filter((row) => !row.malicious);
+    const missed = attacks.filter((row) => !row.detected);
+    const caught = attacks.filter((row) => row.detected);
+    const blocked = benign.filter((row) => row.detected);
+    const passed = benign.filter((row) => !row.detected);
+    const parts = [];
+    const checked = attacks.some((row) => row.in_window);
+    const attackBlock = (rows, key, tone) => judgementBlock(t(key, rows.length, rows.filter((row) => row.detected).length),
+      rows.filter((row) => !row.detected).map((row) => t("score.no_alert", named(row))), tone);
+    if (attacks.length && !checked) parts.push(attackBlock(attacks, "score.attacks"));
+    if (checked) {
+      parts.push(attackBlock(attacks.filter((row) => row.in_window), "score.attacks.checked"));
+      const before = attacks.filter((row) => !row.in_window);
+      if (before.length) parts.push(attackBlock(before, "score.attacks.before", "text-muted"));
+    }
+    if (benign.length) {
+      const sentence = t("score.benign", benign.length, passed.length);
+      parts.push(judgementBlock(sentence,
+        blocked.map((row) => t("score.drew_alerts", named(row), row.alerts))));
+    }
+    const customers = score.customers || {};
+    const checks = (score.final_checks || []).map(([start, end]) => [Date.parse(start), Date.parse(end)]);
+    const inCheck = (at) => checks.some(([start, end]) => Date.parse(at) >= start && Date.parse(at) < end);
+    const alertedLine = (row) => t("score.customer_alert", clock(row.sent_at), `${row.method} ${row.path}`);
+    const alertedRequests = customers.alerted_requests || [];
+    const check = customers.final_check;
+    const benignShown = Boolean(customers.sent && (score.detected_by || session.course_scenario));
+    if (benignShown && !check) {
+      parts.push(judgementBlock(t("score.customers_alerted", customers.sent, customers.sent - customers.alerted),
+        alertedRequests.map(alertedLine)));
+    }
+    if (benignShown && check) {
+      parts.push(judgementBlock(t("score.customers_alerted.checked", check.sent, check.sent - check.alerted),
+        alertedRequests.filter((row) => inCheck(row.sent_at)).map(alertedLine)));
+      const sentBefore = customers.sent - check.sent;
+      if (sentBefore) {
+        parts.push(judgementBlock(t("score.customers_alerted.before", sentBefore, sentBefore - (customers.alerted - check.alerted)),
+          alertedRequests.filter((row) => !inCheck(row.sent_at)).map(alertedLine), "text-muted"));
+      }
+    }
+    if (customers.sent && !session.course_scenario) {
+      const wrong = Object.entries(customers.blocked_actions || {})
+        .map(([action, count]) => t("score.customers_action", localized(`traffic.action.${action}`, action), count));
+      if (customers.unanswered) wrong.push(t("score.customers_unanswered", customers.unanswered));
+      parts.push(judgementBlock(t("score.customers", customers.sent, customers.blocked), wrong));
+    }
+    const nothing = t(session.course_scenario ? "score.no_attacks_run" : "score.no_cases");
+    if (!parts.length) parts.push(`<p class="text-muted">${esc(nothing)}</p>`);
+    const notes = [];
+    (score.warnings || []).forEach(([key, ...values]) => notes.push(t(key, ...warningValues(key, values))));
+    field("judgement").innerHTML = parts.join('<div class="border-t border-line"></div>') + `
+      <div class="text-[13px] text-muted leading-relaxed space-y-1">
+        ${notes.map((note) => `<p>${esc(note)}</p>`).join("")}
+      </div>`;
+    const toneOf = (right, graded = true) => (right ? "text-success" : graded ? "text-danger" : "text-muted");
+    const counted = (tone, word, alerts, unit = "score.alert_count") => `<span class="${tone}">${esc(t(word))}</span>${
+      alerts ? `<span class="block text-[13px] text-muted">${esc(t(unit, alerts))}</span>` : ""}`;
+    const phaseOf = (inWindow) => t(inWindow ? "scenario.debrief.after" : "scenario.debrief.before");
+    const customerCells = (sent, alerted, inWindow) => `
+        <tr class="table-row" data-customers>
+          <td class="text-heading">${esc(t("score.customers_row", sent))}${
+            inWindow == null ? "" : `<span class="block text-[13px] text-muted">${esc(phaseOf(inWindow))}</span>`}</td>
+          <td>${esc(t("score.kind.customer"))}</td>
+          <td>${alerted ? counted(toneOf(false, inWindow !== false), "score.wrongly_blocked", alerted, "score.alerted_requests")
+            : counted(toneOf(true), "score.passed", 0)}</td>
+        </tr>`;
+    const customerRow = !benignShown ? "" : !check ? customerCells(customers.sent, customers.alerted, null)
+      : (customers.sent - check.sent ? customerCells(customers.sent - check.sent, customers.alerted - check.alerted, false) : "")
+        + customerCells(check.sent, check.alerted, true);
+    field("score-counted-by").textContent = score.detected_by ? t(`score.counted_by.${score.detected_by}`) : "";
+    show("score-counted-by", Boolean(score.detected_by));
+    const subline = (row) => [caseWhen(row), checked ? phaseOf(row.in_window) : ""].filter(Boolean).join(" · ");
+    field("case-rows").innerHTML = (perCase.map((row) => {
+      const right = row.malicious === Boolean(row.detected);
+      const word = row.malicious ? (row.detected ? "score.caught" : "score.missed") : (row.detected ? "score.wrongly_blocked" : "score.passed");
+      return `
+        <tr class="table-row">
+          <td class="text-heading"${lessonSession() ? "" : ` title="${esc(row.name)}"`}>${esc(caseLabel(row.name))}${
+            subline(row) ? `<span class="block text-[13px] text-muted">${esc(subline(row))}</span>` : ""}</td>
+          <td>${esc(t(seeded(row) ? "score.kind.auto_benign" : row.malicious ? "score.kind.attack" : "score.kind.benign"))}</td>
+          <td>${counted(toneOf(right, !checked || row.in_window), word, row.alerts)}</td>
+        </tr>`;
+    }).join("") + customerRow) || `<tr class="table-row"><td class="text-muted" colspan="3">${esc(t("score.no_cases"))}</td></tr>`;
+    show("score-cases", showsScores() && (perCase.length > 0 || Boolean(customerRow) || !session.course_scenario));
+  }
+
+  const SCORE_TRIES = 4;
+  const SCORE_RETRY_AFTER = 5000;
+
+  function scoreUnread(failed, retrying) {
+    const said = `${t("score.unavailable", detail(failed))}${retrying ? ` ${t("score.retrying")}` : ""}`;
+    field("lost-count").textContent = "—";
+    field("lost-count").className = "text-[22px] font-bold leading-tight text-faint";
+    show("penalty-total", false);
+    field("objective-rows").innerHTML = `<tr class="table-row"><td class="text-danger" colspan="4">${esc(said)}</td></tr>`;
+    field("judgement").innerHTML = `<p class="text-danger">${esc(said)}</p>`;
+    field("case-rows").innerHTML = "";
+  }
+
+  const SCORE_SLOW_AFTER = 15000;
+  let scoreRun = 0;
+  let scoreSlowTimer = null;
+
+  function scorePending() {
+    const said = esc(t("session.loading.result"));
+    field("lost-count").textContent = "—";
+    field("lost-count").className = "text-[22px] font-bold leading-tight text-faint";
+    show("penalty-total", false);
+    field("objective-rows").innerHTML = `<tr class="table-row"><td class="text-muted" colspan="4">${said}</td></tr>`;
+    field("judgement").innerHTML = `<p class="text-muted">${said}</p>`;
+    field("case-rows").innerHTML = `<tr class="table-row"><td class="text-muted" colspan="3">${said}</td></tr>`;
+  }
+
+  function scoreAnswered() {
+    clearTimeout(scoreSlowTimer);
+    show("score-slow", false);
+  }
+
+  async function scoreTables(tried) {
+    const run = scoreRun;
+    if (tried === 0) {
+      scorePending();
+      clearTimeout(scoreSlowTimer);
+      scoreSlowTimer = setTimeout(() => show("score-slow", run === scoreRun), SCORE_SLOW_AFTER);
+    }
+    const [score, tiers] = await Promise.all([
+      api(`/api/sessions/${id}/score/?brief=1`),
+      api(`/api/wargames/${session.scenario}/objectives/${session.course_scenario ? `?scenario=${encodeURIComponent(session.course_scenario)}` : ""}`),
+    ]);
+    if (run !== scoreRun) return;
+    scoreAnswered();
+    const read = score.ok && Array.isArray(score.body.breaches) && Array.isArray(score.body.per_case);
+    if (!read) {
+      const retrying = tried + 1 < SCORE_TRIES;
+      scoreUnread(score.ok ? { body: {}, status: 0 } : score, retrying);
+      if (retrying) setTimeout(() => { if (run === scoreRun) scoreTables(tried + 1); }, SCORE_RETRY_AFTER);
+      return;
+    }
+    objectiveTable(tiers.ok && Array.isArray(tiers.body) ? tiers.body : [], score.body.breaches);
+    judgement(score.body);
+    lessonLostNote(score.body);
+  }
+
+  function courseSummary() {
+    const taken = takenLessons();
+    show("course", lessonSession() && taken.length > 0);
+    const counted = Array.isArray(session.course) ? session.course : [];
+    field("course-rows").innerHTML = taken.map((one, at) => ({ one, at, until: at + 1 < taken.length ? taken[at + 1].started_at : session.ended_at }))
+      .filter(({ one, at }) => begun(one, at)).map(({ one, until }) => {
+      const number = lessonNumber(one.id);
+      const card = cardOf(one.id);
+      const done = counted.find((row) => row.id === one.id);
+      return `
+        <li class="py-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+          ${number ? `<span class="text-muted">${esc(t("session.run.lesson", number))}</span>` : ""}
+          <span class="font-semibold text-heading">${esc(card ? t(card.title) : one.id)}</span>
+          ${done ? `<span class="text-muted">${esc(t("session.course.steps", done.steps, done.passed))}</span>` : ""}
+          ${done && done.retried ? `<span class="text-muted">${esc(t("session.course.retried", done.retried))}</span>` : ""}
+          <span class="ml-auto text-faint">${esc(t("main.minutes_spent", minutesBetween(one.started_at, until)))}</span>
+        </li>`;
+    }).join("");
+  }
+
+  const changeMade = (change) => change.ids.length > 0 || change.after === null
+    || Boolean(change.after && (change.diff.length || change.after.paranoia !== change.before.paranoia));
+
+  function lessonChange() {
+    const changes = Array.isArray(session.changes) ? session.changes : [];
+    const shown = lessonSession() && showsScores() && changes.length > 0;
+    show("lesson-change", shown);
+    if (!shown) return;
+    const made = changes.filter(changeMade);
+    const lessonName = (change) => [t("session.run.lesson", lessonNumber(change.lesson)), cardOf(change.lesson) ? t(cardOf(change.lesson).title) : ""]
+      .filter(Boolean).join(" · ");
+    const inner = !made.length ? `<p class="text-muted">${esc(t("lesson.debrief.change.none"))}</p>`
+      : made.map((change) => `${changes.length > 1 ? `<p class="font-semibold text-heading mt-2 first:mt-0" data-change-lesson>${esc(lessonName(change))}</p>` : ""}${
+        debriefChange(change)}`).join("");
+    field("lesson-change").innerHTML = `<h2 class="text-[17px] font-bold text-heading mb-2">${esc(t("lesson.debrief.change"))}</h2>
+      <div class="flex flex-col gap-1.5 border-t border-line pt-3" data-debrief="change">${inner}</div>`;
+  }
+
+  function lessonScoreNote() {
+    const notes = startedLessons()
+      .map((one) => localized(`${lessonPrefix(cardOf(one.id))}.score_note`, ""))
+      .filter((note, at, all) => note && all.indexOf(note) === at);
+    show("score-lesson-note", notes.length > 0);
+    field("score-lesson-note").textContent = notes.join(" ");
+    show("score-lesson-lost", false);
+  }
+
+  function lessonLostNote(score) {
+    const sixth = (lessonId) => lessonNumber(lessonId) === 6;
+    const lostOrRun = score.breaches.length > 0 || score.per_case.some((row) => row.malicious && sixth(row.lesson));
+    show("score-lesson-lost", startedLessons().some((one) => sixth(one.id)) && lostOrRun);
+  }
+
+  async function scoreboard() {
+    show("loading", false);
+    show("consoles", false);
+    show("activity", false);
+    show("traffic", false);
+    courseSummary();
+    lessonChange();
+    lessonScoreNote();
+    verdictBanner();
+    if (session.course_scenario) showScenarioDebrief(field("debrief"));
+    show("scoreboard", true);
+    show("score-panels", showsScores());
+    show("score-cases", showsScores());
+    if (!showsScores()) return;
+    scoreRun += 1;
+    await scoreTables(0);
+  }
+
+  const testingTraffic = new URLSearchParams(location.search).has("traffic");
+  let trafficOffered = false;
+
+  function trafficLine(state) {
+    const running = t(state.running ? "traffic.running" : "traffic.stopped");
+    const line = t("traffic.status", running, state.rate || 0, state.sent || 0, state.blocked || 0);
+    field("traffic-status").textContent = line + (state.error ? ` · ${state.error}` : "");
+  }
+
+  async function trafficPanel() {
+    if (!testingTraffic || !session || session.ended_at) return;
+    const state = await api(`/api/sessions/${id}/traffic/`);
+    if (!state.ok || !state.body.declared) return;
+    show("traffic", true);
+    if (!trafficOffered) {
+      trafficOffered = true;
+      field("traffic-profile").innerHTML = (state.body.profiles || [])
+        .map((name) => `<option value="${esc(name)}">${esc(name)}</option>`).join("");
+      if (state.body.profile) field("traffic-profile").value = state.body.profile;
+      if (state.body.rate) field("traffic-rate").value = state.body.rate;
+    }
+    trafficLine(state.body);
+  }
+
+  async function trafficChange(method, body) {
+    const changed = await api(`/api/sessions/${id}/traffic/`, {
+      method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined,
+    });
+    if (changed.ok) trafficLine(changed.body);
+    else field("traffic-status").textContent = t("traffic.failed", detail(changed));
+  }
+
+  async function restart() {
+    const button = field("restart");
+    button.disabled = true;
+    const first = restartLesson();
+    const card = foundations().find((taught) => taught.id === first);
+    const defense = first === session.lesson_id ? session.defense : card && card.defense;
+    const settings = first ? { guidance: true, lesson: first, ...(defense ? { defense } : {}) } : {};
+    const asked = session.course_scenario ? { scenario: session.course_scenario } : { scenario: session.scenario, ...settings };
+    const started = await post("/api/sessions/", asked, PATIENCE_FOR_RANGE_WORK);
+    if (started.ok && started.body.id) {
+      location.href = asked.guidance || session.course_scenario ? `/blue/${started.body.id}/` : `/session/${started.body.id}/`;
+      return;
+    }
+    button.disabled = false;
+    field("restart-failed").textContent = t("main.start_failed", detail(started));
+    show("restart-failed", true);
+  }
+
+  const UNREAD_RETRY_AFTER = 5000;
+
+  async function render() {
+    const [read, listed] = await Promise.all([api(`/api/sessions/${id}/`), api("/api/wargames/")]);
+    session = read.ok ? read.body : null;
+    if (!session) {
+      crumbs([sessionCrumb(id, null)]);
+      show("loading", false);
+      const retrying = read.status !== 404;
+      field("unread").textContent = `${t("session.unread", detail(read))}${retrying ? ` ${t("score.retrying")}` : ""}`;
+      show("unread", true);
+      if (retrying) setTimeout(render, UNREAD_RETRY_AFTER);
+      return;
+    }
+    show("unread", false);
+    rememberSession(id);
+    wargame = listed.ok && Array.isArray(listed.body) ? listed.body.find((w) => w.id === session.scenario) : null;
+    crumbs([sessionCrumb(id, session, wargame), ...(session.ended_at ? [{ label: t("crumb.result") }] : [])]);
+    const result = session.result && session.result.objectives ? session.result.objectives : { lost: 0, total: 0 };
+    header(result.lost, result.total);
+    if (session.ended_at) {
+      show("close", false);
+      field("restart").textContent = t("session.restart");
+      show("restart", true);
+      await scoreboard();
+      return;
+    }
+    show("close", true);
+    const judgedScenario = Boolean(session.course_scenario && session.result && session.result.scenario);
+    verdictBanner();
+    show("scoreboard", judgedScenario);
+    show("score-panels", false);
+    show("score-cases", false);
+    if (judgedScenario) showScenarioDebrief(field("debrief"));
+    show("red", session.kind === "wargame");
+    await activity();
+    show("loading", false);
+    show("consoles", true);
+    show("activity", !quietActivity());
+    trafficPanel();
+  }
+
+  field("traffic-start").addEventListener("click", () => trafficChange("PUT", {
+    rate: Number(field("traffic-rate").value), profile: field("traffic-profile").value,
+  }));
+  field("traffic-stop").addEventListener("click", () => trafficChange("DELETE"));
+
+  field("close").addEventListener("click", () => {
+    show("close", false);
+    show("confirm", true);
+  });
+
+  field("confirm-keep").addEventListener("click", () => {
+    show("confirm", false);
+    show("close", true);
+  });
+
+  field("confirm-close").addEventListener("click", async () => {
+    await post(`/api/sessions/${id}/ingest/`);
+    const result = await post(`/api/sessions/${id}/close/`);
+    const closed = result.ok || await alreadyClosed(id);
+    show("confirm", false);
+    const note = field("closed");
+    note.textContent = closed ? t("session.close.done") : t("session.close.failed", detail(result));
+    note.classList.toggle("text-danger", !closed);
+    note.classList.toggle("text-muted", closed);
+    show("closed", true);
+    if (closed) render();
+    else show("close", true);
+  });
+
+  field("restart").addEventListener("click", restart);
+
+  field("score-slow-text").textContent = keyed("session.result.slow", "The result has not loaded yet.");
+  field("score-retry").textContent = keyed("session.result.retry", "Load again");
+  field("score-retry").addEventListener("click", () => {
+    show("score-slow", false);
+    scoreRun += 1;
+    scoreTables(0);
+  });
+
+  const ACTIVITY_EVERY = 10000;
+  setInterval(() => {
+    if (session && !session.ended_at) {
+      activity();
+      if (!session.ready) render();
+    }
+  }, ACTIVITY_EVERY);
+
+  render();
+</script>
+{% endblock %}

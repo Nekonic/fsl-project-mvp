@@ -1,0 +1,74 @@
+const topo = { read: false, drawn: false, waiting: false, fitTimer: null, waitTimer: null, drawnHeard: [], fitBox: "" };
+const MAP_WAIT_MS = 30000;
+const MAP_FIT_WAIT_MS = 8000;
+const REFIT_SETTLES_MS = 250;
+
+const topologyOrigin = () => (field("topology-frame").getAttribute("src") ? location.origin : "");
+
+function topologyFit() {
+  const frame = field("topology-frame");
+  if (frame.contentWindow && topologyOrigin() && topo.drawn) frame.contentWindow.postMessage("fit", topologyOrigin());
+}
+
+function topologyRefit() {
+  clearTimeout(topo.fitTimer);
+  topo.fitTimer = setTimeout(() => {
+    const shown = boxOf(field("topology-frame"));
+    if (shown && shown.width && paneOpen("topology") && rounded(shown) !== topo.fitBox) topologyFit();
+  }, REFIT_SETTLES_MS);
+}
+
+function topologyWait(ms) {
+  topo.waiting = true;
+  field("topology-frame").style.visibility = "hidden";
+  field("map-wait").classList.remove("hidden");
+  clearTimeout(topo.waitTimer);
+  if (ms) topo.waitTimer = setTimeout(topologyFitted, ms);
+}
+
+function topologyFitted() {
+  clearTimeout(topo.waitTimer);
+  topo.waiting = false;
+  field("topology-frame").style.visibility = "";
+  field("map-wait").classList.add("hidden");
+}
+
+function topologyHeard(event) {
+  const frame = field("topology-frame");
+  const said = event.data && event.data.map;
+  if ((said !== "drawn" && said !== "fitted") || !frame.contentWindow || event.source !== frame.contentWindow) return;
+  topo.drawn = true;
+  topo.fitBox = rounded(boxOf(frame));
+  topologyFitted();
+  if (said === "drawn") topo.drawnHeard.forEach((heard) => heard());
+}
+
+function topologyFitShown() {
+  requestAnimationFrame(() => {
+    if (boxOf(field("topology-frame")) && paneOpen("topology")) topologyFit();
+  });
+}
+
+function topologyShow() {
+  field("topology-fit").style.display = "";
+  field("topology-frame").style.display = "block";
+  if (!field("topology-frame").getAttribute("src")) {
+    topologyWait(MAP_WAIT_MS);
+    field("topology-frame").src = `/map/${sessionId()}/`;
+  } else if (topo.drawn && rounded(boxOf(field("topology-frame"))) !== topo.fitBox) {
+    topologyWait(MAP_FIT_WAIT_MS);
+    topologyFitShown();
+  }
+  if (!topo.drawn || rounded(boxOf(field("topology-frame"))) !== topo.fitBox) topologyRefit();
+}
+
+function topologyOpen() {
+  if (!topo.read) {
+    topo.read = true;
+    field("topology-fit").addEventListener("click", topologyFit);
+    window.addEventListener("message", topologyHeard);
+    if (typeof ResizeObserver === "function") new ResizeObserver(topologyRefit).observe(field("topology"));
+    window.addEventListener("resize", topologyRefit);
+  }
+  topologyShow();
+}

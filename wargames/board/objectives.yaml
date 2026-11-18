@@ -1,0 +1,20 @@
+secret:
+  scope: auth_user
+  columns: [username, password]
+  read_path: /internal/auth-users
+tiers:
+  - key: board-auth-user-partial
+    name: Board accounts (partial)
+    category: Credential Access
+    difficulty: 2
+    min_matched: 1
+  - key: board-auth-user-admin
+    name: Board admin account
+    category: Credential Access
+    difficulty: 4
+    account: admin
+  - key: board-auth-user-full
+    name: Board accounts (full)
+    category: Credential Access
+    difficulty: 5
+    coverage: 1.0

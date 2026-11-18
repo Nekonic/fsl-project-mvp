@@ -1,0 +1,195 @@
+#!/usr/bin/env python3
+
+import argparse
+import inspect
+import os
+import re
+import selectors
+import shlex
+import shutil
+import sqlite3
+import subprocess
+import tempfile
+from contextlib import closing, suppress
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+BACKUPS = ROOT / "backups"
+PLATFORM_EXEC = "docker exec -i cr-platform python -"
+TIMEOUT = 600
+CHUNK = 1 << 20
+STAMPED = re.compile(r"db-\d{8}T\d{6}Z\.sqlite3")
+
+TABLES = (
+    ("sessions", "api_session"),
+    ("cases", "api_case"),
+    ("detections", "api_detection"),
+    ("customer requests", "api_customerrequest"),
+    ("objectives", "api_objective"),
+    ("rule sets", "api_ruleset"),
+    ("disabled rules", "api_disabledrule"),
+)
+
+IMPORTS = """
+import os, shutil, sqlite3, sys, tempfile
+from pathlib import Path
+"""
+
+WRITE_THE_STORE = """
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "cr.settings")
+from django.conf import settings
+snapshot(settings.DATABASES["default"]["NAME"], sys.stdout.buffer)
+"""
+
+
+def snapshot(path, out):
+    source = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=rw", uri=True)
+    with tempfile.TemporaryDirectory() as scratch:
+        taken = Path(scratch) / "snapshot.sqlite3"
+        try:
+            source.execute("VACUUM INTO ?", (str(taken),))
+        finally:
+            source.close()
+        with open(taken, "rb") as image:
+            shutil.copyfileobj(image, out, 1 << 20)
+    out.flush()
+
+
+def fetch(out):
+    way_in = os.environ.get("CR_PLATFORM_EXEC", "").strip() or PLATFORM_EXEC
+    command = shlex.split(way_in)
+    program = IMPORTS + inspect.getsource(snapshot) + WRITE_THE_STORE
+    try:
+        running = subprocess.Popen(
+            command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+    except OSError as error:
+        raise SystemExit(
+            f"backup: cannot run {command[0]!r}: {error.strerror}. CR_PLATFORM_EXEC "
+            f"is the command that runs python in the platform's environment "
+            f"(default: {PLATFORM_EXEC})"
+        )
+    with running:
+        hand_over(running.stdin, program.encode())
+        said = drain(running, out, way_in)
+    if running.returncode != 0:
+        said = said.decode(errors="replace").strip() or "(nothing on stderr)"
+        raise SystemExit(
+            f"backup: no snapshot; {way_in!r} exited {running.returncode}:\n{said}"
+        )
+    return out.tell()
+
+
+def hand_over(stdin, program):
+    with suppress(BrokenPipeError):
+        stdin.write(program)
+    with suppress(BrokenPipeError):
+        stdin.close()
+
+
+def drain(running, out, way_in):
+    said = bytearray()
+    watching = selectors.DefaultSelector()
+    watching.register(running.stdout, selectors.EVENT_READ, out)
+    watching.register(running.stderr, selectors.EVENT_READ, said)
+    while watching.get_map():
+        ready = watching.select(TIMEOUT)
+        if not ready:
+            running.kill()
+            raise SystemExit(
+                f"backup: nothing from {way_in!r} for {TIMEOUT}s; "
+                f"something may be holding the store locked"
+            )
+        for key, _ in ready:
+            chunk = os.read(key.fileobj.fileno(), CHUNK)
+            if not chunk:
+                watching.unregister(key.fileobj)
+            elif key.data is said:
+                said += chunk
+            else:
+                out.write(chunk)
+    running.wait()
+    return bytes(said)
+
+
+def check(path):
+    try:
+        read_only = path.as_uri() + "?mode=ro&immutable=1"
+        with closing(sqlite3.connect(read_only, uri=True)) as db:
+            verdict = [row[0] for row in db.execute("PRAGMA integrity_check")]
+            if verdict != ["ok"]:
+                raise SystemExit(
+                    "backup: the snapshot fails integrity_check:\n" + "\n".join(verdict)
+                )
+            present = {
+                name for (name,) in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            }
+            if not present & {table for _, table in TABLES}:
+                raise SystemExit(
+                    "backup: the snapshot is not the platform's store: it holds none of its tables"
+                )
+            return {
+                table: db.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+                if table in present else None
+                for _, table in TABLES
+            }
+    except sqlite3.Error as error:
+        raise SystemExit(f"backup: the snapshot is not the platform's store: {error}")
+
+
+def keep():
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    BACKUPS.mkdir(parents=True, exist_ok=True)
+    partial = BACKUPS / f"db-{stamp}.partial"
+    kept = BACKUPS / f"db-{stamp}.sqlite3"
+    try:
+        with open(partial, "wb") as out:
+            size = fetch(out)
+            out.flush()
+            os.fsync(out.fileno())
+        rows = check(partial)
+        os.replace(partial, kept)
+    finally:
+        partial.unlink(missing_ok=True)
+    return kept, size, rows
+
+
+def thin(kept, newest):
+    older = sorted(path for path in kept.parent.iterdir() if STAMPED.fullmatch(path.name) and path != kept)
+    gone = older[:max(0, len(older) - newest + 1)]
+    for path in gone:
+        path.unlink()
+    return gone
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Snapshot the platform's store into backups/ while it keeps "
+                    "serving, compacted, then remove the older db-<UTC stamp>.sqlite3 "
+                    "files beyond --keep. CR_PLATFORM_EXEC chooses how to reach the "
+                    f"platform (default: {PLATFORM_EXEC}).",
+    )
+    parser.add_argument("--keep", type=int, default=1,
+                        help="how many backups to leave in backups/, this one included (default 1)")
+    args = parser.parse_args()
+    if args.keep < 1:
+        parser.error("--keep must be at least 1: the backup just taken is always kept")
+
+    kept, size, rows = keep()
+    stored = any(rows.values())
+    gone = thin(kept, args.keep) if stored else []
+
+    print(kept)
+    print(f"  {size} bytes, integrity_check ok")
+    for label, table in TABLES:
+        count = "absent" if rows[table] is None else rows[table]
+        print(f"  {label:<14} {count:>8}")
+    for path in gone:
+        print(f"  removed {path.name}, older than the newest {args.keep}")
+    if not stored:
+        print("  the store holds no rows, so no older backup was removed")
+
+
+if __name__ == "__main__":
+    main()

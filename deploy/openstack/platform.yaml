@@ -1,0 +1,255 @@
+heat_template_version: 2021-04-16
+
+description: >
+  The platform VM: the stock Ubuntu 24.04 cloud image whose first boot installs
+  Docker, clones the repo and brings the whole platform up with docker compose
+  from images prebuilt on ghcr.io. Every parameter comes from cloud.yaml and
+  the clouds.yaml entry cloud.yaml names (bin/platform-rebuild); the API password and the range ssh key are added
+  over ssh. With floating_ip_id set the stack only associates that floating
+  IP, so deleting the stack disassociates it and leaves it in the project.
+  chrony keeps its clock and serves it over NTP to the range's management
+  network, which has no other time source.
+
+parameters:
+  keystone:
+    type: string
+  user:
+    type: string
+  domain:
+    type: string
+  region:
+    type: string
+  interface:
+    type: string
+  image:
+    type: string
+  flavor:
+    type: string
+  key_name:
+    type: string
+  external_network:
+    type: string
+  floating_address:
+    type: string
+  floating_ip_id:
+    type: string
+  availability_zone:
+    type: string
+  cidr:
+    type: string
+  dns:
+    type: comma_delimited_list
+  repository:
+    type: string
+  ref:
+    type: string
+  subnets:
+    type: string
+  management:
+    type: string
+  pool:
+    type: string
+  target_tag:
+    type: string
+  images:
+    type: string
+  flavors:
+    type: string
+  allowed:
+    type: comma_delimited_list
+
+conditions:
+  zoned: {not: {equals: [{get_param: availability_zone}, ""]}}
+  reserved: {not: {equals: [{get_param: floating_ip_id}, ""]}}
+  allocated: {equals: [{get_param: floating_ip_id}, ""]}
+
+resources:
+  network:
+    type: OS::Neutron::Net
+    properties:
+      name: cr-platform
+
+  subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      name: cr-platform
+      network: {get_resource: network}
+      cidr: {get_param: cidr}
+      dns_nameservers: {get_param: dns}
+
+  router:
+    type: OS::Neutron::Router
+    properties:
+      name: cr-platform
+      external_gateway_info:
+        network: {get_param: external_network}
+
+  router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router: {get_resource: router}
+      subnet: {get_resource: subnet}
+
+  security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: cr-platform
+      rules:
+        list_concat:
+          - repeat:
+              for_each:
+                "<%cidr%>": {get_param: allowed}
+                "<%port%>": ["22", "2222", "8000", "8002"]
+              template: {protocol: tcp, port_range_min: "<%port%>", port_range_max: "<%port%>", remote_ip_prefix: "<%cidr%>"}
+          - - {protocol: icmp}
+
+  port:
+    type: OS::Neutron::Port
+    properties:
+      network: {get_resource: network}
+      fixed_ips: [{subnet: {get_resource: subnet}}]
+      security_groups: [{get_resource: security_group}]
+
+  floating_ip:
+    type: OS::Neutron::FloatingIP
+    condition: allocated
+    depends_on: router_interface
+    properties:
+      floating_network: {get_param: external_network}
+      port_id: {get_resource: port}
+
+  floating_ip_association:
+    type: OS::Neutron::FloatingIPAssociation
+    condition: reserved
+    depends_on: router_interface
+    properties:
+      floatingip_id: {get_param: floating_ip_id}
+      port_id: {get_resource: port}
+
+  server:
+    type: OS::Nova::Server
+    properties:
+      name: cr-platform
+      image: {get_param: image}
+      flavor: {get_param: flavor}
+      key_name: {get_param: key_name}
+      availability_zone: {if: [zoned, {get_param: availability_zone}, null]}
+      networks: [{port: {get_resource: port}}]
+      config_drive: true
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            "%keystone%": {get_param: keystone}
+            "%user%": {get_param: user}
+            "%domain%": {get_param: domain}
+            "%region%": {get_param: region}
+            "%interface%": {get_param: interface}
+            "%image%": {get_param: image}
+            "%availability_zone%": {get_param: availability_zone}
+            "%subnets%": {get_param: subnets}
+            "%management%": {get_param: management}
+            "%pool%": {get_param: pool}
+            "%target_tag%": {get_param: target_tag}
+            "%images%": {get_param: images}
+            "%flavors%": {get_param: flavors}
+            "%project%": {get_param: "OS::project_id"}
+            "%repository%": {get_param: repository}
+            "%ref%": {get_param: ref}
+            "%mtu%": {get_attr: [network, mtu]}
+            "%fixed_ip%": {get_attr: [port, fixed_ips, 0, ip_address]}
+            "%floating_ip%": {if: [reserved, {get_param: floating_address}, {get_attr: [floating_ip, floating_ip_address]}]}
+            "%network%": {get_resource: network}
+          template: |
+            #cloud-config
+            apt:
+              primary:
+                - arches: [default]
+                  uri: http://mirror.kakao.com/ubuntu/
+              security:
+                - arches: [default]
+                  uri: http://mirror.kakao.com/ubuntu/
+            swap:
+              filename: /swapfile
+              size: 4G
+            write_files:
+              - path: /etc/chrony/conf.d/cr-range.conf
+                content: |
+                  allow %management%
+                  local stratum 10
+              - path: /etc/sysctl.d/90-cr-syslog.conf
+                content: |
+                  net.core.rmem_max = 33554432
+                  net.core.rmem_default = 4194304
+              - path: /etc/docker/daemon.json
+                content: |
+                  {"mtu": %mtu%, "default-network-opts": {"bridge": {"com.docker.network.driver.mtu": "%mtu%"}}}
+              - path: /root/openstack.env
+                permissions: "0600"
+                content: |
+                  CR_SUBSTRATE=range.openstack.connect
+                  DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,[::1],%floating_ip%
+                  CR_TOOL_IMAGE=cr-kali
+                  CR_OPENSTACK_KEYSTONE=%keystone%
+                  CR_OPENSTACK_USER=%user%
+                  CR_OPENSTACK_DOMAIN=%domain%
+                  CR_OPENSTACK_PROJECT=%project%
+                  CR_OPENSTACK_REGION=%region%
+                  CR_OPENSTACK_INTERFACE=%interface%
+                  CR_OPENSTACK_AVAILABILITY_ZONE=%availability_zone%
+                  CR_OPENSTACK_SUBNETS=%subnets%
+                  CR_OPENSTACK_POOL=%pool%
+                  CR_OPENSTACK_TARGET_TAG=%target_tag%
+                  CR_OPENSTACK_SSH_USER=ubuntu
+                  CR_OPENSTACK_SSH_KEY=/data/ssh/id_ed25519
+                  CR_OPENSTACK_IMAGES=%images%
+                  CR_OPENSTACK_FLAVORS=%flavors%
+              - path: /etc/systemd/network/90-cr-attached.network
+                content: |
+                  [Match]
+                  Name=en*
+                  [Network]
+                  DHCP=ipv4
+                  [DHCPv4]
+                  UseRoutes=false
+                  UseDNS=false
+              - path: /root/compose.env
+                content: |
+                  CR_PUBLISH=%fixed_ip%
+                  CR_SYSLOG_PUBLISH=0.0.0.0
+              - path: /etc/systemd/system/cr-platform.service
+                content: |
+                  [Unit]
+                  Requires=docker.service
+                  After=docker.service network-online.target
+                  Wants=network-online.target
+                  [Service]
+                  Type=oneshot
+                  RemainAfterExit=yes
+                  TimeoutStartSec=0
+                  ExecStartPre=-/usr/bin/docker compose -f /opt/cr/compose.yaml pull --quiet
+                  ExecStart=/usr/bin/docker compose -f /opt/cr/compose.yaml up -d
+                  [Install]
+                  WantedBy=multi-user.target
+            runcmd:
+              - [sh, -c, "for attempt in 1 2 3 4 5 6 7 8 9 10; do apt-get update -q; DEBIAN_FRONTEND=noninteractive apt-get install -y -q docker.io docker-compose-v2 git nodejs chrony && exit 0; sleep 15; done; exit 1"]
+              - [sysctl, --system]
+              - [git, clone, --branch, "%ref%", "%repository%", /opt/cr]
+              - [mv, /root/openstack.env, /opt/cr/openstack.env]
+              - [mv, /root/compose.env, /opt/cr/.env]
+              - [sh, -c, "echo CR_IMAGE_TAG=$(git -C /opt/cr rev-parse HEAD) >> /opt/cr/.env"]
+              - [python3, /opt/cr/bin/fetch-geoip]
+              - [sh, -c, "echo CR_OPENSTACK_PLATFORM=$(cloud-init query instance_id) >> /opt/cr/openstack.env"]
+              - [networkctl, reload]
+              - [chown, -R, "ubuntu:ubuntu", /opt/cr]
+              - [install, -m, "600", -o, "10001", /dev/null, /opt/cr/openstack-password]
+              - [usermod, -aG, docker, ubuntu]
+              - [systemctl, daemon-reload]
+              - [systemctl, enable, --now, cr-platform.service]
+              - [sh, -c, "curl -fsSL -o /tmp/uv.tar.gz https://github.com/astral-sh/uv/releases/download/0.13.8/uv-x86_64-unknown-linux-gnu.tar.gz && echo '5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91  /tmp/uv.tar.gz' | sha256sum -c - && tar -xzf /tmp/uv.tar.gz -C /usr/local/bin --strip-components=1 uv-x86_64-unknown-linux-gnu/uv && rm /tmp/uv.tar.gz"]
+              - [systemd-run, --collect, --no-block, --unit=cr-venv, --uid=ubuntu, --gid=ubuntu, sh, -c, "exec 9>/tmp/cr-venv.lock && flock 9 && /usr/local/bin/uv sync --quiet --frozen --project /opt/cr --python /usr/bin/python3"]
+
+outputs:
+  address:
+    description: The floating IP the platform is reached at, by ssh.
+    value: {if: [reserved, {get_param: floating_address}, {get_attr: [floating_ip, floating_ip_address]}]}

@@ -1,0 +1,10 @@
+<div id="topology" class="absolute inset-0 flex flex-col bg-panel" style="visibility: hidden">
+  <div class="h-10 border-b border-line bg-subdued flex items-center px-3 gap-2 shrink-0 min-w-0 text-[13px]">
+    <button type="button" id="topology-fit" class="btn btn-sm btn-ghost shrink-0" data-t="topology.fit" style="display: none"></button>
+  </div>
+  <div class="flex-1 min-h-0 relative">
+    <iframe id="topology-frame" class="absolute inset-0 w-full h-full border-0 bg-panel" hidden
+            data-t-title="topology.view.map" referrerpolicy="no-referrer"></iframe>
+    <div id="map-wait" class="map-wait hidden"><span data-t="topology.loading"></span></div>
+  </div>
+</div>

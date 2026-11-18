@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "outputStyle": "cr-orchestrator",
+  "enabledPlugins": {
+    "clangd-lsp@claude-plugins-official": false,
+    "rust-analyzer-lsp@claude-plugins-official": false,
+    "superpowers@superpowers-marketplace": false,
+    "gitkraken-hooks@gitkraken": false
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=$(jq -r '.cwd // empty' 2>/dev/null); cat \"${d:-${CLAUDE_PROJECT_DIR:-.}}/docs/state/now.md\" 2>/dev/null"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Agent",
+      "Workflow",
+      "Skill",
+      "WebSearch",
+      "WebFetch",
+      "Edit(bin/**)",
+      "Edit(deploy/**)",
+      "Edit(docs/**)",
+      "Edit(platform/**)",
+      "Edit(redteam/**)",
+      "Edit(test/**)",
+      "Edit(wargames/**)",
+      "Edit(.claude/**)",
+      "Edit(CLAUDE.md)",
+      "Edit(README.md)",
+      "Edit(compose.yaml)",
+      "Edit(metrics.json)",
+      "Bash(./bin/measure*)",
+      "Bash(./bin/verify*)",
+      "Bash(bin/measure*)",
+      "Bash(bin/verify*)",
+      "Bash(.venv/bin/python*)",
+      "Bash(uv sync*)",
+      "Bash(uv run*)",
+      "Bash(../.venv/bin/python*)",
+      "Bash(python3*)",
+      "Bash(cd *)",
+      "Bash(git *)",
+      "Bash(docker *)",
+      "Bash(colima *)",
+      "Bash(curl *)",
+      "Bash(cat *)",
+      "Bash(ls *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(wc *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(sed -n *)",
+      "Bash(mkdir *)",
+      "Bash(touch *)",
+      "Bash(diff *)",
+      "Bash(jq *)",
+      "Bash(git push origin HEAD:dev*)",
+      "Bash(git push -q origin HEAD:dev*)",
+      "Bash(git push origin range-host-proto*)",
+      "Bash(git push -q origin range-host-proto*)",
+      "Bash(git push origin HEAD*)",
+      "Bash(git push -q origin HEAD*)",
+      "Bash(git push cloud *)",
+      "Bash(git push -q cloud *)"
+    ],
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~*)"
+    ]
+  }
+}

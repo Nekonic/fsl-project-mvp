@@ -1,0 +1,56 @@
+lans:
+  internet: [121.134.88.40/29]
+  dmz: [10.30.0.0/24]
+  web-outer: [10.30.128.0/24]
+  web-inner: [10.30.128.0/24]
+  mgmt: [172.29.0.0/24]
+
+nodes:
+  cr-kali:
+    role: kali
+    ports:
+      - {lan: internet, device: cr-kali, origins: true}
+  cr-infra:
+    role: infra
+    answers: suricatasc -c uptime
+    ports:
+      - {lan: internet, device: cr-edge, address: 121.134.88.42}
+      - {lan: dmz, device: cr-edge, address: 10.30.0.1, forwards: true}
+      - {lan: web-outer, device: cr-ids, address: 10.30.128.251, ids: true}
+      - {lan: web-inner, device: cr-ids, address: 10.30.128.252, ids: true}
+      - {lan: mgmt, device: log-server, address: 172.29.0.10}
+  cr-waf:
+    role: waf
+    ports:
+      - {lan: dmz, device: cr-waf, address: 10.30.0.247}
+      - {lan: web-outer, device: cr-waf, address: 10.30.128.247}
+      - {lan: mgmt, device: cr-waf, address: 172.29.0.12}
+  cr-target:
+    role: target
+    ports:
+      - {lan: web-inner, device: board, address: 10.30.128.59}
+
+devices:
+  cr-kali: {node: cr-kali, roles: [attacker, proxy]}
+  cr-edge: {node: cr-infra, roles: [edge], forwards: {80: cr-waf}}
+  cr-ids:
+    node: cr-infra
+    container: sensor
+    roles: [sensor]
+    rules: /var/lib/suricata/rules/local.rules
+    reload: suricatasc -c reload-rules
+  log-server: {node: cr-infra, roles: [log-server]}
+  cr-waf:
+    node: cr-waf
+    roles: [gateway]
+    names: [board.com, corp.com]
+    rules: /etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
+    reload: nginx -t 2>&1 && nginx -s reload 2>&1
+    pid: /run/nginx.pid
+    upstreams: {board: 10.30.128.59, corp: 10.30.128.60}
+  cr-target: {node: cr-target, roles: [wargames]}
+  board: {node: cr-target, container: board, roles: [board]}
+  board-db: {node: cr-target, container: board-db, roles: [board-db]}
+
+watches:
+  sensor: gateway

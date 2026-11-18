@@ -1,0 +1,534 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import importlib.util
+import os
+import secrets
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+import requests
+
+from redteam import signin
+
+REBUILD = ROOT / "bin/platform-rebuild"
+CALL_TIMEOUT = 1800
+SLOT_WAIT = 1800
+GONE_WAIT = 1800
+SLOT_STACKS = "cr-range"
+READY_WAIT = 1800
+POLL = 5
+CONFIGURE_TRIES = 60
+BOOTING = ("NOT_STANDING", "REBUILDING", "RESETTING", "STALE")
+KOLLA_CLOUDS = Path("/etc/kolla/clouds.yaml")
+KOLLA_ADMIN = "kolla-admin"
+MEMBER = "member"
+BASE_IMAGE = "ubuntu-24.04"
+IMAGE_URL = "https://cloud-images.ubuntu.com/noble/current/"
+IMAGE_FILE = "noble-server-cloudimg-amd64.img"
+
+
+def rebuild_module():
+    loader = SourceFileLoader("platform_rebuild", str(REBUILD))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("platform_rebuild", loader))
+    sys.modules["platform_rebuild"] = module
+    loader.exec_module(module)
+    return module
+
+
+rebuild = rebuild_module()
+Refused = rebuild.Refused
+settings = rebuild.settings_module()
+
+
+def arguments(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="cloud",
+        description="init, with admin credentials, prepares the project, its user, the "
+                    "clouds.yaml entry, the flavors' access, the base image and cloud.yaml. "
+                    "up brings the whole OpenStack environment up from cloud.yaml: the "
+                    "platform VM's Heat stack, then the range's pool of slot stacks through the "
+                    "platform's own API. down backs the store up and takes the slot stacks down, "
+                    "then the platform's stack. "
+                    "Every line starts with the local time. Run it with uv run, which "
+                    "installs what it needs.",
+    )
+    parser.add_argument("action", choices=("init", "up", "down"))
+    parser.add_argument("--cloud", type=Path, default=rebuild.CLOUD,
+                        help="the cloud settings file (default deploy/openstack/cloud.yaml)")
+    parser.add_argument("--ref", help="the branch, tag or commit to clone instead of platform.ref")
+    parser.add_argument("--replace", action="store_true",
+                        help="up: replace a standing platform VM, keeping its store and range key; "
+                             "a slot stack built from the same template and images stands through")
+    parser.add_argument("--reset-password", action="store_true",
+                        help="init: give the project user a new random password when no working "
+                             "clouds.yaml entry holds its current one")
+    rebuild.add_sideload(parser)
+    return parser.parse_args(argv)
+
+
+class Stamped:
+    def __init__(self, stream, now=time.localtime):
+        self.stream, self.now, self.line_start = stream, now, True
+
+    def write(self, text: str) -> int:
+        for piece in text.splitlines(keepends=True):
+            if self.line_start:
+                self.stream.write(time.strftime("%H:%M:%S ", self.now()))
+            self.stream.write(piece)
+            self.line_start = piece.endswith("\n")
+        return len(text)
+
+    def __getattr__(self, name: str):
+        return getattr(self.stream, name)
+
+
+class Platform:
+    def __init__(self, address: str):
+        self.url = f"http://{address}:8000"
+        self.base = f"{self.url}/api/range"
+        self.http = None
+
+    def __call__(self, verb: str, path: str) -> tuple[int, dict]:
+        try:
+            self.http = self.http or signin.signed_in(self.url)
+            answer = self.http.request(verb, self.base + path, json={} if verb == "POST" else None,
+                                       timeout=CALL_TIMEOUT)
+        except (requests.RequestException, ValueError, KeyError, signin.Refused) as gone:
+            self.http = None
+            return 0, {"detail": f"could not reach {self.base}: {gone}"}
+        if answer.status_code in (401, 403):
+            self.http = None
+        try:
+            return answer.status_code, answer.json()
+        except ValueError:
+            return answer.status_code, {"detail": answer.text[:500]}
+
+
+def _done(call, verb: str, path: str) -> dict:
+    status, body = call(verb, path)
+    if status != 200:
+        raise Refused(f"cloud: {verb} /api/range{path} answered {status}: {body.get('detail', body)}")
+    return body
+
+
+def _until(what: str, wait: float, sleep, clock, step):
+    deadline = clock() + wait
+    while True:
+        found = step()
+        if found is not None:
+            return found
+        if clock() > deadline:
+            raise Refused(f"cloud: {what} did not happen within {wait:.0f}s")
+        sleep(POLL)
+
+
+def _slots(ready: dict) -> list[dict]:
+    return ready.get("slots") or [ready.get("slot") or {}]
+
+
+def _standing(call):
+    slots = _slots(_done(call, "GET", "/ready/"))
+    failed = [reason for slot in slots if slot.get("phase") == "SETUP_FAILED" for reason in slot.get("blocked") or []]
+    if failed:
+        raise Refused("cloud: a slot did not set itself up:\n  " + "\n  ".join(failed))
+    return slots if all(slot.get("phase") not in BOOTING for slot in slots) else None
+
+
+def _ready(call):
+    ready = _done(call, "GET", "/ready/")
+    return ready if ready["ready"] and all(slot.get("phase") == "READY" for slot in _slots(ready)) else None
+
+
+def _configured(call, sleep):
+    for attempt in range(CONFIGURE_TRIES):
+        status, body = call("POST", "/configure/")
+        if status == 200:
+            return body
+        if status != 503 or attempt == CONFIGURE_TRIES - 1:
+            raise Refused(f"cloud: POST /api/range/configure/ answered {status}: {body.get('detail', body)}")
+        print(f"configure: {body.get('detail', '')[:200]}; trying again", flush=True)
+        sleep(POLL)
+
+
+def converge(call, sleep=time.sleep, clock=time.monotonic) -> dict:
+    fabric = _done(call, "POST", "/fabric/")
+    if fabric["drifted"]:
+        raise Refused("cloud: the fabric drifted:\n  " + "\n  ".join(fabric["drifted"]))
+    removed = _done(call, "DELETE", "/leftovers/")["removed"]
+    if removed:
+        print("removed what an earlier range left: " + ", ".join(f"{r['kind']} {r['id']}" for r in removed),
+              flush=True)
+    slot = _done(call, "POST", "/slot/")
+    if slot["blocked"]:
+        raise Refused("cloud: the slot is blocked:\n  " + "\n  ".join(slot["blocked"]))
+    _until("the slot standing", SLOT_WAIT, sleep, clock, lambda: _standing(call))
+    _configured(call, sleep)
+    return _until("the range ready", READY_WAIT, sleep, clock, lambda: _ready(call))
+
+
+def up(args: argparse.Namespace) -> str:
+    cloud, environment = rebuild.load(args)
+    rebuild.sign_in(environment)
+    address = rebuild.working_address(cloud.stack)
+    if address is None or args.replace:
+        address = rebuild.rebuild(cloud, environment, args.sideload)
+    else:
+        rebuild.resume(cloud, environment, address, args.sideload)
+    converge(Platform(address))
+    return address
+
+
+def _gone(call):
+    return True if not _done(call, "GET", "/slot/")["standing"] else None
+
+
+def take_down(call, stack: str, run, sleep=time.sleep, clock=time.monotonic) -> None:
+    _done(call, "DELETE", "/slot/")
+    _until("the slot stacks gone", GONE_WAIT, sleep, clock, lambda: _gone(call))
+    _done(call, "DELETE", "/fabric/")
+    rebuild.delete_stack(stack, run)
+
+
+def slot_stacks(run) -> list[str]:
+    listed = run(["openstack", "stack", "list", "--tags", SLOT_STACKS, "-f", "value", "-c", "ID"]).stdout
+    return listed.decode().split()
+
+
+def take_down_broken(stack: str, why: str, run) -> None:
+    print(f"stack {stack} {why}; removing the slot stacks, its builders and the stack")
+    found = slot_stacks(run)
+    if found:
+        run(["openstack", "stack", "delete", "--yes", "--wait", *found])
+    rebuild.delete_stack(stack, run)
+
+
+def down(args: argparse.Namespace) -> None:
+    cloud, environment = rebuild.load(args)
+    rebuild.sign_in(environment)
+    status = rebuild.stack_status(cloud.stack)
+    if status is None:
+        print(f"no stack {cloud.stack}; nothing to take down")
+        return
+    rebuild.refuse_if_busy(cloud.stack, status)
+    address = rebuild.standing_address(cloud.stack, status)
+    if address is None:
+        take_down_broken(cloud.stack, f"is {status} and has no platform to ask", rebuild.run)
+        return
+    with tempfile.TemporaryDirectory() as scratch:
+        old = rebuild.Host("ubuntu", address, Path(scratch) / "known_hosts",
+                           Path(cloud.key_file).expanduser())
+        if not rebuild.holds_store(old):
+            take_down_broken(cloud.stack, f"at {address} has no cr-platform container and no store, so "
+                             "there is nothing to back up and no platform to ask", rebuild.run)
+            return
+        rebuild.start_platform(old)
+        rebuild.keep_range_key(Path(cloud.range_key).expanduser(), old)
+        rebuild.back_up(old, cloud.backups_keep)
+    rebuild.wait_for_api(address)
+    take_down(Platform(address), cloud.stack, rebuild.run)
+    print("the platform and the range are gone")
+
+
+def admin_connection(environ=os.environ):
+    import openstack
+    from keystoneauth1 import exceptions as auth_errors
+    from openstack.config import loader
+    try:
+        if environ.get("OS_AUTH_URL"):
+            source = "the OS_* variables in this shell"
+            region = loader.OpenStackConfig(load_yaml_config=False).get_one(cloud="envvars")
+        elif KOLLA_CLOUDS.is_file():
+            source = f"{KOLLA_CLOUDS}, entry {KOLLA_ADMIN}"
+            if not os.access(KOLLA_CLOUDS, os.R_OK):
+                raise Refused(f"cloud: cannot read {KOLLA_CLOUDS}; run init as the user who ran "
+                              f"kolla-ansible post-deploy, or source /etc/kolla/admin-openrc.sh first")
+            region = loader.OpenStackConfig(config_files=[str(KOLLA_CLOUDS)], vendor_files=[],
+                                            load_envvars=False).get_one(cloud=KOLLA_ADMIN)
+        else:
+            raise Refused(f"cloud: no admin credentials: {KOLLA_CLOUDS} does not exist and no OS_AUTH_URL is set; "
+                          f"run source /etc/kolla/admin-openrc.sh, then bin/cloud init again")
+    except openstack.exceptions.SDKException as wrong:
+        raise Refused(f"cloud: the admin credentials in {source} are not usable: {wrong}") from wrong
+    admin = openstack.connection.Connection(config=region)
+    try:
+        list(admin.identity.projects(limit=1))
+    except openstack.exceptions.ForbiddenException as refused:
+        raise Refused(f"cloud: the credentials from {source} are not an admin's") from refused
+    except (openstack.exceptions.SDKException, auth_errors.ClientException, OSError) as failed:
+        raise Refused(f"cloud: cannot sign in with {source}: {failed}") from failed
+    return admin, source
+
+
+def entry_works(name: str, path: Path) -> bool:
+    import openstack
+    from openstack.config import loader
+    try:
+        region = loader.OpenStackConfig(config_files=[str(path)], vendor_files=[],
+                                        load_envvars=False).get_one(cloud=name)
+        openstack.connection.Connection(config=region).authorize()
+        return True
+    except Exception:
+        return False
+
+
+def one_domain(admin, name: str):
+    found = admin.identity.find_domain(name)
+    if found is None:
+        raise Refused(f"cloud: Keystone has no domain {name}, which clouds.yaml's entry names")
+    return found
+
+
+def project_and_user(admin, auth: dict):
+    project_domain = one_domain(admin, auth.get("project_domain_name") or "Default")
+    user_domain = one_domain(admin, auth.get("user_domain_name") or "Default")
+    name = auth.get("project_name") or settings.PROJECT
+    project = admin.identity.find_project(name, domain_id=project_domain.id)
+    if project is None:
+        project = admin.identity.create_project(name=name, domain_id=project_domain.id,
+                                                description="the cyber range: the platform VM and the range host")
+        print(f"project {name}: created")
+    else:
+        print(f"project {name}: present")
+    name = auth.get("username") or settings.PROJECT
+    user = admin.identity.find_user(name, domain_id=user_domain.id)
+    password = None
+    if user is None:
+        password = secrets.token_urlsafe(32)
+        user = admin.identity.create_user(name=name, password=password, domain_id=user_domain.id,
+                                          default_project_id=project.id)
+        print(f"user {name}: created with a random password")
+    else:
+        print(f"user {name}: present")
+    return project, user, project_domain, user_domain, password
+
+
+def member_role(admin, project, user) -> None:
+    role = admin.identity.find_role(MEMBER)
+    if role is None:
+        raise Refused(f"cloud: Keystone has no role {MEMBER}")
+    if admin.identity.validate_user_has_project_role(project, user, role):
+        print(f"role {MEMBER} of {user.name} on {project.name}: present")
+    else:
+        admin.identity.assign_project_role_to_user(project, user, role)
+        print(f"role {MEMBER} of {user.name} on {project.name}: given")
+
+
+def credentials(admin, name: str, held: dict, project, user, project_domain, user_domain,
+                password: str | None, reset: bool) -> None:
+    path = settings.CLOUDS.expanduser()
+    if password is None:
+        if held and entry_works(name, path):
+            print(f"clouds.yaml entry {name} in {path}: present, and it signs in")
+            return
+        if not reset:
+            raise Refused(
+                f"cloud: user {user.name} exists, and no working entry {name} in {path} holds its password; "
+                f"write it there, or run bin/cloud init --reset-password to give the user a new one "
+                f"(a standing platform VM keeps the old one until bin/cloud up --replace)"
+            )
+        password = secrets.token_urlsafe(32)
+        admin.identity.update_user(user, password=password)
+        print(f"user {user.name}: given a new random password")
+    try:
+        settings.write_clouds(path, name, {
+            "auth": {
+                "auth_url": admin.endpoint_for("identity", interface="public"),
+                "username": user.name, "password": password, "project_name": project.name,
+                "user_domain_name": user_domain.name, "project_domain_name": project_domain.name,
+            },
+            "region_name": admin.config.get_region_name("identity"),
+            "interface": "public",
+            "identity_api_version": 3,
+        })
+    except (settings.Invalid, OSError) as unwritten:
+        raise Refused(f"cloud: {path}: {unwritten}; the user {user.name} now has a password no file holds, "
+                      f"so fix the file and run bin/cloud init --reset-password") from unwritten
+    print(f"clouds.yaml entry {name} in {path}: written, mode 0600")
+
+
+def flavors_for(admin, named: dict, origin: str) -> dict[str, dict]:
+    held = [{"id": flavor.id, "name": flavor.name, "ram": flavor.ram, "vcpus": flavor.vcpus,
+             "disk": flavor.disk, "public": flavor.is_public}
+            for flavor in admin.compute.flavors(is_public="none")]
+    chosen = {}
+    for role in settings.ROLES:
+        wanted = named.get(role) or settings.SLOT_FLAVOR
+        flavor = next((flavor for flavor in held if flavor["name"] == wanted), None)
+        if flavor is None:
+            raise Refused(f"cloud: no flavor {wanted} for the slot role {role}; name one of "
+                          f"{', '.join(sorted(one['name'] for one in held))} in compute.flavors.{role}")
+        print(f"flavor {role}: {flavor['name']}, {flavor['vcpus']} vCPU, RAM {flavor['ram']} MB")
+        chosen[role] = flavor
+    for role in settings.NEEDS:
+        try:
+            flavor = settings.fitting_flavor(held, role, named.get(role) or "")
+        except settings.Invalid as none:
+            raise Refused(f"cloud: {none}") from none
+        how = f"named in {origin}" if flavor["name"] == named.get(role) else "the smallest that fits"
+        print(f"flavor {role}: {flavor['name']}, {flavor['vcpus']} vCPU, RAM {flavor['ram']} MB, "
+              f"disk {flavor['disk']} GB ({how})")
+        chosen[role] = flavor
+    return chosen
+
+
+def flavor_access(admin, chosen: dict[str, dict], project) -> None:
+    for flavor in {flavor["id"]: flavor for flavor in chosen.values()}.values():
+        if flavor["public"]:
+            continue
+        if project.id in {entry["tenant_id"] for entry in admin.compute.get_flavor_access(flavor["id"])}:
+            print(f"flavor {flavor['name']}: private, and {project.name} has access")
+        else:
+            admin.compute.flavor_add_tenant_access(flavor["id"], project.id)
+            print(f"flavor {flavor['name']}: private; access given to {project.name}")
+
+
+def quota(admin, project, chosen: dict[str, dict], slots: int) -> None:
+    compute = admin.compute.get_quota_set(project.id)
+    network = admin.network.get_quota(project.id)
+    limits = {"instances": compute.instances, "cores": compute.cores, "ram": compute.ram,
+              "floating_ips": network.floating_ips}
+    roles = {role: chosen[role] for role in settings.ROLES}
+    short = settings.quota_shortfall(limits, chosen["platform"], roles, slots)
+    if short:
+        raise Refused(f"cloud: the quota of {project.name} cannot hold the platform and the pool; "
+                      f"an admin raises it (openstack quota set), or compute.pool asks for fewer slots:\n  "
+                      + "\n  ".join(short))
+    print(f"quota of {project.name}: holds the platform and {slots} slots "
+          f"({', '.join(f'{k} {v}' for k, v in limits.items())})")
+
+
+def download_image(scratch: Path) -> Path:
+    with urllib.request.urlopen(IMAGE_URL + "SHA256SUMS", timeout=60) as answer:
+        sums = answer.read().decode()
+    wanted = next((line.split()[0] for line in sums.splitlines()
+                   if line.split() and line.split()[-1].lstrip("*") == IMAGE_FILE), None)
+    if wanted is None:
+        raise Refused(f"cloud: {IMAGE_URL}SHA256SUMS lists no {IMAGE_FILE}")
+    path = scratch / IMAGE_FILE
+    digest = hashlib.sha256()
+    print(f"downloading {IMAGE_URL}{IMAGE_FILE}", flush=True)
+    with urllib.request.urlopen(IMAGE_URL + IMAGE_FILE, timeout=60) as answer, path.open("wb") as written:
+        for chunk in iter(lambda: answer.read(1 << 20), b""):
+            digest.update(chunk)
+            written.write(chunk)
+    if digest.hexdigest() != wanted:
+        raise Refused(f"cloud: {IMAGE_FILE} does not match {IMAGE_URL}SHA256SUMS, so it was not uploaded")
+    print(f"{IMAGE_FILE}: matches SHA256SUMS")
+    return path
+
+
+def base_image(admin, name: str, project) -> None:
+    found = list(admin.image.images(name=name))
+    if len(found) > 1:
+        raise Refused(f"cloud: more than one image is named {name}: " + ", ".join(image.id for image in found)
+                      + "; delete the extra ones or name another compute.base_image")
+    if not found:
+        with tempfile.TemporaryDirectory() as scratch:
+            image = admin.image.create_image(name, filename=str(download_image(Path(scratch))),
+                                             disk_format="qcow2", container_format="bare", wait=True)
+        print(f"image {name}: uploaded")
+    else:
+        image = found[0]
+        if image.status != "active":
+            raise Refused(f"cloud: the image {name} ({image.id}) is {image.status}, not active, perhaps from an "
+                          f"upload cut short; delete it (openstack image delete {image.id}) and run init again")
+        print(f"image {name}: present, {image.status}")
+    if image.visibility != "public" and image.owner != project.id:
+        admin.image.update_image(image, visibility="public")
+        print(f"image {name}: made public, so {project.name} sees it")
+
+
+def key_pair_file(key_file: Path) -> None:
+    public = key_file.with_name(f"{key_file.name}.pub")
+    if not key_file.is_file():
+        key_file.parent.mkdir(parents=True, exist_ok=True)
+        rebuild.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "cr-platform", "-f", str(key_file)])
+        print(f"ssh key {key_file}: made")
+    elif not public.is_file():
+        public.write_bytes(rebuild.run(["ssh-keygen", "-y", "-f", str(key_file)]).stdout)
+        print(f"ssh key {key_file}: present; wrote {public}")
+    else:
+        print(f"ssh key {key_file}: present")
+
+
+def write_cloud_yaml(path: Path, text: str, owned: dict) -> None:
+    written = settings.with_settings(text, owned)
+    try:
+        settings.parse(settings.yaml.safe_load(written), str(path))
+    except settings.Invalid as invalid:
+        raise Refused(f"cloud: {invalid}") from invalid
+    except settings.yaml.YAMLError as broken:
+        raise Refused(f"cloud: {path} could not take init's values ({broken}); write compute.flavors and the "
+                      f"other keys init sets in block style, one key per line") from broken
+    if path.is_file() and path.read_text(encoding="utf-8") == written:
+        print(f"{path}: unchanged")
+        return
+    path.write_text(written, encoding="utf-8")
+    print(f"{path}: written ({', '.join('.'.join(key) for key in owned)})")
+
+
+def init(args: argparse.Namespace) -> None:
+    path = args.cloud
+    text = path.read_text(encoding="utf-8") if path.is_file() else settings.EXAMPLE.read_text(encoding="utf-8")
+    document = settings.yaml.safe_load(text) or {}
+    network, compute, keys = (document.get(section) or {} for section in ("network", "compute", "keys"))
+    name = document.get("cloud") or settings.PROJECT
+    image = compute.get("base_image") or BASE_IMAGE
+    admin, source = admin_connection()
+    print(f"admin: {source}")
+    try:
+        external = settings.external_network(
+            [{"name": found.name, "external": found.is_router_external} for found in admin.network.networks()],
+            network.get("external") or "")
+        held = settings.entries(settings.CLOUDS).get(name) or {}
+    except settings.Invalid as invalid:
+        raise Refused(f"cloud: {invalid}") from invalid
+    print(f"external network: {external}")
+    chosen = flavors_for(admin, compute.get("flavors") or {}, path.name if path.is_file() else settings.EXAMPLE.name)
+    clouds = settings.CLOUDS.expanduser()
+    try:
+        settings.merged_clouds(clouds.read_text(encoding="utf-8") if clouds.is_file() else None, name, {})
+    except (settings.Invalid, settings.yaml.YAMLError, OSError) as unusable:
+        raise Refused(f"cloud: {clouds}: {unusable}") from unusable
+    project, user, project_domain, user_domain, password = project_and_user(admin, held.get("auth") or {})
+    credentials(admin, name, held, project, user, project_domain, user_domain, password, args.reset_password)
+    member_role(admin, project, user)
+    flavor_access(admin, chosen, project)
+    quota(admin, project, chosen, sum((compute.get("pool") or settings.POOL).values()))
+    base_image(admin, image, project)
+    key_pair_file(Path(keys.get("key_file") or "~/.ssh/fsl_claude").expanduser())
+    write_cloud_yaml(path, text, {
+        ("cloud",): name, ("network", "external"): external, ("compute", "base_image"): image,
+        ("compute", "flavors", "platform"): chosen["platform"]["name"],
+        ("network", "allowed"): network.get("allowed") or settings.OPEN_TO_ALL,
+    })
+    print("init is done; bin/cloud up brings the platform and the range's pool up")
+
+
+def main(argv: list[str]) -> int:
+    args = arguments(argv)
+    if args.action == "init":
+        init(args)
+    elif args.action == "up":
+        address = up(args)
+        print(f"the range is ready; the platform is at http://{address}:8000/")
+    else:
+        down(args)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.stdout, sys.stderr = Stamped(sys.stdout), Stamped(sys.stderr)
+    sys.exit(main(sys.argv[1:]))

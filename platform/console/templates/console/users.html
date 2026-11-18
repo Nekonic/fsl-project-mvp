@@ -1,0 +1,167 @@
+{% extends "console/base.html" %}
+{% block surface %}bg-panel{% endblock %}
+{% block content %}
+<p id="users-error" class="text-danger text-[13px] mb-6 hidden"></p>
+
+<section id="pending-panel" class="mb-10 hidden">
+  <h2 data-t="users.pending" class="text-[20px] font-bold text-heading mb-2"></h2>
+  <div class="overflow-x-auto">
+    <table class="w-full text-[13px] border-t border-line">
+      <thead class="table-head">
+        <tr>
+          <th data-t="auth.username"></th>
+          <th data-t="users.col.joined"></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="pending"></tbody>
+    </table>
+  </div>
+</section>
+<p id="pending-none" data-t="users.pending_none" class="text-muted text-[13px] mb-8 hidden"></p>
+
+<section id="active-panel" class="hidden">
+  <h2 data-t="users.active" class="text-[20px] font-bold text-heading mb-2"></h2>
+  <div class="overflow-x-auto">
+    <table class="w-full text-[13px] border-t border-line">
+      <thead class="table-head">
+        <tr>
+          <th data-t="auth.username"></th>
+          <th data-t="users.col.role"></th>
+          <th data-t="users.col.joined"></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="active"></tbody>
+    </table>
+  </div>
+</section>
+
+<section id="blocks-panel" class="mt-10 hidden">
+  <h2 data-t="users.blocks" class="text-[20px] font-bold text-heading mb-2"></h2>
+  <div class="overflow-x-auto">
+    <table class="w-full text-[13px] border-t border-line">
+      <thead class="table-head">
+        <tr>
+          <th data-t="users.col.blocked"></th>
+          <th data-t="users.col.target"></th>
+          <th data-t="users.col.failures"></th>
+          <th data-t="users.col.until"></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="blocks"></tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+{% block script %}
+<script>
+  crumbs([{ label: t("users.title"), href: "/users/" }]);
+  document.title = t("users.title");
+
+  const field = (id) => document.getElementById(id);
+  const joined = (instant) => new Date(instant).toLocaleDateString("ko-KR");
+
+  function showError(text) {
+    field("users-error").textContent = text;
+    field("users-error").classList.remove("hidden");
+  }
+
+  function pending(button, key) {
+    button.disabled = true;
+    button.textContent = t(key);
+    const row = button.closest("tr");
+    row.setAttribute("aria-busy", "true");
+    row.style.opacity = "0.5";
+  }
+
+  function pendingRow(user) {
+    return `
+      <tr class="table-row" data-user="${user.id}">
+        <td class="font-semibold text-heading">${esc(user.username)}</td>
+        <td>${esc(joined(user.joined))}</td>
+        <td class="text-right whitespace-nowrap">
+          <button data-approve="${user.id}" class="btn btn-sm btn-blue">${esc(t("users.approve"))}</button>
+          <button data-reject="${user.id}" class="btn btn-sm btn-ghost ml-2">${esc(t("users.reject"))}</button>
+        </td>
+      </tr>`;
+  }
+
+  function activeRow(user) {
+    return `
+      <tr class="table-row">
+        <td class="font-semibold text-heading">${esc(user.username)}</td>
+        <td>${esc(t(user.staff ? "users.role.staff" : "users.role.learner"))}</td>
+        <td>${esc(joined(user.joined))}</td>
+        <td class="text-right">${user.staff ? "" :
+          `<button data-delete="${user.id}" data-name="${esc(user.username)}" class="btn btn-sm btn-ghost">${esc(t("users.delete"))}</button>`}</td>
+      </tr>`;
+  }
+
+  async function load() {
+    const said = await api("/api/users/");
+    if (!said.ok) {
+      showError(said.status === 403 ? t("users.staff_only") : t("users.unread", detail(said)));
+      return;
+    }
+    field("users-error").classList.add("hidden");
+    const pending = said.body.users.filter((user) => !user.active);
+    const active = said.body.users.filter((user) => user.active);
+    field("pending").innerHTML = pending.map(pendingRow).join("");
+    field("pending-panel").classList.toggle("hidden", !pending.length);
+    field("pending-none").classList.toggle("hidden", Boolean(pending.length));
+    field("active").innerHTML = active.map(activeRow).join("");
+    field("active-panel").classList.remove("hidden");
+    const standing = await api("/api/users/blocks/");
+    const blocks = standing.ok ? standing.body.blocks : [];
+    field("blocks").innerHTML = blocks.map(blockRow).join("");
+    field("blocks-panel").classList.toggle("hidden", !blocks.length);
+  }
+
+  function blockRow(block) {
+    const what = block.kind === "address" ? block.value : `${block.value.slice(0, 12)}…`;
+    return `
+      <tr class="table-row">
+        <td><span class="font-semibold text-heading">${esc(t(`users.block.${block.kind}`))}</span>
+          <span class="font-mono text-muted ml-2">${esc(what)}</span></td>
+        <td>${esc(block.username)}</td>
+        <td>${esc(block.failures)}</td>
+        <td>${esc(clock(block.until))}</td>
+        <td class="text-right"><button data-unblock="${block.id}" class="btn btn-sm btn-ghost">${esc(t("users.unblock"))}</button></td>
+      </tr>`;
+  }
+
+  field("blocks").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-unblock]");
+    if (!button) return;
+    button.disabled = true;
+    const said = await post(`/api/users/blocks/${button.dataset.unblock}/unblock/`);
+    if (!said.ok) showError(t("users.failed", detail(said)));
+    await load();
+  });
+
+  field("pending").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-approve], button[data-reject]");
+    if (!button) return;
+    const id = button.dataset.approve || button.dataset.reject;
+    const action = button.dataset.approve ? "approve" : "reject";
+    pending(button, action === "approve" ? "users.approving" : "users.rejecting");
+    button.closest("tr").querySelectorAll("button").forEach((other) => { other.disabled = true; });
+    const said = await post(`/api/users/${id}/${action}/`);
+    if (!said.ok) showError(t("users.failed", detail(said)));
+    await load();
+  });
+
+  field("active").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-delete]");
+    if (!button || !confirm(t("users.delete_confirm", button.dataset.name))) return;
+    pending(button, "users.deleting");
+    const said = await post(`/api/users/${button.dataset.delete}/delete/`);
+    if (!said.ok) showError(t("users.failed", detail(said)));
+    await load();
+  });
+
+  load();
+</script>
+{% endblock %}

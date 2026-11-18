@@ -1,0 +1,1364 @@
+# The proper term is pseudo_replica_mode, but we use this compatibility alias
+# to make the statement usable on server versions 8.0.24 and older.
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=1*/;
+/*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
+DELIMITER /*!*/;
+# at 4
+#261004 18:41:55 server id 1  end_log_pos 127 CRC32 0x70ef7f51 	Start: binlog v 4, server v 8.4.11 created 261004 18:41:55 at startup
+# Warning: this binlog is either in use or was not closed properly.
+ROLLBACK/*!*/;
+# at 127
+#261004 18:41:55 server id 1  end_log_pos 158 CRC32 0xb6ead15e 	Previous-GTIDs
+# [empty]
+# [fixture trimmed to the rogue-admin registration]
+# at 691093
+#261004 18:42:19 server id 1  end_log_pos 691172 CRC32 0x78402e80 	Anonymous_GTID	last_committed=289	sequence_number=331	rbr_only=yes	original_committed_timestamp=1791106939471079	immediate_commit_timestamp=1791106939471079	transaction_length=418
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939471079 (2026-10-04 18:42:19.471079 KST)
+# immediate_commit_timestamp=1791106939471079 (2026-10-04 18:42:19.471079 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939471079*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 691172
+#261004 18:42:19 server id 1  end_log_pos 691260 CRC32 0x8bbfe1b2 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 691260
+#261004 18:42:19 server id 1  end_log_pos 691347 CRC32 0x0a42cb95 	Table_map: `wordpress`.`wp_users` mapped to number 207
+# has_generated_invisible_primary_key=0
+# at 691347
+#261004 18:42:19 server id 1  end_log_pos 691480 CRC32 0x33be8d42 	Write_rows: table id 207 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_users`
+### SET
+###   @1=2
+###   @2='rogue'
+###   @3='$P$BlxzZ4fo/UN39HPTLtM/0K1nKPfvbG0'
+###   @4='rogue'
+###   @5='rogue@example.com'
+###   @6=''
+###   @7='2026-10-04 09:42:19'
+###   @8=''
+###   @9=0
+###   @10='rogue'
+# at 691480
+#261004 18:42:19 server id 1  end_log_pos 691511 CRC32 0xc653f8da 	Xid = 1804
+COMMIT/*!*/;
+# at 691511
+#261004 18:42:19 server id 1  end_log_pos 691590 CRC32 0x1ad2b239 	Anonymous_GTID	last_committed=289	sequence_number=332	rbr_only=yes	original_committed_timestamp=1791106939472483	immediate_commit_timestamp=1791106939472483	transaction_length=332
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939472483 (2026-10-04 18:42:19.472483 KST)
+# immediate_commit_timestamp=1791106939472483 (2026-10-04 18:42:19.472483 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939472483*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 691590
+#261004 18:42:19 server id 1  end_log_pos 691670 CRC32 0xebcb0e1b 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 691670
+#261004 18:42:19 server id 1  end_log_pos 691741 CRC32 0xd861b495 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 691741
+#261004 18:42:19 server id 1  end_log_pos 691812 CRC32 0x0165fcb9 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=18
+###   @2=2
+###   @3='nickname'
+###   @4='rogue'
+# at 691812
+#261004 18:42:19 server id 1  end_log_pos 691843 CRC32 0x6184943d 	Xid = 1808
+COMMIT/*!*/;
+# at 691843
+#261004 18:42:19 server id 1  end_log_pos 691922 CRC32 0x8d4e993c 	Anonymous_GTID	last_committed=289	sequence_number=333	rbr_only=yes	original_committed_timestamp=1791106939473185	immediate_commit_timestamp=1791106939473185	transaction_length=329
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939473185 (2026-10-04 18:42:19.473185 KST)
+# immediate_commit_timestamp=1791106939473185 (2026-10-04 18:42:19.473185 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939473185*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 691922
+#261004 18:42:19 server id 1  end_log_pos 692002 CRC32 0xae18afa6 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 692002
+#261004 18:42:19 server id 1  end_log_pos 692073 CRC32 0xe7aa622c 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 692073
+#261004 18:42:19 server id 1  end_log_pos 692141 CRC32 0x086b3fb6 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=19
+###   @2=2
+###   @3='first_name'
+###   @4=''
+# at 692141
+#261004 18:42:19 server id 1  end_log_pos 692172 CRC32 0xe91a09c2 	Xid = 1810
+COMMIT/*!*/;
+# at 692172
+#261004 18:42:19 server id 1  end_log_pos 692251 CRC32 0x65d768d4 	Anonymous_GTID	last_committed=289	sequence_number=334	rbr_only=yes	original_committed_timestamp=1791106939473874	immediate_commit_timestamp=1791106939473874	transaction_length=328
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939473874 (2026-10-04 18:42:19.473874 KST)
+# immediate_commit_timestamp=1791106939473874 (2026-10-04 18:42:19.473874 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939473874*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 692251
+#261004 18:42:19 server id 1  end_log_pos 692331 CRC32 0x856dfa1f 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 692331
+#261004 18:42:19 server id 1  end_log_pos 692402 CRC32 0x2a9f7cbe 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 692402
+#261004 18:42:19 server id 1  end_log_pos 692469 CRC32 0x9018f106 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=20
+###   @2=2
+###   @3='last_name'
+###   @4=''
+# at 692469
+#261004 18:42:19 server id 1  end_log_pos 692500 CRC32 0xf6b59066 	Xid = 1812
+COMMIT/*!*/;
+# at 692500
+#261004 18:42:19 server id 1  end_log_pos 692579 CRC32 0xc727d20d 	Anonymous_GTID	last_committed=289	sequence_number=335	rbr_only=yes	original_committed_timestamp=1791106939474550	immediate_commit_timestamp=1791106939474550	transaction_length=330
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939474550 (2026-10-04 18:42:19.474550 KST)
+# immediate_commit_timestamp=1791106939474550 (2026-10-04 18:42:19.474550 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939474550*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 692579
+#261004 18:42:19 server id 1  end_log_pos 692659 CRC32 0xa694f06f 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 692659
+#261004 18:42:19 server id 1  end_log_pos 692730 CRC32 0x3000eccf 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 692730
+#261004 18:42:19 server id 1  end_log_pos 692799 CRC32 0xf6eb02a4 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=21
+###   @2=2
+###   @3='description'
+###   @4=''
+# at 692799
+#261004 18:42:19 server id 1  end_log_pos 692830 CRC32 0x9ad4d6bf 	Xid = 1814
+COMMIT/*!*/;
+# at 692830
+#261004 18:42:19 server id 1  end_log_pos 692909 CRC32 0xa312b3b3 	Anonymous_GTID	last_committed=289	sequence_number=336	rbr_only=yes	original_committed_timestamp=1791106939475037	immediate_commit_timestamp=1791106939475037	transaction_length=335
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939475037 (2026-10-04 18:42:19.475037 KST)
+# immediate_commit_timestamp=1791106939475037 (2026-10-04 18:42:19.475037 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939475037*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 692909
+#261004 18:42:19 server id 1  end_log_pos 692989 CRC32 0x5a9d0a08 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 692989
+#261004 18:42:19 server id 1  end_log_pos 693060 CRC32 0x397a42e9 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 693060
+#261004 18:42:19 server id 1  end_log_pos 693134 CRC32 0x121cb6b1 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=22
+###   @2=2
+###   @3='rich_editing'
+###   @4='true'
+# at 693134
+#261004 18:42:19 server id 1  end_log_pos 693165 CRC32 0x47b56474 	Xid = 1816
+COMMIT/*!*/;
+# at 693165
+#261004 18:42:19 server id 1  end_log_pos 693244 CRC32 0xa21899c7 	Anonymous_GTID	last_committed=289	sequence_number=337	rbr_only=yes	original_committed_timestamp=1791106939475610	immediate_commit_timestamp=1791106939475610	transaction_length=342
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939475610 (2026-10-04 18:42:19.475610 KST)
+# immediate_commit_timestamp=1791106939475610 (2026-10-04 18:42:19.475610 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939475610*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 693244
+#261004 18:42:19 server id 1  end_log_pos 693324 CRC32 0x4e3b1f47 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 693324
+#261004 18:42:19 server id 1  end_log_pos 693395 CRC32 0x3f9c248d 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 693395
+#261004 18:42:19 server id 1  end_log_pos 693476 CRC32 0x06b75b99 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=23
+###   @2=2
+###   @3='syntax_highlighting'
+###   @4='true'
+# at 693476
+#261004 18:42:19 server id 1  end_log_pos 693507 CRC32 0x20f97e6e 	Xid = 1818
+COMMIT/*!*/;
+# at 693507
+#261004 18:42:19 server id 1  end_log_pos 693586 CRC32 0x91f0a020 	Anonymous_GTID	last_committed=289	sequence_number=338	rbr_only=yes	original_committed_timestamp=1791106939476036	immediate_commit_timestamp=1791106939476036	transaction_length=341
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939476036 (2026-10-04 18:42:19.476036 KST)
+# immediate_commit_timestamp=1791106939476036 (2026-10-04 18:42:19.476036 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939476036*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 693586
+#261004 18:42:19 server id 1  end_log_pos 693666 CRC32 0x48baafb7 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 693666
+#261004 18:42:19 server id 1  end_log_pos 693737 CRC32 0x08a74a30 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 693737
+#261004 18:42:19 server id 1  end_log_pos 693817 CRC32 0xb47b2d4c 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=24
+###   @2=2
+###   @3='comment_shortcuts'
+###   @4='false'
+# at 693817
+#261004 18:42:19 server id 1  end_log_pos 693848 CRC32 0x336feb57 	Xid = 1820
+COMMIT/*!*/;
+# at 693848
+#261004 18:42:19 server id 1  end_log_pos 693927 CRC32 0x6aecd777 	Anonymous_GTID	last_committed=289	sequence_number=339	rbr_only=yes	original_committed_timestamp=1791106939476471	immediate_commit_timestamp=1791106939476471	transaction_length=335
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939476471 (2026-10-04 18:42:19.476471 KST)
+# immediate_commit_timestamp=1791106939476471 (2026-10-04 18:42:19.476471 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939476471*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 693927
+#261004 18:42:19 server id 1  end_log_pos 694007 CRC32 0xa60f0890 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 694007
+#261004 18:42:19 server id 1  end_log_pos 694078 CRC32 0x508a5b50 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 694078
+#261004 18:42:19 server id 1  end_log_pos 694152 CRC32 0x0f1edbfd 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=25
+###   @2=2
+###   @3='admin_color'
+###   @4='fresh'
+# at 694152
+#261004 18:42:19 server id 1  end_log_pos 694183 CRC32 0x9354ddfe 	Xid = 1822
+COMMIT/*!*/;
+# at 694183
+#261004 18:42:19 server id 1  end_log_pos 694262 CRC32 0x433cf700 	Anonymous_GTID	last_committed=289	sequence_number=340	rbr_only=yes	original_committed_timestamp=1791106939476945	immediate_commit_timestamp=1791106939476945	transaction_length=327
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939476945 (2026-10-04 18:42:19.476945 KST)
+# immediate_commit_timestamp=1791106939476945 (2026-10-04 18:42:19.476945 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939476945*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 694262
+#261004 18:42:19 server id 1  end_log_pos 694342 CRC32 0x02210d98 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 694342
+#261004 18:42:19 server id 1  end_log_pos 694413 CRC32 0x4d024e26 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 694413
+#261004 18:42:19 server id 1  end_log_pos 694479 CRC32 0xa30a1269 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=26
+###   @2=2
+###   @3='use_ssl'
+###   @4='0'
+# at 694479
+#261004 18:42:19 server id 1  end_log_pos 694510 CRC32 0xcb8c4135 	Xid = 1824
+COMMIT/*!*/;
+# at 694510
+#261004 18:42:19 server id 1  end_log_pos 694589 CRC32 0x8670e58f 	Anonymous_GTID	last_committed=289	sequence_number=341	rbr_only=yes	original_committed_timestamp=1791106939477674	immediate_commit_timestamp=1791106939477674	transaction_length=343
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939477674 (2026-10-04 18:42:19.477674 KST)
+# immediate_commit_timestamp=1791106939477674 (2026-10-04 18:42:19.477674 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939477674*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 694589
+#261004 18:42:19 server id 1  end_log_pos 694669 CRC32 0xdb6c068b 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 694669
+#261004 18:42:19 server id 1  end_log_pos 694740 CRC32 0x4c62ec81 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 694740
+#261004 18:42:19 server id 1  end_log_pos 694822 CRC32 0xfef440d2 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=27
+###   @2=2
+###   @3='show_admin_bar_front'
+###   @4='true'
+# at 694822
+#261004 18:42:19 server id 1  end_log_pos 694853 CRC32 0xe8da5fd4 	Xid = 1826
+COMMIT/*!*/;
+# at 694853
+#261004 18:42:19 server id 1  end_log_pos 694932 CRC32 0x78d2dbdc 	Anonymous_GTID	last_committed=289	sequence_number=342	rbr_only=yes	original_committed_timestamp=1791106939478104	immediate_commit_timestamp=1791106939478104	transaction_length=325
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939478104 (2026-10-04 18:42:19.478104 KST)
+# immediate_commit_timestamp=1791106939478104 (2026-10-04 18:42:19.478104 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939478104*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 694932
+#261004 18:42:19 server id 1  end_log_pos 695012 CRC32 0x59cf92b7 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 695012
+#261004 18:42:19 server id 1  end_log_pos 695083 CRC32 0x2dd78691 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 695083
+#261004 18:42:19 server id 1  end_log_pos 695147 CRC32 0x6c70099a 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=28
+###   @2=2
+###   @3='locale'
+###   @4=''
+# at 695147
+#261004 18:42:19 server id 1  end_log_pos 695178 CRC32 0x677d2333 	Xid = 1828
+COMMIT/*!*/;
+# at 695178
+#261004 18:42:19 server id 1  end_log_pos 695257 CRC32 0xe2ad2f39 	Anonymous_GTID	last_committed=289	sequence_number=343	rbr_only=yes	original_committed_timestamp=1791106939478738	immediate_commit_timestamp=1791106939478738	transaction_length=362
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939478738 (2026-10-04 18:42:19.478738 KST)
+# immediate_commit_timestamp=1791106939478738 (2026-10-04 18:42:19.478738 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939478738*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 695257
+#261004 18:42:19 server id 1  end_log_pos 695337 CRC32 0x0cf94cff 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 695337
+#261004 18:42:19 server id 1  end_log_pos 695408 CRC32 0xf25ed09d 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 695408
+#261004 18:42:19 server id 1  end_log_pos 695509 CRC32 0xc5e9d2b2 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=29
+###   @2=2
+###   @3='wp_capabilities'
+###   @4='a:1:{s:10:"subscriber";b:1;}'
+# at 695509
+#261004 18:42:19 server id 1  end_log_pos 695540 CRC32 0xb575c44d 	Xid = 1831
+COMMIT/*!*/;
+# at 695540
+#261004 18:42:19 server id 1  end_log_pos 695619 CRC32 0x5c27b9e3 	Anonymous_GTID	last_committed=289	sequence_number=344	rbr_only=yes	original_committed_timestamp=1791106939479673	immediate_commit_timestamp=1791106939479673	transaction_length=333
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939479673 (2026-10-04 18:42:19.479673 KST)
+# immediate_commit_timestamp=1791106939479673 (2026-10-04 18:42:19.479673 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939479673*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 695619
+#261004 18:42:19 server id 1  end_log_pos 695699 CRC32 0xb5231725 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 695699
+#261004 18:42:19 server id 1  end_log_pos 695770 CRC32 0x648193c0 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 695770
+#261004 18:42:19 server id 1  end_log_pos 695842 CRC32 0xa6742352 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=30
+###   @2=2
+###   @3='wp_user_level'
+###   @4='0'
+# at 695842
+#261004 18:42:19 server id 1  end_log_pos 695873 CRC32 0xe22aa1ec 	Xid = 1834
+COMMIT/*!*/;
+# at 695873
+#261004 18:42:19 server id 1  end_log_pos 695952 CRC32 0x951ec638 	Anonymous_GTID	last_committed=289	sequence_number=345	rbr_only=yes	original_committed_timestamp=1791106939480895	immediate_commit_timestamp=1791106939480895	transaction_length=367
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939480895 (2026-10-04 18:42:19.480895 KST)
+# immediate_commit_timestamp=1791106939480895 (2026-10-04 18:42:19.480895 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939480895*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 695952
+#261004 18:42:19 server id 1  end_log_pos 696041 CRC32 0xd9ce97e9 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 696041
+#261004 18:42:19 server id 1  end_log_pos 696113 CRC32 0xef5d26fc 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 696113
+#261004 18:42:19 server id 1  end_log_pos 696209 CRC32 0x4701adb1 	Update_rows: table id 203 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_options`
+### WHERE
+###   @1=104
+###   @2='user_count'
+###   @3='1'
+###   @4='off'
+### SET
+###   @1=104
+###   @2='user_count'
+###   @3='2'
+###   @4='off'
+# at 696209
+#261004 18:42:19 server id 1  end_log_pos 696240 CRC32 0x26d4e85b 	Xid = 1840
+COMMIT/*!*/;
+# at 696240
+#261004 18:42:19 server id 1  end_log_pos 696319 CRC32 0x6778db7c 	Anonymous_GTID	last_committed=289	sequence_number=346	rbr_only=yes	original_committed_timestamp=1791106939481478	immediate_commit_timestamp=1791106939481478	transaction_length=370
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939481478 (2026-10-04 18:42:19.481478 KST)
+# immediate_commit_timestamp=1791106939481478 (2026-10-04 18:42:19.481478 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939481478*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 696319
+#261004 18:42:19 server id 1  end_log_pos 696399 CRC32 0x1fc04630 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 696399
+#261004 18:42:19 server id 1  end_log_pos 696471 CRC32 0x9f6c93d3 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 696471
+#261004 18:42:19 server id 1  end_log_pos 696579 CRC32 0xf7629be6 	Delete_rows: table id 203 flags: STMT_END_F
+### DELETE FROM `wordpress`.`wp_options`
+### WHERE
+###   @1=142
+###   @2='_transient_um_count_users_unassigned'
+###   @3='a:1:{i:0;s:1:"1";}'
+###   @4='off'
+# at 696579
+#261004 18:42:19 server id 1  end_log_pos 696610 CRC32 0x9dc1199a 	Xid = 1842
+COMMIT/*!*/;
+# at 696610
+#261004 18:42:19 server id 1  end_log_pos 696689 CRC32 0xcbae3463 	Anonymous_GTID	last_committed=289	sequence_number=347	rbr_only=yes	original_committed_timestamp=1791106939482053	immediate_commit_timestamp=1791106939482053	transaction_length=370
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939482053 (2026-10-04 18:42:19.482053 KST)
+# immediate_commit_timestamp=1791106939482053 (2026-10-04 18:42:19.482053 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939482053*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 696689
+#261004 18:42:19 server id 1  end_log_pos 696769 CRC32 0x220472d2 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 696769
+#261004 18:42:19 server id 1  end_log_pos 696841 CRC32 0xd6381b06 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 696841
+#261004 18:42:19 server id 1  end_log_pos 696949 CRC32 0xed4a2f7a 	Delete_rows: table id 203 flags: STMT_END_F
+### DELETE FROM `wordpress`.`wp_options`
+### WHERE
+###   @1=141
+###   @2='_transient_timeout_um_count_users_unassigned'
+###   @3='1791193321'
+###   @4='off'
+# at 696949
+#261004 18:42:19 server id 1  end_log_pos 696980 CRC32 0x36039c33 	Xid = 1844
+COMMIT/*!*/;
+# at 696980
+#261004 18:42:19 server id 1  end_log_pos 697059 CRC32 0xe155add2 	Anonymous_GTID	last_committed=289	sequence_number=348	rbr_only=yes	original_committed_timestamp=1791106939482976	immediate_commit_timestamp=1791106939482976	transaction_length=1719
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939482976 (2026-10-04 18:42:19.482976 KST)
+# immediate_commit_timestamp=1791106939482976 (2026-10-04 18:42:19.482976 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939482976*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 697059
+#261004 18:42:19 server id 1  end_log_pos 697139 CRC32 0x5f0dabe6 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 697139
+#261004 18:42:19 server id 1  end_log_pos 697211 CRC32 0xa8b37198 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 697211
+#261004 18:42:19 server id 1  end_log_pos 698668 CRC32 0x549a4c3c 	Write_rows: table id 203 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_options`
+### SET
+###   @1=148
+###   @2='um_cache_userdata_2'
+###   @3='a:44:{s:2:"ID";i:2;s:10:"user_login";s:5:"rogue";s:9:"user_pass";s:34:"$P$BlxzZ4fo/UN39HPTLtM/0K1nKPfvbG0";s:13:"user_nicename";s:5:"rogue";s:10:"user_email";s:17:"rogue@example.com";s:8:"user_url";s:0:"";s:15:"user_registered";s:19:"2026-10-04 09:42:19";s:11:"user_status";s:1:"0";s:12:"display_name";s:5:"rogue";s:10:"subscriber";b:1;s:8:"wp_roles";s:10:"subscriber";s:4:"read";b:1;s:6:"filter";N;s:16:"\x00WP_User\x00site_id";i:1;s:8:"nickname";s:5:"rogue";s:10:"first_name";s:0:"";s:9:"last_name";s:0:"";s:11:"description";s:0:"";s:12:"rich_editing";s:4:"true";s:19:"syntax_highlighting";s:4:"true";s:17:"comment_shortcuts";s:5:"false";s:11:"admin_color";s:5:"fresh";s:7:"use_ssl";s:1:"0";s:20:"show_admin_bar_front";s:4:"true";s:6:"locale";s:0:"";s:14:"account_status";s:8:"approved";s:19:"account_status_name";s:8:"Approved";s:4:"role";s:10:"subscriber";s:5:"roles";a:1:{i:0;s:10:"subscriber";}s:18:"can_access_wpadmin";i:0;s:20:"can_not_see_adminbar";i:1;s:17:"can_edit_everyone";i:0;s:19:"can_delete_everyone";i:0;s:16:"can_edit_profile";i:1;s:18:"can_delete_profile";i:1;s:11:"after_login";s:16:"redirect_profile";s:12:"after_logout";s:13:"redirect_home";s:16:"default_homepage";i:1;s:12:"can_view_all";i:1;s:24:"can_make_private_profile";i:0;s:26:"can_access_private_profile";i:0;s:6:"status";s:8:"approved";s:16:"auto_approve_act";s:16:"redirect_profile";s:11:"super_admin";i:0;}'
+###   @4='off'
+# at 698668
+#261004 18:42:19 server id 1  end_log_pos 698699 CRC32 0x7489a656 	Xid = 1848
+COMMIT/*!*/;
+# at 698699
+#261004 18:42:19 server id 1  end_log_pos 698778 CRC32 0x0e6615d7 	Anonymous_GTID	last_committed=289	sequence_number=349	rbr_only=yes	original_committed_timestamp=1791106939483548	immediate_commit_timestamp=1791106939483548	transaction_length=376
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939483548 (2026-10-04 18:42:19.483548 KST)
+# immediate_commit_timestamp=1791106939483548 (2026-10-04 18:42:19.483548 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939483548*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 698778
+#261004 18:42:19 server id 1  end_log_pos 698858 CRC32 0x9d92fddc 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 698858
+#261004 18:42:19 server id 1  end_log_pos 698929 CRC32 0x1c939211 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 698929
+#261004 18:42:19 server id 1  end_log_pos 699044 CRC32 0x8e495c90 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=31
+###   @2=2
+###   @3='synced_gravatar_hashed_id'
+###   @4='d26f00f71d38c985603665357b16f048'
+# at 699044
+#261004 18:42:19 server id 1  end_log_pos 699075 CRC32 0xf7e63caf 	Xid = 1851
+COMMIT/*!*/;
+# at 699075
+#261004 18:42:19 server id 1  end_log_pos 699154 CRC32 0x1e9b62ce 	Anonymous_GTID	last_committed=289	sequence_number=350	rbr_only=yes	original_committed_timestamp=1791106939484185	immediate_commit_timestamp=1791106939484185	transaction_length=480
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939484185 (2026-10-04 18:42:19.484185 KST)
+# immediate_commit_timestamp=1791106939484185 (2026-10-04 18:42:19.484185 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939484185*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 699154
+#261004 18:42:19 server id 1  end_log_pos 699234 CRC32 0x99d19766 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 699234
+#261004 18:42:19 server id 1  end_log_pos 699305 CRC32 0xa7e82f80 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 699305
+#261004 18:42:19 server id 1  end_log_pos 699524 CRC32 0xc745d759 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=32
+###   @2=2
+###   @3='um_member_directory_data'
+###   @4='a:5:{s:14:"account_status";s:8:"approved";s:15:"hide_in_members";b:0;s:13:"profile_photo";b:0;s:11:"cover_photo";b:0;s:8:"verified";b:0;}'
+# at 699524
+#261004 18:42:19 server id 1  end_log_pos 699555 CRC32 0x933e623f 	Xid = 1854
+COMMIT/*!*/;
+# at 699555
+#261004 18:42:19 server id 1  end_log_pos 699634 CRC32 0x489be02e 	Anonymous_GTID	last_committed=289	sequence_number=351	rbr_only=yes	original_committed_timestamp=1791106939485735	immediate_commit_timestamp=1791106939485735	transaction_length=676
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939485735 (2026-10-04 18:42:19.485735 KST)
+# immediate_commit_timestamp=1791106939485735 (2026-10-04 18:42:19.485735 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939485735*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 699634
+#261004 18:42:19 server id 1  end_log_pos 699714 CRC32 0x8da8a6ca 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 699714
+#261004 18:42:19 server id 1  end_log_pos 699785 CRC32 0x4effbe87 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 699785
+#261004 18:42:19 server id 1  end_log_pos 700200 CRC32 0x14669b30 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=33
+###   @2=2
+###   @3='submitted'
+###   @4='a:10:{s:7:"form_id";s:1:"5";s:10:"um_request";s:0:"";s:8:"_wpnonce";s:10:"1b4b64a087";s:16:"_wp_http_referer";s:10:"/register/";s:16:"wp_càpabilities";a:1:{s:13:"administrator";s:1:"1";}s:10:"user_login";s:5:"rogue";s:10:"first_name";s:5:"Rogue";s:9:"last_name";s:5:"Admin";s:10:"user_email";s:17:"rogue@example.com";s:9:"timestamp";i:1791106939;}'
+# at 700200
+#261004 18:42:19 server id 1  end_log_pos 700231 CRC32 0x4d86621d 	Xid = 1857
+COMMIT/*!*/;
+# at 700231
+#261004 18:42:19 server id 1  end_log_pos 700310 CRC32 0x4af8e3a7 	Anonymous_GTID	last_committed=289	sequence_number=352	rbr_only=yes	original_committed_timestamp=1791106939486474	immediate_commit_timestamp=1791106939486474	transaction_length=327
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939486474 (2026-10-04 18:42:19.486474 KST)
+# immediate_commit_timestamp=1791106939486474 (2026-10-04 18:42:19.486474 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939486474*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 700310
+#261004 18:42:19 server id 1  end_log_pos 700390 CRC32 0xee9c416c 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 700390
+#261004 18:42:19 server id 1  end_log_pos 700461 CRC32 0x30ab1105 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 700461
+#261004 18:42:19 server id 1  end_log_pos 700527 CRC32 0xf8083b20 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=34
+###   @2=2
+###   @3='form_id'
+###   @4='5'
+# at 700527
+#261004 18:42:19 server id 1  end_log_pos 700558 CRC32 0xfa8df8c5 	Xid = 1860
+COMMIT/*!*/;
+# at 700558
+#261004 18:42:19 server id 1  end_log_pos 700637 CRC32 0x4997d799 	Anonymous_GTID	last_committed=289	sequence_number=353	rbr_only=yes	original_committed_timestamp=1791106939487088	immediate_commit_timestamp=1791106939487088	transaction_length=329
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939487088 (2026-10-04 18:42:19.487088 KST)
+# immediate_commit_timestamp=1791106939487088 (2026-10-04 18:42:19.487088 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939487088*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 700637
+#261004 18:42:19 server id 1  end_log_pos 700717 CRC32 0x8999d125 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 700717
+#261004 18:42:19 server id 1  end_log_pos 700788 CRC32 0x31cbb3a2 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 700788
+#261004 18:42:19 server id 1  end_log_pos 700856 CRC32 0xe62bf9c1 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=35
+###   @2=2
+###   @3='um_request'
+###   @4=''
+# at 700856
+#261004 18:42:19 server id 1  end_log_pos 700887 CRC32 0x20c9127e 	Xid = 1863
+COMMIT/*!*/;
+# at 700887
+#261004 18:42:19 server id 1  end_log_pos 700966 CRC32 0xec3dc742 	Anonymous_GTID	last_committed=289	sequence_number=354	rbr_only=yes	original_committed_timestamp=1791106939487668	immediate_commit_timestamp=1791106939487668	transaction_length=337
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939487668 (2026-10-04 18:42:19.487668 KST)
+# immediate_commit_timestamp=1791106939487668 (2026-10-04 18:42:19.487668 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939487668*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 700966
+#261004 18:42:19 server id 1  end_log_pos 701046 CRC32 0xb7fe52a8 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 701046
+#261004 18:42:19 server id 1  end_log_pos 701117 CRC32 0x059431e7 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 701117
+#261004 18:42:19 server id 1  end_log_pos 701193 CRC32 0x5fc645c8 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=36
+###   @2=2
+###   @3='_wpnonce'
+###   @4='1b4b64a087'
+# at 701193
+#261004 18:42:19 server id 1  end_log_pos 701224 CRC32 0xe4185ab5 	Xid = 1866
+COMMIT/*!*/;
+# at 701224
+#261004 18:42:19 server id 1  end_log_pos 701303 CRC32 0xdc50db69 	Anonymous_GTID	last_committed=289	sequence_number=355	rbr_only=yes	original_committed_timestamp=1791106939488222	immediate_commit_timestamp=1791106939488222	transaction_length=345
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939488222 (2026-10-04 18:42:19.488222 KST)
+# immediate_commit_timestamp=1791106939488222 (2026-10-04 18:42:19.488222 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939488222*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 701303
+#261004 18:42:19 server id 1  end_log_pos 701383 CRC32 0x17f9ea35 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 701383
+#261004 18:42:19 server id 1  end_log_pos 701454 CRC32 0x26e31a5a 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 701454
+#261004 18:42:19 server id 1  end_log_pos 701538 CRC32 0x39684b96 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=37
+###   @2=2
+###   @3='_wp_http_referer'
+###   @4='/register/'
+# at 701538
+#261004 18:42:19 server id 1  end_log_pos 701569 CRC32 0x73ef3d8e 	Xid = 1869
+COMMIT/*!*/;
+# at 701569
+#261004 18:42:19 server id 1  end_log_pos 701648 CRC32 0xdcc1f57e 	Anonymous_GTID	last_committed=343	sequence_number=356	rbr_only=yes	original_committed_timestamp=1791106939489622	immediate_commit_timestamp=1791106939489622	transaction_length=445
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939489622 (2026-10-04 18:42:19.489622 KST)
+# immediate_commit_timestamp=1791106939489622 (2026-10-04 18:42:19.489622 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939489622*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 701648
+#261004 18:42:19 server id 1  end_log_pos 701737 CRC32 0x1682240e 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 701737
+#261004 18:42:19 server id 1  end_log_pos 701808 CRC32 0x174ed23f 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 701808
+#261004 18:42:19 server id 1  end_log_pos 701983 CRC32 0x7f75d071 	Update_rows: table id 208 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_usermeta`
+### WHERE
+###   @1=29
+###   @2=2
+###   @3='wp_capabilities'
+###   @4='a:1:{s:10:"subscriber";b:1;}'
+### SET
+###   @1=29
+###   @2=2
+###   @3='wp_capabilities'
+###   @4='a:1:{s:13:"administrator";s:1:"1";}'
+# at 701983
+#261004 18:42:19 server id 1  end_log_pos 702014 CRC32 0x8a3cb39f 	Xid = 1872
+COMMIT/*!*/;
+# at 702014
+#261004 18:42:19 server id 1  end_log_pos 702093 CRC32 0x3649d3bf 	Anonymous_GTID	last_committed=289	sequence_number=357	rbr_only=yes	original_committed_timestamp=1791106939490247	immediate_commit_timestamp=1791106939490247	transaction_length=334
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939490247 (2026-10-04 18:42:19.490247 KST)
+# immediate_commit_timestamp=1791106939490247 (2026-10-04 18:42:19.490247 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939490247*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 702093
+#261004 18:42:19 server id 1  end_log_pos 702173 CRC32 0x5611b6da 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 702173
+#261004 18:42:19 server id 1  end_log_pos 702244 CRC32 0x9f59e285 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 702244
+#261004 18:42:19 server id 1  end_log_pos 702317 CRC32 0xe05755cc 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=38
+###   @2=2
+###   @3='user_login'
+###   @4='rogue'
+# at 702317
+#261004 18:42:19 server id 1  end_log_pos 702348 CRC32 0x10ee0202 	Xid = 1875
+COMMIT/*!*/;
+# at 702348
+#261004 18:42:19 server id 1  end_log_pos 702427 CRC32 0xb1d3d569 	Anonymous_GTID	last_committed=333	sequence_number=358	rbr_only=yes	original_committed_timestamp=1791106939490859	immediate_commit_timestamp=1791106939490859	transaction_length=377
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939490859 (2026-10-04 18:42:19.490859 KST)
+# immediate_commit_timestamp=1791106939490859 (2026-10-04 18:42:19.490859 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939490859*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 702427
+#261004 18:42:19 server id 1  end_log_pos 702516 CRC32 0x9e66e36f 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 702516
+#261004 18:42:19 server id 1  end_log_pos 702587 CRC32 0x06619cdb 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 702587
+#261004 18:42:19 server id 1  end_log_pos 702694 CRC32 0x13f17be7 	Update_rows: table id 208 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_usermeta`
+### WHERE
+###   @1=19
+###   @2=2
+###   @3='first_name'
+###   @4=''
+### SET
+###   @1=19
+###   @2=2
+###   @3='first_name'
+###   @4='Rogue'
+# at 702694
+#261004 18:42:19 server id 1  end_log_pos 702725 CRC32 0x8fcd1074 	Xid = 1878
+COMMIT/*!*/;
+# at 702725
+#261004 18:42:19 server id 1  end_log_pos 702804 CRC32 0x58552ea2 	Anonymous_GTID	last_committed=334	sequence_number=359	rbr_only=yes	original_committed_timestamp=1791106939491664	immediate_commit_timestamp=1791106939491664	transaction_length=375
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939491664 (2026-10-04 18:42:19.491664 KST)
+# immediate_commit_timestamp=1791106939491664 (2026-10-04 18:42:19.491664 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939491664*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 702804
+#261004 18:42:19 server id 1  end_log_pos 702893 CRC32 0x175e10ce 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 702893
+#261004 18:42:19 server id 1  end_log_pos 702964 CRC32 0xa338e628 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 702964
+#261004 18:42:19 server id 1  end_log_pos 703069 CRC32 0x96adc4b4 	Update_rows: table id 208 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_usermeta`
+### WHERE
+###   @1=20
+###   @2=2
+###   @3='last_name'
+###   @4=''
+### SET
+###   @1=20
+###   @2=2
+###   @3='last_name'
+###   @4='Admin'
+# at 703069
+#261004 18:42:19 server id 1  end_log_pos 703100 CRC32 0xaf1e2213 	Xid = 1881
+COMMIT/*!*/;
+# at 703100
+#261004 18:42:19 server id 1  end_log_pos 703179 CRC32 0x23502737 	Anonymous_GTID	last_committed=289	sequence_number=360	rbr_only=yes	original_committed_timestamp=1791106939492272	immediate_commit_timestamp=1791106939492272	transaction_length=338
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939492272 (2026-10-04 18:42:19.492272 KST)
+# immediate_commit_timestamp=1791106939492272 (2026-10-04 18:42:19.492272 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939492272*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 703179
+#261004 18:42:19 server id 1  end_log_pos 703259 CRC32 0xab2fbd43 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 703259
+#261004 18:42:19 server id 1  end_log_pos 703330 CRC32 0x93da337e 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 703330
+#261004 18:42:19 server id 1  end_log_pos 703407 CRC32 0x57368a83 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=39
+###   @2=2
+###   @3='timestamp'
+###   @4='1791106939'
+# at 703407
+#261004 18:42:19 server id 1  end_log_pos 703438 CRC32 0xf3a39a09 	Xid = 1884
+COMMIT/*!*/;
+# at 703438
+#261004 18:42:19 server id 1  end_log_pos 703517 CRC32 0x812a2f29 	Anonymous_GTID	last_committed=348	sequence_number=361	rbr_only=yes	original_committed_timestamp=1791106939493711	immediate_commit_timestamp=1791106939493711	transaction_length=1719
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939493711 (2026-10-04 18:42:19.493711 KST)
+# immediate_commit_timestamp=1791106939493711 (2026-10-04 18:42:19.493711 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939493711*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 703517
+#261004 18:42:19 server id 1  end_log_pos 703597 CRC32 0x1770520d 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 703597
+#261004 18:42:19 server id 1  end_log_pos 703669 CRC32 0x51daf27d 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 703669
+#261004 18:42:19 server id 1  end_log_pos 705126 CRC32 0x367faec9 	Delete_rows: table id 203 flags: STMT_END_F
+### DELETE FROM `wordpress`.`wp_options`
+### WHERE
+###   @1=148
+###   @2='um_cache_userdata_2'
+###   @3='a:44:{s:2:"ID";i:2;s:10:"user_login";s:5:"rogue";s:9:"user_pass";s:34:"$P$BlxzZ4fo/UN39HPTLtM/0K1nKPfvbG0";s:13:"user_nicename";s:5:"rogue";s:10:"user_email";s:17:"rogue@example.com";s:8:"user_url";s:0:"";s:15:"user_registered";s:19:"2026-10-04 09:42:19";s:11:"user_status";s:1:"0";s:12:"display_name";s:5:"rogue";s:10:"subscriber";b:1;s:8:"wp_roles";s:10:"subscriber";s:4:"read";b:1;s:6:"filter";N;s:16:"\x00WP_User\x00site_id";i:1;s:8:"nickname";s:5:"rogue";s:10:"first_name";s:0:"";s:9:"last_name";s:0:"";s:11:"description";s:0:"";s:12:"rich_editing";s:4:"true";s:19:"syntax_highlighting";s:4:"true";s:17:"comment_shortcuts";s:5:"false";s:11:"admin_color";s:5:"fresh";s:7:"use_ssl";s:1:"0";s:20:"show_admin_bar_front";s:4:"true";s:6:"locale";s:0:"";s:14:"account_status";s:8:"approved";s:19:"account_status_name";s:8:"Approved";s:4:"role";s:10:"subscriber";s:5:"roles";a:1:{i:0;s:10:"subscriber";}s:18:"can_access_wpadmin";i:0;s:20:"can_not_see_adminbar";i:1;s:17:"can_edit_everyone";i:0;s:19:"can_delete_everyone";i:0;s:16:"can_edit_profile";i:1;s:18:"can_delete_profile";i:1;s:11:"after_login";s:16:"redirect_profile";s:12:"after_logout";s:13:"redirect_home";s:16:"default_homepage";i:1;s:12:"can_view_all";i:1;s:24:"can_make_private_profile";i:0;s:26:"can_access_private_profile";i:0;s:6:"status";s:8:"approved";s:16:"auto_approve_act";s:16:"redirect_profile";s:11:"super_admin";i:0;}'
+###   @4='off'
+# at 705126
+#261004 18:42:19 server id 1  end_log_pos 705157 CRC32 0x18e46f52 	Xid = 1895
+COMMIT/*!*/;
+# at 705157
+#261004 18:42:19 server id 1  end_log_pos 705236 CRC32 0xe74c885a 	Anonymous_GTID	last_committed=289	sequence_number=362	rbr_only=yes	original_committed_timestamp=1791106939494373	immediate_commit_timestamp=1791106939494373	transaction_length=359
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939494373 (2026-10-04 18:42:19.494373 KST)
+# immediate_commit_timestamp=1791106939494373 (2026-10-04 18:42:19.494373 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939494373*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 705236
+#261004 18:42:19 server id 1  end_log_pos 705316 CRC32 0x17a1dd94 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 705316
+#261004 18:42:19 server id 1  end_log_pos 705387 CRC32 0xe87a061c 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 705387
+#261004 18:42:19 server id 1  end_log_pos 705485 CRC32 0x43bd0945 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=40
+###   @2=2
+###   @3='um_user_profile_url_slug_user_login'
+###   @4='rogue'
+# at 705485
+#261004 18:42:19 server id 1  end_log_pos 705516 CRC32 0xf273d48c 	Xid = 1897
+COMMIT/*!*/;
+# at 705516
+#261004 18:42:19 server id 1  end_log_pos 705595 CRC32 0x60fb85de 	Anonymous_GTID	last_committed=289	sequence_number=363	rbr_only=yes	original_committed_timestamp=1791106939495227	immediate_commit_timestamp=1791106939495227	transaction_length=341
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939495227 (2026-10-04 18:42:19.495227 KST)
+# immediate_commit_timestamp=1791106939495227 (2026-10-04 18:42:19.495227 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939495227*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 705595
+#261004 18:42:19 server id 1  end_log_pos 705675 CRC32 0x6eafb206 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 705675
+#261004 18:42:19 server id 1  end_log_pos 705746 CRC32 0xbbb3833c 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 705746
+#261004 18:42:19 server id 1  end_log_pos 705826 CRC32 0x318433da 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=41
+###   @2=2
+###   @3='account_status'
+###   @4='approved'
+# at 705826
+#261004 18:42:19 server id 1  end_log_pos 705857 CRC32 0x6d14e5b7 	Xid = 1903
+COMMIT/*!*/;
+# at 705857
+#261004 18:42:19 server id 1  end_log_pos 705936 CRC32 0x8f0aba42 	Anonymous_GTID	last_committed=289	sequence_number=364	rbr_only=yes	original_committed_timestamp=1791106939496020	immediate_commit_timestamp=1791106939496020	transaction_length=413
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939496020 (2026-10-04 18:42:19.496020 KST)
+# immediate_commit_timestamp=1791106939496020 (2026-10-04 18:42:19.496020 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939496020*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 705936
+#261004 18:42:19 server id 1  end_log_pos 706025 CRC32 0x48448635 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 706025
+#261004 18:42:19 server id 1  end_log_pos 706097 CRC32 0x90e5341a 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 706097
+#261004 18:42:19 server id 1  end_log_pos 706239 CRC32 0xde5d5213 	Update_rows: table id 203 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_options`
+### WHERE
+###   @1=143
+###   @2='_transient_um_count_users_approved'
+###   @3='1'
+###   @4='on'
+### SET
+###   @1=143
+###   @2='_transient_um_count_users_approved'
+###   @3='2'
+###   @4='on'
+# at 706239
+#261004 18:42:19 server id 1  end_log_pos 706270 CRC32 0x489fca65 	Xid = 1907
+COMMIT/*!*/;
+# at 706270
+#261004 18:42:19 server id 1  end_log_pos 706349 CRC32 0x3d24bd8f 	Anonymous_GTID	last_committed=331	sequence_number=365	rbr_only=yes	original_committed_timestamp=1791106939503575	immediate_commit_timestamp=1791106939503575	transaction_length=532
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939503575 (2026-10-04 18:42:19.503575 KST)
+# immediate_commit_timestamp=1791106939503575 (2026-10-04 18:42:19.503575 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939503575*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 706349
+#261004 18:42:19 server id 1  end_log_pos 706446 CRC32 0x3227a87f 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 706446
+#261004 18:42:19 server id 1  end_log_pos 706533 CRC32 0x1c1d2121 	Table_map: `wordpress`.`wp_users` mapped to number 207
+# has_generated_invisible_primary_key=0
+# at 706533
+#261004 18:42:19 server id 1  end_log_pos 706771 CRC32 0xfda32aa6 	Update_rows: table id 207 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_users`
+### WHERE
+###   @1=2
+###   @2='rogue'
+###   @3='$P$BlxzZ4fo/UN39HPTLtM/0K1nKPfvbG0'
+###   @4='rogue'
+###   @5='rogue@example.com'
+###   @6=''
+###   @7='2026-10-04 09:42:19'
+###   @8=''
+###   @9=0
+###   @10='rogue'
+### SET
+###   @1=2
+###   @2='rogue'
+###   @3='$P$BlxzZ4fo/UN39HPTLtM/0K1nKPfvbG0'
+###   @4='rogue'
+###   @5='rogue@example.com'
+###   @6=''
+###   @7='2026-10-04 09:42:19'
+###   @8=''
+###   @9=0
+###   @10='Rogue Admin'
+# at 706771
+#261004 18:42:19 server id 1  end_log_pos 706802 CRC32 0xd1a221da 	Xid = 1911
+COMMIT/*!*/;
+# at 706802
+#261004 18:42:19 server id 1  end_log_pos 706881 CRC32 0x8a25cca7 	Anonymous_GTID	last_committed=289	sequence_number=366	rbr_only=yes	original_committed_timestamp=1791106939505326	immediate_commit_timestamp=1791106939505326	transaction_length=339
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939505326 (2026-10-04 18:42:19.505326 KST)
+# immediate_commit_timestamp=1791106939505326 (2026-10-04 18:42:19.505326 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939505326*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 706881
+#261004 18:42:19 server id 1  end_log_pos 706961 CRC32 0x9fcffeae 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 706961
+#261004 18:42:19 server id 1  end_log_pos 707032 CRC32 0xab39646e 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 707032
+#261004 18:42:19 server id 1  end_log_pos 707110 CRC32 0xf0aa3b4e 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=42
+###   @2=2
+###   @3='full_name'
+###   @4='rogue admin'
+# at 707110
+#261004 18:42:19 server id 1  end_log_pos 707141 CRC32 0x2f738eb2 	Xid = 1919
+COMMIT/*!*/;
+# at 707141
+#261004 18:42:19 server id 1  end_log_pos 707220 CRC32 0x87bb7418 	Anonymous_GTID	last_committed=361	sequence_number=367	rbr_only=yes	original_committed_timestamp=1791106939506949	immediate_commit_timestamp=1791106939506949	transaction_length=3918
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939506949 (2026-10-04 18:42:19.506949 KST)
+# immediate_commit_timestamp=1791106939506949 (2026-10-04 18:42:19.506949 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939506949*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 707220
+#261004 18:42:19 server id 1  end_log_pos 707300 CRC32 0x67b92587 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 707300
+#261004 18:42:19 server id 1  end_log_pos 707372 CRC32 0xb632ac96 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 707372
+#261004 18:42:19 server id 1  end_log_pos 711028 CRC32 0x484d2a50 	Write_rows: table id 203 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_options`
+### SET
+###   @1=149
+###   @2='um_cache_userdata_2'
+###   @3='a:103:{s:2:"ID";i:2;s:10:"user_login";s:5:"rogue";s:9:"user_pass";s:34:"$P$BlxzZ4fo/UN39HPTLtM/0K1nKPfvbG0";s:13:"user_nicename";s:5:"rogue";s:10:"user_email";s:17:"rogue@example.com";s:8:"user_url";s:0:"";s:15:"user_registered";s:19:"2026-10-04 09:42:19";s:11:"user_status";s:1:"0";s:12:"display_name";s:11:"Rogue Admin";s:13:"administrator";s:1:"1";s:8:"wp_roles";s:13:"administrator";s:13:"switch_themes";b:1;s:11:"edit_themes";b:1;s:16:"activate_plugins";b:1;s:12:"edit_plugins";b:1;s:10:"edit_users";b:1;s:10:"edit_files";b:1;s:14:"manage_options";b:1;s:17:"moderate_comments";b:1;s:17:"manage_categories";b:1;s:12:"manage_links";b:1;s:12:"upload_files";b:1;s:6:"import";b:1;s:15:"unfiltered_html";b:1;s:10:"edit_posts";b:1;s:17:"edit_others_posts";b:1;s:20:"edit_published_posts";b:1;s:13:"publish_posts";b:1;s:10:"edit_pages";b:1;s:4:"read";b:1;s:17:"edit_others_pages";b:1;s:20:"edit_published_pages";b:1;s:13:"publish_pages";b:1;s:12:"delete_pages";b:1;s:19:"delete_others_pages";b:1;s:22:"delete_published_pages";b:1;s:12:"delete_posts";b:1;s:19:"delete_others_posts";b:1;s:22:"delete_published_posts";b:1;s:20:"delete_private_posts";b:1;s:18:"edit_private_posts";b:1;s:18:"read_private_posts";b:1;s:20:"delete_private_pages";b:1;s:18:"edit_private_pages";b:1;s:18:"read_private_pages";b:1;s:12:"delete_users";b:1;s:12:"create_users";b:1;s:17:"unfiltered_upload";b:1;s:14:"edit_dashboard";b:1;s:14:"update_plugins";b:1;s:14:"delete_plugins";b:1;s:15:"install_plugins";b:1;s:13:"update_themes";b:1;s:14:"install_themes";b:1;s:11:"update_core";b:1;s:10:"list_users";b:1;s:12:"remove_users";b:1;s:13:"promote_users";b:1;s:18:"edit_theme_options";b:1;s:13:"delete_themes";b:1;s:6:"export";b:1;s:6:"filter";N;s:16:"\x00WP_User\x00site_id";i:1;s:8:"nickname";s:5:"rogue";s:10:"first_name";s:5:"Rogue";s:9:"last_name";s:5:"Admin";s:11:"description";s:0:"";s:12:"rich_editing";s:4:"true";s:19:"syntax_highlighting";s:4:"true";s:17:"comment_shortcuts";s:5:"false";s:11:"admin_color";s:5:"fresh";s:7:"use_ssl";s:1:"0";s:20:"show_admin_bar_front";s:4:"true";s:6:"locale";s:0:"";s:25:"synced_gravatar_hashed_id";s:32:"d26f00f71d38c985603665357b16f048";s:24:"um_member_directory_data";s:137:"a:5:{s:14:"account_status";s:8:"approved";s:15:"hide_in_members";b:0;s:13:"profile_photo";b:0;s:11:"cover_photo";b:0;s:8:"verified";b:0;}";s:9:"submitted";s:348:"a:10:{s:7:"form_id";s:1:"5";s:10:"um_request";s:0:"";s:8:"_wpnonce";s:10:"1b4b64a087";s:16:"_wp_http_referer";s:10:"/register/";s:16:"wp_càpabilities";a:1:{s:13:"administrator";s:1:"1";}s:10:"user_login";s:5:"rogue";s:10:"first_name";s:5:"Rogue";s:9:"last_name";s:5:"Admin";s:10:"user_email";s:17:"rogue@example.com";s:9:"timestamp";i:1791106939;}";s:7:"form_id";s:1:"5";s:10:"um_request";s:0:"";s:8:"_wpnonce";s:10:"1b4b64a087";s:16:"_wp_http_referer";s:10:"/register/";s:9:"timestamp";s:10:"1791106939";s:35:"um_user_profile_url_slug_user_login";s:5:"rogue";s:14:"account_status";s:8:"approved";s:9:"full_name";s:11:"rogue admin";s:19:"account_status_name";s:8:"Approved";s:4:"role";s:13:"administrator";s:5:"roles";a:1:{i:0;s:13:"administrator";}s:18:"can_access_wpadmin";i:1;s:20:"can_not_see_adminbar";i:0;s:17:"can_edit_everyone";i:1;s:19:"can_delete_everyone";i:1;s:16:"can_edit_profile";i:1;s:18:"can_delete_profile";i:1;s:16:"default_homepage";i:1;s:11:"after_login";s:14:"redirect_admin";s:12:"after_logout";s:13:"redirect_home";s:12:"can_view_all";i:1;s:24:"can_make_private_profile";i:1;s:26:"can_access_private_profile";i:1;s:6:"status";s:8:"approved";s:16:"auto_approve_act";s:16:"redirect_profile";s:11:"super_admin";i:1;}'
+###   @4='off'
+# at 711028
+#261004 18:42:19 server id 1  end_log_pos 711059 CRC32 0xd2c02a6a 	Xid = 1923
+COMMIT/*!*/;
+# at 711059
+#261004 18:42:19 server id 1  end_log_pos 711138 CRC32 0x8981f345 	Anonymous_GTID	last_committed=357	sequence_number=368	rbr_only=yes	original_committed_timestamp=1791106939507743	immediate_commit_timestamp=1791106939507743	transaction_length=334
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939507743 (2026-10-04 18:42:19.507743 KST)
+# immediate_commit_timestamp=1791106939507743 (2026-10-04 18:42:19.507743 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939507743*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 711138
+#261004 18:42:19 server id 1  end_log_pos 711218 CRC32 0x98e8cde2 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 711218
+#261004 18:42:19 server id 1  end_log_pos 711289 CRC32 0x4fdbedcf 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 711289
+#261004 18:42:19 server id 1  end_log_pos 711362 CRC32 0x92f605f6 	Delete_rows: table id 208 flags: STMT_END_F
+### DELETE FROM `wordpress`.`wp_usermeta`
+### WHERE
+###   @1=38
+###   @2=2
+###   @3='user_login'
+###   @4='rogue'
+# at 711362
+#261004 18:42:19 server id 1  end_log_pos 711393 CRC32 0xa26438cb 	Xid = 1925
+COMMIT/*!*/;
+# at 711393
+#261004 18:42:19 server id 1  end_log_pos 711472 CRC32 0xf4d33903 	Anonymous_GTID	last_committed=367	sequence_number=369	rbr_only=yes	original_committed_timestamp=1791106939540344	immediate_commit_timestamp=1791106939540344	transaction_length=3918
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939540344 (2026-10-04 18:42:19.540344 KST)
+# immediate_commit_timestamp=1791106939540344 (2026-10-04 18:42:19.540344 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939540344*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 711472
+#261004 18:42:19 server id 1  end_log_pos 711552 CRC32 0xc93aca1b 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 711552
+#261004 18:42:19 server id 1  end_log_pos 711624 CRC32 0x5235b1a6 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 711624
+#261004 18:42:19 server id 1  end_log_pos 715280 CRC32 0xd35f5c5b 	Delete_rows: table id 203 flags: STMT_END_F
+### DELETE FROM `wordpress`.`wp_options`
+### WHERE
+###   @1=149
+###   @2='um_cache_userdata_2'
+###   @3='a:103:{s:2:"ID";i:2;s:10:"user_login";s:5:"rogue";s:9:"user_pass";s:34:"$P$BlxzZ4fo/UN39HPTLtM/0K1nKPfvbG0";s:13:"user_nicename";s:5:"rogue";s:10:"user_email";s:17:"rogue@example.com";s:8:"user_url";s:0:"";s:15:"user_registered";s:19:"2026-10-04 09:42:19";s:11:"user_status";s:1:"0";s:12:"display_name";s:11:"Rogue Admin";s:13:"administrator";s:1:"1";s:8:"wp_roles";s:13:"administrator";s:13:"switch_themes";b:1;s:11:"edit_themes";b:1;s:16:"activate_plugins";b:1;s:12:"edit_plugins";b:1;s:10:"edit_users";b:1;s:10:"edit_files";b:1;s:14:"manage_options";b:1;s:17:"moderate_comments";b:1;s:17:"manage_categories";b:1;s:12:"manage_links";b:1;s:12:"upload_files";b:1;s:6:"import";b:1;s:15:"unfiltered_html";b:1;s:10:"edit_posts";b:1;s:17:"edit_others_posts";b:1;s:20:"edit_published_posts";b:1;s:13:"publish_posts";b:1;s:10:"edit_pages";b:1;s:4:"read";b:1;s:17:"edit_others_pages";b:1;s:20:"edit_published_pages";b:1;s:13:"publish_pages";b:1;s:12:"delete_pages";b:1;s:19:"delete_others_pages";b:1;s:22:"delete_published_pages";b:1;s:12:"delete_posts";b:1;s:19:"delete_others_posts";b:1;s:22:"delete_published_posts";b:1;s:20:"delete_private_posts";b:1;s:18:"edit_private_posts";b:1;s:18:"read_private_posts";b:1;s:20:"delete_private_pages";b:1;s:18:"edit_private_pages";b:1;s:18:"read_private_pages";b:1;s:12:"delete_users";b:1;s:12:"create_users";b:1;s:17:"unfiltered_upload";b:1;s:14:"edit_dashboard";b:1;s:14:"update_plugins";b:1;s:14:"delete_plugins";b:1;s:15:"install_plugins";b:1;s:13:"update_themes";b:1;s:14:"install_themes";b:1;s:11:"update_core";b:1;s:10:"list_users";b:1;s:12:"remove_users";b:1;s:13:"promote_users";b:1;s:18:"edit_theme_options";b:1;s:13:"delete_themes";b:1;s:6:"export";b:1;s:6:"filter";N;s:16:"\x00WP_User\x00site_id";i:1;s:8:"nickname";s:5:"rogue";s:10:"first_name";s:5:"Rogue";s:9:"last_name";s:5:"Admin";s:11:"description";s:0:"";s:12:"rich_editing";s:4:"true";s:19:"syntax_highlighting";s:4:"true";s:17:"comment_shortcuts";s:5:"false";s:11:"admin_color";s:5:"fresh";s:7:"use_ssl";s:1:"0";s:20:"show_admin_bar_front";s:4:"true";s:6:"locale";s:0:"";s:25:"synced_gravatar_hashed_id";s:32:"d26f00f71d38c985603665357b16f048";s:24:"um_member_directory_data";s:137:"a:5:{s:14:"account_status";s:8:"approved";s:15:"hide_in_members";b:0;s:13:"profile_photo";b:0;s:11:"cover_photo";b:0;s:8:"verified";b:0;}";s:9:"submitted";s:348:"a:10:{s:7:"form_id";s:1:"5";s:10:"um_request";s:0:"";s:8:"_wpnonce";s:10:"1b4b64a087";s:16:"_wp_http_referer";s:10:"/register/";s:16:"wp_càpabilities";a:1:{s:13:"administrator";s:1:"1";}s:10:"user_login";s:5:"rogue";s:10:"first_name";s:5:"Rogue";s:9:"last_name";s:5:"Admin";s:10:"user_email";s:17:"rogue@example.com";s:9:"timestamp";i:1791106939;}";s:7:"form_id";s:1:"5";s:10:"um_request";s:0:"";s:8:"_wpnonce";s:10:"1b4b64a087";s:16:"_wp_http_referer";s:10:"/register/";s:9:"timestamp";s:10:"1791106939";s:35:"um_user_profile_url_slug_user_login";s:5:"rogue";s:14:"account_status";s:8:"approved";s:9:"full_name";s:11:"rogue admin";s:19:"account_status_name";s:8:"Approved";s:4:"role";s:13:"administrator";s:5:"roles";a:1:{i:0;s:13:"administrator";}s:18:"can_access_wpadmin";i:1;s:20:"can_not_see_adminbar";i:0;s:17:"can_edit_everyone";i:1;s:19:"can_delete_everyone";i:1;s:16:"can_edit_profile";i:1;s:18:"can_delete_profile";i:1;s:16:"default_homepage";i:1;s:11:"after_login";s:14:"redirect_admin";s:12:"after_logout";s:13:"redirect_home";s:12:"can_view_all";i:1;s:24:"can_make_private_profile";i:1;s:26:"can_access_private_profile";i:1;s:6:"status";s:8:"approved";s:16:"auto_approve_act";s:16:"redirect_profile";s:11:"super_admin";i:1;}'
+###   @4='off'
+# at 715280
+#261004 18:42:19 server id 1  end_log_pos 715311 CRC32 0xb9c68a45 	Xid = 1931
+COMMIT/*!*/;
+# at 715311
+#261004 18:42:19 server id 1  end_log_pos 715390 CRC32 0x1b1b64cb 	Anonymous_GTID	last_committed=364	sequence_number=370	rbr_only=yes	original_committed_timestamp=1791106939556731	immediate_commit_timestamp=1791106939556731	transaction_length=413
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939556731 (2026-10-04 18:42:19.556731 KST)
+# immediate_commit_timestamp=1791106939556731 (2026-10-04 18:42:19.556731 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939556731*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 715390
+#261004 18:42:19 server id 1  end_log_pos 715479 CRC32 0xdb1795b0 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 715479
+#261004 18:42:19 server id 1  end_log_pos 715551 CRC32 0x327b0323 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 715551
+#261004 18:42:19 server id 1  end_log_pos 715693 CRC32 0x6081df2d 	Update_rows: table id 203 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_options`
+### WHERE
+###   @1=143
+###   @2='_transient_um_count_users_approved'
+###   @3='2'
+###   @4='on'
+### SET
+###   @1=143
+###   @2='_transient_um_count_users_approved'
+###   @3='1'
+###   @4='on'
+# at 715693
+#261004 18:42:19 server id 1  end_log_pos 715724 CRC32 0x93d5182a 	Xid = 1935
+COMMIT/*!*/;
+# at 715724
+#261004 18:42:19 server id 1  end_log_pos 715803 CRC32 0x2d0b5665 	Anonymous_GTID	last_committed=363	sequence_number=371	rbr_only=yes	original_committed_timestamp=1791106939557194	immediate_commit_timestamp=1791106939557194	transaction_length=341
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939557194 (2026-10-04 18:42:19.557194 KST)
+# immediate_commit_timestamp=1791106939557194 (2026-10-04 18:42:19.557194 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939557194*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 715803
+#261004 18:42:19 server id 1  end_log_pos 715883 CRC32 0x11dc9db4 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 715883
+#261004 18:42:19 server id 1  end_log_pos 715954 CRC32 0x7da46a9f 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 715954
+#261004 18:42:19 server id 1  end_log_pos 716034 CRC32 0xe1f45bc2 	Delete_rows: table id 208 flags: STMT_END_F
+### DELETE FROM `wordpress`.`wp_usermeta`
+### WHERE
+###   @1=41
+###   @2=2
+###   @3='account_status'
+###   @4='approved'
+# at 716034
+#261004 18:42:19 server id 1  end_log_pos 716065 CRC32 0x2efff4e0 	Xid = 1936
+COMMIT/*!*/;
+# at 716065
+#261004 18:42:19 server id 1  end_log_pos 716144 CRC32 0x254587b8 	Anonymous_GTID	last_committed=289	sequence_number=372	rbr_only=yes	original_committed_timestamp=1791106939557934	immediate_commit_timestamp=1791106939557934	transaction_length=341
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939557934 (2026-10-04 18:42:19.557934 KST)
+# immediate_commit_timestamp=1791106939557934 (2026-10-04 18:42:19.557934 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939557934*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 716144
+#261004 18:42:19 server id 1  end_log_pos 716224 CRC32 0xf3d412b5 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 716224
+#261004 18:42:19 server id 1  end_log_pos 716295 CRC32 0x7b1d73d3 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 716295
+#261004 18:42:19 server id 1  end_log_pos 716375 CRC32 0x8299c3af 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=43
+###   @2=2
+###   @3='account_status'
+###   @4='approved'
+# at 716375
+#261004 18:42:19 server id 1  end_log_pos 716406 CRC32 0x5f7cfe90 	Xid = 1939
+COMMIT/*!*/;
+# at 716406
+#261004 18:42:19 server id 1  end_log_pos 716485 CRC32 0xd468048f 	Anonymous_GTID	last_committed=370	sequence_number=373	rbr_only=yes	original_committed_timestamp=1791106939558518	immediate_commit_timestamp=1791106939558518	transaction_length=413
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939558518 (2026-10-04 18:42:19.558518 KST)
+# immediate_commit_timestamp=1791106939558518 (2026-10-04 18:42:19.558518 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939558518*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 716485
+#261004 18:42:19 server id 1  end_log_pos 716574 CRC32 0x5abf7847 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 716574
+#261004 18:42:19 server id 1  end_log_pos 716646 CRC32 0xe6ab2d22 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 716646
+#261004 18:42:19 server id 1  end_log_pos 716788 CRC32 0x0ceb562d 	Update_rows: table id 203 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_options`
+### WHERE
+###   @1=143
+###   @2='_transient_um_count_users_approved'
+###   @3='1'
+###   @4='on'
+### SET
+###   @1=143
+###   @2='_transient_um_count_users_approved'
+###   @3='2'
+###   @4='on'
+# at 716788
+#261004 18:42:19 server id 1  end_log_pos 716819 CRC32 0x5103bbda 	Xid = 1942
+COMMIT/*!*/;
+# at 716819
+#261004 18:42:19 server id 1  end_log_pos 716898 CRC32 0x1c20593f 	Anonymous_GTID	last_committed=289	sequence_number=374	rbr_only=yes	original_committed_timestamp=1791106939559485	immediate_commit_timestamp=1791106939559485	transaction_length=528
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939559485 (2026-10-04 18:42:19.559485 KST)
+# immediate_commit_timestamp=1791106939559485 (2026-10-04 18:42:19.559485 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939559485*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 716898
+#261004 18:42:19 server id 1  end_log_pos 716978 CRC32 0x6b98a0e3 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 716978
+#261004 18:42:19 server id 1  end_log_pos 717049 CRC32 0xfb76e4ae 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 717049
+#261004 18:42:19 server id 1  end_log_pos 717316 CRC32 0x7c521e15 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=44
+###   @2=2
+###   @3='session_tokens'
+###   @4='a:1:{s:64:"f532999be4131f0393ec30147b98211bc9925f5179ded6f7ca0913ba10763992";a:4:{s:10:"expiration";i:1791279739;s:2:"ip";s:10:"5.188.10.3";s:2:"ua";s:11:"curl/8.21.0";s:5:"login";i:1791106939;}}'
+# at 717316
+#261004 18:42:19 server id 1  end_log_pos 717347 CRC32 0xcd265f6a 	Xid = 1946
+COMMIT/*!*/;
+# at 717347
+#261004 18:42:19 server id 1  end_log_pos 717426 CRC32 0x28347dfd 	Anonymous_GTID	last_committed=289	sequence_number=375	rbr_only=yes	original_committed_timestamp=1791106939560614	immediate_commit_timestamp=1791106939560614	transaction_length=343
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939560614 (2026-10-04 18:42:19.560614 KST)
+# immediate_commit_timestamp=1791106939560614 (2026-10-04 18:42:19.560614 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939560614*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 717426
+#261004 18:42:19 server id 1  end_log_pos 717506 CRC32 0xecfa5c57 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 717506
+#261004 18:42:19 server id 1  end_log_pos 717577 CRC32 0xed4e2f4d 	Table_map: `wordpress`.`wp_usermeta` mapped to number 208
+# has_generated_invisible_primary_key=0
+# at 717577
+#261004 18:42:19 server id 1  end_log_pos 717659 CRC32 0x027d7e24 	Write_rows: table id 208 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_usermeta`
+### SET
+###   @1=45
+###   @2=2
+###   @3='_um_last_login'
+###   @4='1791106939'
+# at 717659
+#261004 18:42:19 server id 1  end_log_pos 717690 CRC32 0x9328bb2b 	Xid = 1949
+COMMIT/*!*/;
+# at 717690
+#261004 18:42:19 server id 1  end_log_pos 717769 CRC32 0x5a0b334b 	Anonymous_GTID	last_committed=369	sequence_number=376	rbr_only=yes	original_committed_timestamp=1791106939562466	immediate_commit_timestamp=1791106939562466	transaction_length=3958
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791106939562466 (2026-10-04 18:42:19.562466 KST)
+# immediate_commit_timestamp=1791106939562466 (2026-10-04 18:42:19.562466 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791106939562466*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 717769
+#261004 18:42:19 server id 1  end_log_pos 717849 CRC32 0x8a774491 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791106939/*!*/;
+BEGIN
+/*!*/;
+# at 717849
+#261004 18:42:19 server id 1  end_log_pos 717921 CRC32 0x1d381858 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 717921
+#261004 18:42:19 server id 1  end_log_pos 721617 CRC32 0x68a53ef0 	Write_rows: table id 203 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_options`
+### SET
+###   @1=150
+###   @2='um_cache_userdata_2'
+###   @3='a:104:{s:2:"ID";i:2;s:10:"user_login";s:5:"rogue";s:9:"user_pass";s:34:"$P$BlxzZ4fo/UN39HPTLtM/0K1nKPfvbG0";s:13:"user_nicename";s:5:"rogue";s:10:"user_email";s:17:"rogue@example.com";s:8:"user_url";s:0:"";s:15:"user_registered";s:19:"2026-10-04 09:42:19";s:11:"user_status";s:1:"0";s:12:"display_name";s:11:"Rogue Admin";s:13:"administrator";s:1:"1";s:8:"wp_roles";s:13:"administrator";s:13:"switch_themes";b:1;s:11:"edit_themes";b:1;s:16:"activate_plugins";b:1;s:12:"edit_plugins";b:1;s:10:"edit_users";b:1;s:10:"edit_files";b:1;s:14:"manage_options";b:1;s:17:"moderate_comments";b:1;s:17:"manage_categories";b:1;s:12:"manage_links";b:1;s:12:"upload_files";b:1;s:6:"import";b:1;s:15:"unfiltered_html";b:1;s:10:"edit_posts";b:1;s:17:"edit_others_posts";b:1;s:20:"edit_published_posts";b:1;s:13:"publish_posts";b:1;s:10:"edit_pages";b:1;s:4:"read";b:1;s:17:"edit_others_pages";b:1;s:20:"edit_published_pages";b:1;s:13:"publish_pages";b:1;s:12:"delete_pages";b:1;s:19:"delete_others_pages";b:1;s:22:"delete_published_pages";b:1;s:12:"delete_posts";b:1;s:19:"delete_others_posts";b:1;s:22:"delete_published_posts";b:1;s:20:"delete_private_posts";b:1;s:18:"edit_private_posts";b:1;s:18:"read_private_posts";b:1;s:20:"delete_private_pages";b:1;s:18:"edit_private_pages";b:1;s:18:"read_private_pages";b:1;s:12:"delete_users";b:1;s:12:"create_users";b:1;s:17:"unfiltered_upload";b:1;s:14:"edit_dashboard";b:1;s:14:"update_plugins";b:1;s:14:"delete_plugins";b:1;s:15:"install_plugins";b:1;s:13:"update_themes";b:1;s:14:"install_themes";b:1;s:11:"update_core";b:1;s:10:"list_users";b:1;s:12:"remove_users";b:1;s:13:"promote_users";b:1;s:18:"edit_theme_options";b:1;s:13:"delete_themes";b:1;s:6:"export";b:1;s:6:"filter";N;s:16:"\x00WP_User\x00site_id";i:1;s:8:"nickname";s:5:"rogue";s:10:"first_name";s:5:"Rogue";s:9:"last_name";s:5:"Admin";s:11:"description";s:0:"";s:12:"rich_editing";s:4:"true";s:19:"syntax_highlighting";s:4:"true";s:17:"comment_shortcuts";s:5:"false";s:11:"admin_color";s:5:"fresh";s:7:"use_ssl";s:1:"0";s:20:"show_admin_bar_front";s:4:"true";s:6:"locale";s:0:"";s:25:"synced_gravatar_hashed_id";s:32:"d26f00f71d38c985603665357b16f048";s:24:"um_member_directory_data";s:137:"a:5:{s:14:"account_status";s:8:"approved";s:15:"hide_in_members";b:0;s:13:"profile_photo";b:0;s:11:"cover_photo";b:0;s:8:"verified";b:0;}";s:9:"submitted";s:348:"a:10:{s:7:"form_id";s:1:"5";s:10:"um_request";s:0:"";s:8:"_wpnonce";s:10:"1b4b64a087";s:16:"_wp_http_referer";s:10:"/register/";s:16:"wp_càpabilities";a:1:{s:13:"administrator";s:1:"1";}s:10:"user_login";s:5:"rogue";s:10:"first_name";s:5:"Rogue";s:9:"last_name";s:5:"Admin";s:10:"user_email";s:17:"rogue@example.com";s:9:"timestamp";i:1791106939;}";s:7:"form_id";s:1:"5";s:10:"um_request";s:0:"";s:8:"_wpnonce";s:10:"1b4b64a087";s:16:"_wp_http_referer";s:10:"/register/";s:9:"timestamp";s:10:"1791106939";s:35:"um_user_profile_url_slug_user_login";s:5:"rogue";s:9:"full_name";s:11:"rogue admin";s:14:"account_status";s:8:"approved";s:14:"_um_last_login";s:10:"1791106939";s:19:"account_status_name";s:8:"Approved";s:4:"role";s:13:"administrator";s:5:"roles";a:1:{i:0;s:13:"administrator";}s:18:"can_access_wpadmin";i:1;s:20:"can_not_see_adminbar";i:0;s:17:"can_edit_everyone";i:1;s:19:"can_delete_everyone";i:1;s:16:"can_edit_profile";i:1;s:18:"can_delete_profile";i:1;s:16:"default_homepage";i:1;s:11:"after_login";s:14:"redirect_admin";s:12:"after_logout";s:13:"redirect_home";s:12:"can_view_all";i:1;s:24:"can_make_private_profile";i:1;s:26:"can_access_private_profile";i:1;s:6:"status";s:8:"approved";s:16:"auto_approve_act";s:16:"redirect_profile";s:11:"super_admin";i:1;}'
+###   @4='off'
+# at 721617
+#261004 18:42:19 server id 1  end_log_pos 721648 CRC32 0xc22c03fa 	Xid = 1954
+COMMIT/*!*/;
+SET @@SESSION.GTID_NEXT= 'AUTOMATIC' /* added by mysqlbinlog */ /*!*/;
+DELIMITER ;
+# End of log file
+/*!50003 SET COMPLETION_TYPE=@OLD_COMPLETION_TYPE*/;
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=0*/;

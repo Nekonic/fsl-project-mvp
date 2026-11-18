@@ -1,0 +1,469 @@
+# The proper term is pseudo_replica_mode, but we use this compatibility alias
+# to make the statement usable on server versions 8.0.24 and older.
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=1*/;
+/*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
+DELIMITER /*!*/;
+# at 4
+#261004 19:16:45 server id 1  end_log_pos 127 CRC32 0xefcf612d 	Start: binlog v 4, server v 8.4.11 created 261004 19:16:45 at startup
+# Warning: this binlog is either in use or was not closed properly.
+ROLLBACK/*!*/;
+# at 127
+#261004 19:16:45 server id 1  end_log_pos 158 CRC32 0x38e331b2 	Previous-GTIDs
+# [fixture trimmed to the option-flip admin-ajax requests]
+# at 700870
+#261004 19:27:44 server id 1  end_log_pos 700949 CRC32 0x888beb0f 	Anonymous_GTID	last_committed=289	sequence_number=336	rbr_only=yes	original_committed_timestamp=1791109664344259	immediate_commit_timestamp=1791109664344259	transaction_length=381
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791109664344259 (2026-10-04 19:27:44.344259 KST)
+# immediate_commit_timestamp=1791109664344259 (2026-10-04 19:27:44.344259 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791109664344259*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 700949
+#261004 19:27:44 server id 1  end_log_pos 701038 CRC32 0x99eb8ffe 	Query	thread_id=210	exec_time=0	error_code=0
+SET TIMESTAMP=1791109664/*!*/;
+BEGIN
+/*!*/;
+# at 701038
+#261004 19:27:44 server id 1  end_log_pos 701110 CRC32 0x0c9bde23 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 701110
+#261004 19:27:44 server id 1  end_log_pos 701220 CRC32 0x829d1686 	Update_rows: table id 203 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_options`
+### WHERE
+###   @1=6
+###   @2='users_can_register'
+###   @3='0'
+###   @4='on'
+### SET
+###   @1=6
+###   @2='users_can_register'
+###   @3='1'
+###   @4='on'
+# at 701220
+#261004 19:27:44 server id 1  end_log_pos 701251 CRC32 0x712cd427 	Xid = 8380
+COMMIT/*!*/;
+# at 701251
+#261004 19:27:46 server id 1  end_log_pos 701330 CRC32 0xf2b440ae 	Anonymous_GTID	last_committed=333	sequence_number=337	rbr_only=yes	original_committed_timestamp=1791109666760486	immediate_commit_timestamp=1791109666760486	transaction_length=369
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791109666760486 (2026-10-04 19:27:46.760486 KST)
+# immediate_commit_timestamp=1791109666760486 (2026-10-04 19:27:46.760486 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791109666760486*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 701330
+#261004 19:27:46 server id 1  end_log_pos 701410 CRC32 0x8b600ca3 	Query	thread_id=215	exec_time=0	error_code=0
+SET TIMESTAMP=1791109666/*!*/;
+BEGIN
+/*!*/;
+# at 701410
+#261004 19:27:46 server id 1  end_log_pos 701482 CRC32 0xcd25a64a 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 701482
+#261004 19:27:46 server id 1  end_log_pos 701589 CRC32 0x576fc1ff 	Write_rows: table id 203 flags: STMT_END_F
+### INSERT INTO `wordpress`.`wp_options`
+### SET
+###   @1=151
+###   @2='_transient_doing_cron'
+###   @3='1791109666.7593190670013427734375'
+###   @4='on'
+# at 701589
+#261004 19:27:46 server id 1  end_log_pos 701620 CRC32 0x9bc5164f 	Xid = 8517
+COMMIT/*!*/;
+# at 701620
+#261004 19:27:46 server id 1  end_log_pos 701699 CRC32 0x732704d2 	Anonymous_GTID	last_committed=335	sequence_number=338	rbr_only=yes	original_committed_timestamp=1791109666791319	immediate_commit_timestamp=1791109666791319	transaction_length=4538
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791109666791319 (2026-10-04 19:27:46.791319 KST)
+# immediate_commit_timestamp=1791109666791319 (2026-10-04 19:27:46.791319 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791109666791319*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 701699
+#261004 19:27:46 server id 1  end_log_pos 701788 CRC32 0x28e098d8 	Query	thread_id=216	exec_time=0	error_code=0
+SET TIMESTAMP=1791109666/*!*/;
+BEGIN
+/*!*/;
+# at 701788
+#261004 19:27:46 server id 1  end_log_pos 701860 CRC32 0xcb37ef86 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 701860
+#261004 19:27:46 server id 1  end_log_pos 706127 CRC32 0x55d5e62c 	Update_rows: table id 203 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_options`
+### WHERE
+###   @1=1
+###   @2='cron'
+###   @3='a:9:{i:1791109657;a:4:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}s:7:"version";i:2;}'
+###   @4='auto'
+### SET
+###   @1=1
+###   @2='cron'
+###   @3='a:10:{i:1791109657;a:4:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+# at 706127
+#261004 19:27:46 server id 1  end_log_pos 706158 CRC32 0x1c360500 	Xid = 8537
+COMMIT/*!*/;
+# at 706158
+#261004 19:27:46 server id 1  end_log_pos 706237 CRC32 0x072b9cef 	Anonymous_GTID	last_committed=338	sequence_number=339	rbr_only=yes	original_committed_timestamp=1791109666792314	immediate_commit_timestamp=1791109666792314	transaction_length=4558
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791109666792314 (2026-10-04 19:27:46.792314 KST)
+# immediate_commit_timestamp=1791109666792314 (2026-10-04 19:27:46.792314 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791109666792314*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 706237
+#261004 19:27:46 server id 1  end_log_pos 706326 CRC32 0x83524008 	Query	thread_id=216	exec_time=0	error_code=0
+SET TIMESTAMP=1791109666/*!*/;
+BEGIN
+/*!*/;
+# at 706326
+#261004 19:27:46 server id 1  end_log_pos 706398 CRC32 0x3b69f5f8 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 706398
+#261004 19:27:46 server id 1  end_log_pos 710685 CRC32 0x26094e98 	Update_rows: table id 203 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_options`
+### WHERE
+###   @1=1
+###   @2='cron'
+###   @3='a:10:{i:1791109657;a:4:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+### SET
+###   @1=1
+###   @2='cron'
+###   @3='a:10:{i:1791109657;a:3:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+# at 710685
+#261004 19:27:46 server id 1  end_log_pos 710716 CRC32 0xd697a727 	Xid = 8539
+COMMIT/*!*/;
+# at 710716
+#261004 19:27:46 server id 1  end_log_pos 710795 CRC32 0xede6b9bd 	Anonymous_GTID	last_committed=339	sequence_number=340	rbr_only=yes	original_committed_timestamp=1791109666793087	immediate_commit_timestamp=1791109666793087	transaction_length=4574
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791109666793087 (2026-10-04 19:27:46.793087 KST)
+# immediate_commit_timestamp=1791109666793087 (2026-10-04 19:27:46.793087 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791109666793087*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 710795
+#261004 19:27:46 server id 1  end_log_pos 710884 CRC32 0x664976e8 	Query	thread_id=216	exec_time=0	error_code=0
+SET TIMESTAMP=1791109666/*!*/;
+BEGIN
+/*!*/;
+# at 710884
+#261004 19:27:46 server id 1  end_log_pos 710956 CRC32 0x56ed15b4 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 710956
+#261004 19:27:46 server id 1  end_log_pos 715259 CRC32 0x28277254 	Update_rows: table id 203 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_options`
+### WHERE
+###   @1=1
+###   @2='cron'
+###   @3='a:10:{i:1791109657;a:3:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+### SET
+###   @1=1
+###   @2='cron'
+###   @3='a:11:{i:1791109657;a:3:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791196057;a:1:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+# at 715259
+#261004 19:27:46 server id 1  end_log_pos 715290 CRC32 0xccf4c249 	Xid = 8542
+COMMIT/*!*/;
+# at 715290
+#261004 19:27:46 server id 1  end_log_pos 715369 CRC32 0x7dc515eb 	Anonymous_GTID	last_committed=340	sequence_number=341	rbr_only=yes	original_committed_timestamp=1791109666793918	immediate_commit_timestamp=1791109666793918	transaction_length=4593
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791109666793918 (2026-10-04 19:27:46.793918 KST)
+# immediate_commit_timestamp=1791109666793918 (2026-10-04 19:27:46.793918 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791109666793918*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 715369
+#261004 19:27:46 server id 1  end_log_pos 715458 CRC32 0xc8bc6501 	Query	thread_id=216	exec_time=0	error_code=0
+SET TIMESTAMP=1791109666/*!*/;
+BEGIN
+/*!*/;
+# at 715458
+#261004 19:27:46 server id 1  end_log_pos 715530 CRC32 0x2c10369e 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 715530
+#261004 19:27:46 server id 1  end_log_pos 719852 CRC32 0x895563a8 	Update_rows: table id 203 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_options`
+### WHERE
+###   @1=1
+###   @2='cron'
+###   @3='a:11:{i:1791109657;a:3:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791196057;a:1:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+### SET
+###   @1=1
+###   @2='cron'
+###   @3='a:11:{i:1791109657;a:2:{s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791196057;a:1:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+# at 719852
+#261004 19:27:46 server id 1  end_log_pos 719883 CRC32 0xb3ec271b 	Xid = 8544
+COMMIT/*!*/;
+# at 719883
+#261004 19:27:46 server id 1  end_log_pos 719962 CRC32 0x77fa416e 	Anonymous_GTID	last_committed=341	sequence_number=342	rbr_only=yes	original_committed_timestamp=1791109666794801	immediate_commit_timestamp=1791109666794801	transaction_length=4623
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791109666794801 (2026-10-04 19:27:46.794801 KST)
+# immediate_commit_timestamp=1791109666794801 (2026-10-04 19:27:46.794801 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791109666794801*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 719962
+#261004 19:27:46 server id 1  end_log_pos 720051 CRC32 0xd4957885 	Query	thread_id=216	exec_time=0	error_code=0
+SET TIMESTAMP=1791109666/*!*/;
+BEGIN
+/*!*/;
+# at 720051
+#261004 19:27:46 server id 1  end_log_pos 720123 CRC32 0x2bca333f 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 720123
+#261004 19:27:46 server id 1  end_log_pos 724475 CRC32 0x232cacf3 	Update_rows: table id 203 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_options`
+### WHERE
+###   @1=1
+###   @2='cron'
+###   @3='a:11:{i:1791109657;a:2:{s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791196057;a:1:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+### SET
+###   @1=1
+###   @2='cron'
+###   @3='a:12:{i:1791109657;a:2:{s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791152857;a:1:{s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791196057;a:1:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+# at 724475
+#261004 19:27:46 server id 1  end_log_pos 724506 CRC32 0x27b95d55 	Xid = 8547
+COMMIT/*!*/;
+# at 724506
+#261004 19:27:46 server id 1  end_log_pos 724585 CRC32 0x27ab694a 	Anonymous_GTID	last_committed=342	sequence_number=343	rbr_only=yes	original_committed_timestamp=1791109666795615	immediate_commit_timestamp=1791109666795615	transaction_length=4642
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791109666795615 (2026-10-04 19:27:46.795615 KST)
+# immediate_commit_timestamp=1791109666795615 (2026-10-04 19:27:46.795615 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791109666795615*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 724585
+#261004 19:27:46 server id 1  end_log_pos 724674 CRC32 0x45775fa2 	Query	thread_id=216	exec_time=0	error_code=0
+SET TIMESTAMP=1791109666/*!*/;
+BEGIN
+/*!*/;
+# at 724674
+#261004 19:27:46 server id 1  end_log_pos 724746 CRC32 0xdb55a047 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 724746
+#261004 19:27:46 server id 1  end_log_pos 729117 CRC32 0x2c8cd89e 	Update_rows: table id 203 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_options`
+### WHERE
+###   @1=1
+###   @2='cron'
+###   @3='a:12:{i:1791109657;a:2:{s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791152857;a:1:{s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791196057;a:1:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+### SET
+###   @1=1
+###   @2='cron'
+###   @3='a:12:{i:1791109657;a:1:{s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791152857;a:1:{s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791196057;a:1:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+# at 729117
+#261004 19:27:46 server id 1  end_log_pos 729148 CRC32 0x9de820f9 	Xid = 8549
+COMMIT/*!*/;
+# at 729148
+#261004 19:27:46 server id 1  end_log_pos 729227 CRC32 0xd6ffd7f7 	Anonymous_GTID	last_committed=343	sequence_number=344	rbr_only=yes	original_committed_timestamp=1791109666796584	immediate_commit_timestamp=1791109666796584	transaction_length=4651
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791109666796584 (2026-10-04 19:27:46.796584 KST)
+# immediate_commit_timestamp=1791109666796584 (2026-10-04 19:27:46.796584 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791109666796584*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 729227
+#261004 19:27:46 server id 1  end_log_pos 729316 CRC32 0x9c0b0366 	Query	thread_id=216	exec_time=0	error_code=0
+SET TIMESTAMP=1791109666/*!*/;
+BEGIN
+/*!*/;
+# at 729316
+#261004 19:27:46 server id 1  end_log_pos 729388 CRC32 0xb049f365 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 729388
+#261004 19:27:46 server id 1  end_log_pos 733768 CRC32 0x17d28816 	Update_rows: table id 203 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_options`
+### WHERE
+###   @1=1
+###   @2='cron'
+###   @3='a:12:{i:1791109657;a:1:{s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791152857;a:1:{s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791196057;a:1:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+### SET
+###   @1=1
+###   @2='cron'
+###   @3='a:13:{i:1791109657;a:1:{s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791113257;a:1:{s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791152857;a:1:{s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791196057;a:1:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+# at 733768
+#261004 19:27:46 server id 1  end_log_pos 733799 CRC32 0xba85d6c9 	Xid = 8552
+COMMIT/*!*/;
+# at 733799
+#261004 19:27:46 server id 1  end_log_pos 733878 CRC32 0x91a3a147 	Anonymous_GTID	last_committed=344	sequence_number=345	rbr_only=yes	original_committed_timestamp=1791109666797384	immediate_commit_timestamp=1791109666797384	transaction_length=4651
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791109666797384 (2026-10-04 19:27:46.797384 KST)
+# immediate_commit_timestamp=1791109666797384 (2026-10-04 19:27:46.797384 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791109666797384*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 733878
+#261004 19:27:46 server id 1  end_log_pos 733967 CRC32 0xfe73689c 	Query	thread_id=216	exec_time=0	error_code=0
+SET TIMESTAMP=1791109666/*!*/;
+BEGIN
+/*!*/;
+# at 733967
+#261004 19:27:46 server id 1  end_log_pos 734039 CRC32 0x3f19d590 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 734039
+#261004 19:27:46 server id 1  end_log_pos 738419 CRC32 0x76762d47 	Update_rows: table id 203 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_options`
+### WHERE
+###   @1=1
+###   @2='cron'
+###   @3='a:13:{i:1791109657;a:1:{s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791113257;a:1:{s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791152857;a:1:{s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791196057;a:1:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+### SET
+###   @1=1
+###   @2='cron'
+###   @3='a:12:{i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791113257;a:1:{s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791152857;a:1:{s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791196057;a:1:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+# at 738419
+#261004 19:27:46 server id 1  end_log_pos 738450 CRC32 0x0f0e4027 	Xid = 8554
+COMMIT/*!*/;
+# at 738450
+#261004 19:27:46 server id 1  end_log_pos 738529 CRC32 0xb829d7d7 	Anonymous_GTID	last_committed=345	sequence_number=346	rbr_only=yes	original_committed_timestamp=1791109666798086	immediate_commit_timestamp=1791109666798086	transaction_length=4652
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791109666798086 (2026-10-04 19:27:46.798086 KST)
+# immediate_commit_timestamp=1791109666798086 (2026-10-04 19:27:46.798086 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791109666798086*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 738529
+#261004 19:27:46 server id 1  end_log_pos 738618 CRC32 0xcac9acce 	Query	thread_id=216	exec_time=0	error_code=0
+SET TIMESTAMP=1791109666/*!*/;
+BEGIN
+/*!*/;
+# at 738618
+#261004 19:27:46 server id 1  end_log_pos 738690 CRC32 0x77e79901 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 738690
+#261004 19:27:46 server id 1  end_log_pos 743071 CRC32 0x9f965551 	Update_rows: table id 203 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_options`
+### WHERE
+###   @1=1
+###   @2='cron'
+###   @3='a:12:{i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791113257;a:1:{s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791152857;a:1:{s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791196057;a:1:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+### SET
+###   @1=1
+###   @2='cron'
+###   @3='a:13:{i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791113257;a:1:{s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791152857;a:1:{s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791152864;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791196057;a:1:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+# at 743071
+#261004 19:27:46 server id 1  end_log_pos 743102 CRC32 0x3601b35a 	Xid = 8557
+COMMIT/*!*/;
+# at 743102
+#261004 19:27:46 server id 1  end_log_pos 743181 CRC32 0x7010554c 	Anonymous_GTID	last_committed=346	sequence_number=347	rbr_only=yes	original_committed_timestamp=1791109666798884	immediate_commit_timestamp=1791109666798884	transaction_length=4652
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791109666798884 (2026-10-04 19:27:46.798884 KST)
+# immediate_commit_timestamp=1791109666798884 (2026-10-04 19:27:46.798884 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791109666798884*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 743181
+#261004 19:27:46 server id 1  end_log_pos 743270 CRC32 0x181a65d5 	Query	thread_id=216	exec_time=0	error_code=0
+SET TIMESTAMP=1791109666/*!*/;
+BEGIN
+/*!*/;
+# at 743270
+#261004 19:27:46 server id 1  end_log_pos 743342 CRC32 0xb6c4740a 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 743342
+#261004 19:27:46 server id 1  end_log_pos 747723 CRC32 0x744be5e9 	Update_rows: table id 203 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_options`
+### WHERE
+###   @1=1
+###   @2='cron'
+###   @3='a:13:{i:1791109664;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791113257;a:1:{s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791152857;a:1:{s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791152864;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791196057;a:1:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+### SET
+###   @1=1
+###   @2='cron'
+###   @3='a:12:{i:1791109724;a:1:{s:28:"wp_update_comment_type_batch";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:2:{s:8:"schedule";b:0;s:4:"args";a:0:{}}}}i:1791112610;a:1:{s:16:"wp_version_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791112611;a:1:{s:34:"wp_privacy_delete_old_export_files";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791113257;a:1:{s:26:"um_hourly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"hourly";s:4:"args";a:0:{}s:8:"interval";i:3600;}}}i:1791114410;a:1:{s:17:"wp_update_plugins";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791116210;a:1:{s:16:"wp_update_themes";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791152857;a:1:{s:30:"um_twicedaily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791152864;a:1:{s:21:"wp_update_user_counts";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:10:"twicedaily";s:4:"args";a:0:{}s:8:"interval";i:43200;}}}i:1791195411;a:2:{s:30:"wp_site_health_scheduled_check";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}s:32:"recovery_mode_clean_expired_keys";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791196057;a:1:{s:25:"um_daily_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:5:"daily";s:4:"args";a:0:{}s:8:"interval";i:86400;}}}i:1791714457;a:1:{s:26:"um_weekly_scheduled_events";a:1:{s:32:"40cd750bba9870f18aada2478b24840a";a:3:{s:8:"schedule";s:6:"weekly";s:4:"args";a:0:{}s:8:"interval";i:604800;}}}s:7:"version";i:2;}'
+###   @4='auto'
+# at 747723
+#261004 19:27:46 server id 1  end_log_pos 747754 CRC32 0xb71c113e 	Xid = 8559
+COMMIT/*!*/;
+# at 747754
+#261004 19:27:46 server id 1  end_log_pos 747833 CRC32 0xd0363d75 	Anonymous_GTID	last_committed=337	sequence_number=348	rbr_only=yes	original_committed_timestamp=1791109666799572	immediate_commit_timestamp=1791109666799572	transaction_length=369
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791109666799572 (2026-10-04 19:27:46.799572 KST)
+# immediate_commit_timestamp=1791109666799572 (2026-10-04 19:27:46.799572 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791109666799572*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 747833
+#261004 19:27:46 server id 1  end_log_pos 747913 CRC32 0xb0d1cebc 	Query	thread_id=216	exec_time=0	error_code=0
+SET TIMESTAMP=1791109666/*!*/;
+BEGIN
+/*!*/;
+# at 747913
+#261004 19:27:46 server id 1  end_log_pos 747985 CRC32 0x8e944317 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 747985
+#261004 19:27:46 server id 1  end_log_pos 748092 CRC32 0x83ee3e3c 	Delete_rows: table id 203 flags: STMT_END_F
+### DELETE FROM `wordpress`.`wp_options`
+### WHERE
+###   @1=151
+###   @2='_transient_doing_cron'
+###   @3='1791109666.7593190670013427734375'
+###   @4='on'
+# at 748092
+#261004 19:27:46 server id 1  end_log_pos 748123 CRC32 0x49feca31 	Xid = 8563
+COMMIT/*!*/;
+# at 748123
+#261004 19:27:54 server id 1  end_log_pos 748202 CRC32 0xa85bd803 	Anonymous_GTID	last_committed=289	sequence_number=349	rbr_only=yes	original_committed_timestamp=1791109674859688	immediate_commit_timestamp=1791109674859688	transaction_length=390
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791109674859688 (2026-10-04 19:27:54.859688 KST)
+# immediate_commit_timestamp=1791109674859688 (2026-10-04 19:27:54.859688 KST)
+/*!80001 SET @@session.original_commit_timestamp=1791109674859688*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 748202
+#261004 19:27:54 server id 1  end_log_pos 748291 CRC32 0xb0ac69fb 	Query	thread_id=218	exec_time=0	error_code=0
+SET TIMESTAMP=1791109674/*!*/;
+BEGIN
+/*!*/;
+# at 748291
+#261004 19:27:54 server id 1  end_log_pos 748363 CRC32 0xd0c0ca10 	Table_map: `wordpress`.`wp_options` mapped to number 203
+# has_generated_invisible_primary_key=0
+# at 748363
+#261004 19:27:54 server id 1  end_log_pos 748482 CRC32 0x6c910cdc 	Update_rows: table id 203 flags: STMT_END_F
+### UPDATE `wordpress`.`wp_options`
+### WHERE
+###   @1=46
+###   @2='default_role'
+###   @3='subscriber'
+###   @4='on'
+### SET
+###   @1=46
+###   @2='default_role'
+###   @3='administrator'
+###   @4='on'
+# at 748482
+#261004 19:27:54 server id 1  end_log_pos 748513 CRC32 0x3a2283a0 	Xid = 8605
+COMMIT/*!*/;
+SET @@SESSION.GTID_NEXT= 'AUTOMATIC' /* added by mysqlbinlog */ /*!*/;
+DELIMITER ;
+# End of log file
+/*!50003 SET COMPLETION_TYPE=@OLD_COMPLETION_TYPE*/;
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=0*/;

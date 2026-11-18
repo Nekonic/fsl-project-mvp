@@ -1,0 +1,48 @@
+from __future__ import annotations
+
+RULE_PATH = "/var/lib/suricata/rules/local.rules"
+
+class RuleApplyError(RuntimeError):
+    pass
+
+class RulesUnreadable(RuntimeError):
+    pass
+
+def current(sensor, path: str = RULE_PATH) -> str:
+    ran = sensor(["cat", path])
+    if not ran.ok:
+        raise RulesUnreadable(f"could not read {path}: {ran.output.strip()}")
+    return ran.output
+
+def validate(content: str, sensor):
+    return sensor(["suricata", "-T", "-S", "/dev/stdin"], stdin=content)
+
+def apply(content: str, sensor, reload_command, path: str = RULE_PATH) -> None:
+    outcome = validate(content, sensor)
+    if not outcome.ok:
+        raise RuleApplyError(outcome.output.strip())
+
+    previous = current(sensor, path)
+    _write(sensor, path, content)
+
+    ran = sensor(list(reload_command))
+    if not _reloaded(ran):
+        _write(sensor, path, previous)
+        raise RuleApplyError(
+            "reload failed, rolled back to the previous rule set: "
+            + ran.output.strip()
+        )
+
+def seed(content: str, sensor, reload_command, path: str = RULE_PATH) -> None:
+    _write(sensor, path, content)
+    ran = sensor(list(reload_command))
+    if not _reloaded(ran):
+        raise RuleApplyError("the sensor did not load its starting rule set: " + ran.output.strip())
+
+def _reloaded(ran) -> bool:
+    return ran.ok and '"return":"OK"' in ran.output.replace(" ", "")
+
+def _write(sensor, path: str, content: str) -> None:
+    ran = sensor(["sh", "-c", f"mkdir -p {path.rpartition('/')[0]} && cat > {path}"], stdin=content)
+    if not ran.ok:
+        raise RuleApplyError(f"could not write {path}: {ran.output.strip()}")

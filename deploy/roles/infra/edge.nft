@@ -1,0 +1,27 @@
+table ip edge
+delete table ip edge
+table ip edge {
+  chain prerouting {
+    type nat hook prerouting priority dstnat; policy accept;
+    iifname "@wan@" ip daddr @router@ tcp dport 80 dnat to @waf@
+  }
+
+  chain forward {
+    type filter hook forward priority filter; policy accept;
+    iifname "@wan@" ct state established,related accept
+    iifname "@wan@" ct status dnat accept
+    iifname "@wan@" drop
+  }
+
+  chain input {
+    type filter hook input priority filter; policy accept;
+    iifname "@wan@" ct state established,related accept
+    iifname "@wan@" meta l4proto icmp accept
+    iifname "@wan@" meta l4proto udp reject
+    iifname "@wan@" drop
+    iifname "@mgmt@" ct state established,related accept
+    iifname "@mgmt@" meta l4proto icmp accept
+    iifname "@mgmt@" tcp dport 514 accept
+    iifname "@mgmt@" drop
+  }
+}

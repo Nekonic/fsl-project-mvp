@@ -1,0 +1,114 @@
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
+
+import pytest
+
+from api import effect
+from api.models import Objective, Session
+
+pytestmark = pytest.mark.django_db
+
+BASELINE = {
+    "admins": [1],
+    "options": {"users_can_register": "0", "default_role": "subscriber"},
+    "posts": [2],
+}
+
+
+def _start(client):
+    with patch("api.views.effect.snapshot", return_value=dict(BASELINE)):
+        return client.post_json("/api/sessions/", {"scenario": "corp"}).json()["id"]
+
+
+def _fire(client, session_id, name):
+    now = datetime.now(timezone.utc)
+    client.post_json(f"/api/sessions/{session_id}/cases/", {
+        "case_id": f"c-{name}", "name": name, "malicious": True,
+        "correlation": "marker", "started_at": now.isoformat(),
+        "ended_at": (now + timedelta(seconds=2)).isoformat(),
+    })
+    return now
+
+
+def _rogue_admin_change(at):
+    return effect.Change(
+        table="wp_usermeta", kind="insert", at=at,
+        columns={2: "7", 3: "wp_capabilities", 4: 'a:1:{s:13:"administrator";b:1;}'},
+    )
+
+
+def test_a_rogue_admin_change_in_a_malicious_window_credits_the_objective(client):
+    session_id = _start(client)
+    at = _fire(client, session_id, "corp-rogue-admin") + timedelta(seconds=1)
+
+    with patch("api.views.effect.read_changes", return_value=[_rogue_admin_change(at)]):
+        observed = client.post_json(f"/api/sessions/{session_id}/objectives/")
+
+    assert observed.json()["achieved"] == 1
+    assert {o.key for o in Objective.objects.filter(session_id=session_id)} == {"corp-rogue-admin"}
+
+
+def test_a_change_that_matches_the_baseline_credits_nothing(client):
+    session_id = _start(client)
+    at = _fire(client, session_id, "corp-rogue-admin") + timedelta(seconds=1)
+    same_admin = effect.Change(
+        table="wp_usermeta", kind="update", at=at,
+        columns={2: "1", 3: "wp_capabilities", 4: 'a:1:{s:13:"administrator";b:1;}'},
+    )
+    with patch("api.views.effect.read_changes", return_value=[same_admin]):
+        observed = client.post_json(f"/api/sessions/{session_id}/objectives/")
+    assert observed.json()["achieved"] == 0
+    assert not Objective.objects.filter(session_id=session_id).exists()
+
+
+def test_a_change_outside_every_malicious_window_credits_nothing(client):
+    session_id = _start(client)
+    _fire(client, session_id, "corp-rogue-admin")
+    stray = _rogue_admin_change(datetime.now(timezone.utc) - timedelta(minutes=30))
+    with patch("api.views.effect.read_changes", return_value=[stray]):
+        observed = client.post_json(f"/api/sessions/{session_id}/objectives/")
+    assert observed.json()["achieved"] == 0
+
+
+def test_observing_twice_credits_each_objective_once(client):
+    session_id = _start(client)
+    at = _fire(client, session_id, "corp-rogue-admin") + timedelta(seconds=1)
+    with patch("api.views.effect.read_changes", return_value=[_rogue_admin_change(at)]):
+        client.post_json(f"/api/sessions/{session_id}/objectives/")
+        client.post_json(f"/api/sessions/{session_id}/objectives/")
+    assert Objective.objects.filter(session_id=session_id, key="corp-rogue-admin").count() == 1
+
+
+def test_an_unreadable_binlog_reports_nothing_newly_achieved(client):
+    session_id = _start(client)
+    at = _fire(client, session_id, "corp-rogue-admin") + timedelta(seconds=1)
+    with patch("api.views.effect.read_changes", return_value=[_rogue_admin_change(at)]):
+        client.post_json(f"/api/sessions/{session_id}/objectives/")
+    assert Objective.objects.filter(session_id=session_id).count() == 1
+
+    with patch("api.views.effect.read_changes",
+               side_effect=effect.StateUnavailable("corp-db down")):
+        observed = client.post_json(f"/api/sessions/{session_id}/objectives/")
+    assert observed.json()["achieved"] == 0, (
+        "a failed binlog read credits nothing new, so it must report 0 achieved, "
+        "not the count of objectives taken in earlier observes"
+    )
+    assert Objective.objects.filter(session_id=session_id).count() == 1
+
+
+def test_a_session_that_opened_blind_credits_nothing_for_any_change(client):
+    with patch("api.views.effect.snapshot", side_effect=effect.StateUnavailable("corp down")):
+        session_id = client.post_json("/api/sessions/", {"scenario": "corp"}).json()["id"]
+    assert Session.objects.get(pk=session_id).baseline is None
+    at = _fire(client, session_id, "corp-rogue-admin") + timedelta(seconds=1)
+    changes = [
+        _rogue_admin_change(at),
+        effect.Change(table="wp_options", kind="update", at=at,
+                      columns={2: "users_can_register", 3: "1"}),
+        effect.Change(table="wp_posts", kind="insert", at=at,
+                      columns={1: "99", 8: "publish", 5: "x", 6: "t"}),
+    ]
+    with patch("api.views.effect.read_changes", return_value=changes):
+        observed = client.post_json(f"/api/sessions/{session_id}/objectives/")
+    assert observed.json()["achieved"] == 0
+    assert not Objective.objects.filter(session_id=session_id).exists()

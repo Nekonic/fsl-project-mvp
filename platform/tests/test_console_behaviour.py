@@ -1,0 +1,478 @@
+import pytest
+
+from tests.browser import open_page, worded
+
+pytestmark = pytest.mark.django_db
+
+PAGES = ["/", "/session/1/", "/red/1/", "/blue/1/"]
+
+@pytest.mark.parametrize("path", PAGES)
+def test_every_console_page_runs_its_script_without_an_error(client, path):
+    seen = open_page(client, path)
+
+    assert seen["errors"] == [], (
+        f"{path} threw while loading against a platform that answers 404 to "
+        f"everything; a page that throws stops drawing where it threw"
+    )
+
+CLOSED = """
+browser.serve((request) => {
+  if (request.route === "/api/sessions/1/") {
+    return {body: {id: 1, scenario: "board", guidance: false, kind: "wargame", ready: true,
+                   started_at: "2026-10-10T14:20:00Z", ended_at: "2026-10-10T15:02:00Z",
+                   result: {objectives: {lost: 1, undetected: 1, total: 3}, scenario: null}}};
+  }
+  if (request.route === "/api/wargames/board/objectives/") {
+    return {body: [
+      {key: "board-auth-user-partial", name: "Board accounts (partial)", difficulty: 2},
+      {key: "board-auth-user-admin", name: "Board admin account", difficulty: 4},
+    ]};
+  }
+  if (request.route === "/api/sessions/1/score/") {
+    return {body: {tp: 7, fp: 1, fn: 1, tn: 3, warnings: [],
+      breaches: [{key: "board-auth-user-admin", difficulty: 4, detected: false}],
+      per_case: [
+        ...["a1", "a2", "a3", "a4", "a5", "a6", "a7"].map((name) => ({name, malicious: true, detected: true,
+          detections: 1, alerts: 1, corroborated: name !== "a7"})),
+        {name: "board-sqli-orderby-sqlmap", malicious: true, detected: false, detections: 0, alerts: 0, corroborated: null},
+        {name: "board-normal-search-with-apostrophe", malicious: false, detected: true, detections: 2, alerts: 2,
+         corroborated: null},
+        ...["b1", "b2", "b3"].map((name) => ({name, malicious: false, detected: false, detections: 0, alerts: 0,
+          corroborated: null})),
+      ],
+      game: {revealed: true, balance: 3.5}}};
+  }
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+def test_a_closed_session_reports_what_was_taken_and_what_the_defence_judged_counting_one_case_once(client):
+    seen = open_page(client, "/session/1/", setup=CLOSED, scenario="""
+      return {objectives: browser.text('objective-rows'), lost: browser.text('lost-count'),
+              judged: browser.text('judgement')};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["lost"] == "1 / 2"
+    assert worded("score.lost_unseen") in result["objectives"] and "8" in result["objectives"], (
+        "lost and unnoticed costs double the difficulty"
+    )
+    assert worded("score.attacks", 8, 7) in result["judged"]
+    assert result["judged"].count(worded("case.board-sqli-orderby-sqlmap")) == 1, "a missed attack is named once"
+    assert worded("score.benign", 4, 3) in result["judged"]
+    assert worded("score.not_corroborated", 7, 1) not in result["judged"], (
+        "how alerts are matched to attacks is scoring internals a learner cannot act on")
+
+SCORE_FAILS_ONCE = CLOSED.replace("browser.serve((request) => {", """
+let scored = 0;
+browser.serve((request) => {
+  if (request.route === "/api/sessions/1/score/" && scored++ === 0) {
+    return {status: 503, body: {detail: "database is locked"}};
+  }""", 1)
+
+def test_a_score_that_did_not_load_says_so_instead_of_calling_every_objective_kept(client):
+    seen = open_page(client, "/session/1/", setup=SCORE_FAILS_ONCE, scenario="""
+      const first = {objectives: browser.text('objective-rows'), lost: browser.text('lost-count'),
+                     judged: browser.text('judgement')};
+      await browser.wait(5000);
+      return {first, then: {objectives: browser.text('objective-rows'), lost: browser.text('lost-count')},
+              asked: browser.requests.filter((r) => r.route === "/api/sessions/1/score/").length};
+    """)
+    first, then = seen["result"]["first"], seen["result"]["then"]
+
+    assert seen["errors"] == []
+    assert worded("score.kept") not in first["objectives"], (
+        "the score did not load and the table still said every objective was kept, "
+        "while the header said some were lost"
+    )
+    assert worded("score.unavailable", "database is locked") in first["objectives"]
+    assert first["lost"] == "—"
+    assert seen["result"]["asked"] == 2, "the page did not read the score again"
+    assert then["lost"] == "1 / 2" and worded("score.lost_unseen") in then["objectives"]
+
+def test_a_score_that_answered_without_its_tables_is_not_read_as_nothing_lost(client):
+    seen = open_page(client, "/session/1/", setup=CLOSED.replace(
+        'if (request.route === "/api/sessions/1/score/") {', 'if (request.route === "/api/sessions/1/score/") {\n'
+        '    return {body: {}};'), scenario="""
+      return browser.text('objective-rows');
+    """)
+
+    assert worded("score.kept") not in seen["result"]
+    assert worded("score.retrying") in seen["result"]
+
+def _session_7(kind):
+    return f"""
+      browser.serve((request) => {{
+        if (request.route === "/api/sessions/7/") return {{body: {{id: 7, scenario: "board", kind: "{kind}",
+          kali_terminal: "/vm-terminal/kali/?arg=7", site: {{port: 8002, path: "/site/7/board.com/"}}}}}};
+        return {{status: 404, body: {{detail: "not served"}}}};
+      }});
+    """
+
+SHOWN_PANES = """
+      return {kali: browser.element('kali-frame').getAttribute('src'),
+              panes: document.querySelectorAll('.pane-tab:not(.hidden)').map((tab) => tab.dataset.pane),
+              asked: browser.requests.map((r) => r.method + " " + r.route)};
+"""
+
+def test_the_red_console_is_the_kali_terminal_and_the_website_and_runs_no_prepared_attack(client):
+    seen = open_page(client, "/red/7/", setup=_session_7("wargame"), scenario=SHOWN_PANES)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert result["panes"] == ["kali", "site"]
+    assert result["kali"] == "/vm-terminal/kali/?arg=7"
+    assert not [asked for asked in result["asked"] if "/cases/" in asked or "/attacks/" in asked
+                or "/api/attacker/" in asked], result["asked"]
+
+SSH_SERVED = """
+      browser.serve((request) => {
+        if (request.route === "/api/sessions/7/") return {body: {id: 7, scenario: "board", kind: "wargame",
+          kali_terminal: "/vm-terminal/kali/?arg=7", site: {port: 8002, path: "/site/7/board.com/"}}};
+        const held = {issued: true, host: "board-kali", key_file: "~/.ssh/cr-session-7",
+                      fingerprint: "SHA256:abc", config: "Host board-kali\\n    ProxyJump board-kali-jump\\n"};
+        if (request.route === "/api/sessions/7/ssh/" && request.method === "GET") return {body: {issued: false}};
+        if (request.route === "/api/sessions/7/ssh/") return {status: 201, body: {...held, private_key: "PRIVATE"}};
+        return {status: 404, body: {detail: "not served"}};
+      });
+"""
+
+def test_the_kali_pane_issues_a_session_key_once_and_shows_the_ssh_config_to_use_it(client):
+    seen = open_page(client, "/red/7/", setup=SSH_SERVED, scenario="""
+      const before = browser.element('ssh-issue').textContent;
+      await browser.click('ssh-open');
+      const opened = !browser.element('ssh').classList.contains('hidden');
+      await browser.click('ssh-issue');
+      return {before, opened, key: browser.element('ssh-key').value,
+              config: browser.element('ssh-config').value, command: browser.element('ssh-command').textContent,
+              again: browser.element('ssh-issue').textContent,
+              asked: browser.requests.map((r) => r.method + " " + r.route).filter((r) => r.includes("/ssh/"))};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert (result["before"], result["again"]) == (worded("red.ssh.issue"), worded("red.ssh.reissue"))
+    assert result["opened"] and result["key"] == "PRIVATE"
+    assert result["config"].startswith("Host board-kali\n")
+    assert result["command"] == "chmod 600 ~/.ssh/cr-session-7\nssh board-kali"
+    assert result["asked"] == ["GET /api/sessions/7/ssh/", "POST /api/sessions/7/ssh/"]
+
+@pytest.mark.parametrize("kind, shown", [("lesson", True), ("scenario", True), ("wargame", False)])
+def test_the_blue_console_carries_kali_for_practice_and_not_in_a_wargame(client, kind, shown):
+    seen = open_page(client, "/blue/7/", setup=_session_7(kind), scenario="""
+      const panes = document.querySelectorAll('.pane-tab:not(.hidden)').map((tab) => tab.dataset.pane);
+      if (panes.includes("kali")) await browser.click('[data-pane="kali"]');
+      return {panes, kali: browser.element('kali-frame').getAttribute('src'),
+              line: !browser.element('rail-line').classList.contains('hidden')};
+    """)
+    result = seen["result"]
+
+    assert seen["errors"] == []
+    assert ("kali" in result["panes"]) is shown and result["line"] is shown, (
+        "the defender in a person-against-person wargame must not hold the attacker's shell"
+    )
+    assert result["kali"] == ("/vm-terminal/kali/?arg=7" if shown else None)
+
+OPEN_SESSION = """
+browser.serve((request) => {
+  if (request.route === "/api/sessions/1/ingest/") return {status: INGEST_STATUS, body: {}};
+  if (request.route === "/api/sessions/1/close/") return {body: {}};
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+CLOSE_SCENARIO = """
+      await browser.click('close');
+      await browser.click('confirm-close');
+      return browser.requests.map((r) => r.method + " " + r.route);
+"""
+
+@pytest.mark.parametrize("ingest_status", ["200", "500"])
+def test_closing_a_session_ingests_first_and_closes_even_when_the_ingest_fails(client, ingest_status):
+    seen = open_page(
+        client, "/session/1/",
+        setup=OPEN_SESSION.replace("INGEST_STATUS", ingest_status), scenario=CLOSE_SCENARIO,
+    )
+    routes = seen["result"]
+
+    assert "POST /api/sessions/1/ingest/" in routes, routes
+    assert "POST /api/sessions/1/close/" in routes, routes
+    assert routes.index("POST /api/sessions/1/ingest/") < routes.index("POST /api/sessions/1/close/")
+
+def test_the_waf_pane_frames_the_session_s_own_waf_terminal(client):
+    seen = open_page(client, "/blue/7/", setup="""
+      browser.serve((request) => {
+        if (request.route === "/api/sessions/7/") return {body: {id: 7, waf_terminal: "/vm-terminal/waf/?arg=7"}};
+        return {status: 404, body: {detail: "not served"}};
+      });
+    """, scenario="""
+      await browser.click('[data-pane="waf"]');
+      return browser.element('pane-frame').getAttribute('src');
+    """)
+
+    assert seen["result"] == "/vm-terminal/waf/?arg=7", (
+        f"the WAF pane must open the terminal the session names, not a shared one: {seen['result']}"
+    )
+
+
+RESETTING = """
+browser.serve((request) => {
+  if (request.route === "/api/range/ready/") {
+    return {body: {ready: false, max_sessions: 2, slot: {number: 1, session: null, phase: "RESETTING",
+      blocked: ["the range is resetting after the last session closed"]}}};
+  }
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+def test_the_home_page_says_the_practice_network_is_resetting_in_the_learner_s_words(client):
+    seen = open_page(client, "/", setup=RESETTING, scenario="""
+      await browser.wait(500);
+      return browser.text('range-blocked');
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == worded("range.resetting"), (
+        "the home page showed the readiness API's operator reason instead of the learner's line"
+    )
+
+BLOCKED = """
+LOCATION
+browser.serve((request) => {
+  if (request.route === "/api/range/ready/") {
+    return {body: {ready: false, max_sessions: 2, slot: {number: 1, session: null, phase: "READY",
+      blocked: ["image cr-waf is not ready", "the fabric has no network for cr-kali"]}}};
+  }
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+@pytest.mark.parametrize("operator", [False, True], ids=["learner", "operator"])
+def test_the_home_page_gives_the_learner_one_line_and_the_operator_the_raw_reasons(client, operator):
+    seen = open_page(client, "/", setup=BLOCKED.replace("LOCATION", 'location.search = "?operator";' if operator else ""),
+                     scenario="""
+      await browser.wait(500);
+      return browser.text('range-blocked');
+    """)
+
+    assert seen["errors"] == []
+    assert worded("range.blocked") in seen["result"]
+    assert ("cr-waf" in seen["result"]) is operator, seen["result"]
+
+REFUSED = """
+const range = {phase: "READY", open: []};
+LOCATION
+browser.serve((request) => {
+  if (request.route === "/api/wargames/") {
+    return {body: [{id: "board", name: "Board", description: "", cases: 1,
+      foundations: [{id: "f1", order: 1, title: "lesson.range.title", minutes: 10,
+                     steps: 4}]}]};
+  }
+  if (request.route === "/api/range/ready/") {
+    return {body: {ready: range.phase === "READY", max_sessions: 2, slot: {number: 1, session: null,
+      phase: range.phase, blocked: range.phase === "READY" ? [] : ["the range is resetting; no need to call configure"]}}};
+  }
+  if (request.route === "/api/sessions/" && request.method === "POST") {
+    range.phase = range.refuseWith;
+    return {status: range.status, body: {detail: "the range is not ready: no need to call configure"}};
+  }
+  if (request.route === "/api/sessions/") return {body: request.query.state === "open" ? range.open : []};
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+def test_a_running_session_on_the_home_page_closes_from_its_row_after_a_confirm(client):
+    seen = open_page(client, "/", setup="""
+      const range = {open: [{id: 7, scenario: "board", kind: "wargame", ready: true, started_at: "2026-10-26T10:00:00Z"}],
+                     posted: []};
+      browser.serve((request) => {
+        if (request.route === "/api/wargames/") return {body: [{id: "board", name: "Board", description: "", cases: 1}]};
+        if (request.route === "/api/range/ready/") return {body: {ready: true, max_sessions: 2}};
+        if (request.method === "POST") {
+          range.posted.push(request.route);
+          if (request.route === "/api/sessions/7/close/") range.open = [];
+          return {body: {}};
+        }
+        if (request.route === "/api/sessions/") return {body: request.query.state === "open" ? range.open : []};
+        return {status: 404, body: {detail: "not served"}};
+      });
+    """, scenario="""
+      await browser.wait(0);
+      await browser.click('[data-running="7"] [data-end]');
+      const asked = range.posted.length === 0 && !document.querySelector('[data-end-asked]').classList.contains('hidden');
+      await browser.click('[data-running="7"] [data-end-yes]');
+      for (let i = 0; i < 3; i += 1) await browser.settle();
+      return {asked, posted: range.posted, left: document.querySelectorAll('[data-running]').length};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"asked": True, "posted": ["/api/sessions/7/ingest/", "/api/sessions/7/close/"], "left": 0}, (
+        "walk: a learner mid-lesson found no way to close the session from the home page's running row")
+
+def refused_open(client, refuse_with, status=409, open_sessions=0, operator=False, then=""):
+    setup = REFUSED.replace("LOCATION", 'location.search = "?operator";' if operator else "")
+    seen = open_page(client, "/", setup=setup, scenario=f"""
+      await browser.wait(0);
+      range.refuseWith = {refuse_with!r};
+      range.status = {status};
+      range.open = Array.from({{length: {open_sessions}}}, (_, at) => ({{id: at + 1, scenario: "board", kind: "wargame",
+        ready: true, started_at: "2026-10-26T10:00:00Z"}}));
+      const button = document.querySelector('[data-lesson-id="f1"]');
+      await browser.click('[data-lesson-id="f1"]');
+      const failure = document.querySelector('[data-failure="board"]');
+      const shown = () => ({{text: failure.querySelector('[data-failure-text]').textContent,
+        hidden: failure.classList.contains('hidden'), warning: failure.classList.contains('bg-warning-soft'),
+        nextToButton: failure.parentNode === button.parentNode,
+        closeOffered: !failure.querySelector('[data-close-open]').classList.contains('hidden'),
+        disabled: button.disabled}});
+      const refused = shown();
+      {then}
+      return {{refused, later: shown()}};
+    """)
+    assert seen["errors"] == []
+    return seen["result"]
+
+def test_an_open_refused_while_the_range_resets_says_so_beside_the_pressed_button_and_offers_start_again_once_ready(client):
+    seen = refused_open(client, "RESETTING", then="""
+      range.phase = "READY";
+      await browser.wait(3000);
+    """)
+
+    assert seen["refused"] == {"text": worded("range.resetting"), "hidden": False, "warning": True,
+                               "nextToButton": True, "closeOffered": False, "disabled": True}, (
+        "the learner pressed Start and saw nothing beside it, or saw the API's operator reason"
+    )
+    assert seen["later"]["text"] == worded("main.start_again")
+    assert seen["later"]["disabled"] is False, "the buttons stay dim after the range is ready again"
+
+RETARGETED = """
+const range = {board: "READY", slow: false};
+browser.serve((request) => {
+  if (request.route === "/api/wargames/") {
+    return {body: [{id: "board", name: "Board", description: "", cases: 1,
+      foundations: [{id: "f1", order: 1, title: "lesson.range.title", minutes: 10, steps: 4}]}]};
+  }
+  if (request.route === "/api/range/ready/") {
+    const answer = {body: {ready: true, max_sessions: 4,
+      slot: {number: 2, session: null, phase: "READY", wargame: "corp", blocked: []},
+      slots: [{number: 1, session: null, phase: range.board, wargame: "board"},
+              {number: 2, session: null, phase: "READY", wargame: "corp"}]}};
+    if (!range.slow) return answer;
+    range.slow = false;
+    return new Promise((resolve) => setTimeout(() => resolve(answer), 20000));
+  }
+  if (request.route === "/api/sessions/" && request.method === "POST") {
+    range.board = "RESETTING";
+    range.slow = true;
+    return {status: 409, body: {detail: "the range is not ready: the slot is resetting", settling: true}};
+  }
+  if (request.route === "/api/sessions/") return {body: []};
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+def test_an_open_refused_for_a_reset_says_so_at_once_and_enables_start_when_the_wargame_s_own_slot_is_ready(client):
+    seen = open_page(client, "/", setup=RETARGETED, scenario="""
+      await browser.wait(0);
+      const button = document.querySelector('[data-lesson-id="f1"]');
+      button.click();
+      for (let i = 0; i < 3; i += 1) await browser.settle();
+      const text = () => document.querySelector('[data-failure="board"] [data-failure-text]').textContent;
+      const atOnce = text();
+      await browser.wait(23000);
+      const corpReady = {text: text(), disabled: button.disabled};
+      range.board = "READY";
+      await browser.wait(3000);
+      return {atOnce, corpReady, later: {text: text(), disabled: button.disabled}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["atOnce"] == worded("range.resetting"), (
+        "walk: the reset notice came only after the slow readiness read, about 90 s after Start")
+    assert seen["result"]["corpReady"] == {"text": worded("range.resetting"), "disabled": True}, (
+        "another wargame's ready slot does not make this wargame's Start ready")
+    assert seen["result"]["later"] == {"text": worded("main.start_again"), "disabled": False}
+
+RESET_ON_START = """
+const range = {resetting: false};
+browser.serve((request) => {
+  if (request.route === "/api/wargames/") {
+    return {body: [{id: "board", name: "Board", description: "", cases: 1,
+      foundations: [{id: "f1", order: 1, title: "lesson.range.title", minutes: 10, steps: 4}]}]};
+  }
+  if (request.route === "/api/range/ready/") {
+    return {body: {ready: !range.resetting, max_sessions: 4,
+      slot: {number: 1, session: null, phase: range.resetting ? "RESETTING" : "READY", wargame: "board", blocked: []}}};
+  }
+  if (request.route === "/api/sessions/" && request.method === "POST") {
+    range.resetting = true;
+    return {status: 409, body: {detail: "the range is not ready: the slot is resetting", settling: true}};
+  }
+  if (request.route === "/api/sessions/") return {body: []};
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+def test_a_reset_refusal_is_told_once_beside_the_pressed_start_and_not_again_in_the_banner(client):
+    seen = open_page(client, "/", setup=RESET_ON_START, scenario="""
+      await browser.wait(0);
+      document.querySelector('[data-lesson-id="f1"]').click();
+      for (let i = 0; i < 3; i += 1) await browser.settle();
+      await browser.wait(3500);
+      return {row: document.querySelector('[data-failure="board"] [data-failure-text]').textContent,
+              banner: !browser.element('range-state').classList.contains('hidden')};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"row": worded("range.resetting"), "banner": False}, (
+        "walk: the reset notice showed twice, in the banner and in the lesson's row")
+
+def test_an_open_refused_because_the_range_is_not_standing_gives_the_learner_s_line_not_the_api_reason(client):
+    seen = refused_open(client, "NOT_STANDING")["refused"]
+
+    assert seen["text"] == worded("range.blocked")
+    assert "configure" not in seen["text"]
+
+def test_an_open_refused_because_every_seat_is_taken_says_how_many_are_open_and_offers_to_close_one(client):
+    seen = refused_open(client, "READY", open_sessions=2)["refused"]
+
+    assert seen["text"] == worded("main.start_failed.full", 2, 2)
+    assert seen["closeOffered"] is True and seen["warning"] is False and seen["nextToButton"] is True
+
+@pytest.mark.parametrize("operator", [False, True], ids=["learner", "operator"])
+def test_an_open_that_failed_otherwise_shows_the_api_reason_only_to_the_operator(client, operator):
+    seen = refused_open(client, "READY", status=503, operator=operator)["refused"]
+
+    assert ("no need to call configure" in seen["text"]) is operator, seen["text"]
+    assert seen["text"].startswith(worded("main.start_failed", "").strip())
+
+
+ONLY_CORP_READY = """
+const range = {release: null};
+browser.serve((request) => {
+  if (request.route === "/api/wargames/") return {body: [{id: "board", name: "Board", description: "", cases: 1}]};
+  if (request.route === "/api/range/ready/") {
+    return new Promise((resolve) => { range.release = resolve; }).then(() => ({body: {ready: true, max_sessions: 3, slot: {number: 3, session: null, phase: "READY", wargame: "corp"},
+      slots: [{number: 1, session: 5, phase: "IN_USE", wargame: "board"}, {number: 2, session: 6, phase: "IN_USE", wargame: "board"},
+              {number: 3, session: null, phase: "READY", wargame: "corp"}]}}));
+  }
+  if (request.route === "/api/sessions/") return {body: []};
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+def test_the_home_page_holds_start_until_readiness_is_known_and_says_why_a_busy_wargame_cannot_start(client):
+    seen = open_page(client, "/", setup=ONLY_CORP_READY, scenario="""
+      await browser.wait(500);
+      const before = document.querySelector('[data-wargame-start="board"] .start').disabled;
+      range.release();
+      await browser.settle();
+      const line = document.querySelector('[data-unserved="board"]');
+      return {before, after: document.querySelector('[data-wargame-start="board"] .start').disabled,
+              said: line.classList.contains('hidden') ? "" : line.textContent};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"before": True, "after": True, "said": worded("main.wargame_busy")}, (
+        "walk: 시작 was clickable before readiness arrived, and every board 시작 was greyed with no reason while only corp was ready")

@@ -1,0 +1,407 @@
+const scenarioPath = (tail) => `/api/sessions/${sessionId()}/${tail}`;
+const SCENARIO_POLL_MS = 5000;
+const TRIAGE_POLL_MS = 15000;
+const CARDS_KEY = (id) => `cr-scenario-cards-${id}`;
+const DEBRIEFED_KEY = (id) => `cr-scenario-debriefed-${id}`;
+const PHASE_TONE = { running: "text-primary", window: "text-warning", passed: "text-success", failed: "text-danger", closed: "text-muted" };
+const ENDED = ["passed", "failed"];
+let scenario = null;
+let scenarioReadAt = 0;
+let scenarioReading = false;
+let triageReading = false;
+
+function remembered(key, fallback) {
+  try {
+    const kept = JSON.parse(localStorage.getItem(key));
+    return kept === null ? fallback : kept;
+  } catch (error) {
+    return fallback;
+  }
+}
+
+function remember(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    return;
+  }
+}
+
+const minutesAndSeconds = (seconds) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+const scenarioLeft = () => (!scenario ? 0 : scenario.started === false ? scenario.time_left
+  : Math.max(0, scenario.time_left - Math.round((Date.now() - scenarioReadAt) / 1000)));
+const scenarioTitle = () => `${scenario.id} ${t(scenario.title)}`;
+
+function stripShow() {
+  const strip = field("scenario-strip");
+  strip.classList.remove("hidden");
+  strip.classList.add("flex");
+  field("scenario-name").textContent = scenarioTitle();
+  field("triage-intro").textContent = t((scenario.patterns || []).length ? "triage.intro.pattern" : "triage.intro");
+  const phase = field("scenario-phase");
+  phase.textContent = t(`scenario.phase.${scenario.phase}`);
+  phase.className = `shrink-0 font-semibold ${PHASE_TONE[scenario.phase] || "text-muted"}`;
+  const passed = scenario.phase === "passed";
+  const judged = ENDED.includes(scenario.phase);
+  field("scenario-clock").classList.toggle("hidden", passed);
+  field("scenario-left").textContent = minutesAndSeconds(scenarioLeft());
+  field("scenario-blocked").textContent = String(scenario.live.customers_blocked_per_minute);
+  field("scenario-alerts").textContent = String(scenario.live.alerted_per_minute);
+  const atStake = scenario.live.objectives_lost != null;
+  field("scenario-lost-shown").classList.toggle("hidden", !atStake);
+  field("scenario-lost-shown").classList.toggle("flex", atStake);
+  field("scenario-lost").textContent = String(scenario.live.objectives_lost ?? "");
+  const checking = scenario.phase === "window";
+  const done = field("scenario-done");
+  done.disabled = checking || scenario.phase === "closed";
+  done.classList.toggle("hidden", passed);
+  done.textContent = t(checking && scenarioLeft() === 0 ? "scenario.done.judging" : checking ? "scenario.done.checking" : "scenario.done");
+  field("scenario-end").classList.toggle("hidden", scenario.phase === "closed" || !field("scenario-end-confirm").classList.contains("hidden"));
+  if (passed) field("scenario-done-said").classList.add("hidden");
+  const offer = passed ? null : scenario.hints.offer;
+  field("scenario-offer").classList.toggle("hidden", !offer);
+  field("scenario-offer").title = offer ? t(`scenario.hint.why.${offer.reason}`) : "";
+}
+
+function briefingShow() {
+  field("briefing-title").textContent = scenarioTitle();
+  field("briefing-situation").textContent = t(scenario.briefing.situation);
+  field("briefing-goal").textContent = t(scenario.briefing.goal);
+  field("briefing-measured").textContent = t(scenario.briefing.measured_by);
+  field("briefing-time").textContent = t("scenario.briefing.time_line", scenario.minutes, scenario.window_minutes,
+    minutesAndSeconds(scenarioLeft()));
+  field("briefing").classList.remove("hidden");
+}
+
+async function briefingClose() {
+  field("briefing").classList.add("hidden");
+  if (scenario && scenario.started === false) {
+    const started = await post(scenarioPath("scenario/start/"));
+    if (started.ok) {
+      scenario = started.body;
+      scenarioReadAt = Date.now();
+    }
+    stripShow();
+    cardsShow();
+  }
+}
+
+function cardText(id, part) {
+  return t(`${scenario.text}.card.${id}.${part}`);
+}
+
+function cardsShow() {
+  const stack = field("scenario-cards");
+  const dismissed = remembered(CARDS_KEY(sessionId()), []);
+  const next = scenario.cards.find((id) => !dismissed.includes(id));
+  if (next && !stack.querySelector("[data-card]")) {
+    const card = document.createElement("div");
+    card.className = "rounded-md bg-subdued p-3 flex flex-col gap-1 text-[13px]";
+    card.dataset.card = next;
+    card.innerHTML = `<b class="text-heading">${esc(cardText(next, "title"))}</b>
+      <p class="text-body leading-relaxed">${esc(cardText(next, "body"))}</p>
+      <button type="button" class="self-end btn btn-sm btn-ghost">${esc(t("scenario.card.dismiss"))}</button>`;
+    card.querySelector("button").addEventListener("click", () => {
+      remember(CARDS_KEY(sessionId()), [...remembered(CARDS_KEY(sessionId()), []), next]);
+      card.remove();
+      cardsShow();
+    });
+    stack.prepend(card);
+  }
+  scenario.cards.filter((id) => dismissed.includes(id) && !stack.querySelector(`[data-read="${id}"]`)).forEach((id) => {
+    const read = document.createElement("details");
+    read.className = "text-[13px]";
+    read.dataset.read = id;
+    read.innerHTML = `<summary class="cursor-pointer font-semibold text-heading">${esc(cardText(id, "title"))}</summary>
+      <p class="text-body leading-relaxed mt-1">${esc(cardText(id, "body"))}</p>`;
+    stack.appendChild(read);
+  });
+  let brief = stack.querySelector("[data-brief]");
+  if (!brief) {
+    brief = document.createElement("details");
+    brief.className = "text-[13px]";
+    brief.dataset.brief = "goal";
+    brief.open = !stack.querySelector("[data-card], [data-read]");
+    brief.innerHTML = `<summary class="cursor-pointer font-semibold text-heading">${esc(t("scenario.briefing.goal"))}</summary>
+      <p class="text-body leading-relaxed mt-1">${esc(t(scenario.briefing.goal))}</p>`;
+  }
+  stack.appendChild(brief);
+  const any = Boolean(stack.querySelector("[data-card], [data-read], [data-brief]"));
+  stack.classList.toggle("hidden", !any);
+  stack.classList.toggle("flex", any);
+}
+
+function hintsShow() {
+  const opened = scenario.hints.opened;
+  field("scenario-hint-list").innerHTML = opened.length
+    ? opened.map((id) => `<li class="text-body leading-relaxed" data-hint="${esc(id)}">${withOptionsWhole(t(`${scenario.text}.hint.${id}`))}</li>`).join("")
+    : `<li class="text-muted">${esc(t("scenario.hint.none"))}</li>`;
+  field("scenario-hints").classList.remove("hidden");
+  field("scenario-hints").classList.add("flex");
+  setNote({ open: true });
+}
+
+async function hintOpen() {
+  const opened = await post(scenarioPath("scenario/hints/"));
+  if (opened.ok) scenario.hints = { offer: opened.body.offer, opened: opened.body.opened, left: opened.body.left };
+  hintsShow();
+  stripShow();
+}
+
+async function scenarioRead() {
+  scenarioReading = true;
+  const read = await api(scenarioPath("scenario/")).finally(() => { scenarioReading = false; });
+  if (!read.ok) return false;
+  scenario = read.body;
+  scenarioReadAt = Date.now();
+  stripShow();
+  cardsShow();
+  if (ENDED.includes(scenario.completion.state) && remembered(DEBRIEFED_KEY(sessionId()), 0) < scenario.windows) {
+    remember(DEBRIEFED_KEY(sessionId()), scenario.windows);
+    scenarioDebrief();
+  }
+  return true;
+}
+
+async function scenarioDone() {
+  field("scenario-done").disabled = true;
+  const said = field("scenario-done-said");
+  const started = await post(scenarioPath("scenario/verify-window/"));
+  const left = started.body && started.body.unjudged;
+  said.textContent = left ? t("scenario.done.unjudged", left) : started.ok ? "" : detail(started);
+  said.classList.toggle("hidden", !said.textContent);
+  if (started.ok) {
+    scenario = started.body;
+    scenarioReadAt = Date.now();
+  }
+  if (left) {
+    if (!paneOpen("triage")) paneTab("triage").click();
+    triageOpen();
+  }
+  stripShow();
+}
+
+function scenarioEndAsked(asked) {
+  shownIn(field("scenario-end-confirm"), asked);
+  field("scenario-end").classList.toggle("hidden", asked);
+}
+
+async function scenarioEnd() {
+  field("scenario-end-yes").disabled = true;
+  await post(scenarioPath("ingest/"));
+  const closed = await post(scenarioPath("close/"), {}, PATIENCE_FOR_RANGE_WORK);
+  if (closed.ok || await alreadyClosed(sessionId())) {
+    location.href = `/session/${sessionId()}/`;
+    return;
+  }
+  field("scenario-end-yes").disabled = false;
+  const said = field("scenario-done-said");
+  said.textContent = t("session.close.failed", detail(closed));
+  said.classList.remove("hidden");
+}
+
+function verdictBox(state) {
+  const passed = state.completion.state === "passed";
+  const reasons = state.completion.reasons.map(([key, values]) => t(key, ...values));
+  const fix = state.completion.fix ? `${t(`lesson.fix.${state.completion.fix}`)} ${t("lesson.fix.note")}` : "";
+  field("scenario-verdict").innerHTML = `
+    <p class="font-bold text-[18px] ${passed ? "text-success" : "text-danger"}">${esc(t(passed ? "scenario.verdict.passed" : "scenario.verdict.failed", scenarioTitle()))}</p>
+    ${reasons.map((line) => `<p class="text-muted mt-1" data-reason>${esc(line)}</p>`).join("")}
+    ${fix ? `<p class="text-[13px] text-muted mt-1" data-fix>${esc(fix)}</p>` : ""}`;
+}
+
+async function scenarioDebrief() {
+  const told = await api(scenarioPath("scenario/debrief/"));
+  if (!told.ok) return;
+  verdictBox(scenario);
+  renderDebrief(field("scenario-debrief-body"), told.body);
+  field("scenario-debrief-end").classList.toggle("hidden", scenario.phase === "closed");
+  field("scenario-debrief").classList.remove("hidden");
+}
+
+const triageVerdicts = new Map();
+function triageRule(rule) {
+  return `${t(rule.engine === "modsecurity" ? "triage.engine.waf" : "triage.engine.ids")} ${rule.rule} · ${rule.signature} ×${rule.count}`;
+}
+
+function triageRow(item) {
+  const request = `${item.request.method} ${item.request.path}`.trim();
+  const said = item.judged ? `<span class="text-[13px] ${item.judged.right ? "text-success" : "text-danger"}" data-said>${
+    esc(t(item.judged.right ? "triage.said.right" : "triage.said.wrong"))}</span>` : `<span class="text-[13px]" data-said></span>`;
+  return `<li class="card p-3 flex flex-col gap-1.5" data-item="${esc(item.item)}">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="font-mono text-faint">${esc(clock(item.first))}</span>
+      <span class="${item.waf === "blocked" ? "text-warning" : "text-muted"}">${esc(t(`triage.waf.${item.waf}`))}</span>
+      ${item.status ? `<span class="font-mono text-body">HTTP ${esc(item.status)}</span>` : ""}
+      <span class="text-muted">${esc(t("triage.alerts", item.alerts))}</span>
+    </div>
+    <div class="font-mono break-all text-heading">${esc(request || "—")}</div>
+    ${item.sources.length ? `<div class="text-muted">${esc(t("triage.from", item.sources.join(", ")))}</div>` : ""}
+    <ul class="font-mono text-[13px] text-body flex flex-col gap-0.5">${item.rules.map((rule) =>
+      `<li class="break-all">${esc(triageRule(rule))}</li>`).join("")}</ul>
+    <div class="flex flex-wrap items-center gap-2 mt-1">
+      <button type="button" class="btn btn-sm btn-ghost" data-judge="customer">${esc(t("triage.customer"))}</button>
+      <button type="button" class="btn btn-sm btn-ghost" data-judge="attack">${esc(t("triage.attack"))}</button>
+      <span class="hidden items-center gap-2 flex-wrap" data-kind-of>
+        <span class="text-muted">${esc(t("triage.pattern"))}</span>
+        ${(scenario.patterns || []).map((pattern) => `<button type="button" class="btn btn-sm btn-ghost" data-pattern="${esc(pattern)}">${esc(t(`triage.pattern.${pattern}`))}</button>`).join("")}
+      </span>
+      <span class="hidden items-center gap-2" data-got-in>
+        <span class="text-muted">${esc(t("triage.succeeded"))}</span>
+        <button type="button" class="btn btn-sm btn-ghost" data-succeeded="true">${esc(t("triage.yes"))}</button>
+        <button type="button" class="btn btn-sm btn-ghost" data-succeeded="false">${esc(t("triage.no"))}</button>
+      </span>
+      ${said}
+    </div>
+  </li>`;
+}
+
+let triageTotal = null;
+
+async function triageJudge(row, verdict, succeeded) {
+  const body = { item: row.dataset.item, verdict, ...(verdict === "attack" ? { succeeded } : {}),
+    ...(verdict === "attack" && row.dataset.pattern ? { pattern: row.dataset.pattern } : {}) };
+  const judged = await post(scenarioPath("triage/"), body);
+  const said = row.querySelector("[data-said]");
+  if (!judged.ok) {
+    said.textContent = detail(judged);
+    return;
+  }
+  const answer = judged.body;
+  said.className = `text-[13px] ${answer.right ? "text-success" : "text-danger"}`;
+  said.textContent = t(answer.right ? "triage.said.right" : !answer.verdict_right ? "triage.said.verdict"
+    : answer.pattern_right === false ? "triage.said.pattern" : "triage.said.succeeded");
+  row.querySelectorAll("[data-got-in], [data-kind-of]").forEach((asked) => shownIn(asked, false));
+  field("scenario-done-said").classList.add("hidden");
+  if (typeof answer.right_so_far === "number" && triageTotal !== null) field("triage-count").textContent = triageCount(answer.right_so_far, triageTotal);
+  changed.forEach((then) => then("triage"));
+  scenarioRead();
+}
+
+function shownIn(element, shown) {
+  element.classList.toggle("hidden", !shown);
+  element.classList.toggle("flex", shown);
+}
+
+function triagePatternChosen(row, pattern) {
+  row.dataset.pattern = pattern;
+  row.querySelectorAll("[data-pattern]").forEach((button) => {
+    button.classList.toggle("btn-blue", button.dataset.pattern === pattern);
+    button.classList.toggle("btn-ghost", button.dataset.pattern !== pattern);
+  });
+}
+
+function triageWire(row) {
+  const gotIn = row.querySelector("[data-got-in]");
+  const kindOf = row.querySelector("[data-kind-of]");
+  const asksPattern = (scenario.patterns || []).length > 0;
+  row.querySelectorAll("[data-judge]").forEach((button) => button.addEventListener("click", () => {
+    const verdict = button.dataset.judge;
+    triageVerdicts.set(row.dataset.item, verdict);
+    shownIn(kindOf, verdict === "attack" && asksPattern);
+    shownIn(gotIn, verdict === "attack" && !asksPattern);
+    if (verdict === "customer") triageJudge(row, verdict);
+  }));
+  row.querySelectorAll("[data-pattern]").forEach((button) => button.addEventListener("click", () => {
+    triagePatternChosen(row, button.dataset.pattern);
+    shownIn(gotIn, true);
+  }));
+  row.querySelectorAll("[data-succeeded]").forEach((button) => button.addEventListener("click", () =>
+    triageJudge(row, "attack", button.dataset.succeeded === "true")));
+}
+
+let triageBeforeCheck = false;
+const triageCount = (right, total) => t(triageBeforeCheck ? "triage.count.before_check" : "triage.count", right, total);
+
+function triageAsked() {
+  return Array.from(field("triage-list").querySelectorAll("[data-item]")).map((row) => ({
+    item: row.dataset.item,
+    pattern: row.dataset.pattern,
+    kindOf: row.querySelector("[data-kind-of]").classList.contains("flex"),
+    gotIn: row.querySelector("[data-got-in]").classList.contains("flex"),
+  })).filter((asked) => asked.kindOf || asked.gotIn);
+}
+
+function triageReask(asked) {
+  const rows = field("triage-list").querySelectorAll("[data-item]");
+  asked.forEach((one) => {
+    const row = Array.from(rows).find((each) => each.dataset.item === one.item);
+    if (!row) return;
+    if (one.pattern) triagePatternChosen(row, one.pattern);
+    shownIn(row.querySelector("[data-kind-of]"), one.kindOf);
+    shownIn(row.querySelector("[data-got-in]"), one.gotIn);
+  });
+}
+
+async function triageOpen() {
+  triageReading = true;
+  const read = await api(scenarioPath("triage/")).finally(() => { triageReading = false; });
+  if (!read.ok) {
+    field("triage-list").innerHTML = `<li class="text-muted">${esc(detail(read))}</li>`;
+    return;
+  }
+  triageTotal = read.body.total;
+  triageBeforeCheck = Boolean(read.body.before_check);
+  field("triage-count").textContent = triageCount(read.body.judged, read.body.total);
+  const asked = triageAsked();
+  const scrolled = field("triage-list").scrollTop;
+  field("triage-list").innerHTML = read.body.items.length ? read.body.items.map(triageRow).join("")
+    : `<li class="text-muted">${esc(t("triage.none"))}</li>`;
+  field("triage-list").querySelectorAll("[data-item]").forEach(triageWire);
+  triageReask(asked);
+  field("triage-list").scrollTop = scrolled;
+}
+
+const EDITS_RULES = ["detection", "unknown"];
+
+function rulesPane() {
+  if (!paneTab("rules").classList.contains("hidden")) return;
+  paneTab("rules").classList.remove("hidden");
+  rulesEditor();
+  field("lesson-rules-text").setAttribute("rows", "18");
+}
+
+async function scenarioStart(started) {
+  if (!(await scenarioRead())) return;
+  const tab = document.querySelector('.pane-tab[data-pane="triage"]');
+  tab.classList.toggle("hidden", scenario.task_class !== "judgement");
+  if (EDITS_RULES.includes(scenario.task_class)) rulesPane();
+  if (scenario.started === false && !started.ended_at) briefingShow();
+  field("briefing-start").addEventListener("click", briefingClose);
+  field("scenario-briefing-open").addEventListener("click", briefingShow);
+  field("scenario-done").addEventListener("click", scenarioDone);
+  field("scenario-end").addEventListener("click", () => scenarioEndAsked(true));
+  field("scenario-end-keep").addEventListener("click", () => {
+    scenarioEndAsked(false);
+    if (scenario.started === false) briefingShow();
+  });
+  field("briefing-end").addEventListener("click", () => {
+    field("briefing").classList.add("hidden");
+    scenarioEndAsked(true);
+  });
+  field("scenario-end-yes").addEventListener("click", scenarioEnd);
+  field("scenario-offer").addEventListener("click", hintOpen);
+  field("scenario-hints-close").addEventListener("click", () => {
+    field("scenario-hints").classList.add("hidden");
+    field("scenario-hints").classList.remove("flex");
+  });
+  field("scenario-phase").addEventListener("click", () => {
+    if (ENDED.includes(scenario.completion.state) || scenario.phase === "closed") scenarioDebrief();
+  });
+  field("scenario-debrief-close").addEventListener("click", () => field("scenario-debrief").classList.add("hidden"));
+  field("scenario-debrief-end").addEventListener("click", () => {
+    field("scenario-debrief").classList.add("hidden");
+    scenarioEndAsked(true);
+  });
+  setInterval(() => {
+    if (!scenario || document.hidden) return;
+    field("scenario-left").textContent = minutesAndSeconds(scenarioLeft());
+    if (scenario.phase === "window" && scenarioLeft() === 0 && !scenarioReading) scenarioRead();
+  }, 1000);
+  setInterval(() => {
+    if (!document.hidden && scenario && scenario.phase !== "closed" && !scenarioReading) scenarioRead();
+  }, SCENARIO_POLL_MS);
+  setInterval(() => {
+    if (!document.hidden && !triageReading && paneOpen("triage")) triageOpen();
+  }, TRIAGE_POLL_MS);
+}

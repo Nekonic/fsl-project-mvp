@@ -1,0 +1,15 @@
+{% extends "posts/base.html" %}
+{% block title %}검색: {{ query }}{% endblock %}
+{% block content %}
+  <h1 class="h4 mb-4">"{{ query }}" 검색 결과</h1>
+  <div class="list-group">
+    {% for post in results %}
+      <a class="list-group-item list-group-item-action" href="{% url 'post_detail' post.pk %}">
+        <h2 class="h6 mb-1">{{ post.title }}</h2>
+        <small class="text-muted">{{ post.author.username }} · {{ post.created_at|date:"Y-m-d H:i" }}</small>
+      </a>
+    {% empty %}
+      <p class="text-muted">검색 결과가 없습니다.</p>
+    {% endfor %}
+  </div>
+{% endblock %}

@@ -1,0 +1,206 @@
+import inspect
+import ipaddress
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+import pytest
+
+from range import declared, openstack
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+
+class Cloud:
+    def __init__(self):
+        self.tokens = 0
+        self.port = 0
+        self.services = ""
+        self.gone = set()
+
+    def handler(self):
+        cloud = self
+        declaration = declared.read()
+        origins = {o.id: o for o in declaration.origins}
+        carriers = list(dict.fromkeys(
+            origins[s.id].segment if s.id in origins else s.id for s in declaration.segments
+        ))
+        numbered = {f"net-{c}": n for n, c in enumerate(carriers)}
+
+        def allocated(network_id):
+            carrier = network_id.removeprefix("net-")
+            if carrier in {o.segment for o in origins.values()}:
+                return [
+                    {"cidr": o.subnet, "gateway_ip": str(next(ipaddress.ip_network(o.subnet).hosts()))}
+                    for o in origins.values() if o.segment == carrier
+                ]
+            n = numbered[network_id]
+            return [{"cidr": f"198.51.{n}.0/24", "gateway_ip": f"198.51.{n}.1"}]
+
+        def standing(role, host):
+            return {
+                "id": role, "name": declaration.roles[role],
+                "addresses": {
+                    f"range-{origin.segment}": [
+                        {
+                            "addr": str(list(ipaddress.ip_network(o.subnet).hosts())[host - 1]),
+                            openstack.FIXED: "fixed",
+                        }
+                        for o in origins.values()
+                    ]
+                    for origin in list(origins.values())[:1]
+                },
+            }
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def _send(self, code, body, headers=None):
+                raw = json.dumps(body).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                for name, value in (headers or {}).items():
+                    self.send_header(name, value)
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers["Content-Length"]))
+                cloud.tokens += 1
+                here = cloud.services or f"http://127.0.0.1:{cloud.port}"
+                self._send(201, {"token": {"catalog": [
+                    {"type": "network", "endpoints": [{
+                        "interface": "public", "region_id": "RegionOne", "url": here,
+                    }]},
+                    {"type": "compute", "endpoints": [{
+                        "interface": "public", "region_id": "RegionOne", "url": here,
+                    }]},
+                    {"type": "image", "endpoints": [{
+                        "interface": "public", "region_id": "RegionOne", "url": here,
+                    }]},
+                    {"type": "orchestration", "endpoints": [{
+                        "interface": "public", "region_id": "RegionOne", "url": here,
+                    }]},
+                ]}}, {"X-Subject-Token": f"tok{cloud.tokens}"})
+
+            def do_GET(self):
+                if self.server.server_port in cloud.gone:
+                    return self._send(404, {"error": self.path})
+                if "/v2.0/networks" in self.path:
+                    return self._send(200, {"networks": [
+                        {"id": f"net-{c}", "name": f"range-{c}",
+                         "tags": [f"{openstack.SEGMENT_TAG}={c}"]}
+                        for c in carriers
+                    ]})
+                if "/v2.0/subnets" in self.path:
+                    return self._send(200, {"subnets": allocated(self.path.rsplit("=", 1)[1])})
+                if "/servers/detail" in self.path:
+                    return self._send(200, {"servers": [
+                        standing("proxy", 5), standing("gateway", 4),
+                    ]})
+                self._send(404, {"error": self.path})
+
+        return H
+
+
+@pytest.fixture
+def cloud():
+    fake = Cloud()
+    server = HTTPServer(("127.0.0.1", 0), fake.handler())
+    fake.port = server.server_port
+    threading.Thread(target=server.serve_forever, args=(0.05,), daemon=True).start()
+    openstack.forget()
+    yield fake
+    openstack.forget()
+    server.shutdown()
+    server.server_close()
+
+
+def options(cloud, **overrides):
+    return {
+        "declared": declared.read(),
+        "keystone": f"http://127.0.0.1:{cloud.port}",
+        "user": "range-operator",
+        "password": "secret",
+        "project": "cr",
+        "ssh_user": "debian",
+        "ssh_key": "/keys/cr",
+        "region": "RegionOne",
+        "interface": "public",
+        "domain": "default",
+        "source": str(ROOT),
+        "subnets": "mgmt=10.31.0.0/24",
+        **overrides,
+    }
+
+
+def serving(cloud) -> HTTPServer:
+    server = HTTPServer(("127.0.0.1", 0), cloud.handler())
+    threading.Thread(target=server.serve_forever, args=(0.05,), daemon=True).start()
+    cloud.services = f"http://127.0.0.1:{server.server_port}"
+    return server
+
+
+@pytest.mark.parametrize("left_behind", ["closed", "answering 404"])
+def test_services_the_cloud_moved_are_found_again(cloud, left_behind):
+    before = serving(cloud)
+    try:
+        openstack.connect(**options(cloud)).describe()
+        after = serving(cloud)
+        if left_behind == "closed":
+            before.shutdown()
+            before.server_close()
+        else:
+            cloud.gone.add(before.server_port)
+        try:
+            shape = openstack.connect(**options(cloud)).describe()
+        finally:
+            after.shutdown()
+            after.server_close()
+    finally:
+        before.shutdown()
+        before.server_close()
+
+    assert [s.id for s in shape.segments] == [s.id for s in declared.read().segments], (
+        "Keystone listed the network and compute services somewhere new and "
+        "the platform went on asking where the first catalogue said they "
+        "were, until it was restarted"
+    )
+
+
+def test_the_console_draws_an_openstack_range(cloud, client, settings):
+    settings.CR_SUBSTRATE = "range.openstack.connect"
+    settings.CR_SUBSTRATE_OPTIONS = options(cloud)
+
+    response = client.get("/api/origins/")
+
+    assert response.status_code == 200, response.content[:300]
+    assert {o["id"] for o in response.json()["origins"]} == {
+        s.id for s in declared.read().segments if s.origin
+    }
+
+
+def test_settings_hand_the_openstack_substrate_its_credentials_from_the_environment():
+    read = subprocess.run(
+        [sys.executable, "-c",
+         "import json, cr.settings as s; o = s.CR_SUBSTRATE_OPTIONS; "
+         "print(json.dumps(sorted(o))); print(o['keystone'])"],
+        cwd=ROOT / "platform", capture_output=True, text=True,
+        env={
+            **os.environ,
+            "DJANGO_SETTINGS_MODULE": "cr.settings",
+            "CR_SUBSTRATE": "range.openstack.connect",
+            "CR_OPENSTACK_KEYSTONE": "https://keystone.example:5000",
+        },
+    )
+    assert read.returncode == 0, read.stderr[-300:]
+
+    keys, values = read.stdout.strip().splitlines()
+    assert set(json.loads(keys)) <= set(inspect.signature(openstack.connect).parameters)
+    assert values == "https://keystone.example:5000"

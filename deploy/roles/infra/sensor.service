@@ -1,0 +1,22 @@
+[Unit]
+Description=Suricata on the IDS bridge
+Requires=docker.service slot-boot.service
+After=docker.service slot-boot.service
+ConditionPathExists=/etc/slot.env
+
+[Service]
+ExecStartPre=-/usr/bin/docker rm -f sensor
+ExecStart=/usr/bin/docker run --rm --name sensor --pull never --network host \
+  --cap-add NET_ADMIN --cap-add NET_RAW --cap-add SYS_NICE --security-opt no-new-privileges:true \
+  --memory 768m --pids-limit 256 -e PGID=4 \
+  -v /etc/suricata/suricata.yaml:/etc/suricata/suricata.yaml \
+  -v /var/lib/suricata/rules:/var/lib/suricata/rules \
+  -v /var/log/suricata:/var/log/suricata \
+  jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840 \
+  -c /etc/suricata/suricata.yaml --af-packet=br0
+ExecStop=/usr/bin/docker stop sensor
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

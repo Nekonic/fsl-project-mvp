@@ -1,0 +1,87 @@
+[*] starting @ 06:40:10 /2026-10-10/
+
+custom injection marker ('*') found in option '-u'. Do you want to process it? [Y/n/q] Y
+[06:40:10] [INFO] testing connection to the target URL
+[06:40:10] [WARNING] the web server responded with an HTTP error code (403) which could interfere with the results of the tests
+[06:40:10] [INFO] checking if the target is protected by some kind of WAF/IPS
+[06:40:10] [INFO] testing if the target URL content is stable
+[06:40:11] [INFO] target URL content is stable
+[06:40:11] [INFO] testing if URI parameter '#1*' is dynamic
+[06:40:11] [WARNING] URI parameter '#1*' does not appear to be dynamic
+[06:40:11] [WARNING] heuristic (basic) test shows that URI parameter '#1*' might not be SQL injectable
+[06:40:11] [INFO] testing for SQL injection on URI parameter '#1*'
+[06:40:11] [INFO] testing 'AND boolean-based blind - WHERE or HAVING clause'
+[06:40:11] [INFO] testing 'OR boolean-based blind - WHERE or HAVING clause'
+[06:40:11] [INFO] testing 'OR boolean-based blind - WHERE or HAVING clause (NOT)'
+[06:40:12] [INFO] testing 'AND boolean-based blind - WHERE or HAVING clause (subquery - comment)'
+[06:40:12] [INFO] testing 'OR boolean-based blind - WHERE or HAVING clause (subquery - comment)'
+[06:40:12] [INFO] testing 'AND boolean-based blind - WHERE or HAVING clause (comment)'
+[06:40:13] [INFO] testing 'OR boolean-based blind - WHERE or HAVING clause (comment)'
+[06:40:13] [INFO] testing 'OR boolean-based blind - WHERE or HAVING clause (NOT - comment)'
+[06:40:13] [INFO] testing 'Boolean-based blind - Parameter replace (original value)'
+[06:40:13] [INFO] testing 'Boolean-based blind - Parameter replace (DUAL)'
+[06:40:13] [INFO] testing 'Boolean-based blind - Parameter replace (DUAL - original value)'
+[06:40:13] [INFO] testing 'Boolean-based blind - Parameter replace (CASE)'
+[06:40:13] [INFO] testing 'Boolean-based blind - Parameter replace (CASE - original value)'
+[06:40:13] [INFO] testing 'HAVING boolean-based blind - WHERE, GROUP BY clause'
+[06:40:13] [INFO] testing 'AND boolean-based blind - WHERE or HAVING clause (MySQL comment)'
+[06:40:13] [INFO] testing 'OR boolean-based blind - WHERE or HAVING clause (MySQL comment)'
+[06:40:14] [INFO] testing 'OR boolean-based blind - WHERE or HAVING clause (NOT - MySQL comment)'
+[06:40:14] [INFO] testing 'MySQL RLIKE boolean-based blind - WHERE, HAVING, ORDER BY or GROUP BY clause'
+[06:40:14] [INFO] testing 'MySQL AND boolean-based blind - WHERE, HAVING, ORDER BY or GROUP BY clause (MAKE_SET)'
+[06:40:14] [INFO] testing 'MySQL OR boolean-based blind - WHERE, HAVING, ORDER BY or GROUP BY clause (MAKE_SET)'
+[06:40:15] [INFO] testing 'MySQL AND boolean-based blind - WHERE, HAVING, ORDER BY or GROUP BY clause (ELT)'
+[06:40:15] [INFO] testing 'MySQL OR boolean-based blind - WHERE, HAVING, ORDER BY or GROUP BY clause (ELT)'
+[06:40:15] [INFO] testing 'MySQL AND boolean-based blind - WHERE, HAVING, ORDER BY or GROUP BY clause (EXTRACTVALUE)'
+[06:40:15] [INFO] testing 'MySQL OR boolean-based blind - WHERE, HAVING, ORDER BY or GROUP BY clause (EXTRACTVALUE)'
+[06:40:16] [INFO] testing 'MySQL boolean-based blind - Parameter replace (MAKE_SET)'
+[06:40:16] [INFO] testing 'MySQL boolean-based blind - Parameter replace (MAKE_SET - original value)'
+[06:40:16] [INFO] testing 'MySQL boolean-based blind - Parameter replace (ELT)'
+[06:40:16] [INFO] testing 'MySQL boolean-based blind - Parameter replace (ELT - original value)'
+[06:40:16] [INFO] testing 'MySQL boolean-based blind - Parameter replace (bool*int)'
+[06:40:16] [INFO] testing 'MySQL boolean-based blind - Parameter replace (bool*int - original value)'
+[06:40:16] [INFO] testing 'MySQL >= 5.0 boolean-based blind - ORDER BY, GROUP BY clause'
+[06:40:16] [INFO] testing 'MySQL >= 5.0 boolean-based blind - ORDER BY, GROUP BY clause (original value)'
+[06:40:16] [INFO] testing 'MySQL >= 5.0 boolean-based blind - Stacked queries'
+[06:40:16] [INFO] testing 'MySQL >= 5.0.12 AND time-based blind (query SLEEP)'
+[06:40:16] [INFO] testing 'MySQL >= 5.0.12 OR time-based blind (query SLEEP)'
+[06:40:17] [INFO] testing 'MySQL >= 5.0.12 AND time-based blind (SLEEP)'
+[06:40:17] [INFO] testing 'MySQL >= 5.0.12 OR time-based blind (SLEEP)'
+[06:40:17] [INFO] testing 'MySQL >= 5.0.12 AND time-based blind (SLEEP - comment)'
+[06:40:18] [INFO] testing 'MySQL >= 5.0.12 OR time-based blind (SLEEP - comment)'
+[06:40:18] [INFO] testing 'MySQL >= 5.0.12 AND time-based blind (query SLEEP - comment)'
+[06:40:18] [INFO] testing 'MySQL >= 5.0.12 OR time-based blind (query SLEEP - comment)'
+[06:40:18] [INFO] testing 'MySQL < 5.0.12 AND time-based blind (BENCHMARK)'
+[06:40:18] [INFO] testing 'MySQL > 5.0.12 AND time-based blind (heavy query)'
+[06:40:19] [INFO] testing 'MySQL < 5.0.12 OR time-based blind (BENCHMARK)'
+[06:40:19] [INFO] testing 'MySQL > 5.0.12 OR time-based blind (heavy query)'
+[06:40:19] [INFO] testing 'MySQL < 5.0.12 AND time-based blind (BENCHMARK - comment)'
+[06:40:19] [INFO] testing 'MySQL > 5.0.12 AND time-based blind (heavy query - comment)'
+[06:40:20] [INFO] testing 'MySQL < 5.0.12 OR time-based blind (BENCHMARK - comment)'
+[06:40:20] [INFO] testing 'MySQL > 5.0.12 OR time-based blind (heavy query - comment)'
+[06:40:20] [INFO] testing 'MySQL >= 5.0.12 RLIKE time-based blind'
+[06:40:20] [INFO] testing 'MySQL >= 5.0.12 RLIKE time-based blind (comment)'
+[06:40:20] [INFO] testing 'MySQL >= 5.0.12 RLIKE time-based blind (query SLEEP)'
+[06:40:21] [INFO] testing 'MySQL >= 5.0.12 RLIKE time-based blind (query SLEEP - comment)'
+[06:40:21] [INFO] testing 'MySQL AND time-based blind (ELT)'
+[06:40:21] [INFO] testing 'MySQL OR time-based blind (ELT)'
+[06:40:22] [INFO] testing 'MySQL AND time-based blind (ELT - comment)'
+[06:40:22] [INFO] testing 'MySQL OR time-based blind (ELT - comment)'
+[06:40:22] [INFO] testing 'MySQL >= 5.1 time-based blind (heavy query) - PROCEDURE ANALYSE (EXTRACTVALUE)'
+[06:40:22] [INFO] testing 'MySQL >= 5.1 time-based blind (heavy query - comment) - PROCEDURE ANALYSE (EXTRACTVALUE)'
+[06:40:23] [INFO] testing 'MySQL >= 5.0.12 time-based blind - Parameter replace'
+[06:40:23] [INFO] testing 'MySQL >= 5.0.12 time-based blind - Parameter replace (substraction)'
+[06:40:23] [INFO] testing 'MySQL < 5.0.12 time-based blind - Parameter replace (BENCHMARK)'
+[06:40:23] [INFO] testing 'MySQL > 5.0.12 time-based blind - Parameter replace (heavy query - comment)'
+[06:40:23] [INFO] testing 'MySQL time-based blind - Parameter replace (bool)'
+[06:40:23] [INFO] testing 'MySQL time-based blind - Parameter replace (ELT)'
+[06:40:23] [INFO] testing 'MySQL time-based blind - Parameter replace (MAKE_SET)'
+[06:40:23] [INFO] testing 'MySQL >= 5.0.12 time-based blind - ORDER BY, GROUP BY clause'
+[06:40:23] [INFO] testing 'MySQL < 5.0.12 time-based blind - ORDER BY, GROUP BY clause (BENCHMARK)'
+[06:40:23] [WARNING] URI parameter '#1*' does not seem to be injectable
+[06:40:23] [CRITICAL] all tested parameters do not appear to be injectable. Rerun without providing the option '--technique'. If you suspect that there is some kind of protection mechanism involved (e.g. WAF) maybe you could try to use option '--tamper' (e.g. '--tamper=space2comment') and/or switch '--random-agent'
+[06:40:23] [WARNING] HTTP error codes detected during run:
+403 (Forbidden) - 2065 times
+
+[*] ending @ 06:40:23 /2026-10-10/
+

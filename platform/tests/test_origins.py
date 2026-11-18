@@ -1,0 +1,349 @@
+import pathlib
+from dataclasses import replace
+from unittest.mock import patch
+
+import pytest
+
+import attacker
+from attacker import AttackerUnavailable
+from range import declared
+from range.ports import Node, RangeUnavailable, Segment, Shape
+
+KALI = "cr-kali"
+WAF = "cr-waf"
+PF = "cr-edge"
+
+EDGE = Segment(
+    id="ru", name="Internet", origin="Russia",
+    subnet="5.188.10.0/24", network="cr-internet", gateway="5.188.10.1",
+    nodes=(Node(PF, "5.188.10.1"), Node(KALI, "5.188.10.10")),
+)
+HK = Segment(
+    id="hk", name="Internet", origin="Hong Kong",
+    subnet="103.152.220.0/24", network="cr-internet", gateway="103.152.220.1",
+    nodes=(Node(PF, "103.152.220.1"), Node(KALI, "103.152.220.10")),
+)
+BR = Segment(
+    id="br", name="Internet", origin="Brazil",
+    subnet="177.54.144.0/24", network="cr-internet", gateway="177.54.144.1",
+    nodes=(Node(PF, "177.54.144.1"), Node(KALI, "177.54.144.10")),
+)
+ESTATE = Segment(
+    id="estate", name="Application estate", origin="",
+    subnet="10.30.0.0/24", network="cr-estate",
+    nodes=(Node(PF, "10.30.0.1"), Node(WAF, "10.30.0.217")),
+)
+
+SHAPE = Shape(segments=(EDGE, HK, BR, ESTATE), sensors=())
+
+@pytest.fixture(autouse=True)
+def on_the_attacker_box(settings):
+    settings.RANGE = declared.read()
+    settings.ATTACKER_SOURCE_CONTAINER = KALI
+    settings.ATTACKER_CONTAINER = KALI
+
+def stub(described=SHAPE, error=None):
+    class Stub:
+        def segments(self):
+            return self.describe().segments
+
+        def describe(self):
+            if error is not None:
+                raise error
+            return described
+
+        def launcher(self, segment_id):
+            def launch(image, argv, timeout=600.0):
+                raise AssertionError("no case here runs a tool")
+
+            return launch
+
+        def runner(self, role, segment_id=""):
+            def ran(argv, timeout=600.0, stdin=""):
+                return type("Ran", (), {"ok": True, "output": ""})()
+
+            return ran
+
+    return patch("api.views.substrate", Stub)
+
+def origins(described=SHAPE):
+    return attacker.origins(described)
+
+def test_every_declared_network_is_an_origin_in_a_stable_order_with_the_default_marked():
+    listed = origins()
+
+    assert [o["id"] for o in listed] == ["br", "hk", "ru"], "rotation depends on a stable order"
+    assert [o["id"] for o in listed if o["default"]] == ["ru"]
+
+def test_an_attacker_box_on_nothing_at_all_is_an_error_not_an_empty_list():
+    nowhere = Shape(
+        segments=(replace(EDGE, nodes=(Node(PF, "5.188.10.1"),)),), sensors=(),
+    )
+
+    with pytest.raises(AttackerUnavailable) as raised:
+        origins(nowhere)
+    assert isinstance(raised.value, RangeUnavailable), "the views answer 503 for a range that cannot be read"
+
+def test_finding_an_origin_never_names_the_substrate():
+    source = pathlib.Path(attacker.__file__).read_text()
+
+    assert "docker" not in source.lower()
+    assert "subprocess" not in source
+
+def test_the_default_origin_answers_when_none_was_asked_for():
+    assert attacker.find(SHAPE, None)["source_ip"] == "5.188.10.10"
+
+pytestmark = pytest.mark.django_db
+
+PLACES = [
+    {"id": "ru", "label": "Russia", "source_ip": "5.188.10.7", "direct_ip": "5.188.10.7",
+     "address": "5.188.10.9", "target_url": "http://5.188.10.9:8080", "subnet": "5.188.10.0/24",
+     "network": "cr_edge", "default": True},
+    {"id": "br", "label": "Brazil", "source_ip": "177.54.144.7", "direct_ip": "177.54.144.7",
+     "address": "177.54.144.9", "target_url": "http://177.54.144.9:8080", "subnet": "177.54.144.0/24",
+     "network": "cr_edge-br", "default": False},
+    {"id": "hk", "label": "Hong Kong", "source_ip": "103.152.220.7", "direct_ip": "103.152.220.7",
+     "address": "103.152.220.9", "target_url": "http://103.152.220.9:8080", "subnet": "103.152.220.0/24",
+     "network": "cr_edge-hk", "default": False},
+]
+
+def _fire(client, session_id, payload):
+    with stub(), patch("api.views.attacker.origins", return_value=PLACES), \
+            patch("api.views.attacker.wear_origin"), \
+            patch("api.views.harness.fire") as fired:
+        response = client.post_json(
+            f"/api/sessions/{session_id}/attacks/", payload
+        )
+    return response, fired
+
+@pytest.fixture
+def session_id(client):
+    return client.post_json("/api/sessions/", {}).json()["id"]
+
+def test_the_origins_of_a_named_session_are_read_from_its_own_stack(client, session_id):
+    asked = []
+
+    def standing(session=None):
+        asked.append(session.pk if session else None)
+        return SHAPE
+
+    with patch("api.views._standing", standing):
+        response = client.get("/api/origins/", {"session": session_id})
+
+    assert response.status_code == 200, response.content
+    assert [o["id"] for o in response.json()["origins"]] == ["br", "hk", "ru"]
+    assert asked == [session_id], (
+        "the origins came from whichever session is newest, which under two open "
+        "sessions is not always the one that asked"
+    )
+
+def test_origins_that_cannot_be_discovered_are_503_not_an_empty_list(client):
+    with stub(error=RangeUnavailable("Cannot connect to the Docker daemon")):
+        response = client.get("/api/origins/")
+
+    assert response.status_code == 503
+    assert "Docker" in response.json()["detail"]
+
+def test_an_attack_with_no_origin_still_leaves_by_the_front_door(client, session_id):
+    from django.conf import settings
+
+    response, fired = _fire(client, session_id, {"case": "board-sqli-login-bypass"})
+
+    assert response.status_code == 201
+    assert fired.call_args.args[2] == settings.TARGET_URL
+    assert fired.call_args.args[3] == "/tmp/sqlmap-runs", "a fired sqlmap case writes apart from the box's default sqlmap output"
+    assert "origin" not in response.json()["meta"]
+
+def test_an_attack_leaves_by_the_origin_it_was_given(client, session_id):
+    response, fired = _fire(
+        client, session_id, {"case": "board-sqli-login-bypass", "origin": "hk"}
+    )
+
+    assert response.status_code == 201
+    assert fired.call_args.args[2] == "http://103.152.220.9:8080"
+    assert response.json()["meta"]["origin"] == "hk"
+
+@pytest.mark.parametrize("payload, worn_ids", [
+    ({"case": "board-sqli-login-bypass", "origin": "hk"}, ["hk"]),
+    ({"case": "board-sqli-login-bypass"}, []),
+])
+def test_an_attack_wears_the_origin_before_firing(client, session_id, payload, worn_ids):
+    with stub(), patch("api.views.attacker.origins", return_value=PLACES), \
+            patch("api.views.harness.fire"), \
+            patch("api.views.attacker.wear_origin") as worn:
+        client.post_json(f"/api/sessions/{session_id}/attacks/", payload)
+
+    assert [call.args[0]["id"] for call in worn.call_args_list] == worn_ids
+
+def test_rotation_moves_on_with_every_attack(client, session_id):
+    seen = []
+    for _ in range(4):
+        _, fired = _fire(
+            client, session_id, {"case": "board-sqli-login-bypass", "origin": "rotate"}
+        )
+        seen.append(fired.call_args.args[2])
+
+    assert seen == [
+        "http://5.188.10.9:8080",
+        "http://177.54.144.9:8080",
+        "http://103.152.220.9:8080",
+        "http://5.188.10.9:8080",
+    ], "rotation stalled: every attack would land on the same pin"
+
+ROTATE = {"case": "board-sqli-login-bypass", "origin": "rotate"}
+
+def test_two_rotated_attacks_in_flight_at_once_leave_from_different_places(client, session_id):
+    left_from = []
+
+    def still_running(case, launch, target_url, *rest):
+        left_from.append(target_url)
+        if len(left_from) == 1:
+            client.post_json(f"/api/sessions/{session_id}/attacks/", ROTATE)
+
+    with stub(), patch("api.views.attacker.origins", return_value=PLACES), \
+            patch("api.views.harness.fire", side_effect=still_running):
+        client.post_json(f"/api/sessions/{session_id}/attacks/", ROTATE)
+
+    assert len(left_from) == 2
+    assert left_from[0] != left_from[1], (
+        "the second rotated attack was fired while the first was still running, "
+        "so no case had been recorded yet and both took the same turn: two "
+        "attacks left from one place and one origin was skipped"
+    )
+
+def test_a_rotated_attack_that_starts_while_another_reads_the_range_takes_its_own_turn(
+    client, session_id
+):
+    reads = []
+
+    def read_while_another_starts(described):
+        reads.append(described)
+        if len(reads) == 1:
+            client.post_json(f"/api/sessions/{session_id}/attacks/", ROTATE)
+        return PLACES
+
+    with stub(), patch("api.views.attacker.origins", side_effect=read_while_another_starts), \
+            patch("api.views.harness.fire") as fired:
+        client.post_json(f"/api/sessions/{session_id}/attacks/", ROTATE)
+
+    left_from = [call.args[2] for call in fired.call_args_list]
+    assert len(left_from) == 2
+    assert left_from[0] != left_from[1], (
+        "both attacks loaded the session before either took a turn, and the "
+        "turn was written back from what each had loaded rather than advanced "
+        "in the database"
+    )
+
+def test_attacks_pinned_to_a_place_or_recorded_by_hand_do_not_move_the_rotation(
+    client, session_id
+):
+    rotated = []
+    for step in ("rotate", "hk", "rotate", "recorded", "rotate"):
+        if step == "recorded":
+            with patch("api.views._observe_objectives", return_value={"achieved": 0}):
+                recorded = client.post_json(f"/api/sessions/{session_id}/cases/", {
+                    "case_id": "55555555-5555-4555-8555-555555555555",
+                    "name": "terminal-something", "malicious": True,
+                    "correlation": "window", "source_ip": "5.188.10.7",
+                    "started_at": "2026-09-24T10:00:00Z",
+                    "ended_at": "2026-09-24T10:00:01Z",
+                })
+            assert recorded.status_code == 201, recorded.content
+            continue
+        _, fired = _fire(client, session_id, {"case": "board-sqli-login-bypass", "origin": step})
+        if step == "rotate":
+            rotated.append(fired.call_args.args[2])
+
+    assert rotated == [
+        "http://5.188.10.9:8080",
+        "http://177.54.144.9:8080",
+        "http://103.152.220.9:8080",
+    ], (
+        "the rotation counted every case in the session, so an attack pinned to "
+        "one place or a case typed in the terminal shifted it and skipped an origin"
+    )
+
+def test_an_origin_that_does_not_exist_is_refused(client, session_id):
+    response, fired = _fire(
+        client, session_id, {"case": "board-sqli-login-bypass", "origin": "edge-mars"}
+    )
+
+    assert response.status_code == 404
+    assert not fired.called
+
+def test_the_terminal_s_address_follows_the_chosen_origin(client):
+    with stub(), patch("api.views.attacker.origins", return_value=PLACES):
+        response = client.get("/api/attacker/?origin=hk")
+
+    assert response.status_code == 200
+    assert response.json()["source_ip"] == "103.152.220.7"
+    assert response.json()["direct_ip"] == "103.152.220.7"
+    assert response.json()["target_url"] == "http://103.152.220.9:8080"
+
+
+@pytest.mark.django_db
+def test_the_places_to_attack_from_are_listed_while_the_sensor_is_down(client):
+    class SensorDown:
+        def segments(self):
+            return SHAPE.segments
+
+        def describe(self):
+            raise RangeUnavailable("cr-suricata is declared to watch cr-waf and stands in nothing")
+
+    with patch("api.views.substrate", SensorDown):
+        listed = client.get("/api/origins/")
+        box = client.get("/api/attacker/")
+
+    assert (listed.status_code, box.status_code) == (200, 200), (
+        "the red console could not list where to attack from, or reach its own "
+        "terminal, while the sensor was down - neither needs the sensor"
+    )
+
+
+def _openstack_shape():
+    us = Segment(id="us", name="Internet", origin="United States", subnet="73.0.0.0/24",
+                 network="cr-internet", gateway="73.0.0.1",
+                 nodes=(Node(PF, "73.0.0.1"), Node(KALI, "73.0.0.10")))
+    tw = Segment(id="tw", name="Internet", origin="Taiwan", subnet="120.96.0.0/24",
+                 network="cr-internet", gateway="120.96.0.1",
+                 nodes=(Node(PF, "120.96.0.1"), Node(KALI, "120.96.0.10")))
+    estate = Segment(id="estate", name="Estate", origin="", subnet="10.30.0.0/24",
+                     network="cr-estate", nodes=(Node("cr-waf", "10.30.0.217"),))
+    return Shape(segments=(us, tw, estate), sensors=())
+
+def test_the_edge_is_the_way_in_and_the_target_is_a_name(settings):
+    settings.ATTACKER_TARGET_URL = "http://shop.com"
+
+    found = {o["id"]: o for o in attacker.origins(_openstack_shape())}
+
+    assert set(found) == {"us", "tw"}, "the estate is not an origin"
+    assert found["us"]["source_ip"] == "73.0.0.10", "the attack comes from the Kali box"
+    assert found["us"]["target_url"] == "http://shop.com", (
+        "the target is reached by name through the edge, not by a per-origin WAF address"
+    )
+    assert found["us"]["address"] == "73.0.0.1", "the way in is the edge's gateway"
+
+def test_an_origin_the_attacker_has_no_address_on_is_not_offered():
+    shape = _openstack_shape()
+    no_kali = tuple(
+        replace(s, nodes=tuple(n for n in s.nodes if n.name != KALI)) if s.id == "tw" else s
+        for s in shape.segments
+    )
+
+    listed = [o["id"] for o in attacker.origins(Shape(segments=no_kali, sensors=()))]
+    assert listed == ["us"]
+
+
+@pytest.mark.django_db
+def test_a_window_case_recorded_without_its_source_is_matched_against_the_default_origin(client, session_id):
+    with stub(), patch("api.views._observe_objectives", return_value={"achieved": 0}):
+        recorded = client.post_json(f"/api/sessions/{session_id}/cases/", {
+            "case_id": "66666666-6666-4666-8666-666666666666", "name": "board-path-traversal-static",
+            "malicious": True, "correlation": "window",
+            "started_at": "2026-11-16T05:40:00Z", "ended_at": "2026-11-16T05:40:01Z",
+        })
+
+    assert recorded.status_code == 201, recorded.content
+    assert recorded.json()["source_ip"] == "5.188.10.10", (
+        "nginx refuses a malformed path before it reads any header, so its record carries no marker; "
+        "the case is found by the address the harness sent it from")

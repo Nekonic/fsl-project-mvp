@@ -1,0 +1,2205 @@
+const lessonPath = (tail) => `/api/sessions/${sessionId()}/${tail}`;
+const lessonId = () => (session && session.lesson_id) || "";
+const caseLabel = (name) => localized(`case.${name}`, name);
+const phrase = (key, fallback, ...values) => values.reduce(
+  (out, value, index) => out.split(`{${index}}`).join(value), localized(key, fallback));
+
+function kept(key, fallback) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key));
+    return value === null ? fallback : value;
+  } catch (error) {
+    return fallback;
+  }
+}
+
+function keep(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    return;
+  }
+}
+
+const either = (letter) => (/[a-z]/i.test(letter) ? `[${letter.toLowerCase()}${letter.toUpperCase()}]` : letter);
+
+function pattern(text) {
+  if (!text) return null;
+  try {
+    return new RegExp(text);
+  } catch (error) {
+    try {
+      return new RegExp(text.replace(/\(\?i:([A-Za-z]+)\)/g, (_, word) => `(?:${[...word].map(either).join("")})`));
+    } catch (again) {
+      return null;
+    }
+  }
+}
+
+function boxOf(element) {
+  const rect = element && element.getBoundingClientRect ? element.getBoundingClientRect() : null;
+  return rect && rect.width && rect.height ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
+}
+
+const overlaps = (a, b) => Boolean(a && b) && a.left < b.left + b.width && b.left < a.left + a.width
+  && a.top < b.top + b.height && b.top < a.top + a.height;
+const within = (inner, outer) => Boolean(inner && outer) && inner.left >= outer.left && inner.top >= outer.top
+  && inner.left + inner.width <= outer.left + outer.width && inner.top + inner.height <= outer.top + outer.height;
+const grown = (box, by) => ({ left: box.left - by, top: box.top - by, width: box.width + 2 * by, height: box.height + 2 * by });
+const rounded = (box) => (box ? [box.left, box.top, box.width, box.height].map(Math.round).join() : "");
+
+function clipped(rect, bounds) {
+  if (!rect) return null;
+  if (!bounds) return rect;
+  const left = Math.max(rect.left, bounds.left);
+  const top = Math.max(rect.top, bounds.top);
+  const right = Math.min(rect.left + rect.width, bounds.left + bounds.width);
+  const bottom = Math.min(rect.top + rect.height, bounds.top + bounds.height);
+  return right > left && bottom > top ? { left, top, width: right - left, height: bottom - top } : null;
+}
+
+function inFrame(host, rect) {
+  const box = boxOf(host);
+  if (!box || !rect) return null;
+  const left = rect.left ?? rect.x;
+  const top = rect.top ?? rect.y;
+  const width = rect.width ?? rect.w;
+  const height = rect.height ?? rect.h;
+  if (![left, top, width, height].every(Number.isFinite) || !width || !height) return null;
+  return clipped({ left: box.left + left, top: box.top + top, width, height }, box);
+}
+
+function copied(text) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  document.body.append(area);
+  area.select();
+  const done = document.execCommand("copy");
+  area.remove();
+  return done ? Promise.resolve() : Promise.reject(new Error("copy refused"));
+}
+
+function showInKibana(url) {
+  const tab = paneTab("elk");
+  const same = paneOpen("elk") && Boolean(frame.getAttribute("src"))
+    && new URL(frame.getAttribute("src"), location.href).href === new URL(url, location.href).href;
+  tab.dataset.src = url;
+  openPane(tab);
+  if (same && frame.contentWindow && frame.contentWindow.location) frame.contentWindow.location.reload();
+}
+
+const COMMAND_BREAK = /(?<=[/?])(?=[^/?])/;
+
+function commandHtml(text) {
+  return String(text).split(/(\s+)/).map((part) => (/^\s*$/.test(part) ? part
+    : part.split(COMMAND_BREAK).map((piece) => `<span class="seg">${esc(piece)}</span>`).join(""))).join("");
+}
+
+const ranSeen = (run) => Boolean(run) && (Boolean(run.settling) || "discover" in run);
+const windowed = (run) => Boolean(run) && "discover" in run;
+
+function kaliRow(row, windowed = true) {
+  return `<li class="text-[13px] flex flex-wrap items-center gap-2" data-kali="${esc(row.name)}">
+    ${windowed ? `<span data-running class="basis-full text-muted">${esc(localized("lesson.kali.running", ""))}</span>` : ""}
+    ${windowed && row.discover ? `<button type="button" class="ml-auto text-primary hover:underline" data-discover="${esc(row.discover)}">${esc(t("lesson.kali.window"))}</button>` : ""}
+  </li>`;
+}
+
+const NOTE_KEY = "cr-lesson-note";
+const REF_KEY = () => `cr-lesson-reference-${sessionId()}-${lessonId()}`;
+const DRAFT_KEY = () => `cr-rules-draft-${sessionId()}`;
+const LANDED_KEY = (id, lesson) => `cr-lesson-landed-${id}-${lesson}`;
+let note = { open: true };
+let landed = false;
+
+function placeNote() {
+  field("lesson").classList.toggle("folded", !note.open);
+}
+
+function setNote(change) {
+  note = { ...note, ...change };
+  keep(NOTE_KEY, { open: note.open });
+  placeNote();
+}
+
+function firstOpen() {
+  try {
+    if (localStorage.getItem(LANDED_KEY(sessionId(), lessonId()))) return false;
+    localStorage.setItem(LANDED_KEY(sessionId(), lessonId()), "true");
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+function folding(toggle, body, mark, heard = () => {}) {
+  const set = (opened) => {
+    body.classList.toggle("hidden", !opened);
+    body.classList.toggle("flex", opened);
+    toggle.setAttribute("aria-expanded", String(opened));
+    if (mark) mark.textContent = opened ? "▼" : "▶";
+  };
+  toggle.addEventListener("click", () => {
+    const opened = toggle.getAttribute("aria-expanded") !== "true";
+    set(opened);
+    heard(opened);
+  });
+  return set;
+}
+
+function noteControls(started) {
+  landed = firstOpen();
+  note = { open: landed || kept(NOTE_KEY, {}).open !== false };
+  field("lesson").classList.remove("hidden");
+  const heading = t(started && started.course_scenario ? "scenario.note.heading" : "lesson.note.heading");
+  field("note-heading").textContent = heading;
+  field("note-strip-text").textContent = heading;
+  field("lesson-collapse").addEventListener("click", () => setNote({ open: false }));
+  field("note-strip").addEventListener("click", () => setNote({ open: true }));
+  folding(field("steps-toggle"), field("lesson-step-list"), field("steps-mark"));
+  placeNote();
+}
+
+function shownSection(id, shown = true) {
+  field(id).classList.toggle("hidden", !shown);
+  field(id).classList.toggle("flex", shown);
+}
+
+function noteLesson(taught) {
+  field("stretch-text").textContent = localized(`${taught.text}.stretch`, "");
+  stretchShown(false);
+}
+
+function stretchShown(reached) {
+  shownSection("stretch-card", reached && Boolean(field("stretch-text").textContent));
+}
+
+const cards = (listed) => (Array.isArray(listed) ? listed : []).map((card) =>
+  (typeof card === "string" ? { id: card } : card));
+
+function referenceRows(id) {
+  return localized(`lesson.ref.${id}.rows`, "").split("\n").filter(Boolean).map((line) => line.split("\t"));
+}
+
+function referenceHtml(id, titled = true) {
+  const body = localized(`lesson.ref.${id}.body`, "");
+  const rows = referenceRows(id);
+  return `${titled ? `<b class="text-heading">${esc(t(`lesson.ref.${id}.title`))}</b>` : ""}
+    ${body ? `<p class="whitespace-pre-line text-body">${esc(body)}</p>` : ""}
+    ${rows.length ? `<div class="flex flex-col text-[13px]">${rows.map(([code, meaning]) =>
+      `<div class="border-t border-line py-1"><code class="block font-mono text-heading whitespace-pre-wrap break-all">${esc(code)}</code><span class="block text-body">${esc(meaning || "")}</span></div>`).join("")}</div>` : ""}
+    ${id === "addresses" ? '<table data-addresses class="w-full text-[13px]"><tbody></tbody></table>' : ""}`;
+}
+
+function addressHolder(one) {
+  const key = one.kind === "sensor" ? "topology.sensor" : `topology.name.${one.host}`;
+  const shown = t(key);
+  return shown === key ? one.host : shown;
+}
+
+async function addressesFill() {
+  const tables = Array.from(document.querySelectorAll("[data-addresses]"));
+  if (!tables.length) return;
+  const read = await api(lessonPath("lesson/addresses/"));
+  const listed = read.ok && read.body && Array.isArray(read.body.addresses) ? read.body.addresses : [];
+  const rows = listed.length ? listed.map((one) =>
+    `<tr class="border-t border-line"><td class="py-1 pr-2 font-mono text-heading">${esc(addressHolder(one))}</td><td class="py-1 pr-2 text-muted">${esc(t(`topology.zone.${one.zone}`, one.owner || ""))}</td><td class="py-1 font-mono text-heading">${esc(one.more ? t("topology.address.more", one.address, one.more) : one.address)}</td></tr>`).join("")
+    : `<tr><td class="py-1 text-muted">${esc(t("lesson.ref.addresses.none"))}</td></tr>`;
+  tables.forEach((table) => { table.querySelector("tbody").innerHTML = rows; });
+}
+
+let referenceShown = [];
+
+function referenceOpen(opened) {
+  field("ref-col").classList.toggle("hidden", !opened);
+  field("rail-ref").setAttribute("aria-expanded", String(opened));
+  field("rail-ref").classList.toggle("active", opened);
+  keep(REF_KEY(), opened);
+}
+
+function reference(listed) {
+  referenceShown = (Array.isArray(listed) ? listed : []).map(String);
+  const any = referenceShown.length > 0;
+  field("rail-ref").classList.toggle("hidden", !any);
+  if (!any) return;
+  field("ref-list").innerHTML = referenceShown.map((id) =>
+    `<section class="flex flex-col gap-1" data-ref="${esc(id)}">${referenceHtml(id)}</section>`).join("");
+  field("rail-ref").addEventListener("click", () => referenceOpen(field("ref-col").classList.contains("hidden")));
+  field("ref-close").addEventListener("click", () => referenceOpen(false));
+  referenceOpen(kept(REF_KEY(), false) === true);
+  addressesFill();
+}
+
+function briefOpen(course) {
+  field("brief-title").textContent = t(`${course.text}.title`);
+  field("brief-goal").textContent = t(`${course.text}.brief`);
+  field("brief-ref").innerHTML = (course.reference || []).map((id) =>
+    `<details class="border-t border-line pt-2" data-ref="${esc(id)}"><summary class="cursor-pointer font-semibold text-heading">${esc(t(`lesson.ref.${id}.title`))}</summary>
+      <div class="flex flex-col gap-1 pt-1">${referenceHtml(id, false)}</div></details>`).join("");
+  field("lesson-brief").classList.remove("hidden");
+  addressesFill();
+}
+
+let objectivesKept = null;
+let objectivesUnasked = null;
+let detectionAsked = () => false;
+
+function objectivesRefresh() {
+  if (objectivesKept && objectivesUnasked === detectionAsked()) objectivesShow(objectivesKept);
+}
+
+function objectivesShow(objectives) {
+  objectivesKept = objectives;
+  const unasked = !detectionAsked();
+  objectivesUnasked = unasked;
+  const rows = objectives && Array.isArray(objectives.rows) ? objectives.rows : [];
+  shownSection("lesson-objectives", rows.length > 0);
+  if (!rows.length) return;
+  field("lesson-objectives-head").innerHTML = t("lesson.objectives.col").split(" · ").map((name, index) =>
+    `<th class="py-1 font-medium${index ? " text-right" : ""}">${esc(name)}</th>`).join("");
+  field("lesson-objectives-rows").innerHTML = rows.map((row) => `
+    <tr class="border-t border-line-subdued" data-objective="${esc(row.id)}">
+      <td class="py-1 text-heading">${esc(localized(`objective.${row.id}`, row.id))}</td>
+      <td class="py-1 text-right">${esc(row.difficulty)}</td>
+      <td class="py-1 text-right ${row.lost ? "text-danger" : "text-success"}">${esc(t(row.lost ? "common.yes" : "common.no"))}</td>
+      <td class="py-1 text-right${row.lost && unasked ? "" : " text-faint"}">${esc(t(!row.lost ? "lesson.objectives.not_lost"
+        : unasked ? (row.detected ? "common.yes" : "common.no") : "lesson.objectives.unasked"))}</td>
+    </tr>`).join("");
+}
+
+async function objectivesRead() {
+  const read = await api(lessonPath(""));
+  if (read.ok && read.body.lesson_objectives) objectivesShow(read.body.lesson_objectives);
+}
+
+const asking = { host: null, origin: "", key: "", id: 0, rect: null, zones: [], text: [], sentAt: 0, since: 0, answered: false };
+const ASK_AGAIN_MS = 1500;
+
+function askFrame(host, origin, spec) {
+  const key = JSON.stringify(spec);
+  if (asking.host !== host || asking.key !== key) {
+    stopAsking();
+    Object.assign(asking, { host, origin, key, id: asking.id + 1, rect: null, zones: [], text: [], sentAt: 0, since: Date.now(), answered: false });
+  }
+  const now = Date.now();
+  if (origin && host.contentWindow && now - asking.sentAt > ASK_AGAIN_MS) {
+    asking.sentAt = now;
+    try {
+      host.contentWindow.postMessage({ locate: spec, id: asking.id }, origin);
+    } catch (error) {
+      return null;
+    }
+  }
+  return inFrame(host, asking.rect);
+}
+
+function askAgain(host) {
+  if (asking.host !== host) return;
+  asking.rect = null;
+  asking.zones = [];
+  asking.text = [];
+  asking.sentAt = 0;
+  asking.since = Date.now();
+  asking.answered = false;
+}
+
+function stopAsking() {
+  if (asking.host && asking.host.contentWindow && asking.origin) {
+    try {
+      asking.host.contentWindow.postMessage({ locate: null }, asking.origin);
+    } catch (error) {
+      asking.host = null;
+    }
+  }
+  Object.assign(asking, { host: null, key: "", rect: null, zones: [], text: [], sentAt: 0, since: 0, answered: false });
+}
+
+window.addEventListener("message", (event) => {
+  const said = event.data;
+  if (!said || typeof said !== "object" || !("located" in said)) return;
+  if (!asking.host || event.source !== asking.host.contentWindow || said.located !== asking.id) return;
+  asking.rect = said.rect || null;
+  asking.zones = Array.isArray(said.zones) ? said.zones : [];
+  asking.text = Array.isArray(said.text) ? said.text : [];
+  asking.answered = true;
+});
+
+const KIBANA = {
+  value: (name) => `[data-test-subj="tableDocViewRow-${name}-value"]`,
+  name: (name) => `[data-test-subj="tableDocViewRow-${name}-name"]`,
+  flyout: '[data-test-subj="docViewerFlyout"]',
+  close: '[data-test-subj="euiFlyoutCloseButton"]',
+  fieldFilter: '[data-test-subj="unifiedDocViewerFieldsSearchInput"]',
+  expand: '[data-test-subj="docTableExpandToggleColumn"]',
+  hits: ['[data-test-subj="discoverQueryHits"]', '[data-test-subj="discoverQueryTotalHits"]'],
+  noResults: '[data-test-subj="discoverNoResults"]',
+  query: '[data-test-subj="queryInput"]',
+  chart: '[data-test-subj="unifiedHistogramChart"]',
+  cellText: "[data-datagrid-cellcontent]",
+  toolbar: ['[data-test-subj="dscViewModeFieldStatsButton"]', '[data-test-subj="dataGridColumnSelectorButton"]'],
+  picker: ['[data-test-subj="superDatePickerToggleQuickMenuButton"]', '[data-test-subj="superDatePickerstartDatePopoverButton"]',
+    '[data-test-subj="superDatePickerendDatePopoverButton"]'],
+  sidebar: (name) => `[data-test-subj="field-${name}"]`,
+  cell: (name) => `[data-test-subj="dataGridRowCell"][data-gridcell-column-id="${name}"]`,
+  page: '[data-test-subj^="docViewerFlyoutNavigationPage-"], [data-test-subj^="dscDocNavigationPage-"]',
+  previous: 'button[data-test-subj="pagination-button-previous"]',
+  next: 'button[data-test-subj="pagination-button-next"]',
+  rows: '[data-test-subj^="tableDocViewRow-"]',
+};
+const GRID_ROW = "data-gridcell-row-index";
+const GRID_MISSING = " - ";
+const queryArrival = { step: "", text: null };
+const fieldlessQuery = { step: "", text: null };
+
+function queryText(doc) {
+  const input = doc.querySelector(KIBANA.query);
+  return input ? String(input.value ?? input.textContent ?? "") : null;
+}
+
+function kibanaDoc() {
+  if (!paneOpen("elk")) return null;
+  try {
+    return frame.contentDocument || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function gridRowOf(element) {
+  const cell = element && typeof element.closest === "function" ? element.closest(`[${GRID_ROW}]`) : null;
+  return cell ? cell.getAttribute(GRID_ROW) : null;
+}
+
+function gridCells(doc, name) {
+  return new Map(Array.from(doc.querySelectorAll(KIBANA.cell(name))).map((cell) => {
+    const shown = (typeof cell.querySelector === "function" && cell.querySelector(KIBANA.cellText)) || cell;
+    return [gridRowOf(cell), shown.textContent || ""];
+  }));
+}
+
+function gridColumn(doc, name) {
+  return new Map(Array.from(gridCells(doc, name)).map(([row, text]) => [row, text.replace(/\s+/g, "")]));
+}
+
+function rowToggle(doc, row) {
+  const toggle = Array.from(doc.querySelectorAll(KIBANA.expand)).find((one) => gridRowOf(one) === row);
+  return toggle ? { row: Number(row), toggle } : null;
+}
+
+function legRow(doc, spec) {
+  if (!spec.leg || typeof doc.querySelectorAll !== "function") return null;
+  const from = gridColumn(doc, "source_ip");
+  const to = gridColumn(doc, "destination");
+  const hops = Array.from(to.keys()).filter((row) => row !== null && from.get(row))
+    .map((row) => ({ row, from: from.get(row), to: to.get(row) }));
+  const chained = (hop, other) => hop !== other && (spec.leg === "upstream" ? other.to === hop.from : other.from === hop.to);
+  const found = hops.find((hop) => hops.some((other) => chained(hop, other)));
+  return found ? rowToggle(doc, found.row) : null;
+}
+
+function carryingRow(doc, name) {
+  if (typeof doc.querySelectorAll !== "function") return null;
+  const cells = gridCells(doc, name);
+  const rows = Array.from(cells.keys()).filter((at) => at !== null && cells.get(at).trim() && cells.get(at) !== GRID_MISSING);
+  const valued = rows.find((at) => cells.get(at).trim() !== "-");
+  const row = valued === undefined ? rows[0] : valued;
+  return row === undefined ? null : rowToggle(doc, row);
+}
+
+function lacksField(doc, name) {
+  const filter = doc.querySelector(KIBANA.fieldFilter);
+  const typed = String((filter && filter.value) || "").replace(/\s+/g, "").toLowerCase();
+  return Boolean(typed) && name.toLowerCase().includes(typed) && !doc.querySelector(KIBANA.name(name));
+}
+
+function openedRow(doc) {
+  const page = doc.querySelector(KIBANA.page);
+  const at = page && typeof page.getAttribute === "function" ? /(\d+)$/.exec(page.getAttribute("data-test-subj") || "") : null;
+  return at ? { page, row: Number(at[1]) } : null;
+}
+
+function submittedQuery(doc) {
+  try {
+    const href = decodeURIComponent(String(frame.contentWindow.location.href || ""));
+    const found = /query:\(language:kuery,query:'((?:[^'!]|!.)*)'\)/.exec(href);
+    if (found) return found[1].replace(/!(.)/g, "$1");
+  } catch (error) {
+    return queryText(doc) || "";
+  }
+  return queryText(doc) || "";
+}
+
+function kibanaQueryNow() {
+  try {
+    const doc = frame.contentDocument;
+    return doc && typeof doc.querySelector === "function" ? submittedQuery(doc) : "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function kqlWritten(doc, wanted) {
+  const asked = pattern(wanted);
+  return !asked || new RegExp(asked.source, "i").test(submittedQuery(doc));
+}
+
+function kibanaFound(doc, spec) {
+  const found = (selector) => doc.querySelector(selector);
+  const first = (...selectors) => selectors.map(found).find((element) => boxOf(element)) || null;
+  if (spec.kql && !kqlWritten(doc, spec.kql)) {
+    if (spec.hits && queryArrival.step !== spec.step) Object.assign(queryArrival, { step: spec.step, text: queryText(doc) });
+    return { element: first(KIBANA.query), stage: "write" };
+  }
+  if (spec.doc) {
+    if (spec.leg) {
+      const legged = legRow(doc, spec);
+      const flyout = boxOf(found(KIBANA.flyout));
+      if (legged && !flyout) return { element: legged.toggle, stage: "expand", leg: spec.leg };
+      if (flyout) {
+        const opened = openedRow(doc);
+        if (!legged || !opened) return { element: first(KIBANA.fieldFilter), stage: "verify", leg: spec.leg };
+        if (opened.row !== legged.row) {
+          const arrow = opened.page.querySelector(opened.row > legged.row ? KIBANA.previous : KIBANA.next);
+          return { element: boxOf(arrow) ? arrow : opened.page, stage: "other" };
+        }
+      }
+    }
+    const value = found(KIBANA.value(spec.doc));
+    if (boxOf(value) && !coveredIn(doc, value)) return { element: first(KIBANA.fieldFilter), stage: "" };
+    const carrying = carryingRow(doc, spec.doc);
+    if (boxOf(found(KIBANA.flyout))) {
+      if (!lacksField(doc, spec.doc)) return { element: first(KIBANA.fieldFilter), stage: "field" };
+      const opened = openedRow(doc);
+      const arrow = opened && carrying && opened.row !== carrying.row
+        ? opened.page.querySelector(opened.row > carrying.row ? KIBANA.previous : KIBANA.next) : null;
+      if (boxOf(arrow) && !arrow.disabled) return { element: arrow, stage: "other" };
+      if (!carrying || (opened && opened.row === carrying.row)) {
+        Object.assign(fieldlessQuery, { step: spec.step, text: queryText(doc) });
+        return { element: first(KIBANA.query), stage: "fieldless" };
+      }
+      return { element: first(KIBANA.query), stage: "query" };
+    }
+    const text = queryText(doc);
+    if (text !== null && fieldlessQuery.step === spec.step && fieldlessQuery.text === text) return { element: first(KIBANA.query), stage: "fieldless" };
+    if (carrying) return { element: carrying.toggle, stage: "expand" };
+    const expand = first(KIBANA.expand);
+    return expand ? { element: expand, stage: "expand" } : { element: first(KIBANA.query), stage: "query" };
+  }
+  if (spec.hits) {
+    const text = queryText(doc);
+    if (text !== null && queryArrival.step !== spec.step) Object.assign(queryArrival, { step: spec.step, text });
+    const counted = first(...KIBANA.hits);
+    const unchanged = text !== null && text === queryArrival.text;
+    const shown = counted || first(KIBANA.noResults);
+    if (shown && unchanged) return { element: first(KIBANA.query), stage: "query" };
+    return { element: shown && coveredIn(doc, shown) ? shown : null, stage: "" };
+  }
+  if (spec.query) return { element: first(KIBANA.query), stage: "" };
+  if (spec.sidebar) {
+    return { element: first(KIBANA.sidebar(spec.sidebar)), stage: "" };
+  }
+  return { element: null, stage: "" };
+}
+
+function coveredIn(doc, element) {
+  const box = boxOf(element);
+  if (!box || typeof doc.elementFromPoint !== "function") return false;
+  const hit = doc.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+  if (!hit || hit === element) return false;
+  const holds = (outer, inner) => typeof outer.contains === "function" && outer.contains(inner);
+  return !holds(element, hit) && !holds(hit, element);
+}
+
+function flyoutRows(doc, ring) {
+  if (typeof doc.querySelectorAll !== "function") return [];
+  return Array.from(doc.querySelectorAll(KIBANA.rows)).map((row) => inFrame(frame, boxOf(row)))
+    .filter((box) => box && !overlaps(box, ring));
+}
+
+function controlRows(doc, ring, selectors) {
+  return selectors.map((selector) => inFrame(frame, boxOf(doc.querySelector(selector))))
+    .filter((box) => box && !overlaps(box, ring));
+}
+
+const toolbarRows = (doc, ring) => controlRows(doc, ring, KIBANA.toolbar);
+const pickerRows = (doc, ring) => controlRows(doc, ring, KIBANA.picker);
+
+const CROWD_BAND = 220;
+const CROWD_FRESH_MS = 300;
+const CROWD_LEAST = 4;
+const CROWD_LIMIT = 250;
+const CROWD_CONTROLS = "button, input, textarea, select, a, [role=button], [role=tab], [role=combobox]";
+const CROWD_SKIPPED = ["SCRIPT", "STYLE", "NOSCRIPT", "OPTION"];
+let crowded = { at: 0, key: "", boxes: [] };
+
+function frameText(doc, ring) {
+  if (typeof doc.querySelectorAll !== "function" || typeof doc.createRange !== "function") return [];
+  const key = rounded(ring);
+  const now = Date.now();
+  if (crowded.key === key && now - crowded.at < CROWD_FRESH_MS) return crowded.boxes;
+  const range = doc.createRange();
+  const boxes = [];
+  const near = (box) => box && box.width >= CROWD_LEAST && box.height >= CROWD_LEAST
+    && box.top < ring.top + ring.height + CROWD_BAND && box.top + box.height > ring.top - CROWD_BAND;
+  for (const element of doc.querySelectorAll("body *")) {
+    if (boxes.length >= CROWD_LIMIT) break;
+    if (CROWD_SKIPPED.includes(element.tagName)) continue;
+    const control = typeof element.matches === "function" && element.matches(CROWD_CONTROLS);
+    const text = !element.firstElementChild && Boolean((element.textContent || "").trim());
+    if (!control && !text) continue;
+    const whole = inFrame(frame, boxOf(element));
+    if (!near(whole) || coveredIn(doc, element)) continue;
+    let box = whole;
+    if (!control) {
+      range.selectNodeContents(element);
+      const rect = range.getBoundingClientRect();
+      box = inFrame(frame, { left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+    }
+    if (near(box) && !overlaps(box, ring)) boxes.push(control && !(element.textContent || "").trim() ? { ...box, icon: true } : box);
+  }
+  crowded = { at: now, key, boxes };
+  return boxes;
+}
+
+function kibanaRect(spec, leg, step) {
+  const doc = kibanaDoc();
+  if (!doc) return { rect: null, stage: "" };
+  if (kibanaLoading()) queryArrival.step = "";
+  const { element, stage, leg: aimed } = kibanaFound(doc, { ...spec, ...(leg ? { leg } : {}), step });
+  const flyout = doc.querySelector(KIBANA.flyout);
+  const inFlyout = Boolean(flyout && element && typeof flyout.contains === "function" && flyout.contains(element));
+  if (!inFlyout && coveredIn(doc, element)) return { rect: inFrame(frame, boxOf(doc.querySelector(KIBANA.close))), stage: "covered" };
+  const rect = inFrame(frame, boxOf(element));
+  const rows = !rect ? [] : stage === "query" || stage === "write" || stage === "fieldless" || spec.query ? pickerRows(doc, rect)
+    : spec.doc ? flyoutRows(doc, rect) : spec.hits || spec.sidebar ? toolbarRows(doc, rect) : [];
+  const core = rect ? [...rows, ...drawnAreas(doc, rect)] : rows;
+  const crowd = rect ? [...core, ...frameText(doc, rect)] : core;
+  return { rect, stage, leg: aimed || "", crowd, core, within: stage === "other" ? inFrame(frame, boxOf(flyout)) : null };
+}
+
+function drawnAreas(doc, rect) {
+  const chart = typeof doc.querySelector === "function" ? doc.querySelector(KIBANA.chart) : null;
+  const drawn = inFrame(frame, boxOf(chart));
+  const shown = drawn && drawn.width > 0 && drawn.height > 0 && !overlaps(drawn, rect) ? [drawn] : [];
+  return shown.map((box) => ({ ...box, icon: true }));
+}
+
+function kibanaLoading() {
+  try {
+    const doc = frame.contentDocument;
+    return !doc || doc.readyState === "loading" || !doc.querySelector(KIBANA.query);
+  } catch (error) {
+    return true;
+  }
+}
+
+function kibanaDismiss() {
+  const doc = kibanaDoc();
+  if (!doc || kibanaLoading()) return false;
+  const close = doc.querySelector(KIBANA.close);
+  if (close && typeof close.click === "function") close.click();
+  const view = frame.contentWindow;
+  const Key = view && view.KeyboardEvent;
+  const Mouse = view && view.MouseEvent;
+  const focused = doc.activeElement || doc.body;
+  if (typeof Key === "function" && focused) {
+    ["keydown", "keyup"].forEach((type) => focused.dispatchEvent(
+      new Key(type, { key: "Escape", code: "Escape", keyCode: 27, bubbles: true, cancelable: true })));
+  }
+  if (typeof Mouse === "function" && doc.body) {
+    ["mousedown", "mouseup", "click"].forEach((type) => doc.body.dispatchEvent(new Mouse(type, { bubbles: true, cancelable: true })));
+  }
+  return true;
+}
+
+function devElement(name, step) {
+  const named = (wanted) => document.querySelector(`[data-coach="${wanted}"]`);
+  const toggle = named("toggle") || field("site-dev-toggle");
+  if (name === "toggle" || !toggle || toggle.getAttribute("aria-pressed") !== "true") {
+    return { element: toggle, stage: name === "toggle" ? "" : "open" };
+  }
+  const wanted = pattern(step.check && step.check.match);
+  const fits = (row) => !wanted || wanted.test(readable(row.getAttribute("data-url") || ""));
+  const rows = Array.from(document.querySelectorAll('[data-coach="row"]'));
+  const listed = rows.some(fits) ? named("network") : null;
+  if (name === "row") return { element: listed, stage: "" };
+  const picked = rows.find((row) => row.getAttribute("aria-selected") === "true");
+  if (!picked || !fits(picked)) return { element: listed, stage: "row" };
+  const tab = name.startsWith("general.") ? "tab.headers" : name.startsWith("payload.") ? "tab.payload" : "";
+  const holder = tab ? named(tab) : null;
+  if (holder && holder.getAttribute("aria-selected") !== "true") return { element: holder, stage: tab };
+  const line = named(name);
+  return { element: line && holder ? holder : line, stage: "" };
+}
+
+const BAND_ROWS = 3;
+const ROW_GUESS = 18;
+const SCANNED_LINES = 2000;
+const TABLE_BORDER = /^\s*\+[-+]+\+?\s*$/;
+let textRows = [];
+let bandRows = [];
+
+function logicalLines(buffer, from, to) {
+  const lines = [];
+  for (let row = from; row < to; row += 1) {
+    const line = buffer.getLine(row);
+    const text = line ? line.translateToString(true) : "";
+    if (line && line.isWrapped && lines.length) {
+      const joinedLine = lines[lines.length - 1];
+      joinedLine.text += text;
+      joinedLine.last = row;
+    } else {
+      lines.push({ text, first: row, last: row });
+    }
+  }
+  return lines;
+}
+
+const commandWords = (text) => String(text || "").replace(/["']/g, "").split(/\s+/).filter(Boolean);
+
+function ranCommand(line, command) {
+  const wanted = commandWords(command);
+  if (!wanted.length) return true;
+  const typed = ` ${commandWords(line.replace(/^\S+[$#] /, "")).join(" ")} `;
+  return wanted.every((word) => typed.includes(` ${word} `));
+}
+
+function termRect(spec) {
+  textRows = [];
+  bandRows = [];
+  const none = { rect: null, stage: "" };
+  if (!paneOpen(spec.pane)) return none;
+  const host = terminalPanes[spec.pane] ? terminalPanes[spec.pane]() : null;
+  const box = boxOf(host);
+  if (!box) return none;
+  const bottom = (height) => ({ rect: { left: box.left, top: box.top + box.height - height, width: box.width, height }, stage: "" });
+  const term = terminalOf(host);
+  const screen = term && term.element && term.element.querySelector ? term.element.querySelector(".xterm-screen") : null;
+  const area = screen ? screen.getBoundingClientRect() : null;
+  if (!term || !term.rows || !area || !area.height) return none;
+  const rowHeight = area.height / term.rows;
+  const cellWidth = area.width / (term.cols || 80);
+  const buffer = term.buffer.active;
+  const wanted = pattern(spec.match);
+  if (!buffer || typeof buffer.getLine !== "function" || !wanted) return bottom(BAND_ROWS * rowHeight);
+  const top = buffer.viewportY || 0;
+  const rowBox = (row, columns) => ({ left: area.left, top: area.top + (row - top) * rowHeight, width: columns * cellWidth, height: rowHeight });
+  const lengthOf = (row) => {
+    const line = buffer.getLine(row);
+    return line ? line.translateToString(true).length : 0;
+  };
+  for (let row = top; row < Math.min(buffer.length, top + term.rows); row += 1) {
+    const length = lengthOf(row);
+    if (length) textRows.push(inFrame(host, rowBox(row, length)));
+  }
+  textRows = textRows.filter(Boolean);
+  const lines = logicalLines(buffer, Math.max(0, buffer.length - SCANNED_LINES), buffer.length);
+  const around = (pick) => {
+    const fits = (line) => line.text.trim() && (pick.test(line.text) || pick.test(`${line.text} `));
+    let at = lines.length - 1;
+    while (at >= 0 && !fits(lines[at])) at -= 1;
+    if (at < 0) return null;
+    const belongs = (line) => fits(line) || TABLE_BORDER.test(line.text);
+    let first = at;
+    let final = at;
+    while (first > 0 && belongs(lines[first - 1])) first -= 1;
+    while (final < lines.length - 1 && belongs(lines[final + 1])) final += 1;
+    const block = lines.slice(first, final + 1);
+    const columns = Math.min(term.cols || 80, Math.max(...block.map((line) => line.text.length)));
+    const rows = block[block.length - 1].last - block[0].first + 1;
+    const wide = block.some((line) => line.last > line.first) ? term.cols || 80 : columns;
+    const shown = block[0].first - top;
+    if (shown + rows <= 0 || shown >= term.rows) return null;
+    bandRows = [];
+    for (let row = block[0].first; row <= block[block.length - 1].last; row += 1) {
+      const length = lengthOf(row);
+      if (length) bandRows.push(inFrame(host, rowBox(row, length)));
+    }
+    bandRows = bandRows.filter(Boolean);
+    return inFrame(host, { ...rowBox(block[0].first, wide), height: rows * rowHeight });
+  };
+  const finished = pattern(spec.done);
+  let typed = false;
+  if (finished) {
+    const entered = (line) => /^\S+[$#] \S/.test(line.text);
+    let command = lines.length - 1;
+    while (command >= 0 && !entered(lines[command])) command -= 1;
+    const ours = command >= 0 && ranCommand(lines[command].text, spec.command);
+    const ended = ours && lines.slice(command + 1).some((line) => finished.test(line.text));
+    typed = ours && !ended;
+    const press = boxOf(document.querySelector('[data-act="kali"]'));
+    if (press && ended) return { rect: press, stage: "run_done", kind: "" };
+  }
+  const rect = around(wanted);
+  if (rect) return { rect, stage: "", typed };
+  const idle = pattern(spec.idle);
+  const waiting = idle ? around(idle) : null;
+  return { rect: waiting, stage: waiting ? "prompt" : "", typed };
+}
+
+const SITE_HOME = "a.navbar-brand";
+const siteHome = { selector: "", on: false };
+
+function siteRect(selector) {
+  if (!paneOpen("site") || !site.origin) return null;
+  if (siteHome.selector !== selector) Object.assign(siteHome, { selector, on: false });
+  if (!siteHome.on) {
+    const rect = askFrame(field("site-frame"), site.origin, selector);
+    if (rect || !asking.answered || selector === SITE_HOME) return rect;
+    siteHome.on = true;
+  }
+  return askFrame(field("site-frame"), site.origin, SITE_HOME);
+}
+
+function settling(target) {
+  if (target.kind === "term") return true;
+  if (target.kind === "map") return !topo.drawn || topo.waiting;
+  if (target.kind === "kibana") return kibanaLoading();
+  if (target.kind === "site") return site.expecting || !asking.answered;
+  return false;
+}
+
+function mapRect(spec) {
+  if (!paneOpen("topology") || !topo.drawn || topo.waiting) return null;
+  return askFrame(field("topology-frame"), topologyOrigin(), spec);
+}
+
+const mapZones = () => asking.zones.map((zone) => inFrame(field("topology-frame"), zone)).filter(Boolean);
+const mapText = () => asking.text.map((text) => inFrame(field("topology-frame"), text)).filter(Boolean);
+const siteText = () => asking.text.map((text) => inFrame(field("site-frame"), text)).filter(Boolean);
+
+const DEV_CROWD = '[data-coach], .dv-tab, .dv-row, .dv-chip, .dv-panel-tab, .dv-bar, .dv-bar label, .dv-bar select, .dv-filter, #site-dev-list th';
+
+function devCrowd(ring) {
+  const tools = field("site-dev");
+  if (!tools || typeof tools.querySelectorAll !== "function") return [];
+  return Array.from(tools.querySelectorAll(DEV_CROWD)).map(boxOf).filter((box) => box && !overlaps(box, ring));
+}
+
+const MAP_FIT_AGAIN_MS = 3000;
+let fitTimer = null;
+
+function mapFit(force = false) {
+  if (typeof topologyRefit === "function") topologyRefit();
+  const host = field("topology-frame");
+  const origin = topologyOrigin();
+  if (!topo.drawn || !origin || !host.contentWindow) return;
+  if (!force && rounded(boxOf(host)) === topo.fitBox) return;
+  try {
+    host.contentWindow.postMessage({ fit: true }, origin);
+  } catch (error) {
+    return;
+  }
+}
+
+function mapFitSoon() {
+  clearTimeout(fitTimer);
+  fitTimer = setTimeout(() => { if (paneOpen("topology")) mapFit(); }, 250);
+}
+
+const RULE_LINE = 20;
+const RULE_PAD = 8;
+let rulesKnown = null;
+let rulesText = "";
+let rulesAdded = [];
+const sidOf = (line) => (/\bsid\s*:\s*(\d+)/.exec(line) || [])[1] || "";
+
+function ownRuleLines() {
+  const box = field("lesson-rules-text");
+  if (!box) return [];
+  return box.value.split("\n").map((text, index) => ({ text, index, sid: sidOf(text) })).filter(({ sid }) =>
+    sid && (rulesAdded.includes(sid) || (rulesKnown && !rulesKnown.has(sid))));
+}
+
+function rulesHolder(marked, found) {
+  if (!marked || marked.id !== "lesson-rules") return null;
+  if (found.stage === "add") return null;
+  return found.stage === "apply" ? boxOf(field("lesson-rules-text")) : boxOf(marked);
+}
+
+function ruleTarget(editing) {
+  const box = field("lesson-rules-text");
+  const apply = { element: field("lesson-rules-apply"), line: -1, stage: "apply" };
+  if (!box) return apply;
+  const own = ownRuleLines();
+  if (editing) {
+    if (!own.length) return { element: null, line: -1, stage: "" };
+    const fix = own.find(({ text }) => !/\bnocase\b/.test(text));
+    return fix ? { element: null, line: fix.index } : apply;
+  }
+  if (own.length) return apply;
+  return box.value === rulesText ? { element: null, line: box.value.split("\n").length - 1, stage: "add" } : apply;
+}
+
+let ruleRowsKnown = { key: "", rows: [] };
+
+function ruleLineRows(box) {
+  const font = getComputedStyle(box).font;
+  const width = Math.max(0, (box.clientWidth || 0) - 2 * RULE_PAD);
+  const key = `${font}|${width}|${box.value}`;
+  if (ruleRowsKnown.key === key) return ruleRowsKnown.rows;
+  const mirror = document.createElement("div");
+  Object.assign(mirror.style, { position: "absolute", visibility: "hidden", left: "-9999px", top: "0", width: `${width}px`, padding: "0", border: "0",
+    font, lineHeight: `${RULE_LINE}px`, whiteSpace: "pre-wrap", overflowWrap: "break-word", tabSize: "4" });
+  box.value.split("\n").forEach((text) => {
+    const line = document.createElement("div");
+    line.textContent = text || " ";
+    mirror.appendChild(line);
+  });
+  document.body.appendChild(mirror);
+  let top = 0;
+  const rows = Array.from(mirror.children).map((line) => {
+    const row = { top, height: Math.max(RULE_LINE, line.offsetHeight || 0) };
+    top += row.height;
+    return row;
+  });
+  mirror.remove();
+  ruleRowsKnown = { key, rows };
+  return rows;
+}
+
+function ruleLineRow(box, index) {
+  const rows = ruleLineRows(box);
+  if (rows[index]) return rows[index];
+  const last = rows[rows.length - 1];
+  return { top: (last ? last.top + last.height : 0) + (index - rows.length) * RULE_LINE, height: RULE_LINE };
+}
+
+function ruleLineRect(index) {
+  const box = field("lesson-rules-text");
+  const outer = boxOf(box);
+  if (!outer) return null;
+  const row = ruleLineRow(box, index);
+  const top = outer.top + RULE_PAD + 1 + row.top - (box.scrollTop || 0);
+  return clipped({ left: outer.left + RULE_PAD, top, width: Math.max(0, outer.width - 2 * RULE_PAD - 2), height: row.height }, outer);
+}
+
+function ruleLineShown(index) {
+  const box = field("lesson-rules-text");
+  if (!box) return;
+  const row = ruleLineRow(box, index);
+  const visible = box.clientHeight || 0;
+  const scrolled = box.scrollTop || 0;
+  const at = RULE_PAD + row.top;
+  if (at < scrolled || at + row.height > scrolled + visible) box.scrollTop = Math.max(0, row.height >= visible ? at : at - (visible - row.height) / 2);
+}
+
+const LOCATORS = ["panel", "map", "site", "dev", "kibana", "term"];
+const LOCATOR_PANES = { map: "topology", site: "site", dev: "site", kibana: "elk" };
+
+function paneFor(target, point) {
+  if (target && target.kind === "panel") {
+    const element = document.querySelector(target.spec);
+    const pane = field("pane");
+    if (element && pane && !pane.contains(element)) return "";
+  }
+  return (target && (target.kind === "term" ? target.spec.pane : LOCATOR_PANES[target.kind])) || point.opens || "";
+}
+
+function locatorOf(point) {
+  const kind = LOCATORS.find((name) => point && point[name] !== undefined);
+  return kind ? { kind, spec: point[kind] } : null;
+}
+
+const NOT_FOUND = { rect: null, stage: "", line: -1 };
+
+function readsKibana(point) {
+  for (let at = point; at; at = at.then) {
+    if (at.kibana || at.opens === "elk") return true;
+  }
+  return false;
+}
+
+function locate(target, step, editing) {
+  if (target.kind === "panel") {
+    const element = document.querySelector(target.spec);
+    if (element && element.id === "lesson-rules" && step.check.kind === "rules") {
+      const aimed = ruleTarget(editing);
+      return { rect: aimed.line >= 0 ? ruleLineRect(aimed.line) : boxOf(aimed.element), stage: aimed.stage || "", line: aimed.line };
+    }
+    return { ...NOT_FOUND, rect: boxOf(element) };
+  }
+  if (target.kind === "dev") {
+    const { element, stage } = paneOpen("site") ? devElement(target.spec, step) : { element: null, stage: "" };
+    const tools = field("site-dev");
+    const inside = tools && typeof tools.contains === "function" && tools.contains(element);
+    return { ...NOT_FOUND, rect: clipped(boxOf(element), inside ? boxOf(tools) : null), stage };
+  }
+  if (target.kind === "kibana") return { ...NOT_FOUND, ...kibanaRect(target.spec, step.check.leg, step.id) };
+  if (target.kind === "term") return { ...NOT_FOUND, ...termRect({ ...target.spec, command: step.command || "" }) };
+  if (target.kind === "site") return { ...NOT_FOUND, rect: siteRect(target.spec) };
+  if (target.kind === "map") return { ...NOT_FOUND, rect: mapRect(target.spec) };
+  return NOT_FOUND;
+}
+
+const RING_PAD = 6;
+const RING = 2;
+const CALLOUT_GAP = 10;
+const EDGE = 8;
+const CALLOUT_GUESS = { width: 220, height: 28 };
+const TALL_TARGET = 80;
+const DENSE_ROW = 32;
+const LEADER_SAMPLES = 16;
+const LEADER_CROSS_COST = 120;
+const BIG_TARGET = 2;
+const LEADER_OMITTED = 48;
+const NARROW_WIDTHS = [300, 240, 190, 150];
+const SLIDES = 4;
+const NARROW_LEAST = 24;
+
+function padded(rect) {
+  const across = rect.height < DENSE_ROW && rect.width > 4 * rect.height ? 1 : RING_PAD;
+  return { left: rect.left - RING_PAD, top: rect.top - across, width: rect.width + 2 * RING_PAD, height: rect.height + 2 * across };
+}
+
+function clearOfText(rect, crowd) {
+  const others = (crowd || []).filter((text) => !overlaps(text, rect));
+  const clear = (shape) => !others.some((text) => overlaps(grown(shape, RING), text));
+  if (clear(padded(rect))) return padded(rect);
+  for (let pad = RING_PAD - 1; pad > 0; pad -= 1) {
+    if (clear(grown(rect, pad))) return grown(rect, pad);
+  }
+  return rect;
+}
+
+function placed(element, box) {
+  Object.assign(element.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
+}
+
+const centreOf = (box) => ({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+const apart = (a, b) => Math.hypot(centreOf(a).x - centreOf(b).x, centreOf(a).y - centreOf(b).y);
+
+const spanOf = (value, low, high) => Math.max(low, Math.min(value, high));
+
+function leaderEnds(tip, ring) {
+  const from = centreOf(tip);
+  const onRing = { x: spanOf(from.x, ring.left, ring.left + ring.width), y: spanOf(from.y, ring.top, ring.top + ring.height) };
+  const onTip = { x: spanOf(onRing.x, tip.left, tip.left + tip.width), y: spanOf(onRing.y, tip.top, tip.top + tip.height) };
+  return { onRing, onTip, length: Math.hypot(onRing.x - onTip.x, onRing.y - onTip.y) };
+}
+
+function rectGap(a, b) {
+  return Math.hypot(Math.max(a.left - b.left - b.width, b.left - a.left - a.width, 0), Math.max(a.top - b.top - b.height, b.top - a.top - a.height, 0));
+}
+
+function crossesLeader(spot, ring, crowd) {
+  const { onRing, onTip, length } = leaderEnds(spot, ring);
+  if (length <= 2 * CALLOUT_GAP) return false;
+  const boxes = crowd.filter((box) => !box.icon);
+  for (let along = 1; along < LEADER_SAMPLES; along += 1) {
+    const x = onTip.x + (onRing.x - onTip.x) * along / LEADER_SAMPLES;
+    const y = onTip.y + (onRing.y - onTip.y) * along / LEADER_SAMPLES;
+    const inRing = x > ring.left && x < ring.left + ring.width && y > ring.top && y < ring.top + ring.height;
+    if (!inRing && boxes.some((box) => x > box.left && x < box.left + box.width && y > box.top && y < box.top + box.height)) return true;
+  }
+  return false;
+}
+
+function calloutSpot(target, size, bounds, options = {}) {
+  const { crowd = [], kind = "", bands = [], zones = [], holder = null, titled = false, strict = false, typing = false } = options;
+  const avoid = grown(target, RING_PAD + RING + 2);
+  const middleY = target.top + target.height / 2 - size.height / 2;
+  const middleX = target.left + target.width / 2 - size.width / 2;
+  const clampX = (x) => Math.max(bounds.left + EDGE, Math.min(x, bounds.left + bounds.width - size.width - EDGE));
+  const clampY = (y) => Math.max(bounds.top + EDGE, Math.min(y, bounds.top + bounds.height - size.height - EDGE));
+  const beside = [
+    { left: avoid.left + avoid.width + CALLOUT_GAP, top: clampY(middleY) },
+    { left: avoid.left - CALLOUT_GAP - size.width, top: clampY(middleY) },
+  ];
+  const across = [
+    { left: clampX(middleX), top: avoid.top + avoid.height + CALLOUT_GAP },
+    { left: clampX(middleX), top: avoid.top - CALLOUT_GAP - size.height },
+  ];
+  const underStart = target.width > 4 * target.height
+    ? [{ left: clampX(target.left), top: avoid.top + avoid.height + CALLOUT_GAP }] : [];
+  const corners = [
+    { left: bounds.left + EDGE, top: bounds.top + EDGE },
+    { left: bounds.left + bounds.width - size.width - EDGE, top: bounds.top + EDGE },
+    { left: bounds.left + EDGE, top: bounds.top + bounds.height - size.height - EDGE },
+    { left: bounds.left + bounds.width - size.width - EDGE, top: bounds.top + bounds.height - size.height - EDGE },
+  ].map((spot) => ({ ...spot, ...size })).sort((a, b) => apart(a, target) - apart(b, target));
+  const rowEnds = bands.slice().reverse().map((row) => ({ left: row.left + row.width + CALLOUT_GAP, top: row.top }));
+  const siblings = kind === "site" && !crowd.length ? [{ left: bounds.left, top: target.top, width: bounds.width, height: target.height }] : [];
+  const rowBelow = kind === "site" && !crowd.length ? [{ left: bounds.left, top: target.top + target.height, width: bounds.width, height: target.height }] : [];
+  const outside = holder ? [
+    { left: clampX(holder.left), top: holder.top + holder.height + CALLOUT_GAP },
+    { left: clampX(holder.left), top: holder.top - CALLOUT_GAP - size.height },
+  ] : [];
+  const heading = holder && titled ? [{ left: clampX(holder.left + holder.width - size.width - EDGE), top: holder.top + RING_PAD, inside: true }] : [];
+  const tall = target.height > TALL_TARGET;
+  const near = tall ? [...across, ...beside] : [...beside, ...across];
+  const holding = Boolean(holder) && within(target, holder);
+  const roomy = target.width > BIG_TARGET * size.width && target.height > BIG_TARGET * size.height;
+  const inside = kind === "map" && roomy
+    ? Array.from({ length: Math.floor(target.height / (size.height / 2)) }, (_, row) => ({
+      left: clampX(target.left + EDGE), top: target.top + EDGE + row * size.height / 2, over: true })).filter((spot) => within({ ...spot, ...size }, target))
+    : [];
+  const ordered = {
+    term: typing ? [across[0], ...beside, across[1], ...rowEnds] : [...rowEnds, ...beside, ...across],
+    site: [across[0], beside[1], across[1], beside[0]],
+    map: [...(inside.length ? near.filter((spot) => !zones.some((zone) => overlaps({ ...spot, ...size }, zone))) : []), ...inside, ...near],
+    kibana: tall ? [beside[1], ...across, beside[0]] : near,
+    open: [beside[0], across[1], beside[1], across[0]],
+  }[kind] || (holder && !holding ? [...heading, ...near, ...outside] : [...heading, ...outside, ...underStart, ...near]);
+  const blocked = [...crowd, ...(kind === "map" ? [] : zones), ...siblings, ...(holder ? [holder] : [])];
+  const clear = (spot, shut = blocked) => within(spot, bounds) && (spot.over || !overlaps(spot, avoid))
+    && !shut.some((box) => overlaps(spot, box) && !(box === holder && spot.inside));
+  const direct = (spot) => !crossesLeader(spot, avoid, crowd);
+  const slid = (spot, toward) => {
+    let moved = { ...spot, ...size };
+    for (let move = 0; move < SLIDES; move += 1) {
+      const hit = crowd.find((box) => overlaps(moved, box));
+      if (!hit) break;
+      moved = { ...moved, left: toward > 0 ? hit.left + hit.width + CALLOUT_GAP : hit.left - CALLOUT_GAP - size.width };
+    }
+    return moved;
+  };
+  const sliding = ["kibana", "site", ""].includes(kind) && crowd.length
+    ? [slid(beside[0], 1), slid(beside[1], -1), slid(across[1], -1), slid(across[1], 1), slid(across[0], -1), slid(across[0], 1)] : [];
+  const sized = [...ordered, ...sliding].map((spot) => ({ ...spot, ...size }));
+  const shuts = rowBelow.length ? [[...blocked, ...rowBelow], blocked] : [blocked];
+  const straight = shuts.map((shut) => sized.find((spot) => clear(spot, shut) && direct(spot))).find(Boolean);
+  if (strict) return straight || null;
+  const free = straight || shuts.map((shut) => sized.find((spot) => clear(spot, shut))).find(Boolean);
+  if (free || (!crowd.length && kind !== "map")) return free || null;
+  const nearby = [];
+  for (let step = 0; step < 2 * Math.ceil(bounds.height / size.height); step += 1) {
+    const away = (step % 2 ? -1 : 1) * Math.ceil(step / 2);
+    const top = (away >= 0 ? avoid.top + avoid.height + CALLOUT_GAP : avoid.top - CALLOUT_GAP - size.height)
+      + away * size.height;
+    const row = { left: bounds.left, top, width: bounds.width, height: size.height };
+    const ends = crowd.filter((text) => overlaps(text, row)).map((text) => text.left + text.width);
+    nearby.push({ left: clampX(middleX), top, ...size },
+      { left: clampX(Math.max(bounds.left + EDGE, ...ends.map((end) => end + CALLOUT_GAP))), top, ...size });
+  }
+  const spots = nearby.filter((spot) => clear(spot));
+  const score = (spot) => apart(spot, target) + (direct(spot) ? 0 : LEADER_CROSS_COST);
+  return spots.sort((a, b) => score(a) - score(b))[0]
+    || (kind === "map" ? corners.find((spot) => clear(spot)) : null) || null;
+}
+
+function leaderLine(leader, tip, ring, crowd = []) {
+  const { onRing, onTip, length } = leaderEnds(tip, ring);
+  if (length <= 2 * CALLOUT_GAP || (rectGap(tip, ring) <= LEADER_OMITTED && crossesLeader(tip, ring, crowd))) {
+    leader.classList.add("hidden");
+    return;
+  }
+  Object.assign(leader.style, {
+    left: `${onTip.x}px`, top: `${onTip.y}px`, width: `${length}px`,
+    transform: `rotate(${Math.atan2(onRing.y - onTip.y, onRing.x - onTip.x)}rad)`,
+  });
+  leader.classList.remove("hidden");
+}
+
+let coachLine = null;
+
+function highlight(rect, callout, options = {}) {
+  const ring = field("coach-ring");
+  const dim = field("coach-dim");
+  const tip = field("coach-callout");
+  const leader = field("coach-leader");
+  const line = coachLine || (coachLine = field("step-coach"));
+  line.classList.add("hidden");
+  if (!rect) {
+    [ring, dim, tip, leader].forEach((element) => element.classList.add("hidden"));
+    return;
+  }
+  const pane = boxOf(field("pane"));
+  const noteBox = boxOf(field("lesson-body")) || boxOf(field("lesson"));
+  const centre = { left: rect.left + rect.width / 2, top: rect.top + rect.height / 2, width: 0, height: 0 };
+  const inPane = Boolean(pane) && within(centre, pane);
+  const inNote = !inPane && Boolean(noteBox) && within(centre, noteBox);
+  const banded = options.kind === "term" || Boolean(options.line);
+  const shape = banded ? { left: rect.left - RING_PAD, top: rect.top, width: rect.width + 2 * RING_PAD, height: rect.height }
+    : ["map", "dev"].includes(options.kind) ? clearOfText(rect, options.crowd) : padded(rect);
+  const ringed = (inPane && clipped(shape, banded ? pane : grown(pane, -RING))) || shape;
+  placed(ring, ringed);
+  ring.classList.toggle("inset", banded);
+  ring.classList.remove("hidden");
+  dim.classList.toggle("hidden", !inPane);
+  if (inPane) {
+    placed(dim, pane);
+    placed(field("coach-hole"), { ...ringed, left: ringed.left - pane.left, top: ringed.top - pane.top });
+  }
+  const body = boxOf(field("pane-body"));
+  const room = body && within(centre, body) ? body : pane || body;
+  const reach = inNote && pane ? { left: pane.left, top: noteBox.top, width: noteBox.left + noteBox.width - pane.left, height: noteBox.height } : noteBox;
+  const bounds = inNote ? reach : (options.kind === "map" && boxOf(field("topology-frame"))) || room;
+  if (callout && inNote && options.anchor && typeof options.anchor.after === "function") {
+    options.anchor.after(line);
+    line.textContent = callout;
+    line.classList.remove("hidden");
+    tip.classList.add("hidden");
+    leader.classList.add("hidden");
+    return;
+  }
+  if (!callout || !bounds) {
+    tip.classList.add("hidden");
+    leader.classList.add("hidden");
+    return;
+  }
+  tip.textContent = callout;
+  tip.title = callout;
+  tip.classList.remove("hidden");
+  const measured = (width, wrapped) => {
+    tip.style.maxWidth = `${width}px`;
+    tip.style.whiteSpace = wrapped ? "normal" : "";
+    return { width: tip.offsetWidth || CALLOUT_GUESS.width, height: tip.offsetHeight || CALLOUT_GUESS.height };
+  };
+  const crowd = options.crowd || [];
+  const reads = (spot, size) => !crossesLeader({ ...spot, ...size }, grown(rect, RING_PAD + RING + 2), crowd)
+    || rectGap({ ...spot, ...size }, ringed) <= LEADER_OMITTED;
+  const placeIn = (area, loose) => {
+    const widest = Math.max(0, area.width - 2 * EDGE);
+    let size = measured(widest, false);
+    let spot = calloutSpot(rect, size, area, { ...options, strict: true });
+    for (const width of NARROW_WIDTHS) {
+      if (spot || width > size.width - NARROW_LEAST) continue;
+      const narrow = measured(width, true);
+      spot = calloutSpot(rect, narrow, area, { ...options, strict: true });
+      if (spot) size = narrow;
+    }
+    if (!spot && loose) {
+      size = measured(widest, false);
+      spot = calloutSpot(rect, size, area, options);
+      if (spot && !reads(spot, size)) spot = null;
+    }
+    return spot ? { spot, size } : null;
+  };
+  const inside = options.within && within(centre, options.within) ? placeIn(options.within, true) : null;
+  const chosen = inside || placeIn(bounds, false) || (() => {
+    const size = measured(Math.max(0, bounds.width - 2 * EDGE), false);
+    const spot = calloutSpot(rect, size, bounds, options)
+      || (options.coreCrowd ? calloutSpot(rect, size, bounds, { ...options, crowd: options.coreCrowd }) : null);
+    return spot ? { spot, size } : null;
+  })();
+  const spot = chosen ? chosen.spot : null;
+  const size = chosen ? chosen.size : CALLOUT_GUESS;
+  tip.classList.toggle("hidden", !spot);
+  if (!spot) {
+    leader.classList.add("hidden");
+    return;
+  }
+  Object.assign(tip.style, { left: `${spot.left}px`, top: `${spot.top}px` });
+  leaderLine(leader, { ...spot, ...size }, ringed, options.crowd || []);
+}
+
+const AUTOMATIC = ["rules", "sent", "triage", "replay", "waf_changed"];
+const BENIGN_UNSENT = "lesson.check.replay_benign";
+const ALERT_PENDING = "lesson.check.alert_pending";
+const ALERT_RECHECK_MS = 2000;
+const POLLED = ["sent", "triage", "replay", "waf_changed", "kali"];
+const STANDING = ["triage"];
+const firesCheck = (step) => step.check.kind === "rules" && Boolean(step.check.match);
+const ANSWERED = ["answer", "choice", "loot"];
+const SENT_SETTLES_MS = 1500;
+const changed = [];
+const stepPath = (step, tail = "") => lessonPath(`lesson/steps/${encodeURIComponent(step.id)}/${tail}`);
+const PROMPT_ONLY = /\[\$#\] \$$/;
+const HELP_AFTER_SECONDS = 60;
+const SKIP_OFFERED = 3;
+const POLL_SECONDS = 5;
+const MISSING_AFTER_FRAMES = 120;
+const SITE_SILENT_MS = 3000;
+const STAGE_KEYS = {
+  open: "lesson.dev.open", row: "lesson.dev.row",
+  query: "lesson.kibana.query", write: "lesson.kibana.write", expand: "lesson.kibana.expand", field: "lesson.kibana.field", covered: "lesson.kibana.covered",
+  other: "lesson.kibana.other", prompt: "lesson.term.prompt",
+  apply: "lesson.rules.press_apply", verify: "lesson.kibana.verify", run_done: "lesson.kali.press",
+};
+const STAGE_FALLBACKS = {
+  verify: "Type destination in the field search and read this event's destination IP. If it is not the right address, switch to the other event with the arrows.",
+  run_done: "The run has finished. Press 'Check the run'.",
+};
+const paneName = (name) => {
+  const label = document.querySelector(`.pane-tab[data-pane="${name}"] span`);
+  return label && label.textContent ? label.textContent : name;
+};
+
+function choiceLabel(prefix, step, option) {
+  return localized(`lesson.choice.${option}`, localized(`${prefix}.option.${step.id}.${option}`, option));
+}
+
+const usable = (tab) => Boolean(tab) && !tab.classList.contains("hidden") && !tab.disabled;
+
+function landingPane(steps, at) {
+  const opened = (step) => step && step.point && step.point.opens;
+  const before = steps.slice(0, at + 1).reverse().find(opened);
+  const named = opened(before) || opened(steps.find(opened));
+  return named && usable(paneTab(named)) ? named : "elk";
+}
+
+function coach(prefix, declared) {
+  const steps = declared.map((step) => ({ ...step, point: step.point || {}, check: step.check || {} }));
+  const keptStep = lessonStep(sessionId(), lessonId(), 0);
+  let at = Math.min(steps.length, keptStep || 1) - 1;
+  const foundation = Boolean(session && session.lesson && session.lesson.group === "foundations");
+  const nextLesson = foundation ? session.next_lesson : null;
+  const course = foundation ? session.lesson_course : null;
+  let progress = {};
+  let level = 0;
+  let seconds = 0;
+  let checking = false;
+  let answering = "";
+  let queued = null;
+  let saidFor = null;
+  let offered = false;
+  let finished = false;
+  let moving = false;
+  let sentSince = false;
+  let kaliSettling = false;
+  let kaliEnding = false;
+  let runEnded = null;
+  let reaching = Promise.resolve();
+  let preparingFor = null;
+  let last = "";
+  let lost = 0;
+  let picked = [];
+  let replayed = { attack: false, benign: false, seen: false };
+  let dismissed = -1;
+  let homed = -1;
+  let lined = -1;
+  let fitAsked = 0;
+  let coveredSaid = false;
+  let siteLoadedAt = 0;
+  const carried = new Map();
+  const recalled = new Set();
+  const saidOnPass = new Map();
+  const check = () => steps[at].check;
+  const recordOf = (step) => progress[step.id] || {};
+  const solo = () => Boolean(steps[at].solo);
+  const done = (step) => Boolean(recordOf(step).passed);
+  const titleOf = (step) => localized(`${prefix}.title.${step.id}`, t(`${prefix}.label.${step.id}`));
+  const firstRules = () => steps.findIndex((step) => step.check.kind === "rules");
+  const openedPane = () => {
+    const tab = document.querySelector('.pane-tab[aria-selected="true"]');
+    return tab ? tab.dataset.pane : "";
+  };
+
+  function learn(body) {
+    if (!body || !body.progress || typeof body.progress !== "object") return;
+    progress = body.progress;
+    const before = steps[at] && steps[at].command;
+    steps.forEach((step) => {
+      const given = recordOf(step).command;
+      if (given) step.command = given;
+    });
+    stepList();
+    if (steps[at] && steps[at].command !== before) command();
+  }
+
+  learn(session);
+  if (!keptStep) at = Math.max(0, steps.map((step) => Boolean(recordOf(step).reached)).lastIndexOf(true));
+  let briefed = !(course && course.lessons[0] === lessonId() && localized(`${course.text}.brief`, "")
+    && !Object.values(progress).some((kept) => kept && kept.reached));
+
+  const asksWhichDeviceAlerted = (step) => step.check.kind === "choice"
+    && ["ids", "waf"].every((device) => (step.check.options || []).includes(device));
+  detectionAsked = () => !finished && steps.some((step) => asksWhichDeviceAlerted(step) && !done(step));
+
+  function say(text, tone) {
+    const said = field("step-said");
+    said.textContent = text || "";
+    said.classList.toggle("hidden", !text);
+    said.classList.toggle("bg-success-soft", tone === "ok");
+    said.classList.toggle("text-success", tone === "ok");
+    said.classList.toggle("bg-danger-soft", tone === "fail");
+    said.classList.toggle("text-danger", tone === "fail");
+  }
+
+  function status(text) {
+    field("step-status").textContent = text;
+    field("step-status").classList.toggle("hidden", !text);
+  }
+
+  function replayLines(step) {
+    const attack = localized(`${prefix}.replay.attack`, "");
+    const benign = localized(`${prefix}.replay.benign`, "");
+    if (step.check.kind !== "replay" || !attack || !benign || finished || done(step)) return "";
+    const word = (confirmed, seen, failed = false) => (confirmed ? localized("lesson.replay.confirmed", "confirmed")
+      : failed ? localized("lesson.replay.failed", "failed")
+        : seen ? localized("lesson.replay.checking", "checking") : localized("lesson.replay.waiting", "waiting"));
+    return [attack.split("{0}").join(word(replayed.attack, false)),
+      benign.split("{0}").join(word(replayed.benign, replayed.seen, replayed.failed))].join("\n");
+  }
+
+  const standing = (step) => replayLines(step) || (AUTOMATIC.includes(step.check.kind) && !firesCheck(step) && !finished && !done(step) ? t("lesson.status.auto") : "");
+
+  function stepList() {
+    field("lesson-step-list").innerHTML = steps.map((step, index) => {
+      const passed = Boolean(recordOf(step).passed);
+      const current = index === at;
+      const skipped = !passed && !current && Boolean(recordOf(step).skipped);
+      const mark = passed ? "✓" : skipped ? "○" : String(index + 1);
+      const circle = passed ? "badge-pass" : current ? "bg-primary text-inverse" : skipped ? "border border-line text-faint" : "badge-muted";
+      const words = current ? "font-semibold text-heading" : passed ? "text-muted" : "text-faint";
+      const help = skipped ? ` <span class="text-[13px] text-faint">· ${esc(t("lesson.skipped"))}</span>` : "";
+      return `<li><button type="button" data-step="${index}" class="w-full text-left flex items-center gap-2 rounded-md px-2 py-1 hover:bg-subdued">
+        <span class="w-6 h-6 shrink-0 rounded-full grid place-items-center text-[13px] font-bold ${circle}">${mark}</span>
+        <span class="${words}">${esc(titleOf(step))}${help}</span></button></li>`;
+    }).join("");
+    field("lesson-step-list").querySelectorAll("[data-step]").forEach((button) =>
+      button.addEventListener("click", () => jump(Number(button.dataset.step))));
+  }
+
+  function helpLines(step) {
+    const located = Boolean(locatorOf(step.point));
+    const pointing = located ? t("lesson.hint.point") : "";
+    const lines = [];
+    const said = (part) => (foundation ? t(`${prefix}.${part}.${step.id}`) : localized(`${prefix}.${part}.${step.id}`, pointing));
+    if (level >= 1) lines.push(said("nudge"));
+    if (level >= 2) lines.push(said("hint"));
+    if (!foundation && level >= SKIP_OFFERED && recordOf(step).answer) lines.push(recordOf(step).answer);
+    return [...new Set(lines.filter(Boolean))];
+  }
+
+  const hintLabel = () => t(level > 0 ? "lesson.hint.next" : "lesson.hint.show");
+
+  function showHelp() {
+    const step = steps[at];
+    const passed = done(step) && !finished;
+    const lines = solo() || passed ? [] : helpLines(step);
+    field("step-help").innerHTML = lines.map((line) => `<p>${withOptionsWhole(line)}</p>`).join("");
+    shownSection("step-help", lines.length > 0);
+    offered = false;
+    field("step-hint").textContent = hintLabel();
+    field("step-hint").classList.remove("btn-blue");
+    field("step-hint").classList.toggle("hidden", solo() || passed || level >= SKIP_OFFERED || finished);
+  }
+
+  function offerHint() {
+    if (offered || solo() || done(steps[at])) return;
+    offered = true;
+    field("step-hint").textContent = hintLabel();
+    field("step-hint").classList.add("btn-blue");
+  }
+
+  async function escalate() {
+    const step = steps[at];
+    level = Math.min(SKIP_OFFERED, level + 1);
+    seconds = 0;
+    showHelp();
+    const read = await post(lessonPath("lesson/hints/"), { step: step.id, level: "hint" });
+    if (!read.ok) return;
+    learn(read.body);
+    if (steps[at] === step) showHelp();
+  }
+
+  function wrong(text, hint) {
+    say(text, "fail");
+    if (Number(hint) > level) {
+      level = Math.min(SKIP_OFFERED, Number(hint));
+      seconds = 0;
+      showHelp();
+    }
+  }
+
+  function deviceName(option) {
+    return localized(`topology.name.${option}`, option);
+  }
+
+  function orderPicker(options) {
+    return `<div class="flex flex-wrap gap-1.5">${options.map((option) =>
+        `<button type="button" data-act="pick" data-value="${esc(option)}" aria-pressed="false" class="order-chip btn btn-sm btn-ghost">${esc(deviceName(option))}</button>`).join("")}</div>
+      <button type="button" data-act="order" class="self-start btn btn-sm btn-blue">${esc(t("lesson.answer.submit"))}</button>`;
+  }
+
+  function showPicked(act) {
+    act.querySelectorAll('[data-act="pick"]').forEach((chip) => {
+      const place = picked.indexOf(chip.dataset.value);
+      chip.setAttribute("aria-pressed", String(place >= 0));
+      chip.textContent = place >= 0 ? `${place + 1}. ${deviceName(chip.dataset.value)}` : deviceName(chip.dataset.value);
+    });
+  }
+
+  const courseText = course ? course.text : "lesson.course";
+  const courseTaken = () => (session.course || []).filter((one) => one.text && (!course || course.lessons.includes(one.id)));
+  const courseWhole = foundation && courseTaken().length > 0
+    && (!course || course.lessons.every((id) => courseTaken().some((one) => one.id === id)));
+  const courseEnd = () => foundation && courseWhole && !nextLesson;
+
+  function courseSummary() {
+    return `<ul data-act="course" class="flex flex-col gap-1 text-[13px]"></ul>
+      <button type="button" data-act="close" class="self-start btn btn-sm btn-blue">${esc(t("lesson.course.close"))}</button>
+      <div data-act="confirm" class="hidden flex flex-col gap-2">
+        <p class="text-body text-[13px]">${esc(t("session.close.consequence"))}</p>
+        <div class="flex gap-2">
+          <button type="button" data-act="confirm-close" class="btn btn-sm btn-blue">${esc(t("session.close.confirm"))}</button>
+          <button type="button" data-act="confirm-keep" class="btn btn-sm btn-ghost">${esc(t("session.close.keep"))}</button>
+        </div>
+      </div>`;
+  }
+
+  function courseList(list) {
+    const counted = (one) => (one.id === lessonId() ? { ...one, steps: steps.length, passed: steps.filter(done).length } : one);
+    list.innerHTML = courseTaken().map((one) => {
+      const count = counted(one);
+      return `<li class="flex flex-wrap items-center gap-x-2" data-course="${esc(one.id)}"><span>${esc(t(`${one.text}.title`))}</span>${
+        count.steps ? `<span class="text-muted">${esc(t("lesson.steps.passed", count.passed, count.steps))}</span>` : ""}</li>`;
+    }).join("");
+  }
+
+  function action() {
+    const step = steps[at];
+    const kind = check().kind;
+    const act = field("step-act");
+    let html = "";
+    if (finished) {
+      html = nextLesson ? `<button type="button" data-act="next-lesson" class="self-start btn btn-sm btn-blue">${esc(t("lesson.next.start"))}</button>`
+        : foundation ? courseSummary() : "";
+    } else if (kind === "answer" && check().form === "order") {
+      html = orderPicker(check().options || []);
+    } else if (kind === "answer") {
+      html = `<form data-act="answer" class="flex gap-2"><input data-act="value" autocomplete="off" spellcheck="false"
+        class="flex-1 min-w-0 h-8 border border-line rounded-md px-2 bg-panel font-mono text-[13px]"
+        placeholder="${esc(localized(`${prefix}.placeholder.${step.id}`, ""))}"><button class="btn btn-sm btn-blue">${esc(t("lesson.answer.submit"))}</button></form>`;
+    } else if (kind === "choice") {
+      html = `<div class="flex flex-wrap gap-1.5">${(check().options || []).map((option) =>
+        `<button type="button" data-act="choose" data-value="${esc(option)}" class="btn btn-sm btn-ghost">${
+          esc(choiceLabel(prefix, step, option))}</button>`).join("")}</div>`;
+    } else if (firesCheck(step)) {
+      html = `<button type="button" data-act="check" class="self-start btn btn-sm btn-blue">${esc(t("lesson.rules.fired_check"))}</button>`;
+    } else if (kind === "kali") {
+      html = `<button type="button" data-act="kali" class="self-start btn btn-sm btn-ghost">${esc(t("lesson.kali.check"))}</button>
+        <ul data-act="rows" class="flex flex-col gap-2">${carried.has(step.id) ? kaliRow(carried.get(step.id)) : ""}</ul>`;
+    } else if (kind === "loot") {
+      html = `<form data-act="loot" class="flex flex-col gap-2"><textarea data-act="value" rows="4" spellcheck="false"
+        class="w-full border border-line rounded-md p-2 bg-panel font-mono text-[13px] leading-tight"
+></textarea><button class="self-start btn btn-sm btn-blue">${
+        esc(t("lesson.loot.submit"))}</button></form>`;
+    }
+    const before = runOf(at);
+    act.innerHTML = html;
+    last = "";
+    shownSection("step-act", Boolean(html));
+    const form = act.querySelector('[data-act="answer"], [data-act="loot"]');
+    if (form) {
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        answer(form.querySelector('[data-act="value"]').value);
+      });
+    }
+    act.querySelectorAll('[data-act="choose"]').forEach((button) =>
+      button.addEventListener("click", () => answer(button.dataset.value)));
+    const typed = act.querySelector('[data-act="value"]');
+    if (typed) typed.addEventListener("input", () => { if (!done(step)) say("", ""); });
+    act.querySelectorAll('[data-act="pick"]').forEach((chip) => chip.addEventListener("click", () => {
+      say("", "");
+      const name = chip.dataset.value;
+      picked = picked.includes(name) ? picked.filter((one) => one !== name) : [...picked, name];
+      showPicked(act);
+    }));
+    const ordered = act.querySelector('[data-act="order"]');
+    if (ordered) ordered.addEventListener("click", () => answer(picked.join(" > ")));
+    if (act.querySelector('[data-act="picked"]')) showPicked(act);
+    const again = act.querySelector('[data-act="kali"], [data-act="check"]');
+    if (again) again.addEventListener("click", () => run(step, true));
+    act.querySelectorAll("[data-discover]").forEach((link) =>
+      link.addEventListener("click", () => showInKibana(link.dataset.discover)));
+    const onwards = act.querySelector('[data-act="next-lesson"]');
+    if (onwards) onwards.addEventListener("click", moveOn);
+    const close = act.querySelector('[data-act="close"]');
+    const confirm = act.querySelector('[data-act="confirm"]');
+    const confirming = (open) => {
+      close.classList.toggle("hidden", open);
+      confirm.classList.toggle("hidden", !open);
+    };
+    if (close && confirm) {
+      close.addEventListener("click", () => confirming(true));
+      confirm.querySelector('[data-act="confirm-keep"]').addEventListener("click", () => confirming(false));
+      confirm.querySelector('[data-act="confirm-close"]').addEventListener("click", moveOn);
+    }
+    const course = act.querySelector('[data-act="course"]');
+    if (course) courseList(course);
+    if (!finished && before && recordOf(before).passed && !recalled.has(`${before.id}:${step.id}`)) recall(before, step);
+  }
+
+  function runOf(index) {
+    const step = steps[index];
+    const about = steps.find((one) => one.id === step.check.about && one.check.kind === "kali");
+    const latest = steps.slice(0, index).reverse().find((one) => one.check.kind === "kali");
+    const run = about || latest;
+    if (!run || step.check.kind === "kali") return null;
+    const kibana = paneFor(locatorOf(step.point), step.point) === "elk";
+    return steps.indexOf(run) === index - 1 || kibana ? run : null;
+  }
+
+  function runWindow() {
+    const run = finished ? null : runOf(at);
+    const row = run ? carried.get(run.id) : null;
+    return row && row.discover ? row.discover : "";
+  }
+
+  async function recall(kali, step) {
+    const asked = `${kali.id}:${step.id}`;
+    recalled.add(asked);
+    const verdict = await judged(kali, { poll: true });
+    if (!verdict || !windowed(verdict.kali)) {
+      recalled.delete(asked);
+      return;
+    }
+    const held = carried.get(kali.id);
+    if (windowed(held) && held.discover === verdict.kali.discover) return;
+    carried.set(kali.id, verdict.kali);
+    if (steps[at] === step) {
+      action();
+      opener();
+    }
+  }
+
+  function command() {
+    const step = steps[at];
+    const preparing = !step.command && Boolean(step.has_command) && preparingFor === step;
+    const shown = !finished && (Boolean(step.command) || preparing);
+    field("step-command").innerHTML = shown ? commandHtml(step.command || localized("lesson.command.preparing", "Preparing the command…")) : "";
+    field("step-command").classList.toggle("hidden", !shown);
+    field("step-copy").textContent = localized("lesson.command.copy", "Copy");
+    field("step-copy").disabled = preparing;
+    field("step-copy").classList.toggle("hidden", !shown);
+  }
+
+  function opener() {
+    const step = steps[at];
+    const opens = paneFor(targetOf(step), step.point);
+    const runAt = opens === "elk" ? runWindow() : "";
+    const needed = !finished && Boolean(opens) && usable(paneTab(opens)) && (Boolean(runAt) || !paneOpen(opens));
+    const button = field("step-open");
+    button.textContent = needed ? (runAt ? t("lesson.kali.window") : t(`lesson.open.${opens}`)) : "";
+    button.dataset.pane = needed ? opens : "";
+    if (needed && runAt) button.dataset.discover = runAt;
+    else button.removeAttribute("data-discover");
+    button.classList.toggle("hidden", !needed);
+    button.classList.toggle("btn-blue", !done(step));
+    button.classList.toggle("btn-ghost", done(step));
+  }
+
+  function finishedText() {
+    if (nextLesson) return t("lesson.next.named", t(`${nextLesson.text}.title`));
+    return t(courseEnd() ? `${courseText}.done` : session && session.course_scenario ? "scenario.note.done" : "lesson.done");
+  }
+
+  function nextStyled() {
+    const passed = done(steps[at]) && !finished;
+    field("step-next").textContent = t(done(steps[at]) ? "lesson.coach.next" : "lesson.skip");
+    field("step-next").classList.toggle("btn-blue", passed);
+    field("step-next").classList.toggle("btn-ghost", !passed);
+    field("step-next").classList.toggle("hidden", finished);
+  }
+
+  function objectivesPlaced(step) {
+    const card = field("lesson-objectives");
+    const body = field("lesson-body");
+    const aimed = !finished && typeof step.point.panel === "string" && step.point.panel.startsWith("#lesson-objectives");
+    const anchor = aimed ? field("step-card") : field("stretch-card");
+    if (typeof body.insertBefore !== "function" || !anchor) return;
+    if (anchor.nextElementSibling !== card) body.insertBefore(card, anchor.nextSibling);
+    if (aimed && typeof card.scrollIntoView === "function") card.scrollIntoView({ block: "nearest" });
+  }
+
+  function show() {
+    const step = steps[at];
+    keepLessonStep(sessionId(), lessonId(), at + 1);
+    field("note-strip-text").textContent = t("lesson.note.strip", at + 1, steps.length);
+    shownSection("step-card");
+    lessonEnd();
+    field("step-count").textContent = `${at + 1} / ${steps.length}`;
+    field("step-count").classList.toggle("hidden", finished);
+    field("step-title").textContent = finished && foundation ? t(courseEnd() ? `${courseText}.title` : `${prefix}.title`) : titleOf(step);
+    field("step-task").textContent = finished ? finishedText() : t(`${prefix}.coach.${step.id}`);
+    const titled = localized(`${prefix}.title.${step.id}`, "");
+    const question = !finished && titled && ANSWERED.includes(check().kind) ? localized(`${prefix}.label.${step.id}`, "") : "";
+    field("step-question").textContent = question;
+    field("step-question").classList.toggle("hidden", !question);
+    status(standing(step));
+    picked = [];
+    action();
+    command();
+    opener();
+    showHelp();
+    field("step-back").disabled = at === 0;
+    nextStyled();
+    objectivesRefresh();
+    objectivesPlaced(step);
+    stretchShown(finished || done(steps[steps.length - 1]));
+    stepList();
+    if (paneOpen("topology")) mapFit();
+    last = "";
+    lost = 0;
+    coveredSaid = false;
+  }
+
+  const rulesApplied = () => {
+    const box = field("lesson-rules-text");
+    return rulesAdded.length > 0 && Boolean(box) && box.value === rulesText;
+  };
+  const devOpen = () => field("site-dev-toggle").getAttribute("aria-pressed") === "true";
+  const reached = (point) => Boolean(point.then) && ((point.until === "sent" && sentSince) || (point.until === "applied" && rulesApplied())
+    || (point.until === "dev_open" && devOpen()));
+
+  function stageOf(step) {
+    let point = step.point;
+    let depth = 0;
+    while (reached(point)) {
+      point = point.then;
+      depth += 1;
+    }
+    return { point, depth };
+  }
+
+  function targetOf(step) {
+    if (!briefed || step.solo || finished || done(step)) return null;
+    return locatorOf(stageOf(step).point);
+  }
+
+  function calloutFor(step, target, found, home) {
+    if (!target) return "";
+    if (home) return t("lesson.site.home");
+    if (found.stage === "field") return phrase(STAGE_KEYS.field, "", target.spec.doc || "");
+    if (found.stage === "fieldless") return phrase("lesson.kibana.fieldless", "", target.spec.doc || "");
+    if (found.stage === "run_done" && kaliSettling) {
+      const settlingSaid = t("lesson.check.kali_settling");
+      return field("step-status").textContent === settlingSaid ? "" : settlingSaid;
+    }
+    if (found.stage) {
+      const key = STAGE_KEYS[found.stage];
+      return (found.leg && localized(`${key}.${found.leg}`, "")) || localized(key, STAGE_FALLBACKS[found.stage] || "");
+    }
+    return localized(`${prefix}.callout.${step.id}${".then".repeat(stageOf(step).depth)}`, "");
+  }
+
+  function settleKibana() {
+    if (dismissed === at || !paneOpen("elk") || steps[at].point.keep) return;
+    if (kibanaDismiss()) dismissed = at;
+  }
+
+  function siteHomeward() {
+    if (sentSince || homed === at || !paneOpen("site") || !site.history.length || site.expecting || site.busy) return;
+    const unanswered = !asking.answered && asking.since && siteLoadedAt
+      && Date.now() - asking.since > SITE_SILENT_MS && Date.now() - siteLoadedAt > SITE_SILENT_MS;
+    const nowhere = asking.answered && !asking.rect && siteHome.on;
+    if (!unanswered && !nowhere) return;
+    homed = at;
+    console.log(`coach: no ${siteHome.selector || "target"} on ${site.history[site.at]}, going back to the front page`);
+    siteGo("/", true);
+  }
+
+  function crowdOf(kind, found, rect) {
+    if (kind === "term") return textRows;
+    if (kind === "map") return mapText();
+    if (kind === "site") return siteText();
+    if (kind === "kibana") return found.crowd || [];
+    return kind === "dev" && rect ? devCrowd(rect) : [];
+  }
+
+  function mapChase(rect) {
+    if (rect || !topo.drawn || !paneOpen("topology") || !asking.answered || Date.now() - fitAsked < MAP_FIT_AGAIN_MS) return;
+    fitAsked = Date.now();
+    mapFit(true);
+  }
+
+  function coveredSay(text) {
+    if (text) {
+      status(text);
+      coveredSaid = true;
+    } else if (coveredSaid) {
+      status("");
+      coveredSaid = false;
+    }
+  }
+
+  function tick() {
+    const step = steps[at];
+    const target = targetOf(step);
+    settleKibana();
+    const found = target ? locate(target, step, firstRules() !== at) : NOT_FOUND;
+    const stuck = Boolean(target) && target.kind === "site" && homed === at && siteHome.on && site.history[site.at] === "/" && !site.expecting && !site.busy;
+    const rect = stuck ? null : found.rect;
+    if (!target || (target.kind !== "map" && target.kind !== "site")) stopAsking();
+    const needed = paneFor(target, step.point);
+    const waiting = Boolean(needed) && !paneOpen(needed);
+    if (target && target.kind === "site") siteHomeward();
+    if (target && target.kind === "map") mapChase(rect);
+    if (target && rect && found.line >= 0 && lined !== at) {
+      lined = at;
+      ruleLineShown(found.line);
+    }
+    const running = Boolean(target) && target.kind === "term" && Boolean(target.spec.done) && found.stage !== "run_done" && !done(step) && !finished;
+    document.querySelectorAll("[data-running]").forEach((line) => line.classList.toggle("hidden", !running));
+    if (found.stage === "run_done" && step.check.kind === "kali" && runEnded !== step && !done(step) && !finished) {
+      runEnded = step;
+      run(step, false);
+    }
+    if (running && field("step-status").textContent === t("lesson.check.kali_settling")) status("");
+    if (found.typed && step.check.kind === "kali" && field("step-said").classList.contains("text-danger")) say("", "");
+    lost = rect || !target || waiting || settling(target) ? 0 : lost + 1;
+    if (lost === MISSING_AFTER_FRAMES) console.log(`coach: no target for step ${step.id} in pane ${needed || openedPane()}`, JSON.stringify(target));
+    const home = Boolean(target) && target.kind === "site" && siteHome.on;
+    const callout = stuck ? t("lesson.site.missing") : calloutFor(step, target, found, home);
+    const kind = found.kind !== undefined ? found.kind : target ? target.kind : "";
+    const marked = kind === "panel" && target ? document.querySelector(target.spec) : null;
+    const outsidePane = marked && !field("pane").contains(marked);
+    const section = outsidePane && typeof marked.closest === "function" ? marked.closest("section") : null;
+    const titled = Boolean(section) && section !== marked;
+    const cells = titled ? Array.from(section.querySelectorAll("thead th, tbody tr, tfoot td")).map(boxOf).filter((box) => box && !overlaps(box, rect)) : [];
+    const crowd = [...crowdOf(kind, found, rect), ...cells];
+    const zones = kind === "map" ? mapZones() : [];
+    const openBox = target && !rect && waiting ? boxOf(field("step-open")) : null;
+    const layout = [boxOf(field("pane")), boxOf(field("lesson"))].map(rounded).join("/");
+    const drawn = [rounded(rect) || "none", rounded(openBox), at, found.stage, callout, note.open, waiting, finished, crowd.length, zones.length, layout].join("|");
+    if (drawn !== last) {
+      last = drawn;
+      const holder = titled ? boxOf(section) : rulesHolder(marked, found);
+      const inCard = Boolean(marked) && marked !== field("step-card") && field("step-card").contains(marked);
+      const pressing = found.stage === "run_done" ? document.querySelector('[data-act="kali"]') : inCard ? marked : null;
+      const aimed = rect
+        ? { crowd, coreCrowd: kind === "kibana" ? [...(found.core || []), ...cells] : null, within: found.within || null, holder, titled, kind, bands: kind === "term" ? bandRows : [], zones, anchor: pressing, line: found.line >= 0, typing: kind === "term" && found.stage !== "run_done" && PROMPT_ONLY.test(target.spec.match || "") }
+        : { kind: "open", anchor: field("step-open") };
+      highlight(rect || openBox, rect ? callout : "", aimed);
+      coveredSay((found.stage === "covered" || stuck) && !rect ? callout : "");
+      opener();
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function alreadyOpen(step) {
+    const tab = step.check.kind === "click" && typeof step.point.panel === "string" ? document.querySelector(step.point.panel) : null;
+    return Boolean(tab && tab.dataset && tab.dataset.pane && paneOpen(tab.dataset.pane));
+  }
+
+  function reach(step) {
+    preparingFor = step;
+    command();
+    if (alreadyOpen(step)) setTimeout(() => run(step, true), 0);
+    reaching = post(stepPath(step), { state: "reached" }).then((read) => {
+      if (preparingFor === step) preparingFor = null;
+      if (read.ok) learn(read.body);
+      if (steps[at] !== step) return;
+      command();
+      if (!read.ok && step.has_command && !step.command) say(t("lesson.command.failed", detail(read)), "fail");
+    });
+  }
+
+  function leave(index) {
+    const step = steps[at];
+    if (index === at || recordOf(step).passed) return;
+    post(stepPath(step), { state: "skipped" }).then((read) => { if (read.ok) learn(read.body); });
+  }
+
+  function jump(index) {
+    leave(index);
+    go(index);
+  }
+
+  function rulesLearned() {
+    const step = steps[at];
+    if (step.check.kind === "rules" && !done(step) && !finished) run(step, false);
+  }
+
+  function go(index) {
+    at = Math.max(0, Math.min(steps.length - 1, index));
+    level = Math.min(SKIP_OFFERED, Number(recordOf(steps[at]).hint) || 0);
+    seconds = 0;
+    finished = false;
+    replayed = { attack: false, benign: false, seen: false };
+    sentSince = false;
+    kaliSettling = false;
+    kaliEnding = false;
+    runEnded = null;
+    dismissed = -1;
+    homed = -1;
+    lined = -1;
+    queryArrival.step = "";
+    fieldlessQuery.step = "";
+    saidFor = null;
+    say("", "");
+    show();
+    reach(steps[at]);
+    rulesLearned();
+  }
+
+  function finish() {
+    finished = true;
+    show();
+    if (paneOpen("topology")) mapFitSoon();
+  }
+
+  async function moveOn() {
+    if (moving || sessionClosed()) return;
+    moving = true;
+    status(t(nextLesson ? "lesson.next.preparing" : "main.closing"));
+    if (nextLesson) {
+      const onwards = field("step-act").querySelector('[data-act="next-lesson"]');
+      if (onwards) onwards.disabled = true;
+      const moved = await post(lessonPath("lesson/"), { lesson: nextLesson.id }, PATIENCE_FOR_RANGE_WORK);
+      if (moved.ok) {
+        location.reload();
+        return;
+      }
+      moving = false;
+      if (onwards) onwards.disabled = false;
+      status("");
+      say(t("lesson.next.failed", detail(moved)), "fail");
+      return;
+    }
+    await closeLesson();
+  }
+
+  async function closeLesson() {
+    moving = true;
+    status(t("main.closing"));
+    await post(lessonPath("ingest/"));
+    const closed = await post(lessonPath("close/"), {}, PATIENCE_FOR_RANGE_WORK);
+    if (closed.ok || await alreadyClosed(sessionId())) {
+      location.href = `/session/${sessionId()}/`;
+      return;
+    }
+    moving = false;
+    status("");
+    say(t("session.close.failed", detail(closed)), "fail");
+  }
+
+  function lessonEnd() {
+    const summaryCloses = finished && foundation && !nextLesson;
+    shownSection("lesson-end", !summaryCloses && !sessionClosed() && !(session && session.course_scenario));
+  }
+
+  function pass(step) {
+    if (steps[at] !== step) return;
+    const line = [recordOf(step).line, saidOnPass.get(step.id)].filter(Boolean).join(" ");
+    const ok = recordOf(step).ok || localized(`${prefix}.ok.${step.id}`, "");
+    const text = [`✓ ${ok}`.trim(), line].filter(Boolean).join(" ");
+    say(text, "ok");
+    status("");
+    coveredSaid = false;
+    showHelp();
+    nextStyled();
+    opener();
+    field("step-act").querySelectorAll("form button, input, textarea, [data-act]").forEach((control) => {
+      if (!control.dataset.discover) control.disabled = true;
+    });
+    if (session.lesson_objectives) objectivesRead();
+    if (at === steps.length - 1) finish();
+  }
+
+  async function judged(step, body, tail = "check/") {
+    await reaching;
+    const read = await post(stepPath(step, tail), body, body && body.poll ? PATIENCE : PATIENCE_FOR_RANGE_WORK);
+    if (!read.ok) return null;
+    learn(read.body);
+    return read.body;
+  }
+
+  function settle(step, verdict, loud) {
+    if (verdict && steps[at] !== step && verdict.kali && "discover" in verdict.kali) carried.set(step.id, verdict.kali);
+    if (!verdict || steps[at] !== step) return;
+    if (step.check.kind === "replay") {
+      const reason = Array.isArray(verdict.reason) ? verdict.reason[0] : "";
+      replayed = { attack: Boolean(verdict.passed) || reason.startsWith(BENIGN_UNSENT), benign: Boolean(verdict.passed),
+        seen: replayed.seen, failed: reason.startsWith(`${BENIGN_UNSENT}.`) };
+      if (!verdict.passed && replayLines(step)) status(replayLines(step));
+    }
+    kaliSettling = Boolean(verdict.kali && verdict.kali.settling && !verdict.passed);
+    kaliEnding = kaliSettling && Boolean(verdict.kali.ending);
+    if (ranSeen(verdict.kali)) {
+      carried.set(step.id, verdict.kali);
+      const rows = field("step-act").querySelector('[data-act="rows"]');
+      if (rows) {
+        rows.innerHTML = kaliRow(verdict.kali);
+        rows.querySelectorAll("[data-discover]").forEach((link) =>
+          link.addEventListener("click", () => showInKibana(link.dataset.discover)));
+      }
+    }
+    if (Array.isArray(verdict.added)) rulesAdded = verdict.added.map(String);
+    if (verdict.loot && verdict.loot.matched && verdict.loot.matched.length) {
+      saidOnPass.set(step.id, t("lesson.loot.matched", verdict.loot.matched.join(", ")));
+    }
+    if (verdict.passed) {
+      pass(step);
+      return;
+    }
+    if (verdict.kali && verdict.kali.settling) {
+      say("", "");
+      if (loud) status(t(verdict.reason[0], ...(verdict.reason[1] || [])));
+      return;
+    }
+    if (Array.isArray(verdict.reason) && verdict.reason[0] === ALERT_PENDING) {
+      say("", "");
+      status(t(ALERT_PENDING));
+      setTimeout(() => run(step, loud), ALERT_RECHECK_MS);
+      return;
+    }
+    if (field("step-status").textContent === t(ALERT_PENDING)) status(standing(step));
+    if (!loud && !verdict.loud) return;
+    status(replayLines(step));
+    if (verdict.reason) wrong(t(verdict.reason[0], ...(verdict.reason[1] || [])), verdict.hint);
+  }
+
+  async function run(step, loud) {
+    const held = done(step);
+    if (checking || steps[at] !== step || finished || (held && !STANDING.includes(step.check.kind))) return;
+    checking = true;
+    if (loud) status(t("lesson.status.checking"));
+    try {
+      const verdict = await judged(step, { ...(loud ? {} : { poll: true }), ...(runEnded === step ? { ended: true } : {}) });
+      if (!held) settle(step, verdict, loud);
+      else if (verdict && !verdict.passed && steps[at] === step && !finished) lapse();
+    } finally {
+      checking = false;
+    }
+  }
+
+  function lapse() {
+    say("", "");
+    show();
+  }
+
+  const typedNow = () => {
+    const typed = field("step-act").querySelector('[data-act="value"]');
+    return typed ? typed.value.trim() : null;
+  };
+
+  async function answer(given) {
+    const step = steps[at];
+    const value = String(given || "").trim();
+    if (!value) return;
+    if (answering) {
+      queued = value === answering ? null : { step, value };
+      return;
+    }
+    answering = value;
+    queued = null;
+    status(t("lesson.status.checking"));
+    try {
+      const query = readsKibana(step.point) ? kibanaQueryNow() : null;
+      const devOpen = step.check.dev && typeof dev !== "undefined" && dev.open;
+      const devRequest = devOpen ? dev.picked : null;
+      const devListed = devOpen && devRequest === null ? devShown().map((row) => row.id) : [];
+      const verdict = await judged(step, { answer: value, ...(query !== null ? { query } : {}),
+        ...(step.check.dev ? { dev_request: devRequest, dev_listed: devListed } : {}) });
+      const typed = typedNow();
+      const stale = verdict && !verdict.passed && ((queued && queued.step === step) || (typed !== null && typed !== value));
+      saidFor = verdict && !verdict.passed && !stale ? { step, query } : null;
+      if (!verdict || stale) status(standing(step));
+      if (!stale) settle(step, verdict, true);
+    } finally {
+      answering = "";
+      const next = queued;
+      queued = null;
+      if (next && next.step === step && steps[at] === step && !done(step)) answer(next.value);
+    }
+  }
+
+  function skip() {
+    const step = steps[at];
+    if (at < steps.length - 1) {
+      jump(at + 1);
+      return;
+    }
+    if (!recordOf(step).passed) post(stepPath(step), { state: "skipped" }).then((read) => { if (read.ok) learn(read.body); });
+    finish();
+  }
+
+  steps.filter((step) => step.point.panel && step.check.kind === "click").forEach((step) => {
+    const target = document.querySelector(step.point.panel);
+    if (target) {
+      target.addEventListener("click", () => {
+        if (steps[at] === step) setTimeout(() => run(step, true), 0);
+      });
+    }
+  });
+
+  site.heard.push((path) => {
+    askAgain(field("site-frame"));
+    siteHome.on = false;
+    siteLoadedAt = Date.now();
+    const step = steps[at];
+    const wanted = pattern(step.check.match);
+    if (!wanted || !wanted.test(readable(path))) return;
+    sentSince = true;
+    if (step.check.kind === "replay" && !replayed.benign) {
+      replayed = { ...replayed, seen: true };
+      status(replayLines(step));
+    }
+    if (["sent", "replay"].includes(step.check.kind)) setTimeout(() => run(step, false), SENT_SETTLES_MS);
+  });
+  topo.drawnHeard.push(() => {
+    askAgain(field("topology-frame"));
+    mapFit();
+  });
+  field("site-frame").addEventListener("load", () => {
+    askAgain(field("site-frame"));
+    siteLoadedAt = Date.now();
+  });
+  paneOpened.push((name) => {
+    last = "";
+    opener();
+    if (name === "topology") mapFitSoon();
+  });
+  if (typeof ResizeObserver === "function") new ResizeObserver(mapFitSoon).observe(field("topology"));
+
+  setInterval(() => {
+    if (!briefed || finished || sessionClosed() || document.hidden) return;
+    seconds += 1;
+    if (seconds >= HELP_AFTER_SECONDS && level < SKIP_OFFERED) offerHint();
+    if (POLLED.includes(check().kind) && (seconds % POLL_SECONDS === 0 || runEnded === steps[at] || kaliEnding)) run(steps[at], false);
+    if (saidFor && saidFor.step === steps[at] && saidFor.query !== null && kibanaQueryNow() !== saidFor.query) {
+      saidFor = null;
+      say("", "");
+    }
+  }, 1000);
+
+  changed.push((what) => {
+    const step = steps[at];
+    if (step.check.kind !== what) return;
+    if (firesCheck(step)) sentSince = false;
+    run(step, !firesCheck(step) && !STANDING.includes(what));
+  });
+
+  field("step-back").addEventListener("click", () => go(at - 1));
+  field("step-next").addEventListener("click", skip);
+  field("step-hint").addEventListener("click", escalate);
+  field("step-copy").addEventListener("click", async () => {
+    const button = field("step-copy");
+    try {
+      await copied(field("step-command").textContent);
+      button.textContent = localized("lesson.command.copied", "Copied");
+    } catch (error) {
+      button.textContent = localized("lesson.command.copy", "Copy");
+    }
+  });
+  field("step-open").addEventListener("click", () => {
+    const button = field("step-open");
+    if (button.dataset.discover) {
+      showInKibana(button.dataset.discover);
+      return;
+    }
+    const opening = button.dataset.pane;
+    const tab = paneTab(opening);
+    if (tab) openPane(tab);
+    if (opening === "site" && site.history.length && site.history[site.at] !== "/") siteGo("/");
+  });
+  const editsRules = steps.some((step) => step.point.opens === "rules" || step.check.kind === "rules");
+  if (editsRules) rulesPane();
+  if (paneTab("rules")) {
+    paneTab("rules").classList.remove("hidden");
+    paneTab("rules").disabled = !editsRules;
+  }
+  shownSection("steps-card");
+  const endAsked = (asked) => {
+    shownSection("lesson-end-confirm", asked);
+    field("lesson-end-open").classList.toggle("hidden", asked);
+  };
+  field("lesson-end-open").addEventListener("click", () => endAsked(true));
+  field("lesson-end-keep").addEventListener("click", () => endAsked(false));
+  field("lesson-end-yes").addEventListener("click", async () => {
+    field("lesson-end-yes").disabled = true;
+    if (!moving && !sessionClosed()) await closeLesson();
+    field("lesson-end-yes").disabled = false;
+  });
+  level = Math.min(SKIP_OFFERED, Number(recordOf(steps[at]).hint) || 0);
+  const begin = () => {
+    briefed = true;
+    field("lesson-brief").classList.add("hidden");
+    openPane(paneTab(landingPane(steps, at)));
+    show();
+    reach(steps[at]);
+    rulesLearned();
+  };
+  if (briefed) begin();
+  else {
+    briefOpen(course);
+    field("brief-start").addEventListener("click", begin);
+  }
+  requestAnimationFrame(tick);
+  return (id) => go(steps.findIndex((step) => step.id === id));
+}
+
+let rulesVersion = "";
+
+async function loadRules() {
+  const status = field("lesson-rules-status");
+  status.textContent = t("lesson.rules.loading");
+  const read = await api(`/api/rules/?session=${encodeURIComponent(sessionId())}`);
+  if (!read.ok) {
+    status.textContent = t("lesson.rules.unread", detail(read));
+    return;
+  }
+  rulesText = read.body.content || "";
+  rulesVersion = read.body.version || "";
+  const draft = kept(DRAFT_KEY(), null);
+  const restored = Boolean(draft) && draft.base === rulesVersion && typeof draft.text === "string" && draft.text !== rulesText;
+  field("lesson-rules-text").value = restored ? draft.text : rulesText;
+  if (!rulesKnown) rulesKnown = new Set((read.body.content || "").split("\n").map(sidOf).filter(Boolean));
+  status.textContent = restored ? t("lesson.rules.draft") : "";
+}
+
+function showRuleErrors(result) {
+  const box = field("lesson-rules-errors");
+  const errors = Array.isArray(result.body.errors) ? result.body.errors : [];
+  const shown = errors.length ? errors.join("\n") : (result.body.output || "");
+  box.textContent = shown;
+  box.classList.toggle("hidden", !shown);
+  return errors;
+}
+
+async function validateRules() {
+  const status = field("lesson-rules-status");
+  status.textContent = t("lesson.status.checking");
+  field("lesson-rules-errors").classList.add("hidden");
+  const checked = await post("/api/rules/validate/",
+    { content: field("lesson-rules-text").value, session: sessionId() }, PATIENCE_FOR_RANGE_WORK);
+  if (checked.ok) {
+    status.textContent = t("lesson.rules.valid");
+    return true;
+  }
+  if (checked.body.ok !== false) {
+    status.textContent = t("lesson.rules.failed", detail(checked));
+    return false;
+  }
+  const listed = showRuleErrors(checked).length;
+  status.textContent = t(checked.body.unread_sid ? "lesson.rules.sid_unread" : listed ? "lesson.rules.invalid" : "lesson.rules.no_error");
+  return false;
+}
+
+async function applyRules() {
+  if (!(await validateRules())) return;
+  const status = field("lesson-rules-status");
+  const applied = await post("/api/rules/apply/",
+    { content: field("lesson-rules-text").value, base: rulesVersion, session: sessionId() }, PATIENCE_FOR_RANGE_WORK);
+  if (!applied.ok) {
+    status.textContent = t("lesson.rules.failed", detail(applied));
+    return;
+  }
+  const mine = ownRuleLines().map(({ sid }) => sid);
+  forgetDraft();
+  await loadRules();
+  rulesAdded = [...new Set([...rulesAdded, ...mine])];
+  status.textContent = t("lesson.rules.applied");
+  changed.forEach((heard) => heard("rules"));
+}
+
+function forgetDraft() {
+  try {
+    localStorage.removeItem(DRAFT_KEY());
+  } catch (error) {
+    return;
+  }
+}
+
+function rulesEditor() {
+  shownSection("lesson-rules");
+  field("lesson-rules-box").innerHTML = `<textarea id="lesson-rules-text" spellcheck="false" autocomplete="off" rows="10" wrap="soft"
+    class="w-full border border-line rounded-md bg-panel font-mono whitespace-pre-wrap overflow-y-auto"
+    style="padding: ${RULE_PAD}px; font-size: 13px; line-height: ${RULE_LINE}px; tab-size: 4"></textarea>`;
+  field("lesson-rules-text").addEventListener("input", () => {
+    field("lesson-rules-status").textContent = "";
+    keep(DRAFT_KEY(), { base: rulesVersion, text: field("lesson-rules-text").value });
+  });
+  field("lesson-rules-validate").addEventListener("click", validateRules);
+  field("lesson-rules-apply").addEventListener("click", applyRules);
+  loadRules();
+}

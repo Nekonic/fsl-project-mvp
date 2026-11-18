@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #F6F7F9;
+      --panel: #FFFFFF;
+      --subdued: #F8FAFC;
+      --border: #E2E8F0;
+      --border-strong: #CBD5E1;
+      --border-subdued: #F1F5F9;
+      --heading: #0F172A;
+      --text: #334155;
+      --text-muted: #556275;
+      --text-faint: #647185;
+      --text-inverse: #FFFFFF;
+      --primary: #2563EB;
+      --primary-hover: #1D4ED8;
+      --primary-text: #1D4ED8;
+      --primary-soft: #EFF6FF;
+      --primary-line: #DBEAFE;
+      --danger: #DC2626;
+      --danger-hover: #B91C1C;
+      --danger-text: #B91C1C;
+      --danger-soft: #FEF2F2;
+      --danger-line: #FEE2E2;
+      --warning: #B45309;
+      --warning-text: #B45309;
+      --warning-soft: #FEF3C7;
+      --warning-line: #FDE68A;
+      --success: #15803D;
+      --success-text: #15803D;
+      --success-soft: #F0FDF4;
+      --success-line: #DCFCE7;
+      --accent: #BC1E70;
+      --accent-text: #A11262;
+      --accent-soft: #FFF0F8;
+      --accent-line: #FFC7DB;
+      --teal: #008B87;
+      --terminal: #0B1020;
+      --terminal-bar: #111827;
+      --terminal-line: #1F2937;
+      --terminal-text: #D1D5DB;
+      --code: #0F172A;
+      --code-text: #E2E8F0;
+      --code-button: #1E293B;
+      --shadow-pop: 0 10px 30px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(15, 23, 42, 0.06);
+      --shadow-note: 0 20px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.1);
+      --font-sans: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    #lesson, .coach-callout {
+      font-feature-settings: "calt" 0;
+      font-variant-ligatures: none;
+    }
+    pre.command {
+      white-space: pre-wrap;
+      overflow-wrap: normal;
+      word-break: normal;
+      overflow: visible;
+    }
+    pre.command .seg {
+      display: inline-block;
+      max-width: 100%;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      vertical-align: top;
+    }
+    .cli-option {
+      white-space: nowrap;
+    }
+    html {
+      word-break: keep-all;
+      overflow-wrap: break-word;
+    }
+    h1, h2, h3, h4 {
+      text-wrap: balance;
+    }
+  </style>
+  <style>{% include "console/tailwind.css" %}</style>
+</head>
+<body class="{% block surface %}bg-page{% endblock %} text-body font-sans text-[14px] {% block body_class %}{% endblock %}">
+  <header class="h-14 shrink-0 bg-panel border-b border-line px-4 sm:px-6 flex items-center gap-4 sm:gap-6">
+    <a href="/" data-t="common.brand" class="font-bold text-[15px] text-heading shrink-0"></a>
+    <nav id="crumbs" class="flex items-center gap-2 text-muted text-[13px] min-w-0 truncate"></nav>
+    <div class="ml-auto flex items-center gap-4 text-[13px] text-muted shrink-0">
+      <span id="range-health" class="hidden items-center gap-1.5"></span>
+      {% block account %}<a id="manage-users" href="/users/" data-t="users.title" class="hidden hover:text-heading"></a>
+      <button type="button" id="sign-out" data-t="auth.sign_out" class="hover:text-heading"></button>{% endblock %}
+    </div>
+  </header>
+  <main class="{% block main_class %}max-w-[1120px] mx-auto px-4 sm:px-6 py-8{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+  {% include "console/strings.html" %}
+  <script>
+    if (!document.title) document.title = t("common.brand");
+    const sessionId = () => location.pathname.split("/")[2];
+
+    const PATIENCE = 90 * 1000;
+    const PATIENCE_FOR_RANGE_WORK = 15 * 60 * 1000;
+
+    const READS = new Set(["GET", "HEAD", "OPTIONS"]);
+    let csrfAsked = null;
+
+    function csrf(renew) {
+      if (!csrfAsked || renew) {
+        csrfAsked = fetch("/api/auth/").then((answer) => answer.json())
+          .then((said) => {
+            const manageUsers = document.getElementById("manage-users");
+            if (manageUsers) manageUsers.classList.toggle("hidden", !said.staff);
+            return said.csrf_token || "";
+          }).catch(() => "");
+      }
+      return csrfAsked;
+    }
+    csrf();
+
+    const signIn = () =>
+      location.assign(`/login/?next=${encodeURIComponent(location.pathname + location.search)}`);
+
+    async function api(path, options, patience = PATIENCE) {
+      const abandon = new AbortController();
+      const timer = setTimeout(() => abandon.abort(), patience);
+      const given = options || {};
+      const writes = !READS.has(String(given.method || "GET").toUpperCase());
+      const send = async (renew) => fetch(path, {
+        ...given,
+        headers: writes ? { ...(given.headers || {}), "X-CSRFToken": await csrf(renew) } : given.headers,
+        signal: abandon.signal,
+      });
+      try {
+        let response = await send(false);
+        if (writes && response.status === 403
+            && String((await response.clone().json().catch(() => ({}))).detail || "").includes("CSRF")) {
+          response = await send(true);
+        }
+        if (response.status === 401 && location.pathname !== "/login/") signIn();
+        const body = await response.json().catch(() => ({}));
+        if (!abandon.signal.aborted) return { ok: response.ok, status: response.status, body };
+      } catch (error) {
+        if (!abandon.signal.aborted) return { ok: false, status: 0, body: { detail: String(error) } };
+      } finally {
+        clearTimeout(timer);
+      }
+      return {
+        ok: false, status: 0, body: { detail: t("common.no_answer_within", patience / 1000) },
+      };
+    }
+
+    const detail = (result) =>
+      result.body.detail || result.status || t("common.no_answer");
+
+    const ESCAPES = {
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    };
+    const esc = (value) =>
+      String(value === null || value === undefined ? "" : value)
+        .replace(/[&<>"']/g, (c) => ESCAPES[c]);
+
+    const withOptionsWhole = (text) =>
+      esc(text).replace(/(^|\s)(--?[A-Za-z]\S*)/g, '$1<span class="cli-option">$2</span>');
+
+    const alreadyClosed = async (id) => {
+      const read = await api(`/api/sessions/${id}/`);
+      return read.ok && Boolean(read.body.ended_at);
+    };
+
+    const post = (path, payload, patience) => api(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    }, patience);
+
+    function onResume(catchUp) {
+      const back = () => {
+        if (document.visibilityState !== "hidden") catchUp();
+      };
+      document.addEventListener("visibilitychange", back);
+      window.addEventListener("online", back);
+    }
+
+    const localized = (key, fallback) => {
+      const value = t(key);
+      return value === key ? fallback : value;
+    };
+
+    const clock = (instant) => {
+      const at = instant ? new Date(instant) : null;
+      if (!at || Number.isNaN(at.getTime())) return "";
+      return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+    };
+
+    const wholeMinute = (instant) => Math.floor(new Date(instant).getTime() / 60000);
+
+    const minutesBetween = (from, to) =>
+      Math.max(0, wholeMinute(to || Date.now()) - wholeMinute(from));
+
+    const secondsSince = (instant) =>
+      Math.max(0, Math.round((Date.now() - new Date(instant)) / 1000));
+
+    const LESSON_STEP_KEY = (id, lesson) => `cr-lesson-step-${id}-${lesson}`;
+
+    function lessonStep(id, lesson, fallback = 1) {
+      try {
+        const kept = Number(localStorage.getItem(LESSON_STEP_KEY(id, lesson)));
+        return Number.isInteger(kept) && kept > 0 ? kept : fallback;
+      } catch (error) {
+        return fallback;
+      }
+    }
+
+    function keepLessonStep(id, lesson, step) {
+      try {
+        localStorage.setItem(LESSON_STEP_KEY(id, lesson), String(step));
+      } catch (error) {
+        return;
+      }
+    }
+
+    const OPENED_KEY = "cr-opened-sessions";
+    const OPENED_KEPT = 20;
+
+    function openedSessions() {
+      try {
+        const kept = JSON.parse(localStorage.getItem(OPENED_KEY));
+        return Array.isArray(kept) ? kept.filter(Number.isInteger) : [];
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function rememberSession(id) {
+      const opened = Number(id);
+      if (!Number.isInteger(opened)) return;
+      try {
+        localStorage.setItem(OPENED_KEY, JSON.stringify(
+          [opened, ...openedSessions().filter((kept) => kept !== opened)].slice(0, OPENED_KEPT)));
+      } catch (error) {
+        return;
+      }
+    }
+
+    const SESSION_NAME_KEY = (id) => `cr-session-name-${id}`;
+
+    function playedName(session, wargame) {
+      if (!session) return "";
+      const listed = (key) => (wargame && Array.isArray(wargame[key]) ? wargame[key] : []);
+      const cardOf = (lessonId) => listed("foundations").find((taught) => taught.id === lessonId) || null;
+      const courseOf = (lessonId) => listed("courses").find((course) => (course.lessons || []).includes(lessonId)) || null;
+      const taken = Array.isArray(session.lessons) ? session.lessons : [];
+      const worked = (lessonId) => (Array.isArray(session.course) ? session.course : [])
+        .some((row) => row.id === lessonId && (row.passed || row.skipped || row.hints));
+      const started = taken.filter((one, at) => at === 0 || worked(one.id) || (!session.ended_at && one.id === session.lesson_id));
+      const first = taken.length ? courseOf(taken[0].id) : null;
+      const course = first && taken.every((one) => courseOf(one.id) === first) ? first : null;
+      const text = session.lesson ? session.lesson.text : "";
+      if (session.course_scenario) {
+        const played = listed("scenarios").find((one) => one.id === session.course_scenario);
+        return played ? `${played.id} ${t(played.title)}` : session.course_scenario;
+      }
+      if (course) return t(course.title);
+      if (started.length === 1 && cardOf(started[0].id)) return t(cardOf(started[0].id).title);
+      if (started.length <= 1 && text) return localized(`${text}.title`, "");
+      return "";
+    }
+
+    function sessionCrumb(id, session, wargame) {
+      const href = `/session/${id}/`;
+      try {
+        if (session && session.scenario) {
+          localStorage.setItem(SESSION_NAME_KEY(id), JSON.stringify({ scenario: session.scenario, kind: session.kind,
+            played: playedName(session, wargame) }));
+        }
+        const kept = JSON.parse(localStorage.getItem(SESSION_NAME_KEY(id)));
+        if (kept && kept.scenario) {
+          const name = localized(`wargame.${kept.scenario}.name`, kept.scenario);
+          const kind = kept.played || localized(`kind.${kept.kind}`, "");
+          return { label: kind ? `${name} · ${kind}` : name, href, named: Boolean(kept.played) };
+        }
+      } catch (error) {
+        return { label: localized("crumb.session", "Session"), href };
+      }
+      return { label: localized("crumb.session", "Session"), href };
+    }
+
+    function crumbs(items) {
+      const trail = [{ label: t("crumb.home"), href: "/" }, ...items];
+      document.getElementById("crumbs").innerHTML = trail.map((item, index) =>
+        index === trail.length - 1
+          ? `<span class="text-heading font-semibold truncate">${esc(item.label)}</span>`
+          : `<a href="${esc(item.href)}" class="hover:text-heading shrink-0">${esc(item.label)}</a>`,
+      ).join('<span class="text-faint">/</span>');
+    }
+
+    function badge(text, tone) {
+      return `<span class="badge badge-${tone}">${esc(text)}</span>`;
+    }
+
+    function caseOutcome(malicious, meta) {
+      const said = meta || {};
+      if (said.outcome === "leaked") return { text: t("outcome.leaked"), tone: "red" };
+      if (said.outcome === "held") return { text: t("outcome.held"), tone: "ok" };
+      if (said.outcome === "inconclusive") return { text: t("outcome.inconclusive"), tone: "warn" };
+      const status = Number(said.status);
+      if (status === 403) return { text: t("outcome.blocked"), tone: malicious ? "ok" : "red" };
+      if (status >= 200 && status < 300) return { text: t("outcome.served"), tone: malicious ? "warn" : "ok" };
+      if (status) return { text: `HTTP ${status}`, tone: "neutral" };
+      return { text: t("outcome.sent"), tone: "neutral" };
+    }
+
+    const signOut = document.getElementById("sign-out");
+    if (signOut) {
+      signOut.addEventListener("click", async () => {
+        await post("/api/auth/logout/");
+        location.assign("/login/");
+      });
+    }
+
+    applyStrings();
+    if (!sessionId()) crumbs([]);
+  </script>
+  {% block script %}{% endblock %}
+</body>
+</html>

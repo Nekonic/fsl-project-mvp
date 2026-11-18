@@ -1,0 +1,181 @@
+<style>
+  #site-dev { font: 12px/1.4 var(--font-sans); color: var(--text); }
+  #site-dev .dv-bar { display: flex; align-items: center; gap: 6px; padding: 0 8px; border-bottom: 1px solid var(--border); background: var(--subdued); min-width: 0; }
+  #site-dev .dv-icon { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--text-muted); }
+  #site-dev .dv-icon:hover { background: var(--border-subdued); color: var(--heading); }
+  #site-dev .dv-panel-tab { padding: 4px 10px; border-bottom: 2px solid transparent; color: var(--text-faint); white-space: nowrap; }
+  #site-dev .dv-panel-tab[aria-selected="true"] { border-bottom-color: var(--primary); color: var(--heading); }
+  #site-dev .dv-status { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-top: 1px solid var(--border); background: var(--subdued); color: var(--text-muted); font-size: 11px; white-space: nowrap; overflow: hidden; }
+  #site-dev .dv-pair { padding: 1px 8px 1px 20px; font-family: var(--font-mono); color: var(--heading); white-space: pre-wrap; overflow-wrap: anywhere; }
+  #site-dev .dv-pair b { font-weight: 600; color: var(--text); }
+  #site-dev .dv-filter { height: 22px; width: 220px; min-width: 0; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); outline: none; }
+  #site-dev .dv-chip { padding: 1px 8px; border-radius: 10px; color: var(--text); white-space: nowrap; }
+  #site-dev .dv-chip[aria-pressed="true"] { background: var(--primary-line); color: var(--primary-text); }
+  #site-dev .dv-chip:hover { background: var(--border-subdued); }
+  #site-dev .dv-sep { width: 1px; height: 14px; background: var(--border); }
+  #site-dev table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+  #site-dev th { position: sticky; top: 0; background: var(--subdued); font-weight: 400; color: var(--text-muted); text-align: left; padding: 3px 6px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #site-dev td { padding: 2px 6px; border-right: 1px solid var(--border-subdued); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #site-dev tbody tr:nth-child(even) { background: var(--subdued); }
+  #site-dev tbody tr { cursor: default; }
+  #site-dev tbody tr:hover { background: var(--primary-soft); }
+  #site-dev tbody tr[aria-selected="true"] { background: var(--primary-line); }
+  #site-dev .dv-fail { color: var(--danger); }
+  #site-dev .dv-dim { color: var(--text-muted); }
+  #site-dev .dv-sub { display: block; color: var(--text-faint); font-size: 11px; }
+  #site-dev.dv-picked .dv-wide { display: none; }
+  #site-dev .dv-tabs { display: flex; align-items: stretch; overflow: hidden; height: 28px; border-bottom: 1px solid var(--border); background: var(--subdued); }
+  #site-dev .dv-tab { display: inline-flex; align-items: center; white-space: nowrap; padding: 0 10px; border-bottom: 2px solid transparent; color: var(--text); }
+  #site-dev .dv-tab[aria-selected="true"] { border-bottom-color: var(--primary); color: var(--heading); }
+  #site-dev .dv-tab:hover { background: var(--border-subdued); }
+  #site-dev .dv-section { border-bottom: 1px solid var(--border); padding: 4px 0 6px; }
+  #site-dev .dv-heading { display: flex; align-items: center; gap: 8px; padding: 2px 8px; font-weight: 600; color: var(--heading); }
+  #site-dev .dv-heading label { margin-left: auto; font-weight: 400; color: var(--text); display: inline-flex; gap: 4px; align-items: center; }
+  #site-dev .dv-row { display: grid; grid-template-columns: minmax(120px, 30%) 1fr; gap: 12px; padding: 1px 8px 1px 20px; }
+  #site-dev .dv-row > :first-child { color: var(--text-muted); overflow-wrap: anywhere; }
+  #site-dev .dv-row > :last-child { color: var(--heading); font-family: var(--font-mono); overflow-wrap: anywhere; white-space: pre-wrap; }
+  #site-dev .dv-dot { display: inline-block; width: 8px; height: 8px; border-radius: 4px; margin-right: 6px; vertical-align: middle; }
+  #site-dev .dv-raw { margin: 2px 8px 0 20px; font-family: var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--heading); }
+  #site-dev .dv-link { margin-left: 8px; color: var(--primary-text); font-weight: 400; }
+  #site-dev .dv-link:hover { text-decoration: underline; }
+  #site-dev .dv-source { display: grid; grid-template-columns: max-content 1fr; font-family: var(--font-mono); }
+  #site-dev .dv-source > span:nth-child(odd) { padding: 0 8px; color: var(--text-faint); text-align: right; user-select: none; border-right: 1px solid var(--border-subdued); }
+  #site-dev .dv-source > span:nth-child(even) { padding: 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--heading); }
+  #site-dev .dv-icon[aria-pressed="true"] { background: var(--primary-line); color: var(--primary-text); }
+  #site-dev .dv-select { height: 22px; max-width: 140px; padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); color: var(--text); font: inherit; }
+  #site-dev .dv-check { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  #site-dev .dv-wf { position: relative; height: 12px; }
+  #site-dev .dv-wf > i { position: absolute; top: 2px; height: 8px; min-width: 3px; border-radius: 1px; background: var(--primary); }
+  #site-dev .dv-timing { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; padding: 1px 8px 1px 20px; }
+  #site-dev .dv-timing > :nth-child(even) { text-align: right; font-family: var(--font-mono); color: var(--heading); }
+  #site-dev .dv-chain { padding: 1px 8px 1px 20px; font-family: var(--font-mono); color: var(--heading); overflow-wrap: anywhere; }
+  #site-dev .dv-chain.dv-then::before { content: "\21B3\00a0"; color: var(--text-faint); }
+  #site-dev .dv-prompt { display: flex; gap: 6px; padding: 2px 8px; font-family: var(--font-mono); color: var(--primary-text); }
+  #site-dev .dv-empty { padding: 24px 12px; text-align: center; color: var(--text-muted); }
+  #site-dev .dv-split { display: flex; height: 100%; min-height: 0; }
+  #site-dev .dv-col { flex-direction: column; }
+  #site-dev .dv-main { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+  #site-dev .dv-side { flex: 0 0 34%; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid var(--border); }
+  #site-dev .dv-side.dv-nav { flex-basis: 26%; border-left: 0; border-right: 1px solid var(--border); }
+  #site-dev .dv-dom { flex: 1 1 0; min-height: 0; overflow: auto; padding: 2px 0; font: 11px/1.55 var(--font-mono); }
+  #site-dev .dv-node { position: relative; padding: 0 8px 0 calc(16px + var(--depth) * 12px); white-space: pre-wrap; overflow-wrap: anywhere; color: #222; cursor: default; }
+  #site-dev .dv-node:hover { background: var(--border-subdued); }
+  #site-dev .dv-node[aria-selected="true"] { background: #cfe8fc; }
+  #site-dev .dv-fold { position: absolute; left: calc(3px + var(--depth) * 12px); width: 10px; font-size: 8px; color: #6e6e6e; cursor: pointer; user-select: none; }
+  #site-dev .dv-tag { color: #881280; }
+  #site-dev .dv-an { color: #994500; }
+  #site-dev .dv-av { color: #1a1aa6; }
+  #site-dev .dv-comment { color: #236e25; }
+  #site-dev .dv-doctype { color: #808080; }
+  #site-dev .dv-script { color: #222; }
+  #site-dev .dv-ref { color: #6e6e6e; }
+  #site-dev .dv-crumbs { display: flex; align-items: center; height: 22px; flex: 0 0 auto; overflow: hidden; border-top: 1px solid var(--border); background: var(--subdued); font: 11px var(--font-mono); }
+  #site-dev .dv-crumb { padding: 0 6px; line-height: 22px; white-space: nowrap; color: #222; }
+  #site-dev .dv-crumb[aria-selected="true"] { background: #cfe8fc; }
+  #site-dev .dv-more { align-self: center; padding: 0 8px; color: var(--text-muted); }
+  #site-dev .dv-sidefilter { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-bottom: 1px solid var(--border); }
+  #site-dev .dv-sidefilter .dv-filter { flex: 1 1 auto; width: auto; }
+  #site-dev .dv-sidebody { flex: 1 1 0; overflow: auto; padding: 4px 8px; font: 11px/1.5 var(--font-mono); color: #222; }
+  #site-dev .dv-navbody { flex: 1 1 0; min-height: 0; overflow: auto; padding: 2px 0; }
+  #site-dev .dv-navrow { position: relative; padding: 1px 6px 1px calc(16px + var(--depth) * 12px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+  #site-dev .dv-navrow:hover { background: var(--border-subdued); }
+  #site-dev .dv-navrow[aria-selected="true"] { background: #cfe8fc; }
+  #site-dev .dv-navrow svg { display: inline-block; vertical-align: -2px; margin-right: 4px; color: #5f6368; }
+  #site-dev .dv-codepane { flex: 1 1 0; min-height: 0; overflow: auto; font-size: 11px; }
+  #site-dev .dv-x { margin-left: 6px; font-size: 9px; color: var(--text-muted); }
+  #site-dev .dv-x:hover { color: var(--heading); }
+  #site-dev .dv-welcome { display: grid; grid-template-columns: max-content max-content; gap: 6px 16px; justify-content: center; padding: 28px 12px; color: var(--text-muted); }
+  #site-dev .dv-welcome b { font-weight: 400; color: var(--heading); font-family: var(--font-mono); }
+  #site-dev .dv-messages { flex: 1 1 0; min-height: 0; overflow: auto; }
+</style>
+<section id="site-dev" class="hidden absolute inset-x-0 bottom-0 z-[20] bg-panel border-t border-line flex-col" style="height: 280px">
+  <div id="site-dev-grip" class="h-1.5 shrink-0 cursor-row-resize bg-subdued"></div>
+  <div class="dv-bar shrink-0" style="height: 26px">
+    <button type="button" id="site-dev-inspect" class="dv-icon" data-dev-title="site.dev.inspect" aria-pressed="false" aria-label="inspect">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 11V4h16v7"/><path d="M4 18v2h2"/><path d="M11 20h-1"/><path d="M12 12l9 3.5-4 1.5-1.5 4z" fill="currentColor"/></svg>
+    </button>
+    <button type="button" id="site-dev-device" class="dv-icon" data-dev-title="site.dev.device" aria-pressed="false" aria-label="device">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="6" width="12" height="14" rx="1.5"/><rect x="13" y="3" width="8" height="12" rx="1.5" fill="var(--subdued)"/></svg>
+    </button>
+    <span class="dv-sep"></span>
+    <button type="button" class="dv-panel-tab" role="tab" data-panel="elements" aria-selected="false"></button>
+    <button type="button" class="dv-panel-tab" role="tab" data-panel="console" aria-selected="false"></button>
+    <button type="button" class="dv-panel-tab" role="tab" data-panel="sources" aria-selected="false"></button>
+    <button type="button" class="dv-panel-tab" role="tab" data-panel="network" data-coach="network" aria-selected="true"></button>
+    <button type="button" id="site-dev-settings" class="dv-icon" style="margin-left: auto" data-dev-title="site.dev.settings" aria-label="settings">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+    <button type="button" id="site-dev-more" class="dv-icon" data-dev-title="site.dev.more" aria-label="more">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+    </button>
+    <button type="button" id="site-dev-exit" class="dv-icon" data-t-title="site.dev.close" aria-label="close">✕</button>
+  </div>
+  <div id="site-dev-blank" class="hidden flex-1 min-h-0 overflow-hidden bg-panel"></div>
+  <div id="site-dev-network" class="flex-1 min-h-0 flex flex-col">
+  <div class="dv-bar shrink-0" style="height: 30px">
+    <button type="button" id="site-dev-clear" class="dv-icon" data-t-title="site.dev.clear" aria-label="clear">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M5.6 18.4 18.4 5.6"/></svg>
+    </button>
+    <span class="dv-sep"></span>
+    <input id="site-dev-filter" class="dv-filter" data-t-placeholder="site.dev.filter" autocomplete="off" spellcheck="false">
+    <span class="dv-sep"></span>
+    <label class="flex items-center gap-1 shrink-0" data-t-title="site.dev.preserve_title">
+      <input type="checkbox" id="site-dev-preserve"><span data-t="site.dev.preserve"></span>
+    </label>
+    <span class="dv-sep"></span>
+    <label class="flex items-center gap-1 shrink-0" data-dev-title="site.dev.disable_cache_title">
+      <input type="checkbox" id="site-dev-cache"><span data-dev-t="site.dev.disable_cache"></span>
+    </label>
+    <span class="dv-sep"></span>
+    <select id="site-dev-throttle" class="dv-select" data-dev-title="site.dev.throttling_title" aria-label="throttling">
+      <option data-dev-t="site.dev.throttling"></option>
+    </select>
+  </div>
+  <div id="site-dev-types" class="dv-bar shrink-0" style="height: 28px">
+    <button type="button" class="dv-chip" data-type="all" aria-pressed="true" data-t="site.dev.type.all"></button>
+    <span class="dv-sep"></span>
+    <button type="button" class="dv-chip" data-type="xhr" aria-pressed="false">Fetch/XHR</button>
+    <button type="button" class="dv-chip" data-type="doc" aria-pressed="false" data-t="site.dev.type.doc"></button>
+    <button type="button" class="dv-chip" data-type="css" aria-pressed="false">CSS</button>
+    <button type="button" class="dv-chip" data-type="js" aria-pressed="false">JS</button>
+    <button type="button" class="dv-chip" data-type="font" aria-pressed="false" data-dev-t="site.dev.type.font"></button>
+    <button type="button" class="dv-chip" data-type="img" aria-pressed="false" data-t="site.dev.type.img"></button>
+    <button type="button" class="dv-chip" data-type="media" aria-pressed="false" data-dev-t="site.dev.type.media"></button>
+    <button type="button" class="dv-chip" data-type="manifest" aria-pressed="false" data-dev-t="site.dev.type.manifest"></button>
+    <button type="button" class="dv-chip" data-type="ws" aria-pressed="false" data-dev-t="site.dev.type.socket"></button>
+    <button type="button" class="dv-chip" data-type="wasm" aria-pressed="false">Wasm</button>
+    <button type="button" class="dv-chip" data-type="other" aria-pressed="false" data-dev-t="site.dev.type.other"></button>
+  </div>
+  <div class="flex-1 min-h-0 flex">
+    <div id="site-dev-list" class="min-w-0 overflow-auto" style="flex: 1 1 auto">
+      <table>
+        <colgroup><col style="width: 28%"><col class="dv-wide" style="width: 8%"><col class="dv-wide" style="width: 10%"><col class="dv-wide" style="width: 16%"><col class="dv-wide" style="width: 10%"><col class="dv-wide" style="width: 9%"><col class="dv-wide" style="width: 19%"></colgroup>
+        <thead><tr>
+          <th data-t="site.dev.name"></th><th class="dv-wide" data-t="site.dev.status"></th><th class="dv-wide" data-t="site.dev.type"></th>
+          <th class="dv-wide" data-t="site.dev.initiator"></th><th class="dv-wide" data-t="site.dev.size"></th><th class="dv-wide" data-t="site.dev.time"></th>
+          <th class="dv-wide" data-dev-t="site.dev.waterfall"></th>
+        </tr></thead>
+        <tbody id="site-dev-rows"></tbody>
+      </table>
+      <p id="site-dev-empty" class="dv-empty" data-t="site.dev.recording"></p>
+    </div>
+    <div id="site-dev-detail" class="hidden min-w-0 border-l border-line flex-col" style="flex: 0 0 66%">
+      <div class="dv-tabs shrink-0">
+        <button type="button" id="site-dev-close" class="dv-icon" style="align-self: center; margin: 0 4px" data-t-title="site.dev.close" aria-label="close">✕</button>
+        <button type="button" class="dv-tab" data-tab="headers" data-coach="tab.headers" data-t="site.dev.tab.headers"></button>
+        <button type="button" class="dv-tab" data-tab="payload" data-coach="tab.payload" data-t="site.dev.tab.payload"></button>
+        <button type="button" class="dv-tab" data-tab="preview" data-coach="tab.preview" data-t="site.dev.tab.preview"></button>
+        <button type="button" class="dv-tab" data-tab="response" data-coach="tab.response" data-t="site.dev.tab.response"></button>
+        <button type="button" class="dv-tab" data-tab="initiator" data-t="site.dev.initiator"></button>
+        <button type="button" class="dv-tab" data-tab="timing" data-dev-t="site.dev.tab.timing"></button>
+      </div>
+      <div id="site-dev-view" class="flex-1 min-h-0 overflow-auto"></div>
+    </div>
+  </div>
+  <div id="site-dev-status" class="dv-status shrink-0">
+    <span id="site-dev-count"></span><span class="dv-sep"></span>
+    <span id="site-dev-transferred"></span><span class="dv-sep"></span>
+    <span id="site-dev-resources"></span>
+  </div>
+  </div>
+</section>

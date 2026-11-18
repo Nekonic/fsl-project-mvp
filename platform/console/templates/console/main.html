@@ -1,0 +1,520 @@
+{% extends "console/base.html" %}
+{% block surface %}bg-panel{% endblock %}
+{% block content %}
+<div id="capacity" class="label text-right"></div>
+<p id="sessions-error" class="text-danger text-[13px] mb-6 hidden"></p>
+
+<section id="range-state" class="mb-8 hidden rounded-lg bg-warning-soft px-5 py-4">
+  <h2 data-t="range.not_ready" class="font-semibold text-warning mb-2"></h2>
+  <ul id="range-blocked" class="text-body text-[13px] list-disc pl-5 space-y-1"></ul>
+</section>
+
+<section id="range-pipeline" class="mb-8 hidden">
+  <button id="canary" data-t="range.canary" class="btn btn-sm btn-ghost"></button>
+  <span id="canary-out" class="text-[13px] ml-2"></span>
+</section>
+
+<section id="running-panel" class="mb-10 hidden">
+  <h2 data-t="main.running" class="text-[20px] font-bold text-heading mb-2"></h2>
+  <div id="running" class="divide-y divide-line border-y border-line"></div>
+</section>
+
+<h2 data-t="main.scenarios" class="text-[20px] font-bold text-heading"></h2>
+<div id="wargames" class="flex flex-col mb-10"></div>
+<p id="start-error" class="text-danger text-[13px] mb-8 hidden"></p>
+
+<section id="finished-panel" class="hidden">
+  <h2 data-t="main.finished" class="text-[20px] font-bold text-heading mb-2"></h2>
+  <div class="overflow-x-auto">
+    <table class="w-full text-[13px] border-t border-line">
+      <thead class="table-head">
+        <tr>
+          <th data-t="main.col.session"></th>
+          <th data-t="main.col.scenario"></th>
+          <th data-t="main.col.result"></th>
+          <th data-t="main.col.took"></th>
+          <th data-t="main.col.ended"></th>
+        </tr>
+      </thead>
+      <tbody id="finished"></tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+{% block script %}
+<script>
+  let catalogue = [];
+  let running = [];
+  let capacity = null;
+  let starting = false;
+  let rangeReady = false;
+  let readinessKnown = false;
+  let rangePhase = null;
+  let rangeSlots = null;
+  let rangeReasons = null;
+  let waiting = null;
+  const operatorView = new URLSearchParams(location.search).has("operator");
+
+  const field = (id) => document.getElementById(id);
+
+  function showError(text, panelId = "start-error") {
+    const panel = field(panelId);
+    panel.classList.remove("hidden");
+    panel.textContent = text;
+  }
+
+  const scenarioOf = (id) => catalogue.find((wargame) => wargame.id === id);
+  const scenarioName = (id) => {
+    const wargame = scenarioOf(id);
+    return localized(`wargame.${id}.name`, wargame ? wargame.name : id);
+  };
+  const lessonOf = (session) => {
+    const wargame = scenarioOf(session.scenario);
+    return wargame && session.lesson_id ? (wargame.foundations || []).find((taught) => taught.id === session.lesson_id) : null;
+  };
+
+  function foundationsBlock(wargame) {
+    const id = esc(wargame.id);
+    const unit = (taught, index) => `
+      <li class="flex items-center gap-4 py-2" data-foundation="${esc(taught.id)}">
+        <h4 class="flex-1 min-w-0 text-heading"><span class="inline-block w-16 text-muted">${esc(t("main.lesson_number", index + 1))}</span>${esc(t(taught.title))}</h4>
+        <button data-wargame="${id}" data-lesson="true" data-lesson-id="${esc(taught.id)}"
+          data-defense="${esc(taught.defense || "")}" class="start shrink-0 btn btn-sm btn-ghost" disabled>${esc(t("main.start"))}</button>
+      </li>`;
+    const taught = wargame.foundations || [];
+    const grouped = (wargame.courses || []).length ? wargame.courses
+      : taught.length ? [{ id: "", title: "main.group.foundations", lessons: taught.map((one) => one.id) }] : [];
+    return grouped.map((course) => {
+      const units = course.lessons.map((lessonId) => taught.find((one) => one.id === lessonId)).filter(Boolean).map(unit).join("");
+      return `
+      <section class="mt-6" data-foundations="${id}" data-course="${esc(course.id)}">
+        <h4 class="font-semibold text-heading">${esc(t(course.title))}</h4>
+        <ol class="mt-1 divide-y divide-line border-y border-line">${units}</ol>
+      </section>`;
+    }).join("");
+  }
+
+  function scenariosBlock(wargame) {
+    const id = esc(wargame.id);
+    const runs = (wargame.scenarios || []).map((one) => `
+      <li class="flex items-center gap-4 py-2" data-course-scenario="${esc(one.id)}">
+        <h4 class="flex-1 min-w-0 text-heading"><span class="inline-block w-16 text-muted">${esc(one.id)}</span>${esc(t(one.title))}</h4>
+        <button data-wargame="${id}" data-course="${esc(one.id)}" class="start shrink-0 btn btn-sm btn-ghost" disabled>${esc(t("main.start"))}</button>
+      </li>`).join("");
+    return runs ? `
+      <section class="mt-6" data-scenarios="${id}">
+        <h4 class="font-semibold text-heading">${esc(t("main.group.scenarios"))}</h4>
+        <ol class="mt-1 divide-y divide-line border-y border-line">${runs}</ol>
+      </section>` : "";
+  }
+
+  function scenarioCard(wargame) {
+    const id = esc(wargame.id);
+    const counted = typeof wargame.attacks === "number";
+    return `
+      <div class="py-6 border-b border-line last:border-b-0 flex flex-col max-w-[760px]" data-scenario="${id}">
+        <h3 class="text-[17px] font-bold text-heading">${esc(scenarioName(wargame.id))}</h3>
+        <p class="text-muted mt-1 leading-relaxed">${esc(localized(`wargame.${wargame.id}.description`, wargame.description))}</p>
+        <p class="hidden text-warning text-[13px] mt-2" data-unserved="${id}"></p>
+        ${counted && operatorView ? `<p class="text-[13px] text-muted mt-3">${
+          esc(t("main.counts", wargame.attacks, wargame.benign, wargame.objectives))}</p>` : ""}
+        ${foundationsBlock(wargame)}
+        ${scenariosBlock(wargame)}
+        <section class="mt-6 flex items-center gap-4" data-wargame-start="${id}">
+          <h4 class="flex-1 font-semibold text-heading">${esc(t("kind.wargame"))}</h4>
+          <button data-wargame="${id}" class="start shrink-0 btn btn-sm btn-ghost" disabled>${esc(t("main.start"))}</button>
+        </section>
+        <div class="hidden mt-3 rounded-lg bg-danger-soft border border-danger-soft px-3 py-2.5 text-[13px]"
+             data-failure="${id}">
+          <div class="flex flex-wrap items-start gap-2">
+            <span data-tone class="text-danger font-bold">!</span>
+            <p data-failure-text data-tone class="flex-1 text-danger min-w-0"></p>
+            <button data-close-open class="btn btn-sm btn-ghost hidden">${esc(t("main.close_open"))}</button>
+          </div>
+          <div data-open-list class="hidden mt-2"></div>
+        </div>
+      </div>`;
+  }
+
+  async function renderWargames() {
+    const result = await api("/api/wargames/");
+    if (!result.ok || !Array.isArray(result.body)) {
+      showError(t("main.unavailable", t("main.the_scenarios"), detail(result)));
+      return;
+    }
+    catalogue = result.body;
+    field("wargames").innerHTML = catalogue.map(scenarioCard).join("");
+    field("wargames").querySelectorAll(".start").forEach((button) =>
+      button.addEventListener("click", () => start(button)));
+    field("wargames").querySelectorAll("[data-close-open]").forEach((button) =>
+      button.addEventListener("click", () => listOpen(button.closest("[data-failure]"))));
+    startsShown();
+    renderRunning();
+    renderFinished(finishedRows);
+  }
+
+  const SETTLING = ["RESETTING", "REBUILDING", "CHECKING"];
+
+  function unservedReason(wargame) {
+    if (!rangeReady || !Array.isArray(rangeSlots) || servesNow(wargame)) return "";
+    const mine = rangeSlots.filter((slot) => !slot.wargame || slot.wargame === wargame);
+    if (mine.some((slot) => SETTLING.includes(slot.phase))) return t("range.resetting");
+    if (mine.length && mine.every((slot) => slot.phase === "IN_USE")) return t("main.wargame_busy");
+    return t("range.blocked");
+  }
+
+  function startsShown() {
+    if (!starting) document.querySelectorAll(".start").forEach((button) => { button.disabled = !readinessKnown || !servesNow(button.dataset.wargame); });
+    document.querySelectorAll("[data-unserved]").forEach((line) => {
+      const why = readinessKnown ? unservedReason(line.dataset.unserved) : "";
+      line.textContent = why;
+      line.classList.toggle("hidden", !why);
+    });
+  }
+
+  function opening(button) {
+    const began = Date.now();
+    const tick = () => {
+      button.textContent = t("state.opening", Math.round((Date.now() - began) / 1000));
+    };
+    tick();
+    return setInterval(tick, 1000);
+  }
+
+  function toned(failure, tone) {
+    const other = tone === "warning" ? "danger" : "warning";
+    [failure, ...failure.querySelectorAll("[data-tone]")].forEach((element) => {
+      element.className = element.className.replaceAll(`-${other}`, `-${tone}`);
+    });
+  }
+
+  const servesNow = (wargame) => (Array.isArray(rangeSlots)
+    ? rangeSlots.some((slot) => slot.phase === "READY" && slot.session == null && (!slot.wargame || slot.wargame === wargame))
+    : rangeReady);
+
+  function refusedLine(started, wargame) {
+    if (started.body.open_session) return t("main.one_open_session");
+    if (started.status !== 409) return t("main.start_failed", operatorView ? detail(started) : t("range.blocked"));
+    if (capacity !== null && running.length >= capacity) return t("main.start_failed.full", running.length, capacity);
+    if (started.body.settling) return t("range.resetting");
+    if (servesNow(wargame)) return t("main.start_again");
+    return t(rangePhase === "RESETTING" ? "range.resetting" : "range.blocked");
+  }
+
+  function rangeStateShown() {
+    const told = Array.from(document.querySelectorAll("[data-failure]")).filter((one) => !one.classList.contains("hidden"))
+      .map((one) => one.querySelector("[data-failure-text]").textContent);
+    const repeated = Boolean(rangeReasons && rangeReasons.length) && rangeReasons.every((reason) => told.includes(reason));
+    field("range-state").classList.toggle("hidden", !rangeReasons || repeated);
+    field("range-blocked").innerHTML = (rangeReasons || []).map((reason) => `<li>${esc(reason)}</li>`).join("");
+  }
+
+  async function start(button) {
+    const card = button.closest("[data-scenario]");
+    const failure = card.querySelector("[data-failure]");
+    const label = button.textContent;
+    waiting = null;
+    document.querySelectorAll("[data-failure]").forEach((each) => each.classList.add("hidden"));
+    starting = true;
+    card.querySelectorAll(".start").forEach((each) => { each.disabled = true; });
+    const ticking = opening(button);
+    const defense = button.dataset.defense ? { defense: button.dataset.defense } : {};
+    const settings = button.dataset.lesson ? { guidance: true, lesson: button.dataset.lessonId, ...defense } : {};
+    const asked = button.dataset.course ? { scenario: button.dataset.course }
+      : { scenario: button.dataset.wargame, ...settings };
+    const started = await post("/api/sessions/", asked, PATIENCE_FOR_RANGE_WORK);
+    clearInterval(ticking);
+    starting = false;
+    if (started.ok && started.body.id) {
+      rememberSession(started.body.id);
+      location.href = button.dataset.course || button.dataset.lesson ? `/blue/${started.body.id}/` : `/session/${started.body.id}/`;
+      return;
+    }
+    button.textContent = label;
+    const wargame = button.dataset.wargame;
+    const refused = failure.querySelector("[data-failure-text]");
+    const tell = (text, tone) => {
+      refused.textContent = text;
+      toned(failure, tone);
+      button.after(failure);
+      failure.classList.remove("hidden");
+    };
+    if (started.body.settling) tell(t("range.resetting"), "warning");
+    await refreshSessions();
+    startsShown();
+    const full = started.status === 409 && capacity !== null && running.length >= capacity;
+    const settling = started.status === 409 && !full;
+    tell(refusedLine(started, wargame), settling ? "warning" : "danger");
+    const held = Number(started.body.open_session);
+    if (held) {
+      refused.insertAdjacentHTML("beforeend",
+        ` <a href="/session/${held}/" class="font-semibold underline">${esc(t("main.go_to_open_session"))}</a>`);
+    }
+    failure.querySelector("[data-close-open]").classList.toggle("hidden", !full);
+    failure.querySelector("[data-open-list]").classList.add("hidden");
+    rangeStateShown();
+    waiting = settling && (started.body.settling || !servesNow(wargame)) ? failure : null;
+    if (waiting) {
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(refreshSessions, WAITING_EVERY);
+    }
+  }
+
+  function listOpen(failure) {
+    const list = failure.querySelector("[data-open-list]");
+    list.classList.remove("hidden");
+    list.innerHTML = running.length ? running.map((session) => `
+      <div class="flex items-center gap-3 py-2 border-t border-line">
+        <span class="font-semibold text-heading">${esc(t("common.session", session.id))}</span>
+        <span class="text-body truncate">${esc(takenName(session))}</span>
+        <span class="text-faint text-[13px] ml-auto">${esc(t("main.started_at", clock(session.started_at)))}</span>
+        <button data-close="${esc(session.id)}" class="btn btn-sm btn-ghost">${esc(t("main.close_this"))}</button>
+      </div>`).join("") : `<p class="text-muted">${esc(t("main.none_open"))}</p>`;
+    list.querySelectorAll("[data-close]").forEach((button) =>
+      button.addEventListener("click", () => closeOpen(button, failure)));
+  }
+
+  async function closeOpen(button, failure) {
+    button.disabled = true;
+    button.textContent = t("main.closing");
+    const id = button.dataset.close;
+    await post(`/api/sessions/${id}/ingest/`);
+    const closed = await post(`/api/sessions/${id}/close/`);
+    if (!closed.ok && !(await alreadyClosed(id))) {
+      button.disabled = false;
+      button.textContent = t("main.close_this");
+      failure.querySelector("[data-failure-text]").textContent = t("session.close.failed", detail(closed));
+      return;
+    }
+    await refreshSessions();
+    failure.querySelector("[data-failure-text]").textContent = t("main.closed_now", id);
+    failure.querySelector("[data-close-open]").classList.add("hidden");
+    listOpen(failure);
+  }
+
+  function openingLine(session) {
+    return session.ready ? ""
+      : `<span class="text-warning text-[13px]">${esc(t("state.opening", secondsSince(session.started_at)))}</span>`;
+  }
+
+  const courseOf = (session) => {
+    const taught = lessonOf(session);
+    const wargame = scenarioOf(session.scenario);
+    return taught && wargame ? (wargame.courses || []).find((one) => one.lessons.includes(taught.id)) || null : null;
+  };
+  const scored = (session) => {
+    const course = session.kind === "lesson" ? courseOf(session) : null;
+    return !course || Boolean(course.scored);
+  };
+
+  function takenName(session) {
+    if (session.kind === "lesson") {
+      const taught = lessonOf(session);
+      const course = courseOf(session);
+      if (course) return t(course.title);
+      if (taught) return t(taught.title);
+    }
+    if (session.course_scenario) {
+      const wargame = scenarioOf(session.scenario);
+      const run = wargame ? (wargame.scenarios || []).find((one) => one.id === session.course_scenario) : null;
+      return `${session.course_scenario} ${run ? t(run.title) : ""}`.trim();
+    }
+    return `${t(`kind.${session.kind}`)} · ${scenarioName(session.scenario)}`;
+  }
+
+  function runningRow(session) {
+    const taught = session.kind === "lesson" ? lessonOf(session) : null;
+    const steps = taught && taught.steps
+      ? `<span class="text-muted text-[13px] hidden sm:inline">${esc(t("main.step", lessonStep(session.id, session.lesson_id), taught.steps))}</span>` : "";
+    return `
+      <div class="flex items-center gap-3 px-1 hover:bg-subdued" data-running="${esc(session.id)}">
+        <a href="/session/${esc(session.id)}/" class="flex-1 min-w-0 flex flex-wrap items-center gap-x-4 gap-y-1 py-3">
+          <span class="font-semibold text-heading w-20">${esc(t("common.session", session.id))}</span>
+          <span class="text-body">${esc(takenName(session))}</span>
+          ${steps}
+          <span class="ml-auto">${openingLine(session)}</span>
+          <span class="text-faint text-[13px] w-24 text-right">${esc(t("main.started_at", clock(session.started_at)))}</span>
+        </a>
+        <button type="button" data-end class="btn btn-sm btn-ghost">${esc(t("main.close_this"))}</button>
+        <span data-end-asked class="hidden flex items-center gap-2">
+          <button type="button" data-end-yes class="btn btn-sm btn-blue">${esc(t("session.close.confirm"))}</button>
+          <button type="button" data-end-keep class="btn btn-sm btn-ghost">${esc(t("session.close.keep"))}</button>
+        </span>
+      </div>
+      <p data-end-said="${esc(session.id)}" class="hidden px-1 pb-2 text-[13px] text-danger"></p>`;
+  }
+
+  function endAsked(row, asked) {
+    row.querySelector("[data-end]").classList.toggle("hidden", asked);
+    row.querySelector("[data-end-asked]").classList.toggle("hidden", !asked);
+  }
+
+  async function endRunning(row) {
+    const id = row.dataset.running;
+    const yes = row.querySelector("[data-end-yes]");
+    yes.disabled = true;
+    yes.textContent = t("main.closing");
+    await post(`/api/sessions/${id}/ingest/`);
+    const closed = await post(`/api/sessions/${id}/close/`);
+    if (!closed.ok && !(await alreadyClosed(id))) {
+      yes.disabled = false;
+      yes.textContent = t("session.close.confirm");
+      const said = field("running").querySelector(`[data-end-said="${id}"]`);
+      said.textContent = t("session.close.failed", detail(closed));
+      said.classList.remove("hidden");
+      return;
+    }
+    await refreshSessions();
+  }
+
+  function renderRunning() {
+    field("running-panel").classList.toggle("hidden", running.length === 0);
+    field("running").innerHTML = running.map(runningRow).join("");
+    field("running").querySelectorAll("[data-running]").forEach((row) => {
+      row.querySelector("[data-end]").addEventListener("click", () => endAsked(row, true));
+      row.querySelector("[data-end-keep]").addEventListener("click", () => endAsked(row, false));
+      row.querySelector("[data-end-yes]").addEventListener("click", () => endRunning(row));
+    });
+    field("capacity").textContent = capacity === null || !operatorView ? "" : t("main.capacity", running.length, capacity);
+  }
+
+  function resultCell(session) {
+    const result = session.result || {};
+    const judged = result.scenario;
+    if (judged) {
+      return `<span class="font-semibold ${judged.passed ? "text-success" : "text-danger"}">${esc(t(judged.passed ? "scenario.phase.passed" : "scenario.phase.failed"))}</span>` + (judged.helped || []).map((kind) =>
+        ` <span class="text-muted text-[13px]">${esc(t(`result.helped.${kind}`))}</span>`).join("");
+    }
+    const objectives = result.objectives;
+    if (!objectives || !objectives.total || !scored(session)) return `<span class="text-faint">—</span>`;
+    if (!objectives.lost) {
+      return `<span class="font-semibold text-success">${esc(t("result.kept_all", objectives.total))}</span>`;
+    }
+    return `<span class="font-semibold text-danger">${esc(t("result.lost", objectives.total, objectives.lost))}</span>`;
+  }
+
+  function finishedRow(session) {
+    return `
+      <tr class="table-row hover:bg-subdued cursor-pointer" data-href="/session/${esc(session.id)}/">
+        <td class="font-semibold text-heading"><a href="/session/${esc(session.id)}/">${esc(t("common.session", session.id))}</a></td>
+        <td>${esc(takenName(session))}</td>
+        <td>${resultCell(session)}</td>
+        <td>${esc(t("main.minutes_spent", minutesBetween(session.started_at, session.ended_at)))}</td>
+        <td class="text-muted">${esc(clock(session.ended_at))}</td>
+      </tr>`;
+  }
+
+  let finishedRows = [];
+
+  function renderFinished(rows) {
+    finishedRows = rows;
+    field("finished-panel").classList.toggle("hidden", rows.length === 0);
+    field("finished").innerHTML = rows.map(finishedRow).join("");
+    field("finished").querySelectorAll("[data-href]").forEach((row) =>
+      row.addEventListener("click", () => { location.href = row.dataset.href; }));
+  }
+
+  async function renderSessions() {
+    const open = await api("/api/sessions/?state=open");
+    if (!open.ok || !Array.isArray(open.body)) {
+      field("running-panel").classList.add("hidden");
+      field("finished-panel").classList.add("hidden");
+      showError(t("main.unavailable", t("main.the_sessions"), detail(open)), "sessions-error");
+      return;
+    }
+    field("sessions-error").classList.add("hidden");
+    running = open.body;
+    renderRunning();
+    const finished = await api("/api/sessions/?state=closed&limit=10");
+    renderFinished(finished.ok && Array.isArray(finished.body) ? finished.body : []);
+  }
+
+  let canaryWired = false;
+
+  function wireCanary() {
+    if (canaryWired) return;
+    canaryWired = true;
+    field("canary").addEventListener("click", async () => {
+      const button = field("canary");
+      const out = field("canary-out");
+      button.disabled = true;
+      out.className = "text-[13px] ml-2 text-muted";
+      out.textContent = "…";
+      const result = await post("/api/range/canary/");
+      button.disabled = false;
+      if (result.ok && result.body.corroborated) {
+        out.className = "text-[13px] ml-2 text-success";
+        out.textContent = t("range.canary_ok", esc(result.body.skew_seconds));
+      } else {
+        const why = (result.body && result.body.blocked) || [detail(result)];
+        out.className = "text-[13px] ml-2 text-danger";
+        out.textContent = t("range.canary_failed", esc(why.join("; ")));
+      }
+    });
+  }
+
+  async function renderReady() {
+    const result = await api("/api/range/ready/");
+    const slot = result.ok && result.body ? result.body.slot : null;
+    const ready = !result.ok || result.body.ready !== false;
+    capacity = result.ok && Number.isInteger(result.body.max_sessions) ? result.body.max_sessions : null;
+    renderRunning();
+
+    rangeReady = ready;
+    rangePhase = slot ? slot.phase : null;
+    rangeSlots = result.ok && result.body ? result.body.slots : null;
+    if (waiting && servesNow(waiting.dataset.failure)) {
+      waiting.querySelector("[data-failure-text]").textContent = t("main.start_again");
+      waiting = null;
+    }
+    readinessKnown = true;
+    startsShown();
+
+    const health = field("range-health");
+    health.classList.toggle("hidden", !result.ok || !operatorView);
+    health.classList.toggle("flex", result.ok && operatorView);
+    health.innerHTML = `<span class="dot dot-${ready ? "ok" : "warn"}"></span>${esc(t(ready ? "range.healthy" : "range.not_ready_short"))}`;
+
+    rangeReasons = ready ? null : !slot ? [] : slot.phase === "RESETTING" ? [t("range.resetting")]
+      : [t("range.blocked"), ...(operatorView ? slot.blocked || [] : [])];
+    rangeStateShown();
+
+    field("range-pipeline").classList.toggle("hidden", !slot || !operatorView);
+    if (slot && operatorView) wireCanary();
+  }
+
+  const SESSIONS_EVERY = 10000;
+  const WAITING_EVERY = 3000;
+  let refreshTimer = null;
+  let refreshing = null;
+  let refreshedAt = 0;
+
+  async function refreshOnce() {
+    clearTimeout(refreshTimer);
+    try {
+      await renderSessions();
+      await renderReady();
+    } finally {
+      refreshing = null;
+      refreshedAt = Date.now();
+      refreshTimer = setTimeout(refreshSessions, waiting ? WAITING_EVERY : SESSIONS_EVERY);
+    }
+  }
+
+  function refreshSessions() {
+    if (!refreshing) refreshing = refreshOnce();
+    return refreshing;
+  }
+
+  onResume(() => {
+    if (Date.now() - refreshedAt >= SESSIONS_EVERY) refreshSessions();
+  });
+
+  setInterval(() => {
+    if (running.some((session) => !session.ready)) renderRunning();
+  }, 1000);
+
+  renderWargames();
+  refreshSessions();
+</script>
+{% endblock %}

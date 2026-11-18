@@ -1,0 +1,35 @@
+import os
+import threading
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "cr.settings")
+
+from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
+from django.core.wsgi import get_wsgi_application
+
+if not settings.DEBUG and not os.environ.get("DJANGO_SECRET_KEY"):
+    raise ImproperlyConfigured(
+        "refusing to serve: DJANGO_SECRET_KEY is unset and DEBUG is off. Set "
+        "one, or set DJANGO_DEBUG=1 if this is the local lab."
+    )
+
+application = get_wsgi_application()
+
+def resume_scenarios():
+    from api import scenario_run
+
+    scenario_run.resume()
+
+def prune_closed_sessions():
+    from api import retention
+
+    retention.prune_quietly()
+
+def resume_resets():
+    from api import views
+
+    views.resume_resets()
+
+threading.Thread(target=resume_resets, name="cr-resets-resume", daemon=True).start()
+threading.Thread(target=resume_scenarios, name="cr-scenarios-resume", daemon=True).start()
+threading.Thread(target=prune_closed_sessions, name="cr-retention", daemon=True).start()

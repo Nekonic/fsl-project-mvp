@@ -1,0 +1,394 @@
+{% extends "console/base.html" %}
+{% block title %}Blue team{% endblock %}
+{% block body_class %}h-screen flex flex-col overflow-hidden{% endblock %}
+{% block main_class %}flex-1 min-h-0 flex flex-col md:flex-row{% endblock %}
+{% block content %}
+<style>
+  .work { flex: 1 1 0%; min-width: 0; min-height: 0; display: flex; }
+  .note-col { flex: none; width: 340px; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--border); }
+  .note-col.folded { width: 44px; }
+  .note-strip { display: none; flex: 1 1 0%; align-items: flex-start; justify-content: center; padding-top: 12px; color: var(--primary-text); font-size: 13px; font-weight: 600; writing-mode: vertical-rl; }
+  .note-col.folded .note-strip { display: flex; }
+  .note-col.folded .note-open { display: none; }
+  .note-open { flex: 1 1 0%; min-height: 0; display: flex; flex-direction: column; }
+  .note-body { flex: 1 1 0%; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 16px; font-size: 13px; line-height: 1.6; }
+  .note-body > :not(.hidden) ~ :not(.hidden), .ref-body > * + * { border-top: 1px solid var(--border); padding-top: 16px; }
+  @media (max-width: 1280px) { .note-col { width: 300px; } }
+  @media (max-width: 1023px) {
+    .work { flex-direction: column; }
+    .note-col { width: auto; height: 42%; border-left: 0; border-top: 1px solid var(--border); }
+    .note-col.folded { width: auto; height: 44px; }
+    .note-strip { writing-mode: horizontal-tb; align-items: center; padding-top: 0; }
+  }
+  .coach-dim { position: fixed; overflow: hidden; pointer-events: none; z-index: 40; }
+  .coach-hole { position: absolute; border-radius: 6px; box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.28); }
+  .coach-ring { position: fixed; pointer-events: none; z-index: 41; border-radius: 6px; box-shadow: 0 0 0 2px var(--primary); }
+  .coach-ring.inset { border-radius: 3px; box-shadow: inset 0 0 0 2px var(--primary); }
+  .coach-leader { position: fixed; pointer-events: none; z-index: 42; height: 2px; background: var(--primary); transform-origin: 0 50%; opacity: 0.85; }
+  .coach-leader.hidden { display: none; }
+  .rail-btn:disabled { opacity: 0.35; cursor: default; }
+  .coach-callout { position: fixed; z-index: 42; pointer-events: none; max-width: 360px; padding: 5px 10px; border-radius: 6px; background: var(--primary); color: var(--text-inverse); font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: var(--shadow-pop); }
+  .order-chip[aria-pressed="true"] { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-text); }
+  .term-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--terminal); color: var(--terminal-text); font-size: 13px; pointer-events: none; }
+  .map-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--panel); color: var(--text-muted); font-size: 13px; pointer-events: none; }
+  .note-col.hidden, .term-wait.hidden, .map-wait.hidden, .ref-col.hidden, .brief.hidden { display: none; }
+  .ref-col { flex: none; width: 300px; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border); }
+  .ref-body { flex: 1 1 0%; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 16px; font-size: 13px; line-height: 1.6; }
+  .ref-body pre, .brief pre { white-space: pre-wrap; font-family: var(--font-mono, ui-monospace, monospace); font-size: 13px; }
+  .brief { position: absolute; inset: 0; z-index: 30; overflow-y: auto; background: var(--page, var(--panel)); display: flex; justify-content: center; padding: 32px 16px; }
+  .brief-card { width: 100%; max-width: 680px; height: max-content; padding: 24px; display: flex; flex-direction: column; gap: 12px; font-size: 13.5px; line-height: 1.65; }
+  @media (max-width: 1023px) { .ref-col { width: auto; max-height: 40%; border-right: 0; border-bottom: 1px solid var(--border); } }
+</style>
+<nav id="rail" class="shrink-0 bg-panel border-b md:border-b-0 md:border-r border-line flex md:flex-col items-center gap-2 px-2 py-1 md:px-0 md:py-3 md:w-[68px]">
+  <button class="pane-tab rail-btn" data-pane="elk" data-src="">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <span>Kibana</span>
+  </button>
+  <button class="pane-tab rail-btn hidden" data-pane="site">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+    <span data-t="blue.pane.site"></span>
+  </button>
+  <button class="pane-tab rail-btn" data-pane="topology">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v5M5 17v-5h14v5"/></svg>
+    <span data-t="blue.pane.topology"></span>
+  </button>
+  <button class="pane-tab rail-btn hidden" data-pane="triage">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3 6 1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17"/></svg>
+    <span data-t="blue.pane.triage"></span>
+  </button>
+  <button class="pane-tab rail-btn hidden" data-pane="rules">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
+    <span data-t="blue.pane.rules"></span>
+  </button>
+  <button class="pane-tab rail-btn" data-pane="waf" data-src="/vm-terminal/waf/">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
+    <span data-t="blue.pane.waf"></span>
+  </button>
+  <button id="rail-ref" type="button" class="rail-btn hidden" aria-expanded="false" aria-controls="ref-col">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h11a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3z"/><path d="M8 8h6M8 12h6"/></svg>
+    <span data-t="lesson.ref.heading"></span>
+  </button>
+  <div id="rail-line" class="rail-line hidden"></div>
+  <button class="pane-tab rail-btn hidden" data-pane="kali">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 7 5 5-5 5M12 18h7"/></svg>
+    <span>Kali</span>
+  </button>
+</nav>
+
+<aside id="ref-col" class="ref-col hidden" aria-label="reference">
+  <header class="px-3 py-2 border-b border-line flex items-center gap-2">
+    <h2 data-t="lesson.ref.heading" class="flex-1 font-bold text-heading text-[13px]"></h2>
+    <button id="ref-close" type="button" data-t-title="lesson.ref.close" class="text-faint hover:text-heading text-[16px] leading-none px-1" aria-label="close">«</button>
+  </header>
+  <div id="ref-list" class="ref-body"></div>
+</aside>
+
+<div id="work" class="work">
+  <section id="pane" class="flex-1 min-h-0 min-w-0 relative bg-panel flex flex-col">
+    {% include "console/blue_scenario.html" %}
+    <div id="waf-banner" class="hidden h-10 term-bar text-[13px] items-center px-4 gap-3 shrink-0 min-w-0">
+      <span id="waf-box" class="font-mono text-inverse shrink-0"></span>
+      <span class="text-faint">·</span>
+      <span id="waf-rules" class="truncate"></span>
+    </div>
+    <form id="site-bar" class="hidden h-10 border-b border-line bg-subdued items-center px-2 gap-1 shrink-0 min-w-0">
+      <button type="button" id="site-back" data-t-title="site.back" class="btn btn-sm btn-ghost px-2" aria-label="back">←</button>
+      <button type="button" id="site-forward" data-t-title="site.forward" class="btn btn-sm btn-ghost px-2" aria-label="forward">→</button>
+      <button type="button" id="site-reload" data-t-title="site.reload" class="btn btn-sm btn-ghost px-2" aria-label="reload">↻</button>
+      <div class="flex-1 min-w-0 h-7 flex items-center border border-line rounded-md bg-panel">
+        <span id="site-insecure" class="shrink-0 flex items-center gap-1 pl-2.5 pr-2 h-full border-r border-line text-danger text-[13px]">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          <span data-t="site.not_secure"></span>
+        </span>
+        <input id="site-address" data-t-title="site.address" autocomplete="off" spellcheck="false"
+               class="flex-1 min-w-0 h-full px-2 bg-transparent font-mono text-[13px] outline-none">
+      </div>
+      <button type="button" id="site-dev-toggle" data-coach="toggle" data-t="site.dev.toggle" aria-pressed="false" class="btn btn-sm btn-ghost shrink-0"></button>
+    </form>
+    <div id="pane-body" class="flex-1 min-h-0 relative">
+      <iframe id="site-frame" class="absolute inset-x-0 top-0 bottom-0 h-full w-full border-0 bg-panel" hidden
+              title="site" referrerpolicy="no-referrer"></iframe>
+      {% include "console/blue_dev.html" %}
+      <iframe id="pane-frame" class="absolute inset-0 w-full h-full border-0 bg-panel" hidden
+              title="console" referrerpolicy="no-referrer"></iframe>
+      <iframe id="kali-frame" class="absolute inset-0 w-full h-full border-0 bg-terminal" hidden
+              title="Kali" referrerpolicy="no-referrer"></iframe>
+      <div id="term-wait" class="term-wait hidden"><span data-t="blue.term.connecting"></span></div>
+      <div id="kibana-wait" class="map-wait hidden"><span data-t="blue.kibana.preparing"></span></div>
+      {% include "console/blue_topology.html" %}
+      {% include "console/blue_triage.html" %}
+      {% include "console/blue_rules.html" %}
+      <div id="lesson-brief" class="brief hidden">
+        <div class="brief-card">
+          <h2 id="brief-title" class="text-[18px] font-bold text-heading"></h2>
+          <p id="brief-goal" class="text-body whitespace-pre-line"></p>
+          <h3 data-t="lesson.brief.needed" class="font-semibold text-heading"></h3>
+          <div id="brief-ref" class="flex flex-col gap-3"></div>
+          <button id="brief-start" type="button" data-t="lesson.brief.start" class="self-start btn btn-blue"></button>
+        </div>
+      </div>
+      <div id="pane-status" class="absolute inset-0 flex flex-col items-center justify-center text-center gap-2 px-6 text-[13px]">
+        <p id="pane-status-title" class="text-heading font-medium"></p>
+        <p id="pane-status-note" class="text-muted max-w-md"></p>
+      </div>
+    </div>
+  </section>
+
+  {% include "console/blue_note.html" %}
+</div>
+
+{% include "console/blue_coach.html" %}
+{% endblock %}
+{% block script %}
+<script>
+  const field = (id) => document.getElementById(id);
+  const frame = field("pane-frame");
+  const tabs = Array.from(document.querySelectorAll(".pane-tab"));
+  let session = null;
+  const CLOSED_CHECK_MS = 30000;
+  const TERMINAL_WAIT_MS = 500;
+  const KIBANA_RETRY_MS = 3000;
+  const TERMINAL_GIVE_UP_MS = 45000;
+  const sessionClosed = () => Boolean(session && session.ended_at);
+  const terminalPanes = { waf: () => frame, kali: () => field("kali-frame") };
+  let terminalWaited = { pane: "", since: 0 };
+
+  crumbs([sessionCrumb(sessionId()), { label: t("blue.title") }]);
+
+  function blueCrumbs(wargame) {
+    const named = sessionCrumb(sessionId(), session, wargame);
+    if (!named.named && (session.lesson || session.course_scenario)) {
+      crumbs([named, { label: t("blue.title"), href: `/blue/${sessionId()}/` },
+              { label: t(session.course_scenario ? "kind.scenario" : "crumb.lesson") }]);
+    } else {
+      crumbs([named, { label: t("blue.title") }]);
+    }
+  }
+
+  function showFrame(url) {
+    field("pane-status").style.display = "none";
+    if (frame.getAttribute("src") !== url) frame.src = url;
+    frame.style.display = "block";
+  }
+
+  function terminalOf(host) {
+    try {
+      const term = host && host.contentWindow && host.contentWindow.term;
+      return term && term.buffer ? term : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function terminalReady(host) {
+    const term = terminalOf(host);
+    if (!term) return false;
+    const buffer = term.buffer.active;
+    if (!buffer || typeof buffer.getLine !== "function") return true;
+    for (let row = buffer.length - 1; row >= 0; row -= 1) {
+      const line = buffer.getLine(row);
+      if (line && line.translateToString(true).trim()) return true;
+    }
+    return false;
+  }
+
+  function terminalFit(host) {
+    const term = terminalOf(host);
+    const screen = term && term.element && term.element.querySelector ? term.element.querySelector(".xterm-screen") : null;
+    const room = term && term.element ? term.element.parentElement : null;
+    if (!screen || !room || typeof term.resize !== "function" || !term.cols || !term.rows) return;
+    const area = screen.getBoundingClientRect();
+    if (!area.width || !area.height || !room.clientWidth || !room.clientHeight) return;
+    const bar = term.element.querySelector(".xterm-viewport");
+    const view = term.element.ownerDocument && term.element.ownerDocument.defaultView;
+    const edge = view ? view.getComputedStyle(term.element) : {};
+    const across = (parseFloat(edge.paddingLeft) || 0) + (parseFloat(edge.paddingRight) || 0);
+    const down = (parseFloat(edge.paddingTop) || 0) + (parseFloat(edge.paddingBottom) || 0);
+    const cols = Math.floor((room.clientWidth - across - (bar ? bar.offsetWidth - bar.clientWidth : 0)) * term.cols / area.width);
+    const rows = Math.floor((room.clientHeight - down) * term.rows / area.height);
+    if (cols > 1 && rows > 1 && (cols !== term.cols || rows !== term.rows)) term.resize(cols, rows);
+  }
+
+  function terminalWait() {
+    const pane = Object.keys(terminalPanes).find((name) => paneOpen(name));
+    if (pane) terminalFit(terminalPanes[pane]());
+    if (!pane) {
+      field("term-wait").classList.add("hidden");
+      terminalWaited = { pane: "", since: 0 };
+      return;
+    }
+    if (terminalWaited.pane !== pane) terminalWaited = { pane, since: Date.now() };
+    const waiting = !terminalReady(terminalPanes[pane]()) && Date.now() - terminalWaited.since < TERMINAL_GIVE_UP_MS;
+    field("term-wait").classList.toggle("hidden", !waiting);
+  }
+
+  function openPane(tab) {
+    tabs.forEach((other) => other.setAttribute("aria-selected", String(other === tab)));
+    const waf = tab.dataset.pane === "waf" && session && session.waf_box;
+    const onSite = tab.dataset.pane === "site";
+    field("waf-banner").classList.toggle("hidden", !waf);
+    field("waf-banner").classList.toggle("flex", Boolean(waf));
+    field("site-bar").classList.toggle("hidden", !onSite);
+    field("site-bar").classList.toggle("flex", onSite);
+    field("site-frame").style.display = onSite ? "block" : "none";
+    devPlace();
+    field("topology").style.visibility = tab.dataset.pane === "topology" ? "" : "hidden";
+    field("triage").style.display = tab.dataset.pane === "triage" ? "flex" : "none";
+    field("rules-pane").style.display = tab.dataset.pane === "rules" ? "flex" : "none";
+    field("kali-frame").style.display = tab.dataset.pane === "kali" ? "block" : "none";
+    terminalWait();
+    const kibanaWaiting = tab.dataset.pane === "elk" && !tab.dataset.src;
+    field("kibana-wait").classList.toggle("hidden", !kibanaWaiting);
+    paneOpened.forEach((heard) => heard(tab.dataset.pane));
+    if (kibanaWaiting) {
+      field("pane-status").style.display = "none";
+      frame.style.display = "none";
+      return;
+    }
+    if (tab.dataset.pane === "kali") {
+      field("pane-status").style.display = "none";
+      frame.style.display = "none";
+      if (!field("kali-frame").src) field("kali-frame").src = tab.dataset.src;
+      return;
+    }
+    if (tab.dataset.pane === "rules") {
+      field("pane-status").style.display = "none";
+      frame.style.display = "none";
+      return;
+    }
+    if (tab.dataset.pane === "triage") {
+      field("pane-status").style.display = "none";
+      frame.style.display = "none";
+      triageOpen();
+      return;
+    }
+    if (tab.dataset.pane === "topology") {
+      field("pane-status").style.display = "none";
+      frame.style.display = "none";
+      topologyOpen();
+      return;
+    }
+    if (!onSite) {
+      showFrame(tab.dataset.src);
+      return;
+    }
+    field("pane-status").style.display = "none";
+    frame.style.display = "none";
+    if (!site.history.length) siteGo("/");
+  }
+
+  const paneOpened = [];
+  const paneTab = (name) => document.querySelector(`.pane-tab[data-pane="${name}"]`);
+  const paneOpen = (name) => {
+    const tab = paneTab(name);
+    return Boolean(tab) && tab.getAttribute("aria-selected") === "true";
+  };
+
+  function watchClosed() {
+    const timer = setInterval(async () => {
+      if (!session || document.hidden) return;
+      if (!sessionClosed()) {
+        const read = await api(`/api/sessions/${sessionId()}/`);
+        if (read.ok && read.body.ended_at) session.ended_at = read.body.ended_at;
+      }
+      if (sessionClosed()) {
+        clearInterval(timer);
+        clearInterval(dev.timer);
+      }
+    }, CLOSED_CHECK_MS);
+  }
+
+{% include "console/blue_site_script.html" %}
+
+{% include "console/blue_dev_script.html" %}
+
+{% include "console/blue_topology_script.html" %}
+
+
+  tabs.forEach((tab) => tab.addEventListener("click", () => openPane(tab)));
+  setInterval(terminalWait, TERMINAL_WAIT_MS);
+  if (typeof ResizeObserver === "function") new ResizeObserver(terminalWait).observe(field("pane-body"));
+
+  const KIBANA_ALREADY_SEEN = {
+    "discover:docExplorerUpdateCalloutClosed": "true",
+    "discover:docExplorerCalloutClosed": "true",
+    "data.noDataPopover": "true",
+  };
+  const KIBANA_LEFT_FROM_BEFORE = ["discover:searchText"];
+
+  function quietKibana() {
+    try {
+      Object.entries(KIBANA_ALREADY_SEEN).forEach(([key, value]) => localStorage.setItem(key, value));
+      KIBANA_LEFT_FROM_BEFORE.forEach((key) => localStorage.removeItem(key));
+    } catch (error) {
+      return;
+    }
+  }
+
+  quietKibana();
+
+  function kibanaLink() {
+    const kibana = paneTab("elk");
+    if (kibana.dataset.src) return;
+    const timer = setInterval(async () => {
+      const read = await api(`/api/sessions/${sessionId()}/`);
+      if (!read.ok || !read.body.discover) return;
+      clearInterval(timer);
+      kibana.dataset.src = read.body.discover;
+      if (paneOpen("elk")) openPane(kibana);
+    }, KIBANA_RETRY_MS);
+  }
+
+{% include "console/debrief_script.html" %}
+
+{% include "console/blue_lesson_script.html" %}
+
+{% include "console/blue_scenario_script.html" %}
+
+  (async () => {
+    const catalogue = api("/api/wargames/");
+    const read = await api(lessonPath(""));
+    session = read.ok ? read.body : null;
+    if (session) rememberSession(sessionId());
+    const kibana = paneTab("elk");
+    if (session && session.discover) kibana.dataset.src = session.discover;
+    kibanaLink();
+    if (session && session.waf_terminal) paneTab("waf").dataset.src = session.waf_terminal;
+    if (session && session.site) siteBrowser(session.site);
+    if (session && session.kali_terminal && session.kind !== "wargame") {
+      const kali = paneTab("kali");
+      kali.dataset.src = session.kali_terminal;
+      kali.classList.remove("hidden");
+      field("rail-line").classList.remove("hidden");
+    }
+    if (session && session.waf_box) {
+      field("waf-box").textContent = session.waf_box;
+      field("waf-rules").innerHTML = t("blue.waf.rules", `<span class="font-mono text-inverse">${esc(`${session.waf_rules}/`)}</span>`);
+    }
+    if (session) {
+      blueCrumbs(null);
+      catalogue.then((listed) => {
+        if (listed.ok && Array.isArray(listed.body)) blueCrumbs(listed.body.find((w) => w.id === session.scenario) || null);
+      });
+    }
+    const guided = Boolean(session && (session.lesson || session.course_scenario));
+    if (guided) noteControls(session);
+    if (session && session.course_scenario) await scenarioStart(session);
+    watchClosed();
+    if (!session || !session.lesson) {
+      openPane(kibana);
+      return;
+    }
+    const taught = session.lesson;
+    const declared = Array.isArray(taught.steps) ? taught.steps : [];
+    noteLesson(taught);
+    objectivesShow(session.lesson_objectives);
+    reference([...new Set([...((session.lesson_course || {}).reference || []), ...(taught.reference || [])])]);
+    const goTo = declared.length ? coach(taught.text, declared) : null;
+    if (!goTo) {
+      openPane(kibana);
+      stretchShown(true);
+    }
+  })();
+</script>
+{% endblock %}

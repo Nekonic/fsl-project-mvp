@@ -1,0 +1,2098 @@
+# State
+
+The product record: the backlog (what the user wants built, in priority order)
+and the finished work, one line each, with the detail in `git log`, `README.md`
+and `docs/ARCHITECTURE.md`. The live state of work in flight is in
+`docs/state/now.md`, and rulings are in `docs/DECISIONS.md`; the `orchestrate`
+skill reads those, not this file. Keep the backlog here true.
+
+Updated: 2026-11-18
+
+## Where things stand
+
+On 2026-09-20 the repo moved from proving the hypothesis to building the
+smallest product that demonstrates it
+(`docs/superpowers/specs/2026-09-20-product-flow-design.md`, all four phases
+done). On 2026-10-08 the user approved the next direction, a session-isolated
+learning MVP (backlog 0). Since 2026-10-13 its course is foundations F1-F6
+and eleven timed scenarios on live customer traffic, judged over a final
+check (`docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`);
+P6 removed the older lessons 0-5 and 7 and the Lesson / Practice / Wargame rungs
+on 2026-10-14 (`docs/DECISIONS.md`). On 2026-10-18 the foundations were rebuilt
+as attack and defence lessons that run back to back in one session, and on
+2026-10-19 four live review rounds (2-5) tuned them. On 2026-10-20 the user
+ruled the product OpenStack-only (Kolla-Ansible 2026.1, kvm; widened on 2026-10-24 to 2025.1 or later and on 2026-11-15 to KVM recommended, plain QEMU allowed,
+`docs/DECISIONS.md`) and the newcomer
+bring-up was fixed and rewritten. Later the same day the user moved the
+product to a new OpenStack cloud (`docs/DECISIONS.md` 2026-10-20, "The product
+moved to a new OpenStack cloud"). The old cloud is in other use and is not
+touched. The platform VM is now 192.168.2.247 (Keystone 10.0.0.10, reached
+through the user's VPN), two slots from 2026-10-21, four from 2026-11-13 and eight since 2026-11-15
+(`compute.slots: 8`). On 2026-10-21 the docker substrate was
+removed from the code (the removal commit, then the documents) and
+proven live on the new cloud.
+On 2026-11-13 the code's names moved from `fsl` to `cr` and the live cloud
+was cut over the same day (`docs/OPENSTACK.md` §5.4): the old checkout's
+`bin/cloud down` backed up the store (`db-20261113T082150Z.sqlite3`, 60 MB),
+the old role images and `fsl-build` were deleted, and `bin/cloud up` with
+`platform.stack: cr-platform` (about 42 min) rebuilt the role images
+`cr-kali`, `cr-waf`, `cr-edge` and `cr-wargame-host` and replaced
+`fsl-opnsense-26.7` under the same name. The platform VM is now
+`cr-platform` (`m1.large`), checkout `/opt/cr` at 3a0df7d, every image pulled
+from GHCR (the `cr-*` images tagged with the commit SHA, built by `images.yml`
+through `workflow_dispatch` on the working branch `cr-rename`); nothing is
+sideloaded. Until the range host replaced them later on 2026-11-13, both slots
+ran as eight VMs on `m1.medium`; the store was restored. Since then the cloud
+holds two VMs: `cr-platform` and `cr-range` (`dba.range`, 6 vCPU, 16 GB), which
+runs slot N as the compose project `sN` (`docs/DECISIONS.md` "The range is one
+range host; a slot is a compose project"). The project quota is 17 instances,
+24 cores and 57344 MB of RAM (recorded 2026-11-13; `docs/OPENSTACK.md` §3.2);
+the two VMs take 8 cores, 24 GB and 2 instances of it.
+com01 allocates VCPU at 4.0, memory at 1.5 (512 MB reserved) and disk at 1.5.
+The records are in `docs/DECISIONS.md` (2026-10-21, "Two range slots on the
+new cloud", "The docker substrate is removed" and "The estate sensor's
+HOME_NET and a repeated lesson move"; 2026-10-22, "A reset cut short by a
+restart, and corp's readiness"; 2026-11-13, the `cr` names). Live runs on the
+old cloud on 2026-10-20 proved the changed bring-up paths and led to fixes
+(`docs/DECISIONS.md` 2026-10-20, "Live checks of the bring-up paths" and "The
+one-VM trial and the last bring-up fixes"): `down` beside a stopped container,
+`resume` checking the hand-over, the first range key and the wargame host kept
+across `down` then `up` all ran live, and the §9 one-VM trial ran end to end
+from an empty cloud (README step 7 took 17 min 41 s). The latest full
+`bin/verify` is in `docs/state/now.md`. History: on 2026-11-13 at 3a0df7d
+unit and API 1663 and acceptance 76 passed, 1 skipped (the c2 course does not
+start with F1, by design), in 1945 s across 4 processes; on 2026-10-26 unit 1669 and
+acceptance 73 passed in 2003 s across 4 processes; on 2026-10-24 two runs with
+two slots gave unit 1618 and acceptance 73 in 2186 s, then unit 1626 and
+acceptance 73 in 1867 s; on 2026-10-21, on dev's head, unit 1578 and acceptance
+73 in 3853 s. The earlier one-slot runs on the new cloud and the last run on
+the old cloud (unit 1718; acceptance 73 passed) are recorded in
+`docs/DECISIONS.md`. Before the old cloud's last run, two runs on the same
+code: acceptance 72 passed and 1 failed (the `test_corp_authz` nonce error),
+then 73 passed (1155 s). On 2026-11-12 the first configure after a slot
+rebuild failed on both slots and the second passed, on the VM range that the
+range host replaced the next day (recorded in `docs/state/now.md` at a68e1ea).
+Live state: `docs/state/now.md`.
+
+The range has two targets: the Django board (`board.com`, MySQL behind the WAF,
+`loot_verified`) and the WordPress site `corp` (`corp.com`, `effect_observed`,
+sub-project B, done 2026-10-04). Juice Shop, the internal wiki and the
+`self_judged` objective model were removed on 2026-10-04 (objective-model
+Phase 4).
+
+`bin/measure` (and `bin/verify`) prints the metrics; the baseline is in
+`metrics.json`, not copied here.
+
+The loop runs in a browser. Open `/` and start a lesson, a scenario or a
+wargame. In a lesson or scenario the blue console carries a Kali pane, so one
+console holds both sides; in a wargame the session page also offers the red
+console, and the blue console has no Kali. The red console is the Kali
+terminal and a Website pane, plus the objectives and the loot submission; it fires no prepared case
+(the cases stay for the API, the harness and the scenario engine's attacker).
+What is typed in Kali is stamped with the session's marker by the attacker's
+stamp proxy. The blue console is a sidebar that
+frames the real tools (Kibana, a WAF terminal, a Website pane: a site browser
+with developer tools, and the Map pane: the slot's live wiring, read-only) and calls
+`/api/` for the session, the site's
+requests, the steps and hints of a foundation or worked scenario, a scenario's status and triage, ingest and
+detections. The only rule editor is the Suricata one in the IDS rules pane, which F4 and the detection and unknown scenarios show (`/api/rules/`, D3 of the 2026-10-13 course design); CRS stays exclusions, level and anomaly thresholds. The session page's confirm-close calls
+`/ingest/` once before closing, and also reads `/score/`. The acceptance suite
+calls `/ingest/` too, and `redteam/run.py` prints the curl.
+
+On 2026-11-13 the four VMs per slot gave way to one range host
+(`docs/DECISIONS.md` "The range is one range host; a slot is a compose
+project"): the cloud holds `cr-platform` and `cr-range` (`dba.range`), slot N
+is the compose project `sN` on the range host, OPNsense, the image builder and
+the wargame host are gone, and `bin/cloud up --replace` removed the old slot
+VMs, their networks and the role images. Detection matched the VM range case
+for case (board 18, corp 7); ten slots run at once on the range host
+(`docs/state/now.md`).
+
+On 2026-11-15 virtualenvs moved to uv (the platform VM installs uv 0.13.8
+from its checked release tarball; the platform image installs with
+a build-time uv mount), the platform VM's key became the Nova keypair
+`keys.key_name` / `keys.key_file` that `bin/cloud up` imports itself, the
+examples moved to 10.10.10.0/24, KVM became recommended rather than required,
+and the OpenStack identity moved out of `cloud.yaml`, first into an RC file
+and then, the same day, into the `~/.config/openstack/clouds.yaml` entry that
+`bin/cloud init` writes: the manual setup is now `git clone`, `uv run
+bin/cloud init` (admin) and `uv run bin/cloud up` (`docs/DECISIONS.md`, the
+2026-11-15 entries from "Virtualenvs are made with uv", and "Four commands on
+the controller"). The repo is a uv project (`pyproject.toml`, `uv.lock`); every
+environment, the images included, syncs from the lock with `uv sync
+--frozen` ("The repo is a uv project").
+
+On 2026-11-16 the user ruled gVisor and Elasticsearch authentication fake
+risks raised by the AI and both went (`docs/DECISIONS.md` "gVisor and
+Elasticsearch security removed"): every slot container runs on Docker's
+default runtime, Elasticsearch and Kibana run without security on the
+platform VM's loopback, and nginx caches the session check five seconds per
+session cookie, client address and the session the URL names. The same day
+sign-up with an admin's approval, the abuse limits and per-learner sessions
+landed (`docs/DECISIONS.md` "Sign-up waits for an admin's approval" and
+"A learner sees only their own sessions").
+
+On 2026-11-18 the user approved the range as one Heat stack per slot, built
+the way KYPO builds it (`docs/superpowers/specs/2026-11-18-heat-range-design.md`):
+four VMs per slot on the slot's own Neutron LANs, Neutron security groups and
+port security for isolation, the edge, the inline IDS and the log server on an
+`infra` VM no learner has a shell on, and a pool of slots made ahead of the
+learner. Phases P0-P7 are done on `range-heat-int` (code, unit and API tests
+against `platform/tests/fakecloud.py`, the role images `bake1`, learner ssh
+to Kali through a jump on port 2222, the documents); P8, the live run, went
+live on 2026-11-18 (`docs/DECISIONS.md` "The first live pool fill"), with
+the open items in `docs/state/now.md`.
+The range host's code (`range/rangehost.py`, `deploy/range-host/`,
+`deploy/edge/`, the Kali and WAF Dockerfiles, `bin/range-image-tag`) is
+deleted. The defaults chosen for the run are in `docs/DECISIONS.md` "The Heat
+range comes up from cloud.yaml".
+
+## The objective model (done 2026-10-04)
+
+The attacker proves possession. The objective layer used to read Juice Shop's
+self-flipped `solved` flag; it is now one target-agnostic model, carried by the
+board, and Juice Shop is gone. Design:
+`docs/superpowers/specs/2026-10-03-attacker-proven-objective-model-design.md`.
+All four phases are committed and `bin/verify` is green.
+
+- **The loot ladder.** `objective_model` is `loot_verified`,
+  `effect_observed` (corp, sub-project B) or `none`; `judged` is derived
+  (`!= none`). The board is `loot_verified`.
+  `wargames/board/objectives.yaml` declares `board-auth-user-partial`,
+  `-admin` and `-full`. `POST /api/sessions/<id>/loot/` (`platform/api/loot.py`)
+  snapshots the ground truth onto `Session.baseline` at session start and
+  verifies submitted rows against that snapshot by exact hash match only,
+  never re-reading the target live. Credited tiers flow into the zero-sum game
+  through the exfil case. `none` is reachable only by patching in tests.
+- **The ground truth** (the target's own records). `/internal/auth-users` on
+  the board returns the `auth_user` username/hash map on the `estate` network
+  and answers the board's own 404 through the WAF (the Docker vhost
+  `deploy/nginx/board.conf` and the cloud's `board.com.conf` both proxy
+  `/internal/` to the board's `/not-found/`). Only the platform reads it; the
+  red team cannot reach it, and it does not pass the sensors.
+- **READY** reads "ground truth readable" where it used to read "nothing
+  solved on the target" (`_ground_truth_readable` in `platform/api/views.py`).
+- **The realistic exfil is the `?sort=` order_by SQLi.** The board is pinned to
+  Django 3.2.4 (CVE-2021-35042) on `python:3.9-slim`; `post_list` passes
+  `?sort=` straight to `order_by()`. A `.`-containing value bypasses field
+  validation and reaches the raw `ORDER BY`. The board previously ran
+  `DEBUG=True`, so MySQL errors surfaced and error-based extraction leaked live
+  data (`extractvalue(1,concat(0x7e,version()))` -> `~8.4.11`); `DEBUG` was set
+  `False` on 2026-10-09 (a production app would not run debug), so that
+  error-based channel no longer surfaces and the order_by injection is now
+  blind-only. Resolved 2026-10-09 with the reusable tool, not a bespoke one:
+  `board-sqli-orderby-sqlmap` fires sqlmap at the dotted injection point
+  `?sort=posts_post.id*` with `--level=5 --risk=3`, and sqlmap breaks out of the
+  ORDER BY with `)` and finds both boolean- and time-based blind injection, then
+  dumps `auth_user` (verified on a local board build at HEAD: admin, jiwoo,
+  minseo). Stock `--technique=BT` at the old `?sort=created_at` without the
+  dotted force point did not, which is why the case had looked like only a probe.
+  Keep DEBUG=False. The submission step now exists: the red console has a
+  "submit stolen loot" panel (shown only for `loot_verified` scenarios) that
+  POSTs the operator's extracted pairs to `/loot/`, which verifies them against
+  the session-start snapshot (`loot.matched`). So the loot objective is now
+  creditable through the operator flow; the hashes are already per-rebuild
+  dynamic (salts rotate), so no planted canary was added. The planted
+  `/members.json` `values()` leak was removed: no real app would expose it.
+  Salts rotate per rebuild because `board-db` keeps no persistent volume
+  (`test_board_db_ephemeral.py` guards it).
+- **Proven on the live stack** (`test/test_board_loot.py`): the ground truth
+  read over the internal channel and submitted credits all three tiers at
+  coverage 1.0; fabricated hashes are refused.
+- **Removed:** Juice Shop, the internal wiki and its lateral-movement
+  objective, `platform/objectives.py`, the `self_judged` value and its three
+  view branches, `members.json`, `wargames/juice-shop/`. Sessions stored with
+  `scenario: juice-shop` keep their rows (migration 0013 only moves the
+  default to `board`).
+- **The `tests` baseline (gated until 2026-10-16) was lowered 1252 -> 1196 under the user's Phase 4
+  authorisation** (one of several authorised reductions, each recorded in
+  `docs/DECISIONS.md` and `metrics.json`; this one is itemised in its commit
+  message): about 64 Juice/wiki-only tests were deleted, one more
+  with `members.json`, 15 were repurposed onto board loot behaviour
+  (count-neutral), and removal/prerequisite guards were added. `core_loc` held
+  at 461, `services` 7, `wargame_services` 4 -> 2, `product_loc` 8580 -> 8040,
+  `dependencies` 6.
+
+## Sub-project B: the WordPress authz target `corp` (done 2026-10-04)
+
+The range's second target. Design in
+`docs/superpowers/specs/2026-10-04-wordpress-authz-objective-design.md` (task
+brief/report trail under
+`.superpowers/sdd/2026-10-04-wordpress-authz-objective/`). `corp`
+(`wargames/corp/`) is `effect_observed`, not `loot_verified`: nothing is
+instrumented on the WordPress app itself (the user's explicit choice). Both the
+session-start baseline snapshot and the ongoing observe read `corp-db` only,
+through a substrate runner (`docker exec` or ssh running `mysql`/`mysqlbinlog`,
+`views.py:188,408`), by reading its own MySQL binary log (`binlog_format=ROW`,
+`corp-db`'s build layer adds `mysqlbinlog` on top of the stock MySQL 8.4
+image). A committed ROW-event insert/update is ground truth; the target's own
+data still decides what was taken, as with the board's `loot.py`.
+
+Three real, unauthenticated CVEs, none detected by the default OWASP CRS, so
+the blue team has to write its own detection; each is pinned to a vulnerable
+plugin version:
+- `CVE-2023-3460` - Ultimate Member 2.6.6, the accent-bypass `wp_capabilities`
+  key -> `corp-rogue-admin` (`rogue_admin`).
+- `CVE-2018-19207` - WP GDPR Compliance 1.4.2, an option flip to admin
+  self-registration -> `corp-self-registration` (`option_flip`).
+- `CVE-2026-4431` - Easy Post Submission 2.3.0, an unauthenticated `postId`
+  overwrite of an existing post -> `corp-content-overwrite` (`content_write`).
+
+The scripted cases in `redteam/cases/corp.yaml` are detection probes only
+(each real exploit needs a per-page nonce the harness cannot bake statically,
+so they cannot be scripted into a repeatable crediting case); the real
+objective credit is proven by the live two-step acceptance tests
+(`test/test_corp_authz.py`, `test_corp_observe_live.py`): fetch a fresh nonce, then exploit, inside a
+recorded session window, then `POST /objectives/` reads the credit from the
+committed binlog rows.
+
+`redteam/harness.py` gained form-body (`data=`) support alongside
+params/json, by the user's explicit authorisation during B, so `$_POST`
+attacks (the GDPR option flip, the postId overwrite) are scriptable as cases
+too. That was sub-project B's only `core_loc` increase, 461 -> 462.
+`wargame_services` grew 2 -> 4 (`corp-wp` + `corp-db` beside the board's own
+two).
+
+Audit cleanup committed (2026-10-02). A 10-slice over-reach
+audit (a workflow, each finding adversarially re-verified) flagged 26 items;
+the user asked for all. 23 were removed, test-first, `bin/verify` green:
+`core_loc` 472 -> 461, `product_loc` 8235 -> 8142, the `tests` baseline 1201 ->
+1183 (`metrics.json` records the authorised test removals). Gone: the
+sketch-era `unimplemented`/`CALLS`; the per-command `ssh -G` key-pinning probe
+and `PINNING`; proactive token renewal (the 401 retry stays); the unused
+`FSL_OPENSTACK_SSH_CONFIG` knob and the env-overridable attacker paths;
+`DetectionRecord.source/signature`; `Session.truncated` (migration 0012);
+`reachability.forget`; the single-tool `SUPPORTED_TOOLS` registry; `run.py
+--origin`; `Origin.share/country`; `pfsense.home_net`; `_parse_time`'s dead
+ctime-fraction and Z/offset paths (Py3.13 `fromisoformat` covers them);
+`fetch`'s unused `timeout`; the `board.com` aliases on the non-default edges;
+the duplicate `deploy/elastic` mount (`register_pipeline` reads `FSL_SOURCE`);
+two `suricata.yaml` blocks that restated defaults; and tests that pinned
+implementation letter (JS source-greps, a re-coded Hamilton, `CALLS`/field
+source-greps). Three were not taken:
+- **O1 only in part:** the clear over-reach is gone, but the deployment ssh
+  config Include stays: the ssh test harness uses it to point ssh at the test
+  sshd's port, so a full removal needs a harness redesign.
+- **B11 skipped:** collapsing `confirmedOrigin`/`describedOrigin` into one
+  `ready` flag would wrongly disable the terminal toggle after a reverted POST
+  failure; the two encode a real partial-failure state.
+- **B7 resolved by redefining `services`; the board stayed.** The board's
+  MySQL belongs to the board wargame; the audit read it as removable because
+  the gated `services` metric counted platform and wargame services together.
+  Since 2026-10-02 `bin/measure` splits them: the gated `services` counts the
+  platform's own compose services, and a wargame's services under
+  `wargames/<id>/` (its app, its database, later its own attacker) count as
+  `wargame_services`, reported, not gated, so adding a scenario is not a gated
+  regression. `board-db` stays, on MySQL.
+
+Backlog 2, steps 4 and 5 (pfSense edge + Kali attacker on OpenStack) are done
+end to end (2026-10-02). The whole chain is proven on the cloud:
+a case fired from the Kali box leaves as a chosen country, crosses
+pfSense -> WAF -> the target, both sensors detect it, the logs reach the
+platform's Elasticsearch geolocated, and the platform scores it.
+
+On 2026-10-11 OPNsense replaced pfSense at the edge (`docs/DECISIONS.md`):
+what this file records about pfSense below was measured on pfSense and is
+history. The cloud now holds one uploaded image, the stock Ubuntu 24.04 cloud
+image; the images step builds the OPNsense edge image from the official
+release on an Ubuntu builder, `fsl-kali` builds on Ubuntu, every
+cloud-specific value is in `deploy/openstack/cloud.yaml`, and `bin/cloud
+up|down` drives the whole cloud side. It first ran against the cloud on
+2026-10-11 (backlog 0).
+
+Backlog 2 step 6's in-scope part is done (2026-10-02): the target port is
+no longer published and the acceptance suite and command-line cases reach the
+target from inside the range. **Step 7 is done (2026-10-03):** evidence by
+event time, GeoIP's durable home, and now the session Start/Stop lifecycle -
+Start takes a READY slot, Stop kicks off the rebuild, and READY is a three-check
+gate (VMs ACTIVE, the target's ground truth readable, rules at baseline); the
+canary (an alert corroborated by both engines with their clocks in sync) is a
+separate check the landing page offers. The two blue-screen panes held out of backlog 2 (Kibana and the pfSense
+GUI) were built on 2026-10-05/06; the 2026-10-08 ruling drops the pfSense pane
+again, and it was removed the same day. The board's user-database objective is done (see "The
+objective model").
+
+**Committed (step 6, the acceptance/CLI move; the figures predate Phase 4):**
+- `compose.yaml` drops the WAF's `127.0.0.1:8080:80` publish; the target is
+  reached only from inside the range. (Host port 8080 was reused on 2026-10-05
+  for the platform's pfSense proxy; that publish was removed on 2026-10-08.)
+- The acceptance suite reaches the target through `test/range.py`'s runner:
+  `conftest.target_code()`/`target_answers()` curl `http://board.com` from the
+  attacker box (so `stack_is_up`, `reset_target` and `test_criterion_1` no
+  longer need a host port), and `test_front_door`'s probe fires through
+  `from_attacker`.
+- The command-line harness runs inside the range: `run_redteam()` execs
+  `redteam/run.py` on the `scorer` host (the platform container) with
+  `--target/--tool-target http://board.com`, the way the console fires. A fresh
+  run scored TP 8 / FP 0 / FN 2 / TN 6, both engines.
+- `test_judge_isolation` drops 8080 from its published-port set; `README.md`
+  shows the in-range invocation.
+
+**Committed (step 7):** evidence selected by event time (Filebeat's read time
+ran 0.8-8.6 s late here), GeoIP in a bind mount, and the session Start/Stop
+lifecycle with the three-check READY gate; detail under backlog 2, step 7.
+
+- **Re-configure must follow a rebuild.** A rebuild wipes the edge's and the
+  WAF's ssh-pushed config (`configure_slot`); the targets are baked. Since
+  2026-10-11 the platform runs it itself after a close-time rebuild, once the
+  VMs are ACTIVE; until it finishes the slot reads RESETTING and the edge
+  denies range traffic. Since 2026-10-12 a close rebuilds only Kali and the
+  WAF; the edge and the wargame host are reset in place (`docs/OPENSTACK.md`
+  §6.1).
+
+**Committed (`4ec543b..`):**
+- **Left 1 - the WAN sticks.** `POST /api/range/configure/`
+  (`configure_slot` -> `configure_edge`) plays `deploy/pfsense/configure.php`
+  back on pfSense over mgmt ssh (settings as a base64 JSON line ahead of the
+  static script, on stdin). WAN static at the first origin `.1`, the other 29
+  as `ipalias` VIPs, IPv6/dhcp dropped, outbound NAT off, one WAN pass rule,
+  the WAN's dhclient killed; it refuses unless pfSense then holds all 30.
+  Survives a reboot (the stray DHCP dhclient was what wiped the hand-set
+  address before).
+- **Left 2 - Suricata on the WAN.** The same playback configures the pfSense
+  package (visible in its GUI): `fsl_home` (`pfsense.home()`) as HOME_NET,
+  `fsl_anywhere` (0.0.0.0/0) as EXTERNAL_NET, legacy mode, no blocking, EVE to
+  syslog, `guess-applayer-tx` and `dump-all-headers: request` merged as dotted
+  passthrough keys (the `types.N` index read back from `suricata
+  --dump-config`), the shipped `local.rules` as a new sensor's custom rules.
+  Refuses unless the sensor is running after.
+- **Left 3 and 4 - the log pipeline, codified.** `configure_slot` also: starts
+  the edge's remote syslog to the scorer (`:5140`, RFC 5424, logall); gives the
+  WAF an rsyslog `imfile`->`omfwd` drop-in for its ModSecurity audit log
+  (`range/waf.py`, sudo, `rsyslogd -N1`-checked); opens `fsl-reach` to exactly
+  the edge and WAF on UDP 5140 (`fabric.hearing`); and Filebeat gains a UDP
+  syslog input that parses every line and decodes Suricata/ModSecurity JSON so
+  ingest normalizes them as before. GeoIP rides filebeat's per-request
+  `output.pipeline: fsl-geoip` (works on Docker) and, as reinforcement, the
+  `fsl-logs` template's `index.default_pipeline: fsl-geoip` (filebeat writes
+  that into the template when it first creates it, proven by `filebeat setup`).
+- **Left 5 - one attacker wears any origin.** The slot gives the attacker's one
+  Internet port the ~100 per-country addresses (`slot.origin_addresses`), which
+  the existing gateway `bootcmd` spreads onto the NIC; the proxy/terminal run on
+  the Kali box (`proxy: fsl-kali`); `attacker.origins()` reads the edge as the
+  way in and the target by name; choosing an origin runs
+  `/usr/local/sbin/set-origin` to SNAT the box's outgoing source
+  (`ATTACKER_ORIGIN_MODE=snat`), so every tool leaves as that country.
+
+**Left 6 - the scored end-to-end run (cloud-verified 2026-10-02).** From a
+fresh session, origin `tw` (SNAT source 120.96.0.10), a benign request and the
+canonical SQLi fired from Kali through pfSense to the target: the platform
+scored TP 1, FP 0, FN 0, TN 1, the attack corroborated and credited to
+both engines (pfSense Suricata `FSL SQLi attempt - URI` + ModSecurity CRS).
+`objectives` read 0: the probe was detected but did not take anything, and the
+objective check reads the target, not the detector. `game.balance` appeared
+on close.
+
+Re-verified 2026-10-02: Left 1, 2, 3/4 and 6 each held up under an independent
+read-only check against the live cloud and the committed code. Left 5 was
+proven from a bare slot+image rebuild (below), which exposed and fixed the
+WAN-pass-rule bug.
+
+**Findings to carry:**
+- **Syslog loss happens on pfSense's send side under bursts; paced traffic
+  loses nothing** (measured). Fire the SQLi 30x at 0.5-1s spacing: pfSense
+  detects 30, Elasticsearch indexes 30 - 0 loss, both engines. Fire 50
+  concurrently: pfSense detects 50, ES indexes 44 then 13 on a repeat (12-74%,
+  variable). A dual tcpdump showed the dropped datagrams never reach the
+  platform NIC and NIC-arrivals == ES-indexed, so the loss is at pfSense's
+  FreeBSD syslogd under a burst, not the virtual network and not the receive
+  buffer (raising `rmem_max` 80x to 16 MB changed nothing). Re-ingest recovers
+  a late datagram but not a dropped one. Impact: the console fires cases one at
+  a time (paced) -> 0 loss; a bursty tool (sqlmap, 94 requests) loses a
+  fraction of its many alerts but the case still scores TP (>=1 survivor across
+  two engines). Only per-alert fidelity of bursty tools degrades. Session 3's
+  FN earlier was this (one firing, one dropped alert). pfSense offers no
+  non-UDP remote-syslog transport, so this is accepted.
+- The config-push is idempotent and keyed on the WAN Suricata instance / the
+  VIP descr `fsl origin <id>` / the WAN pass rule descr / the `fsl_home` and
+  `fsl_anywhere` pass lists, so a second `configure` changes nothing.
+
+**Left 5/6 reproduced from a clean boot (2026-10-02), and it exposed a real
+bug.** The whole slot was torn down, the Kali image rebuilt (its `setup.sh`
+ships `/usr/local/sbin/set-origin`), and the slot re-booted and re-configured
+through the API alone (`DELETE /slot/`, `DELETE`+`POST /images/` until clean,
+`POST /slot/`, `POST /configure/`). The fresh Kali came up with 100 eth0
+addresses from the slot `bootcmd` and `set-origin` from the image, with no
+hand steps, and `POST /api/attacker/origin/` SNATs it per country. A fresh
+scored session then read TP 1, FP 0, FN 0, TN 1, the SQLi corroborated
+across both engines (ModSecurity 16 + Suricata 4 detections), src 120.96.0.10
+geolocated TW.
+- **The bug the rebuild found:** on a fresh pfSense, `configure.php` added the
+  WAN pass rule and reloaded pf, but the Suricata package sync that runs
+  afterwards reloaded the filter and dropped it, so the edge denied all range
+  traffic (Kali could not reach the WAF; every case was an FN). The earlier
+  slot only worked because a hand-run playback had loaded a pass rule. Fixed:
+  `configure.php` runs a final `filter_configure_sync()` after the sensor is up
+  and prints `wanrule <count>`; `configure_edge()` refuses unless the rule is
+  in pf (`pfsense.wan_rule_loaded`). Re-verified from the bare rebuild above.
+- Still proven from `config.xml`, not an actual reboot: that the 30 WAN
+  addresses + VIPs survive a pfSense reboot (a reboot was not performed).
+
+## Measured mechanics a change can break
+
+- **The marker is only on Suricata `http` documents**, never on `alert` ones
+  (0 of 3,969 alerts carried `http.request_headers`). Filtering ingest to
+  `event_type: alert` destroys correlation.
+- **The marker join is keyed on `(flow_id, tx_id)`**, and Suricata writes
+  `tx_id` only for rules that inspect an app-layer buffer. `detect:
+  guess-applayer-tx: yes` fills it when only one transaction is live; without
+  it a rule like `content:"UNION"` with no `http.uri` credits no case. An alert
+  stored before its http event gets its marker on a later tick.
+- **The sensor reloads over its unix command socket**: `suricatasc -c
+  reload-rules` through the runner, not `kill -USR2 1`, which needed Suricata
+  to be PID 1. `apply()` accepts only `"return":"OK"` (the 8.0 client exits 0
+  on NOK) and rolls back otherwise. The socket needs `unix-command: enabled:
+  yes` at startup; a sensor started without it answers "Unable to connect
+  socket" and rolls back every change until restarted. OK means the reload ran,
+  not that it worked, so `suricata -T` first still catches a bad rule. On
+  OpenStack set `CR_SENSOR_RELOAD="suricatasc -c reload-rules
+  /run/suricata/suricata-command.socket"`, with `sudo -n` in front if needed.
+- **Rules are written, validated and reloaded as commands through `runner`**
+  with stdin, so the port has no rule verbs. Validation reads `/dev/stdin`,
+  never a shared file. Rule changes take one process lock: enough for
+  waitress's single process, not for two.
+- **A rules apply cannot overwrite a newer file.** `GET /api/rules/` returns a
+  `version`; an apply whose `base` is not the live version, `null` included,
+  is a 409. One with no `base` is unchecked, so the console always sends it.
+- **`$HTTP_PORTS` is `[80,8000]`**, the ports on the WAF's wire. Docker
+  translates `8080` before the sensor sees it (same rule A/B: `8080` 0 alerts,
+  `[80,8000]` 2, `any` 4).
+- **A rule experiment writes to the shipped rules file**, the live artifact,
+  so it uses sids at or above 9009000 and `test_sensor_rules.py` refuses those.
+  Before each half of an A/B, check the loaded config inside the container: a
+  12-second wait that missed the sensor's start nearly buried the one above.
+- **Filebeat identifies files by fingerprint**: inodes are renumbered when the
+  Docker host restarts, and inode identity re-shipped both logs. 8.15
+  does not migrate the registry, so changing identity again re-ships once.
+  Ingest drops an alert whose event time is outside the window, as `stale`.
+- **The ingest pipeline is registered at bring-up** (`entrypoint.sh:28` runs
+  `register_pipeline.py`) and geolocates `src_ip` and ModSecurity's
+  `transaction.client_ip`. Two ways carry it to a doc: filebeat's
+  `output.pipeline: geoip` per request (the Docker path), and the
+  `logs-sensors` index template's `index.default_pipeline`, which filebeat writes
+  in only when it first creates the template; a long-running ES whose template
+  predates the setting keeps a template without it, so set
+  `index.default_pipeline` on the live data stream's write index there (the
+  cloud needed this; a fresh VM does not). Do not add
+  `setup.template.overwrite: true` to force it: filebeat 8.15 then fails every
+  write with "no matching index template found for data stream [logs-<slot>-sensors]".
+  Acceptance fails if the live pipeline or the sensor's `local.rules` differ
+  from the committed ones.
+- **The WAF's health check asks `/healthz`**, which the WAF answers itself;
+  sent through to the target it alerted every ten seconds and used up a
+  session's 5,000-document read in about 14 hours.
+- **Bring-up of the platform VM's control plane is `docker compose pull && docker compose up -d`** (`build:` is for local development). The platform's
+  entrypoint drops root with `gosu` and registers the `geoip` ingest pipeline
+  itself, so a fresh host needs no build argument and no manual PUT. No
+  control-plane service holds the Docker socket (since 2026-11-15).
+- **The store is the named volume `cr_platformdata`**, not `./data` of
+  whichever checkout ran `compose up`; `./data/label` is still a bind mount.
+  `bin/backup` copies the store live with `VACUUM INTO` and keeps the newest
+  `--keep` copies (default 1; `cloud.yaml` `backups: {keep: 1}`);
+  `bin/platform-rebuild` restored a 6 GB store on a new VM twice on 2026-10-15
+  (`docs/OPENSTACK.md` §5.3).
+- **Closed sessions are deleted after `CR_RETAIN_CLOSED_MINUTES`** (default
+  60; `cr/settings.py`, `compose.yaml`): `platform/api/retention.py` runs at
+  start and after every close, 2,000 rows per transaction; open sessions are
+  never touched. SQLite transactions begin `IMMEDIATE`.
+- **Published ports.** By default 8000 (platform), 9200
+  (Elasticsearch) and 5140/udp (syslog) are on `127.0.0.1`. On the platform VM
+  cloud-init sets `CR_PUBLISH` to the VM's address, so 8000 opens to
+  `network.allowed` behind a sign-in, and `CR_SYSLOG_PUBLISH` to
+  `0.0.0.0` for 5140/udp (`platform.yaml:212`); 9200 stays on loopback. Django
+  answers to the floating IP. Before, each segment's gateway
+  forwarded 8000, 9200, 7681 and 8080 into the platform from inside the range
+  (8 of 8 reached). Django runs with DEBUG off. Another
+  machine needs a tunnel, not a wider `ALLOWED_HOSTS`: it is
+  `localhost,127.0.0.1,[::1]` (`DJANGO_ALLOWED_HOSTS` overrides) because at `*`
+  DNS rebinding passed the same-origin check, which trusts the request's Host.
+- **nginx inside the platform's image owns 8000.** waitress listens on
+  `127.0.0.1:8001` and takes the client from `X-Forwarded-For`, which nginx
+  sets to `$remote_addr` and waitress trusts only from `127.0.0.1`; anything
+  that reads `REMOTE_ADDR` sees the real client. `/vm-terminal/kali/` and
+  `/vm-terminal/waf/` go to ttyd
+  only after `auth_request /signed-in` (Django's `/auth-check/`) answers 204;
+  a 401 becomes a redirect to `/login/`, a 403 (a learner naming another's
+  session, a range address) passes through.
+- **The platform refuses any address standing in the range** (403;
+  participants cached 30 s). The operator arrives from a segment's gateway
+  (`5.188.10.1`), the attacker box as a node (`5.188.10.2`). The rule reads
+  `segments()`, which needs no sensor. If that raises `RangeUnavailable` it
+  fails open for the 30 s the empty answer is cached; any other error is a 500.
+- **Same-site writes are refused too**: `:8080` and `:8000` are one site.
+  `:8080` served the target until 2026-10-02 and the pfSense proxy until 2026-10-08;
+  a page there must not be able to write to the API. A write with a body must
+  be `application/json`.
+- **`bin/verify`** restarts the platform first (waitress never reloads), opens
+  and closes one session to prove a session stack comes up (else TP 0 reads as
+  a failed defence) and that its sensors read the rule file, runs the unit
+  suite beside the acceptance suite at the lowest CPU priority, refuses a
+  stack another checkout brought up, and prunes
+  only the sessions its run listed in `CR_ACCEPTANCE_SESSIONS`. `--changed
+  [BASE]` (`bin/select-tests`) runs only the unit tests the change reaches and
+  the ratchet, `--live` adds the acceptance modules it reaches, `--fast` runs
+  every unit test; docs-only changes select nothing.
+- **The ratchet.** `bin/measure` counts `git ls-files -z`, so verify fails on
+  an untracked file. It refuses a compose override, follows a block-style
+  `include:` of plain paths (each wargame's file), counts only
+  tests pytest collects and refuses duplicate names. It counts physical lines,
+  so joining a wrapped line "shrinks" core: never do that. `core_loc`,
+  `dependencies` and `services` may only fall; `tests`, `product_loc` and
+  `wargame_services` are reported, not gated (2026-10-16).
+
+## The substrate seam
+
+Docker was the first substrate and was removed on 2026-10-21; OpenStack is the only one.
+`platform/range/` is the port: `describe() -> Shape`, `segments()` (who stands
+where, without the sensor), `runner(role, segment)` and `launcher(segment)`.
+`range.substrate()` is the one place a name becomes an adapter
+(`CR_SUBSTRATE`, options keyed by substrate; a test refuses a second
+`import_string`), and `redteam/run.py` uses it too. Core, `topology.py` and
+`attacker.py` never call Docker. `test/range.py` is the acceptance suite's side
+of the port.
+
+`platform/range/declaration.yaml` declares per segment an id, a name and an
+attack origin, a role table, and `watches: {sensor: edge, estate-sensor:
+wargames}`; the OpenStack
+adapter, `cr/settings.py` and `test/range.py` read it. Identity is declared,
+allocation reported: a declared subnet that disagreed with the real one would
+bin alerts by a subnet nothing lives on. A segment is bound by its
+`cr.segment.id` mark (a Neutron tag), never by name: Heat stack suffixes,
+non-unique Neutron names and a project called `fsl_lab` broke name rules.
+
+`platform/range/openstack.py` is unit-tested against fakes built from the
+published API reference's responses and a local unprivileged sshd; Keystone
+is simplified (domain `default`, project by id). It is loaded only by name, and
+a test holds every field it reads to the reference. It reads endpoints off the
+Keystone v3 token's catalogue (`public`, `RegionOne` by default), retries a
+401 once with a fresh token (proactive renewal before `expires_at` was removed
+on 2026-10-02), sends the Nova
+microversion, follows `next` links (at most 50 pages), asks Neutron only for
+tagged networks, and keeps fixed IPv4 addresses.
+
+**Deployed on the KVM cloud (2026-09-30).** This is the old cloud, in other use
+since 2026-10-20 (see "Where things stand"); the product runs on a new cloud
+now and this paragraph records what happened on the old one.
+`master@192.168.0.100` (ssh key
+`fsl_claude`, passwordless sudo); its API endpoints are on `192.168.0.110`.
+It runs kolla-ansible 2026.1 (Gazpacho, the 22.x series; the host has
+22.2.1.dev9), Ubuntu images, ML2/Open vSwitch, inventory `/root/all-in-one`.
+Tap-as-a-Service is on (2026-09-30, the user's go-ahead):
+`enable_neutron_taas: "yes"` in `globals.yml` (the previous file is
+`globals.yml.before-taas`), then `kolla-ansible reconfigure -i
+/root/all-in-one -t neutron`. kolla-ansible 2026.1 has a bug here: it lists
+`taas` in `service_plugins` for all three Neutron API services but writes
+`neutron_taas.conf` only for `neutron-server`, so `neutron_rpc_server` and
+`neutron_periodic_worker` exited ("No providers specified for 'TAAS'") and
+every agent read as dead until fixed. The fix is kolla's own per-service
+override: `/etc/kolla/config/neutron/neutron-rpc-server.conf` and
+`neutron-periodic-worker.conf`, each a copy of `neutron_taas.conf`, then
+reconfigure again. A later reconfigure keeps them. Checked as `fsl-range`: a
+member creates a tap service and a `BOTH` tap flow on the target's port; the
+flow goes ACTIVE, the service stays DOWN until its port is on a VM, and
+`br-tap` exists.
+The range lives in project `fsl-range` (id `64ffc2a247464ebdae21cfdae0f96d90`)
+as user `fsl-range` with the `member` role, not admin. Its password is only in
+`/root/fsl-range.password` on the host; `/root/fsl-range-openrc.sh` sources
+it. A stand-in, `bin/openstack-range`, was the first range here, removed
+on 2026-10-01 once the platform built its own (backlog 2, step 2); it made
+keypair `fsl-claude` (which the platform stack still boots with), `fsl-sg`
+(22/80/3000/icmp), six networks `fsl-<id>` tagged `fsl.segment.id=<id>` with
+compose's subnets, and one target VM (ubuntu-24.04, m1.small, config drive)
+on `fsl-estate`. Re-running `up` creates nothing. Through
+`FSL_SUBSTRATE=range.openstack.connect` from the Mac, `describe()` returned
+all six segments with their declared names and origins, the subnets, `.1`
+gateways and network ids Neutron lists, the target VM at its fixed address
+on `estate`, and no sensors (no gateway or sensor server stands);
+`segments()` returned the same. That stand-in is gone; since step 3 of
+backlog 2 the platform VM reaches the range's hosts over `mgmt` and
+`runner()` has run on each of them (`launcher()` has not run on a cloud).
+
+Left for OpenStack, as written on 2026-09-30. Since done: name resolution
+(the slot appends every host's names to `/etc/hosts`; Kali reaches `board.com`
+through the edge, step 5), where the sensor sits (Suricata runs as pfSense's
+package, step 4), and one attacker for every origin (one Kali Internet port
+holding the ~100 origin addresses, step 5). Not re-checked since:
+
+4. **Roles are found by Nova server name**, which is not unique; segments are
+   bound by tag for that reason, roles not yet. Settled: a slot's stack is
+   found by its `cr.slot=<n>` tag and its VMs by their `cr_slot` and `cr_node`
+   metadata (`range/openstack.py`), not by name. Credentials are settled:
+   `CR_SUBSTRATE=range.openstack.connect` and `CR_OPENSTACK_*`, each refused
+   by name when missing.
+5. **Does the operator still look like an outsider?** The reachability rule
+   works because Docker DNATs the published port to a gateway. A Neutron router
+   presenting the operator's own address is fine; one presenting a node's
+   locks the operator out and lets the red team in. Test this first on a cloud.
+6. **Floating IPs and router SNAT.** The adapter keeps the fixed address. A
+   router's SNAT makes Suricata see the router, not the attacker; the stamping
+   proxy has no Neutron equivalent yet.
+
+Settled since the sketch: the default origin, the sensor reload, whether a
+sensor is a participant, subnets per segment, binding, and who starts a tool.
+
+## Decided on 2026-09-30 (the user)
+
+- **Blocking works as in practice**: the blue team turns the WAF's blocking
+  mode and the IPS's drop rules on and off itself.
+- **An IPS outage is an infrastructure fault**, not part of the exercise; it
+  is neither planned for nor scored.
+- **Objectives do not centre on one target.** The board's user database (Django
+  `auth_user`: accounts and password hashes) is something the red team takes,
+  and the attacker proves it by submitting the stolen hashes; the platform
+  checks it against the target's own ground truth, never by its belief about
+  what an attack did (done 2026-10-04, see "The objective model").
+- **GeoIP is loaded once**, not refreshed: country ranges rarely move. It
+  lives in a bind mount of `config/ingest-geoip` with the managed downloader
+  off (done 2026-10-02; backlog 2, step 7). The downloader had failed at every
+  Elasticsearch start (it runs before `.geoip_databases` has an active primary,
+  then waits three days), one of its download addresses (`172.64.66.1`) does
+  not connect through the VPN, and turning it off on 2026-09-30 deleted the
+  downloaded databases.
+- **Evidence is selected by event time (done 2026-10-02)**: the `fsl-geoip`
+  pipeline sets `@timestamp` from Suricata's `timestamp` and ModSecurity's
+  `transaction.time_stamp`, as ECS defines it and Elastic's own pipelines do,
+  with every range VM's clock kept by chrony. It was Filebeat's read time, 5 s
+  late median and 17 s worst.
+- **The console shows Korean time** (UTC on hover), and an undefined
+  precision or recall shows `-`.
+- **ModSecurity severities stay** until the tutorial work tunes them to
+  practice.
+- **Origins**: 30 countries from a public ranking of Internet traffic (no API
+  token), each wherever GeoIP places it, Hong Kong and Taiwan included; about
+  100 addresses, more to bigger traffic, at least one each.
+- **A tool's source address is set when it sends**: the attacker VM rewrites
+  its outgoing packets to the chosen country's address, so every tool gets it
+  whether or not it has a source option.
+- **The terminal's moving WAF address** is a Docker artefact; on OpenStack
+  addresses are fixed.
+- **The platform VM lives inside OpenStack**: an Ubuntu 24.04 VM where
+  `docker compose up` brings the whole platform up, cloud-native in feel;
+  booting it should be all it takes (cloud-init runs the bring-up). It then
+  reaches the OpenStack API from inside, and browsers reach it by a floating
+  IP, which the loopback-only ports and missing login do not allow yet.
+- **No Korean or commercial WAF**, to stay clear of licensing: the WAF is
+  nginx + ModSecurity v3 + CRS (all Apache-2.0).
+- **pfSense goes in** as the edge firewall, and Suricata runs as its package,
+  managed in the pfSense GUI (placement spec, "pfSense"). Superseded in part on
+  2026-10-08: pfSense stays as the OpenStack edge and Suricata host, but the
+  firewall lesson and the pfSense GUI pane are out of scope.
+- **The blue team reads alerts in Kibana** (the real ELK with full access)
+  and the custom dashboard goes (done 2026-10-05). Kibana is in compose (a gated
+  `services` 7 -> 8 the user's call justifies), reading the same Elasticsearch
+  the platform ingests from, reached at `/kibana/` through the one port.
+- **The platform UI is a left sidebar with three panes shown inside the
+  page**: pfSense, Kibana, a terminal. No new-tab buttons. Kibana is framed
+  directly. pfSense sets `X-Frame-Options` and has no base-path setting, so its
+  pane is the real GUI framed over a reverse-proxy on the platform's own
+  `:8080` (a distinct origin, so pfSense's root-absolute URLs resolve); nginx
+  strips the framing header, spoofs `Host` past the anti-DNS-rebind check, and
+  injects a server-primed admin session so the pane opens auto-logged-in. The
+  terminal pane is ttyd, as Kali's already is. Horizon is never shown to users.
+  Superseded on 2026-10-08: the pfSense pane and the `:8080` proxy are dropped
+  from scope and were removed the same day (`blue.html`, `nginx.conf`,
+  `entrypoint.sh`, `pf_prime.py`, the 8080 publish and security-group rule).
+- **One published port (2026-10-01)**: everything happens on the website, so
+  the platform's port 8000 is the user-facing one. The terminal and Kibana are
+  reached through it by path. 9200 stays published on loopback for the
+  acceptance suite, which is all that uses it (the user, 2026-10-01). The WAF's
+  8080 publish was removed on 2026-10-02: the command-line cases and the
+  acceptance suite reach the target from inside the range, through
+  `test/range.py`'s runner. Host port 8080 served the pfSense proxy
+  from 2026-10-05 until its removal on 2026-10-08, and 5140/udp takes the edge's syslog.
+- **Session start/stop and the scoreboard stay on the landing page `/`**,
+  outside the sidebar; the sidebar is only the work screen.
+- **Tap-as-a-Service is dropped from the design**: it was there for a sensor
+  the blue team could not tamper with, which is no longer assumed. It stays
+  enabled on the cloud, off every path.
+
+## Left to engineering (no decision needed)
+
+Done 2026-10-07: `bin/verify` refuses to run while a session is open. (The red
+console's label clearing went with the recording window on 2026-10-18; a lesson
+clears the label on a lesson switch and at close.)
+
+Remaining:
+- `no_marker` per engine, without warning on raw-TCP-only sessions. Needs an
+  engine field on `DetectionRecord` and app-layer presence carried through the
+  ingest seam, which raises gated `core_loc` and needs live-stack
+  verification.
+- A tool killed on the attacker when its timeout passes (touches the attacker
+  seam).
+- `logs-*` expire after 30 days, with a disk warning (an ES ILM policy;
+  verify against the live stack).
+- The ratchet counts statements with the baseline from `HEAD`, and
+  `scoreboard.py` moves into core. This redefines the gate and raises
+  `core_loc`, so it is a decision, not pure engineering.
+
+Dropped: the rule editor's over-indent guard. The 2026-10-05 console rebuild
+removed the rule editor, and the 2026-10-08 ruling drops the pfSense GUI pane
+too; a learner now edits Suricata rules in the IDS rules pane and tunes CRS
+through the scenarios' exclusions, level and thresholds (backlog 0).
+
+## Decisions left for a person
+
+- **The tutorial**: designed and approved on 2026-10-08 as the learning MVP
+  (backlog 0); built since as the scenario course (foundations F1-F6 and
+  scenarios 1.1-4.1, P0-P6 of the 2026-10-13 course design).
+- **Two licences behind the origins and the map.** MaxMind's GeoLite EULA
+  asks for old databases to be deleted within 30 days of a new release and
+  for the line "This product includes GeoLite Data created by MaxMind", which
+  sits against "GeoIP is loaded once" (step 7 of backlog 2). For the MVP the
+  user took the lightest path (2026-10-02): the `.mmdb` is not committed,
+  `bin/fetch-geoip` pulls it and `config/ingest-geoip/README.md` carries the
+  attribution. Whether to carry the database and that obligation into the
+  production repo, and the 30-day refresh, is the part still left for a
+  person. Cloudflare Radar's shares are CC BY-NC 4.0, fine here, to be looked
+  at before they move to the production repo.
+- The reasoning behind the placement and the WAF console is in
+  `docs/superpowers/specs/2026-09-30-openstack-range-placement.md` and
+  `docs/superpowers/specs/2026-09-30-waf-console-and-tutorial.md`.
+
+## What exists now
+
+The shape of the product; detail is in `git log` and `docs/ARCHITECTURE.md`.
+
+- **Range**: per slot, five LANs (`internet` with thirty declared origin
+  countries, `dmz`, `web-outer`, `web-inner` and the slot's `mgmt`) and four
+  VMs (kali, waf, infra, target; `wargames/<id>/topology.yaml`). Kali knows
+  the targets by name only through the router's public address,
+  `http://board.com` and `http://corp.com`; the infra VM's edge forwards tcp
+  80 to the WAF's `dmz` address and lets in from `wan` only replies and that
+  forward, and the target sits only on `web-inner` behind the WAF and the
+  inline IDS bridge, so Kali reaches the targets only through the WAF
+  (`docs/ARCHITECTURE.md`).
+- **Red team**: one Kali image, driven from the red console's terminal in a wargame or the
+  blue console's Kali pane in a lesson or scenario; the
+  cases stay for the API, the harness and the scenario engine's attacker; each
+  case carries a Mandiant stage, ATT&CK/CAPEC ids, and what it takes.
+- **Two targets.** A Django board on MySQL behind the WAF as `board.com`
+  (Django 3.2.4, the `?sort=` order_by SQLi): `loot_verified`, the attacker
+  submits exfiltrated `auth_user` hashes and the platform checks them against
+  the snapshotted ground truth. A WordPress site behind the WAF as `corp.com`
+  (three pinned-version CVEs, see "Sub-project B"): `effect_observed`, scored
+  from `corp-db`'s own MySQL binary log. Each wargame is one folder,
+  `wargames/<id>/`; the top `compose.yaml` does not include them but mounts
+  `./wargames` read-only into the platform, and the target role's bake
+  (`deploy/roles/target/render.py`) renders each wargame's `compose.yaml` for
+  the target VM, the front published on the slot's address and the database on
+  an internal network. `board` holds the board and its MySQL, `corp` the
+  WordPress site and its MySQL; a slot runs one of them. `test_compose.py` holds the folders and the console's
+  catalogue to each other.
+- **Score**: objectives (exfiltrated data or observed effect, checked against
+  the target's own records) beside detection TP/FP/FN/TN with the
+  `corroborated` gate; `platform/game.py` also computes a zero-sum balance,
+  withheld until close (backlog 1, partly superseded).
+- **Console**: the landing page `/` (sessions), a red console (objectives,
+  loot submission, Kali terminal, Website pane) and a blue console that is a sidebar framing Kibana, a WAF
+  terminal, a Website pane (site browser with developer tools), the Map
+  pane (the slot's live wiring, drawn by the console) and, below a divider in lessons and scenarios, the Kali
+  pane; the Alerts and IDS rules panes show where a scenario or F4 uses them;
+  the course's coach steps through each foundation and stepped scenario, with
+  a hint ladder whose last rung is Skip (it did the step for the learner until
+  2026-10-17); light theme, every value escaped. The request-path view on the
+  map was removed on 2026-10-16. The blue dashboard, Live view,
+  scoreboard tab, rule editor and world map were removed on 2026-10-05, and the
+  pfSense GUI pane on 2026-10-08.
+- **Course**: `wargames/board/scenario.yaml` declares foundations F1-F6 in
+  two courses, c1, log analysis basics (F1-F3), and c2,
+  attack detection practice (F4-F6), each with a briefing and a reference
+  column (47 steps; `platform/lesson.py` judges each
+  step from range and request facts, with a ladder nudge, a hint and Skip) and
+  eleven scenarios 1.1-4.1 (`platform/scenarios.py`, `api/scenario_run.py`: a
+  scheduled automated attacker over customer traffic from `api/customers.py`
+  and `traffic.py`, judged at a final check).
+- **Stack**: every service `linux/amd64`. On the platform VM,
+  `cr-platform.service` runs `docker compose pull` and `up -d` for the
+  control plane (the platform entrypoint registers the ingest pipeline). The product is OpenStack-only since 2026-10-20; the
+  docker substrate (`platform/range/docker.py`, `session.yaml`) was removed on
+  2026-10-21.
+- **Platform VM**: `deploy/openstack/platform.yaml` boots the whole stack on
+  the OpenStack cloud as one Heat stack (backlog 2, step 1).
+- **The range on OpenStack** (on `range-heat-int`, not yet live): the
+  platform builds the shared `cr-mgmt` network, its security groups and the
+  keypair through `/api/range/fabric/`, and each slot as one Heat stack
+  `cr-slot-<n>` through `/slot/` (`range/openstack.py` renders the template
+  from `range/sandbox.py`'s plan), booted from the role images
+  `cr-<role>-bake1` baked from `deploy/roles/`; `/configure/` seeds the
+  sensor's baseline rules. The platform reaches each slot VM over ssh on its
+  `cr-mgmt` control port as one sudo user. The pool is `compute.pool`
+  (`{board: 3, corp: 1}` by default); a close deletes the used stack and
+  creates a fresh one (`range/pool.py`). The live cloud still runs the range
+  host `cr-range` (eight slots as compose projects since 2026-11-15) until the
+  branch's first `bin/cloud up --replace`, which deletes it. Before:
+  2026-11-13 to the branch, one range host; until 2026-11-13, four VMs per slot
+  (the OPNsense edge, the WAF, Kali and `cr-wargame-host`) from golden images.
+- **Monitoring per slot**: one Suricata sensor per slot on the infra VM, inline
+  on the Linux bridge `br0` between `web-outer` and `web-inner` (the two legs'
+  port security off), so it sees every request between the WAF and the target.
+  The WAF ships ModSecurity's audit log and nginx's own refusals over the
+  slot's 관제망 `mgmt` to the infra's log server, which forwards them and
+  Suricata's EVE to the platform collector over `cr-mgmt`. An IDS alert is
+  credited to the X-Forwarded-For address of its transaction. The live map
+  draws the slot's Neutron networks and ports and the target's internal Docker
+  network (`range/wiring.py`).
+
+## Backlog
+
+The range is a web-entry range for now: attacks that come in through the
+application, such as taking data out of a database. A foothold, privilege
+escalation and persistence are a later goal, not this list's (decided
+2026-09-28; `docs/THREAT-MODEL.md` already says so).
+
+The deployment target (the user, 2026-09-30): the platform is an Ubuntu 24.04
+VM inside the OpenStack cloud, brought up by `docker compose up`, and it
+creates the range's VMs through the OpenStack API. Every product decision
+behind the build is in "Decided on 2026-09-30" above and in
+`docs/superpowers/specs/2026-09-30-openstack-range-placement.md`. More targets
+(a WordPress site, a Java system) plug in where the board did.
+
+### 0. The composable, session-isolated learning MVP (current, approved 2026-10-08)
+
+Spec: `docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md`;
+rulings in `docs/DECISIONS.md` (2026-10-08); build state in `docs/state/now.md`.
+One session with two settings: guidance on/off, and baseline rules minimal or
+full CRS. First lesson: tune CRS so the WAF blocks the board's `?sort=` SQLi
+(CVE-2021-35042) while the benign O'Brien search passes, with Suricata sharing
+the WAF's network namespace and detecting; completion is read from the target's own
+records. Scope is WAF + IPS; the firewall lesson and the pfSense pane are out.
+Build order, compose first and OpenStack later: (1) split compose into a shared
+control plane and a per-session data plane (`docker compose -p fsl-<session>`);
+(2) build each target image once, tagged, referenced by `image:`; (3) discover
+scenarios from `wargames/<id>/scenario.yaml`, done in `81fb283`
+(`board-easy`/`board-hard` are replaced by the units and scenarios of one
+`wargames/board/scenario.yaml`, D11 of 2026-10-13);
+(4) declaration roles name compose services, resolved per project; (5)
+`loot`/`effect` read the session's own target address; (6) a per-session index
+`logs-<session>-*`; (7) the lesson (WAF `SecRuleEngine On` with CRS,
+Suricata per session); (8) acceptance: two concurrent sessions, each scoring
+only its own target and alerts. Status 2026-10-10: steps 1-8 built and
+live-verified (`bin/verify` all green on the acceptance VM 192.168.0.220,
+`docs/DECISIONS.md` 2026-10-10). The board's `scenario.yaml` carries the
+course, foundations F1-F6 and scenarios 1.1-4.1
+(`docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`),
+which is what `board-easy`/`board-hard` were for (D11 of the superseded
+2026-10-13 course design).
+
+To do, found by the 2026-10-08 doc review (open until checked off):
+
+- [x] `bin/platform-rebuild` `resume` checked the hand-over only when the API
+      did not answer, so a VM whose platform answered but never got the
+      password skipped the redone hand-over. It now asks the VM every time.
+      Run live 2026-10-20: plain `up` with the password line
+      removed redid the hand-over in 89 s.
+- [x] `bin/cloud down` refused a store file beside a stopped `fsl-platform`
+      container. It now starts the container, backs up, waits for the API,
+      then removes the range. Run live 2026-10-20: 40 s.
+- [x] After `down` then `up`, the `fsl-wargame-host` image was rebuilt each
+      time, because the platform's fixed IP was in the bundle digest.
+      Run live 2026-10-20: the second `down` then `up` built nothing. The same
+      run showed that a checkout's umask changed the digest, fixed the same day
+      (the digest takes only the executable bit of each file's mode).
+- [x] Remove the docker substrate (decided 2026-10-20; plan
+      `docs/superpowers/specs/2026-10-20-remove-docker-substrate-plan.md`,
+      D1-D4 decided yes): the product is OpenStack-only, Docker stays as the
+      platform VM's way to run its own services. Done 2026-10-21 (the removal commit, the
+      documents, the README laptop note and two follow-up test fixes). Proven
+      live on the new cloud: `bin/cloud up --replace
+      --sideload` passed in 19 min 44 s, and the full `bin/verify` on the code
+      with the docker substrate removed passed but for the single-slot failures (`docs/DECISIONS.md` 2026-10-21,
+      "The docker substrate is removed"). Still open from it:
+      none; the one-slot run that outlived
+      `FSL_RETAIN_CLOSED_MINUTES` is fixed (next item).
+- [x] A one-slot acceptance run takes about 2 h 50 min on the new cloud, longer
+      than `FSL_RETAIN_CLOSED_MINUTES` (60), so retention deleted the shared
+      red-team session before `test_strategy_honesty` asked for its score.
+      Fixed in the harness, not the window: `full_run`
+      (`test/shared_sessions.py`) records the session's cases, detections and
+      its score under both correlation strategies as soon as the run is
+      scored, the tests read that record, and no fixture hands out the bare
+      session id (a unit test in `platform/tests/test_acceptance_split.py`
+      holds it). Not shown live: with two slots (2026-10-21) the run took 64 min
+      and passed, 36 min (2186 s) after the reset speed-ups of 2026-10-24, and
+      33 min (2003 s across 4 processes) on 2026-10-26; a one-worker run now
+      takes about 40 min, inside the 60-min window, so a live run cannot show
+      the fix and the unit test holds it. With one slot `test_concurrent_sessions`
+      and `test_lesson` also fail with 409 "1 session is already open".
+- [x] Newcomer bring-up on OpenStack (2026-10-20): LF line endings pinned (`.gitattributes`); the first
+      `bin/cloud up` makes the range key; the `openstack` CLI is found
+      beside the interpreter; a platform VM that never ran `fsl-platform`
+      can be taken down or replaced; README and `docs/OPENSTACK.md` rewritten
+      as requirements, nine numbered steps with a check and a recovery each,
+      what Kolla-Ansible 2026.1 must provide, and a one-VM trial (§9) on
+      VirtualBox or VMware; two read-only walk-throughs of the docs fixed.
+      A VM that holds no store gets the newest backup holding rows (replace,
+      resume, `up` after `down`); a backup of an empty store removes no older
+      one; a standing stack whose address cannot be read is refused; a
+      hand-over check that ssh cannot answer refuses instead of redoing it.
+      The §9 trial ran end to end on 2026-10-20 (`docs/DECISIONS.md` 2026-10-20,
+      "The one-VM trial and the last bring-up fixes"): seven defects in the
+      document fixed, deploy 11 min 39 s, README step 7 17 min 41 s; the
+      VirtualBox and VMware settings were not exercised (the trial ran on the
+      KVM test cloud). Run live on 2026-10-20 (`docs/DECISIONS.md`
+      2026-10-20, "Live checks of the bring-up paths"): `down` and
+      `up --replace` on a standing platform (`STORE_PROBE` over ssh), plain
+      `up`'s resume with a stopped container and the redone hand-over, and the
+      restore of the newest backup (`down`, then `up`). The live runs found
+      three bugs, fixed and run live again: orphan
+      `fsl-platform.mgmt` ports made `down` fail with 409 SubnetInUse, a
+      stopped container made the redone hand-over fail, and the redone
+      hand-over dropped `FSL_SIDELOADED`. The first range key was made live
+      the same day (15 min 53 s from no stack).
+
+- [x] Build steps 1, 2, 4-8 and run the live acceptance before the push
+      (agreed 2026-10-08). Steps 1 and 2 done 2026-10-09; steps 4-8 built
+      2026-10-10 and the full `bin/verify` passed on the dedicated acceptance
+      VM 192.168.0.220 (substrate docker, 146 acceptance tests, 0 failed;
+      `docs/DECISIONS.md` 2026-10-10). Done 2026-10-10.
+- [x] Per-session Suricata ruleset: nothing mounts `deploy/suricata/rules`
+      any more; each session's sensor is seeded at open with its own rule
+      file (step 7). Done 2026-10-10.
+- [x] The reachability middleware covers only the newest session's `estate`:
+      fixed in ac18e68 (`api/reachability.py` walks every slot; test in
+      `test_api_slots.py`). Found done on 2026-10-21.
+- [x] Two `POST /api/sessions/` within milliseconds can race: fixed in
+      ac18e68 (`SLOT_CHOICE` lock in `api/views.py`, and the
+      `one_open_session_per_slot` constraint answers 409). Found done on
+      2026-10-21.
+- [x] Test audit (2026-10-10): 223 of 1,379 tests are duplicates (about 105),
+      implementation pins such as Dockerfile/YAML greps and argv shapes
+      (about 42), framework or constant restatements (about 39), guards for
+      removed features (about 7), or live tests whose property a unit test
+      already pins (31). 163 unit tests (about 1,650 lines) and 60 acceptance
+      tests (live run about 49 -> 25-30 min, with module-scoped sessions for
+      topology/map/front-door). The invariant tests (isolation, seams, ratchet,
+      benign cases, TP/TN) stay. Done 2026-10-16 (`docs/DECISIONS.md` "Test
+      audit"): test functions 2,061 -> 1,051, and the test count is reported,
+      not gated.
+- [x] Push to `dev` (e5c92c7), the `images` workflow green, the six GHCR
+      packages public; done 2026-10-11.
+- [x] First run on the cloud of everything built 2026-10-11: base image
+      checked, `cloud.yaml`, `bin/cloud up|down` from a cleaned project, the
+      OPNsense 26.7 image builder, Kali on Ubuntu, the edge's Suricata, the
+      automatic reset after a close; obsolete VMs, images and the
+      `fsl-acceptance` VM deleted with the user's yes. Results and the fixes
+      it forced: `docs/OPENSTACK.md` §3.6, §5.2, §7; done 2026-10-11.
+- [x] The live-run fixes since e5c92c7 reached `dev` (2026-10-11).
+- [x] WAF tuning on OpenStack: `rules/crs.py` hard-coded the Docker image's
+      CRS path and nginx pid. The WAF layout is named per host since 504ad9b
+      ("WAF tuning and the WAF lesson work on the OpenStack WAF VM"; 72
+      acceptance passed 2026-10-12).
+- [x] Package 2 of the course design built 2026-10-13 (unit and console
+      tests only): lessons `console-tour`, `read-the-block`,
+      `choose-the-level`, `ids-signature`, `ids-body-xss` and `assessment`
+      beside `waf-exclusion` in `wargames/board/scenario.yaml`; benign cases
+      `board-normal-search-korean` and `board-normal-comment`; the Suricata
+      rule editor and the paranoia level control in the lesson note;
+      `docs/DECISIONS.md` 2026-10-13 "Package 2, built".
+- [x] Package 2 live run: dropped, P6 removed those lessons (2026-10-14).
+      Was unmeasured: the Kibana queries of the new click steps
+      (`url : *1=1*`, `url : *sort=posts_post.id*`), the Suricata marker
+      link (`http.request_headers.value`), the answer rules 9000101 and
+      9000102 against the sensors' Suricata (pcre and buffers as written,
+      never loaded), sqlmap's alerts reaching Elasticsearch within
+      `FSL_LESSON_ALERT_WAIT` (30 s), the Korean search at PL2 through the
+      site browser, and whether the edge's `suricata -T` now shows an error
+      line (its OPNsense template logs to syslog only).
+- [x] Scenario course P0-P4 (2026-10-13): the GNS3 topology and its pane,
+      foundations F1-F6, customer traffic, the scenario engine and console;
+      P4 run live with 1.1 and 2.1 (sessions 307-313).
+      `docs/superpowers/specs/2026-10-13-scenario-course-and-topology-design.md`.
+- [x] Scenario course P5 (2026-10-13/14): scenarios 1.2, 1.3, 2.2, 2.3,
+      3.1-3.4 and 4.1 on the board; every scenario failed a final check with
+      a wrong defence and passed one with a right defence, live on OpenStack
+      (sessions 307-332; table in `docs/DECISIONS.md`, "P5 built").
+- [x] UDP syslog drops that left some sqlmap alerts without a marker: a
+      32 MiB receive buffer (`net.core.rmem_max` in the platform VM's
+      cloud-init, Filebeat `read_buffer`); 0 receive-buffer errors live over
+      every P5 run. The cloud-init path (the syslog sysctl) has run on every
+      rebuilt VM since 2026-10-15.
+- [x] Scenario course P6 (2026-10-14): lessons 0-5 and 7, the rungs and
+      `Session.mode` removed; docs; a live run (`docs/DECISIONS.md`, "P6
+      built").
+- [x] The learner map as the company network the learner defends (2026-10-15):
+      role names, one map per wargame, every display node started, the
+      addressing table removed (`docs/DECISIONS.md`, 2026-10-15).
+- [x] Rename the infrastructure's `fsl-` names (deferred by the user,
+      2026-10-15): hosts, containers, VMs and networks (`fsl-kali`,
+      `fsl-waf`, `fsl-edge`, `fsl-wargame-host`, `fsl-platform`, `fsl_mgmt`,
+      ...). `fsl-` is not a real name; the learner map no
+      longer shows it (`topology.learner` maps the range's names to role
+      names), but the operator's system maps, the `log.syslog.hostname` of the WAF and
+      the wargame host, and the container and VM names still do.
+      Renamed in code 2026-11-13 to the prefix `cr` (`docs/DECISIONS.md`,
+      2026-11-13) and cut over live the same day by `docs/OPENSTACK.md`
+      §5.4; the cloud runs `cr-platform` and the `cr-*` slot VMs. The
+      keypair `fsl-claude` and the image `fsl-opnsense-<version>` keep
+      their names.
+- [x] A slot standing before a deploy kept the servers booted from the
+      previous images: the wargame host and the edge until someone ran
+      `POST /api/range/slot/rebuild/` and `/configure/`, the Kali and WAF
+      until the slot's next close. Fixed 2026-10-23: the slot plan names
+      servers whose Nova image is not the ready one (`stale`),
+      `/api/range/ready/` reads such a free slot `STALE`, and `POST
+      /api/range/slot/` (which `bin/cloud up` sends) rebuilds them when no
+      session holds the slot; a held slot answers blocked and its close
+      rebuilds them. Proven live: slot 1's wargame host had run a
+      2026-10-20 image through every rebuild since; the next `--replace`
+      rebuilt both wargame hosts onto the new image and Glance kept only
+      that one (`docs/DECISIONS.md` 2026-10-23).
+- [x] The rebuild of a stale slot raced its configure: Nova showed the
+      rebuilt wargame hosts ACTIVE for a few seconds before REBUILD, so
+      `bin/cloud up` configured the VMs from before the rebuild and both
+      slots stayed `CHECKING` until a configure by hand (2026-10-23). Fixed
+      2026-10-24: `POST /api/range/slot/` starts the slot's own reset after
+      the rebuild, which configures only once Nova has shown each rebuilt VM
+      leave ACTIVE and come back; `ready/` reads `RESETTING` meanwhile and
+      `bin/cloud up` waits through it (`docs/DECISIONS.md` 2026-10-24).
+      Proven live 2026-10-24: a `--replace` that built a new wargame host
+      image read both slots `STALE`, then `RESETTING` for about 6 min, then
+      `READY` with no configure by hand; `up` exited 0 in 36 min.
+- [ ] A two-arm WAF (option, 2026-10-15): the range wires the WAF one-arm,
+      on the service segment beside the sites, and the learner map draws it
+      so (`docs/DECISIONS.md`, 2026-10-15, uniform host symbols). Barracuda
+      calls its two-arm proxy the "Most secure deployment choice since
+      backend servers are completely isolated." Two-arm needs the sites on
+      a segment of their own behind the WAF: a range change on both
+      substrates, not scheduled.
+- [ ] Scenario 4.2 (a person as the red team) is not declared; the engine
+      accepts `red: person`. Needs a second person to run live.
+- [x] Foundations in one session, the red console as Kali and a browser, and
+      the foundations rebuilt as attack and defence lessons (2026-10-18; 26c1c80,
+      51b28dd, 3aa49a5; `docs/DECISIONS.md` "Foundations run back to back in
+      one session", "The red console is Kali and a browser", "Foundations
+      rebuilt as integrated attack and defence lessons"). Proven live on
+      OpenStack: F1-F6 in one session, 27 of 27 steps (26c1c80); the
+      terminal acceptance modules 10 passed (51b28dd).
+- [x] Foundations review loop, rounds 2-5 (2026-10-19, `docs/DECISIONS.md`
+      "Foundations review loop, rounds 2-5"): critical and high findings
+      summed over the reviewers fell from 7 and 12 to 0 and 1; every walker
+      run passed 48 of 48 steps; the round-5 fixes (9f1f39d..60243e6) are
+      deployed as e4a467e and carried by the VM's current code. Round 6 was
+      skipped at the user's request then and run live on 2026-10-25 (the
+      review rounds item below).
+- [x] Full `bin/verify` (unit and acceptance) on the old cloud's VM
+      (2026-10-20, the last code before the move): unit 1718 passed; acceptance 73 passed, 0 failed, 0
+      errors, 0 skipped; the VM made its own `.venv`.
+- [x] Full `bin/verify` (unit and acceptance) on the VM
+      (2026-10-20, after the fix that makes the bundle digest ignore a checkout's umask),
+      run twice: unit 1717 passed both times; acceptance 72
+      passed and 1 failed (`test_corp_authz` nonce) in 1257 s, then 73 passed, 0
+      failed, 0 errors, 0 skipped in 1155 s; ratchet ok. After the fix that takes the platform's fixed IP out of the bundle digest:
+      unit 1716, acceptance 73 passed in 1165 s. After the three bring-up fixes
+      (orphan `fsl-platform.mgmt` ports, a stopped container, `FSL_SIDELOADED`):
+      unit 1711, acceptance 73 passed in 1157 s. To rerun, with no open
+      session: `cd /opt/fsl && FSL_PLATFORM_URL=http://192.168.2.247:8000
+      setsid nohup bin/verify > ~/verify-full.log 2>&1 &`.
+- [x] Full `bin/verify` on the new cloud's VM (single slot; records in
+      `docs/DECISIONS.md`). At 3da925e (2026-10-20): unit 1718 passed;
+      acceptance 68 passed, 2 failed, 3 errors, 0 skipped in 10024 s. At
+      the code after the docker substrate removal (2026-10-21): unit 1575
+      passed; acceptance 65 passed, 2 failed, 6 errors, 0 skipped in 10241 s;
+      ratchet ok. Every failure comes from the single slot, none from the
+      removal.
+- [x] The `images.yml` run for 3da925e was green (gh run 39421089777,
+      2026-10-20T12:17Z), and the new cloud's bring-up ran on those GHCR
+      images. The run for ee5e641 was green too. Still to do: check the run for
+      the push of 2026-11-13 (`docs/state/now.md` Next 1).
+- [ ] Foundations rebuild, remaining work (2026-10-19; round-5 fixes
+      9f1f39d..60243e6 deployed as e4a467e, `docs/DECISIONS.md` "Foundations
+      review loop, rounds 2-5"):
+      - [x] Lesson auto-advance (2026-10-21): the console does move on
+            2 s after the last step of F1 and F2; the walker was wrong. It
+            read the session's lesson after the page had already moved and
+            then waited for that lesson to change (session 1070: F1's last
+            step passed 22:11:27Z, `lessons` shows f2 from 22:11:29Z). F3 to
+            F4 hid the race because a change of defense delays the save.
+            Fixed in `~/.cache/fsl-work/walker/walk.py` (compare against the
+            lesson just walked). The walker's fallback POST added a second
+            f2 entry to `lessons`; since the repeated-lesson-move fix `POST /lesson/` with the
+            current lesson changes nothing.
+      - [x] Re-walk F4-F6 after fixing the walker (2026-10-22). The
+            2026-10-21 walk (session 1070) missed 2 of 48 steps on walker
+            faults. The walker now goes back to the board home when the
+            Website pane holds an error page instead of the search box, and
+            reads the step card's command once it has rendered. Session
+            1137, F4-F6: 28 of 28 steps passed (F4 11, F5 9, F6 8).
+      - [x] The Kali and WAF terminals were wider than their pane (2026-10-23):
+            the console's fit (`terminalFit` in `blue.html`) sized the xterm
+            screen to the iframe's width but ignored the 5 px padding ttyd
+            keeps on each side of `.terminal`, so the last column sat 1 px past
+            the pane edge at 1440 px and a line that filled it lost its last
+            character under the notes column (F5 sqlmap's CRITICAL line, F6
+            `systemctl reload nginx`). It now subtracts the padding in both
+            directions and also runs on a `ResizeObserver` of `#pane-body`
+            besides the 500 ms poll. Checked on session 1139 through the live
+            platform with the patched page substituted in the browser (the
+            platform image itself is not redeployed): 1440x900 148 columns
+            ending 1 px past the iframe became 147 ending 6 px inside it, in
+            both terminals, and the columns followed the notes column folding
+            and the window going 1100 and 1700 px wide.
+            Proven on the platform image on 2026-10-23 (session 1189):
+            Kali and WAF 147 columns ending at 1034 px of a 1040 px pane at
+            1440 px, 104 columns ending at 733 of 740 at 1100 px.
+      - [x] Live review rounds under the convergence rule: six reviewers
+            (lesson design, UI, terms, AI-sounding Korean, realism and leaks,
+            first-time learner); a finding counts only if a learner would
+            notice it, taste items are listed separately; exit is a round with
+            zero countable findings. Counts of rounds 2-5 (critical/high/
+            medium/low, summed over reviewers): r2 live 7/12/45/76, r3
+            2/11/38/79, r4 0/2/30/70, r5 0/1/18/48 (UI reviewer missing).
+            Countable findings of rounds 6-12 (2026-10-25/26): r6 47, r7 6,
+            r8 5, r9 3, r10 1, r11 2, r12 2 (both wording, fixed), r13 4 (a refused
+            open explained off screen in operator English, Kibana's
+            search-session popover over the KQL bar, option names wrapping in
+            the dump hint, the F4 slipped pass line contradicting a yes
+            answer; all fixed). Round 14 (2026-11-13, idle range after the
+            reset) walked F1-F6 and F1+F2; six reviewers found no countable
+            finding except one low, an 11.8 s wrong-answer wait at F5 step 3
+            that did not reproduce on a rerun (1.6 s). The loop has converged.
+      - [x] Kibana's menu still lists Home and Stack Management (they answer
+            403 or redirect to Discover): no supported setting in 8.15 hides
+            them, so they stay (`docs/DECISIONS.md` "Kibana's Home and Stack
+            Management entries"). Kibana 8.15 also cannot switch off ad-hoc
+            data views.
+      - [ ] The live walker (headless Playwright, F1-F6, about 28 min) lives
+            outside the repo in `~/.cache/fsl-work/walker/walk.py`; decide
+            whether it becomes a repo tool (under `bin/` or `test/live/`) so
+            it no longer depends on a scratch folder.
+- [x] A range reset interrupted by a platform restart is resumed at boot: a
+      close writes `slot-N` under `FSL_RESET_OWED_DIR` (`/data/reset-owed`),
+      the end of a successful reset removes it, and at boot `fsl/wsgi.py` does
+      each owed slot's reset again as a close does (rebuild, disabled rules
+      re-enabled, in-place reset of the edge and the wargames, configure). A
+      failed one keeps its file and shows `RESET_FAILED`. Proven live on
+      2026-10-22: a platform restart 40 s into slot 1's reset; the slot read
+      `RESETTING` again, Nova rebuilt the WAF and Kali a second time, the slot
+      was READY 3.5 min later and a WordPress user planted before the close
+      was gone.
+- [x] At PL4, excluding 920273, 920272 and 942460 on `ARGS:q` under
+      `/search/` did not serve the Korean search: measured 2026-10-22. 920272
+      also matches `REQUEST_URI_RAW`, which an `ARGS:q` exclusion does not
+      cover. 920273 and 920272 on `ARGS:q` plus 920272 on `REQUEST_URI_RAW`
+      let the Korean search and O'Brien through (200) while the SQLi search
+      stays blocked (403); 942460 is not needed (`docs/DECISIONS.md`
+      2026-10-22, "PL4 and the Korean search").
+- [ ] Whether the assessment and its lesson text should name the
+      `REQUEST_URI_RAW` exclusion for the Korean search at PL4 (a lesson
+      content change; measured above).
+- [ ] The unexplained `test_corp_*` nonce error, seen twice and passing on
+      rerun both times: a "no `_wpnonce`" error once, and on 2026-10-20
+      `test_corp_authz`'s live content overwrite got WordPress's
+      "Invalid nonce." for a nonce the test had just fetched. Likely cause:
+      corp's healthcheck passed once Ultimate Member was active, before the
+      forms and `/submit-a-story/` existed, so a session could open on a
+      half-set-up corp. Fixed 2026-10-21: the entrypoint touches
+      `/tmp/fsl-corp-ready` after the forms, pages and rbsm form exist and the
+      healthcheck requires it, so `up --wait` covers corp. Not yet
+      on the GHCR image; the full `bin/verify` of 2026-10-22 with the fixed
+      corp image passed, and so did three `test_corp_*` runs in a row after
+      it, but the error was intermittent, so this is not yet proof (the full runs of 2026-10-24 and 2026-10-26 passed
+      without it). The live `/submit-a-story/` page
+      localizes two `"nonce"` values (`rbGlobalSubmissionSettings` and
+      `um_scripts`); `test_corp_authz` and `corp-content-write` now read the
+      `rbGlobalSubmissionSettings` one only.
+- [x] Tester reports of 2026-10-21 on the course, fixed and proven live on
+      2026-10-23 (`docs/DECISIONS.md` "A root shell on Kali and the lesson
+      checks"). A learner who switched to a root shell
+      (`sudo su`, `sudo -s`, `sudo <command>`) ran sqlmap with no proxy,
+      because `http_proxy` is set only for login shells and `sudo` reset it,
+      so the Kali step's check found no stamped request (F5 step 4, F6
+      step 2). Fixes: the `kali` sudoers drop-in keeps `http_proxy` and
+      `HTTP_PROXY` (`deploy/kali/setup.sh`, in the Kali image); F5 step 5 now
+      answers `lesson.check.kali_first` ("pass the previous step's check
+      first") instead of the generic unrecorded message when the Kali step it
+      reads recorded nothing; `lesson.check.kali_none` names the root shell
+      and says to return with `exit`; the F4 step 7 nudge says the theory's
+      example rule matches `/admin` and must get an XSS `msg` and
+      `content:"<script"` (the check is unchanged). Found fixed since: the F5
+      step 1 sort control (the tester's board image predated 2026-10-18).
+      What the tester saw there, the coach pointing at the home link again
+      and again while the element was missing, now ends after one trip home
+      with `lesson.site.missing`.
+      The F4 step 3 report was too vague to reproduce then; see the next item.
+- [ ] A corp scenario (what a WAF cannot see) is not built: corp's CVEs
+      succeed but it has no customer traffic; it needs a generator for
+      WordPress (P3's shape) first.
+- [x] `test/` on the OpenStack range: `test_criterion_1_services_answer`,
+      the three `test_corp_authz` tests, `test_board_loot` and
+      `test_objectives` reach compose containers (`kali`, `corp-db`) the
+      range lacks; make them reach the range through the API or skip them by
+      substrate. (Since 2026-10-11 `corp-db` is a container on
+      `fsl-wargame-host`, reached through `run_on_role`.) Done 2026-10-17:
+      every acceptance test runs on OpenStack, none skips by substrate
+      (70 passed, 0 skipped; `docs/DECISIONS.md` "No acceptance test is
+      skipped on OpenStack").
+- [x] `bin/cloud up` after `bin/cloud down` starts with an empty store
+      (2026-10-20): `up` now restores the newest `backups/db-*.sqlite3` that
+      holds rows into a platform VM made where no store stands, and names it.
+      Run live 2026-10-20: `down`, then `up --sideload` restored
+      `db-20261020T050321Z`.
+- [x] `bin/cloud down` leaves the `fsl-build` security group the images
+      step makes: it stays, as the keypair does (`docs/OPENSTACK.md` §3.5,
+      §5.2); the next images step reuses it and resets its one ingress rule
+      to the platform's address. Recorded 2026-10-21.
+- [x] Unverified: the edge's Suricata include and rules surviving an
+      OPNsense update (`opnsense-update`): moot since 2026-11-13, when the
+      range host replaced the OPNsense edge with an nftables container
+      (`deploy/edge/edge.nft`).
+- [x] A slot reset took 272-314 s from close to the next open on this cloud
+      (60-66 s on the previous one). The wargame host's `up --wait` of board
+      then corp was the critical path, and inside it MySQL's data
+      initialisation and the apps' migrate, seed and WordPress install on a
+      slow guest disk (about 27 ms per write; `docs/DECISIONS.md` "Where a
+      slot reset's time goes"). Fixed 2026-10-24: board and corp start side
+      by side with 1 s health probes, and every start restores a pristine
+      copy of each wargame's volumes made at the host image build
+      (`docs/DECISIONS.md` "A reset restores pristine wargame data").
+      Measured live, both slots closed together, close to READY: 288 s
+      before, 245 s with the side-by-side start, 117 s with the pristine
+      restore. The ground truth stays per session: two sessions on slot 1
+      held different board hashes, and the first one's hashes submitted to
+      the second matched no account. A second round the same day (the board
+      image has its migration committed and runs `collectstatic` at build, the wargames
+      and the sensor are cleared and started at once, the databases keep one
+      InnoDB rollback segment, and the three VM images drop `snapd` and
+      `ModemManager`) gave 70-82 s for one slot and 98-99 s for two at once;
+      the cause and the numbers are in `docs/TROUBLESHOOTING.md`. Tried and
+      reverted: 4 vCPUs for the wargame host, which changed nothing. Measured and
+      rejected: a copy-on-write restore on an XFS loop file. For
+      the user (cloud admin), still open: `com01`'s disk and Nova `cpu_mode`
+      (guests see a Sandy Bridge model), and `stg01`'s cinder-backup, which is
+      down (a Ceph driver without Ceph).
+- [ ] Acceptance run time: 2,900 s on OpenStack on 2026-10-12 with one slot
+      (fixture setup 1,689 s, test bodies 1,179 s; `test_suppression` setup
+      alone 578 s); with two slots and the audited tests about 730-990 s on the
+      old cloud (987 s on 9674d0e with 70 tests); with two slots on the new
+      cloud the run took 3,759-4,083 s until 2026-10-24, 2,186 s and then
+      1,867 s after the reset speed-ups, whose time was the resets
+      (`docs/TROUBLESHOOTING.md`), and 2,003 s across 4 processes on
+      2026-10-26; on the range host, 1101 s across 6 processes on
+      2026-11-14, then 665-746 s across 14 processes after one sqlmap case
+      per run, the slot queue in `bin/acceptance`, side-by-side probes and
+      the unit suite beside it (`docs/DECISIONS.md` "The acceptance suite
+      runs one sqlmap case and fills the slots as they free"). Left: ingest
+      re-reading the whole window (22-42 s per `POST /ingest/` under load)
+      and the slot reset (53 s alone) as the floor; more slots would
+      shorten it.
+- [x] Floating IP 192.168.0.220 on the old cloud: dropped (2026-10-20). That
+      address belongs to the old cloud, which is in other use and which we do
+      not touch.
+- [x] Rebuild the platform VM without `--sideload`, from GHCR images. Done
+      once on 2026-10-21 (dev's head, 29 min, exit 0), then replaced by
+      sideloaded rebuilds from the working branch (the last on 2026-10-24,
+      65 min). Since the cut-over of 2026-11-13 the VM runs GHCR images only,
+      at 3a0df7d from the branch `cr-rename` (`images.yml` by
+      `workflow_dispatch`); running `dev` itself waits for the push to `dev`.
+- [x] Review of the seven-step lesson text: dropped with the lesson (P6).
+- [x] Publishing the OPNsense image: moot since 2026-11-13; the range has no
+      OPNsense image (the edge is `deploy/edge`).
+- [x] On substrate openstack the board's ground truth was read from
+      `BOARD_API_URL` (`http://board:8000`), the compose board on `estate`,
+      not the OpenStack board VM. Readiness and the session baseline now read
+      the board VM at the adapter's `address("board")` (management address);
+      done 2026-10-09.
+- [x] The lesson's attack exfiltrates the board's accounts: sqlmap at
+      `?sort=posts_post.id*` dumps `auth_user` and the loot submission credits
+      it. Done 2026-10-18 on OpenStack (F6 in session 871 dumped admin, jiwoo
+      and minseo, all three tiers lost; `docs/DECISIONS.md` "Foundations run
+      back to back in one session").
+- [x] Ingest from the console: the session page's confirm-close posts
+      `/ingest/` before closing; done 2026-10-08.
+- [x] CLI harness opens the session of the scenario matching the `--cases`
+      basename; done 2026-10-08.
+- [x] Remove the pfSense pane and the `:8080` proxy (`blue.html`,
+      `nginx.conf:24-41`, `entrypoint.sh:16-40`, `pf_prime.py`,
+      `compose.yaml:211`, the security group's 8080); dropped from scope
+      2026-10-08 and removed the same day. pfSense itself stays as the OpenStack
+      edge and sensor host.
+- [x] Tool cases on OpenStack: the launcher ssh'd to Kali on the origin
+      segment address, which collides with the platform's docker edge bridges
+      (ru, br, hk, us) or times out (tw). It now ssh's over mgmt; sqlmap from
+      ru and tw scored TP, alerts carry 5.188.10.10 and 120.96.0.10 (done
+      2026-10-08).
+- [x] `POST /attacks/` SNATs to the origin before firing: `fire_attack` applies
+      the SNAT (`attacker.wear_origin`) for the requested origin, so an API
+      caller's recorded origin matches the traffic; front-door attacks (no
+      origin) wear nothing. One proxy round trip, the same call the red console
+      makes on pick. Done 2026-10-09 (`platform/api/views.py`,
+      `platform/tests/test_origins.py`).
+- [x] Acceptance on substrate openstack (first-class since the 2026-10-11
+      ruling: every acceptance test must pass there too, no docker-only marks
+      or skips; since 2026-10-20 it is the only substrate). 2026-10-09 with pfSense: 23 passed, 17 failed, 21
+      errors; 2026-10-11 first OPNsense run: 24 passed, 14 failed, 22 errors,
+      mostly the 409 after each close (rebuild with no configure). Fixed: the
+      sensor host names its rule file and reload command, `bin/fetch-geoip`
+      runs at first boot, `FSL_TOOL_IMAGE` is written by cloud-init, and the
+      platform resets the range after a close (`platform/api/reset.py`).
+      2026-10-11 on a from-scratch range: 50 passed, 86 skipped, 6 failed, 4
+      errors; the rest is the two open items above (compose-only tests, WAF
+      tuning). Substrate docker on the same VM: 146 passed, 0 failed.
+      `test/range.py` now has its OpenStack side (`ThroughPlatform`, picked
+      from `/api/range/ready/`'s `substrate`): a role's command runs as
+      `manage.py run_on_role` in the platform container, through its own
+      `substrate().runner(role)`, so `target_code`, criterion 1 (Elasticsearch is
+      checked from the `scorer`) and the board ground-truth reads in
+      `test_board_loot`/`test_objectives` run on both substrates; not yet
+      run live.
+- [x] The wargames on the OpenStack range run on one host image,
+      `fsl-wargame-host`, as their GHCR containers (approved 2026-10-11;
+      `docs/DECISIONS.md`). Live 2026-10-12 on `m1.linux` (4 GB; 1.5 GB used
+      under the four containers): the old `fsl-wg-board` server, ports and
+      image deleted by hand; board, board-db, corp-wp and corp-db healthy;
+      `board.com` and `corp.com` answer 200 from Kali through the edge and
+      the WAF; `ready` reports the board's ground truth readable. The WAF
+      and Kali had to be booted again (`/etc/hosts` comes from boot-time user
+      data; `docs/OPENSTACK.md` §8).
+- [x] Management fenced (2026-10-12): from Kali's `mgmt` port nmap found the
+      wargame host's 22/80/8000 (`/internal/auth-users` answered 200), the
+      edge's 22/80/443 and the WAF's 22/80 open, and through the edge Kali
+      reached the wargame host's estate 8000 and 80 past the WAF. `mgmt` ports
+      now sit in `fsl-mgmt` (in only from `fsl-reach`), and the edge's WAN pass
+      rule admits tcp 80 to the WAF's estate address only.
+      `test/test_attacker_reach.py` checks both from Kali on either substrate.
+- [x] `test/conftest.py`'s `COMPOSE_RANGE_ONLY` skipped 15 modules on
+      openstack, which the 2026-10-11 ruling does not allow. The five corp
+      modules left it on 2026-10-12; the rest on 2026-10-17, run on both or
+      deleted (`docs/DECISIONS.md` "No acceptance test is skipped on
+      OpenStack"): 0 skipped.
+- [x] `test_map.py::test_traffic_inside_the_estate_is_counted_but_not_placed`
+      needed a sensor on the WAF-to-target leg on openstack (the edge's sees
+      only the WAN). Since 2026-10-12 the wargame host runs docker's Suricata
+      image and config on its estate interface (`estate-sensor`); its eve log
+      reaches Elasticsearch decoded as `suricata` with the WAF's estate address
+      as source, and rule changes go to both sensors.
+- [x] Full `bin/verify` on openstack, 2026-10-12: unit 1695
+      passed; acceptance 72 passed, 0 failed, 0 errors, 76 skipped (the 15
+      `COMPOSE_RANGE_ONLY` modules); the only failure is the `core_loc`
+      ratchet (569 against 560, the +9 in `rules/crs.py` still awaiting the
+      user's acceptance). The range was left READY.
+- [x] Two range slots on openstack, 2026-10-12 (`compute.slots: 2`; slot 2
+      is `<host>-2` on `fsl-internet-2`/`fsl-estate-2`, `mgmt` shared, alerts
+      per slot in `fsl-logs-slotN-*`). Full `bin/verify` with two workers:
+      acceptance 72 passed, 0 failed, 0 errors, 76 skipped in 737 s (was
+      30:44 with one slot). Both slots left READY.
+- [x] The VM's `/opt/fsl` git index still points at 9367bbf, so the VM's
+      `bin/verify` lists the files added since as untracked; re-point it
+      (fetch a bundle of HEAD and `git reset` the index) at the next deploy.
+      Gone with that VM: every rebuild since 2026-10-15 is a new VM checked
+      out at the deployed commit, and its `bin/verify` ratchet holds.
+- [x] An openstack session now aims the attacker at the declared default
+      origin on open (`_aim_attacker` ran only on docker); before, a rebuilt
+      `fsl-kali` left from its DHCP-primary address (`1.128.0.10`, Australia)
+      and `test_map` placed the default-origin attack there instead of Russia.
+- [x] `/internal/auth-users` (the board's loot read_path) has no application
+      auth; its only external block is the nginx `location /internal/` (proxied to
+      a path the board 404s) in `deploy/waf/board.com.conf`, independent of SecRuleEngine. Anything that
+      reaches `board:8000` directly (the platform's own ground-truth channel, or
+      a WAF misconfig) reads every password hash unauthenticated. A vuln scan
+      reads it as a planted endpoint; it was open whether the no-planted-vulns
+      policy needs it reframed (e.g. an accidentally exposed internal debug
+      route). Decided 2026-10-19: it stays as is (`docs/DECISIONS.md`
+      "Foundations review loop, rounds 2-5").
+- [ ] Suricata XSS coverage is URI-only: `board-xss-img-onerror-in-comment`
+      carries the payload in the urlencoded form body, but sid 9000003 inspects
+      `http.uri` only (SQLi has both a URI rule 9000001 and a body rule
+      9000002; XSS has no body rule). That case is ModSecurity-only. Decide
+      whether to add a `http.request_body` XSS rule for symmetry (changes the
+      detection score) or leave it WAF-only by design (step 7). Scenario
+      3.4 has the learner write that rule; the shipped baseline is unchanged.
+- [ ] `board-sqli-orderby-sqlmap` evades both engines on a clean exploit:
+      boolean/time ORDER BY payloads carry no `--`/`union`/quote grammar, so
+      Suricata sid 9000001 is fragile, and the dotted-column CVE payload has no
+      SQLi meta-characters for CRS. Only sqlmap's noisy stock probes are caught.
+      This is the intended "hard to detect" lesson case; note it when wiring
+      step 7 so it is not mistaken for a coverage bug.
+- [x] 2026-11-16: with the IDS behind the WAF, stock sqlmap never reaches
+      board.com (913100 on its User-Agent blocks every request at PL1), so
+      3.1-3.3 attack with `--random-agent` and F4 and 3.4 run the WAF in
+      DetectionOnly mode; all five verified live (`docs/DECISIONS.md`).
+- [x] corp cases fire real exploits. All three corp CVEs verified live (local
+      WordPress 6.6.2 build): post 1 defaced, users_can_register flipped, a new
+      unauth user made administrator. The cases were non-functional as written
+      (empty nonces; rogue-admin on form_id 5=login). Fixed with a reusable
+      harness `prefetch: {from, pattern}` (fetch the public nonce, inject
+      `{nonce}`) + form_id 4 (form_id 4 came from a local build; the cases post
+      5 since 2026-10-22, which is the registration form on the shipped image);
+      done 2026-10-09. option-flip verified end-to-end
+      through the harness; the raw CVEs by hand.
+- [x] corp block theme (twentytwentyfour) does not render the plugin shortcode
+      forms, so the per-form nonces are on no public page: not so on the GHCR
+      corp image. Read live on slot 2 on 2026-10-21: `/register/` carries UM
+      form 5 with its `_wpnonce`, and `/submit-a-story/` carries
+      `rbGlobalSubmissionSettings`' nonce. UM's forms there are 5
+      (registration), 6 (login) and 7 (profile), so `corp-rogue-admin` and
+      `corp-normal-registration` posted a form id (4) that does not exist; they
+      now post 5, as `test/shared_sessions.py` does, and `corp-content-write`'s
+      prefetch reads the rbsm key only.
+- [ ] Attacker image on OpenStack resolves from an env var (CR_TOOL_IMAGE,
+      written by the platform VM's cloud-init since 2026-10-11) rather than
+      from the substrate in code; decide which.
+- [ ] Seam exceptions: move the code or keep them recorded
+      (`register_pipeline.py` for Elasticsearch; the sensor device `cr-ids`
+      and the WAF device `cr-waf` in each `wargames/<id>/topology.yaml`, which
+      name the rule files and reload commands `rules/suricata.py` and
+      `rules/crs.py` are handed;
+      `platform/nginx.conf` and `blue.html` for Kibana; `operator_log.py` and
+      the `cr-kali` and `cr-waf` terminal wiring (`vm-terminal.sh`) for the
+      attacker box and the WAF; F6's step commands naming the exclusion file
+      and the nginx reload). `CLAUDE.md` lists them.
+- [x] The WAF terminal names the WAF container by convention instead of the
+      label lookup (`platform/waf-terminal.sh` builds `fsl-<id>-waf-1`): moot
+      since the docker substrate removal deleted both files; the terminal is
+      `vm-terminal.sh fsl-waf`, found through the session's slot.
+- [x] The blue WAF terminal (`/vm-terminal/`) did not connect on compose:
+      the WAF has no `mgmt` address there. Fixed 2026-10-10: the pane frames
+      `/waf-terminal/<session id>/`, a platform ttyd that `docker exec`s into
+      `fsl-<id>-waf-1`; live-verified in session 199.
+- [x] Spike: Kibana highlight on stable `data-test-subj` selectors. Closed
+      2026-10-10 (`docs/DECISIONS.md`, "Lesson guidance drawn over the real
+      Kibana").
+- [x] 2026-10-11: console redesign, the site browser with a Network panel,
+      the seven-step beginner lesson, and the review fixes (`docs/DECISIONS.md`,
+      the four 2026-10-11 entries).
+- [x] Naming: the API `suppression` (`/api/rules/suppressions/`) disables a
+      rule by commenting it out. In Suricata, a suppression keeps the rule
+      running and hides only its alerts ("Suppressions can be used to
+      suppress alerts for a rule or a host/network.",
+      https://docs.suricata.io/en/latest/configuration/global-thresholds.html),
+      while taking a rule out is disabling ("to disable rules use",
+      https://docs.suricata.io/en/latest/rule-management/suricata-update.html).
+      Done 2026-10-24: renamed to disabling end to end, `/api/rules/disabled/`
+      and `.../<id>/enable/`, model `DisabledRule` (migration 0028), not run
+      live yet (`docs/DECISIONS.md`, "A disabled rule is called disabled").
+- [x] Spike: the CRS starting configuration. PL1 already blocks the board
+      SQLi and passes O'Brien; PL4 blocks O'Brien (920273, 949110). The lesson
+      starts at PL4 and the learner tunes; done 2026-10-10 (`docs/DECISIONS.md`).
+- [x] 2026-10-23: three lesson-check bugs from the tester report review.
+      F4 `fired`: a search that is logged but drew no alert from the learner's
+      rule answers `lesson.xss.fail.fired` instead of "no log of that request
+      yet" (`unrecorded` stays for a request not yet recorded). F5 `sqlmap`
+      takes `ua: any`, so a run with `--random-agent` as sqlmap's own output
+      suggests is recorded like the `agent` step's. The Kali and WAF terminal
+      steps wait for `[$#] $`, so a root shell's prompt is found too. Proven
+      live 2026-10-24 for F5 (sessions 1190, 1191): a run with
+      `--random-agent` passed step 4, and after `sudo su` the ring moved to
+      the check button when the `#` prompt returned and the check passed. The
+      F4 part was replaced by the A + C step below.
+- [x] F4 step 7 checks that the learner's rule fires (A + C, 2026-10-24;
+      `docs/DECISIONS.md` "How courses check a learner's rule"). `write`
+      passes only when a `<script` search sent after applying drew an alert
+      from the learner's sid, and says what was missing otherwise; `fired`
+      reads that alert's rule_id in Kibana; the theory shows a rule form with
+      square-bracket blanks instead of the complete `/admin` rule. Proven
+      live 2026-10-24 (session 1194): the copied `/admin` rule got the message that the
+      learner's rule (sid 9100001) raised no alert on the `<script` request, a check
+      before searching got the "send the search" message, `content:"<script"`
+      passed, and steps 8-11 passed.
+- [x] 2026-10-24: F4 step 3, a second tester report: the Kibana coach rang
+      the first row's expand toggle whatever the row was, so with Suricata
+      `http` rows on top it sent the learner into an event with no `rule_id`.
+      It now rings the first grid row whose column holds a value other than
+      `-` (and keeps the first row when none does, for a WAF log no rule
+      matched); an open document without the field sends the learner to the
+      row that has it, or back to the query when no row does; a value inside
+      the Document panel but under its footer asks for the field name in the
+      panel's search instead of asking to close the panel; and once that
+      closed document leaves the grid without a valued row, the coach keeps
+      asking for a new query until the query text changes (it remembers the
+      query per step). The first help for the step is KQL advice (`url` is
+      stored URL-encoded, so leave out `<`), and the step 6 coach says an empty
+      result is a result, not an error. Proven live 2026-10-24: one live run
+      passed all five checks. The last fix (the new query after a closed
+      document) is unit-tested and deployed but was not walked live.
+- [x] `bin/platform-rebuild`'s ssh sends keepalives (`ServerAliveInterval=15`,
+      `ServerAliveCountMax=4`) and gives up on a dead connection; a dead VPN
+      connection had hung a rebuild for 3 hours (2026-10-24).
+- [x] 2026-10-24: a finished run reads as settling, and a long pass text gets
+      time to be read. A Kali step pressed while the newest request is under
+      `RUN_SETTLED` old answers `lesson.check.kali_settling` ("collecting the
+      request logs, checked again automatically") in the neutral status line,
+      not the red failure line; the 5 s poll passes it by itself. A pass text
+      over 30 characters (`SHORT_PASS_CHARS`) no longer auto-advances after
+      1.5 s; the status line says to press Next, and short passes advance as
+      before. Proven live 2026-10-24 (sessions 1193, 1196): an immediate press
+      showed the settling line and no red text, and the step passed by itself
+      in 23-26 s; the F5 verdict text stayed until Next.
+- [x] 2026-10-24: four lesson screen fixes from the live check. (1) Every step
+      kind whose pass text is over 30 characters shows the press-Next line, not
+      only the answer, choice and loot kinds (F4 step 7 showed nothing).
+      (2) While a Kali run answers `kali_settling`, the coach line under the
+      check button says so instead of "press the check". (3) Once a step has
+      passed, its open-pane button turns secondary, so Next is the one primary
+      button. (4) A choice or answer shows "Checking..." the moment it is
+      pressed. Proven live 2026-10-24 (sessions 1195, 1196) on the image built
+      from this code.
+
+- [x] 2026-10-25/26: the work of live review rounds 6-12 and what came with it.
+      (1) The dead `/var/lib/session/origin` path is gone from the stamp proxy
+      and the Kali setup; the Kali image digest changed once. (2) The
+      acceptance harness records the red-team session's cases, detections and
+      scores right after it closes, so a long one-slot run does not lose it to
+      retention (unit-tested; a one-worker run now takes about 40 min, inside
+      the 60-min window, so a live run cannot show it). (3) Kibana 8.15 cannot
+      hide Home and Stack Management, so they stay (`docs/DECISIONS.md`
+      "Kibana's Home and Stack Management entries"). (4) The coach and the
+      lessons: the slot maps load at platform start with retries and no map is
+      published from a partial read; a Kali run row shows only after a run;
+      the F6 detection and penalty columns stay hidden until the alerts step
+      passes; F5's last step asks whether 913100 is in the run's WAF logs; F6
+      step 5 asks the source IP of the 500-response records; F3's count counts
+      both legs (6); a stretch card shows only after the last step, under the
+      step card; a long last-step pass text or a stretch card stops the
+      auto-advance; the result page lists only the lessons worked on, and the
+      benign seed is sent on the first pass, skip or hint of a lesson; a
+      command shows a placeholder until the reached reply; no terminal ring
+      or callout is drawn before the terminal connects; a blocked run reads
+      as an attempt; Korean wording fixes. (5) Answer checks keep the slot's
+      range reads for the session, so a wrong answer returns in 0.2-3 s, and
+      a session open reads the range outside the slot lock, so a close no
+      longer waits behind an open (the cause of one acceptance timeout).
+      Proven by the full `bin/verify` of 2026-10-26 (unit 1669; acceptance 73
+      passed in 2003 s across 4 processes).
+- [x] 2026-11-14: the answer-blind walk of round 16 (both courses, live), its
+      nineteen findings fixed (`docs/DECISIONS.md` "Answer-blind walk round
+      16"): the router's own symbol and the map-reading text; no step names
+      its own or a later answer (F2's `?q=`/`?sort=`, F3's customers place,
+      F1's kali line); F3 loses the repeated `site_host` and its solo count
+      needs the and-not query (`kql`); F4 asks the alert's destination, not
+      the sid typed; every pass waits for Next; a Kali run still collecting
+      when Next is pressed keeps its window; zone, rule-line and Top values
+      placement; Kibana's field search reset per load; per-course lesson
+      numbers and score note on the result page; truthful F4/F6 wording and
+      run times. The WAF's time zone stays UTC (its audit time stamp has no
+      zone).
+- [x] 2026-11-14: the answer-blind walk of round 17, its fifteen findings
+      fixed (`docs/DECISIONS.md` "Answer-blind walk round 17"): alerts match
+      a request by URL, which ends F4's stalled plain-search check; F4's
+      `nocase` step needs `rev` raised; early answers removed from F2, F3,
+      F4, F6 and the catalogue (F3 drops `client_source`, F6 asks the 500
+      count); F1's path starts at customers; `lesson.open.site` reloads the board;
+      callouts off the histogram, Top values and dev-tools toolbars; the WAF
+      tile only for lessons that edit the WAF.
+- [x] 2026-11-14: the acceptance suite cut from about 25 min to 12-13 min
+      end to end (`docs/DECISIONS.md` "The acceptance suite runs one sqlmap
+      case and fills the slots as they free"); no test deleted, the port
+      scan now covers every host.
+- [x] 2026-11-14: the answer-blind walk of round 18, its findings fixed
+      (`docs/DECISIONS.md` "Answer-blind walk round 18"): every Kibana answer
+      needs the learner's own query; F5's source step asks the record count
+      Kibana alone shows; F4 refuses a rule that alerts on every plain search
+      and its replay says why a plain search failed; F6 keeps the paranoia
+      level line; the cost line follows the objective; run steps say one
+      thing at a time; wrong addresses name their device; course 1's result
+      shows no score; ttyd raises no leave-site dialog. Left by ruling:
+      Next skipping steps, XSS not scored (wording only), wrong attempts
+      shown but not penalised.
+- [x] 2026-11-14: console text and UI slop removed (`docs/DECISIONS.md`
+      "Console text and UI slop removed"): the catalogue lost its time
+      estimates, chips, labels and pills; the session page is one console
+      button; the result page explains each score once in one column; lesson
+      ends count steps passed; 101 strings rewritten Korean-first or removed.
+      A scenario's clock now starts at the briefing's Start, and a reload in a
+      browser without its step record reopens the furthest reached step.
+- [x] 2026-11-15: the answer-blind walk of round 19 and docs review round 4
+      (`docs/DECISIONS.md` "Answer-blind walk round 19"): DevTools steps need
+      the picked row; F3 X-Forwarded-For and F5 record count need their own
+      query; F6 loot needs the whole table; no ring or wrong-answer line shows
+      a later answer; a reload keeps the Kali shell and a rule draft; the
+      scenario pages say what happened once; the round's slop list removed;
+      `<fail>.broad` names the matched URI and a header-only rule is not
+      broad.
+- [x] 2026-11-15: the answer-blind walk of round 20 (`docs/DECISIONS.md`
+      "Answer-blind walk round 20"): c1 L2's DevTools answers pass again
+      (the shown check carries `dev`), every slot's map loads (fresh GNS3
+      node ids per import, the platform the one loader), a hung check poll
+      no longer freezes a step; one Next/Skip button, a lesson end that
+      waits, scoring internals and repeated callouts removed. Checked live
+      with Playwright on the deployed range.
+- [x] 2026-11-15: the answer-blind walk of round 21 (`docs/DECISIONS.md`
+      "Answer-blind walk round 21"): scenario 1.1's final check waits for
+      unjudged items and the judge pane keeps re-reading after an attack
+      verdict; c1 L3's and-not query must drop the waf's leg; c2's DevTools
+      answers need the row; a rule whose sid the platform cannot read is
+      refused; Korean result labels, no stale `no_benign`, an already closed
+      session reads as closed, Korean time in the WAF shell, lessons open on
+      the console. Checked live with Playwright and the API; full
+      `bin/verify` green.
+- [x] 2026-11-15: the answer-blind walk of round 22 (`docs/DECISIONS.md`
+      "Answer-blind walk round 22"): scenario 1.1's triage steps pass only
+      while true and a verdict is never a failed try; `fail.done` strings; a
+      passed final check stops customers, refuses a second one and offers
+      the end button in the console; the refusal line is uncut; the briefing
+      shows only before the clock starts; an answer sent during a check is
+      checked next; the open scenario page shows its verdict; repeated runs
+      carry their time; pills, badges, repeats and glosses removed. Checked
+      live with Playwright; full `bin/verify` on the VM.
+- [x] 2026-11-17: the answer-blind walk of round 23
+      (`docs/TROUBLESHOOTING.md` "Answer-blind walk round 23"): a Kali run the
+      WAF refused in full passes its check from the WAF's records; each fired
+      sqlmap case has its own output directory; the collector's lean index
+      template and 1 s refresh make a record searchable sooner.
+- [x] 2026-11-17: staff delete an approved learner, closing their open
+      sessions through the close path (`docs/DECISIONS.md` "Staff delete an
+      approved learner").
+- [x] 2026-11-17: the answer-blind walk of round 24 (`docs/DECISIONS.md` and
+      `docs/TROUBLESHOOTING.md` "Answer-blind walk round 24"): a finished Kali
+      run passes after a short settle; the learner's own F4 XSS is an attack
+      case; a scenario lists only the objectives its attacks can take; 3.3's
+      variant runs before the check; a customer's flows take turns; the
+      debrief counts customers up to the check's end. Full `bin/verify` on the
+      rebuilt cloud.
+
+### 1. The scoring redesign (partly superseded 2026-10-08)
+
+Design in `docs/superpowers/specs/2026-09-29-zero-sum-scoring-design.md`. One
+zero-sum balance; the defence is a single score of four pillars (speed,
+accuracy, coverage, response); revealed only when the session closes. The
+target still decides which objectives fell.
+
+Superseded on 2026-10-08 (`docs/DECISIONS.md`): the learner sees PASS/FAIL and
+plain-language diagnostics derived from TP/FP/FN/TN, not the raw labels, the
+four pillars or a balance, and there is no gamification. `game.py` and the
+score API stay as built; the post-close scoreboard below is not planned for the
+learner view.
+
+Done: `platform/game.py` settles all four pillars against the attacker's take
+into one balance (`GET /api/sessions/<id>/score/` carries `game`, withheld
+until `ended_at`). Speed, accuracy and coverage are computed from data already
+recorded; the response pillar's math is in place too (attacks blocked lift the
+balance, benign blocked is an availability cost) and stays absent until a case
+is actually blocked. A case carries its blocked disposition in `meta["blocked"]`.
+Left:
+- **Turn blocking on.** Nothing sets `meta["blocked"]` yet because nothing
+  blocks. Decided: as in practice, the blue team turns on blocking itself, in
+  the pfSense GUI (Suricata drop rules) and the WAF's mode (the pfSense GUI
+  part is superseded: the pane was removed on 2026-10-08). Left: record which
+  cases were blocked, read from the target side. Lands with item 2.
+- **The scoreboard after close** on the landing page: the four pillars and the
+  balance, with the declared weights visible. Superseded for the learner view
+  (above). The live dashboard and rule editor were removed on 2026-10-05.
+- **Weights and dwell** in `game.py` are v1 defaults (`WEIGHTS`, `FAST`/`SLOW`,
+  `DETECTED_TAKE`); tune once the console shows them.
+
+### 2. Build the range on OpenStack
+
+The user's architecture, in this order (reorder if the user says so). Each
+step ends with `describe()`/`segments()` and the acceptance suite reading it.
+
+1. **The platform VM: done (2026-10-01).** `deploy/openstack/platform.yaml`
+   is a Heat stack (a member may create stacks): network `fsl-platform`
+   (`10.20.0.0/24`), a router to `provider`, a floating IP, a group opening
+   only ssh and ping, and an Ubuntu 24.04 server whose cloud-init installs
+   Docker, clones `repository` at `ref` into `/opt/fsl` and enables
+   `fsl-platform.service`, which runs `docker compose up -d --build` on every
+   boot. cloud-init writes every `FSL_OPENSTACK_*` setting but the password to
+   `/opt/fsl/openstack.env` (0600, git-ignored), which compose gives the
+   platform with `format: raw`; the operator appends the password over ssh
+   (`README.md`). Checked on the cloud: a fresh stack
+   went from create to all 11 services up in 3 min 20 s, and inside the
+   platform container `FSL_SUBSTRATE=range.openstack.connect` returned the six
+   `fsl-*` segments and the target VM from `describe()` and `segments()`.
+   The platform itself stays on the Docker substrate until step 2. `bin/verify`
+   on the VM: acceptance 126 of 126; the unit run fails only the 102 tests that
+   need node, which the VM does not have.
+   - **The tenant network's MTU is 1450** and Docker's bridges default to
+     1500: TLS downloads from GitHub hung in the Kali build until curl timed
+     out. The template writes the network's `mtu` attribute into
+     `/etc/docker/daemon.json` (`mtu` and `default-network-opts`).
+   - **Flavor** `m1.windows` (2 vCPU, 4 GB, 60 GB) is the largest a member can
+     use; the stack takes about 2.4 GB, and cloud-init adds 4 GB of swap.
+     Kibana (step 6) will need a bigger flavor, which only an admin can create.
+   - **`ref` defaults to `dev`**, so the template clones this work only after
+     it is pushed. The check above cloned a snapshot of this branch served
+     from the operator's machine on the LAN.
+   - **The password stays out of the user data.** The first version passed it
+     as a hidden Heat parameter into cloud-init; Nova's metadata service
+     answered from inside the Kali container (`meta_data.json`, 200), and the
+     user data it serves would have carried the password.
+   - **ModSecurity logged nothing on a Linux Docker host.** Its audit log was a
+     bind mount of `deploy/nginx/logs`, which dockerd creates as root, and the
+     WAF runs as nginx; colima's mounts hid it. It now sits on the named volume
+     `waflogs` at the image's own `audit` directory, which belongs to nginx and
+     which a fresh volume copies; Filebeat reads the volume read-only.
+   - `FSL_OPENSTACK_SSH_KEY` names `/data/ssh/id_ed25519`, which nothing
+     creates yet: step 2 makes it and registers it as a Nova keypair.
+   - The kolla venv on the host has no Heat client; the stack was driven from
+     a separate venv with `python-openstackclient` and `python-heatclient`.
+   - Stack `fsl-platform` is still up, at floating IP `192.168.0.210`
+     (server replaced on 2026-10-01 by a stack update; see step 3).
+2. **Done (2026-10-01): the fabric from the platform, through the API**: one Internet network
+   with a subnet per origin country (30, from a public traffic ranking, placed
+   by GeoIP, about 100 addresses weighted by traffic), the internal (`estate`)
+   and management networks. This replaces `bin/openstack-range`; the declaration
+   gains a segment with many origin subnets.
+   - **Done (2026-10-01): the thirty origins.** `declaration.yaml` has one
+     `internet` segment whose `origins` list the top thirty countries by
+     Cloudflare Radar's HTTP request share (frozen with its window), each with
+     a /24 that GeoIP places there and its share of 100 addresses;
+     `declared.read()` flattens each origin into a segment, so the port and
+     its callers did not change, and `Declaration.origins` keeps the table.
+     The default origin is `ru`, as before. Docker builds four (ru, br, hk,
+     and us on 73.0.0.0/24 in place of North Korea, which the ranking drops).
+     `bin/pick-origins` reproduces the table; legacy /8s are skipped so no
+     origin is an institution's block. `test_origin_placement` checks all
+     thirty through the live `fsl-geoip` pipeline.
+   - **Done (2026-10-01): the fabric in code.** `range/fabric.py` is a pure
+     planner: from the declaration and what the project holds it lists the
+     networks (`internet`, `estate` 10.30.0.0/24, `mgmt` 10.31.0.0/24 with no
+     gateway, off every compose and platform-VM subnet), the 32 subnets
+     (DHCP off on the thirty origins), the keypair `fsl-platform`, and what
+     drifted or is left over. The OpenStack adapter sends any verb (a 401
+     re-signs and resends once), binds each origin to its subnet of the one
+     Internet network by CIDR and keeps only hosts inside it, refuses a
+     subnet no origin declares, and gains `plan_fabric`, `ensure_fabric`
+     (create, then tag, deleting a network it could not tag; one bulk subnet
+     POST; makes `/data/ssh/id_ed25519` and imports it) and `teardown_fabric`
+     (refused while a server port stands). `GET/POST/DELETE
+     /api/range/fabric/` exposes them; Docker answers 409, drift is a 409.
+   - **Checked on the cloud (2026-10-01).** The stand-in range was removed
+     (keypair `fsl-claude` kept), the platform stack rebuilt from the new
+     template at floating IP `192.168.0.210`, where a browser opens the
+     console on 8000 directly. Its platform, on `range.openstack.connect`,
+     built `fsl-internet` with the thirty origin subnets, `fsl-estate`
+     10.30.0.0/24 and `fsl-mgmt` 10.31.0.0/24 (DHCP on, no gateway) and the
+     keypair `fsl-platform`; a second POST wrote nothing (32 present);
+     `describe()` read back 32 segments from three networks; DELETE removed
+     32 subnets, 3 networks and the keypair and left `fsl-platform` and
+     `fsl-claude`; a POST rebuilt it clean. `bin/openstack-range` is gone.
+     On the VM 8000 is bound to the VM's address, not loopback, so the
+     acceptance suite's `localhost:8000` no longer reaches it there.
+3. **Done (2026-10-01): targets and the WAF as VMs**: the board on MySQL and
+   the WAF VM (nginx + ModSecurity + CRS). Golden images come from setup
+   scripts in the repo, then snapshots. This step also built Juice Shop and
+   the wiki as VMs; Phase 4 (2026-10-04) removed both from the declaration
+   (see "The objective model").
+   - **Done (2026-10-01): the images.** `declaration.yaml`'s `hosts:` names,
+     per VM, a setup script and the files it needs (`deploy/waf/`,
+     `wargames/board/image/` and the board's app). `range/images.py` packs
+     each into a tar.gz whose digest is over paths, modes and contents; the
+     platform boots a builder `fsl-build-<host>` from `ubuntu-24.04` on
+     `FSL_OPENSTACK_BUILD_NETWORK` (the platform's own network, which has a
+     router; the template writes it) with the bundle in its user data. The
+     builder runs the setup and prints `fsl-image-ready <digest>` or
+     `fsl-image-failed <digest>` to its console and stays up; the platform
+     reads the console, stops a ready builder, snapshots it as `<host>` with
+     the property `fsl_bundle`, and deletes the builder once the image is
+     active. Every state comes from the cloud, so `POST
+     /api/range/images/` is repeated until `clean`; `GET` reads, `DELETE`
+     removes failed builders and images of another bundle. Versions match
+     the Docker range: CRS 4.25.1,
+     ModSecurity 3.0.16 compiled with connector 1.0.4 against Ubuntu's nginx
+     1.24.0, each download pinned by sha256; the board runs Ubuntu's MySQL
+     8.0 on the same VM.
+   - **Checked on the cloud (2026-10-01):** the platform VM, given this tree
+     and `FSL_OPENSTACK_BUILD_NETWORK`, built `fsl-waf` (4.8 GB)
+     and the target images (2.3 to 3.2 GB, min disk 20) by repeated POSTs,
+     each carrying the digest the Mac computes, with no builder left. Setup
+     takes about four minutes for the board and seven for the WAF. The first WAF builds
+     failed and said why on the console (CRS on 3.0.12, then a missing
+     modules directory); `DELETE` cleared each and the next POST rebuilt.
+   - **Ubuntu 24.04's libmodsecurity is 3.0.12**, which cannot parse CRS
+     4.25's `XML://@*` targets (REQUEST-901 line 333); the OWASP image runs
+     3.0.16. Hence the compile, about five minutes on one vCPU.
+   - **Done (2026-10-01): the platform on management.** The fabric also
+     makes two security groups, `fsl-range` (all IPv4 in, for every range
+     port; anti-spoofing stays on) and `fsl-reach` (nothing in), and, when
+     `FSL_OPENSTACK_PLATFORM` names the platform's own server, a port
+     `fsl-platform.mgmt` in `fsl-reach` attached to it through
+     `os-interface`. Teardown deletes that port first and still refuses any
+     other server's. Nova detaches the port when it deletes the platform VM but
+     leaves it standing, so since 2026-10-20 `_attach` deletes the
+     detached `fsl-platform.mgmt` ports before it makes one, and teardown
+     deletes every detached port on the fabric's networks; before, 35 leftovers
+     made `down` fail with 409 SubnetInUse. The template writes the server id at
+     boot (`cloud-init query instance_id`) and a networkd file that DHCPs any NIC netplan does
+     not claim, without its routes or DNS, then `networkctl reload`s. The
+     runner reaches a host at its `mgmt` address unless a segment is named.
+     Checked on the cloud: the live platform VM, given that file and its id,
+     got `ens7` at `10.31.0.18/24` with its default route unchanged, the
+     platform container connected to `10.31.0.1:53` through Docker's NAT,
+     and a second POST read `clean`.
+   - **Done (2026-10-01): the slot.** Each host in `hosts:` also declares
+     its `segments` (every one includes `mgmt`) and its `names` on
+     `estate`. `range/slot.py` plans a port `<host>.<segment>` per segment in
+     `fsl-range` (Neutron picks the address where DHCP is on) and, for the
+     host filling `gateway`, one Internet port holding every origin's
+     gateway `.1`; it refuses a slot whose image is not ready, whose fabric
+     lacks a segment, or whose non-gateway host stands on the Internet.
+     The platform boots each host from its image with a config drive, the
+     keypair `fsl-platform` and metadata `fsl_host`, and user data that
+     appends every host's `estate` names to `/etc/hosts` and, on the gateway,
+     a `bootcmd` adding all thirty addresses to the NIC with that port's MAC
+     every boot. `GET/POST/DELETE /api/range/slot/`; `DELETE` removes the
+     servers and the ports named for them.
+   - **Checked on the cloud (2026-10-01, when the slot held four hosts):** one
+     POST booted all four, all ACTIVE. Inside the
+     platform container `describe()` returned `fsl-waf` on all thirty
+     origins at each `.1`, the four hosts on `estate`, the five (the platform
+     too) on mgmt, and no sensor. `runner()` over ssh to each mgmt address:
+     MySQL and the board were active and answered 200, and the WAF held 33
+     IPv4 addresses and proxied `board.com` (200) through the names in
+     `/etc/hosts`. A request with a scanner's User-Agent was logged by
+     ModSecurity 3.0.16 / CRS 4.25.1 (913100, 949110), the same producer
+     line as the Docker WAF's.
+   - **cloud-init applies only the first address of a port** that holds
+     several (one per subnet), and adds a default route through each
+     subnet's gateway, here the WAF's own address; hence the `bootcmd`.
+     Without a config drive a guest gets no metadata at all: only its first
+     NIC asks DHCP, and on the gateway that is the Internet, DHCP off.
+   - **Checked end to end from the template (2026-10-01).** With the slot
+     and the fabric taken down through the API (the platform's own port
+     went first, then 32 subnets, 3 networks, the keypair and both groups,
+     leaving only the stack and the images), a Heat `PATCH` of
+     `fsl-platform` with this template and a clone of this branch served
+     from the Mac on the LAN replaced the server (new id `7ed3db88...`) and
+     kept `192.168.0.210`. cloud-init wrote `FSL_OPENSTACK_PLATFORM` and
+     `FSL_OPENSTACK_BUILD_NETWORK`; after the password, one POST each built
+     the fabric (the VM took `ens7`, `10.31.0.195`, by the template's
+     networkd file), found the four images current, and booted the slot,
+     and `describe()` and the runner gave the results above again. The
+     range is left standing that way. Heat was driven by its REST API with
+     `requests`; no Heat client was installed.
+   - **The platform's ssh key lives on the VM** (`/data/ssh`, a named
+     volume), so a replaced platform VM makes a new one and the fabric
+     reports `fsl-platform` as drift; take the slot and the fabric down
+     first (README).
+   - **`README.ko.md` and `ARCHITECTURE.ko.md` mirror the English through
+     step 7** (2026-10-03); the working-language rule now allows Korean in
+     these two docs.
+   - **Nova here answers 404 for the console of a guest that is off**
+     ("Guest does not have a console available"), so a builder that powered
+     itself off could never say how its setup went.
+4. **pfSense CE** as the edge firewall with Suricata as its package; its logs
+   by syslog to Elasticsearch.
+   - **Done (2026-10-02): the image.** The user downloaded
+     `netgate-installer-v1.2-RELEASE-amd64.iso` and agreed to its notice
+     being accepted. Glance holds it as `netgate-installer` (with
+     `hw_rescue_device=cdrom`, `hw_rescue_bus=scsi`) and the result as
+     `fsl-pfsense`: pfSense CE 2.9.0-RELEASE on ZFS, WAN `vtnet0` by DHCP,
+     LAN `vtnet1` 192.168.1.1/24, default admin login, qcow2, 1.7 GB, min
+     disk 20, `hw_vif_model`/`hw_disk_bus` virtio, `os_distro=freebsd`. It
+     was installed by hand (README, "The pfSense image"): a member cannot
+     attach a blank disk here (no Cinder, no flavor with ephemeral disk), so
+     a cirros server was rescued from the ISO, which Nova's stable rescue
+     boots as a CD-ROM with the server's own disk still attached as
+     `vtbd0`; the installer went onto that, and the server was unrescued
+     and snapshotted. Installing CE asked for no account, only Internet
+     (the `fsl-platform` network). A second server booted from the image
+     came up to the console menu with its own device id.
+   - **Done (2026-10-02, detail in "Left 1" to "Left 6" above).** The edge
+     image `fsl-pfsense-edge` (base + Suricata 8.0.5 + sshd + MTU 1450 + OPT1
+     mgmt) boots in the slot; `POST /api/range/configure/` plays
+     `deploy/pfsense/configure.php` back over mgmt ssh and pfSense holds the 30
+     origin `.1`s (static + 29 VIP aliases, IP up, IPv6/NAT off), runs Suricata
+     on the WAN with the range as `HOME_NET` and EVE to syslog, and ships its
+     syslog + the WAF's ModSecurity audit log to the platform's Elasticsearch,
+     geolocated. The config-push is idempotent and the WAN pass rule survives
+     the Suricata filter reload. The GUI pane is step 6 (dropped 2026-10-08).
+5. **Kali VM** holding the country addresses, with the source rewritten as
+   packets leave.
+   - **Done (2026-10-02).** The `fsl-kali` image is built from
+     `deploy/kali/setup.sh` on a `kali-rolling` base and boots in the slot on
+     an origin + mgmt (the terminal/proxy/tooling baked in). Its one Internet
+     port holds the ~100 per-country addresses (the slot `bootcmd` spreads them
+     onto the NIC) and `/usr/local/sbin/set-origin` SNATs the box's source per
+     country, so any origin fires. Proven from a clean image+slot rebuild.
+6. **The sidebar and one port**: Kibana (the real ELK, reading the same
+   Elasticsearch), the pfSense pane through a reverse-proxy on the platform's
+   own `:8080`, and ttyd, all served by the platform image with no
+   service or package added. **The terminal is done (2026-10-01):** nginx
+   (from apt) runs inside the platform's image on 8000, `/` to waitress on
+   `127.0.0.1:8001`, `/terminal/` to `kali:7681` (ttyd `-b /terminal`), and
+   7681 is no longer published. waitress trusts only `127.0.0.1` for
+   `X-Forwarded-For`, so the refusal of range addresses reads the real client
+   as before; `/terminal/` asks `/api/attacker/` first (`auth_request`), and
+   acceptance checks that a range host gets 403 there. **Done (2026-10-02):**
+   the WAF's `:8080` publish is gone (host port 8080 then served the pfSense
+   proxy, removed on 2026-10-08), and the acceptance suite and the
+   command-line cases reach the target from inside the range through
+   `test/range.py`'s runner (the attacker box for probes, the `scorer` host
+   for `redteam/run.py`), not a host port. The same suite runs unchanged
+   against the OpenStack range through `test/range.py`'s `ThroughPlatform` (2026-10-11).
+   **Done (the blue-console UI change, 2026-10-05/06):** the two
+   blue-screen panes the earlier backlog held out, Kibana (in compose) and the
+   pfSense GUI pane (a reverse-proxy on `:8080`, auto-logged-in), plus removing
+   the custom console UI for the sidebar shell. See `docs/DECISIONS.md`. The
+   2026-10-08 ruling drops the pfSense pane and the `:8080` proxy; both were
+   removed the same day.
+7. **Evidence by event time**, GeoIP in a durable bind mount, and the slot
+   lifecycle (Stop rebuilds).
+   - **Done (2026-10-02): evidence by event time.** The `fsl-geoip` pipeline
+     sets `@timestamp` from Suricata's `timestamp` and ModSecurity's
+     `transaction.time_stamp` (two date processors ahead of the geoip ones),
+     so the ingest fetch window selects by event time, not Filebeat's read
+     time. Core untouched; `test/test_event_time.py` is the guard.
+   - **Done (2026-10-02): GeoIP's durable home.** The managed downloader is off
+     and Elasticsearch reads `GeoLite2-City.mmdb` from a bind-mounted
+     `config/ingest-geoip`; `bin/fetch-geoip` fills it (git-ignored, 63 MB),
+     `config/ingest-geoip/README.md` carries the MaxMind attribution, and
+     `test/test_geoip_durable.py` is the guard. Licence review for production
+     still stands.
+   - **Done (2026-10-02): the slot's Stop rebuild.** `rebuild_slot()` on the
+     OpenStack adapter Nova-rebuilds every standing slot VM from its golden
+     image (keeping id/flavour/ports/IPs), refusing before any write if the
+     slot is not fully standing or an image is not ready; `POST
+     /api/range/slot/rebuild/` (Docker 409s), unit-tested against the Nova
+     fakes. A rebuild must be followed by `POST /api/range/configure/` once
+     the VMs are ACTIVE (pfSense/WAF config is ssh-pushed, not baked).
+   - **Done (2026-10-03): the session Start/Stop lifecycle and the READY gate.**
+     `slot.Plan.active` (pure: clean + standing + every VM ACTIVE). `GET
+     /api/range/ready/` is substrate-aware: compose answers `ready:true`,
+     OpenStack answers the three read-only checks (active, ground truth readable,
+     Suricata rules at baseline with no disabled rule in force) with a
+     derived phase (NOT_STANDING / REBUILDING / CHECKING / READY). `POST
+     /api/range/canary/` fires one known SQLi probe from the default origin
+     (wear_origin + `harness.fire`), then
+     reads Elasticsearch until both Suricata and ModSecurity alert on its marker
+     and confirms the two engines' event clocks agree within `READY_SKEW` (5 s);
+     it works on either substrate, so `test/test_ready.py` proves it end to end
+     on compose. Session Start (`POST /api/sessions/`) refuses on a
+     slot-bearing substrate if another session is open or the slot is not
+     `_range_ready`; compose is unchanged (no slot), so the many-session tests
+     stand. Session Stop (`close_session`) keeps observe -> stamp ended_at,
+     then kicks off `rebuild_slot` (no ACTIVE wait); a failed rebuild leaves the
+     session closed and says so. The console landing page polls `/ready/`,
+     disables Start and shows the blocked reasons when not ready, and offers a
+     canary button on the cloud; the close panel says the range rebuilds. No
+     core line, no new Session field or migration, no new dependency or service.
+   - **Not wired, by design:** Start does not itself fire the canary (that would
+     leave an unattributed alert inside every session's ingest window); the
+     canary is the between-sessions check the console runs after a rebuild, and
+     Start's server-authoritative gate is the three read-only checks plus
+     one-open-session. The minutes-long wait-ACTIVE -> `configure_slot` ->
+     re-check after a Stop is sequenced by the console poll over the existing
+     `/configure/` and `/slot/` endpoints, not inside `close`. Superseded
+     2026-10-11: `close` starts a background reset that configures the slot
+     once its VMs are ACTIVE (`docs/DECISIONS.md`).
+   - **Live-cloud verification is the user's to run** (the slot `active` check,
+     the rebuild, and the canary firing through pfSense are proven against the
+     Nova/ES fakes and, for the canary, end to end on compose; `test/range.py`
+     had no OpenStack adapter then). Since run: `ThroughPlatform` (2026-10-11)
+     and the acceptance runs on OpenStack in backlog 0.
+
+### 3. Sub-project B: the WordPress authz target `corp` - done 2026-10-04
+
+The range's second target, after the board. See "Sub-project B" above for what
+was built: three real, unauthenticated, pinned-version CVEs on `corp`
+(`wargames/corp/`), scored `effect_observed` from the target's own MySQL
+binary log via a substrate runner, proven end to end against the live stack.
+
+### 4. Left by the container range (2026-11-13)
+
+- [ ] A real firewall product at the edge (OpenWrt with LuCI is the
+      candidate), for a future corp or DMZ lesson that teaches a firewall's
+      own screens; the edge is nftables on each slot's infra VM until then (the
+      user's ruling, `docs/DECISIONS.md` 2026-11-13).
+- [ ] The corp WordPress install sends its pretty-permalink loopback test to
+      the real `corp.com`; the target maps `corp.com` to 127.0.0.1 inside
+      `corp-wp` (`deploy/roles/target/wargames.yaml`) because the slot has no
+      egress. Make the image's install not
+      depend on a request to its public name.
+- [ ] MySQL `performance_schema=OFF` (Next 5 in `docs/state/now.md`): the two
+      MySQL container is the largest share of the target VM's memory, and
+      whether the target fits `dba.small` is **[unverified]**.
+
+### 5. Left by the hardening (2026-11-15)
+
+- [ ] `admin` / `123456` is never forced to change (the user's ruling). The
+      sign-in limits of 2026-11-16 slow guessing; they do not help against a
+      default anyone can read. A password change is
+      `manage.py changepassword admin` in the platform container.
+
+### 6. The Heat range (2026-11-18)
+
+`docs/superpowers/specs/2026-11-18-heat-range-design.md`; P0-P7 done on
+`range-heat-int`.
+
+- [x] P8's pool fill (2026-11-18): `uv run bin/cloud up --replace` deleted
+      `cr-range` and filled the pool of four stacks; four faults fixed on the
+      way (`docs/DECISIONS.md` "The first live pool fill").
+- [ ] P8's full `bin/verify` green on the live Heat range, and a walk; then
+      gate 2. Run 3, after the control-port egress fix and the retarget
+      fix went live: acceptance 76 passed, 1 failed, 6 errors; its red fixed
+      on `dev` (the suite waits out a refusal naming a stack still setting
+      up; an IDS alert is credited to its X-Forwarded-For client when its
+      http record arrives after it) and those modules passed again. The
+      final run: acceptance 69 passed, 13 errors (one red team fixture whose
+      sign-in timed out while the SQLite store was locked for 30 s or more
+      during a disk stall; the store is now WAL, `docs/DECISIONS.md`; those
+      four modules run again once:
+      14 passed), unit and API 1932, ratchet no regression
+      (`docs/state/now.md`).
+- [x] Learner shells reach no metadata service: Kali, the WAF and board time
+      out on 169.254.169.254:80 since `cr-mgmt` and `cr-senders` keep only
+      egress to `cr-reach` and DHCP (`test_range_isolation.py` passed).
+- [ ] Measure on the cloud: RAM per stack of four VMs on com01
+      **[unverified]**. Measured: a closed session's stack is READY again
+      about 4-4.5 min after the close; the Kali VM boots and reports ready
+      within a stack's 8 min 50 s with the images cached; `dba.small` holds
+      the target's Docker and MySQL (0.8-0.9 GB of 2 GB in use). Seen once: a
+      Kali VM that ran no cloud-init and stayed SETTING_UP until
+      `POST /api/range/slot/rebuild/`; the cause **[unverified]**.
+- [x] The WAF tuning call answered 503 in `test_concurrent_sessions.py`:
+      the retarget race, fixed on `dev` (`docs/DECISIONS.md` "A slot is
+      retargeted or opened on only while no session holds it"); passed live
+      in run 3 and the final run.
+- [ ] Baking the role images is by hand (`docs/OPENSTACK.md` §3.6); no repo
+      tool builds them.
+
+## Known gaps
+
+- The first full `bin/verify` right after `docker compose up -d --build`
+  (2026-09-30) failed 56 tests in `test_console_behaviour.py` that passed in
+  `--fast` before it, alone, as a file, and in the next full run. The cause
+  was not found; the output was truncated. It recurred on 2026-10-01 as two
+  acceptance failures (one case of ten detected) that passed when rerun.
+- `test_declaration.py` compares two files, never the running range.
+- The range keeps time by the platform VM alone (chrony, `local stratum 10`;
+  each slot VM's user data points systemd-timesyncd at the platform's
+  `cr-mgmt` address): if the platform VM loses its upstream, the range follows
+  the platform's clock, which is what scoring compares against, not true time.
+- The platform holds the ssh key of the management user on every slot VM
+  (passwordless sudo): whoever takes the platform container is root on every
+  slot VM. The
+  platform VM's own Docker socket is no longer mounted anywhere (2026-11-15).
+- `elastic.fetch` reads at most 5000 documents per call, oldest first, `http`
+  records included. Since 2026-10-13 a full ingest pages by `@timestamp`
+  (`api/views.py` `_fetched`, up to 41 reads, about 205,000 documents); past
+  that, or when 5000 documents share one timestamp, the newest are still
+  dropped and `Session.read_of` flags it. Each ingest re-reads the whole
+  window. Paging with `search_after` inside `ingest/elastic.py` (a gated
+  core file) would need a monotonic write-time field; one
+  `set: _ingest.timestamp` processor gives it.
+- ModSecurity's `Detection.raw` holds the rule message, request, host and
+  place, not the whole audit record.
+- The operator log is lost when the attacker box is recreated, and its whole
+  seconds let sessions under a second apart claim each other's commands.
+- Two labelled windows under four seconds apart overlap (`WINDOW_SLACK` is two
+  seconds each end), and the console does not say so.
+- A learner opens only their own sessions (one at a time); an admin opens
+  any, and nothing stops one account using a session in four windows.
+  Kibana shows a learner only their open session's slot (the platform's
+  Kibana gate), but a slot is reused, so it also shows what an earlier
+  session on that slot left in `logs-N-*`.
+- The API's refusal of range addresses reads the list of range hosts through
+  a 30 s cache, so a VM recreated within that time keeps its old answer
+  (`docs/THREAT-MODEL.md`). A slot VM's control port reaches the platform only
+  for NTP and syslog (`cr-reach`), so the refusal is the second line.
+- OpenStack host keys are trust-on-first-use per generation, kept in the
+  platform user's home (lost with the container) unless the deployment's ssh
+  config says otherwise. Reading them from `os-getConsoleOutput` is stronger,
+  but libvirt returns only the last 100 KiB and the guest writes its console.
+
+## Tried and thrown away
+
+- **Replacing Django entirely.** It cost more lines than it saved.
+- **Elasticsearch as the only store, 2026-09-22**, killed before any code:
+  both event clocks are `keyword` and the read clock leads ModSecurity's by
+  2.5 s median, 7.9 s p90, so 64% of WAF alerts would miss their 2 s window;
+  re-querying turned one session's 66 detections into 98; 85 tests stand on
+  `patch(elastic.fetch)`. The motivating 40 ms was a Docker call, not Django.
+- **Asserting that no alert in a red team window is unmarked.** False: a
+  window reaches a minute either side, so it holds whatever used the range
+  just before. That is why `unattributed` is reported, not asserted;
+  acceptance checks only for the stack alerting on its own traffic (loopback
+  source or the numeric-Host signature).
+- **Feeding window correlation the scorer's address.** It would measure the
+  scorer instead of the defence; a zero with a stated reason is more useful.

@@ -1,0 +1,128 @@
+name: cr
+
+networks:
+  mgmt:
+    labels:
+      cr.segment.id: "mgmt"
+      cr.segment: "Management"
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+
+volumes:
+  esdata:
+  collectordata:
+  platformdata:
+
+secrets:
+  openstack_password:
+    file: ./openstack-password
+
+services:
+  elasticsearch:
+    platform: linux/amd64
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: cr-elasticsearch
+    networks: [mgmt]
+    ports:
+      - "127.0.0.1:9200:9200"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ingest.geoip.downloader.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+      - ./config/ingest-geoip:/usr/share/elasticsearch/config/ingest-geoip:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  collector:
+    platform: linux/amd64
+    image: docker.elastic.co/beats/filebeat:8.15.0
+    container_name: cr-collector
+    hostname: log-server
+    user: root
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+    networks: [mgmt]
+    ports:
+      - "${CR_SYSLOG_PUBLISH:-127.0.0.1}:5140:5140/udp"
+    entrypoint:
+      - /usr/bin/tini
+      - --
+      - sh
+      - -c
+      - >-
+        awk '/^- key: /{kept = ($$3 ~ /^(ecs|beat|cloud|docker|host|kubernetes|process|log)$$/)} kept'
+        fields.yml > data/fields-lean.yml && exec /usr/local/bin/docker-entrypoint "$$@"
+      - collector
+    command: ["--strict.perms=false", "-e"]
+    volumes:
+      - ./deploy/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - collectordata:/usr/share/filebeat/data
+
+  kibana:
+    platform: linux/amd64
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    container_name: cr-kibana
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+    networks: [mgmt]
+    ports:
+      - "127.0.0.1:5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
+      SERVER_NAME: kibana
+      SERVER_BASEPATH: "/kibana"
+      SERVER_REWRITEBASEPATH: "true"
+      SERVER_PUBLICBASEURL: "http://localhost:8000/kibana"
+      TELEMETRY_ENABLED: "false"
+      DATA_SEARCH_SESSIONS_ENABLED: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5601/kibana/api/status | grep -q '\"level\":\"available\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 60s
+
+  platform:
+    platform: linux/amd64
+    build: {context: ., dockerfile: platform/Dockerfile}
+    image: ghcr.io/nekonic/cr-platform:${CR_IMAGE_TAG:-dev}
+    container_name: cr-platform
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+    networks:
+      mgmt: {}
+    ports:
+      - "${CR_PUBLISH:-127.0.0.1}:8000:8000"
+      - "${CR_PUBLISH:-127.0.0.1}:8002:8002"
+      - "${CR_PUBLISH:-127.0.0.1}:2222:2222"
+    environment:
+      ELASTIC_URL: "http://elasticsearch:9200"
+      ELASTIC_INDEX: "logs-*"
+      KIBANA_URL: "http://kibana:5601/kibana"
+      DJANGO_DB_PATH: "/data/db.sqlite3"
+      CR_RESET_OWED_DIR: "/data/reset-owed"
+      CR_JUMP_DIR: "/data/jump"
+      TARGET_URL: "http://board.com"
+      PUBLIC_TARGET_URL: "http://board.com"
+      WARGAME_CASES_DIR: "/app/redteam/cases"
+      CR_SOURCE: "/src"
+      CR_RETAIN_CLOSED_MINUTES: "${CR_RETAIN_CLOSED_MINUTES:-60}"
+    env_file:
+      - path: ./openstack.env
+        required: false
+        format: raw
+    secrets: [openstack_password]
+    volumes:
+      - ./platform:/app
+      - ./redteam:/app/redteam:ro
+      - ./deploy:/src/deploy:ro
+      - ./wargames:/src/wargames:ro
+      - platformdata:/data
+

@@ -1,0 +1,689 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import importlib.util
+import json
+import re
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+from typing import NamedTuple
+
+ROOT = Path(__file__).resolve().parent.parent
+TEMPLATE = ROOT / "deploy/openstack/platform.yaml"
+CLOUD = ROOT / "deploy/openstack/cloud.yaml"
+WORKFLOW = ROOT / ".github/workflows/images.yml"
+LOADER = ROOT / "platform/range/cloud.py"
+BACKUP = ROOT / "bin/backup"
+BACKUPS = ROOT / "backups"
+PLATFORM_KEY = "/data/ssh/id_ed25519"
+PLATFORM_UID = 10001
+CHECKOUT = "/opt/cr"
+VENV_COMMAND = (
+    "exec 9>/tmp/cr-venv.lock && flock 9 && "
+    f"/usr/local/bin/uv sync --quiet --frozen --project {CHECKOUT} --python /usr/bin/python3"
+)
+SSH_WAIT = 900
+SSH_POLL = 2
+API_WAIT = 1200
+API_POLL = 2
+CONTAINER_WAIT = 120
+STORE_DIRECTORY = "/var/lib/docker/volumes/cr_platformdata/_data"
+LEGACY_STORE = "/var/lib/docker/volumes/fsl_platformdata/_data/db.sqlite3"
+LEGACY_HELD = 4
+STORE_PROBE = (
+    "command -v docker >/dev/null || exit 0; "
+    f"sudo test -e {LEGACY_STORE} && exit {LEGACY_HELD}; "
+    "sudo docker ps -q --filter 'name=^cr-platform$' --filter status=running || exit 3; "
+    f"sudo test -e {STORE_DIRECTORY}/db.sqlite3 && echo stored; exit 0"
+)
+REGISTRY = "ghcr.io"
+OWNER = "nekonic"
+BUILDER = "cr-build-"
+BUILDS = "cr_image"
+IMAGES = ("platform", "board", "corp", "corp-db")
+MANIFESTS = ", ".join((
+    "application/vnd.oci.image.index.v1+json",
+    "application/vnd.oci.image.manifest.v1+json",
+    "application/vnd.docker.distribution.manifest.list.v2+json",
+    "application/vnd.docker.distribution.manifest.v2+json",
+))
+
+
+class Refused(SystemExit):
+    pass
+
+
+def arguments(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="platform-rebuild",
+        description="Create the platform VM's Heat stack, or replace a standing one "
+                    "and carry its store and its range ssh key across. The identity "
+                    "comes from the clouds.yaml entry cloud.yaml names, every other "
+                    "cloud value from cloud.yaml. Run it with uv run, which installs "
+                    "what it needs.",
+    )
+    parser.add_argument("--cloud", type=Path, default=CLOUD,
+                        help="the cloud settings file (default deploy/openstack/cloud.yaml)")
+    parser.add_argument("--ref", help="the branch, tag or commit to clone instead of platform.ref")
+    add_sideload(parser)
+    return parser.parse_args(argv)
+
+
+def add_sideload(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--sideload", action="append", default=[], metavar="NAME=TARBALL",
+        help="run this checkout's HEAD, unpushed: the VM clones the ref, checks HEAD out from a "
+             "git bundle and docker-loads this image from a docker save tarball holding "
+             f"{REGISTRY}/{OWNER}/cr-NAME:<commit it was built from>, tagged as the ref's commit; "
+             "every image not named is pulled from GHCR at the ref's commit. Each image's build "
+             "context must be HEAD's. Repeatable",
+    )
+
+
+def settings_module():
+    try:
+        import yaml  # noqa: F401
+    except ImportError as missing:
+        raise Refused(f"{Path(sys.argv[0]).name}: PyYAML is missing; run it with uv run") from missing
+    spec = importlib.util.spec_from_file_location("cr_cloud", LOADER)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def load(args: argparse.Namespace, clouds: Path | None = None, which=shutil.which):
+    module = settings_module()
+    try:
+        cloud = module.read(args.cloud)
+        if args.ref:
+            cloud = dataclasses.replace(cloud, ref=args.ref)
+        cloud = dataclasses.replace(cloud, signed_in=module.signed_in(cloud.cloud, clouds or module.CLOUDS))
+        environment = cloud.signed_in.cli_environment()
+    except module.Invalid as invalid:
+        raise Refused(f"{Path(sys.argv[0]).name}: {invalid}") from invalid
+    if openstack_cli(which) is None:
+        raise Refused(
+            f"{Path(sys.argv[0]).name}: no openstack CLI beside {Path(sys.executable).parent} or on PATH; "
+            f"run it with uv run, which installs it"
+        )
+    return cloud, environment
+
+
+def sign_in(environment: dict[str, str], environ=os.environ) -> None:
+    for name in [name for name in environ if name.startswith("OS_")]:
+        del environ[name]
+    environ.update(environment)
+
+
+def openstack_cli(which=shutil.which) -> str | None:
+    beside = Path(sys.executable).parent / "openstack"
+    return str(beside) if beside.is_file() else which("openstack")
+
+
+def commit_of(repository: str, ref: str) -> str:
+    if re.fullmatch(r"[0-9a-f]{40}", ref):
+        return ref
+    done = run(["git", "ls-remote", repository, f"refs/heads/{ref}", f"refs/tags/{ref}"])
+    found = done.stdout.decode().split()
+    if not found:
+        raise Refused(f"platform-rebuild: {repository} has no branch or tag {ref!r}")
+    return found[0]
+
+
+def published(name: str, tag: str) -> str | None:
+    repository = f"{OWNER}/cr-{name}"
+    try:
+        with urllib.request.urlopen(
+            f"https://{REGISTRY}/token?scope=repository:{repository}:pull", timeout=30
+        ) as answer:
+            token = json.load(answer)["token"]
+        request = urllib.request.Request(
+            f"https://{REGISTRY}/v2/{repository}/manifests/{tag}", method="HEAD",
+            headers={"Authorization": f"Bearer {token}", "Accept": MANIFESTS},
+        )
+        with urllib.request.urlopen(request, timeout=30):
+            return None
+    except urllib.error.HTTPError as refused:
+        if refused.code in (401, 403):
+            return f"{REGISTRY}/{repository} is not public, or was never pushed"
+        return f"{REGISTRY}/{repository}:{tag} is not published ({refused.code})"
+    except OSError as error:
+        return f"{REGISTRY}/{repository}: {error}"
+
+
+def refuse_unless_published(tag: str, lookup=published, sideloaded=()) -> None:
+    missing = [said for said in (lookup(name, tag) for name in IMAGES if name not in sideloaded) if said]
+    if missing:
+        raise Refused(
+            "platform-rebuild: the new VM pulls the images built for " + tag
+            + " and some cannot be pulled, so nothing was deleted:\n  "
+            + "\n  ".join(missing)
+        )
+
+
+def run(argv: list[str], stdin: bytes | None = None, check: bool = True) -> subprocess.CompletedProcess:
+    if argv[0] == "openstack":
+        argv = [openstack_cli() or "openstack", *argv[1:]]
+    print("+", " ".join(shlex.quote(a) for a in argv), flush=True)
+    done = subprocess.run(argv, input=stdin, capture_output=True)
+    if check and done.returncode != 0:
+        said = done.stderr.decode(errors="replace").strip()
+        raise Refused(f"platform-rebuild: {argv[0]} exited {done.returncode}: {said[-400:]}")
+    return done
+
+
+def image_tags(tarball: Path) -> set[str]:
+    try:
+        with tarfile.open(tarball) as archive:
+            manifest = archive.extractfile("manifest.json")
+            return {tag for image in json.load(manifest) for tag in image.get("RepoTags") or ()}
+    except (OSError, KeyError, tarfile.TarError, ValueError) as unreadable:
+        raise Refused(f"platform-rebuild: {tarball} is not a docker save tarball: {unreadable}") from unreadable
+
+
+class Tarball(NamedTuple):
+    path: Path
+    built_from: str
+
+
+def sideloaded(pairs: list[str], tags_of=image_tags) -> dict[str, Tarball]:
+    tarballs: dict[str, Tarball] = {}
+    for pair in pairs:
+        name, _, path = pair.partition("=")
+        if name not in IMAGES or not path:
+            raise Refused(f"platform-rebuild: --sideload {pair!r} is not NAME=TARBALL with NAME one of {', '.join(IMAGES)}")
+        if name in tarballs:
+            raise Refused(f"platform-rebuild: --sideload names {name} twice")
+        tarball = Path(path).expanduser()
+        if not tarball.is_file():
+            raise Refused(f"platform-rebuild: --sideload {name}: {tarball} does not exist, so nothing was deleted")
+        image = f"{REGISTRY}/{OWNER}/cr-{name}:"
+        commits = sorted(tag[len(image):] for tag in tags_of(tarball)
+                         if tag.startswith(image) and re.fullmatch(r"[0-9a-f]{40}", tag[len(image):]))
+        if len(commits) != 1:
+            raise Refused(f"platform-rebuild: --sideload {name}: {tarball} holds no single {image}<commit>, "
+                          f"the commit it was built from")
+        tarballs[name] = Tarball(tarball, commits[0])
+    return tarballs
+
+
+def head_commit(run=run) -> str:
+    return run(["git", "-C", str(ROOT), "rev-parse", "HEAD"]).stdout.decode().strip()
+
+
+def build_contexts() -> dict[str, list[str]]:
+    import yaml
+    matrix = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["image"]["strategy"]["matrix"]["include"]
+    return {entry["name"]: entry["sources"].split() if "sources" in entry else [entry["context"]] for entry in matrix}
+
+
+def refuse_unless_unchanged(base: str, commit: str, tarballs: dict[str, Tarball], run=run) -> None:
+    changed = []
+    for name, paths in build_contexts().items():
+        source = tarballs[name].built_from if name in tarballs else base
+        done = run(["git", "-C", str(ROOT), "diff", "--quiet", source, commit, "--", *paths], check=False)
+        if done.returncode > 1:
+            raise Refused(f"platform-rebuild: cannot compare {source} with HEAD here; git fetch it first")
+        if done.returncode:
+            changed.append(f"{name}: {' '.join(paths)} differs between {source} and HEAD")
+    if changed:
+        raise Refused(
+            "platform-rebuild: these images were not built from what HEAD holds; build them "
+            "from HEAD and sideload them:\n  " + "\n  ".join(changed)
+        )
+
+
+def head_bundle(commit: str, scratch: Path) -> Path:
+    bundle = scratch / f"cr-{commit}.bundle"
+    run(["git", "-C", str(ROOT), "bundle", "create", str(bundle), "HEAD"])
+    return bundle
+
+
+class Sideload(NamedTuple):
+    commit: str
+    bundle: Path
+    tarballs: dict[str, Tarball]
+
+
+def address_of(stack: str, run=run) -> str | None:
+    done = run(["openstack", "stack", "output", "show", stack, "address",
+                "-f", "value", "-c", "output_value"], check=False)
+    found = done.stdout.decode().strip()
+    return found if done.returncode == 0 and found else None
+
+
+def stack_status(stack: str, run=run) -> str | None:
+    done = run(["openstack", "stack", "show", stack, "-f", "value", "-c", "stack_status"], check=False)
+    found = done.stdout.decode().strip()
+    return found if done.returncode == 0 and found else None
+
+
+def failed(status: str | None) -> bool:
+    return bool(status) and status.endswith("_FAILED")
+
+
+def refuse_if_busy(stack: str, status: str | None) -> None:
+    if status and status.endswith("_IN_PROGRESS"):
+        raise Refused(f"{Path(sys.argv[0]).name}: stack {stack} is {status}; wait for Heat to finish")
+
+
+def standing_address(stack: str, status: str | None, run=run) -> str | None:
+    if status is None or failed(status):
+        return None
+    address = address_of(stack, run)
+    if address is None:
+        raise Refused(
+            f"{Path(sys.argv[0]).name}: stack {stack} is {status} but its address output cannot be read, "
+            f"so nothing was deleted; openstack stack output show {stack} address says why"
+        )
+    return address
+
+
+def working_address(stack: str, run=run) -> str | None:
+    status = stack_status(stack, run)
+    refuse_if_busy(stack, status)
+    return standing_address(stack, status, run)
+
+
+def stack_network(stack: str, run=run) -> str | None:
+    done = run(["openstack", "stack", "resource", "show", stack, "network",
+                "-f", "value", "-c", "physical_resource_id"], check=False)
+    found = done.stdout.decode().strip()
+    return found if done.returncode == 0 and found else None
+
+
+def builders(stack: str, run=run) -> list[str]:
+    network = stack_network(stack, run)
+    if network is None:
+        return []
+    name = run(["openstack", "network", "show", network, "-f", "value", "-c", "name"]).stdout.decode().strip()
+    done = run(["openstack", "server", "list", "--name", f"^{BUILDER}", "--long", "-f", "json"])
+    return [row["ID"] for row in json.loads(done.stdout or b"[]")
+            if BUILDS in str(row.get("Properties") or "") and name in (row.get("Networks") or {})]
+
+
+def remove_builders(stack: str, run=run) -> list[str]:
+    found = builders(stack, run)
+    if found:
+        run(["openstack", "server", "delete", "--wait", *found])
+    return found
+
+
+def delete_stack(stack: str, run=run) -> None:
+    remove_builders(stack, run)
+    run(["openstack", "stack", "delete", "--yes", "--wait", stack])
+
+
+class Host:
+    def __init__(self, user: str, address: str, known_hosts: Path, identity: Path):
+        self.target = f"{user}@{address}"
+        self.options = ["-i", str(identity), "-o", "IdentitiesOnly=yes",
+                        "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+                        "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4",
+                        "-o", "StrictHostKeyChecking=accept-new",
+                        "-o", f"UserKnownHostsFile={known_hosts}"]
+
+    def ssh(self, command: str, stdin: bytes | None = None, check: bool = True):
+        return run(["ssh", *self.options, self.target, command], stdin, check)
+
+    def copy(self, source: Path, destination: str) -> None:
+        run(["scp", *self.options, str(source), f"{self.target}:{destination}"])
+
+    def wait(self) -> None:
+        deadline = time.monotonic() + SSH_WAIT
+        while True:
+            tried = self.ssh("true", check=False)
+            if tried.returncode == 0:
+                return
+            if time.monotonic() > deadline:
+                said = tried.stderr.decode(errors="replace").strip()
+                raise Refused(f"platform-rebuild: {self.target} took no ssh within {SSH_WAIT}s; "
+                              f"the last attempt said: {said[-400:] or 'nothing'}")
+            time.sleep(SSH_POLL)
+
+
+def make_range_key(key: Path, run=run) -> None:
+    key.parent.mkdir(parents=True, exist_ok=True)
+    run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "cr-range", "-f", str(key)])
+    print(f"made the range key at {key}")
+
+
+def keep_range_key(key: Path, old: Host | None, first: bool = False, run=run) -> None:
+    if key.is_file():
+        return
+    if old is None and first:
+        make_range_key(key, run)
+        return
+    if old is None:
+        raise Refused(
+            f"platform-rebuild: no range key at {key} and no running platform to take "
+            f"it from. Without it the range's VMs refuse the new platform"
+        )
+    taken = old.ssh(f"sudo docker exec cr-platform cat {PLATFORM_KEY}").stdout
+    if b"PRIVATE KEY" not in taken:
+        raise Refused(f"platform-rebuild: {PLATFORM_KEY} on the running platform is not a private key")
+    key.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(key, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as written:
+        written.write(taken)
+    print(f"kept the platform's range key at {key}")
+
+
+def holds_store(old: Host) -> bool:
+    asked = old.ssh(STORE_PROBE, check=False)
+    if asked.returncode == LEGACY_HELD:
+        raise Refused(
+            f"{Path(sys.argv[0]).name}: {old.target} holds its store under the names used before the "
+            f"rename ({LEGACY_STORE}), which this checkout cannot back up, so nothing was deleted; "
+            f"take it down from a checkout before the rename first (docs/OPENSTACK.md §5.4)"
+        )
+    if asked.returncode != 0:
+        said = asked.stderr.decode(errors="replace").strip()
+        raise Refused(
+            f"{Path(sys.argv[0]).name}: cannot tell whether {old.target} holds the platform's store "
+            f"(ssh exited {asked.returncode}: {said[-300:] or 'nothing'}), so nothing was deleted"
+        )
+    return bool(asked.stdout.strip())
+
+
+def back_up(old: Host, keep: int = 1) -> Path:
+    environ = {**os.environ, "CR_PLATFORM_EXEC": shlex.join(
+        ["ssh", *old.options, old.target, "sudo docker exec -i cr-platform python -"])}
+    done = subprocess.run([str(ROOT / "bin/backup"), "--keep", str(keep)],
+                          env=environ, capture_output=True, text=True)
+    if done.returncode != 0:
+        raise Refused(f"platform-rebuild: no backup, so nothing was deleted: {done.stderr.strip()}")
+    print(done.stdout, end="")
+    return Path(done.stdout.splitlines()[0])
+
+
+def backup_module():
+    loader = SourceFileLoader("cr_backup", str(BACKUP))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("cr_backup", loader))
+    loader.exec_module(module)
+    return module
+
+
+def holds_rows(kept: Path, check) -> bool:
+    try:
+        return any(check(kept.resolve()).values())
+    except SystemExit:
+        return False
+
+
+def newest_backup() -> Path | None:
+    backup = backup_module()
+    stamped = sorted((path for path in BACKUPS.glob("db-*.sqlite3") if backup.STAMPED.fullmatch(path.name)),
+                     reverse=True)
+    return next((path for path in stamped if holds_rows(path, backup.check)), None)
+
+
+def store_to_restore(kept: Path | None) -> Path | None:
+    if kept is not None:
+        if holds_rows(kept, backup_module().check):
+            return kept
+        print(f"{kept.name} holds no rows, so the newest backup that does is restored instead")
+    newest = newest_backup()
+    if newest is None:
+        print(f"no backup in {BACKUPS} holds any rows, so the platform starts with an empty store")
+    else:
+        print(f"restoring {newest}, the newest backup in {BACKUPS} that holds rows")
+    return newest
+
+
+def reserved_floating_ip(address: str, run=run) -> str:
+    if not address:
+        return ""
+    done = run(["openstack", "floating", "ip", "list", "--floating-ip-address", address,
+                "-f", "value", "-c", "ID"])
+    found = done.stdout.decode().split()
+    if len(found) != 1:
+        raise Refused(
+            f"platform-rebuild: network.address names {address}, which this project holds no "
+            f"floating IP at; an admin creates it once with openstack floating ip create "
+            f"--project <project> --floating-ip-address {address} <external network>"
+        )
+    return found[0]
+
+
+def ensure_keypair(name: str, key_file: Path, run=run) -> None:
+    public = key_file.with_name(f"{key_file.name}.pub")
+    if not public.is_file():
+        raise Refused(
+            f"platform-rebuild: keys.key_file is {key_file}, and its public key {public} does not exist; "
+            f"ssh-keygen -y -f {key_file} > {public} writes it"
+        )
+    offered = public.read_text().split()[:2]
+    listed = json.loads(run(["openstack", "keypair", "list", "-f", "json"]).stdout or b"[]")
+    if name not in {entry.get("Name") for entry in listed}:
+        run(["openstack", "keypair", "create", "--public-key", str(public), name])
+        print(f"imported {public} as the Nova keypair {name}")
+        return
+    held = run(["openstack", "keypair", "show", "--public-key", name]).stdout.decode().split()[:2]
+    if held != offered:
+        raise Refused(
+            f"platform-rebuild: the Nova keypair {name} (keys.key_name) holds another public key than "
+            f"{public}, so it is left as it is; point keys.key_file at that keypair's private key, "
+            f"or delete the keypair to have {public} imported"
+        )
+
+
+def stack_arguments(cloud, run=run) -> list[str]:
+    return [
+        argument for name, value in cloud.heat_parameters(reserved_floating_ip(cloud.address, run)).items()
+        for argument in ("--parameter", f"{name}={value}")
+    ]
+
+
+def replace_stack(cloud, existed: bool) -> str:
+    parameters = stack_arguments(cloud)
+    if existed:
+        delete_stack(cloud.stack)
+    run(["openstack", "stack", "create", "--wait", "-t", str(TEMPLATE), *parameters, cloud.stack])
+    address = address_of(cloud.stack)
+    if not address:
+        raise Refused(f"platform-rebuild: stack {cloud.stack} has no address output")
+    return address
+
+
+def side_load(new: Host, sideload: Sideload) -> None:
+    new.copy(sideload.bundle, f"/tmp/{sideload.bundle.name}")
+    new.ssh(f"git -C {CHECKOUT} fetch -q /tmp/{sideload.bundle.name} HEAD "
+            f"&& git -C {CHECKOUT} checkout -q --detach {sideload.commit} && rm /tmp/{sideload.bundle.name}")
+    new.ssh(f"sudo systemd-run --collect --no-block --unit=cr-venv-checkout --uid=ubuntu --gid=ubuntu "
+            f"sh -c {shlex.quote(VENV_COMMAND)}")
+    for name, tarball in sideload.tarballs.items():
+        image = f"{REGISTRY}/{OWNER}/cr-{name}"
+        new.copy(tarball.path, f"/tmp/{tarball.path.name}")
+        new.ssh(f"sudo docker load -q -i /tmp/{tarball.path.name} && rm /tmp/{tarball.path.name} "
+                f"&& sudo docker tag {image}:{tarball.built_from} "
+                f"{image}:$(sed -n 's/^CR_IMAGE_TAG=//p' {CHECKOUT}/.env)")
+
+
+def platform_settings(sideload: Sideload | None) -> str:
+    return f"CR_SIDELOADED={','.join(sorted(sideload.tarballs))}\n" if sideload else ""
+
+
+def password_file() -> str:
+    return f"{CHECKOUT}/openstack-password"
+
+
+def password_write() -> str:
+    kept = password_file()
+    return "sudo sh -c " + shlex.quote(
+        f"[ -e {kept} ] || install -m 600 -o {PLATFORM_UID} /dev/null {kept}; cat > {kept}"
+    )
+
+
+def settings_rewrite(sideload: Sideload | None) -> str:
+    owned = ("CR_OPENSTACK_PASSWORD",) + (("CR_SIDELOADED",) if sideload else ())
+    unowned = " ".join(f"-e '^{name}='" for name in owned)
+    settings = f"{CHECKOUT}/openstack.env"
+    kept = f"{settings}.kept"
+    return f"umask 077 && {{ grep -v {unowned} {settings} > {kept}; cat {kept} - > {settings} && rm {kept}; }}"
+
+
+def start_platform(host: Host) -> None:
+    running = "[ \"$(sudo docker inspect -f '{{.State.Running}}' cr-platform 2>/dev/null)\" = true ]"
+    started = host.ssh(
+        f"cd {CHECKOUT} && sudo docker compose -f {CHECKOUT}/compose.yaml up -d platform >/dev/null "
+        f"&& for _ in $(seq {CONTAINER_WAIT // 2}); do {running} && exit 0; sleep 2; done; exit 1",
+        check=False,
+    )
+    if started.returncode != 0:
+        said = started.stderr.decode(errors="replace").strip()
+        raise Refused(
+            f"platform-rebuild: the cr-platform container on {host.target} is not running and did not "
+            f"start within {CONTAINER_WAIT}s (ssh exited {started.returncode}: {said[-300:] or 'nothing'}); "
+            f"read `sudo docker compose -f {CHECKOUT}/compose.yaml logs platform` there"
+        )
+
+
+def hand_over(new: Host, password: str, range_key: Path, store: Path | None,
+              sideload: Sideload | None = None) -> None:
+    compose = f"sudo docker compose -f {CHECKOUT}/compose.yaml"
+    brought_up = new.ssh("cloud-init status --wait >/dev/null; systemctl is-active --quiet cr-platform",
+                         check=False)
+    if brought_up.returncode != 0:
+        said = brought_up.stderr.decode(errors="replace").strip()
+        raise Refused(
+            f"platform-rebuild: cr-platform.service is not active on {new.target} (ssh exited "
+            f"{brought_up.returncode}: {said[-300:] or 'nothing'}); its first boot did not finish. Read "
+            f"`sudo cloud-init status --long` and `sudo journalctl -u cr-platform` there. Nothing is "
+            f"stored on it yet, so `bin/cloud up --replace` makes it again and restores the newest "
+            f"backup in backups/"
+        )
+    if sideload is not None:
+        side_load(new, sideload)
+    start_platform(new)
+    new.ssh(
+        "sudo docker exec -i -u cr cr-platform sh -c "
+        + shlex.quote(f"umask 077 && mkdir -p {Path(PLATFORM_KEY).parent} && cat > {PLATFORM_KEY} "
+                      f"&& ssh-keygen -y -f {PLATFORM_KEY} > {PLATFORM_KEY}.pub"),
+        range_key.read_bytes(),
+    )
+    if store is not None:
+        new.ssh(f"mkdir -p {CHECKOUT}/backups")
+        new.copy(store, f"{CHECKOUT}/backups/{store.name}")
+        new.ssh(
+            f"cd {CHECKOUT} && {compose} stop platform && sudo docker run --rm --network none "
+            f"--entrypoint sh --user cr -v cr_platformdata:/data -v {CHECKOUT}/backups:/backups:ro "
+            "$(sudo docker inspect --format '{{.Config.Image}}' cr-platform) -c "
+            + shlex.quote(f"rm -f /data/db.sqlite3-journal /data/db.sqlite3-wal /data/db.sqlite3-shm && cp /backups/{store.name} /data/db.sqlite3")
+        )
+    new.ssh(settings_rewrite(sideload), platform_settings(sideload).encode())
+    new.ssh(password_write(), password.encode())
+    new.ssh(f"cd {CHECKOUT} && {compose} up -d --force-recreate" + ("" if sideload else " platform"))
+
+
+def api_answers(address: str) -> bool:
+    url = f"http://{address}:8000/api/auth/"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as answer:
+            return answer.status == 200
+    except OSError:
+        return False
+
+
+def wait_for_api(address: str) -> None:
+    deadline = time.monotonic() + API_WAIT
+    while True:
+        if api_answers(address):
+            print(f"http://{address}:8000/api/auth/ answers")
+            return
+        if time.monotonic() > deadline:
+            raise Refused(f"platform-rebuild: http://{address}:8000/api/auth/ did not answer within {API_WAIT}s")
+        time.sleep(API_POLL)
+
+
+def hand_over_done(host: Host) -> bool:
+    asked = host.ssh(f"sudo test -s {password_file()}", check=False)
+    if asked.returncode in (0, 1):
+        return asked.returncode == 0
+    said = asked.stderr.decode(errors="replace").strip()
+    raise Refused(
+        f"{Path(sys.argv[0]).name}: cannot tell whether {host.target} took its hand-over "
+        f"(ssh exited {asked.returncode}: {said[-300:] or 'nothing'}), so nothing was changed"
+    )
+
+
+def resume(cloud, environment: dict[str, str], address: str, sideload_pairs: list[str] = ()) -> None:
+    range_key = Path(cloud.range_key).expanduser()
+    identity = Path(cloud.key_file).expanduser()
+    with tempfile.TemporaryDirectory() as scratch:
+        host = Host("ubuntu", address, Path(scratch) / "known_hosts", identity)
+        host.wait()
+        if not hand_over_done(host):
+            if sideload_pairs:
+                raise Refused(
+                    f"cloud: the platform VM at {address} never took its hand-over, and --sideload "
+                    f"applies only to a new VM; run up --replace --sideload"
+                )
+            print(f"the platform VM at {address} never took its hand-over; doing it now")
+            holding = holds_store(host)
+            if holding:
+                start_platform(host)
+            keep_range_key(range_key, host if holding else None, first=not holding)
+            hand_over(host, cloud.signed_in.password, range_key, None if holding else store_to_restore(None))
+    wait_for_api(address)
+
+
+def rebuild(cloud, environment: dict[str, str], sideload_pairs: list[str] = ()) -> str:
+    sign_in(environment)
+    base = commit_of(cloud.repository, cloud.ref)
+    range_key = Path(cloud.range_key).expanduser()
+    identity = Path(cloud.key_file).expanduser()
+    with tempfile.TemporaryDirectory() as scratch:
+        sideload = None
+        if sideload_pairs:
+            commit = head_commit()
+            tarballs = sideloaded(list(sideload_pairs))
+            refuse_unless_unchanged(base, commit, tarballs)
+            sideload = Sideload(commit, head_bundle(commit, Path(scratch)), tarballs)
+        refuse_unless_published(base, sideloaded=sideload.tarballs if sideload else ())
+        ensure_keypair(cloud.key_name, identity)
+        known_hosts = Path(scratch) / "known_hosts"
+        status = stack_status(cloud.stack)
+        refuse_if_busy(cloud.stack, status)
+        old_address = standing_address(cloud.stack, status)
+        old = Host("ubuntu", old_address, known_hosts, identity) if old_address else None
+        holding = holds_store(old) if old else False
+        if holding:
+            start_platform(old)
+        if old and not holding:
+            print(f"{old.target} has no cr-platform container and no store, so there is nothing to back up")
+        keep_range_key(range_key, old if holding else None, first=status is None or old is not None)
+        store = store_to_restore(back_up(old, cloud.backups_keep) if holding else None)
+        known_hosts.unlink(missing_ok=True)
+        address = replace_stack(cloud, existed=status is not None)
+        new = Host("ubuntu", address, known_hosts, identity)
+        new.wait()
+        hand_over(new, cloud.signed_in.password, range_key, store, sideload)
+        wait_for_api(address)
+    return address
+
+
+def main(argv: list[str]) -> int:
+    args = arguments(argv)
+    cloud, environment = load(args)
+    address = rebuild(cloud, environment, args.sideload)
+    print(f"the platform is at http://{address}:8000/; GET /api/range/fabric/ shows whether the range still matches")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

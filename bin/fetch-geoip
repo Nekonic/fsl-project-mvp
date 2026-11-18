@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import hashlib
+import io
+import sys
+import tarfile
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+HOME = ROOT / "config" / "ingest-geoip"
+ENDPOINT = "https://geoip.elastic.co/v1/database?elastic_geoip_service_tos=agree"
+WANT = "GeoLite2-City"
+
+
+def manifest() -> list[dict]:
+    with urllib.request.urlopen(ENDPOINT, timeout=30) as answer:
+        import json
+
+        return json.load(answer)
+
+
+def entry(name: str) -> dict:
+    for database in manifest():
+        if database.get("name") == f"{name}.tgz":
+            return database
+    raise SystemExit(f"{name}.tgz is not in the GeoIP manifest")
+
+
+def fetched(url: str, md5_hash: str) -> bytes:
+    with urllib.request.urlopen(url, timeout=120) as answer:
+        payload = answer.read()
+    got = hashlib.md5(payload).hexdigest()
+    if got != md5_hash:
+        raise SystemExit(f"checksum mismatch: wanted {md5_hash}, got {got}")
+    return payload
+
+
+def extract(tgz: bytes, name: str, into: Path) -> Path:
+    with tarfile.open(fileobj=io.BytesIO(tgz), mode="r:gz") as archive:
+        member = next(
+            (m for m in archive.getmembers() if m.name.endswith(f"{name}.mmdb")), None
+        )
+        if member is None:
+            raise SystemExit(f"{name}.mmdb is not inside the downloaded archive")
+        source = archive.extractfile(member)
+        destination = into / f"{name}.mmdb"
+        destination.write_bytes(source.read())
+        return destination
+
+
+def main() -> int:
+    HOME.mkdir(parents=True, exist_ok=True)
+    database = entry(WANT)
+    print(f"fetching {WANT} ({database['md5_hash']})", flush=True)
+    placed = extract(fetched(database["url"], database["md5_hash"]), WANT, HOME)
+    print(f"placed {placed.relative_to(ROOT)} ({placed.stat().st_size} bytes)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

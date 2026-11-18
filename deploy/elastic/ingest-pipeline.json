@@ -1,0 +1,59 @@
+{
+  "description": "Set the event time, drop the routing field, and attach geo information to the source IP.",
+  "processors": [
+    {
+      "remove": {
+        "field": "cr_slot",
+        "ignore_missing": true
+      }
+    },
+    {
+      "date": {
+        "field": "timestamp",
+        "target_field": "@timestamp",
+        "formats": ["yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ", "ISO8601"],
+        "if": "ctx.event?.module == 'suricata' && ctx.timestamp != null"
+      }
+    },
+    {
+      "date": {
+        "field": "transaction.time_stamp",
+        "target_field": "@timestamp",
+        "formats": ["EEE MMM  d HH:mm:ss yyyy", "EEE MMM d HH:mm:ss yyyy"],
+        "if": "ctx.event?.module == 'modsecurity' && ctx.transaction?.time_stamp != null"
+      }
+    },
+    {
+      "geoip": {
+        "field": "src_ip",
+        "target_field": "src_geo",
+        "ignore_missing": true,
+        "on_failure": [
+          {
+            "set": {
+              "field": "src_geo.error",
+              "value": "lookup failed",
+              "override": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "geoip": {
+        "field": "transaction.client_ip",
+        "target_field": "src_geo",
+        "ignore_missing": true,
+        "on_failure": [
+          {
+            "set": {
+              "field": "src_geo.error",
+              "value": "lookup failed",
+              "override": true
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

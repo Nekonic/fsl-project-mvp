@@ -1,0 +1,66 @@
+# The board's customers: a Korean community whose readers browse, search,
+# sign in and comment for as long as a session runs. Korean text is written as
+# \u escapes (CLAUDE.md keeps Korean out of repo files other than four).
+#
+# Searches and comments go through the board's own forms. Sign-in and comments
+# are form posts that carry the page's CSRF token, as a browser sends them; a
+# JSON post is refused by Django's CSRF check (403, measured 2026-10-13).
+# The unusual searches are ones real readers type; at paranoia level 2 CRS
+# refuses the markup (941320) and the link (931130) and serves C++ & C#
+# (measured 2026-10-13). The code comments are a security
+# club's questions about SQL and templates; CRS refuses them at paranoia level
+# 1 (942100, 942190, 941100, 941110, 941160 on ARGS:body, measured 2026-10-13).
+
+users: 12
+origins: {kr: 70, jp: 6, us: 8, cn: 3, vn: 3, tw: 3, hk: 3, br: 2, de: 1, gb: 1}
+accounts:
+  - {username: jiwoo, password: jiwoo1234}
+  - {username: minseo, password: minseo1234}
+posts: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+agents:
+  - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+  - "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1"
+  - "Mozilla/5.0 (Linux; Android 14; SM-S921N) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/26.0 Chrome/122.0.0.0 Mobile Safari/537.36"
+  - "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15"
+  - "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0"
+searches:
+  korean:
+    - "\uc11c\uc6b8 \ub9db\uc9d1 \ucd94\ucc9c"
+    - "\uc810\uc2ec \uba54\ub274 \ucd94\ucc9c"
+    - "\uc8fc\ub9d0 \uc2a4\ud130\ub514"
+    - "\ub178\ud2b8\ubd81 \ucd94\ucc9c"
+    - "\uac15\ub0a8\uc5ed \uce74\ud398"
+    - "\uacf5\uc9c0"
+    - "\uc2a4\ud130\ub514 \ubaa8\uc9d1"
+  english:
+    - "study group"
+    - "lunch"
+    - "python tutorial"
+    - "weekend meetup"
+    - "notice"
+  unusual:
+    - "<b>\uacf5\uc9c0</b>"
+    - "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+    - "C++ & C#"
+comments:
+  korean:
+    - "\uc88b\uc740 \uc815\ubcf4 \uac10\uc0ac\ud569\ub2c8\ub2e4"
+    - "\uc800\ub3c4 \ucc38\uc5ec\ud558\uace0 \uc2f6\uc5b4\uc694"
+    - "\ud639\uc2dc \uba87 \uc2dc\uc5d0 \ubaa8\uc774\ub098\uc694?"
+    - "\uc5ec\uae30 \uac00\ubd24\ub294\ub370 \uad1c\ucc2e\uc558\uc5b4\uc694"
+    - "\uacf5\uc9c0 \ud655\uc778\ud588\uc2b5\ub2c8\ub2e4"
+  english:
+    - "Thanks for sharing!"
+    - "Count me in for Saturday."
+    - "Is the meetup still on this week?"
+  code:
+    - "SELECT * FROM users WHERE id = 1 returns nothing, what am I missing?"
+    - "Use a prepared statement: cursor.execute(\"SELECT name FROM posts WHERE id = %s\", (post_id,))"
+    - "UNION SELECT needs the same number of columns on both sides"
+    - "Django escapes <script> in templates unless you mark it |safe"
+profiles:
+  community: {home: 20, newest: 8, post: 25, search-korean: 18, search-english: 8, search-unusual: 3, login: 4, comment: 6}
+  plain: {home: 20, newest: 8, post: 25, search-korean: 18, search-english: 8, login: 4, comment: 6}
+  readers: {home: 20, newest: 8, post: 25, search-korean: 18, search-english: 8, login: 4}
+  club: {home: 20, newest: 8, post: 25, search-korean: 18, search-english: 8, search-unusual: 3, login: 4, comment: 6, comment-code: 4}
+default_profile: community

@@ -1,0 +1,18 @@
+cytoscape.min.js
+  cytoscape 3.34.4, dist/cytoscape.min.js from https://registry.npmjs.org/cytoscape/-/cytoscape-3.34.4.tgz
+  (npm integrity sha512-msY99tMY8iWTg+sIPGfSqDcPNOt4xcj+v/K/7qUFaCUxxlqnMkUYLBjRUzn9W5CU/R2hrmtJa5+UtovrEM2ctg==), unmodified.
+  sha256 081591ab735b2b6a3b31a3c60f8f3a3e2fee8c92939e0c7820ad1208571b6cd8
+  MIT licence, copied as cytoscape.LICENSE.
+
+symbols/switch.svg
+  gns3server/symbols/affinity/square/gray/switch.svg from gns3-server 3.1.0a6, unmodified.
+
+symbols/host-*.svg
+  The glyph of gns3server/symbols/affinity/square/<colour>/<name>.svg from gns3-server 3.1.0a6 inside a square
+  frame of the same colour: client, router and server blue, shield green, storage blue, statistics and inspect
+  gray. Built by the retired deploy/gns3/symbols.py; host-inspect.svg was built the same way.
+  The affinity symbols are https://github.com/ecceman/affinity through https://github.com/grossmj/affinity,
+  both under the Unlicense (public domain).
+
+symbols/host-kali.svg, symbols/host-kali.txt
+  The Kali dragon in a red square frame; host-kali.txt is its notice and the trademark policy.

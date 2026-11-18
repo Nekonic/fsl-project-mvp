@@ -1,0 +1,47 @@
+# Everything that differs between OpenStack clouds, and no secret.
+# bin/cloud init writes cloud.yaml (ignored by git) from this file, filling in
+# cloud, network.external, compute.base_image and compute.flavors from what it
+# finds; every other key keeps the value it has here or in cloud.yaml.
+
+cloud: fsl-range                        # the entry in ~/.config/openstack/clouds.yaml that holds the identity and the password
+
+network:
+  external: provider                    # the external network floating IPs come from
+  address: ""                           # a floating IP the project already holds, kept across rebuilds; empty: a new one per stack
+  dns: [8.8.8.8, 8.8.4.4]
+  platform: 10.20.0.0/24                # the platform VM's network
+  mgmt: 10.31.0.0/24                    # cr-mgmt: every slot VM's control port; ssh from the platform, syslog and NTP to it
+  allowed: [0.0.0.0/0]                  # source networks the platform VM takes ssh, 2222 (the Kali jump), 8000 and 8002 from; keep the one bin/cloud runs in
+
+compute:
+  base_image: ubuntu-24.04              # the stock noble-server-cloudimg-amd64.img, uploaded as is
+  availability_zone: ""                 # empty: Nova chooses
+  pool:                                 # ready slots per wargame; each slot is one Heat stack of four VMs (kali, waf, infra, target)
+    board: 3
+    corp: 1
+  flavors:
+    platform: m1.large                  # 8 GB or more
+    kali: dba.small                     # each slot role's flavor; dba.small when left out
+    waf: dba.small
+    infra: dba.small
+    target: dba.small
+  images:                               # each slot role's Glance image, baked from deploy/roles/<role>/; cr-<role>-bake1 when left out
+    kali: cr-kali-bake1
+    waf: cr-waf-bake1
+    infra: cr-infra-bake1
+    target: cr-target-bake1
+  target_tag: cf8d735e66c5115ce3d8e06dbdef7967635532ef   # CR_IMAGE_TAG the target image pulled board and corp at; a slot has no egress, so it runs only these
+
+keys:
+  key_name: fsl-claude                  # the Nova keypair the platform VM boots with (Nova's key_name)
+  key_file: ~/.ssh/fsl_claude           # that keypair's private key, for ssh to the platform VM
+  range: ~/.ssh/fsl-platform            # the platform's range key: every slot VM takes it for the management user; kept across rebuilds
+
+
+platform:
+  stack: cr-platform
+  repository: https://github.com/Nekonic/fsl-project-mvp.git
+  ref: dev                              # only pushed commits are cloned
+
+backups:
+  keep: 1                               # store backups left in backups/ after each rebuild or down, the new one included
