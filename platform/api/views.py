@@ -335,6 +335,7 @@ def _refuse_a_full_range(adapter):
 def _ready_slot(adapter, wargame=""):
     if not hasattr(adapter, "plan_slot"):
         return None
+    _refuse_when_none_was_ready(adapter)
     verdict = _readiness(adapter, first_ready=True, wargame=wargame)
     if not verdict["ready"]:
         spare = next((slot for slot in verdict["slots"] if slot["phase"] == "READY" and slot.get("session") is None
@@ -345,6 +346,13 @@ def _ready_slot(adapter, wargame=""):
         raise Conflict("the range is not ready: " + "; ".join(verdict["slot"]["blocked"]),
                        settling=verdict["slot"].get("phase") in SETTLING_PHASES)
     return verdict["slot"].get("number") if _slotted(adapter) else None
+
+def _refuse_when_none_was_ready(adapter):
+    kept = _kept_for(_ready_inputs(adapter))
+    slots = (kept.get("readiness") or {}).get("slots") if kept else None
+    if slots and not any(slot["phase"] == "READY" and slot.get("session") is None for slot in slots):
+        raise Conflict("the range is not ready: no slot was ready and free at the last readiness check",
+                       settling=any(slot["phase"] in SETTLING_PHASES for slot in slots))
 
 def _free(number: int) -> bool:
     return number not in _holders() and reset.standing(number)["state"] != reset.RUNNING
@@ -1853,8 +1861,8 @@ def _waf_change(before, waf):
     if not waf:
         return {"before": shown, "after": None, "added": [], "removed": [], "diff": []}
     return {
-        "before": shown,
-        "after": {"paranoia": waf.get("paranoia"), "exclusions": waf.get("exclusions") or []},
+        "before": shown | {"paranoia": before.get("paranoia") or lesson.CRS_DEFAULT_LEVEL},
+        "after": {"paranoia": waf.get("paranoia") or lesson.CRS_DEFAULT_LEVEL, "exclusions": waf.get("exclusions") or []},
         **lesson.exclusions_changed(before["exclusions"], waf.get("exclusions") or []),
         "diff": lesson.config_diff(before["file"], waf.get("file") or ""),
     }

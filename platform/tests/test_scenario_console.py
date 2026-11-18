@@ -435,3 +435,53 @@ def test_the_result_report_keeps_ending_the_session_one_click_away_and_says_what
     assert (seen["result"]["asked"], seen["result"]["covered"]) == (True, False), (
         "the report covered the strip, and with it the button that ends the session")
 
+
+
+def test_the_briefing_offers_to_end_the_session_and_keeping_it_brings_the_briefing_back(client):
+    waiting = status(started=False, time_left=CARD["minutes"] * 60)
+    seen = open_page(client, "/blue/1/", setup=serving(waiting), scenario="""
+      await browser.click('briefing-end');
+      const asked = !browser.element('scenario-end-confirm').classList.contains('hidden');
+      const covered = !browser.element('briefing').classList.contains('hidden');
+      await browser.click('scenario-end-keep');
+      return {asked, covered, back: !browser.element('briefing').classList.contains('hidden'),
+              starts: browser.requests.filter((r) => r.route.endsWith('/scenario/start/')).length};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"asked": True, "covered": False, "back": True, "starts": 0}, (
+        "walk: the briefing covered the console, so 세션 종료 was out of reach until 시작")
+
+def test_the_alert_list_keeps_refreshing_while_an_attack_question_is_open_and_keeps_the_question(client):
+    card = wargames.scenario_card(wargames.scenario_run("1.3"))
+    seen = open_page(client, "/blue/1/", setup=serving(status(card, id="1.3", cards=[])), scenario="""
+      await browser.click('briefing-start');
+      await browser.click('[data-pane="triage"]');
+      await browser.click('[data-item="b2"] [data-judge="attack"]');
+      await browser.click('[data-item="b2"] [data-pattern="CAPEC-66"]');
+      range.items = [...range.items, %s];
+      await browser.wait(16000);
+      await browser.settle();
+      const late = browser.text('triage-list').includes('/search/?q=late');
+      const open = document.querySelector('[data-item="b2"] [data-got-in]').classList.contains('flex');
+      await browser.click('[data-item="b2"] [data-succeeded="false"]');
+      return {late, open, posted: range.posted};
+    """ % js(LATE))
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"late": True, "open": True,
+                              "posted": [{"item": "b2", "verdict": "attack", "succeeded": False, "pattern": "CAPEC-66"}]}, (
+        "walk: the list froze at 35 items for 2.5 minutes while the API had 43, because an open question stopped the poll")
+
+def test_after_the_final_check_starts_the_count_says_it_covers_the_items_before_it(client):
+    counted = serving(status(JUDGEMENT, id="1.1")).replace(
+        "total: range.items.length, judged: 0}", "total: 1, judged: 1, before_check: true}")
+    seen = open_page(client, "/blue/1/", setup=counted, scenario="""
+      await browser.click('briefing-start');
+      await browser.click('[data-pane="triage"]');
+      await browser.settle();
+      return browser.text('triage-count');
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == worded("triage.count.before_check", 1, 1)

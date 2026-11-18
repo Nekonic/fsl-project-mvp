@@ -104,7 +104,7 @@ function renderDebrief(container, told) {
     debriefSection("overview", facts.map((line) => `<p>${esc(line)}</p>`).join("")),
     debriefSection("customers", debriefCustomers(told.customers)),
     debriefSection("timeline", debriefTimeline(told.timeline, told.at.opened)),
-    ...(told.task_class === "judgement" ? [debriefSection("triage", `<p>${esc(t("scenario.debrief.triage.line",
+    ...(told.task_class === "judgement" ? [debriefSection("triage", `<p>${esc(t(told.triage.before_check ? "scenario.debrief.triage.line.before_check" : "scenario.debrief.triage.line",
       told.triage.right, told.triage.items, told.triage.first_try))}</p>`)] : []),
     ...(told.evidence.length ? [debriefSection("evidence", evidence, "scenario.debrief.evidence")] : []),
     debriefSection("change", debriefChange(told.change)),

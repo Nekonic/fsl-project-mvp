@@ -54,6 +54,15 @@ Internet.
 
 ## Where things stand
 
+- 2026-11-18, the second Heat walk's scenario findings (1.1-2.1) are fixed on
+  `dev`, not yet deployed or walked live (`docs/DECISIONS.md` "The second Heat
+  walk's scenario findings"): Start held until readiness and a per-wargame
+  reason; an open refused at once when the kept verdict has no free READY
+  slot; 세션 종료 on the briefing; the judged count and the result count the
+  same items; the alert list refreshes with a question open; the card counts
+  log records; the level's default shows; in-window tool runs go first.
+  Open: a sqlmap run longer than the window still delays the judgement, and
+  the triage click's latency is untested live.
 - 2026-11-18, the Heat range is live (P8; `docs/DECISIONS.md` "The first
   live pool fill"): a slot is one Heat stack `cr-slot-<n>` of four VMs (kali,
   waf, infra, target) on five Neutron LANs of its own, rendered by

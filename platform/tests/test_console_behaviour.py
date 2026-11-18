@@ -446,3 +446,33 @@ def test_an_open_that_failed_otherwise_shows_the_api_reason_only_to_the_operator
 
     assert ("no need to call configure" in seen["text"]) is operator, seen["text"]
     assert seen["text"].startswith(worded("main.start_failed", "").strip())
+
+
+ONLY_CORP_READY = """
+const range = {release: null};
+browser.serve((request) => {
+  if (request.route === "/api/wargames/") return {body: [{id: "board", name: "Board", description: "", cases: 1}]};
+  if (request.route === "/api/range/ready/") {
+    return new Promise((resolve) => { range.release = resolve; }).then(() => ({body: {ready: true, max_sessions: 3, slot: {number: 3, session: null, phase: "READY", wargame: "corp"},
+      slots: [{number: 1, session: 5, phase: "IN_USE", wargame: "board"}, {number: 2, session: 6, phase: "IN_USE", wargame: "board"},
+              {number: 3, session: null, phase: "READY", wargame: "corp"}]}}));
+  }
+  if (request.route === "/api/sessions/") return {body: []};
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+def test_the_home_page_holds_start_until_readiness_is_known_and_says_why_a_busy_wargame_cannot_start(client):
+    seen = open_page(client, "/", setup=ONLY_CORP_READY, scenario="""
+      await browser.wait(500);
+      const before = document.querySelector('[data-wargame-start="board"] .start').disabled;
+      range.release();
+      await browser.settle();
+      const line = document.querySelector('[data-unserved="board"]');
+      return {before, after: document.querySelector('[data-wargame-start="board"] .start').disabled,
+              said: line.classList.contains('hidden') ? "" : line.textContent};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"before": True, "after": True, "said": worded("main.wargame_busy")}, (
+        "walk: 시작 was clickable before readiness arrived, and every board 시작 was greyed with no reason while only corp was ready")

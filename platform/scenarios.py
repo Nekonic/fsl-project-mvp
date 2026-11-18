@@ -40,18 +40,19 @@ def scheduled_window(declared: dict, opened_at: datetime) -> datetime:
 def inside(entries: list[dict], start: datetime, end: datetime) -> list[dict]:
     return [entry for entry in entries if start <= at(entry["due"]) < end]
 
-def window_attacks(declared: dict, entries: list[dict], start: datetime, opened_at: datetime) -> list[dict]:
+def window_attacks(declared: dict, entries: list[dict], start: datetime, opened_at: datetime,
+                   slow: frozenset = frozenset()) -> list[dict]:
     end = start + timedelta(minutes=declared["window_minutes"])
     already = {entry["case"] for entry in inside(entries, start, end) if entry["state"] != CANCELLED}
     origins: dict[str, str] = {}
     for attack in sorted(declared.get("attacks") or [], key=lambda attack: attack["at"]):
         origins.setdefault(attack["case"], attack.get("origin") or "")
-    missing = [case for case in origins if case not in already]
-    gap = (end - start) / (len(missing) + 1)
+    missing = sorted((case for case in origins if case not in already), key=lambda case: case not in slow)
+    gap = (end - start) / max(len(missing), 1)
     return [
         {"n": len(entries) + index, "case": case, "origin": origins[case],
-         "at": round((start + gap * (index + 1) - opened_at).total_seconds()),
-         "due": (start + gap * (index + 1)).isoformat(), "state": DUE, "in_window": True}
+         "at": round((start + gap * index - opened_at).total_seconds()),
+         "due": (start + gap * index).isoformat(), "state": DUE, "in_window": True}
         for index, case in enumerate(missing)
     ]
 

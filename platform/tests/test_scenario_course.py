@@ -445,7 +445,7 @@ def test_the_debrief_counts_the_items_the_final_check_judged_like_its_headline()
         {"result": {"passed": True, "reasons": [], "fix": None}}))
     session.refresh_from_db()
 
-    assert scenario_run.debrief(session)["triage"] == {"right": 1, "first_try": 1, "judged": 1, "items": 1}
+    assert scenario_run.debrief(session)["triage"] == {"right": 1, "first_try": 1, "judged": 1, "items": 1, "before_check": True}
 
 def a_fired_attack(session, n=0):
     case = Case.objects.create(session=session, case_id=str(uuid.uuid4()), name=SQLMAP, malicious=True,
@@ -543,3 +543,76 @@ def test_a_lesson_course_s_change_lists_each_lesson_s_own_rules_against_that_les
     changes = client.get(f"/api/sessions/{session.pk}/").json()["changes"]
 
     assert [(change["lesson"], change["ids"]) for change in changes] == [("f4", ["+" + mine]), ("f6", [])]
+
+
+def test_the_alert_list_counts_the_same_items_as_the_result_once_the_final_check_has_started(client):
+    session = opened("1.1")
+    item = an_alerted_customer(session, timedelta(minutes=3))
+    client.post_json(f"/api/sessions/{session.pk}/triage/", {"item": item, "verdict": "customer"})
+    scenario_run.start_window(session, "learner", timezone.now() - timedelta(minutes=2))
+    an_alerted_customer(session, timedelta(seconds=30))
+    scenario_run._update(session.pk, lambda state, held: state["windows"][-1].update(
+        {"result": {"passed": True, "reasons": [], "fix": None}}))
+    session.refresh_from_db()
+
+    listed = client.get(f"/api/sessions/{session.pk}/triage/").json()
+    tally = scenario_run.debrief(session)["triage"]
+
+    assert len(listed["items"]) == 2
+    assert (listed["judged"], listed["total"], listed["before_check"]) == (tally["right"], tally["items"], True) == (1, 1, True), (
+        "walk: the console said 31개 중 30개 while the result said 24/24, counting items the final check did not judge")
+
+def test_an_alert_list_item_counts_log_records_like_the_result_not_rule_matches(client):
+    session = opened("1.2")
+    case = Case.objects.create(session=session, case_id=str(uuid.uuid4()), name="board-sqli-search", malicious=True,
+                               pattern="CAPEC-66", correlation="marker", started_at=timezone.now(),
+                               ended_at=timezone.now(), meta={"scheduled": session.course_scenario})
+    for rule in ("942100", "942190", "949110"):
+        alert(session, case.case_id, rule=rule).__class__.objects.filter(
+            session=session, marker=case.case_id, rule=rule).update(detection_id=f"waf-record-1:{rule}")
+    alert(session, case.case_id, source="suricata", rule="9000003")
+
+    listed = client.get(f"/api/sessions/{session.pk}/triage/").json()["items"]
+
+    assert [item["alerts"] for item in listed] == [2], (
+        "walk: one search SQLi read 경보 6건 on the card and 경보 기록 2건 in the result")
+
+def test_a_final_check_fires_the_tool_runs_first_so_they_finish_before_it_ends():
+    one = wargames.scenario_run("1.3")
+    opened_at = timezone.now()
+    started = opened_at + timedelta(minutes=16)
+    slow = scenario_run._tool_run("board", one)
+    added = scenarios.window_attacks(one, [], started, opened_at, slow)
+    a_sqlmap_dump = timedelta(seconds=166)
+    end = started + timedelta(minutes=one["window_minutes"])
+
+    assert slow == {"board-sqli-orderby-sqlmap", "board-sqli-orderby-sqlmap-tamper"}
+    assert all(scenarios.at(entry["due"]) + a_sqlmap_dump <= end for entry in added if entry["case"] in slow), (
+        "walk: 결과 판정 중 waited 81 s after 1.1's time ran out, because the judge waits for an in-window sqlmap "
+        "that was due half way through a 3-minute check and runs about 166 s")
+
+
+def test_the_result_shows_the_level_the_waf_runs_at_once_the_level_line_is_gone():
+    from api import views
+    change = views._waf_change({"paranoia": 3, "exclusions": [], "file": "x"}, {"paranoia": None, "exclusions": [], "file": ""})
+
+    assert (change["before"]["paranoia"], change["after"]["paranoia"]) == (3, 1), "walk: 2.1 read Paranoia Level 3 → —"
+
+def test_an_open_is_refused_at_once_when_the_last_readiness_check_found_no_slot_ready_and_free():
+    from types import SimpleNamespace
+
+    from api import views
+    from api.refusals import Conflict
+    adapter = SimpleNamespace(slots=2)
+    slots = [{"number": 1, "session": 5, "phase": "IN_USE"}, {"number": 2, "session": None, "phase": "RESETTING"}]
+    views._ready_kept["verdict"] = {"readiness": {"slots": slots}, "failed": None, "at": 0,
+                                    "inputs": views._ready_inputs(adapter)}
+    try:
+        with pytest.raises(Conflict) as refused:
+            views._refuse_when_none_was_ready(adapter)
+        slots[1]["phase"] = "READY"
+        views._refuse_when_none_was_ready(adapter)
+    finally:
+        views._ready_kept.clear()
+
+    assert refused.value.settling is True, "walk: 준비 중 spun 30-45 s re-checking every slot before the same refusal"

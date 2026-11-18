@@ -250,3 +250,12 @@ def test_no_shown_sentence_names_a_device_by_its_internal_name():
 
     assert not {key: text for key, text in tables().items() if internal.search(text)}, (
         "a sentence names a device as the map does: Kali, WAF, not the internal host name")
+
+
+def test_the_label_check_catches_the_lines_the_second_heat_walk_still_saw():
+    labelled = re.compile(r"^(?!예:)[^\s.?!:'\"]+(?: [^\s.?!:'\"]+){0,2}(?<=[\uac00-\ud7a3}])(?<!다):(?: |$)")
+    seen = ["고객 동작별 차단: 첫 화면 19", "{0}: 경보 없음", "출발지: {0}", "CRS 설정:"]
+
+    assert all(labelled.search(line) for line in seen)
+    assert not {key: text for key, text in tables().items()
+                if any(text.startswith(line.split(":")[0] + ":") for line in seen)}

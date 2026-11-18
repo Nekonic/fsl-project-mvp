@@ -217,9 +217,13 @@ def start_window(session, by, now=None):
         windows.append({"n": len(windows), "started_at": now.isoformat(), "ends_at": end.isoformat(), "by": by,
                         "result": None, **({"items": listed} if listed is not None else {})})
         state["schedule"] += scenarios.window_attacks(declared, state["schedule"], now,
-                                                      scenarios.at(state["opened_at"]))
+                                                      scenarios.at(state["opened_at"]), _tool_run(held.scenario, declared))
         return windows[-1]
     return _update(session.pk, start)
+
+def _tool_run(wargame, declared) -> frozenset:
+    return frozenset(attack["case"] for attack in declared.get("attacks") or []
+                     if wargames.find_case(wargame, attack["case"]).get("tool"))
 
 def _blocked_between(session, start, end) -> int:
     return customers.counted(session.customer_requests.filter(sent_at__gte=start, sent_at__lt=end))["blocked"]
@@ -345,11 +349,17 @@ def stuck(session, reason, about, **marks) -> None:
             state["offer"] = {"reason": reason, "about": about, "at": timezone.now().isoformat()}
     _update(session.pk, offer)
 
-def _items(session) -> list[dict]:
+def _markers(session) -> list[str]:
     replayed = {case.case_id for case in session.cases.all() if views._replayed(case)}
-    cases = {case.case_id: case for case in session.cases.all() if case.case_id not in replayed}
-    alerted = customers.alerted_markers(session)
-    markers = [*cases, *alerted]
+    return [*(case.case_id for case in session.cases.all() if case.case_id not in replayed),
+            *customers.alerted_markers(session)]
+
+def _shown_ids(session) -> set[str]:
+    alerted = session.detections.filter(marker__in=_markers(session)).order_by().values_list("marker", flat=True).distinct()
+    return {scenarios.item_id(session.browse_marker, marker) for marker in alerted}
+
+def _items(session) -> list[dict]:
+    markers = _markers(session)
     if not markers:
         return []
     found = session.detections.filter(marker__in=markers)
@@ -367,13 +377,16 @@ def _items(session) -> list[dict]:
     grouped: dict[str, list] = {}
     for row in rules:
         grouped.setdefault(row["marker"], []).append(row)
+    records: dict[str, set] = {}
+    for marker, detection in found.order_by().values_list("marker", "detection_id"):
+        records.setdefault(marker, set()).add(detection.split(":")[0])
     secret = session.browse_marker
     triage = (session.scenario_state or {}).get("triage") or {}
     items = [_item(scenarios.item_id(secret, marker), rows, shown.get(marker) or {}, sorted(sources.get(marker, [])),
-                   triage) for marker, rows in grouped.items()]
+                   triage, len(records[marker])) for marker, rows in grouped.items()]
     return sorted(items, key=lambda item: item["first"])
 
-def _item(item, rows, shown, sources, triage) -> dict:
+def _item(item, rows, shown, sources, triage, records) -> dict:
     engines = [{"engine": row["source"], "rule": str(row["rule"] or ""), "signature": row["signature"],
                 "count": row["n"]} for row in sorted(rows, key=lambda row: -row["n"])]
     waf = [row for row in rows if row["source"] == "modsecurity"]
@@ -382,7 +395,7 @@ def _item(item, rows, shown, sources, triage) -> dict:
         "item": item,
         "first": min(row["first"] for row in rows),
         "last": max(row["last"] for row in rows),
-        "alerts": sum(row["n"] for row in rows),
+        "alerts": records,
         "sources": sources,
         "request": {"method": shown.get("method") or shown.get("http_method") or "",
                     "path": shown.get("uri") or shown.get("url") or ""},
@@ -417,7 +430,7 @@ def triage_passed(session, judged) -> bool:
     if judged == "verified":
         return bool((session.scenario_state or {}).get("windows"))
     truths = _truths(session)
-    shown = {item["item"] for item in _items(session)}
+    shown = _shown_ids(session)
     triage = (session.scenario_state or {}).get("triage") or {}
     right = [item for item in shown if (triage.get(item) or {}).get("right")]
     if judged == "all":
@@ -436,9 +449,12 @@ def triage(request, session_id):
     session = _scenario_session(session_id)
     if request.method == "GET":
         items = _items(session)
+        listed = graded_items(session)
+        tally = _triage_tally((session.scenario_state or {}).get("triage") or {}, listed, session,
+                              [item["item"] for item in items])
         return views._reply({"items": [dict(item, first=item["first"].isoformat(), last=item["last"].isoformat())
-                                       for item in items[-SHOWN_ITEMS:]], "total": len(items),
-                             "judged": sum(1 for item in items if item.get("judged", {}).get("right"))})
+                                       for item in items[-SHOWN_ITEMS:]], "total": tally["items"],
+                             "judged": tally["right"], "before_check": tally["before_check"]})
     views._refuse_closed(session)
     body = views._payload(request)
     item, verdict, succeeded = body.get("item"), body.get("verdict"), body.get("succeeded")
@@ -448,7 +464,8 @@ def triage(request, session_id):
         raise BadRequest(f'"succeeded" must be true or false for an attack, got {succeeded!r}')
     pattern = _asked_pattern(declared_of(session), verdict, body.get("pattern"))
     truth = _truths(session).get(item)
-    if truth is None or item not in {shown["item"] for shown in _items(session)}:
+    shown = _shown_ids(session)
+    if truth is None or item not in shown:
         raise BadRequest(f'"item" must be one of the items GET triage/ lists, got {item!r}')
     result = scenarios.judged(truth, verdict, succeeded, pattern)
 
@@ -459,7 +476,7 @@ def triage(request, session_id):
     session, kept = _update(session.pk, keep)
     if scenarios.stuck_on_triage(kept):
         stuck(session, "triage", item)
-    right = sum(1 for one in session.scenario_state["triage"].values() if one["right"])
+    right = _triage_tally(session.scenario_state["triage"], graded_items(session), session, shown)["right"]
     return views._reply(dict(result, item=item, tries=kept["tries"], right_so_far=right))
 
 def _asked_pattern(declared, verdict, pattern):
@@ -669,11 +686,15 @@ def _taking_the_secret(session, names) -> set:
         return set(names)
     return {name for name in names if tools.dumps(wargames.find_case(session.scenario, name))}
 
-def _triage_tally(triage, listed, session) -> dict:
-    items = listed if listed is not None else [item["item"] for item in _items(session)]
+def graded_items(session) -> list | None:
+    windows = (session.scenario_state or {}).get("windows") or []
+    return windows[-1].get("items") if windows else None
+
+def _triage_tally(triage, listed, session, shown=None) -> dict:
+    items = listed if listed is not None else list(_shown_ids(session) if shown is None else shown)
     kept = [triage[item] for item in items if item in triage]
     return {"right": sum(1 for one in kept if one["right"]), "first_try": sum(1 for one in kept if one.get("first_right")),
-            "judged": len(kept), "items": len(items)}
+            "judged": len(kept), "items": len(items), "before_check": listed is not None}
 
 def detector(session) -> str | None:
     if not session.course_scenario:

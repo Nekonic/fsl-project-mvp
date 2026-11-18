@@ -37,6 +37,9 @@
       <div class="grid sm:grid-cols-[120px_minmax(0,1fr)] gap-x-6 gap-y-1 py-4 border-t border-line"><h2 data-t="scenario.briefing.measured_by" class="font-semibold text-heading"></h2><p id="briefing-measured" class="text-body"></p></div>
       <div class="grid sm:grid-cols-[120px_minmax(0,1fr)] gap-x-6 gap-y-1 py-4 border-t border-line"><h2 data-t="scenario.briefing.time" class="font-semibold text-heading"></h2><p id="briefing-time" class="text-body"></p></div>
     </section>
-    <button type="button" id="briefing-start" class="self-start btn btn-blue mt-6" data-t="scenario.briefing.start"></button>
+    <div class="flex flex-wrap items-center gap-2 mt-6">
+      <button type="button" id="briefing-start" class="btn btn-blue" data-t="scenario.briefing.start"></button>
+      <button type="button" id="briefing-end" class="btn btn-ghost" data-t="session.close.button"></button>
+    </div>
   </div>
 </div>

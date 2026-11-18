@@ -9830,3 +9830,58 @@ An answer-blind walk of courses c1 and c2 on the live Heat range
   create 43 s, boot to the readiness file 114 s, platform poll and
   baseline at most 80 s, 3-4.4 min in all. No platform change: the fix is
   the `cr-kali-bake2` bake.
+
+## 2026-11-18 — The second Heat walk's scenario findings (1.1 to 2.1)
+
+An answer-blind walk of scenarios 1.1 to 2.1 on the Heat range.
+
+- **Start waits for readiness and says why it is off.** The home page enabled
+  시작 for 0.5-2.5 s after load, before `GET /api/range/ready/` answered; the
+  buttons now render disabled until it does. With every board stack held and
+  only corp READY, each board 시작 was greyed with no reason; the card now
+  says why (`main.wargame_busy`, `range.resetting` or `range.blocked`).
+- **An open with nothing ready is refused at once.** Clicking 시작 with no
+  free READY stack spun 30-45 s, then said 초기화하는 중: the open re-checked
+  every stack in turn (plan, ground truth and rules baseline over SSH) only
+  to refuse. When the kept readiness verdict (its inputs, the holders and
+  reset states, unchanged) has no READY free slot, the open is refused with
+  409 straight away, `settling` when a slot is resetting. A READY slot of
+  another wargame still goes the retarget path.
+- **세션 종료 on the briefing.** The briefing covers the console, so the
+  session could not be ended before 시작. It has its own 세션 종료, which
+  shows the console's close confirm; keeping the session reopens the
+  briefing, and the clock does not start.
+- **The judged count names its items.** The console counted every item
+  (1.1: 31개 중 30개) while the result counted the items listed when the
+  final check started (24/24), which is what the completion grades. Once a
+  final check has started, `GET triage/`, `right_so_far` and the result all
+  count those listed items; the console says 최종 점검 시작 전 항목 and the
+  result line says 최종 점검 시작 전에 경보가 난 항목. Before a check, both
+  count every item.
+- **The list keeps refreshing with a question open.** The 15 s poll skipped
+  while an attack's follow-up (type, 탈취) was open, so the list sat at 35
+  items for about 2.5 min while the API had 43. It now always refreshes and
+  restores the open question, the chosen type and the scroll position.
+- **One alert count, records.** The triage card summed rule matches (search
+  SQLi 경보 6건; sqlmap 20,050) while the result counts log records (경보
+  기록 2건; 2,065). The card now counts records the same way (a WAF record id
+  before its `:position`) and says 경보 기록 N건.
+- **The level shows its value.** A WAF file with no paranoia line runs at
+  CRS's default 1; the result read Paranoia Level 3 → —. `change.before` and
+  `.after` now carry `lesson.CRS_DEFAULT_LEVEL` when the line is absent.
+- **Label slop.** 고객 동작별 차단:, `<case>: 경보 없음`, 출발지:, CRS 설정: were
+  the deployed build, which predated the previous batch; dev already writes
+  them as sentences and `test_strings.py` already refuses the form. A test
+  now pins that the regex catches these four walk lines.
+- **The final check's 81 s wait.** From code: `ready_to_judge` waits until
+  every attack inside the window has settled, and `window_attacks` placed
+  the missing cases at even gaps with the first one gap in, so 1.1's sqlmap
+  started 90 s into a 3-minute check; the dump runs about 166 s
+  (`redteam/cases/board.yaml`), so judging waited about 76 s past the end
+  plus the tick and the 1 s console poll: the 81 s seen. Tool-run cases now
+  go first and the first starts with the window. Not verified live: a
+  sqlmap slower than the window (1.2's run drew 20,050 alerts) still
+  delays the judgement. The triage click (3.5-5.2 s) built every item
+  (grouped rules, first-request JSON fields over up to 20,000 detections;
+  the probe's `GET triage/` took 1-3.3 s during sqlmap) just to check the
+  item id; it now reads only the alerted markers **[unverified live]**.

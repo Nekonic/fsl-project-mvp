@@ -47,7 +47,8 @@
   let running = [];
   let capacity = null;
   let starting = false;
-  let rangeReady = true;
+  let rangeReady = false;
+  let readinessKnown = false;
   let rangePhase = null;
   let rangeSlots = null;
   let rangeReasons = null;
@@ -78,7 +79,7 @@
       <li class="flex items-center gap-4 py-2" data-foundation="${esc(taught.id)}">
         <h4 class="flex-1 min-w-0 text-heading"><span class="inline-block w-16 text-muted">${esc(t("main.lesson_number", index + 1))}</span>${esc(t(taught.title))}</h4>
         <button data-wargame="${id}" data-lesson="true" data-lesson-id="${esc(taught.id)}"
-          data-defense="${esc(taught.defense || "")}" class="start shrink-0 btn btn-sm btn-ghost">${esc(t("main.start"))}</button>
+          data-defense="${esc(taught.defense || "")}" class="start shrink-0 btn btn-sm btn-ghost" disabled>${esc(t("main.start"))}</button>
       </li>`;
     const taught = wargame.foundations || [];
     const grouped = (wargame.courses || []).length ? wargame.courses
@@ -98,7 +99,7 @@
     const runs = (wargame.scenarios || []).map((one) => `
       <li class="flex items-center gap-4 py-2" data-course-scenario="${esc(one.id)}">
         <h4 class="flex-1 min-w-0 text-heading"><span class="inline-block w-16 text-muted">${esc(one.id)}</span>${esc(t(one.title))}</h4>
-        <button data-wargame="${id}" data-course="${esc(one.id)}" class="start shrink-0 btn btn-sm btn-ghost">${esc(t("main.start"))}</button>
+        <button data-wargame="${id}" data-course="${esc(one.id)}" class="start shrink-0 btn btn-sm btn-ghost" disabled>${esc(t("main.start"))}</button>
       </li>`).join("");
     return runs ? `
       <section class="mt-6" data-scenarios="${id}">
@@ -114,13 +115,14 @@
       <div class="py-6 border-b border-line last:border-b-0 flex flex-col max-w-[760px]" data-scenario="${id}">
         <h3 class="text-[17px] font-bold text-heading">${esc(scenarioName(wargame.id))}</h3>
         <p class="text-muted mt-1 leading-relaxed">${esc(localized(`wargame.${wargame.id}.description`, wargame.description))}</p>
+        <p class="hidden text-warning text-[13px] mt-2" data-unserved="${id}"></p>
         ${counted && operatorView ? `<p class="text-[13px] text-muted mt-3">${
           esc(t("main.counts", wargame.attacks, wargame.benign, wargame.objectives))}</p>` : ""}
         ${foundationsBlock(wargame)}
         ${scenariosBlock(wargame)}
         <section class="mt-6 flex items-center gap-4" data-wargame-start="${id}">
           <h4 class="flex-1 font-semibold text-heading">${esc(t("kind.wargame"))}</h4>
-          <button data-wargame="${id}" class="start shrink-0 btn btn-sm btn-ghost">${esc(t("main.start"))}</button>
+          <button data-wargame="${id}" class="start shrink-0 btn btn-sm btn-ghost" disabled>${esc(t("main.start"))}</button>
         </section>
         <div class="hidden mt-3 rounded-lg bg-danger-soft border border-danger-soft px-3 py-2.5 text-[13px]"
              data-failure="${id}">
@@ -146,8 +148,28 @@
       button.addEventListener("click", () => start(button)));
     field("wargames").querySelectorAll("[data-close-open]").forEach((button) =>
       button.addEventListener("click", () => listOpen(button.closest("[data-failure]"))));
+    startsShown();
     renderRunning();
     renderFinished(finishedRows);
+  }
+
+  const SETTLING = ["RESETTING", "REBUILDING", "CHECKING"];
+
+  function unservedReason(wargame) {
+    if (!rangeReady || !Array.isArray(rangeSlots) || servesNow(wargame)) return "";
+    const mine = rangeSlots.filter((slot) => !slot.wargame || slot.wargame === wargame);
+    if (mine.some((slot) => SETTLING.includes(slot.phase))) return t("range.resetting");
+    if (mine.length && mine.every((slot) => slot.phase === "IN_USE")) return t("main.wargame_busy");
+    return t("range.blocked");
+  }
+
+  function startsShown() {
+    if (!starting) document.querySelectorAll(".start").forEach((button) => { button.disabled = !readinessKnown || !servesNow(button.dataset.wargame); });
+    document.querySelectorAll("[data-unserved]").forEach((line) => {
+      const why = readinessKnown ? unservedReason(line.dataset.unserved) : "";
+      line.textContent = why;
+      line.classList.toggle("hidden", !why);
+    });
   }
 
   function opening(button) {
@@ -219,7 +241,7 @@
     };
     if (started.body.settling) tell(t("range.resetting"), "warning");
     await refreshSessions();
-    card.querySelectorAll(".start").forEach((each) => { each.disabled = !servesNow(each.dataset.wargame); });
+    startsShown();
     const full = started.status === 409 && capacity !== null && running.length >= capacity;
     const settling = started.status === 409 && !full;
     tell(refusedLine(started, wargame), settling ? "warning" : "danger");
@@ -445,7 +467,8 @@
       waiting.querySelector("[data-failure-text]").textContent = t("main.start_again");
       waiting = null;
     }
-    if (!starting) document.querySelectorAll(".start").forEach((button) => { button.disabled = !servesNow(button.dataset.wargame); });
+    readinessKnown = true;
+    startsShown();
 
     const health = field("range-health");
     health.classList.toggle("hidden", !result.ok || !operatorView);

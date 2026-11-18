@@ -285,7 +285,7 @@ def test_the_window_fires_every_attack_variant_at_least_once_inside_it():
     session.refresh_from_db()
     added = session.scenario_state["schedule"][1]
     assert (added["case"], added["in_window"], added["state"]) == (SQLMAP, True, "due")
-    assert scenarios.at(added["due"]) == begun + timedelta(minutes=2)
+    assert scenarios.at(added["due"]) == begun
 
 def test_the_window_starts_by_itself_at_its_scheduled_time():
     session = opened()
