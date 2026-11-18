@@ -9541,3 +9541,21 @@ Kali removes it); disabling DHCP on `cr-mgmt` (the platform VM's port is on
 it too). That OVN applies the port's egress rules to traffic for its metadata
 port is the Neutron security-group model, **[unverified]** on this cloud until
 the next bring-up and `test_range_isolation.py`.
+
+## 2026-11-18 — Documents call the range unit the session's stack, not a slot
+
+The user's ruling: a slot is in effect the session, so the documents people
+read say so. `README.md` and `docs/ARCHITECTURE.md` describe the range as one
+Heat stack per session, kept ready in a pool, given to a session when it opens
+and deleted and built again when it closes; the English documents
+(`docs/OPENSTACK.md`, `docs/THREAT-MODEL.md`, `docs/TROUBLESHOOTING.md`,
+`CLAUDE.md`, the `orchestrate` skill) say "the session's stack", "range stack"
+and "range VM" where they meant the concept. Code identifiers keep the word
+(`cr-slot-<n>`, `Session.slot`, `/api/range/slot/`, `?slot=N`,
+`compute.pool`, `/etc/slot.env`, `slot-boot`); a document that names one quotes
+it as code. `docs/ARCHITECTURE.md`'s glossary says once what the number in
+those names is: the reused stack number that fixes the stack's name and
+Neutron tag `cr.slot=N`, its Kibana space `soc-logs-N` and its log index
+`logs-N-*`, which a session borrows for its lifetime. Earlier entries in this
+file keep the word they were written with. Rejected: renaming the code
+identifiers (a migration, an API change and new stack names for wording only).
