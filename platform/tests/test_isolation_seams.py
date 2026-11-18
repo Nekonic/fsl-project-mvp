@@ -12,7 +12,7 @@ NOT_CODE = re.compile(r"^(tests|api/migrations|console/static)/|^console/templat
 SEAMS = {
     "Elasticsearch": (
         {"ingest/elastic.py"}, {"register_pipeline.py"},
-        r"/_search\b|/_bulk\b|/_ingest/|/_pit\b|/_count\b|^\s*(?:import|from) elasticsearch"),
+        r"/_search\b|\"_search\?|_delete_by_query\b|/_bulk\b|/_ingest/|/_pit\b|/_count\b|^\s*(?:import|from) elasticsearch"),
     "the Suricata process": (
         {"rules/suricata.py"}, set(),
         r'"suricata", "-T"|suricatasc|reload-rules|"return":"OK"|af-packet'),

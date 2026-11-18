@@ -1537,8 +1537,7 @@ function coach(prefix, declared) {
     }
     const course = act.querySelector('[data-act="course"]');
     if (course) courseList(course);
-    if (!finished && before && recordOf(before).passed && !windowed(carried.get(before.id))
-      && !recalled.has(before.id)) recall(before, step);
+    if (!finished && before && recordOf(before).passed && !recalled.has(`${before.id}:${step.id}`)) recall(before, step);
   }
 
   function runOf(index) {
@@ -1558,13 +1557,15 @@ function coach(prefix, declared) {
   }
 
   async function recall(kali, step) {
-    recalled.add(kali.id);
+    const asked = `${kali.id}:${step.id}`;
+    recalled.add(asked);
     const verdict = await judged(kali, { poll: true });
     if (!verdict || !windowed(verdict.kali)) {
-      recalled.delete(kali.id);
+      recalled.delete(asked);
       return;
     }
-    if (windowed(carried.get(kali.id))) return;
+    const held = carried.get(kali.id);
+    if (windowed(held) && held.discover === verdict.kali.discover) return;
     carried.set(kali.id, verdict.kali);
     if (steps[at] === step) {
       action();

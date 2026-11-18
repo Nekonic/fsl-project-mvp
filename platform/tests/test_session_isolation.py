@@ -219,3 +219,22 @@ def test_a_write_to_a_closed_session_is_refused(client):
                        ("/api/range/canary/", {})):
         answer = client.post_json(path, dict(body, session=closed.pk))
         assert answer.status_code == 409, (path, answer.content)
+
+
+@pytest.mark.django_db
+def test_a_session_opened_on_a_stack_deletes_the_logs_written_there_before_it(settings):
+    settings.ELASTIC_SESSION_INDEX = "logs-{slot}-*"
+    settings.ELASTIC_URL = "http://elasticsearch:9200"
+    session = Session.objects.create(slot=2)
+    asked = []
+
+    def post(url, json, timeout):
+        asked.append((url, json))
+        return SimpleNamespace(ok=True, status_code=200, text="")
+
+    with patch("ingest.elastic.requests.post", post), patch("api.views.kibana.URL", ""):
+        views._session_logs(session)
+
+    assert asked == [("http://elasticsearch:9200/logs-2-*/_delete_by_query?conflicts=proceed&wait_for_completion=false",
+                      {"query": {"range": {"@timestamp": {"lt": session.started_at.isoformat()}}}})], (
+        "stack 2's data stream still holds the previous session's logs, which the new learner's Kibana space reads")

@@ -105,6 +105,7 @@ KALI_SETTLING = "lesson.check.kali_settling"
 UNTRIED_REASONS = (ADDRESS_SIDE, DEV_ROW_UNPICKED, ALERT_PENDING, KALI_SETTLING)
 RUN_SETTLED = timedelta(seconds=15)
 RUN_ENDED_SETTLED = timedelta(seconds=3)
+RUN_TAIL = timedelta(seconds=30)
 OBJECTIVE_FACTS = ("lost_points", "detected_penalty")
 _segments_kept: dict = {}
 DISABLE_MINUTES = 60
@@ -1007,7 +1008,7 @@ def _kali_run(session, step_id, check, kept, ended=False):
     case = wargames.find_case(session.scenario, check["case"])
     recorded = session.cases.filter(case_id=marker).first()
     if recorded is not None:
-        return recorded, _run_shown(session, case, recorded)
+        return recorded, _run_shown(session, case, _run_completed(session, recorded))
     since = _lesson_started(session) or session.started_at
     reached = max(parse_datetime(kept.get("reached") or "") or since, since)
     now = timezone.now()
@@ -1028,6 +1029,17 @@ def _kali_run(session, step_id, check, kept, ended=False):
     except elastic.ElasticUnavailable:
         pass
     return recorded, _run_shown(session, case, recorded)
+
+def _run_completed(session, recorded):
+    if recorded.meta.get("complete"):
+        return recorded
+    now = timezone.now()
+    tail = [stamp for stamp, _ in _sent_by(session, recorded.ended_at, min(now, recorded.ended_at + RUN_TAIL),
+                                           recorded.case_id) if stamp]
+    recorded.ended_at = max([recorded.ended_at, *tail])
+    recorded.meta = dict(recorded.meta, complete=now >= recorded.ended_at + RUN_TAIL)
+    recorded.save(update_fields=["ended_at", "meta"])
+    return recorded
 
 def _run_seen(session, check, case, marker, start, end):
     sent = _sent_by(session, start - RECORD_SLACK, end + RECORD_SLACK, marker)
@@ -1062,6 +1074,8 @@ def _kali_fact(session, check):
         except RangeUnavailable:
             return []
         return [] if found is None else [lesson.YES if found else lesson.NO]
+    if of in ("server_errors", "run_records"):
+        recorded = _run_completed(session, recorded)
     if of == "server_errors":
         errors = lesson.server_errors(_logged(session, recorded.started_at - RECORD_SLACK,
                                               recorded.ended_at + RECORD_SLACK, "modsecurity"))
@@ -2062,8 +2076,16 @@ def _session_index(session):
 
 def _session_logs(session):
     index = _session_index(session)
+    if index:
+        _forget_earlier_sessions(session, index)
     if index and kibana.URL:
         _session_view_ready(session, index, again=True)
+
+def _forget_earlier_sessions(session, index):
+    try:
+        elastic.forget_before(settings.ELASTIC_URL, index, session.started_at)
+    except elastic.ElasticUnavailable as exc:
+        log.warning("session %s: the logs before it on %s were not deleted: %s", session.pk, index, exc)
 
 def _session_view_ready(session, index, again=False):
     drawn = maps.learner(session.scenario)

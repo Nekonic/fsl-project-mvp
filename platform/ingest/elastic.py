@@ -36,30 +36,28 @@ def fetch(
         },
     }
 
-    try:
-        response = requests.post(
-            f"{url.rstrip('/')}/{index}/_search?allow_partial_search_results=false",
-            json=query,
-            timeout=FETCH_TIMEOUT,
-        )
-    except requests.RequestException as exc:
-        raise ElasticUnavailable(f"could not reach Elasticsearch: {exc}") from exc
-
-    if response.status_code == 404:
-        raise ElasticUnavailable(
-            f"index {index!r} does not exist. Filebeat may not have shipped "
-            f"anything yet."
-        )
-    if not response.ok:
-        raise ElasticUnavailable(
-            f"Elasticsearch returned {response.status_code}: {response.text[:500]}"
-        )
+    response = _posted(url, index, "_search?allow_partial_search_results=false", query)
 
     found = response.json().get("hits", {})
     hits = found.get("hits", [])
     total = (found.get("total") or {}).get("value", len(hits))
     documents = [(hit["_id"], hit.get("_source", {})) for hit in hits]
     return documents, (len(hits), total) if total > len(hits) else None
+
+def forget_before(url: str, index: str, before: datetime) -> None:
+    _posted(url, index, "_delete_by_query?conflicts=proceed&wait_for_completion=false",
+            {"query": {"range": {"@timestamp": {"lt": before.isoformat()}}}})
+
+def _posted(url: str, index: str, call: str, body: dict[str, Any]) -> requests.Response:
+    try:
+        response = requests.post(f"{url.rstrip('/')}/{index}/{call}", json=body, timeout=FETCH_TIMEOUT)
+    except requests.RequestException as exc:
+        raise ElasticUnavailable(f"could not reach Elasticsearch: {exc}") from exc
+    if response.status_code == 404:
+        raise ElasticUnavailable(f"index {index!r} does not exist. Filebeat may not have shipped anything yet.")
+    if not response.ok:
+        raise ElasticUnavailable(f"Elasticsearch returned {response.status_code}: {response.text[:500]}")
+    return response
 
 def normalize_all(
     documents: Sequence[tuple[str, dict[str, Any]]],

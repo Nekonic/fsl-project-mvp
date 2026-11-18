@@ -554,11 +554,29 @@ def test_the_trace_question_asks_how_many_500_records_the_run_left_in_the_window
         sourced = check(client, session, "seen", {"answer": KALI}).json()
 
     assert accepted == ["3"], "the run's 500 records; a 403 and a record before the run are not counted"
-    assert asked[0] == (started - views.RECORD_SLACK, ended + views.RECORD_SLACK), "the window the Kibana button opens"
+    assert asked[-1] == (started - views.RECORD_SLACK, ended + views.RECORD_SLACK), "the window the Kibana button opens"
     assert right["passed"] is True
     assert ruled["passed"] is False and ruled["reason"] == ["lesson.miss.wrong.seen.rule_id", []]
     assert sourced["passed"] is False and sourced["reason"] == ["lesson.miss.wrong.seen.address", []], (
         "the attacker's address is on the map and was asked in the lesson before, so it is no longer the question")
+
+def test_a_run_recorded_before_its_last_records_reached_the_logs_counts_and_opens_on_the_whole_run(client):
+    session = taught("f5")
+    now = timezone.now()
+    started, recorded_end, last = now - timedelta(seconds=90), now - timedelta(seconds=50), now - timedelta(seconds=39)
+    recorded_run(session, "f5", "sqlmap", "probe-run", started, recorded_end)
+    run = [waf_record(started + timedelta(seconds=n), 403, "probe-run") for n in range(0, 52)]
+    source = next(step["check"] for step in wargames.lesson("board", lesson_id="f5")["steps"] if step["id"] == "source")
+    with quietly(), indexed(*run), patch.object(kibana, "URL", "http://kibana:5601/kibana"), \
+            patch.dict(kibana.VIEWS, {views._session_index(session): (True, 0.0)}):
+        counted = views._accepted(session, source)
+        shown = check(client, session, "sqlmap", {"poll": True}).json()
+
+    assert (run[-1]["@timestamp"], last.isoformat()) == (last.isoformat(), last.isoformat())
+    assert counted == ["52"], "walk: sqlmap logged 2,065 records and the grader took the 1,548 logged by the check"
+    assert window_of(shown["kali"]["discover"])[1] == last + views.RECORD_SLACK, (
+        "the Kibana window ended where the logs stood when step 4 was checked, 11 s before sqlmap's last request")
+    assert Case.objects.get(session=session, case_id="probe-run").ended_at == last
 
 def test_only_500_records_name_a_source_for_the_trace_question():
     records = [{"transaction": {"client_ip": KALI, "response": {"http_code": 500}}},
