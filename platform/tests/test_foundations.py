@@ -895,6 +895,13 @@ def test_no_lesson_text_says_the_ids_gets_its_traffic_by_port_mirroring_or_stand
     assert "IDS와 WAF는 관제망" not in worded["lesson.map.coach.log_host"]
     assert "웹방화벽과 board.com 사이" in worded["lesson.xss.ok.fired"] and "board.com" in worded["lesson.xss.ok.fired"]
 
+def test_the_reference_names_the_control_address_the_map_leaves_out_where_a_learner_shell_shows_it():
+    worded = tables()
+
+    for key in ("lesson.ref.map.body", "lesson.ref.addresses.body"):
+        assert "hostname -I" in worded[key] and "구성도에 없는 주소" in worded[key], (
+            f"walk: hostname -I on Kali listed a 10.31.0.0/24 address first that {key} never explained")
+
 def test_the_sqli_error_status_is_read_from_the_request_s_row_in_devtools(client):
     session = opened("f5")
     kept = [browsed("/", 200, request_id=0), browsed("/?sort=posts_post.id)", 500)]
