@@ -10,23 +10,27 @@ works.
 
 Words used in this file:
 
-- **Range**: what the platform builds for training: a pool of slots on
-  OpenStack.
-- **Slot**: one full copy of the range, the Heat stack `cr-slot-<n>`: four VMs,
-  `kali`, `waf`, `infra` and `target`, on five Neutron networks of the slot's
+- **Range**: what the platform builds for training: one Heat stack per
+  session on OpenStack, from a pool of stacks built ahead.
+- **Range stack**: the Heat stack `cr-slot-<n>` one session uses: four VMs,
+  `kali`, `waf`, `infra` and `target`, on five Neutron networks of the stack's
   own (`internet`, `dmz`, `web-outer`, `web-inner`, `mgmt`), with no router.
-  One open session uses one slot.
-- **Pool**: the slots that stand ready ahead of sessions, so many per wargame
-  (`compute.pool`). A close replaces the used slot's stack off the learner's
-  path.
-- **Role image**: a Glance image a slot VM boots from, baked once from
-  `deploy/roles/<role>/` (`cr-<role>-bake1`).
-- **Infra**: the slot VM no learner gets a shell on: the edge router between
+  A session is given a ready stack when it opens; when it closes, the stack
+  is deleted and created again. The number `<n>` (N) is the stack number; see
+  the glossary in `docs/ARCHITECTURE.md`. The code calls it the slot
+  (`Session.slot`, `/api/range/slot/`).
+- **Pool**: the stacks that stand ready ahead of sessions, so many per
+  wargame (`compute.pool`). A close replaces the used stack off the
+  learner's path.
+- **Role image**: a Glance image a range VM boots from, baked once from
+  `deploy/roles/<role>/` (`cr-<role>-bake1` by default).
+- **Range VM**: one of a range stack's four VMs.
+- **Infra**: the range VM no learner gets a shell on: the edge router between
   `internet` and `dmz` (nftables), the inline IDS (Suricata on a Linux bridge
   between `web-outer` and `web-inner`) and the log server.
 - **Fabric**: the management network `cr-mgmt`, the security groups and the
-  keypair the platform creates before the slots (`POST /api/range/fabric/`).
-  Every slot VM has one control port on `cr-mgmt`.
+  keypair the platform creates before the stacks (`POST /api/range/fabric/`).
+  Every range VM has one control port on `cr-mgmt`.
 - **Store**: the platform's SQLite database (`db.sqlite3`).
 - **Substrate**: what the platform builds the range on (`CR_SUBSTRATE`); here
   `range.openstack.connect`.
@@ -78,13 +82,14 @@ user's password, flavor access, the base image and `cloud.yaml` (§4).
 
 1. `bin/cloud up` reads `deploy/openstack/cloud.yaml` (§4). It has Heat create
    the platform VM (`deploy/openstack/platform.yaml`). On first boot the VM pulls
-   the control-plane images from GHCR. It does not build them. The slot VMs
+   the control-plane images from GHCR. It does not build them. The range VMs
    boot from the role images in Glance (§3.6).
 2. The script gives the VM the password and the range ssh key over ssh.
 3. The script then drives the platform's own range API in this order: fabric;
    `DELETE leftovers/`, which removes what the ranges before this one left
-   (§5.5); slot, which creates one Heat stack per slot of the pool;
-   `configure/`, which seeds each slot's sensor with the baseline rules. Then it
+   (§5.5); `slot/`, which creates the pool's range stacks, one Heat stack
+   each; `configure/`, which seeds each stack's sensor with the baseline
+   rules. Then it
    waits until `ready/` says ready.
 
 | Piece | Status | Where |
@@ -99,8 +104,8 @@ user's password, flavor access, the base image and `cloud.yaml` (§4).
 | `bin/platform-rebuild`: replace the VM without losing data (store and range key carried over), driven by `cloud.yaml` | done (2026-10-15, `bin/cloud up --replace --sideload` twice, 28 and 55 min with a 6 GB store) | §5 |
 | `bin/cloud up`, `bin/cloud down` | done (2026-10-11); since 2026-10-20 `up` after `down` restores the newest backup that holds rows (run live 2026-10-20) | §5 |
 | Fabric via `POST /api/range/fabric/` | done | §6 |
-| Slots as Heat stacks `cr-slot-<n>` via `POST /api/range/slot/`, a pool per wargame, replaced at close | code and unit tests (2026-11-18); the first live pool fill created the four stacks (2026-11-18, §6.1); the rest of the live run **[unverified]** | §6 |
-| Acceptance on the OpenStack substrate | done on the range host; the latest full run is in `docs/state/now.md` | §7 |
+| Range stacks `cr-slot-<n>` via `POST /api/range/slot/`, a pool per wargame, replaced at close | live since 2026-11-18: the first pool fill created the four stacks (§6.1), and two full `bin/verify` runs ran on them | §6 |
+| Acceptance on the OpenStack substrate | runs on the Heat range; the latest full run and its open failures are in `docs/state/now.md` | §7 |
 
 Steps below are tagged **[one-click]** where `bin/cloud up` does them for you,
 **[init]** where `bin/cloud init` does them with admin credentials, and
@@ -108,8 +113,8 @@ Steps below are tagged **[one-click]** where `bin/cloud up` does them for you,
 
 ## 1. What this project needs from OpenStack
 
-The platform builds the range as one Heat stack per slot, `cr-slot-<n>`, each
-four Nova servers on Neutron networks of the slot's own (§6). It creates them
+The platform builds the range as one Heat stack per session, `cr-slot-<n>`,
+each four Nova servers on Neutron networks of the stack's own (§6). It creates them
 as a member user. cloud-init writes `CR_SUBSTRATE=range.openstack.connect` on
 the platform VM to select this. The design is
 `docs/superpowers/specs/2026-11-18-heat-range-design.md`.
@@ -120,14 +125,14 @@ prebuilt images from GHCR. Every acceptance test runs and passes on OpenStack
 (`docs/DECISIONS.md` 2026-10-11, which replaced the 2026-10-08 spec's
 "OpenStack work, not MVP"); the one skip is by design (§7).
 
-The cloud therefore holds the platform VM `cr-platform` and four VMs per slot
-of the pool: with the default pool `{board: 3, corp: 1}`, 16 slot VMs.
+The cloud therefore holds the platform VM `cr-platform` and four VMs per
+stack of the pool: with the default pool `{board: 3, corp: 1}`, 16 range VMs.
 
 The platform calls these APIs (`platform/range/openstack.py`, the only file
 that knows them):
 
 - Keystone v3, with password authentication in the configured domain.
-- Heat: create, list (by tag) and delete the slot stacks.
+- Heat: create, list (by tag) and delete the range stacks.
 - Nova: servers, keypairs and `os-interface`.
 - Neutron: networks with tags, subnets, ports and security groups.
 - Glance v2: list and delete the project's own images that the VM range of
@@ -173,7 +178,7 @@ is `127.0.0.53`, which means nothing to a VM (`get_dhcp_dns_servers` in
 `neutron/common/ovn/utils.py`). A subnet created with the DNS server `0.0.0.0`
 announces no resolver at all [N3]. The platform creates the `cr-mgmt` subnet
 that way (`platform/range/openstack.py`), because the management network needs
-no resolver, and a slot's own subnets have DHCP off. The product therefore does not depend on `[ovn] dns_servers`. A
+no resolver, and a range stack's own subnets have DHCP off. The product therefore does not depend on `[ovn] dns_servers`. A
 cloud admin who wants the cloud's other VMs to resolve names sets
 `[ovn] dns_servers` in `neutron.conf` (Kolla: an override file, §2.3's
 mechanism). §8 has the symptom.
@@ -247,7 +252,7 @@ required.
 KVM is recommended, not required (the user's ruling of 2026-11-15). Kolla's
 default `nova_compute_virt_type` is `kvm` [K7], which needs VT-x or AMD-V on the
 compute hosts. A host without them can set `nova_compute_virt_type: "qemu"`:
-Nova then runs the platform VM and the slot VMs under plain QEMU emulation.
+Nova then runs the platform VM and the range VMs under plain QEMU emulation.
 Everything still runs, only slower. The hosts are Ubuntu 24.04 on x86_64, because every image the project
 runs is amd64.
 
@@ -381,10 +386,11 @@ allow ran only once the install stopped waiting on the update's exit.
 | a builder baking a role image (`deploy/roles/<role>/install.sh`, §3.6) | mirror.kakao.com (Ubuntu roles), Kali's apt mirror (kali); github.com and nginx.org (waf); Docker Hub (infra, target); ghcr.io (target) | the role's packages; ModSecurity, its connector, nginx's source and CRS; `jasonish/suricata` and MySQL; `cr-board`, `cr-corp`, `cr-corp-db` |
 | the controller node, where `bin/cloud` runs | the cloud's API; the floating IP; github.com; ghcr.io; pypi.org and files.pythonhosted.org | `bin/cloud`; `git ls-remote`; the check that the images can be pulled; `uv run`'s sync |
 
-A slot has no way to the Internet: no slot LAN has a Neutron router, and each
-slot VM's control port on `cr-mgmt` (no gateway, DNS `0.0.0.0`) is in the group
-`cr-mgmt`. Everything a slot VM runs is in its baked image; only the role
-bakes need egress. `test/test_range_isolation.py` checks that no learner shell
+A range stack has no way to the Internet: none of its LANs has a Neutron
+router, and each range VM's control port on `cr-mgmt` (no gateway, DNS
+`0.0.0.0`) is in the group `cr-mgmt`, whose egress reaches only the platform
+and DHCP (§3.5). Everything a range VM runs is in its baked image; only the
+role bakes need egress. `test/test_range_isolation.py` checks that no learner shell
 reaches the Internet or the metadata address (§8).
 
 ## 3. Project, user, quotas, flavors, keys, groups, images
@@ -429,20 +435,20 @@ of it. The platform signs in as this member user, never as admin.
 
 `init` reads the project's limits (`instances`, `cores`, `ram`,
 `floating_ips`) and stops, naming each one short, unless they hold the
-platform VM and the pool: 1 + 4 × slots instances, the platform flavor's vCPU
-and RAM plus, per slot, the four role flavors' (`compute.flavors.<role>`), and
-1 floating IP; slots is the sum of `compute.pool` (`quota_shortfall` in
+platform VM and the pool: 1 + 4 × stacks instances, the platform flavor's vCPU
+and RAM plus, per stack, the four role flavors' (`compute.flavors.<role>`), and
+1 floating IP; stacks is the sum of `compute.pool` (`quota_shortfall` in
 `platform/range/cloud.py`). It compares limits, not usage, and never raises a
 quota. It does not read `security_groups`: the range takes the same number of
 groups for any pool size (below). A shortfall names the remedy: an admin raises the quota, or
-`compute.pool` asks for fewer slots.
+`compute.pool` asks for fewer stacks.
 
 - The platform VM is 2 vCPU, 8 GB RAM and 60 GB disk (`m1.large`).
-- Each slot is four VMs, `kali`, `waf`, `infra` and `target`, on their role
-  flavors (`dba.small` unless `cloud.yaml` names another, §3.3).
-- Each slot also has five networks, six subnets (the `internet` LAN holds
+- Each range stack is four VMs, `kali`, `waf`, `infra` and `target`, on their
+  role flavors (`dba.small` unless `cloud.yaml` names another, §3.3).
+- Each stack also has five networks, six subnets (the `internet` LAN holds
   two) and 14 ports of its own (§6). Its LAN ports use the three groups
-  `cr-lan-<digest>` that every slot shares (§3.5).
+  `cr-lan-<digest>` that every stack shares (§3.5).
 
 Nova has no per-project disk quota. The flavor disk of every VM is space that
 the compute node's instance storage must have, at a disk allocation ratio of
@@ -452,18 +458,19 @@ the compute node's instance storage must have, at a disk allocation ratio of
 
 - The project quota is 24 cores, 57344 MB of RAM and 17 instances (recorded
   2026-11-13). It was Nova's default, 20 / 51200 / 10, until 2026-10-24.
-- The default pool `{board: 3, corp: 1}` is four slots of four VMs; with the
+- The default pool `{board: 3, corp: 1}` is four stacks of four VMs; with the
   platform VM that is 17 instances, the whole instance quota
-  (`docs/DECISIONS.md`, 2026-11-18). Whether com01's memory holds four slots of
-  `dba.small` VMs, and whether `dba.small` is enough for the target's Docker
-  and MySQL, are **[unverified]**.
+  (`docs/DECISIONS.md`, 2026-11-18). The four stacks of `dba.small` VMs stand
+  on com01 (2026-11-18); how much memory headroom that leaves, and whether
+  `dba.small` is enough for the target's Docker and MySQL under load, are
+  **[unverified]**.
 - The fabric holds 1 network (`cr-mgmt`) with 1 subnet, and the groups
   `cr-reach`, `cr-mgmt`, `cr-egress` and `cr-senders`. The platform's stack
   also needs 1 network, 1 router and 1 floating IP.
 - The quota is 10 security groups and 100 security group rules (`openstack
   quota show`, 2026-11-18). `default`, `cr-platform` and the fabric's four
   groups hold 6; the three `cr-lan-` groups make 9, for any pool size. With
-  five groups per slot stack, as before, every stack of the pool of four
+  five groups per range stack, as before, every stack of the pool of four
   failed with `OverQuotaClient: Quota exceeded for resources:
   ['security_group']` (`docs/DECISIONS.md`, 2026-11-18).
 
@@ -478,7 +485,7 @@ A member user cannot create flavors, and `init` never creates one: the user
 ruled that flavors are not created for them. `init` lists every flavor as
 admin, public and private. For the platform it picks the smallest that fits,
 by RAM, then vCPU, then disk; a flavor `cloud.yaml` already names is kept when
-it fits. For each slot role it takes the flavor `compute.flavors.<role>`
+it fits. For each range VM role it takes the flavor `compute.flavors.<role>`
 names, `dba.small` when none, and stops, naming the flavors there are, when
 the cloud has no flavor of that name. It prints each choice, makes a private
 flavor visible to the project (`openstack flavor set --project`), and stops,
@@ -494,13 +501,13 @@ flavor fits.
 | Key | Use | Notes |
 |---|---|---|
 | `platform` | platform VM | 8 GB RAM or more. With 4 GB, the OOM killer once killed Elasticsearch when sessions stacked up (DECISIONS 2026-10-10). Example `m1.large` (8 GB / 2 vCPU / 60 GB) |
-| `kali`, `waf`, `infra`, `target` | each slot VM of that role | optional; `dba.small` when left out, the WAF included (`docs/DECISIONS.md`, 2026-11-18). Every role image has `min_disk` 30 GB, which `dba.small`'s 30 GB holds; an image baked on a larger disk does not fit it (§3.6). The target runs the wargame's front and MySQL under Docker, with the memory limits of `deploy/roles/target/wargames.yaml` |
+| `kali`, `waf`, `infra`, `target` | each range VM of that role | optional; `dba.small` when left out, the WAF included (`docs/DECISIONS.md`, 2026-11-18). Every role image has `min_disk` 30 GB, which `dba.small`'s 30 GB holds; an image baked on a larger disk does not fit it (§3.6). The target runs the wargame's front and MySQL under Docker, with the memory limits of `deploy/roles/target/wargames.yaml` |
 
 **(this cloud)** The cloud has `m1.large` (8 GB / 2 vCPU / 60 GB), `m1.medium`
 (4 GB / 2 vCPU / 30 GB), `dba.small`, `dba.medium` (8 GB / 4 vCPU / 40 GB) and
 `dba.range` (16 GB / 6 vCPU / 60 GB). `cloud.yaml` names `m1.large` for
-`platform`; the slot roles take `dba.small`. A slot VM keeps its flavor until
-its stack is replaced, and a new flavor name makes every slot stale (§6).
+`platform`; the range VM roles take `dba.small`. A range VM keeps its flavor
+until its stack is replaced, and a new flavor name makes every stack stale (§6).
 Check that every flavor `cloud.yaml` names exists on your cloud.
 
 ```bash
@@ -508,7 +515,7 @@ openstack flavor create --ram 8192 --vcpus 2 --disk 60 m1.large
 ```
 
 A new cloud that has no fitting platform flavor makes this one, and a flavor
-for the slot roles if it has no `dba.small`; name it in `compute.flavors`.
+for the range VM roles if it has no `dba.small`; name it in `compute.flavors`.
 
 ### 3.4 Keypairs
 
@@ -526,7 +533,7 @@ for the slot roles if it has no `dba.small`; name it in `compute.flavors`.
   would lose its key. A missing `.pub` stops them too;
   `ssh-keygen -y -f <key_file>` writes it from the private key.
 - `cr-platform` is the platform's own range key. `POST /api/range/fabric/`
-  imports it from `/data/ssh/id_ed25519` in the platform container. Every slot
+  imports it from `/data/ssh/id_ed25519` in the platform container. Every range
   VM boots with it (`key_name`), and each node's user data gives its public key
   to the management user (§6). Never create this keypair by hand. The key file it comes from (`keys.range`) needs no step
   either. The first `bin/cloud up` on a cloud with no stack makes the file if it
@@ -538,17 +545,30 @@ for the slot roles if it has no `dba.small`; name it in `compute.flavors`.
 |---|---|---|
 | `cr-platform` | Heat stack | tcp 22, tcp 2222 (the Kali jump), tcp 8000, tcp 8002, icmp in |
 | `cr-reach` | fabric | on the platform's `cr-mgmt` port; nothing in except udp 123 (NTP) from members of `cr-mgmt` and udp 5140 (the collector) from members of `cr-senders` |
-| `cr-mgmt` | fabric | on every slot VM's control port; all IPv4 in, only from members of `cr-reach` (the platform's `cr-mgmt` port) |
-| `cr-senders` | fabric | also on each slot's infra control port, the only sender the collector takes; no rule in |
+| `cr-mgmt` | fabric | on every range VM's control port; all IPv4 in, only from members of `cr-reach` (the platform's `cr-mgmt` port); out only to members of `cr-reach` and to udp 67 (DHCP) |
+| `cr-senders` | fabric | also on each stack's infra control port, the only sender the collector takes; no rule in; out only to members of `cr-reach` and to udp 67 |
 | `cr-egress` | fabric | no rule in; the fabric creates it and no port uses it |
-| `cr-lan-<digest>` | the platform, before it creates a slot stack | one per distinct LAN rule set, shared by every slot; `<digest>` is the first 12 hex of the rules' SHA-256. Three for board and corp alike: all IPv4 in (`internet`, `dmz`), all in from 10.30.128.0/24 (`web-outer`, `web-inner`), tcp 514 from 172.29.0.0/24 (`mgmt`) (§6) |
+| `cr-lan-<digest>` | the platform, before it creates a range stack | one per distinct LAN rule set, shared by every stack; `<digest>` is the first 12 hex of the rules' SHA-256. Three for board and corp alike: all IPv4 in (`internet`, `dmz`), all in from 10.30.128.0/24 (`web-outer`, `web-inner`), tcp 514 from 172.29.0.0/24 (`mgmt`) (§6) |
+
+Neutron gives a new group an allow-all egress rule for IPv4 and IPv6. For
+`cr-mgmt` and `cr-senders` (`fabric.CONFINED_GROUPS`) `POST fabric/` deletes
+every egress rule but the two above and adds whichever of the two is
+missing, on groups it creates and on groups already standing, so the next
+`bin/cloud up` fixes a cloud whose groups were made before. DHCP on
+`cr-mgmt` hands each VM a route to 169.254.169.254 through 10.31.0.1, the OVN
+metadata port; with the egress confined, that traffic is dropped and no
+range VM reaches the metadata service. The range VMs boot from a config
+drive and do not need it (`docs/DECISIONS.md`, 2026-11-18). The second full
+`bin/verify` on the Heat range found Kali, the WAF and board reaching
+169.254.169.254 before this rule; that the rule closes it live is
+**[unverified]** until the next `bin/cloud up` and verify run.
 
 `bin/cloud up` deletes the groups `cr-range` and `cr-build` of the ranges
-before (§5.5). `DELETE fabric/` deletes the `cr-lan-` groups after the slots
-(§6.2).
+before (§5.5). `DELETE fabric/` deletes the `cr-lan-` groups after the
+range stacks (§6.2).
 
 Port 8002 is the blue console's Website pane. The platform sends each request
-over an ssh stream to the slot's Kali VM (over `cr-mgmt`). Kali sends it from
+over an ssh stream to the session's Kali VM (over `cr-mgmt`). Kali sends it from
 a customers address through the edge router to the WAF
 (`docs/ARCHITECTURE.md`, the Website pane's egress). A platform stack made
 before 2026-10-13 lacks the rule. Add it by hand:
@@ -561,7 +581,7 @@ Port 2222 is the jump for a learner's own ssh to the session's Kali: an sshd
 that `platform/entrypoint.sh` starts inside the platform container, beside
 ttyd, from `jump.py`'s config. It takes only the user `jump`, by public key,
 with no shell, no TTY and only local forwarding; each key's line is
-`restrict,port-forwarding,permitopen="<that slot's Kali control address>:22"`.
+`restrict,port-forwarding,permitopen="<that session's Kali control address>:22"`.
 `POST /api/sessions/<id>/ssh/` issues a session key, shown once, puts its
 public key into Kali's `kali` user and the jump's `authorized_keys`, and
 answers an ssh config with `ProxyJump`; the close drops both. Kali's control
@@ -574,7 +594,7 @@ The range has no Internet, so the platform is its only time source.
 - The platform VM runs chrony. cloud-init sets `allow <network.mgmt>` and `local
   stratum 10`, so the platform keeps serving its own clock if it loses its
   upstream time source.
-- Every slot VM takes its time from the platform's `cr-mgmt` address through
+- Every range VM takes its time from the platform's `cr-mgmt` address through
   a `systemd-timesyncd` drop-in (`/etc/systemd/timesyncd.conf.d/60-cr.conf`,
   `NTP=<platform mgmt>`) in its user data. A rebuilt platform VM keeps that
   address: the fabric attaches the detached `cr-platform.mgmt` port to it
@@ -602,7 +622,7 @@ Glance holds three kinds of image:
 | `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1` (**(this cloud)** the WAF's is `cr-waf-bake2`) | baked from `deploy/roles/<role>/install.sh` on a builder VM, then a Nova snapshot (below) | by hand, once per bake |
 
 The platform VM installs or writes every package, tool, key and setting at
-boot from the base image. The slot VMs boot from the baked images with no
+boot from the base image. The range VMs boot from the baked images with no
 egress; only `/etc/slot.env`, the management user and the time source come in
 their user data (§6).
 
@@ -640,7 +660,7 @@ SHA256SUMS.gpg SHA256SUMS`.
 **The role images.** Each `deploy/roles/<role>/install.sh` runs as root on a
 builder VM that has egress, is idempotent, and ends by clearing cloud-init and
 the machine id (`cloud-init clean --logs`, an empty `/etc/machine-id`), so
-every slot VM booted from the snapshot is a new instance. The role's boot
+every range VM booted from the snapshot is a new instance. The role's boot
 units wait for `/etc/slot.env` (`ConditionPathExists`), so they do nothing on
 the builder. Several files in a role directory are links into the repo
 (`deploy/kali/`, `deploy/proxy/stamp.py`, `deploy/waf/`, `deploy/suricata/`,
@@ -651,17 +671,17 @@ each wargame's `compose.yaml`); copy the directory with the links resolved.
 | `kali` | the Kali base | `kali-linux-headless` and the tools of the Kali container before (nmap, sqlmap, nikto, whatweb, ffuf, gobuster, hydra, dirb, mitmproxy and others), the stamp proxy as `web-proxy.service`, the operator log hook, `set-origin`, `slot-boot`, and a key-only `kali` user with bash and passwordless sudo; `board.com` and `corp.com` resolve to 121.134.88.42 |
 | `waf` | `compute.base_image` | nginx 1.24 from Ubuntu, ModSecurity 3.0.16 and its nginx connector built from release tarballs checked by SHA-256, CRS 4.25.1, the repo's `modsecurity.conf` and `board.com.conf`, rsyslog, `slot-boot` |
 | `infra` | `compute.base_image` | nftables, bridge-utils, ethtool, rsyslog, Docker with `bridge: none` and no iptables, the pinned `jasonish/suricata` image (`suricata -T` run on the repo's config and rules), the `suricatasc` wrapper (`docker exec -i sensor suricatasc`), `edge.nft`, `sensor.service`, `slot-boot`; `suricata` itself is only in the `sensor` container |
-| `target` | `compute.base_image` | Docker and Compose; board's and corp's compose files rendered for a VM (`render.py`: fronts published on the slot's addresses, databases on the internal `<w>_backend`), their images pulled from GHCR at `CR_IMAGE_TAG` (required), brought up once and their volumes kept as the pristine data, `wargames.service` |
+| `target` | `compute.base_image` | Docker and Compose; board's and corp's compose files rendered for a VM (`render.py`: fronts published on the stack's addresses, databases on the internal `<w>_backend`), their images pulled from GHCR at `CR_IMAGE_TAG` (required), brought up once and their volumes kept as the pristine data, `wargames.service` |
 
 The Ubuntu roles point apt at the Kakao mirror, purge `snapd` and
 `modemmanager`, and retry `apt-get` up to ten times (§2.6).
 
 The builder's flavor sets the image's disk. A Nova snapshot takes the
 builder's root disk as the image's virtual size and `min_disk`, and Heat
-refuses a slot stack whose flavor has less disk than its image's `min_disk`
+refuses a range stack whose flavor has less disk than its image's `min_disk`
 (`StackValidationFailed: Image cr-waf-bake1 requires 40 GB minimum disk
 space. Flavor dba.small has only 30 GB.`). Bake on a flavor whose disk is no
-larger than the slot flavor's, 30 GB for `dba.small`. **(this cloud)**
+larger than the range VMs' flavor's, 30 GB for `dba.small`. **(this cloud)**
 `m1.medium` (2 vCPU, 4 GB, 30 GB) fits and has more vCPU for the source builds
 than `dba.small`.
 
@@ -694,19 +714,19 @@ so its `min_disk` is 40 GB and `dba.small` cannot boot it; it was baked again,
 unchanged from `deploy/roles/waf/`, as `cr-waf-bake2` on an `m1.medium`
 builder: `install.sh` took 12 min 53 s (ModSecurity built from source), the
 snapshot 2 min 30 s. `cloud.yaml` names `compute.images.waf: cr-waf-bake2`;
-`cr-waf-bake1` stays in Glance, unused. The slots boot `cr-kali-bake1`,
+`cr-waf-bake1` stays in Glance, unused. The range stacks boot `cr-kali-bake1`,
 `cr-waf-bake2`, `cr-infra-bake1` and `cr-target-bake1`, each of virtual size
 30 GB and `min_disk` 30 GB, which `dba.small`'s 30 GB holds (§3.3). How long
 the other bakes take and how long the Kali image takes to boot once it is
 cached on the compute node are **[unverified]**.
 
-A slot stack names its images by `compute.images`, and the stack's digest
+A range stack names its images by `compute.images`, and the stack's digest
 holds the names, not the content (§6, §7): bake a changed role under a new
 name. The target holds the board and corp images it pulled at bake, so a
 changed wargame image reaches the range only through a new target bake. That
 bake's `CR_IMAGE_TAG` is the full commit `compute.target_tag` names (§4); a
 new target bake is a new image name and a new `target_tag`, both in the
-digest, so every slot is replaced. The target's boot refuses to report ready
+digest, so every stack is replaced. The target's boot refuses to report ready
 when an `image:` line in `/opt/wargames/*/compose.yaml` carries another tag,
 and writes those lines into `/var/lib/cr/failed` (§6). A line pinned by digest
 (`mysql@sha256:...`) has no tag and passes.
@@ -754,15 +774,15 @@ in a container's environment.
 | `network.address` | `""` (**(this cloud)** `192.168.2.247`) | optional; a floating IP the project already holds. The stack associates it and never releases it, so the address survives `bin/cloud down` and every rebuild. If empty, the stack allocates a new one (§5.1) |
 | `network.dns` | `[8.8.8.8, 8.8.4.4]` | the platform network's DNS |
 | `network.allowed` | `[0.0.0.0/0]` | optional; the source networks the group `cr-platform` takes ssh, the Kali jump 2222, 8000 and 8002 from, one rule per network and port. `init` writes the default. Keep the network `bin/cloud` runs from in it, or the rebuild cannot reach the VM over ssh. Without it, open to all |
-| `network.platform`, `.mgmt` | `10.20.0.0/24`, `10.31.0.0/24` | The platform VM's network and the fabric's `cr-mgmt`, where every slot VM has its control port. The ranges must be private and must not overlap. They must also stay outside Docker's default local address pools (172.17.0.0/16 to 172.31.0.0/16 and 192.168.0.0/16, moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`'s networks and the declared origins. A slot's own LANs take their addresses from `wargames/<w>/topology.yaml`, the same in every slot (§6) |
+| `network.platform`, `.mgmt` | `10.20.0.0/24`, `10.31.0.0/24` | The platform VM's network and the fabric's `cr-mgmt`, where every range VM has its control port. The ranges must be private and must not overlap. They must also stay outside Docker's default local address pools (172.17.0.0/16 to 172.31.0.0/16 and 192.168.0.0/16, moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`'s networks and the declared origins. A range stack's own LANs take their addresses from `wargames/<w>/topology.yaml`, the same in every stack (§6) |
 | `compute.base_image` | `ubuntu-24.04` | the platform VM, and the builder of the Ubuntu role images (§3.6) |
-| `compute.availability_zone` | `""` | the platform VM and every slot VM; if empty, Nova chooses |
-| `compute.flavors` | `platform`, and `kali`, `waf`, `infra`, `target` | §3.3. A slot role left out takes `dba.small`; `CR_OPENSTACK_FLAVORS` |
-| `compute.images` | `cr-<role>-bake1` per role (**(this cloud)** `waf: cr-waf-bake2`) | optional; each slot role's Glance image, baked from `deploy/roles/<role>/` (§3.6); a role left out takes `cr-<role>-bake1`; `CR_OPENSTACK_IMAGES` |
-| `compute.pool` | `{board: 3, corp: 1}` | optional; how many slots stand ready for each wargame, each one Heat stack of four VMs, so how many sessions can run at once (§6.4); `CR_OPENSTACK_POOL` |
-| `compute.target_tag` | the commit the target image was baked at | optional; the full 40-hex commit whose board and corp images the target image pulled (its bake's `CR_IMAGE_TAG`, §3.6); a slot has no egress, so it runs only those. Without it, the commit `cr-target-bake1` was baked at; `CR_OPENSTACK_TARGET_TAG` |
+| `compute.availability_zone` | `""` | the platform VM and every range VM; if empty, Nova chooses |
+| `compute.flavors` | `platform`, and `kali`, `waf`, `infra`, `target` | §3.3. A range VM role left out takes `dba.small`; `CR_OPENSTACK_FLAVORS` |
+| `compute.images` | `cr-<role>-bake1` per role (**(this cloud)** `waf: cr-waf-bake2`) | optional; each range VM role's Glance image, baked from `deploy/roles/<role>/` (§3.6); a role left out takes `cr-<role>-bake1`; `CR_OPENSTACK_IMAGES` |
+| `compute.pool` | `{board: 3, corp: 1}` | optional; how many range stacks stand ready for each wargame, each one Heat stack of four VMs, so how many sessions can run at once (§6.4); `CR_OPENSTACK_POOL` |
+| `compute.target_tag` | the commit the target image was baked at | optional; the full 40-hex commit whose board and corp images the target image pulled (its bake's `CR_IMAGE_TAG`, §3.6); a range stack has no egress, so it runs only those. Without it, the commit `cr-target-bake1` was baked at; `CR_OPENSTACK_TARGET_TAG` |
 | `keys.key_name`, `keys.key_file` | `fsl-claude`, `~/.ssh/fsl_claude` | the Nova keypair the platform VM boots with (its `key_name`, §3.4), and that keypair's private key, for ssh to the VM |
-| `keys.range` | `~/.ssh/fsl-platform` | the platform's range key, kept across rebuilds; every slot VM takes it for the management user (§6) |
+| `keys.range` | `~/.ssh/fsl-platform` | the platform's range key, kept across rebuilds; every range VM takes it for the management user (§6) |
 | `platform.stack`, `.repository`, `.ref` | `cr-platform`, this repo, `dev` | the stack, and the checkout it clones |
 | `backups.keep` | `1` | optional; how many store backups `backups/` keeps after a rebuild or `down`, counting the new one (`bin/backup --keep`). Without it, one |
 
@@ -804,7 +824,7 @@ The server's cloud-init does these steps:
 4. Clones `repository` at `ref` into `/opt/cr`.
 5. Writes `/opt/cr/openstack.env`. It holds every cloud value except the
    password, among them `CR_OPENSTACK_POOL`, `CR_OPENSTACK_TARGET_TAG`,
-   `CR_OPENSTACK_IMAGES` and `CR_OPENSTACK_FLAVORS` (§4) and `CR_OPENSTACK_SSH_USER=ubuntu`, the slot
+   `CR_OPENSTACK_IMAGES` and `CR_OPENSTACK_FLAVORS` (§4) and `CR_OPENSTACK_SSH_USER=ubuntu`, the range
    VMs' management user, and `CR_TOOL_IMAGE=cr-kali`, the attacker host the
    launcher runs tools on. It makes `/opt/cr/openstack-password` empty, mode 0600, owned by
    uid 10001; the hand-over fills it.
@@ -881,28 +901,28 @@ It asks the platform's API every 5 s while it waits (`POLL`), and
 5. It sends `POST fabric/`. It stops on drift (a resource that exists but
    differs from what the platform would create).
 6. It sends `DELETE leftovers/`, which removes what the ranges before this one
-   left in the project (§5.5), the range host first, since it holds the quota
-   the slot VMs need, and prints what it removed.
-7. It sends `POST slot/`. It stops when a slot is blocked, for example by a
+   left in the project (§5.5), servers first, since a leftover server holds
+   quota the range VMs need, and prints what it removed.
+7. It sends `POST slot/`. It stops when a stack is blocked, for example by a
    role image that Glance does not hold active ("no active image ... in
-   Glance"), which the platform checks before it asks Heat. For each slot of
-   the pool with no stack, this creates `cr-slot-<n>` (§6). A stack that is
-   stale, because what the platform renders now has another digest than the
-   one it was created with (§6, §5.3), that failed (`SETUP_FAILED`), or that
-   runs another wargame than the pool assigns the slot, is deleted, and the
-   slot's refill creates it again and configures it, but only when no session
-   holds that slot. While a session holds it, the stale slot reads blocked and
-   `up` stops.
-8. It sends `GET ready/` until no slot reads `NOT_STANDING`, `REBUILDING`,
+   Glance"), which the platform checks before it asks Heat. For each stack
+   number of the pool with no stack, this creates `cr-slot-<n>` (§6). A stack
+   that is stale, because what the platform renders now has another digest
+   than the one it was created with (§6, §5.3), that failed (`SETUP_FAILED`),
+   or that runs another wargame than the pool assigns its number, is deleted,
+   and the refill creates it again and configures it, but only when no
+   session holds that stack. While a session holds it, the stale stack reads
+   blocked and `up` stops.
+8. It sends `GET ready/` until no stack reads `NOT_STANDING`, `REBUILDING`,
    `RESETTING` or `STALE`. A stack still in progress, or a node still running
-   its boot (`SETTING_UP`), reads `REBUILDING`. A slot that reads
+   its boot (`SETTING_UP`), reads `REBUILDING`. A stack that reads
    `SETUP_FAILED` stops `up`, which prints the reason; the next `up` deletes
    that stack at step 7 and the refill creates it again.
 9. It sends `POST configure/`. It retries while the answer is 503, which means
-   a slot VM's ssh is not up yet, up to 60 tries. It stops on any other answer
+   a range VM's ssh is not up yet, up to 60 tries. It stops on any other answer
    but 200.
 10. It sends `GET ready/` until the range is ready. The platform checks the
-    slots side by side.
+    stacks side by side.
 
 `down` does these steps:
 
@@ -910,7 +930,7 @@ It asks the platform's API every 5 s while it waits (`POLL`), and
    file exists. The store file is `db.sqlite3` in the `cr_platformdata` volume.
 2. If neither exists, as after a first boot that never started the platform,
    there is nothing to back up and no platform to ask. `down` then deletes the
-   slot stacks with the CLI (below), the servers of step 7 and the stack.
+   range stacks with the CLI (below), the servers of step 7 and the stack.
 3. If ssh does not answer, or Docker does not, `down` cannot tell. It refuses and
    deletes nothing.
 4. If a store file exists beside a stopped platform container, `down` starts the
@@ -918,9 +938,10 @@ It asks the platform's API every 5 s while it waits (`POLL`), and
    deletes nothing, when the container does not start.
 5. It keeps the range key and backs up the store (`bin/backup --keep`,
    `backups.keep`).
-6. It waits for the API. Then it runs `DELETE slot/`, which deletes every slot
-   stack, waits until `GET slot/` lists none standing (up to 30 min), because
-   each slot VM's control port holds `cr-mgmt`, and runs `DELETE fabric/`.
+6. It waits for the API. Then it runs `DELETE slot/`, which deletes every
+   range stack, waits until `GET slot/` lists none standing (up to 30 min),
+   because each range VM's control port holds `cr-mgmt`, and runs
+   `DELETE fabric/`.
 7. It deletes every server whose name starts with `cr-build-`, which carries the
    `cr_image` property and which has a port on this stack's own network (the
    stack's `network` resource): a builder the VM range of before may have left.
@@ -989,18 +1010,19 @@ so. The hand-over that `up` redoes (§5.2) does the same when the VM holds no
 store.
 
 Because the key is carried over, the fabric's `cr-platform` keypair stays valid.
-You do not need to tear the slots down: no slot VM has a port on the stack's
-own network. A slot stack stands through the replace when what the new
-platform renders for it has the same digest (§6), and `bin/cloud up --replace`
-then only configures it again. The digest holds the platform's `cr-mgmt`
-address, which every node's user data names as its log collector and time
-source. That address stays: the old VM's `cr-platform.mgmt` port is left
-detached when its server is deleted, and the fabric attaches that port to the
-new VM instead of making another (`_attach` in `platform/range/openstack.py`),
-so the slots stand through. How long a replace takes is **[unverified]**; on
-the range host of 2026-11-17 a replace that kept the
-range took 10 min 14 s and one that replaced it 25 min 27 s
-(`docs/DECISIONS.md`, 2026-11-17).
+You do not need to tear the range stacks down: no range VM has a port on the
+platform stack's own network. A range stack stands through the replace when
+what the new platform renders for it has the same digest (§6), and
+`bin/cloud up --replace` then only configures it again. The digest holds the
+platform's `cr-mgmt` address, which every node's user data names as its log
+collector and time source. That address stays: the old VM's
+`cr-platform.mgmt` port is left detached when its server is deleted, and the
+fabric attaches that port to the new VM instead of making another (`_attach`
+in `platform/range/openstack.py`), so the stacks stand through. On the Heat
+range the platform VM's part of `bin/cloud up --replace` took 8 to 9 min in
+each of five runs (2026-11-18, `docs/state/now.md`); on the range host of
+2026-11-17 a replace that kept the range took 10 min 14 s and one that
+replaced it 25 min 27 s (`docs/DECISIONS.md`, 2026-11-17).
 
 `bin/backup` works like this:
 
@@ -1041,7 +1063,7 @@ Docker image from a tarball instead of pulling it from GHCR. Both
    container is recreated.
 
 `CR_IMAGE_TAG` stays what the clone gave it. A sideloaded image is loaded on
-the platform VM only: the slots boot from the baked Glance images, and the
+the platform VM only: the range VMs boot from the baked Glance images, and the
 target's board and corp images are the ones pulled at bake (§3.6), so a
 sideloaded `board`, `corp` or `corp-db` never reaches the range; push the
 commit, let `images.yml` publish its images, bake the target again at that
@@ -1051,17 +1073,17 @@ hand-over that `up` redoes on a standing VM keeps the line. To see the names,
 run `sudo docker exec cr-platform env | grep CR_SIDELOADED` on the VM.
 
 A new bake reaches the range through `POST slot/` once `compute.images` names
-it (and, for the target, `compute.target_tag` its commit): the slots' digest
-changes, so every slot reads `STALE`, and `POST slot/` deletes each stack no
-session holds; each slot's refill creates it again from the new images and
-configures it (§6). A slot a session holds is replaced after its close. `bin/cloud up` sends
+it (and, for the target, `compute.target_tag` its commit): the stacks' digest
+changes, so every stack reads `STALE`, and `POST slot/` deletes each stack no
+session holds; the refill creates each again from the new images and
+configures it (§6). A stack a session holds is replaced after its close. `bin/cloud up` sends
 `POST slot/` and then `configure/`. By hand:
 
 ```bash
 P=http://ADDRESS:8000/api/range
 curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/        # deletes each stale stack no session holds; its refill creates it again
 curl -s $P/ready/                                                          # REBUILDING while the stacks build and the nodes read SETTING_UP
-curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/configure/   # every slot's sensor on the baseline rules
+curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/configure/   # every stack's sensor on the baseline rules
 ```
 
 Before it deletes anything, the command refuses in these cases:
@@ -1092,9 +1114,10 @@ rebuild instead of rebooting it. MicroK8s calls importing images from `.tar`
 archives without a registry "Image side-loading"
 (https://canonical.com/microk8s/docs/sideload).
 
-**Runs 2026-10-15.** We ran `bin/cloud up --replace --sideload platform=...
---sideload gns3=...` over `dev`, untouched. Both runs exited 0. Both
-slots were READY and no session was open before each run.
+**Runs 2026-10-15, on the VM range of before.** We ran `bin/cloud up
+--replace --sideload platform=... --sideload gns3=...` over `dev`, untouched.
+Both runs exited 0. Both ranges were READY and no session was open before
+each run.
 
 - Run 1 ran `dev`'s HEAD from the previous platform VM.
 - Run 2 ran HEAD with the backup fix that run 1's `bin/verify` found, from
@@ -1113,13 +1136,13 @@ slots were READY and no session was open before each run.
 | Password, range key | 1 s | 1 s | key fingerprint unchanged |
 | Store upload (`scp`) | 30 min 41 s | 14 min 39 s | 3.1 and 6.8 MB/s |
 | Restore, `compose up -d`, API | 1 min 3 s | 1 min 4 s | migrate: no migrations to apply (the store was already at 0026); 0020-0026 `[X]` |
-| Fabric, images, slot, configure, ready (the VM range of before) | 5 min 14 s | 46 s | no drift; run 1 rebuilt `cr-wargame-host` for the new tag (3 min 43 s); both slots READY on the same servers |
+| Fabric, images, slot, configure, ready (the VM range of before) | 5 min 14 s | 46 s | no drift; run 1 rebuilt `cr-wargame-host` for the new tag (3 min 43 s); both ranges READY on the same servers |
 | Total | 54 min 33 s | 28 min 18 s | |
 
 Security group `cr-platform`: 22, 8000, 8002, 3080 and ICMP. After each run a
 board session (497, 514) opened in about 5 s. Its map pane (now Map) drew the
-learner map from `cr-gns3` with every link end green. Its close reset the slot
-to READY within 2 minutes. The old VM's Elasticsearch data does not move. Only
+learner map from `cr-gns3` with every link end green. Its close reset the
+session's range to READY within 2 minutes. The old VM's Elasticsearch data does not move. Only
 the store does.
 
 ### 5.4 The rename cut-over
@@ -1127,7 +1150,7 @@ the store does.
 On 2026-11-13 every name the code gives the cloud moved from the prefix `fsl` to
 `cr` (`docs/DECISIONS.md`, 2026-11-13). A cloud brought up before that still
 runs the old names: stack `fsl-platform`, `/opt/fsl`, the volume
-`fsl_platformdata`, slot servers, networks and groups named `fsl-*`. The renamed
+`fsl_platformdata`, range servers, networks and groups named `fsl-*`. The renamed
 code cannot see them, so take them down with the code that made them, once:
 
 1. Push the renamed code to `dev` and wait for `images.yml`. Make the new
@@ -1135,7 +1158,7 @@ code cannot see them, so take them down with the code that made them, once:
    `cr-board`, `cr-corp` and `cr-corp-db`.
 2. Check out the last commit before the rename beside this checkout, give it
    the current `cloud.yaml` and take the cloud down from there. `down` backs up
-   the store into that checkout's `backups/`, deletes the slots, the fabric,
+   the store into that checkout's `backups/`, deletes the range, the fabric,
    the builders and the stack, and keeps the floating IP and Glance:
 
    ```bash
@@ -1147,7 +1170,7 @@ code cannot see them, so take them down with the code that made them, once:
 
 3. Delete what `down` leaves under the old names: the role images, the
    OPNsense image and the builders' security group. Keep `fsl-claude`. The
-   slots boot from the baked `cr-<role>-bake1` images instead (§3.6).
+   range VMs boot from the baked `cr-<role>-bake1` images instead (§3.6).
 
    ```bash
    .venv/bin/openstack image delete fsl-kali fsl-waf fsl-wargame-host fsl-opnsense-<version>
@@ -1163,7 +1186,7 @@ code cannot see them, so take them down with the code that made them, once:
    (the scripts find `openstack` beside the Python they run under, §5.2). `platform.ref`
    must be a ref name with no `/` in it; push a branch so named if the working
    branch has one. It creates `cr-platform`, restores the newest backup in
-   `backups/` and builds the fabric and the slots under the new names.
+   `backups/` and builds the fabric and the range stacks under the new names.
 6. Point the `cloud` git remote at the new checkout path:
    `git remote set-url cloud ssh://ubuntu@ADDRESS/opt/cr`.
 
@@ -1174,9 +1197,9 @@ If step 2 is skipped while `platform.stack` still names `fsl-platform`,
 ### 5.5 From the range host to the Heat range
 
 From 2026-11-13 to 2026-11-18 the range was one VM, the range host `cr-range`
-(`dba.range`, 6 vCPU, 16 GB), which ran slot N as the Docker Compose project
-`sN`; before it, each slot was four VMs booted from role images the platform
-built on builder VMs, with an OPNsense edge. A cloud that still runs either
+(`dba.range`, 6 vCPU, 16 GB), which ran range N as the Docker Compose project
+`sN`; before it, each session's range was four VMs booted from role images
+the platform built on builder VMs, with an OPNsense edge. A cloud that still runs either
 moves to the Heat range with one `bin/cloud up` on the new code:
 
 1. Bake the four role images (§3.6). `cloud.yaml` needs no edit: the keys the
@@ -1187,8 +1210,8 @@ moves to the Heat range with one `bin/cloud up` on the new code:
    commit `cr-target-bake1` was baked at (§4).
 2. Run `uv run bin/cloud up --replace`. The platform VM is replaced with its
    store and range key (§5.3). `POST fabric/` makes the group `cr-senders`.
-3. Before the slots, the same `up` sends `DELETE leftovers/`, because the
-   range host holds the quota the slot VMs need. It removes:
+3. Before the range stacks, the same `up` sends `DELETE leftovers/`, because
+   the range host holds the quota the range VMs need. It removes:
    - the range host and the VMs of the range before it, found by their
      `cr_host` metadata, and any builder (the `cr_image` metadata), waiting
      until Nova has deleted them
@@ -1199,13 +1222,14 @@ moves to the Heat range with one `bin/cloud up` on the new code:
    - the project's images carrying the `cr_bundle` property: the role images of
      the VM range (`cr-kali`, `cr-waf`, `cr-wargame-host`) and
      `fsl-opnsense-<version>`
-   - slot stacks numbered beyond the pool
+   - range stacks numbered beyond the pool
 4. `POST slot/` then creates the pool's stacks, and `configure/` seeds their
    sensors.
 
 `GET $P/leftovers/` lists the same without deleting anything. The base image,
 the Kali base and the baked role images carry no `cr_bundle`, so they stay.
-**(this cloud)** The switch is **[unverified]** live.
+**(this cloud)** The switch ran on 2026-11-18: the range host `cr-range` is
+deleted and the pool's four stacks stand (`docs/state/now.md`).
 
 ### 5.6 Sign-in and the stack's credentials
 
@@ -1264,10 +1288,10 @@ P=http://$ADDRESS:8000/api/range
 curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/fabric/     # cr-mgmt (DHCP on, no gateway), keypair cr-platform,
                                   # groups cr-reach/cr-mgmt/cr-egress/cr-senders, platform port cr-platform.mgmt
 curl -s -X DELETE $P/leftovers/   # what the ranges before this one left (§5.5)
-curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/       # creates each missing slot stack cr-slot-<n>; deletes a stale or failed
+curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/       # creates each missing range stack cr-slot-<n>; deletes a stale or failed
                                   # one when no session holds it, and its refill creates it again
 curl -s $P/ready/                 # REBUILDING while a stack is in progress or a node reads SETTING_UP
-curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/configure/  # each slot: its sensor seeded with the baseline rules
+curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/configure/  # each stack: its sensor seeded with the baseline rules
 curl -s $P/ready/
 ```
 
@@ -1275,17 +1299,18 @@ Notes:
 
 - The platform finds the fabric's network by the tag `cr.segment.id=mgmt`, not
   by name. The fabric needs the Neutron `standard-attr-tag` extension, which is
-  on by default. A network of any other segment, or of a slot tag other than 1,
-  is listed as a leftover.
-- The platform finds the slot stacks by the Heat tag `cr-range` and tells them
-  apart by `cr.slot=<n>`; `cr.wargame=<w>` says which wargame a stack runs and
+  on by default. A network of any other segment, or of a `cr.slot` tag other
+  than 1, is listed as a leftover.
+- The platform finds the range stacks by the Heat tag `cr-range` and tells them
+  apart by `cr.slot=<n>`, the stack number N (see the glossary in
+  `docs/ARCHITECTURE.md`); `cr.wargame=<w>` says which wargame a stack runs and
   `cr.digest=<d>` what it was rendered from (the template and the role images'
   and flavors' names, and `compute.target_tag`). A stack whose digest differs
   from what the platform renders now is stale. A stack beyond the pool's count
-  is a leftover. Which wargame a slot runs comes from the pool's assignment
-  (§6.4), not from the tag: a free slot whose stack runs another wargame is
-  replaced.
-- A slot with no stack is `NOT_STANDING` and blocked, before Heat is asked,
+  is a leftover. Which wargame a stack runs comes from the pool's assignment
+  of its number (§6.4), not from the tag: a free stack that runs another
+  wargame is replaced.
+- A stack number with no stack is `NOT_STANDING` and blocked, before Heat is asked,
   when Glance holds no active image of a role's `compute.images` name ("no
   active image ... in Glance"), when the platform has no `cr-mgmt` address, or
   when no wargame has a `topology.yaml`.
@@ -1305,10 +1330,11 @@ Notes:
   `/var/log/cloud-init-output.log` on a node that failed, and `bin/cloud up`
   stops on it. A stack Heat reports `CREATE_FAILED` reads `SETUP_FAILED` with
   Heat's reason. The next `POST slot/` deletes a failed or stale stack when no
-  session holds the slot (`ensure_slot` in `platform/range/openstack.py`
-  returns it in `rebuilt`), and the slot's refill thread (`api/reset.py`)
-  creates it again and configures it. An open session holds only its own slot.
-- The platform reaches each slot VM as `CR_OPENSTACK_SSH_USER` (`ubuntu`) on
+  session holds the stack (`ensure_slot` in `platform/range/openstack.py`
+  returns it in `rebuilt`), and the refill thread for that number
+  (`api/reset.py`) creates it again and configures it. An open session holds
+  only its own stack.
+- The platform reaches each range VM as `CR_OPENSTACK_SSH_USER` (`ubuntu`) on
   its control port on `cr-mgmt`, with the range key and one shared ssh
   connection per address (`ControlMaster auto`, `ControlPersist 60`). Each
   node's user data creates that user with the platform's public key and
@@ -1321,14 +1347,14 @@ Notes:
   id in the API server's memory, so a command asks the cloud nothing; creating
   or deleting the stack drops them.
 
-**The slot.** Slot N is the Heat stack `cr-slot-<n>`. `platform/range/sandbox.py`
+**The range stack.** Stack N is the Heat stack `cr-slot-<n>`. `platform/range/sandbox.py`
 turns `wargames/<w>/topology.yaml` and the declaration's origins into a plan,
 and `platform/range/openstack.py` renders it as a Heat Orchestration Template
 (`template()`) and creates the stack with `disable_rollback` and a 30-minute
 timeout. The stack's parameters are the fabric's keypair, network and groups,
 each role's image and flavor (`compute.images`, `compute.flavors`), and each
 LAN's `cr-lan-` group (`group_<lan>`). Every
-slot uses the same addresses; slots differ by network, not by CIDR.
+stack uses the same addresses; stacks differ by network, not by CIDR.
 
 | LAN (`cr-slot-<n>-<lan>`) | Subnet | Members |
 |---|---|---|
@@ -1346,23 +1372,25 @@ slot uses the same addresses; slots differ by network, not by CIDR.
 | `target` | `cr-target-bake1`: Ubuntu, Docker, board and corp at the baked tag | none |
 
 - The subnets have DHCP off and no gateway, and no Neutron router stands on any
-  slot LAN. Every port has a fixed IP; the VMs boot with a config drive, whose
+  of the stack's LANs. Every port has a fixed IP; the VMs boot with a config drive, whose
   `network_data.json` cloud-init configures the NICs from. Nova refuses a port
   without a fixed IP, so the IDS legs hold the dummy addresses .251 and .252,
   which the infra's boot flushes.
 - Each node also has a control port on the fabric's `cr-mgmt`, in the group
   `cr-mgmt`; the infra's is also in `cr-senders`, the only group the collector
-  takes udp 5140 from (§3.5). The map draws it as the management link.
+  takes udp 5140 from (§3.5). Both groups send only to the platform's
+  `cr-reach` and to DHCP, so no range VM reaches the metadata address
+  169.254.169.254 (§3.5).
 - Each LAN's secured ports are in a security group that admits in from the
   LAN's subnets, from anywhere on a LAN where a port carries an address pair
-  (`internet`, `dmz`), and on `mgmt` only tcp 514 from its subnet. Every slot
-  uses the same addresses, so every slot has the same rule sets, and LANs with
+  (`internet`, `dmz`), and on `mgmt` only tcp 514 from its subnet. Every stack
+  uses the same addresses, so every stack has the same rule sets, and LANs with
   equal rules share a group. The adapter (`lan_groups` and `_lan_group_ids` in
   `platform/range/openstack.py`) makes each group `cr-lan-<digest>` once, under
   a lock, before it creates a stack, and hands their ids to the stack; board
   and corp take the same three (§3.5). The rules name CIDRs, not groups, and
-  each slot's LANs are networks of its own, so a shared group opens nothing
-  between slots. Neutron enforces these outside the guest, so root in Kali or
+  each stack's LANs are networks of its own, so a shared group opens nothing
+  between stacks. Neutron enforces these outside the guest, so root in Kali or
   the WAF cannot change them. The pair `0.0.0.0/0` lets Kali send from any origin address; port
   security still binds Kali's port to the MAC Neutron gave it.
   `max_allowed_address_pair` is 10 on this cloud, so the 30 origin /24s cannot
@@ -1401,10 +1429,10 @@ slot uses the same addresses; slots differ by network, not by CIDR.
   reloaded with `nginx -t && nginx -s reload` (the device `cr-waf`).
 - The infra's rsyslog relays the WAF's lines and its own EVE to the platform's
   collector, udp 5140 over `cr-mgmt`, under the sender names `waf-<n>` and
-  `infra-<n>`; the collector writes slot N's lines to `logs-N-*`.
-- The target VM runs the slot's wargame (`WARGAMES` in `/etc/slot.env`) with
+  `infra-<n>`; the collector writes stack N's lines to `logs-N-*`.
+- The target VM runs the stack's wargame (`WARGAMES` in `/etc/slot.env`) with
   Docker Compose from `/opt/wargames/<w>/compose.yaml`, rendered at bake: the
-  front publishes on the target's slot address (board 8000, corp 80), the
+  front publishes on the target's `web-inner` address (board 8000, corp 80), the
   database stays on the internal network `<w>_backend`. `wargames up` restores
   the pristine data kept at bake into empty volumes before it starts them. The
   ground truth of the board (`/internal/auth-users`) is read inside the board
@@ -1413,15 +1441,15 @@ slot uses the same addresses; slots differ by network, not by CIDR.
 - Every node takes its time from the platform's `cr-mgmt` address through a
   `systemd-timesyncd` drop-in (`/etc/systemd/timesyncd.conf.d/60-cr.conf`) its
   user data writes.
-- The learner map is read from Neutron: the slot's networks and ports by the
-  tag `cr.slot=<n>` (`range/wiring.py`), and the database zone from the target
+- The learner map is read from Neutron: the stack's networks and ports by the
+  tag `cr.slot=<n>` (`range/wiring.py`; the control ports are left out), and the database zone from the target
   VM's internal Docker networks (`docker network inspect` over ssh, once per
   held stack), drawn as `<w>-backend`.
 
-`configure/` seeds each slot's sensor with the baseline rules
+`configure/` seeds each stack's sensor with the baseline rules
 (`deploy/suricata/rules/local.rules` from the platform's checkout) through
-`rules/suricata.py`. Everything else a slot needs is in its image and its user
-data.
+`rules/suricata.py`. Everything else a stack needs is in its images and its
+user data.
 
 Secrets stay per session. The board's `seed` sets each seeded account's
 password on every start, so every session's hashes have new salts. corp's
@@ -1436,33 +1464,38 @@ jump in the platform container (§3.5).
 
 ### 6.1 Session reset
 
-A session opens on a free READY slot that runs its wargame. When there is none
-and a free READY slot runs another wargame, the platform deletes that slot's
-stack and creates it again for the wanted wargame; the open answers 409 until
-it is ready.
+A session is given a free READY stack from the pool that runs its wargame.
+When there is none and a free READY stack runs another wargame, the platform
+deletes that stack and creates it again for the wanted wargame; the open
+answers 409 until it is ready. The readiness read runs outside the lock that
+picks a session's stack (`SLOT_CHOICE` in `platform/api/views.py`), so both
+steps check again under that lock: the retarget claims the stack only while
+no open session holds it, and an open refuses a stack whose reset is running.
+Before this, a retarget could delete a stack a session had just been given
+(`docs/DECISIONS.md`, 2026-11-18).
 
-Closing a session deletes its slot's stack and creates a new one for the same
+Closing a session deletes its stack and creates a new one for the same
 wargame, off the learner's path: every VM of the next session is new, booted
 from the baked images, with the target's pristine data. The platform then
-seeds the sensor with the baseline rules and marks the slot's disabled rules
-enabled. Acceptance checks that after a close the slot's WAF has another boot
+seeds the sensor with the baseline rules and marks the stack's disabled rules
+enabled. Acceptance checks that after a close the stack's WAF has another boot
 id and lacks the file the last learner wrote.
 
 A restart of the platform during a reset does not lose it. The reset leaves a
 file `slot-N` (holding the wargame) in `/data/reset-owed` until it succeeds.
-At boot the platform does the reset again for each slot that still has one,
-as a close does. `/api/range/ready/` shows that slot `RESETTING`, then `READY`
-or `RESET_FAILED` with the reason. A reset whose new stack is not created and
+At boot the platform does the reset again for each stack number that still
+has one, as a close does. `/api/range/ready/` shows that stack `RESETTING`,
+then `READY` or `RESET_FAILED` with the reason. A reset whose new stack is not created and
 set up within 30 minutes fails.
 
 While the reset runs, `ready/` answers phase `RESETTING`. A refused `POST
 /api/sessions/` names the reset, so a client waits and does not call
 `configure/`. A failed reset reads `RESET_FAILED` with its reason. `POST
-$P/configure/` retries it. `POST $P/slot/rebuild/` deletes the slot's stack;
+$P/configure/` retries it. `POST $P/slot/rebuild/` deletes the stack;
 the next `POST slot/` creates it again.
 
-How long a stack takes to delete and to come back ready, so how long a slot is
-away after a close, is **[unverified]**. The probe stack of 2026-11-18 (three
+How long a stack takes to delete and to come back ready, so how long a stack
+is away after a close, is **[unverified]**. The probe stack of 2026-11-18 (three
 Ubuntu VMs on `dba.small`) reached `CREATE_COMPLETE` in 29 s and answered ssh
 about 1 min 53 s after. The first pool fill of 2026-11-18 created the four
 stacks at once with no image cached on com01: the 14 GB Kali image was copied
@@ -1473,10 +1506,10 @@ finished at 151 s).
 
 ### 6.2 Teardown order
 
-Delete the slots, then the fabric. `DELETE $P/slot/` deletes every slot's
-stack; `DELETE $P/slot/?slot=N` deletes one. Heat deletes a stack's servers,
+Delete the range stacks, then the fabric. `DELETE $P/slot/` deletes every
+range stack; `DELETE $P/slot/?slot=N` deletes one. Heat deletes a stack's servers,
 ports and networks itself; the `cr-lan-` groups are not the stack's and stay
-for the next stack. Each slot VM's control port stands on
+for the next stack. Each range VM's control port stands on
 `cr-mgmt`, so `DELETE $P/fabric/` refuses while any server other than the
 platform has a port on it; `bin/cloud down` waits until `GET $P/slot/` lists
 no standing stack first. Teardown also deletes the ports that no server holds
@@ -1484,7 +1517,7 @@ any more. Nova leaves the pre-created `cr-platform.mgmt` port standing when it
 deletes a platform VM; the next `POST fabric/` attaches that port to the new
 platform VM, so the platform keeps its `cr-mgmt` address, and deletes any
 further detached port of that name. `DELETE $P/fabric/` deletes the `cr-lan-`
-groups after the slots (`fabric.LAN_GROUP_PREFIX`), and the groups `cr-range`
+groups after the stacks (`fabric.LAN_GROUP_PREFIX`), and the groups `cr-range`
 and `cr-build` if they are still there.
 
 ### 6.3 Keypair drift
@@ -1492,35 +1525,36 @@ and `cr-build` if they are still there.
 The fabric compares the keypair `cr-platform` with the platform's
 `/data/ssh/id_ed25519`. A new VM without the kept key makes a new key. Then `GET
 fabric/` reports `keypair cr-platform holds another public key` (drift, and
-`POST` answers 409). The fix is to delete the slots and then the fabric before
-you replace the VM. With `bin/platform-rebuild` the key is carried over and
-nothing drifts. The public key is also in every slot's user data, so a new key
-makes every slot stale.
+`POST` answers 409). The fix is to delete the range stacks and then the fabric
+before you replace the VM. With `bin/platform-rebuild` the key is carried over
+and nothing drifts. The public key is also in every stack's user data, so a
+new key makes every stack stale.
 
-### 6.4 Range slots
+### 6.4 The pool
 
-`compute.pool` sets how many slots stand ready for each wargame; it reaches the
-platform as `CR_OPENSTACK_POOL` (`board=3 corp=1`). Slots are numbered in the
-mapping's order: with the default, slots 1 to 3 are built for board and slot 4
-for corp.
+`compute.pool` sets how many range stacks stand ready for each wargame; it
+reaches the platform as `CR_OPENSTACK_POOL` (`board=3 corp=1`). Stacks are
+numbered in the mapping's order: with the default, stacks 1 to 3 are built for
+board and stack 4 for corp.
 
-- Slot N is the stack `cr-slot-<n>`: four VMs and five networks of its own.
-  How many slots run at once is the cloud's capacity (§3.2), not a limit in the
+- Stack N is `cr-slot-<n>`: four VMs and five networks of its own. How many
+  stacks run at once is the cloud's capacity (§3.2), not a limit in the
   design.
-- The platform gives each session a free READY slot of its wargame and keeps it
-  for the life of the session. The close replaces only that slot.
-- The collector writes each slot's syslog to `logs-N-*`. It tells the slots
-  apart by the sender's name (`waf-2`, `infra-2`). A session reads its slot's
-  index.
+- The platform gives each session a free READY stack of its wargame and keeps
+  it for the life of the session (`Session.slot` holds its number). The close
+  replaces only that stack.
+- The collector writes each stack's syslog to `logs-N-*`. It tells the stacks
+  apart by the sender's name (`waf-2`, `infra-2`). A session reads its own
+  stack's index.
 
 To grow the pool, raise a count in `compute.pool` and run `uv run bin/cloud up
---replace`: `POST slot/` creates the new slots. To shrink it, lower a count;
+--replace`: `POST slot/` creates the new stacks. To shrink it, lower a count;
 `DELETE leftovers/` deletes the stacks numbered beyond the new total. The
-pool's assignment decides which wargame a slot runs: when a count moves, the
-next `POST slot/` deletes each free slot whose stack runs another wargame, and
-its refill builds it for the assigned one; a slot a session holds follows after
-its close. A session open still takes a free slot of another wargame when none
-of its own is READY (§6.1). By hand on a standing platform:
+pool's assignment decides which wargame each number runs: when a count moves,
+the next `POST slot/` deletes each free stack that runs another wargame, and
+its refill builds it for the assigned one; a stack a session holds follows
+after its close. A session open still retargets a free stack of another
+wargame when none of its own is READY (§6.1). By hand on a standing platform:
 
 ```bash
 sed -i 's/^CR_OPENSTACK_POOL=.*/CR_OPENSTACK_POOL=board=3 corp=2/' /opt/cr/openstack.env
@@ -1529,7 +1563,7 @@ curl -s -X POST -H 'Content-Type: application/json' -d '{}' "$P/slot/?slot=5"   
 curl -s $P/ready/                                                                # slots[].phase READY
 ```
 
-On the VM range of 2026-10-12, two sessions opened at once took slots 1 and
+On the VM range of 2026-10-12, two sessions opened at once took ranges 1 and
 2, a third answered 409, and each session ingested only its own case's alerts.
 
 ## 7. Verification
@@ -1553,18 +1587,18 @@ acceptance test is skipped on OpenStack"). `test_lesson.py`'s F1 map test runs
 once per course and skips for a course that does not start with F1 (`c2` starts
 with F4), so a full run reports one skip. `docs/state/now.md`
 has the latest full run.
-The last full run was on the range host; on the Heat range it is
-**[unverified]**, and needs the baked images, `uv run bin/cloud up --replace`
-and then the full `bin/verify` with acceptance.
+Two full runs have been made on the Heat range (2026-11-18); the second
+ended with failures whose causes are fixed on `dev` and not yet run live.
+Their numbers and causes are in `docs/state/now.md`.
 
-A change to a slot role (`deploy/roles/<role>/` or a file it links, such as
+A change to a range VM role (`deploy/roles/<role>/` or a file it links, such as
 `deploy/kali/`, `deploy/proxy/stamp.py`, `deploy/waf/`, `deploy/suricata/` or a
 wargame's `compose.yaml` and app image) reaches the range only through a new
-bake (§3.6). Slots boot from the Glance images `compute.images` names, and the
+bake (§3.6). Range VMs boot from the Glance images `compute.images` names, and the
 stack's digest covers those names and the flavors, not the images' content:
 bake under a new name (`cr-<role>-bake2`), name it in `compute.images` (a
 target bake also its commit in `compute.target_tag`), and with the new names
-`bin/cloud up --replace` finds every slot `STALE`; each slot no session holds
+`bin/cloud up --replace` finds every stack `STALE`; each stack no session holds
 is deleted and its refill builds it again. A change that alters the rendered template does the same
 without a bake: `wargames/<w>/topology.yaml`, the declaration's origins, the
 user data `range/sandbox.py` writes, or the template `range/openstack.py`
@@ -1576,8 +1610,8 @@ built from scratch by `bin/cloud up` on the previous cloud (OPNsense 26.7 edge):
 50 passed, 86 skipped, 6 failed, 4 errors. The run before the reset fixes gave 24
 passed, 14 failed, 22 errors. We have since fixed or deleted what that run left:
 
-- Tests that reached compose containers (`kali`, `corp-db`) now reach the slot's
-  hosts through `run_on_role`.
+- Tests that reached compose containers (`kali`, `corp-db`) now reach the
+  session's hosts through `run_on_role`.
 - WAF tuning (`PUT /api/sessions/<id>/waf/`) uses the WAF host's declared rule
   file, reload command and pid (`rules/crs.py` `Layout`), not the Docker image's.
 - We deleted the compose-only checks on 2026-10-17.
@@ -1612,23 +1646,23 @@ We did not check whether that OPNsense edge survived an OPNsense update.
   healthcheck, `wp core is-installed` with a 5 s timeout, took 29.2 s.
   - Fixed: `platform/range/openstack.py` creates the `cr-mgmt` subnet with the
     DNS server `0.0.0.0`, which announces no resolver; after the fix `getent`
-    failed in 0.03 s and `wp core is-installed` took 1.9 s. A slot's own LANs
-    have DHCP off and take their addresses from the config drive (§6). A
-    fabric made before that fix keeps the old subnet: run `openstack subnet set
-    --dns-nameserver 0.0.0.0 cr-mgmt`, then replace the slots (`POST
-    $P/slot/rebuild/`, §6.1) so that their VMs ask DHCP again.
+    failed in 0.03 s and `wp core is-installed` took 1.9 s. A range stack's
+    own LANs have DHCP off and take their addresses from the config drive
+    (§6). A fabric made before that fix keeps the old subnet: run `openstack
+    subnet set --dns-nameserver 0.0.0.0 cr-mgmt`, then replace the range
+    stacks (`POST $P/slot/rebuild/`, §6.1) so that their VMs ask DHCP again.
   - A cloud admin can also set `[ovn] dns_servers`, which helps the cloud's other
     VMs. The product no longer needs it.
-- A member user cannot create flavors or change quotas. Neither stack, the
-  platform's nor a slot's, uses an admin-only Heat resource.
+- A member user cannot create flavors or change quotas. Neither the
+  platform's stack nor a range stack uses an admin-only Heat resource.
 - `platform.ref` is required (example value `dev`; `--ref` overrides it). The VM
   sees only pushed commits.
 - The project password is plain text in `/opt/cr/openstack-password` (0600,
   uid 10001) on the platform VM and in the platform container's mount of it,
   `/run/secrets/openstack_password`. It is in no container's environment.
-- Kali's origin addresses exist only on its slot's `internet` LAN, a Neutron
+- Kali's origin addresses exist only on its stack's `internet` LAN, a Neutron
   network with no router, so they never meet the Docker networks `compose.yaml`
-  declares on the platform VM or any other slot. The platform reaches Kali only
+  declares on the platform VM or any other stack. The platform reaches Kali only
   over Kali's control port on `cr-mgmt`, with ssh.
 - The edge router holds no address on `web-outer` or `web-inner`: its two IDS
   legs are bridged and flushed (§6), so Kali reaches neither target past the
@@ -1643,18 +1677,19 @@ We did not check whether that OPNsense edge survived an OPNsense update.
   - the edge's 22, 80 and 443 (the OPNsense GUI)
   - the WAF's 22 and 80
 
-  Today every slot VM's control port on `cr-mgmt`, Kali's included, is in the
-  group `cr-mgmt`, which admits only the platform's port (§3.5).
+  Today every range VM's control port on `cr-mgmt`, Kali's included, is in the
+  group `cr-mgmt`, which admits only the platform's port and sends only to it
+  and to DHCP (§3.5).
   `test/test_range_isolation.py` checks from Kali, the WAF and the board that none
   reaches the platform, the Internet or the metadata address; from Kali that it
   reaches the sites only through the WAF, that ping and traceroute to
   121.134.88.42 answer and a SYN scan finds the WAF's private address filtered,
-  that nothing on `cr-mgmt` (every slot VM's control port and the platform's)
+  that nothing on `cr-mgmt` (every range VM's control port and the platform's)
   takes a connection, and that a frame from a MAC address Neutron did not give
   Kali's port is dropped (the pair `0.0.0.0/0` admits any source address; port
-  security still binds the MAC); and that after a close the slot's WAF is a new
+  security still binds the MAC); and that after a close the stack's WAF is a new
   VM, with another boot id, without the file the last learner wrote.
-- Names on the slot VMs come from the image and from `/etc/slot.env`, not from
+- Names on the range VMs come from the image and from `/etc/slot.env`, not from
   Neutron: Kali's image names `board.com` and `corp.com` as the router's public
   IP (in `/etc/hosts` and in cloud-init's hosts template), and the WAF's
   `slot-boot` writes `board` and `corp-wp` with the target's addresses at every
@@ -1681,11 +1716,12 @@ recommended; without it the cloud runs its VMs under plain QEMU, only slower
 
 - Ubuntu 24.04 Server with **8 vCPU, 40 GB RAM and a 250 GB disk** (allocated as
   needed). The 2026-10-20 trial used these sizes for the VM range of that time.
-  The Heat range needs the platform VM and four VMs per slot, so a one-VM trial
-  sets `compute.pool` to one slot (`{board: 1}`, §4); what one slot takes on
-  `dba.small` is **[unverified]**. The sizes come from these figures:
+  The Heat range needs the platform VM and four VMs per range stack, so a
+  one-VM trial sets `compute.pool` to one stack (`{board: 1}`, §4); what one
+  stack takes on `dba.small` is **[unverified]**. The sizes come from these
+  figures:
   - The platform VM needs 8 GB of RAM and 60 GB of disk with the example
-    flavor (§3.2), and each slot four times its role flavors. Nova counts RAM
+    flavor (§3.2), and each range stack four times its role flavors. Nova counts RAM
     and disk one to one (`initial_ram_allocation_ratio` and
     `initial_disk_allocation_ratio` are 1.0 [N2]).
   - Kolla's own services need the quickstart's minimum of 8 GB and 40 GB [K1].
@@ -1695,7 +1731,7 @@ recommended; without it the cloud runs its VMs under plain QEMU, only slower
   - The host needs more than 40 GB of RAM and 250 GB of free disk.
 - The whole 250 GB must reach Nova. Ubuntu's guided storage makes the root
   logical volume at most 100 GiB of a disk this large. It leaves the rest of the
-  volume group unused [S1]. Nova would then see about 100 GB, and the slot VMs
+  volume group unused [S1]. Nova would then see about 100 GB, and the range VMs
   would fail with `NoValidHost`.
   - In the installer's storage step, edit `ubuntu-lv` to use the whole volume
     group.
@@ -1815,9 +1851,9 @@ Stay in that shell as admin. Do these steps:
 
 1. Create the external network on the second adapter's network, with the plan's
    subnet and pool (§2.5).
-2. Create the platform flavor when the cloud has none that fits, and the slot
-   roles' flavor (§3.3). Raise the quota to the platform and four VMs per slot
-   (§3.2).
+2. Create the platform flavor when the cloud has none that fits, and the range
+   VM roles' flavor (§3.3). Raise the quota to the platform and four VMs per
+   range stack (§3.2).
 
 Then open a new shell, as the same user, so that the admin `OS_*` variables
 from `admin-openrc.sh` are gone, and run README's 설치: clone, then

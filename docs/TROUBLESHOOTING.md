@@ -4,21 +4,30 @@ Problems the range has had, how each was measured, what caused it and what
 fixed it. Each case keeps the numbers it was decided on. The rulings are in
 `docs/DECISIONS.md`; this file is the path from symptom to fix.
 
-The two reset cases below were measured on the earlier range, where each slot
-was four VMs (an OPNsense edge, Kali, the WAF and a wargame host) and a reset
-rebuilt Kali and the WAF through Nova. That range is gone: every slot now runs
-as containers on one range host, `cr-range`, and a reset is `slot.sh reset`
-on it (`deploy/range-host/slot.sh`). The wargame host, `pristine.sh` and the
-rebuild named below no longer exist. What carried over: the pristine copy of
-the targets' volumes (now under `/opt/cr/pristine/`, taken by
-`deploy/range-host/setup.sh`), the one-second healthchecks and
+The range these cases ran on changed twice. Until 2026-11-13 each session's
+range was four VMs (an OPNsense edge, Kali, the WAF and a wargame host) and a
+reset rebuilt Kali and the WAF through Nova; the two reset cases below were
+measured there. From 2026-11-13 to 2026-11-18 each session's range was a set
+of containers on one range host, `cr-range`, and a reset was `slot.sh reset`
+on it; most later cases ran there. Since 2026-11-18 each session's range is
+one Heat stack `cr-slot-N` of four VMs (kali, waf, infra, target) and a reset
+deletes the stack and creates it again (`docs/OPENSTACK.md` §6). The wargame
+host, `pristine.sh`, the range host and `slot.sh` no longer exist. What
+carried over: the pristine copy of the targets' volumes (now under
+`/opt/wargames/pristine/`, taken when the target image is baked by
+`deploy/roles/target/install.sh`), the one-second healthchecks and
 `--innodb-rollback-segments=1`.
 
-## A slot reset took 272-314 s on the new cloud
+"Range N" below is the session's range with stack number N, the number the
+Kibana space `soc-logs-N` and the index `logs-N-*` carry (see the glossary in
+`docs/ARCHITECTURE.md`); on the range host, range N was the containers
+`sN-*`.
+
+## A range reset took 272-314 s on the new cloud
 
 ### Symptom
 
-Closing a session resets its slot (`docs/OPENSTACK.md` §6.1). On the cloud the
+Closing a session reset its range. On the cloud the
 product ran on until 2026-10-20 (an all-in-one host), close to READY took
 60-66 s. On the cloud it moved to (`con01`, `com01`, `stg01`, Kolla-Ansible
 2025.2), the same code took 272-314 s. The full `bin/verify` opens about 20
@@ -43,7 +52,7 @@ Read-only, during a live `bin/verify` (2026-10-24, four resets):
 | WAF and Kali path done after close (beside the wargame host) | about 75 |
 | edge in-place reset | 3-5 |
 | wargame host `down -v` | 12-17 |
-| `up --wait` board | 115-120, 159-165 when the other slot starts board too |
+| `up --wait` board | 115-120, 159-165 when the other range starts board too |
 | `up --wait` corp | 94-110 |
 | sensor, rules, log forwarding | 9-11 |
 | end of the chain to the next open | 17-32 |
@@ -80,7 +89,7 @@ show` is what libvirt reports for KVM too.
 Three changes, in order of size:
 
 1. `start_wargames()` starts every wargame at once, one ssh command each, and
-   names each one that failed. Two slots resetting together: 288 s to 245 s.
+   names each one that failed. Two ranges resetting together: 288 s to 245 s.
 2. The four wargame healthchecks probe every second for their first 120 s
    (`start_interval: 1s`, Docker Engine 25 and later).
 3. The wargame host's image build starts each wargame once, lets it finish its
@@ -100,17 +109,17 @@ of session 1247, submitted to session 1249 as loot, matched no account.
 
 ### Result
 
-| | Close to READY, two slots at once | Full `bin/verify` acceptance |
+| | Close to READY, two ranges at once | Full `bin/verify` acceptance |
 |---|---|---|
 | Before | 288 s | 4038 s |
 | Wargames started together | 245 s | 3564 s |
 | Pristine data restored | 117 s | 2186 s |
 
-## A slot reset still took 86 s
+## A range reset still took 86 s
 
 ### Symptom
 
-After the fix above, one slot alone took 86 s from close to READY
+After the fix above, one range alone took 86 s from close to READY
 (2026-10-24, session 1274).
 
 ### How it was measured
@@ -190,12 +199,12 @@ number of syncs, so it does not shorten the start.
 Measured live on 2026-10-24 after `bin/cloud up --replace` with these
 changes (65 min, exit 0; all three VM images rebuilt).
 
-| | Close to READY, one slot | Close to READY, two slots at once |
+| | Close to READY, one range | Close to READY, two ranges at once |
 |---|---|---|
 | Before | 86 s | 117 s |
 | After | 70 s and 82 s (two runs) | 98 s |
 
-| Step, one slot | Before | After |
+| Step, one range | Before | After |
 |---|---|---|
 | `down -v` | 11 s | 8 s |
 | board start, from MySQL ready to healthy | 18 s | 13 s |
@@ -216,7 +225,7 @@ busy for about 10 s while the board ran `migrate` and `seed` and corp ran
 - Tried and rejected: a copy-on-write restore (`cp --reflink=always`). The
   wargame host's root is ext4, so the only way on the current VM is an XFS
   file system in a file on the root, attached as a loop device (`mkfs.xfs -m
-  reflink=1`, `losetup --direct-io=on`). Measured on slot 1's wargame host
+  reflink=1`, `losetup --direct-io=on`). Measured on range 1's wargame host
   (2026-10-25, scratch MySQL containers with the live images and options,
   both wargames restored at once, caches dropped, five runs each), from the
   restore's start to both servers ready:
@@ -235,11 +244,11 @@ busy for about 10 s while the board ran `migrate` and `seed` and corp ran
   block device (a second disk for the wargame host) would avoid the loop, but
   it changes the VM and its commit cost is not measured.
 - Tried and reverted: the wargame host on a 4-vCPU flavor (`dba.medium`, 8 GB),
-  after the core quota was raised to 24. One slot took 79 s and 78 s, two at
+  after the core quota was raised to 24. One range took 79 s and 78 s, two at
   once 99 s, the same as on 2 vCPUs: the CPU-bound 10 s was not on the
   critical path's longest part, MySQL's start waiting on the disk.
 
-## The session map answered 500 (`KeyError: 'x'`) while a slot container was down
+## The session map answered 500 (`KeyError: 'x'`) while a range container was down
 
 Symptom, 2026-11-16: a full `bin/verify` had 13 acceptance
 errors, every one `GET /api/sessions/<id>/topology/` -> 500 from
@@ -251,13 +260,13 @@ management network, a database the backend). With `board-db` stopped, its
 `board-default` network held only board.com and was captioned `web`; the
 layout places one web segment, so the second was never given a position.
 The same followed for the router, the attacker or the log server being down.
-Reproduced live on slot 1 by stopping `s1-board-db` under an open board
+Reproduced live on range 1 by stopping `s1-board-db` under an open board
 session: 500 before the fix, 200 after.
 
 Fix: a zone is captioned by its network first (`internet`,
 `estate`, `mgmt`, a `-default` backend) and by its members only after;
 `test_a_slot_with_any_one_container_down_still_draws_every_node_in_its_own_subnet`
-draws the slot with each container stopped in turn.
+draws the range with each container stopped in turn.
 
 ## Every `status` query in Kibana found nothing
 
@@ -296,7 +305,7 @@ refuses never reaches it.
 
 Fix: `_sent_by` reads the run from both the sensor's `http` events and the
 WAF's records carrying the marker (the tool is checked against either's
-User-Agent). Live: the same command on slot 1 passed the check 27 s after its
+User-Agent). Live: the same command on range 1 passed the check 27 s after its
 last request (15 s of `RUN_SETTLED` included) and the score listed it as a TP.
 
 ### 3.3's tamper run hit the 600 s tool timeout
@@ -309,7 +318,7 @@ fired on the same Kali while the tamper run was going; both wrote to
 `~/.local/share/sqlmap/output/board.com/session.sqlite`, and the second's
 `--flush-session` removed the first's. The tamper run's records: 1,440 in its
 first minute, then 20 a minute (one every 3 s) until the timeout. Alone it
-takes 51 s; two runs at once with one session file on slot 8 broke the first
+takes 51 s; two runs at once with one session file on range 8 broke the first
 (`disk I/O error`, `no such table: storage`).
 
 Fix (the directory named in `attacker.py`): a
@@ -322,7 +331,7 @@ was written).
 
 ### Discover asked for 7,575 fields; a record took 4-8 s to be searchable
 
-Measured on slot 1: a WAF record reaches the collector 0.4 s after its
+Measured on range 1: a WAF record reaches the collector 0.4 s after its
 request (file, log server, UDP 5140), is searchable in Elasticsearch 4-8 s
 after it (six samples), and Discover took 4.9 s for a `log_source :
 "modsecurity"` query and 10-13 s for its first load. The minute the walk saw
@@ -416,9 +425,9 @@ timeout.
 ### How it was measured
 
 `POST cases/` records the case, then observes the objectives:
-`effect.read_changes` runs `mysqlbinlog` over every binary log of the slot's
-corp-db and parses the decoded text in Python, and only then drops changes
-before the session start. On slot 2 after the run, inside `cr-platform`
+`effect.read_changes` ran `mysqlbinlog` over every binary log of the range's
+corp-db and parsed the decoded text in Python, and only then dropped changes
+before the session start. On range 2 after the run, inside `cr-platform`
 (2 vCPUs), idle: 17,345,172 bytes, read 0.8-5.0 s, parse 2.9 s, 22 changes.
 Most of it is the target's set-up at the range host's boot (`binlog.000002`,
 2,997,096 bytes). The corp fixture runs two sessions side by side, and each
@@ -437,7 +446,7 @@ acceptance load one record went past the client's 60 s.
 Fix: `mysqlbinlog --start-datetime` from a minute before the session start, in
 UTC (`TZ=UTC`: `mysqlbinlog` reads the value in its own local time zone; with
 `TZ=Asia/Seoul` the same value read the whole log, with `America/New_York`
-none of it). The Python filter by session start stays. Same slot, same
+none of it). The Python filter by session start stays. Same range, same
 window: 91,277 bytes, read 0.28 s, parse 0.004 s, the same 22 changes.
 
 ## Answer-blind walk round 27: a late Kali pass, slow answers, F5's first note
@@ -490,21 +499,21 @@ and took 0.12 s with 8,000 such rows held. Neither explains seconds.
 
 What every request pays, by the code: `api.reachability` runs on every
 request and caches the range's addresses for 30 s. The first request after
-that rebuilt the list by reading each slot's shape from the cloud API
-(networks, servers, the carried segments' subnets, and the slot's compose
-document) one slot after another, and every request arriving meanwhile waited
+that rebuilt the list by reading each range's shape from the cloud API
+(networks, servers, the carried segments' subnets, and the range's compose
+document) one range after another, and every request arriving meanwhile waited
 on the same lock. A refresh of R seconds every 30 s delays about R/30 of all
 requests by up to R; 6 of 35 over 2.5 s fits R of 5-6 s. The live refresh
 time was not measured here (no sign-in to the live platform from this
 change), so this is the likely cause, not a proven one.
 
-Fix: the slots are read at once (`ThreadPoolExecutor`, one worker per slot).
-Measured in `test_judge_reachability.py` with 8 stub slots of 0.2 s each:
+Fix: the ranges are read at once (`ThreadPoolExecutor`, one worker per range).
+Measured in `test_judge_reachability.py` with 8 stub ranges of 0.2 s each:
 1.63 s before, 0.21 s after.
 
 Not changed: a moved-to lesson sends its benign seed case on the learner's
 first hint, skip or pass there, inside that request (`_seed_once_worked`,
-one harness fire through the range host), and the platform database is
+one harness fire from Kali), and the platform database is
 SQLite with no journal mode set in `cr/settings.py` (a rollback journal by
 default), where a write waits for the reads running at the time.
 
@@ -522,24 +531,24 @@ address-side reply already did (`UNTRIED_REASONS` in `api/views.py`).
 
 ## Answer-blind walk round 28: `not status : 404` kept the 404 rows
 
-### F3 step 4's query excluded nothing on slots 1 and 8
+### F3 step 4's query excluded nothing in `logs-1-*` and `logs-8-*`
 
 Symptom, 2026-11-18: `url : *word* and not status : 404` still listed the
-404 rows on slots 1 and 8; `status : 404` matched nothing there. F5 and F6's
-`status : 500` searches can fail the same way. Slot 2 answered correctly.
+404 rows on ranges 1 and 8; `status : 404` matched nothing there. F5 and F6's
+`status : 500` searches can fail the same way. Range 2 answered correctly.
 
 Cause, confirmed read-only on the cloud stack: nginx's refused log writes
-`status` at the top level of its JSON. The first refused record in a slot's
-data stream made Elasticsearch map a top-level `status` as `long` (slots 1
+`status` at the top level of its JSON. The first refused record in a range's
+data stream made Elasticsearch map a top-level `status` as `long` (ranges 1
 and 8 had one such record each, the path-traversal case's
 `GET /static/..%2F..%2F..%2F..%2Fetc/passwd` answered 400, sent on
-2026-11-17 during `bin/verify` runs; slot 2 had none).
+2026-11-17 during `bin/verify` runs; range 2 had none).
 Kibana 8.15's `DataView.getRuntimeMappings` (in
 `@kbn/data-views-plugin/common/data_views/data_view.js`) leaves out every
 runtime field whose name is a mapped field ("do not include fields that are
 mapped"), so the data view's runtime `status` was no longer sent and KQL
 queried the mapped field, which only the refused records carry. Against
-Elasticsearch directly, `term status: 404` counted 0 on slot 1 without the
+Elasticsearch directly, `term status: 404` counted 0 on range 1 without the
 runtime field and 3 (all Suricata) with it; `status: 500` counted 0 and 160.
 The round 23 fix (`params['_source']['status']`) only mattered while the
 runtime field was still sent; it never made the mapped field go away.
@@ -553,7 +562,7 @@ refused log ships, after the collector's renames, has the name of a runtime
 field in the session data view.
 
 Existing data: a data stream keeps the mappings its backing index was made
-with, so slots 1 and 8 keep the top-level `status` until that data stream is
+with, so ranges 1 and 8 kept the top-level `status` until that data stream is
 deleted. `bin/cloud up --replace` deletes the platform stack and creates a
 new VM; Elasticsearch's data lives in the `esdata` Docker volume on that VM's
 disk and only the platform store is backed up and restored, so after a
@@ -660,8 +669,8 @@ button says `scenario.done.judging` ("결과 판정 중"). Test:
 
 ### Start to an open console took 14-18.6 s
 
-What the open does after choosing the slot, by the code, one after another:
-aim the attacker (a cloud read of the slot's shape and a proxy write), the
+What the open did after choosing the session's range, by the code, one after
+another: aim the attacker (a cloud read of the range's shape and a proxy write), the
 WAF posture (`crs.apply`: read, list workers, write, `nginx -t` and reload,
 poll for new workers), the sensor's rule file when the posture has its own
 (write, `reload-rules`), the baseline (the board's accounts), then the
@@ -672,7 +681,7 @@ truth and the sensor rules one after the other.
 Fix: the attacker, the baseline, the WAF and the sensor run side by side;
 the seed waits for the WAF, the sensor and the attacker, so it still sees
 the lesson's posture; the readiness reads run side by side. Nothing the
-slot reset does was skipped; the slot is set up the same way. Measured in
+range reset does was skipped; the range is set up the same way. Measured in
 `test_lesson_api.py` with every range call costing one 0.2 s round trip, a
 guided open with its own sensor rules: 10.3-10.4 rounds before, 6.3 after
 (10 calls; the WAF's 5 calls and the seed are the chain left). The live
