@@ -82,6 +82,12 @@ def test_the_spelled_rule_catches_the_stock_run_and_misses_every_tamper_request(
     assert not any(pattern.search(uri) for uri in TAMPER + [SORTED])
     assert {attack["case"] for attack in one["attacks"]} == {PAST_THE_WAF, "board-sqli-orderby-sqlmap-tamper"}
 
+def test_3_3_s_second_attacker_sends_the_variant_from_another_origin_than_the_first():
+    origins = {attack["case"]: attack["origin"] for attack in wargames.scenario_run("3.3")["attacks"]}
+
+    assert len(set(origins.values())) == 2, (
+        "walk: the brief names a second attacker but both runs came from 5.188.10.10")
+
 def test_the_variant_runs_before_a_final_check_started_at_three_minutes_and_the_check_sends_both_again():
     one = wargames.scenario_run("3.3")
     opened = timezone.now()

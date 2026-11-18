@@ -240,7 +240,7 @@ scenarios:
     traffic: {profile: plain, rate: 2}
     attacks:
       - {at: 45, case: board-sqli-orderby-sqlmap-random-agent, origin: ru}
-      - {at: 120, case: board-sqli-orderby-sqlmap-tamper, origin: ru}
+      - {at: 120, case: board-sqli-orderby-sqlmap-tamper, origin: us}
     completion: {detected_by: suricata}
     cards:
       - {id: variant, when: alert}
