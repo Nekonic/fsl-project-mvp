@@ -2472,7 +2472,8 @@ def session_score(request, session_id):
     alerted = customers.alerted_markers(session, scenario_run.sensed(session))
     unmatched = set(result.unmatched_detection_ids)
     totals = compute_score(result)
-    per_case = _per_case(result, _expected(session.scenario, cases), signatures, cases)
+    checks = scenario_run.final_checks(session)
+    per_case = _per_case(result, _expected(session.scenario, cases), signatures, cases, scenario_run.checked_cases(session))
     breaches = _breaches(session, cases, result)
     keep_ids = request.GET.get("brief") != "1"
     board = scoreboard.tally(breaches, totals.fp)
@@ -2489,7 +2490,8 @@ def session_score(request, session_id):
             **_shape(totals, SCORE_FIELDS),
             "benign_cases": totals.fp + totals.tn,
             "unattributed": sum(1 for d in detections if d.detection_id in unmatched and d.marker not in alerted),
-            "customers": customers.availability(scenario_run.served_until_verified(session), alerted),
+            "customers": _customers_scored(session, alerted, checks),
+            "final_checks": [[start.isoformat(), end.isoformat()] for start, end in checks],
             "detected_by": scenario_run.detector(session),
             "warnings": warnings,
             "per_case": per_case if keep_ids else [_without(row, "detection_ids") for row in per_case],
@@ -2614,7 +2616,14 @@ def _expected(scenario, cases):
         for case in cases
     }
 
-def _per_case(result, expectations, signatures, cases=()):
+def _customers_scored(session, alerted, checks):
+    shift = scenario_run.served_until_verified(session)
+    scored = customers.availability(shift, alerted)
+    if checks:
+        scored["final_check"] = customers.availability(scenario_run.sent_during(shift, checks), alerted)
+    return scored
+
+def _per_case(result, expectations, signatures, cases=(), checked=frozenset()):
     meta = {case.case_id: case.meta or {} for case in cases}
     started = {case.case_id: case.started_at.isoformat() for case in cases}
     indiscriminate = {
@@ -2637,6 +2646,7 @@ def _per_case(result, expectations, signatures, cases=()):
             "step": meta.get(m.case_id, {}).get("kali") or meta.get(m.case_id, {}).get("site"),
             "seed": bool(meta.get(m.case_id, {}).get("seed")),
             "started_at": started.get(m.case_id),
+            "in_window": m.case_id in checked,
             "corroborated": scoreboard.corroborated(
                 expectations.get(m.case_id),
                 [signatures[d] for d in m.detection_ids if d in signatures],

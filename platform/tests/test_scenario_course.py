@@ -493,6 +493,24 @@ def test_the_score_and_the_debrief_count_the_same_customer_requests_up_to_the_fi
 
     assert score["sent"] == told["sent"] == session.customer_requests.count() - 1
 
+def test_the_score_and_the_debrief_tell_the_runs_and_customer_alerts_before_the_final_check_from_those_in_it(client):
+    session = opened("3.1")
+    window_judged(session)
+    session.refresh_from_db()
+    start = scenarios.at(session.scenario_state["windows"][-1]["started_at"])
+    early = str(uuid.uuid4())
+    customer(session, start - timedelta(seconds=60), marker=early)
+    alert(session, early, source="suricata", rule="9000101")
+    score = client.get(f"/api/sessions/{session.pk}/score/").json()
+    told = client.get(f"/api/sessions/{session.pk}/scenario/debrief/").json()["customers"]
+
+    assert sorted(row["in_window"] for row in score["per_case"]) == [False, True], (
+        "walk: 3.1's designed miss before the learner's fix read as one of two attacks missed")
+    assert (score["customers"]["alerted"], score["customers"]["final_check"]["alerted"]) == (1, 0)
+    assert (told["alerted"], told["alerted_in_window"]) == (1, [0]), (
+        "walk: 3.2's debrief said 0 blocked while its result page listed 42 alerted customer requests")
+    assert len(score["final_checks"]) == 1
+
 def test_the_debrief_says_whether_each_attack_drew_an_ids_alert_before_and_during_the_final_check(client):
     session = opened("3.2")
     case = a_fired_attack(session)

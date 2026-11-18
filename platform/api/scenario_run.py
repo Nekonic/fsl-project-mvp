@@ -8,7 +8,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.core.exceptions import BadRequest
 from django.db import close_old_connections, transaction
-from django.db.models import Count, Max, Min
+from django.db.models import Count, Max, Min, Q
 from django.db.models.fields.json import KT
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -610,6 +610,7 @@ def debrief(session) -> dict:
     triage = state["triage"]
     shift = served_until_verified(session)
     everything = customers.counted(shift)
+    alerted = shift.filter(marker__in=customers.alerted_markers(session, sensed(session)))
     return {
         "scenario": declared["id"],
         "title": f"{declared['text']}.title",
@@ -632,12 +633,29 @@ def debrief(session) -> dict:
             **{key: everything[key] for key in ("sent", "served", "blocked", "unanswered", "other")},
             "in_window": [_blocked_between(session, scenarios.at(window["started_at"]), scenarios.at(window["ends_at"]))
                           for window in judged],
+            "alerted": alerted.count(),
+            "alerted_in_window": [sent_during(alerted, [check]).count() for check in final_checks(session)],
             "blocked_actions": customers.blocked_actions(shift),
         },
         "timeline": timeline,
         "triage": _triage_tally(triage, judged[-1].get("items") if judged else None, session),
         "at": {"opened": state["opened_at"], "verified": judged[-1]["ends_at"] if judged else None},
     }
+
+def final_checks(session) -> list[tuple]:
+    windows = (session.scenario_state or {}).get("windows") or []
+    return [(scenarios.at(window["started_at"]), scenarios.at(window["ends_at"])) for window in windows if window.get("result")]
+
+def checked_cases(session) -> set[str]:
+    schedule = (session.scenario_state or {}).get("schedule") or []
+    return {entry["case_id"] for start, end in final_checks(session)
+            for entry in scenarios.inside(schedule, start, end) if entry.get("case_id")}
+
+def sent_during(requests, checks):
+    during = Q(pk__in=[])
+    for start, end in checks:
+        during |= Q(sent_at__gte=start, sent_at__lt=end)
+    return requests.filter(during)
 
 def served_until_verified(session):
     judged = [window for window in (session.scenario_state or {}).get("windows") or [] if window.get("result")]

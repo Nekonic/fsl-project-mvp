@@ -35,8 +35,10 @@ function debriefCustomers(customers) {
     `${localized(`traffic.action.${action}`, action)} ${count}`).join(", ");
   return [
     t("scenario.debrief.customers.line", customers.sent, customers.served, customers.blocked),
+    customers.alerted == null ? "" : t("scenario.debrief.customers.alerted", customers.alerted),
     customers.unanswered || customers.other ? t("scenario.debrief.customers.rest", customers.unanswered || 0, customers.other || 0) : "",
-    ...customers.in_window.map((count, n) => t("scenario.debrief.customers.window", n + 1, count)),
+    ...customers.in_window.map((count, n) => t("scenario.debrief.customers.window", n + 1, count,
+      (customers.alerted_in_window || [])[n] || 0)),
     actions ? t("scenario.debrief.customers.actions", actions) : "",
   ].filter(Boolean).map((line) => `<p>${esc(line)}</p>`).join("");
 }
@@ -84,11 +86,20 @@ function renderDebrief(container, told) {
     return [outcome ? debriefOutcome(outcome) : "", alertWord(alerted)].filter(Boolean).join(" · ") || unfired(row.name, inWindow);
   };
   const judgedCases = told.cases.filter((row) => row.before || row.after || row.alerted_before != null || row.alerted_after != null);
+  const alertedIn = told.customers.alerted_in_window || [];
+  const alertedAfter = alertedIn.length ? alertedIn[alertedIn.length - 1] : null;
+  const alertedBefore = told.customers.alerted == null ? null : told.customers.alerted - alertedIn.reduce((sum, n) => sum + n, 0);
+  const customerCell = (alerted) => (alerted == null ? toned(t("scenario.debrief.not_run"), "text-faint")
+    : toned(alerted ? t("scenario.debrief.customers.alerted_count", alerted) : t("scenario.debrief.no_alert"),
+      alerted ? "text-danger" : "text-success"));
+  const customerRow = told.customers.sent && told.customers.alerted != null ? `<tr data-case="customers"><td class="py-1 pr-2">${
+    esc(t("score.customers_row", told.customers.sent))}</td><td data-before>${customerCell(alertedBefore)}</td><td data-after>${
+    customerCell(alertedAfter)}</td></tr>` : "";
   const cases = `<table class="w-full text-[13px]"><thead><tr class="text-left text-muted">
       <th class="font-normal">${esc(t("score.col.case"))}</th><th class="font-normal">${esc(t("scenario.debrief.before"))}</th>
       <th class="font-normal">${esc(t("scenario.debrief.after"))}</th></tr></thead><tbody>${judgedCases.map((row) =>
     `<tr data-case="${esc(row.name)}"><td class="py-1 pr-2">${esc(localized(`case.${row.name}`, row.name))}</td>
-      <td data-before>${judgedCell(row, false)}</td><td data-after>${judgedCell(row, true)}</td></tr>`).join("")}</tbody></table>`;
+      <td data-before>${judgedCell(row, false)}</td><td data-after>${judgedCell(row, true)}</td></tr>`).join("")}${customerRow}</tbody></table>`;
   container.innerHTML = `<h2 class="text-[17px] font-bold text-heading mb-2">${esc(t("lesson.debrief.heading"))}</h2>` + [
     debriefSection("overview", facts.map((line) => `<p>${esc(line)}</p>`).join("")),
     debriefSection("customers", debriefCustomers(told.customers)),
@@ -97,7 +108,7 @@ function renderDebrief(container, told) {
       told.triage.right, told.triage.items, told.triage.first_try))}</p>`)] : []),
     ...(told.evidence.length ? [debriefSection("evidence", evidence, "scenario.debrief.evidence")] : []),
     debriefSection("change", debriefChange(told.change)),
-    ...(judgedCases.length ? [debriefSection("cases", cases)] : []),
+    ...(judgedCases.length || customerRow ? [debriefSection("cases", cases)] : []),
     ...(told.risk.length ? [debriefSection("risk", `<ul class="list-disc pl-4 space-y-1">${told.risk.map(([key, values]) =>
       `<li>${esc(t(key, ...values))}</li>`).join("")}</ul>`)] : []),
   ].join("");

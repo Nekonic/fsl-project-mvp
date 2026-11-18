@@ -379,7 +379,7 @@ browser.serve((request) => {
   if (request.route === "/api/wargames/") return {body: [{id: "board", name: "Board", public_url: "http://board.com", foundations: []}]};
   if (request.route === "/api/wargames/board/objectives/") return {body: []};
   if (request.route === "/api/sessions/1/score/") {
-    return {body: {breaches: [], per_case: [], warnings: [], customers: {sent: 788, blocked: 14, blocked_actions: {}}}};
+    return {body: {breaches: [], per_case: [], warnings: [], customers: {sent: 788, alerted: 14, blocked: 14, blocked_actions: {}}}};
   }
   if (request.route === "/api/sessions/1/scenario/debrief/") {
     return {body: {overview: {verified: 0, steps: {passed: 0, total: 5}, help: {hints: 0}, fix: null},
@@ -409,9 +409,9 @@ def test_a_scenario_result_says_only_what_happened_in_scenario_words_and_says_it
     assert worded("scenario.debrief.from", worded("scenario.origin.ru")) in shown["debrief"]
     assert worded("lesson.debrief.change.none") in shown["debrief"]
     assert worded("scenario.debrief.overview", 0) not in shown["debrief"]
-    assert shown["judged"] == worded("score.no_attacks_run"), (
-        "customer requests are in the debrief once, not again beside the attacks")
-    assert shown["cases"] is False
+    assert shown["judged"] == worded("score.customers_alerted", 788, 774), (
+        "walk: 1.1's detection table had no customer row though the WAF blocked 35 customer requests")
+    assert shown["cases"] is True
 
 def test_a_lost_objective_row_in_the_catalogue_is_one_phrase_with_nothing_joined_to_it(client):
     lost = CLOSED_ROWS.replace("result: {objectives: {total: 3, lost: 0, undetected: 0}}}];",
@@ -511,7 +511,7 @@ TWO_RUNS = SCENARIO_RESULT.replace("per_case: [], warnings: []", """per_case: [
 def test_two_runs_of_one_scheduled_attack_are_told_apart_by_when_they_ran(client):
     seen = open_page(client, "/session/1/", setup=TWO_RUNS, scenario="""
       for (let i = 0; i < 6; i += 1) await browser.settle();
-      return document.querySelectorAll('#case-rows tr').map((row) => row.querySelector('td').textContent);
+      return document.querySelectorAll('#case-rows tr:not([data-customers])').map((row) => row.querySelector('td').textContent);
     """)
 
     assert seen["errors"] == []
@@ -603,6 +603,31 @@ def test_a_case_row_states_its_verdict_once_with_the_ids_alert_count_as_detail(c
     assert shown["cells"][:2] == [worded("score.missed"), f'{worded("score.caught")} {worded("score.alert_count", 3)}'], (
         "the row counts alert records, not the rules they matched")
 
+CHECKED = DETECTION_RESULT.replace('alerts: 0, started_at: "2026-10-18T09:02:01Z"}', 'alerts: 0, started_at: "2026-10-18T09:02:01Z", in_window: false}').replace(
+    'alerts: 3, started_at: "2026-10-18T09:06:10Z"}', 'alerts: 3, started_at: "2026-10-18T09:06:10Z", in_window: true}').replace(
+    'customers: {sent: 870, alerted: 1, blocked: 0, blocked_actions: {},',
+    'final_checks: [["2026-10-18T09:05:00Z", "2026-10-18T09:09:00Z"]], customers: {sent: 870, alerted: 1, blocked: 0, '
+    'blocked_actions: {}, final_check: {sent: 400, alerted: 0, blocked: 0},')
+
+def test_a_run_the_scenario_misses_by_design_before_the_final_check_is_reported_apart_and_not_as_the_learner_s_miss(client):
+    seen = open_page(client, "/session/1/", setup=CHECKED, scenario="""
+      for (let i = 0; i < 6; i += 1) await browser.settle();
+      return {judged: browser.text('judgement'),
+              muted: document.querySelectorAll('#judgement li.text-muted').map((one) => one.textContent),
+              red: document.querySelectorAll('#judgement li.text-danger').length,
+              verdicts: document.querySelectorAll('#case-rows tr').map((row) => row.querySelectorAll('td')[2].querySelector('span').className)};
+    """)
+
+    assert "in_window: true" in CHECKED and "final_check:" in CHECKED and seen["errors"] == []
+    shown = seen["result"]
+    assert worded("score.attacks.checked", 1, 1) in shown["judged"], (
+        "walk: 3.1, 3.3 and 3.4 read 공격 2건 중 1건 정탐 for the miss they are built to show before the fix")
+    assert worded("score.attacks.before", 1, 0) in shown["judged"]
+    assert worded("score.customers_alerted.checked", 400, 400) in shown["judged"]
+    assert worded("score.customers_alerted.before", 470, 469) in shown["judged"]
+    assert len(shown["muted"]) == 2 and shown["red"] == 0
+    assert shown["verdicts"] == ["text-muted", "text-success", "text-muted", "text-success"]
+
 def test_a_scenario_result_without_steps_names_the_scenario_in_its_header(client):
     setup = DETECTION_RESULT.replace('lesson: {text: "scenario.tamper", steps: []},', "lesson: null,").replace(
         'public_url: "http://board.com", foundations: []}', 'public_url: "http://board.com", foundations: [], '
@@ -671,6 +696,25 @@ def test_a_lesson_result_shows_each_lesson_s_own_change_under_that_lesson(client
     assert all(part in seen["result"]["text"] for part in (worded("lesson.debrief.change.ids"), "sid:9100001",
                                                            worded("lesson.debrief.change.waf"), "id:10001"))
     assert worded("lesson.debrief.change.unread") not in seen["result"]["text"]
+
+def test_the_debrief_counts_the_customer_requests_that_drew_an_alert_before_and_during_the_final_check(client):
+    setup = DETECTION_RESULT.replace("customers: {sent: 870, served: 870, blocked: 0, in_window: [0], blocked_actions: {}},",
+                                     "customers: {sent: 870, served: 870, blocked: 0, in_window: [0], blocked_actions: {}, "
+                                     "alerted: 42, alerted_in_window: [0]},")
+    seen = open_page(client, "/session/1/", setup=setup, scenario="""
+      for (let i = 0; i < 6; i += 1) await browser.settle();
+      const row = document.querySelector('#debrief [data-case="customers"]');
+      return {customers: document.querySelector('#debrief [data-debrief="customers"]').textContent,
+              before: row.querySelector('[data-before]').textContent, after: row.querySelector('[data-after]').textContent};
+    """)
+
+    assert setup != DETECTION_RESULT and seen["errors"] == []
+    shown = seen["result"]
+    assert worded("scenario.debrief.customers.alerted", 42) in shown["customers"], (
+        "walk: 3.2's debrief said 0 blocked and nothing of the 42 customer requests its result page listed as alerted")
+    assert worded("scenario.debrief.customers.window", 1, 0, 0) in shown["customers"]
+    assert shown["before"] == worded("scenario.debrief.customers.alerted_count", 42)
+    assert shown["after"] == worded("scenario.debrief.no_alert")
 
 def test_an_attack_not_run_before_the_final_check_says_so_in_the_before_column(client):
     setup = DETECTION_RESULT.replace('before: "held", after: "held", alerted_before: false, alerted_after: true',

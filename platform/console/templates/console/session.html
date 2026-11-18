@@ -272,12 +272,12 @@
     }).join("") || `<tr class="table-row"><td class="text-muted" colspan="4">${esc(t("score.no_objectives"))}</td></tr>`;
   }
 
-  function judgementBlock(sentence, wrong) {
+  function judgementBlock(sentence, wrong, tone = "text-danger") {
     return `
       <div>
         <div class="font-semibold text-heading">${esc(sentence)}</div>
         <ul class="mt-2 space-y-1 text-[13px]">
-          ${wrong.map((line) => `<li class="text-danger">${esc(line)}</li>`).join("")}
+          ${wrong.map((line) => `<li class="${tone}">${esc(line)}</li>`).join("")}
         </ul>
       </div>`;
   }
@@ -291,10 +291,14 @@
     const blocked = benign.filter((row) => row.detected);
     const passed = benign.filter((row) => !row.detected);
     const parts = [];
-    if (attacks.length) {
-      const sentence = t("score.attacks", attacks.length, caught.length);
-      parts.push(judgementBlock(sentence,
-        missed.map((row) => t("score.no_alert", named(row)))));
+    const checked = attacks.some((row) => row.in_window);
+    const attackBlock = (rows, key, tone) => judgementBlock(t(key, rows.length, rows.filter((row) => row.detected).length),
+      rows.filter((row) => !row.detected).map((row) => t("score.no_alert", named(row))), tone);
+    if (attacks.length && !checked) parts.push(attackBlock(attacks, "score.attacks"));
+    if (checked) {
+      parts.push(attackBlock(attacks.filter((row) => row.in_window), "score.attacks.checked"));
+      const before = attacks.filter((row) => !row.in_window);
+      if (before.length) parts.push(attackBlock(before, "score.attacks.before", "text-muted"));
     }
     if (benign.length) {
       const sentence = t("score.benign", benign.length, passed.length);
@@ -302,9 +306,24 @@
         blocked.map((row) => t("score.drew_alerts", named(row), row.alerts))));
     }
     const customers = score.customers || {};
-    if (customers.sent && score.detected_by) {
+    const checks = (score.final_checks || []).map(([start, end]) => [Date.parse(start), Date.parse(end)]);
+    const inCheck = (at) => checks.some(([start, end]) => Date.parse(at) >= start && Date.parse(at) < end);
+    const alertedLine = (row) => t("score.customer_alert", clock(row.sent_at), `${row.method} ${row.path}`);
+    const alertedRequests = customers.alerted_requests || [];
+    const check = customers.final_check;
+    const benignShown = Boolean(customers.sent && (score.detected_by || session.course_scenario));
+    if (benignShown && !check) {
       parts.push(judgementBlock(t("score.customers_alerted", customers.sent, customers.sent - customers.alerted),
-        (customers.alerted_requests || []).map((row) => t("score.customer_alert", clock(row.sent_at), `${row.method} ${row.path}`))));
+        alertedRequests.map(alertedLine)));
+    }
+    if (benignShown && check) {
+      parts.push(judgementBlock(t("score.customers_alerted.checked", check.sent, check.sent - check.alerted),
+        alertedRequests.filter((row) => inCheck(row.sent_at)).map(alertedLine)));
+      const sentBefore = customers.sent - check.sent;
+      if (sentBefore) {
+        parts.push(judgementBlock(t("score.customers_alerted.before", sentBefore, sentBefore - (customers.alerted - check.alerted)),
+          alertedRequests.filter((row) => !inCheck(row.sent_at)).map(alertedLine), "text-muted"));
+      }
     }
     if (customers.sent && !session.course_scenario) {
       const wrong = Object.entries(customers.blocked_actions || {})
@@ -320,25 +339,33 @@
       <div class="text-[13px] text-muted leading-relaxed space-y-1">
         ${notes.map((note) => `<p>${esc(note)}</p>`).join("")}
       </div>`;
-    const counted = (right, word, alerts, unit = "score.alert_count") => `<span class="${right ? "text-success" : "text-danger"}">${esc(t(word))}</span>${
+    const toneOf = (right, graded = true) => (right ? "text-success" : graded ? "text-danger" : "text-muted");
+    const counted = (tone, word, alerts, unit = "score.alert_count") => `<span class="${tone}">${esc(t(word))}</span>${
       alerts ? `<span class="block text-[13px] text-muted">${esc(t(unit, alerts))}</span>` : ""}`;
-    const customerRow = customers.sent && score.detected_by ? `
+    const phaseOf = (inWindow) => t(inWindow ? "scenario.debrief.after" : "scenario.debrief.before");
+    const customerCells = (sent, alerted, inWindow) => `
         <tr class="table-row" data-customers>
-          <td class="text-heading">${esc(t("score.customers_row", customers.sent))}</td>
+          <td class="text-heading">${esc(t("score.customers_row", sent))}${
+            inWindow == null ? "" : `<span class="block text-[13px] text-muted">${esc(phaseOf(inWindow))}</span>`}</td>
           <td>${esc(t("score.kind.customer"))}</td>
-          <td>${customers.alerted ? counted(false, "score.wrongly_blocked", customers.alerted, "score.alerted_requests") : counted(true, "score.passed", 0)}</td>
-        </tr>` : "";
+          <td>${alerted ? counted(toneOf(false, inWindow !== false), "score.wrongly_blocked", alerted, "score.alerted_requests")
+            : counted(toneOf(true), "score.passed", 0)}</td>
+        </tr>`;
+    const customerRow = !benignShown ? "" : !check ? customerCells(customers.sent, customers.alerted, null)
+      : (customers.sent - check.sent ? customerCells(customers.sent - check.sent, customers.alerted - check.alerted, false) : "")
+        + customerCells(check.sent, check.alerted, true);
     field("score-counted-by").textContent = score.detected_by ? t(`score.counted_by.${score.detected_by}`) : "";
     show("score-counted-by", Boolean(score.detected_by));
+    const subline = (row) => [caseWhen(row), checked ? phaseOf(row.in_window) : ""].filter(Boolean).join(" · ");
     field("case-rows").innerHTML = (perCase.map((row) => {
       const right = row.malicious === Boolean(row.detected);
       const word = row.malicious ? (row.detected ? "score.caught" : "score.missed") : (row.detected ? "score.wrongly_blocked" : "score.passed");
       return `
         <tr class="table-row">
           <td class="text-heading"${lessonSession() ? "" : ` title="${esc(row.name)}"`}>${esc(caseLabel(row.name))}${
-            caseWhen(row) ? `<span class="block text-[13px] text-muted">${esc(caseWhen(row))}</span>` : ""}</td>
+            subline(row) ? `<span class="block text-[13px] text-muted">${esc(subline(row))}</span>` : ""}</td>
           <td>${esc(t(seeded(row) ? "score.kind.auto_benign" : row.malicious ? "score.kind.attack" : "score.kind.benign"))}</td>
-          <td>${counted(right, word, row.alerts)}</td>
+          <td>${counted(toneOf(right, !checked || row.in_window), word, row.alerts)}</td>
         </tr>`;
     }).join("") + customerRow) || `<tr class="table-row"><td class="text-muted" colspan="3">${esc(t("score.no_cases"))}</td></tr>`;
     show("score-cases", showsScores() && (perCase.length > 0 || Boolean(customerRow) || !session.course_scenario));
