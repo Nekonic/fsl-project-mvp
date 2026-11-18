@@ -17,7 +17,9 @@ UNAVAILABLE = (
 
 
 class Conflict(Exception):
-    pass
+    def __init__(self, detail="", settling=False):
+        super().__init__(detail)
+        self.settling = settling
 
 
 class Refusals:
@@ -37,7 +39,8 @@ class Refusals:
         if isinstance(exception, (BadRequest, RuleApplyError, TuningRefused)):
             return JsonResponse({"detail": str(exception)}, status=400)
         if isinstance(exception, (Conflict, Drifted)):
-            return JsonResponse({"detail": str(exception)}, status=409)
+            settling = {"settling": True} if getattr(exception, "settling", False) else {}
+            return JsonResponse({"detail": str(exception), **settling}, status=409)
         return None
 
 

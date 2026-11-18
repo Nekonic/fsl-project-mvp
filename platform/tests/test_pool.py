@@ -228,6 +228,7 @@ def test_a_session_for_a_wargame_no_slot_runs_rebuilds_a_free_slot_for_it(client
         answer = client.post_json("/api/sessions/", {"scenario": "corp"})
 
     assert answer.status_code == 409 and "slot 1 is being built again for it" in answer.json()["detail"]
+    assert answer.json()["settling"] is True, "walk: the console could not tell the learner a reset had begun"
     assert begun == [(1, {"claimed": True, "wargame": "corp"})]
     assert reset.wanted(1) == "corp" and stacks(cloud)["cr-slot-1"]["stack_status"] == fakecloud.DELETING
     assert not Session.objects.exists()

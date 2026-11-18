@@ -346,6 +346,54 @@ def test_an_open_refused_while_the_range_resets_says_so_beside_the_pressed_butto
     assert seen["later"]["text"] == worded("main.start_again")
     assert seen["later"]["disabled"] is False, "the buttons stay dim after the range is ready again"
 
+RETARGETED = """
+const range = {board: "READY", slow: false};
+browser.serve((request) => {
+  if (request.route === "/api/wargames/") {
+    return {body: [{id: "board", name: "Board", description: "", cases: 1,
+      foundations: [{id: "f1", order: 1, title: "lesson.range.title", minutes: 10, steps: 4}]}]};
+  }
+  if (request.route === "/api/range/ready/") {
+    const answer = {body: {ready: true, max_sessions: 4,
+      slot: {number: 2, session: null, phase: "READY", wargame: "corp", blocked: []},
+      slots: [{number: 1, session: null, phase: range.board, wargame: "board"},
+              {number: 2, session: null, phase: "READY", wargame: "corp"}]}};
+    if (!range.slow) return answer;
+    range.slow = false;
+    return new Promise((resolve) => setTimeout(() => resolve(answer), 20000));
+  }
+  if (request.route === "/api/sessions/" && request.method === "POST") {
+    range.board = "RESETTING";
+    range.slow = true;
+    return {status: 409, body: {detail: "the range is not ready: the slot is resetting", settling: true}};
+  }
+  if (request.route === "/api/sessions/") return {body: []};
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+def test_an_open_refused_for_a_reset_says_so_at_once_and_enables_start_when_the_wargame_s_own_slot_is_ready(client):
+    seen = open_page(client, "/", setup=RETARGETED, scenario="""
+      await browser.wait(0);
+      const button = document.querySelector('[data-lesson-id="f1"]');
+      button.click();
+      for (let i = 0; i < 3; i += 1) await browser.settle();
+      const text = () => document.querySelector('[data-failure="board"] [data-failure-text]').textContent;
+      const atOnce = text();
+      await browser.wait(23000);
+      const corpReady = {text: text(), disabled: button.disabled};
+      range.board = "READY";
+      await browser.wait(3000);
+      return {atOnce, corpReady, later: {text: text(), disabled: button.disabled}};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"]["atOnce"] == worded("range.resetting"), (
+        "walk: the reset notice came only after the slow readiness read, about 90 s after Start")
+    assert seen["result"]["corpReady"] == {"text": worded("range.resetting"), "disabled": True}, (
+        "another wargame's ready slot does not make this wargame's Start ready")
+    assert seen["result"]["later"] == {"text": worded("main.start_again"), "disabled": False}
+
 def test_an_open_refused_because_the_range_is_not_standing_gives_the_learner_s_line_not_the_api_reason(client):
     seen = refused_open(client, "NOT_STANDING")["refused"]
 

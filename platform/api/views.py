@@ -338,8 +338,9 @@ def _ready_slot(adapter, wargame=""):
                       and slot.get("wargame") not in ("", wargame)), None)
         if wargame and spare is not None and _retargeted(adapter, spare["number"], wargame):
             raise Conflict(f"the range is not ready: no slot runs {wargame}, so slot {spare['number']} is being "
-                           f"built again for it; open again once it is ready")
-        raise Conflict("the range is not ready: " + "; ".join(verdict["slot"]["blocked"]))
+                           f"built again for it; open again once it is ready", settling=True)
+        raise Conflict("the range is not ready: " + "; ".join(verdict["slot"]["blocked"]),
+                       settling=verdict["slot"].get("phase") in SETTLING_PHASES)
     return verdict["slot"].get("number") if _slotted(adapter) else None
 
 def _free(number: int) -> bool:

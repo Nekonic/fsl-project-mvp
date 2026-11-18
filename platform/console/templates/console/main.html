@@ -49,6 +49,7 @@
   let starting = false;
   let rangeReady = true;
   let rangePhase = null;
+  let rangeSlots = null;
   let waiting = null;
   const operatorView = new URLSearchParams(location.search).has("operator");
 
@@ -164,11 +165,16 @@
     });
   }
 
-  function refusedLine(started) {
+  const servesNow = (wargame) => (Array.isArray(rangeSlots)
+    ? rangeSlots.some((slot) => slot.phase === "READY" && slot.session == null && (!slot.wargame || slot.wargame === wargame))
+    : rangeReady);
+
+  function refusedLine(started, wargame) {
     if (started.body.open_session) return t("main.one_open_session");
     if (started.status !== 409) return t("main.start_failed", operatorView ? detail(started) : t("range.blocked"));
     if (capacity !== null && running.length >= capacity) return t("main.start_failed.full", running.length, capacity);
-    if (rangeReady) return t("main.start_again");
+    if (started.body.settling) return t("range.resetting");
+    if (servesNow(wargame)) return t("main.start_again");
     return t(rangePhase === "RESETTING" ? "range.resetting" : "range.blocked");
   }
 
@@ -194,12 +200,20 @@
       return;
     }
     button.textContent = label;
+    const wargame = button.dataset.wargame;
+    const refused = failure.querySelector("[data-failure-text]");
+    const tell = (text, tone) => {
+      refused.textContent = text;
+      toned(failure, tone);
+      button.after(failure);
+      failure.classList.remove("hidden");
+    };
+    if (started.body.settling) tell(t("range.resetting"), "warning");
     await refreshSessions();
-    card.querySelectorAll(".start").forEach((each) => { each.disabled = !rangeReady; });
+    card.querySelectorAll(".start").forEach((each) => { each.disabled = !servesNow(each.dataset.wargame); });
     const full = started.status === 409 && capacity !== null && running.length >= capacity;
     const settling = started.status === 409 && !full;
-    const refused = failure.querySelector("[data-failure-text]");
-    refused.textContent = refusedLine(started);
+    tell(refusedLine(started, wargame), settling ? "warning" : "danger");
     const held = Number(started.body.open_session);
     if (held) {
       refused.insertAdjacentHTML("beforeend",
@@ -207,10 +221,7 @@
     }
     failure.querySelector("[data-close-open]").classList.toggle("hidden", !full);
     failure.querySelector("[data-open-list]").classList.add("hidden");
-    toned(failure, settling ? "warning" : "danger");
-    button.after(failure);
-    failure.classList.remove("hidden");
-    waiting = settling && !rangeReady ? failure : null;
+    waiting = settling && (started.body.settling || !servesNow(wargame)) ? failure : null;
     if (waiting) {
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(refreshSessions, WAITING_EVERY);
@@ -419,11 +430,12 @@
 
     rangeReady = ready;
     rangePhase = slot ? slot.phase : null;
-    if (ready && waiting) {
+    rangeSlots = result.ok && result.body ? result.body.slots : null;
+    if (waiting && servesNow(waiting.dataset.failure)) {
       waiting.querySelector("[data-failure-text]").textContent = t("main.start_again");
       waiting = null;
     }
-    if (!starting) document.querySelectorAll(".start").forEach((button) => { button.disabled = !ready; });
+    if (!starting) document.querySelectorAll(".start").forEach((button) => { button.disabled = !servesNow(button.dataset.wargame); });
 
     const health = field("range-health");
     health.classList.toggle("hidden", !result.ok || !operatorView);
