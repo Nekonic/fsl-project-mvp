@@ -141,6 +141,9 @@ def test_a_refusal_for_want_of_room_is_told_apart_from_any_other():
     assert opening.refused_for_room(409, "the range is not ready: the slot is resetting")
     assert opening.refused_for_room(409, "the range is not ready: no slot runs corp, so slot 2 is being built "
                                          "again for it; open again once it is ready")
+    assert opening.refused_for_room(409, "the range is not ready: slot 3: cr-target is SETTING_UP; slot 3: the slot "
+                                         "runs board, not corp")
+    assert opening.refused_for_room(409, "the range is not ready: slot 2: cr-kali is BUILDING")
     assert not opening.refused_for_room(409, "the range is not ready: the target's ground truth could not be read")
     assert not opening.refused_for_room(503, "already open on the range")
 
