@@ -25,6 +25,7 @@ def fetch(
     query = {
         "size": size,
         "track_total_hits": True,
+        "_source": {"excludes": ["message"]},
         "sort": [{"@timestamp": "desc" if newest_first else "asc"}],
         "query": {
             "range": {

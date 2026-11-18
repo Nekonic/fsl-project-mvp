@@ -46,11 +46,6 @@ const overlaps = (a, b) => Boolean(a && b) && a.left < b.left + b.width && b.lef
 const within = (inner, outer) => Boolean(inner && outer) && inner.left >= outer.left && inner.top >= outer.top
   && inner.left + inner.width <= outer.left + outer.width && inner.top + inner.height <= outer.top + outer.height;
 const grown = (box, by) => ({ left: box.left - by, top: box.top - by, width: box.width + 2 * by, height: box.height + 2 * by });
-const joined = (a, b) => (a && b ? {
-  left: Math.min(a.left, b.left), top: Math.min(a.top, b.top),
-  width: Math.max(a.left + a.width, b.left + b.width) - Math.min(a.left, b.left),
-  height: Math.max(a.top + a.height, b.top + b.height) - Math.min(a.top, b.top),
-} : a || b);
 const rounded = (box) => (box ? [box.left, box.top, box.width, box.height].map(Math.round).join() : "");
 
 function clipped(rect, bounds) {
@@ -343,11 +338,7 @@ const KIBANA = {
   hits: ['[data-test-subj="discoverQueryHits"]', '[data-test-subj="discoverQueryTotalHits"]'],
   noResults: '[data-test-subj="discoverNoResults"]',
   query: '[data-test-subj="queryInput"]',
-  topValues: '[data-test-subj="dscFieldStats-topValues"]',
-  statsFooter: '[data-test-subj="dscFieldStats-statsFooter"]',
-  popover: '[data-popover-panel], .euiPopover__panel',
   chart: '[data-test-subj="unifiedHistogramChart"]',
-  statsTitle: '[data-test-subj="fieldPopoverHeader_fieldDisplayName"]',
   cellText: "[data-datagrid-cellcontent]",
   toolbar: ['[data-test-subj="dscViewModeFieldStatsButton"]', '[data-test-subj="dataGridColumnSelectorButton"]'],
   picker: ['[data-test-subj="superDatePickerToggleQuickMenuButton"]', '[data-test-subj="superDatePickerstartDatePopoverButton"]',
@@ -478,7 +469,7 @@ function kibanaFound(doc, spec) {
       }
     }
     const value = found(KIBANA.value(spec.doc));
-    if (boxOf(value) && !coveredIn(doc, value)) return { element: value, also: found(KIBANA.name(spec.doc)), stage: "" };
+    if (boxOf(value) && !coveredIn(doc, value)) return { element: first(KIBANA.fieldFilter), stage: "" };
     const carrying = carryingRow(doc, spec.doc);
     if (boxOf(found(KIBANA.flyout))) {
       if (!lacksField(doc, spec.doc)) return { element: first(KIBANA.fieldFilter), stage: "field" };
@@ -503,17 +494,13 @@ function kibanaFound(doc, spec) {
     if (text !== null && queryArrival.step !== spec.step) Object.assign(queryArrival, { step: spec.step, text });
     const counted = first(...KIBANA.hits);
     const unchanged = text !== null && text === queryArrival.text;
-    if (counted) return unchanged ? { element: first(KIBANA.query), stage: "query" } : { element: counted, stage: "" };
-    const none = first(KIBANA.noResults);
-    if (!none) return { element: null, stage: "" };
-    return unchanged ? { element: first(KIBANA.query), stage: "query" } : { element: none, stage: "none" };
+    const shown = counted || first(KIBANA.noResults);
+    if (shown && unchanged) return { element: first(KIBANA.query), stage: "query" };
+    return { element: shown && coveredIn(doc, shown) ? shown : null, stage: "" };
   }
   if (spec.query) return { element: first(KIBANA.query), stage: "" };
   if (spec.sidebar) {
-    const title = found(KIBANA.statsTitle);
-    const opened = title && title.textContent && title.textContent.includes(spec.sidebar);
-    const values = opened ? first(KIBANA.statsFooter) || first(KIBANA.topValues) : null;
-    return { element: values || first(KIBANA.sidebar(spec.sidebar)), stage: values ? "top" : "" };
+    return { element: first(KIBANA.sidebar(spec.sidebar)), stage: "" };
   }
   return { element: null, stage: "" };
 }
@@ -582,33 +569,23 @@ function kibanaRect(spec, leg, step) {
   const doc = kibanaDoc();
   if (!doc) return { rect: null, stage: "" };
   if (kibanaLoading()) queryArrival.step = "";
-  const { element, also, stage, leg: aimed } = kibanaFound(doc, { ...spec, ...(leg ? { leg } : {}), step });
+  const { element, stage, leg: aimed } = kibanaFound(doc, { ...spec, ...(leg ? { leg } : {}), step });
   const flyout = doc.querySelector(KIBANA.flyout);
   const inFlyout = Boolean(flyout && element && typeof flyout.contains === "function" && flyout.contains(element));
   if (!inFlyout && coveredIn(doc, element)) return { rect: inFrame(frame, boxOf(doc.querySelector(KIBANA.close))), stage: "covered" };
-  const rect = inFrame(frame, joined(boxOf(element), boxOf(also)));
+  const rect = inFrame(frame, boxOf(element));
   const rows = !rect ? [] : stage === "query" || stage === "write" || stage === "fieldless" || spec.query ? pickerRows(doc, rect)
     : spec.doc ? flyoutRows(doc, rect) : spec.hits || spec.sidebar ? toolbarRows(doc, rect) : [];
-  const core = rect ? [...rows, ...drawnAreas(doc, element, rect, stage)] : rows;
-  const crowd = rect ? [...core, ...frameText(doc, rect), ...(stage === "top" ? popoverText(element, rect) : [])] : core;
+  const core = rect ? [...rows, ...drawnAreas(doc, rect)] : rows;
+  const crowd = rect ? [...core, ...frameText(doc, rect)] : core;
   return { rect, stage, leg: aimed || "", crowd, core, within: stage === "other" ? inFrame(frame, boxOf(flyout)) : null };
 }
 
-function drawnAreas(doc, element, rect, stage) {
-  const panel = stage === "top" && element && typeof element.closest === "function" ? element.closest(KIBANA.popover) : null;
+function drawnAreas(doc, rect) {
   const chart = typeof doc.querySelector === "function" ? doc.querySelector(KIBANA.chart) : null;
   const drawn = inFrame(frame, boxOf(chart));
   const shown = drawn && drawn.width > 0 && drawn.height > 0 && !overlaps(drawn, rect) ? [drawn] : [];
-  const held = panel ? inFrame(frame, boxOf(panel)) : null;
-  return [...shown, ...(held ? [held] : [])].map((box) => ({ ...box, icon: true }));
-}
-
-function popoverText(element, rect) {
-  const panel = element && typeof element.closest === "function" ? element.closest(KIBANA.popover) : null;
-  if (!panel || typeof panel.querySelectorAll !== "function") return [];
-  return Array.from(panel.querySelectorAll("*"))
-    .filter((one) => !one.firstElementChild && Boolean((one.textContent || "").trim()))
-    .map((one) => inFrame(frame, boxOf(one))).filter((box) => box && !overlaps(box, rect));
+  return shown.map((box) => ({ ...box, icon: true }));
 }
 
 function kibanaLoading() {
@@ -648,10 +625,10 @@ function devElement(name, step) {
   const wanted = pattern(step.check && step.check.match);
   const fits = (row) => !wanted || wanted.test(readable(row.getAttribute("data-url") || ""));
   const rows = Array.from(document.querySelectorAll('[data-coach="row"]'));
-  const last = rows.filter(fits).pop() || null;
-  if (name === "row") return { element: last, stage: "" };
+  const listed = rows.some(fits) ? named("network") : null;
+  if (name === "row") return { element: listed, stage: "" };
   const picked = rows.find((row) => row.getAttribute("aria-selected") === "true");
-  if (!picked || !fits(picked)) return { element: last, stage: "row" };
+  if (!picked || !fits(picked)) return { element: listed, stage: "row" };
   const tab = name.startsWith("general.") ? "tab.headers" : name.startsWith("payload.") ? "tab.payload" : "";
   const holder = tab ? named(tab) : null;
   if (holder && holder.getAttribute("aria-selected") !== "true") return { element: holder, stage: tab };
@@ -1230,8 +1207,8 @@ const MISSING_AFTER_FRAMES = 120;
 const SITE_SILENT_MS = 3000;
 const STAGE_KEYS = {
   open: "lesson.dev.open", row: "lesson.dev.row",
-  query: "lesson.kibana.query", write: "lesson.kibana.write", top: "lesson.kibana.top_values", expand: "lesson.kibana.expand", field: "lesson.kibana.field", covered: "lesson.kibana.covered",
-  other: "lesson.kibana.other", none: "lesson.kibana.none", prompt: "lesson.term.prompt",
+  query: "lesson.kibana.query", write: "lesson.kibana.write", expand: "lesson.kibana.expand", field: "lesson.kibana.field", covered: "lesson.kibana.covered",
+  other: "lesson.kibana.other", prompt: "lesson.term.prompt",
   apply: "lesson.rules.press_apply", verify: "lesson.kibana.verify", run_done: "lesson.kali.press",
 };
 const STAGE_FALLBACKS = {
@@ -1472,7 +1449,7 @@ function coach(prefix, declared) {
     const act = field("step-act");
     let html = "";
     if (finished) {
-      html = nextLesson ? `<button type="button" data-act="next-lesson" class="self-start btn btn-sm btn-blue">${esc(t("lesson.next.start", t(`${nextLesson.text}.title`)))}</button>`
+      html = nextLesson ? `<button type="button" data-act="next-lesson" class="self-start btn btn-sm btn-blue">${esc(t("lesson.next.start"))}</button>`
         : foundation ? courseSummary() : "";
     } else if (kind === "answer" && check().form === "order") {
       html = orderPicker(check().options || []);
@@ -1601,6 +1578,7 @@ function coach(prefix, declared) {
   }
 
   function finishedText() {
+    if (nextLesson) return t("lesson.next.named", t(`${nextLesson.text}.title`));
     return t(courseEnd() ? `${courseText}.done` : session && session.course_scenario ? "scenario.note.done" : "lesson.done");
   }
 
@@ -1885,7 +1863,8 @@ function coach(prefix, declared) {
   }
 
   function lessonEnd() {
-    shownSection("lesson-end", !finished && !sessionClosed() && !(session && session.course_scenario));
+    const summaryCloses = finished && foundation && !nextLesson;
+    shownSection("lesson-end", !summaryCloses && !sessionClosed() && !(session && session.course_scenario));
   }
 
   function pass(step) {

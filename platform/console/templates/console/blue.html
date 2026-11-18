@@ -89,7 +89,7 @@
     <div id="waf-banner" class="hidden h-10 term-bar text-[13px] items-center px-4 gap-3 shrink-0 min-w-0">
       <span id="waf-box" class="font-mono text-inverse shrink-0"></span>
       <span class="text-faint">·</span>
-      <span class="truncate"><span data-t="blue.waf.rules"></span> <span id="waf-rules" class="font-mono text-inverse"></span></span>
+      <span id="waf-rules" class="truncate"></span>
     </div>
     <form id="site-bar" class="hidden h-10 border-b border-line bg-subdued items-center px-2 gap-1 shrink-0 min-w-0">
       <button type="button" id="site-back" data-t-title="site.back" class="btn btn-sm btn-ghost px-2" aria-label="back">←</button>
@@ -363,7 +363,7 @@
     }
     if (session && session.waf_box) {
       field("waf-box").textContent = session.waf_box;
-      field("waf-rules").textContent = `${session.waf_rules}/`;
+      field("waf-rules").innerHTML = t("blue.waf.rules", `<span class="font-mono text-inverse">${esc(`${session.waf_rules}/`)}</span>`);
     }
     if (session) {
       blueCrumbs(null);

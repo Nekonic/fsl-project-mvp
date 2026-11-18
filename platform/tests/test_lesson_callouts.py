@@ -217,30 +217,6 @@ LIST = [
     [422, 490, 120, 30], [601, 497, 10, 14], [712, 490, 78, 14], [872, 490, 78, 14], [1005, 490, 80, 40],
 ]
 
-def test_the_f6_seen_callout_keeps_off_the_tab_label_next_to_the_count_and_the_text_around_it(client):
-    seen = open_page(client, "/blue/1/", setup=served_with(STEPS), scenario=f"""
-      STRINGS['lesson.demo.callout.logged'] = '조회된 이벤트 건수입니다.';
-      {KIBANA_FRAME}
-      const doc = browser.element('pane-frame').contentDocument;
-      crowdedDoc(doc);
-      const list = {json.dumps(LIST)};
-      list.forEach((one) => crowdList.push(one));
-      {to("logged")}
-      await browser.click('step-open');
-      kibana.set('[data-test-subj="discoverQueryHits"]', box(404, 361, 37, 17));
-      await frames();
-      return judged(list.map(asBox));
-    """)
-    placed = seen["result"]
-
-    assert seen["errors"] == []
-    assert placed["ring"] == {"left": 458, "top": 411, "width": 49, "height": 29}
-    assert placed["spot"] is not None
-    assert placed["covers"] == [], "not over 'Documents', the tab beside it or the table header below"
-    assert placed["coversRing"] is False
-    assert placed["crossing"] == []
-    assert placed["gap"] <= 120
-
 def test_the_f6_query_prompt_keeps_off_the_data_view_picker_the_filter_buttons_and_the_time_range(client):
     seen = open_page(client, "/blue/1/", setup=served_with(STEPS), scenario=f"""
       STRINGS['lesson.kibana.query'] = '여기에 KQL을 입력하세요.';

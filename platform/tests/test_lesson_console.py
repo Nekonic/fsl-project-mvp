@@ -745,6 +745,7 @@ const listRows = (picked) => {
     '<tr data-coach="row" data-url="/static/app.css" aria-selected="false"></tr>',
   ].join('');
   document.querySelectorAll('[data-coach="row"]').forEach((row, index) => RECTS.set(row, box(60, 600 + 20 * index, 400, 20)));
+  RECTS.set(document.querySelector('[data-coach="network"]'), box(300, 560, 60, 20));
 };
 const showTabs = (selected) => {
   browser.element('site-dev-detail').innerHTML = ['tab.headers', 'tab.payload'].map((name) =>
@@ -756,7 +757,7 @@ const showTabs = (selected) => {
 const ringAt = async () => { await frames(); return shown('coach-ring') ? styled('coach-ring').left : null; };
 """
 
-def test_a_developer_tools_step_points_at_the_toggle_then_the_matching_row_then_the_tab_and_never_the_answer_s_line(client):
+def test_a_developer_tools_step_points_at_the_toggle_then_the_network_tab_then_the_tab_and_never_the_answer_s_row_or_line(client):
     seen = open_page(client, "/blue/1/", setup=served() + DEV, scenario=f"""
       {to("method")}
       await browser.click('step-open');
@@ -774,9 +775,9 @@ def test_a_developer_tools_step_points_at_the_toggle_then_the_matching_row_then_
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"closed": 974, "noRow": 62, "rowTop": 620, "wrongTab": 494, "line": 494}, (
-        "closed DevTools: the toggle; no row picked: the last row of the step's request; then the tab. "
-        "Walk: a ring on the answer's own line (요청 메서드 GET) gave the answer away")
+    assert seen["result"] == {"closed": 974, "noRow": 294, "rowTop": 554, "wrongTab": 494, "line": 494}, (
+        "closed DevTools: the toggle; no row picked: the Network tab; then the tab. "
+        "Walk: a ring on the answer's own line (요청 메서드 GET) or row (?sort=title, 500) gave the answer away")
 
 def test_a_developer_tools_ring_stays_off_every_line_of_the_answer_s_section(client):
     seen = open_page(client, "/blue/1/", setup=served() + DEV, scenario=f"""
@@ -831,7 +832,7 @@ def test_the_open_website_button_always_brings_the_board_s_front_page_back(clien
     assert (seen["result"]["away"], seen["result"]["before"]) == ("/search/?q=%3Cscript%3E", "site")
     assert seen["result"]["back"] == "/", "a blocked page left in the pane is replaced by the board's front page"
 
-def test_kibana_and_terminal_steps_ring_the_flyout_row_the_hit_count_and_the_matching_terminal_line(client):
+def test_kibana_and_terminal_steps_ring_the_flyout_s_field_filter_never_the_value_and_the_matching_terminal_line(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       {to("rule")}
       await browser.click('step-open');
@@ -857,7 +858,7 @@ def test_kibana_and_terminal_steps_ring_the_flyout_row_the_hit_count_and_the_mat
     assert result["toggle"] == {"left": 64, "top": 390, "width": 32, "height": 32}, "no flyout open: the row's expand toggle"
     assert result["filter"] == {"left": 574, "top": 175, "width": 312, "height": 26}, (
         "a flyout open without the field's row: the flyout's field filter, since the table renders only some rows")
-    assert result["row"] == {"left": 574, "top": 295, "width": 432, "height": 26}
+    assert result["row"] == result["filter"], "walk: a ring on the field's value gave the answer away"
     assert result["line"] == {"left": 60, "top": 116, "width": 714, "height": 20}, (
         "the ring spans the line's text over whole rows and stays inside the pane")
 
@@ -1132,6 +1133,7 @@ def test_a_finished_foundation_starts_the_next_lesson_and_the_last_one_ends_on_a
       const early = range.moved.length + browser.requests.filter((r) => r.route.endsWith('/close/')).length;
       await browser.wait(2500);
       const course = document.querySelectorAll('#step-act [data-course]').map((line) => line.dataset.course);
+      const ending = !browser.element('lesson-end').classList.contains('hidden');
       const waited = browser.requests.filter((r) => r.route.endsWith('/close/')).length + range.moved.length;
       const onwards = document.querySelector('#step-act [data-act="next-lesson"]');
       if (onwards) {{ onwards.click(); await browser.settle(); }}
@@ -1140,7 +1142,7 @@ def test_a_finished_foundation_starts_the_next_lesson_and_the_last_one_ends_on_a
       const asked = browser.requests.filter((r) => r.route.endsWith('/close/')).length;
       const confirm = document.querySelector('#step-act [data-act="confirm-close"]');
       if (confirm) {{ confirm.click(); await browser.settle(); }}
-      return {{said, counter, button, early, course, waited, asked, moved: range.moved, reloaded: range.reloaded, href: location.href,
+      return {{said, counter, button, early, course, ending, waited, asked, moved: range.moved, reloaded: range.reloaded, href: location.href,
                closed: browser.requests.filter((r) => r.route.endsWith('/close/')).length}};
     """)
     result = seen["result"]
@@ -1150,11 +1152,13 @@ def test_a_finished_foundation_starts_the_next_lesson_and_the_last_one_ends_on_a
     assert result["early"] == 0, "the learner reads the line before the next lesson starts"
     assert result["waited"] == 0, "the end card stays until the learner presses its button"
     if following:
-        assert result["said"] == worded("lesson.done"), "the next lesson is named once, on its button"
+        assert result["said"] == worded("lesson.next.named", "lesson.next.title"), "the next lesson is named once, in the end line"
         assert result["button"] is True
         assert (result["moved"], result["reloaded"], result["closed"]) == ([{"lesson": following}], 1, 0)
+        assert result["ending"] is True, "walk: the end card of F4, F5, F1 and F2 had no close button"
     else:
         assert result["course"] == ["f1", "f9"]
+        assert result["ending"] is False, "the course summary's own close button is the only one"
         assert result["said"] == worded("course.attack.done"), "the last task line is never left empty"
         assert result["asked"] == 0, "closing from the lesson asks first, as the session page does"
         assert (result["moved"], result["closed"]) == ([], 1)
@@ -1317,7 +1321,7 @@ doc.querySelector = (selector) => (selector.includes('NavigationPage')
   : plain(selector));
 """
 
-def test_a_leg_step_rings_the_expand_toggle_of_the_row_on_that_leg_then_the_arrow_off_a_wrong_document_then_the_value(client):
+def test_a_leg_step_rings_the_expand_toggle_of_the_row_on_that_leg_then_the_arrow_off_a_wrong_document_then_the_field_filter(client):
     seen = open_page(client, "/blue/1/", setup=served() + GRID, scenario=f"""
       STRINGS['lesson.kibana.expand.upstream'] = 'Expand the row for the board';
       STRINGS['lesson.kibana.other'] = 'Another event';
@@ -1332,6 +1336,7 @@ def test_a_leg_step_rings_the_expand_toggle_of_the_row_on_that_leg_then_the_arro
       await frames();
       const other = {{ring: styled('coach-ring'), text: browser.text('coach-callout')}};
       pageAt = 1;
+      kibana.set('[data-test-subj="unifiedDocViewerFieldsSearchInput"]', box(520, 80, 300, 24));
       kibana.set('[data-test-subj="tableDocViewRow-source_ip-value"]', box(640, 200, 300, 24));
       await frames();
       const value = styled('coach-ring');
@@ -1343,7 +1348,8 @@ def test_a_leg_step_rings_the_expand_toggle_of_the_row_on_that_leg_then_the_arro
     assert result["expand"] == {"ring": {"left": 64, "top": 430, "width": 32, "height": 32},
                                 "text": "Expand the row for the board"}, "the second row: its source is the first row's destination"
     assert result["other"] == {"ring": {"left": 814, "top": 114, "width": 36, "height": 36}, "text": "Another event"}
-    assert result["value"] == {"left": 694, "top": 295, "width": 312, "height": 26}, "the right document: the value itself"
+    assert result["value"] == {"left": 574, "top": 175, "width": 312, "height": 26}, (
+        "the right document: the field filter, never the value that answers the step")
 
 def test_a_leg_step_whose_row_cannot_be_found_asks_for_the_destination_and_never_rings_a_flyout_value(client):
     seen = open_page(client, "/blue/1/", setup=served() + GRID, scenario=f"""
@@ -1591,27 +1597,6 @@ def test_a_run_step_says_one_thing_at_a_time_and_only_its_own_command_s_end_coun
     assert result["running"] is False, "the step's own command running clears the earlier 'no run yet' error"
     assert (result["status"], result["row"]) == ("", True), "while the command runs only the run card's line speaks"
 
-def test_a_sidebar_step_rings_the_top_values_once_the_popover_shows_that_field_s_name(client):
-    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      const doc = browser.element('pane-frame').contentDocument;
-      const plain = doc.querySelector;
-      let title = 'Top values';
-      doc.querySelector = (selector) => (selector === '[data-test-subj="fieldPopoverHeader_fieldDisplayName"]'
-        ? {{textContent: title, getBoundingClientRect: () => box(300, 200, 100, 20)}} : plain(selector));
-      {to("run_source")}
-      await browser.click('step-open');
-      kibana.set('[data-test-subj="field-source_ip"]', box(20, 400, 160, 24));
-      kibana.set('[data-test-subj="dscFieldStats-topValues"]', box(200, 450, 260, 90));
-      await frames();
-      const before = styled('coach-ring').top;
-      title = 'source_ip';
-      await frames();
-      return {{before, after: styled('coach-ring').top}};
-    """)
-
-    assert seen["errors"] == []
-    assert seen["result"] == {"before": 495, "after": 540}, "the popover header holds the field name, not the text Top values"
-
 def test_a_step_that_keeps_the_document_open_does_not_close_the_flyout_on_arrival(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       const doc = browser.element('pane-frame').contentDocument;
@@ -1635,7 +1620,7 @@ def test_a_step_that_keeps_the_document_open_does_not_close_the_flyout_on_arriva
     assert seen["errors"] == []
     assert seen["result"] == {"leaving": 1, "kept": 1}
 
-def test_a_hit_count_step_asks_for_the_query_until_it_changes_whether_the_previous_result_was_empty_or_not(client):
+def test_a_hit_count_step_asks_for_the_query_until_it_changes_and_then_rings_neither_the_count_nor_the_empty_result(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       STRINGS['lesson.kibana.none'] = 'No events match.';
       STRINGS['lesson.kibana.query'] = 'Type the KQL here.';
@@ -1651,7 +1636,7 @@ def test_a_hit_count_step_asks_for_the_query_until_it_changes_whether_the_previo
       const previous = browser.text('coach-callout');
       input.value = 'status : 200';
       await frames();
-      const counted = browser.text('coach-callout');
+      const counted = {{said: shown('coach-callout'), ringed: shown('coach-ring')}};
       input.value = 'status : 500';
       kibana.delete('[data-test-subj="discoverQueryHits"]');
       kibana.set('[data-test-subj="discoverNoResults"]', box(400, 300, 300, 40));
@@ -1659,16 +1644,16 @@ def test_a_hit_count_step_asks_for_the_query_until_it_changes_whether_the_previo
       const arrival = {{text: browser.text('coach-callout'), ring: styled('coach-ring').top}};
       input.value = 'url : *nothing*';
       await frames();
-      return {{previous, counted, arrival, none: browser.text('coach-callout'), ring: styled('coach-ring').top}};
+      return {{previous, counted, arrival, none: {{said: shown('coach-callout'), ringed: shown('coach-ring')}}}};
     """)
     result = seen["result"]
 
     assert seen["errors"] == []
     assert result["previous"] == "Type the KQL here.", "the previous query's count is not this step's answer either"
-    assert result["counted"] == "The count."
     assert result["arrival"] == {"text": "Type the KQL here.", "ring": 190}, (
         "the previous step's empty result is not this step's answer: the query bar is rung first")
-    assert result["none"] == "No events match." and result["ring"] == 390
+    assert result["counted"] == result["none"] == {"said": False, "ringed": False}, (
+        "once the query is new, neither the count nor the empty result is rung: either one answers the step")
 
 def test_a_terminal_step_rings_the_prompt_until_its_line_appears(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
@@ -1801,22 +1786,6 @@ def test_a_developer_tools_tab_stage_rings_the_tab_without_a_callout_repeating_t
 
     assert seen["errors"] == []
     assert seen["result"] == {"text": "", "ring": True}
-
-def test_a_hit_count_callout_keeps_off_the_toolbar_buttons_beside_the_count(client):
-    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS['lesson.demo.callout.logged'] = 'The count of the results shown, and more words so it is long.';
-      {to("logged")}
-      await browser.click('step-open');
-      kibana.set('[data-test-subj="discoverQueryHits"]', box(400, 150, 80, 20));
-      kibana.set('[data-test-subj="dscViewModeFieldStatsButton"]', box(500, 146, 108, 28));
-      kibana.set('[data-test-subj="dataGridColumnSelectorButton"]', box(620, 146, 116, 28));
-      await frames();
-      const spot = callout();
-      return {{spot, over: [[560, 242, 108, 28], [680, 242, 116, 28]].map(([left, top, width, height]) => meets(spot, {{left, top, width, height}}))}};
-    """)
-
-    assert seen["errors"] == []
-    assert seen["result"]["spot"] is not None and seen["result"]["over"] == [False, False]
 
 def test_a_callout_beside_a_website_target_that_is_boxed_in_sits_on_the_nearest_free_row_centred_on_the_target(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
@@ -1969,11 +1938,18 @@ def lesson_steps(lesson_id):
 def test_f2_reads_the_request_panel_top_down_search_method_path_status_parameter_sort_missing():
     assert list(lesson_steps("f2")) == ["search", "method", "path", "status", "parameter", "sort", "missing"]
 
-def test_f6_rings_the_waf_prompt_until_the_exception_line_prints_and_the_cost_step_points_at_the_note_card_only():
-    steps = lesson_steps("f6")
+def test_no_lesson_step_rings_a_line_of_terminal_output_or_one_objective_s_row_only_the_prompt_or_the_whole_card():
+    rung = []
+    for taught in wargames.foundations("board"):
+        for shown in taught["steps"]:
+            stage = shown["point"]
+            while stage:
+                rung.append((taught["id"], shown["id"], stage.get("term", {}).get("match", " $"), stage.get("panel", "")))
+                stage = stage.get("then")
 
-    assert steps["excluded"]["point"]["term"] == {"pane": "waf", "match": "ctl:ruleRemove", "idle": r"\$ "}
-    assert "panel" in steps["cost"]["point"] and "kibana" not in steps["cost"]["point"]
+    assert [one[:2] for one in rung if not one[2].endswith(" $")] == [], "walk: a ring on sqlmap's injectable line gave the verdict away"
+    assert [one[:2] for one in rung if "[" in one[3]] == [], "the objectives card, not the row holding the points"
+    assert ("f6", "cost", " $", "#lesson-objectives") in rung
 
 def test_the_console_is_told_which_leg_a_log_question_is_about(client):
     from tests.test_foundations import opened as opened_lesson
@@ -2036,88 +2012,6 @@ def test_a_replay_step_lists_which_of_its_two_requests_is_confirmed_while_it_che
     assert seen["result"]["first"] == f"Attack: {worded('lesson.replay.waiting')}\nNormal: {worded('lesson.replay.waiting')}"
     assert seen["result"]["second"] == f"Attack: {worded('lesson.replay.confirmed')}\nNormal: {worded('lesson.replay.waiting')}"
     assert seen["result"]["third"] == "", "the pass line takes over once both are confirmed"
-
-def test_a_sidebar_step_that_shows_the_top_values_says_what_they_are_and_stays_off_the_toolbar(client):
-    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS['lesson.kibana.top_values'] = 'The most frequent values.';
-      STRINGS['lesson.demo.callout.run_source'] = 'Press the field name.';
-      const doc = browser.element('pane-frame').contentDocument;
-      const plain = doc.querySelector;
-      let title = 'Top values';
-      doc.querySelector = (selector) => (selector === '[data-test-subj="fieldPopoverHeader_fieldDisplayName"]'
-        ? {{textContent: title, getBoundingClientRect: () => box(300, 200, 100, 20)}} : plain(selector));
-      {to("run_source")}
-      await browser.click('step-open');
-      kibana.set('[data-test-subj="field-source_ip"]', box(20, 400, 160, 24));
-      kibana.set('[data-test-subj="dscFieldStats-topValues"]', box(200, 450, 260, 30));
-      kibana.set('[data-test-subj="dataGridColumnSelectorButton"]', box(470, 446, 116, 28));
-      await frames();
-      const before = browser.text('coach-callout');
-      title = 'source_ip';
-      await frames();
-      const spot = callout();
-      return {{before, after: browser.text('coach-callout'), over: meets(spot, {{left: 530, top: 542, width: 116, height: 28}})}};
-    """)
-
-    assert seen["errors"] == []
-    assert seen["result"]["before"] == "Press the field name."
-    assert seen["result"]["after"] == "The most frequent values."
-    assert seen["result"]["over"] is False
-
-def test_the_top_values_callout_keeps_off_the_popover_s_line_saying_how_many_records_it_counted(client):
-    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS['lesson.kibana.top_values'] = 'The most frequent values.';
-      const doc = browser.element('pane-frame').contentDocument;
-      const plain = doc.querySelector;
-      const footer = {{firstElementChild: null, textContent: 'Calculated from 1,974 records',
-                      getBoundingClientRect: () => box(150, 486, 200, 18)}};
-      const panel = {{querySelectorAll: () => [footer], getBoundingClientRect: () => box(140, 300, 260, 220)}};
-      const values = {{getBoundingClientRect: () => box(150, 420, 240, 60), closest: () => panel}};
-      doc.querySelector = (selector) => selector === '[data-test-subj="fieldPopoverHeader_fieldDisplayName"]'
-        ? {{textContent: 'source_ip', getBoundingClientRect: () => box(150, 320, 100, 20)}}
-        : selector === '[data-test-subj="dscFieldStats-topValues"]' ? values : plain(selector);
-      {to("run_source")}
-      await browser.click('step-open');
-      kibana.set('[data-test-subj="field-source_ip"]', box(20, 400, 120, 24));
-      kibana.set('[data-test-subj="dataGridColumnSelectorButton"]', box(420, 440, 116, 28));
-      await frames(4);
-      const spot = callout();
-      return {{text: browser.text('coach-callout'), spot, over: meets(spot, {{left: 210, top: 582, width: 200, height: 18}}),
-               panel: meets(spot, {{left: 200, top: 396, width: 260, height: 220}})}};
-    """)
-
-    assert seen["errors"] == []
-    assert seen["result"]["text"] == "The most frequent values."
-    assert seen["result"]["spot"] is not None and seen["result"]["over"] is False
-    assert seen["result"]["panel"] is False, "the callout sits outside the Top values popover"
-
-def test_a_hit_count_callout_keeps_off_the_histogram_whose_axis_labels_are_drawn_not_written(client):
-    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      STRINGS['lesson.demo.callout.logged'] = 'The count.';
-      const doc = browser.element('pane-frame').contentDocument;
-      const plain = doc.querySelector;
-      const input = {{value: 'url : *kim0413*', getBoundingClientRect: () => box(300, 100, 400, 36)}};
-      doc.querySelector = (selector) => (selector === '[data-test-subj="queryInput"]' ? input : plain(selector));
-      const written = [box(0, 150, 290, 690), box(300, 392, 700, 440), box(430, 358, 560, 30)].map((rect) => ({{
-        tagName: 'SPAN', firstElementChild: null, textContent: 'x', matches: () => false, getBoundingClientRect: () => rect}}));
-      const everything = doc.querySelectorAll;
-      doc.querySelectorAll = (selector) => (selector === 'body *' ? written : everything.call(doc, selector));
-      doc.createRange = () => ({{selectNodeContents(element) {{ this.element = element; }}, getBoundingClientRect() {{ return this.element.getBoundingClientRect(); }}}});
-      doc.elementFromPoint = () => null;
-      {to("logged")}
-      await browser.click('step-open');
-      kibana.set('[data-test-subj="unifiedHistogramChart"]', box(300, 160, 700, 190));
-      kibana.set('[data-test-subj="discoverQueryHits"]', box(310, 360, 110, 24));
-      await frames();
-      input.value = 'url : *kim0413* and not destination : 10.30.1.247';
-      await frames(4);
-      const spot = callout();
-      return {{text: browser.text('coach-callout'), spot, over: meets(spot, {{left: 360, top: 256, width: 680, height: 190}})}};
-    """)
-
-    assert seen["errors"] == []
-    assert seen["result"]["text"] == "The count."
-    assert seen["result"]["spot"] is not None and seen["result"]["over"] is False
 
 def test_the_query_prompt_keeps_off_the_time_range_picker_the_step_asks_to_leave_unchanged(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
@@ -2689,7 +2583,7 @@ def test_skipping_the_last_step_shows_the_lesson_s_end_and_waits_for_the_next_le
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == {"said": worded("lesson.done"), "moved": 0, "reloaded": 0, "button": True, "skipped": 1}, (
+    assert seen["result"] == {"said": worded("lesson.next.named", "lesson.next.title"), "moved": 0, "reloaded": 0, "button": True, "skipped": 1}, (
         "a skip on the last step moved on to the next lesson with no end screen")
 
 def test_the_course_end_names_the_course_and_lists_its_lessons_from_the_session_even_when_the_catalogue_does_not_answer(client):
@@ -2753,21 +2647,7 @@ def test_a_map_ring_shrinks_off_an_address_label_beside_the_node_so_the_address_
     assert ring["left"] + ring["width"] + 2 <= 60 + 494, "the ring's edge covered the first digit of the address beside it"
     assert ring["left"] < 460 and ring["top"] < 396, "the ring still surrounds the node"
 
-def test_a_hit_count_ring_holds_the_count_alone_and_not_the_field_statistics_tab_beside_it(client):
-    seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
-      {to("logged")}
-      await browser.click('step-open');
-      kibana.set('[data-test-subj="discoverQueryHits"]', box(400, 150, 80, 20));
-      kibana.set('[data-test-subj="dscViewModeFieldStatsButton"]', box(500, 146, 108, 28));
-      await frames();
-      return styled('coach-ring');
-    """)
-    ring = seen["result"]
-
-    assert seen["errors"] == []
-    assert ring["left"] + ring["width"] <= 60 + 500, "the ring took in the Field statistics tab"
-
-def test_a_sidebar_step_rings_the_line_saying_how_many_records_the_top_values_count(client):
+def test_a_sidebar_step_rings_the_field_in_the_list_and_never_the_top_values_or_the_record_count_under_them(client):
     seen = open_page(client, "/blue/1/", setup=served(), scenario=f"""
       const doc = browser.element('pane-frame').contentDocument;
       const plain = doc.querySelector;
@@ -2783,7 +2663,7 @@ def test_a_sidebar_step_rings_the_line_saying_how_many_records_the_top_values_co
     """)
 
     assert seen["errors"] == []
-    assert seen["result"] == 96 + 540 - 1, "the step asks for the record count under the values, not the values"
+    assert seen["result"] == 96 + 400 - 1, "walk: a ring on 'Calculated from 2,065 records' gave the answer away"
 
 PROBE = [{"id": "probe", "point": {"opens": "site", "dev": "toggle", "until": "dev_open", "then": {"site": "input[name=q]"}},
           "check": {"kind": "sent", "match": "<script"}},

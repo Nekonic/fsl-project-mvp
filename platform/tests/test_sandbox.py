@@ -101,6 +101,12 @@ def test_every_node_keeps_time_by_the_platform_and_fits_nova_s_user_data_limit()
         assert len(node.user_data.encode()) * 4 // 3 < sandbox.USER_DATA_LIMIT
 
 
+def test_every_node_names_itself_by_its_role_so_each_learner_prompt_reads_kali_or_waf_not_the_stack():
+    named = {node.name: yaml.safe_load(node.user_data)["hostname"] for node in planned(slot=3).nodes}
+
+    assert named == {"cr-kali": "kali", "cr-waf": "waf", "cr-infra": "infra", "cr-target": "target"}, (
+        "walk: the WAF prompt read root@cr-slot-1-waf while Kali's read kali")
+
 def test_every_node_takes_the_platform_s_ssh_as_one_sudo_user_and_keeps_its_image_s_default_user():
     plan = sandbox.plan(sandbox.read(ROOT, "board"), 1, DECLARED.origins, DECLARED.default_origin, COLLECTOR,
                         ("ubuntu", "ssh-ed25519 AAAA cr-platform"))

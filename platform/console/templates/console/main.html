@@ -50,6 +50,7 @@
   let rangeReady = true;
   let rangePhase = null;
   let rangeSlots = null;
+  let rangeReasons = null;
   let waiting = null;
   const operatorView = new URLSearchParams(location.search).has("operator");
 
@@ -178,6 +179,14 @@
     return t(rangePhase === "RESETTING" ? "range.resetting" : "range.blocked");
   }
 
+  function rangeStateShown() {
+    const told = Array.from(document.querySelectorAll("[data-failure]")).filter((one) => !one.classList.contains("hidden"))
+      .map((one) => one.querySelector("[data-failure-text]").textContent);
+    const repeated = Boolean(rangeReasons && rangeReasons.length) && rangeReasons.every((reason) => told.includes(reason));
+    field("range-state").classList.toggle("hidden", !rangeReasons || repeated);
+    field("range-blocked").innerHTML = (rangeReasons || []).map((reason) => `<li>${esc(reason)}</li>`).join("");
+  }
+
   async function start(button) {
     const card = button.closest("[data-scenario]");
     const failure = card.querySelector("[data-failure]");
@@ -221,6 +230,7 @@
     }
     failure.querySelector("[data-close-open]").classList.toggle("hidden", !full);
     failure.querySelector("[data-open-list]").classList.add("hidden");
+    rangeStateShown();
     waiting = settling && (started.body.settling || !servesNow(wargame)) ? failure : null;
     if (waiting) {
       clearTimeout(refreshTimer);
@@ -442,12 +452,9 @@
     health.classList.toggle("flex", result.ok && operatorView);
     health.innerHTML = `<span class="dot dot-${ready ? "ok" : "warn"}"></span>${esc(t(ready ? "range.healthy" : "range.not_ready_short"))}`;
 
-    field("range-state").classList.toggle("hidden", ready);
-    if (!ready && slot) {
-      const reasons = slot.phase === "RESETTING" ? [t("range.resetting")]
-        : [t("range.blocked"), ...(operatorView ? slot.blocked || [] : [])];
-      field("range-blocked").innerHTML = reasons.map((reason) => `<li>${esc(reason)}</li>`).join("");
-    }
+    rangeReasons = ready ? null : !slot ? [] : slot.phase === "RESETTING" ? [t("range.resetting")]
+      : [t("range.blocked"), ...(operatorView ? slot.blocked || [] : [])];
+    rangeStateShown();
 
     field("range-pipeline").classList.toggle("hidden", !slot || !operatorView);
     if (slot && operatorView) wireCanary();

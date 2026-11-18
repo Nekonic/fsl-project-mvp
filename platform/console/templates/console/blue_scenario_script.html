@@ -236,7 +236,7 @@ function triageRow(item) {
       <span class="text-muted">${esc(t("triage.alerts", item.alerts))}</span>
     </div>
     <div class="font-mono break-all text-heading">${esc(request || "—")}</div>
-    <div class="text-muted">${esc(t("triage.from", item.sources.join(", ") || "—"))}</div>
+    ${item.sources.length ? `<div class="text-muted">${esc(t("triage.from", item.sources.join(", ")))}</div>` : ""}
     <ul class="font-mono text-[13px] text-body flex flex-col gap-0.5">${item.rules.map((rule) =>
       `<li class="break-all">${esc(triageRule(rule))}</li>`).join("")}</ul>
     <div class="flex flex-wrap items-center gap-2 mt-1">

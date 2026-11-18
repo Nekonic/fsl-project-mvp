@@ -141,7 +141,7 @@ def test_no_foundation_question_carries_a_fixed_answer():
 
 LOCATORS = {"panel", "map", "site", "dev", "kibana", "term"}
 
-def test_every_step_opens_a_pane_points_at_one_element_and_the_last_is_solo_with_no_highlight(client):
+def test_every_step_opens_a_pane_points_at_one_element_at_most_and_the_last_is_solo_with_no_highlight(client):
     session = opened("f1")
     for taught in wargames.foundations("board"):
         *guided, last = taught["steps"]
@@ -149,7 +149,7 @@ def test_every_step_opens_a_pane_points_at_one_element_and_the_last_is_solo_with
         for shown in guided:
             point = shown["point"]
             assert "opens" in point and "pane" not in point, (taught["id"], shown["id"])
-            assert len(LOCATORS & set(point)) == 1, (taught["id"], shown["id"])
+            assert len(LOCATORS & set(point)) <= 1, (taught["id"], shown["id"])
             stage = point
             while stage.get("then"):
                 assert stage.get("until") in ("sent", "applied", "dev_open"), (taught["id"], shown["id"])
@@ -436,7 +436,7 @@ def test_every_run_step_waits_for_a_shell_prompt_ending_in_a_dollar_or_a_hash_an
     waits = [shown["point"]["term"]["match"] for taught in wargames.foundations("board") for shown in taught["steps"]
              if shown["point"].get("term", {}).get("match", "").endswith(" $")]
 
-    assert len(waits) == 4
+    assert len(waits) == 5
     for wanted in waits:
         found = re.compile(wanted)
         assert all(found.search(prompt) for prompt in ("└─$ ", "└─# ", "root@kali:~# "))

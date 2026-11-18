@@ -394,6 +394,40 @@ def test_an_open_refused_for_a_reset_says_so_at_once_and_enables_start_when_the_
         "another wargame's ready slot does not make this wargame's Start ready")
     assert seen["result"]["later"] == {"text": worded("main.start_again"), "disabled": False}
 
+RESET_ON_START = """
+const range = {resetting: false};
+browser.serve((request) => {
+  if (request.route === "/api/wargames/") {
+    return {body: [{id: "board", name: "Board", description: "", cases: 1,
+      foundations: [{id: "f1", order: 1, title: "lesson.range.title", minutes: 10, steps: 4}]}]};
+  }
+  if (request.route === "/api/range/ready/") {
+    return {body: {ready: !range.resetting, max_sessions: 4,
+      slot: {number: 1, session: null, phase: range.resetting ? "RESETTING" : "READY", wargame: "board", blocked: []}}};
+  }
+  if (request.route === "/api/sessions/" && request.method === "POST") {
+    range.resetting = true;
+    return {status: 409, body: {detail: "the range is not ready: the slot is resetting", settling: true}};
+  }
+  if (request.route === "/api/sessions/") return {body: []};
+  return {status: 404, body: {detail: "not served"}};
+});
+"""
+
+def test_a_reset_refusal_is_told_once_beside_the_pressed_start_and_not_again_in_the_banner(client):
+    seen = open_page(client, "/", setup=RESET_ON_START, scenario="""
+      await browser.wait(0);
+      document.querySelector('[data-lesson-id="f1"]').click();
+      for (let i = 0; i < 3; i += 1) await browser.settle();
+      await browser.wait(3500);
+      return {row: document.querySelector('[data-failure="board"] [data-failure-text]').textContent,
+              banner: !browser.element('range-state').classList.contains('hidden')};
+    """)
+
+    assert seen["errors"] == []
+    assert seen["result"] == {"row": worded("range.resetting"), "banner": False}, (
+        "walk: the reset notice showed twice, in the banner and in the lesson's row")
+
 def test_an_open_refused_because_the_range_is_not_standing_gives_the_learner_s_line_not_the_api_reason(client):
     seen = refused_open(client, "NOT_STANDING")["refused"]
 

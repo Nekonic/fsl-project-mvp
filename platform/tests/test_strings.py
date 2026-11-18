@@ -152,6 +152,13 @@ def test_no_shown_string_labels_a_detection_result_with_the_english_abbreviation
         "a detection result is labelled with the Korean practitioner terms (docs/DECISIONS.md), "
         "never TP, FP, FN or TN")
 
+def test_no_string_opens_with_a_short_korean_label_and_a_colon_before_its_value():
+    labelled = re.compile(r"^(?!예:)[^\s.?!:'\"]+(?: [^\s.?!:'\"]+){0,2}(?<=[\uac00-\ud7a3}])(?<!다):(?: |$)")
+    cells = {key: cell for key, text in tables().items() if not key.startswith("site.dev.")
+             for line in text.split("\n") for cell in line.split("\t") if labelled.search(cell)}
+
+    assert not cells, f"write these as a sentence, a heading or a table column (walk: the WAF banner's CRS label, the replay lines' waiting state): {cells}"
+
 def test_nothing_the_platform_sends_to_the_page_is_prose():
     from datetime import datetime, timezone
 

@@ -293,6 +293,20 @@ def test_a_search_that_lost_a_shard_is_refused_rather_than_read_as_complete():
     )
 
 
+def test_a_search_leaves_out_filebeat_s_copy_of_the_raw_log_line_that_no_detection_reads():
+    from unittest.mock import patch
+
+    from ingest import elastic
+
+    with patch("ingest.elastic.requests.post") as posted:
+        posted.return_value.ok = True
+        posted.return_value.json.return_value = {"hits": {"hits": [], "total": {"value": 0}}}
+        elastic.fetch("http://es:9200", "logs-*", *WINDOW)
+
+    assert posted.call_args.kwargs["json"]["_source"] == {"excludes": ["message"]}, (
+        "walk: closing a c2 session re-read about 80 MB, 38 MB of it this field, and took 14.1 s")
+
+
 def _failing(status=None, raises=None):
     from unittest.mock import MagicMock
 

@@ -347,6 +347,23 @@ def test_a_guided_open_that_names_no_defense_takes_the_one_its_lesson_declares(c
 
     assert (guided["defense"], plain["defense"]) == ("overbroad", "full")
 
+def test_a_guided_open_starts_its_first_lesson_when_the_session_starts_not_before_the_slot_was_chosen(client):
+    from api import views
+
+    fire, _ = attacker({})
+    chose = views._ready_slot
+
+    def slow_choice(*args):
+        time.sleep(0.05)
+        return chose(*args)
+
+    with patch("api.views.harness.fire", fire), patch("api.views._ready_slot", slow_choice):
+        opened = client.post_json("/api/sessions/", {"lesson": "f1"}).json()
+    session = Session.objects.get(pk=opened["id"])
+
+    assert session.lessons == [{"id": "f1", "started_at": session.started_at.isoformat()}], (
+        "walk: the c1 result's lesson minutes summed to 6 while the session took 5; f1 began 23 s before the session")
+
 def test_a_replayed_request_records_the_status_the_target_answered_with(client):
     session = board()
     fire, _ = attacker({"board-normal-search-with-apostrophe": "http_code=403\n"})

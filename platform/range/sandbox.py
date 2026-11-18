@@ -266,6 +266,7 @@ def managed_by(user: str, key: str) -> list:
 def user_data(node: str, role: str, env: dict[str, str], collector: str, manager: tuple[str, str] = ("", ""),
               tag: str = "", answers: str = "") -> str:
     document = {"users": managed_by(*manager)} if all(manager) else {}
+    document["hostname"] = node.removeprefix("cr-")
     document["write_files"] = [
         {"path": SLOT_ENV, "permissions": "0644", "content": slot_env(env)},
         {"path": clock.TIMESYNCD, "permissions": "0644", "content": clock.timesyncd(collector)},

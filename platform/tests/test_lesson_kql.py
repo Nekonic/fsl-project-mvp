@@ -22,10 +22,10 @@ def test_a_step_that_asks_for_a_query_rings_only_the_query_bar_until_the_learner
       const other = {{text: browser.text('coach-callout'), ring: styled('coach-ring').top}};
       input.value = 'EVENT_TYPE : alert';
       await frames();
-      return {{other, written: browser.text('coach-callout')}};
+      return {{other, written: shown('coach-ring')}};
     """)
     result = seen["result"]
 
     assert seen["errors"] == []
     assert result["other"] == {"text": "Write the KQL here.", "ring": 190}, "a count from someone else's query is not shown"
-    assert result["written"] == "The count."
+    assert result["written"] is False, "once the learner's query matches, the count is the answer and is not rung"

@@ -263,10 +263,13 @@ def sessions(request):
         session = _opened_on_a_ready_slot(adapter, dict(
             scenario=scenario, baseline=[], guidance=guidance, lesson=taught, defense=defense,
             course_scenario=played, owner=request.user,
-            lessons=[{"id": taught, "started_at": timezone.now().isoformat()}] if guidance and not played else [],
+            lessons=[{"id": taught}] if guidance and not played else [],
         ))
     except HoldsASession as holding:
         return holding.reply()
+    if session.lessons:
+        session.lessons = [{**session.lessons[0], "started_at": session.started_at.isoformat()}]
+        session.save(update_fields=["lessons"])
     try:
         adapter = _range(session, adapter)
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="cr-open") as pool:
