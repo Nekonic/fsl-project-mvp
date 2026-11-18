@@ -337,11 +337,11 @@ ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS
 cd /opt/cr
 sudo docker compose stop platform
 sudo docker compose run --rm --no-deps --user cr --entrypoint sh -v ./backups:/backups:ro platform \
-  -c 'rm -f /data/db.sqlite3-journal && cp /backups/db-20260925T020000Z.sqlite3 /data/db.sqlite3'
+  -c 'rm -f /data/db.sqlite3-journal /data/db.sqlite3-wal /data/db.sqlite3-shm && cp /backups/db-20260925T020000Z.sqlite3 /data/db.sqlite3'
 sudo docker compose start platform
 ```
 
-`-journal` 파일은 꼭 지웁니다. 남아 있으면 SQLite가 복원한 파일 위에 옛 내용을
+`-journal`, `-wal`, `-shm` 파일은 꼭 지웁니다. 남아 있으면 SQLite가 복원한 파일 위에 옛 내용을
 재생합니다.
 
 ## 보안

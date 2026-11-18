@@ -2015,8 +2015,9 @@ binary log via a substrate runner, proven end to end against the live stack.
       up; an IDS alert is credited to its X-Forwarded-For client when its
       http record arrives after it) and those modules passed again. The
       final run: acceptance 69 passed, 13 errors (one red team fixture whose
-      sign-in timed out while the SQLite store was locked for 30 s or more;
-      the lock holder **[unverified]**; those four modules run again once:
+      sign-in timed out while the SQLite store was locked for 30 s or more
+      during a disk stall; the store is now WAL, `docs/DECISIONS.md`; those
+      four modules run again once:
       14 passed), unit and API 1932, ratchet no regression
       (`docs/state/now.md`).
 - [x] Learner shells reach no metadata service: Kali, the WAF and board time

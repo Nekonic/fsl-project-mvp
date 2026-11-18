@@ -254,6 +254,28 @@ def test_a_writer_waits_for_the_store_instead_of_failing_a_scheduled_attack():
 
     assert settings.DATABASES["default"]["OPTIONS"]["timeout"] >= 30
 
+def test_a_writer_holding_the_store_exclusively_does_not_lock_the_scenario_tick_out(tmp_path):
+    from django.db import connections
+
+    connection = connections["default"]
+    made = type(connection)({**connection.settings_dict, "NAME": str(tmp_path / "db.sqlite3"),
+                             "OPTIONS": {**connection.settings_dict["OPTIONS"], "timeout": 0.1}})
+    writer, reader = (made.get_new_connection(made.get_connection_params()) for _ in range(2))
+    writer.isolation_level = None
+    writer.execute("CREATE TABLE api_session (id INTEGER PRIMARY KEY)")
+    reader.execute("SELECT count(*) FROM api_session").fetchone()
+    writer.execute("BEGIN EXCLUSIVE")
+    writer.execute("INSERT INTO api_session DEFAULT VALUES")
+
+    try:
+        assert reader.execute("SELECT count(*) FROM api_session").fetchone() == (0,), (
+            "2026-11-18 04:35Z: with a rollback journal a writer committing on a stalled disk held the store "
+            "exclusively and the scenario tick's and /api/range/ready/'s reads failed with 'database is locked'")
+    finally:
+        writer.execute("ROLLBACK")
+        writer.close()
+        reader.close()
+
 def test_a_judgement_window_judges_the_items_listed_when_it_opened_not_ones_that_arrive_later_with_an_earlier_time():
     session = opened("1.1")
     shown = str(uuid.uuid4())

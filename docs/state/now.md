@@ -43,8 +43,10 @@ Its 13 errors are one fixture: the red team run (`test_acceptance.py`,
 the platform's SQLite store was locked: `database is locked` after the 30 s
 busy timeout on the scenario tick at 04:35:22Z and on two
 `/api/range/ready/` reads at 04:35:45Z; no session was open then and two
-resets ran. What held the lock is **[unverified]**: the platform logs no
-request and no lock holder. Those four modules run again once: 14 passed in 153
+resets ran. No code path held it: the failed statements were reads, which
+a rollback journal refuses only while a writer commits, and the platform VM's
+disk stalled then (`docs/DECISIONS.md` "The platform store runs in WAL mode";
+the store is WAL with `synchronous=NORMAL` on `dev`, not yet deployed). Those four modules run again once: 14 passed in 153
 s (Next item 1).
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and the
@@ -663,13 +665,11 @@ Nothing. Gate 2 is only for `main` (Next, item 7).
 
 ## Next, in order
 
-1. The rest of P8 on the live Heat range: the store lock that failed the final
-   run's red team sign-in (above): find what holds SQLite's write lock for
-   30 s or more with no session open (log statements over a second, or the
-   holder's stack, then fix it); the holder is **[unverified]**. The four
-   modules it errored, run again once: 14 passed in 153 s
-   (`~/.cache/fsl-work/rerun-heat4.log`); it did not recur. Then an
-   answer-blind walk.
+1. The rest of P8 on the live Heat range: deploy the WAL store (above) with
+   the next platform rebuild and check `PRAGMA journal_mode` answers `wal`
+   on `/data/db.sqlite3`. The four modules the lock errored, run again once:
+   14 passed in 153 s (`~/.cache/fsl-work/rerun-heat4.log`); it did not
+   recur. Then an answer-blind walk.
    Measured: a closed session's stack is READY again about 4-4.5 min after
    the close (`cr-slot-1` closed 04:11:47Z, READY by 04:16:19Z; `cr-slot-3`,
    retargeted to corp, closed 04:12:10Z, READY by 04:16:19Z); stack 2 after

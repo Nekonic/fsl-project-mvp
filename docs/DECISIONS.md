@@ -9587,3 +9587,45 @@ board each time out on 169.254.169.254:80 (`bash -c 'exec
 3<>/dev/tcp/169.254.169.254/80'`, exit 124, on `cr-slot-3`) and
 `test_range_isolation.py` passed; `cr-mgmt` and `cr-senders` hold only the
 two egress rules (IPv4 to `cr-reach`, udp 67).
+
+## 2026-11-18 — The platform store runs in WAL mode with `synchronous=NORMAL`
+
+The final full verify on the Heat range lost its red team fixture to a 30 s
+sign-in timeout at about 04:35:20Z while SQLite refused the store: the
+scenario tick's `SELECT` on `api_session` failed with `database is locked` at
+04:35:22Z and two `/api/range/ready/` reads of `django_session` at 04:35:45Z.
+Those were reads. Under the rollback journal (`journal_mode` was `delete`) and
+`transaction_mode: IMMEDIATE`, a transaction held open only holds RESERVED,
+which readers pass; readers wait only while a writer holds PENDING or
+EXCLUSIVE, that is while it writes its pages into the file and syncs them. So
+no transaction held across a slow call (every `transaction.atomic` and
+`select_for_update` in `api/` was read for one; none spans an ssh, Heat or
+Elasticsearch call) explains it: a writer was in its commit for 30 s and more.
+The disk was stalling then: `sar` on the platform VM for 04:30-04:40 has the
+day's worst interval on `vda` (await 559 ms, queue 15.6, iowait 40 % at 27
+tps), Elasticsearch's data-path health check took 7609 ms at 04:36:03Z, and
+Kibana's requests to Elasticsearch timed out from 04:35:04Z to 04:36:32Z;
+earlier the same day Elasticsearch logged cluster-state writes of up to 29 s.
+Which request was the committing writer is **[unverified]**: the platform logs
+no access and no lock holder. The two resets running then build eight VMs on
+the cloud and are the likely load **[unverified]**.
+
+SQLite's documentation: in WAL mode "readers do not block writers and a writer
+does not block readers", and with `synchronous` NORMAL "the checkpoint is the
+only operation to issue an I/O barrier or sync operation"
+(https://www.sqlite.org/wal.html); "WAL mode is always consistent with
+synchronous=NORMAL, but WAL mode does lose durability"
+(https://www.sqlite.org/pragma.html#pragma_synchronous). The store's
+`OPTIONS` now carry `init_command: PRAGMA journal_mode=WAL; PRAGMA
+synchronous=NORMAL` (Django 5.1+). A commit no longer syncs, and a writer
+waiting on the disk no longer locks readers out. The cost: a power loss or
+crash of the platform VM may roll back its last transactions; the file stays
+consistent. WAL needs every process on one host, which the store has (one
+volume on the platform VM). The two restores that copy a backup over the
+store (`bin/platform-rebuild`, the README's) now delete `-wal` and `-shm` with
+`-journal`, because a WAL file left beside a replaced store is replayed into
+it. `bin/backup` takes its snapshot with `VACUUM INTO`, which reads the WAL.
+Rejected: raising the busy timeout (the client's 30 s sign-in timeout would
+still lapse); logging the lock holder first (the cause is visible without it,
+and a reader cannot be blocked by a writer in WAL mode whichever writer it is).
+

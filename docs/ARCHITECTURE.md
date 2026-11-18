@@ -62,6 +62,7 @@
 - 탐지 기록과 고객 요청을 트랜잭션당 2,000행씩 지운 뒤 세션을 지움. 세션 여러 개를 정리해도 쓰기 잠금을 오래 잡지 않음
 - 플랫폼 DB는 `transaction_mode: IMMEDIATE`(`cr/settings.py`)인 SQLite. 읽고 쓰는 트랜잭션은 시작할 때 쓰기 잠금을 잡음
 - 잠금이 걸려 있으면 `database is locked`로 바로 실패하지 않고 busy timeout 30초까지 기다림
+- WAL 모드에 `synchronous=NORMAL`(`init_command`). 쓰는 쪽이 커밋하는 동안에도 읽기는 막히지 않고, 커밋마다 fsync하지 않음. fsync는 체크포인트에서만 함
 - `bin/backup`: `VACUUM INTO`로 플랫폼 DB 스냅숏을 만들고 최근 `--keep`개(기본 1)만 남김. `bin/platform-rebuild`와 `bin/cloud down`은 `cloud.yaml`의 `backups: {keep}` 값을 씀
 
 워게임은 세션 스택의 target VM에서 컨테이너로 돕니다. 이미지는 target 이미지를 구울 때 GHCR에서 받아 둔 것입니다.
