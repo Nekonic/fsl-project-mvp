@@ -1,6 +1,7 @@
 import functools
 import hashlib
 import ipaddress
+import itertools
 import json
 import logging
 import math
@@ -2265,6 +2266,7 @@ def ingest_detections(request, session_id):
     return _reply(_ingest(session, within))
 
 INGEST_PAGES = 40
+INGEST_BATCH = 500
 
 def _fetched(index, start, end, newest_first):
     documents, truncated = elastic.fetch(settings.ELASTIC_URL, index, start, end, newest_first=newest_first)
@@ -2339,7 +2341,8 @@ def _ingest(session, within=None, since=None):
         ))
 
     before = session.detections.count()
-    Detection.objects.bulk_create(rows, ignore_conflicts=True)
+    for batch in itertools.batched(rows, INGEST_BATCH):
+        Detection.objects.bulk_create(batch, ignore_conflicts=True)
     ingested = session.detections.count() - before
 
     reply = {"ingested": ingested, "skipped": skipped, "stale": stale, "enabled": enabled}
@@ -3063,7 +3066,41 @@ def range_ready(request):
     if not hasattr(adapter, "plan_slot"):
         return _reply({"ready": True, "substrate": "compose", "slot": None,
                        "max_sessions": getattr(adapter, "max_sessions", 1)})
-    return _reply(_readiness(adapter) | {"max_sessions": getattr(adapter, "max_sessions", 1)})
+    return _reply(_kept_readiness(adapter) | {"max_sessions": getattr(adapter, "max_sessions", 1)})
+
+READY_FRESH = 15.0
+_ready_kept: dict = {}
+_ready_turn = threading.Lock()
+
+def _ready_inputs(adapter):
+    return [_holders(), [reset.standing(number)["state"] for number in range(1, getattr(adapter, "slots", 1) + 1)]]
+
+def _kept_readiness(adapter):
+    kept = _ready_kept.get("verdict")
+    if kept and kept["inputs"] == _ready_inputs(adapter):
+        if time.monotonic() - kept["at"] >= READY_FRESH and _ready_turn.acquire(blocking=False):
+            threading.Thread(target=_refresh_readiness, args=(adapter,), name="cr-ready-refresh", daemon=True).start()
+        return kept["readiness"]
+    with _ready_turn:
+        kept = _ready_kept.get("verdict")
+        if kept and kept["inputs"] == _ready_inputs(adapter):
+            return kept["readiness"]
+        return _read_readiness(adapter)
+
+def _read_readiness(adapter):
+    inputs = _ready_inputs(adapter)
+    readiness = _readiness(adapter)
+    _ready_kept["verdict"] = {"inputs": inputs, "at": time.monotonic(), "readiness": readiness}
+    return readiness
+
+def _refresh_readiness(adapter):
+    try:
+        _read_readiness(adapter)
+    except Exception:
+        log.exception("refreshing the range's readiness failed")
+    finally:
+        _ready_turn.release()
+        connection.close()
 
 CANARY_CASE = {
     "name": "range-canary",

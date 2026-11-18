@@ -184,3 +184,26 @@ def test_an_alert_read_before_its_request_gets_the_marker_when_the_request_arriv
         "without a marker, and every later tick skipped it as already known - "
         "the case it caught never owned it"
     )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_burst_of_alerts_is_stored_in_bounded_batches_each_committed_on_its_own(client):
+    from django.db import connection
+
+    session_id = client.post_json("/api/sessions/", {}).json()["id"]
+    burst = [alert(f"burst-{n}", timezone.now()) for n in range(5)]
+    stored = Detection.objects.bulk_create
+    batches = []
+
+    def recorded(rows, **options):
+        batches.append((len(rows), connection.in_atomic_block))
+        return stored(rows, **options)
+
+    with patch("api.views.elastic.fetch", return_value=(burst, None)), patch("api.views.INGEST_BATCH", 2), \
+            patch.object(Detection.objects, "bulk_create", recorded):
+        answer = client.post_json(f"/api/sessions/{session_id}/ingest/").json()
+
+    assert answer["ingested"] == 5
+    assert batches == [(2, False), (2, False), (1, False)], (
+        "one sqlmap run drew 20,049 alerts; stored in one transaction they held the store's write lock for "
+        "about 6 s on the platform VM's disk while scheduled attacks waited to record themselves")

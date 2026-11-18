@@ -353,8 +353,7 @@ def _items(session) -> list[dict]:
     if not markers:
         return []
     found = session.detections.filter(marker__in=markers)
-    rules = (found.order_by().annotate(rule=KT("raw__details__ruleId"), sid=KT("raw__alert__signature_id"))
-             .values("marker", "source", "signature", "rule", "sid")
+    rules = (found.order_by().values("marker", "source", "signature", "rule")
              .annotate(n=Count("id"), first=Min("timestamp"), last=Max("timestamp")))
     firsts = found.order_by().values("marker").annotate(first_id=Min("id")).values_list("first_id", flat=True)
     shown = {row["marker"]: row for row in Detection.objects.filter(id__in=list(firsts)).annotate(
@@ -375,7 +374,7 @@ def _items(session) -> list[dict]:
     return sorted(items, key=lambda item: item["first"])
 
 def _item(item, rows, shown, sources, triage) -> dict:
-    engines = [{"engine": row["source"], "rule": str(row["rule"] or row["sid"] or ""), "signature": row["signature"],
+    engines = [{"engine": row["source"], "rule": str(row["rule"] or ""), "signature": row["signature"],
                 "count": row["n"]} for row in sorted(rows, key=lambda row: -row["n"])]
     waf = [row for row in rows if row["source"] == "modsecurity"]
     blocked = any(str(row["rule"] or "").startswith(CRS_TOTALS) for row in waf)

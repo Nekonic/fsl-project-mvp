@@ -402,6 +402,29 @@ def test_triage_lists_what_a_defender_sees_and_no_label(client):
     assert {rule["rule"] for rule in by_waf["blocked"]["rules"]} == {"920272", "949110"}
     assert by_waf["none"]["alerts"] == 3 and by_waf["none"]["request"] == {"method": "GET", "path": "/?sort=x"}
 
+def test_triage_counts_alerts_per_rule_from_the_stored_rule_without_parsing_every_alert_s_raw_json():
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    session = opened("1.1")
+    marker = str(uuid.uuid4())
+    customer(session, timezone.now(), status=403, marker=marker)
+    for rule in ("942360", "942362", "942362"):
+        Detection.objects.create(session=session, detection_id=str(uuid.uuid4()), source="modsecurity",
+                                 signature="Detects concatenated basic SQL injection and SQLLFI attempts",
+                                 timestamp=timezone.now(), marker=marker, raw={"details": {"ruleId": rule}})
+    alert(session, marker, source="suricata", rule="2100498")
+
+    with CaptureQueriesContext(connection) as queries:
+        rules = scenario_run._items(session)[0]["rules"]
+
+    assert {(rule["engine"], rule["rule"], rule["count"]) for rule in rules} == {
+        ("modsecurity", "942362", 2), ("modsecurity", "942360", 1), ("suricata", "2100498", 1)}
+    grouped = [query["sql"] for query in queries if "GROUP BY" in query["sql"] and '"signature"' in query["sql"]]
+    assert grouped and not any("JSON" in sql.upper() for sql in grouped), (
+        "2026-11-18 06:49Z: triage parsed every alert's raw JSON per poll; at 99,000 alerts that took 4.7 s idle, "
+        "the 15 s triage polls overlapped and the platform's requests queued up to 83 deep for 15 minutes")
+
 def test_triage_leaves_out_replays_and_the_learner_s_own_browsing(client):
     session = opened("1.1")
     replay = Case.objects.create(session=session, case_id=str(uuid.uuid4()), name=SQLMAP, malicious=True,

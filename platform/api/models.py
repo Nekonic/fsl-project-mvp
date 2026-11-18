@@ -2,6 +2,8 @@ import secrets
 
 from django.conf import settings
 from django.db import models
+from django.db.models.fields.json import KT
+from django.db.models.functions import Coalesce
 
 from scoring.types import CaseRecord, DetectionRecord
 
@@ -108,6 +110,8 @@ class Detection(models.Model):
     dest_host = models.CharField(max_length=128, blank=True, default="")
     marker = models.CharField(max_length=64, null=True, blank=True)
     raw = models.JSONField(default=dict, blank=True)
+    rule = models.GeneratedField(expression=Coalesce(KT("raw__details__ruleId"), KT("raw__alert__signature_id")),
+                                 output_field=models.CharField(max_length=32, null=True), db_persist=True)
 
     class Meta:
         ordering = ["timestamp"]

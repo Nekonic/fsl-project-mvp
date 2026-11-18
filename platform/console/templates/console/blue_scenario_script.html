@@ -8,6 +8,7 @@ const ENDED = ["passed", "failed"];
 let scenario = null;
 let scenarioReadAt = 0;
 let scenarioReading = false;
+let triageReading = false;
 
 function remembered(key, fallback) {
   try {
@@ -302,7 +303,8 @@ function triageWire(row) {
 }
 
 async function triageOpen() {
-  const read = await api(scenarioPath("triage/"));
+  triageReading = true;
+  const read = await api(scenarioPath("triage/")).finally(() => { triageReading = false; });
   if (!read.ok) {
     field("triage-list").innerHTML = `<li class="text-muted">${esc(detail(read))}</li>`;
     return;
@@ -354,9 +356,9 @@ async function scenarioStart(started) {
     if (scenario.phase === "window" && scenarioLeft() === 0 && !scenarioReading) scenarioRead();
   }, 1000);
   setInterval(() => {
-    if (!document.hidden && scenario && scenario.phase !== "closed") scenarioRead();
+    if (!document.hidden && scenario && scenario.phase !== "closed" && !scenarioReading) scenarioRead();
   }, SCENARIO_POLL_MS);
   setInterval(() => {
-    if (!document.hidden && paneOpen("triage") && !field("triage-list").querySelector("[data-got-in].flex, [data-kind-of].flex")) triageOpen();
+    if (!document.hidden && !triageReading && paneOpen("triage") && !field("triage-list").querySelector("[data-got-in].flex, [data-kind-of].flex")) triageOpen();
   }, TRIAGE_POLL_MS);
 }

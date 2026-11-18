@@ -79,3 +79,28 @@ def test_a_corp_slot_is_ready_once_corp_s_own_ground_truth_reads(client):
 
     assert asked == ["corp"], "a corp slot runs no board, so its board ground truth never reads"
     assert body["slot"]["checks"]["ground_truth"] is True
+
+def test_readiness_polls_reach_the_cloud_once_while_the_answer_is_fresh_and_a_stale_one_is_refreshed_behind_it(client):
+    import threading
+
+    from api import views
+
+    class Counted(Cloud):
+        asked = 0
+
+        def plan_slot(self):
+            Counted.asked += 1
+            return super().plan_slot()
+
+    cloud = Counted()
+    first, again = _get(client, cloud).json(), _get(client, cloud).json()
+    assert Counted.asked == 1 and first == again, (
+        "2026-11-18: every GET /api/range/ready/ listed the Heat stacks and read each free slot's target and sensor "
+        "over SSH, 13-26 s per call, holding one of the platform's 16 request threads each time")
+
+    views._ready_kept["verdict"]["at"] -= views.READY_FRESH
+    stale = _get(client, cloud).json()
+    for refresh in [thread for thread in threading.enumerate() if thread.name == "cr-ready-refresh"]:
+        refresh.join(5)
+
+    assert stale == first and Counted.asked == 2
