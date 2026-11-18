@@ -704,6 +704,11 @@ The builder needs no floating IP when ssh reaches it through the platform VM,
 which has a port on `cr-platform`: the WAF re-bake of 2026-11-18 went that
 way.
 
+The builder takes one instance of the project's quota, and the full default
+pool takes all of it (§3.2: 17 of 17 on this cloud), so `server create`
+fails while the pool stands. Free one first: an admin raises `instances` by
+one, or one range stack is deleted for the bake.
+
 A builder named `cr-build-<...>` or carrying the `cr_image` property would be
 deleted by `DELETE leftovers/` and `bin/cloud down` as a builder of the VM
 range; name it otherwise.
@@ -718,7 +723,12 @@ snapshot 2 min 30 s. `cloud.yaml` names `compute.images.waf: cr-waf-bake2`;
 `cr-waf-bake2`, `cr-infra-bake1` and `cr-target-bake1`, each of virtual size
 30 GB and `min_disk` 30 GB, which `dba.small`'s 30 GB holds (§3.3). How long
 the other bakes take and how long the Kali image takes to boot once it is
-cached on the compute node are **[unverified]**.
+cached on the compute node are **[unverified]**. `cr-kali-bake2` was baked on
+2026-11-18 from `deploy/roles/kali/` on `dev` (sslh's generator masked,
+`cloud-init.target` wanted) on an `m1.medium` builder from `cr-kali-base`,
+reached through the platform VM as the user `kali`: the builder's
+`cloud-init-local` took about 5 min before ssh answered, `install.sh` 43 min
+27 s, the snapshot 10 min 54 s; virtual size 30 GB, `min_disk` 30 GB.
 
 A range stack names its images by `compute.images`, and the stack's digest
 holds the names, not the content (§6, §7): bake a changed role under a new
