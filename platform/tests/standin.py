@@ -10,7 +10,7 @@ def refused(what: str) -> RangeUnavailable:
     return RangeUnavailable(
         f"this unit test supplied no range, so {what} was refused. Production "
         f"code sees the same state when the substrate is down; a test that "
-        f"needs a range must stub api.views.substrate"
+        f"needs a range must supply its own substrate"
     )
 
 class StandIn:

@@ -1,14 +1,10 @@
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
-from django.contrib.auth import get_user_model
 
 import jump
-from api.models import Session
 from range.ports import Ran, RangeUnavailable
-from tests.conftest import ApiClient
 
 pytestmark = pytest.mark.django_db
 
@@ -31,26 +27,6 @@ class OneKali:
             self.sent.append((argv, stdin))
             return self.answer
         return run
-
-
-def learner(name, staff=False):
-    user = get_user_model().objects.create_user(name, password="range-practice-42", is_staff=staff)
-    client = ApiClient()
-    client.force_login(user)
-    return client, user
-
-
-@pytest.fixture
-def kali():
-    standing = OneKali()
-    with patch("api.views.substrate", lambda: standing):
-        yield standing
-
-
-@pytest.fixture
-def owned():
-    client, user = learner("learner1")
-    return client, Session.objects.create(scenario="board", baseline=[], owner=user)
 
 
 def test_a_key_may_forward_only_to_its_session_s_kali_ssh_port_and_nothing_else():
@@ -108,65 +84,4 @@ def test_a_second_key_for_a_session_replaces_its_first_and_leaves_other_sessions
     assert jump.grants() == [other.grant]
     assert jump.revoke(7) is None
 
-
-def test_the_owner_gets_a_key_once_and_kali_gets_its_public_half(kali, owned):
-    client, session = owned
-
-    issued = client.post_json(f"/api/sessions/{session.pk}/ssh/")
-    read = client.get(f"/api/sessions/{session.pk}/ssh/").json()
-
-    assert issued.status_code == 201, issued.content
-    body = issued.json()
-    assert body["private_key"].startswith("-----BEGIN OPENSSH PRIVATE KEY-----")
-    assert "private_key" not in read and read["issued"] is True
-    assert read["fingerprint"] == body["fingerprint"] == jump.granted(session.pk).fingerprint
-    assert body["host"] == "board-kali" and body["key_file"] == f"~/.ssh/cr-session-{session.pk}"
-    assert "Host board-kali\n" in body["config"] and "    ProxyJump board-kali-jump\n" in body["config"]
-    assert f"    HostName {KALI}\n" in body["config"] and "    HostName testserver\n" in body["config"]
-    [(argv, stdin)] = kali.sent
-    assert argv[:2] == ["sudo", "sh"] and "authorized_keys" in argv[-1]
-    assert stdin == f"{jump.granted(session.pk).public_key} cr-session-{session.pk}\n"
-
-
-def test_another_learner_and_an_admin_who_did_not_open_the_session_get_no_key(kali, owned):
-    _, session = owned
-    other, _ = learner("learner2")
-    admin, _ = learner("admin2", staff=True)
-
-    assert other.post_json(f"/api/sessions/{session.pk}/ssh/").status_code == 404
-    assert other.get(f"/api/sessions/{session.pk}/ssh/").status_code == 404
-    assert admin.post_json(f"/api/sessions/{session.pk}/ssh/").status_code == 403
-    assert jump.grants() == [] and kali.sent == []
-
-
-def test_closing_the_session_revokes_its_key_on_the_jump_and_on_kali(kali, owned):
-    client, session = owned
-    client.post_json(f"/api/sessions/{session.pk}/ssh/")
-
-    assert client.post_json(f"/api/sessions/{session.pk}/close/").status_code == 200
-
-    assert jump.granted(session.pk) is None
-    assert client.get(f"/api/sessions/{session.pk}/ssh/").json() == {"issued": False}
-    dropped = kali.sent[-1]
-    assert f"' cr-session-{session.pk}$'" in dropped[0][-1] and "cat >>" not in dropped[0][-1]
-    assert client.post_json(f"/api/sessions/{session.pk}/ssh/").status_code == 409
-
-
-def test_a_kali_that_refuses_the_key_leaves_no_key_on_the_jump(owned):
-    client, session = owned
-    refusing = OneKali(answer=Ran(1, "no such user kali"))
-
-    with patch("api.views.substrate", lambda: refusing):
-        answer = client.post_json(f"/api/sessions/{session.pk}/ssh/")
-
-    assert answer.status_code == 503 and "no such user kali" in answer.json()["detail"]
-    assert jump.grants() == []
-
-
-def test_a_slot_with_no_kali_address_issues_no_key(owned):
-    client, session = owned
-
-    with patch("api.views.substrate", lambda: OneKali(address="")):
-        assert client.post_json(f"/api/sessions/{session.pk}/ssh/").status_code == 503
-    assert jump.grants() == []
 

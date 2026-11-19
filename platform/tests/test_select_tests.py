@@ -56,11 +56,11 @@ SMALL = {
     "docs/STATE.md": "state\n",
     "platform/topology.py": "def layout():\n    return []\n",
     "platform/scoreboard.py": "def board():\n    return {}\n",
-    "platform/api/__init__.py": "",
-    "platform/api/views.py": "import topology\n\ndef show():\n    return topology.layout()\n",
+    "platform/match/__init__.py": "",
+    "platform/match/views.py": "import topology\n\ndef show():\n    return topology.layout()\n",
     "platform/tests/__init__.py": "",
     "platform/tests/test_topology.py": "import topology\n\ndef test_layout():\n    assert topology.layout() == []\n",
-    "platform/tests/test_views.py": "from api import views\n\ndef test_show():\n    assert views.show() == []\n",
+    "platform/tests/test_views.py": "from match import views\n\ndef test_show():\n    assert views.show() == []\n",
     "platform/tests/test_scoreboard.py": "import scoreboard\n\ndef test_board():\n    assert scoreboard.board() == {}\n",
     "platform/console/templates/console/blue_topology.html": "<div id=\"map\"></div>\n",
     "platform/tests/test_topology_console.py": (
@@ -89,7 +89,7 @@ def test_a_module_change_selects_the_test_files_that_import_it(repo):
     chosen = selector.select(root, {"platform/topology.py": "M"})
 
     assert selected(chosen) == ["test_topology.py", "test_views.py"], (
-        "test_topology imports topology and test_views imports api.views, which imports "
+        "test_topology imports topology and test_views imports match.views, which imports "
         "it; test_scoreboard reaches neither"
     )
     assert chosen.unit_kind == "some"
@@ -109,7 +109,7 @@ def test_a_template_rendered_for_a_requested_page_selects_the_test_requesting_it
         **SMALL,
         "platform/cr/__init__.py": "",
         "platform/cr/urls.py": (
-            "from django.urls import path\n\nfrom api import views\nfrom console import views as console\n\n"
+            "from django.urls import path\n\nfrom match import views\nfrom console import views as console\n\n"
             "urlpatterns = [\n    path(\"api/show/\", views.show),\n"
             "    path(\"blue/<int:session_id>/\", console.blue),\n]\n"
         ),
@@ -137,11 +137,11 @@ def test_reading_a_python_file_as_text_does_not_pull_in_what_it_imports(repo):
         **SMALL,
         "platform/tests/test_seams.py": (
             "from pathlib import Path\n\ndef test_views_is_short():\n"
-            "    assert Path('api/views.py').read_text()\n"
+            "    assert Path('match/views.py').read_text()\n"
         ),
     })
 
-    reaches_views = selector.select(root, {"platform/api/views.py": "M"})
+    reaches_views = selector.select(root, {"platform/match/views.py": "M"})
     reaches_topology = selector.select(root, {"platform/topology.py": "M"})
 
     assert "test_seams.py" in selected(reaches_views)

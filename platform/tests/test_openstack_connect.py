@@ -174,18 +174,6 @@ def test_services_the_cloud_moved_are_found_again(cloud, left_behind):
     )
 
 
-def test_the_console_draws_an_openstack_range(cloud, client, settings):
-    settings.CR_SUBSTRATE = "range.openstack.connect"
-    settings.CR_SUBSTRATE_OPTIONS = options(cloud)
-
-    response = client.get("/api/origins/")
-
-    assert response.status_code == 200, response.content[:300]
-    assert {o["id"] for o in response.json()["origins"]} == {
-        s.id for s in declared.read().segments if s.origin
-    }
-
-
 def test_settings_hand_the_openstack_substrate_its_credentials_from_the_environment():
     read = subprocess.run(
         [sys.executable, "-c",

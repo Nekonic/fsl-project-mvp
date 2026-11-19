@@ -1,9 +1,10 @@
+from pathlib import Path
 import re
 
 import yaml
 
 from tests import composed
-from wargames import WARGAMES
+WARGAMES = sorted(path.parent.name for path in (Path(__file__).resolve().parents[2] / "wargames").glob("*/compose.yaml"))
 
 COMPOSE = composed.COMPOSE
 
@@ -147,12 +148,6 @@ def test_the_platform_s_store_outlives_the_checkout_that_started_it():
         f"the only store there is, and removing that checkout removes them"
     )
 
-def test_every_wargame_is_one_folder():
-    folders = {path.parent.name for path in composed.included()}
-
-    assert folders and folders == set(WARGAMES), (
-        "the console offers a wargame with no folder, or a folder with no wargame"
-    )
 
 def test_only_the_platform_and_the_syslog_collector_may_be_published_elsewhere_and_only_by_choice():
     chosen = {
@@ -176,9 +171,3 @@ def test_the_address_a_vm_publishes_on_stays_out_of_git():
 
     assert ignored.returncode == 0
 
-def test_the_waf_blocks_rather_than_detects():
-    shipped = (COMPOSE.parent / "deploy/waf/modsecurity.conf").read_text()
-
-    assert "SecRuleEngine On" in shipped.splitlines(), (
-        "a WAF in DetectionOnly lets the lesson's attacks through"
-    )

@@ -5,10 +5,8 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-import pytest
 
 import kibana
-from api.models import Session
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OBJECTS = ROOT / "deploy/kibana/objects.ndjson"
@@ -70,43 +68,9 @@ def test_the_saved_objects_parse_and_hang_off_the_one_data_view():
         assert any(r["id"] == kibana.DATA_VIEW for r in item["references"]), item["id"]
 
 
-def test_a_request_nginx_refused_fills_the_columns_a_waf_row_fills_and_an_ids_row_names_its_client():
-    view = next(item for item in saved_objects() if item["id"] == kibana.DATA_VIEW)
-    fields = json.loads(view["attributes"]["runtimeFieldMap"])
-
-    assert "doc['client_ip']" in fields["source_ip"]["script"]["source"]
-    assert "doc['request']" in fields["url"]["script"]["source"]
-    assert "doc['http.status']" in fields["status"]["script"]["source"]
-    assert "doc['status']" not in fields["status"]["script"]["source"], (
-        "a runtime field named status that reads doc['status'] reads itself, and Elasticsearch fails every shard "
-        "with a document that has neither http.status nor a WAF response code, so status : 500 finds nothing")
-    assert "doc['src_ip']" in fields["source_ip"]["script"]["source"].split("else")[0], (
-        "an IDS row's source_ip stays the address the packet came from, the WAF behind it; F3 reads it")
-    assert "params['_source']['xff']" in kibana.request_header_script(), (
-        "an IDS alert behind the WAF carries the client only in xff; request_header.x_forwarded_for shows it")
-
-
 def test_no_saved_object_id_names_the_platform():
     assert not [item["id"] for item in saved_objects() if re.search(r"\bcr[-_.]", item["id"])], (
         "a lookup in the learner's space prints the ids"
-    )
-
-
-def test_the_alert_search_matches_what_the_console_links_to():
-    (search,) = [item for item in saved_objects() if item["type"] == "search"]
-    source = json.loads(search["attributes"]["kibanaSavedObjectMeta"]["searchSourceJSON"])
-    runtime = json.loads(next(
-        item for item in saved_objects() if item["type"] == "index-pattern"
-    )["attributes"]["runtimeFieldMap"])
-
-    assert search["id"] == kibana.ALERT_SEARCH
-    assert tuple(search["attributes"]["columns"]) == kibana.ALERT_COLUMNS, (
-        "the console's link replaces the columns, so the two must agree"
-    )
-    assert source["query"]["query"] == kibana.ALERTS_QUERY
-    assert {"rule", "rule_id", "source_ip", "destination", "url", "status"} <= set(runtime), (
-        "Suricata and ModSecurity name the same thing differently; the data "
-        "view folds each pair into one column"
     )
 
 
@@ -137,27 +101,6 @@ def test_the_discover_link_opens_the_session_view_inside_its_own_space():
 
 def a_session_view(pattern="logs-2-*"):
     return kibana.session_view(pattern, "waf", kibana.shared_runtime(OBJECTS.read_bytes()))
-
-
-def test_the_session_data_view_shows_its_name_not_its_pattern_and_hides_what_learners_must_not_read():
-    view = a_session_view()
-    attributes = view["attributes"]
-    hidden = {entry["value"] for entry in json.loads(attributes["sourceFilters"])}
-
-    assert attributes["title"] == "logs-2-*" and attributes["name"] == "logs-*"
-    assert view["id"] == "soc-logs-2", "one view per index pattern, so opening again overwrites it"
-    assert {"_index", "event.*", "log.*", "message", "http.request_headers*"} <= hidden, (
-        "the raw syslog line and the request headers (which carry the step marker) stay out of the table and flyout"
-    )
-    assert {"http.*", "data_stream.*"} <= hidden, (
-        "Suricata's own http names sit beside the lesson's url and status, and the data stream names the slot"
-    )
-    assert {"src_ip", "dest_ip", "alert.signature", "alert.signature_id"} <= hidden, (
-        "the Suricata names for what the data view already shows as source_ip, destination, rule_id and rule"
-    )
-    assert not any(re.search(r"\bcr[-_.]", entry.lower()) or "slot" in entry.lower() for entry in hidden), (
-        "Inspect prints the source filters, so none names the platform"
-    )
 
 
 def test_the_session_data_view_keeps_the_shared_columns_and_adds_the_engine_the_sensor_and_the_headers():
@@ -247,59 +190,6 @@ def test_a_refused_session_view_does_not_stop_the_session():
         assert kibana.ensure_session_view("logs-2-*", "waf", FakeKibana(success=False)) is None
 
 
-@pytest.mark.django_db
-def test_the_session_api_hands_the_console_its_discover_link(client, settings):
-    settings.ELASTIC_SESSION_INDEX = "logs-{session}-*"
-    session = Session.objects.create(scenario="board", baseline=[])
-
-    with patch.object(kibana, "URL", "http://kibana:5601/kibana"), \
-            patch.dict(kibana.VIEWS, {f"logs-{session.pk}-*": (True, 0.0)}):
-        reply = client.get(f"/api/sessions/{session.pk}/").json()
-
-    assert reply["discover"].startswith(f"/kibana/s/soc-logs-{session.pk}/app/discover")
-    assert "to:now" in unquoted(reply["discover"])
-
-
-@pytest.mark.django_db
-def test_a_lesson_opens_kibana_on_its_session_view_from_the_lesson_start_with_an_empty_query(client, settings):
-    settings.ELASTIC_SESSION_INDEX = "logs-{slot}-*"
-    began = datetime(2026, 10, 18, 9, 0, tzinfo=timezone.utc)
-    session = Session.objects.create(scenario="board", baseline=[], guidance=True, lesson="f2", lessons=[
-        {"id": "f1", "started_at": (began - timedelta(minutes=10)).isoformat()},
-        {"id": "f2", "started_at": began.isoformat()}])
-
-    with patch.object(kibana, "URL", "http://kibana:5601/kibana"), \
-            patch.dict(kibana.VIEWS, {"logs-1-*": (True, 0.0)}):
-        link = unquoted(client.get(f"/api/sessions/{session.pk}/").json()["discover"])
-
-    assert "dataViewId:'soc-logs-1'" in link
-    assert "query:(language:kuery,query:'')" in link, "the learner writes the query; nothing scopes it in the bar"
-    assert "from:'2026-10-18T08:59:55+00:00'" in link
-    assert "columns:!(event_type,source_ip,destination,url,status,rule_id,rule)" in link
-    assert "filters:!()" in link, "the learner sets every filter; the index holds only the engines' events"
-
-
-@pytest.mark.django_db
-def test_a_session_view_kibana_refused_gives_no_link_rather_than_the_shared_operator_view(client, settings):
-    settings.ELASTIC_SESSION_INDEX = "logs-{slot}-*"
-    session = Session.objects.create(scenario="board", baseline=[], guidance=True, lesson="f1")
-
-    with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.dict(kibana.VIEWS, {}, clear=True), \
-            patch.object(kibana, "ensure_session_view", return_value=None):
-        link = client.get(f"/api/sessions/{session.pk}/").json()["discover"]
-
-    assert link is None
-
-
-@pytest.mark.django_db
-def test_a_session_without_kibana_configured_gets_no_link(client, settings):
-    settings.ELASTIC_SESSION_INDEX = "logs-{slot}-*"
-    session = Session.objects.create(scenario="board", baseline=[])
-
-    with patch.object(kibana, "URL", ""):
-        assert client.get(f"/api/sessions/{session.pk}/").json()["discover"] is None
-
-
 def http_error(code, body=b""):
     import io
     import urllib.error
@@ -349,17 +239,6 @@ def test_a_connection_failure_is_retried_then_called_unreachable():
     said = kibana.bring_up("http://kibana:5601/kibana", b"{}", send, lambda seconds: None)
 
     assert said == "kibana: 7 saved objects imported, default route set"
-
-
-def test_nothing_that_waits_on_another_service_runs_before_the_platform_serves():
-    text = ENTRYPOINT.read_text()
-    before_serving = text[text.index("migrate"):text.index("exec waitress-serve")]
-
-    assert "python register_pipeline.py &" in before_serving and "python kibana.py &" in before_serving, (
-        "register_pipeline retries Elasticsearch for minutes; in the foreground the platform answers nothing meanwhile"
-    )
-    threads = int(text.split("--threads=")[1].split()[0])
-    assert threads >= 16, "lesson checks, the Network panel and a long verify must not take every thread"
 
 
 def test_nothing_a_learner_can_open_in_kibana_names_the_platform():

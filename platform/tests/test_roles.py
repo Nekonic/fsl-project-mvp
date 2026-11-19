@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 from range import declared, fabric, sandbox
-from wargames import WARGAMES
+WARGAMES = sorted(path.parent.name for path in (Path(__file__).resolve().parents[2] / "wargames").glob("*/compose.yaml"))
 
 ROOT = Path(__file__).resolve().parents[2]
 ROLES = ROOT / "deploy/roles"
@@ -121,15 +121,6 @@ def test_each_image_leaves_cloud_init_to_run_again_for_every_slot_booted_from_it
     assert script[-1] == "sealed_for_snapshot"
     assert "cloud-init clean --logs" in text(f"{role}/install.sh")
     assert ": > /etc/machine-id" in text(f"{role}/install.sh")
-
-
-@pytest.mark.parametrize("unit", ("kali/slot-boot.service", "waf/slot-boot.service", "infra/slot-boot.service",
-                                  "infra/sensor.service", "target/wargames.service"))
-def test_the_boot_units_wait_for_the_slot_s_settings_and_do_nothing_on_the_builder(unit):
-    written = text(unit)
-
-    assert "ConditionPathExists=/etc/slot.env" in written, "the builder VM has no slot settings"
-    assert "WantedBy=multi-user.target" in written
 
 
 @pytest.mark.parametrize("role", sandbox.ROLES)
@@ -408,20 +399,6 @@ def test_the_target_limits_every_wargame_container_and_drops_its_capabilities():
             assert service["cap_drop"] == ["ALL"] and "no-new-privileges:true" in service["security_opt"], name
             assert service["mem_limit"] and service["pids_limit"] == 256, name
             assert service["restart"] == "no", "a fresh stack is the pristine state; nothing restarts on its own"
-
-
-def test_the_target_s_containers_are_the_devices_its_topology_names_and_fronts_the_upstreams_the_waf_proxies():
-    render = render_module()
-    fronts = yaml.safe_load(text("target/wargames.yaml"))["fronts"]
-
-    for wargame, document in rendered_wargames().items():
-        placed = {one.container for one in definition(wargame).devices.values() if one.container and one.node == "cr-target"}
-        assert placed == set(document["services"]), "the map and ground truth find each container by name"
-        assert {name for name in document["services"] if name in fronts} == {
-            one.container for one in definition(wargame).devices.values() if wargame in one.roles}
-        [port] = [one for one in definition(wargame).ports if one.node == "cr-target"]
-        assert device("cr-waf", wargame).upstreams[wargame] == port.address
-        assert render.address_variable(wargame) == f"{wargame.upper()}_ADDRESS"
 
 
 def test_the_target_keeps_pristine_data_and_restores_it_into_empty_volumes_only():

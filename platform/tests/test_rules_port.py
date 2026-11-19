@@ -1,6 +1,5 @@
 import pathlib
 import re
-from unittest.mock import patch
 
 import pytest
 
@@ -78,23 +77,6 @@ def test_a_sensor_that_cannot_be_reached_is_not_a_bad_rule_set():
     with pytest.raises(RangeUnavailable):
         suricata.validate(RULE, Sensor(unreachable_on="-T"))
 
-
-@pytest.mark.django_db
-def test_the_reload_command_comes_from_configuration(client, settings):
-    settings.CR_SENSOR_RELOAD = ("reload-it",)
-    settings.CR_EXTRA_SENSORS = ()
-    sensor = Sensor(reload=("reload-it",))
-
-    class Standing:
-        def runner(self, role, segment_id=""):
-            return sensor
-
-    with patch("api.views.substrate", Standing):
-        applied = client.post_json("/api/rules/apply/", {"content": RULE})
-
-    assert applied.status_code == 200, applied.content
-    reloaded = [argv for argv, _ in sensor.calls if "reload" in " ".join(argv)]
-    assert reloaded == [["reload-it"]], reloaded
 
 def test_validation_judges_the_exact_rules_it_was_given_and_writes_no_file():
     sensor = Sensor()

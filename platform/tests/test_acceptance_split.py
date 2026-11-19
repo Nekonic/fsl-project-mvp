@@ -36,7 +36,7 @@ def test_every_module_runs_in_exactly_one_process(workers):
 
 @pytest.mark.parametrize("workers", [1, 2, 3])
 def test_a_run_limited_to_some_modules_plans_those_and_no_others(workers):
-    only = {"test_board", "test_lesson", "test_geoip_durable"}
+    only = {"test_board", "test_evasion", "test_geoip_durable"}
     together, after = split.plan(workers, only=only)
 
     ran = [module for process in together + after for module in process.modules]

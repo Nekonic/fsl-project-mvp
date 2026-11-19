@@ -140,8 +140,7 @@
 # The same injection through sqlmap's tamper scripts written against
 # ModSecurity: keywords wrapped in MySQL versioned comments (/*!30874AND*/) and
 # spaces turned into comments. Held at paranoia level 1 (2026-10-13); no
-# lesson or availability scenario fires it, so it is the unseen variant of the
-# unknown-attack scenario.
+# lesson fires it, so it is the unseen variant of the unknown attack.
 - name: board-sqli-orderby-sqlmap-versioned
   malicious: true
   stage: initial-compromise

@@ -57,46 +57,6 @@ def test_a_session_owns_what_was_typed_inside_its_window_to_the_second(start, en
 
 pytestmark = pytest.mark.django_db
 
-def session_with(client, commands_output, exit_code=0):
-    from unittest.mock import patch
-
-    from api.models import Session
-
-    session = Session.objects.create()
-    Session.objects.filter(pk=session.pk).update(
-        started_at=datetime(2026, 9, 22, 5, 0, 5, tzinfo=timezone.utc)
-    )
-
-    class Stub:
-        def runner(self, role, segment_id=""):
-            assert role == "attacker", role
-            return reader(commands_output, exit_code)
-
-    with patch("api.views.substrate", Stub):
-        return session, client.get(f"/api/sessions/{session.id}/commands/")
-
-def test_the_console_can_ask_what_was_typed_during_a_session(client):
-    _, response = session_with(client, LOG)
-
-    assert response.status_code == 200
-    assert response.json()["commands"] == [
-        {"at": "2026-09-22T05:00:09Z", "case_id": "", "text": "ls /root"},
-        {"at": "2026-09-22T05:00:20Z", "case_id": "abc-123", "text": "nc shop.com 80"},
-    ], (
-        "what was typed before the session opened came back as part of it, so "
-        "two sessions run back to back each claim the other's commands"
-    )
-
-def test_a_log_that_cannot_be_read_is_503_and_not_an_empty_list(client):
-    _, response = session_with(
-        client, "cat: /var/log/cr/commands.log: Permission denied", exit_code=1
-    )
-
-    assert response.status_code == 503, (
-        "a log the box refused to show came back as nobody having typed "
-        "anything, so the window case scores an attack nobody can see"
-    )
-    assert "Permission denied" in response.json()["detail"]
 
 SHELL = Path(__file__).resolve().parents[2] / "deploy/kali/operator-log.sh"
 

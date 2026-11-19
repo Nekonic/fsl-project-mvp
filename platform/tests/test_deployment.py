@@ -3,7 +3,6 @@ import pathlib
 import subprocess
 import sys
 
-import pytest
 
 from tests import composed
 
@@ -86,9 +85,3 @@ def test_a_secret_key_is_generated_into_the_data_volume_only_when_none_is_given(
     assert "umask 077" in steps and steps.index("secret-key") < steps.index("waitress-serve")
     assert "echo" not in steps.split("secret-key", 1)[1].split("waitress-serve", 1)[0], "the key is never printed"
 
-@pytest.mark.django_db
-def test_an_api_not_found_answers_json_so_the_console_still_shows_the_reason(client):
-    answered = client.get("/api/sessions/999999/")
-
-    assert answered.status_code == 404 and answered.headers["Content-Type"] == "application/json"
-    assert "detail" in answered.json()

@@ -7,7 +7,7 @@ from range import declared
 
 PLATFORM = Path(__file__).resolve().parents[1]
 SCANNED = {".py", ".sh", ".conf", ".yaml", ".html"}
-NOT_CODE = re.compile(r"^(tests|api/migrations|console/static)/|^console/templates/console/strings\.html$")
+NOT_CODE = re.compile(r"^(tests|carry/tests)/")
 
 SEAMS = {
     "Elasticsearch": (
@@ -20,7 +20,7 @@ SEAMS = {
         {"rules/crs.py"}, set(),
         r"nginx -s reload|REQUEST-9\d\d|modsecurity\.conf|SecRule|/etc/nginx/modsecurity|audit\.log"),
     "the Kibana API": (
-        {"kibana.py"}, {"nginx.conf", "console/templates/console/blue.html"},
+        {"kibana.py"}, {"nginx.conf"},
         r"/api/saved_objects|kbn-xsrf|/api/spaces|/api/data_views|/api/index_patterns"),
     "the attacker box": (
         {"attacker.py"}, {"operator_log.py", "entrypoint.sh"},
@@ -29,7 +29,7 @@ SEAMS = {
         {"range/openstack.py"}, set(),
         r"/v2\.0/|/servers/detail|/v3/auth/tokens|os-keypairs|\{heat\}/stacks"),
     "the target's ground truth": (
-        {"api/loot.py", "api/effect.py"}, set(),
+        {"carry/loot.py", "carry/effect.py"}, set(),
         r'\["secret"\]\["read_path"\]|binlog'),
 }
 
