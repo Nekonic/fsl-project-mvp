@@ -1,26 +1,26 @@
 import time
 
-ROOM_REFUSALS = ("already open on the range", "resetting", "is being built again for it", " is BUILDING",
-                 " is SETTING_UP")
-CAP_REFUSAL = "409 Client Error"
-SETTLING = ("RESETTING", "REBUILDING", "CHECKING")
+ROOM_REFUSAL = "range_unavailable"
+READY = "idle"
+SETTLING = ("running",)
 
 
-def refused_for_room(status: int, said: str) -> bool:
-    return status == 409 and any(refusal in said for refusal in ROOM_REFUSALS)
+def refused_for_room(status: int, codes) -> bool:
+    return status == 503 and ROOM_REFUSAL in codes
 
 
-def refused_a_run_for_room(output: str) -> bool:
-    return CAP_REFUSAL in output and any(refusal in output for refusal in ROOM_REFUSALS)
+def free_slots(slots: list[dict], wargame: str = "") -> list[dict]:
+    return [slot for slot in slots
+            if slot.get("lease") is None and (slot.get("refill") or {}).get("state") == READY
+            and (not wargame or slot.get("wargame") in ("", wargame))]
 
 
-def has_room(readiness: dict | None, open_sessions: int) -> bool:
-    readiness = readiness or {}
-    slot = readiness.get("slot") or {}
-    settling = not readiness.get("ready", True) and (
-        slot.get("phase") in SETTLING or (slot.get("reset") or {}).get("state") == "running"
-    )
-    return not settling and open_sessions < int(readiness.get("max_sessions") or 1)
+def has_room(slots: list[dict], wargame: str = "") -> bool:
+    return bool(free_slots(slots, wargame))
+
+
+def settling(slots: list[dict]) -> bool:
+    return any((slot.get("refill") or {}).get("state") in SETTLING for slot in slots)
 
 
 def wait_for_room(room, seconds: float, poll: float, clock=time.monotonic, sleep=time.sleep) -> bool:

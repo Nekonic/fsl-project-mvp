@@ -31,7 +31,7 @@ WHOLE_UNIT_SUITE = (
     "platform/cr/settings.py",
 )
 RANGE_FACING = (
-    "wargames/", "redteam/", "deploy/", "platform/", "test/",
+    "wargames/", "redteam/", "deploy/", "platform/", "test/", "bots/", "openapi/",
     "compose.yaml", "bin/acceptance",
 )
 NOT_RANGE_FACING = ("platform/tests/", "platform/console/", "test/durations.json")

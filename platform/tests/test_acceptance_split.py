@@ -68,16 +68,16 @@ def test_the_red_team_run_is_shared_by_the_modules_that_read_it():
     assert "board_session" in shared["test_board_loot"]
     assert shared["test_window_correlation"] == shared["test_strategy_comparison"] == {"terminal_windows"}
     assert not shared["test_concurrent_sessions"], (
-        "a helper's session_id argument was read as the red-team fixture"
+        "a helper's argument was read as the red-team fixture"
     )
 
 
 def test_the_red_team_run_is_read_from_what_its_fixture_recorded():
     readers = [path.name for path in (ROOT / "test").glob("test_*.py")
-               if 'full_run["session_id"]' in path.read_text()]
+               if 'full_run["round"]' in path.read_text()]
 
-    assert "session_id" not in split.shared_fixtures(), (
-        "a test that asks the platform about the red-team session hours after it closed finds it "
+    assert "round" not in split.shared_fixtures(), (
+        "a test that asks the platform about the red-team round hours after its lease closed finds it "
         "deleted by CR_RETAIN_CLOSED_MINUTES; full_run records what the tests read when it runs"
     )
     assert not readers, readers
@@ -87,7 +87,7 @@ def test_the_red_team_run_is_read_from_what_its_fixture_recorded():
 def test_the_modules_that_hold_two_sessions_take_two_slots_and_start_first(workers):
     _, waiting = split.plan(workers)
 
-    holding = [p for p in waiting if set(p.modules) & set(split.TWO_SESSIONS)]
+    holding = [p for p in waiting if set(p.modules) & set(split.TWO_LEASES)]
     assert holding and all(p.slots == 2 for p in holding)
     assert waiting[:len(holding)] == holding, (
         "a two-slot group queued behind one-slot groups waits until two slots are free at once, "
@@ -119,45 +119,42 @@ def test_the_idle_modules_ask_for_no_session_and_touch_no_host():
     for module in split.IDLE:
         source = (split.TESTS / f"{module}.py").read_text()
         assert not shared[module], module
-        for touch in ("/api/sessions/", "run(", "from_attacker", "standing_stack", "segments("):
+        for touch in ("plays.", "/api/", "run(", "from_attacker", "standing_stack"):
             assert touch not in source, (
                 f"{module} runs while a range reset is in progress, and it {touch!r}"
             )
 
 
-def test_the_worker_count_is_what_the_range_lets_open_at_once(monkeypatch):
-    monkeypatch.setattr(split, "_ask", lambda platform, path: {"max_sessions": 2})
+def test_the_worker_count_is_the_number_of_slots_the_range_has(monkeypatch):
+    monkeypatch.setattr(split, "_slots", lambda platform: [slot(), slot(lease=3)])
     assert split.workers_the_range_allows("http://platform") == 2
 
-    def unreachable(platform, path):
+    def unreachable(platform):
         raise OSError("connection refused")
 
-    monkeypatch.setattr(split, "_ask", unreachable)
+    monkeypatch.setattr(split, "_slots", unreachable)
     assert split.workers_the_range_allows("http://platform") == 1
 
 
 def test_a_refusal_for_want_of_room_is_told_apart_from_any_other():
-    assert opening.refused_for_room(409, "2 sessions are already open on the range; close one first")
-    assert opening.refused_for_room(409, "the range is not ready: the slot is resetting")
-    assert opening.refused_for_room(409, "the range is not ready: no slot runs corp, so slot 2 is being built "
-                                         "again for it; open again once it is ready")
-    assert opening.refused_for_room(409, "the range is not ready: slot 3: cr-target is SETTING_UP; slot 3: the slot "
-                                         "runs board, not corp")
-    assert opening.refused_for_room(409, "the range is not ready: slot 2: cr-kali is BUILDING")
-    assert not opening.refused_for_room(409, "the range is not ready: the target's ground truth could not be read")
-    assert not opening.refused_for_room(503, "already open on the range")
+    assert opening.refused_for_room(503, ["range_unavailable"])
+    assert not opening.refused_for_room(503, ["sensor_unavailable"])
+    assert not opening.refused_for_room(409, ["range_unavailable"])
+    assert not opening.refused_for_room(409, ["lease_closed"])
 
 
-def test_room_means_a_free_session_on_a_range_that_has_settled():
-    assert opening.has_room({"ready": True, "max_sessions": 2}, 1)
-    assert not opening.has_room({"ready": True, "max_sessions": 2}, 2)
-    for phase in ("RESETTING", "REBUILDING", "CHECKING"):
-        assert not opening.has_room({"ready": False, "max_sessions": 2, "slot": {"phase": phase}}, 0)
-    assert not opening.has_room({"ready": False, "slot": {"reset": {"state": "running"}}}, 0)
-    assert opening.has_room({"ready": False, "slot": {"phase": "NOT_STANDING"}}, 0), (
-        "a range that will not come up by itself is waited on for half an hour"
-    )
-    assert opening.has_room({}, 0) and not opening.has_room({}, 1)
+def slot(lease=None, state="idle", wargame="board"):
+    return {"slot": 1, "wargame": wargame, "lease": lease, "refill": {"state": state, "reason": ""}}
+
+
+def test_room_means_an_unheld_slot_whose_refill_has_settled():
+    assert opening.has_room([slot(lease=4), slot()])
+    assert not opening.has_room([slot(lease=4)])
+    for state in ("running", "failed"):
+        assert not opening.has_room([slot(state=state)])
+    assert opening.has_room([slot(wargame="")], "corp") and not opening.has_room([slot()], "corp")
+    assert opening.settling([slot(), slot(state="running")]) and not opening.settling([slot(state="failed")])
+    assert not opening.has_room([])
 
 
 def test_waiting_for_room_polls_until_there_is_some_or_time_is_up():
@@ -184,20 +181,6 @@ def test_an_open_refused_for_room_is_retried_once_there_is_room():
     tries = []
     opening.retried(lambda: tries.append(1) or "409", lambda said: True, lambda: True, attempts=3)
     assert len(tries) == 3
-
-
-def test_a_red_team_run_refused_for_want_of_room_is_told_apart_from_any_other_refusal():
-    lost_the_slot = ("requests.exceptions.HTTPError: 409 Client Error: Conflict for url: "
-                     "http://localhost:8000/api/sessions/: {\"detail\": \"the range is not ready: "
-                     "slot 2: the range is resetting after the last session closed\"}")
-    assert opening.refused_a_run_for_room(lost_the_slot)
-    assert opening.refused_a_run_for_room(
-        "409 Client Error: Conflict: {\"detail\": \"2 sessions are already open on the range; close one first\"}")
-    assert not opening.refused_a_run_for_room(
-        "409 Client Error: Conflict: {\"detail\": \"cr-edge did not take its configuration\"}"), (
-        "a range that refused for a reason other than room is retried for half an hour"
-    )
-    assert not opening.refused_a_run_for_room("503 Server Error: already open on the range")
 
 
 def test_the_run_never_holds_more_slots_than_the_range_has(monkeypatch, tmp_path):

@@ -7,9 +7,10 @@ import uuid
 from urllib.parse import urlsplit
 
 import pytest
-import requests
 
-from conftest import PLATFORM_URL, STANDING
+import plays
+from conftest import STANDING
+from opening import READY
 from range import ATTACKER, BOARD, run, run_side_by_side
 
 GATEWAY = "gateway"
@@ -45,12 +46,12 @@ def addresses_of(listed: str) -> list[ipaddress.IPv4Interface]:
             if not ipaddress.ip_interface(address).ip.is_loopback]
 
 
-def waf_side(session: int | None = None) -> dict:
+def waf_side(lease: int | None = None) -> dict:
     return run_side_by_side(GATEWAY, {
         "addresses": ["ip", "-o", "-4", "addr", "show"],
         "route": ["ip", "-4", "route", "show", "default"],
         "upstreams": ["getent", "hosts", *PAST_THE_WAF],
-    }, session=session)
+    }, lease=lease)
 
 
 def front_of(waf: dict) -> str:
@@ -59,8 +60,8 @@ def front_of(waf: dict) -> str:
                 if dev == default_dev)
 
 
-def slot_of(session: int | None = None) -> str:
-    return run(LOG_SERVER, ["sh", "-c", ". /etc/slot.env && echo $SLOT"], session=session).stdout.strip()
+def slot_of(lease: int | None = None) -> str:
+    return run(LOG_SERVER, ["sh", "-c", ". /etc/slot.env && echo $SLOT"], lease=lease).stdout.strip()
 
 
 @pytest.fixture(scope="module")
@@ -201,45 +202,43 @@ def test_the_attacker_cannot_send_from_a_mac_address_neutron_did_not_give_its_po
 def _settled_after_close(slot: str) -> dict:
     deadline = time.monotonic() + SETTLE_WAIT
     while True:
-        every = requests.get(f"{PLATFORM_URL}/api/range/ready/", timeout=60).json().get("slots") or []
-        mine = next((each for each in every if str(each.get("number")) == slot), {})
-        settled = (mine.get("session") is None and (mine.get("reset") or {}).get("state") != "running"
-                   and mine.get("phase") not in ("RESETTING", "REBUILDING", "CHECKING", "NOT_STANDING"))
+        mine = next((each for each in plays.slots() if str(each.get("slot")) == slot), {})
+        settled = mine.get("lease") is None and (mine.get("refill") or {}).get("state") == READY
         if settled or time.monotonic() > deadline:
             return mine
         time.sleep(5)
 
 
-def _session_to_plant_in(standing_stack) -> int:
+def _played_to_plant_in(standing_stack) -> plays.Played:
     if standing_stack is not None:
-        return standing_stack
-    opened = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600)
-    assert opened.status_code == 201, opened.text
-    return opened.json()["id"]
+        return STANDING.played
+    return plays.play("board")
 
 
-def _closed(session: int):
-    if STANDING.session == session:
-        return STANDING.release()
-    return requests.post(f"{PLATFORM_URL}/api/sessions/{session}/close/", json={}, timeout=120)
+def _closed(played: plays.Played) -> plays.Answer:
+    if STANDING.played is played:
+        STANDING.release()
+        return plays.Answer(200, {"closed": None})
+    return plays.close(played)
 
 
-def test_a_reset_gives_the_next_session_a_new_waf_vm_with_nothing_the_last_learner_left(standing_stack):
+def test_a_refill_gives_the_next_lease_a_new_waf_vm_with_nothing_the_last_learner_left(standing_stack):
     token = uuid.uuid4().hex
-    session = _session_to_plant_in(standing_stack)
+    played = _played_to_plant_in(standing_stack)
     try:
-        slot = slot_of(session)
+        slot = slot_of(played.lease)
         planted = run(GATEWAY, ["sh", "-c", f"printf '%s\\n' {shlex.quote(token)} > {CANARY} && cat {BOOT_ID}"],
-                      session=session)
+                      lease=played.lease)
         assert planted.ok, planted.output
         booted = planted.stdout.strip()
     finally:
-        closed = _closed(session)
-    assert closed.status_code == 200, closed.text
+        closed = _closed(played)
+    assert closed.ok, closed.text
 
     settled = _settled_after_close(slot)
     after = run(GATEWAY, ["sh", "-c", f"cat {BOOT_ID}; cat {CANARY} 2>/dev/null; true"], slot=int(slot))
 
-    assert settled.get("phase") == "READY", f"slot {slot} did not settle after its reset: {settled}"
-    assert booted not in after.stdout, f"slot {slot}'s WAF is the VM the last session had, so no reset ran"
+    assert (settled.get("refill") or {}).get("state") == READY, (
+        f"slot {slot} did not settle after its refill: {settled}")
+    assert booted not in after.stdout, f"slot {slot}'s WAF is the VM the last lease had, so no refill ran"
     assert token not in after.stdout, f"the file the last learner wrote on the WAF is still there: {after.stdout}"

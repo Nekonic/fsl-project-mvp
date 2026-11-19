@@ -6,7 +6,8 @@ ERROR_CODE = "ErrorCodeEnum"
 FIELD_ERROR = "FieldError"
 ERRORS = "Errors"
 SIDES = ("attack", "defence")
-REFUSED = {"description": "refused", "content": {"application/json": {"schema": {"$ref": f"#/components/schemas/{ERRORS}"}}}}
+REFUSED = {"description": "refused",
+           "content": {"application/json": {"schema": {"$ref": f"#/components/schemas/{ERRORS}"}}}}
 
 
 def error_components(hp_named: bool) -> dict:

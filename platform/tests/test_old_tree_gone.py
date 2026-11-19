@@ -13,10 +13,10 @@ GONE = (
     "deploy/suricata/rules/no-xss.rules", "deploy/suricata/rules/no-uri-sqli.rules",
     "deploy/suricata/rules/broken-sort.rules", "deploy/suricata/rules/spaced-sort.rules",
     "docs/superpowers/plans", "metrics.json", "bin/measure",
+    "redteam/run.py", "redteam/signin.py", "redteam/__init__.py",
 )
 
 PENDING = {
-    "redteam/run.py": "moves to platform/attack or test/",
     "platform/vm-terminal.sh": "rewritten on seat-token auth",
 }
 

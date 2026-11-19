@@ -62,12 +62,11 @@ def test_the_platform_image_carries_no_docker_client_and_joins_no_socket_group()
 
 def test_acceptance_does_not_run_against_a_target_that_is_not_up_yet():
     verify = (ROOT / "bin/verify").read_text()
-    opened = verify.find('post("/api/sessions/"')
+    opened = verify.find('plays.play("board")')
 
     assert 0 <= opened < verify.index('section "acceptance'), (
         "attacks fired at a target that is still starting hit nothing, and the "
-        "run reports TP 0 - which the session protocol answers with git reset "
-        "--hard. A flaky red is worse than a slow verify"
+        "run reports TP 0. A flaky red is worse than a slow verify"
     )
 
 def test_the_platform_compose_service_does_not_turn_debug_on():

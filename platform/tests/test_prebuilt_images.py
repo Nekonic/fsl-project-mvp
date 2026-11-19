@@ -777,8 +777,8 @@ def stamped_backup(directory, name, rows):
     directory.mkdir(exist_ok=True)
     path = directory / name
     with closing(sqlite3.connect(path)) as db:
-        db.execute("CREATE TABLE api_session (id INTEGER PRIMARY KEY)")
-        db.executemany("INSERT INTO api_session DEFAULT VALUES", [()] * rows)
+        db.execute("CREATE TABLE match_lease (id INTEGER PRIMARY KEY)")
+        db.executemany("INSERT INTO match_lease DEFAULT VALUES", [()] * rows)
         db.commit()
     return path
 

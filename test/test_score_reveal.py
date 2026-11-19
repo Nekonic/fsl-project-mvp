@@ -1,15 +1,13 @@
-def test_the_score_is_withheld_while_the_session_is_open_and_shown_once_closed(board_session):
-    while_open = board_session["score_while_open"]
-    assert while_open.status_code == 200, while_open.text
-    assert while_open.json()["game"] == {"revealed": False}, (
-        "the game score leaked before the session closed; a live tally lets "
-        "either side play to the number"
+def test_a_seat_reads_no_score_while_the_round_runs_and_reads_it_once_ended(board_session):
+    while_running = board_session["score_while_running"]
+    assert while_running.status == 409 and "round_running" in while_running.codes, (
+        f"the score leaked to a seat before the round ended; a live tally lets either side play to the number: "
+        f"{while_running.text}"
     )
 
-    closed = board_session["closed"]
-    assert closed.status_code == 200, closed.text
+    assert board_session["ended"].ok, board_session["ended"].text
 
-    after = board_session["score_once_closed"]
-    assert after["game"]["revealed"] is True, after["game"]
-    for pillar in ("speed", "accuracy", "coverage", "balance"):
-        assert pillar in after["game"], after["game"]
+    after = board_session["score_once_ended"]
+    assert after.status == 200, after.text
+    assert set(after.body) >= {"objectives", "outcomes", "free_actions"}, after.body
+    assert "tp" not in after.body["objectives"], "the objective number and the per-case outcomes are kept apart"

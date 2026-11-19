@@ -17,7 +17,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from redteam import signin
+import httpx2
+
+from bots import signin
+from bots.client.api.match import round_list
+from bots.client.api.staff import staff_range
+from bots.client.models import RoundListState
 
 TESTS = ROOT / "test"
 SHARED_FIXTURE_FILES = ("conftest.py", "shared_sessions.py")
@@ -29,7 +34,7 @@ IDLE = (
     "test_origin_placement",
     "test_waf_geolocation",
 )
-TWO_SESSIONS = (
+TWO_LEASES = (
     "test_concurrent_sessions",
     "test_corp_authz",
 )
@@ -174,7 +179,7 @@ def seconds(group: list[str], durations: dict[str, float]) -> float:
 
 
 def slots_needed(group: list[str]) -> int:
-    return 2 if set(group) & set(TWO_SESSIONS) else 1
+    return 2 if set(group) & set(TWO_LEASES) else 1
 
 
 def queued(groups: list[list[str]], durations: dict[str, float]) -> list[Process]:
@@ -229,23 +234,31 @@ def totals_of(report: str) -> Totals:
     return found
 
 
-def _ask(platform: str, path: str):
-    answer = signin.signed_in(platform).get(platform + path, timeout=30)
-    answer.raise_for_status()
-    return answer.json()
+def _slots(platform: str) -> list[dict]:
+    answer = staff_range.sync_detailed(client=signin.signed_in(platform, 30))
+    if answer.status_code != 200:
+        raise OSError(f"GET /api/staff/range/ answered {int(answer.status_code)}")
+    return json.loads(answer.content)["slots"]
 
 
-def open_sessions(platform: str) -> list[int]:
+def _open_rounds(platform: str) -> list[dict]:
+    answer = round_list.sync_detailed(client=signin.signed_in(platform, 30), state=RoundListState.OPEN)
+    if answer.status_code != 200:
+        raise OSError(f"GET /api/rounds/?state=open answered {int(answer.status_code)}")
+    return json.loads(answer.content)
+
+
+def open_rounds(platform: str) -> list[int]:
     try:
-        return [row["id"] for row in _ask(platform, "/api/sessions/?state=open")]
-    except (OSError, ValueError, TypeError, KeyError, signin.Refused):
+        return [row["round"] for row in _open_rounds(platform)]
+    except (OSError, ValueError, TypeError, KeyError, httpx2.HTTPError, signin.Refused):
         return []
 
 
 def workers_the_range_allows(platform: str) -> int:
     try:
-        return max(1, int(_ask(platform, "/api/range/ready/").get("max_sessions") or 1))
-    except (OSError, ValueError, AttributeError, TypeError, signin.Refused):
+        return max(1, len(_slots(platform)))
+    except (OSError, ValueError, AttributeError, TypeError, KeyError, httpx2.HTTPError, signin.Refused):
         return 1
 
 
@@ -326,16 +339,16 @@ def main(argv: list[str] | None = None) -> int:
     alongside, waiting = plan(workers, only=set(filter(None, args.only.split(","))))
 
     print(f"{workers} {'slot' if workers == 1 else 'slots'} "
-          f"(max_sessions at {platform}/api/range/ready/)")
+          f"(the slots {platform}/api/staff/range/ lists)")
     if args.plan:
         for process in alongside + waiting:
             print(f"{process.name} ({process.estimate:.0f}s, {process.slots} slots): "
                   f"{' '.join(process.modules)}")
         return 0
 
-    already = open_sessions(platform)
+    already = open_rounds(platform)
     if already:
-        print(f"sessions {already} are open and the workers would act on them; close them first")
+        print(f"rounds {already} are open and the workers would act on them; end them first")
         return 1
     began = time.monotonic()
     logs = Path(tempfile.mkdtemp(prefix="cr-acceptance-"))

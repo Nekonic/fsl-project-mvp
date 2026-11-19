@@ -1,420 +1,157 @@
 import os
-import re
 import sys
 import time
 from pathlib import Path
 
 import pytest
-import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import httpx2
+
+import plays
 import range as the_range
-from redteam import signin
-from opening import has_room, refused_a_run_for_room, refused_for_room, retried, wait_for_room
-from range import ATTACKER, SCORER, RangeUnavailable, run, start_hint
+from bots import signin
+from bots.client.api.accounts import auth_csrf
+from opening import settling
+from range import ATTACKER, run, start_hint
 
 pytest_plugins = ["shared_sessions"]
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-PLATFORM_URL = os.environ.get("CR_PLATFORM_URL", "http://localhost:8000").rstrip("/")
-PLATFORM_FROM_SCORER = "http://localhost:8000"
+REPO_ROOT = plays.REPO_ROOT
+PLATFORM_URL = plays.PLATFORM_URL
 TARGET_PUBLIC = "http://board.com"
-
-SESSION_LINE = re.compile(r"^session (\d+) done$")
-OPENED_LINE = re.compile(r"^session (\d+) opened$")
-CLOSING = re.compile(re.escape(PLATFORM_URL) + r"/api/sessions/(\d+)/close/?")
-
-ENGINES = {"suricata", "modsecurity"}
-
-SIGNED_IN = requests.Session()
-SIGN_IN_OPEN = f"{PLATFORM_URL}/api/auth/"
-_known: dict[str, object] = {}
-
-def _as_the_operator(method, url, **kwargs):
-    if str(url).startswith(PLATFORM_URL) and not str(url).startswith(SIGN_IN_OPEN) and "platform" not in _known:
-        _known["platform"] = signin.signed_in(PLATFORM_URL, SIGNED_IN)
-    return SIGNED_IN.request(method, url, **kwargs)
-
-requests.api.request = _as_the_operator
+RESET_WAIT = 1800
+RESET_POLL = 2
 
 SPLIT = os.environ.get("CR_SPLIT", "")
 IDLE = SPLIT == "idle"
 BESIDE_ANOTHER_WORKER = SPLIT == "worker" and int(os.environ.get("CR_WORKERS") or 1) > 1
 
-def range_readiness() -> dict | None:
+
+def reachable() -> bool:
     try:
-        readiness = requests.get(f"{PLATFORM_URL}/api/range/ready/", timeout=30).json()
-    except (requests.RequestException, ValueError):
-        return None
-    return readiness if isinstance(readiness, dict) else None
-
-RESET_WAIT = 1800
-REDTEAM_WAIT = 900
-RESET_POLL = 2
-ATTEMPTS_WHILE_WAITING = int(RESET_WAIT / RESET_POLL)
-SETTLING = {"RESETTING", "REBUILDING", "CHECKING"}
-RESETTING = {"RESETTING", "REBUILDING"}
-
-def settled(readiness: dict | None) -> bool:
-    if readiness is None:
+        return plays.ask(auth_csrf, signin.anonymous(PLATFORM_URL, 30)).ok
+    except httpx2.HTTPError:
         return False
-    return bool(readiness.get("ready", True)) or (readiness.get("slot") or {}).get("phase") not in SETTLING
 
-def wait_out_a_reset() -> dict | None:
+
+def wait_out_a_refill() -> list[dict]:
     deadline = time.monotonic() + RESET_WAIT
     while True:
-        readiness = range_readiness()
-        if settled(readiness) or time.monotonic() >= deadline:
-            return readiness
+        slots = plays.slots()
+        if (slots and not settling(slots)) or time.monotonic() >= deadline:
+            return slots
         time.sleep(RESET_POLL)
 
-def _reachable(url: str) -> bool:
-    try:
-        requests.get(f"{url}/api/auth/", timeout=30)
-        return True
-    except requests.RequestException:
-        return False
 
-def target_code(path: str = "/", session: int | None = None) -> int:
-    probe = run(
-        ATTACKER,
-        ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "20",
-         f"{TARGET_PUBLIC}{path}"],
-        session=session,
-    )
-    code = probe.stdout.strip()
-    return int(code) if code.isdigit() else 0
+def listed_for_pruning(played: plays.Played) -> None:
+    listed = os.environ.get("CR_ACCEPTANCE_LEASES")
+    if listed:
+        with open(listed, "a", encoding="utf-8") as ids:
+            ids.write(f"{played.lease}\n")
+
+
+plays.LISTENERS.append(listed_for_pruning)
+
 
 @pytest.fixture(scope="session", autouse=True)
 def stack_is_up():
-    assert _reachable(PLATFORM_URL), (
-        f"could not reach {PLATFORM_URL}. Run `{start_hint()}` first."
-    )
+    assert reachable(), f"could not reach {PLATFORM_URL}. Run `{start_hint()}` first."
     if IDLE:
         return
-    readiness = wait_out_a_reset()
-    assert readiness is not None, (
-        f"{PLATFORM_URL}/api/range/ready/ gave no readable answer within {RESET_WAIT}s"
-    )
-    assert readiness.get("ready"), f"the range is not ready: {readiness}"
+    slots = wait_out_a_refill()
+    assert slots, f"{PLATFORM_URL}/api/staff/range/ lists no slot. Run `{start_hint()}` first."
+    assert not settling(slots), f"the range was still refilling a slot after {RESET_WAIT}s: {slots}"
 
-MADE_BY_THIS_RUN: set[int] = set()
-OPENED_IN_ORDER: list[int] = []
-OPEN_NOW: set[int] = set()
-
-def listed_for_pruning(session_id: int) -> int:
-    MADE_BY_THIS_RUN.add(session_id)
-    listed = os.environ.get("CR_ACCEPTANCE_SESSIONS")
-    if listed:
-        with open(listed, "a", encoding="utf-8") as ids:
-            ids.write(f"{session_id}\n")
-    return session_id
-
-def made_by_this_run(session_id: int) -> int:
-    if session_id not in MADE_BY_THIS_RUN:
-        OPENED_IN_ORDER.append(session_id)
-    return listed_for_pruning(session_id)
-
-def open_sessions() -> int | None:
-    try:
-        return len(requests.get(f"{PLATFORM_URL}/api/sessions/?state=open", timeout=30).json())
-    except (requests.RequestException, ValueError, TypeError):
-        return None
-
-def room_on_the_range() -> bool:
-    counted = open_sessions()
-    return counted is not None and has_room(range_readiness(), counted)
-
-def wait_for_room_on_the_range() -> bool:
-    return wait_for_room(room_on_the_range, RESET_WAIT, RESET_POLL)
-
-def room_after_a_pause() -> bool:
-    time.sleep(RESET_POLL)
-    return wait_for_room_on_the_range()
-
-def opened_when_there_is_room(post, url, *args, **kwargs):
-    return retried(
-        lambda: post(url, *args, **kwargs),
-        lambda answer: refused_for_room(answer.status_code, answer.text),
-        room_after_a_pause,
-        attempts=ATTEMPTS_WHILE_WAITING,
-    )
 
 class Standing:
     def __init__(self):
-        self.session = None
+        self.played: plays.Played | None = None
 
-    def id(self) -> int | None:
+    def lease(self) -> int | None:
         if not BESIDE_ANOTHER_WORKER:
             return None
-        assert not OPEN_NOW, (
-            f"a range call named no session while session {sorted(OPEN_NOW)} is "
-            f"open; beside another worker the newest stack is not this test's, so "
-            f"pass session= explicitly"
-        )
-        if self.session is None:
-            opened = opened_when_there_is_room(
-                REAL_POST, f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600
-            )
-            assert opened.status_code == 201, (
-                f"could not open a session for the checks that need a standing "
-                f"stack: {opened.text}"
-            )
-            self.session = listed_for_pruning(opened.json()["id"])
-        return self.session
+        held = [played.lease for played in plays.OPENED if not played.closed and played is not self.played]
+        assert not held, (
+            f"a range call named no lease while lease {held} is open; beside another worker the newest "
+            f"slot is not this test's, so pass lease= explicitly")
+        if self.played is None or self.played.closed:
+            self.played = plays.play("board")
+        return self.played.lease
 
-    def release(self):
-        if self.session is None:
-            return None
-        closed = REAL_POST(f"{PLATFORM_URL}/api/sessions/{self.session}/close/", json={}, timeout=120)
-        self.session = None
-        return closed
+    def release(self) -> None:
+        if self.played is not None:
+            plays.close(self.played)
+        self.played = None
 
-REAL_POST = requests.post
+
 STANDING = Standing()
 if BESIDE_ANOTHER_WORKER:
-    the_range.default_to(STANDING.id)
+    the_range.default_to(STANDING.lease)
+
 
 @pytest.fixture
 def standing_stack(stack_is_up):
-    return STANDING.id()
+    return STANDING.lease()
+
+
+def close_opened_since(count: int) -> None:
+    for played in plays.OPENED[count:]:
+        if played is not STANDING.played:
+            plays.close(played)
+
 
 @pytest.fixture(scope="session", autouse=True)
-def the_run_leaves_no_session_open(stack_is_up):
-    real_post = requests.post
+def the_run_leaves_no_lease_open(stack_is_up):
+    yield
+    STANDING.release()
+    for played in plays.OPENED:
+        plays.close(played)
 
-    def post(url, *args, **kwargs):
-        opening = url.rstrip("/") == f"{PLATFORM_URL}/api/sessions"
-        if not opening:
-            answer = real_post(url, *args, **kwargs)
-            closed = CLOSING.fullmatch(url)
-            if closed and answer.status_code in (200, 409):
-                OPEN_NOW.discard(int(closed.group(1)))
-            return answer
-        STANDING.release()
-        answer = opened_when_there_is_room(real_post, url, *args, **kwargs)
-        if answer.status_code == 201:
-            OPEN_NOW.add(made_by_this_run(answer.json()["id"]))
-        return answer
-
-    requests.post = post
-    try:
-        yield
-    finally:
-        requests.post = real_post
-        STANDING.release()
-        for session_id in sorted(MADE_BY_THIS_RUN):
-            real_post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120)
-
-def _close_opened_since(count: int) -> None:
-    for session_id in OPENED_IN_ORDER[count:]:
-        requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120)
 
 @pytest.fixture(scope="module", autouse=True)
-def a_module_closes_the_sessions_it_opened(the_run_leaves_no_session_open):
-    count = len(OPENED_IN_ORDER)
+def a_module_closes_the_leases_it_opened(the_run_leaves_no_lease_open):
+    count = len(plays.OPENED)
     yield
-    _close_opened_since(count)
+    close_opened_since(count)
 
-def resetting(readiness: dict | None) -> bool:
-    slot = (readiness or {}).get("slot") or {}
-    return slot.get("phase") in RESETTING or (slot.get("reset") or {}).get("state") == "running"
-
-def wait_out_a_running_reset() -> dict | None:
-    deadline = time.monotonic() + RESET_WAIT
-    while True:
-        readiness = range_readiness()
-        if not resetting(readiness) or time.monotonic() >= deadline:
-            return readiness
-        time.sleep(RESET_POLL)
 
 @pytest.fixture(autouse=True)
-def the_range_is_not_resetting(stack_is_up):
+def the_range_is_not_refilling(stack_is_up):
     if not IDLE and not BESIDE_ANOTHER_WORKER:
-        readiness = wait_out_a_running_reset()
-        assert not resetting(readiness), (
-            f"the range was still resetting after {RESET_WAIT}s: {readiness}. A "
-            f"closed session rebuilds its slot's Kali and WAF and resets its edge "
-            f"and wargame host in place, and a test that reaches a host meanwhile "
-            f"finds it gone or half configured"
-        )
+        slots = wait_out_a_refill()
+        assert not settling(slots), (
+            f"the range was still refilling after {RESET_WAIT}s: {slots}. A closed lease rebuilds its slot's "
+            f"stack, and a test that reaches a host meanwhile finds it gone or half configured")
+
 
 @pytest.fixture(autouse=True)
-def a_test_closes_the_sessions_it_opened(the_run_leaves_no_session_open):
-    count = len(OPENED_IN_ORDER)
+def a_test_closes_the_leases_it_opened(the_run_leaves_no_lease_open):
+    count = len(plays.OPENED)
     yield
-    _close_opened_since(count)
+    close_opened_since(count)
 
-def nothing_is_open(answer) -> bool:
-    return answer.status_code == 409 and "no session is open" in answer.text
 
-@pytest.fixture(scope="session", autouse=True)
-def terminal_leaves_by_the_front_door(stack_is_up):
-    if SPLIT:
-        return
-    requests.post(f"{PLATFORM_URL}/api/attacker/origin/", json={"origin": ""},
-                  timeout=60)
+def target_code(path: str = "/", lease: int | None = None) -> int:
+    probe = run(ATTACKER, ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "20",
+                           f"{TARGET_PUBLIC}{path}"], lease=lease)
+    code = probe.stdout.strip()
+    return int(code) if code.isdigit() else 0
 
-@pytest.fixture(scope="session", autouse=True)
-def terminal_carries_no_case(stack_is_up):
-    if SPLIT:
-        return
-    cleared = requests.post(
-        f"{PLATFORM_URL}/api/attacker/label/", json={"case_id": ""}, timeout=60
-    )
-    assert cleared.ok or nothing_is_open(cleared), (
-        f"could not clear the terminal's case label: {cleared.text}. A label "
-        f"left behind by an earlier run stamps every request from the terminal "
-        f"with a case that is not in this run."
-    )
 
-def declared_rules() -> str:
-    return (REPO_ROOT / "deploy/suricata/rules/local.rules").read_text()
+def from_attacker(path: str, lease: int | None = None) -> None:
+    result = run(ATTACKER, ["curl", "-s", "-o", "/dev/null", "--max-time", "20", f"{TARGET_PUBLIC}{path}"],
+                 lease=lease)
+    assert result.ok, f"could not reach the target from the attacker box: {result.stderr}"
 
-def runs_the_declared_rules(session_id: int) -> str:
-    committed = declared_rules()
-    live = requests.get(
-        f"{PLATFORM_URL}/api/rules/", params={"session": session_id}, timeout=60
-    ).json()["content"]
+
+def runs_the_declared_rules(played: plays.Played) -> str:
+    committed = plays.declared_rules()
+    live = plays.ids_rules(played)["text"]
 
     assert live == committed, (
-        f"session {session_id} opened with a sensor that is not running the rule "
-        f"set this repo declares. A test that captures 'whatever was there' and "
-        f"restores it would cement somebody else's leftovers as the baseline."
-    )
+        f"round {played.round} started with a sensor that is not running the rule set this repo declares. A test "
+        f"that captures 'whatever was there' and restores it would cement somebody else's leftovers as the "
+        f"baseline.")
     return committed
-
-@pytest.fixture(scope="session", autouse=True)
-def defence_is_on(stack_is_up):
-    active = requests.get(f"{PLATFORM_URL}/api/rules/disabled/", timeout=60)
-    if not active.ok:
-        return
-    live = {row["id"] for row in requests.get(
-        f"{PLATFORM_URL}/api/sessions/?state=open", timeout=30
-    ).json()}
-    disabled = [s["sid"] for s in active.json()["disabled"]
-                if s.get("session_id") is None or s["session_id"] not in live]
-    assert not disabled, (
-        f"sid {disabled} are disabled, so this run would score a defence "
-        f"with a hole in it. Enable them first: "
-        f"POST /api/rules/disabled/<id>/enable/"
-    )
-
-def _opened_by(output: str) -> None:
-    for line in output.splitlines():
-        found = OPENED_LINE.match(line.strip())
-        if found:
-            session_id = made_by_this_run(int(found.group(1)))
-            requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/close/", json={}, timeout=120)
-
-EVERY_SQLMAP_VARIANT = os.environ.get("CR_SQLMAP_VARIANTS") == "1"
-SQLMAP_DUMP = "board-sqli-orderby-sqlmap"
-CASE_FILE = "redteam/cases/board.yaml"
-ONE_SQLMAP_CASES = "/tmp/cr-acceptance-cases/board.yaml"
-ONE_SQLMAP_RUN = (
-    "import pathlib, sys, yaml; "
-    "cases = yaml.safe_load(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8')); "
-    "kept = [case for case in cases if not case.get('tool') or case['name'] == sys.argv[2]]; "
-    "names = [case['name'] for case in kept]; "
-    "sys.exit('no case named ' + sys.argv[2]) if sys.argv[2] not in names else None; "
-    "out = pathlib.Path(sys.argv[3]); out.parent.mkdir(exist_ok=True); "
-    "out.write_text(yaml.safe_dump(kept, allow_unicode=True, sort_keys=False), encoding='utf-8'); "
-    "print(len(cases) - len(kept))"
-)
-
-def red_team_cases() -> str:
-    if EVERY_SQLMAP_VARIANT:
-        return CASE_FILE
-    written = run(SCORER, ["python", "-c", ONE_SQLMAP_RUN, CASE_FILE, SQLMAP_DUMP, ONE_SQLMAP_CASES])
-    assert written.ok and written.stdout.strip().isdigit() and int(written.stdout) > 0, (
-        f"could not leave the sqlmap variants out of the red-team run, so it would "
-        f"run every one of them: {written.output[-400:]}"
-    )
-    return ONE_SQLMAP_CASES
-
-def _redteam_once():
-    try:
-        result = run(
-            SCORER,
-            ["python", "redteam/run.py",
-             "--platform", PLATFORM_FROM_SCORER,
-             "--cases", red_team_cases(),
-             "--tool-target", TARGET_PUBLIC],
-            timeout=REDTEAM_WAIT,
-        )
-    except RangeUnavailable as exc:
-        _opened_by(exc.output)
-        raise
-    _opened_by(result.stdout)
-    return result
-
-def _refused_a_session(result) -> bool:
-    return not result.ok and refused_a_run_for_room(result.output) and not any(
-        OPENED_LINE.match(line.strip()) for line in result.stdout.splitlines()
-    )
-
-def run_redteam() -> int:
-    STANDING.release()
-    wait_out_a_reset()
-    result = retried(_redteam_once, _refused_a_session, wait_for_room_on_the_range,
-                     attempts=ATTEMPTS_WHILE_WAITING)
-    assert result.ok, f"red team run failed:\n{result.output}"
-
-    for line in result.stdout.splitlines():
-        found = SESSION_LINE.match(line.strip())
-        if found:
-            return made_by_this_run(int(found.group(1)))
-    raise AssertionError(f"no session number in output:\n{result.output}")
-
-def from_attacker(path: str, session: int | None = None) -> None:
-    result = run(
-        ATTACKER,
-        ["curl", "-s", "-o", "/dev/null", "--max-time", "20",
-         f"http://board.com{path}"],
-        session=session,
-    )
-    assert result.ok, (
-        f"could not reach the target from the attacker box: {result.stderr}"
-    )
-
-def score_when_ready(session_id: int, until, timeout: float = 150.0) -> dict:
-    deadline = time.time() + timeout
-    last: dict = {}
-
-    while time.time() < deadline:
-        ingest = requests.post(f"{PLATFORM_URL}/api/sessions/{session_id}/ingest/", timeout=120)
-        if ingest.ok:
-            last = requests.get(f"{PLATFORM_URL}/api/sessions/{session_id}/score/").json()
-            if until(last):
-                return last
-        time.sleep(2)
-
-    detections = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/detections/"
-    ).json()
-    assert detections, (
-        f"session {session_id} ingested no detections at all in {timeout:.0f}s, "
-        f"so nothing was scored and nothing can be concluded about the defence. "
-        f"This is a pipeline failure, not a detection failure: check Filebeat "
-        f"and Elasticsearch. A stack that restarted recently needs a few "
-        f"minutes before new events reach the index."
-    )
-    assert last, "never got a score back. Check Elasticsearch and Filebeat."
-    return last
-
-def credited_to(session_id: int, totals: dict, **case) -> list[dict]:
-    found = next(
-        (c for c in totals["per_case"]
-         if all(c[field] == value for field, value in case.items())),
-        None,
-    )
-    if found is None:
-        return []
-    listed = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session_id}/detections/", timeout=120
-    ).json()
-    return [d for d in listed if d["detection_id"] in found["detection_ids"]]
-
-def seen_by_both_engines(session_id: int, totals: dict, **case) -> bool:
-    return ENGINES <= {d["source"] for d in credited_to(session_id, totals, **case)}
