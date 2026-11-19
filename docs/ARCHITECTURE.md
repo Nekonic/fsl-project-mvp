@@ -146,7 +146,7 @@ front/         아직 없음. 지금은 생성된 front/src/api/schema.d.ts만 �
 | 로그 인덱스 패턴(`logs-*`) | `defence/kibana.py` | `cr/config.py`의 기본값. `test/test_event_time.py` |
 | 훈련 환경 노드 이름(`cr-kali`, `cr-waf`, `cr-infra`, `cr-target`) | 없음(설정으로 넘김) | `cr/config.py`의 기본값. `platform/entrypoint.sh` |
 | OpenStack API와 실제 배선 | `range/openstack.py`(파싱 `range/wiring.py`, 이름 `range/topology.py`) | 없음 |
-| infra 라우터의 nftables 집합 | `range/edge.py` | `deploy/roles/infra/edge.nft`가 `pool`, `spent` 집합을 선언(아직 없음, 아래 참고) |
+| infra 라우터의 nftables 집합 | `range/edge.py` | `deploy/roles/infra/edge.nft`가 `pool`, `spent` 집합을 선언(역할 이미지에는 아직 없음, 아래 참고) |
 | 플랫폼 점프 호스트와 박스 계정 키 | `range/jump.py` | `platform/entrypoint.sh`가 점프 호스트의 `authorized_keys`를 만듦 |
 | 공격 박스 | `attack/box.py` | `cr/config.py`의 라벨 파일 경로 기본값. `platform/entrypoint.sh`가 `vm-terminal.sh cr-kali`, `vm-terminal.sh cr-waf`를 띄움 |
 | 대상의 정답 데이터 | `referee/loot.py`(board), `referee/effect.py`(corp) | 없음 |
@@ -288,6 +288,8 @@ sequenceDiagram
   drop 규칙은 established 허용보다 앞에 있어야 열린 연결도 끊깁니다. 이어서 그 자리의 도구 실행을 멈추고
   (`stopped_by: origin_spent`) 다음 출발지로 바꿉니다.
 - 고객 주소는 `pool`에만 있고 `spent`에 들어가지 않습니다.
+- `pool`은 채우기만 하고 아직 막는 데 쓰지 않습니다. 플랫폼은 출발지 예산이 있는 라운드에서만 `pool`을 채우므로,
+  `pool` 밖 주소를 버리면 라운드가 없는 probe 리스와 공격 출발지가 없는 라운드의 고객 요청까지 끊깁니다.
 
 ## 이벤트
 
@@ -325,18 +327,25 @@ sequenceDiagram
 
 훈련 환경은 이전 구조와 같습니다. 리스마다 Heat 스택 `cr-slot-N`(VM kali, waf, infra, target, LAN 다섯 개)을 쓰고,
 워게임별 풀에 미리 띄워 둡니다. 네트워크 구성, 주소, 로그 경로는 `README.md`의 "구성", 클라우드 준비와 이미지 굽기는
-`docs/OPENSTACK.md`에 있습니다. 바뀌는 점은 아래이고, 아직 역할 이미지에 들어가지 않았습니다.
+`docs/OPENSTACK.md`에 있습니다. 바뀌는 점은 아래입니다. 배포 파일은 고쳤고, infra와 waf 이미지는 아직 다시 굽지
+않았습니다(`docs/OPENSTACK.md` §3.7).
 
-- `deploy/roles/infra/edge.nft`: `pool`, `spent` 집합과 established 허용보다 앞선 drop 규칙. `slot-boot`가 테이블을
-  다시 읽으면 집합이 비므로 `attack.service.refill_edge`가 틱마다 다시 채웁니다.
-- `deploy/roles/waf/board.com.conf`: 두 vhost의 `$refused` 맵(400, 403) 하나와 모든 요청의 JSON 접근 로그.
+- `deploy/roles/infra/edge.nft`: `pool`, `spent` 집합과 established 허용보다 앞선 `spent` drop 규칙. `slot-boot`가
+  테이블을 다시 읽으면 집합이 비므로 `attack.service.refill_edge`가 틱마다 다시 채웁니다. infra 이미지에는
+  `conntrack`, `tcpdump`(probe 녹화), 오프라인 룰 테스트의 임시 폴더 `/var/lib/cr-ruletest`가 더해집니다.
+- `deploy/roles/waf/board.com.conf`: 두 vhost의 `$refused` 맵(400, 403) 하나와 모든 요청의 JSON 접근 로그
+  `/var/log/nginx/access.json`(`client_ip`, `status`, `refused`, `request_id` 등).
   `log-shipper.conf`가 Tag `nginx-access`로 보내고(`refused.log` 대체), `deploy/filebeat/filebeat.yml`과
   `deploy/elastic/ingest-pipeline.json`이 모듈 `nginx_access`로 받습니다.
-- `deploy/roles/waf/probe.conf`, `probe-upstream.py`, `analyst.sh`: CRS 임시 인스턴스와 읽기 전용 셸 계정.
+- `deploy/roles/waf/probe.conf`, `probe-upstream.py`: CRS 임시 인스턴스의 설정 틀과 loopback 스텁.
+  `/usr/local/share/cr/`에 설치되고 임시 prefix는 `/var/lib/cr-crstest` 아래입니다.
+- `deploy/roles/waf/analyst.sh`: 방어석 계정 `analyst`. nginx·CRS 설정과 로그(`adm` 그룹)를 읽고
+  `sudo nginx -t`, `sudo nginx -T`만 root로 돌립니다. 설정과 로그를 고치거나 nginx를 reload할 수 없고, ssh 포워딩과
+  WAF에서 밖으로 나가는 패킷(`meta skuid analyst drop`)이 막혀 있습니다.
 - `deploy/proxy/stamp.py`와 `deploy/roles/kali/stamp.py` 링크 정리.
 
 ## 아직 없는 것
 
 - `front/`(Vite, TypeScript, Preact 콘솔). `nginx.conf`는 이미 빌드 결과 `/app/front/dist`를 마지막 위치에서
   내주고 나머지 경로를 `index.html`로 돌리지만, Dockerfile의 node 단계와 빌드 결과물은 아직 없습니다.
-- 위 훈련 환경 변경과 infra, waf 이미지 다시 굽기, `wargames/<id>/probes/` 녹화.
+- infra, waf 이미지 다시 굽기와 `wargames/<id>/probes/` 녹화(`bin/record-probes`). 배포 파일은 고쳐 두었습니다.

@@ -24,6 +24,14 @@
       }
     },
     {
+      "date": {
+        "field": "time",
+        "target_field": "@timestamp",
+        "formats": ["ISO8601"],
+        "if": "ctx.event?.module == 'nginx_access' && ctx.time != null"
+      }
+    },
+    {
       "geoip": {
         "field": "src_ip",
         "target_field": "src_geo",
@@ -44,6 +52,23 @@
         "field": "transaction.client_ip",
         "target_field": "src_geo",
         "ignore_missing": true,
+        "on_failure": [
+          {
+            "set": {
+              "field": "src_geo.error",
+              "value": "lookup failed",
+              "override": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "geoip": {
+        "field": "client_ip",
+        "target_field": "src_geo",
+        "ignore_missing": true,
+        "if": "ctx.event?.module == 'nginx_access'",
         "on_failure": [
           {
             "set": {

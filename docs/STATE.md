@@ -70,17 +70,21 @@ on a slot:
    as `kali` and cr-waf as `analyst` for a seat holding a jump grant. Neither
    has run on a range. The user chooses the design before it is built
    (gate 1).
-2. **Cloud step 5, deploy changes and rebake**: `edge.nft` with the `pool`
-   and `spent` sets and their drop rules before the established accept;
-   `board.com.conf` with one `$refused` map (400, 403) and the JSON access log
-   of every request; `log-shipper.conf` shipping it as `nginx-access`;
-   `filebeat.yml` and `ingest-pipeline.json` routing it to `nginx_access`;
-   `probe.conf`, `probe-upstream.py` and `analyst.sh` on the WAF role; then
-   bake new infra and waf images (`docs/OPENSTACK.md`). None of these files
-   is changed yet.
+2. **Cloud step 5, the rebake**: the repo side is written and tested
+   offline: `edge.nft` with the `pool` and `spent` sets and the `spent` drop
+   before the established accept; `board.com.conf` with one `$refused` map
+   (400, 403) and the JSON access log of every request
+   (`/var/log/nginx/access.json`); `log-shipper.conf` and `log-relay.conf`
+   carrying it as `nginx-access`; `filebeat.yml` and `ingest-pipeline.json`
+   routing it to `nginx_access`; `probe.conf`, `probe-upstream.py` and
+   `analyst.sh` on the WAF role; `conntrack`, `tcpdump` and the offline rule
+   test's scratch folder on the infra role. Left: bake `cr-infra-bake2` and
+   `cr-waf-bake3`, name them in `compute.images`, `bin/cloud up --replace`,
+   and the step's checks on a slot (`docs/OPENSTACK.md` §3.7).
 3. **Cloud step 12, probe recordings**: `bin/record-probes board` and
-   `bin/record-probes corp` through the staff route on a probe lease; commit
-   `wargames/<id>/probes/`. `bin/record-probes` does not exist yet.
+   `bin/record-probes corp` through the staff route on a probe lease; copy
+   the platform's `CR_PROBES_OUT/<id>/probes/` into `wargames/<id>/probes/`
+   and commit it (`docs/OPENSTACK.md` §3.7).
 4. **Full live verify**: the full `bin/verify` with acceptance on the range,
    the Claude Code bot round of each matchup (spec step 16), a captured walk
    of every page as a learner, a live review round with zero countable
@@ -103,7 +107,15 @@ on a slot:
 - **A refused key leaves a jump grant.** If the box refuses the per-seat
   key, `range.jump.open_access` keeps the platform sshd grant until the
   round ends. Without the box key it gives no access.
-- **`bin/record-probes`** is in the spec's tree and not written.
+- **The `pool` drop at the edge.** `edge.nft` declares `pool` and the
+  platform fills it, but `ip saddr != @pool drop` is not in the forward
+  chain: `attack.service.refill_edge` fills `pool` only for a round with
+  origin budgets, so the drop would cut probe leases (no round) and rounds
+  without attack origins, customers included. Filling `pool` for those first
+  is open.
+- **No route serves the probe recordings.** `match/probes.py` writes them to
+  the platform's `CR_PROBES_OUT`; they are copied off the platform VM by hand
+  before they are committed.
 
 ## Decisions left for a person
 

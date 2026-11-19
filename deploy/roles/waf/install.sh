@@ -18,7 +18,9 @@ BUILT=/var/lib/waf-build/modsecurity-$MODSECURITY-connector-$CONNECTOR-nginx-$NG
 MODSEC_DIR=/etc/nginx/modsecurity
 EXCLUSIONS=$MODSEC_DIR/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
 AUDIT_LOG=/var/log/modsecurity/audit/audit.log
-REFUSED_LOG=/var/log/nginx/refused.log
+ACCESS_LOG=/var/log/nginx/access.json
+PROBE_SHARE=/usr/local/share/cr
+CRS_TEST_DIR=/var/lib/cr-crstest
 SHARE=/usr/local/share/slot
 
 export DEBIAN_FRONTEND=noninteractive
@@ -86,13 +88,13 @@ rsyslog_may_read_the_waf_logs() {
   grep -qxF 'global(maxMessageSize="64k")' /etc/rsyslog.conf || sed -i '1i global(maxMessageSize="64k")' /etc/rsyslog.conf
   [ -f /etc/apparmor.d/usr.sbin.rsyslogd ] || return 0
   install -d /etc/apparmor.d/local
-  printf '%s r,\n%s r,\n' "$AUDIT_LOG" "$REFUSED_LOG" > /etc/apparmor.d/local/usr.sbin.rsyslogd
+  printf '%s r,\n%s r,\n' "$AUDIT_LOG" "$ACCESS_LOG" > /etc/apparmor.d/local/usr.sbin.rsyslogd
   systemctl reload apparmor
 }
 
 logs_emptied() {
   install -m 0644 -o www-data -g adm /dev/null "$AUDIT_LOG"
-  install -m 0644 -o www-data -g adm /dev/null "$REFUSED_LOG"
+  install -m 0644 -o www-data -g adm /dev/null "$ACCESS_LOG"
 }
 
 sealed_for_snapshot() {
@@ -101,14 +103,14 @@ sealed_for_snapshot() {
 }
 
 ubuntu_trimmed
-installed ca-certificates curl iproute2 nano less nginx rsyslog build-essential pkg-config libpcre2-dev zlib1g-dev libxml2-dev \
+installed ca-certificates curl python3 nftables iproute2 nano less nginx rsyslog build-essential pkg-config libpcre2-dev zlib1g-dev libxml2-dev \
   libyajl-dev libcurl4-openssl-dev liblmdb-dev libmaxminddb-dev
 nginx -V 2>&1 | grep -q "nginx/$NGINX "
 nginx -V 2>&1 | grep -q -- "--with-compat"
 
 [ -f "$BUILT" ] || modsecurity_built
 echo "load_module /usr/lib/nginx/modules/ngx_http_modsecurity_module.so;" > /etc/nginx/modules-enabled/50-mod-http-modsecurity.conf
-[ -f "$EXCLUSIONS" ] || install -m 664 -g adm /dev/null "$EXCLUSIONS"
+[ -f "$EXCLUSIONS" ] || install -m 0644 /dev/null "$EXCLUSIONS"
 
 install -m 0644 modsecurity.conf "$MODSEC_DIR/modsecurity.conf"
 install -m 0644 board.com.conf /etc/nginx/conf.d/board.com.conf
@@ -123,7 +125,13 @@ install -m 0755 slot-boot /usr/local/sbin/slot-boot
 install -m 0644 slot-boot.service /etc/systemd/system/slot-boot.service
 rsyslog_may_read_the_waf_logs
 
+install -d -m 0755 "$PROBE_SHARE"
+install -m 0644 probe.conf "$PROBE_SHARE/probe.conf"
+install -m 0755 probe-upstream.py "$PROBE_SHARE/probe-upstream.py"
+install -d -m 0700 "$CRS_TEST_DIR"
+
 logs_emptied
+./analyst.sh
 nginx -t
 systemctl daemon-reload
 systemctl enable nginx.service rsyslog.service slot-boot.service

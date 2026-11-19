@@ -97,7 +97,7 @@ user's password, flavor access, the base image and `cloud.yaml` (§4).
 | Kolla-Ansible cloud with Heat, Glance, Nova, Neutron (ML2/OVN) | done (this cloud) | §2 |
 | Project `fsl-range`, member user, clouds.yaml entry, quota check, flavor choice | `bin/cloud init` as admin (2026-11-15); flavors and quotas are never created or raised by it | §3 |
 | Base image, stock Ubuntu 24.04, upload with checksum check | `bin/cloud init` when missing; done (this cloud, 2026-10-20) | §3.6 |
-| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18; the WAF's re-baked as `cr-waf-bake2`) | §3.6 |
+| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18; the WAF's re-baked as `cr-waf-bake2`). The side split's infra and WAF changes need a new bake of both, not done (§3.7) | §3.6 |
 | `cloud.yaml`: every cloud-specific value, validated | written by `bin/cloud init` (2026-11-15) | §4 |
 | Platform and wargame images on GHCR (`.github/workflows/images.yml`) | done (public, pulled 2026-10-11) | §5 |
 | Heat stack pulls images instead of `--build` | done (2026-10-11) | §5 |
@@ -669,8 +669,8 @@ each wargame's `compose.yaml`); copy the directory with the links resolved.
 | Role | Builder's base | `install.sh` installs |
 |---|---|---|
 | `kali` | the Kali base | `kali-linux-headless` and the tools of the Kali container before (nmap, sqlmap, nikto, whatweb, ffuf, gobuster, hydra, dirb, mitmproxy and others), the stamp proxy as `web-proxy.service`, the operator log hook, `set-origin`, `slot-boot`, and a key-only `kali` user with bash and passwordless sudo; `board.com` and `corp.com` resolve to 121.134.88.42; sslh's systemd generator masked and `cloud-init.target` wanted by `multi-user.target`, so cloud-init runs on every boot (`docs/TROUBLESHOOTING.md` "A Kali VM booted without cloud-init") |
-| `waf` | `compute.base_image` | nginx 1.24 from Ubuntu, ModSecurity 3.0.16 and its nginx connector built from release tarballs checked by SHA-256, CRS 4.25.1, the repo's `modsecurity.conf` and `board.com.conf`, rsyslog, `slot-boot` |
-| `infra` | `compute.base_image` | nftables, bridge-utils, ethtool, rsyslog, Docker with `bridge: none` and no iptables, the pinned `jasonish/suricata` image (`suricata -T` run on the repo's config and rules), the `suricatasc` wrapper (`docker exec -i sensor suricatasc`), `edge.nft`, `sensor.service`, `slot-boot`; `suricata` itself is only in the `sensor` container |
+| `waf` | `compute.base_image` | nginx 1.24 from Ubuntu, ModSecurity 3.0.16 and its nginx connector built from release tarballs checked by SHA-256, CRS 4.25.1, the repo's `modsecurity.conf` and `board.com.conf` (the JSON access log of every request), rsyslog, nftables, python3, the scratch CRS test's `probe.conf` and `probe-upstream.py` in `/usr/local/share/cr/` with its scratch folder `/var/lib/cr-crstest`, the `analyst` account (`analyst.sh`), `slot-boot` |
+| `infra` | `compute.base_image` | nftables, conntrack, tcpdump, bridge-utils, ethtool, rsyslog, Docker with `bridge: none` and no iptables, the pinned `jasonish/suricata` image (`suricata -T` run on the repo's config and rules), the `suricatasc` wrapper (`docker exec -i sensor suricatasc`), `edge.nft` with the `pool` and `spent` sets, the offline rule test's scratch folder `/var/lib/cr-ruletest`, `sensor.service`, `slot-boot`; `suricata` itself is only in the `sensor` container |
 | `target` | `compute.base_image` | Docker and Compose; board's and corp's compose files rendered for a VM (`render.py`: fronts published on the stack's addresses, databases on the internal `<w>_backend`), their images pulled from GHCR at `CR_IMAGE_TAG` (required), brought up once and their volumes kept as the pristine data, `wargames.service` |
 
 The Ubuntu roles point apt at the Kakao mirror, purge `snapd` and
@@ -740,6 +740,78 @@ digest, so every stack is replaced. The target's boot refuses to report ready
 when an `image:` line in `/opt/wargames/*/compose.yaml` carries another tag,
 and writes those lines into `/var/lib/cr/failed` (§6). A line pinned by digest
 (`mysql@sha256:...`) has no tag and passes.
+
+### 3.7 The side split's rebake (infra and WAF)
+
+The side split changes two role images; kali and target are unchanged. Until
+both are baked and named in `compute.images`, a range runs the old edge and
+WAF: HP is charged only from API sends, a spent origin is not dropped at the
+edge, and the rule test has no scratch CRS instance or `analyst` account to
+reach. The procedure is the bake by hand of §3.6, once per role, under new
+names; none of it has run, so it is **[unverified]**.
+
+| Role | New name | What changed in `deploy/roles/<role>/` |
+|---|---|---|
+| `infra` | `cr-infra-bake2` | `edge.nft` declares the sets `pool` and `spent` (`type ipv4_addr`) and drops `ip saddr @spent` from `wan` before the established accept, so an open keep-alive or sqlmap connection of a spent origin stops too; `range/edge.py` adds the addresses after each `slot-boot` load and flushes a spent origin's conntrack entries (package `conntrack`). `tcpdump` for `rules.suricata.capture` (probe recording), `/var/lib/cr-ruletest` (0700) for `rules.suricata.offline_test`, which runs the same pinned image and `/etc/suricata/suricata.yaml` with `-r` and reads the scratch `eve.json`, never `/var/log/suricata`. `log-relay.conf` relays the WAF's `nginx-access` lines instead of `nginx` |
+| `waf` | `cr-waf-bake3` (**(this cloud)**; `cr-waf-bake2` is taken) | `board.com.conf` writes every request to `/var/log/nginx/access.json` as JSON (`time`, `client_ip`, `vhost`, `request`, `status`, `refused` from the one `$refused` map of 400 and 403, `request_id` from `X-Request-ID`), and `log-shipper.conf` ships it under Tag `nginx-access` in place of `refused.log`. `probe.conf` and `probe-upstream.py` for `rules.crs.scratch_check` and `scratch_test`; the exclusion file is created 0644 (root writes it through sudo). `analyst.sh` creates the defence seat's account |
+
+The `pool` set is declared and filled, but `edge.nft` does not yet drop
+`ip saddr != @pool`: the platform fills `pool` only for a round with origin
+budgets (`attack.service.refill_edge`), so that drop would cut a probe lease,
+which has no round, and every round without attack origins, customers
+included.
+
+**The `analyst` account** (`deploy/roles/waf/analyst.sh`), which the defence
+seat's terminal and its jump grant log in as:
+
+- can: log in by the per-seat key `range/jump.py` writes into its
+  `authorized_keys` (bash, password field `*`); read `/etc/nginx` (the vhosts,
+  `modsecurity.conf`, the CRS tree and the exclusion file) and, through group
+  `adm`, `/var/log/nginx` and `/var/log/modsecurity`; run `sudo nginx -t` and
+  `sudo nginx -T` and nothing else as root;
+- cannot: write any file under `/etc/nginx`, `/var/log/nginx` or
+  `/var/log/modsecurity` (no group it is in may write there; the bake removes
+  any such group write bit), reload or signal nginx, read
+  `/var/lib/cr-crstest` (0700), forward ports or sockets over its ssh login
+  (`/etc/ssh/sshd_config.d/60-analyst.conf`), or send anything on the network
+  from the WAF: `/etc/nftables.conf`, loaded by `nftables.service`, drops
+  every packet a process of `analyst` sends (`meta skuid analyst drop`).
+
+The defence posture itself changes only through the defence API.
+
+**After the bakes**, name `compute.images.infra: cr-infra-bake2` and
+`compute.images.waf: cr-waf-bake3` in `cloud.yaml` and run `bin/cloud up
+--replace` (§7): every stack no session holds is `STALE` and is rebuilt. Then,
+on one slot, the spec's checks for this step:
+
+```bash
+sudo nft list set ip edge spent                    # on the infra: the set exists, empty until an origin is spent
+sudo tail -1 /var/log/nginx/access.json            # on the WAF after one request: request_id is the X-Request-ID
+```
+
+- a request's access line reaches Elasticsearch as module `nginx_access` with
+  its `request_id`, and a 200 makes no Detection (`GET defence/alerts/`);
+- a WAF rule test (`POST defence/waf/test/`) returns a verdict for one case,
+  and the live audit log's line count is unchanged;
+- an IDS rule test (`POST defence/ids/rules/test/`) leaves
+  `/var/log/suricata/eve.json` unchanged;
+- as `analyst`, `touch /etc/nginx/x`, `sudo nginx -s reload` and `curl
+  http://127.0.0.1/` all fail, and `sudo nginx -T` prints the configuration.
+
+**Probe recordings** follow the bake (spec step 12): `bin/record-probes board`
+and `bin/record-probes corp` (`--platform http://<platform>:8000`, a staff
+sign-in from `CR_ADMIN_USER` and `CR_ADMIN_PASSWORD`) start a probe lease
+through `POST /api/staff/wargames/<id>/probes/record/` and follow
+`GET /api/staff/probes/<lease>/` until it is released; a case it could not
+record fails the run and is named. The platform writes the recordings to its
+`CR_PROBES_OUT` (`/data/probes` in `compose.yaml`, on the `platformdata`
+volume); no route serves them, so copy them off the platform VM and commit
+them:
+
+```bash
+ssh ubuntu@<platform> "sudo docker exec cr-platform tar -C /data/probes/board/probes -cf - ." \
+  | tar -C wargames/board/probes -xf -
+```
 
 ## 4. cloud.yaml
 
@@ -1377,7 +1449,7 @@ stack uses the same addresses; stacks differ by network, not by CIDR.
 | VM (`cr-slot-<n>-<node>`) | Image | Learner |
 |---|---|---|
 | `kali` | `cr-kali-bake1`: Kali with `kali-linux-headless` and the tools | root, by web terminal and by ssh as `kali` (§3.5) |
-| `waf` | `cr-waf-bake1` (**(this cloud)** `cr-waf-bake2`): Ubuntu, nginx 1.24, ModSecurity 3.0.16, CRS 4.25.1 | root, by web terminal |
+| `waf` | `cr-waf-bake1` (**(this cloud)** `cr-waf-bake2`): Ubuntu, nginx 1.24, ModSecurity 3.0.16, CRS 4.25.1 | the defence seat as the read-only `analyst`, by web terminal and its jump grant (§3.7) |
 | `infra` | `cr-infra-bake1`: Ubuntu, nftables, Suricata (`jasonish/suricata`, pinned by digest), rsyslog | none |
 | `target` | `cr-target-bake1`: Ubuntu, Docker, board and corp at the baked tag | none |
 
@@ -1413,7 +1485,8 @@ stack uses the same addresses; stacks differ by network, not by CIDR.
   bridges the two IDS legs into `br0`, flushes their addresses and switches
   TSO, GSO, GRO and LRO off on them; sets a default route onlink via Kali's
   default-origin address; and loads `edge.nft`: tcp 80 to 121.134.88.42 is
-  DNATed to the WAF's front without SNAT, from `wan` only replies
+  DNATed to the WAF's front without SNAT, from `wan` an address in the set
+  `spent` is dropped first, then only replies
   (`ct state established,related`) and DNATed connections (`ct status dnat`)
   are forwarded, ICMP is answered on `wan`, and from `mgmt` only tcp 514 is
   taken. Ping and traceroute from Kali to 121.134.88.42 answer.
@@ -1431,8 +1504,8 @@ stack uses the same addresses; stacks differ by network, not by CIDR.
   infra; the host has only the `suricatasc` wrapper.
 - The WAF's `slot-boot` routes it through the infra's `lan`, writes `board`
   and `corp-wp` into `/etc/hosts` with the target's addresses, and ships
-  ModSecurity's audit log and nginx's refused log
-  (`/var/log/modsecurity/audit/audit.log`, `/var/log/nginx/refused.log`) with
+  ModSecurity's audit log and nginx's JSON access log of every request
+  (`/var/log/modsecurity/audit/audit.log`, `/var/log/nginx/access.json`) with
   rsyslog's `imfile` over tcp 514 to the infra's log server on `mgmt`. The
   exclusion file is
   `/etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`,

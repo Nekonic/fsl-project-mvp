@@ -231,7 +231,7 @@ def test_a_capture_runs_tcpdump_on_the_sensor_interface_in_the_background_and_st
     suricata.stop_capture(node, held)
 
     assert held == suricata.Capture(pid=4242, path="/var/lib/cr-probes/board/board-sqli-union.pcap")
-    assert "timeout 30 tcpdump -i br0 -U -s 0 -w /var/lib/cr-probes/board/board-sqli-union.pcap" in node.sent[0].text
+    assert "timeout 30 tcpdump -i br0 -Z root -U -s 0 -w /var/lib/cr-probes/board/board-sqli-union.pcap" in node.sent[0].text
     assert "kill -INT 4242" in node.sent[1].text
 
 

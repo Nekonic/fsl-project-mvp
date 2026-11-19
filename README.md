@@ -463,7 +463,8 @@ sudo docker compose start platform follow
   코드가 없습니다. 자리별 터미널(`nginx.conf`, `vm-terminal.sh`)은 오프라인 테스트만 거쳤고 훈련 환경에서는 아직
   열어 보지 않았습니다.
 - HP 차감용 WAF 접근 로그, infra 라우터의 `pool`·`spent` 집합, CRS 룰 테스트용 임시 인스턴스, WAF의 `analyst`
-  계정이 역할 이미지에 아직 없습니다. 배포 파일을 고치고 infra, waf 이미지를 다시 구워야 합니다.
+  계정은 배포 파일에만 있고 역할 이미지에는 아직 없습니다. infra, waf 이미지를 다시 구워야 합니다
+  (`docs/OPENSTACK.md` §3.7).
 - 룰 테스트용 녹화(`wargames/<id>/probes/`)가 아직 없습니다. 지금 룰 테스트는 케이스를 미탐이 아니라
   `untested`(`not_recorded`, WAF 도구 케이스는 `tool_case`)로 돌려줍니다.
 

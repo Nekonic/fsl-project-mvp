@@ -10101,3 +10101,62 @@ spec is updated where it named the old placement.
   ends timed-out rounds and has no tmux). Revoking the grant used to leave
   the kept tmux session, and with it a shell on the slot's kali, open into
   the next round on that slot.
+
+## 2026-11-20 — Spec step 5, the repo side: edge sets, the access log, the scratch CRS test, analyst
+
+The deploy files of build step 5 are written to match what `range/edge.py`,
+`rules/crs.py`, `rules/suricata.py` and `ingest/elastic.py` already call.
+Nothing is baked or run on a range; `docs/OPENSTACK.md` §3.7 holds the rebake
+and its checks.
+
+- **Only `spent` is enforced at the edge.** `edge.nft` declares `pool` and
+  `spent` and drops `ip saddr @spent` from `wan` before the established
+  accept. The spec also drops `ip saddr != @pool`; the code fills `pool`
+  only in `attack.service.refill_edge`, which returns when a round has no
+  origin budgets, and a probe lease has no round. That drop would cut probe
+  recording and every round without attack origins, customers included, so
+  it waits until those fill `pool` too (`docs/STATE.md`).
+- **The access log is `/var/log/nginx/access.json`, not `access.log`.**
+  Ubuntu's `nginx.conf` already writes the combined format to
+  `/var/log/nginx/access.log`; a second format into the same file would mix
+  the two. The JSON line carries the fields `elastic.access_record` reads
+  (`time`, `client_ip`, `status`, `request_id`) plus `request`, `vhost` and
+  `refused` from the one `$refused` map; `host` is avoided because the
+  template maps it as an object. Filebeat keeps renaming `status` to
+  `http.status`, which `access_record` reads, so no field collides with a
+  Kibana runtime field.
+- **The relay and Kibana follow the new tag.** `log-relay.conf` on the infra
+  forwards programname `nginx-access` (the old `nginx` branch read the
+  removed `refused.log`), and the Kibana alert search and its three
+  visualizations show `event.module : "nginx_access" and refused : true`
+  instead of module `nginx`, so a 200 is traffic, not an alert.
+- **tcpdump keeps root.** Ubuntu's tcpdump drops to the user `tcpdump` before
+  it opens the `-w` file, and `rules.suricata.capture` writes into a folder
+  root just made; the capture now passes `-Z root`. The infra installs
+  `tcpdump` and `conntrack` (for `edge.spend`), which it lacked.
+- **The scratch CRS instance needs no worker writes under its prefix.**
+  `probe.conf` runs `user www-data` like the live master, keeps request
+  bodies in memory (`client_body_buffer_size 16m`) and buffers no upstream
+  response to disk (`proxy_max_temp_file_size 0`), so `/var/lib/cr-crstest`
+  stays 0700. The error log and the audit log are opened by the root master.
+  `probe-upstream.py` answers with `text/html` so ModSecurity inspects the
+  recorded body as it would the live one.
+- **analyst.** A bash login by the jump grant's key (password field `*`,
+  which OpenSSH does not treat as locked), group `adm` for the nginx and
+  ModSecurity logs, sudo for `nginx -t` and `nginx -T` only, no ssh
+  forwarding, and an nftables output rule that drops every packet its
+  processes send, so the defence seat cannot reach the target or the live
+  WAF on loopback from its shell. The exclusion file is created 0644 (the
+  platform writes it as root through sudo) instead of 0664 group `adm`,
+  which analyst would have been able to write.
+- **`bin/record-probes` is a thin client.** It starts the recording, follows
+  the progress through the generated client and exits non-zero when a case
+  was not recorded. The platform writes the recordings to its
+  `CR_PROBES_OUT`; no route serves them, so they are copied off the platform
+  VM by hand before they are committed.
+- **Unverified.** Docker was not running on the development machine, so
+  `nft -c` and `nginx -t` were not run on these files; the tests check them
+  structurally, run `probe-upstream.py` on loopback and push an access line
+  through the Filebeat steps into `ingest.elastic`. Whether
+  `jasonish/suricata`'s entrypoint lets the offline `-r` run write to a
+  root-owned scratch log folder mounted at `/scratch` is not known.

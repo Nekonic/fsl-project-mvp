@@ -5,6 +5,7 @@ cd "$(dirname "$0")"
 SENSOR_IMAGE=jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840
 EVE_DIR=/var/log/suricata
 RULES_DIR=/var/lib/suricata/rules
+RULE_TEST_DIR=/var/lib/cr-ruletest
 SHARE=/usr/local/share/slot
 
 export DEBIAN_FRONTEND=noninteractive
@@ -47,7 +48,7 @@ sealed_for_snapshot() {
 }
 
 ubuntu_trimmed
-installed nftables iproute2 bridge-utils ethtool rsyslog docker.io
+installed nftables conntrack tcpdump iproute2 bridge-utils ethtool rsyslog docker.io
 
 printf 'net.ipv4.ip_forward = 1\nnet.ipv4.conf.all.rp_filter = 0\nnet.ipv4.conf.default.rp_filter = 0\n' > /etc/sysctl.d/60-edge.conf
 sysctl --system >/dev/null
@@ -62,6 +63,7 @@ install -d -m 0755 /etc/suricata "$RULES_DIR" "$SHARE"
 install -m 0644 suricata.yaml /etc/suricata/suricata.yaml
 install -m 0644 local.rules "$RULES_DIR/local.rules"
 install -d -m 2750 -g adm "$EVE_DIR"
+install -d -m 0700 "$RULE_TEST_DIR"
 docker run --rm --pull never -e PGID=4 \
   -v /etc/suricata/suricata.yaml:/etc/suricata/suricata.yaml \
   -v "$RULES_DIR:$RULES_DIR" \

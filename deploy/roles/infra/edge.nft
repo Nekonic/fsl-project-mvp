@@ -1,6 +1,14 @@
 table ip edge
 delete table ip edge
 table ip edge {
+  set pool {
+    type ipv4_addr
+  }
+
+  set spent {
+    type ipv4_addr
+  }
+
   chain prerouting {
     type nat hook prerouting priority dstnat; policy accept;
     iifname "@wan@" ip daddr @router@ tcp dport 80 dnat to @waf@
@@ -8,6 +16,7 @@ table ip edge {
 
   chain forward {
     type filter hook forward priority filter; policy accept;
+    iifname "@wan@" ip saddr @spent drop
     iifname "@wan@" ct state established,related accept
     iifname "@wan@" ct status dnat accept
     iifname "@wan@" drop

@@ -35,12 +35,14 @@ rounds driven by Claude Code, and the ported acceptance suite.
    site listener keyed by round, `/app/front/dist` served last) and
    `vm-terminal.sh` (kali as `kali`, cr-waf as `analyst`, only for a seat
    with a jump grant) are written and tested offline, not on a range.
-2. Cloud step 5: the deploy changes (edge `pool`/`spent` sets, the WAF JSON
-   access log shipped as `nginx_access`, `probe.conf`, `probe-upstream.py`,
-   `analyst.sh`) and new infra and waf images. None of those files is changed
-   yet.
-3. Cloud step 12: write `bin/record-probes`, record board and corp through
-   the staff route, commit `wargames/<id>/probes/`.
+2. Cloud step 5: the deploy files are written and tested offline (edge
+   `pool`/`spent` sets, the WAF JSON access log shipped as `nginx_access`,
+   `probe.conf`, `probe-upstream.py`, `analyst.sh`, infra `conntrack` and
+   `tcpdump`); bake `cr-infra-bake2` and `cr-waf-bake3` and run the step's
+   checks on a slot (`docs/OPENSTACK.md` §3.7).
+3. Cloud step 12: `bin/record-probes board` and `corp` through the staff
+   route, copy `CR_PROBES_OUT/<id>/probes/` off the platform VM, commit
+   `wargames/<id>/probes/`.
 4. Full live verify: the full `bin/verify` with acceptance, one Claude Code
    bot round per matchup, a captured walk as a learner, a live review round
    with zero countable findings, a docs review.

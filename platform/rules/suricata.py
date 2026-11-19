@@ -168,7 +168,7 @@ def capture(node, config: SensorConfig, path: str, seconds: int) -> Capture:
         raise ValueError(f"a capture path is an absolute path to a plainly named file, got {path!r}")
     folder = str(PurePosixPath(path).parent)
     ran = node(["sh", "-c", f"mkdir -p {folder} && nohup timeout {int(seconds)} tcpdump -i "
-                            f"{shlex.quote(config.interface)} -U -s 0 -w {path} >/dev/null 2>&1 & echo $!"])
+                            f"{shlex.quote(config.interface)} -Z root -U -s 0 -w {path} >/dev/null 2>&1 & echo $!"])
     pid = ran.output.strip().splitlines()[-1] if ran.ok and ran.output.strip() else ""
     if not pid.isdigit():
         raise RulesUnreadable(f"{config.name} could not start a capture on {config.interface}: {ran.output.strip()[:300]}")
