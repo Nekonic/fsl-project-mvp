@@ -93,7 +93,7 @@ if [ "$CHANGED" = 1 ]; then
   acceptance_modules="$(sed -n 's/^acceptance-module //p' "$PLAN" | paste -sd, -)"
 fi
 
-for layer in domain seams accounts events content match referee contract; do
+for layer in domain seams accounts events content match referee defence contract; do
   if [ "$CHANGED" = 1 ] || [ ! -d "platform/tests/$layer" ]; then
     continue
   fi

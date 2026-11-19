@@ -26,7 +26,7 @@ LAYERS = (
 )
 FRAMEWORKS = ("django", "rest_framework", "drf_spectacular")
 L1_THIRD_PARTY = ("requests", "yaml")
-LEGACY = ("disable.py",)
+LEGACY: tuple[str, ...] = ()
 
 
 def modules() -> list[str]:
@@ -181,6 +181,7 @@ def test_the_checker_sees_a_framework_import_an_app_import_and_a_relative_import
 APPS = ("accounts", "events", "content", "match", "referee", "attack", "defence", "lessons")
 SERVICE_OF = {"events": "events/log.py"}
 SHARED_TO_VIEWS = {"cr/errors.py", "match/auth.py", "accounts/service.py"}
+SERVER_LINES = {"defence/views_kibana.py": {"cr/strings.py"}}
 VIEW_FRAMEWORKS = ("rest_framework", "drf_spectacular")
 
 
@@ -209,7 +210,7 @@ def test_rule_8_events_imports_no_other_app(path):
 def test_rule_10_views_and_serializers_import_only_their_service_models_drf_and_the_shared_few(path):
     app = path.split("/")[0]
     allowed = {SERVICE_OF.get(app, f"{app}/service.py"), f"{app}/models.py", f"{app}/serializers.py",
-               f"{app}/__init__.py", path} | SHARED_TO_VIEWS
+               f"{app}/__init__.py", path} | SHARED_TO_VIEWS | SERVER_LINES.get(path, set())
     strays = sorted(target for target in targets(path) if target not in allowed and not package_marker(target))
     third_party = [dotted for dotted in imports(path)
                    if not standard(dotted) and not own(dotted) and dotted.split(".")[0] not in VIEW_FRAMEWORKS]
@@ -371,3 +372,27 @@ def test_rule_15_sees_the_round_records_point_down_to_content_auth_and_match():
 
     assert {("match.Lease", "content.Wargame"), ("match.Round", "content.Problem"), ("match.Seat", "auth.User"),
             ("referee.Objective", "match.Round")} <= relations
+
+
+SIDES = ("attack", "defence")
+
+
+def other_side_reached(path: str, reached: set[str]) -> list[str]:
+    side = app_of(path)
+    if side not in SIDES:
+        return []
+    other = next(name for name in SIDES if name != side)
+    return sorted(target for target in reached if target.startswith(f"{other}/"))
+
+
+@pytest.mark.parametrize("path", [path for path in modules() if app_of(path) in SIDES])
+def test_rule_3_attack_and_defence_never_import_each_other(path):
+    assert other_side_reached(path, targets(path)) == [], f"{path} reaches the other side"
+
+
+def test_the_checker_sees_a_side_reaching_the_other():
+    reached = {"attack/jump.py", "defence/disable.py", "referee/service.py"}
+
+    assert other_side_reached("defence/service.py", reached) == ["attack/jump.py"]
+    assert other_side_reached("attack/service.py", reached) == ["defence/disable.py"]
+    assert other_side_reached("referee/service.py", reached) == []

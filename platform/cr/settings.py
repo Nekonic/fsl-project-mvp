@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "content",
     "match",
     "referee",
+    "defence",
 ]
 
 MIDDLEWARE = [
@@ -92,5 +93,6 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
-    "ENUM_NAME_OVERRIDES": {"ProblemKindEnum": "content.models.KINDS", "ProblemSideEnum": "content.models.SIDES"},
+    "ENUM_NAME_OVERRIDES": {"ProblemKindEnum": "content.models.KINDS", "ProblemSideEnum": "content.models.SIDES",
+                            "VerdictEnum": "defence.serializers.VERDICTS"},
 }

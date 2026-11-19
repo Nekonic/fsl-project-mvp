@@ -1,4 +1,4 @@
-from disable import MARKER, comment_out, discard, find, uncomment
+from defence.disable import MARKER, comment_out, discard, find, uncomment
 
 RULES = '''# Baseline rules.
 
