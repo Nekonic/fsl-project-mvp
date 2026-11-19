@@ -148,3 +148,16 @@ def test_an_api_send_carries_the_marker_the_platform_chose_not_the_case_id():
     case = {"case_id": "abc", "correlation": "window", "request": {"method": "GET", "path": "/"}}
 
     assert build_request(case, BASE, marker="action-17").headers["X-Request-ID"] == "action-17"
+
+
+def test_a_fired_case_carries_the_marker_the_platform_chose_on_http_and_on_tools():
+    launch, launched = _launcher()
+    http = {"case_id": "abc", "name": "n", "correlation": "window", "request": {"method": "GET", "path": "/"}}
+    tool = {"case_id": "abc", "name": "t", "tool": "sqlmap", "args": ["-u", "{target}/"]}
+
+    harness.fire(http, launch, BASE, marker="action-9")
+    harness.fire(tool, launch, BASE, marker="action-10")
+
+    assert "X-Request-ID: action-9" in launched[0]
+    assert "--headers=X-Request-ID: action-10" in launched[1]
+    assert http["case_id"] == "abc" and tool["case_id"] == "abc"

@@ -74,7 +74,10 @@ def case_meta(case: dict[str, Any]) -> dict[str, Any]:
     return {"request": case["request"]}
 
 
-def fire(case: dict[str, Any], launch: Launch, target_url: str, runs: str | None = None):
+def fire(case: dict[str, Any], launch: Launch, target_url: str, runs: str | None = None,
+         marker: str | None = None):
+    if marker:
+        case = dict(case, case_id=marker, correlation="marker")
     if is_tool_case(case):
         return fire_tool(case, target_url, launch, runs)
     case = apply_prefetch(case, target_url, launch, REQUEST_TIMEOUT)

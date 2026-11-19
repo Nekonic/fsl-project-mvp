@@ -115,7 +115,8 @@ def test_a_free_tool_is_one_the_box_offers_and_a_marker_rides_on_curl_and_sqlmap
         "curl", "-H", "X-Request-ID: action-3", "-s", "http://board.com/"]
     assert free_argv("nmap", ["-p", "80", "board.com"], "action-4") == ["nmap", "-p", "80", "board.com"]
     assert "sqlmap" in FREE_TOOLS
-    with pytest.raises(UnknownTool):
+    with pytest.raises(UnknownTool) as unknown:
         free_argv("bash", ["-c", "id"])
+    assert unknown.value.code == "unknown_tool" and unknown.value.status == 404
     with pytest.raises(ValueError):
         free_argv("curl", "http://board.com/")

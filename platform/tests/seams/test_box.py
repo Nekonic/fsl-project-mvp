@@ -1,5 +1,7 @@
+import os
 import pathlib
 import re
+import subprocess
 from datetime import datetime, timezone
 
 import pytest
@@ -168,3 +170,47 @@ def test_learner_keys_are_named_and_a_bad_name_is_refused():
     assert kali.sent[0].stdin == "ssh-ed25519 AAAA cr-session-4\n"
     with pytest.raises(ValueError):
         box.drop_key(kali, "x; rm -rf /")
+
+
+def _hook(tmp_path):
+    hook = tmp_path / "hook.sh"
+    hook.write_text((DEPLOY / "kali/operator-log.sh").read_text()
+                    .replace(BoxConfig.command_log, str(tmp_path / "commands.log"))
+                    .replace(BoxConfig.label_file, str(tmp_path / "active")))
+    return hook
+
+
+def test_the_shell_hook_logs_what_is_typed_where_the_box_reads_it_and_not_the_last_shell_s_command(tmp_path):
+    (tmp_path / "active").write_text("case-1\n")
+    shell = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-c",
+         'history -s "the old shell typed this"; source "$1"; '
+         '__log_command; history -s "nmap --version"; __log_command; __log_command',
+         "bash", str(_hook(tmp_path))],
+        capture_output=True, text=True, timeout=30,
+    )
+
+    assert shell.returncode == 0, shell
+    logged = FakeRunner().answer("cat", (tmp_path / "commands.log").read_text())
+    assert [(c.marker, c.text) for c in box.commands(logged, CONFIG)] == [("case-1", "nmap --version")]
+
+
+def test_the_hook_leaves_a_blank_line_before_every_prompt_but_the_first_as_kali_s_shell_does(tmp_path):
+    shell = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-c", 'source "$1"; __log_command; __log_command; __log_command',
+         "bash", str(_hook(tmp_path))],
+        capture_output=True, text=True, timeout=30,
+    )
+
+    assert shell.stdout == "\n\n"
+
+
+def test_the_attacker_prompt_is_kali_s_two_line_prompt_and_ends_in_a_dollar_and_a_space():
+    shell = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-ic", 'source "$1"; printf "%s" "$PS1"', "bash",
+         str(DEPLOY / "kali/bashrc")],
+        capture_output=True, text=True, timeout=30, env={**os.environ, "TERM": "xterm-256color"},
+    )
+    prompt = re.sub(r"\\\[.*?\\\]", "", shell.stdout)
+
+    assert "\\n" in prompt and prompt.endswith("\\$ "), "the terminal waits for the prompt with '[$#] $'"

@@ -61,16 +61,27 @@ def resolved(dotted: str) -> str | None:
     return None
 
 
-def imports(path: str) -> list[str]:
-    tree = ast.parse((PLATFORM / path).read_text(), filename=path)
+def absolute(path: str, level: int, module: str | None) -> str:
+    package = path.removesuffix(".py").split("/")[:-1]
+    base = package[:len(package) - (level - 1)] if level > 1 else package
+    return ".".join([*base, *([module] if module else [])])
+
+
+def imports_in(source: str, path: str) -> list[str]:
     found = []
-    for node in ast.walk(tree):
+    for node in ast.walk(ast.parse(source, filename=path)):
         if isinstance(node, ast.Import):
             found += [alias.name for alias in node.names]
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-            found.append(node.module)
-            found += [f"{node.module}.{alias.name}" for alias in node.names if alias.name != "*"]
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module if node.level == 0 else absolute(path, node.level, node.module)
+            if module:
+                found.append(module)
+            found += [f"{module}.{alias.name}" if module else alias.name for alias in node.names if alias.name != "*"]
     return found
+
+
+def imports(path: str) -> list[str]:
+    return imports_in((PLATFORM / path).read_text(), path)
 
 
 def own(dotted: str) -> bool:
@@ -145,14 +156,11 @@ def test_rule_4_only_referee_reads_the_target_s_ground_truth(path):
     assert reached == set(), f"{path} imports {sorted(reached)}; other apps go through referee.service"
 
 
-def test_the_checker_sees_a_framework_import_and_an_app_import():
-    sample = PLATFORM / "testing" / "_import_probe.py"
-    sample.write_text("from django.conf import settings\nfrom attack import service\nfrom referee import loot\n")
-    try:
-        path = str(sample.relative_to(PLATFORM))
-        assert "django.conf" in imports(path)
-        assert resolved("attack.box") == "attack/box.py"
-        assert resolved("range.runner.Ran") == "range/runner.py"
-        assert "referee/loot.py" in targets(path)
-    finally:
-        sample.unlink()
+def test_the_checker_sees_a_framework_import_an_app_import_and_a_relative_import():
+    named = imports_in("from django.conf import settings\nfrom attack import service\nfrom . import loot\n"
+                       "from ..attack import box\n", "referee/sample.py")
+
+    assert "django.conf" in named and "attack.service" in named
+    assert "referee.loot" in named and "attack.box" in named
+    assert resolved("attack.box") == "attack/box.py"
+    assert resolved("range.runner.Ran") == "range/runner.py"

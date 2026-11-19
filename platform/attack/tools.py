@@ -4,7 +4,7 @@ import re
 from typing import Any
 from urllib.parse import urlsplit
 
-from cr.errors import Unavailable
+from cr.errors import NotFound, Unavailable
 
 MARKER_HEADER = "X-Request-ID"
 STATUS = re.compile(r"http_code=(\d{3})")
@@ -30,8 +30,8 @@ class ToolUnavailable(Unavailable):
     code = "tool_unavailable"
 
 
-class UnknownTool(ValueError):
-    pass
+class UnknownTool(NotFound):
+    code = "unknown_tool"
 
 STARTUP_FAILURE = 125
 
