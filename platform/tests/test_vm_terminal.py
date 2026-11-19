@@ -8,7 +8,7 @@ WAF_SHELL = "10.31.0.181 cr-srv-2 analyst"
 
 
 def fakes(tmp_path, **bodies):
-    for name, body in {"sleep": "exit 0", **bodies}.items():
+    for name, body in {"sleep": '[ "$1" != 3 ] || exit 0; exec /bin/sleep "$@"', **bodies}.items():
         (tmp_path / name).write_text(f"#!/bin/sh\n{body}\n")
         (tmp_path / name).chmod(0o755)
     env = {**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}", "TERMINAL_LOG": str(tmp_path / "terminal.log")}
@@ -111,3 +111,34 @@ def test_the_shell_s_clock_is_korean_time_even_in_a_box_without_a_time_zone_data
                             env={"TZ": zone, "TZDIR": str(tmp_path / "no-zoneinfo")}).stdout.strip()
 
     assert "/" not in zone and offset == "+0900", "the WAF image has no tzdata, so TZ=Asia/Seoul read as UTC"
+
+
+def test_an_open_shell_is_closed_once_the_round_no_longer_gives_the_seat_a_terminal(tmp_path):
+    checks, ended = tmp_path / "checks", tmp_path / "ssh-ended"
+    revoked_on_second_check = (f'echo x >> {checks}; [ "$(wc -l < {checks})" -lt 2 ] || exit 1; '
+                               f'echo "{KALI_SHELL}"')
+    env = {**fakes(tmp_path, python=revoked_on_second_check,
+                   ssh=f"/bin/sleep 30 >/dev/null 2>&1 & trap 'kill $!; touch {ended}; exit 255' TERM; wait"),
+           "TERMINAL_RECHECK": "0.2"}
+
+    ran = subprocess.run(["sh", str(SCRIPT), "cr-kali", "attack", "3"], capture_output=True, text=True, env=env,
+                         timeout=10)
+
+    assert ended.exists(), "the shell outlived the round's grant"
+    assert ran.returncode == 0 and ran.stdout == ""
+    assert "no longer gives the attack seat a terminal" in (tmp_path / "terminal.log").read_text()
+
+
+def test_a_shell_whose_grant_holds_is_left_open_and_the_check_stops_with_it(tmp_path):
+    checks = tmp_path / "checks"
+    env = {**fakes(tmp_path, python=f'echo x >> {checks}; echo "{KALI_SHELL}"', ssh="/bin/sleep 1"),
+           "TERMINAL_RECHECK": "0.2"}
+
+    ran = subprocess.run(["sh", str(SCRIPT), "cr-kali", "attack", "3"], capture_output=True, text=True, env=env,
+                         timeout=10)
+    seen = len(checks.read_text().splitlines())
+    subprocess.run(["/bin/sleep", "0.6"])
+
+    assert ran.returncode == 0
+    assert seen >= 3, "the grant was never checked again while the shell was open"
+    assert len(checks.read_text().splitlines()) == seen, "the check outlived the shell"

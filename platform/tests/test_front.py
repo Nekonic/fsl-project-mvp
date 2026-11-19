@@ -1,5 +1,6 @@
 import pathlib
 import re
+import urllib.parse
 
 import pytest
 from django.conf import settings
@@ -177,6 +178,58 @@ def test_the_terminal_check_asks_the_round_s_seat_route_for_the_side_in_the_path
     assert django_route("/api/rounds/12/terminal-auth/attack/") == "AttackTerminalAuth"
     assert "proxy_cache" not in check.text(), "a cached yes would outlive the seat's grant"
     assert check.child("if").values("return") == [["403"]], "a path naming no seat is refused, not checked"
+
+
+def normalized_by_nginx(raw):
+    path = re.sub(r"/+", "/", urllib.parse.unquote(raw.partition("?")[0]))
+    kept = []
+    for part in path.split("/")[1:]:
+        if part == "..":
+            kept.pop()
+        elif part != ".":
+            kept.append(part)
+    return "/" + "/".join(kept)
+
+
+def seat_nginx_checks(raw):
+    seat = next(one for one in http().children("map") if one.args == ["$request_uri", "$terminal_seat"])
+    [given, value] = seat.block[0].name, seat.block[0].args[0]
+    mapped = re.compile(given.removeprefix("~").replace("(?<", "(?P<")).match(raw)
+    if not mapped:
+        return ""
+    return value.replace("$seat_round", mapped["seat_round"]).replace("$seat_side", mapped["seat_side"])
+
+
+def terminal_reached(raw):
+    uri = normalized_by_nginx(raw)
+    for side in TERMINAL_PORTS:
+        found = regex_location(console(), f"/vm-terminal/{side}/12/")
+        taken = pattern(found).match(uri)
+        if not taken:
+            continue
+        [guard] = found.children("if")
+        [compared, unequal, wanted, closing] = guard.args
+        assert (compared, unequal, closing, guard.values("return")) == ("($terminal_seat", "!=", ")", [["404"]])
+        if seat_nginx_checks(raw) != wanted.replace("$terminal_round", taken["terminal_round"]):
+            return None
+        return side, taken["terminal_round"]
+    return None
+
+
+@pytest.mark.parametrize("raw", [
+    "/vm-terminal/defence/7/../../attack/5/ws", "/vm-terminal/attack/7/../5/ws", "/vm-terminal/attack/%35/ws",
+    "/vm-terminal//attack/5/ws", "/vm-terminal/attack/7/./../5/token", "/vm-terminal/attack/7%2f..%2f5/ws",
+])
+def test_a_terminal_path_whose_raw_seat_differs_from_the_one_nginx_routes_on_is_refused_before_the_seat_check(raw):
+    assert terminal_reached(raw) is None, f"{raw} would check one seat and open another round's shell"
+
+
+@pytest.mark.parametrize("raw, reached", [
+    ("/vm-terminal/attack/7/ws", ("attack", "7")), ("/vm-terminal/defence/7/?x=1", ("defence", "7")),
+    ("/vm-terminal/attack/7/x/../ws", ("attack", "7")),
+])
+def test_a_terminal_path_reaches_the_seat_the_check_asked_about(raw, reached):
+    assert terminal_reached(raw) == reached
 
 
 def test_the_sign_in_checks_reach_the_api_s_own_session_check_and_cache_it_per_cookie_and_address():

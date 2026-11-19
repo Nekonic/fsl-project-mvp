@@ -432,7 +432,7 @@ sudo docker compose start platform follow
 | 자리 | 상대 자리의 경로는 403. 라운드 시작 전 쓰기는 `409 round_not_started`, 끝난 뒤는 `409 round_closed`. 자리는 리스를 열거나 닫지 못하고 라운드를 끝내지 못함(기권만 가능). PvP에서 한 사람이 두 자리를 맡지 못함(`already_seated`) |
 | 이벤트 피드 | 이벤트 종류마다 볼 수 있는 쪽이 정해져 있음. 공격 쪽은 경보와 룰 이벤트를, 방어 쪽은 공격 행동과 HP 이벤트를 보지 못함 |
 | WAF 설정 | 방어석은 구조화된 posture(paranoia, 예외, 임계값, 탐지 전용)만 보냄. 자유 텍스트를 받지 않으므로 `SecRuleEngine Off`를 쓸 수 없음 |
-| `/vm-terminal/<side>/<round>/` | nginx `auth_request`가 `/api/rounds/<round>/terminal-auth/<side>/`에 그 라운드의 그 자리를 맡았는지 물음. 공격 자리는 Kali의 `kali` 계정, 방어 자리는 cr-waf의 `analyst` 계정(root 아님)으로 열리고, `GET terminal/`로 받은 점프 권한이 없거나 라운드가 끝났으면 열리지 않음 |
+| `/vm-terminal/<side>/<round>/` | nginx `auth_request`가 `/api/rounds/<round>/terminal-auth/<side>/`에 그 라운드의 그 자리를 맡았는지 물음. 공격 자리는 Kali의 `kali` 계정, 방어 자리는 cr-waf의 `analyst` 계정(root 아님)으로 열리고, `GET terminal/`로 받은 점프 권한이 없거나 라운드가 끝났으면 열리지 않음. 열려 있던 셸도 15초마다 다시 확인해 권한이 없어지면 닫힘 |
 | `/kibana/`, 8002(`/site/...`) | nginx `auth_request`로 `/api/me/`에 로그인 세션 확인. 없으면 로그인 페이지로 |
 | 회원가입 계정 | 비활성 상태로 만들어짐. 스태프가 승인해야 로그인 가능 |
 | 로그인 시도 | IP당 분당 5회(버스트 5), 넘으면 429. 계정은 잠그지 않고 시도한 쪽을 차단: 스태프 계정에 3번 틀린 IP는 1시간, 다른 아이디에 10번 틀린 IP는 15분. 같은 브라우저 헤더 지문이 두 IP 이상에서 같은 횟수만큼 틀려도 차단. 스태프가 `DELETE /api/staff/blocks/<id>/`로 해제 |

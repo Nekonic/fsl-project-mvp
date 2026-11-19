@@ -10080,3 +10080,24 @@ spec is updated where it named the old placement.
   it names; `test_vm_terminal.py` runs the script against fake `python`,
   `ssh` and `tmux`. Docker was not running on the development machine, so
   `nginx -t` was not run; nothing has run on a range.
+
+## 2026-11-20 — Terminal review: the seat nginx checks is the seat it opens, and a shell ends with its grant
+
+- **The raw path and the routed path must name one seat.** The seat check
+  is found from `$request_uri` (raw), but the location matches the
+  normalized `$uri`, so `/vm-terminal/defence/7/../../attack/5/ws` checked
+  the caller's defence seat in round 7 and handed the attack ttyd round 5:
+  someone else's kali shell, attached to that seat's tmux session. Each
+  terminal location now returns 404 unless the raw path's seat equals
+  `$terminal_round/terminal-auth/<side>` from its own captures; a dot
+  segment, an escape or a doubled slash that changes the seat is refused
+  before the check. `tests/test_front.py` replays nginx's normalization
+  over such paths.
+- **An open shell closes when its grant goes.** `vm-terminal.sh` runs ssh
+  beside a loop that asks `manage.py terminal_shell` again every
+  `TERMINAL_RECHECK` seconds (15) and kills ssh once the round has ended or
+  the seat's jump grant is gone. The check runs in the terminal's own
+  process, so it holds whichever container ends the round (the follower
+  ends timed-out rounds and has no tmux). Revoking the grant used to leave
+  the kept tmux session, and with it a shell on the slot's kali, open into
+  the next round on that slot.

@@ -33,7 +33,24 @@ case "$account" in
   ''|*[!a-z0-9_-]*) failed "no account for the $side seat's $host" ;;
 esac
 options="-t -i /data/ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o HostKeyAlias=$alias -o LogLevel=ERROR -o ConnectTimeout=10 -o ServerAliveInterval=30"
-ssh $options "${CR_OPENSTACK_SSH_USER:-ubuntu}@${addr}" "sudo -i -u $account env TERM=xterm-256color TZ=KST-9 bash -l" 2>>"$log"
+recheck="${TERMINAL_RECHECK:-15}"
+exec 3<&0
+ssh $options "${CR_OPENSTACK_SSH_USER:-ubuntu}@${addr}" "sudo -i -u $account env TERM=xterm-256color TZ=KST-9 bash -l" <&3 2>>"$log" &
+shell=$!
+exec 3<&-
+(
+  while sleep "$recheck"; do
+    python "$app/manage.py" terminal_shell "$side" "$round" >/dev/null 2>>"$log" && continue
+    printf '%s %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$shown" "round $round no longer gives the $side seat a terminal; closing it" >> "$log" 2>/dev/null
+    kill "$shell" 2>/dev/null
+    exit 3
+  done
+) >/dev/null 2>&1 &
+watcher=$!
+wait "$shell"
 status=$?
+kill "$watcher" 2>/dev/null
+wait "$watcher"
+[ "$?" -ne 3 ] || exit 0
 [ "$status" -ne 255 ] || failed "ssh to $host at $addr ended with 255"
 exit "$status"
