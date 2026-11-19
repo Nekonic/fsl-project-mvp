@@ -163,3 +163,85 @@ def test_the_checker_sees_a_framework_import_an_app_import_and_a_relative_import
     assert "referee.loot" in named and "attack.box" in named
     assert resolved("attack.box") == "attack/box.py"
     assert resolved("range.runner.Ran") == "range/runner.py"
+
+
+APPS = ("accounts", "events", "content", "match", "referee", "attack", "defence", "lessons")
+SERVICE_OF = {"events": "events/log.py"}
+SHARED_TO_VIEWS = {"cr/errors.py", "match/auth.py", "accounts/service.py"}
+VIEW_FRAMEWORKS = ("rest_framework", "drf_spectacular")
+
+
+def app_of(path: str) -> str | None:
+    head = path.split("/")[0]
+    return head if head in APPS else None
+
+
+def package_marker(path: str) -> bool:
+    return path.endswith("/__init__.py") and not (PLATFORM / path).read_text().strip()
+
+
+def views_and_serializers() -> list[str]:
+    return [path for path in modules()
+            if app_of(path) and (fnmatch(path, "*/views*.py") or fnmatch(path, "*/serializers.py"))]
+
+
+@pytest.mark.parametrize("path", [path for path in modules() if app_of(path) == "events" and layer_of(path) != 8])
+def test_rule_8_events_imports_no_other_app(path):
+    others = [target for target in targets(path) if app_of(target) not in (None, "events")]
+
+    assert others == [], f"{path} imports {others}; events is a leaf"
+
+
+@pytest.mark.parametrize("path", views_and_serializers())
+def test_rule_10_views_and_serializers_import_only_their_service_models_drf_and_the_shared_few(path):
+    app = path.split("/")[0]
+    allowed = {SERVICE_OF.get(app, f"{app}/service.py"), f"{app}/models.py", f"{app}/serializers.py",
+               f"{app}/__init__.py", path} | SHARED_TO_VIEWS
+    strays = sorted(target for target in targets(path) if target not in allowed and not package_marker(target))
+    third_party = [dotted for dotted in imports(path)
+                   if not standard(dotted) and not own(dotted) and dotted.split(".")[0] not in VIEW_FRAMEWORKS]
+
+    assert strays == [], f"{path} imports {strays}"
+    assert third_party == [], f"{path} imports {third_party}"
+
+
+def model_layer(label: str) -> int:
+    return layer_of(f"{label}/models.py") if label in APPS else -1
+
+
+def upward_relations(models, migrations, user_app: str) -> list[str]:
+    found = [f"{model._meta.label}.{field.name} -> {field.related_model._meta.label}"
+             for model in models if model._meta.app_label in APPS
+             for field in model._meta.get_fields() if field.is_relation and field.related_model
+             and field.related_model._meta.app_label != model._meta.app_label
+             and model_layer(field.related_model._meta.app_label) >= model_layer(model._meta.app_label)]
+    for (app, name), migration in migrations.items():
+        for dependency in migration.dependencies if app in APPS else ():
+            target = user_app if dependency[0] == "__setting__" else dependency[0]
+            if target != app and model_layer(target) >= model_layer(app):
+                found.append(f"{app}.{name} -> {dependency[0]}")
+    return found
+
+
+def test_rule_15_model_relations_and_migrations_point_to_the_same_app_or_lower():
+    from django.apps import apps
+    from django.conf import settings
+    from django.db.migrations.loader import MigrationLoader
+
+    migrations = MigrationLoader(None, ignore_no_migrations=True).disk_migrations
+
+    assert upward_relations(apps.get_models(), migrations, settings.AUTH_USER_MODEL.split(".")[0]) == []
+
+
+def test_the_layer_order_of_models_runs_from_django_auth_up_to_lessons():
+    assert model_layer("auth") < model_layer("accounts") < model_layer("match") < model_layer("referee")
+    assert model_layer("referee") < model_layer("attack") < model_layer("lessons")
+    assert model_layer("events") == model_layer("content") == model_layer("accounts")
+
+
+def test_the_checker_sees_an_upward_migration_dependency():
+    class Upward:
+        dependencies = [("match", "0001_initial"), ("accounts", "0001_initial"), ("__setting__", "AUTH_USER_MODEL")]
+
+    assert upward_relations([], {("events", "0002_x"): Upward}, "auth") == ["events.0002_x -> match",
+                                                                            "events.0002_x -> accounts"]

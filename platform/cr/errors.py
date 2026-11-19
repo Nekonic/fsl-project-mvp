@@ -43,25 +43,42 @@ class DomainError(Exception):
 class Invalid(DomainError):
     code = "invalid"
     status = 400
-    codes = frozenset({"invalid"})
+    codes = frozenset({
+        "invalid", "malformed", "required", "null", "blank", "max_length", "min_length", "max_value", "min_value",
+        "invalid_choice", "not_a_list", "empty", "does_not_exist", "username_taken", "password_too_short",
+        "password_too_common", "password_entirely_numeric", "password_too_similar",
+    })
 
 
 class NotSignedIn(DomainError):
     code = "not_signed_in"
     status = 401
-    codes = frozenset({"not_signed_in"})
+    codes = frozenset({"not_signed_in", "wrong_credentials"})
 
 
 class NotSeated(DomainError):
     code = "not_seated"
     status = 403
-    codes = frozenset({"not_seated"})
+    codes = frozenset({"not_seated", "not_staff", "csrf_failed", "account_pending"})
 
 
 class NotFound(DomainError):
     code = "not_found"
     status = 404
-    codes = frozenset({"not_found", "unknown_case", "unknown_tool", "unknown_run", "unknown_origin"})
+    codes = frozenset({"not_found", "unknown_case", "unknown_tool", "unknown_run", "unknown_origin", "unknown_user",
+                       "unknown_block", "unknown_round"})
+
+
+class NotAllowed(DomainError):
+    code = "method_not_allowed"
+    status = 405
+    codes = frozenset({"method_not_allowed"})
+
+
+class NotAcceptable(DomainError):
+    code = "not_acceptable"
+    status = 406
+    codes = frozenset({"not_acceptable"})
 
 
 class Conflict(DomainError):
@@ -70,7 +87,14 @@ class Conflict(DomainError):
     codes = frozenset({
         "conflict", "round_not_started", "round_closed", "round_running", "origins_spent", "stale_version",
         "stale_revision", "test_busy", "already_seated", "seat_taken", "in_use", "step_locked",
+        "own_account",
     })
+
+
+class UnsupportedMedia(DomainError):
+    code = "unsupported_media_type"
+    status = 415
+    codes = frozenset({"unsupported_media_type"})
 
 
 class EngineRefused(DomainError):
@@ -79,15 +103,28 @@ class EngineRefused(DomainError):
     codes = frozenset({"engine_refused", "suricata_syntax", "crs_refused", "apply_refused", "unread_sid"})
 
 
+class TooMany(DomainError):
+    code = "too_many"
+    status = 429
+    codes = frozenset({"too_many", "sign_in_blocked", "sign_ups_throttled"})
+
+
+class ServerError(DomainError):
+    code = "server_error"
+    status = 500
+    codes = frozenset({"server_error"})
+
+
 class Unavailable(DomainError):
     code = "unavailable"
     status = 503
     codes = frozenset({
         "unavailable", "range_unavailable", "range_drifted", "attacker_unavailable", "sensor_unavailable",
         "waf_unavailable", "elastic_unavailable", "kibana_unavailable", "ground_truth_unavailable",
-        "tool_unavailable",
+        "tool_unavailable", "sign_ups_closed",
     })
 
 
-KINDS = (Invalid, NotSignedIn, NotSeated, NotFound, Conflict, EngineRefused, Unavailable)
+KINDS = (Invalid, NotSignedIn, NotSeated, NotFound, NotAllowed, NotAcceptable, Conflict, UnsupportedMedia,
+         EngineRefused, TooMany, ServerError, Unavailable)
 CODES = frozenset(code for kind in KINDS for code in kind.codes)
