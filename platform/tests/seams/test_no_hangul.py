@@ -16,13 +16,7 @@ ALLOWED_FILES = (
 )
 ALLOWED_FOLDERS = ("wargames/board/app/posts/templates/",)
 KOREAN_TEST_INPUTS: tuple[str, ...] = ()
-REWRITTEN_AT_THE_DOCS_STEP = (
-    "docs/DECISIONS.md",
-    "docs/OPENSTACK.md",
-    "docs/STATE.md",
-    "docs/TROUBLESHOOTING.md",
-    "docs/state/now.md",
-)
+REWRITTEN_AT_THE_DOCS_STEP = ("docs/DECISIONS.md",)
 
 
 def scanned() -> list[str]:

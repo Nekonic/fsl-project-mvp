@@ -9903,3 +9903,95 @@ Seven whole-repo structures were proposed, each checked by a skeptic against the
 by four judges (maintainability, product fit, operational risk, project invariants). The user chose
 the side split and asked for the others' strengths to be fused in. The fused design, with each
 graft and its source option, is `docs/superpowers/specs/2026-11-19-side-split-design.md`.
+
+## 2026-11-20 — What the side-split build decided beside the spec
+
+These came up while building `side-split` against the design; the design
+spec is updated where it named the old placement.
+
+- **Jump grants live in `range/jump.py`, not under `attack/`.** The defence
+  terminal needs the same grant as the attack terminal: an SSH key on the
+  platform sshd that forwards only to one box, plus the seat's key in that
+  box account's `authorized_keys` (kali for the attack seat, `analyst` on
+  cr-waf's management address for the defence seat). `attack` and `defence`
+  may not import each other (import rule 3), so the grant module sits in L1
+  under `range/`, takes the address, runner and account from its caller, and
+  imports no Django and no app. `attack/box.py` no longer edits
+  `authorized_keys`; a seam pattern (`authorized_keys`, `cr-session-`) keeps
+  `range/jump.py` its only owner beside `entrypoint.sh`, which creates the
+  jump host's empty file. `match.service.end_round` revokes both sides'
+  grants under `guarded`: a box that cannot be reached raises
+  `RangeUnavailable`, a domain error, so it never stops the settling or the
+  `round.ended` event. If the box refuses the seat key, the platform grant
+  stays until the round ends; without the box key it opens nothing.
+- **A fired case and a sent request answer with their own marker.**
+  `POST attack/requests/` and `POST attack/cases/` return the marker the
+  platform set as `X-Request-ID`, so a seat (a bot, the acceptance suite) can
+  tie the alerts its action drew to it from `GET defence/alerts/`
+  (`request_id`) without reading the event log. The marker carries no
+  verdict; free actions still never enter TP/FP/FN/TN.
+- **Defence writes are phase-checked in the permission class.**
+  `match.auth.SidePermission` refuses every non-GET on either side with
+  `round_not_started` before `running` and `round_closed` after the end;
+  the terminal route is a GET and checks the phase itself.
+- **A lease expires without a heartbeat.** After `CR_LEASE_IDLE_MINUTES`
+  (default 30) with no heartbeat from the operator or a seat, the follower
+  closes the lease with `lease_expired`; the acceptance suite's shared leases
+  send one every minute. An ended round's seat token keeps no lease alive.
+- **A RuleSet records the seat that applied it**, so the start posture the
+  platform applies at round start is not taken for the learner's apply by
+  the `rule_applied` check.
+- **Three live acceptance modules are dropped, not ported.**
+  `test/test_lesson.py` walked the lessons F1-F6 and courses c1 and c2,
+  which are deleted with no replacement content; lesson rounds are covered by
+  `platform/tests/lessons/` until staff author problems. `test/test_ready.py`
+  read the canary of the old readiness route (`/api/range/ready/`), which the
+  new API does not serve; a round's sensors check `local.rules` before the
+  acceptance suite instead. `test/test_map.py` checked the attacker world-map
+  points of the old session map route, which is gone; the learner map stays
+  covered by `test/test_topology.py`, and the geoip pipeline behind the
+  origins by `test/test_geoip_durable.py`. A check
+  comes back with its route if one is built.
+- **`docs/ARCHITECTURE.md` and `docs/STATE.md` are written anew** for the new
+  layout rather than edited: the old texts described `platform/api/`, the
+  console templates and the scenario engine on almost every line. The old
+  texts stay in git. `docs/DECISIONS.md` keeps its Korean quotes of the
+  user's rulings for now; `test_no_hangul.py` allows it by name until they
+  are translated.
+- **Grafts from the other restructure options**, as the spec's Appendix B
+  records them (the base is `by-side`):
+  - hexagonal: the pure `domain/` core; the AST import test; the nftables
+    `spent` set at the infra edge; HP from two sources deduplicated by
+    marker; async tool runs; terminal access per seat; per-engine defence
+    resources; one error shape; a pure problem validator and a learner read
+    API without answers; progress by user and problem; panes shared by
+    lessons and rounds; the layered test split; folding `register_pipeline`,
+    `operator_log` and the tool image into their owners; explicit end
+    conditions; the geoip tools kept.
+  - django-apps: `corroborated` and the tally below the apps; the scratch
+    CRS instance with a stub upstream and the IDS read from a scratch
+    `eve.json`; non-destructive syntax checks; the HP block on every attack
+    response; a lessons app with a check registry; the content snapshot at
+    round start; seat-scoped tokens; `search_after` cursor ingest; one
+    exception handler; explicit deletions and backup re-pointing;
+    `browse_marker` and `CustomerRequest` kept.
+  - django-drf: lease apart from round with the baseline per round;
+    seat-token permission classes; per-side schemas and a completeness test;
+    the stale-apply 409; Posture rows; the lesson rule check reusing the
+    rule-test verdict; APIClient-only tests with English placeholders; no
+    Django admin; ops scripts re-pointed; Django-free seams with config
+    dataclasses.
+  - thin-api: the committed OpenAPI contract with a staleness test; a
+    generated client for bots and `test/`; the typed front end; the
+    normalised alert shape and `traffic/`; `against_applied`; the seam scan
+    over clients; the pane enum.
+  - event-sourced: the events app as a leaf feed with `visible_to` per kind;
+    the follower service; recorded responses for the CRS stub; probes stored
+    with the target app; only the referee appends `objective.lost`; the
+    score as separate objects; pure fixture tests.
+  - minimal-cut: the nested problem document saved atomically; checks as a
+    registry of pure judges; hashed seat tokens; one refusal path; the
+    request count from WAF-edge nginx records; a machine-readable HP rule and
+    the all-spent end state; the separate scratch nginx master with its own
+    audit log; every benign case always probed with `untested` reasons;
+    probe recording with CRS detection-only; no KQL in the bot API.

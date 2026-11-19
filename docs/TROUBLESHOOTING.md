@@ -373,7 +373,7 @@ keeps the old mapping until it rolls over.
 
 Symptom, 2026-11-17: after sqlmap's `[*] ending @` line the F5 check passed
 18.8 and 19.3 s later, and a press in between was counted as a wrong try
-("틀린 뒤 통과 3개" for lesson 2).
+(the result counted three passes after a wrong try for lesson 2).
 
 How it was measured: the same command from a browser on session 2494, polled
 every 2 s: the terminal showed the end 66.9 s after Enter and the step passed
@@ -454,11 +454,11 @@ window: 91,277 bytes, read 0.28 s, parse 0.004 s, the same 22 changes.
 ### F6's sqlmap steps passed 20-30 s after sqlmap exited
 
 Symptom, 2026-11-17: in F6 step 2 (`dump`) sqlmap printed `[*] ending @
-22:47:14`; 20 s later the step still showed "아직 실행 중입니다" and it passed
+22:47:14`; 20 s later the step still showed the still-running line and it passed
 20-30 s after the exit. F5's Kali steps passed within 6 s. Step 8 (`replay`)
 behaved like step 2.
 
-Cause, from the code: "아직 실행 중입니다" (`lesson.kali.running`) is the
+Cause, from the code: the still-running line (`lesson.kali.running`) is the
 console's own line, shown until it reads the step's end line after the
 command in the Kali terminal; only then does it check with `ended: true` and
 the server wait `RUN_ENDED_SETTLED` (3 s). Without it the server waited for
@@ -490,7 +490,7 @@ read was.
 ### Answer submissions took 3.9-5.7 s now and then
 
 Symptom: 6 of about 35 submissions in F5 and F6 waited over 2.5 s on
-"확인 중…" (F5 step 2 3.9 s, step 7 5.7 s); the rest were quick.
+the checking line (F5 step 2 3.9 s, step 7 5.7 s); the rest were quick.
 
 Profiled locally with `platform/` as the working directory: the check for F5
 step 2 (`error`) does no Elasticsearch, Kibana or range call and took 1-7 ms;
@@ -588,9 +588,9 @@ and gets the same Korean refusal.
 
 ### F4 step 7 judged a correct rule wrong a second after the search
 
-Symptom, 2026-11-18: with a correct rule, "내 룰 경보 확인" pressed about
-1 s after the search answered `lesson.xss.fail.write.silent` ("content를
-확인하세요"); 3 s later it passed, and the result page showed the step as
+Symptom, 2026-11-18: with a correct rule, the check-my-rule-alerts button pressed about
+1 s after the search answered `lesson.xss.fail.write.silent` (check the
+`content`); 3 s later it passed, and the result page showed the step as
 failed, then passed.
 
 Cause, from the code: `_rule_fired` ingested and, finding no alert for the
@@ -610,7 +610,7 @@ answers the same. Tests:
 
 ### F6 step 8 passed 11.7 s after sqlmap exited
 
-Symptom: "공격 요청 차단: 확인됨" appeared about 11.7 s after sqlmap exited;
+Symptom: the replay line reporting the attack request blocked appeared about 11.7 s after sqlmap exited;
 step 2 passes in 7.3 s.
 
 Cause, from the code: step 8 (`replay`) has no terminal end line, so the
@@ -647,7 +647,7 @@ stops the `&&` before the reload, so no new worker starts. Meanwhile the
 check answers `lesson.miss.fail.narrow.reload` (`loud`). Test:
 `test_narrowing_passes_once_the_declared_exception_is_gone_from_the_waf_s_file_and_nginx_reloaded_it`.
 
-### 3.2 said "최종 점검 중" 18 s after 0:00
+### 3.2 said the final check was running 18 s after 0:00
 
 One observation (3.1 about 5 s, 3.3 about 3 s, 3.4 about 6 s). The window's
 own attack in 3.2 runs about 50 s from the window's midpoint, so it had
@@ -664,7 +664,7 @@ part was slow on the live range was not measured here.
 
 Fix: the tick judges a finished window before a due observation, and once
 the window's time is up the console reads the status every second and the
-button says `scenario.done.judging` ("결과 판정 중"). Test:
+button says `scenario.done.judging` (judging the result). Test:
 `test_a_window_whose_time_is_up_is_judged_before_the_engine_s_slower_observation_of_the_range`.
 
 ### Start to an open console took 14-18.6 s
