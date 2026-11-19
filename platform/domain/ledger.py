@@ -40,14 +40,12 @@ def cost(rule: HpRule, refused: bool, in_burst: bool) -> int:
 def debit(state: LedgerState, charges: Sequence[Charge], rule: HpRule) -> tuple[LedgerState, tuple[OriginState, ...]]:
     origins = {origin.ip: origin for origin in state.origins}
     counts = {(ip, second): n for ip, second, n in state.per_second}
-    markers = set(state.charged_markers)
+    markers = set(state.charged_markers) | {c.marker for c in charges if c.synchronous and c.marker is not None}
     newly_spent: list[OriginState] = []
 
     for charge in sorted(charges, key=lambda c: c.at):
         if not charge.synchronous and charge.marker is not None and charge.marker in markers:
             continue
-        if charge.synchronous and charge.marker is not None:
-            markers.add(charge.marker)
         origin = origins.get(charge.origin_ip)
         if origin is None or origin.spent:
             continue

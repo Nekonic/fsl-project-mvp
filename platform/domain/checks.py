@@ -130,7 +130,7 @@ FACTS_NEEDED: dict[str, tuple[str, ...]] = {
 
 
 def check_params(kind: object, params: object, path: str) -> list[FieldError]:
-    if kind not in CHECK_SCHEMAS:
+    if not isinstance(kind, str) or kind not in CHECK_SCHEMAS:
         return [FieldError(f"{path}.kind", "unknown_check")]
     if not isinstance(params, Mapping):
         return [FieldError(f"{path}.params", "not_an_object")]

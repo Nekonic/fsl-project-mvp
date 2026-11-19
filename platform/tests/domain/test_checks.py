@@ -176,6 +176,7 @@ def test_every_detail_code_a_judge_returns_is_declared():
 
 @pytest.mark.parametrize("kind, params, path, code", [
     ("click", {}, "check.kind", "unknown_check"),
+    (["answer"], {}, "check.kind", "unknown_check"),
     ("answer", [], "check.params", "not_an_object"),
     ("answer", {}, "check.params.accept", "required"),
     ("answer", {"accept": []}, "check.params.accept", "not_a_text_list"),

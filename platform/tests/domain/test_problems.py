@@ -112,3 +112,10 @@ def test_an_unknown_wargame_does_not_also_report_every_case():
     doc = changed(LESSON, lambda d: d["problem"].update(wargame="nowhere"))
 
     assert errors(doc) == [("problem.wargame", "unknown_wargame")]
+
+
+def test_values_of_the_wrong_type_are_errors_not_crashes():
+    doc = changed(LESSON, lambda d: (d["problem"].update(wargame=["board"]), d["steps"][0]["check"].update(kind={})))
+
+    assert ("problem.wargame", "unknown_wargame") in errors(doc)
+    assert ("steps[0].check.kind", "unknown_check") in errors(doc)

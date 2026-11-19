@@ -88,6 +88,12 @@ def test_an_access_event_for_a_request_already_charged_by_the_api_is_skipped():
     assert left(state) == 10 - 1 - 1 - 1
 
 
+
+def test_an_access_event_in_the_same_batch_as_its_api_charge_is_skipped_whatever_its_time():
+    state, _ = debit(opened(ORIGINS, RULE), [charge(0.5, marker="a1", synchronous=True), charge(0, marker="a1")], RULE)
+
+    assert left(state) == 10 - 1
+
 def test_customers_and_unknown_addresses_are_never_charged():
     state, spent = debit(opened(ORIGINS, RULE), [charge(0, ip="198.51.100.9", refused=True)], RULE)
 

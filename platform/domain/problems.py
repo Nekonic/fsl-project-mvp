@@ -35,7 +35,7 @@ def validate_problem(doc: object, catalog: Mapping[str, WargameCatalog]) -> list
         return [FieldError("problem", "required")]
 
     errors = _problem(problem, catalog)
-    wargame = catalog.get(problem.get("wargame"))
+    wargame = catalog.get(problem["wargame"]) if _named_in(problem.get("wargame"), catalog) else None
     side = problem.get("side")
     kind = problem.get("kind")
 
@@ -64,7 +64,7 @@ def _problem(problem: Mapping, catalog: Mapping[str, WargameCatalog]) -> list[Fi
         errors.append(FieldError("problem.kind", "not_a_choice", (("choices", KINDS),)))
     if problem.get("side") not in tuple(Side):
         errors.append(FieldError("problem.side", "not_a_choice", (("choices", tuple(Side)),)))
-    if problem.get("wargame") not in catalog:
+    if not _named_in(problem.get("wargame"), catalog):
         errors.append(FieldError("problem.wargame", "unknown_wargame"))
     if not _text(problem.get("title")):
         errors.append(FieldError("problem.title", "required"))
@@ -169,6 +169,10 @@ def _probe_case(case_id: str, wargame: WargameCatalog) -> str | None:
 
 def _objective(key: str, wargame: WargameCatalog) -> str | None:
     return None if key in wargame.objectives else "unknown_objective"
+
+
+def _named_in(value: object, names: Mapping) -> bool:
+    return isinstance(value, str) and value in names
 
 
 def _positive(value: object) -> bool:
