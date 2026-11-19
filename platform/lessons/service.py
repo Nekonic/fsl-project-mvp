@@ -214,8 +214,11 @@ def readers(found, seat=None) -> facts.Readers:
 
 
 def opened_at(found, order: int) -> datetime:
-    last = StepResult.objects.filter(round=found, verdict=checks.PASSED, step_order__lt=order).order_by("-at").first()
-    return max(found.started, last.at) if last else found.started
+    earlier = [step["order"] for step in steps_of(found) if step["order"] < order]
+    if not earlier:
+        return found.started
+    first = StepResult.objects.filter(round=found, verdict=checks.PASSED, step_order=max(earlier)).order_by("at").first()
+    return max(found.started, first.at) if first else found.started
 
 
 def judged(step: dict[str, Any], answer: Any, reached: facts.Readers, opened: datetime | None) -> checks.Verdict:

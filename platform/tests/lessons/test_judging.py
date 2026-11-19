@@ -103,3 +103,18 @@ def test_staff_try_a_step_against_an_ended_round_of_the_same_wargame(as_learner,
     refused(running, 409, "round_running")
     assert tried.json() == {"verdict": "passed", "detail_code": None, "next": None}
     refused(as_learner.post(route, {"round": lesson["round"]}, format="json"), 403, "not_staff")
+
+
+def test_checking_an_earlier_step_again_does_not_move_when_the_later_step_opened(as_learner, slot, applying_problem):
+    lesson = through_two(as_learner, applying_problem)
+    ran_rule_test(as_learner, lesson)
+    assert checked(as_learner, lesson, 3).json()["verdict"] == "passed"
+    base = f"/api/rounds/{lesson['round']}/defence/waf/"
+    version = as_learner.get(base).json()["version"]
+    applied = as_learner.post(f"{base}apply/", {"posture": {"paranoia": 3}, "base_version": version}, format="json")
+    assert applied.status_code == 200, applied.content
+
+    assert checked(as_learner, lesson, 1, "placeholder answer").json()["verdict"] == "passed"
+    assert checked(as_learner, lesson, 3).json()["verdict"] == "passed"
+
+    assert checked(as_learner, lesson, 4).json()["verdict"] == "passed"
