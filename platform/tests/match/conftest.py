@@ -2,22 +2,21 @@ import pytest
 
 from content import service as content
 from match import service, site
-from tests.match import fakes
-from testing import factories
+from testing import factories, fakerange
 from testing.fakes import FakeElastic
 
 
 @pytest.fixture
 def cloud(monkeypatch, tmp_path):
-    made = fakes.FakeCloud()
-    fakes.HELD["cloud"] = made
-    monkeypatch.setenv("CR_SUBSTRATE", "tests.match.fakes.connect")
+    made = fakerange.FakeCloud()
+    fakerange.HELD["range"] = made
+    monkeypatch.setenv("CR_SUBSTRATE", "testing.fakerange.connect")
     monkeypatch.setenv("CR_REFILL_DIR", str(tmp_path / "refill"))
     monkeypatch.setenv("CR_JUMP_DIR", str(tmp_path / "jump"))
     monkeypatch.setattr("defence.kibana.session_view_ready", lambda *given, **named: True)
     monkeypatch.setattr("ingest.elastic.requests.post", FakeElastic().post)
     yield made
-    fakes.HELD.clear()
+    fakerange.HELD.clear()
     site.kept.clear()
     site.jars.clear()
 

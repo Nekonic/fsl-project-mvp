@@ -13,7 +13,7 @@ from urllib.parse import urlencode, urlsplit
 from django.db import transaction
 from django.utils import timezone
 
-from attack import box, firing, jump, tools
+from attack import box, firing, tools
 from attack.models import AccessCursor, Action, OriginBudget, ToolRun
 from cr import config, errors
 from domain.ledger import LedgerState
@@ -32,7 +32,7 @@ from domain.types import (
 from events import log
 from ingest import elastic
 from match.models import Lease, Round, Seat
-from range import edge
+from range import edge, jump
 from range.substrate import substrate
 from referee import service as referee
 
@@ -722,24 +722,19 @@ def submit_loot(found: Round, seat: Seat, value: Any) -> Looted:
 def terminal(found: Round, seat: Seat) -> Terminal:
     phase_allows_writes(found)
     settings, reached = configured(), range_of(found)
-    kali = box.kali_address(reached)
-    issued = jump.issue(seat.pk, kali, settings.jump)
-    box.authorize_key(reached.runner(ATTACKER), issued.grant.public_key, issued.grant.name)
+    access = jump.open_access(seat.pk, box.kali_address(reached), reached.runner(ATTACKER), box.LEARNER_ACCOUNT,
+                              settings.jump)
     return Terminal(ws_url=f"/vm-terminal/attack/{found.pk}/",
-                    ssh=Ssh(host=settings.jump.host, port=settings.jump.port, user=jump.JUMP_USER,
-                            private_key=issued.private_key, expires_at=found.ends_at or found.lease.expires_at,
-                            target_host=issued.grant.kali, target_user=jump.KALI_USER))
+                    ssh=Ssh(host=access.host, port=access.port, user=access.user, private_key=access.private_key,
+                            expires_at=found.ends_at or found.lease.expires_at, target_host=access.target_host,
+                            target_user=access.target_user))
 
 
 def revoke_terminal(found: Round) -> int:
     settings = configured()
-    revoked = [grant for seat in Seat.objects.filter(round=found, side="attack")
-               if (grant := jump.revoke(seat.pk, settings.jump)) is not None]
-    if revoked:
-        attacker = range_of(found).runner(ATTACKER)
-        for grant in revoked:
-            box.drop_key(attacker, grant.name)
-    return len(revoked)
+    return sum(1 for seat in Seat.objects.filter(round=found, side="attack")
+               if jump.close_access(seat.pk, lambda: range_of(found).runner(ATTACKER), box.LEARNER_ACCOUNT,
+                                    settings.jump) is not None)
 
 
 def close(found: Round) -> None:

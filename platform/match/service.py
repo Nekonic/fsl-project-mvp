@@ -387,6 +387,7 @@ def end_round(found: Round, reason: str) -> Round:
         return found
     found.refresh_from_db()
     guarded(found, "closing the attack side", attack.close)
+    guarded(found, "closing the defence side", defence.close)
     if was != CREATED:
         customers.stop(found)
         guarded(found, "settling the objectives", settle)

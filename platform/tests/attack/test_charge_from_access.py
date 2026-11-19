@@ -11,7 +11,7 @@ from events.kinds import Viewer
 from ingest import elastic
 from testing.fakes import FakeElastic
 from tests.attack.conftest import url
-from tests.attack.fakes import RU, US_CUSTOMERS
+from testing.fakerange import RU, US_CUSTOMERS
 
 pytestmark = pytest.mark.django_db
 

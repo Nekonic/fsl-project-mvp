@@ -170,7 +170,7 @@ class WafApply(DefenceView):
 class Terminal(DefenceView):
     @extend_schema(tags=TAGS, responses=serializers.DefenceTerminal, operation_id="defence_terminal")
     def get(self, request, round_id: int):
-        return Response(serializers.DefenceTerminal(service.terminal(request.round)).data)
+        return Response(serializers.DefenceTerminal(service.terminal(request.round, request.seat)).data)
 
 
 class Kibana(DefenceView):

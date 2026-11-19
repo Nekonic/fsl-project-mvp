@@ -1,8 +1,9 @@
 import pytest
 
-from attack import jump, service
+from attack import service
+from range import jump
 from tests.attack.conftest import codes, url
-from tests.attack.fakes import KALI_MANAGEMENT
+from testing.fakerange import KALI_MANAGEMENT
 
 pytestmark = pytest.mark.django_db
 
@@ -18,7 +19,7 @@ def test_the_terminal_grant_names_a_seat_ttyd_path_and_a_jump_key_to_kali(as_att
     assert (ssh["target_host"], ssh["target_user"]) == (KALI_MANAGEMENT, "kali")
     assert "PRIVATE KEY" in ssh["private_key"] and ssh["expires_at"]
     grant = jump.granted(attacker.pk, service.configured().jump)
-    assert grant is not None and grant.kali == KALI_MANAGEMENT
+    assert grant is not None and grant.address == KALI_MANAGEMENT
     [authorized] = cloud.box.matching("authorized_keys")
     assert authorized.stdin == f"{grant.public_key} {grant.name}\n"
 

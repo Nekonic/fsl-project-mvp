@@ -1,6 +1,6 @@
 from match import service
 from range import refill
-from tests.match import fakes
+from testing import fakerange
 from tests.shape import refused
 
 
@@ -60,7 +60,7 @@ def test_emptying_the_pool_drops_owed_refills_and_deletes_every_slot_s_stack(as_
 
 
 def test_a_range_not_built_through_openstack_refuses_the_cloud_operations(as_staff, cloud, monkeypatch):
-    monkeypatch.delattr(fakes.FakeCloud, "ensure_fabric")
+    monkeypatch.delattr(fakerange.FakeCloud, "ensure_fabric")
 
     refused(as_staff.post("/api/staff/range/fabric/"), 409, "range_not_cloud")
 

@@ -9,9 +9,8 @@ import yaml
 
 from content import service as content
 from tests import rounds
-from tests.defence import fakerange
-from testing import factories
-from testing.fakes import FakeElastic
+from testing import factories, fakerange
+from testing.fakes import FakeElastic, Sensor
 
 REPO = Path(__file__).resolve().parents[3]
 RECORDED = {
@@ -75,13 +74,15 @@ def source(tmp_path, settings, monkeypatch):
     made = copied_source(tmp_path / "source")
     recorded(made)
     settings.CR_SOURCE = made
-    monkeypatch.setenv("CR_SUBSTRATE", "tests.defence.fakerange.connect")
+    monkeypatch.setenv("CR_SUBSTRATE", "testing.fakerange.connect")
+    monkeypatch.setenv("CR_JUMP_DIR", str(tmp_path / "jump"))
+    monkeypatch.setenv("CR_JUMP_HOST", "jump.range.test")
     return made
 
 
 @pytest.fixture
 def cyber_range():
-    made = fakerange.FakeRange()
+    made = fakerange.DefenceRange()
     made.runner("sensor").rules = BASELINE
     made.node_runner("sensor").fires = {
         "board-sqli-search": {"1001": "SQL injection in search"},
@@ -97,7 +98,7 @@ def cyber_range():
 @pytest.fixture
 def two_sensors(source, cyber_range):
     with_second_sensor(source)
-    cyber_range.sensors["sensor2"] = fakerange.Sensor(rules=BASELINE, path=SECOND_SENSOR["rules"])
+    cyber_range.sensors["sensor2"] = Sensor(rules=BASELINE, path=SECOND_SENSOR["rules"])
     return cyber_range
 
 

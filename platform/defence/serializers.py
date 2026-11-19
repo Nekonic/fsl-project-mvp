@@ -244,9 +244,19 @@ class DisabledNow(serializers.Serializer):
     expires_at = serializers.DateTimeField()
 
 
+class AnalystSsh(serializers.Serializer):
+    host = serializers.CharField()
+    port = serializers.IntegerField()
+    user = serializers.CharField()
+    private_key = serializers.CharField()
+    expires_at = serializers.DateTimeField(allow_null=True)
+    target_host = serializers.CharField()
+    target_user = serializers.CharField()
+
+
 class DefenceTerminal(serializers.Serializer):
     ws_url = serializers.CharField()
-    ssh = serializers.DictField(allow_null=True)
+    ssh = AnalystSsh()
 
 
 class KibanaSpace(serializers.Serializer):

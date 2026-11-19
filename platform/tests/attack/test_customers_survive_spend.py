@@ -5,7 +5,7 @@ from attack.models import OriginBudget
 from cr import errors
 from tests import rounds
 from tests.attack.conftest import url
-from tests.attack.fakes import BR, BR_CUSTOMERS, REFUSED_PAGE, RU, US, US_CUSTOMERS
+from testing.fakerange import BR, BR_CUSTOMERS, REFUSED_PAGE, RU, US, US_CUSTOMERS
 
 pytestmark = pytest.mark.django_db
 

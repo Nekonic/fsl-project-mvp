@@ -2600,6 +2600,33 @@ components:
       required:
       - alerts
       - next
+    AnalystSsh:
+      type: object
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+        user:
+          type: string
+        private_key:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        target_host:
+          type: string
+        target_user:
+          type: string
+      required:
+      - expires_at
+      - host
+      - port
+      - private_key
+      - target_host
+      - target_user
+      - user
     AppliedVersion:
       type: object
       properties:
@@ -3004,9 +3031,7 @@ components:
         ws_url:
           type: string
         ssh:
-          type: object
-          additionalProperties: {}
-          nullable: true
+          $ref: '#/components/schemas/AnalystSsh'
       required:
       - ssh
       - ws_url

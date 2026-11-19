@@ -1,7 +1,7 @@
 import pytest
 
 from tests.attack.conftest import codes, url
-from tests.attack.fakes import RU
+from testing.fakerange import RU
 
 pytestmark = pytest.mark.django_db
 

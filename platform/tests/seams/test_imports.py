@@ -15,7 +15,7 @@ LAYERS = (
     (8, HTTP),
     (0, ("domain/*",)),
     (1, ("cr/__init__.py", "cr/config.py", "cr/errors.py", "ingest/*", "rules/*", "range/*", "attack/__init__.py",
-         "attack/box.py", "attack/jump.py", "attack/firing.py", "attack/tools.py", "defence/__init__.py",
+         "attack/box.py", "attack/firing.py", "attack/tools.py", "defence/__init__.py",
          "defence/kibana.py", "referee/__init__.py", "referee/loot.py", "referee/effect.py", "testing/*")),
     (2, ("accounts/*", "events/*", "content/*")),
     (3, ("match/__init__.py", "match/models.py", "match/auth.py")),
@@ -117,7 +117,7 @@ def test_the_seams_exist_where_the_design_puts_them():
                 "range/openstack.py", "range/cloud_config.py", "range/stack_plan.py", "range/declaration.py",
                 "range/networks.py", "range/wiring.py", "range/topology.py", "range/pool.py", "range/refill.py",
                 "range/reachability.py", "range/runner.py", "range/substrate.py", "range/edge.py",
-                "attack/box.py", "attack/jump.py", "attack/firing.py", "attack/tools.py", "defence/kibana.py",
+                "range/jump.py", "attack/box.py", "attack/firing.py", "attack/tools.py", "defence/kibana.py",
                 "referee/loot.py", "referee/effect.py"]
 
     assert [path for path in expected if layer_of(path) != 1 or not (PLATFORM / path).is_file()] == []
@@ -375,7 +375,7 @@ def test_rule_15_sees_the_round_records_point_down_to_content_auth_and_match():
             ("referee.Objective", "match.Round")} <= relations
 
 
-ATTACK_REACHES = {"cr/config.py", "cr/errors.py", "range/edge.py", "range/substrate.py", "range/runner.py",
+ATTACK_REACHES = {"cr/config.py", "cr/errors.py", "range/edge.py", "range/jump.py", "range/substrate.py", "range/runner.py",
                   "ingest/elastic.py", "referee/service.py", "match/models.py", "events/log.py", "match/auth.py"}
 
 
@@ -415,9 +415,9 @@ def test_rule_3_attack_and_defence_never_import_each_other(path):
 
 
 def test_the_checker_sees_a_side_reaching_the_other():
-    reached = {"attack/jump.py", "defence/disable.py", "referee/service.py"}
+    reached = {"attack/box.py", "defence/disable.py", "range/jump.py", "referee/service.py"}
 
-    assert other_side_reached("defence/service.py", reached) == ["attack/jump.py"]
+    assert other_side_reached("defence/service.py", reached) == ["attack/box.py"]
     assert other_side_reached("attack/service.py", reached) == ["defence/disable.py"]
     assert other_side_reached("referee/service.py", reached) == []
 

@@ -4,7 +4,7 @@ import base64
 import binascii
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -25,7 +25,7 @@ from domain.verdicts import VerdictTable
 from events import log
 from ingest import elastic
 from match.models import Lease, Round, Seat
-from range import declaration, substrate
+from range import declaration, jump, substrate
 from referee import service as referee
 from rules import crs, suricata
 
@@ -33,6 +33,7 @@ DEFENCE = "defence"
 ALERTS_PAGE = 200
 GATEWAY_ROLE = "gateway"
 TERMINAL = "/vm-terminal/defence/{round}/"
+ANALYST_ACCOUNT = "analyst"
 DISCOVER = "{base}/s/{space}/app/discover"
 FORBIDDEN, BAD_GATEWAY = 403, 502
 
@@ -462,8 +463,28 @@ def posture_drift(found: Round) -> bool:
     return drift.any_drift(found.pk)
 
 
-def terminal(found: Round) -> dict:
-    return {"ws_url": TERMINAL.format(round=found.pk), "ssh": None}
+def terminal(found: Round, seat: Seat) -> dict:
+    if found.phase in (Phase.CREATED.value, Phase.STARTING.value):
+        raise errors.Conflict(code="round_not_started")
+    if found.phase == Phase.ENDED.value:
+        raise errors.Conflict(code="round_closed")
+    cfg = configured()
+    reached = slot_range(found, cfg)
+    access = jump.open_access(seat.pk, reached.address(cfg.waf.role), reached.runner(cfg.waf.role),
+                              ANALYST_ACCOUNT, cfg.jump)
+    return {"ws_url": TERMINAL.format(round=found.pk),
+            "ssh": {**asdict(access), "expires_at": found.ends_at or found.lease.expires_at}}
+
+
+def revoke_terminal(found: Round) -> int:
+    cfg = configured()
+    return sum(1 for seat in Seat.objects.filter(round=found, side=DEFENCE)
+               if jump.close_access(seat.pk, lambda: slot_range(found, cfg).runner(cfg.waf.role), ANALYST_ACCOUNT,
+                                    cfg.jump) is not None)
+
+
+def close(found: Round) -> None:
+    revoke_terminal(found)
 
 
 def index_of(found: Round, cfg: config.Config) -> str:

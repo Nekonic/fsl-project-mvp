@@ -325,28 +325,3 @@ def customer_records(box, offset: int, limit: int) -> str:
     return begun.rpartition(f"\n{RECORDS_END}")[0]
 
 LEARNER_ACCOUNT = "kali"
-
-def _learner_keys(account: str) -> str:
-    who = shlex.quote(account)
-    return (
-        f"home=\"$(getent passwd {who} | cut -d: -f6)\"; [ -n \"$home\" ]; "
-        f"install -d -m 0700 -o {who} -g {who} \"$home/.ssh\"; "
-        "keys=\"$home/.ssh/authorized_keys\"; touch \"$keys\"; "
-    )
-
-def _without(name: str) -> str:
-    if not re.fullmatch(r"[a-z0-9-]+", name):
-        raise ValueError(f"a key name is lower-case letters, digits and dashes, got {name!r}")
-    return f"grep -v -e ' {name}$' \"$keys\" > \"$keys.new\" || true; "
-
-def _kept_keys(account: str) -> str:
-    return f"chown {shlex.quote(account)}: \"$keys.new\"; chmod 0600 \"$keys.new\"; mv \"$keys.new\" \"$keys\""
-
-def authorize_key(box, public_key: str, name: str, account: str = LEARNER_ACCOUNT) -> None:
-    _ran(box, "set -e; umask 077; " + _learner_keys(account) + _without(name)
-         + "cat >> \"$keys.new\"; " + _kept_keys(account),
-         f"take the learner's key {name}", stdin=f"{public_key} {name}\n")
-
-def drop_key(box, name: str, account: str = LEARNER_ACCOUNT) -> None:
-    _ran(box, "set -e; umask 077; " + _learner_keys(account) + _without(name) + _kept_keys(account),
-         f"drop the learner's key {name}")

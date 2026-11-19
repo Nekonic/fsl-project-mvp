@@ -5,14 +5,14 @@ import pytest
 from attack import service
 from cr import config
 from tests import rounds
-from tests.attack.fakes import FakeRange
+from testing.fakerange import AttackRange
 
 HP = {"budget": 100, "per_request": 1, "refused_x": 3, "burst_per_s": 5, "burst_x": 2}
 
 
 @pytest.fixture
 def cloud(monkeypatch, tmp_path):
-    reached = FakeRange()
+    reached = AttackRange()
     built = config.build()
     chosen = replace(built, box=replace(built.box, default_origin="ru", target_url="http://board.com"),
                      jump=replace(built.jump, directory=str(tmp_path / "jump"), host="jump.range.test", port=2222))

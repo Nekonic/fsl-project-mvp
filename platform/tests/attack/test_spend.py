@@ -5,7 +5,7 @@ from events import log
 from events.kinds import Viewer
 from tests import rounds
 from tests.attack.conftest import codes, url
-from tests.attack.fakes import BR, REFUSED_PAGE, RU, US
+from testing.fakerange import BR, REFUSED_PAGE, RU, US
 
 pytestmark = pytest.mark.django_db
 

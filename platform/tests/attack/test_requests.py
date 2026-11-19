@@ -7,7 +7,7 @@ from attack.models import Action
 from events import log
 from events.kinds import Viewer
 from tests.attack.conftest import codes, url
-from tests.attack.fakes import REFUSED_PAGE, RU
+from testing.fakerange import REFUSED_PAGE, RU
 
 pytestmark = pytest.mark.django_db
 

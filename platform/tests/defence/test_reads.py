@@ -107,11 +107,6 @@ def test_the_state_shows_the_brief_target_objectives_versions_and_alert_count(as
     assert (shown["ids"], shown["waf"], shown["alerts_total"]) == ({"version": 1}, {"version": 0}, 1)
 
 
-def test_the_terminal_is_the_read_only_waf_shell_keyed_to_the_round(as_defender, board_round):
-    assert as_defender.get(url(board_round, "terminal/")).json() == {
-        "ws_url": f"/vm-terminal/defence/{board_round.pk}/", "ssh": None}
-
-
 def test_an_attack_seat_reaches_no_defence_route(browser, board_round, make_user):
     attacker = make_user("attacker")
     rounds.seated(board_round, "attack", user=attacker)

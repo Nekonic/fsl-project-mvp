@@ -3,9 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from attack import jump
+from range import jump
 from cr.config import JumpConfig
 from range.runner import RangeUnavailable
+from testing.fakes import FakeRunner
 
 KALI = "10.20.0.5"
 PUBLIC = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
@@ -16,7 +17,7 @@ def config(tmp_path):
     return JumpConfig(directory=str(tmp_path / "jump"), port=2222, host="range.example")
 
 
-def test_a_key_may_forward_only_to_its_seat_s_kali_ssh_port_and_nothing_else():
+def test_a_key_may_forward_only_to_its_seat_s_box_ssh_port_and_nothing_else():
     line = jump.authorized_keys_line(PUBLIC, KALI, 7)
 
     assert line == f'restrict,port-forwarding,permitopen="{KALI}:22" {PUBLIC} cr-session-7'
@@ -73,13 +74,33 @@ def test_no_keys_file_is_no_grants(config):
     assert jump.grants(config) == []
 
 
-def test_the_ssh_config_a_seat_is_shown_jumps_through_the_configured_host_and_port(config):
-    issued = jump.issue(3, KALI, config)
+def test_box_keys_are_named_and_a_bad_name_is_refused():
+    box = FakeRunner()
 
-    shown = jump.shown(issued.grant, "board", config)
+    jump.authorize_key(box, "ssh-ed25519 AAAA", "cr-session-4", "analyst")
 
-    assert shown["host"] == "board-kali"
-    assert "HostName range.example\n    Port 2222\n" in shown["config"]
-    assert f"HostName {KALI}" in shown["config"] and "ProxyJump board-kali-jump" in shown["config"]
-    assert shown["fingerprint"].startswith("SHA256:")
-    assert "PRIVATE KEY" in issued.private_key
+    assert box.sent[0].stdin == "ssh-ed25519 AAAA cr-session-4\n"
+    assert "getent passwd analyst" in box.sent[0].argv[-1]
+    with pytest.raises(ValueError):
+        jump.drop_key(box, "x; rm -rf /", "analyst")
+
+
+def test_a_box_that_refuses_the_key_is_range_unavailable():
+    with pytest.raises(RangeUnavailable):
+        jump.authorize_key(FakeRunner().answer("authorized_keys", "no such user", 1), "ssh-ed25519 AAAA",
+                           "cr-session-4", "analyst")
+
+
+def test_access_grants_the_jump_and_the_box_account_and_closing_takes_both_back(config):
+    box = FakeRunner()
+
+    access = jump.open_access(3, KALI, box, "analyst", config)
+
+    assert (access.host, access.port, access.user) == ("range.example", 2222, jump.JUMP_USER)
+    assert (access.target_host, access.target_user) == (KALI, "analyst")
+    assert "PRIVATE KEY" in access.private_key
+    assert jump.granted(3, config).address == KALI
+    assert jump.close_access(3, lambda: box, "analyst", config) is not None
+    assert jump.granted(3, config) is None
+    assert len(box.matching("authorized_keys")) == 2
+    assert jump.close_access(3, lambda: box, "analyst", config) is None
