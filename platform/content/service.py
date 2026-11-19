@@ -8,7 +8,7 @@ from typing import Any
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import ProtectedError
+from django.db.models import F, ProtectedError
 
 from content import catalog
 from content.models import Posture, ProbeSet, Problem, RoundSetup, Step, Wargame
@@ -141,7 +141,8 @@ def start_posture_errors(given: object) -> list[errors.FieldError]:
         return []
     if not isinstance(given, Mapping):
         return [errors.FieldError(path="start_posture", code="not_an_object")]
-    return posture_errors(given, "start_posture.")
+    return [errors.FieldError(path=f"start_posture.{key}", code="unknown_field") for key in given
+            if key not in POSTURE_KEYS] + posture_errors(given, "start_posture.")
 
 
 def posture_errors(given: Mapping, at: str) -> list[errors.FieldError]:
@@ -192,12 +193,12 @@ def save_document(doc: Mapping, base_revision: object = None, *, problem_id: int
         if problem_id is None:
             found = Problem(author=author)
         else:
-            found = Problem.objects.select_for_update().filter(pk=problem_id).first()
+            moved = Problem.objects.filter(pk=problem_id, revision=expected).update(revision=F("revision") + 1)
+            found = Problem.objects.filter(pk=problem_id).first()
             if found is None:
                 raise errors.NotFound(code="unknown_problem")
-            if expected != found.revision:
+            if not moved:
                 raise errors.Conflict(code="stale_revision", params={"current_revision": found.revision})
-            found.revision += 1
         written(found, doc)
     return found
 

@@ -54,7 +54,11 @@ def broken(edit):
     (lambda doc: doc["steps"][0]["check"].update(kind="click"), "steps[0].check.kind", "unknown_check"),
     (lambda doc: doc["problem"].update(wargame="bank"), "problem.wargame", "unknown_wargame"),
     (lambda doc: doc["start_posture"]["crs_tuning"].update(paranoia=9), "start_posture.crs_tuning", "crs_refused"),
-    (lambda doc: doc.update(scenario={}), "scenario", "unknown_field"),
+    (lambda doc: doc.update(notes={}), "notes", "unknown_field"),
+    (lambda doc: doc["problem"].update(difficulty=3), "problem.difficulty", "unknown_field"),
+    (lambda doc: doc["steps"][1].update(hint="one"), "steps[1].hint", "unknown_field"),
+    (lambda doc: doc["steps"][0]["check"].update(answer="x"), "steps[0].check.answer", "unknown_field"),
+    (lambda doc: doc["start_posture"].update(engine="ids"), "start_posture.engine", "unknown_field"),
 ])
 def test_validator_errors_come_back_by_path_and_nothing_is_saved(source, as_staff, edit, path, code):
     refused(as_staff.post("/api/staff/problems/", broken(edit), format="json"), 400, code, path)
@@ -70,6 +74,8 @@ def test_validator_errors_come_back_by_path_and_nothing_is_saved(source, as_staf
     ({"objectives": ["corp-rogue-admin"]}, "round.objectives[0]", "unknown_objective"),
     ({"probe_cases": ["board-sqli-union-search"]}, "round.probe_cases[0]", "not_recorded"),
     ({"probe_cases": ["board-normal-post-list"]}, "round.probe_cases[0]", "not_malicious"),
+    ({"time_limit": 600}, "round.time_limit", "unknown_field"),
+    ({"hp": {**factories.HP, "refill": 1}}, "round.hp.refill", "unknown_field"),
 ])
 def test_round_setup_errors_come_back_by_path(source, as_staff, setup, path, code):
     refused(as_staff.post("/api/staff/problems/", factories.round_problem(**setup), format="json"), 400, code, path)
@@ -117,6 +123,15 @@ def test_a_put_on_a_stale_revision_is_refused_with_the_current_one(saved, as_sta
 
     assert found["params"] == {"current_revision": 2}
     assert as_staff.get(f"/api/staff/problems/{problem_id}/").json()["problem"]["title"] == "Placeholder lesson"
+
+
+def test_a_stored_document_read_back_is_accepted_as_the_next_put(saved, as_staff):
+    problem_id = saved["problem"]["id"]
+
+    answer = as_staff.put(f"/api/staff/problems/{problem_id}/", {**saved, "base_revision": 1}, format="json")
+
+    assert answer.status_code == 200, answer.content
+    assert answer.json()["problem"]["revision"] == 2
 
 
 def test_a_put_without_a_base_revision_is_refused(saved, as_staff):

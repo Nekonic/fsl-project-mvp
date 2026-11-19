@@ -96,3 +96,19 @@ def test_staff_read_the_wargames_synced_from_the_catalog(source, as_staff):
 
 def test_a_learner_is_refused_the_wargame_list(source, as_learner):
     refused(as_learner.get("/api/staff/wargames/"), 403, "not_staff")
+
+
+def test_a_broken_catalog_is_a_server_fault_not_the_staff_member_s(source, as_staff):
+    (source / "wargames" / "board" / "probes" / "manifest.json").write_text("{}")
+
+    refused(as_staff.get("/api/staff/wargames/"), 500, "server_error")
+
+
+def test_an_objective_tier_without_a_key_is_refused_by_name(source):
+    path = source / "wargames" / "board" / "objectives.yaml"
+    declared = yaml.safe_load(path.read_text())
+    del declared["tiers"][0]["key"]
+    path.write_text(yaml.safe_dump(declared, allow_unicode=True))
+
+    with pytest.raises(catalog.CatalogBroken, match="malformed tier"):
+        catalog.read(source, "board")

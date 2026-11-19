@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 
 from attack.firing import load_cases
+from cr.errors import ServerError
 from domain.problems import CatalogCase, WargameCatalog
 
 WARGAMES = "wargames"
@@ -18,7 +19,7 @@ OBJECTIVE_MODELS = ("loot_verified", "effect_observed")
 GATEWAY = "gateway"
 
 
-class CatalogBroken(ValueError):
+class CatalogBroken(ServerError):
     pass
 
 
@@ -143,8 +144,11 @@ def traffic_profiles(folder: Path) -> tuple[str, ...]:
 
 def read_objectives(folder: Path) -> tuple[Objective, ...]:
     tiers = (loaded(folder / "objectives.yaml") or {}).get("tiers") or []
-    return tuple(Objective(key=tier["key"], name=tier["name"], category=tier["category"],
-                           difficulty=int(tier["difficulty"])) for tier in tiers)
+    try:
+        return tuple(Objective(key=tier["key"], name=tier["name"], category=tier["category"],
+                               difficulty=int(tier["difficulty"])) for tier in tiers)
+    except (KeyError, TypeError, ValueError) as broken:
+        raise CatalogBroken(f"{folder / 'objectives.yaml'} has a malformed tier: {broken!r}") from broken
 
 
 def read_cases(path: Path) -> tuple[Case, ...]:
@@ -164,6 +168,9 @@ def read_probes(folder: Path) -> Probes | None:
     manifest = folder / "probes" / "manifest.json"
     if not manifest.is_file():
         return None
-    declared = json.loads(manifest.read_text(encoding="utf-8"))
-    return Probes(image_digest=declared["image_digest"], recorded_at=declared["recorded_at"],
-                  cases=dict(declared.get("cases") or {}))
+    try:
+        declared = json.loads(manifest.read_text(encoding="utf-8"))
+        return Probes(image_digest=declared["image_digest"], recorded_at=declared["recorded_at"],
+                      cases=dict(declared.get("cases") or {}))
+    except (KeyError, TypeError, ValueError) as broken:
+        raise CatalogBroken(f"{manifest} is malformed: {broken!r}") from broken
