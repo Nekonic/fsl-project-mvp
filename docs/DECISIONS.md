@@ -9885,3 +9885,21 @@ An answer-blind walk of scenarios 1.1 to 2.1 on the Heat range.
   (grouped rules, first-request JSON fields over up to 20,000 detections;
   the probe's `GET triage/` took 1-3.3 s during sqlmap) just to check the
   item id; it now reads only the alerted markers **[unverified live]**.
+
+## 2026-11-19 — Rebuild as a side split: attack, defence, referee around a round
+
+The mentor review of 2026-11-18 found most lessons and scenarios to be slop. The user ruled:
+scenarios are removed; the path is guided lessons then live rounds; rounds are PvP on one stack,
+a human defender against an attack bot, or a human attacker against a defence bot; attack and
+defence each have one API that a human console and a bot use alike, bots model-agnostic and first
+driven by Claude Code; source IPs carry hit points so pointless scans spend themselves, and the
+bot is told the rule; a WAF/IDS rule is tested where it is written, with syntax errors and per-case
+TP/FN/FP/TN at once, before it is applied; problems live in the database and are edited on a staff
+page. Time and dependency counts are not criteria; the ratchet is removed. The code is rebuilt for
+maintainability rather than migrated: the current code is reference, and only its good modules
+(isolation seams, scoring core, range adapter, cases) are carried over.
+
+Seven whole-repo structures were proposed, each checked by a skeptic against the repo and scored
+by four judges (maintainability, product fit, operational risk, project invariants). The user chose
+the side split and asked for the others' strengths to be fused in. The fused design, with each
+graft and its source option, is `docs/superpowers/specs/2026-11-19-side-split-design.md`.

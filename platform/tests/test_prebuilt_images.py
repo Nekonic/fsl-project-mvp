@@ -14,7 +14,7 @@ import pytest
 import yaml
 
 from tests import composed
-from wargames import WARGAMES
+WARGAMES = sorted(path.parent.name for path in (Path(__file__).resolve().parents[2] / "wargames").glob("*/compose.yaml"))
 
 ROOT = composed.ROOT
 WORKFLOW = ROOT / ".github/workflows/images.yml"
@@ -118,18 +118,6 @@ def test_a_build_context_narrowed_by_sources_holds_everything_its_dockerfile_cop
 
 def test_the_rebuild_checks_every_image_ci_publishes():
     assert set(rebuild().IMAGES) == {entry["name"] for entry in matrix()}
-
-
-def test_each_wargame_names_the_image_its_service_runs():
-    repositories = {
-        NAME.fullmatch(service["image"]).group(1)
-        for service in composed.services().values() if "build" in service
-    }
-
-    for wargame in WARGAMES.values():
-        image = wargame["image"]
-        assert image.startswith("ghcr.io/nekonic/cr-"), image
-        assert image.removeprefix("ghcr.io/nekonic/cr-") in repositories, image
 
 
 def platform_vm_config():

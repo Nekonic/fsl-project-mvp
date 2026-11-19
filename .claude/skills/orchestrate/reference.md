@@ -1,54 +1,20 @@
 # Orchestrate reference
 
 Detail pulled out of `CLAUDE.md` and this skill's hot path. Read it when a
-change touches the measured numbers or the substrate seams.
-
-## The ratchet numbers
-
-`bin/measure` prints them; `metrics.json` holds the baseline; `bin/verify`
-refuses a change that grows a gated number.
-
-| number | ratchet | what it counts |
-|---|---|---|
-| `core_loc` | down only | the surviving hypothesis: `platform/scoring/`, `platform/ingest/`, `platform/rules/`, `redteam/harness.py` |
-| `dependencies` | down only | the packages in `pyproject.toml`'s `dependencies` and its `dev` group (the `cloud` group is not counted) |
-| `services` | down only | the services of the root `compose.yaml`, following its `include:` |
-| `product_loc` | reported | non-blank lines of every other tracked file: UI, API surface, compose, deploy, wargames |
-| `wargame_services` | reported | the services of every `wargames/*/compose.yaml` |
-| `tests` | reported | module-level `test_*` functions in `test_*.py` under `platform/tests/` and `test/`; a name defined twice in one file stops `bin/measure` |
-
-The split follows what the repo is for. `core_loc` is what would be worth
-carrying to the production repo, so it stays small and keeps shrinking.
-`product_loc` is where things are tried, so it grows — that is what building one
-looks like. Anything that stops being disposable earns its way into `core_loc`
-or out of the repo. Docs (`docs/`, `*.md`), `bin/`, `.claude/`, migrations and
-`metrics.json` are not counted; tests are not counted as production code, so
-growing the suite never reads as a regression.
-
-A gated +1 that is small and obviously correct (a missing one-line capability
-in a tool, say) may just be made and recorded in `DECISIONS.md` — not staged as
-a multi-turn decision. Editing `metrics.json` by hand to pass is a last resort;
-when you do it, the reason goes in `DECISIONS.md`.
-
-Gaming to watch for, because the number alone will not show it: logic moved
-into an uncounted path to drop `core_loc`; lines joined to the same end; a test
-weakened or deleted to make a change pass. The test count is reported, not
-gated (`DECISIONS.md`, 2026-10-16), so a removed test is justified in its
-commit. The number can be honest only if the change behind it is.
+change touches the verify modes or the substrate seams.
 
 ## The verify modes
 
 | command | runs | when |
 |---|---|---|
-| `bin/verify --changed [BASE]` | the unit test files the change reaches, then the ratchet | by default while working |
+| `bin/verify --changed [BASE]` | the unit test files the change reaches | by default while working |
 | `bin/verify --changed [BASE] --live` | the same, plus the acceptance modules the change reaches, on the live range | a range-facing change, before it is pushed |
-| `bin/verify --fast` | every unit test; prints the metrics without gating them | before a commit that touches shared code |
-| `bin/verify` | all of acceptance on the live range, with every unit test beside it at the lowest CPU priority, then the ratchet | range-facing logic changed, and before a push |
+| `bin/verify --fast` | every unit test | before a commit that touches shared code |
+| `bin/verify` | all of acceptance on the live range, with every unit test beside it at the lowest CPU priority | range-facing logic changed, and before a push |
 
 The live modes run where the `cr-platform` container was brought up from the
 same checkout (the platform VM's `/opt/cr`), refuse while a session is open,
-restart the platform, and prune only the sessions the run made. The ratchet
-also fails on untracked files, which `bin/measure` would not count.
+restart the platform, and prune only the sessions the run made.
 
 `BASE` is the merge-base with `dev` by default, plus uncommitted and untracked
 files; `A..B` takes only the commits between. `bin/select-tests [BASE]` prints
@@ -56,7 +22,7 @@ the selection without running it. A test file is selected when it imports a
 changed module (directly or through others, with `platform/` or `test/` as the
 working directory), requests a URL whose view module reaches it, or names or
 globs the changed file; reading a Python file as text does not pull in what it
-imports. Docs (`*.md`, `docs/`, `.claude/`, `metrics.json`) select nothing.
+imports. Docs (`*.md`, `docs/`, `.claude/`) select nothing.
 The unit `conftest.py` and `__init__.py`, `pytest.ini`, `pyproject.toml`,
 `uv.lock` and `cr/settings.py` run the whole unit suite, and so does any
 changed file no test reaches. A range-facing change (`platform/` outside

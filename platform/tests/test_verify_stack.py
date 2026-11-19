@@ -62,25 +62,3 @@ def test_only_a_stack_brought_up_from_this_checkout_is_restarted(tmp_path, check
     if brought_up == elsewhere:
         assert done.returncode == 1 and str(elsewhere) in done.stdout, done.stdout
 
-
-def test_a_fast_check_whose_measure_refuses_does_not_pass(checkout):
-    executable(
-        checkout / "bin/measure",
-        "echo 'measure: compose.override.yml exists, and Compose merges it "
-        "into the stack' >&2\n"
-        "exit 1\n",
-    )
-
-    done = subprocess.run(
-        [str(checkout / "bin/verify"), "--fast"],
-        capture_output=True, text=True, timeout=60,
-        env={**os.environ, "PATH": "/usr/bin:/bin"},
-    )
-
-    assert done.returncode != 0 and "fast check passed" not in done.stdout, (
-        f"measure could not read this tree and --fast called the baseline "
-        f"green anyway. The full run at the end fails on the same refusal, "
-        f"and the session protocol answers that with git reset --hard, so the "
-        f"session's work is thrown away every time:\n{done.stdout}"
-    )
-    assert "measure" in done.stdout, done.stdout

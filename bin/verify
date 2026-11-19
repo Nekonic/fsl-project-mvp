@@ -93,6 +93,20 @@ if [ "$CHANGED" = 1 ]; then
   acceptance_modules="$(sed -n 's/^acceptance-module //p' "$PLAN" | paste -sd, -)"
 fi
 
+for layer in domain seams; do
+  if [ "$CHANGED" = 1 ] || [ ! -d "platform/tests/$layer" ]; then
+    continue
+  fi
+  section "$layer tests"
+  if layer_log="$(cd platform && "$PY" -m pytest "tests/$layer" -q -p no:cacheprovider 2>&1)"; then
+    echo "$layer_log" | tail -1
+    ok "platform/tests/$layer"
+  else
+    echo "$layer_log" | tail -40
+    fail "platform/tests/$layer"
+  fi
+done
+
 section "unit + API tests"
 if [ "$CHANGED" = 1 ] && [ "$unit_kind" = none ]; then
   ok "no unit test reaches the change"
@@ -115,8 +129,6 @@ else
 fi
 
 if [ "$FAST" = 1 ]; then
-  section "metrics (not gated in --fast)"
-  ./bin/measure || fail "measure crashed - the full run will fail on it too"
   [ "$FAILED" = 0 ] && printf '\n\033[32mfast check passed\033[0m — run bin/verify before committing\n'
   exit "$FAILED"
 fi
@@ -271,60 +283,6 @@ elif [ "$acceptance_kind" != none ]; then
   section "acceptance (not run)"
   echo "the change reaches the range; the acceptance tests it needs are listed above."
   echo "run them with: bin/verify --changed${BASE:+ $BASE} --live"
-fi
-
-section "ratchet"
-untracked="$(git ls-files --others --exclude-standard)"
-if [ -n "$untracked" ]; then
-  fail "untracked files - metrics would not count them:"
-  echo "$untracked" | sed 's/^/       /'
-  echo "     git add them, then run bin/verify again"
-else
-  ok "nothing untracked"
-fi
-
-./bin/measure
-if "$PY" - <<'PY'
-import json, subprocess, sys, pathlib
-baseline_path = pathlib.Path("metrics.json")
-measured = subprocess.run(["./bin/measure", "--json"], capture_output=True, text=True)
-if measured.returncode:
-    said = measured.stderr.strip().splitlines() or [f"exit {measured.returncode}"]
-    print(f"\nmeasure crashed, so nothing was compared:\n  {said[-1]}")
-    sys.exit(3)
-current = json.loads(measured.stdout)
-if not baseline_path.exists():
-    print("\nno metrics.json yet — run: bin/measure --save")
-    sys.exit(0)
-baseline = json.loads(baseline_path.read_text())
-
-GATED = ("core_loc", "dependencies", "services")
-
-moved = {k: (baseline[k], v) for k, v in current.items() if v != baseline.get(k, v)}
-worse = {k: m for k, m in moved.items() if k in GATED and m[1] > m[0]}
-smaller = {k: m for k, m in moved.items() if m[1] < m[0]}
-
-def show(heading, found, *advice):
-    print(heading)
-    for name, (was, now) in found.items():
-        print(f"  {name}: {was} -> {now}")
-    print(*advice, sep="\n")
-
-if worse:
-    show("\nthis change grows a gated number:", worse,
-         "\nThat is not an improvement. Either shrink it back, or if the growth",
-         "is genuinely necessary, edit metrics.json by hand.")
-if smaller and not worse:
-    show("\nsmaller:", smaller, "\nRecord it: bin/measure --save")
-
-sys.exit(1 if worse else 0)
-PY
-then
-  ok "no regression"
-elif [ $? = 3 ]; then
-  fail "measure crashed"
-else
-  fail "metrics regressed"
 fi
 
 section "result"

@@ -21,7 +21,6 @@ TEST_FILE = "test_*.py"
 
 DOCS_PREFIXES = ("docs/", ".claude/")
 DOCS_SUFFIXES = (".md",)
-DOCS_EXACT = ("metrics.json",)
 
 WHOLE_UNIT_SUITE = (
     "platform/pytest.ini",
@@ -49,7 +48,7 @@ IDENTIFIER = re.compile(r"[A-Za-z_]\w*")
 
 
 def is_docs(path: str) -> bool:
-    return path.startswith(DOCS_PREFIXES) or path.endswith(DOCS_SUFFIXES) or path in DOCS_EXACT
+    return path.startswith(DOCS_PREFIXES) or path.endswith(DOCS_SUFFIXES)
 
 
 def is_unit_test(path: str) -> bool:

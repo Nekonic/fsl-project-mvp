@@ -1,8 +1,8 @@
 import os
 from pathlib import Path
 
-from range import declared
-from rules import crs
+from cr import config
+from range import declaration as declared
 from rules.suricata import RULE_PATH
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -29,8 +29,6 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.staticfiles",
-    "api",
-    "console",
 ]
 
 MIDDLEWARE = [
@@ -39,11 +37,6 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "api.refusals.SameOriginOnly",
-    "api.reachability.not_from_inside_the_range",
-    "api.signin.SignedInOnly",
-    "api.accounts.OwnSessionsOnly",
-    "api.refusals.Refusals",
 ]
 
 LOGIN_URL = "/login/"
@@ -51,7 +44,6 @@ SESSION_COOKIE_NAME = "cr_session"
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_USE_SESSIONS = True
-CSRF_FAILURE_VIEW = "api.signin.csrf_refused"
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": f"django.contrib.auth.password_validation.{name}"}
     for name in (
@@ -120,9 +112,6 @@ ELASTIC_SESSION_INDEX = os.environ.get(
 READY_SKEW = float(os.environ.get("CR_READY_SKEW", "5"))
 CANARY_WAIT = float(os.environ.get("CR_CANARY_WAIT", "45"))
 CANARY_POLL = float(os.environ.get("CR_CANARY_POLL", "3"))
-SCENARIO_TICK = float(os.environ.get("CR_SCENARIO_TICK", "2"))
-SCENARIO_OBSERVE = float(os.environ.get("CR_SCENARIO_OBSERVE", "15"))
-SCENARIO_WAF_POLL = float(os.environ.get("CR_SCENARIO_WAF_POLL", "20"))
 RETAIN_CLOSED_MINUTES = int(os.environ.get("CR_RETAIN_CLOSED_MINUTES") or 60)
 SENSOR_HOST = RANGE.hosts.get(RANGE.roles.get("sensor", ""))
 CR_SENSOR_RULES = (
@@ -144,7 +133,8 @@ CR_EXTRA_SENSORS = tuple(_sensing(role) for role in sorted(RANGE.watches) if rol
 
 def waf_layout(shape):
     host = shape.hosts.get(shape.roles.get("gateway", "")) or declared.Host()
-    return crs.Layout(host.rules or crs.EXCLUSIONS, host.reload or crs.NGINX_RELOAD, host.pid or crs.NGINX_PID)
+    return config.WafConfig(rules=host.rules or config.CRS_EXCLUSIONS, reload=host.reload or config.NGINX_RELOAD,
+                            pid=host.pid or config.NGINX_PID)
 
 CR_WAF = waf_layout(RANGE)
 CR_SOURCE = os.environ.get("CR_SOURCE", str(BASE_DIR.parent))

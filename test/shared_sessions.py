@@ -213,7 +213,7 @@ def score(full_run):
 
 @pytest.fixture(scope="session")
 def board_session(stack_is_up):
-    with shared_session(scenario="board") as session_id:
+    with shared_session(wargame="board") as session_id:
         seen = {"session_id": session_id}
         seen["objectives_at_open"] = requests.post(
             f"{PLATFORM_URL}/api/sessions/{session_id}/objectives/", timeout=60
@@ -653,7 +653,7 @@ def judged_corp(session_id):
 
 
 def rogue_admin_run():
-    with shared_session(scenario="corp") as session_id:
+    with shared_session(wargame="corp") as session_id:
         opened = time.monotonic()
         before = run_side_by_side(CORP_DB, {"admins": ADMINS, "post": FIRST_POST}, session=session_id)
         baseline, original = ids_in(before["admins"].stdout), first_post_in(before["post"].stdout)
@@ -702,7 +702,7 @@ def rogue_admin_run():
 
 
 def option_flip_run():
-    with shared_session(scenario="corp") as session_id:
+    with shared_session(wargame="corp") as session_id:
         opened = time.monotonic()
         seen = {"session_id": session_id}
         try:

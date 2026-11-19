@@ -1,5 +1,4 @@
 import importlib.util
-import json
 import os
 import shutil
 import subprocess
@@ -57,11 +56,11 @@ SMALL = {
     "docs/STATE.md": "state\n",
     "platform/topology.py": "def layout():\n    return []\n",
     "platform/scoreboard.py": "def board():\n    return {}\n",
-    "platform/api/__init__.py": "",
-    "platform/api/views.py": "import topology\n\ndef show():\n    return topology.layout()\n",
+    "platform/match/__init__.py": "",
+    "platform/match/views.py": "import topology\n\ndef show():\n    return topology.layout()\n",
     "platform/tests/__init__.py": "",
     "platform/tests/test_topology.py": "import topology\n\ndef test_layout():\n    assert topology.layout() == []\n",
-    "platform/tests/test_views.py": "from api import views\n\ndef test_show():\n    assert views.show() == []\n",
+    "platform/tests/test_views.py": "from match import views\n\ndef test_show():\n    assert views.show() == []\n",
     "platform/tests/test_scoreboard.py": "import scoreboard\n\ndef test_board():\n    assert scoreboard.board() == {}\n",
     "platform/console/templates/console/blue_topology.html": "<div id=\"map\"></div>\n",
     "platform/tests/test_topology_console.py": (
@@ -78,7 +77,7 @@ def selected(chosen):
 def test_a_docs_only_change_selects_no_test(repo):
     root = repo(SMALL)
 
-    chosen = selector.select(root, {"README.md": "M", "docs/STATE.md": "M", "metrics.json": "M"})
+    chosen = selector.select(root, {"README.md": "M", "docs/STATE.md": "M"})
 
     assert chosen.docs_only
     assert selector.plan_lines(chosen) == ["unit none", "acceptance none"]
@@ -90,7 +89,7 @@ def test_a_module_change_selects_the_test_files_that_import_it(repo):
     chosen = selector.select(root, {"platform/topology.py": "M"})
 
     assert selected(chosen) == ["test_topology.py", "test_views.py"], (
-        "test_topology imports topology and test_views imports api.views, which imports "
+        "test_topology imports topology and test_views imports match.views, which imports "
         "it; test_scoreboard reaches neither"
     )
     assert chosen.unit_kind == "some"
@@ -110,7 +109,7 @@ def test_a_template_rendered_for_a_requested_page_selects_the_test_requesting_it
         **SMALL,
         "platform/cr/__init__.py": "",
         "platform/cr/urls.py": (
-            "from django.urls import path\n\nfrom api import views\nfrom console import views as console\n\n"
+            "from django.urls import path\n\nfrom match import views\nfrom console import views as console\n\n"
             "urlpatterns = [\n    path(\"api/show/\", views.show),\n"
             "    path(\"blue/<int:session_id>/\", console.blue),\n]\n"
         ),
@@ -138,11 +137,11 @@ def test_reading_a_python_file_as_text_does_not_pull_in_what_it_imports(repo):
         **SMALL,
         "platform/tests/test_seams.py": (
             "from pathlib import Path\n\ndef test_views_is_short():\n"
-            "    assert Path('api/views.py').read_text()\n"
+            "    assert Path('match/views.py').read_text()\n"
         ),
     })
 
-    reaches_views = selector.select(root, {"platform/api/views.py": "M"})
+    reaches_views = selector.select(root, {"platform/match/views.py": "M"})
     reaches_topology = selector.select(root, {"platform/topology.py": "M"})
 
     assert "test_seams.py" in selected(reaches_views)
@@ -232,16 +231,9 @@ def test_the_changed_files_are_the_commits_since_the_base_and_the_uncommitted_on
     assert committed == {"platform/topology.py": "M"}
 
 
-def verify_a_docs_change(repo, baseline):
-    root = repo({
-        **SMALL,
-        "compose.yaml": "services:\n  web:\n    image: nginx:1.27\n",
-        "metrics.json": json.dumps({
-            "core_loc": 0, "product_loc": 0, "dependencies": 0,
-            "services": 1, "wargame_services": 0, "tests": 4, **baseline,
-        }) + "\n",
-    })
-    for script in ("verify", "measure", "select-tests"):
+def test_a_docs_only_change_runs_no_test_and_passes(repo):
+    root = repo(SMALL)
+    for script in ("verify", "select-tests"):
         (root / "bin").mkdir(exist_ok=True)
         shutil.copy(ROOT / "bin" / script, root / "bin" / script)
     (root / ".venv/bin").mkdir(parents=True)
@@ -252,26 +244,11 @@ def verify_a_docs_change(repo, baseline):
     base = git(root, "rev-parse", "HEAD").decode().strip()
     write(root, {"README.md": "# range, documented\n"})
 
-    return subprocess.run(
+    done = subprocess.run(
         [str(root / "bin/verify"), "--changed", base],
         capture_output=True, text=True, timeout=120,
         env={**os.environ, "PATH": f"{Path(sys.executable).parent}:/usr/bin:/bin"},
     )
 
-
-def test_a_docs_only_change_still_runs_the_ratchet(repo):
-    done = verify_a_docs_change(repo, {"services": 0})
-
     assert "docs only — no tests" in done.stdout, done.stdout + done.stderr
-    assert "grows a gated number" in done.stdout and done.returncode == 1, (
-        f"a docs-only change skipped the tests but must not skip the ratchet:\n{done.stdout}"
-    )
-
-
-def test_a_falling_test_count_is_reported_and_passes(repo):
-    done = verify_a_docs_change(repo, {"tests": 99})
-
-    assert "tests: 99 -> 4" in done.stdout, done.stdout + done.stderr
-    assert done.returncode == 0, (
-        f"the test count is reported, not gated (DECISIONS 2026-10-16):\n{done.stdout}"
-    )
+    assert done.returncode == 0, done.stdout + done.stderr

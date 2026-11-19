@@ -123,15 +123,15 @@ def test_a_writer_already_writing_into_the_file_is_waited_out_not_copied_half_do
 ):
     store = tmp_path / "db.sqlite3"
     with closing(sqlite3.connect(store)) as db:
-        db.execute("CREATE TABLE api_session (id INTEGER PRIMARY KEY, scenario TEXT)")
+        db.execute("CREATE TABLE api_session (id INTEGER PRIMARY KEY, label TEXT)")
         db.executemany(
-            "INSERT INTO api_session (scenario) VALUES (?)", [("committed",)] * 3000
+            "INSERT INTO api_session (label) VALUES (?)", [("committed",)] * 3000
         )
         db.commit()
     writer = sqlite3.connect(store, isolation_level=None)
     writer.execute("PRAGMA cache_size = 1")
     writer.execute("BEGIN")
-    writer.execute("UPDATE api_session SET scenario = printf('%0200d', id)")
+    writer.execute("UPDATE api_session SET label = printf('%0200d', id)")
 
     taken = {}
     taking = threading.Thread(
@@ -146,7 +146,7 @@ def test_a_writer_already_writing_into_the_file_is_waited_out_not_copied_half_do
     taking.join(10)
 
     assert waited, "the writer had already spilled into the file, so a copy made now is half its work"
-    assert read(taken["image"], "SELECT scenario, count(*) FROM api_session GROUP BY scenario") == [
+    assert read(taken["image"], "SELECT label, count(*) FROM api_session GROUP BY label") == [
         ("committed", 3000)]
 
 
@@ -164,30 +164,6 @@ def test_a_platform_reached_some_other_way_is_backed_up_the_same(
     assert re.fullmatch(r"db-\d{8}T\d{6}Z\.sqlite3", kept.name)
     assert str(kept) in printed
     assert dump(kept) == dump(store)
-
-
-def test_a_store_the_platform_has_not_yet_migrated_to_the_checkout_is_still_kept(
-    backup, tmp_path, monkeypatch
-):
-    store = tmp_path / "db.sqlite3"
-    monkeypatch.chdir(ROOT / "platform")
-    monkeypatch.setenv("DJANGO_DB_PATH", str(store))
-    subprocess.run(
-        [sys.executable, "manage.py", "migrate", "api", "0002", "--noinput", "--skip-checks"],
-        check=True, capture_output=True,
-    )
-    monkeypatch.setenv("CR_PLATFORM_EXEC", shlex.join([sys.executable, "-"]))
-
-    printed = backup()
-
-    [kept] = backup.module.BACKUPS.iterdir()
-    assert kept.name.endswith(".sqlite3")
-    assert dump(kept) == dump(store)
-    assert re.search(r"^\s*disabled rules\s+absent$", printed, re.M), (
-        f"0003 adds the disabled-rule table; a store taken before the platform has "
-        f"applied it is the backup most worth having:\n{printed}"
-    )
-    assert re.search(r"^\s*sessions\s+0$", printed, re.M), printed
 
 
 def test_a_database_holding_none_of_the_platform_s_tables_is_not_kept(

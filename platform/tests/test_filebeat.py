@@ -4,7 +4,7 @@ import pytest
 
 import yaml
 
-from range import fabric
+from range import networks
 
 FILEBEAT = pathlib.Path(__file__).resolve().parents[2] / "deploy/filebeat/filebeat.yml"
 
@@ -27,7 +27,7 @@ def syslog_inputs():
 def test_the_range_vms_ship_by_syslog_to_one_udp_input_on_the_collector_port():
     [heard] = syslog_inputs()
 
-    assert heard["host"] == f"0.0.0.0:{fabric.COLLECTOR_PORT}"
+    assert heard["host"] == f"0.0.0.0:{networks.COLLECTOR_PORT}"
     assert next(iter(heard["processors"][0])) == "syslog"
 
 def test_suricata_and_modsecurity_lines_are_decoded_into_the_documents_ingest_reads():
@@ -142,7 +142,7 @@ def test_a_document_does_not_carry_the_management_address_it_was_received_from()
 def test_a_refused_request_s_status_lands_where_the_ids_record_s_does_so_no_runtime_field_is_mapped_away():
     import json
     import re
-    import kibana
+    from defence import kibana
     root = FILEBEAT.parents[2]
     logged = re.search(r"log_format refused escape=json '(\{.*\})';", (root / "deploy/waf/board.com.conf").read_text())
     shipped = set(re.findall(r'"([A-Za-z_]+)":', logged[1]))

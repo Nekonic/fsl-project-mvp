@@ -10,7 +10,7 @@ PROBE = 'alert http any any -> any any (msg:"lesson isolation probe"; sid:900990
 
 def _open(**settings) -> int:
     opened = requests.post(
-        f"{PLATFORM_URL}/api/sessions/", json={"scenario": "board", **settings}, timeout=1800,
+        f"{PLATFORM_URL}/api/sessions/", json={"wargame": "board", **settings}, timeout=1800,
     )
     assert opened.status_code == 201, opened.text
     return opened.json()["id"]

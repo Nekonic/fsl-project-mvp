@@ -1,18 +1,30 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import requests
+
+from cr.config import ElasticConfig
+from cr.errors import Unavailable
 
 MARKER_HEADER = "X-Request-ID"
 _MARKER_KEY = MARKER_HEADER.lower()
 
 FETCH_TIMEOUT = 10.0
 
-class ElasticUnavailable(RuntimeError):
-    pass
+ACCESS_MODULE = "nginx_access"
+REFUSED_STATUSES = (400, 403)
+PAGE = 1000
+PIPELINE_TRIES = 30
+PIPELINE_PAUSE = 2.0
+
+
+class ElasticUnavailable(Unavailable):
+    code = "elastic_unavailable"
 
 def fetch(
     url: str,
@@ -102,11 +114,31 @@ def normalize(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
         return _normalize_suricata(doc_id, doc)
     if source == "modsecurity":
         return _normalize_modsecurity(doc_id, doc)
-    if source == "nginx":
-        return [{"detection_id": doc_id, "source": "nginx",
-                 "signature": f"{(doc.get('http') or {}).get('status')} {doc.get('request', '')}", "severity": None, "timestamp": _parse_time(doc.get("time")), "src_ip": doc.get("client_ip"),
-                 "marker": None, "raw": doc}]
+    if source == ACCESS_MODULE:
+        return _normalize_access(doc_id, doc)
     return []
+
+def access_record(doc_id: str, doc: dict[str, Any]) -> dict[str, Any]:
+    status = _as_int(doc.get("status") or (doc.get("http") or {}).get("status")) or 0
+    return {
+        "id": doc_id,
+        "at": _parse_time(doc.get("time")) or _parse_time(doc.get("@timestamp")),
+        "source_ip": doc.get("client_ip") or doc.get("remote_addr"),
+        "status": status,
+        "refused": status in REFUSED_STATUSES,
+        "marker": doc.get("request_id") or None,
+        "request": doc.get("request", ""),
+    }
+
+
+def _normalize_access(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
+    record = access_record(doc_id, doc)
+    if not record["refused"]:
+        return []
+    return [{"detection_id": doc_id, "source": "nginx", "signature": f"{record['status']} {record['request']}",
+             "severity": None, "timestamp": record["at"], "src_ip": record["source_ip"],
+             "marker": record["marker"], "raw": doc}]
+
 
 def _normalize_suricata(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
     if doc.get("event_type") != "alert":
@@ -187,3 +219,64 @@ def _as_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _after_query(cursor: dict | None, module: str | None, size: int) -> dict[str, Any]:
+    cursor = cursor or {}
+    filters: list[dict] = []
+    if cursor.get("at"):
+        filters.append({"range": {"@timestamp": {"gte": cursor["at"]}}})
+    if module:
+        filters.append({"term": {"event.module": module}})
+    return {
+        "size": size,
+        "track_total_hits": False,
+        "_source": {"excludes": ["message"]},
+        "sort": [{"@timestamp": {"order": "asc", "format": "strict_date_optional_time_nanos"}}],
+        "query": {"bool": {"filter": filters, "must_not": [{"ids": {"values": list(cursor.get("seen") or ())}}]}},
+    }
+
+
+def _sorted_at(hit: dict) -> Any:
+    return (hit.get("sort") or [None])[0] or hit.get("_source", {}).get("@timestamp")
+
+
+def fetch_after(url: str, index: str, cursor: dict | None = None, size: int = PAGE,
+                module: str | None = None) -> tuple[list[tuple[str, dict[str, Any]]], dict]:
+    previous = dict(cursor or {})
+    response = _posted(url, index, "_search?allow_partial_search_results=false", _after_query(previous, module, size))
+    hits = response.json().get("hits", {}).get("hits", [])
+    documents = [(hit["_id"], hit.get("_source", {})) for hit in hits]
+    if not hits:
+        return documents, previous
+    last = _sorted_at(hits[-1])
+    seen = [hit["_id"] for hit in hits if _sorted_at(hit) == last]
+    if last == previous.get("at"):
+        seen = list(previous.get("seen") or ()) + seen
+    return documents, {"at": last, "seen": seen}
+
+
+def access_events(url: str, index: str, cursor: dict | None = None,
+                  size: int = PAGE) -> tuple[list[dict[str, Any]], dict]:
+    documents, moved = fetch_after(url, index, cursor, size, module=ACCESS_MODULE)
+    return [access_record(doc_id, doc) for doc_id, doc in documents
+            if (doc.get("event") or {}).get("module") == ACCESS_MODULE], moved
+
+
+def pipeline_endpoint(config: ElasticConfig) -> str:
+    return f"{config.url.rstrip('/')}/_ingest/pipeline/{config.pipeline}"
+
+
+def register_pipeline(config: ElasticConfig, tries: int = PIPELINE_TRIES,
+                      pause: Callable[[float], None] = time.sleep) -> bool:
+    body = Path(config.pipeline_file).read_bytes()
+    for _ in range(tries):
+        try:
+            answer = requests.put(pipeline_endpoint(config), data=body, timeout=FETCH_TIMEOUT,
+                                  headers={"Content-Type": "application/json"})
+            if answer.status_code < 300:
+                return True
+        except requests.RequestException:
+            pass
+        pause(PIPELINE_PAUSE)
+    return False

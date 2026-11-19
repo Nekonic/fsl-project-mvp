@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from tests.browser import node
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SEAM_PATH = REPO_ROOT / "test" / "range.py"
@@ -109,9 +108,7 @@ def run_here(wrapped, interpreter):
 
 def test_the_report_survives_a_real_interpreter():
     said, status = run_here(
-        seam.through_shell(
-            [node(), "-e", "console.log('200'); console.error('warn'); process.exit(4)"]
-        ),
+        seam.through_shell(["/bin/sh", "-c", "echo 200; echo warn >&2; exit 4"]),
         "/bin/sh",
     )
     assert said == "200\n"

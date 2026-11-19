@@ -1,5 +1,4 @@
 import os
-import threading
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "cr.settings")
 
@@ -14,22 +13,3 @@ if not settings.DEBUG and not os.environ.get("DJANGO_SECRET_KEY"):
     )
 
 application = get_wsgi_application()
-
-def resume_scenarios():
-    from api import scenario_run
-
-    scenario_run.resume()
-
-def prune_closed_sessions():
-    from api import retention
-
-    retention.prune_quietly()
-
-def resume_resets():
-    from api import views
-
-    views.resume_resets()
-
-threading.Thread(target=resume_resets, name="cr-resets-resume", daemon=True).start()
-threading.Thread(target=resume_scenarios, name="cr-scenarios-resume", daemon=True).start()
-threading.Thread(target=prune_closed_sessions, name="cr-retention", daemon=True).start()

@@ -1,15 +1,11 @@
 import dataclasses
-import threading
-from types import SimpleNamespace
-from unittest.mock import patch
 
 import pytest
 import yaml
 
-from api import reset, views
-from api.models import Session
-from range import fabric, openstack, pool, sandbox
-from tests import fakecloud
+from cr.config import OpenStackConfig
+from range import networks, openstack, pool, stack_plan
+from testing import fakecloud
 
 BASELINE = (fakecloud.ROOT / openstack.BASELINE_RULES).read_text()
 
@@ -19,12 +15,10 @@ def cloud(monkeypatch):
     fake = fakecloud.Cloud()
     server = fakecloud.serving(fake)
     runner = fakecloud.Runner()
-    runner.answer(sandbox.READY, "ready\n")
+    runner.answer(stack_plan.READY, "ready\n")
     runner.answer("reload-rules", '{"return":"OK"}')
     runner.answer("cat /var/lib/suricata/rules/local.rules", BASELINE)
     monkeypatch.setattr(openstack, "execute", runner)
-    monkeypatch.setattr(reset, "RESET_POLL", 0.01)
-    monkeypatch.setattr(reset, "_states", {})
     openstack.forget()
     fake.runner = runner
     yield fake
@@ -48,7 +42,7 @@ def test_each_slot_is_one_stack_and_the_pool_spreads_the_wargames_over_the_slots
     assert [plan.wargame for plan in adapter.plan_slots()] == ["board", "corp", "board"]
     created = stacks(cloud)["cr-slot-2"]
     assert created["parameters"]["control_network"] == "net-mgmt"
-    assert created["parameters"]["senders_group"] == "g-" + fabric.SENDERS_GROUP
+    assert created["parameters"]["senders_group"] == "g-" + networks.SENDERS_GROUP
     assert created["parameters"]["image_kali"] == "cr-kali-bake1" and created["parameters"]["flavor_waf"] == "dba.small"
 
 
@@ -57,51 +51,12 @@ def test_the_slots_share_three_lan_security_groups_and_the_fabric_teardown_remov
     for one in adapter.every_slot():
         one.ensure_slot()
 
-    lan_groups = {group["id"]: group for group in cloud.groups if group["name"].startswith(fabric.LAN_GROUP_PREFIX)}
+    lan_groups = {group["id"]: group for group in cloud.groups if group["name"].startswith(networks.LAN_GROUP_PREFIX)}
     assert len(lan_groups) == 3, "a pool of any size adds three groups, not five per slot"
     used = {group for port in cloud.ports for group in port.get("security_groups") or ()}
     assert set(lan_groups) <= used
-    steps = fabric.teardown(adapter.declared, [], [], [], cloud.groups)
+    steps = networks.teardown(adapter.declared, [], [], [], cloud.groups)
     assert {("group", ident) for ident in lan_groups} <= set(steps)
-
-
-def test_a_slot_is_ready_only_once_heat_completes_and_every_node_reports_its_boot(cloud):
-    cloud.steps_to_complete = 3
-    cloud.runner.answer(sandbox.READY, "setting-up\n")
-    slot = fakecloud.adapter(cloud, slots=1)
-
-    first = slot.ensure_slot()
-    assert not first.active and pool.stack_state(first.stack) == pool.BUILDING
-    while slot.plan_slot().stack != pool.COMPLETE:
-        pass
-    assert {status for _, _, status in slot.plan_slot().standing} == {pool.SETTING_UP}
-    assert pool.phase(slot.plan_slot(), None, {"state": reset.IDLE}, {}, reset.RUNNING, reset.FAILED)[0] == "REBUILDING"
-    cloud.runner.answer(sandbox.READY, "ready\n")
-    assert slot.plan_slot().active
-    probed = {address for address, sent in cloud.runner.ran if sandbox.READY in sent}
-    assert probed == {cloud.control_address(1, node) for node in ("cr-kali", "cr-infra", "cr-waf", "cr-target")}
-
-
-def test_a_node_whose_boot_failed_shows_the_slot_as_failed_to_set_up(cloud):
-    cloud.runner.answer(sandbox.READY, "failed\n")
-    plan = fakecloud.adapter(cloud, slots=1).ensure_slot()
-
-    assert pool.phase(plan, None, {"state": reset.IDLE}, {}, reset.RUNNING, reset.FAILED) == (
-        pool.SETUP_FAILED, [f"{host} failed its setup; {pool.SETUP_LOG} on it says why"
-                            for host in ("cr-infra", "cr-kali", "cr-target", "cr-waf")])
-
-
-def test_a_stack_heat_failed_is_deleted_by_the_next_ensure_and_created_again(cloud):
-    cloud.fail_next_stack = "Quota exceeded for cores"
-    slot = fakecloud.adapter(cloud, slots=1)
-    slot.ensure_slot()
-    failed = slot.plan_slot()
-
-    assert failed.failures == ("cr-slot-1 is CREATE_FAILED: Quota exceeded for cores",)
-    assert pool.phase(failed, None, {"state": reset.IDLE}, {}, reset.RUNNING, reset.FAILED)[0] == pool.SETUP_FAILED
-    slot.ensure_slot()
-    assert slot.plan_slot().boot == ("cr-slot-1",)
-    assert slot.ensure_slot().active and slot.plan_slot().stack_id != failed.stack_id
 
 
 def test_a_stack_from_another_template_or_image_is_stale_and_replaced_only_when_asked(cloud):
@@ -143,46 +98,6 @@ def test_a_session_slot_opens_only_on_a_stack_built_for_its_wargame(cloud):
         slot.play("corp")
 
 
-def test_the_refill_deletes_the_used_stack_creates_a_fresh_one_and_seeds_the_sensor(cloud):
-    slot = fakecloud.adapter(cloud, slots=1)
-    slot.ensure_slot()
-    used = slot.plan_slot().stack_id
-    turn = threading.RLock()
-
-    assert reset.claim(1, "board")
-    rebuilt = slot.reset_slot()
-    reset.begin(slot, turn, rebuilt, claimed=True, wargame="board").join(10)
-
-    assert rebuilt == [("cr-slot-1", used)]
-    assert reset.standing(1)["state"] == reset.IDLE and reset.owed() == []
-    fresh = slot.plan_slot()
-    assert fresh.active and fresh.stack_id != used, "the next session gets a pristine stack, not the used one"
-    infra = cloud.control_address(1, "cr-infra")
-    assert any("suricatasc -c reload-rules" in sent for sent in cloud.runner.sent_to(infra))
-
-
-def test_a_refill_that_heat_cannot_finish_fails_with_heat_s_reason(cloud):
-    slot = fakecloud.adapter(cloud, slots=1)
-    slot.ensure_slot()
-    cloud.fail_next_stack = "No valid host was found"
-
-    assert reset.claim(1)
-    reset.begin(slot, threading.RLock(), slot.reset_slot(), claimed=True).join(10)
-
-    assert reset.standing(1) == {"state": reset.FAILED,
-                                 "reason": "cr-slot-1 is CREATE_FAILED: No valid host was found"}
-
-
-def test_a_refill_retargets_the_slot_to_the_wargame_it_was_claimed_for(cloud):
-    slot = fakecloud.adapter(cloud, slots=1)
-    slot.ensure_slot()
-
-    assert reset.claim(1, "corp")
-    reset.begin(slot, threading.RLock(), slot.reset_slot(), claimed=True, wargame=reset.wanted(1)).join(10)
-
-    assert slot.plan_slot().wargame == "corp" and slot.plan_slot().active
-
-
 def test_what_earlier_ranges_left_and_slots_beyond_the_pool_are_listed_and_removed(cloud):
     wide = fakecloud.adapter(cloud, slots=2)
     for one in wide.every_slot():
@@ -196,71 +111,6 @@ def test_what_earlier_ranges_left_and_slots_beyond_the_pool_are_listed_and_remov
     removed = narrow.clean_leftovers()
     assert [kind for kind, _ in removed] == ["stack", "server"]
     assert set(stacks(cloud)) == {"cr-slot-1"}
-
-
-def test_phases_keep_the_names_bin_cloud_and_the_console_read():
-    ready = pool.Plan(standing=(("cr-waf", "s", pool.ACTIVE),), stack=pool.COMPLETE)
-    idle = {"state": reset.IDLE, "reason": ""}
-
-    def named(plan, held=None, resetting=idle, checks=None):
-        return pool.phase(plan, held, resetting, checks or {"ground_truth": True, "rules_baseline": True},
-                          reset.RUNNING, reset.FAILED)[0]
-
-    assert named(ready) == "READY"
-    assert named(ready, checks={"ground_truth": False}) == "CHECKING"
-    assert named(ready, held=7) == "IN_USE"
-    assert named(ready, resetting={"state": reset.RUNNING, "reason": ""}) == "RESETTING"
-    assert named(ready, resetting={"state": reset.FAILED, "reason": "x"}) == "RESET_FAILED"
-    assert named(pool.Plan(boot=("cr-slot-1",))) == "NOT_STANDING"
-    assert named(pool.Plan(standing=ready.standing, stale=("cr-slot-1",))) == "STALE"
-    assert named(pool.Plan(standing=(("cr-slot-1", "x", pool.BUILDING),))) == "REBUILDING"
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_session_for_a_wargame_no_slot_runs_rebuilds_a_free_slot_for_it(client, cloud):
-    adapter = fakecloud.adapter(cloud, slots=1)
-    adapter.ensure_slot()
-    begun = []
-    with patch("api.views.substrate", lambda: adapter), \
-            patch("api.views.loot.ground_truth", lambda wargame, inside: {"admin": "x"}), \
-            patch.dict(reset._states, clear=True), \
-            patch("api.views.reset.begin", lambda one, turn, rebuilt, **kept: begun.append((one.slot, kept))):
-        answer = client.post_json("/api/sessions/", {"scenario": "corp"})
-
-    assert answer.status_code == 409 and "slot 1 is being built again for it" in answer.json()["detail"]
-    assert answer.json()["settling"] is True, "walk: the console could not tell the learner a reset had begun"
-    assert begun == [(1, {"claimed": True, "wargame": "corp"})]
-    assert reset.wanted(1) == "corp" and stacks(cloud)["cr-slot-1"]["stack_status"] == fakecloud.DELETING
-    assert not Session.objects.exists()
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_slot_taken_after_the_readiness_read_is_neither_rebuilt_for_another_wargame_nor_opened_on(cloud):
-    adapter = fakecloud.adapter(cloud, slots=1)
-    adapter.ensure_slot()
-    Session.objects.create(slot=1, scenario="board", baseline=[])
-    with patch.dict(reset._states, clear=True):
-        assert not views._retargeted(adapter, 1, "corp")
-        assert reset.standing(1)["state"] == reset.IDLE
-        assert stacks(cloud)["cr-slot-1"]["stack_status"] == fakecloud.COMPLETE
-
-        Session.objects.update(ended_at="2026-11-18T00:00:00Z")
-        reset.claim(1, "corp")
-        with patch("api.views._ready_slot", lambda adapter, wargame: 1), \
-                pytest.raises(views.Conflict, match="taken by another session"):
-            views._opened_on_a_ready_slot(adapter, {"scenario": "board", "owner": SimpleNamespace(is_staff=True)})
-
-
-def test_a_stack_the_ensure_deletes_is_reported_rebuilt_so_a_refill_creates_it_again(cloud):
-    first = fakecloud.adapter(cloud, slots=1).ensure_slot()
-    retargeted = fakecloud.adapter(cloud, slots=1, pool=(("corp", 1),))
-
-    plan = retargeted.ensure_slot()
-
-    assert plan.rebuilt == (("cr-slot-1", first.stack_id),), (
-        "api/views.py starts the refill only for a plan that names what it rebuilt")
-    cloud.advance()
-    assert retargeted.ensure_slot().wargame == "corp", "a pool that changes a slot's wargame retargets it"
 
 
 def test_a_slot_whose_role_image_glance_does_not_hold_is_blocked_naming_it(cloud):
@@ -307,12 +157,12 @@ def test_every_node_of_a_stack_takes_the_platform_s_own_public_key_for_its_manag
 
 def test_the_pool_holds_as_many_slots_of_each_wargame_as_the_cloud_settings_ask_for(cloud):
     declared = fakecloud.adapter(cloud).declared
-    signed = {"keystone": "http://127.0.0.1:1", "user": "u", "password": "p", "project": "cr",
-              "ssh_key": "/nonexistent", "region": "RegionOne", "interface": "public", "domain": "Default"}
-    adapter = openstack.connect(declared, pool="board=3 corp=1", **signed)
+    signed = OpenStackConfig(keystone="http://127.0.0.1:1", user="u", password="p", project="cr",
+                             ssh_key="/nonexistent", region="RegionOne", interface="public", domain="Default")
+    adapter = openstack.connect(dataclasses.replace(signed, pool="board=3 corp=1"), declared)
 
     assert adapter.slots == 4 and adapter.reach.ssh_user == "ubuntu"
     assert [one.wargame for one in adapter.every_slot()] == ["board", "board", "board", "corp"]
     assert pool.assigned(5, ("board", "corp"), (("board", 3), ("corp", 1))) == ""
     with pytest.raises(openstack.RangeUnavailable, match="CR_OPENSTACK_POOL"):
-        openstack.connect(declared, pool="board=0", **signed)
+        openstack.connect(dataclasses.replace(signed, pool="board=0"), declared)

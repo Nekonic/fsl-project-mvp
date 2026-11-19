@@ -3,9 +3,6 @@ import pathlib
 import subprocess
 import sys
 
-import pytest
-
-from api.models import Session
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "vm-terminal.sh"
 
@@ -42,28 +39,6 @@ def _found(monkeypatch, capsys, slots, session):
         code = None
     said = capsys.readouterr()
     return code, said.out.strip(), said.err
-
-
-@pytest.mark.django_db
-def test_the_shell_opens_on_the_slot_the_named_session_holds(monkeypatch, capsys):
-    held = Session.objects.create(scenario="board", baseline=[], slot=2)
-
-    assert _found(monkeypatch, capsys, 2, str(held.pk))[:2] == (None, "10.31.0.2 cr-srv-2 cr-waf")
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("named", ["", "999", "closed"])
-def test_with_two_slots_a_closed_unknown_or_missing_session_is_refused(monkeypatch, capsys, named):
-    if named == "closed":
-        named = str(Session.objects.create(scenario="board", baseline=[], slot=2,
-                                           ended_at="2026-10-10T00:00:00Z").pk)
-
-    code, address, complaint = _found(monkeypatch, capsys, 2, named)
-
-    assert code not in (None, 0) and address == "", (
-        "slot 1 is another session's range; a shell there edits someone else's WAF"
-    )
-    assert "which slot" in complaint
 
 
 def _fakes(tmp_path, **bodies):

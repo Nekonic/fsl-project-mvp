@@ -11,8 +11,7 @@ Two rules produced this table, and they are the point of it:
    was right and the template was changed.
 
 Korean lives only in `platform/console/templates/console/strings.html`.
-A test keeps it out of every other template. This file is documentation and is not counted
-by `bin/measure`.
+A test keeps it out of every other template.
 
 
 ## Detection and alerting
