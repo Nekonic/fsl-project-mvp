@@ -21,6 +21,7 @@ class Action(models.Model):
     started = models.DateTimeField()
     ended = models.DateTimeField()
     charged = models.BooleanField(default=False)
+    access_seen = models.BooleanField(default=False)
     meta = models.JSONField(default=dict)
 
     class Meta:

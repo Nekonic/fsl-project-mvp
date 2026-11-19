@@ -773,7 +773,7 @@ names; none of it has run, so it is **[unverified]**.
 | Role | New name | What changed in `deploy/roles/<role>/` |
 |---|---|---|
 | `infra` | `cr-infra-bake2` | `edge.nft` declares the sets `pool` and `spent` (`type ipv4_addr`) and drops `ip saddr @spent` and then `ip saddr != @pool` from `wan` before the established accept, so an open keep-alive or sqlmap connection of a spent origin stops too and an address the platform never put in `pool` reaches nothing; `range/edge.py` adds the addresses after each `slot-boot` load and flushes a spent origin's conntrack entries (package `conntrack`). `tcpdump` for `rules.suricata.capture` (probe recording), `/var/lib/cr-ruletest` (0700) for `rules.suricata.offline_test`, which runs the same pinned image and `/etc/suricata/suricata.yaml` with `-r` and reads the scratch `eve.json`, never `/var/log/suricata`. `log-relay.conf` relays the WAF's `nginx-access` lines instead of `nginx` |
-| `waf` | `cr-waf-bake3` (**(this cloud)**; `cr-waf-bake2` is taken) | `board.com.conf` writes every request to `/var/log/nginx/access.json` as JSON (`time`, `client_ip`, `vhost`, `request`, `status`, `refused` from the one `$refused` map of 400 and 403, `request_id` from `X-Request-ID`), and `log-shipper.conf` ships it under Tag `nginx-access` in place of `refused.log`. `probe.conf` and `probe-upstream.py` for `rules.crs.scratch_check` and `scratch_test`; the exclusion file is created 0644 (root writes it through sudo). `analyst.sh` creates the defence seat's account |
+| `waf` | `cr-waf-bake3` (**(this cloud)**; `cr-waf-bake2` is taken) | `board.com.conf` writes every request to `/var/log/nginx/access.json` as JSON (`time`, `client_ip`, `vhost`, `request`, `status`, `refused` from the one `$refused` map of 400 and 403, `request_id` from `X-Request-ID` when it has a marker's shape and empty otherwise, so a padded or repeated header cannot push the line past the shipper's 64 KiB), and `log-shipper.conf` ships it under Tag `nginx-access` in place of `refused.log`. `probe.conf` and `probe-upstream.py` for `rules.crs.scratch_check` and `scratch_test`; the exclusion file is created 0644 (root writes it through sudo). `analyst.sh` creates the defence seat's account |
 
 `pool` holds a round's attack origins and customer addresses (filled when
 the round starts) or, for a probe lease, the origin it wears (admitted before
@@ -782,7 +782,9 @@ on kali cannot send from an unused origin-subnet address. On a fresh slot the
 set is empty and kali reaches nothing on the target. Each round start empties
 both sets before it fills them
 (`range.edge.restart`), so a lease's next round does not inherit the last
-round's spent origins.
+round's spent origins. The round's end empties both sets again, so
+between rounds nothing from kali reaches the target, a process the learner
+left running there included.
 
 **The `analyst` account** (`deploy/roles/waf/analyst.sh`), which the defence
 seat's terminal and its jump grant log in as (when the round ends and the
@@ -830,7 +832,12 @@ sudo tail -1 /var/log/nginx/access.json            # on the WAF after one reques
   internet NIC>` and `curl --interface <that address> http://board.com/`
   time out, while the API's requests still answer;
 - a closed round's `/vm-terminal/<side>/<round>/ws` answers `409` with code
-  `round_closed`, not 500.
+  `round_closed`, not 500;
+- after a round ends, `sudo nft list set ip edge pool` on the infra is empty
+  and a `curl http://board.com/` left running on kali times out;
+- on kali, `curl -H "X-Request-ID: $(printf 'a%.0s' $(seq 200))"
+  http://board.com/` leaves an access line whose `request_id` is empty and
+  whose `client_ip` is the worn origin.
 
 **Probe recordings** follow the bake (spec step 12): `bin/record-probes board`
 and `bin/record-probes corp` (`--platform http://<platform>:8000`, a staff

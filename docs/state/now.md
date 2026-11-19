@@ -37,7 +37,9 @@ rounds driven by Claude Code, and the ported acceptance suite.
    `vm-terminal.sh` (kali as `kali`, cr-waf as `analyst`, only for a seat
    with a jump grant) are written and tested offline, not on a range.
 2. Cloud step 5: the deploy files are written and tested offline (edge
-   `pool`/`spent` sets and both drops, the WAF JSON access log shipped as `nginx_access`,
+   `pool`/`spent` sets and both drops, emptied at round start and end, the
+   WAF JSON access log shipped as `nginx_access` with only a marker-shaped
+   `request_id`,
    `probe.conf`, `probe-upstream.py`, `analyst.sh`, infra `conntrack` and
    `tcpdump`); bake `cr-infra-bake2` and `cr-waf-bake3` and run the step's
    checks on a slot (`docs/OPENSTACK.md` §3.7).

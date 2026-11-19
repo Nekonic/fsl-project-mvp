@@ -10262,3 +10262,56 @@ and its checks.
   script against fake `crontab`, `atq`, `atrm`, `loginctl`, `pkill` and
   `pgrep` with a respawning process. No `nft -c`, `nginx -t` or range run;
   `docs/OPENSTACK.md` §3.7 lists the checks for the slot.
+
+## 2026-11-20 — HP review from kali: one excuse per API charge, an empty edge between rounds, a bounded access line
+
+A review of the `pool` drop from the learner's seat on kali (sudo, raw
+sockets, other subnets, IPv6, the control NIC, the proxy on 127.0.0.1:8081)
+and of the terminal's refusal answer.
+
+- **An API charge excused every access event with its marker.**
+  `domain.ledger.debit` skipped any asynchronous event whose marker belonged
+  to an Action charged on the spot, and `stamp.py` keeps an `X-Request-ID`
+  the request already carries. So a learner who read one marker from a
+  `POST requests/` answer could send any number of requests from kali's
+  terminal with that header and pay nothing, no sudo needed. Now a
+  synchronous charge excuses exactly one event: `debit` drops the marker from
+  the owed set once it skips an event, and `charge_access_page` marks the
+  Action `access_seen` (migration `attack.0002_action_access_seen`) so a
+  later page or tick charges the next one. Each charged Action sends one
+  request (the prefetch of a case carries no action marker), so the API's own
+  request is still charged once.
+- **The edge stayed open after a round.** `pool` kept the round's origins
+  and customer addresses until the next round start, and the HP rule charges
+  only running rounds, so a process the learner left on kali (a `nohup`
+  sqlmap, a root cron job) reached the target uncharged between rounds.
+  `attack.close` now empties `pool` and `spent` (`range.edge.restart` with
+  no addresses) when the round had filled them, and `refill_edge` adds
+  nothing once the round has ended, so a tick that finishes after the end
+  cannot fill it again. One open round per lease (`round_open`) makes this
+  safe for the lease's next round, which fills the sets at its start.
+- **A padded marker could lose the access line.** nginx 1.24 joins repeated
+  headers into `$http_x_request_id` and passes control bytes in header
+  values, which `escape=json` writes as six bytes each, so four 8 KiB
+  `X-Request-ID` lines make an access line far past the 64 KiB rsyslog and
+  filebeat carry; the cut JSON has no `client_ip` and charges no origin.
+  `board.com.conf` now logs `$logged_marker`, which is `$http_x_request_id`
+  only when it matches `^[A-Za-z0-9._:-]{1,128}$` (uuid hex and hyphenated,
+  case names) and empty otherwise; such a request is charged as unmarked.
+  The line is bounded by `$request` (one 8 KiB buffer, at most doubled).
+- **Not defects.** IPv6: the infra does not forward it and the LAN groups
+  admit IPv4 only. Other subnets and unused origin addresses: dropped by
+  `!= @pool`. Raw sockets: a spoofed source is either a pool origin, charged
+  to that origin, or a customer address (spec §17 risk 7, unchanged). The
+  control NIC: `cr-mgmt` lets kali send only to `cr-reach`, which takes
+  udp 123 only from it. The proxy listens on every interface, but only the
+  infra and the platform can reach kali, and `analyst` on cr-waf sends
+  nothing (`meta skuid analyst drop`), so it is left as is rather than
+  rebaking kali. The terminal's `@terminal-refused` maps every code
+  `terminal-auth` can raise; variables set by `auth_request_set` survive the
+  `error_page` redirect.
+- **Verified offline only.** `tests/domain/test_ledger.py` and
+  `tests/attack/test_charge_from_access.py` (a reused marker charged across
+  ticks), `tests/attack/test_spend.py` (the end empties the edge, a late tick
+  adds nothing), `tests/test_access_log.py` (the marker map). No
+  `nginx -t` or range run; `docs/OPENSTACK.md` §3.7 lists the slot checks.

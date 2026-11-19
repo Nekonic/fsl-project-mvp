@@ -138,3 +138,26 @@ def test_once_every_origin_is_spent_every_write_refuses_origins_spent_and_reads_
     assert read.status_code == 200 and read.json()["hp"]["origin"] is None
     assert kinds(frail)[-1] == ("origins.spent", {})
     assert sorted(read.json()["hp"]["spent"]) == sorted([RU, US, BR])
+
+
+
+def test_the_round_s_end_empties_the_edge_so_the_box_reaches_nothing_between_rounds(as_attacker, attacker, cloud):
+    from match import service as match
+
+    match.end_round(attacker.round, "ended_by_operator")
+
+    emptied = cloud.edge.matching("nft -f -")[-1].stdin.splitlines()
+    assert emptied == ["flush set ip edge pool", "flush set ip edge spent"], (
+        "edge.nft drops every address outside pool, so an empty pool stops a process the learner left on kali "
+        "from reaching the target uncharged once the HP rule stops counting")
+
+
+def test_a_tick_that_finishes_after_the_round_ended_does_not_fill_the_edge_again(as_attacker, attacker, cloud):
+    from match import service as match
+
+    match.end_round(attacker.round, "ended_by_operator")
+    after = len(cloud.edge.matching("nft -f -"))
+
+    service.refill_edge(attacker.round)
+
+    assert len(cloud.edge.matching("nft -f -")) == after

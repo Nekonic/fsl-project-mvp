@@ -45,6 +45,7 @@ def debit(state: LedgerState, charges: Sequence[Charge], rule: HpRule) -> tuple[
 
     for charge in sorted(charges, key=lambda c: c.at):
         if not charge.synchronous and charge.marker is not None and charge.marker in markers:
+            markers.discard(charge.marker)
             continue
         origin = origins.get(charge.origin_ip)
         if origin is None or origin.spent:

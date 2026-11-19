@@ -333,7 +333,7 @@ def refill_edge(found: Round, reached=None, described=None, afresh: bool = False
     settings = configured()
     reached = reached or range_of(found)
     rows = budgets(found)
-    if not rows:
+    if not rows or Round.objects.filter(pk=found.pk, phase=Phase.ENDED.value).exists():
         return
     pool = [row.ip for row in rows] + customer_addresses(found, reached, described)
     spent = [row.ip for row in rows if row.spent_at is not None]
@@ -347,7 +347,7 @@ def state_of(row: OriginBudget) -> OriginState:
 
 
 def debit(found: Round, charges: Sequence[Charge],
-          charged_markers: Iterable[str] = ()) -> tuple[list[OriginBudget], dict[str, int]]:
+          charged_markers: Iterable[str] = ()) -> tuple[list[OriginBudget], dict[str, int], frozenset[str]]:
     rows = list(OriginBudget.objects.select_for_update().filter(round=found))
     state = LedgerState(origins=tuple(state_of(row) for row in rows),
                         per_second=tuple((row.ip, int(second), int(n)) for row in rows for second, n in row.recent),
@@ -365,7 +365,7 @@ def debit(found: Round, charges: Sequence[Charge],
         row.left, row.spent_at, row.recent = origin.left, origin.spent_at, recent.get(row.ip, [])
         row.save(update_fields=["left", "spent_at", "recent"])
     fallen = {origin.ip for origin in newly_spent}
-    return [row for row in rows if row.ip in fallen], charged
+    return [row for row in rows if row.ip in fallen], charged, moved.charged_markers
 
 
 def report_charges(found: Round, charged: Mapping[str, int]) -> None:
@@ -402,9 +402,9 @@ def spend(found: Round, fallen: Sequence[OriginBudget], reached=None) -> None:
 def charge_sent(found: Round, action: Action, status: int, reached=None) -> None:
     rule = rule_of(found)
     with transaction.atomic():
-        fallen, charged = debit(found, [Charge(origin_ip=action.source_ip, at=action.ended,
-                                               refused=rule.refuses(status), marker=action.marker,
-                                               synchronous=True)])
+        fallen, charged, _ = debit(found, [Charge(origin_ip=action.source_ip, at=action.ended,
+                                                  refused=rule.refuses(status), marker=action.marker,
+                                                  synchronous=True)])
     report_charges(found, charged)
     spend(found, fallen, reached)
 
@@ -427,9 +427,11 @@ def charge_access_page(found: Round, held: AccessCursor, cursor, ips: set[str], 
                for record in records if record["source_ip"] in ips and record["at"] is not None
                and (found.started is None or record["at"] >= found.started)]
     markers = {charge.marker for charge in charges if charge.marker}
-    synced = Action.objects.filter(round=found, charged=True, marker__in=markers).values_list("marker", flat=True)
     with transaction.atomic():
-        fallen, charged = debit(found, charges, set(synced))
+        synced = set(Action.objects.select_for_update().filter(
+            round=found, charged=True, access_seen=False, marker__in=markers).values_list("marker", flat=True))
+        fallen, charged, owed = debit(found, charges, synced)
+        Action.objects.filter(round=found, marker__in=synced - owed).update(access_seen=True)
         held.cursor = {**held.cursor, "access": moved}
         held.save(update_fields=["cursor"])
     return moved, charged, fallen
@@ -747,9 +749,19 @@ def revoke_terminal(found: Round) -> int:
                                     settings.jump) is not None)
 
 
+def close_edge(found: Round) -> None:
+    if not budgets(found):
+        return
+    settings = configured()
+    edge.restart(range_of(found).runner(settings.edge.role), (), (), settings.edge)
+
+
 def close(found: Round) -> None:
-    stop_runs(found, "round_end")
-    revoke_terminal(found)
+    try:
+        close_edge(found)
+    finally:
+        stop_runs(found, "round_end")
+        revoke_terminal(found)
 
 
 def commands(found: Round) -> tuple[CommandRecord, ...]:

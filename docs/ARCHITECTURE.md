@@ -288,7 +288,8 @@ sequenceDiagram
 
 - API로 보낸 요청(`POST requests/`, HTTP 케이스, 공격석의 사이트 패널)은 박스가 받은 상태 코드로 그 자리에서 차감합니다.
 - 그 밖의 요청(터미널, 도구, 봇 셸)은 WAF의 JSON 접근 로그를 `ingest.elastic.access_events`(모듈 `nginx_access`)로
-  읽어 틱마다 차감합니다. 이미 차감한 마커는 건너뜁니다.
+  읽어 틱마다 차감합니다. API로 이미 차감한 요청은 그 마커가 붙은 로그 한 줄만 건너뜁니다(`Action.access_seen`).
+  kali에서 그 마커를 `X-Request-ID`에 넣어 다시 보낸 요청은 모두 차감합니다.
 - 요청은 WAF에서 셉니다. Suricata는 WAF 뒤에 있어 출발지가 WAF이고, WAF가 거부한 요청을 보지 못하기 때문입니다.
 - 출발지가 소진되면 `range.edge.spend`가 그 주소를 `spent` 집합에 넣고 conntrack을 지웁니다. `edge.nft`에서 이
   drop 규칙은 established 허용보다 앞에 있어야 열린 연결도 끊깁니다. 이어서 그 자리의 도구 실행을 멈추고
@@ -296,7 +297,10 @@ sequenceDiagram
 - 고객 주소는 `pool`에만 있고 `spent`에 들어가지 않습니다.
 - 라운드를 시작할 때 `range.edge.restart`가 `pool`과 `spent`를 비우고 새 라운드의 주소로 다시 채웁니다. 슬롯은
   리스를 반납할 때만 다시 만들어지므로, 그러지 않으면 같은 리스의 다음 라운드가 앞 라운드에서 소진된 출발지를
-  물려받아 예산이 남았는데도 경계에서 막힙니다. 틱마다 하는 `refill`은 더하기만 합니다.
+  물려받아 예산이 남았는데도 경계에서 막힙니다. 틱마다 하는 `refill`은 더하기만 하고, 라운드가 끝난 뒤에는 아무것도
+  더하지 않습니다.
+- 라운드가 끝나면 `attack.close`가 두 집합을 비웁니다. HP는 라운드 중에만 세므로, 비우지 않으면 kali에 남겨 둔
+  프로세스가 라운드 사이에 차감 없이 타깃을 칠 수 있습니다.
 - `pool` 밖 주소도 established 허용보다 앞에서 버립니다. kali의 인터넷 포트는 모든 주소를 허용(`0.0.0.0/0`
   allowed address pair)하고 학습자는 sudo가 있으므로, 이 규칙이 없으면 출발지 서브넷의 안 쓰는 주소를 붙여
   보낸 요청에 HP가 걸리지 않습니다.
@@ -348,7 +352,7 @@ sequenceDiagram
   테이블을 다시 읽으면 집합이 비므로 `attack.service.refill_edge`가 틱마다 다시 채웁니다. infra 이미지에는
   `conntrack`, `tcpdump`(probe 녹화), 오프라인 룰 테스트의 임시 폴더 `/var/lib/cr-ruletest`가 더해집니다.
 - `deploy/roles/waf/board.com.conf`: 두 vhost의 `$refused` 맵(400, 403) 하나와 모든 요청의 JSON 접근 로그
-  `/var/log/nginx/access.json`(`client_ip`, `status`, `refused`, `request_id` 등).
+  `/var/log/nginx/access.json`(`client_ip`, `status`, `refused`, `request_id` 등). `request_id`는 마커 모양(`^[A-Za-z0-9._:-]{1,128}$`)일 때만 남기고 아니면 비웁니다. 헤더를 부풀리거나 여러 번 넣어 줄이 64 KiB를 넘기면 `client_ip`가 사라져 HP가 안 깎이기 때문입니다.
   `log-shipper.conf`가 Tag `nginx-access`로 보내고(`refused.log` 대체), infra의 `log-relay.conf`가 collector로 넘기며, `deploy/filebeat/filebeat.yml`과
   `deploy/elastic/ingest-pipeline.json`이 모듈 `nginx_access`로 받습니다.
 - `deploy/roles/waf/probe.conf`, `probe-upstream.py`: CRS 임시 인스턴스의 설정 틀과 loopback 스텁.
