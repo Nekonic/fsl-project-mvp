@@ -16,13 +16,13 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 ROWS = {
-    "api_session": 3,
-    "api_case": 5,
-    "api_detection": 7,
-    "api_customerrequest": 4,
-    "api_objective": 2,
-    "api_ruleset": 1,
-    "api_disabledrule": 0,
+    "match_lease": 3,
+    "attack_action": 5,
+    "defence_detection": 7,
+    "match_customerrequest": 4,
+    "referee_objective": 2,
+    "defence_ruleset": 1,
+    "defence_disabledrule": 0,
 }
 
 
@@ -107,14 +107,14 @@ def test_a_writer_holding_a_transaction_open_is_neither_waited_for_nor_copied(
     store = made_store(tmp_path / "db.sqlite3")
     writer = sqlite3.connect(store, isolation_level=None)
     writer.execute("BEGIN IMMEDIATE")
-    writer.execute("INSERT INTO api_session (note) VALUES ('not committed')")
+    writer.execute("INSERT INTO match_lease (note) VALUES ('not committed')")
 
     image = snapshot_of(backup.module, store)
 
     writer.execute("COMMIT")
     writer.close()
-    assert read(image, "SELECT count(*) FROM api_session") == [(3,)]
-    assert read(snapshot_of(backup.module, store), "SELECT count(*) FROM api_session") == [(4,)], (
+    assert read(image, "SELECT count(*) FROM match_lease") == [(3,)]
+    assert read(snapshot_of(backup.module, store), "SELECT count(*) FROM match_lease") == [(4,)], (
         "the snapshot left a lock behind and the platform's next write waited on it")
 
 
@@ -123,15 +123,15 @@ def test_a_writer_already_writing_into_the_file_is_waited_out_not_copied_half_do
 ):
     store = tmp_path / "db.sqlite3"
     with closing(sqlite3.connect(store)) as db:
-        db.execute("CREATE TABLE api_session (id INTEGER PRIMARY KEY, label TEXT)")
+        db.execute("CREATE TABLE match_lease (id INTEGER PRIMARY KEY, label TEXT)")
         db.executemany(
-            "INSERT INTO api_session (label) VALUES (?)", [("committed",)] * 3000
+            "INSERT INTO match_lease (label) VALUES (?)", [("committed",)] * 3000
         )
         db.commit()
     writer = sqlite3.connect(store, isolation_level=None)
     writer.execute("PRAGMA cache_size = 1")
     writer.execute("BEGIN")
-    writer.execute("UPDATE api_session SET label = printf('%0200d', id)")
+    writer.execute("UPDATE match_lease SET label = printf('%0200d', id)")
 
     taken = {}
     taking = threading.Thread(
@@ -146,7 +146,7 @@ def test_a_writer_already_writing_into_the_file_is_waited_out_not_copied_half_do
     taking.join(10)
 
     assert waited, "the writer had already spilled into the file, so a copy made now is half its work"
-    assert read(taken["image"], "SELECT label, count(*) FROM api_session GROUP BY label") == [
+    assert read(taken["image"], "SELECT label, count(*) FROM match_lease GROUP BY label") == [
         ("committed", 3000)]
 
 
@@ -210,7 +210,7 @@ def test_an_answer_that_is_not_the_store_is_not_kept(
 def test_a_snapshot_failing_integrity_check_is_not_kept(backup, monkeypatch, tmp_path):
     store = made_store(tmp_path / "db.sqlite3")
     with closing(sqlite3.connect(store)) as db:
-        db.execute("CREATE INDEX detection_note ON api_detection (note)")
+        db.execute("CREATE INDEX detection_note ON defence_detection (note)")
         db.commit()
         db.execute("PRAGMA writable_schema = ON")
         db.execute("DELETE FROM sqlite_master WHERE name = 'detection_note'")
@@ -297,15 +297,15 @@ def test_a_new_backup_leaves_the_newest_keep_and_any_backup_named_by_hand(backup
 def test_the_snapshot_leaves_the_space_of_deleted_rows_behind(backup, tmp_path):
     store = made_store(tmp_path / "db.sqlite3")
     with closing(sqlite3.connect(store)) as db:
-        db.executemany("INSERT INTO api_detection (note) VALUES (?)", [("x" * 1000,)] * 2000)
+        db.executemany("INSERT INTO defence_detection (note) VALUES (?)", [("x" * 1000,)] * 2000)
         db.commit()
-        db.execute("DELETE FROM api_detection")
+        db.execute("DELETE FROM defence_detection")
         db.commit()
 
     image = snapshot_of(backup.module, store)
 
     assert len(image) < store.stat().st_size / 10, (
-        "pruned sessions leave free pages in the store; shipping them made every rebuild copy 6 GB"
+        "pruned leases leave free pages in the store; shipping them made every rebuild copy 6 GB"
     )
 
 

@@ -34,14 +34,14 @@ class AttackView(APIView):
         response["X-Origin"] = block.origin.ip if block.origin else ""
         response["X-Origin-HP"] = str(block.left)
         if response.status_code >= 400 and isinstance(response.data, dict) and "errors" in response.data:
-            response.data["hp"] = serializers.Hp(block).data
+            response.data["hp"] = serializers.HpBlock(block).data
         return response
 
 
 class State(AttackView):
-    @extend_schema(tags=TAGS, responses=serializers.State, operation_id="attack_state")
+    @extend_schema(tags=TAGS, responses=serializers.AttackState, operation_id="attack_state")
     def get(self, request, round_id: int):
-        return Response(serializers.State(service.state(request.round)).data)
+        return Response(serializers.AttackState(service.state(request.round)).data)
 
 
 class Cases(AttackView):
@@ -105,6 +105,6 @@ class NextOrigin(AttackView):
 
 
 class Terminal(AttackView):
-    @extend_schema(tags=TAGS, responses=serializers.Terminal, operation_id="attack_terminal")
+    @extend_schema(tags=TAGS, responses=serializers.AttackTerminal, operation_id="attack_terminal")
     def get(self, request, round_id: int):
-        return answered(serializers.Terminal, request, asdict(service.terminal(request.round, request.seat)))
+        return answered(serializers.AttackTerminal, request, asdict(service.terminal(request.round, request.seat)))

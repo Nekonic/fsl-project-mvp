@@ -143,6 +143,7 @@ class Fired:
     action: int
     run: int | None
     status: int | None
+    marker: str
 
 
 @dataclass(frozen=True)
@@ -576,7 +577,7 @@ def fire_case(found: Round, seat: Seat, name: str) -> Fired:
         argv = tools.tool_argv(dict(case, case_id=marker, correlation=CORRELATION_MARKER),
                                configured().box.target_url, box.SQLMAP_RUNS)
         begun = start_run(found, seat, worn, marker, ACTION_CASE, case["tool"], argv, case=case)
-        return Fired(action=begun.action, run=begun.run, status=None)
+        return Fired(action=begun.action, run=begun.run, status=None, marker=marker)
     settings, reached = configured(), range_of(found)
     launch = box.launch_with(reached.launcher(worn.origin_id), settings.box)
     started = now()
@@ -589,7 +590,7 @@ def fire_case(found: Round, seat: Seat, name: str) -> Fired:
     log.append(found.pk, "action.sent", {"action": action.pk, "kind": ACTION_CASE, "status": status},
                seat_side="attack")
     charge_sent(found, action, status, reached)
-    return Fired(action=action.pk, run=None, status=status)
+    return Fired(action=action.pk, run=None, status=status, marker=marker)
 
 
 def fire_benign(found: Round, name: str, source_ip: str) -> CustomerSent:

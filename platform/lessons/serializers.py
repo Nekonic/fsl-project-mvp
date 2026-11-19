@@ -28,7 +28,7 @@ class StepLine(serializers.Serializer):
     hints_available = serializers.IntegerField()
 
 
-class Brief(serializers.Serializer):
+class LessonBrief(serializers.Serializer):
     id = serializers.IntegerField()
     side = serializers.CharField()
     title = serializers.CharField()
@@ -48,7 +48,7 @@ class LessonOpened(serializers.Serializer):
 
 
 class LessonShown(LessonOpened):
-    problem = Brief()
+    problem = LessonBrief()
     steps = StepLine(many=True)
     current = serializers.IntegerField(allow_null=True)
     progress = Standing()
@@ -62,7 +62,7 @@ class TryAsk(CheckAsk):
     round = serializers.IntegerField()
 
 
-class Checked(serializers.Serializer):
+class StepVerdict(serializers.Serializer):
     verdict = serializers.ChoiceField(choices=VERDICTS)
     detail_code = serializers.CharField(allow_null=True)
     next = serializers.IntegerField(allow_null=True)
@@ -78,5 +78,5 @@ class Hint(serializers.Serializer):
     left = serializers.IntegerField()
 
 
-class Ended(serializers.Serializer):
+class LessonEnded(serializers.Serializer):
     ended = serializers.DateTimeField()

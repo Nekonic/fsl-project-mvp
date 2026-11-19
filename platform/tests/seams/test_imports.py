@@ -1,4 +1,5 @@
 import ast
+import re
 import sys
 from fnmatch import fnmatch
 from pathlib import Path
@@ -7,7 +8,7 @@ import pytest
 
 PLATFORM = Path(__file__).resolve().parents[2]
 SKIPPED = ("tests", ".venv", "node_modules")
-HTTP = ("*/views*.py", "*/serializers.py", "*/urls.py", "cr/urls.py", "cr/handler.py", "cr/settings.py",
+HTTP = ("*/views*.py", "*/serializers.py", "*/urls.py", "cr/urls.py", "cr/handler.py", "cr/schema.py", "cr/settings.py",
         "cr/strings.py", "cr/wsgi.py", "*/management/commands/*.py", "*/management/*.py", "manage.py",
         "*/apps.py", "*/migrations/*.py")
 LAYERS = (
@@ -492,3 +493,89 @@ def test_rule_15_sees_the_lesson_records_point_down_to_match_content_and_auth():
 
     assert relations == {("lessons.StepResult", "match.Round"), ("lessons.Progress", "content.Problem"),
                          ("lessons.Progress", "auth.User")}
+
+
+REPO = PLATFORM.parent
+CLIENT_TREES = ("bots", "test", "bin")
+GENERATED = ("bots/client/",)
+LOADERS = ("spec_from_file_location", "SourceFileLoader")
+PLATFORM_FILE = re.compile(r"""["'](platform/[\w/.-]+\.py)["']""")
+PLATFORM_LOADS_ALLOWED = {("bin/platform-rebuild", "platform/range/cloud_config.py")}
+TYPESCRIPT_IMPORT = re.compile(r"""(?:from|import)\s*\(?\s*["']([^"']+)["']""")
+
+
+def python_script(path: Path) -> bool:
+    if path.suffix == ".py":
+        return True
+    if path.suffix or not path.is_file():
+        return False
+    first = path.read_bytes().split(b"\n", 1)[0]
+    return first.startswith(b"#!") and b"python" in first
+
+
+def client_modules() -> list[str]:
+    found = []
+    for tree in CLIENT_TREES:
+        for path in sorted((REPO / tree).rglob("*")):
+            relative = str(path.relative_to(REPO))
+            if relative.startswith(GENERATED) or "__pycache__" in path.parts:
+                continue
+            if python_script(path):
+                found.append(relative)
+    return found
+
+
+def local_names(path: str) -> set[str]:
+    folder = (REPO / path).parent
+    return {entry.stem for entry in folder.iterdir() if entry.suffix == ".py" or (entry / "__init__.py").exists()}
+
+
+def platform_reaches(source: str, path: str) -> list[str]:
+    platform_names = first_party() - local_names(path) - {"bots"} - set(sys.stdlib_module_names)
+    reached = [name for name in imports_in(source, path) if name.split(".")[0] in platform_names]
+    calls = [ast.unparse(node) for node in ast.walk(ast.parse(source, filename=path)) if isinstance(node, ast.Call)]
+    reached += [f"sys.path: {call}" for call in calls if call.startswith("sys.path.") and "platform" in call]
+    if any(loader in call for call in calls for loader in LOADERS):
+        reached += [f"loads {name}" for name in PLATFORM_FILE.findall(source)
+                    if (path, name) not in PLATFORM_LOADS_ALLOWED]
+    return reached
+
+
+@pytest.mark.parametrize("path", client_modules())
+def test_rule_12_bots_test_and_bin_never_import_the_platform(path):
+    assert platform_reaches((REPO / path).read_text(), path) == []
+
+
+def test_rule_12_the_front_end_never_imports_the_platform():
+    front = REPO / "front" / "src"
+    sources = sorted(front.rglob("*.ts*")) if front.is_dir() else []
+    reaching = [(str(path.relative_to(REPO)), named) for path in sources
+                for named in TYPESCRIPT_IMPORT.findall(path.read_text()) if "platform/" in named]
+
+    assert reaching == []
+
+
+def test_rule_12_the_one_platform_file_bin_loads_by_path_is_still_loaded_there():
+    assert [(script, loaded) for script, loaded in PLATFORM_LOADS_ALLOWED
+            if loaded not in (REPO / script).read_text() or not (REPO / loaded).is_file()] == []
+
+
+def test_rule_12_scans_the_scripts_and_the_test_helpers():
+    scanned = set(client_modules())
+
+    assert {"bin/prune", "bin/acceptance", "test/conftest.py", "bots/signin.py"} <= scanned
+    assert not [path for path in scanned if path.startswith(GENERATED)]
+
+
+def test_the_checker_sees_an_import_a_path_insert_and_a_file_load_of_the_platform():
+    source = ("import sys\nfrom match import service\nimport range\n"
+              "sys.path.insert(0, str(ROOT / 'platform'))\n"
+              "LOADER = ROOT / 'platform/range/openstack.py'\n"
+              "spec = importlib.util.spec_from_file_location('x', LOADER)\n")
+
+    reached = platform_reaches(source, "test/sample.py")
+
+    assert "match.service" in reached
+    assert not [name for name in reached if name.startswith("range")], "test/ has its own range.py"
+    assert any(name.startswith("sys.path") for name in reached)
+    assert "loads platform/range/openstack.py" in reached

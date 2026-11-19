@@ -1,6 +1,7 @@
 import json
 from dataclasses import asdict
 
+from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from drf_spectacular.utils import extend_schema
 from rest_framework import renderers, status
 from rest_framework.response import Response
@@ -22,6 +23,14 @@ def given(serializer, data):
 def shown_lease(held, serializer=serializers.LeaseShown):
     held.ready = service.ready(held)
     return serializer(held).data
+
+
+class SeatTokenScheme(OpenApiAuthenticationExtension):
+    target_class = auth.SeatTokenAuthentication
+    name = "seat_token"
+
+    def get_security_definition(self, auto_schema):
+        return {"type": "http", "scheme": "bearer"}
 
 
 class MatchView(APIView):
@@ -150,13 +159,25 @@ class SiteRequests(MatchView):
 
 
 class TerminalAuth(MatchView):
-    def get_permissions(self):
-        return [auth.HasSeat(self.kwargs["side"])()]
-
-    @extend_schema(tags=TAGS, responses={204: None}, operation_id="round_terminal_auth")
-    def get(self, request, round_id: int, side: str):
+    def get(self, request, round_id: int):
         service.terminal_open(request.round)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AttackTerminalAuth(TerminalAuth):
+    permission_classes = [auth.HasSeat("attack")]
+
+    @extend_schema(tags=TAGS, responses={204: None}, operation_id="round_terminal_auth_attack")
+    def get(self, request, round_id: int):
+        return super().get(request, round_id)
+
+
+class DefenceTerminalAuth(TerminalAuth):
+    permission_classes = [auth.HasSeat("defence")]
+
+    @extend_schema(tags=TAGS, responses={204: None}, operation_id="round_terminal_auth_defence")
+    def get(self, request, round_id: int):
+        return super().get(request, round_id)
 
 
 class Forfeit(MatchView):

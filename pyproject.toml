@@ -13,6 +13,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "openapi-python-client>=0.24,<1",
     "pytest>=8,<9",
     "pytest-django>=4.9,<5",
 ]

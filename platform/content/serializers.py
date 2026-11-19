@@ -19,7 +19,7 @@ class StaffStep(serializers.Serializer):
     hints = serializers.ListField(child=serializers.CharField(), default=list)
 
 
-class Hp(serializers.Serializer):
+class HpRule(serializers.Serializer):
     budget = serializers.IntegerField()
     per_request = serializers.IntegerField()
     refused_x = serializers.IntegerField()
@@ -32,7 +32,7 @@ class RoundSetup(serializers.Serializer):
     posture = serializers.CharField(allow_null=True, required=False)
     probe_cases = serializers.ListField(child=serializers.CharField(), default=list)
     objectives = serializers.ListField(child=serializers.CharField(), default=list)
-    hp = Hp()
+    hp = HpRule()
     traffic = serializers.CharField(allow_null=True, required=False)
     benign_every_s = serializers.IntegerField(required=False)
     time_limit_s = serializers.IntegerField(allow_null=True, required=False)

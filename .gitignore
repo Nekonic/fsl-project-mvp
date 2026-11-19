@@ -12,3 +12,5 @@ deploy/suricata/logs/
 /.env
 config/ingest-geoip/*.mmdb
 /deploy/openstack/cloud.yaml
+/bots/client/
+/front/src/api/schema.d.ts

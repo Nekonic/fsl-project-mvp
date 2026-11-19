@@ -1,107 +1,48 @@
 #!/usr/bin/env python3
 
 import argparse
+import shlex
 import subprocess
 import sys
 
 CONTAINER = "cr-platform"
 
-SETUP = """
-import os, django
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "cr.settings")
-django.setup()
-from django.db.models import Max
-from api.models import Session, Detection, Case, Objective
-"""
 
-NEWEST = SETUP + """
-print(Session.objects.aggregate(newest=Max("id"))["newest"] or 0)
-"""
-
-ALL_BUT_THE_NEWEST = """
-survivors = list(
-    Session.objects.order_by("-id").values_list("id", flat=True)[:{keep}]
-)
-doomed = Session.objects.exclude(id__in=survivors)
-"""
-
-CLOSED_LISTED = """
-doomed = Session.objects.filter(id__in={ids}).exclude(ended_at=None)
-"""
-
-REPORT = """
-total = Session.objects.count()
-dropped = doomed.count()
-print("sessions     %6d  keep %d  drop %d" % (total, total - dropped, dropped))
-print("  of those still open: %d" % doomed.filter(ended_at=None).count())
-print("detections   %6d  drop %d"
-      % (Detection.objects.count(), Detection.objects.filter(session__in=doomed).count()))
-print("cases        %6d  drop %d"
-      % (Case.objects.count(), Case.objects.filter(session__in=doomed).count()))
-print("objectives   %6d  drop %d"
-      % (Objective.objects.count(), Objective.objects.filter(session__in=doomed).count()))
-"""
-
-DELETE = """
-removed = doomed.delete()
-print()
-print("deleted:", removed[0], "rows")
-for model, count in sorted(removed[1].items()):
-    print("   %-28s %d" % (model, count))
-"""
+def command(ids=None, apply=False):
+    argv = ["docker", "exec", CONTAINER, "python", "manage.py", "prune"]
+    if ids is not None:
+        argv += ["--leases", *(str(lease) for lease in sorted(ids))]
+    if not apply:
+        argv.append("--dry-run")
+    return argv
 
 
-def script(keep=20, ids=None, apply=False):
-    if ids is None:
-        chosen = ALL_BUT_THE_NEWEST.format(keep=keep)
-    else:
-        chosen = CLOSED_LISTED.format(ids=sorted(ids))
-    return SETUP + chosen + REPORT + (DELETE if apply else "")
-
-
-def run(script):
-    result = subprocess.run(
-        ["docker", "exec", "-i", CONTAINER, "python", "-"],
-        input=script, capture_output=True, text=True,
-    )
+def run(argv):
+    result = subprocess.run(argv, capture_output=True, text=True)
     if result.returncode != 0:
-        sys.stderr.write(result.stderr or "could not reach the platform container\n")
+        sys.stderr.write(result.stderr or f"could not run {shlex.join(argv)}\n")
         raise SystemExit(1)
     return result.stdout
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Drop old sessions and everything hanging off them.",
+        description="Drop closed leases with their rounds, seats, actions, detections and events.",
     )
-    chosen = parser.add_mutually_exclusive_group()
-    chosen.add_argument("--keep", type=int, default=20,
-                        help="how many of the newest sessions to keep (default 20)")
-    chosen.add_argument("--ids", metavar="FILE",
-                        help="drop only the closed sessions whose ids FILE lists, "
-                             "one per line; open ones are never touched")
-    chosen.add_argument("--newest", action="store_true",
-                        help="print the newest session id")
+    parser.add_argument("--ids", metavar="FILE",
+                        help="drop only the closed leases whose ids FILE lists, one per line; open ones are "
+                             "never touched. Without it, the closed leases past CR_RETAIN_CLOSED_MINUTES go")
     parser.add_argument("--apply", action="store_true",
                         help="actually delete; without this nothing is written")
     args = parser.parse_args()
-
-    if args.newest:
-        sys.stdout.write(run(NEWEST))
-        return
-
-    if args.ids is None and args.keep < 1:
-        parser.error("--keep must be at least 1")
 
     ids = None
     if args.ids is not None:
         with open(args.ids, encoding="utf-8") as listed:
             ids = {int(line) for line in listed if line.strip()}
 
-    sys.stdout.write(run(script(keep=args.keep, ids=ids, apply=args.apply)))
-
+    sys.stdout.write(run(command(ids=ids, apply=args.apply)))
     if not args.apply:
-        print()
         print("dry run - nothing was deleted. Add --apply to do it.")
 
 

@@ -26,9 +26,9 @@ class DefenceView(APIView):
 
 
 class State(DefenceView):
-    @extend_schema(tags=TAGS, responses=serializers.State, operation_id="defence_state")
+    @extend_schema(tags=TAGS, responses=serializers.DefenceState, operation_id="defence_state")
     def get(self, request, round_id: int):
-        return Response(serializers.State(service.state(request.round)).data)
+        return Response(serializers.DefenceState(service.state(request.round)).data)
 
 
 class Alerts(DefenceView):
@@ -74,10 +74,10 @@ class WafVersions(DefenceView):
 
 
 class IdsCheck(DefenceView):
-    @extend_schema(tags=TAGS, request=serializers.Text, responses=serializers.Checked, operation_id="defence_ids_check")
+    @extend_schema(tags=TAGS, request=serializers.Text, responses=serializers.RuleCheck, operation_id="defence_ids_check")
     def post(self, request, round_id: int):
         asked = given(serializers.Text, request.data)
-        return Response(serializers.Checked(service.check_ids(request.round, asked["text"])).data)
+        return Response(serializers.RuleCheck(service.check_ids(request.round, asked["text"])).data)
 
 
 class IdsTest(DefenceView):
@@ -135,11 +135,11 @@ class Waf(DefenceView):
 
 
 class WafCheck(DefenceView):
-    @extend_schema(tags=TAGS, request=serializers.WafCheck, responses=serializers.Checked,
+    @extend_schema(tags=TAGS, request=serializers.WafCheck, responses=serializers.RuleCheck,
                    operation_id="defence_waf_check")
     def post(self, request, round_id: int):
         asked = given(serializers.WafCheck, request.data)
-        return Response(serializers.Checked(service.check_waf(request.round, asked["posture"])).data)
+        return Response(serializers.RuleCheck(service.check_waf(request.round, asked["posture"])).data)
 
 
 class WafTest(DefenceView):
@@ -168,9 +168,9 @@ class WafApply(DefenceView):
 
 
 class Terminal(DefenceView):
-    @extend_schema(tags=TAGS, responses=serializers.Terminal, operation_id="defence_terminal")
+    @extend_schema(tags=TAGS, responses=serializers.DefenceTerminal, operation_id="defence_terminal")
     def get(self, request, round_id: int):
-        return Response(serializers.Terminal(service.terminal(request.round)).data)
+        return Response(serializers.DefenceTerminal(service.terminal(request.round)).data)
 
 
 class Kibana(DefenceView):

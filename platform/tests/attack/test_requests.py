@@ -35,6 +35,7 @@ def test_a_request_goes_out_from_the_box_with_the_action_s_own_marker_and_the_ch
     assert sent.argv[-1] == "http://board.com/search/?q=it%27s"
     assert sent.stdin == "a=1"
     assert (body["status"], body["body"], body["truncated"]) == (200, "<p>hello</p>", False)
+    assert body["marker"] == action.marker
     assert ["Server", "nginx"] in body["headers"]
     assert (action.kind, action.correlation, action.source_ip, action.malicious) == ("request", "marker", RU, None)
 

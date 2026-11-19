@@ -70,13 +70,13 @@ class TrafficQuery(serializers.Serializer):
     after = serializers.CharField(required=False, default="", allow_blank=True, max_length=4096)
 
 
-class Brief(serializers.Serializer):
+class DefenceBrief(serializers.Serializer):
     title = serializers.CharField()
     summary = serializers.CharField()
     body = serializers.CharField()
 
 
-class Target(serializers.Serializer):
+class DefenceTarget(serializers.Serializer):
     public_url = serializers.CharField()
     hosts = serializers.ListField(child=serializers.CharField())
 
@@ -92,15 +92,15 @@ class Version(serializers.Serializer):
     version = serializers.IntegerField()
 
 
-class State(serializers.Serializer):
+class DefenceState(serializers.Serializer):
     round = serializers.IntegerField()
     matchup = serializers.CharField()
     phase = serializers.CharField()
     started = serializers.DateTimeField(allow_null=True)
     ends_at = serializers.DateTimeField(allow_null=True)
     end_reason = serializers.CharField()
-    brief = Brief()
-    target = Target()
+    brief = DefenceBrief()
+    target = DefenceTarget()
     objectives = ObjectiveState(many=True)
     ids = Version()
     waf = Version()
@@ -124,7 +124,7 @@ class Alerts(serializers.Serializer):
     next = serializers.IntegerField()
 
 
-class Origin(serializers.Serializer):
+class TrafficOrigin(serializers.Serializer):
     ip = serializers.CharField()
     requests = serializers.IntegerField()
     refused = serializers.IntegerField()
@@ -132,7 +132,7 @@ class Origin(serializers.Serializer):
 
 
 class Traffic(serializers.Serializer):
-    by_origin = Origin(many=True)
+    by_origin = TrafficOrigin(many=True)
     next = serializers.CharField()
 
 
@@ -162,7 +162,7 @@ class RuleError(serializers.Serializer):
     message = serializers.CharField()
 
 
-class Checked(serializers.Serializer):
+class RuleCheck(serializers.Serializer):
     ok = serializers.BooleanField()
     errors = RuleError(many=True)
 
@@ -181,7 +181,7 @@ class CaseVerdict(serializers.Serializer):
     recorded_run = serializers.BooleanField()
 
 
-class Totals(serializers.Serializer):
+class VerdictTotals(serializers.Serializer):
     tp = serializers.IntegerField()
     fn = serializers.IntegerField()
     fp = serializers.IntegerField()
@@ -204,7 +204,7 @@ class RuleTestResult(serializers.Serializer):
     ok = serializers.BooleanField()
     errors = RuleError(many=True)
     cases = CaseVerdict(many=True)
-    totals = Totals()
+    totals = VerdictTotals()
     untested = UntestedCase(many=True)
     against_applied = Change(many=True)
 
@@ -244,7 +244,7 @@ class DisabledNow(serializers.Serializer):
     expires_at = serializers.DateTimeField()
 
 
-class Terminal(serializers.Serializer):
+class DefenceTerminal(serializers.Serializer):
     ws_url = serializers.CharField()
     ssh = serializers.DictField(allow_null=True)
 

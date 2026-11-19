@@ -18,7 +18,6 @@ GONE = (
 PENDING = {
     "redteam/run.py": "moves to platform/attack or test/",
     "platform/vm-terminal.sh": "rewritten on seat-token auth",
-    "bin/prune": "re-pointed at the new tables",
 }
 
 REFUSES_THE_OLD_KIND = {"platform/tests/domain/test_problems.py"}

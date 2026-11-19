@@ -42,11 +42,11 @@ class OneLesson(LessonView):
 
 
 class CheckStep(LessonView):
-    @extend_schema(tags=TAGS, request=serializers.CheckAsk, responses=serializers.Checked,
+    @extend_schema(tags=TAGS, request=serializers.CheckAsk, responses=serializers.StepVerdict,
                    operation_id="lesson_step_check")
     def post(self, request, round_id: int, order: int):
         answer = given(serializers.CheckAsk, request.data)["answer"]
-        return Response(serializers.Checked(service.check(round_id, request.user, order, answer)).data)
+        return Response(serializers.StepVerdict(service.check(round_id, request.user, order, answer)).data)
 
 
 class StepHint(LessonView):
@@ -58,16 +58,16 @@ class StepHint(LessonView):
 
 
 class EndLesson(LessonView):
-    @extend_schema(tags=TAGS, request=None, responses=serializers.Ended, operation_id="lesson_end")
+    @extend_schema(tags=TAGS, request=None, responses=serializers.LessonEnded, operation_id="lesson_end")
     def post(self, request, round_id: int):
-        return Response(serializers.Ended(service.end(round_id, request.user)).data)
+        return Response(serializers.LessonEnded(service.end(round_id, request.user)).data)
 
 
 class TryStep(APIView):
     permission_classes = [accounts.IsStaff]
 
-    @extend_schema(tags=STAFF_TAGS, request=serializers.TryAsk, responses=serializers.Checked,
+    @extend_schema(tags=STAFF_TAGS, request=serializers.TryAsk, responses=serializers.StepVerdict,
                    operation_id="staff_step_try")
     def post(self, request, problem_id: int, order: int):
         asked = given(serializers.TryAsk, request.data)
-        return Response(serializers.Checked(service.try_step(problem_id, order, asked["round"], asked["answer"])).data)
+        return Response(serializers.StepVerdict(service.try_step(problem_id, order, asked["round"], asked["answer"])).data)

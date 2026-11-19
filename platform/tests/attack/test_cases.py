@@ -29,6 +29,7 @@ def test_an_http_case_fires_from_the_box_with_its_marker_and_is_charged_on_the_s
     assert f"X-Request-ID: {action.marker}" in fired.argv and "Host: board.com" in fired.argv
     assert cloud.launched == ["ru"]
     assert (body["run"], body["status"], body["hp"]["left"]) == (None, 200, 99)
+    assert body["marker"] == action.marker, "the seat ties the alerts its case drew to it by this marker"
 
 
 def test_a_tool_case_becomes_a_tool_run_with_the_marker_in_its_argv(as_attacker, attacker):
@@ -40,6 +41,7 @@ def test_a_tool_case_becomes_a_tool_run_with_the_marker_in_its_argv(as_attacker,
     assert (answer.status_code, run.tool, action.kind, action.charged) == (202, "sqlmap", "case", False)
     assert f"--headers=X-Request-ID: {action.marker}" in run.argv
     assert body["hp"]["left"] == 100
+    assert body["marker"] == action.marker
 
 
 def test_a_benign_case_is_the_platform_s_to_fire_and_unknown_to_the_attacker(as_attacker, attacker, cloud):
