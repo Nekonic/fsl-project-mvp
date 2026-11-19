@@ -1,3 +1,4 @@
+import json
 import pathlib
 import re
 import urllib.parse
@@ -7,6 +8,7 @@ from django.conf import settings
 from django.urls import Resolver404, resolve
 
 from cr import errors
+from match import views as match_views
 from tests import composed
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -451,3 +453,57 @@ def test_the_old_session_paths_are_gone():
     for old in ("/vm-terminal/kali/", "/vm-terminal/waf/", "/auth-check/", "/kibana-refused/", "/static/map/",
                 "$session_asked"):
         assert old not in text, old
+
+
+AUTH_PASSES = {401, 403}
+
+
+def auth_request_answer(status):
+    if 200 <= status < 300:
+        return 0
+    return status if status in AUTH_PASSES else 500
+
+
+def refused_terminal(refusal):
+    refused = location(console(), "@terminal-refused")
+    for guard in refused.children("if"):
+        variable, operator, compared = guard.args
+        assert (variable, operator) == ("($terminal_refusal", "="), guard.args
+        if compared.rstrip(")") == refusal:
+            [answer] = guard.values("return")
+            return int(answer[0]), json.loads(answer[1])
+    [answer] = refused.values("return")
+    return int(answer[0]), json.loads(answer[1])
+
+
+def browser_sees(side, status, refusal):
+    found = regex_location(console(), f"/vm-terminal/{side}/12/ws")
+    passed = auth_request_answer(status)
+    pages = {code: one[-1] for one in found.values("error_page") for code in one[:-2]}
+    if pages.get(str(passed)) == "@terminal-refused":
+        return refused_terminal(refusal)
+    return passed, None
+
+
+@pytest.mark.parametrize("side", ["attack", "defence"])
+def test_the_terminal_check_s_refusal_code_reaches_nginx_beside_its_status(side):
+    found = regex_location(console(), f"/vm-terminal/{side}/12/ws")
+    header = "$upstream_http_" + match_views.REFUSAL_HEADER.lower().replace("-", "_")
+
+    assert found.values("auth_request_set") == [["$terminal_refusal", header]]
+    assert ["429", "=", "@too-many"] in found.values("error_page"), (
+        "an error_page in the location drops the server's, so the held_open limit keeps its answer")
+
+
+@pytest.mark.parametrize("side", ["attack", "defence"])
+@pytest.mark.parametrize("refusal", [errors.Conflict(code="round_closed"), errors.Conflict(code="round_not_started"),
+                                     errors.NotFound(code="unknown_round"), errors.NotSeated()])
+def test_a_refused_terminal_answers_the_api_s_status_and_error_shape_not_nginx_s_500(side, refusal):
+    assert browser_sees(side, refusal.status, refusal.code) == (refusal.status, refusal.shown())
+
+
+@pytest.mark.parametrize("side", ["attack", "defence"])
+def test_a_terminal_check_that_answers_nothing_known_is_unavailable_and_a_sign_in_still_redirects(side):
+    assert browser_sees(side, 502, "") == (503, errors.Unavailable().shown())
+    found = regex_location(console(), f"/vm-terminal/{side}/12/ws")
+    assert ["401", "=", "@sign-in"] in found.values("error_page")

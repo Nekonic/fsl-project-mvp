@@ -5,7 +5,7 @@ import pytest
 
 from range import jump
 from cr.config import JumpConfig
-from range.runner import RangeUnavailable
+from range.runner import Ran, RangeUnavailable
 from testing.fakes import FakeRunner
 
 KALI = "10.20.0.5"
@@ -104,3 +104,92 @@ def test_access_grants_the_jump_and_the_box_account_and_closing_takes_both_back(
     assert jump.granted(3, config) is None
     assert len(box.matching("authorized_keys")) == 2
     assert jump.close_access(3, lambda: box, "analyst", config) is None
+
+
+FAKE_TOOLS = {
+    "id": 'grep -qx "$2" "$STATE/accounts"',
+    "crontab": 'echo "$*" >> "$STATE/crontab"',
+    "atq": 'cat "$STATE/atq"',
+    "atrm": 'echo "$*" >> "$STATE/atrm"',
+    "loginctl": 'echo "$*" >> "$STATE/loginctl"',
+    "pkill": ('grep -q "^$3 " "$STATE/processes" || exit 1\n'
+              'grep -v "^$3 " "$STATE/processes" > "$STATE/left" || true\n'
+              'cat "$STATE/respawn" >> "$STATE/left"; : > "$STATE/respawn"\n'
+              'mv "$STATE/left" "$STATE/processes"; echo "$*" >> "$STATE/pkill"'),
+    "pgrep": 'grep -q "^$2 " "$STATE/processes"',
+    "sleep": ":",
+}
+
+
+@pytest.fixture
+def waf_box(tmp_path):
+    tools, state = tmp_path / "bin", tmp_path / "state"
+    tools.mkdir()
+    state.mkdir()
+    for name, body in FAKE_TOOLS.items():
+        tool = tools / name
+        tool.write_text(f"#!/bin/sh\n{body}\n")
+        tool.chmod(0o755)
+    (state / "accounts").write_text("analyst\nkali\n")
+    (state / "atq").write_text("7\tThu Nov 20 10:00:00 2026 a analyst\n8\tThu Nov 20 10:05:00 2026 a kali\n"
+                               "9\tThu Nov 20 11:00:00 2026 b analyst\n")
+    (state / "processes").write_text("analyst 4100 nohup tail -f\nanalyst 4101 sleep 9999\nkali 5100 bash\n")
+    (state / "respawn").write_text("")
+
+    def box(argv, stdin=None, timeout=60.0):
+        assert argv[:3] == ["sudo", "sh", "-c"]
+        done = subprocess.run(["sh", "-c", argv[3]], input=stdin, capture_output=True, text=True, timeout=timeout,
+                              env={"PATH": f"{tools}:/usr/bin:/bin", "STATE": str(state)})
+        return Ran(exit_code=done.returncode, output=done.stdout + done.stderr)
+
+    return box, state, tools
+
+
+def left(state, name):
+    found = state / name
+    return found.read_text() if found.exists() else ""
+
+
+def test_ending_the_account_kills_what_it_left_and_clears_its_cron_at_and_user_manager(waf_box):
+    box, state, _ = waf_box
+    (state / "respawn").write_text("analyst 4200 forked child\n")
+
+    jump.end_account(box, "analyst")
+
+    assert left(state, "processes") == "kali 5100 bash\n"
+    assert left(state, "crontab") == "-r -u analyst\n"
+    assert left(state, "atrm").split() == ["7", "9"]
+    assert left(state, "loginctl").splitlines() == ["disable-linger analyst", "terminate-user analyst"]
+    assert left(state, "pkill").splitlines() == ["-KILL -u analyst", "-KILL -u analyst"]
+
+
+def test_an_account_with_nothing_left_ends_quietly(waf_box):
+    box, state, _ = waf_box
+    (state / "processes").write_text("kali 5100 bash\n")
+    (state / "atq").write_text("")
+
+    jump.end_account(box, "analyst")
+
+    assert left(state, "atrm") == "" and left(state, "pkill") == ""
+    assert left(state, "processes") == "kali 5100 bash\n"
+
+
+def test_a_process_that_outlives_every_kill_is_range_unavailable(waf_box):
+    box, state, tools = waf_box
+    (tools / "pkill").write_text('#!/bin/sh\necho "$*" >> "$STATE/pkill"\n')
+
+    with pytest.raises(RangeUnavailable, match="end what analyst left running"):
+        jump.end_account(box, "analyst")
+    assert len(left(state, "pkill").splitlines()) == 3
+
+
+def test_a_box_without_the_account_has_nothing_to_end(waf_box):
+    box, state, _ = waf_box
+
+    jump.end_account(box, "nobody")
+
+    assert left(state, "crontab") == "" and left(state, "pkill") == ""
+
+
+def test_an_account_name_reaches_the_box_quoted():
+    assert "'a b'" in jump.account_ended("a b")

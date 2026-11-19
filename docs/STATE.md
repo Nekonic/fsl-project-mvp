@@ -28,7 +28,7 @@ the repo side of 5, the `nginx.conf` and terminal part of 15 and the code of
 | 2 Old tree cleared | `platform/api/`, `platform/console/`, the scenario and lesson modules and their tests are deleted | `platform/tests/test_old_tree_gone.py` |
 | 3 `domain/` | scoring (correlate, metrics, corroborate, objectives), ledger, verdicts, checks, problems, round_rules | `platform/tests/domain/`, no Django in the process; import rule 1 |
 | 4 Seams | `cr/config.py`, `cr/errors.py`, `ingest/elastic.py`, `rules/suricata.py`, `rules/crs.py`, `range/*` (with `edge.py`, `jump.py`, `refill.py` rewritten), `attack/box.py`, `firing.py`, `tools.py`, `defence/kibana.py`, `referee/loot.py`, `effect.py` | `platform/tests/seams/` against fakes; import rules 2, 4, 14; `platform/tests/seams/test_isolation_seams.py`, `test_no_comments.py` |
-| 5 Deploy (repo side) | `edge.nft` with `pool` and `spent` and the `spent` drop before the established accept; the WAF's JSON access log `access.json` shipped and relayed as `nginx-access`, ingested as `nginx_access`; `probe.conf`, `probe-upstream.py`, `analyst.sh`; `conntrack`, `tcpdump` and `/var/lib/cr-ruletest` on the infra; `bin/record-probes`; each round start empties both edge sets (`range.edge.restart`) | `tests/test_edge_sets.py`, `test_waf_scratch.py`, `test_access_log.py`, `test_analyst.py`, `test_record_probes.py`, `test_roles.py`, `test_filebeat.py`, `tests/seams/test_edge.py`, `tests/attack/test_spend.py`; structural only, no `nft -c` or `nginx -t` |
+| 5 Deploy (repo side) | `edge.nft` with `pool` and `spent` and the `spent` drop and the drop of every address outside `pool` before the established accept, the probe lease admitting the origin it wears; the WAF's JSON access log `access.json` shipped and relayed as `nginx-access`, ingested as `nginx_access`; `probe.conf`, `probe-upstream.py`, `analyst.sh`; `conntrack`, `tcpdump` and `/var/lib/cr-ruletest` on the infra; `bin/record-probes`; each round start empties both edge sets (`range.edge.restart`) | `tests/test_edge_sets.py`, `test_waf_scratch.py`, `test_access_log.py`, `test_analyst.py`, `test_record_probes.py`, `test_roles.py`, `test_filebeat.py`, `tests/seams/test_edge.py`, `tests/attack/test_spend.py`; structural only, no `nft -c` or `nginx -t` |
 | 6 Django skeleton | `cr/` (DRF, spectacular, one handler, `strings.py`), `strings/`, `accounts`, `events` | `tests/accounts` (with the first account `admin` from migration `accounts.0002_first_account`), `tests/events`, the error-shape and no-admin tests |
 | 7 `content` | catalog, `wargame.yaml` per wargame, problems as nested documents with revisions and export/import, postures, the learner read API | `tests/content`; `test_no_hangul.py` |
 | 8 Round records, referee | `match.models`, `match.auth` (seat tokens hashed, `HasSeat`, `InRound`, `IsOperator`, `OnLease`), `referee` (baseline, loot, effects, objectives, redact, score) | `tests/referee`; import rules 4, 5, 11, 15 |
@@ -37,7 +37,7 @@ the repo side of 5, the `nginx.conf` and terminal part of 15 and the code of
 | 11 `match.service` | lease and round lifecycle, follower (`follow` compose service), customers and the benign schedule, site pane, terminal auth routes, score, probe recording, staff range routes | `tests/match`; import rules 6, 7, 9 |
 | 13 `lessons` | lesson rounds, facts, judges, progress, hints, `step_locked`, staff try | `tests/lessons` |
 | 14 Contract and clients | `openapi/schema.yaml` committed; `bin/gen-clients`; `test/` and `bin/` on the generated client; `bin/backup` and `bin/prune` on the new tables | `tests/contract`; import rule 12; no `/api/sessions` outside docs |
-| 15 `nginx.conf` and terminals | per-seat `/vm-terminal/<side>/<round>/` through an uncached `terminal-auth`, the raw-path seat guard, the round passed to ttyd as its only argument; `vm-terminal.sh` (kali as `kali`, cr-waf as `analyst`, only with a jump grant, closed within 15 s once the grant goes); `/signed-in` on `/api/me/`; the 8002 listener keyed by round; refused Kibana routes answered by the gate; `/app/front/dist` served last. `front/` itself is not built | `tests/test_front.py` (a config parser and nginx's path normalization replayed), `tests/test_vm_terminal.py` (fake `python`, `ssh`, `tmux`), `tests/attack/test_terminal.py`, `tests/defence/test_terminal.py`; no `nginx -t` |
+| 15 `nginx.conf` and terminals | per-seat `/vm-terminal/<side>/<round>/` through an uncached `terminal-auth`, the raw-path seat guard, the round passed to ttyd as its only argument, a refused check answered with the API's status and code (`@terminal-refused`, from `terminal-auth`'s `X-Error-Code`); `vm-terminal.sh` (kali as `kali`, cr-waf as `analyst`, only with a jump grant, closed within 15 s once the grant goes); `analyst`'s processes, crontab and `at` jobs ended when the round's defence grant is revoked (`range.jump.end_account`); `/signed-in` on `/api/me/`; the 8002 listener keyed by round; refused Kibana routes answered by the gate; `/app/front/dist` served last. `front/` itself is not built | `tests/test_front.py` (a config parser and nginx's path normalization replayed), `tests/test_vm_terminal.py` (fake `python`, `ssh`, `tmux`), `tests/attack/test_terminal.py`, `tests/defence/test_terminal.py`, `tests/seams/test_jump.py` (the end script run against fake `crontab`, `atq`, `loginctl`, `pkill`, `pgrep`); no `nginx -t` |
 | 16 `bots/` (code) | `tools.py`, `calls.py`, `cli.py`, `play.py`, `provider.py`, `signin.py`, the side prompts and the README | `platform/tests/test_bots.py` |
 | 17 Docs | README, ARCHITECTURE, CLAUDE.md, this file and `now.md` describe the new layout | this step |
 
@@ -114,25 +114,9 @@ on a slot:
 - **A refused key leaves a jump grant.** If the box refuses the per-seat
   key, `range.jump.open_access` keeps the platform sshd grant until the
   round ends. Without the box key it gives no access.
-- **The `pool` drop at the edge.** `edge.nft` declares `pool` and the
-  platform fills it, but `ip saddr != @pool drop` is not in the forward
-  chain. Every started round fills `pool` (`match.service.start_round` calls
-  `attack.fill_pool`, which refuses a box with no origin), but a probe lease
-  has no round and fills nothing, so the drop would cut probe recording.
-  Until a probe lease admits its origins and the drop is added, the HP rule
-  does not bind a learner who uses sudo on kali: kali's internet port allows
-  every address (`0.0.0.0/0` allowed address pair), so an unused address in
-  an origin subnet is in neither set and its requests are never charged.
-- **A refused terminal for a closed round answers 500, not 409.** nginx's
-  `auth_request` turns any answer but 2xx, 401 and 403 into a 500, so
-  `round_closed` from `terminal-auth` reaches the browser as a 500.
 - **The sign-in redirect has no page yet.** `@sign-in` sends Kibana and site
   pane requests without a session to `/login/?next=`, which only `front/`
   will serve; until then it falls to the missing `index.html`.
-- **Processes left by `analyst`.** A background process the defence seat
-  starts on cr-waf (`nohup`, cron) outlives the round; nothing kills it.
-  The WAF's nftables rule keeps it off the network, so it can only read, but
-  it can get in a later defender's way on the same lease.
 - **Two runtime guesses in the rule test.** Whether `jasonish/suricata`'s
   entrypoint lets the offline `-r` run write to the root-owned scratch log
   folder mounted at `/scratch`, and whether the scratch ModSecurity

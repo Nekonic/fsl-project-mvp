@@ -485,9 +485,15 @@ def terminal_shell(seat: Seat) -> tuple[str, str]:
 
 def revoke_terminal(found: Round) -> int:
     cfg = configured()
-    return sum(1 for seat in Seat.objects.filter(round=found, side=DEFENCE)
-               if jump.close_access(seat.pk, lambda: slot_range(found, cfg).runner(cfg.waf.role), ANALYST_ACCOUNT,
-                                    cfg.jump) is not None)
+
+    def waf():
+        return slot_range(found, cfg).runner(cfg.waf.role)
+
+    revoked = sum(1 for seat in Seat.objects.filter(round=found, side=DEFENCE)
+                  if jump.close_access(seat.pk, waf, ANALYST_ACCOUNT, cfg.jump) is not None)
+    if revoked:
+        jump.end_account(waf(), ANALYST_ACCOUNT)
+    return revoked
 
 
 def close(found: Round) -> None:

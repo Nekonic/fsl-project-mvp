@@ -17,6 +17,7 @@ table ip edge {
   chain forward {
     type filter hook forward priority filter; policy accept;
     iifname "@wan@" ip saddr @spent drop
+    iifname "@wan@" ip saddr != @pool drop
     iifname "@wan@" ct state established,related accept
     iifname "@wan@" ct status dnat accept
     iifname "@wan@" drop

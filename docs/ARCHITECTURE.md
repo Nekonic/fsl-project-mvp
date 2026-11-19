@@ -218,6 +218,9 @@ sequenceDiagram
 - 사람은 세션 쿠키와 CSRF, 봇은 `Authorization: Bearer <자리 토큰>`입니다. 토큰은 해시로만 저장합니다.
 - `HasSeat(side)`가 요청의 자리를 찾습니다. GET이 아닌 요청은 라운드가 `running`이 아니면 `409 round_not_started`
   또는 `409 round_closed`입니다.
+- 터미널 경로는 nginx `auth_request`로 `terminal-auth/<side>/`에 묻습니다. `auth_request`는 2xx, 401, 403 말고는
+  모두 500으로 바꾸므로, `terminal-auth`가 거부 코드를 `X-Error-Code` 헤더에 싣고 nginx의 `@terminal-refused`가
+  그 코드로 API와 같은 상태와 오류 형태(`409 round_closed` 등)를 돌려줍니다.
 - 자리 토큰은 자기 쪽 경로, 라운드의 `GET /`, `events/`, `topology/`, 리스 하트비트, 끝난 뒤의 `score/`에 닿습니다.
   라운드가 끝나면 15분 동안 읽기 전용입니다.
 - 운영자는 `Lease.opened_by` 또는 스태프입니다. 자리는 리스를 열고 닫거나 라운드를 끝내지 못하고 기권만 합니다.
@@ -255,7 +258,9 @@ sequenceDiagram
 - `apply/`: `base_version`이 최신이 아니면 `409 stale_version`. 테스트 없이도 적용할 수 있고, `tested`를 주면
   `same_as_tested`를 기록합니다. IDS는 센서마다 차례로 적용하고 하나라도 거부하면 앞서 쓴 센서를 이전 버전으로
   되돌린 뒤 `422 apply_refused`입니다.
-- `GET terminal/`: cr-waf 관리 주소로 가는 점프 권한, 계정 `analyst`(읽기 전용). 라운드가 끝나면 회수합니다.
+- `GET terminal/`: cr-waf 관리 주소로 가는 점프 권한, 계정 `analyst`(읽기 전용). 라운드가 끝나면 회수하고,
+  `range.jump.end_account`가 `analyst`의 crontab과 `at` 작업을 지우고 linger를 끄고 로그인 세션을 끝낸 뒤
+  남은 프로세스를 모두 죽입니다. `nohup`, cron, `at`, `systemd --user`로 띄운 것이 다음 라운드까지 남지 않습니다.
 - `defence/drift.py`가 틱마다 실제 CRS 파일과 적용 기록을 비교해 다르면 `rule.drifted`를 남기고, 점수에
   `posture_drift: true`가 붙습니다.
 
@@ -292,10 +297,13 @@ sequenceDiagram
 - 라운드를 시작할 때 `range.edge.restart`가 `pool`과 `spent`를 비우고 새 라운드의 주소로 다시 채웁니다. 슬롯은
   리스를 반납할 때만 다시 만들어지므로, 그러지 않으면 같은 리스의 다음 라운드가 앞 라운드에서 소진된 출발지를
   물려받아 예산이 남았는데도 경계에서 막힙니다. 틱마다 하는 `refill`은 더하기만 합니다.
-- `pool`은 채우기만 하고 아직 막는 데 쓰지 않습니다. 라운드는 시작할 때 늘 `pool`을 채우지만, 라운드가 없는
-  probe 리스는 채우지 않아서 `pool` 밖 주소를 버리면 probe 녹화가 끊깁니다. 그동안 kali의 인터넷 포트는 모든
-  주소를 허용(`0.0.0.0/0` allowed address pair)하고 학습자는 sudo가 있으므로, 출발지 서브넷의 안 쓰는 주소를
-  직접 붙여 보내면 `spent`에도 예산에도 없는 주소라 HP가 걸리지 않습니다.
+- `pool` 밖 주소도 established 허용보다 앞에서 버립니다. kali의 인터넷 포트는 모든 주소를 허용(`0.0.0.0/0`
+  allowed address pair)하고 학습자는 sudo가 있으므로, 이 규칙이 없으면 출발지 서브넷의 안 쓰는 주소를 붙여
+  보낸 요청에 HP가 걸리지 않습니다.
+- 그래서 출발지 서브넷에서 나가는 요청은 모두 `pool`에 든 주소로 나갑니다. 케이스, 도구, 요청, 공격석 사이트
+  패널은 `attack.wearing`으로 출발지를 입고(라운드에 예산이 없으면 `pool`부터 채움), 터미널도 권한을 주기 전에
+  같은 식으로 채웁니다. 고객과 방어석 사이트 패널은 고객 주소로 보내고, 라운드가 없는 probe 리스는 케이스마다
+  입은 출발지를 `range.edge.admit`으로 넣습니다.
 
 ## 이벤트
 

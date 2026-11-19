@@ -772,18 +772,22 @@ names; none of it has run, so it is **[unverified]**.
 
 | Role | New name | What changed in `deploy/roles/<role>/` |
 |---|---|---|
-| `infra` | `cr-infra-bake2` | `edge.nft` declares the sets `pool` and `spent` (`type ipv4_addr`) and drops `ip saddr @spent` from `wan` before the established accept, so an open keep-alive or sqlmap connection of a spent origin stops too; `range/edge.py` adds the addresses after each `slot-boot` load and flushes a spent origin's conntrack entries (package `conntrack`). `tcpdump` for `rules.suricata.capture` (probe recording), `/var/lib/cr-ruletest` (0700) for `rules.suricata.offline_test`, which runs the same pinned image and `/etc/suricata/suricata.yaml` with `-r` and reads the scratch `eve.json`, never `/var/log/suricata`. `log-relay.conf` relays the WAF's `nginx-access` lines instead of `nginx` |
+| `infra` | `cr-infra-bake2` | `edge.nft` declares the sets `pool` and `spent` (`type ipv4_addr`) and drops `ip saddr @spent` and then `ip saddr != @pool` from `wan` before the established accept, so an open keep-alive or sqlmap connection of a spent origin stops too and an address the platform never put in `pool` reaches nothing; `range/edge.py` adds the addresses after each `slot-boot` load and flushes a spent origin's conntrack entries (package `conntrack`). `tcpdump` for `rules.suricata.capture` (probe recording), `/var/lib/cr-ruletest` (0700) for `rules.suricata.offline_test`, which runs the same pinned image and `/etc/suricata/suricata.yaml` with `-r` and reads the scratch `eve.json`, never `/var/log/suricata`. `log-relay.conf` relays the WAF's `nginx-access` lines instead of `nginx` |
 | `waf` | `cr-waf-bake3` (**(this cloud)**; `cr-waf-bake2` is taken) | `board.com.conf` writes every request to `/var/log/nginx/access.json` as JSON (`time`, `client_ip`, `vhost`, `request`, `status`, `refused` from the one `$refused` map of 400 and 403, `request_id` from `X-Request-ID`), and `log-shipper.conf` ships it under Tag `nginx-access` in place of `refused.log`. `probe.conf` and `probe-upstream.py` for `rules.crs.scratch_check` and `scratch_test`; the exclusion file is created 0644 (root writes it through sudo). `analyst.sh` creates the defence seat's account |
 
-The `pool` set is declared and filled, but `edge.nft` does not yet drop
-`ip saddr != @pool`: every round fills `pool` when it starts, but a probe
-lease has no round and fills nothing, so that drop would cut probe recording
-(`docs/STATE.md`). Each round start empties both sets before it fills them
+`pool` holds a round's attack origins and customer addresses (filled when
+the round starts) or, for a probe lease, the origin it wears (admitted before
+each case); every other address from `wan` is dropped, so a learner with sudo
+on kali cannot send from an unused origin-subnet address. On a fresh slot the
+set is empty and kali reaches nothing on the target. Each round start empties
+both sets before it fills them
 (`range.edge.restart`), so a lease's next round does not inherit the last
 round's spent origins.
 
 **The `analyst` account** (`deploy/roles/waf/analyst.sh`), which the defence
-seat's terminal and its jump grant log in as:
+seat's terminal and its jump grant log in as (when the round ends and the
+grant is revoked, `range.jump.end_account` clears its crontab and `at` jobs,
+disables its linger, ends its logind sessions and kills its processes):
 
 - can: log in by the per-seat key `range/jump.py` writes into its
   `authorized_keys` (bash, password field `*`); read `/etc/nginx` (the vhosts,
@@ -807,6 +811,7 @@ on one slot, the spec's checks for this step:
 
 ```bash
 sudo nft list set ip edge spent                    # on the infra: the set exists, empty until an origin is spent
+sudo nft list set ip edge pool                     # on the infra during a round: its origins and customer addresses
 sudo tail -1 /var/log/nginx/access.json            # on the WAF after one request: request_id is the X-Request-ID
 ```
 
@@ -817,7 +822,15 @@ sudo tail -1 /var/log/nginx/access.json            # on the WAF after one reques
 - an IDS rule test (`POST defence/ids/rules/test/`) leaves
   `/var/log/suricata/eve.json` unchanged;
 - as `analyst`, `touch /etc/nginx/x`, `sudo nginx -s reload` and `curl
-  http://127.0.0.1/` all fail, and `sudo nginx -T` prints the configuration.
+  http://127.0.0.1/` all fail, and `sudo nginx -T` prints the configuration;
+- as `analyst`, `nohup sleep 9999 &` and a crontab line are gone once the
+  round ends (`pgrep -u analyst` and `sudo crontab -l -u analyst` on the WAF
+  show nothing);
+- on kali, `sudo ip addr add <an unused origin-subnet address> dev <its
+  internet NIC>` and `curl --interface <that address> http://board.com/`
+  time out, while the API's requests still answer;
+- a closed round's `/vm-terminal/<side>/<round>/ws` answers `409` with code
+  `round_closed`, not 500.
 
 **Probe recordings** follow the bake (spec step 12): `bin/record-probes board`
 and `bin/record-probes corp` (`--platform http://<platform>:8000`, a staff
@@ -1520,7 +1533,7 @@ stack uses the same addresses; stacks differ by network, not by CIDR.
   TSO, GSO, GRO and LRO off on them; sets a default route onlink via Kali's
   default-origin address; and loads `edge.nft`: tcp 80 to 121.134.88.42 is
   DNATed to the WAF's front without SNAT, from `wan` an address in the set
-  `spent` is dropped first, then only replies
+  `spent` is dropped first, then every address outside `pool`, then only replies
   (`ct state established,related`) and DNATed connections (`ct status dnat`)
   are forwarded, ICMP is answered on `wan`, and from `mgmt` only tcp 514 is
   taken. Ping and traceroute from Kali to 121.134.88.42 answer.

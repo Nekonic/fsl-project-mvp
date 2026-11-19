@@ -722,6 +722,8 @@ def submit_loot(found: Round, seat: Seat, value: Any) -> Looted:
 
 def terminal(found: Round, seat: Seat) -> Terminal:
     phase_allows_writes(found)
+    if not budgets(found):
+        fill_pool(found)
     settings, reached = configured(), range_of(found)
     access = jump.open_access(seat.pk, box.kali_address(reached), reached.runner(ATTACKER), box.LEARNER_ACCOUNT,
                               settings.jump)
@@ -842,6 +844,7 @@ def probe_request(prepared, host: str) -> dict:
 def fire_probe(lease: Lease, wargame: Mapping[str, Any], case: Mapping[str, Any], marker: str) -> Probed:
     settings, reached = configured(), lease_range(lease)
     offered = box.find(reached.describe(), None, settings.box)
+    edge.admit(reached.runner(settings.edge.role), [offered["source_ip"]], settings.edge)
     box.wear_origin(offered, reached.runner(PROXY))
     started = now()
     if tools.is_tool_case(dict(case)):

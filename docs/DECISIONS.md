@@ -10211,3 +10211,54 @@ and its checks.
   as `test_no_hangul.py` allows it by name, and no longer says the platform
   Dockerfile and `images.yml` generate the clients: only `bin/verify` does
   until the `front/` node stage exists.
+
+## 2026-11-20 — Three open points closed: the `pool` drop, a refused terminal's answer, what `analyst` leaves
+
+- **The edge drops every address outside `pool`.** `edge.nft` now has
+  `iifname @wan@ ip saddr != @pool drop` right after the `spent` drop, both
+  before the established accept. The probe lease was the one sender with no
+  `pool`; `attack.fire_probe` now admits the origin it wears through
+  `range.edge.admit` before each case (per case, not once, so a `slot-boot`
+  reload mid-recording is refilled the way the tick refills a round). The
+  other senders from the origin subnets already go through `pool`: case
+  firing, free tools, requests and the attack-seat site pane wear an origin
+  through `attack.wearing`, which fills the pool when the round has none;
+  customers and the defence seat's site pane send from customer addresses,
+  which `refill_edge` puts in `pool`. The attack terminal only checked the
+  phase, so it now fills the pool the same way before it grants a shell.
+  A learner with sudo on kali who adds an unused origin-subnet address now
+  reaches nothing; sending from a customer address stays open (spec §17
+  risk 7).
+- **A refused terminal answers the API's status and code.** nginx's
+  `auth_request` passes on only 2xx, 401 and 403 and makes everything else a
+  500 with no body. Rather than change `terminal-auth`'s statuses (it is an
+  API route with the contract's `409 round_closed`), its view adds the
+  refusal code as `X-Error-Code`; each terminal location keeps it with
+  `auth_request_set $terminal_refusal $upstream_http_x_error_code` (the
+  module sets these variables before it checks the status, so they survive
+  the redirect) and sends `403` and `500` to `@terminal-refused`, which
+  returns `409 round_closed`, `409 round_not_started`, `404 unknown_round` or
+  `403 not_seated` in the one error shape, and `503 unavailable` when the
+  check named nothing it knows. A 401 still goes to `@sign-in`. An
+  `error_page` in a location drops the server's, so the terminal locations
+  also carry `error_page 429 = @too-many` for their `limit_conn`.
+- **What `analyst` starts ends with the round.** When the round's defence
+  grant is revoked, `defence.revoke_terminal` runs `range.jump.end_account`
+  on cr-waf as root: `crontab -r`, `atrm` of the account's `atq` jobs,
+  `loginctl disable-linger` and `terminate-user` (which stops its
+  `systemd --user` manager and units), then `pkill -KILL -u` up to three
+  times until none is left; a process that survives makes it
+  `RangeUnavailable`. It runs after the key is dropped, so no new shell can
+  start between the two, and only when a grant was revoked, so a round whose
+  defender never opened the terminal makes no WAF call. It lives in
+  `range/jump.py` beside the key handling because it is account knowledge,
+  not CRS or nginx knowledge; kali's `kali` account is not ended the same way,
+  since its tool runs and the box's own services are stopped by
+  `attack.stop_runs` and a root learner could escape it anyway.
+- **Verified offline only.** `tests/test_edge_sets.py` and `test_roles.py`
+  check the rule's place; the probe recording test checks the admitted
+  origin; `tests/test_front.py` replays `auth_request`'s status rule over the
+  parsed config for every refusal; `tests/seams/test_jump.py` runs the end
+  script against fake `crontab`, `atq`, `atrm`, `loginctl`, `pkill` and
+  `pgrep` with a respawning process. No `nft -c`, `nginx -t` or range run;
+  `docs/OPENSTACK.md` §3.7 lists the checks for the slot.

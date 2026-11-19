@@ -45,6 +45,15 @@ def test_a_spent_origin_is_dropped_before_its_open_connections_are_let_through()
     assert spent < forward.index('iifname "@wan@" ct status dnat accept')
 
 
+def test_an_address_outside_the_pool_is_dropped_before_its_open_connections_are_let_through():
+    forward = chain("forward")
+    outside = forward.index('iifname "@wan@" ip saddr != @pool drop')
+
+    assert outside < forward.index('iifname "@wan@" ct state established,related accept'), (
+        "an unused origin-subnet address that HP never charges must not reach the target")
+    assert outside < forward.index('iifname "@wan@" ct status dnat accept')
+
+
 def test_slot_boot_stays_the_only_loader_and_a_reload_starts_with_empty_sets_the_follower_refills():
     text = ruleset()
     boot = (INFRA / "slot-boot").read_text()

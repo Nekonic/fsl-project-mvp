@@ -337,7 +337,7 @@ def test_the_infra_edge_forwards_the_web_port_to_the_waf_only_and_answers_ping_a
     assert [line.strip() for line in nat.splitlines() if "iifname" in line] == [
         f'iifname "wan" ip daddr {router_address()} tcp dport {port} dnat to 10.30.0.247']
     assert [line.strip() for line in forward.splitlines() if "iifname" in line] == [
-        'iifname "wan" ip saddr @spent drop',
+        'iifname "wan" ip saddr @spent drop', 'iifname "wan" ip saddr != @pool drop',
         'iifname "wan" ct state established,related accept', 'iifname "wan" ct status dnat accept',
         'iifname "wan" drop'], "nothing from the internet reaches the slot but the DNAT'd web port and replies"
     assert 'iifname "wan" meta l4proto icmp accept' in entered

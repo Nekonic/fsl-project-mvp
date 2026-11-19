@@ -11,6 +11,7 @@ from accounts import service as accounts
 from match import auth, serializers, service
 
 TAGS = ["match"]
+REFUSAL_HEADER = "X-Error-Code"
 STAFF_TAGS = ["staff"]
 
 
@@ -159,6 +160,13 @@ class SiteRequests(MatchView):
 
 
 class TerminalAuth(MatchView):
+    def handle_exception(self, exc):
+        answer = super().handle_exception(exc)
+        shown = answer.data.get("errors") if isinstance(answer.data, dict) else None
+        if shown:
+            answer[REFUSAL_HEADER] = shown[0]["code"]
+        return answer
+
     def get(self, request, round_id: int):
         service.terminal_open(request.round)
         return Response(status=status.HTTP_204_NO_CONTENT)

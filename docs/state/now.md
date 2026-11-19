@@ -37,7 +37,7 @@ rounds driven by Claude Code, and the ported acceptance suite.
    `vm-terminal.sh` (kali as `kali`, cr-waf as `analyst`, only for a seat
    with a jump grant) are written and tested offline, not on a range.
 2. Cloud step 5: the deploy files are written and tested offline (edge
-   `pool`/`spent` sets, the WAF JSON access log shipped as `nginx_access`,
+   `pool`/`spent` sets and both drops, the WAF JSON access log shipped as `nginx_access`,
    `probe.conf`, `probe-upstream.py`, `analyst.sh`, infra `conntrack` and
    `tcpdump`); bake `cr-infra-bake2` and `cr-waf-bake3` and run the step's
    checks on a slot (`docs/OPENSTACK.md` §3.7).
@@ -57,14 +57,9 @@ rounds driven by Claude Code, and the ported acceptance suite.
   lists them as named exceptions until they move behind `/api/`.
 - `docs/DECISIONS.md` still quotes rulings in Korean, allowed by name in
   `test_no_hangul.py` until translated.
-- The edge drops `@spent` but not addresses outside `@pool` (a probe lease
-  fills no `pool`), so a sudo learner on kali can send from an unused
-  origin-subnet address the HP rule never charges.
-- A closed round's terminal answers 500 (nginx `auth_request`), not 409;
-  `@sign-in` points at `/login/`, which only `front/` will serve.
-- The rest (analyst's leftover processes, the scratch rule-test guesses, the
-  comment scan's reach, `bin/carry-users` mid-load) is in `docs/STATE.md`
-  "Open points".
+- `@sign-in` points at `/login/`, which only `front/` will serve.
+- The rest (the scratch rule-test guesses, the comment scan's reach,
+  `bin/carry-users` mid-load) is in `docs/STATE.md` "Open points".
 
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and

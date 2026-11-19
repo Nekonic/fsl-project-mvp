@@ -177,6 +177,23 @@ def drop_key(box: Runner, name: str, account: str) -> None:
             f"drop the key {name} for {account}")
 
 
+def account_ended(account: str) -> str:
+    who = shlex.quote(account)
+    return (
+        f"set -u; id -u {who} >/dev/null 2>&1 || exit 0; "
+        f"crontab -r -u {who} 2>/dev/null || true; "
+        f"if command -v atq >/dev/null 2>&1; then atq | awk -v who={who} '$NF == who {{print $1}}' | xargs -r atrm; fi; "
+        f"loginctl disable-linger {who} 2>/dev/null || true; "
+        f"loginctl terminate-user {who} 2>/dev/null || true; "
+        f"for attempt in 1 2 3; do pkill -KILL -u {who} || break; sleep 1; done; "
+        f"! pgrep -u {who} >/dev/null"
+    )
+
+
+def end_account(box: Runner, account: str) -> None:
+    as_root(box, account_ended(account), f"end what {account} left running")
+
+
 def open_access(seat_id: int, address: str, box: Runner, account: str, config: JumpConfig) -> Access:
     issued = issue(seat_id, address, config)
     authorize_key(box, issued.grant.public_key, issued.grant.name, account)
