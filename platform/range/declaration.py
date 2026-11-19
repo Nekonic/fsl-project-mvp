@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
-from range import sandbox
-from range.ports import RangeUnavailable, Segment
+from range import stack_plan
+from range.runner import RangeUnavailable, Segment
 
 DECLARATION = Path(__file__).resolve().parent / "declaration.yaml"
 SOURCE = Path(__file__).resolve().parents[2]
@@ -45,7 +44,7 @@ class Declaration:
     hosts: dict[str, Host] = field(default_factory=dict)
     default_origin: str = ""
     defended_site: Site | None = None
-    definitions: dict[str, sandbox.Definition] = field(default_factory=dict)
+    definitions: dict[str, stack_plan.Definition] = field(default_factory=dict)
 
     def check(self) -> None:
         site = self.defended_site
@@ -124,7 +123,7 @@ def _segments(entry, origins: tuple[Origin, ...]) -> tuple[Segment, ...]:
         return tuple(Segment(id=o.id, name=name, origin=o.label) for o in origins)
     return (Segment(id=entry["id"], name=name, origin=entry.get("origin") or ""),)
 
-def _merged(definitions: dict[str, sandbox.Definition]) -> tuple[dict, dict, dict, dict]:
+def _merged(definitions: dict[str, stack_plan.Definition]) -> tuple[dict, dict, dict, dict]:
     roles, compose, hosts, watches = {}, {}, {}, {}
     for wargame, definition in sorted(definitions.items()):
         for device in definition.devices.values():
@@ -142,11 +141,11 @@ def _merged(definitions: dict[str, sandbox.Definition]) -> tuple[dict, dict, dic
     return roles, compose, hosts, watches
 
 def read(path: Path = DECLARATION, source: Path | None = None) -> Declaration:
-    source = Path(source or os.environ.get("CR_SOURCE") or SOURCE)
+    source = Path(source or SOURCE)
     document = yaml.safe_load(Path(path).read_text()) or {}
     entries = document.get("segments") or []
     origins = {entry["id"]: _origins(entry) for entry in entries}
-    definitions = {wargame: sandbox.read(source, wargame) for wargame in sandbox.wargames(source)}
+    definitions = {wargame: stack_plan.read(source, wargame) for wargame in stack_plan.wargames(source)}
     roles, compose, hosts, watches = _merged(definitions)
     found = Declaration(
         segments=tuple(

@@ -1,119 +1,167 @@
+from __future__ import annotations
+
+import json
+import os
 import threading
-import time
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
+from typing import Protocol
 
-from django.conf import settings
-
-from range.ports import Drifted, RangeUnavailable
-
-RESET_WAIT = 1800
-RESET_POLL = 5.0
+from range.runner import Drifted, RangeUnavailable
 
 IDLE = "idle"
-RUNNING = "running"
+BUILDING = "building"
+CONFIGURING = "configuring"
 FAILED = "failed"
+RUNNING = (BUILDING, CONFIGURING)
+WAIT = 1800.0
 
-_guard = threading.Lock()
-_states: dict[int, dict] = {}
+Clock = Callable[[], float]
 
-def _marker(slot: int) -> Path:
-    return Path(settings.RESET_OWED_DIR) / f"slot-{slot}"
 
-def owed() -> list[int]:
-    directory = Path(settings.RESET_OWED_DIR)
-    if not directory.is_dir():
-        return []
-    return sorted(int(path.name.removeprefix("slot-")) for path in directory.glob("slot-*"))
+@dataclass(frozen=True)
+class Refill:
+    slot: int
+    state: str = IDLE
+    wargame: str = ""
+    replaced: tuple[str, ...] = ()
+    deadline: float = 0.0
+    reason: str = ""
 
-def wanted(slot: int) -> str:
-    try:
-        return _marker(slot).read_text().strip()
-    except OSError:
-        return ""
+    @property
+    def running(self) -> bool:
+        return self.state in RUNNING
 
-def _of(slot: int) -> dict:
-    return _states.setdefault(slot, {"state": IDLE, "reason": ""})
+    def shown(self) -> dict:
+        return {"state": "running" if self.running else self.state, "reason": self.reason}
 
-def standing(slot: int = 1) -> dict:
-    with _guard:
-        return dict(_of(slot))
 
-def configured_by_hand(slot: int = 1) -> None:
-    with _guard:
-        if _of(slot)["state"] == FAILED:
-            _of(slot).update(state=IDLE, reason="")
-        if _of(slot)["state"] == IDLE:
-            _marker(slot).unlink(missing_ok=True)
+class Store(Protocol):
+    def get(self, slot: int) -> Refill | None:
+        ...
 
-def claim(slot: int, wargame: str = "") -> bool:
-    with _guard:
-        if _of(slot)["state"] == RUNNING:
+    def put(self, refill: Refill) -> None:
+        ...
+
+    def slots(self) -> list[int]:
+        ...
+
+
+class MemoryStore:
+    def __init__(self):
+        self._held: dict[int, Refill] = {}
+        self._guard = threading.Lock()
+
+    def get(self, slot: int) -> Refill | None:
+        with self._guard:
+            return self._held.get(slot)
+
+    def put(self, refill: Refill) -> None:
+        with self._guard:
+            self._held[refill.slot] = refill
+
+    def slots(self) -> list[int]:
+        with self._guard:
+            return sorted(self._held)
+
+
+class FileStore:
+    def __init__(self, directory: str | Path):
+        self.directory = Path(directory)
+
+    def _path(self, slot: int) -> Path:
+        return self.directory / f"slot-{int(slot)}.json"
+
+    def get(self, slot: int) -> Refill | None:
+        try:
+            held = json.loads(self._path(slot).read_text())
+        except (OSError, ValueError):
+            return None
+        return Refill(**{**held, "replaced": tuple(held.get("replaced") or ())})
+
+    def put(self, refill: Refill) -> None:
+        self.directory.mkdir(parents=True, exist_ok=True)
+        target = self._path(refill.slot)
+        fresh = target.with_name(f".{target.name}.{os.getpid()}.{threading.get_ident()}")
+        fresh.write_text(json.dumps(asdict(refill)))
+        fresh.replace(target)
+
+    def slots(self) -> list[int]:
+        if not self.directory.is_dir():
+            return []
+        return sorted(int(path.stem.removeprefix("slot-")) for path in self.directory.glob("slot-*.json"))
+
+
+_claiming = threading.Lock()
+
+
+def standing(store: Store, slot: int) -> Refill:
+    return store.get(slot) or Refill(slot=slot)
+
+
+def owed(store: Store) -> list[Refill]:
+    return [refill for slot in store.slots() if (refill := standing(store, slot)).running]
+
+
+def claim(store: Store, clock: Clock, slot: int, wargame: str = "", replaced: tuple[str, ...] = (),
+          wait: float = WAIT) -> bool:
+    with _claiming:
+        if standing(store, slot).running:
             return False
-        _marker(slot).parent.mkdir(parents=True, exist_ok=True)
-        _marker(slot).write_text(wargame)
-        _of(slot).update(state=RUNNING, reason="")
+        store.put(Refill(slot=slot, state=BUILDING, wargame=wargame, replaced=tuple(replaced),
+                         deadline=clock() + wait))
         return True
 
-def release(slot: int) -> None:
-    _set(slot, IDLE, "")
 
-def failed(slot: int, reason: str) -> None:
-    _set(slot, FAILED, reason)
+def release(store: Store, slot: int) -> None:
+    store.put(Refill(slot=slot))
 
-def begin(adapter, turn, rebuilt=None, claimed=False, then=None, wargame=""):
-    slot = getattr(adapter, "slot", 1)
-    if not claimed and not claim(slot, wargame):
-        return None
-    worker = threading.Thread(
-        target=_refill, args=(adapter, turn, rebuilt, then, wargame), name=f"cr-slot-refill-{slot}",
-        daemon=True,
-    )
-    worker.start()
-    return worker
 
-def _set(slot: int, state: str, reason: str) -> None:
-    with _guard:
-        _of(slot).update(state=state, reason=reason)
-        if state == IDLE:
-            _marker(slot).unlink(missing_ok=True)
+def failed(store: Store, slot: int, reason: str) -> None:
+    store.put(replace(standing(store, slot), state=FAILED, reason=reason))
 
-def _refill(adapter, turn, rebuilt, then=None, wargame="") -> None:
-    slot = getattr(adapter, "slot", 1)
-    deadline = time.monotonic() + RESET_WAIT
-    gone = {stack for _, stack in rebuilt or ()}
+
+def configured_by_hand(store: Store, slot: int) -> None:
+    if standing(store, slot).state == FAILED:
+        release(store, slot)
+
+
+def advance(store: Store, clock: Clock, adapter) -> Refill:
+    refill = standing(store, adapter.slot)
+    if not refill.running:
+        return refill
     try:
-        while not _refilled(adapter, turn, gone, wargame):
-            _pause_before(deadline, f"slot {slot}'s stack was not created and set up within {RESET_WAIT}s")
-        _until_answered(lambda: _holding(turn, adapter.configure_slot), deadline)
+        refill = _stepped(refill, clock, adapter)
     except Exception as exc:
-        _set(slot, FAILED, str(exc) or type(exc).__name__)
-    else:
-        _set(slot, IDLE, "")
-        if then is not None:
-            then()
+        refill = replace(refill, state=FAILED, reason=str(exc) or type(exc).__name__)
+    store.put(refill)
+    return refill
 
-def _refilled(adapter, turn, gone: set[str], wargame: str) -> bool:
+
+def _stepped(refill: Refill, clock: Clock, adapter) -> Refill:
+    if refill.state == BUILDING:
+        if not _built(refill, adapter):
+            return _waiting(refill, clock, f"slot {refill.slot}'s stack was not created and set up in time")
+        refill = replace(refill, state=CONFIGURING)
     try:
-        with turn:
-            plan = adapter.ensure_slot(wargame=wargame)
+        adapter.configure_slot()
+    except RangeUnavailable as exc:
+        return _waiting(refill, clock, f"the baseline rules did not reach slot {refill.slot} in time: {exc}")
+    return Refill(slot=refill.slot)
+
+
+def _built(refill: Refill, adapter) -> bool:
+    try:
+        plan = adapter.ensure_slot(wargame=refill.wargame)
     except RangeUnavailable:
         return False
     if plan.failures:
         raise Drifted("; ".join(plan.failures))
-    return plan.active and plan.stack_id not in gone
+    return plan.active and plan.stack_id not in refill.replaced
 
-def _holding(turn, step):
-    with turn:
-        return step()
 
-def _until_answered(step, deadline: float):
-    while True:
-        try:
-            return step()
-        except RangeUnavailable as exc:
-            _pause_before(deadline, f"configure did not reach the slot within {RESET_WAIT}s: {exc}")
-
-def _pause_before(deadline: float, gave_up: str) -> None:
-    if time.monotonic() >= deadline:
-        raise Drifted(gave_up)
-    time.sleep(RESET_POLL)
+def _waiting(refill: Refill, clock: Clock, gave_up: str) -> Refill:
+    if clock() >= refill.deadline:
+        return replace(refill, state=FAILED, reason=gave_up)
+    return refill

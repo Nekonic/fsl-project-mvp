@@ -8,8 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from range import clock
-from range.ports import RangeUnavailable
+from range.runner import RangeUnavailable
 
 DEFINITION = "wargames/{wargame}/topology.yaml"
 ROLES = ("kali", "infra", "waf", "target")
@@ -26,6 +25,11 @@ BOOTS = {"kali": ("slot-boot.service",), "waf": ("slot-boot.service", "nginx.ser
 ANSWER_WAIT = 300
 WARGAME_COMPOSE = "/opt/wargames/*/compose.yaml"
 SUDO = "ALL=(ALL) NOPASSWD:ALL"
+TIMESYNCD = "/etc/systemd/timesyncd.conf.d/60-cr.conf"
+
+
+def timesyncd(server: str) -> str:
+    return f"[Time]\nNTP={server}\n"
 
 
 @dataclass(frozen=True)
@@ -269,7 +273,7 @@ def user_data(node: str, role: str, env: dict[str, str], collector: str, manager
     document["hostname"] = node.removeprefix("cr-")
     document["write_files"] = [
         {"path": SLOT_ENV, "permissions": "0644", "content": slot_env(env)},
-        {"path": clock.TIMESYNCD, "permissions": "0644", "content": clock.timesyncd(collector)},
+        {"path": TIMESYNCD, "permissions": "0644", "content": timesyncd(collector)},
     ]
     document["runcmd"] = [["sh", "-c", booted(role, tag, answers)]]
     text = "#cloud-config\n" + yaml.safe_dump(document, sort_keys=False, width=1 << 16)

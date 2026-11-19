@@ -569,3 +569,26 @@ def _captioned(zone, edges, where, others) -> None:
 
 def _overlaps(one, other) -> bool:
     return one[0] < other[2] and other[0] < one[2] and one[1] < other[3] and other[1] < one[3]
+
+ATTACK = "attack"
+DEFENCE = "defence"
+SIDES = (ATTACK, DEFENCE)
+HIDDEN_FROM_ATTACK = ("sensor", "logs")
+
+
+def for_side(drawn: dict, side: str) -> dict:
+    if side not in SIDES:
+        raise ValueError(f"a side is one of {SIDES}, got {side!r}")
+    if side == DEFENCE:
+        return drawn
+    hidden = {node["id"] for node in drawn.get("nodes") or () if node.get("kind") in HIDDEN_FROM_ATTACK}
+    return {
+        **drawn,
+        "nodes": [node for node in drawn.get("nodes") or () if not _touches(node["id"], hidden)],
+        "edges": [edge for edge in drawn.get("edges") or ()
+                  if edge.get("source") not in hidden and edge.get("target") not in hidden],
+    }
+
+
+def _touches(identifier: str, hidden: set[str]) -> bool:
+    return identifier in hidden or any(f":{one}:" in f"{identifier}:" for one in hidden)

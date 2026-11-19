@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from range.declared import Declaration
-from range.ports import RangeUnavailable
+from range.declaration import Declaration
+from range.runner import RangeUnavailable
 
 TAG = "cr.segment.id"
 SLOT_TAG = "cr.slot"

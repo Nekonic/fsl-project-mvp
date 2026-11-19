@@ -5,15 +5,18 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from cr.errors import Unavailable
+
 EXIT_MARK = "cr.exit="
 EXIT_REPORT = f'printf "{EXIT_MARK}%d\\n" "$?" >&2'
 _REPORTED = re.compile(r"(?s)(.*)" + re.escape(EXIT_MARK) + r"(\d+)\n(.*)\Z")
 
-class RangeUnavailable(RuntimeError):
-    pass
+class RangeUnavailable(Unavailable):
+    code = "range_unavailable"
 
-class Drifted(RuntimeError):
-    pass
+
+class Drifted(Unavailable):
+    code = "range_drifted"
 
 @dataclass(frozen=True)
 class Ran:
@@ -73,6 +76,9 @@ class Substrate(Protocol):
         ...
 
     def runner(self, role: str, segment_id: str = "") -> Runner:
+        ...
+
+    def node_runner(self, role: str) -> Runner:
         ...
 
     def launcher(self, segment_id: str) -> Launcher:

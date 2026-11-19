@@ -2,69 +2,59 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
-from django.conf import settings
-from django.http import JsonResponse
-
-from range import substrate
-from range.ports import RangeUnavailable
+from range.runner import RangeUnavailable
 
 TTL = 30.0
 
-_cached: tuple[float, frozenset[str]] = (0.0, frozenset())
-_refreshing = threading.Lock()
 
-def _fresh() -> frozenset[str] | None:
-    age, known = _cached
-    return known if age and time.monotonic() - age < TTL else None
+class ScoredHosts:
+    def __init__(self, adapter, scorer: str = "", ttl: float = TTL, clock: Callable[[], float] = time.monotonic):
+        self.adapter = adapter
+        self.scorer = scorer
+        self.ttl = ttl
+        self.clock = clock
+        self._cached: tuple[float, frozenset[str]] | None = None
+        self._refreshing = threading.Lock()
 
-def scored_hosts() -> frozenset[str]:
-    known = _fresh()
-    if known is not None:
-        return known
-    with _refreshing:
-        known = _fresh()
-        return known if known is not None else _read()
+    def _fresh(self) -> frozenset[str] | None:
+        if self._cached is None:
+            return None
+        read_at, known = self._cached
+        return known if self.clock() - read_at < self.ttl else None
 
-def _read() -> frozenset[str]:
-    global _cached
+    def known(self) -> frozenset[str]:
+        found = self._fresh()
+        if found is not None:
+            return found
+        with self._refreshing:
+            found = self._fresh()
+            if found is None:
+                found = addresses(self.adapter, self.scorer)
+                self._cached = (self.clock(), found)
+            return found
 
-    adapter = substrate()
+    def refuses(self, address: str) -> bool:
+        return bool(address) and address in self.known()
+
+
+def addresses(adapter, scorer: str = "") -> frozenset[str]:
     slots = adapter.every_slot() if hasattr(adapter, "every_slot") else [adapter]
-    with ThreadPoolExecutor(max_workers=len(slots), thread_name_prefix="cr-reach") as pool:
+    with ThreadPoolExecutor(max_workers=max(1, len(slots)), thread_name_prefix="cr-reach") as pool:
         read = list(pool.map(_segments_of, slots))
-
-    scorer = settings.RANGE.roles.get("scorer") or ""
-    known = frozenset(
+    return frozenset(
         node.address
         for segments in read
         for segment in segments
         for node in segment.nodes
         if node.address and node.name != scorer
     )
-    _cached = (time.monotonic(), known)
-    return known
+
 
 def _segments_of(one) -> tuple:
     try:
         return tuple(one.segments())
     except RangeUnavailable:
         return ()
-
-def not_from_inside_the_range(get_response):
-    def middleware(request):
-        address = request.META.get("REMOTE_ADDR") or ""
-        if address in scored_hosts():
-            return JsonResponse(
-                {
-                    "detail": (
-                        f"{address} is a host in the range; the platform "
-                        "refuses requests from scored hosts"
-                    )
-                },
-                status=403,
-            )
-        return get_response(request)
-
-    return middleware
