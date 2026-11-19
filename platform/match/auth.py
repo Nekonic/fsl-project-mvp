@@ -167,3 +167,33 @@ class IsOperator(permissions.BasePermission):
             raise errors.NotSeated(code="not_operator")
         request.lease = lease
         return True
+
+
+class OnLease(permissions.BasePermission):
+    def has_permission(self, request, view) -> bool:
+        signed_in(request)
+        lease = lease_of(request, view)
+        request.lease = lease
+        if operates(request, lease):
+            return True
+        if isinstance(request.auth, Seat):
+            seated = request.auth.round.lease_id == lease.pk
+        else:
+            seated = not isinstance(request.user, BotPrincipal) and Seat.objects.filter(
+                round__lease=lease, user=request.user).exists()
+        if not seated:
+            raise errors.NotSeated()
+        return True
+
+
+class Approved(permissions.BasePermission):
+    def has_permission(self, request, view) -> bool:
+        signed_in(request)
+        if isinstance(request.auth, Seat) or isinstance(request.user, BotPrincipal):
+            raise errors.NotSeated()
+        return True
+
+
+class FramedSessionAuthentication(authentication.SessionAuthentication):
+    def enforce_csrf(self, request):
+        return None

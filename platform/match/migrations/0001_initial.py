@@ -42,6 +42,7 @@ class Migration(migrations.Migration):
                 ('snapshot', models.JSONField(default=dict)),
                 ('baseline', models.JSONField(blank=True, null=True)),
                 ('read_of', models.JSONField(default=dict)),
+                ('traffic', models.JSONField(default=dict)),
                 ('started', models.DateTimeField(blank=True, null=True)),
                 ('ends_at', models.DateTimeField(blank=True, null=True)),
                 ('ended', models.DateTimeField(blank=True, null=True)),

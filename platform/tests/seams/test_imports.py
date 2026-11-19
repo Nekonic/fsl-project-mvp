@@ -419,3 +419,52 @@ def test_the_checker_sees_a_side_reaching_the_other():
     assert other_side_reached("defence/service.py", reached) == ["attack/jump.py"]
     assert other_side_reached("attack/service.py", reached) == ["defence/disable.py"]
     assert other_side_reached("referee/service.py", reached) == []
+
+
+LESSONS_MAY_REACH = {f"{app}/service.py" for app in ("match", "attack", "defence", "referee", "content")}
+
+
+def lessons_strays(path: str, reached: set[str]) -> list[str]:
+    if app_of(path) != "lessons":
+        return sorted(target for target in reached if app_of(target) == "lessons"
+                      and not (layer_of(path) == 8 and path.startswith("lessons/")))
+    return sorted(target for target in reached
+                  if app_of(target) not in (None, "lessons") and target not in LESSONS_MAY_REACH
+                  and target not in SHARED_TO_VIEWS | {"events/log.py"} and not package_marker(target))
+
+
+@pytest.mark.parametrize("path", [path for path in modules() if not legacy(path)])
+def test_rule_6_lessons_reach_only_the_services_and_nothing_reaches_lessons(path):
+    assert lessons_strays(path, targets(path)) == [], f"{path} breaks the lessons boundary"
+
+
+def test_the_checker_sees_lessons_reaching_inside_an_app_and_an_app_reaching_lessons():
+    assert lessons_strays("lessons/facts.py", {"attack/models.py", "attack/service.py", "domain/checks.py"}) == [
+        "attack/models.py"]
+    assert lessons_strays("match/service.py", {"lessons/service.py"}) == ["lessons/service.py"]
+    assert lessons_strays("lessons/views.py", {"lessons/service.py"}) == []
+
+
+SIDE_SERVICES = {"attack/service.py", "defence/service.py"}
+MAY_JOIN_SIDES = {"match/service.py", "match/follow.py", "match/customers.py", "match/site.py",
+                  "match/retention.py", "match/probes.py", "lessons/service.py"}
+
+
+def joins_sides(path: str, reached: set[str]) -> bool:
+    return path not in MAY_JOIN_SIDES and len(reached & SIDE_SERVICES) > 1
+
+
+@pytest.mark.parametrize("path", [path for path in modules() if not legacy(path)])
+def test_rule_7_only_the_match_coordinators_and_lessons_service_import_both_side_services(path):
+    assert not joins_sides(path, targets(path)), f"{path} imports more than one side service"
+
+
+def test_the_checker_sees_a_module_joining_the_sides():
+    assert joins_sides("referee/service.py", SIDE_SERVICES)
+    assert joins_sides("match/views.py", SIDE_SERVICES)
+    assert not joins_sides("match/service.py", SIDE_SERVICES)
+    assert not joins_sides("content/service.py", {"attack/service.py"})
+
+
+def test_the_match_coordinators_sit_in_layer_six():
+    assert {layer_of(path) for path in MAY_JOIN_SIDES if path.startswith("match/")} == {6}

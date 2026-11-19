@@ -2,6 +2,7 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView
 
 from defence import urls as defence
+from match import urls as match
 
 urlpatterns = [
     path("api/", include("accounts.urls")),
@@ -9,7 +10,9 @@ urlpatterns = [
     path("api/", include("content.urls")),
     path("api/", include(defence.urlpatterns)),
     path("api/", include("attack.urls")),
+    path("api/", include(match.urlpatterns)),
     path("", include(defence.gate)),
+    path("", include(match.site)),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
 ]
 

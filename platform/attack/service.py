@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
@@ -30,7 +31,7 @@ from domain.types import (
 )
 from events import log
 from ingest import elastic
-from match.models import Round, Seat
+from match.models import Lease, Round, Seat
 from range import edge
 from range.substrate import substrate
 from referee import service as referee
@@ -782,3 +783,80 @@ def state(found: Round) -> State:
         objectives=tuple(ObjectiveLine(key=one.key, name=one.name, state=one.state)
                          for one in referee.objectives(found)),
         origins=origin_lines(rows), hp=hp_of(found, rows))
+
+
+CUSTOMERS_PROGRAM = "deploy/traffic/users.py"
+
+
+@dataclass(frozen=True)
+class Probed:
+    case: str
+    marker: str
+    request: dict | None
+    status: int
+    body: str
+    output: str
+    source_ip: str
+    started: datetime
+    ended: datetime
+
+
+def start_customers(found: Round, plan: Mapping[str, Any]) -> bool:
+    attacker = range_of(found).runner(ATTACKER)
+    box.place_customers(attacker, (Path(configured().range.source) / CUSTOMERS_PROGRAM).read_text(encoding="utf-8"))
+    return box.run_customers(attacker, json.dumps(dict(plan)))
+
+
+def stop_customers(found: Round) -> None:
+    box.stop_customers(range_of(found).runner(ATTACKER))
+
+
+def customer_records(found: Round, offset: int, limit: int) -> str:
+    return box.customer_records(range_of(found).runner(ATTACKER), offset, limit)
+
+
+def lease_range(lease: Lease):
+    reached = substrate(configured().range)
+    if hasattr(reached, "in_slot") and lease.slot:
+        return reached.in_slot(lease.slot)
+    return reached
+
+
+def cases_of(wargame: Mapping[str, Any]) -> list[dict[str, Any]]:
+    return firing.load_cases(Path(configured().range.source) / CASES / wargame["case_file"])
+
+
+def probe_request(prepared, host: str) -> dict:
+    found = urlsplit(prepared.url)
+    body = prepared.body.decode() if isinstance(prepared.body, bytes) else prepared.body
+    headers = {name: value for name, value in prepared.headers.items()
+               if name.lower() not in SET_BY_PLATFORM}
+    return {"method": prepared.method, "host": host, "path": found.path + (f"?{found.query}" if found.query else ""),
+            "headers": headers, **({"body": body} if body is not None else {})}
+
+
+def fire_probe(lease: Lease, wargame: Mapping[str, Any], case: Mapping[str, Any], marker: str) -> Probed:
+    settings, reached = configured(), lease_range(lease)
+    offered = box.find(reached.describe(), None, settings.box)
+    box.wear_origin(offered, reached.runner(PROXY))
+    started = now()
+    if tools.is_tool_case(dict(case)):
+        launch = box.launch_with(reached.launcher(offered["id"]), settings.box)
+        ran = firing.fire(dict(case), launch, settings.box.target_url, runs=box.SQLMAP_RUNS, marker=marker)
+        return Probed(case=case["name"], marker=marker, request=None, status=0, body="", output=ran.output,
+                      source_ip=offered["source_ip"], started=started, ended=now())
+    attacker = reached.runner(ATTACKER)
+
+    def launch(argv: list[str], timeout: float = firing.REQUEST_TIMEOUT):
+        return attacker(argv, timeout=timeout)
+
+    host = list(wargame["hosts"])[0]
+    hosted = tools.apply_prefetch(with_host(dict(case), host), settings.box.target_url, launch,
+                                  firing.REQUEST_TIMEOUT)
+    prepared = firing.build_request(hosted, settings.box.target_url, marker=marker)
+    request = probe_request(prepared, host)
+    answer, started, ended = sent_over(attacker, prepared.method, prepared.url,
+                                       {**request["headers"], "Host": host, tools.MARKER_HEADER: marker},
+                                       request.get("body"))
+    return Probed(case=case["name"], marker=marker, request=request, status=answer.status, body=answer.body,
+                  output="", source_ip=offered["source_ip"], started=started, ended=ended)

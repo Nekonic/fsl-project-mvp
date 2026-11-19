@@ -65,8 +65,16 @@ REFUSAL_PATHS = {
     "sign-in blocked": (429, "sign_in_blocked", lambda browser, staff, mp: blocked(browser, staff)),
     "sign-up closed": (503, "sign_ups_closed", lambda browser, staff, mp: closed_sign_up(browser, staff, mp)),
     "bad cursor": (400, "invalid", lambda browser, staff, mp: as_staff(
-        browser, staff, lambda signed: signed.get("/api/rounds/1/events/?after=x"))),
+        browser, staff, lambda signed: signed.get(f"/api/rounds/{a_round().pk}/events/?after=x"))),
+    "unknown round": (404, "unknown_round", lambda browser, staff, mp: as_staff(
+        browser, staff, lambda signed: signed.get("/api/rounds/999/events/"))),
 }
+
+
+def a_round():
+    from tests import rounds
+
+    return rounds.opened(rounds.problem())
 
 
 @pytest.mark.parametrize("name", sorted(REFUSAL_PATHS))

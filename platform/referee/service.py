@@ -200,6 +200,10 @@ def observe_effects(found: Round, reach: Reach, actions: Sequence[ActionRecord] 
     return tuple(fell)
 
 
+def fallen_on(lease_id: int) -> bool:
+    return Objective.objects.filter(round__lease_id=lease_id).exists()
+
+
 def losses(found: Round) -> dict[str, Objective]:
     return {objective.key: objective for objective in Objective.objects.filter(round=found)}
 

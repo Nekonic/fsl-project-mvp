@@ -22,7 +22,7 @@ from domain.round_rules import Phase
 from domain.types import ENGINE_IDS, ENGINE_WAF, ENGINES, DetectionRecord
 from events import log
 from ingest import elastic
-from match.models import Round, Seat
+from match.models import Lease, Round, Seat
 from range import declaration, substrate
 from referee import service as referee
 from rules import crs, suricata
@@ -63,14 +63,22 @@ def configured() -> config.Config:
     return config.build(source=Path(settings.CR_SOURCE))
 
 
-def slot_range(found: Round, cfg: config.Config):
+def lease_range(lease: Lease, cfg: config.Config):
     whole = substrate.substrate(cfg.range)
-    return whole.in_slot(found.lease.slot) if found.lease.slot else whole
+    return whole.in_slot(lease.slot) if lease.slot else whole
+
+
+def slot_range(found: Round, cfg: config.Config):
+    return lease_range(found.lease, cfg)
 
 
 def wired(found: Round, cfg: config.Config | None = None) -> ruletest.Wired:
+    return lease_wired(found.lease, cfg)
+
+
+def lease_wired(lease: Lease, cfg: config.Config | None = None) -> ruletest.Wired:
     cfg = cfg or configured()
-    reached = slot_range(found, cfg)
+    reached = lease_range(lease, cfg)
     return ruletest.Wired(
         sensors=tuple(ruletest.Sensor(config=sensor, runner=reached.runner(sensor.role),
                                       node=reached.node_runner(sensor.role)) for sensor in cfg.sensors),
@@ -475,3 +483,32 @@ def kibana_gate(user, method: str, uri: str, headers: Mapping[str, str], body: b
     except (OSError, ValueError):
         return GateAnswer(status=BAD_GATEWAY, refused="kibana.unanswered")
     return GateAnswer(status=status, headers=tuple(kept), body=answered)
+
+
+PROBE_CAPTURES = "/tmp/cr-probes"
+
+
+def detection_only(lease: Lease) -> dict:
+    reached = lease_wired(lease)
+    standing = crs.read(reached.gateway, reached.waf)
+    tuning = ruletest.checked_posture({**{key: value for key, value in standing.items() if key != "file"},
+                                       "paranoia": standing.get("paranoia") or 1, "detection_only": True})
+    try:
+        crs.apply(tuning, reached.gateway, reached.waf)
+    except crs.TuningRefused as refused:
+        raise ruletest.posture_refusal(refused) from refused
+    return tuning
+
+
+def start_capture(lease: Lease, name: str, seconds: int) -> suricata.Capture:
+    reached = lease_wired(lease)
+    if not reached.sensors:
+        raise errors.Unavailable(code="sensor_unavailable")
+    sensor = reached.sensors[0]
+    return suricata.capture(sensor.node, sensor.config, f"{PROBE_CAPTURES}/{name}.pcap", seconds)
+
+
+def finish_capture(lease: Lease, held: suricata.Capture) -> bytes:
+    sensor = lease_wired(lease).sensors[0]
+    suricata.stop_capture(sensor.node, held)
+    return suricata.captured(sensor.node, held)

@@ -91,7 +91,8 @@ class Conflict(DomainError):
     codes = frozenset({
         "conflict", "round_not_started", "round_closed", "round_running", "origins_spent", "stale_version",
         "stale_revision", "test_busy", "already_seated", "seat_taken", "in_use", "step_locked",
-        "own_account", "loot_not_taken",
+        "own_account", "loot_not_taken", "lease_closed", "seats_open", "objective_fallen", "round_started",
+        "probe_running", "round_open",
     })
 
 

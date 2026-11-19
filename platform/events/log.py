@@ -26,6 +26,11 @@ def append(round_id: int, kind: str, body: dict | None = None, seat_side: str | 
     return Event.objects.create(round_id=round_id, kind=kind, seat_side=seat_side, body=given)
 
 
+def forget(round_ids: list[int]) -> int:
+    deleted, _ = Event.objects.filter(round_id__in=list(round_ids)).delete()
+    return deleted
+
+
 def shown(event: Event, viewer: Viewer) -> dict:
     return {"id": event.id, "kind": event.kind, "at": event.at, "seat_side": event.seat_side,
             "body": shown_body(event.kind, event.body, viewer)}

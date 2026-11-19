@@ -37,6 +37,7 @@ class Round(models.Model):
     snapshot = models.JSONField(default=dict)
     baseline = models.JSONField(null=True, blank=True)
     read_of = models.JSONField(default=dict)
+    traffic = models.JSONField(default=dict)
     started = models.DateTimeField(null=True, blank=True)
     ends_at = models.DateTimeField(null=True, blank=True)
     ended = models.DateTimeField(null=True, blank=True)
