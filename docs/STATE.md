@@ -109,10 +109,13 @@ on a slot:
   round ends. Without the box key it gives no access.
 - **The `pool` drop at the edge.** `edge.nft` declares `pool` and the
   platform fills it, but `ip saddr != @pool drop` is not in the forward
-  chain: `attack.service.refill_edge` fills `pool` only for a round with
-  origin budgets, so the drop would cut probe leases (no round) and rounds
-  without attack origins, customers included. Filling `pool` for those first
-  is open.
+  chain. Every started round fills `pool` (`match.service.start_round` calls
+  `attack.fill_pool`, which refuses a box with no origin), but a probe lease
+  has no round and fills nothing, so the drop would cut probe recording.
+  Until a probe lease admits its origins and the drop is added, the HP rule
+  does not bind a learner who uses sudo on kali: kali's internet port allows
+  every address (`0.0.0.0/0` allowed address pair), so an unused address in
+  an origin subnet is in neither set and its requests are never charged.
 - **No route serves the probe recordings.** `match/probes.py` writes them to
   the platform's `CR_PROBES_OUT`; they are copied off the platform VM by hand
   before they are committed.

@@ -39,6 +39,18 @@ def test_refilling_adds_the_pool_and_the_spent_addresses_in_one_load():
                           "add element ip edge spent { 103.152.220.12 }\n")
 
 
+def test_restarting_empties_both_sets_and_adds_the_new_addresses_in_one_load():
+    router = FakeRunner()
+
+    edge.restart(router, ["5.188.10.10"], [])
+
+    [load] = router.sent
+    assert load.argv == ["nft", "-f", "-"]
+    assert load.stdin == ("flush set ip edge pool\n"
+                          "flush set ip edge spent\n"
+                          "add element ip edge pool { 5.188.10.10 }\n")
+
+
 def test_nothing_to_add_sends_nothing():
     router = FakeRunner()
 

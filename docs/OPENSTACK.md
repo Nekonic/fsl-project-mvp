@@ -756,10 +756,11 @@ names; none of it has run, so it is **[unverified]**.
 | `waf` | `cr-waf-bake3` (**(this cloud)**; `cr-waf-bake2` is taken) | `board.com.conf` writes every request to `/var/log/nginx/access.json` as JSON (`time`, `client_ip`, `vhost`, `request`, `status`, `refused` from the one `$refused` map of 400 and 403, `request_id` from `X-Request-ID`), and `log-shipper.conf` ships it under Tag `nginx-access` in place of `refused.log`. `probe.conf` and `probe-upstream.py` for `rules.crs.scratch_check` and `scratch_test`; the exclusion file is created 0644 (root writes it through sudo). `analyst.sh` creates the defence seat's account |
 
 The `pool` set is declared and filled, but `edge.nft` does not yet drop
-`ip saddr != @pool`: the platform fills `pool` only for a round with origin
-budgets (`attack.service.refill_edge`), so that drop would cut a probe lease,
-which has no round, and every round without attack origins, customers
-included.
+`ip saddr != @pool`: every round fills `pool` when it starts, but a probe
+lease has no round and fills nothing, so that drop would cut probe recording
+(`docs/STATE.md`). Each round start empties both sets before it fills them
+(`range.edge.restart`), so a lease's next round does not inherit the last
+round's spent origins.
 
 **The `analyst` account** (`deploy/roles/waf/analyst.sh`), which the defence
 seat's terminal and its jump grant log in as:

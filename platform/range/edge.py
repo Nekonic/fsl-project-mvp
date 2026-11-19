@@ -32,11 +32,21 @@ def admit(router, addresses: Iterable[str], config: EdgeConfig = EdgeConfig()) -
     refill(router, addresses, (), config)
 
 
+def _elements(pool: Iterable[str], spent: Iterable[str], config: EdgeConfig) -> list[str]:
+    return [_element(config, name, found) for name, found in
+            ((config.pool, _addresses(pool)), (config.spent, _addresses(spent))) if found]
+
+
 def refill(router, pool: Iterable[str], spent: Iterable[str], config: EdgeConfig = EdgeConfig()) -> None:
-    lines = [_element(config, name, found) for name, found in
-             ((config.pool, _addresses(pool)), (config.spent, _addresses(spent))) if found]
+    lines = _elements(pool, spent, config)
     if lines:
         _ran(router, ["nft", "-f", "-"], "add the round's addresses", stdin="\n".join(lines) + "\n")
+
+
+def restart(router, pool: Iterable[str], spent: Iterable[str], config: EdgeConfig = EdgeConfig()) -> None:
+    lines = [f"flush set {config.family} {config.table} {name}" for name in (config.pool, config.spent)]
+    lines += _elements(pool, spent, config)
+    _ran(router, ["nft", "-f", "-"], "start the round's addresses afresh", stdin="\n".join(lines) + "\n")
 
 
 def spend(router, address: str, config: EdgeConfig = EdgeConfig()) -> None:

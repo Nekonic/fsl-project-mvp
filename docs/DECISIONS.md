@@ -10160,3 +10160,24 @@ and its checks.
   through the Filebeat steps into `ingest.elastic`. Whether
   `jasonish/suricata`'s entrypoint lets the offline `-r` run write to a
   root-owned scratch log folder mounted at `/scratch` is not known.
+
+## 2026-11-20 — Step 5 review: a round starts with empty edge sets; what the missing `pool` drop leaves open
+
+- **Each round start empties `pool` and `spent`.** A lease holds rounds one
+  after another and its slot is rebuilt only when the lease is released, so
+  the spec's "the `spent` set needs no flush at round end" does not hold:
+  with `edge.nft` now dropping `@spent`, an origin spent in one round stayed
+  dropped in the next, whose fresh budget for it showed it unspent and whose
+  box could be told to wear it. `attack.fill_pool` (round start) now loads
+  the edge through `range.edge.restart`, which flushes both sets and adds the
+  round's addresses in one `nft -f` transaction. The tick's
+  `attack.refill_edge` still only adds, so a spend that lands between its
+  read and its load is never undone.
+- **Why `ip saddr != @pool drop` is still missing, corrected.** The step-5
+  entry gave two reasons; only one holds. Every started round has budgets
+  (`match.service.start_round` calls `attack.fill_pool`, which refuses a box
+  with no origin). The probe lease is the case left: it has no round and
+  fills nothing. What the gap leaves open is stated in `docs/STATE.md`:
+  kali's internet port allows every address, so a learner with sudo can send
+  from an unused address in an origin subnet that neither set holds, and the
+  HP rule does not reach it.
