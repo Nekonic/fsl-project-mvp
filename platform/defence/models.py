@@ -46,6 +46,7 @@ class RuleSet(models.Model):
     body = models.TextField()
     applied_at = models.DateTimeField()
     tested = models.ForeignKey(RuleTest, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    seat = models.ForeignKey(Seat, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     same_as_tested = models.BooleanField(default=False)
     sensors = models.JSONField(default=list)
     drifted_at = models.DateTimeField(null=True, blank=True)

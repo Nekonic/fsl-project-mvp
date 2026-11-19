@@ -468,3 +468,27 @@ def test_the_checker_sees_a_module_joining_the_sides():
 
 def test_the_match_coordinators_sit_in_layer_six():
     assert {layer_of(path) for path in MAY_JOIN_SIDES if path.startswith("match/")} == {6}
+
+
+def test_the_lessons_app_sits_in_layer_seven_under_its_own_http():
+    placed = {path: layer_of(path) for path in modules() if path.startswith("lessons/")}
+
+    assert {"lessons/models.py", "lessons/facts.py", "lessons/service.py"} <= set(placed)
+    assert {layer for path, layer in placed.items() if layer != 8} == {7}
+    assert placed["lessons/views.py"] == placed["lessons/serializers.py"] == 8
+
+
+def test_lessons_facts_is_handed_its_readers_and_imports_no_service():
+    assert sorted(target for target in targets("lessons/facts.py") if target.endswith("/service.py")) == []
+
+
+def test_rule_15_sees_the_lesson_records_point_down_to_match_content_and_auth():
+    from django.apps import apps
+
+    relations = {(model._meta.label, field.related_model._meta.label)
+                 for model in apps.get_models() if model._meta.app_label == "lessons"
+                 for field in model._meta.get_fields()
+                 if field.is_relation and field.many_to_one and field.related_model}
+
+    assert relations == {("lessons.StepResult", "match.Round"), ("lessons.Progress", "content.Problem"),
+                         ("lessons.Progress", "auth.User")}

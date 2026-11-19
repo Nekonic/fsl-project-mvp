@@ -70,7 +70,8 @@ class NotFound(DomainError):
     code = "not_found"
     status = 404
     codes = frozenset({"not_found", "unknown_case", "unknown_tool", "unknown_run", "unknown_origin", "unknown_user",
-                       "unknown_block", "unknown_round", "unknown_lease", "unknown_problem", "unknown_posture"})
+                       "unknown_block", "unknown_round", "unknown_lease", "unknown_problem", "unknown_posture",
+                       "unknown_step"})
 
 
 class NotAllowed(DomainError):

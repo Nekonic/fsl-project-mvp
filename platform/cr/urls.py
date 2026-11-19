@@ -11,6 +11,7 @@ urlpatterns = [
     path("api/", include(defence.urlpatterns)),
     path("api/", include("attack.urls")),
     path("api/", include(match.urlpatterns)),
+    path("api/", include("lessons.urls")),
     path("", include(defence.gate)),
     path("", include(match.site)),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),

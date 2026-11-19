@@ -18,8 +18,10 @@ from cr import config, errors
 from defence import alerts as alert_feed
 from defence import disable, drift, kibana, ruletest
 from defence.models import Detection, DisabledRule, RuleSet, RuleTest
+from domain.checks import AppliedRuleSet
 from domain.round_rules import Phase
 from domain.types import ENGINE_IDS, ENGINE_WAF, ENGINES, DetectionRecord
+from domain.verdicts import VerdictTable
 from events import log
 from ingest import elastic
 from match.models import Lease, Round, Seat
@@ -276,6 +278,30 @@ def latest_test(found: Round, engine: str, seat: Seat | None = None) -> RuleTest
     return tests.order_by("-id").first()
 
 
+def latest_table(found: Round, engine: str, seat: Seat | None = None) -> VerdictTable | None:
+    made = latest_test(found, engine, seat)
+    return None if made is None else ruletest.table_of(made.result)
+
+
+def applied_by_seats(found: Round) -> tuple[AppliedRuleSet, ...]:
+    return tuple(AppliedRuleSet(engine=row.engine, version=row.version, applied_at=row.applied_at,
+                                same_as_tested=row.same_as_tested)
+                 for row in RuleSet.objects.filter(round=found).exclude(seat=None).order_by("applied_at", "id"))
+
+
+def start_tuning(found: Round) -> dict:
+    posture = (found.snapshot.get("round") or {}).get("posture") or found.snapshot.get("start_posture") or {}
+    return dict(posture.get("crs_tuning") or {})
+
+
+def tuning_at(found: Round, at: datetime | None = None) -> dict:
+    sets = RuleSet.objects.filter(round=found, engine=ENGINE_WAF)
+    if at is not None:
+        sets = sets.filter(applied_at__lte=at)
+    head = sets.order_by("-version").first()
+    return json.loads(head.body) if head else start_tuning(found)
+
+
 def tested_of(found: Round, engine: str, seat: Seat | None, tested: int | None) -> RuleTest | None:
     if tested is None:
         return None
@@ -326,9 +352,9 @@ def locked_head(found: Round, engine: str, base_version: int) -> RuleSet | None:
 
 
 def recorded(found: Round, engine: str, head: RuleSet | None, body: str, sensors: Sequence[dict],
-             tested: RuleTest | None) -> RuleSet:
+             tested: RuleTest | None, seat: Seat | None) -> RuleSet:
     made = RuleSet.objects.create(round=found, engine=engine, version=(head.version if head else 0) + 1, body=body,
-                                  applied_at=timezone.now(), tested=tested,
+                                  applied_at=timezone.now(), tested=tested, seat=seat,
                                   same_as_tested=tested is not None and tested.body_sha == ruletest.sha(body),
                                   sensors=list(sensors))
     log.append(found.pk, "rule.applied", {"engine": engine, "version": made.version}, seat_side=DEFENCE)
@@ -350,7 +376,7 @@ def apply_ids(found: Round, text: str, base_version: int, seat: Seat | None = No
         head = locked_head(found, ENGINE_IDS, base_version)
         previous = head.body if head else suricata.current(reached.sensors[0].runner, reached.sensors[0].config)
         sensors = written_to_sensors(text, previous, reached.sensors)
-        return Applied(rule_set=recorded(found, ENGINE_IDS, head, text, sensors, test), sensors=sensors)
+        return Applied(rule_set=recorded(found, ENGINE_IDS, head, text, sensors, test, seat), sensors=sensors)
 
 
 def apply_waf(found: Round, posture: Mapping[str, Any], base_version: int, seat: Seat | None = None,
@@ -364,7 +390,7 @@ def apply_waf(found: Round, posture: Mapping[str, Any], base_version: int, seat:
             crs.apply(tuning, reached.gateway, reached.waf)
         except crs.TuningRefused as refused:
             raise ruletest.posture_refusal(refused) from refused
-        return Applied(rule_set=recorded(found, ENGINE_WAF, head, ruletest.canonical(tuning), (), test), sensors=())
+        return Applied(rule_set=recorded(found, ENGINE_WAF, head, ruletest.canonical(tuning), (), test, seat), sensors=())
 
 
 def apply_posture(found: Round) -> None:
