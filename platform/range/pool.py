@@ -71,24 +71,22 @@ def server_status(stack: str, server: str, provisioned: str) -> str:
     return provisioned if server == ACTIVE else server or BUILDING
 
 
-def phase(plan: Plan, held, resetting: dict, checks: dict, running: str, failed: str) -> tuple[str, list[str]]:
+def phase(plan: Plan, held, resetting: dict, checks: dict, running: str = "running", failed: str = "failed") -> tuple[str, list[str]]:
     if held is not None:
-        return "IN_USE", [f"session {held} holds this slot"]
+        return "IN_USE", [f"lease {held} holds this slot"]
     if resetting["state"] == running:
         return "RESETTING", [
-            "the slot is resetting after a session closed (its stack deleted and created again, its sensor "
-            "back on the baseline rules); wait for it, no need to call configure"
+            "the slot is refilling after a lease closed (its stack deleted and created again, its sensor "
+            "back on the baseline rules)"
         ]
     if resetting["state"] == failed:
         return "RESET_FAILED", [
-            f"the range reset after the last session failed: {resetting['reason']}; "
-            f"POST /api/range/configure/ retries it"
+            f"the slot refill after the last lease failed: {resetting['reason']}"
         ]
     if plan.boot or plan.blocked:
         return "NOT_STANDING", list(plan.blocked) or [f"{name} is not standing" for name in plan.boot]
     if plan.stale:
-        return "STALE", [f"{name} was created from another template or other parameters than the platform's; "
-                         f"POST /api/range/slot/ replaces it" for name in plan.stale]
+        return "STALE", [f"{name} was created from another template or other parameters than the platform's" for name in plan.stale]
     if plan.failures or any(status == SETUP_FAILED for _, _, status in plan.standing):
         return SETUP_FAILED, list(plan.failures) or [
             f"{host} failed its setup; {SETUP_LOG} on it says why"
