@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from range import declared, fabric, sandbox
+from range import declaration, networks, stack_plan
 WARGAMES = sorted(path.parent.name for path in (Path(__file__).resolve().parents[2] / "wargames").glob("*/compose.yaml"))
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,7 +16,7 @@ ROLES = ROOT / "deploy/roles"
 SCRIPTS = ("kali/install.sh", "kali/slot-boot", "waf/install.sh", "waf/slot-boot", "infra/install.sh",
            "infra/slot-boot", "infra/suricatasc", "target/install.sh", "target/wargames")
 FILEBEAT = ROOT / "deploy/filebeat/filebeat.yml"
-DECLARED = declared.read()
+DECLARED = declaration.read()
 YAML_HEADER = "%YAML 1.1\n---\n"
 SHA256 = re.compile(r"[0-9a-f]{64}")
 
@@ -30,15 +30,15 @@ def assigned(role_file: str) -> dict[str, str]:
             re.findall(r'^([A-Z_0-9]+)=("[^"]*"|\S+)$', text(role_file), re.M)}
 
 
-def definition(wargame: str = "board") -> sandbox.Definition:
-    return sandbox.read(ROOT, wargame)
+def definition(wargame: str = "board") -> stack_plan.Definition:
+    return stack_plan.read(ROOT, wargame)
 
 
-def planned(wargame: str = "board") -> sandbox.Sandbox:
-    return sandbox.plan(definition(wargame), 1, DECLARED.origins, DECLARED.default_origin, "10.31.0.2")
+def planned(wargame: str = "board") -> stack_plan.Sandbox:
+    return stack_plan.plan(definition(wargame), 1, DECLARED.origins, DECLARED.default_origin, "10.31.0.2")
 
 
-def device(name: str, wargame: str = "board") -> sandbox.Device:
+def device(name: str, wargame: str = "board") -> stack_plan.Device:
     return definition(wargame).devices[name]
 
 
@@ -123,11 +123,11 @@ def test_each_image_leaves_cloud_init_to_run_again_for_every_slot_booted_from_it
     assert ": > /etc/machine-id" in text(f"{role}/install.sh")
 
 
-@pytest.mark.parametrize("role", sandbox.ROLES)
+@pytest.mark.parametrize("role", stack_plan.ROLES)
 def test_every_unit_a_node_waits_on_before_it_reports_ready_is_one_its_image_installs_and_enables(role):
     script = text(f"{role}/install.sh")
 
-    for unit in sandbox.BOOTS[role]:
+    for unit in stack_plan.BOOTS[role]:
         if unit == "nginx.service":
             assert "nginx.service" in text("waf/slot-boot.service") and "systemctl enable nginx" in script
             continue
@@ -254,9 +254,9 @@ def test_the_waf_ships_the_audit_and_refused_logs_under_the_tags_filebeat_decode
 def test_the_waf_ships_to_the_slot_log_server_by_tcp_on_the_port_the_infra_listens_on():
     shipper = filled("waf/log-shipper.conf", log_server="10.40.0.10")
 
-    assert f'Target="10.40.0.10" Port="{sandbox.SHIPPED_PORT}" Protocol="tcp"' in shipper
-    assert f'port="{sandbox.SHIPPED_PORT}" ruleset="relayed"' in text("infra/log-relay.conf")
-    assert f'tcp dport {sandbox.SHIPPED_PORT} accept' in text("infra/edge.nft")
+    assert f'Target="10.40.0.10" Port="{stack_plan.SHIPPED_PORT}" Protocol="tcp"' in shipper
+    assert f'port="{stack_plan.SHIPPED_PORT}" ruleset="relayed"' in text("infra/log-relay.conf")
+    assert f'tcp dport {stack_plan.SHIPPED_PORT} accept' in text("infra/edge.nft")
 
 
 @pytest.mark.parametrize("wargame", sorted(WARGAMES))
@@ -320,7 +320,7 @@ def test_every_line_the_infra_relays_names_a_sender_filebeat_takes_the_slot_from
 
     assert {tag for _, tag in senders} == {"modsecurity", "nginx", "suricata"}
     assert all(filebeat_slot(sender) == str(slot) for sender, _ in senders)
-    assert relay.count(f'Target="10.31.0.2" Port="{fabric.COLLECTOR_PORT}" Protocol="udp"') == 3
+    assert relay.count(f'Target="10.31.0.2" Port="{networks.COLLECTOR_PORT}" Protocol="udp"') == 3
 
 
 @pytest.mark.parametrize("wargame", sorted(WARGAMES))

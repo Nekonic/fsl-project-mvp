@@ -26,8 +26,7 @@ LAYERS = (
 )
 FRAMEWORKS = ("django", "rest_framework", "drf_spectacular")
 L1_THIRD_PARTY = ("requests", "yaml")
-LEGACY = ("api", "console", "scoring", "disable.py", "game.py", "lesson.py", "lifecycle.py", "scenarios.py",
-          "scoreboard.py", "traffic.py", "wargames.py")
+LEGACY = ("disable.py",)
 
 
 def modules() -> list[str]:

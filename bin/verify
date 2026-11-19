@@ -93,6 +93,20 @@ if [ "$CHANGED" = 1 ]; then
   acceptance_modules="$(sed -n 's/^acceptance-module //p' "$PLAN" | paste -sd, -)"
 fi
 
+for layer in domain seams; do
+  if [ "$CHANGED" = 1 ] || [ ! -d "platform/tests/$layer" ]; then
+    continue
+  fi
+  section "$layer tests"
+  if layer_log="$(cd platform && "$PY" -m pytest "tests/$layer" -q -p no:cacheprovider 2>&1)"; then
+    echo "$layer_log" | tail -1
+    ok "platform/tests/$layer"
+  else
+    echo "$layer_log" | tail -40
+    fail "platform/tests/$layer"
+  fi
+done
+
 section "unit + API tests"
 if [ "$CHANGED" = 1 ] && [ "$unit_kind" = none ]; then
   ok "no unit test reaches the change"

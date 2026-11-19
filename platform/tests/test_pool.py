@@ -3,8 +3,9 @@ import dataclasses
 import pytest
 import yaml
 
-from range import fabric, openstack, pool, sandbox
-from tests import fakecloud
+from cr.config import OpenStackConfig
+from range import networks, openstack, pool, stack_plan
+from testing import fakecloud
 
 BASELINE = (fakecloud.ROOT / openstack.BASELINE_RULES).read_text()
 
@@ -14,7 +15,7 @@ def cloud(monkeypatch):
     fake = fakecloud.Cloud()
     server = fakecloud.serving(fake)
     runner = fakecloud.Runner()
-    runner.answer(sandbox.READY, "ready\n")
+    runner.answer(stack_plan.READY, "ready\n")
     runner.answer("reload-rules", '{"return":"OK"}')
     runner.answer("cat /var/lib/suricata/rules/local.rules", BASELINE)
     monkeypatch.setattr(openstack, "execute", runner)
@@ -41,7 +42,7 @@ def test_each_slot_is_one_stack_and_the_pool_spreads_the_wargames_over_the_slots
     assert [plan.wargame for plan in adapter.plan_slots()] == ["board", "corp", "board"]
     created = stacks(cloud)["cr-slot-2"]
     assert created["parameters"]["control_network"] == "net-mgmt"
-    assert created["parameters"]["senders_group"] == "g-" + fabric.SENDERS_GROUP
+    assert created["parameters"]["senders_group"] == "g-" + networks.SENDERS_GROUP
     assert created["parameters"]["image_kali"] == "cr-kali-bake1" and created["parameters"]["flavor_waf"] == "dba.small"
 
 
@@ -50,11 +51,11 @@ def test_the_slots_share_three_lan_security_groups_and_the_fabric_teardown_remov
     for one in adapter.every_slot():
         one.ensure_slot()
 
-    lan_groups = {group["id"]: group for group in cloud.groups if group["name"].startswith(fabric.LAN_GROUP_PREFIX)}
+    lan_groups = {group["id"]: group for group in cloud.groups if group["name"].startswith(networks.LAN_GROUP_PREFIX)}
     assert len(lan_groups) == 3, "a pool of any size adds three groups, not five per slot"
     used = {group for port in cloud.ports for group in port.get("security_groups") or ()}
     assert set(lan_groups) <= used
-    steps = fabric.teardown(adapter.declared, [], [], [], cloud.groups)
+    steps = networks.teardown(adapter.declared, [], [], [], cloud.groups)
     assert {("group", ident) for ident in lan_groups} <= set(steps)
 
 
@@ -156,12 +157,12 @@ def test_every_node_of_a_stack_takes_the_platform_s_own_public_key_for_its_manag
 
 def test_the_pool_holds_as_many_slots_of_each_wargame_as_the_cloud_settings_ask_for(cloud):
     declared = fakecloud.adapter(cloud).declared
-    signed = {"keystone": "http://127.0.0.1:1", "user": "u", "password": "p", "project": "cr",
-              "ssh_key": "/nonexistent", "region": "RegionOne", "interface": "public", "domain": "Default"}
-    adapter = openstack.connect(declared, pool="board=3 corp=1", **signed)
+    signed = OpenStackConfig(keystone="http://127.0.0.1:1", user="u", password="p", project="cr",
+                             ssh_key="/nonexistent", region="RegionOne", interface="public", domain="Default")
+    adapter = openstack.connect(dataclasses.replace(signed, pool="board=3 corp=1"), declared)
 
     assert adapter.slots == 4 and adapter.reach.ssh_user == "ubuntu"
     assert [one.wargame for one in adapter.every_slot()] == ["board", "board", "board", "corp"]
     assert pool.assigned(5, ("board", "corp"), (("board", 3), ("corp", 1))) == ""
     with pytest.raises(openstack.RangeUnavailable, match="CR_OPENSTACK_POOL"):
-        openstack.connect(declared, pool="board=0", **signed)
+        openstack.connect(dataclasses.replace(signed, pool="board=0"), declared)

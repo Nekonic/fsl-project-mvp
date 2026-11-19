@@ -16,12 +16,12 @@ GONE = (
 )
 
 PENDING = {
-    "redteam/harness.py": "moves to platform/attack/firing.py",
     "redteam/run.py": "moves to platform/attack or test/",
-    "platform/tests/test_harness.py": "goes with redteam/harness.py",
     "platform/vm-terminal.sh": "rewritten on seat-token auth",
     "bin/prune": "re-pointed at the new tables",
 }
+
+REFUSES_THE_OLD_KIND = {"platform/tests/domain/test_problems.py"}
 
 
 def tracked():
@@ -31,7 +31,7 @@ def tracked():
 
 def is_held_or_prose(name):
     return (name.startswith(("platform/carry/", "docs/")) or name.endswith(".md")
-            or name == SELF or not (ROOT / name).is_file())
+            or name == SELF or name in REFUSES_THE_OLD_KIND or not (ROOT / name).is_file())
 
 
 def referencing():

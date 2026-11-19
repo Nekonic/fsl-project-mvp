@@ -1,7 +1,7 @@
 import pathlib
 
-from range import declared, openstack, sandbox
-from tests.test_rules_port import RELOAD
+from range import declaration, openstack, stack_plan
+from tests.seams.test_suricata import RELOAD
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 EXTRA = (("second-sensor", "/var/lib/suricata/rules/local.rules", RELOAD),)
@@ -17,8 +17,8 @@ class Standing:
         return self.sensors[role]
 
 def test_the_one_sensor_stands_inline_behind_the_waf_on_the_slot_s_infra_node():
-    for wargame in sandbox.wargames(ROOT):
-        definition = sandbox.read(ROOT, wargame)
+    for wargame in stack_plan.wargames(ROOT):
+        definition = stack_plan.read(ROOT, wargame)
         sensor = definition.filling("sensor")
         legs = [port for port in definition.ports if port.device == sensor.name]
 
@@ -27,7 +27,7 @@ def test_the_one_sensor_stands_inline_behind_the_waf_on_the_slot_s_infra_node():
 
 
 def test_the_sensor_starts_on_the_shipped_baseline_rules():
-    stack = declared.read()
+    stack = declaration.read()
     entry = stack.hosts[stack.roles["sensor"]]
 
     assert entry.rules == "/var/lib/suricata/rules/local.rules"
