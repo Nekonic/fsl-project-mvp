@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+from cr.errors import Unavailable
+
 MYSQL = ["env", "MYSQL_PWD=wordpress", "mysql", "-N", "-uwordpress", "wordpress", "-e"]
 CLIENT_WARNING = "mysql: [Warning]"
 
@@ -20,8 +22,8 @@ PUBLISHED_POSTS = (
 )
 
 
-class StateUnavailable(RuntimeError):
-    pass
+class StateUnavailable(Unavailable):
+    code = "ground_truth_unavailable"
 
 
 def _rows(runner, sql: str) -> list[list[str]]:

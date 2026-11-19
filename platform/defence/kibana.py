@@ -1,6 +1,5 @@
 import fnmatch
 import json
-import os
 import re
 import time
 import urllib.error
@@ -8,7 +7,8 @@ import urllib.parse
 import urllib.request
 import uuid
 
-OBJECTS = f"{os.environ.get('CR_SOURCE', '/app')}/deploy/kibana/objects.ndjson"
+from cr.config import KibanaConfig
+
 BASE_PATH = "/kibana"
 DATA_VIEW = "logs"
 ALERT_SEARCH = "alerts"
@@ -30,7 +30,6 @@ SPACE_FEATURES_OFF = (
     "filesManagement", "savedObjectsManagement", "savedObjectsTagging", "osquery", "actions", "generalCases",
     "guidedOnboardingFeature", "rulesSettings", "maintenanceWindow", "stackAlerts", "fleetv2", "fleet", "monitoring",
 )
-URL = os.environ.get("KIBANA_URL", "")
 SESSION_VIEW_NAME = "logs-*"
 SPACE_NAME = "SOC"
 SPACE_PREFIX = "soc-"
@@ -355,27 +354,27 @@ def session_search(view):
     }
 
 
-def ensure_session_view(pattern, waf, send=None):
+def ensure_session_view(pattern, waf, config: KibanaConfig, send=None):
     try:
-        with open(OBJECTS, "rb") as objects:
+        with open(config.objects, "rb") as objects:
             view = session_view(pattern, waf, shared_runtime(objects.read()))
         send = send or send_json
-        ensure_space(URL, view["id"], send)
+        ensure_space(config.url, view["id"], send)
         lines = "\n".join(json.dumps(found) for found in (view, session_search(view))).encode()
-        imported = send(import_request(space_base(URL, view["id"]), lines))
+        imported = send(import_request(space_base(config.url, view["id"]), lines))
         if not imported.get("success"):
             raise Refused(f"Kibana refused the data view for {pattern}: {imported.get('errors')}")
-        send(settings_request(space_base(URL, view["id"]), SPACE_SETTINGS | {"defaultIndex": view["id"]}))
+        send(settings_request(space_base(config.url, view["id"]), SPACE_SETTINGS | {"defaultIndex": view["id"]}))
         return view["id"]
     except (Refused, OSError, ValueError, KeyError) as exc:
         print(f"kibana: no session data view for {pattern}: {exc}", flush=True)
         return None
 
 
-def session_view_ready(pattern, waf, send=None, now=time.monotonic, again=False):
+def session_view_ready(pattern, waf, config: KibanaConfig, send=None, now=time.monotonic, again=False):
     made, at = VIEWS.get(pattern, (False, None))
     if again or not made and (at is None or now() - at >= VIEW_RETRY):
-        made = ensure_session_view(pattern, waf, send) is not None
+        made = ensure_session_view(pattern, waf, config, send) is not None
         VIEWS[pattern] = (made, now())
     return made
 
@@ -495,9 +494,9 @@ def shown_as_the_view_shows(method, uri, body):
     return json.dumps(given).encode()
 
 
-def forward(method, uri, headers, body, send=urllib.request.urlopen):
+def forward(method, uri, headers, body, config: KibanaConfig, send=urllib.request.urlopen):
     body = shown_as_the_view_shows(method, uri, body)
-    origin = "{0.scheme}://{0.netloc}".format(urllib.parse.urlsplit(URL))
+    origin = "{0.scheme}://{0.netloc}".format(urllib.parse.urlsplit(config.url))
     sent = {name: value for name, value in headers.items()
             if name.lower() in FORWARDED_HEADERS or name.lower().startswith(FORWARDED_PREFIXES)}
     request = urllib.request.Request(origin + uri, data=body or None, method=method, headers=sent)
@@ -510,16 +509,13 @@ def forward(method, uri, headers, body, send=urllib.request.urlopen):
         return answer.getcode(), kept, answer.read()
 
 
-def main():
-    base = URL or f"http://kibana:5601{BASE_PATH}"
+def set_up(config: KibanaConfig, send=send_json, pause=time.sleep):
     try:
-        with open(OBJECTS, "rb") as objects:
+        with open(config.objects, "rb") as objects:
             ndjson = objects.read()
     except OSError as exc:
-        print(f"no saved objects at {OBJECTS}: {exc}", flush=True)
-        return
-
-    print(bring_up(base, ndjson, send_json, time.sleep), flush=True)
+        return f"no saved objects at {config.objects}: {exc}"
+    return bring_up(config.base, ndjson, send, pause)
 
 
 def bring_up(base, ndjson, send, pause):
@@ -539,7 +535,3 @@ def bring_up(base, ndjson, send, pause):
             last = "could not reach Kibana"
         pause(PAUSE)
     return f"{last}; the data view, alert search and dashboard are missing"
-
-
-if __name__ == "__main__":
-    main()

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import re
-import uuid
-from datetime import datetime, timezone
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -11,7 +10,7 @@ import requests
 import yaml
 from requests.utils import requote_uri
 
-from redteam.tools import (
+from attack.tools import (
     MARKER_HEADER,
     STARTUP_FAILURE,
     ToolUnavailable,
@@ -23,23 +22,26 @@ from redteam.tools import (
 )
 
 REQUEST_TIMEOUT = 15.0
-TOOL_TIMEOUT = SESSION_OPEN_TIMEOUT = 600.0
-
-DEFAULT_TOOL_TARGET = "http://board.com"
+TOOL_TIMEOUT = 600.0
 
 _PERCENT_ESCAPE = re.compile(r"%([0-9a-fA-F]{2})")
 
-class CaseRequestAltered(RuntimeError):
+Launch = Callable[..., Any]
+
+
+class CaseRequestAltered(ValueError):
     pass
+
 
 def load_cases(path: str | Path) -> list[dict[str, Any]]:
     return yaml.safe_load(Path(path).read_text(encoding="utf-8")) or []
 
-def build_request(case: dict[str, Any], base_url: str) -> requests.PreparedRequest:
+
+def build_request(case: dict[str, Any], base_url: str, marker: str | None = None) -> requests.PreparedRequest:
     spec = case["request"]
     headers: dict[str, str] = dict(spec.get("headers") or {})
-    if case.get("correlation") == "marker":
-        headers[MARKER_HEADER] = case["case_id"]
+    if marker or case.get("correlation") == "marker":
+        headers[MARKER_HEADER] = marker or case["case_id"]
 
     return requests.Request(
         method=spec.get("method", "GET"),
@@ -50,6 +52,7 @@ def build_request(case: dict[str, Any], base_url: str) -> requests.PreparedReque
         params=spec.get("params"),
     ).prepare()
 
+
 def check_path_preserved(declared_path: str, prepared_url: str) -> None:
     sent = _canonical_path(prepared_url)
     declared = _canonical_path(declared_path)
@@ -59,100 +62,44 @@ def check_path_preserved(declared_path: str, prepared_url: str) -> None:
             f"sent {sent!r}. Ground truth would be false. Use `%2e%2e` instead of `..`."
         )
 
+
 def _canonical_path(url_or_path: str) -> str:
     path = urlsplit(requote_uri(url_or_path)).path
     return _PERCENT_ESCAPE.sub(lambda m: "%" + m.group(1).upper(), path)
+
 
 def case_meta(case: dict[str, Any]) -> dict[str, Any]:
     if is_tool_case(case):
         return {"tool": case["tool"], "args": list(case.get("args") or [])}
     return {"request": case["request"]}
 
-def run(
-    cases: list[dict[str, Any]],
-    platform_url: str,
-    launch,
-    tool_target_url: str = DEFAULT_TOOL_TARGET,
-    scenario: str = "board", runs: str | None = None,
-    announce=lambda session_id: None,
-    http: requests.Session | None = None,
-) -> int:
-    http = http or requests.Session()
-    platform_url = platform_url.rstrip("/")
-    opened = http.post(
-        f"{platform_url}/api/sessions/",
-        json={"scenario": scenario},
-        timeout=SESSION_OPEN_TIMEOUT,
-    )
-    opened.raise_for_status()
-    session_id = opened.json()["id"]
-    announce(session_id)
 
-    try:
-        for case in cases:
-            case = dict(case)
-            case.setdefault("case_id", str(uuid.uuid4()))
-            case.setdefault("correlation", "marker")
-
-            started_at = datetime.now(timezone.utc)
-            fire(case, launch, tool_target_url, runs)
-            _record(http, platform_url, session_id, case, started_at, datetime.now(timezone.utc))
-    finally:
-        http.post(
-            f"{platform_url}/api/sessions/{session_id}/close/", timeout=REQUEST_TIMEOUT
-        )
-    return session_id
-
-def fire(case: dict[str, Any], launch, tool_target_url: str = DEFAULT_TOOL_TARGET, runs: str | None = None):
+def fire(case: dict[str, Any], launch: Launch, target_url: str, runs: str | None = None):
     if is_tool_case(case):
-        return fire_tool(case, tool_target_url, launch, runs)
-    case = apply_prefetch(case, tool_target_url, launch, REQUEST_TIMEOUT)
-    prepared = build_request(case, tool_target_url)
+        return fire_tool(case, target_url, launch, runs)
+    case = apply_prefetch(case, target_url, launch, REQUEST_TIMEOUT)
+    prepared = build_request(case, target_url)
     check_path_preserved(case["request"]["path"], prepared.url)
     return fire_http(case, prepared, launch)
 
-def _on_attacker(case: dict[str, Any], image: str, argv: list[str], launch):
+
+def _on_attacker(case: dict[str, Any], argv: list[str], launch: Launch):
     try:
-        return launch(image, argv, timeout=TOOL_TIMEOUT)
+        return launch(argv, timeout=TOOL_TIMEOUT)
     except OSError as exc:
         raise unavailable(case["name"], str(exc)) from exc
 
-def fire_http(case: dict[str, Any], prepared: requests.PreparedRequest, launch):
-    result = _on_attacker(case, *curl_argv(prepared, REQUEST_TIMEOUT), launch)
+
+def fire_http(case: dict[str, Any], prepared: requests.PreparedRequest, launch: Launch):
+    result = _on_attacker(case, curl_argv(prepared, REQUEST_TIMEOUT), launch)
     if result.exit_code != 0:
         raise ToolUnavailable(f"{case['name']}: the request never reached the target "
-            f"from the attacker box (curl exit {result.exit_code}): {result.output.strip()[:200]}")
+                              f"from the attacker box (curl exit {result.exit_code}): {result.output.strip()[:200]}")
     return result
 
-def fire_tool(case: dict[str, Any], target_url: str, launch, runs: str | None = None):
-    result = _on_attacker(case, *tool_argv(case, target_url, runs), launch)
+
+def fire_tool(case: dict[str, Any], target_url: str, launch: Launch, runs: str | None = None):
+    result = _on_attacker(case, tool_argv(case, target_url, runs), launch)
     if result.exit_code == STARTUP_FAILURE:
         raise unavailable(case["name"], result.output.strip()[:200])
-    if result.exit_code != 0:
-        print(f"  . {case['name']}: tool exited {result.exit_code}")
     return result
-
-def _record(
-    http: requests.Session,
-    platform_url: str,
-    session_id: int,
-    case: dict[str, Any],
-    started_at: datetime,
-    ended_at: datetime,
-) -> None:
-    response = http.post(
-        f"{platform_url}/api/sessions/{session_id}/cases/",
-        json={
-            "case_id": case["case_id"],
-            "name": case["name"],
-            "malicious": case["malicious"],
-            **{key: case.get(key) or "" for key in ("stage", "technique", "pattern", "expect")},
-            "correlation": case["correlation"],
-            "source_ip": case.get("source_ip"),
-            "started_at": started_at.isoformat(),
-            "ended_at": ended_at.isoformat(),
-            "meta": case_meta(case),
-        },
-        timeout=REQUEST_TIMEOUT,
-    )
-    response.raise_for_status()

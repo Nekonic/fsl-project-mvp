@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import os
 import re
 from typing import Any
 from urllib.parse import urlsplit
+
+from cr.errors import Unavailable
 
 MARKER_HEADER = "X-Request-ID"
 STATUS = re.compile(r"http_code=(\d{3})")
@@ -20,17 +21,23 @@ CONCLUSIONS_KEPT = 4
 LINE_KEPT = 160
 ABORTED = re.compile(r"\[CRITICAL\][^\n]*does not exist|Traceback|user (quit|aborted)", re.IGNORECASE)
 
-TOOL_IMAGE = os.environ.get("CR_TOOL_IMAGE", "cr-kali")
+FREE_TOOLS = ("curl", "dirb", "ffuf", "gobuster", "hydra", "nikto", "nmap", "sqlmap", "whatweb")
+MOST_ARGS = 64
+LONGEST_ARG = 4096
 
-class ToolUnavailable(RuntimeError):
+
+class ToolUnavailable(Unavailable):
+    code = "tool_unavailable"
+
+
+class UnknownTool(ValueError):
     pass
 
 STARTUP_FAILURE = 125
 
 def unavailable(case_name: str, detail: str) -> ToolUnavailable:
     return ToolUnavailable(
-        f"{case_name}: the tool did not run ({TOOL_IMAGE}). {detail} "
-        f"The attacker host must be up: GET /api/range/ready/"
+        f"{case_name}: the tool did not run on the attacker box. {detail}"
     )
 
 def is_tool_case(case: dict[str, Any]) -> bool:
@@ -39,12 +46,12 @@ def is_tool_case(case: dict[str, Any]) -> bool:
 def dumps(case: dict[str, Any]) -> bool:
     return "--dump" in (case.get("args") or [])
 
-def fetch_argv(url: str, timeout: float, headers: dict | None = None) -> tuple[str, list[str]]:
+def fetch_argv(url: str, timeout: float, headers: dict | None = None) -> list[str]:
     argv = ["curl", "-sS", "-i", "--max-time", str(int(timeout))]
     for name, value in (headers or {}).items():
         argv += ["-H", f"{name}: {value}"]
     argv.append(url)
-    return TOOL_IMAGE, argv
+    return argv
 
 PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
@@ -63,9 +70,9 @@ def apply_prefetch(case: dict[str, Any], base_url: str, launch, timeout: float) 
         return case
     headers = {name: value for name, value in ((case.get("request") or {}).get("headers") or {}).items()
                if not PLACEHOLDER.search(str(value))}
-    image, argv = fetch_argv(f"{base_url.rstrip('/')}{spec['from']}", timeout, headers)
+    argv = fetch_argv(f"{base_url.rstrip('/')}{spec['from']}", timeout, headers)
     try:
-        result = launch(image, argv, timeout=timeout)
+        result = launch(argv, timeout=timeout)
     except OSError as exc:
         raise unavailable(case["name"], str(exc)) from exc
     if result.exit_code != 0:
@@ -82,7 +89,7 @@ def apply_prefetch(case: dict[str, Any], base_url: str, launch, timeout: float) 
     request = {key: value for key, value in case["request"].items() if key != "prefetch"}
     return dict(case, request=_inject(request, {"nonce": found.group(1), **found.groupdict()}))
 
-def curl_argv(prepared: Any, timeout: float) -> tuple[str, list[str]]:
+def curl_argv(prepared: Any, timeout: float) -> list[str]:
     argv = [
         "curl", "-sS", "-o", "/dev/null", "-w", "http_code=%{http_code}\n",
         "--max-time", str(int(timeout)), "--path-as-is",
@@ -95,9 +102,9 @@ def curl_argv(prepared: Any, timeout: float) -> tuple[str, list[str]]:
         body = prepared.body
         argv += ["--data-binary", body.decode() if isinstance(body, bytes) else body]
     argv.append(prepared.url)
-    return TOOL_IMAGE, argv
+    return argv
 
-def tool_argv(case: dict[str, Any], target_url: str, runs: str | None = None) -> tuple[str, list[str]]:
+def tool_argv(case: dict[str, Any], target_url: str, runs: str | None = None) -> list[str]:
     host = urlsplit(target_url).hostname or ""
     args = [
         str(a).replace("{target}", target_url.rstrip("/")).replace("{target_host}", host)
@@ -109,7 +116,21 @@ def tool_argv(case: dict[str, Any], target_url: str, runs: str | None = None) ->
         if case["tool"] == "sqlmap" and runs:
             args.append(f"--output-dir={runs}/{case['case_id']}")
 
-    return TOOL_IMAGE, [case["tool"], *args]
+    return [case["tool"], *args]
+
+
+def free_argv(tool: str, args: list[str], marker: str | None = None) -> list[str]:
+    if tool not in FREE_TOOLS:
+        raise UnknownTool(f"no tool {tool!r}; the box offers {list(FREE_TOOLS)}")
+    if not isinstance(args, list) or len(args) > MOST_ARGS or not all(
+            isinstance(arg, str) and len(arg) <= LONGEST_ARG and "\x00" not in arg for arg in args):
+        raise ValueError(f"args is a list of at most {MOST_ARGS} strings of at most {LONGEST_ARG} characters")
+    marked = []
+    if marker and tool == "curl":
+        marked = ["-H", f"{MARKER_HEADER}: {marker}"]
+    elif marker and tool == "sqlmap":
+        marked = [f"--headers={MARKER_HEADER}: {marker}"]
+    return [tool, *marked, *args]
 
 def status(output: str) -> int:
     found = STATUS.findall(output if isinstance(output, str) else "")
