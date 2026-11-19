@@ -213,8 +213,11 @@ fsl-project-mvp/
       test/ *.test.ts(x)
   bots/
     README.md                       rules of play, HP rule, error codes (English)
-    cli.py                          `python -m bots.cli <operation> --json '{...}'` over the generated client
-    tools.py                        tagged operations -> JSON Schema tool specs (generated at build)
+    cli.py                          `python -m bots.cli <operation> --json '{...}'`, plus `tools`, `prompt`, `call` and `run`
+    tools.py                        tagged operations of the committed schema -> JSON Schema tool specs per side
+    calls.py                        one tool call through the generated client with the seat token
+    play.py  provider.py            the turn loop and the provider interface `turn(system, tools, transcript)`
+    signin.py                       signed-in and seated clients, shared with `test/` and `bin/`
     prompts/ attacker.md defender.md claude_code.md
     client/                         generated from openapi/schema.yaml (not committed)
   redteam/
@@ -666,7 +669,7 @@ The `spent` set needs no flush at round end: the slot stack is rebuilt when the 
 
 - **Contract:** drf-spectacular exports `openapi/schema.yaml`, which is committed. `tests/contract/test_schema_fresh.py` fails when it is stale. `test_schema_complete.py` fails on any `/api/` route missing from the schema, any non-GET operation without a request serializer, any response without a serializer, any attack or defence operation without exactly one side tag, and any `DomainError` code missing from the error-code enum. Per-side schemas are served at `/api/schema/attack/` and `/api/schema/defence/`.
 - **Client:** `bin/gen-clients` generates `bots/client/` (openapi-python-client) and `front/src/api/schema.d.ts` (openapi-typescript). Neither is committed: they carry generator docstrings and JSDoc, and the no-comments rule has no exception for them. `bin/verify`, the platform Dockerfile and `images.yml` generate them before use. `test/` and the bots use the generated Python client, so a path change breaks them at once.
-- **One surface:** `bots/cli.py` exposes each operation as `python -m bots.cli <operation> --json '{...}'` with the seat token in the environment, and `bots/tools.py` turns the tagged operations into JSON Schema tool specs. Any agent, Claude Code or another model, drives a seat through the CLI or the tool specs. A loop for a non-agent model is added only when one is wired in.
+- **One surface:** `bots/cli.py` exposes each operation as `python -m bots.cli <operation> --json '{...}'` with the seat token in the environment, and `bots/tools.py` turns the tagged operations into JSON Schema tool specs: a side's own operations plus the round reads (`round_read`, `round_events`, `round_topology`, `round_score` without the staff-only `correlation`) and `lease_heartbeat`, never the other side's, and not `defence_kibana`, which is for human seats. Any agent, Claude Code or another model, drives a seat through the CLI or the tool specs. A non-agent model plugs into `bots/play.py`'s turn loop through `bots/provider.py` (`run --provider package.module:factory`); none is wired in.
 - **How Claude Code drives a seat:**
   1. The operator creates a round with a bot seat (`POST /api/leases/<l>/rounds/`) and receives the seat token once.
   2. Claude Code is started with `bots/prompts/claude_code.md` plus the side prompt: the rules of play, the HP rule, the error codes and the CLI.

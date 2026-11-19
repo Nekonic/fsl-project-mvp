@@ -98,4 +98,4 @@ Every refusal is `{errors: [{path, code, line?, params?}]}`; attack refusals add
 | `suricata_syntax`, `unread_sid` | 422 | the Suricata text was refused, with `line` |
 | `crs_refused`, `apply_refused` | 422 | the CRS posture or the apply was refused |
 | `attacker_unavailable`, `tool_unavailable`, `range_unavailable` | 503 | the attacker box or the range is not answering |
-| `sensor_unavailable`, `elastic_unavailable` | 503 | a sensor or the alert store is not answering |
+| `sensor_unavailable`, `waf_unavailable`, `elastic_unavailable` | 503 | a sensor, the WAF or the alert store is not answering |

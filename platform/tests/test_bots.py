@@ -316,6 +316,27 @@ def test_every_tool_and_code_the_prompts_and_readme_name_exists():
         assert named_codes <= codes, f"{text.name}: {sorted(named_codes - codes)}"
 
 
+SIDE_CODES = {
+    "attacker.md": {"not_seated", "invalid", "unknown_case", "unknown_tool", "unknown_run", "round_not_started",
+                    "round_closed", "origins_spent", "attacker_unavailable", "range_unavailable"},
+    "defender.md": {"invalid", "suricata_syntax", "crs_refused", "apply_refused", "unread_sid", "stale_version",
+                    "test_busy", "round_not_started", "round_closed", "sensor_unavailable", "waf_unavailable",
+                    "elastic_unavailable"},
+}
+
+
+def errors_named(path: Path) -> set[str]:
+    return set(re.findall(r"`([a-z]+(?:_[a-z]+)*)`", path.read_text().partition("## Errors")[2]))
+
+
+@pytest.mark.parametrize("prompt", sorted(SIDE_CODES))
+def test_each_side_prompt_and_the_readme_name_every_error_code_the_design_gives_that_side(prompt):
+    codes = SIDE_CODES[prompt]
+
+    assert codes - errors_named(REPO / "bots" / "prompts" / prompt) == set()
+    assert codes - errors_named(REPO / "bots" / "README.md") == set()
+
+
 class Scripted:
     def __init__(self, turns):
         self.turns = list(turns)

@@ -48,5 +48,5 @@ refusal of benign traffic is a false positive.
 Every refusal has the shape `{errors: [{path, code, line?, params?}]}`. Codes you will meet:
 `round_not_started`, `round_closed`, `stale_version`, `test_busy`, `suricata_syntax` (with `line`),
 `crs_refused` (with a field `path`), `apply_refused`, `unread_sid`, `not_seated`, `invalid` and the field codes,
-`sensor_unavailable`, `elastic_unavailable`. A refusal with `"local": true` came from your
+`sensor_unavailable`, `waf_unavailable`, `elastic_unavailable`. A refusal with `"local": true` came from your
 own tool layer before anything was sent: fix the arguments and call again.
