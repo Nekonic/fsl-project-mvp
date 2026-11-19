@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {name: platform, context: ., file: platform/Dockerfile, sources: platform pyproject.toml uv.lock}
+          - {name: platform, context: ., file: platform/Dockerfile, sources: platform strings/server.json pyproject.toml uv.lock}
           - {name: board, context: wargames/board/app}
           - {name: corp, context: wargames/corp/app}
           - {name: corp-db, context: wargames/corp/db}

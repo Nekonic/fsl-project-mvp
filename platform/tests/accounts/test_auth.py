@@ -124,3 +124,21 @@ def test_a_session_request_without_the_csrf_token_is_refused(db, forget_counts, 
     refused(strict.post("/api/auth/logout/"), 403, "csrf_failed")
     strict.credentials(HTTP_X_CSRFTOKEN=strict.cookies["cr_csrf"].value)
     assert strict.post("/api/auth/logout/").status_code == 204
+
+
+def test_a_csrf_refusal_leaves_the_request_anonymous_rather_than_failing_again_on_each_read(db, learner):
+    from django.contrib.auth.models import AnonymousUser
+    from django.contrib.sessions.backends.db import SessionStore
+    from rest_framework import exceptions
+    from rest_framework.request import Request
+    from rest_framework.test import APIRequestFactory
+
+    sent = APIRequestFactory(enforce_csrf_checks=True).post("/api/auth/logout/", {}, format="json")
+    sent.session, sent.user = SessionStore(), learner
+    request = Request(sent, authenticators=[signin.SessionAuthentication()])
+
+    with pytest.raises(exceptions.PermissionDenied) as refused:
+        request.user
+
+    assert refused.value.get_codes() == "csrf_failed"
+    assert isinstance(request.user, AnonymousUser)

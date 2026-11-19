@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model, password_validation
 from django.core.exceptions import ValidationError
 from django.middleware.csrf import get_token
 from django.utils import timezone
-from rest_framework import authentication, permissions
+from rest_framework import authentication, exceptions, permissions
 
 from accounts import blocks
 from cr import errors
@@ -20,8 +20,8 @@ class SessionAuthentication(authentication.SessionAuthentication):
     def enforce_csrf(self, request):
         try:
             super().enforce_csrf(request)
-        except Exception as refused:
-            raise errors.NotSeated(code="csrf_failed") from refused
+        except exceptions.PermissionDenied as refused:
+            raise exceptions.PermissionDenied(code="csrf_failed") from refused
 
 
 class CsrfChecked(permissions.BasePermission):
