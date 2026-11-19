@@ -19,7 +19,8 @@ from bots.client.api.attack import (
 )
 from bots.client.api.defence import (
     defence_alerts, defence_ids_apply, defence_ids_check, defence_ids_disable, defence_ids_disabled,
-    defence_ids_enable, defence_ids_rules, defence_state, defence_waf, defence_waf_apply,
+    defence_ids_enable, defence_ids_rules, defence_ids_test, defence_ids_versions, defence_probes, defence_state,
+    defence_terminal, defence_traffic, defence_waf, defence_waf_apply, defence_waf_test, defence_waf_versions,
 )
 from bots.client.api.match import (
     lease_close, lease_heartbeat, lease_open, round_create, round_end, round_events, round_list, round_read, round_score,
@@ -121,28 +122,44 @@ def declared_rules() -> str:
     return DECLARED_RULES.read_text()
 
 
-def acceptance_document(wargame: str) -> dict:
-    posture = f"acceptance {wargame}"
+@dataclass(frozen=True)
+class Setup:
+    wargame: str
+    title: str
+    side: str = "defence"
+    matchups: tuple[str, ...] = ("def_vs_bot",)
+    hp: dict = field(default_factory=lambda: dict(HP))
+    suricata_rules: str = ""
+    crs_tuning: dict = field(default_factory=lambda: dict(DETECT_WITHOUT_BLOCKING_SEARCH))
+    probe_cases: tuple[str, ...] = ()
+
+
+def round_document(setup: Setup) -> dict:
+    posture = f"posture for {setup.title}"
     return {
-        "problem": {"kind": "round", "wargame": wargame, "side": "defence", "title": TITLE.format(wargame=wargame),
+        "problem": {"kind": "round", "wargame": setup.wargame, "side": setup.side, "title": setup.title,
                     "summary": "Live acceptance round", "body": "Driven by test/ through the generated client",
                     "published": False},
         "steps": [],
-        "round": {"matchups": ["def_vs_bot"], "posture": posture, "probe_cases": [],
-                  "objectives": objective_keys(wargame), "hp": HP, "traffic": None,
+        "round": {"matchups": list(setup.matchups), "posture": posture, "probe_cases": list(setup.probe_cases),
+                  "objectives": objective_keys(setup.wargame), "hp": setup.hp, "traffic": None,
                   "benign_every_s": BENIGN_EVERY_S, "time_limit_s": None},
-        "start_posture": {"name": posture, "suricata_rules": declared_rules(),
-                          "crs_tuning": DETECT_WITHOUT_BLOCKING_SEARCH},
+        "start_posture": {"name": posture, "suricata_rules": setup.suricata_rules or declared_rules(),
+                          "crs_tuning": setup.crs_tuning},
     }
 
 
-def acceptance_problem(wargame: str) -> int:
-    key = f"problem:{wargame}"
+def acceptance_setup(wargame: str) -> Setup:
+    return Setup(wargame=wargame, title=TITLE.format(wargame=wargame))
+
+
+def problem_of(setup: Setup) -> int:
+    key = f"problem:{setup.wargame}:{setup.title}"
     if key in KNOWN:
         return KNOWN[key]
-    document = acceptance_document(wargame)
+    document = round_document(setup)
     standing = next((row for row in done(staff_problems, operator())
-                     if row["title"] == document["problem"]["title"] and row["wargame"] == wargame), None)
+                     if row["title"] == setup.title and row["wargame"] == setup.wargame), None)
     if standing is None:
         KNOWN[key] = done(staff_problem_create, operator(), document)["problem"]["id"]
         return KNOWN[key]
@@ -150,6 +167,10 @@ def acceptance_problem(wargame: str) -> int:
     done(staff_problem_update, operator(), {**document, "base_revision": revision}, problem_id=standing["id"])
     KNOWN[key] = standing["id"]
     return KNOWN[key]
+
+
+def acceptance_problem(wargame: str) -> int:
+    return problem_of(acceptance_setup(wargame))
 
 
 def slots() -> list[dict]:
@@ -180,6 +201,9 @@ class Played:
     wargame: str
     attack: Any
     slot: int | None = None
+    defence: Any = None
+    setup: Setup | None = None
+    matchup: str = "def_vs_bot"
     closed: bool = False
     stopped: threading.Event = field(default_factory=threading.Event)
 
@@ -210,29 +234,40 @@ def kept_alive(played: Played) -> None:
     threading.Thread(target=beat, name=f"lease-{played.lease}-heartbeat", daemon=True).start()
 
 
-def next_round(lease: int, wargame: str) -> tuple[int, Any]:
+def seats_for(matchup: str) -> dict:
+    human = {"user": operator_id()}
+    bot = {"bot": {"name": BOT}}
+    return {"def_vs_bot": {"attack": bot, "defence": human},
+            "atk_vs_bot": {"attack": human, "defence": bot}}[matchup]
+
+
+def next_round(played: Played) -> None:
+    setup = played.setup or acceptance_setup(played.wargame)
     made = done(round_create, operator(), {
-        "problem": acceptance_problem(wargame), "matchup": "def_vs_bot",
-        "seats": {"attack": {"bot": {"name": BOT}}, "defence": {"user": operator_id()}},
-    }, lease_id=lease)
+        "problem": problem_of(setup), "matchup": played.matchup, "seats": seats_for(played.matchup),
+    }, lease_id=played.lease)
     done(round_start, operator(), round_id=made["round"])
-    return made["round"], signin.seated(PLATFORM_URL, made["bot_tokens"]["attack"])
+    tokens = made.get("bot_tokens") or {}
+    played.round = made["round"]
+    played.attack = signin.seated(PLATFORM_URL, tokens["attack"]) if "attack" in tokens else operator()
+    played.defence = signin.seated(PLATFORM_URL, tokens["defence"]) if "defence" in tokens else operator()
 
 
-def play(wargame: str = "board") -> Played:
+def play(wargame: str = "board", setup: Setup | None = None, matchup: str = "def_vs_bot") -> Played:
     lease = opened_lease(wargame)
-    played = Played(lease=lease["lease"], round=0, wargame=wargame, attack=None, slot=lease.get("slot"))
+    played = Played(lease=lease["lease"], round=0, wargame=wargame, attack=None, slot=lease.get("slot"),
+                    setup=setup, matchup=matchup)
     OPENED.append(played)
     kept_alive(played)
     for listener in LISTENERS:
         listener(played)
-    played.round, played.attack = next_round(played.lease, wargame)
+    next_round(played)
     return played
 
 
 def replay(played: Played) -> Played:
     end(played)
-    played.round, played.attack = next_round(played.lease, played.wargame)
+    next_round(played)
     return played
 
 
@@ -252,12 +287,14 @@ def close(played: Played) -> Answer:
 
 
 class Round:
-    def __init__(self, wargame: str = "board"):
+    def __init__(self, wargame: str = "board", setup: Setup | None = None, matchup: str = "def_vs_bot"):
         self.wargame = wargame
+        self.setup = setup
+        self.matchup = matchup
         self.played: Played | None = None
 
     def __enter__(self) -> Played:
-        self.played = play(self.wargame)
+        self.played = play(self.wargame, self.setup, self.matchup)
         return self.played
 
     def __exit__(self, *raised) -> None:
@@ -315,13 +352,13 @@ def next_origin(played: Played) -> dict:
 
 
 def defence_seen(played: Played) -> dict:
-    return done(defence_state, operator(), round_id=played.round)
+    return done(defence_state, played.defence, round_id=played.round)
 
 
 def alerts(played: Played) -> list[dict]:
     found, after = [], 0
     for _ in range(ALERT_PAGES):
-        page = done(defence_alerts, operator(), round_id=played.round, after=after)
+        page = done(defence_alerts, played.defence, round_id=played.round, after=after)
         found += page["alerts"]
         if not page["alerts"] or page["next"] == after:
             return found
@@ -347,38 +384,74 @@ def alerts_until(played: Played, until: Callable[[list[dict]], bool], timeout: f
 
 
 def ids_rules(played: Played) -> dict:
-    return done(defence_ids_rules, operator(), round_id=played.round)
+    return done(defence_ids_rules, played.defence, round_id=played.round)
 
 
 def check_ids(played: Played, text: str) -> Answer:
-    return ask(defence_ids_check, operator(), {"text": text}, round_id=played.round)
+    return ask(defence_ids_check, played.defence, {"text": text}, round_id=played.round)
 
 
-def apply_ids(played: Played, text: str) -> Answer:
+def tested_field(tested: int | None) -> dict:
+    return {"tested": tested} if tested is not None else {}
+
+
+def apply_ids(played: Played, text: str, tested: int | None = None) -> Answer:
     version = ids_rules(played)["version"]
-    return ask(defence_ids_apply, operator(), {"text": text, "base_version": version}, round_id=played.round)
+    return ask(defence_ids_apply, played.defence, {"text": text, "base_version": version, **tested_field(tested)},
+               round_id=played.round)
 
 
-def tune_waf(played: Played, posture: dict) -> Answer:
-    version = done(defence_waf, operator(), round_id=played.round)["version"]
-    return ask(defence_waf_apply, operator(), {"posture": posture, "base_version": version}, round_id=played.round)
+def tune_waf(played: Played, posture: dict, tested: int | None = None) -> Answer:
+    version = done(defence_waf, played.defence, round_id=played.round)["version"]
+    return ask(defence_waf_apply, played.defence,
+               {"posture": posture, "base_version": version, **tested_field(tested)}, round_id=played.round)
+
+
+def rule_test_ids(played: Played, text: str, cases: list[str] | None = None) -> Answer:
+    return ask(defence_ids_test, played.defence, {"text": text, **({"cases": cases} if cases else {})},
+               round_id=played.round)
+
+
+def rule_test_waf(played: Played, posture: dict, cases: list[str] | None = None) -> Answer:
+    return ask(defence_waf_test, played.defence, {"posture": posture, **({"cases": cases} if cases else {})},
+               round_id=played.round)
+
+
+def ids_versions(played: Played) -> list[dict]:
+    return done(defence_ids_versions, played.defence, round_id=played.round)
+
+
+def waf_versions(played: Played) -> list[dict]:
+    return done(defence_waf_versions, played.defence, round_id=played.round)
+
+
+def probes_listed(played: Played) -> list[dict]:
+    return done(defence_probes, played.defence, round_id=played.round)
+
+
+def traffic(played: Played) -> dict:
+    return done(defence_traffic, played.defence, round_id=played.round)
+
+
+def defence_terminal_grant(played: Played) -> Answer:
+    return ask(defence_terminal, played.defence, round_id=played.round)
 
 
 def waf_posture(played: Played) -> dict:
-    return done(defence_waf, operator(), round_id=played.round)
+    return done(defence_waf, played.defence, round_id=played.round)
 
 
 def disable_rule(played: Played, sid: int, minutes: float, reason: str) -> Answer:
-    return ask(defence_ids_disable, operator(), {"sid": sid, "minutes": minutes, "reason": reason},
+    return ask(defence_ids_disable, played.defence, {"sid": sid, "minutes": minutes, "reason": reason},
                round_id=played.round)
 
 
 def disabled_rules(played: Played) -> list[dict]:
-    return done(defence_ids_disabled, operator(), round_id=played.round)
+    return done(defence_ids_disabled, played.defence, round_id=played.round)
 
 
 def enable_rule(played: Played, sid: int) -> Answer:
-    return ask(defence_ids_enable, operator(), round_id=played.round, sid=sid)
+    return ask(defence_ids_enable, played.defence, round_id=played.round, sid=sid)
 
 
 def score(played: Played, correlation: str | None = None, client=None) -> Answer:
@@ -429,3 +502,12 @@ def topology(played: Played) -> dict:
 
 def round_shown(played: Played, client=None) -> Answer:
     return ask(round_read, client or operator(), round_id=played.round)
+
+
+def ended_round(played: Played, timeout: float) -> dict:
+    deadline = time.monotonic() + timeout
+    while True:
+        shown = done(round_read, operator(), round_id=played.round)
+        if shown["phase"] == "ended" or time.monotonic() >= deadline:
+            return shown
+        time.sleep(POLL)

@@ -51,6 +51,12 @@ acceptance check reads as "passed".
 6. `plays.close` ends the round and closes the lease, which deletes the slot's
    stack and builds it again.
 
+A test that needs another problem passes a `plays.Setup` (its own title, HP
+rule, posture, probe cases, side and matchups) to `plays.play` or
+`plays.Round`, with `matchup="atk_vs_bot"` when the defence seat is the bot.
+`played.attack` and `played.defence` are the clients of the two seats: a bot's
+seat token, or the signed-in operator.
+
 ## Shared rounds
 
 Opening a lease is the slow part of the suite: a close replaces its slot's
