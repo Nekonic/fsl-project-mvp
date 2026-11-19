@@ -374,6 +374,29 @@ def test_rule_15_sees_the_round_records_point_down_to_content_auth_and_match():
             ("referee.Objective", "match.Round")} <= relations
 
 
+ATTACK_REACHES = {"cr/config.py", "cr/errors.py", "range/edge.py", "range/substrate.py", "range/runner.py",
+                  "ingest/elastic.py", "referee/service.py", "match/models.py", "events/log.py", "match/auth.py"}
+
+
+def attack_strays(path: str, reached: set[str]) -> list[str]:
+    allowed = ATTACK_REACHES - ({"match/auth.py"} if layer_of(path) != 8 else set())
+    return sorted(target for target in reached
+                  if not target.startswith(("domain/", "attack/")) and target not in allowed
+                  and not package_marker(target))
+
+
+@pytest.mark.parametrize("path", [path for path in modules() if app_of(path) == "attack"])
+def test_attack_reaches_only_what_its_owner_row_names(path):
+    assert attack_strays(path, targets(path)) == [], f"{path} reaches past the attack owner row"
+
+
+def test_the_checker_sees_attack_reaching_past_its_owner_row():
+    reached = {"rules/crs.py", "match/service.py", "match/auth.py", "range/edge.py", "domain/ledger.py"}
+
+    assert attack_strays("attack/service.py", reached) == ["match/auth.py", "match/service.py", "rules/crs.py"]
+    assert attack_strays("attack/views.py", reached) == ["match/service.py", "rules/crs.py"]
+
+
 SIDES = ("attack", "defence")
 
 

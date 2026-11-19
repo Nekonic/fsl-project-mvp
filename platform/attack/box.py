@@ -285,6 +285,11 @@ def as_customer(source: str, address: str, port: int) -> list[str]:
     return ["sudo", "sh", "-c", _customers_account()
             + f"exec setpriv --reuid={CUSTOMERS_ACCOUNT} --regid={CUSTOMERS_ACCOUNT} --init-groups {bridge}"]
 
+def as_customer_command(argv: list[str]) -> list[str]:
+    return ["sudo", "sh", "-c", _customers_account()
+            + f"exec setpriv --reuid={CUSTOMERS_ACCOUNT} --regid={CUSTOMERS_ACCOUNT} --init-groups "
+            + shlex.join(argv)]
+
 def run_customers(box, plan: str) -> bool:
     owner = f"chown {CUSTOMERS_ACCOUNT}: {CUSTOMERS_PLAN}.new; "
     user = f"setpriv --reuid={CUSTOMERS_ACCOUNT} --regid={CUSTOMERS_ACCOUNT} --init-groups "

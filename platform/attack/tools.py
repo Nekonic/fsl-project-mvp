@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -156,6 +157,46 @@ def dumped(output: str) -> list[tuple[str, str]]:
         (row[name], row[digest]) for row in rows
         if row != header and len(row) == len(header)
     ]
+
+SENT_STATUS = "cr.status="
+REQUEST_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+HEADER_END = "\r\n\r\n"
+
+
+@dataclass(frozen=True)
+class Answer:
+    status: int
+    headers: tuple[tuple[str, str], ...]
+    body: str
+
+
+def request_argv(method: str, url: str, headers: dict[str, str], has_body: bool, timeout: float,
+                 interface: str = "") -> list[str]:
+    if method not in REQUEST_METHODS:
+        raise ValueError(f"method is one of {list(REQUEST_METHODS)}")
+    argv = ["curl", "-sS", "-i", "--path-as-is", "--max-time", str(int(timeout)), "-X", method,
+            "-H", "Expect:", "-w", f"\n{SENT_STATUS}%{{http_code}}\n"]
+    if interface:
+        argv += ["--interface", interface]
+    for name, value in headers.items():
+        argv += ["-H", f"{name}: {value}"]
+    if has_body:
+        argv += ["--data-binary", "@-"]
+    argv.append(url)
+    return argv
+
+
+def answered(output: str) -> Answer:
+    head, found, code = (output or "").rpartition(f"\n{SENT_STATUS}")
+    status = int(code.strip()) if found and code.strip().isdigit() else 0
+    if not status:
+        return Answer(status=0, headers=(), body="")
+    raw, gap, body = head.partition(HEADER_END)
+    lines = raw.split("\r\n")[1:] if gap else []
+    headers = tuple((name.strip(), value.strip()) for name, colon, value in (line.partition(":") for line in lines)
+                    if colon)
+    return Answer(status=status, headers=headers, body=body if gap else head)
+
 
 def found_not_injectable(exit_code: int, output: str) -> bool:
     output = output if isinstance(output, str) else ""

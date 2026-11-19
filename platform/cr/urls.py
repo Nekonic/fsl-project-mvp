@@ -8,6 +8,7 @@ urlpatterns = [
     path("api/", include("events.urls")),
     path("api/", include("content.urls")),
     path("api/", include(defence.urlpatterns)),
+    path("api/", include("attack.urls")),
     path("", include(defence.gate)),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
 ]
