@@ -33,8 +33,8 @@ exec gosu cr sh -c '
     export DJANGO_SECRET_KEY
   fi
   python manage.py migrate --noinput
-  python register_pipeline.py &
-  python kibana.py &
+  python manage.py register_pipeline &
+  python -m defence.kibana &
   exec waitress-serve --listen=127.0.0.1:8001 --threads=16 \
     --trusted-proxy=127.0.0.1 --trusted-proxy-headers=x-forwarded-for \
     --clear-untrusted-proxy-headers cr.wsgi:application
