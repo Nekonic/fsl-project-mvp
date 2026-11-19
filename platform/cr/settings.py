@@ -1,8 +1,8 @@
 import os
 from pathlib import Path
 
-from range import declared
-from rules import crs
+from cr import config
+from range import declaration as declared
 from rules.suricata import RULE_PATH
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -144,7 +144,8 @@ CR_EXTRA_SENSORS = tuple(_sensing(role) for role in sorted(RANGE.watches) if rol
 
 def waf_layout(shape):
     host = shape.hosts.get(shape.roles.get("gateway", "")) or declared.Host()
-    return crs.Layout(host.rules or crs.EXCLUSIONS, host.reload or crs.NGINX_RELOAD, host.pid or crs.NGINX_PID)
+    return config.WafConfig(rules=host.rules or config.CRS_EXCLUSIONS, reload=host.reload or config.NGINX_RELOAD,
+                            pid=host.pid or config.NGINX_PID)
 
 CR_WAF = waf_layout(RANGE)
 CR_SOURCE = os.environ.get("CR_SOURCE", str(BASE_DIR.parent))
