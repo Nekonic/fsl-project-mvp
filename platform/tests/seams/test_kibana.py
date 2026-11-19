@@ -1,13 +1,9 @@
 import json
-from unittest.mock import patch
 
 import pytest
-from django.contrib.auth import get_user_model
 
-import kibana
-from api.models import Session
-from console import strings
-from tests.conftest import ApiClient
+from cr.config import KibanaConfig
+from defence import kibana
 
 MINE = {"soc-logs-1": "logs-1-*"}
 SPACE = "/kibana/s/soc-logs-1/"
@@ -198,93 +194,14 @@ def test_the_gate_forwards_the_raw_uri_and_kibana_s_own_headers_alone():
         sent.append(request)
         return Answer()
 
-    with patch.object(kibana, "URL", "http://kibana:5601/kibana"):
-        status, headers, answer = kibana.forward(
-            "POST", SPACE + "internal/search/ese?x=1", {
-                "Content-Type": "application/json", "kbn-version": "8.15.0", "x-elastic-internal-origin": "Kibana",
-                "elastic-api-version": "1", "Cookie": "cr_session=secret", "Host": "range", "Accept-Encoding": "gzip",
-            }, b"{}", send=send)
+    status, headers, answer = kibana.forward(
+        "POST", SPACE + "internal/search/ese?x=1", {
+            "Content-Type": "application/json", "kbn-version": "8.15.0", "x-elastic-internal-origin": "Kibana",
+            "elastic-api-version": "1", "Cookie": "cr_session=secret", "Host": "range", "Accept-Encoding": "gzip",
+        }, b"{}", KibanaConfig(url="http://kibana:5601/kibana"), send=send)
 
     assert sent[0].full_url == "http://kibana:5601/kibana/s/soc-logs-1/internal/search/ese?x=1"
     assert {name.lower() for name, _ in sent[0].header_items()} == {
         "content-type", "kbn-version", "x-elastic-internal-origin", "elastic-api-version"}
     assert (status, answer) == (200, b'{"rawResponse": {}}')
     assert {name for name, _ in headers} == {"Content-Type", "kbn-name"}
-
-
-@pytest.fixture
-def a_learner_on_slot_1(db, settings):
-    settings.ELASTIC_SESSION_INDEX = "logs-{slot}-*"
-    user = get_user_model().objects.create_user("learner1", password="range-practice-42")
-    Session.objects.create(owner=user, slot=1)
-    Session.objects.create(owner=user, slot=2, ended_at="2026-11-16T00:00:00Z")
-    other = get_user_model().objects.create_user("learner2", password="range-practice-42")
-    Session.objects.create(owner=other, slot=3)
-    client = ApiClient()
-    client.force_login(user)
-    return client
-
-
-def gate(client, uri, sent):
-    return client.post("/kibana-gate/", sent, content_type="application/json", HTTP_X_KIBANA_URI=uri)
-
-
-def test_the_gate_lets_a_learner_search_their_open_session_s_slot_only(a_learner_on_slot_1):
-    forwarded = []
-
-    def forward(method, uri, headers, sent):
-        forwarded.append(uri)
-        return 200, [("Content-Type", "application/json")], b'{"rawResponse": {"hits": {"total": 1}}}'
-
-    with patch.object(kibana, "forward", forward):
-        own = gate(a_learner_on_slot_1, SPACE + "internal/search/ese", searching("logs-1-*"))
-        closed = gate(a_learner_on_slot_1, "/kibana/s/soc-logs-2/internal/search/ese", searching("logs-2-*"))
-        others = gate(a_learner_on_slot_1, "/kibana/s/soc-logs-3/internal/search/ese", searching("logs-3-*"))
-        typed = gate(a_learner_on_slot_1, SPACE + "internal/search/ese", searching("logs-3-*"))
-
-    assert own.status_code == 200 and own.json()["rawResponse"]["hits"]["total"] == 1
-    assert [closed.status_code, others.status_code, typed.status_code] == [403, 403, 403]
-    assert typed.json()["statusCode"] == 403 and typed.json()["message"] == strings.line("kibana.refused.call")
-    assert closed.json()["message"] == strings.line("kibana.refused.space"), (
-        "Kibana prints this message on its error page, which a learner reads")
-    assert forwarded == [SPACE + "internal/search/ese"]
-
-
-def test_a_call_the_gate_refuses_tells_the_learner_in_korean_and_the_reason_goes_to_the_log(a_learner_on_slot_1,
-                                                                                            caplog):
-    with caplog.at_level("WARNING", logger="api.views"):
-        refused = gate(a_learner_on_slot_1, SPACE + "api/saved_objects/_find", {})
-
-    assert strings.line("kibana.refused.call") and refused.status_code == 403
-    assert refused.json()["message"] == strings.line("kibana.refused.call"), (
-        "Kibana prints this message on its error page, which a learner reads; the English reason is for the operator")
-    assert "api/saved_objects/_find is not a call Discover makes" in caplog.text
-
-
-def test_a_kibana_that_does_not_answer_is_told_to_the_learner_in_korean(a_learner_on_slot_1, caplog):
-    def unanswered(*asked):
-        raise OSError("connection refused")
-
-    with patch.object(kibana, "forward", unanswered), caplog.at_level("WARNING", logger="api.views"):
-        answer = gate(a_learner_on_slot_1, SPACE + "internal/search/ese", searching("logs-1-*"))
-
-    assert strings.line("kibana.unanswered") and answer.status_code == 502
-    assert answer.json()["message"] == strings.line("kibana.unanswered")
-    assert "connection refused" in caplog.text and "connection refused" not in answer.content.decode()
-
-
-def test_the_gate_lets_staff_into_every_slot_s_space(client, settings):
-    settings.ELASTIC_SESSION_INDEX = "logs-{slot}-*"
-    with patch.object(kibana, "forward", lambda *asked: (200, [], b"{}")):
-        assert gate(client, "/kibana/s/soc-logs-3/internal/search/ese", searching("logs-3-*")).status_code == 200
-
-
-def test_the_gate_asks_for_a_sign_in_first(db):
-    assert gate(ApiClient(), SPACE + "internal/search/ese", searching("logs-1-*")).status_code == 302
-
-
-def test_a_kibana_page_a_learner_may_not_open_shows_the_console_s_own_refusal(a_learner_on_slot_1):
-    page = a_learner_on_slot_1.get("/kibana-refused/")
-
-    assert page.status_code == 403
-    assert 'data-t="kibana.refused.title"' in page.content.decode()

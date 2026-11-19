@@ -511,7 +511,7 @@ def _points(edge, where) -> list[tuple[int, int]]:
 def _sided(edges, where, homes) -> list[dict]:
     placed = []
     for edge in edges:
-        source, target = where[edge["source"]], where[edge["target"]]
+        source = where[edge["source"]]
         if edge["kind"] != "link" or not edge.get("address"):
             continue
         points = _points(edge, where)

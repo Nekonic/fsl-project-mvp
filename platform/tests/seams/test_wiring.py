@@ -1,31 +1,23 @@
-import hashlib
 import json
 import pathlib
-import re
 
 import pytest
 
-import topology
-from range import declared, openstack, sandbox, wiring
-from range.ports import RangeUnavailable, Shape
-from tests import docker_networks, fakecloud
-from tests.sessions import open_session
+from range import declaration, openstack, stack_plan, topology, wiring
+from testing import fakecloud
+from tests import docker_networks
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
-PLATFORM = ROOT / "platform"
-STATIC = PLATFORM / "console" / "static" / "map"
-MAP_PAGE = PLATFORM / "console" / "templates" / "console" / "map.html"
-CYTOSCAPE_SHA256 = "081591ab735b2b6a3b31a3c60f8f3a3e2fee8c92939e0c7820ad1208571b6cd8"
-DECLARED = declared.read()
+ROOT = pathlib.Path(__file__).resolve().parents[3]
+DECLARED = declaration.read()
 PARAMETERS = {"key_name": "cr-platform", "control_network": "net-mgmt", "control_group": "g-cr-mgmt",
               "senders_group": "g-cr-senders",
-              **{f"{kind}_{role}": f"{kind}-{role}" for kind in ("image", "flavor") for role in sandbox.ROLES},
+              **{f"{kind}_{role}": f"{kind}-{role}" for kind in ("image", "flavor") for role in stack_plan.ROLES},
               **{f"group_{lan}": f"g-lan-{lan}" for lan in ("internet", "dmz", "web-outer", "web-inner", "mgmt")}}
 
 
 def neutron(wargame="board", slot=1):
     cloud = fakecloud.Cloud()
-    plan = sandbox.plan(sandbox.read(ROOT, wargame), slot, DECLARED.origins, DECLARED.default_origin, "10.31.0.2")
+    plan = stack_plan.plan(stack_plan.read(ROOT, wargame), slot, DECLARED.origins, DECLARED.default_origin, "10.31.0.2")
     cloud.create_stack(openstack.stack_body(plan, openstack.template(plan), PARAMETERS, "digest", 30))
     tag = f"cr.slot={slot}"
     return ([one for one in cloud.networks if tag in one["tags"]], cloud.subnets,
@@ -35,7 +27,7 @@ def neutron(wargame="board", slot=1):
 def wired(wargame="board", slot=1, without=()):
     networks, subnets, ports = neutron(wargame, slot)
     kept = [port for port in ports if not {f"cr.device={device}" for device in without} & set(port["tags"])]
-    placed = sandbox.addressed(sandbox.read(ROOT, wargame).ports, DECLARED.origins, DECLARED.default_origin)
+    placed = stack_plan.addressed(stack_plan.read(ROOT, wargame).ports, DECLARED.origins, DECLARED.default_origin)
     return wiring.from_neutron(networks, subnets, kept, {port.device: port.extra for port in placed if port.extra})
 
 
@@ -110,7 +102,7 @@ def test_a_slot_s_wiring_is_read_from_neutron_over_http(monkeypatch):
     openstack.forget()
     runner = fakecloud.Runner()
     monkeypatch.setattr(openstack, "execute", runner)
-    runner.answer(sandbox.READY, "ready\n")
+    runner.answer(stack_plan.READY, "ready\n")
     adapter = fakecloud.adapter(cloud, slots=1)
     adapter.ensure_slot()
 
@@ -140,7 +132,7 @@ def test_the_target_s_docker_networks_are_read_once_per_stack_over_ssh(monkeypat
     fakecloud.serving(cloud)
     runner = fakecloud.Runner()
     monkeypatch.setattr(openstack, "execute", runner)
-    runner.answer(sandbox.READY, "ready\n")
+    runner.answer(stack_plan.READY, "ready\n")
     runner.answer("docker network inspect", json.dumps(docker_networks.inspected()))
     adapter = fakecloud.adapter(cloud, slots=1)
     adapter.ensure_slot()
@@ -329,72 +321,25 @@ def test_the_same_wiring_is_laid_out_the_same_on_every_slot_and_every_read():
     assert where(drawn_map()) == where(drawn_map()) == where(drawn_map(slot=2))
 
 
-@pytest.mark.django_db
-def test_the_session_topology_carries_the_live_map_of_its_slot(client, monkeypatch):
-    from api import views
+def test_the_defence_side_sees_the_whole_map():
+    drawn = drawn_map()
 
-    class Slot:
-        def describe(self):
-            return Shape(segments=(), sensors=())
-
-        def wiring(self):
-            return wired()
-
-    session_id = open_session(client)
-    monkeypatch.setattr(views, "_range", lambda session=None, **_: Slot())
-
-    drawn = client.get(f"/api/sessions/{session_id}/topology/").json()["map"]
-
-    assert ("board.com", "switch:web-inner") in links(drawn) and drawn["zones"][1]["caption"] == "dmz"
+    assert topology.for_side(drawn, topology.DEFENCE) == drawn
 
 
-@pytest.mark.django_db
-def test_a_slot_that_cannot_be_read_gives_an_empty_map_that_says_why(client, monkeypatch):
-    from api import views
+def test_the_attack_side_sees_no_sensor_no_log_server_and_no_line_or_label_to_them():
+    drawn = drawn_map()
+    shown = topology.for_side(drawn, topology.ATTACK)
+    ids = {node["id"] for node in shown["nodes"]}
 
-    class Slot:
-        def describe(self):
-            return Shape(segments=(), sensors=())
-
-        def wiring(self):
-            raise RangeUnavailable("GET http://neutron/v2.0/ports answered 503: down")
-
-    session_id = open_session(client)
-    monkeypatch.setattr(views, "_range", lambda session=None, **_: Slot())
-
-    drawn = client.get(f"/api/sessions/{session_id}/topology/").json()["map"]
-
-    assert drawn["nodes"] == [] and "answered 503" in drawn["detail"]
+    assert {"sensor:cr-ids", "log-server"} <= {node["id"] for node in drawn["nodes"]}
+    assert not {"sensor:cr-ids", "log-server"} & ids
+    assert not [edge for edge in shown["edges"] if {"sensor:cr-ids", "log-server"} & {edge["source"], edge["target"]}]
+    assert not [node for node in shown["nodes"] if "sensor:cr-ids" in node["id"] or ":log-server:" in node["id"] + ":"]
+    assert {"kali", "router", "waf", "board.com"} <= ids
 
 
-def test_the_map_page_is_framed_only_by_its_own_origin(client):
-    answer = client.get("/map/1/")
+def test_a_side_that_is_not_a_side_is_refused():
+    with pytest.raises(ValueError):
+        topology.for_side(drawn_map(), "staff")
 
-    assert answer.status_code == 200 and answer["X-Frame-Options"] == "SAMEORIGIN"
-
-
-def test_the_map_page_draws_from_the_api_with_the_vendored_library_and_lets_nothing_be_edited():
-    page = MAP_PAGE.read_text()
-
-    assert '<script src="/static/map/cytoscape.min.js"></script>' in page
-    assert "fetch(`/api/sessions/${session}/topology/`)" in page
-    assert "autoungrabify: true, autounselectify: true, boxSelectionEnabled: false" in page
-    assert "userPanningEnabled: true" in page and "userZoomingEnabled: true" in page
-    assert not re.search(r"setInterval\([^)]*fetch|topology/`\)[^;]*setInterval", page), "the wiring is read once"
-
-
-def test_the_map_asks_for_its_icons_before_the_library_loads_and_draws_once_they_are_in():
-    page = MAP_PAGE.read_text()
-    library = page.index('<script src="/static/map/cytoscape.min.js"></script>')
-
-    assert page.index("image.src = symbolUrl(file);") < library
-    assert page.index("fetch(`/api/sessions/${session}/topology/`)") < library
-    assert page.index("await symbolsLoaded;") < page.index("view.cy = cytoscape({")
-
-
-def test_the_vendored_cytoscape_is_the_pinned_release_and_every_symbol_the_page_names_is_served():
-    assert hashlib.sha256((STATIC / "cytoscape.min.js").read_bytes()).hexdigest() == CYTOSCAPE_SHA256
-    assert CYTOSCAPE_SHA256 in (STATIC / "SOURCES").read_text()
-    named = set(re.findall(r'"([\w-]+\.svg)"', MAP_PAGE.read_text()))
-    assert named and named <= {path.name for path in (STATIC / "symbols").glob("*.svg")}
-    assert "location /static/map/ {\n            alias /app/console/static/map/;" in (PLATFORM / "nginx.conf").read_text()

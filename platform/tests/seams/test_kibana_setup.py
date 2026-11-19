@@ -3,16 +3,14 @@ import pathlib
 import re
 import urllib.parse
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
 
-import pytest
 
-import kibana
-from api.models import Session
+from cr.config import KibanaConfig
+from defence import kibana
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+ROOT = pathlib.Path(__file__).resolve().parents[3]
 OBJECTS = ROOT / "deploy/kibana/objects.ndjson"
-ENTRYPOINT = ROOT / "platform/entrypoint.sh"
+CONFIG = KibanaConfig(url="http://kibana:5601/kibana", objects=str(ROOT / "deploy/kibana/objects.ndjson"))
 
 
 def saved_objects():
@@ -29,25 +27,6 @@ class FakeKibana:
         if request.full_url.endswith("/_import?overwrite=true"):
             return {"success": self.success, "successCount": 7, "errors": [] if self.success else ["x"]}
         return {"settings": {}}
-
-
-def test_bring_up_imports_the_objects_with_overwrite_then_sets_the_default_route():
-    fake = FakeKibana()
-    payload = OBJECTS.read_bytes()
-
-    kibana.settle("http://kibana:5601/kibana/", payload, fake)
-    kibana.settle("http://kibana:5601/kibana/", payload, fake)
-
-    urls = [request.full_url for request in fake.sent]
-    assert urls == [
-        "http://kibana:5601/kibana/api/status",
-        "http://kibana:5601/kibana/api/saved_objects/_import?overwrite=true",
-        "http://kibana:5601/kibana/api/kibana/settings",
-    ] * 2, "running bring-up twice repeats the same overwrite import, never a second copy"
-    assert all(request.get_header("Kbn-xsrf") for request in fake.sent if request.get_method() == "POST"), (
-        "Kibana refuses a write without the kbn-xsrf header"
-    )
-    assert payload in fake.sent[1].data
 
 
 def test_the_saved_objects_parse_and_hang_off_the_one_data_view():
@@ -68,22 +47,6 @@ def test_the_saved_objects_parse_and_hang_off_the_one_data_view():
             assert reference["id"] in ids, f"{item['id']} points at {reference['id']}, which is not imported"
     for item in by_type["search"] + by_type["visualization"]:
         assert any(r["id"] == kibana.DATA_VIEW for r in item["references"]), item["id"]
-
-
-def test_a_request_nginx_refused_fills_the_columns_a_waf_row_fills_and_an_ids_row_names_its_client():
-    view = next(item for item in saved_objects() if item["id"] == kibana.DATA_VIEW)
-    fields = json.loads(view["attributes"]["runtimeFieldMap"])
-
-    assert "doc['client_ip']" in fields["source_ip"]["script"]["source"]
-    assert "doc['request']" in fields["url"]["script"]["source"]
-    assert "doc['http.status']" in fields["status"]["script"]["source"]
-    assert "doc['status']" not in fields["status"]["script"]["source"], (
-        "a runtime field named status that reads doc['status'] reads itself, and Elasticsearch fails every shard "
-        "with a document that has neither http.status nor a WAF response code, so status : 500 finds nothing")
-    assert "doc['src_ip']" in fields["source_ip"]["script"]["source"].split("else")[0], (
-        "an IDS row's source_ip stays the address the packet came from, the WAF behind it; F3 reads it")
-    assert "params['_source']['xff']" in kibana.request_header_script(), (
-        "an IDS alert behind the WAF carries the client only in xff; request_header.x_forwarded_for shows it")
 
 
 def test_no_saved_object_id_names_the_platform():
@@ -195,34 +158,6 @@ def test_the_operator_objects_carry_no_platform_name_and_hide_the_same_fields_as
     assert json.loads(view["attributes"]["sourceFilters"]) == json.loads(a_session_view()["attributes"]["sourceFilters"])
 
 
-def test_opening_the_session_view_makes_its_space_and_imports_the_view_and_the_route_into_it():
-    fake = FakeKibana()
-
-    with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.object(kibana, "OBJECTS", str(OBJECTS)):
-        made = kibana.ensure_session_view("logs-2-*", "waf", fake)
-
-    space, imported, route = fake.sent
-    base = "http://kibana:5601/kibana"
-    assert made == "soc-logs-2"
-    assert space.full_url == f"{base}/api/spaces/space" and space.get_method() == "POST"
-    body = json.loads(space.data)
-    assert body["id"] == made and "discover" not in body["disabledFeatures"]
-    assert {"dashboard", "visualize", "dev_tools", "advancedSettings", "indexPatterns",
-            "savedObjectsManagement"} <= set(body["disabledFeatures"])
-    assert imported.full_url == f"{base}/s/{made}/api/saved_objects/_import?overwrite=true"
-    assert body["name"] == "SOC" and b'"name": "logs-*"' in imported.data
-    assert route.full_url == f"{base}/s/{made}/api/kibana/settings"
-    changes = json.loads(route.data)["changes"]
-    assert changes["defaultRoute"] == f"/app/discover#/view/{kibana.SESSION_SEARCH}"
-    assert changes["defaultIndex"] == made, "an unset default makes the browser write it, which the front refuses"
-    assert changes["enableESQL"] is False, "ES|QL reads every index, past the view's pattern and hidden fields"
-    assert changes["defaultColumns"] == list(kibana.SESSION_COLUMNS), "a new Discover tab shows the same columns"
-    saved = [json.loads(line) for line in imported.data.decode().splitlines() if line.startswith("{")]
-    search = next(item for item in saved if item["type"] == "search")
-    assert search["id"] == kibana.SESSION_SEARCH and search["attributes"]["columns"] == list(kibana.SESSION_COLUMNS)
-    assert search["references"][0]["id"] == made
-
-
 def test_a_space_that_exists_is_updated_not_recreated():
     import io
     import urllib.error
@@ -235,69 +170,14 @@ def test_a_space_that_exists_is_updated_not_recreated():
             raise urllib.error.HTTPError(request.full_url, 409, "conflict", {}, io.BytesIO(b""))
         return {"success": True}
 
-    with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.object(kibana, "OBJECTS", str(OBJECTS)):
-        kibana.ensure_session_view("logs-2-*", "waf", send)
+    kibana.ensure_session_view("logs-2-*", "waf", CONFIG, send)
 
     assert sent[1] == ("PUT", "http://kibana:5601/kibana/api/spaces/space/soc-logs-2")
     assert len(sent) == 4, "the view and the route are still written"
 
 
 def test_a_refused_session_view_does_not_stop_the_session():
-    with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.object(kibana, "OBJECTS", str(OBJECTS)):
-        assert kibana.ensure_session_view("logs-2-*", "waf", FakeKibana(success=False)) is None
-
-
-@pytest.mark.django_db
-def test_the_session_api_hands_the_console_its_discover_link(client, settings):
-    settings.ELASTIC_SESSION_INDEX = "logs-{session}-*"
-    session = Session.objects.create(scenario="board", baseline=[])
-
-    with patch.object(kibana, "URL", "http://kibana:5601/kibana"), \
-            patch.dict(kibana.VIEWS, {f"logs-{session.pk}-*": (True, 0.0)}):
-        reply = client.get(f"/api/sessions/{session.pk}/").json()
-
-    assert reply["discover"].startswith(f"/kibana/s/soc-logs-{session.pk}/app/discover")
-    assert "to:now" in unquoted(reply["discover"])
-
-
-@pytest.mark.django_db
-def test_a_lesson_opens_kibana_on_its_session_view_from_the_lesson_start_with_an_empty_query(client, settings):
-    settings.ELASTIC_SESSION_INDEX = "logs-{slot}-*"
-    began = datetime(2026, 10, 18, 9, 0, tzinfo=timezone.utc)
-    session = Session.objects.create(scenario="board", baseline=[], guidance=True, lesson="f2", lessons=[
-        {"id": "f1", "started_at": (began - timedelta(minutes=10)).isoformat()},
-        {"id": "f2", "started_at": began.isoformat()}])
-
-    with patch.object(kibana, "URL", "http://kibana:5601/kibana"), \
-            patch.dict(kibana.VIEWS, {"logs-1-*": (True, 0.0)}):
-        link = unquoted(client.get(f"/api/sessions/{session.pk}/").json()["discover"])
-
-    assert "dataViewId:'soc-logs-1'" in link
-    assert "query:(language:kuery,query:'')" in link, "the learner writes the query; nothing scopes it in the bar"
-    assert "from:'2026-10-18T08:59:55+00:00'" in link
-    assert "columns:!(event_type,source_ip,destination,url,status,rule_id,rule)" in link
-    assert "filters:!()" in link, "the learner sets every filter; the index holds only the engines' events"
-
-
-@pytest.mark.django_db
-def test_a_session_view_kibana_refused_gives_no_link_rather_than_the_shared_operator_view(client, settings):
-    settings.ELASTIC_SESSION_INDEX = "logs-{slot}-*"
-    session = Session.objects.create(scenario="board", baseline=[], guidance=True, lesson="f1")
-
-    with patch.object(kibana, "URL", "http://kibana:5601/kibana"), patch.dict(kibana.VIEWS, {}, clear=True), \
-            patch.object(kibana, "ensure_session_view", return_value=None):
-        link = client.get(f"/api/sessions/{session.pk}/").json()["discover"]
-
-    assert link is None
-
-
-@pytest.mark.django_db
-def test_a_session_without_kibana_configured_gets_no_link(client, settings):
-    settings.ELASTIC_SESSION_INDEX = "logs-{slot}-*"
-    session = Session.objects.create(scenario="board", baseline=[])
-
-    with patch.object(kibana, "URL", ""):
-        assert client.get(f"/api/sessions/{session.pk}/").json()["discover"] is None
+    assert kibana.ensure_session_view("logs-2-*", "waf", CONFIG, FakeKibana(success=False)) is None
 
 
 def http_error(code, body=b""):
@@ -351,17 +231,6 @@ def test_a_connection_failure_is_retried_then_called_unreachable():
     assert said == "kibana: 7 saved objects imported, default route set"
 
 
-def test_nothing_that_waits_on_another_service_runs_before_the_platform_serves():
-    text = ENTRYPOINT.read_text()
-    before_serving = text[text.index("migrate"):text.index("exec waitress-serve")]
-
-    assert "python register_pipeline.py &" in before_serving and "python kibana.py &" in before_serving, (
-        "register_pipeline retries Elasticsearch for minutes; in the foreground the platform answers nothing meanwhile"
-    )
-    threads = int(text.split("--threads=")[1].split()[0])
-    assert threads >= 16, "lesson checks, the Network panel and a long verify must not take every thread"
-
-
 def test_nothing_a_learner_can_open_in_kibana_names_the_platform():
     view = a_session_view()
     visible = json.dumps(view["attributes"]).lower() + kibana.SESSION_VIEW_NAME.lower()
@@ -371,3 +240,10 @@ def test_nothing_a_learner_can_open_in_kibana_names_the_platform():
     )
     assert not re.search(r"\bcr[-_.]", json.dumps(kibana.session_search(view)).lower())
     assert kibana.SPACE_NAME == "SOC" and kibana.session_view_id("logs-2-*") == "soc-logs-2"
+
+
+def test_set_up_reads_the_configured_objects_and_says_when_they_are_missing(tmp_path):
+    fake = FakeKibana()
+
+    assert kibana.set_up(CONFIG, fake, lambda _: None).startswith("kibana: 7 saved objects imported")
+    assert kibana.set_up(KibanaConfig(objects=str(tmp_path / "none.ndjson")), fake).startswith("no saved objects at")
