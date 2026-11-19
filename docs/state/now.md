@@ -47,11 +47,10 @@ rounds driven by Claude Code, and the ported acceptance suite.
 
 ## Open points
 
-- A fresh store has no first account (the old `admin` / `123456` migration
-  is gone; `bin/carry-users` or `createsuperuser`), against the 2026-11-15
-  ruling.
-- The seam scan covers `platform/` only and there is no comment scan; the
-  spec asks for both over `front/src`, `bots/`, `test/` and `bin/` too.
+- Four acceptance checks read Elasticsearch directly
+  (`test/test_event_time.py`, `test_geoip_durable.py`,
+  `test_origin_placement.py`, `test_waf_geolocation.py`); the seam scan
+  lists them as named exceptions until they move behind `/api/`.
 - `docs/DECISIONS.md` still quotes rulings in Korean, allowed by name in
   `test_no_hangul.py` until translated.
 

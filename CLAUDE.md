@@ -139,12 +139,19 @@ never scored as one.
   attacker box (origins, `set-origin`, the command log, the tool image,
   customer origins, stopping runs); and `referee/loot.py` (the board) and
   `referee/effect.py` (corp) the only ones that read the target's ground
-  truth. Keep them the only ones. `platform/tests/test_isolation_seams.py`
-  holds one pattern per seam and the exceptions it allows.
+  truth. Keep them the only ones. `platform/tests/seams/test_isolation_seams.py`
+  holds one pattern per seam (packet capture, the nftables sets, the node
+  names `cr-kali`, `cr-waf`, `cr-infra`, `cr-target` and the log index
+  patterns among them), scans `platform/`, `front/src`, `bots/`, `test/` and
+  `bin/`, and holds the closed list of exceptions below; it fails when the
+  two lists differ.
   Known exceptions in code today; do not add more:
   `cr/config.py` holds the defaults the seams are handed (the CRS exclusion
-  file and the nginx reload for `rules/crs.py`, the box's label file for
-  `attack/box.py`); in each `wargames/<id>/topology.yaml` the sensor device
+  file and the nginx reload for `rules/crs.py`, the box's label file and
+  node names for `attack/box.py`, the log index pattern); the acceptance
+  checks of Elasticsearch's own set-up, `test/test_event_time.py`,
+  `test/test_geoip_durable.py`, `test/test_origin_placement.py` and
+  `test/test_waf_geolocation.py`, read Elasticsearch directly; in each `wargames/<id>/topology.yaml` the sensor device
   `cr-ids` names the rule file and reload command `rules/suricata.py` is
   handed, and the WAF device `cr-waf` the exclusion file and nginx reload
   `rules/crs.py` is handed; `platform/nginx.conf` names the Kibana API
@@ -184,10 +191,13 @@ logic changed, and before a push.
 - `platform/` is not a package — `platform` is a stdlib name; never add
   `platform/__init__.py`. Run Python with `platform/` as the working directory
   (same for `test/`).
-- No comments or docstrings in code, in `platform/`, `front/src`, `bots/` and
-  `bin/` alike; name things so the code says what it does. Exceptions:
-  `deploy/suricata/rules/`, where a commented-out rule is how a rule is
-  disabled, and the header Django writes into generated migrations.
+- No comments or docstrings in code, in `platform/`, `front/src`, `bots/`,
+  `bin/`, `test/`, `deploy/`, `wargames/` and `redteam/` alike; name things
+  so the code says what it does. Exceptions: `deploy/suricata/rules/`, where
+  a commented-out rule is how a rule is disabled, the header Django writes
+  into generated migrations, and a script's shebang.
+  `platform/tests/seams/test_no_comments.py` scans Python (comment tokens
+  and docstrings), shell and TS/TSX/JS.
 - `platform/domain/` is the pure core: the game rules as functions over
   frozen dataclasses, tested by `platform/tests/domain/` with no Django in the
   process. Services raise `cr/errors.py` domain errors and never build

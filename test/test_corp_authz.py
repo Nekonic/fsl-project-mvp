@@ -46,6 +46,6 @@ def test_a_live_option_flip_is_lost_from_the_targets_own_row(corp_stands, option
     assert seen["registration_open"] == "1"
 
     assert seen["lost"] == {"corp-self-registration"}, (
-        f"the binlog read did not lose the option flip alone; got {seen['lost']}"
+        f"the target's own record did not lose the option flip alone; got {seen['lost']}"
     )
     assert "corp-self-registration" in lost_in(seen["score"]), seen["score"]["objectives"]

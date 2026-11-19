@@ -96,7 +96,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                reachability.py  runner.py  substrate.py
                edge.py      경계: infra nftables pool·spent 집합, conntrack 정리
                jump.py      경계: 플랫폼 sshd 점프 권한, 키 생성, 박스 계정의 authorized_keys
-  accounts/    SignInBlock, 로그인·가입·승인, 차단, 스태프 계정 API
+  accounts/    SignInBlock, 로그인·가입·승인, 차단, 스태프 계정 API, 초기 계정 admin(마이그레이션 0002)
   events/      Event(FK 없음), kinds.py(종류별 스키마와 보는 쪽), log.py(append, after), 피드 API
   content/     Wargame, Posture, Problem, Step, RoundSetup, ProbeSet, catalog.py(wargames/와 redteam/cases 읽기)
                스태프 문제 API(중첩 문서, revision, 내보내기·가져오기), 학습자 읽기 API
@@ -132,15 +132,19 @@ front/         아직 없음. 지금은 생성된 front/src/api/schema.d.ts만 �
 
 ## 격리 경계
 
-각 외부 시스템은 파일 하나만 압니다. `platform/tests/test_isolation_seams.py`가 경계마다 패턴 하나를 두고, 그 패턴이
-주인 파일과 아래 예외 밖에서 나오면 실패합니다. 주인 파일에서 패턴이 사라져도 실패합니다.
+각 외부 시스템은 파일 하나만 압니다. `platform/tests/seams/test_isolation_seams.py`가 `platform/`, `front/src`, `bots/`,
+`test/`, `bin/`을 훑으며 경계마다 패턴 하나를 두고, 그 패턴이 주인 파일과 아래 예외 밖에서 나오면 실패합니다. 주인 파일에서
+패턴이 사라져도, 예외 목록이 `CLAUDE.md`의 목록과 달라져도 실패합니다.
 
 | 아는 것 | 주인 파일 | 예외(코드에 남은 것) |
 |---|---|---|
-| Elasticsearch(검색, 삭제, bulk, ingest 파이프라인) | `ingest/elastic.py` | 없음 |
+| Elasticsearch(검색, 삭제, bulk, ingest 파이프라인) | `ingest/elastic.py` | Elasticsearch 설정 자체를 보는 acceptance 검사 `test/test_event_time.py`, `test/test_geoip_durable.py`, `test/test_origin_placement.py`, `test/test_waf_geolocation.py` |
+| 패킷 캡처(`tcpdump`) | `rules/suricata.py` | 없음 |
 | Suricata 프로세스(`-T`, `suricatasc`, reload, af-packet) | `rules/suricata.py` | 각 `topology.yaml`의 센서 장치 `cr-ids`가 룰 파일과 reload 명령을 적음 |
 | CRS/ModSecurity 설정과 nginx reload | `rules/crs.py` | `cr/config.py`의 기본값(예외 파일 경로, reload 명령). 각 `topology.yaml`의 WAF 장치 `cr-waf`가 예외 파일과 reload를 적음 |
 | Kibana API | `defence/kibana.py` | `platform/nginx.conf`: 거부할 Kibana API 경로, space 안 API 호출을 `kibana-gate`로 넘기기, `api/spaces/space` 직접 응답 |
+| 로그 인덱스 패턴(`logs-*`) | `defence/kibana.py` | `cr/config.py`의 기본값. `test/test_event_time.py` |
+| 훈련 환경 노드 이름(`cr-kali`, `cr-waf`, `cr-infra`, `cr-target`) | 없음(설정으로 넘김) | `cr/config.py`의 기본값. `platform/entrypoint.sh` |
 | OpenStack API와 실제 배선 | `range/openstack.py`(파싱 `range/wiring.py`, 이름 `range/topology.py`) | 없음 |
 | infra 라우터의 nftables 집합 | `range/edge.py` | `deploy/roles/infra/edge.nft`가 `pool`, `spent` 집합을 선언(아직 없음, 아래 참고) |
 | 플랫폼 점프 호스트와 박스 계정 키 | `range/jump.py` | `platform/entrypoint.sh`가 점프 호스트의 `authorized_keys`를 만듦 |
@@ -154,7 +158,7 @@ front/         아직 없음. 지금은 생성된 front/src/api/schema.d.ts만 �
 - 이전 구조의 예외 중 `register_pipeline.py`(→ `ingest/elastic.py`), `operator_log.py`(→ `attack/box.py`),
   `redteam/tools.py`의 `cr-kali`(→ 박스가 `launch`를 넘김), 레슨 F6의 명령(레슨과 함께 삭제), `blue.html`의 Kibana
   localStorage 설정(콘솔과 함께 삭제)은 없어졌습니다. `front/`가 생기면 `front/src/panes/Kibana.tsx`가 그 설정을 맡습니다.
-- 경계 검사는 지금 `platform/` 아래 파일만 봅니다. 설계 문서는 `front/src`, `bots/`, `test/`, `bin/`까지 보라고 합니다.
+- Elasticsearch를 직접 읽는 acceptance 검사 넷은 `/api/` 뒤로 옮길지 아직 정하지 않았습니다.
 
 ## 라운드 흐름
 
@@ -337,4 +341,3 @@ sequenceDiagram
   `/vm-terminal/kali/`, `/vm-terminal/waf/`가 로그인 세션만 확인하고 자리별 `terminal-auth` 경로를 쓰지 않습니다.
 - `platform/vm-terminal.sh`는 삭제된 `api.models.Session`을 import하고 cr-waf를 `sudo -i` root로 엽니다.
 - 위 훈련 환경 변경과 infra, waf 이미지 다시 굽기, `wargames/<id>/probes/` 녹화.
-- 주석 검사(`test_no_comments.py`). 규칙은 `CLAUDE.md`에 있지만 검사하는 테스트가 없습니다.

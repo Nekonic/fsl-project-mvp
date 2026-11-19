@@ -26,8 +26,8 @@ on a range.
 | 1 Ratchet removed | `metrics.json`, `bin/measure` and the ratchet steps are gone | `bin/verify --fast` |
 | 2 Old tree cleared | `platform/api/`, `platform/console/`, the scenario and lesson modules and their tests are deleted | `platform/tests/test_old_tree_gone.py` |
 | 3 `domain/` | scoring (correlate, metrics, corroborate, objectives), ledger, verdicts, checks, problems, round_rules | `platform/tests/domain/`, no Django in the process; import rule 1 |
-| 4 Seams | `cr/config.py`, `cr/errors.py`, `ingest/elastic.py`, `rules/suricata.py`, `rules/crs.py`, `range/*` (with `edge.py`, `jump.py`, `refill.py` rewritten), `attack/box.py`, `firing.py`, `tools.py`, `defence/kibana.py`, `referee/loot.py`, `effect.py` | `platform/tests/seams/` against fakes; import rules 2, 4, 14; `platform/tests/test_isolation_seams.py` |
-| 6 Django skeleton | `cr/` (DRF, spectacular, one handler, `strings.py`), `strings/`, `accounts`, `events` | `tests/accounts`, `tests/events`, the error-shape and no-admin tests |
+| 4 Seams | `cr/config.py`, `cr/errors.py`, `ingest/elastic.py`, `rules/suricata.py`, `rules/crs.py`, `range/*` (with `edge.py`, `jump.py`, `refill.py` rewritten), `attack/box.py`, `firing.py`, `tools.py`, `defence/kibana.py`, `referee/loot.py`, `effect.py` | `platform/tests/seams/` against fakes; import rules 2, 4, 14; `platform/tests/seams/test_isolation_seams.py`, `test_no_comments.py` |
+| 6 Django skeleton | `cr/` (DRF, spectacular, one handler, `strings.py`), `strings/`, `accounts`, `events` | `tests/accounts` (with the first account `admin` from migration `accounts.0002_first_account`), `tests/events`, the error-shape and no-admin tests |
 | 7 `content` | catalog, `wargame.yaml` per wargame, problems as nested documents with revisions and export/import, postures, the learner read API | `tests/content`; `test_no_hangul.py` |
 | 8 Round records, referee | `match.models`, `match.auth` (seat tokens hashed, `HasSeat`, `InRound`, `IsOperator`, `OnLease`), `referee` (baseline, loot, effects, objectives, redact, score) | `tests/referee`; import rules 4, 5, 11, 15 |
 | 9 `defence` | rules and posture read, check, test and apply across sensors, versions, probes, disable, drift, alerts, traffic, terminal, Kibana gate | `tests/defence` |
@@ -88,20 +88,13 @@ on a slot:
 
 ## Open points
 
-- **No first account on a fresh store.** The old tree created `admin` /
-  `123456` in a migration, which the user ruled must always hold
-  (`docs/DECISIONS.md` 2026-11-15). The new migrations create no user;
-  `bin/carry-users` brings the old store's users over, and a fresh store
-  needs `manage.py createsuperuser`. `bots/signin.py` and the acceptance
-  suite still default to `admin` / `123456`.
-- **Seam scan coverage.** The spec puts `test_isolation_seams.py` under
-  `tests/seams/`, scanning `front/src`, `bots/`, `test/` and `bin/` as well
-  as `platform/`, with patterns for infra nftables, packet capture and the
-  node names (`cr-kali`, `cr-waf`, `cr-infra`, `cr-target`) and a closed,
-  existence-checked exemption list. The test is `platform/tests/test_isolation_seams.py`,
-  scans `platform/` only, and has none of those patterns.
-- **No comment scan.** The spec names `tests/seams/test_no_comments.py` over
-  `platform/`, `front/src`, `bots/` and `bin/`; it does not exist.
+- **Acceptance checks that read Elasticsearch directly.**
+  `test/test_event_time.py`, `test/test_geoip_durable.py`,
+  `test/test_origin_placement.py` and `test/test_waf_geolocation.py` query
+  Elasticsearch's ingest pipeline, node settings and index on
+  `localhost:9200` rather than through `/api/`. The seam scan lists them as
+  named exceptions (CLAUDE.md); moving them behind an API route or into
+  `ingest/elastic.py` is open.
 - **Korean in `docs/DECISIONS.md`.** It quotes the user's rulings in Korean
   (about a hundred lines). `test_no_hangul.py` still allows it by name until
   those quotes are translated.

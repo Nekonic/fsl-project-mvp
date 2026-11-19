@@ -9995,3 +9995,37 @@ spec is updated where it named the old placement.
     the all-spent end state; the separate scratch nginx master with its own
     audit log; every benign case always probed with `untested` reasons;
     probe recording with CRS detection-only; no KQL in the bot API.
+
+## 2026-11-20 — The first account, the widened seam scan and the comment scan
+
+- **`admin` / `123456` exists on every store again.** The 2026-11-15 ruling
+  ("초기 비밀번호는 admin/123456 무조건") was lost with the old migrations.
+  `accounts.0002_first_account` makes `admin` with `123456` as active staff
+  (and superuser, as the old migration did) when no `admin` exists; nothing
+  asks for a change. `bin/carry-users` carries rows without their primary
+  keys: when the old store has `admin`, the migrated one is deleted first so
+  the old hash wins; when it has none, the migrated `admin` stays. A store
+  holding any user but `admin` is still refused.
+- **The seam scan moved to `platform/tests/seams/` and widened to the spec.**
+  It scans `platform/`, `front/src`, `bots/`, `test/` and `bin/` (the
+  generated `bots/client/` and `front/src/api/schema.d.ts`, and the
+  platform's own tests and fakes, excluded), and adds packet capture
+  (`rules/suricata.py`), the infra nftables sets and conntrack
+  (`range/edge.py`), the node names, the log index patterns and
+  `/kibana/api|internal`. Its exceptions are a closed map from file to the
+  seams it may know; a test reads the "Known exceptions" paragraph of
+  CLAUDE.md and fails when the two lists differ, another when an exception
+  no longer knows what it is allowed to. The spec's own list
+  (`bin/cloud`, `bin/platform-rebuild`, `test/range.py`,
+  `test/test_range_isolation.py`) matches none of the patterns, so those
+  files are not listed. Four acceptance checks of Elasticsearch's own set-up
+  (`test/test_event_time.py`, `test_geoip_durable.py`,
+  `test_origin_placement.py`, `test_waf_geolocation.py`) query it directly
+  and are named exceptions until they move behind `/api/`; the corp test's
+  message no longer names the binlog.
+- **`platform/tests/seams/test_no_comments.py`** scans Python (comment
+  tokens and docstrings), shell (outside heredocs) and TS/TSX/JS under
+  `platform/`, `front/src`, `bots/`, `bin/`, `test/`, `deploy/`, `wargames/`
+  and `redteam/`, allowing only shebangs, Django's migration header (in a
+  migration) and `deploy/suricata/rules/`. It found one: a `# noqa` on the
+  PyYAML probe in `bin/platform-rebuild`, now `importlib.util.find_spec`.

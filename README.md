@@ -446,12 +446,9 @@ sudo docker compose start platform follow
 | 훈련 환경 VM | 학습자는 Kali에서 root(`NOPASSWD:ALL`). 그래서 소진된 출발지는 학습자가 손댈 수 없는 infra 라우터에서 떨어뜨림. 스택 사이, 스택과 플랫폼 사이의 격리는 VM 밖의 Neutron 보안 그룹과 port security가 맡음 |
 | Docker 소켓 | 플랫폼 VM의 어떤 서비스에도 마운트하지 않음 |
 
-새 구조는 초기 계정을 만들지 않습니다. 기존 계정은 `bin/carry-users`로 옮기고, 빈 저장소에서는 스태프 계정을 직접
-만듭니다.
-
-```bash
-sudo docker exec -it -u cr cr-platform python manage.py createsuperuser
-```
+초기 계정은 `admin` / `123456`이고 언제나 있습니다. 빈 저장소에 마이그레이션을 돌리면 스태프 계정으로 생기고,
+비밀번호를 바꾸라고 요구하지 않습니다. `bin/carry-users`로 기존 계정을 옮길 때 기존 저장소에 `admin`이 있으면 그
+계정이 새로 만든 것을 대신하고, 없으면 새로 만든 `admin`이 그대로 남습니다.
 
 `bots/signin.py`와 acceptance는 `CR_ADMIN_USER` / `CR_ADMIN_PASSWORD`(기본 `admin` / `123456`)로 로그인합니다.
 
