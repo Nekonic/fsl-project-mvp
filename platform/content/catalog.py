@@ -17,6 +17,7 @@ DECLARED = "wargame.yaml"
 FIELDS = ("id", "title", "image", "public_url", "hosts", "objective_model", "case_file", "default_traffic")
 OBJECTIVE_MODELS = ("loot_verified", "effect_observed")
 GATEWAY = "gateway"
+TIER_FIELDS = ("key", "name", "category", "difficulty")
 
 
 class CatalogBroken(ServerError):
@@ -41,6 +42,7 @@ class Objective:
     name: str
     category: str
     difficulty: int
+    rule: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -62,6 +64,7 @@ class Wargame:
     default_traffic: str | None
     cases: tuple[Case, ...]
     objectives: tuple[Objective, ...]
+    secret: dict[str, Any]
     traffic_profiles: tuple[str, ...]
     probes: Probes | None
 
@@ -120,7 +123,7 @@ def read(root: Path, wargame_id: str) -> Wargame:
         id=wargame_id, title=str(declared["title"]), image=str(declared["image"]),
         public_url=str(declared["public_url"]), hosts=hosts, objective_model=declared["objective_model"],
         case_file=declared["case_file"], default_traffic=declared["default_traffic"], cases=cases,
-        objectives=read_objectives(folder), traffic_profiles=profiles, probes=read_probes(folder),
+        objectives=read_objectives(folder), secret=read_secret(folder), traffic_profiles=profiles, probes=read_probes(folder),
     )
 
 
@@ -146,9 +149,18 @@ def read_objectives(folder: Path) -> tuple[Objective, ...]:
     tiers = (loaded(folder / "objectives.yaml") or {}).get("tiers") or []
     try:
         return tuple(Objective(key=tier["key"], name=tier["name"], category=tier["category"],
-                               difficulty=int(tier["difficulty"])) for tier in tiers)
+                               difficulty=int(tier["difficulty"]),
+                               rule={name: value for name, value in tier.items() if name not in TIER_FIELDS})
+                     for tier in tiers)
     except (KeyError, TypeError, ValueError) as broken:
         raise CatalogBroken(f"{folder / 'objectives.yaml'} has a malformed tier: {broken!r}") from broken
+
+
+def read_secret(folder: Path) -> dict[str, Any]:
+    secret = (loaded(folder / "objectives.yaml") or {}).get("secret")
+    if not isinstance(secret, dict) or not isinstance(secret.get("role"), str):
+        raise CatalogBroken(f"{folder / 'objectives.yaml'} has no secret with the role that holds it")
+    return dict(secret)
 
 
 def read_cases(path: Path) -> tuple[Case, ...]:

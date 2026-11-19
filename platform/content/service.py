@@ -259,10 +259,12 @@ def snapshot(found: Problem) -> dict[str, Any]:
                     "summary": found.summary, "body": found.body, "revision": found.revision},
         "wargame": {"id": declared.id, "title": declared.title, "image": declared.image,
                     "public_url": declared.public_url, "hosts": list(declared.hosts),
-                    "objective_model": declared.objective_model, "case_file": declared.case_file},
+                    "objective_model": declared.objective_model, "case_file": declared.case_file,
+                    "secret": declared.secret},
         "steps": [step_document(step) for step in found.steps.order_by("order")],
         "start_posture": posture_document(found.start_posture),
-        "objectives": [{"key": tier.key, "name": tier.name, "category": tier.category, "difficulty": tier.difficulty}
+        "objectives": [{"key": tier.key, "name": tier.name, "category": tier.category, "difficulty": tier.difficulty,
+                        "rule": tier.rule}
                        for tier in declared.objectives if chosen is None or tier.key in chosen],
         "round": None,
     }

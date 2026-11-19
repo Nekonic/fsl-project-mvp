@@ -1,0 +1,135 @@
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from referee import service
+from tests import rounds
+from tests.referee.targets import TRUTH
+
+pytestmark = pytest.mark.django_db
+
+AT = datetime(2026, 11, 20, 9, 0, tzinfo=timezone.utc)
+SQLI = "board-sqli-search"
+BENIGN = "board-normal-search"
+
+
+def lost_admin(board_target, actions=()):
+    found = rounds.opened(rounds.problem(objectives=["board-auth-user-admin", "board-auth-user-full"]),
+                          started=AT - timedelta(minutes=30))
+    service.take_baseline(found, board_target)
+    service.submit_loot(found, {"admin": TRUTH["admin"]}, actions=actions, at=AT)
+    return found
+
+
+def attack_and_customer():
+    return [rounds.case(SQLI, AT - timedelta(seconds=20), malicious=True, expect="sql injection"),
+            rounds.case(BENIGN, AT - timedelta(seconds=10), malicious=False)]
+
+
+def test_the_score_keeps_what_was_taken_apart_from_what_the_defence_got_right(board_target):
+    actions = attack_and_customer()
+    found = lost_admin(board_target, actions)
+    alerts = [rounds.detection("d1", AT - timedelta(seconds=19), marker=SQLI, signature="ET WEB SQL Injection")]
+
+    scored = service.score(found, actions, alerts).shown()
+
+    assert scored["objectives"] == {
+        "lost": [{"key": "board-auth-user-admin", "name": "Board admin account", "seen": True,
+                  "attributed_marker": SQLI}],
+        "kept": [{"key": "board-auth-user-full", "name": "Board accounts (full)"}],
+        "weighted": 2.0,
+    }
+    assert scored["outcomes"] == {
+        "per_case": [{"case": SQLI, "verdict": "tp", "alerts": 1, "corroborated": True},
+                     {"case": BENIGN, "verdict": "tn", "alerts": 0, "corroborated": None}],
+        "totals": {"tp": 1, "fp": 0, "fn": 0, "tn": 1},
+        "note": "one_case_one_decision",
+    }
+    assert scored["free_actions"] == {"by_origin": []}
+    assert scored["posture_drift"] is False
+
+
+def test_an_objective_lost_and_unseen_counts_double(board_target):
+    actions = attack_and_customer()
+    found = lost_admin(board_target, actions)
+
+    unseen = service.score(found, actions, [])
+
+    assert unseen.lost[0].seen is False
+    assert unseen.weighted == 4.0
+    assert (unseen.totals.tp, unseen.totals.fn) == (0, 1)
+
+
+def test_one_declared_case_is_one_decision_however_many_alerts_it_drew(board_target):
+    actions = attack_and_customer()
+    found = lost_admin(board_target, actions)
+    alerts = [rounds.detection(f"d{n}", AT - timedelta(seconds=19), marker=SQLI, signature="ET WEB SQL Injection")
+              for n in range(2000)]
+
+    scored = service.score(found, actions, alerts)
+
+    assert scored.per_case[0].alerts == 2000
+    assert scored.totals == service.Totals(tp=1, fp=0, fn=0, tn=1)
+
+
+def test_free_actions_never_enter_tp_fp_fn_tn_and_are_reported_by_origin(board_target):
+    declared = attack_and_customer()
+    found = lost_admin(board_target, declared)
+    free = [rounds.action(f"free-{n}", AT - timedelta(seconds=40 + n)) for n in range(25)]
+    alerts = [rounds.detection(f"f{n}", AT - timedelta(seconds=40 + n), marker=f"free-{n}", signature="scan",
+                               blocked=n % 2 == 0) for n in range(25)]
+
+    without = service.score(found, declared, [])
+    scored = service.score(found, declared + free, alerts)
+
+    assert scored.totals == without.totals
+    assert [case.case for case in scored.per_case] == [SQLI, BENIGN]
+    assert [vars(origin) for origin in scored.free_actions] == [
+        {"ip": rounds.ATTACKER_IP, "actions": 25, "alerts": 25, "refused": 13}]
+
+
+def test_a_signature_that_fires_on_customers_too_does_not_corroborate_the_attack(board_target):
+    actions = attack_and_customer()
+    found = lost_admin(board_target, actions)
+    alerts = [rounds.detection("d1", AT - timedelta(seconds=19), marker=SQLI, signature="sql injection anywhere"),
+              rounds.detection("d2", AT - timedelta(seconds=9), marker=BENIGN, signature="sql injection anywhere")]
+
+    scored = service.score(found, actions, alerts)
+
+    assert [(case.verdict, case.corroborated) for case in scored.per_case] == [("tp", False), ("fp", None)]
+
+
+def test_a_forced_window_correlation_matches_by_source_and_time(board_target):
+    actions = attack_and_customer()
+    found = lost_admin(board_target, actions)
+    unmarked = [rounds.detection("d1", AT - timedelta(seconds=19.5), marker=None, signature="sql injection")]
+
+    by_marker = service.score(found, actions, unmarked)
+    by_window = service.score(found, actions, unmarked, correlation="window")
+
+    assert by_marker.totals.tp == 0
+    assert by_window.per_case[0].verdict == "tp"
+
+
+def test_the_posture_drift_flag_is_carried_beside_the_two_numbers(board_target):
+    found = lost_admin(board_target)
+
+    assert service.score(found, [], [], posture_drift=True).shown()["posture_drift"] is True
+
+
+def test_settling_stores_whether_the_defence_saw_each_loss(board_target):
+    actions = attack_and_customer()
+    found = lost_admin(board_target, actions)
+    alerts = [rounds.detection("d1", AT - timedelta(seconds=19), marker=SQLI, signature="sql injection")]
+    before = {one.key: one for one in service.objectives(found)}
+
+    changed = service.settle(found, actions, alerts)
+
+    after = {one.key: one for one in service.objectives(found)}
+    assert before["board-auth-user-admin"].seen is False
+    assert changed == 1
+    assert after["board-auth-user-admin"] == service.ObjectiveState(key="board-auth-user-admin",
+                                                                    name="Board admin account", state="lost",
+                                                                    seen=True)
+    assert after["board-auth-user-full"].state == "kept"
+    assert service.settle(found, actions, alerts) == 0

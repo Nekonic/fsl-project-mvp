@@ -23,6 +23,8 @@ INSTALLED_APPS = [
     "accounts",
     "events",
     "content",
+    "match",
+    "referee",
 ]
 
 MIDDLEWARE = [

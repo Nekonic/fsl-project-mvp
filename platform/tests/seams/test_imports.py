@@ -212,7 +212,8 @@ def model_layer(label: str) -> int:
 def upward_relations(models, migrations, user_app: str) -> list[str]:
     found = [f"{model._meta.label}.{field.name} -> {field.related_model._meta.label}"
              for model in models if model._meta.app_label in APPS
-             for field in model._meta.get_fields() if field.is_relation and field.related_model
+             for field in model._meta.get_fields()
+             if field.is_relation and field.related_model and not field.auto_created
              and field.related_model._meta.app_label != model._meta.app_label
              and model_layer(field.related_model._meta.app_label) >= model_layer(model._meta.app_label)]
     for (app, name), migration in migrations.items():
@@ -284,3 +285,76 @@ def test_content_reaches_only_the_domain_and_the_seams_its_owner_row_names(path)
               and not package_marker(target)]
 
     assert strays == [], f"{path} imports {strays}"
+
+
+REFEREE_NEVER_REACHES = ("attack/", "defence/", "lessons/", "match/")
+REFEREE_MAY_READ = {"match/models.py", "match/__init__.py"}
+
+
+def referee_strays(reached: set[str]) -> list[str]:
+    return sorted(target for target in reached
+                  if target.startswith(REFEREE_NEVER_REACHES) and target not in REFEREE_MAY_READ)
+
+
+@pytest.mark.parametrize("path", [path for path in modules() if app_of(path) == "referee"])
+def test_rule_5_referee_imports_no_side_no_lessons_and_no_match_service(path):
+    assert referee_strays(targets(path)) == [], f"{path} reaches past the records it is handed"
+
+
+def test_the_checker_sees_referee_reaching_into_a_side_or_the_match_service():
+    reached = {"attack/service.py", "defence/models.py", "lessons/service.py", "match/service.py",
+               "match/models.py", "attack/box.py", "events/log.py"}
+
+    assert referee_strays(reached) == ["attack/box.py", "attack/service.py", "defence/models.py",
+                                       "lessons/service.py", "match/service.py"]
+
+
+LOST_KIND = "objective.lost"
+LOST_KIND_DECLARED = "events/kinds.py"
+
+
+def names_lost_kind(source: str, path: str) -> bool:
+    return any(isinstance(node, ast.Constant) and node.value == LOST_KIND
+               for node in ast.walk(ast.parse(source, filename=path)))
+
+
+@pytest.mark.parametrize("path", [path for path in modules()
+                                  if not path.startswith("referee/") and path != LOST_KIND_DECLARED])
+def test_rule_11_only_referee_names_the_objective_lost_kind(path):
+    assert not names_lost_kind((PLATFORM / path).read_text(), path), f"{path} names {LOST_KIND}"
+
+
+def test_the_checker_sees_the_lost_kind_passed_to_append_directly_and_through_a_name():
+    assert names_lost_kind('log.append(7, "objective.lost", {})\n', "attack/service.py")
+    assert names_lost_kind('KIND = "objective.lost"\nlog.append(7, KIND)\n', "attack/service.py")
+    assert not names_lost_kind('log.append(7, "objective.kept")\n', "attack/service.py")
+    assert names_lost_kind((PLATFORM / "referee/service.py").read_text(), "referee/service.py")
+
+
+def test_rule_15_reads_forward_relations_and_skips_the_reverse_accessors_django_adds():
+    from types import SimpleNamespace
+
+    from match.models import Round
+
+    def meta(label):
+        return SimpleNamespace(_meta=SimpleNamespace(label=label, app_label=label.split(".")[0]))
+
+    upward = SimpleNamespace(name="objective", is_relation=True, auto_created=False,
+                             related_model=meta("referee.Objective"))
+    lease = SimpleNamespace(_meta=SimpleNamespace(label="match.Lease", app_label="match",
+                                                  get_fields=lambda: [upward]))
+
+    assert upward_relations([Round], {}, "auth") == []
+    assert upward_relations([lease], {}, "auth") == ["match.Lease.objective -> referee.Objective"]
+
+
+def test_rule_15_sees_the_round_records_point_down_to_content_auth_and_match():
+    from django.apps import apps
+
+    relations = {(model._meta.label, field.related_model._meta.label)
+                 for model in apps.get_models() if model._meta.app_label in ("match", "referee")
+                 for field in model._meta.get_fields()
+                 if field.is_relation and field.many_to_one and field.related_model}
+
+    assert {("match.Lease", "content.Wargame"), ("match.Round", "content.Problem"), ("match.Seat", "auth.User"),
+            ("referee.Objective", "match.Round")} <= relations

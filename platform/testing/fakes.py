@@ -4,7 +4,7 @@ import json
 import threading
 from dataclasses import dataclass, field
 
-from range.runner import Ran
+from range.runner import Ran, RangeUnavailable
 
 
 @dataclass
@@ -118,3 +118,15 @@ def _field(source: dict, dotted: str):
 
 def eve(*alerts: dict) -> str:
     return "\n".join(json.dumps({"event_type": "alert", **alert}) for alert in alerts) + "\n"
+
+
+@dataclass
+class FakeTarget:
+    runners: dict[str, FakeRunner] = field(default_factory=dict)
+    reached: list[str] = field(default_factory=list)
+
+    def __call__(self, role: str) -> FakeRunner:
+        self.reached.append(role)
+        if role not in self.runners:
+            raise RangeUnavailable(f"no role {role!r} on the fake target")
+        return self.runners[role]

@@ -63,14 +63,14 @@ class NotSignedIn(DomainError):
 class NotSeated(DomainError):
     code = "not_seated"
     status = 403
-    codes = frozenset({"not_seated", "not_staff", "csrf_failed", "account_pending"})
+    codes = frozenset({"not_seated", "not_staff", "csrf_failed", "account_pending", "not_operator"})
 
 
 class NotFound(DomainError):
     code = "not_found"
     status = 404
     codes = frozenset({"not_found", "unknown_case", "unknown_tool", "unknown_run", "unknown_origin", "unknown_user",
-                       "unknown_block", "unknown_round", "unknown_problem", "unknown_posture"})
+                       "unknown_block", "unknown_round", "unknown_lease", "unknown_problem", "unknown_posture"})
 
 
 class NotAllowed(DomainError):
@@ -91,7 +91,7 @@ class Conflict(DomainError):
     codes = frozenset({
         "conflict", "round_not_started", "round_closed", "round_running", "origins_spent", "stale_version",
         "stale_revision", "test_busy", "already_seated", "seat_taken", "in_use", "step_locked",
-        "own_account",
+        "own_account", "loot_not_taken",
     })
 
 

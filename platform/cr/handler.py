@@ -80,7 +80,17 @@ def handle(exc: Exception, context: dict) -> Response | None:
     retry_after = refused.params.get("retry_after")
     if isinstance(retry_after, int):
         answer["Retry-After"] = str(retry_after)
+    challenge = challenge_of(context) if refused.status == 401 else None
+    if challenge:
+        answer["WWW-Authenticate"] = challenge
     return answer
+
+
+def challenge_of(context: dict) -> str | None:
+    view, request = context.get("view"), context.get("request")
+    if view is None or request is None or not hasattr(view, "get_authenticate_header"):
+        return None
+    return view.get_authenticate_header(request)
 
 
 def shaped(refused: errors.DomainError) -> JsonResponse:

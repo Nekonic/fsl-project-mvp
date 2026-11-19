@@ -30,6 +30,10 @@ def ground_truth(read_path: str, config: GroundTruthConfig, host: str = "", insi
     return _mapped(body, url)
 
 
+def baseline(secret: dict[str, Any], config: GroundTruthConfig, inside=None) -> dict[str, str]:
+    return ground_truth(secret["read_path"], config, inside=inside)
+
+
 def _from_inside(read_path: str, config: GroundTruthConfig, inside) -> dict[str, str]:
     port = urllib.parse.urlsplit(config.board_url).port or 80
     url = f"http://127.0.0.1:{port}{read_path}"

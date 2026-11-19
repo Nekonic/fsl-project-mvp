@@ -112,3 +112,22 @@ def test_an_objective_tier_without_a_key_is_refused_by_name(source):
 
     with pytest.raises(catalog.CatalogBroken, match="malformed tier"):
         catalog.read(source, "board")
+
+
+def test_each_tier_keeps_the_rule_the_target_judges_it_by_and_the_secret_names_its_role(source):
+    board, corp = catalog.read(source, "board"), catalog.read(source, "corp")
+
+    assert {tier.key: tier.rule for tier in board.objectives}["board-auth-user-admin"] == {"account": "admin"}
+    assert {tier.key: tier.rule for tier in corp.objectives}["corp-rogue-admin"] == {"effect": "rogue_admin"}
+    assert (board.secret["role"], board.secret["read_path"]) == ("board", "/internal/auth-users")
+    assert corp.secret["role"] == "corp-db"
+
+
+def test_a_secret_without_the_role_that_holds_it_is_refused(source):
+    path = source / "wargames" / "board" / "objectives.yaml"
+    declared = yaml.safe_load(path.read_text())
+    del declared["secret"]["role"]
+    path.write_text(yaml.safe_dump(declared, allow_unicode=True))
+
+    with pytest.raises(catalog.CatalogBroken, match="role"):
+        catalog.read(source, "board")
