@@ -245,3 +245,42 @@ def test_the_checker_sees_an_upward_migration_dependency():
 
     assert upward_relations([], {("events", "0002_x"): Upward}, "auth") == ["events.0002_x -> match",
                                                                             "events.0002_x -> accounts"]
+
+
+def cross_app_strays(path: str) -> list[str]:
+    app = app_of(path)
+    strays = []
+    for target in targets(path):
+        other = app_of(target)
+        if other in (None, app) or layer_of(target) == 1 or package_marker(target):
+            continue
+        if target == SERVICE_OF.get(other, f"{other}/service.py") or target in SHARED_TO_VIEWS:
+            continue
+        if target == f"{other}/models.py" and model_layer(other) < model_layer(app):
+            continue
+        strays.append(target)
+    return strays
+
+
+@pytest.mark.parametrize("path", [path for path in modules() if app_of(path)])
+def test_rule_9_across_an_app_boundary_only_the_service_or_a_lower_model_is_imported(path):
+    assert cross_app_strays(path) == [], f"{path} reaches into another app"
+
+
+def test_the_checker_sees_a_reach_into_another_app_s_inner_module(monkeypatch):
+    monkeypatch.setattr(sys.modules[__name__], "targets", lambda path: {"accounts/signin.py", "attack/firing.py",
+                                                                        "accounts/service.py"})
+
+    assert cross_app_strays("content/service.py") == ["accounts/signin.py"]
+
+
+CONTENT_REACHES = {"cr/errors.py", "rules/crs.py", "attack/firing.py"}
+
+
+@pytest.mark.parametrize("path", [path for path in modules() if app_of(path) == "content" and layer_of(path) != 8])
+def test_content_reaches_only_the_domain_and_the_seams_its_owner_row_names(path):
+    strays = [target for target in targets(path)
+              if not target.startswith(("domain/", "content/")) and target not in CONTENT_REACHES
+              and not package_marker(target)]
+
+    assert strays == [], f"{path} imports {strays}"

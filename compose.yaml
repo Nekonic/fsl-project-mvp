@@ -124,5 +124,6 @@ services:
       - ./redteam:/app/redteam:ro
       - ./deploy:/src/deploy:ro
       - ./wargames:/src/wargames:ro
+      - ./redteam/cases:/src/redteam/cases:ro
       - platformdata:/data
 

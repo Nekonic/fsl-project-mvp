@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+CR_SOURCE = Path(os.environ.get("CR_SOURCE") or BASE_DIR.parent)
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "") == "1"
 
@@ -21,6 +22,7 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "accounts",
     "events",
+    "content",
 ]
 
 MIDDLEWARE = [
@@ -88,4 +90,5 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
+    "ENUM_NAME_OVERRIDES": {"ProblemKindEnum": "content.models.KINDS", "ProblemSideEnum": "content.models.SIDES"},
 }

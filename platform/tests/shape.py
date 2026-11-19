@@ -2,7 +2,7 @@ import json
 import re
 
 ITEM_KEYS = {"path", "code", "line", "params"}
-HANGUL = re.compile("[ᄀ-ᇿ㄰-㆏가-힣]")
+HANGUL = re.compile("[\u1100-\u11ff\u3130-\u318f\uac00-\ud7a3]")
 
 
 def refusal(response) -> list[dict]:
