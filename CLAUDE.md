@@ -64,6 +64,10 @@ any other:
   here. `strings/server.json` — the Korean the server renders itself (the
   Kibana gate page), read only by `cr/strings.py` and never bundled.
 - `docs/vocabulary.md` — term translations and their sources.
+- `docs/DECISIONS.md`, for now only: it still quotes the user's rulings in
+  Korean, and `test_no_hangul.py` allows it by name
+  (`REWRITTEN_AT_THE_DOCS_STEP`) until those quotes are translated. Add no
+  new Korean to it.
 
 Leave the string tables and the vocabulary unread unless you are editing them.
 Problem and lesson text is Korean too, but it lives only in database rows,
@@ -80,8 +84,9 @@ learner text or checking the Korean the product shows, each named in
 Generated code is not committed: `bin/gen-clients` exports the committed
 contract `openapi/schema.yaml` and generates `bots/client/` and
 `front/src/api/schema.d.ts` from it, because the generators write docstrings
-and the no-comments rule has no exception for them. `bin/verify`, the platform
-Dockerfile and `images.yml` generate them before use.
+and the no-comments rule has no exception for them. `bin/verify` generates
+them before use; the platform Dockerfile and `images.yml` will once the
+`front/` build's node stage exists (today the image carries neither).
 
 Korean text is written Korean-first: from the meaning, not translated from the
 English sentence, in the usage of Korean security practitioners rather than the
@@ -157,8 +162,9 @@ never scored as one.
   `rules/crs.py` is handed; `platform/nginx.conf` names the Kibana API
   routes it refuses, hands every other API call inside a space to the
   `kibana-gate` view and answers Kibana's `api/spaces/space` lookup itself;
-  `platform/entrypoint.sh` starts `vm-terminal.sh cr-kali` and
-  `vm-terminal.sh cr-waf` and creates the jump host's `authorized_keys`;
+  `platform/entrypoint.sh` starts `vm-terminal.sh cr-kali attack` and
+  `vm-terminal.sh cr-waf defence` and creates the jump host's
+  `authorized_keys`;
   `deploy/roles/infra/edge.nft` declares the `pool` and `spent` sets
   `range/edge.py` fills. Once `front/` exists, `front/src/panes/Kibana.tsx`
   presets Kibana's localStorage keys. `docs/ARCHITECTURE.md` keeps the table.

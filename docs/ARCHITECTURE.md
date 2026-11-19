@@ -126,7 +126,8 @@ bots/          tools.py  calls.py  cli.py  play.py  provider.py  signin.py  prom
 test/          라이브 acceptance. plays.py가 생성 클라이언트로 리스와 라운드를 돌림
 redteam/cases/ board.yaml  corp.yaml   공격·정상 케이스(데이터만)
 wargames/<board|corp>/  wargame.yaml  compose.yaml  topology.yaml  objectives.yaml  traffic.yaml  probes/  app/
-deploy/        roles/<kali|waf|infra|target>/  openstack/  suricata/  filebeat/  elastic/  kibana/  traffic/  waf/  proxy/
+deploy/        roles/<kali|waf|infra|target>/  openstack/  suricata/  filebeat/  elastic/  kibana/  traffic/
+               kali/  waf/  proxy/   역할 디렉터리가 링크로 가리키는 원본(proxy/stamp.py는 사본 없이 하나)
 front/         아직 없음. 지금은 생성된 front/src/api/schema.d.ts만 생김
 ```
 
@@ -144,11 +145,11 @@ front/         아직 없음. 지금은 생성된 front/src/api/schema.d.ts만 �
 | CRS/ModSecurity 설정과 nginx reload | `rules/crs.py` | `cr/config.py`의 기본값(예외 파일 경로, reload 명령). 각 `topology.yaml`의 WAF 장치 `cr-waf`가 예외 파일과 reload를 적음 |
 | Kibana API | `defence/kibana.py` | `platform/nginx.conf`: 거부할 Kibana API 경로, space 안 API 호출을 `kibana-gate`로 넘기기, `api/spaces/space` 직접 응답 |
 | 로그 인덱스 패턴(`logs-*`) | `defence/kibana.py` | `cr/config.py`의 기본값. `test/test_event_time.py` |
-| 훈련 환경 노드 이름(`cr-kali`, `cr-waf`, `cr-infra`, `cr-target`) | 없음(설정으로 넘김) | `cr/config.py`의 기본값. `platform/entrypoint.sh` |
+| 훈련 환경 노드 이름(`cr-kali`, `cr-waf`, `cr-infra`, `cr-target`) | 없음(설정으로 넘김) | `cr/config.py`의 기본값. `platform/entrypoint.sh`가 `vm-terminal.sh cr-kali attack`, `vm-terminal.sh cr-waf defence`를 띄움 |
 | OpenStack API와 실제 배선 | `range/openstack.py`(파싱 `range/wiring.py`, 이름 `range/topology.py`) | 없음 |
 | infra 라우터의 nftables 집합 | `range/edge.py` | `deploy/roles/infra/edge.nft`가 `pool`, `spent` 집합을 선언(역할 이미지에는 아직 없음, 아래 참고) |
 | 플랫폼 점프 호스트와 박스 계정 키 | `range/jump.py` | `platform/entrypoint.sh`가 점프 호스트의 `authorized_keys`를 만듦 |
-| 공격 박스 | `attack/box.py` | `cr/config.py`의 라벨 파일 경로 기본값. `platform/entrypoint.sh`가 `vm-terminal.sh cr-kali`, `vm-terminal.sh cr-waf`를 띄움 |
+| 공격 박스 | `attack/box.py` | `cr/config.py`의 라벨 파일 경로 기본값 |
 | 대상의 정답 데이터 | `referee/loot.py`(board), `referee/effect.py`(corp) | 없음 |
 
 - `range/jump.py`가 `range/` 아래 있는 이유: 공격석(Kali)과 방어석(WAF의 `analyst`) 터미널이 같은 점프 권한을 쓰고,
@@ -340,17 +341,20 @@ sequenceDiagram
   `conntrack`, `tcpdump`(probe 녹화), 오프라인 룰 테스트의 임시 폴더 `/var/lib/cr-ruletest`가 더해집니다.
 - `deploy/roles/waf/board.com.conf`: 두 vhost의 `$refused` 맵(400, 403) 하나와 모든 요청의 JSON 접근 로그
   `/var/log/nginx/access.json`(`client_ip`, `status`, `refused`, `request_id` 등).
-  `log-shipper.conf`가 Tag `nginx-access`로 보내고(`refused.log` 대체), `deploy/filebeat/filebeat.yml`과
+  `log-shipper.conf`가 Tag `nginx-access`로 보내고(`refused.log` 대체), infra의 `log-relay.conf`가 collector로 넘기며, `deploy/filebeat/filebeat.yml`과
   `deploy/elastic/ingest-pipeline.json`이 모듈 `nginx_access`로 받습니다.
 - `deploy/roles/waf/probe.conf`, `probe-upstream.py`: CRS 임시 인스턴스의 설정 틀과 loopback 스텁.
   `/usr/local/share/cr/`에 설치되고 임시 prefix는 `/var/lib/cr-crstest` 아래입니다.
 - `deploy/roles/waf/analyst.sh`: 방어석 계정 `analyst`. nginx·CRS 설정과 로그(`adm` 그룹)를 읽고
   `sudo nginx -t`, `sudo nginx -T`만 root로 돌립니다. 설정과 로그를 고치거나 nginx를 reload할 수 없고, ssh 포워딩과
   WAF에서 밖으로 나가는 패킷(`meta skuid analyst drop`)이 막혀 있습니다.
-- `deploy/proxy/stamp.py`와 `deploy/roles/kali/stamp.py` 링크 정리.
+- `deploy/roles/kali/stamp.py`는 `deploy/proxy/stamp.py`를 가리키는 링크라 프록시 코드는 한 벌입니다. 설계 문서가 지우기로 했던 "중복"은 처음부터 없었습니다.
 
 ## 아직 없는 것
 
 - `front/`(Vite, TypeScript, Preact 콘솔). `nginx.conf`는 이미 빌드 결과 `/app/front/dist`를 마지막 위치에서
-  내주고 나머지 경로를 `index.html`로 돌리지만, Dockerfile의 node 단계와 빌드 결과물은 아직 없습니다.
+  내주고 나머지 경로를 `index.html`로 돌리지만, Dockerfile의 node 단계와 빌드 결과물은 아직 없습니다. 로그인이
+  필요한 Kibana와 사이트 패널은 `/login/?next=`로 보내는데, 그 페이지도 `front/`가 생겨야 생깁니다.
+- 생성 클라이언트를 만드는 곳은 지금 `bin/verify`뿐입니다. 플랫폼 Dockerfile과 `images.yml`은 아직
+  `bin/gen-clients`를 돌리지 않고, 플랫폼 이미지에는 `strings/server.json`만 들어갑니다.
 - infra, waf 이미지 다시 굽기와 `wargames/<id>/probes/` 녹화(`bin/record-probes`). 배포 파일은 고쳐 두었습니다.

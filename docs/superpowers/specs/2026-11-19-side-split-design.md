@@ -1,6 +1,6 @@
 # Side split: attack, defence, referee around a round
 
-Status: design for gate 1. The base is option `by-side` from the restructure survey, with grafts from the other six options (Appendix B lists them by source). Every skeptic finding against `by-side` is resolved (Appendix A). Every review issue of this round was checked against the repo; the ones that hold are fixed in place, and the ones that do not are listed at the end under "Review notes rejected".
+Status: approved at gate 1 on 2026-11-19 and being built on `side-split`. Where the build departed from this text for a reason, the text says what the code does and `docs/DECISIONS.md` (2026-11-20) says why; `docs/STATE.md` says which steps are built. The base is option `by-side` from the restructure survey, with grafts from the other six options (Appendix B lists them by source). Every skeptic finding against `by-side` is resolved (Appendix A). Every review issue of this round was checked against the repo; the ones that hold are fixed in place, and the ones that do not are listed at the end under "Review notes rejected".
 
 User ruling: we do not keep or migrate the current code. The goal is code that stays maintainable. The current code is a reference for behaviour and for the parts that are good: the isolation seams, the scoring core, the range adapter and the cases. Everything else is written again. The build is a fresh build that carries those modules over. It is not an in-place refactor of `api/views.py`, and it keeps no compatibility with old URLs, models or migrations.
 
@@ -140,7 +140,7 @@ fsl-project-mvp/
                                     authorized_keys (address and account passed in); both sides import it
     accounts/
       apps.py  models.py (SignInBlock)  signin.py  blocks.py  service.py
-      serializers.py  views.py  urls.py  migrations/0001_initial.py
+      serializers.py  views.py  urls.py  migrations/0001_initial.py  0002_first_account.py (admin / 123456)
     events/
       apps.py  models.py (Event, no FKs)  kinds.py (schema + visible_to per kind)  log.py (append, after)
       serializers.py  views.py  urls.py  migrations/0001_initial.py
@@ -227,14 +227,16 @@ fsl-project-mvp/
     wargame.yaml                    id, title, image, public_url, hosts, objective_model, case_file, default_traffic
     probes/manifest.json (image digest, markers)  probes/<case>.request.json  probes/<case>.response.json  probes/<case>.pcap
   deploy/
-    roles/infra/edge.nft            + sets `pool` and `spent`, drop before the established accept
+    roles/infra/edge.nft            + sets `pool` and `spent`; `@spent` dropped before the established accept (§11)
     roles/infra/slot-boot           unchanged loader; edge.py refills the sets after it
+    roles/infra/log-relay.conf      relays the WAF's `nginx-access` lines (replaces `nginx`)
+    roles/infra/install.sh          + conntrack, tcpdump, /var/lib/cr-ruletest
     roles/waf/board.com.conf        both vhosts (board.com, corp.com); one `$refused` map (400, 403); JSON access log of every request
-    roles/waf/log-shipper.conf      ships access.log under Tag "nginx-access" (replaces refused.log)
+    roles/waf/log-shipper.conf      ships /var/log/nginx/access.json under Tag "nginx-access" (replaces refused.log)
     roles/waf/probe.conf            scratch nginx+ModSecurity template for the CRS test
     roles/waf/probe-upstream.py     loopback stub serving each probe's recorded response
     roles/waf/analyst.sh            read-only shell account for the defence terminal
-    roles/kali/stamp.py             the deployed proxy (deploy/proxy/stamp.py duplicate deleted)
+    roles/kali/stamp.py             a link to deploy/proxy/stamp.py, the one copy of the proxy
     roles/kali/  roles/target/  openstack/  suricata/ (local.rules only)
     filebeat/filebeat.yml           + route appname nginx-access -> module nginx_access
     elastic/ingest-pipeline.json    + nginx_access branch
@@ -296,7 +298,7 @@ There is one score function: `match.service.score(round)` gathers the records fr
 | Suricata process | `rules/suricata.py` | + `checked()` returns `[{line, message}]` (`RULE_ERROR` moves here), + `offline_test`, + `capture`. Each call takes one sensor; the fan-out over sensors is `defence.service` (§8) |
 | CRS/ModSecurity config and nginx reload | `rules/crs.py` | + `scratch_check`, + `scratch_test` (§8) |
 | OpenStack API and live wiring | `range/openstack.py` (parse: `range/wiring.py`, names: `range/topology.py`) | config injected; `substrate()` moves to `range/substrate.py`; calls `rules.suricata.seed` with the baseline file on refill (recorded dependency, see below) |
-| Infra edge set elements | `range/edge.py` (new) | `pool` and `spent` sets, conntrack flush. `slot-boot` stays the only loader of the table; `edge.py` only adds, lists and refills elements |
+| Infra edge set elements | `range/edge.py` (new) | `pool` and `spent` sets, conntrack flush. `slot-boot` stays the only loader of the table; `edge.py` adds, lists and refills elements, and at round start empties both sets and adds the round's addresses in one load (`restart`) |
 | Kibana API | `defence/kibana.py` | holds `space_of`, `refusal` and every Kibana path literal; `defence/views_kibana.py` only calls them |
 | Attacker box | `attack/box.py` | absorbs the command log reader, the tool image name and the kali address (removes two exceptions); `match/customers.py` sends only through `attack.service` |
 | Platform jump host | `range/jump.py` | holds the grants file, key generation and the box account's `authorized_keys`; the box address is an argument (kali from `box.py` for the attack seat, cr-waf's management address for the defence seat's `analyst`). It sits under `range/` so both sides import it without importing each other (rule 3) |
@@ -308,19 +310,21 @@ There is one score function: `match.service.score(round)` gathers the records fr
 
 - `wargames/<id>/topology.yaml`: the `cr-ids` device names the rule file and reload command, and the `cr-waf` device names the exclusion file and the nginx reload.
 - `platform/nginx.conf`: the Kibana routes it refuses, the handoff to `defence/views_kibana.py`, and the `api/spaces/space` answer.
-- `front/src/panes/Kibana.tsx`: the Kibana localStorage preset.
-- `entrypoint.sh`: `vm-terminal.sh cr-kali` and `vm-terminal.sh cr-waf`.
+- `front/src/panes/Kibana.tsx`: the Kibana localStorage preset (once `front/` exists).
+- `entrypoint.sh`: `vm-terminal.sh cr-kali attack` and `vm-terminal.sh cr-waf defence`, and the jump host's empty `authorized_keys`.
 - `deploy/roles/infra/edge.nft`: declares the `pool` and `spent` sets that `range/edge.py` fills.
+- `cr/config.py`: the defaults the seams are handed (the CRS exclusion file and the nginx reload, the box's label file, the node names, the log index pattern).
+- `test/test_event_time.py`, `test/test_geoip_durable.py`, `test/test_origin_placement.py`, `test/test_waf_geolocation.py`: acceptance checks of Elasticsearch's own set-up (pipeline, node settings, index) that query it directly; moving them behind `/api/` is open.
 
 **Exceptions that go away:** `register_pipeline.py`, `operator_log.py`, `redteam/tools.py` naming `cr-kali` (the box passes `launch` to `attack/firing.py`), and F6's step commands (deleted with the lesson content).
 
-`tests/seams/test_isolation_seams.py` keeps one pattern per seam and adds patterns for infra nftables, packet capture, `authorized_keys` and `cr-session-`. `console/static` is gone, and the scan covers `platform/`, `front/src`, `bots/`, `test/` and `bin/`. It also looks for `cr-kali`, `cr-waf`, `cr-infra`, `cr-target`, index patterns and `/kibana/api|internal`. Its exemptions are a closed, named list: `front/src/panes/Kibana.tsx`, `platform/entrypoint.sh`, `platform/nginx.conf`, `bin/cloud`, `bin/platform-rebuild`, and `test/range.py` and `test/test_range_isolation.py` (which check range isolation on purpose). The test asserts that every listed file exists and that the list equals the set of files that match, so it cannot grow silently.
+`tests/seams/test_isolation_seams.py` keeps one pattern per seam and adds patterns for infra nftables, packet capture, `authorized_keys` and `cr-session-`. `console/static` is gone, and the scan covers `platform/`, `front/src`, `bots/`, `test/` and `bin/`. It also looks for `cr-kali`, `cr-waf`, `cr-infra`, `cr-target`, index patterns and `/kibana/api|internal`. Its exemptions are a closed map from each file to the seams it may know: the files of the known exceptions above that the scan reaches (`bin/cloud`, `bin/platform-rebuild`, `test/range.py` and `test/test_range_isolation.py` match no pattern, so they are not in it). The test asserts that every listed file exists (or is named as not written yet), that each still knows exactly what it may, and that the list equals the one in CLAUDE.md's "Known exceptions" paragraph, so it cannot grow silently. It also reads `.md` and `.json`, so the bots' prompts are held to the same seams.
 
 ---
 
 ## 6. Data model per app
 
-All migrations start fresh with `0001_initial`. Users carry over with `bin/carry-users` (`dumpdata auth.User` from the old store, `loaddata` into the new one). Nothing else carries over. `bin/backup` stays a snapshot tool (`VACUUM INTO`, integrity check, row counts) with TABLES re-pointed to the new tables.
+All migrations start fresh with `0001_initial`; `accounts.0002_first_account` makes the staff account `admin` / `123456` when none exists (the 2026-11-15 ruling). Users carry over with `bin/carry-users` (`dumpdata auth.User` from the old store, `loaddata` into the new one without primary keys; an old `admin` replaces the migrated one). Nothing else carries over. `bin/backup` stays a snapshot tool (`VACUUM INTO`, integrity check, row counts) with TABLES re-pointed to the new tables.
 
 **accounts**
 - Django `User` (approval via `is_active`, staff via `is_staff`).
@@ -400,7 +404,7 @@ hp: {origin: {id, label, ip}, left, budget,
 | `DELETE tools/<run>/` | none | `204` | Stops the run on the box (`stopped_by: seat`) |
 | `POST loot/` | `{value}` | `{lost: bool, objective?: {key, name}, hp}` | `referee.service.submit_loot`. Never reveals the secret |
 | `POST origins/next/` | none | `{origin, hp}` | Gives up the current origin early (marked spent) |
-| `GET terminal/` | none | `{ws_url, ssh:{host, port, user, private_key, expires_at}}` | `ws_url` is a per-seat, short-lived ttyd path to kali; `ssh` is a jump grant from `range/jump.py`. Both are revoked when the round ends |
+| `GET terminal/` | none | `{ws_url, ssh:{host, port, user, private_key, expires_at}}` | `ws_url` is the seat's ttyd path to kali (`/vm-terminal/attack/<round>/`), which opens only while the round runs and the seat holds its grant; `ssh` is that jump grant from `range/jump.py`. The grant is revoked when the round ends, and an open shell closes with it |
 | `POST forfeit/` | none | `{ended, reason: forfeit_attack}` | |
 
 The events feed, topology and score are round routes (§9).
@@ -549,7 +553,7 @@ Who may act: the **operator** is `Lease.opened_by` or a staff user (`IsOperator`
 
 **Site pane.** The pane stays on its own nginx listener (8002) with the sandbox CSP and stripped cookies: `/site/<round>/<host>/…` is proxied to Django `/site-proxy/<round>/<host>/…` (`match/site.py`). For an attack seat each request goes through `attack.service.send` with a marker, becomes an `Action(kind=site)` and is charged HP like `POST requests/`; the response carries `X-Origin-HP`. For defence and lesson seats it is stamped with `Lease.browse_marker` and attributed as neither attack nor FP.
 
-**Terminals.** nginx's `/vm-terminal/kali/` and `/vm-terminal/waf/` locations stay, keyed per seat (`/vm-terminal/<side>/<round>/`), with `auth_request /api/rounds/<round>/terminal-auth/<side>` instead of `/signed-in`. kali belongs to the attack seat, waf (`analyst`, read-only) to the defence seat. In a round the defence seat never gets kali; a lesson whose problem side is `both` gives one user both seats.
+**Terminals.** nginx's `/vm-terminal/kali/` and `/vm-terminal/waf/` locations become `/vm-terminal/<side>/<round>/`, with an uncached `auth_request /api/rounds/<round>/terminal-auth/<side>/` instead of `/signed-in`; a raw path whose seat differs from the one the location routes on is refused, and nginx hands ttyd the round as its only argument. `vm-terminal.sh` opens only for a running round's seat that holds a jump grant, as `kali` on kali and as `analyst` (read-only) on waf, and closes the shell once the grant goes or the round ends. kali belongs to the attack seat, waf to the defence seat. In a round the defence seat never gets kali; a lesson whose problem side is `both` gives one user both seats.
 
 **Benign cases are the platform's job.** `match.service.start_round` starts `match/customers.py`, which fires every benign case in `redteam/cases/<wargame>.yaml` every `benign_every_s` through `attack.service.send_as_customer` (customer origins, no HP, not on the attack API), plus the traffic profile (the wargame's default when the problem sets none). A match test proves that a round whose attack seat sends nothing still ends with `totals.tn > 0`.
 
@@ -646,13 +650,13 @@ Dropped on purpose: `click` (a DOM selector), `triage` (scenarios), `replay` (th
 **Where the counts come from:**
 
 1. **API-sent requests** (`POST requests/`, HTTP `POST cases/`, attack-seat site pane) are charged synchronously from the status the box saw. The `hp` in the response is exact.
-2. **Everything else** (terminal curl, sqlmap, `POST tools/`, bot shells). `board.com.conf` (both vhosts) writes a JSON access log of every request (`remote_addr`, `status`, `$http_x_request_id`). `log-shipper.conf` ships it under Tag `nginx-access`, in place of `refused.log`. `filebeat.yml` routes appname `nginx-access` to module `nginx_access`, and `ingest-pipeline.json` gets an `nginx_access` branch. `ingest.elastic.normalize` makes a refusal Detection only from `nginx_access` records with a refused status, and `access_events(index, slot, after)` reads only that module; it is the only reader. The follower feeds those events to `attack.service.charge_from_access`. An event whose marker belongs to an Action already charged synchronously is skipped, so nothing is charged twice.
+2. **Everything else** (terminal curl, sqlmap, `POST tools/`, bot shells). `board.com.conf` (both vhosts) writes a JSON access log of every request to `/var/log/nginx/access.json` (`time`, `client_ip`, `vhost`, `request`, `status`, `refused`, `request_id` from `X-Request-ID`; Ubuntu's own `access.log` keeps the combined format). `log-shipper.conf` ships it under Tag `nginx-access`, in place of `refused.log`. `filebeat.yml` routes appname `nginx-access` to module `nginx_access`, and `ingest-pipeline.json` gets an `nginx_access` branch. `ingest.elastic.normalize` makes a refusal Detection only from `nginx_access` records with a refused status, and `access_events(index, slot, after)` reads only that module; it is the only reader. The follower feeds those events to `attack.service.charge_from_access`. An event whose marker belongs to an Action already charged synchronously is skipped, so nothing is charged twice.
 
 Requests are counted at the WAF edge, never from Suricata: cr-ids sits behind cr-waf, so Suricata's `src_ip` is the WAF, and refused requests never reach it. Traffic that is not HTTP never reaches the target: `edge.nft` forwards only tcp/80 to the WAF and drops everything else from the WAN, so it needs no HP.
 
 **When an origin is spent** (`attack.service`):
 
-1. `range.edge.spend(ip)` adds the address to the infra `spent` set and flushes its conntrack entries. In `edge.nft` the rule `iifname @wan@ ip saddr @spent drop` and `iifname @wan@ ip saddr != @pool drop` come **before** the `ct state established,related accept` in the forward chain, so an open keep-alive or sqlmap connection stops too. `pool` holds the round's declared attack origins and the customer addresses; for a probe lease, the harness origins and customers; for a lesson, the lesson round's attack origins and customers. `slot-boot` reloading the table empties the sets, so `attack.service.refill_edge` re-adds them on each tick. The learner account `kali` has `NOPASSWD:ALL` sudo, so dropping at the infra router, the one hop the attacker does not control, is what stops a spent origin.
+1. `range.edge.spend(ip)` adds the address to the infra `spent` set and flushes its conntrack entries. In `edge.nft` the rule `iifname @wan@ ip saddr @spent drop` comes **before** the `ct state established,related accept` in the forward chain, so an open keep-alive or sqlmap connection stops too. `pool` holds the round's declared attack origins and the customer addresses; for a lesson, the lesson round's attack origins and customers. The planned `iifname @wan@ ip saddr != @pool drop` is not in the chain yet: a probe lease has no round and fills no `pool`, so it would cut probe recording. Until it is, a learner with sudo on kali can send from an unused origin-subnet address that neither set holds, and the HP rule does not reach it (`docs/STATE.md`). `slot-boot` reloading the table empties the sets, so `attack.service.refill_edge` re-adds them on each tick. The learner account `kali` has `NOPASSWD:ALL` sudo, so dropping at the infra router, the one hop the attacker does not control, is what stops a spent origin.
 2. Running ToolRuns of the seat are stopped through `box.stop` (`stopped_by: origin_spent`).
 3. `box.wear_origin(next)` runs `set-origin` with the next unspent attack origin from `box.origins()`, never from `customer_origins()`.
 4. Events `origin.spent` and `origin.switched` are appended. When none are left, `origins.spent` is appended, attack writes return `409 origins_spent`, and `domain.round_rules.ended` returns `origins_spent` once `may_end` holds (§9).
@@ -661,7 +665,7 @@ Requests are counted at the WAF edge, never from Suricata: cr-ids sits behind cr
 
 **Refusals and the hypothesis.** A refusal costs more, so a block-everything defence drains HP faster. The objective number may then look good for it, but the platform-fired benign set (§9) keeps running until at least one full pass, so its FPs show beside it. Acceptance proves it (§14).
 
-The `spent` set needs no flush at round end: the slot stack is rebuilt when the lease is released.
+A lease holds rounds one after another and its stack is rebuilt only when the lease is released, so each round start empties `pool` and `spent` and adds the new round's addresses in one load (`range.edge.restart` from `attack.fill_pool`); the tick's `refill_edge` only adds.
 
 ---
 
@@ -702,8 +706,8 @@ The `spent` set needs no flush at round end: the slot stack is rebuilt when the 
   - `tests/seams/test_no_hangul.py` is one repo-wide scan over `.py .ts .tsx .html .json .yaml .md .sh .conf`. It allows Hangul only in `README.md`, `docs/ARCHITECTURE.md`, `docs/vocabulary.md`, `strings/console.json`, `strings/server.json`, `wargames/board/app/posts/templates/`, `wargames/board/app/posts/management/commands/seed.py`, and a named list of test files that stand in for Korean learner text or check the Korean the product shows. The test asserts the named list exists.
   - vitest: every `t(key)` exists in `console.json`; every error code in the schema enum has a key; no shown label is an English TP/FP/FN/TN abbreviation.
   - pytest `test_error_codes.py`: every code in `cr/errors.py` and every `detail_code` in `domain/checks.py` has a key in `console.json`.
-- **CLAUDE.md** lists these Korean places, the generated-code rule (not committed), and the comment scan `tests/seams/test_no_comments.py` over `platform/`, `front/src`, `bots/` and `bin/`, exempting exactly `deploy/suricata/rules/` and Django's migration header.
-- **nginx.conf** is rewritten in the same step. It keeps the exact-match rate-limited `/api/auth/login/` and `/api/auth/signup/` locations and `@too-many`, `/auth-check/`, `@sign-in`, `/signed-in`, `/static/map/`, `/site-proxy/`, the 8002 site listener (keyed by round), the `/vm-terminal/<side>/<round>/` locations with the seat `auth_request`, and the Kibana routes and gate. The SPA fallback is added last. Django admin is not installed, and a test asserts that no URL routes to it.
+- **CLAUDE.md** lists these Korean places, the generated-code rule (not committed), and the comment scan `tests/seams/test_no_comments.py` over `platform/`, `front/src`, `bots/`, `bin/`, `test/`, `deploy/`, `wargames/` and `redteam/` (Python, shell and TS/TSX/JS), exempting exactly `deploy/suricata/rules/`, Django's migration header and a script's shebang.
+- **nginx.conf** is rewritten in the same step. It keeps the exact-match rate-limited `/api/auth/login/` and `/api/auth/signup/` locations and `@too-many` (now the one error shape, code `too_many`), `@sign-in`, `/signed-in` (now asking `/api/me/`, since the new tree has no `/auth-check/` view), `/site-proxy/` (refused from outside), the 8002 site listener (keyed by round), the `/vm-terminal/<side>/<round>/` locations with the seat `auth_request`, and the Kibana routes and gate, which also answers every refused Kibana route (`/kibana-refused/` is gone). `/static/map/` is dropped: the map ships with the front build. The SPA fallback (`/app/front/dist`, `try_files … /index.html`) is added last. Django admin is not installed, and a test asserts that no URL routes to it.
 
 ---
 
@@ -736,7 +740,7 @@ The `spent` set needs no flush at round end: the slot stack is rebuilt when the 
 - **`platform/console/`:** every template, including `blue_lesson_script.html`, `blue_dev*` with its `site.dev.*` strings, `blue_scenario*`, `blue_triage`, `blue_coach`, `debrief_script`, `session.html`, `main.html`, `blue.html`, `red.html` and `strings.html`. `console/strings.py` is replaced by `cr/strings.py` over `strings/server.json`.
 - **Content:** `wargames/<id>/scenario.yaml` (replaced by `wargame.yaml`; its wargame-level `difficulty`, `minutes` and `category` are gone, objective tiers keep theirs). The 12 named defense profiles become Posture rows authored through the staff API. The rule files `no-xss`, `no-uri-sqli`, `broken-sort` and `spaced-sort`, which only those profiles used. The lessons f1-f6 and c1/c2.
 - **Check kinds:** `click`, `triage`, `replay`, `rules`.
-- **Deploy:** `deploy/proxy/stamp.py` (duplicate of `deploy/roles/kali/stamp.py`) and its pairing test; `refused.log`; `deploy/openstack/network.yaml`.
+- **Deploy:** `refused.log`; `deploy/openstack/network.yaml`. `deploy/proxy/stamp.py` stays: `deploy/roles/kali/stamp.py` is a link to it, not a second copy.
 - **Endpoints, with no replacement or replaced as listed:**
   - `/api/sessions/**` → `/api/leases/` and `/api/rounds/`
   - `PUT sessions/<id>/waf/` → `waf/apply/`
@@ -768,10 +772,11 @@ The work happens on a working branch. Old `platform/api/` and `platform/console/
 
    *Proof:* `tests/seams` against fakes. Import rules 2, 4, 14. Seam scan.
 5. **Deploy changes and rebake.**
-   - `edge.nft`: `pool` and `spent` sets, the drop rules before the established accept.
-   - `board.com.conf` (both vhosts): the `$refused` map (400, 403) and the JSON access log; `log-shipper.conf` ships it as `nginx-access`; `deploy/filebeat/filebeat.yml` routes it; `deploy/elastic/ingest-pipeline.json` gets the `nginx_access` branch.
+   - `edge.nft`: `pool` and `spent` sets, the `spent` drop before the established accept (the `pool` drop waits, §11).
+   - `board.com.conf` (both vhosts): the `$refused` map (400, 403) and the JSON access log `access.json`; `log-shipper.conf` ships it as `nginx-access` and the infra's `log-relay.conf` relays it; `deploy/filebeat/filebeat.yml` routes it; `deploy/elastic/ingest-pipeline.json` gets the `nginx_access` branch.
    - `probe.conf`, `probe-upstream.py` and the `analyst` account on the WAF role.
-   - Bake new role images for infra and waf (`docs/OPENSTACK.md`).
+   - `conntrack`, `tcpdump` and the offline rule test's scratch folder on the infra role.
+   - Bake new role images for infra and waf (`docs/OPENSTACK.md` §3.7).
 
    *Proof:* on a slot, `nft list set ip edge spent` exists; an access-log line reaches Elasticsearch with `request_id` as module `nginx_access`, and a 200 makes no Detection; `rules.crs.scratch_test` returns a verdict for one case and leaves the live audit log unchanged; `rules.suricata.offline_test` leaves `/var/log/suricata/eve.json` unchanged.
 6. **Django skeleton.** `cr/` (settings, DRF, spectacular, `handler.py`, `strings.py`), `strings/`, `accounts` (auth routes, blocks, staff users) and `events`.

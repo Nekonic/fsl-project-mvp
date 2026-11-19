@@ -10181,3 +10181,33 @@ and its checks.
   kali's internet port allows every address, so a learner with sudo can send
   from an unused address in an origin subnet that neither set holds, and the
   HP rule does not reach it.
+
+## 2026-11-20 — Docs brought in step with the side-split code after step 5 and the terminals
+
+- **The spec says what was built where the build departed.** Its status line
+  now says it was approved on 2026-11-19 and is being built; the text for
+  the first account, the seam scan's exception map (the spec's own list
+  matched nothing the scan finds), the comment scan's reach, the per-seat
+  terminals and their raw-path guard, `/signed-in` on `/api/me/` (no
+  `/auth-check/` or `/kibana-refused/` view, `/static/map/` dropped), the
+  access log's path (`access.json`), the `spent`-only edge drop, the round
+  start that empties both edge sets and `deploy/proxy/stamp.py` is changed
+  to match the code. The reasons stay in the entries above.
+- **`deploy/proxy/stamp.py` stays.** The spec listed it for deletion as a
+  duplicate of `deploy/roles/kali/stamp.py`, but the role's file is a git
+  link to it, so the repo holds one copy; there is nothing to delete.
+- **OPENSTACK.md names the side split's staff range API.** Its procedures
+  used the old tree's `/api/range/slot/`, `ready/`, `configure/`,
+  `/api/sessions/<id>/ssh/`, `/auth-check/`, the session reset with its
+  retarget and `reset-owed` files, and root shells for both terminals. They
+  now follow `bin/cloud` and `match.service`: `POST fabric/`, `DELETE
+  leftovers/`, `POST pool/` (a refill owed to every slot no lease holds,
+  carried out by the follower, state in `CR_REFILL_DIR`), `GET
+  /api/staff/range/` until every refill is `idle`; a lease gets only a free
+  slot of its own wargame or `503 range_unavailable`, with no retarget; the
+  terminals open as `kali` and `analyst`. Runs and measurements dated before
+  2026-11-19 keep the old names as the record, which a note at the top says.
+- **CLAUDE.md names `docs/DECISIONS.md` among the Korean places** for as long
+  as `test_no_hangul.py` allows it by name, and no longer says the platform
+  Dockerfile and `images.yml` generate the clients: only `bin/verify` does
+  until the `front/` node stage exists.

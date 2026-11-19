@@ -14,10 +14,11 @@ The product is being rebuilt as a side split on the working branch
 `side-split` (user ruling 2026-11-19: no code is kept or migrated; the old
 code is reference only). `dev` keeps the old product deployable until gate 2.
 
-The rebuild follows the spec's build order (§16). Steps 1-4, 6-11, 13, 14 and
-the code of 16 are built and pass the unit and API suite; steps 5, 12 and 15
-and the live parts of 16 and 17 are not done. Nothing on `side-split` has run
-on a range.
+The rebuild follows the spec's build order (§16). Steps 1-4, 6-11, 13, 14,
+the repo side of 5, the `nginx.conf` and terminal part of 15 and the code of
+16 are built and pass the unit and API suite; the bake of 5, step 12, the
+`front/` of 15 and the live parts of 16 and 17 are not done. Nothing on
+`side-split` has run on a range.
 
 ## What exists on side-split
 
@@ -27,6 +28,7 @@ on a range.
 | 2 Old tree cleared | `platform/api/`, `platform/console/`, the scenario and lesson modules and their tests are deleted | `platform/tests/test_old_tree_gone.py` |
 | 3 `domain/` | scoring (correlate, metrics, corroborate, objectives), ledger, verdicts, checks, problems, round_rules | `platform/tests/domain/`, no Django in the process; import rule 1 |
 | 4 Seams | `cr/config.py`, `cr/errors.py`, `ingest/elastic.py`, `rules/suricata.py`, `rules/crs.py`, `range/*` (with `edge.py`, `jump.py`, `refill.py` rewritten), `attack/box.py`, `firing.py`, `tools.py`, `defence/kibana.py`, `referee/loot.py`, `effect.py` | `platform/tests/seams/` against fakes; import rules 2, 4, 14; `platform/tests/seams/test_isolation_seams.py`, `test_no_comments.py` |
+| 5 Deploy (repo side) | `edge.nft` with `pool` and `spent` and the `spent` drop before the established accept; the WAF's JSON access log `access.json` shipped and relayed as `nginx-access`, ingested as `nginx_access`; `probe.conf`, `probe-upstream.py`, `analyst.sh`; `conntrack`, `tcpdump` and `/var/lib/cr-ruletest` on the infra; `bin/record-probes`; each round start empties both edge sets (`range.edge.restart`) | `tests/test_edge_sets.py`, `test_waf_scratch.py`, `test_access_log.py`, `test_analyst.py`, `test_record_probes.py`, `test_roles.py`, `test_filebeat.py`, `tests/seams/test_edge.py`, `tests/attack/test_spend.py`; structural only, no `nft -c` or `nginx -t` |
 | 6 Django skeleton | `cr/` (DRF, spectacular, one handler, `strings.py`), `strings/`, `accounts`, `events` | `tests/accounts` (with the first account `admin` from migration `accounts.0002_first_account`), `tests/events`, the error-shape and no-admin tests |
 | 7 `content` | catalog, `wargame.yaml` per wargame, problems as nested documents with revisions and export/import, postures, the learner read API | `tests/content`; `test_no_hangul.py` |
 | 8 Round records, referee | `match.models`, `match.auth` (seat tokens hashed, `HasSeat`, `InRound`, `IsOperator`, `OnLease`), `referee` (baseline, loot, effects, objectives, redact, score) | `tests/referee`; import rules 4, 5, 11, 15 |
@@ -35,6 +37,7 @@ on a range.
 | 11 `match.service` | lease and round lifecycle, follower (`follow` compose service), customers and the benign schedule, site pane, terminal auth routes, score, probe recording, staff range routes | `tests/match`; import rules 6, 7, 9 |
 | 13 `lessons` | lesson rounds, facts, judges, progress, hints, `step_locked`, staff try | `tests/lessons` |
 | 14 Contract and clients | `openapi/schema.yaml` committed; `bin/gen-clients`; `test/` and `bin/` on the generated client; `bin/backup` and `bin/prune` on the new tables | `tests/contract`; import rule 12; no `/api/sessions` outside docs |
+| 15 `nginx.conf` and terminals | per-seat `/vm-terminal/<side>/<round>/` through an uncached `terminal-auth`, the raw-path seat guard, the round passed to ttyd as its only argument; `vm-terminal.sh` (kali as `kali`, cr-waf as `analyst`, only with a jump grant, closed within 15 s once the grant goes); `/signed-in` on `/api/me/`; the 8002 listener keyed by round; refused Kibana routes answered by the gate; `/app/front/dist` served last. `front/` itself is not built | `tests/test_front.py` (a config parser and nginx's path normalization replayed), `tests/test_vm_terminal.py` (fake `python`, `ssh`, `tmux`), `tests/attack/test_terminal.py`, `tests/defence/test_terminal.py`; no `nginx -t` |
 | 16 `bots/` (code) | `tools.py`, `calls.py`, `cli.py`, `play.py`, `provider.py`, `signin.py`, the side prompts and the README | `platform/tests/test_bots.py` |
 | 17 Docs | README, ARCHITECTURE, CLAUDE.md, this file and `now.md` describe the new layout | this step |
 
@@ -58,7 +61,11 @@ on a slot:
 - one round of each matchup with Claude Code driving the bot seat
   (`test/test_bot_rounds.py` drives the seats through the generated client,
   not through a model);
-- the ported acceptance suite as a whole (`test/`).
+- the ported acceptance suite as a whole (`test/`);
+- `nginx -t` on `platform/nginx.conf` and `nft -c` on `edge.nft` (Docker was
+  not running on the development machine), the ttyd `?arg=` handoff, the
+  terminal's ssh running in the background beside its recheck loop with a
+  real terminal, and the `analyst` account on a baked WAF.
 
 ## Next steps, in order
 
@@ -116,6 +123,31 @@ on a slot:
   does not bind a learner who uses sudo on kali: kali's internet port allows
   every address (`0.0.0.0/0` allowed address pair), so an unused address in
   an origin subnet is in neither set and its requests are never charged.
+- **A refused terminal for a closed round answers 500, not 409.** nginx's
+  `auth_request` turns any answer but 2xx, 401 and 403 into a 500, so
+  `round_closed` from `terminal-auth` reaches the browser as a 500.
+- **The sign-in redirect has no page yet.** `@sign-in` sends Kibana and site
+  pane requests without a session to `/login/?next=`, which only `front/`
+  will serve; until then it falls to the missing `index.html`.
+- **Processes left by `analyst`.** A background process the defence seat
+  starts on cr-waf (`nohup`, cron) outlives the round; nothing kills it.
+  The WAF's nftables rule keeps it off the network, so it can only read, but
+  it can get in a later defender's way on the same lease.
+- **Two runtime guesses in the rule test.** Whether `jasonish/suricata`'s
+  entrypoint lets the offline `-r` run write to the root-owned scratch log
+  folder mounted at `/scratch`, and whether the scratch ModSecurity
+  instance's audit log is opened by the root master (its workers could not
+  write it), are not known until a slot runs them.
+- **The comment scan reads code only.** `test_no_comments.py` covers
+  Python, shell and TS/TSX/JS; config and data files are not scanned, and
+  `wargames/board/traffic.yaml` carries a comment block from before the side
+  split.
+- **`bin/carry-users` mid-load.** If `loaddata` fails after the migrated
+  `admin` was deleted, the new store has no `admin` until the command is run
+  again, which recovers it.
+- **Generated clients outside `bin/verify`.** The platform Dockerfile and
+  `images.yml` do not run `bin/gen-clients` yet (the spec has them do it with
+  the `front/` node stage); the platform image needs neither client today.
 - **No route serves the probe recordings.** `match/probes.py` writes them to
   the platform's `CR_PROBES_OUT`; they are copied off the platform VM by hand
   before they are committed.
