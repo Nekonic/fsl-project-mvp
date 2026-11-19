@@ -2261,6 +2261,117 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Errors'
+  /api/staff/range/fabric/:
+    post:
+      operationId: staff_fabric_build
+      tags:
+      - staff
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Fabric'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    delete:
+      operationId: staff_fabric_remove
+      tags:
+      - staff
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/range/leftovers/:
+    delete:
+      operationId: staff_leftovers_remove
+      tags:
+      - staff
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/range/pool/:
+    get:
+      operationId: staff_pool
+      tags:
+      - staff
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pool'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    post:
+      operationId: staff_pool_fill
+      tags:
+      - staff
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Range'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    delete:
+      operationId: staff_pool_empty
+      tags:
+      - staff
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
   /api/staff/steps/{problem_id}/{order}/try/:
     post:
       operationId: staff_step_try
@@ -3075,6 +3186,18 @@ components:
           format: date-time
       required:
       - expires_at
+    Fabric:
+      type: object
+      properties:
+        present:
+          type: array
+          items:
+            type: string
+        clean:
+          type: boolean
+      required:
+      - clean
+      - present
     FireCaseRequest:
       type: object
       properties:
@@ -3807,6 +3930,15 @@ components:
           $ref: '#/components/schemas/RoundPhaseEnum'
       required:
       - phase
+    Pool:
+      type: object
+      properties:
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlotStanding'
+      required:
+      - slots
     Posture:
       type: object
       properties:
@@ -4436,6 +4568,19 @@ components:
       - marker
       - status
       - truncated
+    Server:
+      type: object
+      properties:
+        host:
+          type: string
+        server:
+          type: string
+        status:
+          type: string
+      required:
+      - host
+      - server
+      - status
     SignUpRequest:
       type: object
       properties:
@@ -4506,6 +4651,31 @@ components:
       required:
       - lease
       - refill
+      - slot
+      - wargame
+    SlotStanding:
+      type: object
+      properties:
+        slot:
+          type: integer
+        wargame:
+          type: string
+        servers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Server'
+        blocked:
+          type: array
+          items:
+            type: string
+        failures:
+          type: array
+          items:
+            type: string
+      required:
+      - blocked
+      - failures
+      - servers
       - slot
       - wargame
     Ssh:
@@ -5122,6 +5292,7 @@ components:
       - password_too_similar
       - probe_running
       - range_drifted
+      - range_not_cloud
       - range_unavailable
       - required
       - round_closed

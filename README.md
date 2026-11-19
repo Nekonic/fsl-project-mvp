@@ -191,10 +191,11 @@ uv run bin/cloud up
 2. **로그 분석 기초**의 **레슨 1**에서 **시작**을 누릅니다.
 3. 과정 안내에서 **시작**을 누르면 구성도와 레슨 노트의 첫 단계가 나옵니다.
 
-풀 상태는 API로 확인합니다. 세션에 배정할 스택이 있으면 `"ready": true`입니다.
+풀 상태는 스태프 계정으로 API에서 확인합니다. 슬롯마다 리스(`lease`)와 재생성 상태(`refill.state`)가 나오고,
+`idle`이면서 리스가 없는 슬롯을 새 리스가 받습니다. 슬롯 스택의 서버 상태는 `GET /api/staff/range/pool/`에 있습니다.
 
 ```bash
-curl -s http://ADDRESS:8000/api/range/ready/
+curl -s -b cookies.txt http://ADDRESS:8000/api/staff/range/
 ```
 
 세션을 닫으면 그 세션의 스택을 지우고 새로 만듭니다. 그동안 그 스택은 `RESETTING`이고, 새 세션은
@@ -206,11 +207,11 @@ curl -s http://ADDRESS:8000/api/range/ready/
 |---|---|---|
 | 스택이 `SETUP_FAILED` | 그 VM의 `/var/lib/cr/failed`(부팅 유닛의 `systemctl status`. target은 이미지 태그가 `compute.target_tag`와 다르면 그 `image:` 줄)와 `/var/log/cloud-init-output.log` | 원인 수정 후 `uv run bin/cloud up` |
 | 스택이 `NOT_STANDING`, `no active image ... in Glance` | `compute.images`의 이름과 Glance의 이미지 | 이미지를 굽거나 있는 이름을 `compute.images.<역할>`에 적고 `uv run bin/cloud up --replace` |
-| 스택이 `CREATE_FAILED` | `GET /api/range/ready/`의 이유(Heat의 `stack_status_reason`) | 원인 수정 후 `uv run bin/cloud up` |
+| 스택이 `CREATE_FAILED` | `GET /api/staff/range/pool/`의 `failures`(Heat의 `stack_status_reason`) | 원인 수정 후 `uv run bin/cloud up` |
 | 플랫폼이 응답하지 않음 | `ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS`에서 `systemctl status cr-platform`, `sudo docker logs cr-platform` | 원인 수정 후 `uv run bin/cloud up` |
 | `docker ps`에 `cr-platform`이 없음 | `sudo cloud-init status --long`. 대개 VM이 인터넷에 못 나감([인터넷 연결](docs/OPENSTACK.md#26-internet-egress)) | 원인 수정 후 `uv run bin/cloud up --replace` |
 | Heat 스택 생성 실패 | `uvx --from python-openstackclient --with python-heatclient openstack --os-cloud fsl-range stack failures list cr-platform` | 원인 수정 후 `uv run bin/cloud up` |
-| 스택이 `RESET_FAILED` | `GET /api/range/ready/`의 이유 | `curl -X POST http://ADDRESS:8000/api/range/configure/` |
+| 슬롯의 `refill.state`가 `failed` | `GET /api/staff/range/`의 `refill.reason` | 원인 수정 후 `uv run bin/cloud up` |
 
 ## 운영
 
@@ -244,7 +245,7 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 | `platform` | 스택 이름, 저장소, ref |
 | `backups` | `backups/`에 남길 백업 수 |
 
-훈련 환경 API(`/api/range/fabric/`, `/leftovers/`, `/slot/`, `/configure/`, `/slot/rebuild/`)는
+`bin/cloud`가 쓰는 훈련 환경 API(`/api/staff/range/fabric/`, `/leftovers/`, `/pool/`)는
 [훈련 환경](docs/OPENSTACK.md#6-the-range-substrate-openstack)에 있습니다.
 
 ## 포트

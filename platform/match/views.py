@@ -214,6 +214,46 @@ class StaffRange(MatchView):
         return Response(serializers.Range({"slots": [asdict(one) for one in service.slots()]}).data)
 
 
+def shown_removed(found) -> Response:
+    return Response(serializers.RemovedList({"removed": [asdict(one) for one in found]}).data)
+
+
+class StaffFabric(MatchView):
+    permission_classes = [accounts.IsStaff]
+
+    @extend_schema(tags=STAFF_TAGS, request=None, responses=serializers.Fabric, operation_id="staff_fabric_build")
+    def post(self, request):
+        return Response(serializers.Fabric(asdict(service.build_fabric())).data)
+
+    @extend_schema(tags=STAFF_TAGS, responses=serializers.RemovedList, operation_id="staff_fabric_remove")
+    def delete(self, request):
+        return shown_removed(service.remove_fabric())
+
+
+class StaffLeftovers(MatchView):
+    permission_classes = [accounts.IsStaff]
+
+    @extend_schema(tags=STAFF_TAGS, responses=serializers.RemovedList, operation_id="staff_leftovers_remove")
+    def delete(self, request):
+        return shown_removed(service.remove_leftovers())
+
+
+class StaffPool(MatchView):
+    permission_classes = [accounts.IsStaff]
+
+    @extend_schema(tags=STAFF_TAGS, responses=serializers.Pool, operation_id="staff_pool")
+    def get(self, request):
+        return Response(serializers.Pool({"slots": [asdict(one) for one in service.pool_standing()]}).data)
+
+    @extend_schema(tags=STAFF_TAGS, request=None, responses=serializers.Range, operation_id="staff_pool_fill")
+    def post(self, request):
+        return Response(serializers.Range({"slots": [asdict(one) for one in service.fill_pool()]}).data)
+
+    @extend_schema(tags=STAFF_TAGS, responses=serializers.RemovedList, operation_id="staff_pool_empty")
+    def delete(self, request):
+        return shown_removed(service.empty_pool())
+
+
 class RecordProbes(MatchView):
     permission_classes = [accounts.IsStaff]
 

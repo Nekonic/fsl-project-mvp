@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from range.networks import Plan as FabricPlan
 from range.pool import Plan
 from range.wiring import Wiring
 from tests.attack.fakes import FakeRange as AttackRange
@@ -58,6 +59,9 @@ class FakeSlot(AttackRange):
         self.configured += 1
         return []
 
+    def teardown_slot(self):
+        return [("stack", f"stack-{self.slot}")]
+
     def wiring(self):
         return Wiring()
 
@@ -67,8 +71,26 @@ class FakeCloud:
     slots: int = 2
     held: dict[int, FakeSlot] = field(default_factory=dict)
 
+    fabric: FabricPlan = field(default_factory=lambda: FabricPlan(present=("cr-attack", "cr-dmz")))
+    leftovers: list[tuple[str, str]] = field(default_factory=list)
+    fabric_removed: bool = False
+
     def in_slot(self, number: int) -> FakeSlot:
         return self.held.setdefault(number, FakeSlot(slot=number))
+
+    def ensure_fabric(self) -> FabricPlan:
+        return self.fabric
+
+    def teardown_fabric(self):
+        self.fabric_removed = True
+        return [("network", "cr-attack"), ("network", "cr-dmz")]
+
+    def clean_leftovers(self):
+        return list(self.leftovers)
+
+    def plan_slots(self) -> list[Plan]:
+        return [Plan(slot=number, wargame=ASSIGNED.get(number, ""), standing=(
+            (f"cr-slot-{number}-kali", f"server-{number}", "ACTIVE"),)) for number in range(1, self.slots + 1)]
 
 
 HELD: dict[str, FakeCloud] = {}

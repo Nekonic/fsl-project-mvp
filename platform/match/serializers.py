@@ -208,6 +208,38 @@ class Range(serializers.Serializer):
     slots = SlotLine(many=True)
 
 
+class Removed(serializers.Serializer):
+    kind = serializers.CharField()
+    id = serializers.CharField()
+
+
+class RemovedList(serializers.Serializer):
+    removed = Removed(many=True)
+
+
+class Fabric(serializers.Serializer):
+    present = serializers.ListField(child=serializers.CharField())
+    clean = serializers.BooleanField()
+
+
+class Server(serializers.Serializer):
+    host = serializers.CharField()
+    server = serializers.CharField()
+    status = serializers.CharField()
+
+
+class SlotStanding(serializers.Serializer):
+    slot = serializers.IntegerField()
+    wargame = serializers.CharField()
+    servers = Server(many=True)
+    blocked = serializers.ListField(child=serializers.CharField())
+    failures = serializers.ListField(child=serializers.CharField())
+
+
+class Pool(serializers.Serializer):
+    slots = SlotStanding(many=True)
+
+
 class ProbeLease(serializers.Serializer):
     lease = serializers.IntegerField(source="pk")
 

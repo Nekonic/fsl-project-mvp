@@ -54,6 +54,34 @@ class SlotLine:
     refill: dict
 
 
+@dataclass(frozen=True)
+class Removed:
+    kind: str
+    id: str
+
+
+@dataclass(frozen=True)
+class Fabric:
+    present: tuple[str, ...]
+    clean: bool
+
+
+@dataclass(frozen=True)
+class Server:
+    host: str
+    server: str
+    status: str
+
+
+@dataclass(frozen=True)
+class SlotStanding:
+    slot: int
+    wargame: str
+    servers: tuple[Server, ...]
+    blocked: tuple[str, ...]
+    failures: tuple[str, ...]
+
+
 def configured() -> config.Config:
     return config.build(source=Path(settings.CR_SOURCE))
 
@@ -460,6 +488,54 @@ def slots() -> list[SlotLine]:
     holders = dict(Lease.objects.filter(closed=None).exclude(slot=None).values_list("slot", "pk"))
     return [SlotLine(slot=number, wargame=assigned(whole, number), lease=holders.get(number),
                      refill=refill.standing(kept, number).shown()) for number in numbers(whole)]
+
+
+def cloud_range():
+    whole = whole_range()
+    if not hasattr(whole, "ensure_fabric"):
+        raise errors.Conflict(code="range_not_cloud")
+    return whole
+
+
+def removed(pairs) -> list[Removed]:
+    return [Removed(kind=kind, id=str(ident)) for kind, ident in pairs]
+
+
+def build_fabric() -> Fabric:
+    plan = cloud_range().ensure_fabric()
+    return Fabric(present=tuple(plan.present), clean=plan.clean)
+
+
+def remove_fabric() -> list[Removed]:
+    return removed(cloud_range().teardown_fabric())
+
+
+def remove_leftovers() -> list[Removed]:
+    return removed(cloud_range().clean_leftovers())
+
+
+def pool_standing() -> list[SlotStanding]:
+    whole = cloud_range()
+    return [SlotStanding(slot=number, wargame=plan.wargame or assigned(whole, number),
+                         servers=tuple(Server(host=host, server=server, status=status)
+                                       for host, server, status in plan.standing),
+                         blocked=tuple(plan.blocked), failures=tuple(plan.failures))
+            for number, plan in zip(numbers(whole), whole.plan_slots())]
+
+
+def fill_pool() -> list[SlotLine]:
+    whole, kept, held = cloud_range(), store(), held_slots()
+    for number in numbers(whole):
+        if number not in held:
+            refill.claim(kept, clock, number, assigned(whole, number), wait=configured().refill.wait)
+    return slots()
+
+
+def empty_pool() -> list[Removed]:
+    whole, kept = cloud_range(), store()
+    for number in numbers(whole):
+        refill.release(kept, number)
+    return [one for number in numbers(whole) for one in removed(whole.in_slot(number).teardown_slot())]
 
 
 def expire(at: datetime | None = None) -> list[int]:

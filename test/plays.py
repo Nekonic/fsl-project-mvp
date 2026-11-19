@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import typing
 from dataclasses import dataclass, field
@@ -21,7 +22,7 @@ from bots.client.api.defence import (
     defence_ids_enable, defence_ids_rules, defence_state, defence_waf, defence_waf_apply,
 )
 from bots.client.api.match import (
-    lease_close, lease_open, round_create, round_end, round_events, round_list, round_read, round_score,
+    lease_close, lease_heartbeat, lease_open, round_create, round_end, round_events, round_list, round_read, round_score,
     round_start, round_topology,
 )
 from bots.client.api.staff import (
@@ -48,6 +49,7 @@ POLL = 2
 SCORE_WAIT = 150.0
 TOOL_WAIT = 900.0
 ALERT_PAGES = 200
+HEARTBEAT_EVERY = 60.0
 
 
 @dataclass(frozen=True)
@@ -179,6 +181,7 @@ class Played:
     attack: Any
     slot: int | None = None
     closed: bool = False
+    stopped: threading.Event = field(default_factory=threading.Event)
 
 
 OPENED: list[Played] = []
@@ -196,6 +199,17 @@ def opened_lease(wargame: str, wait: float = ROOM_WAIT) -> dict:
         time.sleep(min(retry_after(answer), 30.0))
 
 
+def kept_alive(played: Played) -> None:
+    def beat() -> None:
+        while not played.stopped.wait(HEARTBEAT_EVERY):
+            try:
+                ask(lease_heartbeat, operator(), lease_id=played.lease)
+            except httpx2.HTTPError:
+                continue
+
+    threading.Thread(target=beat, name=f"lease-{played.lease}-heartbeat", daemon=True).start()
+
+
 def next_round(lease: int, wargame: str) -> tuple[int, Any]:
     made = done(round_create, operator(), {
         "problem": acceptance_problem(wargame), "matchup": "def_vs_bot",
@@ -209,6 +223,7 @@ def play(wargame: str = "board") -> Played:
     lease = opened_lease(wargame)
     played = Played(lease=lease["lease"], round=0, wargame=wargame, attack=None, slot=lease.get("slot"))
     OPENED.append(played)
+    kept_alive(played)
     for listener in LISTENERS:
         listener(played)
     played.round, played.attack = next_round(played.lease, wargame)
@@ -232,6 +247,7 @@ def close(played: Played) -> Answer:
     closed = ask(lease_close, operator(), lease_id=played.lease)
     if closed.ok or "lease_closed" in closed.codes:
         played.closed = True
+        played.stopped.set()
     return closed
 
 

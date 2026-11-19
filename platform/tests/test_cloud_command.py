@@ -18,32 +18,29 @@ def command():
     return module
 
 
+def slots(*states):
+    return {"slots": [{"slot": number, "refill": {"state": state, "reason": "the stack failed" if state == "failed"
+                                                  else ""}} for number, state in enumerate(states, start=1)]}
+
+
 class Platform:
-    def __init__(self, fabric=None, slot=None, ready=None, configure=None, removed=(), standing=()):
+    def __init__(self, fabric=None, refills=None, removed=(), standing=()):
         self.calls = []
         self.standing = iter(standing)
         self.removed = list(removed)
-        self.fabric = fabric or {"drifted": [], "clean": True}
-        self.slot = slot or {"blocked": [], "clean": True}
-        self.ready = iter(ready or [
-            {"ready": False, "slot": {"phase": "NOT_STANDING"}},
-            {"ready": False, "slot": {"phase": "CHECKING"}},
-            {"ready": True, "slot": {"phase": "READY"}},
-        ])
-        self.configure = iter(configure or [(200, {"configured": []})])
+        self.fabric = fabric or (200, {"present": [], "clean": True})
+        self.refills = iter(refills or [slots("running", "running"), slots("idle", "running"), slots("idle", "idle")])
 
     def __call__(self, verb, path):
         self.calls.append((verb, path))
         if (verb, path) == ("POST", "/fabric/"):
-            return 200, self.fabric
-        if (verb, path) == ("POST", "/slot/"):
-            return 200, self.slot
-        if (verb, path) == ("GET", "/ready/"):
-            return 200, next(self.ready)
-        if (verb, path) == ("POST", "/configure/"):
-            return next(self.configure)
-        if (verb, path) == ("GET", "/slot/"):
-            return 200, {"standing": next(self.standing, [])}
+            return self.fabric
+        if (verb, path) == ("POST", "/pool/"):
+            return 200, slots("running", "running")
+        if (verb, path) == ("GET", "/"):
+            return 200, next(self.refills)
+        if (verb, path) == ("GET", "/pool/"):
+            return 200, {"slots": [{"slot": 1, "servers": servers} for servers in [next(self.standing, [])]]}
         return 200, {"removed": self.removed}
 
 
@@ -52,17 +49,13 @@ def converge(platform):
     return command().converge(platform, sleep=lambda seconds: None, clock=lambda: next(clock))
 
 
-def test_up_builds_the_range_in_the_order_the_platform_requires():
+def test_up_builds_the_fabric_then_fills_the_pool_and_waits_until_every_slot_is_built_and_set_up():
     platform = Platform()
 
-    assert converge(platform)["ready"]
+    assert [slot["refill"]["state"] for slot in converge(platform)] == ["idle", "idle"]
 
-    order = [call for call in platform.calls if call[0] == "POST"]
-    assert order == [("POST", "/fabric/"), ("POST", "/slot/"), ("POST", "/configure/")]
-    first_configure = platform.calls.index(("POST", "/configure/"))
-    assert platform.calls[first_configure - 1] == ("GET", "/ready/"), (
-        "configure ssh-es to the slot VMs, so it waits until they stand and have set themselves up"
-    )
+    assert [call for call in platform.calls if call[0] == "POST"] == [("POST", "/fabric/"), ("POST", "/pool/")]
+    assert platform.calls.count(("GET", "/")) == 3, "a second slot still building is waited for, not skipped"
 
 
 def test_what_an_earlier_range_left_is_removed_before_the_pool_is_filled(capsys):
@@ -70,29 +63,29 @@ def test_what_an_earlier_range_left_is_removed_before_the_pool_is_filled(capsys)
 
     converge(platform)
 
-    assert platform.calls[:3] == [("POST", "/fabric/"), ("DELETE", "/leftovers/"), ("POST", "/slot/")], (
+    assert platform.calls[:3] == [("POST", "/fabric/"), ("DELETE", "/leftovers/"), ("POST", "/pool/")], (
         "the old range host holds 6 vCPU and 16 GB of the quota the pool's slot VMs need")
-    assert platform.calls.count(("DELETE", "/leftovers/")) == 1
     assert "server srv-cr-range" in capsys.readouterr().out
 
 
 def test_a_drifted_fabric_stops_up_before_any_slot_boots():
-    platform = Platform(fabric={"drifted": ["keypair cr-platform holds another public key"]})
+    platform = Platform(fabric=(503, {"errors": [{"path": "", "code": "range_drifted"}]}))
 
-    with pytest.raises(SystemExit, match="another public key"):
+    with pytest.raises(SystemExit, match="range_drifted"):
         converge(platform)
     assert platform.calls == [("POST", "/fabric/")]
 
 
-def test_configure_is_retried_while_the_vms_ssh_is_not_up_yet_and_a_refusal_stops_up():
-    platform = Platform(configure=[(503, {"detail": "cr-edge never reported the command finishing"}),
-                                   (200, {"configured": []})])
+def test_a_slot_that_failed_to_build_stops_up_with_its_reason():
+    with pytest.raises(SystemExit, match="slot 2: the stack failed"):
+        converge(Platform(refills=[slots("idle", "failed")]))
 
-    converge(platform)
 
-    assert platform.calls.count(("POST", "/configure/")) == 2
-    with pytest.raises(SystemExit, match="did not take its configuration"):
-        converge(Platform(configure=[(409, {"detail": "cr-edge did not take its configuration"})]))
+def test_up_and_down_call_only_range_operations_the_generated_client_has():
+    module = command()
+
+    assert {path for _, path in module.RANGE_CALLS} == {"/", "/fabric/", "/leftovers/", "/pool/"}
+    assert all(hasattr(call, "sync_detailed") for call in module.RANGE_CALLS.values())
 
 
 class Cli:
@@ -130,7 +123,7 @@ def test_down_deletes_the_slot_stacks_waits_for_them_then_removes_the_fabric_the
 
     take_down(platform, cli)
 
-    assert platform.calls == [("DELETE", "/slot/"), ("GET", "/slot/"), ("GET", "/slot/"), ("DELETE", "/fabric/")], (
+    assert platform.calls == [("DELETE", "/pool/"), ("GET", "/pool/"), ("GET", "/pool/"), ("DELETE", "/fabric/")], (
         "a slot VM's control port stands on cr-mgmt until Heat has deleted its stack")
     assert cli.ran[-1] == ["openstack", "stack", "delete", "--yes", "--wait", "cr-platform"]
 
@@ -197,46 +190,13 @@ def test_down_stops_before_the_stack_if_the_range_will_not_come_down():
     class Refusing(Platform):
         def __call__(self, verb, path):
             self.calls.append((verb, path))
-            return 503, {"detail": "1 server port(s) still stand on cr-mgmt"}
+            return 503, {"errors": [{"path": "", "code": "range_unavailable"}]}
 
     ran = []
-    with pytest.raises(SystemExit, match="still stand"):
+    with pytest.raises(SystemExit, match="range_unavailable"):
         command().take_down(Refusing(), "cr-platform", ran.append)
     assert not ran
 
-
-def test_up_waits_until_every_slot_stands_and_every_slot_is_ready():
-    platform = Platform(ready=[
-        {"ready": False, "slot": {"phase": "READY"},
-         "slots": [{"phase": "READY"}, {"phase": "NOT_STANDING"}]},
-        {"ready": True, "slot": {"phase": "READY"}, "slots": [{"phase": "READY"}, {"phase": "CHECKING"}]},
-        {"ready": True, "slot": {"phase": "READY"}, "slots": [{"phase": "READY"}, {"phase": "CHECKING"}]},
-        {"ready": True, "slot": {"phase": "READY"}, "slots": [{"phase": "READY"}, {"phase": "READY"}]},
-    ])
-
-    converge(platform)
-
-    gets = [i for i, call in enumerate(platform.calls) if call == ("GET", "/ready/")]
-    assert len(gets) == 4, "a second slot still booting or checking is waited for, not skipped"
-    assert platform.calls.index(("POST", "/configure/")) > gets[1] - 1
-
-
-
-def test_up_does_not_configure_a_slot_while_it_resets_itself_after_a_rebuild():
-    platform = Platform(ready=[
-        {"ready": False, "slot": {"phase": "RESETTING"}, "slots": [{"phase": "RESETTING"}, {"phase": "READY"}]},
-        {"ready": False, "slot": {"phase": "RESETTING"}, "slots": [{"phase": "RESETTING"}, {"phase": "READY"}]},
-        {"ready": True, "slot": {"phase": "READY"}, "slots": [{"phase": "READY"}, {"phase": "READY"}]},
-        {"ready": True, "slot": {"phase": "READY"}, "slots": [{"phase": "READY"}, {"phase": "READY"}]},
-    ])
-
-    converge(platform)
-
-    gets = [i for i, call in enumerate(platform.calls) if call == ("GET", "/ready/")]
-    assert platform.calls.index(("POST", "/configure/")) > gets[2], (
-        "a configure sent while the slot waits for Nova to show its rebuild reaches the VM "
-        "from before the rebuild and returns 200, and the rebuilt VM stays unconfigured"
-    )
 
 class StandingStack:
     def __init__(self, monkeypatch, holds, status="CREATE_COMPLETE"):
@@ -335,17 +295,6 @@ def test_up_on_a_standing_stack_finishes_its_hand_over_and_replace_makes_a_new_v
     module.up(module.arguments(["up", "--replace"]))
 
     assert calls == ["resume", "converge", "rebuild", "converge"]
-
-
-def test_a_slot_that_failed_its_setup_stops_up_with_why():
-    platform = Platform(ready=[{"ready": False, "slot": {"phase": "SETUP_FAILED"},
-                                "slots": [{"phase": "SETUP_FAILED", "blocked": [
-                                    "slot 2: cr-waf failed its setup; /var/log/cloud-init-output.log on it says why"]}]}])
-
-    with pytest.raises(SystemExit, match="(?s)a slot did not set itself up:.*slot 2: cr-waf failed its setup"):
-        converge(platform)
-    assert ("POST", "/configure/") not in platform.calls
-
 
 
 def test_every_line_up_prints_starts_with_the_time_it_was_printed():

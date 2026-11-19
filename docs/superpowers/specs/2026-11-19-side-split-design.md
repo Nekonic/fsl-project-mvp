@@ -527,6 +527,7 @@ Who may act: the **operator** is `Lease.opened_by` or a staff user (`IsOperator`
 | `GET /api/rounds/<round>/topology/` | seats, operator | none | the learner map from `range.topology`, filtered by side |
 | `GET /api/rounds/<round>/site/requests/?after=` | seats | none | the site pane's request/response list |
 | `GET /api/staff/range/` | staff | none | readiness and slot states |
+| `POST\|DELETE /api/staff/range/fabric/`, `DELETE /api/staff/range/leftovers/`, `GET\|POST\|DELETE /api/staff/range/pool/` | staff | none | what `bin/cloud up` and `down` drive: the shared Neutron fabric, what an earlier range left, and the pool (`POST` owes every unheld slot a refill the follower builds and configures; `DELETE` drops owed refills and deletes every slot stack; `GET` lists each slot stack's servers). `409 range_not_cloud` on a range not built through OpenStack |
 
 **Score:**
 

@@ -102,6 +102,7 @@
   "error.ground_truth_unavailable": "타깃의 데이터를 읽을 수 없습니다.",
   "error.kibana_unavailable": "Kibana가 응답하지 않습니다.",
   "error.range_drifted": "레인지 구성이 예상과 다릅니다. 관리자에게 알려 주세요.",
+  "error.range_not_cloud": "OpenStack으로 올린 레인지에서만 할 수 있는 작업입니다.",
   "error.range_unavailable": "지금 쓸 수 있는 레인지가 없습니다. 잠시 후 다시 시도해 주세요.",
   "error.sensor_unavailable": "IDS 센서에 연결할 수 없습니다.",
   "error.sign_ups_closed": "승인을 기다리는 가입 신청이 많아 지금은 가입을 받지 않습니다. 나중에 다시 시도해 주세요.",

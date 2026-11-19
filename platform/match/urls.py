@@ -23,6 +23,9 @@ urlpatterns = [
     path(f"{ROUND}attack/forfeit/", views.AttackForfeit.as_view()),
     path(f"{ROUND}defence/forfeit/", views.DefenceForfeit.as_view()),
     path("staff/range/", views.StaffRange.as_view()),
+    path("staff/range/fabric/", views.StaffFabric.as_view()),
+    path("staff/range/leftovers/", views.StaffLeftovers.as_view()),
+    path("staff/range/pool/", views.StaffPool.as_view()),
     path("staff/wargames/<str:wargame_id>/probes/record/", views.RecordProbes.as_view()),
     path("staff/probes/<int:lease_id>/", views.ProbeProgress.as_view()),
 ]

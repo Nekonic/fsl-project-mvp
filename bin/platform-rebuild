@@ -681,7 +681,7 @@ def main(argv: list[str]) -> int:
     args = arguments(argv)
     cloud, environment = load(args)
     address = rebuild(cloud, environment, args.sideload)
-    print(f"the platform is at http://{address}:8000/; GET /api/range/fabric/ shows whether the range still matches")
+    print(f"the platform is at http://{address}:8000/; GET /api/staff/range/pool/ shows the slot stacks")
     return 0
 
 
