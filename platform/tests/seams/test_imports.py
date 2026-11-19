@@ -147,12 +147,25 @@ def test_rule_2_a_seam_imports_no_framework_no_app_and_only_lower_or_seam_module
 
 
 @pytest.mark.parametrize("path", [path for path in modules() if not legacy(path)])
-def test_rule_4_only_referee_reads_the_target_s_ground_truth(path):
+def test_rule_4_only_referee_reads_the_target_s_ground_truth_and_others_import_only_its_service(path):
     if path.startswith("referee/"):
         return
-    reached = {target for target in targets(path) if target in ("referee/loot.py", "referee/effect.py")}
+    reached = referee_reached_past_its_service(targets(path))
 
-    assert reached == set(), f"{path} imports {sorted(reached)}; other apps go through referee.service"
+    assert reached == [], f"{path} imports {reached}; other apps go through referee.service"
+
+
+def referee_reached_past_its_service(reached: set[str]) -> list[str]:
+    return sorted(target for target in reached if target.startswith("referee/")
+                  and target not in ("referee/service.py", "referee/__init__.py"))
+
+
+def test_the_checker_sees_a_reach_into_the_referee_s_seams_or_models():
+    reached = {"referee/loot.py", "referee/effect.py", "referee/models.py", "referee/service.py",
+               "referee/__init__.py", "events/log.py"}
+
+    assert referee_reached_past_its_service(reached) == ["referee/effect.py", "referee/loot.py",
+                                                         "referee/models.py"]
 
 
 def test_the_checker_sees_a_framework_import_an_app_import_and_a_relative_import():

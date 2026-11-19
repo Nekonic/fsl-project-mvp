@@ -133,3 +133,15 @@ def test_settling_stores_whether_the_defence_saw_each_loss(board_target):
                                                                     seen=True)
     assert after["board-auth-user-full"].state == "kept"
     assert service.settle(found, actions, alerts) == 0
+
+
+def test_a_free_action_carrying_a_malicious_flag_still_stays_out_of_tp_fp_fn_tn(board_target):
+    declared = attack_and_customer()
+    found = lost_admin(board_target, declared)
+    flagged = [rounds.action("free-flagged", AT - timedelta(seconds=50), malicious=True, kind="tool")]
+
+    scored = service.score(found, declared + flagged, [])
+
+    assert scored.totals == service.score(found, declared, []).totals
+    assert [case.case for case in scored.per_case] == [SQLI, BENIGN]
+    assert [origin.actions for origin in scored.free_actions] == [1]

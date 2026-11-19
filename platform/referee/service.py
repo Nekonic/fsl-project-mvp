@@ -127,16 +127,18 @@ def tiers(found: Round) -> dict[str, list[dict[str, Any]]]:
                       for tier in declared(found)]}
 
 
-def take_baseline(found: Round, reach: Reach | None = None) -> Any:
-    model = objective_model(found)
-    held = secret(found)
-    if model == LOOT_VERIFIED:
+def ground_truth(wargame: Mapping[str, Any], reach: Reach | None = None) -> Any:
+    held = wargame["secret"]
+    if wargame["objective_model"] == LOOT_VERIFIED:
         inside = reach(held["role"]) if reach is not None else None
-        baseline = loot.baseline(dict(held), config.build().ground_truth, inside=inside)
-    elif reach is None:
+        return loot.baseline(dict(held), config.build().ground_truth, inside=inside)
+    if reach is None:
         raise errors.Unavailable(code="ground_truth_unavailable")
-    else:
-        baseline = effect.snapshot(reach(held["role"]))
+    return effect.snapshot(reach(held["role"]))
+
+
+def take_baseline(found: Round, reach: Reach | None = None) -> Any:
+    baseline = ground_truth(found.snapshot["wargame"], reach)
     found.baseline = baseline
     found.save(update_fields=["baseline"])
     return baseline
@@ -215,8 +217,8 @@ def variants(value: str) -> set[str]:
             escaped.replace("/", "\\/")} - {""}
 
 
-def redact(text: str, truth: Mapping[str, str]) -> str:
-    hidden = {variant for value in truth.values() if value for variant in variants(str(value))}
+def redact(text: str, truth: Mapping[str, Any]) -> str:
+    hidden = {variant for value in truth.values() if isinstance(value, str) and value for variant in variants(value)}
     for variant in sorted(hidden, key=len, reverse=True):
         text = text.replace(variant, PLACEHOLDER * len(variant))
     return text

@@ -64,7 +64,11 @@ class SeatTokenAuthentication(authentication.BaseAuthentication):
             return None
         if len(given) != 2:
             raise errors.NotSignedIn()
-        seat = Seat.objects.select_related("round", "user").filter(token_hash=hashed(given[1].decode())).first()
+        try:
+            token = given[1].decode()
+        except UnicodeDecodeError as undecodable:
+            raise errors.NotSignedIn() from undecodable
+        seat = Seat.objects.select_related("round", "user").filter(token_hash=hashed(token)).first()
         if seat is None or not token_usable(seat, timezone.now()):
             raise errors.NotSignedIn()
         if seat.user is not None and not seat.user.is_active:

@@ -33,3 +33,10 @@ def test_text_without_the_secret_comes_back_unchanged():
 
     assert service.redact(page, TRUTH) == page
     assert service.redact(page, {}) == page
+
+
+def test_a_baseline_with_no_stored_secret_hides_nothing():
+    corp = {"admins": [1], "options": {"users_can_register": "0"}, "posts": [1]}
+    page = "<p>[1]</p> {'users_can_register': '0'} 1"
+
+    assert service.redact(page, corp) == page

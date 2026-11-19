@@ -55,3 +55,21 @@ def test_a_target_role_the_range_cannot_reach_is_a_range_fault():
         service.take_baseline(rounds.opened(rounds.problem()), FakeTarget({}))
 
     assert refused.value.code == "range_unavailable"
+
+
+def test_a_probe_lease_reads_the_truth_to_redact_from_the_wargame_alone(board_target):
+    wargame = rounds.opened(rounds.problem()).snapshot["wargame"]
+
+    truth = service.ground_truth(wargame, board_target)
+
+    assert truth == TRUTH
+    assert TRUTH["admin"] not in service.redact(f"hash={TRUTH['admin']}", truth)
+
+
+def test_the_corp_truth_is_its_snapshot_and_has_no_secret_to_redact(corp_target):
+    wargame = rounds.opened(rounds.problem("corp")).snapshot["wargame"]
+
+    truth = service.ground_truth(wargame, corp_target)
+
+    assert truth["admins"] == [1]
+    assert service.redact("[1] subscriber", truth) == "[1] subscriber"

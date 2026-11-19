@@ -93,6 +93,7 @@ def test_an_unknown_malformed_or_revoked_token_is_not_signed_in(bot_round):
     found, seat, token = bot_round
 
     assert codes(called(AttackRoute, token="not-a-token", round_id=found.pk)) == ["not_signed_in"]
+    assert codes(called(AttackRoute, token="\xff\xfe", round_id=found.pk)) == ["not_signed_in"]
     assert called(AttackRoute, token=f"{token} extra", round_id=found.pk).status_code == 401
     auth.revoke_token(seat)
     revoked = called(AttackRoute, token=token, round_id=found.pk)
