@@ -1,17 +1,15 @@
 from __future__ import annotations
 
+import json
 import re
+import shlex
 import time
-from typing import NamedTuple
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import PurePosixPath
 
-EXCLUSIONS = "/etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf"
-NGINX_RELOAD = "nginx -t 2>&1 && nginx -s reload 2>&1"
-NGINX_PID = "/tmp/nginx.pid"
-
-class Layout(NamedTuple):
-    rules: str = EXCLUSIONS
-    reload: str = NGINX_RELOAD
-    pid: str = NGINX_PID
+from cr.config import WafConfig
+from cr.errors import EngineRefused, FieldError
 
 def workers_of(pid: str) -> str:
     return ('m=$(cat ' + pid + '); for d in /proc/[0-9]*; do '
@@ -31,8 +29,8 @@ REMOVED = re.compile(r"ctl:ruleRemove(?:TargetById=(\d+);([\w:-]+)|ById=(\d+)|Ta
 BEGINS = re.compile(r'"@beginsWith (/[\w./-]*)"')
 THRESHOLD = re.compile(r"tx\.(inbound|outbound)_anomaly_score_threshold=(\d+)")
 
-class TuningRefused(ValueError):
-    pass
+class TuningRefused(EngineRefused, ValueError):
+    code = "crs_refused"
 
 def checked(tuning) -> dict:
     if not isinstance(tuning, dict):
@@ -85,8 +83,8 @@ def rendered(tuning: dict) -> str:
                      if entry["path"] else f'SecAction "{actions}"')
     return "\n".join(lines) + "\n"
 
-def read(gateway, layout: Layout = Layout()) -> dict:
-    text = gateway(["sh", "-c", f"cat {layout.rules} 2>/dev/null || true"]).output
+def read(gateway, config: WafConfig = WafConfig()) -> dict:
+    text = gateway(["sh", "-c", f"cat {config.rules} 2>/dev/null || true"]).output
     return parsed(text) | {"file": text}
 
 def parsed(text: str) -> dict:
@@ -103,35 +101,195 @@ def parsed(text: str) -> dict:
             **({"thresholds": thresholds} if thresholds else {}),
             **({"detection_only": True} if "ctl:ruleEngine=DetectionOnly" in "\n".join(lines) else {})}
 
-def apply(tuning, gateway, layout: Layout = Layout()) -> dict:
+def apply(tuning, gateway, config: WafConfig = WafConfig()) -> dict:
     tuning = checked(tuning)
-    previous = read(gateway, layout)["file"]
-    old = _workers(gateway, layout)
-    _write(gateway, rendered(tuning), layout)
-    ran = gateway(["sh", "-c", layout.reload])
+    previous = read(gateway, config)["file"]
+    old = _workers(gateway, config)
+    _write(gateway, rendered(tuning), config)
+    ran = gateway(["sh", "-c", config.reload])
     if not ran.ok:
-        _write(gateway, previous, layout)
+        _write(gateway, previous, config)
         raise TuningRefused("nginx refused the tuning, rolled back: " + ran.output.strip())
     for _ in range(SETTLE_POLLS):
-        if _workers(gateway, layout) - old:
+        if _workers(gateway, config) - old:
             return tuning
         time.sleep(0.1)
-    _write(gateway, previous, layout)
-    gateway(["sh", "-c", layout.reload])
+    _write(gateway, previous, config)
+    gateway(["sh", "-c", config.reload])
     raise TuningRefused("nginx started no worker on the new tuning, rolled back")
 
-def reloaded_since_written(gateway, layout: Layout = Layout()) -> bool:
-    said = gateway(["sh", "-c", f"date +%s.%N; date -r {layout.rules} +%s.%N; cut -d' ' -f1 /proc/uptime; getconf CLK_TCK; "
-                                f"for w in $({workers_of(layout.pid)}); do cut -d' ' -f22 /proc/$w/stat; done"]).output.split()
+def reloaded_since_written(gateway, config: WafConfig = WafConfig()) -> bool:
+    said = gateway(["sh", "-c", f"date +%s.%N; date -r {config.rules} +%s.%N; cut -d' ' -f1 /proc/uptime; getconf CLK_TCK; "
+                                f"for w in $({workers_of(config.pid)}); do cut -d' ' -f22 /proc/$w/stat; done"]).output.split()
     if len(said) < 5 or not all(re.fullmatch(r"\d+(\.\d+)?", word) for word in said):
         return False
     now, written, uptime, ticks, *started = map(float, said)
     return any(uptime - start / ticks < now - written for start in started)
 
-def _workers(gateway, layout: Layout) -> set[str]:
-    return set(gateway(["sh", "-c", workers_of(layout.pid)]).output.split())
+def _workers(gateway, config: WafConfig) -> set[str]:
+    return set(gateway(["sh", "-c", workers_of(config.pid)]).output.split())
 
-def _write(gateway, content: str, layout: Layout) -> None:
-    ran = gateway(["sh", "-c", "cat > " + layout.rules], stdin=content)
+def _write(gateway, content: str, config: WafConfig) -> None:
+    ran = gateway(["sh", "-c", "cat > " + config.rules], stdin=content)
     if not ran.ok:
-        raise TuningRefused(f"could not write {layout.rules}: {ran.output.strip()}")
+        raise TuningRefused(f"could not write {config.rules}: {ran.output.strip()}")
+
+
+NGINX_ERROR = re.compile(r"\[(?:emerg|alert|crit|error)\]\s*(?P<message>.*?)(?: in (?P<file>\S+):(?P<line>\d+))?$")
+LOOPBACK = "127.0.0.1"
+PROBE_TIMEOUT = 15
+SCRATCH_TIMEOUT = 600.0
+
+
+@dataclass(frozen=True)
+class Scratch:
+    prefix: str
+    port: int
+    upstream_port: int
+
+    @property
+    def tree(self) -> str:
+        return f"{self.prefix}/modsecurity"
+
+    @property
+    def conf(self) -> str:
+        return f"{self.prefix}/nginx.conf"
+
+    @property
+    def audit(self) -> str:
+        return f"{self.prefix}/logs/audit.log"
+
+
+def field_errors(refused: TuningRefused) -> list[dict]:
+    return [error.shown() for error in refused.errors]
+
+
+def scratch_for(config: WafConfig, test_id: int) -> Scratch:
+    number = int(test_id)
+    if number < 1:
+        raise ValueError(f"a scratch test is named by a positive RuleTest id, got {test_id!r}")
+    prefix = PurePosixPath(config.scratch) / f"test-{number}"
+    for live in (PurePosixPath(config.tree), PurePosixPath(config.rules).parent):
+        if prefix == live or live in prefix.parents or prefix in live.parents:
+            raise ValueError(f"the scratch prefix {prefix} must lie apart from the live CRS tree {live}")
+    port = config.first_port + number % 1000
+    return Scratch(prefix=str(prefix), port=port, upstream_port=port + 1000)
+
+
+def _relative_rules(config: WafConfig) -> str:
+    return str(PurePosixPath(config.rules).relative_to(config.tree))
+
+
+def _prepared(tuning: dict, gateway, config: WafConfig, scratch: Scratch) -> None:
+    rendered_into = f"{scratch.tree}/{_relative_rules(config)}"
+    script = (
+        f"set -e; rm -rf {scratch.prefix}; mkdir -p {scratch.prefix}/logs {scratch.prefix}/run; "
+        f"cp -a {shlex.quote(config.tree)} {scratch.tree}; "
+        f"sed -i -e 's#{config.tree}#{scratch.tree}#g' -e 's#^SecAuditLog .*#SecAuditLog {scratch.audit}#' "
+        f"{scratch.tree}/modsecurity.conf; "
+        f"sed -e 's#@prefix@#{scratch.prefix}#g' -e 's#@port@#{scratch.port}#g' "
+        f"-e 's#@upstream_port@#{scratch.upstream_port}#g' {shlex.quote(config.probe_template)} > {scratch.conf}; "
+        f"cat > {rendered_into}"
+    )
+    ran = gateway(["sh", "-c", script], stdin=rendered(tuning))
+    if not ran.ok:
+        _removed(gateway, scratch)
+        raise TuningRefused(f"the WAF could not lay out a scratch CRS instance: {ran.output.strip()[-300:]}")
+
+
+def nginx_errors(output: str) -> list[dict]:
+    found = []
+    for line in output.splitlines():
+        matched = NGINX_ERROR.search(line.strip())
+        if matched:
+            found.append({"line": int(matched["line"]) if matched["line"] else None,
+                          "message": matched["message"].strip()})
+    return found
+
+
+def _tested(gateway, scratch: Scratch) -> list[dict]:
+    ran = gateway(["sh", "-c", f"nginx -t -p {scratch.prefix} -c {scratch.conf} 2>&1"])
+    if ran.ok:
+        return []
+    return nginx_errors(ran.output) or [{"line": None, "message": ran.output.strip()[-500:]}]
+
+
+def _removed(gateway, scratch: Scratch) -> None:
+    gateway(["sh", "-c", f"rm -rf {scratch.prefix}"])
+
+
+def _refused(errors: list[dict]) -> TuningRefused:
+    return TuningRefused("nginx refused the scratch configuration: " + "; ".join(e["message"] for e in errors),
+                         errors=tuple(FieldError(path="posture", code=TuningRefused.code, line=error["line"],
+                                                 params={"message": error["message"]}) for error in errors))
+
+
+def scratch_check(tuning, gateway, config: WafConfig, test_id: int) -> list[dict]:
+    tuning = checked(tuning)
+    scratch = scratch_for(config, test_id)
+    _prepared(tuning, gateway, config, scratch)
+    try:
+        return _tested(gateway, scratch)
+    finally:
+        _removed(gateway, scratch)
+
+
+def probe_argv(scratch: Scratch, probe: dict) -> list[str]:
+    argv = ["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", str(PROBE_TIMEOUT),
+            "--path-as-is", "-X", str(probe.get("method") or "GET"),
+            "-H", f"Host: {probe.get('host') or 'localhost'}", "-H", f"X-Request-ID: {probe['marker']}"]
+    for name, value in (probe.get("headers") or {}).items():
+        if name.lower() not in ("host", "x-request-id", "content-length"):
+            argv += ["-H", f"{name}: {value}"]
+    if probe.get("body") is not None:
+        argv += ["--data-binary", "@-"]
+    return argv + [f"http://{LOOPBACK}:{scratch.port}{probe.get('path') or '/'}"]
+
+
+def audit_alerts(text: str) -> dict[str, list[dict]]:
+    found: dict[str, list[dict]] = {}
+    for line in text.splitlines():
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        transaction = (record or {}).get("transaction") or {}
+        headers = (transaction.get("request") or {}).get("headers") or {}
+        marker = next((value for name, value in headers.items() if str(name).lower() == "x-request-id"), None)
+        if not marker:
+            continue
+        for message in transaction.get("messages") or ():
+            details = message.get("details") or {}
+            found.setdefault(marker, []).append({"rule": str(details.get("ruleId", "")),
+                                                 "signature": message.get("message", "")})
+    return found
+
+
+def scratch_test(tuning, gateway, config: WafConfig, test_id: int, probes: Sequence[dict]) -> dict[str, dict]:
+    tuning = checked(tuning)
+    scratch = scratch_for(config, test_id)
+    _prepared(tuning, gateway, config, scratch)
+    try:
+        errors = _tested(gateway, scratch)
+        if errors:
+            raise _refused(errors)
+        started = gateway(["sh", "-c", (
+            f"set -e; cat > {scratch.prefix}/probes.json; "
+            f"nohup python3 {shlex.quote(config.probe_upstream)} --port {scratch.upstream_port} "
+            f"--probes {scratch.prefix}/probes.json >{scratch.prefix}/logs/upstream.log 2>&1 & "
+            f"echo $! > {scratch.prefix}/run/upstream.pid; "
+            f"nginx -p {scratch.prefix} -c {scratch.conf}")], stdin=json.dumps(list(probes)))
+        if not started.ok:
+            raise TuningRefused(f"the scratch CRS instance did not start: {started.output.strip()[-300:]}")
+        statuses = {}
+        for probe in probes:
+            body = probe.get("body")
+            ran = gateway(probe_argv(scratch, probe), stdin=body if body is not None else None,
+                          timeout=PROBE_TIMEOUT + 15)
+            statuses[probe["marker"]] = int(ran.output.strip()[-3:]) if ran.output.strip()[-3:].isdigit() else 0
+        alerts = audit_alerts(gateway(["sh", "-c", f"cat {scratch.audit} 2>/dev/null; true"]).output)
+        return {marker: {"status": status, "alerts": alerts.get(marker, [])} for marker, status in statuses.items()}
+    finally:
+        gateway(["sh", "-c", (f"nginx -p {scratch.prefix} -c {scratch.conf} -s stop 2>/dev/null; "
+                              f"kill \"$(cat {scratch.prefix}/run/upstream.pid 2>/dev/null)\" 2>/dev/null; "
+                              f"rm -rf {scratch.prefix}; true")])
