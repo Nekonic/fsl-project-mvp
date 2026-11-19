@@ -44,7 +44,7 @@
 
 ## 훈련 환경
 
-플랫폼 VM은 컨트롤 플레인 `compose.yaml`(프로젝트 `cr`)을 돌립니다. 이 프로젝트는 항상 하나만 떠 있습니다. 서비스는 플랫폼, Elasticsearch, Kibana, `collector` 4개이고 모두 `mgmt` 네트워크에 붙습니다. `bin/measure`는 이 파일로 서비스 수를 계산합니다.
+플랫폼 VM은 컨트롤 플레인 `compose.yaml`(프로젝트 `cr`)을 돌립니다. 이 프로젝트는 항상 하나만 떠 있습니다. 서비스는 플랫폼, Elasticsearch, Kibana, `collector` 4개이고 모두 `mgmt` 네트워크에 붙습니다.
 
 훈련 환경은 세션마다 Heat 스택 `cr-slot-N` 하나입니다("OpenStack" 절). 스택은 워게임별 풀에 미리 띄워 둡니다(KYPO의 sandbox pool과 같은 방식).
 
@@ -448,7 +448,7 @@ substrate 경계는 플랫폼과 OpenStack 어댑터 사이 인터페이스입�
 | `platform/range/openstack.py` | OpenStack 어댑터(`connect`): Keystone, Heat(스택 계획을 HOT로 렌더링, 스택 생성·삭제·상태), Nova, Neutron, Glance, 훈련 환경 VM으로의 ssh |
 | `deploy/openstack/network.yaml` | 실제 클라우드의 주소 배치를 사람이 읽도록 적은 그림. 설정 값은 `cloud.yaml` |
 | `bin/prune` | 플랫폼 DB의 세션 정리(`--keep`, `--ids`, `--newest`, `--apply`). `bin/verify`가 acceptance에서 만든 세션을 지움 |
-| `bin/verify` | ratchet 검사(게이트 대상 수치가 커지는 변경 거부, `CLAUDE.md`)와 변경이 닿는 테스트 실행(`--changed`, `--fast`. 테스트 선택은 `bin/select-tests`) |
+| `bin/verify` | 변경이 닿는 테스트 실행(`--changed`, `--fast`. 테스트 선택은 `bin/select-tests`)과 acceptance |
 
 ## 요청의 출처
 

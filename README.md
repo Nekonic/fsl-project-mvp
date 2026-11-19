@@ -306,7 +306,7 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 ## 검증
 
 ```bash
-bin/verify --changed   # 바뀐 파일이 닿는 단위 테스트와 ratchet
+bin/verify --changed   # 바뀐 파일이 닿는 단위 테스트
 bin/verify --fast      # 단위·API 테스트 전체
 bin/verify             # acceptance까지. 플랫폼 VM에서 실행
 ```

@@ -21,7 +21,6 @@ ssh ubuntu@<address> 'cd /opt/cr && CR_PLATFORM_URL=http://<address>:8000 bin/ve
    the acceptance suite at the lowest CPU priority (`nice -n 19`); its result is
    printed after the acceptance suite.
 2. The acceptance suite, through `bin/acceptance`, which runs `python -m pytest test/`.
-3. The ratchet.
 
 Before the acceptance suite, `bin/verify` opens one session, has the sensor
 of that session's slot validate `deploy/suricata/rules/local.rules`, and

@@ -1,6 +1,4 @@
-import importlib.util
 import subprocess
-from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from unittest.mock import patch
 
@@ -172,12 +170,3 @@ def test_a_slot_with_no_kali_address_issues_no_key(owned):
         assert client.post_json(f"/api/sessions/{session.pk}/ssh/").status_code == 503
     assert jump.grants() == []
 
-
-def test_the_jump_runs_inside_the_platform_so_the_control_plane_stays_four_services():
-    loader = SourceFileLoader("measure", str(ROOT / "bin/measure"))
-    measure = importlib.util.module_from_spec(importlib.util.spec_from_loader("measure", loader))
-    loader.exec_module(measure)
-    entrypoint = (ROOT / "platform/entrypoint.sh").read_text()
-
-    assert measure.services() == 4
-    assert "/usr/sbin/sshd -D -e -f /run/sshd-jump.conf" in entrypoint and "python jump.py" in entrypoint

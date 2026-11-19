@@ -3,7 +3,8 @@
 The handover to the next session, kept short. The product backlog and the
 finished record are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
 problems and their measurements in `docs/TROUBLESHOOTING.md`; detail in `git
-log`. Numbers are in `metrics.json` (`bin/measure`).
+log`. The ratchet (`bin/measure`, `metrics.json`) was removed on 2026-11-19
+by the side-split rebuild.
 
 Updated: 2026-11-18. The live cloud runs the Heat range from `dev`: the
 platform VM and a pool of four range stacks (`cr-slot-1`..`4`, `compute.pool`

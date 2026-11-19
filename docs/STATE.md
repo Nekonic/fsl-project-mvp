@@ -80,9 +80,6 @@ sub-project B, done 2026-10-04). Juice Shop, the internal wiki and the
 `self_judged` objective model were removed on 2026-10-04 (objective-model
 Phase 4).
 
-`bin/measure` (and `bin/verify`) prints the metrics; the baseline is in
-`metrics.json`, not copied here.
-
 The loop runs in a browser. Open `/` and start a lesson, a scenario or a
 wargame. In a lesson or scenario the blue console carries a Kali pane, so one
 console holds both sides; in a wargame the session page also offers the red
@@ -529,16 +526,9 @@ geolocated TW.
   suite beside the acceptance suite at the lowest CPU priority, refuses a
   stack another checkout brought up, and prunes
   only the sessions its run listed in `CR_ACCEPTANCE_SESSIONS`. `--changed
-  [BASE]` (`bin/select-tests`) runs only the unit tests the change reaches and
-  the ratchet, `--live` adds the acceptance modules it reaches, `--fast` runs
+  [BASE]` (`bin/select-tests`) runs only the unit tests the change reaches,
+  `--live` adds the acceptance modules it reaches, `--fast` runs
   every unit test; docs-only changes select nothing.
-- **The ratchet.** `bin/measure` counts `git ls-files -z`, so verify fails on
-  an untracked file. It refuses a compose override, follows a block-style
-  `include:` of plain paths (each wargame's file), counts only
-  tests pytest collects and refuses duplicate names. It counts physical lines,
-  so joining a wrapped line "shrinks" core: never do that. `core_loc`,
-  `dependencies` and `services` may only fall; `tests`, `product_loc` and
-  `wargame_services` are reported, not gated (2026-10-16).
 
 ## The substrate seam
 

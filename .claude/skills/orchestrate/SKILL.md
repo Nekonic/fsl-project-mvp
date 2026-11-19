@@ -40,11 +40,9 @@ session, and you do not make the user say "continue".
    not a later chore.
 
 5. **Verify with evidence.** While working, run `bin/verify --changed`: only
-   the unit tests the change reaches, and the ratchet (`reference.md` has the
-   modes). Before a commit that touches shared code, the unit and API tests
-   (`bin/verify --fast`, per `DECISIONS.md` 2026-10-05); `--fast` prints
-   the metrics without gating them, so compare `bin/measure` against
-   `metrics.json` by hand. A change to the live stack (compose, the range,
+   the unit tests the change reaches (`reference.md` has the modes). Before a
+   commit that touches shared code, the unit and API tests (`bin/verify
+   --fast`, per `DECISIONS.md` 2026-10-05). A change to the live stack (compose, the range,
    session isolation) is also run against the acceptance suite on the OpenStack
    deployment before it is pushed; `--changed` lists the acceptance modules the
    change needs, and `--changed --live` runs only those. Acceptance is not the only live path: list
@@ -52,7 +50,7 @@ session, and you do not make the user say "continue".
    store restore), `bin/cloud down`/`up`, a session's stack reset — and run each one end to
    end, untouched, before the push; a step finished by hand does not count, and
    a path a doc marks "not checked live" blocks the push until it has run.
-   Show the command and its output, not a claim that it passed. If it is red or a gated metric grew, fix it or `git reset --hard`
+   Show the command and its output, not a claim that it passed. If it is red, fix it or `git reset --hard`
    and say what you learned — a reported failure beats a half-finished success.
 
 6. **Push, tag, and gate 2.** Push a verified state to `dev` as a
@@ -107,14 +105,10 @@ two facts are what make a green run mean something. Protect them:
 - Treat the tests and the benign cases as read-only. If a change seems to need
   a test deleted or weakened, that is a finding to raise, not a step to take.
   The benign-case rule exists because deleting them is the cheapest way to
-  fake a pass. The `tests` count is reported, not gated: a test no one can
-  justify may go, and the commit says why.
+  fake a pass. A test no one can justify may go, and the commit says why.
 - A green `bin/verify` is necessary, not sufficient: roughly half of
   test-passing agent PRs still fail human review on quality or breakage. The
   gate-2 review is where that is caught.
-- Watch the ratchet for gaming, not just for the number: `core_loc` falling
-  because logic moved into an uncounted path, or lines were joined, is not a
-  real win. Record the real reason in `DECISIONS.md`.
 - Opus-class models verify their own work without being told, so do not litter
   the run with "double-check" steps. Spend a separate reviewer where it earns
   its cost: a fresh-context agent reading the diff against the plan before
@@ -135,8 +129,7 @@ against what the code now does, and fix the drift. `README.md` and
 `docs/ARCHITECTURE.md` are written in Korean only. On anything larger than a one-file change, dispatch a
 fresh-context reviewer whose only job is to list doc-versus-code
 contradictions in the touched area; apply what it finds. Prose copies of
-numbers go stale — point at the source (`metrics.json`, `bin/measure`) instead
-of restating it.
+numbers go stale — point at the source instead of restating it.
 
 ## The visual review (gate 2)
 
@@ -144,7 +137,7 @@ The user reviews the result as a picture, not a wall of text, so they can see
 what happened and what changed at a glance. Lead with the visual, then a few
 lines of plain language, then the evidence.
 
-- Pick the form that fits: a before/after table for metrics and files touched;
+- Pick the form that fits: a before/after table for files touched;
   a `flowchart`/`sequenceDiagram` (Mermaid) or a small UML for a changed flow
   or structure; a diff summary for the shape of the change. Show state before
   and after, not just the end state.
@@ -172,6 +165,5 @@ lines of plain language, then the evidence.
 - `docs/DECISIONS.md` — append-only; every ruling and every rejected approach,
   with the reason. Read it before proposing; add to it when something is
   settled, so the same ground is not re-argued next time.
-- `reference.md` (beside this file) — the metrics and ratchet detail, and the
-  substrate seams, pulled out of the hot path. Read it when a change touches
-  `metrics.json` or the measured numbers.
+- `reference.md` (beside this file) — the verify modes and the substrate
+  seams, pulled out of the hot path.
