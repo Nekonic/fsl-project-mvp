@@ -4,14 +4,14 @@ import pathlib
 
 import pytest
 
-from range import declared, openstack, sandbox
+from range import declaration, openstack, stack_plan
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
-DECLARED = declared.read()
+ROOT = pathlib.Path(__file__).resolve().parents[3]
+DECLARED = declaration.read()
 
 
 def planned(wargame="board", slot=3):
-    return sandbox.plan(sandbox.read(ROOT, wargame), slot, DECLARED.origins, DECLARED.default_origin,
+    return stack_plan.plan(stack_plan.read(ROOT, wargame), slot, DECLARED.origins, DECLARED.default_origin,
                         "10.31.0.2")
 
 
@@ -129,7 +129,7 @@ def test_every_server_boots_its_role_s_image_and_flavor_from_parameters_with_a_c
         assert server["config_drive"] is True and server["user_data_format"] == "RAW"
         assert server["networks"][0] == {"port": {"get_resource": f"port_{name.removeprefix('server_')}_control"}}
         assert server["metadata"]["cr_slot"] == "3"
-    assert set(stack["parameters"]) >= {f"image_{role}" for role in sandbox.ROLES}
+    assert set(stack["parameters"]) >= {f"image_{role}" for role in stack_plan.ROLES}
 
 
 def test_every_port_and_network_carries_its_slot_and_each_lan_port_its_fixed_ip(stack):

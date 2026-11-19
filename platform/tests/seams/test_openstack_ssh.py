@@ -10,8 +10,8 @@ from dataclasses import replace
 
 import pytest
 
-from range import declared, fabric, openstack
-from range.ports import RangeUnavailable, Segment
+from range import declaration, networks, openstack
+from range.runner import RangeUnavailable, Segment
 
 SSHD = shutil.which("sshd") or "/usr/sbin/sshd"
 TARGET = "wargames"
@@ -110,11 +110,11 @@ FIRST_BOOT = "2026-09-23T10:00:00.000000"
 
 
 def adapter(host, server_id="target-1", launched_at=FIRST_BOOT, **cloud) -> openstack.OpenStack:
-    declaration = replace(
-        declared.read(), origins=(), segments=(Segment(id="mgmt", name="Management"),)
+    declared = replace(
+        declaration.read(), origins=(), segments=(Segment(id="mgmt", name="Management"),)
     )
-    network = fabric.network_name(fabric.MANAGEMENT)
-    networks = {"networks": [{"id": "net-mgmt", "name": network, "tags": [f"{openstack.SEGMENT_TAG}=mgmt"]}]}
+    network = networks.network_name(networks.MANAGEMENT)
+    listed = {"networks": [{"id": "net-mgmt", "name": network, "tags": [f"{openstack.SEGMENT_TAG}=mgmt"]}]}
     servers = {
         "servers": [
             {
@@ -129,7 +129,7 @@ def adapter(host, server_id="target-1", launched_at=FIRST_BOOT, **cloud) -> open
 
     def get(call):
         if "/v2.0/networks" in call:
-            return networks
+            return listed
         return servers
 
     reaching = openstack.Cloud(**{
@@ -143,7 +143,7 @@ def adapter(host, server_id="target-1", launched_at=FIRST_BOOT, **cloud) -> open
         "ssh_config": str(host["home"] / "ssh_config"),
         **cloud,
     })
-    return openstack.OpenStack(declaration, reaching, get=get)
+    return openstack.OpenStack(declared, reaching, get=get)
 
 
 def attacker(host):

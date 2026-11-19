@@ -1,4 +1,4 @@
-import inspect
+import dataclasses
 import ipaddress
 import json
 import os
@@ -10,9 +10,12 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from range import declared, openstack
+from cr import config as config_module
+from cr.config import OpenStackConfig, RangeConfig
+from range import declaration, openstack, substrate
+from range.runner import RangeUnavailable
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 
 class Cloud:
@@ -24,10 +27,10 @@ class Cloud:
 
     def handler(self):
         cloud = self
-        declaration = declared.read()
-        origins = {o.id: o for o in declaration.origins}
+        declared = declaration.read()
+        origins = {o.id: o for o in declared.origins}
         carriers = list(dict.fromkeys(
-            origins[s.id].segment if s.id in origins else s.id for s in declaration.segments
+            origins[s.id].segment if s.id in origins else s.id for s in declared.segments
         ))
         numbered = {f"net-{c}": n for n, c in enumerate(carriers)}
 
@@ -43,7 +46,7 @@ class Cloud:
 
         def standing(role, host):
             return {
-                "id": role, "name": declaration.roles[role],
+                "id": role, "name": declared.roles[role],
                 "addresses": {
                     f"range-{origin.segment}": [
                         {
@@ -123,8 +126,7 @@ def cloud():
 
 
 def options(cloud, **overrides):
-    return {
-        "declared": declared.read(),
+    return OpenStackConfig(**{
         "keystone": f"http://127.0.0.1:{cloud.port}",
         "user": "range-operator",
         "password": "secret",
@@ -137,7 +139,7 @@ def options(cloud, **overrides):
         "source": str(ROOT),
         "subnets": "mgmt=10.31.0.0/24",
         **overrides,
-    }
+    })
 
 
 def serving(cloud) -> HTTPServer:
@@ -151,7 +153,7 @@ def serving(cloud) -> HTTPServer:
 def test_services_the_cloud_moved_are_found_again(cloud, left_behind):
     before = serving(cloud)
     try:
-        openstack.connect(**options(cloud)).describe()
+        openstack.connect(options(cloud), declaration.read()).describe()
         after = serving(cloud)
         if left_behind == "closed":
             before.shutdown()
@@ -159,7 +161,7 @@ def test_services_the_cloud_moved_are_found_again(cloud, left_behind):
         else:
             cloud.gone.add(before.server_port)
         try:
-            shape = openstack.connect(**options(cloud)).describe()
+            shape = openstack.connect(options(cloud), declaration.read()).describe()
         finally:
             after.shutdown()
             after.server_close()
@@ -167,40 +169,38 @@ def test_services_the_cloud_moved_are_found_again(cloud, left_behind):
         before.shutdown()
         before.server_close()
 
-    assert [s.id for s in shape.segments] == [s.id for s in declared.read().segments], (
+    assert [s.id for s in shape.segments] == [s.id for s in declaration.read().segments], (
         "Keystone listed the network and compute services somewhere new and "
         "the platform went on asking where the first catalogue said they "
         "were, until it was restarted"
     )
 
 
-def test_the_console_draws_an_openstack_range(cloud, client, settings):
-    settings.CR_SUBSTRATE = "range.openstack.connect"
-    settings.CR_SUBSTRATE_OPTIONS = options(cloud)
+def test_the_substrate_is_built_from_the_range_config_it_is_handed(cloud):
+    serving(cloud)
+    config = RangeConfig(source=str(ROOT), declaration=str(ROOT / "platform/range/declaration.yaml"),
+                         openstack=options(cloud))
 
-    response = client.get("/api/origins/")
+    adapter = substrate.substrate(config)
 
-    assert response.status_code == 200, response.content[:300]
-    assert {o["id"] for o in response.json()["origins"]} == {
-        s.id for s in declared.read().segments if s.origin
-    }
+    assert isinstance(adapter, openstack.OpenStack)
+    assert {s.id for s in adapter.describe().segments} == {s.id for s in declaration.read().segments}
 
 
-def test_settings_hand_the_openstack_substrate_its_credentials_from_the_environment():
-    read = subprocess.run(
-        [sys.executable, "-c",
-         "import json, cr.settings as s; o = s.CR_SUBSTRATE_OPTIONS; "
-         "print(json.dumps(sorted(o))); print(o['keystone'])"],
-        cwd=ROOT / "platform", capture_output=True, text=True,
-        env={
-            **os.environ,
-            "DJANGO_SETTINGS_MODULE": "cr.settings",
-            "CR_SUBSTRATE": "range.openstack.connect",
-            "CR_OPENSTACK_KEYSTONE": "https://keystone.example:5000",
-        },
-    )
-    assert read.returncode == 0, read.stderr[-300:]
+def test_a_missing_credential_is_named_by_the_variable_that_carries_it(cloud):
+    with pytest.raises(RangeUnavailable, match="CR_OPENSTACK_KEYSTONE"):
+        openstack.connect(options(cloud, keystone=""), declaration.read())
 
-    keys, values = read.stdout.strip().splitlines()
-    assert set(json.loads(keys)) <= set(inspect.signature(openstack.connect).parameters)
-    assert values == "https://keystone.example:5000"
+
+def test_the_config_hands_the_openstack_substrate_its_credentials_from_the_environment(tmp_path):
+    secret = tmp_path / "password"
+    secret.write_text("s3cret\n")
+
+    built = config_module.build({"CR_OPENSTACK_KEYSTONE": "https://keystone.example:5000",
+                                 "CR_OPENSTACK_PASSWORD_FILE": str(secret)}, ROOT)
+
+    assert built.range.substrate == "range.openstack.connect"
+    assert built.range.openstack.keystone == "https://keystone.example:5000"
+    assert built.range.openstack.password == "s3cret"
+    assert "s3cret" not in repr(built.range.openstack)
+    assert set(config_module.OPENSTACK_VARIABLES) <= {f.name for f in dataclasses.fields(OpenStackConfig)}

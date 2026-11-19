@@ -6,15 +6,15 @@ import subprocess
 import pytest
 import yaml
 
-from range import declared, sandbox
+from range import declaration, stack_plan
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
-DECLARED = declared.read()
+ROOT = pathlib.Path(__file__).resolve().parents[3]
+DECLARED = declaration.read()
 COLLECTOR = "10.31.0.2"
 
 
 def planned(wargame="board", slot=2):
-    return sandbox.plan(sandbox.read(ROOT, wargame), slot, DECLARED.origins, DECLARED.default_origin, COLLECTOR)
+    return stack_plan.plan(stack_plan.read(ROOT, wargame), slot, DECLARED.origins, DECLARED.default_origin, COLLECTOR)
 
 
 def written(node, path):
@@ -23,14 +23,14 @@ def written(node, path):
 
 
 def slot_env(node):
-    return dict(line.split("=", 1) for line in shlex.split(written(node, sandbox.SLOT_ENV), posix=True))
+    return dict(line.split("=", 1) for line in shlex.split(written(node, stack_plan.SLOT_ENV), posix=True))
 
 
 def test_every_wargame_has_a_topology_and_each_plans_four_nodes_on_its_own_lans():
-    assert sandbox.wargames(ROOT) == ("board", "corp")
-    for wargame in sandbox.wargames(ROOT):
+    assert stack_plan.wargames(ROOT) == ("board", "corp")
+    for wargame in stack_plan.wargames(ROOT):
         plan = planned(wargame)
-        assert {node.role for node in plan.nodes} == set(sandbox.ROLES)
+        assert {node.role for node in plan.nodes} == set(stack_plan.ROLES)
         assert [lan.name for lan in plan.lans] == ["internet", "dmz", "web-outer", "web-inner", "mgmt"]
         assert plan.logged == "mgmt"
 
@@ -45,7 +45,7 @@ def test_kali_has_one_internet_port_on_the_default_origin_and_the_origins_defaul
     [kali] = [one for one in plan.ports if one.node == "cr-kali"]
     default = next(origin for origin in DECLARED.origins if origin.id == DECLARED.default_origin)
 
-    assert kali.address == sandbox.origin_addresses(default.subnet, 1)[0] == "5.188.10.10"
+    assert kali.address == stack_plan.origin_addresses(default.subnet, 1)[0] == "5.188.10.10"
     assert kali.pairs == ("0.0.0.0/0",), (
         "max_allowed_address_pair is 10 on this cloud and the origins are 30 /24s; the slot's internet has "
         "no router, so the one pair reaches nothing outside the slot")
@@ -98,7 +98,7 @@ def test_the_target_runs_its_own_wargame_on_its_web_address(wargame):
 def test_every_node_keeps_time_by_the_platform_and_fits_nova_s_user_data_limit():
     for node in planned().nodes:
         assert written(node, "/etc/systemd/timesyncd.conf.d/60-cr.conf") == f"[Time]\nNTP={COLLECTOR}\n"
-        assert len(node.user_data.encode()) * 4 // 3 < sandbox.USER_DATA_LIMIT
+        assert len(node.user_data.encode()) * 4 // 3 < stack_plan.USER_DATA_LIMIT
 
 
 def test_every_node_names_itself_by_its_role_so_each_learner_prompt_reads_kali_or_waf_not_the_stack():
@@ -108,7 +108,7 @@ def test_every_node_names_itself_by_its_role_so_each_learner_prompt_reads_kali_o
         "walk: the WAF prompt read root@cr-slot-1-waf while Kali's read kali")
 
 def test_every_node_takes_the_platform_s_ssh_as_one_sudo_user_and_keeps_its_image_s_default_user():
-    plan = sandbox.plan(sandbox.read(ROOT, "board"), 1, DECLARED.origins, DECLARED.default_origin, COLLECTOR,
+    plan = stack_plan.plan(stack_plan.read(ROOT, "board"), 1, DECLARED.origins, DECLARED.default_origin, COLLECTOR,
                         ("ubuntu", "ssh-ed25519 AAAA cr-platform"))
 
     for node in plan.nodes:
@@ -128,9 +128,9 @@ def test_each_node_marks_itself_ready_or_failed_once_its_role_s_boot_has_run(rol
     [[shell, flag, script]] = yaml.safe_load(node.user_data)["runcmd"]
 
     assert (shell, flag) == ("sh", "-c")
-    assert script.startswith(f"install -d -m 0755 {sandbox.STATE}; if systemctl start {units}")
-    assert f"; then touch {sandbox.READY}; " in script
-    assert f"systemctl --no-pager --lines=20 status {units}; }} > {sandbox.FAILED} 2>&1; touch {sandbox.FAILED}; fi" \
+    assert script.startswith(f"install -d -m 0755 {stack_plan.STATE}; if systemctl start {units}")
+    assert f"; then touch {stack_plan.READY}; " in script
+    assert f"systemctl --no-pager --lines=20 status {units}; }} > {stack_plan.FAILED} 2>&1; touch {stack_plan.FAILED}; fi" \
         in script
 
 
@@ -144,7 +144,7 @@ def test_the_infra_is_ready_only_once_suricata_answers_on_its_command_socket():
 
 def test_the_target_is_ready_only_when_its_image_holds_the_wargame_images_at_the_tag_the_slot_asks_for():
     tag = "c" * 40
-    plan = sandbox.plan(sandbox.read(ROOT, "board"), 1, DECLARED.origins, DECLARED.default_origin, COLLECTOR,
+    plan = stack_plan.plan(stack_plan.read(ROOT, "board"), 1, DECLARED.origins, DECLARED.default_origin, COLLECTOR,
                         tag=tag)
     [[_, _, script]] = yaml.safe_load(plan.node("cr-target").user_data)["runcmd"]
     [[_, _, kali]] = yaml.safe_load(plan.node("cr-kali").user_data)["runcmd"]
@@ -162,7 +162,7 @@ def test_the_tag_check_passes_the_baked_compose_files_and_their_digest_pinned_da
     (tmp_path / "board/compose.yaml").write_text(
         f"services:\n  board:\n    image: ghcr.io/nekonic/cr-board:{tag}\n"
         f"  board-db:\n    image: mysql@sha256:{'0' * 64}\n")
-    check = sandbox.booted("target", tag).split("if ", 1)[1].split(" systemctl start", 1)[0].removesuffix(" &&")
+    check = stack_plan.booted("target", tag).split("if ", 1)[1].split(" systemctl start", 1)[0].removesuffix(" &&")
     check = check.replace("/opt/wargames/*/compose.yaml", str(tmp_path / "*/compose.yaml"))
 
     assert subprocess.run(["sh", "-c", check]).returncode == 0
@@ -171,13 +171,13 @@ def test_the_tag_check_passes_the_baked_compose_files_and_their_digest_pinned_da
 
 
 def test_a_definition_that_puts_a_port_outside_its_lan_or_without_an_address_is_refused(tmp_path):
-    topology = yaml.safe_load((ROOT / sandbox.DEFINITION.format(wargame="board")).read_text())
+    topology = yaml.safe_load((ROOT / stack_plan.DEFINITION.format(wargame="board")).read_text())
     (tmp_path / "wargames/odd").mkdir(parents=True)
     topology["nodes"]["cr-waf"]["ports"][0]["address"] = "10.99.0.1"
     (tmp_path / "wargames/odd/topology.yaml").write_text(yaml.safe_dump(topology))
     with pytest.raises(ValueError, match="outside dmz"):
-        sandbox.read(tmp_path, "odd")
+        stack_plan.read(tmp_path, "odd")
     del topology["nodes"]["cr-waf"]["ports"][0]["address"]
     (tmp_path / "wargames/odd/topology.yaml").write_text(yaml.safe_dump(topology))
     with pytest.raises(ValueError, match="no fixed IP"):
-        sandbox.read(tmp_path, "odd")
+        stack_plan.read(tmp_path, "odd")

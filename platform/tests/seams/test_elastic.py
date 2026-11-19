@@ -335,12 +335,22 @@ def test_a_failed_search_is_reported_as_unavailable_not_as_no_records(post, said
             elastic.fetch("http://es:9200", "logs-*", *WINDOW)
 
 
-def test_a_request_nginx_refused_before_modsecurity_saw_it_is_waf_evidence_with_the_client_s_address():
-    doc = {"event": {"module": "nginx"}, "time": "2026-11-16T05:40:01+00:00", "client_ip": "5.188.10.10",
-           "request": "GET /static/..%2F..%2F..%2F..%2Fetc/passwd HTTP/1.1", "http": {"status": 400}}
+ACCESS = {"event": {"module": "nginx_access"}, "time": "2026-11-16T05:40:01+00:00", "client_ip": "5.188.10.10",
+          "request": "GET /static/..%2F..%2Fetc/passwd HTTP/1.1", "status": 400, "request_id": "action-9"}
 
-    [det] = normalize("es9", doc)
 
-    assert det["source"] == "nginx" and det["src_ip"] == "5.188.10.10" and det["marker"] is None
-    assert det["signature"] == "400 GET /static/..%2F..%2F..%2F..%2Fetc/passwd HTTP/1.1"
+def test_a_request_the_waf_refused_is_waf_evidence_with_the_client_s_address_and_marker():
+    [det] = normalize("es9", ACCESS)
+
+    assert det["source"] == "nginx" and det["src_ip"] == "5.188.10.10" and det["marker"] == "action-9"
+    assert det["signature"] == "400 GET /static/..%2F..%2Fetc/passwd HTTP/1.1"
     assert det["timestamp"] == datetime(2026, 11, 16, 5, 40, 1, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize("status", [200, 302, 404, 500])
+def test_an_access_record_the_waf_did_not_refuse_makes_no_detection(status):
+    assert normalize("es9", dict(ACCESS, status=status)) == []
+
+
+def test_the_old_refused_log_module_is_no_evidence_any_more():
+    assert normalize("es9", dict(ACCESS, event={"module": "nginx"})) == []

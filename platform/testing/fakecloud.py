@@ -8,8 +8,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from range import fabric, openstack
-from range.ports import EXIT_MARK
+from range import declaration, networks, openstack
+from range.runner import EXIT_MARK
 
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM = "srv-platform"
@@ -36,12 +36,12 @@ class Cloud:
         return f"{kind}-{next(self.counter)}"
 
     def fabric(self):
-        net = {"id": "net-mgmt", "name": fabric.network_name(fabric.MANAGEMENT),
-               "tags": [f"{fabric.TAG}={fabric.MANAGEMENT}"], "project_id": "cr"}
+        net = {"id": "net-mgmt", "name": networks.network_name(networks.MANAGEMENT),
+               "tags": [f"{networks.TAG}={networks.MANAGEMENT}"], "project_id": "cr"}
         self.networks.append(net)
         self.subnets.append({"id": "sub-mgmt", "network_id": "net-mgmt", "cidr": MANAGEMENT_CIDR,
                              "enable_dhcp": True, "gateway_ip": None, "name": "cr-mgmt", "ip_version": 4})
-        self.groups += [{"id": f"g-{name}", "name": name, "security_group_rules": []} for name in fabric.GROUPS]
+        self.groups += [{"id": f"g-{name}", "name": name, "security_group_rules": []} for name in networks.GROUPS]
         self.servers.append({"id": PLATFORM, "name": "cr-platform", "status": "ACTIVE", "metadata": {},
                              openstack.LAUNCHED: "2026-11-18T00:00:00.000000",
                              "addresses": {net["name"]: [{"addr": "10.31.0.2", openstack.FIXED: "fixed",
@@ -283,7 +283,7 @@ class Cloud:
 
     def control_address(self, slot: int, node: str) -> str:
         server = self.nodes_of(slot)[node]
-        return server["addresses"][fabric.network_name(fabric.MANAGEMENT)][0]["addr"]
+        return server["addresses"][networks.network_name(networks.MANAGEMENT)][0]["addr"]
 
 
 def serving(cloud: Cloud):
@@ -294,15 +294,12 @@ def serving(cloud: Cloud):
 
 
 def adapter(cloud: Cloud, slots: int = 2, **build) -> openstack.OpenStack:
-    from range import declared
-
-
     here = f"http://127.0.0.1:{cloud.port}"
     spec = openstack.Cloud(keystone=here, neutron=here, nova=here, glance=here, heat=here, project="cr",
                            user="cr", ssh_user="ubuntu", ssh_key="/nonexistent")
     built = openstack.Build(source=str(ROOT), flavor="dba.small", inside={"mgmt": MANAGEMENT_CIDR},
                             platform=PLATFORM, slots=slots, **build)
-    return openstack.OpenStack(declared.read(), spec, openstack.http_reader(spec, "secret"), build=built)
+    return openstack.OpenStack(declaration.read(), spec, openstack.http_reader(spec, "secret"), build=built)
 
 
 class Runner:

@@ -1,11 +1,9 @@
-import os
-import subprocess
-import sys
-
 import pytest
 
-from redteam.tools import (
-    TOOL_IMAGE,
+from attack.tools import (
+    FREE_TOOLS,
+    UnknownTool,
+    free_argv,
     is_tool_case,
     tool_argv,
 )
@@ -21,21 +19,21 @@ CASE = {
 INTERNAL_TARGET = "http://waf:8080"
 
 def test_the_case_names_the_image_and_the_tool_and_only_a_marker_case_carries_the_marker_and_its_own_sqlmap_output():
-    from attacker import SQLMAP_RUNS
+    from attack.box import SQLMAP_RUNS
 
-    assert tool_argv(CASE, INTERNAL_TARGET, SQLMAP_RUNS) == (TOOL_IMAGE, [
+    assert tool_argv(CASE, INTERNAL_TARGET, SQLMAP_RUNS) == [
         "sqlmap", "-u", f"{INTERNAL_TARGET}/rest/products/search?q=1", "--batch",
         "--headers=X-Request-ID: abc-123", "--output-dir=/tmp/sqlmap-runs/abc-123",
-    ])
-    _, window = tool_argv(dict(CASE, correlation="window"), INTERNAL_TARGET, SQLMAP_RUNS)
+    ]
+    window = tool_argv(dict(CASE, correlation="window"), INTERNAL_TARGET, SQLMAP_RUNS)
     assert not any("X-Request-ID" in part or "--output-dir" in part for part in window)
 
 def test_tool_case_in_the_default_file_declares_args():
     from pathlib import Path
 
-    from redteam.harness import load_cases
+    from attack.firing import load_cases
 
-    cases = load_cases(Path(__file__).resolve().parents[2] / "redteam/cases/board.yaml")
+    cases = load_cases(Path(__file__).resolve().parents[3] / "redteam/cases/board.yaml")
     tool_cases = [c for c in cases if is_tool_case(c)]
 
     assert tool_cases, "no tool: cases at all"
@@ -48,9 +46,9 @@ def test_tool_case_in_the_default_file_declares_args():
 def test_the_tamper_variant_skips_the_heuristic_probe_that_a_dropped_connection_ends_the_run_on():
     from pathlib import Path
 
-    from redteam.harness import load_cases
+    from attack.firing import load_cases
 
-    cases = {c["name"]: c for c in load_cases(Path(__file__).resolve().parents[2] / "redteam/cases/board.yaml")}
+    cases = {c["name"]: c for c in load_cases(Path(__file__).resolve().parents[3] / "redteam/cases/board.yaml")}
 
     assert "--skip-heuristics" in cases["board-sqli-orderby-sqlmap-tamper"]["args"], (
         "from paranoia level 2 a board 500 is refused after its headers are sent and nginx drops the "
@@ -59,27 +57,27 @@ def test_the_tamper_variant_skips_the_heuristic_probe_that_a_dropped_connection_
     )
 
 def launcher(exit_code, output=""):
-    from range.ports import Ran
+    from range.runner import Ran
 
-    def launch(image, argv, timeout=600.0):
-        launch.started.append((image, argv))
+    def launch(argv, timeout=600.0):
+        launch.started.append(argv)
         return Ran(exit_code=exit_code, output=output)
 
     launch.started = []
     return launch
 
 def test_missing_tool_image_raises_instead_of_being_swallowed():
-    from redteam.harness import fire_tool
-    from redteam.tools import ToolUnavailable
+    from attack.firing import fire_tool
+    from attack.tools import ToolUnavailable
 
-    with pytest.raises(ToolUnavailable, match="cr-kali"):
+    with pytest.raises(ToolUnavailable, match="did not run"):
         fire_tool(
             dict(CASE), INTERNAL_TARGET,
             launcher(125, "Unable to find image 'cr-kali:latest' locally"),
         )
 
 def test_tool_reporting_a_failed_scan_is_not_an_error():
-    from redteam.harness import fire_tool
+    from attack.firing import fire_tool
 
     fire_tool(
         dict(CASE), INTERNAL_TARGET,
@@ -89,7 +87,7 @@ def test_tool_reporting_a_failed_scan_is_not_an_error():
 def test_core_does_not_start_anything_itself():
     import pathlib
 
-    from redteam import harness
+    from attack import firing as harness
 
     source = pathlib.Path(harness.__file__).read_text()
 
@@ -101,9 +99,9 @@ def test_core_does_not_start_anything_itself():
 def test_sqlmap_s_conclusions_are_its_verdict_lines_without_the_clock():
     from pathlib import Path
 
-    from redteam.tools import conclusions
+    from attack.tools import conclusions
 
-    fixtures = Path(__file__).resolve().parent / "fixtures"
+    fixtures = Path(__file__).resolve().parents[1] / "fixtures"
     dumped = conclusions((fixtures / "sqlmap-orderby-dump.out").read_text())
     missing = conclusions((fixtures / "sqlmap-host-missing.out").read_text())
 
@@ -112,15 +110,12 @@ def test_sqlmap_s_conclusions_are_its_verdict_lines_without_the_clock():
     assert missing == ["[CRITICAL] host 'nowhere' does not exist"]
     assert conclusions("") == []
 
-def test_the_tool_image_defaults_to_the_attacker_host_the_range_declares(settings):
-    from tests.conftest import REPO_ROOT
-
-    environment = {name: value for name, value in os.environ.items() if name != "CR_TOOL_IMAGE"}
-    printed = subprocess.run(
-        [sys.executable, "-c", "from redteam.tools import TOOL_IMAGE; print(TOOL_IMAGE)"],
-        cwd=REPO_ROOT, env=environment, capture_output=True, text=True, check=True,
-    ).stdout.strip()
-
-    assert printed == settings.RANGE.roles["attacker"], (
-        "the OpenStack launcher runs a tool only on the attacker host the range declares"
-    )
+def test_a_free_tool_is_one_the_box_offers_and_a_marker_rides_on_curl_and_sqlmap():
+    assert free_argv("curl", ["-s", "http://board.com/"], "action-3") == [
+        "curl", "-H", "X-Request-ID: action-3", "-s", "http://board.com/"]
+    assert free_argv("nmap", ["-p", "80", "board.com"], "action-4") == ["nmap", "-p", "80", "board.com"]
+    assert "sqlmap" in FREE_TOOLS
+    with pytest.raises(UnknownTool):
+        free_argv("bash", ["-c", "id"])
+    with pytest.raises(ValueError):
+        free_argv("curl", "http://board.com/")

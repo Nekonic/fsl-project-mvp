@@ -3,12 +3,12 @@ import pathlib
 import pytest
 import yaml
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+ROOT = pathlib.Path(__file__).resolve().parents[3]
 DECLARATION = ROOT / "platform" / "range" / "declaration.yaml"
 
 
 def test_the_default_origin_has_to_be_somewhere_an_attack_can_start():
-    from range.declared import Declaration, Segment
+    from range.declaration import Declaration, Segment
 
     inside_only = Declaration(
         segments=(Segment(id="estate", name="Application estate", origin=""),),

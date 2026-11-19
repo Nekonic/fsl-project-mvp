@@ -3,20 +3,22 @@ from __future__ import annotations
 import os
 import subprocess
 
-from range.ports import RangeUnavailable
+from range.runner import RangeUnavailable
 
 
 def refused(what: str) -> RangeUnavailable:
     return RangeUnavailable(
         f"this unit test supplied no range, so {what} was refused. Production "
         f"code sees the same state when the substrate is down; a test that "
-        f"needs a range must stub api.views.substrate"
+        f"needs a range hands in a fake one"
     )
 
 class StandIn:
     max_sessions = 2
+    slot = 1
 
-    def __init__(self, declared=None, **options):
+    def __init__(self, options=None, declared=None):
+        self.options = options
         self.declared = declared
 
     def describe(self):
@@ -36,6 +38,9 @@ class StandIn:
             raise refused(f"running {' '.join(argv[:3])} on {role}")
 
         return run
+
+    def node_runner(self, role: str):
+        return self.runner(role)
 
     def launcher(self, segment_id: str):
         def launch(image, argv, timeout=600.0):

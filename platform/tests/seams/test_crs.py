@@ -1,10 +1,11 @@
 import pytest
 
-from range.ports import Ran
+from cr import config
+from range.runner import Ran
 from rules import crs
 
-RELOAD = ["sh", "-c", crs.Layout().reload]
-WORKERS = crs.workers_of(crs.Layout().pid)
+RELOAD = ["sh", "-c", config.WafConfig().reload]
+WORKERS = crs.workers_of(config.WafConfig().pid)
 
 class Gateway:
     def __init__(self, live="", reload=Ran(0, "test is successful"), workers=None):
@@ -33,7 +34,7 @@ def test_applying_writes_the_exclusion_file_and_reloads_nginx():
 
     assert applied == {"paranoia": 2, "exclusions": []}
     assert "tx.blocking_paranoia_level=2" in gateway.file
-    assert any(crs.EXCLUSIONS in " ".join(argv) for argv in gateway.calls)
+    assert any(config.CRS_EXCLUSIONS in " ".join(argv) for argv in gateway.calls)
     assert gateway.calls[-1] == RELOAD
 
 def test_a_tuning_nginx_refuses_is_rolled_back_to_the_previous_file():
@@ -74,19 +75,7 @@ def test_a_reload_that_starts_no_new_worker_is_rolled_back_and_refused(monkeypat
     assert stuck.calls[-1] == RELOAD, "the previous file is reloaded"
 
 def test_on_openstack_tuning_writes_where_the_waf_container_reads_and_reloads_its_nginx():
-    import os
-    import pathlib
-    import subprocess
-    import sys
-
-    read = subprocess.run(
-        [sys.executable, "-c", "import cr.settings as s; print('\\n'.join(s.CR_WAF))"],
-        cwd=pathlib.Path(__file__).resolve().parents[1], capture_output=True, text=True,
-        env={**{k: v for k, v in os.environ.items() if not k.startswith("CR_")},
-             "DJANGO_SETTINGS_MODULE": "cr.settings", "CR_SUBSTRATE": "range.openstack.connect"},
-    )
-    assert read.returncode == 0, read.stderr[-300:]
-    layout = crs.Layout(*read.stdout.strip().splitlines())
+    layout = config.build({}).waf
     assert layout.rules.startswith("/etc/nginx/modsecurity/crs/rules/"), (
         "the WAF's modsecurity.conf includes /etc/nginx/modsecurity/crs/rules/*.conf"
     )
