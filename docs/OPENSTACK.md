@@ -1866,7 +1866,7 @@ Stay in that shell as admin. Do these steps:
    range stack (§3.2).
 
 Then open a new shell, as the same user, so that the admin `OS_*` variables
-from `admin-openrc.sh` are gone, and run README's 설치: clone, then
+from `admin-openrc.sh` are gone, and run README's install section: clone, then
 `uv run bin/cloud init`, which signs in with `/etc/kolla/clouds.yaml` and makes
 the project, the user and the base image, then bake the four role images
 (§3.6) and run `uv run bin/cloud up`. The

@@ -1,0 +1,59 @@
+from __future__ import annotations
+
+import json
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+
+from bots import calls, tools
+from bots.provider import Provider
+
+PROMPTS = Path(__file__).resolve().parent / "prompts"
+SIDE_PROMPTS = {"attack": "attacker.md", "defence": "defender.md"}
+DRIVER_PROMPT = "claude_code.md"
+DEFAULT_TURNS = 200
+
+
+@dataclass(frozen=True)
+class Played:
+    reason: str
+    turns: int
+    transcript: list[dict]
+
+
+def system_prompt(side: str, *, driving_the_cli: bool = False) -> str:
+    if side not in SIDE_PROMPTS:
+        raise ValueError(f"side must be one of {tuple(SIDE_PROMPTS)}, not {side!r}")
+    parts = [(PROMPTS / SIDE_PROMPTS[side]).read_text()]
+    if driving_the_cli:
+        parts.append((PROMPTS / DRIVER_PROMPT).read_text())
+    return "\n\n".join(parts)
+
+
+def opening(seat: calls.Seat, state: dict) -> str:
+    return (f"Round {seat.round_id}: you hold the {seat.side} seat. Your seat's state, read just now with "
+            f"{seat.side}_state:\n{json.dumps(state, ensure_ascii=False)}")
+
+
+def play(seat: calls.Seat, provider: Provider, *, turns: int = DEFAULT_TURNS,
+         report: Callable[[dict], None] = lambda entry: None) -> Played:
+    specs = tools.specs(seat.side)
+    system = system_prompt(seat.side)
+    client_and_answers = calls.client_for(seat)
+    state = calls.call(seat, f"{seat.side}_state", {}, client_and_answers)
+    transcript = [{"role": "user", "text": opening(seat, state)}]
+    report(transcript[0])
+    for turn_number in range(1, turns + 1):
+        turn = provider.turn(system, specs, transcript)
+        said = {"role": "assistant", "text": turn.text,
+                "calls": [{"id": call.id, "name": call.name, "arguments": call.arguments} for call in turn.calls]}
+        transcript.append(said)
+        report(said)
+        if not turn.calls:
+            return Played("finished", turn_number, transcript)
+        for call in turn.calls:
+            result = {"role": "tool", "call_id": call.id, "name": call.name,
+                      "result": calls.call(seat, call.name, call.arguments, client_and_answers)}
+            transcript.append(result)
+            report(result)
+    return Played("out_of_turns", turns, transcript)

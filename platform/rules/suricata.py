@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import re
 import shlex
@@ -175,6 +177,16 @@ def capture(node, config: SensorConfig, path: str, seconds: int) -> Capture:
 
 def stop_capture(node, held: Capture) -> None:
     node(["sh", "-c", f"kill -INT {held.pid} 2>/dev/null; true"])
+
+
+def captured(node, held: Capture) -> bytes:
+    ran = node(["sh", "-c", f"base64 -w0 {shlex.quote(held.path)} && rm -f {shlex.quote(held.path)}"])
+    if not ran.ok:
+        raise RulesUnreadable(f"the capture {held.path} could not be read: {ran.output.strip()[:300]}")
+    try:
+        return base64.b64decode(ran.output.strip(), validate=True)
+    except binascii.Error as broken:
+        raise RulesUnreadable(f"the capture {held.path} came back garbled") from broken
 
 
 def _marker(http: dict) -> str | None:

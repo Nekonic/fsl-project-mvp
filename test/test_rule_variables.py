@@ -1,14 +1,13 @@
 import pytest
 
+
 @pytest.fixture(scope="module")
 def fired_with_a_ported_rule(rules_session):
-    return rules_session["listed"]
+    return rules_session["noisy_alerts"]
+
 
 def test_a_rule_written_against_http_ports_actually_fires(fired_with_a_ported_rule):
-    ported = [
-        d for d in fired_with_a_ported_rule
-        if d["signature"] == "ported SQLi probe"
-    ]
+    ported = [alert for alert in fired_with_a_ported_rule if alert["signature"] == "ported SQLi probe"]
 
     assert ported, (
         "a rule identical to the shipped one except that it says $HTTP_PORTS "

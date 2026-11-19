@@ -1,18 +1,12 @@
 import os
 from pathlib import Path
 
-from cr import config
-from range import declaration as declared
-from rules.suricata import RULE_PATH
-
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-def kept_secret(path):
-    try:
-        return Path(path).read_text(encoding="utf-8").strip()
-    except OSError:
-        return ""
-
+CR_SOURCE = Path(os.environ.get("CR_SOURCE") or BASE_DIR.parent)
+CR_PROBES_OUT = Path(os.environ.get("CR_PROBES_OUT") or CR_SOURCE / "wargames")
+LEASE_IDLE_MINUTES = int(os.environ.get("CR_LEASE_IDLE_MINUTES") or 30)
+RETAIN_CLOSED_MINUTES = int(os.environ.get("CR_RETAIN_CLOSED_MINUTES") or 60)
+FOLLOW_SECONDS = float(os.environ.get("CR_FOLLOW_SECONDS") or 5)
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "") == "1"
 
@@ -28,7 +22,16 @@ INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
-    "django.contrib.staticfiles",
+    "rest_framework",
+    "drf_spectacular",
+    "accounts",
+    "events",
+    "content",
+    "match",
+    "referee",
+    "defence",
+    "attack",
+    "lessons",
 ]
 
 MIDDLEWARE = [
@@ -39,11 +42,17 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-LOGIN_URL = "/login/"
+ROOT_URLCONF = "cr.urls"
+APPEND_SLASH = False
+
 SESSION_COOKIE_NAME = "cr_session"
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
-CSRF_USE_SESSIONS = True
+CSRF_COOKIE_NAME = "cr_csrf"
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_FAILURE_VIEW = "cr.handler.csrf_refused"
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": f"django.contrib.auth.password_validation.{name}"}
     for name in (
@@ -51,8 +60,6 @@ AUTH_PASSWORD_VALIDATORS = [
         "CommonPasswordValidator", "NumericPasswordValidator",
     )
 ]
-
-ROOT_URLCONF = "cr.urls"
 
 TEMPLATES = [
     {
@@ -72,97 +79,29 @@ DATABASES = {
     }
 }
 
-RESET_OWED_DIR = os.environ.get("CR_RESET_OWED_DIR", str(BASE_DIR / "reset-owed"))
-JUMP_DIR = os.environ.get("CR_JUMP_DIR", str(BASE_DIR / "jump"))
-JUMP_PORT = int(os.environ.get("CR_JUMP_PORT", "2222"))
-JUMP_HOST = os.environ.get("CR_JUMP_HOST", "")
-
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+LANGUAGE_CODE = "ko"
 USE_TZ = True
 TIME_ZONE = "UTC"
-STATIC_URL = "static/"
 
-CR_SUBSTRATE = os.environ.get("CR_SUBSTRATE", "range.openstack.connect")
-RANGE = declared.read()
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": ["accounts.signin.SessionAuthentication"],
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
+    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "EXCEPTION_HANDLER": "cr.handler.handle",
+    "UNAUTHENTICATED_USER": "django.contrib.auth.models.AnonymousUser",
+}
 
-ATTACKER_CONTAINER = RANGE.roles["attacker"]
-ATTACKER_SOURCE_CONTAINER = RANGE.roles["proxy"]
-ATTACKER_TERMINAL_URL = "/vm-terminal/kali/"
-ATTACKER_SESSION_TERMINAL_URL = "/vm-terminal/kali/?arg={session}"
-WAF_TERMINAL_URL = "/vm-terminal/waf/"
-WAF_SESSION_TERMINAL_URL = "/vm-terminal/waf/?arg={session}"
-SITE_PORT = 8002
-ATTACKER_TARGET_URL = os.environ.get("ATTACKER_TARGET_URL", os.environ.get("PUBLIC_TARGET_URL", "http://board.com"))
-
-TARGET_URL = os.environ.get("TARGET_URL", "http://board.com")
-PUBLIC_TARGET_URL = os.environ.get("PUBLIC_TARGET_URL", "http://board.com")
-
-BOARD_API_URL = os.environ.get("BOARD_API_URL", "http://board:8000")
-WARGAME_CASES_DIR = os.environ.get(
-    "WARGAME_CASES_DIR", str(BASE_DIR.parent / "redteam" / "cases")
-)
-
-ELASTIC_URL = os.environ.get("ELASTIC_URL", "http://elasticsearch:9200")
-ELASTIC_INDEX = os.environ.get("ELASTIC_INDEX", "logs-*")
-ELASTIC_SESSION_INDEX = os.environ.get(
-    "ELASTIC_SESSION_INDEX",
-    {"range.openstack.connect": "logs-{slot}-*"}.get(CR_SUBSTRATE, ""),
-)
-
-READY_SKEW = float(os.environ.get("CR_READY_SKEW", "5"))
-CANARY_WAIT = float(os.environ.get("CR_CANARY_WAIT", "45"))
-CANARY_POLL = float(os.environ.get("CR_CANARY_POLL", "3"))
-RETAIN_CLOSED_MINUTES = int(os.environ.get("CR_RETAIN_CLOSED_MINUTES") or 60)
-SENSOR_HOST = RANGE.hosts.get(RANGE.roles.get("sensor", ""))
-CR_SENSOR_RULES = (
-    os.environ.get("CR_SENSOR_RULES")
-    or (SENSOR_HOST and SENSOR_HOST.rules)
-    or RULE_PATH
-)
-CR_SENSOR_RELOAD = tuple((
-    os.environ.get("CR_SENSOR_RELOAD")
-    or (SENSOR_HOST and SENSOR_HOST.reload)
-    or ""
-).split())
-
-def _sensing(role):
-    host = RANGE.hosts.get(RANGE.roles[role]) or declared.Host()
-    return role, host.rules or RULE_PATH, tuple(host.reload.split())
-
-CR_EXTRA_SENSORS = tuple(_sensing(role) for role in sorted(RANGE.watches) if role != "sensor")
-
-def waf_layout(shape):
-    host = shape.hosts.get(shape.roles.get("gateway", "")) or declared.Host()
-    return config.WafConfig(rules=host.rules or config.CRS_EXCLUSIONS, reload=host.reload or config.NGINX_RELOAD,
-                            pid=host.pid or config.NGINX_PID)
-
-CR_WAF = waf_layout(RANGE)
-CR_SOURCE = os.environ.get("CR_SOURCE", str(BASE_DIR.parent))
-
-OPENSTACK_PASSWORD_FILE = os.environ.get("CR_OPENSTACK_PASSWORD_FILE") or "/run/secrets/openstack_password"
-
-CR_SUBSTRATE_OPTIONS = dict(
-    {
-        "range.openstack.connect": {
-            name: os.environ.get(variable, "")
-            for name, variable in {
-                "keystone": "CR_OPENSTACK_KEYSTONE",
-                "user": "CR_OPENSTACK_USER",
-                "domain": "CR_OPENSTACK_DOMAIN",
-                "project": "CR_OPENSTACK_PROJECT",
-                "ssh_user": "CR_OPENSTACK_SSH_USER",
-                "ssh_key": "CR_OPENSTACK_SSH_KEY",
-                "region": "CR_OPENSTACK_REGION",
-                "interface": "CR_OPENSTACK_INTERFACE",
-                "availability_zone": "CR_OPENSTACK_AVAILABILITY_ZONE",
-                "subnets": "CR_OPENSTACK_SUBNETS",
-                "platform": "CR_OPENSTACK_PLATFORM",
-                "pool": "CR_OPENSTACK_POOL",
-                "target_tag": "CR_OPENSTACK_TARGET_TAG",
-                "images": "CR_OPENSTACK_IMAGES",
-                "flavors": "CR_OPENSTACK_FLAVORS",
-            }.items()
-        } | {"source": CR_SOURCE, "password": kept_secret(OPENSTACK_PASSWORD_FILE)},
-    }.get(CR_SUBSTRATE, {}),
-    declared=RANGE,
-)
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Cyber range",
+    "VERSION": "1",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "POSTPROCESSING_HOOKS": ["drf_spectacular.hooks.postprocess_schema_enums", "cr.schema.error_shape"],
+    "ENUM_NAME_OVERRIDES": {"ProblemKindEnum": "content.models.KINDS", "ProblemSideEnum": "content.models.SIDES",
+                            "VerdictEnum": "defence.serializers.VERDICTS", "MatchupEnum": "match.models.MATCHUPS",
+                            "SeatSideEnum": "match.models.SIDES", "RoundPhaseEnum": "match.models.PHASES",
+                            "LessonPhaseEnum": "lessons.serializers.LESSON_PHASES"},
+}

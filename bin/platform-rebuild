@@ -591,7 +591,7 @@ def hand_over(new: Host, password: str, range_key: Path, store: Path | None,
 
 
 def api_answers(address: str) -> bool:
-    url = f"http://{address}:8000/api/auth/"
+    url = f"http://{address}:8000/api/auth/csrf/"
     try:
         with urllib.request.urlopen(url, timeout=10) as answer:
             return answer.status == 200
@@ -603,10 +603,10 @@ def wait_for_api(address: str) -> None:
     deadline = time.monotonic() + API_WAIT
     while True:
         if api_answers(address):
-            print(f"http://{address}:8000/api/auth/ answers")
+            print(f"http://{address}:8000/api/auth/csrf/ answers")
             return
         if time.monotonic() > deadline:
-            raise Refused(f"platform-rebuild: http://{address}:8000/api/auth/ did not answer within {API_WAIT}s")
+            raise Refused(f"platform-rebuild: http://{address}:8000/api/auth/csrf/ did not answer within {API_WAIT}s")
         time.sleep(API_POLL)
 
 
@@ -681,7 +681,7 @@ def main(argv: list[str]) -> int:
     args = arguments(argv)
     cloud, environment = load(args)
     address = rebuild(cloud, environment, args.sideload)
-    print(f"the platform is at http://{address}:8000/; GET /api/range/fabric/ shows whether the range still matches")
+    print(f"the platform is at http://{address}:8000/; GET /api/staff/range/pool/ shows the slot stacks")
     return 0
 
 

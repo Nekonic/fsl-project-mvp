@@ -23,6 +23,7 @@ def checkout(tmp_path):
     (root / "bin").mkdir()
     shutil.copy(ROOT / "bin/verify", root / "bin/verify")
     executable(root / ".venv/bin/python", "exit 0\n")
+    executable(root / "bin/gen-clients", "exit 0\n")
     return root.resolve()
 
 

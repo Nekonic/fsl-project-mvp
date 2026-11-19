@@ -25,6 +25,9 @@ SEAMS = {
     "the attacker box": (
         {"attack/box.py"}, {"cr/config.py", "entrypoint.sh"},
         r"/usr/local/sbin/set-origin|/var/lib/session/|ORIGIN-SNAT"),
+    "the platform jump host and the box accounts' keys": (
+        {"range/jump.py"}, {"entrypoint.sh"},
+        r"\bauthorized_keys\b|cr-session-"),
     "the OpenStack API": (
         {"range/openstack.py"}, set(),
         r"/v2\.0/|/servers/detail|/v3/auth/tokens|os-keypairs|\{heat\}/stacks"),

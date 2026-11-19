@@ -43,7 +43,7 @@ The product is a cyber attack and defence range. Two clients drive it: human con
 | Layer | Modules |
 |---|---|
 | L0 pure | `domain/**` |
-| L1 seams and libraries | `cr/config.py`, `cr/errors.py`, `ingest/elastic.py`, `rules/suricata.py`, `rules/crs.py`, `range/**`, `attack/box.py`, `attack/jump.py`, `attack/firing.py`, `attack/tools.py`, `defence/kibana.py`, `referee/loot.py`, `referee/effect.py`, `platform/testing/**` |
+| L1 seams and libraries | `cr/config.py`, `cr/errors.py`, `ingest/elastic.py`, `rules/suricata.py`, `rules/crs.py`, `range/**` (including `range/jump.py`), `attack/box.py`, `attack/firing.py`, `attack/tools.py`, `defence/kibana.py`, `referee/loot.py`, `referee/effect.py`, `platform/testing/**` |
 | L2 base apps | `accounts/models.py`, `accounts/service.py`, `accounts/signin.py`, `accounts/blocks.py`, `events/**` (except HTTP), `content/**` (except HTTP) |
 | L3 round records | `match/models.py`, `match/auth.py` |
 | L4 | `referee/models.py`, `referee/service.py` |
@@ -136,6 +136,8 @@ fsl-project-mvp/
       runner.py                     Runner, Launcher, Substrate, Ran, RangeUnavailable, Drifted (was ports.py)
       substrate.py                  substrate(config) (was range/__init__.py)
       edge.py                       SEAM (new): infra nftables `pool` and `spent` set elements and conntrack flush
+      jump.py                       SEAM: platform sshd jump grants, key generation, the grants file and the box account's
+                                    authorized_keys (address and account passed in); both sides import it
     accounts/
       apps.py  models.py (SignInBlock)  signin.py  blocks.py  service.py
       serializers.py  views.py  urls.py  migrations/0001_initial.py
@@ -168,7 +170,6 @@ fsl-project-mvp/
     attack/
       apps.py  models.py (Action, ToolRun, OriginBudget, AccessCursor)
       box.py                        SEAM: attacker box (origins, set-origin, command log, tool image, customer origins, stop runs, kali address)
-      jump.py                       platform sshd jump grants: key generation, grants file (address passed in)
       firing.py                     load_cases, build_request, fire, fire_http, fire_tool (was redteam/harness.py; launch injected)
       tools.py                      tool argv per case and per free tool (was redteam/tools.py)
       service.py                    state, send, catalog, start_tool, tool_output, stop_tool, fire_case, fire_benign, submit_loot,
@@ -188,6 +189,7 @@ fsl-project-mvp/
       service.py  serializers.py  views.py  urls.py  migrations/0001_initial.py
     testing/
       fakecloud.py  standin.py  fakes.py (fake runners, fake ES)  factories.py (English placeholder problems)
+      fakerange.py                  fake substrates: the defence range, the attack range, a slot and a cloud of slots
     tests/
       domain/   conftest.py (no Django)  test_correlate.py test_metrics.py test_corroborate.py
                 test_objectives.py test_ledger.py test_verdicts.py test_checks.py test_problems.py test_round_rules.py
@@ -211,8 +213,11 @@ fsl-project-mvp/
       test/ *.test.ts(x)
   bots/
     README.md                       rules of play, HP rule, error codes (English)
-    cli.py                          `python -m bots.cli <operation> --json '{...}'` over the generated client
-    tools.py                        tagged operations -> JSON Schema tool specs (generated at build)
+    cli.py                          `python -m bots.cli <operation> --json '{...}'`, plus `tools`, `prompt`, `call` and `run`
+    tools.py                        tagged operations of the committed schema -> JSON Schema tool specs per side
+    calls.py                        one tool call through the generated client with the seat token
+    play.py  provider.py            the turn loop and the provider interface `turn(system, tools, transcript)`
+    signin.py                       signed-in and seated clients, shared with `test/` and `bin/`
     prompts/ attacker.md defender.md claude_code.md
     client/                         generated from openapi/schema.yaml (not committed)
   redteam/
@@ -263,7 +268,7 @@ fsl-project-mvp/
 | `range/pool.py`, `range/refill.py` | Slot phase; the refill state machine (store and clock injected) | stdlib |
 | `range/reachability.py`, `range/substrate.py`, `range/runner.py` | Reachability probe; substrate choice; runner contracts | stdlib |
 | `attack/box.py` | The attacker box: origins, `set-origin`, command log, tool image, customer origins, stopping runs, the kali address | runner |
-| `attack/jump.py` | The platform sshd's jump grants and keys (box address passed in) | stdlib |
+| `range/jump.py` | The platform sshd's jump grants and keys, and the per-seat key in the box account's `authorized_keys` (box address, runner and account passed in) | stdlib, runner |
 | `attack/firing.py`, `attack/tools.py` | Building and firing cases with the `X-Request-ID` marker; tool argv | `requests`, `yaml` |
 | `defence/kibana.py` | The Kibana API, every Kibana route and space rule | `urllib` |
 | `referee/loot.py`, `referee/effect.py` | The target's ground truth | `urllib` |
@@ -272,8 +277,8 @@ fsl-project-mvp/
 | `content` | Wargame catalog, postures, problems, steps, round setups, probe sets, staff API | `domain.problems`, `rules.crs.checked`, `attack.firing.load_cases` |
 | `match` | Lease, Round, Seat (with its token), auth classes, lifecycle, tick, customers, site pane, probe recording, the one score | every service |
 | `referee` | Objectives, baseline, loot, effects, attribution, redaction of the secret | `domain.scoring`, its seams, `events` |
-| `attack` | The one attack API: actions, tool runs, HP, origins, terminal, customer sends | `domain.ledger`, `attack/*` seams, `range.edge`, `ingest`, `referee.service`, `match.models` |
-| `defence` | The one defence API: rules, posture, tests, apply, disable, drift, alerts, traffic, terminal, Kibana | `rules/*`, `ingest`, `domain.verdicts`, `referee.service`, `match.models` |
+| `attack` | The one attack API: actions, tool runs, HP, origins, terminal, customer sends | `domain.ledger`, `attack/*` seams, `range.edge`, `range.jump`, `ingest`, `referee.service`, `match.models` |
+| `defence` | The one defence API: rules, posture, tests, apply, disable, drift, alerts, traffic, terminal, Kibana | `rules/*`, `range.jump`, `ingest`, `domain.verdicts`, `referee.service`, `match.models` |
 | `lessons` | Step results, judging, progress | `domain.checks`, side services, `match.service`, `content.service` |
 | `strings/` | The two Korean tables | data |
 | `front/` | Pages and panes | HTTP `/api/` only, `strings/console.json` |
@@ -294,7 +299,7 @@ There is one score function: `match.service.score(round)` gathers the records fr
 | Infra edge set elements | `range/edge.py` (new) | `pool` and `spent` sets, conntrack flush. `slot-boot` stays the only loader of the table; `edge.py` only adds, lists and refills elements |
 | Kibana API | `defence/kibana.py` | holds `space_of`, `refusal` and every Kibana path literal; `defence/views_kibana.py` only calls them |
 | Attacker box | `attack/box.py` | absorbs the command log reader, the tool image name and the kali address (removes two exceptions); `match/customers.py` sends only through `attack.service` |
-| Platform jump host | `attack/jump.py` | holds the grants file and key generation; the kali address is an argument taken from `box.py` |
+| Platform jump host | `range/jump.py` | holds the grants file, key generation and the box account's `authorized_keys`; the box address is an argument (kali from `box.py` for the attack seat, cr-waf's management address for the defence seat's `analyst`). It sits under `range/` so both sides import it without importing each other (rule 3) |
 | Target ground truth | `referee/loot.py` (board), `referee/effect.py` (corp) | moved; `referee.service.redact` is the only thing that strips the secret from probe recordings |
 
 **Refill seed and posture.** A refilled slot gets `deploy/suricata/rules/local.rules` through `openstack.py` → `rules.suricata.seed`, so a slot never runs with an unknown rule file. Round start then applies the problem's Posture through `defence.service.apply_ids` over every sensor. The refill seed owns the slot's starting file; the posture owns the round's.
@@ -395,7 +400,7 @@ hp: {origin: {id, label, ip}, left, budget,
 | `DELETE tools/<run>/` | none | `204` | Stops the run on the box (`stopped_by: seat`) |
 | `POST loot/` | `{value}` | `{lost: bool, objective?: {key, name}, hp}` | `referee.service.submit_loot`. Never reveals the secret |
 | `POST origins/next/` | none | `{origin, hp}` | Gives up the current origin early (marked spent) |
-| `GET terminal/` | none | `{ws_url, ssh:{host, port, user, private_key, expires_at}}` | `ws_url` is a per-seat, short-lived ttyd path to kali; `ssh` is a jump grant from `attack/jump.py`. Both are revoked when the round ends |
+| `GET terminal/` | none | `{ws_url, ssh:{host, port, user, private_key, expires_at}}` | `ws_url` is a per-seat, short-lived ttyd path to kali; `ssh` is a jump grant from `range/jump.py`. Both are revoked when the round ends |
 | `POST forfeit/` | none | `{ended, reason: forfeit_attack}` | |
 
 The events feed, topology and score are round routes (§9).
@@ -431,7 +436,7 @@ Base: `/api/rounds/<round>/defence/`. Permission `HasSeat('defence')`, the same 
 | `POST waf/check/` | `{posture}` | `{ok, errors:[{path:"exclusions[2].target", code:"crs_refused", message}]}` |
 | `POST waf/test/` | `{posture, cases?}` | RuleTestResult |
 | `POST waf/apply/` | `{posture, base_version, tested?}` | `{version, applied_at, same_as_tested}` |
-| `GET terminal/` | none | `{ws_url, ssh:{...}}` to cr-waf as the read-only `analyst` account |
+| `GET terminal/` | none | `{ws_url, ssh:{host, port, user, private_key, expires_at, target_host, target_user}}` to cr-waf as the read-only `analyst` account; the jump grant from `range/jump.py`, revoked when the round ends |
 | `GET kibana/` | none | `{space_url}` (human seats; bots use `alerts/` and `traffic/`) |
 | `POST forfeit/` | none | `{ended, reason: forfeit_defence}` |
 
@@ -527,6 +532,7 @@ Who may act: the **operator** is `Lease.opened_by` or a staff user (`IsOperator`
 | `GET /api/rounds/<round>/topology/` | seats, operator | none | the learner map from `range.topology`, filtered by side |
 | `GET /api/rounds/<round>/site/requests/?after=` | seats | none | the site pane's request/response list |
 | `GET /api/staff/range/` | staff | none | readiness and slot states |
+| `POST\|DELETE /api/staff/range/fabric/`, `DELETE /api/staff/range/leftovers/`, `GET\|POST\|DELETE /api/staff/range/pool/` | staff | none | what `bin/cloud up` and `down` drive: the shared Neutron fabric, what an earlier range left, and the pool (`POST` owes every unheld slot a refill the follower builds and configures; `DELETE` drops owed refills and deletes every slot stack; `GET` lists each slot stack's servers). `409 range_not_cloud` on a range not built through OpenStack |
 
 **Score:**
 
@@ -663,7 +669,7 @@ The `spent` set needs no flush at round end: the slot stack is rebuilt when the 
 
 - **Contract:** drf-spectacular exports `openapi/schema.yaml`, which is committed. `tests/contract/test_schema_fresh.py` fails when it is stale. `test_schema_complete.py` fails on any `/api/` route missing from the schema, any non-GET operation without a request serializer, any response without a serializer, any attack or defence operation without exactly one side tag, and any `DomainError` code missing from the error-code enum. Per-side schemas are served at `/api/schema/attack/` and `/api/schema/defence/`.
 - **Client:** `bin/gen-clients` generates `bots/client/` (openapi-python-client) and `front/src/api/schema.d.ts` (openapi-typescript). Neither is committed: they carry generator docstrings and JSDoc, and the no-comments rule has no exception for them. `bin/verify`, the platform Dockerfile and `images.yml` generate them before use. `test/` and the bots use the generated Python client, so a path change breaks them at once.
-- **One surface:** `bots/cli.py` exposes each operation as `python -m bots.cli <operation> --json '{...}'` with the seat token in the environment, and `bots/tools.py` turns the tagged operations into JSON Schema tool specs. Any agent, Claude Code or another model, drives a seat through the CLI or the tool specs. A loop for a non-agent model is added only when one is wired in.
+- **One surface:** `bots/cli.py` exposes each operation as `python -m bots.cli <operation> --json '{...}'` with the seat token in the environment, and `bots/tools.py` turns the tagged operations into JSON Schema tool specs: a side's own operations plus the round reads (`round_read`, `round_events`, `round_topology`, `round_score` without the staff-only `correlation`) and `lease_heartbeat`, never the other side's, and not `defence_kibana`, which is for human seats. Any agent, Claude Code or another model, drives a seat through the CLI or the tool specs. A non-agent model plugs into `bots/play.py`'s turn loop through `bots/provider.py` (`run --provider package.module:factory`); none is wired in.
 - **How Claude Code drives a seat:**
   1. The operator creates a round with a bot seat (`POST /api/leases/<l>/rounds/`) and receives the seat token once.
   2. Claude Code is started with `bots/prompts/claude_code.md` plus the side prompt: the rules of play, the HP rule, the error codes and the CLI.
@@ -757,7 +763,7 @@ The work happens on a working branch. Old `platform/api/` and `platform/console/
    - Carry over `ingest/elastic.py` (+ `fetch_after`, `access_events`, `register_pipeline`, the `nginx_access` split).
    - Carry over `rules/suricata.py` (+ `checked`, `offline_test`, `capture`) and `rules/crs.py` (+ `scratch_check`, `scratch_test`).
    - `range/`: carry over `openstack.py`, `wiring.py`, `pool.py`; rename and split `cloud.py`, `sandbox.py`+`clock.py`, `declared.py`, `fabric.py`, `ports.py` (§3); rewrite `refill.py` Django-free; write `substrate.py` and `edge.py`.
-   - Write `attack/box.py`, `attack/jump.py`, `attack/firing.py`, `attack/tools.py`.
+   - Write `attack/box.py`, `range/jump.py`, `attack/firing.py`, `attack/tools.py`.
    - Carry over `defence/kibana.py`, `referee/loot.py`, `effect.py`.
 
    *Proof:* `tests/seams` against fakes. Import rules 2, 4, 14. Seam scan.
@@ -858,7 +864,7 @@ The body of the spec no longer carries these source tags; DECISIONS.md records t
 
 1. **"The offline IDS test on cr-infra creates a second Suricata host that topology does not declare."** Wrong: `cr-ids` is the `sensor` container on node `cr-infra` (`wargames/board/topology.yaml`: `cr-ids: {node: cr-infra, container: sensor}`), so there is no second host. The useful part is kept: `offline_test` takes the host from the topology's sensor device and runs the same pinned image and `suricata.yaml` (§8).
 2. **"Do not raise the cost of a refusal by the defender's WAF; charge by request count and burst only."** Rejected: "faster when refused" is a decided product rule. The concern behind it holds and is fixed another way: the platform fires the benign set in every round, `origins_spent` cannot end a round before one full benign pass (`may_end`), and acceptance proves a block-everything posture shows FP>0 under the HP rule (§9, §11, §14).
-3. **"`attack/jump.py` is attacker-box knowledge and a second box owner."** Partly wrong: `jump.py` manages the platform VM's own sshd jump grants (`authorized_keys_line(public_key, kali, …)` with `kali_address(given)` taking the address as an argument); it does not reach into the box. Kept as its own seam owner, with the kali address supplied by `box.py` and `authorized_keys`/`cr-session-` added to the seam patterns (§5).
+3. **"`attack/jump.py` is attacker-box knowledge and a second box owner."** (Now `range/jump.py`, since the defence terminal needs the same grants.) Partly wrong: `jump.py` manages the platform VM's own sshd jump grants (`authorized_keys_line(public_key, address, …)` with `box_address(given)` taking the address as an argument) and writes one key line into the given account's `authorized_keys` through the runner it is handed; it reads nothing else of the box. Kept as its own seam owner, with the box address supplied by the side service and `authorized_keys`/`cr-session-` added to the seam patterns (§5).
 4. **"Drop the provenance tags and Appendices A and B from the spec."** Partly rejected: this is the gate-1 design, and the user asked for a fusion of the other options' strengths, so the reviewer of this gate needs to see where each graft came from. The inline tags are removed from the body; the appendices stay, and DECISIONS.md takes them over at build time.
 5. **"range/ is carried over wholesale, which bends to keep old code."** Partly rejected: the user ruling names the range adapter as one of the good parts to carry over. The parts of the issue that hold are fixed: each file gets an owner row, opaque names are renamed or merged, `refill.py` is a rewrite, and the Django imports in `range/__init__.py` and `api/reset.py` go (§3, §4, §16 step 4).
 6. **"Lesson rule-test judge reads a RuleTest row, breaking service-only."** Partly rejected: reading the RuleTest is the point (the lesson card and the editor cannot disagree). It now goes through `defence.service.latest_test`, which satisfies rule 9 (§9).

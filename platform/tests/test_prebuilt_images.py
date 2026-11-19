@@ -460,7 +460,7 @@ class ChangedContexts:
 def test_every_image_must_be_built_from_what_head_holds():
     module = rebuild()
     built = "3" * 40
-    platform_sources = "platform pyproject.toml uv.lock"
+    platform_sources = "platform strings/server.json pyproject.toml uv.lock"
     git = ChangedContexts({(BASE, platform_sources), (BASE, "wargames/corp/db")})
     platform = {"platform": module.Tarball(Path("p.tar"), built)}
 
@@ -777,8 +777,8 @@ def stamped_backup(directory, name, rows):
     directory.mkdir(exist_ok=True)
     path = directory / name
     with closing(sqlite3.connect(path)) as db:
-        db.execute("CREATE TABLE api_session (id INTEGER PRIMARY KEY)")
-        db.executemany("INSERT INTO api_session DEFAULT VALUES", [()] * rows)
+        db.execute("CREATE TABLE match_lease (id INTEGER PRIMARY KEY)")
+        db.executemany("INSERT INTO match_lease DEFAULT VALUES", [()] * rows)
         db.commit()
     return path
 

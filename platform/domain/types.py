@@ -53,7 +53,7 @@ class ActionRecord:
         return CaseRecord(
             case_id=self.case_id or self.action_id,
             name=self.case_id or self.kind,
-            malicious=self.malicious,
+            malicious=self.malicious if self.kind == ACTION_CASE else None,
             correlation=self.correlation,
             marker=self.marker,
             source_ip=self.source_ip,

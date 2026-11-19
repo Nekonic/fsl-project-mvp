@@ -1,0 +1,8 @@
+id: corp
+title: Corporate site
+image: ghcr.io/nekonic/cr-corp
+public_url: http://corp.com
+hosts: [corp.com]
+objective_model: effect_observed
+case_file: corp.yaml
+default_traffic: null

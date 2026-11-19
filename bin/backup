@@ -22,13 +22,22 @@ CHUNK = 1 << 20
 STAMPED = re.compile(r"db-\d{8}T\d{6}Z\.sqlite3")
 
 TABLES = (
-    ("sessions", "api_session"),
-    ("cases", "api_case"),
-    ("detections", "api_detection"),
-    ("customer requests", "api_customerrequest"),
-    ("objectives", "api_objective"),
-    ("rule sets", "api_ruleset"),
-    ("disabled rules", "api_disabledrule"),
+    ("users", "auth_user"),
+    ("leases", "match_lease"),
+    ("rounds", "match_round"),
+    ("seats", "match_seat"),
+    ("actions", "attack_action"),
+    ("tool runs", "attack_toolrun"),
+    ("detections", "defence_detection"),
+    ("customer requests", "match_customerrequest"),
+    ("objectives", "referee_objective"),
+    ("rule sets", "defence_ruleset"),
+    ("rule tests", "defence_ruletest"),
+    ("disabled rules", "defence_disabledrule"),
+    ("events", "events_event"),
+    ("problems", "content_problem"),
+    ("postures", "content_posture"),
+    ("progress", "lessons_progress"),
 )
 
 IMPORTS = """

@@ -7,7 +7,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from cr.config import KibanaConfig
+from cr.config import KibanaConfig, build
 
 BASE_PATH = "/kibana"
 DATA_VIEW = "logs"
@@ -535,3 +535,7 @@ def bring_up(base, ndjson, send, pause):
             last = "could not reach Kibana"
         pause(PAUSE)
     return f"{last}; the data view, alert search and dashboard are missing"
+
+
+if __name__ == "__main__":
+    print(set_up(build().kibana), flush=True)

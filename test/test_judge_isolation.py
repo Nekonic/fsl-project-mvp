@@ -5,47 +5,43 @@ import struct
 from urllib.parse import urlsplit
 
 import pytest
-import requests
 
+import plays
 from conftest import PLATFORM_URL, STANDING
 from range import ATTACKER, BOARD, declared_roles, run, run_side_by_side
 
 PLATFORM = declared_roles()["scorer"]
 PUBLISHED = {
-    8000: ("/api/range/ready/", "substrate", "the scoring API"),
+    8000: ("/api/auth/csrf/", "ok", "the platform API"),
     9200: ("/", "cluster_name", "Elasticsearch"),
 }
 PANES = ("kali", "waf")
 
 
 @pytest.fixture(scope="module")
-def session(stack_is_up):
-    standing = STANDING.id()
+def lease(stack_is_up):
+    standing = STANDING.lease()
     if standing is not None:
-        return standing
-    opened = requests.post(f"{PLATFORM_URL}/api/sessions/", json={}, timeout=600)
-    assert opened.status_code == 201, opened.text
-    return opened.json()["id"]
+        return standing, STANDING.played
+    played = plays.play("board")
+    return played.lease, played
 
 
 @pytest.fixture(scope="module")
-def platform_addresses(session):
-    shape = requests.get(
-        f"{PLATFORM_URL}/api/sessions/{session}/topology/", timeout=120
-    ).json()
-    found = {
-        node["address"] for segment in shape["segments"] for node in segment["nodes"]
-        if node["name"] == PLATFORM and node["address"]
-    }
+def platform_addresses(lease):
+    _, played = lease
+    shape = plays.topology(played)
+    found = {edge["address"] for edge in shape["edges"]
+             if edge.get("source") == PLATFORM and edge.get("address")}
     published = socket.gethostbyname(urlsplit(PLATFORM_URL).hostname)
     if not ipaddress.ip_address(published).is_loopback:
         found.add(published)
-    assert found, f"the range shows no address of {PLATFORM}: {shape['segments']}"
+    assert found, f"the range shows no address of {PLATFORM}: {shape['nodes']}"
     return found
 
 
-def gateways_of(role: str, session: int) -> set[str]:
-    table = run(role, ["cat", "/proc/net/route"], session=session).stdout.splitlines()[1:]
+def gateways_of(role: str, lease: int) -> set[str]:
+    table = run(role, ["cat", "/proc/net/route"], lease=lease).stdout.splitlines()[1:]
     return {str(ipaddress.IPv4Address(struct.pack("<I", int(fields[2], 16))))
             for fields in map(str.split, table) if fields[1] == "00000000"}
 
@@ -60,16 +56,17 @@ def terminal(address: str, pane: str) -> list[str]:
 
 
 @pytest.fixture(scope="module")
-def answered(session, platform_addresses):
+def answered(lease, platform_addresses):
+    held, _ = lease
     found = {}
     for role in (ATTACKER, BOARD):
-        addresses = sorted(gateways_of(role, session) | platform_addresses)
+        addresses = sorted(gateways_of(role, held) | platform_addresses)
         commands = {(address, port): fetch(f"http://{address}:{port}{PUBLISHED[port][0]}")
                     for address in addresses for port in PUBLISHED}
         if role == BOARD:
             commands |= {(address, pane): terminal(address, pane)
                          for address in sorted(platform_addresses) for pane in PANES}
-        ran = run_side_by_side(role, commands, session=session)
+        ran = run_side_by_side(role, commands, lease=held)
         found[role] = {key: result.stdout for key, result in ran.items()}
     return found
 

@@ -1,31 +1,125 @@
 # fsl-project-mvp
 
-사이버 공격·방어 훈련 플랫폼입니다. 레드팀이 웹사이트 두 곳을 공격하고, 블루팀이
-WAF(ModSecurity)와 IDS(Suricata)로 방어합니다.
+사이버 공격·방어 훈련 플랫폼입니다. 공격 쪽은 웹사이트를 뚫고, 방어 쪽은 WAF(ModSecurity, OWASP CRS)와
+IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었는지와 방어가 무엇을 맞히고 틀렸는지를 따로 채점합니다.
 
-- `board.com`: Django 게시판, MySQL
-- `corp.com`: WordPress 회사 사이트, MySQL
+워게임은 두 개입니다.
+
+- `board`: `board.com`, Django 게시판과 MySQL
+- `corp`: `corp.com`, WordPress 회사 사이트와 MySQL
+
+학습은 **레슨**에서 시작해 **실전 라운드**로 갑니다. 레슨도 내부적으로는 라운드 하나(종류 `lesson`)입니다.
+
+실전 라운드는 슬롯 스택 하나에 공격석과 방어석 두 자리를 둡니다. 매치업은 셋입니다.
+
+| 매치업 | 공격석 | 방어석 |
+|---|---|---|
+| `pvp` | 사람 | 사람 |
+| `def_vs_bot` | AI 공격 봇 | 사람 |
+| `atk_vs_bot` | 사람 | AI 수비 봇 |
+
+사람 콘솔과 봇은 같은 API를 씁니다. 공격 API(`/api/rounds/<id>/attack/`)와 방어 API(`/api/rounds/<id>/defence/`)가
+하나씩 있고, 봇은 사람과 같은 엔드포인트를 같은 권한으로 호출합니다. 터미널도 마찬가지입니다. 봇은 특정 모델에
+묶이지 않습니다. 지금은 Claude Code가 `bots/cli.py`로 자리를 맡고, 다른 모델은 `bots/provider.py` 인터페이스로
+붙입니다([bots/README.md](bots/README.md)).
+
+## 학습 단계
+
+교육 담당자가 문제를 만들고, 학습자는 레슨으로 도구와 판단 기준을 익힌 다음 실전 라운드에 들어갑니다.
+
+### 1. 레슨
+
+레슨 문제 하나는 단계 목록입니다. 단계마다 다음을 정합니다.
+
+- 본문: 학습자에게 보여 줄 설명과 과제
+- 여는 패널(`opens`): `kibana`, `terminal_kali`, `terminal_waf`, `site`, `map`, `ids_rules`, `waf`, `alerts`, `none` 중 하나
+- 판정(`check`): 서버가 판정하는 종류 하나와 그 파라미터
+- 힌트: 학습자가 하나씩 열어 봄
+
+판정 종류는 아래와 같습니다. 판정은 라운드에 실제로 쌓인 기록(룰 테스트, 적용 이력, 탐지, 요청, 명령, 목표)을 읽습니다.
+
+| 종류 | 통과 조건 |
+|---|---|
+| `answer` | 입력한 답이 허용 답안과 일치 |
+| `choice` | 고른 보기가 정답 |
+| `loot` | 이 라운드에서 제출한 loot로 대상의 목표가 넘어감 |
+| `rule_test` | 학습자의 최근 룰 테스트에서 지정 케이스가 정탐이고 수법까지 짚었으며(`corroborated`), 정상 케이스는 모두 정상 통과 |
+| `rule_applied` | 단계가 열린 뒤 룰을 적용함. 필요하면 테스트한 룰 그대로 적용했는지까지 봄 |
+| `alert_seen` | 조건에 맞는 경보가 나옴 |
+| `sent` | 조건에 맞는 요청을 보냄 |
+| `kali` | Kali 명령 기록에 지정 문자열이 있음. 명령 기록은 학습자가 고칠 수 있어 학습 보조로만 씀 |
+| `waf_changed` | WAF 설정이 지정한 방향으로 바뀜(paranoia·임계값 올림/내림, 예외 추가·삭제·좁힘, 탐지 전용 켬/끔) |
+
+- 앞 단계를 통과해야 다음 단계를 판정합니다. 순서를 건너뛰면 `step_locked`입니다.
+- 진도는 학습자와 문제별로 남습니다. 리스를 닫고 다시 열어도 마지막으로 통과한 단계 다음부터 이어 갑니다.
+- 문제의 공격·방어 범위(`side`)가 `both`이면 학습자 한 명이 두 자리를 다 맡습니다.
+- 마지막 단계를 통과하면 라운드가 `steps_done`으로 끝나고 리스를 닫습니다.
+
+### 2. 실전 라운드
+
+라운드 문제는 매치업, 시작 방어 설정(posture), 룰 테스트에 쓸 케이스, 노리는 목표, HP 규칙, 고객 트래픽, 시간 제한을
+정합니다.
+
+- 공격석은 Kali 터미널, 대상 사이트 패널, API로 공격하고 탈취한 값을 loot로 제출합니다.
+- 방어석은 Kibana, WAF 읽기 전용 터미널, 구성도, 경보 목록으로 보고, IDS 룰과 WAF 설정을 고칩니다. 고친 룰은
+  적용하기 전에 녹화된 요청으로 테스트할 수 있습니다(룰 테스트).
+- 플랫폼이 라운드 내내 정상 케이스와 고객 트래픽을 보냅니다. 공격석이 아무것도 하지 않아도 오탐과 정상 통과가 쌓입니다.
+- 라운드는 시간 제한, 목표 전부 탈취, 공격 출발지 전부 소진, 운영자 종료, 한쪽 기권으로 끝납니다. 출발지 소진으로
+  끝나는 것은 정상 케이스가 한 바퀴 이상 돈 뒤입니다.
+
+### 문제 내용
+
+지금 저장소에는 레슨과 라운드 문제가 하나도 없습니다. 기존 레슨 F1~F6, 과정 c1·c2, 시나리오 1.1~4.1은
+삭제했습니다. 문제는 스태프 페이지에서 새로 작성할 예정이고, 문제 본문은 DB에만 둡니다. 저장소 사이 이동은
+스태프 API의 내보내기·가져오기(`/api/staff/problems/<id>/export/`, `/api/staff/problems/import/`)로만 합니다.
+스태프 페이지(`front/`)는 아직 없고, 지금은 스태프 API로 작성합니다.
+
+| 스태프 API | 용도 |
+|---|---|
+| `GET\|POST /api/staff/problems/`, `GET\|PUT\|DELETE /api/staff/problems/<id>/` | 문제, 단계, 라운드 설정, 시작 posture를 한 문서로 저장. `PUT`은 `base_revision`이 최신이 아니면 `409 stale_revision` |
+| `POST /api/staff/problems/validate/` | 저장하지 않고 검증. 오류는 필드 경로(`steps[3].check.params.case`)로 옴 |
+| `GET\|POST /api/staff/postures/`, `GET\|PUT /api/staff/postures/<id>/` | 시작 방어 설정(Suricata 룰, CRS 튜닝) |
+| `POST /api/staff/steps/<문제>/<순서>/try/` | 같은 워게임의 끝난 라운드 기록으로 단계 판정을 미리 돌려 봄 |
+| `POST /api/staff/wargames/<id>/probes/record/` | 룰 테스트용 요청 녹화 |
 
 ## 점수
 
-주 점수는 레드팀의 공격 성공입니다. 성공 여부는 대상 시스템의 데이터로 판정합니다.
+점수는 두 가지이고 서로 합치지 않습니다.
 
-- 게시판: 레드팀이 탈취한 계정 해시를 증거물로 제출합니다
-  (`POST /api/sessions/<id>/loot/`). 세션 시작 시점의 계정 해시와 같으면 성공입니다.
-- corp: MySQL 바이너리 로그에 관리자 계정 추가, 회원 가입 설정 변경, 글 생성·덮어쓰기가
-  남으면 성공입니다.
-- 블루팀이 탐지하지 못한 성공은 2배로 계산합니다.
-- IDS 룰을 다루는 시나리오(`completion`에 `detected_by: suricata`, 3.1~3.4)는 Suricata 경보만 탐지로 셉니다. WAF만 경보를 낸 공격은 미탐입니다.
+**목표**(주 점수): 공격이 성공했는지는 대상 시스템이 직접 저장한 데이터로 판정합니다. 플랫폼이 공격 성공을 추정하지
+않습니다.
 
-탐지 결과는 주 점수와 따로 표시합니다.
+- board: 공격석이 탈취한 계정 해시를 loot로 제출합니다(`POST /api/rounds/<id>/attack/loot/`). 라운드 시작
+  시점에 읽어 둔 해시와 정확히 같으면 그 목표를 잃은 것입니다. 응답은 비밀값을 드러내지 않습니다.
+- corp: MySQL 바이너리 로그에 관리자 계정 추가, 회원 가입 설정 변경, 글 생성·덮어쓰기가 남으면 잃은 것입니다.
+- 방어 쪽이 탐지하지 못한 채 잃은 목표는 2배로 셉니다. 목표 등급의 난이도가 가중치입니다.
 
-- 정탐: 탐지한 공격
-- 미탐: 놓친 공격
-- 오탐: 경보가 나거나 차단된 정상 요청
-- 정상 통과: 경보 없이 통과한 정상 요청
-- 케이스 하나는 경보 건수와 관계없이 1건입니다. sqlmap 케이스 하나가 요청 약 2,000건을
-  보내도 1건입니다.
-- 경보가 공격 수법을 짚지 못하면 탐지로 인정하지 않고 `corroborated: false`로 표시합니다.
+**탐지 결과**: 케이스마다 정탐, 미탐, 오탐, 정상 통과 중 하나입니다.
+
+- 케이스 하나는 경보가 몇 건 나오든 1건입니다. `board-sqli-orderby-sqlmap`은 WAF로 요청을 약 2,000건 보내고
+  경보도 많이 나오지만 1건입니다. 경보 단위로 세면 방어가 아니라 경보 임계값을 재게 됩니다.
+- 경보가 공격 수법을 짚지 못하면(케이스의 `expect` 문자열이 시그니처에 없으면) `corroborated: false`로 표시하고
+  탐지로 인정하지 않습니다.
+- 탐지 결과에 들어가는 것은 선언된 케이스(`redteam/cases/`)와 플랫폼이 보내는 정상 케이스뿐입니다. 공격석이
+  터미널이나 API로 자유롭게 보낸 요청은 출발지별로 따로 보여 주고(`free_actions`) 정탐·오탐으로 세지 않습니다.
+- 모든 요청을 막는 방어는 탐지 결과에서 만점을 받지만 정상 케이스에서 오탐이 쌓이고, 목표는 지켜도 그 오탐이 옆에
+  그대로 남습니다.
+
+점수는 `GET /api/rounds/<id>/score/`입니다. 자리는 라운드가 끝난 뒤에, 운영자와 스태프는 언제든 읽습니다.
+
+## HP
+
+공격 출발지마다 HP가 있어 의미 없는 스캔을 막습니다. 수치는 문제의 라운드 설정(`hp`)에서 정합니다.
+
+- 출발지마다 `budget`에서 시작하고, 요청 하나에 `per_request`씩 줄어듭니다.
+- WAF가 거부한 요청(400, 403)은 `refused_x`배, 1초에 `burst_per_s`건을 넘는 요청은 `burst_x`배입니다. 두 배수는
+  곱합니다.
+- 0 이하가 되면 그 출발지는 소진됩니다. infra 라우터가 그 주소를 떨어뜨리고(이미 맺은 연결 포함), 돌고 있던 도구를
+  멈추고, 다음 출발지로 바꿉니다. 출발지가 다 떨어지면 공격 API 쓰기는 `409 origins_spent`입니다.
+- 공격 API의 모든 응답(오류 포함)에 `hp` 블록과 `X-Origin`, `X-Origin-HP` 헤더가 붙습니다.
+- API로 보낸 요청은 그 자리에서 차감합니다. 터미널, 도구, 봇 셸의 요청은 WAF 접근 로그로 다음 틱에 차감합니다.
+  같은 요청을 두 번 차감하지 않습니다.
+- 고객 주소는 소진 대상이 아닙니다.
 
 ## 구성
 
@@ -36,13 +130,14 @@ flowchart TB
     fip --- pnet["cr-platform 네트워크 10.20.0.0/24"]
     pnet --- pvm
     subgraph pvm["VM cr-platform"]
-      platform["platform: 콘솔, API, 채점, ssh 점프"]
+      platform["platform: API, 채점, ssh 점프"]
+      follow["follow: 리스·라운드 틱"]
       elk["Elasticsearch, Kibana"]
       collector["collector"]
     end
     pvm --- mgmt["cr-mgmt 네트워크 10.31.0.0/24<br/>훈련 환경 VM마다 제어 포트 1개"]
     mgmt --- stack
-    subgraph stack["세션마다 Heat 스택 cr-slot-N: VM 4대, 모든 스택이 같은 주소"]
+    subgraph stack["리스마다 Heat 스택 cr-slot-N: VM 4대, 모든 스택이 같은 주소"]
       kali["VM kali<br/>출발지 주소 100개"] --- inet["internet 121.134.88.40/29"]
       inet --- edge["VM infra: 라우터<br/>wan .42"]
       edge --- dmz["dmz 10.30.0.0/24"]
@@ -62,43 +157,37 @@ flowchart TB
 | 연결 | 경로 |
 |---|---|
 | 브라우저 → 콘솔 | floating IP의 8000, 8002 |
-| 학습자 ssh → Kali | floating IP의 2222(플랫폼 컨테이너의 sshd) → `cr-mgmt`의 Kali 22번 |
+| 학습자 ssh → Kali | floating IP의 2222(플랫폼 컨테이너의 sshd) → `cr-mgmt`의 Kali 22번. 공격석의 점프 권한 |
+| 학습자 ssh → WAF | 같은 2222 → `cr-mgmt`의 WAF 22번, `analyst` 계정. 방어석의 점프 권한 |
 | 플랫폼 → 훈련 환경 VM | `cr-mgmt`의 제어 포트로 ssh. 관리 계정 `ubuntu`, 비밀번호 없는 sudo. 대상 컨테이너는 target VM에서 `docker exec` |
 | WAF → log-server | 스택의 `mgmt`로 syslog 514/tcp |
 | log-server → collector | infra의 제어 포트에서 `cr-mgmt`로 syslog 5140/udp(센서 경보, WAF audit log, nginx 거부 로그) |
 
-- `bin/cloud up`이 Heat 스택 `cr-platform`으로 플랫폼 VM을 만들고, 플랫폼이 Heat API로
-  세션용 스택 `cr-slot-<n>`을 만듭니다.
-- 세션마다 Heat 스택 하나를 씁니다. VM은 kali, waf, infra, target 4대이고, LAN 5개(internet,
-  dmz, web-outer, web-inner, mgmt)는 스택마다 따로 만든 Neutron 네트워크입니다. 어느 LAN에도
-  Neutron 라우터가 없습니다. 스택끼리 네트워크가 다르므로 모든 스택이 같은 주소를 씁니다.
-- 스택은 워게임별 풀에 미리 띄워 둡니다(`compute.pool`, 기본 board 3개, corp 1개). 세션을 시작하면
-  준비된 스택 하나를 배정하고, 세션이 끝나면 그 스택을 지우고 새로 만듭니다.
-- 훈련 환경 VM은 `deploy/roles/<역할>/install.sh`로 미리 구운 Glance 이미지로 부팅합니다. 기본
-  이름은 `cr-<역할>-bake1`이고, 이 클라우드의 WAF는 `cr-waf-bake2`입니다. 부팅할 때 인터넷에
-  나가지 않습니다.
-- Kali는 인터넷 역할입니다. 출발지 30개국의 /24 대역에 걸친 주소 100개를 갖고, 기본 출발지
-  주소 5.188.10.10을 첫 주소로 둡니다. 기본 경로는 라우터 공인 IP로 가는 onlink 경로이고
-  출발지는 5.188.10.10입니다. Kali의 `internet` 포트는 address pair `0.0.0.0/0`으로 이 주소를
-  모두 쓰고, MAC은 Neutron이 준 것만 통과합니다.
-- 라우터는 infra VM의 nftables입니다. `wan`은 공인 IP 121.134.88.42/29 하나이고, 80/tcp를 WAF의
-  DMZ 주소로 포트포워딩합니다. `wan`에서 들어오는 패킷은 맺어진 연결의 응답과 포트포워딩된
-  연결만 통과시킵니다. ping과 traceroute에는 응답합니다. Kali에서 `board.com`, `corp.com`은 이
-  공인 IP로 풀립니다.
-- board와 corp는 target VM의 Docker 컨테이너이고, WAF 뒤 `web-inner`에 있습니다. board 스택은
-  board와 board-db를, corp 스택은 corp와 corp-db를 띄웁니다. DB는 target VM 안의 Docker
+- `bin/cloud up`이 Heat 스택 `cr-platform`으로 플랫폼 VM을 만들고, 플랫폼이 Heat API로 슬롯 스택
+  `cr-slot-<n>`을 만듭니다.
+- 슬롯 스택은 VM 4대(kali, waf, infra, target)와 LAN 5개(internet, dmz, web-outer, web-inner, mgmt)입니다. LAN은
+  스택마다 따로 만든 Neutron 네트워크이고 Neutron 라우터가 없습니다. 스택끼리 네트워크가 다르므로 모든 스택이 같은
+  주소를 씁니다.
+- 스택은 워게임별 풀에 미리 띄워 둡니다(`compute.pool`, 기본 board 3개, corp 1개). 리스를 열면(`POST /api/leases/`)
+  준비된 스택 하나를 받고, 리스를 닫거나 하트비트 없이 만료되면 그 스택을 지우고 새로 만듭니다. 리스 하나에서 라운드를
+  여러 번 열 수 있지만, 목표를 하나라도 잃은 리스에서는 채점 라운드를 새로 시작하지 않습니다(board의 비밀값을 스택
+  재생성 없이 바꿀 수 있는지 아직 모름).
+- 훈련 환경 VM은 `deploy/roles/<역할>/install.sh`로 미리 구운 Glance 이미지로 부팅합니다. 기본 이름은
+  `cr-<역할>-bake1`이고, 이 클라우드의 WAF는 `cr-waf-bake2`입니다. 부팅할 때 인터넷에 나가지 않습니다.
+- Kali는 인터넷 역할입니다. 출발지 30개국의 /24 대역에 걸친 주소 100개를 갖고, 기본 출발지 5.188.10.10을 첫 주소로
+  둡니다. Kali의 `internet` 포트는 address pair `0.0.0.0/0`으로 이 주소를 모두 쓰고, MAC은 Neutron이 준 것만
+  통과합니다.
+- 라우터는 infra VM의 nftables입니다. `wan`은 공인 IP 121.134.88.42/29 하나이고, 80/tcp를 WAF의 DMZ 주소로
+  포트포워딩합니다. Kali에서 `board.com`, `corp.com`은 이 공인 IP로 풀립니다.
+- board와 corp는 target VM의 Docker 컨테이너이고 WAF 뒤 `web-inner`에 있습니다. DB는 target VM 안의 Docker
   내부망에만 있습니다. Kali의 공격은 모두 WAF를 지나갑니다.
-- 센서는 스택마다 하나이고 infra VM에 있습니다. `web-outer`와 `web-inner`를 잇는 리눅스
-  브리지 `br0`에 인라인으로 붙어 af-packet으로 WAF와 대상 사이의 트래픽을 모두 봅니다. 브리지의
-  두 다리는 port security를 끈 포트입니다.
-- WAF가 막은 요청은 센서에 닿지 않습니다. 이런 요청은 WAF 로그에 남습니다.
-- 센서가 보는 요청의 출발지는 WAF입니다. 수집할 때 같은 요청의 X-Forwarded-For 주소를
-  경보의 출발지로 씁니다.
-- WAF는 스택의 `mgmt`(.12)로 로그를 infra의 log-server(.10)에 보내고, log-server가 센서 경보와
-  함께 collector에 넘깁니다. WAF 로그는 ModSecurity audit log와, ModSecurity까지 가기 전에
-  nginx가 400으로 거부한 요청의 로그 두 가지입니다.
+- 센서는 스택마다 하나이고 infra VM에 있습니다. `web-outer`와 `web-inner`를 잇는 리눅스 브리지 `br0`에 인라인으로
+  붙어 af-packet으로 WAF와 대상 사이의 트래픽을 봅니다. WAF가 막은 요청은 센서에 닿지 않고 WAF 로그에 남습니다.
+- 센서가 보는 요청의 출발지는 WAF입니다. 수집할 때 같은 요청의 X-Forwarded-For 주소를 경보의 출발지로 씁니다.
 - 격리는 Neutron 보안 그룹과 port security가 맡습니다. Kali나 WAF의 root 셸로는 바꿀 수 없습니다.
-- 제어 포트(`cr-mgmt`)에서 나가는 트래픽은 DHCP와 플랫폼으로 가는 것뿐입니다.
+- 플랫폼 VM의 `follow` 서비스(같은 이미지의 `manage.py follow`)가 틱마다 슬롯 재생성, 리스 만료, 경보 수집, HP 차감,
+  corp 변경 관찰, 명령 기록 읽기, WAF 설정 변경 감시, 라운드 종료 조건을 처리합니다. 브라우저가 열려 있지 않아도
+  돕니다.
 
 자세한 구성은 [ARCHITECTURE.md](docs/ARCHITECTURE.md)에 있습니다.
 
@@ -147,7 +236,7 @@ uv run bin/cloud up
 
 `up`이 끝나면 `the range is ready; the platform is at http://ADDRESS:8000/`를
 출력합니다. `up`은 플랫폼 스택, 공용 네트워크 `cr-mgmt`와 보안 그룹, 이전 훈련 환경이 남긴
-자원 정리, 세션용 스택 생성, 스택 부팅 대기, IDS 기본 룰 적재 순서로 진행합니다. 플랫폼 VM과
+자원 정리, 슬롯 스택 생성, 스택 부팅 대기, IDS 기본 룰 적재 순서로 진행합니다. 플랫폼 VM과
 역할 이미지 빌드는 apt 패키지를 카카오 미러(`mirror.kakao.com`)에서 받습니다.
 
 ### init
@@ -187,18 +276,17 @@ uv run bin/cloud up
 
 ## 동작 확인
 
-1. 브라우저로 `http://ADDRESS:8000/`에 접속합니다.
-2. **로그 분석 기초**의 **레슨 1**에서 **시작**을 누릅니다.
-3. 과정 안내에서 **시작**을 누르면 구성도와 레슨 노트의 첫 단계가 나옵니다.
-
-풀 상태는 API로 확인합니다. 세션에 배정할 스택이 있으면 `"ready": true`입니다.
+콘솔(`front/`)이 아직 없으므로 API로 확인합니다. 스태프 계정으로 로그인한 쿠키로 풀 상태를 봅니다. 슬롯마다
+리스와 재생성 상태(`refill.state`)가 나오고, `idle`이면서 리스가 없는 슬롯을 새 리스가 받습니다. 슬롯 스택의 서버
+상태는 `GET /api/staff/range/pool/`에 있습니다.
 
 ```bash
-curl -s http://ADDRESS:8000/api/range/ready/
+curl -s -c cookies.txt http://ADDRESS:8000/api/auth/csrf/
+curl -s -b cookies.txt http://ADDRESS:8000/api/staff/range/
 ```
 
-세션을 닫으면 그 세션의 스택을 지우고 새로 만듭니다. 그동안 그 스택은 `RESETTING`이고, 새 세션은
-풀의 다른 READY 스택을 받습니다. 스택 삭제와 재생성에 걸리는 시간은 아직 재지 않았습니다.
+라운드 하나를 처음부터 끝까지 돌리는 순서는 `test/plays.py`와 [test/README.md](test/README.md)에 있습니다. 리스 열기,
+라운드 만들기(`POST /api/leases/<id>/rounds/`), 시작, 케이스 발사, 종료, 점수 읽기 순서입니다.
 
 ## 문제 해결
 
@@ -206,18 +294,18 @@ curl -s http://ADDRESS:8000/api/range/ready/
 |---|---|---|
 | 스택이 `SETUP_FAILED` | 그 VM의 `/var/lib/cr/failed`(부팅 유닛의 `systemctl status`. target은 이미지 태그가 `compute.target_tag`와 다르면 그 `image:` 줄)와 `/var/log/cloud-init-output.log` | 원인 수정 후 `uv run bin/cloud up` |
 | 스택이 `NOT_STANDING`, `no active image ... in Glance` | `compute.images`의 이름과 Glance의 이미지 | 이미지를 굽거나 있는 이름을 `compute.images.<역할>`에 적고 `uv run bin/cloud up --replace` |
-| 스택이 `CREATE_FAILED` | `GET /api/range/ready/`의 이유(Heat의 `stack_status_reason`) | 원인 수정 후 `uv run bin/cloud up` |
+| 스택이 `CREATE_FAILED` | `GET /api/staff/range/pool/`의 `failures`(Heat의 `stack_status_reason`) | 원인 수정 후 `uv run bin/cloud up` |
 | 플랫폼이 응답하지 않음 | `ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS`에서 `systemctl status cr-platform`, `sudo docker logs cr-platform` | 원인 수정 후 `uv run bin/cloud up` |
 | `docker ps`에 `cr-platform`이 없음 | `sudo cloud-init status --long`. 대개 VM이 인터넷에 못 나감([인터넷 연결](docs/OPENSTACK.md#26-internet-egress)) | 원인 수정 후 `uv run bin/cloud up --replace` |
 | Heat 스택 생성 실패 | `uvx --from python-openstackclient --with python-heatclient openstack --os-cloud fsl-range stack failures list cr-platform` | 원인 수정 후 `uv run bin/cloud up` |
-| 스택이 `RESET_FAILED` | `GET /api/range/ready/`의 이유 | `curl -X POST http://ADDRESS:8000/api/range/configure/` |
+| 슬롯의 `refill.state`가 `failed` | `GET /api/staff/range/`의 `refill.reason` | 원인 수정 후 `uv run bin/cloud up` |
 
 ## 운영
 
 ```bash
 uv run bin/cloud up              # 없는 것만 만들고 풀의 스택을 띄움
 uv run bin/cloud up --replace    # 플랫폼 VM 교체 후 풀까지 맞춤. DB는 백업 후 복원
-uv run bin/cloud down            # DB 백업 후 세션용 스택, cr-mgmt, 플랫폼 VM 삭제
+uv run bin/cloud down            # DB 백업 후 슬롯 스택, cr-mgmt, 플랫폼 VM 삭제
 uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞추지 않음
 ```
 
@@ -230,7 +318,7 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 - push하지 않은 이미지를 올릴 때는 `--sideload NAME=TARBALL`을 씁니다. 절차는
   [재구축과 삭제](docs/OPENSTACK.md#53-rebuild-and-delete--lossless)에 있습니다.
 - 풀 크기는 `cloud.yaml`의 `compute.pool`(워게임별 스택 수)입니다. 바꾼 뒤 `uv run bin/cloud up --replace`를
-  실행합니다. 플랫폼은 이 값을 Heat 스택 파라미터로 받고, 세션이 쓰지 않는 스택은 새 배정에 맞는
+  실행합니다. 플랫폼은 이 값을 Heat 스택 파라미터로 받고, 리스가 없는 스택은 새 배정에 맞는
   워게임으로 다시 만듭니다.
 
 `cloud.yaml` 항목:
@@ -244,83 +332,70 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 | `platform` | 스택 이름, 저장소, ref |
 | `backups` | `backups/`에 남길 백업 수 |
 
-훈련 환경 API(`/api/range/fabric/`, `/leftovers/`, `/slot/`, `/configure/`, `/slot/rebuild/`)는
+`bin/cloud`가 쓰는 훈련 환경 API(`/api/staff/range/fabric/`, `/leftovers/`, `/pool/`)는
 [훈련 환경](docs/OPENSTACK.md#6-the-range-substrate-openstack)에 있습니다.
 
 ## 포트
 
 | 포트 | 서비스 | 접속 |
 |---|---|---|
-| 8000 | 콘솔, `/api/`, 구성도(`/map/`), Kibana(`/kibana/`), 터미널(`/vm-terminal/`) | 브라우저 |
-| 8002 | 대상 사이트(`/site/<세션 id>/<host>/<path>`) | 콘솔 안의 iframe |
-| 2222 | SSH 점프 호스트, 플랫폼 컨테이너 안의 sshd | 학습자 PC의 `ssh`. 세션 키로 그 세션 Kali의 22번으로만 포워딩, 셸 없음 |
+| 8000 | 콘솔, `/api/`, Kibana(`/kibana/`), 터미널(`/vm-terminal/`) | 브라우저, 봇, `test/`, `bin/` |
+| 8002 | 대상 사이트(`/site/<라운드 id>/<host>/<path>`) | 콘솔 안의 iframe |
+| 2222 | SSH 점프 호스트, 플랫폼 컨테이너 안의 sshd | 학습자 PC의 `ssh`. 자리마다 받은 키로 공격석은 Kali 22번, 방어석은 WAF 22번(`analyst`)으로만 포워딩. 셸 없음 |
 | 5140/udp | collector | 훈련 환경 infra VM의 log-server, `cr-mgmt`에서만 |
 | 5601 | Kibana 직접 접속, VM loopback 전용 | ssh 터널, 인증 없음 |
 | 9200 | Elasticsearch, VM loopback 전용 | acceptance 테스트, 인증 없음 |
 
 - 8002는 콘솔과 다른 origin이라 대상 사이트의 스크립트가 콘솔을 읽지 못합니다. 로그인은 8000과 같이 씁니다.
-- `board.com`과 `corp.com`은 훈련 환경 안에서만 응답합니다. 8002로 들어온 요청은 그 세션의
-  Kali VM을 거쳐 고객 주소로 나갑니다.
-
-## 세션
-
-콘솔에서 레슨, 시나리오, 워게임 중 하나로 세션을 엽니다.
-
-| 종류 | 시작 | 내용 |
-|---|---|---|
-| 레슨 | `{"lesson": "f1"}`~`f6` | 과정 1 "로그 분석 기초"(F1~F3), 과정 2 "공격 탐지 실습"(F4~F6) |
-| 시나리오 | `{"scenario": "1.1"}` | 고객 트래픽 속 공격 대응. 시간 제한과 최종 점검 |
-| 워게임 | `{"scenario": "board"}` | 사람 대 사람. 공격자는 레드팀 콘솔, 방어자는 블루팀 콘솔 |
-
-레슨:
-
-- F1: 구성도에서 주소, 경로, DMZ 대역, 로그 서버 주소 읽기
-- F2: 개발자 도구로 HTTP 요청의 메서드, 파라미터, 경로, 상태 코드 읽기
-- F3: KQL로 Kibana에서 같은 요청을 찾고 X-Forwarded-For 읽기
-- F4: XSS 요청 보내기, IDS 룰 작성, 대소문자 우회를 `nocase`로 막기
-- F5: `sort` 파라미터에 sqlmap 실행, WAF 기록과 탐지 룰 읽기
-- F6: 넓은 WAF 예외를 이용한 계정 덤프, 2배 감점 확인, 예외 삭제 후 재실행
-
-시나리오:
-
-- `1.1`~`1.3`: 경보마다 고객 요청인지 공격인지, 데이터가 나갔는지 판단
-- `2.1`~`2.3`: WAF 오탐으로 차단된 고객이 다시 서비스를 받게 함
-- `3.1`~`3.4`: IDS 룰로 sort 공격, tamper 변형, 댓글 XSS 탐지
-- `4.1`: 처음 보는 sqlmap 변형과 새 오탐을 도움 없이 처리
-
-레슨 단계와 시나리오 판정 방식은 [ARCHITECTURE.md](docs/ARCHITECTURE.md)에 있습니다.
+- `board.com`과 `corp.com`은 훈련 환경 안에서만 응답합니다. 공격석이 8002로 보낸 요청은 공격 API와 같은 경로로
+  나가고 HP를 차감합니다. 방어석과 레슨의 요청은 리스의 브라우징 마커를 달고 고객 주소로 나가며, 공격으로도 오탐으로도
+  세지 않습니다.
+- 공격 API와 방어 API의 계약은 `openapi/schema.yaml`입니다. 자리별 스키마는 `/api/schema/attack/`,
+  `/api/schema/defence/`입니다.
 
 ## 워게임 추가
 
-1. `wargames/<이름>/`에 `compose.yaml`, `scenario.yaml`, `objectives.yaml`, `topology.yaml`(스택의
-   LAN, VM, 고정 IP, 장치와 역할)
-2. `redteam/cases/<이름>.yaml`에 공격 케이스와 정상 케이스
+1. `wargames/<이름>/`에 `wargame.yaml`(id, 제목, 이미지, 공개 URL, 호스트, 목표 판정 방식, 케이스 파일, 기본 고객
+   트래픽), `compose.yaml`, `objectives.yaml`, `topology.yaml`(스택의 LAN, VM, 고정 IP, 장치와 역할), 필요하면
+   `traffic.yaml`
+2. `redteam/cases/<이름>.yaml`에 공격 케이스와 정상 케이스. 정상 케이스가 없으면 테스트가 실패합니다
 3. 모든 워게임 `topology.yaml`의 `cr-waf`에서 `names:`에 사이트 이름, `upstreams:`에 대상 주소
-4. `deploy/roles/target/`에 compose 파일 링크 `<이름>.yaml`, `wargames.yaml`의 `fronts`와
-   `limits`, `install.sh`의 `WARGAMES`
-5. `deploy/waf/`에 사이트의 `server` 블록, `deploy/roles/waf/slot-boot`와
-   `deploy/roles/kali/install.sh`의 호스트 이름
-6. target, waf, kali 이미지를 다시 굽고 `cloud.yaml`의 `compute.images`에 새 이름,
-   `compute.pool`에 스택 수
+4. `deploy/roles/target/`에 compose 파일 링크 `<이름>.yaml`, `wargames.yaml`의 `fronts`와 `limits`,
+   `install.sh`의 `WARGAMES`
+5. `deploy/waf/`에 사이트의 `server` 블록, `deploy/roles/waf/slot-boot`와 `deploy/roles/kali/install.sh`의 호스트 이름
+6. target, waf, kali 이미지를 다시 굽고 `cloud.yaml`의 `compute.images`에 새 이름, `compute.pool`에 스택 수
+7. 룰 테스트용 요청을 녹화해 `wargames/<이름>/probes/`에 커밋(`bin/record-probes`, 스태프 API 사용)
 
-## 검증
+## 단위 테스트
+
+로컬에서는 단위 테스트만 돌립니다. 훈련 환경은 OpenStack에만 있습니다.
 
 ```bash
-bin/verify --changed   # 바뀐 파일이 닿는 단위 테스트
-bin/verify --fast      # 단위·API 테스트 전체
-bin/verify             # acceptance까지. 플랫폼 VM에서 실행
+uv sync --frozen        # .venv를 uv.lock에 맞춤
+bin/verify --changed    # 바뀐 파일이 닿는 테스트만
+bin/verify --fast       # 단위·API 테스트 전체
 ```
 
-- 플랫폼 VM에서는 `CR_PLATFORM_URL=http://<address>:8000 bin/verify`로 실행합니다.
-- 2026-11-18 Heat 훈련 환경에서 전체 실행은 약 36분 걸렸고 skip이 1개 나옵니다(`test_lesson.py`의
-  F1 구성도 테스트, F4로 시작하는 과정 2).
-- sqlmap 변형 6개를 모두 쏘려면 `CR_SQLMAP_VARIANTS=1 bin/verify`로 실행합니다.
-- acceptance 분할 방식은 [test/README.md](test/README.md)에 있습니다.
+- `bin/verify`는 먼저 `bin/gen-clients`로 `openapi/schema.yaml`을 다시 내보내고 `bots/client/`와
+  `front/src/api/schema.d.ts`를 생성합니다. 생성 코드는 커밋하지 않습니다. 스키마가 바뀌면 그 변경과 함께 커밋합니다.
+  node가 없으면 TypeScript 타입만 건너뜁니다.
+- `--fast`는 `platform/tests/` 아래 계층별로 `domain`(Django 없이), `seams`, 앱별(`accounts`, `events`, `content`,
+  `match`, `referee`, `defence`, `attack`, `lessons`), `contract` 순서로 돌리고, 그다음 `platform/tests/test_*.py`를
+  돌립니다.
+- 한 계층만 돌리려면 `platform/`에서 실행합니다.
+
+```bash
+cd platform && ../.venv/bin/python -m pytest tests/domain -q
+```
+
+- 전체 `bin/verify`는 acceptance(`test/`)까지 돌리고 플랫폼 VM에서 실행합니다:
+  `CR_PLATFORM_URL=http://<address>:8000 bin/verify`. acceptance 구성은 [test/README.md](test/README.md)에 있습니다.
 
 ## 백업과 복원
 
-백업 대상은 플랫폼 VM `cr_platformdata` 볼륨의 `/data/db.sqlite3`입니다. 세션, 케이스,
-탐지 기록, 목표, 룰셋이 들어 있습니다. Elasticsearch 데이터는 백업하지 않습니다.
+백업 대상은 플랫폼 VM `cr_platformdata` 볼륨의 `/data/db.sqlite3`입니다. 계정, 리스, 라운드, 자리, 공격 기록,
+도구 실행, 탐지 기록, 고객 요청, 목표, 룰셋, 룰 테스트, 비활성화한 룰이 들어 있습니다. Elasticsearch 데이터는
+백업하지 않습니다.
 
 ```bash
 CR_PLATFORM_EXEC="ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS sudo docker exec -i cr-platform python -" \
@@ -335,14 +410,16 @@ CR_PLATFORM_EXEC="ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS sudo docker exec -i cr
 scp -i ~/.ssh/fsl_claude backups/db-20260925T020000Z.sqlite3 ubuntu@ADDRESS:/opt/cr/backups/
 ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS
 cd /opt/cr
-sudo docker compose stop platform
+sudo docker compose stop platform follow
 sudo docker compose run --rm --no-deps --user cr --entrypoint sh -v ./backups:/backups:ro platform \
   -c 'rm -f /data/db.sqlite3-journal /data/db.sqlite3-wal /data/db.sqlite3-shm && cp /backups/db-20260925T020000Z.sqlite3 /data/db.sqlite3'
-sudo docker compose start platform
+sudo docker compose start platform follow
 ```
 
-`-journal`, `-wal`, `-shm` 파일은 꼭 지웁니다. 남아 있으면 SQLite가 복원한 파일 위에 옛 내용을
-재생합니다.
+`-journal`, `-wal`, `-shm` 파일은 꼭 지웁니다. 남아 있으면 SQLite가 복원한 파일 위에 옛 내용을 재생합니다.
+
+새 구조의 DB는 마이그레이션을 `0001_initial`부터 새로 시작합니다. 이전 저장소에서는 계정만 옮깁니다:
+`bin/carry-users`가 옛 DB에서 `auth.User`를 내보내 새 DB에 넣습니다.
 
 ## 보안
 
@@ -350,38 +427,57 @@ sudo docker compose start platform
 
 | 표면 | 보호 |
 |---|---|
-| 콘솔(8000)과 `/api/` | Django 로그인. 세션 쿠키는 HttpOnly, SameSite=Lax. 쓰기 요청은 CSRF 토큰과 같은 출처 필요. CORS 헤더 없음 |
+| `/api/`(사람) | Django 로그인. 세션 쿠키는 HttpOnly, SameSite=Lax. 쓰기 요청은 CSRF 토큰 필요. CORS 헤더 없음 |
+| `/api/`(봇) | `Authorization: Bearer <자리 토큰>`. 토큰은 라운드를 만들 때 한 번만 보여 주고 해시로만 저장. 자기 자리의 공격 또는 방어 경로와 라운드 읽기만 닿음. 라운드가 끝나면 15분 동안 읽기만 가능 |
+| 자리 | 상대 자리의 경로는 403. 라운드 시작 전 쓰기는 `409 round_not_started`, 끝난 뒤는 `409 round_closed`. 자리는 리스를 열거나 닫지 못하고 라운드를 끝내지 못함(기권만 가능). PvP에서 한 사람이 두 자리를 맡지 못함(`already_seated`) |
+| 이벤트 피드 | 이벤트 종류마다 볼 수 있는 쪽이 정해져 있음. 공격 쪽은 경보와 룰 이벤트를, 방어 쪽은 공격 행동과 HP 이벤트를 보지 못함 |
+| WAF 설정 | 방어석은 구조화된 posture(paranoia, 예외, 임계값, 탐지 전용)만 보냄. 자유 텍스트를 받지 않으므로 `SecRuleEngine Off`를 쓸 수 없음 |
 | `/vm-terminal/`, `/kibana/`, 8002(`/site/...`) | nginx `auth_request`로 같은 로그인 세션 확인. 없으면 로그인 페이지로 |
-| 회원가입 계정 | 비활성 상태로 만들어짐. 관리자가 계정 관리에서 승인해야 로그인 가능. 거절하면 삭제 |
-| 로그인 시도 | IP당 분당 5회(버스트 5), 넘으면 429. 계정은 잠그지 않고 시도한 쪽을 차단: 관리자 계정에 3번 틀린 IP는 1시간, 다른 아이디에 10번 틀린 IP는 15분. 같은 브라우저 헤더 지문이 두 IP 이상에서 같은 횟수만큼 틀려도 차단. 관리자가 계정 관리에서 해제 |
+| 회원가입 계정 | 비활성 상태로 만들어짐. 스태프가 승인해야 로그인 가능 |
+| 로그인 시도 | IP당 분당 5회(버스트 5), 넘으면 429. 계정은 잠그지 않고 시도한 쪽을 차단: 스태프 계정에 3번 틀린 IP는 1시간, 다른 아이디에 10번 틀린 IP는 15분. 같은 브라우저 헤더 지문이 두 IP 이상에서 같은 횟수만큼 틀려도 차단. 스태프가 `DELETE /api/staff/blocks/<id>/`로 해제 |
 | 회원가입 요청 | IP당 분당 1회(버스트 3), 같은 주소에서 시간당 5개까지. 승인 대기 계정이 50개면 가입을 받지 않음 |
 | `/api/` 요청량 | 로그인 세션당 초당 20회(버스트 40), IP당 초당 100회(버스트 200). 넘으면 429 |
 | 터미널, 8002 사이트 연결 | 로그인 세션당 동시 연결 10개 |
-| 학습자 세션 | 계정 하나에 열린 세션 하나. 자기 세션만 보고 다룸(남의 세션은 404, 터미널과 8002는 403). 훈련 환경 변경은 관리자만. 관리자 계정은 모든 세션을 봄 |
-| 제한 제외 | 플랫폼 VM 자신이 보낸 요청(loopback, Docker 게이트웨이, `DJANGO_ALLOWED_HOSTS`의 IP)은 nginx 제한을 받지 않음. VM에서 도는 `bin/verify` 수락 테스트가 여기에 해당 |
-| 8002의 대상 사이트 | 콘솔 쿠키를 지운 뒤 대상에 넘기고, 대상의 `Set-Cookie`는 브라우저로 보내지 않음. 사이트의 스크립트는 세션 쿠키도 CSRF 토큰도 읽지 못함 |
-| Elasticsearch, Kibana | 9200, 5601은 플랫폼 VM loopback에만 열림. 인증은 켜지 않음. space 안의 Kibana API 호출은 nginx가 플랫폼의 `/kibana-gate/`로 넘김. 학습자는 열린 자기 세션의 space `soc-logs-N`과 `logs-N-*`만 조회할 수 있고, Discover가 쓰지 않는 호출(개발 도구, `bsearch`, ES\|QL 등)은 403. 관리자는 모든 space를 봄 |
+| 제한 제외 | 플랫폼 VM 자신이 보낸 요청(loopback, Docker 게이트웨이, `DJANGO_ALLOWED_HOSTS`의 IP)은 nginx 제한을 받지 않음. VM에서 도는 `bin/verify` acceptance가 여기에 해당 |
+| 8002의 대상 사이트 | 콘솔 쿠키를 지운 뒤 대상에 넘기고, 대상의 `Set-Cookie`는 브라우저로 보내지 않음 |
+| Elasticsearch, Kibana | 9200, 5601은 플랫폼 VM loopback에만 열림. 인증은 켜지 않음. space 안의 Kibana API 호출은 nginx가 플랫폼의 `/kibana-gate/`로 넘김. Discover가 쓰지 않는 호출(개발 도구, `bsearch`, ES\|QL 등)은 403 |
 | 프로젝트 비밀번호 | `/opt/cr/openstack-password`(0600)를 compose secret으로 읽기 전용 마운트. 컨테이너 환경 변수에는 없음 |
 | 플랫폼 VM 인바운드 | ssh, 2222, 8000, 8002는 `cloud.yaml`의 `network.allowed`에서만. 기본값 `[0.0.0.0/0]` |
-| 훈련 환경 VM | 학습자는 Kali와 WAF에서 root. 스택 사이, 스택과 플랫폼 사이의 격리는 VM 밖의 Neutron 보안 그룹과 port security가 맡음. target의 대상 컨테이너는 capability를 모두 빼고 `no-new-privileges` |
+| 훈련 환경 VM | 학습자는 Kali에서 root(`NOPASSWD:ALL`). 그래서 소진된 출발지는 학습자가 손댈 수 없는 infra 라우터에서 떨어뜨림. 스택 사이, 스택과 플랫폼 사이의 격리는 VM 밖의 Neutron 보안 그룹과 port security가 맡음 |
 | Docker 소켓 | 플랫폼 VM의 어떤 서비스에도 마운트하지 않음 |
 
-다른 계정은 로그인 화면의 회원가입으로 만들고, 관리자가 콘솔 상단의 계정 관리에서 승인합니다.
-
-초기 계정은 `admin` / `123456`입니다. 비밀번호를 바꾸라고 요구하지 않습니다. 바꾸려면:
+새 구조는 초기 계정을 만들지 않습니다. 기존 계정은 `bin/carry-users`로 옮기고, 빈 저장소에서는 스태프 계정을 직접
+만듭니다.
 
 ```bash
-sudo docker exec -it -u cr cr-platform python manage.py changepassword admin
+sudo docker exec -it -u cr cr-platform python manage.py createsuperuser
 ```
 
+`bots/signin.py`와 acceptance는 `CR_ADMIN_USER` / `CR_ADMIN_PASSWORD`(기본 `admin` / `123456`)로 로그인합니다.
+
 위협 모델은 [THREAT-MODEL.md](docs/THREAT-MODEL.md)에 있습니다.
+
+## 현재 상태
+
+`side-split` 브랜치는 새 구조로 다시 만든 코드입니다. 단위·API 테스트는 통과하지만 훈련 환경에서는 아직 돌리지 않았습니다.
+
+- 콘솔(`front/`)과 그에 맞춘 `nginx.conf`가 아직 없습니다. 지금 `nginx.conf`와 `vm-terminal.sh`는 이전 구조의
+  것이라, 터미널이 자리별 인증(`/api/rounds/<id>/terminal-auth/<side>`)을 쓰지 않고 WAF 터미널이 `analyst`가 아닌
+  root로 열립니다.
+- HP 차감용 WAF 접근 로그, infra 라우터의 `pool`·`spent` 집합, CRS 룰 테스트용 임시 인스턴스, WAF의 `analyst`
+  계정이 역할 이미지에 아직 없습니다. 배포 파일을 고치고 infra, waf 이미지를 다시 구워야 합니다.
+- 룰 테스트용 녹화(`wargames/<id>/probes/`)가 아직 없습니다. 지금 룰 테스트는 케이스를 미탐이 아니라
+  `untested`(`not_recorded`, WAF 도구 케이스는 `tool_case`)로 돌려줍니다.
+
+다음 순서는 [docs/state/now.md](docs/state/now.md)에 있습니다.
 
 ## 문서
 
 - [CLAUDE.md](CLAUDE.md): 저장소 목적, 점수 계산, 작업 규칙
-- [ARCHITECTURE.md](docs/ARCHITECTURE.md): 구성, 레슨·시나리오 동작, API
-- [OPENSTACK.md](docs/OPENSTACK.md): 클라우드 준비, 플랫폼 VM, 훈련 환경 운영
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md): 계층, 파일 지도, 격리 경계, 라운드 흐름
+- [bots/README.md](bots/README.md): 봇이 자리를 맡는 방법, HP 규칙, 오류 코드(영어)
+- [OPENSTACK.md](docs/OPENSTACK.md): 클라우드 준비, 플랫폼 VM, 훈련 환경 운영(영어)
 - [THREAT-MODEL.md](docs/THREAT-MODEL.md): 위협 모델
 - [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): 겪은 문제와 해결(영어)
-- [STATE.md](docs/STATE.md): 작업 현황
-- [설계 문서](docs/superpowers/specs/2026-10-08-composable-isolated-learning-mvp-design.md): 2026-10-08 승인 방향
+- [STATE.md](docs/STATE.md): 작업 현황(영어)
+- [설계 문서](docs/superpowers/specs/2026-11-19-side-split-design.md): 2026-11-19 승인한 공격·방어·심판 분리 설계

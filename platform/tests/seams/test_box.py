@@ -162,16 +162,6 @@ def test_stopping_a_run_kills_its_process_group_and_marks_it_ended():
     assert "kill -TERM -- -$pid" in script and "/var/lib/cr-runs/12/exit" in script
 
 
-def test_learner_keys_are_named_and_a_bad_name_is_refused():
-    kali = FakeRunner()
-
-    box.authorize_key(kali, "ssh-ed25519 AAAA", "cr-session-4")
-
-    assert kali.sent[0].stdin == "ssh-ed25519 AAAA cr-session-4\n"
-    with pytest.raises(ValueError):
-        box.drop_key(kali, "x; rm -rf /")
-
-
 def _hook(tmp_path):
     hook = tmp_path / "hook.sh"
     hook.write_text((DEPLOY / "kali/operator-log.sh").read_text()

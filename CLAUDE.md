@@ -53,23 +53,35 @@ The product itself is Korean-only: everything a learner or operator sees in
 the console and on the learner map is Korean, and there is no English version
 or language switch. This is about the product, not the working language.
 
-Korean belongs in exactly three places among the documentation and the console:
+Korean belongs in exactly these places among the documentation and the
+product, and `platform/tests/seams/test_no_hangul.py` scans the whole repo for
+any other:
 
 - `README.md` and `docs/ARCHITECTURE.md` — the Korean-only documents. Do not
   add an English version or a `.ko.md` beside any document.
-- `platform/console/templates/console/strings.html` — the console's string
-  table, Korean only, the only console template allowed Korean, enforced by a
-  test.
+- `strings/console.json` — the Korean the console shows, bundled into
+  `front/`; the API sends stable English codes and the front end maps them
+  here. `strings/server.json` — the Korean the server renders itself (the
+  Kibana gate page), read only by `cr/strings.py` and never bundled.
 - `docs/vocabulary.md` — term translations and their sources.
 
-Leave the last two unread unless you are editing them, and do not read the
-archived `docs/superpowers/plans/`.
+Leave the string tables and the vocabulary unread unless you are editing them.
+Problem and lesson text is Korean too, but it lives only in database rows,
+written through the staff API and moved between stores by its export and
+import; no seed, fixture or migration carries it, and test fixtures are English
+placeholders (`platform/testing/factories.py`).
 
 Korean in code is the exception, in two kinds only: the board target's
 site, which is a Korean site by design (`wargames/board/app/posts/templates/`,
 `posts/management/commands/seed.py`); and test inputs standing in for Korean
-learner text or checking the Korean the product shows
-(`platform/tests/test_lesson_path.py` and the like). Do not add more.
+learner text or checking the Korean the product shows, each named in
+`test_no_hangul.py`'s `KOREAN_TEST_INPUTS` (none today). Do not add more.
+
+Generated code is not committed: `bin/gen-clients` exports the committed
+contract `openapi/schema.yaml` and generates `bots/client/` and
+`front/src/api/schema.d.ts` from it, because the generators write docstrings
+and the no-comments rule has no exception for them. `bin/verify`, the platform
+Dockerfile and `images.yml` generate them before use.
 
 Korean text is written Korean-first: from the meaning, not translated from the
 English sentence, in the usage of Korean security practitioners rather than the
@@ -80,7 +92,7 @@ National Institute of Korean Language's norms.
 Two separate numbers; the first is the primary score.
 
 What the red team took: the target flips its own ground truth when an objective
-falls — for the board, loot that exactly matches the session-start snapshot of
+falls — for the board, loot that exactly matches the round-start snapshot of
 its secret. That is the score: which objectives were lost, and whether the blue
 team saw each one go; one lost and undetected counts double. The platform never
 decides whether an attack succeeded — the target's own stored data does.
@@ -96,7 +108,10 @@ reporting, because per-alert counting measures the alert threshold, not the
 defence. A true positive must also
 survive `expect`: the case names a substring its signature should match, and an
 alert that does not mention the attack's mechanism is reported
-`corroborated: false`.
+`corroborated: false`. Only declared cases and the platform-fired benign cases
+enter TP/FP/FN/TN; a free action (a request, tool run, command or site-pane
+request with no declared case) is reported apart under `free_actions` and
+never scored as one.
 
 ## What must not break
 
@@ -107,39 +122,55 @@ alert that does not mention the attack's mechanism is reported
 - The target decides whether it was beaten; never mark an objective from the
   platform's own belief about an attack. The objective layer's value is that
   its ground truth is orthogonal to the detector.
-- The isolation seams hold: `ingest/elastic.py` is the only file that knows
-  Elasticsearch, `rules/suricata.py` the only one that knows the Suricata
-  process, `rules/crs.py` the only one that knows the CRS/ModSecurity
-  configuration and the nginx reload, `kibana.py` the only one that knows the
-  Kibana API, `range/openstack.py` the only one that knows the OpenStack API
-  and the only one that reads the session stack's live wiring the learner map draws
-  from Neutron and the target VM's Docker networks (`range/wiring.py` parses
-  it, `topology.py` names it for the learner), `attacker.py` the only one that knows the attacker box, and the loot
-  path (`api/loot.py`, the board) and the effect path (`api/effect.py`, corp)
-  the only ones that read the target's ground truth. Keep them the only ones.
-  Known exceptions in code today; do not add more, and whether to move them is
-  open (`docs/STATE.md` backlog 0):
-  `register_pipeline.py` PUTs the ingest pipeline to Elasticsearch at bring-up;
-  in each `wargames/<id>/topology.yaml` the sensor device `cr-ids` names the
-  rule file and reload command `rules/suricata.py` is handed, and the WAF
-  device `cr-waf` the exclusion file and nginx reload `rules/crs.py` is handed;
-  `platform/nginx.conf` names the Kibana API routes it refuses, hands every
-  other API call inside a space to the `kibana-gate` view and answers
-  Kibana's `api/spaces/space` lookup itself, and
-  `blue.html` presets Kibana's localStorage keys;
-  `operator_log.py` reads the attacker's command log, and the terminal wiring
-  names `cr-kali` and `cr-waf` (`entrypoint.sh` starts
-  `vm-terminal.sh cr-kali` and `vm-terminal.sh cr-waf`), and
-  `redteam/tools.py` names the box tool cases run on (`CR_TOOL_IMAGE`,
-  `cr-kali`); foundation F6's
-  step commands name the exclusion file and the nginx reload, which
-  `wargames.lesson` fills in from the topology's WAF device. `docs/ARCHITECTURE.md` keeps
-  the table.
+- The isolation seams hold (paths under `platform/`):
+  `ingest/elastic.py` is the only file that knows Elasticsearch, the ingest
+  pipeline included; `rules/suricata.py` the only one that knows the Suricata
+  process (rule file, `-T`, the offline `-r` run, reload, packet capture);
+  `rules/crs.py` the only one that knows the CRS/ModSecurity configuration,
+  the nginx reload and the scratch test instance; `defence/kibana.py` the
+  only one that knows the Kibana API; `range/openstack.py` the only one that
+  knows the OpenStack API and the only one that reads the stack's live wiring
+  the learner map draws from Neutron and the target VM's Docker networks
+  (`range/wiring.py` parses it, `range/topology.py` names it for the learner,
+  filtered by side); `range/edge.py` the only one that writes the infra
+  router's nftables `pool` and `spent` sets; `range/jump.py` the only one
+  that knows the platform sshd's jump grants and the per-seat key in a box
+  account's `authorized_keys`; `attack/box.py` the only one that knows the
+  attacker box (origins, `set-origin`, the command log, the tool image,
+  customer origins, stopping runs); and `referee/loot.py` (the board) and
+  `referee/effect.py` (corp) the only ones that read the target's ground
+  truth. Keep them the only ones. `platform/tests/test_isolation_seams.py`
+  holds one pattern per seam and the exceptions it allows.
+  Known exceptions in code today; do not add more:
+  `cr/config.py` holds the defaults the seams are handed (the CRS exclusion
+  file and the nginx reload for `rules/crs.py`, the box's label file for
+  `attack/box.py`); in each `wargames/<id>/topology.yaml` the sensor device
+  `cr-ids` names the rule file and reload command `rules/suricata.py` is
+  handed, and the WAF device `cr-waf` the exclusion file and nginx reload
+  `rules/crs.py` is handed; `platform/nginx.conf` names the Kibana API
+  routes it refuses, hands every other API call inside a space to the
+  `kibana-gate` view and answers Kibana's `api/spaces/space` lookup itself;
+  `platform/entrypoint.sh` starts `vm-terminal.sh cr-kali` and
+  `vm-terminal.sh cr-waf` and creates the jump host's `authorized_keys`;
+  `deploy/roles/infra/edge.nft` declares the `pool` and `spent` sets
+  `range/edge.py` fills. Once `front/` exists, `front/src/panes/Kibana.tsx`
+  presets Kibana's localStorage keys. `docs/ARCHITECTURE.md` keeps the table.
+- The dependency graph holds: `platform/tests/seams/test_imports.py` checks
+  the layers and import rules of the design (`domain/` imports only the
+  standard library; a seam imports no Django and no app; `attack` and
+  `defence` never import each other; only `referee/` appends
+  `objective.lost`; across an app boundary only `<app>.service`), by AST and
+  over model foreign keys and migration dependencies. A new module under
+  `platform/` must be given a layer there.
 - Fixed by the user: OpenStack, Docker, Suricata, nginx, Elasticsearch.
   Everything else may be replaced if it shrinks the project without breaking
   the above.
-- Every UI action is a REST API first; console templates fetch `/api/`, never
-  server-rendered data — this is what lets an agent take the human's place.
+- Every UI action is a REST API first: there is one attack API and one
+  defence API, and the console, the bots, `test/` and `bin/` are all clients
+  of `/api/` through the client generated from `openapi/schema.yaml`. A bot
+  seat reaches exactly what a human seat reaches, under the same permission
+  class — this is what lets an agent take the human's place. `front/`,
+  `bots/`, `test/` and `bin/` never import `platform/`.
 
 ## Verifying
 
@@ -153,15 +184,21 @@ logic changed, and before a push.
 - `platform/` is not a package — `platform` is a stdlib name; never add
   `platform/__init__.py`. Run Python with `platform/` as the working directory
   (same for `test/`).
-- No comments or docstrings in code; name things so the code says what it
-  does. Exceptions: `deploy/suricata/rules/`, where a commented-out rule is how
-  a rule is disabled, and the header Django writes into generated migrations.
-- The target is not published; the harness fires from inside the range.
-  The product runs only on OpenStack: the range is one Heat stack per session
+- No comments or docstrings in code, in `platform/`, `front/src`, `bots/` and
+  `bin/` alike; name things so the code says what it does. Exceptions:
+  `deploy/suricata/rules/`, where a commented-out rule is how a rule is
+  disabled, and the header Django writes into generated migrations.
+- `platform/domain/` is the pure core: the game rules as functions over
+  frozen dataclasses, tested by `platform/tests/domain/` with no Django in the
+  process. Services raise `cr/errors.py` domain errors and never build
+  responses; `cr/handler.py` maps them to the one error shape.
+- The target is not published; cases are fired from the attacker box inside
+  the range (`attack/firing.py`).
+  The product runs only on OpenStack: the range is one Heat stack per lease
   (`cr-slot-<n>`: the VMs kali, waf, infra and target on the stack's own
   Neutron LANs, booted from role images baked from `deploy/roles/` into
   Glance), kept ready in a pool per wargame (`compute.pool`), given to a
-  session when it opens and deleted and built again when it closes; `<n>` is
+  lease when it opens and deleted and built again when it closes; `<n>` is
   the reused stack number (`docs/ARCHITECTURE.md` glossary), and the platform
   VM runs the shared control plane from `compose.yaml`. Bring-up
   pulls prebuilt images from GHCR (built by `.github/workflows/images.yml` on
@@ -170,7 +207,7 @@ logic changed, and before a push.
   holds the Docker socket). Local development runs the unit tests, not
   the range. The `build:` keys stay because the CI build test checks them. The
   platform VM is rebuilt, never patched in place: `bin/cloud up --replace`
-  (`bin/platform-rebuild`, then the pool converges; a session stack rendered from
+  (`bin/platform-rebuild`, then the pool converges; a slot stack rendered from
   the same template, images and flavors stands through);
   the whole cloud side comes up with `uv run bin/cloud init` (admin, once)
   and `uv run bin/cloud up` from `deploy/openstack/cloud.yaml`, the one file

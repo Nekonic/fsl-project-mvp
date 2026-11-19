@@ -4,6 +4,7 @@ import subprocess
 import sys
 
 
+from cr import strings
 from tests import composed
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
@@ -61,12 +62,11 @@ def test_the_platform_image_carries_no_docker_client_and_joins_no_socket_group()
 
 def test_acceptance_does_not_run_against_a_target_that_is_not_up_yet():
     verify = (ROOT / "bin/verify").read_text()
-    opened = verify.find('post("/api/sessions/"')
+    opened = verify.find('plays.play("board")')
 
     assert 0 <= opened < verify.index('section "acceptance'), (
         "attacks fired at a target that is still starting hit nothing, and the "
-        "run reports TP 0 - which the session protocol answers with git reset "
-        "--hard. A flaky red is worse than a slow verify"
+        "run reports TP 0. A flaky red is worse than a slow verify"
     )
 
 def test_the_platform_compose_service_does_not_turn_debug_on():
@@ -85,3 +85,12 @@ def test_a_secret_key_is_generated_into_the_data_volume_only_when_none_is_given(
     assert "umask 077" in steps and steps.index("secret-key") < steps.index("waitress-serve")
     assert "echo" not in steps.split("secret-key", 1)[1].split("waitress-serve", 1)[0], "the key is never printed"
 
+
+
+def test_the_image_carries_the_server_string_table_where_cr_strings_reads_it():
+    lines = [line.split() for line in DOCKERFILE.read_text().splitlines()]
+    [workdir] = [words[1] for words in lines if words and words[0] == "WORKDIR"]
+    read_at = pathlib.PurePosixPath(workdir, "cr", "strings.py").parents[2] / "strings" / strings.TABLE
+
+    assert ["COPY", f"strings/{strings.TABLE}", str(read_at)] in lines, (
+        f"cr.strings reads {read_at} in the image, and the Dockerfile does not put the table there")

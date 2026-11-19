@@ -10,10 +10,23 @@ COMPOSE = composed.COMPOSE
 
 
 def pulled_images():
+    services = composed.services().values()
+    built = {service.get("image") for service in services if "build" in service}
     return [
-        service["image"] for service in composed.services().values()
-        if "image" in service and "build" not in service
+        service["image"] for service in services
+        if "image" in service and "build" not in service and service["image"] not in built
     ]
+
+
+def test_the_follower_runs_the_platform_s_own_image_and_its_wiring():
+    services = composed.services()
+    platform, follow = services["platform"], services["follow"]
+
+    assert follow["image"] == platform["image"] and "build" not in follow
+    assert follow["entrypoint"][-2:] == ["manage.py", "follow"]
+    assert follow["volumes"] == platform["volumes"] and not follow.get("ports")
+    assert {key: value for key, value in follow["environment"].items() if key in platform["environment"]} == \
+        platform["environment"]
 
 def test_every_image_is_pinned_to_something_that_cannot_move():
     floating = [

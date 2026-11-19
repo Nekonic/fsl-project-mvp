@@ -4,6 +4,8 @@ version = "0"
 requires-python = ">=3.12"
 dependencies = [
     "Django>=5.2,<7",
+    "djangorestframework>=3.16,<4",
+    "drf-spectacular>=0.28,<1",
     "PyYAML>=6,<7",
     "requests>=2.32,<3",
     "waitress>=3,<4",
@@ -11,6 +13,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "openapi-python-client>=0.24,<1",
     "pytest>=8,<9",
     "pytest-django>=4.9,<5",
 ]

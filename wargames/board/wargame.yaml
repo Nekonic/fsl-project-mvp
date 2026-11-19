@@ -1,0 +1,8 @@
+id: board
+title: Community board
+image: ghcr.io/nekonic/cr-board
+public_url: http://board.com
+hosts: [board.com]
+objective_model: loot_verified
+case_file: board.yaml
+default_traffic: community

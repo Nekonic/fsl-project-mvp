@@ -74,16 +74,16 @@ def test_a_command_that_ran_and_failed_is_a_result_not_an_outage(dispatch, role,
     assert ran.exit_code == 1
     assert "not found" in ran.stderr
 
-def test_a_command_names_to_the_platform_the_session_it_was_given_and_no_other(dispatch):
+def test_a_command_names_to_the_platform_the_lease_it_was_given_and_no_other(dispatch):
     fake = dispatch(stdout=answered(0))
 
-    seam.ThroughPlatform().run(seam.ATTACKER, ["true"], session=3)
+    seam.ThroughPlatform().run(seam.ATTACKER, ["true"], lease=3)
     seam.ThroughPlatform().run(seam.SENSOR, ["true"])
 
     platform = seam.declared_roles()[seam.SCORER]
     assert fake.commands[0][:6] == ["docker", "exec", platform, "python", "manage.py", "run_on_role"]
-    assert fake.commands[0][6] == seam.ATTACKER and fake.commands[0][-2:] == ["--session", "3"]
-    assert fake.commands[1][6] == seam.SENSOR and "--session" not in fake.commands[1]
+    assert fake.commands[0][6] == seam.ATTACKER and fake.commands[0][-2:] == ["--lease", "3"]
+    assert fake.commands[1][6] == seam.SENSOR and "--lease" not in fake.commands[1]
 
 @pytest.mark.parametrize("role", [seam.ATTACKER, seam.SCORER], ids=["through-the-platform", "on-the-platform"])
 @pytest.mark.parametrize("failure", [

@@ -1,6 +1,7 @@
 secret:
   scope: auth_user
   columns: [username, password]
+  role: board
   read_path: /internal/auth-users
 tiers:
   - key: board-auth-user-partial

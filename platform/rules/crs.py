@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from cr.config import WafConfig
-from cr.errors import EngineRefused, FieldError
+from cr.errors import EngineRefused, FieldError, Unavailable
 
 def workers_of(pid: str) -> str:
     return ('m=$(cat ' + pid + '); for d in /proc/[0-9]*; do '
@@ -32,37 +32,44 @@ THRESHOLD = re.compile(r"tx\.(inbound|outbound)_anomaly_score_threshold=(\d+)")
 class TuningRefused(EngineRefused, ValueError):
     code = "crs_refused"
 
+class WafUnreadable(Unavailable):
+    code = "waf_unavailable"
+
 def checked(tuning) -> dict:
     if not isinstance(tuning, dict):
-        raise TuningRefused("the tuning is an object with paranoia and exclusions")
+        raise TuningRefused("the tuning is an object with paranoia and exclusions", path="posture")
     paranoia = tuning.get("paranoia")
     if type(paranoia) is not int or not 1 <= paranoia <= 4:
-        raise TuningRefused(f'"paranoia" must be a paranoia level from 1 to 4, got {paranoia!r}')
+        raise TuningRefused(f'"paranoia" must be a paranoia level from 1 to 4, got {paranoia!r}', path="paranoia")
     exclusions = tuning.get("exclusions") or []
     if not isinstance(exclusions, list) or len(exclusions) > MOST_EXCLUSIONS:
-        raise TuningRefused(f'"exclusions" must be a list of at most {MOST_EXCLUSIONS} entries')
+        raise TuningRefused(f'"exclusions" must be a list of at most {MOST_EXCLUSIONS} entries', path="exclusions")
     thresholds = tuning.get("thresholds") or {}
     if not isinstance(thresholds, dict) or not set(thresholds) <= set(THRESHOLDS) or not all(
             type(score) is int and 1 <= score <= HIGHEST_THRESHOLD for score in thresholds.values()):
         raise TuningRefused(f'"thresholds" maps inbound and outbound to an anomaly score from 1 to '
-                            f'{HIGHEST_THRESHOLD}, got {thresholds!r}')
+                            f'{HIGHEST_THRESHOLD}, got {thresholds!r}', path="thresholds")
     if type(tuning.get("detection_only", False)) is not bool:
-        raise TuningRefused(f'"detection_only" is true or false, got {tuning["detection_only"]!r}')
-    return {"paranoia": paranoia, "exclusions": [_exclusion(entry) for entry in exclusions],
+        raise TuningRefused(f'"detection_only" is true or false, got {tuning["detection_only"]!r}',
+                            path="detection_only")
+    return {"paranoia": paranoia,
+            "exclusions": [_exclusion(entry, f"exclusions[{at}]") for at, entry in enumerate(exclusions)],
             **({"thresholds": thresholds} if thresholds else {}),
             **({"detection_only": True} if tuning.get("detection_only") else {})}
 
-def _exclusion(entry) -> dict:
+def _exclusion(entry, at: str) -> dict:
     entry = entry if isinstance(entry, dict) else {}
     rule_id, target, path, tag = entry.get("rule_id"), entry.get("target") or "", entry.get("path") or "", entry.get("tag")
     if tag is not None and not (isinstance(tag, str) and TAG.fullmatch(tag) and target):
-        raise TuningRefused(f'"tag" must name a CRS tag such as attack-sqli and come with a target, got {tag!r}')
+        raise TuningRefused(f'"tag" must name a CRS tag such as attack-sqli and come with a target, got {tag!r}',
+                            path=f"{at}.tag")
     if tag is None and (type(rule_id) is not int or not 900000 <= rule_id <= 999999):
-        raise TuningRefused(f'"rule_id" must be a CRS rule id from 900000 to 999999, got {rule_id!r}')
+        raise TuningRefused(f'"rule_id" must be a CRS rule id from 900000 to 999999, got {rule_id!r}',
+                            path=f"{at}.rule_id")
     if not isinstance(target, str) or (target and not TARGET.fullmatch(target)):
-        raise TuningRefused(f'"target" must name a variable such as ARGS:q, got {target!r}')
+        raise TuningRefused(f'"target" must name a variable such as ARGS:q, got {target!r}', path=f"{at}.target")
     if not isinstance(path, str) or (path and not PATH.fullmatch(path)):
-        raise TuningRefused(f'"path" must be a URL path such as /search/, got {path!r}')
+        raise TuningRefused(f'"path" must be a URL path such as /search/, got {path!r}', path=f"{at}.path")
     return {"tag": tag, "target": target, "path": path} if tag else {"rule_id": rule_id, "target": target, "path": path}
 
 def rendered(tuning: dict) -> str:
@@ -84,8 +91,10 @@ def rendered(tuning: dict) -> str:
     return "\n".join(lines) + "\n"
 
 def read(gateway, config: WafConfig = WafConfig()) -> dict:
-    text = gateway(["sh", "-c", f"cat {config.rules} 2>/dev/null || true"]).output
-    return parsed(text) | {"file": text}
+    ran = gateway(["sh", "-c", f"cat {config.rules} 2>/dev/null || true"])
+    if not ran.ok:
+        raise WafUnreadable(f"could not read {config.rules}: {ran.output.strip()[-300:]}")
+    return parsed(ran.output) | {"file": ran.output}
 
 def parsed(text: str) -> dict:
     lines = [line for line in text.replace("\\\n", "").splitlines() if not line.lstrip().startswith("#")]

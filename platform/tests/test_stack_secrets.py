@@ -4,7 +4,7 @@ import re
 from tests import composed
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-SETTINGS = ROOT / "platform/cr/settings.py"
+SETTINGS = ROOT / "platform/cr/config.py"
 
 
 def test_elasticsearch_and_kibana_listen_on_the_platform_vm_s_loopback_alone():

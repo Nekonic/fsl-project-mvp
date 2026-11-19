@@ -102,27 +102,46 @@ services:
       - "${CR_PUBLISH:-127.0.0.1}:8000:8000"
       - "${CR_PUBLISH:-127.0.0.1}:8002:8002"
       - "${CR_PUBLISH:-127.0.0.1}:2222:2222"
-    environment:
+    environment: &platform-environment
       ELASTIC_URL: "http://elasticsearch:9200"
       ELASTIC_INDEX: "logs-*"
       KIBANA_URL: "http://kibana:5601/kibana"
       DJANGO_DB_PATH: "/data/db.sqlite3"
-      CR_RESET_OWED_DIR: "/data/reset-owed"
+      CR_REFILL_DIR: "/data/refill"
+      CR_PROBES_OUT: "/data/probes"
       CR_JUMP_DIR: "/data/jump"
       TARGET_URL: "http://board.com"
       PUBLIC_TARGET_URL: "http://board.com"
       WARGAME_CASES_DIR: "/app/redteam/cases"
       CR_SOURCE: "/src"
       CR_RETAIN_CLOSED_MINUTES: "${CR_RETAIN_CLOSED_MINUTES:-60}"
-    env_file:
+      CR_LEASE_IDLE_MINUTES: "${CR_LEASE_IDLE_MINUTES:-30}"
+    env_file: &platform-env-file
       - path: ./openstack.env
         required: false
         format: raw
     secrets: [openstack_password]
-    volumes:
+    volumes: &platform-volumes
       - ./platform:/app
       - ./redteam:/app/redteam:ro
       - ./deploy:/src/deploy:ro
       - ./wargames:/src/wargames:ro
+      - ./redteam/cases:/src/redteam/cases:ro
       - platformdata:/data
+
+  follow:
+    platform: linux/amd64
+    image: ghcr.io/nekonic/cr-platform:${CR_IMAGE_TAG:-dev}
+    container_name: cr-follow
+    depends_on:
+      platform: {condition: service_started}
+    networks:
+      mgmt: {}
+    entrypoint: ["gosu", "cr", "python", "manage.py", "follow"]
+    environment:
+      <<: *platform-environment
+      CR_FOLLOW_SECONDS: "${CR_FOLLOW_SECONDS:-5}"
+    env_file: *platform-env-file
+    secrets: [openstack_password]
+    volumes: *platform-volumes
 

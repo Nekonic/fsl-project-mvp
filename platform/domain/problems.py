@@ -12,6 +12,12 @@ PANES = ("kibana", "terminal_kali", "terminal_waf", "site", "map", "ids_rules", 
 HP_FIELDS = ("budget", "per_request", "refused_x", "burst_per_s", "burst_x")
 CASE_PARAMS = {"rule_test": "case", "alert_seen": "case"}
 OBJECTIVE_PARAMS = {"loot": "objective"}
+PROBLEM_FIELDS = ("kind", "wargame", "side", "title", "summary", "body", "published")
+STORED_STAMPS = ("id", "revision", "author", "updated")
+STEP_FIELDS = ("order", "body", "opens", "check", "answer", "hints")
+CHECK_FIELDS = ("kind", "params")
+ROUND_FIELDS = ("matchups", "posture", "probe_cases", "objectives", "hp", "traffic", "benign_every_s",
+                "time_limit_s")
 
 
 @dataclass(frozen=True)
@@ -58,8 +64,12 @@ def validate_problem(doc: object, catalog: Mapping[str, WargameCatalog]) -> list
     return errors
 
 
+def unknown_fields(given: Mapping, known: tuple[str, ...], at: str) -> list[FieldError]:
+    return [FieldError(f"{at}.{name}", "unknown_field") for name in given if name not in known]
+
+
 def _problem(problem: Mapping, catalog: Mapping[str, WargameCatalog]) -> list[FieldError]:
-    errors = []
+    errors = unknown_fields(problem, PROBLEM_FIELDS + STORED_STAMPS, "problem")
     if problem.get("kind") not in KINDS:
         errors.append(FieldError("problem.kind", "not_a_choice", (("choices", KINDS),)))
     if problem.get("side") not in tuple(Side):
@@ -83,6 +93,7 @@ def _steps(steps: list, wargame: WargameCatalog | None) -> list[FieldError]:
         if not isinstance(step, Mapping):
             errors.append(FieldError(at, "not_an_object"))
             continue
+        errors.extend(unknown_fields(step, STEP_FIELDS, at))
         if step.get("order") != index + 1:
             errors.append(FieldError(f"{at}.order", "out_of_sequence", (("expected", index + 1),)))
         if not _text(step.get("body")):
@@ -100,7 +111,7 @@ def _check(check: object, at: str, wargame: WargameCatalog | None) -> list[Field
     if not isinstance(check, Mapping):
         return [FieldError(at, "required")]
     kind, params = check.get("kind"), check.get("params", {})
-    errors = check_params(kind, params, at)
+    errors = unknown_fields(check, CHECK_FIELDS, at) + check_params(kind, params, at)
     if errors or wargame is None:
         return errors
     if (name := CASE_PARAMS.get(kind)) and params.get(name) and params[name] not in wargame.cases:
@@ -111,7 +122,7 @@ def _check(check: object, at: str, wargame: WargameCatalog | None) -> list[Field
 
 
 def _round(setup: Mapping, wargame: WargameCatalog | None, side: object) -> list[FieldError]:
-    errors = []
+    errors = unknown_fields(setup, ROUND_FIELDS, "round")
     matchups = setup.get("matchups")
     if not isinstance(matchups, list) or not matchups:
         errors.append(FieldError("round.matchups", "required"))
@@ -131,6 +142,7 @@ def _round(setup: Mapping, wargame: WargameCatalog | None, side: object) -> list
     if not isinstance(hp, Mapping):
         errors.append(FieldError("round.hp", "required"))
     else:
+        errors.extend(unknown_fields(hp, HP_FIELDS, "round.hp"))
         errors.extend(
             FieldError(f"round.hp.{name}", "not_a_positive_integer")
             for name in HP_FIELDS

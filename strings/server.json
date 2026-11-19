@@ -1,0 +1,7 @@
+{
+  "kibana.refused.title": "이 Kibana 화면은 열 수 없습니다",
+  "kibana.refused.space": "진행 중인 내 라운드의 Kibana가 아닙니다. 메인 화면에서 진행 중인 라운드로 들어가 Kibana를 여세요.",
+  "kibana.refused.call": "이 요청은 처리할 수 없습니다. 이 Kibana에서는 Discover로 내 라운드의 로그만 검색할 수 있습니다.",
+  "kibana.refused.home": "메인 화면으로",
+  "kibana.unanswered": "Kibana가 응답하지 않습니다. 잠시 후 다시 검색하세요."
+}

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.util
+import json
 import os
 import secrets
 import sys
@@ -18,19 +19,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import requests
+import httpx2
 
-from redteam import signin
+from bots import signin
+from bots.client.api.staff import (staff_fabric_build, staff_fabric_remove, staff_leftovers_remove, staff_pool,
+                                   staff_pool_empty, staff_pool_fill, staff_range)
 
 REBUILD = ROOT / "bin/platform-rebuild"
 CALL_TIMEOUT = 1800
 SLOT_WAIT = 1800
 GONE_WAIT = 1800
 SLOT_STACKS = "cr-range"
-READY_WAIT = 1800
 POLL = 5
-CONFIGURE_TRIES = 60
-BOOTING = ("NOT_STANDING", "REBUILDING", "RESETTING", "STALE")
 KOLLA_CLOUDS = Path("/etc/kolla/clouds.yaml")
 KOLLA_ADMIN = "kolla-admin"
 MEMBER = "member"
@@ -94,32 +94,46 @@ class Stamped:
         return getattr(self.stream, name)
 
 
+RANGE_CALLS = {
+    ("GET", "/"): staff_range,
+    ("POST", "/fabric/"): staff_fabric_build,
+    ("DELETE", "/fabric/"): staff_fabric_remove,
+    ("DELETE", "/leftovers/"): staff_leftovers_remove,
+    ("GET", "/pool/"): staff_pool,
+    ("POST", "/pool/"): staff_pool_fill,
+    ("DELETE", "/pool/"): staff_pool_empty,
+}
+
+
 class Platform:
     def __init__(self, address: str):
         self.url = f"http://{address}:8000"
-        self.base = f"{self.url}/api/range"
-        self.http = None
+        self.client = None
 
     def __call__(self, verb: str, path: str) -> tuple[int, dict]:
         try:
-            self.http = self.http or signin.signed_in(self.url)
-            answer = self.http.request(verb, self.base + path, json={} if verb == "POST" else None,
-                                       timeout=CALL_TIMEOUT)
-        except (requests.RequestException, ValueError, KeyError, signin.Refused) as gone:
-            self.http = None
-            return 0, {"detail": f"could not reach {self.base}: {gone}"}
+            self.client = self.client or signin.signed_in(self.url, CALL_TIMEOUT)
+            answer = RANGE_CALLS[(verb, path)].sync_detailed(client=self.client)
+        except (httpx2.HTTPError, signin.Refused) as gone:
+            self.client = None
+            return 0, {"errors": [{"code": "unreachable", "detail": f"could not reach {self.url}: {gone}"}]}
         if answer.status_code in (401, 403):
-            self.http = None
+            self.client = None
         try:
-            return answer.status_code, answer.json()
+            return int(answer.status_code), json.loads(answer.content)
         except ValueError:
-            return answer.status_code, {"detail": answer.text[:500]}
+            return int(answer.status_code), {"errors": [{"code": "not_json", "detail": answer.content[:500]}]}
+
+
+def said(body: dict) -> str:
+    return "; ".join(f"{error.get('code')} {error.get('detail') or error.get('params') or ''}".strip()
+                     for error in body.get("errors") or [body])
 
 
 def _done(call, verb: str, path: str) -> dict:
     status, body = call(verb, path)
     if status != 200:
-        raise Refused(f"cloud: {verb} /api/range{path} answered {status}: {body.get('detail', body)}")
+        raise Refused(f"cloud: {verb} /api/staff/range{path} answered {status}: {said(body)}")
     return body
 
 
@@ -134,48 +148,22 @@ def _until(what: str, wait: float, sleep, clock, step):
         sleep(POLL)
 
 
-def _slots(ready: dict) -> list[dict]:
-    return ready.get("slots") or [ready.get("slot") or {}]
-
-
-def _standing(call):
-    slots = _slots(_done(call, "GET", "/ready/"))
-    failed = [reason for slot in slots if slot.get("phase") == "SETUP_FAILED" for reason in slot.get("blocked") or []]
+def _refilled(call):
+    slots = _done(call, "GET", "/")["slots"]
+    failed = [f"slot {slot['slot']}: {slot['refill']['reason']}" for slot in slots if slot["refill"]["state"] == "failed"]
     if failed:
-        raise Refused("cloud: a slot did not set itself up:\n  " + "\n  ".join(failed))
-    return slots if all(slot.get("phase") not in BOOTING for slot in slots) else None
+        raise Refused("cloud: a slot did not build and set itself up:\n  " + "\n  ".join(failed))
+    return slots if all(slot["refill"]["state"] == "idle" for slot in slots) else None
 
 
-def _ready(call):
-    ready = _done(call, "GET", "/ready/")
-    return ready if ready["ready"] and all(slot.get("phase") == "READY" for slot in _slots(ready)) else None
-
-
-def _configured(call, sleep):
-    for attempt in range(CONFIGURE_TRIES):
-        status, body = call("POST", "/configure/")
-        if status == 200:
-            return body
-        if status != 503 or attempt == CONFIGURE_TRIES - 1:
-            raise Refused(f"cloud: POST /api/range/configure/ answered {status}: {body.get('detail', body)}")
-        print(f"configure: {body.get('detail', '')[:200]}; trying again", flush=True)
-        sleep(POLL)
-
-
-def converge(call, sleep=time.sleep, clock=time.monotonic) -> dict:
-    fabric = _done(call, "POST", "/fabric/")
-    if fabric["drifted"]:
-        raise Refused("cloud: the fabric drifted:\n  " + "\n  ".join(fabric["drifted"]))
+def converge(call, sleep=time.sleep, clock=time.monotonic) -> list[dict]:
+    _done(call, "POST", "/fabric/")
     removed = _done(call, "DELETE", "/leftovers/")["removed"]
     if removed:
         print("removed what an earlier range left: " + ", ".join(f"{r['kind']} {r['id']}" for r in removed),
               flush=True)
-    slot = _done(call, "POST", "/slot/")
-    if slot["blocked"]:
-        raise Refused("cloud: the slot is blocked:\n  " + "\n  ".join(slot["blocked"]))
-    _until("the slot standing", SLOT_WAIT, sleep, clock, lambda: _standing(call))
-    _configured(call, sleep)
-    return _until("the range ready", READY_WAIT, sleep, clock, lambda: _ready(call))
+    _done(call, "POST", "/pool/")
+    return _until("every slot built and set up", SLOT_WAIT, sleep, clock, lambda: _refilled(call))
 
 
 def up(args: argparse.Namespace) -> str:
@@ -191,11 +179,11 @@ def up(args: argparse.Namespace) -> str:
 
 
 def _gone(call):
-    return True if not _done(call, "GET", "/slot/")["standing"] else None
+    return True if not [slot for slot in _done(call, "GET", "/pool/")["slots"] if slot["servers"]] else None
 
 
 def take_down(call, stack: str, run, sleep=time.sleep, clock=time.monotonic) -> None:
-    _done(call, "DELETE", "/slot/")
+    _done(call, "DELETE", "/pool/")
     _until("the slot stacks gone", GONE_WAIT, sleep, clock, lambda: _gone(call))
     _done(call, "DELETE", "/fabric/")
     rebuild.delete_stack(stack, run)

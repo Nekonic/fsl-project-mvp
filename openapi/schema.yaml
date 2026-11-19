@@ -1,0 +1,5398 @@
+openapi: 3.0.3
+info:
+  title: Cyber range
+  version: '1'
+paths:
+  /api/auth/csrf/:
+    get:
+      operationId: auth_csrf
+      tags:
+      - accounts
+      security:
+      - cr_session: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsrfIssued'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/auth/login/:
+    post:
+      operationId: auth_login
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CredentialsRequest'
+        required: true
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignedIn'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/auth/logout/:
+    post:
+      operationId: auth_logout
+      tags:
+      - accounts
+      security:
+      - cr_session: []
+      responses:
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/auth/signup/:
+    post:
+      operationId: auth_signup
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignUpRequest'
+        required: true
+      security:
+      - cr_session: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignedUp'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/leases/:
+    post:
+      operationId: lease_open
+      tags:
+      - match
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenLeaseRequest'
+        required: true
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaseShown'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/leases/{lease_id}/:
+    get:
+      operationId: lease_read
+      parameters:
+      - in: path
+        name: lease_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - match
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaseDetail'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/leases/{lease_id}/close/:
+    post:
+      operationId: lease_close
+      parameters:
+      - in: path
+        name: lease_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - match
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Closed'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/leases/{lease_id}/heartbeat/:
+    post:
+      operationId: lease_heartbeat
+      parameters:
+      - in: path
+        name: lease_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - match
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expiry'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/leases/{lease_id}/rounds/:
+    post:
+      operationId: round_create
+      parameters:
+      - in: path
+        name: lease_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - match
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoundRequest'
+        required: true
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Created'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/lessons/:
+    get:
+      operationId: lesson_list
+      parameters:
+      - in: query
+        name: mine
+        schema:
+          type: boolean
+          default: true
+      tags:
+      - lessons
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LessonLine'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    post:
+      operationId: lesson_open
+      tags:
+      - lessons
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenLessonRequest'
+        required: true
+      security:
+      - cr_session: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LessonOpened'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/lessons/{round_id}/:
+    get:
+      operationId: lesson_read
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - lessons
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LessonShown'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/lessons/{round_id}/end/:
+    post:
+      operationId: lesson_end
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - lessons
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LessonEnded'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/lessons/{round_id}/steps/{order}/check/:
+    post:
+      operationId: lesson_step_check
+      parameters:
+      - in: path
+        name: order
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - lessons
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckAskRequest'
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StepVerdict'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/lessons/{round_id}/steps/{order}/hint/:
+    post:
+      operationId: lesson_step_hint
+      parameters:
+      - in: path
+        name: order
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - lessons
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HintAskRequest'
+        required: true
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hint'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/me/:
+    get:
+      operationId: me
+      tags:
+      - accounts
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/problems/:
+    get:
+      operationId: problems
+      tags:
+      - catalog
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LearnerProblemSummary'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/problems/{problem_id}/:
+    get:
+      operationId: problem
+      parameters:
+      - in: path
+        name: problem_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - catalog
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearnerProblem'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/:
+    get:
+      operationId: round_list
+      parameters:
+      - in: query
+        name: mine
+        schema:
+          type: boolean
+          default: false
+      - in: query
+        name: state
+        schema:
+          enum:
+          - ''
+          - open
+          - joinable
+          type: string
+          default: ''
+          minLength: 1
+        description: "* `` - \n* `open` - open\n* `joinable` - joinable"
+      tags:
+      - match
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RoundLine'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/:
+    get:
+      operationId: round_read
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - match
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoundShown'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/attack/cases/:
+    get:
+      operationId: attack_cases
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - attack
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CaseEntry'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    post:
+      operationId: attack_fire_case
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - attack
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FireCaseRequest'
+        required: true
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Fired'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/attack/forfeit/:
+    post:
+      operationId: attack_forfeit
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - attack
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ended'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/attack/loot/:
+    post:
+      operationId: attack_loot
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - attack
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LootRequest'
+        required: true
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Looted'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/attack/origins/next/:
+    post:
+      operationId: attack_next_origin
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - attack
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NextOrigin'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/attack/requests/:
+    post:
+      operationId: attack_send
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - attack
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendRequestRequest'
+        required: true
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sent'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/attack/state/:
+    get:
+      operationId: attack_state
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - attack
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttackState'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/attack/terminal/:
+    get:
+      operationId: attack_terminal
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - attack
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttackTerminal'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/attack/tools/:
+    get:
+      operationId: attack_tools
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - attack
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tools'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    post:
+      operationId: attack_start_tool
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - attack
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartToolRequest'
+        required: true
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Started'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/attack/tools/{run_id}/:
+    get:
+      operationId: attack_tool_output
+      parameters:
+      - in: query
+        name: after
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: run_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - attack
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunPage'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    delete:
+      operationId: attack_stop_tool
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: run_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - attack
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/alerts/:
+    get:
+      operationId: defence_alerts
+      parameters:
+      - in: query
+        name: after
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - in: query
+        name: engine
+        schema:
+          enum:
+          - ids
+          - waf
+          type: string
+          minLength: 1
+        description: |-
+          * `ids` - ids
+          * `waf` - waf
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      - in: query
+        name: rule
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 64
+      - in: query
+        name: src
+        schema:
+          type: string
+          minLength: 1
+      tags:
+      - defence
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alerts'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/forfeit/:
+    post:
+      operationId: defence_forfeit
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ended'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/ids/disabled/:
+    get:
+      operationId: defence_ids_disabled
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DisabledRule'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    post:
+      operationId: defence_ids_disable
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DisableRequest'
+        required: true
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisabledNow'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/ids/disabled/{sid}/:
+    delete:
+      operationId: defence_ids_enable
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: sid
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/ids/rules/:
+    get:
+      operationId: defence_ids_rules
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdsRules'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/ids/rules/apply/:
+    post:
+      operationId: defence_ids_apply
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdsApplyRequest'
+        required: true
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdsApplied'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/ids/rules/check/:
+    post:
+      operationId: defence_ids_check
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TextRequest'
+        required: true
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleCheck'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/ids/rules/test/:
+    post:
+      operationId: defence_ids_test
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdsTestRequest'
+        required: true
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleTestResult'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/ids/rules/tests/{test_id}/:
+    get:
+      operationId: defence_ids_test_result
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: test_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleTestResult'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/ids/rules/versions/:
+    get:
+      operationId: defence_ids_versions
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AppliedVersion'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/kibana/:
+    get:
+      operationId: defence_kibana
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KibanaSpace'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/probes/:
+    get:
+      operationId: defence_probes
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProbeCase'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/state/:
+    get:
+      operationId: defence_state
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefenceState'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/terminal/:
+    get:
+      operationId: defence_terminal
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefenceTerminal'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/traffic/:
+    get:
+      operationId: defence_traffic
+      parameters:
+      - in: query
+        name: after
+        schema:
+          type: string
+          default: ''
+          maxLength: 4096
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Traffic'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/waf/:
+    get:
+      operationId: defence_waf
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WafRead'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/waf/apply/:
+    post:
+      operationId: defence_waf_apply
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WafApplyRequest'
+        required: true
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WafApplied'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/waf/check/:
+    post:
+      operationId: defence_waf_check
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WafCheckRequest'
+        required: true
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleCheck'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/waf/test/:
+    post:
+      operationId: defence_waf_test
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WafTestRequest'
+        required: true
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleTestResult'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/waf/tests/{test_id}/:
+    get:
+      operationId: defence_waf_test_result
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: test_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleTestResult'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/waf/versions/:
+    get:
+      operationId: defence_waf_versions
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AppliedVersion'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/end/:
+    post:
+      operationId: round_end
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - match
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ended'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/events/:
+    get:
+      operationId: round_events
+      parameters:
+      - in: query
+        name: after
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - match
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/score/:
+    get:
+      operationId: round_score
+      parameters:
+      - in: query
+        name: correlation
+        schema:
+          enum:
+          - marker
+          - window
+          type: string
+          minLength: 1
+        description: |-
+          * `marker` - marker
+          * `window` - window
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - match
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Score'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/seats/{side}/join/:
+    post:
+      operationId: round_join
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: string
+          pattern: ^[0-9]+$
+        required: true
+      - in: path
+        name: side
+        schema:
+          type: string
+          pattern: ^attack|defence$
+        required: true
+      tags:
+      - match
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Joined'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/site/requests/:
+    get:
+      operationId: round_site_requests
+      parameters:
+      - in: query
+        name: after
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - match
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SiteRequest'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/start/:
+    post:
+      operationId: round_start
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - match
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhaseShown'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/terminal-auth/attack/:
+    get:
+      operationId: round_terminal_auth_attack
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: string
+          pattern: ^[0-9]+$
+        required: true
+      tags:
+      - match
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/terminal-auth/defence/:
+    get:
+      operationId: round_terminal_auth_defence
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: string
+          pattern: ^[0-9]+$
+        required: true
+      tags:
+      - match
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/topology/:
+    get:
+      operationId: round_topology
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - match
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Topology'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/blocks/:
+    get:
+      operationId: staff_blocks
+      tags:
+      - staff
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Block'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/blocks/{block_id}/:
+    delete:
+      operationId: staff_block_delete
+      parameters:
+      - in: path
+        name: block_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - staff
+      security:
+      - cr_session: []
+      responses:
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/postures/:
+    get:
+      operationId: staff_postures
+      tags:
+      - staff
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Posture'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    post:
+      operationId: staff_posture_create
+      tags:
+      - staff
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostureRequest'
+        required: true
+      security:
+      - cr_session: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Posture'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/postures/{posture_id}/:
+    get:
+      operationId: staff_posture
+      parameters:
+      - in: path
+        name: posture_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - staff
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Posture'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    put:
+      operationId: staff_posture_update
+      parameters:
+      - in: path
+        name: posture_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - staff
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostureRequest'
+        required: true
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Posture'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/probes/{lease_id}/:
+    get:
+      operationId: staff_probes_progress
+      parameters:
+      - in: path
+        name: lease_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - staff
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProbeProgress'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/problems/:
+    get:
+      operationId: staff_problems
+      tags:
+      - staff
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StaffProblem'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    post:
+      operationId: staff_problem_create
+      tags:
+      - staff
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentRequest'
+        required: true
+      security:
+      - cr_session: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredDocument'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/problems/{problem_id}/:
+    get:
+      operationId: staff_problem
+      parameters:
+      - in: path
+        name: problem_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - staff
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredDocument'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    put:
+      operationId: staff_problem_update
+      parameters:
+      - in: path
+        name: problem_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - staff
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevisedDocumentRequest'
+        required: true
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredDocument'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    delete:
+      operationId: staff_problem_delete
+      parameters:
+      - in: path
+        name: problem_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - staff
+      security:
+      - cr_session: []
+      responses:
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/problems/{problem_id}/export/:
+    get:
+      operationId: staff_problem_export
+      parameters:
+      - in: path
+        name: problem_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - staff
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/problems/import/:
+    post:
+      operationId: staff_problem_import
+      tags:
+      - staff
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentRequest'
+        required: true
+      security:
+      - cr_session: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredDocument'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/problems/validate/:
+    post:
+      operationId: staff_problem_validate
+      tags:
+      - staff
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentRequest'
+        required: true
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Validation'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/range/:
+    get:
+      operationId: staff_range
+      tags:
+      - staff
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Range'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/range/fabric/:
+    post:
+      operationId: staff_fabric_build
+      tags:
+      - staff
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Fabric'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    delete:
+      operationId: staff_fabric_remove
+      tags:
+      - staff
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/range/leftovers/:
+    delete:
+      operationId: staff_leftovers_remove
+      tags:
+      - staff
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/range/pool/:
+    get:
+      operationId: staff_pool
+      tags:
+      - staff
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pool'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    post:
+      operationId: staff_pool_fill
+      tags:
+      - staff
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Range'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    delete:
+      operationId: staff_pool_empty
+      tags:
+      - staff
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/steps/{problem_id}/{order}/try/:
+    post:
+      operationId: staff_step_try
+      parameters:
+      - in: path
+        name: order
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: problem_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - staff
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TryAskRequest'
+        required: true
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StepVerdict'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/users/:
+    get:
+      operationId: staff_users
+      tags:
+      - staff
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Account'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/users/{user_id}/approve/:
+    post:
+      operationId: staff_user_approve
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - staff
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/users/{user_id}/disable/:
+    post:
+      operationId: staff_user_disable
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - staff
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/wargames/:
+    get:
+      operationId: staff_wargames
+      tags:
+      - staff
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Wargame'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/staff/wargames/{wargame_id}/probes/record/:
+    post:
+      operationId: staff_probes_record
+      parameters:
+      - in: path
+        name: wargame_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - staff
+      security:
+      - seat_token: []
+      - cr_session: []
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProbeLease'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+components:
+  schemas:
+    Account:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        approved:
+          type: boolean
+        is_staff:
+          type: boolean
+        joined:
+          type: string
+          format: date-time
+      required:
+      - approved
+      - id
+      - is_staff
+      - joined
+      - username
+    Alert:
+      type: object
+      properties:
+        id:
+          type: integer
+        time:
+          type: string
+          format: date-time
+        engine:
+          type: string
+        rule:
+          type: string
+        signature:
+          type: string
+        src_ip:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        uri:
+          type: string
+        blocked:
+          type: boolean
+      required:
+      - blocked
+      - engine
+      - id
+      - request_id
+      - rule
+      - signature
+      - src_ip
+      - time
+      - uri
+    Alerts:
+      type: object
+      properties:
+        alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Alert'
+        next:
+          type: integer
+      required:
+      - alerts
+      - next
+    AnalystSsh:
+      type: object
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+        user:
+          type: string
+        private_key:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        target_host:
+          type: string
+        target_user:
+          type: string
+      required:
+      - expires_at
+      - host
+      - port
+      - private_key
+      - target_host
+      - target_user
+      - user
+    AppliedVersion:
+      type: object
+      properties:
+        version:
+          type: integer
+        applied_at:
+          type: string
+          format: date-time
+        tested:
+          type: integer
+          nullable: true
+        same_as_tested:
+          type: boolean
+      required:
+      - applied_at
+      - same_as_tested
+      - tested
+      - version
+    AttackBrief:
+      type: object
+      properties:
+        title:
+          type: string
+        summary:
+          type: string
+        body:
+          type: string
+      required:
+      - body
+      - summary
+      - title
+    AttackOrigin:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        ip:
+          type: string
+      required:
+      - id
+      - ip
+      - label
+    AttackState:
+      type: object
+      properties:
+        round:
+          type: integer
+        matchup:
+          type: string
+        phase:
+          type: string
+        started:
+          type: string
+          format: date-time
+          nullable: true
+        ends_at:
+          type: string
+          format: date-time
+          nullable: true
+        end_reason:
+          type: string
+        brief:
+          $ref: '#/components/schemas/AttackBrief'
+        target:
+          $ref: '#/components/schemas/AttackTarget'
+        objectives:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectiveLine'
+        origins:
+          type: array
+          items:
+            $ref: '#/components/schemas/OriginLine'
+        hp:
+          $ref: '#/components/schemas/HpBlock'
+      required:
+      - brief
+      - end_reason
+      - ends_at
+      - hp
+      - matchup
+      - objectives
+      - origins
+      - phase
+      - round
+      - started
+      - target
+    AttackTarget:
+      type: object
+      properties:
+        public_url:
+          type: string
+        hosts:
+          type: array
+          items:
+            type: string
+      required:
+      - hosts
+      - public_url
+    AttackTerminal:
+      type: object
+      properties:
+        ws_url:
+          type: string
+        ssh:
+          $ref: '#/components/schemas/Ssh'
+        hp:
+          $ref: '#/components/schemas/HpBlock'
+      required:
+      - hp
+      - ssh
+      - ws_url
+    Block:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          $ref: '#/components/schemas/BlockKindEnum'
+        value:
+          type: string
+        username:
+          type: string
+        reason:
+          type: string
+        failures:
+          type: integer
+        created:
+          type: string
+          format: date-time
+        until:
+          type: string
+          format: date-time
+      required:
+      - created
+      - failures
+      - id
+      - kind
+      - reason
+      - until
+      - username
+      - value
+    BlockKindEnum:
+      enum:
+      - address
+      - fingerprint
+      type: string
+      description: |-
+        * `address` - address
+        * `fingerprint` - fingerprint
+    BotAskRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+      required:
+      - name
+    CaseEntry:
+      type: object
+      properties:
+        case:
+          type: string
+        kind:
+          $ref: '#/components/schemas/CaseEntryKindEnum'
+        malicious:
+          type: boolean
+        title:
+          type: string
+      required:
+      - case
+      - kind
+      - malicious
+      - title
+    CaseEntryKindEnum:
+      enum:
+      - http
+      - tool
+      type: string
+      description: |-
+        * `http` - http
+        * `tool` - tool
+    CaseLine:
+      type: object
+      properties:
+        case:
+          type: string
+        verdict:
+          $ref: '#/components/schemas/VerdictEnum'
+        alerts:
+          type: integer
+        corroborated:
+          type: boolean
+          nullable: true
+      required:
+      - alerts
+      - case
+      - corroborated
+      - verdict
+    CaseVerdict:
+      type: object
+      properties:
+        case:
+          type: string
+        malicious:
+          type: boolean
+        verdict:
+          $ref: '#/components/schemas/VerdictEnum'
+        corroborated:
+          type: boolean
+          nullable: true
+        alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProbeAlert'
+        recorded_run:
+          type: boolean
+      required:
+      - alerts
+      - case
+      - corroborated
+      - malicious
+      - recorded_run
+      - verdict
+    Change:
+      type: object
+      properties:
+        case:
+          type: string
+        was:
+          $ref: '#/components/schemas/VerdictEnum'
+        now:
+          $ref: '#/components/schemas/VerdictEnum'
+      required:
+      - case
+      - now
+      - was
+    Check:
+      type: object
+      properties:
+        kind:
+          type: string
+        params:
+          type: object
+          additionalProperties: {}
+      required:
+      - kind
+      - params
+    CheckAskRequest:
+      type: object
+      properties:
+        answer:
+          nullable: true
+    CheckRequest:
+      type: object
+      properties:
+        kind:
+          type: string
+          minLength: 1
+        params:
+          type: object
+          additionalProperties: {}
+      required:
+      - kind
+      - params
+    Closed:
+      type: object
+      properties:
+        closed:
+          type: string
+          format: date-time
+      required:
+      - closed
+    CreateRoundRequest:
+      type: object
+      properties:
+        problem:
+          type: integer
+        matchup:
+          $ref: '#/components/schemas/MatchupEnum'
+        seats:
+          $ref: '#/components/schemas/SeatsAskRequest'
+      required:
+      - matchup
+      - problem
+      - seats
+    Created:
+      type: object
+      properties:
+        round:
+          type: integer
+        seats:
+          type: array
+          items:
+            $ref: '#/components/schemas/SeatLine'
+        bot_tokens:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+      - bot_tokens
+      - round
+      - seats
+    CredentialsRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 150
+        password:
+          type: string
+          minLength: 1
+          maxLength: 4096
+      required:
+      - password
+      - username
+    CsrfIssued:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required:
+      - ok
+    DefenceBrief:
+      type: object
+      properties:
+        title:
+          type: string
+        summary:
+          type: string
+        body:
+          type: string
+      required:
+      - body
+      - summary
+      - title
+    DefenceState:
+      type: object
+      properties:
+        round:
+          type: integer
+        matchup:
+          type: string
+        phase:
+          type: string
+        started:
+          type: string
+          format: date-time
+          nullable: true
+        ends_at:
+          type: string
+          format: date-time
+          nullable: true
+        end_reason:
+          type: string
+        brief:
+          $ref: '#/components/schemas/DefenceBrief'
+        target:
+          $ref: '#/components/schemas/DefenceTarget'
+        objectives:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectiveState'
+        ids:
+          $ref: '#/components/schemas/Version'
+        waf:
+          $ref: '#/components/schemas/Version'
+        alerts_total:
+          type: integer
+      required:
+      - alerts_total
+      - brief
+      - end_reason
+      - ends_at
+      - ids
+      - matchup
+      - objectives
+      - phase
+      - round
+      - started
+      - target
+      - waf
+    DefenceTarget:
+      type: object
+      properties:
+        public_url:
+          type: string
+        hosts:
+          type: array
+          items:
+            type: string
+      required:
+      - hosts
+      - public_url
+    DefenceTerminal:
+      type: object
+      properties:
+        ws_url:
+          type: string
+        ssh:
+          $ref: '#/components/schemas/AnalystSsh'
+      required:
+      - ssh
+      - ws_url
+    DisableRequest:
+      type: object
+      properties:
+        sid:
+          type: integer
+          minimum: 1
+        minutes:
+          type: number
+          format: double
+          maximum: 1440
+          minimum: 0.1
+          default: 60.0
+        reason:
+          type: string
+          default: ''
+          maxLength: 500
+      required:
+      - sid
+    DisabledNow:
+      type: object
+      properties:
+        sid:
+          type: integer
+        expires_at:
+          type: string
+          format: date-time
+      required:
+      - expires_at
+      - sid
+    DisabledRule:
+      type: object
+      properties:
+        sid:
+          type: integer
+        original:
+          type: string
+        reason:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+      required:
+      - expires_at
+      - original
+      - reason
+      - sid
+    Document:
+      type: object
+      properties:
+        problem:
+          $ref: '#/components/schemas/ProblemFields'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/StaffStep'
+        round:
+          allOf:
+          - $ref: '#/components/schemas/RoundSetup'
+          nullable: true
+        start_posture:
+          allOf:
+          - $ref: '#/components/schemas/InlinePosture'
+          nullable: true
+      required:
+      - problem
+    DocumentRequest:
+      type: object
+      properties:
+        problem:
+          $ref: '#/components/schemas/ProblemFieldsRequest'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/StaffStepRequest'
+        round:
+          allOf:
+          - $ref: '#/components/schemas/RoundSetupRequest'
+          nullable: true
+        start_posture:
+          allOf:
+          - $ref: '#/components/schemas/InlinePostureRequest'
+          nullable: true
+      required:
+      - problem
+    Ended:
+      type: object
+      properties:
+        ended:
+          type: string
+          format: date-time
+        reason:
+          $ref: '#/components/schemas/EndedReasonEnum'
+      required:
+      - ended
+      - reason
+    EndedReasonEnum:
+      enum:
+      - time_limit
+      - all_objectives_lost
+      - origins_spent
+      - ended_by_operator
+      - forfeit_attack
+      - forfeit_defence
+      - steps_done
+      - lease_expired
+      type: string
+      description: |-
+        * `time_limit` - time_limit
+        * `all_objectives_lost` - all_objectives_lost
+        * `origins_spent` - origins_spent
+        * `ended_by_operator` - ended_by_operator
+        * `forfeit_attack` - forfeit_attack
+        * `forfeit_defence` - forfeit_defence
+        * `steps_done` - steps_done
+        * `lease_expired` - lease_expired
+    Event:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+        at:
+          type: string
+          format: date-time
+        seat_side:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/SeatSideEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        body:
+          type: object
+          additionalProperties: {}
+      required:
+      - at
+      - body
+      - id
+      - kind
+      - seat_side
+    Exclusion:
+      type: object
+      properties:
+        rule_id:
+          type: integer
+        tag:
+          type: string
+          maxLength: 64
+        target:
+          type: string
+          maxLength: 200
+        path:
+          type: string
+          maxLength: 200
+    ExclusionRequest:
+      type: object
+      properties:
+        rule_id:
+          type: integer
+        tag:
+          type: string
+          minLength: 1
+          maxLength: 64
+        target:
+          type: string
+          maxLength: 200
+        path:
+          type: string
+          maxLength: 200
+    Expiry:
+      type: object
+      properties:
+        expires_at:
+          type: string
+          format: date-time
+      required:
+      - expires_at
+    Fabric:
+      type: object
+      properties:
+        present:
+          type: array
+          items:
+            type: string
+        clean:
+          type: boolean
+      required:
+      - clean
+      - present
+    FireCaseRequest:
+      type: object
+      properties:
+        case:
+          type: string
+          minLength: 1
+          maxLength: 100
+      required:
+      - case
+    Fired:
+      type: object
+      properties:
+        action:
+          type: integer
+        marker:
+          type: string
+        run:
+          type: integer
+          nullable: true
+        status:
+          type: integer
+          nullable: true
+        hp:
+          $ref: '#/components/schemas/HpBlock'
+      required:
+      - action
+      - hp
+      - marker
+      - run
+      - status
+    FreeActions:
+      type: object
+      properties:
+        by_origin:
+          type: array
+          items:
+            $ref: '#/components/schemas/OriginActivity'
+      required:
+      - by_origin
+    Hint:
+      type: object
+      properties:
+        hint:
+          type: string
+        n:
+          type: integer
+        left:
+          type: integer
+      required:
+      - hint
+      - left
+      - n
+    HintAskRequest:
+      type: object
+      properties:
+        n:
+          type: integer
+      required:
+      - n
+    HpBlock:
+      type: object
+      properties:
+        origin:
+          allOf:
+          - $ref: '#/components/schemas/AttackOrigin'
+          nullable: true
+        left:
+          type: integer
+        budget:
+          type: integer
+        origins_left:
+          type: integer
+        spent:
+          type: array
+          items:
+            type: string
+        rule:
+          $ref: '#/components/schemas/Rule'
+      required:
+      - budget
+      - left
+      - origin
+      - origins_left
+      - rule
+      - spent
+    HpRule:
+      type: object
+      properties:
+        budget:
+          type: integer
+        per_request:
+          type: integer
+        refused_x:
+          type: integer
+        burst_per_s:
+          type: integer
+        burst_x:
+          type: integer
+      required:
+      - budget
+      - burst_per_s
+      - burst_x
+      - per_request
+      - refused_x
+    HpRuleRequest:
+      type: object
+      properties:
+        budget:
+          type: integer
+        per_request:
+          type: integer
+        refused_x:
+          type: integer
+        burst_per_s:
+          type: integer
+        burst_x:
+          type: integer
+      required:
+      - budget
+      - burst_per_s
+      - burst_x
+      - per_request
+      - refused_x
+    IdsApplied:
+      type: object
+      properties:
+        version:
+          type: integer
+        applied_at:
+          type: string
+          format: date-time
+        same_as_tested:
+          type: boolean
+        sensors:
+          type: array
+          items:
+            $ref: '#/components/schemas/SensorApplied'
+      required:
+      - applied_at
+      - same_as_tested
+      - sensors
+      - version
+    IdsApplyRequest:
+      type: object
+      properties:
+        text:
+          type: string
+          maxLength: 200000
+        base_version:
+          type: integer
+          minimum: 0
+        tested:
+          type: integer
+          minimum: 1
+          nullable: true
+      required:
+      - base_version
+      - text
+    IdsRules:
+      type: object
+      properties:
+        text:
+          type: string
+        version:
+          type: integer
+      required:
+      - text
+      - version
+    IdsTestRequest:
+      type: object
+      properties:
+        text:
+          type: string
+          maxLength: 200000
+        cases:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+          maxItems: 200
+      required:
+      - text
+    InlinePosture:
+      type: object
+      properties:
+        name:
+          type: string
+        suricata_rules:
+          type: string
+          default: ''
+        crs_tuning:
+          type: object
+          additionalProperties: {}
+      required:
+      - crs_tuning
+      - name
+    InlinePostureRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        suricata_rules:
+          type: string
+          default: ''
+        crs_tuning:
+          type: object
+          additionalProperties: {}
+      required:
+      - crs_tuning
+      - name
+    Joined:
+      type: object
+      properties:
+        seat:
+          type: integer
+        side:
+          $ref: '#/components/schemas/SeatSideEnum'
+      required:
+      - seat
+      - side
+    KeptObjective:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+      required:
+      - key
+      - name
+    KibanaSpace:
+      type: object
+      properties:
+        space_url:
+          type: string
+      required:
+      - space_url
+    LearnerProblem:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+        wargame:
+          type: string
+        side:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        body:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/LearnerStep'
+      required:
+      - body
+      - id
+      - kind
+      - side
+      - steps
+      - summary
+      - title
+      - wargame
+    LearnerProblemSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+        wargame:
+          type: string
+        side:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+      required:
+      - id
+      - kind
+      - side
+      - summary
+      - title
+      - wargame
+    LearnerStep:
+      type: object
+      properties:
+        order:
+          type: integer
+        body:
+          type: string
+        opens:
+          type: string
+        kind:
+          type: string
+          readOnly: true
+        options:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        hints_available:
+          type: integer
+          readOnly: true
+      required:
+      - body
+      - hints_available
+      - kind
+      - opens
+      - options
+      - order
+    LeaseDetail:
+      type: object
+      properties:
+        lease:
+          type: integer
+        wargame:
+          type: string
+        slot:
+          type: integer
+          nullable: true
+        ready:
+          type: boolean
+        expires_at:
+          type: string
+          format: date-time
+        closed:
+          type: string
+          format: date-time
+          nullable: true
+        rounds:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoundLine'
+      required:
+      - closed
+      - expires_at
+      - lease
+      - ready
+      - rounds
+      - slot
+      - wargame
+    LeaseShown:
+      type: object
+      properties:
+        lease:
+          type: integer
+        wargame:
+          type: string
+        slot:
+          type: integer
+          nullable: true
+        ready:
+          type: boolean
+        expires_at:
+          type: string
+          format: date-time
+        closed:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - closed
+      - expires_at
+      - lease
+      - ready
+      - slot
+      - wargame
+    LessonBrief:
+      type: object
+      properties:
+        id:
+          type: integer
+        side:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        body:
+          type: string
+      required:
+      - body
+      - id
+      - side
+      - summary
+      - title
+    LessonEnded:
+      type: object
+      properties:
+        ended:
+          type: string
+          format: date-time
+      required:
+      - ended
+    LessonLine:
+      type: object
+      properties:
+        round:
+          type: integer
+        problem:
+          type: integer
+        phase:
+          $ref: '#/components/schemas/LessonPhaseEnum'
+        passed_order:
+          type: integer
+      required:
+      - passed_order
+      - phase
+      - problem
+      - round
+    LessonOpened:
+      type: object
+      properties:
+        round:
+          type: integer
+        lease:
+          type: integer
+        phase:
+          $ref: '#/components/schemas/LessonPhaseEnum'
+      required:
+      - lease
+      - phase
+      - round
+    LessonPhaseEnum:
+      enum:
+      - waiting_slot
+      - starting
+      - ready
+      - ended
+      type: string
+      description: |-
+        * `waiting_slot` - waiting_slot
+        * `starting` - starting
+        * `ready` - ready
+        * `ended` - ended
+    LessonShown:
+      type: object
+      properties:
+        round:
+          type: integer
+        lease:
+          type: integer
+        phase:
+          $ref: '#/components/schemas/LessonPhaseEnum'
+        problem:
+          $ref: '#/components/schemas/LessonBrief'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/StepLine'
+        current:
+          type: integer
+          nullable: true
+        progress:
+          $ref: '#/components/schemas/Standing'
+      required:
+      - current
+      - lease
+      - phase
+      - problem
+      - progress
+      - round
+      - steps
+    LootRequest:
+      type: object
+      properties:
+        value: {}
+      required:
+      - value
+    Looted:
+      type: object
+      properties:
+        lost:
+          type: boolean
+        objective:
+          allOf:
+          - $ref: '#/components/schemas/LootedObjective'
+          nullable: true
+        hp:
+          $ref: '#/components/schemas/HpBlock'
+      required:
+      - hp
+      - lost
+      - objective
+    LootedObjective:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+      required:
+      - key
+      - name
+    LostObjective:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        seen:
+          type: boolean
+        attributed_marker:
+          type: string
+          nullable: true
+      required:
+      - attributed_marker
+      - key
+      - name
+      - seen
+    MatchupEnum:
+      enum:
+      - pvp
+      - def_vs_bot
+      - atk_vs_bot
+      type: string
+      description: |-
+        * `pvp` - pvp
+        * `def_vs_bot` - def_vs_bot
+        * `atk_vs_bot` - atk_vs_bot
+    Me:
+      type: object
+      properties:
+        user:
+          type: string
+        is_staff:
+          type: boolean
+        approved:
+          type: boolean
+      required:
+      - approved
+      - is_staff
+      - user
+    MethodEnum:
+      enum:
+      - GET
+      - POST
+      - PUT
+      - PATCH
+      - DELETE
+      - OPTIONS
+      type: string
+      description: |-
+        * `GET` - GET
+        * `POST` - POST
+        * `PUT` - PUT
+        * `PATCH` - PATCH
+        * `DELETE` - DELETE
+        * `OPTIONS` - OPTIONS
+    NextOrigin:
+      type: object
+      properties:
+        origin:
+          allOf:
+          - $ref: '#/components/schemas/AttackOrigin'
+          nullable: true
+        hp:
+          $ref: '#/components/schemas/HpBlock'
+      required:
+      - hp
+      - origin
+    NullEnum:
+      enum:
+      - null
+    ObjectiveLine:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        state:
+          $ref: '#/components/schemas/StateEnum'
+      required:
+      - key
+      - name
+      - state
+    ObjectiveState:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        state:
+          $ref: '#/components/schemas/StateEnum'
+        seen:
+          type: boolean
+      required:
+      - key
+      - name
+      - seen
+      - state
+    Objectives:
+      type: object
+      properties:
+        lost:
+          type: array
+          items:
+            $ref: '#/components/schemas/LostObjective'
+        kept:
+          type: array
+          items:
+            $ref: '#/components/schemas/KeptObjective'
+        weighted:
+          type: number
+          format: double
+      required:
+      - kept
+      - lost
+      - weighted
+    OpenLeaseRequest:
+      type: object
+      properties:
+        wargame:
+          type: string
+          minLength: 1
+          maxLength: 64
+      required:
+      - wargame
+    OpenLessonRequest:
+      type: object
+      properties:
+        problem:
+          type: integer
+      required:
+      - problem
+    OpensEnum:
+      enum:
+      - kibana
+      - terminal_kali
+      - terminal_waf
+      - site
+      - map
+      - ids_rules
+      - waf
+      - alerts
+      - none
+      type: string
+      description: |-
+        * `kibana` - kibana
+        * `terminal_kali` - terminal_kali
+        * `terminal_waf` - terminal_waf
+        * `site` - site
+        * `map` - map
+        * `ids_rules` - ids_rules
+        * `waf` - waf
+        * `alerts` - alerts
+        * `none` - none
+    OriginActivity:
+      type: object
+      properties:
+        ip:
+          type: string
+        actions:
+          type: integer
+        alerts:
+          type: integer
+        refused:
+          type: integer
+      required:
+      - actions
+      - alerts
+      - ip
+      - refused
+    OriginLine:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        ip:
+          type: string
+        left:
+          type: integer
+        budget:
+          type: integer
+        spent_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - budget
+      - id
+      - ip
+      - label
+      - left
+      - spent_at
+    Outcomes:
+      type: object
+      properties:
+        per_case:
+          type: array
+          items:
+            $ref: '#/components/schemas/CaseLine'
+        totals:
+          $ref: '#/components/schemas/Totals'
+        note:
+          type: string
+      required:
+      - note
+      - per_case
+      - totals
+    Page:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+        next:
+          type: integer
+      required:
+      - events
+      - next
+    PhaseShown:
+      type: object
+      properties:
+        phase:
+          $ref: '#/components/schemas/RoundPhaseEnum'
+      required:
+      - phase
+    Pool:
+      type: object
+      properties:
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlotStanding'
+      required:
+      - slots
+    Posture:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        wargame:
+          type: string
+        name:
+          type: string
+        suricata_rules:
+          type: string
+          default: ''
+        crs_tuning:
+          type: object
+          additionalProperties: {}
+      required:
+      - crs_tuning
+      - id
+      - name
+      - wargame
+    PostureRequest:
+      type: object
+      properties:
+        wargame:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        suricata_rules:
+          type: string
+          default: ''
+        crs_tuning:
+          type: object
+          additionalProperties: {}
+      required:
+      - crs_tuning
+      - name
+      - wargame
+    ProbeAlert:
+      type: object
+      properties:
+        rule:
+          type: string
+        signature:
+          type: string
+      required:
+      - rule
+      - signature
+    ProbeCase:
+      type: object
+      properties:
+        case:
+          type: string
+        malicious:
+          type: boolean
+        recorded:
+          type: boolean
+        tool_case:
+          type: boolean
+      required:
+      - case
+      - malicious
+      - recorded
+      - tool_case
+    ProbeFailure:
+      type: object
+      properties:
+        case:
+          type: string
+        code:
+          type: string
+      required:
+      - case
+      - code
+    ProbeLease:
+      type: object
+      properties:
+        lease:
+          type: integer
+      required:
+      - lease
+    ProbeProgress:
+      type: object
+      properties:
+        lease:
+          type: integer
+        wargame:
+          type: string
+        state:
+          type: string
+        total:
+          type: integer
+        done:
+          type: array
+          items:
+            type: string
+        failed:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProbeFailure'
+      required:
+      - done
+      - failed
+      - lease
+      - state
+      - total
+      - wargame
+    ProblemFields:
+      type: object
+      properties:
+        kind:
+          $ref: '#/components/schemas/ProblemKindEnum'
+        wargame:
+          type: string
+        side:
+          $ref: '#/components/schemas/ProblemSideEnum'
+        title:
+          type: string
+        summary:
+          type: string
+          default: ''
+        body:
+          type: string
+          default: ''
+        published:
+          type: boolean
+          default: false
+      required:
+      - kind
+      - side
+      - title
+      - wargame
+    ProblemFieldsRequest:
+      type: object
+      properties:
+        kind:
+          $ref: '#/components/schemas/ProblemKindEnum'
+        wargame:
+          type: string
+          minLength: 1
+        side:
+          $ref: '#/components/schemas/ProblemSideEnum'
+        title:
+          type: string
+          minLength: 1
+        summary:
+          type: string
+          default: ''
+        body:
+          type: string
+          default: ''
+        published:
+          type: boolean
+          default: false
+      required:
+      - kind
+      - side
+      - title
+      - wargame
+    ProblemKindEnum:
+      enum:
+      - lesson
+      - round
+      type: string
+      description: |-
+        * `lesson` - lesson
+        * `round` - round
+    ProblemSideEnum:
+      enum:
+      - attack
+      - defence
+      - both
+      type: string
+      description: |-
+        * `attack` - attack
+        * `defence` - defence
+        * `both` - both
+    Range:
+      type: object
+      properties:
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlotLine'
+      required:
+      - slots
+    Refill:
+      type: object
+      properties:
+        state:
+          type: string
+        reason:
+          type: string
+      required:
+      - reason
+      - state
+    RevisedDocumentRequest:
+      type: object
+      properties:
+        problem:
+          $ref: '#/components/schemas/ProblemFieldsRequest'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/StaffStepRequest'
+        round:
+          allOf:
+          - $ref: '#/components/schemas/RoundSetupRequest'
+          nullable: true
+        start_posture:
+          allOf:
+          - $ref: '#/components/schemas/InlinePostureRequest'
+          nullable: true
+        base_revision:
+          type: integer
+      required:
+      - base_revision
+      - problem
+    RoundLine:
+      type: object
+      properties:
+        round:
+          type: integer
+        problem:
+          type: integer
+        kind:
+          type: string
+        matchup:
+          type: string
+        phase:
+          $ref: '#/components/schemas/RoundPhaseEnum'
+        seats:
+          type: array
+          items:
+            $ref: '#/components/schemas/SeatLine'
+      required:
+      - kind
+      - matchup
+      - phase
+      - problem
+      - round
+      - seats
+    RoundPhaseEnum:
+      enum:
+      - created
+      - starting
+      - running
+      - ended
+      type: string
+      description: |-
+        * `created` - created
+        * `starting` - starting
+        * `running` - running
+        * `ended` - ended
+    RoundSetup:
+      type: object
+      properties:
+        matchups:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchupEnum'
+        posture:
+          type: string
+          nullable: true
+        probe_cases:
+          type: array
+          items:
+            type: string
+        objectives:
+          type: array
+          items:
+            type: string
+        hp:
+          $ref: '#/components/schemas/HpRule'
+        traffic:
+          type: string
+          nullable: true
+        benign_every_s:
+          type: integer
+        time_limit_s:
+          type: integer
+          nullable: true
+      required:
+      - hp
+      - matchups
+    RoundSetupRequest:
+      type: object
+      properties:
+        matchups:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchupEnum'
+        posture:
+          type: string
+          nullable: true
+          minLength: 1
+        probe_cases:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        objectives:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        hp:
+          $ref: '#/components/schemas/HpRuleRequest'
+        traffic:
+          type: string
+          nullable: true
+          minLength: 1
+        benign_every_s:
+          type: integer
+        time_limit_s:
+          type: integer
+          nullable: true
+      required:
+      - hp
+      - matchups
+    RoundShown:
+      type: object
+      properties:
+        round:
+          type: integer
+        lease:
+          type: integer
+        problem:
+          type: integer
+        kind:
+          type: string
+        matchup:
+          type: string
+        phase:
+          $ref: '#/components/schemas/RoundPhaseEnum'
+        seats:
+          type: array
+          items:
+            $ref: '#/components/schemas/SeatLine'
+        started:
+          type: string
+          format: date-time
+          nullable: true
+        ends_at:
+          type: string
+          format: date-time
+          nullable: true
+        ended:
+          type: string
+          format: date-time
+          nullable: true
+        end_reason:
+          type: string
+      required:
+      - end_reason
+      - ended
+      - ends_at
+      - kind
+      - lease
+      - matchup
+      - phase
+      - problem
+      - round
+      - seats
+      - started
+    Rule:
+      type: object
+      properties:
+        budget:
+          type: integer
+        per_request:
+          type: integer
+        refused_x:
+          type: integer
+        burst_per_s:
+          type: integer
+        burst_x:
+          type: integer
+        refused_statuses:
+          type: array
+          items:
+            type: integer
+      required:
+      - budget
+      - burst_per_s
+      - burst_x
+      - per_request
+      - refused_statuses
+      - refused_x
+    RuleCheck:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleError'
+      required:
+      - errors
+      - ok
+    RuleError:
+      type: object
+      properties:
+        path:
+          type: string
+        code:
+          type: string
+        line:
+          type: integer
+          nullable: true
+        message:
+          type: string
+      required:
+      - code
+      - line
+      - message
+      - path
+    RuleTestResult:
+      type: object
+      properties:
+        test:
+          type: integer
+        ok:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleError'
+        cases:
+          type: array
+          items:
+            $ref: '#/components/schemas/CaseVerdict'
+        totals:
+          $ref: '#/components/schemas/VerdictTotals'
+        untested:
+          type: array
+          items:
+            $ref: '#/components/schemas/UntestedCase'
+        against_applied:
+          type: array
+          items:
+            $ref: '#/components/schemas/Change'
+      required:
+      - against_applied
+      - cases
+      - errors
+      - ok
+      - test
+      - totals
+      - untested
+    RunLine:
+      type: object
+      properties:
+        run:
+          type: integer
+        tool:
+          type: string
+        started:
+          type: string
+          format: date-time
+        ended:
+          type: string
+          format: date-time
+          nullable: true
+        exit_code:
+          type: integer
+          nullable: true
+        stopped_by:
+          type: string
+          nullable: true
+      required:
+      - ended
+      - exit_code
+      - run
+      - started
+      - stopped_by
+      - tool
+    RunPage:
+      type: object
+      properties:
+        output:
+          type: string
+        offset:
+          type: integer
+        done:
+          type: boolean
+        exit_code:
+          type: integer
+          nullable: true
+        stopped_by:
+          type: string
+          nullable: true
+        hp:
+          $ref: '#/components/schemas/HpBlock'
+      required:
+      - done
+      - exit_code
+      - hp
+      - offset
+      - output
+      - stopped_by
+    Score:
+      type: object
+      properties:
+        objectives:
+          $ref: '#/components/schemas/Objectives'
+        outcomes:
+          $ref: '#/components/schemas/Outcomes'
+        free_actions:
+          $ref: '#/components/schemas/FreeActions'
+        posture_drift:
+          type: boolean
+      required:
+      - free_actions
+      - objectives
+      - outcomes
+      - posture_drift
+    SeatAskRequest:
+      type: object
+      properties:
+        user:
+          type: integer
+        bot:
+          $ref: '#/components/schemas/BotAskRequest'
+        open:
+          type: boolean
+    SeatLine:
+      type: object
+      properties:
+        side:
+          $ref: '#/components/schemas/SeatSideEnum'
+        client:
+          type: string
+        user:
+          type: integer
+          nullable: true
+        bot_name:
+          type: string
+      required:
+      - bot_name
+      - client
+      - side
+      - user
+    SeatSideEnum:
+      enum:
+      - attack
+      - defence
+      type: string
+      description: |-
+        * `attack` - attack
+        * `defence` - defence
+    SeatsAskRequest:
+      type: object
+      properties:
+        attack:
+          $ref: '#/components/schemas/SeatAskRequest'
+        defence:
+          $ref: '#/components/schemas/SeatAskRequest'
+    SendRequestRequest:
+      type: object
+      properties:
+        method:
+          $ref: '#/components/schemas/MethodEnum'
+        path:
+          type: string
+          minLength: 1
+          maxLength: 8192
+        host:
+          type: string
+          nullable: true
+          minLength: 1
+        query:
+          type: object
+          additionalProperties:
+            type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+            maxLength: 8192
+        body:
+          type: string
+          nullable: true
+          maxLength: 1048576
+      required:
+      - method
+      - path
+    SensorApplied:
+      type: object
+      properties:
+        name:
+          type: string
+        ok:
+          type: boolean
+      required:
+      - name
+      - ok
+    Sent:
+      type: object
+      properties:
+        action:
+          type: integer
+        marker:
+          type: string
+        status:
+          type: integer
+        headers:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+        body:
+          type: string
+        truncated:
+          type: boolean
+        hp:
+          $ref: '#/components/schemas/HpBlock'
+      required:
+      - action
+      - body
+      - headers
+      - hp
+      - marker
+      - status
+      - truncated
+    Server:
+      type: object
+      properties:
+        host:
+          type: string
+        server:
+          type: string
+        status:
+          type: string
+      required:
+      - host
+      - server
+      - status
+    SignUpRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 150
+          pattern: ^[\w.@+-]+$
+        password:
+          type: string
+          minLength: 1
+          maxLength: 4096
+      required:
+      - password
+      - username
+    SignedIn:
+      type: object
+      properties:
+        user:
+          type: string
+      required:
+      - user
+    SignedUp:
+      type: object
+      properties:
+        user:
+          type: string
+        approved:
+          type: boolean
+      required:
+      - approved
+      - user
+    SiteRequest:
+      type: object
+      properties:
+        id:
+          type: integer
+        at:
+          type: string
+          format: date-time
+        method:
+          type: string
+        url:
+          type: string
+        status:
+          type: integer
+        size:
+          type: integer
+      required:
+      - at
+      - id
+      - method
+      - size
+      - status
+      - url
+    SlotLine:
+      type: object
+      properties:
+        slot:
+          type: integer
+        wargame:
+          type: string
+        lease:
+          type: integer
+          nullable: true
+        refill:
+          $ref: '#/components/schemas/Refill'
+      required:
+      - lease
+      - refill
+      - slot
+      - wargame
+    SlotStanding:
+      type: object
+      properties:
+        slot:
+          type: integer
+        wargame:
+          type: string
+        servers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Server'
+        blocked:
+          type: array
+          items:
+            type: string
+        failures:
+          type: array
+          items:
+            type: string
+      required:
+      - blocked
+      - failures
+      - servers
+      - slot
+      - wargame
+    Ssh:
+      type: object
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+        user:
+          type: string
+        private_key:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        target_host:
+          type: string
+        target_user:
+          type: string
+      required:
+      - expires_at
+      - host
+      - port
+      - private_key
+      - target_host
+      - target_user
+      - user
+    StaffProblem:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+        wargame:
+          type: string
+        side:
+          type: string
+        title:
+          type: string
+        published:
+          type: boolean
+        revision:
+          type: integer
+        updated:
+          type: string
+          format: date-time
+      required:
+      - id
+      - kind
+      - published
+      - revision
+      - side
+      - title
+      - updated
+      - wargame
+    StaffStep:
+      type: object
+      properties:
+        order:
+          type: integer
+        body:
+          type: string
+        opens:
+          allOf:
+          - $ref: '#/components/schemas/OpensEnum'
+          default: none
+        check:
+          $ref: '#/components/schemas/Check'
+        answer:
+          nullable: true
+        hints:
+          type: array
+          items:
+            type: string
+      required:
+      - body
+      - check
+      - order
+    StaffStepRequest:
+      type: object
+      properties:
+        order:
+          type: integer
+        body:
+          type: string
+          minLength: 1
+        opens:
+          allOf:
+          - $ref: '#/components/schemas/OpensEnum'
+          default: none
+        check:
+          $ref: '#/components/schemas/CheckRequest'
+        answer:
+          nullable: true
+        hints:
+          type: array
+          items:
+            type: string
+            minLength: 1
+      required:
+      - body
+      - check
+      - order
+    Standing:
+      type: object
+      properties:
+        passed_order:
+          type: integer
+        passed_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - passed_at
+      - passed_order
+    StartToolRequest:
+      type: object
+      properties:
+        tool:
+          type: string
+          minLength: 1
+          maxLength: 32
+        args:
+          type: array
+          items:
+            type: string
+            maxLength: 4096
+          maxItems: 64
+      required:
+      - tool
+    Started:
+      type: object
+      properties:
+        run:
+          type: integer
+        action:
+          type: integer
+        hp:
+          $ref: '#/components/schemas/HpBlock'
+      required:
+      - action
+      - hp
+      - run
+    StateEnum:
+      enum:
+      - kept
+      - lost
+      type: string
+      description: |-
+        * `kept` - kept
+        * `lost` - lost
+    StepLine:
+      type: object
+      properties:
+        order:
+          type: integer
+        body:
+          type: string
+        opens:
+          type: string
+        hints_available:
+          type: integer
+      required:
+      - body
+      - hints_available
+      - opens
+      - order
+    StepVerdict:
+      type: object
+      properties:
+        verdict:
+          $ref: '#/components/schemas/StepVerdictVerdictEnum'
+        detail_code:
+          type: string
+          nullable: true
+        next:
+          type: integer
+          nullable: true
+      required:
+      - detail_code
+      - next
+      - verdict
+    StepVerdictVerdictEnum:
+      enum:
+      - passed
+      - not_yet
+      type: string
+      description: |-
+        * `passed` - passed
+        * `not_yet` - not_yet
+    StoredDocument:
+      type: object
+      properties:
+        problem:
+          $ref: '#/components/schemas/StoredProblemFields'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/StaffStep'
+        round:
+          allOf:
+          - $ref: '#/components/schemas/RoundSetup'
+          nullable: true
+        start_posture:
+          allOf:
+          - $ref: '#/components/schemas/InlinePosture'
+          nullable: true
+      required:
+      - problem
+    StoredProblemFields:
+      type: object
+      properties:
+        kind:
+          $ref: '#/components/schemas/ProblemKindEnum'
+        wargame:
+          type: string
+        side:
+          $ref: '#/components/schemas/ProblemSideEnum'
+        title:
+          type: string
+        summary:
+          type: string
+          default: ''
+        body:
+          type: string
+          default: ''
+        published:
+          type: boolean
+          default: false
+        id:
+          type: integer
+        revision:
+          type: integer
+        author:
+          type: string
+          nullable: true
+        updated:
+          type: string
+          format: date-time
+      required:
+      - author
+      - id
+      - kind
+      - revision
+      - side
+      - title
+      - updated
+      - wargame
+    TextRequest:
+      type: object
+      properties:
+        text:
+          type: string
+          maxLength: 200000
+      required:
+      - text
+    Thresholds:
+      type: object
+      properties:
+        inbound:
+          type: integer
+        outbound:
+          type: integer
+    ThresholdsRequest:
+      type: object
+      properties:
+        inbound:
+          type: integer
+        outbound:
+          type: integer
+    ToolSpec:
+      type: object
+      properties:
+        tool:
+          type: string
+        args_schema:
+          type: object
+          additionalProperties: {}
+      required:
+      - args_schema
+      - tool
+    Tools:
+      type: object
+      properties:
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolSpec'
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunLine'
+        hp:
+          $ref: '#/components/schemas/HpBlock'
+      required:
+      - hp
+      - runs
+      - tools
+    Topology:
+      type: object
+      properties:
+        zones:
+          type: array
+          items: {}
+        nodes:
+          type: array
+          items: {}
+        edges:
+          type: array
+          items: {}
+      required:
+      - edges
+      - nodes
+      - zones
+    Totals:
+      type: object
+      properties:
+        tp:
+          type: integer
+        fp:
+          type: integer
+        fn:
+          type: integer
+        tn:
+          type: integer
+      required:
+      - fn
+      - fp
+      - tn
+      - tp
+    Traffic:
+      type: object
+      properties:
+        by_origin:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrafficOrigin'
+        next:
+          type: string
+      required:
+      - by_origin
+      - next
+    TrafficOrigin:
+      type: object
+      properties:
+        ip:
+          type: string
+        requests:
+          type: integer
+        refused:
+          type: integer
+        last_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - ip
+      - last_at
+      - refused
+      - requests
+    TryAskRequest:
+      type: object
+      properties:
+        answer:
+          nullable: true
+        round:
+          type: integer
+      required:
+      - round
+    UntestedCase:
+      type: object
+      properties:
+        case:
+          type: string
+        reason:
+          $ref: '#/components/schemas/UntestedCaseReasonEnum'
+      required:
+      - case
+      - reason
+    UntestedCaseReasonEnum:
+      enum:
+      - tool_case
+      - not_recorded
+      type: string
+      description: |-
+        * `tool_case` - tool_case
+        * `not_recorded` - not_recorded
+    Validation:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - errors
+      - ok
+    VerdictEnum:
+      enum:
+      - tp
+      - fn
+      - fp
+      - tn
+      type: string
+      description: |-
+        * `tp` - tp
+        * `fn` - fn
+        * `fp` - fp
+        * `tn` - tn
+    VerdictTotals:
+      type: object
+      properties:
+        tp:
+          type: integer
+        fn:
+          type: integer
+        fp:
+          type: integer
+        tn:
+          type: integer
+      required:
+      - fn
+      - fp
+      - tn
+      - tp
+    Version:
+      type: object
+      properties:
+        version:
+          type: integer
+      required:
+      - version
+    WafApplied:
+      type: object
+      properties:
+        version:
+          type: integer
+        applied_at:
+          type: string
+          format: date-time
+        same_as_tested:
+          type: boolean
+      required:
+      - applied_at
+      - same_as_tested
+      - version
+    WafApplyRequest:
+      type: object
+      properties:
+        posture:
+          $ref: '#/components/schemas/WafPostureRequest'
+        base_version:
+          type: integer
+          minimum: 0
+        tested:
+          type: integer
+          minimum: 1
+          nullable: true
+      required:
+      - base_version
+      - posture
+    WafCheckRequest:
+      type: object
+      properties:
+        posture:
+          $ref: '#/components/schemas/WafPostureRequest'
+      required:
+      - posture
+    WafPosture:
+      type: object
+      properties:
+        paranoia:
+          type: integer
+        exclusions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Exclusion'
+        thresholds:
+          $ref: '#/components/schemas/Thresholds'
+        detection_only:
+          type: boolean
+      required:
+      - paranoia
+    WafPostureRequest:
+      type: object
+      properties:
+        paranoia:
+          type: integer
+        exclusions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExclusionRequest'
+        thresholds:
+          $ref: '#/components/schemas/ThresholdsRequest'
+        detection_only:
+          type: boolean
+      required:
+      - paranoia
+    WafRead:
+      type: object
+      properties:
+        posture:
+          $ref: '#/components/schemas/WafPosture'
+        version:
+          type: integer
+      required:
+      - posture
+      - version
+    WafTestRequest:
+      type: object
+      properties:
+        posture:
+          $ref: '#/components/schemas/WafPostureRequest'
+        cases:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+          maxItems: 200
+      required:
+      - posture
+    Wargame:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        image:
+          type: string
+        public_url:
+          type: string
+        hosts:
+          type: array
+          items:
+            type: string
+        objective_model:
+          type: string
+        case_file:
+          type: string
+        default_traffic:
+          type: string
+          nullable: true
+      required:
+      - case_file
+      - default_traffic
+      - hosts
+      - id
+      - image
+      - objective_model
+      - public_url
+      - title
+    ErrorCodeEnum:
+      type: string
+      enum:
+      - account_pending
+      - already_seated
+      - apply_refused
+      - attacker_unavailable
+      - blank
+      - conflict
+      - crs_refused
+      - csrf_failed
+      - does_not_exist
+      - elastic_unavailable
+      - empty
+      - engine_refused
+      - ground_truth_unavailable
+      - in_use
+      - invalid
+      - invalid_choice
+      - kibana_unavailable
+      - lease_closed
+      - loot_not_taken
+      - malformed
+      - matchup_not_allowed
+      - max_length
+      - max_value
+      - method_not_allowed
+      - min_length
+      - min_value
+      - name_taken
+      - not_a_boolean
+      - not_a_choice
+      - not_a_list
+      - not_a_positive_integer
+      - not_a_text
+      - not_a_text_list
+      - not_acceptable
+      - not_an_object
+      - not_an_option
+      - not_found
+      - not_malicious
+      - not_operator
+      - not_recorded
+      - not_seated
+      - not_signed_in
+      - not_staff
+      - 'null'
+      - objective_fallen
+      - origins_spent
+      - out_of_sequence
+      - own_account
+      - password_entirely_numeric
+      - password_too_common
+      - password_too_short
+      - password_too_similar
+      - probe_running
+      - range_drifted
+      - range_not_cloud
+      - range_unavailable
+      - required
+      - round_closed
+      - round_not_started
+      - round_open
+      - round_running
+      - round_started
+      - seat_taken
+      - seats_open
+      - sensor_unavailable
+      - server_error
+      - sign_in_blocked
+      - sign_ups_closed
+      - sign_ups_throttled
+      - stale_revision
+      - stale_version
+      - step_locked
+      - suricata_syntax
+      - test_busy
+      - too_many
+      - tool_unavailable
+      - unavailable
+      - unknown_block
+      - unknown_case
+      - unknown_check
+      - unknown_field
+      - unknown_lease
+      - unknown_objective
+      - unknown_origin
+      - unknown_pane
+      - unknown_posture
+      - unknown_problem
+      - unknown_profile
+      - unknown_round
+      - unknown_run
+      - unknown_step
+      - unknown_tool
+      - unknown_user
+      - unknown_wargame
+      - unread_sid
+      - unsupported_media_type
+      - username_taken
+      - waf_unavailable
+      - wrong_credentials
+    FieldError:
+      type: object
+      properties:
+        path:
+          type: string
+        code:
+          $ref: '#/components/schemas/ErrorCodeEnum'
+        line:
+          type: integer
+        params:
+          type: object
+          additionalProperties: {}
+      required:
+      - path
+      - code
+    Errors:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldError'
+        hp:
+          $ref: '#/components/schemas/HpBlock'
+      required:
+      - errors
+  securitySchemes:
+    cr_session:
+      type: apiKey
+      in: cookie
+      name: cr_session
+    seat_token:
+      type: http
+      scheme: bearer
