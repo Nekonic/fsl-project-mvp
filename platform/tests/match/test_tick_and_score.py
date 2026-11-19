@@ -119,6 +119,23 @@ def test_the_follower_ticks_running_rounds_closes_expired_leases_and_prunes(runn
     assert log.after(running.pk, 0, log.Viewer(staff=True)).events == []
 
 
+def test_an_unexpected_failure_in_one_step_neither_stops_the_tick_nor_the_follower(monkeypatch, running):
+    from defence import service as defence
+
+    def broken(found):
+        raise RuntimeError("a bug in one step")
+
+    monkeypatch.setattr(defence, "ingest_alerts", broken)
+    ticked = service.tick
+    monkeypatch.setattr(service, "advance_refills", lambda: (_ for _ in ()).throw(RuntimeError("refill bug")))
+    monkeypatch.setattr(service, "tick", lambda found, now=None: (_ for _ in ()).throw(KeyError("tick bug")))
+
+    followed = follow.once()
+
+    assert followed.refilled == 0 and followed.ticked == (running.pk,) and followed.ended == ()
+    assert ticked(running, running.started + timedelta(seconds=901)) == "time_limit"
+
+
 def test_the_follower_runs_a_fixed_number_of_rounds_without_sleeping_past_the_last(cloud, db):
     paused = []
 

@@ -248,3 +248,44 @@ def test_rounds_list_what_the_user_holds_and_what_is_joinable(browser, lease, pr
 
     assert len(joinable) == 1 and joinable[0]["seats"]
     assert mine == []
+
+
+def test_open_rounds_list_only_what_the_user_holds_unless_staff(browser, lease, problem, learner, other, make_user,
+                                                                staff):
+    found = pvp(lease, problem, other, learner)
+    browser.force_authenticate(make_user("stranger"))
+    assert browser.get("/api/rounds/?state=open").json() == []
+    browser.force_authenticate(learner)
+    assert [one["round"] for one in browser.get("/api/rounds/?state=open").json()] == [found.pk]
+    browser.force_authenticate(staff)
+    assert [one["round"] for one in browser.get("/api/rounds/?state=open").json()] == [found.pk]
+
+
+def test_a_round_ended_while_it_starts_stays_ended(monkeypatch, lease, problem, learner, other):
+    from attack import service as attack
+
+    found = pvp(lease, problem, other, learner)
+    filled = attack.fill_pool
+
+    def ended_meanwhile(one):
+        filled(one)
+        service.end_round(service.round_of(one.pk), "ended_by_operator")
+
+    monkeypatch.setattr(attack, "fill_pool", ended_meanwhile)
+
+    started = service.start_round(found)
+
+    assert started.phase == "ended" and started.end_reason == "ended_by_operator"
+    assert "round.started" not in kinds(found)
+    assert not Round.objects.get(pk=found.pk).traffic.get("running")
+
+
+def test_a_bot_token_of_an_ended_round_does_not_keep_the_lease_alive(browser, lease, problem, learner):
+    made = service.create_round(lease, problem.pk, "def_vs_bot",
+                                {"attack": {"bot": {"name": "claude"}}, "defence": {"user": learner.pk}})
+    token = f"Bearer {made.bot_tokens['attack']}"
+    assert browser.post(f"/api/leases/{lease.pk}/heartbeat/", HTTP_AUTHORIZATION=token).status_code == 200
+    service.start_round(made.round)
+    service.end_round(made.round, "ended_by_operator")
+
+    refused(browser.post(f"/api/leases/{lease.pk}/heartbeat/", HTTP_AUTHORIZATION=token), 409, "round_closed")

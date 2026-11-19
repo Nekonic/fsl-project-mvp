@@ -19,9 +19,10 @@ PASSED_ON = ("Accept", "Accept-Language", "Content-Type", "User-Agent")
 NOT_RETURNED = frozenset({"connection", "content-length", "keep-alive", "set-cookie", "transfer-encoding",
                           "content-encoding"})
 LESSON = "lesson"
+ATTACK_PANE, BROWSE_PANE = "attack", "browse"
 
-kept: dict[int, deque] = {}
-jars: dict[tuple[int, str], dict[str, str]] = {}
+kept: dict[tuple[int, str], deque] = {}
+jars: dict[tuple[int, str, str], dict[str, str]] = {}
 numbers = itertools.count(1)
 guard = threading.Lock()
 
@@ -40,19 +41,23 @@ def attack_seat(found: Round, seated: Sequence[Seat]) -> Seat | None:
     return next((seat for seat in seated if seat.side == "attack"), None)
 
 
+def pane_of(found: Round, seated: Sequence[Seat]) -> str:
+    return ATTACK_PANE if attack_seat(found, seated) is not None else BROWSE_PANE
+
+
 def checked_host(found: Round, host: str) -> str:
     if host not in list(found.snapshot.get("wargame", {}).get("hosts") or ()):
         raise errors.NotFound()
     return host
 
 
-def cookie_header(round_id: int, host: str) -> str:
+def cookie_header(round_id: int, pane: str, host: str) -> str:
     with guard:
-        jar = dict(jars.get((round_id, host), {}))
+        jar = dict(jars.get((round_id, pane, host), {}))
     return "; ".join(f"{name}={value}" for name, value in jar.items())
 
 
-def keep_cookies(round_id: int, host: str, headers: Sequence[tuple[str, str]]) -> None:
+def keep_cookies(round_id: int, pane: str, host: str, headers: Sequence[tuple[str, str]]) -> None:
     for name, value in headers:
         if name.lower() != "set-cookie":
             continue
@@ -61,7 +66,7 @@ def keep_cookies(round_id: int, host: str, headers: Sequence[tuple[str, str]]) -
         except CookieError:
             continue
         with guard:
-            jar = jars.setdefault((round_id, host), {})
+            jar = jars.setdefault((round_id, pane, host), {})
             for morsel in parsed.values():
                 if morsel["max-age"] == "0":
                     jar.pop(morsel.key, None)
@@ -76,9 +81,9 @@ def browse_source(found: Round) -> str:
     return sources[0]
 
 
-def remember(found: Round, method: str, host: str, path: str, status: int, size: int) -> None:
+def remember(found: Round, pane: str, method: str, host: str, path: str, status: int, size: int) -> None:
     with guard:
-        kept.setdefault(found.pk, deque(maxlen=KEPT_PER_ROUND)).append({
+        kept.setdefault((found.pk, pane), deque(maxlen=KEPT_PER_ROUND)).append({
             "id": next(numbers), "at": timezone.now(), "method": method, "url": f"http://{host}{path}",
             "status": status, "size": size})
 
@@ -88,10 +93,11 @@ def browse(found: Round, seated: Sequence[Seat], method: str, host: str, path: s
     auth.refuse_write(found)
     host = checked_host(found, host)
     passed = {name: headers[name] for name in PASSED_ON if headers.get(name)}
-    cookie = cookie_header(found.pk, host)
+    seat = attack_seat(found, seated)
+    pane = pane_of(found, seated)
+    cookie = cookie_header(found.pk, pane, host)
     if cookie:
         passed["Cookie"] = cookie
-    seat = attack_seat(found, seated)
     if seat is not None:
         sent = attack.send(found, seat, method, path, host=host, headers=passed, body=body, kind="site")
         left = attack.hp(found).left
@@ -99,19 +105,19 @@ def browse(found: Round, seated: Sequence[Seat], method: str, host: str, path: s
         sent = attack.send_as_customer(found, browse_source(found), method, path, host=host, headers=passed,
                                        body=body, marker=found.lease.browse_marker)
         left = None
-    keep_cookies(found.pk, host, sent.headers)
-    remember(found, method, host, path, sent.status, len(sent.body))
+    keep_cookies(found.pk, pane, host, sent.headers)
+    remember(found, pane, method, host, path, sent.status, len(sent.body))
     returned = tuple((name, value) for name, value in sent.headers if name.lower() not in NOT_RETURNED)
     return Fetched(status=sent.status, headers=returned, body=sent.body, hp_left=left)
 
 
-def requests_of(found: Round, after: int = 0) -> list[dict]:
+def requests_of(found: Round, seated: Sequence[Seat], after: int = 0) -> list[dict]:
     with guard:
-        return [record for record in kept.get(found.pk, ()) if record["id"] > after]
+        return [record for record in kept.get((found.pk, pane_of(found, seated)), ()) if record["id"] > after]
 
 
 def forget(round_id: int) -> None:
     with guard:
-        kept.pop(round_id, None)
-        for key in [key for key in jars if key[0] == round_id]:
-            del jars[key]
+        for store in (kept, jars):
+            for key in [key for key in store if key[0] == round_id]:
+                del store[key]

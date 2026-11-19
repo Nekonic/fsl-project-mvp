@@ -231,14 +231,12 @@ def seats(found: Round) -> list[Seat]:
 
 def rounds_for(user, mine: bool = False, state: str = "") -> list[Round]:
     found = Round.objects.select_related("lease").order_by("-id")
-    if mine:
+    if mine or (state != "joinable" and not user.is_staff):
         found = found.filter(Q(seats__user=user) | Q(lease__opened_by=user)).distinct()
     if state == "open":
         found = found.exclude(phase=ENDED)
     elif state == "joinable":
         found = found.filter(phase=CREATED, kind=ROUND, seats__client=HUMAN, seats__user=None).distinct()
-    elif not mine and not user.is_staff:
-        found = found.filter(Q(seats__user=user) | Q(lease__opened_by=user)).distinct()
     return list(found[:100])
 
 
@@ -292,18 +290,21 @@ def start_round(found: Round) -> Round:
         limit = (frozen.get("round") or {}).get("time_limit_s")
         found.snapshot, found.phase, found.started = frozen, STARTING, begun
         found.ends_at = begun + timedelta(seconds=int(limit)) if limit else None
-        found.save(update_fields=["snapshot", "phase", "started", "ends_at"])
+        found.save(update_fields=["snapshot", "started", "ends_at"])
         defence.apply_posture(found)
         referee.take_baseline(found, reach(found))
         attack.fill_pool(found)
     except Exception:
-        Round.objects.filter(pk=found.pk).update(phase=CREATED, started=None, ends_at=None)
+        Round.objects.filter(pk=found.pk, phase=STARTING).update(phase=CREATED, started=None, ends_at=None)
         found.refresh_from_db()
         raise
     prepare_kibana(found)
     customers.begin(found)
+    if not Round.objects.filter(pk=found.pk, phase=STARTING).update(phase=RUNNING):
+        found.refresh_from_db()
+        customers.stop(found)
+        return found
     found.phase = RUNNING
-    found.save(update_fields=["phase"])
     log.append(found.pk, "round.started", {"ends_at": found.ends_at.isoformat() if found.ends_at else None})
     return found
 
@@ -313,6 +314,13 @@ def guarded(found: Round, what: str, work) -> None:
         work(found)
     except (errors.DomainError, OSError) as failed:
         logger.warning("round %s: %s failed: %s", found.pk, what, failed)
+
+
+def stepped(found: Round, what: str, work) -> None:
+    try:
+        work(found)
+    except Exception:
+        logger.exception("round %s: %s failed", found.pk, what)
 
 
 def settle(found: Round) -> None:
@@ -373,7 +381,7 @@ def tick(found: Round, at: datetime | None = None) -> str | None:
     if found.phase != RUNNING:
         return None
     for what, step in TICK_STEPS:
-        guarded(found, what, step)
+        stepped(found, what, step)
     found.refresh_from_db()
     reason = round_rules.ended(state_of(found, at or now()))
     if reason is not None:
@@ -459,7 +467,7 @@ def browse(found: Round, seated: list[Seat], method: str, host: str, path: str, 
 def site_requests(found: Round, seated: list[Seat], after: int = 0) -> list[dict]:
     if not seated:
         raise errors.NotSeated()
-    return site.requests_of(found, after)
+    return site.requests_of(found, seated, after)
 
 
 def record_probes(wargame_id: str, user) -> Lease:

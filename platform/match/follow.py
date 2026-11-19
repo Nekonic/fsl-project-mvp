@@ -6,9 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
-from django.db import DatabaseError
-
-from cr import errors
 from match import retention, service
 
 logger = logging.getLogger(__name__)
@@ -26,8 +23,8 @@ class Followed:
 def guarded(what: str, work: Callable, fallback):
     try:
         return work()
-    except (errors.DomainError, DatabaseError, OSError) as failed:
-        logger.warning("follow: %s failed: %s", what, failed)
+    except Exception:
+        logger.exception("follow: %s failed", what)
         return fallback
 
 

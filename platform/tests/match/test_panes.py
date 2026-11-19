@@ -47,6 +47,21 @@ def test_the_defence_seat_browses_with_the_lease_s_marker_from_a_customer_addres
     assert browser.get(url(running, f"site/requests/?after={listed[-1]['id']}")).json() == []
 
 
+def test_one_seat_never_sees_the_other_seat_s_site_requests_or_cookies(browser, cloud, running, other, learner):
+    box = cloud.in_slot(1).box
+    box.answer("cr.status=", "HTTP/1.1 200 OK\r\nSet-Cookie: sessionid=attacker\r\n\r\npost\ncr.status=200\n")
+    browser.force_authenticate(other)
+    browser.get(site(running, "posts/1/"))
+    attack_listed = browser.get(url(running, "site/requests/")).json()
+    browser.force_authenticate(learner)
+    defence_listed = browser.get(url(running, "site/requests/")).json()
+    browser.get(site(running))
+
+    assert [one["url"] for one in attack_listed] == ["http://board.com/posts/1/"]
+    assert defence_listed == []
+    assert "sessionid=attacker" not in box.matching(running.lease.browse_marker)[-1].text
+
+
 def test_the_site_pane_takes_only_the_round_s_hosts_and_only_its_seats(browser, running, other, make_user):
     browser.force_authenticate(other)
     refused(browser.get(f"/site-proxy/{running.pk}/elsewhere.com/"), 404, "not_found")
@@ -119,6 +134,29 @@ def recording_node(original):
         return original(self, argv, stdin, timeout)
 
     return answered
+
+
+def test_a_recording_longer_than_the_idle_time_keeps_its_lease(as_staff, cloud, settings, tmp_path, monkeypatch):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    settings.CR_PROBES_OUT = tmp_path / "wargames"
+    expired = []
+
+    def idle_past(lease, declared, case, truth, folder):
+        expired.extend(service.expire())
+        Lease.objects.filter(pk=lease.pk).update(expires_at=timezone.now() - timedelta(seconds=1))
+        return {"marker": "m", "malicious": bool(case.get("malicious")), "tool_case": "tool" in case}
+
+    monkeypatch.setattr(probes, "one_case", idle_past)
+    monkeypatch.setattr(probes, "threaded", lambda work: work())
+    monkeypatch.setattr(probes, "truth_of", lambda lease, declared: {})
+
+    lease_id = as_staff.post("/api/staff/wargames/board/probes/record/").json()["lease"]
+
+    assert expired == []
+    assert as_staff.get(f"/api/staff/probes/{lease_id}/").json()["state"] == "done"
 
 
 def test_a_second_recording_of_one_wargame_is_refused_while_the_first_holds_a_lease(as_staff, cloud, monkeypatch):

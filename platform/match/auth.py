@@ -178,6 +178,8 @@ class OnLease(permissions.BasePermission):
             return True
         if isinstance(request.auth, Seat):
             seated = request.auth.round.lease_id == lease.pk
+            if seated and request.auth.round.phase == Phase.ENDED.value:
+                raise errors.Conflict(code="round_closed")
         else:
             seated = not isinstance(request.user, BotPrincipal) and Seat.objects.filter(
                 round__lease=lease, user=request.user).exists()

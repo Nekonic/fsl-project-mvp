@@ -128,6 +128,7 @@ def recorded(lease: Lease, declared) -> None:
         truth = truth_of(lease, declared)
         listed = {}
         for case in cases:
+            service.heartbeat(service.lease(lease.pk))
             try:
                 listed[case["name"]] = one_case(lease, declared, case, truth, folder)
             except (errors.DomainError, OSError, ValueError) as failed:
