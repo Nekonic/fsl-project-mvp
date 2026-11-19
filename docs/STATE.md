@@ -63,11 +63,13 @@ on a slot:
 ## Next steps, in order
 
 1. **`front/` in the design the user picks** (spec step 15): the typed
-   console, the new `platform/nginx.conf` (per-seat `/vm-terminal/<side>/<round>/`
-   with `auth_request` to `terminal-auth`, the 8002 listener keyed by round,
-   the SPA fallback last), and a `platform/vm-terminal.sh` that opens cr-waf
-   as `analyst` and no longer reads the deleted `api.models.Session`. The
-   user chooses the design before it is built (gate 1).
+   console and the Dockerfile's node stage. `platform/nginx.conf` already
+   serves `/app/front/dist` last with the `index.html` fallback, hands
+   `/vm-terminal/<side>/<round>/` to the side's ttyd after `terminal-auth`,
+   and keys the 8002 listener by round; `platform/vm-terminal.sh` opens kali
+   as `kali` and cr-waf as `analyst` for a seat holding a jump grant. Neither
+   has run on a range. The user chooses the design before it is built
+   (gate 1).
 2. **Cloud step 5, deploy changes and rebake**: `edge.nft` with the `pool`
    and `spent` sets and their drop rules before the established accept;
    `board.com.conf` with one `$refused` map (400, 403) and the JSON access log

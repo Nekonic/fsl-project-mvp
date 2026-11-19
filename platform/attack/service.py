@@ -730,6 +730,13 @@ def terminal(found: Round, seat: Seat) -> Terminal:
                             target_user=access.target_user))
 
 
+def terminal_shell(seat: Seat) -> tuple[str, str]:
+    grant = jump.granted(seat.pk, configured().jump)
+    if grant is None:
+        raise errors.NotSeated()
+    return grant.address, box.LEARNER_ACCOUNT
+
+
 def revoke_terminal(found: Round) -> int:
     settings = configured()
     return sum(1 for seat in Seat.objects.filter(round=found, side="attack")

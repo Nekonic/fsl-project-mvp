@@ -1,3 +1,8 @@
+import io
+
+import pytest
+from django.core.management import CommandError, call_command
+
 from defence import service
 from match import service as match
 from range import jump
@@ -41,3 +46,34 @@ def test_no_terminal_is_granted_after_the_end(as_defender, board_round, defender
 
     assert answer.status_code == 409
     assert answer.json()["errors"][0]["code"] == "round_closed"
+
+
+def test_the_waf_shell_opens_as_analyst_not_root_on_the_address_the_seat_s_grant_names(
+        as_defender, board_round, defender):
+    as_defender.get(BASE.format(round=board_round.pk))
+
+    shell = match.terminal_shell(board_round.pk, "defence")
+
+    assert (shell.address, shell.account) == (WAF_MANAGEMENT, "analyst")
+
+
+def test_the_terminal_lookup_prints_the_one_line_the_terminal_script_splits(as_defender, board_round, defender):
+    as_defender.get(BASE.format(round=board_round.pk))
+    printed = io.StringIO()
+
+    call_command("terminal_shell", "defence", str(board_round.pk), stdout=printed)
+
+    assert printed.getvalue().split() == [WAF_MANAGEMENT, WAF_MANAGEMENT, "analyst"]
+
+
+def test_the_terminal_lookup_refuses_a_seat_without_a_grant(board_round, defender):
+    with pytest.raises(CommandError, match="not_seated"):
+        call_command("terminal_shell", "defence", str(board_round.pk))
+
+
+def test_the_terminal_lookup_refuses_once_the_round_ended_and_the_grant_went(as_defender, board_round, defender):
+    as_defender.get(BASE.format(round=board_round.pk))
+    match.end_round(board_round, "ended_by_operator")
+
+    with pytest.raises(CommandError, match="round_closed"):
+        call_command("terminal_shell", "defence", str(board_round.pk))

@@ -432,7 +432,8 @@ sudo docker compose start platform follow
 | 자리 | 상대 자리의 경로는 403. 라운드 시작 전 쓰기는 `409 round_not_started`, 끝난 뒤는 `409 round_closed`. 자리는 리스를 열거나 닫지 못하고 라운드를 끝내지 못함(기권만 가능). PvP에서 한 사람이 두 자리를 맡지 못함(`already_seated`) |
 | 이벤트 피드 | 이벤트 종류마다 볼 수 있는 쪽이 정해져 있음. 공격 쪽은 경보와 룰 이벤트를, 방어 쪽은 공격 행동과 HP 이벤트를 보지 못함 |
 | WAF 설정 | 방어석은 구조화된 posture(paranoia, 예외, 임계값, 탐지 전용)만 보냄. 자유 텍스트를 받지 않으므로 `SecRuleEngine Off`를 쓸 수 없음 |
-| `/vm-terminal/`, `/kibana/`, 8002(`/site/...`) | nginx `auth_request`로 같은 로그인 세션 확인. 없으면 로그인 페이지로 |
+| `/vm-terminal/<side>/<round>/` | nginx `auth_request`가 `/api/rounds/<round>/terminal-auth/<side>/`에 그 라운드의 그 자리를 맡았는지 물음. 공격 자리는 Kali의 `kali` 계정, 방어 자리는 cr-waf의 `analyst` 계정(root 아님)으로 열리고, `GET terminal/`로 받은 점프 권한이 없거나 라운드가 끝났으면 열리지 않음 |
+| `/kibana/`, 8002(`/site/...`) | nginx `auth_request`로 `/api/me/`에 로그인 세션 확인. 없으면 로그인 페이지로 |
 | 회원가입 계정 | 비활성 상태로 만들어짐. 스태프가 승인해야 로그인 가능 |
 | 로그인 시도 | IP당 분당 5회(버스트 5), 넘으면 429. 계정은 잠그지 않고 시도한 쪽을 차단: 스태프 계정에 3번 틀린 IP는 1시간, 다른 아이디에 10번 틀린 IP는 15분. 같은 브라우저 헤더 지문이 두 IP 이상에서 같은 횟수만큼 틀려도 차단. 스태프가 `DELETE /api/staff/blocks/<id>/`로 해제 |
 | 회원가입 요청 | IP당 분당 1회(버스트 3), 같은 주소에서 시간당 5개까지. 승인 대기 계정이 50개면 가입을 받지 않음 |
@@ -458,9 +459,9 @@ sudo docker compose start platform follow
 
 `side-split` 브랜치는 새 구조로 다시 만든 코드입니다. 단위·API 테스트는 통과하지만 훈련 환경에서는 아직 돌리지 않았습니다.
 
-- 콘솔(`front/`)과 그에 맞춘 `nginx.conf`가 아직 없습니다. 지금 `nginx.conf`와 `vm-terminal.sh`는 이전 구조의
-  것이라, 터미널이 자리별 인증(`/api/rounds/<id>/terminal-auth/<side>`)을 쓰지 않고 WAF 터미널이 `analyst`가 아닌
-  root로 열립니다.
+- 콘솔(`front/`)이 아직 없습니다. `nginx.conf`는 빌드 결과 `/app/front/dist`를 내주도록 바뀌었지만 빌드할
+  코드가 없습니다. 자리별 터미널(`nginx.conf`, `vm-terminal.sh`)은 오프라인 테스트만 거쳤고 훈련 환경에서는 아직
+  열어 보지 않았습니다.
 - HP 차감용 WAF 접근 로그, infra 라우터의 `pool`·`spent` 집합, CRS 룰 테스트용 임시 인스턴스, WAF의 `analyst`
   계정이 역할 이미지에 아직 없습니다. 배포 파일을 고치고 infra, waf 이미지를 다시 구워야 합니다.
 - 룰 테스트용 녹화(`wargames/<id>/probes/`)가 아직 없습니다. 지금 룰 테스트는 케이스를 미탐이 아니라

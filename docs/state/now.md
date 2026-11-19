@@ -30,10 +30,11 @@ rounds driven by Claude Code, and the ported acceptance suite.
 
 ## Next, in order
 
-1. `front/` in the design the user picks, with the new `nginx.conf` and a
-   rewritten `vm-terminal.sh` (today it imports the deleted
-   `api.models.Session` and opens cr-waf as root, and nginx does not call the
-   per-seat `terminal-auth` routes).
+1. `front/` in the design the user picks and the Dockerfile's node stage.
+   The new `nginx.conf` (per-seat terminals through `terminal-auth`, the
+   site listener keyed by round, `/app/front/dist` served last) and
+   `vm-terminal.sh` (kali as `kali`, cr-waf as `analyst`, only for a seat
+   with a jump grant) are written and tested offline, not on a range.
 2. Cloud step 5: the deploy changes (edge `pool`/`spent` sets, the WAF JSON
    access log shipped as `nginx_access`, `probe.conf`, `probe-upstream.py`,
    `analyst.sh`) and new infra and waf images. None of those files is changed

@@ -105,7 +105,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                service.py   리스·라운드 수명, 참가, 시작, 틱, 종료, 기권, 점수
                follow.py    follow 서비스의 루프   customers.py  정상 케이스와 고객 트래픽
                site.py      사이트 패널 프록시      probes.py     probe 녹화   retention.py
-               management/commands/  follow  register_pipeline  prune  run_on_role
+               management/commands/  follow  register_pipeline  prune  run_on_role  terminal_shell
   referee/     Objective, loot.py(경계: board 정답 데이터), effect.py(경계: corp 정답 데이터)
                service.py   baseline, loot 제출, corp 변경 관찰, 목표, 비밀값 가리기, 점수
   attack/      Action, ToolRun, OriginBudget, AccessCursor
@@ -337,7 +337,6 @@ sequenceDiagram
 
 ## 아직 없는 것
 
-- `front/`(Vite, TypeScript, Preact 콘솔)와 그에 맞춘 `nginx.conf`. 지금 `nginx.conf`는 이전 구조의 것으로,
-  `/vm-terminal/kali/`, `/vm-terminal/waf/`가 로그인 세션만 확인하고 자리별 `terminal-auth` 경로를 쓰지 않습니다.
-- `platform/vm-terminal.sh`는 삭제된 `api.models.Session`을 import하고 cr-waf를 `sudo -i` root로 엽니다.
+- `front/`(Vite, TypeScript, Preact 콘솔). `nginx.conf`는 이미 빌드 결과 `/app/front/dist`를 마지막 위치에서
+  내주고 나머지 경로를 `index.html`로 돌리지만, Dockerfile의 node 단계와 빌드 결과물은 아직 없습니다.
 - 위 훈련 환경 변경과 infra, waf 이미지 다시 굽기, `wargames/<id>/probes/` 녹화.

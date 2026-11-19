@@ -461,6 +461,30 @@ def terminal_open(found: Round) -> None:
     auth.refuse_write(found)
 
 
+@dataclass(frozen=True)
+class Shell:
+    address: str
+    alias: str
+    account: str
+
+
+SHELL_OF_SIDE = {"attack": attack.terminal_shell, "defence": defence.terminal_shell}
+
+
+def terminal_shell(round_id: int, side: str) -> Shell:
+    found = Round.objects.select_related("lease").filter(pk=round_id).first()
+    if found is None:
+        raise errors.NotFound()
+    auth.refuse_write(found)
+    seat = Seat.objects.filter(round=found, side=side).first()
+    if seat is None or side not in SHELL_OF_SIDE:
+        raise errors.NotSeated()
+    address, account = SHELL_OF_SIDE[side](seat)
+    reached = slot_range(found.lease.slot)
+    alias = reached.host_key_alias(address) if hasattr(reached, "host_key_alias") else ""
+    return Shell(address=address, alias=alias or address, account=account)
+
+
 def customers_prefer(wargame: str, declared) -> tuple[str, ...]:
     traffic = customers.declared_traffic(wargame)
     weights = traffic["origins"] if traffic else {}

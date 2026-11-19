@@ -10036,3 +10036,47 @@ spec is updated where it named the old placement.
   `cmd # note` outside quotes, and scans the body of a heredoc fed to
   `python` as Python. The seam scan also reads `.md` and `.json`, so the
   bots' prompts are held to the same seams as their code.
+
+## 2026-11-20 — nginx.conf and vm-terminal.sh for the side-split layout
+
+- **Per-seat terminals.** `/vm-terminal/attack/<round>/` and
+  `/vm-terminal/defence/<round>/` each go to their side's ttyd (7691, 7692;
+  `-b /vm-terminal/<side>`, `-a`). nginx drops the client's query and passes
+  `?arg=<round>` itself, so the round ttyd hands `vm-terminal.sh` is the one
+  in the path the seat check approved. The check is an `auth_request` to
+  `/api/rounds/<round>/terminal-auth/<side>/`, found from `$request_uri`
+  through a map so the subrequest needs no variable of the parent location,
+  and it is not cached: a yes must not outlive the seat or the round.
+  Any other `/vm-terminal/` path is 404.
+- **`vm-terminal.sh <host> <side> <round>`** asks `manage.py terminal_shell`
+  (`match.service.terminal_shell`) for the address, host key alias and
+  account. It refuses unless the round is running and the side's seat holds
+  a jump grant (`range.jump.granted`), which `GET terminal/` issues and the
+  round's end revokes; the address is the grant's. The attack seat gets
+  `sudo -i -u kali`, the defence seat `sudo -i -u analyst`, never a root
+  shell. The platform's management key still makes the ssh hop; the seat's
+  own jump key is for the seat's client, which the platform never keeps.
+  `entrypoint.sh` passes the side after the host, so neither the script nor
+  Python names a node.
+- **No `/auth-check/` view exists in the new tree**, so `/signed-in` asks
+  `/api/me/` (200 signed in, 401 not), cached 5 s per session cookie and
+  address. Kibana pages and the site pane need only a signed-in session;
+  every Kibana API call in a space still goes to the gate, which checks the
+  space against the user's defence seats. `/kibana-refused/` and
+  `/static/map/` are gone: every refused Kibana route goes to the gate,
+  which answers in Korean from `strings/server.json`, and the map ships with
+  the front build.
+- **The site listener** passes Django only `cr_session` (the site proxy
+  authenticates the seat with it); `match/site.py` keeps the target's
+  cookies in its own jar and never forwards the browser's. The proxied path
+  is the raw rest of `$request_uri`, so percent-encoding reaches the target
+  unchanged.
+- **The console** is `root /app/front/dist` with `try_files $uri $uri/
+  /index.html`, the last location of the 8000 server; nothing else on 8000
+  reaches Django except `/api/` and the Kibana gate. `@too-many` answers in
+  the API's one error shape with code `too_many`.
+- **Verified offline only.** `platform/tests/test_front.py` parses the file
+  (braces and semicolons) and checks each location against the Django routes
+  it names; `test_vm_terminal.py` runs the script against fake `python`,
+  `ssh` and `tmux`. Docker was not running on the development machine, so
+  `nginx -t` was not run; nothing has run on a range.
