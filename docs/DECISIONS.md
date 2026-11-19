@@ -10029,3 +10029,10 @@ spec is updated where it named the old placement.
   and `redteam/`, allowing only shebangs, Django's migration header (in a
   migration) and `deploy/suricata/rules/`. It found one: a `# noqa` on the
   PyYAML probe in `bin/platform-rebuild`, now `importlib.util.find_spec`.
+- **Review of the scans.** The shell scan took any `<<` followed by a word
+  for a heredoc, so a here-string such as `<<< word` hid the rest of the
+  file from it, and it saw only lines that start with `#`. It now skips
+  here-strings and arithmetic shifts, reads `<<\EOF`, finds a trailing
+  `cmd # note` outside quotes, and scans the body of a heredoc fed to
+  `python` as Python. The seam scan also reads `.md` and `.json`, so the
+  bots' prompts are held to the same seams as their code.

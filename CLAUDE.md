@@ -197,7 +197,8 @@ logic changed, and before a push.
   a commented-out rule is how a rule is disabled, the header Django writes
   into generated migrations, and a script's shebang.
   `platform/tests/seams/test_no_comments.py` scans Python (comment tokens
-  and docstrings), shell and TS/TSX/JS.
+  and docstrings), shell (trailing comments and Python fed to a heredoc
+  included) and TS/TSX/JS.
 - `platform/domain/` is the pure core: the game rules as functions over
   frozen dataclasses, tested by `platform/tests/domain/` with no Django in the
   process. Services raise `cr/errors.py` domain errors and never build

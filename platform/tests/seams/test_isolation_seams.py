@@ -7,7 +7,7 @@ from range import declaration
 
 REPO = Path(__file__).resolve().parents[3]
 SCANNED_ROOTS = ("platform", "front/src", "bots", "test", "bin")
-SCANNED_SUFFIXES = {".py", ".sh", ".conf", ".yaml", ".html", ".ts", ".tsx", ".js", ""}
+SCANNED_SUFFIXES = {".py", ".sh", ".conf", ".yaml", ".html", ".ts", ".tsx", ".js", ".md", ".json", ""}
 NOT_SCANNED = re.compile(
     r"^platform/(?:tests|testing|jump)/|^bots/client/|^front/src/api/schema\.d\.ts$"
     r"|(?:^|/)(?:\.[^/]+|__pycache__|node_modules)/|\.sqlite3$")
@@ -159,6 +159,7 @@ def test_the_scan_reaches_every_client_and_skips_the_generated_code(files):
     reached = {name.split("/", 1)[0] if not name.startswith("front/") else "front/src" for name in files}
 
     assert {"platform", "bots", "test", "bin"} <= reached
+    assert {"bots/prompts/attacker.md", "bots/prompts/defender.md", "bots/README.md"} <= set(files)
     assert not [name for name in files if name.startswith(("bots/client/", "front/src/api/schema.d.ts"))]
 
 
