@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 WAF_CONF = ROOT / "deploy" / "waf" / "board.com.conf"
 
-ANSWERED_BY_THE_BOARDS_OWN_404 = r"location\s+/internal/\s*\{\s*proxy_pass\s+(?:http://board:8000|\$board_upstream)/not-found/;"
+ANSWERED_BY_THE_BOARDS_OWN_404 = r"location\s+/internal/\s*\{\s*proxy_pass\s+http://board:8000/not-found/;"
 
 
 def _server_blocks(text):
@@ -13,7 +13,8 @@ def _server_blocks(text):
 
 def test_the_cloud_waf_answers_internal_with_the_boards_own_404_in_every_board_server_block():
     text = WAF_CONF.read_text(encoding="utf-8")
-    for block in _server_blocks(text):
-        if "board:8000" in block:
-            assert re.search(ANSWERED_BY_THE_BOARDS_OWN_404, block), block
+    board_blocks = [block for block in _server_blocks(text) if "board:8000" in block]
+    assert board_blocks, "no server block in board.com.conf proxies to board:8000"
+    for block in board_blocks:
+        assert re.search(ANSWERED_BY_THE_BOARDS_OWN_404, block), block
 

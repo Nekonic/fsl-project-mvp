@@ -62,9 +62,9 @@ SMALL = {
     "platform/tests/test_topology.py": "import topology\n\ndef test_layout():\n    assert topology.layout() == []\n",
     "platform/tests/test_views.py": "from match import views\n\ndef test_show():\n    assert views.show() == []\n",
     "platform/tests/test_scoreboard.py": "import scoreboard\n\ndef test_board():\n    assert scoreboard.board() == {}\n",
-    "platform/console/templates/console/blue_topology.html": "<div id=\"map\"></div>\n",
-    "platform/tests/test_topology_console.py": (
-        "from pathlib import Path\n\nPANE = 'blue_topology.html'\n\n"
+    "front/src/panes/Score.tsx": "export function Score() { return null }\n",
+    "platform/tests/test_score_pane.py": (
+        "from pathlib import Path\n\nPANE = 'Score.tsx'\n\n"
         "def test_pane_is_named():\n    assert PANE\n"
     ),
 }
@@ -95,13 +95,13 @@ def test_a_module_change_selects_the_test_files_that_import_it(repo):
     assert chosen.unit_kind == "some"
 
 
-def test_a_template_change_selects_the_tests_naming_that_template(repo):
+def test_a_front_change_selects_the_tests_naming_that_file(repo):
     root = repo(SMALL)
 
-    chosen = selector.select(root, {"platform/console/templates/console/blue_topology.html": "M"})
+    chosen = selector.select(root, {"front/src/panes/Score.tsx": "M"})
 
-    assert selected(chosen) == ["test_topology_console.py"]
-    assert chosen.acceptance_kind == "none", "the console is not range-facing"
+    assert selected(chosen) == ["test_score_pane.py"]
+    assert chosen.acceptance_kind == "none", "the front end is not range-facing"
 
 
 def test_a_template_rendered_for_a_requested_page_selects_the_test_requesting_it(repo):
@@ -114,6 +114,7 @@ def test_a_template_rendered_for_a_requested_page_selects_the_test_requesting_it
             "    path(\"blue/<int:session_id>/\", console.blue),\n]\n"
         ),
         "platform/console/__init__.py": "",
+        "platform/console/templates/console/blue_topology.html": "<div id=\"map\"></div>\n",
         "platform/console/views.py": "def blue(request, session_id):\n    return 'console/blue.html'\n",
         "platform/console/templates/console/blue.html": "{% include \"console/blue_topology.html\" %}\n",
         "platform/tests/test_blue_page.py": (

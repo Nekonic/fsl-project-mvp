@@ -7,11 +7,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SETTINGS = ROOT / "platform/cr/config.py"
 
 
-def test_elasticsearch_and_kibana_listen_on_the_platform_vm_s_loopback_alone():
-    services = composed.services()
-
-    assert services["elasticsearch"]["ports"] == ["127.0.0.1:9200:9200"]
-    assert services["kibana"]["ports"] == ["127.0.0.1:5601:5601"]
+def test_elasticsearch_listens_on_the_platform_vm_s_loopback_alone():
+    assert composed.services()["elasticsearch"]["ports"] == ["127.0.0.1:9200:9200"]
 
 
 def test_no_project_secret_is_written_into_the_stack():

@@ -88,7 +88,9 @@ on a slot:
 3. **Cloud step 12, probe recordings**: `bin/record-probes board` and
    `bin/record-probes corp` through the staff route on a probe lease; copy
    the platform's `CR_PROBES_OUT/<id>/probes/` into `wargames/<id>/probes/`
-   and commit it (`docs/OPENSTACK.md` §3.7).
+   and commit it (`docs/OPENSTACK.md` §3.7). Until the board's manifest is
+   committed, `test/test_rule_test_isolation.py` fails: it requires
+   `board-sqli-search` to be replayed by both rule tests.
 4. **Full live verify**: the full `bin/verify` with acceptance on the range,
    the Claude Code bot round of each matchup (spec step 16), a captured walk
    of every page as a learner, a live review round with zero countable

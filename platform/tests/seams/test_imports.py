@@ -27,7 +27,6 @@ LAYERS = (
 )
 FRAMEWORKS = ("django", "rest_framework", "drf_spectacular")
 L1_THIRD_PARTY = ("requests", "yaml")
-LEGACY: tuple[str, ...] = ()
 
 
 def modules() -> list[str]:
@@ -35,10 +34,6 @@ def modules() -> list[str]:
         str(path.relative_to(PLATFORM)) for path in PLATFORM.rglob("*.py")
         if not set(path.relative_to(PLATFORM).parts) & set(SKIPPED)
     )
-
-
-def legacy(path: str) -> bool:
-    return path.split("/")[0] in LEGACY
 
 
 def layer_of(path: str) -> int | None:
@@ -97,19 +92,13 @@ def targets(path: str) -> set[str]:
 
 
 def in_layer(layer: int) -> list[str]:
-    return [path for path in modules() if not legacy(path) and layer_of(path) == layer]
+    return [path for path in modules() if layer_of(path) == layer]
 
 
 def test_every_module_under_platform_is_assigned_a_layer():
-    unassigned = [path for path in modules() if not legacy(path) and layer_of(path) is None]
+    unassigned = [path for path in modules() if layer_of(path) is None]
 
     assert unassigned == [], f"modules with no layer in the side-split table: {unassigned}"
-
-
-def test_the_legacy_list_names_only_what_still_stands():
-    gone = [name for name in LEGACY if not (PLATFORM / name).exists()]
-
-    assert gone == [], f"remove these from LEGACY, they are deleted: {gone}"
 
 
 def test_the_seams_exist_where_the_design_puts_them():
@@ -125,10 +114,8 @@ def test_the_seams_exist_where_the_design_puts_them():
     assert not (PLATFORM / "__init__.py").exists(), "platform is a stdlib name and must not be a package"
 
 
-@pytest.mark.parametrize("path", in_layer(0) or ["domain/__init__.py"])
+@pytest.mark.parametrize("path", in_layer(0))
 def test_rule_1_domain_imports_only_the_standard_library_and_domain(path):
-    if not (PLATFORM / path).is_file():
-        pytest.skip("domain/ is built in another step")
     strays = [dotted for dotted in imports(path) if not standard(dotted) and dotted.split(".")[0] != "domain"]
 
     assert strays == [], f"{path} imports {strays}"
@@ -140,14 +127,14 @@ def test_rule_2_a_seam_imports_no_framework_no_app_and_only_lower_or_seam_module
     frameworks = [dotted for dotted in named if dotted.split(".")[0] in FRAMEWORKS]
     third_party = [dotted for dotted in named
                    if not standard(dotted) and not own(dotted) and dotted.split(".")[0] not in L1_THIRD_PARTY]
-    above = [target for target in targets(path) if legacy(target) or (layer_of(target) or 9) > 1]
+    above = [target for target in targets(path) if (layer_of(target) or 9) > 1]
 
     assert frameworks == [], f"{path} imports a framework: {frameworks}"
     assert third_party == [], f"{path} imports {third_party}"
-    assert above == [], f"{path} imports app or legacy modules: {above}"
+    assert above == [], f"{path} imports app modules: {above}"
 
 
-@pytest.mark.parametrize("path", [path for path in modules() if not legacy(path)])
+@pytest.mark.parametrize("path", modules())
 def test_rule_4_only_referee_reads_the_target_s_ground_truth_and_others_import_only_its_service(path):
     if path.startswith("referee/"):
         return
@@ -434,7 +421,7 @@ def lessons_strays(path: str, reached: set[str]) -> list[str]:
                   and target not in SHARED_TO_VIEWS | {"events/log.py"} and not package_marker(target))
 
 
-@pytest.mark.parametrize("path", [path for path in modules() if not legacy(path)])
+@pytest.mark.parametrize("path", modules())
 def test_rule_6_lessons_reach_only_the_services_and_nothing_reaches_lessons(path):
     assert lessons_strays(path, targets(path)) == [], f"{path} breaks the lessons boundary"
 
@@ -455,7 +442,7 @@ def joins_sides(path: str, reached: set[str]) -> bool:
     return path not in MAY_JOIN_SIDES and len(reached & SIDE_SERVICES) > 1
 
 
-@pytest.mark.parametrize("path", [path for path in modules() if not legacy(path)])
+@pytest.mark.parametrize("path", modules())
 def test_rule_7_only_the_match_coordinators_and_lessons_service_import_both_side_services(path):
     assert not joins_sides(path, targets(path)), f"{path} imports more than one side service"
 

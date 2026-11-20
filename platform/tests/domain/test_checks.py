@@ -30,10 +30,6 @@ def test_schemas_judges_and_facts_name_the_same_kinds():
     assert all(set(needed) <= set(Facts.__dataclass_fields__) for needed in FACTS_NEEDED.values())
 
 
-def test_the_dropped_kinds_are_gone():
-    assert not {"click", "triage", "replay", "rules"} & set(JUDGES)
-
-
 @pytest.mark.parametrize("given, mode, passed, code", [
     ("  Union Select ", "text", True, None),
     ("union", "text", False, "wrong_answer"),

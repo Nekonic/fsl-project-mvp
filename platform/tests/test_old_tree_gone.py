@@ -17,8 +17,6 @@ GONE = (
     "redteam/run.py", "redteam/signin.py", "redteam/__init__.py",
 )
 
-PENDING: dict[str, str] = {}
-
 REFUSES_THE_OLD_KIND = {"platform/tests/domain/test_problems.py"}
 
 
@@ -51,11 +49,6 @@ def test_the_old_product_tree_is_gone():
 
 
 def test_only_the_files_still_waiting_for_their_rewrite_name_the_old_api_or_scenarios():
-    assert referencing() == set(PENDING), (
-        "a file outside platform/carry names api.* or a scenario; either remove the reference "
-        "or, once a pending file is rewritten, drop it from PENDING"
+    assert referencing() == set(), (
+        "a file outside platform/carry names api.* or a scenario; remove the reference"
     )
-
-
-def test_every_pending_file_exists():
-    assert [name for name in PENDING if not (ROOT / name).is_file()] == []

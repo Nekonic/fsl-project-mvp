@@ -92,8 +92,8 @@ def test_core_does_not_start_anything_itself():
     source = pathlib.Path(harness.__file__).read_text()
 
     assert "subprocess" not in source, (
-        "redteam/harness.py is gated core and shelled out to docker run, so "
-        "the hypothesis could not be carried anywhere without a daemon"
+        "attack/firing.py fires only through the launcher it is handed; starting "
+        "a process itself would tie firing to the host it runs on"
     )
 
 def test_sqlmap_s_conclusions_are_its_verdict_lines_without_the_clock():

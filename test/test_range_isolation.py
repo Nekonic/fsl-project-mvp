@@ -1,20 +1,17 @@
 import ipaddress
-import os
 import re
 import shlex
 import time
 import uuid
-from urllib.parse import urlsplit
 
 import pytest
 
 import plays
 from conftest import STANDING
 from opening import READY
-from range import ATTACKER, BOARD, run, run_side_by_side
+from range import ATTACKER, BOARD, LOG_SERVER, log_collector, platform_addresses, run, run_side_by_side
 
 GATEWAY = "gateway"
-LOG_SERVER = "log-server"
 PROBERS = (ATTACKER, GATEWAY, BOARD)
 ROUTER = "121.134.88.42"
 PUBLIC_NAME = "board.com"
@@ -23,8 +20,6 @@ ADDRESS = re.compile(r"^\d+:\s+(\S+)\s+inet\s+(\S+)", re.M)
 UPSTREAM = re.compile(r"^(\S+)\s+(board|corp-wp)$", re.M)
 PAST_THE_WAF = {"board": 8000, "corp-wp": 80}
 NAMED_ONLY_INSIDE = ("board", "corp-wp", "board-db", "corp-db")
-COLLECTOR = re.compile(r'Target="([\d.]+)"')
-LOG_RELAY = "/etc/rsyslog.d/60-log-relay.conf"
 SERVICE_PORTS = "22,80,443,514,3306,5140,5601,8000,8080,9200"
 OPEN_PORT = re.compile(r"^(\d+)/tcp\s+open\b", re.M)
 SCANNED_HOST = re.compile(r"^Nmap scan report for (\S+)", re.M)
@@ -67,7 +62,7 @@ def slot_of(lease: int | None = None) -> str:
 @pytest.fixture(scope="module")
 def facts():
     waf = waf_side()
-    [collector] = sorted(set(COLLECTOR.findall(run(LOG_SERVER, ["cat", LOG_RELAY]).stdout)))
+    collector = log_collector()
     own = {role: addresses_of(run(role, ["ip", "-o", "-4", "addr", "show"]).stdout) for role in (ATTACKER, GATEWAY)}
     control = next(one.network for one in own[ATTACKER] if ipaddress.ip_address(collector) in one.network)
     public = run(ATTACKER, ["getent", "ahostsv4", PUBLIC_NAME]).stdout.split()
@@ -75,8 +70,7 @@ def facts():
         "waf": front_of(waf),
         "public": public[0] if public else "",
         "upstreams": {name: address for address, name in UPSTREAM.findall(waf["upstreams"].stdout)},
-        "platform": sorted({urlsplit(os.environ.get("CR_PLATFORM_URL", "")).hostname or "", collector}
-                           - {"", "localhost", "127.0.0.1"}),
+        "platform": platform_addresses(collector),
         "control": control,
         "own": {role: sorted(str(one.ip) for one in found) for role, found in own.items()},
     }

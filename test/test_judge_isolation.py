@@ -1,21 +1,19 @@
 import ipaddress
 import json
-import socket
 import struct
-from urllib.parse import urlsplit
 
 import pytest
 
 import plays
-from conftest import PLATFORM_URL, STANDING
-from range import ATTACKER, BOARD, declared_roles, run, run_side_by_side
+from conftest import STANDING
+from range import ATTACKER, BOARD, log_collector, platform_addresses, run, run_side_by_side
 
-PLATFORM = declared_roles()["scorer"]
 PUBLISHED = {
     8000: ("/api/auth/csrf/", "ok", "the platform API"),
     9200: ("/", "cluster_name", "Elasticsearch"),
 }
-PANES = ("kali", "waf")
+SIDES = ("attack", "defence")
+REFUSED = ("302", "403", "409", "503", "000")
 
 
 @pytest.fixture(scope="module")
@@ -28,15 +26,10 @@ def lease(stack_is_up):
 
 
 @pytest.fixture(scope="module")
-def platform_addresses(lease):
-    _, played = lease
-    shape = plays.topology(played)
-    found = {edge["address"] for edge in shape["edges"]
-             if edge.get("source") == PLATFORM and edge.get("address")}
-    published = socket.gethostbyname(urlsplit(PLATFORM_URL).hostname)
-    if not ipaddress.ip_address(published).is_loopback:
-        found.add(published)
-    assert found, f"the range shows no address of {PLATFORM}: {shape['nodes']}"
+def platform(lease):
+    held, _ = lease
+    found = set(platform_addresses(log_collector(held)))
+    assert found, "neither CR_PLATFORM_URL nor the log relay names a platform address a range host could route to"
     return found
 
 
@@ -50,22 +43,22 @@ def fetch(url: str, *extra: str) -> list[str]:
     return ["curl", "-s", "--max-time", "4", "--noproxy", "*", *extra, url]
 
 
-def terminal(address: str, pane: str) -> list[str]:
-    return fetch(f"http://{address}:8000/vm-terminal/{pane}/",
+def terminal(address: str, side: str, round_id: int) -> list[str]:
+    return fetch(f"http://{address}:8000/vm-terminal/{side}/{round_id}/",
                  "-o", "/dev/null", "-w", "%{http_code}", "-H", "Host: localhost:8000")
 
 
 @pytest.fixture(scope="module")
-def answered(lease, platform_addresses):
-    held, _ = lease
+def answered(lease, platform):
+    held, played = lease
     found = {}
     for role in (ATTACKER, BOARD):
-        addresses = sorted(gateways_of(role, held) | platform_addresses)
+        addresses = sorted(gateways_of(role, held) | platform)
         commands = {(address, port): fetch(f"http://{address}:{port}{PUBLISHED[port][0]}")
                     for address in addresses for port in PUBLISHED}
         if role == BOARD:
-            commands |= {(address, pane): terminal(address, pane)
-                         for address in sorted(platform_addresses) for pane in PANES}
+            commands |= {(address, side): terminal(address, side, played.round)
+                         for address in sorted(platform) for side in SIDES}
         ran = run_side_by_side(role, commands, lease=held)
         found[role] = {key: result.stdout for key, result in ran.items()}
     return found
@@ -94,10 +87,12 @@ def test_a_host_in_the_range_cannot_reach_what_is_published_for_the_operator(ans
     )
 
 
-def test_a_host_in_the_range_is_refused_the_terminal(answered, platform_addresses):
-    codes = {(address, pane): answered[BOARD][(address, pane)].strip()
-             for address in platform_addresses for pane in PANES}
+def test_a_host_in_the_range_is_refused_the_terminal(answered, platform):
+    codes = {(address, side): answered[BOARD][(address, side)].strip()
+             for address in platform for side in SIDES}
 
-    assert all(code in ("403", "000") for code in codes.values()), (
-        f"{codes}: 403 is the terminal's auth_request refusing a range host and 000 is "
-        f"no route to the platform; an empty answer means curl never ran")
+    assert all(code in REFUSED for code in codes.values()), (
+        f"{codes}: the round's own terminal path goes through the seat check, which answers "
+        f"302 to sign-in, 403 not_seated, 409 for a round not running or 503; 000 is no route "
+        f"to the platform. 2xx or 101 reached the terminal, 404 means the path is out of step "
+        f"with nginx.conf, and an empty answer means curl never ran")

@@ -48,7 +48,8 @@ ported acceptance suite.
    checks on a slot (`docs/OPENSTACK.md` §3.7).
 3. Cloud step 12: `bin/record-probes board` and `corp` through the staff
    route, copy `CR_PROBES_OUT/<id>/probes/` off the platform VM, commit
-   `wargames/<id>/probes/`.
+   `wargames/<id>/probes/`; `test/test_rule_test_isolation.py` fails until
+   the board's manifest is in.
 4. Full live verify: the full `bin/verify` with acceptance, one Claude Code
    bot round per matchup, a captured walk as a learner, a live review round
    with zero countable findings, a docs review.

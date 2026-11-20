@@ -1,6 +1,6 @@
 import { refuse, reply } from "../fixture";
 
-const score = {
+export const score = {
   objectives: {
     lost: [{ key: "board-auth-user-partial", name: "Board accounts, partial", seen: false, attributed_marker: "m-7f3a" }],
     kept: [
@@ -33,7 +33,7 @@ const score = {
   posture_drift: false,
 };
 
-const blockingScore = {
+export const blockingScore = {
   ...score,
   objectives: { lost: [], kept: [...score.objectives.kept, { key: "board-auth-user-partial", name: "Board accounts, partial" }], weighted: 0 },
   outcomes: {

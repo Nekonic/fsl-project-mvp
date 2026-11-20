@@ -242,15 +242,11 @@ def test_the_sign_in_checks_reach_the_api_s_own_session_check_and_cache_it_per_c
 
         assert check.values("internal") == [[]]
         assert target.startswith("http://127.0.0.1:8001/") and django_route(target.removeprefix("http://127.0.0.1:8001"))
-        assert check.values("proxy_cache_key") == [["$cookie_cr_session|$remote_addr"]]
+        assert check.values("proxy_cache_key") == [[f"$cookie_{settings.SESSION_COOKIE_NAME}|$remote_addr"]]
         assert check.values("proxy_cache") == [["signed_in"]]
         assert re.fullmatch(r"[1-9]s", check.values("proxy_cache_valid")[0][-1])
     assert "keys_zone=signed_in:1m" in " ".join(http().values("proxy_cache_path")[0])
-
-
-def test_the_cookie_nginx_keys_on_is_the_platform_s_session_cookie():
     assert settings.SESSION_COOKIE_NAME == "cr_session"
-    assert "$cookie_cr_session" in FRONT.read_text()
 
 
 def test_the_platform_sees_the_client_not_the_front():
