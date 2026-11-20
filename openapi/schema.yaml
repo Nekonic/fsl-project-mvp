@@ -2431,14 +2431,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Errors'
-  /api/staff/users/{user_id}/approve/:
+  /api/staff/users/{username}/approve/:
     post:
       operationId: staff_user_approve
       parameters:
       - in: path
-        name: user_id
+        name: username
         schema:
-          type: integer
+          type: string
         required: true
       tags:
       - staff
@@ -2457,14 +2457,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Errors'
-  /api/staff/users/{user_id}/disable/:
+  /api/staff/users/{username}/disable/:
     post:
       operationId: staff_user_disable
       parameters:
       - in: path
-        name: user_id
+        name: username
         schema:
-          type: integer
+          type: string
         required: true
       tags:
       - staff
@@ -2537,8 +2537,6 @@ components:
     Account:
       type: object
       properties:
-        id:
-          type: integer
         username:
           type: string
         approved:
@@ -2550,7 +2548,6 @@ components:
           format: date-time
       required:
       - approved
-      - id
       - is_staff
       - joined
       - username

@@ -75,16 +75,16 @@ class Approve(APIView):
     permission_classes = [service.IsStaff]
 
     @extend_schema(tags=STAFF, request=None, responses=serializers.Account, operation_id="staff_user_approve")
-    def post(self, request, user_id: int):
-        return Response(serializers.Account(service.approve(user_id)).data)
+    def post(self, request, username: str):
+        return Response(serializers.Account(service.approve(username)).data)
 
 
 class Disable(APIView):
     permission_classes = [service.IsStaff]
 
     @extend_schema(tags=STAFF, request=None, responses=serializers.Account, operation_id="staff_user_disable")
-    def post(self, request, user_id: int):
-        return Response(serializers.Account(service.disable(user_id, by=request.user)).data)
+    def post(self, request, username: str):
+        return Response(serializers.Account(service.disable(username, by=request.user)).data)
 
 
 class Blocks(APIView):

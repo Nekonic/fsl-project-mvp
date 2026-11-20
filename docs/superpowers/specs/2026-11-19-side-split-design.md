@@ -510,7 +510,7 @@ The verdict codes are machine fields. The front end shows them only through Kore
 | `POST /api/auth/signup/` | `{username, password}` | `201 {user, approved:false}`; rate-limited |
 | `POST /api/auth/logout/` | none | `204` |
 | `GET /api/me/` | none | `{user, is_staff, approved, seats:[{round, side, phase}], lessons:[{round, problem, phase}]}` |
-| `GET /api/staff/users/`, `POST /api/staff/users/<id>/approve/`, `POST …/disable/` | | staff |
+| `GET /api/staff/users/`, `POST /api/staff/users/<username>/approve/`, `POST …/disable/` | | staff; an account is `{username, approved, is_staff, joined}`, and an unknown username is `404 unknown_user` |
 | `GET /api/staff/blocks/`, `DELETE /api/staff/blocks/<id>/` | | staff |
 
 Session requests need CSRF; Bearer seat-token requests are CSRF-exempt. `match.auth.SeatTokenAuthentication` states this.

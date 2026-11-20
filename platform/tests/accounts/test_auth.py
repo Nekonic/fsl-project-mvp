@@ -58,7 +58,7 @@ def test_a_sign_up_waits_for_a_staff_approval_before_it_can_sign_in(browser, sta
     newcomer = get_user_model().objects.get(username="newcomer")
     staff_client = APIClient()
     staff_client.force_authenticate(staff)
-    assert staff_client.post(f"/api/staff/users/{newcomer.pk}/approve/").json()["approved"] is True
+    assert staff_client.post(f"/api/staff/users/{newcomer.username}/approve/").json()["approved"] is True
 
     assert sign_in(browser, "newcomer", STRONG).status_code == 200
 

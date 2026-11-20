@@ -10343,5 +10343,8 @@ inactive account is `400 unknown_account` on `seats.<side>.username`. The lobby
 asks for the username instead of a number, and the round bar shows who holds
 each seat (the username, or the bot's name). `test/plays.py` seats the
 operator by the username it signs in with instead of looking up its id. The
-staff accounts API (`Account.id`, `/api/staff/users/<user_id>/approve|disable/`)
-still carries the pk and is left for a later change.
+staff accounts API follows: `Account` drops `id`, and approving or disabling
+is `POST /api/staff/users/<username>/approve/` and `/disable/`. An unknown
+username there stays `404 unknown_user`, because `unknown_account` is already
+the 400 field code of the seat ask and a code belongs to exactly one status.
+The staff accounts page shows the username alone, without the `#id` line.

@@ -30,7 +30,6 @@ class Me(serializers.Serializer):
 
 
 class Account(serializers.Serializer):
-    id = serializers.IntegerField()
     username = serializers.CharField()
     approved = serializers.BooleanField(source="is_active")
     is_staff = serializers.BooleanField()

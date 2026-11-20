@@ -10,8 +10,8 @@ __all__ = ["CsrfChecked", "IsStaff", "SessionAuthentication", "approve", "disabl
            "standing_blocks", "unblock", "user", "users"]
 
 
-def user(user_id: int):
-    found = get_user_model().objects.filter(pk=user_id).first()
+def user(username: str):
+    found = get_user_model().objects.filter(username=username).first()
     if found is None:
         raise errors.NotFound(code="unknown_user")
     return found
@@ -21,16 +21,16 @@ def users():
     return get_user_model().objects.order_by("is_active", "-date_joined")
 
 
-def approve(user_id: int):
-    found = user(user_id)
+def approve(username: str):
+    found = user(username)
     if not found.is_active:
         found.is_active = True
         found.save(update_fields=["is_active"])
     return found
 
 
-def disable(user_id: int, by):
-    found = user(user_id)
+def disable(username: str, by):
+    found = user(username)
     if found.pk == by.pk:
         raise errors.Conflict(code="own_account")
     if found.is_active:
