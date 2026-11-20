@@ -41,12 +41,8 @@ primary source rather than your own sense of the vocabulary.
 
 ## Working language
 
-Reply to the user in Korean; write English in every repo file — code, commit
-messages, PR descriptions, documents, the state and decision files — because
-Korean costs about twice the tokens per line and every session re-reads them.
-The two exceptions are `README.md` and `docs/ARCHITECTURE.md`, which are
-written in Korean only; there is no English version and no `.ko.md` pair
-(2026-11-15, the user's ruling).
+Reply to the user in Korean. Repo files may be written in Korean or English;
+no test restricts where Korean appears (2026-11-20, the user's ruling).
 Code carries no comments in any language.
 
 The product itself is Korean-only: everything a learner or operator sees in

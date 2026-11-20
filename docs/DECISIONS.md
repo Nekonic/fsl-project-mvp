@@ -10325,3 +10325,10 @@ CLAUDE.md no longer lists the places Korean may appear. Repo files are still
 written in English for token cost and the product stays Korean-only; neither
 is enforced by a test. A practitioner term is still taken from a primary
 source when one is asked for, without a file to hold it.
+
+## 2026-11-20 — Korean is allowed in repo files
+
+Asked whether repo files stay English-only now that the Hangul scan is gone,
+the user chose to allow Korean. CLAUDE.md drops the English-only rule for
+code, commits and documents; the 2026-11-15 ruling that README.md and
+docs/ARCHITECTURE.md are Korean-only stands.
