@@ -17,10 +17,10 @@
 - **자리**(`Seat`): 라운드의 공격석 또는 방어석. 사람(`human`) 또는 봇(`bot`). 봇 자리는 자리 토큰을 가짐
 - **매치업**: `pvp`, `def_vs_bot`(사람 수비 vs AI 공격 봇), `atk_vs_bot`(사람 공격 vs AI 수비 봇)
 - **슬롯**: `cr-slot-N`의 N. 다시 쓰는 번호. Kibana space `soc-logs-N`, 로그 인덱스 `logs-N-*`도 이 번호
-- **케이스**: `redteam/cases/<wargame>.yaml`에 선언한 공격 요청이나 정상 요청. 경보가 몇 건 나오든 판정은 1건
+- **케이스**: `redteam/cases/<wargame>.yaml`에 선언한 공격 요청이나 정상 요청. 알림이 몇 건 나오든 판정은 1건
 - **자유 행동**: 선언된 케이스가 아닌 요청, 도구 실행, 명령, 사이트 패널 요청. 출발지와 시간으로 묶어 따로 보고하고
   정탐·오탐으로 세지 않음
-- **마커**: 요청의 `X-Request-ID` 값. API로 보낸 요청과 케이스는 플랫폼이 붙이고, 경보와 행동을 이 값으로 매칭
+- **마커**: 요청의 `X-Request-ID` 값. API로 보낸 요청과 케이스는 플랫폼이 붙이고, 알림과 행동을 이 값으로 매칭
 - **posture**: 라운드 시작 시점의 Suricata 룰과 CRS 튜닝. 스태프가 `Posture` 행으로 작성
 - **probe 녹화**: 룰 테스트에 쓰는 케이스별 요청·응답·pcap. `wargames/<id>/probes/`에 커밋
 
@@ -114,7 +114,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                service.py   공격 API의 모든 동작, HP 차감, 출발지 소진, 고객 전송
   defence/     Detection, RuleSet, RuleTest, DisabledRule, AlertCursor
                kibana.py    경계: Kibana API, space, 거부 규칙, 초기 설정
-               alerts.py    AlertCursor로 경보 수집    ruletest.py  검사 → probe 묶음 → 오프라인 실행 → 판정표
+               alerts.py    AlertCursor로 알림 수집    ruletest.py  검사 → probe 묶음 → 오프라인 실행 → 판정표
                disable.py   룰 임시 비활성화           drift.py     실제 CRS 파일과 적용 기록 비교
                service.py   방어 API의 모든 동작       views_kibana.py  Kibana 게이트
   lessons/     StepResult, Progress, facts.py(판정에 필요한 기록을 양쪽 서비스로 모음), service.py
@@ -220,7 +220,7 @@ sequenceDiagram
   M->>A: 출발지 풀 채우기
   M->>M: Kibana space, 고객 트래픽 시작
   loop 틱마다
-    F->>D: 경보 수집, WAF 변경 감시, 만료된 비활성화 복구
+    F->>D: 알림 수집, WAF 변경 감시, 만료된 비활성화 복구
     F->>A: 접근 로그로 HP 차감, edge 집합 다시 채우기, 명령 기록 읽기
     F->>R: corp 변경 관찰, 목표 정리
     F->>M: 정상 케이스, 종료 조건
@@ -284,13 +284,13 @@ sequenceDiagram
 - `check/`: IDS는 모든 센서에서 `suricata -T`와 읽을 수 없게 되는 sid 검사, WAF는 `rules.crs.checked`와 임시
   설정의 `nginx -t`.
 - `test/`: 라운드의 probe 케이스와 그 워게임의 정상 HTTP 케이스 전부를 녹화본으로 돌립니다. 실제 대상, 실제 센서,
-  라운드의 경보는 건드리지 않습니다.
+  라운드의 알림은 건드리지 않습니다.
   - IDS: 센서 노드에서 같은 고정 이미지와 `suricata.yaml`로 `suricata -r <case>.pcap`을 돌리고, `/var/log/suricata`
     밖의 임시 `eve.json`을 읽습니다.
   - WAF: cr-waf에 따로 띄운 nginx 마스터(자기 prefix, `127.0.0.1`의 임시 포트, 자기 audit log)가 loopback의
     `probe-upstream.py`를 upstream으로 씁니다. 녹화된 요청을 `curl`로 보내고 임시 audit log를 읽은 뒤 내립니다.
   - WAF에서 도구 케이스는 `untested: tool_case`, 녹화가 없는 케이스는 `untested: not_recorded`입니다. 미탐이 아닙니다.
-  - 판정은 `domain.verdicts`가 마커로 경보를 묶고 케이스 하나를 한 번 판정하고 `expect`로 수법을 확인합니다.
+  - 판정은 `domain.verdicts`가 마커로 알림을 묶고 케이스 하나를 한 번 판정하고 `expect`로 수법을 확인합니다.
     `against_applied`는 적용된 버전의 테스트 결과와 비교합니다.
   - 리스·엔진마다 한 번에 하나만 돌고, 두 번째는 `409 test_busy`입니다.
 - `apply/`: `base_version`이 최신이 아니면 `409 stale_version`. 테스트 없이도 적용할 수 있고, `tested`를 주면
