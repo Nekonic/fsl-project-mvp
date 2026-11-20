@@ -16,7 +16,8 @@ Updated: 2026-11-20.
   `content`, `match`, `referee`, `defence`, `attack`, `lessons`, the
   committed OpenAPI contract and generated clients, `test/` and `bin/` ported
   to the generated client, the `bots/` code, the repo side of the step-5
-  deploy files and the new `nginx.conf` with per-seat terminals. The table is in
+  deploy files, the new `nginx.conf` with per-seat terminals, and `front/`
+  in the v4 design, built against its mock API only. The table is in
   `docs/STATE.md` "What exists on side-split".
 - The docs (README, ARCHITECTURE, CLAUDE.md, STATE, this file) describe the
   new layout.
@@ -27,15 +28,17 @@ Nothing on `side-split` has run on a range: the rule test on a sensor and on
 cr-waf, multi-sensor apply and rollback, the HP charge from the access log
 and the spend at the edge, the jump grants for kali and for `analyst`, the
 follower, `bin/cloud up`/`down` through the staff range routes, the bot
-rounds driven by Claude Code, and the ported acceptance suite.
+rounds driven by Claude Code, `front/` against a live platform, and the
+ported acceptance suite.
 
 ## Next, in order
 
-1. `front/` in the design the user picks and the Dockerfile's node stage.
-   The new `nginx.conf` (per-seat terminals through `terminal-auth`, the
-   site listener keyed by round, `/app/front/dist` served last) and
-   `vm-terminal.sh` (kali as `kali`, cr-waf as `analyst`, only for a seat
-   with a jump grant) are written and tested offline, not on a range.
+1. `front/` on a range: built and checked against `front/mock/` only (the
+   Dockerfile's node stage builds it into `/app/front/dist`). The new
+   `nginx.conf` (per-seat terminals through `terminal-auth`, the site
+   listener keyed by round) and `vm-terminal.sh` (kali as `kali`, cr-waf as
+   `analyst`, only for a seat with a jump grant) are tested offline, not on
+   a range.
 2. Cloud step 5: the deploy files are written and tested offline (edge
    `pool`/`spent` sets and both drops, emptied at round start and end, the
    WAF JSON access log shipped as `nginx_access` with only a marker-shaped
@@ -59,7 +62,11 @@ rounds driven by Claude Code, and the ported acceptance suite.
   lists them as named exceptions until they move behind `/api/`.
 - `docs/DECISIONS.md` still quotes rulings in Korean, allowed by name in
   `test_no_hangul.py` until translated.
-- `@sign-in` points at `/login/`, which only `front/` will serve.
+- The 8002 listener's sign-in redirect lands on the home page, not the
+  site (`Login.tsx` refuses a `next` on another origin); the lobby holds the
+  lease heartbeat only while a round is live and never releases it.
+- `design-candidates/` (the mockups) is untracked and carries Korean;
+  `test_no_hangul.py` fails while it is in the tree.
 - The rest (the scratch rule-test guesses, the comment scan's reach,
   `bin/carry-users` mid-load) is in `docs/STATE.md` "Open points".
 

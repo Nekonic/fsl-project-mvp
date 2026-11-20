@@ -72,7 +72,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 지금 저장소에는 레슨과 라운드 문제가 하나도 없습니다. 기존 레슨 F1~F6, 과정 c1·c2, 시나리오 1.1~4.1은
 삭제했습니다. 문제는 스태프 페이지에서 새로 작성할 예정이고, 문제 본문은 DB에만 둡니다. 저장소 사이 이동은
 스태프 API의 내보내기·가져오기(`/api/staff/problems/<id>/export/`, `/api/staff/problems/import/`)로만 합니다.
-스태프 페이지(`front/`)는 아직 없고, 지금은 스태프 API로 작성합니다.
+스태프 페이지(`/staff/problems/`)가 이 API를 그대로 씁니다. 스태프 페이지는 아직 훈련 환경에서 써 보지 않았습니다.
 
 | 스태프 API | 용도 |
 |---|---|
@@ -276,7 +276,7 @@ uv run bin/cloud up
 
 ## 동작 확인
 
-콘솔(`front/`)이 아직 없으므로 API로 확인합니다. 스태프 계정으로 로그인한 쿠키로 풀 상태를 봅니다. 슬롯마다
+콘솔의 스태프 레인지 페이지(`/staff/range/`)가 이 상태를 보여 주지만 훈련 환경에서는 아직 확인하지 않았으므로, API로도 확인합니다. 스태프 계정으로 로그인한 쿠키로 풀 상태를 봅니다. 슬롯마다
 리스와 재생성 상태(`refill.state`)가 나오고, `idle`이면서 리스가 없는 슬롯을 새 리스가 받습니다. 슬롯 스택의 서버
 상태는 `GET /api/staff/range/pool/`에 있습니다.
 
@@ -378,7 +378,8 @@ bin/verify --fast       # 단위·API 테스트 전체
 
 - `bin/verify`는 먼저 `bin/gen-clients`로 `openapi/schema.yaml`을 다시 내보내고 `bots/client/`와
   `front/src/api/schema.d.ts`를 생성합니다. 생성 코드는 커밋하지 않습니다. 스키마가 바뀌면 그 변경과 함께 커밋합니다.
-  node가 없으면 TypeScript 타입만 건너뜁니다.
+  node가 없으면 TypeScript 타입과 `front/` 검사를 건너뜁니다.
+- `front/`, `strings/`, `openapi/` 아래가 바뀌면 `bin/verify`가 `front/`를 타입 검사·빌드하고 vitest를 돌립니다.
 - `--fast`는 `platform/tests/` 아래 계층별로 `domain`(Django 없이), `seams`, 앱별(`accounts`, `events`, `content`,
   `match`, `referee`, `defence`, `attack`, `lessons`), `contract` 순서로 돌리고, 그다음 `platform/tests/test_*.py`를
   돌립니다.
@@ -386,6 +387,14 @@ bin/verify --fast       # 단위·API 테스트 전체
 
 ```bash
 cd platform && ../.venv/bin/python -m pytest tests/domain -q
+```
+
+- 콘솔 화면은 가짜 응답으로 띄워 볼 수 있습니다. 화면마다 어느 파일을 고치는지는
+  [ARCHITECTURE.md](docs/ARCHITECTURE.md) "화면 바꾸는 법"에 있습니다.
+
+```bash
+cd front && npm ci && npm run types && npm run dev   # http://localhost:5173, front/mock/의 응답
+npm run build && npx vitest run
 ```
 
 - 전체 `bin/verify`는 acceptance(`test/`)까지 돌리고 플랫폼 VM에서 실행합니다:
@@ -459,8 +468,9 @@ sudo docker compose start platform follow
 
 `side-split` 브랜치는 새 구조로 다시 만든 코드입니다. 단위·API 테스트는 통과하지만 훈련 환경에서는 아직 돌리지 않았습니다.
 
-- 콘솔(`front/`)이 아직 없습니다. `nginx.conf`는 빌드 결과 `/app/front/dist`를 내주도록 바뀌었지만 빌드할
-  코드가 없습니다. 자리별 터미널(`nginx.conf`, `vm-terminal.sh`)은 오프라인 테스트만 거쳤고 훈련 환경에서는 아직
+- 콘솔(`front/`)은 만들었지만 가짜 응답(`front/mock/`)으로만 확인했습니다. 플랫폼 이미지의 node 단계가 빌드하고
+  nginx가 `/app/front/dist`로 내줍니다. API에 없는 값(자리의 사용자 이름, 지난 라운드의 결과, 로비의 연 시각 등)은
+  아직 화면에 없습니다. 자리별 터미널(`nginx.conf`, `vm-terminal.sh`)은 오프라인 테스트만 거쳤고 훈련 환경에서는 아직
   열어 보지 않았습니다.
 - HP 차감용 WAF 접근 로그, infra 라우터의 `pool`·`spent` 집합, CRS 룰 테스트용 임시 인스턴스, WAF의 `analyst`
   계정은 배포 파일에만 있고 역할 이미지에는 아직 없습니다. infra, waf 이미지를 다시 구워야 합니다

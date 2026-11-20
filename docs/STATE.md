@@ -15,10 +15,10 @@ The product is being rebuilt as a side split on the working branch
 code is reference only). `dev` keeps the old product deployable until gate 2.
 
 The rebuild follows the spec's build order (§16). Steps 1-4, 6-11, 13, 14,
-the repo side of 5, the `nginx.conf` and terminal part of 15 and the code of
-16 are built and pass the unit and API suite; the bake of 5, step 12, the
-`front/` of 15 and the live parts of 16 and 17 are not done. Nothing on
-`side-split` has run on a range.
+the repo side of 5, step 15 (`nginx.conf`, the terminals and `front/`) and
+the code of 16 are built and pass the unit and API suite; `front/` is built
+against its mock API only. The bake of 5, step 12 and the live parts of 15,
+16 and 17 are not done. Nothing on `side-split` has run on a range.
 
 ## What exists on side-split
 
@@ -37,7 +37,8 @@ the repo side of 5, the `nginx.conf` and terminal part of 15 and the code of
 | 11 `match.service` | lease and round lifecycle, follower (`follow` compose service), customers and the benign schedule, site pane, terminal auth routes, score, probe recording, staff range routes | `tests/match`; import rules 6, 7, 9 |
 | 13 `lessons` | lesson rounds, facts, judges, progress, hints, `step_locked`, staff try | `tests/lessons` |
 | 14 Contract and clients | `openapi/schema.yaml` committed; `bin/gen-clients`; `test/` and `bin/` on the generated client; `bin/backup` and `bin/prune` on the new tables | `tests/contract`; import rule 12; no `/api/sessions` outside docs |
-| 15 `nginx.conf` and terminals | per-seat `/vm-terminal/<side>/<round>/` through an uncached `terminal-auth`, the raw-path seat guard, the round passed to ttyd as its only argument, a refused check answered with the API's status and code (`@terminal-refused`, from `terminal-auth`'s `X-Error-Code`); `vm-terminal.sh` (kali as `kali`, cr-waf as `analyst`, only with a jump grant, closed within 15 s once the grant goes); `analyst`'s processes, crontab and `at` jobs ended when the round's defence grant is revoked (`range.jump.end_account`); `/signed-in` on `/api/me/`; the 8002 listener keyed by round; refused Kibana routes answered by the gate; `/app/front/dist` served last. `front/` itself is not built | `tests/test_front.py` (a config parser and nginx's path normalization replayed), `tests/test_vm_terminal.py` (fake `python`, `ssh`, `tmux`), `tests/attack/test_terminal.py`, `tests/defence/test_terminal.py`, `tests/seams/test_jump.py` (the end script run against fake `crontab`, `atq`, `loginctl`, `pkill`, `pgrep`); no `nginx -t` |
+| 15 `nginx.conf` and terminals | per-seat `/vm-terminal/<side>/<round>/` through an uncached `terminal-auth`, the raw-path seat guard, the round passed to ttyd as its only argument, a refused check answered with the API's status and code (`@terminal-refused`, from `terminal-auth`'s `X-Error-Code`); `vm-terminal.sh` (kali as `kali`, cr-waf as `analyst`, only with a jump grant, closed within 15 s once the grant goes); `analyst`'s processes, crontab and `at` jobs ended when the round's defence grant is revoked (`range.jump.end_account`); `/signed-in` on `/api/me/`; the 8002 listener keyed by round; refused Kibana routes answered by the gate; `/app/front/dist` served last, `/assets/` answering 404 for a missing hashed file, `index.html` uncached | `tests/test_front.py` (a config parser and nginx's path normalization replayed), `tests/test_vm_terminal.py` (fake `python`, `ssh`, `tmux`), `tests/attack/test_terminal.py`, `tests/defence/test_terminal.py`, `tests/seams/test_jump.py` (the end script run against fake `crontab`, `atq`, `loginctl`, `pkill`, `pgrep`); no `nginx -t` |
+| 15 `front/` | Vite, TypeScript, Preact console in the v4 design: `theme/tokens.css` and `theme/components.css` hold every visual value and class; `ui/` dumb components; `panes/` per spec §13 plus `Loot`, `AttackCases`, `RuleVersions`, each fetching through `api/` hooks; pages as thin arrangements; the three consoles declared as data in `layouts.ts`, routes and top nav as one table each (`routes.ts`, `nav.ts`); text only through `t()` over `strings/console.json`; `api/client.ts` (CSRF renewal, 90 s timeout, slot wait), `api/follow.ts` (one events cursor reading the whole backlog, per-lease heartbeat); a dev-server mock API (`front/mock/`); the Dockerfile's node stage (`npm run types`, `npm run build`) and `front`, `strings`, `openapi` in `images.yml` sources; `bin/verify` builds and tests `front/` | `npm run build`, `npx vitest run` (client, follow cursor, panes, Korean guards, no `server.json` key in the bundle); every route captured at 1440 and 390 against the mock and compared with the v4 mockups; `docker buildx` of the platform image and `nginx -t` inside it, not pushed |
 | 16 `bots/` (code) | `tools.py`, `calls.py`, `cli.py`, `play.py`, `provider.py`, `signin.py`, the side prompts and the README | `platform/tests/test_bots.py` |
 | 17 Docs | README, ARCHITECTURE, CLAUDE.md, this file and `now.md` describe the new layout | this step |
 
@@ -69,14 +70,10 @@ on a slot:
 
 ## Next steps, in order
 
-1. **`front/` in the design the user picks** (spec step 15): the typed
-   console and the Dockerfile's node stage. `platform/nginx.conf` already
-   serves `/app/front/dist` last with the `index.html` fallback, hands
-   `/vm-terminal/<side>/<round>/` to the side's ttyd after `terminal-auth`,
-   and keys the 8002 listener by round; `platform/vm-terminal.sh` opens kali
-   as `kali` and cr-waf as `analyst` for a seat holding a jump grant. Neither
-   has run on a range. The user chooses the design before it is built
-   (gate 1).
+1. **`front/` on a range** (spec step 15): built in the approved v4 design
+   against the mock API only. Left: run it against a live platform, with
+   the per-seat terminals (`nginx.conf`, `vm-terminal.sh`), the 8002 site
+   listener and the Kibana pane, none of which has run on a range.
 2. **Cloud step 5, the rebake**: the repo side is written and tested
    offline: `edge.nft` with the `pool` and `spent` sets and the `spent` drop
    before the established accept; `board.com.conf` with one `$refused` map
@@ -114,9 +111,26 @@ on a slot:
 - **A refused key leaves a jump grant.** If the box refuses the per-seat
   key, `range.jump.open_access` keeps the platform sshd grant until the
   round ends. Without the box key it gives no access.
-- **The sign-in redirect has no page yet.** `@sign-in` sends Kibana and site
-  pane requests without a session to `/login/?next=`, which only `front/`
-  will serve; until then it falls to the missing `index.html`.
+- **The site listener's sign-in redirect loses its target.** `@sign-in`
+  on the 8002 listener sends `next=http://host:8002/...`, which `Login.tsx`
+  refuses as another origin, so the learner lands on the home page instead
+  of the site.
+- **The lobby heartbeat.** `pages/RoundLobby.tsx` holds the lease only while
+  a round is live and never releases the hold, so a lease can idle out in
+  the lobby between rounds and the heartbeat outlives the page.
+- **Mockup fields the API does not send.** User names on seats and the round
+  bar (`SeatLine`, `Me`), a past round's end and result, a lesson's step
+  counts, the lease's opening time, a CRS preview, case and objective
+  catalogs for the staff editor, and coded slot and server failures.
+- **Screens not yet one file to change.** The map icons
+  (`panes/map-symbols/node-*.svg`) and `panes/Map.tsx`'s cytoscape style
+  do not use the tokens; a layout cannot put two panes side by side in the
+  main area; the aside's first pane takes the `aside-lead` look; verdict
+  labels are repeated across several `console.json` values; verdict tones
+  differ between `Score` and `RuleTestTable`.
+- **`design-candidates/` is untracked.** The mockups carry Korean, so
+  `test_no_hangul.py` fails while the folder is in the tree; it stays out of
+  the commit.
 - **Two runtime guesses in the rule test.** Whether `jasonish/suricata`'s
   entrypoint lets the offline `-r` run write to the root-owned scratch log
   folder mounted at `/scratch`, and whether the scratch ModSecurity
@@ -129,9 +143,9 @@ on a slot:
 - **`bin/carry-users` mid-load.** If `loaddata` fails after the migrated
   `admin` was deleted, the new store has no `admin` until the command is run
   again, which recovers it.
-- **Generated clients outside `bin/verify`.** The platform Dockerfile and
-  `images.yml` do not run `bin/gen-clients` yet (the spec has them do it with
-  the `front/` node stage); the platform image needs neither client today.
+- **Generated clients outside `bin/verify`.** The platform Dockerfile's node
+  stage generates only `front/src/api/schema.d.ts` (`npm run types`), not
+  `bin/gen-clients`; the platform image needs no Python client.
 - **No route serves the probe recordings.** `match/probes.py` writes them to
   the platform's `CR_PROBES_OUT`; they are copied off the platform VM by hand
   before they are committed.

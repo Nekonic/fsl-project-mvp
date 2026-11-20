@@ -128,8 +128,48 @@ redteam/cases/ board.yaml  corp.yaml   공격·정상 케이스(데이터만)
 wargames/<board|corp>/  wargame.yaml  compose.yaml  topology.yaml  objectives.yaml  traffic.yaml  probes/  app/
 deploy/        roles/<kali|waf|infra|target>/  openstack/  suricata/  filebeat/  elastic/  kibana/  traffic/
                kali/  waf/  proxy/   역할 디렉터리가 링크로 가리키는 원본(proxy/stamp.py는 사본 없이 하나)
-front/         아직 없음. 지금은 생성된 front/src/api/schema.d.ts만 생김
+front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단계가 빌드하고 nginx가 /app/front/dist로 내줌
+  src/theme/   tokens.css(색, 글꼴, 크기, 간격, 둥글기, 그림자 값)  components.css(모든 컴포넌트 클래스)
+  src/ui/      props만 받아 클래스를 그리는 작은 컴포넌트: Button, Badge, Card, Hero, Table, Field, Notice, Shell(TopNav,
+               PageShell), Console(Rail, Pane, PaneHeader, Aside), Steps, Site, Editor, Ops, Record, Tiles, Text, Icon
+               looks.ts     상태별 모양 선택(타일 색, 단계 색). index.ts에서 모두 내보냄
+  src/panes/   설계 §13의 패널. 각자 api/의 훅으로 데이터를 받고 ui/로 그림. 어느 페이지에 있는지 모름
+               Kibana  Terminal(Kali, WAF)  Site  Map(+map-symbols/)  IdsRules  Waf  RuleTestTable  Alerts
+               Objectives  Hp  Loot  AttackCases  RuleVersions  Score  StepCard
+               registry.ts  패널 id → 컴포넌트 표   staff/  문제·posture 편집기, 가져오기, 단계 편집
+  src/pages/   얇은 배치: 어떤 패널을 어디에 둘지. Login  Signup  Home  RoundLobby  Lesson  RoundAttack  RoundDefence
+               Result  staff/(Problems  Postures  Users  Range)
+  src/console/ Console.tsx(layouts.ts의 선언대로 레일, 본문, 오른쪽 열을 그림)  RoundHeader.tsx
+  src/shell/   AppPage.tsx(상단 메뉴와 페이지 틀)  AuthCard.tsx(로그인·가입 카드)
+  src/api/     client.ts(CSRF 갱신, 90초 제한, 슬롯 대기, 오류 형태)  follow.ts(이벤트 커서 하나, 리스 heartbeat)
+               hooks.ts(useResource, useEvents 등)  schema.d.ts(생성, 커밋 안 함)
+  src/         layouts.ts(공격·방어·레슨 콘솔의 레일 순서와 오른쪽 열)  routes.ts(경로 표)  nav.ts(상단 메뉴 표)
+               strings.ts(t(key, params), strings/console.json 읽기)  links.ts  router.ts  format.ts  App.tsx  main.tsx
+  mock/        개발 서버(npm run dev)에서만 쓰는 가짜 /api/ 응답. fixtures/에 화면별 응답, 영어 자리표시
 ```
+
+### 화면 바꾸는 법
+
+| 바꿀 것 | 고칠 파일 |
+|---|---|
+| 색, 글꼴, 크기, 간격, 둥글기 | `front/src/theme/tokens.css` |
+| 카드, 버튼, 표 같은 모양 | `front/src/theme/components.css`. 페이지와 패널에는 스타일이 없음(진행 막대 너비만 예외) |
+| 콘솔의 레일 순서, 패널 추가·제거, 오른쪽 열 | `front/src/layouts.ts`의 한 줄 |
+| 페이지에 어떤 패널을 둘지 | `front/src/pages/<페이지>.tsx` |
+| 경로, 상단 메뉴 | `front/src/routes.ts`, `front/src/nav.ts` |
+| 문구 | `strings/console.json`. 화면 문구는 모두 `t(key, params)`로 나옴 |
+| 패널이 보여 주는 데이터 | `front/src/panes/<패널>.tsx`와 `front/src/api/hooks.ts`. 서버 응답은 `openapi/schema.yaml`이 정함 |
+
+`front/`에서 `npm ci && npm run types && npm run dev`로 띄우면 `mock/`의 가짜 응답으로 모든 화면을 볼 수
+있습니다. 아직 남은 제약:
+
+- 지도 아이콘(`panes/map-symbols/node-*.svg`)과 `panes/Map.tsx`의 cytoscape 스타일(모서리, 글꼴 크기, 투명도)은
+  토큰을 쓰지 않습니다. 지도 모양을 바꾸려면 그 파일들도 고쳐야 합니다.
+- 레이아웃은 레일(본문에 한 번에 패널 하나)과 오른쪽 열만 표현합니다. 본문에 패널 둘을 나란히 두려면
+  `console/Console.tsx`와 `ui/Console.tsx`를 고쳐야 합니다. 오른쪽 열의 첫 패널은 다른 모양(`aside-lead`)이라 순서를
+  바꾸면 모양도 바뀝니다.
+- 같은 뜻의 라벨(정상 통과, 정탐, 오탐)이 `console.json`의 여러 값에 되풀이돼 있어, 이름을 바꾸면 그 값들을 모두
+  고쳐야 합니다.
 
 ## 격리 경계
 
@@ -158,7 +198,7 @@ front/         아직 없음. 지금은 생성된 front/src/api/schema.d.ts만 �
   재생성 기본 룰은 슬롯의 시작 파일이고, 라운드 시작 때 문제의 posture가 그 위에 적용됩니다.
 - 이전 구조의 예외 중 `register_pipeline.py`(→ `ingest/elastic.py`), `operator_log.py`(→ `attack/box.py`),
   `redteam/tools.py`의 `cr-kali`(→ 박스가 `launch`를 넘김), 레슨 F6의 명령(레슨과 함께 삭제), `blue.html`의 Kibana
-  localStorage 설정(콘솔과 함께 삭제)은 없어졌습니다. `front/`가 생기면 `front/src/panes/Kibana.tsx`가 그 설정을 맡습니다.
+  localStorage 설정(콘솔과 함께 삭제)은 없어졌습니다. 그 설정은 이제 `front/src/panes/Kibana.tsx`(`presetKibana`)가 맡습니다.
 - Elasticsearch를 직접 읽는 acceptance 검사 넷은 `/api/` 뒤로 옮길지 아직 정하지 않았습니다.
 
 ## 라운드 흐름
@@ -364,9 +404,14 @@ sequenceDiagram
 
 ## 아직 없는 것
 
-- `front/`(Vite, TypeScript, Preact 콘솔). `nginx.conf`는 이미 빌드 결과 `/app/front/dist`를 마지막 위치에서
-  내주고 나머지 경로를 `index.html`로 돌리지만, Dockerfile의 node 단계와 빌드 결과물은 아직 없습니다. 로그인이
-  필요한 Kibana와 사이트 패널은 `/login/?next=`로 보내는데, 그 페이지도 `front/`가 생겨야 생깁니다.
-- 생성 클라이언트를 만드는 곳은 지금 `bin/verify`뿐입니다. 플랫폼 Dockerfile과 `images.yml`은 아직
-  `bin/gen-clients`를 돌리지 않고, 플랫폼 이미지에는 `strings/server.json`만 들어갑니다.
+- `front/`는 가짜 응답(`front/mock/`)으로만 확인했고 훈련 환경에서는 아직 돌리지 않았습니다. 플랫폼 Dockerfile의
+  node 단계가 `npm run types`(openapi-typescript)로 `front/src/api/schema.d.ts`를 만들고 빌드한 뒤 `dist`를
+  `/app/front/dist`에 넣습니다. `strings/server.json`은 빌드에 쓰이지만 `dist`에는 들어가지 않습니다. Python 클라이언트
+  `bots/client/`는 여전히 `bin/verify`만 만듭니다.
+- API에 없어서 목업과 다른 곳: 자리와 라운드 막대에 사용자 이름이 없고(`SeatLine`, `Me`에 이름이 없음), 지난
+  라운드의 종료 시각과 결과, 레슨의 단계 수, 로비의 연 시각, CRS 미리 보기, 케이스·목표 목록(스태프 편집기는 id로
+  입력)이 없습니다.
+- 8002 사이트 리스너의 로그인 이동은 `next=http://host:8002/...`를 보내는데 `Login.tsx`가 다른 출처라 받지 않아,
+  로그인 뒤 사이트가 아니라 홈으로 갑니다. 로비(`RoundLobby.tsx`)는 라운드가 진행 중일 때만 리스 heartbeat를
+  보내고 떠나도 멈추지 않습니다.
 - infra, waf 이미지 다시 굽기와 `wargames/<id>/probes/` 녹화(`bin/record-probes`). 배포 파일은 고쳐 두었습니다.
