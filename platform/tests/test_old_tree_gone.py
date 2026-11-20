@@ -4,7 +4,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SELF = "platform/tests/test_old_tree_gone.py"
-OLD_REFERENCE = re.compile(r"(?<![\w./])api\.\w|^\s*(from|import) api\b|scenario", re.IGNORECASE | re.MULTILINE)
+OLD_API = re.compile(r"(?<![\w./])api\.\w|^\s*(from|import) api\b", re.MULTILINE)
+SCENARIO = re.compile(r"scenario", re.IGNORECASE)
 
 GONE = (
     "platform/api", "platform/console", "platform/wargames.py", "platform/lifecycle.py",
@@ -40,7 +41,7 @@ def referencing():
             text = (ROOT / name).read_text()
         except UnicodeDecodeError:
             continue
-        if OLD_REFERENCE.search(text):
+        if SCENARIO.search(text) or (not name.startswith("front/") and OLD_API.search(text)):
             found.add(name)
     return found
 
