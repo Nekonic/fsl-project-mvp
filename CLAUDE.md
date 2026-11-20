@@ -41,9 +41,9 @@ primary source rather than your own sense of the vocabulary.
 
 ## Working language
 
-Reply to the user in Korean. Every chat reply is drafted, run through the
-`humanize-korean` skill, and only its output is shown; thinking, tool calls,
-commits and files are exempt (2026-11-20, the user's ruling). Repo files may be written in Korean or English;
+Reply to the user in Korean. Chat replies carry no slop (the list in the
+output style); run the `humanize-korean` skill only when a long reply needs it
+(2026-11-20, the user's ruling). Repo files may be written in Korean or English;
 no test restricts where Korean appears (2026-11-20, the user's ruling).
 Code carries no comments in any language.
 
