@@ -1,11 +1,10 @@
-import type { ComponentChildren } from "preact";
 import { useResource } from "../api/hooks";
 import type { Schemas } from "../api/client";
 import { count } from "../format";
 import { to } from "../links";
 import { t, tFor } from "../strings";
 import {
-  Button, Columns, Divided, ErrorNotice, FootRow, Loading, Notice, Stack, Table, Task, Text, type Column, type TextTone,
+  Button, Columns, ErrorNotice, Loading, Notice, Stack, Table, Task, Text, type Column, type TextTone,
 } from "../ui";
 import type { PaneProps } from "./types";
 
@@ -33,11 +32,6 @@ function isAttackCase(line: CaseLine): boolean {
   return ATTACK_VERDICTS.includes(line.verdict);
 }
 
-function pointsFor(objective: ObjectiveLine): number {
-  if (!objective.lost) return 0;
-  return objective.seen ? 1 : 2;
-}
-
 function objectiveLines(score: ScoreShown): ObjectiveLine[] {
   return [
     ...score.objectives.lost.map((objective) => ({ key: objective.key, name: objective.name, lost: true, seen: objective.seen })),
@@ -45,73 +39,28 @@ function objectiveLines(score: ScoreShown): ObjectiveLine[] {
   ];
 }
 
-function ObjectiveOutcome({ objective }: { objective: ObjectiveLine }) {
-  if (!objective.lost) return <Text tone="ok">{t("objective.kept")}</Text>;
-  return <Text tone="danger">{[t("objective.lost"), t(objective.seen ? "objective.seen" : "objective.unseen")].join(" · ")}</Text>;
+function Mark({ on, tone }: { on: boolean; tone: TextTone }) {
+  return <Text tone={on ? tone : "muted"} strong>{t(on ? "mark.yes" : "mark.no")}</Text>;
 }
 
-function LostObjectives({ score }: { score: ScoreShown }) {
-  const lines = objectiveLines(score);
-  const lost = score.objectives.lost.length;
+function Objectives({ score }: { score: ScoreShown }) {
   const columns: Column<ObjectiveLine>[] = [
     { key: "name", label: t("result.objective"), kind: "strong", cell: (line) => line.name, title: (line) => line.key },
-    { key: "outcome", label: t("result.outcome"), cell: (line) => <ObjectiveOutcome objective={line} /> },
-    { key: "points", label: t("result.points"), kind: "end", cell: (line) => pointsFor(line) },
+    { key: "lost", label: t("result.achieved"), kind: "nowrap", cell: (line) => <Mark on={line.lost} tone="danger" /> },
+    { key: "seen", label: t("result.detected"), kind: "nowrap", cell: (line) => (line.lost ? <Mark on={line.seen} tone="ok" /> : <Text tone="faint">—</Text>) },
   ];
   return (
-    <Task
-      title={t("result.objectives_title")}
-      side={<Text tone={lost ? "danger" : "ok"} strong>{t("result.lost_tally", { lost, total: lines.length })}</Text>}
-      foot={t("result.objectives_note")}
-    >
-      <Table
-        columns={columns}
-        rows={lines}
-        rowKey={(line) => line.key}
-        empty={t("result.no_objectives")}
-        foot={<FootRow span={2} label={t("result.objective_points_total")} value={count(score.objectives.weighted)} />}
-      />
+    <Task title={t("result.objectives_title")} side={<Text strong>{t("result.objective_points", { points: count(score.objectives.weighted) })}</Text>}>
+      <Table columns={columns} rows={objectiveLines(score)} rowKey={(line) => line.key} empty={t("result.no_objectives")} />
     </Task>
   );
 }
 
-function CaseNamed({ name, suffix }: { name: string; suffix: string }) {
-  return <Text tone="danger"><Text mono>{name}</Text>{suffix}</Text>;
-}
-
-function SummaryBlock({ headline, children }: { headline: ComponentChildren; children?: ComponentChildren }) {
-  return (
-    <Stack gap="sm">
-      <Text tone="heading" strong>{headline}</Text>
-      {children}
-    </Stack>
-  );
-}
-
-function DetectionSummary({ score }: { score: ScoreShown }) {
-  const { totals, per_case: cases } = score.outcomes;
-  const attackTotal = totals.tp + totals.fn;
-  const benignTotal = totals.fp + totals.tn;
-  const missed = cases.filter((line) => line.verdict === "fn");
-  const falseAlarms = cases.filter((line) => line.verdict === "fp");
-  const totalsLine = VERDICT_ORDER.map((verdict) => `${tFor("verdict", verdict)} ${count(totals[verdict])}`).join(" · ");
+function DetectionTotals({ score }: { score: ScoreShown }) {
+  const { totals } = score.outcomes;
   return (
     <Task title={t("result.detection_title")}>
-      <Divided>
-        <SummaryBlock headline={attackTotal ? t("result.attack_summary", { total: attackTotal, tp: totals.tp }) : t("result.no_attack_cases")}>
-          {missed.map((line) => <CaseNamed key={line.case} name={line.case} suffix={t("result.missed_suffix")} />)}
-        </SummaryBlock>
-        <SummaryBlock
-          headline={!benignTotal
-            ? t("result.no_benign_cases")
-            : totals.fp
-              ? t("result.benign_summary", { total: benignTotal, fp: totals.fp })
-              : t("result.benign_all_passed", { total: benignTotal })}
-        >
-          {falseAlarms.map((line) => <CaseNamed key={line.case} name={line.case} suffix={t("result.false_alarm_suffix")} />)}
-        </SummaryBlock>
-        <Stack gap="sm"><Text tone="muted">{totalsLine}</Text></Stack>
-      </Divided>
+      <Text strong>{VERDICT_ORDER.map((verdict) => `${tFor("verdict", verdict)} ${count(totals[verdict])}`).join(" · ")}</Text>
     </Task>
   );
 }
@@ -139,7 +88,7 @@ function CaseOutcomes({ score }: { score: ScoreShown }) {
   ];
   const ordered = [...score.outcomes.per_case].sort((one, other) => Number(isAttackCase(other)) - Number(isAttackCase(one)));
   return (
-    <Task title={t("result.cases_title")} foot={tFor("result.note", score.outcomes.note)}>
+    <Task title={t("result.cases_title")}>
       <Table columns={columns} rows={ordered} rowKey={(line) => line.case} empty={t("result.no_cases")} />
     </Task>
   );
@@ -153,7 +102,7 @@ function FreeActions({ score }: { score: ScoreShown }) {
     { key: "refused", label: t("col.blocked"), kind: "num", cell: (origin) => count(origin.refused) },
   ];
   return (
-    <Task title={t("result.free_title")} side={<Text tone="muted" small>{t("result.free_unscored")}</Text>}>
+    <Task title={t("result.free_title")}>
       <Table columns={columns} rows={score.free_actions.by_origin} rowKey={(origin) => origin.ip} empty={t("result.no_free_actions")} />
     </Task>
   );
@@ -164,8 +113,8 @@ export function ScoreReport({ score }: { score: ScoreShown }) {
     <Stack gap="sm">
       {score.posture_drift && <Notice tone="warn" title={t("result.posture_drift")} />}
       <Columns shape="main-side">
-        <LostObjectives score={score} />
-        <DetectionSummary score={score} />
+        <Objectives score={score} />
+        <DetectionTotals score={score} />
       </Columns>
       <CaseOutcomes score={score} />
       <FreeActions score={score} />
