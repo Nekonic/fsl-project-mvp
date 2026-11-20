@@ -85,8 +85,9 @@ Generated code is not committed: `bin/gen-clients` exports the committed
 contract `openapi/schema.yaml` and generates `bots/client/` and
 `front/src/api/schema.d.ts` from it, because the generators write docstrings
 and the no-comments rule has no exception for them. `bin/verify` generates
-them before use; the platform Dockerfile and `images.yml` will once the
-`front/` build's node stage exists (today the image carries neither).
+both before use; the platform Dockerfile's node stage generates only
+`front/src/api/schema.d.ts` (`npm run types`) before it builds `front/`, and
+the image carries neither.
 
 Korean text is written Korean-first: from the meaning, not translated from the
 English sentence, in the usage of Korean security practitioners rather than the
@@ -166,7 +167,7 @@ never scored as one.
   `vm-terminal.sh cr-waf defence` and creates the jump host's
   `authorized_keys`;
   `deploy/roles/infra/edge.nft` declares the `pool` and `spent` sets
-  `range/edge.py` fills. Once `front/` exists, `front/src/panes/Kibana.tsx`
+  `range/edge.py` fills; `front/src/panes/Kibana.tsx`
   presets Kibana's localStorage keys. `docs/ARCHITECTURE.md` keeps the table.
 - The dependency graph holds: `platform/tests/seams/test_imports.py` checks
   the layers and import rules of the design (`domain/` imports only the

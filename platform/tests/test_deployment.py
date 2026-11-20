@@ -89,7 +89,7 @@ def test_a_secret_key_is_generated_into_the_data_volume_only_when_none_is_given(
 
 def test_the_image_carries_the_server_string_table_where_cr_strings_reads_it():
     lines = [line.split() for line in DOCKERFILE.read_text().splitlines()]
-    [workdir] = [words[1] for words in lines if words and words[0] == "WORKDIR"]
+    workdir = [words[1] for words in lines if words and words[0] == "WORKDIR"][-1]
     read_at = pathlib.PurePosixPath(workdir, "cr", "strings.py").parents[2] / "strings" / strings.TABLE
 
     assert ["COPY", f"strings/{strings.TABLE}", str(read_at)] in lines, (

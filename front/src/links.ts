@@ -1,0 +1,16 @@
+export const to = {
+  home: () => "/",
+  login: (next?: string) => (next && next !== "/" && !next.startsWith("/login") ? `/login?next=${encodeURIComponent(next)}` : "/login"),
+  signup: () => "/signup",
+  lease: (lease: number) => `/leases/${lease}`,
+  lesson: (round: number) => `/lessons/${round}`,
+  attack: (round: number) => `/rounds/${round}/attack`,
+  defence: (round: number) => `/rounds/${round}/defence`,
+  seat: (round: number, side: "attack" | "defence") => `/rounds/${round}/${side}`,
+  result: (round: number, side?: string) => `/rounds/${round}/result${side ? `?side=${side}` : ""}`,
+  staffProblems: () => "/staff/problems",
+  staffProblem: (id: number) => `/staff/problems/${id}`,
+  staffPostures: () => "/staff/postures",
+  staffUsers: () => "/staff/users",
+  staffRange: () => "/staff/range",
+};

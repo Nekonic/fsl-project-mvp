@@ -1,0 +1,10 @@
+node-*.svg
+  Dark rounded tiles (#17181B, 6px #2E3036 ring, a 14% halo of the role colour) holding one glyph in the role
+  colour: router, firewall (node-waf), server, storage (node-database), inspect2 (node-sensor), switch and
+  client (node-host) from svg/naked/<name>.svg of https://github.com/ecceman/affinity, the set gns3-server ships
+  as its affinity symbols, under the Unlicense (public domain); node-logs is the statistics glyph of
+  gns3server/symbols/affinity/square/gray/statistics.svg from gns3-server 3.1.0a6. Only fill and stroke colours
+  were changed. node-kali.svg holds the Kali dragon, unmodified, on a light disc inside the same tile;
+  host-kali.txt is its notice and the trademark policy.
+
+cytoscape is the npm package pinned in front/package.json (MIT), bundled by the front build.

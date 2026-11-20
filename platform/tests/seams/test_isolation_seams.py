@@ -41,7 +41,8 @@ SEAMS = {
         r"nginx -s reload|REQUEST-9\d\d|modsecurity\.conf|SecRule|/etc/nginx/modsecurity|audit\.log"),
     KIBANA: (
         {"platform/defence/kibana.py"},
-        r"/api/saved_objects|kbn-xsrf|/api/spaces|/api/data_views|/api/index_patterns|/kibana/(?:api|internal)\b"),
+        r"/api/saved_objects|kbn-xsrf|/api/spaces|/api/data_views|/api/index_patterns|/kibana/(?:api|internal)\b"
+        r"|discover:docExplorer\w*Closed|data\.noDataPopover"),
     INDEX_PATTERNS: (
         {"platform/defence/kibana.py"},
         r"\blogs-\*|\bfilebeat-\*|\bsuricata-\*|\bindex_patterns?\b"),
@@ -76,7 +77,7 @@ EXCEPTIONS = {
     "test/test_waf_geolocation.py": {ELASTICSEARCH},
 }
 OUTSIDE_THE_SCAN = {"wargames/<id>/topology.yaml", "deploy/roles/infra/edge.nft"}
-NOT_WRITTEN_YET = {"front/src/panes/Kibana.tsx"}
+NOT_WRITTEN_YET: set[str] = set()
 
 CLAUDE_MD = REPO / "CLAUDE.md"
 EXCEPTION_PARAGRAPH = re.compile(r"Known exceptions in code today.*?(?=\n- |\n## )", re.S)

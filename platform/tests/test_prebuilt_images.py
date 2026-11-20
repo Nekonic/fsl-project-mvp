@@ -460,7 +460,7 @@ class ChangedContexts:
 def test_every_image_must_be_built_from_what_head_holds():
     module = rebuild()
     built = "3" * 40
-    platform_sources = "platform strings/server.json pyproject.toml uv.lock"
+    platform_sources = "platform front strings openapi pyproject.toml uv.lock"
     git = ChangedContexts({(BASE, platform_sources), (BASE, "wargames/corp/db")})
     platform = {"platform": module.Tarball(Path("p.tar"), built)}
 
