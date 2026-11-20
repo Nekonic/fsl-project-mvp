@@ -31,6 +31,8 @@ export function AuthCard({ page, title, foot, children }: AuthCardProps) {
 export function useLeaveWhenSignedIn(destination: string): void {
   const { me } = useSession();
   useEffect(() => {
-    if (me) navigate(destination, true);
+    if (!me) return;
+    if (destination.startsWith("/")) navigate(destination, true);
+    else location.replace(destination);
   }, [me, destination]);
 }

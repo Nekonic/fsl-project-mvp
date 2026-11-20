@@ -22,6 +22,9 @@ def test_an_origin_with_no_open_connection_is_still_spent():
 
     edge.spend(router, "5.188.10.10")
 
+    assert router.sent[0].argv == ["nft", "add element ip edge spent { 5.188.10.10 }"]
+    assert router.sent[1].argv == ["conntrack", "-D", "-s", "5.188.10.10"]
+
 
 def test_a_conntrack_that_fails_otherwise_is_reported():
     with pytest.raises(RangeUnavailable):

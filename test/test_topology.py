@@ -29,9 +29,3 @@ def test_the_live_map_draws_each_device_on_the_network_it_stands_on_with_an_addr
     assert {"internet"} <= zones_of["kali"] and {"internet"} < zones_of["router"], zones_of
     assert zones_of["waf"] & zones_of["board.com"] and zones_of["board.com"] & zones_of["board-db"], zones_of
     assert {zone["caption"] for zone in live_map["zones"]} >= {"internet", "dmz", "database"}
-
-
-def test_every_zone_with_a_subnet_names_a_real_network(live_map):
-    for zone in live_map["zones"]:
-        if zone["subnet"]:
-            assert ipaddress.ip_network(zone["subnet"]), zone

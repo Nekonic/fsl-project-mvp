@@ -193,7 +193,7 @@ fsl-project-mvp/
     tests/
       domain/   conftest.py (no Django)  test_correlate.py test_metrics.py test_corroborate.py
                 test_objectives.py test_ledger.py test_verdicts.py test_checks.py test_problems.py test_round_rules.py
-      seams/    test_imports.py test_isolation_seams.py test_no_hangul.py test_no_comments.py test_elastic.py
+      seams/    test_imports.py test_isolation_seams.py test_no_comments.py test_elastic.py
                 test_suricata.py test_crs.py test_edge.py test_box.py test_jump.py test_openstack.py test_wiring.py
                 test_loot.py test_effect.py
       accounts/ events/ content/ match/ lessons/ attack/ defence/ referee/
@@ -243,7 +243,7 @@ fsl-project-mvp/
     traffic/  kibana/
   test/                             live acceptance; HTTP clients of the generated client only
   docs/  ARCHITECTURE.md DECISIONS.md STATE.md OPENSTACK.md TROUBLESHOOTING.md THREAT-MODEL.md
-         vocabulary.md state/now.md superpowers/specs/
+         state/now.md superpowers/specs/
 ```
 
 `platform/scoring/`, `platform/scoreboard.py`, `platform/lesson.py`, `platform/api/`, `platform/console/`, `platform/wargames.py`, `platform/lifecycle.py`, `platform/register_pipeline.py`, `platform/operator_log.py`, `redteam/*.py` and `deploy/proxy/stamp.py` no longer exist (§15).
@@ -510,7 +510,7 @@ The verdict codes are machine fields. The front end shows them only through Kore
 | `POST /api/auth/signup/` | `{username, password}` | `201 {user, approved:false}`; rate-limited |
 | `POST /api/auth/logout/` | none | `204` |
 | `GET /api/me/` | none | `{user, is_staff, approved, seats:[{round, side, phase}], lessons:[{round, problem, phase}]}` |
-| `GET /api/staff/users/`, `POST /api/staff/users/<id>/approve/`, `POST …/disable/` | | staff |
+| `GET /api/staff/users/`, `POST /api/staff/users/<username>/approve/`, `POST …/disable/` | | staff; an account is `{username, approved, is_staff, joined}`, and an unknown username is `404 unknown_user` |
 | `GET /api/staff/blocks/`, `DELETE /api/staff/blocks/<id>/` | | staff |
 
 Session requests need CSRF; Bearer seat-token requests are CSRF-exempt. `match.auth.SeatTokenAuthentication` states this.
@@ -525,8 +525,8 @@ Who may act: the **operator** is `Lease.opened_by` or a staff user (`IsOperator`
 | `GET /api/leases/<lease>/` | operator | none | `{lease, slot, ready, expires_at, rounds:[...]}` |
 | `POST /api/leases/<lease>/heartbeat/` | operator, seats | none | `{expires_at}` |
 | `POST /api/leases/<lease>/close/` | operator | none | `{closed}`; the slot is deleted and rebuilt |
-| `POST /api/leases/<lease>/rounds/` | operator | `{problem, matchup, seats:{attack:{user}\|{bot:{name}}\|{open:true}, defence:{...}}}` | `201 {round, seats:[{side, client, user}], bot_tokens?:{side: token}}` (shown once) |
-| `GET /api/rounds/?mine=1&state=open\|joinable` | user | none | `[{round, problem, matchup, seats:[{side, client, user}], phase}]` |
+| `POST /api/leases/<lease>/rounds/` | operator | `{problem, matchup, seats:{attack:{username}\|{bot:{name}}\|{open:true}, defence:{...}}}`; an unknown or inactive `username` is `400 unknown_account` on `seats.<side>.username` | `201 {round, seats:[{side, client, username, bot_name}], bot_tokens?:{side: token}}` (shown once); `username` is null for a bot or open seat, and no user id appears in the API |
+| `GET /api/rounds/?mine=1&state=open\|joinable` | user | none | `[{round, problem, matchup, seats:[{side, client, username, bot_name}], phase}]` |
 | `POST /api/rounds/<round>/seats/<side>/join/` | approved user | none | `{seat}`; appends `seat.joined`. `409 already_seated` if the user holds the other side of a non-lesson round, `409 seat_taken` |
 | `POST /api/rounds/<round>/start/` | operator | none | `{phase}`. Freezes the snapshot, applies the posture (`defence.service`), takes the baseline (`referee.service`), fills `@pool` (`attack.service`), creates the Kibana space, starts customers and the benign schedule |
 | `POST /api/rounds/<round>/end/` | operator | none | `{ended, reason: ended_by_operator}` |
@@ -551,7 +551,7 @@ Who may act: the **operator** is `Lease.opened_by` or a staff user (`IsOperator`
 
 **Seat token scope.** A seat token reaches its side's `/attack/` or `/defence/` routes, and the round's `GET /`, `events/`, `topology/` and (after the end) `score/`. After `round.ended` it stays valid read-only for 15 minutes, so the bot can read the end and the score; writes return `409 round_closed`.
 
-**Site pane.** The pane stays on its own nginx listener (8002) with the sandbox CSP and stripped cookies: `/site/<round>/<host>/…` is proxied to Django `/site-proxy/<round>/<host>/…` (`match/site.py`). For an attack seat each request goes through `attack.service.send` with a marker, becomes an `Action(kind=site)` and is charged HP like `POST requests/`; the response carries `X-Origin-HP`. For defence and lesson seats it is stamped with `Lease.browse_marker` and attributed as neither attack nor FP.
+**Site pane.** The pane stays on its own nginx listener (8002) with the sandbox CSP and stripped cookies: `/site/<round>/<host>/…` is proxied to Django `/site-proxy/<round>/<host>/…` (`match/site.py`). For an attack seat each request goes through `attack.service.send` with a marker, becomes an `Action(kind=site)` and is charged HP like `POST requests/`; the response carries `X-Origin-HP`. For defence and lesson seats it is stamped with `Lease.browse_marker` and attributed as neither attack nor FP. The console and site origins are `CR_CONSOLE_ORIGIN` and `CR_SITE_ORIGIN` (unset: the asked host's `http://…:8000` and `:8002`), rendered into nginx at start; `/api/me/` names `site_origin`, the pane loads from it, and a signed-out request on 8002 goes to the console's `/login/` with `next` on that origin, which the login page follows only onto that origin's `/site/`.
 
 **Terminals.** nginx's `/vm-terminal/kali/` and `/vm-terminal/waf/` locations become `/vm-terminal/<side>/<round>/`, with an uncached `auth_request /api/rounds/<round>/terminal-auth/<side>/` instead of `/signed-in`; a raw path whose seat differs from the one the location routes on is refused, and nginx hands ttyd the round as its only argument. `auth_request` passes on only 2xx, 401 and 403 and turns any other answer into a 500, so `terminal-auth` names its refusal code in an `X-Error-Code` header, the location keeps it with `auth_request_set`, and its `error_page 403 500` hands the request to `@terminal-refused`, which answers the API's status and error shape for that code (`409 round_closed`, `409 round_not_started`, `404 unknown_round`, `403 not_seated`) and `503 unavailable` for anything else; a 401 still goes to `@sign-in`. `vm-terminal.sh` opens only for a running round's seat that holds a jump grant, as `kali` on kali and as `analyst` (read-only) on waf, and closes the shell once the grant goes or the round ends. kali belongs to the attack seat, waf to the defence seat. In a round the defence seat never gets kali; a lesson whose problem side is `both` gives one user both seats.
 
@@ -702,11 +702,10 @@ A lease holds rounds one after another and its stack is rebuilt only when the le
   - `staff/Problems`, `staff/Postures`: the nested document editors, with validator errors shown inline by path
   - `staff/Users`, `staff/Range` (slots, probe recording)
 - **Korean tables:** `strings/console.json` (bundled into the front end) and `strings/server.json` (read only by `cr/strings.py`, for the Kibana gate page; never bundled). A vitest test fails when any `server.json` key appears in the built bundle.
-- **Korean guards:**
-  - `tests/seams/test_no_hangul.py` is one repo-wide scan over `.py .ts .tsx .html .json .yaml .md .sh .conf`. It allows Hangul only in `README.md`, `docs/ARCHITECTURE.md`, `docs/vocabulary.md`, `strings/console.json`, `strings/server.json`, `wargames/board/app/posts/templates/`, `wargames/board/app/posts/management/commands/seed.py`, and a named list of test files that stand in for Korean learner text or check the Korean the product shows. The test asserts the named list exists.
+- **String guards:**
   - vitest: every `t(key)` exists in `console.json`; every error code in the schema enum has a key; no shown label is an English TP/FP/FN/TN abbreviation.
   - pytest `test_error_codes.py`: every code in `cr/errors.py` and every `detail_code` in `domain/checks.py` has a key in `console.json`.
-- **CLAUDE.md** lists these Korean places, the generated-code rule (not committed), and the comment scan `tests/seams/test_no_comments.py` over `platform/`, `front/src`, `bots/`, `bin/`, `test/`, `deploy/`, `wargames/` and `redteam/` (Python, shell and TS/TSX/JS), exempting exactly `deploy/suricata/rules/`, Django's migration header and a script's shebang.
+- **CLAUDE.md** names the string tables, the generated-code rule (not committed), and the comment scan `tests/seams/test_no_comments.py` over `platform/`, `front/src`, `bots/`, `bin/`, `test/`, `deploy/`, `wargames/` and `redteam/` (Python, shell and TS/TSX/JS), exempting exactly `deploy/suricata/rules/`, Django's migration header and a script's shebang.
 - **nginx.conf** is rewritten in the same step. It keeps the exact-match rate-limited `/api/auth/login/` and `/api/auth/signup/` locations and `@too-many` (now the one error shape, code `too_many`), `@sign-in`, `/signed-in` (now asking `/api/me/`, since the new tree has no `/auth-check/` view), `/site-proxy/` (refused from outside), the 8002 site listener (keyed by round), the `/vm-terminal/<side>/<round>/` locations with the seat `auth_request`, and the Kibana routes and gate, which also answers every refused Kibana route (`/kibana-refused/` is gone). `/static/map/` is dropped: the map ships with the front build. The SPA fallback (`/app/front/dist`, `try_files … /index.html`) is added last. Django admin is not installed, and a test asserts that no URL routes to it.
 - **As built (2026-11-20), where the build departed from the above:**
   - The node stage runs `npm run types` (openapi-typescript over the committed `openapi/schema.yaml`), not `bin/gen-clients`; it copies all of `strings/` because a vitest file type-checked by `tsc` reads `server.json`, and only `dist` reaches the image. nginx adds `location /assets/` (hashed files, `immutable`, a missing one answers 404) and serves `index.html` uncached.
@@ -723,7 +722,7 @@ A lease holds rounds one after another and its stack is rebuilt only when the le
 - **`tests/seams/`:**
   - `test_imports.py`: the 15 rules in §2, by AST, including FK targets and migration dependencies, and every module assigned a layer.
   - `test_isolation_seams.py`: the single-owner patterns over `platform/`, `front/src`, `bots/`, `test/` and `bin/`, with the closed exemption list.
-  - `test_no_hangul.py`, `test_no_comments.py`.
+  - `test_no_comments.py`.
   - Each seam against fake runners from `platform/testing/fakes.py`: Suricata `checked` parsing, `offline_test` (pinned image, scratch volume outside `/var/log/suricata`), CRS `scratch_check` and `scratch_test` (never the live prefix, only 127.0.0.1), edge set commands and conntrack flush, `fetch_after` and `access_events` against a fake ES (only `nginx_access`; non-refused access records make no Detection), the box, and jump grants.
 - **App tests** (`tests/<app>/`): only through public routes with DRF's `APIClient` and public service functions. They cover: permissions (a bot token reaches one side of one round, and read-only after the end); join and `already_seated`; lifecycle permissions (a seat cannot end or close, only forfeit); event visibility per kind in PvP; a stale apply giving 409; multi-sensor apply rollback; HP on every attack response, errors included; `origins_spent` refusals and `may_end`; customers surviving a spend; benign TN with a silent attacker; the attack-seat site pane charged; the rule test with a fake sensor and WAF and `test_busy`; snapshot freezing (a staff edit mid-round changes nothing); `stale_revision` on staff PUT; progress surviving a lease close; `step_locked`; lease expiry; and the score with separate `objectives`, `outcomes` and `free_actions`.
 - **`tests/contract/`:** schema fresh, schema complete, error shape on every refusal path, error codes have Korean keys, no admin route, each `bin/backup` TABLES entry is a real table, and `test_opposite_seat.py`, which walks every round-scoped GET as the opposite seat and asserts nothing of the other side leaks.
@@ -788,7 +787,7 @@ The work happens on a working branch. Old `platform/api/` and `platform/console/
 6. **Django skeleton.** `cr/` (settings, DRF, spectacular, `handler.py`, `strings.py`), `strings/`, `accounts` (auth routes, blocks, staff users) and `events`.
    *Proof:* `tests/accounts` and `tests/events`. Error-shape test. No-admin test. `bin/carry-users` against a copy of the snapshot.
 7. **`content`.** Catalog, `wargame.yaml` per wargame, models, the staff nested-document API with revisions and export/import, learner read API.
-   *Proof:* `tests/content`. Validator errors come back by path. `test_no_hangul`.
+   *Proof:* `tests/content`. Validator errors come back by path.
 8. **`match.models`, `match.auth` and `referee`** (baseline, loot, effects, objectives, redact, `score` taking records).
    *Proof:* `tests/referee` with a fake target. Import rules 4, 5, 11, 15.
 9. **`defence`.** Rules and posture read, check, test and apply (multi-sensor), versions, probes list, disable, drift, alerts with AlertCursor, traffic, terminal, Kibana gate.

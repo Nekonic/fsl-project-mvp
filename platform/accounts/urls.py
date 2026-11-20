@@ -9,8 +9,8 @@ urlpatterns = [
     path("auth/logout/", views.Logout.as_view()),
     path("me/", views.Me.as_view()),
     path("staff/users/", views.Users.as_view()),
-    path("staff/users/<int:user_id>/approve/", views.Approve.as_view()),
-    path("staff/users/<int:user_id>/disable/", views.Disable.as_view()),
+    path("staff/users/<str:username>/approve/", views.Approve.as_view()),
+    path("staff/users/<str:username>/disable/", views.Disable.as_view()),
     path("staff/blocks/", views.Blocks.as_view()),
     path("staff/blocks/<int:block_id>/", views.Unblock.as_view()),
 ]

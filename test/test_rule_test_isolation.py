@@ -19,7 +19,8 @@ def probe_markers() -> set[str]:
     if not MANIFEST.is_file():
         return set()
     cases = json.loads(MANIFEST.read_text()).get("cases") or {}
-    return {entry["marker"] for entry in cases.values() if isinstance(entry, dict) and entry.get("marker")}
+    return {str(entry.get("marker") or case) if isinstance(entry, dict) else case
+            for case, entry in cases.items() if entry is not None}
 
 
 def ground_truth(played: plays.Played) -> list[tuple[str, str]]:
@@ -38,11 +39,14 @@ def tested_round():
 
 
 def test_both_rule_tests_answer_a_table(tested_round):
+    assert {probe["case"]: probe["recorded"] for probe in tested_round["probes"]}.get(PROBED) is True, (
+        f"{PROBED} has no recorded probe; run bin/record-probes board and commit the manifest")
     for engine in ("ids", "waf"):
         answer = tested_round[engine]
         assert answer.ok, f"the {engine} rule test answered {answer.status}: {answer.text}"
         assert answer.body["ok"] is True, answer.text
-        assert {line["case"] for line in answer.body["cases"]} | {line["case"] for line in answer.body["untested"]}
+        assert PROBED in {line["case"] for line in answer.body["cases"]}, answer.text
+        assert PROBED not in {line["case"] for line in answer.body["untested"]}, answer.text
 
 
 def test_a_rule_test_leaves_the_round_s_ground_truth_unchanged(tested_round):

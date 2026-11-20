@@ -27,7 +27,7 @@ from bots.client.api.match import (
     round_start, round_topology,
 )
 from bots.client.api.staff import (
-    staff_problem, staff_problem_create, staff_problem_update, staff_problems, staff_range, staff_users,
+    staff_problem, staff_problem_create, staff_problem_update, staff_problems, staff_range,
 )
 from bots.client.models import RoundListState, RoundScoreCorrelation
 from opening import refused_for_room
@@ -102,11 +102,9 @@ def operator():
     return KNOWN["operator"]
 
 
-def operator_id() -> int:
-    if "operator_id" not in KNOWN:
-        user, _ = signin.account()
-        KNOWN["operator_id"] = next(row["id"] for row in done(staff_users, operator()) if row["username"] == user)
-    return KNOWN["operator_id"]
+def operator_username() -> str:
+    user, _ = signin.account()
+    return user
 
 
 def objective_keys(wargame: str) -> list[str]:
@@ -235,7 +233,7 @@ def kept_alive(played: Played) -> None:
 
 
 def seats_for(matchup: str) -> dict:
-    human = {"user": operator_id()}
+    human = {"username": operator_username()}
     bot = {"bot": {"name": BOT}}
     return {"def_vs_bot": {"attack": bot, "defence": human},
             "atk_vs_bot": {"attack": human, "defence": bot}}[matchup]

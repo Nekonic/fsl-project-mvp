@@ -37,20 +37,20 @@ function roleBadge(account: Account, muted: boolean) {
 }
 
 function AccountsCard({ section, accounts, onChanged }: { section: StandingSection; accounts: Account[]; onChanged: (account: Account) => void }) {
-  const approve = useRowAction<number, "post", "/api/staff/users/{user_id}/approve/">("post", "/api/staff/users/{user_id}/approve/");
-  const disable = useRowAction<number, "post", "/api/staff/users/{user_id}/disable/">("post", "/api/staff/users/{user_id}/disable/");
+  const approve = useRowAction<string, "post", "/api/staff/users/{username}/approve/">("post", "/api/staff/users/{username}/approve/");
+  const disable = useRowAction<string, "post", "/api/staff/users/{username}/disable/">("post", "/api/staff/users/{username}/disable/");
   const muted = section.standing === "disabled";
   const settled = (said: { data?: Account }) => said.data && onChanged(said.data);
   const every: Record<StandingSection["columns"][number], Column<Account>> = {
-    account: { key: "account", label: t("users.col.account"), cell: (account) => <IdentityCell name={account.username} id={`#${account.id}`} /> },
+    account: { key: "account", label: t("users.col.account"), cell: (account) => <IdentityCell name={account.username} /> },
     role: { key: "role", label: t("users.col.role"), cell: (account) => roleBadge(account, muted) },
     joined: { key: "joined", label: t("users.col.joined"), kind: "nowrap", cell: (account) => <Text tone="muted">{day(account.joined)}</Text> },
     approve: {
       key: "approve", label: "", kind: "end",
       cell: (account) => (
-        <RowActions error={approve.errorFor(account.id) && errorText(approve.errorFor(account.id))}>
-          <Button tone="primary" small busy={approve.busyFor(account.id)}
-            onClick={() => void approve.run(account.id, { params: { user_id: account.id } }).then(settled)}>
+        <RowActions error={approve.errorFor(account.username) && errorText(approve.errorFor(account.username))}>
+          <Button tone="primary" small busy={approve.busyFor(account.username)}
+            onClick={() => void approve.run(account.username, { params: { username: account.username } }).then(settled)}>
             {t("users.approve")}
           </Button>
         </RowActions>
@@ -59,9 +59,9 @@ function AccountsCard({ section, accounts, onChanged }: { section: StandingSecti
     disable: {
       key: "disable", label: "", kind: "end",
       cell: (account) => (
-        <RowActions error={disable.errorFor(account.id) && errorText(disable.errorFor(account.id))}>
-          <Button small busy={disable.busyFor(account.id)}
-            onClick={() => void disable.run(account.id, { params: { user_id: account.id } }).then(settled)}>
+        <RowActions error={disable.errorFor(account.username) && errorText(disable.errorFor(account.username))}>
+          <Button small busy={disable.busyFor(account.username)}
+            onClick={() => void disable.run(account.username, { params: { username: account.username } }).then(settled)}>
             {t("users.disable")}
           </Button>
         </RowActions>
@@ -71,7 +71,7 @@ function AccountsCard({ section, accounts, onChanged }: { section: StandingSecti
   return (
     <Card>
       <CardHead title={t(section.title)} meta={<Badge tone={section.tone}>{count(accounts.length)}</Badge>} />
-      <Table variant="grid" columns={section.columns.map((name) => every[name])} rows={accounts} rowKey={(account) => account.id}
+      <Table variant="grid" columns={section.columns.map((name) => every[name])} rows={accounts} rowKey={(account) => account.username}
         muted={() => muted} empty={<Text tone="muted">{t(section.empty)}</Text>} />
     </Card>
   );
@@ -119,7 +119,7 @@ function BlocksCard() {
 
 export function Users(_props: PageProps) {
   const users = useResource("/api/staff/users/", {});
-  const changed = (account: Account) => users.data && users.setData(users.data.map((one) => (one.id === account.id ? account : one)));
+  const changed = (account: Account) => users.data && users.setData(users.data.map((one) => (one.username === account.username ? account : one)));
   const of = (standing: Standing) => (users.data ?? []).filter((account) => standingOf(account) === standing);
   const shown = SECTIONS.filter((section) => section.standing !== "disabled" || of("disabled").length > 0);
   return (

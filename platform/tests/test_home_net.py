@@ -4,7 +4,6 @@ import pathlib
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-DOCKER_DEFAULT_POOLS = ("172.17.0.0/16", "172.31.0.0/16", "192.168.0.0/20", "192.168.240.0/20")
 
 
 def home_net():
@@ -21,23 +20,37 @@ def origins():
     ]
 
 
-def test_a_session_estate_from_any_default_pool_is_home():
-    outside = [
-        pool for pool in DOCKER_DEFAULT_POOLS
-        if not any(ipaddress.ip_network(pool).subnet_of(net) for net in home_net())
-    ]
+def lans_by_holding_origins():
+    held, estate = [], []
+    for path in sorted((ROOT / "wargames").glob("*/topology.yaml")):
+        topology = yaml.safe_load(path.read_text())
+        origin_lans = {
+            port["lan"] for node in topology["nodes"].values()
+            for port in node.get("ports") or [] if port.get("origins")
+        }
+        for lan, cidrs in topology["lans"].items():
+            side = held if lan in origin_lans else estate
+            side.extend((path.parent.name, lan, ipaddress.ip_network(cidr)) for cidr in cidrs)
+    return held, estate
 
+
+def test_every_slot_lan_without_origins_is_home_and_the_origin_lan_is_not():
+    held, estate = lans_by_holding_origins()
+    home = home_net()
+    outside = [f"{war}:{lan} {net}" for war, lan, net in estate
+               if not any(net.subnet_of(h) for h in home)]
+    overlapping = [f"{war}:{lan} {net}" for war, lan, net in held
+                   if any(net.overlaps(h) for h in home)]
+
+    assert estate and held
     assert not outside, (
-        f"a session's estate floats in Docker's default pools, and {outside} is "
-        f"not in HOME_NET, so the inside-leg rules never match it"
+        f"{outside} carry the session's estate but are not in HOME_NET, so the "
+        f"inside-leg rules never match them"
     )
-
-
-def test_home_holds_no_origin_in_its_private_ranges():
-    private = [net for net in home_net() if net.is_private]
-    inside = [str(o) for o in origins() if any(o.overlaps(net) for net in private)]
-
-    assert not inside, f"origins {inside} fall in HOME_NET's private ranges"
+    assert not overlapping, (
+        f"{overlapping} hold the attacker's origins and overlap HOME_NET, so the "
+        f"sensor takes the attacker for the inside network"
+    )
 
 
 def test_home_holds_no_origin_at_all():

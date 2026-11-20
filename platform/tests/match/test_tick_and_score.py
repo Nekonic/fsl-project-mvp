@@ -102,6 +102,15 @@ def test_a_seat_reads_the_score_only_after_the_end_and_never_picks_the_correlati
     assert browser.get(url(running, "score/?correlation=window")).status_code == 200
 
 
+def test_neither_seat_reads_the_score_while_the_round_runs(browser, lease, problem, other, make_user):
+    defender = make_user("defender")
+    found = service.start_round(pvp(lease, problem, other, defender))
+
+    for seat in (other, defender):
+        browser.force_authenticate(seat)
+        refused(browser.get(url(found, "score/")), 409, "round_running")
+
+
 def test_the_operator_reads_the_score_mid_round(as_operator, running):
     assert as_operator.get(url(running, "score/")).status_code == 200
 

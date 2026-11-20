@@ -1,9 +1,11 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { t } from "../strings";
+import { blockingScore, score } from "../../mock/fixtures/result";
+import { t, tFor } from "../strings";
 import { nodeLabel, zoneCaption } from "./Map";
 import { Objectives } from "./Objectives";
 import { presetKibana } from "./Kibana";
+import { ScoreReport } from "./Score";
 
 const objectives = [
   { key: "objective-a", name: "Objective A", state: "lost", seen: false },
@@ -34,6 +36,37 @@ describe("Objectives", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ errors: [{ path: "", code: "not_seated" }] }), { status: 403 })));
     render(<Objectives round={41} side="attack" placement="main" />);
     await waitFor(() => expect(screen.getByText(t("error.not_seated"))).toBeTruthy());
+  });
+});
+
+function cellsOf(text: string): string[] {
+  const row = screen.getByText(text).closest("tr");
+  if (!row) throw new Error(`no row holds ${text}`);
+  return [...row.querySelectorAll("td")].map((cell) => cell.textContent ?? "");
+}
+
+describe("ScoreReport", () => {
+  it("marks each objective achieved and detected, heads them with the objective score and counts the four verdicts", () => {
+    render(<ScoreReport score={score} />);
+    expect(cellsOf("Board accounts, partial")).toEqual(["Board accounts, partial", t("mark.yes"), t("mark.no")]);
+    expect(cellsOf("Board admin account")).toEqual(["Board admin account", t("mark.no"), "—"]);
+    expect(screen.getByText(t("result.objective_points", { points: "2" }))).toBeTruthy();
+    const verdicts = ["tp", "fn", "fp", "tn"].map((verdict, index) => `${tFor("verdict", verdict)} ${[2, 1, 0, 6][index]}`);
+    expect(screen.getByText(verdicts.join(" · "))).toBeTruthy();
+  });
+
+  it("counts the free actions per origin and shows no explanatory note", () => {
+    render(<ScoreReport score={score} />);
+    expect(screen.getByRole("columnheader", { name: t("result.actions") })).toBeTruthy();
+    expect(cellsOf("5.188.10.10")[1]).toBe("998");
+    expect(cellsOf("181.8.0.10")[1]).toBe("12");
+    expect(document.body.textContent).not.toContain("one_case_one_decision");
+    expect(screen.queryByText(t("result.posture_drift"))).toBeNull();
+  });
+
+  it("warns when the defence posture drifted", () => {
+    render(<ScoreReport score={blockingScore} />);
+    expect(screen.getByText(t("result.posture_drift"))).toBeTruthy();
   });
 });
 

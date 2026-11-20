@@ -3,6 +3,7 @@ import { holdLease } from "../api/follow";
 import { useAction, useResource } from "../api/hooks";
 import { to } from "../links";
 import type { Side } from "../panes/types";
+import type { Schemas } from "../api/client";
 import { t, tFor } from "../strings";
 import { Badge, Banner, Button, ErrorNotice, RoundBar } from "../ui";
 import { clock } from "../format";
@@ -20,6 +21,20 @@ export function useRound(round: number) {
   const problem = useResource("/api/problems/{problem_id}/", problemId ? { params: { problem_id: problemId } } : null);
   useEffect(() => holdLease(round, shown.data?.lease), [round, shown.data?.lease]);
   return { round: shown.data, problem: problem.data, error: shown.error, reload: shown.reload };
+}
+
+type SeatLine = Schemas["SeatLine"];
+
+const SIDE_ORDER: Side[] = ["attack", "defence"];
+
+function seatWho(seat: SeatLine): string {
+  if (seat.client === "bot") return t("round.seat_bot", { name: seat.bot_name });
+  return seat.username ?? t("round.seat_open");
+}
+
+function seatFacts(seats: SeatLine[]) {
+  return SIDE_ORDER.flatMap((side) => seats.filter((seat) => seat.side === side))
+    .map((seat) => ({ label: t(`side.${seat.side}`), value: seatWho(seat), mono: seat.client !== "bot" && seat.username !== null }));
 }
 
 export interface RoundHeaderProps {
@@ -50,7 +65,10 @@ export function RoundHeader({ round, side }: RoundHeaderProps) {
         sideLabel={t(side === "attack" ? "side.attack.team" : "side.defence.team")}
         what={what}
         badges={shown && <Badge tone={shown.phase === "running" ? "ok" : "muted"}>{tFor("phase", shown.phase)}</Badge>}
-        facts={shown?.ends_at && !ended ? [{ label: t("round.ends_at"), value: clock(shown.ends_at), mono: true }] : []}
+        facts={[
+          ...(shown ? seatFacts(shown.seats) : []),
+          ...(shown?.ends_at && !ended ? [{ label: t("round.ends_at"), value: clock(shown.ends_at), mono: true }] : []),
+        ]}
         actions={!ended && shown?.phase === "running" && (
           <Button tone="danger" small busy={forfeit.busy} onClick={() => void giveUp()}>
             {asking ? t("round.forfeit_confirm") : t("round.forfeit")}

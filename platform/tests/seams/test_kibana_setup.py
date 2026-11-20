@@ -193,9 +193,10 @@ def test_kibana_starting_up_is_waited_for_and_named_as_not_ready_rather_than_unr
     def send(request):
         raise http_error(503, b"Kibana server is not ready yet")
 
-    kibana.bring_up("http://kibana:5601/kibana", b"{}", send, paused.append)
+    said = kibana.bring_up("http://kibana:5601/kibana", b"{}", send, paused.append)
 
     assert len(paused) == kibana.ATTEMPTS
+    assert said.startswith("Kibana still answered 503, not ready"), said
 
 
 def test_nothing_is_imported_until_kibana_reports_itself_available():
@@ -215,7 +216,7 @@ def test_nothing_is_imported_until_kibana_reports_itself_available():
     )
 
 
-def test_a_connection_failure_is_retried_then_called_unreachable():
+def test_a_connection_failure_is_retried_until_kibana_answers():
     import urllib.error
 
     calls = []
@@ -229,6 +230,20 @@ def test_a_connection_failure_is_retried_then_called_unreachable():
     said = kibana.bring_up("http://kibana:5601/kibana", b"{}", send, lambda seconds: None)
 
     assert said == "kibana: 7 saved objects imported, default route set"
+
+
+def test_a_connection_that_keeps_failing_is_called_unreachable():
+    import urllib.error
+
+    paused = []
+
+    def send(request):
+        raise urllib.error.URLError("refused")
+
+    said = kibana.bring_up("http://kibana:5601/kibana", b"{}", send, paused.append)
+
+    assert len(paused) == kibana.ATTEMPTS
+    assert said.startswith("could not reach Kibana"), said
 
 
 def test_nothing_a_learner_can_open_in_kibana_names_the_platform():

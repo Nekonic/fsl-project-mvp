@@ -10315,3 +10315,36 @@ and of the terminal's refusal answer.
   ticks), `tests/attack/test_spend.py` (the end empties the edge, a late tick
   adds nothing), `tests/test_access_log.py` (the marker map). No
   `nginx -t` or range run; `docs/OPENSTACK.md` §3.7 lists the slot checks.
+
+## 2026-11-20 — The Hangul scan and the vocabulary file are gone
+
+The user ruled both out as meaningless. `platform/tests/seams/test_no_hangul.py`
+(the repo-wide scan that allowed Korean only in a closed list of files) and
+`docs/vocabulary.md` (term translations and their sources) are deleted, and
+CLAUDE.md no longer lists the places Korean may appear. Repo files are still
+written in English for token cost and the product stays Korean-only; neither
+is enforced by a test. A practitioner term is still taken from a primary
+source when one is asked for, without a file to hold it.
+
+## 2026-11-20 — Korean is allowed in repo files
+
+Asked whether repo files stay English-only now that the Hangul scan is gone,
+the user chose to allow Korean. CLAUDE.md drops the English-only rule for
+code, commits and documents; the 2026-11-15 ruling that README.md and
+docs/ARCHITECTURE.md are Korean-only stands.
+
+## 2026-11-20 — Seats are named by username; the user pk leaves the API
+
+The user ruled that an account is identified by its username (login ID) and
+that the database id must not appear in the API. `SeatLine` carries
+`username` (null for a bot or open seat) in place of `user`, and the seat ask
+of `POST /api/leases/<lease>/rounds/` takes `{username}`; an unknown or
+inactive account is `400 unknown_account` on `seats.<side>.username`. The lobby
+asks for the username instead of a number, and the round bar shows who holds
+each seat (the username, or the bot's name). `test/plays.py` seats the
+operator by the username it signs in with instead of looking up its id. The
+staff accounts API follows: `Account` drops `id`, and approving or disabling
+is `POST /api/staff/users/<username>/approve/` and `/disable/`. An unknown
+username there stays `404 unknown_user`, because `unknown_account` is already
+the 400 field code of the seat ask and a code belongs to exactly one status.
+The staff accounts page shows the username alone, without the `#id` line.

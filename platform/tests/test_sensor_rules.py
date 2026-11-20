@@ -26,18 +26,19 @@ def test_no_experiment_is_left_behind_in_the_shipped_rule_set():
     )
     assert len(sids) == len(set(sids)), f"duplicate sids: {sids}"
 
-def test_the_port_variable_names_ports_the_sensor_can_observe():
+def test_the_port_variable_names_every_port_the_waf_proxies_to():
     import yaml
 
     ports = str(yaml.safe_load(SENSOR.read_text())["vars"]["port-groups"]["HTTP_PORTS"])
+    declared = {int(port) for port in re.findall(r"\d+", ports)}
+    waf = (ROOT / "deploy/waf/board.com.conf").read_text()
+    upstream = {int(port) for port in re.findall(r"proxy_pass\s+http://[\w.-]+:(\d+)", waf)}
 
-    assert "8080" not in ports, (
-        "8080 is the host-published port. Docker translates it before the "
-        "packet reaches any interface the sensor taps, so a rule written "
-        "$HOME_NET $HTTP_PORTS matched nothing: measured 0 alerts against 4 "
-        "from the identical rule using any"
+    assert upstream, "board.com.conf names no upstream port"
+    assert upstream <= declared, (
+        f"the WAF proxies to {sorted(upstream)} but HTTP_PORTS is {ports}; a rule "
+        f"written $HOME_NET $HTTP_PORTS would miss the traffic on the ports left out"
     )
-    assert "80" in ports and "8000" in ports, ports
 
 
 def test_the_sensor_ties_an_alert_to_its_transaction_when_it_can():

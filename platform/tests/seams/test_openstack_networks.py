@@ -180,7 +180,8 @@ def test_building_on_an_empty_project_makes_the_whole_fabric_with_no_way_out_of_
 
     tags = sorted(t for n in cloud.networks for t in n["tags"])
     assert tags == [f"{networks.TAG}=mgmt"], (
-        "the internet and the estate are each slot's own docker networks on the range host")
+        "each slot's LANs are Neutron nets in its own Heat stack (range/openstack.py); "
+        "the fabric owns only the shared management network")
     assert len(cloud.subnets) == 1
     assert [k["name"] for k in cloud.keypairs] == [networks.KEYPAIR]
     [mgmt] = [s for s in cloud.subnets if s["network_id"] == network_of(cloud, networks.MANAGEMENT)["id"]]

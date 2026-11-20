@@ -226,7 +226,7 @@ def test_the_map_draws_nothing_outside_the_slot():
     text = repr(drawn_map())
 
     assert "10.31." not in text and "cr-slot" not in text and "cr-waf" not in text
-    assert not {node["id"] for node in drawn_map()["nodes"]} & {"sw1", "sw2", "sw3", "internet"}
+    assert not {node["id"] for node in drawn_map()["nodes"]} & {"internet", "switch:control"}
 
 
 def test_a_device_whose_ports_are_gone_is_not_drawn():

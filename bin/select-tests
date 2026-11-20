@@ -34,7 +34,7 @@ RANGE_FACING = (
     "wargames/", "redteam/", "deploy/", "platform/", "test/", "bots/", "openapi/",
     "compose.yaml", "bin/acceptance",
 )
-NOT_RANGE_FACING = ("platform/tests/", "platform/console/", "test/durations.json")
+NOT_RANGE_FACING = ("platform/tests/", "test/durations.json")
 ACCEPTANCE_CONFTEST = "test/conftest.py"
 URLCONF = "platform/cr/urls.py"
 DJANGO_CLIENT = {"client", "Client"}

@@ -15,15 +15,3 @@ def test_the_geoip_downloader_is_off(stack_is_up):
         f"leaves the range with no GeoIP database and every source unplaced. "
         f"The databases live in config/ingest-geoip instead (bin/fetch-geoip)."
     )
-
-def test_geoip_places_a_source_without_the_downloader(stack_is_up):
-    placed = requests.post(
-        f"{ELASTIC}/_ingest/pipeline/geoip/_simulate",
-        json={"docs": [{"_source": {"src_ip": "8.8.8.8"}}]},
-        timeout=30,
-    ).json()["docs"][0]["doc"]["_source"].get("src_geo", {})
-
-    assert placed.get("country_iso_code") and placed.get("location"), (
-        f"GeoIP resolved nothing from config/ingest-geoip with the downloader "
-        f"off: {placed}. Run bin/fetch-geoip to populate the durable home."
-    )

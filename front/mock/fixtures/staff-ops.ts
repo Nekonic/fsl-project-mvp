@@ -5,15 +5,15 @@ type Account = components["schemas"]["Account"];
 type SlotStanding = components["schemas"]["SlotStanding"];
 
 const accounts: Account[] = [
-  { id: 5, username: "pending-one", approved: false, is_staff: false, joined: "2026-11-20T09:12:00Z" },
-  { id: 1, username: "admin", approved: true, is_staff: true, joined: "2026-10-02T08:00:00Z" },
-  { id: 2, username: "learner-one", approved: true, is_staff: false, joined: "2026-11-03T10:00:00Z" },
-  { id: 3, username: "learner-two", approved: true, is_staff: false, joined: "2026-11-03T11:00:00Z" },
-  { id: 4, username: "learner-three", approved: true, is_staff: false, joined: "2026-11-12T12:00:00Z" },
+  { username: "pending-one", approved: false, is_staff: false, joined: "2026-11-20T09:12:00Z" },
+  { username: "admin", approved: true, is_staff: true, joined: "2026-10-02T08:00:00Z" },
+  { username: "learner-one", approved: true, is_staff: false, joined: "2026-11-03T10:00:00Z" },
+  { username: "learner-two", approved: true, is_staff: false, joined: "2026-11-03T11:00:00Z" },
+  { username: "learner-three", approved: true, is_staff: false, joined: "2026-11-12T12:00:00Z" },
 ];
 
-function accountWith(id: string | undefined, approved: boolean): Account {
-  const found: Account = accounts.find((account) => account.id === Number(id)) ?? accounts[0]!;
+function accountWith(username: string | undefined, approved: boolean): Account {
+  const found: Account = accounts.find((account) => account.username === username) ?? accounts[0]!;
   return { ...found, approved };
 }
 
@@ -35,9 +35,9 @@ let probeReads = 0;
 
 export const fixtures = [
   reply("get", "/api/staff/users/", accounts),
-  reply("post", "/api/staff/users/{user_id}/approve/", (asked) => accountWith(asked.params.user_id, true)),
-  reply("post", "/api/staff/users/{user_id}/disable/", (asked) => accountWith(asked.params.user_id, false)),
-  refuse("post", "/api/staff/users/{user_id}/disable/", 409, [{ path: "", code: "own_account" }], { variant: "own-account" }),
+  reply("post", "/api/staff/users/{username}/approve/", (asked) => accountWith(asked.params.username, true)),
+  reply("post", "/api/staff/users/{username}/disable/", (asked) => accountWith(asked.params.username, false)),
+  refuse("post", "/api/staff/users/{username}/disable/", 409, [{ path: "", code: "own_account" }], { variant: "own-account" }),
   reply("get", "/api/staff/blocks/", [
     { id: 11, kind: "address", value: "192.0.2.31", username: "admin", reason: "failures", failures: 10, created: minutesFromNow(-20), until: minutesFromNow(25) },
     { id: 12, kind: "fingerprint", value: "a41f9c0e", username: "learner-three", reason: "failures", failures: 5, created: minutesFromNow(-10), until: minutesFromNow(12) },

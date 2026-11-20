@@ -2431,14 +2431,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Errors'
-  /api/staff/users/{user_id}/approve/:
+  /api/staff/users/{username}/approve/:
     post:
       operationId: staff_user_approve
       parameters:
       - in: path
-        name: user_id
+        name: username
         schema:
-          type: integer
+          type: string
         required: true
       tags:
       - staff
@@ -2457,14 +2457,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Errors'
-  /api/staff/users/{user_id}/disable/:
+  /api/staff/users/{username}/disable/:
     post:
       operationId: staff_user_disable
       parameters:
       - in: path
-        name: user_id
+        name: username
         schema:
-          type: integer
+          type: string
         required: true
       tags:
       - staff
@@ -2537,8 +2537,6 @@ components:
     Account:
       type: object
       properties:
-        id:
-          type: integer
         username:
           type: string
         approved:
@@ -2550,7 +2548,6 @@ components:
           format: date-time
       required:
       - approved
-      - id
       - is_staff
       - joined
       - username
@@ -3761,9 +3758,13 @@ components:
           type: boolean
         approved:
           type: boolean
+        site_origin:
+          type: string
+          readOnly: true
       required:
       - approved
       - is_staff
+      - site_origin
       - user
     MethodEnum:
       enum:
@@ -4487,8 +4488,10 @@ components:
     SeatAskRequest:
       type: object
       properties:
-        user:
-          type: integer
+        username:
+          type: string
+          minLength: 1
+          maxLength: 150
         bot:
           $ref: '#/components/schemas/BotAskRequest'
         open:
@@ -4500,8 +4503,9 @@ components:
           $ref: '#/components/schemas/SeatSideEnum'
         client:
           type: string
-        user:
-          type: integer
+        username:
+          type: string
+          readOnly: true
           nullable: true
         bot_name:
           type: string
@@ -4509,7 +4513,7 @@ components:
       - bot_name
       - client
       - side
-      - user
+      - username
     SeatSideEnum:
       enum:
       - attack
@@ -5340,6 +5344,7 @@ components:
       - too_many
       - tool_unavailable
       - unavailable
+      - unknown_account
       - unknown_block
       - unknown_case
       - unknown_check

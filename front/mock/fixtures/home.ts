@@ -14,16 +14,16 @@ export const problems = [
   { id: 8, kind: "match", wargame: "corp", side: "both", title: "Corp wargame", summary: "Placeholder summary for the corp match" },
 ];
 
-const human = (side: "attack" | "defence", user: number | null) => ({ side, client: "human", user, bot_name: "" });
-const bot = (side: "attack" | "defence", name: string) => ({ side, client: "bot", user: null, bot_name: name });
+const human = (side: "attack" | "defence", username: string | null) => ({ side, client: "human", username, bot_name: "" });
+const bot = (side: "attack" | "defence", name: string) => ({ side, client: "bot", username: null, bot_name: name });
 
 const mine = [
-  { round: 41, problem: 7, kind: "match", matchup: "pvp", phase: "running" as const, seats: [human("attack", 2), human("defence", 3)] },
-  { round: 40, problem: 7, kind: "match", matchup: "def_vs_bot", phase: "ended" as const, seats: [bot("attack", "claude-code"), human("defence", 3)] },
+  { round: 41, problem: 7, kind: "match", matchup: "pvp", phase: "running" as const, seats: [human("attack", "learner-two"), human("defence", "learner-one")] },
+  { round: 40, problem: 7, kind: "match", matchup: "def_vs_bot", phase: "ended" as const, seats: [bot("attack", "claude-code"), human("defence", "learner-one")] },
 ];
 
 const joinable = [
-  { round: 42, problem: 7, kind: "match", matchup: "pvp", phase: "created" as const, seats: [human("attack", 5), human("defence", null)] },
+  { round: 42, problem: 7, kind: "match", matchup: "pvp", phase: "created" as const, seats: [human("attack", "learner-three"), human("defence", null)] },
 ];
 
 const lessons = [

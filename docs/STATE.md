@@ -30,15 +30,15 @@ against its mock API only. The bake of 5, step 12 and the live parts of 15,
 | 4 Seams | `cr/config.py`, `cr/errors.py`, `ingest/elastic.py`, `rules/suricata.py`, `rules/crs.py`, `range/*` (with `edge.py`, `jump.py`, `refill.py` rewritten), `attack/box.py`, `firing.py`, `tools.py`, `defence/kibana.py`, `referee/loot.py`, `effect.py` | `platform/tests/seams/` against fakes; import rules 2, 4, 14; `platform/tests/seams/test_isolation_seams.py`, `test_no_comments.py` |
 | 5 Deploy (repo side) | `edge.nft` with `pool` and `spent` and the `spent` drop and the drop of every address outside `pool` before the established accept, the probe lease admitting the origin it wears; the WAF's JSON access log `access.json` shipped and relayed as `nginx-access`, ingested as `nginx_access`; `probe.conf`, `probe-upstream.py`, `analyst.sh`; `conntrack`, `tcpdump` and `/var/lib/cr-ruletest` on the infra; `bin/record-probes`; each round start empties both edge sets (`range.edge.restart`) and the round's end empties them again (`attack.close`); the access log keeps `request_id` only when it has a marker's shape | `tests/test_edge_sets.py`, `test_waf_scratch.py`, `test_access_log.py`, `test_analyst.py`, `test_record_probes.py`, `test_roles.py`, `test_filebeat.py`, `tests/seams/test_edge.py`, `tests/attack/test_spend.py`; structural only, no `nft -c` or `nginx -t` |
 | 6 Django skeleton | `cr/` (DRF, spectacular, one handler, `strings.py`), `strings/`, `accounts`, `events` | `tests/accounts` (with the first account `admin` from migration `accounts.0002_first_account`), `tests/events`, the error-shape and no-admin tests |
-| 7 `content` | catalog, `wargame.yaml` per wargame, problems as nested documents with revisions and export/import, postures, the learner read API | `tests/content`; `test_no_hangul.py` |
+| 7 `content` | catalog, `wargame.yaml` per wargame, problems as nested documents with revisions and export/import, postures, the learner read API | `tests/content` |
 | 8 Round records, referee | `match.models`, `match.auth` (seat tokens hashed, `HasSeat`, `InRound`, `IsOperator`, `OnLease`), `referee` (baseline, loot, effects, objectives, redact, score) | `tests/referee`; import rules 4, 5, 11, 15 |
 | 9 `defence` | rules and posture read, check, test and apply across sensors, versions, probes, disable, drift, alerts, traffic, terminal, Kibana gate | `tests/defence` |
 | 10 `attack` | state, cases, requests, async tools, loot, origins, terminal, HP from both sources (an API charge excuses one access event with its marker, `Action.access_seen`), spend at the edge, customer sends | `tests/attack` |
 | 11 `match.service` | lease and round lifecycle, follower (`follow` compose service), customers and the benign schedule, site pane, terminal auth routes, score, probe recording, staff range routes | `tests/match`; import rules 6, 7, 9 |
 | 13 `lessons` | lesson rounds, facts, judges, progress, hints, `step_locked`, staff try | `tests/lessons` |
 | 14 Contract and clients | `openapi/schema.yaml` committed; `bin/gen-clients`; `test/` and `bin/` on the generated client; `bin/backup` and `bin/prune` on the new tables | `tests/contract`; import rule 12; no `/api/sessions` outside docs |
-| 15 `nginx.conf` and terminals | per-seat `/vm-terminal/<side>/<round>/` through an uncached `terminal-auth`, the raw-path seat guard, the round passed to ttyd as its only argument, a refused check answered with the API's status and code (`@terminal-refused`, from `terminal-auth`'s `X-Error-Code`); `vm-terminal.sh` (kali as `kali`, cr-waf as `analyst`, only with a jump grant, closed within 15 s once the grant goes); `analyst`'s processes, crontab and `at` jobs ended when the round's defence grant is revoked (`range.jump.end_account`); `/signed-in` on `/api/me/`; the 8002 listener keyed by round; refused Kibana routes answered by the gate; `/app/front/dist` served last, `/assets/` answering 404 for a missing hashed file, `index.html` uncached | `tests/test_front.py` (a config parser and nginx's path normalization replayed), `tests/test_vm_terminal.py` (fake `python`, `ssh`, `tmux`), `tests/attack/test_terminal.py`, `tests/defence/test_terminal.py`, `tests/seams/test_jump.py` (the end script run against fake `crontab`, `atq`, `loginctl`, `pkill`, `pgrep`); no `nginx -t` |
-| 15 `front/` | Vite, TypeScript, Preact console in the v4 design: `theme/tokens.css` and `theme/components.css` hold every visual value and class; `ui/` dumb components; `panes/` per spec §13 plus `Loot`, `AttackCases`, `RuleVersions`, each fetching through `api/` hooks; pages as thin arrangements; the three consoles declared as data in `layouts.ts`, routes and top nav as one table each (`routes.ts`, `nav.ts`); text only through `t()` over `strings/console.json`; `api/client.ts` (CSRF renewal, 90 s timeout, slot wait), `api/follow.ts` (one events cursor reading the whole backlog, per-lease heartbeat); a dev-server mock API (`front/mock/`); the Dockerfile's node stage (`npm run types`, `npm run build`) and `front`, `strings`, `openapi` in `images.yml` sources; `bin/verify` builds and tests `front/` | `npm run build`, `npx vitest run` (client, follow cursor, panes, Korean guards, no `server.json` key in the bundle); every route captured at 1440 and 390 against the mock and compared with the v4 mockups; `docker buildx` of the platform image and `nginx -t` inside it, not pushed |
+| 15 `nginx.conf` and terminals | per-seat `/vm-terminal/<side>/<round>/` through an uncached `terminal-auth`, the raw-path seat guard, the round passed to ttyd as its only argument, a refused check answered with the API's status and code (`@terminal-refused`, from `terminal-auth`'s `X-Error-Code`); `vm-terminal.sh` (kali as `kali`, cr-waf as `analyst`, only with a jump grant, closed within 15 s once the grant goes); `analyst`'s processes, crontab and `at` jobs ended when the round's defence grant is revoked (`range.jump.end_account`); `/signed-in` on `/api/me/`; the 8002 listener keyed by round, its `@sign-in` sending the learner to `CR_CONSOLE_ORIGIN`'s login with a `next` on `CR_SITE_ORIGIN` (rendered by `python -m cr.config` at start; unset, the asked host's 8000 and 8002 over http), which `Login.tsx` follows only onto that origin's `/site/`; refused Kibana routes answered by the gate; `/app/front/dist` served last, `/assets/` answering 404 for a missing hashed file, `index.html` uncached | `tests/test_front.py` (a config parser and nginx's path normalization replayed), `tests/test_vm_terminal.py` (fake `python`, `ssh`, `tmux`), `tests/attack/test_terminal.py`, `tests/defence/test_terminal.py`, `tests/seams/test_jump.py` (the end script run against fake `crontab`, `atq`, `loginctl`, `pkill`, `pgrep`); no `nginx -t` |
+| 15 `front/` | Vite, TypeScript, Preact console in the v4 design: `theme/tokens.css` and `theme/components.css` hold every visual value and class; `ui/` dumb components; `panes/` per spec §13 plus `Loot`, `AttackCases`, `RuleVersions`, each fetching through `api/` hooks; pages as thin arrangements; the three consoles declared as data in `layouts.ts`, routes and top nav as one table each (`routes.ts`, `nav.ts`); text only through `t()` over `strings/console.json`; `api/client.ts` (CSRF renewal, 90 s timeout, slot wait), `api/follow.ts` (one events cursor reading the whole backlog, per-lease heartbeat); a dev-server mock API (`front/mock/`); the Dockerfile's node stage (`npm run types`, `npm run build`) and `front`, `strings`, `openapi` in `images.yml` sources; `bin/verify` builds and tests `front/` | `npm run build`, `npx vitest run` (client, follow cursor, panes, the lobby holding an open lease until it leaves, Korean guards, no `server.json` key in the bundle); every route captured at 1440 and 390 against the mock and compared with the v4 mockups; `docker buildx` of the platform image and `nginx -t` inside it, not pushed |
 | 16 `bots/` (code) | `tools.py`, `calls.py`, `cli.py`, `play.py`, `provider.py`, `signin.py`, the side prompts and the README | `platform/tests/test_bots.py` |
 | 17 Docs | README, ARCHITECTURE, CLAUDE.md, this file and `now.md` describe the new layout | this step |
 
@@ -88,7 +88,9 @@ on a slot:
 3. **Cloud step 12, probe recordings**: `bin/record-probes board` and
    `bin/record-probes corp` through the staff route on a probe lease; copy
    the platform's `CR_PROBES_OUT/<id>/probes/` into `wargames/<id>/probes/`
-   and commit it (`docs/OPENSTACK.md` §3.7).
+   and commit it (`docs/OPENSTACK.md` §3.7). Until the board's manifest is
+   committed, `test/test_rule_test_isolation.py` fails: it requires
+   `board-sqli-search` to be replayed by both rule tests.
 4. **Full live verify**: the full `bin/verify` with acceptance on the range,
    the Claude Code bot round of each matchup (spec step 16), a captured walk
    of every page as a learner, a live review round with zero countable
@@ -105,19 +107,9 @@ on a slot:
   `localhost:9200` rather than through `/api/`. The seam scan lists them as
   named exceptions (CLAUDE.md); moving them behind an API route or into
   `ingest/elastic.py` is open.
-- **Korean in `docs/DECISIONS.md`.** It quotes the user's rulings in Korean
-  (about a hundred lines). `test_no_hangul.py` still allows it by name until
-  those quotes are translated.
 - **A refused key leaves a jump grant.** If the box refuses the per-seat
   key, `range.jump.open_access` keeps the platform sshd grant until the
   round ends. Without the box key it gives no access.
-- **The site listener's sign-in redirect loses its target.** `@sign-in`
-  on the 8002 listener sends `next=http://host:8002/...`, which `Login.tsx`
-  refuses as another origin, so the learner lands on the home page instead
-  of the site.
-- **The lobby heartbeat.** `pages/RoundLobby.tsx` holds the lease only while
-  a round is live and never releases the hold, so a lease can idle out in
-  the lobby between rounds and the heartbeat outlives the page.
 - **Mockup fields the API does not send.** User names on seats and the round
   bar (`SeatLine`, `Me`), a past round's end and result, a lesson's step
   counts, the lease's opening time, a CRS preview, case and objective
@@ -128,9 +120,6 @@ on a slot:
   main area; the aside's first pane takes the `aside-lead` look; verdict
   labels are repeated across several `console.json` values; verdict tones
   differ between `Score` and `RuleTestTable`.
-- **`design-candidates/` is untracked.** The mockups carry Korean, so
-  `test_no_hangul.py` fails while the folder is in the tree; it stays out of
-  the commit.
 - **Two runtime guesses in the rule test.** Whether `jasonish/suricata`'s
   entrypoint lets the offline `-r` run write to the root-owned scratch log
   folder mounted at `/scratch`, and whether the scratch ModSecurity

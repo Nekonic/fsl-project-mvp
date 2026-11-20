@@ -26,8 +26,22 @@ def origins():
 def test_each_origin_is_its_own_slash_24_away_from_every_network_the_platform_needs():
     import ipaddress
 
+    from range import cloud_config
+
     nets = [ipaddress.ip_network(o["subnet"]) for o in origins()]
-    inside = [ipaddress.ip_network(n) for n in ("172.30.0.0/24", "172.31.0.0/24", "10.20.0.0/24")]
+    example = cloud_config.read(cloud_config.EXAMPLE)
+    compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
+    slot_lans = [
+        cidr
+        for path in sorted((ROOT / "wargames").glob("*/topology.yaml"))
+        for cidrs in yaml.safe_load(path.read_text())["lans"].values() for cidr in cidrs
+    ]
+    inside = [ipaddress.ip_network(n) for n in (
+        *slot_lans, example.platform_cidr, example.inside["mgmt"],
+        compose["networks"]["mgmt"]["ipam"]["config"][0]["subnet"],
+    )]
+
+    assert slot_lans
 
     assert all(net.prefixlen == 24 for net in nets)
     assert not [

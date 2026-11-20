@@ -28,7 +28,9 @@ def test_every_origin_is_placed_in_its_country_by_the_pipeline_scoring_reads(sta
         json={"docs": sources},
         timeout=60,
     ).json()["docs"]
-    countries = [doc["doc"]["_source"].get("src_geo", {}).get("country_iso_code") for doc in placed]
+    geo = [doc["doc"]["_source"].get("src_geo", {}) for doc in placed]
+    countries = [one.get("country_iso_code") for one in geo]
+    unlocated = [source["_source"]["src_ip"] for source, one in zip(sources, geo) if not one.get("location")]
 
     misplaced = {
         origin["id"]: countries[2 * i: 2 * i + 2]
@@ -39,4 +41,8 @@ def test_every_origin_is_placed_in_its_country_by_the_pipeline_scoring_reads(sta
     assert origins and not misplaced, (
         f"the map and the score place these origins somewhere other than the "
         f"country they are declared in: {misplaced}"
+    )
+    assert not unlocated, (
+        f"GeoIP gave no location for {unlocated}, so the map cannot draw them; "
+        f"run bin/fetch-geoip to populate config/ingest-geoip"
     )

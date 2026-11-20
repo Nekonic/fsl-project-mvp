@@ -4,7 +4,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SELF = "platform/tests/test_old_tree_gone.py"
-OLD_REFERENCE = re.compile(r"(?<![\w./])api\.\w|^\s*(from|import) api\b|scenario", re.IGNORECASE | re.MULTILINE)
+OLD_API = re.compile(r"(?<![\w./])api\.\w|^\s*(from|import) api\b", re.MULTILINE)
+SCENARIO = re.compile(r"scenario", re.IGNORECASE)
 
 GONE = (
     "platform/api", "platform/console", "platform/wargames.py", "platform/lifecycle.py",
@@ -15,8 +16,6 @@ GONE = (
     "docs/superpowers/plans", "metrics.json", "bin/measure",
     "redteam/run.py", "redteam/signin.py", "redteam/__init__.py",
 )
-
-PENDING: dict[str, str] = {}
 
 REFUSES_THE_OLD_KIND = {"platform/tests/domain/test_problems.py"}
 
@@ -40,7 +39,7 @@ def referencing():
             text = (ROOT / name).read_text()
         except UnicodeDecodeError:
             continue
-        if OLD_REFERENCE.search(text):
+        if SCENARIO.search(text) or (not name.startswith("front/") and OLD_API.search(text)):
             found.add(name)
     return found
 
@@ -50,11 +49,6 @@ def test_the_old_product_tree_is_gone():
 
 
 def test_only_the_files_still_waiting_for_their_rewrite_name_the_old_api_or_scenarios():
-    assert referencing() == set(PENDING), (
-        "a file outside platform/carry names api.* or a scenario; either remove the reference "
-        "or, once a pending file is rewritten, drop it from PENDING"
+    assert referencing() == set(), (
+        "a file outside platform/carry names api.* or a scenario; remove the reference"
     )
-
-
-def test_every_pending_file_exists():
-    assert [name for name in PENDING if not (ROOT / name).is_file()] == []

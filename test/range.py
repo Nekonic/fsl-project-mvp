@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -18,6 +20,9 @@ ATTACKER = "attacker"
 BOARD = "board"
 SENSOR = "sensor"
 SCORER = "scorer"
+LOG_SERVER = "log-server"
+LOG_RELAY = "/etc/rsyslog.d/60-log-relay.conf"
+COLLECTOR = re.compile(r'Target="([\d.]+)"')
 
 EXIT_MARK = "cr.exit="
 _REPORTED = re.compile(r"(?s)(.*)" + re.escape(EXIT_MARK) + r"(\d+)\n(.*)\Z")
@@ -190,6 +195,14 @@ def parts(output: str, count: int) -> list[Ran]:
     if missing_parts:
         raise RangeUnavailable(f"commands {missing_parts} run side by side reported nothing", output)
     return [found[n] for n in range(count)]
+
+def log_collector(lease: int | None = None) -> str:
+    [collector] = sorted(set(COLLECTOR.findall(run(LOG_SERVER, ["cat", LOG_RELAY], lease=lease).stdout)))
+    return collector
+
+def platform_addresses(collector: str) -> list[str]:
+    published = urlsplit(os.environ.get("CR_PLATFORM_URL", "")).hostname or ""
+    return sorted({published, collector} - {"", "localhost", "127.0.0.1"})
 
 def run_side_by_side(role: str, commands: dict, timeout: float = 60.0, lease: int | None = None) -> dict:
     keys = list(commands)

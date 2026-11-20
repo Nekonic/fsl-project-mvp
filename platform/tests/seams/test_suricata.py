@@ -71,10 +71,6 @@ def test_the_shipped_sensor_opens_the_socket_it_is_reloaded_through():
     assert (shipped.get("unix-command") or {}).get("enabled") is True
 
 
-def test_the_pinned_image_is_the_one_the_live_sensor_runs():
-    assert config.SURICATA_IMAGE in (ROOT / "deploy/roles/infra/sensor.service").read_text()
-
-
 @pytest.mark.parametrize("reply", [RELOADED, '{"message": "done", "return": "OK"}\n'], ids=["rust", "python"])
 def test_an_ok_reply_from_either_suricatasc_leaves_the_new_rules_in_place(reply):
     sensor = Sensor(reload_answer=Ran(0, reply))

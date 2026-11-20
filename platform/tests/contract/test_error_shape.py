@@ -31,7 +31,7 @@ def closed_sign_up(browser, staff, monkeypatch):
 
 def own_disable(browser, staff):
     browser.force_authenticate(staff)
-    return browser.post(f"/api/staff/users/{staff.pk}/disable/")
+    return browser.post(f"/api/staff/users/{staff.username}/disable/")
 
 
 def as_staff(browser, staff, call):
@@ -60,7 +60,7 @@ REFUSAL_PATHS = {
     "missing field": (400, "required", lambda browser, staff, mp: browser.post("/api/auth/login/", {}, format="json")),
     "wrong password": (401, "wrong_credentials", lambda browser, staff, mp: wrong_sign_in(browser)),
     "unknown user": (404, "unknown_user", lambda browser, staff, mp: as_staff(
-        browser, staff, lambda signed: signed.post("/api/staff/users/999/approve/"))),
+        browser, staff, lambda signed: signed.post("/api/staff/users/nobody/approve/"))),
     "own account": (409, "own_account", lambda browser, staff, mp: own_disable(browser, staff)),
     "sign-in blocked": (429, "sign_in_blocked", lambda browser, staff, mp: blocked(browser, staff)),
     "sign-up closed": (503, "sign_ups_closed", lambda browser, staff, mp: closed_sign_up(browser, staff, mp)),

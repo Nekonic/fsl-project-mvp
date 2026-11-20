@@ -48,7 +48,8 @@ ported acceptance suite.
    checks on a slot (`docs/OPENSTACK.md` §3.7).
 3. Cloud step 12: `bin/record-probes board` and `corp` through the staff
    route, copy `CR_PROBES_OUT/<id>/probes/` off the platform VM, commit
-   `wargames/<id>/probes/`.
+   `wargames/<id>/probes/`; `test/test_rule_test_isolation.py` fails until
+   the board's manifest is in.
 4. Full live verify: the full `bin/verify` with acceptance, one Claude Code
    bot round per matchup, a captured walk as a learner, a live review round
    with zero countable findings, a docs review.
@@ -60,11 +61,6 @@ ported acceptance suite.
   (`test/test_event_time.py`, `test_geoip_durable.py`,
   `test_origin_placement.py`, `test_waf_geolocation.py`); the seam scan
   lists them as named exceptions until they move behind `/api/`.
-- `docs/DECISIONS.md` still quotes rulings in Korean, allowed by name in
-  `test_no_hangul.py` until translated.
-- The 8002 listener's sign-in redirect lands on the home page, not the
-  site (`Login.tsx` refuses a `next` on another origin); the lobby holds the
-  lease heartbeat only while a round is live and never releases it.
 - The rest (the scratch rule-test guesses, the comment scan's reach,
   `bin/carry-users` mid-load) is in `docs/STATE.md` "Open points".
 

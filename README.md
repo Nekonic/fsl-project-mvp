@@ -45,7 +45,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 | `loot` | 이 라운드에서 제출한 loot로 대상의 목표가 넘어감 |
 | `rule_test` | 학습자의 최근 룰 테스트에서 지정 케이스가 정탐이고 수법까지 짚었으며(`corroborated`), 정상 케이스는 모두 정상 통과 |
 | `rule_applied` | 단계가 열린 뒤 룰을 적용함. 필요하면 테스트한 룰 그대로 적용했는지까지 봄 |
-| `alert_seen` | 조건에 맞는 경보가 나옴 |
+| `alert_seen` | 조건에 맞는 알림이 나옴 |
 | `sent` | 조건에 맞는 요청을 보냄 |
 | `kali` | Kali 명령 기록에 지정 문자열이 있음. 명령 기록은 학습자가 고칠 수 있어 학습 보조로만 씀 |
 | `waf_changed` | WAF 설정이 지정한 방향으로 바뀜(paranoia·임계값 올림/내림, 예외 추가·삭제·좁힘, 탐지 전용 켬/끔) |
@@ -61,7 +61,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 정합니다.
 
 - 공격석은 Kali 터미널, 대상 사이트 패널, API로 공격하고 탈취한 값을 loot로 제출합니다.
-- 방어석은 Kibana, WAF 읽기 전용 터미널, 구성도, 경보 목록으로 보고, IDS 룰과 WAF 설정을 고칩니다. 고친 룰은
+- 방어석은 Kibana, WAF 읽기 전용 터미널, 구성도, 알림 목록으로 보고, IDS 룰과 WAF 설정을 고칩니다. 고친 룰은
   적용하기 전에 녹화된 요청으로 테스트할 수 있습니다(룰 테스트).
 - 플랫폼이 라운드 내내 정상 케이스와 고객 트래픽을 보냅니다. 공격석이 아무것도 하지 않아도 오탐과 정상 통과가 쌓입니다.
 - 라운드는 시간 제한, 목표 전부 탈취, 공격 출발지 전부 소진, 운영자 종료, 한쪽 기권으로 끝납니다. 출발지 소진으로
@@ -96,9 +96,9 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 
 **탐지 결과**: 케이스마다 정탐, 미탐, 오탐, 정상 통과 중 하나입니다.
 
-- 케이스 하나는 경보가 몇 건 나오든 1건입니다. `board-sqli-orderby-sqlmap`은 WAF로 요청을 약 2,000건 보내고
-  경보도 많이 나오지만 1건입니다. 경보 단위로 세면 방어가 아니라 경보 임계값을 재게 됩니다.
-- 경보가 공격 수법을 짚지 못하면(케이스의 `expect` 문자열이 시그니처에 없으면) `corroborated: false`로 표시하고
+- 케이스 하나는 알림이 몇 건 나오든 1건입니다. `board-sqli-orderby-sqlmap`은 WAF로 요청을 약 2,000건 보내고
+  알림도 많이 나오지만 1건입니다. 알림 단위로 세면 방어가 아니라 알림 임계값을 재게 됩니다.
+- 알림이 공격 수법을 짚지 못하면(케이스의 `expect` 문자열이 시그니처에 없으면) `corroborated: false`로 표시하고
   탐지로 인정하지 않습니다.
 - 탐지 결과에 들어가는 것은 선언된 케이스(`redteam/cases/`)와 플랫폼이 보내는 정상 케이스뿐입니다. 공격석이
   터미널이나 API로 자유롭게 보낸 요청은 출발지별로 따로 보여 주고(`free_actions`) 정탐·오탐으로 세지 않습니다.
@@ -161,7 +161,7 @@ flowchart TB
 | 학습자 ssh → WAF | 같은 2222 → `cr-mgmt`의 WAF 22번, `analyst` 계정. 방어석의 점프 권한 |
 | 플랫폼 → 훈련 환경 VM | `cr-mgmt`의 제어 포트로 ssh. 관리 계정 `ubuntu`, 비밀번호 없는 sudo. 대상 컨테이너는 target VM에서 `docker exec` |
 | WAF → log-server | 스택의 `mgmt`로 syslog 514/tcp |
-| log-server → collector | infra의 제어 포트에서 `cr-mgmt`로 syslog 5140/udp(센서 경보, WAF audit log, 모든 요청의 nginx 접근 로그) |
+| log-server → collector | infra의 제어 포트에서 `cr-mgmt`로 syslog 5140/udp(센서 알림, WAF audit log, 모든 요청의 nginx 접근 로그) |
 
 - `bin/cloud up`이 Heat 스택 `cr-platform`으로 플랫폼 VM을 만들고, 플랫폼이 Heat API로 슬롯 스택
   `cr-slot-<n>`을 만듭니다.
@@ -183,9 +183,9 @@ flowchart TB
   내부망에만 있습니다. Kali의 공격은 모두 WAF를 지나갑니다.
 - 센서는 스택마다 하나이고 infra VM에 있습니다. `web-outer`와 `web-inner`를 잇는 리눅스 브리지 `br0`에 인라인으로
   붙어 af-packet으로 WAF와 대상 사이의 트래픽을 봅니다. WAF가 막은 요청은 센서에 닿지 않고 WAF 로그에 남습니다.
-- 센서가 보는 요청의 출발지는 WAF입니다. 수집할 때 같은 요청의 X-Forwarded-For 주소를 경보의 출발지로 씁니다.
+- 센서가 보는 요청의 출발지는 WAF입니다. 수집할 때 같은 요청의 X-Forwarded-For 주소를 알림의 출발지로 씁니다.
 - 격리는 Neutron 보안 그룹과 port security가 맡습니다. Kali나 WAF의 root 셸로는 바꿀 수 없습니다.
-- 플랫폼 VM의 `follow` 서비스(같은 이미지의 `manage.py follow`)가 틱마다 슬롯 재생성, 리스 만료, 경보 수집, HP 차감,
+- 플랫폼 VM의 `follow` 서비스(같은 이미지의 `manage.py follow`)가 틱마다 슬롯 재생성, 리스 만료, 알림 수집, HP 차감,
   corp 변경 관찰, 명령 기록 읽기, WAF 설정 변경 감시, 라운드 종료 조건을 처리합니다. 브라우저가 열려 있지 않아도
   돕니다.
 
@@ -347,6 +347,11 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 | 9200 | Elasticsearch, VM loopback 전용 | acceptance 테스트, 인증 없음 |
 
 - 8002는 콘솔과 다른 origin이라 대상 사이트의 스크립트가 콘솔을 읽지 못합니다. 로그인은 8000과 같이 씁니다.
+  로그인하지 않은 채 8002를 열면 콘솔 로그인 페이지로 가고, 로그인하면 보던 사이트 주소로 돌아옵니다.
+- 콘솔과 사이트의 origin은 `compose.yaml`의 `CR_CONSOLE_ORIGIN`, `CR_SITE_ORIGIN`으로 정합니다. 비워 두면 요청한
+  호스트의 `http://<host>:8000`, `http://<host>:8002`입니다. TLS 리버스 프록시나 도메인 뒤에 둘 때는 둘 다
+  `https://cr.example`처럼 scheme, 호스트, 포트만 적습니다. 플랫폼 컨테이너가 시작할 때 nginx 설정에 넣고,
+  사이트 origin은 `/api/me/`의 `site_origin`으로 콘솔에 알려 줍니다. 형식이 틀리면 컨테이너가 시작하지 않습니다.
 - `board.com`과 `corp.com`은 훈련 환경 안에서만 응답합니다. 공격석이 8002로 보낸 요청은 공격 API와 같은 경로로
   나가고 HP를 차감합니다. 방어석과 레슨의 요청은 리스의 브라우징 마커를 달고 고객 주소로 나가며, 공격으로도 오탐으로도
   세지 않습니다.
@@ -439,10 +444,10 @@ sudo docker compose start platform follow
 | `/api/`(사람) | Django 로그인. 세션 쿠키는 HttpOnly, SameSite=Lax. 쓰기 요청은 CSRF 토큰 필요. CORS 헤더 없음 |
 | `/api/`(봇) | `Authorization: Bearer <자리 토큰>`. 토큰은 라운드를 만들 때 한 번만 보여 주고 해시로만 저장. 자기 자리의 공격 또는 방어 경로와 라운드 읽기만 닿음. 라운드가 끝나면 15분 동안 읽기만 가능 |
 | 자리 | 상대 자리의 경로는 403. 라운드 시작 전 쓰기는 `409 round_not_started`, 끝난 뒤는 `409 round_closed`. 자리는 리스를 열거나 닫지 못하고 라운드를 끝내지 못함(기권만 가능). PvP에서 한 사람이 두 자리를 맡지 못함(`already_seated`) |
-| 이벤트 피드 | 이벤트 종류마다 볼 수 있는 쪽이 정해져 있음. 공격 쪽은 경보와 룰 이벤트를, 방어 쪽은 공격 행동과 HP 이벤트를 보지 못함 |
+| 이벤트 피드 | 이벤트 종류마다 볼 수 있는 쪽이 정해져 있음. 공격 쪽은 알림과 룰 이벤트를, 방어 쪽은 공격 행동과 HP 이벤트를 보지 못함 |
 | WAF 설정 | 방어석은 구조화된 posture(paranoia, 예외, 임계값, 탐지 전용)만 보냄. 자유 텍스트를 받지 않으므로 `SecRuleEngine Off`를 쓸 수 없음 |
 | `/vm-terminal/<side>/<round>/` | nginx `auth_request`가 `/api/rounds/<round>/terminal-auth/<side>/`에 그 라운드의 그 자리를 맡았는지 물음. 공격 자리는 Kali의 `kali` 계정, 방어 자리는 cr-waf의 `analyst` 계정(root 아님)으로 열리고, `GET terminal/`로 받은 점프 권한이 없거나 라운드가 끝났으면 열리지 않음. 열려 있던 셸도 15초마다 다시 확인해 권한이 없어지면 닫힘 |
-| `/kibana/`, 8002(`/site/...`) | nginx `auth_request`로 `/api/me/`에 로그인 세션 확인. 없으면 로그인 페이지로 |
+| `/kibana/`, 8002(`/site/...`) | nginx `auth_request`로 `/api/me/`에 로그인 세션 확인. 없으면 로그인 페이지로. 로그인 뒤 돌아가는 `next`는 콘솔 안의 경로이거나 `CR_SITE_ORIGIN`(기본은 같은 호스트의 8002)의 `/site/` 주소만 받음 |
 | 회원가입 계정 | 비활성 상태로 만들어짐. 스태프가 승인해야 로그인 가능 |
 | 로그인 시도 | IP당 분당 5회(버스트 5), 넘으면 429. 계정은 잠그지 않고 시도한 쪽을 차단: 스태프 계정에 3번 틀린 IP는 1시간, 다른 아이디에 10번 틀린 IP는 15분. 같은 브라우저 헤더 지문이 두 IP 이상에서 같은 횟수만큼 틀려도 차단. 스태프가 `DELETE /api/staff/blocks/<id>/`로 해제 |
 | 회원가입 요청 | IP당 분당 1회(버스트 3), 같은 주소에서 시간당 5개까지. 승인 대기 계정이 50개면 가입을 받지 않음 |
@@ -469,7 +474,7 @@ sudo docker compose start platform follow
 `side-split` 브랜치는 새 구조로 다시 만든 코드입니다. 단위·API 테스트는 통과하지만 훈련 환경에서는 아직 돌리지 않았습니다.
 
 - 콘솔(`front/`)은 만들었지만 가짜 응답(`front/mock/`)으로만 확인했습니다. 플랫폼 이미지의 node 단계가 빌드하고
-  nginx가 `/app/front/dist`로 내줍니다. API에 없는 값(자리의 사용자 이름, 지난 라운드의 결과, 로비의 연 시각 등)은
+  nginx가 `/app/front/dist`로 내줍니다. API에 없는 값(지난 라운드의 결과, 로비의 연 시각 등)은
   아직 화면에 없습니다. 자리별 터미널(`nginx.conf`, `vm-terminal.sh`)은 오프라인 테스트만 거쳤고 훈련 환경에서는 아직
   열어 보지 않았습니다.
 - HP 차감용 WAF 접근 로그, infra 라우터의 `pool`·`spent` 집합, CRS 룰 테스트용 임시 인스턴스, WAF의 `analyst`

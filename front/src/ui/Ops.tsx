@@ -27,14 +27,11 @@ export function ServerDots({ servers }: { servers: ServerDot[] }) {
   );
 }
 
-export function IdentityCell({ name, id }: { name: string; id: ComponentChildren }) {
+export function IdentityCell({ name }: { name: string }) {
   return (
     <Row>
       <span class="avatar" aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
-      <div>
-        <div><Text strong tone="heading" cut>{name}</Text></div>
-        <div><Text mono tiny tone="faint">{id}</Text></div>
-      </div>
+      <Text strong tone="heading" cut>{name}</Text>
     </Row>
   );
 }

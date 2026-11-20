@@ -1388,6 +1388,11 @@ session cookie and client address (`proxy_cache signed_in`), so a page that
 loads a hundred assets asks Django once. `/vm-terminal/<side>/<round>/` asks
 `/api/rounds/<round>/terminal-auth/<side>/` instead, uncached, so it opens
 only for the user holding that seat of that round while the round runs.
+Signed out, port 8002 redirects to the console's `/login/` with the site
+address as `next`, and the console returns there after sign-in. The two
+origins are `CR_CONSOLE_ORIGIN` and `CR_SITE_ORIGIN` in `compose.yaml`
+(unset: `http://<asked host>:8000` and `:8002`); behind a TLS reverse proxy
+or a domain set both, as `https://cr.example`, scheme, host and port only.
 
 Elasticsearch and Kibana run without security. They listen on the platform
 VM's loopback only (127.0.0.1:9200 and 127.0.0.1:5601), and the range has no
