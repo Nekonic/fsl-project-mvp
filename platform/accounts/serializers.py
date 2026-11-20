@@ -27,6 +27,10 @@ class Me(serializers.Serializer):
     user = serializers.CharField(source="username")
     is_staff = serializers.BooleanField()
     approved = serializers.BooleanField(source="is_active")
+    site_origin = serializers.SerializerMethodField()
+
+    def get_site_origin(self, _user) -> str:
+        return self.context["site_origin"]
 
 
 class Account(serializers.Serializer):

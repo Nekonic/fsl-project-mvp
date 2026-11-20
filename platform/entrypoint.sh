@@ -7,6 +7,7 @@ for host in $(printf '%s' "${DJANGO_ALLOWED_HOSTS:-}" | tr ',' ' '); do
     *) printf '%s 1;\n' "$host" ;;
   esac
 done > /tmp/nginx-platform-addresses.conf
+python -m cr.config > /tmp/nginx-origins.conf
 nginx -t -q -c /app/nginx.conf
 (
   until python -c 'import socket; socket.create_connection(("127.0.0.1", 8001), 1).close()' 2>/dev/null; do

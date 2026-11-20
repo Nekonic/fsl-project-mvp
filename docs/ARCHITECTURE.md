@@ -408,6 +408,4 @@ sequenceDiagram
   `bots/client/`는 여전히 `bin/verify`만 만듭니다.
 - API에 없어서 목업과 다른 곳: 지난 라운드의 종료 시각과 결과, 레슨의 단계 수, 로비의 연 시각, CRS 미리 보기, 케이스·목표 목록(스태프 편집기는 id로
   입력)이 없습니다.
-- 8002 사이트 리스너의 로그인 이동은 `next=http://host:8002/...`를 보내는데 `Login.tsx`가 다른 출처라 받지 않아,
-  로그인 뒤 사이트가 아니라 홈으로 갑니다.
 - infra, waf 이미지 다시 굽기와 `wargames/<id>/probes/` 녹화(`bin/record-probes`). 배포 파일은 고쳐 두었습니다.

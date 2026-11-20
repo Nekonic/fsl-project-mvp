@@ -1,6 +1,7 @@
 import { cleanup, render } from "@testing-library/preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HEARTBEAT_EVERY_MS } from "../api/follow";
+import { safeNext } from "./Login";
 import { RoundLobby } from "./RoundLobby";
 
 function json(body: unknown): Response {
@@ -56,5 +57,34 @@ describe("RoundLobby", () => {
     vi.advanceTimersByTime(HEARTBEAT_EVERY_MS * 3);
     await settle();
     expect(beats).toEqual([]);
+  });
+});
+
+describe("safeNext", () => {
+  const site = "http://range.example:8002";
+
+  it("keeps a console path", () => {
+    expect(safeNext("/rounds/12/attack", site)).toBe("/rounds/12/attack");
+  });
+
+  it("keeps a site pane address on exactly the configured site origin", () => {
+    expect(safeNext("http://range.example:8002/site/12/board.com/posts/1/", site)).toBe("http://range.example:8002/site/12/board.com/posts/1/");
+    expect(safeNext("https://site.example/site/12/board.com/", "https://site.example")).toBe("https://site.example/site/12/board.com/");
+  });
+
+  it.each([
+    [null, site],
+    ["//evil.example/", site],
+    ["/\\evil.example/", site],
+    ["/login/?next=/", site],
+    ["http://evil.example/site/12/board.com/", site],
+    ["https://range.example:8002/site/12/board.com/", site],
+    ["http://range.example:8000/site/12/board.com/", site],
+    ["http://range.example:8002/login/", site],
+    ["http://range.example:8002/site/../login/", site],
+    ["javascript:alert(1)", site],
+    ["http://range.example:8002/site/12/board.com/", undefined],
+  ])("sends %s home", (next, origin) => {
+    expect(safeNext(next, origin)).toBe("/");
   });
 });

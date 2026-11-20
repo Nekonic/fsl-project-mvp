@@ -7,6 +7,7 @@ import pytest
 from django.conf import settings
 from django.urls import Resolver404, resolve
 
+from cr import config as config_module
 from cr import errors
 from match import views as match_views
 from tests import composed
@@ -338,6 +339,46 @@ def test_the_site_pane_hands_django_only_the_session_cookie_and_keeps_none_of_th
 
 def test_the_site_listener_answers_nothing_else():
     assert location(site_listener(), "/").values("return") == [["404"]]
+
+
+def test_the_site_listener_sends_a_signed_out_learner_to_the_console_s_sign_in_with_the_site_address_to_come_back_to():
+    assert location(site_listener(), "@sign-in").values("return") == [
+        ["302", "$console_origin/login/?next=$site_origin$request_uri"]]
+    assert location(console(), "@sign-in").values("return") == [["302", "/login/?next=$request_uri"]]
+    assert "/tmp/nginx-origins.conf" in [args[0] for args in http().values("include")]
+    assert "8000" not in location(site_listener(), "@sign-in").text()
+
+
+def test_the_entrypoint_renders_the_configured_origins_before_nginx_checks_its_config():
+    lines = ENTRYPOINT.read_text().splitlines()
+    rendered = lines.index("python -m cr.config > /tmp/nginx-origins.conf")
+
+    assert rendered < next(number for number, line in enumerate(lines) if line.startswith("nginx -t"))
+
+
+def origin_maps(environ):
+    text = config_module.nginx_origins(config_module.origins(environ))
+    return {one.args[1]: one.block[0].args[0] for one in parsed(text).children("map")}
+
+
+def test_unset_origins_keep_the_console_on_8000_and_the_site_on_8002_of_the_host_asked_over_http():
+    assert origin_maps({}) == {"$console_origin": "http://$host:8000", "$site_origin": "http://$host:8002"}
+    assert config_module.origins({}).site_for("range.example") == "http://range.example:8002"
+
+
+def test_configured_origins_replace_both_for_a_tls_proxy_or_a_domain():
+    environ = {"CR_CONSOLE_ORIGIN": "https://cr.example/", "CR_SITE_ORIGIN": "https://site.cr.example:8443"}
+
+    assert origin_maps(environ) == {"$console_origin": "https://cr.example",
+                                    "$site_origin": "https://site.cr.example:8443"}
+    assert config_module.origins(environ).site_for("ignored") == "https://site.cr.example:8443"
+
+
+@pytest.mark.parametrize("given", ["cr.example", "https://cr.example/login", "ftp://cr.example", 'https://a"; }',
+                                   "https://cr.example?x=1"])
+def test_an_origin_that_is_not_a_scheme_host_and_port_stops_the_start(given):
+    with pytest.raises(ValueError):
+        config_module.origins({"CR_SITE_ORIGIN": given})
 
 
 DISCOVER_CALLS = (

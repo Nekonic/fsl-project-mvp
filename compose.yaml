@@ -116,6 +116,8 @@ services:
       CR_SOURCE: "/src"
       CR_RETAIN_CLOSED_MINUTES: "${CR_RETAIN_CLOSED_MINUTES:-60}"
       CR_LEASE_IDLE_MINUTES: "${CR_LEASE_IDLE_MINUTES:-30}"
+      CR_CONSOLE_ORIGIN: "${CR_CONSOLE_ORIGIN:-}"
+      CR_SITE_ORIGIN: "${CR_SITE_ORIGIN:-}"
     env_file: &platform-env-file
       - path: ./openstack.env
         required: false

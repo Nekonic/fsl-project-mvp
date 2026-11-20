@@ -28,7 +28,15 @@ def test_signing_in_opens_a_session_that_me_reports(browser, learner):
     answer = sign_in(browser, "learner")
 
     assert answer.status_code == 200 and answer.json() == {"user": "learner"}
-    assert browser.get("/api/me/").json() == {"user": "learner", "is_staff": False, "approved": True}
+    assert browser.get("/api/me/").json() == {"user": "learner", "is_staff": False, "approved": True,
+                                              "site_origin": "http://testserver:8002"}
+
+
+def test_me_names_the_configured_site_origin_the_site_pane_loads_from(browser, learner, monkeypatch):
+    monkeypatch.setenv("CR_SITE_ORIGIN", "https://Site.Example/")
+    sign_in(browser, "learner")
+
+    assert browser.get("/api/me/").json()["site_origin"] == "https://site.example"
 
 
 def test_me_tells_staff_apart(browser, staff):

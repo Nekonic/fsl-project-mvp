@@ -1,14 +1,12 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { api, type Schemas } from "../api/client";
-import { useEvents, useResource } from "../api/hooks";
+import { useEvents, useResource, useSession } from "../api/hooks";
 import { clockSeconds, count } from "../format";
 import { errorText, t } from "../strings";
 import { Button, ErrorNotice, FrameEmpty, Input, Pane, PaneHeader, Select, Table, Text, type Column, SiteSplit, SideList, SiteBar, SiteAddress, SiteFrame } from "../ui";
 import type { PaneProps, Side } from "./types";
 
 type SiteRequest = Schemas["SiteRequest"];
-
-export const SITE_PORT = 8002;
 
 const STATE_PATH = {
   attack: "/api/rounds/{round_id}/attack/state/",
@@ -17,8 +15,8 @@ const STATE_PATH = {
 
 const REQUEST_EVENTS = ["action.sent", "round.started"];
 
-export function siteBase(round: number, host: string): string {
-  return `${location.protocol}//${location.hostname}:${SITE_PORT}/site/${round}/${host}`;
+export function siteBase(siteOrigin: string, round: number, host: string): string {
+  return `${siteOrigin}/site/${round}/${host}`;
 }
 
 function shownAddress(round: number, host: string, framePath: string): string {
@@ -115,6 +113,7 @@ function AddressBar({ host, hosts, address, onHost, onGo, onReload }: AddressBar
 }
 
 export function Site({ round, side }: PaneProps) {
+  const { me } = useSession();
   const { hosts, error } = useTargetHosts(round, side);
   const [chosenHost, setChosenHost] = useState<string | null>(null);
   const host = chosenHost && hosts.includes(chosenHost) ? chosenHost : hosts[0];
@@ -146,8 +145,8 @@ export function Site({ round, side }: PaneProps) {
     <Pane scroll={false}>
       {host && <AddressBar host={host} hosts={hosts} address={address} onHost={(next) => { setChosenHost(next); go("/"); }} onGo={go} onReload={reload} />}
       <SiteSplit>
-        {host
-          ? <SiteFrame key={`${host}-${loads}`} frameRef={frame} src={`${siteBase(round, host)}${path}`} title={t("pane.site")} />
+        {host && me
+          ? <SiteFrame key={`${host}-${loads}`} frameRef={frame} src={`${siteBase(me.site_origin, round, host)}${path}`} title={t("pane.site")} />
           : <FrameEmpty title={t("pane.site")}>{error ? errorText(error) : t("common.loading")}</FrameEmpty>}
         <RequestList round={round} />
       </SiteSplit>
