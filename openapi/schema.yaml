@@ -4487,8 +4487,10 @@ components:
     SeatAskRequest:
       type: object
       properties:
-        user:
-          type: integer
+        username:
+          type: string
+          minLength: 1
+          maxLength: 150
         bot:
           $ref: '#/components/schemas/BotAskRequest'
         open:
@@ -4500,8 +4502,9 @@ components:
           $ref: '#/components/schemas/SeatSideEnum'
         client:
           type: string
-        user:
-          type: integer
+        username:
+          type: string
+          readOnly: true
           nullable: true
         bot_name:
           type: string
@@ -4509,7 +4512,7 @@ components:
       - bot_name
       - client
       - side
-      - user
+      - username
     SeatSideEnum:
       enum:
       - attack
@@ -5340,6 +5343,7 @@ components:
       - too_many
       - tool_unavailable
       - unavailable
+      - unknown_account
       - unknown_block
       - unknown_case
       - unknown_check

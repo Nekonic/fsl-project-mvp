@@ -14,7 +14,7 @@ class OpenLease(serializers.Serializer):
 class SeatLine(serializers.Serializer):
     side = serializers.ChoiceField(choices=SIDES)
     client = serializers.CharField()
-    user = serializers.IntegerField(source="user_id", allow_null=True)
+    username = serializers.CharField(source="user.username", allow_null=True, read_only=True, default=None)
     bot_name = serializers.CharField()
 
 
@@ -53,13 +53,13 @@ class BotAsk(serializers.Serializer):
 
 
 class SeatAsk(serializers.Serializer):
-    user = serializers.IntegerField(required=False)
+    username = serializers.CharField(max_length=150, required=False)
     bot = BotAsk(required=False)
     open = serializers.BooleanField(required=False)
 
     def validate(self, attrs):
         if len(attrs) != 1:
-            raise serializers.ValidationError({"user": "one of user, bot and open"}, code="invalid_choice")
+            raise serializers.ValidationError({"username": "one of username, bot and open"}, code="invalid_choice")
         return attrs
 
 

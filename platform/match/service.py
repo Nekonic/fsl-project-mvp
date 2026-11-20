@@ -197,9 +197,9 @@ def refuse_fallen(held: Lease) -> None:
 
 
 def seated_user(given: Any, path: str):
-    found = get_user_model().objects.filter(pk=given, is_active=True).first() if isinstance(given, int) else None
+    found = get_user_model().objects.filter(username=given, is_active=True).first() if isinstance(given, str) else None
     if found is None:
-        raise errors.Invalid(code="does_not_exist", path=f"{path}.user")
+        raise errors.Invalid(code="unknown_account", path=f"{path}.username")
     return found
 
 
@@ -210,8 +210,8 @@ def seat_of(found: Round, side: str, client: str, asked: dict) -> Seat:
         if not isinstance(name, str) or not name.strip():
             raise errors.Invalid(code="invalid_choice", path=path)
         return Seat.objects.create(round=found, side=side, client=BOT, bot_name=name.strip())
-    if "user" in asked:
-        return Seat.objects.create(round=found, side=side, client=HUMAN, user=seated_user(asked["user"], path))
+    if "username" in asked:
+        return Seat.objects.create(round=found, side=side, client=HUMAN, user=seated_user(asked["username"], path))
     if asked.get("open") is True:
         return Seat.objects.create(round=found, side=side, client=HUMAN)
     raise errors.Invalid(code="invalid_choice", path=path)
@@ -229,7 +229,7 @@ def create_round(held: Lease, problem_id: int, matchup: str, seats: dict[str, di
     if Round.objects.filter(lease=held).exclude(phase=ENDED).exists():
         raise errors.Conflict(code="round_open")
     refuse_fallen(held)
-    users = [asked.get("user") for asked in seats.values() if isinstance(asked, dict) and asked.get("user")]
+    users = [asked.get("username") for asked in seats.values() if isinstance(asked, dict) and asked.get("username")]
     if len(users) != len(set(users)):
         raise errors.Conflict(code="already_seated")
     tokens: dict[str, str] = {}

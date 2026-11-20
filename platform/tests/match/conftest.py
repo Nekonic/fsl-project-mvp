@@ -47,4 +47,4 @@ def url(found, rest: str = "") -> str:
 
 def pvp(lease, problem, attacker, defender):
     return service.create_round(lease, problem.pk, "pvp",
-                                {"attack": {"user": attacker.pk}, "defence": {"user": defender.pk}}).round
+                                {"attack": {"username": attacker.username}, "defence": {"username": defender.username}}).round

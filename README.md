@@ -469,7 +469,7 @@ sudo docker compose start platform follow
 `side-split` 브랜치는 새 구조로 다시 만든 코드입니다. 단위·API 테스트는 통과하지만 훈련 환경에서는 아직 돌리지 않았습니다.
 
 - 콘솔(`front/`)은 만들었지만 가짜 응답(`front/mock/`)으로만 확인했습니다. 플랫폼 이미지의 node 단계가 빌드하고
-  nginx가 `/app/front/dist`로 내줍니다. API에 없는 값(자리의 사용자 이름, 지난 라운드의 결과, 로비의 연 시각 등)은
+  nginx가 `/app/front/dist`로 내줍니다. API에 없는 값(지난 라운드의 결과, 로비의 연 시각 등)은
   아직 화면에 없습니다. 자리별 터미널(`nginx.conf`, `vm-terminal.sh`)은 오프라인 테스트만 거쳤고 훈련 환경에서는 아직
   열어 보지 않았습니다.
 - HP 차감용 WAF 접근 로그, infra 라우터의 `pool`·`spent` 집합, CRS 룰 테스트용 임시 인스턴스, WAF의 `analyst`

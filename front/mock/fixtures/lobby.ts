@@ -1,10 +1,10 @@
 import { minutesFromNow, refuse, reply } from "../fixture";
 
-const human = (side: "attack" | "defence", user: number | null) => ({ side, client: "human", user, bot_name: "" });
-const bot = (side: "attack" | "defence", name: string) => ({ side, client: "bot", user: null, bot_name: name });
+const human = (side: "attack" | "defence", username: string | null) => ({ side, client: "human", username, bot_name: "" });
+const bot = (side: "attack" | "defence", name: string) => ({ side, client: "bot", username: null, bot_name: name });
 
-const waiting = { round: 43, problem: 7, kind: "match", matchup: "def_vs_bot", phase: "created" as const, seats: [bot("attack", "claude-code"), human("defence", 3)] };
-const finished = { round: 40, problem: 7, kind: "match", matchup: "pvp", phase: "ended" as const, seats: [human("attack", 2), human("defence", null)] };
+const waiting = { round: 43, problem: 7, kind: "match", matchup: "def_vs_bot", phase: "created" as const, seats: [bot("attack", "claude-code"), human("defence", "learner-one")] };
+const finished = { round: 40, problem: 7, kind: "match", matchup: "pvp", phase: "ended" as const, seats: [human("attack", "learner-two"), human("defence", null)] };
 
 interface LeaseShape {
   ready?: boolean;
@@ -28,7 +28,7 @@ export const fixtures = [
     const seats = asked.body?.seats ?? {};
     const seatOf = (side: "attack" | "defence") => {
       const ask = seats[side];
-      return ask?.bot ? bot(side, ask.bot.name) : human(side, ask?.user ?? null);
+      return ask?.bot ? bot(side, ask.bot.name) : human(side, ask?.username ?? null);
     };
     const made = [seatOf("attack"), seatOf("defence")];
     return {

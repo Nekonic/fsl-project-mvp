@@ -56,8 +56,8 @@ const endsAt = minutesFromNow(10);
 const runningRound = {
   round: 41, lease: 12, problem: 7, kind: "match", matchup: "pvp", phase: "running" as const,
   seats: [
-    { side: "attack" as const, client: "human", user: 2, bot_name: "" },
-    { side: "defence" as const, client: "human", user: 3, bot_name: "" },
+    { side: "attack" as const, client: "human", username: "learner-two", bot_name: "" },
+    { side: "defence" as const, client: "human", username: "learner-one", bot_name: "" },
   ],
   started, ends_at: endsAt, ended: null, end_reason: "",
 };

@@ -525,8 +525,8 @@ Who may act: the **operator** is `Lease.opened_by` or a staff user (`IsOperator`
 | `GET /api/leases/<lease>/` | operator | none | `{lease, slot, ready, expires_at, rounds:[...]}` |
 | `POST /api/leases/<lease>/heartbeat/` | operator, seats | none | `{expires_at}` |
 | `POST /api/leases/<lease>/close/` | operator | none | `{closed}`; the slot is deleted and rebuilt |
-| `POST /api/leases/<lease>/rounds/` | operator | `{problem, matchup, seats:{attack:{user}\|{bot:{name}}\|{open:true}, defence:{...}}}` | `201 {round, seats:[{side, client, user}], bot_tokens?:{side: token}}` (shown once) |
-| `GET /api/rounds/?mine=1&state=open\|joinable` | user | none | `[{round, problem, matchup, seats:[{side, client, user}], phase}]` |
+| `POST /api/leases/<lease>/rounds/` | operator | `{problem, matchup, seats:{attack:{username}\|{bot:{name}}\|{open:true}, defence:{...}}}`; an unknown or inactive `username` is `400 unknown_account` on `seats.<side>.username` | `201 {round, seats:[{side, client, username, bot_name}], bot_tokens?:{side: token}}` (shown once); `username` is null for a bot or open seat, and no user id appears in the API |
+| `GET /api/rounds/?mine=1&state=open\|joinable` | user | none | `[{round, problem, matchup, seats:[{side, client, username, bot_name}], phase}]` |
 | `POST /api/rounds/<round>/seats/<side>/join/` | approved user | none | `{seat}`; appends `seat.joined`. `409 already_seated` if the user holds the other side of a non-lesson round, `409 seat_taken` |
 | `POST /api/rounds/<round>/start/` | operator | none | `{phase}`. Freezes the snapshot, applies the posture (`defence.service`), takes the baseline (`referee.service`), fills `@pool` (`attack.service`), creates the Kibana space, starts customers and the benign schedule |
 | `POST /api/rounds/<round>/end/` | operator | none | `{ended, reason: ended_by_operator}` |

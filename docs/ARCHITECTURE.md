@@ -406,8 +406,7 @@ sequenceDiagram
   node 단계가 `npm run types`(openapi-typescript)로 `front/src/api/schema.d.ts`를 만들고 빌드한 뒤 `dist`를
   `/app/front/dist`에 넣습니다. `strings/server.json`은 빌드에 쓰이지만 `dist`에는 들어가지 않습니다. Python 클라이언트
   `bots/client/`는 여전히 `bin/verify`만 만듭니다.
-- API에 없어서 목업과 다른 곳: 자리와 라운드 막대에 사용자 이름이 없고(`SeatLine`, `Me`에 이름이 없음), 지난
-  라운드의 종료 시각과 결과, 레슨의 단계 수, 로비의 연 시각, CRS 미리 보기, 케이스·목표 목록(스태프 편집기는 id로
+- API에 없어서 목업과 다른 곳: 지난 라운드의 종료 시각과 결과, 레슨의 단계 수, 로비의 연 시각, CRS 미리 보기, 케이스·목표 목록(스태프 편집기는 id로
   입력)이 없습니다.
 - 8002 사이트 리스너의 로그인 이동은 `next=http://host:8002/...`를 보내는데 `Login.tsx`가 다른 출처라 받지 않아,
   로그인 뒤 사이트가 아니라 홈으로 갑니다. 로비(`RoundLobby.tsx`)는 라운드가 진행 중일 때만 리스 heartbeat를

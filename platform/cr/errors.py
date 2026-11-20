@@ -45,7 +45,7 @@ class Invalid(DomainError):
     status = 400
     codes = frozenset({
         "invalid", "malformed", "required", "null", "blank", "max_length", "min_length", "max_value", "min_value",
-        "invalid_choice", "not_a_list", "empty", "does_not_exist", "username_taken", "password_too_short",
+        "invalid_choice", "not_a_list", "empty", "does_not_exist", "unknown_account", "username_taken", "password_too_short",
         "password_too_common", "password_entirely_numeric", "password_too_similar",
         "not_an_object", "not_a_choice", "not_a_text", "not_a_boolean", "not_a_text_list", "not_a_positive_integer",
         "not_an_option", "out_of_sequence", "unknown_field", "unknown_wargame", "unknown_pane", "unknown_check",

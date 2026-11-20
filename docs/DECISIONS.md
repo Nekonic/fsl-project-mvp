@@ -10332,3 +10332,16 @@ Asked whether repo files stay English-only now that the Hangul scan is gone,
 the user chose to allow Korean. CLAUDE.md drops the English-only rule for
 code, commits and documents; the 2026-11-15 ruling that README.md and
 docs/ARCHITECTURE.md are Korean-only stands.
+
+## 2026-11-20 — Seats are named by username; the user pk leaves the API
+
+The user ruled that an account is identified by its username (login ID) and
+that the database id must not appear in the API. `SeatLine` carries
+`username` (null for a bot or open seat) in place of `user`, and the seat ask
+of `POST /api/leases/<lease>/rounds/` takes `{username}`; an unknown or
+inactive account is `400 unknown_account` on `seats.<side>.username`. The lobby
+asks for the username instead of a number, and the round bar shows who holds
+each seat (the username, or the bot's name). `test/plays.py` seats the
+operator by the username it signs in with instead of looking up its id. The
+staff accounts API (`Account.id`, `/api/staff/users/<user_id>/approve|disable/`)
+still carries the pk and is left for a later change.

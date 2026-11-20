@@ -31,7 +31,7 @@ const SEATS_FOR: Record<Matchup, Record<Side, SeatKind>> = {
   def_vs_bot: { attack: "bot", defence: "open" },
   atk_vs_bot: { attack: "open", defence: "bot" },
 };
-const INLINE_PATHS = ["problem", "matchup", ...SIDES.flatMap((side) => [`seats.${side}`, `seats.${side}.user`, `seats.${side}.bot.name`])];
+const INLINE_PATHS = ["problem", "matchup", ...SIDES.flatMap((side) => [`seats.${side}`, `seats.${side}.username`, `seats.${side}.bot.name`])];
 const ROUND_KINDS_THAT_CHANGE = ["seat.joined", "round.started", "round.ended"];
 
 function seatOf(line: RoundLine, side: Side): SeatLine | undefined {
@@ -51,10 +51,10 @@ function SeatCell({ line, side, joining, onJoin }: SeatCellProps) {
   if (seat.client === "bot") {
     return <Stack gap="sm"><Text strong tone="heading">{t("lobby.seat.bot")}</Text><Text mono small tone="muted">{seat.bot_name}</Text></Stack>;
   }
-  if (seat.user !== null) {
+  if (seat.username !== null) {
     return (
       <Stack gap="sm">
-        <Text strong tone="heading">{t("lobby.seat.user", { user: seat.user })}</Text>
+        <Text strong mono tone="heading">{seat.username}</Text>
         <Text small tone="muted"><Dot tone="ok" /> {t("lobby.seat.joined")}</Text>
       </Stack>
     );
@@ -123,13 +123,13 @@ function Rounds({ lease, titleOf, onChanged }: RoundsProps) {
 
 interface SeatChoice {
   kind: SeatKind;
-  user: string;
+  username: string;
   bot: string;
 }
 
 function askOf(choice: SeatChoice): SeatAsk {
   if (choice.kind === "bot") return { bot: { name: choice.bot.trim() } };
-  if (choice.kind === "user") return { user: Number(choice.user) };
+  if (choice.kind === "user") return { username: choice.username.trim() };
   return { open: true };
 }
 
@@ -153,8 +153,8 @@ function SeatPick({ side, choice, errors, onChoice }: SeatPickProps) {
           </Field>
         )}
         {choice.kind === "user" && (
-          <Field label={t("lobby.user_id")} error={errors[`seats.${side}.user`] ?? errors[`seats.${side}`]}>
-            <Input mono inputMode="numeric" value={choice.user} onValue={(user) => onChoice({ ...choice, user: user.replace(/\D/g, "") })} />
+          <Field label={t("lobby.username")} error={errors[`seats.${side}.username`] ?? errors[`seats.${side}`]}>
+            <Input mono spellcheck={false} value={choice.username} onValue={(username) => onChoice({ ...choice, username })} />
           </Field>
         )}
       </Stack>
@@ -173,8 +173,8 @@ function CreateRound({ lease, problems, onCreated }: CreateRoundProps) {
   const [problem, setProblem] = useState("");
   const [matchup, setMatchup] = useState<Matchup>("pvp");
   const [seats, setSeats] = useState<Record<Side, SeatChoice>>({
-    attack: { kind: "open", user: "", bot: "" },
-    defence: { kind: "open", user: "", bot: "" },
+    attack: { kind: "open", username: "", bot: "" },
+    defence: { kind: "open", username: "", bot: "" },
   });
   const [tokens, setTokens] = useState<Array<{ side: string; token: string; bot: string }>>([]);
   const [copied, setCopied] = useState("");

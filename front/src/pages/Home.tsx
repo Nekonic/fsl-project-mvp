@@ -40,11 +40,11 @@ function catalogueOf(problems: Problem[] | undefined): Catalogue {
 }
 
 function humanSides(line: RoundLine): Side[] {
-  return line.seats.filter((seat) => seat.client === "human" && seat.user !== null).map((seat) => seat.side);
+  return line.seats.filter((seat) => seat.client === "human" && seat.username !== null).map((seat) => seat.side);
 }
 
 function openSides(line: RoundLine): Side[] {
-  return line.seats.filter((seat) => seat.client === "human" && seat.user === null).map((seat) => seat.side);
+  return line.seats.filter((seat) => seat.client === "human" && seat.username === null).map((seat) => seat.side);
 }
 
 function MySeats({ rounds, lessons, catalogue }: { rounds: RoundLine[]; lessons: LessonLine[]; catalogue: Catalogue }) {

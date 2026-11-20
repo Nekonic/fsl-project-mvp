@@ -91,7 +91,7 @@ def test_each_terminal_refusal_names_its_code_in_a_header_nginx_can_read(browser
 
 def test_a_bot_token_opens_its_terminal(browser, lease, problem, learner):
     made = service.create_round(lease, problem.pk, "def_vs_bot",
-                                {"attack": {"bot": {"name": "claude"}}, "defence": {"user": learner.pk}})
+                                {"attack": {"bot": {"name": "claude"}}, "defence": {"username": learner.username}})
     service.start_round(made.round)
 
     answer = browser.get(url(made.round, "terminal-auth/attack"),

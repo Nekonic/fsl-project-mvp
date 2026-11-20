@@ -96,7 +96,7 @@ def test_an_expired_lease_is_closed_with_its_round(cloud, lease, problem, learne
 def test_the_operator_creates_a_bot_round_and_sees_the_token_once(as_operator, lease, problem, learner):
     answer = as_operator.post(f"/api/leases/{lease.pk}/rounds/", {
         "problem": problem.pk, "matchup": "def_vs_bot",
-        "seats": {"attack": {"bot": {"name": "claude"}}, "defence": {"user": learner.pk}}}, format="json")
+        "seats": {"attack": {"bot": {"name": "claude"}}, "defence": {"username": learner.username}}}, format="json")
 
     assert answer.status_code == 201, answer.content
     made = answer.json()
@@ -108,8 +108,8 @@ def test_the_operator_creates_a_bot_round_and_sees_the_token_once(as_operator, l
 
 @pytest.mark.parametrize("matchup, seats, status, code, path", [
     ("atk_vs_bot", {}, 400, "matchup_not_allowed", "matchup"),
-    ("def_vs_bot", {"attack": {"user": 1}, "defence": {"open": True}}, 400, "invalid_choice", "seats.attack"),
-    ("pvp", {"attack": {"user": 999}, "defence": {"open": True}}, 400, "does_not_exist", "seats.attack.user"),
+    ("def_vs_bot", {"attack": {"username": "nobody"}, "defence": {"open": True}}, 400, "invalid_choice", "seats.attack"),
+    ("pvp", {"attack": {"username": "nobody"}, "defence": {"open": True}}, 400, "unknown_account", "seats.attack.username"),
 ])
 def test_a_round_the_problem_or_matchup_does_not_allow_is_refused(as_operator, lease, problem, matchup, seats,
                                                                   status, code, path):
@@ -118,10 +118,29 @@ def test_a_round_the_problem_or_matchup_does_not_allow_is_refused(as_operator, l
             status, code, path=path)
 
 
+def test_an_inactive_account_cannot_be_seated(as_operator, lease, problem, learner):
+    learner.is_active = False
+    learner.save(update_fields=["is_active"])
+    refused(as_operator.post(f"/api/leases/{lease.pk}/rounds/", {
+        "problem": problem.pk, "matchup": "pvp",
+        "seats": {"attack": {"username": learner.username}, "defence": {"open": True}}}, format="json"),
+        400, "unknown_account", path="seats.attack.username")
+
+
+def test_seats_are_shown_by_username_and_never_by_user_id(as_operator, lease, problem, learner):
+    made = as_operator.post(f"/api/leases/{lease.pk}/rounds/", {
+        "problem": problem.pk, "matchup": "def_vs_bot",
+        "seats": {"attack": {"bot": {"name": "claude"}}, "defence": {"username": learner.username}}}, format="json").json()
+
+    shown = {seat["side"]: seat for seat in as_operator.get(f"/api/rounds/{made['round']}/").json()["seats"]}
+    assert shown["defence"]["username"] == learner.username and shown["attack"]["username"] is None
+    assert all("user" not in seat and "user_id" not in seat for seat in shown.values())
+
+
 def test_one_user_cannot_take_both_seats_of_a_round(as_operator, lease, problem, learner):
     refused(as_operator.post(f"/api/leases/{lease.pk}/rounds/", {
         "problem": problem.pk, "matchup": "pvp",
-        "seats": {"attack": {"user": learner.pk}, "defence": {"user": learner.pk}}}, format="json"),
+        "seats": {"attack": {"username": learner.username}, "defence": {"username": learner.username}}}, format="json"),
         409, "already_seated")
 
 
@@ -135,7 +154,7 @@ def test_a_second_open_round_on_one_lease_is_refused(lease, problem, learner, ot
 
 def test_joining_an_open_seat_takes_it_once(browser, lease, problem, learner, other, make_user):
     found = service.create_round(lease, problem.pk, "pvp", {"attack": {"open": True},
-                                                            "defence": {"user": learner.pk}}).round
+                                                            "defence": {"username": learner.username}}).round
     browser.force_authenticate(other)
 
     joined = browser.post(url(found, "seats/attack/join/"))
@@ -152,7 +171,7 @@ def test_joining_an_open_seat_takes_it_once(browser, lease, problem, learner, ot
 
 def test_a_round_with_an_open_seat_does_not_start(as_operator, lease, problem, learner):
     found = service.create_round(lease, problem.pk, "pvp", {"attack": {"open": True},
-                                                            "defence": {"user": learner.pk}}).round
+                                                            "defence": {"username": learner.username}}).round
 
     refused(as_operator.post(url(found, "start/")), 409, "seats_open")
 
@@ -240,7 +259,7 @@ def test_the_operator_ends_a_round_once(as_operator, lease, problem, learner, ot
 
 
 def test_rounds_list_what_the_user_holds_and_what_is_joinable(browser, lease, problem, learner, other, make_user):
-    service.create_round(lease, problem.pk, "pvp", {"attack": {"open": True}, "defence": {"user": learner.pk}})
+    service.create_round(lease, problem.pk, "pvp", {"attack": {"open": True}, "defence": {"username": learner.username}})
     browser.force_authenticate(make_user("stranger"))
 
     joinable = browser.get("/api/rounds/?state=joinable").json()
@@ -282,7 +301,7 @@ def test_a_round_ended_while_it_starts_stays_ended(monkeypatch, lease, problem, 
 
 def test_a_bot_token_of_an_ended_round_does_not_keep_the_lease_alive(browser, lease, problem, learner):
     made = service.create_round(lease, problem.pk, "def_vs_bot",
-                                {"attack": {"bot": {"name": "claude"}}, "defence": {"user": learner.pk}})
+                                {"attack": {"bot": {"name": "claude"}}, "defence": {"username": learner.username}})
     token = f"Bearer {made.bot_tokens['attack']}"
     assert browser.post(f"/api/leases/{lease.pk}/heartbeat/", HTTP_AUTHORIZATION=token).status_code == 200
     service.start_round(made.round)
