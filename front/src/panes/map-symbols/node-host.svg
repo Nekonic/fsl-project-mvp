@@ -1,5 +1,5 @@
-<svg width="60" height="60" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="6" width="288" height="288" rx="64" fill="#17181B" stroke="#2E3036" stroke-width="6"/><circle cx="150" cy="150" r="104" fill="#A1A1AA" fill-opacity="0.14"/><svg x="62" y="62" width="176" height="176" viewBox="0 0 155 145" fill="#A1A1AA">
+<svg width="60" height="60" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="6" width="288" height="288" rx="var(--map-symbol-radius)" fill="var(--map-chip)" stroke="var(--map-chip-line)" stroke-width="6"/><circle cx="150" cy="150" r="104" fill="var(--map-logs)" fill-opacity="var(--map-symbol-tint)"/><svg x="62" y="62" width="176" height="176" viewBox="0 0 155 145" fill="var(--map-logs)">
     <g transform="matrix(1,0,0,1,-72.8605,-86.7142)">
-        <path d="M193.656,225.178L106.344,225.178L106.344,224.745L193.656,224.745L193.656,225.178ZM221.14,92.714L221.14,193.016L78.86,193.016L78.86,92.714L221.14,92.714Z" style="fill:#A1A1AA;fill-opacity:0;stroke:#A1A1AA;stroke-width:12px;"/>
+        <path d="M193.656,225.178L106.344,225.178L106.344,224.745L193.656,224.745L193.656,225.178ZM221.14,92.714L221.14,193.016L78.86,193.016L78.86,92.714L221.14,92.714Z" style="fill:var(--map-logs);fill-opacity:0;stroke:var(--map-logs);stroke-width:12px;"/>
     </g>
 </svg></svg>

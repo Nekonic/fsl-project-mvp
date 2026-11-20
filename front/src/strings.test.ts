@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 
 import { describe, expect, it } from "vitest";
 import table from "@strings/console.json";
-import { errorLine, errorText, hasString, t } from "./strings";
+import { errorLine, errorText, hasString, REFERENCE, t } from "./strings";
 
 const SRC = join(process.cwd(), "src");
 const REPO = join(SRC, "..", "..");
@@ -70,6 +70,19 @@ describe("console strings", () => {
     const shown = sources.filter(({ path }) => path.endsWith(".tsx")).flatMap(({ path, text }) =>
       [...text.matchAll(/>([^<>{}]*)</g)].filter((match) => ABBREVIATION.test(match[1] as string)).map(() => path));
     expect(shown).toEqual([]);
+  });
+
+  it("resolves every key a value refers to with {@key}", () => {
+    const references = Object.entries(table).flatMap(([key, value]) => [...value.matchAll(REFERENCE)].map((match) => ({ key, named: match[1] as string })));
+    expect(references.length).toBeGreaterThan(0);
+    expect(references.filter(({ key, named }) => !hasString(named) || named === key)).toEqual([]);
+    expect(Object.keys(table).filter((key) => t(key as keyof typeof table).includes("{@"))).toEqual([]);
+  });
+
+  it("shows a verdict's label wherever a value refers to it", () => {
+    expect(t("result.benign_all_passed", { total: 3 })).toContain(t("verdict.tn"));
+    expect(t("result.attack_summary", { total: 4, tp: 2 })).toContain(t("verdict.tp"));
+    expect(t("result.benign_summary", { total: 3, fp: 1 })).toContain(t("verdict.fp"));
   });
 
   it("fills parameters and lines", () => {

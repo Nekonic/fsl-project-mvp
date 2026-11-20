@@ -65,8 +65,6 @@ ported acceptance suite.
 - The 8002 listener's sign-in redirect lands on the home page, not the
   site (`Login.tsx` refuses a `next` on another origin); the lobby holds the
   lease heartbeat only while a round is live and never releases it.
-- `design-candidates/` (the mockups) is untracked and carries Korean;
-  `test_no_hangul.py` fails while it is in the tree.
 - The rest (the scratch rule-test guesses, the comment scan's reach,
   `bin/carry-users` mid-load) is in `docs/STATE.md` "Open points".
 

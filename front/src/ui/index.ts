@@ -11,7 +11,7 @@ export { Notice, ErrorNotice, ErrorList, Banner, type NoticeTone } from "./Notic
 export { Text, Prose, Label, Subhead, Code, Progress, Stat, Stats, KeyValue, Empty, Loading, Divided, type TextTone } from "./Text";
 export { TopNav, PageShell, PageBody, type Crumb, type NavLink } from "./Shell";
 export {
-  RoundBar, Rail, ConsoleLayout, KeptPane, Pane, PaneHeader, PaneSection, Aside, AsideHead, AsideCard, RowLine, Frame, FrameEmpty,
+  RoundBar, Rail, ConsoleLayout, KeptPane, PaneSplit, Pane, PaneHeader, PaneSection, Aside, AsideHead, AsideCard, RowLine, Frame, FrameEmpty,
   type RailItem, type RoundFact, type SideMark,
 } from "./Console";
 export { StepCardFrame, HintBox, StepRows, StepRow, type StepState } from "./Steps";

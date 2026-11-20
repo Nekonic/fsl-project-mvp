@@ -81,6 +81,21 @@
   --map-web: #34D399;
   --map-database: #FBBF24;
   --map-mgmt: #60A5FA;
+  --map-sensor: #22D3EE;
+  --map-kali-fill: #F4F4F5;
+  --map-kali-line: #7F1D1D;
+  --map-kali-mark: #000000;
+  --map-symbol-radius: 64;
+  --map-symbol-tint: 0.14;
+  --map-zone-radius: 18px;
+  --map-route-radius: 14px;
+  --map-zone-fill-opacity: 0.05;
+  --map-zone-line-opacity: 0.45;
+  --map-zone-caption-line-opacity: 0.6;
+  --map-lit-opacity: 0.28;
+  --map-text: var(--text-base);
+  --map-zone-text: var(--text-md);
+  --map-address-text: var(--text-sm);
 
   --frame-bg: #F8FAFC;
   --frame-text: #556275;

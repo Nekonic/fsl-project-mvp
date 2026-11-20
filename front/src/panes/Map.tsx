@@ -5,15 +5,6 @@ import { useResource } from "../api/hooks";
 import { errorText, hasString, t } from "../strings";
 import { MapFrame, Pane } from "../ui";
 import type { PaneProps } from "./types";
-import database from "./map-symbols/node-database.svg";
-import host from "./map-symbols/node-host.svg";
-import kali from "./map-symbols/node-kali.svg";
-import logs from "./map-symbols/node-logs.svg";
-import router from "./map-symbols/node-router.svg";
-import sensor from "./map-symbols/node-sensor.svg";
-import server from "./map-symbols/node-server.svg";
-import switchSymbol from "./map-symbols/node-switch.svg";
-import waf from "./map-symbols/node-waf.svg";
 
 export interface MapZone {
   id: string;
@@ -52,7 +43,7 @@ export interface LearnerMap {
   edges: MapEdge[];
 }
 
-const SYMBOLS: Record<string, string> = { kali, router, waf, server, database, logs, sensor, switch: switchSymbol, host };
+const SYMBOL_FILES = import.meta.glob<string>("./map-symbols/node-*.svg", { query: "?raw", import: "default" });
 const MARGIN = 24;
 const GRID = 22;
 const FLOW_EVERY_MS = 40;
@@ -66,8 +57,11 @@ const LABEL_SIDES: Record<string, Record<string, string | number>> = {
   right: { "text-valign": "center", "text-halign": "right", "text-margin-x": 8, "text-margin-y": 0 },
 };
 
+type Symbols = Record<string, string>;
+
 interface Palette {
   zones: Record<string, string>;
+  symbols: Symbols;
   link: string;
   lit: string;
   logs: string;
@@ -78,15 +72,39 @@ interface Palette {
   background: string;
   sans: string;
   mono: string;
+  text: number;
+  zoneText: number;
+  addressText: number;
+  zoneRadius: number;
+  routeRadius: number;
+  zoneFillOpacity: number;
+  zoneLineOpacity: number;
+  zoneCaptionLineOpacity: number;
+  litOpacity: number;
 }
 
 function token(style: CSSStyleDeclaration, name: string): string {
   return style.getPropertyValue(name).trim();
 }
 
-function paletteOf(element: Element): Palette {
+function amount(style: CSSStyleDeclaration, name: string): number {
+  return Number.parseFloat(token(style, name));
+}
+
+async function symbolFiles(): Promise<Symbols> {
+  const read = await Promise.all(Object.entries(SYMBOL_FILES).map(async ([path, load]) => [/node-(\w+)\.svg$/.exec(path)?.[1] ?? path, await load()]));
+  return Object.fromEntries(read);
+}
+
+function painted(files: Symbols, style: CSSStyleDeclaration): Symbols {
+  return Object.fromEntries(Object.entries(files).map(([kind, svg]) => [kind,
+    `data:image/svg+xml;utf8,${encodeURIComponent(svg.replace(/var\((--[\w-]+)\)/g, (whole, name: string) => token(style, name) || whole))}`]));
+}
+
+function paletteOf(element: Element, files: Symbols): Palette {
   const style = getComputedStyle(element);
   return {
+    symbols: painted(files, style),
     zones: {
       internet: token(style, "--map-internet"),
       dmz: token(style, "--map-dmz"),
@@ -104,6 +122,15 @@ function paletteOf(element: Element): Palette {
     background: token(style, "--map-bg"),
     sans: token(style, "--font-sans"),
     mono: token(style, "--font-mono"),
+    text: amount(style, "--map-text"),
+    zoneText: amount(style, "--map-zone-text"),
+    addressText: amount(style, "--map-address-text"),
+    zoneRadius: amount(style, "--map-zone-radius"),
+    routeRadius: amount(style, "--map-route-radius"),
+    zoneFillOpacity: amount(style, "--map-zone-fill-opacity"),
+    zoneLineOpacity: amount(style, "--map-zone-line-opacity"),
+    zoneCaptionLineOpacity: amount(style, "--map-zone-caption-line-opacity"),
+    litOpacity: amount(style, "--map-lit-opacity"),
   };
 }
 
@@ -145,7 +172,7 @@ export function elementsOf(map: LearnerMap, palette: Palette): ElementDefinition
   });
   const nodes: ElementDefinition[] = map.nodes.map((node) => ({
     group: "nodes", classes: classOf(node), position: at[node.id],
-    data: { id: node.id, label: nodeLabel(node), name: node.name ?? "", side: node.label ?? "below", symbol: SYMBOLS[node.kind] ?? SYMBOLS.host },
+    data: { id: node.id, label: nodeLabel(node), name: node.name ?? "", side: node.label ?? "below", symbol: palette.symbols[node.kind] ?? palette.symbols.host },
   }));
   const edges: ElementDefinition[] = map.edges.map((edge) => {
     const from = at[edge.source] ?? { x: 0, y: 0 };
@@ -166,14 +193,14 @@ export function elementsOf(map: LearnerMap, palette: Palette): ElementDefinition
 
 function stylesOf(palette: Palette): StylesheetJson {
   return [
-    { selector: "node", style: { "font-family": palette.sans, "font-size": 14, color: palette.ink } },
+    { selector: "node", style: { "font-family": palette.sans, "font-size": palette.text, color: palette.ink } },
     { selector: "node.zone", style: {
-      shape: "round-rectangle", "corner-radius": 18, width: "data(width)", height: "data(height)", "background-color": "data(colour)",
-      "background-opacity": 0.05, "border-width": 1.5, "border-color": "data(colour)", "border-opacity": 0.45, label: "data(label)",
-      "text-valign": "top", "text-halign": "center", "font-size": 13, "font-weight": 600, color: "data(colour)",
+      shape: "round-rectangle", "corner-radius": palette.zoneRadius, width: "data(width)", height: "data(height)", "background-color": "data(colour)",
+      "background-opacity": palette.zoneFillOpacity, "border-width": 1.5, "border-color": "data(colour)", "border-opacity": palette.zoneLineOpacity, label: "data(label)",
+      "text-valign": "top", "text-halign": "center", "font-size": palette.zoneText, "font-weight": 600, color: "data(colour)",
       "text-margin-x": "data(shift)", "text-margin-y": 11, "text-background-color": palette.chip, "text-background-shape": "round-rectangle",
       "text-background-opacity": 1, "text-background-padding": 5, "text-border-width": 1, "text-border-color": "data(colour)",
-      "text-border-opacity": 0.6, "z-compound-depth": "bottom", "z-index": 0, events: "no" } },
+      "text-border-opacity": palette.zoneCaptionLineOpacity, "z-compound-depth": "bottom", "z-index": 0, events: "no" } },
     { selector: "node.device, node.switch", style: {
       shape: "round-rectangle", width: 52, height: 52, "background-opacity": 0, "border-width": 0,
       "background-image": "data(symbol)", "background-fit": "contain", "background-clip": "none", "z-index": 10,
@@ -181,7 +208,7 @@ function stylesOf(palette: Palette): StylesheetJson {
     { selector: "node.device", style: { label: "data(label)", "text-wrap": "wrap", "line-height": 1.35, "font-weight": 600,
       "text-background-color": palette.chip, "text-background-opacity": 1, "text-background-padding": 3,
       "text-background-shape": "round-rectangle" } },
-    { selector: "node.device.lit, node.switch.lit", style: { "underlay-opacity": 0.28 } },
+    { selector: "node.device.lit, node.switch.lit", style: { "underlay-opacity": palette.litOpacity } },
     ...Object.entries(LABEL_SIDES).map(([side, style]) => ({ selector: `node.device[side = "${side}"]`, style })),
     { selector: "edge", style: { width: 2, "curve-style": "straight", "line-color": palette.link, "font-family": palette.sans,
       "z-index": 5, "source-endpoint": "data(start)", "target-endpoint": "data(end)", "line-cap": "round" } },
@@ -189,9 +216,9 @@ function stylesOf(palette: Palette): StylesheetJson {
     { selector: "edge.lit", style: { "line-color": palette.lit, width: 2.5, "line-style": "dashed", "line-dash-pattern": [7, 5], "z-index": 6 } },
     { selector: "edge.routed", style: {
       "curve-style": "segments", "edge-distances": "node-position", "segment-weights": "data(weights)",
-      "segment-distances": "data(distances)", "segment-radii": 14, "radius-type": "arc-radius" } },
+      "segment-distances": "data(distances)", "segment-radii": palette.routeRadius, "radius-type": "arc-radius" } },
     { selector: "node.address", style: { width: 1, height: 1, "background-opacity": 0, "border-width": 0,
-      label: "data(label)", "text-valign": "center", color: palette.address, "font-size": 12, "font-family": palette.mono,
+      label: "data(label)", "text-valign": "center", color: palette.address, "font-size": palette.addressText, "font-family": palette.mono,
       "text-background-color": palette.background, "text-background-shape": "round-rectangle", "text-background-opacity": 1,
       "text-background-padding": 3, "text-border-width": 1, "text-border-color": palette.chipLine, "text-border-opacity": 1, events: "no" } },
     { selector: 'node.address[side = "right"]', style: { "text-halign": "right" } },
@@ -205,8 +232,8 @@ function asMap(said: unknown): LearnerMap | null {
   return map as LearnerMap;
 }
 
-function drawn(cytoscape: typeof cytoscapeFactory, container: HTMLElement, grid: HTMLElement, map: LearnerMap): Core {
-  const palette = paletteOf(container);
+function drawn(cytoscape: typeof cytoscapeFactory, files: Symbols, container: HTMLElement, grid: HTMLElement, map: LearnerMap): Core {
+  const palette = paletteOf(container, files);
   const cy = cytoscape({
     container, elements: elementsOf(map, palette), style: stylesOf(palette), layout: { name: "preset" },
     autoungrabify: true, autounselectify: true, boxSelectionEnabled: false, minZoom: 0.3, maxZoom: 2.5,
@@ -246,9 +273,9 @@ export function TopologyView({ map }: { map: LearnerMap }) {
     if (!container || !backdrop) return undefined;
     let gone = false;
     let resized: ResizeObserver | undefined;
-    void import("cytoscape").then(({ default: cytoscape }) => {
+    void Promise.all([import("cytoscape"), symbolFiles()]).then(([{ default: cytoscape }, files]) => {
       if (gone) return;
-      const cy = drawn(cytoscape, container, backdrop, map);
+      const cy = drawn(cytoscape, files, container, backdrop, map);
       view.current = cy;
       resized = new ResizeObserver(() => {
         if (container.clientWidth === 0) return;

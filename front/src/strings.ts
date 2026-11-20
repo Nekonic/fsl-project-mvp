@@ -17,8 +17,16 @@ function filled(text: string, params?: StringParams): string {
   });
 }
 
+export const REFERENCE = /\{@([\w.-]+)\}/g;
+
+function resolved(key: string, through: string[] = []): string {
+  const text = strings[key] ?? key;
+  const seen = [...through, key];
+  return text.replace(REFERENCE, (whole, named: string) => (hasString(named) && !seen.includes(named) ? resolved(named, seen) : whole));
+}
+
 export function t(key: StringKey, params?: StringParams): string {
-  return filled(strings[key] ?? key, params);
+  return filled(resolved(key), params);
 }
 
 export function tFor(prefix: string, code: string, params?: StringParams, fallback?: StringKey): string {
