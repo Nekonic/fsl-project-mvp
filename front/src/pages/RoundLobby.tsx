@@ -269,10 +269,10 @@ export function RoundLobby({ params }: PageProps) {
   const shown = lease.data;
   const live = shown?.rounds.find((line) => line.phase !== "ended")?.round ?? null;
 
-  useEffect(() => {
-    setLiveRound(live);
-    if (live) holdLease(live, leaseId);
-  }, [live, leaseId]);
+  const open = shown !== undefined && shown.closed === null;
+
+  useEffect(() => setLiveRound(live), [live]);
+  useEffect(() => (open ? holdLease(leaseId) : undefined), [open, leaseId]);
 
   useEffect(() => {
     if (!shown || shown.ready || shown.closed !== null) return undefined;

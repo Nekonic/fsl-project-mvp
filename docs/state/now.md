@@ -61,8 +61,7 @@ ported acceptance suite.
   `test_origin_placement.py`, `test_waf_geolocation.py`); the seam scan
   lists them as named exceptions until they move behind `/api/`.
 - The 8002 listener's sign-in redirect lands on the home page, not the
-  site (`Login.tsx` refuses a `next` on another origin); the lobby holds the
-  lease heartbeat only while a round is live and never releases it.
+  site (`Login.tsx` refuses a `next` on another origin).
 - The rest (the scratch rule-test guesses, the comment scan's reach,
   `bin/carry-users` mid-load) is in `docs/STATE.md` "Open points".
 
