@@ -53,33 +53,14 @@ The product itself is Korean-only: everything a learner or operator sees in
 the console and on the learner map is Korean, and there is no English version
 or language switch. This is about the product, not the working language.
 
-Korean belongs in exactly these places among the documentation and the
-product, and `platform/tests/seams/test_no_hangul.py` scans the whole repo for
-any other:
-
-- `README.md` and `docs/ARCHITECTURE.md` — the Korean-only documents. Do not
-  add an English version or a `.ko.md` beside any document.
-- `strings/console.json` — the Korean the console shows, bundled into
-  `front/`; the API sends stable English codes and the front end maps them
-  here. `strings/server.json` — the Korean the server renders itself (the
-  Kibana gate page), read only by `cr/strings.py` and never bundled.
-- `docs/vocabulary.md` — term translations and their sources.
-- `docs/DECISIONS.md`, for now only: it still quotes the user's rulings in
-  Korean, and `test_no_hangul.py` allows it by name
-  (`REWRITTEN_AT_THE_DOCS_STEP`) until those quotes are translated. Add no
-  new Korean to it.
-
-Leave the string tables and the vocabulary unread unless you are editing them.
+The Korean the console shows lives in `strings/console.json` (bundled into
+`front/`; the API sends stable English codes and the front end maps them
+here) and `strings/server.json` (the Kibana gate page, read only by
+`cr/strings.py`). Leave them unread unless you are editing them.
 Problem and lesson text is Korean too, but it lives only in database rows,
 written through the staff API and moved between stores by its export and
 import; no seed, fixture or migration carries it, and test fixtures are English
 placeholders (`platform/testing/factories.py`).
-
-Korean in code is the exception, in two kinds only: the board target's
-site, which is a Korean site by design (`wargames/board/app/posts/templates/`,
-`posts/management/commands/seed.py`); and test inputs standing in for Korean
-learner text or checking the Korean the product shows, each named in
-`test_no_hangul.py`'s `KOREAN_TEST_INPUTS` (none today). Do not add more.
 
 Generated code is not committed: `bin/gen-clients` exports the committed
 contract `openapi/schema.yaml` and generates `bots/client/` and

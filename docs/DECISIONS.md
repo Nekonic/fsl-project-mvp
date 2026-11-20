@@ -10315,3 +10315,13 @@ and of the terminal's refusal answer.
   ticks), `tests/attack/test_spend.py` (the end empties the edge, a late tick
   adds nothing), `tests/test_access_log.py` (the marker map). No
   `nginx -t` or range run; `docs/OPENSTACK.md` §3.7 lists the slot checks.
+
+## 2026-11-20 — The Hangul scan and the vocabulary file are gone
+
+The user ruled both out as meaningless. `platform/tests/seams/test_no_hangul.py`
+(the repo-wide scan that allowed Korean only in a closed list of files) and
+`docs/vocabulary.md` (term translations and their sources) are deleted, and
+CLAUDE.md no longer lists the places Korean may appear. Repo files are still
+written in English for token cost and the product stays Korean-only; neither
+is enforced by a test. A practitioner term is still taken from a primary
+source when one is asked for, without a file to hold it.

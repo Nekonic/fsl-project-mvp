@@ -60,8 +60,6 @@ ported acceptance suite.
   (`test/test_event_time.py`, `test_geoip_durable.py`,
   `test_origin_placement.py`, `test_waf_geolocation.py`); the seam scan
   lists them as named exceptions until they move behind `/api/`.
-- `docs/DECISIONS.md` still quotes rulings in Korean, allowed by name in
-  `test_no_hangul.py` until translated.
 - The 8002 listener's sign-in redirect lands on the home page, not the
   site (`Login.tsx` refuses a `next` on another origin); the lobby holds the
   lease heartbeat only while a round is live and never releases it.
