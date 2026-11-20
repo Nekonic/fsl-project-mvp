@@ -297,8 +297,11 @@ def test_the_console_is_the_front_build_served_last_with_every_other_path_fallin
 
     assert (last.name, last.args) == ("location", ["/"])
     assert last.values("root") == [["/app/front/dist"]]
-    assert last.values("try_files") == [["$uri", "$uri/", "/index.html"]]
+    assert last.values("try_files") == [["$uri", "/index.html"]]
     assert "proxy_pass" not in last.text(), "Django serves the API, not the console"
+    assets = location(console(), "/assets/")
+    assert assets.values("root") == [["/app/front/dist"]]
+    assert assets.values("try_files") == [["$uri", "=404"]]
     assert http().values("include")[0] == ["/etc/nginx/mime.types"]
 
 

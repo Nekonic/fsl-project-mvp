@@ -141,6 +141,36 @@ else
   fail "platform/tests"
 fi
 
+front_reached() {
+  [ "$CHANGED" = 0 ] && return 0
+  [ -n "$(git status --porcelain -- front strings openapi 2>/dev/null)" ] && return 0
+  [ -n "$BASE" ] && [ -n "$(git diff --name-only "$BASE" -- front strings openapi 2>/dev/null)" ] && return 0
+  return 1
+}
+
+section "front end"
+if ! command -v npm >/dev/null; then
+  echo "front: no node here, so front/ was not built or tested"
+elif ! front_reached; then
+  ok "no file under front/, strings/ or openapi/ changed"
+elif [ ! -d front/node_modules ] && ! (cd front && npm ci --no-audit --no-fund >/dev/null 2>&1); then
+  fail "front: npm ci could not install front/package-lock.json"
+else
+  if front_log="$(cd front && npm run --silent types 2>&1 && npm run --silent build 2>&1)"; then
+    ok "front/ type-checked and built into front/dist"
+  else
+    echo "$front_log" | tail -40
+    fail "front/ build"
+  fi
+  if front_log="$(cd front && npx vitest run 2>&1)"; then
+    echo "$front_log" | grep -E '^ +Tests ' | tail -1
+    ok "front/ vitest"
+  else
+    echo "$front_log" | tail -40
+    fail "front/ vitest"
+  fi
+fi
+
 if [ "$FAST" = 1 ]; then
   [ "$FAILED" = 0 ] && printf '\n\033[32mfast check passed\033[0m — run bin/verify before committing\n'
   exit "$FAILED"

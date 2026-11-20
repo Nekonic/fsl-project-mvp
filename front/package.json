@@ -1,0 +1,26 @@
+{
+  "name": "cr-front",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "types": "openapi-typescript ../openapi/schema.yaml --output src/api/schema.d.ts",
+    "dev": "vite --port 5173 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "cytoscape": "3.34.4",
+    "preact": "10.29.8"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "2.10.6",
+    "@testing-library/preact": "3.2.4",
+    "@types/node": "24.19.2",
+    "happy-dom": "20.14.6",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "4.1.12"
+  }
+}

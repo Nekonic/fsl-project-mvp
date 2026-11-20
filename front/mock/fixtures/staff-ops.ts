@@ -1,0 +1,86 @@
+import type { components } from "../../src/api/schema";
+import { minutesFromNow, refuse, reply } from "../fixture";
+
+type Account = components["schemas"]["Account"];
+type SlotStanding = components["schemas"]["SlotStanding"];
+
+const accounts: Account[] = [
+  { id: 5, username: "pending-one", approved: false, is_staff: false, joined: "2026-11-20T09:12:00Z" },
+  { id: 1, username: "admin", approved: true, is_staff: true, joined: "2026-10-02T08:00:00Z" },
+  { id: 2, username: "learner-one", approved: true, is_staff: false, joined: "2026-11-03T10:00:00Z" },
+  { id: 3, username: "learner-two", approved: true, is_staff: false, joined: "2026-11-03T11:00:00Z" },
+  { id: 4, username: "learner-three", approved: true, is_staff: false, joined: "2026-11-12T12:00:00Z" },
+];
+
+function accountWith(id: string | undefined, approved: boolean): Account {
+  const found: Account = accounts.find((account) => account.id === Number(id)) ?? accounts[0]!;
+  return { ...found, approved };
+}
+
+const HOSTS = ["kali", "waf", "infra", "target"];
+
+function standing(slot: number, wargame: string, status: string, failures: string[] = []): SlotStanding {
+  return { slot, wargame, servers: HOSTS.map((host) => ({ host, server: `cr-slot-${slot}-${host}`, status })), blocked: [], failures };
+}
+
+const slots = [
+  { slot: 1, wargame: "board", lease: 6, refill: { state: "idle", reason: "" } },
+  { slot: 2, wargame: "board", lease: 7, refill: { state: "idle", reason: "" } },
+  { slot: 3, wargame: "board", lease: null, refill: { state: "running", reason: "" } },
+  { slot: 4, wargame: "corp", lease: 9, refill: { state: "idle", reason: "" } },
+  { slot: 5, wargame: "corp", lease: null, refill: { state: "idle", reason: "" } },
+];
+
+let probeReads = 0;
+
+export const fixtures = [
+  reply("get", "/api/staff/users/", accounts),
+  reply("post", "/api/staff/users/{user_id}/approve/", (asked) => accountWith(asked.params.user_id, true)),
+  reply("post", "/api/staff/users/{user_id}/disable/", (asked) => accountWith(asked.params.user_id, false)),
+  refuse("post", "/api/staff/users/{user_id}/disable/", 409, [{ path: "", code: "own_account" }], { variant: "own-account" }),
+  reply("get", "/api/staff/blocks/", [
+    { id: 11, kind: "address", value: "192.0.2.31", username: "admin", reason: "failures", failures: 10, created: minutesFromNow(-20), until: minutesFromNow(25) },
+    { id: 12, kind: "fingerprint", value: "a41f9c0e", username: "learner-three", reason: "failures", failures: 5, created: minutesFromNow(-10), until: minutesFromNow(12) },
+  ]),
+  reply("delete", "/api/staff/blocks/{block_id}/", undefined),
+
+  reply("get", "/api/staff/range/", { slots }),
+  reply("get", "/api/staff/range/pool/", {
+    slots: [
+      standing(1, "board", "ACTIVE"),
+      standing(2, "board", "ACTIVE"),
+      standing(3, "board", "BUILD"),
+      standing(4, "corp", "ACTIVE"),
+      standing(5, "corp", "ACTIVE"),
+    ],
+  }),
+  refuse("get", "/api/staff/range/pool/", 409, [{ path: "", code: "range_not_cloud" }], { variant: "not-cloud" }),
+  reply("post", "/api/staff/range/pool/", { slots }),
+  refuse("post", "/api/staff/range/pool/", 409, [{ path: "", code: "range_not_cloud" }], { variant: "not-cloud" }),
+  reply("delete", "/api/staff/range/pool/", undefined),
+  reply("delete", "/api/staff/range/leftovers/", undefined),
+  reply("post", "/api/staff/range/fabric/", { present: ["cr-fabric-net", "cr-fabric-router"], clean: true }),
+  reply("delete", "/api/staff/range/fabric/", undefined),
+
+  reply("get", "/api/staff/wargames/", [
+    { id: "board", title: "Community board", image: "board:1", public_url: "", hosts: HOSTS, objective_model: "loot", case_file: "redteam/cases/board.yaml", default_traffic: null },
+    { id: "corp", title: "Corporate site", image: "corp:1", public_url: "", hosts: HOSTS, objective_model: "effect", case_file: "redteam/cases/corp.yaml", default_traffic: null },
+  ]),
+  reply("post", "/api/staff/wargames/{wargame_id}/probes/record/", () => {
+    probeReads = 0;
+    return { lease: 9 };
+  }, { status: 202 }),
+  refuse("post", "/api/staff/wargames/{wargame_id}/probes/record/", 409, [{ path: "", code: "probe_running" }], { variant: "probe-running" }),
+  reply("get", "/api/staff/probes/{lease_id}/", (asked) => {
+    probeReads += 1;
+    const done = ["benign-home", "benign-search", "sqli-login", "xss-comment", "path-traversal", "cmd-injection"].slice(0, Math.min(6, probeReads));
+    return {
+      lease: Number(asked.params.lease_id),
+      wargame: "corp",
+      state: probeReads >= 7 ? "done" : "recording",
+      total: 7,
+      done,
+      failed: probeReads >= 7 ? [{ case: "upload-shell", code: "tool_unavailable" }] : [],
+    };
+  }),
+];

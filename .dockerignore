@@ -1,0 +1,5 @@
+front/node_modules
+front/dist
+front/src/api/schema.d.ts
+.venv
+.git

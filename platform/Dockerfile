@@ -1,3 +1,13 @@
+FROM node:24-slim AS front
+
+WORKDIR /build/front
+COPY front/package.json front/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY openapi/schema.yaml /build/openapi/schema.yaml
+COPY strings/ /build/strings/
+COPY front/ ./
+RUN npm run types && npm run build
+
 FROM python:3.13-slim
 
 RUN apt-get update \
@@ -15,6 +25,7 @@ RUN --mount=from=ghcr.io/astral-sh/uv:0.13.8@sha256:5cc1805e2426484abca4ad46ea78
     UV_PROJECT_ENVIRONMENT=/usr/local uv sync --frozen --inexact --no-default-groups --no-cache --compile-bytecode --project /lock
 COPY platform/ .
 COPY strings/server.json /strings/server.json
+COPY --from=front /build/front/dist /app/front/dist
 
 RUN useradd --system --create-home --uid 10001 cr \
  && useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin --password '*' jump \
