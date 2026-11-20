@@ -1,0 +1,144 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+import httpx2
+
+from bots import signin
+from bots.client.api.staff import staff_probes_progress, staff_probes_record
+
+DEFAULT_PLATFORM = "http://localhost:8000"
+CALL_TIMEOUT = 120
+WAIT = 7200
+POLL = 10
+RECORDING, DONE, FAILED = "recording", "done", "failed"
+ACCEPTED = 202
+
+
+class Refused(RuntimeError):
+    pass
+
+
+def wargames() -> list[str]:
+    return sorted(path.parent.name for path in (ROOT / "wargames").glob("*/wargame.yaml"))
+
+
+def arguments(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="record-probes",
+        description="Records the wargame's probe set on a probe lease through the staff route "
+                    "POST /api/staff/wargames/<id>/probes/record/ and follows its progress until the lease "
+                    "is released. The platform writes the recordings under its CR_PROBES_OUT; copy "
+                    "<CR_PROBES_OUT>/<id>/probes/ into wargames/<id>/probes/ and commit it.")
+    parser.add_argument("wargame", choices=wargames())
+    parser.add_argument("--platform", default=os.environ.get("CR_PLATFORM_URL") or DEFAULT_PLATFORM,
+                        help="the platform's base URL (default: CR_PLATFORM_URL or %(default)s)")
+    parser.add_argument("--wait", type=float, default=WAIT, help="seconds to follow the recording (default %(default)s)")
+    parser.add_argument("--poll", type=float, default=POLL, help="seconds between progress reads (default %(default)s)")
+    return parser.parse_args(argv)
+
+
+class Platform:
+    def __init__(self, url: str, connect=None):
+        self.url = url.rstrip("/")
+        self.connect = connect
+        self.client = None
+
+    def signed_in(self):
+        if self.client is None:
+            self.client = (self.connect or signin.signed_in)(self.url, CALL_TIMEOUT)
+        return self.client
+
+    def answered(self, call) -> tuple[int, dict]:
+        try:
+            answer = call(self.signed_in())
+        except (httpx2.HTTPError, signin.Refused) as gone:
+            self.client = None
+            return 0, {"errors": [{"code": "unreachable", "message": f"could not reach {self.url}: {gone}"}]}
+        try:
+            return int(answer.status_code), json.loads(answer.content)
+        except ValueError:
+            return int(answer.status_code), {"errors": [{"code": "not_json", "message": answer.content[:300]}]}
+
+    def record(self, wargame: str) -> tuple[int, dict]:
+        return self.answered(lambda client: staff_probes_record.sync_detailed(wargame, client=client))
+
+    def progress(self, lease: int) -> tuple[int, dict]:
+        return self.answered(lambda client: staff_probes_progress.sync_detailed(lease, client=client))
+
+
+def said(body: dict) -> str:
+    return "; ".join(" ".join(str(part) for part in (error.get("code"), error.get("path"),
+                                                     error.get("message") or error.get("params")) if part)
+                     for error in body.get("errors") or [body])
+
+
+def started(platform, wargame: str) -> int:
+    status, body = platform.record(wargame)
+    if status != ACCEPTED or not isinstance(body.get("lease"), int):
+        raise Refused(f"record-probes: recording {wargame} was refused ({status}): {said(body)}")
+    return body["lease"]
+
+
+def line(progress: dict) -> str:
+    failed = ", ".join(f"{one.get('case')} ({one.get('code')})" for one in progress.get("failed") or ())
+    return (f"{progress.get('wargame')} lease {progress.get('lease')}: {progress.get('state')}, "
+            f"{len(progress.get('done') or ())}/{progress.get('total')} recorded"
+            + (f", not recorded: {failed}" if failed else ""))
+
+
+def followed(platform, lease: int, wait: float, poll: float, say=print, sleep=time.sleep,
+             clock=time.monotonic) -> dict:
+    deadline = clock() + wait
+    shown = None
+    while True:
+        status, body = platform.progress(lease)
+        if status == 200:
+            now = line(body)
+            if now != shown:
+                say(now)
+                shown = now
+            if body.get("state") in (DONE, FAILED):
+                return body
+        elif status != 0:
+            raise Refused(f"record-probes: the progress of lease {lease} was refused ({status}): {said(body)}")
+        if clock() >= deadline:
+            raise Refused(f"record-probes: lease {lease} was still recording after {wait:.0f}s; "
+                          f"GET /api/staff/probes/{lease}/ keeps the progress")
+        sleep(poll)
+
+
+def outcome(progress: dict) -> int:
+    if progress.get("state") != DONE:
+        return 1
+    return 1 if progress.get("failed") else 0
+
+
+def main(argv: list[str], platform=None, say=print, sleep=time.sleep, clock=time.monotonic) -> int:
+    given = arguments(argv)
+    platform = platform or Platform(given.platform)
+    try:
+        lease = started(platform, given.wargame)
+        say(f"recording {given.wargame} on probe lease {lease}")
+        progress = followed(platform, lease, given.wait, given.poll, say, sleep, clock)
+    except Refused as refused:
+        say(str(refused))
+        return 2
+    if progress.get("state") == DONE:
+        say(f"the platform wrote the recordings to <CR_PROBES_OUT>/{given.wargame}/probes/; copy them into "
+            f"wargames/{given.wargame}/probes/ and commit them")
+    return outcome(progress)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

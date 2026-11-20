@@ -80,6 +80,15 @@ def test_the_terminal_opens_only_to_the_seat_of_its_side_while_the_round_runs(br
     refused(browser.get(url(running, "terminal-auth/defence")), 409, "round_closed")
 
 
+def test_each_terminal_refusal_names_its_code_in_a_header_nginx_can_read(browser, running, other, learner):
+    browser.force_authenticate(other)
+    assert browser.get(url(running, "terminal-auth/defence"))["X-Error-Code"] == "not_seated"
+    assert "X-Error-Code" not in browser.get(url(running, "terminal-auth/attack"))
+    service.end_round(running, "ended_by_operator")
+    assert browser.get(url(running, "terminal-auth/attack"))["X-Error-Code"] == "round_closed"
+    assert browser.get("/api/rounds/999999/terminal-auth/attack/")["X-Error-Code"] == "unknown_round"
+
+
 def test_a_bot_token_opens_its_terminal(browser, lease, problem, learner):
     made = service.create_round(lease, problem.pk, "def_vs_bot",
                                 {"attack": {"bot": {"name": "claude"}}, "defence": {"user": learner.pk}})
@@ -122,6 +131,9 @@ def test_recording_probes_writes_redacted_recordings_and_a_manifest_then_release
     assert (folder / "board-sqli-search.pcap").read_bytes() == b"pcap"
     assert Lease.objects.get(pk=lease_id).closed is not None and slot.resets == 1
     assert "DetectionOnly" in slot.defence.gateway.file
+    admitted = " ".join(one.stdin for one in slot.edge.matching("nft -f -"))
+    assert slot.worn() and all(f"pool {{ {address} }}" in admitted for address in slot.worn()), (
+        "the edge drops every address outside the pool, so the probe lease admits the origin it wears")
 
 
 def recording_node(original):

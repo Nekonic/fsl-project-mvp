@@ -113,3 +113,19 @@ def test_giving_up_an_origin_spends_it_and_the_next_is_the_first_unspent():
 
     state, _ = spend(state, "203.0.113.2", T0)
     assert next_origin(state) is None
+
+
+def test_an_api_charge_excuses_one_access_event_and_every_other_event_carrying_its_marker_is_charged():
+    state, _ = debit(opened(ORIGINS, RULE), [charge(0, marker="a1", synchronous=True)], RULE)
+    state, _ = debit(state, [charge(0.5, marker="a1"), charge(3, marker="a1"), charge(5, marker="a1")], RULE)
+
+    assert left(state) == 10 - 1 - 1 - 1
+    assert state.charged_markers == frozenset()
+
+
+def test_an_excused_marker_stays_spent_across_batches():
+    state, _ = debit(opened(ORIGINS, RULE), [charge(0, marker="a1", synchronous=True)], RULE)
+    state, _ = debit(state, [charge(0.5, marker="a1")], RULE)
+    state, _ = debit(state, [charge(3, marker="a1")], RULE)
+
+    assert left(state) == 10 - 1 - 1

@@ -15,7 +15,8 @@ Updated: 2026-11-20.
 - Built and green against fakes: `domain/`, every seam, `accounts`, `events`,
   `content`, `match`, `referee`, `defence`, `attack`, `lessons`, the
   committed OpenAPI contract and generated clients, `test/` and `bin/` ported
-  to the generated client, and the `bots/` code. The table is in
+  to the generated client, the `bots/` code, the repo side of the step-5
+  deploy files and the new `nginx.conf` with per-seat terminals. The table is in
   `docs/STATE.md` "What exists on side-split".
 - The docs (README, ARCHITECTURE, CLAUDE.md, STATE, this file) describe the
   new layout.
@@ -30,16 +31,21 @@ rounds driven by Claude Code, and the ported acceptance suite.
 
 ## Next, in order
 
-1. `front/` in the design the user picks, with the new `nginx.conf` and a
-   rewritten `vm-terminal.sh` (today it imports the deleted
-   `api.models.Session` and opens cr-waf as root, and nginx does not call the
-   per-seat `terminal-auth` routes).
-2. Cloud step 5: the deploy changes (edge `pool`/`spent` sets, the WAF JSON
-   access log shipped as `nginx_access`, `probe.conf`, `probe-upstream.py`,
-   `analyst.sh`) and new infra and waf images. None of those files is changed
-   yet.
-3. Cloud step 12: write `bin/record-probes`, record board and corp through
-   the staff route, commit `wargames/<id>/probes/`.
+1. `front/` in the design the user picks and the Dockerfile's node stage.
+   The new `nginx.conf` (per-seat terminals through `terminal-auth`, the
+   site listener keyed by round, `/app/front/dist` served last) and
+   `vm-terminal.sh` (kali as `kali`, cr-waf as `analyst`, only for a seat
+   with a jump grant) are written and tested offline, not on a range.
+2. Cloud step 5: the deploy files are written and tested offline (edge
+   `pool`/`spent` sets and both drops, emptied at round start and end, the
+   WAF JSON access log shipped as `nginx_access` with only a marker-shaped
+   `request_id`,
+   `probe.conf`, `probe-upstream.py`, `analyst.sh`, infra `conntrack` and
+   `tcpdump`); bake `cr-infra-bake2` and `cr-waf-bake3` and run the step's
+   checks on a slot (`docs/OPENSTACK.md` §3.7).
+3. Cloud step 12: `bin/record-probes board` and `corp` through the staff
+   route, copy `CR_PROBES_OUT/<id>/probes/` off the platform VM, commit
+   `wargames/<id>/probes/`.
 4. Full live verify: the full `bin/verify` with acceptance, one Claude Code
    bot round per matchup, a captured walk as a learner, a live review round
    with zero countable findings, a docs review.
@@ -47,13 +53,15 @@ rounds driven by Claude Code, and the ported acceptance suite.
 
 ## Open points
 
-- A fresh store has no first account (the old `admin` / `123456` migration
-  is gone; `bin/carry-users` or `createsuperuser`), against the 2026-11-15
-  ruling.
-- The seam scan covers `platform/` only and there is no comment scan; the
-  spec asks for both over `front/src`, `bots/`, `test/` and `bin/` too.
+- Four acceptance checks read Elasticsearch directly
+  (`test/test_event_time.py`, `test_geoip_durable.py`,
+  `test_origin_placement.py`, `test_waf_geolocation.py`); the seam scan
+  lists them as named exceptions until they move behind `/api/`.
 - `docs/DECISIONS.md` still quotes rulings in Korean, allowed by name in
   `test_no_hangul.py` until translated.
+- `@sign-in` points at `/login/`, which only `front/` will serve.
+- The rest (the scratch rule-test guesses, the comment scan's reach,
+  `bin/carry-users` mid-load) is in `docs/STATE.md` "Open points".
 
 Written for a session that reaches the new cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and

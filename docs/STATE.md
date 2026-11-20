@@ -14,10 +14,11 @@ The product is being rebuilt as a side split on the working branch
 `side-split` (user ruling 2026-11-19: no code is kept or migrated; the old
 code is reference only). `dev` keeps the old product deployable until gate 2.
 
-The rebuild follows the spec's build order (§16). Steps 1-4, 6-11, 13, 14 and
-the code of 16 are built and pass the unit and API suite; steps 5, 12 and 15
-and the live parts of 16 and 17 are not done. Nothing on `side-split` has run
-on a range.
+The rebuild follows the spec's build order (§16). Steps 1-4, 6-11, 13, 14,
+the repo side of 5, the `nginx.conf` and terminal part of 15 and the code of
+16 are built and pass the unit and API suite; the bake of 5, step 12, the
+`front/` of 15 and the live parts of 16 and 17 are not done. Nothing on
+`side-split` has run on a range.
 
 ## What exists on side-split
 
@@ -26,15 +27,17 @@ on a range.
 | 1 Ratchet removed | `metrics.json`, `bin/measure` and the ratchet steps are gone | `bin/verify --fast` |
 | 2 Old tree cleared | `platform/api/`, `platform/console/`, the scenario and lesson modules and their tests are deleted | `platform/tests/test_old_tree_gone.py` |
 | 3 `domain/` | scoring (correlate, metrics, corroborate, objectives), ledger, verdicts, checks, problems, round_rules | `platform/tests/domain/`, no Django in the process; import rule 1 |
-| 4 Seams | `cr/config.py`, `cr/errors.py`, `ingest/elastic.py`, `rules/suricata.py`, `rules/crs.py`, `range/*` (with `edge.py`, `jump.py`, `refill.py` rewritten), `attack/box.py`, `firing.py`, `tools.py`, `defence/kibana.py`, `referee/loot.py`, `effect.py` | `platform/tests/seams/` against fakes; import rules 2, 4, 14; `platform/tests/test_isolation_seams.py` |
-| 6 Django skeleton | `cr/` (DRF, spectacular, one handler, `strings.py`), `strings/`, `accounts`, `events` | `tests/accounts`, `tests/events`, the error-shape and no-admin tests |
+| 4 Seams | `cr/config.py`, `cr/errors.py`, `ingest/elastic.py`, `rules/suricata.py`, `rules/crs.py`, `range/*` (with `edge.py`, `jump.py`, `refill.py` rewritten), `attack/box.py`, `firing.py`, `tools.py`, `defence/kibana.py`, `referee/loot.py`, `effect.py` | `platform/tests/seams/` against fakes; import rules 2, 4, 14; `platform/tests/seams/test_isolation_seams.py`, `test_no_comments.py` |
+| 5 Deploy (repo side) | `edge.nft` with `pool` and `spent` and the `spent` drop and the drop of every address outside `pool` before the established accept, the probe lease admitting the origin it wears; the WAF's JSON access log `access.json` shipped and relayed as `nginx-access`, ingested as `nginx_access`; `probe.conf`, `probe-upstream.py`, `analyst.sh`; `conntrack`, `tcpdump` and `/var/lib/cr-ruletest` on the infra; `bin/record-probes`; each round start empties both edge sets (`range.edge.restart`) and the round's end empties them again (`attack.close`); the access log keeps `request_id` only when it has a marker's shape | `tests/test_edge_sets.py`, `test_waf_scratch.py`, `test_access_log.py`, `test_analyst.py`, `test_record_probes.py`, `test_roles.py`, `test_filebeat.py`, `tests/seams/test_edge.py`, `tests/attack/test_spend.py`; structural only, no `nft -c` or `nginx -t` |
+| 6 Django skeleton | `cr/` (DRF, spectacular, one handler, `strings.py`), `strings/`, `accounts`, `events` | `tests/accounts` (with the first account `admin` from migration `accounts.0002_first_account`), `tests/events`, the error-shape and no-admin tests |
 | 7 `content` | catalog, `wargame.yaml` per wargame, problems as nested documents with revisions and export/import, postures, the learner read API | `tests/content`; `test_no_hangul.py` |
 | 8 Round records, referee | `match.models`, `match.auth` (seat tokens hashed, `HasSeat`, `InRound`, `IsOperator`, `OnLease`), `referee` (baseline, loot, effects, objectives, redact, score) | `tests/referee`; import rules 4, 5, 11, 15 |
 | 9 `defence` | rules and posture read, check, test and apply across sensors, versions, probes, disable, drift, alerts, traffic, terminal, Kibana gate | `tests/defence` |
-| 10 `attack` | state, cases, requests, async tools, loot, origins, terminal, HP from both sources, spend at the edge, customer sends | `tests/attack` |
+| 10 `attack` | state, cases, requests, async tools, loot, origins, terminal, HP from both sources (an API charge excuses one access event with its marker, `Action.access_seen`), spend at the edge, customer sends | `tests/attack` |
 | 11 `match.service` | lease and round lifecycle, follower (`follow` compose service), customers and the benign schedule, site pane, terminal auth routes, score, probe recording, staff range routes | `tests/match`; import rules 6, 7, 9 |
 | 13 `lessons` | lesson rounds, facts, judges, progress, hints, `step_locked`, staff try | `tests/lessons` |
 | 14 Contract and clients | `openapi/schema.yaml` committed; `bin/gen-clients`; `test/` and `bin/` on the generated client; `bin/backup` and `bin/prune` on the new tables | `tests/contract`; import rule 12; no `/api/sessions` outside docs |
+| 15 `nginx.conf` and terminals | per-seat `/vm-terminal/<side>/<round>/` through an uncached `terminal-auth`, the raw-path seat guard, the round passed to ttyd as its only argument, a refused check answered with the API's status and code (`@terminal-refused`, from `terminal-auth`'s `X-Error-Code`); `vm-terminal.sh` (kali as `kali`, cr-waf as `analyst`, only with a jump grant, closed within 15 s once the grant goes); `analyst`'s processes, crontab and `at` jobs ended when the round's defence grant is revoked (`range.jump.end_account`); `/signed-in` on `/api/me/`; the 8002 listener keyed by round; refused Kibana routes answered by the gate; `/app/front/dist` served last. `front/` itself is not built | `tests/test_front.py` (a config parser and nginx's path normalization replayed), `tests/test_vm_terminal.py` (fake `python`, `ssh`, `tmux`), `tests/attack/test_terminal.py`, `tests/defence/test_terminal.py`, `tests/seams/test_jump.py` (the end script run against fake `crontab`, `atq`, `loginctl`, `pkill`, `pgrep`); no `nginx -t` |
 | 16 `bots/` (code) | `tools.py`, `calls.py`, `cli.py`, `play.py`, `provider.py`, `signin.py`, the side prompts and the README | `platform/tests/test_bots.py` |
 | 17 Docs | README, ARCHITECTURE, CLAUDE.md, this file and `now.md` describe the new layout | this step |
 
@@ -58,27 +61,37 @@ on a slot:
 - one round of each matchup with Claude Code driving the bot seat
   (`test/test_bot_rounds.py` drives the seats through the generated client,
   not through a model);
-- the ported acceptance suite as a whole (`test/`).
+- the ported acceptance suite as a whole (`test/`);
+- `nginx -t` on `platform/nginx.conf` and `nft -c` on `edge.nft` (Docker was
+  not running on the development machine), the ttyd `?arg=` handoff, the
+  terminal's ssh running in the background beside its recheck loop with a
+  real terminal, and the `analyst` account on a baked WAF.
 
 ## Next steps, in order
 
 1. **`front/` in the design the user picks** (spec step 15): the typed
-   console, the new `platform/nginx.conf` (per-seat `/vm-terminal/<side>/<round>/`
-   with `auth_request` to `terminal-auth`, the 8002 listener keyed by round,
-   the SPA fallback last), and a `platform/vm-terminal.sh` that opens cr-waf
-   as `analyst` and no longer reads the deleted `api.models.Session`. The
-   user chooses the design before it is built (gate 1).
-2. **Cloud step 5, deploy changes and rebake**: `edge.nft` with the `pool`
-   and `spent` sets and their drop rules before the established accept;
-   `board.com.conf` with one `$refused` map (400, 403) and the JSON access log
-   of every request; `log-shipper.conf` shipping it as `nginx-access`;
-   `filebeat.yml` and `ingest-pipeline.json` routing it to `nginx_access`;
-   `probe.conf`, `probe-upstream.py` and `analyst.sh` on the WAF role; then
-   bake new infra and waf images (`docs/OPENSTACK.md`). None of these files
-   is changed yet.
+   console and the Dockerfile's node stage. `platform/nginx.conf` already
+   serves `/app/front/dist` last with the `index.html` fallback, hands
+   `/vm-terminal/<side>/<round>/` to the side's ttyd after `terminal-auth`,
+   and keys the 8002 listener by round; `platform/vm-terminal.sh` opens kali
+   as `kali` and cr-waf as `analyst` for a seat holding a jump grant. Neither
+   has run on a range. The user chooses the design before it is built
+   (gate 1).
+2. **Cloud step 5, the rebake**: the repo side is written and tested
+   offline: `edge.nft` with the `pool` and `spent` sets and the `spent` drop
+   before the established accept; `board.com.conf` with one `$refused` map
+   (400, 403) and the JSON access log of every request
+   (`/var/log/nginx/access.json`); `log-shipper.conf` and `log-relay.conf`
+   carrying it as `nginx-access`; `filebeat.yml` and `ingest-pipeline.json`
+   routing it to `nginx_access`; `probe.conf`, `probe-upstream.py` and
+   `analyst.sh` on the WAF role; `conntrack`, `tcpdump` and the offline rule
+   test's scratch folder on the infra role. Left: bake `cr-infra-bake2` and
+   `cr-waf-bake3`, name them in `compute.images`, `bin/cloud up --replace`,
+   and the step's checks on a slot (`docs/OPENSTACK.md` §3.7).
 3. **Cloud step 12, probe recordings**: `bin/record-probes board` and
-   `bin/record-probes corp` through the staff route on a probe lease; commit
-   `wargames/<id>/probes/`. `bin/record-probes` does not exist yet.
+   `bin/record-probes corp` through the staff route on a probe lease; copy
+   the platform's `CR_PROBES_OUT/<id>/probes/` into `wargames/<id>/probes/`
+   and commit it (`docs/OPENSTACK.md` §3.7).
 4. **Full live verify**: the full `bin/verify` with acceptance on the range,
    the Claude Code bot round of each matchup (spec step 16), a captured walk
    of every page as a learner, a live review round with zero countable
@@ -88,27 +101,40 @@ on a slot:
 
 ## Open points
 
-- **No first account on a fresh store.** The old tree created `admin` /
-  `123456` in a migration, which the user ruled must always hold
-  (`docs/DECISIONS.md` 2026-11-15). The new migrations create no user;
-  `bin/carry-users` brings the old store's users over, and a fresh store
-  needs `manage.py createsuperuser`. `bots/signin.py` and the acceptance
-  suite still default to `admin` / `123456`.
-- **Seam scan coverage.** The spec puts `test_isolation_seams.py` under
-  `tests/seams/`, scanning `front/src`, `bots/`, `test/` and `bin/` as well
-  as `platform/`, with patterns for infra nftables, packet capture and the
-  node names (`cr-kali`, `cr-waf`, `cr-infra`, `cr-target`) and a closed,
-  existence-checked exemption list. The test is `platform/tests/test_isolation_seams.py`,
-  scans `platform/` only, and has none of those patterns.
-- **No comment scan.** The spec names `tests/seams/test_no_comments.py` over
-  `platform/`, `front/src`, `bots/` and `bin/`; it does not exist.
+- **Acceptance checks that read Elasticsearch directly.**
+  `test/test_event_time.py`, `test/test_geoip_durable.py`,
+  `test/test_origin_placement.py` and `test/test_waf_geolocation.py` query
+  Elasticsearch's ingest pipeline, node settings and index on
+  `localhost:9200` rather than through `/api/`. The seam scan lists them as
+  named exceptions (CLAUDE.md); moving them behind an API route or into
+  `ingest/elastic.py` is open.
 - **Korean in `docs/DECISIONS.md`.** It quotes the user's rulings in Korean
   (about a hundred lines). `test_no_hangul.py` still allows it by name until
   those quotes are translated.
 - **A refused key leaves a jump grant.** If the box refuses the per-seat
   key, `range.jump.open_access` keeps the platform sshd grant until the
   round ends. Without the box key it gives no access.
-- **`bin/record-probes`** is in the spec's tree and not written.
+- **The sign-in redirect has no page yet.** `@sign-in` sends Kibana and site
+  pane requests without a session to `/login/?next=`, which only `front/`
+  will serve; until then it falls to the missing `index.html`.
+- **Two runtime guesses in the rule test.** Whether `jasonish/suricata`'s
+  entrypoint lets the offline `-r` run write to the root-owned scratch log
+  folder mounted at `/scratch`, and whether the scratch ModSecurity
+  instance's audit log is opened by the root master (its workers could not
+  write it), are not known until a slot runs them.
+- **The comment scan reads code only.** `test_no_comments.py` covers
+  Python, shell and TS/TSX/JS; config and data files are not scanned, and
+  `wargames/board/traffic.yaml` carries a comment block from before the side
+  split.
+- **`bin/carry-users` mid-load.** If `loaddata` fails after the migrated
+  `admin` was deleted, the new store has no `admin` until the command is run
+  again, which recovers it.
+- **Generated clients outside `bin/verify`.** The platform Dockerfile and
+  `images.yml` do not run `bin/gen-clients` yet (the spec has them do it with
+  the `front/` node stage); the platform image needs neither client today.
+- **No route serves the probe recordings.** `match/probes.py` writes them to
+  the platform's `CR_PROBES_OUT`; they are copied off the platform VM by hand
+  before they are committed.
 
 ## Decisions left for a person
 

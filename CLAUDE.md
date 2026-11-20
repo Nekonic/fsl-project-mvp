@@ -64,6 +64,10 @@ any other:
   here. `strings/server.json` — the Korean the server renders itself (the
   Kibana gate page), read only by `cr/strings.py` and never bundled.
 - `docs/vocabulary.md` — term translations and their sources.
+- `docs/DECISIONS.md`, for now only: it still quotes the user's rulings in
+  Korean, and `test_no_hangul.py` allows it by name
+  (`REWRITTEN_AT_THE_DOCS_STEP`) until those quotes are translated. Add no
+  new Korean to it.
 
 Leave the string tables and the vocabulary unread unless you are editing them.
 Problem and lesson text is Korean too, but it lives only in database rows,
@@ -80,8 +84,9 @@ learner text or checking the Korean the product shows, each named in
 Generated code is not committed: `bin/gen-clients` exports the committed
 contract `openapi/schema.yaml` and generates `bots/client/` and
 `front/src/api/schema.d.ts` from it, because the generators write docstrings
-and the no-comments rule has no exception for them. `bin/verify`, the platform
-Dockerfile and `images.yml` generate them before use.
+and the no-comments rule has no exception for them. `bin/verify` generates
+them before use; the platform Dockerfile and `images.yml` will once the
+`front/` build's node stage exists (today the image carries neither).
 
 Korean text is written Korean-first: from the meaning, not translated from the
 English sentence, in the usage of Korean security practitioners rather than the
@@ -139,19 +144,27 @@ never scored as one.
   attacker box (origins, `set-origin`, the command log, the tool image,
   customer origins, stopping runs); and `referee/loot.py` (the board) and
   `referee/effect.py` (corp) the only ones that read the target's ground
-  truth. Keep them the only ones. `platform/tests/test_isolation_seams.py`
-  holds one pattern per seam and the exceptions it allows.
+  truth. Keep them the only ones. `platform/tests/seams/test_isolation_seams.py`
+  holds one pattern per seam (packet capture, the nftables sets, the node
+  names `cr-kali`, `cr-waf`, `cr-infra`, `cr-target` and the log index
+  patterns among them), scans `platform/`, `front/src`, `bots/`, `test/` and
+  `bin/`, and holds the closed list of exceptions below; it fails when the
+  two lists differ.
   Known exceptions in code today; do not add more:
   `cr/config.py` holds the defaults the seams are handed (the CRS exclusion
-  file and the nginx reload for `rules/crs.py`, the box's label file for
-  `attack/box.py`); in each `wargames/<id>/topology.yaml` the sensor device
+  file and the nginx reload for `rules/crs.py`, the box's label file and
+  node names for `attack/box.py`, the log index pattern); the acceptance
+  checks of Elasticsearch's own set-up, `test/test_event_time.py`,
+  `test/test_geoip_durable.py`, `test/test_origin_placement.py` and
+  `test/test_waf_geolocation.py`, read Elasticsearch directly; in each `wargames/<id>/topology.yaml` the sensor device
   `cr-ids` names the rule file and reload command `rules/suricata.py` is
   handed, and the WAF device `cr-waf` the exclusion file and nginx reload
   `rules/crs.py` is handed; `platform/nginx.conf` names the Kibana API
   routes it refuses, hands every other API call inside a space to the
   `kibana-gate` view and answers Kibana's `api/spaces/space` lookup itself;
-  `platform/entrypoint.sh` starts `vm-terminal.sh cr-kali` and
-  `vm-terminal.sh cr-waf` and creates the jump host's `authorized_keys`;
+  `platform/entrypoint.sh` starts `vm-terminal.sh cr-kali attack` and
+  `vm-terminal.sh cr-waf defence` and creates the jump host's
+  `authorized_keys`;
   `deploy/roles/infra/edge.nft` declares the `pool` and `spent` sets
   `range/edge.py` fills. Once `front/` exists, `front/src/panes/Kibana.tsx`
   presets Kibana's localStorage keys. `docs/ARCHITECTURE.md` keeps the table.
@@ -184,10 +197,14 @@ logic changed, and before a push.
 - `platform/` is not a package — `platform` is a stdlib name; never add
   `platform/__init__.py`. Run Python with `platform/` as the working directory
   (same for `test/`).
-- No comments or docstrings in code, in `platform/`, `front/src`, `bots/` and
-  `bin/` alike; name things so the code says what it does. Exceptions:
-  `deploy/suricata/rules/`, where a commented-out rule is how a rule is
-  disabled, and the header Django writes into generated migrations.
+- No comments or docstrings in code, in `platform/`, `front/src`, `bots/`,
+  `bin/`, `test/`, `deploy/`, `wargames/` and `redteam/` alike; name things
+  so the code says what it does. Exceptions: `deploy/suricata/rules/`, where
+  a commented-out rule is how a rule is disabled, the header Django writes
+  into generated migrations, and a script's shebang.
+  `platform/tests/seams/test_no_comments.py` scans Python (comment tokens
+  and docstrings), shell (trailing comments and Python fed to a heredoc
+  included) and TS/TSX/JS.
 - `platform/domain/` is the pure core: the game rules as functions over
   frozen dataclasses, tested by `platform/tests/domain/` with no Django in the
   process. Services raise `cr/errors.py` domain errors and never build

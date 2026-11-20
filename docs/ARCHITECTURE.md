@@ -96,7 +96,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                reachability.py  runner.py  substrate.py
                edge.py      경계: infra nftables pool·spent 집합, conntrack 정리
                jump.py      경계: 플랫폼 sshd 점프 권한, 키 생성, 박스 계정의 authorized_keys
-  accounts/    SignInBlock, 로그인·가입·승인, 차단, 스태프 계정 API
+  accounts/    SignInBlock, 로그인·가입·승인, 차단, 스태프 계정 API, 초기 계정 admin(마이그레이션 0002)
   events/      Event(FK 없음), kinds.py(종류별 스키마와 보는 쪽), log.py(append, after), 피드 API
   content/     Wargame, Posture, Problem, Step, RoundSetup, ProbeSet, catalog.py(wargames/와 redteam/cases 읽기)
                스태프 문제 API(중첩 문서, revision, 내보내기·가져오기), 학습자 읽기 API
@@ -105,7 +105,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                service.py   리스·라운드 수명, 참가, 시작, 틱, 종료, 기권, 점수
                follow.py    follow 서비스의 루프   customers.py  정상 케이스와 고객 트래픽
                site.py      사이트 패널 프록시      probes.py     probe 녹화   retention.py
-               management/commands/  follow  register_pipeline  prune  run_on_role
+               management/commands/  follow  register_pipeline  prune  run_on_role  terminal_shell
   referee/     Objective, loot.py(경계: board 정답 데이터), effect.py(경계: corp 정답 데이터)
                service.py   baseline, loot 제출, corp 변경 관찰, 목표, 비밀값 가리기, 점수
   attack/      Action, ToolRun, OriginBudget, AccessCursor
@@ -126,25 +126,30 @@ bots/          tools.py  calls.py  cli.py  play.py  provider.py  signin.py  prom
 test/          라이브 acceptance. plays.py가 생성 클라이언트로 리스와 라운드를 돌림
 redteam/cases/ board.yaml  corp.yaml   공격·정상 케이스(데이터만)
 wargames/<board|corp>/  wargame.yaml  compose.yaml  topology.yaml  objectives.yaml  traffic.yaml  probes/  app/
-deploy/        roles/<kali|waf|infra|target>/  openstack/  suricata/  filebeat/  elastic/  kibana/  traffic/  waf/  proxy/
+deploy/        roles/<kali|waf|infra|target>/  openstack/  suricata/  filebeat/  elastic/  kibana/  traffic/
+               kali/  waf/  proxy/   역할 디렉터리가 링크로 가리키는 원본(proxy/stamp.py는 사본 없이 하나)
 front/         아직 없음. 지금은 생성된 front/src/api/schema.d.ts만 생김
 ```
 
 ## 격리 경계
 
-각 외부 시스템은 파일 하나만 압니다. `platform/tests/test_isolation_seams.py`가 경계마다 패턴 하나를 두고, 그 패턴이
-주인 파일과 아래 예외 밖에서 나오면 실패합니다. 주인 파일에서 패턴이 사라져도 실패합니다.
+각 외부 시스템은 파일 하나만 압니다. `platform/tests/seams/test_isolation_seams.py`가 `platform/`, `front/src`, `bots/`,
+`test/`, `bin/`을 훑으며 경계마다 패턴 하나를 두고, 그 패턴이 주인 파일과 아래 예외 밖에서 나오면 실패합니다. 주인 파일에서
+패턴이 사라져도, 예외 목록이 `CLAUDE.md`의 목록과 달라져도 실패합니다.
 
 | 아는 것 | 주인 파일 | 예외(코드에 남은 것) |
 |---|---|---|
-| Elasticsearch(검색, 삭제, bulk, ingest 파이프라인) | `ingest/elastic.py` | 없음 |
+| Elasticsearch(검색, 삭제, bulk, ingest 파이프라인) | `ingest/elastic.py` | Elasticsearch 설정 자체를 보는 acceptance 검사 `test/test_event_time.py`, `test/test_geoip_durable.py`, `test/test_origin_placement.py`, `test/test_waf_geolocation.py` |
+| 패킷 캡처(`tcpdump`) | `rules/suricata.py` | 없음 |
 | Suricata 프로세스(`-T`, `suricatasc`, reload, af-packet) | `rules/suricata.py` | 각 `topology.yaml`의 센서 장치 `cr-ids`가 룰 파일과 reload 명령을 적음 |
 | CRS/ModSecurity 설정과 nginx reload | `rules/crs.py` | `cr/config.py`의 기본값(예외 파일 경로, reload 명령). 각 `topology.yaml`의 WAF 장치 `cr-waf`가 예외 파일과 reload를 적음 |
 | Kibana API | `defence/kibana.py` | `platform/nginx.conf`: 거부할 Kibana API 경로, space 안 API 호출을 `kibana-gate`로 넘기기, `api/spaces/space` 직접 응답 |
+| 로그 인덱스 패턴(`logs-*`) | `defence/kibana.py` | `cr/config.py`의 기본값. `test/test_event_time.py` |
+| 훈련 환경 노드 이름(`cr-kali`, `cr-waf`, `cr-infra`, `cr-target`) | 없음(설정으로 넘김) | `cr/config.py`의 기본값. `platform/entrypoint.sh`가 `vm-terminal.sh cr-kali attack`, `vm-terminal.sh cr-waf defence`를 띄움 |
 | OpenStack API와 실제 배선 | `range/openstack.py`(파싱 `range/wiring.py`, 이름 `range/topology.py`) | 없음 |
-| infra 라우터의 nftables 집합 | `range/edge.py` | `deploy/roles/infra/edge.nft`가 `pool`, `spent` 집합을 선언(아직 없음, 아래 참고) |
+| infra 라우터의 nftables 집합 | `range/edge.py` | `deploy/roles/infra/edge.nft`가 `pool`, `spent` 집합을 선언(역할 이미지에는 아직 없음, 아래 참고) |
 | 플랫폼 점프 호스트와 박스 계정 키 | `range/jump.py` | `platform/entrypoint.sh`가 점프 호스트의 `authorized_keys`를 만듦 |
-| 공격 박스 | `attack/box.py` | `cr/config.py`의 라벨 파일 경로 기본값. `platform/entrypoint.sh`가 `vm-terminal.sh cr-kali`, `vm-terminal.sh cr-waf`를 띄움 |
+| 공격 박스 | `attack/box.py` | `cr/config.py`의 라벨 파일 경로 기본값 |
 | 대상의 정답 데이터 | `referee/loot.py`(board), `referee/effect.py`(corp) | 없음 |
 
 - `range/jump.py`가 `range/` 아래 있는 이유: 공격석(Kali)과 방어석(WAF의 `analyst`) 터미널이 같은 점프 권한을 쓰고,
@@ -154,7 +159,7 @@ front/         아직 없음. 지금은 생성된 front/src/api/schema.d.ts만 �
 - 이전 구조의 예외 중 `register_pipeline.py`(→ `ingest/elastic.py`), `operator_log.py`(→ `attack/box.py`),
   `redteam/tools.py`의 `cr-kali`(→ 박스가 `launch`를 넘김), 레슨 F6의 명령(레슨과 함께 삭제), `blue.html`의 Kibana
   localStorage 설정(콘솔과 함께 삭제)은 없어졌습니다. `front/`가 생기면 `front/src/panes/Kibana.tsx`가 그 설정을 맡습니다.
-- 경계 검사는 지금 `platform/` 아래 파일만 봅니다. 설계 문서는 `front/src`, `bots/`, `test/`, `bin/`까지 보라고 합니다.
+- Elasticsearch를 직접 읽는 acceptance 검사 넷은 `/api/` 뒤로 옮길지 아직 정하지 않았습니다.
 
 ## 라운드 흐름
 
@@ -213,6 +218,9 @@ sequenceDiagram
 - 사람은 세션 쿠키와 CSRF, 봇은 `Authorization: Bearer <자리 토큰>`입니다. 토큰은 해시로만 저장합니다.
 - `HasSeat(side)`가 요청의 자리를 찾습니다. GET이 아닌 요청은 라운드가 `running`이 아니면 `409 round_not_started`
   또는 `409 round_closed`입니다.
+- 터미널 경로는 nginx `auth_request`로 `terminal-auth/<side>/`에 묻습니다. `auth_request`는 2xx, 401, 403 말고는
+  모두 500으로 바꾸므로, `terminal-auth`가 거부 코드를 `X-Error-Code` 헤더에 싣고 nginx의 `@terminal-refused`가
+  그 코드로 API와 같은 상태와 오류 형태(`409 round_closed` 등)를 돌려줍니다.
 - 자리 토큰은 자기 쪽 경로, 라운드의 `GET /`, `events/`, `topology/`, 리스 하트비트, 끝난 뒤의 `score/`에 닿습니다.
   라운드가 끝나면 15분 동안 읽기 전용입니다.
 - 운영자는 `Lease.opened_by` 또는 스태프입니다. 자리는 리스를 열고 닫거나 라운드를 끝내지 못하고 기권만 합니다.
@@ -250,7 +258,9 @@ sequenceDiagram
 - `apply/`: `base_version`이 최신이 아니면 `409 stale_version`. 테스트 없이도 적용할 수 있고, `tested`를 주면
   `same_as_tested`를 기록합니다. IDS는 센서마다 차례로 적용하고 하나라도 거부하면 앞서 쓴 센서를 이전 버전으로
   되돌린 뒤 `422 apply_refused`입니다.
-- `GET terminal/`: cr-waf 관리 주소로 가는 점프 권한, 계정 `analyst`(읽기 전용). 라운드가 끝나면 회수합니다.
+- `GET terminal/`: cr-waf 관리 주소로 가는 점프 권한, 계정 `analyst`(읽기 전용). 라운드가 끝나면 회수하고,
+  `range.jump.end_account`가 `analyst`의 crontab과 `at` 작업을 지우고 linger를 끄고 로그인 세션을 끝낸 뒤
+  남은 프로세스를 모두 죽입니다. `nohup`, cron, `at`, `systemd --user`로 띄운 것이 다음 라운드까지 남지 않습니다.
 - `defence/drift.py`가 틱마다 실제 CRS 파일과 적용 기록을 비교해 다르면 `rule.drifted`를 남기고, 점수에
   `posture_drift: true`가 붙습니다.
 
@@ -278,12 +288,26 @@ sequenceDiagram
 
 - API로 보낸 요청(`POST requests/`, HTTP 케이스, 공격석의 사이트 패널)은 박스가 받은 상태 코드로 그 자리에서 차감합니다.
 - 그 밖의 요청(터미널, 도구, 봇 셸)은 WAF의 JSON 접근 로그를 `ingest.elastic.access_events`(모듈 `nginx_access`)로
-  읽어 틱마다 차감합니다. 이미 차감한 마커는 건너뜁니다.
+  읽어 틱마다 차감합니다. API로 이미 차감한 요청은 그 마커가 붙은 로그 한 줄만 건너뜁니다(`Action.access_seen`).
+  kali에서 그 마커를 `X-Request-ID`에 넣어 다시 보낸 요청은 모두 차감합니다.
 - 요청은 WAF에서 셉니다. Suricata는 WAF 뒤에 있어 출발지가 WAF이고, WAF가 거부한 요청을 보지 못하기 때문입니다.
 - 출발지가 소진되면 `range.edge.spend`가 그 주소를 `spent` 집합에 넣고 conntrack을 지웁니다. `edge.nft`에서 이
   drop 규칙은 established 허용보다 앞에 있어야 열린 연결도 끊깁니다. 이어서 그 자리의 도구 실행을 멈추고
   (`stopped_by: origin_spent`) 다음 출발지로 바꿉니다.
 - 고객 주소는 `pool`에만 있고 `spent`에 들어가지 않습니다.
+- 라운드를 시작할 때 `range.edge.restart`가 `pool`과 `spent`를 비우고 새 라운드의 주소로 다시 채웁니다. 슬롯은
+  리스를 반납할 때만 다시 만들어지므로, 그러지 않으면 같은 리스의 다음 라운드가 앞 라운드에서 소진된 출발지를
+  물려받아 예산이 남았는데도 경계에서 막힙니다. 틱마다 하는 `refill`은 더하기만 하고, 라운드가 끝난 뒤에는 아무것도
+  더하지 않습니다.
+- 라운드가 끝나면 `attack.close`가 두 집합을 비웁니다. HP는 라운드 중에만 세므로, 비우지 않으면 kali에 남겨 둔
+  프로세스가 라운드 사이에 차감 없이 타깃을 칠 수 있습니다.
+- `pool` 밖 주소도 established 허용보다 앞에서 버립니다. kali의 인터넷 포트는 모든 주소를 허용(`0.0.0.0/0`
+  allowed address pair)하고 학습자는 sudo가 있으므로, 이 규칙이 없으면 출발지 서브넷의 안 쓰는 주소를 붙여
+  보낸 요청에 HP가 걸리지 않습니다.
+- 그래서 출발지 서브넷에서 나가는 요청은 모두 `pool`에 든 주소로 나갑니다. 케이스, 도구, 요청, 공격석 사이트
+  패널은 `attack.wearing`으로 출발지를 입고(라운드에 예산이 없으면 `pool`부터 채움), 터미널도 권한을 주기 전에
+  같은 식으로 채웁니다. 고객과 방어석 사이트 패널은 고객 주소로 보내고, 라운드가 없는 probe 리스는 케이스마다
+  입은 출발지를 `range.edge.admit`으로 넣습니다.
 
 ## 이벤트
 
@@ -321,20 +345,28 @@ sequenceDiagram
 
 훈련 환경은 이전 구조와 같습니다. 리스마다 Heat 스택 `cr-slot-N`(VM kali, waf, infra, target, LAN 다섯 개)을 쓰고,
 워게임별 풀에 미리 띄워 둡니다. 네트워크 구성, 주소, 로그 경로는 `README.md`의 "구성", 클라우드 준비와 이미지 굽기는
-`docs/OPENSTACK.md`에 있습니다. 바뀌는 점은 아래이고, 아직 역할 이미지에 들어가지 않았습니다.
+`docs/OPENSTACK.md`에 있습니다. 바뀌는 점은 아래입니다. 배포 파일은 고쳤고, infra와 waf 이미지는 아직 다시 굽지
+않았습니다(`docs/OPENSTACK.md` §3.7).
 
-- `deploy/roles/infra/edge.nft`: `pool`, `spent` 집합과 established 허용보다 앞선 drop 규칙. `slot-boot`가 테이블을
-  다시 읽으면 집합이 비므로 `attack.service.refill_edge`가 틱마다 다시 채웁니다.
-- `deploy/roles/waf/board.com.conf`: 두 vhost의 `$refused` 맵(400, 403) 하나와 모든 요청의 JSON 접근 로그.
-  `log-shipper.conf`가 Tag `nginx-access`로 보내고(`refused.log` 대체), `deploy/filebeat/filebeat.yml`과
+- `deploy/roles/infra/edge.nft`: `pool`, `spent` 집합과 established 허용보다 앞선 `spent` drop 규칙. `slot-boot`가
+  테이블을 다시 읽으면 집합이 비므로 `attack.service.refill_edge`가 틱마다 다시 채웁니다. infra 이미지에는
+  `conntrack`, `tcpdump`(probe 녹화), 오프라인 룰 테스트의 임시 폴더 `/var/lib/cr-ruletest`가 더해집니다.
+- `deploy/roles/waf/board.com.conf`: 두 vhost의 `$refused` 맵(400, 403) 하나와 모든 요청의 JSON 접근 로그
+  `/var/log/nginx/access.json`(`client_ip`, `status`, `refused`, `request_id` 등). `request_id`는 마커 모양(`^[A-Za-z0-9._:-]{1,128}$`)일 때만 남기고 아니면 비웁니다. 헤더를 부풀리거나 여러 번 넣어 줄이 64 KiB를 넘기면 `client_ip`가 사라져 HP가 안 깎이기 때문입니다.
+  `log-shipper.conf`가 Tag `nginx-access`로 보내고(`refused.log` 대체), infra의 `log-relay.conf`가 collector로 넘기며, `deploy/filebeat/filebeat.yml`과
   `deploy/elastic/ingest-pipeline.json`이 모듈 `nginx_access`로 받습니다.
-- `deploy/roles/waf/probe.conf`, `probe-upstream.py`, `analyst.sh`: CRS 임시 인스턴스와 읽기 전용 셸 계정.
-- `deploy/proxy/stamp.py`와 `deploy/roles/kali/stamp.py` 링크 정리.
+- `deploy/roles/waf/probe.conf`, `probe-upstream.py`: CRS 임시 인스턴스의 설정 틀과 loopback 스텁.
+  `/usr/local/share/cr/`에 설치되고 임시 prefix는 `/var/lib/cr-crstest` 아래입니다.
+- `deploy/roles/waf/analyst.sh`: 방어석 계정 `analyst`. nginx·CRS 설정과 로그(`adm` 그룹)를 읽고
+  `sudo nginx -t`, `sudo nginx -T`만 root로 돌립니다. 설정과 로그를 고치거나 nginx를 reload할 수 없고, ssh 포워딩과
+  WAF에서 밖으로 나가는 패킷(`meta skuid analyst drop`)이 막혀 있습니다.
+- `deploy/roles/kali/stamp.py`는 `deploy/proxy/stamp.py`를 가리키는 링크라 프록시 코드는 한 벌입니다. 설계 문서가 지우기로 했던 "중복"은 처음부터 없었습니다.
 
 ## 아직 없는 것
 
-- `front/`(Vite, TypeScript, Preact 콘솔)와 그에 맞춘 `nginx.conf`. 지금 `nginx.conf`는 이전 구조의 것으로,
-  `/vm-terminal/kali/`, `/vm-terminal/waf/`가 로그인 세션만 확인하고 자리별 `terminal-auth` 경로를 쓰지 않습니다.
-- `platform/vm-terminal.sh`는 삭제된 `api.models.Session`을 import하고 cr-waf를 `sudo -i` root로 엽니다.
-- 위 훈련 환경 변경과 infra, waf 이미지 다시 굽기, `wargames/<id>/probes/` 녹화.
-- 주석 검사(`test_no_comments.py`). 규칙은 `CLAUDE.md`에 있지만 검사하는 테스트가 없습니다.
+- `front/`(Vite, TypeScript, Preact 콘솔). `nginx.conf`는 이미 빌드 결과 `/app/front/dist`를 마지막 위치에서
+  내주고 나머지 경로를 `index.html`로 돌리지만, Dockerfile의 node 단계와 빌드 결과물은 아직 없습니다. 로그인이
+  필요한 Kibana와 사이트 패널은 `/login/?next=`로 보내는데, 그 페이지도 `front/`가 생겨야 생깁니다.
+- 생성 클라이언트를 만드는 곳은 지금 `bin/verify`뿐입니다. 플랫폼 Dockerfile과 `images.yml`은 아직
+  `bin/gen-clients`를 돌리지 않고, 플랫폼 이미지에는 `strings/server.json`만 들어갑니다.
+- infra, waf 이미지 다시 굽기와 `wargames/<id>/probes/` 녹화(`bin/record-probes`). 배포 파일은 고쳐 두었습니다.

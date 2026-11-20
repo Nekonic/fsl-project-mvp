@@ -75,3 +75,18 @@ def test_a_store_that_already_holds_users_is_refused(old_store, tmp_path):
     again = carry(old_store, new)
 
     assert again.returncode != 0 and "already holds users" in again.stderr
+
+
+def test_an_old_store_without_the_first_account_still_leaves_admin_in_the_new_one(tmp_path):
+    old = tmp_path / "old.sqlite3"
+    manage(old, "migrate", "--noinput", "auth")
+    with sqlite3.connect(old) as opened:
+        opened.execute("insert into auth_user (password, is_superuser, username, first_name, last_name, email, "
+                       "is_staff, is_active, date_joined) values ('pbkdf2_sha256$1$salt$x', 0, 'learner', '', '', "
+                       "'', 0, 1, '2026-11-01 00:00:00')")
+    new = tmp_path / "new.sqlite3"
+
+    done = carry(old, new)
+
+    assert done.returncode == 0, done.stderr
+    assert [(name, staff, active) for name, _, active, staff, _ in rows(new)] == [("admin", 1, 1), ("learner", 0, 1)]

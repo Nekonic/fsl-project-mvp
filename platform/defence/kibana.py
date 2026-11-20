@@ -12,7 +12,7 @@ from cr.config import KibanaConfig, build
 BASE_PATH = "/kibana"
 DATA_VIEW = "logs"
 ALERT_SEARCH = "alerts"
-ALERTS_QUERY = 'event_type : "alert" or event.module : "modsecurity" or event.module : "nginx"'
+ALERTS_QUERY = 'event_type : "alert" or event.module : "modsecurity" or (event.module : "nginx_access" and refused : true)'
 SESSION_COLUMNS = ("event_type", "source_ip", "destination", "url", "status", "rule_id", "rule")
 ALERT_COLUMNS = SESSION_COLUMNS
 SESSION_SEARCH = "events"
@@ -208,7 +208,7 @@ def log_source_script():
 def sensor_script(waf):
     return (
         f"String module = {_value('event.module')}; "
-        f"if (module == 'modsecurity' || module == 'nginx') {{ emit({_literal(waf)}); }} "
+        f"if (module == 'modsecurity' || module == 'nginx_access') {{ emit({_literal(waf)}); }} "
         f"else if (module == 'suricata') {{ String leg = {_value('in_iface')}; if (leg != '') {{ emit(leg); }} }}"
     )
 

@@ -45,6 +45,23 @@ def test_an_api_send_seen_again_in_the_access_log_is_not_charged_twice(as_attack
     assert left(attacker.round) == 99
 
 
+def test_terminal_traffic_reusing_an_api_send_s_marker_is_charged_beyond_the_one_record_the_send_made(
+        as_attacker, attacker):
+    as_attacker.post(url(attacker.round, "requests/"), {"method": "GET", "path": "/"}, format="json")
+    marker = service.actions(attacker.round)[0].marker
+    start = attacker.round.started
+    es = FakeElastic()
+    es.add("a1", access(start + timedelta(seconds=1), marker=marker))
+    es.add("a2", access(start + timedelta(seconds=2), marker=marker))
+    charged_from(es, attacker.round)
+    es.add("a3", access(start + timedelta(seconds=3), marker=marker))
+
+    charged = charged_from(es, attacker.round)
+
+    assert charged == {RU: 1}
+    assert left(attacker.round) == 99 - 2
+
+
 def test_terminal_and_tool_traffic_is_charged_from_the_access_log_with_refusals_costing_more(attacker):
     start = attacker.round.started
     es = FakeElastic()

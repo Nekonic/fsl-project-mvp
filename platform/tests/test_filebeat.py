@@ -42,7 +42,7 @@ def test_suricata_and_modsecurity_lines_are_decoded_into_the_documents_ingest_re
         assert "decode_json_fields" in names
         decoded[appname] = tagged
 
-    assert decoded == {"suricata": "suricata", "modsecurity": "modsecurity", "nginx": "nginx"}, (
+    assert decoded == {"suricata": "suricata", "modsecurity": "modsecurity", "nginx-access": "nginx_access"}, (
         "ingest normalizes a document by event.module"
     )
 
@@ -144,11 +144,11 @@ def test_a_refused_request_s_status_lands_where_the_ids_record_s_does_so_no_runt
     import re
     from defence import kibana
     root = FILEBEAT.parents[2]
-    logged = re.search(r"log_format refused escape=json '(\{.*\})';", (root / "deploy/waf/board.com.conf").read_text())
+    logged = re.search(r"log_format access escape=json '(\{.*\})';", (root / "deploy/waf/board.com.conf").read_text())
     shipped = set(re.findall(r'"([A-Za-z_]+)":', logged[1]))
     [heard] = syslog_inputs()
     [nginx] = [step["then"] for step in heard["processors"] if "if" in step
-               and {"log.syslog.appname": "nginx"} in [each.get("equals") for each in step["if"]["and"]]]
+               and {"log.syslog.appname": "nginx-access"} in [each.get("equals") for each in step["if"]["and"]]]
     for moved in (each for step in nginx for each in step.get("rename", {}).get("fields", [])):
         shipped = shipped - {moved["from"]} | {moved["to"]}
     runtime = json.loads(kibana.session_view("logs-1-sensors", "cr-waf", kibana.shared_runtime(

@@ -13,7 +13,7 @@ WARGAMES = sorted(path.parent.name for path in (Path(__file__).resolve().parents
 
 ROOT = Path(__file__).resolve().parents[2]
 ROLES = ROOT / "deploy/roles"
-SCRIPTS = ("kali/install.sh", "kali/slot-boot", "waf/install.sh", "waf/slot-boot", "infra/install.sh",
+SCRIPTS = ("kali/install.sh", "kali/slot-boot", "waf/install.sh", "waf/slot-boot", "waf/analyst.sh", "infra/install.sh",
            "infra/slot-boot", "infra/suricatasc", "target/install.sh", "target/wargames")
 FILEBEAT = ROOT / "deploy/filebeat/filebeat.yml"
 DECLARED = declaration.read()
@@ -236,19 +236,19 @@ def test_the_waf_builds_pinned_versions_each_checked_by_its_sha256():
     assert built["RELEASES"].startswith("https://github.com/") and built["CRS_RELEASES"].startswith("https://github.com/")
 
 
-def test_the_waf_ships_the_audit_and_refused_logs_under_the_tags_filebeat_decodes():
+def test_the_waf_ships_the_audit_and_access_logs_under_the_tags_filebeat_decodes():
     audit = re.search(r"^SecAuditLog (\S+)$", text("waf/modsecurity.conf"), re.M)[1]
-    refused = re.search(r"^access_log (\S+) refused", text("waf/board.com.conf"), re.M)[1]
+    access = re.search(r"^access_log (\S+) access;$", text("waf/board.com.conf"), re.M)[1]
     shipped = dict((tag, path) for path, tag in
                    re.findall(r'File="([^"]+)" Tag="([^"]+)"', text("waf/log-shipper.conf")))
     filebeat = yaml.safe_dump(yaml.safe_load(FILEBEAT.read_text()))
 
-    assert shipped == {"modsecurity": audit, "nginx": refused}
-    assert re.findall(r'programname == "([a-z]+)"', text("infra/log-relay.conf")) == ["modsecurity", "nginx"], (
+    assert shipped == {"modsecurity": audit, "nginx-access": access}
+    assert re.findall(r'programname == "([a-z-]+)"', text("infra/log-relay.conf")) == ["modsecurity", "nginx-access"], (
         "the infra relays exactly the WAF's two logs")
     assert all(f"log.syslog.appname: {tag}" in filebeat for tag in shipped)
     assert assigned("waf/install.sh")["AUDIT_LOG"] == audit
-    assert assigned("waf/install.sh")["REFUSED_LOG"] == refused
+    assert assigned("waf/install.sh")["ACCESS_LOG"] == access
 
 
 def test_the_waf_ships_to_the_slot_log_server_by_tcp_on_the_port_the_infra_listens_on():
@@ -267,7 +267,8 @@ def test_the_waf_validates_its_configuration_and_reloads_as_the_platform_asks(wa
     assert waf.rules == assigned("waf/install.sh")["EXCLUSIONS"].replace("$MODSEC_DIR",
                                                                         assigned("waf/install.sh")["MODSEC_DIR"])
     assert waf.reload.split()[:2] == ["nginx", "-t"] and "nginx -s reload" in waf.reload
-    assert '[ -f "$EXCLUSIONS" ] || install -m 664 -g adm /dev/null "$EXCLUSIONS"' in script
+    assert '[ -f "$EXCLUSIONS" ] || install -m 0644 /dev/null "$EXCLUSIONS"' in script, (
+        "the platform writes it as root; no group may, since the read-only analyst is in adm")
     assert "nginx -t\n" in script
     assert "Before=nginx.service" in text("waf/slot-boot.service"), "nginx resolves board and corp-wp when it starts"
 
@@ -318,7 +319,7 @@ def test_every_line_the_infra_relays_names_a_sender_filebeat_takes_the_slot_from
     relay = filled("infra/log-relay.conf", slot=slot, log_server="10.40.0.10", collector="10.31.0.2")
     senders = re.findall(r"%TIMESTAMP:::date-rfc3339% (\S+) (\S+) ", relay)
 
-    assert {tag for _, tag in senders} == {"modsecurity", "nginx", "suricata"}
+    assert {tag for _, tag in senders} == {"modsecurity", "nginx-access", "suricata"}
     assert all(filebeat_slot(sender) == str(slot) for sender, _ in senders)
     assert relay.count(f'Target="10.31.0.2" Port="{networks.COLLECTOR_PORT}" Protocol="udp"') == 3
 
@@ -336,6 +337,7 @@ def test_the_infra_edge_forwards_the_web_port_to_the_waf_only_and_answers_ping_a
     assert [line.strip() for line in nat.splitlines() if "iifname" in line] == [
         f'iifname "wan" ip daddr {router_address()} tcp dport {port} dnat to 10.30.0.247']
     assert [line.strip() for line in forward.splitlines() if "iifname" in line] == [
+        'iifname "wan" ip saddr @spent drop', 'iifname "wan" ip saddr != @pool drop',
         'iifname "wan" ct state established,related accept', 'iifname "wan" ct status dnat accept',
         'iifname "wan" drop'], "nothing from the internet reaches the slot but the DNAT'd web port and replies"
     assert 'iifname "wan" meta l4proto icmp accept' in entered

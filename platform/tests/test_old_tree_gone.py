@@ -16,9 +16,7 @@ GONE = (
     "redteam/run.py", "redteam/signin.py", "redteam/__init__.py",
 )
 
-PENDING = {
-    "platform/vm-terminal.sh": "rewritten on seat-token auth",
-}
+PENDING: dict[str, str] = {}
 
 REFUSES_THE_OLD_KIND = {"platform/tests/domain/test_problems.py"}
 

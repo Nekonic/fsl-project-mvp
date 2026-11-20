@@ -1,8 +1,10 @@
 import pytest
 
+from attack import service
 from attack.models import ToolRun
 from events import log
 from events.kinds import Viewer
+from match.models import Round
 from tests import rounds
 from tests.attack.conftest import codes, url
 from testing.fakerange import BR, REFUSED_PAGE, RU, US
@@ -35,7 +37,7 @@ def test_the_pool_holds_every_attack_origin_and_the_box_wears_the_default_first(
 
     assert f"add element ip edge pool {{ {RU}" in filled.stdin or RU in filled.stdin
     assert all(address in filled.stdin for address in (RU, US, BR))
-    assert "spent" not in filled.stdin
+    assert "add element ip edge spent" not in filled.stdin
     assert cloud.worn() == [RU]
 
 
@@ -80,6 +82,34 @@ def test_the_next_request_goes_out_from_the_new_origin(frail, browser, cloud):
     assert Action.objects.get(pk=answer.json()["action"]).source_ip == BR
 
 
+def test_a_later_round_on_the_same_lease_starts_with_no_origin_spent_at_the_edge(as_attacker, attacker, cloud):
+    as_attacker.post(url(attacker.round, "origins/next/"), format="json")
+    first = attacker.round
+    first.phase, first.ended = "ended", first.started
+    first.save(update_fields=["phase", "ended"])
+    later = Round.objects.create(lease=first.lease, problem=first.problem, kind=first.kind, matchup=first.matchup,
+                                 phase="running", snapshot=first.snapshot, started=first.started)
+
+    service.fill_pool(later)
+
+    started = cloud.edge.matching("nft -f -")[-1].stdin.splitlines()
+    assert started[:2] == ["flush set ip edge pool", "flush set ip edge spent"], (
+        "the slot is rebuilt only when the lease is released, so a lease's next round must not inherit "
+        "the last round's spent origins")
+    assert not any(line.startswith("add element ip edge spent") for line in started)
+    assert all(address in "\n".join(started) for address in (RU, US, BR))
+
+
+def test_the_tick_refill_only_adds_so_a_spend_between_reads_is_never_undone(as_attacker, attacker, cloud):
+    as_attacker.post(url(attacker.round, "origins/next/"), format="json")
+
+    service.refill_edge(attacker.round)
+
+    refilled = cloud.edge.matching("nft -f -")[-1].stdin
+    assert "flush" not in refilled
+    assert f"add element ip edge spent {{ {RU} }}" in refilled
+
+
 def test_giving_up_an_origin_early_spends_it_and_switches(as_attacker, attacker, cloud):
     answer = as_attacker.post(url(attacker.round, "origins/next/"), format="json")
 
@@ -108,3 +138,26 @@ def test_once_every_origin_is_spent_every_write_refuses_origins_spent_and_reads_
     assert read.status_code == 200 and read.json()["hp"]["origin"] is None
     assert kinds(frail)[-1] == ("origins.spent", {})
     assert sorted(read.json()["hp"]["spent"]) == sorted([RU, US, BR])
+
+
+
+def test_the_round_s_end_empties_the_edge_so_the_box_reaches_nothing_between_rounds(as_attacker, attacker, cloud):
+    from match import service as match
+
+    match.end_round(attacker.round, "ended_by_operator")
+
+    emptied = cloud.edge.matching("nft -f -")[-1].stdin.splitlines()
+    assert emptied == ["flush set ip edge pool", "flush set ip edge spent"], (
+        "edge.nft drops every address outside pool, so an empty pool stops a process the learner left on kali "
+        "from reaching the target uncharged once the HP rule stops counting")
+
+
+def test_a_tick_that_finishes_after_the_round_ended_does_not_fill_the_edge_again(as_attacker, attacker, cloud):
+    from match import service as match
+
+    match.end_round(attacker.round, "ended_by_operator")
+    after = len(cloud.edge.matching("nft -f -"))
+
+    service.refill_edge(attacker.round)
+
+    assert len(cloud.edge.matching("nft -f -")) == after

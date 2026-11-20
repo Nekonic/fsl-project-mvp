@@ -57,7 +57,7 @@ A test keeps it out of every other template.
 | `suppression` | **예외 처리** (동작) / **예외 규칙** (대상) | '억제'는 수집한 실무 문서에서 0회입니다. 오탐을 처리하는 동작은 '예외 처리': 「오탐일 경우 오탐원인에 따른 예외처리를 적용 한다」. 등록하는 대상은 '예외 규칙': 「예외 규칙을 등록하세요」(로그프레소). 룰을 끄는 것 자체는 위의 '사용 안 함'. | [igloo.co.kr](https://www.igloo.co.kr/security-information/siem%EC%9D%84-%ED%86%B5%ED%95%9C-%EA%B2%BD%EB%B3%B4-%EC%84%A4%EC%A0%95%EA%B3%BC-%EC%9D%B4%EB%B2%A4%ED%8A%B8-%EB%8C%80%EC%9D%91/) |
 | `threshold` | **임계치** | 또 보이는 형태: 임계값. 목록에는 없었지만 Suricata 룰 튜닝 화면에 반드시 나오는 말이라 같이 넣습니다. | [igloo.co.kr](https://www.igloo.co.kr/security-information/%ED%9A%A8%EA%B3%BC%EC%A0%81%EC%9D%B8-%EC%9B%B9-%ED%95%B4%ED%82%B9-%ED%83%90%EC%A7%80%EC%99%80-access-log-%EB%B9%85%EB%8D%B0%EC%9D%B4%ED%84%B0-%EB%B6%84%EC%84%9D-2%EB%B6%80/) |
 | `triage` | **정·오탐 판단** | 또 보이는 형태: 정탐/오탐 여부 판단, 경보 분류 (클라우드 번역). 관제 방법론 문서가 이 작업을 이렇게 부릅니다: 「경보가 발생하면 경보의 정·오탐을 분석하고,」 | [igloo.co.kr](https://www.igloo.co.kr/wp-json/wp/v2/post-security/5176) |
-| `true negative (TN)` | **참음성** | 또 보이는 형태: 정상 판정 / 미탐지(정상). 주의: 한국 관제 현업에는 TN에 해당하는 굳어진 단어가 없습니다. 정탐/오탐/미탐 세 개만 씁니다. 통계·ML 쪽 용어인 '참음성'이 유일하게 출처가 있는 말이므로, 콘솔에서는 '참음성(TN)'처럼 약어를 함께 적거나 '정상 트래픽을 정상으로 판정'처럼 풀어 쓰는 편이 읽힙니다. | [developers.google.com](https://developers.google.com/machine-learning/crash-course/classification/precision-and-recall?hl=ko) |
+| `true negative (TN)` | **정상 통과** | 한국 관제 현업에는 TN에 해당하는 굳어진 단어가 없고 정탐/오탐/미탐 셋만 씁니다. 콘솔은 정상 트래픽이 탐지 없이 지나간 경우를 '정상 통과'라고 씁니다 (2026-11-20, 사용자 결정). 통계 용어 '참음성'은 쓰지 않습니다. | — |
 | `true positive (TP)` | **정탐** | 또 보이는 형태: 진양성 / 진정한 긍정 (MS 기계번역, 쓰지 말 것). 매핑 확정: 정탐 = 실제 공격을 맞게 탐지. 같은 문장 안에서 정탐↔차단조치, 오탐↔예외처리로 짝지어져 있어 뒤집힐 여지가 없습니다. | [igloo.co.kr](https://www.igloo.co.kr/security-information/siem%EC%9D%84-%ED%86%B5%ED%95%9C-%EA%B2%BD%EB%B3%B4-%EC%84%A4%EC%A0%95%EA%B3%BC-%EC%9D%B4%EB%B2%A4%ED%8A%B8-%EB%8C%80%EC%9D%91/) |
 | `tuning` | **정책 최적화** | 또 보이는 형태: 튜닝 (구어에서 자주), 룰 튜닝. 관제 방법론 문서는 오탐이 나면 하는 작업을 '탐지정책 검증/변경/최적화'로 정의합니다. 콘솔 라벨로는 '룰 튜닝'이 짧고 현업에서 바로 읽힙니다. | [igloo.co.kr](https://www.igloo.co.kr/security-information/%EB%B3%B4%EC%95%88%EA%B4%80%EC%A0%9C%EB%B0%A9%EB%B2%95%EB%A1%A0-%EA%B8%B0%EB%B0%98-%EC%9D%B8%EA%B3%B5%EC%A7%80%EB%8A%A5-%EB%B3%B4%EC%95%88%EA%B4%80%EC%A0%9C-%ED%94%84%EB%A1%9C%EC%84%B8%EC%8A%A4/) |
 | `WAF` | **웹방화벽** | 또 보이는 형태: 웹 방화벽 (띄어쓰기), WAF. 국내 문서는 '웹방화벽'이 압도적이고 약어 WAF도 병기합니다. '웹 애플리케이션 방화벽'은 해외 벤더 번역투. | [aws.amazon.com](https://aws.amazon.com/ko/blogs/korea/aws-waf-operation-guide-rule-setting-and-false-positive/) |
@@ -181,7 +181,7 @@ are spelled out. Do not invent a replacement.**
 
 **Detection and alerting**
 
-- true negative (TN) — 한국 관제 현업에 굳어진 단어가 없음이 확인됐습니다. 정탐/오탐/미탐 셋만 쓰이고 TN은 아예 화제에 오르지 않습니다. 통계 용어 '참음성'만 출처가 있어 그쪽으로 넣었으나, 콘솔에서는 약어 TN 병기를 권합니다.
+- true negative (TN) — 한국 관제 현업에 굳어진 단어가 없어 콘솔은 '정상 통과'를 씁니다 (2026-11-20, 사용자 결정). '참음성'은 쓰지 않습니다.
 - unattributed / uncorrelated alert — 어느 공격 케이스에도 붙지 않은 알림을 가리키는 한국어를 어느 출처에서도 찾지 못했습니다. 국내 관제 문서는 이 상태를 따로 이름 붙이지 않고 '미분류', '원인 미상'처럼 그때그때 풀어 씁니다. 근거 없이 단정하지 않겠습니다 — '미귀속'은 제 창작이 될 것이라 쓰지 않았습니다.
 - alert vs notification 구분 — 경보(IDS가 올린 것)와 알림(시스템이 사용자에게 보내는 것)을 한 화면에서 구분해 쓰는 국내 용례를 확인할 출처를 찾지 못했습니다. 콘솔에서 둘 다 필요하면 경보/알림으로 나누되 근거는 없습니다.
 

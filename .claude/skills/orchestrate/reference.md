@@ -57,7 +57,7 @@ what lets a piece be swapped without touching the rest.
 
 Known exceptions in code today are listed in `CLAUDE.md` and in the isolation
 seams table of `docs/ARCHITECTURE.md`, which also has the declaration/substrate
-seam. `platform/tests/test_isolation_seams.py` scans `platform/` for each
+seam. `platform/tests/seams/test_isolation_seams.py` scans `platform/`, `front/src`, `bots/`, `test/` and `bin/` for each
 seam's marker strings and fails on a file outside the owner and its listed
 exceptions; the wiring read has no row there.
 Why one case is one decision, and the `expect`/`corroborated` rule, are in

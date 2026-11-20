@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PLATFORM = ROOT / "platform"
 PYTHON = ROOT / ".venv" / "bin" / "python"
 DROPPED = ("groups", "user_permissions")
+FIRST_USER = "admin"
 
 
 def manage(store: Path, *arguments: str) -> str:
@@ -31,8 +32,22 @@ def users_in(store: Path) -> list[dict]:
 
 
 def carried(rows: list[dict]) -> list[dict]:
-    return [{**row, "fields": {key: value for key, value in row["fields"].items() if key not in DROPPED}}
+    return [{"model": row["model"], "pk": None,
+             "fields": {key: value for key, value in row["fields"].items() if key not in DROPPED}}
             for row in rows]
+
+
+def usernames(rows: list[dict]) -> set[str]:
+    return {row["fields"]["username"] for row in rows}
+
+
+def first_account_given_way(store: Path, rows: list[dict]) -> None:
+    if usernames(users_in(store)) - {FIRST_USER}:
+        raise SystemExit(f"{store} already holds users; carry them into a fresh store")
+    if FIRST_USER in usernames(rows):
+        manage(store, "shell", "-c",
+               "from django.contrib.auth import get_user_model; "
+               f"get_user_model().objects.filter(username={FIRST_USER!r}).delete()")
 
 
 def copied(old: Path, copy: Path) -> None:
@@ -53,8 +68,7 @@ def carry(old: Path, new: Path) -> list[dict]:
         copied(old, copy)
         rows = carried(users_in(copy))
         manage(new, "migrate", "--noinput")
-        if users_in(new):
-            raise SystemExit(f"{new} already holds users; carry them into a fresh store")
+        first_account_given_way(new, rows)
         dump = Path(scratch) / "users.json"
         dump.write_text(json.dumps(rows))
         manage(new, "loaddata", str(dump))

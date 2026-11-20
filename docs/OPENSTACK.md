@@ -11,15 +11,18 @@ works.
 Words used in this file:
 
 - **Range**: what the platform builds for training: one Heat stack per
-  session on OpenStack, from a pool of stacks built ahead.
-- **Range stack**: the Heat stack `cr-slot-<n>` one session uses: four VMs,
+  lease on OpenStack, from a pool of stacks built ahead.
+- **Lease**: one ready range stack given to an operator (`POST /api/leases/`)
+  for one or more rounds or a lesson, or to the probe recorder; see the
+  glossary in `docs/ARCHITECTURE.md`.
+- **Range stack**: the Heat stack `cr-slot-<n>` one lease uses: four VMs,
   `kali`, `waf`, `infra` and `target`, on five Neutron networks of the stack's
   own (`internet`, `dmz`, `web-outer`, `web-inner`, `mgmt`), with no router.
-  A session is given a ready stack when it opens; when it closes, the stack
-  is deleted and created again. The number `<n>` (N) is the stack number; see
-  the glossary in `docs/ARCHITECTURE.md`. The code calls it the slot
-  (`Session.slot`, `/api/range/slot/`).
-- **Pool**: the stacks that stand ready ahead of sessions, so many per
+  A lease is given a ready stack when it opens; when it closes or expires, the
+  stack is deleted and created again. The number `<n>` (N) is the stack
+  number; see the glossary in `docs/ARCHITECTURE.md`. The code calls it the
+  slot (`Lease.slot`, `/api/staff/range/pool/`).
+- **Pool**: the stacks that stand ready ahead of leases, so many per
   wargame (`compute.pool`). A close replaces the used stack off the
   learner's path.
 - **Role image**: a Glance image a range VM boots from, baked once from
@@ -29,7 +32,7 @@ Words used in this file:
   `internet` and `dmz` (nftables), the inline IDS (Suricata on a Linux bridge
   between `web-outer` and `web-inner`) and the log server.
 - **Fabric**: the management network `cr-mgmt`, the security groups and the
-  keypair the platform creates before the stacks (`POST /api/range/fabric/`).
+  keypair the platform creates before the stacks (`POST /api/staff/range/fabric/`).
   Every range VM has one control port on `cr-mgmt`.
 - **Store**: the platform's SQLite database (`db.sqlite3`).
 - **Substrate**: what the platform builds the range on (`CR_SUBSTRATE`); here
@@ -43,6 +46,14 @@ The operator reaches 10.0.0.0/24 and the provider network through a VPN. From
 `master`, ML2/OVS). Where this file quotes a measurement from that time, it says
 "the previous cloud". Everything else comes from this repo's code or from the
 sources listed at the end.
+
+Runs and measurements dated before 2026-11-19 ran the tree before the side
+split (`platform/api/`); the routes and modules they quote
+(`/api/sessions/`, `/api/range/slot/`, `ready/`, `configure/`,
+`api/reset.py`, `range/sandbox.py`) are that tree's and are kept as the
+record. The procedures name the side split's routes, the staff range API
+under `/api/staff/range/` (`GET /`, `fabric/`, `leftovers/`, `pool/`), which
+has not yet run on a cloud.
 
 ## Target: one-click build
 
@@ -85,26 +96,27 @@ user's password, flavor access, the base image and `cloud.yaml` (§4).
    the control-plane images from GHCR. It does not build them. The range VMs
    boot from the role images in Glance (§3.6).
 2. The script gives the VM the password and the range ssh key over ssh.
-3. The script then drives the platform's own range API in this order: fabric;
-   `DELETE leftovers/`, which removes what the ranges before this one left
-   (§5.5); `slot/`, which creates the pool's range stacks, one Heat stack
-   each; `configure/`, which seeds each stack's sensor with the baseline
-   rules. Then it
-   waits until `ready/` says ready.
+3. The script then drives the platform's staff range API in this order:
+   `POST fabric/`; `DELETE leftovers/`, which removes what the ranges before
+   this one left (§5.5); `POST pool/`, which owes every slot no lease holds a
+   refill that the `follow` service carries out (create the stack if it is
+   missing, stale or failed, wait for its nodes, seed its sensor with the
+   baseline rules). Then it waits until `GET /api/staff/range/` shows every
+   slot's refill `idle`, and stops on one that `failed`.
 
 | Piece | Status | Where |
 |---|---|---|
 | Kolla-Ansible cloud with Heat, Glance, Nova, Neutron (ML2/OVN) | done (this cloud) | §2 |
 | Project `fsl-range`, member user, clouds.yaml entry, quota check, flavor choice | `bin/cloud init` as admin (2026-11-15); flavors and quotas are never created or raised by it | §3 |
 | Base image, stock Ubuntu 24.04, upload with checksum check | `bin/cloud init` when missing; done (this cloud, 2026-10-20) | §3.6 |
-| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18; the WAF's re-baked as `cr-waf-bake2`) | §3.6 |
+| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18; the WAF's re-baked as `cr-waf-bake2`). The side split's infra and WAF changes need a new bake of both, not done (§3.7) | §3.6 |
 | `cloud.yaml`: every cloud-specific value, validated | written by `bin/cloud init` (2026-11-15) | §4 |
 | Platform and wargame images on GHCR (`.github/workflows/images.yml`) | done (public, pulled 2026-10-11) | §5 |
 | Heat stack pulls images instead of `--build` | done (2026-10-11) | §5 |
 | `bin/platform-rebuild`: replace the VM without losing data (store and range key carried over), driven by `cloud.yaml` | done (2026-10-15, `bin/cloud up --replace --sideload` twice, 28 and 55 min with a 6 GB store) | §5 |
 | `bin/cloud up`, `bin/cloud down` | done (2026-10-11); since 2026-10-20 `up` after `down` restores the newest backup that holds rows (run live 2026-10-20) | §5 |
-| Fabric via `POST /api/range/fabric/` | done | §6 |
-| Range stacks `cr-slot-<n>` via `POST /api/range/slot/`, a pool per wargame, replaced at close | live since 2026-11-18: the first pool fill created the four stacks (§6.1), and two full `bin/verify` runs ran on them | §6 |
+| Fabric via `POST /api/staff/range/fabric/` | done on the old tree (`POST /api/range/fabric/`); the side split's route has not run on a cloud | §6 |
+| Range stacks `cr-slot-<n>`, a pool per wargame, replaced at close | live since 2026-11-18 on the old tree (`POST /api/range/slot/`): the first pool fill created the four stacks (§6.1), and two full `bin/verify` runs ran on them. The side split's `POST /api/staff/range/pool/` and the follower's refill have not run on a cloud | §6 |
 | Acceptance on the OpenStack substrate | runs on the Heat range; the latest full run and its open failures are in `docs/state/now.md` | §7 |
 
 Steps below are tagged **[one-click]** where `bin/cloud up` does them for you,
@@ -113,11 +125,14 @@ Steps below are tagged **[one-click]** where `bin/cloud up` does them for you,
 
 ## 1. What this project needs from OpenStack
 
-The platform builds the range as one Heat stack per session, `cr-slot-<n>`,
+The platform builds the range as one Heat stack per lease, `cr-slot-<n>`,
 each four Nova servers on Neutron networks of the stack's own (§6). It creates them
 as a member user. cloud-init writes `CR_SUBSTRATE=range.openstack.connect` on
-the platform VM to select this. The design is
-`docs/superpowers/specs/2026-11-18-heat-range-design.md`.
+the platform VM to select this. The range's design was
+`docs/superpowers/specs/2026-11-18-heat-range-design.md` (archived; git keeps
+it); the side split keeps it and adds the edge sets, the WAF access log, the
+scratch CRS instance and `analyst` (§3.7,
+`docs/superpowers/specs/2026-11-19-side-split-design.md`).
 
 The platform VM runs only the control plane as containers: platform,
 Elasticsearch, Kibana and the collector. `docker compose` pulls their
@@ -532,7 +547,7 @@ for the range VM roles if it has no `dba.small`; name it in `compute.flavors`.
   with the keypair's name and is never overwritten: whatever booted with it
   would lose its key. A missing `.pub` stops them too;
   `ssh-keygen -y -f <key_file>` writes it from the private key.
-- `cr-platform` is the platform's own range key. `POST /api/range/fabric/`
+- `cr-platform` is the platform's own range key. `POST /api/staff/range/fabric/`
   imports it from `/data/ssh/id_ed25519` in the platform container. Every range
   VM boots with it (`key_name`), and each node's user data gives its public key
   to the management user (§6). Never create this keypair by hand. The key file it comes from (`keys.range`) needs no step
@@ -551,7 +566,7 @@ for the range VM roles if it has no `dba.small`; name it in `compute.flavors`.
 | `cr-lan-<digest>` | the platform, before it creates a range stack | one per distinct LAN rule set, shared by every stack; `<digest>` is the first 12 hex of the rules' SHA-256. Three for board and corp alike: all IPv4 in (`internet`, `dmz`), all in from 10.30.128.0/24 (`web-outer`, `web-inner`), tcp 514 from 172.29.0.0/24 (`mgmt`) (§6) |
 
 Neutron gives a new group an allow-all egress rule for IPv4 and IPv6. For
-`cr-mgmt` and `cr-senders` (`fabric.CONFINED_GROUPS`) `POST fabric/` deletes
+`cr-mgmt` and `cr-senders` (`networks.CONFINED_GROUPS`) `POST fabric/` deletes
 every egress rule but the two above and adds whichever of the two is
 missing, on groups it creates and on groups already standing, so the next
 `bin/cloud up` fixes a cloud whose groups were made before. DHCP on
@@ -567,27 +582,32 @@ drive and do not need it (`docs/DECISIONS.md`, 2026-11-18). The second full
 before (§5.5). `DELETE fabric/` deletes the `cr-lan-` groups after the
 range stacks (§6.2).
 
-Port 8002 is the blue console's Website pane. The platform sends each request
-over an ssh stream to the session's Kali VM (over `cr-mgmt`). Kali sends it from
-a customers address through the edge router to the WAF
-(`docs/ARCHITECTURE.md`, the Website pane's egress). A platform stack made
-before 2026-10-13 lacks the rule. Add it by hand:
+Port 8002 is the console's site pane (`/site/<round>/<host>/`, proxied to
+`match/site.py`). The platform sends each request over an ssh stream to the
+lease's Kali VM (over `cr-mgmt`). For an attack seat it goes through
+`attack.service.send` from the current origin and is charged HP; for a
+defence or lesson seat Kali sends it from a customer address with the
+lease's browse marker, through the edge router to the WAF. A platform stack
+made before 2026-10-13 lacks the rule. Add it by hand:
 
 ```bash
 openstack security group rule create --protocol tcp --dst-port 8002 cr-platform
 ```
 
-Port 2222 is the jump for a learner's own ssh to the session's Kali: an sshd
-that `platform/entrypoint.sh` starts inside the platform container, beside
-ttyd, from `jump.py`'s config. It takes only the user `jump`, by public key,
-with no shell, no TTY and only local forwarding; each key's line is
-`restrict,port-forwarding,permitopen="<that session's Kali control address>:22"`.
-`POST /api/sessions/<id>/ssh/` issues a session key, shown once, puts its
-public key into Kali's `kali` user and the jump's `authorized_keys`, and
-answers an ssh config with `ProxyJump`; the close drops both. Kali's control
-port takes tcp 22 only from the platform's group, so no floating IP is needed
-per Kali. A platform stack made before the jump lacks the 2222 rule; a stack
-update adds it.
+Port 2222 is the jump for a seat's own ssh to its box: an sshd that
+`platform/entrypoint.sh` starts inside the platform container, beside ttyd,
+from `range/jump.py`'s config (`python -m range.jump`). It takes only the
+user `jump`, by public key, with no shell, no TTY and only local forwarding;
+each key's line is
+`restrict,port-forwarding,permitopen="<the box's control address>:22"`.
+`GET /api/rounds/<round>/attack/terminal/` issues the attack seat a key for
+Kali's `kali` user, and `GET /api/rounds/<round>/defence/terminal/` the
+defence seat a key for the WAF's read-only `analyst` (§3.7); each answer
+carries the private key once, with the jump's host and port, and puts the
+public key into the box account's and the jump's `authorized_keys`. The
+round's end revokes both. Each box's control port takes tcp 22 only from the
+platform's group, so no floating IP is needed per box. A platform stack made
+before the jump lacks the 2222 rule; a stack update adds it.
 
 The range has no Internet, so the platform is its only time source.
 
@@ -607,9 +627,9 @@ printf 'allow 10.31.0.0/24\nlocal stratum 10\n' | sudo tee /etc/chrony/conf.d/cr
 sudo apt-get -y install chrony
 ```
 
-Port 3080 served the GNS3 map until 2026-11-15. The map is now a page on port
-8000 (`/map/<session>/`), and the Heat template no longer opens 3080; a stack
-update removes the rule from a stack made before.
+Port 3080 served the GNS3 map until 2026-11-15. The learner map is now
+`GET /api/rounds/<round>/topology/` on port 8000, and the Heat template no
+longer opens 3080; a stack update removes the rule from a stack made before.
 
 ### 3.6 Images
 
@@ -669,8 +689,8 @@ each wargame's `compose.yaml`); copy the directory with the links resolved.
 | Role | Builder's base | `install.sh` installs |
 |---|---|---|
 | `kali` | the Kali base | `kali-linux-headless` and the tools of the Kali container before (nmap, sqlmap, nikto, whatweb, ffuf, gobuster, hydra, dirb, mitmproxy and others), the stamp proxy as `web-proxy.service`, the operator log hook, `set-origin`, `slot-boot`, and a key-only `kali` user with bash and passwordless sudo; `board.com` and `corp.com` resolve to 121.134.88.42; sslh's systemd generator masked and `cloud-init.target` wanted by `multi-user.target`, so cloud-init runs on every boot (`docs/TROUBLESHOOTING.md` "A Kali VM booted without cloud-init") |
-| `waf` | `compute.base_image` | nginx 1.24 from Ubuntu, ModSecurity 3.0.16 and its nginx connector built from release tarballs checked by SHA-256, CRS 4.25.1, the repo's `modsecurity.conf` and `board.com.conf`, rsyslog, `slot-boot` |
-| `infra` | `compute.base_image` | nftables, bridge-utils, ethtool, rsyslog, Docker with `bridge: none` and no iptables, the pinned `jasonish/suricata` image (`suricata -T` run on the repo's config and rules), the `suricatasc` wrapper (`docker exec -i sensor suricatasc`), `edge.nft`, `sensor.service`, `slot-boot`; `suricata` itself is only in the `sensor` container |
+| `waf` | `compute.base_image` | nginx 1.24 from Ubuntu, ModSecurity 3.0.16 and its nginx connector built from release tarballs checked by SHA-256, CRS 4.25.1, the repo's `modsecurity.conf` and `board.com.conf` (the JSON access log of every request), rsyslog, nftables, python3, the scratch CRS test's `probe.conf` and `probe-upstream.py` in `/usr/local/share/cr/` with its scratch folder `/var/lib/cr-crstest`, the `analyst` account (`analyst.sh`), `slot-boot` |
+| `infra` | `compute.base_image` | nftables, conntrack, tcpdump, bridge-utils, ethtool, rsyslog, Docker with `bridge: none` and no iptables, the pinned `jasonish/suricata` image (`suricata -T` run on the repo's config and rules), the `suricatasc` wrapper (`docker exec -i sensor suricatasc`), `edge.nft` with the `pool` and `spent` sets, the offline rule test's scratch folder `/var/lib/cr-ruletest`, `sensor.service`, `slot-boot`; `suricata` itself is only in the `sensor` container |
 | `target` | `compute.base_image` | Docker and Compose; board's and corp's compose files rendered for a VM (`render.py`: fronts published on the stack's addresses, databases on the internal `<w>_backend`), their images pulled from GHCR at `CR_IMAGE_TAG` (required), brought up once and their volumes kept as the pristine data, `wargames.service` |
 
 The Ubuntu roles point apt at the Kakao mirror, purge `snapd` and
@@ -741,6 +761,99 @@ when an `image:` line in `/opt/wargames/*/compose.yaml` carries another tag,
 and writes those lines into `/var/lib/cr/failed` (§6). A line pinned by digest
 (`mysql@sha256:...`) has no tag and passes.
 
+### 3.7 The side split's rebake (infra and WAF)
+
+The side split changes two role images; kali and target are unchanged. Until
+both are baked and named in `compute.images`, a range runs the old edge and
+WAF: HP is charged only from API sends, a spent origin is not dropped at the
+edge, and the rule test has no scratch CRS instance or `analyst` account to
+reach. The procedure is the bake by hand of §3.6, once per role, under new
+names; none of it has run, so it is **[unverified]**.
+
+| Role | New name | What changed in `deploy/roles/<role>/` |
+|---|---|---|
+| `infra` | `cr-infra-bake2` | `edge.nft` declares the sets `pool` and `spent` (`type ipv4_addr`) and drops `ip saddr @spent` and then `ip saddr != @pool` from `wan` before the established accept, so an open keep-alive or sqlmap connection of a spent origin stops too and an address the platform never put in `pool` reaches nothing; `range/edge.py` adds the addresses after each `slot-boot` load and flushes a spent origin's conntrack entries (package `conntrack`). `tcpdump` for `rules.suricata.capture` (probe recording), `/var/lib/cr-ruletest` (0700) for `rules.suricata.offline_test`, which runs the same pinned image and `/etc/suricata/suricata.yaml` with `-r` and reads the scratch `eve.json`, never `/var/log/suricata`. `log-relay.conf` relays the WAF's `nginx-access` lines instead of `nginx` |
+| `waf` | `cr-waf-bake3` (**(this cloud)**; `cr-waf-bake2` is taken) | `board.com.conf` writes every request to `/var/log/nginx/access.json` as JSON (`time`, `client_ip`, `vhost`, `request`, `status`, `refused` from the one `$refused` map of 400 and 403, `request_id` from `X-Request-ID` when it has a marker's shape and empty otherwise, so a padded or repeated header cannot push the line past the shipper's 64 KiB), and `log-shipper.conf` ships it under Tag `nginx-access` in place of `refused.log`. `probe.conf` and `probe-upstream.py` for `rules.crs.scratch_check` and `scratch_test`; the exclusion file is created 0644 (root writes it through sudo). `analyst.sh` creates the defence seat's account |
+
+`pool` holds a round's attack origins and customer addresses (filled when
+the round starts) or, for a probe lease, the origin it wears (admitted before
+each case); every other address from `wan` is dropped, so a learner with sudo
+on kali cannot send from an unused origin-subnet address. On a fresh slot the
+set is empty and kali reaches nothing on the target. Each round start empties
+both sets before it fills them
+(`range.edge.restart`), so a lease's next round does not inherit the last
+round's spent origins. The round's end empties both sets again, so
+between rounds nothing from kali reaches the target, a process the learner
+left running there included.
+
+**The `analyst` account** (`deploy/roles/waf/analyst.sh`), which the defence
+seat's terminal and its jump grant log in as (when the round ends and the
+grant is revoked, `range.jump.end_account` clears its crontab and `at` jobs,
+disables its linger, ends its logind sessions and kills its processes):
+
+- can: log in by the per-seat key `range/jump.py` writes into its
+  `authorized_keys` (bash, password field `*`); read `/etc/nginx` (the vhosts,
+  `modsecurity.conf`, the CRS tree and the exclusion file) and, through group
+  `adm`, `/var/log/nginx` and `/var/log/modsecurity`; run `sudo nginx -t` and
+  `sudo nginx -T` and nothing else as root;
+- cannot: write any file under `/etc/nginx`, `/var/log/nginx` or
+  `/var/log/modsecurity` (no group it is in may write there; the bake removes
+  any such group write bit), reload or signal nginx, read
+  `/var/lib/cr-crstest` (0700), forward ports or sockets over its ssh login
+  (`/etc/ssh/sshd_config.d/60-analyst.conf`), or send anything on the network
+  from the WAF: `/etc/nftables.conf`, loaded by `nftables.service`, drops
+  every packet a process of `analyst` sends (`meta skuid analyst drop`).
+
+The defence posture itself changes only through the defence API.
+
+**After the bakes**, name `compute.images.infra: cr-infra-bake2` and
+`compute.images.waf: cr-waf-bake3` in `cloud.yaml` and run `bin/cloud up
+--replace` (§7): every stack no lease holds is stale and is rebuilt. Then,
+on one slot, the spec's checks for this step:
+
+```bash
+sudo nft list set ip edge spent                    # on the infra: the set exists, empty until an origin is spent
+sudo nft list set ip edge pool                     # on the infra during a round: its origins and customer addresses
+sudo tail -1 /var/log/nginx/access.json            # on the WAF after one request: request_id is the X-Request-ID
+```
+
+- a request's access line reaches Elasticsearch as module `nginx_access` with
+  its `request_id`, and a 200 makes no Detection (`GET defence/alerts/`);
+- a WAF rule test (`POST defence/waf/test/`) returns a verdict for one case,
+  and the live audit log's line count is unchanged;
+- an IDS rule test (`POST defence/ids/rules/test/`) leaves
+  `/var/log/suricata/eve.json` unchanged;
+- as `analyst`, `touch /etc/nginx/x`, `sudo nginx -s reload` and `curl
+  http://127.0.0.1/` all fail, and `sudo nginx -T` prints the configuration;
+- as `analyst`, `nohup sleep 9999 &` and a crontab line are gone once the
+  round ends (`pgrep -u analyst` and `sudo crontab -l -u analyst` on the WAF
+  show nothing);
+- on kali, `sudo ip addr add <an unused origin-subnet address> dev <its
+  internet NIC>` and `curl --interface <that address> http://board.com/`
+  time out, while the API's requests still answer;
+- a closed round's `/vm-terminal/<side>/<round>/ws` answers `409` with code
+  `round_closed`, not 500;
+- after a round ends, `sudo nft list set ip edge pool` on the infra is empty
+  and a `curl http://board.com/` left running on kali times out;
+- on kali, `curl -H "X-Request-ID: $(printf 'a%.0s' $(seq 200))"
+  http://board.com/` leaves an access line whose `request_id` is empty and
+  whose `client_ip` is the worn origin.
+
+**Probe recordings** follow the bake (spec step 12): `bin/record-probes board`
+and `bin/record-probes corp` (`--platform http://<platform>:8000`, a staff
+sign-in from `CR_ADMIN_USER` and `CR_ADMIN_PASSWORD`) start a probe lease
+through `POST /api/staff/wargames/<id>/probes/record/` and follow
+`GET /api/staff/probes/<lease>/` until it is released; a case it could not
+record fails the run and is named. The platform writes the recordings to its
+`CR_PROBES_OUT` (`/data/probes` in `compose.yaml`, on the `platformdata`
+volume); no route serves them, so copy them off the platform VM and commit
+them:
+
+```bash
+ssh ubuntu@<platform> "sudo docker exec cr-platform tar -C /data/probes/board/probes -cf - ." \
+  | tar -C wargames/board/probes -xf -
+```
+
 ## 4. cloud.yaml
 
 `deploy/openstack/cloud.example.yaml` is committed. `bin/cloud init` writes
@@ -749,7 +862,7 @@ changes only the keys it owns, `cloud`, `network.external`,
 `compute.base_image` and `compute.flavors.platform`, and writes `network.allowed`
 (its value, or `[0.0.0.0/0]` when it has none), line by line, keeping every other
 value and every comment. No secret goes in it, only the name of the clouds.yaml
-entry that holds the password. `platform/range/cloud.py` reads the
+entry that holds the password. `platform/range/cloud_config.py` reads the
 file. It refuses the file before touching anything and names every problem by
 its dotted key. The problems it finds include an unknown key, a missing key,
 overlapping CIDRs and an `identity` section or a password written into the file.
@@ -760,7 +873,7 @@ key `cloud` names (`fsl-range`); `init` writes it (§3.1). `bin/cloud` and
 `bin/platform-rebuild` read `auth.auth_url`, `auth.username`, `auth.password`,
 `auth.project_name`, `auth.user_domain_name`, `auth.project_domain_name`,
 `region_name` and `interface` (`public` when absent) from it
-(`cloud.signed_in`), and stop before any change when the entry is missing,
+(`cloud_config.signed_in`), and stop before any change when the entry is missing,
 saying to run `bin/cloud init`, or when one of them is, naming it. They need no
 RC file and no `OS_*` variables: they drop every `OS_*` variable from their own
 environment and run the openstack CLI with `OS_CLOUD=<entry>` and
@@ -789,7 +902,7 @@ in a container's environment.
 | `compute.availability_zone` | `""` | the platform VM and every range VM; if empty, Nova chooses |
 | `compute.flavors` | `platform`, and `kali`, `waf`, `infra`, `target` | §3.3. A range VM role left out takes `dba.small`; `CR_OPENSTACK_FLAVORS` |
 | `compute.images` | `cr-<role>-bake1` per role (**(this cloud)** `waf: cr-waf-bake2`) | optional; each range VM role's Glance image, baked from `deploy/roles/<role>/` (§3.6); a role left out takes `cr-<role>-bake1`; `CR_OPENSTACK_IMAGES` |
-| `compute.pool` | `{board: 3, corp: 1}` | optional; how many range stacks stand ready for each wargame, each one Heat stack of four VMs, so how many sessions can run at once (§6.4); `CR_OPENSTACK_POOL` |
+| `compute.pool` | `{board: 3, corp: 1}` | optional; how many range stacks stand ready for each wargame, each one Heat stack of four VMs, so how many leases can be open at once (§6.4); `CR_OPENSTACK_POOL` |
 | `compute.target_tag` | the commit the target image was baked at | optional; the full 40-hex commit whose board and corp images the target image pulled (its bake's `CR_IMAGE_TAG`, §3.6); a range stack has no egress, so it runs only those. Without it, the commit `cr-target-bake1` was baked at; `CR_OPENSTACK_TARGET_TAG` |
 | `keys.key_name`, `keys.key_file` | `fsl-claude`, `~/.ssh/fsl_claude` | the Nova keypair the platform VM boots with (its `key_name`, §3.4), and that keypair's private key, for ssh to the VM |
 | `keys.range` | `~/.ssh/fsl-platform` | the platform's range key, kept across rebuilds; every range VM takes it for the management user (§6) |
@@ -888,7 +1001,7 @@ uv run bin/cloud down
 Every line `bin/cloud` prints, its own and `bin/platform-rebuild`'s, starts
 with the local time (`HH:MM:SS`), so a run's log shows how long each step took.
 It asks the platform's API every 5 s while it waits (`POLL`), and
-`bin/platform-rebuild` tries ssh and `/api/auth/` every 2 s (`SSH_POLL`,
+`bin/platform-rebuild` tries ssh and `/api/auth/csrf/` every 2 s (`SSH_POLL`,
 `API_POLL`).
 
 `up` does these steps in order:
@@ -913,26 +1026,21 @@ It asks the platform's API every 5 s while it waits (`POLL`), and
 6. It sends `DELETE leftovers/`, which removes what the ranges before this one
    left in the project (§5.5), servers first, since a leftover server holds
    quota the range VMs need, and prints what it removed.
-7. It sends `POST slot/`. It stops when a stack is blocked, for example by a
-   role image that Glance does not hold active ("no active image ... in
-   Glance"), which the platform checks before it asks Heat. For each stack
-   number of the pool with no stack, this creates `cr-slot-<n>` (§6). A stack
-   that is stale, because what the platform renders now has another digest
-   than the one it was created with (§6, §5.3), that failed (`SETUP_FAILED`),
-   or that runs another wargame than the pool assigns its number, is deleted,
-   and the refill creates it again and configures it, but only when no
-   session holds that stack. While a session holds it, the stale stack reads
-   blocked and `up` stops.
-8. It sends `GET ready/` until no stack reads `NOT_STANDING`, `REBUILDING`,
-   `RESETTING` or `STALE`. A stack still in progress, or a node still running
-   its boot (`SETTING_UP`), reads `REBUILDING`. A stack that reads
-   `SETUP_FAILED` stops `up`, which prints the reason; the next `up` deletes
-   that stack at step 7 and the refill creates it again.
-9. It sends `POST configure/`. It retries while the answer is 503, which means
-   a range VM's ssh is not up yet, up to 60 tries. It stops on any other answer
-   but 200.
-10. It sends `GET ready/` until the range is ready. The platform checks the
-    stacks side by side.
+7. It sends `POST pool/`, which owes every slot no lease holds a refill
+   (`range/refill.py`) and answers each slot's refill state. The `follow`
+   service carries the refills out on its ticks: for a slot with no stack it
+   creates `cr-slot-<n>` (§6); a stack that is stale, because what the
+   platform renders now has another digest than the one it was created with
+   (§6, §5.3), that failed, or that runs another wargame than the pool
+   assigns its number, is deleted and created again. The refill waits for
+   every node to report ready and then seeds the sensor with the baseline
+   rules. A slot a lease holds is not refilled; it is replaced when its
+   lease closes.
+8. It sends `GET /api/staff/range/` every 5 s until every slot's refill reads
+   `idle`, for up to 30 min (`SLOT_WAIT`). A refill that reads `failed`
+   stops `up`, which prints each slot's reason, for example a role image
+   Glance does not hold active ("no active image ... in Glance") or a node
+   whose boot failed; the next `up` owes that slot a refill again.
 
 `down` does these steps:
 
@@ -948,10 +1056,10 @@ It asks the platform's API every 5 s while it waits (`POLL`), and
    deletes nothing, when the container does not start.
 5. It keeps the range key and backs up the store (`bin/backup --keep`,
    `backups.keep`).
-6. It waits for the API. Then it runs `DELETE slot/`, which deletes every
-   range stack, waits until `GET slot/` lists none standing (up to 30 min),
-   because each range VM's control port holds `cr-mgmt`, and runs
-   `DELETE fabric/`.
+6. It waits for the API. Then it runs `DELETE pool/`, which drops the owed
+   refills and deletes every slot stack, waits until `GET pool/` lists no
+   slot with a server (up to 30 min), because each range VM's control port
+   holds `cr-mgmt`, and runs `DELETE fabric/`.
 7. It deletes every server whose name starts with `cr-build-`, which carries the
    `cr_image` property and which has a port on this stack's own network (the
    stack's `network` resource): a builder the VM range of before may have left.
@@ -1007,7 +1115,7 @@ This command replaces the platform VM without losing data. It does these steps:
    `CR_SIDELOADED` line there when the run sideloads; that file keeps every
    other line and mode 0600. It recreates the platform container, which reads
    the password file at start.
-9. It waits for `/api/auth/`, which answers before anyone signs in.
+9. It waits for `/api/auth/csrf/`, which answers before anyone signs in.
 
 The password file marks a finished hand-over, so it is written after the store
 is in place.
@@ -1022,8 +1130,8 @@ store.
 Because the key is carried over, the fabric's `cr-platform` keypair stays valid.
 You do not need to tear the range stacks down: no range VM has a port on the
 platform stack's own network. A range stack stands through the replace when
-what the new platform renders for it has the same digest (§6), and
-`bin/cloud up --replace` then only configures it again. The digest holds the
+what the new platform renders for it has the same digest (§6), and the
+refill `bin/cloud up --replace` owes it then only seeds its sensor again. The digest holds the
 platform's `cr-mgmt` address, which every node's user data names as its log
 collector and time source. That address stays: the old VM's
 `cr-platform.mgmt` port is left detached when its server is deleted, and the
@@ -1047,12 +1155,13 @@ replaced it 25 min 27 s (`docs/DECISIONS.md`, 2026-11-17).
   `cloud.yaml` as `--keep`.
 - The new VM holds one copy in `/opt/cr/backups`, the one it was restored from.
 
-The store stays small. The platform deletes sessions that were closed more than
-`CR_RETAIN_CLOSED_MINUTES` ago, with their records. The default is 60
+The store stays small. The follower deletes leases that were closed more
+than `CR_RETAIN_CLOSED_MINUTES` ago, with their rounds, records and events,
+one lease per transaction, on every tick (`platform/match/retention.py`;
+`manage.py prune` does it by hand). The default is 60
 (`platform/cr/settings.py`, set in `compose.yaml`, overridden in
-`/opt/cr/.env`). It does this at start and after every close, 2,000 rows per
-transaction (`platform/api/retention.py`). It never touches open sessions. A
-backup therefore carries about an hour of closed sessions plus the open ones.
+`/opt/cr/.env`). It never touches open leases. A backup therefore carries
+about an hour of closed leases plus the open ones.
 The store is copied back with `scp` and put in place while the platform is
 stopped.
 
@@ -1082,18 +1191,19 @@ rebuild still writes `CR_SIDELOADED=<names>` in `/opt/cr/openstack.env`, and a
 hand-over that `up` redoes on a standing VM keeps the line. To see the names,
 run `sudo docker exec cr-platform env | grep CR_SIDELOADED` on the VM.
 
-A new bake reaches the range through `POST slot/` once `compute.images` names
-it (and, for the target, `compute.target_tag` its commit): the stacks' digest
-changes, so every stack reads `STALE`, and `POST slot/` deletes each stack no
-session holds; the refill creates each again from the new images and
-configures it (§6). A stack a session holds is replaced after its close. `bin/cloud up` sends
-`POST slot/` and then `configure/`. By hand:
+A new bake reaches the range through `POST pool/` once `compute.images`
+names it (and, for the target, `compute.target_tag` its commit): the stacks'
+digest changes, so every stack is stale, and the refill `POST pool/` owes
+each slot no lease holds deletes its stack and creates it again from the new
+images, then seeds its sensor (§6). A stack a lease holds is replaced after
+its close. `bin/cloud up` sends `POST pool/` and waits. By hand, signed in as
+in §5.6:
 
 ```bash
-P=http://ADDRESS:8000/api/range
-curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/        # deletes each stale stack no session holds; its refill creates it again
-curl -s $P/ready/                                                          # REBUILDING while the stacks build and the nodes read SETTING_UP
-curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/configure/   # every stack's sensor on the baseline rules
+P=http://ADDRESS:8000/api/staff/range
+curl -s -b jar -c jar -H "X-CSRFToken: $(awk '$6=="cr_csrf"{print $7}' jar)" -X POST $P/pool/   # owes every free slot a refill
+curl -s -b jar $P/            # slots[].refill.state: running, then idle (or failed with its reason)
+curl -s -b jar $P/pool/       # each slot stack's servers, blocked and failures
 ```
 
 Before it deletes anything, the command refuses in these cases:
@@ -1233,76 +1343,88 @@ moves to the Heat range with one `bin/cloud up` on the new code:
      the VM range (`cr-kali`, `cr-waf`, `cr-wargame-host`) and
      `fsl-opnsense-<version>`
    - range stacks numbered beyond the pool
-4. `POST slot/` then creates the pool's stacks, and `configure/` seeds their
-   sensors.
+4. `POST pool/` then owes every slot a refill, which creates the pool's
+   stacks and seeds their sensors.
 
-`GET $P/leftovers/` lists the same without deleting anything. The base image,
-the Kali base and the baked role images carry no `cr_bundle`, so they stay.
+The side split's staff API has no read-only listing of leftovers; the old
+tree's `GET /api/range/leftovers/` is gone. The base image, the Kali base and
+the baked role images carry no `cr_bundle`, so they stay.
 **(this cloud)** The switch ran on 2026-11-18: the range host `cr-range` is
 deleted and the pool's four stacks stand (`docs/state/now.md`).
 
 ### 5.6 Sign-in and the stack's credentials
 
-Every console page and every `/api/` endpoint needs a signed-in session
-(Django's session cookie, `cr_session`). The platform's first start makes
-the account `admin` with the password `123456`; nothing asks for it to be
-changed. To change it:
+Every `/api/` endpoint but the sign-in routes needs a signed-in session
+(Django's session cookie, `cr_session`) or, for a bot seat, its seat token
+(`Authorization: Bearer`). The first migration of a store
+(`accounts.0002_first_account`) makes the staff account `admin` with the
+password `123456` when none exists; nothing asks for it to be changed. To
+change it:
 
 ```bash
 sudo docker exec -it -u cr cr-platform python manage.py changepassword admin
 ```
 
-A script signs in over REST: `GET /api/auth/` gives a CSRF token, `POST
-/api/auth/login/` with `{"username", "password"}` and the header
-`X-CSRFToken` opens the session and answers the next token, which every
-POST, PUT and DELETE sends as `X-CSRFToken`. `redteam/signin.py` does this
-for `bin/cloud`, `bin/verify`, `bin/acceptance`, `redteam/run.py` and
-`test/`. They sign in as `CR_ADMIN_USER` / `CR_ADMIN_PASSWORD`, by default
-`admin` / `123456`. With curl:
+A script signs in over REST: `GET /api/auth/csrf/` sets the CSRF cookie
+`cr_csrf`, and `POST /api/auth/login/` with `{"username", "password"}` and
+that cookie's value in the header `X-CSRFToken` opens the session; every
+POST, PUT and DELETE sends the current `cr_csrf` value as `X-CSRFToken`.
+`bots/signin.py` does this through the generated client for `bin/cloud`,
+`bin/record-probes`, `bin/acceptance`, `bin/verify` and `test/`. They sign in
+as `CR_ADMIN_USER` / `CR_ADMIN_PASSWORD`, by default `admin` / `123456`. With
+curl:
 
 ```bash
-T=$(curl -s -c jar http://$ADDRESS:8000/api/auth/ | jq -r .csrf_token)
+curl -s -c jar http://$ADDRESS:8000/api/auth/csrf/ >/dev/null
+T=$(awk '$6=="cr_csrf"{print $7}' jar)
 curl -s -b jar -c jar -H "X-CSRFToken: $T" -H 'Content-Type: application/json' \
   -d '{"username": "admin", "password": "123456"}' http://$ADDRESS:8000/api/auth/login/
-curl -s -b jar http://$ADDRESS:8000/api/range/ready/
+curl -s -b jar http://$ADDRESS:8000/api/staff/range/
 ```
 
-`/vm-terminal/`, `/kibana/` and port 8002 ask nginx's `auth_request` to the
-platform's `/auth-check/` first, so the same session opens them. nginx keeps
-the check's answer for five seconds per session cookie, client address and
-asked session, site or Kibana space (`proxy_cache signed_in`), so a page that
-loads a hundred assets asks Django once.
+`/kibana/` and port 8002 ask nginx's `auth_request` to `/api/me/` first, so
+the same session opens them; nginx keeps the answer for five seconds per
+session cookie and client address (`proxy_cache signed_in`), so a page that
+loads a hundred assets asks Django once. `/vm-terminal/<side>/<round>/` asks
+`/api/rounds/<round>/terminal-auth/<side>/` instead, uncached, so it opens
+only for the user holding that seat of that round while the round runs.
 
 Elasticsearch and Kibana run without security. They listen on the platform
 VM's loopback only (127.0.0.1:9200 and 127.0.0.1:5601), and the range has no
 route to them. Through `/kibana/`, nginx refuses Kibana's API outside a space
 and the default space, sends the management and dev tools pages to Discover,
 and hands every API call inside a space to the platform's `/kibana-gate/`,
-which refuses another learner's space and any call `kibana.refusal` does not
-allow (a JSON 403); a path nginx itself refuses shows the Korean page
-`/kibana-refused/`. An operator
+which refuses a space the user holds no defence seat for and any call
+`defence/kibana.py`'s `refusal` does not allow (a JSON 403 with a Korean
+message from `strings/server.json`); a path nginx itself refuses is answered
+by the same gate. An operator
 reaches Elasticsearch and Kibana over an ssh tunnel.
 
 ## 6. The range (substrate openstack)
 
-Everything goes through the platform's API, as `fsl-range`.
+Everything goes through the platform's staff range API, as `fsl-range`; a
+staff session calls it (`match/views.py`, tag `staff`).
 
-- Each `GET` reads the plan: what is missing, present, drifted or unused.
-- `POST` makes the cloud match the plan.
-- `DELETE` tears down.
+- `GET /api/staff/range/` lists each slot, its wargame, the lease that holds
+  it and its refill state; `GET pool/` each slot stack's servers, what
+  blocks it and its failures.
+- `POST` makes the cloud match the plan: `fabric/` at once, `pool/` by
+  owing each free slot a refill the `follow` service carries out.
+- `DELETE` tears down. A range not built through OpenStack answers
+  `409 range_not_cloud`.
 
-`bin/cloud up` runs these calls in order. By hand:
+`bin/cloud up` runs these calls in order. By hand, signed in as in §5.6 (each
+write sends `-H "X-CSRFToken: $T"`):
 
 ```bash
-P=http://$ADDRESS:8000/api/range
-curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/fabric/     # cr-mgmt (DHCP on, no gateway), keypair cr-platform,
+P=http://$ADDRESS:8000/api/staff/range
+curl -s -b jar -H "X-CSRFToken: $T" -X POST $P/fabric/      # cr-mgmt (DHCP on, no gateway), keypair cr-platform,
                                   # groups cr-reach/cr-mgmt/cr-egress/cr-senders, platform port cr-platform.mgmt
-curl -s -X DELETE $P/leftovers/   # what the ranges before this one left (§5.5)
-curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/slot/       # creates each missing range stack cr-slot-<n>; deletes a stale or failed
-                                  # one when no session holds it, and its refill creates it again
-curl -s $P/ready/                 # REBUILDING while a stack is in progress or a node reads SETTING_UP
-curl -s -X POST -H 'Content-Type: application/json' -d '{}' $P/configure/  # each stack: its sensor seeded with the baseline rules
-curl -s $P/ready/
+curl -s -b jar -H "X-CSRFToken: $T" -X DELETE $P/leftovers/ # what the ranges before this one left (§5.5)
+curl -s -b jar -H "X-CSRFToken: $T" -X POST $P/pool/        # every slot no lease holds owes a refill: create a missing stack,
+                                  # delete and create again a stale or failed one, wait for its nodes, seed its sensor
+curl -s -b jar $P/                # slots[].refill.state running, then idle, or failed with its reason
+curl -s -b jar $P/pool/           # slots[].servers, blocked, failures
 ```
 
 Notes:
@@ -1320,12 +1442,13 @@ Notes:
   is a leftover. Which wargame a stack runs comes from the pool's assignment
   of its number (§6.4), not from the tag: a free stack that runs another
   wargame is replaced.
-- A stack number with no stack is `NOT_STANDING` and blocked, before Heat is asked,
-  when Glance holds no active image of a role's `compute.images` name ("no
-  active image ... in Glance"), when the platform has no `cr-mgmt` address, or
-  when no wargame has a `topology.yaml`.
+- A slot with no stack is blocked, before Heat is asked, when Glance holds no
+  active image of a role's `compute.images` name ("no active image ... in
+  Glance"), when the platform has no `cr-mgmt` address, or when no wargame has
+  a `topology.yaml`; `GET pool/` lists the reason under `blocked`, and the
+  slot's refill fails with it.
 - Every node's user data ends with `systemctl start` of its role's boot units
-  (`BOOTS` in `platform/range/sandbox.py`: kali `slot-boot`; waf `slot-boot`
+  (`BOOTS` in `platform/range/stack_plan.py`: kali `slot-boot`; waf `slot-boot`
   and `nginx`; infra `slot-boot` and `sensor`; target `wargames`), then
   touches `/var/lib/cr/ready`, or writes the units' status into
   `/var/lib/cr/failed`. Two nodes check more first. The target refuses ready
@@ -1336,14 +1459,17 @@ Notes:
   `answers:` in `topology.yaml`, tried for up to 300 s), because configure
   loads the baseline rules through that socket next. The platform asks each
   node over ssh and reports it
-  `SETTING_UP` until one of the two exists. `/api/range/ready/` names
-  `/var/log/cloud-init-output.log` on a node that failed, and `bin/cloud up`
-  stops on it. A stack Heat reports `CREATE_FAILED` reads `SETUP_FAILED` with
-  Heat's reason. The next `POST slot/` deletes a failed or stale stack when no
-  session holds the stack (`ensure_slot` in `platform/range/openstack.py`
-  returns it in `rebuilt`), and the refill thread for that number
-  (`api/reset.py`) creates it again and configures it. An open session holds
-  only its own stack.
+  `SETTING_UP` until one of the two exists. `GET pool/` names
+  `/var/log/cloud-init-output.log` under `failures` for a node that failed,
+  and a stack Heat reports `CREATE_FAILED` with Heat's reason. A refill
+  (`range/refill.py`, advanced by the follower) calls `ensure_slot` in
+  `platform/range/openstack.py`, which deletes a failed or stale stack, or
+  one that runs another wargame than the pool assigns, and creates it again,
+  then `configure_slot`, which seeds the sensor. A refill that is blocked,
+  whose stack still fails, or that has not created and set up its stack
+  within 30 min reads `failed` with the reason, and `bin/cloud up` stops on
+  it. Only `POST pool/` and a lease's close owe a slot a refill, and
+  `POST pool/` skips every slot an open lease holds.
 - The platform reaches each range VM as `CR_OPENSTACK_SSH_USER` (`ubuntu`) on
   its control port on `cr-mgmt`, with the range key and one shared ssh
   connection per address (`ControlMaster auto`, `ControlPersist 60`). Each
@@ -1357,7 +1483,7 @@ Notes:
   id in the API server's memory, so a command asks the cloud nothing; creating
   or deleting the stack drops them.
 
-**The range stack.** Stack N is the Heat stack `cr-slot-<n>`. `platform/range/sandbox.py`
+**The range stack.** Stack N is the Heat stack `cr-slot-<n>`. `platform/range/stack_plan.py`
 turns `wargames/<w>/topology.yaml` and the declaration's origins into a plan,
 and `platform/range/openstack.py` renders it as a Heat Orchestration Template
 (`template()`) and creates the stack with `disable_rollback` and a 30-minute
@@ -1376,8 +1502,8 @@ stack uses the same addresses; stacks differ by network, not by CIDR.
 
 | VM (`cr-slot-<n>-<node>`) | Image | Learner |
 |---|---|---|
-| `kali` | `cr-kali-bake1`: Kali with `kali-linux-headless` and the tools | root, by web terminal and by ssh as `kali` (§3.5) |
-| `waf` | `cr-waf-bake1` (**(this cloud)** `cr-waf-bake2`): Ubuntu, nginx 1.24, ModSecurity 3.0.16, CRS 4.25.1 | root, by web terminal |
+| `kali` | `cr-kali-bake1`: Kali with `kali-linux-headless` and the tools | `kali` with passwordless sudo, by the attack seat's web terminal and its jump grant (§3.5) |
+| `waf` | `cr-waf-bake1` (**(this cloud)** `cr-waf-bake2`): Ubuntu, nginx 1.24, ModSecurity 3.0.16, CRS 4.25.1 | the defence seat as the read-only `analyst`, by web terminal and its jump grant (§3.7) |
 | `infra` | `cr-infra-bake1`: Ubuntu, nftables, Suricata (`jasonish/suricata`, pinned by digest), rsyslog | none |
 | `target` | `cr-target-bake1`: Ubuntu, Docker, board and corp at the baked tag | none |
 
@@ -1413,7 +1539,8 @@ stack uses the same addresses; stacks differ by network, not by CIDR.
   bridges the two IDS legs into `br0`, flushes their addresses and switches
   TSO, GSO, GRO and LRO off on them; sets a default route onlink via Kali's
   default-origin address; and loads `edge.nft`: tcp 80 to 121.134.88.42 is
-  DNATed to the WAF's front without SNAT, from `wan` only replies
+  DNATed to the WAF's front without SNAT, from `wan` an address in the set
+  `spent` is dropped first, then every address outside `pool`, then only replies
   (`ct state established,related`) and DNATed connections (`ct status dnat`)
   are forwarded, ICMP is answered on `wan`, and from `mgmt` only tcp 514 is
   taken. Ping and traceroute from Kali to 121.134.88.42 answer.
@@ -1431,8 +1558,8 @@ stack uses the same addresses; stacks differ by network, not by CIDR.
   infra; the host has only the `suricatasc` wrapper.
 - The WAF's `slot-boot` routes it through the infra's `lan`, writes `board`
   and `corp-wp` into `/etc/hosts` with the target's addresses, and ships
-  ModSecurity's audit log and nginx's refused log
-  (`/var/log/modsecurity/audit/audit.log`, `/var/log/nginx/refused.log`) with
+  ModSecurity's audit log and nginx's JSON access log of every request
+  (`/var/log/modsecurity/audit/audit.log`, `/var/log/nginx/access.json`) with
   rsyslog's `imfile` over tcp 514 to the infra's log server on `mgmt`. The
   exclusion file is
   `/etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`,
@@ -1456,53 +1583,48 @@ stack uses the same addresses; stacks differ by network, not by CIDR.
   VM's internal Docker networks (`docker network inspect` over ssh, once per
   held stack), drawn as `<w>-backend`.
 
-`configure/` seeds each stack's sensor with the baseline rules
+The refill's last step seeds each stack's sensor with the baseline rules
 (`deploy/suricata/rules/local.rules` from the platform's checkout) through
-`rules/suricata.py`. Everything else a stack needs is in its images and its
-user data.
+`rules.suricata.seed`; a round's start then applies its problem's posture
+over it. Everything else a stack needs is in its images and its user data.
 
-Secrets stay per session. The board's `seed` sets each seeded account's
-password on every start, so every session's hashes have new salts. corp's
+Secrets stay per lease. The board's `seed` sets each seeded account's
+password on every start, so every lease's hashes have new salts. corp's
 entrypoint deletes `wp-config.php` before the WordPress image's entrypoint
 runs, which then writes new random keys and salts, and on restored data it
 sets the admin password again.
 
-The learner's terminals (`platform/vm-terminal.sh cr-kali`, `cr-waf`) ssh to
-the VM's control address as the management user and run `sudo -i bash -l`, so
-both shells are root on their VM. A learner's own ssh to Kali goes through the
-jump in the platform container (§3.5).
+The seats' web terminals (`/vm-terminal/<side>/<round>/`, which nginx hands
+to `platform/vm-terminal.sh cr-kali attack <round>` or `cr-waf defence
+<round>`) ssh to the VM's control address as the management user and run
+`sudo -i -u kali` on Kali or `sudo -i -u analyst` on the WAF, never a root
+shell; the script opens only for a seat whose round is running and which
+holds a jump grant, and closes the shell within `TERMINAL_RECHECK` seconds
+(15) once that no longer holds. A seat's own ssh goes through the jump in
+the platform container (§3.5). The learner on Kali has passwordless sudo, so
+the attack seat is root there all the same.
 
-### 6.1 Session reset
+### 6.1 Slot refill
 
-A session is given a free READY stack from the pool that runs its wargame.
-When there is none and a free READY stack runs another wargame, the platform
-deletes that stack and creates it again for the wanted wargame; the open
-answers 409 until it is ready. The readiness read runs outside the lock that
-picks a session's stack (`SLOT_CHOICE` in `platform/api/views.py`), so both
-steps check again under that lock: the retarget claims the stack only while
-no open session holds it, and an open refuses a stack whose reset is running.
-Before this, a retarget could delete a stack a session had just been given
-(`docs/DECISIONS.md`, 2026-11-18).
+A lease (`POST /api/leases/`) is given a slot that no open lease holds, that
+the pool assigns to its wargame and whose refill is `idle`; the choice runs
+under one lock. When there is none it answers `503 range_unavailable` with
+`retry_after`. No slot of another wargame is retargeted.
 
-Closing a session deletes its stack and creates a new one for the same
-wargame, off the learner's path: every VM of the next session is new, booted
-from the baked images, with the target's pristine data. The platform then
-seeds the sensor with the baseline rules and marks the stack's disabled rules
-enabled. Acceptance checks that after a close the stack's WAF has another boot
-id and lacks the file the last learner wrote.
+Closing a lease, by its operator or because no heartbeat came for
+`CR_LEASE_IDLE_MINUTES` (30), ends its open rounds, deletes its stack and
+owes the slot a refill: the follower creates the stack again for the same
+wargame, off the learner's path, and seeds its sensor. Every VM of the next
+lease is new, booted from the baked images, with the target's pristine data;
+what a round disabled or applied went with the old stack. Acceptance checks
+that after a close the stack's WAF has another boot id and lacks the file the
+last learner wrote.
 
-A restart of the platform during a reset does not lose it. The reset leaves a
-file `slot-N` (holding the wargame) in `/data/reset-owed` until it succeeds.
-At boot the platform does the reset again for each stack number that still
-has one, as a close does. `/api/range/ready/` shows that stack `RESETTING`,
-then `READY` or `RESET_FAILED` with the reason. A reset whose new stack is not created and
-set up within 30 minutes fails.
-
-While the reset runs, `ready/` answers phase `RESETTING`. A refused `POST
-/api/sessions/` names the reset, so a client waits and does not call
-`configure/`. A failed reset reads `RESET_FAILED` with its reason. `POST
-$P/configure/` retries it. `POST $P/slot/rebuild/` deletes the stack;
-the next `POST slot/` creates it again.
+A restart of the platform or the follower does not lose a refill: its state
+is a file per slot under `CR_REFILL_DIR` (`/data/refill`, `slot-N.json`),
+and the follower picks every running one up on its next tick. A refill whose
+stack is not created and set up within 30 minutes reads `failed` with the
+reason in `GET /api/staff/range/`; `POST pool/` owes it again.
 
 How long a stack takes to delete and to come back ready, so how long a stack
 is away after a close, is **[unverified]**. The probe stack of 2026-11-18 (three
@@ -1516,26 +1638,27 @@ finished at 151 s).
 
 ### 6.2 Teardown order
 
-Delete the range stacks, then the fabric. `DELETE $P/slot/` deletes every
-range stack; `DELETE $P/slot/?slot=N` deletes one. Heat deletes a stack's servers,
+Delete the range stacks, then the fabric. `DELETE $P/pool/` drops every owed
+refill and deletes every slot stack; the staff API deletes no single slot (a
+lease's close replaces its own). Heat deletes a stack's servers,
 ports and networks itself; the `cr-lan-` groups are not the stack's and stay
 for the next stack. Each range VM's control port stands on
 `cr-mgmt`, so `DELETE $P/fabric/` refuses while any server other than the
-platform has a port on it; `bin/cloud down` waits until `GET $P/slot/` lists
-no standing stack first. Teardown also deletes the ports that no server holds
+platform has a port on it; `bin/cloud down` waits until `GET $P/pool/` lists
+no slot with a server first. Teardown also deletes the ports that no server holds
 any more. Nova leaves the pre-created `cr-platform.mgmt` port standing when it
 deletes a platform VM; the next `POST fabric/` attaches that port to the new
 platform VM, so the platform keeps its `cr-mgmt` address, and deletes any
 further detached port of that name. `DELETE $P/fabric/` deletes the `cr-lan-`
-groups after the stacks (`fabric.LAN_GROUP_PREFIX`), and the groups `cr-range`
+groups after the stacks (`networks.LAN_GROUP_PREFIX`), and the groups `cr-range`
 and `cr-build` if they are still there.
 
 ### 6.3 Keypair drift
 
 The fabric compares the keypair `cr-platform` with the platform's
-`/data/ssh/id_ed25519`. A new VM without the kept key makes a new key. Then `GET
-fabric/` reports `keypair cr-platform holds another public key` (drift, and
-`POST` answers 409). The fix is to delete the range stacks and then the fabric
+`/data/ssh/id_ed25519`. A new VM without the kept key makes a new key. Then
+`POST fabric/` answers `503 range_drifted`, naming `keypair cr-platform holds
+another public key`. The fix is to delete the range stacks and then the fabric
 before you replace the VM. With `bin/platform-rebuild` the key is carried over
 and nothing drifts. The public key is also in every stack's user data, so a
 new key makes every stack stale.
@@ -1550,56 +1673,58 @@ board and stack 4 for corp.
 - Stack N is `cr-slot-<n>`: four VMs and five networks of its own. How many
   stacks run at once is the cloud's capacity (§3.2), not a limit in the
   design.
-- The platform gives each session a free READY stack of its wargame and keeps
-  it for the life of the session (`Session.slot` holds its number). The close
+- The platform gives each lease a free ready stack of its wargame and keeps
+  it for the life of the lease (`Lease.slot` holds its number). The close
   replaces only that stack.
 - The collector writes each stack's syslog to `logs-N-*`. It tells the stacks
-  apart by the sender's name (`waf-2`, `infra-2`). A session reads its own
-  stack's index.
+  apart by the sender's name (`waf-2`, `infra-2`). A lease's rounds read their
+  own stack's index.
 
 To grow the pool, raise a count in `compute.pool` and run `uv run bin/cloud up
---replace`: `POST slot/` creates the new stacks. To shrink it, lower a count;
-`DELETE leftovers/` deletes the stacks numbered beyond the new total. The
-pool's assignment decides which wargame each number runs: when a count moves,
-the next `POST slot/` deletes each free stack that runs another wargame, and
-its refill builds it for the assigned one; a stack a session holds follows
-after its close. A session open still retargets a free stack of another
-wargame when none of its own is READY (§6.1). By hand on a standing platform:
+--replace`: `POST pool/` owes the new slots a refill, which creates their
+stacks. To shrink it, lower a count; `DELETE leftovers/` deletes the stacks
+numbered beyond the new total. The pool's assignment decides which wargame
+each number runs: when a count moves, the refill `POST pool/` owes each free
+slot deletes a stack that runs another wargame and builds it for the
+assigned one; a stack a lease holds follows after its close. By hand on a
+standing platform:
 
 ```bash
 sed -i 's/^CR_OPENSTACK_POOL=.*/CR_OPENSTACK_POOL=board=3 corp=2/' /opt/cr/openstack.env
-docker compose up -d --force-recreate platform
-curl -s -X POST -H 'Content-Type: application/json' -d '{}' "$P/slot/?slot=5"   # creates cr-slot-5 for corp
-curl -s $P/ready/                                                                # slots[].phase READY
+docker compose up -d --force-recreate platform follow
+curl -s -b jar -H "X-CSRFToken: $T" -X POST $P/pool/   # owes every free slot a refill; slot 5 is built for corp
+curl -s -b jar $P/                                     # slots[].refill.state idle
 ```
 
-On the VM range of 2026-10-12, two sessions opened at once took ranges 1 and
-2, a third answered 409, and each session ingested only its own case's alerts.
+On the VM range of 2026-10-12, two sessions of the old tree opened at once
+took ranges 1 and 2, a third answered 409, and each session ingested only its
+own case's alerts.
 
 ## 7. Verification
 
 ```bash
-curl -s -b jar http://$ADDRESS:8000/api/range/ready/          # signed in as in §5.6
-curl -s -b jar http://$ADDRESS:8000/api/range/fabric/ | jq .clean
+curl -s -b jar http://$ADDRESS:8000/api/staff/range/                       # signed in as in §5.6
+curl -s -b jar -H "X-CSRFToken: $T" -X POST http://$ADDRESS:8000/api/staff/range/fabric/ | jq .clean
 ssh ubuntu@$ADDRESS 'cd /opt/cr && CR_PLATFORM_URL=http://'$ADDRESS':8000 bin/verify'
 ```
 
 `bin/verify` runs `uv sync --frozen` and then the checkout's
 `.venv/bin/python`. The platform VM creates `/opt/cr/.venv` with uv at first
-boot (§5.1), and again after a sideload checkout. `bin/verify` restarts the platform and
-resets the range. Never run it against a stack that someone is using.
+boot (§5.1), and again after a sideload checkout. `bin/verify` restarts the
+platform and prunes leases, and the acceptance suite opens and closes its
+own leases, each close replacing a stack. Never run it against a stack that
+someone is using.
 
 `bin/verify --changed --live` runs only the acceptance modules that a change
 reaches (`bin/acceptance --only`). `--fast` runs no acceptance.
 
 Since 2026-10-17 the whole acceptance suite runs here (`docs/DECISIONS.md` "No
-acceptance test is skipped on OpenStack"). `test_lesson.py`'s F1 map test runs
-once per course and skips for a course that does not start with F1 (`c2` starts
-with F4), so a full run reports one skip. `docs/state/now.md`
-has the latest full run.
-Two full runs have been made on the Heat range (2026-11-18); the second
-ended with failures whose causes are fixed on `dev` and not yet run live.
-Their numbers and causes are in `docs/state/now.md`.
+acceptance test is skipped on OpenStack"). Two full runs of the old tree were
+made on the Heat range (2026-11-18); their numbers and causes are in this
+file's and `docs/state/now.md`'s git history. The side split's ported suite
+(`test/`, on the generated client; `test_lesson.py`, `test_ready.py` and
+`test_map.py` dropped, `docs/DECISIONS.md` 2026-11-20) has not run on a
+cloud yet (`docs/STATE.md`).
 
 A change to a range VM role (`deploy/roles/<role>/` or a file it links, such as
 `deploy/kali/`, `deploy/proxy/stamp.py`, `deploy/waf/`, `deploy/suricata/` or a
@@ -1608,12 +1733,12 @@ bake (§3.6). Range VMs boot from the Glance images `compute.images` names, and 
 stack's digest covers those names and the flavors, not the images' content:
 bake under a new name (`cr-<role>-bake2`), name it in `compute.images` (a
 target bake also its commit in `compute.target_tag`), and with the new names
-`bin/cloud up --replace` finds every stack `STALE`; each stack no session holds
+`bin/cloud up --replace` finds every stack stale; each stack no lease holds
 is deleted and its refill builds it again. A change that alters the rendered template does the same
 without a bake: `wargames/<w>/topology.yaml`, the declaration's origins, the
-user data `range/sandbox.py` writes, or the template `range/openstack.py`
-renders. The sensor's rules need no bake: `configure/` seeds the sensor with `deploy/suricata/rules/local.rules` from the platform's
-checkout (§6).
+user data `range/stack_plan.py` writes, or the template `range/openstack.py`
+renders. The sensor's rules need no bake: each refill seeds the sensor with
+`deploy/suricata/rules/local.rules` from the platform's checkout (§6).
 
 **The first acceptance run on the OpenStack substrate**, 2026-10-11, on a range
 built from scratch by `bin/cloud up` on the previous cloud (OPNsense 26.7 edge):
@@ -1660,7 +1785,8 @@ We did not check whether that OPNsense edge survived an OPNsense update.
     own LANs have DHCP off and take their addresses from the config drive
     (§6). A fabric made before that fix keeps the old subnet: run `openstack
     subnet set --dns-nameserver 0.0.0.0 cr-mgmt`, then replace the range
-    stacks (`POST $P/slot/rebuild/`, §6.1) so that their VMs ask DHCP again.
+    stacks (`DELETE $P/pool/`, then `POST $P/pool/`, §6.2) so that their VMs
+    ask DHCP again.
   - A cloud admin can also set `[ovn] dns_servers`, which helps the cloud's other
     VMs. The product no longer needs it.
 - A member user cannot create flavors or change quotas. Neither the

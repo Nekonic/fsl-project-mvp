@@ -1,6 +1,8 @@
 import pytest
 
 from attack import service
+from cr import errors
+from match import service as match
 from range import jump
 from tests.attack.conftest import codes, url
 from testing.fakerange import KALI_MANAGEMENT
@@ -40,3 +42,39 @@ def test_no_terminal_is_granted_after_the_end(as_attacker, attacker):
     answer = as_attacker.get(url(attacker.round, "terminal/"))
 
     assert codes(answer) == ["round_closed"]
+
+
+def test_the_kali_shell_opens_as_the_learner_account_on_the_address_the_seat_s_grant_names(
+        as_attacker, attacker, cloud, monkeypatch):
+    monkeypatch.setattr(match, "slot_range", lambda number: cloud)
+    as_attacker.get(url(attacker.round, "terminal/"))
+
+    shell = match.terminal_shell(attacker.round_id, "attack")
+
+    assert (shell.address, shell.alias, shell.account) == (KALI_MANAGEMENT, KALI_MANAGEMENT, "kali")
+
+
+def test_no_kali_shell_opens_for_a_seat_that_was_never_granted_one(attacker, cloud, monkeypatch):
+    monkeypatch.setattr(match, "slot_range", lambda number: cloud)
+
+    with pytest.raises(errors.NotSeated):
+        match.terminal_shell(attacker.round_id, "attack")
+
+
+def test_no_kali_shell_opens_once_the_round_ended(as_attacker, attacker, cloud, monkeypatch):
+    monkeypatch.setattr(match, "slot_range", lambda number: cloud)
+    as_attacker.get(url(attacker.round, "terminal/"))
+    attacker.round.phase = "ended"
+    attacker.round.save(update_fields=["phase"])
+
+    with pytest.raises(errors.Conflict) as refused:
+        match.terminal_shell(attacker.round_id, "attack")
+    assert refused.value.code == "round_closed"
+
+
+def test_an_attack_seat_opens_no_shell_on_the_defence_side(as_attacker, attacker, cloud, monkeypatch):
+    monkeypatch.setattr(match, "slot_range", lambda number: cloud)
+    as_attacker.get(url(attacker.round, "terminal/"))
+
+    with pytest.raises(errors.NotSeated):
+        match.terminal_shell(attacker.round_id, "defence")

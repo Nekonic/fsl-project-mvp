@@ -9995,3 +9995,323 @@ spec is updated where it named the old placement.
     the all-spent end state; the separate scratch nginx master with its own
     audit log; every benign case always probed with `untested` reasons;
     probe recording with CRS detection-only; no KQL in the bot API.
+
+## 2026-11-20 — The first account, the widened seam scan and the comment scan
+
+- **`admin` / `123456` exists on every store again.** The 2026-11-15 ruling
+  ("초기 비밀번호는 admin/123456 무조건") was lost with the old migrations.
+  `accounts.0002_first_account` makes `admin` with `123456` as active staff
+  (and superuser, as the old migration did) when no `admin` exists; nothing
+  asks for a change. `bin/carry-users` carries rows without their primary
+  keys: when the old store has `admin`, the migrated one is deleted first so
+  the old hash wins; when it has none, the migrated `admin` stays. A store
+  holding any user but `admin` is still refused.
+- **The seam scan moved to `platform/tests/seams/` and widened to the spec.**
+  It scans `platform/`, `front/src`, `bots/`, `test/` and `bin/` (the
+  generated `bots/client/` and `front/src/api/schema.d.ts`, and the
+  platform's own tests and fakes, excluded), and adds packet capture
+  (`rules/suricata.py`), the infra nftables sets and conntrack
+  (`range/edge.py`), the node names, the log index patterns and
+  `/kibana/api|internal`. Its exceptions are a closed map from file to the
+  seams it may know; a test reads the "Known exceptions" paragraph of
+  CLAUDE.md and fails when the two lists differ, another when an exception
+  no longer knows what it is allowed to. The spec's own list
+  (`bin/cloud`, `bin/platform-rebuild`, `test/range.py`,
+  `test/test_range_isolation.py`) matches none of the patterns, so those
+  files are not listed. Four acceptance checks of Elasticsearch's own set-up
+  (`test/test_event_time.py`, `test_geoip_durable.py`,
+  `test_origin_placement.py`, `test_waf_geolocation.py`) query it directly
+  and are named exceptions until they move behind `/api/`; the corp test's
+  message no longer names the binlog.
+- **`platform/tests/seams/test_no_comments.py`** scans Python (comment
+  tokens and docstrings), shell (outside heredocs) and TS/TSX/JS under
+  `platform/`, `front/src`, `bots/`, `bin/`, `test/`, `deploy/`, `wargames/`
+  and `redteam/`, allowing only shebangs, Django's migration header (in a
+  migration) and `deploy/suricata/rules/`. It found one: a `# noqa` on the
+  PyYAML probe in `bin/platform-rebuild`, now `importlib.util.find_spec`.
+- **Review of the scans.** The shell scan took any `<<` followed by a word
+  for a heredoc, so a here-string such as `<<< word` hid the rest of the
+  file from it, and it saw only lines that start with `#`. It now skips
+  here-strings and arithmetic shifts, reads `<<\EOF`, finds a trailing
+  `cmd # note` outside quotes, and scans the body of a heredoc fed to
+  `python` as Python. The seam scan also reads `.md` and `.json`, so the
+  bots' prompts are held to the same seams as their code.
+
+## 2026-11-20 — nginx.conf and vm-terminal.sh for the side-split layout
+
+- **Per-seat terminals.** `/vm-terminal/attack/<round>/` and
+  `/vm-terminal/defence/<round>/` each go to their side's ttyd (7691, 7692;
+  `-b /vm-terminal/<side>`, `-a`). nginx drops the client's query and passes
+  `?arg=<round>` itself, so the round ttyd hands `vm-terminal.sh` is the one
+  in the path the seat check approved. The check is an `auth_request` to
+  `/api/rounds/<round>/terminal-auth/<side>/`, found from `$request_uri`
+  through a map so the subrequest needs no variable of the parent location,
+  and it is not cached: a yes must not outlive the seat or the round.
+  Any other `/vm-terminal/` path is 404.
+- **`vm-terminal.sh <host> <side> <round>`** asks `manage.py terminal_shell`
+  (`match.service.terminal_shell`) for the address, host key alias and
+  account. It refuses unless the round is running and the side's seat holds
+  a jump grant (`range.jump.granted`), which `GET terminal/` issues and the
+  round's end revokes; the address is the grant's. The attack seat gets
+  `sudo -i -u kali`, the defence seat `sudo -i -u analyst`, never a root
+  shell. The platform's management key still makes the ssh hop; the seat's
+  own jump key is for the seat's client, which the platform never keeps.
+  `entrypoint.sh` passes the side after the host, so neither the script nor
+  Python names a node.
+- **No `/auth-check/` view exists in the new tree**, so `/signed-in` asks
+  `/api/me/` (200 signed in, 401 not), cached 5 s per session cookie and
+  address. Kibana pages and the site pane need only a signed-in session;
+  every Kibana API call in a space still goes to the gate, which checks the
+  space against the user's defence seats. `/kibana-refused/` and
+  `/static/map/` are gone: every refused Kibana route goes to the gate,
+  which answers in Korean from `strings/server.json`, and the map ships with
+  the front build.
+- **The site listener** passes Django only `cr_session` (the site proxy
+  authenticates the seat with it); `match/site.py` keeps the target's
+  cookies in its own jar and never forwards the browser's. The proxied path
+  is the raw rest of `$request_uri`, so percent-encoding reaches the target
+  unchanged.
+- **The console** is `root /app/front/dist` with `try_files $uri $uri/
+  /index.html`, the last location of the 8000 server; nothing else on 8000
+  reaches Django except `/api/` and the Kibana gate. `@too-many` answers in
+  the API's one error shape with code `too_many`.
+- **Verified offline only.** `platform/tests/test_front.py` parses the file
+  (braces and semicolons) and checks each location against the Django routes
+  it names; `test_vm_terminal.py` runs the script against fake `python`,
+  `ssh` and `tmux`. Docker was not running on the development machine, so
+  `nginx -t` was not run; nothing has run on a range.
+
+## 2026-11-20 — Terminal review: the seat nginx checks is the seat it opens, and a shell ends with its grant
+
+- **The raw path and the routed path must name one seat.** The seat check
+  is found from `$request_uri` (raw), but the location matches the
+  normalized `$uri`, so `/vm-terminal/defence/7/../../attack/5/ws` checked
+  the caller's defence seat in round 7 and handed the attack ttyd round 5:
+  someone else's kali shell, attached to that seat's tmux session. Each
+  terminal location now returns 404 unless the raw path's seat equals
+  `$terminal_round/terminal-auth/<side>` from its own captures; a dot
+  segment, an escape or a doubled slash that changes the seat is refused
+  before the check. `tests/test_front.py` replays nginx's normalization
+  over such paths.
+- **An open shell closes when its grant goes.** `vm-terminal.sh` runs ssh
+  beside a loop that asks `manage.py terminal_shell` again every
+  `TERMINAL_RECHECK` seconds (15) and kills ssh once the round has ended or
+  the seat's jump grant is gone. The check runs in the terminal's own
+  process, so it holds whichever container ends the round (the follower
+  ends timed-out rounds and has no tmux). Revoking the grant used to leave
+  the kept tmux session, and with it a shell on the slot's kali, open into
+  the next round on that slot.
+
+## 2026-11-20 — Spec step 5, the repo side: edge sets, the access log, the scratch CRS test, analyst
+
+The deploy files of build step 5 are written to match what `range/edge.py`,
+`rules/crs.py`, `rules/suricata.py` and `ingest/elastic.py` already call.
+Nothing is baked or run on a range; `docs/OPENSTACK.md` §3.7 holds the rebake
+and its checks.
+
+- **Only `spent` is enforced at the edge.** `edge.nft` declares `pool` and
+  `spent` and drops `ip saddr @spent` from `wan` before the established
+  accept. The spec also drops `ip saddr != @pool`; the code fills `pool`
+  only in `attack.service.refill_edge`, which returns when a round has no
+  origin budgets, and a probe lease has no round. That drop would cut probe
+  recording and every round without attack origins, customers included, so
+  it waits until those fill `pool` too (`docs/STATE.md`).
+- **The access log is `/var/log/nginx/access.json`, not `access.log`.**
+  Ubuntu's `nginx.conf` already writes the combined format to
+  `/var/log/nginx/access.log`; a second format into the same file would mix
+  the two. The JSON line carries the fields `elastic.access_record` reads
+  (`time`, `client_ip`, `status`, `request_id`) plus `request`, `vhost` and
+  `refused` from the one `$refused` map; `host` is avoided because the
+  template maps it as an object. Filebeat keeps renaming `status` to
+  `http.status`, which `access_record` reads, so no field collides with a
+  Kibana runtime field.
+- **The relay and Kibana follow the new tag.** `log-relay.conf` on the infra
+  forwards programname `nginx-access` (the old `nginx` branch read the
+  removed `refused.log`), and the Kibana alert search and its three
+  visualizations show `event.module : "nginx_access" and refused : true`
+  instead of module `nginx`, so a 200 is traffic, not an alert.
+- **tcpdump keeps root.** Ubuntu's tcpdump drops to the user `tcpdump` before
+  it opens the `-w` file, and `rules.suricata.capture` writes into a folder
+  root just made; the capture now passes `-Z root`. The infra installs
+  `tcpdump` and `conntrack` (for `edge.spend`), which it lacked.
+- **The scratch CRS instance needs no worker writes under its prefix.**
+  `probe.conf` runs `user www-data` like the live master, keeps request
+  bodies in memory (`client_body_buffer_size 16m`) and buffers no upstream
+  response to disk (`proxy_max_temp_file_size 0`), so `/var/lib/cr-crstest`
+  stays 0700. The error log and the audit log are opened by the root master.
+  `probe-upstream.py` answers with `text/html` so ModSecurity inspects the
+  recorded body as it would the live one.
+- **analyst.** A bash login by the jump grant's key (password field `*`,
+  which OpenSSH does not treat as locked), group `adm` for the nginx and
+  ModSecurity logs, sudo for `nginx -t` and `nginx -T` only, no ssh
+  forwarding, and an nftables output rule that drops every packet its
+  processes send, so the defence seat cannot reach the target or the live
+  WAF on loopback from its shell. The exclusion file is created 0644 (the
+  platform writes it as root through sudo) instead of 0664 group `adm`,
+  which analyst would have been able to write.
+- **`bin/record-probes` is a thin client.** It starts the recording, follows
+  the progress through the generated client and exits non-zero when a case
+  was not recorded. The platform writes the recordings to its
+  `CR_PROBES_OUT`; no route serves them, so they are copied off the platform
+  VM by hand before they are committed.
+- **Unverified.** Docker was not running on the development machine, so
+  `nft -c` and `nginx -t` were not run on these files; the tests check them
+  structurally, run `probe-upstream.py` on loopback and push an access line
+  through the Filebeat steps into `ingest.elastic`. Whether
+  `jasonish/suricata`'s entrypoint lets the offline `-r` run write to a
+  root-owned scratch log folder mounted at `/scratch` is not known.
+
+## 2026-11-20 — Step 5 review: a round starts with empty edge sets; what the missing `pool` drop leaves open
+
+- **Each round start empties `pool` and `spent`.** A lease holds rounds one
+  after another and its slot is rebuilt only when the lease is released, so
+  the spec's "the `spent` set needs no flush at round end" does not hold:
+  with `edge.nft` now dropping `@spent`, an origin spent in one round stayed
+  dropped in the next, whose fresh budget for it showed it unspent and whose
+  box could be told to wear it. `attack.fill_pool` (round start) now loads
+  the edge through `range.edge.restart`, which flushes both sets and adds the
+  round's addresses in one `nft -f` transaction. The tick's
+  `attack.refill_edge` still only adds, so a spend that lands between its
+  read and its load is never undone.
+- **Why `ip saddr != @pool drop` is still missing, corrected.** The step-5
+  entry gave two reasons; only one holds. Every started round has budgets
+  (`match.service.start_round` calls `attack.fill_pool`, which refuses a box
+  with no origin). The probe lease is the case left: it has no round and
+  fills nothing. What the gap leaves open is stated in `docs/STATE.md`:
+  kali's internet port allows every address, so a learner with sudo can send
+  from an unused address in an origin subnet that neither set holds, and the
+  HP rule does not reach it.
+
+## 2026-11-20 — Docs brought in step with the side-split code after step 5 and the terminals
+
+- **The spec says what was built where the build departed.** Its status line
+  now says it was approved on 2026-11-19 and is being built; the text for
+  the first account, the seam scan's exception map (the spec's own list
+  matched nothing the scan finds), the comment scan's reach, the per-seat
+  terminals and their raw-path guard, `/signed-in` on `/api/me/` (no
+  `/auth-check/` or `/kibana-refused/` view, `/static/map/` dropped), the
+  access log's path (`access.json`), the `spent`-only edge drop, the round
+  start that empties both edge sets and `deploy/proxy/stamp.py` is changed
+  to match the code. The reasons stay in the entries above.
+- **`deploy/proxy/stamp.py` stays.** The spec listed it for deletion as a
+  duplicate of `deploy/roles/kali/stamp.py`, but the role's file is a git
+  link to it, so the repo holds one copy; there is nothing to delete.
+- **OPENSTACK.md names the side split's staff range API.** Its procedures
+  used the old tree's `/api/range/slot/`, `ready/`, `configure/`,
+  `/api/sessions/<id>/ssh/`, `/auth-check/`, the session reset with its
+  retarget and `reset-owed` files, and root shells for both terminals. They
+  now follow `bin/cloud` and `match.service`: `POST fabric/`, `DELETE
+  leftovers/`, `POST pool/` (a refill owed to every slot no lease holds,
+  carried out by the follower, state in `CR_REFILL_DIR`), `GET
+  /api/staff/range/` until every refill is `idle`; a lease gets only a free
+  slot of its own wargame or `503 range_unavailable`, with no retarget; the
+  terminals open as `kali` and `analyst`. Runs and measurements dated before
+  2026-11-19 keep the old names as the record, which a note at the top says.
+- **CLAUDE.md names `docs/DECISIONS.md` among the Korean places** for as long
+  as `test_no_hangul.py` allows it by name, and no longer says the platform
+  Dockerfile and `images.yml` generate the clients: only `bin/verify` does
+  until the `front/` node stage exists.
+
+## 2026-11-20 — Three open points closed: the `pool` drop, a refused terminal's answer, what `analyst` leaves
+
+- **The edge drops every address outside `pool`.** `edge.nft` now has
+  `iifname @wan@ ip saddr != @pool drop` right after the `spent` drop, both
+  before the established accept. The probe lease was the one sender with no
+  `pool`; `attack.fire_probe` now admits the origin it wears through
+  `range.edge.admit` before each case (per case, not once, so a `slot-boot`
+  reload mid-recording is refilled the way the tick refills a round). The
+  other senders from the origin subnets already go through `pool`: case
+  firing, free tools, requests and the attack-seat site pane wear an origin
+  through `attack.wearing`, which fills the pool when the round has none;
+  customers and the defence seat's site pane send from customer addresses,
+  which `refill_edge` puts in `pool`. The attack terminal only checked the
+  phase, so it now fills the pool the same way before it grants a shell.
+  A learner with sudo on kali who adds an unused origin-subnet address now
+  reaches nothing; sending from a customer address stays open (spec §17
+  risk 7).
+- **A refused terminal answers the API's status and code.** nginx's
+  `auth_request` passes on only 2xx, 401 and 403 and makes everything else a
+  500 with no body. Rather than change `terminal-auth`'s statuses (it is an
+  API route with the contract's `409 round_closed`), its view adds the
+  refusal code as `X-Error-Code`; each terminal location keeps it with
+  `auth_request_set $terminal_refusal $upstream_http_x_error_code` (the
+  module sets these variables before it checks the status, so they survive
+  the redirect) and sends `403` and `500` to `@terminal-refused`, which
+  returns `409 round_closed`, `409 round_not_started`, `404 unknown_round` or
+  `403 not_seated` in the one error shape, and `503 unavailable` when the
+  check named nothing it knows. A 401 still goes to `@sign-in`. An
+  `error_page` in a location drops the server's, so the terminal locations
+  also carry `error_page 429 = @too-many` for their `limit_conn`.
+- **What `analyst` starts ends with the round.** When the round's defence
+  grant is revoked, `defence.revoke_terminal` runs `range.jump.end_account`
+  on cr-waf as root: `crontab -r`, `atrm` of the account's `atq` jobs,
+  `loginctl disable-linger` and `terminate-user` (which stops its
+  `systemd --user` manager and units), then `pkill -KILL -u` up to three
+  times until none is left; a process that survives makes it
+  `RangeUnavailable`. It runs after the key is dropped, so no new shell can
+  start between the two, and only when a grant was revoked, so a round whose
+  defender never opened the terminal makes no WAF call. It lives in
+  `range/jump.py` beside the key handling because it is account knowledge,
+  not CRS or nginx knowledge; kali's `kali` account is not ended the same way,
+  since its tool runs and the box's own services are stopped by
+  `attack.stop_runs` and a root learner could escape it anyway.
+- **Verified offline only.** `tests/test_edge_sets.py` and `test_roles.py`
+  check the rule's place; the probe recording test checks the admitted
+  origin; `tests/test_front.py` replays `auth_request`'s status rule over the
+  parsed config for every refusal; `tests/seams/test_jump.py` runs the end
+  script against fake `crontab`, `atq`, `atrm`, `loginctl`, `pkill` and
+  `pgrep` with a respawning process. No `nft -c`, `nginx -t` or range run;
+  `docs/OPENSTACK.md` §3.7 lists the checks for the slot.
+
+## 2026-11-20 — HP review from kali: one excuse per API charge, an empty edge between rounds, a bounded access line
+
+A review of the `pool` drop from the learner's seat on kali (sudo, raw
+sockets, other subnets, IPv6, the control NIC, the proxy on 127.0.0.1:8081)
+and of the terminal's refusal answer.
+
+- **An API charge excused every access event with its marker.**
+  `domain.ledger.debit` skipped any asynchronous event whose marker belonged
+  to an Action charged on the spot, and `stamp.py` keeps an `X-Request-ID`
+  the request already carries. So a learner who read one marker from a
+  `POST requests/` answer could send any number of requests from kali's
+  terminal with that header and pay nothing, no sudo needed. Now a
+  synchronous charge excuses exactly one event: `debit` drops the marker from
+  the owed set once it skips an event, and `charge_access_page` marks the
+  Action `access_seen` (migration `attack.0002_action_access_seen`) so a
+  later page or tick charges the next one. Each charged Action sends one
+  request (the prefetch of a case carries no action marker), so the API's own
+  request is still charged once.
+- **The edge stayed open after a round.** `pool` kept the round's origins
+  and customer addresses until the next round start, and the HP rule charges
+  only running rounds, so a process the learner left on kali (a `nohup`
+  sqlmap, a root cron job) reached the target uncharged between rounds.
+  `attack.close` now empties `pool` and `spent` (`range.edge.restart` with
+  no addresses) when the round had filled them, and `refill_edge` adds
+  nothing once the round has ended, so a tick that finishes after the end
+  cannot fill it again. One open round per lease (`round_open`) makes this
+  safe for the lease's next round, which fills the sets at its start.
+- **A padded marker could lose the access line.** nginx 1.24 joins repeated
+  headers into `$http_x_request_id` and passes control bytes in header
+  values, which `escape=json` writes as six bytes each, so four 8 KiB
+  `X-Request-ID` lines make an access line far past the 64 KiB rsyslog and
+  filebeat carry; the cut JSON has no `client_ip` and charges no origin.
+  `board.com.conf` now logs `$logged_marker`, which is `$http_x_request_id`
+  only when it matches `^[A-Za-z0-9._:-]{1,128}$` (uuid hex and hyphenated,
+  case names) and empty otherwise; such a request is charged as unmarked.
+  The line is bounded by `$request` (one 8 KiB buffer, at most doubled).
+- **Not defects.** IPv6: the infra does not forward it and the LAN groups
+  admit IPv4 only. Other subnets and unused origin addresses: dropped by
+  `!= @pool`. Raw sockets: a spoofed source is either a pool origin, charged
+  to that origin, or a customer address (spec §17 risk 7, unchanged). The
+  control NIC: `cr-mgmt` lets kali send only to `cr-reach`, which takes
+  udp 123 only from it. The proxy listens on every interface, but only the
+  infra and the platform can reach kali, and `analyst` on cr-waf sends
+  nothing (`meta skuid analyst drop`), so it is left as is rather than
+  rebaking kali. The terminal's `@terminal-refused` maps every code
+  `terminal-auth` can raise; variables set by `auth_request_set` survive the
+  `error_page` redirect.
+- **Verified offline only.** `tests/domain/test_ledger.py` and
+  `tests/attack/test_charge_from_access.py` (a reused marker charged across
+  ticks), `tests/attack/test_spend.py` (the end empties the edge, a late tick
+  adds nothing), `tests/test_access_log.py` (the marker map). No
+  `nginx -t` or range run; `docs/OPENSTACK.md` §3.7 lists the slot checks.

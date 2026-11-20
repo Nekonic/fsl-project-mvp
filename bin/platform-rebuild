@@ -94,10 +94,8 @@ def add_sideload(parser: argparse.ArgumentParser) -> None:
 
 
 def settings_module():
-    try:
-        import yaml  # noqa: F401
-    except ImportError as missing:
-        raise Refused(f"{Path(sys.argv[0]).name}: PyYAML is missing; run it with uv run") from missing
+    if importlib.util.find_spec("yaml") is None:
+        raise Refused(f"{Path(sys.argv[0]).name}: PyYAML is missing; run it with uv run")
     spec = importlib.util.spec_from_file_location("cr_cloud", LOADER)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module

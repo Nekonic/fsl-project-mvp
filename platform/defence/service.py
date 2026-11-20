@@ -476,11 +476,24 @@ def terminal(found: Round, seat: Seat) -> dict:
             "ssh": {**asdict(access), "expires_at": found.ends_at or found.lease.expires_at}}
 
 
+def terminal_shell(seat: Seat) -> tuple[str, str]:
+    grant = jump.granted(seat.pk, configured().jump)
+    if grant is None:
+        raise errors.NotSeated()
+    return grant.address, ANALYST_ACCOUNT
+
+
 def revoke_terminal(found: Round) -> int:
     cfg = configured()
-    return sum(1 for seat in Seat.objects.filter(round=found, side=DEFENCE)
-               if jump.close_access(seat.pk, lambda: slot_range(found, cfg).runner(cfg.waf.role), ANALYST_ACCOUNT,
-                                    cfg.jump) is not None)
+
+    def waf():
+        return slot_range(found, cfg).runner(cfg.waf.role)
+
+    revoked = sum(1 for seat in Seat.objects.filter(round=found, side=DEFENCE)
+                  if jump.close_access(seat.pk, waf, ANALYST_ACCOUNT, cfg.jump) is not None)
+    if revoked:
+        jump.end_account(waf(), ANALYST_ACCOUNT)
+    return revoked
 
 
 def close(found: Round) -> None:
