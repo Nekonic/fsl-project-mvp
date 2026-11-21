@@ -31,6 +31,7 @@ TABLES = (
     ("detections", "telemetry_detection"),
     ("customer requests", "training_customerrequest"),
     ("objectives", "scoring_objective"),
+    ("verdicts", "scoring_verdict"),
     ("rule sets", "training_ruleset"),
     ("rule tests", "training_ruletest"),
     ("disabled rules", "training_disabledrule"),

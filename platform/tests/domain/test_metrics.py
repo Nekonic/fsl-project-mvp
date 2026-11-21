@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from domain.scoring.correlate import correlate
-from domain.scoring.metrics import free_actions, per_case, score, verdict
+from domain.scoring.metrics import CaseOutcome, decided, free_actions, per_case, score, verdict
 from domain.types import CaseMatch, CaseRecord, CorrelationResult, DetectionRecord
 
 T0 = datetime(2026, 9, 18, 12, 0, 0, tzinfo=timezone.utc)
@@ -109,3 +109,19 @@ def test_free_actions_are_reported_by_origin():
 def test_verdict_codes():
     assert [verdict(True, True), verdict(True, False), verdict(False, True), verdict(False, False)] == [
         "tp", "fn", "fp", "tn"]
+
+
+def a_outcome(alerts: int):
+    return CaseOutcome(case_id="c", name="c", malicious=True, verdict="tp" if alerts else "fn",
+                       detection_ids=tuple(str(n) for n in range(alerts)), corroborated=None)
+
+
+def test_a_case_is_decided_once_it_ended_and_drew_an_alert_or_waited_out_the_delay():
+    ended, wait = datetime(2026, 11, 21, tzinfo=timezone.utc), timedelta(seconds=30)
+    soon, later = ended + timedelta(seconds=1), ended + timedelta(seconds=30)
+
+    assert decided(a_outcome(1), ended, soon, wait, running=False, round_over=False)
+    assert not decided(a_outcome(0), ended, soon, wait, running=False, round_over=False)
+    assert decided(a_outcome(0), ended, later, wait, running=False, round_over=False)
+    assert not decided(a_outcome(1), ended, later, wait, running=True, round_over=False)
+    assert decided(a_outcome(0), ended, soon, wait, running=True, round_over=True)

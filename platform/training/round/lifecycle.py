@@ -221,6 +221,20 @@ def settle(found: Round) -> None:
     referee.settle(found, actions(found), alert_feed.detections(found))
 
 
+def judge_after() -> timedelta:
+    return timedelta(seconds=settings.JUDGE_AFTER_SECONDS)
+
+
+def judge(found: Round, at: datetime | None = None) -> int:
+    made = referee.judge(found, actions(found), alert_feed.detections(found), attack.running(found),
+                         at or timezone.now(), judge_after())
+    for verdict in made:
+        log.append(found.pk, "case.judged", {"action": verdict.action, "case": verdict.case,
+                                             "verdict": verdict.verdict, "alerts": verdict.alerts,
+                                             "corroborated": verdict.corroborated})
+    return len(made)
+
+
 def end_time(found: Round) -> datetime:
     now = timezone.now()
     return min(now, found.ends_at) if found.ends_at else now
@@ -240,6 +254,7 @@ def end_round(found: Round, reason: str) -> Round:
     if was != CREATED:
         customers.stop(found)
         guarded(found, "settling the objectives", settle)
+        stepped(found, "judging the cases", judge)
     log.append(found.pk, "round.ended", {"reason": reason})
     return found
 
@@ -262,6 +277,7 @@ READS = (
     ("enabling expired rules", lambda found: defence.enable_expired(found)),
     ("the customers", lambda found: customers.catch_up(found)),
     ("settling the objectives", settle),
+    ("judging the cases", judge),
 )
 
 

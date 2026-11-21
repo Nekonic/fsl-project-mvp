@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from domain.scoring.corroborate import corroborated, indiscriminate_signatures
 from domain.types import FN, FP, TN, TP, CaseRecord, CorrelationResult, DetectionRecord, Score
@@ -35,6 +36,15 @@ def verdict(malicious: bool, detected: bool) -> str:
     if malicious:
         return TP if detected else FN
     return FP if detected else TN
+
+
+def decided(outcome: CaseOutcome, ended_at: datetime, now: datetime, wait: timedelta, *, running: bool,
+            round_over: bool) -> bool:
+    if round_over:
+        return True
+    if running:
+        return False
+    return outcome.alerts > 0 or now >= ended_at + wait
 
 
 def score(result: CorrelationResult) -> Score:

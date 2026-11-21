@@ -10621,3 +10621,31 @@ How the "board secret is random per round" ruling is carried out.
 - **Not measured.** The `cr-board` image the target bakes must carry the
   command (`docs/OPENSTACK.md` §3.9); until then every round start fails.
 
+## 2026-11-21 — Verdicts reach the defence as they are decided
+
+The 11-20 direction asks for live verdicts; the score stays closed to players
+until the round ends. Each round read now judges the cases it can decide and
+tells the defence at once.
+
+- **When a case is decided** (`domain.scoring.metrics.decided`): an ended case
+  with a matching alert is judged at the next read (TP or FP); an ended case
+  with none is judged once `CR_JUDGE_AFTER_SECONDS` (default 30) passed since
+  it ended (FN or TN), so the alert pipeline's delay is not read as a miss; a
+  tool case still running waits for its run to end; the round's end judges
+  every case left, before `round.ended` is written, so a follower that stops on
+  `round.ended` has them all.
+- **Same rules as the score.** `scoring.score.judge` uses the score's own
+  correlation, its end-time cut and `corroborated`; free actions are never
+  judged.
+- **One case, one decision.** A verdict is a `scoring.Verdict` row, unique per
+  round and action; only a row this read created becomes a `case.judged` event
+  `{action, case, verdict, alerts, corroborated}`. Alerts that arrive later do
+  not change it, so a notice can differ from the final score when an alert
+  comes in after the wait. The final score is still computed from the rows.
+- **Who sees it.** `case.judged` is a defence-and-staff kind: it measures the
+  defence, and telling the attacker which cases were seen would hand them the
+  defender's coverage. The defence console shows it as 판정 알림 in the lower
+  right corner, the newest three, each closable.
+- The judge step is the last of the round reads, after alerts are ingested and
+  the customers' benign pass is fired.
+

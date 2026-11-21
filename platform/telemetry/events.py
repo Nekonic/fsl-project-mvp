@@ -19,6 +19,7 @@ NUMBER = (int,)
 FLAG = (bool,)
 MAYBE_TEXT = (str, type(None))
 MAYBE_NUMBER = (int, type(None))
+MAYBE_FLAG = (bool, type(None))
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,8 @@ KINDS: dict[str, Kind] = {
     "rule.applied": Kind({"engine": TEXT, "version": NUMBER, "source": TEXT}, DEFENCE_SIDE),
     "rule.disabled": Kind({"sid": NUMBER, "expires_at": TEXT}, DEFENCE_SIDE),
     "limit.below_floor": Kind({"zone": TEXT, "rate_rpm": NUMBER, "floor_rpm": NUMBER}, DEFENCE_SIDE),
+    "case.judged": Kind({"action": TEXT, "case": TEXT, "verdict": TEXT, "alerts": NUMBER, "corroborated": MAYBE_FLAG},
+                        DEFENCE_SIDE),
     "objective.lost": Kind({"key": TEXT, "name": TEXT}, BOTH, staff_fields={"attributed_marker": MAYBE_TEXT}),
 }
 

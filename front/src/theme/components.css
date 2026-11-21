@@ -254,6 +254,8 @@ textarea.input { height: auto; padding: 8px 10px; line-height: 20px; resize: ver
 .notice-ok { background: var(--success-soft); color: var(--success-text); }
 .notice-info { background: var(--primary-soft); color: var(--primary-text); }
 .notice-inline { padding: 0; background: transparent; }
+.verdict-notices { position: fixed; right: 16px; bottom: 16px; z-index: 50; width: min(380px, calc(100vw - 32px)); }
+.verdict-notices .notice { box-shadow: var(--shadow-pop); }
 .banner { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 16px; background: var(--subdued); border-bottom: 1px solid var(--border); font-size: var(--text-md); }
 .banner-title { color: var(--heading); font-weight: 600; }
 .banner .banner-action { margin-left: auto; }

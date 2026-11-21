@@ -492,6 +492,10 @@ def actions(found: Round) -> tuple[ActionRecord, ...]:
     return tuple(record_of(action) for action in Action.objects.filter(round=found))
 
 
+def running(found: Round) -> set[str]:
+    return {str(pk) for pk in ToolRun.objects.filter(action__round=found, ended=None).values_list("action_id", flat=True)}
+
+
 def submit_loot(found: Round, player: Player, value: Any) -> Looted:
     writable(found)
     verdict = referee.submit_loot(found, value, actions(found))

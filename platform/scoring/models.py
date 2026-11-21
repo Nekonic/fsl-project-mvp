@@ -16,3 +16,17 @@ class Objective(models.Model):
     class Meta:
         ordering = ["achieved_at", "id"]
         constraints = [models.UniqueConstraint(fields=["round", "key"], name="one_loss_per_objective")]
+
+
+class Verdict(models.Model):
+    round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name="verdicts")
+    action = models.CharField(max_length=64)
+    case = models.CharField(max_length=100)
+    verdict = models.CharField(max_length=2)
+    alerts = models.IntegerField()
+    corroborated = models.BooleanField(null=True)
+    judged_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["judged_at", "id"]
+        constraints = [models.UniqueConstraint(fields=["round", "action"], name="one_verdict_per_case")]

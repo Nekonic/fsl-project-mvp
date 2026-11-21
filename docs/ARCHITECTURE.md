@@ -329,6 +329,12 @@ sequenceDiagram
   공격 행동 시간 안에 바이너리 로그의 변경이 있을 때 잃은 것입니다. `seen`은 방어 쪽이 그 손실을 탐지했는지입니다.
 - `outcomes`: 선언된 케이스와 플랫폼이 보낸 정상 케이스만. 케이스 하나는 결정 하나입니다.
 - `free_actions`: 자유 행동을 출발지별로. TP/FP/FN/TN에 들어가지 않습니다.
+- 판정 알림: 라운드를 읽을 때마다(`lifecycle.READS`의 마지막 단계)와 라운드가 끝날 때(`round.ended` 앞)
+  `lifecycle.judge`가 `scoring.score.judge`를 부릅니다. 점수와 같은 상관 분석으로 케이스마다 판정하되,
+  `domain.scoring.metrics.decided`가 판정할 때가 됐는지 정합니다. 끝난 케이스에 알림이 묶였으면 바로, 알림이 없으면
+  끝나고 `CR_JUDGE_AFTER_SECONDS`(기본 30초) 뒤에, 실행 중인 도구 케이스는 끝난 뒤에, 라운드가 끝났으면 모두입니다.
+  판정은 `scoring.Verdict` 행(라운드와 행동마다 하나, 유일 제약)으로 남기고 새로 만든 행만 `case.judged`
+  `{action, case, verdict, alerts, corroborated}` 이벤트로 냅니다. 방어석 콘솔은 이 이벤트를 판정 알림으로 띄웁니다.
 - 자리는 라운드가 끝난 뒤에만 읽습니다(진행 중은 `409 round_running`). `?correlation=marker|window`는 스태프만 씁니다.
 
 ## 출발지 IP 소진
@@ -374,7 +380,7 @@ sequenceDiagram
 |---|---|
 | `round.started`, `round.ended`, `seat.joined` | 양쪽 |
 | `action.sent`, `tool.started`, `tool.ended`, `command.run`, `origin.spent`, `origin.switched`, `origins.spent` | 공격, 스태프 |
-| `alert.seen`, `rule.tested`, `rule.applied`, `rule.disabled`, `limit.below_floor` | 방어, 스태프 |
+| `alert.seen`, `rule.tested`, `rule.applied`, `rule.disabled`, `limit.below_floor`, `case.judged` | 방어, 스태프 |
 | `objective.lost` | 양쪽(누구 행동인지는 스태프만) |
 | `step.answered`, `step.passed` | 레슨 자리, 스태프 |
 

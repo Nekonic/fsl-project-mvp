@@ -6,6 +6,7 @@ import { nodeLabel, zoneCaption } from "./Map";
 import { Objectives } from "./Objectives";
 import { presetKibana } from "./Kibana";
 import { ScoreReport } from "./Score";
+import { VerdictNotices } from "./Verdicts";
 import { Waf } from "./Waf";
 
 const objectives = [
@@ -136,5 +137,34 @@ describe("Waf", () => {
     render(<Waf round={7} side="defence" placement="main" />);
 
     expect(await screen.findByText(t("waf.not_running"))).toBeTruthy();
+  });
+});
+
+describe("VerdictNotices", () => {
+  function judgedEvent(id: number, body: Record<string, unknown>) {
+    return { id, kind: "case.judged", at: "2026-11-21T10:00:00Z", player_side: null, body };
+  }
+
+  it("shows each judged case as a notice in Korean, newest first, and closes one on request", async () => {
+    let served = false;
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      const events = served ? [] : [
+        judgedEvent(1, { action: "1", case: "board-sqli-search", verdict: "tp", alerts: 3, corroborated: false }),
+        judgedEvent(2, { action: "benign-4", case: "board-normal-search", verdict: "fp", alerts: 1, corroborated: null }),
+      ];
+      served = true;
+      return new Response(JSON.stringify({ events, next: 2 }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    render(<VerdictNotices round={41} />);
+
+    const first = await screen.findByText(t("verdict_notice.line", { case: "board-normal-search", verdict: tFor("verdict", "fp") }));
+    const second = screen.getByText(t("verdict_notice.line", { case: "board-sqli-search", verdict: tFor("verdict", "tp") }));
+    expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText(`${t("verdict_notice.alerts", { count: 3 })} · ${t("verdict_notice.not_corroborated")}`)).toBeTruthy();
+    expect(screen.getByText(t("verdict_notice.alerts", { count: 1 }))).toBeTruthy();
+
+    fireEvent.click(screen.getAllByText(t("verdict_notice.close"))[0] as HTMLElement);
+    await waitFor(() => expect(screen.queryByText(t("verdict_notice.line", { case: "board-normal-search", verdict: tFor("verdict", "fp") }))).toBeNull());
+    expect(screen.getByText(t("verdict_notice.line", { case: "board-sqli-search", verdict: tFor("verdict", "tp") }))).toBeTruthy();
   });
 });

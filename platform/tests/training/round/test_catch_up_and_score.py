@@ -245,3 +245,33 @@ def test_a_failed_rebuild_step_does_not_stop_the_rebuild_job(monkeypatch, cloud,
     monkeypatch.setattr(sandbox, "advance_refills", lambda: (_ for _ in ()).throw(RuntimeError("refill bug")))
 
     assert sandbox.keep_rebuilding(0.0, rounds=2, pause=lambda seconds: None) == 2
+
+
+def kinds_for(found, side):
+    from telemetry import events as log
+
+    return [(event["kind"], event["body"]) for event in log.after(found.pk, 0, log.Viewer(sides=frozenset({side}))).events]
+
+
+def test_a_read_judges_each_benign_case_once_the_alert_delay_is_out_and_only_the_defence_sees_it(running):
+    service.catch_up(running)
+    assert not [kind for kind, _ in kinds_for(running, "defence") if kind == "case.judged"]
+
+    service.judge(running, timezone.now() + timedelta(seconds=31))
+    service.judge(running, timezone.now() + timedelta(seconds=62))
+
+    judged = [body for kind, body in kinds_for(running, "defence") if kind == "case.judged"]
+    assert sorted(body["case"] for body in judged) == sorted(customers.benign_cases(running))
+    assert {(body["verdict"], body["alerts"], body["corroborated"]) for body in judged} == {("tn", 0, None)}
+    assert "case.judged" not in [kind for kind, _ in kinds_for(running, "attack")]
+
+
+def test_the_round_s_end_judges_the_cases_left_before_it_says_the_round_ended(as_operator, running):
+    service.catch_up(running)
+    service.end_round(running, "ended_by_operator")
+
+    shown = [kind for kind, _ in kinds_for(running, "defence")]
+    judged = [index for index, kind in enumerate(shown) if kind == "case.judged"]
+    per_case = as_operator.get(url(running, "score/")).json()["outcomes"]["per_case"]
+
+    assert len(judged) == len(per_case) > 0 and max(judged) < shown.index("round.ended")
