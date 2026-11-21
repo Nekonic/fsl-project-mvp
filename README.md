@@ -400,8 +400,9 @@ bin/verify --changed    # 바뀐 파일이 닿는 테스트만
 bin/verify --fast       # 단위·API 테스트 전체
 ```
 
-- `bin/verify`는 먼저 `bin/gen-clients`로 `openapi/schema.yaml`을 다시 내보내고 `bots/client/`와
-  `front/src/api/schema.d.ts`를 생성합니다. 생성 코드는 커밋하지 않습니다. 스키마가 바뀌면 그 변경과 함께 커밋합니다.
+- `bin/verify`는 먼저 `openapi/schema.yaml`을 다시 내보냅니다(`manage.py spectacular`). 스키마가 바뀌면 그 변경과
+  함께 커밋합니다. `bots/`, `test/`, `bin/`은 생성 클라이언트 없이 이 스키마의 `operationId`로 API를 부릅니다
+  (`bots/rest.py`). `front/src/api/schema.d.ts`는 `front/`가 `npm run types`로 만들고 커밋하지 않습니다.
   node가 없으면 TypeScript 타입과 `front/` 검사를 건너뜁니다.
 - `front/`, `strings/`, `openapi/` 아래가 바뀌면 `bin/verify`가 `front/`를 타입 검사·빌드하고 vitest를 돌립니다.
 - `--fast`는 `platform/tests/` 아래 계층별로 `domain`(Django 없이), `seams`, 앱별(`accounts`, `events`, `content`,

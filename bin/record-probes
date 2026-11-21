@@ -12,10 +12,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import httpx2
+import requests
 
-from bots import signin
-from bots.client.api.staff import staff_probes_progress, staff_probes_record
+from bots import rest, signin
 
 DEFAULT_PLATFORM = "http://localhost:8000"
 CALL_TIMEOUT = 120
@@ -62,7 +61,7 @@ class Platform:
     def answered(self, call) -> tuple[int, dict]:
         try:
             answer = call(self.signed_in())
-        except (httpx2.HTTPError, signin.Refused) as gone:
+        except (requests.RequestException, signin.Refused) as gone:
             self.client = None
             return 0, {"errors": [{"code": "unreachable", "message": f"could not reach {self.url}: {gone}"}]}
         try:
@@ -71,10 +70,10 @@ class Platform:
             return int(answer.status_code), {"errors": [{"code": "not_json", "message": answer.content[:300]}]}
 
     def record(self, wargame: str) -> tuple[int, dict]:
-        return self.answered(lambda client: staff_probes_record.sync_detailed(wargame, client=client))
+        return self.answered(lambda client: rest.request(client, "staff_probes_record", wargame_id=wargame))
 
     def progress(self, allocation: int) -> tuple[int, dict]:
-        return self.answered(lambda client: staff_probes_progress.sync_detailed(allocation, client=client))
+        return self.answered(lambda client: rest.request(client, "staff_probes_progress", allocation_id=allocation))
 
 
 def said(body: dict) -> str:

@@ -1,7 +1,7 @@
 import pytest
 
 import plays
-from bots.client import AuthenticatedClient
+from bots.signin import Platform
 
 SETUP = plays.Setup(wargame="board", title="Acceptance bot rounds board", side="both",
                     matchups=("def_vs_bot", "atk_vs_bot"))
@@ -37,7 +37,7 @@ def finished(played: plays.Played, bot) -> dict:
 @pytest.fixture(scope="module")
 def attack_bot_round():
     with plays.Round("board", SETUP, matchup="def_vs_bot") as played:
-        assert isinstance(played.attack, AuthenticatedClient)
+        assert isinstance(played.attack, Platform) and "Authorization" in played.attack.headers
         answers = attack_bot_baseline(played)
         yield {"answers": answers, **finished(played, played.attack)}
 
@@ -45,7 +45,7 @@ def attack_bot_round():
 @pytest.fixture(scope="module")
 def defence_bot_round():
     with plays.Round("board", SETUP, matchup="atk_vs_bot") as played:
-        assert isinstance(played.defence, AuthenticatedClient)
+        assert isinstance(played.defence, Platform) and "Authorization" in played.defence.headers
         marker = plays.fired(played, CONTROL)["marker"]
         turn = defence_bot_turn(played, marker)
         yield {"marker": marker, **turn, **finished(played, played.defence)}

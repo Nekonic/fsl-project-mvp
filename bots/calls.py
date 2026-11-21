@@ -1,16 +1,11 @@
 from __future__ import annotations
 
-import enum
-import importlib
-import inspect
 import json
-import types
-import typing
 from dataclasses import dataclass
 
-import httpx2
+import requests
 
-from bots import signin, tools
+from bots import rest, shell, signin, tools
 
 ORIGIN_HEADERS = ("X-Origin", "X-Origins-Left")
 LONGEST_TEXT = 20000
@@ -35,6 +30,28 @@ class Refused(ValueError):
                 "errors": [{"path": self.path, "code": self.code, "message": str(self)}]}
 
 
+def of_type(value, kind: str) -> bool:
+    if kind == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if kind == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    expected = {"string": str, "boolean": bool, "object": dict, "array": list, "null": type(None)}.get(kind)
+    return expected is None or isinstance(value, expected)
+
+
+def fits(value, schema: dict) -> bool:
+    if "anyOf" in schema:
+        return any(fits(value, option) for option in schema["anyOf"])
+    if "allOf" in schema:
+        return all(fits(value, part) for part in schema["allOf"])
+    if "enum" in schema and value not in schema["enum"]:
+        return False
+    kinds = schema.get("type")
+    if kinds is None:
+        return True
+    return any(of_type(value, kind) for kind in (kinds if isinstance(kinds, list) else [kinds]))
+
+
 def checked_arguments(spec: dict, arguments) -> dict:
     if arguments is None:
         return {}
@@ -47,43 +64,13 @@ def checked_arguments(spec: dict, arguments) -> dict:
     missing = [key for key in schema.get("required", []) if key not in arguments]
     if missing:
         raise Refused("required", missing[0], f"{spec['name']} needs {', '.join(missing)}")
+    wrong = [key for key, value in arguments.items() if not fits(value, schema["properties"][key])]
+    if wrong:
+        raise Refused("invalid", wrong[0], f"{spec['name']}: {wrong[0]} does not fit its schema")
     return arguments
 
 
-def candidates(annotation) -> tuple:
-    if isinstance(annotation, types.UnionType) or typing.get_origin(annotation) is typing.Union:
-        return typing.get_args(annotation)
-    return (annotation,)
-
-
-def converted(value, annotation):
-    for kind in candidates(annotation):
-        if isinstance(kind, type) and issubclass(kind, enum.Enum):
-            return kind(value)
-        if isinstance(value, dict) and callable(getattr(kind, "from_dict", None)):
-            return kind.from_dict(value)
-    return value
-
-
-def endpoint(operation: tools.Operation):
-    return importlib.import_module(f"bots.client.api.{operation.tag}.{operation.name}")
-
-
-def keyword_arguments(operation: tools.Operation, function, player: Player, arguments: dict) -> dict:
-    parameters = inspect.signature(function).parameters
-    given = {}
-    if tools.ROUND_PARAMETER in parameters:
-        given[tools.ROUND_PARAMETER] = player.round_id
-    for key in (*operation.path_parameters, *operation.query_parameters):
-        if key in arguments:
-            given[key] = converted(arguments[key], parameters[key].annotation)
-    fields = {key: arguments[key] for key in operation.body_fields if key in arguments}
-    if "body" in parameters and (fields or operation.body_required):
-        given["body"] = converted(fields, parameters["body"].annotation)
-    return given
-
-
-def answer_body(response: httpx2.Response):
+def answer_body(response: requests.Response):
     if not response.content:
         return None
     try:
@@ -92,46 +79,49 @@ def answer_body(response: httpx2.Response):
         return response.text[:LONGEST_TEXT]
 
 
-def outcome_of(name: str, response: httpx2.Response) -> dict:
-    told = {"operation": name, "ok": response.is_success, "status": response.status_code,
-            "body": answer_body(response)}
+def outcome_of(name: str, response: requests.Response) -> dict:
+    told = {"operation": name, "ok": response.ok, "status": response.status_code, "body": answer_body(response)}
     headers = {key: response.headers[key] for key in ORIGIN_HEADERS if key in response.headers}
     if headers:
         told["headers"] = headers
     return told
 
 
-def client_for(player: Player):
-    client = signin.playing(player.base_url, player.token)
-    answered: list[httpx2.Response] = []
-    http = client.get_httpx_client()
-    http.event_hooks["response"] = [*http.event_hooks.get("response", []), answered.append]
-    return client, answered
+def session_for(player: Player) -> signin.Platform:
+    return signin.playing(player.base_url, player.token)
 
 
-def call(player: Player, name: str, arguments=None, client_and_answers=None) -> dict:
+def sent(operation: tools.Operation, player: Player, session: signin.Platform, arguments: dict):
+    named = {key: arguments[key] for key in (*operation.path_parameters, *operation.query_parameters)
+             if key in arguments}
+    if operation.in_round:
+        named[tools.ROUND_PARAMETER] = player.round_id
+    fields = {key: arguments[key] for key in operation.body_fields if key in arguments}
+    body = fields if fields or operation.body_required else None
+    return rest.request(session, operation.name, body=body, **named)
+
+
+def spec_of(player: Player, name: str) -> tuple[tools.Operation | None, dict]:
+    if name not in tools.offered(player.side):
+        raise Refused("unknown_tool", "name", f"the {player.side} player has no tool {name!r}")
+    if name == tools.SHELL:
+        return None, tools.shell_spec(player.side)
+    return tools.build(name, tools.contract())
+
+
+def call(player: Player, name: str, arguments=None, session: signin.Platform | None = None) -> dict:
     try:
-        if name not in tools.names_for(player.side, tools.contract()):
-            raise Refused("unknown_tool", "name", f"the {player.side} player has no tool {name!r}")
-        operation, spec = tools.build(name, tools.contract())
+        operation, spec = spec_of(player, name)
         arguments = checked_arguments(spec, arguments)
-        function = endpoint(operation).sync_detailed
-        try:
-            given = keyword_arguments(operation, function, player, arguments)
-        except (ValueError, KeyError, TypeError) as wrong:
-            raise Refused("invalid", "", f"{name}: {wrong}") from wrong
     except Refused as refused:
         return refused.outcome(name)
-    client, answered = client_and_answers or client_for(player)
-    answered.clear()
+    session = session or session_for(player)
+    if operation is None:
+        return shell.run(player, arguments, lambda: call(player, tools.terminal_of(player.side), {}, session))
     try:
-        function(client=client, **given)
-    except httpx2.HTTPError as unreachable:
+        return outcome_of(name, sent(operation, player, session, arguments))
+    except requests.RequestException as unreachable:
         return Refused("unreachable", "", f"{player.base_url} did not answer: {unreachable}").outcome(name)
-    except (ValueError, KeyError, TypeError):
-        if not answered:
-            raise
-    return outcome_of(name, answered[-1])
 
 
 def printed(outcome: dict) -> str:

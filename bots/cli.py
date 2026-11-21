@@ -73,13 +73,15 @@ def player_from(arguments: argparse.Namespace, side: str, environment: dict) -> 
 
 
 def side_of_operation(name: str, chosen: str | None) -> str:
-    holding = [side for side in tools.SIDES if name in tools.operations(side)]
+    holding = [side for side in tools.SIDES if name in tools.offered(side)]
     if not holding:
         raise Unusable(f"no player has a tool named {name!r}; see python -m bots.cli tools --side <side>")
     if chosen:
         if chosen not in holding:
             raise Unusable(f"the {chosen} player has no tool named {name!r}")
         return chosen
+    if name == tools.SHELL:
+        raise Unusable(f"{name} runs on the attacker box or the WAF: name the box with --side")
     return holding[0]
 
 

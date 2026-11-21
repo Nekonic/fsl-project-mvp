@@ -1,10 +1,12 @@
 import importlib.util
 import itertools
+import json
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
+from urllib.parse import urlsplit
 
-import httpx2
 import pytest
+import requests
 
 ROOT = Path(__file__).resolve().parents[2]
 COMMAND = ROOT / "bin/record-probes"
@@ -119,21 +121,41 @@ def test_only_a_wargame_of_the_repository_can_be_recorded():
         command().arguments(["nowhere"])
 
 
-def test_the_real_client_signs_in_once_and_calls_the_two_staff_routes_through_the_generated_client():
-    from bots.client import Client
+class Answering(requests.adapters.BaseAdapter):
+    def __init__(self, answer):
+        super().__init__()
+        self.answer = answer
 
+    def send(self, request, **named):
+        status, body = self.answer(request)
+        made = requests.Response()
+        made.status_code, made._content, made.request, made.url = status, json.dumps(body).encode(), request, request.url
+        return made
+
+    def close(self):
+        pass
+
+
+def answering(url, answer):
+    from bots import signin
+
+    session = signin.Platform(url)
+    session.mount("http://", Answering(answer))
+    return session
+
+
+def test_the_real_client_signs_in_once_and_calls_the_two_staff_routes_from_the_schema():
     seen = []
 
     def answer(request):
-        seen.append((request.method, request.url.path))
-        if request.url.path.endswith("/record/"):
-            return httpx2.Response(202, json={"allocation": 7})
-        return httpx2.Response(200, json=progress("done", ["a", "b", "c"])[1])
+        seen.append((request.method, urlsplit(request.url).path))
+        if request.url.endswith("/record/"):
+            return 202, {"allocation": 7}
+        return 200, progress("done", ["a", "b", "c"])[1]
 
     def connect(url, timeout):
         seen.append(("connect", url))
-        client = Client(base_url=url)
-        return client.set_httpx_client(httpx2.Client(base_url=url, transport=httpx2.MockTransport(answer)))
+        return answering(url, answer)
 
     platform = command().Platform("http://10.0.0.9:8000/", connect=connect)
 
@@ -144,16 +166,14 @@ def test_the_real_client_signs_in_once_and_calls_the_two_staff_routes_through_th
 
 
 def test_a_dropped_connection_is_reported_as_unreachable_and_signs_in_again_next_time():
-    from bots.client import Client
-
     connected = []
 
     def gone(request):
-        raise httpx2.ConnectError("refused", request=request)
+        raise requests.ConnectionError("refused", request=request)
 
     def connect(url, timeout):
         connected.append(url)
-        return Client(base_url=url).set_httpx_client(httpx2.Client(base_url=url, transport=httpx2.MockTransport(gone)))
+        return answering(url, gone)
 
     platform = command().Platform("http://10.0.0.9:8000", connect=connect)
 

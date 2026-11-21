@@ -94,14 +94,14 @@ if [ "$CHANGED" = 1 ]; then
 fi
 
 if [ "$CHANGED" = 0 ] || [ "$unit_kind" != none ] || [ "$acceptance_kind" != none ]; then
-  section "clients"
-  if "$ROOT/bin/gen-clients"; then
-    ok "openapi/schema.yaml exported, bots/client and front/src/api/schema.d.ts generated"
+  section "schema"
+  if (cd platform && "$PY" -W ignore manage.py spectacular --file "$ROOT/openapi/schema.yaml" --validate --fail-on-warn); then
+    ok "openapi/schema.yaml exported"
     if ! git diff --quiet -- openapi/schema.yaml 2>/dev/null; then
       echo "     openapi/schema.yaml changed: commit it with the change that moved it"
     fi
   else
-    fail "bin/gen-clients could not export the schema or generate the clients"
+    fail "manage.py spectacular could not export openapi/schema.yaml"
     exit 1
   fi
 fi
@@ -193,12 +193,9 @@ fi
 open_rounds="$("$PY" - <<'OPENCHECK' 2>/dev/null
 import json, os, sys
 sys.path.insert(0, os.getcwd())
-from bots import signin
-from bots.client.api.match import round_list
-from bots.client.models import RoundListState
+from bots import rest, signin
 try:
-    answer = round_list.sync_detailed(client=signin.signed_in(os.environ["CR_PLATFORM_URL"], 5),
-                                      state=RoundListState.OPEN)
+    answer = rest.request(signin.signed_in(os.environ["CR_PLATFORM_URL"], 5), "round_list", state="open")
     rows = json.loads(answer.content) if answer.status_code == 200 else []
 except Exception:
     sys.exit(0)

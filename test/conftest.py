@@ -7,12 +7,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import httpx2
+import requests
 
 import plays
 import range as the_range
 from bots import signin
-from bots.client.api.accounts import auth_csrf
 from opening import settling
 from range import ATTACKER, run, start_hint
 
@@ -31,8 +30,8 @@ BESIDE_ANOTHER_WORKER = SPLIT == "worker" and int(os.environ.get("CR_WORKERS") o
 
 def reachable() -> bool:
     try:
-        return plays.ask(auth_csrf, signin.anonymous(PLATFORM_URL, 30)).ok
-    except httpx2.HTTPError:
+        return plays.ask("auth_csrf", signin.anonymous(PLATFORM_URL, 30)).ok
+    except requests.RequestException:
         return False
 
 

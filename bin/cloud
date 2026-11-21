@@ -19,11 +19,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import httpx2
+import requests
 
-from bots import signin
-from bots.client.api.staff import (staff_fabric_build, staff_fabric_remove, staff_leftovers_remove, staff_pool,
-                                   staff_pool_empty, staff_pool_fill, staff_range)
+from bots import rest, signin
 
 REBUILD = ROOT / "bin/platform-rebuild"
 CALL_TIMEOUT = 1800
@@ -95,13 +93,13 @@ class Stamped:
 
 
 RANGE_CALLS = {
-    ("GET", "/"): staff_range,
-    ("POST", "/fabric/"): staff_fabric_build,
-    ("DELETE", "/fabric/"): staff_fabric_remove,
-    ("DELETE", "/leftovers/"): staff_leftovers_remove,
-    ("GET", "/pool/"): staff_pool,
-    ("POST", "/pool/"): staff_pool_fill,
-    ("DELETE", "/pool/"): staff_pool_empty,
+    ("GET", "/"): "staff_range",
+    ("POST", "/fabric/"): "staff_fabric_build",
+    ("DELETE", "/fabric/"): "staff_fabric_remove",
+    ("DELETE", "/leftovers/"): "staff_leftovers_remove",
+    ("GET", "/pool/"): "staff_pool",
+    ("POST", "/pool/"): "staff_pool_fill",
+    ("DELETE", "/pool/"): "staff_pool_empty",
 }
 
 
@@ -113,8 +111,8 @@ class Platform:
     def __call__(self, verb: str, path: str) -> tuple[int, dict]:
         try:
             self.client = self.client or signin.signed_in(self.url, CALL_TIMEOUT)
-            answer = RANGE_CALLS[(verb, path)].sync_detailed(client=self.client)
-        except (httpx2.HTTPError, signin.Refused) as gone:
+            answer = rest.request(self.client, RANGE_CALLS[(verb, path)])
+        except (requests.RequestException, signin.Refused) as gone:
             self.client = None
             return 0, {"errors": [{"code": "unreachable", "detail": f"could not reach {self.url}: {gone}"}]}
         if answer.status_code in (401, 403):

@@ -39,8 +39,8 @@ def play(player: calls.Player, provider: Provider, *, turns: int = DEFAULT_TURNS
          report: Callable[[dict], None] = lambda entry: None) -> Played:
     specs = tools.specs(player.side)
     system = system_prompt(player.side)
-    client_and_answers = calls.client_for(player)
-    state = calls.call(player, f"{player.side}_state", {}, client_and_answers)
+    session = calls.session_for(player)
+    state = calls.call(player, f"{player.side}_state", {}, session)
     transcript = [{"role": "user", "text": opening(player, state)}]
     report(transcript[0])
     for turn_number in range(1, turns + 1):
@@ -53,7 +53,7 @@ def play(player: calls.Player, provider: Provider, *, turns: int = DEFAULT_TURNS
             return Played("finished", turn_number, transcript)
         for call in turn.calls:
             result = {"role": "tool", "call_id": call.id, "name": call.name,
-                      "result": calls.call(player, call.name, call.arguments, client_and_answers)}
+                      "result": calls.call(player, call.name, call.arguments, session)}
             transcript.append(result)
             report(result)
     return Played("out_of_turns", turns, transcript)

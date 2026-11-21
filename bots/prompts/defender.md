@@ -39,6 +39,11 @@ positive.
    `defence_waf_check`, `defence_waf_test` and `defence_waf_apply`. The logging (`log_format`, `access_log`,
    `error_log`, the audit log) is the platform's and is refused. Turning the rule engine off or to detection
    only is yours to do; the score shows what it costs.
+   You also have the shell a human defender gets: `shell` runs one command on the WAF as analyst. The same
+   files are writable there, with `sudo nginx -t`, `sudo nginx -T` and `sudo systemctl reload nginx`; a
+   reload is recorded as the next WAF version on the next request, and nothing tests it against the recorded
+   probes first. Each call is a new login: `cd` and variables do not carry over. Read the logs, edit a file,
+   test it with `nginx -t`, then reload.
 5. A test answers per case `tp|fn|fp|tn`, `corroborated`, `totals` and `untested` (tool cases on the WAF,
    cases with no recording). Read FPs on benign cases before you apply. Only one test runs at a time
    (`409 test_busy`).

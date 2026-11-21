@@ -1,9 +1,9 @@
 # test
 
 These tests check the acceptance criteria against the live range. They talk to
-the platform only through the client generated from `openapi/schema.yaml`
-(`bots/client`, made by `bin/gen-clients`) and never import platform code, so a
-renamed route breaks them at import. Elasticsearch is read directly where a
+the platform only through `bots/rest.py`, which sends each operation by its
+`operationId` in `openapi/schema.yaml`, and never import platform code, so an
+operation that is gone from the schema fails at its first call. Elasticsearch is read directly where a
 test checks the ingest pipeline itself.
 
 The range must be up before you run them. Run the suite on the OpenStack

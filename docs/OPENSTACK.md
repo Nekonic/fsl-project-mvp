@@ -1415,7 +1415,7 @@ A script signs in over REST: `GET /api/auth/csrf/` sets the CSRF cookie
 `cr_csrf`, and `POST /api/auth/login/` with `{"username", "password"}` and
 that cookie's value in the header `X-CSRFToken` opens the session; every
 POST, PUT and DELETE sends the current `cr_csrf` value as `X-CSRFToken`.
-`bots/signin.py` does this through the generated client for `bin/cloud`,
+`bots/signin.py` does this through `bots/rest.py` for `bin/cloud`,
 `bin/record-probes`, `bin/acceptance`, `bin/verify` and `test/`. They sign in
 as `CR_ADMIN_USER` / `CR_ADMIN_PASSWORD`, by default `admin` / `123456`. With
 curl:

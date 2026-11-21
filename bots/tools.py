@@ -93,6 +93,19 @@ DESCRIPTIONS = {
 }
 
 
+SHELL = "shell"
+LONGEST_SHELL_SECONDS = 600
+SHELL_DESCRIPTIONS = {
+    "attack": "Run one shell command on the attacker box as the learner, over the same SSH grant a human "
+              "attacker's terminal uses (attack_terminal). Each call is a new login, so cd and variables do not "
+              "carry over. Traffic from the shell can spend an origin like any other.",
+    "defence": "Run one shell command on the WAF as analyst, over the same SSH grant a human defender's terminal "
+               "uses (defence_terminal). Each call is a new login, so cd and variables do not carry over. The WAF "
+               "files are writable there, with sudo nginx -t, sudo nginx -T and sudo systemctl reload nginx; a "
+               "reload is recorded as the next WAF version on the next request.",
+}
+
+
 @dataclass(frozen=True)
 class Operation:
     name: str
@@ -103,6 +116,7 @@ class Operation:
     query_parameters: tuple[str, ...]
     body_fields: tuple[str, ...]
     body_required: bool
+    in_round: bool
 
 
 class SchemaMismatch(RuntimeError):
@@ -191,9 +205,13 @@ def build(name: str, schema: dict) -> tuple[Operation, dict]:
     withheld = WITHHELD_PARAMETERS.get(name, frozenset())
     properties, required = {}, []
     path_parameters, query_parameters = [], []
+    in_round = False
     for parameter in operation.get("parameters", []):
         key, where = parameter["name"], parameter["in"]
-        if key == ROUND_PARAMETER or key in withheld:
+        if key == ROUND_PARAMETER:
+            in_round = True
+            continue
+        if key in withheld:
             continue
         properties[key] = described(resolved(parameter.get("schema", {}), components), parameter)
         if parameter.get("required"):
@@ -212,8 +230,32 @@ def build(name: str, schema: dict) -> tuple[Operation, dict]:
     spec = {"name": name, "description": DESCRIPTIONS.get(name, ""), "input_schema": input_schema}
     shape = Operation(name=name, tag=side_of(operation), method=method, path=path,
                       path_parameters=tuple(path_parameters), query_parameters=tuple(query_parameters),
-                      body_fields=tuple(body.get("properties", {})), body_required=body_required)
+                      body_fields=tuple(body.get("properties", {})), body_required=body_required,
+                      in_round=in_round)
     return shape, spec
+
+
+def terminal_of(side: str) -> str:
+    return f"{side}_terminal"
+
+
+def has_shell(side: str, schema: dict) -> bool:
+    return terminal_of(side) in names_for(side, schema)
+
+
+def shell_spec(side: str) -> dict:
+    return {"name": SHELL, "description": SHELL_DESCRIPTIONS[side], "input_schema": {
+        "type": "object", "additionalProperties": False, "required": ["command"],
+        "properties": {
+            "command": {"type": "string", "minLength": 1, "description": "the command line, run by the login shell"},
+            "timeout": {"type": "integer", "minimum": 1, "maximum": LONGEST_SHELL_SECONDS,
+                        "description": "seconds before the command is stopped (default 120)"},
+        }}}
+
+
+def offered(side: str, schema: dict | None = None) -> list[str]:
+    schema = schema if schema is not None else contract()
+    return names_for(side, schema) + ([SHELL] if has_shell(side, schema) else [])
 
 
 def operations(side: str, schema: dict | None = None) -> dict[str, Operation]:
@@ -223,7 +265,8 @@ def operations(side: str, schema: dict | None = None) -> dict[str, Operation]:
 
 def specs(side: str, schema: dict | None = None) -> list[dict]:
     schema = schema if schema is not None else contract()
-    return [build(name, schema)[1] for name in names_for(side, schema)]
+    built = [build(name, schema)[1] for name in names_for(side, schema)]
+    return built + ([shell_spec(side)] if has_shell(side, schema) else [])
 
 
 def main(argv: list[str]) -> int:

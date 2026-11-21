@@ -61,8 +61,8 @@ on a slot:
 - the follower on a live range (refill, expiry, ingest, effects);
 - `bin/cloud up` and `down` through the new staff range routes;
 - one round of each matchup with Claude Code driving the bot seat
-  (`test/test_bot_rounds.py` drives the seats through the generated client,
-  not through a model);
+  (`test/test_bot_rounds.py` drives the players through `bots/rest.py`,
+  not through a model), and the bots' `shell` over a real jump host;
 - the ported acceptance suite as a whole (`test/`);
 - `nginx -t` on `platform/nginx.conf` and `nft -c` on `edge.nft` (Docker was
   not running on the development machine), the ttyd `?arg=` handoff, the
@@ -142,9 +142,6 @@ on a slot:
 - **`bin/carry-users` mid-load.** If `loaddata` fails after the migrated
   `admin` was deleted, the new store has no `admin` until the command is run
   again, which recovers it.
-- **Generated clients outside `bin/verify`.** The platform Dockerfile's node
-  stage generates only `front/src/api/schema.d.ts` (`npm run types`), not
-  `bin/gen-clients`; the platform image needs no Python client.
 - **No route serves the probe recordings.** `match/probes.py` writes them to
   the platform's `CR_PROBES_OUT`; they are copied off the platform VM by hand
   before they are committed.

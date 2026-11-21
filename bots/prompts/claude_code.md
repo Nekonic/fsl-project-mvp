@@ -14,10 +14,13 @@ Commands:
 - `echo '{"name": "<tool>", "arguments": {...}}' | python -m bots.cli call --side <side>` makes one call and
   prints `{operation, ok, status, body, headers?}`. `headers` carries `X-Origin` and `X-Origins-Left` on attack
   answers.
-- `python -m bots.cli <tool> --json '{...}'` is the same call written on one line.
+- `python -m bots.cli <tool> --json '{...}'` is the same call written on one line. The `shell` tool is on
+  both sides, so name the side: `python -m bots.cli shell --side defence --json '{"command": "sudo nginx -t"}'`
+  prints `{operation, ok, exit_code, stdout, stderr}`.
 
-Never call the platform with curl or any other client: the CLI is your whole surface, the same API a human
-console uses. The player's shell, when you ask for one with the terminal tool, is a separate SSH session to the
-range; its traffic can spend an origin by the same rules.
+Never call the platform with curl or any other client: the CLI is your whole surface, the same API and the
+same shell a human player uses. `shell` asks the platform for the terminal's SSH grant and runs the command
+over the platform's jump host; each CLI call asks for a new grant, which replaces the one before. Shell traffic
+from the attacker box can spend an origin by the same rules.
 
 Read the answer of every call before the next one. Stop when the round has ended and you have read the score.

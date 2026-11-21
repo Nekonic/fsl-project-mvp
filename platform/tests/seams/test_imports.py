@@ -507,7 +507,6 @@ def test_the_round_coordinators_sit_in_layer_eight():
 
 REPO = PLATFORM.parent
 CLIENT_TREES = ("bots", "test", "bin")
-GENERATED = ("bots/client/",)
 LOADERS = ("spec_from_file_location", "SourceFileLoader")
 PLATFORM_FILE = re.compile(r"""["'](platform/[\w/.-]+\.py)["']""")
 PLATFORM_LOADS_ALLOWED = {("bin/platform-rebuild", "platform/sandbox/cloud_config.py")}
@@ -528,7 +527,7 @@ def client_modules() -> list[str]:
     for tree in CLIENT_TREES:
         for path in sorted((REPO / tree).rglob("*")):
             relative = str(path.relative_to(REPO))
-            if relative.startswith(GENERATED) or "__pycache__" in path.parts:
+            if "__pycache__" in path.parts:
                 continue
             if python_script(path):
                 found.append(relative)
@@ -573,8 +572,7 @@ def test_rule_12_the_one_platform_file_bin_loads_by_path_is_still_loaded_there()
 def test_rule_12_scans_the_scripts_and_the_test_helpers():
     scanned = set(client_modules())
 
-    assert {"bin/prune", "bin/acceptance", "test/conftest.py", "bots/signin.py"} <= scanned
-    assert not [path for path in scanned if path.startswith(GENERATED)]
+    assert {"bin/prune", "bin/acceptance", "test/conftest.py", "bots/signin.py", "bots/rest.py"} <= scanned
 
 
 def test_the_checker_sees_an_import_a_path_insert_and_a_file_load_of_the_platform():

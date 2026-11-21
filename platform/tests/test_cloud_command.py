@@ -81,11 +81,15 @@ def test_a_slot_that_failed_to_build_stops_up_with_its_reason():
         converge(Platform(refills=[slots("idle", "failed")]))
 
 
-def test_up_and_down_call_only_range_operations_the_generated_client_has():
+def test_up_and_down_call_only_range_operations_the_schema_has():
+    from bots import tools
+
     module = command()
+    entries = tools.operation_entries(tools.contract())
 
     assert {path for _, path in module.RANGE_CALLS} == {"/", "/fabric/", "/leftovers/", "/pool/"}
-    assert all(hasattr(call, "sync_detailed") for call in module.RANGE_CALLS.values())
+    assert all(entries[name][:2] == (verb.lower(), f"/api/staff/range{path}")
+               for (verb, path), name in module.RANGE_CALLS.items())
 
 
 class Cli:

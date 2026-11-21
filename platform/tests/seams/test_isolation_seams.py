@@ -9,7 +9,7 @@ REPO = Path(__file__).resolve().parents[3]
 SCANNED_ROOTS = ("platform", "front/src", "bots", "test", "bin")
 SCANNED_SUFFIXES = {".py", ".sh", ".conf", ".yaml", ".html", ".ts", ".tsx", ".js", ".md", ".json", ""}
 NOT_SCANNED = re.compile(
-    r"^platform/(?:tests|testing|jump)/|^bots/client/|^front/src/api/schema\.d\.ts$"
+    r"^platform/(?:tests|testing|jump)/|^front/src/api/schema\.d\.ts$"
     r"|(?:^|/)(?:\.[^/]+|__pycache__|node_modules)/|\.sqlite3$")
 
 ELASTICSEARCH = "Elasticsearch"
@@ -161,12 +161,12 @@ def test_the_exception_list_is_the_one_claude_md_gives():
     assert named_in_claude_md() == set(EXCEPTIONS) | OUTSIDE_THE_SCAN
 
 
-def test_the_scan_reaches_every_client_and_skips_the_generated_code(files):
+def test_the_scan_reaches_every_client_and_skips_the_generated_types(files):
     reached = {name.split("/", 1)[0] if not name.startswith("front/") else "front/src" for name in files}
 
     assert {"platform", "bots", "test", "bin"} <= reached
     assert {"bots/prompts/attacker.md", "bots/prompts/defender.md", "bots/README.md"} <= set(files)
-    assert not [name for name in files if name.startswith(("bots/client/", "front/src/api/schema.d.ts"))]
+    assert "front/src/api/schema.d.ts" not in files
 
 
 def test_every_sensor_names_the_rule_file_and_the_reload_rules_suricata_py_is_handed():

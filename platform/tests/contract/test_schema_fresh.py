@@ -11,4 +11,4 @@ def test_the_committed_schema_is_what_the_code_exports(tmp_path):
     call_command("spectacular", "--file", str(exported), "--validate", "--fail-on-warn")
 
     assert COMMITTED.read_text() == exported.read_text(), (
-        "openapi/schema.yaml is stale: run bin/gen-clients and commit openapi/schema.yaml")
+        "openapi/schema.yaml is stale: run bin/verify, which exports it, and commit openapi/schema.yaml")

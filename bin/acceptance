@@ -17,12 +17,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import httpx2
+import requests
 
-from bots import signin
-from bots.client.api.match import round_list
-from bots.client.api.staff import staff_range
-from bots.client.models import RoundListState
+from bots import rest, signin
 
 TESTS = ROOT / "test"
 SHARED_FIXTURE_FILES = ("conftest.py", "shared_sessions.py")
@@ -235,14 +232,14 @@ def totals_of(report: str) -> Totals:
 
 
 def _slots(platform: str) -> list[dict]:
-    answer = staff_range.sync_detailed(client=signin.signed_in(platform, 30))
+    answer = rest.request(signin.signed_in(platform, 30), "staff_range")
     if answer.status_code != 200:
         raise OSError(f"GET /api/staff/range/ answered {int(answer.status_code)}")
     return json.loads(answer.content)["slots"]
 
 
 def _open_rounds(platform: str) -> list[dict]:
-    answer = round_list.sync_detailed(client=signin.signed_in(platform, 30), state=RoundListState.OPEN)
+    answer = rest.request(signin.signed_in(platform, 30), "round_list", state="open")
     if answer.status_code != 200:
         raise OSError(f"GET /api/rounds/?state=open answered {int(answer.status_code)}")
     return json.loads(answer.content)
@@ -251,14 +248,14 @@ def _open_rounds(platform: str) -> list[dict]:
 def open_rounds(platform: str) -> list[int]:
     try:
         return [row["round"] for row in _open_rounds(platform)]
-    except (OSError, ValueError, TypeError, KeyError, httpx2.HTTPError, signin.Refused):
+    except (OSError, ValueError, TypeError, KeyError, requests.RequestException, signin.Refused):
         return []
 
 
 def workers_the_range_allows(platform: str) -> int:
     try:
         return max(1, len(_slots(platform)))
-    except (OSError, ValueError, AttributeError, TypeError, KeyError, httpx2.HTTPError, signin.Refused):
+    except (OSError, ValueError, AttributeError, TypeError, KeyError, requests.RequestException, signin.Refused):
         return 1
 
 

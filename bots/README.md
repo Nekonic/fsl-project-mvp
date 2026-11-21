@@ -1,19 +1,21 @@
 # Bots
 
-A bot is one player of a round, attack or defence, and reaches exactly what a human console reaches: the same
-attack or defence API, under the same player permission, through the client generated from
-`openapi/schema.yaml` into `bots/client/` (`bin/gen-clients`; not committed). The bots are model-agnostic:
+A bot is one player of a round, attack or defence, and reaches exactly what a human player reaches: the same
+attack or defence API, under the same player permission, and the same shell. Every API call is built from the
+committed `openapi/schema.yaml` at run time; there is no generated client. The bots are model-agnostic:
 nothing here names a model or a vendor.
 
 | File | What it is |
 |---|---|
-| `tools.py` | Turns the operations a side may call into JSON Schema tool specs, from the committed schema |
-| `calls.py` | Makes one tool call through the generated client and reports `{operation, ok, status, body, headers?}` |
+| `tools.py` | Turns the operations a side may call into JSON Schema tool specs, from the committed schema, plus `shell` |
+| `rest.py` | Sends one operation by its `operationId`: method, path and query from the schema, the body as JSON |
+| `calls.py` | Checks a tool call against its spec, makes it and reports `{operation, ok, status, body, headers?}` |
+| `shell.py` | Runs one `shell` command over the player's terminal SSH grant |
 | `cli.py` | The command line: tool specs, prompts, one call, or a provider playing as the player |
 | `play.py` | The turn loop a provider plays in |
 | `provider.py` | The provider interface: `turn(system, tools, transcript) -> Turn(text, calls)` |
 | `prompts/` | `attacker.md`, `defender.md` (rules of play) and `claude_code.md` (the CLI) |
-| `signin.py` | Signed-in and playing clients, shared with `test/` and `bin/` |
+| `signin.py` | Signed-in and playing sessions (`requests`), shared with `test/` and `bin/` |
 
 ## A player
 
@@ -30,12 +32,32 @@ python -m bots.cli tools --side attack
 python -m bots.cli prompt --side attack
 echo '{"name": "attack_state", "arguments": {}}' | python -m bots.cli call --side attack
 python -m bots.cli attack_fire_case --json '{"case": "board-sqli-search"}'
+python -m bots.cli shell --side defence --json '{"command": "sudo nginx -t"}'
 python -m bots.cli run --side defence --provider mypackage.mymodule:make_provider
 ```
 
 `call` and the one-line form print one JSON answer. A refusal the platform made is printed with its status and
 the exit code is 0; a refusal made before anything was sent (`"local": true`: unknown tool, an argument the
-spec does not take, a value the client cannot encode) exits 2, an unreachable platform exits 3.
+spec does not take, a value of the wrong type or outside its enum) exits 2, an unreachable platform exits 3.
+
+## The shell
+
+Each side has a `shell` tool beside its API tools, offered only while the schema has that side's terminal
+operation. It is the shell a human player gets: the first call asks `attack_terminal` or `defence_terminal` for
+the SSH grant (a key for the platform's jump host and the box behind it), and each command then runs as
+`ssh -o ProxyCommand="ssh -W %h:%p jump@<jump>" <account>@<box> <command>`, the learner account on the attacker
+box or `analyst` on the WAF. The answer is `{operation, ok, exit_code, stdout, stderr}`, or `timed_out` when
+the command outlasts `timeout` (default 120 seconds). Each command is a new login, so `cd` and variables do
+not carry over.
+
+The grant is kept for the run (`run`), and dropped when ssh itself fails (exit 255) so the next command asks
+for a new one. `call` and the one-line form are one process each, so each of them asks for a new grant, which
+replaces the one before. The bot needs `ssh` on its path and a route to the jump host; without `ssh`
+the answer is local, with the code `ssh_unavailable`.
+
+On the WAF, `analyst` can write the WAF files and run `sudo nginx -t`, `sudo nginx -T` and
+`sudo systemctl reload nginx`. A reload is recorded as the next WAF version on the next API request, like a
+human's reload in the terminal.
 
 ## Plugging in a model
 

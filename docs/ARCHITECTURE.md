@@ -67,15 +67,13 @@ FK 대상과 마이그레이션 의존성도 같은 순서를 따르는지 봅�
 
 ```
 openapi/schema.yaml           커밋하는 API 계약(유일하게 커밋하는 생성물)
-openapi/python-client.yaml    Python 클라이언트 생성 설정
 strings/console.json          콘솔이 보여 주는 한국어(front/에 묶임)
 strings/server.json           서버가 직접 그리는 한국어(Kibana 게이트 페이지). 번들에 넣지 않음
 bin/
-  verify                      gen-clients → 계층별 단위 테스트 → acceptance
-  gen-clients                 schema.yaml 내보내기, bots/client/와 front/src/api/schema.d.ts 생성(커밋 안 함)
+  verify                      schema.yaml 내보내기 → 계층별 단위 테스트 → acceptance
   select-tests                --changed가 돌릴 테스트 고르기
   acceptance                  test/ 실행
-  cloud  platform-rebuild     클라우드와 플랫폼 VM. 스태프 range API를 생성 클라이언트로 호출
+  cloud  platform-rebuild     클라우드와 플랫폼 VM. 스태프 range API를 bots/rest.py로 호출
   backup  prune  carry-users  DB 스냅숏, 닫힌 리스 정리, 옛 DB에서 계정만 옮기기
   fetch-geoip  pick-origins  worldmap  build-css
 platform/                     패키지 아님. manage.py와 pytest의 작업 디렉터리
@@ -123,7 +121,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
   tests/       domain/  seams/  accounts/  events/  content/  match/  referee/  defence/  attack/  lessons/  contract/
                test_*.py(배포 파일, compose, 역할 이미지, 경계 검사 등)
   entrypoint.sh  nginx.conf  vm-terminal.sh  tmux.conf  Dockerfile
-bots/          tools.py  calls.py  cli.py  play.py  provider.py  signin.py  prompts/  client/(생성, 커밋 안 함)
+bots/          tools.py  rest.py  calls.py  shell.py  cli.py  play.py  provider.py  signin.py  prompts/
 test/          라이브 acceptance. plays.py가 생성 클라이언트로 리스와 라운드를 돌림
 redteam/cases/ board.yaml  corp.yaml   공격·정상 케이스(데이터만)
 wargames/<board|corp>/  wargame.yaml  compose.yaml  topology.yaml  objectives.yaml  traffic.yaml  probes/  app/
@@ -399,9 +397,12 @@ sequenceDiagram
 ## 봇
 
 `bots/`는 `/api/`의 클라이언트입니다. `tools.py`가 커밋된 스키마에서 자리별 도구 명세(자기 쪽 동작, 라운드 읽기,
-리스 하트비트. 상대 쪽 동작, 스태프 전용 `correlation`, 사람용 `defence_kibana` 제외)를 만들고, `calls.py`가 생성
-클라이언트로 한 번 호출하며, `play.py`의 턴 루프에 `provider.py` 인터페이스로 모델을 붙입니다. 상대 쪽 도구는 보내기
-전에 거부합니다. 자세한 규칙은 [bots/README.md](../bots/README.md)에 있습니다.
+리스 하트비트. 상대 쪽 동작, 스태프 전용 `correlation`, 사람용 `defence_kibana` 제외)와 `shell`을 만들고, `calls.py`가
+도구 명세로 인자를 검사한 뒤 `rest.py`로 한 번 호출하며, `play.py`의 턴 루프에 `provider.py` 인터페이스로 모델을
+붙입니다. 생성 클라이언트는 없습니다. `rest.py`가 스키마의 `operationId`에서 메서드·경로·쿼리를 찾아 보냅니다. 상대 쪽
+도구는 보내기 전에 거부합니다. `shell`은 사람 플레이어와 같은 셸입니다. `attack_terminal`이나 `defence_terminal`이 주는
+SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에서 명령 하나를 실행합니다(`shell.py`). 자세한 규칙은
+[bots/README.md](../bots/README.md)에 있습니다.
 
 ## 훈련 환경
 
@@ -431,8 +432,7 @@ sequenceDiagram
 
 - `front/`는 가짜 응답(`front/mock/`)으로만 확인했고 훈련 환경에서는 아직 돌리지 않았습니다. 플랫폼 Dockerfile의
   node 단계가 `npm run types`(openapi-typescript)로 `front/src/api/schema.d.ts`를 만들고 빌드한 뒤 `dist`를
-  `/app/front/dist`에 넣습니다. `strings/server.json`은 빌드에 쓰이지만 `dist`에는 들어가지 않습니다. Python 클라이언트
-  `bots/client/`는 여전히 `bin/verify`만 만듭니다.
+  `/app/front/dist`에 넣습니다. `strings/server.json`은 빌드에 쓰이지만 `dist`에는 들어가지 않습니다.
 - API에 없어서 목업과 다른 곳: 지난 라운드의 종료 시각과 결과, 레슨의 단계 수, 로비의 연 시각, CRS 미리 보기, 케이스·목표 목록(스태프 편집기는 id로
   입력)이 없습니다.
 - infra, waf 이미지 다시 굽기와 `wargames/<id>/probes/` 녹화(`bin/record-probes`). 배포 파일은 고쳐 두었습니다.

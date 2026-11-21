@@ -10649,3 +10649,36 @@ tells the defence at once.
 - The judge step is the last of the round reads, after alerts are ingested and
   the customers' benign pass is fired.
 
+## 2026-11-21 — Bots: the same shell as a human, no generated client
+
+How the "Bots" ruling above is carried out.
+
+- **No generated client.** `bin/gen-clients`, `openapi/python-client.yaml`
+  and the `openapi-python-client` dev dependency (and with it `httpx2`) are
+  gone. `bots/rest.py` sends an operation by its `operationId`: it reads the
+  method, the path and which parameters go in the path or the query from
+  `openapi/schema.yaml`, and sends the body as JSON. `bots/signin.py` returns
+  `requests` sessions (`signin.Platform`: base URL, timeout, the CSRF header
+  from the `cr_csrf` cookie, the player token as `Bearer`). `bots/`, `test/`,
+  `bin/acceptance`, `bin/cloud`, `bin/record-probes` and `bin/verify` all call
+  through it. An operation gone from the schema now fails at its first call
+  instead of at import. `bin/verify` exports the schema itself
+  (`manage.py spectacular`). `front/` keeps its hand-written
+  `src/api/client.ts` over the types `npm run types` generates.
+- **Arguments are checked against the tool spec.** The generated models used
+  to refuse a value outside an enum; `bots/calls.py` now checks each
+  argument's type and enum against its input schema and refuses it locally
+  (`"local": true`, code `invalid`) before anything is sent.
+- **The shell.** Each side has a `shell` tool while the schema has its
+  terminal operation. Its first call asks `attack_terminal` or
+  `defence_terminal` for the SSH grant a human's terminal uses, writes the key
+  to a private temporary directory and runs each command as `ssh` through the
+  jump host (`ProxyCommand ssh -W`) to the learner account on the attacker box
+  or `analyst` on the WAF. The grant is kept for a `run` and dropped when ssh
+  itself fails (exit 255); `call` and the one-line form are one process each
+  and ask for a new grant each time, which replaces the one before. A reload
+  made through it is recorded like a human's terminal reload.
+- **Form tools.** The tool list was already built from the schema, so no tool
+  outlived its endpoint; the WAF form tuning went with its API in the WAF
+  files ruling. The defence keeps the IDS and WAF file tools, which are the
+  API the console uses, beside the shell.

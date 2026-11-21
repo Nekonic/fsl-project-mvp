@@ -1,5 +1,5 @@
-import importlib
 import io
+import subprocess
 import json
 import re
 import threading
@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from bots import calls, cli, play, tools
+from bots import calls, cli, play, rest, shell, tools
 from bots.provider import ProviderNotFound, ToolCall, Turn, load
 
 REPO = Path(__file__).resolve().parents[2]
@@ -106,7 +106,7 @@ def test_a_side_gets_its_own_operations_and_the_round_reads_and_nothing_of_the_o
     names = [spec["name"] for spec in tools.specs(side)]
     other = next(name for name in tools.SIDES if name != side)
 
-    assert set(names) == (side_tagged(side) - tools.HUMAN_ONLY) | set(tools.ROUND_OPERATIONS)
+    assert set(names) == (side_tagged(side) - tools.HUMAN_ONLY) | set(tools.ROUND_OPERATIONS) | {tools.SHELL}
     assert not set(names) & side_tagged(other)
     assert "defence_kibana" not in names
     assert len(names) == len(set(names))
@@ -159,11 +159,40 @@ def test_a_body_field_clashing_with_a_parameter_is_refused():
         tools.build("attack_tool_output", schema)
 
 
+class Recording:
+    def __init__(self):
+        self.sent = []
+
+    def request(self, method, url, params=None, json=None):
+        self.sent.append((method, url, params, json))
+
+
 @pytest.mark.parametrize("side", tools.SIDES)
-def test_every_tool_has_its_operation_in_the_generated_client(side):
+def test_every_api_tool_is_sent_to_its_route_from_the_schema_alone(side):
     for name, operation in tools.operations(side).items():
-        module = importlib.import_module(f"bots.client.api.{operation.tag}.{name}")
-        assert callable(module.sync_detailed), name
+        session = Recording()
+        named = {key: 5 for key in operation.path_parameters}
+        if operation.in_round:
+            named[tools.ROUND_PARAMETER] = ROUND
+        rest.request(session, name, **named)
+        method, url, _, _ = session.sent[0]
+        assert method == operation.method.upper() and "{" not in url, name
+
+
+def test_a_schema_request_fills_the_path_encodes_the_query_and_refuses_what_the_operation_does_not_take():
+    session = Recording()
+
+    rest.request(session, "round_list", state="open", mine=True)
+    rest.request(session, "staff_probes_record", wargame_id="a b")
+
+    assert session.sent == [("GET", "/api/rounds/", {"state": "open", "mine": "true"}, None),
+                            ("POST", "/api/staff/wargames/a%20b/probes/record/", {}, None)]
+    with pytest.raises(TypeError, match="bogus"):
+        rest.request(session, "round_list", bogus=1)
+    with pytest.raises(TypeError, match="wargame_id"):
+        rest.request(session, "staff_probes_record")
+    with pytest.raises(rest.UnknownOperation):
+        rest.request(session, "nothing_here")
 
 
 def test_the_tools_command_prints_the_specs_and_needs_no_player():
@@ -253,10 +282,11 @@ def test_arguments_outside_the_tool_spec_are_refused_locally(platform, arguments
     assert platform.seen == []
 
 
-def test_a_value_the_client_cannot_take_is_refused_locally(platform):
-    told = calls.call(attack_player(platform), "attack_send", {"method": "BREW", "path": "/"})
+def test_a_value_the_schema_does_not_take_is_refused_locally(platform):
+    for arguments in ({"method": "BREW", "path": "/"}, {"method": "GET", "path": 3}):
+        told = calls.call(attack_player(platform), "attack_send", arguments)
 
-    assert told["local"] is True and told["errors"][0]["code"] == "invalid"
+        assert told["local"] is True and told["errors"][0]["code"] == "invalid", arguments
     assert platform.seen == []
 
 
@@ -401,3 +431,110 @@ def test_a_provider_reference_that_does_not_give_a_provider_is_refused(reference
 
 def attack_player_without_turn():
     return object()
+
+
+SSH_GRANT = {"host": "jump.example", "port": 2222, "user": "jump", "private_key": "-----KEY-----",
+             "target_host": "10.20.0.5", "target_user": "analyst", "expires_at": "2026-11-21T10:00:00Z"}
+
+
+def defence_player(platform):
+    return calls.Player(base_url=platform.url, token=TOKEN, round_id=ROUND, side="defence")
+
+
+@pytest.fixture
+def ssh(monkeypatch):
+    ran = []
+    answers = []
+
+    def fake_run(argv, **named):
+        key = next(argv[index + 1] for index, word in enumerate(argv) if word == "-i")
+        ran.append({"argv": argv, "key": Path(key).read_text(), "mode": Path(key).stat().st_mode & 0o777,
+                    "timeout": named["timeout"]})
+        answer = answers.pop(0) if answers else (0, "ok\n", "")
+        if answer == "late":
+            raise subprocess.TimeoutExpired(argv, named["timeout"], output=b"partial")
+        return subprocess.CompletedProcess(argv, answer[0], answer[1], answer[2])
+
+    monkeypatch.setattr(shell.subprocess, "run", fake_run)
+    monkeypatch.setattr(shell, "OPEN", {})
+    return ran, answers
+
+
+def test_each_side_has_a_shell_tool_only_while_the_schema_grants_its_terminal():
+    schema = json.loads(json.dumps(tools.contract()))
+    del schema["paths"]["/api/rounds/{round_id}/defence/terminal/"]
+
+    assert tools.shell_spec("defence") in tools.specs("defence")
+    assert tools.SHELL in tools.offered("attack")
+    assert tools.SHELL not in tools.offered("defence", schema)
+    assert tools.SHELL not in [spec["name"] for spec in tools.specs("defence", schema)]
+
+
+def test_the_defence_shell_opens_the_human_terminal_grant_once_and_runs_each_command_over_its_jump(platform, ssh):
+    ran, _ = ssh
+    platform.on("GET", f"/api/rounds/{ROUND}/defence/terminal/",
+                body={"ws_url": f"/vm-terminal/defence/{ROUND}/", "ssh": SSH_GRANT})
+    player = defence_player(platform)
+
+    first = calls.call(player, "shell", {"command": "sudo nginx -t"})
+    second = calls.call(player, "shell", {"command": "cat /etc/nginx/defence/http.conf", "timeout": 30})
+
+    assert first == {"operation": "shell", "ok": True, "exit_code": 0, "stdout": "ok\n", "stderr": ""}
+    assert second["ok"] is True
+    assert [seen["path"] for seen in platform.seen] == [f"/api/rounds/{ROUND}/defence/terminal/"]
+    assert platform.seen[0]["authorization"] == f"Bearer {TOKEN}"
+    argv = ran[0]["argv"]
+    assert argv[0] == "ssh" and argv[-2:] == ["analyst@10.20.0.5", "sudo nginx -t"]
+    jump = next(word for word in argv if word.startswith("ProxyCommand="))
+    assert "-p 2222 -W %h:%p jump@jump.example" in jump
+    assert ran[0]["key"] == "-----KEY-----\n" and ran[0]["mode"] == 0o600
+    assert [seen["timeout"] for seen in ran] == [shell.DEFAULT_SECONDS, 30]
+
+
+def test_an_ssh_failure_drops_the_grant_so_the_next_command_asks_for_a_new_one(platform, ssh):
+    ran, answers = ssh
+    answers.extend([(255, "", "Permission denied"), (0, "", "")])
+    platform.on("GET", f"/api/rounds/{ROUND}/defence/terminal/", body={"ssh": SSH_GRANT})
+    player = defence_player(platform)
+
+    failed = calls.call(player, "shell", {"command": "id"})
+    calls.call(player, "shell", {"command": "id"})
+
+    assert failed["ok"] is False and failed["exit_code"] == 255 and "denied" in failed["stderr"]
+    assert len(platform.seen) == 2 and len(ran) == 2
+
+
+def test_a_refused_terminal_is_the_shell_answer_and_nothing_runs(platform, ssh):
+    ran, _ = ssh
+    refusal = {"errors": [{"path": "", "code": "round_not_started"}]}
+    platform.on("GET", f"/api/rounds/{ROUND}/defence/terminal/", status=409, body=refusal)
+
+    told = calls.call(defence_player(platform), "shell", {"command": "id"})
+
+    assert told == {"operation": "shell", "ok": False, "status": 409, "body": refusal}
+    assert ran == []
+
+
+def test_a_command_that_outlasts_its_timeout_is_reported_with_what_it_printed(platform, ssh):
+    _, answers = ssh
+    answers.append("late")
+    platform.on("GET", f"/api/rounds/{ROUND}/defence/terminal/", body={"ssh": SSH_GRANT})
+
+    told = calls.call(defence_player(platform), "shell", {"command": "sleep 900", "timeout": 1})
+
+    assert told["timed_out"] is True and told["exit_code"] is None and told["stdout"] == "partial"
+
+
+@pytest.mark.parametrize("arguments", [{}, {"command": "id", "timeout": "soon"}, {"command": "id", "user": "root"}])
+def test_shell_arguments_outside_its_spec_are_refused_locally(platform, ssh, arguments):
+    told = calls.call(defence_player(platform), "shell", arguments)
+
+    assert told["local"] is True
+    assert platform.seen == [] and ssh[0] == []
+
+
+def test_the_one_line_shell_needs_the_side_because_both_players_have_one(platform, capsys, ssh):
+    code, _ = run_cli(["shell", "--json", '{"command": "id"}'], platform)
+
+    assert code == cli.USAGE_ERROR and "--side" in capsys.readouterr().err
+    assert platform.seen == []

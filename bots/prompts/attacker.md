@@ -41,6 +41,9 @@ request that caused it. Blind scanning and brute force are what a defender bans 
    baseline; a tool case starts a tool run that you follow with `attack_tool_output`.
 3. Probe the target with `attack_send`, find a way to its objectives, and submit what you take with
    `attack_loot`. `attack_state.objectives` shows which are already lost.
+   `shell` runs one command on the attacker box as the learner, the same shell a human attacker gets from
+   the terminal. Each call is a new login: `cd` and variables do not carry over, so chain steps with `&&` or
+   write a script to a file. Its traffic leaves from the current origin and can spend it.
 4. Follow `round_events` with the `next` cursor for `origin.spent`, `origin.switched`, `origins.spent`,
    `objective.lost` and `round.ended`.
 5. When the round has ended (phase `ended`, or `409 round_closed`), read `round_score` once and stop. Your player
