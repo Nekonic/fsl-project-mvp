@@ -71,18 +71,6 @@ def test_ground_truth_reads_the_declared_read_path():
     assert opened.call_args.args[0].endswith("/internal/auth-users")
 
 
-@pytest.mark.parametrize("host, read", [
-    ("", "http://board:8000/internal/auth-users"),
-    ("172.31.0.9", "http://172.31.0.9:8000/internal/auth-users"),
-])
-def test_ground_truth_reads_the_board_at_the_host_the_range_gives(host, read):
-    with patch("scoring.loot.urllib.request.urlopen", side_effect=OSError("no route")) as opened:
-        with pytest.raises(loot.GroundTruthUnavailable):
-            loot.ground_truth(READ, BOARD, host)
-
-    assert opened.call_args.args[0] == read
-
-
 def test_ground_truth_rejects_a_body_that_is_not_a_username_map():
     class Fake:
         def __enter__(self):

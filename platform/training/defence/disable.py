@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 
 MARKER = "# cr-disabled"
-MARKERS = (MARKER, "# fsl-disabled", "# fsl-suppressed")
 _QUOTED = re.compile(r'"(?:\\.|[^"\\])*"')
 _SID = re.compile(r"[(;]\s*sid\s*:\s*(\d+)\s*[;)]")
 
@@ -42,7 +41,7 @@ def discard(content: str, sid: int, original: str) -> str:
 def _commented(content: str, sid: int, original: str) -> tuple[list[str], int]:
     lines = content.splitlines(keepends=True)
     for at in range(1, len(lines)):
-        marked = lines[at - 1].startswith(tuple(f"{marker} until " for marker in MARKERS))
+        marked = lines[at - 1].startswith(f"{MARKER} until ")
         if marked and lines[at].rstrip("\r\n") == f"#{original}" and _sid(lines[at]) == sid:
             return lines, at
     raise KeyError(sid)

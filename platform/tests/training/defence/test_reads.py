@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+import pytest
+
 from telemetry import alerts as alert_feed
 from telemetry.models import Event
 from tests import rounds
@@ -53,6 +55,25 @@ def test_ingest_stores_each_alert_once_with_its_engine_rule_and_marker(board_rou
     assert [record.detection_id for record in alert_feed.detections(board_round)] == ["s1", "w1:0", "a1"]
     seen = Event.objects.filter(round_id=board_round.pk, kind="alert.seen")
     assert seen.count() == 3 and {event.player_side for event in seen} == {"defence"}
+
+
+@pytest.mark.parametrize("first", ["alert", "http"])
+def test_an_alert_and_its_transaction_s_http_record_read_apart_still_join_marker_and_client(board_round, cyber_range,
+                                                                                          es, at, first):
+    alert_at, record_at = (stamp(at), stamp(at, 1)) if first == "alert" else (stamp(at, 1), stamp(at))
+    alert = {**suricata(alert_at, ip="10.30.0.247"), "flow_id": 7, "tx_id": 0, "http": {"url": "/search/?q=x"}}
+    record = {"@timestamp": record_at, "event": {"module": "suricata"}, "event_type": "http", "flow_id": 7,
+              "tx_id": 0, "src_ip": "10.30.0.247", "xff": ATTACKER,
+              "http": {"request_headers": [{"name": "X-Request-ID", "value": "m7"}]}}
+    reads = {"alert": ("s7", alert), "http": ("h7", record)}
+
+    es.add(*reads[first])
+    alert_feed.ingest_alerts(board_round)
+    es.add(*reads["http" if first == "alert" else "alert"])
+    alert_feed.ingest_alerts(board_round)
+
+    [stored] = alert_feed.detections(board_round)
+    assert (stored.marker, stored.src_ip) == ("m7", ATTACKER)
 
 
 def test_alerts_page_by_detection_id_and_filter_by_engine_rule_and_source(as_defender, board_round, cyber_range, es,

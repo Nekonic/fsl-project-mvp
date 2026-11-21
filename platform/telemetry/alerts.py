@@ -14,6 +14,7 @@ from training.models import Round
 
 ENGINE_OF = {"suricata": ENGINE_IDS, "modsecurity": ENGINE_WAF, "nginx": ENGINE_WAF}
 MOST_PAGES = 5
+MOST_JOINS = 2000
 ALERTS_PAGE = 200
 DEFENCE = "defence"
 
@@ -68,15 +69,29 @@ def cursor_of(found) -> AlertCursor:
 def ingest(found, config: ElasticConfig) -> list[Detection]:
     held = cursor_of(found)
     index = config.index_of(found.allocation.slot or 0)
+    joins = dict(held.cursor.get("joins") or {})
     made: list[Detection] = []
     for _ in range(MOST_PAGES):
         documents, moved = elastic.fetch_after(config.url, index, held.cursor)
-        made += [row for detection in elastic.normalize_all(documents) if (row := stored(found, detection))]
-        held.cursor = moved
+        page = elastic.transaction_joins(documents)
+        joins = elastic.joined_with(joins, page)
+        made += [row for detection in elastic.normalize_all(documents, joins) if (row := stored(found, detection))]
+        joined_later(found, page)
+        held.cursor = {**moved, "joins": dict(list(joins.items())[-MOST_JOINS:])}
         held.save(update_fields=["cursor"])
         if len(documents) < elastic.PAGE:
             break
     return made
+
+
+def joined_later(found, joins: Mapping[str, Mapping[str, Any]]) -> None:
+    for join in joins.values():
+        rows = Detection.objects.filter(round=found, engine=ENGINE_IDS, raw__flow_id=join["flow_id"],
+                                        raw__tx_id=join["tx_id"])
+        if join.get("marker"):
+            rows.filter(marker__isnull=True).update(marker=join["marker"])
+        if join.get("xff"):
+            rows.update(src_ip=join["xff"])
 
 
 def alerts(found: Round, after: int = 0, engine: str = "", rule: str = "", src: str = "") -> tuple[list, int]:

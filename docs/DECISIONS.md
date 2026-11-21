@@ -10370,7 +10370,9 @@ its top level is the easiest to read.
   the owner's "Player vs AI"). Lease becomes `Allocation` (KYPO's sandbox
   allocation).
 - **Fresh database.** Everything so far is test data; no migration carries
-  data over.
+  data over. Stacks are rebuilt per allocation too, so no rule file still
+  carries the `# fsl-disabled` or `# fsl-suppressed` marker: enabling a rule
+  reads only `# cr-disabled`.
 - **No periodic tick.** Reads of alerts, the WAF access and error logs, the
   corp DB log and the attacker command log happen when an API request for
   the round comes in, one reader per round at a time; scoring counts only

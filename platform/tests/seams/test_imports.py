@@ -114,7 +114,7 @@ def test_the_seams_exist_where_the_design_puts_them():
     expected = ["cr/config.py", "cr/errors.py", "telemetry/elastic.py", "sandbox/suricata.py", "sandbox/crs.py",
                 "sandbox/openstack.py", "sandbox/cloud_config.py", "sandbox/stack_plan.py", "sandbox/definitions.py",
                 "sandbox/fabric.py", "sandbox/wiring.py", "sandbox/topology.py", "sandbox/pool.py",
-                "sandbox/refill.py", "sandbox/reachability.py", "sandbox/runner.py", "sandbox/reach.py",
+                "sandbox/refill.py", "sandbox/runner.py", "sandbox/reach.py",
                 "sandbox/edge.py", "sandbox/access.py", "sandbox/attacker.py", "sandbox/customers.py",
                 "sandbox/kibana.py",
                 "sandbox/service.py", "training/attack/cases.py", "training/attack/tools.py", "scoring/loot.py",

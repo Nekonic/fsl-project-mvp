@@ -18,10 +18,10 @@ class GroundTruthUnavailable(Unavailable):
     code = "ground_truth_unavailable"
 
 
-def ground_truth(read_path: str, config: GroundTruthConfig, host: str = "", inside=None) -> dict[str, str]:
+def ground_truth(read_path: str, config: GroundTruthConfig, inside=None) -> dict[str, str]:
     if inside is not None:
         return _from_inside(read_path, config, inside)
-    url = _board_url(host, config).rstrip("/") + read_path
+    url = config.board_url.rstrip("/") + read_path
     try:
         with urllib.request.urlopen(url, timeout=TIMEOUT) as response:
             body = json.load(response)
@@ -68,15 +68,6 @@ def _mapped(body, url: str) -> dict[str, str]:
     if not isinstance(body, dict):
         raise GroundTruthUnavailable(f"{url} did not return a username to hash map")
     return {str(name): str(digest) for name, digest in body.items()}
-
-
-def _board_url(host: str, config: GroundTruthConfig) -> str:
-    declared = urllib.parse.urlsplit(config.board_url)
-    if not host:
-        return declared.geturl()
-    return declared._replace(
-        netloc=f"{host}:{declared.port}" if declared.port else host
-    ).geturl()
 
 
 def canonicalize(submitted: Any) -> set[tuple[str, str]]:

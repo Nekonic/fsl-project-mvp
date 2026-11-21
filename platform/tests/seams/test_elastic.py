@@ -5,7 +5,6 @@ import pytest
 from telemetry.elastic import normalize
 
 MARKER = "11111111-1111-4111-8111-111111111111"
-WINDOW = (datetime(2026, 9, 24, tzinfo=timezone.utc), datetime(2026, 9, 24, 1, tzinfo=timezone.utc))
 
 def suricata_alert(**overrides):
     doc = {
@@ -231,41 +230,6 @@ def test_marker_does_not_leak_to_a_transaction_without_one():
     assert by_id["a0"] == marked
     assert by_id["a1"] is None
 
-class _Response:
-    def __init__(self, hits, total):
-        self.status_code = 200
-        self.ok = True
-        self._body = {
-            "hits": {
-                "total": {"value": total, "relation": "eq"},
-                "hits": [{"_id": str(n), "_source": {}} for n in range(hits)],
-            }
-        }
-
-    def json(self):
-        return self._body
-
-def _fetch(hits, total, monkeypatch, **kwargs):
-    from datetime import datetime, timezone
-
-    from telemetry import elastic
-
-    monkeypatch.setattr(
-        elastic.requests, "post", lambda *a, **k: _Response(hits, total)
-    )
-    when = datetime(2026, 9, 21, tzinfo=timezone.utc)
-    return elastic.fetch("http://es", "logs-*", when, when, **kwargs)
-
-@pytest.mark.parametrize("hits, total, expected", [(120, 120, None), (5000, 25937, (5000, 25937))])
-def test_a_fetch_that_hit_the_cap_says_what_it_lost(monkeypatch, hits, total, expected):
-    documents, truncated = _fetch(hits, total, monkeypatch, size=5000)
-
-    assert len(documents) == hits
-    assert truncated == expected, (
-        "the window held 25937 documents and only 5000 were read; a caller "
-        "that cannot see that scores a session on a fifth of its evidence"
-    )
-
 def test_a_waf_detection_keeps_where_its_source_is():
     doc = modsec_doc([{"message": "SQL Injection Attack Detected", "details": {}}])
     doc["src_geo"] = {"country_name": "Brazil", "location": {"lat": -23.5, "lon": -46.6}}
@@ -285,8 +249,8 @@ def test_a_search_that_lost_a_shard_is_refused_rather_than_read_as_complete():
 
     with patch("telemetry.elastic.requests.post") as posted:
         posted.return_value.ok = True
-        posted.return_value.json.return_value = {"hits": {"hits": [], "total": {"value": 0}}}
-        elastic.fetch("http://es:9200", "logs-*", *WINDOW)
+        posted.return_value.json.return_value = {"hits": {"hits": []}}
+        elastic.fetch_after("http://es:9200", "logs-*")
 
     assert "allow_partial_search_results=false" in posted.call_args.args[0], (
         "a search that lost a shard answers 200 with fewer hits, and ingest "
@@ -301,39 +265,23 @@ def test_a_search_leaves_out_filebeat_s_copy_of_the_raw_log_line_that_no_detecti
 
     with patch("telemetry.elastic.requests.post") as posted:
         posted.return_value.ok = True
-        posted.return_value.json.return_value = {"hits": {"hits": [], "total": {"value": 0}}}
-        elastic.fetch("http://es:9200", "logs-*", *WINDOW)
+        posted.return_value.json.return_value = {"hits": {"hits": []}}
+        elastic.fetch_after("http://es:9200", "logs-*")
 
     assert posted.call_args.kwargs["json"]["_source"] == {"excludes": ["message"]}, (
         "walk: closing a c2 session re-read about 80 MB, 38 MB of it this field, and took 14.1 s")
 
 
-def _failing(status=None, raises=None):
-    from unittest.mock import MagicMock
-
-    if raises is not None:
-        return MagicMock(side_effect=raises)
-    answer = MagicMock(ok=False, status_code=status, text='{"error":{"type":"search_phase_execution_exception"}}')
-    return MagicMock(return_value=answer)
-
-
-@pytest.mark.parametrize("post, said", [
-    ({"status": 503}, "503"),
-    ({"status": 404}, "does not exist"),
-    ({"raises": "connection"}, "could not reach"),
-])
-def test_a_failed_search_is_reported_as_unavailable_not_as_no_records(post, said):
-    from unittest.mock import patch
-
-    import requests
+@pytest.mark.parametrize("status, said", [(503, "503"), (404, "does not exist")])
+def test_a_failed_search_is_reported_as_unavailable_not_as_no_records(status, said):
+    from unittest.mock import MagicMock, patch
 
     from telemetry import elastic
 
-    if post.get("raises"):
-        post = {"raises": requests.RequestException("connection refused")}
-    with patch("telemetry.elastic.requests.post", _failing(**post)):
+    answer = MagicMock(ok=False, status_code=status, text='{"error":{"type":"search_phase_execution_exception"}}')
+    with patch("telemetry.elastic.requests.post", MagicMock(return_value=answer)):
         with pytest.raises(elastic.ElasticUnavailable, match=said):
-            elastic.fetch("http://es:9200", "logs-*", *WINDOW)
+            elastic.fetch_after("http://es:9200", "logs-*")
 
 
 ACCESS = {"event": {"module": "nginx_access"}, "time": "2026-11-16T05:40:01+00:00", "client_ip": "5.188.10.10",

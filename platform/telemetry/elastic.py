@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -27,41 +27,6 @@ PIPELINE_PAUSE = 2.0
 class ElasticUnavailable(Unavailable):
     code = "elastic_unavailable"
 
-def fetch(
-    url: str,
-    index: str,
-    start: datetime,
-    end: datetime,
-    size: int = 5000,
-    newest_first: bool = False,
-) -> tuple[list[tuple[str, dict[str, Any]]], tuple[int, int] | None]:
-    query = {
-        "size": size,
-        "track_total_hits": True,
-        "_source": {"excludes": ["message"]},
-        "sort": [{"@timestamp": "desc" if newest_first else "asc"}],
-        "query": {
-            "range": {
-                "@timestamp": {
-                    "gte": start.isoformat(),
-                    "lte": end.isoformat(),
-                }
-            }
-        },
-    }
-
-    response = _posted(url, index, "_search?allow_partial_search_results=false", query)
-
-    found = response.json().get("hits", {})
-    hits = found.get("hits", [])
-    total = (found.get("total") or {}).get("value", len(hits))
-    documents = [(hit["_id"], hit.get("_source", {})) for hit in hits]
-    return documents, (len(hits), total) if total > len(hits) else None
-
-def forget_before(url: str, index: str, before: datetime) -> None:
-    _posted(url, index, "_delete_by_query?conflicts=proceed&wait_for_completion=false",
-            {"query": {"range": {"@timestamp": {"lt": before.isoformat()}}}})
-
 def _posted(url: str, index: str, call: str, body: dict[str, Any]) -> requests.Response:
     try:
         response = requests.post(f"{url.rstrip('/')}/{index}/{call}", json=body, timeout=FETCH_TIMEOUT)
@@ -75,39 +40,54 @@ def _posted(url: str, index: str, call: str, body: dict[str, Any]) -> requests.R
 
 def normalize_all(
     documents: Sequence[tuple[str, dict[str, Any]]],
+    joined: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    markers = _transaction_markers(documents)
-    forwarded = {_transaction_key(doc): doc["xff"] for _, doc in documents if doc.get("xff") and _transaction_key(doc)}
+    joins = joined_with(joined or {}, transaction_joins(documents))
 
     detections: list[dict[str, Any]] = []
     for doc_id, doc in documents:
-        key = _transaction_key(doc)
+        join = joins.get(_transaction_key(doc) or "") or {}
         for detection in normalize(doc_id, doc):
-            if detection["marker"] is None and key is not None:
-                detection["marker"] = markers.get(key)
-            if detection["source"] == "suricata" and key in forwarded:
-                detection["src_ip"] = forwarded[key]
+            if detection["marker"] is None and join.get("marker"):
+                detection["marker"] = join["marker"]
+            if detection["source"] == "suricata" and join.get("xff"):
+                detection["src_ip"] = join["xff"]
             detections.append(detection)
     return detections
 
-def _transaction_markers(
-    documents: Sequence[tuple[str, dict[str, Any]]],
-) -> dict[tuple[Any, Any], str]:
-    markers: dict[tuple[Any, Any], str] = {}
+
+def transaction_joins(documents: Sequence[tuple[str, dict[str, Any]]]) -> dict[str, dict[str, Any]]:
+    joins: dict[str, dict[str, Any]] = {}
     for _, doc in documents:
         key = _transaction_key(doc)
-        if key is None or key in markers:
+        if key is None:
             continue
-        marker = suricata_marker(doc.get("http") or {})
-        if marker:
-            markers[key] = marker
-    return markers
+        marker, forwarded = suricata_marker(doc.get("http") or {}), doc.get("xff")
+        if not marker and not forwarded:
+            continue
+        held = joins.setdefault(key, {"flow_id": doc["flow_id"], "tx_id": doc.get("tx_id")})
+        if marker and not held.get("marker"):
+            held["marker"] = marker
+        if forwarded:
+            held["xff"] = forwarded
+    return joins
 
-def _transaction_key(doc: dict[str, Any]) -> tuple[Any, Any] | None:
+
+def joined_with(earlier: Mapping[str, Mapping[str, Any]],
+                later: Mapping[str, Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    joins = {key: dict(join) for key, join in earlier.items()}
+    for key, join in later.items():
+        held = joins.setdefault(key, {})
+        held.update({name: value for name, value in join.items() if name != "marker" or not held.get("marker")})
+    return joins
+
+
+def _transaction_key(doc: dict[str, Any]) -> str | None:
     flow_id = doc.get("flow_id")
     if flow_id is None:
         return None
-    return (flow_id, doc.get("tx_id"))
+    return f"{flow_id}/{doc.get('tx_id')}"
+
 
 def normalize(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
     source = (doc.get("event") or {}).get("module")

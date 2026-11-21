@@ -557,14 +557,6 @@ def test_a_vm_that_answers_with_nothing_holds_no_store_and_one_that_says_stored_
     assert module.holds_store(Probed(0, b"stored\n")) is True
 
 
-def test_a_vm_still_holding_the_store_under_the_old_names_is_never_taken_to_hold_nothing():
-    module = rebuild()
-
-    assert "fsl_platformdata" in module.STORE_PROBE
-    with pytest.raises(module.Refused, match="before the rename"):
-        module.holds_store(Probed(module.LEGACY_HELD))
-
-
 @pytest.mark.parametrize("code, said", [(255, "Permission denied"), (3, "")])
 def test_a_vm_that_cannot_be_asked_is_never_taken_to_hold_nothing(code, said):
     module = rebuild()

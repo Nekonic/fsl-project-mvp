@@ -128,7 +128,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                customers.py 경계: infra VM의 고객 프로그램(cr-customers.service)과 고객 주소
                cloud_config.py  stack_plan.py  definitions.py(+declaration.yaml)  fabric.py
                wiring.py(배선 파싱)  topology.py(학습자용 이름, 쪽별 필터)  pool.py  refill.py
-               reachability.py  runner.py  reach.py(runner 묶음, 훈련 환경 전체·슬롯·할당별 범위)
+               runner.py  reach.py(runner 묶음, 훈련 환경 전체·슬롯·할당별 범위)
                service.py   다른 단위가 쓰는 풀, fabric, 슬롯 호출
                management/commands/  rebuild_slots(rebuild 서비스)  run_on_role
   telemetry/   Event, Detection, AlertCursor, AccessCursor

@@ -41,11 +41,8 @@ API_WAIT = 1200
 API_POLL = 2
 CONTAINER_WAIT = 120
 STORE_DIRECTORY = "/var/lib/docker/volumes/cr_platformdata/_data"
-LEGACY_STORE = "/var/lib/docker/volumes/fsl_platformdata/_data/db.sqlite3"
-LEGACY_HELD = 4
 STORE_PROBE = (
     "command -v docker >/dev/null || exit 0; "
-    f"sudo test -e {LEGACY_STORE} && exit {LEGACY_HELD}; "
     "sudo docker ps -q --filter 'name=^cr-platform$' --filter status=running || exit 3; "
     f"sudo test -e {STORE_DIRECTORY}/db.sqlite3 && echo stored; exit 0"
 )
@@ -383,12 +380,6 @@ def keep_range_key(key: Path, old: Host | None, first: bool = False, run=run) ->
 
 def holds_store(old: Host) -> bool:
     asked = old.ssh(STORE_PROBE, check=False)
-    if asked.returncode == LEGACY_HELD:
-        raise Refused(
-            f"{Path(sys.argv[0]).name}: {old.target} holds its store under the names used before the "
-            f"rename ({LEGACY_STORE}), which this checkout cannot back up, so nothing was deleted; "
-            f"take it down from a checkout before the rename first (docs/OPENSTACK.md §5.4)"
-        )
     if asked.returncode != 0:
         said = asked.stderr.decode(errors="replace").strip()
         raise Refused(
