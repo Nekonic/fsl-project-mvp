@@ -586,8 +586,8 @@ Port 8002 is the console's site pane (`/site/<round>/<host>/`, proxied to
 `match/site.py`). The platform sends each request over an ssh stream to the
 lease's Kali VM (over `cr-mgmt`). For an attack seat it goes through
 `attack.send` from the current origin; for a
-defence or lesson seat Kali sends it from a customer address with the
-lease's browse marker, through the edge router to the WAF. A platform stack
+defence or lesson seat the infra VM sends it from a customer address with the
+lease's browse marker, out of its DMZ port straight to the WAF. A platform stack
 made before 2026-10-13 lacks the rule. Add it by hand:
 
 ```bash
@@ -775,7 +775,7 @@ names; none of it has run, so it is **[unverified]**.
 | `infra` | `cr-infra-bake2` | `edge.nft` declares the sets `pool` and `spent` (`type ipv4_addr`) and drops `ip saddr @spent` and then `ip saddr != @pool` from `wan` before the established accept, so an open keep-alive or sqlmap connection of a spent origin stops too and an address the platform never put in `pool` reaches nothing; `range/edge.py` adds the addresses after each `slot-boot` load and flushes a spent origin's conntrack entries (package `conntrack`). `tcpdump` for `rules.suricata.capture` (probe recording), `/var/lib/cr-ruletest` (0700) for `rules.suricata.offline_test`, which runs the same pinned image and `/etc/suricata/suricata.yaml` with `-r` and reads the scratch `eve.json`, never `/var/log/suricata`. `log-relay.conf` relays the WAF's `nginx-access` lines instead of `nginx` |
 | `waf` | `cr-waf-bake3` (**(this cloud)**; `cr-waf-bake2` is taken) | `board.com.conf` writes every request to `/var/log/nginx/access.json` as JSON (`time`, `client_ip`, `vhost`, `request`, `status`, `refused` from the one `$refused` map of 400 and 403, `request_id` from `X-Request-ID` when it has a marker's shape and empty otherwise, so a padded or repeated header cannot push the line past the shipper's 64 KiB), and `log-shipper.conf` ships it under Tag `nginx-access` in place of `refused.log`. `probe.conf` and `probe-upstream.py` for `rules.crs.scratch_check` and `scratch_test`; the exclusion file is created 0644 (root writes it through sudo). `analyst.sh` creates the defence seat's account |
 
-`pool` holds a round's attack origins and customer addresses (filled when
+`pool` holds a round's attack origins (filled when
 the round starts) or, for a probe lease, the origin it wears (admitted before
 each case); every other address from `wan` is dropped, so a learner with sudo
 on kali cannot send from an unused origin-subnet address. On a fresh slot the
@@ -813,7 +813,7 @@ on one slot, the spec's checks for this step:
 
 ```bash
 sudo nft list set ip edge spent                    # on the infra: the set exists, empty until an origin is spent
-sudo nft list set ip edge pool                     # on the infra during a round: its origins and customer addresses
+sudo nft list set ip edge pool                     # on the infra during a round: its attack origins
 sudo tail -1 /var/log/nginx/access.json            # on the WAF after one request: request_id is the X-Request-ID
 ```
 
@@ -852,6 +852,35 @@ them:
 ```bash
 ssh ubuntu@<platform> "sudo docker exec cr-platform tar -C /data/probes/board/probes -cf - ." \
   | tar -C wargames/board/probes -xf -
+```
+
+### 3.8 Benign traffic moves to the infra (infra and kali rebake)
+
+The customers program (`deploy/traffic/users.py`) and the benign cases no
+longer run on kali. Until the infra is rebaked, a range has no customers:
+the platform starts `cr-customers.service` on the infra and the old image
+has no such unit, so starting the customers fails and the round records the
+error in `Round.traffic`.
+
+| Role | What changed in `deploy/roles/<role>/` |
+|---|---|
+| `infra` | `install.sh` creates the system account `cr-users` and `/var/lib/cr-users`, installs `users.py` (a link to `deploy/traffic/users.py`) into `/usr/local/lib/cr-users/` and the unit `cr-customers.service` (not enabled; the platform starts it with a round's plan and stops it at the round's end), and installs `python3` and `curl`. `slot-boot` puts the slot's customer addresses (`CUSTOMERS` in `/etc/slot.env`) on a dummy link `customers` as /32s and points the sites (`SITES`) at the WAF's front in `/etc/hosts` |
+| `kali` | nothing in its role files; it stands on one address per origin now, which comes from `/etc/slot.env`, not the image. It is rebaked with the infra so both images come from the same tree |
+
+The customers leave the infra's DMZ port, which already allows every source
+address (the pair `0.0.0.0/0`, since it routes), and reach the WAF's front
+directly; the WAF answers through its default route, the infra. No Heat
+change: no network path is new. The customer addresses are not in the
+edge's `pool`, so kali cannot send from them.
+
+After the bakes, name both in `compute.images` and run `bin/cloud up
+--replace`. Checks on one slot, **[unverified]**:
+
+```bash
+ip -4 addr show dev customers                      # on the infra: the slot's customer addresses as /32s
+getent hosts board.com                             # on the infra: the WAF's front
+sudo systemctl status cr-customers.service         # on the infra during a round: active
+sudo tail -1 /var/log/nginx/access.json            # on the WAF: a customer's client_ip and request_id
 ```
 
 ## 4. cloud.yaml
@@ -1508,9 +1537,9 @@ stack uses the same addresses; stacks differ by network, not by CIDR.
 
 | VM (`cr-slot-<n>-<node>`) | Image | Learner |
 |---|---|---|
-| `kali` | `cr-kali-bake1`: Kali with `kali-linux-headless` and the tools | `kali` with passwordless sudo, by the attack seat's web terminal and its jump grant (§3.5) |
+| `kali` | `cr-kali-bake1`: Kali with `kali-linux-headless` and the tools; rebaked with the infra (§3.8) | `kali` with passwordless sudo, by the attack seat's web terminal and its jump grant (§3.5) |
 | `waf` | `cr-waf-bake1` (**(this cloud)** `cr-waf-bake2`): Ubuntu, nginx 1.24, ModSecurity 3.0.16, CRS 4.25.1 | the defence seat as `analyst`, by web terminal and its jump grant (§3.7); the image must be rebaked for the split site config and the writable defence files |
-| `infra` | `cr-infra-bake1`: Ubuntu, nftables, Suricata (`jasonish/suricata`, pinned by digest), rsyslog | none |
+| `infra` | `cr-infra-bake1`: Ubuntu, nftables, Suricata (`jasonish/suricata`, pinned by digest), rsyslog; the image must be rebaked for the customers program (§3.8) | none |
 | `target` | `cr-target-bake1`: Ubuntu, Docker, board and corp at the baked tag | none |
 
 - The subnets have DHCP off and no gateway, and no Neutron router stands on any

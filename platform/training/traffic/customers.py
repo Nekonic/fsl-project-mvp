@@ -84,7 +84,7 @@ def fire_pass(found: Round) -> int:
     origins = attack_origins.customer_origins(found)
     sources = [address for origin in origins for address in origin["addresses"]]
     if not sources:
-        raise errors.Unavailable(code="attacker_unavailable")
+        raise errors.Unavailable(code="range_unavailable")
     home = origin_of(origins)
     fired = 0
     for at, name in enumerate(benign_cases(found)):
@@ -144,7 +144,7 @@ def personas(declared: Mapping[str, Any], available: Sequence[Mapping[str, Any]]
     offered = {origin["id"]: origin for origin in available}
     weights = {origin: weight for origin, weight in declared["origins"].items() if origin in offered and weight > 0}
     if not weights:
-        raise errors.Unavailable(code="attacker_unavailable")
+        raise errors.Unavailable(code="range_unavailable")
     accounts = list(declared["accounts"])
     turns: dict[str, int] = {}
     found = []

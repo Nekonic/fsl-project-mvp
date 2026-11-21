@@ -75,7 +75,7 @@ def keep_cookies(round_id: int, pane: str, host: str, headers: Sequence[tuple[st
 def browse_source(found: Round) -> str:
     sources = origins.customer_addresses(found)
     if not sources:
-        raise errors.Unavailable(code="attacker_unavailable")
+        raise errors.Unavailable(code="range_unavailable")
     return sources[0]
 
 

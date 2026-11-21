@@ -148,6 +148,7 @@ def test_every_unit_a_node_waits_on_before_it_reports_ready_is_one_its_image_ins
     ("waf/board.com.conf", "deploy/waf/board.com.conf"),
     ("infra/suricata.yaml", "deploy/suricata/suricata.yaml"),
     ("infra/local.rules", "deploy/suricata/rules/local.rules"),
+    ("infra/users.py", "deploy/traffic/users.py"),
     ("target/board.yaml", "wargames/board/compose.yaml"),
     ("target/corp.yaml", "wargames/corp/compose.yaml"),
 ])
@@ -362,6 +363,40 @@ def test_the_infra_bridges_the_two_ids_legs_with_no_address_on_them():
     assert 'ip addr flush dev "$leg"' in boot
     assert "tso off gso off gro off lro off" in boot, "the sensor sees the frames as they cross the wire"
     assert assigned("infra/slot-boot")["BRIDGE"] == "br0"
+
+
+def test_the_infra_runs_the_customers_program_as_its_own_account_from_the_plan_the_platform_writes():
+    from sandbox import customers
+
+    unit = text(f"infra/{customers.SERVICE}")
+    named = assigned("infra/install.sh")
+
+    assert f"User={customers.ACCOUNT}" in unit and f"Group={customers.ACCOUNT}" in unit
+    assert (f"ExecStart=/usr/bin/python3 {named['CUSTOMERS_PROGRAM_DIR']}/users.py {customers.PLAN} "
+            f"{customers.RECORDS}") in unit
+    assert f"ConditionPathExists={customers.PLAN}" in unit
+    assert named["CUSTOMERS_ACCOUNT"] == customers.ACCOUNT and named["CUSTOMERS_HOME"] == customers.HOME
+    assert f"install -m 0644 {customers.SERVICE} /etc/systemd/system/" in text("infra/install.sh")
+    assert f"systemctl enable {customers.SERVICE}" not in text("infra/install.sh"), (
+        "the customers start with a round, not with the box")
+
+
+def test_the_infra_holds_the_customer_addresses_on_a_dummy_link_and_reaches_the_sites_at_the_waf_front():
+    boot = text("infra/slot-boot")
+    env = next(node.env for node in planned().nodes if node.role == "infra")
+
+    assert "ip link add customers type dummy" in boot
+    assert 'ip addr replace "$address/32" dev customers' in boot, (
+        "a /24 on the dummy link would route the attackers' replies into it")
+    assert "printf '%s %s\\n' \"$WAF_FRONT\" \"$site\" >> /etc/hosts" in boot
+    assert env["SITES"].split() == list(device("cr-waf").names)
+    assert not set(env["CUSTOMERS"].split()) & {row for origin in DECLARED.origins
+                                                  for row in stack_plan.origin_addresses(origin.subnet, 1)}
+
+
+def test_kali_no_longer_carries_the_customers():
+    assert "cr-users" not in text("kali/install.sh") and "users.py" not in " ".join(
+        path.name for path in (ROLES / "kali").iterdir())
 
 
 def test_docker_on_the_infra_leaves_the_edge_s_forwarding_alone():

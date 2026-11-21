@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import ipaddress
 import re
 import shlex
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from urllib.parse import urlsplit
 
 from cr.config import BoxConfig
 from cr.errors import NotFound
@@ -201,19 +199,6 @@ def _write(proxy, where: str, value: str | None) -> None:
             f"the proxy could not write {where}: {ran.output.strip()[:200]}"
         )
 
-CUSTOMERS_ACCOUNT = "cr-users"
-CUSTOMERS_HOME = "/var/lib/cr-users"
-CUSTOMERS_PROGRAM = f"{CUSTOMERS_HOME}/users.py"
-CUSTOMERS_PLAN = f"{CUSTOMERS_HOME}/plan.json"
-CUSTOMERS_RECORDS = f"{CUSTOMERS_HOME}/records.jsonl"
-CUSTOMERS_PID = f"{CUSTOMERS_HOME}/pid"
-CUSTOMERS_LOG = f"{CUSTOMERS_HOME}/log"
-CUSTOMERS_RUNNING = f'[ -f {CUSTOMERS_PID} ] && kill -0 "$(cat {CUSTOMERS_PID})" 2>/dev/null'
-CUSTOMERS_STOP_WAIT = 50
-ROUTE_SOURCE = re.compile(r"\bsrc (\S+)")
-RECORDS_BEGIN = "cr.records="
-RECORDS_END = "=cr.records"
-
 def _as_root(script: str) -> list[str]:
     return ["sudo", "sh", "-c", script]
 
@@ -222,106 +207,5 @@ def _ran(box, script: str, what: str, stdin: str | None = None, timeout: float =
     if not ran.ok:
         raise AttackerUnavailable(f"the box could not {what}: {ran.output.strip()[-300:]}")
     return ran
-
-def unbound_source(box, config: BoxConfig) -> str:
-    host = shlex.quote(urlsplit(config.target_url).hostname or "")
-    ran = _ran(box, f"ip -o route get \"$(getent ahostsv4 {host} | awk 'NR==1{{print $1}}')\"",
-               "say which address it sends from")
-    found = ROUTE_SOURCE.search(ran.output)
-    if found is None:
-        raise AttackerUnavailable(f"the box named no source address for {host}: {ran.output.strip()[:200]}")
-    return found[1]
-
-def customer_origins(described, config: BoxConfig, unbound: str = "") -> list[dict]:
-    attackers = origins(described, config)
-    taken = {origin["source_ip"] for origin in attackers} | {unbound}
-    box = config.proxy
-    by_id = {segment.id: segment for segment in described.segments}
-    found = []
-    for origin in attackers:
-        if origin["id"] == config.default_origin:
-            continue
-        addresses = sorted(
-            {node.address for node in by_id[origin["id"]].nodes if node.name == box} - taken,
-            key=ipaddress.ip_address,
-        )
-        if not addresses:
-            continue
-        found.append({"id": origin["id"], "label": origin["label"],
-                      "target_url": origin["target_url"], "addresses": addresses})
-    return found
-
-def place_customers(box, program: str) -> None:
-    account = (
-        _customers_account()
-        + f"install -d -m 0755 -o {CUSTOMERS_ACCOUNT} -g {CUSTOMERS_ACCOUNT} {CUSTOMERS_HOME}; "
-    )
-    _ran(box, "set -e; " + account + f"cat > {CUSTOMERS_PROGRAM}.new; mv {CUSTOMERS_PROGRAM}.new {CUSTOMERS_PROGRAM}",
-         "take the customers' program", stdin=program)
-
-SITE_BRIDGE = (
-    "import socket, sys, threading\n"
-    "line = socket.create_connection((sys.argv[2], int(sys.argv[3])), 10, (sys.argv[1], 0))\n"
-    "def up():\n"
-    "    while chunk := sys.stdin.buffer.read1(65536):\n"
-    "        line.sendall(chunk)\n"
-    "    line.shutdown(socket.SHUT_WR)\n"
-    "threading.Thread(target=up, daemon=True).start()\n"
-    "while chunk := line.recv(65536):\n"
-    "    sys.stdout.buffer.write(chunk)\n"
-    "    sys.stdout.buffer.flush()\n"
-)
-
-def _customers_account() -> str:
-    return (
-        f"id -u {CUSTOMERS_ACCOUNT} >/dev/null 2>&1 || useradd --system --no-create-home "
-        f"--shell /usr/sbin/nologin {CUSTOMERS_ACCOUNT}; "
-        f"iptables -t nat -C POSTROUTING -m owner --uid-owner {CUSTOMERS_ACCOUNT} -j RETURN 2>/dev/null "
-        f"|| iptables -t nat -I POSTROUTING 1 -m owner --uid-owner {CUSTOMERS_ACCOUNT} -j RETURN; "
-    )
-
-def as_customer(source: str, address: str, port: int) -> list[str]:
-    bridge = shlex.join(["python3", "-c", SITE_BRIDGE, source, address, str(port)])
-    return ["sudo", "sh", "-c", _customers_account()
-            + f"exec setpriv --reuid={CUSTOMERS_ACCOUNT} --regid={CUSTOMERS_ACCOUNT} --init-groups {bridge}"]
-
-def as_customer_command(argv: list[str]) -> list[str]:
-    return ["sudo", "sh", "-c", _customers_account()
-            + f"exec setpriv --reuid={CUSTOMERS_ACCOUNT} --regid={CUSTOMERS_ACCOUNT} --init-groups "
-            + shlex.join(argv)]
-
-def run_customers(box, plan: str) -> bool:
-    owner = f"chown {CUSTOMERS_ACCOUNT}: {CUSTOMERS_PLAN}.new; "
-    user = f"setpriv --reuid={CUSTOMERS_ACCOUNT} --regid={CUSTOMERS_ACCOUNT} --init-groups "
-    ran = _ran(box, (
-        f"set -e; umask 077; cat > {CUSTOMERS_PLAN}.new; {owner}mv {CUSTOMERS_PLAN}.new {CUSTOMERS_PLAN}; "
-        f"if {CUSTOMERS_RUNNING}; then echo cr.customers=changed; exit 0; fi; "
-        f"cd {CUSTOMERS_HOME}; umask 022; "
-        f"setsid {user}python3 {CUSTOMERS_PROGRAM} {CUSTOMERS_PLAN} {CUSTOMERS_RECORDS} "
-        f"</dev/null >>{CUSTOMERS_LOG} 2>&1 & echo $! > {CUSTOMERS_PID}; echo cr.customers=started"
-    ), "start the customers", stdin=plan)
-    return "cr.customers=started" in ran.output
-
-def customers_running(box) -> bool:
-    return "cr.customers=yes" in _ran(
-        box, f"if {CUSTOMERS_RUNNING}; then echo cr.customers=yes; fi", "say whether the customers run").output
-
-def stop_customers(box) -> None:
-    _ran(box, (
-        f"rm -f {CUSTOMERS_PLAN}; "
-        f"if [ -f {CUSTOMERS_PID} ]; then kill \"$(cat {CUSTOMERS_PID})\" 2>/dev/null || true; "
-        f"for _ in $(seq {CUSTOMERS_STOP_WAIT}); do {CUSTOMERS_RUNNING} || break; sleep 0.2; done; "
-        f"if {CUSTOMERS_RUNNING}; then kill -9 \"$(cat {CUSTOMERS_PID})\"; fi; rm -f {CUSTOMERS_PID}; fi"
-    ), "stop the customers")
-
-def customer_records(box, offset: int, limit: int) -> str:
-    said = _ran(box, (
-        f"printf '{RECORDS_BEGIN}\\n'; tail -c +{int(offset) + 1} {CUSTOMERS_RECORDS} 2>/dev/null "
-        f"| head -c {int(limit)}; printf '\\n{RECORDS_END}\\n'"
-    ), "hand over the customers' records").output
-    begun = said.partition(f"{RECORDS_BEGIN}\n")[2]
-    if f"\n{RECORDS_END}" not in begun:
-        raise AttackerUnavailable(f"the box's records ended early: {said.strip()[-200:]}")
-    return begun.rpartition(f"\n{RECORDS_END}")[0]
 
 LEARNER_ACCOUNT = "kali"

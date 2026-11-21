@@ -19,6 +19,7 @@ CRS = "the CRS and ModSecurity configuration and the nginx reload"
 KIBANA = "the Kibana API"
 INDEX_PATTERNS = "the log index patterns"
 BOX = "the attacker box"
+CUSTOMERS = "the customers' box"
 NODE_NAMES = "the range's node names"
 JUMP = "the platform jump host and the box accounts' keys"
 EDGE = "the infra router's nftables sets"
@@ -49,6 +50,9 @@ SEAMS = {
     BOX: (
         {"platform/sandbox/attacker.py"},
         r"/usr/local/sbin/set-origin|/var/lib/session/|ORIGIN-SNAT"),
+    CUSTOMERS: (
+        {"platform/sandbox/customers.py"},
+        r"cr-customers\.service|/var/lib/cr-users|--reuid=|setpriv\b"),
     NODE_NAMES: (
         set(),
         r"\bcr-(?:kali|waf|infra|target)\b"),

@@ -185,6 +185,15 @@ def origin_addresses(cidr: str, count: int) -> list[str]:
     return [str(address) for _, address in zip(range(SKIPPED_HOSTS + count), hosts)][SKIPPED_HOSTS:]
 
 
+def attacker_address(origin) -> str:
+    return origin_addresses(origin.subnet, 1)[0]
+
+
+def customer_addresses(origins, chosen: str) -> dict[str, list[str]]:
+    return {origin.id: origin_addresses(origin.subnet, origin.addresses)[1:] for origin in origins
+            if origin.id != chosen and origin.addresses > 1}
+
+
 def default_origin(origins, chosen: str):
     by_id = {origin.id: origin for origin in origins}
     return by_id.get(chosen) or (origins[0] if origins else None)
@@ -201,8 +210,8 @@ def addressed(ports, origins, chosen: str) -> tuple[Port, ...]:
     ordered = sorted(origins, key=lambda origin: origin.id != chosen)
     for port in ports:
         if port.origins:
-            extra = tuple(f"{address}/{ipaddress.ip_network(origin.subnet).prefixlen}"
-                          for origin in ordered for address in origin_addresses(origin.subnet, origin.addresses))
+            extra = tuple(f"{attacker_address(origin)}/{ipaddress.ip_network(origin.subnet).prefixlen}"
+                          for origin in ordered)
             port = Port(**{**vars(port), "address": source, "extra": extra})
         if port.origins or port.forwards:
             port = Port(**{**vars(port), "pairs": (EVERYWHERE,)})
@@ -230,7 +239,7 @@ class _Wired:
 
 
 def environment(definition: Definition, ports: tuple[Port, ...], role: str, slot: int, upstream: str,
-                collector: str) -> dict[str, str]:
+                collector: str, customers: tuple[str, ...] = ()) -> dict[str, str]:
     wired = _Wired(definition, ports)
     if role == "kali":
         [internet] = [port for port in wired.of("attacker") if port.origins]
@@ -243,7 +252,8 @@ def environment(definition: Definition, ports: tuple[Port, ...], role: str, slot
         [front] = [wired.facing("edge", definition.devices[device].roles[0]) for device in edge.forwards.values()]
         return {"SLOT": str(slot), "WAF_FRONT": front, "UPSTREAM": upstream,
                 "IDS_LEGS": " ".join(port.address for port in ports if port.ids),
-                "LOG_SERVER": wired.of("log-server")[0].address, "COLLECTOR": collector}
+                "LOG_SERVER": wired.of("log-server")[0].address, "COLLECTOR": collector,
+                "SITES": " ".join(definition.filling("gateway").names), "CUSTOMERS": " ".join(customers)}
     return {"WARGAMES": definition.wargame, **wired.upstreams()}
 
 
@@ -294,9 +304,10 @@ def plan(definition: Definition, slot: int, origins, chosen_origin: str, collect
         for name, cidrs in definition.lans.items())
     ports = addressed(definition.ports, origins, chosen_origin)
     upstream = internet_side(origins, chosen_origin)
+    customers = tuple(address for held in customer_addresses(origins, chosen_origin).values() for address in held)
     nodes = []
     for name, role in definition.nodes.items():
-        env = environment(definition, ports, role, slot, upstream, collector)
+        env = environment(definition, ports, role, slot, upstream, collector, customers)
         nodes.append(Node(name=name, role=role, ports=tuple(port for port in ports if port.node == name),
                           user_data=user_data(name, role, env, collector, manager, tag,
                                               definition.answers.get(name, "")), env=env))

@@ -9,9 +9,9 @@ from sandbox.wiring import Wiring
 from testing.fakes import BOARD_TRUTH, FakeRunner, Gateway, Sensor, SensorNode, board_runner
 
 KALI = "cr-kali"
+CUSTOMERS = "cr-customers"
 KALI_MANAGEMENT = "172.29.0.20"
 WAF_MANAGEMENT = "172.29.0.30"
-UNBOUND = "172.29.0.20"
 RU, US, BR = "5.188.10.10", "73.0.0.10", "177.54.144.10"
 US_CUSTOMERS = ("73.0.0.11", "73.0.0.12")
 BR_CUSTOMERS = ("177.54.144.11",)
@@ -25,7 +25,7 @@ SENSOR_BASELINE = 'alert http any any -> any any (msg:"baseline"; sid:9000001; r
 
 
 def segment(segment_id: str, label: str, attack: str, customers: tuple[str, ...]) -> Segment:
-    nodes = tuple(Node(KALI, address) for address in customers) + (Node(KALI, attack),)
+    nodes = tuple(Node(CUSTOMERS, address) for address in customers) + (Node(KALI, attack),)
     return Segment(id=segment_id, name=label, origin=label, subnet=f"{attack}/24", network=f"net-{segment_id}",
                    gateway=attack.rsplit(".", 1)[0] + ".1", nodes=nodes + (Node("cr-edge", attack[:-2] + "1"),))
 
@@ -57,6 +57,7 @@ class DefenceRange:
 class AttackRange:
     box: FakeRunner = field(default_factory=FakeRunner)
     edge: FakeRunner = field(default_factory=FakeRunner)
+    customers: FakeRunner = field(default_factory=FakeRunner)
     launched: list[str] = field(default_factory=list)
     segments_given: tuple[Segment, ...] = field(default_factory=lambda: (
         segment("ru", "Russia", RU, ()),
@@ -65,9 +66,9 @@ class AttackRange:
     ))
 
     def __post_init__(self):
-        self.box.answer("ip -o route get", f"10.30.0.1 via 121.134.88.41 dev eth0 src {UNBOUND} uid 0\n")
-        self.box.answer("cr.status=", OK_PAGE)
-        self.box.answer("http_code=", "http_code=200\n")
+        for runner in (self.box, self.customers):
+            runner.answer("cr.status=", OK_PAGE)
+            runner.answer("http_code=", "http_code=200\n")
 
     def describe(self) -> Shape:
         return Shape(segments=self.segments_given, sensors=())
@@ -76,6 +77,8 @@ class AttackRange:
         return self.segments_given
 
     def runner(self, role: str, segment_id: str = "") -> FakeRunner:
+        if role == "customers":
+            return self.customers
         return self.edge if role == "edge" else self.box
 
     def node_runner(self, role: str) -> FakeRunner:
@@ -107,8 +110,9 @@ class FakeSlot(AttackRange):
 
     def __post_init__(self):
         super().__post_init__()
-        self.box.answer("cr.records=", RECORDS)
-        self.box.answer("board.com/posts/1/", POST_PAGE)
+        self.customers.answer("cr.records=", RECORDS)
+        for runner in (self.box, self.customers):
+            runner.answer("board.com/posts/1/", POST_PAGE)
         self.defence.runner("sensor").rules = SENSOR_BASELINE
 
     @property
@@ -118,6 +122,8 @@ class FakeSlot(AttackRange):
     def runner(self, role: str, segment_id: str = ""):
         if role == "edge":
             return self.edge
+        if role == "customers":
+            return self.customers
         if role in ("attacker", "proxy"):
             return self.box
         if role == "board":

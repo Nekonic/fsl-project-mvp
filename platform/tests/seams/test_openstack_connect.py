@@ -186,6 +186,21 @@ def test_the_substrate_is_built_from_the_range_config_it_is_handed(cloud):
     assert {s.id for s in adapter.describe().segments} == {s.id for s in declaration.read().segments}
 
 
+def test_each_origin_holds_one_kali_address_and_the_rest_stand_on_the_customers_box(cloud):
+    serving(cloud)
+    declared = declaration.read()
+
+    shape = openstack.connect(options(cloud), declared).describe()
+
+    us = next(segment for segment in shape.segments if segment.id == "us")
+    ru = next(segment for segment in shape.segments if segment.id == declared.default_origin)
+    assert [node.address for node in us.nodes if node.name == declared.roles["attacker"]] == ["73.0.0.10"]
+    customers = [node.address for node in us.nodes if node.name == declared.roles["customers"]]
+    assert customers[0] == "73.0.0.11" and len(customers) == next(
+        origin.addresses for origin in declared.origins if origin.id == "us") - 1
+    assert [node.name for node in ru.nodes] == [declared.roles["attacker"]]
+
+
 def test_a_missing_credential_is_named_by_the_variable_that_carries_it(cloud):
     with pytest.raises(RangeUnavailable, match="CR_OPENSTACK_KEYSTONE"):
         openstack.connect(options(cloud, keystone=""), declaration.read())

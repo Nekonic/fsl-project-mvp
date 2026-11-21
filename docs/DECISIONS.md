@@ -10561,3 +10561,35 @@ How the "WAF is real files" ruling above is carried out.
   text instead of a form.
 - **Not measured.** The WAF image must be rebaked for the split site config
   and the writable files; no live round has run on it.
+
+## 2026-11-21 — Benign traffic runs on the infra VM
+
+The restructure ruled that benign traffic leaves kali. How it is done:
+
+- **Where it sends from.** Each origin's first address stays on kali as the
+  attack origin; the origin's other addresses go to the infra
+  (`CUSTOMERS` in its `/etc/slot.env`, from `stack_plan.customer_addresses`),
+  never the default origin's. `slot-boot` puts them on a dummy link
+  `customers` as /32s: a /24 there would route the attackers' replies into
+  the dummy link. The sites resolve to the WAF's front in `/etc/hosts`
+  (`SITES`, the gateway's names).
+- **The path.** The infra sends out of its DMZ port straight to the WAF.
+  That port already allows every source address because it routes, so no
+  Heat change was needed. The customers do not cross the edge, so the edge's
+  `pool` holds only attack origins; kali sending from a customer address is
+  dropped at the edge as an address outside `pool`.
+- **What runs.** `deploy/traffic/users.py` is baked into the infra image
+  with the unit `cr-customers.service` (account `cr-users`, not enabled).
+  `sandbox/customers.py`, the only file that knows that box, writes the
+  round's plan, starts and stops the unit and reads the records. The
+  benign cases and the defence player's site pane run `curl` there as
+  `cr-users` with `--interface` set to a customer address. The
+  `X-Request-ID` marker is unchanged, so benign requests are scored as
+  before.
+- **Kali.** It holds one address per origin; the customers' account, the
+  owner-match NAT exception and the pushed program are gone from
+  `sandbox/attacker.py`. The map's unused "customers on the attacker box"
+  placement went with them.
+- **Not measured.** `cr-infra` has to be rebaked (and `cr-kali` with it)
+  before a range has customers; nothing has run on a slot
+  (`docs/OPENSTACK.md` §3.8).

@@ -62,13 +62,6 @@ def test_a_box_on_no_network_is_unavailable():
     assert refused.value.code == "attacker_unavailable"
 
 
-def test_customers_never_wear_an_attack_origin_or_the_default_origin():
-    found = box.customer_origins(SHAPE, CONFIG, unbound="103.152.220.11")
-
-    assert found == [{"id": "hk", "label": "Hong Kong", "target_url": "http://board.com",
-                      "addresses": ["103.152.220.10"]}]
-
-
 def test_wearing_an_origin_runs_set_origin_with_its_address():
     kali = FakeRunner()
 

@@ -11,7 +11,7 @@ from cr import errors
 from cr.config import configured
 from domain.round_rules import Phase
 from sandbox import attacker as box
-from sandbox import crs, edge
+from sandbox import crs, customers, edge
 from sandbox.reach import range_of
 from telemetry import access as access_log
 from telemetry import events as log
@@ -104,28 +104,24 @@ def fill_pool(found: Round) -> Remaining:
             Origin.objects.get_or_create(round=found, ip=origin["source_ip"],
                                          defaults={"origin_id": origin["id"], "label": origin["label"]})
         AccessCursor.objects.get_or_create(allocation=found.allocation)
-    load_edge(found, reached, described)
+    load_edge(found, reached)
     worn = current_of(rows(found))
     if worn is not None:
         box.wear_origin({"source_ip": worn.ip}, reached.runner(PROXY))
     return remaining(found)
 
 
-def customer_origins(found: Round, reached=None, described=None) -> list[dict]:
-    settings = configured()
-    reached = reached or range_of(found)
-    described = described or reached.describe()
-    unbound = box.unbound_source(reached.runner(ATTACKER), settings.box)
-    return box.customer_origins(described, settings.box, unbound)
+def customer_origins(found: Round) -> list[dict]:
+    return customers.customer_origins(range_of(found).describe(), configured().box)
 
 
-def customer_addresses(found: Round, reached=None, described=None) -> list[str]:
-    return [address for origin in customer_origins(found, reached, described) for address in origin["addresses"]]
+def customer_addresses(found: Round) -> list[str]:
+    return [address for origin in customer_origins(found) for address in origin["addresses"]]
 
 
-def load_edge(found: Round, reached, described) -> None:
+def load_edge(found: Round, reached) -> None:
     held = rows(found)
-    pool = [row.ip for row in held] + customer_addresses(found, reached, described)
+    pool = [row.ip for row in held]
     spent = [row.ip for row in held if row.spent_at is not None]
     settings = configured()
     edge.restart(reached.runner(settings.edge.role), pool, spent, settings.edge)

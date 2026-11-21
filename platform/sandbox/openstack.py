@@ -82,6 +82,7 @@ NOVA_MICROVERSION = "2.1"
 SUBJECT_TOKEN = "X-Subject-Token"
 SEGMENT_TAG = networks.TAG
 ATTACKER_ROLE = "attacker"
+CUSTOMERS_ROLE = "customers"
 SCORER_ROLE = "scorer"
 SENSOR_ROLES = ("sensor",)
 GONE_WAIT = 300
@@ -633,13 +634,16 @@ class OpenStack:
         internet = next(port.lan for port in kali if port.origins)
         router = next(port.address for port in kali if port.device == edge and port.lan == internet)
         attacker = self.declared.roles.get(ATTACKER_ROLE, "")
+        customers = self.declared.roles.get(CUSTOMERS_ROLE, "")
+        customer_addresses = stack_plan.customer_addresses(self.declared.origins, self.declared.default_origin)
         standing = any(_metadata(server, SLOT_KEY) == str(self.slot) for server in servers)
         segments = []
         for declared in self.declared.segments:
             origin = next((one for one in self.declared.origins if one.id == declared.id), None)
             if origin is not None:
-                nodes = tuple(Node(name=attacker, address=address)
-                              for address in stack_plan.origin_addresses(origin.subnet, origin.addresses))
+                nodes = (Node(name=attacker, address=stack_plan.attacker_address(origin)),) + tuple(
+                    Node(name=customers, address=address)
+                    for address in (customer_addresses.get(origin.id, ()) if customers else ()))
                 segments.append(Segment(id=declared.id, name=declared.name, origin=declared.origin,
                                         subnet=origin.subnet, network=f"{stack_name(self.slot)}-{internet}",
                                         gateway=router, nodes=nodes))
@@ -810,15 +814,6 @@ class OpenStack:
             return self.runner(ATTACKER_ROLE)(argv, timeout=timeout)
 
         return launch
-
-    def users_box(self, segment_ids: list[str], image: str):
-        attacker = self.declared.roles.get(ATTACKER_ROLE, "")
-        if image != attacker:
-            raise RangeUnavailable(
-                f"asked to run customers from {image!r}; they run on the slot's attacker "
-                f"{attacker!r}, which stands on every origin"
-            )
-        return self.runner(ATTACKER_ROLE)
 
     def opened(self, role: str, argv: list[str]) -> socket.socket:
         node, container = self._placed(role)

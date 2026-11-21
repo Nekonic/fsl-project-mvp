@@ -40,6 +40,7 @@ devices:
     rules: /var/lib/suricata/rules/local.rules
     reload: suricatasc -c reload-rules
   log-server: {node: cr-infra, roles: [log-server]}
+  cr-customers: {node: cr-infra, roles: [customers]}
   cr-waf:
     node: cr-waf
     roles: [gateway]

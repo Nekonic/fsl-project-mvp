@@ -7,6 +7,9 @@ EVE_DIR=/var/log/suricata
 RULES_DIR=/var/lib/suricata/rules
 RULE_TEST_DIR=/var/lib/cr-ruletest
 SHARE=/usr/local/share/slot
+CUSTOMERS_ACCOUNT=cr-users
+CUSTOMERS_HOME=/var/lib/cr-users
+CUSTOMERS_PROGRAM_DIR=/usr/local/lib/cr-users
 
 export DEBIAN_FRONTEND=noninteractive
 APT="apt-get -y -o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold"
@@ -42,13 +45,23 @@ rsyslog_may_read_the_eve_log() {
   systemctl reload apparmor
 }
 
+customers_installed() {
+  id -u "$CUSTOMERS_ACCOUNT" >/dev/null 2>&1 \
+    || useradd --system --no-create-home --shell /usr/sbin/nologin "$CUSTOMERS_ACCOUNT"
+  install -d -m 0755 -o "$CUSTOMERS_ACCOUNT" -g "$CUSTOMERS_ACCOUNT" "$CUSTOMERS_HOME"
+  install -d -m 0755 "$CUSTOMERS_PROGRAM_DIR"
+  install -m 0644 users.py "$CUSTOMERS_PROGRAM_DIR/users.py"
+  python3 -m py_compile "$CUSTOMERS_PROGRAM_DIR/users.py"
+  install -m 0644 cr-customers.service /etc/systemd/system/
+}
+
 sealed_for_snapshot() {
   cloud-init clean --logs
   : > /etc/machine-id
 }
 
 ubuntu_trimmed
-installed nftables conntrack tcpdump iproute2 bridge-utils ethtool rsyslog docker.io
+installed nftables conntrack tcpdump iproute2 bridge-utils ethtool rsyslog docker.io python3 curl
 
 printf 'net.ipv4.ip_forward = 1\nnet.ipv4.conf.all.rp_filter = 0\nnet.ipv4.conf.default.rp_filter = 0\n' > /etc/sysctl.d/60-edge.conf
 sysctl --system >/dev/null
@@ -74,6 +87,7 @@ install -m 0644 edge.nft log-relay.conf "$SHARE/"
 install -m 0755 slot-boot /usr/local/sbin/slot-boot
 install -m 0644 slot-boot.service sensor.service /etc/systemd/system/
 rsyslog_may_read_the_eve_log
+customers_installed
 
 systemctl daemon-reload
 systemctl disable nftables.service

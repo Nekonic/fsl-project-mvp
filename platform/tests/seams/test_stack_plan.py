@@ -55,7 +55,20 @@ def test_kali_has_one_internet_port_on_the_default_origin_and_the_origins_defaul
     origins = env["ORIGINS"].split()
     assert env["INTERNET_ADDRESS"] == "5.188.10.10" and origins[0] == "5.188.10.10/24", (
         "ip addr on Kali lists its default source first")
-    assert len(origins) == sum(origin.addresses for origin in DECLARED.origins) and "73.0.0.10/24" in origins
+    assert len(origins) == len(DECLARED.origins) and "73.0.0.10/24" in origins, (
+        "Kali holds one address per origin; the rest belong to the customers on the infra box")
+
+
+def test_the_infra_holds_every_customer_address_and_none_is_kali_s_or_on_the_default_origin():
+    plan = planned()
+    kali = {one.partition("/")[0] for one in slot_env(plan.node("cr-kali"))["ORIGINS"].split()}
+    customers = slot_env(plan.node("cr-infra"))["CUSTOMERS"].split()
+    default = next(origin for origin in DECLARED.origins if origin.id == DECLARED.default_origin)
+
+    assert len(customers) == sum(origin.addresses - 1 for origin in DECLARED.origins if origin is not default)
+    assert not kali & set(customers)
+    assert not any(ipaddress.ip_address(one) in ipaddress.ip_network(default.subnet) for one in customers)
+    assert "73.0.0.11" in customers and "73.0.0.10" not in customers
 
 
 def test_the_ids_legs_have_port_security_off_and_dummy_addresses_in_the_web_lan():
@@ -72,8 +85,11 @@ def test_the_ids_legs_have_port_security_off_and_dummy_addresses_in_the_web_lan(
 def test_the_infra_is_told_its_slot_the_waf_s_front_its_upstream_and_where_logs_go():
     env = slot_env(planned(slot=2).node("cr-infra"))
 
+    customers = env.pop("CUSTOMERS")
     assert env == {"SLOT": "2", "WAF_FRONT": "10.30.0.247", "UPSTREAM": "5.188.10.10",
-                   "IDS_LEGS": "10.30.128.251 10.30.128.252", "LOG_SERVER": "172.29.0.10", "COLLECTOR": COLLECTOR}
+                   "IDS_LEGS": "10.30.128.251 10.30.128.252", "LOG_SERVER": "172.29.0.10", "COLLECTOR": COLLECTOR,
+                   "SITES": "board.com corp.com"}
+    assert customers
     assert planned().node("cr-infra").ports[0].address == "121.134.88.42", "the role finds the wan by this address"
     assert next(one for one in planned().ports if one.device == "cr-edge" and one.lan == "dmz").pairs == (
         "0.0.0.0/0",), "the router sends the origins' packets out of its DMZ port, which port security would drop"

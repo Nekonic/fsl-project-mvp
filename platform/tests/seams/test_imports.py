@@ -115,7 +115,8 @@ def test_the_seams_exist_where_the_design_puts_them():
                 "sandbox/openstack.py", "sandbox/cloud_config.py", "sandbox/stack_plan.py", "sandbox/definitions.py",
                 "sandbox/fabric.py", "sandbox/wiring.py", "sandbox/topology.py", "sandbox/pool.py",
                 "sandbox/refill.py", "sandbox/reachability.py", "sandbox/runner.py", "sandbox/reach.py",
-                "sandbox/edge.py", "sandbox/access.py", "sandbox/attacker.py", "sandbox/kibana.py",
+                "sandbox/edge.py", "sandbox/access.py", "sandbox/attacker.py", "sandbox/customers.py",
+                "sandbox/kibana.py",
                 "sandbox/service.py", "training/attack/cases.py", "training/attack/tools.py", "scoring/loot.py",
                 "scoring/effect.py"]
 
@@ -425,7 +426,8 @@ def test_rule_15_sees_the_round_records_point_down_to_the_training_records_and_a
 
 
 ATTACK_REACHES = {"cr/config.py", "cr/errors.py", "sandbox/edge.py", "sandbox/access.py", "sandbox/reach.py",
-                  "sandbox/runner.py", "sandbox/attacker.py", "sandbox/crs.py", "telemetry/access.py",
+                  "sandbox/runner.py", "sandbox/attacker.py", "sandbox/customers.py", "sandbox/crs.py",
+                  "telemetry/access.py",
                   "telemetry/events.py",
                   "telemetry/models.py", "scoring/losses.py", "training/models.py", "training/round/access.py",
                   "training/round/views_catch_up.py"}

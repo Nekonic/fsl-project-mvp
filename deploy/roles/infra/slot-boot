@@ -58,7 +58,24 @@ leg_a=$(held_by "$1")
 leg_b=$(held_by "$2")
 legs_bridged "$leg_a" "$leg_b"
 
+customers_addressed() {
+  ip link show customers >/dev/null 2>&1 || ip link add customers type dummy
+  ip link set customers up
+  for address in $CUSTOMERS; do
+    ip addr replace "$address/32" dev customers
+  done
+}
+
+sites_named() {
+  for site in $SITES; do
+    sed -i "/[[:space:]]$site\$/d" /etc/hosts
+    printf '%s %s\n' "$WAF_FRONT" "$site" >> /etc/hosts
+  done
+}
+
 ip route replace default via "$UPSTREAM" dev "$wan" onlink
+customers_addressed
+sites_named
 sed -e "s/@wan@/$wan/g" -e "s/@mgmt@/$mgmt/g" -e "s/@router@/$ROUTER/g" -e "s/@waf@/$WAF_FRONT/g" "$SHARE/edge.nft" | nft -f -
 
 sed -e "s/@slot@/$SLOT/g" -e "s/@log_server@/$LOG_SERVER/g" -e "s/@collector@/$COLLECTOR/g" "$SHARE/log-relay.conf" \

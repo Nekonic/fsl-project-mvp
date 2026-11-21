@@ -37,7 +37,7 @@ def read_slot():
 
 
 def learner(wargame="board"):
-    return topology.learner(DECLARED, wargame, DECLARED.roles["attacker"], ("175.192.0.0/24", "73.0.0.0/24"))
+    return topology.learner(DECLARED, wargame)
 
 
 def drawn_map(wargame="board", slot=1, without=()):
@@ -203,10 +203,10 @@ def test_each_interface_s_full_address_stands_beside_its_device_inside_the_devic
 
 def test_an_interface_with_more_addresses_than_the_one_drawn_says_how_many_more():
     labels = {node["id"]: node for node in drawn_map()["nodes"] if node["kind"] == "address"}
-    origins = sum(origin.addresses for origin in DECLARED.origins)
+    origins = len(DECLARED.origins)
 
     assert (labels["address:kali:switch:internet"]["text"], labels["address:kali:switch:internet"]["more"]) == (
-        "5.188.10.10", origins - 1), "Kali speaks from every origin; the map names its default and counts the rest"
+        "5.188.10.10", origins - 1), "Kali speaks from one address per origin; the map names its default and counts the rest"
     assert "more" not in labels["address:router:switch:internet"]
 
 

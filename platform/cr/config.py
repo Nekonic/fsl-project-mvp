@@ -82,6 +82,7 @@ class EdgeConfig:
 class BoxConfig:
     attacker: str = "cr-kali"
     proxy: str = "cr-kali"
+    customers: str = "cr-customers"
     way_in: str = "cr-edge"
     target_url: str = "http://board.com"
     default_origin: str = ""
@@ -229,6 +230,7 @@ def build(environ: Mapping[str, str] = os.environ, source: Path | str | None = N
     target_url = environ.get("ATTACKER_TARGET_URL") or environ.get("PUBLIC_TARGET_URL") or BoxConfig.target_url
     attacker, _ = filling(found, "attacker")
     proxy, _ = filling(found, "proxy")
+    customers, _ = filling(found, "customers")
     way_in = filling(found, "edge")[0] or filling(found, "gateway")[0]
     password = kept_secret(environ.get("CR_OPENSTACK_PASSWORD_FILE") or "/run/secrets/openstack_password")
     openstack = OpenStackConfig(source=str(root), password=password,
@@ -243,7 +245,7 @@ def build(environ: Mapping[str, str] = os.environ, source: Path | str | None = N
         sensors=sensors(found, watches),
         waf=waf(found),
         box=BoxConfig(attacker=attacker or BoxConfig.attacker, proxy=proxy or attacker or BoxConfig.proxy,
-                      way_in=way_in or BoxConfig.way_in, target_url=target_url,
+                      customers=customers or BoxConfig.customers, way_in=way_in or BoxConfig.way_in, target_url=target_url,
                       default_origin=str((declared or {}).get("default_origin") or ""),
                       tool_image=environ.get("CR_TOOL_IMAGE") or attacker or BoxConfig.tool_image),
         jump=JumpConfig(directory=environ.get("CR_JUMP_DIR") or JumpConfig.directory,

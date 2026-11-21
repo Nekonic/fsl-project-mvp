@@ -109,7 +109,8 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
   referee/     Objective, loot.py(경계: board 정답 데이터), effect.py(경계: corp 정답 데이터)
                service.py   baseline, loot 제출, corp 변경 관찰, 목표, 비밀값 가리기, 점수
   attack/      Action, ToolRun, Origin, AccessCursor
-               box.py       경계: 공격 박스(출발지, set-origin, 명령 기록, 도구 이미지, 고객 출발지, 실행 중지)
+               box.py       경계: 공격 박스(출발지, set-origin, 명령 기록, 도구 이미지, 실행 중지)
+               (sandbox/customers.py  경계: infra VM의 고객 프로그램과 고객 주소)
                firing.py    케이스 요청 만들기와 발사(X-Request-ID 마커)   tools.py  도구 인자
                service.py   공격 API의 모든 동작, 고객 전송   origins.py  출발지 풀, 오류 로그로 소진, limit_req 하한
   defence/     Detection, RuleSet, RuleTest, DisabledRule, AlertCursor
@@ -348,7 +349,9 @@ sequenceDiagram
 - 출발지가 소진되면 `sandbox.edge.spend`가 그 주소를 `spent` 집합에 넣고 conntrack을 지웁니다. `edge.nft`에서 이
   drop 규칙은 established 허용보다 앞에 있어야 열린 연결도 끊깁니다. 이어서 그 자리의 도구 실행을 멈추고
   (`stopped_by: origin_spent`) 다음 출발지로 바꿉니다.
-- 고객 주소는 `pool`에만 있고 `spent`에 들어가지 않습니다.
+- 고객 요청은 kali가 아니라 infra VM에서 나갑니다. infra는 고객 주소를 dummy 링크 `customers`에 /32로 들고,
+  DMZ 포트로 WAF 앞단에 바로 보냅니다. 에지를 거치지 않으므로 고객 주소는 `pool`에도 `spent`에도 들어가지
+  않고, kali가 고객 주소를 붙여 보내면 `pool` 밖 주소라 에지에서 버려집니다.
 - 라운드를 시작할 때 `sandbox.edge.restart`가 `pool`과 `spent`를 비우고 새 라운드의 주소로 다시 채웁니다. 슬롯은
   할당을 반납할 때만 다시 만들어지므로, 그러지 않으면 같은 할당의 다음 라운드가 앞 라운드에서 소진된 출발지를
   물려받습니다. 라운드 중에는 다시 채우지 않습니다.
@@ -359,7 +362,7 @@ sequenceDiagram
   보낸 요청은 막혀도 소진되지 않습니다.
 - 그래서 출발지 서브넷에서 나가는 요청은 모두 `pool`에 든 주소로 나갑니다. 케이스, 도구, 요청, 공격석 사이트
   패널은 `origins.wearing`으로 출발지를 입고(라운드에 출발지가 없으면 `pool`부터 채움), 터미널도 권한을 주기 전에
-  같은 식으로 채웁니다. 고객과 방어석 사이트 패널은 고객 주소로 보내고, 라운드가 없는 probe 리스는 케이스마다
+  같은 식으로 채웁니다. 고객과 방어석 사이트 패널은 infra에서 고객 주소로 보내고, 라운드가 없는 probe 리스는 케이스마다
   입은 출발지를 `range.edge.admit`으로 넣습니다.
 
 ## 이벤트

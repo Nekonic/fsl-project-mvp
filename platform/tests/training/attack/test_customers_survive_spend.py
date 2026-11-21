@@ -26,7 +26,7 @@ def spent_round(attack_round, learner, cloud):
     for n, ip in enumerate((RU, US, BR)):
         es.add(f"e{n}", error_document(after_start(attack_round, n + 1), denied_line(ip)))
     spent_from_log(es, attack_round)
-    cloud.box.answer("cr.status=", "HTTP/1.1 200 OK\r\n\r\nwelcome\ncr.status=200\n")
+    cloud.customers.answer("cr.status=", "HTTP/1.1 200 OK\r\n\r\nwelcome\ncr.status=200\n")
     return attack_round
 
 
@@ -38,36 +38,37 @@ def test_every_attack_origin_is_spent_and_no_customer_address_ever_reaches_the_s
     assert not any(customer in text for text in spent_at_edge for customer in CUSTOMERS)
 
 
-def test_loading_the_edge_keeps_customers_in_the_pool_and_out_of_the_spent_set(spent_round, cloud):
-    reached = service.range_of(spent_round)
-    origins.load_edge(spent_round, reached, reached.describe())
+def test_the_edge_holds_only_attack_origins_because_customers_send_from_the_infra_box(spent_round, cloud):
+    origins.load_edge(spent_round, service.range_of(spent_round))
 
     loaded = cloud.edge.matching("nft -f -")[-1].stdin
     pool_line, spent_line = loaded.splitlines()[2:]
-    assert all(address in pool_line for address in (RU, US, BR, *CUSTOMERS))
+    assert all(address in pool_line for address in (RU, US, BR))
     assert all(address in spent_line for address in (RU, US, BR))
-    assert not any(customer in spent_line for customer in CUSTOMERS)
+    assert not any(customer in loaded for customer in CUSTOMERS)
 
 
 def test_customers_keep_sending_after_every_attack_origin_is_spent(spent_round, cloud):
     sent = service.send_as_customer(spent_round, US_CUSTOMERS[0], "GET", "/", headers={"User-Agent": "Mozilla/5.0"})
 
-    customer_send = cloud.box.sent[-1]
+    customer_send = cloud.customers.sent[-1]
     assert sent.status == 200 and sent.body == "welcome" and sent.action is None
-    assert customer_send.argv[:3] == ["sudo", "sh", "-c"]
-    assert "setpriv --reuid=cr-users" in customer_send.argv[3]
-    assert f"--interface {US_CUSTOMERS[0]}" in customer_send.argv[3]
-    assert f"X-Request-ID: {sent.marker}" in customer_send.argv[3]
+    assert customer_send.argv[:3] == ["sudo", "setpriv", "--reuid=cr-users"]
+    assert f"--interface {US_CUSTOMERS[0]}" in customer_send.text
+    assert f"X-Request-ID: {sent.marker}" in customer_send.text
+    assert not cloud.box.matching(sent.marker)
 
 
 def test_a_benign_case_fires_from_a_customer_address_after_the_spend(spent_round, cloud):
 
     fired = service.fire_benign(spent_round, "board-normal-search-with-apostrophe", BR_CUSTOMERS[0])
 
-    customer_send = cloud.box.sent[-1]
+    customer_send = cloud.customers.sent[-1]
     assert fired.status == 200 and fired.source_ip == BR_CUSTOMERS[0]
-    assert f"--interface {BR_CUSTOMERS[0]}" in customer_send.argv[3]
-    assert f"X-Request-ID: {fired.marker}" in customer_send.argv[3]
+    assert customer_send.argv[:3] == ["sudo", "setpriv", "--reuid=cr-users"]
+    assert f"--interface {BR_CUSTOMERS[0]}" in customer_send.text
+    assert f"X-Request-ID: {fired.marker}" in customer_send.text
+    assert not cloud.box.matching(fired.marker)
 
 
 def test_a_customer_send_from_an_attack_address_is_refused(spent_round):
@@ -77,7 +78,7 @@ def test_a_customer_send_from_an_attack_address_is_refused(spent_round):
         service.fire_benign(spent_round, "board-normal-search-with-apostrophe", US)
 
 
-def test_the_customer_origins_never_offer_an_attack_or_the_unbound_address(attack_round):
+def test_the_customer_origins_never_offer_an_attack_address(attack_round):
     offered = {address for origin in origins.customer_origins(attack_round) for address in origin["addresses"]}
 
     assert offered == set(CUSTOMERS)

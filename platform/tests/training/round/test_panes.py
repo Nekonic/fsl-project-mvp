@@ -36,9 +36,10 @@ def test_the_defence_player_browses_with_the_allocation_s_marker_from_a_customer
     browser.force_authenticate(learner)
 
     answer = browser.get(site(running))
-    sent = cloud.in_slot(1).box.matching(running.allocation.browse_marker)
+    sent = cloud.in_slot(1).customers.matching(running.allocation.browse_marker)
 
     assert answer.status_code == 200 and "X-Origins-Left" not in answer
+    assert not cloud.in_slot(1).box.matching(running.allocation.browse_marker)
     assert not Action.objects.filter(round=running).exists()
     assert sent and "--interface" in sent[-1].text
     listed = browser.get(url(running, "site/requests/")).json()
@@ -47,7 +48,7 @@ def test_the_defence_player_browses_with_the_allocation_s_marker_from_a_customer
 
 
 def test_one_player_never_sees_the_other_player_s_site_requests_or_cookies(browser, cloud, running, other, learner):
-    box = cloud.in_slot(1).box
+    box, customers = cloud.in_slot(1).box, cloud.in_slot(1).customers
     box.answer("cr.status=", "HTTP/1.1 200 OK\r\nSet-Cookie: sessionid=attacker\r\n\r\npost\ncr.status=200\n")
     browser.force_authenticate(other)
     browser.get(site(running, "posts/1/"))
@@ -58,7 +59,7 @@ def test_one_player_never_sees_the_other_player_s_site_requests_or_cookies(brows
 
     assert [one["url"] for one in attack_listed] == ["http://board.com/posts/1/"]
     assert defence_listed == []
-    assert "sessionid=attacker" not in box.matching(running.allocation.browse_marker)[-1].text
+    assert "sessionid=attacker" not in customers.matching(running.allocation.browse_marker)[-1].text
 
 
 def test_the_site_pane_takes_only_the_round_s_hosts_and_only_its_players(browser, running, other, make_user):

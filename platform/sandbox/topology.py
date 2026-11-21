@@ -53,7 +53,6 @@ DATABASE_SUFFIX = "-db"
 BACKEND_SUFFIX = "-backend"
 LOG_STORE = "cr-elasticsearch"
 ATTACKER = "kali"
-CUSTOMERS = "customers"
 ROUTER = "router"
 WAF = "waf"
 LOG_SERVER = "log-server"
@@ -88,7 +87,7 @@ def domains(declared) -> dict[str, str]:
 def _parts(wargame: str, domain: str) -> set[str]:
     return {domain, f"{wargame}{DATABASE_SUFFIX}"}
 
-def learner(declared, wargame: str, customers_from: str = "", customers_prefer: tuple[str, ...] = ()) -> Learner:
+def learner(declared, wargame: str) -> Learner:
     roles, compose = declared.roles, declared.compose
     sites = domains(declared)
     database = f"{wargame}{DATABASE_SUFFIX}"
@@ -99,8 +98,6 @@ def learner(declared, wargame: str, customers_from: str = "", customers_prefer: 
             hosts[real].append(shown)
 
     put(roles.get("attacker", ""), ATTACKER)
-    if customers_prefer:
-        put(customers_from, CUSTOMERS)
     put(roles.get("edge", ""), ROUTER)
     put(roles.get("gateway", ""), WAF)
     for real in (compose.get(wargame, ""), roles.get(wargame, "")):
@@ -124,18 +121,14 @@ def learner(declared, wargame: str, customers_from: str = "", customers_prefer: 
         shown = hosts.get(compose.get(role, "")) or hosts.get(real)
         if role not in others and shown:
             placed[role] = shown[0]
-    if customers_prefer:
-        placed[CUSTOMERS] = CUSTOMERS
 
     backend = f"{wargame}{BACKEND_SUFFIX}"
     switches = {origin.id: INTERNET for origin in declared.origins}
     switches.update({origin.segment: INTERNET for origin in declared.origins})
 
     hidden = {name for site, domain in sites.items() if site != wargame for name in _parts(site, domain)}
-    if not customers_prefer:
-        hidden.add(CUSTOMERS)
     first = next((origin.subnet for origin in declared.origins if origin.id == declared.default_origin), "")
-    prefers = {ATTACKER: (first,), CUSTOMERS: tuple(customers_prefer), "": (first,)}
+    prefers = {ATTACKER: (first,), "": (first,)}
     kinds = {ATTACKER: "kali", ROUTER: "router", WAF: "waf", LOG_SERVER: "logs",
              **{domain: "server" for domain in sites.values()},
              **{f"{site}{DATABASE_SUFFIX}": "database" for site in sites}}
@@ -145,7 +138,7 @@ def learner(declared, wargame: str, customers_from: str = "", customers_prefer: 
 
 def hosts(learner) -> list[str]:
     return sorted({shown for names in learner.hosts.values() for shown in names
-                   if shown != CUSTOMERS and shown not in learner.hidden})
+                   if shown not in learner.hidden})
 
 def path_choices(learner) -> list[str]:
     return sorted({*hosts(learner), *([INLINE_SENSOR] if "sensor" in learner.roles else [])})
@@ -165,7 +158,7 @@ def link_heads(learner, found) -> dict[tuple[str, str], object]:
             for name in learner.hosts.get(one.host, ()):
                 held.setdefault((name, switch), []).append(one)
     return {pair: head for pair, kept in held.items()
-            if (head := _head(kept, learner.prefers.get(pair[0], learner.prefers[""]), strict=pair[0] == CUSTOMERS))}
+            if (head := _head(kept, learner.prefers.get(pair[0], learner.prefers[""])))}
 
 def captions(learner, found) -> dict[str, str]:
     members: dict[str, set[str]] = {}
@@ -213,7 +206,7 @@ def addresses(learner, found) -> list[dict]:
     order = {zone: at for at, zone in enumerate(ordered(learner, found))}
     listed = [(host, learner.kinds.get(host, "host"), zone, one)
               for (host, zone), one in link_heads(learner, found).items()
-              if host not in learner.hidden and host != CUSTOMERS]
+              if host not in learner.hidden]
     listed += [(one.host, "sensor", one.segment, one) for one in found if one.sensor and one.segment in named]
     return [{"host": host, "kind": kind, "zone": named[zone], "address": one.address.partition("/")[0],
              "network": "" if named[zone] == "internet" else str(ipaddress.ip_interface(one.address).network),
@@ -228,9 +221,8 @@ def _rank(one, prefers) -> int:
     return next((at for at, subnet in enumerate(prefers) if subnet and _ip(one) in ipaddress.ip_network(subnet)),
                 len(prefers))
 
-def _head(found, prefers, strict=False):
-    ranked = [one for one in found if not strict or _rank(one, prefers) < len(prefers)]
-    return min(ranked, key=lambda one: (_rank(one, prefers), one.name, _ip(one)), default=None)
+def _head(found, prefers):
+    return min(found, key=lambda one: (_rank(one, prefers), one.name, _ip(one)), default=None)
 
 def _link(source: str, zone: str, address: str, more: int = 0) -> dict:
     return {"source": source, "target": SWITCH.format(zone=zone), "kind": "link", "address": address,
@@ -266,7 +258,7 @@ def graph(learner, wiring) -> dict:
             edges += [{"source": sensor, "target": SWITCH.format(zone=zone), "kind": "link"} for zone in kept]
     drawn = {node["id"] for node in nodes}
     for container in sorted(wiring.containers, key=lambda one: one.service):
-        named = [shown for shown in learner.hosts.get(container.host, ()) if shown != CUSTOMERS]
+        named = list(learner.hosts.get(container.host, ()))
         if container.sniffs or not named:
             continue
         name, legs = named[0], wiring.legs(container)

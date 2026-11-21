@@ -48,8 +48,6 @@ class StandIn:
 
         return launch
 
-    def users_box(self, segment_ids, image):
-        raise refused(f"starting the users' box on {', '.join(segment_ids)}")
 
 def refusing_docker(real=subprocess.Popen):
     def popen(args, *rest, **options):

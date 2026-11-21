@@ -25,7 +25,7 @@ from domain.types import (
 )
 from sandbox import access as jump
 from sandbox import attacker as box
-from sandbox import edge
+from sandbox import customers, edge
 from sandbox.reach import allocation_range, range_of
 from scoring import losses as referee
 from telemetry import events as log
@@ -35,6 +35,7 @@ from training.attack import origins, tools
 from training.models import Action, Allocation, Origin, Player, Round, ToolRun
 
 ATTACKER = box.ATTACKER_ROLE
+CUSTOMERS = customers.CUSTOMERS_ROLE
 PROXY = "proxy"
 CASES = "redteam/cases"
 REQUEST_TIMEOUT = 30
@@ -275,12 +276,13 @@ def checked_headers(given: Mapping[str, str] | None) -> dict[str, str]:
 def sent_over(runner, method: str, url: str, headers: dict[str, str], body: str | None,
               interface: str = "", as_customer: bool = False):
     argv = tools.request_argv(method, url, headers, body is not None, REQUEST_TIMEOUT, interface)
-    command = box.as_customer_command(argv) if as_customer else argv
+    command = customers.as_customer(argv) if as_customer else argv
     started = timezone.now()
     ran = runner(command, stdin=body, timeout=REQUEST_TIMEOUT + 10)
     answer = tools.answered(ran.output)
     if not answer.status:
-        raise box.AttackerUnavailable(f"the request never reached the target from the box: {ran.output[-200:]}")
+        refused = customers.CustomersUnavailable if as_customer else box.AttackerUnavailable
+        raise refused(f"the request never reached the target from the box: {ran.output[-200:]}")
     return answer, started, timezone.now()
 
 
@@ -312,7 +314,7 @@ def send_as_customer(found: Round, source_ip: str, method: str, path: str, host:
     reached = range_of(found)
     chosen, marker = host_of(found, host), marker or new_marker()
     given = {**checked_headers(headers), "Host": chosen, tools.MARKER_HEADER: marker}
-    answer, started, ended = sent_over(reached.runner(ATTACKER), method, target_url(found, checked_path(path), query),
+    answer, started, ended = sent_over(reached.runner(CUSTOMERS), method, target_url(found, checked_path(path), query),
                                        given, body, interface=source_ip, as_customer=True)
     return Sent(action=None, marker=marker, status=answer.status, headers=answer.headers,
                 body=answer.body[:BODY_LIMIT], truncated=len(answer.body) > BODY_LIMIT, source_ip=source_ip,
@@ -376,10 +378,10 @@ def fire_benign(found: Round, name: str, source_ip: str) -> CustomerSent:
         raise errors.Invalid(code="invalid", path="source_ip")
     case = with_host(case_of(found, name, malicious=False), host_of(found, None))
     reached, marker = range_of(found), new_marker()
-    runner = reached.runner(ATTACKER)
+    runner = reached.runner(CUSTOMERS)
 
     def launch(argv: list[str], timeout: float = firing.TOOL_TIMEOUT):
-        return runner(box.as_customer_command([argv[0], "--interface", source_ip, *argv[1:]]), timeout=timeout)
+        return runner(customers.as_customer([argv[0], "--interface", source_ip, *argv[1:]]), timeout=timeout)
 
     started = timezone.now()
     ran = firing.fire(case, launch, configured().box.target_url, marker=marker)
@@ -566,9 +568,6 @@ def state(found: Round) -> State:
         origins=origins.lines(held), remaining=origins.remaining_of(held))
 
 
-CUSTOMERS_PROGRAM = "deploy/traffic/users.py"
-
-
 @dataclass(frozen=True)
 class Probed:
     case: str
@@ -583,17 +582,15 @@ class Probed:
 
 
 def start_customers(found: Round, plan: Mapping[str, Any]) -> bool:
-    attacker = range_of(found).runner(ATTACKER)
-    box.place_customers(attacker, (Path(configured().range.source) / CUSTOMERS_PROGRAM).read_text(encoding="utf-8"))
-    return box.run_customers(attacker, json.dumps(dict(plan)))
+    return customers.run(range_of(found).runner(CUSTOMERS), json.dumps(dict(plan)))
 
 
 def stop_customers(found: Round) -> None:
-    box.stop_customers(range_of(found).runner(ATTACKER))
+    customers.stop(range_of(found).runner(CUSTOMERS))
 
 
 def customer_records(found: Round, offset: int, limit: int) -> str:
-    return box.customer_records(range_of(found).runner(ATTACKER), offset, limit)
+    return customers.records(range_of(found).runner(CUSTOMERS), offset, limit)
 
 
 def cases_of(wargame: Mapping[str, Any]) -> list[dict[str, Any]]:

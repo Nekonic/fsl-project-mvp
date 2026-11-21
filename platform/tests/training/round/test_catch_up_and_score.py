@@ -137,11 +137,12 @@ def test_the_operator_reads_the_score_mid_round(as_operator, running):
 
 
 def test_the_customers_program_starts_with_the_round_and_its_records_land_as_customer_requests(cloud, running):
-    box = cloud.in_slot(1).box
-    box.answer("cr.records=", 'cr.records=\n{"marker": "m1", "action": "home", "method": "GET", "path": "/", '
+    customers_box = cloud.in_slot(1).customers
+    customers_box.answer("cr.records=", 'cr.records=\n{"marker": "m1", "action": "home", "method": "GET", "path": "/", '
                               '"status": 200, "sent_at": "2026-11-20T00:00:00+00:00"}\n\n=cr.records\n')
 
-    assert running.traffic["running"] is True and box.matching("users.py")
+    assert running.traffic["running"] is True and customers_box.matching("systemctl start cr-customers.service")
+    assert not cloud.in_slot(1).box.matching("cr-customers")
     customers.pull(running)
 
     assert CustomerRequest.objects.filter(round=running, marker="m1", benign_case=None).exists()

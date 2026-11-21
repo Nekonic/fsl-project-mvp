@@ -348,20 +348,11 @@ def terminal_shell(round_id: int, side: str) -> Shell:
     return Shell(address=address, alias=alias or address, account=account)
 
 
-def customers_prefer(wargame: str, declared) -> tuple[str, ...]:
-    traffic = customers.declared_traffic(wargame)
-    weights = traffic["origins"] if traffic else {}
-    subnets = {origin.id: origin.subnet for origin in declared.origins if origin.id != declared.default_origin}
-    return tuple(subnets[origin] for origin in sorted(weights, key=lambda one: (-weights[one], one))
-                 if origin in subnets and weights[origin] > 0)
-
-
 def map_of(found: Round, side: str) -> dict:
     cfg = configured().range
     declared = read_declaration(Path(cfg.declaration), Path(cfg.source))
     wargame = found.allocation.wargame_id
-    learner = topology.learner(declared, wargame, declared.roles.get("attacker", ""),
-                               customers_prefer(wargame, declared))
+    learner = topology.learner(declared, wargame)
     return topology.for_side(topology.graph(learner, slot_range(found.allocation.slot).wiring()), side)
 
 
