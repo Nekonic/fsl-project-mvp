@@ -3,7 +3,10 @@ import stat
 
 import pytest
 
-from range import cloud_config as cloud, declaration, networks, openstack
+from sandbox import cloud_config as cloud
+from sandbox import definitions as declaration
+from sandbox import fabric as networks
+from sandbox import openstack
 
 INSIDE = cloud.read(cloud.EXAMPLE).inside
 
@@ -180,7 +183,7 @@ def test_building_on_an_empty_project_makes_the_whole_fabric_with_no_way_out_of_
 
     tags = sorted(t for n in cloud.networks for t in n["tags"])
     assert tags == [f"{networks.TAG}=mgmt"], (
-        "each slot's LANs are Neutron nets in its own Heat stack (range/openstack.py); "
+        "each slot's LANs are Neutron nets in its own Heat stack (sandbox/openstack.py); "
         "the fabric owns only the shared management network")
     assert len(cloud.subnets) == 1
     assert [k["name"] for k in cloud.keypairs] == [networks.KEYPAIR]

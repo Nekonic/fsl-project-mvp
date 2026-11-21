@@ -2,8 +2,7 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView
 
 from cr import schema
-from defence import urls as defence
-from match import urls as match
+from training import urls as training
 
 
 class SideSchema(SpectacularAPIView):
@@ -15,14 +14,14 @@ class SideSchema(SpectacularAPIView):
 
 
 urlpatterns = [
-    path("api/", include("accounts.urls")),
-    path("api/", include("events.urls")),
-    path("api/", include("content.urls")),
-    path("api/", include(defence.urlpatterns)),
-    path("api/", include("attack.urls")),
-    path("api/", include(match.urlpatterns)),
-    path("", include(defence.gate)),
-    path("", include(match.site)),
+    path("api/", include("users.urls")),
+    path("api/", include("telemetry.urls")),
+    path("api/", include(training.content_urls)),
+    path("api/", include(training.defence_urls)),
+    path("api/", include(training.attack_urls)),
+    path("api/", include(training.round_urls)),
+    path("", include(training.gate)),
+    path("", include(training.site)),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/schema/attack/", SideSchema.as_view(side="attack"), name="schema-attack"),
     path("api/schema/defence/", SideSchema.as_view(side="defence"), name="schema-defence"),

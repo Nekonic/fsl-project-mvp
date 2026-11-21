@@ -10,8 +10,10 @@ from dataclasses import replace
 
 import pytest
 
-from range import declaration, networks, openstack
-from range.runner import RangeUnavailable, Segment
+from sandbox import definitions as declaration
+from sandbox import fabric as networks
+from sandbox import openstack
+from sandbox.runner import RangeUnavailable, Segment
 
 SSHD = shutil.which("sshd") or "/usr/sbin/sshd"
 TARGET = "wargames"

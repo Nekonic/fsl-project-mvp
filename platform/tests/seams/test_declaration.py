@@ -4,11 +4,11 @@ import pytest
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-DECLARATION = ROOT / "platform" / "range" / "declaration.yaml"
+DECLARATION = ROOT / "platform" / "sandbox" / "declaration.yaml"
 
 
 def test_the_default_origin_has_to_be_somewhere_an_attack_can_start():
-    from range.declaration import Declaration, Segment
+    from sandbox.definitions import Declaration, Segment
 
     inside_only = Declaration(
         segments=(Segment(id="estate", name="Application estate", origin=""),),
@@ -26,7 +26,7 @@ def origins():
 def test_each_origin_is_its_own_slash_24_away_from_every_network_the_platform_needs():
     import ipaddress
 
-    from range import cloud_config
+    from sandbox import cloud_config
 
     nets = [ipaddress.ip_network(o["subnet"]) for o in origins()]
     example = cloud_config.read(cloud_config.EXAMPLE)

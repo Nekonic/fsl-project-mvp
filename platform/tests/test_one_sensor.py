@@ -1,6 +1,7 @@
 import pathlib
 
-from range import declaration, openstack, stack_plan
+from sandbox import definitions as declaration
+from sandbox import openstack, stack_plan
 from tests.seams.test_suricata import RELOAD
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]

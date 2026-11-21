@@ -3,7 +3,7 @@ import json
 import pytest
 
 from cr.config import KibanaConfig
-from defence import kibana
+from sandbox import kibana
 
 MINE = {"soc-logs-1": "logs-1-*"}
 SPACE = "/kibana/s/soc-logs-1/"

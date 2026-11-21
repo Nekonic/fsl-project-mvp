@@ -2,7 +2,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from defence import service
+from training.defence import terminal as service
 
 ROOT = Path(__file__).resolve().parents[2]
 WAF = ROOT / "deploy/roles/waf"

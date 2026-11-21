@@ -3,10 +3,11 @@ from django.test import Client, override_settings
 from rest_framework import exceptions, serializers
 from rest_framework.test import APIClient
 
-from accounts import blocks, signin
 from cr import errors, handler
 from tests.conftest import CALLER
 from tests.shape import refused
+from users import accounts as signin
+from users import blocks
 
 
 def wrong_sign_in(browser):

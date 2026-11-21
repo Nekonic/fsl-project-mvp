@@ -3,7 +3,8 @@ import pathlib
 
 import pytest
 
-from range import declaration, openstack, stack_plan, topology, wiring
+from sandbox import definitions as declaration
+from sandbox import openstack, stack_plan, topology, wiring
 from testing import fakecloud
 from tests import docker_networks
 

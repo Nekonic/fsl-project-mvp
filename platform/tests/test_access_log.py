@@ -4,8 +4,9 @@ from pathlib import Path
 
 import yaml
 
-from defence import kibana, ruletest
-from ingest import elastic
+from sandbox import kibana
+from telemetry import elastic
+from training.defence import ruletest
 
 ROOT = Path(__file__).resolve().parents[2]
 VHOSTS = ROOT / "deploy/waf/board.com.conf"

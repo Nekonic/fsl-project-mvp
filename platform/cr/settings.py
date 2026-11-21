@@ -24,13 +24,11 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "rest_framework",
     "drf_spectacular",
-    "accounts",
-    "events",
-    "content",
-    "match",
-    "referee",
-    "defence",
-    "attack",
+    "users",
+    "sandbox",
+    "telemetry",
+    "training",
+    "scoring",
 ]
 
 MIDDLEWARE = [
@@ -84,7 +82,7 @@ USE_TZ = True
 TIME_ZONE = "UTC"
 
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": ["accounts.signin.SessionAuthentication"],
+    "DEFAULT_AUTHENTICATION_CLASSES": ["users.permissions.SessionAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
@@ -99,7 +97,9 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
     "POSTPROCESSING_HOOKS": ["drf_spectacular.hooks.postprocess_schema_enums", "cr.schema.error_shape"],
-    "ENUM_NAME_OVERRIDES": {"ProblemKindEnum": "content.models.KINDS", "ProblemSideEnum": "content.models.SIDES",
-                            "VerdictEnum": "defence.serializers.VERDICTS", "MatchupEnum": "match.models.MATCHUPS",
-                            "SeatSideEnum": "match.models.SIDES", "RoundPhaseEnum": "match.models.PHASES"},
+    "ENUM_NAME_OVERRIDES": {"ProblemKindEnum": "training.models.PROBLEM_KINDS",
+                            "ProblemSideEnum": "training.models.PROBLEM_SIDES",
+                            "VerdictEnum": "training.defence.serializers.VERDICTS",
+                            "MatchupEnum": "training.models.MATCHUPS",
+                            "SeatSideEnum": "training.models.SEAT_SIDES", "RoundPhaseEnum": "training.models.PHASES"},
 }

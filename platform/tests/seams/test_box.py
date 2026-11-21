@@ -6,10 +6,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from attack import box
 from cr.config import BoxConfig
 from cr.errors import NotFound
-from range.runner import Node, Segment, Shape
+from sandbox import attacker as box
+from sandbox.runner import Node, Segment, Shape
 from testing.fakes import FakeLauncher, FakeRunner
 
 DEPLOY = pathlib.Path(__file__).resolve().parents[3] / "deploy"

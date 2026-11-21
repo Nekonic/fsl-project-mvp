@@ -8,8 +8,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from range import declaration, networks, openstack
-from range.runner import EXIT_MARK
+from sandbox import definitions as declaration
+from sandbox import fabric as networks
+from sandbox import openstack
+from sandbox.runner import EXIT_MARK
 
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM = "srv-platform"

@@ -7,16 +7,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+from django.conf import settings
 
 SOURCE = Path(__file__).resolve().parents[2]
 TOPOLOGIES = "wargames/*/topology.yaml"
-DECLARATION = "platform/range/declaration.yaml"
+DECLARATION = "platform/sandbox/declaration.yaml"
 SURICATA_RULES = "/var/lib/suricata/rules/local.rules"
 SURICATA_IMAGE = "jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840"
 CRS_EXCLUSIONS = "/etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf"
 NGINX_RELOAD = "nginx -t 2>&1 && nginx -s reload 2>&1"
 NGINX_PID = "/tmp/nginx.pid"
-SUBSTRATE = "range.openstack.connect"
+SUBSTRATE = "sandbox.openstack.connect"
 ORIGIN = re.compile(r"https?://(?:[a-z0-9.-]+|\[[0-9a-f:.]+\])(?::[0-9]{1,5})?")
 
 
@@ -263,6 +264,10 @@ class OriginsConfig:
 
     def site_for(self, host: str) -> str:
         return self.site or f"http://{host}:{self.site_port}"
+
+
+def configured() -> Config:
+    return build(source=Path(settings.CR_SOURCE))
 
 
 def origin_of(given: str, variable: str) -> str:

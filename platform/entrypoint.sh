@@ -21,7 +21,7 @@ install -d -m 0755 -o cr "$jump"
 install -d -m 0755 /run/sshd
 [ -s "$jump/ssh_host_ed25519_key" ] || ssh-keygen -q -t ed25519 -N '' -C cr-jump -f "$jump/ssh_host_ed25519_key"
 [ -e "$jump/authorized_keys" ] || install -m 0600 -o cr /dev/null "$jump/authorized_keys"
-python -m range.jump > /run/sshd-jump.conf
+python -m sandbox.access > /run/sshd-jump.conf
 (/usr/sbin/sshd -t -f /run/sshd-jump.conf && exec /usr/sbin/sshd -D -e -f /run/sshd-jump.conf) &
 
 gosu cr env TERMINAL_KEEP=1 ttyd -W -a -b /vm-terminal/attack -t disableResizeOverlay=true -t disableLeaveAlert=true -i 127.0.0.1 -p 7691 /app/vm-terminal.sh cr-kali attack &
@@ -35,7 +35,7 @@ exec gosu cr sh -c '
   fi
   python manage.py migrate --noinput
   python manage.py register_pipeline &
-  python -m defence.kibana &
+  python -m sandbox.kibana &
   exec waitress-serve --listen=127.0.0.1:8001 --threads=16 \
     --trusted-proxy=127.0.0.1 --trusted-proxy-headers=x-forwarded-for \
     --clear-untrusted-proxy-headers cr.wsgi:application

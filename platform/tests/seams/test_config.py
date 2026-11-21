@@ -4,10 +4,10 @@ from pathlib import Path
 import pytest
 
 from cr import config, errors
-from ingest.elastic import ElasticUnavailable
-from range.runner import Drifted, RangeUnavailable
-from rules.crs import TuningRefused
-from rules.suricata import RuleApplyError, RuleSyntax, RulesUnreadable
+from sandbox.crs import TuningRefused
+from sandbox.runner import Drifted, RangeUnavailable
+from sandbox.suricata import RuleApplyError, RulesUnreadable, RuleSyntax
+from telemetry.elastic import ElasticUnavailable
 
 ROOT = Path(__file__).resolve().parents[3]
 

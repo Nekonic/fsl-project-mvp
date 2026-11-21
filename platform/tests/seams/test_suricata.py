@@ -7,8 +7,8 @@ import yaml
 
 from cr import config
 from cr.errors import EngineRefused
-from range.runner import Ran, RangeUnavailable
-from rules import suricata
+from sandbox import suricata
+from sandbox.runner import Ran, RangeUnavailable
 from testing.fakes import FakeRunner, eve
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]

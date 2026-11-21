@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from range.networks import Plan as FabricPlan
-from range.pool import Plan
-from range.runner import Node, Segment, Shape
-from range.wiring import Wiring
+from sandbox.fabric import Plan as FabricPlan
+from sandbox.pool import Plan
+from sandbox.runner import Node, Segment, Shape
+from sandbox.wiring import Wiring
 from testing.fakes import BOARD_TRUTH, FakeRunner, Gateway, Sensor, SensorNode, board_runner
 
 KALI = "cr-kali"

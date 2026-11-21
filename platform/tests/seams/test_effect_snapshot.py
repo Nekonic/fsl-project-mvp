@@ -1,7 +1,7 @@
 import pytest
 
-from referee import effect
-from range.runner import Ran, RangeUnavailable
+from sandbox.runner import Ran, RangeUnavailable
+from scoring import effect
 
 pytestmark = pytest.mark.reads_target_state
 

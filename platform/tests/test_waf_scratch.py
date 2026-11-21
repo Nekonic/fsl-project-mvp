@@ -10,12 +10,12 @@ import yaml
 
 from cr import config as settings
 from cr.config import SensorConfig, WafConfig
-from rules import crs, suricata
+from sandbox import crs, suricata
 
 ROOT = Path(__file__).resolve().parents[2]
 WAF = ROOT / "deploy/roles/waf"
 INFRA = ROOT / "deploy/roles/infra"
-CRS_SOURCE = (ROOT / "platform/rules/crs.py").read_text()
+CRS_SOURCE = (ROOT / "platform/sandbox/crs.py").read_text()
 
 
 def assigned(path: Path) -> dict[str, str]:

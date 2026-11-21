@@ -1,12 +1,6 @@
 import pytest
 
-from attack.tools import (
-    FREE_TOOLS,
-    UnknownTool,
-    free_argv,
-    is_tool_case,
-    tool_argv,
-)
+from training.attack.tools import FREE_TOOLS, UnknownTool, free_argv, is_tool_case, tool_argv
 
 CASE = {
     "case_id": "abc-123",
@@ -19,7 +13,7 @@ CASE = {
 INTERNAL_TARGET = "http://waf:8080"
 
 def test_the_case_names_the_image_and_the_tool_and_only_a_marker_case_carries_the_marker_and_its_own_sqlmap_output():
-    from attack.box import SQLMAP_RUNS
+    from sandbox.attacker import SQLMAP_RUNS
 
     assert tool_argv(CASE, INTERNAL_TARGET, SQLMAP_RUNS) == [
         "sqlmap", "-u", f"{INTERNAL_TARGET}/rest/products/search?q=1", "--batch",
@@ -31,7 +25,7 @@ def test_the_case_names_the_image_and_the_tool_and_only_a_marker_case_carries_th
 def test_tool_case_in_the_default_file_declares_args():
     from pathlib import Path
 
-    from attack.firing import load_cases
+    from training.attack.cases import load_cases
 
     cases = load_cases(Path(__file__).resolve().parents[3] / "redteam/cases/board.yaml")
     tool_cases = [c for c in cases if is_tool_case(c)]
@@ -46,7 +40,7 @@ def test_tool_case_in_the_default_file_declares_args():
 def test_the_tamper_variant_skips_the_heuristic_probe_that_a_dropped_connection_ends_the_run_on():
     from pathlib import Path
 
-    from attack.firing import load_cases
+    from training.attack.cases import load_cases
 
     cases = {c["name"]: c for c in load_cases(Path(__file__).resolve().parents[3] / "redteam/cases/board.yaml")}
 
@@ -57,7 +51,7 @@ def test_the_tamper_variant_skips_the_heuristic_probe_that_a_dropped_connection_
     )
 
 def launcher(exit_code, output=""):
-    from range.runner import Ran
+    from sandbox.runner import Ran
 
     def launch(argv, timeout=600.0):
         launch.started.append(argv)
@@ -67,8 +61,8 @@ def launcher(exit_code, output=""):
     return launch
 
 def test_missing_tool_image_raises_instead_of_being_swallowed():
-    from attack.firing import fire_tool
-    from attack.tools import ToolUnavailable
+    from training.attack.cases import fire_tool
+    from training.attack.tools import ToolUnavailable
 
     with pytest.raises(ToolUnavailable, match="did not run"):
         fire_tool(
@@ -77,7 +71,7 @@ def test_missing_tool_image_raises_instead_of_being_swallowed():
         )
 
 def test_tool_reporting_a_failed_scan_is_not_an_error():
-    from attack.firing import fire_tool
+    from training.attack.cases import fire_tool
 
     fire_tool(
         dict(CASE), INTERNAL_TARGET,
@@ -87,7 +81,7 @@ def test_tool_reporting_a_failed_scan_is_not_an_error():
 def test_core_does_not_start_anything_itself():
     import pathlib
 
-    from attack import firing as harness
+    from training.attack import cases as harness
 
     source = pathlib.Path(harness.__file__).read_text()
 
@@ -99,7 +93,7 @@ def test_core_does_not_start_anything_itself():
 def test_sqlmap_s_conclusions_are_its_verdict_lines_without_the_clock():
     from pathlib import Path
 
-    from attack.tools import conclusions
+    from training.attack.tools import conclusions
 
     fixtures = Path(__file__).resolve().parents[1] / "fixtures"
     dumped = conclusions((fixtures / "sqlmap-orderby-dump.out").read_text())

@@ -3,8 +3,8 @@ import json
 import pytest
 
 from cr.config import EdgeConfig
-from range import edge
-from range.runner import RangeUnavailable
+from sandbox import edge
+from sandbox.runner import RangeUnavailable
 from testing.fakes import FakeRunner
 
 

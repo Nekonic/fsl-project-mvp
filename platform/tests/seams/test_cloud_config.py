@@ -4,7 +4,8 @@ import dataclasses
 import pytest
 import yaml
 
-from range import cloud_config as cloud, openstack
+from sandbox import cloud_config as cloud
+from sandbox import openstack
 
 DOCUMENT = yaml.safe_load(cloud.EXAMPLE.read_text())
 ENTRY = {

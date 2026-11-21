@@ -6,7 +6,8 @@ import subprocess
 import pytest
 import yaml
 
-from range import declaration, stack_plan
+from sandbox import definitions as declaration
+from sandbox import stack_plan
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 DECLARED = declaration.read()

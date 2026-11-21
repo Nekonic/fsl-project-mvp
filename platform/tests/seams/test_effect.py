@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from referee import effect
+from scoring import effect
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 

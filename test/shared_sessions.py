@@ -360,7 +360,7 @@ def corp_is_declared():
     assert not absent, (
         f"the corp wargame is not on this range: "
         f"{', '.join(absent)} {'has' if len(absent) == 1 else 'have'} no host "
-        f"in platform/range/declaration.yaml for it, so nothing builds or boots "
+        f"in platform/sandbox/declaration.yaml for it, so nothing builds or boots "
         f"the target and the live exploit has nothing to change"
     )
 

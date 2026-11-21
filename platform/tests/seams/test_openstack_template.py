@@ -4,7 +4,8 @@ import pathlib
 
 import pytest
 
-from range import declaration, openstack, stack_plan
+from sandbox import definitions as declaration
+from sandbox import openstack, stack_plan
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 DECLARED = declaration.read()

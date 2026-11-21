@@ -6,7 +6,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from range.runner import Ran, RangeUnavailable
+from sandbox.runner import Ran, RangeUnavailable
 
 SID = re.compile(r"sid\s*:\s*(\d+)")
 OK = Ran(exit_code=0, output="")

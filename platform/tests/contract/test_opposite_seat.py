@@ -3,9 +3,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from match import service
-from tests.match.conftest import cloud, lease, other, problem, pvp
 from tests.shape import refused
+from tests.training.round.conftest import cloud, lease, other, problem, pvp
+from training.round import lifecycle as service
 
 SCHEMA = Path(__file__).resolve().parents[3] / "openapi" / "schema.yaml"
 ROUND = "/api/rounds/{round_id}/"

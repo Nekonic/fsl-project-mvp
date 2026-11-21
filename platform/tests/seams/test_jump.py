@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from range import jump
 from cr.config import JumpConfig
-from range.runner import Ran, RangeUnavailable
+from sandbox import access as jump
+from sandbox.runner import Ran, RangeUnavailable
 from testing.fakes import FakeRunner
 
 KALI = "10.20.0.5"

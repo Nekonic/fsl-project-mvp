@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DECLARATION = REPO_ROOT / "platform" / "range" / "declaration.yaml"
+DECLARATION = REPO_ROOT / "platform" / "sandbox" / "declaration.yaml"
 TOPOLOGIES = "wargames/*/topology.yaml"
 
 ATTACKER = "attacker"

@@ -3,8 +3,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from attack import firing as harness
-from attack.firing import build_request, load_cases
+from training.attack import cases as harness
+from training.attack.cases import build_request, load_cases
+
 
 def _launcher(exit_code=0, output="200"):
     calls = []
@@ -41,8 +42,8 @@ def test_default_cases_file_has_both_labels_known_correlations_and_unique_names(
     assert len(names) == len(set(names))
 
 def test_default_cases_survive_request_preparation():
-    from attack.firing import check_path_preserved
-    from attack.tools import is_tool_case
+    from training.attack.cases import check_path_preserved
+    from training.attack.tools import is_tool_case
 
     for case in load_cases(DEFAULT_CASES):
         if is_tool_case(case):

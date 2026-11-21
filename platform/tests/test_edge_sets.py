@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 from cr.config import EdgeConfig
-from range import edge
+from sandbox import edge
 from testing.fakes import FakeRunner
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -59,7 +59,7 @@ def test_slot_boot_stays_the_only_loader_and_a_reload_starts_with_empty_sets_the
     boot = (INFRA / "slot-boot").read_text()
 
     assert text.startswith("table ip edge\ndelete table ip edge\n")
-    assert "elements" not in text, "the sets carry no addresses of their own; range/edge.py adds them"
+    assert "elements" not in text, "the sets carry no addresses of their own; sandbox/edge.py adds them"
     assert '"$SHARE/edge.nft" | nft -f -' in boot
 
 

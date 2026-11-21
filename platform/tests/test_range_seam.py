@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SEAM_PATH = REPO_ROOT / "test" / "range.py"
 
@@ -136,8 +135,8 @@ def test_the_seam_does_not_need_the_platform_to_run():
         "the acceptance suite reaches the range over the substrate and the "
         "platform over HTTP; importing Django would make it a unit test"
     )
-    assert "import range" not in source, (
-        "the seam must not borrow platform/range/, which is only importable "
+    assert "import sandbox" not in source, (
+        "the seam must not borrow platform/sandbox/, which is only importable "
         "with platform/ as the working directory"
     )
 

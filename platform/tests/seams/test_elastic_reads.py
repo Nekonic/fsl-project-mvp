@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from cr.config import ElasticConfig
-from ingest import elastic
+from telemetry import elastic
 from testing.fakes import FakeElastic
 
 URL = "http://es:9200"
@@ -21,7 +21,7 @@ def test_fetch_after_moves_its_cursor_and_never_hands_a_document_twice():
                             "2026-11-19T10:00:02Z"]):
         es.add(f"d{n}", access(at))
 
-    with patch("ingest.elastic.requests.post", es.post):
+    with patch("telemetry.elastic.requests.post", es.post):
         first, cursor = elastic.fetch_after(URL, "logs-1-*", None, size=2)
         second, cursor = elastic.fetch_after(URL, "logs-1-*", cursor, size=2)
         third, cursor = elastic.fetch_after(URL, "logs-1-*", cursor, size=2)
@@ -38,7 +38,7 @@ def test_documents_sharing_the_cursor_s_timestamp_across_pages_are_all_handed_on
     for n in range(3):
         es.add(f"same{n}", access("2026-11-19T10:00:00Z"))
 
-    with patch("ingest.elastic.requests.post", es.post):
+    with patch("telemetry.elastic.requests.post", es.post):
         first, cursor = elastic.fetch_after(URL, "logs-*", None, size=2)
         second, cursor = elastic.fetch_after(URL, "logs-*", cursor, size=2)
 
@@ -52,7 +52,7 @@ def test_access_events_read_only_the_nginx_access_module():
     es.add("s1", {"@timestamp": "2026-11-19T10:00:01Z", "event": {"module": "suricata"}, "event_type": "alert"})
     es.add("a2", access("2026-11-19T10:00:02Z", status=200))
 
-    with patch("ingest.elastic.requests.post", es.post):
+    with patch("telemetry.elastic.requests.post", es.post):
         events, cursor = elastic.access_events(URL, "logs-1-*", None)
 
     assert [(one["id"], one["status"], one["refused"], one["marker"]) for one in events] == [
@@ -76,7 +76,7 @@ def test_the_ingest_pipeline_is_put_from_its_file_and_retried_until_elasticsearc
         return type("Answer", (), {"status_code": answer})()
 
     paused = []
-    with patch("ingest.elastic.requests.put", answering):
+    with patch("telemetry.elastic.requests.put", answering):
         assert elastic.register_pipeline(config, tries=5, pause=paused.append) is True
 
     assert put[-1] == (f"{URL}/_ingest/pipeline/geoip", pipeline.read_bytes())
@@ -88,7 +88,7 @@ def test_a_pipeline_elasticsearch_never_takes_is_reported_false(tmp_path):
     pipeline.write_text("{}")
     es = FakeElastic(put_status=500)
 
-    with patch("ingest.elastic.requests.put", es.put_pipeline):
+    with patch("telemetry.elastic.requests.put", es.put_pipeline):
         assert elastic.register_pipeline(ElasticConfig(pipeline_file=str(pipeline)), tries=3,
                                          pause=lambda _: None) is False
     assert len(es.put) == 3
@@ -101,7 +101,7 @@ def test_the_shipped_pipeline_file_is_the_one_the_config_points_at():
 
 
 def test_an_unreachable_elasticsearch_is_a_domain_unavailable():
-    with patch("ingest.elastic.requests.post", side_effect=elastic.requests.ConnectionError("x")):
+    with patch("telemetry.elastic.requests.post", side_effect=elastic.requests.ConnectionError("x")):
         with pytest.raises(elastic.ElasticUnavailable) as refused:
             elastic.fetch_after(URL, "logs-*")
     assert refused.value.code == "elastic_unavailable" and refused.value.status == 503

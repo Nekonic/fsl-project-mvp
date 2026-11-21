@@ -4,7 +4,8 @@ import pytest
 import yaml
 
 from cr.config import OpenStackConfig
-from range import networks, openstack, pool, stack_plan
+from sandbox import fabric as networks
+from sandbox import openstack, pool, stack_plan
 from testing import fakecloud
 
 BASELINE = (fakecloud.ROOT / openstack.BASELINE_RULES).read_text()

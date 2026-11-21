@@ -4,9 +4,8 @@ import re
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
-
 from cr.config import KibanaConfig
-from defence import kibana
+from sandbox import kibana
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 OBJECTS = ROOT / "deploy/kibana/objects.ndjson"

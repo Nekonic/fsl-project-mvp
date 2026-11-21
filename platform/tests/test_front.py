@@ -9,8 +9,8 @@ from django.urls import Resolver404, resolve
 
 from cr import config as config_module
 from cr import errors
-from match import views as match_views
 from tests import composed
+from training.round import views as match_views
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 FRONT = ROOT / "platform/nginx.conf"

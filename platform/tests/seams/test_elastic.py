@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from ingest.elastic import normalize
+from telemetry.elastic import normalize
 
 MARKER = "11111111-1111-4111-8111-111111111111"
 WINDOW = (datetime(2026, 9, 24, tzinfo=timezone.utc), datetime(2026, 9, 24, 1, tzinfo=timezone.utc))
@@ -35,7 +35,7 @@ def test_suricata_alert_becomes_one_detection():
     assert det["raw"] == suricata_alert()
 
 def test_an_alert_behind_the_waf_is_attributed_to_the_client_its_transaction_names_in_x_forwarded_for():
-    from ingest.elastic import normalize_all
+    from telemetry.elastic import normalize_all
 
     alert = suricata_alert(src_ip="10.30.129.247", flow_id=7, tx_id=0)
     request = {"event": {"module": "suricata"}, "event_type": "http", "flow_id": 7, "tx_id": 0,
@@ -132,7 +132,7 @@ def suricata_alert_event(flow_id=42, doc_id="a1"):
     return (doc_id, doc)
 
 def test_normalize_all_joins_marker_from_http_event_by_flow_id():
-    from ingest.elastic import normalize_all
+    from telemetry.elastic import normalize_all
 
     [det] = normalize_all([suricata_alert_event(), suricata_http_event()])
 
@@ -140,7 +140,7 @@ def test_normalize_all_joins_marker_from_http_event_by_flow_id():
     assert det["marker"] == MARKER
 
 def test_normalize_all_does_not_join_across_different_flows():
-    from ingest.elastic import normalize_all
+    from telemetry.elastic import normalize_all
 
     [det] = normalize_all(
         [suricata_alert_event(flow_id=1), suricata_http_event(flow_id=2)]
@@ -149,7 +149,7 @@ def test_normalize_all_does_not_join_across_different_flows():
     assert det["marker"] is None
 
 def test_normalize_all_keeps_a_marker_the_document_already_carries():
-    from ingest.elastic import normalize_all
+    from telemetry.elastic import normalize_all
 
     own = suricata_alert()
     own["flow_id"] = 42
@@ -200,7 +200,7 @@ def keepalive_pair(tx_id, marker, flow_id=7):
     return [(f"a{tx_id}", alert), (f"h{tx_id}", http)]
 
 def test_keepalive_transactions_keep_their_own_markers():
-    from ingest.elastic import normalize_all
+    from telemetry.elastic import normalize_all
 
     first = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
     second = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
@@ -215,7 +215,7 @@ def test_keepalive_transactions_keep_their_own_markers():
     )
 
 def test_marker_does_not_leak_to_a_transaction_without_one():
-    from ingest.elastic import normalize_all
+    from telemetry.elastic import normalize_all
 
     marked = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
     documents = keepalive_pair(0, marked)
@@ -247,7 +247,8 @@ class _Response:
 
 def _fetch(hits, total, monkeypatch, **kwargs):
     from datetime import datetime, timezone
-    from ingest import elastic
+
+    from telemetry import elastic
 
     monkeypatch.setattr(
         elastic.requests, "post", lambda *a, **k: _Response(hits, total)
@@ -280,9 +281,9 @@ def test_a_waf_detection_keeps_where_its_source_is():
 def test_a_search_that_lost_a_shard_is_refused_rather_than_read_as_complete():
     from unittest.mock import patch
 
-    from ingest import elastic
+    from telemetry import elastic
 
-    with patch("ingest.elastic.requests.post") as posted:
+    with patch("telemetry.elastic.requests.post") as posted:
         posted.return_value.ok = True
         posted.return_value.json.return_value = {"hits": {"hits": [], "total": {"value": 0}}}
         elastic.fetch("http://es:9200", "logs-*", *WINDOW)
@@ -296,9 +297,9 @@ def test_a_search_that_lost_a_shard_is_refused_rather_than_read_as_complete():
 def test_a_search_leaves_out_filebeat_s_copy_of_the_raw_log_line_that_no_detection_reads():
     from unittest.mock import patch
 
-    from ingest import elastic
+    from telemetry import elastic
 
-    with patch("ingest.elastic.requests.post") as posted:
+    with patch("telemetry.elastic.requests.post") as posted:
         posted.return_value.ok = True
         posted.return_value.json.return_value = {"hits": {"hits": [], "total": {"value": 0}}}
         elastic.fetch("http://es:9200", "logs-*", *WINDOW)
@@ -326,11 +327,11 @@ def test_a_failed_search_is_reported_as_unavailable_not_as_no_records(post, said
 
     import requests
 
-    from ingest import elastic
+    from telemetry import elastic
 
     if post.get("raises"):
         post = {"raises": requests.RequestException("connection refused")}
-    with patch("ingest.elastic.requests.post", _failing(**post)):
+    with patch("telemetry.elastic.requests.post", _failing(**post)):
         with pytest.raises(elastic.ElasticUnavailable, match=said):
             elastic.fetch("http://es:9200", "logs-*", *WINDOW)
 

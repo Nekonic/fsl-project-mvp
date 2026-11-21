@@ -1,10 +1,9 @@
 import pathlib
 
 import pytest
-
 import yaml
 
-from range import networks
+from sandbox import fabric as networks
 
 FILEBEAT = pathlib.Path(__file__).resolve().parents[2] / "deploy/filebeat/filebeat.yml"
 
@@ -142,7 +141,8 @@ def test_a_document_does_not_carry_the_management_address_it_was_received_from()
 def test_a_refused_request_s_status_lands_where_the_ids_record_s_does_so_no_runtime_field_is_mapped_away():
     import json
     import re
-    from defence import kibana
+
+    from sandbox import kibana
     root = FILEBEAT.parents[2]
     logged = re.search(r"log_format access escape=json '(\{.*\})';", (root / "deploy/waf/board.com.conf").read_text())
     shipped = set(re.findall(r'"([A-Za-z_]+)":', logged[1]))

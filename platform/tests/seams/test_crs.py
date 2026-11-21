@@ -1,8 +1,8 @@
 import pytest
 
 from cr import config
-from range.runner import Ran
-from rules import crs
+from sandbox import crs
+from sandbox.runner import Ran
 
 RELOAD = ["sh", "-c", config.WafConfig().reload]
 WORKERS = crs.workers_of(config.WafConfig().pid)

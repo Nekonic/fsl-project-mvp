@@ -11,19 +11,23 @@ SKIPPED = ("tests", ".venv", "node_modules")
 HTTP = ("*/views*.py", "*/serializers.py", "*/urls.py", "cr/urls.py", "cr/handler.py", "cr/schema.py", "cr/settings.py",
         "cr/strings.py", "cr/wsgi.py", "*/management/commands/*.py", "*/management/*.py", "manage.py",
         "*/apps.py", "*/migrations/*.py")
+HTTP_LAYER = 10
+COORDINATORS = ("training/round/lifecycle.py", "training/round/lease.py", "training/round/follow.py",
+                "training/round/site.py", "training/round/retention.py", "training/traffic/customers.py",
+                "training/content/probes.py")
 LAYERS = (
-    (8, HTTP),
+    (HTTP_LAYER, HTTP),
     (0, ("domain/*",)),
-    (1, ("cr/__init__.py", "cr/config.py", "cr/errors.py", "ingest/*", "rules/*", "range/*", "attack/__init__.py",
-         "attack/box.py", "attack/firing.py", "attack/tools.py", "defence/__init__.py",
-         "defence/kibana.py", "referee/__init__.py", "referee/loot.py", "referee/effect.py", "testing/*")),
-    (2, ("accounts/*", "events/*", "content/*")),
-    (3, ("match/__init__.py", "match/models.py", "match/auth.py")),
-    (4, ("referee/models.py", "referee/service.py")),
-    (5, ("attack/models.py", "attack/service.py", "defence/*")),
-    (6, ("match/service.py", "match/follow.py", "match/customers.py", "match/site.py", "match/retention.py",
-         "match/probes.py")),
-    (7, ("lessons/*",)),
+    (1, ("cr/__init__.py", "cr/config.py", "cr/errors.py", "*/__init__.py", "sandbox/*", "telemetry/elastic.py",
+         "training/attack/cases.py", "training/attack/tools.py", "scoring/loot.py", "scoring/effect.py",
+         "testing/*")),
+    (2, ("users/*",)),
+    (3, ("training/models.py",)),
+    (4, ("telemetry/*",)),
+    (5, ("scoring/*",)),
+    (8, COORDINATORS),
+    (6, ("training/round/access.py", "training/content/catalog.py", "training/content/problems.py")),
+    (7, ("training/attack/actions.py", "training/defence/*")),
 )
 FRAMEWORKS = ("django", "rest_framework", "drf_spectacular")
 L1_THIRD_PARTY = ("requests", "yaml")
@@ -38,6 +42,11 @@ def modules() -> list[str]:
 
 def layer_of(path: str) -> int | None:
     return next((layer for layer, patterns in LAYERS if any(fnmatch(path, pattern) for pattern in patterns)), None)
+
+
+def placed(path: str) -> int:
+    layer = layer_of(path)
+    return 99 if layer is None else layer
 
 
 def first_party() -> set[str]:
@@ -98,19 +107,20 @@ def in_layer(layer: int) -> list[str]:
 def test_every_module_under_platform_is_assigned_a_layer():
     unassigned = [path for path in modules() if layer_of(path) is None]
 
-    assert unassigned == [], f"modules with no layer in the side-split table: {unassigned}"
+    assert unassigned == [], f"modules with no layer in the unit table: {unassigned}"
 
 
 def test_the_seams_exist_where_the_design_puts_them():
-    expected = ["cr/config.py", "cr/errors.py", "ingest/elastic.py", "rules/suricata.py", "rules/crs.py",
-                "range/openstack.py", "range/cloud_config.py", "range/stack_plan.py", "range/declaration.py",
-                "range/networks.py", "range/wiring.py", "range/topology.py", "range/pool.py", "range/refill.py",
-                "range/reachability.py", "range/runner.py", "range/substrate.py", "range/edge.py",
-                "range/jump.py", "attack/box.py", "attack/firing.py", "attack/tools.py", "defence/kibana.py",
-                "referee/loot.py", "referee/effect.py"]
+    expected = ["cr/config.py", "cr/errors.py", "telemetry/elastic.py", "sandbox/suricata.py", "sandbox/crs.py",
+                "sandbox/openstack.py", "sandbox/cloud_config.py", "sandbox/stack_plan.py", "sandbox/definitions.py",
+                "sandbox/fabric.py", "sandbox/wiring.py", "sandbox/topology.py", "sandbox/pool.py",
+                "sandbox/refill.py", "sandbox/reachability.py", "sandbox/runner.py", "sandbox/reach.py",
+                "sandbox/edge.py", "sandbox/access.py", "sandbox/attacker.py", "sandbox/kibana.py",
+                "sandbox/service.py", "training/attack/cases.py", "training/attack/tools.py", "scoring/loot.py",
+                "scoring/effect.py"]
 
     assert [path for path in expected if layer_of(path) != 1 or not (PLATFORM / path).is_file()] == []
-    assert (PLATFORM / "range/declaration.yaml").is_file()
+    assert (PLATFORM / "sandbox/declaration.yaml").is_file()
     assert not (PLATFORM / "__init__.py").exists(), "platform is a stdlib name and must not be a package"
 
 
@@ -121,61 +131,97 @@ def test_rule_1_domain_imports_only_the_standard_library_and_domain(path):
     assert strays == [], f"{path} imports {strays}"
 
 
+SETTINGS_READER = {"cr/config.py": {"django.conf", "django.conf.settings"}}
+
+
 @pytest.mark.parametrize("path", in_layer(1))
 def test_rule_2_a_seam_imports_no_framework_no_app_and_only_lower_or_seam_modules(path):
-    named = imports(path)
+    named = [dotted for dotted in imports(path) if dotted not in SETTINGS_READER.get(path, set())]
     frameworks = [dotted for dotted in named if dotted.split(".")[0] in FRAMEWORKS]
     third_party = [dotted for dotted in named
                    if not standard(dotted) and not own(dotted) and dotted.split(".")[0] not in L1_THIRD_PARTY]
-    above = [target for target in targets(path) if (layer_of(target) or 9) > 1]
+    above = [target for target in targets(path) if placed(target) > 1]
 
     assert frameworks == [], f"{path} imports a framework: {frameworks}"
     assert third_party == [], f"{path} imports {third_party}"
     assert above == [], f"{path} imports app modules: {above}"
 
 
+def test_the_one_settings_reader_among_the_seams_is_the_config_that_builds_from_them():
+    assert sorted(dotted for dotted in imports("cr/config.py") if dotted.split(".")[0] in FRAMEWORKS) == [
+        "django.conf", "django.conf.settings"]
+
+
+@pytest.mark.parametrize("path", [path for path in modules() if layer_of(path) != HTTP_LAYER])
+def test_a_module_imports_only_its_own_layer_or_a_lower_one(path):
+    above = sorted(target for target in targets(path) if placed(target) > layer_of(path))
+
+    assert above == [], f"{path} (layer {layer_of(path)}) imports {above}"
+
+
+SCORING_SURFACE = ("scoring/baseline.py", "scoring/losses.py", "scoring/score.py", "scoring/__init__.py")
+
+
 @pytest.mark.parametrize("path", modules())
-def test_rule_4_only_referee_reads_the_target_s_ground_truth_and_others_import_only_its_service(path):
-    if path.startswith("referee/"):
+def test_rule_4_only_scoring_reads_the_target_s_ground_truth_and_others_import_only_its_surface(path):
+    if path.startswith("scoring/"):
         return
-    reached = referee_reached_past_its_service(targets(path))
+    reached = ground_truth_reached_past_the_surface(targets(path))
 
-    assert reached == [], f"{path} imports {reached}; other apps go through referee.service"
-
-
-def referee_reached_past_its_service(reached: set[str]) -> list[str]:
-    return sorted(target for target in reached if target.startswith("referee/")
-                  and target not in ("referee/service.py", "referee/__init__.py"))
+    assert reached == [], f"{path} imports {reached}; other units go through {SCORING_SURFACE}"
 
 
-def test_the_checker_sees_a_reach_into_the_referee_s_seams_or_models():
-    reached = {"referee/loot.py", "referee/effect.py", "referee/models.py", "referee/service.py",
-               "referee/__init__.py", "events/log.py"}
+def ground_truth_reached_past_the_surface(reached: set[str]) -> list[str]:
+    return sorted(target for target in reached if target.startswith("scoring/") and target not in SCORING_SURFACE)
 
-    assert referee_reached_past_its_service(reached) == ["referee/effect.py", "referee/loot.py",
-                                                         "referee/models.py"]
+
+def test_the_checker_sees_a_reach_into_scoring_s_seams_or_models():
+    reached = {"scoring/loot.py", "scoring/effect.py", "scoring/models.py", "scoring/score.py",
+               "scoring/losses.py", "scoring/__init__.py", "telemetry/events.py"}
+
+    assert ground_truth_reached_past_the_surface(reached) == ["scoring/effect.py", "scoring/loot.py",
+                                                              "scoring/models.py"]
 
 
 def test_the_checker_sees_a_framework_import_an_app_import_and_a_relative_import():
-    named = imports_in("from django.conf import settings\nfrom attack import service\nfrom . import loot\n"
-                       "from ..attack import box\n", "referee/sample.py")
+    named = imports_in("from django.conf import settings\nfrom training.attack import actions\nfrom . import loot\n"
+                       "from ..sandbox import attacker\n", "scoring/sample.py")
 
-    assert "django.conf" in named and "attack.service" in named
-    assert "referee.loot" in named and "attack.box" in named
-    assert resolved("attack.box") == "attack/box.py"
-    assert resolved("range.runner.Ran") == "range/runner.py"
+    assert "django.conf" in named and "training.attack.actions" in named
+    assert "scoring.loot" in named and "sandbox.attacker" in named
+    assert resolved("sandbox.attacker") == "sandbox/attacker.py"
+    assert resolved("sandbox.runner.Ran") == "sandbox/runner.py"
 
 
-APPS = ("accounts", "events", "content", "match", "referee", "attack", "defence", "lessons")
-SERVICE_OF = {"events": "events/log.py"}
-SHARED_TO_VIEWS = {"cr/errors.py", "match/auth.py", "accounts/service.py"}
-SERVER_LINES = {"defence/views_kibana.py": {"cr/strings.py"}}
+APPS = ("users", "telemetry", "training", "scoring")
+TRAINING_PARTS = ("content", "round", "traffic", "attack", "defence")
+SURFACES = {
+    "users": {"users/accounts.py", "users/permissions.py", "users/seats.py"},
+    "telemetry": {"telemetry/events.py", "telemetry/alerts.py", "telemetry/access.py"},
+    "scoring": set(SCORING_SURFACE),
+    "training/content": {"training/content/problems.py", "training/content/probes.py"},
+    "training/round": {"training/round/lifecycle.py", "training/round/lease.py", "training/round/access.py"},
+    "training/traffic": {"training/traffic/customers.py"},
+    "training/attack": {"training/attack/actions.py"},
+    "training/defence": {"training/defence/rules.py", "training/defence/terminal.py",
+                         "training/defence/kibana_gate.py"},
+}
+SHARED_TO_VIEWS = {"cr/errors.py", "training/round/access.py", "users/permissions.py", "users/accounts.py"}
+SERVER_LINES = {"training/defence/views_kibana.py": {"cr/strings.py"}}
+STAFF_RANGE_VIEWS = {"training/round/views.py": {"sandbox/service.py"}}
 VIEW_FRAMEWORKS = ("rest_framework", "drf_spectacular")
 
 
 def app_of(path: str) -> str | None:
     head = path.split("/")[0]
     return head if head in APPS else None
+
+
+def part_of(path: str) -> str | None:
+    parts = path.split("/")
+    if parts[0] == "training" and len(parts) > 2 and parts[1] in TRAINING_PARTS:
+        return f"training/{parts[1]}"
+    return app_of(path)
 
 
 def package_marker(path: str) -> bool:
@@ -187,18 +233,30 @@ def views_and_serializers() -> list[str]:
             if app_of(path) and (fnmatch(path, "*/views*.py") or fnmatch(path, "*/serializers.py"))]
 
 
-@pytest.mark.parametrize("path", [path for path in modules() if app_of(path) == "events" and layer_of(path) != 8])
-def test_rule_8_events_imports_no_other_app(path):
-    others = [target for target in targets(path) if app_of(target) not in (None, "events")]
+@pytest.mark.parametrize("path", [path for path in modules()
+                                  if app_of(path) == "telemetry" and layer_of(path) != HTTP_LAYER])
+def test_rule_8_telemetry_imports_no_other_unit_but_the_round_records_it_points_to(path):
+    others = [target for target in targets(path)
+              if app_of(target) not in (None, "telemetry") and target not in ("training/models.py",)
+              and not package_marker(target)]
 
-    assert others == [], f"{path} imports {others}; events is a leaf"
+    assert others == [], f"{path} imports {others}; telemetry is a leaf"
+
+
+@pytest.mark.parametrize("path", [path for path in modules()
+                                  if app_of(path) == "users" and layer_of(path) != HTTP_LAYER])
+def test_users_imports_no_other_unit(path):
+    others = [target for target in targets(path) if app_of(target) not in (None, "users")]
+
+    assert others == [], f"{path} imports {others}; users is a leaf"
 
 
 @pytest.mark.parametrize("path", views_and_serializers())
-def test_rule_10_views_and_serializers_import_only_their_service_models_drf_and_the_shared_few(path):
-    app = path.split("/")[0]
-    allowed = {SERVICE_OF.get(app, f"{app}/service.py"), f"{app}/models.py", f"{app}/serializers.py",
-               f"{app}/__init__.py", path} | SHARED_TO_VIEWS | SERVER_LINES.get(path, set())
+def test_rule_10_views_and_serializers_import_only_their_part_drf_and_the_shared_few(path):
+    part = part_of(path)
+    own_part = {target for target in modules() if part_of(target) == part}
+    allowed = (own_part | {"training/models.py", "telemetry/models.py", path} | SHARED_TO_VIEWS
+               | SERVER_LINES.get(path, set()) | STAFF_RANGE_VIEWS.get(path, set()))
     strays = sorted(target for target in targets(path) if target not in allowed and not package_marker(target))
     third_party = [dotted for dotted in imports(path)
                    if not standard(dotted) and not own(dotted) and dotted.split(".")[0] not in VIEW_FRAMEWORKS]
@@ -236,83 +294,85 @@ def test_rule_15_model_relations_and_migrations_point_to_the_same_app_or_lower()
     assert upward_relations(apps.get_models(), migrations, settings.AUTH_USER_MODEL.split(".")[0]) == []
 
 
-def test_the_layer_order_of_models_runs_from_django_auth_up_to_lessons():
-    assert model_layer("auth") < model_layer("accounts") < model_layer("match") < model_layer("referee")
-    assert model_layer("referee") < model_layer("attack") < model_layer("lessons")
-    assert model_layer("events") == model_layer("content") == model_layer("accounts")
+def test_the_layer_order_of_models_runs_from_django_auth_up_to_scoring():
+    assert model_layer("auth") < model_layer("users") < model_layer("training") < model_layer("telemetry")
+    assert model_layer("telemetry") < model_layer("scoring")
 
 
 def test_the_checker_sees_an_upward_migration_dependency():
     class Upward:
-        dependencies = [("match", "0001_initial"), ("accounts", "0001_initial"), ("__setting__", "AUTH_USER_MODEL")]
+        dependencies = [("scoring", "0001_initial"), ("telemetry", "0001_initial"), ("users", "0001_initial"),
+                        ("__setting__", "AUTH_USER_MODEL")]
 
-    assert upward_relations([], {("events", "0002_x"): Upward}, "auth") == ["events.0002_x -> match",
-                                                                            "events.0002_x -> accounts"]
+    assert upward_relations([], {("training", "0002_x"): Upward}, "auth") == ["training.0002_x -> scoring",
+                                                                              "training.0002_x -> telemetry"]
 
 
-def cross_app_strays(path: str) -> list[str]:
-    app = app_of(path)
+def cross_part_strays(path: str) -> list[str]:
+    part = part_of(path)
     strays = []
     for target in targets(path):
-        other = app_of(target)
-        if other in (None, app) or layer_of(target) == 1 or package_marker(target):
+        other = part_of(target)
+        if other in (None, part) or layer_of(target) == 1 or package_marker(target):
             continue
-        if target == SERVICE_OF.get(other, f"{other}/service.py") or target in SHARED_TO_VIEWS:
+        if target in SURFACES.get(other, set()) or target in SHARED_TO_VIEWS:
             continue
-        if target == f"{other}/models.py" and model_layer(other) < model_layer(app):
+        if part == "training" and target.startswith("training/"):
+            continue
+        if target.endswith("/models.py") and placed(target) < placed(path):
             continue
         strays.append(target)
     return strays
 
 
 @pytest.mark.parametrize("path", [path for path in modules() if app_of(path)])
-def test_rule_9_across_an_app_boundary_only_the_service_or_a_lower_model_is_imported(path):
-    assert cross_app_strays(path) == [], f"{path} reaches into another app"
+def test_rule_9_across_a_unit_or_training_part_only_its_surface_or_a_lower_model_is_imported(path):
+    assert cross_part_strays(path) == [], f"{path} reaches into another unit"
 
 
-def test_the_checker_sees_a_reach_into_another_app_s_inner_module(monkeypatch):
-    monkeypatch.setattr(sys.modules[__name__], "targets", lambda path: {"accounts/signin.py", "attack/firing.py",
-                                                                        "accounts/service.py"})
+def test_the_checker_sees_a_reach_into_another_unit_s_inner_module(monkeypatch):
+    monkeypatch.setattr(sys.modules[__name__], "targets", lambda path: {"users/blocks.py", "training/attack/cases.py",
+                                                                        "users/accounts.py"})
 
-    assert cross_app_strays("content/service.py") == ["accounts/signin.py"]
-
-
-CONTENT_REACHES = {"cr/errors.py", "rules/crs.py", "attack/firing.py"}
+    assert cross_part_strays("training/content/problems.py") == ["users/blocks.py"]
 
 
-@pytest.mark.parametrize("path", [path for path in modules() if app_of(path) == "content" and layer_of(path) != 8])
+CONTENT_REACHES = {"cr/errors.py", "sandbox/crs.py", "training/attack/cases.py", "training/models.py"}
+
+
+@pytest.mark.parametrize("path", [path for path in modules() if part_of(path) == "training/content"
+                                  and layer_of(path) not in (HTTP_LAYER, 8)])
 def test_content_reaches_only_the_domain_and_the_seams_its_owner_row_names(path):
     strays = [target for target in targets(path)
-              if not target.startswith(("domain/", "content/")) and target not in CONTENT_REACHES
+              if not target.startswith(("domain/", "training/content/")) and target not in CONTENT_REACHES
               and not package_marker(target)]
 
     assert strays == [], f"{path} imports {strays}"
 
 
-REFEREE_NEVER_REACHES = ("attack/", "defence/", "lessons/", "match/")
-REFEREE_MAY_READ = {"match/models.py", "match/__init__.py"}
+SCORING_MAY_READ = {"training/models.py"}
 
 
-def referee_strays(reached: set[str]) -> list[str]:
+def scoring_strays(reached: set[str]) -> list[str]:
     return sorted(target for target in reached
-                  if target.startswith(REFEREE_NEVER_REACHES) and target not in REFEREE_MAY_READ)
+                  if target.startswith("training/") and target not in SCORING_MAY_READ and not package_marker(target))
 
 
-@pytest.mark.parametrize("path", [path for path in modules() if app_of(path) == "referee"])
-def test_rule_5_referee_imports_no_side_no_lessons_and_no_match_service(path):
-    assert referee_strays(targets(path)) == [], f"{path} reaches past the records it is handed"
+@pytest.mark.parametrize("path", [path for path in modules() if app_of(path) == "scoring"])
+def test_rule_5_scoring_imports_no_side_and_no_round_service(path):
+    assert scoring_strays(targets(path)) == [], f"{path} reaches past the records it is handed"
 
 
-def test_the_checker_sees_referee_reaching_into_a_side_or_the_match_service():
-    reached = {"attack/service.py", "defence/models.py", "lessons/service.py", "match/service.py",
-               "match/models.py", "attack/box.py", "events/log.py"}
+def test_the_checker_sees_scoring_reaching_into_a_side_or_the_round_service():
+    reached = {"training/attack/actions.py", "training/defence/rules.py", "training/round/lifecycle.py",
+               "training/models.py", "sandbox/attacker.py", "telemetry/events.py"}
 
-    assert referee_strays(reached) == ["attack/box.py", "attack/service.py", "defence/models.py",
-                                       "lessons/service.py", "match/service.py"]
+    assert scoring_strays(reached) == ["training/attack/actions.py", "training/defence/rules.py",
+                                       "training/round/lifecycle.py"]
 
 
 LOST_KIND = "objective.lost"
-LOST_KIND_DECLARED = "events/kinds.py"
+LOST_KIND_DECLARED = "telemetry/events.py"
 
 
 def names_lost_kind(source: str, path: str) -> bool:
@@ -321,121 +381,101 @@ def names_lost_kind(source: str, path: str) -> bool:
 
 
 @pytest.mark.parametrize("path", [path for path in modules()
-                                  if not path.startswith("referee/") and path != LOST_KIND_DECLARED])
-def test_rule_11_only_referee_names_the_objective_lost_kind(path):
+                                  if not path.startswith("scoring/") and path != LOST_KIND_DECLARED])
+def test_rule_11_only_scoring_names_the_objective_lost_kind(path):
     assert not names_lost_kind((PLATFORM / path).read_text(), path), f"{path} names {LOST_KIND}"
 
 
 def test_the_checker_sees_the_lost_kind_passed_to_append_directly_and_through_a_name():
-    assert names_lost_kind('log.append(7, "objective.lost", {})\n', "attack/service.py")
-    assert names_lost_kind('KIND = "objective.lost"\nlog.append(7, KIND)\n', "attack/service.py")
-    assert not names_lost_kind('log.append(7, "objective.kept")\n', "attack/service.py")
-    assert names_lost_kind((PLATFORM / "referee/service.py").read_text(), "referee/service.py")
+    assert names_lost_kind('log.append(7, "objective.lost", {})\n', "training/attack/actions.py")
+    assert names_lost_kind('KIND = "objective.lost"\nlog.append(7, KIND)\n', "training/attack/actions.py")
+    assert not names_lost_kind('log.append(7, "objective.kept")\n', "training/attack/actions.py")
+    assert names_lost_kind((PLATFORM / "scoring/losses.py").read_text(), "scoring/losses.py")
 
 
 def test_rule_15_reads_forward_relations_and_skips_the_reverse_accessors_django_adds():
     from types import SimpleNamespace
 
-    from match.models import Round
+    from training.models import Round
 
     def meta(label):
         return SimpleNamespace(_meta=SimpleNamespace(label=label, app_label=label.split(".")[0]))
 
     upward = SimpleNamespace(name="objective", is_relation=True, auto_created=False,
-                             related_model=meta("referee.Objective"))
-    lease = SimpleNamespace(_meta=SimpleNamespace(label="match.Lease", app_label="match",
+                             related_model=meta("scoring.Objective"))
+    lease = SimpleNamespace(_meta=SimpleNamespace(label="training.Lease", app_label="training",
                                                   get_fields=lambda: [upward]))
 
     assert upward_relations([Round], {}, "auth") == []
-    assert upward_relations([lease], {}, "auth") == ["match.Lease.objective -> referee.Objective"]
+    assert upward_relations([lease], {}, "auth") == ["training.Lease.objective -> scoring.Objective"]
 
 
-def test_rule_15_sees_the_round_records_point_down_to_content_auth_and_match():
+def test_rule_15_sees_the_round_records_point_down_to_the_training_records_and_auth():
     from django.apps import apps
 
     relations = {(model._meta.label, field.related_model._meta.label)
-                 for model in apps.get_models() if model._meta.app_label in ("match", "referee")
+                 for model in apps.get_models() if model._meta.app_label in ("training", "telemetry", "scoring")
                  for field in model._meta.get_fields()
                  if field.is_relation and field.many_to_one and field.related_model}
 
-    assert {("match.Lease", "content.Wargame"), ("match.Round", "content.Problem"), ("match.Seat", "auth.User"),
-            ("referee.Objective", "match.Round")} <= relations
+    assert {("training.Lease", "training.Wargame"), ("training.Round", "training.Problem"),
+            ("training.Seat", "auth.User"), ("scoring.Objective", "training.Round"),
+            ("telemetry.Detection", "training.Round")} <= relations
 
 
-ATTACK_REACHES = {"cr/config.py", "cr/errors.py", "range/edge.py", "range/jump.py", "range/substrate.py", "range/runner.py",
-                  "ingest/elastic.py", "referee/service.py", "match/models.py", "events/log.py", "match/auth.py"}
+ATTACK_REACHES = {"cr/config.py", "cr/errors.py", "sandbox/edge.py", "sandbox/access.py", "sandbox/reach.py",
+                  "sandbox/runner.py", "sandbox/attacker.py", "telemetry/elastic.py", "telemetry/events.py",
+                  "telemetry/models.py", "scoring/losses.py", "training/models.py", "training/round/access.py"}
 
 
 def attack_strays(path: str, reached: set[str]) -> list[str]:
-    allowed = ATTACK_REACHES - ({"match/auth.py"} if layer_of(path) != 8 else set())
+    allowed = ATTACK_REACHES - ({"training/round/access.py"} if layer_of(path) != HTTP_LAYER else set())
     return sorted(target for target in reached
-                  if not target.startswith(("domain/", "attack/")) and target not in allowed
+                  if not target.startswith(("domain/", "training/attack/")) and target not in allowed
                   and not package_marker(target))
 
 
-@pytest.mark.parametrize("path", [path for path in modules() if app_of(path) == "attack"])
+@pytest.mark.parametrize("path", [path for path in modules() if part_of(path) == "training/attack"])
 def test_attack_reaches_only_what_its_owner_row_names(path):
     assert attack_strays(path, targets(path)) == [], f"{path} reaches past the attack owner row"
 
 
 def test_the_checker_sees_attack_reaching_past_its_owner_row():
-    reached = {"rules/crs.py", "match/service.py", "match/auth.py", "range/edge.py", "domain/ledger.py"}
+    reached = {"sandbox/crs.py", "training/round/lifecycle.py", "training/round/access.py", "sandbox/edge.py",
+               "domain/ledger.py"}
 
-    assert attack_strays("attack/service.py", reached) == ["match/auth.py", "match/service.py", "rules/crs.py"]
-    assert attack_strays("attack/views.py", reached) == ["match/service.py", "rules/crs.py"]
+    assert attack_strays("training/attack/actions.py", reached) == ["sandbox/crs.py", "training/round/access.py",
+                                                                    "training/round/lifecycle.py"]
+    assert attack_strays("training/attack/views.py", reached) == ["sandbox/crs.py", "training/round/lifecycle.py"]
 
 
-SIDES = ("attack", "defence")
+SIDES = ("training/attack", "training/defence")
 
 
 def other_side_reached(path: str, reached: set[str]) -> list[str]:
-    side = app_of(path)
+    side = part_of(path)
     if side not in SIDES:
         return []
     other = next(name for name in SIDES if name != side)
     return sorted(target for target in reached if target.startswith(f"{other}/"))
 
 
-@pytest.mark.parametrize("path", [path for path in modules() if app_of(path) in SIDES])
+@pytest.mark.parametrize("path", [path for path in modules() if part_of(path) in SIDES])
 def test_rule_3_attack_and_defence_never_import_each_other(path):
     assert other_side_reached(path, targets(path)) == [], f"{path} reaches the other side"
 
 
 def test_the_checker_sees_a_side_reaching_the_other():
-    reached = {"attack/box.py", "defence/disable.py", "range/jump.py", "referee/service.py"}
+    reached = {"training/attack/actions.py", "training/defence/disable.py", "sandbox/access.py",
+               "scoring/losses.py"}
 
-    assert other_side_reached("defence/service.py", reached) == ["attack/box.py"]
-    assert other_side_reached("attack/service.py", reached) == ["defence/disable.py"]
-    assert other_side_reached("referee/service.py", reached) == []
-
-
-LESSONS_MAY_REACH = {f"{app}/service.py" for app in ("match", "attack", "defence", "referee", "content")}
+    assert other_side_reached("training/defence/rules.py", reached) == ["training/attack/actions.py"]
+    assert other_side_reached("training/attack/actions.py", reached) == ["training/defence/disable.py"]
+    assert other_side_reached("scoring/losses.py", reached) == []
 
 
-def lessons_strays(path: str, reached: set[str]) -> list[str]:
-    if app_of(path) != "lessons":
-        return sorted(target for target in reached if app_of(target) == "lessons"
-                      and not (layer_of(path) == 8 and path.startswith("lessons/")))
-    return sorted(target for target in reached
-                  if app_of(target) not in (None, "lessons") and target not in LESSONS_MAY_REACH
-                  and target not in SHARED_TO_VIEWS | {"events/log.py"} and not package_marker(target))
-
-
-@pytest.mark.parametrize("path", modules())
-def test_rule_6_lessons_reach_only_the_services_and_nothing_reaches_lessons(path):
-    assert lessons_strays(path, targets(path)) == [], f"{path} breaks the lessons boundary"
-
-
-def test_the_checker_sees_lessons_reaching_inside_an_app_and_an_app_reaching_lessons():
-    assert lessons_strays("lessons/facts.py", {"attack/models.py", "attack/service.py", "domain/checks.py"}) == [
-        "attack/models.py"]
-    assert lessons_strays("match/service.py", {"lessons/service.py"}) == ["lessons/service.py"]
-    assert lessons_strays("lessons/views.py", {"lessons/service.py"}) == []
-
-
-SIDE_SERVICES = {"attack/service.py", "defence/service.py"}
-MAY_JOIN_SIDES = {"match/service.py", "match/follow.py", "match/customers.py", "match/site.py",
-                  "match/retention.py", "match/probes.py", "lessons/service.py"}
+SIDE_SERVICES = {"training/attack/actions.py", "training/defence/rules.py"}
+MAY_JOIN_SIDES = set(COORDINATORS)
 
 
 def joins_sides(path: str, reached: set[str]) -> bool:
@@ -443,43 +483,19 @@ def joins_sides(path: str, reached: set[str]) -> bool:
 
 
 @pytest.mark.parametrize("path", modules())
-def test_rule_7_only_the_match_coordinators_and_lessons_service_import_both_side_services(path):
+def test_rule_7_only_the_round_coordinators_import_both_side_services(path):
     assert not joins_sides(path, targets(path)), f"{path} imports more than one side service"
 
 
 def test_the_checker_sees_a_module_joining_the_sides():
-    assert joins_sides("referee/service.py", SIDE_SERVICES)
-    assert joins_sides("match/views.py", SIDE_SERVICES)
-    assert not joins_sides("match/service.py", SIDE_SERVICES)
-    assert not joins_sides("content/service.py", {"attack/service.py"})
+    assert joins_sides("scoring/score.py", SIDE_SERVICES)
+    assert joins_sides("training/round/views.py", SIDE_SERVICES)
+    assert not joins_sides("training/round/lifecycle.py", SIDE_SERVICES)
+    assert not joins_sides("training/content/problems.py", {"training/attack/actions.py"})
 
 
-def test_the_match_coordinators_sit_in_layer_six():
-    assert {layer_of(path) for path in MAY_JOIN_SIDES if path.startswith("match/")} == {6}
-
-
-def test_the_lessons_app_sits_in_layer_seven_under_its_own_http():
-    placed = {path: layer_of(path) for path in modules() if path.startswith("lessons/")}
-
-    assert {"lessons/models.py", "lessons/facts.py", "lessons/service.py"} <= set(placed)
-    assert {layer for path, layer in placed.items() if layer != 8} == {7}
-    assert placed["lessons/views.py"] == placed["lessons/serializers.py"] == 8
-
-
-def test_lessons_facts_is_handed_its_readers_and_imports_no_service():
-    assert sorted(target for target in targets("lessons/facts.py") if target.endswith("/service.py")) == []
-
-
-def test_rule_15_sees_the_lesson_records_point_down_to_match_content_and_auth():
-    from django.apps import apps
-
-    relations = {(model._meta.label, field.related_model._meta.label)
-                 for model in apps.get_models() if model._meta.app_label == "lessons"
-                 for field in model._meta.get_fields()
-                 if field.is_relation and field.many_to_one and field.related_model}
-
-    assert relations == {("lessons.StepResult", "match.Round"), ("lessons.Progress", "content.Problem"),
-                         ("lessons.Progress", "auth.User")}
+def test_the_round_coordinators_sit_in_layer_eight():
+    assert {layer_of(path) for path in MAY_JOIN_SIDES} == {8}
 
 
 REPO = PLATFORM.parent
@@ -487,7 +503,7 @@ CLIENT_TREES = ("bots", "test", "bin")
 GENERATED = ("bots/client/",)
 LOADERS = ("spec_from_file_location", "SourceFileLoader")
 PLATFORM_FILE = re.compile(r"""["'](platform/[\w/.-]+\.py)["']""")
-PLATFORM_LOADS_ALLOWED = {("bin/platform-rebuild", "platform/range/cloud_config.py")}
+PLATFORM_LOADS_ALLOWED = {("bin/platform-rebuild", "platform/sandbox/cloud_config.py")}
 TYPESCRIPT_IMPORT = re.compile(r"""(?:from|import)\s*\(?\s*["']([^"']+)["']""")
 
 
@@ -555,14 +571,14 @@ def test_rule_12_scans_the_scripts_and_the_test_helpers():
 
 
 def test_the_checker_sees_an_import_a_path_insert_and_a_file_load_of_the_platform():
-    source = ("import sys\nfrom match import service\nimport range\n"
+    source = ("import sys\nfrom training.round import lifecycle\nimport range\n"
               "sys.path.insert(0, str(ROOT / 'platform'))\n"
-              "LOADER = ROOT / 'platform/range/openstack.py'\n"
+              "LOADER = ROOT / 'platform/sandbox/openstack.py'\n"
               "spec = importlib.util.spec_from_file_location('x', LOADER)\n")
 
     reached = platform_reaches(source, "test/sample.py")
 
-    assert "match.service" in reached
+    assert "training.round.lifecycle" in reached
     assert not [name for name in reached if name.startswith("range")], "test/ has its own range.py"
     assert any(name.startswith("sys.path") for name in reached)
-    assert "loads platform/range/openstack.py" in reached
+    assert "loads platform/sandbox/openstack.py" in reached

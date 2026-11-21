@@ -3,7 +3,7 @@ import json
 import pytest
 
 from cr.config import WafConfig
-from rules import crs
+from sandbox import crs
 from testing.fakes import FakeRunner
 
 WAF = WafConfig(rules="/etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf",

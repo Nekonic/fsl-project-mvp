@@ -5,8 +5,8 @@ import sqlite3
 import stat
 import subprocess
 import tarfile
-from contextlib import closing
 from argparse import Namespace
+from contextlib import closing
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
@@ -14,6 +14,7 @@ import pytest
 import yaml
 
 from tests import composed
+
 WARGAMES = sorted(path.parent.name for path in (Path(__file__).resolve().parents[2] / "wargames").glob("*/compose.yaml"))
 
 ROOT = composed.ROOT
@@ -777,8 +778,8 @@ def stamped_backup(directory, name, rows):
     directory.mkdir(exist_ok=True)
     path = directory / name
     with closing(sqlite3.connect(path)) as db:
-        db.execute("CREATE TABLE match_lease (id INTEGER PRIMARY KEY)")
-        db.executemany("INSERT INTO match_lease DEFAULT VALUES", [()] * rows)
+        db.execute("CREATE TABLE training_lease (id INTEGER PRIMARY KEY)")
+        db.executemany("INSERT INTO training_lease DEFAULT VALUES", [()] * rows)
         db.commit()
     return path
 

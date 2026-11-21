@@ -1,8 +1,8 @@
 import pytest
 
-from range import refill
-from range.pool import Plan
-from range.runner import Drifted, RangeUnavailable
+from sandbox import refill
+from sandbox.pool import Plan
+from sandbox.runner import Drifted, RangeUnavailable
 
 
 class Clock:

@@ -3,10 +3,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 
-from content import service as content
 from domain.types import ActionRecord, DetectionRecord
-from match.models import Lease, Round, Seat
 from testing import factories
+from training.content import problems as content
+from training.models import Lease, Round, Seat
 
 ATTACKER_IP = "198.51.100.9"
 

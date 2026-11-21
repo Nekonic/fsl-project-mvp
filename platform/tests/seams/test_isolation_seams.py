@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from range import declaration
+from sandbox import definitions as declaration
 
 REPO = Path(__file__).resolve().parents[3]
 SCANNED_ROOTS = ("platform", "front/src", "bots", "test", "bin")
@@ -27,42 +27,42 @@ GROUND_TRUTH = "the target's ground truth"
 
 SEAMS = {
     ELASTICSEARCH: (
-        {"platform/ingest/elastic.py"},
+        {"platform/telemetry/elastic.py"},
         r"/_search\b|\"_search\?|_delete_by_query\b|/_bulk\b|/_ingest/|/_pit\b|/_count\b|/_nodes\b"
         r"|^\s*(?:import|from) elasticsearch"),
     SURICATA: (
-        {"platform/rules/suricata.py"},
+        {"platform/sandbox/suricata.py"},
         r'"suricata", "-T"|suricatasc|reload-rules|"return":"OK"|af-packet'),
     CAPTURE: (
-        {"platform/rules/suricata.py"},
+        {"platform/sandbox/suricata.py"},
         r"\btcpdump\b|\bdumpcap\b|\btshark\b"),
     CRS: (
-        {"platform/rules/crs.py"},
+        {"platform/sandbox/crs.py"},
         r"nginx -s reload|REQUEST-9\d\d|modsecurity\.conf|SecRule|/etc/nginx/modsecurity|audit\.log"),
     KIBANA: (
-        {"platform/defence/kibana.py"},
+        {"platform/sandbox/kibana.py"},
         r"/api/saved_objects|kbn-xsrf|/api/spaces|/api/data_views|/api/index_patterns|/kibana/(?:api|internal)\b"
         r"|discover:docExplorer\w*Closed|data\.noDataPopover"),
     INDEX_PATTERNS: (
-        {"platform/defence/kibana.py"},
+        {"platform/sandbox/kibana.py"},
         r"\blogs-\*|\bfilebeat-\*|\bsuricata-\*|\bindex_patterns?\b"),
     BOX: (
-        {"platform/attack/box.py"},
+        {"platform/sandbox/attacker.py"},
         r"/usr/local/sbin/set-origin|/var/lib/session/|ORIGIN-SNAT"),
     NODE_NAMES: (
         set(),
         r"\bcr-(?:kali|waf|infra|target)\b"),
     JUMP: (
-        {"platform/range/jump.py"},
+        {"platform/sandbox/access.py"},
         r"\bauthorized_keys\b|cr-session-"),
     EDGE: (
-        {"platform/range/edge.py"},
+        {"platform/sandbox/edge.py"},
         r'\["nft"|\bnft (?:add|delete|flush|list|-f|-j)\b|\bconntrack\b'),
     OPENSTACK: (
-        {"platform/range/openstack.py"},
+        {"platform/sandbox/openstack.py"},
         r"/v2\.0/|/servers/detail|/v3/auth/tokens|os-keypairs|\{heat\}/stacks"),
     GROUND_TRUTH: (
-        {"platform/referee/loot.py", "platform/referee/effect.py"},
+        {"platform/scoring/loot.py", "platform/scoring/effect.py"},
         r"\bread_path\b|binlog"),
 }
 

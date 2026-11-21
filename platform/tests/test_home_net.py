@@ -13,7 +13,7 @@ def home_net():
 
 
 def origins():
-    declared = yaml.safe_load((ROOT / "platform/range/declaration.yaml").read_text())
+    declared = yaml.safe_load((ROOT / "platform/sandbox/declaration.yaml").read_text())
     return [
         ipaddress.ip_network(origin["subnet"])
         for segment in declared["segments"] for origin in segment.get("origins") or []

@@ -9,8 +9,10 @@ import pytest
 
 from cr import config as config_module
 from cr.config import OpenStackConfig, RangeConfig
-from range import declaration, openstack, substrate
-from range.runner import RangeUnavailable
+from sandbox import definitions as declaration
+from sandbox import openstack
+from sandbox import reach as substrate
+from sandbox.runner import RangeUnavailable
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 
@@ -175,7 +177,7 @@ def test_services_the_cloud_moved_are_found_again(cloud, left_behind):
 
 def test_the_substrate_is_built_from_the_range_config_it_is_handed(cloud):
     serving(cloud)
-    config = RangeConfig(source=str(ROOT), declaration=str(ROOT / "platform/range/declaration.yaml"),
+    config = RangeConfig(source=str(ROOT), declaration=str(ROOT / "platform/sandbox/declaration.yaml"),
                          openstack=options(cloud))
 
     adapter = substrate.substrate(config)
@@ -196,7 +198,7 @@ def test_the_config_hands_the_openstack_substrate_its_credentials_from_the_envir
     built = config_module.build({"CR_OPENSTACK_KEYSTONE": "https://keystone.example:5000",
                                  "CR_OPENSTACK_PASSWORD_FILE": str(secret)}, ROOT)
 
-    assert built.range.substrate == "range.openstack.connect"
+    assert built.range.substrate == "sandbox.openstack.connect"
     assert built.range.openstack.keystone == "https://keystone.example:5000"
     assert built.range.openstack.password == "s3cret"
     assert "s3cret" not in repr(built.range.openstack)

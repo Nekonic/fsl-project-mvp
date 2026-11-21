@@ -8,7 +8,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from range import declaration, networks, stack_plan
+from sandbox import definitions as declaration
+from sandbox import fabric as networks
+from sandbox import stack_plan
+
 WARGAMES = sorted(path.parent.name for path in (Path(__file__).resolve().parents[2] / "wargames").glob("*/compose.yaml"))
 
 ROOT = Path(__file__).resolve().parents[2]

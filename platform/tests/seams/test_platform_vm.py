@@ -4,7 +4,7 @@ import subprocess
 
 import yaml
 
-from range.openstack import SETTINGS
+from sandbox.openstack import SETTINGS
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 TEMPLATE = ROOT / "deploy/openstack/platform.yaml"
@@ -43,7 +43,7 @@ def written_credentials():
 def example():
     import dataclasses
 
-    from range import cloud_config as cloud
+    from sandbox import cloud_config as cloud
 
     return dataclasses.replace(cloud.read(cloud.EXAMPLE), signed_in=cloud.Identity(
         cloud="fsl-range", file="clouds.yaml", keystone="http://10.10.10.10:5000", user="fsl-range",
@@ -97,7 +97,7 @@ def test_the_password_never_enters_the_user_data():
     )
 
 def test_boot_writes_every_setting_the_adapter_requires_for_the_cloud_range_and_its_attacker():
-    from range import declaration
+    from sandbox import definitions as declaration
 
     lines = written_credentials()["content"].splitlines()
     names = {line.split("=", 1)[0] for line in lines if line}
@@ -107,7 +107,7 @@ def test_boot_writes_every_setting_the_adapter_requires_for_the_cloud_range_and_
         variable for name, variable in SETTINGS.items()
         if name not in ("password", "platform", "source", "image_tag", "sideloaded")
     } | {"CR_SUBSTRATE", "DJANGO_ALLOWED_HOSTS", "CR_TOOL_IMAGE"}, names
-    assert "CR_SUBSTRATE=range.openstack.connect" in lines
+    assert "CR_SUBSTRATE=sandbox.openstack.connect" in lines
     assert f"CR_TOOL_IMAGE={attacker}" in lines, (
         "the OpenStack launcher runs a tool only on the attacker host the range "
         "declares and refuses any other image; without this the harness asks for "
@@ -120,7 +120,7 @@ def test_the_platform_reads_the_image_sources_it_bundles():
     mounted = {
         volume.split(":")[1] for volume in service["volumes"] if volume.startswith("./")
     }
-    from range import openstack, stack_plan
+    from sandbox import openstack, stack_plan
 
     for path in (openstack.BASELINE_RULES, stack_plan.DEFINITION.format(wargame="board"),
                  stack_plan.DEFINITION.format(wargame="corp")):

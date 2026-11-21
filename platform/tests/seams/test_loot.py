@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from cr.config import GroundTruthConfig
-from referee import loot
+from scoring import loot
 
 BOARD = GroundTruthConfig(board_url="http://board:8000")
 READ = "/internal/auth-users"
@@ -66,7 +66,7 @@ def test_ground_truth_reads_the_declared_read_path():
         def read(self):
             return b'{"admin": "h1"}'
 
-    with patch("referee.loot.urllib.request.urlopen", return_value=Fake()) as opened:
+    with patch("scoring.loot.urllib.request.urlopen", return_value=Fake()) as opened:
         assert loot.ground_truth(READ, BOARD) == {"admin": "h1"}
     assert opened.call_args.args[0].endswith("/internal/auth-users")
 
@@ -76,7 +76,7 @@ def test_ground_truth_reads_the_declared_read_path():
     ("172.31.0.9", "http://172.31.0.9:8000/internal/auth-users"),
 ])
 def test_ground_truth_reads_the_board_at_the_host_the_range_gives(host, read):
-    with patch("referee.loot.urllib.request.urlopen", side_effect=OSError("no route")) as opened:
+    with patch("scoring.loot.urllib.request.urlopen", side_effect=OSError("no route")) as opened:
         with pytest.raises(loot.GroundTruthUnavailable):
             loot.ground_truth(READ, BOARD, host)
 
@@ -94,13 +94,13 @@ def test_ground_truth_rejects_a_body_that_is_not_a_username_map():
         def read(self):
             return b'[{"username": "admin"}]'
 
-    with patch("referee.loot.urllib.request.urlopen", return_value=Fake()):
+    with patch("scoring.loot.urllib.request.urlopen", return_value=Fake()):
         with pytest.raises(loot.GroundTruthUnavailable):
             loot.ground_truth(READ, BOARD)
 
 
 def test_on_the_range_host_the_ground_truth_is_read_inside_the_board_s_own_container():
-    from range.runner import Ran
+    from sandbox.runner import Ran
 
     seen = []
 
@@ -114,7 +114,7 @@ def test_on_the_range_host_the_ground_truth_is_read_inside_the_board_s_own_conta
 
 
 def test_a_board_that_cannot_be_reached_from_inside_is_unavailable_ground_truth():
-    from range.runner import RangeUnavailable
+    from sandbox.runner import RangeUnavailable
 
     def inside(argv, stdin=None, timeout=60.0):
         raise RangeUnavailable("ssh: connect timed out")

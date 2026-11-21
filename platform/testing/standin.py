@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 
-from range.runner import RangeUnavailable
+from sandbox.runner import RangeUnavailable
 
 
 def refused(what: str) -> RangeUnavailable:
