@@ -231,7 +231,7 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
 | 플랫폼 점프 호스트와 박스 계정 키 | `sandbox/access.py` | `platform/entrypoint.sh`가 점프 호스트의 `authorized_keys`를 만듦 |
 | 공격 박스 | `sandbox/attacker.py` | `cr/config.py`의 라벨 파일 경로 기본값 |
 | 고객 박스(infra VM의 `cr-customers` 유닛, 계정, 기록) | `sandbox/customers.py` | 없음 |
-| 대상의 정답 데이터 | `scoring/loot.py`(board), `scoring/effect.py`(corp) | 없음 |
+| 대상의 정답 데이터 | `scoring/loot.py`(board), `scoring/effect.py`(corp) | 점수를 정답 데이터와 맞춰 보는 acceptance 검사 `test/shared_sessions.py`, `test/test_board_exfil.py` |
 
 - 바깥 장치를 아는 파일은 모두 `sandbox/`에 있고 `telemetry/elastic.py`, `scoring/loot.py`, `scoring/effect.py`만
   예외입니다. 공격 쪽(Kali)과 방어 쪽(WAF의 `analyst`) 터미널이 같은 점프 권한(`sandbox/access.py`)을 쓰고,

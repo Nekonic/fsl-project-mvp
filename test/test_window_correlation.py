@@ -1,3 +1,5 @@
+import pytest
+
 import plays
 from shared_sessions import CONTROL, with_token
 
@@ -18,8 +20,9 @@ def test_the_free_tool_s_traffic_drew_alerts_from_the_origin_it_left_by(terminal
     assert {alert["src_ip"] for alert in drawn} == {terminal_windows["origin"]["ip"]}
 
 
-def test_a_free_action_never_becomes_a_per_case_decision(terminal_windows):
-    lines = {line["case"] for line in terminal_windows["score"]["outcomes"]["per_case"]}
+@pytest.mark.parametrize("strategy", ["marker", "window"])
+def test_a_free_action_never_becomes_a_per_case_decision(terminal_windows, strategy):
+    lines = {line["case"] for line in terminal_windows["by"][strategy]["outcomes"]["per_case"]}
 
     declared = {case["name"] for case in plays.declared_cases("board")}
 

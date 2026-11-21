@@ -1,4 +1,7 @@
+import re
+
 BOARD = "http://board.com"
+TITLE = re.compile(r'<h2 class="h6 mb-1">(.*?)</h2>', re.S)
 
 
 def _from_range(path):
@@ -9,9 +12,20 @@ def _from_range(path):
     return out.stdout.strip()
 
 
-def test_sorting_by_a_real_column_works(stack_is_up):
-    assert _from_range("/?sort=title") == "200"
-    assert _from_range("/?sort=-created_at") == "200"
+def _titles(path):
+    from range import ATTACKER, run
+
+    page = run(ATTACKER, ["curl", "-s", "--max-time", "20", f"{BOARD}{path}"]).stdout
+    return [title.strip() for title in TITLE.findall(page)]
+
+
+def test_sorting_by_a_real_column_orders_the_posts_by_it(stack_is_up):
+    ascending, descending = _titles("/?sort=title"), _titles("/?sort=-title")
+
+    assert len(ascending) > 1, f"the board listed {ascending}, too few posts to show an order"
+    assert descending == ascending[::-1] and ascending != descending, (
+        f"?sort=title and ?sort=-title did not list the posts in opposite orders: {ascending} vs {descending}; "
+        f"the sort value does not reach order_by")
 
 
 def test_an_unknown_sort_field_errors_proving_user_input_reaches_order_by(stack_is_up):

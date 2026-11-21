@@ -1,25 +1,31 @@
 import plays
 
 
-def test_submitting_the_exfiltrated_hashes_loses_the_full_ladder(board_session):
-    submitted = board_session["real_loot"]
-
-    assert submitted.status == 200, submitted.text
-    assert submitted.body["lost"] is True, submitted.body
-    lost = {line["key"] for line in board_session["scored"]["objectives"]["lost"]}
-    assert lost == set(plays.objective_keys("board")) == {
-        "board-auth-user-partial", "board-auth-user-admin", "board-auth-user-full"
-    }
+def kept_everywhere(objectives: list[dict]) -> bool:
+    return {line["key"] for line in objectives} == set(plays.objective_keys("board")) and (
+        {line["state"] for line in objectives} == {"kept"})
 
 
-def test_fabricated_loot_is_refused_against_the_round_start_snapshot(board_session):
+def test_loot_with_one_digest_changed_is_refused_against_the_round_start_snapshot(board_session):
     submitted = board_session["fabricated_loot"]
 
     assert submitted.status == 200, submitted.text
     assert submitted.body["lost"] is False, submitted.body
+    assert kept_everywhere(board_session["objectives_after_fabricated"]), board_session["objectives_after_fabricated"]
+
+
+def test_the_previous_round_s_true_digests_are_refused_in_the_next_round(board_session):
+    submitted = board_session["stale_loot"]
+
+    assert submitted.status == 200, submitted.text
+    assert submitted.body["lost"] is False, (
+        f"loot that matched the last round's secret took an objective in the next; the secret is set at random "
+        f"at each round's start: {submitted.body}")
+    assert kept_everywhere(board_session["objectives_after_stale"]), board_session["objectives_after_stale"]
 
 
 def test_a_loot_answer_never_carries_the_secret(board_session):
-    shown = board_session["real_loot"].text
+    shown = board_session["real_loot"].text + board_session["fabricated_loot"].text
+    leaked = [name for name, digest in board_session["truth"].items() if digest in shown]
 
-    assert "hash" not in shown and "password" not in shown, shown
+    assert leaked == [], f"a loot answer carried the stored digest of {leaked}"

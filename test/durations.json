@@ -8,7 +8,6 @@
   "test_concurrent_sessions": 246,
   "test_corp_authz": 67,
   "test_disabled_rule": 108,
-  "test_evasion": 0,
   "test_event_time": 10,
   "test_front_door": 76,
   "test_geoip_durable": 0,

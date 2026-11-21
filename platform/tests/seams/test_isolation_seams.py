@@ -76,12 +76,13 @@ EXCEPTIONS = {
     "platform/entrypoint.sh": {NODE_NAMES, JUMP},
     "front/src/panes/Kibana.tsx": {KIBANA},
     "test/plays.py": {CRS},
+    "test/shared_sessions.py": {GROUND_TRUTH},
+    "test/test_board_exfil.py": {GROUND_TRUTH},
     "test/test_event_time.py": {ELASTICSEARCH, INDEX_PATTERNS},
     "test/test_geoip_durable.py": {ELASTICSEARCH},
     "test/test_origin_placement.py": {ELASTICSEARCH},
     "test/test_waf_geolocation.py": {ELASTICSEARCH},
 }
-ACCEPTANCE_CHECKS_OF_THE_TRUTH = {"test/shared_sessions.py": {GROUND_TRUTH}, "test/test_board_exfil.py": {GROUND_TRUTH}}
 OUTSIDE_THE_SCAN = {"wargames/<id>/topology.yaml", "deploy/roles/infra/edge.nft"}
 NOT_WRITTEN_YET: set[str] = set()
 
@@ -133,7 +134,7 @@ def files():
 @pytest.mark.parametrize("seam", sorted(SEAMS))
 def test_only_the_seam_s_own_files_and_the_listed_exceptions_know_it(files, seam):
     owned, _ = SEAMS[seam]
-    allowed = {name for name, seams in (EXCEPTIONS | ACCEPTANCE_CHECKS_OF_THE_TRUTH).items() if seam in seams}
+    allowed = {name for name, seams in EXCEPTIONS.items() if seam in seams}
     found = knowing(files, seam)
 
     assert found <= owned | allowed, (
@@ -144,7 +145,7 @@ def test_only_the_seam_s_own_files_and_the_listed_exceptions_know_it(files, seam
 
 def test_every_exception_still_knows_exactly_what_it_is_allowed_to(files):
     stale = {name: sorted(seams - {seam for seam in SEAMS if name in knowing(files, seam)})
-             for name, seams in (EXCEPTIONS | ACCEPTANCE_CHECKS_OF_THE_TRUTH).items() if name in files}
+             for name, seams in EXCEPTIONS.items() if name in files}
 
     assert {name: gone for name, gone in stale.items() if gone} == {}
 

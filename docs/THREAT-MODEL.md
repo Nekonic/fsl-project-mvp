@@ -170,21 +170,16 @@ members of `cr-senders`, the infra VM's control port, and nothing else; the
 stacks' LANs have no Neutron router, so no range VM has another way to the
 platform. If a learner's shell did reach the API, it could call
 `POST /api/rules/apply/` and rewrite the detector that scores the attacker.
-The API therefore also refuses any request from the address of a host in the
-range: every address the stacks report, the range VMs' `cr-mgmt` addresses
-and Kali's origin addresses
-(`api/reachability.py`). The operator's console reaches the API through the
-platform's floating address, from an address that is not a host in the range.
-The check has three limits:
-
-- The platform caches the list of range hosts for 30 seconds. A VM that is
-  recreated within that time keeps its old answer.
-- If the platform cannot read the list of hosts, the list is empty for those
-  30 seconds and the check lets every request through.
-- nginx keeps the session check's answer for the terminals, `/kibana/` and
-  port 8002 five seconds, keyed on the session cookie, the client's address
-  and the session the URL names, so a cached yes is never reused for a range
-  address or for another session.
+The API holds no per-request refusal of range addresses: the
+`api/reachability.py` check that refused any request from a host in the range
+was not called by anything and was removed with the restructure of
+2026-11-21. What keeps a range VM from the API is the network above: the
+stacks' LANs have no Neutron router to the platform, and `cr-reach` admits
+only NTP and syslog from `cr-mgmt`. The operator's console reaches the API
+through the platform's floating address. nginx keeps the session check's
+answer for the terminals, `/kibana/` and port 8002 five seconds, keyed on the session cookie, the client's address
+and the session the URL names, so a cached yes is never reused for another
+address or for another session.
 
 The target is not published. Port 8000 is the console. The XSS cases make the
 target run script in any browser that loads its pages, and the Website pane

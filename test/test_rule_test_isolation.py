@@ -1,5 +1,4 @@
 import json
-import time
 
 import pytest
 
@@ -10,7 +9,6 @@ CANDIDATE = (
     'alert http any any -> any any (msg:"candidate SQL injection in search"; '
     'flow:established,to_server; http.uri; content:"or 1=1"; nocase; sid:9009981; rev:1;)\n'
 )
-INGEST_WAIT = 45.0
 MANIFEST = plays.WARGAMES / "board" / "probes" / "manifest.json"
 SETUP = plays.Setup(wargame="board", title="Acceptance rule test isolation board", probe_cases=(PROBED,))
 
@@ -32,10 +30,14 @@ def tested_round():
     with plays.Round("board", SETUP) as played:
         before_truth, before_alerts = ground_truth(played), plays.alerts(played)
         ids = plays.rule_test_ids(played, plays.declared_rules() + CANDIDATE)
-        waf = plays.rule_test_waf(played, plays.DETECT_WITHOUT_BLOCKING_SEARCH)
-        time.sleep(INGEST_WAIT)
+        edited = {**plays.appended(played, plays.CRS_SETUP, plays.paranoia(2)),
+                  **plays.appended(played, plays.CRS_EXCLUSIONS, plays.STATIC_EXCLUDED)}
+        waf = plays.rule_test_waf(played, edited)
+        live = plays.fired(played, PROBED)["marker"]
+        after_alerts = plays.alerts_until(played, lambda listed: bool(plays.marked(listed, live)))
         yield {"ids": ids, "waf": waf, "before_truth": before_truth, "after_truth": ground_truth(played),
-               "before_alerts": before_alerts, "after_alerts": plays.alerts(played), "probes": plays.probes_listed(played)}
+               "before_alerts": before_alerts, "after_alerts": after_alerts, "live": live,
+               "probes": plays.probes_listed(played)}
 
 
 def test_both_rule_tests_answer_a_table(tested_round):
@@ -55,6 +57,8 @@ def test_a_rule_test_leaves_the_round_s_ground_truth_unchanged(tested_round):
 
 
 def test_a_rule_test_adds_no_detection_to_the_round(tested_round):
+    assert plays.marked(tested_round["after_alerts"], tested_round["live"]), (
+        "a live case fired after the rule tests drew no alert, so the round's ingest proves nothing about the probes")
     seen = {alert["id"] for alert in tested_round["before_alerts"]}
     new = [alert for alert in tested_round["after_alerts"] if alert["id"] not in seen]
     from_probes = [alert for alert in new if alert["request_id"] in probe_markers() or alert["src_ip"] == "127.0.0.1"]

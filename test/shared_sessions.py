@@ -10,11 +10,12 @@ import pytest
 
 import plays
 from conftest import STANDING, TARGET_PUBLIC, from_attacker, runs_the_declared_rules
-from range import ATTACKER, BOARD, missing, run, run_side_by_side
+from range import ATTACKER, BOARD, log_collector, missing, platform_addresses, run, run_side_by_side
 
 CONTROL = "board-sqli-search"
 SECOND_SHAPE = "board-sqli-union-search"
 UNION = "board-sqli-union-search"
+GATEWAY = "gateway"
 BENIGN_SEARCH = "board-normal-search"
 SQLMAP = "board-sqli-orderby-sqlmap"
 LAST_ATTACK = "board-path-traversal-static"
@@ -28,16 +29,21 @@ BUFFERLESS = (
     'alert http any any -> any any (msg:"UNION without a buffer"; '
     'flow:established,to_server; content:"UNION"; nocase; sid:9009996; rev:1;)\n'
 )
-PORTED_RULE = 'alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"ported SQLi probe"; flow:established,to_server; http.uri; pcre:"/(\\x27[\\s+]*(or|and)[\\s+]*[\\x27\\d]|union[\\s+]+select|--[\\s+]|\\x27[\\s+]*--|\\x27[\\s+]*\\x29)/i"; sid:9009996; rev:1;)\n'
+PORTED_RULE = 'alert http $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (msg:"ported SQLi probe"; flow:established,to_server; http.uri; pcre:"/(\\x27[\\s+]*(or|and)[\\s+]*[\\x27\\d]|union[\\s+]+select|--[\\s+]|\\x27[\\s+]*--|\\x27[\\s+]*\\x29)/i"; sid:9009995; rev:1;)\n'
 NOT_A_RULE = "this is not a rule"
+CATCH_ALL_MESSAGE = "SQL XSS traversal Restricted File"
 CATCH_ALL = (
-    'alert http any any -> any any (msg:"SQL XSS traversal Restricted File"; '
+    f'alert http any any -> any any (msg:"{CATCH_ALL_MESSAGE}"; '
     'flow:established,to_server; http.uri; content:"/"; sid:9009997; rev:1;)\n'
 )
+GENERIC_PROBE = (
+    'alert http any any -> any any (msg:"generic probe"; '
+    'flow:established,to_server; http.uri; content:"or 1=1"; nocase; sid:9009994; rev:1;)\n'
+)
+PORTED_MESSAGE = "ported SQLi probe"
 CATCH_ALL_ATTACKS = ("board-sqli-search", "board-xss-script-tag-in-search", "board-path-traversal-static")
 CATCH_ALL_BENIGN = ("board-normal-search", "board-normal-search-with-apostrophe")
 
-FABRICATED_LOOT = [{"username": "admin", "password": "admin1234"}]
 SHELL_ATTACK = "/search/?q=%27%20OR%201%3D1--%20{token}"
 WINDOW_GAP_SECONDS = 6
 
@@ -78,6 +84,17 @@ def auth_users_of(allocation: int) -> dict:
     return json.loads(body)
 
 
+def loot_of(truth: dict) -> list[dict]:
+    return [{"username": name, "hash": digest} for name, digest in truth.items()]
+
+
+def one_digest_changed(truth: dict) -> list[dict]:
+    forged = loot_of(truth)
+    digest = forged[0]["hash"]
+    forged[0]["hash"] = digest[:-1] + ("A" if digest[-1] != "A" else "B")
+    return forged
+
+
 def probed(played: plays.Played, token: str) -> list[dict]:
     from_attacker(SHELL_ATTACK.format(token=token), allocation=played.allocation)
     return plays.alerts_until(played, lambda listed: bool(with_token(listed, token)))
@@ -92,10 +109,6 @@ def typed(command: str, allocation: int):
     return run(ATTACKER, ["bash", "-c", shell], timeout=120, allocation=allocation)
 
 
-def seen_by_both(listed: list[dict], marker: str) -> bool:
-    return {"ids", "waf"} <= plays.engines(listed, marker)
-
-
 @pytest.fixture(scope="session")
 def full_run(stack_is_up):
     STANDING.release()
@@ -108,10 +121,13 @@ def full_run(stack_is_up):
             return (plays.totals(scored)["tp"] > 0 and "waf" in {alert["engine"] for alert in listed}
                     and bool(plays.marked(listed, markers[CONTROL]))
                     and bool(plays.marked(listed, markers[LAST_ATTACK]))
+                    and "ids" in plays.engines(listed, markers[UNION])
                     and bool(benign & set(plays.per_case(scored))))
 
         scored = plays.score_when_ready(played, until=ready)
         return {
+            "own_sources": {"127.0.0.1", "::1", *platform_addresses(log_collector(played.allocation)),
+                            *run(GATEWAY, ["hostname", "-I"], allocation=played.allocation).stdout.split()},
             "round": played.round,
             "score": scored,
             "markers": markers,
@@ -137,12 +153,17 @@ def board_session(stack_is_up):
         seen["marker"] = plays.fired(played, CONTROL)["marker"]
         seen["control_alerts"] = plays.marked(
             plays.alerts_until(played, lambda listed: bool(plays.marked(listed, seen["marker"]))), seen["marker"])
-        seen["fabricated_loot"] = plays.loot(played, FABRICATED_LOOT)
         truth = auth_users_of(played.allocation)
-        seen["real_loot"] = plays.loot(played, [{"username": name, "hash": digest} for name, digest in truth.items()])
+        seen["truth"] = truth
+        seen["fabricated_loot"] = plays.loot(played, one_digest_changed(truth))
+        seen["objectives_after_fabricated"] = plays.attack_seen(played)["objectives"]
+        seen["real_loot"] = plays.loot(played, loot_of(truth))
         seen["ended"] = plays.end(played)
         seen["score_once_ended"] = plays.score(played, client=played.attack)
         seen["scored"] = plays.score_when_ready(played, until=lambda scored: bool(scored["objectives"]["lost"]))
+        plays.replay(played)
+        seen["stale_loot"] = plays.loot(played, loot_of(truth))
+        seen["objectives_after_stale"] = plays.attack_seen(played)["objectives"]
     return seen
 
 
@@ -163,19 +184,6 @@ def origins_session(stack_is_up):
         seen["tool_run"] = plays.finished_run(played, tool.body["run"]) if tool.status == 202 else None
         seen["tools"] = plays.tools_listed(played)
         seen["unknown_tool"] = plays.start_tool(played, "not-a-tool", [])
-    return seen
-
-
-@pytest.fixture(scope="session")
-def tuned_session(stack_is_up):
-    with plays.Round("board") as played:
-        seen = {"round": played.round, "waf": plays.waf_files(played)}
-        markers = {name: plays.fired(played, name)["marker"] for name in (CONTROL, SECOND_SHAPE)}
-        seen["markers"] = markers
-        seen["alerts"] = plays.alerts_until(
-            played, lambda listed: all(seen_by_both(listed, marker) for marker in markers.values()))
-        seen["score"] = plays.score_when_ready(
-            played, until=lambda scored: {CONTROL, SECOND_SHAPE} <= set(plays.per_case(scored)))
     return seen
 
 
@@ -203,24 +211,48 @@ def rules_session(stack_is_up):
         plays.replay(played)
         seen["noisy"] = plays.apply_ids(played, baseline + PORTED_RULE + NOISY_RULE)
         assert seen["noisy"].ok, seen["noisy"].text
-        for name in (CONTROL, UNION):
-            plays.fired(played, name)
+        noisy_markers = {name: plays.fired(played, name)["marker"] for name in (CONTROL, UNION)}
+        seen["noisy_markers"] = noisy_markers
+
+        def ported_caught(listed):
+            return any(alert["signature"] == PORTED_MESSAGE
+                       for marker in noisy_markers.values() for alert in plays.marked(listed, marker))
+
+        plays.alerts_until(played, ported_caught)
         seen["after_noisy"] = plays.score_when_ready(
             played, until=lambda scored: plays.per_case(scored).get(BENIGN_SEARCH, {}).get("verdict") == "fp")
         seen["noisy_alerts"] = plays.alerts(played)
+        seen["noisy_origins"] = {origin["ip"] for origin in plays.attack_seen(played)["origins"]}
+        seen["attacker_processes"] = run(ATTACKER, ["ps", "-eo", "user=,args="], allocation=played.allocation).stdout
 
         plays.replay(played)
+        engine_off = plays.tune_waf(played, plays.appended(played, plays.CRS_SETUP, plays.RULE_ENGINE_OFF))
+        assert engine_off.ok, engine_off.text
         caught_all = plays.apply_ids(played, CATCH_ALL)
         assert caught_all.ok, caught_all.text
         seen["catch_all_markers"] = {name: plays.fired(played, name)["marker"] for name in CATCH_ALL_ATTACKS}
 
         def caught_both_ways(scored):
             verdicts = {case: line["verdict"] for case, line in plays.per_case(scored).items()}
-            return ("tp" in {verdicts.get(name) for name in CATCH_ALL_ATTACKS}
+            return (all(verdicts.get(name) == "tp" for name in CATCH_ALL_ATTACKS)
                     and "fp" in {verdicts.get(name) for name in CATCH_ALL_BENIGN})
 
         seen["after_catch_all"] = plays.score_when_ready(played, until=caught_both_ways)
         seen["catch_all_alerts"] = plays.alerts(played)
+
+        plays.replay(played)
+        engine_off = plays.tune_waf(played, plays.appended(played, plays.CRS_SETUP, plays.RULE_ENGINE_OFF))
+        assert engine_off.ok, engine_off.text
+        generic = plays.apply_ids(played, GENERIC_PROBE)
+        assert generic.ok, generic.text
+        plays.fired(played, CONTROL)
+
+        def generic_judged(scored):
+            lines = plays.per_case(scored)
+            return (lines.get(CONTROL, {}).get("verdict") == "tp"
+                    and any(name in lines for name in CATCH_ALL_BENIGN))
+
+        seen["after_generic"] = plays.score_when_ready(played, until=generic_judged)
     return seen
 
 

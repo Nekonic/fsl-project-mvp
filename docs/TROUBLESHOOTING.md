@@ -497,7 +497,8 @@ step 2 (`error`) does no Elasticsearch, Kibana or range call and took 1-7 ms;
 step 7 (`scanner`) reads the run's WAF detections from the platform database
 and took 0.12 s with 8,000 such rows held. Neither explains seconds.
 
-What every request pays, by the code: `api.reachability` runs on every
+What every request paid, by the code then (history: the check was removed
+on 2026-11-21, see `docs/THREAT-MODEL.md`): `api.reachability` ran on every
 request and caches the range's addresses for 30 s. The first request after
 that rebuilt the list by reading each range's shape from the cloud API
 (networks, servers, the carried segments' subnets, and the range's compose
@@ -507,7 +508,7 @@ requests by up to R; 6 of 35 over 2.5 s fits R of 5-6 s. The live refresh
 time was not measured here (no sign-in to the live platform from this
 change), so this is the likely cause, not a proven one.
 
-Fix: the ranges are read at once (`ThreadPoolExecutor`, one worker per range).
+Fix then: the ranges were read at once (`ThreadPoolExecutor`, one worker per range).
 Measured in `test_judge_reachability.py` with 8 stub ranges of 0.2 s each:
 1.63 s before, 0.21 s after.
 

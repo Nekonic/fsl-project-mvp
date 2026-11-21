@@ -55,7 +55,13 @@ A test that needs another problem passes a `plays.Setup` (its own title,
 posture, probe cases, side and matchups) to `plays.play` or
 `plays.Round`, with `matchup="atk_vs_bot"` when the defence player is the bot.
 `played.attack` and `played.defence` are the clients of the two players: a bot's
-player token, or the signed-in operator.
+player token, or the signed-in operator. A `pvp` round passes `humans=`, a
+second account per side from `plays.human_account` (signed up, approved and
+disabled again by the test). `plays.in_shell` runs one command in a side's
+terminal over the SSH grant a human's terminal uses (`bots/shell.py`). WAF
+postures are file edits: `plays.appended` adds lines to a live WAF file
+(`plays.paranoia`, `plays.RULE_ENGINE_OFF` for `crs-setup.conf`) and
+`plays.tune_waf` applies them.
 
 ## Shared rounds
 
@@ -69,14 +75,13 @@ pass in any order.
 
 | Fixture | Tests it serves |
 |---|---|
-| `full_run` (every malicious case, one sqlmap run) | `test_acceptance`, `test_board`, `test_topology`, `test_strategy_honesty` |
-| `board_session` | loot, objectives and the score kept from a player while the round runs |
+| `full_run` (every malicious case, one sqlmap run) | `test_acceptance`, `test_board`, `test_objectives`, `test_topology`, `test_strategy_honesty` |
+| `board_session` | loot (one digest changed, the round's own, then the previous round's in the next), objectives and the score kept from a player while the round runs |
 | `origins_session` | origins (the next origin's traffic arrives from it) and the tool case |
-| `tuned_session` | `test_evasion` |
-| `rules_session` | three rounds on one allocation: the invalid and the buffer-less rule, the noisy and the ported rule, the catch-all rule of `test_indiscriminate_defence` |
+| `rules_session` | four rounds on one allocation: the invalid and the buffer-less rule; the noisy and the ported rule, where benign alerts show where benign traffic comes from; the catch-all rule of `test_indiscriminate_defence` with the WAF's rule engine off; a `generic probe` rule that catches the SQLi without naming it |
 | `terminal_session` | the attacker box, the command feed and the front door |
 | `terminal_windows` | `test_window_correlation` (a free tool attributed by source and time) and `test_strategy_comparison` |
-| `rogue_admin_session`, `option_flip_session` | `test_corp_authz`, two corp allocations side by side |
+| `rogue_admin_session`, `option_flip_session` | `test_corp_authz`, two corp allocations side by side; `rogue_admin_session` also serves `test_score_reveal` (the weighted objective number, an undetected loss) |
 
 The red-team run fires every malicious case in `redteam/cases/board.yaml`
 except the sqlmap variants other than `board-sqli-orderby-sqlmap`.

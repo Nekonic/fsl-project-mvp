@@ -16,6 +16,14 @@ HELD_FOR_S = 240
 EVERY_S = 2
 GRACE_S = 10.0
 CUSTOMER_WAIT = 2 * plays.BENIGN_EVERY_S + 60.0
+LOG_WAIT = 240.0
+BURST = 40
+SLOW_RPM = 30
+FAST_RPM = 600
+GEO_HTTP = "geo $acceptance_refused {{ default 0; {ip}/32 1; }}\n"
+GEO_SITE = "if ($acceptance_refused) { return 403; }\n"
+ZONE_HTTP = "limit_req_zone $binary_remote_addr zone={zone}:1m rate={rpm}r/m;\n"
+ZONE_SITE = "limit_req zone={zone};\n"
 KEEP_ALIVE = """
 import http.client, sys, time
 log = open(sys.argv[1], "a", buffering=1)
@@ -136,3 +144,59 @@ def test_the_edge_drops_the_spent_origin_including_a_connection_held_open_before
 def test_customers_keep_reaching_the_target_after_the_spend(spent_round):
     assert spent_round["customers"], (
         "no customer address reached the WAF after an attack origin was spent; the spend reached the customers")
+
+
+def burst(played: plays.Played) -> None:
+    sent = run(ATTACKER, ["sh", "-c", f"for i in $(seq {BURST}); do curl -s -o /dev/null --max-time 10 "
+                                      f"http://board.com/ & done; wait"], timeout=120, allocation=played.allocation)
+    assert sent.ok, f"the attacker box could not send its burst: {sent.stderr}"
+
+
+def with_lines(played: plays.Played, base: dict[str, str], http: str, site: str) -> None:
+    applied = plays.tune_waf(played, {plays.HTTP_CONF: base[plays.HTTP_CONF].rstrip("\n") + "\n" + http,
+                                      plays.SITE_CONF: base[plays.SITE_CONF].rstrip("\n") + "\n" + site})
+    assert applied.ok, applied.text
+
+
+def events_until(played: plays.Played, kind: str, kinds: set[str]) -> list[dict]:
+    deadline = time.monotonic() + LOG_WAIT
+    while True:
+        found = plays.events(played, kinds)
+        if any(event["kind"] == kind for event in found) or time.monotonic() >= deadline:
+            return found
+        time.sleep(plays.POLL)
+
+
+@pytest.fixture(scope="module")
+def limited_round():
+    with plays.Round("board", SETUP) as played:
+        first = plays.attack_seen(played)["remaining"]["origin"]["ip"]
+        base = plays.waf_files(played)
+        with_lines(played, base, GEO_HTTP.format(ip=first), GEO_SITE)
+        geo = plays.send(played, "GET", "/")
+        with_lines(played, base, ZONE_HTTP.format(zone="acceptance_slow", rpm=SLOW_RPM),
+                   ZONE_SITE.format(zone="acceptance_slow"))
+        burst(played)
+        below = events_until(played, "limit.below_floor", {"limit.below_floor", "origin.spent"})
+        with_lines(played, base, ZONE_HTTP.format(zone="acceptance_fast", rpm=FAST_RPM),
+                   ZONE_SITE.format(zone="acceptance_fast"))
+        burst(played)
+        above = events_until(played, "origin.spent", {"origin.spent"})
+        yield {"first": first, "geo": geo, "below": below, "above": above}
+
+
+def test_a_geo_return_403_and_a_limit_below_the_floor_spend_nothing(limited_round):
+    warned = [event["body"] for event in limited_round["below"] if event["kind"] == "limit.below_floor"]
+    spent = [event["body"] for event in limited_round["below"] if event["kind"] == "origin.spent"]
+
+    assert limited_round["geo"].ok and limited_round["geo"].body["status"] == 403, limited_round["geo"].text
+    assert warned and warned[0]["zone"] == "acceptance_slow" and SLOW_RPM < warned[0]["floor_rpm"] < FAST_RPM, (
+        f"a limit_req below the benign floor left no warning for the defence: {limited_round['below']}")
+    assert spent == [], f"a geo 403 or a limit below the floor spent an origin: {spent}"
+
+
+def test_a_limit_above_the_floor_spends_the_origin_it_refused(limited_round):
+    spent = [event["body"] for event in limited_round["above"]]
+
+    assert {"ip": limited_round["first"], "by": "limit_req"} in spent, (
+        f"a limit_req above the floor refused {limited_round['first']} and spent nothing: {spent}")

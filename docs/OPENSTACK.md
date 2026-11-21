@@ -1356,9 +1356,10 @@ code cannot see them, so take them down with the code that made them, once:
 6. Point the `cloud` git remote at the new checkout path:
    `git remote set-url cloud ssh://ubuntu@ADDRESS/opt/cr`.
 
-If step 2 is skipped while `platform.stack` still names `fsl-platform`,
-`bin/platform-rebuild` and `bin/cloud down` find the store under
-`fsl_platformdata` and refuse instead of deleting the old VM.
+The restructure of 2026-11-21 started from a fresh database, so no store
+under the pre-rename names is left to keep, and `bin/platform-rebuild` no
+longer checks for one: a cloud still on `fsl-platform` must be taken down by
+step 2 before the rebuild, or the old VM and its volume are left behind.
 
 ### 5.5 From the range host to the Heat range
 

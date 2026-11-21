@@ -1,7 +1,7 @@
 import pytest
 
 import plays
-from shared_sessions import CATCH_ALL_ATTACKS, CATCH_ALL_BENIGN
+from shared_sessions import CATCH_ALL_ATTACKS, CATCH_ALL_BENIGN, CATCH_ALL_MESSAGE
 
 
 def indiscriminate(listed: list[dict], attack_markers: set[str]) -> set[str]:
@@ -32,13 +32,17 @@ def test_the_experiment_is_valid_at_all(block_everything):
 def test_nothing_is_credited_to_a_signature_that_also_fires_on_benign_traffic(block_everything):
     phase, markers, listed = block_everything
     noise = indiscriminate(listed, set(markers.values()))
+    checked = []
 
+    assert CATCH_ALL_MESSAGE in noise, noise
     for name, marker in markers.items():
-        if phase.get(name, {}).get("corroborated") is not True:
-            continue
         own = {alert["signature"] for alert in plays.marked(listed, marker)}
-        assert own - noise, (
+        assert own == {CATCH_ALL_MESSAGE}, (
+            f"{name} drew {own}; with the WAF's rule engine off the catch-all must be its only signature")
+        assert phase[name]["verdict"] == "tp" and phase[name]["corroborated"] is False, (
             f"{name} was credited with a real detection, and every signature it drew also fired on traffic "
-            f"meant to pass: {own}. The defence writes that text, so a block-everything rule set wins the one "
-            f"number meant to stop it"
+            f"meant to pass: {phase[name]}. The defence writes that text, so a block-everything rule set wins the "
+            f"one number meant to stop it"
         )
+        checked.append(name)
+    assert sorted(checked) == sorted(CATCH_ALL_ATTACKS), checked

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
+import shlex
 import threading
 import time
 from dataclasses import dataclass, field
@@ -12,6 +14,7 @@ import requests
 import yaml
 
 from bots import rest, signin
+from bots import shell as bot_shell
 from opening import refused_for_room
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -21,17 +24,33 @@ CASES = REPO_ROOT / "redteam/cases"
 WARGAMES = REPO_ROOT / "wargames"
 TITLE = "Acceptance {wargame}"
 BOT = "acceptance"
+CRS_SETUP = "/etc/nginx/modsecurity/crs/crs-setup.conf"
 CRS_EXCLUSIONS = "/etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf"
+SITE_CONF = "/etc/nginx/defence/board.com.conf"
+HTTP_CONF = "/etc/nginx/defence/http.conf"
+RULE_ENGINE_OFF = "SecRuleEngine Off\n"
+RULE_ENGINE_ON = "SecRuleEngine On\n"
+DETECT_WITHOUT_BLOCKING_SEARCH = {
+    CRS_EXCLUSIONS: 'SecRule REQUEST_FILENAME "@beginsWith /search/" "id:10001,phase:1,pass,nolog,ctl:ruleRemoveById=949110"\n'}
 
 
-def at_paranoia(level: int, *lines: str, inbound: int | None = None) -> dict[str, str]:
-    threshold = f",setvar:tx.inbound_anomaly_score_threshold={inbound}" if inbound else ""
-    return {CRS_EXCLUSIONS: f'SecAction "id:10000,phase:1,pass,nolog,setvar:tx.blocking_paranoia_level={level},'
-                            f'setvar:tx.detection_paranoia_level={level}{threshold}"\n' + "".join(lines)}
+BOT_SEARCH_RULE = ('SecRule ARGS:q "@contains or 1=1" "id:10099,phase:2,t:none,t:lowercase,deny,status:403,log,'
+                   'msg:\'bot rule for SQL injection in search\'"\n')
+STATIC_EXCLUDED = 'SecRule REQUEST_FILENAME "@beginsWith /static/" "id:10002,phase:1,pass,nolog,ctl:ruleRemoveById=930130"\n'
 
 
-DETECT_WITHOUT_BLOCKING_SEARCH = at_paranoia(
-    1, 'SecRule REQUEST_FILENAME "@beginsWith /search/" "id:10001,phase:1,pass,nolog,ctl:ruleRemoveById=949110"\n')
+def appended_and_reloaded(path: str, text: str) -> str:
+    return f"printf %s {shlex.quote(text)} >> {path} && sudo nginx -t && sudo nginx -s reload"
+
+
+def paranoia(level: int, inbound: int | None = None) -> str:
+    lines = (f'SecAction "id:900000,phase:1,pass,t:none,nolog,setvar:tx.blocking_paranoia_level={level}"\n'
+             f'SecAction "id:900001,phase:1,pass,t:none,nolog,setvar:tx.detection_paranoia_level={level}"\n')
+    if inbound:
+        lines += f'SecAction "id:900110,phase:1,pass,t:none,nolog,setvar:tx.inbound_anomaly_score_threshold={inbound}"\n'
+    return lines
+
+
 BENIGN_EVERY_S = 30
 ROOM_WAIT = 1800
 POLL = 2
@@ -91,6 +110,11 @@ def operator_username() -> str:
 def objective_keys(wargame: str) -> list[str]:
     declared = yaml.safe_load((WARGAMES / wargame / "objectives.yaml").read_text(encoding="utf-8")) or {}
     return [tier["key"] for tier in declared.get("tiers") or []]
+
+
+def objective_difficulties(wargame: str) -> dict[str, int]:
+    declared = yaml.safe_load((WARGAMES / wargame / "objectives.yaml").read_text(encoding="utf-8")) or {}
+    return {tier["key"]: int(tier["difficulty"]) for tier in declared.get("tiers") or []}
 
 
 def declared_cases(wargame: str) -> list[dict]:
@@ -181,6 +205,7 @@ class Played:
     defence: Any = None
     setup: Setup | None = None
     matchup: str = "def_vs_bot"
+    humans: dict = field(default_factory=dict)
     closed: bool = False
     stopped: threading.Event = field(default_factory=threading.Event)
 
@@ -211,29 +236,51 @@ def kept_alive(played: Played) -> None:
     threading.Thread(target=beat, name=f"allocation-{played.allocation}-heartbeat", daemon=True).start()
 
 
-def players_for(matchup: str) -> dict:
+def players_for(matchup: str, humans: dict | None = None) -> dict:
     human = {"username": operator_username()}
     bot = {"bot": {"name": BOT}}
-    return {"def_vs_bot": {"attack": bot, "defence": human},
-            "atk_vs_bot": {"attack": human, "defence": bot}}[matchup]
+    named = {side: {"username": username} for side, (username, _) in (humans or {}).items()}
+    return {**{"def_vs_bot": {"attack": bot, "defence": human},
+               "atk_vs_bot": {"attack": human, "defence": bot},
+               "pvp": {"attack": human, "defence": human}}[matchup], **named}
+
+
+def human_account() -> tuple[str, Any]:
+    username, password = f"acceptance-{secrets.token_hex(4)}", secrets.token_urlsafe(24)
+    anonymous = signin.anonymous(PLATFORM_URL)
+    ask("auth_csrf", anonymous)
+    signed_up = ask("auth_signup", anonymous, {"username": username, "password": password})
+    assert signed_up.status == 201, f"could not sign up {username}: {signed_up.text}"
+    done("staff_user_approve", operator(), username=username)
+    session = signin.anonymous(PLATFORM_URL)
+    ask("auth_csrf", session)
+    done("auth_login", session, {"username": username, "password": password})
+    return username, session
+
+
+def account_disabled(username: str) -> Answer:
+    return ask("staff_user_disable", operator(), username=username)
 
 
 def next_round(played: Played) -> None:
     setup = played.setup or acceptance_setup(played.wargame)
     made = done("round_create", operator(), {
-        "problem": problem_of(setup), "matchup": played.matchup, "players": players_for(played.matchup),
+        "problem": problem_of(setup), "matchup": played.matchup, "players": players_for(played.matchup, played.humans),
     }, allocation_id=played.allocation)
     done("round_start", operator(), round_id=made["round"])
     tokens = made.get("bot_tokens") or {}
     played.round = made["round"]
-    played.attack = signin.playing(PLATFORM_URL, tokens["attack"]) if "attack" in tokens else operator()
-    played.defence = signin.playing(PLATFORM_URL, tokens["defence"]) if "defence" in tokens else operator()
+    humans = {side: client for side, (_, client) in played.humans.items()}
+    played.attack = signin.playing(PLATFORM_URL, tokens["attack"]) if "attack" in tokens else humans.get("attack", operator())
+    played.defence = (signin.playing(PLATFORM_URL, tokens["defence"]) if "defence" in tokens
+                      else humans.get("defence", operator()))
 
 
-def play(wargame: str = "board", setup: Setup | None = None, matchup: str = "def_vs_bot") -> Played:
+def play(wargame: str = "board", setup: Setup | None = None, matchup: str = "def_vs_bot",
+         humans: dict | None = None) -> Played:
     allocation = opened_allocation(wargame)
     played = Played(allocation=allocation["allocation"], round=0, wargame=wargame, attack=None, slot=allocation.get("slot"),
-                    setup=setup, matchup=matchup)
+                    setup=setup, matchup=matchup, humans=dict(humans or {}))
     OPENED.append(played)
     kept_alive(played)
     for listener in LISTENERS:
@@ -264,14 +311,16 @@ def close(played: Played) -> Answer:
 
 
 class Round:
-    def __init__(self, wargame: str = "board", setup: Setup | None = None, matchup: str = "def_vs_bot"):
+    def __init__(self, wargame: str = "board", setup: Setup | None = None, matchup: str = "def_vs_bot",
+                 humans: dict | None = None):
         self.wargame = wargame
         self.setup = setup
         self.matchup = matchup
+        self.humans = humans
         self.played: Played | None = None
 
     def __enter__(self) -> Played:
-        self.played = play(self.wargame, self.setup, self.matchup)
+        self.played = play(self.wargame, self.setup, self.matchup, self.humans)
         return self.played
 
     def __exit__(self, *raised) -> None:
@@ -414,8 +463,22 @@ def defence_terminal_grant(played: Played) -> Answer:
     return ask("defence_terminal", played.defence, round_id=played.round)
 
 
+def in_shell(played: Played, side: str, command: str) -> dict:
+    client = played.defence if side == "defence" else played.attack
+
+    def grant() -> dict:
+        answer = ask(f"{side}_terminal", client, round_id=played.round)
+        return {"ok": answer.ok, "status": answer.status, "body": answer.body}
+
+    return bot_shell.run((played.round, side), {"command": command}, grant)
+
+
 def waf_files(played: Played) -> dict[str, str]:
     return {one["path"]: one["text"] for one in done("defence_waf", played.defence, round_id=played.round)["files"]}
+
+
+def appended(played: Played, path: str, *lines: str) -> dict[str, str]:
+    return {path: waf_files(played)[path].rstrip("\n") + "\n" + "".join(lines)}
 
 
 def disable_rule(played: Played, sid: int, minutes: float, reason: str) -> Answer:
