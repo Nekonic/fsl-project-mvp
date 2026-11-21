@@ -10348,3 +10348,71 @@ is `POST /api/staff/users/<username>/approve/` and `/disable/`. An unknown
 username there stays `404 unknown_user`, because `unknown_account` is already
 the 400 field code of the seat ask and a code belongs to exactly one status.
 The staff accounts page shows the username alone, without the `#id` line.
+
+## 2026-11-21 — The platform is restructured into five units, KYPO-style
+
+The owner reviewed the current `side-split` layout against cyber ranges (KYPO,
+Crucible, Locked Shields), attack/defence game servers (FAUST, ENOWARS, iCTF),
+agent environments (CybORG, Caldera, Inspect) and detection test tools
+(go-ftw, suricata-verify, VECTR), and chose the range-service split because
+its top level is the easiest to read.
+
+- **Top level:** `users/` (accounts, sign-in, seat tokens), `sandbox/` (the
+  range: pool, Heat, edge, access, and every file that knows an outside
+  device: OpenStack, Suricata, CRS/nginx, Kibana, the attacker box),
+  `telemetry/` (Elasticsearch, events, alerts, access and command logs),
+  `training/` (content, round, traffic, attack, defence, lessons) and
+  `scoring/` (the only reader of the target's ground truth). `cr/` and
+  `domain/` stay shared. "training" follows KYPO's Training Service;
+  "exercise" was rejected because the field uses it for a whole multi-day
+  event (Locked Shields).
+- **Names:** Seat becomes `Player` (a human or a bot on one side of a round;
+  the owner's "Player vs AI"). Lease becomes `Allocation` (KYPO's sandbox
+  allocation).
+- **Fresh database.** Everything so far is test data; no migration carries
+  data over.
+- **No periodic tick.** Reads of alerts, the WAF access and error logs, the
+  corp DB log and the attacker command log happen when an API request for
+  the round comes in, one reader per round at a time; scoring counts only
+  what happened up to the round's end time. A round past its time limit is
+  ended by the next request. An allocation left open is cleaned up when the
+  next learner asks for a slot. Rebuilding a stack is a background job
+  started when the allocation closes. KYPO has no tick either (its training
+  service is driven by REST calls and its sandbox work runs as RQ jobs);
+  RQ/Redis is not adopted because it adds a service.
+- **OpenStack does not replace any of this.** The cloud is ML2/OVN.
+  RabbitMQ is the control-plane bus (security guide: no further authorization
+  once queue access is granted); security groups are allow-only; FWaaS on OVN
+  is L3 at router gateways; QoS limits are per port and admin-only; OVN ACL
+  logs stay on compute nodes. None sees HTTP.
+- **Origin loss replaces HP.** An origin is spent when the WAF's nginx error
+  log shows `access forbidden by rule` (a `deny`) or `limiting requests`
+  (`limit_req`) for it. A CRS rule's 403 does not spend it; `geo` with
+  `return 403` leaves no error-log line and does not count. The floor is
+  twice the busiest benign customer's per-origin rate in `traffic.yaml`,
+  computed into the round setup; a limit below it spends nothing and the
+  defender is warned.
+- **The WAF is real files.** The defender edits `crs-setup.conf`,
+  REQUEST-900/RESPONSE-999 exclusions and nginx config in a terminal;
+  `nginx -t`, reload and rollback. The JSON tuning object and `drift.py` go.
+  The console shows the current files, their change history and the
+  recorded-request test results instead of forms. Applying from the console
+  checks, reloads and records; a reload done in the terminal is recorded the
+  next time the files are read. `SecRuleEngine Off` and `DetectionOnly` are
+  allowed: the score shows the result. curl from the defender's box is
+  allowed (practitioners test rules with live requests; such requests carry
+  no marker). Logging config (`log_format`, `access_log`, the request
+  marker, Suricata `eve-log`) is read-only for `analyst`, because it is the
+  platform's measurement, not defence.
+- **Benign traffic moves from kali to the infra VM**, keeping its marker:
+  running it on the attacker's box let the attacker see it and tied it to
+  attacker origins.
+- **The board secret is random per round** (KYPO generates answers per
+  sandbox); the seeded password made the hash the same every round.
+- **PvP stays.** A bot is a Player that uses the same API and the same shell,
+  so PvP covers Player vs AI.
+- **Bots:** the defence bot gets the same shell as a human; the form-API
+  tools go. The generated client goes; `bots/` builds its tool list from
+  `openapi/schema.yaml`.
+- **Lessons:** the current lesson content goes; `training/lessons/` keeps its
+  place for the rewrite from both sides.
