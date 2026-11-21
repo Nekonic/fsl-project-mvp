@@ -81,6 +81,10 @@ def test_files_nginx_refuses_are_rolled_back_and_refused_with_the_file_and_line(
     ({SETUP: "SecAuditEngine Off\n"}, SETUP, 1),
     ({AFTER: "SecRule ARGS \"@rx x\" \"id:1,ctl:auditEngine=Off,ctl:auditLogParts=+E\"\n"}, AFTER, None),
     ({BOARD: "modsecurity_rules 'SecAuditLog /tmp/x';\n"}, BOARD, 1),
+    ({BOARD: "location / { access_log off; proxy_pass http://10.30.128.59; }\n"}, BOARD, 1),
+    ({HTTP: "set_real_ip_from 127.0.0.1;\n"}, HTTP, 1),
+    ({HTTP: "deny all; real_ip_header X-Forwarded-For;\n"}, HTTP, 1),
+    ({BOARD: "real_ip_recursive on;\n"}, BOARD, 1),
     ({EXCLUSIONS: 7}, EXCLUSIONS, None),
 ])
 def test_a_file_the_defence_does_not_edit_or_a_logging_directive_never_reaches_the_waf(files, path, line):

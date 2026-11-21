@@ -7,10 +7,11 @@ from training.round import lifecycle
 def catch_up(request) -> None:
     found = getattr(request, "round", None)
     held = getattr(request, "allocation", None) or (found.allocation if found is not None else None)
+    if found is not None:
+        lifecycle.catch_up(found)
     if held is not None:
         allocations.close_if_expired(held)
     if found is not None:
-        lifecycle.catch_up(found)
         found.refresh_from_db()
         found.allocation.refresh_from_db()
 

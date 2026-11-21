@@ -52,12 +52,6 @@ def run(box, plan: str) -> bool:
     return "cr.customers=started" in ran.output
 
 
-def running(box) -> bool:
-    return "cr.customers=yes" in _ran(
-        box, f"if systemctl is-active --quiet {SERVICE}; then echo cr.customers=yes; fi",
-        "say whether the customers run").output
-
-
 def stop(box) -> None:
     _ran(box, f"rm -f {PLAN}; systemctl stop {SERVICE}", "stop the customers")
 

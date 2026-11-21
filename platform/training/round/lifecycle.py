@@ -244,6 +244,8 @@ def end_round(found: Round, reason: str) -> Round:
     if reason not in round_rules.END_REASONS:
         raise ValueError(f"no end reason {reason!r}")
     was = found.phase
+    if was == RUNNING:
+        final_reads(found)
     if not Round.objects.filter(pk=found.pk).exclude(phase=ENDED).update(phase=ENDED, ended=end_time(found),
                                                                           end_reason=reason):
         found.refresh_from_db()
@@ -296,8 +298,12 @@ def read_every() -> timedelta:
     return timedelta(seconds=settings.READ_EVERY_SECONDS)
 
 
+def not_being_read(at: datetime) -> Q:
+    return Q(reading_since=None) | Q(reading_since__lt=at - READ_ABANDONED)
+
+
 def claim_reading(found: Round, at: datetime) -> bool:
-    free = Q(reading_since=None) | Q(reading_since__lt=at - READ_ABANDONED)
+    free = not_being_read(at)
     due = Q(read_at__lte=at - read_every()) | Q(read_at=None, started__lte=at - read_every()) | Q(ends_at__lte=at)
     return bool(Round.objects.filter(free, due, pk=found.pk, phase=RUNNING).update(reading_since=at))
 
@@ -305,6 +311,16 @@ def claim_reading(found: Round, at: datetime) -> bool:
 def read_logs(found: Round) -> None:
     for what, step in READS:
         stepped(found, what, step)
+
+
+def final_reads(found: Round) -> None:
+    at = timezone.now()
+    if not Round.objects.filter(not_being_read(at), pk=found.pk, phase=RUNNING).update(reading_since=at):
+        return
+    try:
+        read_logs(found)
+    finally:
+        Round.objects.filter(pk=found.pk).update(reading_since=None, read_at=timezone.now())
 
 
 def catch_up(found: Round, at: datetime | None = None) -> str | None:

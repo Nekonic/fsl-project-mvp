@@ -200,7 +200,7 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
 | 본문에 패널 둘을 나란히 | `front/src/layouts.ts`에서 레일 항목에 `beside: ["<패널>"]`을 적음. 그 탭을 열면 본문이 패널과 `beside` 패널로 나뉨(좁은 화면에서는 위아래) |
 | 페이지에 어떤 패널을 둘지 | `front/src/pages/<페이지>.tsx` |
 | 경로, 상단 메뉴 | `front/src/routes.ts`, `front/src/nav.ts` |
-| 문구 | `strings/console.json`. 화면 문구는 모두 `t(key, params)`로 나옴. 다른 값의 라벨을 가져다 쓸 때는 `{@verdict.tn}`처럼 키를 적어 두므로, 라벨 이름은 그 값 하나만 고치면 됨 |
+| 문구 | `strings/console.json`. 화면 문구는 모두 `t(key, params)`로 나옴. `strings.ts`는 값 안의 `{@키}` 참조를 풀지만 지금 그렇게 쓴 값은 없음 |
 | 패널이 보여 주는 데이터 | `front/src/panes/<패널>.tsx`와 `front/src/api/hooks.ts`. 서버 응답은 `openapi/schema.yaml`이 정함 |
 
 `front/`에서 `npm ci && npm run types && npm run dev`로 띄우면 `mock/`의 가짜 응답으로 모든 화면을 볼 수
@@ -285,6 +285,8 @@ sequenceDiagram
   것으로 봄) `read_at`으로 놓습니다. 아무도 부르지 않는 라운드는 아무 일도 하지 않습니다.
 - 읽기 단계 하나가 실패해도 나머지 단계는 계속 돕니다. 제한 시간이 지난 라운드는 다음 요청이 끝내고 종료 시각은
   제한 시간으로 남깁니다. 점수는 종료 시각까지의 동작, 알림, 목표만 셉니다.
+- 운영자 종료, 기권, 할당 만료로 끝나는 라운드도 끝내기 전에 읽기를 한 번 더 돌립니다. 요청은 할당 만료를 보기 전에
+  라운드부터 읽으므로, 제한 시간이 지난 라운드는 할당이 만료됐어도 `time_limit`으로 끝납니다.
 - 만료된 할당은 다음 할당 요청이나 그 할당에 들어온 요청이 닫습니다. 반납된 슬롯의 스택은 `rebuild` 서비스
   (`manage.py rebuild_slots`, `sandbox.service.keep_rebuilding`)가 다시 만듭니다.
 
@@ -295,8 +297,10 @@ sequenceDiagram
 
 | 태그(스키마) | 경로 | 내용 |
 |---|---|---|
-| `accounts` | `/api/auth/csrf/`, `login/`, `signup/`, `logout/`, `/api/me/`, `/api/staff/users/`, `/api/staff/blocks/` | 로그인, 가입, 승인, 차단 |
-| `match` | `/api/allocations/`, `/api/allocations/<a>/{heartbeat,close,rounds}/`, `/api/rounds/`, `/api/rounds/<r>/{players/<side>/join,start,end,score,topology,site/requests,terminal-auth/<side>,attack/forfeit,defence/forfeit}/`, `/api/staff/range/{,fabric/,leftovers/,pool/}`, `/api/staff/wargames/<id>/probes/record/`, `/api/staff/probes/<a>/` | 할당, 라운드, 점수, 구성도, 사이트 패널, 터미널 인증, 풀 운영, probe 녹화(`training/round`, `training/content`) |
+| `accounts` | `/api/auth/csrf/`, `login/`, `signup/`, `logout/`, `/api/me/` | 로그인, 가입 |
+| `staff` | `/api/staff/users/`, `/api/staff/blocks/` | 승인, 차단 |
+| `staff` | `/api/staff/range/{,fabric/,leftovers/,pool/}`, `/api/staff/wargames/<id>/probes/record/`, `/api/staff/probes/<a>/` | 풀 운영, probe 녹화(`training/round`, `training/content`) |
+| `match` | `/api/allocations/`, `/api/allocations/<a>/{heartbeat,close,rounds}/`, `/api/rounds/`, `/api/rounds/<r>/{players/<side>/join,start,end,score,topology,site/requests,terminal-auth/<side>,attack/forfeit,defence/forfeit}/` | 할당, 라운드, 점수, 구성도, 사이트 패널, 터미널 인증(`training/round`) |
 | `match` | `/api/rounds/<r>/events/?after=` | 커서 피드(`telemetry/views.py`). 종류마다 보는 쪽이 정해짐 |
 | `attack` | `/api/rounds/<r>/attack/{state,cases,requests,tools,tools/<run>,loot,origins/next,terminal}/` | 공격 API. 성공 응답에 `remaining`, 모든 응답에 `X-Origin`, `X-Origins-Left` |
 | `defence` | `/api/rounds/<r>/defence/{state,alerts,traffic,probes,ids/rules,ids/rules/versions,ids/rules/check,ids/rules/test,ids/rules/tests/<t>,ids/rules/apply,ids/disabled,ids/disabled/<sid>,waf,waf/versions,waf/check,waf/test,waf/tests/<t>,waf/apply,terminal,kibana}/` | 방어 API. `alerts`, `traffic`은 `telemetry/views.py`, 나머지는 `training/defence` |
@@ -335,7 +339,10 @@ sequenceDiagram
   `crs-setup.conf`, `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`, `RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf`,
   `/etc/nginx/defence/`의 `http.conf`(http 블록), `board.com.conf`·`corp.com.conf`(각 server 블록)입니다.
   `log_format`, `access_log`, 요청 마커, 감사 로그는 읽기 전용인 `conf.d/board.com.conf`와 `modsecurity.conf`에
-  있고, 방어 파일에 `access_log`·`log_format`·`error_log`·`SecAudit*`·`ctl:audit*`를 쓰면 거부합니다.
+  있고, 방어 파일 어느 줄 어느 자리에든 `access_log`·`log_format`·`error_log`·`open_log_file_cache`·`SecAudit*`·`ctl:audit*`가
+  있으면 거부합니다. 클라이언트 주소도 측정이라 `set_real_ip_from`·`real_ip_header`·`real_ip_recursive`도 거부합니다.
+- 터미널에서 고치고 reload한 파일도 다음 읽기 때 같은 검사를 거칩니다. 걸리면 기록하지 않고 마지막 버전 파일로 되돌려
+  reload하고 `rule.refused` 이벤트를 남깁니다.
 - 흐름은 IDS와 WAF가 같습니다: 읽기 → 검사(`suricata -T` / `nginx -t`) → 녹화된 요청으로 테스트 → 쓰기 → reload →
   버전 기록(파일 텍스트와 해시, `RuleSet.files`·`sha`·`source`). nginx가 거부하면 이전 파일로 되돌립니다.
 - `check/`: IDS는 모든 센서에서 `suricata -T`와 읽을 수 없게 되는 sid 검사, WAF는 `sandbox.crs.refusals`와 임시
@@ -429,7 +436,7 @@ sequenceDiagram
 |---|---|
 | `round.started`, `round.ended`, `player.joined` | 양쪽 |
 | `action.sent`, `tool.started`, `tool.ended`, `command.run`, `origin.spent`, `origin.switched`, `origins.spent` | 공격, 스태프 |
-| `alert.seen`, `rule.tested`, `rule.applied`, `rule.disabled`, `limit.below_floor`, `case.judged` | 방어, 스태프 |
+| `alert.seen`, `rule.tested`, `rule.applied`, `rule.disabled`, `rule.refused`, `limit.below_floor`, `case.judged` | 방어, 스태프 |
 | `objective.lost` | 양쪽(누구 행동인지는 스태프만) |
 
 이벤트는 피드일 뿐 저장소가 아닙니다. 점수와 판정은 이벤트가 아니라 행(`Action`, `Detection`, `Objective`,

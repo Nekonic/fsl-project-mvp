@@ -583,10 +583,10 @@ before (§5.5). `DELETE fabric/` deletes the `cr-lan-` groups after the
 range stacks (§6.2).
 
 Port 8002 is the console's site pane (`/site/<round>/<host>/`, proxied to
-`training/round/site.py`). The platform sends each request over an ssh stream to the
-allocation's Kali VM (over `cr-mgmt`). For an attack player it goes through
-`training/attack/actions.send` from the current origin; for a
-defence player the infra VM sends it from a customer address with the
+`training/round/site.py`). An attack player's request goes over an ssh
+stream (over `cr-mgmt`) to the allocation's Kali VM, through
+`training/attack/actions.send` from the current origin; a
+defence player's request goes from the infra VM, which sends it from a customer address with the
 allocation's browse marker, out of its DMZ port straight to the WAF. A platform stack
 made before 2026-10-13 lacks the rule. Add it by hand:
 

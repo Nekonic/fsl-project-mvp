@@ -5,6 +5,7 @@ from sandbox.runner import Ran
 from telemetry.models import Event
 from tests.training.defence.conftest import BASELINE, LOGIN_RULE, RECORDED, SEARCH_RULE
 from training.defence import rules as service
+from training.models import RuleTest
 
 BASE = "/api/rounds/{round}/defence/"
 SETUP = "/etc/nginx/modsecurity/crs/crs-setup.conf"
@@ -94,7 +95,7 @@ def test_a_waf_test_lists_tool_cases_untested_and_replays_http_probes_against_th
     assert replayed["probe-board-sqli-search"]["response"] == {"status": 200, "body": "ok"}
     assert not any("nginx -s reload" in text for text in cyber_range.gateway.texts())
     assert cyber_range.gateway.files[HTTP] == ""
-    stored = service.latest_test(board_round, "waf")
+    stored = RuleTest.objects.filter(round=board_round, engine="waf").latest("id")
     assert stored.files[HTTP] == "deny 203.0.113.9;\n" and set(stored.files) == set(cyber_range.gateway.files), (
         "a test keeps the whole set it ran: the given files over the live ones")
 
@@ -221,5 +222,5 @@ def test_a_test_the_sensor_cannot_finish_leaves_no_test_behind(as_defender, boar
 
     assert answer.status_code == 503
     assert answer.json()["errors"][0]["code"] == "sensor_unavailable"
-    assert service.latest_test(board_round, "ids") is None
+    assert not RuleTest.objects.filter(round=board_round, engine="ids").exists()
     assert not Event.objects.filter(round_id=board_round.pk, kind="rule.tested").exists()

@@ -11,8 +11,6 @@ MARKER_HEADER = "X-Request-ID"
 STATUS = re.compile(r"http_code=(\d{3})")
 FORBIDDEN = re.compile(r"403 \(Forbidden\) - (\d+) times")
 TABLE_ROW = re.compile(r"^\|(.+)\|\s*$")
-ENDED = "[*] ending @"
-NOT_INJECTABLE = "all tested parameters do not appear to be injectable"
 CONCLUSION = re.compile(
     r"(?:seem|appear) to be injectable|appears to be '.*' injectable|identified the following injection point"
     r"|\[CRITICAL\] (?:all tested|host |heuristics detected)"
@@ -20,7 +18,6 @@ CONCLUSION = re.compile(
 STAMP = re.compile(r"^\[\d{2}:\d{2}:\d{2}\] ")
 CONCLUSIONS_KEPT = 4
 LINE_KEPT = 160
-ABORTED = re.compile(r"\[CRITICAL\][^\n]*does not exist|Traceback|user (quit|aborted)", re.IGNORECASE)
 
 FREE_TOOLS = ("curl", "dirb", "ffuf", "gobuster", "hydra", "nikto", "nmap", "sqlmap", "whatweb")
 MOST_ARGS = 64
@@ -196,11 +193,3 @@ def answered(output: str) -> Answer:
     headers = tuple((name.strip(), value.strip()) for name, colon, value in (line.partition(":") for line in lines)
                     if colon)
     return Answer(status=status, headers=headers, body=body if gap else head)
-
-
-def found_not_injectable(exit_code: int, output: str) -> bool:
-    output = output if isinstance(output, str) else ""
-    return (
-        exit_code == 0 and ENDED in output and not ABORTED.search(output)
-        and NOT_INJECTABLE in output and not dumped(output)
-    )

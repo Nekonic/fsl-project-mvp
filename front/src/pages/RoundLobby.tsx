@@ -169,7 +169,7 @@ interface CreateRoundProps {
 }
 
 function CreateRound({ allocation, problems, onCreated }: CreateRoundProps) {
-  const fitting = problems.filter((problem) => problem.wargame === allocation.wargame && problem.kind !== "lesson");
+  const fitting = problems.filter((problem) => problem.wargame === allocation.wargame);
   const [problem, setProblem] = useState("");
   const [matchup, setMatchup] = useState<Matchup>("pvp");
   const [players, setPlayers] = useState<Record<Side, PlayerChoice>>({

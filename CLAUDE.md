@@ -55,18 +55,18 @@ The Korean the console shows lives in `strings/console.json` (bundled into
 `front/`; the API sends stable English codes and the front end maps them
 here) and `strings/server.json` (the Kibana gate page, read only by
 `cr/strings.py`). Leave them unread unless you are editing them.
-Problem and lesson text is Korean too, but it lives only in database rows,
+Problem text is Korean too, but it lives only in database rows,
 written through the staff API and moved between stores by its export and
 import; no seed, fixture or migration carries it, and test fixtures are English
 placeholders (`platform/testing/factories.py`).
 
-Generated code is not committed: `bin/gen-clients` exports the committed
-contract `openapi/schema.yaml` and generates `bots/client/` and
-`front/src/api/schema.d.ts` from it, because the generators write docstrings
-and the no-comments rule has no exception for them. `bin/verify` generates
-both before use; the platform Dockerfile's node stage generates only
-`front/src/api/schema.d.ts` (`npm run types`) before it builds `front/`, and
-the image carries neither.
+The committed contract is `openapi/schema.yaml`, which `bin/verify` exports
+with `manage.py spectacular`. `bots/`, `test/` and `bin/` call it by
+operationId through `bots/rest.py`, with no generated client. Only
+`front/src/api/schema.d.ts` is generated from it (`npm run types`, in
+`bin/verify` and in the platform Dockerfile's node stage before it builds
+`front/`), and it is not committed, because the generator writes comments and
+the no-comments rule has no exception for them.
 
 Korean text is written Korean-first: from the meaning, not translated from the
 English sentence, in the usage of Korean security practitioners rather than the
@@ -108,22 +108,25 @@ never scored as one.
   platform's own belief about an attack. The objective layer's value is that
   its ground truth is orthogonal to the detector.
 - The isolation seams hold (paths under `platform/`):
-  `ingest/elastic.py` is the only file that knows Elasticsearch, the ingest
-  pipeline included; `rules/suricata.py` the only one that knows the Suricata
-  process (rule file, `-T`, the offline `-r` run, reload, packet capture);
-  `rules/crs.py` the only one that knows the CRS/ModSecurity configuration,
-  the nginx reload and the scratch test instance; `defence/kibana.py` the
-  only one that knows the Kibana API; `range/openstack.py` the only one that
-  knows the OpenStack API and the only one that reads the stack's live wiring
-  the learner map draws from Neutron and the target VM's Docker networks
-  (`range/wiring.py` parses it, `range/topology.py` names it for the learner,
-  filtered by side); `range/edge.py` the only one that writes the infra
-  router's nftables `pool` and `spent` sets; `range/jump.py` the only one
-  that knows the platform sshd's jump grants and the per-seat key in a box
-  account's `authorized_keys`; `attack/box.py` the only one that knows the
+  `telemetry/elastic.py` is the only file that knows Elasticsearch, the
+  ingest pipeline included; `sandbox/suricata.py` the only one that knows the
+  Suricata process (rule file, `-T`, the offline `-r` run, reload, packet
+  capture); `sandbox/crs.py` the only one that knows the CRS/ModSecurity
+  configuration, the nginx reload and the scratch test instance;
+  `sandbox/kibana.py` the only one that knows the Kibana API;
+  `sandbox/openstack.py` the only one that knows the OpenStack API and the
+  only one that reads the stack's live wiring the learner map draws from
+  Neutron and the target VM's Docker networks (`sandbox/wiring.py` parses it,
+  `sandbox/topology.py` names it for the learner, filtered by side);
+  `sandbox/edge.py` the only one that writes the infra router's nftables
+  `pool` and `spent` sets; `sandbox/access.py` the only one that knows the
+  platform sshd's jump grants and the per-player key in a box account's
+  `authorized_keys`; `sandbox/attacker.py` the only one that knows the
   attacker box (origins, `set-origin`, the command log, the tool image,
-  customer origins, stopping runs); and `referee/loot.py` (the board) and
-  `referee/effect.py` (corp) the only ones that read the target's ground
+  stopping runs); `sandbox/customers.py` the only one that knows the
+  customers' box (`cr-customers.service`, the `cr-users` account, the
+  customer addresses); and `scoring/loot.py` (the board) and
+  `scoring/effect.py` (corp) the only ones that read the target's ground
   truth. Keep them the only ones. `platform/tests/seams/test_isolation_seams.py`
   holds one pattern per seam (packet capture, the nftables sets, the node
   names `cr-kali`, `cr-waf`, `cr-infra`, `cr-target` and the log index
@@ -132,36 +135,40 @@ never scored as one.
   two lists differ.
   Known exceptions in code today; do not add more:
   `cr/config.py` holds the defaults the seams are handed (the CRS exclusion
-  file and the nginx reload for `rules/crs.py`, the box's label file and
-  node names for `attack/box.py`, the log index pattern); the acceptance
+  files and the nginx reload for `sandbox/crs.py`, the box's label file and
+  node names for `sandbox/attacker.py`, the log index pattern); the
+  acceptance driver `test/plays.py` writes CRS rule text into the API's
+  `files`; the acceptance
   checks of Elasticsearch's own set-up, `test/test_event_time.py`,
   `test/test_geoip_durable.py`, `test/test_origin_placement.py` and
   `test/test_waf_geolocation.py`, read Elasticsearch directly; in each `wargames/<id>/topology.yaml` the sensor device
-  `cr-ids` names the rule file and reload command `rules/suricata.py` is
-  handed, and the WAF device `cr-waf` the exclusion file and nginx reload
-  `rules/crs.py` is handed; `platform/nginx.conf` names the Kibana API
+  `cr-ids` names the rule file and reload command `sandbox/suricata.py` is
+  handed, and the WAF device `cr-waf` the `files:` and nginx reload
+  `sandbox/crs.py` is handed; `platform/nginx.conf` names the Kibana API
   routes it refuses, hands every other API call inside a space to the
   `kibana-gate` view and answers Kibana's `api/spaces/space` lookup itself;
   `platform/entrypoint.sh` starts `vm-terminal.sh cr-kali attack` and
   `vm-terminal.sh cr-waf defence` and creates the jump host's
   `authorized_keys`;
   `deploy/roles/infra/edge.nft` declares the `pool` and `spent` sets
-  `range/edge.py` fills; `front/src/panes/Kibana.tsx`
+  `sandbox/edge.py` fills; `front/src/panes/Kibana.tsx`
   presets Kibana's localStorage keys. `docs/ARCHITECTURE.md` keeps the table.
 - The dependency graph holds: `platform/tests/seams/test_imports.py` checks
   the layers and import rules of the design (`domain/` imports only the
-  standard library; a seam imports no Django and no app; `attack` and
-  `defence` never import each other; only `referee/` appends
-  `objective.lost`; across an app boundary only `<app>.service`), by AST and
+  standard library; a seam imports no Django and no unit; `attack` and
+  `defence` never import each other; only `scoring/` appends
+  `objective.lost`; across a unit or training-part boundary only that part's
+  surface modules (`SURFACES` there) or a lower layer's models), by AST and
   over model foreign keys and migration dependencies. A new module under
   `platform/` must be given a layer there.
 - Fixed by the user: OpenStack, Docker, Suricata, nginx, Elasticsearch.
   Everything else may be replaced if it shrinks the project without breaking
   the above.
 - Every UI action is a REST API first: there is one attack API and one
-  defence API, and the console, the bots, `test/` and `bin/` are all clients
-  of `/api/` through the client generated from `openapi/schema.yaml`. A bot
-  seat reaches exactly what a human seat reaches, under the same permission
+  defence API, and every client builds its calls from the committed
+  `openapi/schema.yaml`: `bots/`, `test/` and `bin/` through `bots/rest.py`,
+  `front/` through the types generated from it. A bot
+  player reaches exactly what a human player reaches, under the same permission
   class — this is what lets an agent take the human's place. `front/`,
   `bots/`, `test/` and `bin/` never import `platform/`.
 
@@ -190,12 +197,12 @@ logic changed, and before a push.
   process. Services raise `cr/errors.py` domain errors and never build
   responses; `cr/handler.py` maps them to the one error shape.
 - The target is not published; cases are fired from the attacker box inside
-  the range (`attack/firing.py`).
-  The product runs only on OpenStack: the range is one Heat stack per lease
+  the range (`training/attack/cases.py`).
+  The product runs only on OpenStack: the range is one Heat stack per allocation
   (`cr-slot-<n>`: the VMs kali, waf, infra and target on the stack's own
   Neutron LANs, booted from role images baked from `deploy/roles/` into
-  Glance), kept ready in a pool per wargame (`compute.pool`), given to a
-  lease when it opens and deleted and built again when it closes; `<n>` is
+  Glance), kept ready in a pool per wargame (`compute.pool`), given to an
+  allocation when it opens and deleted and built again when it closes; `<n>` is
   the reused stack number (`docs/ARCHITECTURE.md` glossary), and the platform
   VM runs the shared control plane from `compose.yaml`. Bring-up
   pulls prebuilt images from GHCR (built by `.github/workflows/images.yml` on

@@ -24,11 +24,8 @@ Updated: 2026-11-21.
   `training/lessons/` kept empty. The table is in `docs/STATE.md` "What
   exists on restructure".
 - The unit and API suite and `front/` (build, vitest) run against fakes.
-  The docs (README, ARCHITECTURE, OPENSTACK, STATE, this file) describe the
-  new layout. CLAUDE.md still names the side-split paths in its seam list
-  and needs the owner's edit; until then
-  `tests/seams/test_isolation_seams.py::test_the_exception_list_is_the_one_claude_md_gives`
-  fails.
+  The docs (CLAUDE.md, README, ARCHITECTURE, OPENSTACK, STATE, this file)
+  describe the new layout.
 
 ## Not live-verified
 

@@ -35,7 +35,7 @@ function StoredVersion({ round, version }: { round: number; version: number }) {
 }
 
 export function Waf({ round }: PaneProps) {
-  const read = useResource("/api/rounds/{round_id}/defence/waf/", { params: { round_id: round } }, { refreshOn: { round, kinds: ["rule.applied"] } });
+  const read = useResource("/api/rounds/{round_id}/defence/waf/", { params: { round_id: round } }, { refreshOn: { round, kinds: ["rule.applied", "rule.refused"] } });
   const versions = useRuleVersions(round, "waf");
   const [draft, setDraft] = useState<Record<string, string> | null>(null);
   const [path, setPath] = useState<string>("");

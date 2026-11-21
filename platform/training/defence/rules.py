@@ -13,7 +13,6 @@ from django.utils import timezone
 from cr import config, errors
 from cr.config import configured
 from domain.types import ENGINE_IDS, ENGINE_WAF, ENGINES
-from domain.verdicts import VerdictTable
 from sandbox import crs, reach, suricata
 from scoring import losses as referee
 from telemetry import events as log
@@ -193,18 +192,6 @@ def rule_test(found: Round, engine: str, test_id: int) -> RuleTest:
     return made
 
 
-def latest_test(found: Round, engine: str, player: Player | None = None) -> RuleTest | None:
-    tests = RuleTest.objects.filter(round=found, engine=engine_given(engine))
-    if player is not None:
-        tests = tests.filter(player=player)
-    return tests.order_by("-id").first()
-
-
-def latest_table(found: Round, engine: str, player: Player | None = None) -> VerdictTable | None:
-    made = latest_test(found, engine, player)
-    return None if made is None else ruletest.table_of(made.result)
-
-
 def tested_of(found: Round, engine: str, player: Player | None, tested: int | None) -> RuleTest | None:
     if tested is None:
         return None
@@ -333,11 +320,24 @@ def record_terminal_reload(found: Round) -> bool:
     gateway, waf = gateway_of(found)
     try:
         live = crs.read(gateway, waf)
-        if head.sha == ruletest.files_sha(live) or not crs.reloaded_since_written(gateway, waf):
+        if head.sha == ruletest.files_sha(live):
             return False
-    except crs.WafUnreadable:
+        measured = crs.refusals(live, waf)
+        if measured:
+            put_back_head(found, head, measured, gateway, waf)
+            return False
+        if not crs.reloaded_since_written(gateway, waf):
+            return False
+    except (crs.WafUnreadable, crs.WafRefused):
         return False
     return record_live_waf(found, TERMINAL, defence_player(found), live) is not None
+
+
+def put_back_head(found: Round, head: RuleSet, measured: Sequence[dict], gateway, waf) -> None:
+    crs.apply(head.files, gateway, waf)
+    log.append(found.pk, "rule.refused", {"engine": ENGINE_WAF, "version": head.version,
+                                          "message": "; ".join(one["message"] for one in measured)},
+               player_side=DEFENCE)
 
 
 def disabled(found: Round) -> list[DisabledRule]:

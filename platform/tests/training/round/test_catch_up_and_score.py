@@ -275,3 +275,26 @@ def test_the_round_s_end_judges_the_cases_left_before_it_says_the_round_ended(as
     per_case = as_operator.get(url(running, "score/")).json()["outcomes"]["per_case"]
 
     assert len(judged) == len(per_case) > 0 and max(judged) < shown.index("round.ended")
+
+
+def test_a_round_ended_between_reads_reads_the_logs_once_more_before_it_ends(monkeypatch, running):
+    read = alerts_read(monkeypatch)
+    service.catch_up(running)
+
+    service.end_round(running, "ended_by_operator")
+
+    assert read == [running.pk, running.pk]
+    assert Round.objects.get(pk=running.pk).reading_since is None
+
+
+def test_a_round_past_its_time_on_an_idle_allocation_ends_on_its_time_limit(as_operator, running):
+    from training.models import Allocation
+
+    late = running.ends_at - running.started + timedelta(minutes=5)
+    Round.objects.filter(pk=running.pk).update(started=running.started - late, ends_at=running.ends_at - late)
+    Allocation.objects.filter(pk=running.allocation_id).update(expires_at=timezone.now() - timedelta(seconds=1))
+
+    as_operator.get(url(running))
+
+    ended = Round.objects.get(pk=running.pk)
+    assert ended.end_reason == "time_limit" and Allocation.objects.get(pk=running.allocation_id).closed is not None

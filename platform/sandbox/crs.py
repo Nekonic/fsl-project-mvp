@@ -19,7 +19,8 @@ READ_FILES = 'for f in "$@"; do base64 -w0 "$f" 2>/dev/null; echo; done'
 WRITE_FILE = 'cat > "$1"'
 CRS_SETUP = "crs-setup.conf"
 DETECTION_ONLY = "SecRuleEngine DetectionOnly"
-NGINX_MEASUREMENT = re.compile(r"^\s*(access_log|log_format|error_log|open_log_file_cache)\b")
+NGINX_MEASUREMENT = re.compile(r"(?:^|[\s;{}])(access_log|log_format|error_log|open_log_file_cache"
+                               r"|set_real_ip_from|real_ip_header|real_ip_recursive)\b")
 MODSECURITY_MEASUREMENT = re.compile(r"\b(SecAudit\w*|SecDebugLog\w*|ctl:audit\w*)", re.IGNORECASE)
 NGINX_ERROR = re.compile(r"\[(?:emerg|alert|crit|error)\]\s*(?P<message>.*?)(?: in (?P<file>\S+):(?P<line>\d+))?$")
 RULES_ERROR = re.compile(r"File: (?P<file>\S+?)\.? Line: (?P<line>\d+)")
@@ -58,7 +59,7 @@ def measurement_in(path: str, text: str) -> list[dict]:
         kept = line.split("#", 1)[0]
         named = NGINX_MEASUREMENT.search(kept) or MODSECURITY_MEASUREMENT.search(kept)
         if named:
-            found.append(problem(path, number, f"{named.group(1)} is the platform's logging and stays as it is"))
+            found.append(problem(path, number, f"{named.group(1)} is the platform's measurement and stays as it is"))
     return found
 
 

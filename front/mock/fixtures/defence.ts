@@ -25,7 +25,7 @@ const wafFiles: Record<string, string> = {
   "/etc/nginx/defence/corp.com.conf": "",
 };
 
-const LOGGING = /^\s*(access_log|log_format|error_log)\b|SecAudit/;
+const LOGGING = /(^|[\s;{}])(access_log|log_format|error_log|set_real_ip_from|real_ip_header)\b|SecAudit/;
 
 function unbalancedLines(text: string): RuleError[] {
   return text.split("\n").flatMap((line, index) => {
@@ -38,7 +38,7 @@ function unbalancedLines(text: string): RuleError[] {
 
 function refusedFiles(files: Record<string, string> | undefined): RuleError[] {
   return Object.entries(files ?? {}).flatMap(([path, text]) => text.split("\n").flatMap((line, index) =>
-    LOGGING.test(line) ? [{ path, code: "crs_refused", line: index + 1, message: "the platform's logging stays as it is" }] : []));
+    LOGGING.test(line) ? [{ path, code: "crs_refused", line: index + 1, message: "the platform's measurement stays as it is" }] : []));
 }
 
 const benign = ["board-normal-search", "board-normal-search-with-apostrophe", "board-normal-post-list", "board-normal-sort", "board-normal-comment"];
