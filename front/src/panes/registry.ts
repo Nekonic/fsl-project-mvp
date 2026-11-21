@@ -10,7 +10,6 @@ import { Objectives } from "./Objectives";
 import { RuleVersions } from "./RuleVersions";
 import { Score } from "./Score";
 import { Site } from "./Site";
-import { StepCard } from "./StepCard";
 import { TerminalKali, TerminalWaf } from "./Terminal";
 import type { PaneProps } from "./types";
 import { Waf } from "./Waf";
@@ -29,7 +28,6 @@ export const panes = {
   origins: Origins,
   cases: AttackCases,
   applied: RuleVersions,
-  step_card: StepCard,
   score: Score,
 } satisfies Record<string, FunctionComponent<PaneProps>>;
 

@@ -1,12 +1,11 @@
 import { useEffect, useState } from "preact/hooks";
 import { api, ApiError } from "../../api/client";
 import { useAction, useResource } from "../../api/hooks";
-import { errorLine, errorText, t, type ShownError, tFor } from "../../strings";
+import { errorLine, errorText, t, type ShownError } from "../../strings";
 import { Button, ErrorList, ErrorNotice, Field, FormGrid, Input, Loading, Select, Stack, Switch, Text, TextArea, type Option, Chips, EditorCard, EditorGroup, EditorHead, EditorSection, EditorStrip, PublishRow } from "../../ui";
 import { usePostures, useWargames, wargameLabel } from "./catalog";
-import { asShownErrors, blankDraft, blankSetup, built, downloadJson, draftOf, KINDS, postureInline, SIDES, textUnder, type Draft } from "./document";
+import { asShownErrors, blankDraft, built, downloadJson, draftOf, postureInline, SIDES, textUnder, type Draft } from "./document";
 import { RoundSetupEditor } from "./RoundSetupEditor";
-import { StepsEditor } from "./StepsEditor";
 
 export interface ProblemEditorProps {
   problemId: number | null;
@@ -14,7 +13,6 @@ export interface ProblemEditorProps {
   onDeleted: () => void;
 }
 
-const KIND_OPTIONS: Option[] = KINDS.map((kind) => ({ value: kind, label: tFor("kind", kind) }));
 const SIDE_OPTIONS: Option[] = SIDES.map((side) => ({ value: side, label: t(`side.${side}`) }));
 const HELD_APART = ["stale_revision", "in_use"];
 
@@ -56,19 +54,14 @@ export function ProblemEditor({ problemId, onSaved, onDeleted }: ProblemEditorPr
   const stale = update.error?.has("stale_revision") ? update.error : undefined;
 
   const runCheck = async () => {
-    const { body, errors: local } = built(draft);
-    const said = await validate.run({ body });
-    setErrors([...local, ...asShownErrors(said?.errors ?? [])]);
-    setChecked(Boolean(said) && local.length === 0 && said?.ok === true);
+    const said = await validate.run({ body: built(draft) });
+    setErrors(asShownErrors(said?.errors ?? []));
+    setChecked(Boolean(said) && said?.ok === true);
   };
 
   const runSave = async () => {
-    const { body, errors: local } = built(draft);
+    const body = built(draft);
     setChecked(false);
-    if (local.length) {
-      setErrors(local);
-      return;
-    }
     const said = problemId && revision !== undefined
       ? await update.run({ params: { problem_id: problemId }, body: { ...body, base_revision: revision } })
       : await create.run({ body });
@@ -110,12 +103,11 @@ export function ProblemEditor({ problemId, onSaved, onDeleted }: ProblemEditorPr
   const startName = draft.start_posture?.name ?? "";
   const startOptions: Option[] = [{ value: "", label: t("common.none") }, ...postureOptions];
   if (startName && !postureOptions.some((option) => option.value === startName)) startOptions.push({ value: startName, label: startName });
-  const isRound = draft.problem.kind === "round";
   const pathed = errors.map((error) => ({ path: error.path, text: errorLine(error) }));
   const bad = (path: string) => Boolean(textUnder(errors, path));
 
   const publish = (
-    <PublishRow ruled={isRound}
+    <PublishRow ruled
       end={problemId && (confirming
         ? <>
           <Button small tone="danger" busy={deleting} onClick={() => void runDelete()}>{t("staff.delete_confirm")}</Button>
@@ -155,12 +147,8 @@ export function ProblemEditor({ problemId, onSaved, onDeleted }: ProblemEditorPr
         )}
         {checked && <EditorStrip tone="ok" title={t("staff.valid")} />}
 
-        <EditorSection ruled={isRound}>
+        <EditorSection ruled>
           <FormGrid>
-            <EditorGroup label={t("staff.problem.kind")}>
-              <Chips value={draft.problem.kind} options={KIND_OPTIONS} label={t("staff.problem.kind")}
-                onValue={(kind) => change({ problem: { ...draft.problem, kind: kind as Draft["problem"]["kind"] }, round: kind === "round" ? draft.round ?? blankSetup() : draft.round })} />
-            </EditorGroup>
             <EditorGroup label={t("staff.problem.side")}>
               <Chips value={draft.problem.side} options={SIDE_OPTIONS} label={t("staff.problem.side")}
                 onValue={(side) => changeProblem({ side: side as Draft["problem"]["side"] })} />
@@ -185,20 +173,13 @@ export function ProblemEditor({ problemId, onSaved, onDeleted }: ProblemEditorPr
               <TextArea rows={6} value={draft.problem.body} bad={bad("problem.body")} onValue={(body) => changeProblem({ body })} />
             </Field>
           </FormGrid>
-          {!isRound && publish}
         </EditorSection>
 
-        {isRound && draft.round && (
-          <EditorSection>
-            <RoundSetupEditor setup={draft.round} onSetup={(round) => change({ round })} errors={errors} postures={postureOptions} />
-            {publish}
-          </EditorSection>
-        )}
+        <EditorSection>
+          <RoundSetupEditor setup={draft.round} onSetup={(round) => change({ round })} errors={errors} postures={postureOptions} />
+          {publish}
+        </EditorSection>
       </EditorCard>
-
-      {(!isRound || draft.steps.length > 0) && (
-        <StepsEditor steps={draft.steps} onSteps={(steps) => change({ steps })} errors={errors} problemId={problemId} wargame={draft.problem.wargame} />
-      )}
     </Stack>
   );
 }

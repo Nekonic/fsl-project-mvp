@@ -12,11 +12,10 @@ export interface RailEntry {
 
 export interface ConsoleSpec {
   side: Side;
-  mark: "attack" | "defence" | "lesson";
+  mark: "attack" | "defence";
   rail: RailEntry[];
   asideLead?: PaneId;
   aside: PaneId[];
-  railAlways?: PaneId[];
 }
 
 const kibana: RailEntry = { pane: "kibana", label: "pane.kibana", icon: "search" };
@@ -29,7 +28,7 @@ const terminalKali: RailEntry = { pane: "terminal_kali", label: "pane.terminal_k
 const site: RailEntry = { pane: "site", label: "pane.site", icon: "globe" };
 const loot: RailEntry = { pane: "loot", label: "pane.loot", icon: "upload" };
 
-export type LayoutName = "attack" | "defence" | "lesson";
+export type LayoutName = "attack" | "defence";
 
 export const layouts: Record<LayoutName, ConsoleSpec> = {
   attack: {
@@ -45,13 +44,5 @@ export const layouts: Record<LayoutName, ConsoleSpec> = {
     rail: [kibana, map, idsRules, waf, alerts, terminalWaf],
     asideLead: "objectives",
     aside: ["applied"],
-  },
-  lesson: {
-    side: "defence",
-    mark: "lesson",
-    rail: [{ ...terminalKali, label: "pane.kali" }, kibana, alerts, idsRules, waf, map, site, terminalWaf],
-    asideLead: "step_card",
-    aside: ["origins"],
-    railAlways: ["map"],
   },
 };

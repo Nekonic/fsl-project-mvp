@@ -250,14 +250,6 @@ export function waitForAllocation(allocation: number, init: WaitInit<Schemas["Al
   );
 }
 
-export function waitForLesson(round: number, init: WaitInit<Schemas["LessonShown"]> = {}) {
-  return waitUntil(
-    () => api.get("/api/lessons/{round_id}/", { params: { round_id: round }, signal: init.signal }),
-    (shown) => shown.phase === "ready" || shown.phase === "ended",
-    init,
-  );
-}
-
 export async function openAllocation(wargame: string, init: WaitInit<Schemas["AllocationDetail"]> = {}) {
   const until = Date.now() + (init.within ?? SLOT_WAIT_LIMIT_MS);
   for (;;) {

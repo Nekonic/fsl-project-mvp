@@ -1,34 +1,20 @@
 import { minutesFromNow, refuse, reply } from "../fixture";
 
-const lessonTitles = [
-  "Lesson placeholder one", "Lesson placeholder two", "Lesson placeholder three",
-  "Lesson placeholder four", "Lesson placeholder five", "Lesson placeholder six",
-];
-
 export const problems = [
-  ...lessonTitles.map((title, index) => ({
-    id: index + 1, kind: "lesson", wargame: "board", side: index === 3 || index === 4 ? "both" : "defence",
-    title, summary: `Placeholder summary for ${title.toLowerCase()}`,
-  })),
-  { id: 7, kind: "match", wargame: "board", side: "both", title: "Board wargame", summary: "Placeholder summary for the board match" },
-  { id: 8, kind: "match", wargame: "corp", side: "both", title: "Corp wargame", summary: "Placeholder summary for the corp match" },
+  { id: 7, kind: "round", wargame: "board", side: "both", title: "Board wargame", summary: "Placeholder summary for the board match" },
+  { id: 8, kind: "round", wargame: "corp", side: "both", title: "Corp wargame", summary: "Placeholder summary for the corp match" },
 ];
 
 const human = (side: "attack" | "defence", username: string | null) => ({ side, client: "human", username, bot_name: "" });
 const bot = (side: "attack" | "defence", name: string) => ({ side, client: "bot", username: null, bot_name: name });
 
 const mine = [
-  { round: 41, problem: 7, kind: "match", matchup: "pvp", phase: "running" as const, players: [human("attack", "learner-two"), human("defence", "learner-one")] },
-  { round: 40, problem: 7, kind: "match", matchup: "def_vs_bot", phase: "ended" as const, players: [bot("attack", "claude-code"), human("defence", "learner-one")] },
+  { round: 41, problem: 7, kind: "round", matchup: "pvp", phase: "running" as const, players: [human("attack", "learner-two"), human("defence", "learner-one")] },
+  { round: 40, problem: 7, kind: "round", matchup: "def_vs_bot", phase: "ended" as const, players: [bot("attack", "claude-code"), human("defence", "learner-one")] },
 ];
 
 const joinable = [
-  { round: 42, problem: 7, kind: "match", matchup: "pvp", phase: "created" as const, players: [human("attack", "learner-three"), human("defence", null)] },
-];
-
-const lessons = [
-  { round: 38, problem: 5, phase: "ready" as const, passed_order: 3 },
-  { round: 37, problem: 1, phase: "ended" as const, passed_order: 6 },
+  { round: 42, problem: 7, kind: "round", matchup: "pvp", phase: "created" as const, players: [human("attack", "learner-three"), human("defence", null)] },
 ];
 
 export const fixtures = [
@@ -40,9 +26,6 @@ export const fixtures = [
     return mine;
   }),
   reply("get", "/api/rounds/", [], { variant: "empty-home" }),
-  reply("get", "/api/lessons/", lessons),
-  reply("get", "/api/lessons/", [], { variant: "empty-home" }),
-  reply("post", "/api/lessons/", (asked) => ({ round: 50 + (asked.body?.problem ?? 0), allocation: 30, phase: "waiting_slot" as const }), { status: 201 }),
   reply("post", "/api/allocations/", (asked) => ({
     allocation: 7, wargame: asked.body?.wargame ?? "board", slot: 2, ready: false, expires_at: minutesFromNow(120), closed: null,
   }), { status: 201 }),

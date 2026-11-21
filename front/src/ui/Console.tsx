@@ -2,7 +2,7 @@ import type { ComponentChildren } from "preact";
 import { cx } from "./classes";
 import { Icon, type IconName } from "./Icon";
 
-export type SideMark = "attack" | "defence" | "lesson";
+export type SideMark = "attack" | "defence";
 
 export interface RoundFact {
   label: ComponentChildren;

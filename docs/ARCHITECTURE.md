@@ -10,10 +10,9 @@
 ## 용어
 
 - **워게임**: 대상 앱과 그 목표, 케이스. `board`와 `corp` 두 개. `wargames/<id>/wargame.yaml`이 정의
-- **문제**(`Problem`): 스태프가 DB에 쓰는 레슨 또는 라운드 문제. 레슨 문제는 단계(`Step`)를, 라운드 문제는 라운드
-  설정(`RoundSetup`)을 가짐
-- **리스**(`Lease`): 슬롯 스택 하나를 빌린 것. 용도는 `round`, `lesson`, `probe`. 닫히거나 만료되면 스택을 지우고 새로 만듦
-- **라운드**(`Round`): 리스 위에서 도는 한 판. 종류는 `round` 또는 `lesson`, 단계는 `created → starting → running → ended`
+- **문제**(`Problem`): 스태프가 DB에 쓰는 라운드 문제. 라운드 설정(`RoundSetup`)을 가짐
+- **리스**(`Lease`): 슬롯 스택 하나를 빌린 것. 용도는 `round`, `probe`. 닫히거나 만료되면 스택을 지우고 새로 만듦
+- **라운드**(`Round`): 리스 위에서 도는 한 판. 종류는 `round`, 단계는 `created → starting → running → ended`
 - **자리**(`Seat`): 라운드의 공격석 또는 방어석. 사람(`human`) 또는 봇(`bot`). 봇 자리는 자리 토큰을 가짐
 - **매치업**: `pvp`, `def_vs_bot`(사람 수비 vs AI 공격 봇), `atk_vs_bot`(사람 공격 vs AI 수비 봇)
 - **슬롯**: `cr-slot-N`의 N. 다시 쓰는 번호. Kibana space `soc-logs-N`, 로그 인덱스 `logs-N-*`도 이 번호
@@ -39,7 +38,6 @@ FK 대상과 마이그레이션 의존성도 같은 순서를 따르는지 봅�
 | L4 | `referee/models.py`, `referee/service.py` |
 | L5 양쪽 | `attack/models.py`, `attack/service.py`, `defence/*`(`kibana.py` 제외) |
 | L6 | `match/service.py`, `customers.py`, `site.py`, `retention.py`, `probes.py` |
-| L7 | `lessons/*` |
 | L8 HTTP | `views*.py`, `serializers.py`, `urls.py`, `cr/urls.py`, `cr/handler.py`, `cr/schema.py`, `cr/settings.py`, `cr/strings.py`, `cr/wsgi.py`, `management/commands/*`, `apps.py`, 마이그레이션 |
 
 주요 규칙:
@@ -49,10 +47,9 @@ FK 대상과 마이그레이션 의존성도 같은 순서를 따르는지 봅�
    주입받은 runner(`range/runner.py`의 `Runner`, `Launcher`, `Substrate`)로 합니다.
 3. `attack`과 `defence`는 서로 import하지 않습니다.
 4. `referee.loot`, `referee.effect`는 `referee/`만 import합니다. 다른 앱은 `referee.service`만 씁니다.
-5. `referee`는 `attack`, `defence`, `lessons`, `match.service`를 import하지 않습니다. 행동과 탐지는 호출하는 쪽이
+5. `referee`는 `attack`, `defence`, `match.service`를 import하지 않습니다. 행동과 탐지는 호출하는 쪽이
    `domain.types` 레코드로 넘깁니다.
-6. `lessons`는 `match`, `attack`, `defence`, `referee`, `content`의 `service.py`만 import합니다.
-7. 양쪽 서비스를 둘 이상 import하는 것은 L6의 `match` 모듈과 `lessons.service`뿐입니다.
+6. 양쪽 서비스를 둘 이상 import하는 것은 L6의 `match` 모듈뿐입니다.
 8. `events`는 다른 앱을 import하지 않고 FK도 없습니다. 모든 앱이 `events.log`를 씁니다.
 9. 앱 경계를 넘을 때는 `<앱>.service`만 import합니다. `<앱>.models`는 아래 계층 FK 대상일 때만 씁니다.
 10. view와 serializer는 자기 앱의 `service.py`, 자기 `models`, DRF, `cr.errors`, `match.auth`, `accounts.service`만
@@ -96,7 +93,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                jump.py      경계: 플랫폼 sshd 점프 권한, 키 생성, 박스 계정의 authorized_keys
   accounts/    SignInBlock, 로그인·가입·승인, 차단, 스태프 계정 API, 초기 계정 admin(마이그레이션 0002)
   events/      Event(FK 없음), kinds.py(종류별 스키마와 보는 쪽), log.py(append, after), 피드 API
-  content/     Wargame, Posture, Problem, Step, RoundSetup, ProbeSet, catalog.py(wargames/와 redteam/cases 읽기)
+  content/     Wargame, Posture, Problem, RoundSetup, ProbeSet, catalog.py(wargames/와 redteam/cases 읽기)
                스태프 문제 API(중첩 문서, revision, 내보내기·가져오기), 학습자 읽기 API
   match/       Lease, Round, Seat, CustomerRequest
                auth.py      SeatTokenAuthentication, HasSeat(side), InRound, IsOperator, OnLease
@@ -116,9 +113,9 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                alerts.py    AlertCursor로 알림 수집    ruletest.py  검사 → probe 묶음 → 오프라인 실행 → 판정표
                disable.py   룰 임시 비활성화
                service.py   방어 API의 모든 동작       views_kibana.py  Kibana 게이트
-  lessons/     StepResult, Progress, facts.py(판정에 필요한 기록을 양쪽 서비스로 모음), service.py
+  lessons/     빈 패키지. 다시 만들 레슨의 자리
   testing/     fakecloud.py  standin.py  fakes.py(가짜 runner, 가짜 ES)  fakerange.py  factories.py(영어 자리표시 문제)
-  tests/       domain/  seams/  accounts/  events/  content/  match/  referee/  defence/  attack/  lessons/  contract/
+  tests/       domain/  seams/  accounts/  events/  content/  match/  referee/  defence/  attack/  contract/
                test_*.py(배포 파일, compose, 역할 이미지, 경계 검사 등)
   entrypoint.sh  nginx.conf  vm-terminal.sh  tmux.conf  Dockerfile
 bots/          tools.py  rest.py  calls.py  shell.py  cli.py  play.py  provider.py  signin.py  prompts/
@@ -130,19 +127,19 @@ deploy/        roles/<kali|waf|infra|target>/  openstack/  suricata/  filebeat/ 
 front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단계가 빌드하고 nginx가 /app/front/dist로 내줌
   src/theme/   tokens.css(색, 글꼴, 크기, 간격, 둥글기, 그림자 값)  components.css(모든 컴포넌트 클래스)
   src/ui/      props만 받아 클래스를 그리는 작은 컴포넌트: Button, Badge, Card, Hero, Table, Field, Notice, Shell(TopNav,
-               PageShell), Console(Rail, Pane, PaneHeader, Aside), Steps, Site, Editor, Ops, Record, Tiles, Text, Icon
+               PageShell), Console(Rail, Pane, PaneHeader, Aside), Site, Editor, Ops, Record, Tiles, Text, Icon
                looks.ts     상태별 모양 선택(타일 색, 단계 색). index.ts에서 모두 내보냄
   src/panes/   설계 §13의 패널. 각자 api/의 훅으로 데이터를 받고 ui/로 그림. 어느 페이지에 있는지 모름
                Kibana  Terminal(Kali, WAF)  Site  Map(+map-symbols/)  IdsRules  Waf  RuleTestTable  Alerts
-               Objectives  Origins  Loot  AttackCases  RuleVersions  Score  StepCard
-               registry.ts  패널 id → 컴포넌트 표   staff/  문제·posture 편집기, 가져오기, 단계 편집
-  src/pages/   얇은 배치: 어떤 패널을 어디에 둘지. Login  Signup  Home  RoundLobby  Lesson  RoundAttack  RoundDefence
+               Objectives  Origins  Loot  AttackCases  RuleVersions  Score  Verdicts
+               registry.ts  패널 id → 컴포넌트 표   staff/  문제·posture 편집기, 가져오기
+  src/pages/   얇은 배치: 어떤 패널을 어디에 둘지. Login  Signup  Home  RoundLobby  RoundAttack  RoundDefence
                Result  staff/(Problems  Postures  Users  Range)
   src/console/ Console.tsx(layouts.ts의 선언대로 레일, 본문, 오른쪽 열을 그림)  RoundHeader.tsx
   src/shell/   AppPage.tsx(상단 메뉴와 페이지 틀)  AuthCard.tsx(로그인·가입 카드)
   src/api/     client.ts(CSRF 갱신, 90초 제한, 슬롯 대기, 오류 형태)  follow.ts(이벤트 커서 하나, 리스 heartbeat)
                hooks.ts(useResource, useEvents 등)  schema.d.ts(생성, 커밋 안 함)
-  src/         layouts.ts(공격·방어·레슨 콘솔의 레일 순서와 오른쪽 열)  routes.ts(경로 표)  nav.ts(상단 메뉴 표)
+  src/         layouts.ts(공격·방어 콘솔의 레일 순서와 오른쪽 열)  routes.ts(경로 표)  nav.ts(상단 메뉴 표)
                strings.ts(t(key, params), strings/console.json 읽기)  links.ts  router.ts  format.ts  App.tsx  main.tsx
   mock/        개발 서버(npm run dev)에서만 쓰는 가짜 /api/ 응답. fixtures/에 화면별 응답, 영어 자리표시
 ```
@@ -230,7 +227,7 @@ sequenceDiagram
 - 시작 조건: 비어 있는 사람 자리가 없어야 하고(`seats_open`), 슬롯이 준비돼 있어야 하며, 채점 라운드는 목표를 잃은 적
   없는 리스여야 합니다.
 - 종료 이유: `time_limit`, `all_objectives_lost`, `origins_spent`(정상 케이스가 한 바퀴 돈 뒤에만), `ended_by_operator`,
-  `forfeit_attack`, `forfeit_defence`, `steps_done`(레슨), `lease_expired`.
+  `forfeit_attack`, `forfeit_defence`, `lease_expired`.
 - 리스는 `CR_LEASE_IDLE_MINUTES` 동안 하트비트가 없으면 만료됩니다. 운영자와 자리가 하트비트를 보냅니다.
 - 읽기 단계 하나가 실패해도 나머지 단계는 계속 돕니다. 제한 시간이 지난 라운드는 다음 요청이 끝내고 종료 시각은
   제한 시간으로 남깁니다. 점수는 종료 시각까지의 동작, 알림, 목표만 셉니다.
@@ -249,7 +246,6 @@ sequenceDiagram
 | `events` | `/api/rounds/<r>/events/?after=` | 커서 피드. 종류마다 보는 쪽이 정해짐 |
 | `attack` | `/api/rounds/<r>/attack/{state,cases,requests,tools,tools/<run>,loot,origins/next,terminal}/` | 공격 API. 성공 응답에 `remaining`, 모든 응답에 `X-Origin`, `X-Origins-Left` |
 | `defence` | `/api/rounds/<r>/defence/{state,alerts,traffic,probes,ids/rules,ids/rules/versions,ids/rules/check,ids/rules/test,ids/rules/tests/<t>,ids/rules/apply,ids/disabled,ids/disabled/<sid>,waf,waf/versions,waf/check,waf/test,waf/tests/<t>,waf/apply,terminal,kibana}/` | 방어 API |
-| `lessons` | `/api/lessons/`, `/api/lessons/<r>/{,steps/<n>/check,steps/<n>/hint,end}/`, `/api/staff/steps/<p>/<n>/try/` | 레슨 |
 | `catalog`, `staff` | `/api/problems/`, `/api/staff/problems/…`, `/api/staff/postures/…`, `/api/staff/wargames/` | 문제 읽기와 작성 |
 
 권한:
@@ -371,8 +367,7 @@ sequenceDiagram
 
 ## 이벤트
 
-`events.kinds`가 종류마다 본문 스키마와 보는 쪽을 정합니다. 레슨 라운드에서는 학습자가 모든 자리를 맡으므로 양쪽을
-다 봅니다.
+`events.kinds`가 종류마다 본문 스키마와 보는 쪽을 정합니다.
 
 | 종류 | 보는 쪽 |
 |---|---|
@@ -380,19 +375,14 @@ sequenceDiagram
 | `action.sent`, `tool.started`, `tool.ended`, `command.run`, `origin.spent`, `origin.switched`, `origins.spent` | 공격, 스태프 |
 | `alert.seen`, `rule.tested`, `rule.applied`, `rule.disabled`, `limit.below_floor`, `case.judged` | 방어, 스태프 |
 | `objective.lost` | 양쪽(누구 행동인지는 스태프만) |
-| `step.answered`, `step.passed` | 레슨 자리, 스태프 |
 
-이벤트는 피드일 뿐 저장소가 아닙니다. 점수와 단계 판정은 이벤트가 아니라 행(`Action`, `Detection`, `Objective`,
+이벤트는 피드일 뿐 저장소가 아닙니다. 점수와 판정은 이벤트가 아니라 행(`Action`, `Detection`, `Objective`,
 `RuleTest`, `RuleSet`)을 읽습니다.
 
 ## 레슨
 
-- `POST /api/lessons/ {problem}`가 `Lease(purpose=lesson)`와 `Round(kind=lesson)`를 열고, 문제의 `side`가 필요로
-  하는 자리에 학습자를 앉힙니다. 슬롯이 준비되면 라운드가 스스로 시작합니다.
-- 판정: `lessons.facts`가 그 판정 종류에 필요한 기록만 양쪽 서비스로 모으고, `domain.checks.JUDGES[kind]`가 정합니다.
-  `CHECK_SCHEMAS`와 `JUDGES`는 키가 같고 테스트가 확인합니다.
-- 단계는 앞 단계가 그 라운드에서 처음 통과한 시점에 열립니다. 앞 단계를 다시 판정해도 뒤 단계의 기록이 가려지지 않습니다.
-- 진도(`Progress`)는 학습자·문제별입니다. 답안은 API로 나가지 않습니다.
+레슨은 다시 만들 예정입니다. 기존 레슨의 단계, 판정, 진도, 힌트, API와 화면은 지웠고,
+`platform/training/lessons/`는 모델 없는 빈 패키지로 자리만 남겼습니다.
 
 ## 봇
 
@@ -433,6 +423,6 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
 - `front/`는 가짜 응답(`front/mock/`)으로만 확인했고 훈련 환경에서는 아직 돌리지 않았습니다. 플랫폼 Dockerfile의
   node 단계가 `npm run types`(openapi-typescript)로 `front/src/api/schema.d.ts`를 만들고 빌드한 뒤 `dist`를
   `/app/front/dist`에 넣습니다. `strings/server.json`은 빌드에 쓰이지만 `dist`에는 들어가지 않습니다.
-- API에 없어서 목업과 다른 곳: 지난 라운드의 종료 시각과 결과, 레슨의 단계 수, 로비의 연 시각, CRS 미리 보기, 케이스·목표 목록(스태프 편집기는 id로
+- API에 없어서 목업과 다른 곳: 지난 라운드의 종료 시각과 결과, 로비의 연 시각, CRS 미리 보기, 케이스·목표 목록(스태프 편집기는 id로
   입력)이 없습니다.
 - infra, waf 이미지 다시 굽기와 `wargames/<id>/probes/` 녹화(`bin/record-probes`). 배포 파일은 고쳐 두었습니다.

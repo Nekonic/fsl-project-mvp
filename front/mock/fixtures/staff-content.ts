@@ -20,35 +20,9 @@ const postures: Posture[] = [
   { id: 3, wargame: "corp", name: "default", suricata_rules: RULES, waf_files: FILES },
 ];
 
-const lessonTitles = [
-  "Lesson placeholder one", "Lesson placeholder two", "Lesson placeholder three",
-  "Lesson placeholder four", "Lesson placeholder five", "Lesson placeholder six",
-];
-
-function lesson(id: number, title: string): Stored {
-  return {
-    problem: {
-      id, kind: "lesson", wargame: "board", side: id === 4 || id === 5 ? "both" : "defence", title,
-      summary: `Placeholder summary for ${title.toLowerCase()}`, body: "Placeholder problem body.\n\nSecond paragraph.",
-      published: true, revision: id + 2, author: "staff-one", updated: UPDATED,
-    },
-    steps: [
-      { order: 1, body: "Placeholder step one: run the tool from the Kali terminal.", opens: "terminal_kali", check: { kind: "kali", params: { command_has: "sqlmap" } }, hints: [] },
-      { order: 2, body: "Placeholder step two: find the rule id in Kibana.", opens: "kibana", check: { kind: "answer", params: { accept: ["913100"], normalise: "text" } }, hints: ["Placeholder hint one.", "Placeholder hint two."] },
-      { order: 3, body: "Placeholder step three: run it again with another agent.", opens: "terminal_kali", check: { kind: "kali", params: { command_has: "--random-agent" } }, hints: [] },
-      { order: 4, body: "Placeholder step four: find the alert in the alert list.", opens: "alerts", check: { kind: "alert_seen", params: { engine: "waf" } }, hints: ["Placeholder hint."] },
-      { order: 5, body: "Placeholder step five: write and test an IDS rule.", opens: "ids_rules", check: { kind: "rule_test", params: { engine: "ids", case: "board-sqli-orderby-sqlmap-tamper" } }, hints: ["Placeholder hint."] },
-      { order: 6, body: "Placeholder step six: apply the tested rule.", opens: "ids_rules", check: { kind: "rule_applied", params: { engine: "ids", same_as_tested: true } }, hints: [] },
-    ],
-    round: null,
-    start_posture: id === 6 ? { name: "wide-sort-exclusion", suricata_rules: RULES, waf_files: WIDE_FILES } : { name: "default", suricata_rules: RULES, waf_files: FILES },
-  };
-}
-
 function wargameRound(id: number, wargame: string, title: string): Stored {
   return {
     problem: { id, kind: "round", wargame, side: "both", title, summary: "Placeholder summary for the match.", body: "", published: true, revision: 3, author: "staff-one", updated: UPDATED },
-    steps: [],
     round: {
       matchups: ["pvp", "def_vs_bot", "atk_vs_bot"], posture: "default",
       probe_cases: [`${wargame}-sqli-search`, `${wargame}-xss-script-tag-in-search`, `${wargame}-sqli-orderby-sqlmap-probe`, `${wargame}-path-traversal-static`, `${wargame}-normal-sort`],
@@ -60,7 +34,6 @@ function wargameRound(id: number, wargame: string, title: string): Stored {
 }
 
 const documents = new Map<number, Stored>([
-  ...lessonTitles.map((title, index) => [index + 1, lesson(index + 1, title)] as [number, Stored]),
   [7, wargameRound(7, "board", "Board wargame")],
   [8, wargameRound(8, "corp", "Corp wargame")],
 ]);
@@ -75,16 +48,12 @@ function listed() {
 }
 
 function found(id: string | undefined): Stored {
-  return documents.get(Number(id)) ?? (documents.get(1) as Stored);
+  return documents.get(Number(id)) ?? (documents.get(7) as Stored);
 }
 
 function validation(body: DocumentBody | undefined): FieldError[] {
   const errors: FieldError[] = [];
   if (!body?.problem.title.trim()) errors.push({ path: "problem.title", code: "required" });
-  (body?.steps ?? []).forEach((step, index) => {
-    const named = step.check.params.case;
-    if (typeof named === "string" && named.endsWith("-tamper")) errors.push({ path: `steps[${index}].check.params.case`, code: "not_recorded" });
-  });
   (body?.round?.probe_cases ?? []).forEach((name, index) => {
     if (name.includes("-normal-")) errors.push({ path: `round.probe_cases[${index}]`, code: "not_malicious" });
   });
@@ -94,7 +63,6 @@ function validation(body: DocumentBody | undefined): FieldError[] {
 function stored(id: number, body: DocumentBody, revision: number): Stored {
   const doc: Stored = {
     problem: { ...body.problem, summary: body.problem.summary ?? "", body: body.problem.body ?? "", published: body.problem.published ?? false, id, revision, author: "staff-one", updated: new Date().toISOString() },
-    steps: (body.steps ?? []).map((step) => ({ ...step, opens: step.opens ?? "none", check: step.check })),
     round: body.round ?? null,
     start_posture: body.start_posture ? { ...body.start_posture, suricata_rules: body.start_posture.suricata_rules ?? "" } : null,
   };
@@ -115,20 +83,15 @@ export const fixtures = [
   reply("delete", "/api/staff/problems/{problem_id}/", undefined),
   refuse("delete", "/api/staff/problems/{problem_id}/", 409, [{ path: "", code: "in_use" }], { variant: "in-use" }),
   reply("get", "/api/staff/problems/{problem_id}/export/", (asked) => {
-    const { problem, steps, round, start_posture } = found(asked.params.problem_id);
+    const { problem, round, start_posture } = found(asked.params.problem_id);
     const { id: _id, revision: _revision, author: _author, updated: _updated, ...fields } = problem;
-    return { problem: fields, steps, round, start_posture };
+    return { problem: fields, round, start_posture };
   }),
   reply("post", "/api/staff/problems/import/", (asked) => stored(nextProblem++, asked.body as DocumentBody, 1), { status: 201 }),
   reply("post", "/api/staff/problems/validate/", (asked) => {
     const errors = validation(asked.body);
     return { ok: errors.length === 0, errors };
   }),
-  reply("post", "/api/staff/steps/{problem_id}/{order}/try/", (asked) => (
-    Number(asked.params.order) % 2 === 0
-      ? { verdict: "passed" as const, detail_code: null, next: Number(asked.params.order) + 1 }
-      : { verdict: "not_yet" as const, detail_code: "no_alert", next: null }
-  )),
   reply("get", "/api/staff/postures/", () => postures),
   reply("get", "/api/staff/postures/{posture_id}/", (asked) => postures.find((posture) => posture.id === Number(asked.params.posture_id)) ?? (postures[0] as Posture)),
   reply("post", "/api/staff/postures/", (asked) => {

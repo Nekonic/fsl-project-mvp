@@ -8,7 +8,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 - `board`: `board.com`, Django 게시판과 MySQL
 - `corp`: `corp.com`, WordPress 회사 사이트와 MySQL
 
-학습은 **레슨**에서 시작해 **실전 라운드**로 갑니다. 레슨도 내부적으로는 라운드 하나(종류 `lesson`)입니다.
+학습은 **실전 라운드**로 합니다. 레슨은 다시 만들 예정이라 지금은 없습니다.
 
 실전 라운드는 슬롯 스택 하나에 공격석과 방어석 두 자리를 둡니다. 매치업은 셋입니다.
 
@@ -25,37 +25,14 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 
 ## 학습 단계
 
-교육 담당자가 문제를 만들고, 학습자는 레슨으로 도구와 판단 기준을 익힌 다음 실전 라운드에 들어갑니다.
+교육 담당자가 문제를 만들고, 학습자는 실전 라운드에 들어갑니다.
 
-### 1. 레슨
+### 레슨
 
-레슨 문제 하나는 단계 목록입니다. 단계마다 다음을 정합니다.
+레슨은 다시 만들 예정입니다. 기존 레슨 코드와 내용(단계, 판정, 힌트, 레슨 화면)은 지웠고,
+`platform/training/lessons/`는 새 레슨이 들어갈 자리로 비워 두었습니다. 지금 학습자가 고를 수 있는 것은 실전 라운드뿐입니다.
 
-- 본문: 학습자에게 보여 줄 설명과 과제
-- 여는 패널(`opens`): `kibana`, `terminal_kali`, `terminal_waf`, `site`, `map`, `ids_rules`, `waf`, `alerts`, `none` 중 하나
-- 판정(`check`): 서버가 판정하는 종류 하나와 그 파라미터
-- 힌트: 학습자가 하나씩 열어 봄
-
-판정 종류는 아래와 같습니다. 판정은 라운드에 실제로 쌓인 기록(룰 테스트, 적용 이력, 탐지, 요청, 명령, 목표)을 읽습니다.
-
-| 종류 | 통과 조건 |
-|---|---|
-| `answer` | 입력한 답이 허용 답안과 일치 |
-| `choice` | 고른 보기가 정답 |
-| `loot` | 이 라운드에서 제출한 loot로 대상의 목표가 넘어감 |
-| `rule_test` | 학습자의 최근 룰 테스트에서 지정 케이스가 정탐이고 수법까지 짚었으며(`corroborated`), 정상 케이스는 모두 정상 통과 |
-| `rule_applied` | 단계가 열린 뒤 룰을 적용함. 필요하면 테스트한 룰 그대로 적용했는지까지 봄 |
-| `alert_seen` | 조건에 맞는 알림이 나옴 |
-| `sent` | 조건에 맞는 요청을 보냄 |
-| `kali` | Kali 명령 기록에 지정 문자열이 있음. 명령 기록은 학습자가 고칠 수 있어 학습 보조로만 씀 |
-| `waf_changed` | WAF 설정이 지정한 방향으로 바뀜(paranoia·임계값 올림/내림, 예외 추가·삭제·좁힘, 탐지 전용 켬/끔) |
-
-- 앞 단계를 통과해야 다음 단계를 판정합니다. 순서를 건너뛰면 `step_locked`입니다.
-- 진도는 학습자와 문제별로 남습니다. 할당을 닫고 다시 열어도 마지막으로 통과한 단계 다음부터 이어 갑니다.
-- 문제의 공격·방어 범위(`side`)가 `both`이면 학습자 한 명이 두 자리를 다 맡습니다.
-- 마지막 단계를 통과하면 라운드가 `steps_done`으로 끝나고 할당을 닫습니다.
-
-### 2. 실전 라운드
+### 실전 라운드
 
 라운드 문제는 매치업, 시작 방어 설정(posture), 룰 테스트에 쓸 케이스, 노리는 목표, 고객 트래픽, 시간 제한을
 정합니다.
@@ -71,7 +48,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 
 ### 문제 내용
 
-지금 저장소에는 레슨과 라운드 문제가 하나도 없습니다. 기존 레슨 F1~F6, 과정 c1·c2, 시나리오 1.1~4.1은
+지금 저장소에는 라운드 문제가 하나도 없습니다. 기존 레슨 F1~F6, 과정 c1·c2, 시나리오 1.1~4.1은
 삭제했습니다. 문제는 스태프 페이지에서 새로 작성할 예정이고, 문제 본문은 DB에만 둡니다. 저장소 사이 이동은
 스태프 API의 내보내기·가져오기(`/api/staff/problems/<id>/export/`, `/api/staff/problems/import/`)로만 합니다.
 스태프 페이지(`/staff/problems/`)가 이 API를 그대로 씁니다. 스태프 페이지는 아직 훈련 환경에서 써 보지 않았습니다.
@@ -372,7 +349,7 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
   `https://cr.example`처럼 scheme, 호스트, 포트만 적습니다. 플랫폼 컨테이너가 시작할 때 nginx 설정에 넣고,
   사이트 origin은 `/api/me/`의 `site_origin`으로 콘솔에 알려 줍니다. 형식이 틀리면 컨테이너가 시작하지 않습니다.
 - `board.com`과 `corp.com`은 훈련 환경 안에서만 응답합니다. 공격석이 8002로 보낸 요청은 공격 API와 같은 경로로
-  나갑니다. 방어석과 레슨의 요청은 할당의 브라우징 마커를 달고 infra VM에서 고객 주소로 나가며, 공격으로도 오탐으로도
+  나갑니다. 방어석의 요청은 할당의 브라우징 마커를 달고 infra VM에서 고객 주소로 나가며, 공격으로도 오탐으로도
   세지 않습니다.
 - 공격 API와 방어 API의 계약은 `openapi/schema.yaml`입니다. 자리별 스키마는 `/api/schema/attack/`,
   `/api/schema/defence/`입니다.
@@ -405,8 +382,8 @@ bin/verify --fast       # 단위·API 테스트 전체
   (`bots/rest.py`). `front/src/api/schema.d.ts`는 `front/`가 `npm run types`로 만들고 커밋하지 않습니다.
   node가 없으면 TypeScript 타입과 `front/` 검사를 건너뜁니다.
 - `front/`, `strings/`, `openapi/` 아래가 바뀌면 `bin/verify`가 `front/`를 타입 검사·빌드하고 vitest를 돌립니다.
-- `--fast`는 `platform/tests/` 아래 계층별로 `domain`(Django 없이), `seams`, 앱별(`accounts`, `events`, `content`,
-  `match`, `referee`, `defence`, `attack`, `lessons`), `contract` 순서로 돌리고, 그다음 `platform/tests/test_*.py`를
+- `--fast`는 `platform/tests/` 아래 계층별로 `domain`(Django 없이), `seams`, 단위별(`users`, `telemetry`, `scoring`,
+  `training`), `contract` 순서로 돌리고, 그다음 `platform/tests/test_*.py`를
   돌립니다.
 - 한 계층만 돌리려면 `platform/`에서 실행합니다.
 

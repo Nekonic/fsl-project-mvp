@@ -1,6 +1,5 @@
 import type { FunctionComponent } from "preact";
 import { Home } from "./pages/Home";
-import { Lesson } from "./pages/Lesson";
 import { Login } from "./pages/Login";
 import { Result } from "./pages/Result";
 import { RoundAttack } from "./pages/RoundAttack";
@@ -30,7 +29,6 @@ export const routes: Route[] = [
   { path: "/signup", page: Signup, access: "public" },
   { path: "/", page: Home, access: "member" },
   { path: "/allocations/:allocation", page: RoundLobby, access: "member" },
-  { path: "/lessons/:round", page: Lesson, access: "member" },
   { path: "/rounds/:round/attack", page: RoundAttack, access: "member" },
   { path: "/rounds/:round/defence", page: RoundDefence, access: "member" },
   { path: "/rounds/:round/result", page: Result, access: "member" },

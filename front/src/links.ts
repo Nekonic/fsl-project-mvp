@@ -3,7 +3,6 @@ export const to = {
   login: (next?: string) => (next && next !== "/" && !next.startsWith("/login") ? `/login?next=${encodeURIComponent(next)}` : "/login"),
   signup: () => "/signup",
   allocation: (allocation: number) => `/allocations/${allocation}`,
-  lesson: (round: number) => `/lessons/${round}`,
   attack: (round: number) => `/rounds/${round}/attack`,
   defence: (round: number) => `/rounds/${round}/defence`,
   player: (round: number, side: "attack" | "defence") => `/rounds/${round}/${side}`,

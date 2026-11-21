@@ -14,7 +14,6 @@ export {
   RoundBar, Rail, ConsoleLayout, KeptPane, PaneSplit, Pane, PaneHeader, PaneSection, Aside, AsideHead, AsideCard, RowLine, Frame, FrameEmpty,
   type RailItem, type RoundFact, type SideMark,
 } from "./Console";
-export { StepCardFrame, HintBox, StepRows, StepRow, type StepState } from "./Steps";
 export { SiteSplit, SideList, SiteBar, SiteAddress, SiteFrame, PaneColumn } from "./Site";
 export { CodeEditor, type CodeEditorProps } from "./Editor";
 export { OpRow, ServerDots, IdentityCell, RowActions, FormErrorLines, MapFrame, type ServerDot, type MapFrameProps } from "./Ops";
@@ -23,4 +22,4 @@ export {
   TryRow, KeyNote, Inputs, WithUnit, PublishRow, FilePick,
   type PickItem, type PickGroup, type LineItem,
 } from "./Record";
-export { lessonTileLook, roundTileLook, phaseTone, type TileLook } from "./looks";
+export { roundTileLook, phaseTone, type TileLook } from "./looks";
