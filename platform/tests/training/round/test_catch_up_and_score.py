@@ -25,23 +25,29 @@ def running(allocation, problem, learner, other):
 
 
 def test_a_silent_attacker_still_ends_with_true_negatives_from_the_benign_schedule(as_operator, running):
-    service.catch_up(running)
+    as_operator.get(url(running, "events/"))
     service.end_round(running, "ended_by_operator")
 
     totals = as_operator.get(url(running, "score/")).json()["outcomes"]["totals"]
 
-    assert totals["tn"] >= len(customers.benign_cases(running)) > 0
+    assert totals["tn"] == len(customers.benign_cases(running)) > 0
     assert totals["tp"] == totals["fn"] == totals["fp"] == 0
 
 
-def test_every_benign_case_goes_out_from_a_customer_address_never_an_attack_origin(running):
+def test_every_benign_case_goes_out_once_from_the_infra_box_on_a_customer_address_never_an_attack_origin(cloud,
+                                                                                                         running):
     service.catch_up(running)
 
     sent = CustomerRequest.objects.filter(round=running).exclude(benign_case=None)
     attack_ips = {origin.ip for origin in running.origins.all()}
+    slot = cloud.in_slot(1)
 
     assert sorted(sent.values_list("benign_case", flat=True)) == sorted(customers.benign_cases(running))
     assert sent.count() and not set(sent.values_list("source_ip", flat=True)) & attack_ips
+    for one in sent:
+        assert len(slot.customers.matching(f"X-Request-ID: {one.marker}")) == 1
+        assert f"--interface {one.source_ip}" in slot.customers.matching(one.marker)[0].text
+        assert not slot.box.matching(one.marker)
     assert customers.passes(running) == 1
 
 
@@ -83,11 +89,8 @@ def test_a_read_spends_every_origin_the_waf_error_log_denies_and_the_round_ends(
     assert not running.origins.filter(spent_at=None).exists()
 
 
-def test_the_time_limit_ends_the_round(running):
-    assert service.catch_up(running, running.started + timedelta(seconds=901)) == "time_limit"
-
-
-def test_a_read_survives_a_side_that_is_unavailable(monkeypatch, running):
+def test_an_alerts_request_while_elasticsearch_is_down_leaves_the_round_running_and_the_other_reads_done(
+        monkeypatch, as_operator, running):
     from cr import errors
     from telemetry import alerts as defence
 
@@ -96,7 +99,10 @@ def test_a_read_survives_a_side_that_is_unavailable(monkeypatch, running):
 
     monkeypatch.setattr(defence, "ingest_alerts", down)
 
-    assert service.catch_up(running) is None
+    answer = as_operator.get(url(running, "defence/alerts/"))
+
+    assert answer.status_code == 200
+    assert Round.objects.get(pk=running.pk).phase == "running"
     assert customers.passes(running) == 1
 
 
@@ -112,29 +118,24 @@ def test_the_score_keeps_objectives_outcomes_and_free_actions_apart(as_operator,
     assert score["objectives"]["lost"] == [] and score["objectives"]["kept"]
 
 
-def test_a_player_reads_the_score_only_after_the_end_and_never_picks_the_correlation(browser, running, other,
-                                                                                   staff):
-    browser.force_authenticate(other)
-    refused(browser.get(url(running, "score/")), 409, "round_running")
-    service.end_round(running, "ended_by_operator")
-
-    assert browser.get(url(running, "score/")).status_code == 200
-    refused(browser.get(url(running, "score/?correlation=window")), 403, "not_staff", path="correlation")
-    browser.force_authenticate(staff)
-    assert browser.get(url(running, "score/?correlation=window")).status_code == 200
-
-
-def test_neither_player_reads_the_score_while_the_round_runs(browser, allocation, problem, other, make_user):
+@pytest.mark.parametrize("side", ["attack", "defence"])
+def test_a_player_reads_the_score_only_after_the_end_and_never_picks_the_correlation(browser, allocation, problem,
+                                                                                   other, make_user, staff, side):
     defender = make_user("defender")
     found = service.start_round(pvp(allocation, problem, other, defender))
+    player = {"attack": other, "defence": defender}[side]
+    browser.force_authenticate(player)
+    refused(browser.get(url(found, "score/")), 409, "round_running")
+    browser.force_authenticate(allocation.opened_by)
+    mid_round = browser.get(url(found, "score/"))
+    assert mid_round.status_code == 200 and "totals" in mid_round.json()["outcomes"]
+    service.end_round(found, "ended_by_operator")
 
-    for player in (other, defender):
-        browser.force_authenticate(player)
-        refused(browser.get(url(found, "score/")), 409, "round_running")
-
-
-def test_the_operator_reads_the_score_mid_round(as_operator, running):
-    assert as_operator.get(url(running, "score/")).status_code == 200
+    browser.force_authenticate(player)
+    assert browser.get(url(found, "score/")).status_code == 200
+    refused(browser.get(url(found, "score/?correlation=window")), 403, "not_staff", path="correlation")
+    browser.force_authenticate(staff)
+    assert browser.get(url(found, "score/?correlation=window")).status_code == 200
 
 
 def test_the_customers_program_starts_with_the_round_and_its_records_land_as_customer_requests(cloud, running):
@@ -217,6 +218,7 @@ def test_the_next_request_past_the_time_limit_ends_the_round_at_its_end_time(as_
     ended = Round.objects.get(pk=running.pk)
     assert ended.phase == "ended" and ended.end_reason == "time_limit" and ended.ended == ends_at
     assert shown["phase"] == "ended"
+    assert ("round.ended", {"reason": "time_limit"}) in kinds_for(running, "attack")
 
 
 def test_the_score_counts_only_what_happened_up_to_the_round_s_end(as_operator, running):
@@ -298,3 +300,99 @@ def test_a_round_past_its_time_on_an_idle_allocation_ends_on_its_time_limit(as_o
 
     ended = Round.objects.get(pk=running.pk)
     assert ended.end_reason == "time_limit" and Allocation.objects.get(pk=running.allocation_id).closed is not None
+
+
+def suricata_alert(found, marker, seconds):
+    stamp = (found.started + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
+    return {"@timestamp": stamp, "timestamp": stamp, "event": {"module": "suricata"}, "event_type": "alert",
+            "src_ip": "5.188.10.10", "alert": {"signature_id": 1001, "signature": "SQL injection in search"},
+            "http": {"url": "/search/?q=x", "request_headers": [{"name": "X-Request-ID", "value": marker}]}}
+
+
+def fired_case(browser, found, attacker_user, case):
+    browser.force_authenticate(attacker_user)
+    answer = browser.post(url(found, "attack/cases/"), {"case": case}, format="json")
+    assert answer.status_code == 202, answer.content
+    return answer.json()["marker"]
+
+
+def test_a_fired_case_its_alert_names_ends_the_round_as_a_true_positive_beside_the_benign_true_negatives(
+        monkeypatch, browser, running, other, learner):
+    from testing.fakes import FakeElastic
+
+    marker = fired_case(browser, running, other, "board-sqli-search")
+    es = FakeElastic().add("s1", suricata_alert(running, marker, 1))
+    monkeypatch.setattr("telemetry.elastic.requests.post", es.post)
+    service.end_round(running, "ended_by_operator")
+
+    browser.force_authenticate(learner)
+    totals = browser.get(url(running, "score/")).json()["outcomes"]["totals"]
+
+    assert totals["tp"] == 1
+    assert totals["tn"] == len(customers.benign_cases(running)) > 0
+
+
+def test_an_alert_stamped_after_the_round_ended_does_not_turn_its_case_into_a_true_positive(browser, running, other,
+                                                                                           learner):
+    from telemetry.models import Detection
+
+    marker = fired_case(browser, running, other, "board-sqli-search")
+    service.end_round(running, "ended_by_operator")
+    running.refresh_from_db()
+    Detection.objects.create(round=running, detection_id="late", engine="ids", rule="1001",
+                             signature="SQL injection in search", timestamp=running.ended + timedelta(seconds=1),
+                             src_ip="5.188.10.10", marker=marker)
+
+    browser.force_authenticate(learner)
+    totals = browser.get(url(running, "score/")).json()["outcomes"]["totals"]
+
+    assert (totals["tp"], totals["fn"]) == (0, 1)
+
+
+def edge_loads(cloud):
+    return [one.stdin or "" for one in cloud.in_slot(1).edge.matching("nft -f -")]
+
+
+def test_a_read_after_a_spend_never_flushes_the_edge_so_the_spent_origin_stays_dropped(cloud, as_operator, running):
+    loaded = edge_loads(cloud)
+    attack.next_origin(running, running.players.get(side="attack"))
+    read_due(running)
+
+    as_operator.get(url(running, "events/"))
+
+    assert cloud.in_slot(1).edge.matching("add element ip edge spent")
+    assert edge_loads(cloud) == loaded
+
+
+def test_a_read_after_the_round_ended_loads_nothing_into_the_edge(cloud, as_operator, running):
+    service.end_round(running, "ended_by_operator")
+    emptied = edge_loads(cloud)
+
+    as_operator.get(url(running, "events/"))
+
+    assert edge_loads(cloud) == emptied
+
+
+def test_a_dump_holding_the_hash_and_an_alert_on_it_lose_nothing_until_the_loot_reaches_the_target_s_truth(
+        monkeypatch, cloud, browser, running, other):
+    from scoring.models import Objective
+    from testing.fakes import BOARD_TRUTH, FakeElastic
+
+    browser.force_authenticate(other)
+    fired = browser.post(url(running, "attack/cases/"), {"case": "board-sqli-orderby-sqlmap"}, format="json").json()
+    cloud.in_slot(1).box.answer("tail -c +1 ", f"cr.exit=0\ncr.output=\nadmin | {BOARD_TRUTH['admin']}\n")
+    dumped = browser.get(url(running, f"attack/tools/{fired['run']}/")).json()
+    es = FakeElastic().add("s1", suricata_alert(running, fired["marker"], 1))
+    monkeypatch.setattr("telemetry.elastic.requests.post", es.post)
+    read_due(running)
+    browser.get(url(running, "events/"))
+
+    assert dumped["done"] is True and BOARD_TRUTH["admin"] in dumped["output"]
+    assert running.detections.filter(marker=fired["marker"]).exists()
+    assert not Objective.objects.filter(round=running).exists()
+
+    loot = {"value": [{"username": "admin", "hash": BOARD_TRUTH["admin"]}]}
+    looted = browser.post(url(running, "attack/loot/"), loot, format="json")
+
+    assert looted.json()["lost"] is True
+    assert Objective.objects.filter(round=running, key="board-auth-user-admin").exists()

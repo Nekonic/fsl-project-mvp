@@ -100,10 +100,13 @@ def test_a_dry_run_limit_spends_nothing(make_round, cloud):
     assert spent_from_log(es, found) == 0
 
 
-def test_customers_and_lines_before_the_round_cost_the_attacker_nothing(attack_round):
+def test_customers_and_lines_before_the_round_or_after_its_end_cost_the_attacker_nothing(attack_round):
+    attack_round.ends_at = after_start(attack_round, 60)
+    attack_round.save(update_fields=["ends_at"])
     es = FakeElastic()
     es.add("e1", error_document(after_start(attack_round), denied_line(US_CUSTOMERS[0])))
     es.add("e2", error_document(attack_round.started - timedelta(minutes=5), denied_line(RU)))
+    es.add("e3", error_document(attack_round.ends_at + timedelta(seconds=1), denied_line(BR)))
 
     assert spent_from_log(es, attack_round) == 0
     assert spent_ips(attack_round) == []

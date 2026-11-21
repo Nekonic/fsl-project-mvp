@@ -20,6 +20,7 @@ def test_a_snapshot_freezes_the_problem_with_its_revision_posture_and_benign_cas
     assert frozen["round"]["posture"] == {"name": "placeholder start", "suricata_rules": "",
                                           "waf_files": factories.WAF_FILES}
     assert frozen["round"]["traffic"] == "community"
+    assert frozen["round"]["limit_floor_rpm"] == 90
     assert frozen["round"]["probe_cases"] == ["board-sqli-search"]
     assert "board-normal-search-with-apostrophe" in frozen["round"]["benign_cases"]
     assert not any(name.startswith("board-sqli") for name in frozen["round"]["benign_cases"])

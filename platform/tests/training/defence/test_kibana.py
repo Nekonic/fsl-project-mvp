@@ -78,6 +78,7 @@ def test_staff_reach_every_space(browser, board_round, staff, forwarded):
     answer = gated(browser, "/kibana/s/soc-logs-2/internal/search/ese", body={"params": {"index": "logs-2-*"}})
 
     assert answer.status_code == 200
+    assert forwarded[0][:2] == ("POST", "/kibana/s/soc-logs-2/internal/search/ese")
 
 
 def test_a_signed_out_caller_is_refused_with_the_one_error_shape(browser, board_round, forwarded):

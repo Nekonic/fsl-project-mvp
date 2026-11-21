@@ -28,11 +28,14 @@ def test_the_terminal_grant_names_a_player_ttyd_path_and_a_jump_key_to_kali(as_a
 
 def test_the_grant_is_revoked_when_the_round_closes(as_attacker, attacker, cloud):
     as_attacker.get(url(attacker.round, "terminal/"))
+    grant = jump.granted(attacker.pk, service.configured().jump)
 
     service.close(attacker.round)
 
     assert jump.granted(attacker.pk, service.configured().jump) is None
-    assert len(cloud.box.matching("authorized_keys")) == 2
+    added, dropped = cloud.box.matching("authorized_keys")
+    assert f"grep -v -e ' {grant.name}$'" in dropped.text and "cat >>" not in dropped.text
+    assert not dropped.stdin or grant.public_key not in dropped.stdin
 
 
 def test_no_terminal_is_granted_after_the_end(as_attacker, attacker):

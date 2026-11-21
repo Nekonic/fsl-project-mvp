@@ -34,13 +34,19 @@ def test_the_limit_req_floor_is_twice_the_busiest_board_customer_origin_and_corp
         "nine of the board's twelve customers come from kr at one request a second between them")
 
 
-@pytest.mark.parametrize("wargame_id", ["board", "corp"])
-def test_every_wargame_keeps_benign_cases_and_probes_only_http_ones(wargame_id):
+KEPT_BENIGN = {
+    "board": {"board-normal-search", "board-normal-search-with-apostrophe", "board-normal-post-list",
+              "board-normal-sort", "board-normal-search-korean", "board-normal-comment"},
+    "corp": {"corp-normal-home", "corp-normal-registration-page", "corp-normal-search", "corp-normal-registration"},
+}
+
+
+@pytest.mark.parametrize("wargame_id", sorted(KEPT_BENIGN))
+def test_every_wargame_keeps_its_named_benign_cases(wargame_id):
     wargame = catalog.read(REPO, wargame_id)
 
-    assert wargame.benign_cases
-    assert all(not wargame.case(name).malicious and not wargame.case(name).tool_case
-               for name in wargame.benign_cases)
+    assert KEPT_BENIGN[wargame_id] <= set(wargame.benign_cases), (
+        "the benign cases are what TN and FP are measured on; deleting one makes the score look better")
 
 
 def test_the_probe_manifest_marks_its_cases_recorded(source):

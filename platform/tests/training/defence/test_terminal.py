@@ -31,11 +31,14 @@ def test_the_terminal_is_the_waf_shell_keyed_to_the_round_with_a_jump_key_to_the
 
 def test_the_analyst_grant_is_revoked_when_the_round_ends(as_defender, board_round, defender, cyber_range):
     as_defender.get(BASE.format(round=board_round.pk))
+    grant = jump.granted(defender.pk, service.configured().jump)
 
     match.end_round(board_round, "ended_by_operator")
 
     assert jump.granted(defender.pk, service.configured().jump) is None
-    assert len([one for one in cyber_range.gateway.sent if "authorized_keys" in one.text]) == 2
+    *_, last = [one for one in cyber_range.gateway.sent if "authorized_keys" in one.text]
+    assert f"grep -v -e ' {grant.name}$'" in last.text and "cat >>" not in last.text
+    assert not last.stdin or grant.public_key not in last.stdin
 
 
 def test_the_round_end_kills_what_analyst_left_running_on_the_waf(as_defender, board_round, defender, cyber_range):

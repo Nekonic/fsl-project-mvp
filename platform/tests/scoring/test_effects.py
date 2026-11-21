@@ -7,8 +7,9 @@ from scoring import losses
 from scoring.models import Objective
 from telemetry import events as log
 from telemetry.events import Viewer
+from testing.fakes import FakeTarget
 from tests import rounds
-from tests.scoring.targets import ROGUE_ADMIN_AT
+from tests.scoring.targets import FIXTURES, ROGUE_ADMIN_AT, corp_state_runner
 
 pytestmark = pytest.mark.django_db
 
@@ -48,6 +49,22 @@ def test_a_change_no_attack_action_overlaps_is_not_credited(corp_target):
 
     assert losses.observe_effects(found, corp_target, [benign, earlier]) == ()
     assert not Objective.objects.filter(round=found).exists()
+
+
+def test_a_change_the_target_recorded_after_the_round_s_end_time_loses_nothing():
+    both = "".join((FIXTURES / name).read_text() for name in ("corp-rogue-admin.binlog", "corp-content-write.binlog"))
+    target = FakeTarget({"corp-db": corp_state_runner(both)})
+    found = started(target)
+    later = ROGUE_ADMIN_AT + timedelta(hours=2)
+    found.ends_at = ROGUE_ADMIN_AT + timedelta(minutes=1)
+    found.save(update_fields=["ends_at"])
+    attacks = [rounds.action("act-3", ROGUE_ADMIN_AT - timedelta(seconds=2), seconds=4),
+               rounds.action("act-9", later - timedelta(hours=1), seconds=7200)]
+
+    fell = losses.observe_effects(found, target, attacks)
+
+    assert [fallen.key for fallen in fell] == ["corp-rogue-admin"]
+    assert list(Objective.objects.filter(round=found).values_list("key", flat=True)) == ["corp-rogue-admin"]
 
 
 def test_each_observation_records_when_the_target_was_read(corp_target):

@@ -1,17 +1,24 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from django.utils import timezone
 
+from cr import errors
 from sandbox import refill
 from sandbox import service as sandbox
 from telemetry import events as log
+from testing import factories, fakerange
 from tests.shape import refused
 from tests.training.round.conftest import pvp, url
+from training.defence import rules
 from training.models import Allocation, Player, Round
 from training.round import allocation as allocations
 from training.round import lifecycle as service
 from users import players as auth
+
+
+CRS_SETUP = "/etc/nginx/modsecurity/crs/crs-setup.conf"
+RU_US_BR = (fakerange.RU, fakerange.US, fakerange.BR)
 
 
 def kinds(found):
@@ -72,7 +79,7 @@ def test_a_heartbeat_pushes_the_expiry_and_a_closed_allocation_takes_none(as_ope
     moved = as_operator.post(f"/api/allocations/{allocation.pk}/heartbeat/").json()["expires_at"]
     allocations.close_allocation(allocation)
 
-    assert moved > (timezone.now() + timedelta(minutes=20)).isoformat()
+    assert datetime.fromisoformat(moved.replace("Z", "+00:00")) > timezone.now() + timedelta(minutes=20)
     refused(as_operator.post(f"/api/allocations/{allocation.pk}/heartbeat/"), 409, "allocation_closed")
 
 
@@ -86,14 +93,18 @@ def test_a_player_heartbeats_the_allocation_but_cannot_close_it_or_end_the_round
     refused(browser.post(url(found, "start/")), 403, "not_operator")
 
 
-def test_an_expired_allocation_is_closed_with_its_round(cloud, allocation, problem, learner, other):
+def test_asking_for_a_slot_closes_an_allocation_past_its_limit_and_starts_rebuilding_its_slot(as_learner, cloud,
+                                                                                            allocation, problem,
+                                                                                            learner, other):
     found = pvp(allocation, problem, other, learner)
     service.start_round(found)
     Allocation.objects.filter(pk=allocation.pk).update(expires_at=timezone.now() - timedelta(seconds=1))
 
-    assert allocations.expire() == [allocation.pk]
+    as_learner.post("/api/allocations/", {"wargame": "board"}, format="json")
+
     found.refresh_from_db()
-    assert found.end_reason == "allocation_expired" and Allocation.objects.get(pk=allocation.pk).closed is not None
+    assert Allocation.objects.get(pk=allocation.pk).closed is not None and found.end_reason == "allocation_expired"
+    assert refill.standing(sandbox.store(), allocation.slot).state == refill.BUILDING
 
 
 def test_the_operator_creates_a_bot_round_and_sees_the_token_once(as_operator, allocation, problem, learner):
@@ -150,7 +161,7 @@ def test_one_user_cannot_take_both_players_of_a_round(as_operator, allocation, p
 def test_a_second_open_round_on_one_allocation_is_refused(allocation, problem, learner, other):
     pvp(allocation, problem, other, learner)
 
-    with pytest.raises(Exception) as raised:
+    with pytest.raises(errors.Conflict) as raised:
         pvp(allocation, problem, other, learner)
     assert raised.value.code == "round_open"
 
@@ -189,8 +200,10 @@ def test_starting_freezes_the_snapshot_applies_the_posture_takes_the_baseline_an
     assert answer.json() == {"phase": "running"}
     assert found.snapshot["problem"]["revision"] == problem.revision and found.baseline
     assert found.ends_at - found.started == timedelta(seconds=900)
-    assert found.origins.count() == 3
-    assert cloud.in_slot(1).defence.gateway.files["/etc/nginx/modsecurity/crs/crs-setup.conf"]
+    [loaded] = cloud.in_slot(1).edge.matching("nft -f -")
+    assert loaded.stdin.splitlines()[2] == f"add element ip edge pool {{ {', '.join(RU_US_BR)} }}"
+    assert cloud.in_slot(1).defence.gateway.files[CRS_SETUP] == factories.WAF_FILES[CRS_SETUP]
+    assert [(one.version, one.source) for one in rules.versions(found, "waf")] == [(1, "setup")]
     assert "round.started" in kinds(found)
     refused(as_operator.post(url(found, "start/")), 409, "round_started")
 
@@ -209,7 +222,6 @@ def test_a_staff_edit_mid_round_changes_nothing_in_the_running_round(allocation,
 
 
 def test_a_failed_start_leaves_the_round_created_to_try_again(monkeypatch, allocation, problem, learner, other):
-    from cr import errors
     from scoring import baseline as referee
 
     found = pvp(allocation, problem, other, learner)
@@ -233,21 +245,29 @@ def test_an_allocation_where_an_objective_fell_starts_no_new_scored_round(alloca
     Objective.objects.create(round=found, key="board-auth-user-admin", name="admin", achieved_at=timezone.now())
     service.end_round(found, "ended_by_operator")
 
-    with pytest.raises(Exception) as raised:
+    with pytest.raises(errors.Conflict) as raised:
         pvp(allocation, problem, other, learner)
     assert raised.value.code == "objective_fallen"
 
+    allocations.close_allocation(allocation)
+    sandbox.advance_refills()
+    sandbox.advance_refills()
+    fresh = allocations.open_allocation(learner, "board")
+    assert fresh.pk != allocation.pk and pvp(fresh, problem, other, learner).phase == "created"
 
-def test_a_player_forfeits_and_the_round_ends_by_its_side(browser, allocation, problem, learner, other):
+
+@pytest.mark.parametrize("side", ["attack", "defence"])
+def test_a_player_forfeits_and_the_round_ends_by_its_side(browser, allocation, problem, learner, other, side):
     found = pvp(allocation, problem, other, learner)
     service.start_round(found)
-    browser.force_authenticate(learner)
+    browser.force_authenticate({"attack": other, "defence": learner}[side])
 
-    answer = browser.post(url(found, "defence/forfeit/"))
+    answer = browser.post(url(found, f"{side}/forfeit/"))
 
-    assert answer.status_code == 200 and answer.json()["reason"] == "forfeit_defence"
-    refused(browser.post(url(found, "defence/forfeit/")), 409, "round_closed")
-    assert kinds(found)[-1] == "round.ended"
+    assert answer.status_code == 200 and answer.json()["reason"] == f"forfeit_{side}"
+    refused(browser.post(url(found, f"{side}/forfeit/")), 409, "round_closed")
+    last = log.after(found.pk, 0, log.Viewer(staff=True)).events[-1]
+    assert (last["kind"], last["body"]["reason"]) == ("round.ended", f"forfeit_{side}")
 
 
 def test_the_operator_ends_a_round_once(as_operator, allocation, problem, learner, other):
@@ -262,13 +282,18 @@ def test_the_operator_ends_a_round_once(as_operator, allocation, problem, learne
 
 
 def test_rounds_list_what_the_user_holds_and_what_is_joinable(browser, allocation, problem, learner, other, make_user):
-    service.create_round(allocation, problem.pk, "pvp", {"attack": {"open": True}, "defence": {"username": learner.username}})
+    made = service.create_round(allocation, problem.pk, "pvp",
+                                {"attack": {"open": True}, "defence": {"username": learner.username}}).round
     browser.force_authenticate(make_user("stranger"))
 
     joinable = browser.get("/api/rounds/?state=joinable").json()
     mine = browser.get("/api/rounds/?mine=1").json()
 
-    assert len(joinable) == 1 and joinable[0]["players"]
+    [listed] = joinable
+    players = {one["side"]: one for one in listed["players"]}
+    assert listed["round"] == made.pk
+    assert players["attack"]["username"] is None and players["attack"]["bot_name"] == ""
+    assert players["defence"]["username"] == learner.username
     assert mine == []
 
 
@@ -283,7 +308,7 @@ def test_open_rounds_list_only_what_the_user_holds_unless_staff(browser, allocat
     assert [one["round"] for one in browser.get("/api/rounds/?state=open").json()] == [found.pk]
 
 
-def test_a_round_ended_while_it_starts_stays_ended(monkeypatch, allocation, problem, learner, other):
+def test_a_round_ended_while_it_starts_stays_ended(monkeypatch, cloud, allocation, problem, learner, other):
     from training.attack import origins
 
     found = pvp(allocation, problem, other, learner)
@@ -300,6 +325,11 @@ def test_a_round_ended_while_it_starts_stays_ended(monkeypatch, allocation, prob
     assert started.phase == "ended" and started.end_reason == "ended_by_operator"
     assert "round.started" not in kinds(found)
     assert not Round.objects.get(pk=found.pk).traffic.get("running")
+    infra = cloud.in_slot(1).customers
+    started_customers = infra.matching("systemctl start cr-customers.service")
+    stopped_customers = infra.matching("systemctl stop cr-customers.service")
+    assert not started_customers or (
+        stopped_customers and infra.sent.index(stopped_customers[-1]) > infra.sent.index(started_customers[-1]))
 
 
 def test_a_bot_token_of_an_ended_round_does_not_keep_the_allocation_alive(browser, allocation, problem, learner):

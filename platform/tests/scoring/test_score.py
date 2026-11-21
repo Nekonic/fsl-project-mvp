@@ -97,8 +97,11 @@ def test_a_signature_that_fires_on_customers_too_does_not_corroborate_the_attack
               rounds.detection("d2", AT - timedelta(seconds=9), marker=BENIGN, signature="sql injection anywhere")]
 
     scored = service.score(found, actions, alerts)
+    without_customer_alert = service.score(found, actions, alerts[:1])
 
     assert [(case.verdict, case.corroborated) for case in scored.per_case] == [("tp", False), ("fp", None)]
+    assert (scored.totals.fp, without_customer_alert.totals.fp) == (1, 0)
+    assert scored.weighted == without_customer_alert.weighted
 
 
 def test_a_forced_window_correlation_matches_by_source_and_time(board_target):

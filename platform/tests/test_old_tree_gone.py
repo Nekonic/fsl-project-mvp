@@ -8,13 +8,14 @@ OLD_API = re.compile(r"(?<![\w./])api\.\w|^\s*(from|import) api\b", re.MULTILINE
 SCENARIO = re.compile(r"scenario", re.IGNORECASE)
 
 GONE = (
-    "platform/api", "platform/console", "platform/wargames.py", "platform/lifecycle.py",
-    "platform/game.py", "platform/scenarios.py", "platform/traffic.py", "platform/topology.py",
-    "wargames/board/scenario.yaml", "wargames/corp/scenario.yaml", "deploy/openstack/network.yaml",
-    "deploy/suricata/rules/no-xss.rules", "deploy/suricata/rules/no-uri-sqli.rules",
-    "deploy/suricata/rules/broken-sort.rules", "deploy/suricata/rules/spaced-sort.rules",
+    "platform/accounts", "platform/attack", "platform/content", "platform/defence", "platform/events",
+    "platform/ingest", "platform/match", "platform/range", "platform/referee", "platform/rules",
+    "platform/lessons", "platform/domain/ledger.py", "platform/domain/checks.py",
+    "platform/training/defence/drift.py", "platform/training/round/follow.py",
+    "platform/training/management/commands/follow.py",
+    "front/src/pages/Lesson.tsx", "front/src/panes/StepCard.tsx", "front/src/ui/Steps.tsx",
+    "front/src/panes/staff/StepsEditor.tsx", "bots/client", "bin/gen-clients", "openapi/python-client.yaml",
     "docs/superpowers/plans", "metrics.json", "bin/measure",
-    "redteam/run.py", "redteam/signin.py", "redteam/__init__.py",
 )
 
 REFUSES_THE_OLD_KIND = {"platform/tests/domain/test_problems.py"}

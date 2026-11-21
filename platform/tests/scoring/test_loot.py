@@ -1,6 +1,8 @@
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from django.contrib.auth.hashers import make_password
 
 from cr import errors
 from scoring import baseline as baselines
@@ -9,6 +11,8 @@ from scoring.models import Objective
 from telemetry import events as log
 from telemetry.events import Viewer
 from tests import rounds
+from training.models import Round
+from tests.scoring import targets
 from tests.scoring.targets import TRUTH
 
 pytestmark = pytest.mark.django_db
@@ -38,15 +42,31 @@ def test_the_admin_s_exact_stored_hash_loses_the_partial_and_admin_objectives(bo
         "board-auth-user-admin", "board-auth-user-partial"]
 
 
-def test_a_cracked_password_or_a_wrong_hash_loses_nothing(board_target):
-    found = started(board_target)
+def test_a_cracked_password_or_a_wrong_hash_loses_nothing():
+    cracked = secrets.token_urlsafe(16)
+    found = started(targets.board_target({**TRUTH, "admin": make_password(cracked)}))
 
-    verdict = losses.submit_loot(found, [{"username": "admin", "password": "admin1234"},
+    verdict = losses.submit_loot(found, [{"username": "admin", "password": cracked},
                                          {"username": "jiwoo", "hash": TRUTH["jiwoo"][:-2] + "x="}], at=AT)
 
     assert not verdict.lost and verdict.objective is None
     assert not Objective.objects.filter(round=found).exists()
     assert lost_events(found, Viewer(staff=True)) == []
+
+
+def test_loot_is_judged_against_the_round_s_own_start_snapshot_and_not_a_round_before():
+    first_truth, next_truth = ({**TRUTH, "admin": make_password(secrets.token_urlsafe(16))} for _ in range(2))
+    first = started(targets.board_target(first_truth), objectives=["board-auth-user-admin"])
+
+    assert losses.submit_loot(first, {"admin": first_truth["admin"]}, at=AT).objective.key == "board-auth-user-admin"
+
+    following = Round.objects.create(allocation=first.allocation, problem=first.problem, kind=first.kind,
+                                     matchup=first.matchup, phase="running", snapshot=first.snapshot,
+                                     started=AT + timedelta(minutes=5))
+    baselines.take_baseline(following, targets.board_target(next_truth))
+
+    assert not losses.submit_loot(following, {"admin": first_truth["admin"]}, at=AT + timedelta(minutes=10)).lost
+    assert not Objective.objects.filter(round=following).exists()
 
 
 def test_the_same_loot_twice_loses_each_objective_once(board_target):

@@ -16,10 +16,12 @@ class Workers(Gateway):
     def __init__(self, workers, **given):
         super().__init__(**given)
         self.seen = list(workers)
+        self.reads = 0
 
     def __call__(self, argv, stdin=None, timeout=60.0):
         if argv[-1] == crs.workers_of(WAF.pid):
-            return Ran(0, self.seen.pop(0) if len(self.seen) > 1 else self.seen[0])
+            self.reads += 1
+            return Ran(0, self.seen[min(self.reads, len(self.seen)) - 1])
         return super().__call__(argv, stdin, timeout)
 
 
@@ -59,7 +61,9 @@ def test_applying_writes_only_the_changed_files_and_reloads_nginx():
     assert merged == {**{path: "" for path in WAF.files}, EXCLUSIONS: EXCLUDE_Q}
     assert gateway.files[EXCLUSIONS] == EXCLUDE_Q
     assert written(gateway) == [EXCLUSIONS]
-    assert [one.argv for one in gateway.sent if one.argv == RELOAD] == [RELOAD]
+    sent = [one.argv for one in gateway.sent]
+    assert [argv for argv in sent if argv == RELOAD] == [RELOAD]
+    assert sent.index(RELOAD) > max(at for at, argv in enumerate(sent) if argv[:3] == ["sh", "-c", crs.WRITE_FILE])
 
 
 def test_files_nginx_refuses_are_rolled_back_and_refused_with_the_file_and_line():
@@ -115,7 +119,8 @@ def test_applying_returns_once_a_new_nginx_worker_serves_without_waiting_for_old
 
     crs.apply({HTTP: "deny 203.0.113.9;\n"}, settled, WAF)
 
-    assert settled.seen == ["12 21 22"]
+    assert settled.reads == 3, "the third read is the first to list a new worker, 21, while old 11 still serves"
+    assert written(settled) == [HTTP], "no rollback is written while the old worker drains"
 
 
 def test_a_reload_that_starts_no_new_worker_is_rolled_back_and_refused(monkeypatch):
@@ -155,6 +160,11 @@ def test_a_reload_after_the_newest_write_counts_as_running_the_files():
     gateway.edited(HTTP, "deny all;\n", reloaded=True)
 
     assert crs.reloaded_since_written(gateway, WAF) is True
+
+
+@pytest.mark.parametrize("said", ["1000.0\n100.0\n1000.0\n1\n", "1000.0\n100.0\n1000.0\n1\nlater\n", ""])
+def test_a_reload_check_the_waf_answers_short_or_garbled_is_no_reload(said):
+    assert crs.reloaded_since_written(lambda argv, stdin=None, timeout=60.0: Ran(0, said), WAF) is False
 
 
 def test_nginx_and_modsecurity_errors_name_the_file_and_line():

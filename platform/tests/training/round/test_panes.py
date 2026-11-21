@@ -3,17 +3,20 @@ import json
 import pytest
 
 from sandbox.runner import Ran
+from testing import fakerange
 from tests.shape import refused
 from tests.training.round.conftest import pvp, url
 from training.content import probes
 from training.models import Action, Allocation
-from training.round import allocation as allocations
 from training.round import lifecycle as service
 
 
 @pytest.fixture
 def running(allocation, problem, learner, other):
     return service.start_round(pvp(allocation, problem, other, learner))
+
+
+CUSTOMER_ADDRESSES = (*fakerange.US_CUSTOMERS, *fakerange.BR_CUSTOMERS)
 
 
 def site(found, rest="") -> str:
@@ -41,7 +44,7 @@ def test_the_defence_player_browses_with_the_allocation_s_marker_from_a_customer
     assert answer.status_code == 200 and "X-Origins-Left" not in answer
     assert not cloud.in_slot(1).box.matching(running.allocation.browse_marker)
     assert not Action.objects.filter(round=running).exists()
-    assert sent and "--interface" in sent[-1].text
+    assert sent and any(f"--interface {address}" in sent[-1].text for address in CUSTOMER_ADDRESSES)
     listed = browser.get(url(running, "site/requests/")).json()
     assert [(one["method"], one["url"], one["status"]) for one in listed] == [("GET", "http://board.com/", 200)]
     assert browser.get(url(running, f"site/requests/?after={listed[-1]['id']}")).json() == []
@@ -148,16 +151,21 @@ def recording_node(original):
     return answered
 
 
-def test_a_recording_longer_than_the_idle_time_keeps_its_allocation(as_staff, cloud, settings, tmp_path, monkeypatch):
+def test_a_recording_longer_than_the_idle_time_keeps_its_allocation(as_staff, cloud, settings, tmp_path, monkeypatch,
+                                                                    make_user):
     from datetime import timedelta
 
     from django.utils import timezone
+    from rest_framework.test import APIClient
 
     settings.CR_PROBES_OUT = tmp_path / "wargames"
-    expired = []
+    another = APIClient()
+    another.force_authenticate(make_user("next-learner"))
+    still_open = []
 
     def idle_past(allocation, declared, case, truth, folder):
-        expired.extend(allocations.expire())
+        another.post("/api/allocations/", {"wargame": "board"}, format="json")
+        still_open.append(Allocation.objects.get(pk=allocation.pk).closed is None)
         Allocation.objects.filter(pk=allocation.pk).update(expires_at=timezone.now() - timedelta(seconds=1))
         return {"marker": "m", "malicious": bool(case.get("malicious")), "tool_case": "tool" in case}
 
@@ -167,7 +175,7 @@ def test_a_recording_longer_than_the_idle_time_keeps_its_allocation(as_staff, cl
 
     allocation_id = as_staff.post("/api/staff/wargames/board/probes/record/").json()["allocation"]
 
-    assert expired == []
+    assert still_open and all(still_open)
     assert as_staff.get(f"/api/staff/probes/{allocation_id}/").json()["state"] == "done"
 
 

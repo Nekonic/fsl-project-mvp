@@ -96,14 +96,6 @@ def test_the_launch_runs_on_the_tool_image_the_config_names():
     assert launcher.runner.sent[0].argv == ["curl", "-s", "http://board.com/"]
 
 
-def test_the_kali_address_is_the_attacker_role_s_address():
-    class Adapter:
-        def address(self, role):
-            return {"attacker": "172.29.0.20"}[role]
-
-    assert box.kali_address(Adapter()) == "172.29.0.20"
-
-
 LOG = ("2026-11-19T10:00:00Z\tboard-sqli\tcurl http://board.com/?q=1\n"
        "garbage line\n"
        "2026-11-19T10:00:05Z\t\tsqlmap -u http://board.com/\n")

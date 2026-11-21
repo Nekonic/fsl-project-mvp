@@ -25,8 +25,8 @@ def test_a_learner_address_is_blocked_after_ten_failures_even_for_the_right_pass
     refused(attempt(browser, "learner", PASSWORD), 429, "sign_in_blocked")
 
 
-def test_a_staff_username_is_blocked_after_three_failures(browser, staff):
-    assert fail(browser, "operator", 2).status_code == 401
+def test_a_staff_username_is_blocked_after_its_tier_s_failures(browser, staff):
+    assert fail(browser, "operator", blocks.TIERS["staff"]["failures"] - 1).status_code == 401
 
     refused(attempt(browser, "operator"), 429, "sign_in_blocked")
 

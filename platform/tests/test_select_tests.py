@@ -104,32 +104,35 @@ def test_a_front_change_selects_the_tests_naming_that_file(repo):
     assert chosen.acceptance_kind == "none", "the front end is not range-facing"
 
 
-def test_a_template_rendered_for_a_requested_page_selects_the_test_requesting_it(repo):
+def test_a_data_file_a_requested_view_reads_selects_the_test_requesting_it(repo):
     root = repo({
         **SMALL,
         "platform/cr/__init__.py": "",
         "platform/cr/urls.py": (
-            "from django.urls import path\n\nfrom match import views\nfrom console import views as console\n\n"
+            "from django.urls import path\n\nfrom match import views\nfrom training.content import views as content\n\n"
             "urlpatterns = [\n    path(\"api/show/\", views.show),\n"
-            "    path(\"blue/<int:session_id>/\", console.blue),\n]\n"
+            "    path(\"api/wargames/<str:name>/\", content.wargame),\n]\n"
         ),
-        "platform/console/__init__.py": "",
-        "platform/console/templates/console/blue_topology.html": "<div id=\"map\"></div>\n",
-        "platform/console/views.py": "def blue(request, session_id):\n    return 'console/blue.html'\n",
-        "platform/console/templates/console/blue.html": "{% include \"console/blue_topology.html\" %}\n",
-        "platform/tests/test_blue_page.py": (
-            "def test_blue(client):\n    assert client.get(f\"/blue/{1}/\")\n"
+        "platform/training/__init__.py": "",
+        "platform/training/content/__init__.py": "",
+        "platform/training/content/views.py": (
+            "from pathlib import Path\n\n\ndef wargame(request, name):\n"
+            "    return (Path('wargames') / name / 'wargame.yaml').read_text()\n"
+        ),
+        "wargames/board/wargame.yaml": "name: board\n",
+        "platform/tests/test_wargame_api.py": (
+            "def test_wargame(client):\n    assert client.get(f\"/api/wargames/{'board'}/\")\n"
         ),
         "platform/tests/test_show_api.py": (
             "def test_show(client):\n    assert client.get(\"/api/show/?all=1\")\n"
         ),
     })
 
-    chosen = selector.select(root, {"platform/console/templates/console/blue_topology.html": "M"})
+    chosen = selector.select(root, {"wargames/board/wargame.yaml": "M"})
 
-    assert "test_blue_page.py" in selected(chosen)
+    assert "test_wargame_api.py" in selected(chosen)
     assert "test_show_api.py" not in selected(chosen), (
-        "the API test requests a view that renders no template"
+        "the API test requests a view that reads no wargame file"
     )
 
 

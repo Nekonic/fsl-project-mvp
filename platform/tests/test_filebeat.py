@@ -1,6 +1,5 @@
 import pathlib
 
-import pytest
 import yaml
 
 from sandbox import fabric as networks
@@ -106,23 +105,6 @@ def test_the_template_maps_the_ecs_and_beat_fields_alone_and_a_record_is_searcha
         "for each of the 171 fields the documents carry"
     )
     assert config["setup.template.settings.index.refresh_interval"] == "1s"
-
-
-def slot_rule():
-    import re
-    [heard] = syslog_inputs()
-    [script] = [step["script"] for step in heard["processors"] if "script" in step]
-    return re.compile(re.search(r"/(\^.*?)/\.exec", script["source"])[1])
-
-
-@pytest.mark.parametrize("hostname, slot", [
-    ("firewall.localdomain", "1"), ("cr-waf", "1"), ("cr-wargame-host", "1"),
-    ("firewall-2.localdomain", "2"), ("cr-waf-2", "2"), ("cr-wargame-host-2", "2"),
-])
-def test_a_range_vm_s_syslog_is_tagged_with_the_slot_its_hostname_names(hostname, slot):
-    found = slot_rule().match(hostname)
-
-    assert (found[1] if found else "1") == slot
 
 
 def test_a_slot_s_logs_go_to_that_slot_s_index_and_a_session_s_own_stack_to_its_own():

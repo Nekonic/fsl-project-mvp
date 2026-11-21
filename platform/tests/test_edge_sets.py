@@ -50,7 +50,7 @@ def test_an_address_outside_the_pool_is_dropped_before_its_open_connections_are_
     outside = forward.index('iifname "@wan@" ip saddr != @pool drop')
 
     assert outside < forward.index('iifname "@wan@" ct state established,related accept'), (
-        "an unused origin-subnet address that HP never charges must not reach the target")
+        "an unused origin-subnet address that no error-log line can spend must not reach the target")
     assert outside < forward.index('iifname "@wan@" ct status dnat accept')
 
 

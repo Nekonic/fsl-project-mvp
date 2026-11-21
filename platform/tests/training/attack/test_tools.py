@@ -46,7 +46,7 @@ def test_the_output_is_read_after_an_offset_and_the_end_is_recorded_once(as_atta
 
     assert (first.json()["output"], first.json()["offset"], first.json()["done"]) == ("first part", 10, False)
     assert (second.json()["output"], second.json()["offset"], second.json()["done"]) == (" and the rest", 23, True)
-    assert second.json()["exit_code"] == 0 and "remaining" in second.json()
+    assert second.json()["exit_code"] == 0
     assert again.json()["done"] is True
     assert [kind for kind, _ in tool_events(attacker.round)] == ["tool.started", "tool.ended"]
     assert ToolRun.objects.get(pk=run).ended is not None
@@ -58,7 +58,6 @@ def test_a_player_stops_its_run_on_the_box(as_attacker, attacker, cloud):
     answer = as_attacker.delete(url(attacker.round, f"tools/{run}/"))
 
     assert answer.status_code == 204
-    assert answer["X-Origins-Left"] == "3"
     assert cloud.box.matching(f"kill -TERM")
     stopped = ToolRun.objects.get(pk=run)
     assert (stopped.stopped_by, stopped.exit_code) == ("player", 143)

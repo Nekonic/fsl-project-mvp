@@ -73,10 +73,12 @@ def test_missing_tool_image_raises_instead_of_being_swallowed():
 def test_tool_reporting_a_failed_scan_is_not_an_error():
     from training.attack.cases import fire_tool
 
-    fire_tool(
-        dict(CASE), INTERNAL_TARGET,
-        launcher(1, "all tested parameters do not appear to be injectable"),
-    )
+    launch = launcher(1, "all tested parameters do not appear to be injectable")
+
+    result = fire_tool(dict(CASE), INTERNAL_TARGET, launch)
+
+    assert (result.exit_code, result.output) == (1, "all tested parameters do not appear to be injectable")
+    assert launch.started == [tool_argv(CASE, INTERNAL_TARGET)]
 
 def test_core_does_not_start_anything_itself():
     import pathlib

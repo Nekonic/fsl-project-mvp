@@ -197,6 +197,7 @@ def test_the_check_routes_return_errors_without_running_any_probe(as_defender, b
                                                       "message": 'alert x (msg:"a";)'}]}
     assert waf.json()["ok"] is False and waf.json()["errors"][0]["code"] == "crs_refused"
     assert fine.json() == {"ok": True, "errors": []}
+    assert any("nginx -t -p" in text for text in cyber_range.gateway.texts())
     assert not cyber_range.nodes.get("sensor") or not cyber_range.nodes["sensor"].sent
     assert not any(one.argv[0] == "curl" for one in cyber_range.gateway.sent)
 

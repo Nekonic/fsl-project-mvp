@@ -44,6 +44,7 @@ def test_the_document_must_carry_a_problem():
 @pytest.mark.parametrize("edit, expected", [
     (lambda d: d["problem"].update(wargame="nowhere"), ("problem.wargame", "unknown_wargame")),
     (lambda d: d["problem"].update(kind="scenario"), ("problem.kind", "not_a_choice")),
+    (lambda d: d["problem"].update(kind="lesson"), ("problem.kind", "not_a_choice")),
     (lambda d: d["problem"].update(side="red"), ("problem.side", "not_a_choice")),
     (lambda d: d["problem"].update(title=" "), ("problem.title", "required")),
     (lambda d: d["problem"].update(published="yes"), ("problem.published", "not_a_boolean")),
@@ -74,12 +75,15 @@ def test_every_side_allows_pvp_and_only_its_own_bot_matchup():
 
 
 def test_an_unknown_wargame_does_not_also_report_every_case():
-    doc = changed(ROUND, lambda d: d["problem"].update(wargame="nowhere"))
+    doc = changed(ROUND, lambda d: (d["problem"].update(wargame="nowhere"),
+                                    d["round"].update(probe_cases=["board-nope"])))
 
     assert errors(doc) == [("problem.wargame", "unknown_wargame")]
 
 
 def test_values_of_the_wrong_type_are_errors_not_crashes():
-    doc = changed(ROUND, lambda d: (d["problem"].update(wargame=["board"]), d["round"].update(objectives=[{}])))
+    doc = changed(ROUND, lambda d: (d["problem"].update(wargame=["board"]), d["round"].update(matchups={},
+                                                                                             objectives=[{}])))
 
-    assert errors(doc) == [("problem.wargame", "unknown_wargame"), ("round.objectives", "not_a_text_list")]
+    assert errors(doc) == [("problem.wargame", "unknown_wargame"), ("round.matchups", "required"),
+                           ("round.objectives", "not_a_text_list")]

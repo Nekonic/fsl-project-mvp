@@ -211,7 +211,12 @@ def test_an_interface_with_more_addresses_than_the_one_drawn_says_how_many_more(
 
 
 def test_customer_addresses_are_not_drawn_as_a_device_or_a_label():
-    assert "customers" not in repr(drawn_map()) and "175.192.0.10" not in repr(drawn_map())
+    customers = {address for held in stack_plan.customer_addresses(DECLARED.origins, DECLARED.default_origin).values()
+                 for address in held}
+    drawn = repr(drawn_map())
+
+    assert customers and "customers" not in drawn
+    assert not [address for address in customers if f"'{address}'" in drawn or f"'{address}/" in drawn]
 
 
 def test_the_address_table_lists_every_address_the_map_draws():

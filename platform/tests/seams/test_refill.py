@@ -45,7 +45,7 @@ def store(request, tmp_path):
     return refill.MemoryStore() if request.param == "memory" else refill.FileStore(tmp_path / "refill")
 
 
-def test_a_claimed_slot_refills_tick_by_tick_until_its_new_stack_is_set_up(store):
+def test_a_claimed_slot_refills_one_advance_at_a_time_until_its_new_stack_is_set_up(store):
     clock, slot = Clock(), Slot(plans=[OLD, BUILDING, ACTIVE])
 
     assert refill.claim(store, clock, 1, "board", replaced=("old",))

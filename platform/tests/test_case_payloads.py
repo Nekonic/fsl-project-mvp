@@ -32,3 +32,14 @@ def test_every_request_case_is_one_the_harness_can_send_as_written():
         assert re.compile(pre["pattern"]).groups >= 1, (
             f"{file}:{name} prefetch pattern must have a capturing group for the token"
         )
+
+
+def test_every_attack_case_names_what_its_alert_must_mention_and_every_case_name_is_unique_across_files():
+    cases = [case for path in sorted(CASES_DIR.glob("*.yaml"))
+             for case in yaml.safe_load(path.read_text(encoding="utf-8")) or []]
+    names = [case["name"] for case in cases]
+
+    assert [case["name"] for case in cases if case["malicious"] and not case.get("expect")] == [], (
+        "a true positive is corroborated only against the case's expect")
+    assert [case["name"] for case in cases if not case["malicious"] and "expect" in case] == []
+    assert sorted(name for name in set(names) if names.count(name) > 1) == []

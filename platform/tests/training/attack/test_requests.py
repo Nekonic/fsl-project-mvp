@@ -1,6 +1,7 @@
 import pytest
 
 from testing.fakerange import REFUSED_PAGE, RU
+from tests.shape import refused
 from tests.training.attack.conftest import codes, url
 from training.attack import actions as service
 from training.models import Action
@@ -47,8 +48,7 @@ def test_a_host_the_wargame_does_not_serve_is_refused_by_path_and_sends_nothing(
     answer = as_attacker.post(url(attacker.round, "requests/"), {"method": "GET", "path": "/", "host": "corp.com"},
                               format="json")
 
-    assert answer.status_code == 400
-    assert answer.json()["errors"][0]["path"] == "host"
+    refused(answer, 400, "invalid_choice", path="host")
     assert sent_requests(cloud) == []
 
 

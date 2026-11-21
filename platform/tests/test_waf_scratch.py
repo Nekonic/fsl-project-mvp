@@ -1,7 +1,8 @@
 import http.client
 import importlib.util
-import json
 import re
+import shlex
+import subprocess
 import threading
 from pathlib import Path, PurePosixPath
 
@@ -11,11 +12,13 @@ import yaml
 from cr import config as settings
 from cr.config import SensorConfig, WafConfig
 from sandbox import crs, suricata
+from testing.fakes import FakeRunner
+from training.content import probes as recorder
+from training.defence import ruletest
 
 ROOT = Path(__file__).resolve().parents[2]
 WAF = ROOT / "deploy/roles/waf"
 INFRA = ROOT / "deploy/roles/infra"
-CRS_SOURCE = (ROOT / "platform/sandbox/crs.py").read_text()
 
 
 def assigned(path: Path) -> dict[str, str]:
@@ -35,6 +38,21 @@ def live_waf() -> WafConfig:
 def rendered_template(scratch: crs.Scratch) -> str:
     return ((WAF / "probe.conf").read_text().replace("@prefix@", scratch.prefix)
             .replace("@port@", str(scratch.port)).replace("@upstream_port@", str(scratch.upstream_port)))
+
+
+def scratch_commands() -> list[str]:
+    gateway = FakeRunner()
+    crs.scratch_test({}, gateway, live_waf(), 42, [])
+    return [one.argv[2] for one in gateway.sent if one.argv[:2] == ["sh", "-c"]]
+
+
+def sed_over(target: str, text: str) -> str:
+    [segment] = [part for command in scratch_commands() for part in command.split("; ")
+                 if part.startswith("sed ") and target in part]
+    words = shlex.split(segment)
+    expressions = [words[at + 1] for at, word in enumerate(words) if word == "-e"]
+    return subprocess.run(["sed", *(f"-e{one}" for one in expressions)], input=text, capture_output=True, text=True,
+                          check=True).stdout
 
 
 def upstream_module():
@@ -59,11 +77,13 @@ def test_the_waf_installs_the_scratch_template_and_stub_where_the_crs_seam_runs_
 
 
 def test_the_template_carries_exactly_the_placeholders_the_crs_seam_fills():
-    placeholders = set(re.findall(r"@(\w+)@", (WAF / "probe.conf").read_text()))
+    template = (WAF / "probe.conf").read_text()
+    scratch = crs.scratch_for(live_waf(), 42)
+    filled = sed_over(live_waf().probe_template, template)
 
-    assert placeholders == {"prefix", "port", "upstream_port"}
-    for name in placeholders:
-        assert f"s#@{name}@#" in CRS_SOURCE
+    assert set(re.findall(r"@(\w+)@", template)) == {"prefix", "port", "upstream_port"}
+    assert not re.findall(r"@\w+@", filled)
+    assert f"127.0.0.1:{scratch.port}" in filled and f"127.0.0.1:{scratch.upstream_port}" in filled
 
 
 def test_the_scratch_instance_listens_on_loopback_only_and_keeps_every_file_under_its_own_prefix():
@@ -88,13 +108,10 @@ def test_the_scratch_instance_listens_on_loopback_only_and_keeps_every_file_unde
 def test_the_copied_crs_tree_points_at_the_scratch_copy_and_the_scratch_audit_log_only():
     config = live_waf()
     scratch = crs.scratch_for(config, 42)
-    live = (ROOT / "deploy/waf/modsecurity.conf").read_text()
-    copied = re.sub(r"^SecAuditLog .*$", f"SecAuditLog {scratch.audit}", live.replace(config.tree, scratch.tree),
-                    flags=re.M)
+    copied = sed_over(f"{scratch.tree}/modsecurity.conf", (ROOT / "deploy/waf/modsecurity.conf").read_text())
     audit_log_shipped = re.findall(r'File="([^"]+)"', (WAF / "log-shipper.conf").read_text())
 
     assert config.tree == "/etc/nginx/modsecurity"
-    assert f"s#{{config.tree}}#{{scratch.tree}}#g" in CRS_SOURCE and "s#^SecAuditLog .*#" in CRS_SOURCE
     assert config.tree not in copied
     assert re.findall(r"^SecAuditLog (\S+)$", copied, re.M) == [scratch.audit]
     assert scratch.audit not in audit_log_shipped
@@ -146,10 +163,13 @@ def test_the_stub_answers_each_probe_with_its_recorded_response_by_marker_on_loo
 def test_the_stub_takes_the_arguments_the_crs_seam_passes():
     stub = upstream_module()
 
-    given = stub.arguments(["--port", "19042", "--probes", "/var/lib/cr-crstest/test-42/probes.json"])
+    scratch = crs.scratch_for(live_waf(), 42)
+    [started] = [part for command in scratch_commands() for part in command.split("; ") if "nohup python3" in part]
+    words = shlex.split(started.split(" >")[0])
 
-    assert (given.port, given.probes) == (19042, "/var/lib/cr-crstest/test-42/probes.json")
-    assert "--port {scratch.upstream_port}" in CRS_SOURCE and "--probes {scratch.prefix}/probes.json" in CRS_SOURCE
+    given = stub.arguments(words[words.index(live_waf().probe_upstream) + 1:])
+
+    assert (given.port, given.probes) == (scratch.upstream_port, f"{scratch.prefix}/probes.json")
     assert (WAF / "probe-upstream.py").read_text().startswith("#!/usr/bin/env python3\n")
 
 
@@ -172,9 +192,9 @@ def test_the_infra_runs_the_offline_replay_with_the_live_sensor_s_image_and_sett
 
 def test_a_recorded_response_written_by_the_probe_recorder_is_what_the_stub_answers(tmp_path):
     stub = upstream_module()
-    (tmp_path / "board-sqli-union.response.json").write_text(json.dumps({"status": 403, "body": "denied"}))
+    recorder.written(tmp_path, "board-sqli-union.request.json", {"method": "GET", "path": "/search", "host": "board.com"})
+    recorder.written(tmp_path, "board-sqli-union.response.json", {"status": 403, "body": "denied"})
+    recording = ruletest.Recording(case="board-sqli-union", malicious=True, tool_case=False, expect=None,
+                                   marker="probe-1", in_manifest=True, folder=tmp_path)
 
-    recorded = {"marker": "probe-1",
-                "response": json.loads((tmp_path / "board-sqli-union.response.json").read_text())}
-
-    assert stub.answers([recorded]) == {"probe-1": (403, b"denied", "text/html; charset=utf-8")}
+    assert stub.answers([ruletest.probe_request(recording)]) == {"probe-1": (403, b"denied", "text/html; charset=utf-8")}

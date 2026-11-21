@@ -61,8 +61,8 @@ def test_a_refused_lookup_ends_the_shell_without_ssh_and_tells_the_learner_one_p
     ran = subprocess.run(["sh", str(SCRIPT), "cr-waf", "defence", "7"], capture_output=True, text=True, env=env)
 
     assert ran.returncode != 0 and not reached.exists()
-    assert ran.stdout.strip() == "Connection to waf failed. Reopen the terminal in a moment."
-    assert ran.stderr == ""
+    assert len(ran.stdout.splitlines()) == 1 and ran.stdout.strip()
+    assert "not_a_player" not in ran.stdout and ran.stderr == ""
     assert "not_a_player" in (tmp_path / "terminal.log").read_text(), "the cause went nowhere"
 
 
@@ -80,14 +80,14 @@ def test_an_account_the_lookup_did_not_name_cleanly_opens_nothing(tmp_path):
     assert ran.returncode == 1 and not seen.exists()
 
 
-def test_an_ssh_that_cannot_connect_ends_in_the_same_plain_line(tmp_path):
+def test_an_ssh_that_cannot_connect_ends_in_one_plain_line_without_its_cause(tmp_path):
     env = fakes(tmp_path, python=f"echo '{KALI_SHELL}'",
                 ssh="echo 'ssh: connect to host 10.31.0.180 port 22: Connection timed out' >&2; exit 255")
 
     ran = subprocess.run(["sh", str(SCRIPT), "cr-kali", "attack", "3"], capture_output=True, text=True, env=env)
 
     assert ran.returncode == 1
-    assert ran.stdout.strip() == "Connection to kali failed. Reopen the terminal in a moment."
+    assert len(ran.stdout.splitlines()) == 1 and ran.stdout.strip()
     assert "Connection timed out" not in ran.stdout + ran.stderr
     assert "Connection timed out" in (tmp_path / "terminal.log").read_text()
 

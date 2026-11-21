@@ -2,6 +2,7 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -62,3 +63,52 @@ def test_only_a_stack_brought_up_from_this_checkout_is_restarted(tmp_path, check
     if brought_up == elsewhere:
         assert done.returncode == 1 and str(elsewhere) in done.stdout, done.stdout
 
+
+
+FAILING_PLAY = """LISTENERS = []
+
+
+def play(wargame):
+    raise RuntimeError("no slot came free for board")
+"""
+
+READY_PLAY = """from types import SimpleNamespace
+
+LISTENERS = []
+
+
+def play(wargame):
+    return SimpleNamespace(allocation=5)
+
+
+def declared_rules():
+    return ""
+
+
+def check_ids(played, rules):
+    return SimpleNamespace(ok=True, body={"ok": True}, text="")
+
+
+def close(played):
+    return SimpleNamespace(ok=True, text="")
+"""
+
+
+@pytest.mark.parametrize("plays, accepted", [(FAILING_PLAY, False), (READY_PLAY, True)], ids=["no-slot", "target-up"])
+def test_acceptance_starts_only_after_the_warm_up_round_found_the_target_up(tmp_path, checkout, plays, accepted):
+    acceptance = tmp_path / "acceptance-ran"
+    executable(checkout / ".venv/bin/python",
+               f'case "$1" in -) exec "{sys.executable}" "$@" ;; bin/acceptance) touch "{acceptance}" ;; esac\n'
+               "exit 0\n")
+    (checkout / "test").mkdir()
+    (checkout / "test/plays.py").write_text(plays)
+    executable(tmp_path / "tools/docker", f'case "$1" in inspect) echo "{checkout}" ;; esac\nexit 0\n')
+    executable(tmp_path / "tools/curl", "exit 0\n")
+
+    done = subprocess.run([str(checkout / "bin/verify")], capture_output=True, text=True, timeout=60, cwd=checkout,
+                          env={**os.environ, "PATH": f"{tmp_path / 'tools'}:/usr/bin:/bin"})
+
+    assert acceptance.exists() == accepted, done.stdout + done.stderr
+    if not accepted:
+        assert done.returncode == 1
+        assert "no allocation got a slot" in done.stdout and "no slot came free for board" in done.stderr

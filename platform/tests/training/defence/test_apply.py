@@ -168,19 +168,21 @@ def test_files_nginx_refuses_on_reload_are_rolled_back_and_refused_with_the_file
     assert as_defender.get(url(board_round, "waf/versions/")).json() == []
 
 
-@pytest.mark.parametrize("files, path", [
-    ({"/etc/nginx/nginx.conf": "events {}\n"}, "/etc/nginx/nginx.conf"),
-    ({HTTP: "access_log off;\n"}, HTTP),
-    ({SETUP_FILE: "SecAuditEngine Off\n"}, SETUP_FILE),
+@pytest.mark.parametrize("files, path, named", [
+    ({"/etc/nginx/nginx.conf": "events {}\n"}, "/etc/nginx/nginx.conf", "not one the defence edits"),
+    ({HTTP: "access_log off;\n"}, HTTP, "access_log"),
+    ({SETUP_FILE: "SecAuditEngine Off\n"}, SETUP_FILE, "SecAuditEngine"),
 ])
 def test_a_file_the_defence_does_not_edit_or_the_platform_s_logging_never_reaches_the_waf(as_defender, board_round,
-                                                                                        cyber_range, files, path):
+                                                                                        cyber_range, files, path,
+                                                                                        named):
     before = dict(cyber_range.gateway.files)
 
     answer = as_defender.post(url(board_round, "waf/apply/"), {"files": files, "base_version": 0}, format="json")
 
     assert answer.status_code == 422
     assert [(one["path"], one["code"]) for one in answer.json()["errors"]] == [(path, "crs_refused")]
+    assert named in answer.json()["errors"][0]["params"]["message"]
     assert cyber_range.gateway.files == before
 
 

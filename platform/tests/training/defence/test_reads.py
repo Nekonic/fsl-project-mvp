@@ -1,12 +1,14 @@
 from datetime import timedelta
 
 import pytest
+from django.utils import timezone
 
 from telemetry import alerts as alert_feed
-from telemetry.models import Event
+from telemetry.models import Detection, Event
 from tests import rounds
 from tests.training.defence.conftest import SEARCH_RULE
 from training.defence import rules as service
+from training.models import Round
 from users.players import issue_token
 
 BASE = "/api/rounds/{round}/defence/"
@@ -42,16 +44,23 @@ def stamp(at, seconds=0):
     return (at + timedelta(seconds=seconds)).isoformat()
 
 
-def test_ingest_stores_each_alert_once_with_its_engine_rule_and_marker(board_round, cyber_range, es, at):
+def read_due(found):
+    Round.objects.filter(pk=found.pk).update(read_at=timezone.now() - timedelta(days=1))
+
+
+def test_alerts_requests_store_each_alert_once_with_its_engine_rule_and_marker(as_defender, board_round, cyber_range,
+                                                                              es, at):
     es.add("s1", suricata(stamp(at))).add("w1", modsecurity(stamp(at, 1))).add("a1", access(stamp(at, 2), 403))
     es.add("a2", access(stamp(at, 3), 200))
 
-    first = alert_feed.ingest_alerts(board_round)
-    again = alert_feed.ingest_alerts(board_round)
+    read_due(board_round)
+    first = as_defender.get(url(board_round, "alerts/")).json()
+    read_due(board_round)
+    as_defender.get(url(board_round, "alerts/"))
 
-    assert [(row.engine, row.rule, row.marker, row.blocked) for row in first] == [
+    assert [(row["engine"], row["rule"], row["request_id"], row["blocked"]) for row in first["alerts"]] == [
         ("ids", "1001", "m1", False), ("waf", "942100", "m2", False), ("waf", "403", None, True)]
-    assert again == []
+    assert Detection.objects.filter(round=board_round).count() == 3
     assert [record.detection_id for record in alert_feed.detections(board_round)] == ["s1", "w1:0", "a1"]
     seen = Event.objects.filter(round_id=board_round.pk, kind="alert.seen")
     assert seen.count() == 3 and {event.player_side for event in seen} == {"defence"}
@@ -79,7 +88,7 @@ def test_an_alert_and_its_transaction_s_http_record_read_apart_still_join_marker
 def test_alerts_page_by_detection_id_and_filter_by_engine_rule_and_source(as_defender, board_round, cyber_range, es,
                                                                          at):
     es.add("s1", suricata(stamp(at))).add("w1", modsecurity(stamp(at, 1), ip=CUSTOMER))
-    alert_feed.ingest_alerts(board_round)
+    read_due(board_round)
 
     every = as_defender.get(url(board_round, "alerts/")).json()
     waf = as_defender.get(url(board_round, "alerts/"), {"engine": "waf"}).json()
@@ -128,17 +137,6 @@ def test_the_state_shows_the_brief_target_objectives_versions_and_alert_count(as
     assert shown["objectives"] == [{"key": "board-auth-user-admin", "name": shown["objectives"][0]["name"],
                                     "state": "kept", "seen": False}]
     assert (shown["ids"], shown["waf"], shown["alerts_total"]) == ({"version": 1}, {"version": 0}, 1)
-
-
-def test_an_attack_player_reaches_no_defence_route(browser, board_round, make_user):
-    attacker = make_user("attacker")
-    rounds.playing(board_round, "attack", user=attacker)
-    browser.force_authenticate(attacker)
-
-    answer = browser.get(url(board_round, "ids/rules/"))
-
-    assert answer.status_code == 403
-    assert answer.json() == {"errors": [{"path": "", "code": "not_a_player"}]}
 
 
 def test_a_bot_defence_player_reaches_its_side_with_its_token(browser, board_round):

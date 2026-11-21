@@ -1,9 +1,12 @@
 from datetime import timedelta
 
+from django.utils import timezone
+
 from sandbox.runner import Ran
 from telemetry.models import Event
 from tests.training.defence.conftest import BASELINE, SEARCH_RULE
 from training.defence import rules as service
+from training.models import Round
 
 BASE = "/api/rounds/{round}/defence/"
 HTTP = "/etc/nginx/defence/http.conf"
@@ -50,14 +53,16 @@ def test_a_sid_no_active_rule_carries_cannot_be_disabled(as_defender, board_roun
     assert answer.json()["errors"] == [{"path": "sid", "code": "not_found"}]
 
 
-def test_a_disable_past_its_time_is_enabled_again(as_defender, board_round, cyber_range):
+def test_a_disable_past_its_time_is_enabled_again_by_the_next_read(as_defender, board_round, cyber_range):
     as_defender.post(url(board_round, "ids/rules/apply/"), {"text": BASELINE + SEARCH_RULE, "base_version": 0},
                      format="json")
-    made = service.disable_rule(board_round, 1001, 5)
+    service.disable_rule(board_round, 1001, 5, now=timezone.now() - timedelta(minutes=6))
+    Round.objects.filter(pk=board_round.pk).update(read_at=timezone.now() - timedelta(days=1))
 
-    assert service.enable_expired(board_round, made.expires_at - timedelta(seconds=1)) == []
-    assert service.enable_expired(board_round, made.expires_at + timedelta(seconds=1)) == [1001]
+    as_defender.get(url(board_round, "ids/rules/"))
+
     assert cyber_range.sensors["sensor"].rules == BASELINE + SEARCH_RULE
+    assert as_defender.get(url(board_round, "ids/disabled/")).json() == []
 
 
 def test_a_reload_done_in_the_terminal_is_recorded_as_the_next_version_on_the_next_read(as_defender, board_round,

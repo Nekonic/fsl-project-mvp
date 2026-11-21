@@ -130,6 +130,10 @@ def test_the_ingest_pipeline_dates_and_geolocates_an_access_record():
 def test_the_kibana_alert_search_shows_refused_access_records_only():
     assert '(event.module : "nginx_access" and refused : true)' in kibana.ALERTS_QUERY
     saved = (ROOT / "deploy/kibana/objects.ndjson").read_text()
+    sources = [json.loads(line)["attributes"].get("kibanaSavedObjectMeta", {}).get("searchSourceJSON", "{}")
+               for line in saved.splitlines()]
+    queries = [json.loads(source)["query"]["query"] for source in sources if "nginx_access" in source]
 
-    assert saved.count("nginx_access") == 4
+    assert queries and all(query == kibana.ALERTS_QUERY for query in queries)
+    assert saved.count("nginx_access") == len(queries), "nginx_access is named only in the saved objects' query"
     assert re.search(r"event\.module : \W*nginx\W", saved) is None

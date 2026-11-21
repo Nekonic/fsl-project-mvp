@@ -1,7 +1,7 @@
 import pytest
-from django.db.models import ProtectedError
 
 from testing import factories
+from tests import rounds
 from tests.shape import refused
 from training.models import Problem
 
@@ -162,13 +162,13 @@ def test_a_problem_is_deleted_and_then_unknown(saved, as_staff):
     refused(as_staff.get(f"/api/staff/problems/{problem_id}/"), 404, "unknown_problem")
 
 
-def test_deleting_a_problem_a_round_still_holds_is_in_use(saved, as_staff, monkeypatch):
-    def held(self, *args, **kwargs):
-        raise ProtectedError("a round holds it", set())
+def test_deleting_a_problem_a_round_still_holds_is_in_use(saved, as_staff):
+    problem_id = saved["problem"]["id"]
+    rounds.opened(Problem.objects.get(pk=problem_id))
 
-    monkeypatch.setattr(Problem, "delete", held)
+    refused(as_staff.delete(f"/api/staff/problems/{problem_id}/"), 409, "in_use")
 
-    refused(as_staff.delete(f"/api/staff/problems/{saved['problem']['id']}/"), 409, "in_use")
+    assert Problem.objects.filter(pk=problem_id).exists()
 
 
 def test_a_learner_is_refused_every_staff_problem_route(saved, as_learner):

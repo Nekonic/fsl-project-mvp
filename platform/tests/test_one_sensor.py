@@ -2,20 +2,9 @@ import pathlib
 
 from sandbox import definitions as declaration
 from sandbox import openstack, stack_plan
-from tests.seams.test_suricata import RELOAD
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-EXTRA = (("second-sensor", "/var/lib/suricata/rules/local.rules", RELOAD),)
 
-class Standing:
-    def __init__(self, edge, estate):
-        self.sensors = {"sensor": edge, "second-sensor": estate}
-
-    def __call__(self):
-        return self
-
-    def runner(self, role, segment_id=""):
-        return self.sensors[role]
 
 def test_the_one_sensor_stands_inline_behind_the_waf_on_the_slot_s_infra_node():
     for wargame in stack_plan.wargames(ROOT):

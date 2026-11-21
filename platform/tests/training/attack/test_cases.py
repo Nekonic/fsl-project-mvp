@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from testing.fakerange import RU
@@ -15,6 +17,8 @@ def test_the_case_list_holds_the_declared_attack_cases_only(as_attacker, attacke
     assert names["board-sqli-orderby-sqlmap"]["kind"] == "tool"
     assert all(case["malicious"] is True for case in listed)
     assert not any(name.startswith("board-normal") for name in names)
+    assert all(set(case) == {"case", "kind", "malicious", "title"} for case in listed)
+    assert "expect" not in json.dumps(listed)
 
 
 def test_an_http_case_fires_from_the_box_with_its_marker(as_attacker, attacker, cloud):

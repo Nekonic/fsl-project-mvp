@@ -44,9 +44,8 @@ def kinds(found):
 def test_the_pool_holds_every_attack_origin_and_the_box_wears_the_default_first(attack_round, cloud):
     [filled] = cloud.edge.matching("nft -f -")
 
-    assert f"add element ip edge pool {{ {RU}" in filled.stdin or RU in filled.stdin
-    assert all(address in filled.stdin for address in (RU, US, BR))
-    assert "add element ip edge spent" not in filled.stdin
+    assert filled.stdin.splitlines() == ["flush set ip edge pool", "flush set ip edge spent",
+                                         f"add element ip edge pool {{ {RU}, {US}, {BR} }}"]
     assert cloud.worn() == [RU]
 
 

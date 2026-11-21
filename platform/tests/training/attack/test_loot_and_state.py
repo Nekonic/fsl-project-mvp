@@ -23,7 +23,6 @@ def test_loot_is_judged_by_the_referee_and_never_echoes_the_secret(as_attacker, 
     assert answer.status_code == 200
     assert body["lost"] is True and body["objective"]["key"] == "board-auth-user-admin"
     assert TRUTH["admin"] not in json.dumps(body)
-    assert "remaining" in body
 
 
 def test_wrong_loot_loses_nothing(as_attacker, looted_round):

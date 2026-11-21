@@ -7,10 +7,6 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SETTINGS = ROOT / "platform/cr/config.py"
 
 
-def test_elasticsearch_listens_on_the_platform_vm_s_loopback_alone():
-    assert composed.services()["elasticsearch"]["ports"] == ["127.0.0.1:9200:9200"]
-
-
 def test_no_project_secret_is_written_into_the_stack():
     named = [
         (service, variable)

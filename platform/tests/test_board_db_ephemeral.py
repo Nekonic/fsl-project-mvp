@@ -29,9 +29,10 @@ PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 READ = """import json
 from django.contrib.auth.models import User
 from posts.models import Post
+jiwoo = User.objects.get(username="jiwoo")
 print(json.dumps({
     "hashes": {user.username: user.password for user in User.objects.all()},
-    "valid": all(User.objects.get(username=name).check_password(name + "1234") for name in ("jiwoo", "minseo")),
+    "signs_in": {secret: jiwoo.check_password(secret) for secret in ("first-round-secret", "second-round-secret")},
     "posts": Post.objects.count(),
 }))
 """
@@ -56,11 +57,7 @@ def copied_board(tmp_path):
 
 
 def test_each_restore_of_the_pristine_board_salts_the_seeded_accounts_afresh(tmp_path):
-    app = tmp_path / "app"
-    shutil.copytree(REPO_ROOT / "wargames/board/app", app)
-    (app / "shim.py").write_text(SHIM)
-
-    manage = managing(app)
+    manage = managing(copied_board(tmp_path))
 
     pristine = tmp_path / "pristine.sqlite3"
     manage(pristine, "migrate", "--noinput")
@@ -71,6 +68,7 @@ def test_each_restore_of_the_pristine_board_salts_the_seeded_accounts_afresh(tmp
         restored = tmp_path / f"{session}.sqlite3"
         shutil.copyfile(pristine, restored)
         manage(restored, "seed")
+        manage(restored, "set_passwords", stdin=json.dumps({"jiwoo": f"{session}-round-secret"}))
         restores.append(json.loads(manage(restored, "shell", "-c", READ).splitlines()[-1]))
 
     first, second = restores
@@ -78,7 +76,9 @@ def test_each_restore_of_the_pristine_board_salts_the_seeded_accounts_afresh(tmp
     for name in first["hashes"]:
         assert len({built["hashes"][name], first["hashes"][name], second["hashes"][name]}) == 3, (
             f"{name}: a hash stolen in one session must not match the next session's ground truth")
-    assert first["valid"] and second["valid"], "the seeded passwords still log in"
+    assert first["signs_in"] == {"first-round-secret": True, "second-round-secret": False}
+    assert second["signs_in"] == {"first-round-secret": False, "second-round-secret": True}, (
+        "each round's account signs in with that round's secret only")
     assert first["posts"] == second["posts"] == built["posts"] > 0, "a restored board is not seeded twice"
 
 
@@ -104,3 +104,8 @@ def test_set_passwords_gives_the_named_accounts_their_password_and_every_other_a
     for name, (digest, default_works, given_works) in rotated.items():
         assert digest != seeded[name][0] and not default_works
         assert given_works == (name != "admin")
+
+    manage(database, "set_passwords", stdin=json.dumps({"jiwoo": "given-jiwoo"}))
+    next_round = json.loads(manage(database, "shell", "-c", SIGNS_IN).splitlines()[-1])
+
+    assert next_round["admin"][0] != rotated["admin"][0], "the last round's stolen admin hash matches nothing now"

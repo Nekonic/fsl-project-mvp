@@ -33,7 +33,7 @@ def test_filling_the_pool_owes_a_refill_to_every_slot_no_allocation_holds(as_sta
     assert refill.standing(service.store(), 2).wargame == "corp"
 
 
-def test_the_follower_builds_and_configures_a_slot_the_pool_owes(as_staff, cloud):
+def test_the_rebuild_job_builds_and_configures_a_slot_the_pool_owes(as_staff, cloud):
     as_staff.post("/api/staff/range/pool/")
 
     service.advance_refills()

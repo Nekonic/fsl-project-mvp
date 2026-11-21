@@ -487,14 +487,6 @@ def test_kibana_is_published_on_the_platform_host_s_loopback_only_for_the_operat
     )
 
 
-def test_the_old_session_paths_are_gone():
-    text = FRONT.read_text()
-
-    for old in ("/vm-terminal/kali/", "/vm-terminal/waf/", "/auth-check/", "/kibana-refused/", "/static/map/",
-                "$session_asked"):
-        assert old not in text, old
-
-
 AUTH_PASSES = {401, 403}
 
 
