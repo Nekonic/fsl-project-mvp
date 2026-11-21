@@ -10416,6 +10416,9 @@ its top level is the easiest to read.
   `openapi/schema.yaml`.
 - **Lessons:** the current lesson content goes; `training/lessons/` keeps its
   place for the rewrite from both sides.
+- **Addendum (docs stage):** `core_loc` is not repointed at the new paths.
+  The ratchet (`bin/measure`, `metrics.json`) was removed on 2026-11-19, so
+  there is no measure to rerun and no record to update.
 
 ## 2026-11-21 — The tick is gone: round reads run on the round's requests
 

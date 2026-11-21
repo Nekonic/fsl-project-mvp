@@ -10,102 +10,87 @@ history.
 
 ## Where things stand
 
-The product is being rebuilt as a side split on the working branch
-`side-split` (user ruling 2026-11-19: no code is kept or migrated; the old
-code is reference only). `dev` keeps the old product deployable until gate 2.
+The product was rebuilt as a side split on `side-split` (user ruling
+2026-11-19: no code is kept or migrated; the old code is reference only), and
+then restructured on the working branch `restructure` (ruling 2026-11-21,
+"The platform is restructured into five units, KYPO-style"). `dev` keeps the
+old product deployable until gate 2. Nothing on `side-split` or
+`restructure` has run on a range.
 
-The rebuild follows the spec's build order (§16). Steps 1-4, 6-11, 13, 14,
-the repo side of 5, step 15 (`nginx.conf`, the terminals and `front/`) and
-the code of 16 are built and pass the unit and API suite; `front/` is built
-against its mock API only. The bake of 5, step 12 and the live parts of 15,
-16 and 17 are not done. Nothing on `side-split` has run on a range.
+## What exists on restructure
 
-## What exists on side-split
+The side-split build (the spec's steps 1-17, recorded in this file's git
+history) is carried into five units. Each row ran against fakes only.
 
-| Spec step | What exists | Proof that ran |
+| Stage | What exists | Proof that ran |
 |---|---|---|
-| 1 Ratchet removed | `metrics.json`, `bin/measure` and the ratchet steps are gone | `bin/verify --fast` |
-| 2 Old tree cleared | `platform/api/`, `platform/console/`, the scenario and lesson modules and their tests are deleted | `platform/tests/test_old_tree_gone.py` |
-| 3 `domain/` | scoring (correlate, metrics, corroborate, objectives), traffic (customer shares, the limit_req floor), verdicts, checks, problems, round_rules | `platform/tests/domain/`, no Django in the process; import rule 1 |
-| 4 Seams | `cr/config.py`, `cr/errors.py`, `ingest/elastic.py`, `rules/suricata.py`, `rules/crs.py`, `range/*` (with `edge.py`, `jump.py`, `refill.py` rewritten), `attack/box.py`, `firing.py`, `tools.py`, `defence/kibana.py`, `referee/loot.py`, `effect.py` | `platform/tests/seams/` against fakes; import rules 2, 4, 14; `platform/tests/seams/test_isolation_seams.py`, `test_no_comments.py` |
-| 5 Deploy (repo side) | `edge.nft` with `pool` and `spent` and the `spent` drop and the drop of every address outside `pool` before the established accept, the probe lease admitting the origin it wears; the WAF's JSON access log `access.json` shipped and relayed as `nginx-access`, ingested as `nginx_access`; `probe.conf`, `probe-upstream.py`, `analyst.sh`; `conntrack`, `tcpdump` and `/var/lib/cr-ruletest` on the infra; `bin/record-probes`; each round start empties both edge sets (`range.edge.restart`) and the round's end empties them again (`attack.close`); the access log keeps `request_id` only when it has a marker's shape | `tests/test_edge_sets.py`, `test_waf_scratch.py`, `test_access_log.py`, `test_analyst.py`, `test_record_probes.py`, `test_roles.py`, `test_filebeat.py`, `tests/seams/test_edge.py`, `tests/attack/test_spend.py`; structural only, no `nft -c` or `nginx -t` |
-| 6 Django skeleton | `cr/` (DRF, spectacular, one handler, `strings.py`), `strings/`, `accounts`, `events` | `tests/accounts` (with the first account `admin` from migration `accounts.0002_first_account`), `tests/events`, the error-shape and no-admin tests |
-| 7 `content` | catalog, `wargame.yaml` per wargame, problems as nested documents with revisions and export/import, postures, the learner read API | `tests/content` |
-| 8 Round records, referee | `match.models`, `match.auth` (seat tokens hashed, `HasSeat`, `InRound`, `IsOperator`, `OnLease`), `referee` (baseline, loot, effects, objectives, redact, score) | `tests/referee`; import rules 4, 5, 11, 15 |
-| 9 `defence` | IDS rules and WAF files read, check, test and apply across sensors, versions with text and hash, a terminal reload recorded on the next read, probes, disable, alerts, traffic, terminal, Kibana gate | `tests/defence` |
-| 10 `attack` | state, cases, requests, async tools, loot, origins, terminal, origin loss from the WAF error log (deny and limit_req above the floor), spend at the edge, customer sends | `tests/attack` |
-| 11 `match.service` | lease and round lifecycle, follower (`follow` compose service), customers and the benign schedule, site pane, terminal auth routes, score, probe recording, staff range routes | `tests/match`; import rules 6, 7, 9 |
-| 13 `lessons` | lesson rounds, facts, judges, progress, hints, `step_locked`, staff try | `tests/lessons` |
-| 14 Contract and clients | `openapi/schema.yaml` committed; `bin/gen-clients`; `test/` and `bin/` on the generated client; `bin/backup` and `bin/prune` on the new tables | `tests/contract`; import rule 12; no `/api/sessions` outside docs |
-| 15 `nginx.conf` and terminals | per-seat `/vm-terminal/<side>/<round>/` through an uncached `terminal-auth`, the raw-path seat guard, the round passed to ttyd as its only argument, a refused check answered with the API's status and code (`@terminal-refused`, from `terminal-auth`'s `X-Error-Code`); `vm-terminal.sh` (kali as `kali`, cr-waf as `analyst`, only with a jump grant, closed within 15 s once the grant goes); `analyst`'s processes, crontab and `at` jobs ended when the round's defence grant is revoked (`range.jump.end_account`); `/signed-in` on `/api/me/`; the 8002 listener keyed by round, its `@sign-in` sending the learner to `CR_CONSOLE_ORIGIN`'s login with a `next` on `CR_SITE_ORIGIN` (rendered by `python -m cr.config` at start; unset, the asked host's 8000 and 8002 over http), which `Login.tsx` follows only onto that origin's `/site/`; refused Kibana routes answered by the gate; `/app/front/dist` served last, `/assets/` answering 404 for a missing hashed file, `index.html` uncached | `tests/test_front.py` (a config parser and nginx's path normalization replayed), `tests/test_vm_terminal.py` (fake `python`, `ssh`, `tmux`), `tests/attack/test_terminal.py`, `tests/defence/test_terminal.py`, `tests/seams/test_jump.py` (the end script run against fake `crontab`, `atq`, `loginctl`, `pkill`, `pgrep`); no `nginx -t` |
-| 15 `front/` | Vite, TypeScript, Preact console in the v4 design: `theme/tokens.css` and `theme/components.css` hold every visual value and class; `ui/` dumb components; `panes/` per spec §13 plus `Loot`, `AttackCases`, `RuleVersions`, each fetching through `api/` hooks; pages as thin arrangements; the three consoles declared as data in `layouts.ts`, routes and top nav as one table each (`routes.ts`, `nav.ts`); text only through `t()` over `strings/console.json`; `api/client.ts` (CSRF renewal, 90 s timeout, slot wait), `api/follow.ts` (one events cursor reading the whole backlog, per-lease heartbeat); a dev-server mock API (`front/mock/`); the Dockerfile's node stage (`npm run types`, `npm run build`) and `front`, `strings`, `openapi` in `images.yml` sources; `bin/verify` builds and tests `front/` | `npm run build`, `npx vitest run` (client, follow cursor, panes, the lobby holding an open lease until it leaves, Korean guards, no `server.json` key in the bundle); every route captured at 1440 and 390 against the mock and compared with the v4 mockups; `docker buildx` of the platform image and `nginx -t` inside it, not pushed |
-| 16 `bots/` (code) | `tools.py`, `calls.py`, `cli.py`, `play.py`, `provider.py`, `signin.py`, the side prompts and the README | `platform/tests/test_bots.py` |
-| 17 Docs | README, ARCHITECTURE, CLAUDE.md, this file and `now.md` describe the new layout | this step |
+| Five units | `users/`, `sandbox/` (every file that knows an outside device), `telemetry/`, `training/` (one app: `content/`, `round/`, `traffic/`, `attack/`, `defence/`, `lessons/`), `scoring/`; `cr/`, `domain/`, `testing/` shared; fresh `0001` migrations (`users` keeps `0002_first_account`) | `platform/tests/seams/test_imports.py` (no import from a higher layer, unit surfaces), `test_isolation_seams.py`; `openapi/schema.yaml` regenerated byte-identical to the schema before the move |
+| Names | Seat is `Player`, Lease is `Allocation`: models, fields, routes (`/api/allocations/`, `/players/<side>/join/`), events (`player.joined`), error codes, `CR_PLAYER_TOKEN`, `CR_ALLOCATION_IDLE_MINUTES`, tables in `bin/backup`, the console's 플레이어 | unit and API suite, `front/` vitest |
+| No tick | round reads run on the round's API requests (`training/round/views_catch_up.py`, `lifecycle.catch_up`, one reader per round through `Round.reading_since`, `CR_READ_EVERY_SECONDS`); the `follow` service is now `rebuild` (`manage.py rebuild_slots`); `ended` is `min(now, ends_at)` and the score counts up to it | `tests/training/round/test_catch_up_and_score.py`, `tests/training/round/test_lifecycle.py` |
+| Origin loss | HP is gone; an origin is spent by an nginx `deny` or a `limit_req` at or above the floor in the WAF error log (`training/attack/origins.py`, `telemetry/access.py`, `domain/traffic.py`); `limit.below_floor` warns the defence | `tests/training/attack/test_origin_loss.py`, `tests/domain/test_traffic.py`, `tests/telemetry/test_refusals.py` |
+| WAF as files | the defender edits six WAF files (`crs-setup.conf`, the REQUEST-900 and RESPONSE-999 exclusions, `/etc/nginx/defence/{http,board.com,corp.com}.conf`); one read, check, test, write, reload, record flow for IDS and WAF (`training/defence/rules.py`); a terminal reload recorded on the next read; `drift.py` and the JSON tuning gone | `tests/seams/test_crs.py`, `test_crs_scratch.py`, `tests/training/defence/`, `test_analyst.py`, `test_roles.py` |
+| Customers on the infra | benign traffic leaves from the infra VM (`sandbox/customers.py`, `cr-customers.service`, dummy link `customers`), never from kali; the edge `pool` holds only attack origins | `tests/seams/test_customers.py`, `tests/seams/test_stack_plan.py`, `tests/test_roles.py` |
+| Random board secret | each round's start sets new board passwords (`set_passwords`, declared as `rotate` in `wargames/board/objectives.yaml`) and then reads the baseline | `tests/scoring/test_baseline.py`, `tests/test_board_db_ephemeral.py` |
+| Verdict notices | each case is judged once during the round (`scoring.score.judge`, `Verdict` rows, `case.judged` to the defence); the console shows the newest three | `tests/scoring/test_judge.py`, `front/` vitest |
+| Bots | the bots get the human's shell (`bots/shell.py`); no generated client: `bots/`, `test/` and `bin/` call the API by `operationId` through `bots/rest.py` | `platform/tests/test_bots.py`, `test/` collected only |
+| Lessons | the lesson content is gone; `training/lessons/` is an empty package; `front/` builds again | `npm run build`, `npx vitest run` |
+| Docs | README, ARCHITECTURE, OPENSTACK, this file and `now.md` describe `restructure` | this stage |
 
 ## Not live-verified
 
-Every row above ran against fakes only. In particular, none of these has run
-on a slot:
+Everything on `restructure`. In particular, none of these has run on a slot:
 
-- the rule test on a sensor and on cr-waf (`rules.suricata.offline_test`,
-  `rules.crs.scratch_check` and `scratch_test`), and that it leaves the live
-  alerts and ground truth unchanged (`test/test_rule_test_isolation.py`);
-- apply across sensors with rollback; WAF files applied with nginx -t, reload and rollback, and a reload done in the terminal recorded as the next version
-  files;
-- the origin spend from the WAF error log after a defender's nginx deny, the
-  drop at the infra edge cutting a keep-alive connection, customers surviving
-  the spend, and a CRS 403 spending nothing (`test/test_origin_spend.py`,
-  `test/test_block_everything.py`);
-- jump grants on the platform sshd and the per-seat key in the box account,
-  for kali and for `analyst` on cr-waf;
-- the follower on a live range (refill, expiry, ingest, effects);
-- `bin/cloud up` and `down` through the new staff range routes;
-- one round of each matchup with Claude Code driving the bot seat
-  (`test/test_bot_rounds.py` drives the players through `bots/rest.py`,
-  not through a model), and the bots' `shell` over a real jump host;
-- the ported acceptance suite as a whole (`test/`);
-- `nginx -t` on `platform/nginx.conf` and `nft -c` on `edge.nft` (Docker was
-  not running on the development machine), the ttyd `?arg=` handoff, the
-  terminal's ssh running in the background beside its recheck loop with a
-  real terminal, and the `analyst` account on a baked WAF.
+- the five-unit platform image on the platform VM, its fresh database and
+  `bin/carry-users` into it;
+- reads on request on a live round: alert ingest, the WAF error log, corp
+  effects, the command log, verdict notices, the time-limit end on the next
+  request, and the `rebuild` service;
+- origin loss from a defender's nginx `deny` and `limit_req`, the drop at
+  the infra edge, a CRS 403 spending nothing (`test/test_origin_spend.py`,
+  `test/test_block_everything.py`, both rewritten and not run);
+- the six WAF files on a baked cr-waf: nginx loading the includes,
+  ModSecurity's error format, the worker-start check, `probe.conf` with two
+  servers, the `analyst` sudo rules and loopback fence, a terminal reload
+  recorded as a version;
+- the customers on the infra VM (`cr-customers.service`, the /32s on the
+  dummy link, replies through the edge) and kali holding attack origins only;
+- `set_passwords` on a target baked with the new `cr-board`, and the
+  customers' logins with the per-round passwords;
+- the rule test on a sensor and on cr-waf (`sandbox.suricata.offline_test`,
+  `sandbox.crs` scratch check and test) and that it leaves live alerts and
+  ground truth unchanged (`test/test_rule_test_isolation.py`);
+- jump grants on the platform sshd and the per-player key in the box
+  account, for kali and for `analyst`, and the bots' `shell` over them;
+- `bin/cloud up` and `down` through the staff range routes;
+- one round per matchup with Claude Code as the bot player;
+- the acceptance suite as a whole on `requests` and `bots/rest.py`
+  (`test/`, only collected);
+- `front/` against a live platform, `nginx -t` on `platform/nginx.conf` and
+  `nft -c` on `edge.nft`.
 
 ## Next steps, in order
 
-1. **`front/` on a range** (spec step 15): built in the approved v4 design
-   against the mock API only. Left: run it against a live platform, with
-   the per-seat terminals (`nginx.conf`, `vm-terminal.sh`), the 8002 site
-   listener and the Kibana pane, none of which has run on a range.
-2. **Cloud step 5, the rebake**: the repo side is written and tested
-   offline: `edge.nft` with the `pool` and `spent` sets and the `spent` drop
-   before the established accept; `board.com.conf` with one `$refused` map
-   (400, 403) and the JSON access log of every request
-   (`/var/log/nginx/access.json`); `log-shipper.conf` and `log-relay.conf`
-   carrying it as `nginx-access`; `filebeat.yml` and `ingest-pipeline.json`
-   routing it to `nginx_access`; `probe.conf`, `probe-upstream.py` and
-   `analyst.sh` on the WAF role; `conntrack`, `tcpdump` and the offline rule
-   test's scratch folder on the infra role. Left: bake `cr-infra-bake2` and
-   `cr-waf-bake3`, name them in `compute.images`, `bin/cloud up --replace`,
-   and the step's checks on a slot (`docs/OPENSTACK.md` §3.7).
-3. **The customers' rebake**: benign traffic runs on the infra now
-   (`cr-customers.service`, the dummy link `customers`). Left: bake
-   `cr-infra` and `cr-kali` again, name them in `compute.images`,
-   `bin/cloud up --replace`, and the checks of `docs/OPENSTACK.md` §3.8.
-4. **The board secret's rebake**: each round's start sets fresh board
-   passwords with the board's `set_passwords`. Left: bake `cr-target` at a
-   commit whose `cr-board` image has the command, name it in
-   `compute.images`, `bin/cloud up --replace`, and the check of
-   `docs/OPENSTACK.md` §3.9.
-5. **Cloud step 12, probe recordings**: `bin/record-probes board` and
-   `bin/record-probes corp` through the staff route on a probe lease; copy
-   the platform's `CR_PROBES_OUT/<id>/probes/` into `wargames/<id>/probes/`
-   and commit it (`docs/OPENSTACK.md` §3.7). Until the board's manifest is
-   committed, `test/test_rule_test_isolation.py` fails: it requires
-   `board-sqli-search` to be replayed by both rule tests.
-6. **Full live verify**: the full `bin/verify` with acceptance on the range,
-   the Claude Code bot round of each matchup (spec step 16), a captured walk
-   of every page as a learner, a live review round with zero countable
-   findings, and a docs review.
-7. **Gate 2**: present what changed with the evidence; on approval, move the
+1. **Rebake the role images**: `cr-infra` (the edge sets, `conntrack`,
+   `tcpdump`, the customers' account, `users.py` and `cr-customers.service`,
+   the dummy link), `cr-waf` (the access and error logs shipped, the split
+   site config and six defence files, `probe.conf`, `analyst.sh`), `cr-kali`
+   (fewer addresses from `slot.env`; its role files did not change) and
+   `cr-target` (a `cr-board` image with `set_passwords`; until then every
+   round start fails with `ground_truth_unavailable`). Name them in
+   `compute.images`, `bin/cloud up --replace`, and run the checks of
+   `docs/OPENSTACK.md` §3.7, §3.8 and §3.9.
+2. **Probe recordings** (spec step 12): `bin/record-probes board` and `corp`
+   through the staff route on a probe allocation; copy
+   `CR_PROBES_OUT/<id>/probes/` off the platform VM into
+   `wargames/<id>/probes/` and commit it. Until the board's manifest is in,
+   `test/test_rule_test_isolation.py` fails.
+3. **Full `bin/verify` on the cloud**: with acceptance, from the platform VM
+   (`CR_PLATFORM_URL=http://<address>:8000 bin/verify`).
+4. **A Player vs AI round per matchup**: `def_vs_bot` and `atk_vs_bot` with
+   Claude Code as the bot player through `bots/cli.py`, and one `pvp` round,
+   then a captured walk of every page as a learner, a live review round with
+   zero countable findings and a docs review.
+5. **Gate 2**: present what changed with the evidence; on approval, move the
    verified, tagged state onto `dev` and then `main`.
 
 ## Open points
@@ -116,13 +101,12 @@ on a slot:
   Elasticsearch's ingest pipeline, node settings and index on
   `localhost:9200` rather than through `/api/`. The seam scan lists them as
   named exceptions (CLAUDE.md); moving them behind an API route or into
-  `ingest/elastic.py` is open.
-- **A refused key leaves a jump grant.** If the box refuses the per-seat
-  key, `range.jump.open_access` keeps the platform sshd grant until the
+  `telemetry/elastic.py` is open.
+- **A refused key leaves a jump grant.** If the box refuses the per-player
+  key, `sandbox.access.open_access` keeps the platform sshd grant until the
   round ends. Without the box key it gives no access.
-- **Mockup fields the API does not send.** User names on seats and the round
-  bar (`SeatLine`, `Me`), a past round's end and result, a lesson's step
-  counts, the lease's opening time, a CRS preview, case and objective
+- **Mockup fields the API does not send.** User names on players and the
+  round bar, a past round's end and result, the allocation's opening time, a CRS preview, case and objective
   catalogs for the staff editor, and coded slot and server failures.
 - **Screens not yet one file to change.** The map icons
   (`panes/map-symbols/node-*.svg`) and `panes/Map.tsx`'s cytoscape style
@@ -135,6 +119,18 @@ on a slot:
   folder mounted at `/scratch`, and whether the scratch ModSecurity
   instance's audit log is opened by the root master (its workers could not
   write it), are not known until a slot runs them.
+- **A round no one calls on does nothing.** The benign pass, origin loss,
+  alert ingest, verdicts and the time-limit end wait for the next request
+  for the round; a polling console or bot keeps it moving. The edge sets
+  are not refilled mid-round, so a `slot-boot` reload of the table leaves
+  them empty until the next round starts.
+- **Verdicts are never revised.** A notice sent before a late alert can
+  differ from the final score, which comes from the rows. The 30 s wait
+  before a miss (`CR_JUDGE_AFTER_SECONDS`) is an estimate, not measured.
+- **Two `restructure` placements left as they are**: the staff range views
+  stay in `training/round` until the pool records which allocation holds a
+  slot, and the score view stays there because it gathers both sides'
+  actions; `scoring/` has no views.
 - **The comment scan reads code only.** `test_no_comments.py` covers
   Python, shell and TS/TSX/JS; config and data files are not scanned, and
   `wargames/board/traffic.yaml` carries a comment block from before the side
@@ -142,17 +138,21 @@ on a slot:
 - **`bin/carry-users` mid-load.** If `loaddata` fails after the migrated
   `admin` was deleted, the new store has no `admin` until the command is run
   again, which recovers it.
-- **No route serves the probe recordings.** `match/probes.py` writes them to
+- **No route serves the probe recordings.** `training/content/probes.py` writes them to
   the platform's `CR_PROBES_OUT`; they are copied off the platform VM by hand
   before they are committed.
 
 ## Decisions left for a person
 
 - **What the lessons and rounds teach.** The old lessons F1-F6, courses c1
-  and c2 and scenarios 1.1-4.1 are deleted with no replacement. Problems are
-  authored as database rows through the staff API (and the staff page once
-  `front/` exists); which lessons come first and which rounds follow is not
-  decided.
+  and c2 and scenarios 1.1-4.1 are deleted, and the side-split lesson code
+  went with the restructure; `training/lessons/` is the empty place for the
+  rewrite from both sides. Problems are authored as database rows through
+  the staff API and page; which lessons come first and which rounds follow
+  is not decided.
+- **Who sees a verdict.** `case.judged` goes to the defence and staff only,
+  since it shows the defender's coverage; whether the attacker should see
+  TP/FN for its own cases is open.
 - **Two licences behind the origins and the map.** MaxMind's GeoLite EULA
   asks for old databases to be deleted within 30 days of a new release and
   for the line "This product includes GeoLite Data created by MaxMind". For
@@ -162,9 +162,11 @@ on a slot:
   into the production repo, and the 30-day refresh, is still open.
   Cloudflare Radar's shares are CC BY-NC 4.0, fine here, to be looked at
   before they move to the production repo.
-- **Board secret between rounds on one lease.** Until it is known whether
-  the board secret can rotate without a rebuild, `may_start_scored` refuses
-  a scored round on a lease where an objective has fallen (spec §17 risk 8).
+- **Board secret between rounds on one allocation.** The board passwords
+  now rotate at every round start, but `may_start_scored` still refuses a
+  scored round on an allocation where an objective has fallen
+  (`objective_fallen`, spec §17 risk 8); corp's ground truth does not
+  rotate. Whether to lift the rule for the board is open.
 
 ## Open risks (spec §17)
 
@@ -172,10 +174,9 @@ Unmeasured until a range runs them: offline IDS against the live sensor;
 mapping `suricata -T` errors to a line; scratch CRS instance fidelity;
 recorded sqlmap pcaps as an IDS preview; error-log loss on the UDP hop (an origin
 the defender banned is not spent); spend lag of one read interval plus shipping; forged markers and
-customer addresses on a root box; free-action attribution by window; the
-follower's single loop under four sqlmap runs; the first Preact build and
-the SPA fallback order; whether `analyst` can read the CRS files without
-changing the live reload path.
+customer addresses on a root box; free-action attribution by window; reads
+on request keeping up under four sqlmap runs; the first Preact build and
+the SPA fallback order.
 
 ## Known gaps
 
@@ -191,7 +192,7 @@ changing the live reload path.
 - The command log is lost when the attacker box is recreated, and a sudo
   learner can rewrite it; it feeds only `command.run` and the `kali` check.
 - A slot is reused, so the Kibana space `soc-logs-N` also shows what an
-  earlier lease on that slot left in `logs-N-*`.
+  earlier allocation on that slot left in `logs-N-*`.
 - OpenStack host keys are trust-on-first-use per generation, kept in the
   platform user's home (lost with the container) unless the deployment's ssh
   config says otherwise.
@@ -199,7 +200,11 @@ changing the live reload path.
 ## Tried and thrown away
 
 - **The scenario engine, triage and debrief** (removed 2026-11-19 with the
-  side split): two kinds of play remain, a guided lesson and a live round.
+  side split), and then the side-split lessons (removed 2026-11-21): one
+  kind of play remains, the live round.
+- **The periodic tick, HP, the WAF JSON tuning and drift check, and the
+  generated client** (removed 2026-11-21 with the restructure;
+  `docs/DECISIONS.md`).
 - **The ratchet** (`metrics.json`, `bin/measure`), removed 2026-11-19: time,
   effort and dependency counts are not criteria.
 - **Replacing Django entirely.** It cost more lines than it saved.

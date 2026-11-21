@@ -10,9 +10,9 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 
 학습은 **실전 라운드**로 합니다. 레슨은 다시 만들 예정이라 지금은 없습니다.
 
-실전 라운드는 슬롯 스택 하나에 공격석과 방어석 두 자리를 둡니다. 매치업은 셋입니다.
+실전 라운드에는 슬롯 스택 하나에 공격 플레이어와 방어 플레이어가 하나씩 들어갑니다. 플레이어는 사람이거나 봇입니다. 매치업은 셋입니다.
 
-| 매치업 | 공격석 | 방어석 |
+| 매치업 | 공격 플레이어 | 방어 플레이어 |
 |---|---|---|
 | `pvp` | 사람 | 사람 |
 | `def_vs_bot` | AI 공격 봇 | 사람 |
@@ -20,7 +20,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 
 사람 콘솔과 봇은 같은 API를 씁니다. 공격 API(`/api/rounds/<id>/attack/`)와 방어 API(`/api/rounds/<id>/defence/`)가
 하나씩 있고, 봇은 사람과 같은 엔드포인트를 같은 권한으로 호출합니다. 터미널도 마찬가지입니다. 봇은 특정 모델에
-묶이지 않습니다. 지금은 Claude Code가 `bots/cli.py`로 자리를 맡고, 다른 모델은 `bots/provider.py` 인터페이스로
+묶이지 않습니다. 지금은 Claude Code가 `bots/cli.py`로 봇 플레이어를 맡고, 다른 모델은 `bots/provider.py` 인터페이스로
 붙입니다([bots/README.md](bots/README.md)).
 
 ## 학습 단계
@@ -37,12 +37,12 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 라운드 문제는 매치업, 시작 방어 설정(posture), 룰 테스트에 쓸 케이스, 노리는 목표, 고객 트래픽, 시간 제한을
 정합니다.
 
-- 공격석은 Kali 터미널, 대상 사이트 패널, API로 공격하고 탈취한 값을 loot로 제출합니다.
-- 방어석은 Kibana, WAF 터미널, 구성도, 알림 목록으로 보고, IDS 룰과 WAF 파일을 고칩니다. 고친 룰은
+- 공격 플레이어는 Kali 터미널, 대상 사이트 패널, API로 공격하고 탈취한 값을 loot로 제출합니다.
+- 방어 플레이어는 Kibana, WAF 터미널, 구성도, 알림 목록으로 보고, IDS 룰과 WAF 파일을 고칩니다. 고친 룰은
   적용하기 전에 녹화된 요청으로 테스트할 수 있습니다(룰 테스트). WAF 파일은 콘솔에서 고쳐 적용해도 되고, 터미널에서
   고친 뒤 `sudo nginx -t`, `sudo nginx -s reload`로 반영해도 됩니다. 터미널에서 reload한 내용은 다음 요청 때 새
   버전으로 기록됩니다.
-- 플랫폼이 라운드 내내 정상 케이스와 고객 트래픽을 보냅니다. 공격석이 아무것도 하지 않아도 오탐과 정상 통과가 쌓입니다.
+- 플랫폼이 라운드 내내 정상 케이스와 고객 트래픽을 보냅니다. 공격 플레이어가 아무것도 하지 않아도 오탐과 정상 통과가 쌓입니다.
 - 라운드는 시간 제한, 목표 전부 탈취, 공격 출발지 전부 소진, 운영자 종료, 한쪽 기권으로 끝납니다. 출발지 소진으로
   끝나는 것은 정상 케이스가 한 바퀴 이상 돈 뒤입니다.
 
@@ -55,10 +55,9 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 
 | 스태프 API | 용도 |
 |---|---|
-| `GET\|POST /api/staff/problems/`, `GET\|PUT\|DELETE /api/staff/problems/<id>/` | 문제, 단계, 라운드 설정, 시작 posture를 한 문서로 저장. `PUT`은 `base_revision`이 최신이 아니면 `409 stale_revision` |
-| `POST /api/staff/problems/validate/` | 저장하지 않고 검증. 오류는 필드 경로(`steps[3].check.params.case`)로 옴 |
+| `GET\|POST /api/staff/problems/`, `GET\|PUT\|DELETE /api/staff/problems/<id>/` | 문제, 라운드 설정, 시작 posture를 한 문서로 저장. `PUT`은 `base_revision`이 최신이 아니면 `409 stale_revision` |
+| `POST /api/staff/problems/validate/` | 저장하지 않고 검증. 오류는 필드 경로(`round.matchups[0]`)로 옴 |
 | `GET\|POST /api/staff/postures/`, `GET\|PUT /api/staff/postures/<id>/` | 시작 방어 설정(Suricata 룰, WAF 파일 텍스트) |
-| `POST /api/staff/steps/<문제>/<순서>/try/` | 같은 워게임의 끝난 라운드 기록으로 단계 판정을 미리 돌려 봄 |
 | `POST /api/staff/wargames/<id>/probes/record/` | 룰 테스트용 요청 녹화 |
 
 ## 점수
@@ -68,7 +67,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 **목표**(주 점수): 공격이 성공했는지는 대상 시스템이 직접 저장한 데이터로 판정합니다. 플랫폼이 공격 성공을 추정하지
 않습니다.
 
-- board: 공격석이 탈취한 계정 해시를 loot로 제출합니다(`POST /api/rounds/<id>/attack/loot/`). 라운드를
+- board: 공격 플레이어가 탈취한 계정 해시를 loot로 제출합니다(`POST /api/rounds/<id>/attack/loot/`). 라운드를
   시작할 때마다 board의 `set_passwords`로 계정 비밀번호를 무작위로 새로 정하고, 그 직후 읽어 둔 해시와 정확히
   같으면 그 목표를 잃은 것입니다. 이전 라운드의 해시나 `seed.py`의 기본 비밀번호로는 맞지 않습니다. 응답은
   비밀값을 드러내지 않습니다.
@@ -81,17 +80,17 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
   알림도 많이 나오지만 1건입니다. 알림 단위로 세면 방어가 아니라 알림 임계값을 재게 됩니다.
 - 알림이 공격 수법을 짚지 못하면(케이스의 `expect` 문자열이 시그니처에 없으면) `corroborated: false`로 표시하고
   탐지로 인정하지 않습니다.
-- 탐지 결과에 들어가는 것은 선언된 케이스(`redteam/cases/`)와 플랫폼이 보내는 정상 케이스뿐입니다. 공격석이
+- 탐지 결과에 들어가는 것은 선언된 케이스(`redteam/cases/`)와 플랫폼이 보내는 정상 케이스뿐입니다. 공격 플레이어가
   터미널이나 API로 자유롭게 보낸 요청은 출발지별로 따로 보여 주고(`free_actions`) 정탐·오탐으로 세지 않습니다.
 - 모든 요청을 막는 방어는 탐지 결과에서 만점을 받지만 정상 케이스에서 오탐이 쌓이고, 목표는 지켜도 그 오탐이 옆에
   그대로 남습니다.
-- 방어석은 라운드 중에도 케이스 판정을 바로 받습니다(`case.judged` 이벤트, 콘솔 오른쪽 아래 판정 알림). 케이스가
+- 방어 플레이어는 라운드 중에도 케이스 판정을 바로 받습니다(`case.judged` 이벤트, 콘솔 오른쪽 아래 판정 알림). 케이스가
   끝난 뒤 라운드를 읽을 때 알림이 묶여 있으면 그때 정탐·오탐으로 판정하고, 알림 없이 `CR_JUDGE_AFTER_SECONDS`(기본
   30초)가 지나면 미탐·정상 통과로 판정합니다. 도구 케이스는 도구가 끝날 때까지 기다리고, 라운드가 끝나면 남은 케이스를
-  모두 판정합니다. 케이스마다 한 번만 알리며(`scoring_verdict` 행) 공격석에는 보이지 않습니다. 한 번 알린 판정은 다시
+  모두 판정합니다. 케이스마다 한 번만 알리며(`scoring_verdict` 행) 공격 플레이어에게는 보이지 않습니다. 한 번 알린 판정은 다시
   고치지 않으므로, 그 뒤에 들어온 알림 때문에 라운드가 끝난 뒤 점수의 판정이 다를 수 있습니다.
 
-점수는 `GET /api/rounds/<id>/score/`입니다. 자리는 라운드가 끝난 뒤에, 운영자와 스태프는 언제든 읽습니다.
+점수는 `GET /api/rounds/<id>/score/`입니다. 플레이어는 라운드가 끝난 뒤에, 운영자와 스태프는 언제든 읽습니다.
 
 ## 출발지 IP 소진
 
@@ -148,8 +147,8 @@ flowchart TB
 | 연결 | 경로 |
 |---|---|
 | 브라우저 → 콘솔 | floating IP의 8000, 8002 |
-| 학습자 ssh → Kali | floating IP의 2222(플랫폼 컨테이너의 sshd) → `cr-mgmt`의 Kali 22번. 공격석의 점프 권한 |
-| 학습자 ssh → WAF | 같은 2222 → `cr-mgmt`의 WAF 22번, `analyst` 계정. 방어석의 점프 권한 |
+| 학습자 ssh → Kali | floating IP의 2222(플랫폼 컨테이너의 sshd) → `cr-mgmt`의 Kali 22번. 공격 플레이어의 점프 권한 |
+| 학습자 ssh → WAF | 같은 2222 → `cr-mgmt`의 WAF 22번, `analyst` 계정. 방어 플레이어의 점프 권한 |
 | 플랫폼 → 훈련 환경 VM | `cr-mgmt`의 제어 포트로 ssh. 관리 계정 `ubuntu`, 비밀번호 없는 sudo. 대상 컨테이너는 target VM에서 `docker exec` |
 | WAF → log-server | 스택의 `mgmt`로 syslog 514/tcp |
 | log-server → collector | infra의 제어 포트에서 `cr-mgmt`로 syslog 5140/udp(센서 알림, WAF audit log, 모든 요청의 nginx 접근 로그) |
@@ -161,8 +160,8 @@ flowchart TB
   주소를 씁니다.
 - 스택은 워게임별 풀에 미리 띄워 둡니다(`compute.pool`, 기본 board 3개, corp 1개). 할당을 열면(`POST /api/allocations/`)
   준비된 스택 하나를 받고, 할당을 닫거나 하트비트 없이 만료되면 그 스택을 지우고 새로 만듭니다. 할당 하나에서 라운드를
-  여러 번 열 수 있지만, 목표를 하나라도 잃은 할당에서는 채점 라운드를 새로 시작하지 않습니다(board의 비밀값을 스택
-  재생성 없이 바꿀 수 있는지 아직 모름).
+  여러 번 열 수 있지만, 목표를 하나라도 잃은 할당에서는 채점 라운드를 새로 시작하지 않습니다(`409 objective_fallen`). board 비밀번호는
+  이제 라운드마다 새로 정하지만 이 규칙은 아직 그대로입니다.
 - 훈련 환경 VM은 `deploy/roles/<역할>/install.sh`로 미리 구운 Glance 이미지로 부팅합니다. 기본 이름은
   `cr-<역할>-bake1`이고, 이 클라우드의 WAF는 `cr-waf-bake2`입니다. 부팅할 때 인터넷에 나가지 않습니다.
 - Kali는 인터넷 역할입니다. 출발지 30개국의 /24 대역에 걸친 주소 100개를 갖고, 기본 출발지 5.188.10.10을 첫 주소로
@@ -185,6 +184,17 @@ flowchart TB
   것만 셉니다.
 - 만료된 할당은 다음 할당 요청이나 그 할당에 들어온 요청이 닫습니다.
 
+플랫폼 코드(`platform/`)는 다섯 단위로 나뉩니다.
+
+| 단위 | 맡는 일 |
+|---|---|
+| `users/` | 계정, 로그인·가입·승인, 차단, 플레이어 토큰 |
+| `sandbox/` | 훈련 환경: 풀, Heat 스택, 에지, 점프 접속, 그리고 바깥 장치를 아는 파일 전부(OpenStack, Suricata, CRS/nginx, Kibana, 공격 박스, 고객 박스) |
+| `telemetry/` | Elasticsearch, 이벤트, 알림, WAF 접근·오류 로그 |
+| `training/` | 문제와 워게임(`content/`), 할당과 라운드(`round/`), 고객 트래픽(`traffic/`), 공격 API(`attack/`), 방어 API(`defence/`), 비어 있는 `lessons/` |
+| `scoring/` | 대상의 정답 데이터 읽기, baseline, 목표, 판정, 점수 |
+
+`cr/`(설정, 오류, URL), `domain/`(Django 없는 규칙 함수), `testing/`(가짜 클라우드와 가짜 훈련 환경)은 함께 씁니다.
 자세한 구성은 [ARCHITECTURE.md](docs/ARCHITECTURE.md)에 있습니다.
 
 ## 요구 사항
@@ -337,7 +347,7 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 |---|---|---|
 | 8000 | 콘솔, `/api/`, Kibana(`/kibana/`), 터미널(`/vm-terminal/`) | 브라우저, 봇, `test/`, `bin/` |
 | 8002 | 대상 사이트(`/site/<라운드 id>/<host>/<path>`) | 콘솔 안의 iframe |
-| 2222 | SSH 점프 호스트, 플랫폼 컨테이너 안의 sshd | 학습자 PC의 `ssh`. 자리마다 받은 키로 공격석은 Kali 22번, 방어석은 WAF 22번(`analyst`)으로만 포워딩. 셸 없음 |
+| 2222 | SSH 점프 호스트, 플랫폼 컨테이너 안의 sshd | 학습자 PC의 `ssh`. 플레이어마다 받은 키로 공격 플레이어는 Kali 22번, 방어 플레이어는 WAF 22번(`analyst`)으로만 포워딩. 셸 없음 |
 | 5140/udp | collector | 훈련 환경 infra VM의 log-server, `cr-mgmt`에서만 |
 | 5601 | Kibana 직접 접속, VM loopback 전용 | ssh 터널, 인증 없음 |
 | 9200 | Elasticsearch, VM loopback 전용 | acceptance 테스트, 인증 없음 |
@@ -348,10 +358,10 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
   호스트의 `http://<host>:8000`, `http://<host>:8002`입니다. TLS 리버스 프록시나 도메인 뒤에 둘 때는 둘 다
   `https://cr.example`처럼 scheme, 호스트, 포트만 적습니다. 플랫폼 컨테이너가 시작할 때 nginx 설정에 넣고,
   사이트 origin은 `/api/me/`의 `site_origin`으로 콘솔에 알려 줍니다. 형식이 틀리면 컨테이너가 시작하지 않습니다.
-- `board.com`과 `corp.com`은 훈련 환경 안에서만 응답합니다. 공격석이 8002로 보낸 요청은 공격 API와 같은 경로로
-  나갑니다. 방어석의 요청은 할당의 브라우징 마커를 달고 infra VM에서 고객 주소로 나가며, 공격으로도 오탐으로도
+- `board.com`과 `corp.com`은 훈련 환경 안에서만 응답합니다. 공격 플레이어가 8002로 보낸 요청은 공격 API와 같은 경로로
+  나갑니다. 방어 플레이어의 요청은 할당의 브라우징 마커를 달고 infra VM에서 고객 주소로 나가며, 공격으로도 오탐으로도
   세지 않습니다.
-- 공격 API와 방어 API의 계약은 `openapi/schema.yaml`입니다. 자리별 스키마는 `/api/schema/attack/`,
+- 공격 API와 방어 API의 계약은 `openapi/schema.yaml`입니다. 공격·방어 쪽 스키마는 `/api/schema/attack/`,
   `/api/schema/defence/`입니다.
 
 ## 워게임 추가
@@ -404,7 +414,7 @@ npm run build && npx vitest run
 
 ## 백업과 복원
 
-백업 대상은 플랫폼 VM `cr_platformdata` 볼륨의 `/data/db.sqlite3`입니다. 계정, 할당, 라운드, 자리, 공격 기록,
+백업 대상은 플랫폼 VM `cr_platformdata` 볼륨의 `/data/db.sqlite3`입니다. 계정, 할당, 라운드, 플레이어, 출발지, 공격 기록,
 도구 실행, 탐지 기록, 고객 요청, 목표, 룰셋, 룰 테스트, 비활성화한 룰이 들어 있습니다. Elasticsearch 데이터는
 백업하지 않습니다.
 
@@ -439,11 +449,11 @@ sudo docker compose start platform rebuild
 | 표면 | 보호 |
 |---|---|
 | `/api/`(사람) | Django 로그인. 세션 쿠키는 HttpOnly, SameSite=Lax. 쓰기 요청은 CSRF 토큰 필요. CORS 헤더 없음 |
-| `/api/`(봇) | `Authorization: Bearer <자리 토큰>`. 토큰은 라운드를 만들 때 한 번만 보여 주고 해시로만 저장. 자기 자리의 공격 또는 방어 경로와 라운드 읽기만 닿음. 라운드가 끝나면 15분 동안 읽기만 가능 |
-| 자리 | 상대 자리의 경로는 403. 라운드 시작 전 쓰기는 `409 round_not_started`, 끝난 뒤는 `409 round_closed`. 자리는 할당을 열거나 닫지 못하고 라운드를 끝내지 못함(기권만 가능). PvP에서 한 사람이 두 자리를 맡지 못함(`already_playing`) |
+| `/api/`(봇) | `Authorization: Bearer <플레이어 토큰>`. 토큰은 라운드를 만들 때 한 번만 보여 주고 해시로만 저장. 자기 쪽 공격 또는 방어 경로와 라운드 읽기만 닿음. 라운드가 끝나면 15분 동안 읽기만 가능 |
+| 플레이어 | 상대 쪽 경로는 403. 라운드 시작 전 쓰기는 `409 round_not_started`, 끝난 뒤는 `409 round_closed`. 플레이어는 할당을 열거나 닫지 못하고 라운드를 끝내지 못함(기권만 가능). PvP에서 한 사람이 양쪽 플레이어를 맡지 못함(`already_playing`) |
 | 이벤트 피드 | 이벤트 종류마다 볼 수 있는 쪽이 정해져 있음. 공격 쪽은 알림과 룰 이벤트를, 방어 쪽은 공격 행동과 출발지 이벤트를 보지 못함 |
-| WAF 파일 | 방어석이 고치는 파일은 `crs-setup.conf`, REQUEST-900·RESPONSE-999 예외 파일, `deny`·`limit_req`를 넣는 nginx 파일(`/etc/nginx/defence/`)뿐. `log_format`, `access_log`, `error_log`, 감사 로그 설정은 측정용이라 콘솔에서 거부하고 `analyst` 계정도 쓸 수 없음. `SecRuleEngine Off`·`DetectionOnly`는 허용(점수에 결과가 드러남) |
-| `/vm-terminal/<side>/<round>/` | nginx `auth_request`가 `/api/rounds/<round>/terminal-auth/<side>/`에 그 라운드의 그 자리를 맡았는지 물음. 공격 자리는 Kali의 `kali` 계정, 방어 자리는 cr-waf의 `analyst` 계정(root 아님)으로 열리고, `GET terminal/`로 받은 점프 권한이 없거나 라운드가 끝났으면 열리지 않음. 열려 있던 셸도 15초마다 다시 확인해 권한이 없어지면 닫힘 |
+| WAF 파일 | 방어 플레이어가 고치는 파일은 `crs-setup.conf`, REQUEST-900·RESPONSE-999 예외 파일, `deny`·`limit_req`를 넣는 nginx 파일(`/etc/nginx/defence/`)뿐. `log_format`, `access_log`, `error_log`, 감사 로그 설정은 측정용이라 콘솔에서 거부하고 `analyst` 계정도 쓸 수 없음. `SecRuleEngine Off`·`DetectionOnly`는 허용(점수에 결과가 드러남) |
+| `/vm-terminal/<side>/<round>/` | nginx `auth_request`가 `/api/rounds/<round>/terminal-auth/<side>/`에 그 라운드의 그 쪽 플레이어인지 물음. 공격 플레이어는 Kali의 `kali` 계정, 방어 플레이어는 cr-waf의 `analyst` 계정(root 아님)으로 열리고, `GET terminal/`로 받은 점프 권한이 없거나 라운드가 끝났으면 열리지 않음. 열려 있던 셸도 15초마다 다시 확인해 권한이 없어지면 닫힘 |
 | `/kibana/`, 8002(`/site/...`) | nginx `auth_request`로 `/api/me/`에 로그인 세션 확인. 없으면 로그인 페이지로. 로그인 뒤 돌아가는 `next`는 콘솔 안의 경로이거나 `CR_SITE_ORIGIN`(기본은 같은 호스트의 8002)의 `/site/` 주소만 받음 |
 | 회원가입 계정 | 비활성 상태로 만들어짐. 스태프가 승인해야 로그인 가능 |
 | 로그인 시도 | IP당 분당 5회(버스트 5), 넘으면 429. 계정은 잠그지 않고 시도한 쪽을 차단: 스태프 계정에 3번 틀린 IP는 1시간, 다른 아이디에 10번 틀린 IP는 15분. 같은 브라우저 헤더 지문이 두 IP 이상에서 같은 횟수만큼 틀려도 차단. 스태프가 `DELETE /api/staff/blocks/<id>/`로 해제 |
@@ -468,15 +478,19 @@ sudo docker compose start platform rebuild
 
 ## 현재 상태
 
-`side-split` 브랜치는 새 구조로 다시 만든 코드입니다. 단위·API 테스트는 통과하지만 훈련 환경에서는 아직 돌리지 않았습니다.
+`restructure` 브랜치는 `side-split` 코드를 다섯 단위로 다시 나누고, 주기 작업(tick), HP, WAF JSON 튜닝, 생성
+클라이언트, 기존 레슨을 걷어 낸 코드입니다. 단위·API 테스트는 돌렸지만 이 브랜치의 어떤 것도 훈련 환경에서는 아직
+돌리지 않았습니다.
 
 - 콘솔(`front/`)은 만들었지만 가짜 응답(`front/mock/`)으로만 확인했습니다. 플랫폼 이미지의 node 단계가 빌드하고
   nginx가 `/app/front/dist`로 내줍니다. API에 없는 값(지난 라운드의 결과, 로비의 연 시각 등)은
-  아직 화면에 없습니다. 자리별 터미널(`nginx.conf`, `vm-terminal.sh`)은 오프라인 테스트만 거쳤고 훈련 환경에서는 아직
+  아직 화면에 없습니다. 플레이어별 터미널(`nginx.conf`, `vm-terminal.sh`)은 오프라인 테스트만 거쳤고 훈련 환경에서는 아직
   열어 보지 않았습니다.
-- WAF 접근 로그와 오류 로그 전송, infra 라우터의 `pool`·`spent` 집합, CRS 룰 테스트용 임시 인스턴스, WAF의 `analyst`
-  계정은 배포 파일에만 있고 역할 이미지에는 아직 없습니다. infra, waf 이미지를 다시 구워야 합니다
-  (`docs/OPENSTACK.md` §3.7).
+- WAF 접근 로그와 오류 로그 전송, 방어 파일(`/etc/nginx/defence/`), infra 라우터의 `pool`·`spent` 집합, CRS 룰
+  테스트용 임시 인스턴스, WAF의 `analyst` 계정, infra의 고객 프로그램(`cr-customers.service`), board의
+  `set_passwords`는 배포 파일과 코드에만 있고 역할 이미지에는 아직 없습니다. infra, waf, kali, target 이미지를 다시
+  구워야 합니다(`docs/OPENSTACK.md` §3.7~§3.9). target을 다시 굽기 전에는 라운드 시작이
+  `ground_truth_unavailable`로 실패합니다.
 - 룰 테스트용 녹화(`wargames/<id>/probes/`)가 아직 없습니다. 지금 룰 테스트는 케이스를 미탐이 아니라
   `untested`(`not_recorded`, WAF 도구 케이스는 `tool_case`)로 돌려줍니다.
 
@@ -486,7 +500,7 @@ sudo docker compose start platform rebuild
 
 - [CLAUDE.md](CLAUDE.md): 저장소 목적, 점수 계산, 작업 규칙
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): 계층, 파일 지도, 격리 경계, 라운드 흐름
-- [bots/README.md](bots/README.md): 봇이 자리를 맡는 방법, 출발지 소진, 오류 코드(영어)
+- [bots/README.md](bots/README.md): 봇이 플레이어로 들어가는 방법, 출발지 소진, 오류 코드(영어)
 - [OPENSTACK.md](docs/OPENSTACK.md): 클라우드 준비, 플랫폼 VM, 훈련 환경 운영(영어)
 - [THREAT-MODEL.md](docs/THREAT-MODEL.md): 위협 모델
 - [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): 겪은 문제와 해결(영어)
