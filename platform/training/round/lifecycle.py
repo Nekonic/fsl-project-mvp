@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -46,6 +47,7 @@ CREATED = Phase.CREATED.value
 STARTING = Phase.STARTING.value
 
 READ_ABANDONED = timedelta(minutes=5)
+READER_POLL_SECONDS = 0.5
 
 logger = logging.getLogger(__name__)
 
@@ -210,11 +212,13 @@ def guarded(found: Round, what: str, work) -> None:
         logger.warning("round %s: %s failed: %s", found.pk, what, failed)
 
 
-def stepped(found: Round, what: str, work) -> None:
+def stepped(found: Round, what: str, work) -> Exception | None:
     try:
         work(found)
-    except Exception:
+    except Exception as failed:
         logger.exception("round %s: %s failed", found.pk, what)
+        return failed
+    return None
 
 
 def settle(found: Round) -> None:
@@ -243,9 +247,13 @@ def end_time(found: Round) -> datetime:
 def end_round(found: Round, reason: str) -> Round:
     if reason not in round_rules.END_REASONS:
         raise ValueError(f"no end reason {reason!r}")
-    was = found.phase
-    if was == RUNNING:
+    if found.phase == RUNNING:
         final_reads(found)
+    return finish(found, reason)
+
+
+def finish(found: Round, reason: str) -> Round:
+    was = found.phase
     if not Round.objects.filter(pk=found.pk).exclude(phase=ENDED).update(phase=ENDED, ended=end_time(found),
                                                                           end_reason=reason):
         found.refresh_from_db()
@@ -270,8 +278,9 @@ def observe(found: Round) -> None:
     losses.observe_effects(found, reach(found), attack.actions(found))
 
 
+ALERTS_READ = "ingesting alerts"
 READS = (
-    ("ingesting alerts", lambda found: alert_feed.ingest_alerts(found)),
+    (ALERTS_READ, lambda found: alert_feed.ingest_alerts(found)),
     ("spending origins from the WAF error log", lambda found: attack.spend_from_log(found)),
     ("observing effects", observe),
     ("reading commands", lambda found: attack.read_commands(found)),
@@ -308,33 +317,66 @@ def claim_reading(found: Round, at: datetime) -> bool:
     return bool(Round.objects.filter(free, due, pk=found.pk, phase=RUNNING).update(reading_since=at))
 
 
+def still_running(found: Round) -> bool:
+    return Round.objects.filter(pk=found.pk, phase=RUNNING).exists()
+
+
 def read_logs(found: Round) -> None:
+    unavailable = {}
     for what, step in READS:
-        stepped(found, what, step)
+        if not still_running(found):
+            found.refresh_from_db()
+            return
+        failed = stepped(found, what, step)
+        if isinstance(failed, errors.Unavailable):
+            unavailable[what] = failed.code
+    found.unavailable_reads = unavailable
+    Round.objects.filter(pk=found.pk).update(unavailable_reads=unavailable)
+
+
+def refuse_if_unread(found: Round, what: str) -> None:
+    code = found.unavailable_reads.get(what)
+    if code and found.phase == RUNNING:
+        raise errors.Unavailable(code=code)
+
+
+def release_reading(found: Round, claimed_at: datetime) -> None:
+    Round.objects.filter(pk=found.pk, reading_since=claimed_at).update(reading_since=None, read_at=timezone.now())
+
+
+def wait_for_reader() -> None:
+    time.sleep(READER_POLL_SECONDS)
 
 
 def final_reads(found: Round) -> None:
-    at = timezone.now()
-    if not Round.objects.filter(not_being_read(at), pk=found.pk, phase=RUNNING).update(reading_since=at):
-        return
+    while True:
+        at = timezone.now()
+        if Round.objects.filter(not_being_read(at), pk=found.pk, phase=RUNNING).update(reading_since=at):
+            break
+        if not still_running(found):
+            return
+        wait_for_reader()
     try:
         read_logs(found)
     finally:
-        Round.objects.filter(pk=found.pk).update(reading_since=None, read_at=timezone.now())
+        release_reading(found, at)
 
 
 def catch_up(found: Round, at: datetime | None = None) -> str | None:
-    if found.phase != RUNNING or not claim_reading(found, timezone.now()):
+    claimed_at = timezone.now()
+    if found.phase != RUNNING or not claim_reading(found, claimed_at):
         return None
     try:
         read_logs(found)
         found.refresh_from_db()
+        if found.phase != RUNNING:
+            return None
         reason = round_rules.ended(state_of(found, at or timezone.now()))
         if reason is not None:
-            end_round(found, reason)
+            finish(found, reason)
         return reason
     finally:
-        Round.objects.filter(pk=found.pk).update(reading_since=None, read_at=timezone.now())
+        release_reading(found, claimed_at)
 
 
 def actions(found: Round):

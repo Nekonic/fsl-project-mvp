@@ -62,7 +62,9 @@ placeholders (`platform/testing/factories.py`).
 
 The committed contract is `openapi/schema.yaml`, which `bin/verify` exports
 with `manage.py spectacular`. `bots/`, `test/` and `bin/` call it by
-operationId through `bots/rest.py`, with no generated client. Only
+operationId through `bots/rest.py`, with no generated client
+(`bin/platform-rebuild`'s readiness probe on `/api/auth/csrf/` is plain
+urllib, the one exception). Only
 `front/src/api/schema.d.ts` is generated from it (`npm run types`, in
 `bin/verify` and in the platform Dockerfile's node stage before it builds
 `front/`), and it is not committed, because the generator writes comments and
@@ -187,11 +189,14 @@ logic changed, and before a push.
 - `platform/` is not a package — `platform` is a stdlib name; never add
   `platform/__init__.py`. Run Python with `platform/` as the working directory
   (same for `test/`).
-- No comments or docstrings in code, in `platform/`, `front/src`, `bots/`,
-  `bin/`, `test/`, `deploy/`, `wargames/` and `redteam/` alike; name things
-  so the code says what it does. Exceptions: `deploy/suricata/rules/`, where
-  a commented-out rule is how a rule is disabled, the header Django writes
-  into generated migrations, and a script's shebang.
+- No comments or docstrings in code (Python, shell, TS/TSX/JS), in
+  `platform/`, `front/src`, `bots/`, `bin/`, `test/`, `deploy/`, `wargames/`
+  and `redteam/` alike; name things so the code says what it does.
+  Exceptions: `deploy/suricata/rules/`, where a commented-out rule is how a
+  rule is disabled, the header Django writes into generated migrations, and
+  a script's shebang. YAML data and config files may carry comments
+  (`redteam/cases/*.yaml`, `wargames/board/traffic.yaml`,
+  `deploy/openstack/cloud.example.yaml`).
   `platform/tests/seams/test_no_comments.py` scans Python (comment tokens
   and docstrings), shell (trailing comments and Python fed to a heredoc
   included) and TS/TSX/JS.

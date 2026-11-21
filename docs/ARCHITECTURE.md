@@ -101,8 +101,9 @@ bin/
   verify                      schema.yaml 내보내기 → 계층별 단위 테스트 → acceptance
   select-tests                --changed가 돌릴 테스트 고르기
   acceptance                  test/ 실행
-  cloud  platform-rebuild     클라우드와 플랫폼 VM. 스태프 range API를 bots/rest.py로 호출
-  backup  prune  carry-users  DB 스냅숏, 닫힌 할당 정리, 옛 DB에서 계정만 옮기기
+  cloud                       클라우드 전체. 스태프 range API를 bots/rest.py로 호출
+  platform-rebuild            플랫폼 VM 재구축. 준비 확인만 urllib로 /api/auth/csrf/를 직접 찌름(bots/rest.py 안 거침)
+  backup  prune               DB 스냅숏, 닫힌 할당 정리
   fetch-geoip  pick-origins  worldmap  build-css
 platform/                     패키지 아님. manage.py와 pytest의 작업 디렉터리
   cr/          settings.py  urls.py  wsgi.py  schema.py(쪽별 스키마)
@@ -282,10 +283,12 @@ sequenceDiagram
 - 주기적으로 도는 라운드 작업은 없습니다. 라운드나 할당에 대한 API view는 모두 `CatchingUpView`
   (`training/round/views_catch_up.py`)를 거치고, 인증과 권한 확인 뒤 만료된 할당을 닫고 `lifecycle.catch_up`을
   부릅니다. `catch_up`은 `Round.reading_since`에 대한 조건부 `UPDATE` 하나로 라운드를 잡고(5분이 지난 잡기는 버려진
-  것으로 봄) `read_at`으로 놓습니다. 아무도 부르지 않는 라운드는 아무 일도 하지 않습니다.
+  것으로 봄) `read_at`으로 놓습니다. 놓을 때는 자기가 잡은 시각과 같은 잡기만 풉니다. 읽기 단계마다 DB에서 라운드가
+  아직 진행 중인지 보고, 그사이 끝났으면 거기서 멈춥니다. 아무도 부르지 않는 라운드는 아무 일도 하지 않습니다.
 - 읽기 단계 하나가 실패해도 나머지 단계는 계속 돕니다. 제한 시간이 지난 라운드는 다음 요청이 끝내고 종료 시각은
   제한 시간으로 남깁니다. 점수는 종료 시각까지의 동작, 알림, 목표만 셉니다.
-- 운영자 종료, 기권, 할당 만료로 끝나는 라운드도 끝내기 전에 읽기를 한 번 더 돌립니다. 요청은 할당 만료를 보기 전에
+- 운영자 종료, 기권, 할당 만료로 끝나는 라운드도 끝내기 전에 읽기를 한 번 더 돌립니다. 다른 요청이 읽는 중이면
+  그 읽기가 끝나거나 버려질 때까지 기다렸다가 읽습니다. 요청은 할당 만료를 보기 전에
   라운드부터 읽으므로, 제한 시간이 지난 라운드는 할당이 만료됐어도 `time_limit`으로 끝납니다.
 - 만료된 할당은 다음 할당 요청이나 그 할당에 들어온 요청이 닫습니다. 반납된 슬롯의 스택은 `rebuild` 서비스
   (`manage.py rebuild_slots`, `sandbox.service.keep_rebuilding`)가 다시 만듭니다.
@@ -383,7 +386,8 @@ sequenceDiagram
 ```
 
 - `objectives`: 대상의 정답 데이터로만 정합니다. board는 loot가 라운드 시작 때 무작위 비밀번호로 새로 정한 뒤 읽은 해시와 정확히 같을 때, corp는
-  공격 행동 시간 안에 바이너리 로그의 변경이 있을 때 잃은 것입니다. `seen`은 방어 쪽이 그 손실을 탐지했는지입니다.
+  라운드 시간 안에 바이너리 로그에 변경이 남았을 때 잃은 것입니다. 그 시각에 겹친 공격 행동이 없으면 `attributed_marker`는 비어 있고,
+  정상 케이스는 `attributed_marker`가 되지 않습니다. `seen`은 방어 쪽이 그 손실을 탐지했는지입니다.
 - `outcomes`: 선언된 케이스와 플랫폼이 보낸 정상 케이스만. 케이스 하나는 결정 하나입니다.
 - `free_actions`: 자유 행동을 출발지별로. TP/FP/FN/TN에 들어가지 않습니다.
 - 판정 알림: 라운드를 읽을 때마다(`lifecycle.READS`의 마지막 단계)와 라운드가 끝날 때(`round.ended` 앞)

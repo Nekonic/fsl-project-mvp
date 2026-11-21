@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 from django.conf import settings
@@ -19,6 +20,7 @@ ROUND = "round"
 ENDED = Phase.ENDED.value
 
 choosing = threading.Lock()
+kept_open: set[int] = set()
 
 
 def idle() -> timedelta:
@@ -63,6 +65,15 @@ def heartbeat(held: Allocation) -> Allocation:
     return held
 
 
+@contextmanager
+def keeping_open(held: Allocation):
+    kept_open.add(held.pk)
+    try:
+        yield
+    finally:
+        kept_open.discard(held.pk)
+
+
 def close_allocation(held: Allocation, reason: str = "ended_by_operator") -> Allocation:
     for found in Round.objects.filter(allocation=held).exclude(phase=ENDED):
         lifecycle.end_round(found, reason)
@@ -74,14 +85,14 @@ def close_allocation(held: Allocation, reason: str = "ended_by_operator") -> All
 
 
 def expire(at: datetime | None = None) -> list[int]:
-    due = list(Allocation.objects.filter(closed=None, expires_at__lt=at or timezone.now()))
+    due = list(Allocation.objects.filter(closed=None, expires_at__lt=at or timezone.now()).exclude(pk__in=kept_open))
     for held in due:
         close_allocation(held, "allocation_expired")
     return [held.pk for held in due]
 
 
 def close_if_expired(held: Allocation) -> bool:
-    if held.closed is not None or held.expires_at >= timezone.now():
+    if held.closed is not None or held.expires_at >= timezone.now() or held.pk in kept_open:
         return False
     close_allocation(held, "allocation_expired")
     return True

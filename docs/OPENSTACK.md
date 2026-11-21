@@ -772,8 +772,8 @@ names; none of it has run, so it is **[unverified]**.
 
 | Role | New name | What changed in `deploy/roles/<role>/` |
 |---|---|---|
-| `infra` | `cr-infra-bake2` | `edge.nft` declares the sets `pool` and `spent` (`type ipv4_addr`) and drops `ip saddr @spent` and then `ip saddr != @pool` from `wan` before the established accept, so an open keep-alive or sqlmap connection of a spent origin stops too and an address the platform never put in `pool` reaches nothing; `sandbox/edge.py` adds the addresses after each `slot-boot` load and flushes a spent origin's conntrack entries (package `conntrack`). `tcpdump` for `sandbox.suricata.capture` (probe recording), `/var/lib/cr-ruletest` (0700) for `sandbox.suricata.offline_test`, which runs the same pinned image and `/etc/suricata/suricata.yaml` with `-r` and reads the scratch `eve.json`, never `/var/log/suricata`. `log-relay.conf` relays the WAF's `nginx-access` lines instead of `nginx` |
-| `waf` | `cr-waf-bake3` (**(this cloud)**; `cr-waf-bake2` is taken) | `board.com.conf` writes every request to `/var/log/nginx/access.json` as JSON (`time`, `client_ip`, `vhost`, `request`, `status`, `refused` from the one `$refused` map of 400 and 403, `request_id` from `X-Request-ID` when it has a marker's shape and empty otherwise, so a padded or repeated header cannot push the line past the shipper's 64 KiB), and `log-shipper.conf` ships it under Tag `nginx-access` in place of `refused.log`. `probe.conf` and `probe-upstream.py` for `sandbox.crs.scratch_check` and `scratch_test`; the exclusion file is created 0644 (root writes it through sudo). `analyst.sh` creates the defence player's account |
+| `infra` | `cr-infra-bake2` | `edge.nft` declares the sets `pool` and `spent` (`type ipv4_addr`) and drops `ip saddr @spent` and then `ip saddr != @pool` from `wan` before the established accept, so an open keep-alive or sqlmap connection of a spent origin stops too and an address the platform never put in `pool` reaches nothing; `sandbox/edge.py` adds the addresses after each `slot-boot` load and flushes a spent origin's conntrack entries (package `conntrack`). `tcpdump` for `sandbox.suricata.capture` (probe recording), `/var/lib/cr-ruletest` (0700) for `sandbox.suricata.offline_test`, which runs the same pinned image and `/etc/suricata/suricata.yaml` with `-r` and reads the scratch `eve.json`, never `/var/log/suricata`. `log-relay.conf` relays the WAF's `nginx-access` lines instead of `nginx`, and its `nginx-error` lines (the error log origin loss is read from) |
+| `waf` | `cr-waf-bake3` (**(this cloud)**; `cr-waf-bake2` is taken) | `board.com.conf` writes every request to `/var/log/nginx/access.json` as JSON (`time`, `client_ip`, `vhost`, `request`, `status`, `refused` from the one `$refused` map of 400 and 403, `request_id` from `X-Request-ID` when it has a marker's shape and empty otherwise, so a padded or repeated header cannot push the line past the shipper's 64 KiB), and `log-shipper.conf` ships it under Tag `nginx-access` in place of `refused.log`. `board.com.conf` also writes `error_log /var/log/nginx/error.log warn;`, which `log-shipper.conf` ships under Tag `nginx-error`, and includes the defence files `/etc/nginx/defence/http.conf` (at `http` level), `board.com.conf` and `corp.com.conf` (in each `server`). `install.sh` creates those three, `crs-setup.conf` (from the example), REQUEST-900 and RESPONSE-999 when absent. `probe.conf` and `probe-upstream.py` for `sandbox.crs.scratch_check` and `scratch_test`. `analyst.sh` creates the defence player's account and makes those six defence files root:analyst 0664 |
 
 `pool` holds a round's attack origins (filled when
 the round starts) or, for a probe allocation, the origin it wears (admitted before
@@ -793,18 +793,27 @@ disables its linger, ends its logind sessions and kills its processes):
 
 - can: log in by the per-player key `sandbox/access.py` writes into its
   `authorized_keys` (bash, password field `*`); read `/etc/nginx` (the vhosts,
-  `modsecurity.conf`, the CRS tree and the exclusion file) and, through group
-  `adm`, `/var/log/nginx` and `/var/log/modsecurity`; run `sudo nginx -t` and
-  `sudo nginx -T` and nothing else as root;
-- cannot: write any file under `/etc/nginx`, `/var/log/nginx` or
-  `/var/log/modsecurity` (no group it is in may write there; the bake removes
-  any such group write bit), reload or signal nginx, read
-  `/var/lib/cr-crstest` (0700), forward ports or sockets over its ssh login
-  (`/etc/ssh/sshd_config.d/60-analyst.conf`), or send anything on the network
-  from the WAF: `/etc/nftables.conf`, loaded by `nftables.service`, drops
-  every packet a process of `analyst` sends (`meta skuid analyst drop`).
+  `modsecurity.conf`, the CRS tree) and, through group `adm`,
+  `/var/log/nginx` and `/var/log/modsecurity`; write the six defence files
+  (root:analyst 0664): `crs-setup.conf`, REQUEST-900 and RESPONSE-999 under
+  `/etc/nginx/modsecurity/crs`, and `/etc/nginx/defence/http.conf`,
+  `board.com.conf` and `corp.com.conf`; run `sudo nginx -t`, `sudo nginx -T`,
+  `sudo nginx -s reload` and `sudo systemctl reload nginx` and nothing else
+  as root; reach loopback on the WAF;
+- cannot: write any other file under `/etc/nginx`, `/var/log/nginx`,
+  `/var/log/modsecurity`, `/etc/rsyslog.conf`, `/etc/rsyslog.d` or
+  `/usr/local/share/slot` (no group it is in may write there; the bake
+  removes any such group write bit), so the measurement config
+  (`log_format`, `access_log`, the shipper) stays the platform's; read
+  `/var/lib/cr-crstest` (0700); forward ports or sockets over its ssh login
+  (`/etc/ssh/sshd_config.d/60-analyst.conf`); or send anything past loopback:
+  `/etc/nftables.conf`, loaded by `nftables.service`, accepts a process of
+  `analyst` on `oif "lo"` and drops every other packet it sends
+  (`meta skuid analyst drop`).
 
-The defence posture itself changes only through the defence API.
+The defence posture changes through those files, from the terminal or the
+defence API; a reload done in the terminal is recorded the next time the
+round's reads run.
 
 **After the bakes**, name `compute.images.infra: cr-infra-bake2` and
 `compute.images.waf: cr-waf-bake3` in `cloud.yaml` and run `bin/cloud up
@@ -823,8 +832,14 @@ sudo tail -1 /var/log/nginx/access.json            # on the WAF after one reques
   and the live audit log's line count is unchanged;
 - an IDS rule test (`POST defence/ids/rules/test/`) leaves
   `/var/log/suricata/eve.json` unchanged;
-- as `analyst`, `touch /etc/nginx/x`, `sudo nginx -s reload` and `curl
-  http://127.0.0.1/` all fail, and `sudo nginx -T` prints the configuration;
+- as `analyst`, `touch /etc/nginx/x` and `curl http://<the infra's address>/`
+  fail, while `echo >> /etc/nginx/defence/board.com.conf`, `sudo nginx -t`,
+  `sudo nginx -s reload` and `curl http://127.0.0.1/` succeed and `sudo
+  nginx -T` prints the configuration;
+- a defender `deny <the worn origin>;` in `/etc/nginx/defence/board.com.conf`,
+  reloaded, leaves an `access forbidden by rule` line that reaches
+  Elasticsearch as module `nginx_error` and spends that origin
+  (`X-Origins-Left` on the next attack answer is one lower);
 - as `analyst`, `nohup sleep 9999 &` and a crontab line are gone once the
   round ends (`pgrep -u analyst` and `sudo crontab -l -u analyst` on the WAF
   show nothing);

@@ -42,13 +42,16 @@ def test_observing_again_loses_nothing_new(corp_target):
     assert Objective.objects.filter(round=found).count() == 1
 
 
-def test_a_change_no_attack_action_overlaps_is_not_credited(corp_target):
+def test_a_change_no_attack_action_overlaps_loses_the_objective_unattributed(corp_target):
     found = started(corp_target)
     benign = rounds.case("customer", ROGUE_ADMIN_AT - timedelta(seconds=1), malicious=False, seconds=3)
     earlier = rounds.action("act-1", ROGUE_ADMIN_AT - timedelta(minutes=3))
 
-    assert losses.observe_effects(found, corp_target, [benign, earlier]) == ()
-    assert not Objective.objects.filter(round=found).exists()
+    fell = losses.observe_effects(found, corp_target, [benign, earlier])
+
+    assert [fallen.key for fallen in fell] == ["corp-rogue-admin"]
+    stored = Objective.objects.get(round=found)
+    assert stored.attributed_marker is None and stored.achieved_at == ROGUE_ADMIN_AT
 
 
 def test_a_change_the_target_recorded_after_the_round_s_end_time_loses_nothing():

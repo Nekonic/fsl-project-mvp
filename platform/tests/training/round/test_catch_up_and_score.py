@@ -89,7 +89,7 @@ def test_a_read_spends_every_origin_the_waf_error_log_denies_and_the_round_ends(
     assert not running.origins.filter(spent_at=None).exists()
 
 
-def test_an_alerts_request_while_elasticsearch_is_down_leaves_the_round_running_and_the_other_reads_done(
+def test_an_alerts_request_while_elasticsearch_is_down_answers_elastic_unavailable_and_the_other_reads_run(
         monkeypatch, as_operator, running):
     from cr import errors
     from telemetry import alerts as defence
@@ -99,11 +99,21 @@ def test_an_alerts_request_while_elasticsearch_is_down_leaves_the_round_running_
 
     monkeypatch.setattr(defence, "ingest_alerts", down)
 
-    answer = as_operator.get(url(running, "defence/alerts/"))
-
-    assert answer.status_code == 200
+    refused(as_operator.get(url(running, "defence/alerts/")), 503, "elastic_unavailable")
+    assert as_operator.get(url(running, "defence/state/")).status_code == 200
     assert Round.objects.get(pk=running.pk).phase == "running"
     assert customers.passes(running) == 1
+
+
+def test_another_read_failing_leaves_the_alerts_answer_alone(monkeypatch, as_operator, running):
+    from cr import errors
+
+    def down(found):
+        raise errors.Unavailable(code="attacker_unavailable")
+
+    monkeypatch.setattr(attack, "read_commands", down)
+
+    assert as_operator.get(url(running, "defence/alerts/")).status_code == 200
 
 
 def test_the_score_keeps_objectives_outcomes_and_free_actions_apart(as_operator, running, learner):
@@ -287,6 +297,56 @@ def test_a_round_ended_between_reads_reads_the_logs_once_more_before_it_ends(mon
 
     assert read == [running.pk, running.pk]
     assert Round.objects.get(pk=running.pk).reading_since is None
+
+
+def test_a_round_ended_while_another_request_holds_the_read_waits_for_it_and_reads_once_more(monkeypatch, running):
+    read = alerts_read(monkeypatch)
+    Round.objects.filter(pk=running.pk).update(reading_since=timezone.now())
+    waited = []
+
+    def holder_finishes():
+        waited.append(Round.objects.get(pk=running.pk).phase)
+        Round.objects.filter(pk=running.pk).update(reading_since=None)
+
+    monkeypatch.setattr(service, "wait_for_reader", holder_finishes)
+
+    service.end_round(running, "ended_by_operator")
+
+    assert (waited, read) == (["running"], [running.pk])
+    assert Round.objects.get(pk=running.pk).phase == "ended"
+
+
+def test_a_read_that_outlived_its_claim_leaves_the_next_reader_s_claim_alone(monkeypatch, running):
+    from telemetry import alerts as alert_feed
+
+    taken_over = timezone.now() + timedelta(minutes=6)
+    monkeypatch.setattr(alert_feed, "ingest_alerts",
+                        lambda found: Round.objects.filter(pk=found.pk).update(reading_since=taken_over))
+
+    service.catch_up(running)
+
+    assert Round.objects.get(pk=running.pk).reading_since == taken_over
+
+
+def test_a_read_still_running_when_the_round_ends_stops_and_leaves_the_customers_stopped(monkeypatch, running):
+    from telemetry import alerts as alert_feed
+
+    stale = Round.objects.get(pk=running.pk)
+    customers.kept(stale, running=True)
+    stale.refresh_from_db()
+
+    def ended_meanwhile(found):
+        Round.objects.filter(pk=found.pk).update(phase="ended", ended=timezone.now())
+        customers.kept(Round.objects.get(pk=found.pk), running=False)
+
+    monkeypatch.setattr(alert_feed, "ingest_alerts", ended_meanwhile)
+    fired = []
+    monkeypatch.setattr(customers, "fire_pass", lambda found: fired.append(found.pk))
+
+    service.read_logs(stale)
+
+    assert fired == []
+    assert Round.objects.get(pk=running.pk).traffic["running"] is False
 
 
 def test_a_round_past_its_time_on_an_idle_allocation_ends_on_its_time_limit(as_operator, running):

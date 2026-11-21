@@ -47,7 +47,6 @@ class Scoreboard:
 
 
 def attempts(cases: Sequence[CaseRecord], result: CorrelationResult) -> tuple[Attempt, ...]:
-    by_case = {match.case_id: match for match in result.matches}
     return tuple(
         Attempt(
             case_id=case.case_id,
@@ -55,11 +54,10 @@ def attempts(cases: Sequence[CaseRecord], result: CorrelationResult) -> tuple[At
             started_at=case.started_at,
             ended_at=case.ended_at,
             malicious=case.malicious,
-            detected=by_case[case.case_id].detected,
-            detection_ids=by_case[case.case_id].detection_ids,
+            detected=match.detected,
+            detection_ids=match.detection_ids,
         )
-        for case in cases
-        if case.case_id in by_case
+        for case, match in zip(cases, result.matches, strict=True)
     )
 
 

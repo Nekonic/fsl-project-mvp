@@ -151,8 +151,8 @@ def recording_node(original):
     return answered
 
 
-def test_a_recording_longer_than_the_idle_time_keeps_its_allocation(as_staff, cloud, settings, tmp_path, monkeypatch,
-                                                                    make_user):
+def test_a_case_running_past_the_idle_time_keeps_its_allocation(as_staff, cloud, settings, tmp_path, monkeypatch,
+                                                               make_user):
     from datetime import timedelta
 
     from django.utils import timezone
@@ -164,9 +164,9 @@ def test_a_recording_longer_than_the_idle_time_keeps_its_allocation(as_staff, cl
     still_open = []
 
     def idle_past(allocation, declared, case, truth, folder):
+        Allocation.objects.filter(pk=allocation.pk).update(expires_at=timezone.now() - timedelta(seconds=1))
         another.post("/api/allocations/", {"wargame": "board"}, format="json")
         still_open.append(Allocation.objects.get(pk=allocation.pk).closed is None)
-        Allocation.objects.filter(pk=allocation.pk).update(expires_at=timezone.now() - timedelta(seconds=1))
         return {"marker": "m", "malicious": bool(case.get("malicious")), "tool_case": "tool" in case}
 
     monkeypatch.setattr(probes, "one_case", idle_past)

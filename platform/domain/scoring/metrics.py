@@ -104,14 +104,13 @@ def free_actions(
     cases: Sequence[CaseRecord],
     detections: Sequence[DetectionRecord],
 ) -> tuple[OriginActivity, ...]:
-    source = {case.case_id: case.source_ip or "" for case in cases}
     blocked = {d.detection_id for d in detections if d.blocked}
     actions: dict[str, int] = {}
     alerts: dict[str, set[str]] = {}
-    for match in result.matches:
+    for case, match in zip(cases, result.matches, strict=True):
         if match.declared:
             continue
-        ip = source.get(match.case_id, "")
+        ip = case.source_ip or ""
         actions[ip] = actions.get(ip, 0) + 1
         alerts.setdefault(ip, set()).update(match.detection_ids)
     return tuple(

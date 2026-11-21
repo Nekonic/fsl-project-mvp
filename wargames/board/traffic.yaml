@@ -1,6 +1,6 @@
 # The board's customers: a Korean community whose readers browse, search,
 # sign in and comment for as long as a session runs. Korean text is written as
-# \u escapes (CLAUDE.md keeps Korean out of repo files other than four).
+# \u escapes.
 #
 # Searches and comments go through the board's own forms. Sign-in and comments
 # are form posts that carry the page's CSRF token, as a browser sends them; a

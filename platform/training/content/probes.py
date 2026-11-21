@@ -121,31 +121,31 @@ def truth_of(allocation: Allocation, declared) -> dict:
 
 
 def recorded(allocation: Allocation, declared) -> None:
-    try:
-        cases = attack.cases_of({"case_file": declared.case_file})
-        moved(allocation.pk, total=len(cases))
-        folder = Path(settings.CR_PROBES_OUT) / declared.id / "probes"
-        folder.mkdir(parents=True, exist_ok=True)
-        defence.detection_only(allocation)
-        truth = truth_of(allocation, declared)
-        listed = {}
-        for case in cases:
-            allocations.heartbeat(allocations.allocation(allocation.pk))
-            try:
-                listed[case["name"]] = one_case(allocation, declared, case, truth, folder)
-            except (errors.DomainError, OSError, ValueError) as failed:
-                logger.warning("probe allocation %s: %s was not recorded: %s", allocation.pk, case["name"], failed)
+    with allocations.keeping_open(allocation):
+        try:
+            cases = attack.cases_of({"case_file": declared.case_file})
+            moved(allocation.pk, total=len(cases))
+            folder = Path(settings.CR_PROBES_OUT) / declared.id / "probes"
+            folder.mkdir(parents=True, exist_ok=True)
+            defence.detection_only(allocation)
+            truth = truth_of(allocation, declared)
+            listed = {}
+            for case in cases:
+                try:
+                    listed[case["name"]] = one_case(allocation, declared, case, truth, folder)
+                except (errors.DomainError, OSError, ValueError) as failed:
+                    logger.warning("probe allocation %s: %s was not recorded: %s", allocation.pk, case["name"], failed)
+                    with guard:
+                        held[allocation.pk].failed.append({"case": case["name"],
+                                                          "code": getattr(failed, "code", "unavailable")})
+                    continue
                 with guard:
-                    held[allocation.pk].failed.append({"case": case["name"],
-                                                  "code": getattr(failed, "code", "unavailable")})
-                continue
-            with guard:
-                held[allocation.pk].done.append(case["name"])
-        written(folder, "manifest.json", {"image_digest": declared.image, "cases": listed,
-                                          "recorded_at": timezone.now().isoformat()})
-        moved(allocation.pk, state=DONE)
-    except (errors.DomainError, OSError) as failed:
-        logger.warning("probe allocation %s failed: %s", allocation.pk, failed)
-        moved(allocation.pk, state=FAILED)
-    finally:
-        allocations.close_allocation(allocation)
+                    held[allocation.pk].done.append(case["name"])
+            written(folder, "manifest.json", {"image_digest": declared.image, "cases": listed,
+                                              "recorded_at": timezone.now().isoformat()})
+            moved(allocation.pk, state=DONE)
+        except (errors.DomainError, OSError) as failed:
+            logger.warning("probe allocation %s failed: %s", allocation.pk, failed)
+            moved(allocation.pk, state=FAILED)
+        finally:
+            allocations.close_allocation(allocation)

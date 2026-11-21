@@ -6,7 +6,7 @@ from telemetry import alerts as alert_feed
 from telemetry import events as log
 from telemetry import serializers
 from training.round import access as auth
-from training.round.views_catch_up import CatchingUpView
+from training.round.views_catch_up import ALERTS_READ, CatchingUpView
 
 
 class RoundEvents(CatchingUpView):
@@ -36,6 +36,8 @@ class DefenceView(CatchingUpView):
 
 
 class Alerts(DefenceView):
+    needs_reads = (ALERTS_READ,)
+
     @extend_schema(tags=["defence"], parameters=[serializers.AlertQuery], responses=serializers.Alerts,
                    operation_id="defence_alerts")
     def get(self, request, round_id: int):

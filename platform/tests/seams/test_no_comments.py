@@ -185,7 +185,7 @@ def test_the_scan_reaches_python_shell_and_every_code_root():
     kinds = {kind_of(path) for path in files.values()}
 
     assert {"python", "shell"} <= kinds
-    assert {"bin/verify", "bin/carry-users", "platform/entrypoint.sh", "bots/cli.py"} <= set(files)
+    assert {"bin/verify", "platform/entrypoint.sh", "bots/cli.py"} <= set(files)
     assert not [name for name in files if name.startswith("deploy/suricata/rules/")]
 
 

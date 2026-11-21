@@ -439,8 +439,7 @@ sudo docker compose start platform rebuild
 
 `-journal`, `-wal`, `-shm` 파일은 꼭 지웁니다. 남아 있으면 SQLite가 복원한 파일 위에 옛 내용을 재생합니다.
 
-새 구조의 DB는 마이그레이션을 `0001_initial`부터 새로 시작합니다. 이전 저장소에서는 계정만 옮깁니다:
-`bin/carry-users`가 옛 DB에서 `auth.User`를 내보내 새 DB에 넣습니다.
+새 구조의 DB는 마이그레이션을 `0001_initial`부터 새로 시작합니다. 이전 저장소에서 옮기는 데이터는 없습니다.
 
 ## 보안
 
@@ -469,8 +468,7 @@ sudo docker compose start platform rebuild
 | Docker 소켓 | 플랫폼 VM의 어떤 서비스에도 마운트하지 않음 |
 
 초기 계정은 `admin` / `123456`이고 언제나 있습니다. 빈 저장소에 마이그레이션을 돌리면 스태프 계정으로 생기고,
-비밀번호를 바꾸라고 요구하지 않습니다. `bin/carry-users`로 기존 계정을 옮길 때 기존 저장소에 `admin`이 있으면 그
-계정이 새로 만든 것을 대신하고, 없으면 새로 만든 `admin`이 그대로 남습니다.
+비밀번호를 바꾸라고 요구하지 않습니다.
 
 `bots/signin.py`와 acceptance는 `CR_ADMIN_USER` / `CR_ADMIN_PASSWORD`(기본 `admin` / `123456`)로 로그인합니다.
 

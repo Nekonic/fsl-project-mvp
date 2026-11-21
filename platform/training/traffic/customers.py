@@ -12,6 +12,7 @@ from urllib.parse import urlencode
 
 import yaml
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Count
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -236,8 +237,10 @@ def row_of(found: Round, record: Mapping[str, Any]) -> CustomerRequest:
 
 
 def kept(found: Round, **changed) -> dict:
-    found.traffic = {**found.traffic, **changed}
-    Round.objects.filter(pk=found.pk).update(traffic=found.traffic)
+    with transaction.atomic():
+        stored = Round.objects.select_for_update().filter(pk=found.pk).values_list("traffic", flat=True).first()
+        found.traffic = {**(stored or {}), **changed}
+        Round.objects.filter(pk=found.pk).update(traffic=found.traffic)
     return found.traffic
 
 

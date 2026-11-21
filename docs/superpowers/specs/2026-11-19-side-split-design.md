@@ -88,7 +88,6 @@ fsl-project-mvp/
     cloud  platform-rebuild  acceptance  select-tests  backup  prune  build-css
     verify                          no ratchet step; runs tests/domain first; regenerates clients before tests
     gen-clients                     exports openapi/schema.yaml; generates bots/client/ and front/src/api/schema.d.ts (not committed)
-    carry-users                     one-off: dumps auth.User from the old store, loads it into the new one
     record-probes                   HTTP client of POST /api/staff/wargames/<id>/probes/record/
     fetch-geoip  pick-origins  worldmap   kept: the ingest pipeline is the geoip pipeline
   platform/                         not a package; cwd for manage.py and pytest
@@ -324,7 +323,7 @@ There is one score function: `match.service.score(round)` gathers the records fr
 
 ## 6. Data model per app
 
-All migrations start fresh with `0001_initial`; `accounts.0002_first_account` makes the staff account `admin` / `123456` when none exists (the 2026-11-15 ruling). Users carry over with `bin/carry-users` (`dumpdata auth.User` from the old store, `loaddata` into the new one without primary keys; an old `admin` replaces the migrated one). Nothing else carries over. `bin/backup` stays a snapshot tool (`VACUUM INTO`, integrity check, row counts) with TABLES re-pointed to the new tables.
+All migrations start fresh with `0001_initial`; `accounts.0002_first_account` makes the staff account `admin` / `123456` when none exists (the 2026-11-15 ruling). Nothing carries over from the old store (the 2026-11-21 ruling: a fresh database). `bin/backup` stays a snapshot tool (`VACUUM INTO`, integrity check, row counts) with TABLES re-pointed to the new tables.
 
 **accounts**
 - Django `User` (approval via `is_active`, staff via `is_staff`).
@@ -785,7 +784,7 @@ The work happens on a working branch. Old `platform/api/` and `platform/console/
 
    *Proof:* on a slot, `nft list set ip edge spent` exists; an access-log line reaches Elasticsearch with `request_id` as module `nginx_access`, and a 200 makes no Detection; `rules.crs.scratch_test` returns a verdict for one case and leaves the live audit log unchanged; `rules.suricata.offline_test` leaves `/var/log/suricata/eve.json` unchanged.
 6. **Django skeleton.** `cr/` (settings, DRF, spectacular, `handler.py`, `strings.py`), `strings/`, `accounts` (auth routes, blocks, staff users) and `events`.
-   *Proof:* `tests/accounts` and `tests/events`. Error-shape test. No-admin test. `bin/carry-users` against a copy of the snapshot.
+   *Proof:* `tests/accounts` and `tests/events`. Error-shape test. No-admin test.
 7. **`content`.** Catalog, `wargame.yaml` per wargame, models, the staff nested-document API with revisions and export/import, learner read API.
    *Proof:* `tests/content`. Validator errors come back by path.
 8. **`match.models`, `match.auth` and `referee`** (baseline, loot, effects, objectives, redact, `score` taking records).

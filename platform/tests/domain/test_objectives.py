@@ -101,3 +101,15 @@ def test_breaches_attribute_each_lost_objective_and_skip_kept_ones():
 
     assert [(b.key, b.detected, b.attributed_marker, b.detection_ids) for b in lost] == [
         ("db", True, "m-sqli", ("d1",))]
+
+
+def test_a_case_fired_again_later_does_not_lend_its_alert_to_the_firing_that_took_the_objective():
+    cases = [CaseRecord("sqli", "sqli", True, "marker", "m1", None, T0, T0 + timedelta(seconds=2)),
+             CaseRecord("sqli", "sqli", True, "marker", "m2", None, T0 + timedelta(minutes=5),
+                        T0 + timedelta(minutes=5, seconds=2))]
+    result = correlate(cases, [DetectionRecord("a", T0 + timedelta(minutes=5), None, "m2")])
+    objectives = [ObjectiveRecord("db", "db", "loot", 3, achieved_at=T0 + timedelta(seconds=10))]
+
+    lost = breaches(objectives, attempts(cases, result))
+
+    assert [(b.detected, b.attributed_marker, b.detection_ids) for b in lost] == [(False, "m1", ())]
