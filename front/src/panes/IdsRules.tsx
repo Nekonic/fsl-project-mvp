@@ -1,122 +1,62 @@
-import { useEffect, useState } from "preact/hooks";
+import { useState } from "preact/hooks";
 import { api } from "../api/client";
-import { useAction, useResource } from "../api/hooks";
+import { useResource } from "../api/hooks";
 import { clock } from "../format";
-import { fieldErrors, formErrors, t } from "../strings";
-import { Button, ErrorNotice, Field, Filters, Form, Input, Loading, Pane, PaneSection, Table, Text, type Column, CodeEditor } from "../ui";
-import { AppliedMeta, useRuleVersions } from "./RuleVersions";
-import { BenchButtons, BenchOutcome, RuleTestSection, useRuleBench, type BenchCalls } from "./RuleTestTable";
+import { t, tFor } from "../strings";
+import { Badge, Button, Code, ErrorNotice, Loading, Notice, Pane, PaneSection, Table, Text, type Column } from "../ui";
+import { AppliedMeta, VersionNote, useRuleVersions, type AppliedVersion } from "./RuleVersions";
+import { BenchOutcome, RuleTestSection, useRuleBench } from "./RuleTestTable";
 import type { PaneProps } from "./types";
 
-const DISABLE_EVENTS = ["rule.disabled", "rule.applied", "round.ended"];
-type DisabledRule = { sid: number; original: string; reason: string; expires_at: string };
+const RULE_EVENTS = ["rule.applied", "rule.refused", "round.ended"];
 
-function DisabledRules({ round }: { round: number }) {
-  const listed = useResource("/api/rounds/{round_id}/defence/ids/disabled/", { params: { round_id: round } }, { refreshOn: { round, kinds: DISABLE_EVENTS } });
-  const disable = useAction("post", "/api/rounds/{round_id}/defence/ids/disabled/");
-  const enable = useAction("delete", "/api/rounds/{round_id}/defence/ids/disabled/{sid}/");
-  const [sid, setSid] = useState("");
-  const [minutes, setMinutes] = useState("60");
-  const [reason, setReason] = useState("");
-  const byField = fieldErrors(disable.error);
-
-  const submit = async () => {
-    const done = await disable.run({ params: { round_id: round }, body: { sid: Number(sid), minutes: Number(minutes), reason } });
-    if (done) {
-      setSid("");
-      setReason("");
-      listed.reload();
-    }
-  };
-
-  const columns: Column<DisabledRule>[] = [
-    { key: "sid", label: t("ids.disabled.sid"), kind: "mono", cell: (row) => row.sid },
-    { key: "original", label: t("ids.disabled.original"), kind: "cut", cell: (row) => <Text mono small>{row.original}</Text>, title: (row) => row.original },
-    { key: "reason", label: t("ids.disabled.reason"), kind: "wrap", cell: (row) => row.reason || <Text tone="faint">—</Text> },
-    { key: "expires", label: t("ids.disabled.expires_at"), kind: "mono", cell: (row) => clock(row.expires_at) },
-    {
-      key: "enable", label: "", kind: "end",
-      cell: (row) => (
-        <Button small busy={enable.busy} onClick={async () => {
-          await enable.run({ params: { round_id: round, sid: row.sid } });
-          listed.reload();
-        }}>{t("ids.disabled.enable")}</Button>
-      ),
-    },
-  ];
-
+function StoredVersion({ round, version }: { round: number; version: number }) {
+  const shown = useResource("/api/rounds/{round_id}/defence/ids/rules/versions/{version}/", { params: { round_id: round, version } });
+  if (shown.error) return <ErrorNotice error={shown.error} />;
+  if (!shown.data) return <Loading>{t("common.loading")}</Loading>;
   return (
-    <PaneSection title={t("ids.disabled.title")} ruled>
-      {listed.loading && !listed.data ? <Loading>{t("common.loading")}</Loading>
-        : listed.error ? <ErrorNotice error={listed.error} />
-        : <Table columns={columns} rows={listed.data ?? []} rowKey={(row) => row.sid} variant="grid" empty={t("ids.disabled.none")} />}
-      {enable.error && <ErrorNotice error={enable.error} />}
-      <Form onSubmit={() => void submit()}>
-        <Filters>
-          <Field label={t("ids.disabled.sid")} error={byField.sid}>
-            <Input mono value={sid} onValue={setSid} inputMode="numeric" placeholder="9000001" bad={!!byField.sid} />
-          </Field>
-          <Field label={t("ids.disabled.minutes")} error={byField.minutes}>
-            <Input mono value={minutes} onValue={setMinutes} inputMode="decimal" bad={!!byField.minutes} />
-          </Field>
-          <Field label={t("ids.disabled.reason")} error={byField.reason}>
-            <Input value={reason} onValue={setReason} bad={!!byField.reason} />
-          </Field>
-          <Button type="submit" busy={disable.busy} disabled={!sid}>{t("ids.disabled.disable")}</Button>
-        </Filters>
-        {formErrors(disable.error, ["sid", "minutes", "reason"]).map((line, index) => <Text key={index} tone="danger" small>{line}</Text>)}
-      </Form>
+    <PaneSection title={t("waf.version.title", { version })} meta={<Text mono small>{shown.data.sha.slice(0, 12)}</Text>}>
+      <Code>{shown.data.files[0]?.text || t("waf.file.empty")}</Code>
     </PaneSection>
   );
 }
 
 export function IdsRules({ round }: PaneProps) {
-  const rules = useResource("/api/rounds/{round_id}/defence/ids/rules/", { params: { round_id: round } });
+  const rules = useResource("/api/rounds/{round_id}/defence/ids/rules/", { params: { round_id: round } }, { refreshOn: { round, kinds: RULE_EVENTS } });
   const versions = useRuleVersions(round, "ids");
-  const [text, setText] = useState<string | null>(null);
-  const [base, setBase] = useState(0);
-  const body = text ?? "";
-  const bench = useRuleBench(body);
+  const [opened, setOpened] = useState<number | null>(null);
+  const live = rules.data?.text ?? "";
+  const bench = useRuleBench(live);
 
-  useEffect(() => {
-    if (!rules.data) return;
-    setText(rules.data.text);
-    setBase(rules.data.version);
-  }, [rules.data]);
+  const test = () => bench.test({ test: () => api.post("/api/rounds/{round_id}/defence/ids/rules/test/", { params: { round_id: round }, body: { text: live } }) });
 
-  const headTest = versions.head?.tested ?? null;
-  useEffect(() => {
-    if (headTest === null || text === null) return;
-    void api.get("/api/rounds/{round_id}/defence/ids/rules/tests/{test_id}/", { params: { round_id: round, test_id: headTest } })
-      .then((said) => bench.seed(said, versions.head?.same_as_tested ? rules.data?.text ?? null : null))
-      .catch(() => undefined);
-  }, [headTest, text === null]);
-
-  const calls: BenchCalls = {
-    check: () => api.post("/api/rounds/{round_id}/defence/ids/rules/check/", { params: { round_id: round }, body: { text: body } }),
-    test: () => api.post("/api/rounds/{round_id}/defence/ids/rules/test/", { params: { round_id: round }, body: { text: body } }),
-    apply: async (tested) => {
-      const said = await api.post("/api/rounds/{round_id}/defence/ids/rules/apply/", { params: { round_id: round }, body: { text: body, base_version: base, tested } });
-      setBase(said.version);
-      versions.reload();
-      return said;
-    },
-  };
-
-  const badLines = new Set(bench.problems.map((problem) => problem.line).filter((line): line is number => typeof line === "number"));
+  const versionColumns: Column<AppliedVersion>[] = [
+    { key: "version", label: t("versions.col.version"), kind: "num", cell: (row) => row.version },
+    { key: "at", label: t("versions.col.applied_at"), kind: "mono", cell: (row) => clock(row.applied_at) },
+    { key: "source", label: t("versions.col.source"), cell: (row) => <Badge>{tFor("versions.source", row.source)}</Badge> },
+    { key: "sha", label: t("versions.col.sha"), kind: "mono", cell: (row) => row.sha.slice(0, 12) },
+    { key: "note", label: t("versions.col.tested"), cell: (row) => <VersionNote version={row} /> },
+    { key: "open", label: "", kind: "end", cell: (row) => <Button small onClick={() => setOpened(opened === row.version ? null : row.version)}>{t(opened === row.version ? "waf.version.close" : "waf.version.open")}</Button> },
+  ];
 
   return (
     <Pane title={t("pane.ids_rules")} meta={<AppliedMeta head={versions.head} loading={versions.loading} />}
-      actions={<BenchButtons bench={bench} calls={calls} disabled={text === null} />}>
+      actions={<Button small tone="primary" busy={bench.busy === "test"} disabled={!rules.data || bench.busy !== null} onClick={() => void test()}>{t("rules.test")}</Button>}>
       {rules.error && <ErrorNotice error={rules.error} />}
-      {text === null ? (rules.error ? null : <Loading>{t("common.loading")}</Loading>) : (
+      {!rules.data ? (rules.error ? null : <Loading>{t("common.loading")}</Loading>) : (
         <PaneSection>
-          <CodeEditor value={text} onValue={setText} badLines={badLines} label={t("pane.ids_rules")} />
+          {!rules.data.recorded && <Notice tone="warn">{t("ids.not_running")}</Notice>}
+          <Code>{live || t("waf.file.empty")}</Code>
+          <Text tone="muted" small>{t("ids.terminal_note")}</Text>
         </PaneSection>
       )}
       <BenchOutcome bench={bench} onReload={rules.reload} />
       <RuleTestSection result={bench.result} stale={bench.stale} untestedText={t("rule_test.not_yet.ids")} />
-      <DisabledRules round={round} />
+      <PaneSection title={t("waf.versions")} ruled>
+        {versions.error ? <ErrorNotice error={versions.error} />
+          : <Table columns={versionColumns} rows={[...versions.versions].reverse()} rowKey={(row) => row.version} variant="grid" empty={t("versions.none")} />}
+      </PaneSection>
+      {opened !== null && <StoredVersion round={round} version={opened} />}
     </Pane>
   );
 }

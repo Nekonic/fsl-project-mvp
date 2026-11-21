@@ -8,6 +8,7 @@ import shlex
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import PurePosixPath
 
 from cr.config import SensorConfig
@@ -20,6 +21,8 @@ AT_LINE = re.compile(r"\bat line (\d+)\b")
 ERROR_LINE = re.compile(r"(?:^|\s)(?:E:|<Error>|\[ERRCODE:|Error:)|error parsing signature", re.IGNORECASE)
 RUN_ID = re.compile(r"[A-Za-z0-9_-]+")
 OFFLINE_TIMEOUT = 300.0
+LOGGING_OFF = re.compile(r"[(;]\s*config\s*:\s*logging\b", re.IGNORECASE)
+LAST_RELOAD = re.compile(r'"last_reload"\s*:\s*"([^"]+)"')
 
 
 class RuleApplyError(EngineRefused):
@@ -76,6 +79,56 @@ def checked(text: str, sensor, config: SensorConfig) -> list[RuleError]:
     if ran.ok:
         return []
     return parsed_errors(ran.output) or [RuleError(line=None, message=ran.output.strip()[-500:])]
+
+
+def rules_in(text: str) -> list[tuple[int, str]]:
+    found, start, parts = [], 0, []
+    for number, line in enumerate(text.splitlines(), start=1):
+        if not parts:
+            start = number
+        kept = line.rstrip()
+        if kept.endswith("\\") and (parts or not kept.lstrip().startswith("#")):
+            parts.append(kept[:-1])
+            continue
+        found.append((start, "".join(parts) + line))
+        parts = []
+    if parts:
+        found.append((start, "".join(parts)))
+    return found
+
+
+def refusals(text: str) -> list[RuleError]:
+    return [RuleError(line=number, message="a rule may not turn off the sensor's logging (config: logging): "
+                                           + rule.strip())
+            for number, rule in rules_in(text)
+            if not rule.lstrip().startswith("#") and LOGGING_OFF.search(rule)]
+
+
+def reload_times(sensor, config: SensorConfig) -> tuple[float | None, float | None]:
+    said = sensor(["sh", "-c", f"date -r {shlex.quote(config.rules)} +%s.%N; suricatasc -c ruleset-reload-time"])
+    written, _, reply = said.output.strip().partition("\n")
+    last = LAST_RELOAD.search(reply)
+    if not said.ok:
+        return None, None
+    reloaded = _when(last.group(1)) if last else None
+    return (float(written) if re.fullmatch(r"\d+(\.\d+)?", written.strip()) else None,
+            reloaded.timestamp() if reloaded else None)
+
+
+def reloaded_since_written(sensor, config: SensorConfig) -> bool:
+    written, reloaded = reload_times(sensor, config)
+    return written is not None and reloaded is not None and reloaded > written
+
+
+def _when(stamp: str) -> datetime | None:
+    for parse in (datetime.fromisoformat, lambda text: datetime.strptime(text, "%Y-%m-%dT%H:%M:%S.%f%z")):
+        try:
+            found = parse(stamp)
+        except ValueError:
+            continue
+        if found.tzinfo is not None:
+            return found
+    return None
 
 
 def refusal(errors: list[RuleError], sensor_name: str) -> RuleSyntax:

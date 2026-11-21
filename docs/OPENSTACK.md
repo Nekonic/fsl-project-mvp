@@ -109,7 +109,7 @@ user's password, flavor access, the base image and `cloud.yaml` (§4).
 | Kolla-Ansible cloud with Heat, Glance, Nova, Neutron (ML2/OVN) | done (this cloud) | §2 |
 | Project `fsl-range`, member user, clouds.yaml entry, quota check, flavor choice | `bin/cloud init` as admin (2026-11-15); flavors and quotas are never created or raised by it | §3 |
 | Base image, stock Ubuntu 24.04, upload with checksum check | `bin/cloud init` when missing; done (this cloud, 2026-10-20) | §3.6 |
-| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18; the WAF's re-baked as `cr-waf-bake2`). The side split's infra and WAF changes need a new bake of both, not done (§3.7) | §3.6 |
+| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18; the WAF's re-baked as `cr-waf-bake2`). The side split's infra and WAF changes need a new bake of both, not done; the infra bake also carries the IDS analyst account (§3.7, §3.10) | §3.6 |
 | `cloud.yaml`: every cloud-specific value, validated | written by `bin/cloud init` (2026-11-15) | §4 |
 | Platform and wargame images on GHCR (`.github/workflows/images.yml`) | done (public, pulled 2026-10-11) | §5 |
 | Heat stack pulls images instead of `--build` | done (2026-10-11) | §5 |
@@ -602,7 +602,9 @@ each key's line is
 `restrict,port-forwarding,permitopen="<the box's control address>:22"`.
 `GET /api/rounds/<round>/attack/terminal/` issues the attack player a key for
 Kali's `kali` user, and `GET /api/rounds/<round>/defence/terminal/` the
-defence player a key for the WAF's `analyst` (§3.7), who may write only the defence's WAF files; each answer
+defence player a key for the WAF's `analyst` (§3.7), who may write only the defence's WAF files, and
+`GET /api/rounds/<round>/defence/ids/terminal/` a second key for the infra's `analyst` (§3.10), who may write
+only the sensor's rule file; each answer
 carries the private key once, with the jump's host and port, and puts the
 public key into the box account's and the jump's `authorized_keys`. The
 round's end revokes both. Each box's control port takes tcp 22 only from the
@@ -690,7 +692,7 @@ each wargame's `compose.yaml`); copy the directory with the links resolved.
 |---|---|---|
 | `kali` | the Kali base | `kali-linux-headless` and the tools of the Kali container before (nmap, sqlmap, nikto, whatweb, ffuf, gobuster, hydra, dirb, mitmproxy and others), the stamp proxy as `web-proxy.service`, the operator log hook, `set-origin`, `slot-boot`, and a key-only `kali` user with bash and passwordless sudo; `board.com` and `corp.com` resolve to 121.134.88.42; sslh's systemd generator masked and `cloud-init.target` wanted by `multi-user.target`, so cloud-init runs on every boot (`docs/TROUBLESHOOTING.md` "A Kali VM booted without cloud-init") |
 | `waf` | `compute.base_image` | nginx 1.24 from Ubuntu, ModSecurity 3.0.16 and its nginx connector built from release tarballs checked by SHA-256, CRS 4.25.1, the repo's `modsecurity.conf` and `board.com.conf` (the JSON access log of every request), rsyslog, nftables, python3, the scratch CRS test's `probe.conf` and `probe-upstream.py` in `/usr/local/share/cr/` with its scratch folder `/var/lib/cr-crstest`, the `analyst` account (`analyst.sh`), `slot-boot` |
-| `infra` | `compute.base_image` | nftables, conntrack, tcpdump, bridge-utils, ethtool, rsyslog, Docker with `bridge: none` and no iptables, the pinned `jasonish/suricata` image (`suricata -T` run on the repo's config and rules), the `suricatasc` wrapper (`docker exec -i sensor suricatasc`), `edge.nft` with the `pool` and `spent` sets, the offline rule test's scratch folder `/var/lib/cr-ruletest`, `sensor.service`, `slot-boot`; `suricata` itself is only in the `sensor` container |
+| `infra` | `compute.base_image` | nftables, conntrack, tcpdump, bridge-utils, ethtool, rsyslog, Docker with `bridge: none` and no iptables, the pinned `jasonish/suricata` image (`suricata -T` run on the repo's config and rules), the `suricatasc` wrapper (`docker exec -i sensor suricatasc`), `edge.nft` with the `pool` and `spent` sets, the offline rule test's scratch folder `/var/lib/cr-ruletest`, `sensor.service`, `slot-boot`, the `analyst` account (`analyst.sh`) with the `suricata` wrapper (`docker exec sensor suricata -T`); `suricata` itself is only in the `sensor` container |
 | `target` | `compute.base_image` | Docker and Compose; board's and corp's compose files rendered for a VM (`render.py`: fronts published on the stack's addresses, databases on the internal `<w>_backend`), their images pulled from GHCR at `CR_IMAGE_TAG` (required), brought up once and their volumes kept as the pristine data, `wargames.service` |
 
 The Ubuntu roles point apt at the Kakao mirror, purge `snapd` and
@@ -913,6 +915,41 @@ start fails with `ground_truth_unavailable`. After the bake, name it in
 `compute.images` (and `compute.target_tag`) and run `bin/cloud up --replace`.
 Check on one slot, **[unverified]**: two rounds in a row read different
 hashes for every account, and the customers' log-ins still answer 302.
+
+### 3.10 The IDS analyst account (infra rebake)
+
+The defence player edits Suricata rules on the sensor (`docs/DECISIONS.md`,
+2026-11-22); the IDS rule API is gone. Until the infra is rebaked, the
+infra has no `analyst` account, so `GET defence/ids/terminal/` grants a key
+the box refuses, the IDS terminal does not open, and the IDS rules stay the
+round's posture for the whole round.
+
+| Role | What changed in `deploy/roles/<role>/` |
+|---|---|
+| `infra` | `analyst.sh` creates `analyst` (bash, password field `*`, group `adm`) and gives it `local.rules` through an ACL (`u:analyst:rw`; package `acl`), because the sensor container's start chowns `/var/lib/suricata` to its own user, which keeps an ACL but not a group. `sudo` allows only `/usr/local/bin/suricata -T` (the new wrapper `suricata`, which runs `suricata -T` in the `sensor` container) and `/usr/local/bin/suricatasc -c reload-rules`. `/etc/suricata`, `/var/lib/suricata`, `/var/log/suricata`, `/etc/rsyslog.conf` and `/etc/rsyslog.d` keep no group or other write bit; `/usr/local/share/slot` (`edge.nft`, the log relay) and `/var/lib/cr-ruletest` are root 0700; the customers' home and program folder are `cr-users` 0750. The ssh `Match User analyst` block is the WAF's. The nft fence (`/etc/nftables.conf`) is narrower than the WAF's: it accepts the account's packets on `oif "lo"` only to `127.0.0.0/8` and `::1`, because the infra's log relay listens on the host's own address (`imtcp` on 514) and forwards what it hears as WAF logs, and a packet to the host's own address also leaves on `lo`. That file holds only the `inet analyst` table, so `nftables.service` is now enabled and leaves the `edge` table `slot-boot` loads alone |
+
+None of §3.7, §3.8 or this section has been baked, so one infra bake from
+the current tree, `cr-infra-bake2` (§3.7), carries all three; name it in
+`compute.images.infra` and run `bin/cloud up --replace`. Checks on one
+slot, **[unverified]**:
+
+- as `analyst` on the infra, `sudo -l` lists only the two commands;
+  `echo >> /var/lib/suricata/rules/local.rules`, `sudo suricata -T`,
+  `sudo suricatasc -c reload-rules` and `tail /var/log/suricata/eve.json`
+  succeed; `touch /etc/suricata/x`, `cat /usr/local/share/slot/edge.nft`,
+  `ls /var/lib/cr-users`, `docker ps`, `nft list ruleset`,
+  `curl http://<the WAF's front>/` and
+  `logger -T -n <the infra's log server address> -P 514 -t modsecurity x` fail;
+- `getfacl /var/lib/suricata/rules/local.rules` still names `user:analyst:rw-`
+  after `sudo systemctl restart sensor.service`;
+- a rule added and reloaded in the IDS terminal is the next IDS version with
+  `source: terminal` on the next API request (`GET defence/ids/rules/versions/`),
+  and a rule with `config: logging disable, type tx, scope tx;` is put back
+  with a `rule.refused` event, also when it is continued over lines with a
+  backslash, and also when the file is rewritten after the reload and before
+  the next request (the running rules are then not known);
+- `sudo nft list table ip edge` still lists `pool` and `spent` after a
+  reboot of the infra.
 
 ## 4. cloud.yaml
 

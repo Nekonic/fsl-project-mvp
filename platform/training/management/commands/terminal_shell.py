@@ -9,12 +9,12 @@ class Command(BaseCommand):
     requires_system_checks = []
 
     def add_arguments(self, parser):
-        parser.add_argument("side", choices=sorted(service.SHELL_OF_SIDE))
+        parser.add_argument("terminal", choices=sorted(service.TERMINALS))
         parser.add_argument("round_id", type=int)
 
-    def handle(self, side, round_id, **options):
+    def handle(self, terminal, round_id, **options):
         try:
-            shell = service.terminal_shell(round_id, side)
+            shell = service.terminal_shell(round_id, terminal)
         except errors.DomainError as refused:
-            raise CommandError(f"round {round_id} gives the {side} player no terminal: {refused.code}") from refused
+            raise CommandError(f"round {round_id} gives no {terminal} terminal: {refused.code}") from refused
         self.stdout.write(f"{shell.address} {shell.alias} {shell.account}")

@@ -29,12 +29,8 @@ defence_urls = [
     path(f"{DEFENCE}ids/rules/", defence.IdsRules.as_view()),
     path(f"{DEFENCE}ids/rules/versions/", defence.IdsVersions.as_view()),
     path(f"{DEFENCE}ids/rules/versions/<int:version>/", defence.IdsVersion.as_view()),
-    path(f"{DEFENCE}ids/rules/check/", defence.IdsCheck.as_view()),
     path(f"{DEFENCE}ids/rules/test/", defence.IdsTest.as_view()),
     path(f"{DEFENCE}ids/rules/tests/<int:test_id>/", defence.IdsTestResult.as_view()),
-    path(f"{DEFENCE}ids/rules/apply/", defence.IdsApply.as_view()),
-    path(f"{DEFENCE}ids/disabled/", defence.IdsDisabled.as_view()),
-    path(f"{DEFENCE}ids/disabled/<int:sid>/", defence.IdsEnable.as_view()),
     path(f"{DEFENCE}waf/", defence.Waf.as_view()),
     path(f"{DEFENCE}waf/versions/", defence.WafVersions.as_view()),
     path(f"{DEFENCE}waf/versions/<int:version>/", defence.WafVersion.as_view()),
@@ -43,6 +39,7 @@ defence_urls = [
     path(f"{DEFENCE}waf/tests/<int:test_id>/", defence.WafTestResult.as_view()),
     path(f"{DEFENCE}waf/apply/", defence.WafApply.as_view()),
     path(f"{DEFENCE}terminal/", defence.Terminal.as_view()),
+    path(f"{DEFENCE}ids/terminal/", defence.IdsTerminal.as_view()),
     path(f"{DEFENCE}kibana/", defence.Kibana.as_view()),
 ]
 
@@ -73,6 +70,7 @@ round_urls = [
     path(f"{ROUND}site/requests/", rounds.SiteRequests.as_view()),
     re_path(r"^rounds/(?P<round_id>[0-9]+)/terminal-auth/attack/?$", rounds.AttackTerminalAuth.as_view()),
     re_path(r"^rounds/(?P<round_id>[0-9]+)/terminal-auth/defence/?$", rounds.DefenceTerminalAuth.as_view()),
+    re_path(r"^rounds/(?P<round_id>[0-9]+)/terminal-auth/ids/?$", rounds.IdsTerminalAuth.as_view()),
     path(f"{ROUND}attack/forfeit/", rounds.AttackForfeit.as_view()),
     path(f"{ROUND}defence/forfeit/", rounds.DefenceForfeit.as_view()),
     path("staff/range/", rounds.StaffRange.as_view()),

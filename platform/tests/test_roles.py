@@ -17,7 +17,7 @@ WARGAMES = sorted(path.parent.name for path in (Path(__file__).resolve().parents
 ROOT = Path(__file__).resolve().parents[2]
 ROLES = ROOT / "deploy/roles"
 SCRIPTS = ("kali/install.sh", "kali/slot-boot", "waf/install.sh", "waf/slot-boot", "waf/analyst.sh", "infra/install.sh",
-           "infra/slot-boot", "infra/suricatasc", "target/install.sh", "target/wargames")
+           "infra/slot-boot", "infra/suricatasc", "infra/suricata", "infra/analyst.sh", "target/install.sh", "target/wargames")
 FILEBEAT = ROOT / "deploy/filebeat/filebeat.yml"
 DECLARED = declaration.read()
 YAML_HEADER = "%YAML 1.1\n---\n"

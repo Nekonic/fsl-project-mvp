@@ -193,7 +193,6 @@ def rules_session(stack_is_up):
         seen = {}
         baseline = runs_the_declared_rules(played)
         seen["rules_before_invalid"] = plays.ids_rules(played)["text"]
-        seen["checked_invalid"] = plays.check_ids(played, NOT_A_RULE)
         seen["invalid"] = plays.apply_ids(played, NOT_A_RULE)
         seen["rules_after_invalid"] = plays.ids_rules(played)["text"]
 

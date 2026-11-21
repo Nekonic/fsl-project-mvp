@@ -6,6 +6,7 @@ import re
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from cr.config import WAF_FILES
 from sandbox.crs import READ_FILES, WRITE_FILE
@@ -159,20 +160,34 @@ class Sensor(Recorded):
     path: str = "/var/lib/suricata/rules/local.rules"
     syntax: dict[int, str] = field(default_factory=dict)
     reload_fails: bool = False
+    written_at: float = 1_800_000_000.0
+    reloaded_at: float = 1_800_000_100.0
+
+    def edited(self, text: str, reloaded: bool) -> None:
+        self.rules = text
+        self.written_at = self.reloaded_at + 1
+        if reloaded:
+            self.reloaded_at = self.written_at + 1
 
     def __call__(self, argv, stdin=None, timeout=60.0) -> Ran:
         one = self.note(argv, stdin, timeout)
         if argv[:2] == ["cat", self.path]:
             return Ran(0, self.rules)
+        if "ruleset-reload-time" in one.text:
+            stamp = datetime.fromtimestamp(self.reloaded_at, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+0000")
+            return Ran(0, f'{self.written_at:.6f}\n{{"message": [{{"id": 0, "last_reload": "{stamp}"}}], "return": "OK"}}')
         if "suricata -T" in one.text:
             wrong = [f"E: detect: error parsing signature at line {line}: {message}"
                      for line, message in self.syntax.items() if line <= len((stdin or "").splitlines())]
             return Ran(1, "\n".join(wrong)) if wrong else OK
         if f"cat > {self.path}" in one.text:
-            self.rules = stdin or ""
+            self.edited(stdin or "", reloaded=False)
             return OK
         if "reload-rules" in one.text:
-            return Ran(1, "refused") if self.reload_fails else Ran(0, '{"return":"OK"}')
+            if self.reload_fails:
+                return Ran(1, "refused")
+            self.reloaded_at = self.written_at + 1
+            return Ran(0, '{"return":"OK"}')
         return OK
 
 

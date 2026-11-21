@@ -34,7 +34,6 @@ TABLES = (
     ("verdicts", "scoring_verdict"),
     ("rule sets", "training_ruleset"),
     ("rule tests", "training_ruletest"),
-    ("disabled rules", "training_disabledrule"),
     ("events", "telemetry_event"),
     ("problems", "training_problem"),
     ("postures", "training_posture"),

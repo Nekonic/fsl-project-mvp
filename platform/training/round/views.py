@@ -193,6 +193,14 @@ class DefenceTerminalAuth(TerminalAuth):
         return super().get(request, round_id)
 
 
+class IdsTerminalAuth(TerminalAuth):
+    permission_classes = [auth.IsPlayer("defence")]
+
+    @extend_schema(tags=TAGS, responses={204: None}, operation_id="round_terminal_auth_ids")
+    def get(self, request, round_id: int):
+        return super().get(request, round_id)
+
+
 class Forfeit(MatchView):
     side = ""
 

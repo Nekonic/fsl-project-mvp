@@ -54,7 +54,6 @@ KINDS: dict[str, Kind] = {
     "alert.seen": Kind({"alert": NUMBER, "engine": TEXT, "signature": TEXT}, DEFENCE_SIDE),
     "rule.tested": Kind({"test": NUMBER, "engine": TEXT, "ok": FLAG}, DEFENCE_SIDE),
     "rule.applied": Kind({"engine": TEXT, "version": NUMBER, "source": TEXT}, DEFENCE_SIDE),
-    "rule.disabled": Kind({"sid": NUMBER, "expires_at": TEXT}, DEFENCE_SIDE),
     "rule.refused": Kind({"engine": TEXT, "version": NUMBER, "message": TEXT}, DEFENCE_SIDE),
     "limit.below_floor": Kind({"zone": TEXT, "rate_rpm": NUMBER, "floor_rpm": NUMBER}, DEFENCE_SIDE),
     "case.judged": Kind({"action": TEXT, "case": TEXT, "verdict": TEXT, "alerts": NUMBER, "corroborated": MAYBE_FLAG},

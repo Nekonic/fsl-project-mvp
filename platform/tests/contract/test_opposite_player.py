@@ -20,6 +20,7 @@ SHARED = {
     f"{ROUND}site/requests/": set(),
     f"{ROUND}terminal-auth/attack/": {"errors"},
     f"{ROUND}terminal-auth/defence/": {"errors"},
+    f"{ROUND}terminal-auth/ids/": {"errors"},
 }
 HELD_BACK = ("snapshot", "baseline", "read_of", "attributed_marker")
 FILLED = {"run_id": "1", "test_id": "1", "sid": "9000001", "version": "1"}

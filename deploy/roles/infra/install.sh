@@ -48,8 +48,8 @@ rsyslog_may_read_the_eve_log() {
 customers_installed() {
   id -u "$CUSTOMERS_ACCOUNT" >/dev/null 2>&1 \
     || useradd --system --no-create-home --shell /usr/sbin/nologin "$CUSTOMERS_ACCOUNT"
-  install -d -m 0755 -o "$CUSTOMERS_ACCOUNT" -g "$CUSTOMERS_ACCOUNT" "$CUSTOMERS_HOME"
-  install -d -m 0755 "$CUSTOMERS_PROGRAM_DIR"
+  install -d -m 0750 -o "$CUSTOMERS_ACCOUNT" -g "$CUSTOMERS_ACCOUNT" "$CUSTOMERS_HOME"
+  install -d -m 0750 -g "$CUSTOMERS_ACCOUNT" "$CUSTOMERS_PROGRAM_DIR"
   install -m 0644 users.py "$CUSTOMERS_PROGRAM_DIR/users.py"
   python3 -m py_compile "$CUSTOMERS_PROGRAM_DIR/users.py"
   install -m 0644 cr-customers.service /etc/systemd/system/
@@ -61,7 +61,7 @@ sealed_for_snapshot() {
 }
 
 ubuntu_trimmed
-installed nftables conntrack tcpdump iproute2 bridge-utils ethtool rsyslog docker.io python3 curl
+installed nftables conntrack tcpdump iproute2 bridge-utils ethtool rsyslog docker.io python3 curl acl
 
 printf 'net.ipv4.ip_forward = 1\nnet.ipv4.conf.all.rp_filter = 0\nnet.ipv4.conf.default.rp_filter = 0\n' > /etc/sysctl.d/60-edge.conf
 sysctl --system >/dev/null
@@ -83,14 +83,15 @@ docker run --rm --pull never -e PGID=4 \
   "$SENSOR_IMAGE" -T -c /etc/suricata/suricata.yaml
 
 install -m 0755 suricatasc /usr/local/bin/suricatasc
+install -m 0755 suricata /usr/local/bin/suricata
 install -m 0644 edge.nft log-relay.conf "$SHARE/"
 install -m 0755 slot-boot /usr/local/sbin/slot-boot
 install -m 0644 slot-boot.service sensor.service /etc/systemd/system/
 rsyslog_may_read_the_eve_log
 customers_installed
+./analyst.sh
 
 systemctl daemon-reload
-systemctl disable nftables.service
 systemctl enable rsyslog.service slot-boot.service sensor.service
 
 sealed_for_snapshot

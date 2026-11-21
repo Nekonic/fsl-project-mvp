@@ -15,8 +15,8 @@ from training.round import views as match_views
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 FRONT = ROOT / "platform/nginx.conf"
 ENTRYPOINT = ROOT / "platform/entrypoint.sh"
-TERMINAL_PORTS = {"attack": "7691", "defence": "7692"}
-TERMINAL_HOSTS = {"attack": "cr-kali", "defence": "cr-waf"}
+TERMINAL_PORTS = {"attack": "7691", "defence": "7692", "ids": "7693"}
+TERMINAL_HOSTS = {"attack": "cr-kali", "defence": "cr-waf", "ids": "cr-infra"}
 TOKEN = re.compile(r"""\s+|#[^\n]*|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|[{};]|(?:\$\{\w+\}|[^\s{};'"])+""")
 
 
@@ -130,7 +130,7 @@ def test_the_well_formedness_check_catches_a_missing_semicolon_and_an_unclosed_b
         parsed("http { server { listen 8000; }")
 
 
-@pytest.mark.parametrize("side", ["attack", "defence"])
+@pytest.mark.parametrize("side", ["attack", "defence", "ids"])
 def test_each_player_s_terminal_is_its_own_round_path_handed_to_its_ttyd_with_the_round_as_the_only_argument(side):
     found = regex_location(console(), f"/vm-terminal/{side}/12/")
     taken = pattern(found)
@@ -146,7 +146,7 @@ def test_each_player_s_terminal_is_its_own_round_path_handed_to_its_ttyd_with_th
     assert ["Upgrade", "$http_upgrade"] in found.values("proxy_set_header")
 
 
-@pytest.mark.parametrize("side", ["attack", "defence"])
+@pytest.mark.parametrize("side", ["attack", "defence", "ids"])
 def test_the_entrypoint_starts_each_side_s_ttyd_where_nginx_hands_it_with_the_side_and_url_arguments(side):
     started = next(line for line in ENTRYPOINT.read_text().splitlines()
                    if "ttyd" in line and f"-p {TERMINAL_PORTS[side]} " in line)
@@ -517,7 +517,7 @@ def browser_sees(side, status, refusal):
     return passed, None
 
 
-@pytest.mark.parametrize("side", ["attack", "defence"])
+@pytest.mark.parametrize("side", ["attack", "defence", "ids"])
 def test_the_terminal_check_s_refusal_code_reaches_nginx_beside_its_status(side):
     found = regex_location(console(), f"/vm-terminal/{side}/12/ws")
     header = "$upstream_http_" + match_views.REFUSAL_HEADER.lower().replace("-", "_")
@@ -527,14 +527,14 @@ def test_the_terminal_check_s_refusal_code_reaches_nginx_beside_its_status(side)
         "an error_page in the location drops the server's, so the held_open limit keeps its answer")
 
 
-@pytest.mark.parametrize("side", ["attack", "defence"])
+@pytest.mark.parametrize("side", ["attack", "defence", "ids"])
 @pytest.mark.parametrize("refusal", [errors.Conflict(code="round_closed"), errors.Conflict(code="round_not_started"),
                                      errors.NotFound(code="unknown_round"), errors.NotAPlayer()])
 def test_a_refused_terminal_answers_the_api_s_status_and_error_shape_not_nginx_s_500(side, refusal):
     assert browser_sees(side, refusal.status, refusal.code) == (refusal.status, refusal.shown())
 
 
-@pytest.mark.parametrize("side", ["attack", "defence"])
+@pytest.mark.parametrize("side", ["attack", "defence", "ids"])
 def test_a_terminal_check_that_answers_nothing_known_is_unavailable_and_a_sign_in_still_redirects(side):
     assert browser_sees(side, 502, "") == (503, errors.Unavailable().shown())
     found = regex_location(console(), f"/vm-terminal/{side}/12/ws")

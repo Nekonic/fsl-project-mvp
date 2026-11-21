@@ -1,5 +1,4 @@
 from drf_spectacular.utils import extend_schema
-from rest_framework import status
 from rest_framework.response import Response
 
 from training.defence import kibana_gate, serializers
@@ -69,13 +68,6 @@ class WafVersion(DefenceView):
         return Response(serializers.VersionFiles(service.version(request.round, WAF, version)).data)
 
 
-class IdsCheck(DefenceView):
-    @extend_schema(tags=TAGS, request=serializers.Text, responses=serializers.RuleCheck, operation_id="defence_ids_check")
-    def post(self, request, round_id: int):
-        asked = given(serializers.Text, request.data)
-        return Response(serializers.RuleCheck(service.check_ids(request.round, asked["text"])).data)
-
-
 class IdsTest(DefenceView):
     @extend_schema(tags=TAGS, request=serializers.IdsTest, responses=serializers.RuleTestResult,
                    operation_id="defence_ids_test")
@@ -89,39 +81,6 @@ class IdsTestResult(DefenceView):
     @extend_schema(tags=TAGS, responses=serializers.RuleTestResult, operation_id="defence_ids_test_result")
     def get(self, request, round_id: int, test_id: int):
         return Response(test_result(service.rule_test(request.round, IDS, test_id)))
-
-
-class IdsApply(DefenceView):
-    @extend_schema(tags=TAGS, request=serializers.IdsApply, responses=serializers.IdsApplied,
-                   operation_id="defence_ids_apply")
-    def post(self, request, round_id: int):
-        asked = given(serializers.IdsApply, request.data)
-        applied = service.apply_ids(request.round, asked["text"], asked["base_version"], request.player,
-                                    asked.get("tested"))
-        return Response(serializers.IdsApplied({"version": applied.rule_set.version,
-                                                "applied_at": applied.rule_set.applied_at,
-                                                "same_as_tested": applied.rule_set.same_as_tested,
-                                                "sensors": applied.sensors}).data)
-
-
-class IdsDisabled(DefenceView):
-    @extend_schema(tags=TAGS, responses=serializers.DisabledRule(many=True), operation_id="defence_ids_disabled")
-    def get(self, request, round_id: int):
-        return Response(serializers.DisabledRule(service.disabled(request.round), many=True).data)
-
-    @extend_schema(tags=TAGS, request=serializers.Disable, responses={201: serializers.DisabledNow},
-                   operation_id="defence_ids_disable")
-    def post(self, request, round_id: int):
-        asked = given(serializers.Disable, request.data)
-        made = service.disable_rule(request.round, asked["sid"], asked["minutes"], asked["reason"])
-        return Response(serializers.DisabledNow(made).data, status=status.HTTP_201_CREATED)
-
-
-class IdsEnable(DefenceView):
-    @extend_schema(tags=TAGS, responses={204: None}, operation_id="defence_ids_enable")
-    def delete(self, request, round_id: int, sid: int):
-        service.enable_rule(request.round, sid)
-        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class Waf(DefenceView):
@@ -167,6 +126,13 @@ class Terminal(DefenceView):
     @extend_schema(tags=TAGS, responses=serializers.DefenceTerminal, operation_id="defence_terminal")
     def get(self, request, round_id: int):
         return Response(serializers.DefenceTerminal(defence_terminal.terminal(request.round, request.player)).data)
+
+
+class IdsTerminal(DefenceView):
+    @extend_schema(tags=TAGS, responses=serializers.DefenceTerminal, operation_id="defence_ids_terminal")
+    def get(self, request, round_id: int):
+        shown = defence_terminal.terminal(request.round, request.player, defence_terminal.IDS)
+        return Response(serializers.DefenceTerminal(shown).data)
 
 
 class Kibana(DefenceView):

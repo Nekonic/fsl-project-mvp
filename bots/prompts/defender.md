@@ -29,11 +29,15 @@ positive.
    and the alert count. Wait (read `round_events`) until the phase is `running`.
 2. Watch `defence_alerts` (filter by `engine`, `rule`, `src`) and `defence_traffic` (requests and refusals per
    source address), each with its `next` cursor.
-3. Change the IDS: read `defence_ids_rules`, edit the text, `defence_ids_check` it, `defence_ids_test` it
-   against the recorded probes (never the live range), then `defence_ids_apply` it with the `base_version` you
-   read and `tested` set to the test id. A stale `base_version` answers `409 stale_version` with the current
-   one: read again and redo the change.
-4. Change the WAF the same way with its files: `defence_waf` lists the CRS setup file, the request and
+3. Change the IDS on the sensor, as an analyst does on a standalone Suricata sensor: `ids_shell` runs one
+   command on the sensor's host as analyst. `defence_ids_rules` shows the rule file the sensor runs and its
+   version; `sudo -l` there lists the rule test and the rule reload you may run as root. Edit the rule file,
+   check it with `sudo suricata -T`, then reload. The reload is recorded as the next IDS version on the next
+   request; a file edited and not reloaded is not running (`recorded: false`). A rule with `config: logging`
+   turns off the eve records the platform measures and is put back (`rule.refused`). Before you reload, you
+   may `defence_ids_test` the text against the recorded probes (never the live range). Each call is a new
+   login: `cd` and variables do not carry over.
+4. Change the WAF with its files: `defence_waf` lists the CRS setup file, the request and
    response exclusion files and the nginx files that hold `deny` and `limit_req` (`http.conf` at the http
    level, one per site at the server level). Send the whole text of each file you change in `files` to
    `defence_waf_check`, `defence_waf_test` and `defence_waf_apply`. The logging (`log_format`, `access_log`,
@@ -47,16 +51,15 @@ positive.
 5. A test answers per case `tp|fn|fp|tn`, `corroborated`, `totals` and `untested` (tool cases on the WAF,
    cases with no recording). Read FPs on benign cases before you apply. Only one test runs at a time
    (`409 test_busy`).
-6. A noisy Suricata rule can be disabled for a while with `defence_ids_disable` and enabled again with
-   `defence_ids_enable`.
-7. Follow `round_events` for `alert.seen`, `rule.tested`, `rule.applied`, `objective.lost` and `round.ended`.
-8. When the round has ended (phase `ended`, or `409 round_closed`), read `round_score` once and stop. Your player
+6. Follow `round_events` for `alert.seen`, `rule.tested`, `rule.applied`, `rule.refused`, `objective.lost` and
+   `round.ended`.
+7. When the round has ended (phase `ended`, or `409 round_closed`), read `round_score` once and stop. Your player
    stays readable for 15 minutes after the end.
 
 ## Errors
 
 Every refusal has the shape `{errors: [{path, code, line?, params?}]}`. Codes you will meet:
 `round_not_started`, `round_closed`, `stale_version`, `test_busy`, `suricata_syntax` (with `line`),
-`crs_refused` (with a field `path`), `apply_refused`, `unread_sid`, `not_a_player`, `invalid` and the field codes,
+`crs_refused` (with a field `path`), `apply_refused`, `not_a_player`, `invalid` and the field codes,
 `sensor_unavailable`, `waf_unavailable`, `elastic_unavailable`. A refusal with `"local": true` came from your
 own tool layer before anything was sent: fix the arguments and call again.

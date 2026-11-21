@@ -57,27 +57,27 @@ def tail(text) -> str:
     return text if len(text) <= LONGEST_OUTPUT else text[-LONGEST_OUTPUT:]
 
 
-def refused(code: str, message: str) -> dict:
-    return {"operation": SHELL, "ok": False, "status": None, "local": True,
+def refused(code: str, message: str, operation: str = SHELL) -> dict:
+    return {"operation": operation, "ok": False, "status": None, "local": True,
             "errors": [{"path": "", "code": code, "message": message}]}
 
 
-def opened_for(holder: Hashable, open_grant: Callable[[], dict]) -> Grant | dict:
+def opened_for(holder: Hashable, open_grant: Callable[[], dict], operation: str = SHELL) -> Grant | dict:
     if holder in OPEN:
         return OPEN[holder]
     answer = open_grant()
     if not answer.get("ok"):
-        return {**answer, "operation": SHELL}
+        return {**answer, "operation": operation}
     try:
         grant = granted((answer.get("body") or {}).get("ssh") or {})
     except (KeyError, TypeError, AttributeError):
-        return {"operation": SHELL, "ok": False, "status": answer.get("status"), "body": answer.get("body")}
+        return {"operation": operation, "ok": False, "status": answer.get("status"), "body": answer.get("body")}
     OPEN[holder] = grant
     return grant
 
 
-def run(holder: Hashable, arguments: dict, open_grant: Callable[[], dict]) -> dict:
-    grant = opened_for(holder, open_grant)
+def run(holder: Hashable, arguments: dict, open_grant: Callable[[], dict], operation: str = SHELL) -> dict:
+    grant = opened_for(holder, open_grant, operation)
     if isinstance(grant, dict):
         return grant
     seconds = arguments.get("timeout") or DEFAULT_SECONDS
@@ -85,11 +85,11 @@ def run(holder: Hashable, arguments: dict, open_grant: Callable[[], dict]) -> di
         ran = subprocess.run(ssh_command(grant, arguments["command"]), capture_output=True, text=True, timeout=seconds,
                      stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired as late:
-        return {"operation": SHELL, "ok": False, "exit_code": None, "timed_out": True,
+        return {"operation": operation, "ok": False, "exit_code": None, "timed_out": True,
                 "stdout": tail(late.stdout), "stderr": tail(late.stderr)}
     except OSError as missing:
-        return refused("ssh_unavailable", f"ssh could not run here: {missing}")
+        return refused("ssh_unavailable", f"ssh could not run here: {missing}", operation)
     if ran.returncode == SSH_FAILED:
         OPEN.pop(holder, None)
-    return {"operation": SHELL, "ok": ran.returncode == 0, "exit_code": ran.returncode,
+    return {"operation": operation, "ok": ran.returncode == 0, "exit_code": ran.returncode,
             "stdout": tail(ran.stdout), "stderr": tail(ran.stderr)}

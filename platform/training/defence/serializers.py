@@ -3,8 +3,6 @@ from rest_framework import serializers
 
 VERDICTS = [(verdict, verdict) for verdict in ("tp", "fn", "fp", "tn")]
 UNTESTED = [(reason, reason) for reason in ("tool_case", "not_recorded")]
-DISABLE_LONGEST_MINUTES = 24 * 60
-DISABLE_MINUTES = 60
 
 
 class Text(serializers.Serializer):
@@ -13,11 +11,6 @@ class Text(serializers.Serializer):
 
 class IdsTest(Text):
     cases = serializers.ListField(child=serializers.CharField(max_length=100), required=False, max_length=200)
-
-
-class IdsApply(Text):
-    base_version = serializers.IntegerField(min_value=0)
-    tested = serializers.IntegerField(min_value=1, required=False, allow_null=True)
 
 
 class WafFilesGiven(serializers.Serializer):
@@ -32,12 +25,6 @@ class WafTest(WafFilesGiven):
 class WafApply(WafFilesGiven):
     base_version = serializers.IntegerField(min_value=0)
     tested = serializers.IntegerField(min_value=1, required=False, allow_null=True)
-
-
-class Disable(serializers.Serializer):
-    sid = serializers.IntegerField(min_value=1)
-    minutes = serializers.FloatField(min_value=0.1, max_value=DISABLE_LONGEST_MINUTES, default=DISABLE_MINUTES)
-    reason = serializers.CharField(required=False, allow_blank=True, default="", max_length=500)
 
 
 class DefenceBrief(serializers.Serializer):
@@ -87,6 +74,7 @@ class ProbeCase(serializers.Serializer):
 class IdsRules(serializers.Serializer):
     text = serializers.CharField(trim_whitespace=False)
     version = serializers.IntegerField()
+    recorded = serializers.BooleanField()
 
 
 class AppliedVersion(serializers.Serializer):
@@ -165,18 +153,6 @@ class RuleTestResult(serializers.Serializer):
     against_applied = Change(many=True)
 
 
-class SensorApplied(serializers.Serializer):
-    name = serializers.CharField()
-    ok = serializers.BooleanField()
-
-
-class IdsApplied(serializers.Serializer):
-    version = serializers.IntegerField()
-    applied_at = serializers.DateTimeField()
-    same_as_tested = serializers.BooleanField()
-    sensors = SensorApplied(many=True)
-
-
 class WafApplied(serializers.Serializer):
     version = serializers.IntegerField()
     applied_at = serializers.DateTimeField()
@@ -189,18 +165,6 @@ class WafRead(serializers.Serializer):
     sha = serializers.CharField()
     version = serializers.IntegerField()
     recorded = serializers.BooleanField()
-
-
-class DisabledRule(serializers.Serializer):
-    sid = serializers.IntegerField()
-    original = serializers.CharField()
-    reason = serializers.CharField()
-    expires_at = serializers.DateTimeField()
-
-
-class DisabledNow(serializers.Serializer):
-    sid = serializers.IntegerField()
-    expires_at = serializers.DateTimeField()
 
 
 class AnalystSsh(serializers.Serializer):

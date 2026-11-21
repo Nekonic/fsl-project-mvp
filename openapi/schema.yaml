@@ -809,95 +809,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Errors'
-  /api/rounds/{round_id}/defence/ids/disabled/:
-    get:
-      operationId: defence_ids_disabled
-      parameters:
-      - in: path
-        name: round_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - defence
-      security:
-      - player_token: []
-      - cr_session: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/DisabledRule'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
-    post:
-      operationId: defence_ids_disable
-      parameters:
-      - in: path
-        name: round_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - defence
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/DisableRequest'
-        required: true
-      security:
-      - player_token: []
-      - cr_session: []
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DisabledNow'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
-  /api/rounds/{round_id}/defence/ids/disabled/{sid}/:
-    delete:
-      operationId: defence_ids_enable
-      parameters:
-      - in: path
-        name: round_id
-        schema:
-          type: integer
-        required: true
-      - in: path
-        name: sid
-        schema:
-          type: integer
-        required: true
-      tags:
-      - defence
-      security:
-      - player_token: []
-      - cr_session: []
-      responses:
-        '204':
-          description: No response body
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
   /api/rounds/{round_id}/defence/ids/rules/:
     get:
       operationId: defence_ids_rules
@@ -918,72 +829,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IdsRules'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
-  /api/rounds/{round_id}/defence/ids/rules/apply/:
-    post:
-      operationId: defence_ids_apply
-      parameters:
-      - in: path
-        name: round_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - defence
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/IdsApplyRequest'
-        required: true
-      security:
-      - player_token: []
-      - cr_session: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IdsApplied'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
-  /api/rounds/{round_id}/defence/ids/rules/check/:
-    post:
-      operationId: defence_ids_check
-      parameters:
-      - in: path
-        name: round_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - defence
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TextRequest'
-        required: true
-      security:
-      - player_token: []
-      - cr_session: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RuleCheck'
           description: ''
         default:
           description: refused
@@ -1110,6 +955,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/VersionFiles'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/ids/terminal/:
+    get:
+      operationId: defence_ids_terminal
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - player_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefenceTerminal'
           description: ''
         default:
           description: refused
@@ -1700,6 +1572,30 @@ paths:
   /api/rounds/{round_id}/terminal-auth/defence/:
     get:
       operationId: round_terminal_auth_defence
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: string
+          pattern: ^[0-9]+$
+        required: true
+      tags:
+      - match
+      security:
+      - player_token: []
+      - cr_session: []
+      responses:
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/terminal-auth/ids/:
+    get:
+      operationId: round_terminal_auth_ids
       parameters:
       - in: path
         name: round_id
@@ -2916,52 +2812,6 @@ components:
       required:
       - ssh
       - ws_url
-    DisableRequest:
-      type: object
-      properties:
-        sid:
-          type: integer
-          minimum: 1
-        minutes:
-          type: number
-          format: double
-          maximum: 1440
-          minimum: 0.1
-          default: 60.0
-        reason:
-          type: string
-          default: ''
-          maxLength: 500
-      required:
-      - sid
-    DisabledNow:
-      type: object
-      properties:
-        sid:
-          type: integer
-        expires_at:
-          type: string
-          format: date-time
-      required:
-      - expires_at
-      - sid
-    DisabledRule:
-      type: object
-      properties:
-        sid:
-          type: integer
-        original:
-          type: string
-        reason:
-          type: string
-        expires_at:
-          type: string
-          format: date-time
-      required:
-      - expires_at
-      - original
-      - reason
-      - sid
     Document:
       type: object
       properties:
@@ -3104,41 +2954,6 @@ components:
             $ref: '#/components/schemas/OriginActivity'
       required:
       - by_origin
-    IdsApplied:
-      type: object
-      properties:
-        version:
-          type: integer
-        applied_at:
-          type: string
-          format: date-time
-        same_as_tested:
-          type: boolean
-        sensors:
-          type: array
-          items:
-            $ref: '#/components/schemas/SensorApplied'
-      required:
-      - applied_at
-      - same_as_tested
-      - sensors
-      - version
-    IdsApplyRequest:
-      type: object
-      properties:
-        text:
-          type: string
-          maxLength: 200000
-        base_version:
-          type: integer
-          minimum: 0
-        tested:
-          type: integer
-          minimum: 1
-          nullable: true
-      required:
-      - base_version
-      - text
     IdsRules:
       type: object
       properties:
@@ -3146,7 +2961,10 @@ components:
           type: string
         version:
           type: integer
+        recorded:
+          type: boolean
       required:
+      - recorded
       - text
       - version
     IdsTestRequest:
@@ -4086,16 +3904,6 @@ components:
       required:
       - method
       - path
-    SensorApplied:
-      type: object
-      properties:
-        name:
-          type: string
-        ok:
-          type: boolean
-      required:
-      - name
-      - ok
     Sent:
       type: object
       properties:
@@ -4391,14 +4199,6 @@ components:
       - title
       - updated
       - wargame
-    TextRequest:
-      type: object
-      properties:
-        text:
-          type: string
-          maxLength: 200000
-      required:
-      - text
     ToolSpec:
       type: object
       properties:
@@ -4804,7 +4604,6 @@ components:
       - unknown_tool
       - unknown_user
       - unknown_wargame
-      - unread_sid
       - unsupported_media_type
       - username_taken
       - waf_unavailable

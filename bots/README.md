@@ -43,10 +43,11 @@ spec does not take, a value of the wrong type or outside its enum) exits 2, an u
 ## The shell
 
 Each side has a `shell` tool beside its API tools, offered only while the schema has that side's terminal
-operation. It is the shell a human player gets: the first call asks `attack_terminal` or `defence_terminal` for
-the SSH grant (a key for the platform's jump host and the box behind it), and each command then runs as
-`ssh -o ProxyCommand="ssh -W %h:%p jump@<jump>" <account>@<box> <command>`, the learner account on the attacker
-box or `analyst` on the WAF. The answer is `{operation, ok, exit_code, stdout, stderr}`, or `timed_out` when
+operation; the defence also has `ids_shell`, over `defence_ids_terminal`, on the Suricata sensor's host. It
+is the shell a human player gets: the first call asks `attack_terminal`, `defence_terminal` or
+`defence_ids_terminal` for the SSH grant (a key for the platform's jump host and the box behind it), and each
+command then runs as `ssh -o ProxyCommand="ssh -W %h:%p jump@<jump>" <account>@<box> <command>`, the learner
+account on the attacker box or `analyst` on the WAF or the sensor's host. The answer is `{operation, ok, exit_code, stdout, stderr}`, or `timed_out` when
 the command outlasts `timeout` (default 120 seconds). Each command is a new login, so `cd` and variables do
 not carry over.
 
@@ -58,6 +59,11 @@ the answer is local, with the code `ssh_unavailable`.
 On the WAF, `analyst` can write the WAF files and run `sudo nginx -t`, `sudo nginx -T` and
 `sudo systemctl reload nginx`. A reload is recorded as the next WAF version on the next API request, like a
 human's reload in the terminal.
+
+On the sensor's host, `analyst` can write the rule file the topology names, read the eve log and run the rule
+test and the rule reload under sudo (`sudo -l` lists them); the IDS rules have no write API. A reload is
+recorded as the next IDS version on the next API request, and one whose rules carry `config: logging` is put
+back.
 
 ## Plugging in a model
 
@@ -110,7 +116,7 @@ Every refusal is `{errors: [{path, code, line?, params?}]}`. Codes a bot meets:
 | `origins_spent` | 409 | every attack origin is spent |
 | `stale_version` | 409 | `base_version` is not the applied version; `params` has the current one |
 | `test_busy` | 409 | another rule test of this engine is running |
-| `suricata_syntax`, `unread_sid` | 422 | the Suricata text was refused, with `line` |
+| `suricata_syntax` | 422 | the Suricata text was refused, with `line` |
 | `crs_refused`, `apply_refused` | 422 | the WAF files or the apply was refused |
 | `attacker_unavailable`, `tool_unavailable`, `range_unavailable` | 503 | the attacker box or the range is not answering |
 | `sensor_unavailable`, `waf_unavailable`, `elastic_unavailable` | 503 | a sensor, the WAF or the alert store is not answering |

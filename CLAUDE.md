@@ -152,9 +152,9 @@ never scored as one.
   `sandbox/crs.py` is handed; `platform/nginx.conf` names the Kibana API
   routes it refuses, hands every other API call inside a space to the
   `kibana-gate` view and answers Kibana's `api/spaces/space` lookup itself;
-  `platform/entrypoint.sh` starts `vm-terminal.sh cr-kali attack` and
-  `vm-terminal.sh cr-waf defence` and creates the jump host's
-  `authorized_keys`;
+  `platform/entrypoint.sh` starts `vm-terminal.sh cr-kali attack`,
+  `vm-terminal.sh cr-waf defence` and `vm-terminal.sh cr-infra ids` and
+  creates the jump host's `authorized_keys`;
   `deploy/roles/infra/edge.nft` declares the `pool` and `spent` sets
   `sandbox/edge.py` fills; `front/src/panes/Kibana.tsx`
   presets Kibana's localStorage keys. `docs/ARCHITECTURE.md` keeps the table.

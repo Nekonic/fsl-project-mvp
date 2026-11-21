@@ -1,0 +1,3 @@
+#!/bin/sh
+[ "$*" = "-T" ] || { echo "usage: sudo suricata -T (the sensor runs in its container)" >&2; exit 2; }
+exec docker exec sensor suricata -T -c /etc/suricata/suricata.yaml -l /tmp

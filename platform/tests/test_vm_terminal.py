@@ -47,6 +47,14 @@ def test_the_defence_player_gets_the_waf_as_analyst_and_never_as_root(tmp_path):
     assert not shell.startswith("sudo -i env"), "a plain sudo -i is a root shell on the WAF"
 
 
+def test_the_defence_player_s_ids_terminal_looks_up_the_sensor_grant_and_opens_as_analyst(tmp_path):
+    ran, asked, seen = opened(tmp_path, "cr-infra", "ids", "3", lookup="10.31.0.182 cr-srv-3 analyst")
+
+    assert asked.read_text().split("\n")[1:4] == ["terminal_shell", "ids", "3"]
+    assert "ubuntu@10.31.0.182" in seen.read_text().split("\n")
+    assert remote_command(seen).startswith("sudo -i -u analyst ")
+
+
 def test_the_lookup_is_the_platform_s_manage_py_beside_the_script(tmp_path):
     ran, asked, seen = opened(tmp_path, "cr-kali", "attack", "3")
 

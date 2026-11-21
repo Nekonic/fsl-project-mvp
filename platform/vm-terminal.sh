@@ -14,7 +14,7 @@ failed() {
 }
 [ -n "$host" ] || failed "no host given"
 case "$side" in
-  attack|defence) ;;
+  attack|defence|ids) ;;
   *) failed "no player side given for $host" ;;
 esac
 case "$round" in

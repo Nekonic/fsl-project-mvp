@@ -10687,3 +10687,77 @@ How the "Bots" ruling above is carried out.
   outlived its endpoint; the WAF form tuning went with its API in the WAF
   files ruling. The defence keeps the IDS and WAF file tools, which are the
   API the console uses, beside the shell.
+
+## 2026-11-22 — Terminal text stays English, IDS rules are edited on the sensor, no version author
+
+- The line `vm-terminal.sh` prints when a terminal fails stays English, as ssh, nginx and every other tool on a terminal print English. The Korean-only rule covers the console, not terminal output.
+- The defence player edits Suricata rules on the sensor itself, as the Suricata documentation describes for a standalone sensor (edit `local.rules`, reload), not through a platform form or API. The sensor runs on the infra VM beside the customers program and the edge router's nftables sets, so the defence gets an `analyst` account there, as on the WAF: it may write the rule file and run `suricata -T` and the rule reload under sudo; it may only read `suricata.yaml`'s outputs (eve-log), and has no access to `nft`, `edge.nft`, the customers program or the `cr-users` account. A terminal reload is recorded as a version on the next read, and one that touches the logging configuration is put back, as on the WAF. The IDS rule API and its console form are removed; the bots use the same shell. Rejected: keeping the API, which imitates a central SOC rule manager the range does not have.
+- WAF and IDS versions carry no author field: a round has one defence player, so the round already names who made each version.
+
+## 2026-11-22 — IDS rules on the sensor: how it is carried out
+
+How the "IDS rules are edited on the sensor" ruling above is carried out.
+
+- **The account.** `deploy/roles/infra/analyst.sh` makes `analyst` on the
+  infra like the WAF's: key login only, group `adm` (reads
+  `/var/log/suricata`), the same ssh `Match` block, and an nft fence that
+  accepts its packets on `lo` only to `127.0.0.0/8` and `::1`. The WAF's
+  fence accepts anything on `lo`; on the infra that would reach the log
+  relay, which listens on the host's own address (`imtcp` 514, a packet to
+  which also leaves on `lo`) and forwards a `modsecurity` message as a WAF
+  log, so the account could have written a WAF detection.
+  It writes `/var/lib/suricata/rules/local.rules` through an ACL
+  (`u:analyst:rw`): the `jasonish/suricata` entrypoint runs `chown -R
+  suricata:suricata /var/lib/suricata` (and `/etc/suricata`,
+  `/var/log/suricata`) when the container starts with its capabilities, so
+  a group grant would not survive a sensor start; an ACL does. `sudo`
+  allows only `/usr/local/bin/suricata -T` (a wrapper that runs `suricata
+  -T -c /etc/suricata/suricata.yaml` in the `sensor` container) and
+  `/usr/local/bin/suricatasc -c reload-rules`, the topology's reload
+  command. `/usr/local/share/slot` (the edge table, the log relay) and the
+  rule test scratch are root 0700, the customers' home and program folder
+  `cr-users` 0750; the account is in no `docker` group. The infra's
+  `/etc/nftables.conf` holds only the fence table, so `nftables.service`
+  is enabled and the edge table `slot-boot` loads stays.
+- **The terminal.** `GET defence/ids/terminal/` grants a second jump key per
+  defence player, named `cr-session-<player>-ids` beside the WAF's
+  `cr-session-<player>` (`sandbox/access.py` keys a grant by player and
+  box), to `analyst` on the first sensor's node. The platform runs a third
+  ttyd, `vm-terminal.sh cr-infra ids` on `/vm-terminal/ids/<round>/`,
+  checked by `terminal-auth/ids/` (the defence player). The console's
+  defence terminal pane switches between WAF and IDS. The round's end
+  revokes both grants and ends `analyst` on both boxes.
+- **What is recorded.** The round's reads compare the first sensor's live
+  rule file with the head IDS version. When they differ and Suricata's
+  `last_reload` (`suricatasc -c ruleset-reload-time`, an ISO time per
+  tenant; Suricata sets it at engine load and at each successful reload)
+  is later than the file's mtime, the live file is the next version,
+  `source: terminal`, with no test attached. A live rule with the `config:
+  logging` keyword (Suricata's per-transaction or per-flow logging
+  disable, which stops the eve records the platform measures) is written
+  back to the head version and reloaded, with `rule.refused`; a rule
+  continued over lines with a trailing backslash (Suricata's loader joins
+  them, `src/detect-engine-loader.c`) is matched as one rule. Suricata runs
+  what it read at its last reload, not the file, so each IDS version keeps
+  the sensor's `last_reload` at the time it was recorded
+  (`RuleSet.sensors[0].reloaded`); when the file was written after the last
+  reload and that reload is not the head's, the running rules are not
+  known and the head is put back the same way. A reload done and then
+  overwritten before the next read is lost that way; the next read always
+  comes within a console poll. A round
+  whose posture has no Suricata rules records the live file as IDS
+  version 1. `GET ids/rules/` reads the live file and says `recorded`.
+- **What went.** `POST ids/rules/check/`, `POST ids/rules/apply/`,
+  `ids/disabled/` and `ids/disabled/<sid>/`, `DisabledRule` (migration
+  0003), `defence/disable.py`, the `rule.disabled` event, the
+  `unread_sid` code, the expired-rule read, and the console's IDS editor
+  and disabled-rule form. Kept: `GET ids/rules/`, the versions, the rule
+  test and its results; the posture still writes the sensors at the round
+  start. The defence bot has `ids_shell` over the new grant.
+- **Not measured.** The infra must be rebaked (`docs/OPENSTACK.md` §3.10);
+  the reload-time reply is read from Suricata's source
+  (`src/output-json-stats.c`), not seen on the sensor. The acceptance tests
+  that changed IDS rules (`test/shared_sessions.py`,
+  `test/test_apply_after_test.py`, `test/test_concurrent_sessions.py`,
+  `test/test_rule_changes.py`) now write and reload through the IDS shell
+  and were not run; `test/test_disabled_rule.py` went with the feature.

@@ -473,11 +473,11 @@ def test_rule_3_attack_and_defence_never_import_each_other(path):
 
 
 def test_the_checker_sees_a_side_reaching_the_other():
-    reached = {"training/attack/actions.py", "training/defence/disable.py", "sandbox/access.py",
+    reached = {"training/attack/actions.py", "training/defence/ruletest.py", "sandbox/access.py",
                "scoring/losses.py"}
 
     assert other_side_reached("training/defence/rules.py", reached) == ["training/attack/actions.py"]
-    assert other_side_reached("training/attack/actions.py", reached) == ["training/defence/disable.py"]
+    assert other_side_reached("training/attack/actions.py", reached) == ["training/defence/ruletest.py"]
     assert other_side_reached("scoring/losses.py", reached) == []
 
 

@@ -57,8 +57,11 @@ posture, probe cases, side and matchups) to `plays.play` or
 `played.attack` and `played.defence` are the clients of the two players: a bot's
 player token, or the signed-in operator. A `pvp` round passes `humans=`, a
 second account per side from `plays.human_account` (signed up, approved and
-disabled again by the test). `plays.in_shell` runs one command in a side's
-terminal over the SSH grant a human's terminal uses (`bots/shell.py`). WAF
+disabled again by the test). `plays.in_shell` runs one command in a
+terminal (`attack`, `defence` for the WAF, `ids` for the sensor) over the SSH
+grant a human's terminal uses (`bots/shell.py`); `plays.apply_ids` writes the
+sensor's rule file there, runs `sudo suricata -T` and the topology's reload,
+and waits for the next IDS version. WAF
 postures are file edits: `plays.appended` adds lines to a live WAF file
 (`plays.paranoia`, `plays.RULE_ENGINE_OFF` for `crs-setup.conf`) and
 `plays.tune_waf` applies them.

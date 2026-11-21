@@ -38,10 +38,13 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 정합니다.
 
 - 공격 플레이어는 Kali 터미널, 대상 사이트 패널, API로 공격하고 탈취한 값을 loot로 제출합니다.
-- 방어 플레이어는 Kibana, WAF 터미널, 구성도, 알림 목록으로 보고, IDS 룰과 WAF 파일을 고칩니다. 고친 룰은
-  적용하기 전에 녹화된 요청으로 테스트할 수 있습니다(룰 테스트). WAF 파일은 콘솔에서 고쳐 적용해도 되고, 터미널에서
-  고친 뒤 `sudo nginx -t`, `sudo nginx -s reload`로 반영해도 됩니다. 터미널에서 reload한 내용은 다음 요청 때 새
-  버전으로 기록됩니다.
+- 방어 플레이어는 Kibana, 방어 터미널, 구성도, 알림 목록으로 보고, IDS 룰과 WAF 파일을 고칩니다. 방어 터미널은
+  WAF와 IDS 두 개이고 패널에서 바꿔 엽니다. IDS 룰은 단독 센서를 다루듯 IDS 터미널에서 룰 파일을 고치고
+  `sudo suricata -T`로 검사한 뒤 `sudo suricatasc -c reload-rules`로 반영합니다. 콘솔에는 IDS 룰을 고치는 폼이
+  없고 지금 룰과 변경 이력만 보입니다. WAF 파일은 콘솔에서 고쳐 적용해도 되고, WAF 터미널에서 고친 뒤
+  `sudo nginx -t`, `sudo nginx -s reload`로 반영해도 됩니다. 터미널에서 reload한 내용은 다음 요청 때 새 버전으로
+  기록되고, 로그 설정을 건드린 것은 마지막 버전으로 되돌립니다. 룰과 파일은 반영하기 전에 녹화된 요청으로
+  테스트할 수 있습니다(룰 테스트).
 - 플랫폼이 라운드 내내 정상 케이스와 고객 트래픽을 보냅니다. 공격 플레이어가 아무것도 하지 않아도 오탐과 정상 통과가 쌓입니다.
 - 라운드는 시간 제한, 목표 전부 탈취, 공격 출발지 전부 소진, 운영자 종료, 한쪽 기권으로 끝납니다. 출발지 소진으로
   끝나는 것은 정상 케이스가 한 바퀴 이상 돈 뒤입니다.
@@ -149,6 +152,7 @@ flowchart TB
 | 브라우저 → 콘솔 | floating IP의 8000, 8002 |
 | 학습자 ssh → Kali | floating IP의 2222(플랫폼 컨테이너의 sshd) → `cr-mgmt`의 Kali 22번. 공격 플레이어의 점프 권한 |
 | 학습자 ssh → WAF | 같은 2222 → `cr-mgmt`의 WAF 22번, `analyst` 계정. 방어 플레이어의 점프 권한 |
+| 학습자 ssh → 센서 | 같은 2222 → `cr-mgmt`의 infra 22번, `analyst` 계정. 방어 플레이어의 두 번째 점프 권한 |
 | 플랫폼 → 훈련 환경 VM | `cr-mgmt`의 제어 포트로 ssh. 관리 계정 `ubuntu`, 비밀번호 없는 sudo. 대상 컨테이너는 target VM에서 `docker exec` |
 | WAF → log-server | 스택의 `mgmt`로 syslog 514/tcp |
 | log-server → collector | infra의 제어 포트에서 `cr-mgmt`로 syslog 5140/udp(센서 알림, WAF audit log, 모든 요청의 nginx 접근 로그) |
@@ -347,7 +351,7 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 |---|---|---|
 | 8000 | 콘솔, `/api/`, Kibana(`/kibana/`), 터미널(`/vm-terminal/`) | 브라우저, 봇, `test/`, `bin/` |
 | 8002 | 대상 사이트(`/site/<라운드 id>/<host>/<path>`) | 콘솔 안의 iframe |
-| 2222 | SSH 점프 호스트, 플랫폼 컨테이너 안의 sshd | 학습자 PC의 `ssh`. 플레이어마다 받은 키로 공격 플레이어는 Kali 22번, 방어 플레이어는 WAF 22번(`analyst`)으로만 포워딩. 셸 없음 |
+| 2222 | SSH 점프 호스트, 플랫폼 컨테이너 안의 sshd | 학습자 PC의 `ssh`. 플레이어마다 받은 키로 공격 플레이어는 Kali 22번, 방어 플레이어는 WAF 22번과 infra 22번(둘 다 `analyst`)으로만 포워딩. 셸 없음 |
 | 5140/udp | collector | 훈련 환경 infra VM의 log-server, `cr-mgmt`에서만 |
 | 5601 | Kibana 직접 접속, VM loopback 전용 | ssh 터널, 인증 없음 |
 | 9200 | Elasticsearch, VM loopback 전용 | acceptance 테스트, 인증 없음 |
@@ -452,7 +456,7 @@ sudo docker compose start platform rebuild
 | 플레이어 | 상대 쪽 경로는 403. 라운드 시작 전 쓰기는 `409 round_not_started`, 끝난 뒤는 `409 round_closed`. 플레이어는 할당을 열거나 닫지 못하고 라운드를 끝내지 못함(기권만 가능). PvP에서 한 사람이 양쪽 플레이어를 맡지 못함(`already_playing`) |
 | 이벤트 피드 | 이벤트 종류마다 볼 수 있는 쪽이 정해져 있음. 공격 쪽은 알림과 룰 이벤트를, 방어 쪽은 공격 행동과 출발지 이벤트를 보지 못함 |
 | WAF 파일 | 방어 플레이어가 고치는 파일은 `crs-setup.conf`, REQUEST-900·RESPONSE-999 예외 파일, `deny`·`limit_req`를 넣는 nginx 파일(`/etc/nginx/defence/`)뿐. `log_format`, `access_log`, `error_log`, 감사 로그 설정은 측정용이라 콘솔에서 거부하고 `analyst` 계정도 쓸 수 없음. `SecRuleEngine Off`·`DetectionOnly`는 허용(점수에 결과가 드러남) |
-| `/vm-terminal/<side>/<round>/` | nginx `auth_request`가 `/api/rounds/<round>/terminal-auth/<side>/`에 그 라운드의 그 쪽 플레이어인지 물음. 공격 플레이어는 Kali의 `kali` 계정, 방어 플레이어는 cr-waf의 `analyst` 계정(root 아님)으로 열리고, `GET terminal/`로 받은 점프 권한이 없거나 라운드가 끝났으면 열리지 않음. 열려 있던 셸도 15초마다 다시 확인해 권한이 없어지면 닫힘 |
+| `/vm-terminal/<attack\|defence\|ids>/<round>/` | nginx `auth_request`가 `/api/rounds/<round>/terminal-auth/<attack\|defence\|ids>/`에 그 라운드의 그 쪽 플레이어인지 물음(`ids`는 방어 플레이어). 공격 플레이어는 Kali의 `kali` 계정, 방어 플레이어는 cr-waf와 cr-infra의 `analyst` 계정(root 아님)으로 열리고, `GET terminal/`이나 `GET ids/terminal/`로 받은 점프 권한이 없거나 라운드가 끝났으면 열리지 않음. 열려 있던 셸도 15초마다 다시 확인해 권한이 없어지면 닫힘 |
 | `/kibana/`, 8002(`/site/...`) | nginx `auth_request`로 `/api/me/`에 로그인 세션 확인. 없으면 로그인 페이지로. 로그인 뒤 돌아가는 `next`는 콘솔 안의 경로이거나 `CR_SITE_ORIGIN`(기본은 같은 호스트의 8002)의 `/site/` 주소만 받음 |
 | 회원가입 계정 | 비활성 상태로 만들어짐. 스태프가 승인해야 로그인 가능 |
 | 로그인 시도 | IP당 분당 5회(버스트 5), 넘으면 429. 계정은 잠그지 않고 시도한 쪽을 차단: 스태프 계정에 3번 틀린 IP는 1시간, 다른 아이디에 10번 틀린 IP는 15분. 같은 브라우저 헤더 지문이 두 IP 이상에서 같은 횟수만큼 틀려도 차단. 스태프가 `DELETE /api/staff/blocks/<id>/`로 해제 |
@@ -485,7 +489,7 @@ sudo docker compose start platform rebuild
   아직 화면에 없습니다. 플레이어별 터미널(`nginx.conf`, `vm-terminal.sh`)은 오프라인 테스트만 거쳤고 훈련 환경에서는 아직
   열어 보지 않았습니다.
 - WAF 접근 로그와 오류 로그 전송, 방어 파일(`/etc/nginx/defence/`), infra 라우터의 `pool`·`spent` 집합, CRS 룰
-  테스트용 임시 인스턴스, WAF의 `analyst` 계정, infra의 고객 프로그램(`cr-customers.service`), board의
+  테스트용 임시 인스턴스, WAF와 infra의 `analyst` 계정, infra의 고객 프로그램(`cr-customers.service`), board의
   `set_passwords`는 배포 파일과 코드에만 있고 역할 이미지에는 아직 없습니다. infra, waf, kali, target 이미지를 다시
   구워야 합니다(`docs/OPENSTACK.md` §3.7~§3.9). target을 다시 굽기 전에는 라운드 시작이
   `ground_truth_unavailable`로 실패합니다.

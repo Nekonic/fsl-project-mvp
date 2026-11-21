@@ -70,7 +70,7 @@ def test_an_attack_in_one_round_draws_no_alert_in_the_other(two_allocations):
 def test_two_rounds_tune_their_own_waf_and_their_own_sensor(two_allocations):
     seen = two_allocations
 
-    assert seen["applied"].status == 200, seen["applied"].text
+    assert seen["applied"].ok, seen["applied"].text
     assert seen["first_rules"] == seen["committed"] + PROBE
     assert seen["second_rules"] == seen["committed"], "a rule applied in one round reached another's sensor"
     assert "blocking_paranoia_level=4" in seen["second_tuning"] and "blocking_paranoia_level=1" not in seen["second_tuning"], (

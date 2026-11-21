@@ -5,7 +5,7 @@ are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`; the design in
 `docs/superpowers/specs/2026-11-19-side-split-design.md`; detail in `git log`.
 The handover of the old tree up to 2026-11-18 is in this file's git history.
 
-Updated: 2026-11-21.
+Updated: 2026-11-22.
 
 ## Where things stand
 
@@ -21,8 +21,10 @@ Updated: 2026-11-21.
   from the infra VM; a random board secret each round; live verdict
   notices; the bots' shell and calls by `operationId` through
   `bots/rest.py` with no generated client; the lesson content gone and
-  `training/lessons/` kept empty. The table is in `docs/STATE.md` "What
-  exists on restructure".
+  `training/lessons/` kept empty; and the 2026-11-22 ruling: the defence
+  edits Suricata rules in a second terminal on the sensor (`analyst` on
+  the infra), the IDS rule API and its console form are gone. The table is
+  in `docs/STATE.md` "What exists on restructure".
 - The unit and API suite and `front/` (build, vitest) run against fakes.
   The docs (CLAUDE.md, README, ARCHITECTURE, OPENSTACK, STATE, this file)
   describe the new layout.
@@ -36,7 +38,7 @@ live-verified".
 
 1. Rebake `cr-infra`, `cr-waf`, `cr-kali` and `cr-target`, name them in
    `compute.images`, `bin/cloud up --replace`, and the checks of
-   `docs/OPENSTACK.md` §3.7, §3.8 and §3.9. Until `cr-target` is rebaked,
+   `docs/OPENSTACK.md` §3.7, §3.8, §3.9 and §3.10. Until `cr-target` is rebaked,
    every round start fails with `ground_truth_unavailable`.
 2. Probe recordings: `bin/record-probes board` and `corp`, committed under
    `wargames/<id>/probes/`; `test/test_rule_test_isolation.py` fails until

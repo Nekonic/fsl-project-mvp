@@ -25,7 +25,7 @@ def played():
 def applied_round(played):
     text = plays.declared_rules() + CANDIDATE
     ids_test = plays.rule_test_ids(played, text)
-    ids_applied = plays.apply_ids(played, text, tested=ids_test.body.get("test") if ids_test.ok else None)
+    ids_applied = plays.apply_ids(played, text)
     fired = plays.fired(played, CONTROL)
     listed = plays.alerts_until(played, lambda listed: any(
         alert["signature"].startswith("tested ") for alert in plays.marked(listed, fired["marker"])))
@@ -44,13 +44,12 @@ def waf_round(played):
             "broken": broken, "after_broken": plays.waf_files(played), "waf_versions": plays.waf_versions(played)}
 
 
-def test_the_tested_ids_rules_apply_and_are_recorded_as_the_ones_tested(applied_round):
+def test_tested_ids_rules_reloaded_in_the_ids_terminal_are_recorded_as_a_terminal_version(applied_round):
     assert applied_round["ids_test"].ok, applied_round["ids_test"].text
     assert applied_round["ids_applied"].ok, applied_round["ids_applied"].text
-    assert applied_round["ids_applied"].body["same_as_tested"] is True
-    assert all(sensor["ok"] for sensor in applied_round["ids_applied"].body["sensors"])
     head = max(applied_round["ids_versions"], key=lambda line: line["version"])
-    assert head["tested"] == applied_round["ids_test"].body["test"] and head["same_as_tested"] is True
+    assert head == applied_round["ids_applied"].version and head["source"] == "terminal"
+    assert head["tested"] is None, "a reload in the terminal is not tied to a test"
 
 
 def test_waf_files_other_than_the_tested_ones_apply_and_say_so(waf_round):

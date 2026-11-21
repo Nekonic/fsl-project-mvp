@@ -242,16 +242,3 @@ class RuleSet(models.Model):
     class Meta:
         ordering = ["round_id", "engine", "version"]
         constraints = [models.UniqueConstraint(fields=["round", "engine", "version"], name="one_rule_set_per_version")]
-
-
-class DisabledRule(models.Model):
-    round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name="disabled_rules")
-    sid = models.PositiveBigIntegerField()
-    original = models.TextField()
-    reason = models.TextField(blank=True, default="")
-    created = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField()
-    enabled_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        ordering = ["id"]

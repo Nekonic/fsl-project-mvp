@@ -127,7 +127,7 @@ def test_the_state_shows_the_brief_target_objectives_versions_and_alert_count(as
                                                                              es, at):
     es.add("s1", suricata(stamp(at)))
     alert_feed.ingest_alerts(board_round)
-    as_defender.post(url(board_round, "ids/rules/apply/"), {"text": SEARCH_RULE, "base_version": 0}, format="json")
+    service.apply_ids(board_round, SEARCH_RULE, 0)
 
     shown = as_defender.get(url(board_round, "state/")).json()
 
@@ -155,7 +155,7 @@ def test_writes_after_the_round_ended_are_refused_and_reads_still_answer(as_defe
     board_round.phase, board_round.ended = "ended", board_round.started + timedelta(minutes=5)
     board_round.save()
 
-    write = as_defender.post(url(board_round, "ids/rules/apply/"), {"text": SEARCH_RULE, "base_version": 0},
+    write = as_defender.post(url(board_round, "waf/apply/"), {"files": {HTTP: "deny all;\n"}, "base_version": 0},
                              format="json")
 
     assert write.status_code == 409

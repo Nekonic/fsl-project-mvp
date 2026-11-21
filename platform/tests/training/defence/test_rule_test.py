@@ -1,11 +1,12 @@
 import pytest
+from django.utils import timezone
 
 from cr import errors
 from sandbox.runner import Ran
 from telemetry.models import Event
 from tests.training.defence.conftest import BASELINE, LOGIN_RULE, RECORDED, SEARCH_RULE
 from training.defence import rules as service
-from training.models import RuleTest
+from training.models import RuleSet, RuleTest
 
 BASE = "/api/rounds/{round}/defence/"
 SETUP = "/etc/nginx/modsecurity/crs/crs-setup.conf"
@@ -165,8 +166,10 @@ def test_a_stored_test_reads_back_and_records_the_event_for_the_defence_side_onl
 
 def test_a_test_compares_its_verdicts_with_the_applied_version_s_test(as_defender, board_round):
     tested = as_defender.post(url(board_round, "ids/rules/test/"), {"text": SEARCH_RULE}, format="json").json()
-    as_defender.post(url(board_round, "ids/rules/apply/"),
-                     {"text": SEARCH_RULE, "base_version": 0, "tested": tested["test"]}, format="json")
+    made = RuleTest.objects.get(pk=tested["test"])
+    RuleSet.objects.create(round=board_round, engine="ids", version=service.version_of(board_round, "ids") + 1,
+                           files={"local.rules": SEARCH_RULE},
+                           sha=made.sha, source="terminal", tested=made, same_as_tested=True, applied_at=timezone.now())
 
     candidate = as_defender.post(url(board_round, "ids/rules/test/"), {"text": SEARCH_RULE + LOGIN_RULE},
                                  format="json").json()
@@ -183,18 +186,10 @@ def test_the_probe_set_lists_the_round_s_cases_with_their_recordings(as_defender
     assert listed["board-normal-comment"]["recorded"] is False
 
 
-def test_the_check_routes_return_errors_without_running_any_probe(as_defender, board_round, cyber_range):
-    cyber_range.sensors["sensor"].syntax = {2: "bad"}
-
-    ids = as_defender.post(url(board_round, "ids/rules/check/"), {"text": SEARCH_RULE + LOGIN_RULE}, format="json")
-    unread = as_defender.post(url(board_round, "ids/rules/check/"), {"text": "alert x (msg:\"a\";)\n"},
-                              format="json")
+def test_the_waf_check_route_returns_errors_without_running_any_probe(as_defender, board_round, cyber_range):
     waf = as_defender.post(url(board_round, "waf/check/"), {"files": {HTTP: "access_log off;\n"}}, format="json")
     fine = as_defender.post(url(board_round, "waf/check/"), {"files": {HTTP: "deny all;\n"}}, format="json")
 
-    assert ids.json()["ok"] is False and ids.json()["errors"][0]["line"] == 2
-    assert unread.json() == {"ok": False, "errors": [{"path": "text", "code": "unread_sid", "line": 1,
-                                                      "message": 'alert x (msg:"a";)'}]}
     assert waf.json()["ok"] is False and waf.json()["errors"][0]["code"] == "crs_refused"
     assert fine.json() == {"ok": True, "errors": []}
     assert any("nginx -t -p" in text for text in cyber_range.gateway.texts())

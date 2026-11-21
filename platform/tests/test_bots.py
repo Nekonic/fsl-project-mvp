@@ -106,7 +106,7 @@ def test_a_side_gets_its_own_operations_and_the_round_reads_and_nothing_of_the_o
     names = [spec["name"] for spec in tools.specs(side)]
     other = next(name for name in tools.SIDES if name != side)
 
-    assert set(names) == (side_tagged(side) - tools.HUMAN_ONLY) | set(tools.ROUND_OPERATIONS) | {tools.SHELL}
+    assert set(names) == (side_tagged(side) - tools.HUMAN_ONLY) | set(tools.ROUND_OPERATIONS) | set(tools.SHELL_TERMINALS[side])
     assert not set(names) & side_tagged(other)
     assert "defence_kibana" not in names
     assert len(names) == len(set(names))
@@ -347,7 +347,7 @@ def test_every_tool_and_code_the_prompts_and_readme_name_exists():
 SIDE_CODES = {
     "attacker.md": {"not_a_player", "invalid", "unknown_case", "unknown_tool", "unknown_run", "round_not_started",
                     "round_closed", "origins_spent", "attacker_unavailable", "range_unavailable"},
-    "defender.md": {"invalid", "suricata_syntax", "crs_refused", "apply_refused", "unread_sid", "stale_version",
+    "defender.md": {"invalid", "suricata_syntax", "crs_refused", "apply_refused", "stale_version",
                     "test_busy", "round_not_started", "round_closed", "sensor_unavailable", "waf_unavailable",
                     "elastic_unavailable"},
 }
@@ -489,6 +489,25 @@ def test_the_defence_shell_opens_the_human_terminal_grant_once_and_runs_each_com
     assert "-p 2222 -W %h:%p jump@jump.example" in jump
     assert ran[0]["key"] == "-----KEY-----\n" and ran[0]["mode"] == 0o600
     assert [seen["timeout"] for seen in ran] == [shell.DEFAULT_SECONDS, 30]
+
+
+def test_the_defence_ids_shell_opens_the_sensor_grant_apart_from_the_waf_one(platform, ssh):
+    ran, _ = ssh
+    platform.on("GET", f"/api/rounds/{ROUND}/defence/terminal/", body={"ssh": SSH_GRANT})
+    platform.on("GET", f"/api/rounds/{ROUND}/defence/ids/terminal/",
+                body={"ws_url": f"/vm-terminal/ids/{ROUND}/", "ssh": {**SSH_GRANT, "target_host": "10.20.0.9"}})
+    player = defence_player(platform)
+
+    ids = calls.call(player, "ids_shell", {"command": "sudo suricata -T"})
+    calls.call(player, "shell", {"command": "sudo nginx -t"})
+    calls.call(player, "ids_shell", {"command": "cat /var/log/suricata/eve.json"})
+
+    assert ids == {"operation": "ids_shell", "ok": True, "exit_code": 0, "stdout": "ok\n", "stderr": ""}
+    assert [seen["path"] for seen in platform.seen] == [f"/api/rounds/{ROUND}/defence/ids/terminal/",
+                                                       f"/api/rounds/{ROUND}/defence/terminal/"]
+    assert [one["argv"][-2] for one in ran] == ["analyst@10.20.0.9", "analyst@10.20.0.5", "analyst@10.20.0.9"]
+    assert tools.shell_spec("defence", "ids_shell") in tools.specs("defence")
+    assert "ids_shell" not in tools.offered("attack")
 
 
 def test_an_ssh_failure_drops_the_grant_so_the_next_command_asks_for_a_new_one(platform, ssh):

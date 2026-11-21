@@ -58,18 +58,14 @@ DESCRIPTIONS = {
     "defence_traffic": "Read the requests the WAF saw per source IP: requests, refused, last seen. Pass the "
                        "previous answer's `next` as `after`.",
     "defence_probes": "List the round's probe set the rule test replays: case, malicious, recorded, tool case.",
-    "defence_ids_rules": "Read the applied Suricata rule text and its version.",
-    "defence_ids_versions": "List the applied Suricata rule versions and whether each was the tested text.",
-    "defence_ids_check": "Check Suricata rule text for syntax on every sensor without applying it.",
+    "defence_ids_rules": "Read the rule file the Suricata sensor runs now, the last recorded IDS version and "
+                         "whether the file is that version (a file edited in the IDS terminal and not reloaded is "
+                         "not).",
+    "defence_ids_versions": "List the recorded Suricata rule versions: each one's hash, whether it came from the "
+                            "round's setup or a reload in the IDS terminal, and whether it was the tested text.",
     "defence_ids_test": "Test Suricata rule text against the recorded probes, never the live range. Answers "
                         "with per-case tp/fn/fp/tn, corroboration and totals. Only one test runs at a time.",
     "defence_ids_test_result": "Read a stored Suricata rule test by its id.",
-    "defence_ids_apply": "Apply Suricata rule text to every sensor. `base_version` must be the version you read; "
-                         "a stale one is refused with stale_version. Pass `tested` with the test id of the same "
-                         "text to record that it was tested.",
-    "defence_ids_disabled": "List the Suricata rules disabled for a while.",
-    "defence_ids_disable": "Disable one Suricata rule by `sid` for `minutes`, with a `reason`.",
-    "defence_ids_enable": "Enable a disabled Suricata rule again by `sid`.",
     "defence_waf": "Read the WAF files the defence edits (the CRS setup file, the request and response "
                    "exclusion files, the nginx files for deny and limit_req) as they are now, their hash, the "
                    "last recorded version and whether the files are that version.",
@@ -89,20 +85,31 @@ DESCRIPTIONS = {
     "defence_terminal": "Get a short-lived shell on the WAF as analyst: a web terminal URL and an SSH jump grant. "
                         "The WAF files are writable there, with sudo nginx -t and an nginx reload; a reload "
                         "there is recorded as the next WAF version on the next request.",
+    "defence_ids_terminal": "Get a short-lived shell on the Suricata sensor's host as analyst: a web terminal URL and "
+                            "an SSH jump grant. The rule file is writable there, with the rule test and the rule "
+                            "reload under sudo; a reload there is recorded as the next IDS version on the next request.",
     "defence_forfeit": "Give up the round as the defender. Ends the round.",
 }
 
 
 SHELL = "shell"
+IDS_SHELL = "ids_shell"
 LONGEST_SHELL_SECONDS = 600
+SHELL_TERMINALS = {"attack": {SHELL: "attack_terminal"},
+                   "defence": {SHELL: "defence_terminal", IDS_SHELL: "defence_ids_terminal"}}
 SHELL_DESCRIPTIONS = {
-    "attack": "Run one shell command on the attacker box as the learner, over the same SSH grant a human "
-              "attacker's terminal uses (attack_terminal). Each call is a new login, so cd and variables do not "
-              "carry over. Traffic from the shell can spend an origin like any other.",
-    "defence": "Run one shell command on the WAF as analyst, over the same SSH grant a human defender's terminal "
-               "uses (defence_terminal). Each call is a new login, so cd and variables do not carry over. The WAF "
-               "files are writable there, with sudo nginx -t, sudo nginx -T and sudo systemctl reload nginx; a "
-               "reload is recorded as the next WAF version on the next request.",
+    ("attack", SHELL): "Run one shell command on the attacker box as the learner, over the same SSH grant a human "
+                       "attacker's terminal uses (attack_terminal). Each call is a new login, so cd and variables do "
+                       "not carry over. Traffic from the shell can spend an origin like any other.",
+    ("defence", SHELL): "Run one shell command on the WAF as analyst, over the same SSH grant a human defender's "
+                        "terminal uses (defence_terminal). Each call is a new login, so cd and variables do not carry "
+                        "over. The WAF files are writable there, with sudo nginx -t, sudo nginx -T and sudo systemctl "
+                        "reload nginx; a reload is recorded as the next WAF version on the next request.",
+    ("defence", IDS_SHELL): "Run one shell command on the Suricata sensor's host as analyst, over the same SSH grant "
+                            "a human defender's IDS terminal uses (defence_ids_terminal). Each call is a new login. "
+                            "The rule file is writable there and the eve log readable; `sudo -l` lists the rule test "
+                            "and the rule reload you may run. A reload is recorded as the next IDS version on the "
+                            "next request; one that turns off the sensor's logging is put back.",
 }
 
 
@@ -235,16 +242,21 @@ def build(name: str, schema: dict) -> tuple[Operation, dict]:
     return shape, spec
 
 
-def terminal_of(side: str) -> str:
-    return f"{side}_terminal"
+def terminal_of(side: str, tool: str = SHELL) -> str:
+    return SHELL_TERMINALS[side][tool]
 
 
-def has_shell(side: str, schema: dict) -> bool:
-    return terminal_of(side) in names_for(side, schema)
+def shells(side: str, schema: dict) -> list[str]:
+    granted = names_for(side, schema)
+    return [tool for tool, terminal in SHELL_TERMINALS[side].items() if terminal in granted]
 
 
-def shell_spec(side: str) -> dict:
-    return {"name": SHELL, "description": SHELL_DESCRIPTIONS[side], "input_schema": {
+def has_shell(side: str, schema: dict, tool: str = SHELL) -> bool:
+    return tool in shells(side, schema)
+
+
+def shell_spec(side: str, tool: str = SHELL) -> dict:
+    return {"name": tool, "description": SHELL_DESCRIPTIONS[(side, tool)], "input_schema": {
         "type": "object", "additionalProperties": False, "required": ["command"],
         "properties": {
             "command": {"type": "string", "minLength": 1, "description": "the command line, run by the login shell"},
@@ -255,7 +267,7 @@ def shell_spec(side: str) -> dict:
 
 def offered(side: str, schema: dict | None = None) -> list[str]:
     schema = schema if schema is not None else contract()
-    return names_for(side, schema) + ([SHELL] if has_shell(side, schema) else [])
+    return names_for(side, schema) + shells(side, schema)
 
 
 def operations(side: str, schema: dict | None = None) -> dict[str, Operation]:
@@ -266,7 +278,7 @@ def operations(side: str, schema: dict | None = None) -> dict[str, Operation]:
 def specs(side: str, schema: dict | None = None) -> list[dict]:
     schema = schema if schema is not None else contract()
     built = [build(name, schema)[1] for name in names_for(side, schema)]
-    return built + ([shell_spec(side)] if has_shell(side, schema) else [])
+    return built + [shell_spec(side, tool) for tool in shells(side, schema)]
 
 
 def main(argv: list[str]) -> int:

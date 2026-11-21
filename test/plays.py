@@ -413,18 +413,56 @@ def ids_rules(played: Played) -> dict:
     return done("defence_ids_rules", played.defence, round_id=played.round)
 
 
-def check_ids(played: Played, text: str) -> Answer:
-    return ask("defence_ids_check", played.defence, {"text": text}, round_id=played.round)
+def sensor_device(wargame: str) -> dict:
+    devices = yaml.safe_load((WARGAMES / wargame / "topology.yaml").read_text())["devices"]
+    return next(device for device in devices.values() if "sensor" in (device.get("roles") or []))
+
+
+def ids_written_and_reloaded(wargame: str, text: str) -> str:
+    sensor = sensor_device(wargame)
+    rules = sensor["rules"]
+    return (f"cp {rules} ~/previous.rules && printf %s {shlex.quote(text)} > {rules} && sudo suricata -T "
+            f"&& sudo {sensor['reload']} || {{ cat ~/previous.rules > {rules}; exit 1; }}")
+
+
+@dataclass(frozen=True)
+class Reloaded:
+    shell: dict
+    version: dict | None
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.shell.get("ok")) and self.version is not None
+
+    @property
+    def text(self) -> str:
+        return json.dumps({"shell": self.shell, "version": self.version})[:2000]
+
+
+def apply_ids(played: Played, text: str, timeout: float = SCORE_WAIT) -> Reloaded:
+    before = ids_rules(played)["version"]
+    ran = in_shell(played, "ids", ids_written_and_reloaded(played.wargame, text))
+    deadline = time.monotonic() + timeout
+    while ran.get("ok"):
+        shown = ids_rules(played)
+        if shown["recorded"] and shown["version"] > before:
+            return Reloaded(ran, max(ids_versions(played), key=lambda one: one["version"]))
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(POLL)
+    return Reloaded(ran, None)
+
+
+def sensor_runs_the_declared_rules(played: Played) -> str:
+    live = ids_rules(played)["text"]
+    if live != declared_rules():
+        return f"the sensor's live rules are not deploy/suricata/rules/local.rules: {live[:300]!r}"
+    checked = in_shell(played, "ids", "sudo suricata -T")
+    return "ok" if checked.get("ok") else json.dumps(checked)[:2000]
 
 
 def tested_field(tested: int | None) -> dict:
     return {"tested": tested} if tested is not None else {}
-
-
-def apply_ids(played: Played, text: str, tested: int | None = None) -> Answer:
-    version = ids_rules(played)["version"]
-    return ask("defence_ids_apply", played.defence, {"text": text, "base_version": version, **tested_field(tested)},
-               round_id=played.round)
 
 
 def tune_waf(played: Played, files: dict[str, str], tested: int | None = None) -> Answer:
@@ -463,14 +501,17 @@ def defence_terminal_grant(played: Played) -> Answer:
     return ask("defence_terminal", played.defence, round_id=played.round)
 
 
-def in_shell(played: Played, side: str, command: str) -> dict:
-    client = played.defence if side == "defence" else played.attack
+TERMINALS = {"attack": "attack_terminal", "defence": "defence_terminal", "ids": "defence_ids_terminal"}
+
+
+def in_shell(played: Played, terminal: str, command: str) -> dict:
+    client = played.attack if terminal == "attack" else played.defence
 
     def grant() -> dict:
-        answer = ask(f"{side}_terminal", client, round_id=played.round)
+        answer = ask(TERMINALS[terminal], client, round_id=played.round)
         return {"ok": answer.ok, "status": answer.status, "body": answer.body}
 
-    return bot_shell.run((played.round, side), {"command": command}, grant)
+    return bot_shell.run((played.round, terminal), {"command": command}, grant)
 
 
 def waf_files(played: Played) -> dict[str, str]:
@@ -479,19 +520,6 @@ def waf_files(played: Played) -> dict[str, str]:
 
 def appended(played: Played, path: str, *lines: str) -> dict[str, str]:
     return {path: waf_files(played)[path].rstrip("\n") + "\n" + "".join(lines)}
-
-
-def disable_rule(played: Played, sid: int, minutes: float, reason: str) -> Answer:
-    return ask("defence_ids_disable", played.defence, {"sid": sid, "minutes": minutes, "reason": reason},
-               round_id=played.round)
-
-
-def disabled_rules(played: Played) -> list[dict]:
-    return done("defence_ids_disabled", played.defence, round_id=played.round)
-
-
-def enable_rule(played: Played, sid: int) -> Answer:
-    return ask("defence_ids_enable", played.defence, round_id=played.round, sid=sid)
 
 
 def score(played: Played, correlation: str | None = None, client=None) -> Answer:

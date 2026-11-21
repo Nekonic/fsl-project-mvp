@@ -105,29 +105,19 @@ const alerts = [
 }));
 
 export const fixtures = [
-  reply("get", "/api/rounds/{round_id}/defence/ids/rules/", () => ({ text: idsText, version: idsHead.version })),
+  reply("get", "/api/rounds/{round_id}/defence/ids/rules/", () => ({ text: idsText, version: idsHead.version, recorded: true })),
   reply("get", "/api/rounds/{round_id}/defence/ids/rules/versions/", [
-    { version: 2, applied_at: minutesFromNow(-6), tested: 12, same_as_tested: true, sha: "5d1f0a9c3b7e44c2", source: "console" },
+    { version: 2, applied_at: minutesFromNow(-6), tested: null, same_as_tested: false, sha: "5d1f0a9c3b7e44c2", source: "terminal" },
     { version: 1, applied_at: minutesFromNow(-14), tested: null, same_as_tested: false, sha: "a03c9e1d22f84b10", source: "setup" },
   ]),
   reply("get", "/api/rounds/{round_id}/defence/ids/rules/versions/", [], { variant: "untested" }),
-  reply("post", "/api/rounds/{round_id}/defence/ids/rules/check/", (asked) => {
-    const errors = unbalancedLines(asked.body?.text ?? "");
-    return { ok: errors.length === 0, errors };
-  }),
   reply("post", "/api/rounds/{round_id}/defence/ids/rules/test/", (asked) => idsResult(nextTest++, unbalancedLines(asked.body?.text ?? ""))),
   refuse("post", "/api/rounds/{round_id}/defence/ids/rules/test/", 409, [{ path: "", code: "test_busy" }], { variant: "busy" }),
   reply("get", "/api/rounds/{round_id}/defence/ids/rules/tests/{test_id}/", (asked) => idsResult(Number(asked.params.test_id), [])),
-  reply("post", "/api/rounds/{round_id}/defence/ids/rules/apply/", (asked) => {
-    idsHead.version += 1;
-    return { version: idsHead.version, applied_at: minutesFromNow(0), same_as_tested: asked.body?.tested !== null && asked.body?.tested !== undefined, sensors: [{ name: "cr-ids", ok: true }] };
-  }),
-  refuse("post", "/api/rounds/{round_id}/defence/ids/rules/apply/", 409, [{ path: "base_version", code: "stale_version", params: { current_version: 3 } }], { variant: "stale" }),
-  reply("get", "/api/rounds/{round_id}/defence/ids/disabled/", [
-    { sid: 2013028, original: "alert http any any -> any any (msg:\"ET POLICY curl User-Agent Outbound\"; sid:2013028; rev:4;)", reason: "noisy on benign traffic", expires_at: minutesFromNow(40) },
-  ]),
-  reply("post", "/api/rounds/{round_id}/defence/ids/disabled/", (asked) => ({ sid: asked.body?.sid ?? 0, expires_at: minutesFromNow(asked.body?.minutes ?? 60) }), { status: 201 }),
-  reply("delete", "/api/rounds/{round_id}/defence/ids/disabled/{sid}/", undefined as never),
+  reply("get", "/api/rounds/{round_id}/defence/ids/rules/versions/{version}/", (asked) => ({
+    version: Number(asked.params.version), applied_at: minutesFromNow(-6), tested: null, same_as_tested: false,
+    sha: "5d1f0a9c3b7e44c2", source: "terminal" as const, files: [{ path: "local.rules", text: idsText }],
+  })),
   reply("get", "/api/rounds/{round_id}/defence/waf/", () => ({
     files: Object.entries(wafFiles).map(([path, text]) => ({ path, text })), sha: "9be1c04f7a3d2e58", version: wafHead.version, recorded: true,
   })),

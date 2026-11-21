@@ -105,7 +105,7 @@ class UnsupportedMedia(DomainError):
 class EngineRefused(DomainError):
     code = "engine_refused"
     status = 422
-    codes = frozenset({"engine_refused", "suricata_syntax", "crs_refused", "apply_refused", "unread_sid"})
+    codes = frozenset({"engine_refused", "suricata_syntax", "crs_refused", "apply_refused"})
 
 
 class TooMany(DomainError):

@@ -204,7 +204,7 @@ export function useRuleBench(body: string) {
     return said;
   });
 
-  const test = (calls: BenchCalls) => step("test", async () => {
+  const test = (calls: Pick<BenchCalls, "test">) => step("test", async () => {
     const said = await calls.test();
     showProblems(asProblems(said.errors));
     if (said.ok) {

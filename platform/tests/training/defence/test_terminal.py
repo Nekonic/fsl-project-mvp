@@ -5,10 +5,11 @@ from django.core.management import CommandError, call_command
 
 from cr import config as service
 from sandbox import access as jump
-from testing.fakerange import WAF_MANAGEMENT
+from testing.fakerange import SENSOR_MANAGEMENT, WAF_MANAGEMENT
 from training.round import lifecycle as match
 
 BASE = "/api/rounds/{round}/defence/terminal/"
+IDS = "/api/rounds/{round}/defence/ids/terminal/"
 
 
 def test_the_terminal_is_the_waf_shell_keyed_to_the_round_with_a_jump_key_to_the_analyst_account(
@@ -99,3 +100,32 @@ def test_the_terminal_lookup_refuses_once_the_round_ended_and_the_grant_went(as_
 
     with pytest.raises(CommandError, match="round_closed"):
         call_command("terminal_shell", "defence", str(board_round.pk))
+
+
+def test_the_ids_terminal_is_a_second_grant_to_analyst_on_the_sensor_s_host_beside_the_waf_one(
+        as_defender, board_round, defender, cyber_range):
+    as_defender.get(BASE.format(round=board_round.pk))
+
+    answer = as_defender.get(IDS.format(round=board_round.pk))
+
+    body = answer.json()
+    assert answer.status_code == 200 and body["ws_url"] == f"/vm-terminal/ids/{board_round.pk}/"
+    assert (body["ssh"]["target_host"], body["ssh"]["target_user"]) == (SENSOR_MANAGEMENT, "analyst")
+    waf, ids = jump.granted(defender.pk, service.configured().jump), jump.granted(defender.pk, service.configured().jump, "ids")
+    assert (waf.address, ids.address) == (WAF_MANAGEMENT, SENSOR_MANAGEMENT)
+    [authorized] = [one for one in cyber_range.nodes["sensor"].sent if "authorized_keys" in one.text]
+    assert authorized.stdin == f"{ids.public_key} {ids.name}\n" and "getent passwd analyst" in authorized.text
+    assert (match.terminal_shell(board_round.pk, "ids").address, match.terminal_shell(board_round.pk, "defence").address) == (
+        SENSOR_MANAGEMENT, WAF_MANAGEMENT)
+
+
+def test_the_round_end_takes_back_the_ids_grant_and_ends_analyst_on_the_sensor_s_host(
+        as_defender, board_round, defender, cyber_range):
+    as_defender.get(IDS.format(round=board_round.pk))
+
+    match.end_round(board_round, "ended_by_operator")
+
+    assert jump.granted(defender.pk, service.configured().jump, "ids") is None
+    sent = cyber_range.nodes["sensor"].sent
+    assert [one for one in sent if "pkill -KILL -u analyst" in one.text]
+    assert not [one for one in cyber_range.gateway.sent if "pkill" in one.text], "the WAF terminal was never opened"

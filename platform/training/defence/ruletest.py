@@ -17,7 +17,6 @@ from domain.types import ENGINE_IDS, ENGINE_WAF, FN, FP, TN, TP, DetectionRecord
 from sandbox import crs, suricata
 from sandbox.runner import Runner
 from telemetry import events as log
-from training.defence import disable
 from training.models import RuleSet, RuleTest
 
 CHECK_SCRATCH_ID = 999999
@@ -96,12 +95,6 @@ def busy(allocation_id: int, engine: str) -> Iterator[None]:
         lock.release()
 
 
-def unread_errors(text: str) -> list[dict]:
-    unread = set(disable.unread(text))
-    return [{"path": "text", "code": "unread_sid", "line": number, "message": line.strip()}
-            for number, line in enumerate(text.splitlines(), start=1) if line.strip() in unread]
-
-
 def ids_errors(text: str, sensors: Sequence[Sensor]) -> list[dict]:
     found: list[dict] = []
     for sensor in sensors:
@@ -109,7 +102,7 @@ def ids_errors(text: str, sensors: Sequence[Sensor]) -> list[dict]:
             shown = {"path": "text", "code": suricata.RuleSyntax.code, "line": error.line, "message": error.message}
             if shown not in found:
                 found.append(shown)
-    return found or unread_errors(text)
+    return found
 
 
 def waf_problems(found: Sequence[dict]) -> list[dict]:

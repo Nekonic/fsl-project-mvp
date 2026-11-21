@@ -70,6 +70,17 @@ def test_a_second_key_for_a_player_replaces_its_first_and_leaves_other_players_a
     assert jump.revoke(7, config) is None
 
 
+def test_a_player_s_grant_on_a_second_box_stands_beside_the_first_and_is_revoked_apart(config):
+    waf = jump.issue(7, KALI, config)
+    sensor = jump.issue(7, "10.20.1.9", config, "ids")
+
+    assert sensor.grant.line.endswith(" cr-session-7-ids")
+    assert jump.grants(config) == [waf.grant, sensor.grant]
+    assert jump.granted(7, config) == waf.grant and jump.granted(7, config, "ids") == sensor.grant
+    assert jump.revoke(7, config, "ids") == sensor.grant
+    assert jump.grants(config) == [waf.grant]
+
+
 def test_no_keys_file_is_no_grants(config):
     assert jump.grants(config) == []
 

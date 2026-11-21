@@ -284,8 +284,7 @@ READS = (
     ("spending origins from the WAF error log", lambda found: attack.spend_from_log(found)),
     ("observing effects", observe),
     ("reading commands", lambda found: attack.read_commands(found)),
-    ("recording a WAF reload done in the terminal", lambda found: defence.record_terminal_reload(found)),
-    ("enabling expired rules", lambda found: defence.enable_expired(found)),
+    ("recording a reload done in a defence terminal", lambda found: defence.record_terminal_reload(found)),
     ("the customers", lambda found: customers.catch_up(found)),
     ("settling the objectives", settle),
     ("judging the cases", judge),
@@ -406,18 +405,22 @@ class Shell:
     account: str
 
 
-SHELL_OF_SIDE = {"attack": attack.terminal_shell, "defence": defence_terminal.terminal_shell}
+TERMINALS = {"attack": ("attack", attack.terminal_shell), "defence": ("defence", defence_terminal.terminal_shell),
+             "ids": ("defence", defence_terminal.ids_terminal_shell)}
 
 
-def terminal_shell(round_id: int, side: str) -> Shell:
+def terminal_shell(round_id: int, terminal: str) -> Shell:
     found = Round.objects.select_related("allocation").filter(pk=round_id).first()
     if found is None:
         raise errors.NotFound()
     auth.refuse_write(found)
-    player = Player.objects.filter(round=found, side=side).first()
-    if player is None or side not in SHELL_OF_SIDE:
+    if terminal not in TERMINALS:
         raise errors.NotAPlayer()
-    address, account = SHELL_OF_SIDE[side](player)
+    side, shell_of = TERMINALS[terminal]
+    player = Player.objects.filter(round=found, side=side).first()
+    if player is None:
+        raise errors.NotAPlayer()
+    address, account = shell_of(player)
     reached = slot_range(found.allocation.slot)
     alias = reached.host_key_alias(address) if hasattr(reached, "host_key_alias") else ""
     return Shell(address=address, alias=alias or address, account=account)

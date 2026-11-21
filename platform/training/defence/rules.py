@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -18,18 +17,15 @@ from scoring import losses as referee
 from telemetry import events as log
 from telemetry.models import Detection
 from training.content import problems as content
-from training.defence import disable, ruletest, terminal
-from training.models import DisabledRule, Allocation, Round, RuleSet, RuleTest, Player
+from training.defence import ruletest, terminal
+from training.models import Allocation, Round, RuleSet, RuleTest, Player
 
 DEFENCE = "defence"
 IDS_FILE = ruletest.IDS_FILE
+RELOADED = "reloaded"
+RUNNING_UNKNOWN = ("the sensor reloaded a rule file that was rewritten before this read, "
+                   "so the rules it runs are not known")
 SETUP, CONSOLE, TERMINAL = "setup", "console", "terminal"
-
-
-@dataclass(frozen=True)
-class Head:
-    version: int
-    body: str | None
 
 
 @dataclass(frozen=True)
@@ -127,20 +123,20 @@ def probes(found: Round) -> list[dict]:
             for one in recordings(found)]
 
 
-def rules_text(found: Round, cfg: config.Config | None = None) -> Head:
-    head = head_of(found, ENGINE_IDS)
-    if head is not None:
-        return Head(version=head.version, body=head.files.get(IDS_FILE, ""))
+def first_sensor(found: Round, cfg: config.Config | None = None):
     cfg = cfg or configured()
     if not cfg.sensors:
         raise errors.Unavailable(code="sensor_unavailable")
     sensor = cfg.sensors[0]
-    return Head(version=0, body=suricata.current(reach.range_of(found, cfg).runner(sensor.role), sensor))
+    return reach.range_of(found, cfg).runner(sensor.role), sensor
 
 
 def ids_rules(found: Round) -> dict:
-    head = rules_text(found)
-    return {"text": head.body, "version": head.version}
+    runner, sensor = first_sensor(found)
+    live = suricata.current(runner, sensor)
+    head = head_of(found, ENGINE_IDS)
+    return {"text": live, "version": head.version if head else 0,
+            "recorded": head is not None and head.sha == ruletest.files_sha({IDS_FILE: live})}
 
 
 def gateway_of(found: Round, cfg: config.Config | None = None):
@@ -166,11 +162,6 @@ def version(found: Round, engine: str, number: int) -> RuleSet:
     if made is None:
         raise errors.NotFound()
     return made
-
-
-def check_ids(found: Round, text: str) -> dict:
-    found_errors = ruletest.ids_errors(text, wired(found).sensors)
-    return {"ok": not found_errors, "errors": found_errors}
 
 
 def check_waf(found: Round, files: Mapping[str, str]) -> dict:
@@ -253,14 +244,7 @@ def recorded(found: Round, engine: str, head: RuleSet | None, files: Mapping[str
     return made
 
 
-def apply_ids(found: Round, text: str, base_version: int, player: Player | None = None,
-              tested: int | None = None, source: str = CONSOLE) -> Applied:
-    unread = ruletest.unread_errors(text)
-    if unread:
-        raise errors.EngineRefused(code="unread_sid", errors=tuple(
-            errors.FieldError(path=error["path"], code=error["code"], line=error["line"],
-                              params={"message": error["message"]}) for error in unread))
-    test = tested_of(found, ENGINE_IDS, player, tested)
+def apply_ids(found: Round, text: str, base_version: int, source: str = SETUP) -> Applied:
     reached = wired(found)
     if not reached.sensors:
         raise errors.Unavailable(code="sensor_unavailable")
@@ -269,8 +253,9 @@ def apply_ids(found: Round, text: str, base_version: int, player: Player | None 
         previous = (head.files.get(IDS_FILE, "") if head
                     else suricata.current(reached.sensors[0].runner, reached.sensors[0].config))
         sensors = written_to_sensors(text, previous, reached.sensors)
-        return Applied(rule_set=recorded(found, ENGINE_IDS, head, {IDS_FILE: text}, sensors, test, player, source),
-                       sensors=sensors)
+        _, reloaded = suricata.reload_times(reached.sensors[0].runner, reached.sensors[0].config)
+        made = recorded(found, ENGINE_IDS, head, {IDS_FILE: text}, with_reload(sensors, reloaded), None, None, source)
+        return Applied(rule_set=made, sensors=sensors)
 
 
 def apply_waf(found: Round, files: Mapping[str, str], base_version: int, player: Player | None = None,
@@ -299,10 +284,45 @@ def record_live_waf(found: Round, source: str, player: Player | None = None,
         return recorded(found, ENGINE_WAF, head, live, (), None, player, source)
 
 
+def with_reload(sensors: Sequence[dict], reloaded: float | None) -> tuple[dict, ...]:
+    if reloaded is None:
+        return tuple(sensors)
+    first, *rest = list(sensors) or [{}]
+    return ({**first, RELOADED: reloaded}, *rest)
+
+
+def reload_of(rule_set: RuleSet) -> float | None:
+    return next((one[RELOADED] for one in rule_set.sensors or () if RELOADED in one), None)
+
+
+def stamped(rule_set: RuleSet, reloaded: float) -> None:
+    if reload_of(rule_set) != reloaded:
+        rule_set.sensors = list(with_reload(rule_set.sensors or (), reloaded))
+        rule_set.save(update_fields=["sensors"])
+
+
+def record_live_ids(found: Round, source: str, player: Player | None = None, live: str | None = None,
+                    reloaded: float | None = None) -> RuleSet | None:
+    runner, sensor = first_sensor(found)
+    if live is None:
+        live = suricata.current(runner, sensor)
+    if reloaded is None:
+        _, reloaded = suricata.reload_times(runner, sensor)
+    files = {IDS_FILE: live}
+    with transaction.atomic():
+        head = RuleSet.objects.select_for_update().filter(round=found, engine=ENGINE_IDS).order_by("-version").first()
+        if head is not None and head.sha == ruletest.files_sha(files):
+            return None
+        return recorded(found, ENGINE_IDS, head, files, with_reload(({"name": sensor.name, "ok": True},), reloaded),
+                        None, player, source)
+
+
 def apply_posture(found: Round) -> None:
     posture = (found.snapshot.get("round") or {}).get("posture") or found.snapshot.get("start_posture") or {}
     if posture.get("suricata_rules"):
         apply_ids(found, posture["suricata_rules"], version_of(found, ENGINE_IDS), source=SETUP)
+    else:
+        record_live_ids(found, SETUP)
     if posture.get("waf_files"):
         apply_waf(found, posture["waf_files"], version_of(found, ENGINE_WAF), source=SETUP)
     else:
@@ -314,6 +334,48 @@ def defence_player(found: Round) -> Player | None:
 
 
 def record_terminal_reload(found: Round) -> bool:
+    waf = record_waf_terminal_reload(found)
+    ids = record_ids_terminal_reload(found)
+    return waf or ids
+
+
+def record_ids_terminal_reload(found: Round) -> bool:
+    head = head_of(found, ENGINE_IDS)
+    if head is None:
+        return False
+    try:
+        runner, sensor = first_sensor(found)
+        live = suricata.current(runner, sensor)
+        written, reloaded = suricata.reload_times(runner, sensor)
+        measured = suricata.refusals(live)
+        if measured:
+            put_back_ids(found, head, measured, runner, sensor)
+            return False
+        if written is None or reloaded is None:
+            return False
+        if reloaded <= written:
+            if reload_of(head) != reloaded:
+                put_back_ids(found, head, [suricata.RuleError(line=None, message=RUNNING_UNKNOWN)], runner, sensor)
+            return False
+        if head.sha == ruletest.files_sha({IDS_FILE: live}):
+            stamped(head, reloaded)
+            return False
+    except (errors.Unavailable, suricata.RuleApplyError):
+        return False
+    return record_live_ids(found, TERMINAL, defence_player(found), live, reloaded) is not None
+
+
+def put_back_ids(found: Round, head: RuleSet, measured: Sequence[suricata.RuleError], runner, sensor) -> None:
+    suricata.seed(head.files.get(IDS_FILE, ""), runner, sensor)
+    _, reloaded = suricata.reload_times(runner, sensor)
+    if reloaded is not None:
+        stamped(head, reloaded)
+    log.append(found.pk, "rule.refused", {"engine": ENGINE_IDS, "version": head.version,
+                                          "message": "; ".join(one.message for one in measured)},
+               player_side=DEFENCE)
+
+
+def record_waf_terminal_reload(found: Round) -> bool:
     head = head_of(found, ENGINE_WAF)
     if head is None:
         return False
@@ -338,57 +400,6 @@ def put_back_head(found: Round, head: RuleSet, measured: Sequence[dict], gateway
     log.append(found.pk, "rule.refused", {"engine": ENGINE_WAF, "version": head.version,
                                           "message": "; ".join(one["message"] for one in measured)},
                player_side=DEFENCE)
-
-
-def disabled(found: Round) -> list[DisabledRule]:
-    return list(DisabledRule.objects.filter(round=found, enabled_at__isnull=True).order_by("id"))
-
-
-def disable_rule(found: Round, sid: int, minutes: float, reason: str = "",
-                 now: datetime | None = None) -> DisabledRule:
-    now = now or timezone.now()
-    head = rules_text(found)
-    original = disable.find(head.body, sid)
-    if original is None:
-        raise errors.NotFound(path="sid")
-    expires_at = now + timedelta(minutes=minutes)
-    apply_ids(found, disable.comment_out(head.body, sid, expires_at.isoformat()), head.version)
-    made = DisabledRule.objects.create(round=found, sid=sid, original=original, reason=reason,
-                                       expires_at=expires_at)
-    log.append(found.pk, "rule.disabled", {"sid": sid, "expires_at": expires_at.isoformat()}, player_side=DEFENCE)
-    return made
-
-
-def enabled_text(text: str, record: DisabledRule) -> str | None:
-    put_back = disable.discard if disable.find(text, record.sid) is not None else disable.uncomment
-    try:
-        return put_back(text, record.sid, record.original)
-    except KeyError:
-        return None
-
-
-def enable(found: Round, record: DisabledRule, now: datetime | None = None) -> None:
-    head = rules_text(found)
-    restored = enabled_text(head.body, record)
-    if restored is not None:
-        apply_ids(found, restored, head.version)
-    record.enabled_at = now or timezone.now()
-    record.save(update_fields=["enabled_at"])
-
-
-def enable_rule(found: Round, sid: int) -> None:
-    record = DisabledRule.objects.filter(round=found, sid=sid, enabled_at__isnull=True).order_by("-id").first()
-    if record is None:
-        raise errors.NotFound(path="sid")
-    enable(found, record)
-
-
-def enable_expired(found: Round, now: datetime | None = None) -> list[int]:
-    now = now or timezone.now()
-    due = list(DisabledRule.objects.filter(round=found, enabled_at__isnull=True, expires_at__lte=now))
-    for record in due:
-        enable(found, record, now)
-    return [record.sid for record in due]
 
 
 def close(found: Round) -> None:

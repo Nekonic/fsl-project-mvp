@@ -39,7 +39,7 @@
 | `users/` | `users` | 계정, 로그인·가입·승인, 차단, 플레이어 토큰 | `SignInBlock` |
 | `sandbox/` | `sandbox`(모델 없음) | 훈련 환경: 풀, Heat 스택, 에지, 점프 접속, 바깥 장치를 아는 파일 전부 | 없음 |
 | `telemetry/` | `telemetry` | Elasticsearch, 이벤트, 알림, WAF 접근·오류 로그 | `Event`, `Detection`, `AlertCursor`, `AccessCursor` |
-| `training/` | `training` | 문제, 할당, 라운드, 고객 트래픽, 공격 API, 방어 API, 레슨 자리 | `Wargame`, `Posture`, `Problem`, `RoundSetup`, `ProbeSet`, `Allocation`, `Round`, `Player`, `CustomerRequest`, `Action`, `ToolRun`, `Origin`, `RuleTest`, `RuleSet`, `DisabledRule` |
+| `training/` | `training` | 문제, 할당, 라운드, 고객 트래픽, 공격 API, 방어 API, 레슨 자리 | `Wargame`, `Posture`, `Problem`, `RoundSetup`, `ProbeSet`, `Allocation`, `Round`, `Player`, `CustomerRequest`, `Action`, `ToolRun`, `Origin`, `RuleTest`, `RuleSet` |
 | `scoring/` | `scoring` | 대상의 정답 데이터, baseline, 목표, 케이스 판정, 점수 | `Objective`, `Verdict` |
 
 함께 쓰는 것: `cr/`(설정, 오류, URL, 스키마), `domain/`(Django 없는 규칙 함수), `testing/`(가짜 클라우드, 가짜
@@ -119,12 +119,13 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                스태프 계정 API, 초기 계정 admin(마이그레이션 0002)
   sandbox/     훈련 환경. 바깥 장치를 아는 파일이 모두 여기 있음
                openstack.py 경계: Keystone/Heat/Neutron REST, 실제 배선 읽기, 재생성 때 기본 룰 적재
-               suricata.py  경계: 룰 파일, -T 검사, 오프라인 -r 실행, 적용, 기본 룰 적재, 패킷 캡처
+               suricata.py  경계: 룰 파일, -T 검사, 오프라인 -r 실행, 적용, 기본 룰 적재, 패킷 캡처,
+                            마지막 reload 시각(ruleset-reload-time), 로그를 끄는 룰(config: logging) 찾기
                crs.py       경계: WAF 파일 여섯 개 읽기·검사·쓰기, nginx -t·reload·되돌리기, limit_req rate 읽기,
                             임시 인스턴스 검사·테스트
                kibana.py    경계: Kibana API, space, 거부 규칙, 초기 설정, 로그 인덱스 패턴
                edge.py      경계: infra nftables pool·spent 집합, conntrack 정리
-               access.py    경계: 플랫폼 sshd 점프 권한, 키 생성, 박스 계정의 authorized_keys
+               access.py    경계: 플랫폼 sshd 점프 권한(플레이어·박스마다 하나), 키 생성, 박스 계정의 authorized_keys
                attacker.py  경계: 공격 박스(출발지, set-origin, 명령 기록, 도구 이미지, 실행 중지)
                customers.py 경계: infra VM의 고객 프로그램(cr-customers.service)과 고객 주소
                cloud_config.py  stack_plan.py  definitions.py(+declaration.yaml)  fabric.py
@@ -138,7 +139,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                alerts.py    AlertCursor로 알림 수집과 읽기
                access.py    WAF 접근 로그(트래픽), 오류 로그의 deny·limit_req 줄
                views.py     이벤트 피드, 방어 쪽 알림·트래픽 API   management/commands/  register_pipeline
-  training/    Django 앱 하나. models.py에 Wargame부터 DisabledRule까지 모든 훈련 기록
+  training/    Django 앱 하나. models.py에 Wargame부터 RuleTest까지 모든 훈련 기록
     content/   catalog.py(wargames/와 redteam/cases 읽기, limit_floor_rpm)  problems.py(중첩 문서, revision,
                내보내기·가져오기, posture)  probes.py(probe 녹화)  스태프 문제 API, 학습자 읽기 API
     round/     allocation.py  할당 열기·하트비트·닫기·만료(열 때 만료된 할당 닫기와 오래된 할당 정리)
@@ -150,9 +151,10 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
     attack/    actions.py     공격 API의 모든 동작, 고객 전송, 명령 기록, 공격 쪽 터미널
                origins.py     출발지 풀, 오류 로그로 소진, limit_req 하한
                cases.py       케이스 요청 만들기와 발사(X-Request-ID 마커)   tools.py  도구 인자
-    defence/   rules.py       IDS 룰과 WAF 파일: 읽기, 검사, 테스트, 쓰기, reload, 버전, 터미널 reload 기록
-               ruletest.py    검사 → probe 묶음 → 오프라인 실행 → 판정표    disable.py  룰 임시 비활성화
-               terminal.py    방어 쪽 점프 권한    kibana_gate.py  views_kibana.py  Kibana 게이트
+    defence/   rules.py       IDS 룰과 WAF 파일: 읽기, 검사, 테스트, posture 적용, WAF 쓰기·reload, 버전,
+                              두 터미널의 reload 기록
+               ruletest.py    검사 → probe 묶음 → 오프라인 실행 → 판정표
+               terminal.py    방어 쪽 점프 권한 두 개(WAF, IDS)    kibana_gate.py  views_kibana.py  Kibana 게이트
     lessons/   빈 패키지. 다시 만들 레슨의 자리
     management/commands/  prune  terminal_shell
   scoring/     Objective, Verdict. 대상의 정답 데이터를 읽는 유일한 단위
@@ -177,7 +179,8 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
                PageShell), Console(Rail, Pane, PaneHeader, Aside), Site, Editor, Ops, Record, Tiles, Text, Icon
                looks.ts     상태별 모양 선택(타일 색, 단계 색). index.ts에서 모두 내보냄
   src/panes/   설계 §13의 패널. 각자 api/의 훅으로 데이터를 받고 ui/로 그림. 어느 페이지에 있는지 모름
-               Kibana  Terminal(Kali, WAF)  Site  Map(+map-symbols/)  IdsRules  Waf  RuleTestTable  Alerts
+               Kibana  Terminal(Kali, 방어 쪽 WAF·IDS 전환)  Site  Map(+map-symbols/)  IdsRules(읽기 전용)  Waf
+               RuleTestTable  Alerts
                Objectives  Origins  Loot  AttackCases  RuleVersions  Score  Verdicts
                registry.ts  패널 id → 컴포넌트 표   staff/  문제·posture 편집기, 가져오기
   src/pages/   얇은 배치: 어떤 패널을 어디에 둘지. Login  Signup  Home  RoundLobby  RoundAttack  RoundDefence
@@ -226,7 +229,7 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
 | CRS/ModSecurity 설정과 nginx reload | `sandbox/crs.py` | `cr/config.py`의 기본값(WAF 파일 경로, reload 명령). 각 `topology.yaml`의 WAF 장치 `cr-waf`가 `files:`(방어 쪽이 고치는 WAF 파일)와 reload를 적음. acceptance 드라이버 `test/plays.py`가 API의 `files`에 CRS 룰 텍스트를 씀 |
 | Kibana API | `sandbox/kibana.py` | `platform/nginx.conf`: 거부할 Kibana API 경로, space 안 API 호출을 `kibana-gate`로 넘기기, `api/spaces/space` 직접 응답. `front/src/panes/Kibana.tsx`가 Kibana localStorage 키를 미리 씀 |
 | 로그 인덱스 패턴(`logs-*`) | `sandbox/kibana.py` | `cr/config.py`의 기본값. `test/test_event_time.py` |
-| 훈련 환경 노드 이름(`cr-kali`, `cr-waf`, `cr-infra`, `cr-target`) | 없음(설정으로 넘김) | `cr/config.py`의 기본값. `platform/entrypoint.sh`가 `vm-terminal.sh cr-kali attack`, `vm-terminal.sh cr-waf defence`를 띄움 |
+| 훈련 환경 노드 이름(`cr-kali`, `cr-waf`, `cr-infra`, `cr-target`) | 없음(설정으로 넘김) | `cr/config.py`의 기본값. `platform/entrypoint.sh`가 `vm-terminal.sh cr-kali attack`, `vm-terminal.sh cr-waf defence`, `vm-terminal.sh cr-infra ids`를 띄움 |
 | OpenStack API와 실제 배선 | `sandbox/openstack.py`(파싱 `sandbox/wiring.py`, 이름 `sandbox/topology.py`) | 없음 |
 | infra 라우터의 nftables 집합 | `sandbox/edge.py` | `deploy/roles/infra/edge.nft`가 `pool`, `spent` 집합을 선언 |
 | 플랫폼 점프 호스트와 박스 계정 키 | `sandbox/access.py` | `platform/entrypoint.sh`가 점프 호스트의 `authorized_keys`를 만듦 |
@@ -235,7 +238,7 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
 | 대상의 정답 데이터 | `scoring/loot.py`(board), `scoring/effect.py`(corp) | 점수를 정답 데이터와 맞춰 보는 acceptance 검사 `test/shared_sessions.py`, `test/test_board_exfil.py` |
 
 - 바깥 장치를 아는 파일은 모두 `sandbox/`에 있고 `telemetry/elastic.py`, `scoring/loot.py`, `scoring/effect.py`만
-  예외입니다. 공격 쪽(Kali)과 방어 쪽(WAF의 `analyst`) 터미널이 같은 점프 권한(`sandbox/access.py`)을 쓰고,
+  예외입니다. 공격 쪽(Kali)과 방어 쪽(WAF와 센서 호스트의 `analyst`) 터미널이 같은 점프 권한(`sandbox/access.py`)을 쓰고,
   `training/attack`과 `training/defence`는 서로 import하지 않으므로 공용 경계가 어느 한쪽에 있으면 안 됩니다.
   박스 주소, runner, 계정은 호출하는 쪽이 넘깁니다.
 - `sandbox/openstack.py`는 슬롯을 재생성할 때 `sandbox.suricata.seed`로 `deploy/suricata/rules/local.rules`를
@@ -303,10 +306,10 @@ sequenceDiagram
 | `accounts` | `/api/auth/csrf/`, `login/`, `signup/`, `logout/`, `/api/me/` | 로그인, 가입 |
 | `staff` | `/api/staff/users/`, `/api/staff/blocks/` | 승인, 차단 |
 | `staff` | `/api/staff/range/{,fabric/,leftovers/,pool/}`, `/api/staff/wargames/<id>/probes/record/`, `/api/staff/probes/<a>/` | 풀 운영, probe 녹화(`training/round`, `training/content`) |
-| `match` | `/api/allocations/`, `/api/allocations/<a>/{heartbeat,close,rounds}/`, `/api/rounds/`, `/api/rounds/<r>/{players/<side>/join,start,end,score,topology,site/requests,terminal-auth/<side>,attack/forfeit,defence/forfeit}/` | 할당, 라운드, 점수, 구성도, 사이트 패널, 터미널 인증(`training/round`) |
+| `match` | `/api/allocations/`, `/api/allocations/<a>/{heartbeat,close,rounds}/`, `/api/rounds/`, `/api/rounds/<r>/{players/<side>/join,start,end,score,topology,site/requests,terminal-auth/{attack,defence,ids},attack/forfeit,defence/forfeit}/` | 할당, 라운드, 점수, 구성도, 사이트 패널, 터미널 인증(`training/round`) |
 | `match` | `/api/rounds/<r>/events/?after=` | 커서 피드(`telemetry/views.py`). 종류마다 보는 쪽이 정해짐 |
 | `attack` | `/api/rounds/<r>/attack/{state,cases,requests,tools,tools/<run>,loot,origins/next,terminal}/` | 공격 API. 성공 응답에 `remaining`, 모든 응답에 `X-Origin`, `X-Origins-Left` |
-| `defence` | `/api/rounds/<r>/defence/{state,alerts,traffic,probes,ids/rules,ids/rules/versions,ids/rules/check,ids/rules/test,ids/rules/tests/<t>,ids/rules/apply,ids/disabled,ids/disabled/<sid>,waf,waf/versions,waf/check,waf/test,waf/tests/<t>,waf/apply,terminal,kibana}/` | 방어 API. `alerts`, `traffic`은 `telemetry/views.py`, 나머지는 `training/defence` |
+| `defence` | `/api/rounds/<r>/defence/{state,alerts,traffic,probes,ids/rules,ids/rules/versions,ids/rules/versions/<n>,ids/rules/test,ids/rules/tests/<t>,ids/terminal,waf,waf/versions,waf/versions/<n>,waf/check,waf/test,waf/tests/<t>,waf/apply,terminal,kibana}/` | 방어 API. IDS 룰을 쓰는 경로는 없음. `alerts`, `traffic`은 `telemetry/views.py`, 나머지는 `training/defence` |
 | `catalog`, `staff` | `/api/problems/`, `/api/staff/problems/…`, `/api/staff/postures/…`, `/api/staff/wargames/` | 문제 읽기와 작성 |
 
 권한:
@@ -315,7 +318,7 @@ sequenceDiagram
   (`users/players.py`).
 - `IsPlayer(side)`(`training/round/access.py`)가 요청의 플레이어를 찾습니다. GET이 아닌 요청은 라운드가 `running`이 아니면 `409 round_not_started`
   또는 `409 round_closed`입니다.
-- 터미널 경로는 nginx `auth_request`로 `terminal-auth/<side>/`에 묻습니다. `auth_request`는 2xx, 401, 403 말고는
+- 터미널 경로는 nginx `auth_request`로 `terminal-auth/<attack|defence|ids>/`에 묻습니다(`ids`는 방어 플레이어). `auth_request`는 2xx, 401, 403 말고는
   모두 500으로 바꾸므로, `terminal-auth`가 거부 코드를 `X-Error-Code` 헤더에 싣고 nginx의 `@terminal-refused`가
   그 코드로 API와 같은 상태와 오류 형태(`409 round_closed` 등)를 돌려줍니다.
 - 플레이어 토큰은 자기 쪽 경로, 라운드의 `GET /`, `events/`, `topology/`, 할당 하트비트, 끝난 뒤의 `score/`에 닿습니다.
@@ -338,18 +341,24 @@ sequenceDiagram
 
 ### 방어 API와 룰 테스트
 
-- IDS는 룰 텍스트를, WAF는 `files`(파일 경로 → 파일 전체 텍스트)를 받습니다. 방어 쪽이 고치는 WAF 파일은
+- IDS 룰은 단독 센서를 다루듯 센서에서 고칩니다(2026-11-22 결정). API와 콘솔에는 IDS 룰을 쓰는 경로가 없고,
+  `GET ids/rules/`는 센서가 지금 돌리는 룰 파일, 마지막 버전, 그 파일이 마지막 버전과 같은지(`recorded`)를 돌려줍니다.
+  `ids/rules/test/`(녹화된 요청으로 테스트)와 버전 이력은 그대로 있습니다.
+- WAF는 `files`(파일 경로 → 파일 전체 텍스트)를 받습니다. 방어 쪽이 고치는 WAF 파일은
   `crs-setup.conf`, `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`, `RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf`,
   `/etc/nginx/defence/`의 `http.conf`(http 블록), `board.com.conf`·`corp.com.conf`(각 server 블록)입니다.
   `log_format`, `access_log`, 요청 마커, 감사 로그는 읽기 전용인 `conf.d/board.com.conf`와 `modsecurity.conf`에
   있고, 방어 파일 어느 줄 어느 자리에든 `access_log`·`log_format`·`error_log`·`open_log_file_cache`·`SecAudit*`·`ctl:audit*`가
   있으면 거부합니다. 클라이언트 주소도 측정이라 `set_real_ip_from`·`real_ip_header`·`real_ip_recursive`도 거부합니다.
 - 터미널에서 고치고 reload한 파일도 다음 읽기 때 같은 검사를 거칩니다. 걸리면 기록하지 않고 마지막 버전 파일로 되돌려
-  reload하고 `rule.refused` 이벤트를 남깁니다.
-- 흐름은 IDS와 WAF가 같습니다: 읽기 → 검사(`suricata -T` / `nginx -t`) → 녹화된 요청으로 테스트 → 쓰기 → reload →
-  버전 기록(파일 텍스트와 해시, `RuleSet.files`·`sha`·`source`). nginx가 거부하면 이전 파일로 되돌립니다.
-- `check/`: IDS는 모든 센서에서 `suricata -T`와 읽을 수 없게 되는 sid 검사, WAF는 `sandbox.crs.refusals`와 임시
-  설정의 `nginx -t`(오류는 파일 경로와 줄로 돌려줌).
+  reload하고 `rule.refused` 이벤트를 남깁니다. IDS는 `config: logging`이 든 룰(그 트랜잭션의 eve 기록을 끔)이
+  걸리는 대상이고, 백슬래시로 여러 줄에 이어 쓴 룰도 한 룰로 봅니다. 센서는 파일이 아니라 마지막 reload 때 읽은
+  룰을 돌리므로, 플랫폼이 모르는 reload 뒤에 파일을 다시 고치고 reload하지 않았으면 돌고 있는 룰을 알 수 없다고 보고
+  마지막 버전으로 되돌립니다. 버전마다 그때 센서의 reload 시각(`RuleSet.sensors`의 `reloaded`)을 남겨 이를 가립니다.
+- WAF 흐름: 읽기 → 검사(`nginx -t`) → 녹화된 요청으로 테스트 → 쓰기 → reload → 버전 기록(파일 텍스트와 해시,
+  `RuleSet.files`·`sha`·`source`). nginx가 거부하면 이전 파일로 되돌립니다. IDS는 라운드 시작 때 posture의 룰만
+  플랫폼이 쓰고(센서마다 차례로, 하나라도 거부하면 앞서 쓴 센서를 되돌림), 그 뒤로는 터미널 reload로만 바뀝니다.
+- `check/`(WAF만): `sandbox.crs.refusals`와 임시 설정의 `nginx -t`(오류는 파일 경로와 줄로 돌려줌).
 - `test/`: 라운드의 probe 케이스와 그 워게임의 정상 HTTP 케이스 전부를 녹화본으로 돌립니다. 실제 대상, 실제 센서,
   라운드의 알림은 건드리지 않습니다.
   - IDS: 센서 노드에서 같은 고정 이미지와 `suricata.yaml`로 `suricata -r <case>.pcap`을 돌리고, `/var/log/suricata`
@@ -358,21 +367,27 @@ sequenceDiagram
     `probe-upstream.py`를 upstream으로 씁니다. 녹화된 요청을 `curl`로 보내고 임시 audit log를 읽은 뒤 내립니다.
   - WAF에서 도구 케이스는 `untested: tool_case`, 녹화가 없는 케이스는 `untested: not_recorded`입니다. 미탐이 아닙니다.
   - 판정은 `domain.verdicts`가 마커로 알림을 묶고 케이스 하나를 한 번 판정하고 `expect`로 수법을 확인합니다.
-    `against_applied`는 적용된 버전의 테스트 결과와 비교합니다.
+    `against_applied`는 적용된 버전의 테스트 결과와 비교합니다. 터미널에서 기록한 버전에는 테스트가 붙지 않습니다.
   - 할당·엔진마다 한 번에 하나만 돌고, 두 번째는 `409 test_busy`입니다.
-- `apply/`: `base_version`이 최신이 아니면 `409 stale_version`. 테스트 없이도 적용할 수 있고, `tested`를 주면
-  `same_as_tested`를 기록합니다. IDS는 센서마다 차례로 적용하고 하나라도 거부하면 앞서 쓴 센서를 이전 버전으로
-  되돌린 뒤 `422 apply_refused`입니다.
+- `apply/`(WAF만): `base_version`이 최신이 아니면 `409 stale_version`. 테스트 없이도 적용할 수 있고, `tested`를 주면
+  `same_as_tested`를 기록합니다.
 - `GET terminal/`: cr-waf 관리 주소로 가는 점프 권한, 계정 `analyst`. 방어 파일만 쓸 수 있고 `sudo nginx -t`,
   `-T`, `-s reload`, `systemctl reload nginx`만 root로 돌리며, 네트워크는 loopback만 닿습니다(`curl`로 WAF를 거쳐
-  사이트를 시험). 라운드가 끝나면 회수하고,
-  `sandbox.access.end_account`가 `analyst`의 crontab과 `at` 작업을 지우고 linger를 끄고 로그인 세션을 끝낸 뒤
+  사이트를 시험).
+- `GET ids/terminal/`: 첫 센서가 있는 노드(cr-infra) 관리 주소로 가는 두 번째 점프 권한, 계정 `analyst`(키 이름
+  `cr-session-<player>-ids`). 토폴로지의 `cr-ids`가 적은 룰 파일만 쓸 수 있고 eve 로그는 `adm`으로 읽으며,
+  `sudo suricata -T`와 토폴로지의 reload 명령(`suricatasc -c reload-rules`)만 root로 돌립니다. 라우터 파일, 고객
+  프로그램과 기록, docker, `nft`에는 닿지 않고 네트워크는 `127.0.0.0/8`과 `::1`만 닿습니다. 이 박스의 로그 중계가
+  자기 주소의 514번에서 받은 로그를 WAF 로그로 넘기기 때문에, 자기 주소로 가는 패킷(이것도 `lo`로 나갑니다)도 막습니다.
+- 두 권한 모두 라운드가 끝나면 회수하고,
+  `sandbox.access.end_account`가 그 박스의 `analyst` crontab과 `at` 작업을 지우고 linger를 끄고 로그인 세션을 끝낸 뒤
   남은 프로세스를 모두 죽입니다. `nohup`, cron, `at`, `systemd --user`로 띄운 것이 다음 라운드까지 남지 않습니다.
-- 터미널에서 reload한 WAF 파일은 다음 요청의 읽기(`training.defence.rules.record_terminal_reload`)에서 기록됩니다. 파일 해시가
-  마지막 버전과 다르고 nginx 워커가 가장 늦게 쓴 파일보다 나중에 떴으면 `source: terminal`인 새 버전이 됩니다.
-  고치기만 하고 reload하지 않은 파일은 돌고 있지 않으므로 기록하지 않습니다. `GET waf/`의 `recorded`가 지금
-  파일이 마지막 버전과 같은지 알려 줍니다. 라운드 시작 때 posture에 WAF 파일이 없으면 지금 파일을
-  `source: setup`인 1번 버전으로 기록합니다.
+- 터미널에서 reload한 내용은 다음 요청의 읽기(`training.defence.rules.record_terminal_reload`)에서 기록됩니다.
+  WAF는 파일 해시가 마지막 버전과 다르고 nginx 워커가 가장 늦게 쓴 파일보다 나중에 떴을 때, IDS는 첫 센서의 룰
+  파일 해시가 다르고 Suricata의 `last_reload`(`suricatasc -c ruleset-reload-time`)가 파일 수정 시각보다 나중일 때
+  `source: terminal`인 새 버전이 됩니다. 고치기만 하고 reload하지 않은 것은 돌고 있지 않으므로 기록하지 않습니다.
+  `GET waf/`와 `GET ids/rules/`의 `recorded`가 지금 파일이 마지막 버전과 같은지 알려 줍니다. 라운드 시작 때
+  posture에 WAF 파일이나 IDS 룰이 없으면 지금 파일을 `source: setup`인 1번 버전으로 기록합니다.
 
 ## 점수
 
@@ -440,7 +455,7 @@ sequenceDiagram
 |---|---|
 | `round.started`, `round.ended`, `player.joined` | 양쪽 |
 | `action.sent`, `tool.started`, `tool.ended`, `command.run`, `origin.spent`, `origin.switched`, `origins.spent` | 공격, 스태프 |
-| `alert.seen`, `rule.tested`, `rule.applied`, `rule.disabled`, `rule.refused`, `limit.below_floor`, `case.judged` | 방어, 스태프 |
+| `alert.seen`, `rule.tested`, `rule.applied`, `rule.refused`, `limit.below_floor`, `case.judged` | 방어, 스태프 |
 | `objective.lost` | 양쪽(누구 행동인지는 스태프만) |
 
 이벤트는 피드일 뿐 저장소가 아닙니다. 점수와 판정은 이벤트가 아니라 행(`Action`, `Detection`, `Objective`,
@@ -458,7 +473,8 @@ sequenceDiagram
 도구 명세로 인자를 검사한 뒤 `rest.py`로 한 번 호출하며, `play.py`의 턴 루프에 `provider.py` 인터페이스로 모델을
 붙입니다. 생성 클라이언트는 없습니다. `rest.py`가 스키마의 `operationId`에서 메서드·경로·쿼리를 찾아 보냅니다. 상대 쪽
 도구는 보내기 전에 거부합니다. `shell`은 사람 플레이어와 같은 셸입니다. `attack_terminal`이나 `defence_terminal`이 주는
-SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에서 명령 하나를 실행합니다(`shell.py`). 자세한 규칙은
+SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에서 명령 하나를 실행합니다(`shell.py`). 방어 봇에는
+`defence_ids_terminal`로 센서 호스트(`analyst`)에서 실행하는 `ids_shell`도 있고, IDS 룰은 이것으로만 바꿉니다. 자세한 규칙은
 [bots/README.md](../bots/README.md)에 있습니다.
 
 ## 훈련 환경
@@ -484,6 +500,14 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
   여섯 개(root:analyst 0664)만 쓸 수 있으며, `sudo nginx -t`, `nginx -T`, `nginx -s reload`, `systemctl reload nginx`만
   root로 돌립니다. 측정용 설정(`log_format`, `access_log`, rsyslog, 로그 전송)은 읽기 전용이고, ssh 포워딩이 막혀
   있으며 네트워크는 loopback만 닿습니다.
+- `deploy/roles/infra/analyst.sh`: 센서 쪽 계정 `analyst`. `local.rules`만 ACL(`u:analyst:rw`)로 쓸 수 있습니다.
+  센서 컨테이너가 시작할 때 룰 폴더 소유자를 자기 사용자로 바꾸는데(`chown -R`), ACL은 그대로 남기 때문입니다.
+  root 명령은 `/usr/local/bin/suricata -T`(센서 컨테이너에서 `-T`만 돌리는 래퍼)와
+  `/usr/local/bin/suricatasc -c reload-rules`뿐입니다. `suricata.yaml`, 룰 폴더, eve 로그, rsyslog는 읽기 전용이고,
+  `/usr/local/share/slot`(edge.nft, 로그 중계)과 `/var/lib/cr-ruletest`는 root 0700, 고객 홈과 프로그램 폴더는
+  `cr-users` 0750입니다. nft 울타리(`/etc/nftables.conf`)는 WAF보다 좁아서 `lo`로 나가는 패킷도 목적지가
+  `127.0.0.0/8`, `::1`일 때만 통과시킵니다(로그 중계가 자기 주소의 514번에 있기 때문). 이 파일에는 그 테이블만
+  있어 `nftables.service`를 켜도 `slot-boot`가 읽는 edge 테이블은 그대로입니다.
 - `deploy/roles/infra/`: 고객 계정 `cr-users`, `/usr/local/lib/cr-users/users.py`, 켜지 않은 유닛
   `cr-customers.service`(플랫폼이 라운드 시작 때 켜고 끝날 때 끔). `slot-boot`가 고객 주소를 dummy 링크 `customers`에
   /32로 붙이고 사이트 이름을 `WAF_FRONT`로 `/etc/hosts`에 적습니다.

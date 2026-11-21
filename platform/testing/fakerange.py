@@ -12,6 +12,7 @@ KALI = "cr-kali"
 CUSTOMERS = "cr-customers"
 KALI_MANAGEMENT = "172.29.0.20"
 WAF_MANAGEMENT = "172.29.0.30"
+SENSOR_MANAGEMENT = "172.29.0.40"
 RU, US, BR = "5.188.10.10", "73.0.0.10", "177.54.144.10"
 US_CUSTOMERS = ("73.0.0.11", "73.0.0.12")
 BR_CUSTOMERS = ("177.54.144.11",)
@@ -46,7 +47,7 @@ class DefenceRange:
         return self.nodes.setdefault(role, SensorNode())
 
     def address(self, role: str) -> str:
-        return WAF_MANAGEMENT if role == "gateway" else ""
+        return {"gateway": WAF_MANAGEMENT, "sensor": SENSOR_MANAGEMENT}.get(role, "")
 
     def in_slot(self, number: int) -> "DefenceRange":
         self.slots.append(number)

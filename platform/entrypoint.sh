@@ -26,6 +26,7 @@ python -m sandbox.access > /run/sshd-jump.conf
 
 gosu cr env TERMINAL_KEEP=1 ttyd -W -a -b /vm-terminal/attack -t disableResizeOverlay=true -t disableLeaveAlert=true -i 127.0.0.1 -p 7691 /app/vm-terminal.sh cr-kali attack &
 gosu cr env TERMINAL_KEEP=1 ttyd -W -a -b /vm-terminal/defence -t disableResizeOverlay=true -t disableLeaveAlert=true -i 127.0.0.1 -p 7692 /app/vm-terminal.sh cr-waf defence &
+gosu cr env TERMINAL_KEEP=1 ttyd -W -a -b /vm-terminal/ids -t disableResizeOverlay=true -t disableLeaveAlert=true -i 127.0.0.1 -p 7693 /app/vm-terminal.sh cr-infra ids &
 
 exec gosu cr sh -c '
   if [ -z "${DJANGO_SECRET_KEY:-}" ]; then

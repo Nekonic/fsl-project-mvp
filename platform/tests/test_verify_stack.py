@@ -81,12 +81,8 @@ def play(wargame):
     return SimpleNamespace(allocation=5)
 
 
-def declared_rules():
-    return ""
-
-
-def check_ids(played, rules):
-    return SimpleNamespace(ok=True, body={"ok": True}, text="")
+def sensor_runs_the_declared_rules(played):
+    return "ok"
 
 
 def close(played):

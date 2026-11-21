@@ -104,8 +104,8 @@ def sent(operation: tools.Operation, player: Player, session: signin.Platform, a
 def spec_of(player: Player, name: str) -> tuple[tools.Operation | None, dict]:
     if name not in tools.offered(player.side):
         raise Refused("unknown_tool", "name", f"the {player.side} player has no tool {name!r}")
-    if name == tools.SHELL:
-        return None, tools.shell_spec(player.side)
+    if name in tools.SHELL_TERMINALS[player.side]:
+        return None, tools.shell_spec(player.side, name)
     return tools.build(name, tools.contract())
 
 
@@ -117,7 +117,8 @@ def call(player: Player, name: str, arguments=None, session: signin.Platform | N
         return refused.outcome(name)
     session = session or session_for(player)
     if operation is None:
-        return shell.run(player, arguments, lambda: call(player, tools.terminal_of(player.side), {}, session))
+        return shell.run((player, name), arguments,
+                         lambda: call(player, tools.terminal_of(player.side, name), {}, session), name)
     try:
         return outcome_of(name, sent(operation, player, session, arguments))
     except requests.RequestException as unreachable:

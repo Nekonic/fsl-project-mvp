@@ -16,55 +16,6 @@ def url(found, tail):
     return BASE.format(round=found.pk) + tail
 
 
-def test_disabling_a_rule_comments_it_out_on_every_sensor_as_a_new_version(as_defender, board_round, two_sensors):
-    as_defender.post(url(board_round, "ids/rules/apply/"), {"text": BASELINE + SEARCH_RULE, "base_version": 0},
-                     format="json")
-
-    answer = as_defender.post(url(board_round, "ids/disabled/"), {"sid": 1001, "minutes": 30, "reason": "noisy"},
-                              format="json")
-
-    assert answer.status_code == 201 and answer.json()["sid"] == 1001
-    for sensor in two_sensors.sensors.values():
-        assert "#alert http any any -> any any (msg:\"SQL injection in search\"" in sensor.rules
-        assert "sid:9000001" in sensor.rules
-    assert as_defender.get(url(board_round, "ids/rules/")).json()["version"] == 2
-    assert as_defender.get(url(board_round, "ids/disabled/")).json() == [
-        {"sid": 1001, "original": SEARCH_RULE.strip(), "reason": "noisy", "expires_at": answer.json()["expires_at"]}]
-    assert Event.objects.filter(round_id=board_round.pk, kind="rule.disabled").get().body["sid"] == 1001
-
-
-def test_enabling_puts_the_rule_back_and_drops_it_from_the_disabled_list(as_defender, board_round, cyber_range):
-    as_defender.post(url(board_round, "ids/rules/apply/"), {"text": BASELINE + SEARCH_RULE, "base_version": 0},
-                     format="json")
-    as_defender.post(url(board_round, "ids/disabled/"), {"sid": 1001, "minutes": 30}, format="json")
-
-    answer = as_defender.delete(url(board_round, "ids/disabled/1001/"))
-
-    assert answer.status_code == 204
-    assert cyber_range.sensors["sensor"].rules == BASELINE + SEARCH_RULE
-    assert as_defender.get(url(board_round, "ids/disabled/")).json() == []
-    assert as_defender.delete(url(board_round, "ids/disabled/1001/")).status_code == 404
-
-
-def test_a_sid_no_active_rule_carries_cannot_be_disabled(as_defender, board_round):
-    answer = as_defender.post(url(board_round, "ids/disabled/"), {"sid": 4242, "minutes": 5}, format="json")
-
-    assert answer.status_code == 404
-    assert answer.json()["errors"] == [{"path": "sid", "code": "not_found"}]
-
-
-def test_a_disable_past_its_time_is_enabled_again_by_the_next_read(as_defender, board_round, cyber_range):
-    as_defender.post(url(board_round, "ids/rules/apply/"), {"text": BASELINE + SEARCH_RULE, "base_version": 0},
-                     format="json")
-    service.disable_rule(board_round, 1001, 5, now=timezone.now() - timedelta(minutes=6))
-    Round.objects.filter(pk=board_round.pk).update(read_at=timezone.now() - timedelta(days=1))
-
-    as_defender.get(url(board_round, "ids/rules/"))
-
-    assert cyber_range.sensors["sensor"].rules == BASELINE + SEARCH_RULE
-    assert as_defender.get(url(board_round, "ids/disabled/")).json() == []
-
-
 def test_a_reload_done_in_the_terminal_is_recorded_as_the_next_version_on_the_next_read(as_defender, board_round,
                                                                                          defender, cyber_range):
     service.record_live_waf(board_round, service.SETUP)
