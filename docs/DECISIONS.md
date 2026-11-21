@@ -10727,24 +10727,32 @@ How the "IDS rules are edited on the sensor" ruling above is carried out.
   checked by `terminal-auth/ids/` (the defence player). The console's
   defence terminal pane switches between WAF and IDS. The round's end
   revokes both grants and ends `analyst` on both boxes.
-- **What is recorded.** The round's reads compare the first sensor's live
-  rule file with the head IDS version. When they differ and Suricata's
-  `last_reload` (`suricatasc -c ruleset-reload-time`, an ISO time per
-  tenant; Suricata sets it at engine load and at each successful reload)
-  is later than the file's mtime, the live file is the next version,
-  `source: terminal`, with no test attached. A live rule with the `config:
-  logging` keyword (Suricata's per-transaction or per-flow logging
+- **What is recorded.** Suricata runs what it read at its last reload,
+  not the file, and a player may edit the file again before the next read,
+  so the reload records what it loads. The host's `suricatasc` wrapper,
+  given `-c reload-rules`, copies the rule file into
+  `/var/lib/cr-reloaded/ids` (root 0700; the analyst cannot write it),
+  installs that copy over the live path as a new root-only file, reloads in
+  the container (`reload-rules` blocks until the reload is done), and on a
+  `"return": "OK"` reply writes the reload time beside it (`at`); only then
+  does it give the analyst's ACL back. Suricata therefore reads exactly the
+  snapshot: a write during the reload is refused, and one through a
+  descriptor opened before it lands on the replaced file. The wrapper
+  ignores INT, TERM and HUP, holds a lock (`flock` on
+  `/var/lib/cr-reloaded/ids.lock`) and stages in its own `mktemp -d`
+  directory, so two reloads never mix; the platform's read takes the same
+  lock shared and fails when a file is missing. The round's reads (through the sensor's
+  node) compare that snapshot with the head IDS version: when its time is
+  not the one the head keeps (`RuleSet.reloaded`, set to the snapshot time
+  current whenever a version is recorded, so a platform reload, which runs
+  inside the container and leaves no snapshot, consumes the older one) and
+  its text differs, it is the next version, `source: terminal`, with no
+  test attached. The live file is never put back for being edited. A
+  reloaded rule with the `config: logging` keyword (Suricata's per-transaction or per-flow logging
   disable, which stops the eve records the platform measures) is written
   back to the head version and reloaded, with `rule.refused`; a rule
   continued over lines with a trailing backslash (Suricata's loader joins
-  them, `src/detect-engine-loader.c`) is matched as one rule. Suricata runs
-  what it read at its last reload, not the file, so each IDS version keeps
-  the sensor's `last_reload` at the time it was recorded
-  (`RuleSet.sensors[0].reloaded`); when the file was written after the last
-  reload and that reload is not the head's, the running rules are not
-  known and the head is put back the same way. A reload done and then
-  overwritten before the next read is lost that way; the next read always
-  comes within a console poll. A round
+  them, `src/detect-engine-loader.c`) is matched as one rule. A round
   whose posture has no Suricata rules records the live file as IDS
   version 1. `GET ids/rules/` reads the live file and says `recorded`.
 - **What went.** `POST ids/rules/check/`, `POST ids/rules/apply/`,
@@ -10754,9 +10762,28 @@ How the "IDS rules are edited on the sensor" ruling above is carried out.
   and disabled-rule form. Kept: `GET ids/rules/`, the versions, the rule
   test and its results; the posture still writes the sensors at the round
   start. The defence bot has `ids_shell` over the new grant.
-- **Not measured.** The infra must be rebaked (`docs/OPENSTACK.md` §3.10);
-  the reload-time reply is read from Suricata's source
-  (`src/output-json-stats.c`), not seen on the sensor. The acceptance tests
+- **The WAF the same way.** `deploy/roles/waf/nginx`, installed as
+  `/usr/local/sbin/nginx` (first on sudo's `secure_path`, so `sudo nginx
+  -s reload` finds it; sudoers names it for `-t`, `-T` and `-s reload`),
+  passes every other call to `/usr/sbin/nginx`; given `-s reload` it copies
+  the six files into `/var/lib/cr-reloaded/waf`, installs each copy over
+  its live path as a root-only file, runs `nginx -t` (nginx's reload signal
+  returns 0 even when the master then refuses the files), reloads, waits
+  for a new worker of the master (`/run/nginx.pid`; ten seconds, else it
+  fails), writes `at`, and only then gives the six files back to
+  `root:analyst 0664`. nginx tests and loads the snapshot, not a file the
+  analyst can change under it; the lock, the private staging directory and
+  the ignored signals are the IDS wrapper's. A drop-in points `systemctl reload nginx` at the
+  wrapper. The reads record the snapshot, and only a refused snapshot is
+  put back (head written and reloaded, `rule.refused`). The worker-start
+  check (`crs.reloaded_since_written`) and the IDS reload-time read
+  (`suricata.reload_times`) are gone with the put-back of rules whose
+  running state was unknown.
+- **Not measured.** The infra and the WAF must be rebaked
+  (`docs/OPENSTACK.md` §3.7, §3.10). While a reload runs (on the WAF the
+  whole `nginx -t` and the worker start, seconds) the analyst's writes to
+  those files are refused; a descriptor held open across a reload writes
+  to the replaced file, which nothing loads. The acceptance tests
   that changed IDS rules (`test/shared_sessions.py`,
   `test/test_apply_after_test.py`, `test/test_concurrent_sessions.py`,
   `test/test_rule_changes.py`) now write and reload through the IDS shell

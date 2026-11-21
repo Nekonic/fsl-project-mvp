@@ -23,7 +23,11 @@ Updated: 2026-11-22.
   `bots/rest.py` with no generated client; the lesson content gone and
   `training/lessons/` kept empty; and the 2026-11-22 ruling: the defence
   edits Suricata rules in a second terminal on the sensor (`analyst` on
-  the infra), the IDS rule API and its console form are gone. The table is
+  the infra), the IDS rule API and its console form are gone; a terminal
+  reload, WAF or IDS, is recorded from the copy its sudo wrapper keeps in
+  root-only `/var/lib/cr-reloaded` and installs root-only for the reload,
+  so the engine loads exactly that copy and an edit after a reload is left
+  alone. The table is
   in `docs/STATE.md` "What exists on restructure".
 - The unit and API suite and `front/` (build, vitest) run against fakes.
   The docs (CLAUDE.md, README, ARCHITECTURE, OPENSTACK, STATE, this file)

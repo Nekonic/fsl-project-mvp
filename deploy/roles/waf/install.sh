@@ -131,6 +131,9 @@ upstreams_named 127.0.0.1 127.0.0.1
 install -d -m 0755 "$SHARE"
 install -m 0644 log-shipper.conf "$SHARE/log-shipper.conf"
 install -m 0755 slot-boot /usr/local/sbin/slot-boot
+install -m 0755 nginx /usr/local/sbin/nginx
+install -d -m 0755 /etc/systemd/system/nginx.service.d
+install -m 0644 nginx-reload.conf /etc/systemd/system/nginx.service.d/reload-snapshot.conf
 install -m 0644 slot-boot.service /etc/systemd/system/slot-boot.service
 rsyslog_may_read_the_waf_logs
 

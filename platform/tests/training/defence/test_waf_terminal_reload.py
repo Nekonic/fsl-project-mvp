@@ -60,6 +60,19 @@ def test_files_edited_but_not_reloaded_are_not_running_and_are_not_recorded(as_d
     assert shown["recorded"] is False
 
 
+def test_files_reloaded_in_the_terminal_and_edited_before_the_read_record_what_was_reloaded_and_keep_the_edit(
+        board_round, cyber_range):
+    service.record_live_waf(board_round, service.SETUP)
+
+    cyber_range.gateway.edited(HTTP, "deny 203.0.113.9;\n", reloaded=True)
+    cyber_range.gateway.edited(HTTP, "deny 203.0.113.9;\nerror_log off;\n", reloaded=False)
+
+    assert service.record_terminal_reload(board_round) is True
+    assert service.versions(board_round, "waf")[-1].files[HTTP] == "deny 203.0.113.9;\n"
+    assert cyber_range.gateway.files[HTTP] == "deny 203.0.113.9;\nerror_log off;\n"
+    assert not Event.objects.filter(round_id=board_round.pk, kind="rule.refused").exists()
+
+
 def test_a_round_with_no_recorded_version_has_nothing_to_compare_a_reload_with(board_round, cyber_range):
     cyber_range.gateway.edited(HTTP, "deny all;\n", reloaded=True)
 

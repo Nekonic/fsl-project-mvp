@@ -8,7 +8,6 @@ import shlex
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import PurePosixPath
 
 from cr.config import SensorConfig
@@ -22,7 +21,7 @@ ERROR_LINE = re.compile(r"(?:^|\s)(?:E:|<Error>|\[ERRCODE:|Error:)|error parsing
 RUN_ID = re.compile(r"[A-Za-z0-9_-]+")
 OFFLINE_TIMEOUT = 300.0
 LOGGING_OFF = re.compile(r"[(;]\s*config\s*:\s*logging\b", re.IGNORECASE)
-LAST_RELOAD = re.compile(r'"last_reload"\s*:\s*"([^"]+)"')
+READ_SNAPSHOT = 'exec 9>>"$1.lock"; flock -s 9; cat "$1/at" && cat "$1$2"'
 
 
 class RuleApplyError(EngineRefused):
@@ -44,6 +43,12 @@ class RuleError:
 
     def shown(self) -> dict:
         return {"line": self.line, "message": self.message}
+
+
+@dataclass(frozen=True)
+class Reloaded:
+    text: str
+    at: float
 
 
 @dataclass(frozen=True)
@@ -104,31 +109,12 @@ def refusals(text: str) -> list[RuleError]:
             if not rule.lstrip().startswith("#") and LOGGING_OFF.search(rule)]
 
 
-def reload_times(sensor, config: SensorConfig) -> tuple[float | None, float | None]:
-    said = sensor(["sh", "-c", f"date -r {shlex.quote(config.rules)} +%s.%N; suricatasc -c ruleset-reload-time"])
-    written, _, reply = said.output.strip().partition("\n")
-    last = LAST_RELOAD.search(reply)
-    if not said.ok:
-        return None, None
-    reloaded = _when(last.group(1)) if last else None
-    return (float(written) if re.fullmatch(r"\d+(\.\d+)?", written.strip()) else None,
-            reloaded.timestamp() if reloaded else None)
-
-
-def reloaded_since_written(sensor, config: SensorConfig) -> bool:
-    written, reloaded = reload_times(sensor, config)
-    return written is not None and reloaded is not None and reloaded > written
-
-
-def _when(stamp: str) -> datetime | None:
-    for parse in (datetime.fromisoformat, lambda text: datetime.strptime(text, "%Y-%m-%dT%H:%M:%S.%f%z")):
-        try:
-            found = parse(stamp)
-        except ValueError:
-            continue
-        if found.tzinfo is not None:
-            return found
-    return None
+def reloaded(node, config: SensorConfig) -> Reloaded | None:
+    ran = node(["sh", "-c", READ_SNAPSHOT, "sh", config.snapshot, config.rules])
+    at, _, text = ran.output.partition("\n")
+    if not ran.ok or not re.fullmatch(r"\d+(\.\d+)?", at.strip()):
+        return None
+    return Reloaded(text=text, at=float(at))
 
 
 def refusal(errors: list[RuleError], sensor_name: str) -> RuleSyntax:

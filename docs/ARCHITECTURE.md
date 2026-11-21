@@ -120,9 +120,9 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
   sandbox/     훈련 환경. 바깥 장치를 아는 파일이 모두 여기 있음
                openstack.py 경계: Keystone/Heat/Neutron REST, 실제 배선 읽기, 재생성 때 기본 룰 적재
                suricata.py  경계: 룰 파일, -T 검사, 오프라인 -r 실행, 적용, 기본 룰 적재, 패킷 캡처,
-                            마지막 reload 시각(ruleset-reload-time), 로그를 끄는 룰(config: logging) 찾기
+                            터미널 reload 스냅샷 읽기, 로그를 끄는 룰(config: logging) 찾기
                crs.py       경계: WAF 파일 여섯 개 읽기·검사·쓰기, nginx -t·reload·되돌리기, limit_req rate 읽기,
-                            임시 인스턴스 검사·테스트
+                            터미널 reload 스냅샷 읽기, 임시 인스턴스 검사·테스트
                kibana.py    경계: Kibana API, space, 거부 규칙, 초기 설정, 로그 인덱스 패턴
                edge.py      경계: infra nftables pool·spent 집합, conntrack 정리
                access.py    경계: 플랫폼 sshd 점프 권한(플레이어·박스마다 하나), 키 생성, 박스 계정의 authorized_keys
@@ -350,11 +350,10 @@ sequenceDiagram
   `log_format`, `access_log`, 요청 마커, 감사 로그는 읽기 전용인 `conf.d/board.com.conf`와 `modsecurity.conf`에
   있고, 방어 파일 어느 줄 어느 자리에든 `access_log`·`log_format`·`error_log`·`open_log_file_cache`·`SecAudit*`·`ctl:audit*`가
   있으면 거부합니다. 클라이언트 주소도 측정이라 `set_real_ip_from`·`real_ip_header`·`real_ip_recursive`도 거부합니다.
-- 터미널에서 고치고 reload한 파일도 다음 읽기 때 같은 검사를 거칩니다. 걸리면 기록하지 않고 마지막 버전 파일로 되돌려
-  reload하고 `rule.refused` 이벤트를 남깁니다. IDS는 `config: logging`이 든 룰(그 트랜잭션의 eve 기록을 끔)이
-  걸리는 대상이고, 백슬래시로 여러 줄에 이어 쓴 룰도 한 룰로 봅니다. 센서는 파일이 아니라 마지막 reload 때 읽은
-  룰을 돌리므로, 플랫폼이 모르는 reload 뒤에 파일을 다시 고치고 reload하지 않았으면 돌고 있는 룰을 알 수 없다고 보고
-  마지막 버전으로 되돌립니다. 버전마다 그때 센서의 reload 시각(`RuleSet.sensors`의 `reloaded`)을 남겨 이를 가립니다.
+- 터미널에서 reload한 파일도 다음 읽기 때 같은 검사를 거칩니다. 검사 대상은 지금 파일이 아니라 reload 때 남긴
+  스냅샷입니다. 걸리면 기록하지 않고 마지막 버전 파일을 써서 reload하고 `rule.refused` 이벤트를 남깁니다. IDS는
+  `config: logging`이 든 룰(그 트랜잭션의 eve 기록을 끔)이 걸리는 대상이고, 백슬래시로 여러 줄에 이어 쓴 룰도 한
+  룰로 봅니다. reload하지 않고 고치기만 한 파일은 검사하지도 되돌리지도 않습니다.
 - WAF 흐름: 읽기 → 검사(`nginx -t`) → 녹화된 요청으로 테스트 → 쓰기 → reload → 버전 기록(파일 텍스트와 해시,
   `RuleSet.files`·`sha`·`source`). nginx가 거부하면 이전 파일로 되돌립니다. IDS는 라운드 시작 때 posture의 룰만
   플랫폼이 쓰고(센서마다 차례로, 하나라도 거부하면 앞서 쓴 센서를 되돌림), 그 뒤로는 터미널 reload로만 바뀝니다.
@@ -383,9 +382,15 @@ sequenceDiagram
   `sandbox.access.end_account`가 그 박스의 `analyst` crontab과 `at` 작업을 지우고 linger를 끄고 로그인 세션을 끝낸 뒤
   남은 프로세스를 모두 죽입니다. `nohup`, cron, `at`, `systemd --user`로 띄운 것이 다음 라운드까지 남지 않습니다.
 - 터미널에서 reload한 내용은 다음 요청의 읽기(`training.defence.rules.record_terminal_reload`)에서 기록됩니다.
-  WAF는 파일 해시가 마지막 버전과 다르고 nginx 워커가 가장 늦게 쓴 파일보다 나중에 떴을 때, IDS는 첫 센서의 룰
-  파일 해시가 다르고 Suricata의 `last_reload`(`suricatasc -c ruleset-reload-time`)가 파일 수정 시각보다 나중일 때
-  `source: terminal`인 새 버전이 됩니다. 고치기만 하고 reload하지 않은 것은 돌고 있지 않으므로 기록하지 않습니다.
+  `analyst`가 sudo로 돌리는 reload는 래퍼(WAF는 `/usr/local/sbin/nginx`, 센서는 `/usr/local/bin/suricatasc`)를
+  거치고, 래퍼는 불러올 파일을 `analyst`가 쓸 수 없는 root 0700 폴더(`/var/lib/cr-reloaded/waf`, `.../ids`)에
+  복사하고, 그 복사본을 root만 쓸 수 있는 새 파일로 원래 경로에 깐 뒤 reload합니다. 성공하면 그 시각(`at`)을
+  남기고, 그다음에야 `analyst`에게 쓰기 권한을 돌려줍니다. 그래서 엔진이 읽는 것은 스냅샷과 똑같고, reload 도중의
+  쓰기는 거부되며, 미리 열어 둔 파일 디스크립터로 쓴 내용은 갈아 끼워진 옛 파일에 들어갈 뿐입니다. 래퍼는
+  INT·TERM·HUP을 무시하고 `flock`으로 한 번에 하나만 돌며 `mktemp -d`로 만든 자기 폴더에서 준비합니다. 플랫폼은 지금 파일이 아니라 이 스냅샷을 읽어,
+  시각이 마지막 버전에 남긴 시각(`RuleSet.reloaded`)과 다르고 내용이 다르면 `source: terminal`인 새 버전으로
+  기록합니다. 그래서 reload한 뒤 다음 읽기 전에 파일을 또 고쳐도, 기록되는 것은 reload한 내용이고 고친 파일은
+  그대로 둡니다. 고치기만 하고 reload하지 않은 것은 돌고 있지 않으므로 기록하지 않습니다.
   `GET waf/`와 `GET ids/rules/`의 `recorded`가 지금 파일이 마지막 버전과 같은지 알려 줍니다. 라운드 시작 때
   posture에 WAF 파일이나 IDS 룰이 없으면 지금 파일을 `source: setup`인 1번 버전으로 기록합니다.
 
@@ -498,12 +503,16 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
   `/usr/local/share/cr/`에 설치되고 임시 prefix는 `/var/lib/cr-crstest` 아래입니다.
 - `deploy/roles/waf/analyst.sh`: 방어 쪽 계정 `analyst`. nginx·CRS 설정과 로그(`adm` 그룹)를 읽고, 방어 파일
   여섯 개(root:analyst 0664)만 쓸 수 있으며, `sudo nginx -t`, `nginx -T`, `nginx -s reload`, `systemctl reload nginx`만
-  root로 돌립니다. 측정용 설정(`log_format`, `access_log`, rsyslog, 로그 전송)은 읽기 전용이고, ssh 포워딩이 막혀
+  root로 돌립니다. `nginx`는 sudo의 `secure_path`에서 먼저 찾는 래퍼 `/usr/local/sbin/nginx`이고(`deploy/roles/waf/nginx`),
+  `-s reload`일 때만 방어 파일을 `/var/lib/cr-reloaded/waf`에 복사해 root 전용 파일로 원래 경로에 깔고, `nginx -t`와
+  reload를 거쳐 master의 새 worker가 뜨면 파일을 root:analyst 0664로 돌려줍니다.
+  `systemctl reload nginx`도 drop-in(`nginx-reload.conf`)으로 같은 래퍼를 부릅니다. 측정용 설정(`log_format`, `access_log`, rsyslog, 로그 전송)은 읽기 전용이고, ssh 포워딩이 막혀
   있으며 네트워크는 loopback만 닿습니다.
 - `deploy/roles/infra/analyst.sh`: 센서 쪽 계정 `analyst`. `local.rules`만 ACL(`u:analyst:rw`)로 쓸 수 있습니다.
   센서 컨테이너가 시작할 때 룰 폴더 소유자를 자기 사용자로 바꾸는데(`chown -R`), ACL은 그대로 남기 때문입니다.
   root 명령은 `/usr/local/bin/suricata -T`(센서 컨테이너에서 `-T`만 돌리는 래퍼)와
-  `/usr/local/bin/suricatasc -c reload-rules`뿐입니다. `suricata.yaml`, 룰 폴더, eve 로그, rsyslog는 읽기 전용이고,
+  `/usr/local/bin/suricatasc -c reload-rules`뿐입니다. 이 래퍼는 reload 전에 룰 파일을 `/var/lib/cr-reloaded/ids`에
+  복사해 원래 경로에 root 전용으로 깔고, reload가 끝나면 ACL을 돌려줍니다(`/var/lib/cr-reloaded`는 두 박스 모두 root 0700). `suricata.yaml`, 룰 폴더, eve 로그, rsyslog는 읽기 전용이고,
   `/usr/local/share/slot`(edge.nft, 로그 중계)과 `/var/lib/cr-ruletest`는 root 0700, 고객 홈과 프로그램 폴더는
   `cr-users` 0750입니다. nft 울타리(`/etc/nftables.conf`)는 WAF보다 좁아서 `lo`로 나가는 패킷도 목적지가
   `127.0.0.0/8`, `::1`일 때만 통과시킵니다(로그 중계가 자기 주소의 514번에 있기 때문). 이 파일에는 그 테이블만

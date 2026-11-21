@@ -6,9 +6,9 @@ import re
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 
 from cr.config import WAF_FILES
+from sandbox import crs, suricata
 from sandbox.crs import READ_FILES, WRITE_FILE
 from sandbox.runner import Ran, RangeUnavailable
 
@@ -160,33 +160,31 @@ class Sensor(Recorded):
     path: str = "/var/lib/suricata/rules/local.rules"
     syntax: dict[int, str] = field(default_factory=dict)
     reload_fails: bool = False
-    written_at: float = 1_800_000_000.0
-    reloaded_at: float = 1_800_000_100.0
+    loaded: str = ""
+    snapshot: str | None = None
+    snapshot_at: float = 1_800_000_000.0
 
     def edited(self, text: str, reloaded: bool) -> None:
         self.rules = text
-        self.written_at = self.reloaded_at + 1
         if reloaded:
-            self.reloaded_at = self.written_at + 1
+            self.loaded = self.snapshot = text
+            self.snapshot_at += 1
 
     def __call__(self, argv, stdin=None, timeout=60.0) -> Ran:
         one = self.note(argv, stdin, timeout)
         if argv[:2] == ["cat", self.path]:
             return Ran(0, self.rules)
-        if "ruleset-reload-time" in one.text:
-            stamp = datetime.fromtimestamp(self.reloaded_at, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+0000")
-            return Ran(0, f'{self.written_at:.6f}\n{{"message": [{{"id": 0, "last_reload": "{stamp}"}}], "return": "OK"}}')
         if "suricata -T" in one.text:
             wrong = [f"E: detect: error parsing signature at line {line}: {message}"
                      for line, message in self.syntax.items() if line <= len((stdin or "").splitlines())]
             return Ran(1, "\n".join(wrong)) if wrong else OK
         if f"cat > {self.path}" in one.text:
-            self.edited(stdin or "", reloaded=False)
+            self.rules = stdin or ""
             return OK
         if "reload-rules" in one.text:
             if self.reload_fails:
                 return Ran(1, "refused")
-            self.reloaded_at = self.written_at + 1
+            self.loaded = self.rules
             return Ran(0, '{"return":"OK"}')
         return OK
 
@@ -196,9 +194,14 @@ class SensorNode(Recorded):
     fires: dict[str, dict[str, str]] = field(default_factory=dict)
     candidate: str = ""
     during: Callable[[], None] | None = None
+    sensor: Sensor | None = None
 
     def __call__(self, argv, stdin=None, timeout=60.0) -> Ran:
         one = self.note(argv, stdin, timeout)
+        if argv[:3] == ["sh", "-c", suricata.READ_SNAPSHOT]:
+            if self.sensor is None or self.sensor.snapshot is None:
+                return Ran(1, "cat: /var/lib/cr-reloaded/ids/at: No such file or directory")
+            return Ran(0, f"{self.sensor.snapshot_at:.9f}\n{self.sensor.snapshot}")
         if "candidate.rules" in one.text and stdin is not None:
             self.candidate = stdin
             return OK
@@ -220,16 +223,16 @@ class Gateway(Recorded):
     nginx_errors: str = ""
     reload_fails: str = ""
     workers: int = 1
-    written_at: float = 100.0
-    reloaded_at: float = 200.0
     probes: list[dict] = field(default_factory=list)
+    snapshot: dict[str, str] | None = None
+    snapshot_at: float = 1_800_000_000.0
 
     def edited(self, path: str, text: str, reloaded: bool) -> None:
         self.files[path] = text
-        self.written_at = self.reloaded_at + 1
         if reloaded:
-            self.reloaded_at = self.written_at + 1
             self.workers += 1
+            self.snapshot = dict(self.files)
+            self.snapshot_at += 1
 
     def __call__(self, argv, stdin=None, timeout=60.0) -> Ran:
         one = self.note(argv, stdin, timeout)
@@ -240,10 +243,14 @@ class Gateway(Recorded):
         if argv[:3] == ["sh", "-c", READ_FILES]:
             return Ran(0, "".join(base64.b64encode(self.files.get(path, "").encode()).decode() + "\n"
                                   for path in argv[4:]))
+        if argv[:3] == ["sh", "-c", crs.READ_SNAPSHOT]:
+            if self.snapshot is None:
+                return Ran(1, "cat: /var/lib/cr-reloaded/waf/at: No such file or directory")
+            return Ran(0, f"{self.snapshot_at:.9f}\n" + "".join(
+                base64.b64encode(self.snapshot.get(path, "").encode()).decode() + "\n" for path in argv[5:]))
         if argv[:3] == ["sh", "-c", WRITE_FILE]:
             if argv[4] in self.files:
                 self.files[argv[4]] = stdin or ""
-                self.written_at = self.reloaded_at + 1
             return OK
         if "probe-upstream.py" in text:
             self.probes = json.loads(stdin or "[]")
@@ -259,10 +266,7 @@ class Gateway(Recorded):
             if self.reload_fails:
                 return Ran(1, f"nginx: [emerg] {self.reload_fails} in /etc/nginx/defence/http.conf:2")
             self.workers += 1
-            self.reloaded_at = self.written_at + 1
             return OK
-        if "/proc/uptime" in text:
-            return Ran(0, f"1000.0\n{self.written_at}\n1000.0\n1\n{self.reloaded_at}\n")
         if "/proc/[0-9]*" in text:
             return Ran(0, str(self.workers))
         return OK

@@ -17,6 +17,8 @@ SETTLE_POLLS = 50
 MOST_BYTES = 200000
 READ_FILES = 'for f in "$@"; do base64 -w0 "$f" 2>/dev/null; echo; done'
 WRITE_FILE = 'cat > "$1"'
+READ_SNAPSHOT = ('d=$1; shift; exec 9>>"$d.lock"; flock -s 9; cat "$d/at" || exit 1; '
+                 'for f in "$@"; do base64 -w0 "$d$f" || exit 1; echo; done')
 CRS_SETUP = "crs-setup.conf"
 DETECTION_ONLY = "SecRuleEngine DetectionOnly"
 NGINX_MEASUREMENT = re.compile(r"(?:^|[\s;{}])(access_log|log_format|error_log|open_log_file_cache"
@@ -41,6 +43,12 @@ class WafRefused(EngineRefused, ValueError):
 
 class WafUnreadable(Unavailable):
     code = "waf_unavailable"
+
+
+@dataclass(frozen=True)
+class Reloaded:
+    files: dict[str, str]
+    at: float
 
 
 def problem(file: str | None, line: int | None, message: str) -> dict:
@@ -90,9 +98,14 @@ def checked(files: object, config: WafConfig) -> dict[str, str]:
 
 def read(gateway, config: WafConfig = WafConfig()) -> dict[str, str]:
     ran = gateway(["sh", "-c", READ_FILES, "sh", *config.files])
-    lines = ran.output.split("\n")
-    if not ran.ok or len(lines) < len(config.files):
+    if not ran.ok:
         raise WafUnreadable(f"could not read the WAF files: {ran.output.strip()[-300:]}")
+    return _decoded(ran.output.split("\n"), config)
+
+
+def _decoded(lines: Sequence[str], config: WafConfig) -> dict[str, str]:
+    if len(lines) < len(config.files):
+        raise WafUnreadable("the WAF files came back short")
     try:
         return {path: base64.b64decode(line.strip(), validate=True).decode("utf-8", errors="replace")
                 for path, line in zip(config.files, lines)}
@@ -171,15 +184,15 @@ def apply(files, gateway, config: WafConfig = WafConfig()) -> dict[str, str]:
                   [problem(None, None, "nginx started no worker on the new files, rolled back")])
 
 
-def reloaded_since_written(gateway, config: WafConfig = WafConfig()) -> bool:
-    newest = "; ".join(f"date -r {shlex.quote(path)} +%s.%N 2>/dev/null || echo 0" for path in config.files)
-    said = gateway(["sh", "-c", f"date +%s.%N; {{ {newest}; }} | sort -n | tail -1; cut -d' ' -f1 /proc/uptime; "
-                                f"getconf CLK_TCK; for w in $({workers_of(config.pid)}); do cut -d' ' -f22 /proc/$w/stat; done"]
-                   ).output.split()
-    if len(said) < 5 or not all(re.fullmatch(r"\d+(\.\d+)?", word) for word in said):
-        return False
-    now, written, uptime, ticks, *started = map(float, said)
-    return any(uptime - start / ticks < now - written for start in started)
+def reloaded(gateway, config: WafConfig = WafConfig()) -> Reloaded | None:
+    ran = gateway(["sh", "-c", READ_SNAPSHOT, "sh", config.snapshot, *config.files])
+    at, _, rest = ran.output.partition("\n")
+    if not ran.ok or not re.fullmatch(r"\d+(\.\d+)?", at.strip()):
+        return None
+    try:
+        return Reloaded(files=_decoded(rest.split("\n"), config), at=float(at))
+    except WafUnreadable:
+        return None
 
 
 def _workers(gateway, config: WafConfig) -> set[str]:

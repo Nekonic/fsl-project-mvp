@@ -691,8 +691,8 @@ each wargame's `compose.yaml`); copy the directory with the links resolved.
 | Role | Builder's base | `install.sh` installs |
 |---|---|---|
 | `kali` | the Kali base | `kali-linux-headless` and the tools of the Kali container before (nmap, sqlmap, nikto, whatweb, ffuf, gobuster, hydra, dirb, mitmproxy and others), the stamp proxy as `web-proxy.service`, the operator log hook, `set-origin`, `slot-boot`, and a key-only `kali` user with bash and passwordless sudo; `board.com` and `corp.com` resolve to 121.134.88.42; sslh's systemd generator masked and `cloud-init.target` wanted by `multi-user.target`, so cloud-init runs on every boot (`docs/TROUBLESHOOTING.md` "A Kali VM booted without cloud-init") |
-| `waf` | `compute.base_image` | nginx 1.24 from Ubuntu, ModSecurity 3.0.16 and its nginx connector built from release tarballs checked by SHA-256, CRS 4.25.1, the repo's `modsecurity.conf` and `board.com.conf` (the JSON access log of every request), rsyslog, nftables, python3, the scratch CRS test's `probe.conf` and `probe-upstream.py` in `/usr/local/share/cr/` with its scratch folder `/var/lib/cr-crstest`, the `analyst` account (`analyst.sh`), `slot-boot` |
-| `infra` | `compute.base_image` | nftables, conntrack, tcpdump, bridge-utils, ethtool, rsyslog, Docker with `bridge: none` and no iptables, the pinned `jasonish/suricata` image (`suricata -T` run on the repo's config and rules), the `suricatasc` wrapper (`docker exec -i sensor suricatasc`), `edge.nft` with the `pool` and `spent` sets, the offline rule test's scratch folder `/var/lib/cr-ruletest`, `sensor.service`, `slot-boot`, the `analyst` account (`analyst.sh`) with the `suricata` wrapper (`docker exec sensor suricata -T`); `suricata` itself is only in the `sensor` container |
+| `waf` | `compute.base_image` | nginx 1.24 from Ubuntu, ModSecurity 3.0.16 and its nginx connector built from release tarballs checked by SHA-256, CRS 4.25.1, the repo's `modsecurity.conf` and `board.com.conf` (the JSON access log of every request), rsyslog, nftables, python3, the scratch CRS test's `probe.conf` and `probe-upstream.py` in `/usr/local/share/cr/` with its scratch folder `/var/lib/cr-crstest`, the `analyst` account (`analyst.sh`), the `nginx` reload wrapper in `/usr/local/sbin` and its `nginx.service` drop-in, `slot-boot` |
+| `infra` | `compute.base_image` | nftables, conntrack, tcpdump, bridge-utils, ethtool, rsyslog, Docker with `bridge: none` and no iptables, the pinned `jasonish/suricata` image (`suricata -T` run on the repo's config and rules), the `suricatasc` wrapper (`docker exec -i sensor suricatasc`; `-c reload-rules` first copies the rule file to `/var/lib/cr-reloaded/ids` and loads that copy), `edge.nft` with the `pool` and `spent` sets, the offline rule test's scratch folder `/var/lib/cr-ruletest`, `sensor.service`, `slot-boot`, the `analyst` account (`analyst.sh`) with the `suricata` wrapper (`docker exec sensor suricata -T`); `suricata` itself is only in the `sensor` container |
 | `target` | `compute.base_image` | Docker and Compose; board's and corp's compose files rendered for a VM (`render.py`: fronts published on the stack's addresses, databases on the internal `<w>_backend`), their images pulled from GHCR at `CR_IMAGE_TAG` (required), brought up once and their volumes kept as the pristine data, `wargames.service` |
 
 The Ubuntu roles point apt at the Kakao mirror, purge `snapd` and
@@ -801,13 +801,20 @@ disables its linger, ends its logind sessions and kills its processes):
   `/etc/nginx/modsecurity/crs`, and `/etc/nginx/defence/http.conf`,
   `board.com.conf` and `corp.com.conf`; run `sudo nginx -t`, `sudo nginx -T`,
   `sudo nginx -s reload` and `sudo systemctl reload nginx` and nothing else
-  as root; reach loopback on the WAF;
+  as root, where `nginx` is the wrapper `/usr/local/sbin/nginx`
+  (`deploy/roles/waf/nginx`, first on sudo's `secure_path`) and `systemctl
+  reload nginx` calls the same wrapper through the drop-in
+  `nginx.service.d/reload-snapshot.conf`; reach loopback on the WAF;
 - cannot: write any other file under `/etc/nginx`, `/var/log/nginx`,
   `/var/log/modsecurity`, `/etc/rsyslog.conf`, `/etc/rsyslog.d` or
   `/usr/local/share/slot` (no group it is in may write there; the bake
   removes any such group write bit), so the measurement config
   (`log_format`, `access_log`, the shipper) stays the platform's; read
-  `/var/lib/cr-crstest` (0700); forward ports or sockets over its ssh login
+  `/var/lib/cr-crstest` (0700); write `/var/lib/cr-reloaded` (root 0700),
+  where the wrapper's `-s reload` copies the six files, installs the copies
+  over the live paths as root-only files, runs `nginx -t`, reloads, waits
+  for a new worker, writes the reload time (`at`) and then gives the files
+  back to `root:analyst 0664` (a save during the reload is refused); forward ports or sockets over its ssh login
   (`/etc/ssh/sshd_config.d/60-analyst.conf`); or send anything past loopback:
   `/etc/nftables.conf`, loaded by `nftables.service`, accepts a process of
   `analyst` on `oif "lo"` and drops every other packet it sends
@@ -815,7 +822,8 @@ disables its linger, ends its logind sessions and kills its processes):
 
 The defence posture changes through those files, from the terminal or the
 defence API; a reload done in the terminal is recorded the next time the
-round's reads run.
+round's reads run, from that snapshot rather than the live files, so an edit
+made after the reload is neither recorded nor undone.
 
 **After the bakes**, name `compute.images.infra: cr-infra-bake2` and
 `compute.images.waf: cr-waf-bake3` in `cloud.yaml` and run `bin/cloud up
@@ -926,7 +934,7 @@ round's posture for the whole round.
 
 | Role | What changed in `deploy/roles/<role>/` |
 |---|---|
-| `infra` | `analyst.sh` creates `analyst` (bash, password field `*`, group `adm`) and gives it `local.rules` through an ACL (`u:analyst:rw`; package `acl`), because the sensor container's start chowns `/var/lib/suricata` to its own user, which keeps an ACL but not a group. `sudo` allows only `/usr/local/bin/suricata -T` (the new wrapper `suricata`, which runs `suricata -T` in the `sensor` container) and `/usr/local/bin/suricatasc -c reload-rules`. `/etc/suricata`, `/var/lib/suricata`, `/var/log/suricata`, `/etc/rsyslog.conf` and `/etc/rsyslog.d` keep no group or other write bit; `/usr/local/share/slot` (`edge.nft`, the log relay) and `/var/lib/cr-ruletest` are root 0700; the customers' home and program folder are `cr-users` 0750. The ssh `Match User analyst` block is the WAF's. The nft fence (`/etc/nftables.conf`) is narrower than the WAF's: it accepts the account's packets on `oif "lo"` only to `127.0.0.0/8` and `::1`, because the infra's log relay listens on the host's own address (`imtcp` on 514) and forwards what it hears as WAF logs, and a packet to the host's own address also leaves on `lo`. That file holds only the `inet analyst` table, so `nftables.service` is now enabled and leaves the `edge` table `slot-boot` loads alone |
+| `infra` | `analyst.sh` creates `analyst` (bash, password field `*`, group `adm`) and gives it `local.rules` through an ACL (`u:analyst:rw`; package `acl`), because the sensor container's start chowns `/var/lib/suricata` to its own user, which keeps an ACL but not a group. `sudo` allows only `/usr/local/bin/suricata -T` (the new wrapper `suricata`, which runs `suricata -T` in the `sensor` container) and `/usr/local/bin/suricatasc -c reload-rules`; that wrapper copies the rule file into `/var/lib/cr-reloaded/ids`, installs the copy over the live path as a root-only file (the analyst's ACL comes back after the reload), and writes the reload time after a reply of `"return": "OK"`, and `/var/lib/cr-reloaded` is root 0700. `/etc/suricata`, `/var/lib/suricata`, `/var/log/suricata`, `/etc/rsyslog.conf` and `/etc/rsyslog.d` keep no group or other write bit; `/usr/local/share/slot` (`edge.nft`, the log relay) and `/var/lib/cr-ruletest` are root 0700; the customers' home and program folder are `cr-users` 0750. The ssh `Match User analyst` block is the WAF's. The nft fence (`/etc/nftables.conf`) is narrower than the WAF's: it accepts the account's packets on `oif "lo"` only to `127.0.0.0/8` and `::1`, because the infra's log relay listens on the host's own address (`imtcp` on 514) and forwards what it hears as WAF logs, and a packet to the host's own address also leaves on `lo`. That file holds only the `inet analyst` table, so `nftables.service` is now enabled and leaves the `edge` table `slot-boot` loads alone |
 
 None of §3.7, §3.8 or this section has been baked, so one infra bake from
 the current tree, `cr-infra-bake2` (§3.7), carries all three; name it in
@@ -946,8 +954,13 @@ slot, **[unverified]**:
   `source: terminal` on the next API request (`GET defence/ids/rules/versions/`),
   and a rule with `config: logging disable, type tx, scope tx;` is put back
   with a `rule.refused` event, also when it is continued over lines with a
-  backslash, and also when the file is rewritten after the reload and before
-  the next request (the running rules are then not known);
+  backslash; `sudo ls /var/lib/cr-reloaded/ids/var/lib/suricata/rules`
+  shows the copy after a reload and `ls /var/lib/cr-reloaded` fails as
+  `analyst`; a file edited after a reload and before the next request is
+  left as it is, and the version holds what was reloaded;
+  `getfacl` names `user:analyst:rw-` again after a reload; on the WAF,
+  `(sleep 1; echo 'access_log off;' >> /etc/nginx/defence/http.conf) &
+  sudo nginx -s reload` has the write refused during `nginx -t`;
 - `sudo nft list table ip edge` still lists `pool` and `spent` after a
   reboot of the infra.
 

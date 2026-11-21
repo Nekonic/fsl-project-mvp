@@ -2,11 +2,12 @@
 set -eu
 
 ACCOUNT=analyst
-NGINX=/usr/sbin/nginx
+NGINX=/usr/local/sbin/nginx
 SYSTEMCTL=/usr/bin/systemctl
 SUDOERS=/etc/sudoers.d/analyst
 SSHD=/etc/ssh/sshd_config.d/60-analyst.conf
 FENCE=/etc/nftables.conf
+SNAPSHOT_DIR=/var/lib/cr-reloaded
 READ_ONLY="/etc/nginx /var/log/nginx /var/log/modsecurity /etc/rsyslog.conf /etc/rsyslog.d /usr/local/share/slot"
 CRS=/etc/nginx/modsecurity/crs
 DEFENCE_FILES="$CRS/crs-setup.conf $CRS/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf $CRS/rules/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf /etc/nginx/defence/http.conf /etc/nginx/defence/board.com.conf /etc/nginx/defence/corp.com.conf"
@@ -55,9 +56,16 @@ defence_files_writable() {
   done
 }
 
+reload_snapshot_closed() {
+  install -d -m 0700 -o root -g root "$SNAPSHOT_DIR"
+  chown root:root "$SNAPSHOT_DIR"
+  chmod 0700 "$SNAPSHOT_DIR"
+}
+
 account_made
 nginx_checks_allowed
 shell_only_over_ssh
 only_loopback_for_the_account
 nothing_writable_by_its_groups
 defence_files_writable
+reload_snapshot_closed

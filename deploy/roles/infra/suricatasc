@@ -1,2 +1,32 @@
 #!/bin/sh
-exec docker exec -i sensor suricatasc "$@"
+set -eu
+
+RULE_FILE=/var/lib/suricata/rules/local.rules
+ANALYST=analyst
+SNAPSHOT=/var/lib/cr-reloaded/ids
+
+[ "$*" = "-c reload-rules" ] || exec docker exec -i sensor suricatasc "$@"
+trap '' INT TERM HUP
+exec 9>>"$SNAPSHOT.lock"
+flock 9
+staged=$(mktemp -d "$SNAPSHOT.new.XXXXXX")
+
+handed_back() {
+  setfacl -m "u:$ANALYST:rw" "$RULE_FILE"
+  rm -rf "$staged"
+}
+
+trap handed_back EXIT
+mkdir -p "$staged$(dirname "$RULE_FILE")"
+cp "$RULE_FILE" "$staged$RULE_FILE"
+install -m 0644 -o root -g root "$staged$RULE_FILE" "$RULE_FILE.reloading"
+mv "$RULE_FILE.reloading" "$RULE_FILE"
+reply=$(docker exec -i sensor suricatasc -c reload-rules)
+printf '%s\n' "$reply"
+case "$(printf '%s' "$reply" | tr -d ' ')" in
+  *'"return":"OK"'*) ;;
+  *) exit 1 ;;
+esac
+date +%s.%N > "$staged/at"
+rm -rf "$SNAPSHOT"
+mv "$staged" "$SNAPSHOT"

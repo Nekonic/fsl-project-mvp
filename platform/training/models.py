@@ -238,6 +238,7 @@ class RuleSet(models.Model):
     player = models.ForeignKey(Player, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     same_as_tested = models.BooleanField(default=False)
     sensors = models.JSONField(default=list)
+    reloaded = models.FloatField(null=True, blank=True)
 
     class Meta:
         ordering = ["round_id", "engine", "version"]

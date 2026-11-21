@@ -44,7 +44,7 @@ class DefenceRange:
         return self.sensors.setdefault(role, Sensor())
 
     def node_runner(self, role: str):
-        return self.nodes.setdefault(role, SensorNode())
+        return self.nodes.setdefault(role, SensorNode(sensor=self.sensors.setdefault(role, Sensor())))
 
     def address(self, role: str) -> str:
         return {"gateway": WAF_MANAGEMENT, "sensor": SENSOR_MANAGEMENT}.get(role, "")

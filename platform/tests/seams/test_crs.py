@@ -151,22 +151,6 @@ def test_detection_only_appends_the_rule_engine_to_crs_setup_and_keeps_the_rest(
     assert crs.detection_only(files, WAF) == {**files, SETUP: "SecRuleEngine On\nSecRuleEngine DetectionOnly\n"}
 
 
-def test_a_reload_after_the_newest_write_counts_as_running_the_files():
-    gateway = Gateway()
-    gateway.edited(HTTP, "deny all;\n", reloaded=False)
-
-    assert crs.reloaded_since_written(gateway, WAF) is False
-
-    gateway.edited(HTTP, "deny all;\n", reloaded=True)
-
-    assert crs.reloaded_since_written(gateway, WAF) is True
-
-
-@pytest.mark.parametrize("said", ["1000.0\n100.0\n1000.0\n1\n", "1000.0\n100.0\n1000.0\n1\nlater\n", ""])
-def test_a_reload_check_the_waf_answers_short_or_garbled_is_no_reload(said):
-    assert crs.reloaded_since_written(lambda argv, stdin=None, timeout=60.0: Ran(0, said), WAF) is False
-
-
 def test_nginx_and_modsecurity_errors_name_the_file_and_line():
     said = ('nginx: [emerg] "modsecurity_rules_file" directive Rules error. '
             'File: /var/lib/cr-crstest/test-7/modsecurity/crs/crs-setup.conf. Line: 4. Column: 9. '

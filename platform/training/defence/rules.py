@@ -22,9 +22,6 @@ from training.models import Allocation, Round, RuleSet, RuleTest, Player
 
 DEFENCE = "defence"
 IDS_FILE = ruletest.IDS_FILE
-RELOADED = "reloaded"
-RUNNING_UNKNOWN = ("the sensor reloaded a rule file that was rewritten before this read, "
-                   "so the rules it runs are not known")
 SETUP, CONSOLE, TERMINAL = "setup", "console", "terminal"
 
 
@@ -131,6 +128,24 @@ def first_sensor(found: Round, cfg: config.Config | None = None):
     return reach.range_of(found, cfg).runner(sensor.role), sensor
 
 
+def sensor_node(found: Round, cfg: config.Config | None = None):
+    cfg = cfg or configured()
+    if not cfg.sensors:
+        raise errors.Unavailable(code="sensor_unavailable")
+    sensor = cfg.sensors[0]
+    return reach.range_of(found, cfg).node_runner(sensor.role), sensor
+
+
+def ids_reload_at(found: Round) -> float | None:
+    snapshot = suricata.reloaded(*sensor_node(found))
+    return snapshot.at if snapshot else None
+
+
+def waf_reload_at(gateway, waf) -> float | None:
+    snapshot = crs.reloaded(gateway, waf)
+    return snapshot.at if snapshot else None
+
+
 def ids_rules(found: Round) -> dict:
     runner, sensor = first_sensor(found)
     live = suricata.current(runner, sensor)
@@ -233,12 +248,14 @@ def locked_head(found: Round, engine: str, base_version: int) -> RuleSet | None:
 
 
 def recorded(found: Round, engine: str, head: RuleSet | None, files: Mapping[str, str], sensors: Sequence[dict],
-             tested: RuleTest | None, player: Player | None, source: str = CONSOLE) -> RuleSet:
+             tested: RuleTest | None, player: Player | None, source: str = CONSOLE,
+             reloaded: float | None = None) -> RuleSet:
     sha = ruletest.files_sha(files)
     made = RuleSet.objects.create(round=found, engine=engine, version=(head.version if head else 0) + 1,
                                   files=dict(files), sha=sha, source=source, applied_at=timezone.now(),
                                   tested=tested, player=player,
-                                  same_as_tested=tested is not None and tested.sha == sha, sensors=list(sensors))
+                                  same_as_tested=tested is not None and tested.sha == sha, sensors=list(sensors),
+                                  reloaded=reloaded)
     log.append(found.pk, "rule.applied", {"engine": engine, "version": made.version, "source": source},
                player_side=DEFENCE)
     return made
@@ -253,8 +270,7 @@ def apply_ids(found: Round, text: str, base_version: int, source: str = SETUP) -
         previous = (head.files.get(IDS_FILE, "") if head
                     else suricata.current(reached.sensors[0].runner, reached.sensors[0].config))
         sensors = written_to_sensors(text, previous, reached.sensors)
-        _, reloaded = suricata.reload_times(reached.sensors[0].runner, reached.sensors[0].config)
-        made = recorded(found, ENGINE_IDS, head, {IDS_FILE: text}, with_reload(sensors, reloaded), None, None, source)
+        made = recorded(found, ENGINE_IDS, head, {IDS_FILE: text}, sensors, None, None, source, ids_reload_at(found))
         return Applied(rule_set=made, sensors=sensors)
 
 
@@ -269,36 +285,28 @@ def apply_waf(found: Round, files: Mapping[str, str], base_version: int, player:
             merged = crs.apply(files, reached.gateway, reached.waf)
         except crs.WafRefused as refused:
             raise ruletest.waf_refusal(refused) from refused
-        return Applied(rule_set=recorded(found, ENGINE_WAF, head, merged, (), test, player, source), sensors=())
+        return Applied(rule_set=recorded(found, ENGINE_WAF, head, merged, (), test, player, source,
+                                         waf_reload_at(reached.gateway, reached.waf)), sensors=())
 
 
 def record_live_waf(found: Round, source: str, player: Player | None = None,
-                    live: Mapping[str, str] | None = None) -> RuleSet | None:
+                    live: Mapping[str, str] | None = None, reloaded: float | None = None) -> RuleSet | None:
+    gateway, waf = gateway_of(found)
     if live is None:
-        gateway, waf = gateway_of(found)
         live = crs.read(gateway, waf)
+        reloaded = waf_reload_at(gateway, waf)
     with transaction.atomic():
         head = RuleSet.objects.select_for_update().filter(round=found, engine=ENGINE_WAF).order_by("-version").first()
         if head is not None and head.sha == ruletest.files_sha(live):
+            consumed(head, reloaded)
             return None
-        return recorded(found, ENGINE_WAF, head, live, (), None, player, source)
+        return recorded(found, ENGINE_WAF, head, live, (), None, player, source, reloaded)
 
 
-def with_reload(sensors: Sequence[dict], reloaded: float | None) -> tuple[dict, ...]:
-    if reloaded is None:
-        return tuple(sensors)
-    first, *rest = list(sensors) or [{}]
-    return ({**first, RELOADED: reloaded}, *rest)
-
-
-def reload_of(rule_set: RuleSet) -> float | None:
-    return next((one[RELOADED] for one in rule_set.sensors or () if RELOADED in one), None)
-
-
-def stamped(rule_set: RuleSet, reloaded: float) -> None:
-    if reload_of(rule_set) != reloaded:
-        rule_set.sensors = list(with_reload(rule_set.sensors or (), reloaded))
-        rule_set.save(update_fields=["sensors"])
+def consumed(rule_set: RuleSet, reloaded: float | None) -> None:
+    if reloaded is not None and rule_set.reloaded != reloaded:
+        rule_set.reloaded = reloaded
+        rule_set.save(update_fields=["reloaded"])
 
 
 def record_live_ids(found: Round, source: str, player: Player | None = None, live: str | None = None,
@@ -306,15 +314,15 @@ def record_live_ids(found: Round, source: str, player: Player | None = None, liv
     runner, sensor = first_sensor(found)
     if live is None:
         live = suricata.current(runner, sensor)
-    if reloaded is None:
-        _, reloaded = suricata.reload_times(runner, sensor)
+        reloaded = ids_reload_at(found)
     files = {IDS_FILE: live}
     with transaction.atomic():
         head = RuleSet.objects.select_for_update().filter(round=found, engine=ENGINE_IDS).order_by("-version").first()
         if head is not None and head.sha == ruletest.files_sha(files):
+            consumed(head, reloaded)
             return None
-        return recorded(found, ENGINE_IDS, head, files, with_reload(({"name": sensor.name, "ok": True},), reloaded),
-                        None, player, source)
+        return recorded(found, ENGINE_IDS, head, files, ({"name": sensor.name, "ok": True},), None, player, source,
+                        reloaded)
 
 
 def apply_posture(found: Round) -> None:
@@ -344,35 +352,18 @@ def record_ids_terminal_reload(found: Round) -> bool:
     if head is None:
         return False
     try:
-        runner, sensor = first_sensor(found)
-        live = suricata.current(runner, sensor)
-        written, reloaded = suricata.reload_times(runner, sensor)
-        measured = suricata.refusals(live)
+        snapshot = suricata.reloaded(*sensor_node(found))
+        if snapshot is None or snapshot.at == head.reloaded:
+            return False
+        measured = suricata.refusals(snapshot.text)
         if measured:
-            put_back_ids(found, head, measured, runner, sensor)
-            return False
-        if written is None or reloaded is None:
-            return False
-        if reloaded <= written:
-            if reload_of(head) != reloaded:
-                put_back_ids(found, head, [suricata.RuleError(line=None, message=RUNNING_UNKNOWN)], runner, sensor)
-            return False
-        if head.sha == ruletest.files_sha({IDS_FILE: live}):
-            stamped(head, reloaded)
+            runner, sensor = first_sensor(found)
+            suricata.seed(head.files.get(IDS_FILE, ""), runner, sensor)
+            put_back(found, head, ENGINE_IDS, [one.message for one in measured], snapshot.at)
             return False
     except (errors.Unavailable, suricata.RuleApplyError):
         return False
-    return record_live_ids(found, TERMINAL, defence_player(found), live, reloaded) is not None
-
-
-def put_back_ids(found: Round, head: RuleSet, measured: Sequence[suricata.RuleError], runner, sensor) -> None:
-    suricata.seed(head.files.get(IDS_FILE, ""), runner, sensor)
-    _, reloaded = suricata.reload_times(runner, sensor)
-    if reloaded is not None:
-        stamped(head, reloaded)
-    log.append(found.pk, "rule.refused", {"engine": ENGINE_IDS, "version": head.version,
-                                          "message": "; ".join(one.message for one in measured)},
-               player_side=DEFENCE)
+    return record_live_ids(found, TERMINAL, defence_player(found), snapshot.text, snapshot.at) is not None
 
 
 def record_waf_terminal_reload(found: Round) -> bool:
@@ -381,24 +372,22 @@ def record_waf_terminal_reload(found: Round) -> bool:
         return False
     gateway, waf = gateway_of(found)
     try:
-        live = crs.read(gateway, waf)
-        if head.sha == ruletest.files_sha(live):
+        snapshot = crs.reloaded(gateway, waf)
+        if snapshot is None or snapshot.at == head.reloaded:
             return False
-        measured = crs.refusals(live, waf)
+        measured = crs.refusals(snapshot.files, waf)
         if measured:
-            put_back_head(found, head, measured, gateway, waf)
-            return False
-        if not crs.reloaded_since_written(gateway, waf):
+            crs.apply(head.files, gateway, waf)
+            put_back(found, head, ENGINE_WAF, [one["message"] for one in measured], snapshot.at)
             return False
     except (crs.WafUnreadable, crs.WafRefused):
         return False
-    return record_live_waf(found, TERMINAL, defence_player(found), live) is not None
+    return record_live_waf(found, TERMINAL, defence_player(found), snapshot.files, snapshot.at) is not None
 
 
-def put_back_head(found: Round, head: RuleSet, measured: Sequence[dict], gateway, waf) -> None:
-    crs.apply(head.files, gateway, waf)
-    log.append(found.pk, "rule.refused", {"engine": ENGINE_WAF, "version": head.version,
-                                          "message": "; ".join(one["message"] for one in measured)},
+def put_back(found: Round, head: RuleSet, engine: str, messages: Sequence[str], reloaded: float) -> None:
+    consumed(head, reloaded)
+    log.append(found.pk, "rule.refused", {"engine": engine, "version": head.version, "message": "; ".join(messages)},
                player_side=DEFENCE)
 
 

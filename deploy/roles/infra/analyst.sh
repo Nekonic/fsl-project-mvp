@@ -7,6 +7,7 @@ SURICATASC=/usr/local/bin/suricatasc
 SUDOERS=/etc/sudoers.d/analyst
 SSHD=/etc/ssh/sshd_config.d/60-analyst.conf
 FENCE=/etc/nftables.conf
+SNAPSHOT_DIR=/var/lib/cr-reloaded
 RULE_FILE=/var/lib/suricata/rules/local.rules
 READ_ONLY="/etc/suricata /var/lib/suricata /var/log/suricata /etc/rsyslog.conf /etc/rsyslog.d"
 CLOSED="/usr/local/share/slot /var/lib/cr-ruletest"
@@ -62,6 +63,12 @@ rule_file_writable() {
   setfacl -m "u:$ACCOUNT:rw" "$RULE_FILE"
 }
 
+reload_snapshot_closed() {
+  install -d -m 0700 -o root -g root "$SNAPSHOT_DIR"
+  chown root:root "$SNAPSHOT_DIR"
+  chmod 0700 "$SNAPSHOT_DIR"
+}
+
 account_made
 sensor_checks_allowed
 shell_only_over_ssh
@@ -69,3 +76,4 @@ only_loopback_for_the_account
 nothing_writable_by_its_groups
 router_and_customers_closed
 rule_file_writable
+reload_snapshot_closed

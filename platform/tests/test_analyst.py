@@ -2,7 +2,9 @@ import re
 import subprocess
 from pathlib import Path
 
-from cr.config import WafConfig
+import pytest
+
+from cr.config import RELOAD_SNAPSHOTS, SensorConfig, WafConfig
 from training.defence import terminal as service
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -43,8 +45,11 @@ def test_it_reads_the_logs_through_adm_and_logs_in_by_key_only():
 def test_its_only_root_commands_are_the_nginx_test_dump_and_reload():
     rule = printed("nginx_checks_allowed")
 
-    assert rule == ("analyst ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/sbin/nginx -T, /usr/sbin/nginx -s reload, "
-                    "/usr/bin/systemctl reload nginx\n")
+    assert rule == ("analyst ALL=(root) NOPASSWD: /usr/local/sbin/nginx -t, /usr/local/sbin/nginx -T, "
+                    "/usr/local/sbin/nginx -s reload, /usr/bin/systemctl reload nginx\n")
+    assert "install -m 0755 nginx /usr/local/sbin/nginx" in (WAF / "install.sh").read_text(), (
+        "sudo finds the reload wrapper first on its secure_path")
+    assert (WAF / "nginx-reload.conf").read_text().splitlines()[-1] == "ExecReload=/usr/local/sbin/nginx -s reload"
     assert "ALL\n" not in rule
     assert 'visudo -cf "$SUDOERS.new"' in text()
 
@@ -112,3 +117,27 @@ def test_the_platform_s_logging_lies_outside_what_the_analyst_writes():
     assert "install -m 0644 board.com.conf /etc/nginx/conf.d/board.com.conf" in (WAF / "install.sh").read_text()
     assert "/etc/nginx/conf.d/board.com.conf" not in defence and "/etc/nginx" in assigned()["READ_ONLY"].split()
     assert "install -m 0644 suricata.yaml /etc/suricata/suricata.yaml" in (sensor / "install.sh").read_text()
+
+
+@pytest.mark.parametrize(("role", "wrapper", "reloading", "snapshot", "loaded"), [
+    ("waf", "nginx", '"$NGINX" -s reload', WafConfig().snapshot, WafConfig().files),
+    ("infra", "suricatasc", "sensor suricatasc -c reload-rules)", SensorConfig(name="cr-ids").snapshot,
+     (SensorConfig(name="cr-ids").rules,))])
+def test_a_reload_snapshots_the_files_it_loads_where_the_analyst_cannot_write(role, wrapper, reloading, snapshot,
+                                                                               loaded):
+    script = (ROOT / "deploy/roles" / role / "analyst.sh").read_text()
+    reload = (ROOT / "deploy/roles" / role / wrapper).read_text()
+    names = dict(re.findall(r'^([A-Z_]+)=("[^"]*"|\S+)$', reload, re.M))
+    listed = (names.get("DEFENCE_FILES") or names.get("RULE_FILE")).strip('"').replace("$CRS", names.get("CRS", ""))
+
+    assert f"SNAPSHOT_DIR={RELOAD_SNAPSHOTS}\n" in script and names["SNAPSHOT"] == snapshot
+    assert 'install -d -m 0700 -o root -g root "$SNAPSHOT_DIR"' in script
+    assert script.rstrip().endswith("\nreload_snapshot_closed")
+    assert tuple(listed.split()) == loaded, "the wrapper copies the files the platform reads back"
+    assert reload.index('cp "$') < reload.index(reloading) < reload.index('mv "$staged" "$SNAPSHOT"'), (
+        "the files are copied before the reload and the snapshot is kept only after it")
+    assert reload.index('install -m 0644 -o root -g root "$staged') < reload.index(reloading), (
+        "the engine loads the snapshot's copy, which the analyst cannot write until the reload is done")
+    assert "trap handed_back EXIT" in reload and "trap '' INT TERM HUP" in reload
+    assert 'flock 9' in reload and 'mktemp -d "$SNAPSHOT.new.XXXXXX"' in reload, "two reloads never share a snapshot"
+    assert subprocess.run(["sh", "-n", str(ROOT / "deploy/roles" / role / wrapper)], capture_output=True).returncode == 0

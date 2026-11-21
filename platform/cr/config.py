@@ -26,6 +26,7 @@ WAF_FILES = (
 )
 NGINX_RELOAD = "nginx -t 2>&1 && nginx -s reload 2>&1"
 NGINX_PID = "/tmp/nginx.pid"
+RELOAD_SNAPSHOTS = "/var/lib/cr-reloaded"
 SUBSTRATE = "sandbox.openstack.connect"
 ORIGIN = re.compile(r"https?://(?:[a-z0-9.-]+|\[[0-9a-f:.]+\])(?::[0-9]{1,5})?")
 
@@ -53,6 +54,7 @@ class SensorConfig:
     live_logs: str = "/var/log/suricata"
     scratch: str = "/var/lib/cr-ruletest"
     interface: str = "br0"
+    snapshot: str = f"{RELOAD_SNAPSHOTS}/ids"
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,7 @@ class WafConfig:
     probe_template: str = "/usr/local/share/cr/probe.conf"
     probe_upstream: str = "/usr/local/share/cr/probe-upstream.py"
     first_port: int = 18000
+    snapshot: str = f"{RELOAD_SNAPSHOTS}/waf"
 
 
 @dataclass(frozen=True)
