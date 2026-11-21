@@ -170,7 +170,6 @@ class Score(serializers.Serializer):
     objectives = Objectives()
     outcomes = Outcomes()
     free_actions = FreeActions()
-    posture_drift = serializers.BooleanField()
 
 
 class Topology(serializers.Serializer):

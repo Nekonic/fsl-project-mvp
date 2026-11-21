@@ -52,9 +52,8 @@ KINDS: dict[str, Kind] = {
     "origins.spent": Kind({}, ATTACK_SIDE),
     "alert.seen": Kind({"alert": NUMBER, "engine": TEXT, "signature": TEXT}, DEFENCE_SIDE),
     "rule.tested": Kind({"test": NUMBER, "engine": TEXT, "ok": FLAG}, DEFENCE_SIDE),
-    "rule.applied": Kind({"engine": TEXT, "version": NUMBER}, DEFENCE_SIDE),
+    "rule.applied": Kind({"engine": TEXT, "version": NUMBER, "source": TEXT}, DEFENCE_SIDE),
     "rule.disabled": Kind({"sid": NUMBER, "expires_at": TEXT}, DEFENCE_SIDE),
-    "rule.drifted": Kind({"engine": TEXT}, DEFENCE_SIDE),
     "limit.below_floor": Kind({"zone": TEXT, "rate_rpm": NUMBER, "floor_rpm": NUMBER}, DEFENCE_SIDE),
     "objective.lost": Kind({"key": TEXT, "name": TEXT}, BOTH, staff_fields={"attributed_marker": MAYBE_TEXT}),
 }

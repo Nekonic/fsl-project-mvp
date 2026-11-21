@@ -26,6 +26,10 @@ const VERDICT_TONE: Record<Verdict, BadgeTone> = { tp: "ok", fn: "danger", fp: "
 const VERDICT_ORDER: Verdict[] = ["tp", "fn", "fp", "tn"];
 const REQUEST_ONLY_PATHS = new Set(["", "base_version", "tested", "cases"]);
 
+export function fileName(path: string): string {
+  return path.split("/").pop() ?? path;
+}
+
 export function VerdictBadge({ verdict }: { verdict: Verdict }) {
   return <Badge tone={VERDICT_TONE[verdict]}>{tFor("verdict", verdict)}</Badge>;
 }
@@ -108,6 +112,7 @@ export function RuleProblems({ problems }: { problems: RuleProblem[] }) {
         <Notice key={code} tone="danger" title={tFor("error", code, undefined, "error.unknown")}>
           {problems.filter((problem) => problem.code === code && (problem.message || problem.line)).map((problem, index) => (
             <Text key={index} mono small>
+              {problem.path.startsWith("/") ? `${fileName(problem.path)} · ` : ""}
               {problem.line ? t("error.at_line", { line: problem.line, message: problem.message ?? "" }) : problem.message}
             </Text>
           ))}
@@ -152,7 +157,7 @@ type BenchStep = "check" | "test" | "apply";
 
 function asProblems(errors: Array<{ path: string; code: string; line?: number | null; message?: string; params?: Record<string, unknown> }>): RuleProblem[] {
   return errors.map((error) => ({
-    path: error.path.replace(/^posture\./, ""),
+    path: error.path,
     code: error.code,
     line: error.line ?? null,
     message: error.message ?? (typeof error.params?.message === "string" ? error.params.message : undefined),

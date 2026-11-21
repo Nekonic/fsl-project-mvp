@@ -1,9 +1,9 @@
 import { useEffect, useState } from "preact/hooks";
 import { useAction, useResource } from "../../api/hooks";
 import { errorText, type ShownError, t } from "../../strings";
-import { Badge, Button, Card, CardHead, Checkbox, ErrorNotice, Field, FormGrid, Input, Loading, Select, Table, Text, type Column, type Option, EditorBand, EditorCard, EditorGroup, EditorHead, EditorSection, EditorStrip, CodeEditor } from "../../ui";
+import { Badge, Button, ErrorNotice, Field, FormGrid, Input, Loading, Select, Text, type Option, EditorBand, EditorCard, EditorHead, EditorSection, EditorStrip, CodeEditor } from "../../ui";
 import { useWargames, wargameLabel } from "./catalog";
-import { PARANOIA_LEVELS, ruleCount, textUnder, tuningOf, type Exclusion, type PostureBody, type WafTuning } from "./document";
+import { filledFiles, ruleCount, textUnder, type PostureBody } from "./document";
 
 export interface PostureEditorProps {
   postureId: number | null;
@@ -14,33 +14,15 @@ interface PostureDraft {
   wargame: string;
   name: string;
   suricata_rules: string;
-  tuning: WafTuning;
+  waf_files: Record<string, string>;
 }
 
-const PARANOIA_OPTIONS: Option[] = PARANOIA_LEVELS.map((level) => ({ value: String(level), label: String(level) }));
-
 function blankPosture(wargame: string): PostureDraft {
-  return { wargame, name: "", suricata_rules: "", tuning: { paranoia: 1, exclusions: [], thresholds: {}, detection_only: false } };
+  return { wargame, name: "", suricata_rules: "", waf_files: {} };
 }
 
 function bodyOf(draft: PostureDraft): PostureBody {
-  return { wargame: draft.wargame, name: draft.name, suricata_rules: draft.suricata_rules, crs_tuning: draft.tuning as unknown as Record<string, unknown> };
-}
-
-function exclusionKey(exclusion: Exclusion): string {
-  return exclusion.rule_id !== undefined ? String(exclusion.rule_id) : exclusion.tag ?? "";
-}
-
-function withKey(exclusion: Exclusion, text: string): Exclusion {
-  const { rule_id: _rule, tag: _tag, ...rest } = exclusion;
-  const trimmed = text.trim();
-  if (/^\d+$/.test(trimmed)) return { ...rest, rule_id: Number(trimmed) };
-  return { ...rest, tag: text };
-}
-
-function whole(text: string): number | undefined {
-  const value = Number.parseInt(text, 10);
-  return Number.isNaN(value) ? undefined : value;
+  return { wargame: draft.wargame, name: draft.name, suricata_rules: draft.suricata_rules, waf_files: filledFiles(draft.waf_files) };
 }
 
 export function PostureEditor({ postureId, onSaved }: PostureEditorProps) {
@@ -49,12 +31,13 @@ export function PostureEditor({ postureId, onSaved }: PostureEditorProps) {
   const [draft, setDraft] = useState<PostureDraft | null>(null);
   const [errors, setErrors] = useState<ShownError[]>([]);
   const [saved, setSaved] = useState(false);
+  const [chosenFile, setFile] = useState("");
   const create = useAction("post", "/api/staff/postures/");
   const update = useAction("put", "/api/staff/postures/{posture_id}/");
   const saveError = postureId ? update.error : create.error;
 
   useEffect(() => {
-    if (stored.data) setDraft({ wargame: stored.data.wargame, name: stored.data.name, suricata_rules: stored.data.suricata_rules, tuning: tuningOf(stored.data) });
+    if (stored.data) setDraft({ wargame: stored.data.wargame, name: stored.data.name, suricata_rules: stored.data.suricata_rules, waf_files: { ...stored.data.waf_files } });
   }, [stored.data]);
   useEffect(() => {
     if (postureId === null && draft === null && wargames.length) setDraft(blankPosture(wargames[0]?.id ?? ""));
@@ -70,10 +53,10 @@ export function PostureEditor({ postureId, onSaved }: PostureEditorProps) {
     setDraft({ ...draft, ...patch });
     setSaved(false);
   };
-  const tune = (patch: Partial<WafTuning>) => change({ tuning: { ...draft.tuning, ...patch } });
-  const exclusions = draft.tuning.exclusions ?? [];
-  const setExclusion = (index: number, exclusion: Exclusion) => tune({ exclusions: exclusions.map((was, which) => (which === index ? exclusion : was)) });
-  const thresholds = draft.tuning.thresholds ?? {};
+  const editable = wargames.find((wargame) => wargame.id === draft.wargame)?.waf_files ?? [];
+  const file = chosenFile || editable[0] || "";
+  const fileOptions: Option[] = editable.map((path) => ({ value: path, label: path.split("/").pop() ?? path }));
+  const fileError = textUnder(errors, `waf_files.${file}`);
 
   const runSave = async () => {
     const body = bodyOf(draft);
@@ -85,21 +68,6 @@ export function PostureEditor({ postureId, onSaved }: PostureEditorProps) {
     onSaved(said.id);
   };
 
-  const columns: Column<Exclusion>[] = [
-    { key: "rule", label: t("waf.exclusion.rule_or_tag"), cell: (exclusion, index) => (
-      <Input mono value={exclusionKey(exclusion)} aria-label={t("waf.exclusion.rule_or_tag")} bad={Boolean(textUnder(errors, `crs_tuning.exclusions[${index}]`))}
-        onValue={(text) => setExclusion(index, withKey(exclusion, text))} />
-    ) },
-    { key: "target", label: t("waf.exclusion.target"), cell: (exclusion, index) => (
-      <Input mono value={exclusion.target ?? ""} aria-label={t("waf.exclusion.target")} onValue={(target) => setExclusion(index, { ...exclusion, target })} />
-    ) },
-    { key: "path", label: t("waf.exclusion.path"), cell: (exclusion, index) => (
-      <Input mono value={exclusion.path ?? ""} aria-label={t("waf.exclusion.path")} onValue={(path) => setExclusion(index, { ...exclusion, path })} />
-    ) },
-    { key: "remove", label: "", kind: "end", cell: (_exclusion, index) => (
-      <Button small onClick={() => tune({ exclusions: exclusions.filter((_, which) => which !== index) })}>{t("staff.delete")}</Button>
-    ) },
-  ];
   const wargameOptions: Option[] = wargames.map((wargame) => ({ value: wargame.id, label: wargameLabel(wargames, wargame.id) }));
   const generalErrors = errors.filter((error) => !error.path);
 
@@ -137,26 +105,15 @@ export function PostureEditor({ postureId, onSaved }: PostureEditorProps) {
         <Badge>{t("staff.engine.crs")}</Badge>
       </EditorBand>
       <EditorSection>
-        {textUnder(errors, "crs_tuning") && <Text tone="danger" small>{textUnder(errors, "crs_tuning")}</Text>}
-        <FormGrid>
-          <Field label={t("waf.paranoia")}>
-            <Select mono value={String(draft.tuning.paranoia)} options={PARANOIA_OPTIONS} onValue={(level) => tune({ paranoia: Number(level) })} />
-          </Field>
-          <EditorGroup label={t("waf.detection_only")}>
-            <Checkbox checked={draft.tuning.detection_only ?? false} onChecked={(detection_only) => tune({ detection_only })} label={t("waf.detection_only.on")} />
-          </EditorGroup>
-          <Field label={t("waf.inbound")}>
-            <Input mono inputMode="numeric" value={thresholds.inbound ?? ""} onValue={(text) => tune({ thresholds: { ...thresholds, inbound: whole(text) } })} />
-          </Field>
-          <Field label={t("waf.outbound")}>
-            <Input mono inputMode="numeric" value={thresholds.outbound ?? ""} onValue={(text) => tune({ thresholds: { ...thresholds, outbound: whole(text) } })} />
-          </Field>
-        </FormGrid>
-        <Card>
-          <CardHead title={t("waf.exclusions")} meta={<Badge>{t("common.count", { count: exclusions.length })}</Badge>}
-            actions={<Button small onClick={() => tune({ exclusions: [...exclusions, { tag: "", target: "", path: "/" }] })}>{t("waf.exclusion.add")}</Button>} />
-          <Table variant="grid" columns={columns} rows={exclusions} rowKey={(_, index) => index} empty={t("waf.exclusions.none")} />
-        </Card>
+        {textUnder(errors, "waf_files") && !fileError && <Text tone="danger" small>{textUnder(errors, "waf_files")}</Text>}
+        <Field label={t("staff.posture.waf_file")}>
+          <Select mono value={file} options={fileOptions} onValue={setFile} />
+        </Field>
+        <Text tone="muted" small mono>{file}</Text>
+        <CodeEditor minLines={12} value={draft.waf_files[file] ?? ""} label={file} bad={Boolean(fileError)}
+          onValue={(text) => change({ waf_files: { ...draft.waf_files, [file]: text } })} />
+        {fileError && <Text tone="danger" small>{fileError}</Text>}
+        <Text tone="muted" small>{t("staff.posture.waf_note")}</Text>
       </EditorSection>
     </EditorCard>
   );

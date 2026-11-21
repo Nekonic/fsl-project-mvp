@@ -9,8 +9,6 @@ export type SetupBody = Schemas["RoundSetupRequest"];
 export type InlinePosture = Schemas["InlinePostureRequest"];
 export type Posture = Schemas["Posture"];
 export type PostureBody = Schemas["PostureRequest"];
-export type WafTuning = Schemas["WafPostureRequest"];
-export type Exclusion = Schemas["ExclusionRequest"];
 export type Opens = Schemas["OpensEnum"];
 export type Matchup = Schemas["MatchupEnum"];
 export type ProblemKind = Schemas["ProblemKindEnum"];
@@ -21,7 +19,6 @@ export const OPENS: Opens[] = ["kibana", "terminal_kali", "terminal_waf", "site"
 export const MATCHUPS: Matchup[] = ["pvp", "def_vs_bot", "atk_vs_bot"];
 export const KINDS: ProblemKind[] = ["lesson", "round"];
 export const SIDES: ProblemSide[] = ["attack", "defence", "both"];
-export const PARANOIA_LEVELS = [1, 2, 3, 4];
 export const ANSWERED_KINDS = ["answer", "choice"];
 
 export interface StepDraft {
@@ -126,14 +123,8 @@ export function asShownErrors(errors: Array<Record<string, unknown>>): ShownErro
   }));
 }
 
-export function tuningOf(posture: { crs_tuning: Record<string, unknown> }): WafTuning {
-  const tuning = posture.crs_tuning as Partial<WafTuning>;
-  return {
-    paranoia: typeof tuning.paranoia === "number" ? tuning.paranoia : 1,
-    exclusions: Array.isArray(tuning.exclusions) ? tuning.exclusions : [],
-    thresholds: tuning.thresholds ?? {},
-    detection_only: tuning.detection_only ?? false,
-  };
+export function filledFiles(files: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(files).filter(([, text]) => text.trim() !== ""));
 }
 
 export function ruleCount(rules: string): number {
@@ -141,7 +132,7 @@ export function ruleCount(rules: string): number {
 }
 
 export function postureInline(posture: Posture): InlinePosture {
-  return { name: posture.name, suricata_rules: posture.suricata_rules, crs_tuning: posture.crs_tuning };
+  return { name: posture.name, suricata_rules: posture.suricata_rules, waf_files: posture.waf_files };
 }
 
 export function downloadJson(name: string, value: unknown): void {

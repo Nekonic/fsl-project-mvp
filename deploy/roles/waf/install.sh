@@ -17,6 +17,8 @@ BUILD=/var/tmp/waf-build
 BUILT=/var/lib/waf-build/modsecurity-$MODSECURITY-connector-$CONNECTOR-nginx-$NGINX-crs-$CRS
 MODSEC_DIR=/etc/nginx/modsecurity
 EXCLUSIONS=$MODSEC_DIR/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
+AFTER_EXCLUSIONS=$MODSEC_DIR/crs/rules/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf
+DEFENCE_DIR=/etc/nginx/defence
 AUDIT_LOG=/var/log/modsecurity/audit/audit.log
 ACCESS_LOG=/var/log/nginx/access.json
 ERROR_LOG=/var/log/nginx/error.log
@@ -113,6 +115,11 @@ nginx -V 2>&1 | grep -q -- "--with-compat"
 [ -f "$BUILT" ] || modsecurity_built
 echo "load_module /usr/lib/nginx/modules/ngx_http_modsecurity_module.so;" > /etc/nginx/modules-enabled/50-mod-http-modsecurity.conf
 [ -f "$EXCLUSIONS" ] || install -m 0644 /dev/null "$EXCLUSIONS"
+[ -f "$AFTER_EXCLUSIONS" ] || install -m 0644 /dev/null "$AFTER_EXCLUSIONS"
+install -d -m 0755 "$DEFENCE_DIR"
+for site in http.conf board.com.conf corp.com.conf; do
+  [ -f "$DEFENCE_DIR/$site" ] || install -m 0644 /dev/null "$DEFENCE_DIR/$site"
+done
 
 install -m 0644 modsecurity.conf "$MODSEC_DIR/modsecurity.conf"
 install -m 0644 board.com.conf /etc/nginx/conf.d/board.com.conf

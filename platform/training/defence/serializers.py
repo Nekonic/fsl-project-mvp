@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 VERDICTS = [(verdict, verdict) for verdict in ("tp", "fn", "fp", "tn")]
@@ -19,34 +20,16 @@ class IdsApply(Text):
     tested = serializers.IntegerField(min_value=1, required=False, allow_null=True)
 
 
-class Exclusion(serializers.Serializer):
-    rule_id = serializers.IntegerField(required=False)
-    tag = serializers.CharField(required=False, max_length=64)
-    target = serializers.CharField(required=False, allow_blank=True, max_length=200)
-    path = serializers.CharField(required=False, allow_blank=True, max_length=200)
+class WafFilesGiven(serializers.Serializer):
+    files = serializers.DictField(child=serializers.CharField(allow_blank=True, trim_whitespace=False,
+                                                              max_length=200000))
 
 
-class Thresholds(serializers.Serializer):
-    inbound = serializers.IntegerField(required=False)
-    outbound = serializers.IntegerField(required=False)
-
-
-class WafPosture(serializers.Serializer):
-    paranoia = serializers.IntegerField()
-    exclusions = Exclusion(many=True, required=False)
-    thresholds = Thresholds(required=False)
-    detection_only = serializers.BooleanField(required=False)
-
-
-class WafCheck(serializers.Serializer):
-    posture = WafPosture()
-
-
-class WafTest(WafCheck):
+class WafTest(WafFilesGiven):
     cases = serializers.ListField(child=serializers.CharField(max_length=100), required=False, max_length=200)
 
 
-class WafApply(WafCheck):
+class WafApply(WafFilesGiven):
     base_version = serializers.IntegerField(min_value=0)
     tested = serializers.IntegerField(min_value=1, required=False, allow_null=True)
 
@@ -111,6 +94,21 @@ class AppliedVersion(serializers.Serializer):
     applied_at = serializers.DateTimeField()
     tested = serializers.IntegerField(source="tested_id", allow_null=True)
     same_as_tested = serializers.BooleanField()
+    sha = serializers.CharField()
+    source = serializers.ChoiceField(choices=[(source, source) for source in ("setup", "console", "terminal")])
+
+
+class WafFile(serializers.Serializer):
+    path = serializers.CharField()
+    text = serializers.CharField(trim_whitespace=False, allow_blank=True)
+
+
+class VersionFiles(AppliedVersion):
+    files = serializers.SerializerMethodField()
+
+    @extend_schema_field(WafFile(many=True))
+    def get_files(self, made) -> list[dict]:
+        return WafFile([{"path": path, "text": text} for path, text in made.files.items()], many=True).data
 
 
 class RuleError(serializers.Serializer):
@@ -183,11 +181,14 @@ class WafApplied(serializers.Serializer):
     version = serializers.IntegerField()
     applied_at = serializers.DateTimeField()
     same_as_tested = serializers.BooleanField()
+    sha = serializers.CharField()
 
 
 class WafRead(serializers.Serializer):
-    posture = WafPosture()
+    files = WafFile(many=True)
+    sha = serializers.CharField()
     version = serializers.IntegerField()
+    recorded = serializers.BooleanField()
 
 
 class DisabledRule(serializers.Serializer):

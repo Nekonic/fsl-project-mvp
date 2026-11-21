@@ -23,6 +23,7 @@ from training.models import RuleSet, RuleTest
 CHECK_SCRATCH_ID = 999999
 REFUSED_STATUSES = (400, 403)
 DEFENCE = "defence"
+IDS_FILE = "local.rules"
 
 _LOCKS: dict[tuple[int, str], threading.Lock] = {}
 _GUARD = threading.Lock()
@@ -79,8 +80,8 @@ def sha(body: str) -> str:
     return hashlib.sha256(body.encode()).hexdigest()
 
 
-def canonical(posture: Mapping[str, Any]) -> str:
-    return json.dumps(posture, sort_keys=True, separators=(",", ":"))
+def files_sha(files: Mapping[str, str]) -> str:
+    return sha(json.dumps(dict(files), sort_keys=True, separators=(",", ":"), ensure_ascii=False))
 
 
 @contextmanager
@@ -111,43 +112,42 @@ def ids_errors(text: str, sensors: Sequence[Sensor]) -> list[dict]:
     return found or unread_errors(text)
 
 
-def refused_posture(refused: crs.TuningRefused) -> list[dict]:
-    return [{"path": error.path or "posture", "code": crs.TuningRefused.code, "line": error.line,
+def waf_problems(found: Sequence[dict]) -> list[dict]:
+    return [{"path": one["file"] or "files", "code": crs.WafRefused.code, "line": one["line"],
+             "message": one["message"]} for one in found]
+
+
+def refused_files(refused: crs.WafRefused) -> list[dict]:
+    return [{"path": error.path or "files", "code": crs.WafRefused.code, "line": error.line,
              "message": error.params.get("message", str(refused))} for error in refused.errors]
 
 
-def nginx_refused(found: Sequence[dict]) -> list[dict]:
-    return [{"path": "posture", "code": crs.TuningRefused.code, "line": error["line"], "message": error["message"]}
-            for error in found]
-
-
-def waf_errors(posture: Mapping[str, Any], wired: Wired, scratch_id: int) -> list[dict]:
-    try:
-        return nginx_refused(crs.scratch_check(dict(posture), wired.gateway, wired.waf, scratch_id))
-    except crs.TuningRefused as refused:
-        return refused_posture(refused)
-
-
-def checked_posture(posture: Mapping[str, Any]) -> dict:
-    try:
-        return crs.checked(dict(posture))
-    except crs.TuningRefused as refused:
-        raise posture_refusal(refused) from refused
-
-
-def posture_refusal(refused: crs.TuningRefused) -> errors.EngineRefused:
-    return errors.EngineRefused(code=crs.TuningRefused.code, errors=tuple(
+def waf_refusal(refused: crs.WafRefused) -> errors.EngineRefused:
+    return errors.EngineRefused(code=crs.WafRefused.code, errors=tuple(
         errors.FieldError(path=error["path"], code=error["code"], line=error["line"],
-                          params={"message": error["message"]}) for error in refused_posture(refused)))
+                          params={"message": error["message"]}) for error in refused_files(refused)))
 
 
-def body_of(engine: str, given: Any) -> str:
-    if engine == ENGINE_IDS:
-        return given
+def checked_files(files: Mapping[str, str], waf: WafConfig) -> dict[str, str]:
     try:
-        return canonical(crs.checked(dict(given)))
-    except crs.TuningRefused:
-        return canonical(dict(given))
+        return crs.checked(files, waf)
+    except crs.WafRefused as refused:
+        raise waf_refusal(refused) from refused
+
+
+def waf_errors(files: Mapping[str, str], wired: Wired, scratch_id: int) -> list[dict]:
+    try:
+        return waf_problems(crs.scratch_check(dict(files), wired.gateway, wired.waf, scratch_id))
+    except crs.WafRefused as refused:
+        return refused_files(refused)
+
+
+def files_of(engine: str, given: Any, wired: Wired) -> dict[str, str]:
+    if engine == ENGINE_IDS:
+        return {IDS_FILE: given}
+    if not isinstance(given, Mapping):
+        return {}
+    return crs.read(wired.gateway, wired.waf) | {path: text for path, text in given.items() if path in wired.waf.files}
 
 
 def staged_pcaps(node: Runner, folder: str, recordings: Sequence[Recording]) -> dict[str, str]:
@@ -185,11 +185,11 @@ def probe_request(recording: Recording) -> dict:
     return {"marker": recording.marker, **request, "response": answered}
 
 
-def waf_alerts(posture: Mapping[str, Any], wired: Wired, recordings: Sequence[Recording],
+def waf_alerts(files: Mapping[str, str], wired: Wired, recordings: Sequence[Recording],
                test_id: int) -> list[DetectionRecord]:
     if not recordings:
         return []
-    found = crs.scratch_test(dict(posture), wired.gateway, wired.waf, test_id,
+    found = crs.scratch_test(dict(files), wired.gateway, wired.waf, test_id,
                              [probe_request(recording) for recording in recordings])
     return [DetectionRecord(detection_id=f"{marker}:{at}", timestamp=verdicts.RECORDING_TIME, src_ip=None,
                             marker=marker, engine=ENGINE_WAF, rule=alert["rule"], signature=alert["signature"],
@@ -259,18 +259,18 @@ def outcome(engine: str, given: Any, wired: Wired, recordings: Sequence[Recordin
         return failed(found_errors)
     try:
         return judged(engine, given, wired, recordings, test_id, round_id)
-    except crs.TuningRefused as refused:
-        return failed(refused_posture(refused))
+    except crs.WafRefused as refused:
+        return failed(refused_files(refused))
 
 
 def run(found, player, engine: str, given: Any, recordings: Sequence[Recording], wired: Wired) -> RuleTest:
     if engine == ENGINE_IDS and not wired.sensors:
         raise errors.Unavailable(code="sensor_unavailable")
     with busy(found.allocation_id, engine):
-        body = body_of(engine, given)
-        made = RuleTest.objects.create(round=found, player=player, engine=engine, body_sha=sha(body), body=body)
+        files = files_of(engine, given, wired)
+        made = RuleTest.objects.create(round=found, player=player, engine=engine, sha=files_sha(files), files=files)
         try:
-            result = outcome(engine, given, wired, recordings, made.pk, found.pk)
+            result = outcome(engine, given if engine == ENGINE_IDS else files, wired, recordings, made.pk, found.pk)
         except BaseException:
             made.delete()
             raise
@@ -281,6 +281,6 @@ def run(found, player, engine: str, given: Any, recordings: Sequence[Recording],
     return made
 
 
-def check_waf(found, posture: Mapping[str, Any], wired: Wired) -> list[dict]:
+def check_waf(found, files: Mapping[str, str], wired: Wired) -> list[dict]:
     with busy(found.allocation_id, ENGINE_WAF):
-        return waf_errors(posture, wired, CHECK_SCRATCH_ID)
+        return waf_errors(files, wired, CHECK_SCRATCH_ID)

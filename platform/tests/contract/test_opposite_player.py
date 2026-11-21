@@ -19,7 +19,7 @@ SHARED = {
     f"{ROUND}terminal-auth/attack/": "terminal_attack",
     f"{ROUND}terminal-auth/defence/": "terminal_defence",
 }
-FILLED = {"run_id": "1", "test_id": "1", "sid": "9000001"}
+FILLED = {"run_id": "1", "test_id": "1", "sid": "9000001", "version": "1"}
 
 __all__ = ["cloud", "allocation", "other", "problem"]
 

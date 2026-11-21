@@ -105,7 +105,7 @@ def test_the_score_keeps_objectives_outcomes_and_free_actions_apart(as_operator,
 
     score = as_operator.get(url(running, "score/")).json()
 
-    assert set(score) == {"objectives", "outcomes", "free_actions", "posture_drift"}
+    assert set(score) == {"objectives", "outcomes", "free_actions"}
     assert score["outcomes"]["note"] == "one_case_one_decision"
     assert [one["actions"] for one in score["free_actions"]["by_origin"]] == [1]
     assert score["objectives"]["lost"] == [] and score["objectives"]["kept"]

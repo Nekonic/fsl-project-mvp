@@ -129,7 +129,7 @@ def test_recording_probes_writes_redacted_recordings_and_a_manifest_then_release
     assert "pbkdf2_sha256$placeholder" not in response["body"] and response["status"] == 200
     assert (folder / "board-sqli-search.pcap").read_bytes() == b"pcap"
     assert Allocation.objects.get(pk=allocation_id).closed is not None and slot.resets == 1
-    assert "DetectionOnly" in slot.defence.gateway.file
+    assert "SecRuleEngine DetectionOnly" in slot.defence.gateway.files["/etc/nginx/modsecurity/crs/crs-setup.conf"]
     admitted = " ".join(one.stdin for one in slot.edge.matching("nft -f -"))
     assert slot.worn() and all(f"pool {{ {address} }}" in admitted for address in slot.worn()), (
         "the edge drops every address outside the pool, so the probe allocation admits the origin it wears")

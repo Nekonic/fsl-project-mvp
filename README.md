@@ -61,8 +61,10 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 정합니다.
 
 - 공격석은 Kali 터미널, 대상 사이트 패널, API로 공격하고 탈취한 값을 loot로 제출합니다.
-- 방어석은 Kibana, WAF 읽기 전용 터미널, 구성도, 알림 목록으로 보고, IDS 룰과 WAF 설정을 고칩니다. 고친 룰은
-  적용하기 전에 녹화된 요청으로 테스트할 수 있습니다(룰 테스트).
+- 방어석은 Kibana, WAF 터미널, 구성도, 알림 목록으로 보고, IDS 룰과 WAF 파일을 고칩니다. 고친 룰은
+  적용하기 전에 녹화된 요청으로 테스트할 수 있습니다(룰 테스트). WAF 파일은 콘솔에서 고쳐 적용해도 되고, 터미널에서
+  고친 뒤 `sudo nginx -t`, `sudo nginx -s reload`로 반영해도 됩니다. 터미널에서 reload한 내용은 다음 요청 때 새
+  버전으로 기록됩니다.
 - 플랫폼이 라운드 내내 정상 케이스와 고객 트래픽을 보냅니다. 공격석이 아무것도 하지 않아도 오탐과 정상 통과가 쌓입니다.
 - 라운드는 시간 제한, 목표 전부 탈취, 공격 출발지 전부 소진, 운영자 종료, 한쪽 기권으로 끝납니다. 출발지 소진으로
   끝나는 것은 정상 케이스가 한 바퀴 이상 돈 뒤입니다.
@@ -78,7 +80,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 |---|---|
 | `GET\|POST /api/staff/problems/`, `GET\|PUT\|DELETE /api/staff/problems/<id>/` | 문제, 단계, 라운드 설정, 시작 posture를 한 문서로 저장. `PUT`은 `base_revision`이 최신이 아니면 `409 stale_revision` |
 | `POST /api/staff/problems/validate/` | 저장하지 않고 검증. 오류는 필드 경로(`steps[3].check.params.case`)로 옴 |
-| `GET\|POST /api/staff/postures/`, `GET\|PUT /api/staff/postures/<id>/` | 시작 방어 설정(Suricata 룰, CRS 튜닝) |
+| `GET\|POST /api/staff/postures/`, `GET\|PUT /api/staff/postures/<id>/` | 시작 방어 설정(Suricata 룰, WAF 파일 텍스트) |
 | `POST /api/staff/steps/<문제>/<순서>/try/` | 같은 워게임의 끝난 라운드 기록으로 단계 판정을 미리 돌려 봄 |
 | `POST /api/staff/wargames/<id>/probes/record/` | 룰 테스트용 요청 녹화 |
 
@@ -454,7 +456,7 @@ sudo docker compose start platform rebuild
 | `/api/`(봇) | `Authorization: Bearer <자리 토큰>`. 토큰은 라운드를 만들 때 한 번만 보여 주고 해시로만 저장. 자기 자리의 공격 또는 방어 경로와 라운드 읽기만 닿음. 라운드가 끝나면 15분 동안 읽기만 가능 |
 | 자리 | 상대 자리의 경로는 403. 라운드 시작 전 쓰기는 `409 round_not_started`, 끝난 뒤는 `409 round_closed`. 자리는 할당을 열거나 닫지 못하고 라운드를 끝내지 못함(기권만 가능). PvP에서 한 사람이 두 자리를 맡지 못함(`already_playing`) |
 | 이벤트 피드 | 이벤트 종류마다 볼 수 있는 쪽이 정해져 있음. 공격 쪽은 알림과 룰 이벤트를, 방어 쪽은 공격 행동과 출발지 이벤트를 보지 못함 |
-| WAF 설정 | 방어석은 구조화된 posture(paranoia, 예외, 임계값, 탐지 전용)만 보냄. 자유 텍스트를 받지 않으므로 `SecRuleEngine Off`를 쓸 수 없음 |
+| WAF 파일 | 방어석이 고치는 파일은 `crs-setup.conf`, REQUEST-900·RESPONSE-999 예외 파일, `deny`·`limit_req`를 넣는 nginx 파일(`/etc/nginx/defence/`)뿐. `log_format`, `access_log`, `error_log`, 감사 로그 설정은 측정용이라 콘솔에서 거부하고 `analyst` 계정도 쓸 수 없음. `SecRuleEngine Off`·`DetectionOnly`는 허용(점수에 결과가 드러남) |
 | `/vm-terminal/<side>/<round>/` | nginx `auth_request`가 `/api/rounds/<round>/terminal-auth/<side>/`에 그 라운드의 그 자리를 맡았는지 물음. 공격 자리는 Kali의 `kali` 계정, 방어 자리는 cr-waf의 `analyst` 계정(root 아님)으로 열리고, `GET terminal/`로 받은 점프 권한이 없거나 라운드가 끝났으면 열리지 않음. 열려 있던 셸도 15초마다 다시 확인해 권한이 없어지면 닫힘 |
 | `/kibana/`, 8002(`/site/...`) | nginx `auth_request`로 `/api/me/`에 로그인 세션 확인. 없으면 로그인 페이지로. 로그인 뒤 돌아가는 `next`는 콘솔 안의 경로이거나 `CR_SITE_ORIGIN`(기본은 같은 호스트의 8002)의 `/site/` 주소만 받음 |
 | 회원가입 계정 | 비활성 상태로 만들어짐. 스태프가 승인해야 로그인 가능 |

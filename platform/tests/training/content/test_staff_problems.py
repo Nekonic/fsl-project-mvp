@@ -26,7 +26,7 @@ def test_a_new_problem_is_stored_whole_at_revision_one(saved, as_staff):
     assert stored == saved
     assert stored["problem"]["revision"] == 1 and stored["problem"]["author"] == "operator"
     assert stored["start_posture"] == {"name": "placeholder start", "suricata_rules": "",
-                                       "crs_tuning": {"paranoia": 2, "exclusions": []}}
+                                       "waf_files": factories.WAF_FILES}
     assert without_stamps(stored) == factories.ROUND
 
 
@@ -45,7 +45,9 @@ def broken(edit):
 
 @pytest.mark.parametrize("edit, path, code", [
     (lambda doc: doc["problem"].update(wargame="bank"), "problem.wargame", "unknown_wargame"),
-    (lambda doc: doc["start_posture"]["crs_tuning"].update(paranoia=9), "start_posture.crs_tuning", "crs_refused"),
+    (lambda doc: doc["start_posture"]["waf_files"].update({"/etc/nginx/nginx.conf": ""}),
+     "start_posture.waf_files./etc/nginx/nginx.conf", "crs_refused"),
+    (lambda doc: doc["start_posture"].update(crs_tuning={"paranoia": 2}), "start_posture.crs_tuning", "unknown_field"),
     (lambda doc: doc.update(notes={}), "notes", "unknown_field"),
     (lambda doc: doc["problem"].update(difficulty=3), "problem.difficulty", "unknown_field"),
     (lambda doc: doc["start_posture"].update(engine="ids"), "start_posture.engine", "unknown_field"),

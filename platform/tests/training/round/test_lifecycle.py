@@ -190,7 +190,7 @@ def test_starting_freezes_the_snapshot_applies_the_posture_takes_the_baseline_an
     assert found.snapshot["problem"]["revision"] == problem.revision and found.baseline
     assert found.ends_at - found.started == timedelta(seconds=900)
     assert found.origins.count() == 3
-    assert cloud.in_slot(1).defence.gateway.file
+    assert cloud.in_slot(1).defence.gateway.files["/etc/nginx/modsecurity/crs/crs-setup.conf"]
     assert "round.started" in kinds(found)
     refused(as_operator.post(url(found, "start/")), 409, "round_started")
 

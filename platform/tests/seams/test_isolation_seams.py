@@ -71,6 +71,7 @@ EXCEPTIONS = {
     "platform/nginx.conf": {KIBANA},
     "platform/entrypoint.sh": {NODE_NAMES, JUMP},
     "front/src/panes/Kibana.tsx": {KIBANA},
+    "test/plays.py": {CRS},
     "test/test_event_time.py": {ELASTICSEARCH, INDEX_PATTERNS},
     "test/test_geoip_durable.py": {ELASTICSEARCH},
     "test/test_origin_placement.py": {ELASTICSEARCH},

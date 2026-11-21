@@ -19,6 +19,15 @@ function accountWith(username: string | undefined, approved: boolean): Account {
 
 const HOSTS = ["kali", "waf", "infra", "target"];
 
+const WAF_FILES = [
+  "/etc/nginx/modsecurity/crs/crs-setup.conf",
+  "/etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf",
+  "/etc/nginx/modsecurity/crs/rules/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf",
+  "/etc/nginx/defence/http.conf",
+  "/etc/nginx/defence/board.com.conf",
+  "/etc/nginx/defence/corp.com.conf",
+];
+
 function standing(slot: number, wargame: string, status: string, failures: string[] = []): SlotStanding {
   return { slot, wargame, servers: HOSTS.map((host) => ({ host, server: `cr-slot-${slot}-${host}`, status })), blocked: [], failures };
 }
@@ -63,8 +72,8 @@ export const fixtures = [
   reply("delete", "/api/staff/range/fabric/", undefined),
 
   reply("get", "/api/staff/wargames/", [
-    { id: "board", title: "Community board", image: "board:1", public_url: "", hosts: HOSTS, objective_model: "loot", case_file: "redteam/cases/board.yaml", default_traffic: null },
-    { id: "corp", title: "Corporate site", image: "corp:1", public_url: "", hosts: HOSTS, objective_model: "effect", case_file: "redteam/cases/corp.yaml", default_traffic: null },
+    { id: "board", title: "Community board", image: "board:1", public_url: "", hosts: HOSTS, objective_model: "loot", case_file: "redteam/cases/board.yaml", default_traffic: null, waf_files: WAF_FILES },
+    { id: "corp", title: "Corporate site", image: "corp:1", public_url: "", hosts: HOSTS, objective_model: "effect", case_file: "redteam/cases/corp.yaml", default_traffic: null, waf_files: WAF_FILES },
   ]),
   reply("post", "/api/staff/wargames/{wargame_id}/probes/record/", () => {
     probeReads = 0;

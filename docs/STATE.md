@@ -32,7 +32,7 @@ against its mock API only. The bake of 5, step 12 and the live parts of 15,
 | 6 Django skeleton | `cr/` (DRF, spectacular, one handler, `strings.py`), `strings/`, `accounts`, `events` | `tests/accounts` (with the first account `admin` from migration `accounts.0002_first_account`), `tests/events`, the error-shape and no-admin tests |
 | 7 `content` | catalog, `wargame.yaml` per wargame, problems as nested documents with revisions and export/import, postures, the learner read API | `tests/content` |
 | 8 Round records, referee | `match.models`, `match.auth` (seat tokens hashed, `HasSeat`, `InRound`, `IsOperator`, `OnLease`), `referee` (baseline, loot, effects, objectives, redact, score) | `tests/referee`; import rules 4, 5, 11, 15 |
-| 9 `defence` | rules and posture read, check, test and apply across sensors, versions, probes, disable, drift, alerts, traffic, terminal, Kibana gate | `tests/defence` |
+| 9 `defence` | IDS rules and WAF files read, check, test and apply across sensors, versions with text and hash, a terminal reload recorded on the next read, probes, disable, alerts, traffic, terminal, Kibana gate | `tests/defence` |
 | 10 `attack` | state, cases, requests, async tools, loot, origins, terminal, origin loss from the WAF error log (deny and limit_req above the floor), spend at the edge, customer sends | `tests/attack` |
 | 11 `match.service` | lease and round lifecycle, follower (`follow` compose service), customers and the benign schedule, site pane, terminal auth routes, score, probe recording, staff range routes | `tests/match`; import rules 6, 7, 9 |
 | 13 `lessons` | lesson rounds, facts, judges, progress, hints, `step_locked`, staff try | `tests/lessons` |
@@ -50,7 +50,7 @@ on a slot:
 - the rule test on a sensor and on cr-waf (`rules.suricata.offline_test`,
   `rules.crs.scratch_check` and `scratch_test`), and that it leaves the live
   alerts and ground truth unchanged (`test/test_rule_test_isolation.py`);
-- apply across sensors with rollback, and drift detection on the live CRS
+- apply across sensors with rollback; WAF files applied with nginx -t, reload and rollback, and a reload done in the terminal recorded as the next version
   files;
 - the origin spend from the WAF error log after a defender's nginx deny, the
   drop at the infra edge cutting a keep-alive connection, customers surviving

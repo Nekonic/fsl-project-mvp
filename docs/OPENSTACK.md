@@ -602,7 +602,7 @@ each key's line is
 `restrict,port-forwarding,permitopen="<the box's control address>:22"`.
 `GET /api/rounds/<round>/attack/terminal/` issues the attack seat a key for
 Kali's `kali` user, and `GET /api/rounds/<round>/defence/terminal/` the
-defence seat a key for the WAF's read-only `analyst` (§3.7); each answer
+defence seat a key for the WAF's `analyst` (§3.7), who may write only the defence's WAF files; each answer
 carries the private key once, with the jump's host and port, and puts the
 public key into the box account's and the jump's `authorized_keys`. The
 round's end revokes both. Each box's control port takes tcp 22 only from the
@@ -1509,7 +1509,7 @@ stack uses the same addresses; stacks differ by network, not by CIDR.
 | VM (`cr-slot-<n>-<node>`) | Image | Learner |
 |---|---|---|
 | `kali` | `cr-kali-bake1`: Kali with `kali-linux-headless` and the tools | `kali` with passwordless sudo, by the attack seat's web terminal and its jump grant (§3.5) |
-| `waf` | `cr-waf-bake1` (**(this cloud)** `cr-waf-bake2`): Ubuntu, nginx 1.24, ModSecurity 3.0.16, CRS 4.25.1 | the defence seat as the read-only `analyst`, by web terminal and its jump grant (§3.7) |
+| `waf` | `cr-waf-bake1` (**(this cloud)** `cr-waf-bake2`): Ubuntu, nginx 1.24, ModSecurity 3.0.16, CRS 4.25.1 | the defence seat as `analyst`, by web terminal and its jump grant (§3.7); the image must be rebaked for the split site config and the writable defence files |
 | `infra` | `cr-infra-bake1`: Ubuntu, nftables, Suricata (`jasonish/suricata`, pinned by digest), rsyslog | none |
 | `target` | `cr-target-bake1`: Ubuntu, Docker, board and corp at the baked tag | none |
 

@@ -32,7 +32,7 @@ acceptance check reads as "passed".
 
 1. It keeps one staff problem per wargame, `Acceptance <wargame>`, written
    through the staff API on first use: a round problem whose posture is the
-   committed `local.rules` and a WAF tuning that detects without blocking
+   committed `local.rules` and a CRS exclusion file that detects without blocking
    `/search/`, and every objective of the wargame.
 2. `plays.play(wargame)` opens an allocation (`POST /api/allocations/`), creates a
    `def_vs_bot` round on it and starts it. The attack player is a bot whose token

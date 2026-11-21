@@ -8,6 +8,7 @@ from training.defence import rules as service
 from users.players import issue_token
 
 BASE = "/api/rounds/{round}/defence/"
+HTTP = "/etc/nginx/defence/http.conf"
 ATTACKER = "198.51.100.9"
 CUSTOMER = "203.0.113.50"
 
@@ -147,7 +148,7 @@ def test_writes_before_the_round_started_are_refused(as_defender, board_round):
     board_round.phase = "created"
     board_round.save()
 
-    answer = as_defender.post(url(board_round, "waf/check/"), {"posture": {"paranoia": 1}}, format="json")
+    answer = as_defender.post(url(board_round, "waf/check/"), {"files": {HTTP: "deny all;\n"}}, format="json")
 
     assert answer.status_code == 409
     assert answer.json()["errors"][0]["code"] == "round_not_started"
@@ -155,12 +156,25 @@ def test_writes_before_the_round_started_are_refused(as_defender, board_round):
 
 def test_the_round_start_posture_is_applied_to_both_engines(board_round, cyber_range):
     board_round.snapshot["round"]["posture"] = {"name": "start", "suricata_rules": SEARCH_RULE,
-                                                "crs_tuning": {"paranoia": 3, "exclusions": []}}
+                                                "waf_files": {HTTP: "limit_req_zone $binary_remote_addr "
+                                                                    "zone=ip:10m rate=5r/s;\n"}}
     board_round.save()
 
     service.apply_posture(board_round)
 
     assert cyber_range.sensors["sensor"].rules == SEARCH_RULE
-    assert "blocking_paranoia_level=3" in cyber_range.gateway.file
-    assert [(one.engine, one.version) for one in service.versions(board_round, "ids")] == [("ids", 1)]
-    assert [(one.engine, one.version) for one in service.versions(board_round, "waf")] == [("waf", 1)]
+    assert cyber_range.gateway.files[HTTP].startswith("limit_req_zone")
+    assert [(one.version, one.source) for one in service.versions(board_round, "ids")] == [(1, "setup")]
+    assert [(one.version, one.source) for one in service.versions(board_round, "waf")] == [(1, "setup")]
+
+
+def test_a_start_posture_with_no_waf_files_records_the_live_files_as_the_first_version(board_round, cyber_range):
+    board_round.snapshot["round"]["posture"] = {"name": "start", "suricata_rules": "", "waf_files": {}}
+    board_round.save()
+    cyber_range.gateway.files[HTTP] = "deny 192.0.2.1;\n"
+
+    service.apply_posture(board_round)
+
+    [first] = service.versions(board_round, "waf")
+    assert (first.version, first.source, first.files[HTTP]) == (1, "setup", "deny 192.0.2.1;\n")
+    assert cyber_range.gateway.workers == 1, "recording what runs reloads nothing"

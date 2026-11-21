@@ -21,7 +21,7 @@
 - **자유 행동**: 선언된 케이스가 아닌 요청, 도구 실행, 명령, 사이트 패널 요청. 출발지와 시간으로 묶어 따로 보고하고
   정탐·오탐으로 세지 않음
 - **마커**: 요청의 `X-Request-ID` 값. API로 보낸 요청과 케이스는 플랫폼이 붙이고, 알림과 행동을 이 값으로 매칭
-- **posture**: 라운드 시작 시점의 Suricata 룰과 CRS 튜닝. 스태프가 `Posture` 행으로 작성
+- **posture**: 라운드 시작 시점의 Suricata 룰과 WAF 파일 텍스트. 스태프가 `Posture` 행으로 작성
 - **probe 녹화**: 룰 테스트에 쓰는 케이스별 요청·응답·pcap. `wargames/<id>/probes/`에 커밋
 
 ## 계층
@@ -89,7 +89,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                scoring/  correlate.py  metrics.py  corroborate.py  objectives.py
   ingest/      elastic.py   경계: search_after 커서 읽기, 접근 로그, 정규화, ingest 파이프라인 등록
   rules/       suricata.py  경계: 룰 파일, -T 검사, 오프라인 -r 실행, 적용, 기본 룰 적재, 패킷 캡처
-               crs.py       경계: CRS 튜닝 검사·렌더링·읽기·적용, 임시 인스턴스 검사·테스트
+               crs.py       경계: WAF 파일 읽기·검사·쓰기, nginx -t·reload·되돌리기, 임시 인스턴스 검사·테스트
   range/       openstack.py 경계: Keystone/Heat/Neutron REST, 실제 배선 읽기, 재생성 때 기본 룰 적재
                cloud_config.py  stack_plan.py  declaration.py(+declaration.yaml)  networks.py
                wiring.py(배선 파싱)  topology.py(학습자용 이름, 자리별 필터)  pool.py  refill.py
@@ -115,7 +115,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
   defence/     Detection, RuleSet, RuleTest, DisabledRule, AlertCursor
                kibana.py    경계: Kibana API, space, 거부 규칙, 초기 설정
                alerts.py    AlertCursor로 알림 수집    ruletest.py  검사 → probe 묶음 → 오프라인 실행 → 판정표
-               disable.py   룰 임시 비활성화           drift.py     실제 CRS 파일과 적용 기록 비교
+               disable.py   룰 임시 비활성화
                service.py   방어 API의 모든 동작       views_kibana.py  Kibana 게이트
   lessons/     StepResult, Progress, facts.py(판정에 필요한 기록을 양쪽 서비스로 모음), service.py
   testing/     fakecloud.py  standin.py  fakes.py(가짜 runner, 가짜 ES)  fakerange.py  factories.py(영어 자리표시 문제)
@@ -281,10 +281,15 @@ sequenceDiagram
 
 ### 방어 API와 룰 테스트
 
-- IDS는 룰 텍스트를, WAF는 구조화된 posture(`paranoia`, `exclusions`, `thresholds`, `detection_only`)를 받습니다.
-  WAF 자유 텍스트는 받지 않습니다.
-- `check/`: IDS는 모든 센서에서 `suricata -T`와 읽을 수 없게 되는 sid 검사, WAF는 `rules.crs.checked`와 임시
-  설정의 `nginx -t`.
+- IDS는 룰 텍스트를, WAF는 `files`(파일 경로 → 파일 전체 텍스트)를 받습니다. 방어석이 고치는 WAF 파일은
+  `crs-setup.conf`, `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`, `RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf`,
+  `/etc/nginx/defence/`의 `http.conf`(http 블록), `board.com.conf`·`corp.com.conf`(각 server 블록)입니다.
+  `log_format`, `access_log`, 요청 마커, 감사 로그는 읽기 전용인 `conf.d/board.com.conf`와 `modsecurity.conf`에
+  있고, 방어 파일에 `access_log`·`log_format`·`error_log`·`SecAudit*`·`ctl:audit*`를 쓰면 거부합니다.
+- 흐름은 IDS와 WAF가 같습니다: 읽기 → 검사(`suricata -T` / `nginx -t`) → 녹화된 요청으로 테스트 → 쓰기 → reload →
+  버전 기록(파일 텍스트와 해시, `RuleSet.files`·`sha`·`source`). nginx가 거부하면 이전 파일로 되돌립니다.
+- `check/`: IDS는 모든 센서에서 `suricata -T`와 읽을 수 없게 되는 sid 검사, WAF는 `sandbox.crs.refusals`와 임시
+  설정의 `nginx -t`(오류는 파일 경로와 줄로 돌려줌).
 - `test/`: 라운드의 probe 케이스와 그 워게임의 정상 HTTP 케이스 전부를 녹화본으로 돌립니다. 실제 대상, 실제 센서,
   라운드의 알림은 건드리지 않습니다.
   - IDS: 센서 노드에서 같은 고정 이미지와 `suricata.yaml`로 `suricata -r <case>.pcap`을 돌리고, `/var/log/suricata`
@@ -298,11 +303,16 @@ sequenceDiagram
 - `apply/`: `base_version`이 최신이 아니면 `409 stale_version`. 테스트 없이도 적용할 수 있고, `tested`를 주면
   `same_as_tested`를 기록합니다. IDS는 센서마다 차례로 적용하고 하나라도 거부하면 앞서 쓴 센서를 이전 버전으로
   되돌린 뒤 `422 apply_refused`입니다.
-- `GET terminal/`: cr-waf 관리 주소로 가는 점프 권한, 계정 `analyst`(읽기 전용). 라운드가 끝나면 회수하고,
+- `GET terminal/`: cr-waf 관리 주소로 가는 점프 권한, 계정 `analyst`. 방어 파일만 쓸 수 있고 `sudo nginx -t`,
+  `-T`, `-s reload`, `systemctl reload nginx`만 root로 돌리며, 네트워크는 loopback만 닿습니다(`curl`로 WAF를 거쳐
+  사이트를 시험). 라운드가 끝나면 회수하고,
   `range.jump.end_account`가 `analyst`의 crontab과 `at` 작업을 지우고 linger를 끄고 로그인 세션을 끝낸 뒤
   남은 프로세스를 모두 죽입니다. `nohup`, cron, `at`, `systemd --user`로 띄운 것이 다음 라운드까지 남지 않습니다.
-- `defence/drift.py`가 읽을 때마다 실제 CRS 파일과 적용 기록을 비교해 다르면 `rule.drifted`를 남기고, 점수에
-  `posture_drift: true`가 붙습니다.
+- 터미널에서 reload한 WAF 파일은 다음 요청의 읽기(`defence.record_terminal_reload`)에서 기록됩니다. 파일 해시가
+  마지막 버전과 다르고 nginx 워커가 가장 늦게 쓴 파일보다 나중에 떴으면 `source: terminal`인 새 버전이 됩니다.
+  고치기만 하고 reload하지 않은 파일은 돌고 있지 않으므로 기록하지 않습니다. `GET waf/`의 `recorded`가 지금
+  파일이 마지막 버전과 같은지 알려 줍니다. 라운드 시작 때 posture에 WAF 파일이 없으면 지금 파일을
+  `source: setup`인 1번 버전으로 기록합니다.
 
 ## 점수
 
@@ -311,8 +321,7 @@ sequenceDiagram
 ```
 {objectives:{lost:[{key, name, seen, attributed_marker}], kept:[...], weighted},
  outcomes:{per_case:[{case, verdict, alerts, corroborated}], totals, note:"one_case_one_decision"},
- free_actions:{by_origin:[{ip, actions, alerts, refused}]},
- posture_drift}
+ free_actions:{by_origin:[{ip, actions, alerts, refused}]}}
 ```
 
 - `objectives`: 대상의 정답 데이터로만 정합니다. board는 loot가 라운드 시작 스냅숏의 해시와 정확히 같을 때, corp는
@@ -362,7 +371,7 @@ sequenceDiagram
 |---|---|
 | `round.started`, `round.ended`, `seat.joined` | 양쪽 |
 | `action.sent`, `tool.started`, `tool.ended`, `command.run`, `origin.spent`, `origin.switched`, `origins.spent` | 공격, 스태프 |
-| `alert.seen`, `rule.tested`, `rule.applied`, `rule.disabled`, `rule.drifted`, `limit.below_floor` | 방어, 스태프 |
+| `alert.seen`, `rule.tested`, `rule.applied`, `rule.disabled`, `limit.below_floor` | 방어, 스태프 |
 | `objective.lost` | 양쪽(누구 행동인지는 스태프만) |
 | `step.answered`, `step.passed` | 레슨 자리, 스태프 |
 

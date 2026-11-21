@@ -10499,3 +10499,65 @@ How the "origin loss replaces HP" ruling above is carried out.
   rebaked with the error log shipped, and the acceptance tests
   `test/test_origin_spend.py` and `test/test_block_everything.py` were
   rewritten without being run.
+
+## 2026-11-21 — The WAF is real files: how it is read, applied and recorded
+
+How the "WAF is real files" ruling above is carried out.
+
+- **The files.** The defence edits six files on cr-waf, named by the WAF
+  device's `files:` in each `topology.yaml` and by `WafConfig.files`:
+  `crs-setup.conf`, the REQUEST-900 and RESPONSE-999 exclusion files, and
+  `/etc/nginx/defence/http.conf` (http level), `board.com.conf` and
+  `corp.com.conf` (each site's server level), where `deny`, `limit_req` and
+  `limit_req_zone` go. `conf.d/board.com.conf` keeps the maps, `log_format`,
+  `access_log` and `error_log` and includes the three nginx files; it and
+  `modsecurity.conf` stay read-only.
+- **One flow for IDS and WAF** (`training/defence/rules.py`): read, check
+  (`suricata -T`, or `nginx -t` on a scratch copy), test against the
+  recorded probes, write, reload, record. A version (`RuleSet`) stores every
+  file's text (`files`), their hash (`sha`) and where it came from
+  (`source`: setup, console or terminal). A test (`RuleTest`) stores the set
+  it ran: the given files over the live ones. `same_as_tested` compares the
+  hashes. `sandbox/crs.py` writes only the changed files, reloads, waits for
+  a new worker, and writes the previous text back if nginx refuses or starts
+  no worker. Errors name the file and line, ModSecurity's `File: ... Line:`
+  included, mapped back from the scratch paths.
+- **What is refused.** A file outside the six, and in a given file the
+  platform's logging: `access_log`, `log_format`, `error_log`,
+  `open_log_file_cache`, `SecAudit*`, `SecDebugLog*`, `ctl:audit*`.
+  `SecRuleEngine Off` and `DetectionOnly` pass. This check runs on what the
+  console and the API send; a file written in the terminal is not checked,
+  so a logging directive added there and reloaded is recorded like any
+  other version.
+- **A reload done in the terminal.** The round's reads (the step that
+  replaced `check_drift`) compare the live files' hash with the last
+  version's; when they differ and an nginx worker started after the newest
+  file was written, the live files become the next version, `source:
+  terminal`, by the defence player. Files edited and not reloaded are not
+  running and are not recorded; `GET waf/` says so with `recorded: false`.
+  A round whose posture names no WAF files records the live files as
+  version 1 at its start, so a later reload has something to differ from.
+- **What went.** The JSON tuning object (`crs.checked`, `rendered`,
+  `parsed`, the paranoia, exclusion and threshold fields), `defence/drift.py`,
+  `RuleSet.drifted_at`, the `rule.drifted` event and the score's
+  `posture_drift`. `Posture.crs_tuning` is now `Posture.waf_files`
+  (path to text); a document that still names `crs_tuning` is refused with
+  `unknown_field`. The probe recorder's detection-only WAF appends
+  `SecRuleEngine DetectionOnly` to `crs-setup.conf`.
+- **The analyst account.** The six files are `root:analyst 0664`; their
+  directories, the site config, `modsecurity.conf`, the log shipper and the
+  logs stay unwritable. `sudo` allows `nginx -t`, `nginx -T`,
+  `nginx -s reload` and `systemctl reload nginx`. The nft fence that dropped
+  everything the account sent now accepts loopback, so `curl` reaches the
+  sites through the WAF itself; the curl carries no marker and is not
+  scored. The sensor gets no analyst account, so nothing changes there.
+- **The scratch test** copies the CRS tree and `/etc/nginx/defence`, points
+  every `proxy_pass` in the copied site files at the probe stub, and loads
+  the copies where the live config loads them (`probe.conf` now has a
+  server per site).
+- **Console.** The WAF pane shows each file's current text in an editor,
+  sends only the changed files, and lists the versions with source and hash;
+  a version opens with its files' text. The staff posture editor edits file
+  text instead of a form.
+- **Not measured.** The WAF image must be rebaked for the split site config
+  and the writable files; no live round has run on it.

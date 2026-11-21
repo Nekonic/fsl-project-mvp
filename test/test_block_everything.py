@@ -5,9 +5,9 @@ import pytest
 import plays
 from shared_sessions import CATCH_ALL
 
-BLOCK_EVERYTHING = {"paranoia": 4, "exclusions": [], "thresholds": {"inbound": 1}}
+BLOCK_EVERYTHING = plays.at_paranoia(4, inbound=1)
 SETUP = plays.Setup(wargame="board", title="Acceptance block everything board",
-                    suricata_rules=plays.declared_rules() + CATCH_ALL, crs_tuning=BLOCK_EVERYTHING)
+                    suricata_rules=plays.declared_rules() + CATCH_ALL, waf_files=BLOCK_EVERYTHING)
 FIRING_ROUNDS = 3
 BENIGN_WAIT = 2 * plays.BENIGN_EVERY_S + 60.0
 
@@ -36,7 +36,7 @@ def blocked_round():
 def test_crs_refusing_every_attack_spends_no_origin(blocked_round):
     refused = [answer for answer in blocked_round["answers"] if (answer.body or {}).get("status") == 403]
 
-    assert refused, "the block-everything posture refused none of the attacks"
+    assert refused, "the block-everything WAF files refused none of the attacks"
     assert blocked_round["state"]["remaining"]["spent"] == [], (
         "a CRS 403 spends nothing; only an nginx deny or limit_req in the WAF's error log does")
 

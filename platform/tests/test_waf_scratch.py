@@ -71,7 +71,11 @@ def test_the_scratch_instance_listens_on_loopback_only_and_keeps_every_file_unde
     scratch = crs.scratch_for(config, 42)
     conf = rendered_template(scratch)
 
-    assert re.findall(r"^\s*listen (.+)$", conf, re.M) == [f"127.0.0.1:{scratch.port} default_server;"]
+    assert re.findall(r"^\s*listen (.+)$", conf, re.M) == [f"127.0.0.1:{scratch.port} default_server;",
+                                                         f"127.0.0.1:{scratch.port};"]
+    assert re.findall(r"^\s*include (\S+);", conf, re.M) == [
+        f"{scratch.sites}/http.conf", f"{scratch.sites}/board.com.conf", f"{scratch.sites}/corp.com.conf"], (
+        "the defence's nginx files load where the live site config loads them")
     assert f"proxy_pass http://127.0.0.1:{scratch.upstream_port};" in conf
     assert f"modsecurity_rules_file {scratch.tree}/modsecurity.conf;" in conf
     for directive in ("pid", "error_log", "client_body_temp_path", "proxy_temp_path"):
@@ -103,7 +107,9 @@ def test_the_live_and_scratch_trees_never_meet():
     config = live_waf()
 
     with pytest.raises(ValueError):
-        crs.scratch_for(WafConfig(rules=config.rules, scratch=f"{config.tree}/scratch"), 1)
+        crs.scratch_for(WafConfig(scratch=f"{config.tree}/scratch"), 1)
+    with pytest.raises(ValueError):
+        crs.scratch_for(WafConfig(scratch=f"{config.sites}/scratch"), 1)
 
 
 def test_the_stub_answers_each_probe_with_its_recorded_response_by_marker_on_loopback():

@@ -17,7 +17,7 @@ def applied_round():
         ids_test = plays.rule_test_ids(played, text)
         ids_applied = plays.apply_ids(played, text, tested=ids_test.body.get("test") if ids_test.ok else None)
         waf_test = plays.rule_test_waf(played, plays.DETECT_WITHOUT_BLOCKING_SEARCH)
-        changed = {**plays.DETECT_WITHOUT_BLOCKING_SEARCH, "paranoia": 2}
+        changed = plays.at_paranoia(2)
         waf_applied = plays.tune_waf(played, changed, tested=waf_test.body.get("test") if waf_test.ok else None)
         fired = plays.fired(played, CONTROL)
         listed = plays.alerts_until(played, lambda listed: any(
@@ -36,7 +36,7 @@ def test_the_tested_ids_rules_apply_and_are_recorded_as_the_ones_tested(applied_
     assert head["tested"] == applied_round["ids_test"].body["test"] and head["same_as_tested"] is True
 
 
-def test_a_waf_posture_other_than_the_tested_one_applies_and_says_so(applied_round):
+def test_waf_files_other_than_the_tested_ones_apply_and_say_so(applied_round):
     assert applied_round["waf_test"].ok, applied_round["waf_test"].text
     assert applied_round["waf_applied"].ok, applied_round["waf_applied"].text
     assert applied_round["waf_applied"].body["same_as_tested"] is False

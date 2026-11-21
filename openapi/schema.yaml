@@ -1085,6 +1085,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/ids/rules/versions/{version}/:
+    get:
+      operationId: defence_ids_version
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: version
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - player_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionFiles'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
   /api/rounds/{round_id}/defence/kibana/:
     get:
       operationId: defence_kibana
@@ -1303,7 +1335,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/WafCheckRequest'
+              $ref: '#/components/schemas/WafFilesGivenRequest'
         required: true
       security:
       - player_token: []
@@ -1408,6 +1440,38 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/AppliedVersion'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/defence/waf/versions/{version}/:
+    get:
+      operationId: defence_waf_version
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: version
+        schema:
+          type: integer
+        required: true
+      tags:
+      - defence
+      security:
+      - player_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionFiles'
           description: ''
         default:
           description: refused
@@ -2479,9 +2543,15 @@ components:
           nullable: true
         same_as_tested:
           type: boolean
+        sha:
+          type: string
+        source:
+          $ref: '#/components/schemas/SourceEnum'
       required:
       - applied_at
       - same_as_tested
+      - sha
+      - source
       - tested
       - version
     AttackBrief:
@@ -2975,35 +3045,6 @@ components:
       - id
       - kind
       - player_side
-    Exclusion:
-      type: object
-      properties:
-        rule_id:
-          type: integer
-        tag:
-          type: string
-          maxLength: 64
-        target:
-          type: string
-          maxLength: 200
-        path:
-          type: string
-          maxLength: 200
-    ExclusionRequest:
-      type: object
-      properties:
-        rule_id:
-          type: integer
-        tag:
-          type: string
-          minLength: 1
-          maxLength: 64
-        target:
-          type: string
-          maxLength: 200
-        path:
-          type: string
-          maxLength: 200
     Expiry:
       type: object
       properties:
@@ -3131,12 +3172,13 @@ components:
         suricata_rules:
           type: string
           default: ''
-        crs_tuning:
+        waf_files:
           type: object
-          additionalProperties: {}
+          additionalProperties:
+            type: string
       required:
-      - crs_tuning
       - name
+      - waf_files
     InlinePostureRequest:
       type: object
       properties:
@@ -3146,12 +3188,13 @@ components:
         suricata_rules:
           type: string
           default: ''
-        crs_tuning:
+        waf_files:
           type: object
-          additionalProperties: {}
+          additionalProperties:
+            type: string
       required:
-      - crs_tuning
       - name
+      - waf_files
     Joined:
       type: object
       properties:
@@ -3525,13 +3568,14 @@ components:
         suricata_rules:
           type: string
           default: ''
-        crs_tuning:
+        waf_files:
           type: object
-          additionalProperties: {}
+          additionalProperties:
+            type: string
       required:
-      - crs_tuning
       - id
       - name
+      - waf_files
       - wargame
     PostureRequest:
       type: object
@@ -3545,12 +3589,13 @@ components:
         suricata_rules:
           type: string
           default: ''
-        crs_tuning:
+        waf_files:
           type: object
-          additionalProperties: {}
+          additionalProperties:
+            type: string
       required:
-      - crs_tuning
       - name
+      - waf_files
       - wargame
     ProbeAlert:
       type: object
@@ -4008,13 +4053,10 @@ components:
           $ref: '#/components/schemas/Outcomes'
         free_actions:
           $ref: '#/components/schemas/FreeActions'
-        posture_drift:
-          type: boolean
       required:
       - free_actions
       - objectives
       - outcomes
-      - posture_drift
     SendRequestRequest:
       type: object
       properties:
@@ -4193,6 +4235,16 @@ components:
       - servers
       - slot
       - wargame
+    SourceEnum:
+      enum:
+      - setup
+      - console
+      - terminal
+      type: string
+      description: |-
+        * `setup` - setup
+        * `console` - console
+        * `terminal` - terminal
     Ssh:
       type: object
       properties:
@@ -4347,20 +4399,6 @@ components:
           maxLength: 200000
       required:
       - text
-    Thresholds:
-      type: object
-      properties:
-        inbound:
-          type: integer
-        outbound:
-          type: integer
-    ThresholdsRequest:
-      type: object
-      properties:
-        inbound:
-          type: integer
-        outbound:
-          type: integer
     ToolSpec:
       type: object
       properties:
@@ -4517,6 +4555,36 @@ components:
           type: integer
       required:
       - version
+    VersionFiles:
+      type: object
+      properties:
+        version:
+          type: integer
+        applied_at:
+          type: string
+          format: date-time
+        tested:
+          type: integer
+          nullable: true
+        same_as_tested:
+          type: boolean
+        sha:
+          type: string
+        source:
+          $ref: '#/components/schemas/SourceEnum'
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/WafFile'
+          readOnly: true
+      required:
+      - applied_at
+      - files
+      - same_as_tested
+      - sha
+      - source
+      - tested
+      - version
     WafApplied:
       type: object
       properties:
@@ -4527,15 +4595,21 @@ components:
           format: date-time
         same_as_tested:
           type: boolean
+        sha:
+          type: string
       required:
       - applied_at
       - same_as_tested
+      - sha
       - version
     WafApplyRequest:
       type: object
       properties:
-        posture:
-          $ref: '#/components/schemas/WafPostureRequest'
+        files:
+          type: object
+          additionalProperties:
+            type: string
+            maxLength: 200000
         base_version:
           type: integer
           minimum: 0
@@ -4545,59 +4619,53 @@ components:
           nullable: true
       required:
       - base_version
-      - posture
-    WafCheckRequest:
+      - files
+    WafFile:
       type: object
       properties:
-        posture:
-          $ref: '#/components/schemas/WafPostureRequest'
+        path:
+          type: string
+        text:
+          type: string
       required:
-      - posture
-    WafPosture:
+      - path
+      - text
+    WafFilesGivenRequest:
       type: object
       properties:
-        paranoia:
-          type: integer
-        exclusions:
-          type: array
-          items:
-            $ref: '#/components/schemas/Exclusion'
-        thresholds:
-          $ref: '#/components/schemas/Thresholds'
-        detection_only:
-          type: boolean
+        files:
+          type: object
+          additionalProperties:
+            type: string
+            maxLength: 200000
       required:
-      - paranoia
-    WafPostureRequest:
-      type: object
-      properties:
-        paranoia:
-          type: integer
-        exclusions:
-          type: array
-          items:
-            $ref: '#/components/schemas/ExclusionRequest'
-        thresholds:
-          $ref: '#/components/schemas/ThresholdsRequest'
-        detection_only:
-          type: boolean
-      required:
-      - paranoia
+      - files
     WafRead:
       type: object
       properties:
-        posture:
-          $ref: '#/components/schemas/WafPosture'
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/WafFile'
+        sha:
+          type: string
         version:
           type: integer
+        recorded:
+          type: boolean
       required:
-      - posture
+      - files
+      - recorded
+      - sha
       - version
     WafTestRequest:
       type: object
       properties:
-        posture:
-          $ref: '#/components/schemas/WafPostureRequest'
+        files:
+          type: object
+          additionalProperties:
+            type: string
+            maxLength: 200000
         cases:
           type: array
           items:
@@ -4606,7 +4674,7 @@ components:
             maxLength: 100
           maxItems: 200
       required:
-      - posture
+      - files
     Wargame:
       type: object
       properties:
@@ -4629,6 +4697,11 @@ components:
         default_traffic:
           type: string
           nullable: true
+        waf_files:
+          type: array
+          items:
+            type: string
+          readOnly: true
       required:
       - case_file
       - default_traffic
@@ -4638,6 +4711,7 @@ components:
       - objective_model
       - public_url
       - title
+      - waf_files
     ErrorCodeEnum:
       type: string
       enum:

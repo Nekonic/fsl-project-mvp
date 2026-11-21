@@ -89,6 +89,6 @@ Every refusal is `{errors: [{path, code, line?, params?}]}`. Codes a bot meets:
 | `stale_version` | 409 | `base_version` is not the applied version; `params` has the current one |
 | `test_busy` | 409 | another rule test of this engine is running |
 | `suricata_syntax`, `unread_sid` | 422 | the Suricata text was refused, with `line` |
-| `crs_refused`, `apply_refused` | 422 | the CRS posture or the apply was refused |
+| `crs_refused`, `apply_refused` | 422 | the WAF files or the apply was refused |
 | `attacker_unavailable`, `tool_unavailable`, `range_unavailable` | 503 | the attacker box or the range is not answering |
 | `sensor_unavailable`, `waf_unavailable`, `elastic_unavailable` | 503 | a sensor, the WAF or the alert store is not answering |

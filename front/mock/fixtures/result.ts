@@ -30,7 +30,6 @@ export const score = {
       { ip: "181.8.0.10", actions: 12, alerts: 0, refused: 0 },
     ],
   },
-  posture_drift: false,
 };
 
 export const blockingScore = {
@@ -41,7 +40,6 @@ export const blockingScore = {
     per_case: score.outcomes.per_case.map((line) => (line.verdict === "tn" ? { ...line, verdict: "fp" as const, alerts: 4 } : line)),
     totals: { tp: 2, fp: 6, fn: 1, tn: 0 },
   },
-  posture_drift: true,
 };
 
 export const fixtures = [

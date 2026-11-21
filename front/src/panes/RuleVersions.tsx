@@ -60,6 +60,8 @@ const COLUMNS: Column<EngineVersion>[] = [
   { key: "engine", label: t("col.engine"), cell: (row) => engineLabel(row.engine) },
   { key: "version", label: t("versions.col.version"), kind: "num", cell: (row) => row.version },
   { key: "at", label: t("versions.col.applied_at"), kind: "mono", cell: (row) => clock(row.applied_at) },
+  { key: "source", label: t("versions.col.source"), cell: (row) => tFor("versions.source", row.source) },
+  { key: "sha", label: t("versions.col.sha"), kind: "mono", cell: (row) => row.sha.slice(0, 12) },
   { key: "note", label: t("versions.col.tested"), cell: (row) => <VersionNote version={row} /> },
 ];
 

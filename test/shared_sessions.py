@@ -169,7 +169,7 @@ def origins_session(stack_is_up):
 @pytest.fixture(scope="session")
 def tuned_session(stack_is_up):
     with plays.Round("board") as played:
-        seen = {"round": played.round, "waf": plays.waf_posture(played)}
+        seen = {"round": played.round, "waf": plays.waf_files(played)}
         markers = {name: plays.fired(played, name)["marker"] for name in (CONTROL, SECOND_SHAPE)}
         seen["markers"] = markers
         seen["alerts"] = plays.alerts_until(

@@ -14,7 +14,16 @@ TOPOLOGIES = "wargames/*/topology.yaml"
 DECLARATION = "platform/sandbox/declaration.yaml"
 SURICATA_RULES = "/var/lib/suricata/rules/local.rules"
 SURICATA_IMAGE = "jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840"
-CRS_EXCLUSIONS = "/etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf"
+CRS_TREE = "/etc/nginx/modsecurity"
+NGINX_SITES = "/etc/nginx/defence"
+WAF_FILES = (
+    f"{CRS_TREE}/crs/crs-setup.conf",
+    f"{CRS_TREE}/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf",
+    f"{CRS_TREE}/crs/rules/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf",
+    f"{NGINX_SITES}/http.conf",
+    f"{NGINX_SITES}/board.com.conf",
+    f"{NGINX_SITES}/corp.com.conf",
+)
 NGINX_RELOAD = "nginx -t 2>&1 && nginx -s reload 2>&1"
 NGINX_PID = "/tmp/nginx.pid"
 SUBSTRATE = "sandbox.openstack.connect"
@@ -49,21 +58,15 @@ class SensorConfig:
 @dataclass(frozen=True)
 class WafConfig:
     role: str = "gateway"
-    rules: str = CRS_EXCLUSIONS
+    files: tuple[str, ...] = WAF_FILES
     reload: str = NGINX_RELOAD
     pid: str = NGINX_PID
-    crs_tree: str = ""
+    tree: str = CRS_TREE
+    sites: str = NGINX_SITES
     scratch: str = "/var/lib/cr-crstest"
     probe_template: str = "/usr/local/share/cr/probe.conf"
     probe_upstream: str = "/usr/local/share/cr/probe-upstream.py"
     first_port: int = 18000
-
-    @property
-    def tree(self) -> str:
-        if self.crs_tree:
-            return self.crs_tree
-        parts = Path(self.rules).parts
-        return str(Path(*parts[:parts.index("rules") - 1])) if "rules" in parts[:-1] else str(Path(self.rules).parent)
 
 
 @dataclass(frozen=True)
@@ -207,7 +210,7 @@ def sensors(found: Mapping[str, dict], watches: Mapping[str, str]) -> tuple[Sens
 
 def waf(found: Mapping[str, dict]) -> WafConfig:
     _, entry = filling(found, "gateway")
-    return WafConfig(rules=entry.get("rules") or CRS_EXCLUSIONS, reload=entry.get("reload") or NGINX_RELOAD,
+    return WafConfig(files=tuple(entry.get("files") or WAF_FILES), reload=entry.get("reload") or NGINX_RELOAD,
                      pid=entry.get("pid") or NGINX_PID)
 
 

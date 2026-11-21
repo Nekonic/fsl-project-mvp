@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from cr import config, errors
-from sandbox.crs import TuningRefused
+from sandbox.crs import WafRefused
 from sandbox.runner import Drifted, RangeUnavailable
 from sandbox.suricata import RuleApplyError, RulesUnreadable, RuleSyntax
 from telemetry.elastic import ElasticUnavailable
@@ -34,7 +34,7 @@ def test_the_config_is_built_from_the_topologies_and_the_environment():
     assert (built.box.attacker, built.box.proxy, built.box.way_in) == ("cr-kali", "cr-kali", "cr-edge")
     assert built.box.target_url == "http://corp.com" and built.box.default_origin == "ru"
     assert built.box.tool_image == "cr-kali"
-    assert built.waf.rules.startswith("/etc/nginx/modsecurity/crs/rules/") and built.waf.pid == "/run/nginx.pid"
+    assert "/etc/nginx/modsecurity/crs/crs-setup.conf" in built.waf.files and built.waf.pid == "/run/nginx.pid"
     assert Path(built.range.declaration).is_file()
 
 
@@ -59,7 +59,7 @@ def test_every_error_kind_has_a_status_and_its_own_code_among_its_codes():
     (RulesUnreadable("x"), errors.Unavailable, "sensor_unavailable"),
     (RuleApplyError("x"), errors.EngineRefused, "apply_refused"),
     (RuleSyntax("x"), errors.EngineRefused, "suricata_syntax"),
-    (TuningRefused("x"), errors.EngineRefused, "crs_refused"),
+    (WafRefused("x"), errors.EngineRefused, "crs_refused"),
 ])
 def test_seam_errors_are_domain_errors_with_a_known_code(raised, kind, code):
     assert isinstance(raised, kind) and raised.code == code and code in errors.CODES

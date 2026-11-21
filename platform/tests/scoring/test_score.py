@@ -48,7 +48,7 @@ def test_the_score_keeps_what_was_taken_apart_from_what_the_defence_got_right(bo
         "note": "one_case_one_decision",
     }
     assert scored["free_actions"] == {"by_origin": []}
-    assert scored["posture_drift"] is False
+    assert set(scored) == {"objectives", "outcomes", "free_actions"}
 
 
 def test_an_objective_lost_and_unseen_counts_double(board_target):
@@ -111,12 +111,6 @@ def test_a_forced_window_correlation_matches_by_source_and_time(board_target):
 
     assert by_marker.totals.tp == 0
     assert by_window.per_case[0].verdict == "tp"
-
-
-def test_the_posture_drift_flag_is_carried_beside_the_two_numbers(board_target):
-    found = lost_admin(board_target)
-
-    assert service.score(found, [], [], posture_drift=True).shown()["posture_drift"] is True
 
 
 def test_settling_stores_whether_the_defence_saw_each_loss(board_target):

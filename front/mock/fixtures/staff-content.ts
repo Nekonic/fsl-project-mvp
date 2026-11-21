@@ -6,8 +6,8 @@ type Posture = components["schemas"]["Posture"];
 type DocumentBody = components["schemas"]["DocumentRequest"];
 
 const UPDATED = "2026-11-19T05:30:00Z";
-const TUNING = { paranoia: 1, exclusions: [], thresholds: { inbound: 5, outbound: 4 }, detection_only: false };
-const WIDE_TUNING = { paranoia: 1, exclusions: [{ tag: "attack-sqli", target: "ARGS:sort", path: "/" }], thresholds: { inbound: 5, outbound: 4 }, detection_only: false };
+const FILES = { "/etc/nginx/modsecurity/crs/crs-setup.conf": "SecDefaultAction \"phase:1,log,auditlog,pass\"\n" };
+const WIDE_FILES = { ...FILES, "/etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf": "SecRule REQUEST_FILENAME \"@beginsWith /\" \"id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetByTag=attack-sqli;ARGS:sort\"\n" };
 const RULES = [
   "alert http $EXTERNAL_NET any -> $HOME_NET any (msg:\"SQLi attempt - URI\"; flow:established,to_server; http.uri; pcre:\"/union[\\s+]+select/i\"; classtype:web-application-attack; sid:9000001; rev:2;)",
   "",
@@ -15,9 +15,9 @@ const RULES = [
 ].join("\n");
 
 const postures: Posture[] = [
-  { id: 1, wargame: "board", name: "default", suricata_rules: RULES, crs_tuning: TUNING },
-  { id: 2, wargame: "board", name: "wide-sort-exclusion", suricata_rules: RULES, crs_tuning: WIDE_TUNING },
-  { id: 3, wargame: "corp", name: "default", suricata_rules: RULES, crs_tuning: TUNING },
+  { id: 1, wargame: "board", name: "default", suricata_rules: RULES, waf_files: FILES },
+  { id: 2, wargame: "board", name: "wide-sort-exclusion", suricata_rules: RULES, waf_files: WIDE_FILES },
+  { id: 3, wargame: "corp", name: "default", suricata_rules: RULES, waf_files: FILES },
 ];
 
 const lessonTitles = [
@@ -41,7 +41,7 @@ function lesson(id: number, title: string): Stored {
       { order: 6, body: "Placeholder step six: apply the tested rule.", opens: "ids_rules", check: { kind: "rule_applied", params: { engine: "ids", same_as_tested: true } }, hints: [] },
     ],
     round: null,
-    start_posture: id === 6 ? { name: "wide-sort-exclusion", suricata_rules: RULES, crs_tuning: WIDE_TUNING } : { name: "default", suricata_rules: RULES, crs_tuning: TUNING },
+    start_posture: id === 6 ? { name: "wide-sort-exclusion", suricata_rules: RULES, waf_files: WIDE_FILES } : { name: "default", suricata_rules: RULES, waf_files: FILES },
   };
 }
 
@@ -132,7 +132,7 @@ export const fixtures = [
   reply("get", "/api/staff/postures/", () => postures),
   reply("get", "/api/staff/postures/{posture_id}/", (asked) => postures.find((posture) => posture.id === Number(asked.params.posture_id)) ?? (postures[0] as Posture)),
   reply("post", "/api/staff/postures/", (asked) => {
-    const made: Posture = { id: nextPosture++, wargame: asked.body?.wargame ?? "board", name: asked.body?.name ?? "", suricata_rules: asked.body?.suricata_rules ?? "", crs_tuning: asked.body?.crs_tuning ?? {} };
+    const made: Posture = { id: nextPosture++, wargame: asked.body?.wargame ?? "board", name: asked.body?.name ?? "", suricata_rules: asked.body?.suricata_rules ?? "", waf_files: asked.body?.waf_files ?? {} };
     postures.push(made);
     return made;
   }, { status: 201 }),

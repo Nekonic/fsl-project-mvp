@@ -56,6 +56,7 @@ class Device:
     roles: tuple[str, ...] = ()
     container: str = ""
     rules: str = ""
+    files: tuple[str, ...] = ()
     reload: str = ""
     pid: str = ""
     names: tuple[str, ...] = ()
@@ -148,7 +149,7 @@ def _device(name: str, entry: dict) -> Device:
     return Device(
         name=name, node=entry["node"], roles=tuple(entry.get("roles") or ()),
         container=str(entry.get("container") or ""), rules=str(entry.get("rules") or ""),
-        reload=str(entry.get("reload") or ""), pid=str(entry.get("pid") or ""),
+        files=tuple(str(path) for path in entry.get("files") or ()), reload=str(entry.get("reload") or ""), pid=str(entry.get("pid") or ""),
         names=tuple(entry.get("names") or ()),
         upstreams={str(key): str(value) for key, value in (entry.get("upstreams") or {}).items()},
         forwards={int(port): str(device) for port, device in (entry.get("forwards") or {}).items()},

@@ -18,7 +18,7 @@ def test_a_snapshot_freezes_the_problem_with_its_revision_posture_and_benign_cas
     assert frozen["problem"]["revision"] == 1
     assert frozen["wargame"]["public_url"] == "http://board.com"
     assert frozen["round"]["posture"] == {"name": "placeholder start", "suricata_rules": "",
-                                          "crs_tuning": {"paranoia": 2, "exclusions": []}}
+                                          "waf_files": factories.WAF_FILES}
     assert frozen["round"]["traffic"] == "community"
     assert frozen["round"]["probe_cases"] == ["board-sqli-search"]
     assert "board-normal-search-with-apostrophe" in frozen["round"]["benign_cases"]
@@ -33,7 +33,7 @@ def test_a_staff_edit_after_the_snapshot_leaves_the_snapshot_unchanged(source, a
     kept = json.dumps(frozen, sort_keys=True)
 
     edited = factories.round_problem({"title": "Edited mid-round"}, time_limit_s=60)
-    edited["start_posture"]["crs_tuning"] = {"paranoia": 4}
+    edited["start_posture"]["waf_files"] = {"/etc/nginx/defence/http.conf": "deny all;\n"}
     as_staff.put(f"/api/staff/problems/{problem_id}/", {**edited, "base_revision": 1}, format="json")
 
     assert json.dumps(frozen, sort_keys=True) == kept

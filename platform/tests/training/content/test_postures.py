@@ -11,24 +11,29 @@ def made(source, as_staff):
     return answer.json()
 
 
-def test_a_posture_is_stored_with_its_tuning_normalised(made, as_staff):
-    assert made["crs_tuning"] == {"paranoia": 2, "exclusions": []}
+def test_a_posture_is_stored_with_its_starting_waf_file_text(made, as_staff):
+    assert made["waf_files"] == factories.WAF_FILES
     assert as_staff.get(f"/api/staff/postures/{made['id']}/").json() == made
     assert as_staff.get("/api/staff/postures/").json() == [made]
 
 
 def test_a_posture_is_updated_in_place(made, as_staff):
-    changed = factories.posture(suricata_rules="alert http any any -> any any (sid:1;)",
-                                crs_tuning={"paranoia": 3, "detection_only": True})
+    files = {"/etc/nginx/modsecurity/crs/crs-setup.conf": "SecRuleEngine DetectionOnly\n",
+             "/etc/nginx/defence/http.conf": "limit_req_zone $binary_remote_addr zone=ip:10m rate=5r/s;\n"}
+    changed = factories.posture(suricata_rules="alert http any any -> any any (sid:1;)", waf_files=files)
 
     answer = as_staff.put(f"/api/staff/postures/{made['id']}/", changed, format="json").json()
 
     assert answer["id"] == made["id"]
-    assert answer["crs_tuning"] == {"paranoia": 3, "exclusions": [], "detection_only": True}
+    assert answer["waf_files"] == files
 
 
 @pytest.mark.parametrize("fields, path, code", [
-    ({"crs_tuning": {"paranoia": 2, "exclusions": [{"rule_id": 5}]}}, "crs_tuning", "crs_refused"),
+    ({"waf_files": {"/etc/nginx/defence/http.conf": "access_log off;\n"}}, "waf_files./etc/nginx/defence/http.conf",
+     "crs_refused"),
+    ({"waf_files": {"/etc/nginx/nginx.conf": ""}}, "waf_files./etc/nginx/nginx.conf", "crs_refused"),
+    ({"waf_files": ["not", "a", "map"]}, "waf_files", "crs_refused"),
+    ({"crs_tuning": {"paranoia": 2}}, "crs_tuning", "unknown_field"),
     ({"wargame": "bank"}, "wargame", "unknown_wargame"),
     ({"name": " "}, "name", "required"),
     ({"suricata_rules": 7}, "suricata_rules", "not_a_text"),

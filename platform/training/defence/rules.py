@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -20,10 +19,12 @@ from scoring import losses as referee
 from telemetry import events as log
 from telemetry.models import Detection
 from training.content import problems as content
-from training.defence import disable, drift, ruletest, terminal
+from training.defence import disable, ruletest, terminal
 from training.models import DisabledRule, Allocation, Round, RuleSet, RuleTest, Player
 
 DEFENCE = "defence"
+IDS_FILE = ruletest.IDS_FILE
+SETUP, CONSOLE, TERMINAL = "setup", "console", "terminal"
 
 
 @dataclass(frozen=True)
@@ -130,7 +131,7 @@ def probes(found: Round) -> list[dict]:
 def rules_text(found: Round, cfg: config.Config | None = None) -> Head:
     head = head_of(found, ENGINE_IDS)
     if head is not None:
-        return Head(version=head.version, body=head.body)
+        return Head(version=head.version, body=head.files.get(IDS_FILE, ""))
     cfg = cfg or configured()
     if not cfg.sensors:
         raise errors.Unavailable(code="sensor_unavailable")
@@ -143,17 +144,29 @@ def ids_rules(found: Round) -> dict:
     return {"text": head.body, "version": head.version}
 
 
-def waf_posture(found: Round) -> dict:
+def gateway_of(found: Round, cfg: config.Config | None = None):
+    cfg = cfg or configured()
+    return reach.range_of(found, cfg).runner(cfg.waf.role), cfg.waf
+
+
+def waf_files(found: Round) -> dict:
+    gateway, waf = gateway_of(found)
+    live = crs.read(gateway, waf)
     head = head_of(found, ENGINE_WAF)
-    if head is not None:
-        return {"posture": json.loads(head.body), "version": head.version}
-    cfg = configured()
-    read = crs.read(reach.range_of(found, cfg).runner(cfg.waf.role), cfg.waf)
-    return {"posture": {key: value for key, value in read.items() if key != "file"}, "version": 0}
+    sha = ruletest.files_sha(live)
+    return {"files": [{"path": path, "text": text} for path, text in live.items()], "sha": sha,
+            "version": head.version if head else 0, "recorded": head is not None and head.sha == sha}
 
 
 def versions(found: Round, engine: str) -> list[RuleSet]:
     return list(RuleSet.objects.filter(round=found, engine=engine_given(engine)).order_by("version"))
+
+
+def version(found: Round, engine: str, number: int) -> RuleSet:
+    made = RuleSet.objects.filter(round=found, engine=engine_given(engine), version=number).first()
+    if made is None:
+        raise errors.NotFound()
+    return made
 
 
 def check_ids(found: Round, text: str) -> dict:
@@ -161,8 +174,8 @@ def check_ids(found: Round, text: str) -> dict:
     return {"ok": not found_errors, "errors": found_errors}
 
 
-def check_waf(found: Round, posture: Mapping[str, Any]) -> dict:
-    found_errors = ruletest.check_waf(found, posture, wired(found))
+def check_waf(found: Round, files: Mapping[str, str]) -> dict:
+    found_errors = ruletest.check_waf(found, files, wired(found))
     return {"ok": not found_errors, "errors": found_errors}
 
 
@@ -190,19 +203,6 @@ def latest_test(found: Round, engine: str, player: Player | None = None) -> Rule
 def latest_table(found: Round, engine: str, player: Player | None = None) -> VerdictTable | None:
     made = latest_test(found, engine, player)
     return None if made is None else ruletest.table_of(made.result)
-
-
-def start_tuning(found: Round) -> dict:
-    posture = (found.snapshot.get("round") or {}).get("posture") or found.snapshot.get("start_posture") or {}
-    return dict(posture.get("crs_tuning") or {})
-
-
-def tuning_at(found: Round, at: datetime | None = None) -> dict:
-    sets = RuleSet.objects.filter(round=found, engine=ENGINE_WAF)
-    if at is not None:
-        sets = sets.filter(applied_at__lte=at)
-    head = sets.order_by("-version").first()
-    return json.loads(head.body) if head else start_tuning(found)
 
 
 def tested_of(found: Round, engine: str, player: Player | None, tested: int | None) -> RuleTest | None:
@@ -254,18 +254,20 @@ def locked_head(found: Round, engine: str, base_version: int) -> RuleSet | None:
     return head
 
 
-def recorded(found: Round, engine: str, head: RuleSet | None, body: str, sensors: Sequence[dict],
-             tested: RuleTest | None, player: Player | None) -> RuleSet:
-    made = RuleSet.objects.create(round=found, engine=engine, version=(head.version if head else 0) + 1, body=body,
-                                  applied_at=timezone.now(), tested=tested, player=player,
-                                  same_as_tested=tested is not None and tested.body_sha == ruletest.sha(body),
-                                  sensors=list(sensors))
-    log.append(found.pk, "rule.applied", {"engine": engine, "version": made.version}, player_side=DEFENCE)
+def recorded(found: Round, engine: str, head: RuleSet | None, files: Mapping[str, str], sensors: Sequence[dict],
+             tested: RuleTest | None, player: Player | None, source: str = CONSOLE) -> RuleSet:
+    sha = ruletest.files_sha(files)
+    made = RuleSet.objects.create(round=found, engine=engine, version=(head.version if head else 0) + 1,
+                                  files=dict(files), sha=sha, source=source, applied_at=timezone.now(),
+                                  tested=tested, player=player,
+                                  same_as_tested=tested is not None and tested.sha == sha, sensors=list(sensors))
+    log.append(found.pk, "rule.applied", {"engine": engine, "version": made.version, "source": source},
+               player_side=DEFENCE)
     return made
 
 
 def apply_ids(found: Round, text: str, base_version: int, player: Player | None = None,
-              tested: int | None = None) -> Applied:
+              tested: int | None = None, source: str = CONSOLE) -> Applied:
     unread = ruletest.unread_errors(text)
     if unread:
         raise errors.EngineRefused(code="unread_sid", errors=tuple(
@@ -277,32 +279,65 @@ def apply_ids(found: Round, text: str, base_version: int, player: Player | None 
         raise errors.Unavailable(code="sensor_unavailable")
     with transaction.atomic():
         head = locked_head(found, ENGINE_IDS, base_version)
-        previous = head.body if head else suricata.current(reached.sensors[0].runner, reached.sensors[0].config)
+        previous = (head.files.get(IDS_FILE, "") if head
+                    else suricata.current(reached.sensors[0].runner, reached.sensors[0].config))
         sensors = written_to_sensors(text, previous, reached.sensors)
-        return Applied(rule_set=recorded(found, ENGINE_IDS, head, text, sensors, test, player), sensors=sensors)
+        return Applied(rule_set=recorded(found, ENGINE_IDS, head, {IDS_FILE: text}, sensors, test, player, source),
+                       sensors=sensors)
 
 
-def apply_waf(found: Round, posture: Mapping[str, Any], base_version: int, player: Player | None = None,
-              tested: int | None = None) -> Applied:
-    tuning = ruletest.checked_posture(posture)
-    test = tested_of(found, ENGINE_WAF, player, tested)
+def apply_waf(found: Round, files: Mapping[str, str], base_version: int, player: Player | None = None,
+              tested: int | None = None, source: str = CONSOLE) -> Applied:
     reached = wired(found)
+    ruletest.checked_files(files, reached.waf)
+    test = tested_of(found, ENGINE_WAF, player, tested)
     with transaction.atomic():
         head = locked_head(found, ENGINE_WAF, base_version)
         try:
-            crs.apply(tuning, reached.gateway, reached.waf)
-        except crs.TuningRefused as refused:
-            raise ruletest.posture_refusal(refused) from refused
-        return Applied(rule_set=recorded(found, ENGINE_WAF, head, ruletest.canonical(tuning), (), test, player), sensors=())
+            merged = crs.apply(files, reached.gateway, reached.waf)
+        except crs.WafRefused as refused:
+            raise ruletest.waf_refusal(refused) from refused
+        return Applied(rule_set=recorded(found, ENGINE_WAF, head, merged, (), test, player, source), sensors=())
+
+
+def record_live_waf(found: Round, source: str, player: Player | None = None,
+                    live: Mapping[str, str] | None = None) -> RuleSet | None:
+    if live is None:
+        gateway, waf = gateway_of(found)
+        live = crs.read(gateway, waf)
+    with transaction.atomic():
+        head = RuleSet.objects.select_for_update().filter(round=found, engine=ENGINE_WAF).order_by("-version").first()
+        if head is not None and head.sha == ruletest.files_sha(live):
+            return None
+        return recorded(found, ENGINE_WAF, head, live, (), None, player, source)
 
 
 def apply_posture(found: Round) -> None:
-    posture = (found.snapshot.get("round") or {}).get("posture") or found.snapshot.get("start_posture")
-    if not posture:
-        return
+    posture = (found.snapshot.get("round") or {}).get("posture") or found.snapshot.get("start_posture") or {}
     if posture.get("suricata_rules"):
-        apply_ids(found, posture["suricata_rules"], version_of(found, ENGINE_IDS))
-    apply_waf(found, posture["crs_tuning"], version_of(found, ENGINE_WAF))
+        apply_ids(found, posture["suricata_rules"], version_of(found, ENGINE_IDS), source=SETUP)
+    if posture.get("waf_files"):
+        apply_waf(found, posture["waf_files"], version_of(found, ENGINE_WAF), source=SETUP)
+    else:
+        record_live_waf(found, SETUP)
+
+
+def defence_player(found: Round) -> Player | None:
+    return Player.objects.filter(round=found, side=DEFENCE).first()
+
+
+def record_terminal_reload(found: Round) -> bool:
+    head = head_of(found, ENGINE_WAF)
+    if head is None:
+        return False
+    gateway, waf = gateway_of(found)
+    try:
+        live = crs.read(gateway, waf)
+        if head.sha == ruletest.files_sha(live) or not crs.reloaded_since_written(gateway, waf):
+            return False
+    except crs.WafUnreadable:
+        return False
+    return record_live_waf(found, TERMINAL, defence_player(found), live) is not None
 
 
 def disabled(found: Round) -> list[DisabledRule]:
@@ -356,15 +391,6 @@ def enable_expired(found: Round, now: datetime | None = None) -> list[int]:
     return [record.sid for record in due]
 
 
-def check_drift(found: Round, now: datetime | None = None) -> bool:
-    cfg = configured()
-    return drift.check(found.pk, reach.range_of(found, cfg).runner(cfg.waf.role), cfg.waf, now or timezone.now())
-
-
-def posture_drift(found: Round) -> bool:
-    return drift.any_drift(found.pk)
-
-
 def close(found: Round) -> None:
     terminal.revoke_terminal(found)
 
@@ -372,16 +398,13 @@ def close(found: Round) -> None:
 PROBE_CAPTURES = "/tmp/cr-probes"
 
 
-def detection_only(allocation: Allocation) -> dict:
+def detection_only(allocation: Allocation) -> dict[str, str]:
     reached = allocation_wired(allocation)
-    standing = crs.read(reached.gateway, reached.waf)
-    tuning = ruletest.checked_posture({**{key: value for key, value in standing.items() if key != "file"},
-                                       "paranoia": standing.get("paranoia") or 1, "detection_only": True})
+    files = crs.detection_only(crs.read(reached.gateway, reached.waf), reached.waf)
     try:
-        crs.apply(tuning, reached.gateway, reached.waf)
-    except crs.TuningRefused as refused:
-        raise ruletest.posture_refusal(refused) from refused
-    return tuning
+        return crs.apply(files, reached.gateway, reached.waf)
+    except crs.WafRefused as refused:
+        raise ruletest.waf_refusal(refused) from refused
 
 
 def start_capture(allocation: Allocation, name: str, seconds: int) -> suricata.Capture:

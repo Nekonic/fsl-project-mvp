@@ -30,6 +30,7 @@ class Host:
     node: str = ""
     container: str = ""
     rules: str = ""
+    files: tuple[str, ...] = ()
     reload: str = ""
     pid: str = ""
     names: tuple[str, ...] = ()
@@ -127,7 +128,7 @@ def _merged(definitions: dict[str, stack_plan.Definition]) -> tuple[dict, dict, 
     roles, compose, hosts, watches = {}, {}, {}, {}
     for wargame, definition in sorted(definitions.items()):
         for device in definition.devices.values():
-            host = Host(node=device.node, container=device.container, rules=device.rules,
+            host = Host(node=device.node, container=device.container, rules=device.rules, files=device.files,
                         reload=device.reload, pid=device.pid, names=device.names)
             if hosts.setdefault(device.name, host) != host:
                 raise ValueError(f"{wargame}'s topology declares {device.name} unlike another wargame's")

@@ -3,10 +3,13 @@ set -eu
 
 ACCOUNT=analyst
 NGINX=/usr/sbin/nginx
+SYSTEMCTL=/usr/bin/systemctl
 SUDOERS=/etc/sudoers.d/analyst
 SSHD=/etc/ssh/sshd_config.d/60-analyst.conf
 FENCE=/etc/nftables.conf
-READ_ONLY="/etc/nginx /var/log/nginx /var/log/modsecurity"
+READ_ONLY="/etc/nginx /var/log/nginx /var/log/modsecurity /etc/rsyslog.conf /etc/rsyslog.d /usr/local/share/slot"
+CRS=/etc/nginx/modsecurity/crs
+DEFENCE_FILES="$CRS/crs-setup.conf $CRS/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf $CRS/rules/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf /etc/nginx/defence/http.conf /etc/nginx/defence/board.com.conf /etc/nginx/defence/corp.com.conf"
 
 account_made() {
   id "$ACCOUNT" >/dev/null 2>&1 || useradd --create-home --shell /bin/bash "$ACCOUNT"
@@ -15,7 +18,7 @@ account_made() {
 }
 
 nginx_checks_allowed() {
-  printf '%s ALL=(root) NOPASSWD: %s -t, %s -T\n' "$ACCOUNT" "$NGINX" "$NGINX" > "$SUDOERS.new"
+  printf '%s ALL=(root) NOPASSWD: %s -t, %s -T, %s -s reload, %s reload nginx\n' "$ACCOUNT" "$NGINX" "$NGINX" "$NGINX" "$SYSTEMCTL" > "$SUDOERS.new"
   chmod 0440 "$SUDOERS.new"
   visudo -cf "$SUDOERS.new"
   mv "$SUDOERS.new" "$SUDOERS"
@@ -28,9 +31,9 @@ shell_only_over_ssh() {
   sshd -t
 }
 
-no_network_for_the_account() {
-  printf 'table inet analyst\ndelete table inet analyst\ntable inet analyst {\n  chain output {\n    type filter hook output priority filter; policy accept;\n    meta skuid %s drop\n  }\n}\n' \
-    "$ACCOUNT" > "$FENCE"
+only_loopback_for_the_account() {
+  printf 'table inet analyst\ndelete table inet analyst\ntable inet analyst {\n  chain output {\n    type filter hook output priority filter; policy accept;\n    meta skuid %s oif "lo" accept\n    meta skuid %s drop\n  }\n}\n' \
+    "$ACCOUNT" "$ACCOUNT" > "$FENCE"
   chmod 0644 "$FENCE"
   nft -c -f "$FENCE"
   systemctl enable nftables.service
@@ -44,8 +47,17 @@ nothing_writable_by_its_groups() {
   done
 }
 
+defence_files_writable() {
+  for file in $DEFENCE_FILES; do
+    [ -f "$file" ] || install -m 0644 /dev/null "$file"
+    chown root:"$ACCOUNT" "$file"
+    chmod 0664 "$file"
+  done
+}
+
 account_made
 nginx_checks_allowed
 shell_only_over_ssh
-no_network_for_the_account
+only_loopback_for_the_account
 nothing_writable_by_its_groups
+defence_files_writable

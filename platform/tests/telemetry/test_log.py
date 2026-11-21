@@ -16,7 +16,7 @@ SPEC_VISIBILITY = {
     "action.sent": "attack", "tool.started": "attack", "tool.ended": "attack", "command.run": "attack",
     "origin.spent": "attack", "origin.switched": "attack", "origins.spent": "attack",
     "alert.seen": "defence", "rule.tested": "defence", "rule.applied": "defence", "rule.disabled": "defence",
-    "rule.drifted": "defence", "limit.below_floor": "defence", "objective.lost": "both",
+    "limit.below_floor": "defence", "objective.lost": "both",
 }
 AUDIENCES = {
     "both": kinds.BOTH, "attack": kinds.ATTACK_SIDE, "defence": kinds.DEFENCE_SIDE,
@@ -84,7 +84,7 @@ def test_another_round_s_events_never_show():
 @pytest.mark.django_db
 def test_a_page_stops_at_the_limit_and_the_next_page_carries_on():
     for order in range(5):
-        log.append(ROUND, "rule.applied", {"engine": "ids", "version": order})
+        log.append(ROUND, "rule.applied", {"engine": "ids", "version": order, "source": "console"})
 
     first = log.after(ROUND, 0, STAFF, limit=3)
     rest = log.after(ROUND, first.next, STAFF, limit=3)
@@ -97,8 +97,8 @@ def test_a_page_stops_at_the_limit_and_the_next_page_carries_on():
     ("round.paused", {}, None, LookupError),
     ("round.ended", {}, None, TypeError),
     ("round.ended", {"reason": "x", "extra": 1}, None, TypeError),
-    ("rule.applied", {"engine": "ids", "version": "first"}, None, TypeError),
-    ("rule.applied", {"engine": "ids", "version": True}, None, TypeError),
+    ("rule.applied", {"engine": "ids", "version": "first", "source": "console"}, None, TypeError),
+    ("rule.applied", {"engine": "ids", "version": True, "source": "console"}, None, TypeError),
     ("round.ended", {"reason": "x"}, "referee", TypeError),
 ])
 def test_a_malformed_event_is_refused_and_nothing_is_stored(kind, body, player_side, raised):

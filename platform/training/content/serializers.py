@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from training.models import PROBLEM_KINDS, PROBLEM_SIDES
@@ -18,7 +19,7 @@ class RoundSetup(serializers.Serializer):
 class InlinePosture(serializers.Serializer):
     name = serializers.CharField()
     suricata_rules = serializers.CharField(allow_blank=True, default="")
-    crs_tuning = serializers.DictField()
+    waf_files = serializers.DictField(child=serializers.CharField(allow_blank=True, trim_whitespace=False))
 
 
 class ProblemFields(serializers.Serializer):
@@ -73,7 +74,7 @@ class Posture(serializers.Serializer):
     wargame = serializers.CharField(source="wargame_id")
     name = serializers.CharField()
     suricata_rules = serializers.CharField(allow_blank=True, default="")
-    crs_tuning = serializers.DictField()
+    waf_files = serializers.DictField(child=serializers.CharField(allow_blank=True, trim_whitespace=False))
 
 
 class Wargame(serializers.Serializer):
@@ -85,6 +86,11 @@ class Wargame(serializers.Serializer):
     objective_model = serializers.CharField()
     case_file = serializers.CharField()
     default_traffic = serializers.CharField(allow_null=True)
+    waf_files = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
+    def get_waf_files(self, wargame) -> list[str]:
+        return list(self.context.get("waf_files", ()))
 
 
 class LearnerProblemSummary(serializers.Serializer):

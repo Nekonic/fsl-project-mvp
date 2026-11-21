@@ -7,6 +7,8 @@ from tests.training.defence.conftest import BASELINE, LOGIN_RULE, RECORDED, SEAR
 from training.defence import rules as service
 
 BASE = "/api/rounds/{round}/defence/"
+SETUP = "/etc/nginx/modsecurity/crs/crs-setup.conf"
+HTTP = "/etc/nginx/defence/http.conf"
 BENIGN = ("board-normal-search", "board-normal-search-with-apostrophe", "board-normal-post-list", "board-normal-sort",
           "board-normal-search-korean", "board-normal-comment")
 
@@ -77,7 +79,7 @@ def test_a_waf_test_lists_tool_cases_untested_and_replays_http_probes_against_th
         as_defender, board_round, cyber_range):
     cyber_range.gateway.blocks = {"probe-board-sqli-search": "SQL Injection Attack Detected via libinjection"}
 
-    answer = as_defender.post(url(board_round, "waf/test/"), {"posture": {"paranoia": 2}}, format="json")
+    answer = as_defender.post(url(board_round, "waf/test/"), {"files": {HTTP: "deny 203.0.113.9;\n"}}, format="json")
 
     result = answer.json()
     assert result["ok"] is True
@@ -91,7 +93,10 @@ def test_a_waf_test_lists_tool_cases_untested_and_replays_http_probes_against_th
     assert replayed["probe-board-sqli-login-bypass"]["body"] == RECORDED["board-sqli-login-bypass"]["body"]
     assert replayed["probe-board-sqli-search"]["response"] == {"status": 200, "body": "ok"}
     assert not any("nginx -s reload" in text for text in cyber_range.gateway.texts())
-    assert cyber_range.gateway.file == ""
+    assert cyber_range.gateway.files[HTTP] == ""
+    stored = service.latest_test(board_round, "waf")
+    assert stored.files[HTTP] == "deny 203.0.113.9;\n" and set(stored.files) == set(cyber_range.gateway.files), (
+        "a test keeps the whole set it ran: the given files over the live ones")
 
 
 def test_a_test_whose_rules_do_not_parse_returns_the_errors_and_no_verdicts(as_defender, board_round, cyber_range):
@@ -108,10 +113,10 @@ def test_a_test_whose_rules_do_not_parse_returns_the_errors_and_no_verdicts(as_d
 def test_a_waf_test_nginx_refuses_comes_back_as_errors(as_defender, board_round, cyber_range):
     cyber_range.gateway.nginx_errors = "unknown directive"
 
-    result = as_defender.post(url(board_round, "waf/test/"), {"posture": {"paranoia": 2}}, format="json").json()
+    result = as_defender.post(url(board_round, "waf/test/"), {"files": {HTTP: "x;\n"}}, format="json").json()
 
     assert result["ok"] is False
-    assert result["errors"] == [{"path": "posture", "code": "crs_refused", "line": 3, "message": "unknown directive"}]
+    assert result["errors"] == [{"path": "/x.conf", "code": "crs_refused", "line": 3, "message": "unknown directive"}]
 
 
 def test_a_second_test_while_one_runs_on_the_same_allocation_and_engine_is_busy(as_defender, board_round, defender,
@@ -124,7 +129,7 @@ def test_a_second_test_while_one_runs_on_the_same_allocation_and_engine_is_busy(
         with pytest.raises(errors.Conflict) as refused:
             service.test_rules(board_round, defender, "ids", SEARCH_RULE)
         seen.append(refused.value.code)
-        seen.append(service.test_rules(board_round, defender, "waf", {"paranoia": 2}).result["ok"])
+        seen.append(service.test_rules(board_round, defender, "waf", {HTTP: "deny all;\n"}).result["ok"])
 
     cyber_range.node_runner("sensor").during = again
 
@@ -183,8 +188,8 @@ def test_the_check_routes_return_errors_without_running_any_probe(as_defender, b
     ids = as_defender.post(url(board_round, "ids/rules/check/"), {"text": SEARCH_RULE + LOGIN_RULE}, format="json")
     unread = as_defender.post(url(board_round, "ids/rules/check/"), {"text": "alert x (msg:\"a\";)\n"},
                               format="json")
-    waf = as_defender.post(url(board_round, "waf/check/"), {"posture": {"paranoia": 7}}, format="json")
-    fine = as_defender.post(url(board_round, "waf/check/"), {"posture": {"paranoia": 1}}, format="json")
+    waf = as_defender.post(url(board_round, "waf/check/"), {"files": {HTTP: "access_log off;\n"}}, format="json")
+    fine = as_defender.post(url(board_round, "waf/check/"), {"files": {HTTP: "deny all;\n"}}, format="json")
 
     assert ids.json()["ok"] is False and ids.json()["errors"][0]["line"] == 2
     assert unread.json() == {"ok": False, "errors": [{"path": "text", "code": "unread_sid", "line": 1,
@@ -195,19 +200,15 @@ def test_the_check_routes_return_errors_without_running_any_probe(as_defender, b
     assert not any(one.argv[0] == "curl" for one in cyber_range.gateway.sent)
 
 
-def test_a_posture_the_validator_refuses_names_the_field_it_refuses(as_defender, board_round, cyber_range):
-    posture = {"paranoia": 2, "exclusions": [{"rule_id": 942100, "target": "ARGS:q"},
-                                             {"rule_id": 942100, "target": "NOT A VARIABLE"}]}
+def test_a_refused_file_is_named_by_its_path_and_line(as_defender, board_round, cyber_range):
+    files = {HTTP: "deny all;\n", SETUP: "SecRuleEngine On\nSecAuditEngine Off\n"}
 
-    checked = as_defender.post(url(board_round, "waf/check/"), {"posture": posture}, format="json").json()
-    applied = as_defender.post(url(board_round, "waf/apply/"), {"posture": posture, "base_version": 0},
-                               format="json")
+    checked = as_defender.post(url(board_round, "waf/check/"), {"files": files}, format="json").json()
+    applied = as_defender.post(url(board_round, "waf/apply/"), {"files": files, "base_version": 0}, format="json")
 
-    assert [(error["path"], error["code"]) for error in checked["errors"]] == [
-        ("exclusions[1].target", "crs_refused")]
+    assert [(error["path"], error["line"], error["code"]) for error in checked["errors"]] == [(SETUP, 2, "crs_refused")]
     assert applied.status_code == 422
-    assert [(error["path"], error["code"]) for error in applied.json()["errors"]] == [
-        ("exclusions[1].target", "crs_refused")]
+    assert [(error["path"], error["line"]) for error in applied.json()["errors"]] == [(SETUP, 2)]
 
 
 def test_a_test_the_sensor_cannot_finish_leaves_no_test_behind(as_defender, board_round, cyber_range):

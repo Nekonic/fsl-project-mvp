@@ -29,12 +29,12 @@ def two_allocations(stack_is_up):
             "second_cases": set(plays.per_case(plays.score(second).body)),
         }
 
-        assert plays.tune_waf(second, {"paranoia": 4}).ok
-        assert plays.tune_waf(first, {"paranoia": 1}).ok
+        assert plays.tune_waf(second, plays.at_paranoia(4)).ok
+        assert plays.tune_waf(first, plays.at_paranoia(1)).ok
         committed = plays.declared_rules()
         seen["committed"] = committed
         seen["applied"] = plays.apply_ids(first, committed + PROBE)
-        seen["second_tuning"] = plays.waf_posture(second)["posture"]
+        seen["second_tuning"] = plays.waf_files(second)[plays.CRS_EXCLUSIONS]
         seen["first_rules"] = plays.ids_rules(first)["text"]
         seen["second_rules"] = plays.ids_rules(second)["text"]
         seen["served"] = o_brien(first)
@@ -65,7 +65,7 @@ def test_two_rounds_tune_their_own_waf_and_their_own_sensor(two_allocations):
     assert seen["applied"].status == 200, seen["applied"].text
     assert seen["first_rules"] == seen["committed"] + PROBE
     assert seen["second_rules"] == seen["committed"], "a rule applied in one round reached another's sensor"
-    assert seen["second_tuning"]["paranoia"] == 4, "a tuning applied in one round reached another's record"
+    assert "blocking_paranoia_level=4" in seen["second_tuning"], "WAF files applied in one round reached another's"
     assert (seen["served"], seen["refused"]) == (200, 403), (
         "paranoia level 1 in the first round and 4 in the second should serve and "
         f"block the O'Brien search respectively; got {seen['served']} and {seen['refused']}"

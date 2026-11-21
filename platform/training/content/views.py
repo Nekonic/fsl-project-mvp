@@ -120,4 +120,5 @@ class Wargames(APIView):
 
     @extend_schema(tags=STAFF, responses=serializers.Wargame(many=True), operation_id="staff_wargames")
     def get(self, request):
-        return Response(serializers.Wargame(service.wargames(), many=True).data)
+        return Response(serializers.Wargame(service.wargames(), many=True,
+                                            context={"waf_files": service.waf_files()}).data)

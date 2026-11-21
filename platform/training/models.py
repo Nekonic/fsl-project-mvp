@@ -26,7 +26,7 @@ class Posture(models.Model):
     wargame = models.ForeignKey(Wargame, on_delete=models.PROTECT, related_name="postures")
     name = models.CharField(max_length=100)
     suricata_rules = models.TextField(blank=True, default="")
-    crs_tuning = models.JSONField(default=dict)
+    waf_files = models.JSONField(default=dict)
 
     class Meta:
         ordering = ["wargame_id", "name"]
@@ -208,14 +208,15 @@ class Origin(models.Model):
 
 
 ENGINE_CHOICES = [(engine, engine) for engine in ENGINES]
+RULE_SOURCES = [("setup", "setup"), ("console", "console"), ("terminal", "terminal")]
 
 
 class RuleTest(models.Model):
     round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name="rule_tests")
     player = models.ForeignKey(Player, on_delete=models.CASCADE, null=True, blank=True, related_name="rule_tests")
     engine = models.CharField(max_length=8, choices=ENGINE_CHOICES)
-    body_sha = models.CharField(max_length=64)
-    body = models.TextField()
+    sha = models.CharField(max_length=64)
+    files = models.JSONField(default=dict)
     syntax_ok = models.BooleanField(default=False)
     result = models.JSONField(default=dict)
     created = models.DateTimeField(auto_now_add=True)
@@ -228,13 +229,14 @@ class RuleSet(models.Model):
     round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name="rule_sets")
     engine = models.CharField(max_length=8, choices=ENGINE_CHOICES)
     version = models.PositiveIntegerField()
-    body = models.TextField()
+    files = models.JSONField(default=dict)
+    sha = models.CharField(max_length=64)
+    source = models.CharField(max_length=8, choices=RULE_SOURCES, default="console")
     applied_at = models.DateTimeField()
     tested = models.ForeignKey(RuleTest, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     player = models.ForeignKey(Player, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     same_as_tested = models.BooleanField(default=False)
     sensors = models.JSONField(default=list)
-    drifted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["round_id", "engine", "version"]

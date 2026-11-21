@@ -6,6 +6,7 @@ from tests.training.defence.conftest import BASELINE, SEARCH_RULE
 from training.defence import rules as service
 
 BASE = "/api/rounds/{round}/defence/"
+HTTP = "/etc/nginx/defence/http.conf"
 
 
 def url(found, tail):
@@ -59,36 +60,48 @@ def test_a_disable_past_its_time_is_enabled_again(as_defender, board_round, cybe
     assert cyber_range.sensors["sensor"].rules == BASELINE + SEARCH_RULE
 
 
-def test_a_live_crs_file_that_differs_from_the_head_posture_is_drift_reported_once(as_defender, board_round,
-                                                                                  cyber_range, at):
-    as_defender.post(url(board_round, "waf/apply/"), {"posture": {"paranoia": 2}, "base_version": 0}, format="json")
+def test_a_reload_done_in_the_terminal_is_recorded_as_the_next_version_on_the_next_read(as_defender, board_round,
+                                                                                         defender, cyber_range):
+    service.record_live_waf(board_round, service.SETUP)
 
-    assert service.check_drift(board_round, at) is False
-    assert service.posture_drift(board_round) is False
+    cyber_range.gateway.edited(HTTP, "deny 203.0.113.9;\n", reloaded=True)
 
-    cyber_range.gateway.file += 'SecAction "id:10999,phase:1,pass,nolog,ctl:ruleEngine=Off"\n'
-
-    assert service.check_drift(board_round, at) is True
-    assert service.check_drift(board_round, at) is True
-    assert service.posture_drift(board_round) is True
-    drifted = Event.objects.filter(round_id=board_round.pk, kind="rule.drifted")
-    assert [(event.body, event.player_side) for event in drifted] == [({"engine": "waf"}, "defence")]
-
-
-def test_a_round_with_no_applied_posture_has_nothing_to_drift_from(board_round, cyber_range, at):
-    cyber_range.gateway.file = "anything"
-
-    assert service.check_drift(board_round, at) is False
+    assert service.record_terminal_reload(board_round) is True
+    assert service.record_terminal_reload(board_round) is False, "the same running files are one version"
+    stored = service.versions(board_round, "waf")
+    assert [(one.version, one.source) for one in stored] == [(1, "setup"), (2, "terminal")]
+    assert stored[-1].files[HTTP] == "deny 203.0.113.9;\n" and stored[-1].player == defender
+    applied = Event.objects.filter(round_id=board_round.pk, kind="rule.applied").order_by("id").last()
+    assert (applied.body, applied.player_side) == ({"engine": "waf", "version": 2, "source": "terminal"}, "defence")
+    shown = as_defender.get(url(board_round, "waf/")).json()
+    assert shown["version"] == 2 and shown["recorded"] is True
 
 
-def test_a_waf_the_platform_cannot_read_is_not_reported_as_drift(as_defender, board_round, cyber_range, at):
-    as_defender.post(url(board_round, "waf/apply/"), {"posture": {"paranoia": 2}, "base_version": 0}, format="json")
+def test_files_edited_but_not_reloaded_are_not_running_and_are_not_recorded(as_defender, board_round, cyber_range):
+    service.record_live_waf(board_round, service.SETUP)
+
+    cyber_range.gateway.edited(HTTP, "deny 203.0.113.9;\n", reloaded=False)
+
+    assert service.record_terminal_reload(board_round) is False
+    assert [one.version for one in service.versions(board_round, "waf")] == [1]
+    shown = as_defender.get(url(board_round, "waf/")).json()
+    assert {one["path"]: one["text"] for one in shown["files"]}[HTTP] == "deny 203.0.113.9;\n"
+    assert shown["recorded"] is False
+
+
+def test_a_round_with_no_recorded_version_has_nothing_to_compare_a_reload_with(board_round, cyber_range):
+    cyber_range.gateway.edited(HTTP, "deny all;\n", reloaded=True)
+
+    assert service.record_terminal_reload(board_round) is False
+
+
+def test_a_waf_the_platform_cannot_read_records_nothing(board_round, cyber_range):
+    service.record_live_waf(board_round, service.SETUP)
 
     def unreachable(argv, stdin=None, timeout=60.0):
         return Ran(255, "ssh: connect to host refused")
 
     cyber_range.gateway = unreachable
 
-    assert service.check_drift(board_round, at) is False
-    assert service.posture_drift(board_round) is False
-    assert not Event.objects.filter(round_id=board_round.pk, kind="rule.drifted").exists()
+    assert service.record_terminal_reload(board_round) is False
+    assert [one.version for one in service.versions(board_round, "waf")] == [1]

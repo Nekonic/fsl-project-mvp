@@ -1,5 +1,13 @@
+import pytest
+
 from telemetry.models import Event
 from tests.training.defence.conftest import BASELINE, LOGIN_RULE, SEARCH_RULE
+
+SETUP_FILE = "/etc/nginx/modsecurity/crs/crs-setup.conf"
+EXCLUSIONS = "/etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf"
+HTTP = "/etc/nginx/defence/http.conf"
+EXCLUDE_Q = ('SecRule REQUEST_FILENAME "@beginsWith /search/" '
+             '"id:10001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=942100;ARGS:q"\n')
 
 BASE = "/api/rounds/{round}/defence/"
 
@@ -25,8 +33,8 @@ def test_an_apply_writes_every_sensor_and_records_a_new_version(as_defender, boa
     assert two_sensors.sensors["sensor"].rules == SEARCH_RULE
     assert two_sensors.sensors["sensor2"].rules == SEARCH_RULE
     assert as_defender.get(url(board_round, "ids/rules/")).json() == {"text": SEARCH_RULE, "version": 1}
-    assert Event.objects.filter(round_id=board_round.pk, kind="rule.applied").get().body == {"engine": "ids",
-                                                                                             "version": 1}
+    assert Event.objects.filter(round_id=board_round.pk, kind="rule.applied", body__engine="ids").get().body == {
+        "engine": "ids", "version": 1, "source": "console"}
 
 
 def test_an_apply_on_a_stale_base_is_refused_with_the_current_version_and_writes_nothing(as_defender, board_round,
@@ -103,7 +111,8 @@ def test_the_applied_version_says_whether_it_is_the_text_that_was_tested(as_defe
 
 def test_an_apply_need_not_be_tested_but_a_named_test_must_be_this_player_s_test_of_this_engine(as_defender,
                                                                                               board_round):
-    waf_test = as_defender.post(url(board_round, "waf/test/"), {"posture": {"paranoia": 2}}, format="json").json()
+    waf_test = as_defender.post(url(board_round, "waf/test/"), {"files": {HTTP: "deny 203.0.113.9;\n"}},
+                                format="json").json()
 
     untested = as_defender.post(url(board_round, "ids/rules/apply/"), {"text": SEARCH_RULE, "base_version": 0},
                                 format="json")
@@ -115,33 +124,69 @@ def test_an_apply_need_not_be_tested_but_a_named_test_must_be_this_player_s_test
     assert wrong.json()["errors"] == [{"path": "tested", "code": "does_not_exist"}]
 
 
-def test_the_waf_posture_is_applied_as_structured_tuning_and_versioned(as_defender, board_round, cyber_range):
-    posture = {"paranoia": 3, "exclusions": [{"rule_id": 942100, "target": "ARGS:q", "path": "/search/"}]}
-
-    answer = as_defender.post(url(board_round, "waf/apply/"), {"posture": posture, "base_version": 0}, format="json")
+def test_the_waf_files_are_written_reloaded_and_recorded_as_a_version_with_their_text_and_hash(as_defender,
+                                                                                               board_round,
+                                                                                               cyber_range):
+    answer = as_defender.post(url(board_round, "waf/apply/"),
+                              {"files": {EXCLUSIONS: EXCLUDE_Q}, "base_version": 0}, format="json")
 
     assert answer.status_code == 200 and answer.json()["version"] == 1
-    assert "blocking_paranoia_level=3" in cyber_range.gateway.file
-    assert as_defender.get(url(board_round, "waf/")).json() == {
-        "posture": {"paranoia": 3, "exclusions": [{"rule_id": 942100, "target": "ARGS:q", "path": "/search/"}]},
-        "version": 1}
+    assert cyber_range.gateway.files[EXCLUSIONS] == EXCLUDE_Q
+    assert cyber_range.gateway.workers == 2
+    shown = as_defender.get(url(board_round, "waf/")).json()
+    assert {one["path"]: one["text"] for one in shown["files"]}[EXCLUSIONS] == EXCLUDE_Q
+    assert shown["version"] == 1 and shown["recorded"] is True and shown["sha"] == answer.json()["sha"]
+    stored = as_defender.get(url(board_round, "waf/versions/1/")).json()
+    assert stored["source"] == "console" and stored["sha"] == shown["sha"]
+    assert {one["path"]: one["text"] for one in stored["files"]} == {one["path"]: one["text"] for one in shown["files"]}
 
 
 def test_a_stale_waf_apply_is_refused(as_defender, board_round, cyber_range):
-    as_defender.post(url(board_round, "waf/apply/"), {"posture": {"paranoia": 2}, "base_version": 0}, format="json")
+    as_defender.post(url(board_round, "waf/apply/"), {"files": {EXCLUSIONS: EXCLUDE_Q}, "base_version": 0},
+                     format="json")
 
-    answer = as_defender.post(url(board_round, "waf/apply/"), {"posture": {"paranoia": 4}, "base_version": 0},
+    answer = as_defender.post(url(board_round, "waf/apply/"), {"files": {EXCLUSIONS: ""}, "base_version": 0},
                               format="json")
 
     assert answer.status_code == 409
     assert answer.json()["errors"][0]["params"] == {"current_version": 1}
-    assert "blocking_paranoia_level=2" in cyber_range.gateway.file
+    assert cyber_range.gateway.files[EXCLUSIONS] == EXCLUDE_Q
 
 
-def test_a_posture_the_validator_refuses_never_reaches_the_waf(as_defender, board_round, cyber_range):
-    answer = as_defender.post(url(board_round, "waf/apply/"), {"posture": {"paranoia": 9}, "base_version": 0},
+def test_files_nginx_refuses_on_reload_are_rolled_back_and_refused_with_the_file_and_line(as_defender, board_round,
+                                                                                        cyber_range):
+    before = dict(cyber_range.gateway.files)
+    cyber_range.gateway.reload_fails = 'unknown directive "denyy"'
+
+    answer = as_defender.post(url(board_round, "waf/apply/"), {"files": {HTTP: "denyy all;\n"}, "base_version": 0},
                               format="json")
 
     assert answer.status_code == 422
-    assert answer.json()["errors"][0]["code"] == "crs_refused"
-    assert cyber_range.gateway.file == ""
+    assert answer.json()["errors"] == [{"path": HTTP, "code": "crs_refused", "line": 2,
+                                        "params": {"message": 'unknown directive "denyy"'}}]
+    assert cyber_range.gateway.files == before
+    assert as_defender.get(url(board_round, "waf/versions/")).json() == []
+
+
+@pytest.mark.parametrize("files, path", [
+    ({"/etc/nginx/nginx.conf": "events {}\n"}, "/etc/nginx/nginx.conf"),
+    ({HTTP: "access_log off;\n"}, HTTP),
+    ({SETUP_FILE: "SecAuditEngine Off\n"}, SETUP_FILE),
+])
+def test_a_file_the_defence_does_not_edit_or_the_platform_s_logging_never_reaches_the_waf(as_defender, board_round,
+                                                                                        cyber_range, files, path):
+    before = dict(cyber_range.gateway.files)
+
+    answer = as_defender.post(url(board_round, "waf/apply/"), {"files": files, "base_version": 0}, format="json")
+
+    assert answer.status_code == 422
+    assert [(one["path"], one["code"]) for one in answer.json()["errors"]] == [(path, "crs_refused")]
+    assert cyber_range.gateway.files == before
+
+
+def test_the_rule_engine_may_be_turned_off_the_score_shows_the_result(as_defender, board_round, cyber_range):
+    answer = as_defender.post(url(board_round, "waf/apply/"),
+                              {"files": {SETUP_FILE: "SecRuleEngine Off\n"}, "base_version": 0}, format="json")
+
+    assert answer.status_code == 200
+    assert cyber_range.gateway.files[SETUP_FILE] == "SecRuleEngine Off\n"

@@ -70,16 +70,25 @@ DESCRIPTIONS = {
     "defence_ids_disabled": "List the Suricata rules disabled for a while.",
     "defence_ids_disable": "Disable one Suricata rule by `sid` for `minutes`, with a `reason`.",
     "defence_ids_enable": "Enable a disabled Suricata rule again by `sid`.",
-    "defence_waf": "Read the applied CRS posture (paranoia, exclusions, thresholds, detection_only) and its "
-                   "version.",
-    "defence_waf_versions": "List the applied CRS posture versions and whether each was the tested posture.",
-    "defence_waf_check": "Check a CRS posture without applying it; errors come back by field path.",
-    "defence_waf_test": "Test a CRS posture against the recorded probes, never the live range. Tool cases are "
+    "defence_waf": "Read the WAF files the defence edits (the CRS setup file, the request and response "
+                   "exclusion files, the nginx files for deny and limit_req) as they are now, their hash, the "
+                   "last recorded version and whether the files are that version.",
+    "defence_waf_versions": "List the recorded WAF versions: each one's hash, whether it came from the round's "
+                            "setup, the console or a reload in the terminal, and whether it was the tested set.",
+    "defence_waf_version": "Read one recorded WAF version with the text of every file.",
+    "defence_ids_version": "Read one recorded Suricata rule version with its text.",
+    "defence_waf_check": "Check WAF files with nginx -t on a scratch copy without applying them; `files` maps a "
+                         "file path to its whole text and leaves out the files you keep. Errors name the file "
+                         "and line.",
+    "defence_waf_test": "Test WAF files against the recorded probes, never the live range. Tool cases are "
                         "listed as untested. Only one test runs at a time.",
-    "defence_waf_test_result": "Read a stored CRS posture test by its id.",
-    "defence_waf_apply": "Apply a CRS posture. `base_version` must be the version you read; pass `tested` with "
-                         "the test id of the same posture to record that it was tested.",
-    "defence_terminal": "Get a short-lived read-only shell on the WAF: a web terminal URL and an SSH jump grant.",
+    "defence_waf_test_result": "Read a stored WAF test by its id.",
+    "defence_waf_apply": "Write WAF files, run nginx -t and reload, rolling back if nginx refuses them. "
+                         "`base_version` must be the version you read; pass `tested` with the test id of the "
+                         "same files to record that it was tested.",
+    "defence_terminal": "Get a short-lived shell on the WAF as analyst: a web terminal URL and an SSH jump grant. "
+                        "The WAF files are writable there, with sudo nginx -t and an nginx reload; a reload "
+                        "there is recorded as the next WAF version on the next request.",
     "defence_forfeit": "Give up the round as the defender. Ends the round.",
 }
 

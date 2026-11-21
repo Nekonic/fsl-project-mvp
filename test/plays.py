@@ -39,10 +39,17 @@ CASES = REPO_ROOT / "redteam/cases"
 WARGAMES = REPO_ROOT / "wargames"
 TITLE = "Acceptance {wargame}"
 BOT = "acceptance"
-DETECT_WITHOUT_BLOCKING_SEARCH = {
-    "paranoia": 1,
-    "exclusions": [{"rule_id": 949110, "target": "", "path": "/search/"}],
-}
+CRS_EXCLUSIONS = "/etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf"
+
+
+def at_paranoia(level: int, *lines: str, inbound: int | None = None) -> dict[str, str]:
+    threshold = f",setvar:tx.inbound_anomaly_score_threshold={inbound}" if inbound else ""
+    return {CRS_EXCLUSIONS: f'SecAction "id:10000,phase:1,pass,nolog,setvar:tx.blocking_paranoia_level={level},'
+                            f'setvar:tx.detection_paranoia_level={level}{threshold}"\n' + "".join(lines)}
+
+
+DETECT_WITHOUT_BLOCKING_SEARCH = at_paranoia(
+    1, 'SecRule REQUEST_FILENAME "@beginsWith /search/" "id:10001,phase:1,pass,nolog,ctl:ruleRemoveById=949110"\n')
 BENIGN_EVERY_S = 30
 ROOM_WAIT = 1800
 POLL = 2
@@ -126,7 +133,7 @@ class Setup:
     side: str = "defence"
     matchups: tuple[str, ...] = ("def_vs_bot",)
     suricata_rules: str = ""
-    crs_tuning: dict = field(default_factory=lambda: dict(DETECT_WITHOUT_BLOCKING_SEARCH))
+    waf_files: dict = field(default_factory=lambda: dict(DETECT_WITHOUT_BLOCKING_SEARCH))
     probe_cases: tuple[str, ...] = ()
 
 
@@ -136,12 +143,11 @@ def round_document(setup: Setup) -> dict:
         "problem": {"kind": "round", "wargame": setup.wargame, "side": setup.side, "title": setup.title,
                     "summary": "Live acceptance round", "body": "Driven by test/ through the generated client",
                     "published": False},
-        "steps": [],
         "round": {"matchups": list(setup.matchups), "posture": posture, "probe_cases": list(setup.probe_cases),
                   "objectives": objective_keys(setup.wargame), "traffic": None,
                   "benign_every_s": BENIGN_EVERY_S, "time_limit_s": None},
         "start_posture": {"name": posture, "suricata_rules": setup.suricata_rules or declared_rules(),
-                          "crs_tuning": setup.crs_tuning},
+                          "waf_files": setup.waf_files},
     }
 
 
@@ -397,10 +403,10 @@ def apply_ids(played: Played, text: str, tested: int | None = None) -> Answer:
                round_id=played.round)
 
 
-def tune_waf(played: Played, posture: dict, tested: int | None = None) -> Answer:
+def tune_waf(played: Played, files: dict[str, str], tested: int | None = None) -> Answer:
     version = done(defence_waf, played.defence, round_id=played.round)["version"]
     return ask(defence_waf_apply, played.defence,
-               {"posture": posture, "base_version": version, **tested_field(tested)}, round_id=played.round)
+               {"files": files, "base_version": version, **tested_field(tested)}, round_id=played.round)
 
 
 def rule_test_ids(played: Played, text: str, cases: list[str] | None = None) -> Answer:
@@ -408,8 +414,8 @@ def rule_test_ids(played: Played, text: str, cases: list[str] | None = None) -> 
                round_id=played.round)
 
 
-def rule_test_waf(played: Played, posture: dict, cases: list[str] | None = None) -> Answer:
-    return ask(defence_waf_test, played.defence, {"posture": posture, **({"cases": cases} if cases else {})},
+def rule_test_waf(played: Played, files: dict[str, str], cases: list[str] | None = None) -> Answer:
+    return ask(defence_waf_test, played.defence, {"files": files, **({"cases": cases} if cases else {})},
                round_id=played.round)
 
 
@@ -433,8 +439,8 @@ def defence_terminal_grant(played: Played) -> Answer:
     return ask(defence_terminal, played.defence, round_id=played.round)
 
 
-def waf_posture(played: Played) -> dict:
-    return done(defence_waf, played.defence, round_id=played.round)
+def waf_files(played: Played) -> dict[str, str]:
+    return {one["path"]: one["text"] for one in done(defence_waf, played.defence, round_id=played.round)["files"]}
 
 
 def disable_rule(played: Played, sid: int, minutes: float, reason: str) -> Answer:

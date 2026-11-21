@@ -54,7 +54,6 @@ class RoundScore:
     per_case: tuple[CaseLine, ...]
     totals: Totals
     free_actions: tuple[OriginActivity, ...]
-    posture_drift: bool
     note: str = ONE_CASE_ONE_DECISION
 
     def shown(self) -> dict[str, Any]:
@@ -64,7 +63,6 @@ class RoundScore:
             "outcomes": {"per_case": [vars(line) for line in self.per_case], "totals": vars(self.totals),
                          "note": self.note},
             "free_actions": {"by_origin": [vars(origin) for origin in self.free_actions]},
-            "posture_drift": self.posture_drift,
         }
 
 
@@ -87,7 +85,7 @@ def objective_records(found: Round) -> tuple[ObjectiveRecord, ...]:
 
 
 def score(found: Round, actions: Sequence[ActionRecord], detections: Sequence[DetectionRecord],
-          correlation: str | None = None, posture_drift: bool = False) -> RoundScore:
+          correlation: str | None = None) -> RoundScore:
     end = until(found)
     cases = [action.as_case() for action in actions if end is None or action.started_at <= end]
     detections = [detection for detection in detections if end is None or detection.timestamp <= end]
@@ -106,7 +104,6 @@ def score(found: Round, actions: Sequence[ActionRecord], detections: Sequence[De
                        for outcome in per_case(result, cases, detections)),
         totals=Totals(tp=totals.tp, fp=totals.fp, fn=totals.fn, tn=totals.tn),
         free_actions=free_actions(result, cases, detections),
-        posture_drift=posture_drift,
     )
 
 

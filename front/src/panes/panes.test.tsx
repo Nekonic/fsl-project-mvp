@@ -1,11 +1,12 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/preact";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { blockingScore, score } from "../../mock/fixtures/result";
+import { score } from "../../mock/fixtures/result";
 import { t, tFor } from "../strings";
 import { nodeLabel, zoneCaption } from "./Map";
 import { Objectives } from "./Objectives";
 import { presetKibana } from "./Kibana";
 import { ScoreReport } from "./Score";
+import { Waf } from "./Waf";
 
 const objectives = [
   { key: "objective-a", name: "Objective A", state: "lost", seen: false },
@@ -61,12 +62,6 @@ describe("ScoreReport", () => {
     expect(cellsOf("5.188.10.10")[1]).toBe("998");
     expect(cellsOf("181.8.0.10")[1]).toBe("12");
     expect(document.body.textContent).not.toContain("one_case_one_decision");
-    expect(screen.queryByText(t("result.posture_drift"))).toBeNull();
-  });
-
-  it("warns when the defence posture drifted", () => {
-    render(<ScoreReport score={blockingScore} />);
-    expect(screen.getByText(t("result.posture_drift"))).toBeTruthy();
   });
 });
 
@@ -92,5 +87,54 @@ describe("Kibana preset", () => {
     expect(kept.size).toBeGreaterThan(0);
     expect([...kept.values()].every((value) => value === "true")).toBe(true);
     expect(store.getItem("discover:searchText")).toBeNull();
+  });
+});
+
+describe("Waf", () => {
+  const HTTP = "/etc/waf/http.conf";
+  const SETUP = "/etc/waf/crs-setup.conf";
+
+  function wafAnswering(recorded: boolean) {
+    const sent: Array<{ url: string; body: unknown }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const reply = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (init?.method === "POST") {
+        sent.push({ url, body: JSON.parse(String(init.body)) });
+        return reply({ ok: true, errors: [] });
+      }
+      if (url.includes("/events/")) return reply({ events: [], next: 0 });
+      if (url.endsWith("/waf/versions/")) {
+        return reply([{ version: 2, applied_at: "2026-11-21T10:00:00Z", tested: null, same_as_tested: false, sha: "9be1c04f7a3d2e58aa", source: "terminal" }]);
+      }
+      return reply({ files: [{ path: SETUP, text: "deny all;\n" }, { path: HTTP, text: "" }], sha: "9be1c04f7a3d2e58aa", version: 2, recorded });
+    }));
+    return sent;
+  }
+
+  it("shows the current text of each file, the version history with where it came from, and checks only the changed file", async () => {
+    document.cookie = "cr_csrf=token";
+    const sent = wafAnswering(true);
+    render(<Waf round={7} side="defence" placement="main" />);
+
+    const editor = await screen.findByLabelText("crs-setup.conf");
+    expect((editor as HTMLTextAreaElement).value).toBe("deny all;\n");
+    expect(await screen.findByText(t("versions.source.terminal"))).toBeTruthy();
+    expect(screen.getByText("9be1c04f7a3d")).toBeTruthy();
+    expect(screen.queryByText(t("waf.not_running"))).toBeNull();
+
+    fireEvent.input(editor, { target: { value: "deny 203.0.113.9;\n" } });
+    fireEvent.click(screen.getByText(t("common.validate")));
+
+    await waitFor(() => expect(sent.length).toBe(1));
+    expect(sent[0]?.url).toContain("/api/rounds/7/defence/waf/check/");
+    expect(sent[0]?.body).toEqual({ files: { [SETUP]: "deny 203.0.113.9;\n" } });
+  });
+
+  it("says when the files on the WAF are not the recorded version", async () => {
+    wafAnswering(false);
+    render(<Waf round={7} side="defence" placement="main" />);
+
+    expect(await screen.findByText(t("waf.not_running"))).toBeTruthy();
   });
 });

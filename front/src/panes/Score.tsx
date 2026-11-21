@@ -111,7 +111,6 @@ function FreeActions({ score }: { score: ScoreShown }) {
 export function ScoreReport({ score }: { score: ScoreShown }) {
   return (
     <Stack gap="sm">
-      {score.posture_drift && <Notice tone="warn" title={t("result.posture_drift")} />}
       <Columns shape="main-side">
         <Objectives score={score} />
         <DetectionTotals score={score} />

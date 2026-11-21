@@ -269,11 +269,15 @@ def test_the_waf_validates_its_configuration_and_reloads_as_the_platform_asks(wa
     waf = device("cr-waf", wargame)
     script = text("waf/install.sh")
 
-    assert waf.rules == assigned("waf/install.sh")["EXCLUSIONS"].replace("$MODSEC_DIR",
-                                                                        assigned("waf/install.sh")["MODSEC_DIR"])
+    modsec, sites = assigned("waf/install.sh")["MODSEC_DIR"], assigned("waf/install.sh")["DEFENCE_DIR"]
+    assert waf.files == (f"{modsec}/crs/crs-setup.conf",
+                         assigned("waf/install.sh")["EXCLUSIONS"].replace("$MODSEC_DIR", modsec),
+                         assigned("waf/install.sh")["AFTER_EXCLUSIONS"].replace("$MODSEC_DIR", modsec),
+                         f"{sites}/http.conf", f"{sites}/board.com.conf", f"{sites}/corp.com.conf")
     assert waf.reload.split()[:2] == ["nginx", "-t"] and "nginx -s reload" in waf.reload
-    assert '[ -f "$EXCLUSIONS" ] || install -m 0644 /dev/null "$EXCLUSIONS"' in script, (
-        "the platform writes it as root; no group may, since the read-only analyst is in adm")
+    assert '[ -f "$EXCLUSIONS" ] || install -m 0644 /dev/null "$EXCLUSIONS"' in script
+    assert '[ -f "$AFTER_EXCLUSIONS" ] || install -m 0644 /dev/null "$AFTER_EXCLUSIONS"' in script
+    assert '[ -f "$DEFENCE_DIR/$site" ] || install -m 0644 /dev/null "$DEFENCE_DIR/$site"' in script
     assert "nginx -t\n" in script
     assert "Before=nginx.service" in text("waf/slot-boot.service"), "nginx resolves board and corp-wp when it starts"
 

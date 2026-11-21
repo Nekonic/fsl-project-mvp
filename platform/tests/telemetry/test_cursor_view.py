@@ -37,7 +37,7 @@ def test_each_player_reads_only_its_side_s_kinds(browser, found, make_user):
     rounds.playing(found, "attack", attacker)
     rounds.playing(found, "defence", defender)
     log.append(found.pk, "origin.spent", {"ip": "5.188.10.10", "by": "deny"}, player_side="attack")
-    log.append(found.pk, "rule.applied", {"engine": "ids", "version": 1}, player_side="defence")
+    log.append(found.pk, "rule.applied", {"engine": "ids", "version": 1, "source": "console"}, player_side="defence")
     log.append(found.pk, "round.ended", {"reason": "time_limit"})
 
     browser.force_authenticate(attacker)

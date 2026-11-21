@@ -57,6 +57,18 @@ class WafVersions(DefenceView):
         return Response(serializers.AppliedVersion(service.versions(request.round, WAF), many=True).data)
 
 
+class IdsVersion(DefenceView):
+    @extend_schema(tags=TAGS, responses=serializers.VersionFiles, operation_id="defence_ids_version")
+    def get(self, request, round_id: int, version: int):
+        return Response(serializers.VersionFiles(service.version(request.round, IDS, version)).data)
+
+
+class WafVersion(DefenceView):
+    @extend_schema(tags=TAGS, responses=serializers.VersionFiles, operation_id="defence_waf_version")
+    def get(self, request, round_id: int, version: int):
+        return Response(serializers.VersionFiles(service.version(request.round, WAF, version)).data)
+
+
 class IdsCheck(DefenceView):
     @extend_schema(tags=TAGS, request=serializers.Text, responses=serializers.RuleCheck, operation_id="defence_ids_check")
     def post(self, request, round_id: int):
@@ -115,15 +127,15 @@ class IdsEnable(DefenceView):
 class Waf(DefenceView):
     @extend_schema(tags=TAGS, responses=serializers.WafRead, operation_id="defence_waf")
     def get(self, request, round_id: int):
-        return Response(serializers.WafRead(service.waf_posture(request.round)).data)
+        return Response(serializers.WafRead(service.waf_files(request.round)).data)
 
 
 class WafCheck(DefenceView):
-    @extend_schema(tags=TAGS, request=serializers.WafCheck, responses=serializers.RuleCheck,
+    @extend_schema(tags=TAGS, request=serializers.WafFilesGiven, responses=serializers.RuleCheck,
                    operation_id="defence_waf_check")
     def post(self, request, round_id: int):
-        asked = given(serializers.WafCheck, request.data)
-        return Response(serializers.RuleCheck(service.check_waf(request.round, asked["posture"])).data)
+        asked = given(serializers.WafFilesGiven, request.data)
+        return Response(serializers.RuleCheck(service.check_waf(request.round, asked["files"])).data)
 
 
 class WafTest(DefenceView):
@@ -131,7 +143,7 @@ class WafTest(DefenceView):
                    operation_id="defence_waf_test")
     def post(self, request, round_id: int):
         asked = given(serializers.WafTest, request.data)
-        made = service.test_rules(request.round, request.player, WAF, asked["posture"], asked.get("cases"))
+        made = service.test_rules(request.round, request.player, WAF, asked["files"], asked.get("cases"))
         return Response(test_result(made))
 
 
@@ -146,7 +158,7 @@ class WafApply(DefenceView):
                    operation_id="defence_waf_apply")
     def post(self, request, round_id: int):
         asked = given(serializers.WafApply, request.data)
-        applied = service.apply_waf(request.round, asked["posture"], asked["base_version"], request.player,
+        applied = service.apply_waf(request.round, asked["files"], asked["base_version"], request.player,
                                     asked.get("tested"))
         return Response(serializers.WafApplied(applied.rule_set).data)
 

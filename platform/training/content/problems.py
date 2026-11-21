@@ -12,14 +12,14 @@ from django.db.models import F, ProtectedError
 
 from cr import errors
 from domain.problems import validate_problem
-from sandbox.crs import TuningRefused, checked
+from sandbox.crs import editable, refusals
 from training.content import catalog
 from training.models import Posture, ProbeSet, Problem, RoundSetup, Wargame
 
 DOCUMENT_KEYS = ("problem", "round", "start_posture")
 PROBLEM_DEFAULTS = {"summary": "", "body": "", "published": False}
 DEFAULT_BENIGN_EVERY_S = 60
-POSTURE_KEYS = ("name", "suricata_rules", "crs_tuning")
+POSTURE_KEYS = ("name", "suricata_rules", "waf_files")
 
 
 def source() -> Path:
@@ -51,6 +51,10 @@ def wargames():
     return Wargame.objects.all()
 
 
+def waf_files() -> list[str]:
+    return editable()
+
+
 def published():
     return Problem.objects.filter(published=True)
 
@@ -76,7 +80,7 @@ def problem(problem_id: int) -> Problem:
 def posture_document(posture: Posture | None) -> dict | None:
     if posture is None:
         return None
-    return {"name": posture.name, "suricata_rules": posture.suricata_rules, "crs_tuning": posture.crs_tuning}
+    return {"name": posture.name, "suricata_rules": posture.suricata_rules, "waf_files": posture.waf_files}
 
 
 def setup_document(setup: RoundSetup | None) -> dict | None:
@@ -145,10 +149,9 @@ def posture_errors(given: Mapping, at: str) -> list[errors.FieldError]:
         found.append(errors.FieldError(path=f"{at}name", code="required"))
     if not isinstance(given.get("suricata_rules", ""), str):
         found.append(errors.FieldError(path=f"{at}suricata_rules", code="not_a_text"))
-    try:
-        checked(given.get("crs_tuning"))
-    except TuningRefused:
-        found.append(errors.FieldError(path=f"{at}crs_tuning", code="crs_refused"))
+    found += [errors.FieldError(path=f"{at}waf_files" + (f".{one['file']}" if one["file"] else ""), code="crs_refused",
+                                line=one["line"], params={"message": one["message"]})
+              for one in refusals(given.get("waf_files", {}))]
     return found
 
 
@@ -227,7 +230,7 @@ def kept_posture(wargame_id: str, given: Mapping | None) -> Posture | None:
     if given is None:
         return None
     kept, _ = Posture.objects.update_or_create(wargame_id=wargame_id, name=given["name"], defaults={
-        "suricata_rules": given.get("suricata_rules", ""), "crs_tuning": checked(given["crs_tuning"])})
+        "suricata_rules": given.get("suricata_rules", ""), "waf_files": dict(given.get("waf_files") or {})})
     return kept
 
 
@@ -295,6 +298,6 @@ def save_posture(given: object, posture_id: int | None = None) -> Posture:
         raise errors.Invalid(errors=tuple(found))
     kept = Posture() if posture_id is None else posture(posture_id)
     kept.wargame_id, kept.name = given["wargame"], given["name"]
-    kept.suricata_rules, kept.crs_tuning = given.get("suricata_rules", ""), checked(given["crs_tuning"])
+    kept.suricata_rules, kept.waf_files = given.get("suricata_rules", ""), dict(given.get("waf_files") or {})
     kept.save()
     return kept

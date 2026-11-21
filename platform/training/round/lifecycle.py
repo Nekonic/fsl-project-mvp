@@ -257,7 +257,7 @@ READS = (
     ("spending origins from the WAF error log", lambda found: attack.spend_from_log(found)),
     ("observing effects", observe),
     ("reading commands", lambda found: attack.read_commands(found)),
-    ("checking drift", lambda found: defence.check_drift(found)),
+    ("recording a WAF reload done in the terminal", lambda found: defence.record_terminal_reload(found)),
     ("enabling expired rules", lambda found: defence.enable_expired(found)),
     ("the customers", lambda found: customers.catch_up(found)),
     ("settling the objectives", settle),
@@ -309,8 +309,7 @@ def actions(found: Round):
 
 
 def score(found: Round, correlation: str | None = None) -> referee.RoundScore:
-    return referee.score(found, actions(found), alert_feed.detections(found), correlation,
-                         defence.posture_drift(found))
+    return referee.score(found, actions(found), alert_feed.detections(found), correlation)
 
 
 def score_for(found: Round, viewer_staff: bool, operator: bool, correlation: str | None) -> referee.RoundScore:
