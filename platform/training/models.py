@@ -112,6 +112,8 @@ class Round(models.Model):
     ends_at = models.DateTimeField(null=True, blank=True)
     ended = models.DateTimeField(null=True, blank=True)
     end_reason = models.CharField(max_length=24, choices=REASONS, blank=True, default="")
+    reading_since = models.DateTimeField(null=True, blank=True)
+    read_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["id"]

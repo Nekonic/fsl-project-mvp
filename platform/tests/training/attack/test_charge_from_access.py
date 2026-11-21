@@ -96,7 +96,7 @@ def test_customers_and_traffic_before_the_round_cost_the_attacker_nothing(attack
     assert left(attacker.round) == 100
 
 
-def test_the_access_cursor_moves_so_a_second_tick_charges_nothing_again(attacker):
+def test_the_access_cursor_moves_so_a_second_read_charges_nothing_again(attacker):
     es = FakeElastic().add("a1", access(attacker.round.started + timedelta(seconds=1)))
 
     first, second = charged_from(es, attacker.round), charged_from(es, attacker.round)
@@ -114,7 +114,7 @@ def test_a_burst_seen_only_in_the_log_costs_double_beyond_the_rule(attacker):
     assert charged_from(es, attacker.round) == {RU: 9}
 
 
-def test_one_tick_over_many_pages_reports_one_charge_per_origin(attacker, monkeypatch):
+def test_one_read_over_many_pages_reports_one_charge_per_origin(attacker, monkeypatch):
     monkeypatch.setattr(elastic, "access_events", partial(elastic.access_events, size=1))
     start = attacker.round.started
     es = FakeElastic()

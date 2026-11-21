@@ -54,7 +54,7 @@ def test_an_address_outside_the_pool_is_dropped_before_its_open_connections_are_
     assert outside < forward.index('iifname "@wan@" ct status dnat accept')
 
 
-def test_slot_boot_stays_the_only_loader_and_a_reload_starts_with_empty_sets_the_follower_refills():
+def test_slot_boot_stays_the_only_loader_and_a_reload_starts_with_empty_sets_the_round_start_fills():
     text = ruleset()
     boot = (INFRA / "slot-boot").read_text()
 

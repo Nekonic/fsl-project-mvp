@@ -1,15 +1,15 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from telemetry import access as access_log
 from telemetry import alerts as alert_feed
 from telemetry import events as log
 from telemetry import serializers
 from training.round import access as auth
+from training.round.views_catch_up import CatchingUpView
 
 
-class RoundEvents(APIView):
+class RoundEvents(CatchingUpView):
     authentication_classes = auth.ROUND_AUTHENTICATION
     permission_classes = [auth.InRound]
 
@@ -30,7 +30,7 @@ def given(serializer, data):
     return checked.validated_data
 
 
-class DefenceView(APIView):
+class DefenceView(CatchingUpView):
     authentication_classes = auth.ROUND_AUTHENTICATION
     permission_classes = [auth.IsPlayer("defence")]
 

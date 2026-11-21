@@ -5,13 +5,13 @@ from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from drf_spectacular.utils import extend_schema
 from rest_framework import renderers, status
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from sandbox import service as sandbox
 from training.round import access as auth
 from training.round import allocation as allocations
 from training.round import lifecycle as service
 from training.round import serializers
+from training.round.views_catch_up import CatchingUpView
 from users import permissions as accounts
 from users import permissions as users
 
@@ -39,7 +39,7 @@ class PlayerTokenScheme(OpenApiAuthenticationExtension):
         return {"type": "http", "scheme": "bearer"}
 
 
-class MatchView(APIView):
+class MatchView(CatchingUpView):
     authentication_classes = auth.ROUND_AUTHENTICATION
 
 
@@ -297,7 +297,7 @@ class Passthrough(renderers.BaseRenderer):
 
 
 @extend_schema(exclude=True)
-class SiteProxy(APIView):
+class SiteProxy(CatchingUpView):
     authentication_classes = (auth.PlayerTokenAuthentication, users.FramedSessionAuthentication)
     permission_classes = [auth.InRound]
     renderer_classes = [Passthrough]

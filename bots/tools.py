@@ -49,7 +49,7 @@ DESCRIPTIONS = {
     "attack_next_origin": "Give up the current origin now (it is marked spent) and move to the next unspent one. "
                           "Use it before an origin runs dry, or when the defence has started refusing it.",
     "attack_terminal": "Get a short-lived shell on the attacker box: a web terminal URL and an SSH jump grant. "
-                       "Traffic from the shell is charged hit points from the WAF access log, a tick late.",
+                       "Traffic from the shell is charged hit points from the WAF access log when the next API call for the round reads it.",
     "attack_forfeit": "Give up the round as the attacker. Ends the round.",
     "defence_state": "Read the defence player's state: phase, brief, target hosts, objectives with whether you saw "
                      "each one go, the applied IDS and WAF versions, and the alert count.",

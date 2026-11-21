@@ -12,7 +12,7 @@ HTTP = ("*/views*.py", "*/serializers.py", "*/urls.py", "cr/urls.py", "cr/handle
         "cr/strings.py", "cr/wsgi.py", "*/management/commands/*.py", "*/management/*.py", "manage.py",
         "*/apps.py", "*/migrations/*.py")
 HTTP_LAYER = 10
-COORDINATORS = ("training/round/lifecycle.py", "training/round/allocation.py", "training/round/follow.py",
+COORDINATORS = ("training/round/lifecycle.py", "training/round/allocation.py",
                 "training/round/site.py", "training/round/retention.py", "training/traffic/customers.py",
                 "training/content/probes.py")
 LAYERS = (
@@ -206,7 +206,8 @@ SURFACES = {
     "training/defence": {"training/defence/rules.py", "training/defence/terminal.py",
                          "training/defence/kibana_gate.py"},
 }
-SHARED_TO_VIEWS = {"cr/errors.py", "training/round/access.py", "users/permissions.py", "users/accounts.py"}
+SHARED_TO_VIEWS = {"cr/errors.py", "training/round/access.py", "training/round/views_catch_up.py", "users/permissions.py",
+                   "users/accounts.py"}
 SERVER_LINES = {"training/defence/views_kibana.py": {"cr/strings.py"}}
 STAFF_RANGE_VIEWS = {"training/round/views.py": {"sandbox/service.py"}}
 VIEW_FRAMEWORKS = ("rest_framework", "drf_spectacular")
@@ -425,11 +426,13 @@ def test_rule_15_sees_the_round_records_point_down_to_the_training_records_and_a
 
 ATTACK_REACHES = {"cr/config.py", "cr/errors.py", "sandbox/edge.py", "sandbox/access.py", "sandbox/reach.py",
                   "sandbox/runner.py", "sandbox/attacker.py", "telemetry/elastic.py", "telemetry/events.py",
-                  "telemetry/models.py", "scoring/losses.py", "training/models.py", "training/round/access.py"}
+                  "telemetry/models.py", "scoring/losses.py", "training/models.py", "training/round/access.py",
+                  "training/round/views_catch_up.py"}
+ATTACK_VIEWS_ONLY = {"training/round/access.py", "training/round/views_catch_up.py"}
 
 
 def attack_strays(path: str, reached: set[str]) -> list[str]:
-    allowed = ATTACK_REACHES - ({"training/round/access.py"} if layer_of(path) != HTTP_LAYER else set())
+    allowed = ATTACK_REACHES - (ATTACK_VIEWS_ONLY if layer_of(path) != HTTP_LAYER else set())
     return sorted(target for target in reached
                   if not target.startswith(("domain/", "training/attack/")) and target not in allowed
                   and not package_marker(target))

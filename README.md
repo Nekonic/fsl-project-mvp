@@ -117,7 +117,8 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 - 0 이하가 되면 그 출발지는 소진됩니다. infra 라우터가 그 주소를 떨어뜨리고(이미 맺은 연결 포함), 돌고 있던 도구를
   멈추고, 다음 출발지로 바꿉니다. 출발지가 다 떨어지면 공격 API 쓰기는 `409 origins_spent`입니다.
 - 공격 API의 모든 응답(오류 포함)에 `hp` 블록과 `X-Origin`, `X-Origin-HP` 헤더가 붙습니다.
-- API로 보낸 요청은 그 자리에서 차감합니다. 터미널, 도구, 봇 셸의 요청은 WAF 접근 로그로 다음 틱에 차감합니다.
+- API로 보낸 요청은 그 자리에서 차감합니다. 터미널, 도구, 봇 셸의 요청은 그 라운드에 다음 API 요청이 들어올 때
+  WAF 접근 로그를 읽어 차감합니다.
   같은 요청을 두 번 차감하지 않습니다.
 - 고객 주소는 소진 대상이 아닙니다.
 
@@ -131,7 +132,7 @@ flowchart TB
     pnet --- pvm
     subgraph pvm["VM cr-platform"]
       platform["platform: API, 채점, ssh 점프"]
-      follow["follow: 할당·라운드 틱"]
+      rebuild["rebuild: 반납된 슬롯 스택 재생성"]
       elk["Elasticsearch, Kibana"]
       collector["collector"]
     end
@@ -185,9 +186,14 @@ flowchart TB
   붙어 af-packet으로 WAF와 대상 사이의 트래픽을 봅니다. WAF가 막은 요청은 센서에 닿지 않고 WAF 로그에 남습니다.
 - 센서가 보는 요청의 출발지는 WAF입니다. 수집할 때 같은 요청의 X-Forwarded-For 주소를 알림의 출발지로 씁니다.
 - 격리는 Neutron 보안 그룹과 port security가 맡습니다. Kali나 WAF의 root 셸로는 바꿀 수 없습니다.
-- 플랫폼 VM의 `follow` 서비스(같은 이미지의 `manage.py follow`)가 틱마다 슬롯 재생성, 할당 만료, 알림 수집, HP 차감,
-  corp 변경 관찰, 명령 기록 읽기, WAF 설정 변경 감시, 라운드 종료 조건을 처리합니다. 브라우저가 열려 있지 않아도
-  돕니다.
+- 플랫폼 VM의 `rebuild` 서비스(같은 이미지의 `manage.py rebuild_slots`)는 반납된 슬롯의 스택을 다시 만드는 일만
+  합니다. 주기적으로 도는 라운드 작업은 없습니다.
+- 알림 수집, HP 차감, corp 변경 관찰, 명령 기록 읽기, WAF 설정 변경 감시, 정상 케이스, 라운드 종료 조건은 그 라운드에
+  API 요청(이벤트, 상태, 점수, 공격·방어 동작)이 들어올 때 처리합니다. 라운드마다 한 번에 한 요청만 읽고, 읽은 뒤
+  `CR_READ_EVERY_SECONDS`(기본 5초) 동안은 다시 읽지 않습니다.
+- 제한 시간이 지난 라운드는 다음 요청이 끝내고, 종료 시각은 제한 시간으로 기록합니다. 채점은 종료 시각까지 일어난
+  것만 셉니다.
+- 만료된 할당은 다음 할당 요청이나 그 할당에 들어온 요청이 닫습니다.
 
 자세한 구성은 [ARCHITECTURE.md](docs/ARCHITECTURE.md)에 있습니다.
 
@@ -424,10 +430,10 @@ CR_PLATFORM_EXEC="ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS sudo docker exec -i cr
 scp -i ~/.ssh/fsl_claude backups/db-20260925T020000Z.sqlite3 ubuntu@ADDRESS:/opt/cr/backups/
 ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS
 cd /opt/cr
-sudo docker compose stop platform follow
+sudo docker compose stop platform rebuild
 sudo docker compose run --rm --no-deps --user cr --entrypoint sh -v ./backups:/backups:ro platform \
   -c 'rm -f /data/db.sqlite3-journal /data/db.sqlite3-wal /data/db.sqlite3-shm && cp /backups/db-20260925T020000Z.sqlite3 /data/db.sqlite3'
-sudo docker compose start platform follow
+sudo docker compose start platform rebuild
 ```
 
 `-journal`, `-wal`, `-shm` 파일은 꼭 지웁니다. 남아 있으면 SQLite가 복원한 파일 위에 옛 내용을 재생합니다.

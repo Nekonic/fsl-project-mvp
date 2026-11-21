@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from cr import errors
@@ -8,6 +10,8 @@ from cr.config import configured
 from sandbox import reach, refill
 
 RETRY_AFTER = 30
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -144,3 +148,17 @@ def advance_refills() -> list[refill.Refill]:
     kept, whole = store(), reach.whole_range()
     return [refill.advance(kept, clock, whole.in_slot(owed.slot) if hasattr(whole, "in_slot") else whole)
             for owed in refill.owed(kept)]
+
+
+def keep_rebuilding(every: float, rounds: int | None = None, pause: Callable[[float], None] = time.sleep) -> int:
+    done = 0
+    while rounds is None or done < rounds:
+        started = time.monotonic()
+        try:
+            advance_refills()
+        except Exception:
+            logger.exception("advancing the slot rebuilds failed")
+        done += 1
+        if rounds is None or done < rounds:
+            pause(max(0.0, every - (time.monotonic() - started)))
+    return done

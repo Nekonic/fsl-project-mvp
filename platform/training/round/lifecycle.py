@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q
@@ -42,6 +43,8 @@ ENDED = Phase.ENDED.value
 RUNNING = Phase.RUNNING.value
 CREATED = Phase.CREATED.value
 STARTING = Phase.STARTING.value
+
+READ_ABANDONED = timedelta(minutes=5)
 
 logger = logging.getLogger(__name__)
 
@@ -216,11 +219,16 @@ def settle(found: Round) -> None:
     referee.settle(found, actions(found), alert_feed.detections(found))
 
 
+def end_time(found: Round) -> datetime:
+    now = timezone.now()
+    return min(now, found.ends_at) if found.ends_at else now
+
+
 def end_round(found: Round, reason: str) -> Round:
     if reason not in round_rules.END_REASONS:
         raise ValueError(f"no end reason {reason!r}")
     was = found.phase
-    if not Round.objects.filter(pk=found.pk).exclude(phase=ENDED).update(phase=ENDED, ended=timezone.now(),
+    if not Round.objects.filter(pk=found.pk).exclude(phase=ENDED).update(phase=ENDED, ended=end_time(found),
                                                                           end_reason=reason):
         found.refresh_from_db()
         return found
@@ -243,15 +251,14 @@ def observe(found: Round) -> None:
     losses.observe_effects(found, reach(found), attack.actions(found))
 
 
-TICK_STEPS = (
+READS = (
     ("ingesting alerts", lambda found: alert_feed.ingest_alerts(found)),
     ("charging from the access log", lambda found: attack.charge_from_access(found)),
-    ("refilling the edge", lambda found: attack.refill_edge(found)),
     ("observing effects", observe),
     ("reading commands", lambda found: attack.read_commands(found)),
     ("checking drift", lambda found: defence.check_drift(found)),
     ("enabling expired rules", lambda found: defence.enable_expired(found)),
-    ("the customers", lambda found: customers.tick(found)),
+    ("the customers", lambda found: customers.catch_up(found)),
     ("settling the objectives", settle),
 )
 
@@ -267,16 +274,33 @@ def state_of(found: Round, at: datetime) -> RoundState:
         benign_passes=customers.passes(found))
 
 
-def tick(found: Round, at: datetime | None = None) -> str | None:
-    if found.phase != RUNNING:
-        return None
-    for what, step in TICK_STEPS:
+def read_every() -> timedelta:
+    return timedelta(seconds=settings.READ_EVERY_SECONDS)
+
+
+def claim_reading(found: Round, at: datetime) -> bool:
+    free = Q(reading_since=None) | Q(reading_since__lt=at - READ_ABANDONED)
+    due = Q(read_at__lte=at - read_every()) | Q(read_at=None, started__lte=at - read_every()) | Q(ends_at__lte=at)
+    return bool(Round.objects.filter(free, due, pk=found.pk, phase=RUNNING).update(reading_since=at))
+
+
+def read_logs(found: Round) -> None:
+    for what, step in READS:
         stepped(found, what, step)
-    found.refresh_from_db()
-    reason = round_rules.ended(state_of(found, at or timezone.now()))
-    if reason is not None:
-        end_round(found, reason)
-    return reason
+
+
+def catch_up(found: Round, at: datetime | None = None) -> str | None:
+    if found.phase != RUNNING or not claim_reading(found, timezone.now()):
+        return None
+    try:
+        read_logs(found)
+        found.refresh_from_db()
+        reason = round_rules.ended(state_of(found, at or timezone.now()))
+        if reason is not None:
+            end_round(found, reason)
+        return reason
+    finally:
+        Round.objects.filter(pk=found.pk).update(reading_since=None, read_at=timezone.now())
 
 
 def actions(found: Round):
@@ -345,10 +369,6 @@ def shown_side(playing: list[Player], operator: bool) -> str:
     if operator or any(player.side == "defence" for player in playing):
         return "defence"
     return "attack"
-
-
-def running_rounds() -> list[Round]:
-    return list(Round.objects.select_related("allocation").filter(phase=RUNNING))
 
 
 def browse(found: Round, playing: list[Player], method: str, host: str, path: str, headers: dict,

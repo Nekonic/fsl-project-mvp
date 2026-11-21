@@ -38,7 +38,7 @@ FK 대상과 마이그레이션 의존성도 같은 순서를 따르는지 봅�
 | L3 라운드 기록 | `match/models.py`, `match/auth.py` |
 | L4 | `referee/models.py`, `referee/service.py` |
 | L5 양쪽 | `attack/models.py`, `attack/service.py`, `defence/*`(`kibana.py` 제외) |
-| L6 | `match/service.py`, `follow.py`, `customers.py`, `site.py`, `retention.py`, `probes.py` |
+| L6 | `match/service.py`, `customers.py`, `site.py`, `retention.py`, `probes.py` |
 | L7 | `lessons/*` |
 | L8 HTTP | `views*.py`, `serializers.py`, `urls.py`, `cr/urls.py`, `cr/handler.py`, `cr/schema.py`, `cr/settings.py`, `cr/strings.py`, `cr/wsgi.py`, `management/commands/*`, `apps.py`, 마이그레이션 |
 
@@ -102,10 +102,10 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                스태프 문제 API(중첩 문서, revision, 내보내기·가져오기), 학습자 읽기 API
   match/       Lease, Round, Seat, CustomerRequest
                auth.py      SeatTokenAuthentication, HasSeat(side), InRound, IsOperator, OnLease
-               service.py   리스·라운드 수명, 참가, 시작, 틱, 종료, 기권, 점수
-               follow.py    follow 서비스의 루프   customers.py  정상 케이스와 고객 트래픽
+               service.py   리스·라운드 수명, 참가, 시작, 요청 때 로그 읽기, 종료, 기권, 점수
+               customers.py  정상 케이스와 고객 트래픽
                site.py      사이트 패널 프록시      probes.py     probe 녹화   retention.py
-               management/commands/  follow  register_pipeline  prune  run_on_role  terminal_shell
+               management/commands/  rebuild_slots  register_pipeline  prune  run_on_role  terminal_shell
   referee/     Objective, loot.py(경계: board 정답 데이터), effect.py(경계: corp 정답 데이터)
                service.py   baseline, loot 제출, corp 변경 관찰, 목표, 비밀값 가리기, 점수
   attack/      Action, ToolRun, OriginBudget, AccessCursor
@@ -208,7 +208,6 @@ sequenceDiagram
   participant D as defence
   participant R as referee
   participant A as attack
-  participant F as follow
   O->>M: POST /api/leases/ {wargame}
   M-->>O: lease, slot, ready
   O->>M: POST /api/leases/<l>/rounds/ {problem, matchup, seats}
@@ -219,11 +218,11 @@ sequenceDiagram
   M->>R: baseline 읽기
   M->>A: 출발지 풀 채우기
   M->>M: Kibana space, 고객 트래픽 시작
-  loop 틱마다
-    F->>D: 알림 수집, WAF 변경 감시, 만료된 비활성화 복구
-    F->>A: 접근 로그로 HP 차감, edge 집합 다시 채우기, 명령 기록 읽기
-    F->>R: corp 변경 관찰, 목표 정리
-    F->>M: 정상 케이스, 종료 조건
+  loop 라운드에 API 요청이 올 때(한 번에 한 요청, CR_READ_EVERY_SECONDS 간격)
+    M->>D: 알림 수집, WAF 변경 감시, 만료된 비활성화 복구
+    M->>A: 접근 로그로 HP 차감, 명령 기록 읽기
+    M->>R: corp 변경 관찰, 목표 정리
+    M->>M: 정상 케이스, 종료 조건
   end
   M->>M: end_round: 이벤트, 고객 중지, 터미널 권한 회수
   O->>M: GET /api/rounds/<r>/score/
@@ -234,7 +233,10 @@ sequenceDiagram
 - 종료 이유: `time_limit`, `all_objectives_lost`, `origins_spent`(정상 케이스가 한 바퀴 돈 뒤에만), `ended_by_operator`,
   `forfeit_attack`, `forfeit_defence`, `steps_done`(레슨), `lease_expired`.
 - 리스는 `CR_LEASE_IDLE_MINUTES` 동안 하트비트가 없으면 만료됩니다. 운영자와 자리가 하트비트를 보냅니다.
-- 한 틱의 단계 하나가 실패해도 나머지 단계와 follow 루프는 계속 돕니다.
+- 읽기 단계 하나가 실패해도 나머지 단계는 계속 돕니다. 제한 시간이 지난 라운드는 다음 요청이 끝내고 종료 시각은
+  제한 시간으로 남깁니다. 점수는 종료 시각까지의 동작, 알림, 목표만 셉니다.
+- 만료된 할당은 다음 할당 요청이나 그 할당에 들어온 요청이 닫습니다. 반납된 슬롯의 스택은 `rebuild` 서비스
+  (`manage.py rebuild_slots`)가 다시 만듭니다.
 
 ## API
 
@@ -299,7 +301,7 @@ sequenceDiagram
 - `GET terminal/`: cr-waf 관리 주소로 가는 점프 권한, 계정 `analyst`(읽기 전용). 라운드가 끝나면 회수하고,
   `range.jump.end_account`가 `analyst`의 crontab과 `at` 작업을 지우고 linger를 끄고 로그인 세션을 끝낸 뒤
   남은 프로세스를 모두 죽입니다. `nohup`, cron, `at`, `systemd --user`로 띄운 것이 다음 라운드까지 남지 않습니다.
-- `defence/drift.py`가 틱마다 실제 CRS 파일과 적용 기록을 비교해 다르면 `rule.drifted`를 남기고, 점수에
+- `defence/drift.py`가 읽을 때마다 실제 CRS 파일과 적용 기록을 비교해 다르면 `rule.drifted`를 남기고, 점수에
   `posture_drift: true`가 붙습니다.
 
 ## 점수
@@ -326,7 +328,7 @@ sequenceDiagram
 
 - API로 보낸 요청(`POST requests/`, HTTP 케이스, 공격석의 사이트 패널)은 박스가 받은 상태 코드로 그 자리에서 차감합니다.
 - 그 밖의 요청(터미널, 도구, 봇 셸)은 WAF의 JSON 접근 로그를 `ingest.elastic.access_events`(모듈 `nginx_access`)로
-  읽어 틱마다 차감합니다. API로 이미 차감한 요청은 그 마커가 붙은 로그 한 줄만 건너뜁니다(`Action.access_seen`).
+  라운드에 API 요청이 올 때 읽어 차감합니다. API로 이미 차감한 요청은 그 마커가 붙은 로그 한 줄만 건너뜁니다(`Action.access_seen`).
   kali에서 그 마커를 `X-Request-ID`에 넣어 다시 보낸 요청은 모두 차감합니다.
 - 요청은 WAF에서 셉니다. Suricata는 WAF 뒤에 있어 출발지가 WAF이고, WAF가 거부한 요청을 보지 못하기 때문입니다.
 - 출발지가 소진되면 `range.edge.spend`가 그 주소를 `spent` 집합에 넣고 conntrack을 지웁니다. `edge.nft`에서 이
@@ -335,8 +337,7 @@ sequenceDiagram
 - 고객 주소는 `pool`에만 있고 `spent`에 들어가지 않습니다.
 - 라운드를 시작할 때 `range.edge.restart`가 `pool`과 `spent`를 비우고 새 라운드의 주소로 다시 채웁니다. 슬롯은
   리스를 반납할 때만 다시 만들어지므로, 그러지 않으면 같은 리스의 다음 라운드가 앞 라운드에서 소진된 출발지를
-  물려받아 예산이 남았는데도 경계에서 막힙니다. 틱마다 하는 `refill`은 더하기만 하고, 라운드가 끝난 뒤에는 아무것도
-  더하지 않습니다.
+  물려받아 예산이 남았는데도 경계에서 막힙니다. 라운드 중에는 다시 채우지 않습니다.
 - 라운드가 끝나면 `attack.close`가 두 집합을 비웁니다. HP는 라운드 중에만 세므로, 비우지 않으면 kali에 남겨 둔
   프로세스가 라운드 사이에 차감 없이 타깃을 칠 수 있습니다.
 - `pool` 밖 주소도 established 허용보다 앞에서 버립니다. kali의 인터넷 포트는 모든 주소를 허용(`0.0.0.0/0`
@@ -387,7 +388,8 @@ sequenceDiagram
 않았습니다(`docs/OPENSTACK.md` §3.7).
 
 - `deploy/roles/infra/edge.nft`: `pool`, `spent` 집합과 established 허용보다 앞선 `spent` drop 규칙. `slot-boot`가
-  테이블을 다시 읽으면 집합이 비므로 `attack.service.refill_edge`가 틱마다 다시 채웁니다. infra 이미지에는
+  테이블을 다시 읽으면 집합이 비고, 라운드 중에는 아무도 다시 채우지 않으므로 다음 라운드 시작까지 kali에서
+  타깃에 닿지 않습니다. infra 이미지에는
   `conntrack`, `tcpdump`(probe 녹화), 오프라인 룰 테스트의 임시 폴더 `/var/lib/cr-ruletest`가 더해집니다.
 - `deploy/roles/waf/board.com.conf`: 두 vhost의 `$refused` 맵(400, 403) 하나와 모든 요청의 JSON 접근 로그
   `/var/log/nginx/access.json`(`client_ip`, `status`, `refused`, `request_id` 등). `request_id`는 마커 모양(`^[A-Za-z0-9._:-]{1,128}$`)일 때만 남기고 아니면 비웁니다. 헤더를 부풀리거나 여러 번 넣어 줄이 64 KiB를 넘기면 `client_ip`가 사라져 HP가 안 깎이기 때문입니다.

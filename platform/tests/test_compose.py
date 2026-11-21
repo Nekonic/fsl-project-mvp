@@ -18,14 +18,14 @@ def pulled_images():
     ]
 
 
-def test_the_follower_runs_the_platform_s_own_image_and_its_wiring():
+def test_the_rebuild_job_runs_the_platform_s_own_image_and_its_wiring():
     services = composed.services()
-    platform, follow = services["platform"], services["follow"]
+    platform, rebuild = services["platform"], services["rebuild"]
 
-    assert follow["image"] == platform["image"] and "build" not in follow
-    assert follow["entrypoint"][-2:] == ["manage.py", "follow"]
-    assert follow["volumes"] == platform["volumes"] and not follow.get("ports")
-    assert {key: value for key, value in follow["environment"].items() if key in platform["environment"]} == \
+    assert rebuild["image"] == platform["image"] and "build" not in rebuild
+    assert rebuild["entrypoint"][-2:] == ["manage.py", "rebuild_slots"]
+    assert rebuild["volumes"] == platform["volumes"] and not rebuild.get("ports")
+    assert {key: value for key, value in rebuild["environment"].items() if key in platform["environment"]} == \
         platform["environment"]
 
 def test_every_image_is_pinned_to_something_that_cannot_move():

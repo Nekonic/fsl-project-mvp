@@ -3,11 +3,11 @@ from dataclasses import asdict
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from training.attack import actions as service
 from training.attack import serializers
 from training.round import access as auth
+from training.round.views_catch_up import CatchingUpView
 
 TAGS = ["attack"]
 
@@ -22,7 +22,7 @@ def answered(serializer, request, payload, code=status.HTTP_200_OK):
     return Response(serializer({**payload, "hp": asdict(service.hp(request.round))}).data, status=code)
 
 
-class AttackView(APIView):
+class AttackView(CatchingUpView):
     authentication_classes = auth.ROUND_AUTHENTICATION
     permission_classes = [auth.IsPlayer("attack")]
 

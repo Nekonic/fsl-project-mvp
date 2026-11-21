@@ -10416,3 +10416,41 @@ its top level is the easiest to read.
   `openapi/schema.yaml`.
 - **Lessons:** the current lesson content goes; `training/lessons/` keeps its
   place for the rewrite from both sides.
+
+## 2026-11-21 — The tick is gone: round reads run on the round's requests
+
+How the "no periodic tick" ruling above is carried out.
+
+- **Where the reads run.** Every API view on a round or an allocation
+  (events, state, score, the attack and defence actions, the site pane, the
+  terminal checks) derives from `CatchingUpView`
+  (`training/round/views_catch_up.py`). After authentication and permissions
+  it closes the allocation if it is past `expires_at`, then calls
+  `lifecycle.catch_up` for the round: alerts, the WAF access log (HP), corp
+  effects, the attacker's command log, WAF drift, expired rule disables, the
+  customers' records and the benign pass, then the end conditions.
+- **One reader at a time.** `catch_up` claims the round with one conditional
+  `UPDATE` on `Round.reading_since` (a compare-and-set; a claim older than
+  five minutes counts as abandoned) and releases it with `read_at`. A round
+  is read again only `CR_READ_EVERY_SECONDS` (default 5) after the last read,
+  and first one interval after its start, so a console polling several panes
+  does not read the range once per pane. A round past its time limit is read
+  at once. The reads were already idempotent (cursors, unique detections,
+  `access_seen`).
+- **The end time.** A round ended late keeps `min(now, ends_at)` as its
+  `ended`; the score counts actions that started, alerts stamped and
+  objectives lost up to `ended`, and corp effects after `ends_at` do not
+  mark an objective.
+- **Allocations.** Opening an allocation first closes the expired ones and
+  prunes the closed ones past `CR_RETAIN_CLOSED_MINUTES`.
+- **The rebuild job.** The `follow` compose service is now `rebuild`
+  (`manage.py rebuild_slots`, `CR_REBUILD_EVERY_SECONDS`); it only advances
+  the slot rebuilds the pool owes.
+- **The edge is not refilled mid-round.** `refill_edge` went with the tick.
+  The round start loads the sets (`attack.load_edge`, flush and add); if
+  `slot-boot` reloads the table mid-round the sets stay empty until the next
+  round starts.
+- **What changes for a learner.** Nothing happens in a round no one is
+  looking at: the benign pass and HP charges from the access log wait for
+  the next request. A bot or console that polls events keeps them moving.
+  `check_drift` stays in the reads until the WAF-as-files stage removes it.

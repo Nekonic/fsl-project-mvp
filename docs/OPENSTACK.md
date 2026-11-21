@@ -99,7 +99,7 @@ user's password, flavor access, the base image and `cloud.yaml` (§4).
 3. The script then drives the platform's staff range API in this order:
    `POST fabric/`; `DELETE leftovers/`, which removes what the ranges before
    this one left (§5.5); `POST pool/`, which owes every slot no lease holds a
-   refill that the `follow` service carries out (create the stack if it is
+   refill that the `rebuild` service carries out (create the stack if it is
    missing, stale or failed, wait for its nodes, seed its sensor with the
    baseline rules). Then it waits until `GET /api/staff/range/` shows every
    slot's refill `idle`, and stops on one that `failed`.
@@ -116,7 +116,7 @@ user's password, flavor access, the base image and `cloud.yaml` (§4).
 | `bin/platform-rebuild`: replace the VM without losing data (store and range key carried over), driven by `cloud.yaml` | done (2026-10-15, `bin/cloud up --replace --sideload` twice, 28 and 55 min with a 6 GB store) | §5 |
 | `bin/cloud up`, `bin/cloud down` | done (2026-10-11); since 2026-10-20 `up` after `down` restores the newest backup that holds rows (run live 2026-10-20) | §5 |
 | Fabric via `POST /api/staff/range/fabric/` | done on the old tree (`POST /api/range/fabric/`); the side split's route has not run on a cloud | §6 |
-| Range stacks `cr-slot-<n>`, a pool per wargame, replaced at close | live since 2026-11-18 on the old tree (`POST /api/range/slot/`): the first pool fill created the four stacks (§6.1), and two full `bin/verify` runs ran on them. The side split's `POST /api/staff/range/pool/` and the follower's refill have not run on a cloud | §6 |
+| Range stacks `cr-slot-<n>`, a pool per wargame, replaced at close | live since 2026-11-18 on the old tree (`POST /api/range/slot/`): the first pool fill created the four stacks (§6.1), and two full `bin/verify` runs ran on them. The side split's `POST /api/staff/range/pool/` and the `rebuild` service's refill have not run on a cloud | §6 |
 | Acceptance on the OpenStack substrate | runs on the Heat range; the latest full run and its open failures are in `docs/state/now.md` | §7 |
 
 Steps below are tagged **[one-click]** where `bin/cloud up` does them for you,
@@ -1027,8 +1027,8 @@ It asks the platform's API every 5 s while it waits (`POLL`), and
    left in the project (§5.5), servers first, since a leftover server holds
    quota the range VMs need, and prints what it removed.
 7. It sends `POST pool/`, which owes every slot no lease holds a refill
-   (`range/refill.py`) and answers each slot's refill state. The `follow`
-   service carries the refills out on its ticks: for a slot with no stack it
+   (`range/refill.py`) and answers each slot's refill state. The `rebuild`
+   service (`manage.py rebuild_slots`) carries the refills out in its loop: for a slot with no stack it
    creates `cr-slot-<n>` (§6); a stack that is stale, because what the
    platform renders now has another digest than the one it was created with
    (§6, §5.3), that failed, or that runs another wargame than the pool
@@ -1155,9 +1155,10 @@ replaced it 25 min 27 s (`docs/DECISIONS.md`, 2026-11-17).
   `cloud.yaml` as `--keep`.
 - The new VM holds one copy in `/opt/cr/backups`, the one it was restored from.
 
-The store stays small. The follower deletes leases that were closed more
-than `CR_RETAIN_CLOSED_MINUTES` ago, with their rounds, records and events,
-one lease per transaction, on every tick (`platform/match/retention.py`;
+The store stays small. Each request for a new allocation first deletes
+allocations that were closed more than `CR_RETAIN_CLOSED_MINUTES` ago, with
+their rounds, records and events, one per transaction
+(`platform/training/round/retention.py`;
 `manage.py prune` does it by hand). The default is 60
 (`platform/cr/settings.py`, set in `compose.yaml`, overridden in
 `/opt/cr/.env`). It never touches open leases. A backup therefore carries
@@ -1414,7 +1415,7 @@ staff session calls it (`match/views.py`, tag `staff`).
   it and its refill state; `GET pool/` each slot stack's servers, what
   blocks it and its failures.
 - `POST` makes the cloud match the plan: `fabric/` at once, `pool/` by
-  owing each free slot a refill the `follow` service carries out.
+  owing each free slot a refill the `rebuild` service carries out.
 - `DELETE` tears down. A range not built through OpenStack answers
   `409 range_not_cloud`.
 
@@ -1467,7 +1468,7 @@ Notes:
   `SETTING_UP` until one of the two exists. `GET pool/` names
   `/var/log/cloud-init-output.log` under `failures` for a node that failed,
   and a stack Heat reports `CREATE_FAILED` with Heat's reason. A refill
-  (`range/refill.py`, advanced by the follower) calls `ensure_slot` in
+  (`range/refill.py`, advanced by the `rebuild` service) calls `ensure_slot` in
   `platform/range/openstack.py`, which deletes a failed or stale stack, or
   one that runs another wargame than the pool assigns, and creates it again,
   then `configure_slot`, which seeds the sensor. A refill that is blocked,
@@ -1618,16 +1619,16 @@ under one lock. When there is none it answers `503 range_unavailable` with
 
 Closing a lease, by its operator or because no heartbeat came for
 `CR_LEASE_IDLE_MINUTES` (30), ends its open rounds, deletes its stack and
-owes the slot a refill: the follower creates the stack again for the same
+owes the slot a refill: the `rebuild` service creates the stack again for the same
 wargame, off the learner's path, and seeds its sensor. Every VM of the next
 lease is new, booted from the baked images, with the target's pristine data;
 what a round disabled or applied went with the old stack. Acceptance checks
 that after a close the stack's WAF has another boot id and lacks the file the
 last learner wrote.
 
-A restart of the platform or the follower does not lose a refill: its state
+A restart of the platform or the `rebuild` service does not lose a refill: its state
 is a file per slot under `CR_REFILL_DIR` (`/data/refill`, `slot-N.json`),
-and the follower picks every running one up on its next tick. A refill whose
+and the `rebuild` service picks every running one up on its next pass. A refill whose
 stack is not created and set up within 30 minutes reads `failed` with the
 reason in `GET /api/staff/range/`; `POST pool/` owes it again.
 
@@ -1696,7 +1697,7 @@ standing platform:
 
 ```bash
 sed -i 's/^CR_OPENSTACK_POOL=.*/CR_OPENSTACK_POOL=board=3 corp=2/' /opt/cr/openstack.env
-docker compose up -d --force-recreate platform follow
+docker compose up -d --force-recreate platform rebuild
 curl -s -b jar -H "X-CSRFToken: $T" -X POST $P/pool/   # owes every free slot a refill; slot 5 is built for corp
 curl -s -b jar $P/                                     # slots[].refill.state idle
 ```

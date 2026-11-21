@@ -95,6 +95,8 @@ def observe_effects(found: Round, reach: Reach, actions: Sequence[ActionRecord] 
     changes = effect.read_changes(reach(secret(found)["role"]), found.started)
     fell: list[Fallen] = []
     for tier, at in effect.credited(tiers(found), found.baseline, changes):
+        if found.ends_at and at > found.ends_at:
+            continue
         window = window_of(at, actions)
         if window is None:
             continue

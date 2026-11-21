@@ -1,12 +1,12 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from training.defence import kibana_gate, serializers
 from training.defence import rules as service
 from training.defence import terminal as defence_terminal
 from training.round import access as auth
+from training.round.views_catch_up import CatchingUpView
 
 TAGS = ["defence"]
 IDS, WAF = "ids", "waf"
@@ -22,7 +22,7 @@ def test_result(made) -> dict:
     return serializers.RuleTestResult({"test": made.pk, **made.result}).data
 
 
-class DefenceView(APIView):
+class DefenceView(CatchingUpView):
     authentication_classes = auth.ROUND_AUTHENTICATION
     permission_classes = [auth.IsPlayer("defence")]
 

@@ -288,7 +288,7 @@ def begin(found: Round) -> None:
     guarded(found, "starting the customers", start)
 
 
-def tick(found: Round, now: datetime | None = None) -> None:
+def catch_up(found: Round, now: datetime | None = None) -> None:
     if found.traffic.get("running"):
         guarded(found, "reading the customers' records", pull)
     if due(found, now or timezone.now()):

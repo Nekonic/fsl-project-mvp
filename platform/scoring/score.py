@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from domain.scoring.correlate import correlate
@@ -74,15 +75,22 @@ def record_of(tier: Mapping[str, Any], row: Objective | None, by_loot: bool) -> 
                            by_loot=by_loot)
 
 
+def until(found: Round) -> datetime | None:
+    return found.ended
+
+
 def objective_records(found: Round) -> tuple[ObjectiveRecord, ...]:
-    lost = losses(found)
+    end = until(found)
+    lost = {key: row for key, row in losses(found).items() if end is None or row.achieved_at <= end}
     by_loot = objective_model(found) == LOOT_VERIFIED
     return tuple(record_of(tier, lost.get(tier["key"]), by_loot) for tier in declared(found))
 
 
 def score(found: Round, actions: Sequence[ActionRecord], detections: Sequence[DetectionRecord],
           correlation: str | None = None, posture_drift: bool = False) -> RoundScore:
-    cases = [action.as_case() for action in actions]
+    end = until(found)
+    cases = [action.as_case() for action in actions if end is None or action.started_at <= end]
+    detections = [detection for detection in detections if end is None or detection.timestamp <= end]
     result = correlate(cases, detections, correlation)
     totals = case_totals(result)
     records = objective_records(found)

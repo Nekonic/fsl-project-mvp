@@ -8,7 +8,7 @@ from sandbox import service as sandbox
 from telemetry import events as log
 from tests.shape import refused
 from tests.training.round.conftest import pvp, url
-from training.models import Allocation, Round, Player
+from training.models import Allocation, Player, Round
 from training.round import allocation as allocations
 from training.round import lifecycle as service
 from users import players as auth
@@ -50,7 +50,7 @@ def test_a_slot_still_refilling_is_not_offered(as_learner, cloud, settings):
     assert cloud.in_slot(1).resets == 1
 
 
-def test_closing_an_allocation_ends_its_rounds_and_the_follower_refills_the_slot(as_operator, cloud, allocation, problem,
+def test_closing_an_allocation_ends_its_rounds_and_the_rebuild_job_refills_the_slot(as_operator, cloud, allocation, problem,
                                                                            learner, other):
     found = pvp(allocation, problem, other, learner)
     service.start_round(found)
@@ -311,3 +311,27 @@ def test_a_bot_token_of_an_ended_round_does_not_keep_the_allocation_alive(browse
     service.end_round(made.round, "ended_by_operator")
 
     refused(browser.post(f"/api/allocations/{allocation.pk}/heartbeat/", HTTP_AUTHORIZATION=token), 409, "round_closed")
+
+
+def test_the_next_allocation_request_closes_an_expired_one_and_prunes_old_closed_ones(as_learner, cloud, make_user,
+                                                                                     settings):
+    expired = allocations.open_allocation(make_user("away"), "board")
+    Allocation.objects.filter(pk=expired.pk).update(expires_at=timezone.now() - timedelta(seconds=1))
+    old = allocations.open_allocation(make_user("gone"), "corp")
+    Allocation.objects.filter(pk=old.pk).update(
+        closed=timezone.now() - timedelta(minutes=settings.RETAIN_CLOSED_MINUTES + 1))
+
+    as_learner.post("/api/allocations/", {"wargame": "board"}, format="json")
+
+    assert Allocation.objects.get(pk=expired.pk).closed is not None
+    assert not Allocation.objects.filter(pk=old.pk).exists()
+
+
+def test_a_request_on_an_expired_allocation_closes_it_and_ends_its_round(as_operator, cloud, allocation, problem,
+                                                                        learner, other):
+    found = service.start_round(pvp(allocation, problem, other, learner))
+    Allocation.objects.filter(pk=allocation.pk).update(expires_at=timezone.now() - timedelta(seconds=1))
+
+    refused(as_operator.post(f"/api/allocations/{allocation.pk}/heartbeat/"), 409, "allocation_closed")
+    found.refresh_from_db()
+    assert found.end_reason == "allocation_expired" and Allocation.objects.get(pk=allocation.pk).closed is not None

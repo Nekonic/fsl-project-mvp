@@ -32,11 +32,12 @@ def test_every_attack_origin_is_spent_and_no_customer_address_ever_reaches_the_s
     assert not any(customer in text for text in spent_at_edge for customer in CUSTOMERS)
 
 
-def test_the_edge_refill_keeps_customers_in_the_pool_and_out_of_the_spent_set(spent_round, cloud):
-    service.refill_edge(spent_round)
+def test_loading_the_edge_keeps_customers_in_the_pool_and_out_of_the_spent_set(spent_round, cloud):
+    reached = service.range_of(spent_round)
+    service.load_edge(spent_round, reached, reached.describe())
 
-    refilled = cloud.edge.matching("nft -f -")[-1].stdin
-    pool_line, spent_line = refilled.splitlines()
+    loaded = cloud.edge.matching("nft -f -")[-1].stdin
+    pool_line, spent_line = loaded.splitlines()[2:]
     assert all(address in pool_line for address in (RU, US, BR, *CUSTOMERS))
     assert all(address in spent_line for address in (RU, US, BR))
     assert not any(customer in spent_line for customer in CUSTOMERS)

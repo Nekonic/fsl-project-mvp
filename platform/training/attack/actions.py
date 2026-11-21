@@ -299,7 +299,7 @@ def fill_pool(found: Round) -> Hp:
             OriginBudget.objects.get_or_create(round=found, ip=origin["source_ip"], defaults={
                 "origin_id": origin["id"], "label": origin["label"], "budget": rule.budget, "left": rule.budget})
         AccessCursor.objects.get_or_create(allocation=found.allocation)
-    refill_edge(found, reached, described, afresh=True)
+    load_edge(found, reached, described)
     worn = current_of(budgets(found))
     if worn is not None:
         box.wear_origin({"source_ip": worn.ip}, reached.runner(PROXY))
@@ -318,16 +318,12 @@ def customer_addresses(found: Round, reached=None, described=None) -> list[str]:
     return [address for origin in customer_origins(found, reached, described) for address in origin["addresses"]]
 
 
-def refill_edge(found: Round, reached=None, described=None, afresh: bool = False) -> None:
-    settings = configured()
-    reached = reached or range_of(found)
+def load_edge(found: Round, reached, described) -> None:
     rows = budgets(found)
-    if not rows or Round.objects.filter(pk=found.pk, phase=Phase.ENDED.value).exists():
-        return
     pool = [row.ip for row in rows] + customer_addresses(found, reached, described)
     spent = [row.ip for row in rows if row.spent_at is not None]
-    filled = edge.restart if afresh else edge.refill
-    filled(reached.runner(settings.edge.role), pool, spent, settings.edge)
+    settings = configured()
+    edge.restart(reached.runner(settings.edge.role), pool, spent, settings.edge)
 
 
 def state_of(row: OriginBudget) -> OriginState:

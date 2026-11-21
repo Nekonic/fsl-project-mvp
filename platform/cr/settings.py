@@ -6,7 +6,8 @@ CR_SOURCE = Path(os.environ.get("CR_SOURCE") or BASE_DIR.parent)
 CR_PROBES_OUT = Path(os.environ.get("CR_PROBES_OUT") or CR_SOURCE / "wargames")
 ALLOCATION_IDLE_MINUTES = int(os.environ.get("CR_ALLOCATION_IDLE_MINUTES") or 30)
 RETAIN_CLOSED_MINUTES = int(os.environ.get("CR_RETAIN_CLOSED_MINUTES") or 60)
-FOLLOW_SECONDS = float(os.environ.get("CR_FOLLOW_SECONDS") or 5)
+READ_EVERY_SECONDS = float(os.environ.get("CR_READ_EVERY_SECONDS") or 5)
+REBUILD_EVERY_SECONDS = float(os.environ.get("CR_REBUILD_EVERY_SECONDS") or 5)
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "") == "1"
 

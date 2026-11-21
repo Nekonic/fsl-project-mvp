@@ -99,16 +99,6 @@ def test_a_later_round_on_the_same_allocation_starts_with_no_origin_spent_at_the
     assert all(address in "\n".join(started) for address in (RU, US, BR))
 
 
-def test_the_tick_refill_only_adds_so_a_spend_between_reads_is_never_undone(as_attacker, attacker, cloud):
-    as_attacker.post(url(attacker.round, "origins/next/"), format="json")
-
-    service.refill_edge(attacker.round)
-
-    refilled = cloud.edge.matching("nft -f -")[-1].stdin
-    assert "flush" not in refilled
-    assert f"add element ip edge spent {{ {RU} }}" in refilled
-
-
 def test_giving_up_an_origin_early_spends_it_and_switches(as_attacker, attacker, cloud):
     answer = as_attacker.post(url(attacker.round, "origins/next/"), format="json")
 
@@ -139,7 +129,6 @@ def test_once_every_origin_is_spent_every_write_refuses_origins_spent_and_reads_
     assert sorted(read.json()["hp"]["spent"]) == sorted([RU, US, BR])
 
 
-
 def test_the_round_s_end_empties_the_edge_so_the_box_reaches_nothing_between_rounds(as_attacker, attacker, cloud):
     from training.round import lifecycle as match
 
@@ -149,14 +138,3 @@ def test_the_round_s_end_empties_the_edge_so_the_box_reaches_nothing_between_rou
     assert emptied == ["flush set ip edge pool", "flush set ip edge spent"], (
         "edge.nft drops every address outside pool, so an empty pool stops a process the learner left on kali "
         "from reaching the target uncharged once the HP rule stops counting")
-
-
-def test_a_tick_that_finishes_after_the_round_ended_does_not_fill_the_edge_again(as_attacker, attacker, cloud):
-    from training.round import lifecycle as match
-
-    match.end_round(attacker.round, "ended_by_operator")
-    after = len(cloud.edge.matching("nft -f -"))
-
-    service.refill_edge(attacker.round)
-
-    assert len(cloud.edge.matching("nft -f -")) == after

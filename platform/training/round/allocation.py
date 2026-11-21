@@ -13,7 +13,7 @@ from sandbox import reach
 from sandbox import service as sandbox
 from training.content import problems as content
 from training.models import Allocation, Round
-from training.round import lifecycle
+from training.round import lifecycle, retention
 
 ROUND = "round"
 ENDED = Phase.ENDED.value
@@ -32,6 +32,8 @@ def held_slots() -> set[int]:
 def open_allocation(user, wargame_id: str, purpose: str = ROUND) -> Allocation:
     if wargame_id not in {wargame.pk for wargame in content.wargames()}:
         raise errors.Invalid(code="unknown_wargame", path="wargame")
+    expire()
+    retention.prune()
     whole = reach.whole_range()
     with choosing:
         number = sandbox.free_slot(whole, wargame_id, held_slots())
@@ -76,6 +78,13 @@ def expire(at: datetime | None = None) -> list[int]:
     for held in due:
         close_allocation(held, "allocation_expired")
     return [held.pk for held in due]
+
+
+def close_if_expired(held: Allocation) -> bool:
+    if held.closed is not None or held.expires_at >= timezone.now():
+        return False
+    close_allocation(held, "allocation_expired")
+    return True
 
 
 def holders() -> dict[int, int]:

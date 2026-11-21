@@ -469,9 +469,9 @@ def score_when_ready(played: Played, until: Callable[[dict], bool], timeout: flo
         time.sleep(POLL)
     assert alerts(played), (
         f"round {played.round} took in no alert at all in {timeout:.0f}s, so nothing was scored and nothing can be "
-        f"concluded about the defence. This is a pipeline failure, not a detection failure: check the follower, "
+        f"concluded about the defence. This is a pipeline failure, not a detection failure: check the platform log for failed reads, "
         f"Filebeat and Elasticsearch.")
-    assert last, "never got a score back. Check the follower and Elasticsearch."
+    assert last, "never got a score back. Check the platform log for failed reads and Elasticsearch."
     return last
 
 

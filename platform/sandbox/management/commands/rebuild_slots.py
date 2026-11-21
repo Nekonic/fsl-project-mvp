@@ -1,15 +1,15 @@
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
-from training.round import follow
+from sandbox import service
 
 
 class Command(BaseCommand):
-    help = "Drive slot refills, close expired allocations and tick every running round, in a loop."
+    help = "Advance the slot rebuilds the pool owes, in a loop."
 
     def add_arguments(self, parser):
-        parser.add_argument("--every", type=float, default=settings.FOLLOW_SECONDS)
+        parser.add_argument("--every", type=float, default=settings.REBUILD_EVERY_SECONDS)
         parser.add_argument("--rounds", type=int, default=None)
 
     def handle(self, every, rounds, **options):
-        follow.run(every, rounds)
+        service.keep_rebuilding(every, rounds)
