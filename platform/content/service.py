@@ -11,12 +11,12 @@ from django.db import transaction
 from django.db.models import F, ProtectedError
 
 from content import catalog
-from content.models import Posture, ProbeSet, Problem, RoundSetup, Step, Wargame
+from content.models import Posture, ProbeSet, Problem, RoundSetup, Wargame
 from cr import errors
 from domain.problems import validate_problem
 from rules.crs import TuningRefused, checked
 
-DOCUMENT_KEYS = ("problem", "steps", "round", "start_posture")
+DOCUMENT_KEYS = ("problem", "round", "start_posture")
 PROBLEM_DEFAULTS = {"summary": "", "body": "", "published": False}
 DEFAULT_BENIGN_EVERY_S = 60
 POSTURE_KEYS = ("name", "suricata_rules", "crs_tuning")
@@ -52,7 +52,7 @@ def wargames():
 
 
 def published():
-    return Problem.objects.filter(published=True).prefetch_related("steps")
+    return Problem.objects.filter(published=True)
 
 
 def published_problem(problem_id: int) -> Problem:
@@ -79,11 +79,6 @@ def posture_document(posture: Posture | None) -> dict | None:
     return {"name": posture.name, "suricata_rules": posture.suricata_rules, "crs_tuning": posture.crs_tuning}
 
 
-def step_document(step: Step) -> dict:
-    return {"order": step.order, "body": step.body, "opens": step.opens, "check": step.check_spec,
-            "answer": step.answer, "hints": step.hints}
-
-
 def setup_document(setup: RoundSetup | None) -> dict | None:
     if setup is None:
         return None
@@ -100,7 +95,6 @@ def exported(found: Problem) -> dict:
     return {
         "problem": {"kind": found.kind, "wargame": found.wargame_id, "side": found.side, "title": found.title,
                     "summary": found.summary, "body": found.body, "published": found.published},
-        "steps": [step_document(step) for step in found.steps.order_by("order")],
         "round": setup_document(setup_of(found)),
         "start_posture": posture_document(found.start_posture),
     }
@@ -214,10 +208,6 @@ def written(found: Problem, doc: Mapping) -> None:
     found.wargame_id = given["wargame"]
     found.start_posture = kept_posture(given["wargame"], doc.get("start_posture"))
     found.save()
-    found.steps.all().delete()
-    Step.objects.bulk_create(Step(problem=found, order=step["order"], body=step["body"],
-                                  opens=step.get("opens", "none"), check_spec=step["check"], answer=step.get("answer"),
-                                  hints=step.get("hints", [])) for step in doc.get("steps", []))
     setup = doc.get("round")
     if setup is None:
         RoundSetup.objects.filter(problem=found).delete()
@@ -261,7 +251,6 @@ def snapshot(found: Problem) -> dict[str, Any]:
                     "public_url": declared.public_url, "hosts": list(declared.hosts),
                     "objective_model": declared.objective_model, "case_file": declared.case_file,
                     "secret": declared.secret},
-        "steps": [step_document(step) for step in found.steps.order_by("order")],
         "start_posture": posture_document(found.start_posture),
         "objectives": [{"key": tier.key, "name": tier.name, "category": tier.category, "difficulty": tier.difficulty,
                         "rule": tier.rule}

@@ -18,24 +18,10 @@ CATALOG = {
 ROUND = {
     "problem": {"kind": "round", "wargame": "board", "side": "defence", "title": "Hold the board",
                 "summary": "s", "body": "b", "published": False},
-    "steps": [],
     "round": {"matchups": ["def_vs_bot", "pvp"], "probe_cases": ["board-sqli"], "objectives": ["db-dump"],
               "hp": {"budget": 100, "per_request": 1, "refused_x": 3, "burst_per_s": 5, "burst_x": 2},
               "benign_every_s": 30, "time_limit_s": None},
 }
-
-LESSON = {
-    "problem": {"kind": "lesson", "wargame": "board", "side": "both", "title": "First rule"},
-    "steps": [
-        {"order": 1, "body": "Read", "opens": "kibana", "check": {"kind": "answer", "params": {"accept": ["x"]}},
-         "hints": ["look left"]},
-        {"order": 2, "body": "Test", "opens": "ids_rules",
-         "check": {"kind": "rule_test", "params": {"engine": "ids", "case": "board-sqli"}}},
-        {"order": 3, "body": "Take", "opens": "terminal_kali",
-         "check": {"kind": "loot", "params": {"objective": "db-dump"}}},
-    ],
-}
-
 
 def errors(doc):
     return [(e.path, e.code) for e in validate_problem(doc, CATALOG)]
@@ -49,7 +35,6 @@ def changed(doc, edit):
 
 def test_valid_documents_have_no_errors():
     assert errors(ROUND) == []
-    assert errors(LESSON) == []
 
 
 def test_the_document_must_carry_a_problem():
@@ -82,22 +67,6 @@ def test_round_errors_come_back_by_path(edit, expected):
     assert errors(changed(ROUND, edit)) == [expected]
 
 
-@pytest.mark.parametrize("edit, expected", [
-    (lambda d: d.update(steps=[]), ("steps", "required")),
-    (lambda d: d["steps"][1].update(order=5), ("steps[1].order", "out_of_sequence")),
-    (lambda d: d["steps"][0].update(opens="debrief"), ("steps[0].opens", "unknown_pane")),
-    (lambda d: d["steps"][0].update(body=""), ("steps[0].body", "required")),
-    (lambda d: d["steps"][0].update(hints="one"), ("steps[0].hints", "not_a_text_list")),
-    (lambda d: d["steps"][0].pop("check"), ("steps[0].check", "required")),
-    (lambda d: d["steps"][0]["check"].update(kind="triage"), ("steps[0].check.kind", "unknown_check")),
-    (lambda d: d["steps"][1]["check"]["params"].update(case="board-nope"), ("steps[1].check.params.case", "unknown_case")),
-    (lambda d: d["steps"][2]["check"]["params"].update(objective="root"), ("steps[2].check.params.objective", "unknown_objective")),
-    (lambda d: d["steps"][1]["check"]["params"].pop("engine"), ("steps[1].check.params.engine", "required")),
-])
-def test_step_errors_come_back_by_path(edit, expected):
-    assert errors(changed(LESSON, edit)) == [expected]
-
-
 def test_every_side_allows_pvp_and_only_its_own_bot_matchup():
     attack = changed(ROUND, lambda d: d["problem"].update(side="attack"))
     attack["round"]["matchups"] = ["pvp", "atk_vs_bot", "def_vs_bot"]
@@ -109,13 +78,12 @@ def test_every_side_allows_pvp_and_only_its_own_bot_matchup():
 
 
 def test_an_unknown_wargame_does_not_also_report_every_case():
-    doc = changed(LESSON, lambda d: d["problem"].update(wargame="nowhere"))
+    doc = changed(ROUND, lambda d: d["problem"].update(wargame="nowhere"))
 
     assert errors(doc) == [("problem.wargame", "unknown_wargame")]
 
 
 def test_values_of_the_wrong_type_are_errors_not_crashes():
-    doc = changed(LESSON, lambda d: (d["problem"].update(wargame=["board"]), d["steps"][0]["check"].update(kind={})))
+    doc = changed(ROUND, lambda d: (d["problem"].update(wargame=["board"]), d["round"].update(objectives=[{}])))
 
-    assert ("problem.wargame", "unknown_wargame") in errors(doc)
-    assert ("steps[0].check.kind", "unknown_check") in errors(doc)
+    assert errors(doc) == [("problem.wargame", "unknown_wargame"), ("round.objectives", "not_a_text_list")]

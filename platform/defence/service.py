@@ -18,7 +18,6 @@ from cr import config, errors
 from defence import alerts as alert_feed
 from defence import disable, drift, kibana, ruletest
 from defence.models import Detection, DisabledRule, RuleSet, RuleTest
-from domain.checks import AppliedRuleSet
 from domain.round_rules import Phase
 from domain.types import ENGINE_IDS, ENGINE_WAF, ENGINES, DetectionRecord
 from domain.verdicts import VerdictTable
@@ -282,12 +281,6 @@ def latest_test(found: Round, engine: str, seat: Seat | None = None) -> RuleTest
 def latest_table(found: Round, engine: str, seat: Seat | None = None) -> VerdictTable | None:
     made = latest_test(found, engine, seat)
     return None if made is None else ruletest.table_of(made.result)
-
-
-def applied_by_seats(found: Round) -> tuple[AppliedRuleSet, ...]:
-    return tuple(AppliedRuleSet(engine=row.engine, version=row.version, applied_at=row.applied_at,
-                                same_as_tested=row.same_as_tested)
-                 for row in RuleSet.objects.filter(round=found).exclude(seat=None).order_by("applied_at", "id"))
 
 
 def start_tuning(found: Round) -> dict:

@@ -1,22 +1,8 @@
 from rest_framework import serializers
 
-from content.models import KINDS, PANES, SIDES
+from content.models import KINDS, SIDES
 
 MATCHUPS = ["pvp", "def_vs_bot", "atk_vs_bot"]
-
-
-class Check(serializers.Serializer):
-    kind = serializers.CharField()
-    params = serializers.DictField()
-
-
-class StaffStep(serializers.Serializer):
-    order = serializers.IntegerField()
-    body = serializers.CharField()
-    opens = serializers.ChoiceField(choices=PANES, default="none")
-    check = Check()
-    answer = serializers.JSONField(allow_null=True, required=False)
-    hints = serializers.ListField(child=serializers.CharField(), default=list)
 
 
 class HpRule(serializers.Serializer):
@@ -63,7 +49,6 @@ class StoredProblemFields(ProblemFields):
 
 class Document(serializers.Serializer):
     problem = ProblemFields()
-    steps = StaffStep(many=True, default=list)
     round = RoundSetup(allow_null=True, required=False)
     start_posture = InlinePosture(allow_null=True, required=False)
 
@@ -111,24 +96,6 @@ class Wargame(serializers.Serializer):
     default_traffic = serializers.CharField(allow_null=True)
 
 
-class LearnerStep(serializers.Serializer):
-    order = serializers.IntegerField()
-    body = serializers.CharField()
-    opens = serializers.CharField()
-    kind = serializers.SerializerMethodField()
-    options = serializers.SerializerMethodField()
-    hints_available = serializers.SerializerMethodField()
-
-    def get_kind(self, step) -> str:
-        return step.check_spec.get("kind", "")
-
-    def get_options(self, step) -> list[str]:
-        return list(step.check_spec.get("params", {}).get("options", [])) if self.get_kind(step) == "choice" else []
-
-    def get_hints_available(self, step) -> int:
-        return len(step.hints)
-
-
 class LearnerProblemSummary(serializers.Serializer):
     id = serializers.IntegerField()
     kind = serializers.CharField()
@@ -140,4 +107,3 @@ class LearnerProblemSummary(serializers.Serializer):
 
 class LearnerProblem(LearnerProblemSummary):
     body = serializers.CharField()
-    steps = LearnerStep(many=True)

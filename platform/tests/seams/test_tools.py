@@ -53,7 +53,7 @@ def test_the_tamper_variant_skips_the_heuristic_probe_that_a_dropped_connection_
     assert "--skip-heuristics" in cases["board-sqli-orderby-sqlmap-tamper"]["args"], (
         "from paranoia level 2 a board 500 is refused after its headers are sent and nginx drops the "
         "connection; when the tampered heuristic probe drew one, sqlmap stopped after one request and "
-        "VERIFY read the variant as inconclusive at the level the lesson names as the answer"
+        "VERIFY read the variant as inconclusive at the level the case names as the answer"
     )
 
 def launcher(exit_code, output=""):

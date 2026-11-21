@@ -42,7 +42,7 @@ TIME_LIMIT = "time_limit"
 ALL_OBJECTIVES_LOST = "all_objectives_lost"
 ORIGINS_SPENT = "origins_spent"
 AUTOMATIC_REASONS = (TIME_LIMIT, ALL_OBJECTIVES_LOST, ORIGINS_SPENT)
-MANUAL_REASONS = ("ended_by_operator", "forfeit_attack", "forfeit_defence", "steps_done", "lease_expired")
+MANUAL_REASONS = ("ended_by_operator", "forfeit_attack", "forfeit_defence", "lease_expired")
 END_REASONS = AUTOMATIC_REASONS + MANUAL_REASONS
 
 

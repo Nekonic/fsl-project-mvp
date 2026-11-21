@@ -18,7 +18,6 @@ KEPT_PER_ROUND = 200
 PASSED_ON = ("Accept", "Accept-Language", "Content-Type", "User-Agent")
 NOT_RETURNED = frozenset({"connection", "content-length", "keep-alive", "set-cookie", "transfer-encoding",
                           "content-encoding"})
-LESSON = "lesson"
 ATTACK_PANE, BROWSE_PANE = "attack", "browse"
 
 kept: dict[tuple[int, str], deque] = {}
@@ -36,8 +35,6 @@ class Fetched:
 
 
 def attack_seat(found: Round, seated: Sequence[Seat]) -> Seat | None:
-    if found.kind == LESSON:
-        return None
     return next((seat for seat in seated if seat.side == "attack"), None)
 
 

@@ -17,17 +17,13 @@ def problem(wargame: str = "board", objectives: Sequence[str] = ()):
     return content.save_document(document)
 
 
-def lesson_problem():
-    return content.save_document(factories.lesson(side="both"))
-
-
 def opened(found_problem, *, opened_by=None, phase: str = "running", started: datetime | None = None,
            ended: datetime | None = None) -> Round:
     now = datetime.now(timezone.utc)
     lease = Lease.objects.create(wargame_id=found_problem.wargame_id, purpose=found_problem.kind, slot=1,
                                  opened_by=opened_by, expires_at=now + timedelta(hours=1))
     return Round.objects.create(lease=lease, problem=found_problem, kind=found_problem.kind,
-                                matchup="" if found_problem.kind == "lesson" else "pvp", phase=phase,
+                                matchup="pvp", phase=phase,
                                 snapshot=content.snapshot(found_problem), started=started or now, ended=ended)
 
 

@@ -48,7 +48,7 @@ class Invalid(DomainError):
         "invalid_choice", "not_a_list", "empty", "does_not_exist", "unknown_account", "username_taken", "password_too_short",
         "password_too_common", "password_entirely_numeric", "password_too_similar",
         "not_an_object", "not_a_choice", "not_a_text", "not_a_boolean", "not_a_text_list", "not_a_positive_integer",
-        "not_an_option", "out_of_sequence", "unknown_field", "unknown_wargame", "unknown_pane", "unknown_check",
+        "unknown_field", "unknown_wargame",
         "unknown_objective", "unknown_profile", "matchup_not_allowed", "not_malicious",
         "not_recorded", "name_taken",
     })
@@ -70,8 +70,7 @@ class NotFound(DomainError):
     code = "not_found"
     status = 404
     codes = frozenset({"not_found", "unknown_case", "unknown_tool", "unknown_run", "unknown_origin", "unknown_user",
-                       "unknown_block", "unknown_round", "unknown_lease", "unknown_problem", "unknown_posture",
-                       "unknown_step"})
+                       "unknown_block", "unknown_round", "unknown_lease", "unknown_problem", "unknown_posture"})
 
 
 class NotAllowed(DomainError):
@@ -91,7 +90,7 @@ class Conflict(DomainError):
     status = 409
     codes = frozenset({
         "conflict", "round_not_started", "round_closed", "round_running", "origins_spent", "stale_version",
-        "stale_revision", "test_busy", "already_seated", "seat_taken", "in_use", "step_locked",
+        "stale_revision", "test_busy", "already_seated", "seat_taken", "in_use",
         "own_account", "loot_not_taken", "lease_closed", "seats_open", "objective_fallen", "round_started",
         "probe_running", "round_open", "range_not_cloud",
     })

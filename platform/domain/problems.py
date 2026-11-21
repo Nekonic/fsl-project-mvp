@@ -3,19 +3,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from domain.checks import check_params
 from domain.round_rules import ALLOWED_MATCHUPS, Matchup, Side
 from domain.types import FieldError
 
-KINDS = ("lesson", "round")
-PANES = ("kibana", "terminal_kali", "terminal_waf", "site", "map", "ids_rules", "waf", "alerts", "none")
+KINDS = ("round",)
 HP_FIELDS = ("budget", "per_request", "refused_x", "burst_per_s", "burst_x")
-CASE_PARAMS = {"rule_test": "case", "alert_seen": "case"}
-OBJECTIVE_PARAMS = {"loot": "objective"}
 PROBLEM_FIELDS = ("kind", "wargame", "side", "title", "summary", "body", "published")
 STORED_STAMPS = ("id", "revision", "author", "updated")
-STEP_FIELDS = ("order", "body", "opens", "check", "answer", "hints")
-CHECK_FIELDS = ("kind", "params")
 ROUND_FIELDS = ("matchups", "posture", "probe_cases", "objectives", "hp", "traffic", "benign_every_s",
                 "time_limit_s")
 
@@ -43,20 +37,10 @@ def validate_problem(doc: object, catalog: Mapping[str, WargameCatalog]) -> list
     errors = _problem(problem, catalog)
     wargame = catalog.get(problem["wargame"]) if _named_in(problem.get("wargame"), catalog) else None
     side = problem.get("side")
-    kind = problem.get("kind")
-
-    steps = doc.get("steps", [])
-    if not isinstance(steps, list):
-        errors.append(FieldError("steps", "not_a_list"))
-    else:
-        if kind == "lesson" and not steps:
-            errors.append(FieldError("steps", "required"))
-        errors.extend(_steps(steps, wargame))
 
     setup = doc.get("round")
     if setup is None:
-        if kind == "round":
-            errors.append(FieldError("round", "required"))
+        errors.append(FieldError("round", "required"))
     elif not isinstance(setup, Mapping):
         errors.append(FieldError("round", "not_an_object"))
     else:
@@ -83,41 +67,6 @@ def _problem(problem: Mapping, catalog: Mapping[str, WargameCatalog]) -> list[Fi
             errors.append(FieldError(f"problem.{name}", "not_a_text"))
     if "published" in problem and type(problem["published"]) is not bool:
         errors.append(FieldError("problem.published", "not_a_boolean"))
-    return errors
-
-
-def _steps(steps: list, wargame: WargameCatalog | None) -> list[FieldError]:
-    errors = []
-    for index, step in enumerate(steps):
-        at = f"steps[{index}]"
-        if not isinstance(step, Mapping):
-            errors.append(FieldError(at, "not_an_object"))
-            continue
-        errors.extend(unknown_fields(step, STEP_FIELDS, at))
-        if step.get("order") != index + 1:
-            errors.append(FieldError(f"{at}.order", "out_of_sequence", (("expected", index + 1),)))
-        if not _text(step.get("body")):
-            errors.append(FieldError(f"{at}.body", "required"))
-        if step.get("opens", "none") not in PANES:
-            errors.append(FieldError(f"{at}.opens", "unknown_pane"))
-        hints = step.get("hints", [])
-        if not isinstance(hints, list) or not all(_text(hint) for hint in hints):
-            errors.append(FieldError(f"{at}.hints", "not_a_text_list"))
-        errors.extend(_check(step.get("check"), f"{at}.check", wargame))
-    return errors
-
-
-def _check(check: object, at: str, wargame: WargameCatalog | None) -> list[FieldError]:
-    if not isinstance(check, Mapping):
-        return [FieldError(at, "required")]
-    kind, params = check.get("kind"), check.get("params", {})
-    errors = unknown_fields(check, CHECK_FIELDS, at) + check_params(kind, params, at)
-    if errors or wargame is None:
-        return errors
-    if (name := CASE_PARAMS.get(kind)) and params.get(name) and params[name] not in wargame.cases:
-        errors.append(FieldError(f"{at}.params.{name}", "unknown_case"))
-    if (name := OBJECTIVE_PARAMS.get(kind)) and params[name] not in wargame.objectives:
-        errors.append(FieldError(f"{at}.params.{name}", "unknown_objective"))
     return errors
 
 

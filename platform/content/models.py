@@ -1,10 +1,8 @@
 from django.conf import settings
 from django.db import models
 
-KINDS = [("lesson", "lesson"), ("round", "round")]
+KINDS = [("round", "round")]
 SIDES = [("attack", "attack"), ("defence", "defence"), ("both", "both")]
-PANES = [(pane, pane) for pane in ("kibana", "terminal_kali", "terminal_waf", "site", "map", "ids_rules", "waf",
-                                   "alerts", "none")]
 
 
 class Wargame(models.Model):
@@ -48,20 +46,6 @@ class Problem(models.Model):
 
     class Meta:
         ordering = ["id"]
-
-
-class Step(models.Model):
-    problem = models.ForeignKey(Problem, on_delete=models.CASCADE, related_name="steps")
-    order = models.PositiveIntegerField()
-    body = models.TextField()
-    opens = models.CharField(max_length=16, choices=PANES, default="none")
-    check_spec = models.JSONField(default=dict, db_column="check")
-    answer = models.JSONField(null=True, blank=True)
-    hints = models.JSONField(default=list)
-
-    class Meta:
-        ordering = ["problem_id", "order"]
-        constraints = [models.UniqueConstraint(fields=["problem", "order"], name="one_step_per_order")]
 
 
 class RoundSetup(models.Model):

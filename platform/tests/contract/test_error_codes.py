@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 from cr import errors, strings
-from domain.checks import DETAIL_CODES
 
 STRINGS = Path(__file__).resolve().parents[3] / "strings"
 
@@ -15,12 +14,6 @@ def test_every_error_code_has_a_korean_line_in_the_console_table():
     shown = table("console.json")
 
     assert sorted(code for code in errors.CODES if f"error.{code}" not in shown) == []
-
-
-def test_every_check_detail_code_has_a_korean_line_in_the_console_table():
-    shown = table("console.json")
-
-    assert sorted(code for code in DETAIL_CODES if f"check.{code}" not in shown) == []
 
 
 def test_the_two_tables_share_no_key():

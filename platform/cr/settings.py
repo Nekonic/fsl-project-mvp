@@ -31,7 +31,6 @@ INSTALLED_APPS = [
     "referee",
     "defence",
     "attack",
-    "lessons",
 ]
 
 MIDDLEWARE = [
@@ -102,6 +101,5 @@ SPECTACULAR_SETTINGS = {
     "POSTPROCESSING_HOOKS": ["drf_spectacular.hooks.postprocess_schema_enums", "cr.schema.error_shape"],
     "ENUM_NAME_OVERRIDES": {"ProblemKindEnum": "content.models.KINDS", "ProblemSideEnum": "content.models.SIDES",
                             "VerdictEnum": "defence.serializers.VERDICTS", "MatchupEnum": "match.models.MATCHUPS",
-                            "SeatSideEnum": "match.models.SIDES", "RoundPhaseEnum": "match.models.PHASES",
-                            "LessonPhaseEnum": "lessons.serializers.LESSON_PHASES"},
+                            "SeatSideEnum": "match.models.SIDES", "RoundPhaseEnum": "match.models.PHASES"},
 }

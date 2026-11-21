@@ -137,18 +137,6 @@ def test_a_signed_in_user_reaches_only_the_seat_they_hold(make_user):
     assert codes(called(DefenceRoute, round_id=found.pk)) == ["not_signed_in"]
 
 
-def test_a_lesson_learner_holds_both_seats(make_user):
-    learner = make_user("student")
-    found = rounds.opened(rounds.lesson_problem())
-    rounds.seated(found, "attack", user=learner)
-    rounds.seated(found, "defence", user=learner)
-
-    assert called(AttackRoute, user=learner, round_id=found.pk).status_code == 200
-    assert called(DefenceRoute, user=learner, round_id=found.pk).status_code == 200
-    assert called(RoundRoute, user=learner, round_id=found.pk).data == {"seats": ["attack", "defence"],
-                                                                        "operator": False}
-
-
 def test_an_unknown_round_is_not_found(make_user):
     assert codes(called(AttackRoute, user=make_user("player"), round_id=999)) == ["unknown_round"]
 

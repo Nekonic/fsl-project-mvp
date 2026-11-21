@@ -11,7 +11,6 @@ SIDES = frozenset({ATTACK, DEFENCE})
 BOTH = frozenset({ATTACK, DEFENCE, STAFF, OPERATOR})
 ATTACK_SIDE = frozenset({ATTACK, STAFF})
 DEFENCE_SIDE = frozenset({DEFENCE, STAFF})
-LESSON_SEATS = frozenset({ATTACK, DEFENCE, STAFF})
 
 TEXT = (str,)
 NUMBER = (int,)
@@ -56,8 +55,6 @@ KINDS: dict[str, Kind] = {
     "rule.disabled": Kind({"sid": NUMBER, "expires_at": TEXT}, DEFENCE_SIDE),
     "rule.drifted": Kind({"engine": TEXT}, DEFENCE_SIDE),
     "objective.lost": Kind({"key": TEXT, "name": TEXT}, BOTH, staff_fields={"attributed_marker": MAYBE_TEXT}),
-    "step.answered": Kind({"order": NUMBER, "verdict": TEXT}, LESSON_SEATS),
-    "step.passed": Kind({"order": NUMBER}, LESSON_SEATS),
 }
 
 

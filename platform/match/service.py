@@ -29,7 +29,7 @@ from range.declaration import read as read_declaration
 from referee import service as referee
 
 RETRY_AFTER = 30
-ROUND, LESSON = "round", "lesson"
+ROUND = "round"
 SIDES = ("attack", "defence")
 ENDED = Phase.ENDED.value
 RUNNING = Phase.RUNNING.value
@@ -246,28 +246,6 @@ def create_round(held: Lease, problem_id: int, matchup: str, seats: dict[str, di
     return Created(round=found, bot_tokens=tokens)
 
 
-def lesson_sides(problem_side: str) -> tuple[str, ...]:
-    return SIDES if problem_side == "both" else (problem_side,)
-
-
-def create_lesson_round(held: Lease, problem_id: int, user) -> Round:
-    if held.closed is not None:
-        raise errors.Conflict(code="lease_closed")
-    problem = content.problem(problem_id)
-    if problem.wargame_id != held.wargame_id or problem.kind != LESSON:
-        raise errors.Invalid(code="invalid_choice", path="problem")
-    if Round.objects.filter(lease=held).exclude(phase=ENDED).exists():
-        raise errors.Conflict(code="round_open")
-    sides = lesson_sides(problem.side)
-    with transaction.atomic():
-        found = Round.objects.create(lease=held, problem=problem, kind=LESSON)
-        for side in sides:
-            Seat.objects.create(round=found, side=side, client=HUMAN, user=user)
-    for side in sides:
-        log.append(found.pk, "seat.joined", {"side": side, "client": HUMAN})
-    return found
-
-
 def round_of(round_id: int) -> Round:
     found = Round.objects.select_related("lease").filter(pk=round_id).first()
     if found is None:
@@ -298,7 +276,7 @@ def join(found: Round, side: str, user) -> Seat:
         raise errors.NotFound()
     if seat.user_id == user.pk:
         return seat
-    if found.kind != LESSON and Seat.objects.filter(round=found, user=user).exclude(side=side).exists():
+    if Seat.objects.filter(round=found, user=user).exclude(side=side).exists():
         raise errors.Conflict(code="already_seated")
     if not Seat.objects.filter(pk=seat.pk, user=None, client=HUMAN).update(user=user):
         raise errors.Conflict(code="seat_taken")

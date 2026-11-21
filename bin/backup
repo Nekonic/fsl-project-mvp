@@ -37,7 +37,6 @@ TABLES = (
     ("events", "events_event"),
     ("problems", "content_problem"),
     ("postures", "content_posture"),
-    ("progress", "lessons_progress"),
 )
 
 IMPORTS = """

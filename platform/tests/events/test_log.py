@@ -7,7 +7,6 @@ from events.models import Event
 ROUND = 7
 ATTACKER = Viewer(sides=frozenset({"attack"}))
 DEFENDER = Viewer(sides=frozenset({"defence"}))
-LESSON_LEARNER = Viewer(sides=frozenset({"attack", "defence"}))
 OPERATOR = Viewer(operator=True)
 STAFF = Viewer(staff=True)
 
@@ -16,10 +15,10 @@ SPEC_VISIBILITY = {
     "action.sent": "attack", "tool.started": "attack", "tool.ended": "attack", "command.run": "attack",
     "origin.charged": "attack", "origin.spent": "attack", "origin.switched": "attack", "origins.spent": "attack",
     "alert.seen": "defence", "rule.tested": "defence", "rule.applied": "defence", "rule.disabled": "defence",
-    "rule.drifted": "defence", "objective.lost": "both", "step.answered": "lesson", "step.passed": "lesson",
+    "rule.drifted": "defence", "objective.lost": "both",
 }
 AUDIENCES = {
-    "both": kinds.BOTH, "attack": kinds.ATTACK_SIDE, "defence": kinds.DEFENCE_SIDE, "lesson": kinds.LESSON_SEATS,
+    "both": kinds.BOTH, "attack": kinds.ATTACK_SIDE, "defence": kinds.DEFENCE_SIDE,
 }
 
 
@@ -61,7 +60,6 @@ def test_in_pvp_each_side_sees_only_its_own_kinds():
     assert kinds_seen(ATTACKER) == ["round.started", "action.sent", "objective.lost"]
     assert kinds_seen(DEFENDER) == ["round.started", "alert.seen", "objective.lost"]
     assert kinds_seen(OPERATOR) == ["round.started", "objective.lost"]
-    assert kinds_seen(LESSON_LEARNER) == kinds_seen(STAFF)
 
 
 @pytest.mark.django_db

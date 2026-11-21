@@ -28,25 +28,15 @@ def test_a_snapshot_freezes_the_problem_with_its_revision_posture_and_benign_cas
 
 
 def test_a_staff_edit_after_the_snapshot_leaves_the_snapshot_unchanged(source, as_staff):
-    problem_id = stored(as_staff, factories.lesson())
+    problem_id = stored(as_staff, factories.round_problem())
     frozen = service.snapshot(service.problem(problem_id))
     kept = json.dumps(frozen, sort_keys=True)
 
-    edited = factories.lesson(title="Edited mid-round")
-    edited["steps"][0]["check"]["params"]["accept"] = ["another answer"]
+    edited = factories.round_problem({"title": "Edited mid-round"}, time_limit_s=60)
     edited["start_posture"]["crs_tuning"] = {"paranoia": 4}
     as_staff.put(f"/api/staff/problems/{problem_id}/", {**edited, "base_revision": 1}, format="json")
 
     assert json.dumps(frozen, sort_keys=True) == kept
     later = service.snapshot(service.problem(problem_id))
     assert later["problem"]["revision"] == 2 and later["problem"]["title"] == "Edited mid-round"
-    assert frozen["steps"][0]["check"]["params"]["accept"] == ["placeholder answer"]
-
-
-def test_a_lesson_snapshot_carries_its_steps_with_their_checks(source, as_staff):
-    frozen = service.snapshot(service.problem(stored(as_staff, factories.lesson())))
-
-    assert frozen["round"] is None
-    assert [step["check"]["kind"] for step in frozen["steps"]] == ["answer", "choice", "rule_test"]
-    assert frozen["start_posture"]["name"] == "placeholder start"
-    assert len(frozen["objectives"]) == 3
+    assert frozen["round"]["time_limit_s"] == 900

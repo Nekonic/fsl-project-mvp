@@ -233,184 +233,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Errors'
-  /api/lessons/:
-    get:
-      operationId: lesson_list
-      parameters:
-      - in: query
-        name: mine
-        schema:
-          type: boolean
-          default: true
-      tags:
-      - lessons
-      security:
-      - cr_session: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/LessonLine'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
-    post:
-      operationId: lesson_open
-      tags:
-      - lessons
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OpenLessonRequest'
-        required: true
-      security:
-      - cr_session: []
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LessonOpened'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
-  /api/lessons/{round_id}/:
-    get:
-      operationId: lesson_read
-      parameters:
-      - in: path
-        name: round_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - lessons
-      security:
-      - cr_session: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LessonShown'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
-  /api/lessons/{round_id}/end/:
-    post:
-      operationId: lesson_end
-      parameters:
-      - in: path
-        name: round_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - lessons
-      security:
-      - cr_session: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LessonEnded'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
-  /api/lessons/{round_id}/steps/{order}/check/:
-    post:
-      operationId: lesson_step_check
-      parameters:
-      - in: path
-        name: order
-        schema:
-          type: integer
-        required: true
-      - in: path
-        name: round_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - lessons
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CheckAskRequest'
-      security:
-      - cr_session: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StepVerdict'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
-  /api/lessons/{round_id}/steps/{order}/hint/:
-    post:
-      operationId: lesson_step_hint
-      parameters:
-      - in: path
-        name: order
-        schema:
-          type: integer
-        required: true
-      - in: path
-        name: round_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - lessons
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/HintAskRequest'
-        required: true
-      security:
-      - cr_session: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Hint'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
   /api/me/:
     get:
       operationId: me
@@ -2372,43 +2194,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Errors'
-  /api/staff/steps/{problem_id}/{order}/try/:
-    post:
-      operationId: staff_step_try
-      parameters:
-      - in: path
-        name: order
-        schema:
-          type: integer
-        required: true
-      - in: path
-        name: problem_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - staff
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TryAskRequest'
-        required: true
-      security:
-      - cr_session: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StepVerdict'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
   /api/staff/users/:
     get:
       operationId: staff_users
@@ -2864,34 +2649,6 @@ components:
       - case
       - now
       - was
-    Check:
-      type: object
-      properties:
-        kind:
-          type: string
-        params:
-          type: object
-          additionalProperties: {}
-      required:
-      - kind
-      - params
-    CheckAskRequest:
-      type: object
-      properties:
-        answer:
-          nullable: true
-    CheckRequest:
-      type: object
-      properties:
-        kind:
-          type: string
-          minLength: 1
-        params:
-          type: object
-          additionalProperties: {}
-      required:
-      - kind
-      - params
     Closed:
       type: object
       properties:
@@ -3083,10 +2840,6 @@ components:
       properties:
         problem:
           $ref: '#/components/schemas/ProblemFields'
-        steps:
-          type: array
-          items:
-            $ref: '#/components/schemas/StaffStep'
         round:
           allOf:
           - $ref: '#/components/schemas/RoundSetup'
@@ -3102,10 +2855,6 @@ components:
       properties:
         problem:
           $ref: '#/components/schemas/ProblemFieldsRequest'
-        steps:
-          type: array
-          items:
-            $ref: '#/components/schemas/StaffStepRequest'
         round:
           allOf:
           - $ref: '#/components/schemas/RoundSetupRequest'
@@ -3135,7 +2884,6 @@ components:
       - ended_by_operator
       - forfeit_attack
       - forfeit_defence
-      - steps_done
       - lease_expired
       type: string
       description: |-
@@ -3145,7 +2893,6 @@ components:
         * `ended_by_operator` - ended_by_operator
         * `forfeit_attack` - forfeit_attack
         * `forfeit_defence` - forfeit_defence
-        * `steps_done` - steps_done
         * `lease_expired` - lease_expired
     Event:
       type: object
@@ -3259,26 +3006,6 @@ components:
             $ref: '#/components/schemas/OriginActivity'
       required:
       - by_origin
-    Hint:
-      type: object
-      properties:
-        hint:
-          type: string
-        n:
-          type: integer
-        left:
-          type: integer
-      required:
-      - hint
-      - left
-      - n
-    HintAskRequest:
-      type: object
-      properties:
-        n:
-          type: integer
-      required:
-      - n
     HpBlock:
       type: object
       properties:
@@ -3476,16 +3203,11 @@ components:
           type: string
         body:
           type: string
-        steps:
-          type: array
-          items:
-            $ref: '#/components/schemas/LearnerStep'
       required:
       - body
       - id
       - kind
       - side
-      - steps
       - summary
       - title
       - wargame
@@ -3511,33 +3233,6 @@ components:
       - summary
       - title
       - wargame
-    LearnerStep:
-      type: object
-      properties:
-        order:
-          type: integer
-        body:
-          type: string
-        opens:
-          type: string
-        kind:
-          type: string
-          readOnly: true
-        options:
-          type: array
-          items:
-            type: string
-          readOnly: true
-        hints_available:
-          type: integer
-          readOnly: true
-      required:
-      - body
-      - hints_available
-      - kind
-      - opens
-      - options
-      - order
     LeaseDetail:
       type: object
       properties:
@@ -3595,102 +3290,6 @@ components:
       - ready
       - slot
       - wargame
-    LessonBrief:
-      type: object
-      properties:
-        id:
-          type: integer
-        side:
-          type: string
-        title:
-          type: string
-        summary:
-          type: string
-        body:
-          type: string
-      required:
-      - body
-      - id
-      - side
-      - summary
-      - title
-    LessonEnded:
-      type: object
-      properties:
-        ended:
-          type: string
-          format: date-time
-      required:
-      - ended
-    LessonLine:
-      type: object
-      properties:
-        round:
-          type: integer
-        problem:
-          type: integer
-        phase:
-          $ref: '#/components/schemas/LessonPhaseEnum'
-        passed_order:
-          type: integer
-      required:
-      - passed_order
-      - phase
-      - problem
-      - round
-    LessonOpened:
-      type: object
-      properties:
-        round:
-          type: integer
-        lease:
-          type: integer
-        phase:
-          $ref: '#/components/schemas/LessonPhaseEnum'
-      required:
-      - lease
-      - phase
-      - round
-    LessonPhaseEnum:
-      enum:
-      - waiting_slot
-      - starting
-      - ready
-      - ended
-      type: string
-      description: |-
-        * `waiting_slot` - waiting_slot
-        * `starting` - starting
-        * `ready` - ready
-        * `ended` - ended
-    LessonShown:
-      type: object
-      properties:
-        round:
-          type: integer
-        lease:
-          type: integer
-        phase:
-          $ref: '#/components/schemas/LessonPhaseEnum'
-        problem:
-          $ref: '#/components/schemas/LessonBrief'
-        steps:
-          type: array
-          items:
-            $ref: '#/components/schemas/StepLine'
-        current:
-          type: integer
-          nullable: true
-        progress:
-          $ref: '#/components/schemas/Standing'
-      required:
-      - current
-      - lease
-      - phase
-      - problem
-      - progress
-      - round
-      - steps
     LootRequest:
       type: object
       properties:
@@ -3853,35 +3452,6 @@ components:
           maxLength: 64
       required:
       - wargame
-    OpenLessonRequest:
-      type: object
-      properties:
-        problem:
-          type: integer
-      required:
-      - problem
-    OpensEnum:
-      enum:
-      - kibana
-      - terminal_kali
-      - terminal_waf
-      - site
-      - map
-      - ids_rules
-      - waf
-      - alerts
-      - none
-      type: string
-      description: |-
-        * `kibana` - kibana
-        * `terminal_kali` - terminal_kali
-        * `terminal_waf` - terminal_waf
-        * `site` - site
-        * `map` - map
-        * `ids_rules` - ids_rules
-        * `waf` - waf
-        * `alerts` - alerts
-        * `none` - none
     OriginActivity:
       type: object
       properties:
@@ -4128,12 +3698,9 @@ components:
       - wargame
     ProblemKindEnum:
       enum:
-      - lesson
       - round
       type: string
-      description: |-
-        * `lesson` - lesson
-        * `round` - round
+      description: '* `round` - round'
     ProblemSideEnum:
       enum:
       - attack
@@ -4168,10 +3735,6 @@ components:
       properties:
         problem:
           $ref: '#/components/schemas/ProblemFieldsRequest'
-        steps:
-          type: array
-          items:
-            $ref: '#/components/schemas/StaffStepRequest'
         round:
           allOf:
           - $ref: '#/components/schemas/RoundSetupRequest'
@@ -4763,66 +4326,6 @@ components:
       - title
       - updated
       - wargame
-    StaffStep:
-      type: object
-      properties:
-        order:
-          type: integer
-        body:
-          type: string
-        opens:
-          allOf:
-          - $ref: '#/components/schemas/OpensEnum'
-          default: none
-        check:
-          $ref: '#/components/schemas/Check'
-        answer:
-          nullable: true
-        hints:
-          type: array
-          items:
-            type: string
-      required:
-      - body
-      - check
-      - order
-    StaffStepRequest:
-      type: object
-      properties:
-        order:
-          type: integer
-        body:
-          type: string
-          minLength: 1
-        opens:
-          allOf:
-          - $ref: '#/components/schemas/OpensEnum'
-          default: none
-        check:
-          $ref: '#/components/schemas/CheckRequest'
-        answer:
-          nullable: true
-        hints:
-          type: array
-          items:
-            type: string
-            minLength: 1
-      required:
-      - body
-      - check
-      - order
-    Standing:
-      type: object
-      properties:
-        passed_order:
-          type: integer
-        passed_at:
-          type: string
-          format: date-time
-          nullable: true
-      required:
-      - passed_at
-      - passed_order
     StartToolRequest:
       type: object
       properties:
@@ -4859,54 +4362,11 @@ components:
       description: |-
         * `kept` - kept
         * `lost` - lost
-    StepLine:
-      type: object
-      properties:
-        order:
-          type: integer
-        body:
-          type: string
-        opens:
-          type: string
-        hints_available:
-          type: integer
-      required:
-      - body
-      - hints_available
-      - opens
-      - order
-    StepVerdict:
-      type: object
-      properties:
-        verdict:
-          $ref: '#/components/schemas/StepVerdictVerdictEnum'
-        detail_code:
-          type: string
-          nullable: true
-        next:
-          type: integer
-          nullable: true
-      required:
-      - detail_code
-      - next
-      - verdict
-    StepVerdictVerdictEnum:
-      enum:
-      - passed
-      - not_yet
-      type: string
-      description: |-
-        * `passed` - passed
-        * `not_yet` - not_yet
     StoredDocument:
       type: object
       properties:
         problem:
           $ref: '#/components/schemas/StoredProblemFields'
-        steps:
-          type: array
-          items:
-            $ref: '#/components/schemas/StaffStep'
         round:
           allOf:
           - $ref: '#/components/schemas/RoundSetup'
@@ -5068,15 +4528,6 @@ components:
       - last_at
       - refused
       - requests
-    TryAskRequest:
-      type: object
-      properties:
-        answer:
-          nullable: true
-        round:
-          type: integer
-      required:
-      - round
     UntestedCase:
       type: object
       properties:
@@ -5302,7 +4753,6 @@ components:
       - not_a_text_list
       - not_acceptable
       - not_an_object
-      - not_an_option
       - not_found
       - not_malicious
       - not_operator
@@ -5313,7 +4763,6 @@ components:
       - 'null'
       - objective_fallen
       - origins_spent
-      - out_of_sequence
       - own_account
       - password_entirely_numeric
       - password_too_common
@@ -5338,7 +4787,6 @@ components:
       - sign_ups_throttled
       - stale_revision
       - stale_version
-      - step_locked
       - suricata_syntax
       - test_busy
       - too_many
@@ -5347,18 +4795,15 @@ components:
       - unknown_account
       - unknown_block
       - unknown_case
-      - unknown_check
       - unknown_field
       - unknown_lease
       - unknown_objective
       - unknown_origin
-      - unknown_pane
       - unknown_posture
       - unknown_problem
       - unknown_profile
       - unknown_round
       - unknown_run
-      - unknown_step
       - unknown_tool
       - unknown_user
       - unknown_wargame

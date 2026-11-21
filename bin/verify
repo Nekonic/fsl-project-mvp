@@ -106,7 +106,7 @@ if [ "$CHANGED" = 0 ] || [ "$unit_kind" != none ] || [ "$acceptance_kind" != non
   fi
 fi
 
-for layer in domain seams accounts events content match referee defence attack lessons contract; do
+for layer in domain seams accounts events content match referee defence attack contract; do
   if [ "$CHANGED" = 1 ] || [ ! -d "platform/tests/$layer" ]; then
     continue
   fi

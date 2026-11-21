@@ -113,7 +113,7 @@ def test_the_session_data_view_shows_its_name_not_its_pattern_and_hides_what_lea
         "the raw syslog line and the request headers (which carry the step marker) stay out of the table and flyout"
     )
     assert {"http.*", "data_stream.*"} <= hidden, (
-        "Suricata's own http names sit beside the lesson's url and status, and the data stream names the slot"
+        "Suricata's own http names sit beside the url and status, and the data stream names the slot"
     )
     assert {"src_ip", "dest_ip", "alert.signature", "alert.signature_id"} <= hidden, (
         "the Suricata names for what the data view already shows as source_ip, destination, rule_id and rule"

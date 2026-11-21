@@ -4,8 +4,8 @@ from django.db import models
 from content.models import Problem, Wargame
 from domain.round_rules import BOT, END_REASONS, HUMAN, Matchup, Phase
 
-PURPOSES = [(purpose, purpose) for purpose in ("round", "lesson", "probe")]
-KINDS = [(kind, kind) for kind in ("lesson", "round")]
+PURPOSES = [(purpose, purpose) for purpose in ("round", "probe")]
+KINDS = [("round", "round")]
 MATCHUPS = [(matchup.value, matchup.value) for matchup in Matchup]
 PHASES = [(phase.value, phase.value) for phase in Phase]
 SIDES = [(side, side) for side in ("attack", "defence")]

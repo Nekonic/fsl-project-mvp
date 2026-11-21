@@ -65,4 +65,4 @@ def test_each_matchup_seats_humans_where_it_says():
 
 
 def test_end_reasons_include_the_manual_ones():
-    assert {"ended_by_operator", "forfeit_attack", "forfeit_defence", "steps_done", "lease_expired"} <= set(END_REASONS)
+    assert {"ended_by_operator", "forfeit_attack", "forfeit_defence", "lease_expired"} <= set(END_REASONS)
