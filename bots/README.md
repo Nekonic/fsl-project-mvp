@@ -50,26 +50,19 @@ spec does not take, a value the client cannot encode) exits 2, an unreachable pl
 The provider turns these into its model's own message format. A `Turn` with no calls ends the run; so does
 `--turns`. Each entry is printed as one JSON line as it happens.
 
-## Hit points
+## Origins
 
-Every attack origin has a budget, and every request drains it. The rule is the `hp.rule` block of every attack
-answer:
+The attacker plays from a set of source addresses (origins). An origin is spent when the WAF's nginx error log
+names it in an `access forbidden by rule` line (a `deny`) or a `limiting requests` line (a limit_req). A CRS
+rule's 403 does not spend it. A rate limit below twice the busiest benign customer's per-origin rate spends
+nothing, and the defender is warned instead (`limit.below_floor`).
 
-| Field | Meaning |
-|---|---|
-| `budget` | hit points each origin starts with |
-| `per_request` | cost of one request |
-| `refused_x` | multiplier for a request the WAF refused |
-| `refused_statuses` | the statuses that count as refused: 400 and 403 |
-| `burst_per_s` | requests per second from one origin before the burst multiplier applies |
-| `burst_x` | multiplier for requests beyond `burst_per_s` in one second; it multiplies with `refused_x` |
-
-Every attack answer, errors included, carries `hp: {origin: {id, label, ip}, left, budget, origins_left,
-spent, rule}` and the headers `X-Origin` and `X-Origin-HP`. At `left` 0 the origin is spent: the infra edge
-drops it, open connections included, its tool runs stop, and the player moves to the next origin. The bot may
-leave an origin early with `attack_next_origin`. When `origins_left` is 0 every attack write answers
-`409 origins_spent`. API sends are charged at once and exactly; shell and tool traffic is charged from the WAF
-access log one tick late.
+Every successful attack answer carries `remaining: {origin: {id, label, ip}, left, total, spent}`, and every
+attack answer, errors included, the headers `X-Origin` and `X-Origins-Left`. A spent origin is dropped at the
+infra edge, open connections included, its tool runs stop, and the player moves to the next origin. The bot
+may leave an origin early with `attack_next_origin`. The error log is read when the next API call for the
+round comes in, so a spend shows a moment after the request that caused it. When `left` is 0 every attack
+write answers `409 origins_spent` and the round ends.
 
 ## The attack baseline and what is scored
 
@@ -81,7 +74,7 @@ only when the target's own data says so.
 
 ## Errors
 
-Every refusal is `{errors: [{path, code, line?, params?}]}`; attack refusals add `hp`. Codes a bot meets:
+Every refusal is `{errors: [{path, code, line?, params?}]}`. Codes a bot meets:
 
 | Code | Status | Meaning |
 |---|---|---|

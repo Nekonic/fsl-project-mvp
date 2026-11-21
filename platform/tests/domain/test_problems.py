@@ -19,7 +19,6 @@ ROUND = {
     "problem": {"kind": "round", "wargame": "board", "side": "defence", "title": "Hold the board",
                 "summary": "s", "body": "b", "published": False},
     "round": {"matchups": ["def_vs_bot", "pvp"], "probe_cases": ["board-sqli"], "objectives": ["db-dump"],
-              "hp": {"budget": 100, "per_request": 1, "refused_x": 3, "burst_per_s": 5, "burst_x": 2},
               "benign_every_s": 30, "time_limit_s": None},
 }
 
@@ -56,10 +55,7 @@ def test_the_document_must_carry_a_problem():
     (lambda d: d["round"].update(probe_cases=["board-browse"]), ("round.probe_cases[0]", "not_malicious")),
     (lambda d: d["round"].update(probe_cases=["board-xss"]), ("round.probe_cases[0]", "not_recorded")),
     (lambda d: d["round"].update(objectives=["root"]), ("round.objectives[0]", "unknown_objective")),
-    (lambda d: d["round"]["hp"].update(budget=0), ("round.hp.budget", "not_a_positive_integer")),
-    (lambda d: d["round"]["hp"].update(burst_x=1.5), ("round.hp.burst_x", "not_a_positive_integer")),
-    (lambda d: d["round"]["hp"].pop("refused_x"), ("round.hp.refused_x", "not_a_positive_integer")),
-    (lambda d: d["round"]["hp"].update(per_request=True), ("round.hp.per_request", "not_a_positive_integer")),
+    (lambda d: d["round"].update(hp={"budget": 100}), ("round.hp", "unknown_field")),
     (lambda d: d["round"].update(time_limit_s=-1), ("round.time_limit_s", "not_a_positive_integer")),
     (lambda d: d["round"].update(benign_every_s=0), ("round.benign_every_s", "not_a_positive_integer")),
 ])

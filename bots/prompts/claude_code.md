@@ -12,12 +12,12 @@ Commands:
 - `python -m bots.cli tools --side <attack|defence>` prints the tool specs: one JSON Schema per API operation
   your player may call. Read them once.
 - `echo '{"name": "<tool>", "arguments": {...}}' | python -m bots.cli call --side <side>` makes one call and
-  prints `{operation, ok, status, body, headers?}`. `headers` carries `X-Origin` and `X-Origin-HP` on attack
+  prints `{operation, ok, status, body, headers?}`. `headers` carries `X-Origin` and `X-Origins-Left` on attack
   answers.
 - `python -m bots.cli <tool> --json '{...}'` is the same call written on one line.
 
 Never call the platform with curl or any other client: the CLI is your whole surface, the same API a human
 console uses. The player's shell, when you ask for one with the terminal tool, is a separate SSH session to the
-range; its traffic is charged by the same rules.
+range; its traffic can spend an origin by the same rules.
 
 Read the answer of every call before the next one. Stop when the round has ended and you have read the score.

@@ -47,8 +47,7 @@ KINDS: dict[str, Kind] = {
     "tool.started": Kind({"run": NUMBER, "tool": TEXT}, ATTACK_SIDE),
     "tool.ended": Kind({"run": NUMBER, "exit_code": MAYBE_NUMBER, "stopped_by": MAYBE_TEXT}, ATTACK_SIDE),
     "command.run": Kind({"command": TEXT}, ATTACK_SIDE),
-    "origin.charged": Kind({"ip": TEXT, "charged": NUMBER, "left": NUMBER}, ATTACK_SIDE),
-    "origin.spent": Kind({"ip": TEXT}, ATTACK_SIDE),
+    "origin.spent": Kind({"ip": TEXT, "by": TEXT}, ATTACK_SIDE),
     "origin.switched": Kind({"ip": TEXT}, ATTACK_SIDE),
     "origins.spent": Kind({}, ATTACK_SIDE),
     "alert.seen": Kind({"alert": NUMBER, "engine": TEXT, "signature": TEXT}, DEFENCE_SIDE),
@@ -56,6 +55,7 @@ KINDS: dict[str, Kind] = {
     "rule.applied": Kind({"engine": TEXT, "version": NUMBER}, DEFENCE_SIDE),
     "rule.disabled": Kind({"sid": NUMBER, "expires_at": TEXT}, DEFENCE_SIDE),
     "rule.drifted": Kind({"engine": TEXT}, DEFENCE_SIDE),
+    "limit.below_floor": Kind({"zone": TEXT, "rate_rpm": NUMBER, "floor_rpm": NUMBER}, DEFENCE_SIDE),
     "objective.lost": Kind({"key": TEXT, "name": TEXT}, BOTH, staff_fields={"attributed_marker": MAYBE_TEXT}),
 }
 

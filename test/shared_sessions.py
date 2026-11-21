@@ -150,7 +150,7 @@ def board_session(stack_is_up):
 def origins_session(stack_is_up):
     with plays.Round("board") as played:
         state = plays.attack_seen(played)
-        seen = {"origins": state["origins"], "first": state["hp"]["origin"]}
+        seen = {"origins": state["origins"], "first": state["remaining"]["origin"]}
         seen["front"] = plays.fired(played, CONTROL)["marker"]
         moved = plays.next_origin(played)
         seen["elsewhere"] = moved["origin"]
@@ -228,7 +228,7 @@ def rules_session(stack_is_up):
 def terminal_session(stack_is_up):
     with plays.Round("board") as played:
         state = plays.attack_seen(played)
-        seen = {"round": played.round, "origin": state["hp"]["origin"]}
+        seen = {"round": played.round, "origin": state["remaining"]["origin"]}
         seen["box_addresses"] = run(ATTACKER, ["sh", "-c", "hostname -I"], allocation=played.allocation).stdout.split()
         token = f"zz{uuid.uuid4().hex[:10]}"
         seen["front"] = (token, with_token(probed(played, token), token))
@@ -254,7 +254,7 @@ def terminal_session(stack_is_up):
 @pytest.fixture(scope="session")
 def terminal_windows(stack_is_up):
     with plays.Round("board") as played:
-        seen = {"origin": plays.attack_seen(played)["hp"]["origin"]}
+        seen = {"origin": plays.attack_seen(played)["remaining"]["origin"]}
         time.sleep(WINDOW_GAP_SECONDS)
         token = f"zz{uuid.uuid4().hex[:10]}"
         started = plays.start_tool(played, "whatweb", [f"{TARGET_PUBLIC}{SHELL_ATTACK.format(token=token)}"])

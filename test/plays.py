@@ -43,7 +43,6 @@ DETECT_WITHOUT_BLOCKING_SEARCH = {
     "paranoia": 1,
     "exclusions": [{"rule_id": 949110, "target": "", "path": "/search/"}],
 }
-HP = {"budget": 1000000, "per_request": 1, "refused_x": 1, "burst_per_s": 1000, "burst_x": 1}
 BENIGN_EVERY_S = 30
 ROOM_WAIT = 1800
 POLL = 2
@@ -126,7 +125,6 @@ class Setup:
     title: str
     side: str = "defence"
     matchups: tuple[str, ...] = ("def_vs_bot",)
-    hp: dict = field(default_factory=lambda: dict(HP))
     suricata_rules: str = ""
     crs_tuning: dict = field(default_factory=lambda: dict(DETECT_WITHOUT_BLOCKING_SEARCH))
     probe_cases: tuple[str, ...] = ()
@@ -140,7 +138,7 @@ def round_document(setup: Setup) -> dict:
                     "published": False},
         "steps": [],
         "round": {"matchups": list(setup.matchups), "posture": posture, "probe_cases": list(setup.probe_cases),
-                  "objectives": objective_keys(setup.wargame), "hp": setup.hp, "traffic": None,
+                  "objectives": objective_keys(setup.wargame), "traffic": None,
                   "benign_every_s": BENIGN_EVERY_S, "time_limit_s": None},
         "start_posture": {"name": posture, "suricata_rules": setup.suricata_rules or declared_rules(),
                           "crs_tuning": setup.crs_tuning},

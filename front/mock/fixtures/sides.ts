@@ -9,13 +9,11 @@ const objectives = [
 const brief = { title: "Board wargame", summary: "Placeholder summary", body: "Placeholder body" };
 const target = { public_url: "http://board.com/", hosts: ["board.com"] };
 
-export const hp = {
+export const remaining = {
   origin: { id: "ar-1", label: "AR", ip: "181.8.0.10" },
-  left: 576,
-  budget: 3000,
-  origins_left: 29,
+  left: 29,
+  total: 30,
   spent: ["5.188.10.10"],
-  rule: { budget: 100, per_request: 1, refused_x: 3, burst_per_s: 10, burst_x: 2, refused_statuses: [400, 403] },
 };
 
 const roundState = (round: number) => ({
@@ -27,10 +25,10 @@ export const fixtures = [
     ...roundState(Number(asked.params.round_id)),
     objectives,
     origins: [
-      { id: "ru-1", label: "RU", ip: "5.188.10.10", left: 0, budget: 100, spent_at: minutesFromNow(-12) },
-      { id: "ar-1", label: "AR", ip: "181.8.0.10", left: 76, budget: 100, spent_at: null },
+      { id: "ru-1", label: "RU", ip: "5.188.10.10", spent_at: minutesFromNow(-12), spent_by: "deny" },
+      { id: "ar-1", label: "AR", ip: "181.8.0.10", spent_at: null, spent_by: "" },
     ],
-    hp,
+    remaining,
   })),
   reply("get", "/api/rounds/{round_id}/defence/state/", (asked) => ({
     ...roundState(Number(asked.params.round_id)),
@@ -42,7 +40,7 @@ export const fixtures = [
   reply("get", "/api/rounds/{round_id}/attack/terminal/", (asked) => ({
     ws_url: `/vm-terminal/attack/${asked.params.round_id}/`,
     ssh: { host: "range.example", port: 2222, user: "kali", private_key: "placeholder-key", expires_at: minutesFromNow(10), target_host: "kali", target_user: "kali" },
-    hp,
+    remaining,
   })),
   reply("get", "/api/rounds/{round_id}/defence/terminal/", (asked) => ({
     ws_url: `/vm-terminal/defence/${asked.params.round_id}/`,

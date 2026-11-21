@@ -175,3 +175,24 @@ def test_a_written_tuning_reads_back_as_written(tuning):
 def test_tuning_that_would_write_anything_but_a_level_exclusions_and_thresholds_is_refused(tuning):
     with pytest.raises(crs.TuningRefused):
         crs.checked(tuning)
+
+
+def test_the_limit_rates_come_from_the_running_configuration_in_requests_per_minute():
+    dumped = ("# configuration file /etc/nginx/conf.d/board.com.conf:\n"
+              "#limit_req_zone $binary_remote_addr zone=old:10m rate=1r/s;\n"
+              "limit_req_zone $binary_remote_addr zone=perip:10m rate=2r/s;\n"
+              "limit_req_zone $binary_remote_addr rate=30r/m zone=slow:1m;\n"
+              "server { location / { limit_req zone=perip burst=5; } }\n")
+    asked = []
+
+    def gateway(argv, stdin=None, timeout=60.0):
+        asked.append(argv)
+        return Ran(0, dumped)
+
+    assert crs.limit_rates(gateway) == {"perip": 120, "slow": 30}
+    assert asked == [["sh", "-c", "nginx -T 2>/dev/null"]]
+
+
+def test_an_unreadable_configuration_is_reported_not_taken_as_no_limit():
+    with pytest.raises(crs.WafUnreadable):
+        crs.limit_rates(lambda argv, stdin=None, timeout=60.0: Ran(1, "nginx: [emerg] unknown directive"))

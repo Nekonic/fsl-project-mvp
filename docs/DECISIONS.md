@@ -10454,3 +10454,48 @@ How the "no periodic tick" ruling above is carried out.
   looking at: the benign pass and HP charges from the access log wait for
   the next request. A bot or console that polls events keeps them moving.
   `check_drift` stays in the reads until the WAF-as-files stage removes it.
+
+## 2026-11-21 — Origin loss replaces HP: how it is read
+
+How the "origin loss replaces HP" ruling above is carried out.
+
+- **What went.** `domain/ledger.py`, `HpRule`, `Charge`, `OriginState`,
+  `RoundSetup.hp` and the `round.hp` problem field (a document that still
+  names it is refused with `unknown_field`), `OriginBudget` (now `Origin`,
+  with `spent_at` and `spent_by`), `Action.charged` and `access_seen`, the
+  `origin.charged` event, the `hp` block on attack answers and errors, the
+  `X-Origin-HP` header, the console's HP pane and the staff HP fields.
+- **What the attacker sees.** A successful attack answer carries
+  `remaining: {origin, left, total, spent}`; every attack answer carries
+  `X-Origin` and `X-Origins-Left`. The console pane is "출발지 IP" and shows
+  남은 IP. A refusal is `{errors}` only.
+- **The log.** The WAF writes `error_log /var/log/nginx/error.log warn;`
+  (in `board.com.conf`, beside the access log); `log-shipper.conf` ships it
+  as `nginx-error`, the infra relays it, filebeat keeps the text line as
+  `error.message` under module `nginx_error`. `telemetry/elastic.py` reads
+  it (`error_events`), `telemetry/access.py` picks the two lines that spend:
+  `access forbidden by rule, client: <ip>` and `limiting requests, excess:
+  ... by zone "<zone>", client: <ip>`. A dry run line, `delaying request`
+  and ModSecurity's own 403 line do not match. `warn` rather than the
+  default `error` keeps a `limit_req_log_level warn` visible.
+- **The floor.** `domain/traffic.py` computes it from `traffic.yaml`: the
+  customers' `rate` (default one request a second across all customers,
+  the rate `users.py` already paced at) times the largest share of `users`
+  one origin gets, in requests per minute, doubled and rounded up (board:
+  90 r/m). `content.snapshot` stores it as `round.limit_floor_rpm`. A
+  `limiting requests` line is judged by its zone: `sandbox/crs.py` reads
+  the zone rates from `nginx -T` (only when such a line appears), and a
+  zone below the floor spends nothing and leaves one `limit.below_floor`
+  event per zone and rate on the defence side; a zone the running
+  configuration no longer declares spends nothing either. A wargame with no
+  `traffic.yaml` has no floor, and any limit spends.
+- **When.** The error log is one of the round's reads
+  (`attack.spend_from_log`, cursor `errors` on the allocation's
+  `AccessCursor`); only lines stamped between the round's start and its
+  end time count. The spend itself is unchanged: the edge drops the
+  address, tool runs stop, the box wears the next origin, and the round
+  ends `origins_spent` once all are gone.
+- **Not measured.** None of this has run on a range: the WAF image must be
+  rebaked with the error log shipped, and the acceptance tests
+  `test/test_origin_spend.py` and `test/test_block_everything.py` were
+  rewritten without being run.

@@ -1,11 +1,18 @@
 import pytest
 
 from cr import errors
-from testing.fakerange import BR, BR_CUSTOMERS, REFUSED_PAGE, RU, US, US_CUSTOMERS
+from testing.fakerange import BR, BR_CUSTOMERS, RU, US, US_CUSTOMERS
+from testing.fakes import FakeElastic
 from tests import rounds
-from tests.training.attack.conftest import url
+from tests.training.attack.conftest import (
+    after_start,
+    denied_line,
+    error_document,
+    spent_from_log,
+)
 from training.attack import actions as service
-from training.models import OriginBudget
+from training.attack import origins
+from training.models import Origin
 
 pytestmark = pytest.mark.django_db
 
@@ -13,28 +20,27 @@ CUSTOMERS = (*US_CUSTOMERS, *BR_CUSTOMERS)
 
 
 @pytest.fixture
-def spent_round(make_round, learner, browser, cloud):
-    found = make_round(hp={"budget": 3})
-    rounds.playing(found, "attack", learner)
-    browser.force_authenticate(learner)
-    cloud.box.answer("cr.status=", REFUSED_PAGE)
-    for _ in range(3):
-        browser.post(url(found, "requests/"), {"method": "GET", "path": "/"}, format="json")
+def spent_round(attack_round, learner, cloud):
+    rounds.playing(attack_round, "attack", learner)
+    es = FakeElastic()
+    for n, ip in enumerate((RU, US, BR)):
+        es.add(f"e{n}", error_document(after_start(attack_round, n + 1), denied_line(ip)))
+    spent_from_log(es, attack_round)
     cloud.box.answer("cr.status=", "HTTP/1.1 200 OK\r\n\r\nwelcome\ncr.status=200\n")
-    return found
+    return attack_round
 
 
 def test_every_attack_origin_is_spent_and_no_customer_address_ever_reaches_the_spent_set(spent_round, cloud):
     spent_at_edge = [one.text for one in cloud.edge.matching("edge spent")]
 
-    assert not OriginBudget.objects.filter(round=spent_round, spent_at=None).exists()
+    assert not Origin.objects.filter(round=spent_round, spent_at=None).exists()
     assert len(spent_at_edge) == 3
     assert not any(customer in text for text in spent_at_edge for customer in CUSTOMERS)
 
 
 def test_loading_the_edge_keeps_customers_in_the_pool_and_out_of_the_spent_set(spent_round, cloud):
     reached = service.range_of(spent_round)
-    service.load_edge(spent_round, reached, reached.describe())
+    origins.load_edge(spent_round, reached, reached.describe())
 
     loaded = cloud.edge.matching("nft -f -")[-1].stdin
     pool_line, spent_line = loaded.splitlines()[2:]
@@ -54,8 +60,7 @@ def test_customers_keep_sending_after_every_attack_origin_is_spent(spent_round, 
     assert f"X-Request-ID: {sent.marker}" in customer_send.argv[3]
 
 
-def test_a_benign_case_fires_from_a_customer_address_after_the_spend_and_costs_no_hp(spent_round, cloud):
-    before = list(OriginBudget.objects.filter(round=spent_round).values_list("left", flat=True))
+def test_a_benign_case_fires_from_a_customer_address_after_the_spend(spent_round, cloud):
 
     fired = service.fire_benign(spent_round, "board-normal-search-with-apostrophe", BR_CUSTOMERS[0])
 
@@ -63,7 +68,6 @@ def test_a_benign_case_fires_from_a_customer_address_after_the_spend_and_costs_n
     assert fired.status == 200 and fired.source_ip == BR_CUSTOMERS[0]
     assert f"--interface {BR_CUSTOMERS[0]}" in customer_send.argv[3]
     assert f"X-Request-ID: {fired.marker}" in customer_send.argv[3]
-    assert list(OriginBudget.objects.filter(round=spent_round).values_list("left", flat=True)) == before
 
 
 def test_a_customer_send_from_an_attack_address_is_refused(spent_round):
@@ -74,6 +78,6 @@ def test_a_customer_send_from_an_attack_address_is_refused(spent_round):
 
 
 def test_the_customer_origins_never_offer_an_attack_or_the_unbound_address(attack_round):
-    offered = {address for origin in service.customer_origins(attack_round) for address in origin["addresses"]}
+    offered = {address for origin in origins.customer_origins(attack_round) for address in origin["addresses"]}
 
     assert offered == set(CUSTOMERS)

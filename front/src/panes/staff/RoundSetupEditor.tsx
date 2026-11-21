@@ -1,6 +1,6 @@
 import { errorLine, t, type ShownError } from "../../strings";
-import { Checkbox, Field, FormGrid, Input, Row, Select, Subhead, type Option, EditorGroup, FieldNote, HpGrid, LineList, WithUnit } from "../../ui";
-import { HP_FIELDS, MATCHUPS, textUnder, type SetupBody } from "./document";
+import { Checkbox, Field, FormGrid, Input, Row, Select, Subhead, type Option, EditorGroup, FieldNote, LineList, WithUnit } from "../../ui";
+import { MATCHUPS, textUnder, type SetupBody } from "./document";
 
 export interface RoundSetupEditorProps {
   setup: SetupBody;
@@ -56,17 +56,6 @@ export function RoundSetupEditor({ setup, onSetup, errors, postures }: RoundSetu
             onAdd={(key) => change({ objectives: [...objectives, key] })} />
         </EditorGroup>
       </FormGrid>
-
-      <EditorGroup label={t("staff.round.hp")}>
-        <HpGrid>
-          {HP_FIELDS.map((name) => (
-            <Field key={name} label={t(`staff.round.hp.${name}`)} error={textUnder(errors, `round.hp.${name}`)}>
-              <Input mono inputMode="numeric" value={setup.hp[name]} bad={Boolean(textUnder(errors, `round.hp.${name}`))}
-                onValue={(text) => change({ hp: { ...setup.hp, [name]: whole(text) } })} />
-            </Field>
-          ))}
-        </HpGrid>
-      </EditorGroup>
 
       <FormGrid>
         <Field label={t("staff.round.benign_every")} error={textUnder(errors, "round.benign_every_s")}>

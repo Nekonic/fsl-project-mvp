@@ -4,7 +4,7 @@ import { clock } from "../format";
 import { setHash } from "../router";
 import { t } from "../strings";
 import { AsideCard, Badge, Button, Card, ErrorNotice, Form, FormActions, ListRow, Pane, PaneSection, Text, TextArea, PaneColumn } from "../ui";
-import { attackWritesOpen, useAttackState } from "./Hp";
+import { attackWritesOpen, useAttackState } from "./Origins";
 import type { PaneProps } from "./types";
 
 export interface LootSubmission {

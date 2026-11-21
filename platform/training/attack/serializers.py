@@ -11,31 +11,19 @@ class AttackOrigin(serializers.Serializer):
     ip = serializers.CharField()
 
 
-class Rule(serializers.Serializer):
-    budget = serializers.IntegerField()
-    per_request = serializers.IntegerField()
-    refused_x = serializers.IntegerField()
-    burst_per_s = serializers.IntegerField()
-    burst_x = serializers.IntegerField()
-    refused_statuses = serializers.ListField(child=serializers.IntegerField())
-
-
-class HpBlock(serializers.Serializer):
+class Remaining(serializers.Serializer):
     origin = AttackOrigin(allow_null=True)
     left = serializers.IntegerField()
-    budget = serializers.IntegerField()
-    origins_left = serializers.IntegerField()
+    total = serializers.IntegerField()
     spent = serializers.ListField(child=serializers.CharField())
-    rule = Rule()
 
 
 class OriginLine(serializers.Serializer):
     id = serializers.CharField()
     label = serializers.CharField()
     ip = serializers.CharField()
-    left = serializers.IntegerField()
-    budget = serializers.IntegerField()
     spent_at = serializers.DateTimeField(allow_null=True)
+    spent_by = serializers.CharField(allow_blank=True)
 
 
 class AttackBrief(serializers.Serializer):
@@ -66,7 +54,7 @@ class AttackState(serializers.Serializer):
     target = AttackTarget()
     objectives = ObjectiveLine(many=True)
     origins = OriginLine(many=True)
-    hp = HpBlock()
+    remaining = Remaining()
 
 
 class CaseEntry(serializers.Serializer):
@@ -96,7 +84,7 @@ class Sent(serializers.Serializer):
     headers = serializers.ListField(child=serializers.ListField(child=serializers.CharField()))
     body = serializers.CharField()
     truncated = serializers.BooleanField()
-    hp = HpBlock()
+    remaining = Remaining()
 
 
 class FireCase(serializers.Serializer):
@@ -108,7 +96,7 @@ class Fired(serializers.Serializer):
     marker = serializers.CharField()
     run = serializers.IntegerField(allow_null=True)
     status = serializers.IntegerField(allow_null=True)
-    hp = HpBlock()
+    remaining = Remaining()
 
 
 class ToolSpec(serializers.Serializer):
@@ -128,7 +116,7 @@ class RunLine(serializers.Serializer):
 class Tools(serializers.Serializer):
     tools = ToolSpec(many=True)
     runs = RunLine(many=True)
-    hp = HpBlock()
+    remaining = Remaining()
 
 
 class StartTool(serializers.Serializer):
@@ -141,7 +129,7 @@ class StartTool(serializers.Serializer):
 class Started(serializers.Serializer):
     run = serializers.IntegerField()
     action = serializers.IntegerField()
-    hp = HpBlock()
+    remaining = Remaining()
 
 
 class OutputAfter(serializers.Serializer):
@@ -154,7 +142,7 @@ class RunPage(serializers.Serializer):
     done = serializers.BooleanField()
     exit_code = serializers.IntegerField(allow_null=True)
     stopped_by = serializers.CharField(allow_null=True)
-    hp = HpBlock()
+    remaining = Remaining()
 
 
 class Loot(serializers.Serializer):
@@ -169,12 +157,12 @@ class LootedObjective(serializers.Serializer):
 class Looted(serializers.Serializer):
     lost = serializers.BooleanField()
     objective = LootedObjective(allow_null=True)
-    hp = HpBlock()
+    remaining = Remaining()
 
 
 class NextOrigin(serializers.Serializer):
     origin = AttackOrigin(allow_null=True)
-    hp = HpBlock()
+    remaining = Remaining()
 
 
 class Ssh(serializers.Serializer):
@@ -190,4 +178,4 @@ class Ssh(serializers.Serializer):
 class AttackTerminal(serializers.Serializer):
     ws_url = serializers.CharField()
     ssh = Ssh()
-    hp = HpBlock()
+    remaining = Remaining()

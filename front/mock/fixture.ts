@@ -48,9 +48,9 @@ export function refuse<M extends Method, P extends PathsWith<M>>(
   path: P,
   status: number,
   errors: FieldError[],
-  options: Omit<FixtureOptions, "status"> & { hp?: components["schemas"]["HpBlock"] } = {},
+  options: Omit<FixtureOptions, "status"> = {},
 ): Fixture {
-  return { method, path, variant: options.variant, answer: () => ({ status, body: { errors, ...(options.hp ? { hp: options.hp } : {}) } }) };
+  return { method, path, variant: options.variant, answer: () => ({ status, body: { errors } }) };
 }
 
 export function minutesFromNow(minutes: number): string {

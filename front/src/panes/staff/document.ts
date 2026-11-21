@@ -22,7 +22,6 @@ export const MATCHUPS: Matchup[] = ["pvp", "def_vs_bot", "atk_vs_bot"];
 export const KINDS: ProblemKind[] = ["lesson", "round"];
 export const SIDES: ProblemSide[] = ["attack", "defence", "both"];
 export const PARANOIA_LEVELS = [1, 2, 3, 4];
-export const HP_FIELDS = ["budget", "per_request", "refused_x", "burst_per_s", "burst_x"] as const;
 export const ANSWERED_KINDS = ["answer", "choice"];
 
 export interface StepDraft {
@@ -41,10 +40,8 @@ export interface Draft {
   start_posture: InlinePosture | null;
 }
 
-export const DEFAULT_HP = { budget: 3000, per_request: 1, refused_x: 3, burst_per_s: 10, burst_x: 2 };
-
 export function blankSetup(): SetupBody {
-  return { matchups: ["pvp"], probe_cases: [], objectives: [], hp: { ...DEFAULT_HP }, benign_every_s: 60, time_limit_s: 1800 };
+  return { matchups: ["pvp"], probe_cases: [], objectives: [], benign_every_s: 60, time_limit_s: 1800 };
 }
 
 export function blankStep(): StepDraft {
@@ -76,7 +73,7 @@ export function draftOf(stored: StoredDocument): Draft {
       answer: step.answer,
       hints: step.hints ?? [],
     })),
-    round: stored.round ? { ...stored.round, hp: { ...stored.round.hp } } : null,
+    round: stored.round ? { ...stored.round } : null,
     start_posture: stored.start_posture ?? null,
   };
 }

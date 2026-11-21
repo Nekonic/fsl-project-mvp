@@ -19,6 +19,7 @@ MODSEC_DIR=/etc/nginx/modsecurity
 EXCLUSIONS=$MODSEC_DIR/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
 AUDIT_LOG=/var/log/modsecurity/audit/audit.log
 ACCESS_LOG=/var/log/nginx/access.json
+ERROR_LOG=/var/log/nginx/error.log
 PROBE_SHARE=/usr/local/share/cr
 CRS_TEST_DIR=/var/lib/cr-crstest
 SHARE=/usr/local/share/slot
@@ -88,13 +89,14 @@ rsyslog_may_read_the_waf_logs() {
   grep -qxF 'global(maxMessageSize="64k")' /etc/rsyslog.conf || sed -i '1i global(maxMessageSize="64k")' /etc/rsyslog.conf
   [ -f /etc/apparmor.d/usr.sbin.rsyslogd ] || return 0
   install -d /etc/apparmor.d/local
-  printf '%s r,\n%s r,\n' "$AUDIT_LOG" "$ACCESS_LOG" > /etc/apparmor.d/local/usr.sbin.rsyslogd
+  printf '%s r,\n%s r,\n%s r,\n' "$AUDIT_LOG" "$ACCESS_LOG" "$ERROR_LOG" > /etc/apparmor.d/local/usr.sbin.rsyslogd
   systemctl reload apparmor
 }
 
 logs_emptied() {
   install -m 0644 -o www-data -g adm /dev/null "$AUDIT_LOG"
   install -m 0644 -o www-data -g adm /dev/null "$ACCESS_LOG"
+  install -m 0644 -o www-data -g adm /dev/null "$ERROR_LOG"
 }
 
 sealed_for_snapshot() {

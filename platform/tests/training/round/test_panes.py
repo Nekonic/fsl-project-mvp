@@ -5,7 +5,6 @@ import pytest
 from sandbox.runner import Ran
 from tests.shape import refused
 from tests.training.round.conftest import pvp, url
-from training.attack import actions as attack
 from training.content import probes
 from training.models import Action, Allocation
 from training.round import allocation as allocations
@@ -21,14 +20,13 @@ def site(found, rest="") -> str:
     return f"/site-proxy/{found.pk}/board.com/{rest}"
 
 
-def test_the_attack_player_s_site_pane_request_is_an_action_charged_like_any_send(browser, cloud, running, other):
+def test_the_attack_player_s_site_pane_request_is_an_action_like_any_send(browser, cloud, running, other):
     browser.force_authenticate(other)
-    before = attack.hp(running).left
 
     answer = browser.get(site(running, "search/?q=hello"))
 
     assert answer.status_code == 200 and answer.content == b"<p>hello</p>"
-    assert int(answer["X-Origin-HP"]) == before - 1
+    assert answer["X-Origins-Left"] == "3"
     action = Action.objects.get(round=running)
     assert action.kind == "site" and action.meta["path"] == "/search/?q=hello"
     assert any(action.marker in text for text in cloud.in_slot(1).box.texts())
@@ -40,7 +38,7 @@ def test_the_defence_player_browses_with_the_allocation_s_marker_from_a_customer
     answer = browser.get(site(running))
     sent = cloud.in_slot(1).box.matching(running.allocation.browse_marker)
 
-    assert answer.status_code == 200 and "X-Origin-HP" not in answer
+    assert answer.status_code == 200 and "X-Origins-Left" not in answer
     assert not Action.objects.filter(round=running).exists()
     assert sent and "--interface" in sent[-1].text
     listed = browser.get(url(running, "site/requests/")).json()

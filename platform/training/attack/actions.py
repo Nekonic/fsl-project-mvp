@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -15,39 +15,30 @@ from django.utils import timezone
 
 from cr import errors
 from cr.config import configured
-from domain.ledger import LedgerState
-from domain.ledger import debit as ledger_debit
 from domain.round_rules import Phase
 from domain.types import (
     ACTION_CASE,
     CORRELATION_MARKER,
     CORRELATION_WINDOW,
     ActionRecord,
-    Charge,
     CommandRecord,
-    HpRule,
-    OriginState,
 )
 from sandbox import access as jump
 from sandbox import attacker as box
 from sandbox import edge
 from sandbox.reach import allocation_range, range_of
 from scoring import losses as referee
-from telemetry import elastic
 from telemetry import events as log
 from telemetry.models import AccessCursor
 from training.attack import cases as firing
-from training.attack import tools
-from training.models import Action, Allocation, OriginBudget, Round, Player, ToolRun
+from training.attack import origins, tools
+from training.models import Action, Allocation, Origin, Player, Round, ToolRun
 
 ATTACKER = box.ATTACKER_ROLE
 PROXY = "proxy"
 CASES = "redteam/cases"
-HP_FIELDS = ("budget", "per_request", "refused_x", "burst_per_s", "burst_x")
-LESSON_HP = {"budget": 500, "per_request": 1, "refused_x": 3, "burst_per_s": 10, "burst_x": 2}
 REQUEST_TIMEOUT = 30
 BODY_LIMIT = 65536
-ACCESS_PAGES = 10
 SELF_MARKING_TOOLS = ("curl", "sqlmap")
 STOPPED_EXIT = 143
 TOOL_ARGS_SCHEMA = {"type": "array", "maxItems": tools.MOST_ARGS,
@@ -57,33 +48,6 @@ SET_BY_PLATFORM = {tools.MARKER_HEADER.lower(), "host", "content-length"}
 REQUEST_METHODS = tools.REQUEST_METHODS
 MOST_ARGS = tools.MOST_ARGS
 LONGEST_ARG = tools.LONGEST_ARG
-
-
-@dataclass(frozen=True)
-class Origin:
-    id: str
-    label: str
-    ip: str
-
-
-@dataclass(frozen=True)
-class Hp:
-    origin: Origin | None
-    left: int
-    budget: int
-    origins_left: int
-    spent: tuple[str, ...]
-    rule: HpRule
-
-
-@dataclass(frozen=True)
-class OriginLine:
-    id: str
-    label: str
-    ip: str
-    left: int
-    budget: int
-    spent_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -117,8 +81,8 @@ class State:
     brief: Brief
     target: Target
     objectives: tuple[ObjectiveLine, ...]
-    origins: tuple[OriginLine, ...]
-    hp: Hp
+    origins: tuple[origins.OriginLine, ...]
+    remaining: origins.Remaining
 
 
 @dataclass(frozen=True)
@@ -232,32 +196,6 @@ def new_marker() -> str:
     return uuid.uuid4().hex
 
 
-def rule_of(found: Round) -> HpRule:
-    given = (found.snapshot.get("round") or {}).get("hp") or LESSON_HP
-    return HpRule(**{name: int(given[name]) for name in HP_FIELDS})
-
-
-def budgets(found: Round) -> list[OriginBudget]:
-    return list(OriginBudget.objects.filter(round=found))
-
-
-def current_of(rows: Sequence[OriginBudget]) -> OriginBudget | None:
-    return next((row for row in rows if row.spent_at is None), None)
-
-
-def hp_of(found: Round, rows: Sequence[OriginBudget]) -> Hp:
-    rule = rule_of(found)
-    worn = current_of(rows)
-    return Hp(origin=Origin(id=worn.origin_id, label=worn.label, ip=worn.ip) if worn else None,
-              left=worn.left if worn else 0, budget=worn.budget if worn else rule.budget,
-              origins_left=sum(1 for row in rows if row.spent_at is None),
-              spent=tuple(row.ip for row in rows if row.spent_at is not None), rule=rule)
-
-
-def hp(found: Round) -> Hp:
-    return hp_of(found, budgets(found))
-
-
 def phase_allows_writes(found: Round) -> None:
     if found.phase in (Phase.CREATED.value, Phase.STARTING.value):
         raise errors.Conflict(code="round_not_started")
@@ -265,184 +203,37 @@ def phase_allows_writes(found: Round) -> None:
         raise errors.Conflict(code="round_closed")
 
 
-def origins_allow_writes(found: Round) -> None:
-    rows = budgets(found)
-    if rows and current_of(rows) is None:
-        raise errors.Conflict(code="origins_spent")
-
-
 def writable(found: Round) -> None:
     phase_allows_writes(found)
-    origins_allow_writes(found)
+    origins.allow_writes(found)
 
 
-def wearing(found: Round) -> OriginBudget:
-    rows = budgets(found)
-    if not rows:
-        fill_pool(found)
-        rows = budgets(found)
-    worn = current_of(rows)
-    if worn is None:
-        raise errors.Conflict(code="origins_spent")
-    return worn
-
-
-def fill_pool(found: Round) -> Hp:
-    settings, reached = configured(), range_of(found)
-    described = reached.describe()
-    offered = sorted(box.origins(described, settings.box), key=lambda origin: (not origin["default"], origin["id"]))
-    if not offered:
-        raise box.AttackerUnavailable("the attacker box stands on no origin")
-    rule = rule_of(found)
-    with transaction.atomic():
-        for origin in offered:
-            OriginBudget.objects.get_or_create(round=found, ip=origin["source_ip"], defaults={
-                "origin_id": origin["id"], "label": origin["label"], "budget": rule.budget, "left": rule.budget})
-        AccessCursor.objects.get_or_create(allocation=found.allocation)
-    load_edge(found, reached, described)
-    worn = current_of(budgets(found))
-    if worn is not None:
-        box.wear_origin({"source_ip": worn.ip}, reached.runner(PROXY))
-    return hp(found)
-
-
-def customer_origins(found: Round, reached=None, described=None) -> list[dict]:
-    settings = configured()
-    reached = reached or range_of(found)
-    described = described or reached.describe()
-    unbound = box.unbound_source(reached.runner(ATTACKER), settings.box)
-    return box.customer_origins(described, settings.box, unbound)
-
-
-def customer_addresses(found: Round, reached=None, described=None) -> list[str]:
-    return [address for origin in customer_origins(found, reached, described) for address in origin["addresses"]]
-
-
-def load_edge(found: Round, reached, described) -> None:
-    rows = budgets(found)
-    pool = [row.ip for row in rows] + customer_addresses(found, reached, described)
-    spent = [row.ip for row in rows if row.spent_at is not None]
-    settings = configured()
-    edge.restart(reached.runner(settings.edge.role), pool, spent, settings.edge)
-
-
-def state_of(row: OriginBudget) -> OriginState:
-    return OriginState(origin_id=row.origin_id, ip=row.ip, label=row.label, budget=row.budget, left=row.left,
-                       spent_at=row.spent_at)
-
-
-def debit(found: Round, charges: Sequence[Charge],
-          charged_markers: Iterable[str] = ()) -> tuple[list[OriginBudget], dict[str, int], frozenset[str]]:
-    rows = list(OriginBudget.objects.select_for_update().filter(round=found))
-    state = LedgerState(origins=tuple(state_of(row) for row in rows),
-                        per_second=tuple((row.ip, int(second), int(n)) for row in rows for second, n in row.recent),
-                        charged_markers=frozenset(charged_markers))
-    moved, newly_spent = ledger_debit(state, charges, rule_of(found))
-    after = {origin.ip: origin for origin in moved.origins}
-    recent: dict[str, list[list[int]]] = {}
-    for ip, second, n in moved.per_second:
-        recent.setdefault(ip, []).append([second, n])
-    charged: dict[str, int] = {}
-    for row in rows:
-        origin = after[row.ip]
-        if row.left != origin.left:
-            charged[row.ip] = row.left - origin.left
-        row.left, row.spent_at, row.recent = origin.left, origin.spent_at, recent.get(row.ip, [])
-        row.save(update_fields=["left", "spent_at", "recent"])
-    fallen = {origin.ip for origin in newly_spent}
-    return [row for row in rows if row.ip in fallen], charged, moved.charged_markers
-
-
-def report_charges(found: Round, charged: Mapping[str, int]) -> None:
-    left = {row.ip: row.left for row in budgets(found)}
-    for ip, amount in sorted(charged.items()):
-        log.append(found.pk, "origin.charged", {"ip": ip, "charged": amount, "left": left[ip]}, player_side="attack")
-
-
-def spend(found: Round, fallen: Sequence[OriginBudget], reached=None) -> None:
+def spend(found: Round, fallen: Sequence[Origin], reached=None) -> None:
     if not fallen:
         return
-    settings = configured()
     reached = reached or range_of(found)
-    for row in fallen:
-        log.append(found.pk, "origin.spent", {"ip": row.ip}, player_side="attack")
-    router = reached.runner(settings.edge.role)
-    refused: list[errors.Unavailable] = []
-    for row in fallen:
-        try:
-            edge.spend(router, row.ip, settings.edge)
-        except errors.Unavailable as failed:
-            refused.append(failed)
+    refused = origins.cut(found, fallen, reached)
     stop_runs(found, "origin_spent", reached)
-    following = current_of(budgets(found))
-    if following is None:
-        log.append(found.pk, "origins.spent", {}, player_side="attack")
-    else:
-        box.wear_origin({"source_ip": following.ip}, reached.runner(PROXY))
-        log.append(found.pk, "origin.switched", {"ip": following.ip}, player_side="attack")
     if refused:
         raise refused[0]
 
 
-def charge_sent(found: Round, action: Action, status: int, reached=None) -> None:
-    rule = rule_of(found)
-    with transaction.atomic():
-        fallen, charged, _ = debit(found, [Charge(origin_ip=action.source_ip, at=action.ended,
-                                                  refused=rule.refuses(status), marker=action.marker,
-                                                  synchronous=True)])
-    report_charges(found, charged)
-    spend(found, fallen, reached)
+def spend_from_log(found: Round) -> int:
+    fallen = origins.spent_by_log(found)
+    spend(found, fallen)
+    return len(fallen)
 
 
-def next_origin(found: Round, player: Player) -> Hp:
+def next_origin(found: Round, player: Player) -> origins.Remaining:
     writable(found)
-    worn = wearing(found)
-    with transaction.atomic():
-        given_up = (OriginBudget.objects.select_for_update().filter(pk=worn.pk, spent_at=None)
-                    .update(spent_at=timezone.now()))
-    if given_up:
-        spend(found, [OriginBudget.objects.get(pk=worn.pk)])
-    return hp(found)
+    given_up = origins.give_up(found, origins.wearing(found))
+    if given_up is not None:
+        spend(found, [given_up])
+    return origins.remaining(found)
 
 
-def charge_access_page(found: Round, held: AccessCursor, cursor, ips: set[str], rule: HpRule):
-    settings = configured()
-    records, moved = elastic.access_events(settings.elastic.url, settings.elastic.index_of(found.allocation.slot), cursor)
-    charges = [Charge(origin_ip=record["source_ip"], at=record["at"], refused=rule.refuses(record["status"]),
-                      marker=record["marker"])
-               for record in records if record["source_ip"] in ips and record["at"] is not None
-               and (found.started is None or record["at"] >= found.started)]
-    markers = {charge.marker for charge in charges if charge.marker}
-    with transaction.atomic():
-        synced = set(Action.objects.select_for_update().filter(
-            round=found, charged=True, access_seen=False, marker__in=markers).values_list("marker", flat=True))
-        fallen, charged, owed = debit(found, charges, synced)
-        Action.objects.filter(round=found, marker__in=synced - owed).update(access_seen=True)
-        held.cursor = {**held.cursor, "access": moved}
-        held.save(update_fields=["cursor"])
-    return moved, charged, fallen
-
-
-def charge_from_access(found: Round) -> dict[str, int]:
-    rows = budgets(found)
-    if not rows:
-        return {}
-    rule, ips = rule_of(found), {row.ip for row in rows}
-    held, _ = AccessCursor.objects.get_or_create(allocation=found.allocation)
-    cursor = held.cursor.get("access")
-    total: dict[str, int] = {}
-    try:
-        for _ in range(ACCESS_PAGES):
-            moved, charged, fallen = charge_access_page(found, held, cursor, ips, rule)
-            for ip, amount in charged.items():
-                total[ip] = total.get(ip, 0) + amount
-            spend(found, fallen)
-            if moved == cursor:
-                break
-            cursor = moved
-    finally:
-        report_charges(found, total)
-    return total
+def remaining(found: Round) -> origins.Remaining:
+    return origins.remaining(found)
 
 
 def target_url(found: Round, path: str, query: Mapping[str, str] | None = None) -> str:
@@ -497,18 +288,17 @@ def send(found: Round, player: Player, method: str, path: str, host: str | None 
          query: Mapping[str, str] | None = None, headers: Mapping[str, str] | None = None,
          body: str | None = None, kind: str = "request") -> Sent:
     writable(found)
-    worn = wearing(found)
+    worn = origins.wearing(found)
     reached = range_of(found)
     chosen, marker = host_of(found, host), new_marker()
     path = checked_path(path)
     given = {**checked_headers(headers), "Host": chosen, tools.MARKER_HEADER: marker}
     answer, started, ended = sent_over(reached.runner(ATTACKER), method, target_url(found, path, query), given, body)
     action = Action.objects.create(round=found, player=player, kind=kind, marker=marker, correlation=CORRELATION_MARKER,
-                                   source_ip=worn.ip, started=started, ended=ended, charged=True,
+                                   source_ip=worn.ip, started=started, ended=ended,
                                    meta={"method": method, "path": path, "host": chosen, "status": answer.status})
     log.append(found.pk, "action.sent", {"action": action.pk, "kind": kind, "status": answer.status},
                player_side="attack")
-    charge_sent(found, action, answer.status, reached)
     return Sent(action=action.pk, marker=marker, status=answer.status, headers=answer.headers,
                 body=answer.body[:BODY_LIMIT], truncated=len(answer.body) > BODY_LIMIT, source_ip=worn.ip,
                 started=started, ended=ended)
@@ -517,7 +307,7 @@ def send(found: Round, player: Player, method: str, path: str, host: str | None 
 def send_as_customer(found: Round, source_ip: str, method: str, path: str, host: str | None = None,
                      query: Mapping[str, str] | None = None, headers: Mapping[str, str] | None = None,
                      body: str | None = None, marker: str | None = None) -> Sent:
-    if source_ip in {row.ip for row in budgets(found)}:
+    if source_ip in origins.attack_ips(found):
         raise errors.Invalid(code="invalid", path="source_ip")
     reached = range_of(found)
     chosen, marker = host_of(found, host), marker or new_marker()
@@ -560,7 +350,7 @@ def with_host(case: dict[str, Any], host: str) -> dict[str, Any]:
 def fire_case(found: Round, player: Player, name: str) -> Fired:
     writable(found)
     case = case_of(found, name, malicious=True)
-    worn = wearing(found)
+    worn = origins.wearing(found)
     marker = new_marker()
     if tools.is_tool_case(case):
         argv = tools.tool_argv(dict(case, case_id=marker, correlation=CORRELATION_MARKER),
@@ -574,16 +364,15 @@ def fire_case(found: Round, player: Player, name: str) -> Fired:
     status = tools.status(ran.output)
     action = Action.objects.create(round=found, player=player, kind=ACTION_CASE, case_id=case["name"], malicious=True,
                                    expect=case.get("expect"), marker=marker, correlation=CORRELATION_MARKER,
-                                   source_ip=worn.ip, started=started, ended=timezone.now(), charged=True,
+                                   source_ip=worn.ip, started=started, ended=timezone.now(),
                                    meta={**firing.case_meta(case), "status": status})
     log.append(found.pk, "action.sent", {"action": action.pk, "kind": ACTION_CASE, "status": status},
                player_side="attack")
-    charge_sent(found, action, status, reached)
     return Fired(action=action.pk, run=None, status=status, marker=marker)
 
 
 def fire_benign(found: Round, name: str, source_ip: str) -> CustomerSent:
-    if source_ip in {row.ip for row in budgets(found)}:
+    if source_ip in origins.attack_ips(found):
         raise errors.Invalid(code="invalid", path="source_ip")
     case = with_host(case_of(found, name, malicious=False), host_of(found, None))
     reached, marker = range_of(found), new_marker()
@@ -606,7 +395,7 @@ def tool_list(found: Round) -> Tools:
                                     exit_code=run.exit_code, stopped_by=run.stopped_by) for run in runs))
 
 
-def start_run(found: Round, player: Player, worn: OriginBudget, marker: str, kind: str, tool: str, argv: list[str],
+def start_run(found: Round, player: Player, worn: Origin, marker: str, kind: str, tool: str, argv: list[str],
               case: Mapping[str, Any] | None = None, correlation: str = CORRELATION_MARKER) -> Started:
     started = timezone.now()
     with transaction.atomic():
@@ -634,7 +423,7 @@ def start_tool(found: Round, player: Player, tool: str, args: list[str]) -> Star
         argv = tools.free_argv(tool, args, marker)
     except ValueError as refused:
         raise errors.Invalid(code="invalid", path="args") from refused
-    worn = wearing(found)
+    worn = origins.wearing(found)
     correlation = CORRELATION_MARKER if tool in SELF_MARKING_TOOLS else CORRELATION_WINDOW
     return start_run(found, player, worn, marker, "tool", tool, argv, correlation=correlation)
 
@@ -710,8 +499,8 @@ def submit_loot(found: Round, player: Player, value: Any) -> Looted:
 
 def terminal(found: Round, player: Player) -> Terminal:
     phase_allows_writes(found)
-    if not budgets(found):
-        fill_pool(found)
+    if not origins.rows(found):
+        origins.fill_pool(found)
     settings, reached = configured(), range_of(found)
     access = jump.open_access(player.pk, box.kali_address(reached), reached.runner(ATTACKER), box.LEARNER_ACCOUNT,
                               settings.jump)
@@ -735,16 +524,9 @@ def revoke_terminal(found: Round) -> int:
                                     settings.jump) is not None)
 
 
-def close_edge(found: Round) -> None:
-    if not budgets(found):
-        return
-    settings = configured()
-    edge.restart(range_of(found).runner(settings.edge.role), (), (), settings.edge)
-
-
 def close(found: Round) -> None:
     try:
-        close_edge(found)
+        origins.close_edge(found)
     finally:
         stop_runs(found, "round_end")
         revoke_terminal(found)
@@ -771,13 +553,8 @@ def read_commands(found: Round) -> int:
     return len(fresh)
 
 
-def origin_lines(rows: Sequence[OriginBudget]) -> tuple[OriginLine, ...]:
-    return tuple(OriginLine(id=row.origin_id, label=row.label, ip=row.ip, left=row.left, budget=row.budget,
-                            spent_at=row.spent_at) for row in rows)
-
-
 def state(found: Round) -> State:
-    rows = budgets(found)
+    held = origins.rows(found)
     problem, wargame = found.snapshot["problem"], found.snapshot["wargame"]
     return State(
         round=found.pk, matchup=found.matchup, phase=found.phase, started=found.started, ends_at=found.ends_at,
@@ -786,7 +563,7 @@ def state(found: Round) -> State:
         target=Target(public_url=wargame["public_url"], hosts=tuple(wargame["hosts"])),
         objectives=tuple(ObjectiveLine(key=one.key, name=one.name, state=one.state)
                          for one in referee.objectives(found)),
-        origins=origin_lines(rows), hp=hp_of(found, rows))
+        origins=origins.lines(held), remaining=origins.remaining_of(held))
 
 
 CUSTOMERS_PROGRAM = "deploy/traffic/users.py"

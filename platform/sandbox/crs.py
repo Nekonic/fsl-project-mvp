@@ -111,6 +111,27 @@ def parsed(text: str) -> dict:
             **({"thresholds": thresholds} if thresholds else {}),
             **({"detection_only": True} if "ctl:ruleEngine=DetectionOnly" in "\n".join(lines) else {})}
 
+LIMIT_ZONE = re.compile(r"(?:^|[;{}\s])limit_req_zone\s+([^;]*);")
+ZONE_NAME = re.compile(r"\bzone=([^\s:;]+):")
+ZONE_RATE = re.compile(r"\brate=(\d+)r/([sm])\b")
+
+
+def limit_rates_in(text: str) -> dict[str, int]:
+    kept = "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+    rates = {}
+    for arguments in LIMIT_ZONE.findall(kept):
+        name, rate = ZONE_NAME.search(arguments), ZONE_RATE.search(arguments)
+        if name and rate:
+            rates[name.group(1)] = int(rate.group(1)) * (60 if rate.group(2) == "s" else 1)
+    return rates
+
+
+def limit_rates(gateway) -> dict[str, int]:
+    ran = gateway(["sh", "-c", "nginx -T 2>/dev/null"])
+    if not ran.ok:
+        raise WafUnreadable(f"could not read the nginx configuration: {ran.output.strip()[-300:]}")
+    return limit_rates_in(ran.output)
+
 def apply(tuning, gateway, config: WafConfig = WafConfig()) -> dict:
     tuning = checked(tuning)
     previous = read(gateway, config)["file"]

@@ -313,8 +313,8 @@ class SiteProxy(CatchingUpView):
             if name.lower() == "content-type":
                 continue
             answered[name] = value
-        if fetched.hp_left is not None:
-            answered["X-Origin-HP"] = str(fetched.hp_left)
+        if fetched.origins_left is not None:
+            answered["X-Origins-Left"] = str(fetched.origins_left)
         return answered
 
     get = post = put = patch = delete = options = answer

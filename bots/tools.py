@@ -31,7 +31,7 @@ DESCRIPTIONS = {
                    "Refused with round_running while the round runs.",
     "allocation_heartbeat": "Keep the round's allocation alive; `allocation_id` is the `allocation` field of round_read.",
     "attack_state": "Read the attack player's state: phase, brief, target hosts, objectives (kept or lost), "
-                    "every origin with its hit points, and the hp block.",
+                    "every origin with when and why it was spent, and the remaining block.",
     "attack_cases": "List the declared attack cases you may fire: case id, kind (http or tool), malicious, title.",
     "attack_fire_case": "Fire one declared case by id. An http case is sent at once; a tool case starts a tool "
                         "run you then read with attack_tool_output. One declared case counts as one decision.",
@@ -47,9 +47,9 @@ DESCRIPTIONS = {
     "attack_loot": "Submit a value you took from the target. The target decides whether it matches the secret; "
                    "the answer says whether an objective was lost and never reveals the secret.",
     "attack_next_origin": "Give up the current origin now (it is marked spent) and move to the next unspent one. "
-                          "Use it before an origin runs dry, or when the defence has started refusing it.",
+                          "Use it when the defence has started refusing it.",
     "attack_terminal": "Get a short-lived shell on the attacker box: a web terminal URL and an SSH jump grant. "
-                       "Traffic from the shell is charged hit points from the WAF access log when the next API call for the round reads it.",
+                       "Traffic from the shell can spend an origin like any other: the WAF's error log is read when the next API call for the round comes in.",
     "attack_forfeit": "Give up the round as the attacker. Ends the round.",
     "defence_state": "Read the defence player's state: phase, brief, target hosts, objectives with whether you saw "
                      "each one go, the applied IDS and WAF versions, and the alert count.",

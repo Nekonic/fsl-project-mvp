@@ -26,6 +26,13 @@ def test_the_catalog_reads_board_and_corp_from_the_repo():
     assert board.case("board-sqli-search").malicious is True
 
 
+def test_the_limit_req_floor_is_twice_the_busiest_board_customer_origin_and_corp_has_no_customers():
+    board, corp = catalog.wargames(REPO)
+
+    assert (board.limit_floor_rpm, corp.limit_floor_rpm) == (90, None), (
+        "nine of the board's twelve customers come from kr at one request a second between them")
+
+
 @pytest.mark.parametrize("wargame_id", ["board", "corp"])
 def test_every_wargame_keeps_benign_cases_and_probes_only_http_ones(wargame_id):
     wargame = catalog.read(REPO, wargame_id)

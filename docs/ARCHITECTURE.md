@@ -84,7 +84,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                errors.py    DomainError와 하위 클래스, 오류 코드
                handler.py   DRF 예외 처리기. 오류 형태 하나
                strings.py   strings/server.json 읽기
-  domain/      types.py  ledger.py(HP)  verdicts.py(룰 테스트 판정표)  checks.py(단계 판정)
+  domain/      types.py  traffic.py(고객 배분, limit_req 하한)  verdicts.py(룰 테스트 판정표)  checks.py(단계 판정)
                problems.py(문제 검증)  round_rules.py(매치업, 단계, 종료 조건)
                scoring/  correlate.py  metrics.py  corroborate.py  objectives.py
   ingest/      elastic.py   경계: search_after 커서 읽기, 접근 로그, 정규화, ingest 파이프라인 등록
@@ -108,10 +108,10 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                management/commands/  rebuild_slots  register_pipeline  prune  run_on_role  terminal_shell
   referee/     Objective, loot.py(경계: board 정답 데이터), effect.py(경계: corp 정답 데이터)
                service.py   baseline, loot 제출, corp 변경 관찰, 목표, 비밀값 가리기, 점수
-  attack/      Action, ToolRun, OriginBudget, AccessCursor
+  attack/      Action, ToolRun, Origin, AccessCursor
                box.py       경계: 공격 박스(출발지, set-origin, 명령 기록, 도구 이미지, 고객 출발지, 실행 중지)
                firing.py    케이스 요청 만들기와 발사(X-Request-ID 마커)   tools.py  도구 인자
-               service.py   공격 API의 모든 동작, HP 차감, 출발지 소진, 고객 전송
+               service.py   공격 API의 모든 동작, 고객 전송   origins.py  출발지 풀, 오류 로그로 소진, limit_req 하한
   defence/     Detection, RuleSet, RuleTest, DisabledRule, AlertCursor
                kibana.py    경계: Kibana API, space, 거부 규칙, 초기 설정
                alerts.py    AlertCursor로 알림 수집    ruletest.py  검사 → probe 묶음 → 오프라인 실행 → 판정표
@@ -135,7 +135,7 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
                looks.ts     상태별 모양 선택(타일 색, 단계 색). index.ts에서 모두 내보냄
   src/panes/   설계 §13의 패널. 각자 api/의 훅으로 데이터를 받고 ui/로 그림. 어느 페이지에 있는지 모름
                Kibana  Terminal(Kali, WAF)  Site  Map(+map-symbols/)  IdsRules  Waf  RuleTestTable  Alerts
-               Objectives  Hp  Loot  AttackCases  RuleVersions  Score  StepCard
+               Objectives  Origins  Loot  AttackCases  RuleVersions  Score  StepCard
                registry.ts  패널 id → 컴포넌트 표   staff/  문제·posture 편집기, 가져오기, 단계 편집
   src/pages/   얇은 배치: 어떤 패널을 어디에 둘지. Login  Signup  Home  RoundLobby  Lesson  RoundAttack  RoundDefence
                Result  staff/(Problems  Postures  Users  Range)
@@ -220,7 +220,7 @@ sequenceDiagram
   M->>M: Kibana space, 고객 트래픽 시작
   loop 라운드에 API 요청이 올 때(한 번에 한 요청, CR_READ_EVERY_SECONDS 간격)
     M->>D: 알림 수집, WAF 변경 감시, 만료된 비활성화 복구
-    M->>A: 접근 로그로 HP 차감, 명령 기록 읽기
+    M->>A: 오류 로그로 출발지 소진, 명령 기록 읽기
     M->>R: corp 변경 관찰, 목표 정리
     M->>M: 정상 케이스, 종료 조건
   end
@@ -248,7 +248,7 @@ sequenceDiagram
 | `accounts` | `/api/auth/csrf/`, `login/`, `signup/`, `logout/`, `/api/me/`, `/api/staff/users/`, `/api/staff/blocks/` | 로그인, 가입, 승인, 차단 |
 | `match` | `/api/leases/`, `/api/leases/<l>/{heartbeat,close,rounds}/`, `/api/rounds/`, `/api/rounds/<r>/{seats/<side>/join,start,end,score,topology,site/requests,terminal-auth/<side>,attack/forfeit,defence/forfeit}/`, `/api/staff/range/{,fabric/,leftovers/,pool/}`, `/api/staff/wargames/<id>/probes/record/`, `/api/staff/probes/<l>/` | 리스, 라운드, 점수, 구성도, 사이트 패널, 터미널 인증, 풀 운영, probe 녹화 |
 | `events` | `/api/rounds/<r>/events/?after=` | 커서 피드. 종류마다 보는 쪽이 정해짐 |
-| `attack` | `/api/rounds/<r>/attack/{state,cases,requests,tools,tools/<run>,loot,origins/next,terminal}/` | 공격 API. 모든 응답에 `hp` |
+| `attack` | `/api/rounds/<r>/attack/{state,cases,requests,tools,tools/<run>,loot,origins/next,terminal}/` | 공격 API. 성공 응답에 `remaining`, 모든 응답에 `X-Origin`, `X-Origins-Left` |
 | `defence` | `/api/rounds/<r>/defence/{state,alerts,traffic,probes,ids/rules,ids/rules/versions,ids/rules/check,ids/rules/test,ids/rules/tests/<t>,ids/rules/apply,ids/disabled,ids/disabled/<sid>,waf,waf/versions,waf/check,waf/test,waf/tests/<t>,waf/apply,terminal,kibana}/` | 방어 API |
 | `lessons` | `/api/lessons/`, `/api/lessons/<r>/{,steps/<n>/check,steps/<n>/hint,end}/`, `/api/staff/steps/<p>/<n>/try/` | 레슨 |
 | `catalog`, `staff` | `/api/problems/`, `/api/staff/problems/…`, `/api/staff/postures/…`, `/api/staff/wargames/` | 문제 읽기와 작성 |
@@ -269,7 +269,7 @@ sequenceDiagram
 ### 공격 API
 
 - `POST requests/`: 공격 박스에서 현재 출발지로 요청을 보냅니다. `X-Request-ID`는 그 행동의 마커이고 응답에도
-  마커가 들어갑니다. 상태 코드로 바로 HP를 차감합니다.
+  마커가 들어갑니다. 응답의 403만으로는 출발지가 소진되지 않습니다.
 - `POST cases/`: 선언된 케이스를 `attack/firing.py`로 발사합니다. 도구 케이스는 ToolRun이 됩니다. 공격 봇의 기본
   동작입니다.
 - `POST tools/`, `GET tools/<run>/?after=`, `DELETE tools/<run>/`: 비동기 도구 실행, 출력, 중지.
@@ -321,30 +321,35 @@ sequenceDiagram
 - `free_actions`: 자유 행동을 출발지별로. TP/FP/FN/TN에 들어가지 않습니다.
 - 자리는 라운드가 끝난 뒤에만 읽습니다(진행 중은 `409 round_running`). `?correlation=marker|window`는 스태프만 씁니다.
 
-## HP
+## 출발지 IP 소진
 
-규칙은 문제의 `RoundSetup.hp`(`budget`, `per_request`, `refused_x`, `burst_per_s`, `burst_x`)이고 계산은
-`domain.ledger.debit` 하나입니다.
+`training/attack/origins.py`가 맡습니다. 라운드의 출발지는 `Origin` 행(`spent_at`, `spent_by`)입니다.
 
-- API로 보낸 요청(`POST requests/`, HTTP 케이스, 공격석의 사이트 패널)은 박스가 받은 상태 코드로 그 자리에서 차감합니다.
-- 그 밖의 요청(터미널, 도구, 봇 셸)은 WAF의 JSON 접근 로그를 `ingest.elastic.access_events`(모듈 `nginx_access`)로
-  라운드에 API 요청이 올 때 읽어 차감합니다. API로 이미 차감한 요청은 그 마커가 붙은 로그 한 줄만 건너뜁니다(`Action.access_seen`).
-  kali에서 그 마커를 `X-Request-ID`에 넣어 다시 보낸 요청은 모두 차감합니다.
-- 요청은 WAF에서 셉니다. Suricata는 WAF 뒤에 있어 출발지가 WAF이고, WAF가 거부한 요청을 보지 못하기 때문입니다.
-- 출발지가 소진되면 `range.edge.spend`가 그 주소를 `spent` 집합에 넣고 conntrack을 지웁니다. `edge.nft`에서 이
+- 소진 판정은 WAF nginx 오류 로그입니다. `log-shipper.conf`가 `/var/log/nginx/error.log`를 Tag `nginx-error`로
+  보내고, filebeat가 `message`를 `error.message`로 옮겨 모듈 `nginx_error`로 넣습니다. 라운드에 API 요청이 올 때
+  `telemetry.elastic.error_events`가 읽고 `telemetry.access.refusal_in`이 `access forbidden by rule, client: <ip>`
+  (`deny`)와 `limiting requests, excess: ... by zone "<zone>", client: <ip>`(`limit_req`)를 골라냅니다.
+  dry run 줄, `delaying request`, ModSecurity의 403 줄은 고르지 않습니다.
+- `limit_req` 하한은 `domain.traffic.limit_floor`입니다. `traffic.yaml`의 `users`, `origins` 가중치, `rate`(없으면
+  초당 1건)로 가장 바쁜 고객 출발지의 분당 요청 수를 구하고 두 배를 합니다. `content.snapshot`이 라운드 설정에
+  `limit_floor_rpm`으로 넣습니다. `limit_req` 줄이 나오면 `sandbox.crs.limit_rates`가 `nginx -T`에서
+  `limit_req_zone`의 `rate`를 읽고, zone의 rate가 하한보다 낮으면 소진하지 않고 방어 쪽에 `limit.below_floor`를
+  한 번 남깁니다. 설정 읽기는 WAF를 파일로 다루는 단계에서 그쪽으로 옮깁니다.
+- 출발지는 WAF에서 셉니다. Suricata는 WAF 뒤에 있어 출발지가 WAF이고, WAF가 거부한 요청을 보지 못하기 때문입니다.
+- 출발지가 소진되면 `sandbox.edge.spend`가 그 주소를 `spent` 집합에 넣고 conntrack을 지웁니다. `edge.nft`에서 이
   drop 규칙은 established 허용보다 앞에 있어야 열린 연결도 끊깁니다. 이어서 그 자리의 도구 실행을 멈추고
   (`stopped_by: origin_spent`) 다음 출발지로 바꿉니다.
 - 고객 주소는 `pool`에만 있고 `spent`에 들어가지 않습니다.
-- 라운드를 시작할 때 `range.edge.restart`가 `pool`과 `spent`를 비우고 새 라운드의 주소로 다시 채웁니다. 슬롯은
-  리스를 반납할 때만 다시 만들어지므로, 그러지 않으면 같은 리스의 다음 라운드가 앞 라운드에서 소진된 출발지를
-  물려받아 예산이 남았는데도 경계에서 막힙니다. 라운드 중에는 다시 채우지 않습니다.
-- 라운드가 끝나면 `attack.close`가 두 집합을 비웁니다. HP는 라운드 중에만 세므로, 비우지 않으면 kali에 남겨 둔
-  프로세스가 라운드 사이에 차감 없이 타깃을 칠 수 있습니다.
+- 라운드를 시작할 때 `sandbox.edge.restart`가 `pool`과 `spent`를 비우고 새 라운드의 주소로 다시 채웁니다. 슬롯은
+  할당을 반납할 때만 다시 만들어지므로, 그러지 않으면 같은 할당의 다음 라운드가 앞 라운드에서 소진된 출발지를
+  물려받습니다. 라운드 중에는 다시 채우지 않습니다.
+- 라운드가 끝나면 `attack.close`가 두 집합을 비웁니다. 오류 로그는 라운드 중에만 읽으므로, 비우지 않으면 kali에
+  남겨 둔 프로세스가 라운드 사이에 타깃을 칠 수 있습니다.
 - `pool` 밖 주소도 established 허용보다 앞에서 버립니다. kali의 인터넷 포트는 모든 주소를 허용(`0.0.0.0/0`
   allowed address pair)하고 학습자는 sudo가 있으므로, 이 규칙이 없으면 출발지 서브넷의 안 쓰는 주소를 붙여
-  보낸 요청에 HP가 걸리지 않습니다.
+  보낸 요청은 막혀도 소진되지 않습니다.
 - 그래서 출발지 서브넷에서 나가는 요청은 모두 `pool`에 든 주소로 나갑니다. 케이스, 도구, 요청, 공격석 사이트
-  패널은 `attack.wearing`으로 출발지를 입고(라운드에 예산이 없으면 `pool`부터 채움), 터미널도 권한을 주기 전에
+  패널은 `origins.wearing`으로 출발지를 입고(라운드에 출발지가 없으면 `pool`부터 채움), 터미널도 권한을 주기 전에
   같은 식으로 채웁니다. 고객과 방어석 사이트 패널은 고객 주소로 보내고, 라운드가 없는 probe 리스는 케이스마다
   입은 출발지를 `range.edge.admit`으로 넣습니다.
 
@@ -356,8 +361,8 @@ sequenceDiagram
 | 종류 | 보는 쪽 |
 |---|---|
 | `round.started`, `round.ended`, `seat.joined` | 양쪽 |
-| `action.sent`, `tool.started`, `tool.ended`, `command.run`, `origin.charged`, `origin.spent`, `origin.switched`, `origins.spent` | 공격, 스태프 |
-| `alert.seen`, `rule.tested`, `rule.applied`, `rule.disabled`, `rule.drifted` | 방어, 스태프 |
+| `action.sent`, `tool.started`, `tool.ended`, `command.run`, `origin.spent`, `origin.switched`, `origins.spent` | 공격, 스태프 |
+| `alert.seen`, `rule.tested`, `rule.applied`, `rule.disabled`, `rule.drifted`, `limit.below_floor` | 방어, 스태프 |
 | `objective.lost` | 양쪽(누구 행동인지는 스태프만) |
 | `step.answered`, `step.passed` | 레슨 자리, 스태프 |
 
@@ -392,9 +397,11 @@ sequenceDiagram
   타깃에 닿지 않습니다. infra 이미지에는
   `conntrack`, `tcpdump`(probe 녹화), 오프라인 룰 테스트의 임시 폴더 `/var/lib/cr-ruletest`가 더해집니다.
 - `deploy/roles/waf/board.com.conf`: 두 vhost의 `$refused` 맵(400, 403) 하나와 모든 요청의 JSON 접근 로그
-  `/var/log/nginx/access.json`(`client_ip`, `status`, `refused`, `request_id` 등). `request_id`는 마커 모양(`^[A-Za-z0-9._:-]{1,128}$`)일 때만 남기고 아니면 비웁니다. 헤더를 부풀리거나 여러 번 넣어 줄이 64 KiB를 넘기면 `client_ip`가 사라져 HP가 안 깎이기 때문입니다.
+  `/var/log/nginx/access.json`(`client_ip`, `status`, `refused`, `request_id` 등). `request_id`는 마커 모양(`^[A-Za-z0-9._:-]{1,128}$`)일 때만 남기고 아니면 비웁니다. 헤더를 부풀리거나 여러 번 넣어 줄이 64 KiB를 넘기면 `client_ip`가 사라지기 때문입니다.
+  같은 파일이 오류 로그 `error_log /var/log/nginx/error.log warn;`을 정합니다.
   `log-shipper.conf`가 Tag `nginx-access`로 보내고(`refused.log` 대체), infra의 `log-relay.conf`가 collector로 넘기며, `deploy/filebeat/filebeat.yml`과
-  `deploy/elastic/ingest-pipeline.json`이 모듈 `nginx_access`로 받습니다.
+  `deploy/elastic/ingest-pipeline.json`이 모듈 `nginx_access`로 받습니다. 오류 로그는 Tag `nginx-error`, 모듈
+  `nginx_error`입니다.
 - `deploy/roles/waf/probe.conf`, `probe-upstream.py`: CRS 임시 인스턴스의 설정 틀과 loopback 스텁.
   `/usr/local/share/cr/`에 설치되고 임시 prefix는 `/var/lib/cr-crstest` 아래입니다.
 - `deploy/roles/waf/analyst.sh`: 방어석 계정 `analyst`. nginx·CRS 설정과 로그(`adm` 그룹)를 읽고

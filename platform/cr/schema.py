@@ -10,14 +10,12 @@ REFUSED = {"description": "refused",
            "content": {"application/json": {"schema": {"$ref": f"#/components/schemas/{ERRORS}"}}}}
 
 
-def error_components(hp_named: bool) -> dict:
+def error_components() -> dict:
     shape = {
         "type": "object",
         "properties": {"errors": {"type": "array", "items": {"$ref": f"#/components/schemas/{FIELD_ERROR}"}}},
         "required": ["errors"],
     }
-    if hp_named:
-        shape["properties"]["hp"] = {"$ref": "#/components/schemas/HpBlock"}
     return {
         ERROR_CODE: {"type": "string", "enum": sorted(errors.CODES)},
         FIELD_ERROR: {
@@ -36,7 +34,7 @@ def error_components(hp_named: bool) -> dict:
 
 def error_shape(result, generator, request, public):
     schemas = result.setdefault("components", {}).setdefault("schemas", {})
-    schemas.update(error_components("HpBlock" in schemas))
+    schemas.update(error_components())
     for item in result.get("paths", {}).values():
         for operation in item.values():
             operation.setdefault("responses", {})["default"] = REFUSED

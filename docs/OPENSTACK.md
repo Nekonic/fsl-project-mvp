@@ -585,7 +585,7 @@ range stacks (§6.2).
 Port 8002 is the console's site pane (`/site/<round>/<host>/`, proxied to
 `match/site.py`). The platform sends each request over an ssh stream to the
 lease's Kali VM (over `cr-mgmt`). For an attack seat it goes through
-`attack.service.send` from the current origin and is charged HP; for a
+`attack.send` from the current origin; for a
 defence or lesson seat Kali sends it from a customer address with the
 lease's browse marker, through the edge router to the WAF. A platform stack
 made before 2026-10-13 lacks the rule. Add it by hand:
@@ -765,8 +765,8 @@ and writes those lines into `/var/lib/cr/failed` (§6). A line pinned by digest
 
 The side split changes two role images; kali and target are unchanged. Until
 both are baked and named in `compute.images`, a range runs the old edge and
-WAF: HP is charged only from API sends, a spent origin is not dropped at the
-edge, and the rule test has no scratch CRS instance or `analyst` account to
+WAF: the WAF's error log is not shipped, so no origin is ever spent, a spent
+origin is not dropped at the edge, and the rule test has no scratch CRS instance or `analyst` account to
 reach. The procedure is the bake by hand of §3.6, once per role, under new
 names; none of it has run, so it is **[unverified]**.
 

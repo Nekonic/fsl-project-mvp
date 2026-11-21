@@ -1,7 +1,7 @@
 import { Console } from "../console/Console";
 import { RoundHeader } from "../console/RoundHeader";
 import { layouts } from "../layouts";
-import { OriginsSpentBanner } from "../panes/Hp";
+import { OriginsSpentBanner } from "../panes/Origins";
 import type { PageProps } from "../routes";
 import { t } from "../strings";
 

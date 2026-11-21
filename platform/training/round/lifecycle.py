@@ -26,6 +26,7 @@ from scoring import score as referee
 from telemetry import alerts as alert_feed
 from telemetry import events as log
 from training.attack import actions as attack
+from training.attack import origins
 from training.content import probes
 from training.content import problems as content
 from training.defence import kibana_gate
@@ -185,7 +186,7 @@ def start_round(found: Round) -> Round:
         found.save(update_fields=["snapshot", "started", "ends_at"])
         defence.apply_posture(found)
         baselines.take_baseline(found, reach(found))
-        attack.fill_pool(found)
+        origins.fill_pool(found)
     except Exception:
         Round.objects.filter(pk=found.pk, phase=STARTING).update(phase=CREATED, started=None, ends_at=None)
         found.refresh_from_db()
@@ -253,7 +254,7 @@ def observe(found: Round) -> None:
 
 READS = (
     ("ingesting alerts", lambda found: alert_feed.ingest_alerts(found)),
-    ("charging from the access log", lambda found: attack.charge_from_access(found)),
+    ("spending origins from the WAF error log", lambda found: attack.spend_from_log(found)),
     ("observing effects", observe),
     ("reading commands", lambda found: attack.read_commands(found)),
     ("checking drift", lambda found: defence.check_drift(found)),
@@ -265,12 +266,12 @@ READS = (
 
 def state_of(found: Round, at: datetime) -> RoundState:
     shown = losses.objectives(found)
-    hp = attack.hp(found)
+    left = origins.remaining(found)
     return RoundState(
         phase=Phase(found.phase), now=at, started_at=found.started,
         time_limit_s=(found.snapshot.get("round") or {}).get("time_limit_s"),
         objectives_total=len(shown), objectives_lost=sum(1 for one in shown if one.state == losses.LOST),
-        origins_total=hp.origins_left + len(hp.spent), origins_left=hp.origins_left,
+        origins_total=left.total, origins_left=left.left,
         benign_passes=customers.passes(found))
 
 

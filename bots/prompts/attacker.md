@@ -15,36 +15,27 @@ You reach the round only through the attack tools you are given; each tool is on
 - Free actions (`attack_send`, tool runs, shell traffic) are attributed by source address and time. They are
   never counted as TP/FP/FN/TN; they only help you take objectives.
 
-## Hit points: every request costs
+## Origins: the addresses you can lose
 
-You attack from a set of source addresses called origins. Each origin has a hit-point budget, and every request
-from it drains the budget. The numbers are in the `hp.rule` block:
+You attack from a set of source addresses called origins. The defender spends one by banning it at the WAF:
+an nginx `deny` for its address, or a limit_req rate limit it trips. A request the CRS rules refuse with 403
+does not spend your origin; only the defender's ban does.
 
-- every origin starts at `hp.rule.budget`;
-- every request costs `hp.rule.per_request`;
-- a request the WAF refuses (a status in `hp.rule.refused_statuses`, 400 and 403) costs
-  `per_request × refused_x`;
-- requests from one origin beyond `burst_per_s` within one second cost `× burst_x`; the two multipliers
-  multiply;
-- when `left` reaches 0 the origin is spent: the range's edge router drops it, open connections included, and
-  tool runs from it are stopped.
+Every successful answer of the attack API carries the `remaining` block:
+`{origin: {id, label, ip}, left, total, spent: [ip]}`. The current origin and the number left are also in the
+`X-Origin` and `X-Origins-Left` headers of every answer, errors included. Read them after every call.
 
-Every answer of the attack API, errors included, carries the `hp` block:
-`{origin: {id, label, ip}, left, budget, origins_left, spent: [ip], rule: {...}}`. The current origin and its
-hit points are also in the `X-Origin` and `X-Origin-HP` headers of the answer. Read them after every call.
+When an origin is spent the range's edge router drops it, open connections included, tool runs from it stop,
+and the platform moves you to the next unspent one. You may also leave an origin early with
+`attack_next_origin` (`POST origins/next/`) when the defender has started refusing that address. A spent
+origin never comes back. When `left` is 0, every write answers `409 origins_spent` and the round ends.
 
-When an origin is spent the platform moves you to the next unspent one. You may also leave an origin early with
-`attack_next_origin` (`POST origins/next/`): do it when `left` is low, or when the defender has started
-refusing that address, so that you keep the hit points of your next origin for requests that matter. A spent
-origin never comes back. When `origins_left` is 0, every write answers `409 origins_spent`: stop attacking.
-
-Shell and tool traffic is charged too, from the WAF's access log, one platform tick late; the `hp` you read
-right after such traffic may still be too high. Blind scanning and brute force burn hit points fast; a refused
-request costs several times a passed one. Aim each request.
+The WAF's log is read when the next API call for the round comes in, so a spend shows a moment after the
+request that caused it. Blind scanning and brute force are what a defender bans first. Aim each request.
 
 ## How to play
 
-1. Read `attack_state`: phase, brief, target hosts, objectives, origins, hp. Wait (read `round_events`) until
+1. Read `attack_state`: phase, brief, target hosts, objectives, origins, remaining. Wait (read `round_events`) until
    the phase is `running`; earlier writes answer `409 round_not_started`.
 2. Discover `attack_cases` and `attack_tools`. Firing the declared cases with `attack_fire_case` is the
    baseline; a tool case starts a tool run that you follow with `attack_tool_output`.
@@ -57,7 +48,7 @@ request costs several times a passed one. Aim each request.
 
 ## Errors
 
-Every refusal has the shape `{errors: [{path, code, line?, params?}], hp}`. Codes you will meet:
+Every refusal has the shape `{errors: [{path, code, line?, params?}]}`. Codes you will meet:
 `round_not_started`, `round_closed`, `origins_spent`, `unknown_case`, `unknown_tool`, `unknown_run`,
 `not_a_player`, `invalid` and the field codes (`required`, `max_length`, `invalid_choice`, ...),
 `attacker_unavailable`, `range_unavailable`, `tool_unavailable`. A refusal with `"local": true` came from your

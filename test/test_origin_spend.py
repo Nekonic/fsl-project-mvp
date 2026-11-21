@@ -8,9 +8,10 @@ import pytest
 import plays
 from range import ATTACKER, run
 
-BUDGET = 40
-HP = {"budget": BUDGET, "per_request": 1, "refused_x": 3, "burst_per_s": 1000, "burst_x": 1}
-SETUP = plays.Setup(wargame="board", title="Acceptance HP spend board", hp=HP)
+GATEWAY = "gateway"
+DENY_FILE = "/etc/nginx/conf.d/acceptance-deny.conf"
+SETUP = plays.Setup(wargame="board", title="Acceptance origin spend board")
+MOST_SENDS = 60
 HELD_FOR_S = 240
 EVERY_S = 2
 GRACE_S = 10.0
@@ -48,15 +49,23 @@ def connection_log(allocation: int, log: str) -> list[tuple[float, str]]:
             if at.replace(".", "", 1).isdigit()]
 
 
+def denied_at_the_waf(played: plays.Played, ip: str) -> None:
+    loaded = f"printf 'deny %s;\\n' {shlex.quote(ip)} > {DENY_FILE} && nginx -t && systemctl reload nginx"
+    written = run(GATEWAY, ["sh", "-c", loaded], allocation=played.allocation)
+    assert written.ok, f"the defender's deny rule did not load on the WAF: {written.stderr}"
+
+
 def spend_the_first_origin(played: plays.Played) -> tuple[dict, list[plays.Answer]]:
-    first = plays.attack_seen(played)["hp"]["origin"]
+    first = plays.attack_seen(played)["remaining"]["origin"]
+    denied_at_the_waf(played, first["ip"])
     answers = []
-    for _ in range(BUDGET * 2):
+    for _ in range(MOST_SENDS):
         answer = plays.send(played, "GET", "/")
         answers.append(answer)
-        hp = (answer.body or {}).get("hp") or {}
-        if first["ip"] in hp.get("spent", []) or "origins_spent" in answer.codes:
+        spent = ((answer.body or {}).get("remaining") or {}).get("spent", [])
+        if first["ip"] in spent or "origins_spent" in answer.codes:
             break
+        time.sleep(plays.POLL)
     return first, answers
 
 
@@ -95,11 +104,10 @@ def spent_round():
                "state": state}
 
 
-def test_every_attack_answer_carries_the_hp_block(spent_round):
+def test_every_attack_answer_names_the_origins_left(spent_round):
     assert spent_round["answers"]
     for answer in spent_round["answers"]:
-        assert "hp" in (answer.body or {}), f"an attack answer came back without hp: {answer.text}"
-        assert "x-origin-hp" in {name.lower() for name in answer.headers}, answer.headers
+        assert "x-origins-left" in {name.lower() for name in answer.headers}, answer.headers
 
 
 def test_the_first_origin_is_spent_and_the_box_moves_to_the_next(spent_round):
@@ -107,9 +115,9 @@ def test_the_first_origin_is_spent_and_the_box_moves_to_the_next(spent_round):
     spent = [event for event in spent_round["events"] if event["kind"] == "origin.spent"]
 
     assert "origin.spent" in kinds and "origin.switched" in kinds, kinds
-    assert spent[0]["body"]["ip"] == spent_round["first"]["ip"], spent[0]
-    assert spent_round["state"]["hp"]["origin"]["ip"] != spent_round["first"]["ip"]
-    assert spent_round["first"]["ip"] in spent_round["state"]["hp"]["spent"]
+    assert spent[0]["body"] == {"ip": spent_round["first"]["ip"], "by": "deny"}, spent[0]
+    assert spent_round["state"]["remaining"]["origin"]["ip"] != spent_round["first"]["ip"]
+    assert spent_round["first"]["ip"] in spent_round["state"]["remaining"]["spent"]
 
 
 def test_the_edge_drops_the_spent_origin_including_a_connection_held_open_before_the_spend(spent_round):

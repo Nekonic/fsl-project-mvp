@@ -16,14 +16,16 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from cr import errors
+from domain.traffic import DEFAULT_RATE, allocated, rate_of
 from domain.types import ACTION_CASE, CORRELATION_MARKER, ActionRecord
 from training.attack import actions as attack
+from training.attack import origins as attack_origins
 from training.models import CustomerRequest, Round
 
 BENIGN_EVERY_S = 60
 BENIGN_ACTION = "benign"
 PLATFORM_USER = "platform"
-RATE = 1.0
+RATE = DEFAULT_RATE
 FLOWS = 2000
 PULL_LIMIT = 1 << 20
 KOREAN = "kr"
@@ -79,7 +81,7 @@ def origin_of(origins: Sequence[Mapping[str, Any]]) -> dict[str, str]:
 
 
 def fire_pass(found: Round) -> int:
-    origins = attack.customer_origins(found)
+    origins = attack_origins.customer_origins(found)
     sources = [address for origin in origins for address in origin["addresses"]]
     if not sources:
         raise errors.Unavailable(code="attacker_unavailable")
@@ -136,15 +138,6 @@ def checked(declared: Any) -> dict[str, Any]:
     if not declared["posts"] or not declared["agents"]:
         raise TrafficRefused("customers need at least one post and one browser")
     return declared
-
-
-def allocated(weights: Mapping[str, float], total: int) -> list[str]:
-    whole = sum(weights.values())
-    shares = {origin: total * weight / whole for origin, weight in weights.items()}
-    counts = {origin: int(share) for origin, share in shares.items()}
-    for origin in sorted(shares, key=lambda one: (counts[one] - shares[one], one))[:total - sum(counts.values())]:
-        counts[origin] += 1
-    return [origin for origin in sorted(weights, key=lambda one: (-weights[one], one)) for _ in range(counts[origin])]
 
 
 def personas(declared: Mapping[str, Any], available: Sequence[Mapping[str, Any]], rng: random.Random) -> list[dict]:
@@ -269,9 +262,9 @@ def start(found: Round) -> bool:
     if declared is None:
         return False
     profile = profile_of(found, declared)
-    users = personas(declared, attack.customer_origins(found), random.Random(str(found.pk)))
+    users = personas(declared, attack_origins.customer_origins(found), random.Random(str(found.pk)))
     hosts = list(found.snapshot["wargame"]["hosts"])
-    attack.start_customers(found, plan(declared, profile, users, hosts[0], str(found.pk)))
+    attack.start_customers(found, plan(declared, profile, users, hosts[0], str(found.pk), rate=rate_of(declared)))
     kept(found, running=True, profile=profile, offset=0, error="")
     return True
 

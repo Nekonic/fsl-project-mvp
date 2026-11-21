@@ -1,5 +1,5 @@
 import { minutesFromNow, refuse, reply } from "../fixture";
-import { hp } from "./sides";
+import { remaining } from "./sides";
 
 const cases = [
   { case: "board-sqli-search", kind: "http" as const, malicious: true, title: "SQL injection in search" },
@@ -24,15 +24,15 @@ const siteRequests = paths.map((path, index) => ({
   size: 4096,
 }));
 
-const spentHp = { ...hp, origin: null, left: 0, origins_left: 0, spent: ["5.188.10.10", "181.8.0.10"] };
+const spentAll = { ...remaining, origin: null, left: 0, spent: ["5.188.10.10", "181.8.0.10"] };
 
 export const fixtures = [
   reply("get", "/api/rounds/{round_id}/attack/cases/", cases),
   reply("post", "/api/rounds/{round_id}/attack/cases/", (asked) => {
     const fired = cases.find((entry) => entry.case === asked.body?.case);
     return fired?.kind === "tool"
-      ? { action: 901, marker: "mk-901", run: 31, status: null, hp }
-      : { action: 902, marker: "mk-902", run: null, status: fired?.case.includes("xss") ? 403 : 200, hp };
+      ? { action: 901, marker: "mk-901", run: 31, status: null, remaining }
+      : { action: 902, marker: "mk-902", run: null, status: fired?.case.includes("xss") ? 403 : 200, remaining };
   }),
   reply("get", "/api/rounds/{round_id}/site/requests/", (asked) => {
     const after = Number(asked.query.get("after") ?? 0);
@@ -41,11 +41,11 @@ export const fixtures = [
   reply("post", "/api/rounds/{round_id}/attack/loot/", (asked) => {
     const text = JSON.stringify(asked.body?.value ?? "");
     return text.includes("pbkdf2")
-      ? { lost: true, objective: { key: "board-auth-user-partial", name: "Board accounts, partial" }, hp }
-      : { lost: false, objective: null, hp };
+      ? { lost: true, objective: { key: "board-auth-user-partial", name: "Board accounts, partial" }, remaining }
+      : { lost: false, objective: null, remaining };
   }),
-  reply("post", "/api/rounds/{round_id}/attack/origins/next/", { origin: { id: "br-1", label: "BR", ip: "177.8.0.10" }, hp: { ...hp, origin: { id: "br-1", label: "BR", ip: "177.8.0.10" }, left: 100, budget: 100, origins_left: 28 } }),
-  refuse("post", "/api/rounds/{round_id}/attack/origins/next/", 409, [{ path: "", code: "origins_spent" }], { variant: "spent", hp: spentHp }),
+  reply("post", "/api/rounds/{round_id}/attack/origins/next/", { origin: { id: "br-1", label: "BR", ip: "177.8.0.10" }, remaining: { ...remaining, origin: { id: "br-1", label: "BR", ip: "177.8.0.10" }, left: 28 } }),
+  refuse("post", "/api/rounds/{round_id}/attack/origins/next/", 409, [{ path: "", code: "origins_spent" }], { variant: "spent" }),
   refuse("post", "/api/rounds/{round_id}/attack/loot/", 409, [{ path: "", code: "loot_not_taken" }], { variant: "corp" }),
   reply("get", "/api/rounds/{round_id}/attack/state/", (asked) => ({
     round: Number(asked.params.round_id),
@@ -62,9 +62,9 @@ export const fixtures = [
       { key: "board-auth-user-full", name: "Board accounts, all", state: "kept" as const },
     ],
     origins: [
-      { id: "ru-1", label: "RU", ip: "5.188.10.10", left: 0, budget: 100, spent_at: minutesFromNow(-12) },
-      { id: "ar-1", label: "AR", ip: "181.8.0.10", left: 0, budget: 100, spent_at: minutesFromNow(-2) },
+      { id: "ru-1", label: "RU", ip: "5.188.10.10", spent_at: minutesFromNow(-12), spent_by: "deny" },
+      { id: "ar-1", label: "AR", ip: "181.8.0.10", spent_at: minutesFromNow(-2), spent_by: "limit_req" },
     ],
-    hp: spentHp,
+    remaining: spentAll,
   }), { variant: "spent" }),
 ];

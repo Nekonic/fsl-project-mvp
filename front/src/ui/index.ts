@@ -20,7 +20,7 @@ export { CodeEditor, type CodeEditorProps } from "./Editor";
 export { OpRow, ServerDots, IdentityCell, RowActions, FormErrorLines, MapFrame, type ServerDot, type MapFrameProps } from "./Ops";
 export {
   Split, EditorCard, EditorHead, EditorStrip, EditorSection, EditorBand, FieldNote, EditorGroup, Chips, PickList, LineList,
-  HpGrid, TryRow, KeyNote, Inputs, WithUnit, PublishRow, FilePick,
+  TryRow, KeyNote, Inputs, WithUnit, PublishRow, FilePick,
   type PickItem, type PickGroup, type LineItem,
 } from "./Record";
 export { lessonTileLook, roundTileLook, phaseTone, type TileLook } from "./looks";

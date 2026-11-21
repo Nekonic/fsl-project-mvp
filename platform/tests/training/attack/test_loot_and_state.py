@@ -23,7 +23,7 @@ def test_loot_is_judged_by_the_referee_and_never_echoes_the_secret(as_attacker, 
     assert answer.status_code == 200
     assert body["lost"] is True and body["objective"]["key"] == "board-auth-user-admin"
     assert TRUTH["admin"] not in json.dumps(body)
-    assert "hp" in body
+    assert "remaining" in body
 
 
 def test_wrong_loot_loses_nothing(as_attacker, looted_round):
@@ -46,4 +46,4 @@ def test_the_state_names_the_brief_the_target_the_objectives_and_every_origin(as
     assert (shown["board-auth-user-admin"], shown["board-auth-user-full"]) == ("lost", "kept")
     assert all(set(objective) == {"key", "name", "state"} for objective in state["objectives"])
     assert [origin["id"] for origin in state["origins"]] == ["ru", "br", "us"]
-    assert all(origin["left"] == origin["budget"] == 100 for origin in state["origins"])
+    assert all(origin["spent_at"] is None and origin["spent_by"] == "" for origin in state["origins"])

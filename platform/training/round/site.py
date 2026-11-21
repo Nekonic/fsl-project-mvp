@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from cr import errors
 from training.attack import actions as attack
+from training.attack import origins
 from training.models import Round, Player
 from training.round import access as auth
 
@@ -31,7 +32,7 @@ class Fetched:
     status: int
     headers: tuple[tuple[str, str], ...]
     body: str
-    hp_left: int | None
+    origins_left: int | None
 
 
 def attack_player(found: Round, playing: Sequence[Player]) -> Player | None:
@@ -72,7 +73,7 @@ def keep_cookies(round_id: int, pane: str, host: str, headers: Sequence[tuple[st
 
 
 def browse_source(found: Round) -> str:
-    sources = attack.customer_addresses(found)
+    sources = origins.customer_addresses(found)
     if not sources:
         raise errors.Unavailable(code="attacker_unavailable")
     return sources[0]
@@ -97,7 +98,7 @@ def browse(found: Round, playing: Sequence[Player], method: str, host: str, path
         passed["Cookie"] = cookie
     if player is not None:
         sent = attack.send(found, player, method, path, host=host, headers=passed, body=body, kind="site")
-        left = attack.hp(found).left
+        left = origins.remaining(found).left
     else:
         sent = attack.send_as_customer(found, browse_source(found), method, path, host=host, headers=passed,
                                        body=body, marker=found.allocation.browse_marker)
@@ -105,7 +106,7 @@ def browse(found: Round, playing: Sequence[Player], method: str, host: str, path
     keep_cookies(found.pk, pane, host, sent.headers)
     remember(found, pane, method, host, path, sent.status, len(sent.body))
     returned = tuple((name, value) for name, value in sent.headers if name.lower() not in NOT_RETURNED)
-    return Fetched(status=sent.status, headers=returned, body=sent.body, hp_left=left)
+    return Fetched(status=sent.status, headers=returned, body=sent.body, origins_left=left)
 
 
 def requests_of(found: Round, playing: Sequence[Player], after: int = 0) -> list[dict]:

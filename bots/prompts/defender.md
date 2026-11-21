@@ -17,9 +17,11 @@ Two numbers, reported apart and never folded together:
    corroborated. Benign customer traffic keeps running: a rule that blocks everything stops attacks and loses
    on false positives.
 
-The attacker's every request costs it hit points; a request your WAF refuses (400 or 403) costs several times
-more, and a spent source address is dropped at the edge. Refusing the attacker's addresses drains it, but a
-refusal of benign traffic is a false positive.
+The attacker plays from a few source addresses. An nginx `deny` for one of them, or a limit_req limit it
+trips, spends that address and drops it at the edge; when every address is spent the round ends. A CRS 403
+spends nothing. A rate limit below twice the busiest benign customer's rate spends nothing and you are warned
+(`limit.below_floor`), because it would refuse the customers too. A refusal of benign traffic is a false
+positive.
 
 ## How to play
 

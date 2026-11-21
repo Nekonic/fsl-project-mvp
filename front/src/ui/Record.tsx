@@ -193,10 +193,6 @@ export function LineList({ lines, removeLabel, onRemove, addLabel, placeholder, 
   );
 }
 
-export function HpGrid({ children }: { children: ComponentChildren }) {
-  return <div class="hp-grid">{children}</div>;
-}
-
 export function TryRow({ children }: { children: ComponentChildren }) {
   return <div class="try-row">{children}</div>;
 }

@@ -57,7 +57,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 
 ### 2. 실전 라운드
 
-라운드 문제는 매치업, 시작 방어 설정(posture), 룰 테스트에 쓸 케이스, 노리는 목표, HP 규칙, 고객 트래픽, 시간 제한을
+라운드 문제는 매치업, 시작 방어 설정(posture), 룰 테스트에 쓸 케이스, 노리는 목표, 고객 트래픽, 시간 제한을
 정합니다.
 
 - 공격석은 Kali 터미널, 대상 사이트 패널, API로 공격하고 탈취한 값을 loot로 제출합니다.
@@ -107,19 +107,22 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 
 점수는 `GET /api/rounds/<id>/score/`입니다. 자리는 라운드가 끝난 뒤에, 운영자와 스태프는 언제든 읽습니다.
 
-## HP
+## 출발지 IP 소진
 
-공격 출발지마다 HP가 있어 의미 없는 스캔을 막습니다. 수치는 문제의 라운드 설정(`hp`)에서 정합니다.
+공격자는 출발지 IP 몇 개로 공격합니다. 방어자가 WAF에서 그 IP를 막아야 소진됩니다.
 
-- 출발지마다 `budget`에서 시작하고, 요청 하나에 `per_request`씩 줄어듭니다.
-- WAF가 거부한 요청(400, 403)은 `refused_x`배, 1초에 `burst_per_s`건을 넘는 요청은 `burst_x`배입니다. 두 배수는
-  곱합니다.
-- 0 이하가 되면 그 출발지는 소진됩니다. infra 라우터가 그 주소를 떨어뜨리고(이미 맺은 연결 포함), 돌고 있던 도구를
-  멈추고, 다음 출발지로 바꿉니다. 출발지가 다 떨어지면 공격 API 쓰기는 `409 origins_spent`입니다.
-- 공격 API의 모든 응답(오류 포함)에 `hp` 블록과 `X-Origin`, `X-Origin-HP` 헤더가 붙습니다.
-- API로 보낸 요청은 그 자리에서 차감합니다. 터미널, 도구, 봇 셸의 요청은 그 라운드에 다음 API 요청이 들어올 때
-  WAF 접근 로그를 읽어 차감합니다.
-  같은 요청을 두 번 차감하지 않습니다.
+- WAF nginx 오류 로그에 그 IP(`client:`)로 `access forbidden by rule`(`deny`)이나 `limiting requests`
+  (`limit_req`)가 찍히면 소진됩니다. CRS 룰이 403으로 막은 요청으로는 소진되지 않습니다. `geo`와 `return 403`으로
+  막으면 오류 로그에 남지 않으므로 세지 않습니다.
+- `limit_req` 하한: `traffic.yaml`에서 가장 바쁜 정상 고객 출발지의 요청 속도의 두 배를 라운드를 열 때
+  계산해 둡니다(`limit_floor_rpm`, 분당 요청 수). 걸린 zone의 `rate`가 이보다 낮으면 소진하지 않고 방어 쪽에
+  `limit.below_floor` 이벤트로 알립니다. `rate`는 WAF의 `nginx -T`로 읽습니다.
+- 소진되면 infra 라우터가 그 주소를 떨어뜨리고(이미 맺은 연결 포함), 돌고 있던 도구를 멈추고, 다음 출발지로
+  바꿉니다. 출발지가 다 떨어지면 공격 API 쓰기는 `409 origins_spent`이고 라운드가 끝납니다.
+- 공격 API의 성공 응답에는 `remaining` 블록(현재 출발지, 남은 수, 전체 수, 소진된 IP)이, 모든 응답(오류 포함)에는
+  `X-Origin`, `X-Origins-Left` 헤더가 붙습니다. 콘솔에는 "남은 IP"로 보입니다.
+- 오류 로그는 그 라운드에 다음 API 요청이 들어올 때 읽습니다. API, 터미널, 도구, 봇 셸의 요청이 모두 같은 규칙을
+  따릅니다.
 - 고객 주소는 소진 대상이 아닙니다.
 
 ## 구성
@@ -188,7 +191,7 @@ flowchart TB
 - 격리는 Neutron 보안 그룹과 port security가 맡습니다. Kali나 WAF의 root 셸로는 바꿀 수 없습니다.
 - 플랫폼 VM의 `rebuild` 서비스(같은 이미지의 `manage.py rebuild_slots`)는 반납된 슬롯의 스택을 다시 만드는 일만
   합니다. 주기적으로 도는 라운드 작업은 없습니다.
-- 알림 수집, HP 차감, corp 변경 관찰, 명령 기록 읽기, WAF 설정 변경 감시, 정상 케이스, 라운드 종료 조건은 그 라운드에
+- 알림 수집, 출발지 소진, corp 변경 관찰, 명령 기록 읽기, WAF 설정 변경 감시, 정상 케이스, 라운드 종료 조건은 그 라운드에
   API 요청(이벤트, 상태, 점수, 공격·방어 동작)이 들어올 때 처리합니다. 라운드마다 한 번에 한 요청만 읽고, 읽은 뒤
   `CR_READ_EVERY_SECONDS`(기본 5초) 동안은 다시 읽지 않습니다.
 - 제한 시간이 지난 라운드는 다음 요청이 끝내고, 종료 시각은 제한 시간으로 기록합니다. 채점은 종료 시각까지 일어난
@@ -359,7 +362,7 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
   `https://cr.example`처럼 scheme, 호스트, 포트만 적습니다. 플랫폼 컨테이너가 시작할 때 nginx 설정에 넣고,
   사이트 origin은 `/api/me/`의 `site_origin`으로 콘솔에 알려 줍니다. 형식이 틀리면 컨테이너가 시작하지 않습니다.
 - `board.com`과 `corp.com`은 훈련 환경 안에서만 응답합니다. 공격석이 8002로 보낸 요청은 공격 API와 같은 경로로
-  나가고 HP를 차감합니다. 방어석과 레슨의 요청은 할당의 브라우징 마커를 달고 고객 주소로 나가며, 공격으로도 오탐으로도
+  나갑니다. 방어석과 레슨의 요청은 할당의 브라우징 마커를 달고 고객 주소로 나가며, 공격으로도 오탐으로도
   세지 않습니다.
 - 공격 API와 방어 API의 계약은 `openapi/schema.yaml`입니다. 자리별 스키마는 `/api/schema/attack/`,
   `/api/schema/defence/`입니다.
@@ -450,7 +453,7 @@ sudo docker compose start platform rebuild
 | `/api/`(사람) | Django 로그인. 세션 쿠키는 HttpOnly, SameSite=Lax. 쓰기 요청은 CSRF 토큰 필요. CORS 헤더 없음 |
 | `/api/`(봇) | `Authorization: Bearer <자리 토큰>`. 토큰은 라운드를 만들 때 한 번만 보여 주고 해시로만 저장. 자기 자리의 공격 또는 방어 경로와 라운드 읽기만 닿음. 라운드가 끝나면 15분 동안 읽기만 가능 |
 | 자리 | 상대 자리의 경로는 403. 라운드 시작 전 쓰기는 `409 round_not_started`, 끝난 뒤는 `409 round_closed`. 자리는 할당을 열거나 닫지 못하고 라운드를 끝내지 못함(기권만 가능). PvP에서 한 사람이 두 자리를 맡지 못함(`already_playing`) |
-| 이벤트 피드 | 이벤트 종류마다 볼 수 있는 쪽이 정해져 있음. 공격 쪽은 알림과 룰 이벤트를, 방어 쪽은 공격 행동과 HP 이벤트를 보지 못함 |
+| 이벤트 피드 | 이벤트 종류마다 볼 수 있는 쪽이 정해져 있음. 공격 쪽은 알림과 룰 이벤트를, 방어 쪽은 공격 행동과 출발지 이벤트를 보지 못함 |
 | WAF 설정 | 방어석은 구조화된 posture(paranoia, 예외, 임계값, 탐지 전용)만 보냄. 자유 텍스트를 받지 않으므로 `SecRuleEngine Off`를 쓸 수 없음 |
 | `/vm-terminal/<side>/<round>/` | nginx `auth_request`가 `/api/rounds/<round>/terminal-auth/<side>/`에 그 라운드의 그 자리를 맡았는지 물음. 공격 자리는 Kali의 `kali` 계정, 방어 자리는 cr-waf의 `analyst` 계정(root 아님)으로 열리고, `GET terminal/`로 받은 점프 권한이 없거나 라운드가 끝났으면 열리지 않음. 열려 있던 셸도 15초마다 다시 확인해 권한이 없어지면 닫힘 |
 | `/kibana/`, 8002(`/site/...`) | nginx `auth_request`로 `/api/me/`에 로그인 세션 확인. 없으면 로그인 페이지로. 로그인 뒤 돌아가는 `next`는 콘솔 안의 경로이거나 `CR_SITE_ORIGIN`(기본은 같은 호스트의 8002)의 `/site/` 주소만 받음 |
@@ -483,7 +486,7 @@ sudo docker compose start platform rebuild
   nginx가 `/app/front/dist`로 내줍니다. API에 없는 값(지난 라운드의 결과, 로비의 연 시각 등)은
   아직 화면에 없습니다. 자리별 터미널(`nginx.conf`, `vm-terminal.sh`)은 오프라인 테스트만 거쳤고 훈련 환경에서는 아직
   열어 보지 않았습니다.
-- HP 차감용 WAF 접근 로그, infra 라우터의 `pool`·`spent` 집합, CRS 룰 테스트용 임시 인스턴스, WAF의 `analyst`
+- WAF 접근 로그와 오류 로그 전송, infra 라우터의 `pool`·`spent` 집합, CRS 룰 테스트용 임시 인스턴스, WAF의 `analyst`
   계정은 배포 파일에만 있고 역할 이미지에는 아직 없습니다. infra, waf 이미지를 다시 구워야 합니다
   (`docs/OPENSTACK.md` §3.7).
 - 룰 테스트용 녹화(`wargames/<id>/probes/`)가 아직 없습니다. 지금 룰 테스트는 케이스를 미탐이 아니라
@@ -495,7 +498,7 @@ sudo docker compose start platform rebuild
 
 - [CLAUDE.md](CLAUDE.md): 저장소 목적, 점수 계산, 작업 규칙
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): 계층, 파일 지도, 격리 경계, 라운드 흐름
-- [bots/README.md](bots/README.md): 봇이 자리를 맡는 방법, HP 규칙, 오류 코드(영어)
+- [bots/README.md](bots/README.md): 봇이 자리를 맡는 방법, 출발지 소진, 오류 코드(영어)
 - [OPENSTACK.md](docs/OPENSTACK.md): 클라우드 준비, 플랫폼 VM, 훈련 환경 운영(영어)
 - [THREAT-MODEL.md](docs/THREAT-MODEL.md): 위협 모델
 - [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): 겪은 문제와 해결(영어)

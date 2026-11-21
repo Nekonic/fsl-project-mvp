@@ -36,7 +36,7 @@ export const layouts: Record<LayoutName, ConsoleSpec> = {
     side: "attack",
     mark: "attack",
     rail: [terminalKali, site, loot],
-    asideLead: "hp",
+    asideLead: "origins",
     aside: ["objectives", "loot", "cases"],
   },
   defence: {
@@ -51,7 +51,7 @@ export const layouts: Record<LayoutName, ConsoleSpec> = {
     mark: "lesson",
     rail: [{ ...terminalKali, label: "pane.kali" }, kibana, alerts, idsRules, waf, map, site, terminalWaf],
     asideLead: "step_card",
-    aside: ["hp"],
+    aside: ["origins"],
     railAlways: ["map"],
   },
 };

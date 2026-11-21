@@ -24,7 +24,7 @@ def test_a_free_tool_starts_asynchronously_on_the_box_carrying_the_action_s_mark
     run = ToolRun.objects.get(pk=answer.json()["run"])
     action = Action.objects.get(pk=answer.json()["action"])
     assert run.argv == ["curl", "-H", f"X-Request-ID: {action.marker}", "-s", "http://board.com/"]
-    assert (action.kind, action.correlation, action.malicious, action.charged) == ("tool", "marker", None, False)
+    assert (action.kind, action.correlation, action.malicious) == ("tool", "marker", None)
     [launched] = cloud.box.matching("setsid nohup")
     assert f"/var/lib/cr-runs/{run.pk}" in launched.text
     assert tool_events(attacker.round) == [("tool.started", {"run": run.pk, "tool": "curl"})]
@@ -46,7 +46,7 @@ def test_the_output_is_read_after_an_offset_and_the_end_is_recorded_once(as_atta
 
     assert (first.json()["output"], first.json()["offset"], first.json()["done"]) == ("first part", 10, False)
     assert (second.json()["output"], second.json()["offset"], second.json()["done"]) == (" and the rest", 23, True)
-    assert second.json()["exit_code"] == 0 and "hp" in second.json()
+    assert second.json()["exit_code"] == 0 and "remaining" in second.json()
     assert again.json()["done"] is True
     assert [kind for kind, _ in tool_events(attacker.round)] == ["tool.started", "tool.ended"]
     assert ToolRun.objects.get(pk=run).ended is not None
@@ -58,7 +58,7 @@ def test_a_player_stops_its_run_on_the_box(as_attacker, attacker, cloud):
     answer = as_attacker.delete(url(attacker.round, f"tools/{run}/"))
 
     assert answer.status_code == 204
-    assert answer["X-Origin-HP"] == "100"
+    assert answer["X-Origins-Left"] == "3"
     assert cloud.box.matching(f"kill -TERM")
     stopped = ToolRun.objects.get(pk=run)
     assert (stopped.stopped_by, stopped.exit_code) == ("player", 143)

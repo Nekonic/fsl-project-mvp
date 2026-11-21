@@ -132,42 +132,6 @@ class Score:
 
 
 @dataclass(frozen=True)
-class HpRule:
-    budget: int
-    per_request: int
-    refused_x: int
-    burst_per_s: int
-    burst_x: int
-    refused_statuses: tuple[int, ...] = (400, 403)
-
-    def refuses(self, status: int) -> bool:
-        return status in self.refused_statuses
-
-
-@dataclass(frozen=True)
-class Charge:
-    origin_ip: str
-    at: datetime
-    refused: bool
-    marker: str | None = None
-    synchronous: bool = False
-
-
-@dataclass(frozen=True)
-class OriginState:
-    origin_id: str
-    ip: str
-    label: str
-    budget: int
-    left: int
-    spent_at: datetime | None = None
-
-    @property
-    def spent(self) -> bool:
-        return self.spent_at is not None
-
-
-@dataclass(frozen=True)
 class FieldError:
     path: str
     code: str

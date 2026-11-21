@@ -5,20 +5,11 @@ from training.models import PROBLEM_KINDS, PROBLEM_SIDES
 MATCHUPS = ["pvp", "def_vs_bot", "atk_vs_bot"]
 
 
-class HpRule(serializers.Serializer):
-    budget = serializers.IntegerField()
-    per_request = serializers.IntegerField()
-    refused_x = serializers.IntegerField()
-    burst_per_s = serializers.IntegerField()
-    burst_x = serializers.IntegerField()
-
-
 class RoundSetup(serializers.Serializer):
     matchups = serializers.ListField(child=serializers.ChoiceField(choices=MATCHUPS))
     posture = serializers.CharField(allow_null=True, required=False)
     probe_cases = serializers.ListField(child=serializers.CharField(), default=list)
     objectives = serializers.ListField(child=serializers.CharField(), default=list)
-    hp = HpRule()
     traffic = serializers.CharField(allow_null=True, required=False)
     benign_every_s = serializers.IntegerField(required=False)
     time_limit_s = serializers.IntegerField(allow_null=True, required=False)

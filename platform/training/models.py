@@ -57,7 +57,6 @@ class RoundSetup(models.Model):
     posture = models.ForeignKey(Posture, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
     probe_cases = models.JSONField(default=list)
     objectives = models.JSONField(default=list)
-    hp = models.JSONField(default=dict)
     traffic = models.CharField(max_length=32, null=True, blank=True)
     benign_every_s = models.PositiveIntegerField(default=60)
     time_limit_s = models.PositiveIntegerField(null=True, blank=True)
@@ -171,8 +170,6 @@ class Action(models.Model):
     source_ip = models.GenericIPAddressField(null=True, blank=True)
     started = models.DateTimeField()
     ended = models.DateTimeField()
-    charged = models.BooleanField(default=False)
-    access_seen = models.BooleanField(default=False)
     meta = models.JSONField(default=dict)
 
     class Meta:
@@ -194,19 +191,20 @@ class ToolRun(models.Model):
         ordering = ["id"]
 
 
-class OriginBudget(models.Model):
-    round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name="origin_budgets")
+SPENT_BY = [(reason, reason) for reason in ("deny", "limit_req", "player")]
+
+
+class Origin(models.Model):
+    round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name="origins")
     origin_id = models.CharField(max_length=32)
     ip = models.GenericIPAddressField()
     label = models.CharField(max_length=100)
-    budget = models.PositiveIntegerField()
-    left = models.IntegerField()
     spent_at = models.DateTimeField(null=True, blank=True)
-    recent = models.JSONField(default=list)
+    spent_by = models.CharField(max_length=16, choices=SPENT_BY, blank=True, default="")
 
     class Meta:
         ordering = ["id"]
-        constraints = [models.UniqueConstraint(fields=["round", "ip"], name="one_budget_per_origin")]
+        constraints = [models.UniqueConstraint(fields=["round", "ip"], name="one_row_per_origin")]
 
 
 ENGINE_CHOICES = [(engine, engine) for engine in ENGINES]

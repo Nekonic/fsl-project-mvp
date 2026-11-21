@@ -26,14 +26,14 @@ against its mock API only. The bake of 5, step 12 and the live parts of 15,
 |---|---|---|
 | 1 Ratchet removed | `metrics.json`, `bin/measure` and the ratchet steps are gone | `bin/verify --fast` |
 | 2 Old tree cleared | `platform/api/`, `platform/console/`, the scenario and lesson modules and their tests are deleted | `platform/tests/test_old_tree_gone.py` |
-| 3 `domain/` | scoring (correlate, metrics, corroborate, objectives), ledger, verdicts, checks, problems, round_rules | `platform/tests/domain/`, no Django in the process; import rule 1 |
+| 3 `domain/` | scoring (correlate, metrics, corroborate, objectives), traffic (customer shares, the limit_req floor), verdicts, checks, problems, round_rules | `platform/tests/domain/`, no Django in the process; import rule 1 |
 | 4 Seams | `cr/config.py`, `cr/errors.py`, `ingest/elastic.py`, `rules/suricata.py`, `rules/crs.py`, `range/*` (with `edge.py`, `jump.py`, `refill.py` rewritten), `attack/box.py`, `firing.py`, `tools.py`, `defence/kibana.py`, `referee/loot.py`, `effect.py` | `platform/tests/seams/` against fakes; import rules 2, 4, 14; `platform/tests/seams/test_isolation_seams.py`, `test_no_comments.py` |
 | 5 Deploy (repo side) | `edge.nft` with `pool` and `spent` and the `spent` drop and the drop of every address outside `pool` before the established accept, the probe lease admitting the origin it wears; the WAF's JSON access log `access.json` shipped and relayed as `nginx-access`, ingested as `nginx_access`; `probe.conf`, `probe-upstream.py`, `analyst.sh`; `conntrack`, `tcpdump` and `/var/lib/cr-ruletest` on the infra; `bin/record-probes`; each round start empties both edge sets (`range.edge.restart`) and the round's end empties them again (`attack.close`); the access log keeps `request_id` only when it has a marker's shape | `tests/test_edge_sets.py`, `test_waf_scratch.py`, `test_access_log.py`, `test_analyst.py`, `test_record_probes.py`, `test_roles.py`, `test_filebeat.py`, `tests/seams/test_edge.py`, `tests/attack/test_spend.py`; structural only, no `nft -c` or `nginx -t` |
 | 6 Django skeleton | `cr/` (DRF, spectacular, one handler, `strings.py`), `strings/`, `accounts`, `events` | `tests/accounts` (with the first account `admin` from migration `accounts.0002_first_account`), `tests/events`, the error-shape and no-admin tests |
 | 7 `content` | catalog, `wargame.yaml` per wargame, problems as nested documents with revisions and export/import, postures, the learner read API | `tests/content` |
 | 8 Round records, referee | `match.models`, `match.auth` (seat tokens hashed, `HasSeat`, `InRound`, `IsOperator`, `OnLease`), `referee` (baseline, loot, effects, objectives, redact, score) | `tests/referee`; import rules 4, 5, 11, 15 |
 | 9 `defence` | rules and posture read, check, test and apply across sensors, versions, probes, disable, drift, alerts, traffic, terminal, Kibana gate | `tests/defence` |
-| 10 `attack` | state, cases, requests, async tools, loot, origins, terminal, HP from both sources (an API charge excuses one access event with its marker, `Action.access_seen`), spend at the edge, customer sends | `tests/attack` |
+| 10 `attack` | state, cases, requests, async tools, loot, origins, terminal, origin loss from the WAF error log (deny and limit_req above the floor), spend at the edge, customer sends | `tests/attack` |
 | 11 `match.service` | lease and round lifecycle, follower (`follow` compose service), customers and the benign schedule, site pane, terminal auth routes, score, probe recording, staff range routes | `tests/match`; import rules 6, 7, 9 |
 | 13 `lessons` | lesson rounds, facts, judges, progress, hints, `step_locked`, staff try | `tests/lessons` |
 | 14 Contract and clients | `openapi/schema.yaml` committed; `bin/gen-clients`; `test/` and `bin/` on the generated client; `bin/backup` and `bin/prune` on the new tables | `tests/contract`; import rule 12; no `/api/sessions` outside docs |
@@ -52,9 +52,10 @@ on a slot:
   alerts and ground truth unchanged (`test/test_rule_test_isolation.py`);
 - apply across sensors with rollback, and drift detection on the live CRS
   files;
-- the HP charge from the WAF access log, the spend at the infra edge cutting a
-  keep-alive connection, and customers surviving the spend
-  (`test/test_hp_spend.py`, `test/test_block_everything_hp.py`);
+- the origin spend from the WAF error log after a defender's nginx deny, the
+  drop at the infra edge cutting a keep-alive connection, customers surviving
+  the spend, and a CRS 403 spending nothing (`test/test_origin_spend.py`,
+  `test/test_block_everything.py`);
 - jump grants on the platform sshd and the per-seat key in the box account,
   for kali and for `analyst` on cr-waf;
 - the follower on a live range (refill, expiry, ingest, effects);
@@ -163,8 +164,8 @@ on a slot:
 
 Unmeasured until a range runs them: offline IDS against the live sensor;
 mapping `suricata -T` errors to a line; scratch CRS instance fidelity;
-recorded sqlmap pcaps as an IDS preview; access-log loss on the UDP hop (HP
-undercharges); HP lag of one follower tick plus shipping; forged markers and
+recorded sqlmap pcaps as an IDS preview; error-log loss on the UDP hop (an origin
+the defender banned is not spent); spend lag of one read interval plus shipping; forged markers and
 customer addresses on a root box; free-action attribution by window; the
 follower's single loop under four sqlmap runs; the first Preact build and
 the SPA fallback order; whether `analyst` can read the CRS files without

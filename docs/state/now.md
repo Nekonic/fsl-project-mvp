@@ -25,8 +25,8 @@ Updated: 2026-11-20.
 ## Not live-verified
 
 Nothing on `side-split` has run on a range: the rule test on a sensor and on
-cr-waf, multi-sensor apply and rollback, the HP charge from the access log
-and the spend at the edge, the jump grants for kali and for `analyst`, the
+cr-waf, multi-sensor apply and rollback, the origin spend from the WAF's
+error log and the drop at the edge, the jump grants for kali and for `analyst`, the
 follower, `bin/cloud up`/`down` through the staff range routes, the bot
 rounds driven by Claude Code, `front/` against a live platform, and the
 ported acceptance suite.

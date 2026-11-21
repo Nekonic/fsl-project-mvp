@@ -33,7 +33,7 @@ acceptance check reads as "passed".
 1. It keeps one staff problem per wargame, `Acceptance <wargame>`, written
    through the staff API on first use: a round problem whose posture is the
    committed `local.rules` and a WAF tuning that detects without blocking
-   `/search/`, every objective of the wargame, and an HP budget no run spends.
+   `/search/`, and every objective of the wargame.
 2. `plays.play(wargame)` opens an allocation (`POST /api/allocations/`), creates a
    `def_vs_bot` round on it and starts it. The attack player is a bot whose token
    `plays` keeps; the defence player is the signed-in operator. A full range
@@ -51,8 +51,8 @@ acceptance check reads as "passed".
 6. `plays.close` ends the round and closes the allocation, which deletes the slot's
    stack and builds it again.
 
-A test that needs another problem passes a `plays.Setup` (its own title, HP
-rule, posture, probe cases, side and matchups) to `plays.play` or
+A test that needs another problem passes a `plays.Setup` (its own title,
+posture, probe cases, side and matchups) to `plays.play` or
 `plays.Round`, with `matchup="atk_vs_bot"` when the defence player is the bot.
 `played.attack` and `played.defence` are the clients of the two players: a bot's
 player token, or the signed-in operator.

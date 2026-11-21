@@ -7,10 +7,9 @@ from domain.round_rules import ALLOWED_MATCHUPS, Matchup, Side
 from domain.types import FieldError
 
 KINDS = ("round",)
-HP_FIELDS = ("budget", "per_request", "refused_x", "burst_per_s", "burst_x")
 PROBLEM_FIELDS = ("kind", "wargame", "side", "title", "summary", "body", "published")
 STORED_STAMPS = ("id", "revision", "author", "updated")
-ROUND_FIELDS = ("matchups", "posture", "probe_cases", "objectives", "hp", "traffic", "benign_every_s",
+ROUND_FIELDS = ("matchups", "posture", "probe_cases", "objectives", "traffic", "benign_every_s",
                 "time_limit_s")
 
 
@@ -87,16 +86,6 @@ def _round(setup: Mapping, wargame: WargameCatalog | None, side: object) -> list
     errors.extend(_listed(setup, "probe_cases", wargame, _probe_case))
     errors.extend(_listed(setup, "objectives", wargame, _objective))
 
-    hp = setup.get("hp")
-    if not isinstance(hp, Mapping):
-        errors.append(FieldError("round.hp", "required"))
-    else:
-        errors.extend(unknown_fields(hp, HP_FIELDS, "round.hp"))
-        errors.extend(
-            FieldError(f"round.hp.{name}", "not_a_positive_integer")
-            for name in HP_FIELDS
-            if not _positive(hp.get(name))
-        )
     if "benign_every_s" in setup and not _positive(setup["benign_every_s"]):
         errors.append(FieldError("round.benign_every_s", "not_a_positive_integer"))
     if setup.get("time_limit_s") is not None and not _positive(setup["time_limit_s"]):

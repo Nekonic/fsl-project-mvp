@@ -12,6 +12,7 @@
 # 1 (942100, 942190, 941100, 941110, 941160 on ARGS:body, measured 2026-10-13).
 
 users: 12
+rate: 1.0
 origins: {kr: 70, jp: 6, us: 8, cn: 3, vn: 3, tw: 3, hk: 3, br: 2, de: 1, gb: 1}
 accounts:
   - {username: jiwoo, password: jiwoo1234}

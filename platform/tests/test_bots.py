@@ -15,10 +15,8 @@ from bots.provider import ProviderNotFound, ToolCall, Turn, load
 REPO = Path(__file__).resolve().parents[2]
 TOKEN = "player-token-placeholder"
 ROUND = 7
-HP = {"origin": {"id": "o1", "label": "first", "ip": "198.51.100.10"}, "left": 29, "budget": 30,
-      "origins_left": 2, "spent": [],
-      "rule": {"budget": 30, "per_request": 1, "refused_x": 3, "burst_per_s": 5, "burst_x": 2,
-               "refused_statuses": [400, 403]}}
+REMAINING = {"origin": {"id": "o1", "label": "first", "ip": "198.51.100.10"}, "left": 2, "total": 3,
+             "spent": ["198.51.100.9"]}
 TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
@@ -175,19 +173,19 @@ def test_the_tools_command_prints_the_specs_and_needs_no_player():
     assert json.loads(printed) == tools.specs("defence")
 
 
-def test_a_call_on_stdin_goes_out_with_the_player_token_and_prints_the_answer_with_its_hp(platform):
+def test_a_call_on_stdin_goes_out_with_the_player_token_and_prints_the_answer_with_its_origin_headers(platform):
     path = f"/api/rounds/{ROUND}/attack/requests/"
     platform.on("POST", path, body={"action": 3, "marker": "m-3", "status": 200, "headers": [], "body": "ok",
-                                    "truncated": False, "hp": HP},
-                headers={"X-Origin": "198.51.100.10", "X-Origin-HP": "29/30"})
+                                    "truncated": False, "remaining": REMAINING},
+                headers={"X-Origin": "198.51.100.10", "X-Origins-Left": "2"})
     asked = {"name": "attack_send", "arguments": {"method": "GET", "path": "/search", "query": {"q": "x"}}}
 
     code, printed = run_cli(["call", "--side", "attack"], platform, stdin=json.dumps(asked))
 
     told = json.loads(printed)
     assert code == 0
-    assert told["ok"] is True and told["status"] == 200 and told["body"]["hp"] == HP
-    assert told["headers"] == {"X-Origin": "198.51.100.10", "X-Origin-HP": "29/30"}
+    assert told["ok"] is True and told["status"] == 200 and told["body"]["remaining"] == REMAINING
+    assert told["headers"] == {"X-Origin": "198.51.100.10", "X-Origins-Left": "2"}
     assert platform.seen == [{"method": "POST", "path": path, "query": {}, "authorization": f"Bearer {TOKEN}",
                               "body": {"method": "GET", "path": "/search", "query": {"q": "x"}}}]
 
@@ -214,8 +212,8 @@ def test_path_parameters_and_an_empty_answer_reach_the_right_route(platform):
     assert platform.seen[0]["method"] == "DELETE" and platform.seen[0]["path"] == path
 
 
-def test_a_refusal_is_printed_with_its_code_and_hp_and_is_not_a_cli_failure(platform):
-    refusal = {"errors": [{"path": "", "code": "origins_spent"}], "hp": {**HP, "left": 0, "origins_left": 0}}
+def test_a_refusal_is_printed_with_its_code_and_is_not_a_cli_failure(platform):
+    refusal = {"errors": [{"path": "", "code": "origins_spent"}]}
     platform.on("POST", f"/api/rounds/{ROUND}/attack/cases/", status=409, body=refusal)
 
     code, printed = run_cli(["attack_fire_case", "--json", '{"case": "board-sqli-search"}'], platform)
@@ -284,11 +282,11 @@ def test_an_unknown_tool_name_is_a_usage_error(platform, capsys):
     assert platform.seen == []
 
 
-def test_the_attacker_prompt_tells_the_hit_point_rule_and_how_to_switch_origin():
+def test_the_attacker_prompt_tells_how_an_origin_is_spent_and_how_to_switch_origin():
     prompt = play.system_prompt("attack")
 
-    for named in ("per_request", "refused_x", "burst_per_s", "burst_x", "refused_statuses", "origins_left",
-                  "X-Origin-HP", "attack_next_origin", "origins/next/", "origins_spent"):
+    for named in ("deny", "limit_req", "403", "remaining", "X-Origins-Left", "attack_next_origin", "origins/next/",
+                  "origins_spent"):
         assert named in prompt, named
 
 
@@ -302,7 +300,7 @@ def test_the_claude_code_prompt_adds_the_cli_and_the_loop_prompt_leaves_it_out()
 def test_every_tool_and_code_the_prompts_and_readme_name_exists():
     schemas = tools.contract()["components"]["schemas"]
     codes = set(schemas["ErrorCodeEnum"]["enum"])
-    not_codes = {*schemas["FieldError"]["properties"], "local", "hp", "base_version"}
+    not_codes = {*schemas["FieldError"]["properties"], "local", "base_version"}
     names = {spec["name"] for side in tools.SIDES for spec in tools.specs(side)}
     texts = [*(REPO / "bots" / "prompts").glob("*.md"), REPO / "bots" / "README.md"]
 
@@ -356,8 +354,8 @@ def scripted_attacker():
 
 
 def test_a_provider_plays_the_player_with_the_side_prompt_and_tools_until_it_stops(platform):
-    platform.on("GET", f"/api/rounds/{ROUND}/attack/state/", body={"phase": "running", "hp": HP})
-    platform.on("POST", f"/api/rounds/{ROUND}/attack/origins/next/", body={"origin": "o2", "hp": HP})
+    platform.on("GET", f"/api/rounds/{ROUND}/attack/state/", body={"phase": "running", "remaining": REMAINING})
+    platform.on("POST", f"/api/rounds/{ROUND}/attack/origins/next/", body={"origin": "o2", "remaining": REMAINING})
     scripted = scripted_attacker()
 
     played = play.play(attack_player(platform), scripted, turns=10)
@@ -374,7 +372,7 @@ def test_a_provider_plays_the_player_with_the_side_prompt_and_tools_until_it_sto
 
 
 def test_a_provider_that_never_stops_runs_out_of_turns(platform):
-    platform.on("GET", f"/api/rounds/{ROUND}/attack/state/", body={"phase": "running", "hp": HP})
+    platform.on("GET", f"/api/rounds/{ROUND}/attack/state/", body={"phase": "running", "remaining": REMAINING})
     endless = Scripted([Turn(calls=(ToolCall(str(n), "attack_state", {}),)) for n in range(5)])
 
     played = play.play(attack_player(platform), endless, turns=2)
@@ -383,8 +381,8 @@ def test_a_provider_that_never_stops_runs_out_of_turns(platform):
 
 
 def test_the_run_command_loads_the_provider_by_name_and_reports_each_step_as_a_json_line(platform):
-    platform.on("GET", f"/api/rounds/{ROUND}/attack/state/", body={"phase": "running", "hp": HP})
-    platform.on("POST", f"/api/rounds/{ROUND}/attack/origins/next/", body={"origin": "o2", "hp": HP})
+    platform.on("GET", f"/api/rounds/{ROUND}/attack/state/", body={"phase": "running", "remaining": REMAINING})
+    platform.on("POST", f"/api/rounds/{ROUND}/attack/origins/next/", body={"origin": "o2", "remaining": REMAINING})
 
     code, printed = run_cli(["run", "--side", "attack", "--provider", "tests.test_bots:scripted_attacker"],
                             platform)

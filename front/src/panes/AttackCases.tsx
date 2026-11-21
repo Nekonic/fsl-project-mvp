@@ -3,11 +3,13 @@ import type { Schemas } from "../api/client";
 import { count } from "../format";
 import { t } from "../strings";
 import { AsideCard, Badge, Button, ErrorNotice, Loading, Pane, RowLine, Text } from "../ui";
-import { attackWritesOpen, useAttackState } from "./Hp";
+import { attackWritesOpen, useAttackState } from "./Origins";
 import type { PaneProps } from "./types";
 
 type CaseEntry = Schemas["CaseEntry"];
 type Fired = Schemas["Fired"];
+
+const REFUSED_STATUSES = [400, 403];
 
 function FiredBadge({ fired, refused }: { fired: Fired; refused: number[] }) {
   if (fired.run !== null) return <Badge tone="info">{t("cases.tool_started")}</Badge>;
@@ -39,13 +41,12 @@ export function AttackCases({ round, placement }: PaneProps) {
   const state = useAttackState(round);
   const declared = (cases.data ?? []).filter((entry) => entry.malicious);
   const open = attackWritesOpen(state.data);
-  const refusedStatuses = state.data?.hp.rule.refused_statuses ?? [];
 
   const body = !cases.data
     ? cases.error ? <ErrorNotice error={cases.error} /> : <Loading>{t("common.loading")}</Loading>
     : declared.length === 0
       ? <Text tone="muted">{t("cases.none")}</Text>
-      : declared.map((entry) => <CaseRow key={entry.case} entry={entry} round={round} open={open} refused={refusedStatuses} />);
+      : declared.map((entry) => <CaseRow key={entry.case} entry={entry} round={round} open={open} refused={REFUSED_STATUSES} />);
 
   if (placement === "main") {
     return <Pane title={t("pane.cases")} meta={cases.data ? count(declared.length) : undefined}>{body}</Pane>;

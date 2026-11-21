@@ -93,13 +93,11 @@ describe("client", () => {
     expect(asked.map((one) => one.url)).toEqual(["/api/allocations/3/heartbeat/", "/api/auth/csrf/", "/api/allocations/3/heartbeat/"]);
   });
 
-  it("keeps the hp block an attack route sends with its error", async () => {
-    const hp = { origin: null, left: 0, budget: 100, origins_left: 0, spent: [], rule: {} };
-    answering(() => json(409, { errors: [{ path: "", code: "origins_spent" }], hp }));
+  it("names the code an attack route refuses with", async () => {
+    answering(() => json(409, { errors: [{ path: "", code: "origins_spent" }] }));
     const failed = await call("post", "/api/rounds/{round_id}/attack/origins/next/", { params: { round_id: 4 } }).catch((error: unknown) => error);
     expect(failed).toBeInstanceOf(ApiError);
     expect((failed as ApiError).code).toBe("origins_spent");
-    expect((failed as ApiError).hp).toEqual(hp);
   });
 
   it("stops waiting when the wait is aborted between reads", async () => {

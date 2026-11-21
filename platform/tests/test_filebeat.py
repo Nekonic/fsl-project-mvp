@@ -4,6 +4,7 @@ import pytest
 import yaml
 
 from sandbox import fabric as networks
+from telemetry import elastic
 
 FILEBEAT = pathlib.Path(__file__).resolve().parents[2] / "deploy/filebeat/filebeat.yml"
 
@@ -29,21 +30,26 @@ def test_the_range_vms_ship_by_syslog_to_one_udp_input_on_the_collector_port():
     assert heard["host"] == f"0.0.0.0:{networks.COLLECTOR_PORT}"
     assert next(iter(heard["processors"][0])) == "syslog"
 
-def test_suricata_and_modsecurity_lines_are_decoded_into_the_documents_ingest_reads():
+def test_suricata_modsecurity_and_access_lines_are_decoded_and_the_error_log_is_kept_as_its_message():
     [heard] = syslog_inputs()
-    decoded = {}
+    decoded, kept = {}, {}
     for step in heard["processors"]:
         if "if" not in step:
             continue
         appname = next(c["equals"]["log.syslog.appname"] for c in step["if"]["and"] if "equals" in c)
         names = [next(iter(each)) for each in step["then"]]
         tagged = next(each["add_fields"]["fields"]["event"]["module"] for each in step["then"] if "add_fields" in each)
-        assert "decode_json_fields" in names
-        decoded[appname] = tagged
+        if "decode_json_fields" in names:
+            decoded[appname] = tagged
+        else:
+            moved = [field for each in step["then"] for field in each.get("rename", {}).get("fields", [])]
+            assert moved == [{"from": "message", "to": "error.message"}], appname
+            kept[appname] = tagged
 
     assert decoded == {"suricata": "suricata", "modsecurity": "modsecurity", "nginx-access": "nginx_access"}, (
         "ingest normalizes a document by event.module"
     )
+    assert kept == {"nginx-error": elastic.ERROR_MODULE}, "nginx writes its error log as text, not JSON"
 
 
 def test_a_syslog_line_from_another_program_is_dropped_so_the_index_holds_only_the_engines_events():

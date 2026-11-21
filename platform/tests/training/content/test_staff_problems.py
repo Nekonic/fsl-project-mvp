@@ -57,7 +57,6 @@ def test_validator_errors_come_back_by_path_and_nothing_is_saved(source, as_staf
 
 
 @pytest.mark.parametrize("setup, path, code", [
-    ({"hp": {**factories.HP, "budget": 0}}, "round.hp.budget", "not_a_positive_integer"),
     ({"posture": "nowhere"}, "round.posture", "unknown_posture"),
     ({"traffic": "crowd"}, "round.traffic", "unknown_profile"),
     ({"matchups": ["atk_vs_bot"]}, "round.matchups[0]", "matchup_not_allowed"),
@@ -65,7 +64,7 @@ def test_validator_errors_come_back_by_path_and_nothing_is_saved(source, as_staf
     ({"probe_cases": ["board-sqli-union-search"]}, "round.probe_cases[0]", "not_recorded"),
     ({"probe_cases": ["board-normal-post-list"]}, "round.probe_cases[0]", "not_malicious"),
     ({"time_limit": 600}, "round.time_limit", "unknown_field"),
-    ({"hp": {**factories.HP, "refill": 1}}, "round.hp.refill", "unknown_field"),
+    ({"hp": {"budget": 100}}, "round.hp", "unknown_field"),
 ])
 def test_round_setup_errors_come_back_by_path(source, as_staff, setup, path, code):
     refused(as_staff.post("/api/staff/problems/", factories.round_problem(**setup), format="json"), 400, code, path)

@@ -189,7 +189,7 @@ def test_starting_freezes_the_snapshot_applies_the_posture_takes_the_baseline_an
     assert answer.json() == {"phase": "running"}
     assert found.snapshot["problem"]["revision"] == problem.revision and found.baseline
     assert found.ends_at - found.started == timedelta(seconds=900)
-    assert found.origin_budgets.count() == 3
+    assert found.origins.count() == 3
     assert cloud.in_slot(1).defence.gateway.file
     assert "round.started" in kinds(found)
     refused(as_operator.post(url(found, "start/")), 409, "round_started")
@@ -284,16 +284,16 @@ def test_open_rounds_list_only_what_the_user_holds_unless_staff(browser, allocat
 
 
 def test_a_round_ended_while_it_starts_stays_ended(monkeypatch, allocation, problem, learner, other):
-    from training.attack import actions as attack
+    from training.attack import origins
 
     found = pvp(allocation, problem, other, learner)
-    filled = attack.fill_pool
+    filled = origins.fill_pool
 
     def ended_meanwhile(one):
         filled(one)
         service.end_round(service.round_of(one.pk), "ended_by_operator")
 
-    monkeypatch.setattr(attack, "fill_pool", ended_meanwhile)
+    monkeypatch.setattr(origins, "fill_pool", ended_meanwhile)
 
     started = service.start_round(found)
 

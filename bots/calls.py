@@ -12,7 +12,7 @@ import httpx2
 
 from bots import signin, tools
 
-HP_HEADERS = ("X-Origin", "X-Origin-HP")
+ORIGIN_HEADERS = ("X-Origin", "X-Origins-Left")
 LONGEST_TEXT = 20000
 
 
@@ -95,7 +95,7 @@ def answer_body(response: httpx2.Response):
 def outcome_of(name: str, response: httpx2.Response) -> dict:
     told = {"operation": name, "ok": response.is_success, "status": response.status_code,
             "body": answer_body(response)}
-    headers = {key: response.headers[key] for key in HP_HEADERS if key in response.headers}
+    headers = {key: response.headers[key] for key in ORIGIN_HEADERS if key in response.headers}
     if headers:
         told["headers"] = headers
     return told

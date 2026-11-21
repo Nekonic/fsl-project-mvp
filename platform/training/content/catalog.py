@@ -9,6 +9,7 @@ import yaml
 
 from cr.errors import ServerError
 from domain.problems import CatalogCase, WargameCatalog
+from domain.traffic import limit_floor
 from training.attack.cases import load_cases
 
 WARGAMES = "wargames"
@@ -67,6 +68,7 @@ class Wargame:
     secret: dict[str, Any]
     traffic_profiles: tuple[str, ...]
     probes: Probes | None
+    limit_floor_rpm: int | None = None
 
     @property
     def recorded(self) -> frozenset[str]:
@@ -124,6 +126,7 @@ def read(root: Path, wargame_id: str) -> Wargame:
         public_url=str(declared["public_url"]), hosts=hosts, objective_model=declared["objective_model"],
         case_file=declared["case_file"], default_traffic=declared["default_traffic"], cases=cases,
         objectives=read_objectives(folder), secret=read_secret(folder), traffic_profiles=profiles, probes=read_probes(folder),
+        limit_floor_rpm=read_limit_floor(folder),
     )
 
 
@@ -143,6 +146,12 @@ def traffic_profiles(folder: Path) -> tuple[str, ...]:
     if not (folder / "traffic.yaml").is_file():
         return ()
     return tuple(sorted((loaded(folder / "traffic.yaml") or {}).get("profiles") or {}))
+
+
+def read_limit_floor(folder: Path) -> int | None:
+    if not (folder / "traffic.yaml").is_file():
+        return None
+    return limit_floor(loaded(folder / "traffic.yaml") or {})
 
 
 def read_objectives(folder: Path) -> tuple[Objective, ...]:

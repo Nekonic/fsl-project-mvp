@@ -17,6 +17,7 @@ _MARKER_KEY = MARKER_HEADER.lower()
 FETCH_TIMEOUT = 10.0
 
 ACCESS_MODULE = "nginx_access"
+ERROR_MODULE = "nginx_error"
 REFUSED_STATUSES = (400, 403)
 PAGE = 1000
 PIPELINE_TRIES = 30
@@ -261,6 +262,14 @@ def access_events(url: str, index: str, cursor: dict | None = None,
     documents, moved = fetch_after(url, index, cursor, size, module=ACCESS_MODULE)
     return [access_record(doc_id, doc) for doc_id, doc in documents
             if (doc.get("event") or {}).get("module") == ACCESS_MODULE], moved
+
+
+def error_events(url: str, index: str, cursor: dict | None = None,
+                 size: int = PAGE) -> tuple[list[dict[str, Any]], dict]:
+    documents, moved = fetch_after(url, index, cursor, size, module=ERROR_MODULE)
+    return [{"id": doc_id, "at": _parse_time(doc.get("@timestamp")),
+             "line": str((doc.get("error") or {}).get("message") or "")}
+            for doc_id, doc in documents if (doc.get("event") or {}).get("module") == ERROR_MODULE], moved
 
 
 def pipeline_endpoint(config: ElasticConfig) -> str:

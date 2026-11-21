@@ -61,6 +61,21 @@ def test_access_events_read_only_the_nginx_access_module():
     assert {"term": {"event.module": "nginx_access"}} in sent["query"]["bool"]["filter"]
 
 
+def test_error_events_read_only_the_nginx_error_module_and_hand_each_line_with_its_time():
+    es = FakeElastic()
+    es.add("e1", {"@timestamp": "2026-11-19T10:00:00Z", "event": {"module": "nginx_error"},
+                  "error": {"message": "access forbidden by rule, client: 5.188.10.10, server: board.com"}})
+    es.add("a1", access("2026-11-19T10:00:01Z", status=403))
+
+    with patch("telemetry.elastic.requests.post", es.post):
+        events, cursor = elastic.error_events(URL, "logs-1-*", None)
+
+    assert [(one["id"], one["at"].isoformat(), one["line"]) for one in events] == [
+        ("e1", "2026-11-19T10:00:00+00:00", "access forbidden by rule, client: 5.188.10.10, server: board.com")]
+    assert {"term": {"event.module": "nginx_error"}} in es.posted[0][1]["query"]["bool"]["filter"]
+    assert cursor == {"at": "2026-11-19T10:00:00Z", "seen": ["e1"]}
+
+
 def test_the_ingest_pipeline_is_put_from_its_file_and_retried_until_elasticsearch_answers(tmp_path):
     pipeline = tmp_path / "ingest-pipeline.json"
     pipeline.write_text(json.dumps({"processors": []}))

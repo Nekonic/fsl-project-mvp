@@ -74,6 +74,22 @@ filebeat.inputs:
               fields:
                 event:
                   module: nginx_access
+      - if:
+          and:
+            - equals:
+                log.syslog.appname: nginx-error
+        then:
+          - rename:
+              fields:
+                - from: message
+                  to: error.message
+              ignore_missing: true
+              fail_on_error: false
+          - add_fields:
+              target: ""
+              fields:
+                event:
+                  module: nginx_error
       - drop_event:
           when:
             not:

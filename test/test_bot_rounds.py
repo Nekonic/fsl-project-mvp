@@ -3,11 +3,9 @@ import pytest
 import plays
 from bots.client import AuthenticatedClient
 
-HP = {"budget": 30, "per_request": 1, "refused_x": 3, "burst_per_s": 1000, "burst_x": 1}
 SETUP = plays.Setup(wargame="board", title="Acceptance bot rounds board", side="both",
-                    matchups=("def_vs_bot", "atk_vs_bot"), hp=HP)
+                    matchups=("def_vs_bot", "atk_vs_bot"))
 CONTROL = "board-sqli-search"
-MOST_FIRINGS = 200
 BOT_RULE = (
     'alert http any any -> any any (msg:"bot rule for SQL injection in search"; '
     'flow:established,to_server; http.uri; content:"or 1=1"; nocase; sid:9009983; rev:1;)\n'
@@ -16,13 +14,9 @@ BOT_RULE = (
 
 def attack_bot_baseline(played: plays.Played) -> list[plays.Answer]:
     cases = [line["case"] for line in plays.cases_listed(played) if line["malicious"] and line["kind"] == "http"]
-    answers, first = [], plays.attack_seen(played)["hp"]["origin"]["ip"]
-    for at in range(MOST_FIRINGS):
-        answer = plays.fire(played, cases[at % len(cases)])
-        answers.append(answer)
-        hp = (answer.body or {}).get("hp") or {}
-        if "origins_spent" in answer.codes or (hp.get("origin") or {}).get("ip") not in (None, first):
-            break
+    answers = [plays.fire(played, case) for case in cases]
+    plays.next_origin(played)
+    answers.append(plays.fire(played, cases[0]))
     return answers
 
 
@@ -57,8 +51,9 @@ def defence_bot_round():
         yield {"marker": marker, **turn, **finished(played, played.defence)}
 
 
-def test_the_attack_bot_reads_hp_on_every_answer_and_moves_origin_when_one_is_spent(attack_bot_round):
-    assert all("hp" in (answer.body or {}) for answer in attack_bot_round["answers"])
+def test_the_attack_bot_reads_the_remaining_origins_on_every_answer_and_moves_origin_when_one_is_spent(
+        attack_bot_round):
+    assert all("remaining" in (answer.body or {}) for answer in attack_bot_round["answers"])
     kinds = {event["kind"] for event in attack_bot_round["events"]}
     assert {"origin.spent", "origin.switched"} <= kinds, kinds
 

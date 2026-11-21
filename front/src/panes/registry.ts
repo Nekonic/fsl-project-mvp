@@ -1,7 +1,7 @@
 import type { FunctionComponent } from "preact";
 import { Alerts } from "./Alerts";
 import { AttackCases } from "./AttackCases";
-import { Hp } from "./Hp";
+import { Origins } from "./Origins";
 import { IdsRules } from "./IdsRules";
 import { Kibana } from "./Kibana";
 import { Loot } from "./Loot";
@@ -26,7 +26,7 @@ export const panes = {
   alerts: Alerts,
   loot: Loot,
   objectives: Objectives,
-  hp: Hp,
+  origins: Origins,
   cases: AttackCases,
   applied: RuleVersions,
   step_card: StepCard,

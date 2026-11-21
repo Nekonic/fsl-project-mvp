@@ -6,7 +6,6 @@ type Posture = components["schemas"]["Posture"];
 type DocumentBody = components["schemas"]["DocumentRequest"];
 
 const UPDATED = "2026-11-19T05:30:00Z";
-const HP = { budget: 3000, per_request: 1, refused_x: 3, burst_per_s: 10, burst_x: 2 };
 const TUNING = { paranoia: 1, exclusions: [], thresholds: { inbound: 5, outbound: 4 }, detection_only: false };
 const WIDE_TUNING = { paranoia: 1, exclusions: [{ tag: "attack-sqli", target: "ARGS:sort", path: "/" }], thresholds: { inbound: 5, outbound: 4 }, detection_only: false };
 const RULES = [
@@ -54,7 +53,7 @@ function wargameRound(id: number, wargame: string, title: string): Stored {
       matchups: ["pvp", "def_vs_bot", "atk_vs_bot"], posture: "default",
       probe_cases: [`${wargame}-sqli-search`, `${wargame}-xss-script-tag-in-search`, `${wargame}-sqli-orderby-sqlmap-probe`, `${wargame}-path-traversal-static`, `${wargame}-normal-sort`],
       objectives: [`${wargame}-auth-user-partial`, `${wargame}-auth-user-admin`, `${wargame}-auth-user-full`],
-      hp: { ...HP }, traffic: null, benign_every_s: 60, time_limit_s: 1800,
+      traffic: null, benign_every_s: 60, time_limit_s: 1800,
     },
     start_posture: null,
   };

@@ -83,7 +83,7 @@ def setup_document(setup: RoundSetup | None) -> dict | None:
     if setup is None:
         return None
     return {"matchups": setup.matchups, "posture": setup.posture.name if setup.posture else None,
-            "probe_cases": setup.probe_cases, "objectives": setup.objectives, "hp": setup.hp,
+            "probe_cases": setup.probe_cases, "objectives": setup.objectives,
             "traffic": setup.traffic, "benign_every_s": setup.benign_every_s, "time_limit_s": setup.time_limit_s}
 
 
@@ -217,7 +217,7 @@ def written(found: Problem, doc: Mapping) -> None:
         "matchups": setup["matchups"],
         "posture": Posture.objects.get(wargame_id=found.wargame_id, name=named) if named else None,
         "probe_cases": setup.get("probe_cases", []), "objectives": setup.get("objectives", []),
-        "hp": setup["hp"], "traffic": setup.get("traffic"),
+        "traffic": setup.get("traffic"),
         "benign_every_s": setup.get("benign_every_s", DEFAULT_BENIGN_EVERY_S),
         "time_limit_s": setup.get("time_limit_s"),
     })
@@ -263,6 +263,7 @@ def snapshot(found: Problem) -> dict[str, Any]:
             "posture": posture_document(setup.posture or found.start_posture),
             "traffic": setup.traffic or declared.default_traffic,
             "benign_cases": list(declared.benign_cases),
+            "limit_floor_rpm": declared.limit_floor_rpm,
         }
     return json.loads(json.dumps(frozen))
 

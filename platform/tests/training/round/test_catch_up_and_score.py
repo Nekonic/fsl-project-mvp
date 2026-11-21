@@ -37,7 +37,7 @@ def test_every_benign_case_goes_out_from_a_customer_address_never_an_attack_orig
     service.catch_up(running)
 
     sent = CustomerRequest.objects.filter(round=running).exclude(benign_case=None)
-    attack_ips = {origin.ip for origin in running.origin_budgets.all()}
+    attack_ips = {origin.ip for origin in running.origins.all()}
 
     assert sorted(sent.values_list("benign_case", flat=True)) == sorted(customers.benign_cases(running))
     assert sent.count() and not set(sent.values_list("source_ip", flat=True)) & attack_ips
@@ -54,7 +54,7 @@ def test_the_benign_pass_waits_its_interval(running):
 
 
 def spend_every_origin(found):
-    found.origin_budgets.update(left=0, spent_at=timezone.now())
+    found.origins.update(spent_at=timezone.now(), spent_by="deny")
 
 
 def test_spent_origins_end_the_round_only_after_one_full_benign_pass(running):
@@ -65,6 +65,21 @@ def test_spent_origins_end_the_round_only_after_one_full_benign_pass(running):
     assert service.catch_up(running) == "origins_spent"
     running.refresh_from_db()
     assert running.phase == "ended" and customers.passes(running) == 1
+
+
+def test_a_read_spends_every_origin_the_waf_error_log_denies_and_the_round_ends(monkeypatch, running):
+    from testing.fakes import FakeElastic
+
+    es = FakeElastic()
+    for n, origin in enumerate(running.origins.all()):
+        stamp = (running.started + timedelta(seconds=n + 1)).isoformat().replace("+00:00", "Z")
+        es.add(f"e{n}", {"@timestamp": stamp, "event": {"module": "nginx_error"}, "error": {
+            "message": f"2026/11/21 10:00:00 [error] 9#9: *1 access forbidden by rule, client: {origin.ip}, "
+                       'server: board.com, request: "GET / HTTP/1.1", host: "board.com"'}})
+    monkeypatch.setattr("telemetry.elastic.requests.post", es.post)
+
+    assert service.catch_up(running) == "origins_spent"
+    assert not running.origins.filter(spent_at=None).exists()
 
 
 def test_the_time_limit_ends_the_round(running):

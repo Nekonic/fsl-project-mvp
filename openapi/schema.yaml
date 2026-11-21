@@ -2541,17 +2541,17 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/OriginLine'
-        hp:
-          $ref: '#/components/schemas/HpBlock'
+        remaining:
+          $ref: '#/components/schemas/Remaining'
       required:
       - brief
       - end_reason
       - ends_at
-      - hp
       - matchup
       - objectives
       - origins
       - phase
+      - remaining
       - round
       - started
       - target
@@ -2574,10 +2574,10 @@ components:
           type: string
         ssh:
           $ref: '#/components/schemas/Ssh'
-        hp:
-          $ref: '#/components/schemas/HpBlock'
+        remaining:
+          $ref: '#/components/schemas/Remaining'
       required:
-      - hp
+      - remaining
       - ssh
       - ws_url
     Block:
@@ -3046,12 +3046,12 @@ components:
         status:
           type: integer
           nullable: true
-        hp:
-          $ref: '#/components/schemas/HpBlock'
+        remaining:
+          $ref: '#/components/schemas/Remaining'
       required:
       - action
-      - hp
       - marker
+      - remaining
       - run
       - status
     FreeActions:
@@ -3063,70 +3063,6 @@ components:
             $ref: '#/components/schemas/OriginActivity'
       required:
       - by_origin
-    HpBlock:
-      type: object
-      properties:
-        origin:
-          allOf:
-          - $ref: '#/components/schemas/AttackOrigin'
-          nullable: true
-        left:
-          type: integer
-        budget:
-          type: integer
-        origins_left:
-          type: integer
-        spent:
-          type: array
-          items:
-            type: string
-        rule:
-          $ref: '#/components/schemas/Rule'
-      required:
-      - budget
-      - left
-      - origin
-      - origins_left
-      - rule
-      - spent
-    HpRule:
-      type: object
-      properties:
-        budget:
-          type: integer
-        per_request:
-          type: integer
-        refused_x:
-          type: integer
-        burst_per_s:
-          type: integer
-        burst_x:
-          type: integer
-      required:
-      - budget
-      - burst_per_s
-      - burst_x
-      - per_request
-      - refused_x
-    HpRuleRequest:
-      type: object
-      properties:
-        budget:
-          type: integer
-        per_request:
-          type: integer
-        refused_x:
-          type: integer
-        burst_per_s:
-          type: integer
-        burst_x:
-          type: integer
-      required:
-      - budget
-      - burst_per_s
-      - burst_x
-      - per_request
-      - refused_x
     IdsApplied:
       type: object
       properties:
@@ -3305,12 +3241,12 @@ components:
           allOf:
           - $ref: '#/components/schemas/LootedObjective'
           nullable: true
-        hp:
-          $ref: '#/components/schemas/HpBlock'
+        remaining:
+          $ref: '#/components/schemas/Remaining'
       required:
-      - hp
       - lost
       - objective
+      - remaining
     LootedObjective:
       type: object
       properties:
@@ -3388,11 +3324,11 @@ components:
           allOf:
           - $ref: '#/components/schemas/AttackOrigin'
           nullable: true
-        hp:
-          $ref: '#/components/schemas/HpBlock'
+        remaining:
+          $ref: '#/components/schemas/Remaining'
       required:
-      - hp
       - origin
+      - remaining
     NullEnum:
       enum:
       - null
@@ -3477,21 +3413,18 @@ components:
           type: string
         ip:
           type: string
-        left:
-          type: integer
-        budget:
-          type: integer
         spent_at:
           type: string
           format: date-time
           nullable: true
+        spent_by:
+          type: string
       required:
-      - budget
       - id
       - ip
       - label
-      - left
       - spent_at
+      - spent_by
     Outcomes:
       type: object
       properties:
@@ -3774,6 +3707,26 @@ components:
       required:
       - reason
       - state
+    Remaining:
+      type: object
+      properties:
+        origin:
+          allOf:
+          - $ref: '#/components/schemas/AttackOrigin'
+          nullable: true
+        left:
+          type: integer
+        total:
+          type: integer
+        spent:
+          type: array
+          items:
+            type: string
+      required:
+      - left
+      - origin
+      - spent
+      - total
     RevisedDocumentRequest:
       type: object
       properties:
@@ -3846,8 +3799,6 @@ components:
           type: array
           items:
             type: string
-        hp:
-          $ref: '#/components/schemas/HpRule'
         traffic:
           type: string
           nullable: true
@@ -3857,7 +3808,6 @@ components:
           type: integer
           nullable: true
       required:
-      - hp
       - matchups
     RoundSetupRequest:
       type: object
@@ -3880,8 +3830,6 @@ components:
           items:
             type: string
             minLength: 1
-        hp:
-          $ref: '#/components/schemas/HpRuleRequest'
         traffic:
           type: string
           nullable: true
@@ -3892,7 +3840,6 @@ components:
           type: integer
           nullable: true
       required:
-      - hp
       - matchups
     RoundShown:
       type: object
@@ -3939,30 +3886,6 @@ components:
       - problem
       - round
       - started
-    Rule:
-      type: object
-      properties:
-        budget:
-          type: integer
-        per_request:
-          type: integer
-        refused_x:
-          type: integer
-        burst_per_s:
-          type: integer
-        burst_x:
-          type: integer
-        refused_statuses:
-          type: array
-          items:
-            type: integer
-      required:
-      - budget
-      - burst_per_s
-      - burst_x
-      - per_request
-      - refused_statuses
-      - refused_x
     RuleCheck:
       type: object
       properties:
@@ -4067,14 +3990,14 @@ components:
         stopped_by:
           type: string
           nullable: true
-        hp:
-          $ref: '#/components/schemas/HpBlock'
+        remaining:
+          $ref: '#/components/schemas/Remaining'
       required:
       - done
       - exit_code
-      - hp
       - offset
       - output
+      - remaining
       - stopped_by
     Score:
       type: object
@@ -4150,14 +4073,14 @@ components:
           type: string
         truncated:
           type: boolean
-        hp:
-          $ref: '#/components/schemas/HpBlock'
+        remaining:
+          $ref: '#/components/schemas/Remaining'
       required:
       - action
       - body
       - headers
-      - hp
       - marker
+      - remaining
       - status
       - truncated
     Server:
@@ -4348,11 +4271,11 @@ components:
           type: integer
         action:
           type: integer
-        hp:
-          $ref: '#/components/schemas/HpBlock'
+        remaining:
+          $ref: '#/components/schemas/Remaining'
       required:
       - action
-      - hp
+      - remaining
       - run
     StateEnum:
       enum:
@@ -4460,10 +4383,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RunLine'
-        hp:
-          $ref: '#/components/schemas/HpBlock'
+        remaining:
+          $ref: '#/components/schemas/Remaining'
       required:
-      - hp
+      - remaining
       - runs
       - tools
     Topology:
@@ -4834,8 +4757,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FieldError'
-        hp:
-          $ref: '#/components/schemas/HpBlock'
       required:
       - errors
   securitySchemes:

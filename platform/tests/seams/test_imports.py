@@ -27,7 +27,7 @@ LAYERS = (
     (5, ("scoring/*",)),
     (8, COORDINATORS),
     (6, ("training/round/access.py", "training/content/catalog.py", "training/content/problems.py")),
-    (7, ("training/attack/actions.py", "training/defence/*")),
+    (7, ("training/attack/actions.py", "training/attack/origins.py", "training/defence/*")),
 )
 FRAMEWORKS = ("django", "rest_framework", "drf_spectacular")
 L1_THIRD_PARTY = ("requests", "yaml")
@@ -202,7 +202,7 @@ SURFACES = {
     "training/content": {"training/content/problems.py", "training/content/probes.py"},
     "training/round": {"training/round/lifecycle.py", "training/round/allocation.py", "training/round/access.py"},
     "training/traffic": {"training/traffic/customers.py"},
-    "training/attack": {"training/attack/actions.py"},
+    "training/attack": {"training/attack/actions.py", "training/attack/origins.py"},
     "training/defence": {"training/defence/rules.py", "training/defence/terminal.py",
                          "training/defence/kibana_gate.py"},
 }
@@ -425,7 +425,8 @@ def test_rule_15_sees_the_round_records_point_down_to_the_training_records_and_a
 
 
 ATTACK_REACHES = {"cr/config.py", "cr/errors.py", "sandbox/edge.py", "sandbox/access.py", "sandbox/reach.py",
-                  "sandbox/runner.py", "sandbox/attacker.py", "telemetry/elastic.py", "telemetry/events.py",
+                  "sandbox/runner.py", "sandbox/attacker.py", "sandbox/crs.py", "telemetry/access.py",
+                  "telemetry/events.py",
                   "telemetry/models.py", "scoring/losses.py", "training/models.py", "training/round/access.py",
                   "training/round/views_catch_up.py"}
 ATTACK_VIEWS_ONLY = {"training/round/access.py", "training/round/views_catch_up.py"}
@@ -444,12 +445,13 @@ def test_attack_reaches_only_what_its_owner_row_names(path):
 
 
 def test_the_checker_sees_attack_reaching_past_its_owner_row():
-    reached = {"sandbox/crs.py", "training/round/lifecycle.py", "training/round/access.py", "sandbox/edge.py",
-               "domain/ledger.py"}
+    reached = {"sandbox/suricata.py", "training/round/lifecycle.py", "training/round/access.py", "sandbox/edge.py",
+               "domain/traffic.py"}
 
-    assert attack_strays("training/attack/actions.py", reached) == ["sandbox/crs.py", "training/round/access.py",
+    assert attack_strays("training/attack/actions.py", reached) == ["sandbox/suricata.py", "training/round/access.py",
                                                                     "training/round/lifecycle.py"]
-    assert attack_strays("training/attack/views.py", reached) == ["sandbox/crs.py", "training/round/lifecycle.py"]
+    assert attack_strays("training/attack/views.py", reached) == ["sandbox/suricata.py",
+                                                                  "training/round/lifecycle.py"]
 
 
 SIDES = ("training/attack", "training/defence")

@@ -19,7 +19,7 @@ def given(serializer, data):
 
 
 def answered(serializer, request, payload, code=status.HTTP_200_OK):
-    return Response(serializer({**payload, "hp": asdict(service.hp(request.round))}).data, status=code)
+    return Response(serializer({**payload, "remaining": asdict(service.remaining(request.round))}).data, status=code)
 
 
 class AttackView(CatchingUpView):
@@ -31,11 +31,9 @@ class AttackView(CatchingUpView):
         player = getattr(request, "player", None)
         if player is None or player.side != "attack":
             return response
-        block = service.hp(request.round)
+        block = service.remaining(request.round)
         response["X-Origin"] = block.origin.ip if block.origin else ""
-        response["X-Origin-HP"] = str(block.left)
-        if response.status_code >= 400 and isinstance(response.data, dict) and "errors" in response.data:
-            response.data["hp"] = serializers.HpBlock(block).data
+        response["X-Origins-Left"] = str(block.left)
         return response
 
 
@@ -102,7 +100,7 @@ class NextOrigin(AttackView):
     @extend_schema(tags=TAGS, request=None, responses=serializers.NextOrigin, operation_id="attack_next_origin")
     def post(self, request, round_id: int):
         moved = service.next_origin(request.round, request.player)
-        return Response(serializers.NextOrigin({"origin": moved.origin, "hp": moved}).data)
+        return Response(serializers.NextOrigin({"origin": moved.origin, "remaining": moved}).data)
 
 
 class Terminal(AttackView):

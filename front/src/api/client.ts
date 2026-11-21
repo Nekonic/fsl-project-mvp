@@ -4,7 +4,6 @@ import type { ShownError } from "../strings";
 export type Schemas = components["schemas"];
 export type ErrorCode = Schemas["ErrorCodeEnum"] | "timeout" | "network";
 export type Method = "get" | "post" | "put" | "patch" | "delete";
-export type Hp = Schemas["HpBlock"];
 
 type Defined<T> = Exclude<T, undefined>;
 type OperationOf<P extends keyof paths, M extends Method> = Defined<paths[P][M]>;
@@ -44,13 +43,10 @@ export interface CallInit<P extends keyof paths, M extends Method> {
 export class ApiError extends Error {
   readonly status: number;
   readonly errors: ShownError[];
-  readonly hp: Hp | undefined;
-
-  constructor(status: number, errors: ShownError[], hp?: Hp) {
+  constructor(status: number, errors: ShownError[]) {
     super(errors.map((error) => error.code).join(",") || String(status));
     this.status = status;
     this.errors = errors;
-    this.hp = hp;
   }
 
   get code(): string {
@@ -118,7 +114,7 @@ export function renewCsrf(): Promise<void> {
   return csrfRenewal;
 }
 
-async function errorsOf(response: Response): Promise<{ errors: ShownError[]; hp?: Hp }> {
+async function errorsOf(response: Response): Promise<{ errors: ShownError[] }> {
   try {
     const said = await response.json();
     if (said && Array.isArray(said.errors)) return said;
@@ -158,8 +154,8 @@ async function send(method: Method, url: string, body: unknown, signal: AbortSig
       signal: timeout.signal,
     });
     if (response.ok) return response.status === 204 ? undefined : bodyOf(await response.text(), response.status);
-    const { errors, hp } = await errorsOf(response);
-    error = new ApiError(response.status, errors, hp);
+    const { errors } = await errorsOf(response);
+    error = new ApiError(response.status, errors);
   } catch (failed) {
     if (failed instanceof ApiError) throw failed;
     if (signal?.aborted) throw abortedError();
