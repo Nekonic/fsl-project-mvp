@@ -185,14 +185,15 @@ def start_round(found: Round) -> Round:
         found.ends_at = begun + timedelta(seconds=int(limit)) if limit else None
         found.save(update_fields=["snapshot", "started", "ends_at"])
         defence.apply_posture(found)
-        baselines.take_baseline(found, reach(found))
+        passwords = customers.fresh_passwords(found)
+        baselines.take_baseline(found, reach(found), passwords)
         origins.fill_pool(found)
     except Exception:
         Round.objects.filter(pk=found.pk, phase=STARTING).update(phase=CREATED, started=None, ends_at=None)
         found.refresh_from_db()
         raise
     prepare_kibana(found)
-    customers.begin(found)
+    customers.begin(found, passwords)
     if not Round.objects.filter(pk=found.pk, phase=STARTING).update(phase=RUNNING):
         found.refresh_from_db()
         customers.stop(found)

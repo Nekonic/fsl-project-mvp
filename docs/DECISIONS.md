@@ -10593,3 +10593,31 @@ The restructure ruled that benign traffic leaves kali. How it is done:
 - **Not measured.** `cr-infra` has to be rebaked (and `cr-kali` with it)
   before a range has customers; nothing has run on a slot
   (`docs/OPENSTACK.md` §3.8).
+
+## 2026-11-21 — The board secret is set at random at each round's start
+
+How the "board secret is random per round" ruling is carried out.
+
+- **Where it is set.** The board's own management command
+  `posts/management/commands/set_passwords.py` reads a JSON map of username
+  to password on stdin and sets every account's password: the named ones to
+  the given password, every other one to `secrets.token_urlsafe(24)`. The
+  board's secret in `objectives.yaml` names it as `rotate`, so the platform
+  holds no board-specific command.
+- **When.** `lifecycle.start_round` hands the round's passwords to
+  `scoring.baseline.take_baseline`, which runs `loot.rotate` through the
+  same runner into the board container and then reads the baseline, so the
+  baseline is that round's hashes. A board that cannot set its passwords
+  refuses the baseline (`ground_truth_unavailable`) and the round stays
+  created. The probe recorder reads the truth without setting it.
+- **The customers still sign in.** `traffic.yaml`'s `accounts` lists only
+  usernames now. `customers.fresh_passwords` makes a random password per
+  account per round; the same map goes to `set_passwords` and into the
+  customers' plan (written `umask 077` on the infra). It is not stored in
+  the database. `admin` is not a customer account, so its password is known
+  to no one.
+- **The image default.** `seed.py` keeps its fixed passwords: a board that
+  is not in a round, and the tests that check the seed, still have them.
+- **Not measured.** The `cr-board` image the target bakes must carry the
+  command (`docs/OPENSTACK.md` §3.9); until then every round start fails.
+

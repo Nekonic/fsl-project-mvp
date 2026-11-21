@@ -883,6 +883,22 @@ sudo systemctl status cr-customers.service         # on the infra during a round
 sudo tail -1 /var/log/nginx/access.json            # on the WAF: a customer's client_ip and request_id
 ```
 
+### 3.9 A random board secret per round (target rebake)
+
+A round's start runs `python manage.py set_passwords` in the board
+container (the `rotate` command of `wargames/board/objectives.yaml`'s
+secret) before it reads the baseline. The command reads a JSON map of
+username to password on stdin: the customers' accounts (`accounts` in
+`wargames/board/traffic.yaml`) get the password the platform generated for
+the round and put in the customers' plan; every other account, `admin`
+among them, gets a random one nobody is told. The command is in the
+`cr-board` image, which the target image pulls at its bake, so until
+`cr-target` is baked again at a commit whose `cr-board` has it, every round
+start fails with `ground_truth_unavailable`. After the bake, name it in
+`compute.images` (and `compute.target_tag`) and run `bin/cloud up --replace`.
+Check on one slot, **[unverified]**: two rounds in a row read different
+hashes for every account, and the customers' log-ins still answer 302.
+
 ## 4. cloud.yaml
 
 `deploy/openstack/cloud.example.yaml` is committed. `bin/cloud init` writes
@@ -1623,8 +1639,10 @@ The refill's last step seeds each stack's sensor with the baseline rules
 `rules.suricata.seed`; a round's start then applies its problem's posture
 over it. Everything else a stack needs is in its images and its user data.
 
-Secrets stay per lease. The board's `seed` sets each seeded account's
-password on every start, so every lease's hashes have new salts. corp's
+Secrets stay per round. The board's `seed` sets each seeded account's
+fixed password on every start, the image default; each round's start then
+runs the board's `set_passwords` inside the board container (§3.9), so
+every round's hashes come from new random passwords. corp's
 entrypoint deletes `wp-config.php` before the WordPress image's entrypoint
 runs, which then writes new random keys and salts, and on restored data it
 sets the admin password again.

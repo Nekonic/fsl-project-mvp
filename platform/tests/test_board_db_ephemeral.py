@@ -37,17 +37,30 @@ print(json.dumps({
 """
 
 
+def managing(app):
+    def manage(database, *argv, stdin=None):
+        env = {"DJANGO_SETTINGS_MODULE": "shim", "BOARD_SQLITE": str(database), "PATH": "/usr/bin:/bin"}
+        done = subprocess.run([sys.executable, "manage.py", *argv], cwd=app, env=env, capture_output=True, text=True,
+                              input=stdin, stdin=None if stdin is not None else subprocess.DEVNULL, timeout=120)
+        assert done.returncode == 0, done.stderr
+        return done.stdout
+
+    return manage
+
+
+def copied_board(tmp_path):
+    app = tmp_path / "app"
+    shutil.copytree(REPO_ROOT / "wargames/board/app", app)
+    (app / "shim.py").write_text(SHIM)
+    return app
+
+
 def test_each_restore_of_the_pristine_board_salts_the_seeded_accounts_afresh(tmp_path):
     app = tmp_path / "app"
     shutil.copytree(REPO_ROOT / "wargames/board/app", app)
     (app / "shim.py").write_text(SHIM)
 
-    def manage(database, *argv):
-        env = {"DJANGO_SETTINGS_MODULE": "shim", "BOARD_SQLITE": str(database), "PATH": "/usr/bin:/bin"}
-        done = subprocess.run([sys.executable, "manage.py", *argv], cwd=app, env=env,
-                              capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=120)
-        assert done.returncode == 0, done.stderr
-        return done.stdout
+    manage = managing(app)
 
     pristine = tmp_path / "pristine.sqlite3"
     manage(pristine, "migrate", "--noinput")
@@ -67,3 +80,27 @@ def test_each_restore_of_the_pristine_board_salts_the_seeded_accounts_afresh(tmp
             f"{name}: a hash stolen in one session must not match the next session's ground truth")
     assert first["valid"] and second["valid"], "the seeded passwords still log in"
     assert first["posts"] == second["posts"] == built["posts"] > 0, "a restored board is not seeded twice"
+
+
+SIGNS_IN = """import json
+from django.contrib.auth.models import User
+print(json.dumps({user.username: [user.password, user.check_password(user.username + "1234"),
+                                  user.check_password("given-" + user.username)] for user in User.objects.all()}))
+"""
+
+
+def test_set_passwords_gives_the_named_accounts_their_password_and_every_other_account_a_random_one(tmp_path):
+    manage = managing(copied_board(tmp_path))
+    database = tmp_path / "board.sqlite3"
+    manage(database, "migrate", "--noinput")
+    manage(database, "seed")
+    seeded = json.loads(manage(database, "shell", "-c", SIGNS_IN).splitlines()[-1])
+
+    manage(database, "set_passwords", stdin=json.dumps({"jiwoo": "given-jiwoo", "minseo": "given-minseo"}))
+    rotated = json.loads(manage(database, "shell", "-c", SIGNS_IN).splitlines()[-1])
+
+    assert set(rotated) == {"admin", "jiwoo", "minseo"}
+    assert all(seeded[name][1] for name in seeded), "the image default still signs in before a round"
+    for name, (digest, default_works, given_works) in rotated.items():
+        assert digest != seeded[name][0] and not default_works
+        assert given_works == (name != "admin")

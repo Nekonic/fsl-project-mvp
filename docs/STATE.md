@@ -90,17 +90,22 @@ on a slot:
    (`cr-customers.service`, the dummy link `customers`). Left: bake
    `cr-infra` and `cr-kali` again, name them in `compute.images`,
    `bin/cloud up --replace`, and the checks of `docs/OPENSTACK.md` §3.8.
-4. **Cloud step 12, probe recordings**: `bin/record-probes board` and
+4. **The board secret's rebake**: each round's start sets fresh board
+   passwords with the board's `set_passwords`. Left: bake `cr-target` at a
+   commit whose `cr-board` image has the command, name it in
+   `compute.images`, `bin/cloud up --replace`, and the check of
+   `docs/OPENSTACK.md` §3.9.
+5. **Cloud step 12, probe recordings**: `bin/record-probes board` and
    `bin/record-probes corp` through the staff route on a probe lease; copy
    the platform's `CR_PROBES_OUT/<id>/probes/` into `wargames/<id>/probes/`
    and commit it (`docs/OPENSTACK.md` §3.7). Until the board's manifest is
    committed, `test/test_rule_test_isolation.py` fails: it requires
    `board-sqli-search` to be replayed by both rule tests.
-5. **Full live verify**: the full `bin/verify` with acceptance on the range,
+6. **Full live verify**: the full `bin/verify` with acceptance on the range,
    the Claude Code bot round of each matchup (spec step 16), a captured walk
    of every page as a learner, a live review round with zero countable
    findings, and a docs review.
-6. **Gate 2**: present what changed with the evidence; on approval, move the
+7. **Gate 2**: present what changed with the evidence; on approval, move the
    verified, tagged state onto `dev` and then `main`.
 
 ## Open points

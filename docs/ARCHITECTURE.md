@@ -216,7 +216,7 @@ sequenceDiagram
   O->>M: POST /api/rounds/<r>/start/
   M->>M: 문제 스냅숏 고정
   M->>D: posture 적용(센서 전부, WAF)
-  M->>R: baseline 읽기
+  M->>R: board 비밀번호 새로 설정, baseline 읽기
   M->>A: 출발지 풀 채우기
   M->>M: Kibana space, 고객 트래픽 시작
   loop 라운드에 API 요청이 올 때(한 번에 한 요청, CR_READ_EVERY_SECONDS 간격)
@@ -325,7 +325,7 @@ sequenceDiagram
  free_actions:{by_origin:[{ip, actions, alerts, refused}]}}
 ```
 
-- `objectives`: 대상의 정답 데이터로만 정합니다. board는 loot가 라운드 시작 스냅숏의 해시와 정확히 같을 때, corp는
+- `objectives`: 대상의 정답 데이터로만 정합니다. board는 loot가 라운드 시작 때 무작위 비밀번호로 새로 정한 뒤 읽은 해시와 정확히 같을 때, corp는
   공격 행동 시간 안에 바이너리 로그의 변경이 있을 때 잃은 것입니다. `seen`은 방어 쪽이 그 손실을 탐지했는지입니다.
 - `outcomes`: 선언된 케이스와 플랫폼이 보낸 정상 케이스만. 케이스 하나는 결정 하나입니다.
 - `free_actions`: 자유 행동을 출발지별로. TP/FP/FN/TN에 들어가지 않습니다.

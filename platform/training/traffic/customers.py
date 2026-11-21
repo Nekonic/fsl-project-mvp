@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import random
+import secrets
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -257,10 +258,24 @@ def profile_of(found: Round, declared: Mapping[str, Any]) -> str:
     return chosen if chosen in declared["profiles"] else declared["default_profile"]
 
 
-def start(found: Round) -> bool:
+def fresh_passwords(found: Round) -> dict[str, str]:
+    try:
+        declared = declared_traffic(found.snapshot["wargame"]["id"])
+    except TrafficRefused:
+        return {}
+    return {str(name): secrets.token_urlsafe(18) for name in (declared or {}).get("accounts") or ()}
+
+
+def signing_in(declared: Mapping[str, Any], passwords: Mapping[str, str]) -> dict[str, Any]:
+    return {**declared, "accounts": [{"username": str(name), "password": passwords[str(name)]}
+                                     for name in declared["accounts"] if str(name) in passwords]}
+
+
+def start(found: Round, passwords: Mapping[str, str]) -> bool:
     declared = declared_traffic(found.snapshot["wargame"]["id"])
     if declared is None:
         return False
+    declared = signing_in(declared, passwords)
     profile = profile_of(found, declared)
     users = personas(declared, attack_origins.customer_origins(found), random.Random(str(found.pk)))
     hosts = list(found.snapshot["wargame"]["hosts"])
@@ -277,8 +292,8 @@ def guarded(found: Round, what: str, work) -> None:
         kept(found, error=f"{what}: {failed}"[:300])
 
 
-def begin(found: Round) -> None:
-    guarded(found, "starting the customers", start)
+def begin(found: Round, passwords: Mapping[str, str]) -> None:
+    guarded(found, "starting the customers", lambda one: start(one, passwords))
 
 
 def catch_up(found: Round, now: datetime | None = None) -> None:

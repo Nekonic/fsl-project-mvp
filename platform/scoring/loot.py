@@ -34,6 +34,20 @@ def baseline(secret: dict[str, Any], config: GroundTruthConfig, inside=None) -> 
     return ground_truth(secret["read_path"], config, inside=inside)
 
 
+def rotate(secret: dict[str, Any], passwords: dict[str, str], inside) -> None:
+    command = secret.get("rotate")
+    if not command:
+        return
+    if inside is None:
+        raise GroundTruthUnavailable("the board's passwords can only be set from inside the board")
+    try:
+        ran = inside(list(command), stdin=json.dumps(passwords), timeout=TIMEOUT + 30)
+    except (Unavailable, OSError) as exc:
+        raise GroundTruthUnavailable(f"could not reach the board to set its passwords: {exc}") from exc
+    if not ran.ok:
+        raise GroundTruthUnavailable(f"the board could not set its passwords (exit {ran.exit_code}): {ran.output[-300:]}")
+
+
 def _from_inside(read_path: str, config: GroundTruthConfig, inside) -> dict[str, str]:
     port = urllib.parse.urlsplit(config.board_url).port or 80
     url = f"http://127.0.0.1:{port}{read_path}"

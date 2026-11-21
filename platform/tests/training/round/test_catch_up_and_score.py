@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 
 import pytest
@@ -146,6 +147,21 @@ def test_the_customers_program_starts_with_the_round_and_its_records_land_as_cus
     customers.pull(running)
 
     assert CustomerRequest.objects.filter(round=running, marker="m1", benign_case=None).exists()
+
+
+def test_a_round_sets_fresh_board_passwords_and_its_customers_sign_in_with_them(cloud, running):
+    slot = cloud.in_slot(1)
+    [rotated] = slot.target.matching("set_passwords")
+    given = json.loads(rotated.stdin)
+    [started] = slot.customers.matching("systemctl start cr-customers.service")
+    signed = {user["account"]["username"]: user["account"]["password"]
+              for user in json.loads(started.stdin)["users"] if user["account"]}
+
+    assert set(given) == {"jiwoo", "minseo"} and signed and signed.items() <= given.items()
+    assert given["jiwoo"] != "jiwoo1234" and given["minseo"] != "minseo1234"
+    [read] = slot.target.matching("/internal/auth-users")
+    assert slot.target.sent.index(rotated) < slot.target.sent.index(read)
+    assert customers.fresh_passwords(running) != customers.fresh_passwords(running)
 
 
 def alerts_read(monkeypatch):

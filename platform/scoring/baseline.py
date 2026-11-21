@@ -34,18 +34,21 @@ def tiers(found: Round) -> dict[str, list[dict[str, Any]]]:
                       for tier in declared(found)]}
 
 
-def ground_truth(wargame: Mapping[str, Any], reach: Reach | None = None) -> Any:
+def ground_truth(wargame: Mapping[str, Any], reach: Reach | None = None,
+                 passwords: Mapping[str, str] | None = None) -> Any:
     held = wargame["secret"]
     if wargame["objective_model"] == LOOT_VERIFIED:
         inside = reach(held["role"]) if reach is not None else None
+        if passwords is not None:
+            loot.rotate(dict(held), dict(passwords), inside)
         return loot.baseline(dict(held), config.build().ground_truth, inside=inside)
     if reach is None:
         raise errors.Unavailable(code="ground_truth_unavailable")
     return effect.snapshot(reach(held["role"]))
 
 
-def take_baseline(found: Round, reach: Reach | None = None) -> Any:
-    baseline = ground_truth(found.snapshot["wargame"], reach)
+def take_baseline(found: Round, reach: Reach | None = None, passwords: Mapping[str, str] | None = None) -> Any:
+    baseline = ground_truth(found.snapshot["wargame"], reach, passwords or {})
     found.baseline = baseline
     found.save(update_fields=["baseline"])
     return baseline
