@@ -26,7 +26,7 @@ class Side(StrEnum):
 
 HUMAN, BOT = "human", "bot"
 
-SEATS = {
+PLAYERS = {
     Matchup.PVP: {Side.ATTACK: HUMAN, Side.DEFENCE: HUMAN},
     Matchup.DEF_VS_BOT: {Side.ATTACK: BOT, Side.DEFENCE: HUMAN},
     Matchup.ATK_VS_BOT: {Side.ATTACK: HUMAN, Side.DEFENCE: BOT},
@@ -42,7 +42,7 @@ TIME_LIMIT = "time_limit"
 ALL_OBJECTIVES_LOST = "all_objectives_lost"
 ORIGINS_SPENT = "origins_spent"
 AUTOMATIC_REASONS = (TIME_LIMIT, ALL_OBJECTIVES_LOST, ORIGINS_SPENT)
-MANUAL_REASONS = ("ended_by_operator", "forfeit_attack", "forfeit_defence", "lease_expired")
+MANUAL_REASONS = ("ended_by_operator", "forfeit_attack", "forfeit_defence", "allocation_expired")
 END_REASONS = AUTOMATIC_REASONS + MANUAL_REASONS
 
 
@@ -60,12 +60,12 @@ class RoundState:
 
 
 @dataclass(frozen=True)
-class LeaseState:
+class AllocationState:
     objective_fallen: bool
 
 
-def human_seats(matchup: Matchup) -> tuple[Side, ...]:
-    return tuple(side for side, client in SEATS[Matchup(matchup)].items() if client == HUMAN)
+def human_players(matchup: Matchup) -> tuple[Side, ...]:
+    return tuple(side for side, client in PLAYERS[Matchup(matchup)].items() if client == HUMAN)
 
 
 def may_end(state: RoundState) -> bool:
@@ -88,5 +88,5 @@ def ended(state: RoundState) -> str | None:
     return None
 
 
-def may_start_scored(lease_state: LeaseState) -> bool:
-    return not lease_state.objective_fallen
+def may_start_scored(allocation_state: AllocationState) -> bool:
+    return not allocation_state.objective_fallen

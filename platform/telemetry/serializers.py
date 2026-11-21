@@ -11,7 +11,7 @@ class Event(serializers.Serializer):
     id = serializers.IntegerField()
     kind = serializers.CharField()
     at = serializers.DateTimeField()
-    seat_side = serializers.ChoiceField(choices=["attack", "defence"], allow_null=True)
+    player_side = serializers.ChoiceField(choices=["attack", "defence"], allow_null=True)
     body = serializers.DictField()
 
 

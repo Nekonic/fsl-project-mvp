@@ -11,7 +11,7 @@ def refused_for_room(status: int, codes) -> bool:
 
 def free_slots(slots: list[dict], wargame: str = "") -> list[dict]:
     return [slot for slot in slots
-            if slot.get("lease") is None and (slot.get("refill") or {}).get("state") == READY
+            if slot.get("allocation") is None and (slot.get("refill") or {}).get("state") == READY
             and (not wargame or slot.get("wargame") in ("", wargame))]
 
 

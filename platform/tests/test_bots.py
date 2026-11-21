@@ -13,7 +13,7 @@ from bots import calls, cli, play, tools
 from bots.provider import ProviderNotFound, ToolCall, Turn, load
 
 REPO = Path(__file__).resolve().parents[2]
-TOKEN = "seat-token-placeholder"
+TOKEN = "player-token-placeholder"
 ROUND = 7
 HP = {"origin": {"id": "o1", "label": "first", "ip": "198.51.100.10"}, "left": 29, "budget": 30,
       "origins_left": 2, "spent": [],
@@ -73,8 +73,8 @@ def platform():
     fake.server.server_close()
 
 
-def attack_seat(platform):
-    return calls.Seat(base_url=platform.url, token=TOKEN, round_id=ROUND, side="attack")
+def attack_player(platform):
+    return calls.Player(base_url=platform.url, token=TOKEN, round_id=ROUND, side="attack")
 
 
 def environment(platform):
@@ -168,14 +168,14 @@ def test_every_tool_has_its_operation_in_the_generated_client(side):
         assert callable(module.sync_detailed), name
 
 
-def test_the_tools_command_prints_the_specs_and_needs_no_seat():
+def test_the_tools_command_prints_the_specs_and_needs_no_player():
     code, printed = run_cli(["tools", "--side", "defence"])
 
     assert code == 0
     assert json.loads(printed) == tools.specs("defence")
 
 
-def test_a_call_on_stdin_goes_out_with_the_seat_token_and_prints_the_answer_with_its_hp(platform):
+def test_a_call_on_stdin_goes_out_with_the_player_token_and_prints_the_answer_with_its_hp(platform):
     path = f"/api/rounds/{ROUND}/attack/requests/"
     platform.on("POST", path, body={"action": 3, "marker": "m-3", "status": 200, "headers": [], "body": "ok",
                                     "truncated": False, "hp": HP},
@@ -249,14 +249,14 @@ def test_a_tool_of_the_other_side_is_refused_locally_and_nothing_is_sent(platfor
 @pytest.mark.parametrize("arguments, code", [({"case": "x", "bogus": 1}, "unknown_field"), ({}, "required"),
                                              ([1], "invalid")])
 def test_arguments_outside_the_tool_spec_are_refused_locally(platform, arguments, code):
-    told = calls.call(attack_seat(platform), "attack_fire_case", arguments)
+    told = calls.call(attack_player(platform), "attack_fire_case", arguments)
 
     assert told["local"] is True and told["errors"][0]["code"] == code
     assert platform.seen == []
 
 
 def test_a_value_the_client_cannot_take_is_refused_locally(platform):
-    told = calls.call(attack_seat(platform), "attack_send", {"method": "BREW", "path": "/"})
+    told = calls.call(attack_player(platform), "attack_send", {"method": "BREW", "path": "/"})
 
     assert told["local"] is True and told["errors"][0]["code"] == "invalid"
     assert platform.seen == []
@@ -270,7 +270,7 @@ def test_an_unreachable_platform_is_its_own_exit_code():
     assert code == cli.UNREACHABLE and json.loads(printed)["errors"][0]["code"] == "unreachable"
 
 
-def test_a_call_without_a_seat_token_says_what_to_set(capsys):
+def test_a_call_without_a_player_token_says_what_to_set(capsys):
     code, printed = run_cli(["attack_state", "--round", "3", "--base-url", "http://127.0.0.1:9"], env={})
 
     assert code == cli.USAGE_ERROR and printed == ""
@@ -308,7 +308,7 @@ def test_every_tool_and_code_the_prompts_and_readme_name_exists():
 
     for text in texts:
         quoted = set(re.findall(r"`([a-z]+(?:_[a-z]+)+)`", text.read_text()))
-        tool_like = {word for word in quoted if word.startswith(("attack_", "defence_", "round_", "lease_"))}
+        tool_like = {word for word in quoted if word.startswith(("attack_", "defence_", "round_", "allocation_"))}
         unknown_tools = tool_like - names - codes
         assert not unknown_tools, f"{text.name}: {sorted(unknown_tools)}"
         errors_section = text.read_text().partition("## Errors")[2]
@@ -317,7 +317,7 @@ def test_every_tool_and_code_the_prompts_and_readme_name_exists():
 
 
 SIDE_CODES = {
-    "attacker.md": {"not_seated", "invalid", "unknown_case", "unknown_tool", "unknown_run", "round_not_started",
+    "attacker.md": {"not_a_player", "invalid", "unknown_case", "unknown_tool", "unknown_run", "round_not_started",
                     "round_closed", "origins_spent", "attacker_unavailable", "range_unavailable"},
     "defender.md": {"invalid", "suricata_syntax", "crs_refused", "apply_refused", "unread_sid", "stale_version",
                     "test_busy", "round_not_started", "round_closed", "sensor_unavailable", "waf_unavailable",
@@ -355,12 +355,12 @@ def scripted_attacker():
     ])
 
 
-def test_a_provider_plays_the_seat_with_the_side_prompt_and_tools_until_it_stops(platform):
+def test_a_provider_plays_the_player_with_the_side_prompt_and_tools_until_it_stops(platform):
     platform.on("GET", f"/api/rounds/{ROUND}/attack/state/", body={"phase": "running", "hp": HP})
     platform.on("POST", f"/api/rounds/{ROUND}/attack/origins/next/", body={"origin": "o2", "hp": HP})
     scripted = scripted_attacker()
 
-    played = play.play(attack_seat(platform), scripted, turns=10)
+    played = play.play(attack_player(platform), scripted, turns=10)
 
     assert played.reason == "finished" and played.turns == 3
     assert scripted.seen[0]["system"] == play.system_prompt("attack")
@@ -377,7 +377,7 @@ def test_a_provider_that_never_stops_runs_out_of_turns(platform):
     platform.on("GET", f"/api/rounds/{ROUND}/attack/state/", body={"phase": "running", "hp": HP})
     endless = Scripted([Turn(calls=(ToolCall(str(n), "attack_state", {}),)) for n in range(5)])
 
-    played = play.play(attack_seat(platform), endless, turns=2)
+    played = play.play(attack_player(platform), endless, turns=2)
 
     assert played.reason == "out_of_turns" and played.turns == 2
 
@@ -395,11 +395,11 @@ def test_the_run_command_loads_the_provider_by_name_and_reports_each_step_as_a_j
 
 
 @pytest.mark.parametrize("reference", ["no_colon", "tests.no_such_module:x", "tests.test_bots:ROUND",
-                                       "tests.test_bots:attack_seat_without_turn"])
+                                       "tests.test_bots:attack_player_without_turn"])
 def test_a_provider_reference_that_does_not_give_a_provider_is_refused(reference):
     with pytest.raises(ProviderNotFound):
         load(reference)
 
 
-def attack_seat_without_turn():
+def attack_player_without_turn():
     return object()

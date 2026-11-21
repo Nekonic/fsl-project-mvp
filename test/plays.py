@@ -23,7 +23,7 @@ from bots.client.api.defence import (
     defence_terminal, defence_traffic, defence_waf, defence_waf_apply, defence_waf_test, defence_waf_versions,
 )
 from bots.client.api.match import (
-    lease_close, lease_heartbeat, lease_open, round_create, round_end, round_events, round_list, round_read, round_score,
+    allocation_close, allocation_heartbeat, allocation_open, round_create, round_end, round_events, round_list, round_read, round_score,
     round_start, round_topology,
 )
 from bots.client.api.staff import (
@@ -194,7 +194,7 @@ def retry_after(answer: Answer) -> float:
 
 @dataclass
 class Played:
-    lease: int
+    allocation: int
     round: int
     wargame: str
     attack: Any
@@ -210,14 +210,14 @@ OPENED: list[Played] = []
 LISTENERS: list[Callable[[Played], None]] = []
 
 
-def opened_lease(wargame: str, wait: float = ROOM_WAIT) -> dict:
+def opened_allocation(wargame: str, wait: float = ROOM_WAIT) -> dict:
     deadline = time.monotonic() + wait
     while True:
-        answer = ask(lease_open, operator(), {"wargame": wargame})
+        answer = ask(allocation_open, operator(), {"wargame": wargame})
         if answer.status == 201:
             return answer.body
         assert refused_for_room(answer.status, answer.codes) and time.monotonic() < deadline, (
-            f"could not open a lease on {wargame}: {answer.status} {answer.text}")
+            f"could not open an allocation on {wargame}: {answer.status} {answer.text}")
         time.sleep(min(retry_after(answer), 30.0))
 
 
@@ -225,14 +225,14 @@ def kept_alive(played: Played) -> None:
     def beat() -> None:
         while not played.stopped.wait(HEARTBEAT_EVERY):
             try:
-                ask(lease_heartbeat, operator(), lease_id=played.lease)
+                ask(allocation_heartbeat, operator(), allocation_id=played.allocation)
             except httpx2.HTTPError:
                 continue
 
-    threading.Thread(target=beat, name=f"lease-{played.lease}-heartbeat", daemon=True).start()
+    threading.Thread(target=beat, name=f"allocation-{played.allocation}-heartbeat", daemon=True).start()
 
 
-def seats_for(matchup: str) -> dict:
+def players_for(matchup: str) -> dict:
     human = {"username": operator_username()}
     bot = {"bot": {"name": BOT}}
     return {"def_vs_bot": {"attack": bot, "defence": human},
@@ -242,18 +242,18 @@ def seats_for(matchup: str) -> dict:
 def next_round(played: Played) -> None:
     setup = played.setup or acceptance_setup(played.wargame)
     made = done(round_create, operator(), {
-        "problem": problem_of(setup), "matchup": played.matchup, "seats": seats_for(played.matchup),
-    }, lease_id=played.lease)
+        "problem": problem_of(setup), "matchup": played.matchup, "players": players_for(played.matchup),
+    }, allocation_id=played.allocation)
     done(round_start, operator(), round_id=made["round"])
     tokens = made.get("bot_tokens") or {}
     played.round = made["round"]
-    played.attack = signin.seated(PLATFORM_URL, tokens["attack"]) if "attack" in tokens else operator()
-    played.defence = signin.seated(PLATFORM_URL, tokens["defence"]) if "defence" in tokens else operator()
+    played.attack = signin.playing(PLATFORM_URL, tokens["attack"]) if "attack" in tokens else operator()
+    played.defence = signin.playing(PLATFORM_URL, tokens["defence"]) if "defence" in tokens else operator()
 
 
 def play(wargame: str = "board", setup: Setup | None = None, matchup: str = "def_vs_bot") -> Played:
-    lease = opened_lease(wargame)
-    played = Played(lease=lease["lease"], round=0, wargame=wargame, attack=None, slot=lease.get("slot"),
+    allocation = opened_allocation(wargame)
+    played = Played(allocation=allocation["allocation"], round=0, wargame=wargame, attack=None, slot=allocation.get("slot"),
                     setup=setup, matchup=matchup)
     OPENED.append(played)
     kept_alive(played)
@@ -277,8 +277,8 @@ def close(played: Played) -> Answer:
     if played.closed:
         return Answer(200, {"closed": None})
     end(played)
-    closed = ask(lease_close, operator(), lease_id=played.lease)
-    if closed.ok or "lease_closed" in closed.codes:
+    closed = ask(allocation_close, operator(), allocation_id=played.allocation)
+    if closed.ok or "allocation_closed" in closed.codes:
         played.closed = True
         played.stopped.set()
     return closed

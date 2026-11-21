@@ -12,7 +12,7 @@ OPERATOR = Viewer(operator=True)
 STAFF = Viewer(staff=True)
 
 SPEC_VISIBILITY = {
-    "round.started": "both", "round.ended": "both", "seat.joined": "both",
+    "round.started": "both", "round.ended": "both", "player.joined": "both",
     "action.sent": "attack", "tool.started": "attack", "tool.ended": "attack", "command.run": "attack",
     "origin.charged": "attack", "origin.spent": "attack", "origin.switched": "attack", "origins.spent": "attack",
     "alert.seen": "defence", "rule.tested": "defence", "rule.applied": "defence", "rule.disabled": "defence",
@@ -25,8 +25,8 @@ AUDIENCES = {
 
 def a_round_of_play(round_id=ROUND):
     log.append(round_id, "round.started", {"ends_at": None})
-    log.append(round_id, "action.sent", {"action": 1, "kind": "request", "status": 200}, seat_side="attack")
-    log.append(round_id, "alert.seen", {"alert": 4, "engine": "ids", "signature": "sqli"}, seat_side="defence")
+    log.append(round_id, "action.sent", {"action": 1, "kind": "request", "status": 200}, player_side="attack")
+    log.append(round_id, "alert.seen", {"alert": 4, "engine": "ids", "signature": "sqli"}, player_side="defence")
     log.append(round_id, "objective.lost", {"key": "secret", "name": "board secret", "attributed_marker": "case-1"})
 
 
@@ -93,7 +93,7 @@ def test_a_page_stops_at_the_limit_and_the_next_page_carries_on():
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("kind, body, seat_side, raised", [
+@pytest.mark.parametrize("kind, body, player_side, raised", [
     ("round.paused", {}, None, LookupError),
     ("round.ended", {}, None, TypeError),
     ("round.ended", {"reason": "x", "extra": 1}, None, TypeError),
@@ -101,9 +101,9 @@ def test_a_page_stops_at_the_limit_and_the_next_page_carries_on():
     ("rule.applied", {"engine": "ids", "version": True}, None, TypeError),
     ("round.ended", {"reason": "x"}, "referee", TypeError),
 ])
-def test_a_malformed_event_is_refused_and_nothing_is_stored(kind, body, seat_side, raised):
+def test_a_malformed_event_is_refused_and_nothing_is_stored(kind, body, player_side, raised):
     with pytest.raises(raised):
-        log.append(ROUND, kind, body, seat_side=seat_side)
+        log.append(ROUND, kind, body, player_side=player_side)
 
     assert Event.objects.count() == 0
 

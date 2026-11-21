@@ -12,7 +12,7 @@ HTTP = ("*/views*.py", "*/serializers.py", "*/urls.py", "cr/urls.py", "cr/handle
         "cr/strings.py", "cr/wsgi.py", "*/management/commands/*.py", "*/management/*.py", "manage.py",
         "*/apps.py", "*/migrations/*.py")
 HTTP_LAYER = 10
-COORDINATORS = ("training/round/lifecycle.py", "training/round/lease.py", "training/round/follow.py",
+COORDINATORS = ("training/round/lifecycle.py", "training/round/allocation.py", "training/round/follow.py",
                 "training/round/site.py", "training/round/retention.py", "training/traffic/customers.py",
                 "training/content/probes.py")
 LAYERS = (
@@ -196,11 +196,11 @@ def test_the_checker_sees_a_framework_import_an_app_import_and_a_relative_import
 APPS = ("users", "telemetry", "training", "scoring")
 TRAINING_PARTS = ("content", "round", "traffic", "attack", "defence")
 SURFACES = {
-    "users": {"users/accounts.py", "users/permissions.py", "users/seats.py"},
+    "users": {"users/accounts.py", "users/permissions.py", "users/players.py"},
     "telemetry": {"telemetry/events.py", "telemetry/alerts.py", "telemetry/access.py"},
     "scoring": set(SCORING_SURFACE),
     "training/content": {"training/content/problems.py", "training/content/probes.py"},
-    "training/round": {"training/round/lifecycle.py", "training/round/lease.py", "training/round/access.py"},
+    "training/round": {"training/round/lifecycle.py", "training/round/allocation.py", "training/round/access.py"},
     "training/traffic": {"training/traffic/customers.py"},
     "training/attack": {"training/attack/actions.py"},
     "training/defence": {"training/defence/rules.py", "training/defence/terminal.py",
@@ -403,11 +403,11 @@ def test_rule_15_reads_forward_relations_and_skips_the_reverse_accessors_django_
 
     upward = SimpleNamespace(name="objective", is_relation=True, auto_created=False,
                              related_model=meta("scoring.Objective"))
-    lease = SimpleNamespace(_meta=SimpleNamespace(label="training.Lease", app_label="training",
+    allocation = SimpleNamespace(_meta=SimpleNamespace(label="training.Allocation", app_label="training",
                                                   get_fields=lambda: [upward]))
 
     assert upward_relations([Round], {}, "auth") == []
-    assert upward_relations([lease], {}, "auth") == ["training.Lease.objective -> scoring.Objective"]
+    assert upward_relations([allocation], {}, "auth") == ["training.Allocation.objective -> scoring.Objective"]
 
 
 def test_rule_15_sees_the_round_records_point_down_to_the_training_records_and_auth():
@@ -418,8 +418,8 @@ def test_rule_15_sees_the_round_records_point_down_to_the_training_records_and_a
                  for field in model._meta.get_fields()
                  if field.is_relation and field.many_to_one and field.related_model}
 
-    assert {("training.Lease", "training.Wargame"), ("training.Round", "training.Problem"),
-            ("training.Seat", "auth.User"), ("scoring.Objective", "training.Round"),
+    assert {("training.Allocation", "training.Wargame"), ("training.Round", "training.Problem"),
+            ("training.Player", "auth.User"), ("scoring.Objective", "training.Round"),
             ("telemetry.Detection", "training.Round")} <= relations
 
 

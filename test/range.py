@@ -128,18 +128,18 @@ class ThroughPlatform:
         self.platform = platform or Platform()
         self.roles, self.hosts = declared_roles(), declared_hosts()
 
-    def run(self, role: str, argv, timeout: float = 60.0, lease: int | None = None,
+    def run(self, role: str, argv, timeout: float = 60.0, allocation: int | None = None,
             slot: int | None = None) -> Ran:
         if role == SCORER:
             return self.platform.run(argv, timeout=timeout)
-        if lease is None and slot is None:
-            lease = _default_lease()
+        if allocation is None and slot is None:
+            allocation = _default_allocation()
         argv = as_the_terminal(list(argv)) if role in self.in_the_terminal else list(argv)
         done = self.platform.dispatch(
             ["docker", "exec", self.platform.node,
              "python", "manage.py", "run_on_role", role,
              json.dumps(stdout_apart(argv)), "--timeout", str(timeout),
-             *(["--lease", str(lease)] if lease is not None else []),
+             *(["--allocation", str(allocation)] if allocation is not None else []),
              *(["--slot", str(slot)] if slot is not None else [])],
             timeout + 60,
         )
@@ -161,17 +161,17 @@ class ThroughPlatform:
                 if self.roles.get(role) not in self.hosts]
 
 RANGE = ThroughPlatform()
-_default_lease: Callable[[], int | None] = lambda: None
+_default_allocation: Callable[[], int | None] = lambda: None
 
-def default_to(lease: Callable[[], int | None]) -> None:
-    global _default_lease
-    _default_lease = lease
+def default_to(allocation: Callable[[], int | None]) -> None:
+    global _default_allocation
+    _default_allocation = allocation
 
 def missing(*roles: str) -> list[str]:
     return RANGE.missing(*roles)
 
-def run(role: str, argv, timeout: float = 60.0, lease: int | None = None, slot: int | None = None) -> Ran:
-    return RANGE.run(role, argv, timeout=timeout, lease=lease, slot=slot)
+def run(role: str, argv, timeout: float = 60.0, allocation: int | None = None, slot: int | None = None) -> Ran:
+    return RANGE.run(role, argv, timeout=timeout, allocation=allocation, slot=slot)
 
 PART_MARK = "cr.part="
 CODE_MARK = "cr.code="
@@ -196,17 +196,17 @@ def parts(output: str, count: int) -> list[Ran]:
         raise RangeUnavailable(f"commands {missing_parts} run side by side reported nothing", output)
     return [found[n] for n in range(count)]
 
-def log_collector(lease: int | None = None) -> str:
-    [collector] = sorted(set(COLLECTOR.findall(run(LOG_SERVER, ["cat", LOG_RELAY], lease=lease).stdout)))
+def log_collector(allocation: int | None = None) -> str:
+    [collector] = sorted(set(COLLECTOR.findall(run(LOG_SERVER, ["cat", LOG_RELAY], allocation=allocation).stdout)))
     return collector
 
 def platform_addresses(collector: str) -> list[str]:
     published = urlsplit(os.environ.get("CR_PLATFORM_URL", "")).hostname or ""
     return sorted({published, collector} - {"", "localhost", "127.0.0.1"})
 
-def run_side_by_side(role: str, commands: dict, timeout: float = 60.0, lease: int | None = None) -> dict:
+def run_side_by_side(role: str, commands: dict, timeout: float = 60.0, allocation: int | None = None) -> dict:
     keys = list(commands)
-    ran = run(role, side_by_side([commands[key] for key in keys]), timeout=timeout, lease=lease)
+    ran = run(role, side_by_side([commands[key] for key in keys]), timeout=timeout, allocation=allocation)
     return dict(zip(keys, parts(ran.stdout, len(keys))))
 
 def in_turn(commands: list[list[str]]) -> list[str]:
@@ -216,9 +216,9 @@ def in_turn(commands: list[list[str]]) -> list[str]:
     )
     return ["sh", "-c", steps]
 
-def run_in_turn(role: str, commands: dict, timeout: float = 60.0, lease: int | None = None) -> dict:
+def run_in_turn(role: str, commands: dict, timeout: float = 60.0, allocation: int | None = None) -> dict:
     keys = list(commands)
-    ran = run(role, in_turn([commands[key] for key in keys]), timeout=timeout, lease=lease)
+    ran = run(role, in_turn([commands[key] for key in keys]), timeout=timeout, allocation=allocation)
     return dict(zip(keys, parts(ran.stdout, len(keys))))
 
 def start_hint() -> str:

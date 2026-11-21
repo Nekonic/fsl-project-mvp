@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from sandbox import service as sandbox
-from training.round import lease as leases
+from training.round import allocation as allocations
 from training.round import lifecycle as service
 from training.round import retention
 
@@ -33,14 +33,14 @@ def guarded(what: str, work: Callable, fallback):
 
 def once(now: datetime | None = None) -> Followed:
     refilled = guarded("driving the refills", sandbox.advance_refills, [])
-    expired = guarded("closing expired leases", lambda: leases.expire(now), [])
+    expired = guarded("closing expired allocations", lambda: allocations.expire(now), [])
     ticked, ended = [], []
     for found in guarded("listing the running rounds", service.running_rounds, []):
         reason = guarded(f"ticking round {found.pk}", lambda: service.tick(found, now), None)
         ticked.append(found.pk)
         if reason:
             ended.append((found.pk, reason))
-    pruned = guarded("pruning closed leases", lambda: retention.prune(now), [])
+    pruned = guarded("pruning closed allocations", lambda: retention.prune(now), [])
     return Followed(refilled=len(refilled), expired=tuple(expired), ticked=tuple(ticked), ended=tuple(ended),
                     pruned=tuple(pruned))
 

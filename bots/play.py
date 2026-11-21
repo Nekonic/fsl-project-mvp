@@ -30,18 +30,18 @@ def system_prompt(side: str, *, driving_the_cli: bool = False) -> str:
     return "\n\n".join(parts)
 
 
-def opening(seat: calls.Seat, state: dict) -> str:
-    return (f"Round {seat.round_id}: you hold the {seat.side} seat. Your seat's state, read just now with "
-            f"{seat.side}_state:\n{json.dumps(state, ensure_ascii=False)}")
+def opening(player: calls.Player, state: dict) -> str:
+    return (f"Round {player.round_id}: you hold the {player.side} player. Your player's state, read just now with "
+            f"{player.side}_state:\n{json.dumps(state, ensure_ascii=False)}")
 
 
-def play(seat: calls.Seat, provider: Provider, *, turns: int = DEFAULT_TURNS,
+def play(player: calls.Player, provider: Provider, *, turns: int = DEFAULT_TURNS,
          report: Callable[[dict], None] = lambda entry: None) -> Played:
-    specs = tools.specs(seat.side)
-    system = system_prompt(seat.side)
-    client_and_answers = calls.client_for(seat)
-    state = calls.call(seat, f"{seat.side}_state", {}, client_and_answers)
-    transcript = [{"role": "user", "text": opening(seat, state)}]
+    specs = tools.specs(player.side)
+    system = system_prompt(player.side)
+    client_and_answers = calls.client_for(player)
+    state = calls.call(player, f"{player.side}_state", {}, client_and_answers)
+    transcript = [{"role": "user", "text": opening(player, state)}]
     report(transcript[0])
     for turn_number in range(1, turns + 1):
         turn = provider.turn(system, specs, transcript)
@@ -53,7 +53,7 @@ def play(seat: calls.Seat, provider: Provider, *, turns: int = DEFAULT_TURNS,
             return Played("finished", turn_number, transcript)
         for call in turn.calls:
             result = {"role": "tool", "call_id": call.id, "name": call.name,
-                      "result": calls.call(seat, call.name, call.arguments, client_and_answers)}
+                      "result": calls.call(player, call.name, call.arguments, client_and_answers)}
             transcript.append(result)
             report(result)
     return Played("out_of_turns", turns, transcript)

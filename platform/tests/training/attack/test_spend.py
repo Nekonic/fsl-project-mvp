@@ -16,7 +16,7 @@ ATTACK_VIEW = Viewer(sides=frozenset({"attack"}))
 @pytest.fixture
 def frail(make_round, learner, browser, cloud):
     found = make_round(hp={"budget": 3})
-    rounds.seated(found, "attack", learner)
+    rounds.playing(found, "attack", learner)
     browser.force_authenticate(learner)
     cloud.box.answer("cr.status=", REFUSED_PAGE)
     return found
@@ -81,19 +81,19 @@ def test_the_next_request_goes_out_from_the_new_origin(frail, browser, cloud):
     assert Action.objects.get(pk=answer.json()["action"]).source_ip == BR
 
 
-def test_a_later_round_on_the_same_lease_starts_with_no_origin_spent_at_the_edge(as_attacker, attacker, cloud):
+def test_a_later_round_on_the_same_allocation_starts_with_no_origin_spent_at_the_edge(as_attacker, attacker, cloud):
     as_attacker.post(url(attacker.round, "origins/next/"), format="json")
     first = attacker.round
     first.phase, first.ended = "ended", first.started
     first.save(update_fields=["phase", "ended"])
-    later = Round.objects.create(lease=first.lease, problem=first.problem, kind=first.kind, matchup=first.matchup,
+    later = Round.objects.create(allocation=first.allocation, problem=first.problem, kind=first.kind, matchup=first.matchup,
                                  phase="running", snapshot=first.snapshot, started=first.started)
 
     service.fill_pool(later)
 
     started = cloud.edge.matching("nft -f -")[-1].stdin.splitlines()
     assert started[:2] == ["flush set ip edge pool", "flush set ip edge spent"], (
-        "the slot is rebuilt only when the lease is released, so a lease's next round must not inherit "
+        "the slot is rebuilt only when the allocation is released, so an allocation's next round must not inherit "
         "the last round's spent origins")
     assert not any(line.startswith("add element ip edge spent") for line in started)
     assert all(address in "\n".join(started) for address in (RU, US, BR))

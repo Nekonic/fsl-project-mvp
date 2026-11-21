@@ -8,24 +8,24 @@ from rest_framework.views import APIView
 
 from tests import rounds
 from training.round import access as auth
-from users import seats
+from users import players
 
 pytestmark = pytest.mark.django_db
 
 
 class AttackRoute(APIView):
     authentication_classes = auth.ROUND_AUTHENTICATION
-    permission_classes = [auth.HasSeat("attack")]
+    permission_classes = [auth.IsPlayer("attack")]
 
     def get(self, request, round_id):
-        return Response({"seat": request.seat.pk})
+        return Response({"player": request.player.pk})
 
     def post(self, request, round_id):
-        return Response({"seat": request.seat.pk})
+        return Response({"player": request.player.pk})
 
 
 class DefenceRoute(AttackRoute):
-    permission_classes = [auth.HasSeat("defence")]
+    permission_classes = [auth.IsPlayer("defence")]
 
 
 class RoundRoute(APIView):
@@ -33,15 +33,15 @@ class RoundRoute(APIView):
     permission_classes = [auth.InRound]
 
     def get(self, request, round_id):
-        return Response({"seats": [seat.side for seat in request.seats], "operator": request.operator})
+        return Response({"players": [player.side for player in request.players], "operator": request.operator})
 
 
-class LeaseRoute(APIView):
+class AllocationRoute(APIView):
     authentication_classes = auth.ROUND_AUTHENTICATION
     permission_classes = [auth.IsOperator]
 
-    def post(self, request, lease_id):
-        return Response({"lease": request.lease.pk})
+    def post(self, request, allocation_id):
+        return Response({"allocation": request.allocation.pk})
 
 
 def called(route, *, method="get", token=None, user=None, csrf=False, **kwargs):
@@ -62,44 +62,44 @@ def codes(answer):
 @pytest.fixture
 def bot_round():
     found = rounds.opened(rounds.problem())
-    seat = rounds.seated(found, "attack", bot_name="attack-bot")
-    return found, seat, seats.issue_token(seat)
+    player = rounds.playing(found, "attack", bot_name="attack-bot")
+    return found, player, players.issue_token(player)
 
 
 def test_a_bot_token_reaches_its_own_side_of_its_own_round(bot_round):
-    found, seat, token = bot_round
+    found, player, token = bot_round
 
     answer = called(AttackRoute, method="post", token=token, csrf=True, round_id=found.pk)
 
-    assert answer.status_code == 200 and answer.data == {"seat": seat.pk}
+    assert answer.status_code == 200 and answer.data == {"player": player.pk}
 
 
 def test_a_bot_token_does_not_reach_the_other_side_or_another_round(bot_round):
     found, _, token = bot_round
     other = rounds.opened(rounds.problem())
-    rounds.seated(other, "attack", bot_name="another-bot")
+    rounds.playing(other, "attack", bot_name="another-bot")
 
-    assert codes(called(DefenceRoute, token=token, round_id=found.pk)) == ["not_seated"]
-    assert codes(called(AttackRoute, token=token, round_id=other.pk)) == ["not_seated"]
+    assert codes(called(DefenceRoute, token=token, round_id=found.pk)) == ["not_a_player"]
+    assert codes(called(AttackRoute, token=token, round_id=other.pk)) == ["not_a_player"]
 
 
 def test_the_token_is_stored_only_as_its_hash(bot_round):
-    _, seat, token = bot_round
-    seat.refresh_from_db()
+    _, player, token = bot_round
+    player.refresh_from_db()
 
-    assert seat.token_hash == seats.hashed(token) and token not in seat.token_hash
+    assert player.token_hash == players.hashed(token) and token not in player.token_hash
 
 
 def test_an_unknown_malformed_or_revoked_token_is_not_signed_in(bot_round):
-    found, seat, token = bot_round
+    found, player, token = bot_round
 
     assert codes(called(AttackRoute, token="not-a-token", round_id=found.pk)) == ["not_signed_in"]
     assert codes(called(AttackRoute, token="\xff\xfe", round_id=found.pk)) == ["not_signed_in"]
     assert called(AttackRoute, token=f"{token} extra", round_id=found.pk).status_code == 401
-    seats.revoke_token(seat)
+    players.revoke_token(player)
     revoked = called(AttackRoute, token=token, round_id=found.pk)
     assert codes(revoked) == ["not_signed_in"]
-    assert revoked["WWW-Authenticate"] == 'Bearer realm="seat"'
+    assert revoked["WWW-Authenticate"] == 'Bearer realm="player"'
 
 
 def test_after_the_end_a_token_reads_for_fifteen_minutes_and_writes_nothing(bot_round):
@@ -119,7 +119,7 @@ def test_after_the_end_a_token_reads_for_fifteen_minutes_and_writes_nothing(bot_
 def test_a_write_before_the_round_runs_is_refused_and_a_read_is_not(make_user, phase):
     player = make_user("player")
     found = rounds.opened(rounds.problem(), phase=phase)
-    rounds.seated(found, "defence", user=player)
+    rounds.playing(found, "defence", user=player)
 
     refused = called(DefenceRoute, method="post", user=player, round_id=found.pk)
 
@@ -127,14 +127,14 @@ def test_a_write_before_the_round_runs_is_refused_and_a_read_is_not(make_user, p
     assert called(DefenceRoute, user=player, round_id=found.pk).status_code == 200
 
 
-def test_a_signed_in_user_reaches_only_the_seat_they_hold(make_user):
+def test_a_signed_in_user_reaches_only_the_player_they_hold(make_user):
     player, outsider = make_user("player"), make_user("outsider")
     found = rounds.opened(rounds.problem())
-    rounds.seated(found, "defence", user=player)
+    rounds.playing(found, "defence", user=player)
 
     assert called(DefenceRoute, user=player, round_id=found.pk).status_code == 200
-    assert codes(called(AttackRoute, user=player, round_id=found.pk)) == ["not_seated"]
-    assert codes(called(DefenceRoute, user=outsider, round_id=found.pk)) == ["not_seated"]
+    assert codes(called(AttackRoute, user=player, round_id=found.pk)) == ["not_a_player"]
+    assert codes(called(DefenceRoute, user=outsider, round_id=found.pk)) == ["not_a_player"]
     assert codes(called(DefenceRoute, round_id=found.pk)) == ["not_signed_in"]
 
 
@@ -142,33 +142,33 @@ def test_an_unknown_round_is_not_found(make_user):
     assert codes(called(AttackRoute, user=make_user("player"), round_id=999)) == ["unknown_round"]
 
 
-def test_the_round_reads_admit_its_seats_and_its_operator_and_no_one_else(make_user, staff, bot_round):
+def test_the_round_reads_admit_its_players_and_its_operator_and_no_one_else(make_user, staff, bot_round):
     opener, outsider = make_user("opener"), make_user("outsider")
     found = rounds.opened(rounds.problem(), opened_by=opener)
-    seat = rounds.seated(found, "attack", bot_name="attack-bot")
-    token = seats.issue_token(seat)
+    player = rounds.playing(found, "attack", bot_name="attack-bot")
+    token = players.issue_token(player)
 
-    assert called(RoundRoute, user=opener, round_id=found.pk).data == {"seats": [], "operator": True}
+    assert called(RoundRoute, user=opener, round_id=found.pk).data == {"players": [], "operator": True}
     assert called(RoundRoute, user=staff, round_id=found.pk).data["operator"] is True
-    assert called(RoundRoute, token=token, round_id=found.pk).data == {"seats": ["attack"], "operator": False}
-    assert codes(called(RoundRoute, user=outsider, round_id=found.pk)) == ["not_seated"]
-    assert codes(called(RoundRoute, token=bot_round[2], round_id=found.pk)) == ["not_seated"]
+    assert called(RoundRoute, token=token, round_id=found.pk).data == {"players": ["attack"], "operator": False}
+    assert codes(called(RoundRoute, user=outsider, round_id=found.pk)) == ["not_a_player"]
+    assert codes(called(RoundRoute, token=bot_round[2], round_id=found.pk)) == ["not_a_player"]
 
 
-def test_only_the_lease_s_opener_or_staff_operate_it(make_user, staff, bot_round):
+def test_only_the_allocation_s_opener_or_staff_operate_it(make_user, staff, bot_round):
     opener, player = make_user("opener"), make_user("player")
     found = rounds.opened(rounds.problem(), opened_by=opener)
-    rounds.seated(found, "attack", user=player)
-    lease = found.lease.pk
+    rounds.playing(found, "attack", user=player)
+    allocation = found.allocation.pk
 
-    assert called(LeaseRoute, method="post", user=opener, lease_id=lease).data == {"lease": lease}
-    assert called(LeaseRoute, method="post", user=staff, lease_id=lease).status_code == 200
-    assert codes(called(LeaseRoute, method="post", user=player, lease_id=lease)) == ["not_operator"]
-    assert codes(called(LeaseRoute, method="post", token=bot_round[2], lease_id=bot_round[0].lease.pk)) == [
+    assert called(AllocationRoute, method="post", user=opener, allocation_id=allocation).data == {"allocation": allocation}
+    assert called(AllocationRoute, method="post", user=staff, allocation_id=allocation).status_code == 200
+    assert codes(called(AllocationRoute, method="post", user=player, allocation_id=allocation)) == ["not_operator"]
+    assert codes(called(AllocationRoute, method="post", token=bot_round[2], allocation_id=bot_round[0].allocation.pk)) == [
         "not_operator"]
-    assert codes(called(LeaseRoute, method="post", user=opener, lease_id=9999)) == ["unknown_lease"]
+    assert codes(called(AllocationRoute, method="post", user=opener, allocation_id=9999)) == ["unknown_allocation"]
 
 
-def test_a_seat_side_that_does_not_exist_is_a_programming_error():
+def test_a_player_side_that_does_not_exist_is_a_programming_error():
     with pytest.raises(ValueError):
-        auth.HasSeat("referee")
+        auth.IsPlayer("referee")

@@ -39,7 +39,7 @@ def sign_in(request, username: str, password: str):
     refused_while_blocked(request)
     user = auth.authenticate(request, username=username, password=password)
     if user is None and awaits_approval(username, password):
-        raise errors.NotSeated(code="account_pending")
+        raise errors.NotAPlayer(code="account_pending")
     if user is None:
         blocks.failed(request, username)
         refused_while_blocked(request)

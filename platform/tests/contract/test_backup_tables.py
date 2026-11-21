@@ -7,7 +7,7 @@ from django.apps import apps
 from django.db import connection
 
 BACKUP = Path(__file__).resolve().parents[3] / "bin" / "backup"
-ROUND_RECORDS = ("training.Lease", "training.Round", "training.Seat", "training.Action", "telemetry.Detection",
+ROUND_RECORDS = ("training.Allocation", "training.Round", "training.Player", "training.Action", "telemetry.Detection",
                  "scoring.Objective", "telemetry.Event")
 
 

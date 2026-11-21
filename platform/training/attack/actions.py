@@ -31,14 +31,14 @@ from domain.types import (
 from sandbox import access as jump
 from sandbox import attacker as box
 from sandbox import edge
-from sandbox.reach import lease_range, range_of
+from sandbox.reach import allocation_range, range_of
 from scoring import losses as referee
 from telemetry import elastic
 from telemetry import events as log
 from telemetry.models import AccessCursor
 from training.attack import cases as firing
 from training.attack import tools
-from training.models import Action, Lease, OriginBudget, Round, Seat, ToolRun
+from training.models import Action, Allocation, OriginBudget, Round, Player, ToolRun
 
 ATTACKER = box.ATTACKER_ROLE
 PROXY = "proxy"
@@ -298,7 +298,7 @@ def fill_pool(found: Round) -> Hp:
         for origin in offered:
             OriginBudget.objects.get_or_create(round=found, ip=origin["source_ip"], defaults={
                 "origin_id": origin["id"], "label": origin["label"], "budget": rule.budget, "left": rule.budget})
-        AccessCursor.objects.get_or_create(lease=found.lease)
+        AccessCursor.objects.get_or_create(allocation=found.allocation)
     refill_edge(found, reached, described, afresh=True)
     worn = current_of(budgets(found))
     if worn is not None:
@@ -360,7 +360,7 @@ def debit(found: Round, charges: Sequence[Charge],
 def report_charges(found: Round, charged: Mapping[str, int]) -> None:
     left = {row.ip: row.left for row in budgets(found)}
     for ip, amount in sorted(charged.items()):
-        log.append(found.pk, "origin.charged", {"ip": ip, "charged": amount, "left": left[ip]}, seat_side="attack")
+        log.append(found.pk, "origin.charged", {"ip": ip, "charged": amount, "left": left[ip]}, player_side="attack")
 
 
 def spend(found: Round, fallen: Sequence[OriginBudget], reached=None) -> None:
@@ -369,7 +369,7 @@ def spend(found: Round, fallen: Sequence[OriginBudget], reached=None) -> None:
     settings = configured()
     reached = reached or range_of(found)
     for row in fallen:
-        log.append(found.pk, "origin.spent", {"ip": row.ip}, seat_side="attack")
+        log.append(found.pk, "origin.spent", {"ip": row.ip}, player_side="attack")
     router = reached.runner(settings.edge.role)
     refused: list[errors.Unavailable] = []
     for row in fallen:
@@ -380,10 +380,10 @@ def spend(found: Round, fallen: Sequence[OriginBudget], reached=None) -> None:
     stop_runs(found, "origin_spent", reached)
     following = current_of(budgets(found))
     if following is None:
-        log.append(found.pk, "origins.spent", {}, seat_side="attack")
+        log.append(found.pk, "origins.spent", {}, player_side="attack")
     else:
         box.wear_origin({"source_ip": following.ip}, reached.runner(PROXY))
-        log.append(found.pk, "origin.switched", {"ip": following.ip}, seat_side="attack")
+        log.append(found.pk, "origin.switched", {"ip": following.ip}, player_side="attack")
     if refused:
         raise refused[0]
 
@@ -398,7 +398,7 @@ def charge_sent(found: Round, action: Action, status: int, reached=None) -> None
     spend(found, fallen, reached)
 
 
-def next_origin(found: Round, seat: Seat) -> Hp:
+def next_origin(found: Round, player: Player) -> Hp:
     writable(found)
     worn = wearing(found)
     with transaction.atomic():
@@ -411,7 +411,7 @@ def next_origin(found: Round, seat: Seat) -> Hp:
 
 def charge_access_page(found: Round, held: AccessCursor, cursor, ips: set[str], rule: HpRule):
     settings = configured()
-    records, moved = elastic.access_events(settings.elastic.url, settings.elastic.index_of(found.lease.slot), cursor)
+    records, moved = elastic.access_events(settings.elastic.url, settings.elastic.index_of(found.allocation.slot), cursor)
     charges = [Charge(origin_ip=record["source_ip"], at=record["at"], refused=rule.refuses(record["status"]),
                       marker=record["marker"])
                for record in records if record["source_ip"] in ips and record["at"] is not None
@@ -432,7 +432,7 @@ def charge_from_access(found: Round) -> dict[str, int]:
     if not rows:
         return {}
     rule, ips = rule_of(found), {row.ip for row in rows}
-    held, _ = AccessCursor.objects.get_or_create(lease=found.lease)
+    held, _ = AccessCursor.objects.get_or_create(allocation=found.allocation)
     cursor = held.cursor.get("access")
     total: dict[str, int] = {}
     try:
@@ -497,7 +497,7 @@ def sent_over(runner, method: str, url: str, headers: dict[str, str], body: str 
     return answer, started, timezone.now()
 
 
-def send(found: Round, seat: Seat, method: str, path: str, host: str | None = None,
+def send(found: Round, player: Player, method: str, path: str, host: str | None = None,
          query: Mapping[str, str] | None = None, headers: Mapping[str, str] | None = None,
          body: str | None = None, kind: str = "request") -> Sent:
     writable(found)
@@ -507,11 +507,11 @@ def send(found: Round, seat: Seat, method: str, path: str, host: str | None = No
     path = checked_path(path)
     given = {**checked_headers(headers), "Host": chosen, tools.MARKER_HEADER: marker}
     answer, started, ended = sent_over(reached.runner(ATTACKER), method, target_url(found, path, query), given, body)
-    action = Action.objects.create(round=found, seat=seat, kind=kind, marker=marker, correlation=CORRELATION_MARKER,
+    action = Action.objects.create(round=found, player=player, kind=kind, marker=marker, correlation=CORRELATION_MARKER,
                                    source_ip=worn.ip, started=started, ended=ended, charged=True,
                                    meta={"method": method, "path": path, "host": chosen, "status": answer.status})
     log.append(found.pk, "action.sent", {"action": action.pk, "kind": kind, "status": answer.status},
-               seat_side="attack")
+               player_side="attack")
     charge_sent(found, action, answer.status, reached)
     return Sent(action=action.pk, marker=marker, status=answer.status, headers=answer.headers,
                 body=answer.body[:BODY_LIMIT], truncated=len(answer.body) > BODY_LIMIT, source_ip=worn.ip,
@@ -561,7 +561,7 @@ def with_host(case: dict[str, Any], host: str) -> dict[str, Any]:
     return dict(case, request=spec)
 
 
-def fire_case(found: Round, seat: Seat, name: str) -> Fired:
+def fire_case(found: Round, player: Player, name: str) -> Fired:
     writable(found)
     case = case_of(found, name, malicious=True)
     worn = wearing(found)
@@ -569,19 +569,19 @@ def fire_case(found: Round, seat: Seat, name: str) -> Fired:
     if tools.is_tool_case(case):
         argv = tools.tool_argv(dict(case, case_id=marker, correlation=CORRELATION_MARKER),
                                configured().box.target_url, box.SQLMAP_RUNS)
-        begun = start_run(found, seat, worn, marker, ACTION_CASE, case["tool"], argv, case=case)
+        begun = start_run(found, player, worn, marker, ACTION_CASE, case["tool"], argv, case=case)
         return Fired(action=begun.action, run=begun.run, status=None, marker=marker)
     settings, reached = configured(), range_of(found)
     launch = box.launch_with(reached.launcher(worn.origin_id), settings.box)
     started = timezone.now()
     ran = firing.fire(with_host(case, host_of(found, None)), launch, settings.box.target_url, marker=marker)
     status = tools.status(ran.output)
-    action = Action.objects.create(round=found, seat=seat, kind=ACTION_CASE, case_id=case["name"], malicious=True,
+    action = Action.objects.create(round=found, player=player, kind=ACTION_CASE, case_id=case["name"], malicious=True,
                                    expect=case.get("expect"), marker=marker, correlation=CORRELATION_MARKER,
                                    source_ip=worn.ip, started=started, ended=timezone.now(), charged=True,
                                    meta={**firing.case_meta(case), "status": status})
     log.append(found.pk, "action.sent", {"action": action.pk, "kind": ACTION_CASE, "status": status},
-               seat_side="attack")
+               player_side="attack")
     charge_sent(found, action, status, reached)
     return Fired(action=action.pk, run=None, status=status, marker=marker)
 
@@ -610,12 +610,12 @@ def tool_list(found: Round) -> Tools:
                                     exit_code=run.exit_code, stopped_by=run.stopped_by) for run in runs))
 
 
-def start_run(found: Round, seat: Seat, worn: OriginBudget, marker: str, kind: str, tool: str, argv: list[str],
+def start_run(found: Round, player: Player, worn: OriginBudget, marker: str, kind: str, tool: str, argv: list[str],
               case: Mapping[str, Any] | None = None, correlation: str = CORRELATION_MARKER) -> Started:
     started = timezone.now()
     with transaction.atomic():
         action = Action.objects.create(
-            round=found, seat=seat, kind=kind, case_id=case["name"] if case else None,
+            round=found, player=player, kind=kind, case_id=case["name"] if case else None,
             malicious=True if case else None, expect=case.get("expect") if case else None, marker=marker,
             correlation=correlation, source_ip=worn.ip, started=started, ended=started,
             meta={"tool": tool, "args": argv[1:]})
@@ -627,11 +627,11 @@ def start_run(found: Round, seat: Seat, worn: OriginBudget, marker: str, kind: s
     except errors.Unavailable:
         finish(run, None, None)
         raise
-    log.append(found.pk, "tool.started", {"run": run.pk, "tool": tool}, seat_side="attack")
+    log.append(found.pk, "tool.started", {"run": run.pk, "tool": tool}, player_side="attack")
     return Started(run=run.pk, action=action.pk)
 
 
-def start_tool(found: Round, seat: Seat, tool: str, args: list[str]) -> Started:
+def start_tool(found: Round, player: Player, tool: str, args: list[str]) -> Started:
     writable(found)
     marker = new_marker()
     try:
@@ -640,7 +640,7 @@ def start_tool(found: Round, seat: Seat, tool: str, args: list[str]) -> Started:
         raise errors.Invalid(code="invalid", path="args") from refused
     worn = wearing(found)
     correlation = CORRELATION_MARKER if tool in SELF_MARKING_TOOLS else CORRELATION_WINDOW
-    return start_run(found, seat, worn, marker, "tool", tool, argv, correlation=correlation)
+    return start_run(found, player, worn, marker, "tool", tool, argv, correlation=correlation)
 
 
 def run_of(found: Round, run_id: int) -> ToolRun:
@@ -658,7 +658,7 @@ def finish(run: ToolRun, exit_code: int | None, stopped_by: str | None) -> None:
         return
     Action.objects.filter(pk=run.action_id).update(ended=ended)
     log.append(run.action.round_id, "tool.ended", {"run": run.pk, "exit_code": exit_code, "stopped_by": stopped_by},
-               seat_side="attack")
+               player_side="attack")
     run.refresh_from_db()
 
 
@@ -674,13 +674,13 @@ def tool_output(found: Round, run_id: int, after: int = 0) -> RunPage:
                    exit_code=run.exit_code, stopped_by=run.stopped_by)
 
 
-def stop_tool(found: Round, seat: Seat, run_id: int) -> None:
+def stop_tool(found: Round, player: Player, run_id: int) -> None:
     writable(found)
     run = run_of(found, run_id)
     if run.ended is not None:
         return
     box.stop_run(range_of(found).runner(ATTACKER), run.pk)
-    finish(run, STOPPED_EXIT, "seat")
+    finish(run, STOPPED_EXIT, "player")
 
 
 def stop_runs(found: Round, reason: str, reached=None) -> int:
@@ -705,37 +705,37 @@ def actions(found: Round) -> tuple[ActionRecord, ...]:
     return tuple(record_of(action) for action in Action.objects.filter(round=found))
 
 
-def submit_loot(found: Round, seat: Seat, value: Any) -> Looted:
+def submit_loot(found: Round, player: Player, value: Any) -> Looted:
     writable(found)
     verdict = referee.submit_loot(found, value, actions(found))
     chosen = verdict.objective
     return Looted(lost=verdict.lost, objective=LostObjective(key=chosen.key, name=chosen.name) if chosen else None)
 
 
-def terminal(found: Round, seat: Seat) -> Terminal:
+def terminal(found: Round, player: Player) -> Terminal:
     phase_allows_writes(found)
     if not budgets(found):
         fill_pool(found)
     settings, reached = configured(), range_of(found)
-    access = jump.open_access(seat.pk, box.kali_address(reached), reached.runner(ATTACKER), box.LEARNER_ACCOUNT,
+    access = jump.open_access(player.pk, box.kali_address(reached), reached.runner(ATTACKER), box.LEARNER_ACCOUNT,
                               settings.jump)
     return Terminal(ws_url=f"/vm-terminal/attack/{found.pk}/",
                     ssh=Ssh(host=access.host, port=access.port, user=access.user, private_key=access.private_key,
-                            expires_at=found.ends_at or found.lease.expires_at, target_host=access.target_host,
+                            expires_at=found.ends_at or found.allocation.expires_at, target_host=access.target_host,
                             target_user=access.target_user))
 
 
-def terminal_shell(seat: Seat) -> tuple[str, str]:
-    grant = jump.granted(seat.pk, configured().jump)
+def terminal_shell(player: Player) -> tuple[str, str]:
+    grant = jump.granted(player.pk, configured().jump)
     if grant is None:
-        raise errors.NotSeated()
+        raise errors.NotAPlayer()
     return grant.address, box.LEARNER_ACCOUNT
 
 
 def revoke_terminal(found: Round) -> int:
     settings = configured()
-    return sum(1 for seat in Seat.objects.filter(round=found, side="attack")
-               if jump.close_access(seat.pk, lambda: range_of(found).runner(ATTACKER), box.LEARNER_ACCOUNT,
+    return sum(1 for player in Player.objects.filter(round=found, side="attack")
+               if jump.close_access(player.pk, lambda: range_of(found).runner(ATTACKER), box.LEARNER_ACCOUNT,
                                     settings.jump) is not None)
 
 
@@ -763,11 +763,11 @@ def commands(found: Round) -> tuple[CommandRecord, ...]:
 
 
 def read_commands(found: Round) -> int:
-    held, _ = AccessCursor.objects.get_or_create(lease=found.lease)
+    held, _ = AccessCursor.objects.get_or_create(allocation=found.allocation)
     seen = held.cursor.get("commands", {}).get(str(found.pk))
     fresh = [command for command in commands(found) if seen is None or command.at.isoformat() > seen]
     for command in fresh:
-        log.append(found.pk, "command.run", {"command": command.line}, seat_side="attack")
+        log.append(found.pk, "command.run", {"command": command.line}, player_side="attack")
     if fresh:
         read = {**held.cursor.get("commands", {}), str(found.pk): fresh[-1].at.isoformat()}
         held.cursor = {**held.cursor, "commands": read}
@@ -836,8 +836,8 @@ def probe_request(prepared, host: str) -> dict:
             "headers": headers, **({"body": body} if body is not None else {})}
 
 
-def fire_probe(lease: Lease, wargame: Mapping[str, Any], case: Mapping[str, Any], marker: str) -> Probed:
-    settings, reached = configured(), lease_range(lease)
+def fire_probe(allocation: Allocation, wargame: Mapping[str, Any], case: Mapping[str, Any], marker: str) -> Probed:
+    settings, reached = configured(), allocation_range(allocation)
     offered = box.find(reached.describe(), None, settings.box)
     edge.admit(reached.runner(settings.edge.role), [offered["source_ip"]], settings.edge)
     box.wear_origin(offered, reached.runner(PROXY))

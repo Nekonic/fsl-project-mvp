@@ -15,7 +15,7 @@ def o_brien(played: plays.Played) -> int:
 
 
 @pytest.fixture(scope="module")
-def two_leases(stack_is_up):
+def two_allocations(stack_is_up):
     opened = [plays.play("board")]
     try:
         opened.append(plays.play("board"))
@@ -45,22 +45,22 @@ def two_leases(stack_is_up):
     return seen
 
 
-def test_both_rounds_stay_open_at_once(two_leases):
-    assert {two_leases["first"], two_leases["second"]} <= two_leases["open"], (
-        "opening the second lease closed the first round or took its stack down"
+def test_both_rounds_stay_open_at_once(two_allocations):
+    assert {two_allocations["first"], two_allocations["second"]} <= two_allocations["open"], (
+        "opening the second allocation closed the first round or took its stack down"
     )
 
 
-def test_an_attack_in_one_round_draws_no_alert_in_the_other(two_leases):
-    assert not plays.marked(two_leases["second_alerts"], two_leases["marker"]), (
-        f"round {two_leases['second']} took in alerts drawn by round {two_leases['first']}'s attack: its "
+def test_an_attack_in_one_round_draws_no_alert_in_the_other(two_allocations):
+    assert not plays.marked(two_allocations["second_alerts"], two_allocations["marker"]), (
+        f"round {two_allocations['second']} took in alerts drawn by round {two_allocations['first']}'s attack: its "
         f"index or its sensor is shared"
     )
-    assert CASE not in two_leases["second_cases"], f"round {two_leases['first']}'s case was scored in the other"
+    assert CASE not in two_allocations["second_cases"], f"round {two_allocations['first']}'s case was scored in the other"
 
 
-def test_two_rounds_tune_their_own_waf_and_their_own_sensor(two_leases):
-    seen = two_leases
+def test_two_rounds_tune_their_own_waf_and_their_own_sensor(two_allocations):
+    seen = two_allocations
 
     assert seen["applied"].status == 200, seen["applied"].text
     assert seen["first_rules"] == seen["committed"] + PROBE

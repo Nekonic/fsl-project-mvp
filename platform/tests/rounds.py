@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from domain.types import ActionRecord, DetectionRecord
 from testing import factories
 from training.content import problems as content
-from training.models import Lease, Round, Seat
+from training.models import Allocation, Round, Player
 
 ATTACKER_IP = "198.51.100.9"
 
@@ -20,15 +20,15 @@ def problem(wargame: str = "board", objectives: Sequence[str] = ()):
 def opened(found_problem, *, opened_by=None, phase: str = "running", started: datetime | None = None,
            ended: datetime | None = None) -> Round:
     now = datetime.now(timezone.utc)
-    lease = Lease.objects.create(wargame_id=found_problem.wargame_id, purpose=found_problem.kind, slot=1,
+    allocation = Allocation.objects.create(wargame_id=found_problem.wargame_id, purpose=found_problem.kind, slot=1,
                                  opened_by=opened_by, expires_at=now + timedelta(hours=1))
-    return Round.objects.create(lease=lease, problem=found_problem, kind=found_problem.kind,
+    return Round.objects.create(allocation=allocation, problem=found_problem, kind=found_problem.kind,
                                 matchup="pvp", phase=phase,
                                 snapshot=content.snapshot(found_problem), started=started or now, ended=ended)
 
 
-def seated(found: Round, side: str, user=None, bot_name: str = "") -> Seat:
-    return Seat.objects.create(round=found, side=side, client="human" if user else "bot", user=user,
+def playing(found: Round, side: str, user=None, bot_name: str = "") -> Player:
+    return Player.objects.create(round=found, side=side, client="human" if user else "bot", user=user,
                                bot_name=bot_name)
 
 

@@ -12,7 +12,7 @@ from domain.round_rules import Phase
 from sandbox import reach
 from sandbox import service as sandbox
 from training.content import problems as content
-from training.models import Lease, Round
+from training.models import Allocation, Round
 from training.round import lifecycle
 
 ROUND = "round"
@@ -22,14 +22,14 @@ choosing = threading.Lock()
 
 
 def idle() -> timedelta:
-    return timedelta(minutes=settings.LEASE_IDLE_MINUTES)
+    return timedelta(minutes=settings.ALLOCATION_IDLE_MINUTES)
 
 
 def held_slots() -> set[int]:
-    return set(Lease.objects.filter(closed=None).exclude(slot=None).values_list("slot", flat=True))
+    return set(Allocation.objects.filter(closed=None).exclude(slot=None).values_list("slot", flat=True))
 
 
-def open_lease(user, wargame_id: str, purpose: str = ROUND) -> Lease:
+def open_allocation(user, wargame_id: str, purpose: str = ROUND) -> Allocation:
     if wargame_id not in {wargame.pk for wargame in content.wargames()}:
         raise errors.Invalid(code="unknown_wargame", path="wargame")
     whole = reach.whole_range()
@@ -37,34 +37,34 @@ def open_lease(user, wargame_id: str, purpose: str = ROUND) -> Lease:
         number = sandbox.free_slot(whole, wargame_id, held_slots())
         if number is None:
             raise sandbox.unavailable()
-        return Lease.objects.create(wargame_id=wargame_id, purpose=purpose, slot=number,
+        return Allocation.objects.create(wargame_id=wargame_id, purpose=purpose, slot=number,
                                     opened_by=user if getattr(user, "pk", None) else None,
                                     expires_at=timezone.now() + idle(), browse_marker=uuid.uuid4().hex)
 
 
-def lease(lease_id: int) -> Lease:
-    found = Lease.objects.filter(pk=lease_id).first()
+def allocation(allocation_id: int) -> Allocation:
+    found = Allocation.objects.filter(pk=allocation_id).first()
     if found is None:
-        raise errors.NotFound(code="unknown_lease")
+        raise errors.NotFound(code="unknown_allocation")
     return found
 
 
-def ready(held: Lease) -> bool:
+def ready(held: Allocation) -> bool:
     return held.closed is None and sandbox.slot_ready(held.slot)
 
 
-def heartbeat(held: Lease) -> Lease:
+def heartbeat(held: Allocation) -> Allocation:
     if held.closed is not None:
-        raise errors.Conflict(code="lease_closed")
+        raise errors.Conflict(code="allocation_closed")
     held.expires_at = max(held.expires_at, timezone.now() + idle())
     held.save(update_fields=["expires_at"])
     return held
 
 
-def close_lease(held: Lease, reason: str = "ended_by_operator") -> Lease:
-    for found in Round.objects.filter(lease=held).exclude(phase=ENDED):
+def close_allocation(held: Allocation, reason: str = "ended_by_operator") -> Allocation:
+    for found in Round.objects.filter(allocation=held).exclude(phase=ENDED):
         lifecycle.end_round(found, reason)
-    closed = Lease.objects.filter(pk=held.pk, closed=None).update(closed=timezone.now())
+    closed = Allocation.objects.filter(pk=held.pk, closed=None).update(closed=timezone.now())
     held.refresh_from_db()
     if closed:
         sandbox.refill_slot(held.slot, held.wargame_id)
@@ -72,14 +72,14 @@ def close_lease(held: Lease, reason: str = "ended_by_operator") -> Lease:
 
 
 def expire(at: datetime | None = None) -> list[int]:
-    due = list(Lease.objects.filter(closed=None, expires_at__lt=at or timezone.now()))
+    due = list(Allocation.objects.filter(closed=None, expires_at__lt=at or timezone.now()))
     for held in due:
-        close_lease(held, "lease_expired")
+        close_allocation(held, "allocation_expired")
     return [held.pk for held in due]
 
 
 def holders() -> dict[int, int]:
-    return dict(Lease.objects.filter(closed=None).exclude(slot=None).values_list("slot", "pk"))
+    return dict(Allocation.objects.filter(closed=None).exclude(slot=None).values_list("slot", "pk"))
 
 
 def slots() -> list[sandbox.SlotLine]:

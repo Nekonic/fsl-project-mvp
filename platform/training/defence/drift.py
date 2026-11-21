@@ -40,7 +40,7 @@ def check(round_id: int, gateway: Runner, config: WafConfig, now: datetime) -> b
     if head.drifted_at is None:
         head.drifted_at = now
         head.save(update_fields=["drifted_at"])
-        log.append(round_id, "rule.drifted", {"engine": ENGINE_WAF}, seat_side=DEFENCE)
+        log.append(round_id, "rule.drifted", {"engine": ENGINE_WAF}, player_side=DEFENCE)
     return True
 
 

@@ -24,12 +24,12 @@ def answered(serializer, request, payload, code=status.HTTP_200_OK):
 
 class AttackView(APIView):
     authentication_classes = auth.ROUND_AUTHENTICATION
-    permission_classes = [auth.HasSeat("attack")]
+    permission_classes = [auth.IsPlayer("attack")]
 
     def finalize_response(self, request, response, *args, **kwargs):
         response = super().finalize_response(request, response, *args, **kwargs)
-        seat = getattr(request, "seat", None)
-        if seat is None or seat.side != "attack":
+        player = getattr(request, "player", None)
+        if player is None or player.side != "attack":
             return response
         block = service.hp(request.round)
         response["X-Origin"] = block.origin.ip if block.origin else ""
@@ -53,7 +53,7 @@ class Cases(AttackView):
     @extend_schema(tags=TAGS, request=serializers.FireCase, responses={202: serializers.Fired},
                    operation_id="attack_fire_case")
     def post(self, request, round_id: int):
-        fired = service.fire_case(request.round, request.seat, given(serializers.FireCase, request.data)["case"])
+        fired = service.fire_case(request.round, request.player, given(serializers.FireCase, request.data)["case"])
         return answered(serializers.Fired, request, asdict(fired), status.HTTP_202_ACCEPTED)
 
 
@@ -61,7 +61,7 @@ class Requests(AttackView):
     @extend_schema(tags=TAGS, request=serializers.SendRequest, responses=serializers.Sent,
                    operation_id="attack_send")
     def post(self, request, round_id: int):
-        sent = service.send(request.round, request.seat, **given(serializers.SendRequest, request.data))
+        sent = service.send(request.round, request.player, **given(serializers.SendRequest, request.data))
         return answered(serializers.Sent, request, asdict(sent))
 
 
@@ -74,7 +74,7 @@ class Tools(AttackView):
                    operation_id="attack_start_tool")
     def post(self, request, round_id: int):
         asked = given(serializers.StartTool, request.data)
-        started = service.start_tool(request.round, request.seat, asked["tool"], list(asked["args"]))
+        started = service.start_tool(request.round, request.player, asked["tool"], list(asked["args"]))
         return answered(serializers.Started, request, asdict(started), status.HTTP_202_ACCEPTED)
 
 
@@ -87,25 +87,25 @@ class ToolRun(AttackView):
 
     @extend_schema(tags=TAGS, responses={204: None}, operation_id="attack_stop_tool")
     def delete(self, request, round_id: int, run_id: int):
-        service.stop_tool(request.round, request.seat, run_id)
+        service.stop_tool(request.round, request.player, run_id)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class Loot(AttackView):
     @extend_schema(tags=TAGS, request=serializers.Loot, responses=serializers.Looted, operation_id="attack_loot")
     def post(self, request, round_id: int):
-        looted = service.submit_loot(request.round, request.seat, given(serializers.Loot, request.data)["value"])
+        looted = service.submit_loot(request.round, request.player, given(serializers.Loot, request.data)["value"])
         return answered(serializers.Looted, request, asdict(looted))
 
 
 class NextOrigin(AttackView):
     @extend_schema(tags=TAGS, request=None, responses=serializers.NextOrigin, operation_id="attack_next_origin")
     def post(self, request, round_id: int):
-        moved = service.next_origin(request.round, request.seat)
+        moved = service.next_origin(request.round, request.player)
         return Response(serializers.NextOrigin({"origin": moved.origin, "hp": moved}).data)
 
 
 class Terminal(AttackView):
     @extend_schema(tags=TAGS, responses=serializers.AttackTerminal, operation_id="attack_terminal")
     def get(self, request, round_id: int):
-        return answered(serializers.AttackTerminal, request, asdict(service.terminal(request.round, request.seat)))
+        return answered(serializers.AttackTerminal, request, asdict(service.terminal(request.round, request.player)))

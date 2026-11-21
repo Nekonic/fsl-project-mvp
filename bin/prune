@@ -11,7 +11,7 @@ CONTAINER = "cr-platform"
 def command(ids=None, apply=False):
     argv = ["docker", "exec", CONTAINER, "python", "manage.py", "prune"]
     if ids is not None:
-        argv += ["--leases", *(str(lease) for lease in sorted(ids))]
+        argv += ["--allocations", *(str(allocation) for allocation in sorted(ids))]
     if not apply:
         argv.append("--dry-run")
     return argv
@@ -27,11 +27,11 @@ def run(argv):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Drop closed leases with their rounds, seats, actions, detections and events.",
+        description="Drop closed allocations with their rounds, players, actions, detections and events.",
     )
     parser.add_argument("--ids", metavar="FILE",
-                        help="drop only the closed leases whose ids FILE lists, one per line; open ones are "
-                             "never touched. Without it, the closed leases past CR_RETAIN_CLOSED_MINUTES go")
+                        help="drop only the closed allocations whose ids FILE lists, one per line; open ones are "
+                             "never touched. Without it, the closed allocations past CR_RETAIN_CLOSED_MINUTES go")
     parser.add_argument("--apply", action="store_true",
                         help="actually delete; without this nothing is written")
     args = parser.parse_args()

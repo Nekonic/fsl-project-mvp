@@ -18,12 +18,12 @@ const human = (side: "attack" | "defence", username: string | null) => ({ side, 
 const bot = (side: "attack" | "defence", name: string) => ({ side, client: "bot", username: null, bot_name: name });
 
 const mine = [
-  { round: 41, problem: 7, kind: "match", matchup: "pvp", phase: "running" as const, seats: [human("attack", "learner-two"), human("defence", "learner-one")] },
-  { round: 40, problem: 7, kind: "match", matchup: "def_vs_bot", phase: "ended" as const, seats: [bot("attack", "claude-code"), human("defence", "learner-one")] },
+  { round: 41, problem: 7, kind: "match", matchup: "pvp", phase: "running" as const, players: [human("attack", "learner-two"), human("defence", "learner-one")] },
+  { round: 40, problem: 7, kind: "match", matchup: "def_vs_bot", phase: "ended" as const, players: [bot("attack", "claude-code"), human("defence", "learner-one")] },
 ];
 
 const joinable = [
-  { round: 42, problem: 7, kind: "match", matchup: "pvp", phase: "created" as const, seats: [human("attack", "learner-three"), human("defence", null)] },
+  { round: 42, problem: 7, kind: "match", matchup: "pvp", phase: "created" as const, players: [human("attack", "learner-three"), human("defence", null)] },
 ];
 
 const lessons = [
@@ -42,11 +42,11 @@ export const fixtures = [
   reply("get", "/api/rounds/", [], { variant: "empty-home" }),
   reply("get", "/api/lessons/", lessons),
   reply("get", "/api/lessons/", [], { variant: "empty-home" }),
-  reply("post", "/api/lessons/", (asked) => ({ round: 50 + (asked.body?.problem ?? 0), lease: 30, phase: "waiting_slot" as const }), { status: 201 }),
-  reply("post", "/api/leases/", (asked) => ({
-    lease: 7, wargame: asked.body?.wargame ?? "board", slot: 2, ready: false, expires_at: minutesFromNow(120), closed: null,
+  reply("post", "/api/lessons/", (asked) => ({ round: 50 + (asked.body?.problem ?? 0), allocation: 30, phase: "waiting_slot" as const }), { status: 201 }),
+  reply("post", "/api/allocations/", (asked) => ({
+    allocation: 7, wargame: asked.body?.wargame ?? "board", slot: 2, ready: false, expires_at: minutesFromNow(120), closed: null,
   }), { status: 201 }),
-  refuse("post", "/api/leases/", 400, [{ path: "wargame", code: "unknown_wargame" }], { variant: "lease-refused" }),
-  reply("post", "/api/rounds/{round_id}/seats/{side}/join/", (asked) => ({ seat: 90, side: asked.params.side === "attack" ? "attack" as const : "defence" as const })),
-  refuse("post", "/api/rounds/{round_id}/seats/{side}/join/", 409, [{ path: "", code: "seat_taken" }], { variant: "seat-taken" }),
+  refuse("post", "/api/allocations/", 400, [{ path: "wargame", code: "unknown_wargame" }], { variant: "allocation-refused" }),
+  reply("post", "/api/rounds/{round_id}/players/{side}/join/", (asked) => ({ player: 90, side: asked.params.side === "attack" ? "attack" as const : "defence" as const })),
+  refuse("post", "/api/rounds/{round_id}/players/{side}/join/", 409, [{ path: "", code: "player_taken" }], { variant: "player-taken" }),
 ];

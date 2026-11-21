@@ -41,12 +41,12 @@ def addresses_of(listed: str) -> list[ipaddress.IPv4Interface]:
             if not ipaddress.ip_interface(address).ip.is_loopback]
 
 
-def waf_side(lease: int | None = None) -> dict:
+def waf_side(allocation: int | None = None) -> dict:
     return run_side_by_side(GATEWAY, {
         "addresses": ["ip", "-o", "-4", "addr", "show"],
         "route": ["ip", "-4", "route", "show", "default"],
         "upstreams": ["getent", "hosts", *PAST_THE_WAF],
-    }, lease=lease)
+    }, allocation=allocation)
 
 
 def front_of(waf: dict) -> str:
@@ -55,8 +55,8 @@ def front_of(waf: dict) -> str:
                 if dev == default_dev)
 
 
-def slot_of(lease: int | None = None) -> str:
-    return run(LOG_SERVER, ["sh", "-c", ". /etc/slot.env && echo $SLOT"], lease=lease).stdout.strip()
+def slot_of(allocation: int | None = None) -> str:
+    return run(LOG_SERVER, ["sh", "-c", ". /etc/slot.env && echo $SLOT"], allocation=allocation).stdout.strip()
 
 
 @pytest.fixture(scope="module")
@@ -197,7 +197,7 @@ def _settled_after_close(slot: str) -> dict:
     deadline = time.monotonic() + SETTLE_WAIT
     while True:
         mine = next((each for each in plays.slots() if str(each.get("slot")) == slot), {})
-        settled = mine.get("lease") is None and (mine.get("refill") or {}).get("state") == READY
+        settled = mine.get("allocation") is None and (mine.get("refill") or {}).get("state") == READY
         if settled or time.monotonic() > deadline:
             return mine
         time.sleep(5)
@@ -216,13 +216,13 @@ def _closed(played: plays.Played) -> plays.Answer:
     return plays.close(played)
 
 
-def test_a_refill_gives_the_next_lease_a_new_waf_vm_with_nothing_the_last_learner_left(standing_stack):
+def test_a_refill_gives_the_next_allocation_a_new_waf_vm_with_nothing_the_last_learner_left(standing_stack):
     token = uuid.uuid4().hex
     played = _played_to_plant_in(standing_stack)
     try:
-        slot = slot_of(played.lease)
+        slot = slot_of(played.allocation)
         planted = run(GATEWAY, ["sh", "-c", f"printf '%s\\n' {shlex.quote(token)} > {CANARY} && cat {BOOT_ID}"],
-                      lease=played.lease)
+                      allocation=played.allocation)
         assert planted.ok, planted.output
         booted = planted.stdout.strip()
     finally:
@@ -234,5 +234,5 @@ def test_a_refill_gives_the_next_lease_a_new_waf_vm_with_nothing_the_last_learne
 
     assert (settled.get("refill") or {}).get("state") == READY, (
         f"slot {slot} did not settle after its refill: {settled}")
-    assert booted not in after.stdout, f"slot {slot}'s WAF is the VM the last lease had, so no refill ran"
+    assert booted not in after.stdout, f"slot {slot}'s WAF is the VM the last allocation had, so no refill ran"
     assert token not in after.stdout, f"the file the last learner wrote on the WAF is still there: {after.stdout}"

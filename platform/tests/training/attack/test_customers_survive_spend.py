@@ -15,7 +15,7 @@ CUSTOMERS = (*US_CUSTOMERS, *BR_CUSTOMERS)
 @pytest.fixture
 def spent_round(make_round, learner, browser, cloud):
     found = make_round(hp={"budget": 3})
-    rounds.seated(found, "attack", learner)
+    rounds.playing(found, "attack", learner)
     browser.force_authenticate(learner)
     cloud.box.answer("cr.status=", REFUSED_PAGE)
     for _ in range(3):

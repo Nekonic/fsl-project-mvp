@@ -42,7 +42,7 @@ outward action, and anything the user asks to see in full.
 - 번역투: 무생물 주어("스택 하나가 VM을 만듭니다"), 이중 피동("보여집니다"), "~를 통해", "~에 있어서".
 - 짧은 "X는 Y입니다" 정의문 연쇄, 같은 모양 문장 세 개 나열, "A가 아니라 B" 대비.
 - 안 한 것·뺀 것 목록. 사용자가 손대야 할 때만 쓴다.
-- 지어낸 말과 내부 이름: 사용자가 모르는 seam·slot·lease 같은 단어는 무엇인지 풀어 쓰거나 뺀다.
+- 지어낸 말과 내부 이름: 사용자가 모르는 seam·slot·allocation 같은 단어는 무엇인지 풀어 쓰거나 뺀다.
 - 묻는 말이 "어디", "뭐야"면 답은 위치·링크·한 줄 정의다. 기능 소개를 붙이지 않는다.
 
 출처: Wikipedia "Signs of AI writing" (promotional language, negative parallelism, rule of three), 한국어 AI 문체 교정 글들(번역투·이중 피동·대칭 구조).

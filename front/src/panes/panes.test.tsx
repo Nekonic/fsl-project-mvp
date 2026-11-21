@@ -33,9 +33,9 @@ describe("Objectives", () => {
   });
 
   it("shows the API's refusal in Korean", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ errors: [{ path: "", code: "not_seated" }] }), { status: 403 })));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ errors: [{ path: "", code: "not_a_player" }] }), { status: 403 })));
     render(<Objectives round={41} side="attack" placement="main" />);
-    await waitFor(() => expect(screen.getByText(t("error.not_seated"))).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(t("error.not_a_player"))).toBeTruthy());
   });
 });
 

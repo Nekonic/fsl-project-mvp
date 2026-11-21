@@ -111,7 +111,7 @@ def board_round(db, source, cyber_range, learner):
 
 @pytest.fixture
 def defender(board_round, learner):
-    return rounds.seated(board_round, "defence", user=learner)
+    return rounds.playing(board_round, "defence", user=learner)
 
 
 @pytest.fixture

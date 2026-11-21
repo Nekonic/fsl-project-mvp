@@ -115,7 +115,7 @@ services:
       WARGAME_CASES_DIR: "/app/redteam/cases"
       CR_SOURCE: "/src"
       CR_RETAIN_CLOSED_MINUTES: "${CR_RETAIN_CLOSED_MINUTES:-60}"
-      CR_LEASE_IDLE_MINUTES: "${CR_LEASE_IDLE_MINUTES:-30}"
+      CR_ALLOCATION_IDLE_MINUTES: "${CR_ALLOCATION_IDLE_MINUTES:-30}"
       CR_CONSOLE_ORIGIN: "${CR_CONSOLE_ORIGIN:-}"
       CR_SITE_ORIGIN: "${CR_SITE_ORIGIN:-}"
     env_file: &platform-env-file

@@ -1,7 +1,7 @@
 # Bots
 
-A bot holds one seat of a round, attack or defence, and reaches exactly what a human console reaches: the same
-attack or defence API, under the same seat permission, through the client generated from
+A bot is one player of a round, attack or defence, and reaches exactly what a human console reaches: the same
+attack or defence API, under the same player permission, through the client generated from
 `openapi/schema.yaml` into `bots/client/` (`bin/gen-clients`; not committed). The bots are model-agnostic:
 nothing here names a model or a vendor.
 
@@ -9,20 +9,20 @@ nothing here names a model or a vendor.
 |---|---|
 | `tools.py` | Turns the operations a side may call into JSON Schema tool specs, from the committed schema |
 | `calls.py` | Makes one tool call through the generated client and reports `{operation, ok, status, body, headers?}` |
-| `cli.py` | The command line: tool specs, prompts, one call, or a provider playing the seat |
+| `cli.py` | The command line: tool specs, prompts, one call, or a provider playing as the player |
 | `play.py` | The turn loop a provider plays in |
 | `provider.py` | The provider interface: `turn(system, tools, transcript) -> Turn(text, calls)` |
 | `prompts/` | `attacker.md`, `defender.md` (rules of play) and `claude_code.md` (the CLI) |
-| `signin.py` | Signed-in and seated clients, shared with `test/` and `bin/` |
+| `signin.py` | Signed-in and playing clients, shared with `test/` and `bin/` |
 
-## A seat
+## A player
 
-The operator creates a round with a bot seat (`POST /api/leases/<lease>/rounds/` with `{bot: {name}}` for the
-side) and receives the seat token once. The token reaches its side's routes and the round's `GET /`,
+The operator creates a round with a bot player (`POST /api/allocations/<allocation>/rounds/` with `{bot: {name}}` for the
+side) and receives the player token once. The token reaches its side's routes and the round's `GET /`,
 `events/`, `topology/` and, after the end, `score/`. After `round.ended` it stays valid read-only for 15
 minutes, so the bot can read the end and the score.
 
-The CLI reads the token from `CR_SEAT_TOKEN`, the platform from `CR_PLATFORM_URL` (or `--base-url`) and the
+The CLI reads the token from `CR_PLAYER_TOKEN`, the platform from `CR_PLATFORM_URL` (or `--base-url`) and the
 round from `CR_ROUND` (or `--round`).
 
 ```
@@ -43,7 +43,7 @@ spec does not take, a value the client cannot encode) exits 2, an unreachable pl
 `turn(system, tools, transcript) -> bots.provider.Turn`. `tools` is the side's tool spec list
 (`{name, description, input_schema}`), and `transcript` is a list of plain entries:
 
-- `{"role": "user", "text"}`: the opening, which carries the seat's state;
+- `{"role": "user", "text"}`: the opening, which carries the player's state;
 - `{"role": "assistant", "text", "calls": [{"id", "name", "arguments"}]}`: what the provider answered;
 - `{"role": "tool", "call_id", "name", "result"}`: the answer of each call.
 
@@ -66,7 +66,7 @@ answer:
 
 Every attack answer, errors included, carries `hp: {origin: {id, label, ip}, left, budget, origins_left,
 spent, rule}` and the headers `X-Origin` and `X-Origin-HP`. At `left` 0 the origin is spent: the infra edge
-drops it, open connections included, its tool runs stop, and the seat moves to the next origin. The bot may
+drops it, open connections included, its tool runs stop, and the player moves to the next origin. The bot may
 leave an origin early with `attack_next_origin`. When `origins_left` is 0 every attack write answers
 `409 origins_spent`. API sends are charged at once and exactly; shell and tool traffic is charged from the WAF
 access log one tick late.
@@ -85,8 +85,8 @@ Every refusal is `{errors: [{path, code, line?, params?}]}`; attack refusals add
 
 | Code | Status | Meaning |
 |---|---|---|
-| `not_signed_in` | 401 | no or unknown seat token |
-| `not_seated` | 403 | the token is not a seat of this side of this round |
+| `not_signed_in` | 401 | no or unknown player token |
+| `not_a_player` | 403 | the token is not a player of this side of this round |
 | `invalid`, `required`, `max_length`, `invalid_choice`, ... | 400 | a field error at `path` |
 | `unknown_case`, `unknown_tool`, `unknown_run` | 404 | no such declared case, tool or tool run |
 | `round_not_started` | 409 | the round is not running yet |

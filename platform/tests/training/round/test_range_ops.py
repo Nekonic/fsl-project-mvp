@@ -26,7 +26,7 @@ def test_staff_remove_what_an_earlier_range_left(as_staff, cloud):
     assert as_staff.delete("/api/staff/range/leftovers/").json() == {"removed": [{"kind": "server", "id": "srv-old"}]}
 
 
-def test_filling_the_pool_owes_a_refill_to_every_slot_no_lease_holds(as_staff, cloud, lease):
+def test_filling_the_pool_owes_a_refill_to_every_slot_no_allocation_holds(as_staff, cloud, allocation):
     shown = as_staff.post("/api/staff/range/pool/").json()["slots"]
 
     assert [(one["slot"], one["refill"]["state"]) for one in shown] == [(1, "idle"), (2, "running")]

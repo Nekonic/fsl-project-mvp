@@ -57,7 +57,7 @@ def test_a_target_role_the_range_cannot_reach_is_a_range_fault():
     assert refused.value.code == "range_unavailable"
 
 
-def test_a_probe_lease_reads_the_truth_to_redact_from_the_wargame_alone(board_target):
+def test_a_probe_allocation_reads_the_truth_to_redact_from_the_wargame_alone(board_target):
     wargame = rounds.opened(rounds.problem()).snapshot["wargame"]
 
     truth = service.ground_truth(wargame, board_target)

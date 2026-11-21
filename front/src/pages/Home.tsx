@@ -1,5 +1,5 @@
 import { useMemo, useState } from "preact/hooks";
-import { ApiError, openLease, type Schemas } from "../api/client";
+import { ApiError, openAllocation, type Schemas } from "../api/client";
 import { useAction, useResource } from "../api/hooks";
 import { to } from "../links";
 import type { PageProps } from "../routes";
@@ -15,7 +15,7 @@ import { wargameHost, wargameLead, wargameName } from "./wargameText";
 type Problem = Schemas["LearnerProblemSummary"];
 type RoundLine = Schemas["RoundLine"];
 type LessonLine = Schemas["LessonLine"];
-type Side = Schemas["SeatSideEnum"];
+type Side = Schemas["PlayerSideEnum"];
 type Shown = "all" | "lesson" | "round";
 
 const isLesson = (problem: Problem) => problem.kind === "lesson";
@@ -40,27 +40,27 @@ function catalogueOf(problems: Problem[] | undefined): Catalogue {
 }
 
 function humanSides(line: RoundLine): Side[] {
-  return line.seats.filter((seat) => seat.client === "human" && seat.username !== null).map((seat) => seat.side);
+  return line.players.filter((player) => player.client === "human" && player.username !== null).map((player) => player.side);
 }
 
 function openSides(line: RoundLine): Side[] {
-  return line.seats.filter((seat) => seat.client === "human" && seat.username === null).map((seat) => seat.side);
+  return line.players.filter((player) => player.client === "human" && player.username === null).map((player) => player.side);
 }
 
-function MySeats({ rounds, lessons, catalogue }: { rounds: RoundLine[]; lessons: LessonLine[]; catalogue: Catalogue }) {
-  if (!rounds.length && !lessons.length) return <Card pad="md"><Text tone="muted">{t("home.my_seats_none")}</Text></Card>;
+function MyPlayers({ rounds, lessons, catalogue }: { rounds: RoundLine[]; lessons: LessonLine[]; catalogue: Catalogue }) {
+  if (!rounds.length && !lessons.length) return <Card pad="md"><Text tone="muted">{t("home.my_players_none")}</Text></Card>;
   return (
     <Card list>
       {rounds.map((line) => {
         const sides = humanSides(line);
         const first = sides[0] ?? "defence";
         return (
-          <ListRow key={`r${line.round}`} id={t("round.name", { round: line.round })} href={to.seat(line.round, first)}
+          <ListRow key={`r${line.round}`} id={t("round.name", { round: line.round })} href={to.player(line.round, first)}
             main={<><Text tone="heading">{catalogue.titleOf(line.problem)}</Text><Text tone="muted" small>{tFor("matchup", line.matchup)}</Text></>}
             side={<>
               <Badge tone={phaseTone(line.phase)}>{tFor("phase", line.phase)}</Badge>
               {sides.map((side) => (
-                <Button key={side} tone="ghost" small href={to.seat(line.round, side)}>{t(side === "attack" ? "page.attack" : "page.defence")}</Button>
+                <Button key={side} tone="ghost" small href={to.player(line.round, side)}>{t(side === "attack" ? "page.attack" : "page.defence")}</Button>
               ))}
             </>} />
         );
@@ -75,10 +75,10 @@ function MySeats({ rounds, lessons, catalogue }: { rounds: RoundLine[]; lessons:
 }
 
 function Joinable({ rounds, catalogue }: { rounds: RoundLine[]; catalogue: Catalogue }) {
-  const join = useAction("post", "/api/rounds/{round_id}/seats/{side}/join/");
+  const join = useAction("post", "/api/rounds/{round_id}/players/{side}/join/");
   const take = async (round: number, side: Side) => {
     const joined = await join.run({ params: { round_id: String(round), side } });
-    if (joined) navigate(to.seat(round, joined.side));
+    if (joined) navigate(to.player(round, joined.side));
   };
   return (
     <Stack gap="sm">
@@ -89,8 +89,8 @@ function Joinable({ rounds, catalogue }: { rounds: RoundLine[]; catalogue: Catal
             main={<><Text tone="heading">{catalogue.titleOf(line.problem)}</Text><Text tone="muted" small>{tFor("matchup", line.matchup)}</Text></>}
             side={openSides(line).map((side) => (
               <Badges key={side}>
-                <Badge tone="warn">{t("home.seat_open", { side: sideLabel(side) })}</Badge>
-                <Button tone="primary" small busy={join.busy} onClick={() => void take(line.round, side)}>{t("seat.join")}</Button>
+                <Badge tone="warn">{t("home.player_open", { side: sideLabel(side) })}</Badge>
+                <Button tone="primary" small busy={join.busy} onClick={() => void take(line.round, side)}>{t("player.join")}</Button>
               </Badges>
             ))} />
         ))}
@@ -119,8 +119,8 @@ function ProblemTiles({ catalogue, shown, lessonsMine }: ProblemTilesProps) {
     setOpening(wargame);
     setOpenError(undefined);
     try {
-      const lease = await openLease(wargame);
-      navigate(to.lease(lease.lease));
+      const allocation = await openAllocation(wargame);
+      navigate(to.allocation(allocation.allocation));
     } catch (failed) {
       setOpenError(failed instanceof ApiError ? failed : new ApiError(0, [{ path: "", code: "network" }]));
     } finally {
@@ -249,10 +249,10 @@ export function Home(_props: PageProps) {
       <Tabs tabs={tabs} value={shown} onChange={(id) => setShown(id as Shown)} />
       <PageBody>
         <Stack gap="lg">
-          <Section title={t("home.my_seats")}>
+          <Section title={t("home.my_players")}>
             {mineRounds.loading && lessons.loading
               ? <Loading>{t("common.loading")}</Loading>
-              : <MySeats rounds={showRounds ? roundsOpen : []} lessons={showLessons ? lessonsOpen : []} catalogue={catalogue} />}
+              : <MyPlayers rounds={showRounds ? roundsOpen : []} lessons={showLessons ? lessonsOpen : []} catalogue={catalogue} />}
           </Section>
           {showRounds && joinableShown.length > 0 && (
             <Section title={t("home.joinable")}>

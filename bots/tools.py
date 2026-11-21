@@ -16,12 +16,12 @@ ROUND_PARAMETER = "round_id"
 REFERENCE = "#/components/schemas/"
 METHODS = ("get", "post", "put", "patch", "delete")
 
-ROUND_OPERATIONS = ("round_read", "round_events", "round_topology", "round_score", "lease_heartbeat")
+ROUND_OPERATIONS = ("round_read", "round_events", "round_topology", "round_score", "allocation_heartbeat")
 HUMAN_ONLY = frozenset({"defence_kibana"})
 WITHHELD_PARAMETERS = {"round_score": frozenset({"correlation"})}
 
 DESCRIPTIONS = {
-    "round_read": "Read the round: phase (created, starting, running, ended), matchup, seats, lease id, start, "
+    "round_read": "Read the round: phase (created, starting, running, ended), matchup, players, allocation id, start, "
                   "deadline and end reason.",
     "round_events": "Read the round's event feed after a cursor. Pass the previous answer's `next` as `after` to "
                     "get only new events; you see only the kinds your side may see.",
@@ -29,8 +29,8 @@ DESCRIPTIONS = {
     "round_score": "Read the score once the round has ended: objectives lost and kept, per-case outcomes "
                    "(one declared case is one decision however many alerts it drew) and free actions by origin. "
                    "Refused with round_running while the round runs.",
-    "lease_heartbeat": "Keep the round's lease alive; `lease_id` is the `lease` field of round_read.",
-    "attack_state": "Read the attack seat's state: phase, brief, target hosts, objectives (kept or lost), "
+    "allocation_heartbeat": "Keep the round's allocation alive; `allocation_id` is the `allocation` field of round_read.",
+    "attack_state": "Read the attack player's state: phase, brief, target hosts, objectives (kept or lost), "
                     "every origin with its hit points, and the hp block.",
     "attack_cases": "List the declared attack cases you may fire: case id, kind (http or tool), malicious, title.",
     "attack_fire_case": "Fire one declared case by id. An http case is sent at once; a tool case starts a tool "
@@ -51,7 +51,7 @@ DESCRIPTIONS = {
     "attack_terminal": "Get a short-lived shell on the attacker box: a web terminal URL and an SSH jump grant. "
                        "Traffic from the shell is charged hit points from the WAF access log, a tick late.",
     "attack_forfeit": "Give up the round as the attacker. Ends the round.",
-    "defence_state": "Read the defence seat's state: phase, brief, target hosts, objectives with whether you saw "
+    "defence_state": "Read the defence player's state: phase, brief, target hosts, objectives with whether you saw "
                      "each one go, the applied IDS and WAF versions, and the alert count.",
     "defence_alerts": "Read alerts after a cursor, optionally filtered by `engine` (ids or waf), `rule` and `src` "
                       "(source IP). Pass the previous answer's `next` as `after`.",

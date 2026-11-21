@@ -114,7 +114,7 @@ def test_a_waf_test_nginx_refuses_comes_back_as_errors(as_defender, board_round,
     assert result["errors"] == [{"path": "posture", "code": "crs_refused", "line": 3, "message": "unknown directive"}]
 
 
-def test_a_second_test_while_one_runs_on_the_same_lease_and_engine_is_busy(as_defender, board_round, defender,
+def test_a_second_test_while_one_runs_on_the_same_allocation_and_engine_is_busy(as_defender, board_round, defender,
                                                                            cyber_range):
     seen = []
 
@@ -154,7 +154,7 @@ def test_a_stored_test_reads_back_and_records_the_event_for_the_defence_side_onl
     assert again.json() == made
     assert as_defender.get(url(board_round, f"waf/tests/{made['test']}/")).status_code == 404
     event = Event.objects.get(round_id=board_round.pk, kind="rule.tested")
-    assert event.body == {"test": made["test"], "engine": "ids", "ok": True} and event.seat_side == "defence"
+    assert event.body == {"test": made["test"], "engine": "ids", "ok": True} and event.player_side == "defence"
 
 
 def test_a_test_compares_its_verdicts_with_the_applied_version_s_test(as_defender, board_round):

@@ -8,7 +8,7 @@ from typing import TextIO
 
 from bots import calls, play, provider, tools
 
-TOKEN_VARIABLE = "CR_SEAT_TOKEN"
+TOKEN_VARIABLE = "CR_PLAYER_TOKEN"
 PLATFORM_VARIABLE = "CR_PLATFORM_URL"
 ROUND_VARIABLE = "CR_ROUND"
 COMMANDS = ("tools", "prompt", "call", "run")
@@ -24,7 +24,7 @@ def side_argument(parser: argparse.ArgumentParser, required: bool = True) -> Non
     parser.add_argument("--side", choices=tools.SIDES, required=required)
 
 
-def seat_arguments(parser: argparse.ArgumentParser) -> None:
+def player_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--round", type=int, default=None, help=f"the round id (default: ${ROUND_VARIABLE})")
     parser.add_argument("--base-url", default=None, help=f"the platform's base URL (default: ${PLATFORM_VARIABLE})")
 
@@ -32,7 +32,7 @@ def seat_arguments(parser: argparse.ArgumentParser) -> None:
 def parser() -> argparse.ArgumentParser:
     made = argparse.ArgumentParser(
         prog="python -m bots.cli",
-        description=f"Drive one seat of a round through the attack or defence API. The seat token is read from "
+        description=f"Drive one player of a round through the attack or defence API. The player token is read from "
                     f"${TOKEN_VARIABLE}. Also: python -m bots.cli <tool> --json '{{...}}'.")
     commands = made.add_subparsers(dest="command", required=True)
     side_argument(commands.add_parser("tools", help="print the tool specs of a side as JSON"))
@@ -41,10 +41,10 @@ def parser() -> argparse.ArgumentParser:
     prompt.add_argument("--loop", action="store_true", help="the prompt a provider loop gets, without the CLI part")
     call = commands.add_parser("call", help="read {name, arguments} as JSON on stdin and make that one call")
     side_argument(call)
-    seat_arguments(call)
-    run = commands.add_parser("run", help="let a provider play the seat until it stops or runs out of turns")
+    player_arguments(call)
+    run = commands.add_parser("run", help="let a provider play as the player until it stops or runs out of turns")
     side_argument(run)
-    seat_arguments(run)
+    player_arguments(run)
     run.add_argument("--provider", required=True, help="package.module:factory returning a provider")
     run.add_argument("--turns", type=int, default=play.DEFAULT_TURNS)
     return made
@@ -53,12 +53,12 @@ def parser() -> argparse.ArgumentParser:
 def operation_parser(name: str) -> argparse.ArgumentParser:
     made = argparse.ArgumentParser(prog=f"python -m bots.cli {name}")
     side_argument(made, required=False)
-    seat_arguments(made)
+    player_arguments(made)
     made.add_argument("--json", default="{}", help="the tool's arguments as a JSON object")
     return made
 
 
-def seat_from(arguments: argparse.Namespace, side: str, environment: dict) -> calls.Seat:
+def player_from(arguments: argparse.Namespace, side: str, environment: dict) -> calls.Player:
     token = environment.get(TOKEN_VARIABLE, "")
     base_url = arguments.base_url or environment.get(PLATFORM_VARIABLE, "")
     round_id = arguments.round if arguments.round is not None else environment.get(ROUND_VARIABLE)
@@ -67,7 +67,7 @@ def seat_from(arguments: argparse.Namespace, side: str, environment: dict) -> ca
     if missing:
         raise Unusable(f"set {', '.join(missing)}")
     try:
-        return calls.Seat(base_url=base_url, token=token, round_id=int(round_id), side=side)
+        return calls.Player(base_url=base_url, token=token, round_id=int(round_id), side=side)
     except ValueError as wrong:
         raise Unusable(f"the round id must be a number, not {round_id!r}") from wrong
 
@@ -75,10 +75,10 @@ def seat_from(arguments: argparse.Namespace, side: str, environment: dict) -> ca
 def side_of_operation(name: str, chosen: str | None) -> str:
     holding = [side for side in tools.SIDES if name in tools.operations(side)]
     if not holding:
-        raise Unusable(f"no seat has a tool named {name!r}; see python -m bots.cli tools --side <side>")
+        raise Unusable(f"no player has a tool named {name!r}; see python -m bots.cli tools --side <side>")
     if chosen:
         if chosen not in holding:
-            raise Unusable(f"the {chosen} seat has no tool named {name!r}")
+            raise Unusable(f"the {chosen} player has no tool named {name!r}")
         return chosen
     return holding[0]
 
@@ -100,8 +100,8 @@ def exit_code(outcome: dict) -> int:
     return UNREACHABLE if "unreachable" in codes else USAGE_ERROR
 
 
-def made_call(seat: calls.Seat, name: str, arguments, out: TextIO) -> int:
-    outcome = calls.call(seat, name, arguments)
+def made_call(player: calls.Player, name: str, arguments, out: TextIO) -> int:
+    outcome = calls.call(player, name, arguments)
     print(calls.printed(outcome), file=out)
     return exit_code(outcome)
 
@@ -113,12 +113,12 @@ def operation_mode(argv: list[str], out: TextIO, environment: dict) -> int:
         given = json.loads(arguments.json)
     except ValueError as wrong:
         raise Unusable(f"--json is not JSON: {wrong}") from wrong
-    seat = seat_from(arguments, side_of_operation(name, arguments.side), environment)
-    return made_call(seat, name, given, out)
+    player = player_from(arguments, side_of_operation(name, arguments.side), environment)
+    return made_call(player, name, given, out)
 
 
 def run(arguments: argparse.Namespace, out: TextIO, environment: dict) -> int:
-    seat = seat_from(arguments, arguments.side, environment)
+    player = player_from(arguments, arguments.side, environment)
     try:
         chosen = provider.load(arguments.provider)
     except provider.ProviderNotFound as missing:
@@ -127,7 +127,7 @@ def run(arguments: argparse.Namespace, out: TextIO, environment: dict) -> int:
     def report(entry: dict) -> None:
         print(json.dumps(entry, ensure_ascii=False), file=out, flush=True)
 
-    played = play.play(seat, chosen, turns=arguments.turns, report=report)
+    played = play.play(player, chosen, turns=arguments.turns, report=report)
     report({"role": "end", "reason": played.reason, "turns": played.turns})
     return 0
 
@@ -148,9 +148,9 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None, out: TextIO
             print(play.system_prompt(arguments.side, driving_the_cli=not arguments.loop), file=out)
             return 0
         if arguments.command == "call":
-            seat = seat_from(arguments, arguments.side, environment)
+            player = player_from(arguments, arguments.side, environment)
             name, given = parsed_call(stdin.read())
-            return made_call(seat, name, given, out)
+            return made_call(player, name, given, out)
         return run(arguments, out, environment)
     except Unusable as unusable:
         print(f"bots.cli: {unusable}", file=sys.stderr)

@@ -42,7 +42,7 @@ def attack_round(make_round):
 
 @pytest.fixture
 def attacker(attack_round, learner):
-    return rounds.seated(attack_round, "attack", learner)
+    return rounds.playing(attack_round, "attack", learner)
 
 
 @pytest.fixture

@@ -36,14 +36,14 @@ log.write("end\\n")
 """
 
 
-def held_connection(lease: int, log: str) -> None:
+def held_connection(allocation: int, log: str) -> None:
     started = run(ATTACKER, ["sh", "-c", f"nohup python3 -c {shlex.quote(KEEP_ALIVE)} {shlex.quote(log)} "
-                                         f"{HELD_FOR_S} {EVERY_S} >/dev/null 2>&1 &"], lease=lease)
+                                         f"{HELD_FOR_S} {EVERY_S} >/dev/null 2>&1 &"], allocation=allocation)
     assert started.ok, f"could not open the held connection on the attacker box: {started.stderr}"
 
 
-def connection_log(lease: int, log: str) -> list[tuple[float, str]]:
-    read = run(ATTACKER, ["cat", log], lease=lease)
+def connection_log(allocation: int, log: str) -> list[tuple[float, str]]:
+    read = run(ATTACKER, ["cat", log], allocation=allocation)
     return [(float(at), said) for at, _, said in (line.partition(" ") for line in read.stdout.splitlines())
             if at.replace(".", "", 1).isdigit()]
 
@@ -82,12 +82,12 @@ def customers_after(played: plays.Played, attack_ips: set[str], since: float) ->
 def spent_round():
     with plays.Round("board", SETUP) as played:
         log = f"/tmp/cr-held-{uuid.uuid4().hex[:8]}.log"
-        held_connection(played.lease, log)
+        held_connection(played.allocation, log)
         time.sleep(3 * EVERY_S)
         first, answers = spend_the_first_origin(played)
         spent_events = [event for event in plays.events(played, {"origin.spent", "origin.switched"})]
         time.sleep(GRACE_S + 2 * EVERY_S)
-        held = connection_log(played.lease, log)
+        held = connection_log(played.allocation, log)
         state = plays.attack_seen(played)
         attack_ips = {origin["ip"] for origin in state["origins"]}
         customers = customers_after(played, attack_ips, spent_after(spent_events) + GRACE_S)

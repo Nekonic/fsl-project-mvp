@@ -207,7 +207,7 @@ OPENCHECK
 )"
 if [ -n "$open_rounds" ]; then
   fail "a round is open (ids: $open_rounds)"
-  echo "     bin/verify restarts the platform and prunes leases, which would"
+  echo "     bin/verify restarts the platform and prunes allocations, which would"
   echo "     disrupt an open one. End it first, or wait for it to finish."
   exit 1
 fi
@@ -224,8 +224,8 @@ else
   stack_down "platform not responding after a restart — docker compose logs platform"
 fi
 
-CR_ACCEPTANCE_LEASES="$(mktemp)"
-export CR_ACCEPTANCE_LEASES
+CR_ACCEPTANCE_ALLOCATIONS="$(mktemp)"
+export CR_ACCEPTANCE_ALLOCATIONS
 
 RULES_SAID="$(mktemp)"
 opened="$("$PY" - "$RULES_SAID" <<'OPENSTACK'
@@ -234,8 +234,8 @@ sys.path[:0] = [os.getcwd(), os.path.join(os.getcwd(), "test")]
 import plays
 
 def listed(played):
-    with open(os.environ["CR_ACCEPTANCE_LEASES"], "a") as ids:
-        ids.write(f"{played.lease}\n")
+    with open(os.environ["CR_ACCEPTANCE_ALLOCATIONS"], "a") as ids:
+        ids.write(f"{played.allocation}\n")
 
 plays.LISTENERS.append(listed)
 try:
@@ -243,7 +243,7 @@ try:
 except Exception as error:
     print(error, file=sys.stderr)
     sys.exit(1)
-print(played.lease)
+print(played.allocation)
 try:
     checked = plays.check_ids(played, plays.declared_rules())
     said = "ok" if checked.ok and checked.body["ok"] else checked.text
@@ -258,13 +258,13 @@ OPENSTACK
 )"
 warmed=$?
 if [ "$warmed" -eq 0 ]; then
-  ok "lease $opened held a slot, its round started and the target is healthy"
+  ok "allocation $opened held a slot, its round started and the target is healthy"
 elif [ "$warmed" -eq 2 ]; then
-  fail "lease $opened held a slot but did not close (reason above);"
-  echo "     the next lease may find no slot - close it or check the platform log."
+  fail "allocation $opened held a slot but did not close (reason above);"
+  echo "     the next allocation may find no slot - close it or check the platform log."
   exit 1
 else
-  fail "no lease got a slot whose round could start (reason above) - attacks would"
+  fail "no allocation got a slot whose round could start (reason above) - attacks would"
   echo "     leave and hit nothing, and the acceptance run would report TP 0 as if"
   echo "     the defence had failed."
   exit 1
@@ -275,7 +275,7 @@ if [ "$(cat "$RULES_SAID")" = ok ]; then
 else
   cat "$RULES_SAID"
   echo
-  fail "suricata could not check deploy/suricata/rules/local.rules on lease $opened's sensors (reason above)"
+  fail "suricata could not check deploy/suricata/rules/local.rules on allocation $opened's sensors (reason above)"
 fi
 rm -f "$RULES_SAID"
 
@@ -287,10 +287,10 @@ else
 fi
 
 section "housekeeping"
-if pruned="$(./bin/prune --ids "$CR_ACCEPTANCE_LEASES" --apply 2>&1)"; then
-  ok "$(printf '%s\n' "$pruned" | head -1) - only leases this run made"
+if pruned="$(./bin/prune --ids "$CR_ACCEPTANCE_ALLOCATIONS" --apply 2>&1)"; then
+  ok "$(printf '%s\n' "$pruned" | head -1) - only allocations this run made"
 else
-  printf '     could not prune the leases this run made; their ids are in %s\n' "$CR_ACCEPTANCE_LEASES"
+  printf '     could not prune the allocations this run made; their ids are in %s\n' "$CR_ACCEPTANCE_ALLOCATIONS"
 fi
 }
 

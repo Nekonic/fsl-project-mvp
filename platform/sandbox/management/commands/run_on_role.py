@@ -4,7 +4,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from cr import errors
 from sandbox import reach
-from training.round import lease as leases
+from training.round import allocation as allocations
 
 ANSWER = "cr.platform.answer="
 
@@ -17,14 +17,14 @@ class Command(BaseCommand):
         parser.add_argument("role")
         parser.add_argument("argv", help="the command as a JSON list")
         parser.add_argument("--timeout", type=float, default=60.0)
-        parser.add_argument("--lease", type=int, help="run on the slot this open lease holds")
+        parser.add_argument("--allocation", type=int, help="run on the slot this open allocation holds")
         parser.add_argument("--slot", type=int, help="run on this slot")
 
-    def handle(self, role, argv, timeout, lease=None, slot=None, **options):
-        if lease is not None:
-            held = leases.lease(lease)
+    def handle(self, role, argv, timeout, allocation=None, slot=None, **options):
+        if allocation is not None:
+            held = allocations.allocation(allocation)
             if held.closed is not None:
-                raise CommandError(f"lease {lease} is closed, so it holds no slot")
+                raise CommandError(f"allocation {allocation} is closed, so it holds no slot")
             slot = held.slot
         try:
             ran = reach.slot_range(slot).runner(role)(json.loads(argv), timeout=timeout)

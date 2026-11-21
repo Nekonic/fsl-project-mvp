@@ -2,7 +2,7 @@ from django.db import models
 from django.utils import timezone
 
 from domain.types import ENGINES
-from training.models import Lease, Round
+from training.models import Allocation, Round
 
 ENGINE_CHOICES = [(engine, engine) for engine in ENGINES]
 
@@ -11,7 +11,7 @@ class Event(models.Model):
     id = models.BigAutoField(primary_key=True)
     round_id = models.BigIntegerField()
     kind = models.CharField(max_length=32)
-    seat_side = models.CharField(max_length=8, null=True, blank=True)
+    player_side = models.CharField(max_length=8, null=True, blank=True)
     at = models.DateTimeField(default=timezone.now)
     body = models.JSONField(default=dict)
 
@@ -40,10 +40,10 @@ class Detection(models.Model):
 
 
 class AlertCursor(models.Model):
-    lease = models.OneToOneField(Lease, on_delete=models.CASCADE, related_name="alert_cursor")
+    allocation = models.OneToOneField(Allocation, on_delete=models.CASCADE, related_name="alert_cursor")
     cursor = models.JSONField(default=dict)
 
 
 class AccessCursor(models.Model):
-    lease = models.OneToOneField(Lease, on_delete=models.CASCADE, related_name="access_cursor")
+    allocation = models.OneToOneField(Allocation, on_delete=models.CASCADE, related_name="access_cursor")
     cursor = models.JSONField(default=dict)

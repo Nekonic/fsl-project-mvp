@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 
 from sandbox import service as sandbox
 from training.round import access as auth
-from training.round import lease as leases
+from training.round import allocation as allocations
 from training.round import lifecycle as service
 from training.round import serializers
 from users import permissions as accounts
@@ -26,14 +26,14 @@ def given(serializer, data):
     return checked.validated_data
 
 
-def shown_lease(held, serializer=serializers.LeaseShown):
-    held.ready = leases.ready(held)
+def shown_allocation(held, serializer=serializers.AllocationShown):
+    held.ready = allocations.ready(held)
     return serializer(held).data
 
 
-class SeatTokenScheme(OpenApiAuthenticationExtension):
-    target_class = auth.SeatTokenAuthentication
-    name = "seat_token"
+class PlayerTokenScheme(OpenApiAuthenticationExtension):
+    target_class = auth.PlayerTokenAuthentication
+    name = "player_token"
 
     def get_security_definition(self, auto_schema):
         return {"type": "http", "scheme": "bearer"}
@@ -43,48 +43,48 @@ class MatchView(APIView):
     authentication_classes = auth.ROUND_AUTHENTICATION
 
 
-class Leases(MatchView):
+class Allocations(MatchView):
     permission_classes = [auth.Approved]
 
-    @extend_schema(tags=TAGS, request=serializers.OpenLease, responses={201: serializers.LeaseShown},
-                   operation_id="lease_open")
+    @extend_schema(tags=TAGS, request=serializers.OpenAllocation, responses={201: serializers.AllocationShown},
+                   operation_id="allocation_open")
     def post(self, request):
-        held = leases.open_lease(request.user, given(serializers.OpenLease, request.data)["wargame"])
-        return Response(shown_lease(held), status=status.HTTP_201_CREATED)
+        held = allocations.open_allocation(request.user, given(serializers.OpenAllocation, request.data)["wargame"])
+        return Response(shown_allocation(held), status=status.HTTP_201_CREATED)
 
 
-class Lease(MatchView):
+class Allocation(MatchView):
     permission_classes = [auth.IsOperator]
 
-    @extend_schema(tags=TAGS, responses=serializers.LeaseDetail, operation_id="lease_read")
-    def get(self, request, lease_id: int):
-        return Response(shown_lease(request.lease, serializers.LeaseDetail))
+    @extend_schema(tags=TAGS, responses=serializers.AllocationDetail, operation_id="allocation_read")
+    def get(self, request, allocation_id: int):
+        return Response(shown_allocation(request.allocation, serializers.AllocationDetail))
 
 
 class Heartbeat(MatchView):
-    permission_classes = [auth.OnLease]
+    permission_classes = [auth.OnAllocation]
 
-    @extend_schema(tags=TAGS, request=None, responses=serializers.Expiry, operation_id="lease_heartbeat")
-    def post(self, request, lease_id: int):
-        return Response(serializers.Expiry(leases.heartbeat(request.lease)).data)
+    @extend_schema(tags=TAGS, request=None, responses=serializers.Expiry, operation_id="allocation_heartbeat")
+    def post(self, request, allocation_id: int):
+        return Response(serializers.Expiry(allocations.heartbeat(request.allocation)).data)
 
 
-class CloseLease(MatchView):
+class CloseAllocation(MatchView):
     permission_classes = [auth.IsOperator]
 
-    @extend_schema(tags=TAGS, request=None, responses=serializers.Closed, operation_id="lease_close")
-    def post(self, request, lease_id: int):
-        return Response(serializers.Closed(leases.close_lease(request.lease)).data)
+    @extend_schema(tags=TAGS, request=None, responses=serializers.Closed, operation_id="allocation_close")
+    def post(self, request, allocation_id: int):
+        return Response(serializers.Closed(allocations.close_allocation(request.allocation)).data)
 
 
-class LeaseRounds(MatchView):
+class AllocationRounds(MatchView):
     permission_classes = [auth.IsOperator]
 
     @extend_schema(tags=TAGS, request=serializers.CreateRound, responses={201: serializers.Created},
                    operation_id="round_create")
-    def post(self, request, lease_id: int):
+    def post(self, request, allocation_id: int):
         asked = given(serializers.CreateRound, request.data)
-        made = service.create_round(request.lease, asked["problem"], asked["matchup"], dict(asked["seats"]))
+        made = service.create_round(request.allocation, asked["problem"], asked["matchup"], dict(asked["players"]))
         return Response(serializers.Created(made).data, status=status.HTTP_201_CREATED)
 
 
@@ -104,8 +104,8 @@ class Join(MatchView):
 
     @extend_schema(tags=TAGS, request=None, responses=serializers.Joined, operation_id="round_join")
     def post(self, request, round_id: int, side: str):
-        seat = service.join(service.round_of(round_id), side, request.user)
-        return Response(serializers.Joined(seat).data)
+        player = service.join(service.round_of(round_id), side, request.user)
+        return Response(serializers.Joined(player).data)
 
 
 class Start(MatchView):
@@ -149,7 +149,7 @@ class Topology(MatchView):
 
     @extend_schema(tags=TAGS, responses=serializers.Topology, operation_id="round_topology")
     def get(self, request, round_id: int):
-        side = service.shown_side(request.seats, request.operator)
+        side = service.shown_side(request.players, request.operator)
         return Response(serializers.Topology(service.map_of(request.round, side)).data)
 
 
@@ -160,7 +160,7 @@ class SiteRequests(MatchView):
                    operation_id="round_site_requests")
     def get(self, request, round_id: int):
         after = given(serializers.SiteQuery, request.query_params)["after"]
-        return Response(serializers.SiteRequest(service.site_requests(request.round, request.seats, after),
+        return Response(serializers.SiteRequest(service.site_requests(request.round, request.players, after),
                                                 many=True).data)
 
 
@@ -178,7 +178,7 @@ class TerminalAuth(MatchView):
 
 
 class AttackTerminalAuth(TerminalAuth):
-    permission_classes = [auth.HasSeat("attack")]
+    permission_classes = [auth.IsPlayer("attack")]
 
     @extend_schema(tags=TAGS, responses={204: None}, operation_id="round_terminal_auth_attack")
     def get(self, request, round_id: int):
@@ -186,7 +186,7 @@ class AttackTerminalAuth(TerminalAuth):
 
 
 class DefenceTerminalAuth(TerminalAuth):
-    permission_classes = [auth.HasSeat("defence")]
+    permission_classes = [auth.IsPlayer("defence")]
 
     @extend_schema(tags=TAGS, responses={204: None}, operation_id="round_terminal_auth_defence")
     def get(self, request, round_id: int):
@@ -197,10 +197,10 @@ class Forfeit(MatchView):
     side = ""
 
     def get_permissions(self):
-        return [auth.HasSeat(self.side)()]
+        return [auth.IsPlayer(self.side)()]
 
     def post(self, request, round_id: int):
-        return Response(serializers.Ended(service.forfeit(request.round, request.seat)).data)
+        return Response(serializers.Ended(service.forfeit(request.round, request.player)).data)
 
 
 class AttackForfeit(Forfeit):
@@ -224,7 +224,7 @@ class StaffRange(MatchView):
 
     @extend_schema(tags=STAFF_TAGS, responses=serializers.Range, operation_id="staff_range")
     def get(self, request):
-        return Response(serializers.Range({"slots": [asdict(one) for one in leases.slots()]}).data)
+        return Response(serializers.Range({"slots": [asdict(one) for one in allocations.slots()]}).data)
 
 
 def shown_removed(found) -> Response:
@@ -260,7 +260,7 @@ class StaffPool(MatchView):
 
     @extend_schema(tags=STAFF_TAGS, request=None, responses=serializers.Range, operation_id="staff_pool_fill")
     def post(self, request):
-        return Response(serializers.Range({"slots": [asdict(one) for one in leases.fill_pool()]}).data)
+        return Response(serializers.Range({"slots": [asdict(one) for one in allocations.fill_pool()]}).data)
 
     @extend_schema(tags=STAFF_TAGS, responses=serializers.RemovedList, operation_id="staff_pool_empty")
     def delete(self, request):
@@ -270,19 +270,19 @@ class StaffPool(MatchView):
 class RecordProbes(MatchView):
     permission_classes = [accounts.IsStaff]
 
-    @extend_schema(tags=STAFF_TAGS, request=None, responses={202: serializers.ProbeLease},
+    @extend_schema(tags=STAFF_TAGS, request=None, responses={202: serializers.ProbeAllocation},
                    operation_id="staff_probes_record")
     def post(self, request, wargame_id: str):
         held = service.record_probes(wargame_id, request.user)
-        return Response(serializers.ProbeLease(held).data, status=status.HTTP_202_ACCEPTED)
+        return Response(serializers.ProbeAllocation(held).data, status=status.HTTP_202_ACCEPTED)
 
 
 class ProbeProgress(MatchView):
     permission_classes = [accounts.IsStaff]
 
     @extend_schema(tags=STAFF_TAGS, responses=serializers.ProbeProgress, operation_id="staff_probes_progress")
-    def get(self, request, lease_id: int):
-        return Response(serializers.ProbeProgress(asdict(service.probe_progress(lease_id))).data)
+    def get(self, request, allocation_id: int):
+        return Response(serializers.ProbeProgress(asdict(service.probe_progress(allocation_id))).data)
 
 
 class Passthrough(renderers.BaseRenderer):
@@ -298,14 +298,14 @@ class Passthrough(renderers.BaseRenderer):
 
 @extend_schema(exclude=True)
 class SiteProxy(APIView):
-    authentication_classes = (auth.SeatTokenAuthentication, users.FramedSessionAuthentication)
+    authentication_classes = (auth.PlayerTokenAuthentication, users.FramedSessionAuthentication)
     permission_classes = [auth.InRound]
     renderer_classes = [Passthrough]
 
     def answer(self, request, round_id: int, host: str, rest: str = ""):
         path = "/" + rest + (f"?{request.META['QUERY_STRING']}" if request.META.get("QUERY_STRING") else "")
         body = request.body.decode("utf-8", "replace") if request.body else None
-        fetched = service.browse(request.round, request.seats, request.method, host, path, dict(request.headers),
+        fetched = service.browse(request.round, request.players, request.method, host, path, dict(request.headers),
                                  body)
         kind = next((value for name, value in fetched.headers if name.lower() == "content-type"), "text/plain")
         answered = Response(fetched.body, status=fetched.status, content_type=kind)

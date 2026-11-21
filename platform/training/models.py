@@ -78,12 +78,12 @@ PURPOSES = [(purpose, purpose) for purpose in ("round", "probe")]
 ROUND_KINDS = [("round", "round")]
 MATCHUPS = [(matchup.value, matchup.value) for matchup in Matchup]
 PHASES = [(phase.value, phase.value) for phase in Phase]
-SEAT_SIDES = [(side, side) for side in ("attack", "defence")]
+PLAYER_SIDES = [(side, side) for side in ("attack", "defence")]
 CLIENTS = [(client, client) for client in (HUMAN, BOT)]
 REASONS = [(reason, reason) for reason in END_REASONS]
 
 
-class Lease(models.Model):
+class Allocation(models.Model):
     wargame = models.ForeignKey(Wargame, on_delete=models.PROTECT, related_name="+")
     purpose = models.CharField(max_length=8, choices=PURPOSES)
     slot = models.PositiveIntegerField(null=True, blank=True)
@@ -99,7 +99,7 @@ class Lease(models.Model):
 
 
 class Round(models.Model):
-    lease = models.ForeignKey(Lease, on_delete=models.CASCADE, related_name="rounds")
+    allocation = models.ForeignKey(Allocation, on_delete=models.CASCADE, related_name="rounds")
     problem = models.ForeignKey(Problem, on_delete=models.PROTECT, related_name="+")
     kind = models.CharField(max_length=8, choices=ROUND_KINDS)
     matchup = models.CharField(max_length=16, choices=MATCHUPS, blank=True, default="")
@@ -117,9 +117,9 @@ class Round(models.Model):
         ordering = ["id"]
 
 
-class Seat(models.Model):
-    round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name="seats")
-    side = models.CharField(max_length=8, choices=SEAT_SIDES)
+class Player(models.Model):
+    round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name="players")
+    side = models.CharField(max_length=8, choices=PLAYER_SIDES)
     client = models.CharField(max_length=8, choices=CLIENTS)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
                              related_name="+")
@@ -129,7 +129,7 @@ class Seat(models.Model):
 
     class Meta:
         ordering = ["round_id", "side"]
-        constraints = [models.UniqueConstraint(fields=["round", "side"], name="one_seat_per_side")]
+        constraints = [models.UniqueConstraint(fields=["round", "side"], name="one_player_per_side")]
 
 
 class CustomerRequest(models.Model):
@@ -154,12 +154,12 @@ class CustomerRequest(models.Model):
 
 ACTION_KIND_CHOICES = [(kind, kind) for kind in ACTION_KINDS]
 CORRELATIONS = [(strategy, strategy) for strategy in CORRELATION_STRATEGIES]
-STOPPED_BY = [(reason, reason) for reason in ("seat", "origin_spent", "round_end")]
+STOPPED_BY = [(reason, reason) for reason in ("player", "origin_spent", "round_end")]
 
 
 class Action(models.Model):
     round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name="actions")
-    seat = models.ForeignKey(Seat, on_delete=models.CASCADE, related_name="actions")
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="actions")
     kind = models.CharField(max_length=8, choices=ACTION_KIND_CHOICES)
     case_id = models.CharField(max_length=100, null=True, blank=True)
     malicious = models.BooleanField(null=True, blank=True)
@@ -212,7 +212,7 @@ ENGINE_CHOICES = [(engine, engine) for engine in ENGINES]
 
 class RuleTest(models.Model):
     round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name="rule_tests")
-    seat = models.ForeignKey(Seat, on_delete=models.CASCADE, null=True, blank=True, related_name="rule_tests")
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, null=True, blank=True, related_name="rule_tests")
     engine = models.CharField(max_length=8, choices=ENGINE_CHOICES)
     body_sha = models.CharField(max_length=64)
     body = models.TextField()
@@ -231,7 +231,7 @@ class RuleSet(models.Model):
     body = models.TextField()
     applied_at = models.DateTimeField()
     tested = models.ForeignKey(RuleTest, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
-    seat = models.ForeignKey(Seat, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    player = models.ForeignKey(Player, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     same_as_tested = models.BooleanField(default=False)
     sensors = models.JSONField(default=list)
     drifted_at = models.DateTimeField(null=True, blank=True)

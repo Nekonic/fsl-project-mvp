@@ -73,15 +73,15 @@ def server_status(stack: str, server: str, provisioned: str) -> str:
 
 def phase(plan: Plan, held, resetting: dict, checks: dict, running: str = "running", failed: str = "failed") -> tuple[str, list[str]]:
     if held is not None:
-        return "IN_USE", [f"lease {held} holds this slot"]
+        return "IN_USE", [f"allocation {held} holds this slot"]
     if resetting["state"] == running:
         return "RESETTING", [
-            "the slot is refilling after a lease closed (its stack deleted and created again, its sensor "
+            "the slot is refilling after an allocation closed (its stack deleted and created again, its sensor "
             "back on the baseline rules)"
         ]
     if resetting["state"] == failed:
         return "RESET_FAILED", [
-            f"the slot refill after the last lease failed: {resetting['reason']}"
+            f"the slot refill after the last allocation failed: {resetting['reason']}"
         ]
     if plan.boot or plan.blocked:
         return "NOT_STANDING", list(plan.blocked) or [f"{name} is not standing" for name in plan.boot]

@@ -56,14 +56,14 @@ attack_urls = [
 ]
 
 round_urls = [
-    path("leases/", rounds.Leases.as_view()),
-    path("leases/<int:lease_id>/", rounds.Lease.as_view()),
-    path("leases/<int:lease_id>/heartbeat/", rounds.Heartbeat.as_view()),
-    path("leases/<int:lease_id>/close/", rounds.CloseLease.as_view()),
-    path("leases/<int:lease_id>/rounds/", rounds.LeaseRounds.as_view()),
+    path("allocations/", rounds.Allocations.as_view()),
+    path("allocations/<int:allocation_id>/", rounds.Allocation.as_view()),
+    path("allocations/<int:allocation_id>/heartbeat/", rounds.Heartbeat.as_view()),
+    path("allocations/<int:allocation_id>/close/", rounds.CloseAllocation.as_view()),
+    path("allocations/<int:allocation_id>/rounds/", rounds.AllocationRounds.as_view()),
     path("rounds/", rounds.Rounds.as_view()),
     path(ROUND, rounds.RoundDetail.as_view()),
-    re_path(r"^rounds/(?P<round_id>[0-9]+)/seats/(?P<side>attack|defence)/join/$", rounds.Join.as_view()),
+    re_path(r"^rounds/(?P<round_id>[0-9]+)/players/(?P<side>attack|defence)/join/$", rounds.Join.as_view()),
     path(f"{ROUND}start/", rounds.Start.as_view()),
     path(f"{ROUND}end/", rounds.End.as_view()),
     path(f"{ROUND}score/", rounds.Score.as_view()),
@@ -78,7 +78,7 @@ round_urls = [
     path("staff/range/leftovers/", rounds.StaffLeftovers.as_view()),
     path("staff/range/pool/", rounds.StaffPool.as_view()),
     path("staff/wargames/<str:wargame_id>/probes/record/", rounds.RecordProbes.as_view()),
-    path("staff/probes/<int:lease_id>/", rounds.ProbeProgress.as_view()),
+    path("staff/probes/<int:allocation_id>/", rounds.ProbeProgress.as_view()),
 ]
 
 gate = [

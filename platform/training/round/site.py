@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from cr import errors
 from training.attack import actions as attack
-from training.models import Round, Seat
+from training.models import Round, Player
 from training.round import access as auth
 
 KEPT_PER_ROUND = 200
@@ -34,12 +34,12 @@ class Fetched:
     hp_left: int | None
 
 
-def attack_seat(found: Round, seated: Sequence[Seat]) -> Seat | None:
-    return next((seat for seat in seated if seat.side == "attack"), None)
+def attack_player(found: Round, playing: Sequence[Player]) -> Player | None:
+    return next((player for player in playing if player.side == "attack"), None)
 
 
-def pane_of(found: Round, seated: Sequence[Seat]) -> str:
-    return ATTACK_PANE if attack_seat(found, seated) is not None else BROWSE_PANE
+def pane_of(found: Round, playing: Sequence[Player]) -> str:
+    return ATTACK_PANE if attack_player(found, playing) is not None else BROWSE_PANE
 
 
 def checked_host(found: Round, host: str) -> str:
@@ -85,22 +85,22 @@ def remember(found: Round, pane: str, method: str, host: str, path: str, status:
             "status": status, "size": size})
 
 
-def browse(found: Round, seated: Sequence[Seat], method: str, host: str, path: str,
+def browse(found: Round, playing: Sequence[Player], method: str, host: str, path: str,
            headers: Mapping[str, str], body: str | None) -> Fetched:
     auth.refuse_write(found)
     host = checked_host(found, host)
     passed = {name: headers[name] for name in PASSED_ON if headers.get(name)}
-    seat = attack_seat(found, seated)
-    pane = pane_of(found, seated)
+    player = attack_player(found, playing)
+    pane = pane_of(found, playing)
     cookie = cookie_header(found.pk, pane, host)
     if cookie:
         passed["Cookie"] = cookie
-    if seat is not None:
-        sent = attack.send(found, seat, method, path, host=host, headers=passed, body=body, kind="site")
+    if player is not None:
+        sent = attack.send(found, player, method, path, host=host, headers=passed, body=body, kind="site")
         left = attack.hp(found).left
     else:
         sent = attack.send_as_customer(found, browse_source(found), method, path, host=host, headers=passed,
-                                       body=body, marker=found.lease.browse_marker)
+                                       body=body, marker=found.allocation.browse_marker)
         left = None
     keep_cookies(found.pk, pane, host, sent.headers)
     remember(found, pane, method, host, path, sent.status, len(sent.body))
@@ -108,9 +108,9 @@ def browse(found: Round, seated: Sequence[Seat], method: str, host: str, path: s
     return Fetched(status=sent.status, headers=returned, body=sent.body, hp_left=left)
 
 
-def requests_of(found: Round, seated: Sequence[Seat], after: int = 0) -> list[dict]:
+def requests_of(found: Round, playing: Sequence[Player], after: int = 0) -> list[dict]:
     with guard:
-        return [record for record in kept.get((found.pk, pane_of(found, seated)), ()) if record["id"] > after]
+        return [record for record in kept.get((found.pk, pane_of(found, playing)), ()) if record["id"] > after]
 
 
 def forget(round_id: int) -> None:

@@ -24,11 +24,11 @@ function standing(slot: number, wargame: string, status: string, failures: strin
 }
 
 const slots = [
-  { slot: 1, wargame: "board", lease: 6, refill: { state: "idle", reason: "" } },
-  { slot: 2, wargame: "board", lease: 7, refill: { state: "idle", reason: "" } },
-  { slot: 3, wargame: "board", lease: null, refill: { state: "running", reason: "" } },
-  { slot: 4, wargame: "corp", lease: 9, refill: { state: "idle", reason: "" } },
-  { slot: 5, wargame: "corp", lease: null, refill: { state: "idle", reason: "" } },
+  { slot: 1, wargame: "board", allocation: 6, refill: { state: "idle", reason: "" } },
+  { slot: 2, wargame: "board", allocation: 7, refill: { state: "idle", reason: "" } },
+  { slot: 3, wargame: "board", allocation: null, refill: { state: "running", reason: "" } },
+  { slot: 4, wargame: "corp", allocation: 9, refill: { state: "idle", reason: "" } },
+  { slot: 5, wargame: "corp", allocation: null, refill: { state: "idle", reason: "" } },
 ];
 
 let probeReads = 0;
@@ -68,14 +68,14 @@ export const fixtures = [
   ]),
   reply("post", "/api/staff/wargames/{wargame_id}/probes/record/", () => {
     probeReads = 0;
-    return { lease: 9 };
+    return { allocation: 9 };
   }, { status: 202 }),
   refuse("post", "/api/staff/wargames/{wargame_id}/probes/record/", 409, [{ path: "", code: "probe_running" }], { variant: "probe-running" }),
-  reply("get", "/api/staff/probes/{lease_id}/", (asked) => {
+  reply("get", "/api/staff/probes/{allocation_id}/", (asked) => {
     probeReads += 1;
     const done = ["benign-home", "benign-search", "sqli-login", "xss-comment", "path-traversal", "cmd-injection"].slice(0, Math.min(6, probeReads));
     return {
-      lease: Number(asked.params.lease_id),
+      allocation: Number(asked.params.allocation_id),
       wargame: "corp",
       state: probeReads >= 7 ? "done" : "recording",
       total: 7,

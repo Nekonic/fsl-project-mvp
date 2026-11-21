@@ -23,24 +23,24 @@ KEY_NAME_SHAPE = re.compile(r"[a-z0-9-]+")
 PUBLIC_KEY = re.compile(r"ssh-ed25519 [A-Za-z0-9+/]+={0,2}")
 GRANT = re.compile(
     r'restrict,port-forwarding,permitopen="(?P<address>[0-9.]+):(?P<port>\d+)" '
-    r"(?P<key>ssh-ed25519 [A-Za-z0-9+/]+={0,2}) cr-session-(?P<seat>\d+)"
+    r"(?P<key>ssh-ed25519 [A-Za-z0-9+/]+={0,2}) cr-session-(?P<player>\d+)"
 )
 _WRITING = threading.Lock()
 
 
 @dataclass(frozen=True)
 class Grant:
-    seat_id: int
+    player_id: int
     address: str
     public_key: str
 
     @property
     def name(self) -> str:
-        return key_name(self.seat_id)
+        return key_name(self.player_id)
 
     @property
     def line(self) -> str:
-        return authorized_keys_line(self.public_key, self.address, self.seat_id)
+        return authorized_keys_line(self.public_key, self.address, self.player_id)
 
     @property
     def fingerprint(self) -> str:
@@ -64,34 +64,34 @@ class Access:
     target_user: str
 
 
-def key_name(seat_id: int) -> str:
-    return KEY_NAME.format(int(seat_id))
+def key_name(player_id: int) -> str:
+    return KEY_NAME.format(int(player_id))
 
 
 def box_address(given: str) -> str:
     try:
         return str(ipaddress.IPv4Address(given))
     except (ipaddress.AddressValueError, ValueError) as exc:
-        raise RangeUnavailable(f"the seat's box has no management address to forward to: {given!r}") from exc
+        raise RangeUnavailable(f"the player's box has no management address to forward to: {given!r}") from exc
 
 
-def authorized_keys_line(public_key: str, address: str, seat_id: int) -> str:
+def authorized_keys_line(public_key: str, address: str, player_id: int) -> str:
     if not PUBLIC_KEY.fullmatch(public_key):
         raise ValueError(f"not one ed25519 public key: {public_key[:80]!r}")
     return (f'restrict,port-forwarding,permitopen="{box_address(address)}:{BOX_SSH_PORT}" '
-            f"{public_key} {key_name(seat_id)}")
+            f"{public_key} {key_name(player_id)}")
 
 
 def keys_file(config: JumpConfig) -> Path:
     return Path(config.directory) / "authorized_keys"
 
 
-def keypair(seat_id: int) -> tuple[str, str]:
+def keypair(player_id: int) -> tuple[str, str]:
     with tempfile.TemporaryDirectory() as scratch:
         made = Path(scratch) / "key"
         try:
             subprocess.run(
-                ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", key_name(seat_id), "-f", str(made)],
+                ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", key_name(player_id), "-f", str(made)],
                 check=True, capture_output=True, text=True, timeout=30,
             )
         except (OSError, subprocess.SubprocessError) as exc:
@@ -106,13 +106,13 @@ def grants(config: JumpConfig) -> list[Grant]:
     except FileNotFoundError:
         return []
     return [
-        Grant(int(found["seat"]), found["address"], found["key"])
+        Grant(int(found["player"]), found["address"], found["key"])
         for line in lines if (found := GRANT.fullmatch(line.strip()))
     ]
 
 
-def granted(seat_id: int, config: JumpConfig) -> Grant | None:
-    return next((grant for grant in grants(config) if grant.seat_id == int(seat_id)), None)
+def granted(player_id: int, config: JumpConfig) -> Grant | None:
+    return next((grant for grant in grants(config) if grant.player_id == int(player_id)), None)
 
 
 def kept(held: list[Grant], config: JumpConfig) -> None:
@@ -124,18 +124,18 @@ def kept(held: list[Grant], config: JumpConfig) -> None:
     fresh.replace(target)
 
 
-def issue(seat_id: int, address: str, config: JumpConfig) -> Issued:
-    private, public = keypair(seat_id)
-    grant = Grant(int(seat_id), box_address(address), public)
+def issue(player_id: int, address: str, config: JumpConfig) -> Issued:
+    private, public = keypair(player_id)
+    grant = Grant(int(player_id), box_address(address), public)
     with _WRITING:
-        kept([held for held in grants(config) if held.seat_id != grant.seat_id] + [grant], config)
+        kept([held for held in grants(config) if held.player_id != grant.player_id] + [grant], config)
     return Issued(grant, private)
 
 
-def revoke(seat_id: int, config: JumpConfig) -> Grant | None:
+def revoke(player_id: int, config: JumpConfig) -> Grant | None:
     with _WRITING:
         held = grants(config)
-        dropped = next((grant for grant in held if grant.seat_id == int(seat_id)), None)
+        dropped = next((grant for grant in held if grant.player_id == int(player_id)), None)
         if dropped is not None:
             kept([grant for grant in held if grant is not dropped], config)
     return dropped
@@ -194,15 +194,15 @@ def end_account(box: Runner, account: str) -> None:
     as_root(box, account_ended(account), f"end what {account} left running")
 
 
-def open_access(seat_id: int, address: str, box: Runner, account: str, config: JumpConfig) -> Access:
-    issued = issue(seat_id, address, config)
+def open_access(player_id: int, address: str, box: Runner, account: str, config: JumpConfig) -> Access:
+    issued = issue(player_id, address, config)
     authorize_key(box, issued.grant.public_key, issued.grant.name, account)
     return Access(host=config.host, port=config.port, user=JUMP_USER, private_key=issued.private_key,
                   target_host=issued.grant.address, target_user=account)
 
 
-def close_access(seat_id: int, box_of, account: str, config: JumpConfig) -> Grant | None:
-    dropped = revoke(seat_id, config)
+def close_access(player_id: int, box_of, account: str, config: JumpConfig) -> Grant | None:
+    dropped = revoke(player_id, config)
     if dropped is not None:
         drop_key(box_of(), dropped.name, account)
     return dropped

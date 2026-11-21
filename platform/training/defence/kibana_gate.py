@@ -9,7 +9,7 @@ from cr.config import configured
 from domain.round_rules import Phase
 from sandbox import definitions as declaration
 from sandbox import kibana
-from training.models import Round, Seat
+from training.models import Round, Player
 
 DEFENCE = "defence"
 GATEWAY_ROLE = "gateway"
@@ -30,7 +30,7 @@ class GateAnswer:
 
 
 def index_of(found: Round, cfg: config.Config) -> str:
-    return cfg.elastic.index_of(found.lease.slot or 0)
+    return cfg.elastic.index_of(found.allocation.slot or 0)
 
 
 def gateway_name(cfg: config.Config) -> str:
@@ -56,9 +56,9 @@ def kibana_spaces(user) -> dict[str, str] | None:
     if getattr(user, "pk", None) is None:
         return {}
     cfg = configured()
-    held = (Seat.objects.filter(user_id=user.pk, side=DEFENCE).exclude(round__phase=Phase.ENDED.value)
-            .select_related("round__lease"))
-    return {kibana.session_view_id(index): index for seat in held if (index := index_of(seat.round, cfg))}
+    held = (Player.objects.filter(user_id=user.pk, side=DEFENCE).exclude(round__phase=Phase.ENDED.value)
+            .select_related("round__allocation"))
+    return {kibana.session_view_id(index): index for player in held if (index := index_of(player.round, cfg))}
 
 
 def kibana_gate(user, method: str, uri: str, headers: Mapping[str, str], body: bytes) -> GateAnswer:

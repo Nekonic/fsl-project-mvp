@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import { holdLease } from "../api/follow";
+import { holdAllocation } from "../api/follow";
 import { useAction, useResource } from "../api/hooks";
 import { to } from "../links";
 import type { Side } from "../panes/types";
@@ -13,28 +13,28 @@ const FORFEIT_PATH = {
   defence: "/api/rounds/{round_id}/defence/forfeit/",
 } as const;
 
-const ROUND_EVENTS = ["round.started", "round.ended", "seat.joined"];
+const ROUND_EVENTS = ["round.started", "round.ended", "player.joined"];
 
 export function useRound(round: number) {
   const shown = useResource("/api/rounds/{round_id}/", { params: { round_id: round } }, { refreshOn: { round, kinds: ROUND_EVENTS } });
   const problemId = shown.data?.problem;
   const problem = useResource("/api/problems/{problem_id}/", problemId ? { params: { problem_id: problemId } } : null);
-  useEffect(() => holdLease(round, shown.data?.lease), [round, shown.data?.lease]);
+  useEffect(() => holdAllocation(round, shown.data?.allocation), [round, shown.data?.allocation]);
   return { round: shown.data, problem: problem.data, error: shown.error, reload: shown.reload };
 }
 
-type SeatLine = Schemas["SeatLine"];
+type PlayerLine = Schemas["PlayerLine"];
 
 const SIDE_ORDER: Side[] = ["attack", "defence"];
 
-function seatWho(seat: SeatLine): string {
-  if (seat.client === "bot") return t("round.seat_bot", { name: seat.bot_name });
-  return seat.username ?? t("round.seat_open");
+function playerWho(player: PlayerLine): string {
+  if (player.client === "bot") return t("round.player_bot", { name: player.bot_name });
+  return player.username ?? t("round.player_open");
 }
 
-function seatFacts(seats: SeatLine[]) {
-  return SIDE_ORDER.flatMap((side) => seats.filter((seat) => seat.side === side))
-    .map((seat) => ({ label: t(`side.${seat.side}`), value: seatWho(seat), mono: seat.client !== "bot" && seat.username !== null }));
+function playerFacts(players: PlayerLine[]) {
+  return SIDE_ORDER.flatMap((side) => players.filter((player) => player.side === side))
+    .map((player) => ({ label: t(`side.${player.side}`), value: playerWho(player), mono: player.client !== "bot" && player.username !== null }));
 }
 
 export interface RoundHeaderProps {
@@ -66,7 +66,7 @@ export function RoundHeader({ round, side }: RoundHeaderProps) {
         what={what}
         badges={shown && <Badge tone={shown.phase === "running" ? "ok" : "muted"}>{tFor("phase", shown.phase)}</Badge>}
         facts={[
-          ...(shown ? seatFacts(shown.seats) : []),
+          ...(shown ? playerFacts(shown.players) : []),
           ...(shown?.ends_at && !ended ? [{ label: t("round.ends_at"), value: clock(shown.ends_at), mono: true }] : []),
         ]}
         actions={!ended && shown?.phase === "running" && (

@@ -3,7 +3,7 @@ import pytest
 from testing import factories, fakerange
 from testing.fakes import FakeElastic
 from training.content import problems as content
-from training.round import lease as leases
+from training.round import allocation as allocations
 from training.round import lifecycle as service
 from training.round import site
 
@@ -29,8 +29,8 @@ def problem(db):
 
 
 @pytest.fixture
-def lease(cloud, learner):
-    return leases.open_lease(learner, "board")
+def allocation(cloud, learner):
+    return allocations.open_allocation(learner, "board")
 
 
 @pytest.fixture
@@ -47,6 +47,6 @@ def url(found, rest: str = "") -> str:
     return f"/api/rounds/{found.pk}/{rest}"
 
 
-def pvp(lease, problem, attacker, defender):
-    return service.create_round(lease, problem.pk, "pvp",
+def pvp(allocation, problem, attacker, defender):
+    return service.create_round(allocation, problem.pk, "pvp",
                                 {"attack": {"username": attacker.username}, "defence": {"username": defender.username}}).round

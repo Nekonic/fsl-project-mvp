@@ -54,8 +54,8 @@ const started = minutesFromNow(-20);
 const endsAt = minutesFromNow(10);
 
 const runningRound = {
-  round: 41, lease: 12, problem: 7, kind: "match", matchup: "pvp", phase: "running" as const,
-  seats: [
+  round: 41, allocation: 12, problem: 7, kind: "match", matchup: "pvp", phase: "running" as const,
+  players: [
     { side: "attack" as const, client: "human", username: "learner-two", bot_name: "" },
     { side: "defence" as const, client: "human", username: "learner-one", bot_name: "" },
   ],
@@ -69,7 +69,7 @@ export const fixtures = [
   }), { variant: "ended" }),
   reply("get", "/api/rounds/{round_id}/events/", (asked) => ({ events: [], next: Number(asked.query.get("after") ?? 0) })),
   reply("get", "/api/rounds/{round_id}/topology/", topology),
-  reply("post", "/api/leases/{lease_id}/heartbeat/", { expires_at: minutesFromNow(30) }),
+  reply("post", "/api/allocations/{allocation_id}/heartbeat/", { expires_at: minutesFromNow(30) }),
   reply("get", "/api/problems/{problem_id}/", (asked) => ({
     id: Number(asked.params.problem_id), kind: "match", wargame: "board", side: "both",
     title: "Board wargame", summary: "Placeholder summary", body: "Placeholder body", steps: [],

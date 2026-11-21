@@ -55,19 +55,19 @@ def stored(found, detection: Mapping[str, Any]) -> Detection | None:
     if not created:
         return None
     log.append(found.pk, "alert.seen", {"alert": row.pk, "engine": row.engine, "signature": row.signature},
-               seat_side=DEFENCE)
+               player_side=DEFENCE)
     return row
 
 
 def cursor_of(found) -> AlertCursor:
-    held, _ = AlertCursor.objects.get_or_create(lease=found.lease,
-                                                defaults={"cursor": {"at": found.lease.opened.isoformat()}})
+    held, _ = AlertCursor.objects.get_or_create(allocation=found.allocation,
+                                                defaults={"cursor": {"at": found.allocation.opened.isoformat()}})
     return held
 
 
 def ingest(found, config: ElasticConfig) -> list[Detection]:
     held = cursor_of(found)
-    index = config.index_of(found.lease.slot or 0)
+    index = config.index_of(found.allocation.slot or 0)
     made: list[Detection] = []
     for _ in range(MOST_PAGES):
         documents, moved = elastic.fetch_after(config.url, index, held.cursor)

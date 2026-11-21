@@ -101,7 +101,7 @@ def test_the_applied_version_says_whether_it_is_the_text_that_was_tested(as_defe
         (1, tested["test"], True), (2, tested["test"], False)]
 
 
-def test_an_apply_need_not_be_tested_but_a_named_test_must_be_this_seat_s_test_of_this_engine(as_defender,
+def test_an_apply_need_not_be_tested_but_a_named_test_must_be_this_player_s_test_of_this_engine(as_defender,
                                                                                               board_round):
     waf_test = as_defender.post(url(board_round, "waf/test/"), {"posture": {"paranoia": 2}}, format="json").json()
 

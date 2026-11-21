@@ -18,8 +18,8 @@ from scoring import baseline as referee
 from training.attack import actions as attack
 from training.content import problems as content
 from training.defence import rules as defence
-from training.models import Lease
-from training.round import lease as leases
+from training.models import Allocation
+from training.round import allocation as allocations
 
 PROBE = "probe"
 HTTP_SECONDS = 30
@@ -32,7 +32,7 @@ guard = threading.Lock()
 
 @dataclass
 class Progress:
-    lease: int
+    allocation: int
     wargame: str
     state: str = RECORDING
     total: int = 0
@@ -60,34 +60,34 @@ def wargame_of(wargame_id: str):
     return declared
 
 
-def record(wargame_id: str, user) -> Lease:
+def record(wargame_id: str, user) -> Allocation:
     declared = wargame_of(wargame_id)
-    if Lease.objects.filter(purpose=PROBE, wargame_id=wargame_id, closed=None).exists():
+    if Allocation.objects.filter(purpose=PROBE, wargame_id=wargame_id, closed=None).exists():
         raise errors.Conflict(code="probe_running")
-    lease = leases.open_lease(user, wargame_id, purpose=PROBE)
+    allocation = allocations.open_allocation(user, wargame_id, purpose=PROBE)
     with guard:
-        held[lease.pk] = Progress(lease=lease.pk, wargame=wargame_id)
-    threaded(lambda: recorded(lease, declared))
-    return lease
+        held[allocation.pk] = Progress(allocation=allocation.pk, wargame=wargame_id)
+    threaded(lambda: recorded(allocation, declared))
+    return allocation
 
 
-def progress(lease_id: int) -> Progress:
-    lease = Lease.objects.filter(pk=lease_id, purpose=PROBE).first()
-    if lease is None:
-        raise errors.NotFound(code="unknown_lease")
+def progress(allocation_id: int) -> Progress:
+    allocation = Allocation.objects.filter(pk=allocation_id, purpose=PROBE).first()
+    if allocation is None:
+        raise errors.NotFound(code="unknown_allocation")
     with guard:
-        found = held.get(lease_id)
-    return found or Progress(lease=lease_id, wargame=lease.wargame_id, state=DONE if lease.closed else FAILED)
+        found = held.get(allocation_id)
+    return found or Progress(allocation=allocation_id, wargame=allocation.wargame_id, state=DONE if allocation.closed else FAILED)
 
 
-def moved(lease_id: int, **changed) -> None:
+def moved(allocation_id: int, **changed) -> None:
     with guard:
         for name, value in changed.items():
-            setattr(held[lease_id], name, value)
+            setattr(held[allocation_id], name, value)
 
 
-def reach(lease: Lease):
-    one = slot_range(lease.slot)
+def reach(allocation: Allocation):
+    one = slot_range(allocation.slot)
     return lambda role: one.runner(role)
 
 
@@ -100,52 +100,52 @@ def hidden(value, truth):
     return referee.redact(value, truth) if isinstance(value, str) else value
 
 
-def one_case(lease: Lease, declared, case: dict, truth: dict, folder: Path) -> dict:
+def one_case(allocation: Allocation, declared, case: dict, truth: dict, folder: Path) -> dict:
     name, tool_case = case["name"], "tool" in case
     marker = f"probe-{uuid.uuid4().hex[:12]}"
-    capture = defence.start_capture(lease, name, TOOL_SECONDS if tool_case else HTTP_SECONDS)
+    capture = defence.start_capture(allocation, name, TOOL_SECONDS if tool_case else HTTP_SECONDS)
     try:
-        probed = attack.fire_probe(lease, {"hosts": list(declared.hosts)}, case, marker)
+        probed = attack.fire_probe(allocation, {"hosts": list(declared.hosts)}, case, marker)
     finally:
-        (folder / f"{name}.pcap").write_bytes(defence.finish_capture(lease, capture))
+        (folder / f"{name}.pcap").write_bytes(defence.finish_capture(allocation, capture))
     if probed.request is not None:
         written(folder, f"{name}.request.json", {key: hidden(value, truth) for key, value in probed.request.items()})
         written(folder, f"{name}.response.json", {"status": probed.status, "body": referee.redact(probed.body, truth)})
     return {"marker": marker, "malicious": bool(case.get("malicious")), "tool_case": tool_case}
 
 
-def truth_of(lease: Lease, declared) -> dict:
+def truth_of(allocation: Allocation, declared) -> dict:
     found = referee.ground_truth({"secret": declared.secret, "objective_model": declared.objective_model},
-                                 reach(lease))
+                                 reach(allocation))
     return found if isinstance(found, dict) else {}
 
 
-def recorded(lease: Lease, declared) -> None:
+def recorded(allocation: Allocation, declared) -> None:
     try:
         cases = attack.cases_of({"case_file": declared.case_file})
-        moved(lease.pk, total=len(cases))
+        moved(allocation.pk, total=len(cases))
         folder = Path(settings.CR_PROBES_OUT) / declared.id / "probes"
         folder.mkdir(parents=True, exist_ok=True)
-        defence.detection_only(lease)
-        truth = truth_of(lease, declared)
+        defence.detection_only(allocation)
+        truth = truth_of(allocation, declared)
         listed = {}
         for case in cases:
-            leases.heartbeat(leases.lease(lease.pk))
+            allocations.heartbeat(allocations.allocation(allocation.pk))
             try:
-                listed[case["name"]] = one_case(lease, declared, case, truth, folder)
+                listed[case["name"]] = one_case(allocation, declared, case, truth, folder)
             except (errors.DomainError, OSError, ValueError) as failed:
-                logger.warning("probe lease %s: %s was not recorded: %s", lease.pk, case["name"], failed)
+                logger.warning("probe allocation %s: %s was not recorded: %s", allocation.pk, case["name"], failed)
                 with guard:
-                    held[lease.pk].failed.append({"case": case["name"],
+                    held[allocation.pk].failed.append({"case": case["name"],
                                                   "code": getattr(failed, "code", "unavailable")})
                 continue
             with guard:
-                held[lease.pk].done.append(case["name"])
+                held[allocation.pk].done.append(case["name"])
         written(folder, "manifest.json", {"image_digest": declared.image, "cases": listed,
                                           "recorded_at": timezone.now().isoformat()})
-        moved(lease.pk, state=DONE)
+        moved(allocation.pk, state=DONE)
     except (errors.DomainError, OSError) as failed:
-        logger.warning("probe lease %s failed: %s", lease.pk, failed)
-        moved(lease.pk, state=FAILED)
+        logger.warning("probe allocation %s failed: %s", allocation.pk, failed)
+        moved(allocation.pk, state=FAILED)
     finally:
-        leases.close_lease(lease)
+        allocations.close_allocation(allocation)

@@ -131,7 +131,7 @@ def test_the_well_formedness_check_catches_a_missing_semicolon_and_an_unclosed_b
 
 
 @pytest.mark.parametrize("side", ["attack", "defence"])
-def test_each_seat_s_terminal_is_its_own_round_path_handed_to_its_ttyd_with_the_round_as_the_only_argument(side):
+def test_each_player_s_terminal_is_its_own_round_path_handed_to_its_ttyd_with_the_round_as_the_only_argument(side):
     found = regex_location(console(), f"/vm-terminal/{side}/12/")
     taken = pattern(found)
 
@@ -141,7 +141,7 @@ def test_each_seat_s_terminal_is_its_own_round_path_handed_to_its_ttyd_with_the_
         assert not taken.match(path), path
     assert found.values("proxy_pass") == [
         [f"http://127.0.0.1:{TERMINAL_PORTS[side]}/vm-terminal/{side}$terminal_rest?arg=$terminal_round"]]
-    assert found.values("auth_request") == [["/seat-terminal"]]
+    assert found.values("auth_request") == [["/player-terminal"]]
     assert ["401", "=", "@sign-in"] in found.values("error_page")
     assert ["Upgrade", "$http_upgrade"] in found.values("proxy_set_header")
 
@@ -167,20 +167,20 @@ def test_the_kali_shell_is_never_reachable_through_the_defence_path_or_the_waf_t
     assert location(console(), "/vm-terminal/").values("return") == [["404"]]
 
 
-def test_the_terminal_check_asks_the_round_s_seat_route_for_the_side_in_the_path():
-    seat = next(one for one in http().children("map") if one.args == ["$request_uri", "$terminal_seat"])
-    [(given, value), (default, empty)] = [one.args and (one.name, one.args[0]) for one in seat.block]
+def test_the_terminal_check_asks_the_round_s_player_route_for_the_side_in_the_path():
+    player = next(one for one in http().children("map") if one.args == ["$request_uri", "$terminal_player"])
+    [(given, value), (default, empty)] = [one.args and (one.name, one.args[0]) for one in player.block]
     mapped = re.compile(given.removeprefix("~").replace("(?<", "(?P<")).match("/vm-terminal/defence/12/ws")
-    asked = value.replace("$seat_round", mapped["seat_round"]).replace("$seat_side", mapped["seat_side"])
-    check = location(console(), "=", "/seat-terminal")
+    asked = value.replace("$player_round", mapped["player_round"]).replace("$player_side", mapped["player_side"])
+    check = location(console(), "=", "/player-terminal")
 
     assert (default, empty) == ("default", "")
     assert check.values("internal") == [[]]
-    assert check.values("proxy_pass") == [["http://127.0.0.1:8001/api/rounds/$terminal_seat/"]]
+    assert check.values("proxy_pass") == [["http://127.0.0.1:8001/api/rounds/$terminal_player/"]]
     assert django_route(f"/api/rounds/{asked}/") == "DefenceTerminalAuth"
     assert django_route("/api/rounds/12/terminal-auth/attack/") == "AttackTerminalAuth"
-    assert "proxy_cache" not in check.text(), "a cached yes would outlive the seat's grant"
-    assert check.child("if").values("return") == [["403"]], "a path naming no seat is refused, not checked"
+    assert "proxy_cache" not in check.text(), "a cached yes would outlive the player's grant"
+    assert check.child("if").values("return") == [["403"]], "a path naming no player is refused, not checked"
 
 
 def normalized_by_nginx(raw):
@@ -194,13 +194,13 @@ def normalized_by_nginx(raw):
     return "/" + "/".join(kept)
 
 
-def seat_nginx_checks(raw):
-    seat = next(one for one in http().children("map") if one.args == ["$request_uri", "$terminal_seat"])
-    [given, value] = seat.block[0].name, seat.block[0].args[0]
+def player_nginx_checks(raw):
+    player = next(one for one in http().children("map") if one.args == ["$request_uri", "$terminal_player"])
+    [given, value] = player.block[0].name, player.block[0].args[0]
     mapped = re.compile(given.removeprefix("~").replace("(?<", "(?P<")).match(raw)
     if not mapped:
         return ""
-    return value.replace("$seat_round", mapped["seat_round"]).replace("$seat_side", mapped["seat_side"])
+    return value.replace("$player_round", mapped["player_round"]).replace("$player_side", mapped["player_side"])
 
 
 def terminal_reached(raw):
@@ -212,8 +212,8 @@ def terminal_reached(raw):
             continue
         [guard] = found.children("if")
         [compared, unequal, wanted, closing] = guard.args
-        assert (compared, unequal, closing, guard.values("return")) == ("($terminal_seat", "!=", ")", [["404"]])
-        if seat_nginx_checks(raw) != wanted.replace("$terminal_round", taken["terminal_round"]):
+        assert (compared, unequal, closing, guard.values("return")) == ("($terminal_player", "!=", ")", [["404"]])
+        if player_nginx_checks(raw) != wanted.replace("$terminal_round", taken["terminal_round"]):
             return None
         return side, taken["terminal_round"]
     return None
@@ -223,15 +223,15 @@ def terminal_reached(raw):
     "/vm-terminal/defence/7/../../attack/5/ws", "/vm-terminal/attack/7/../5/ws", "/vm-terminal/attack/%35/ws",
     "/vm-terminal//attack/5/ws", "/vm-terminal/attack/7/./../5/token", "/vm-terminal/attack/7%2f..%2f5/ws",
 ])
-def test_a_terminal_path_whose_raw_seat_differs_from_the_one_nginx_routes_on_is_refused_before_the_seat_check(raw):
-    assert terminal_reached(raw) is None, f"{raw} would check one seat and open another round's shell"
+def test_a_terminal_path_whose_raw_player_differs_from_the_one_nginx_routes_on_is_refused_before_the_player_check(raw):
+    assert terminal_reached(raw) is None, f"{raw} would check one player and open another round's shell"
 
 
 @pytest.mark.parametrize("raw, reached", [
     ("/vm-terminal/attack/7/ws", ("attack", "7")), ("/vm-terminal/defence/7/?x=1", ("defence", "7")),
     ("/vm-terminal/attack/7/x/../ws", ("attack", "7")),
 ])
-def test_a_terminal_path_reaches_the_seat_the_check_asked_about(raw, reached):
+def test_a_terminal_path_reaches_the_player_the_check_asked_about(raw, reached):
     assert terminal_reached(raw) == reached
 
 
@@ -537,7 +537,7 @@ def test_the_terminal_check_s_refusal_code_reaches_nginx_beside_its_status(side)
 
 @pytest.mark.parametrize("side", ["attack", "defence"])
 @pytest.mark.parametrize("refusal", [errors.Conflict(code="round_closed"), errors.Conflict(code="round_not_started"),
-                                     errors.NotFound(code="unknown_round"), errors.NotSeated()])
+                                     errors.NotFound(code="unknown_round"), errors.NotAPlayer()])
 def test_a_refused_terminal_answers_the_api_s_status_and_error_shape_not_nginx_s_500(side, refusal):
     assert browser_sees(side, refusal.status, refusal.code) == (refusal.status, refusal.shown())
 

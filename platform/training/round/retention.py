@@ -8,7 +8,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from telemetry import events as log
-from training.models import Lease, Round
+from training.models import Allocation, Round
 from training.round import site
 
 
@@ -17,24 +17,24 @@ def cutoff(now: datetime | None = None) -> datetime:
 
 
 def expired(now: datetime | None = None) -> list[int]:
-    return list(Lease.objects.filter(closed__lt=cutoff(now)).order_by("pk").values_list("pk", flat=True))
+    return list(Allocation.objects.filter(closed__lt=cutoff(now)).order_by("pk").values_list("pk", flat=True))
 
 
-def closed_among(lease_ids: Iterable[int]) -> list[int]:
-    return list(Lease.objects.filter(pk__in=list(lease_ids)).exclude(closed=None).order_by("pk")
+def closed_among(allocation_ids: Iterable[int]) -> list[int]:
+    return list(Allocation.objects.filter(pk__in=list(allocation_ids)).exclude(closed=None).order_by("pk")
                 .values_list("pk", flat=True))
 
 
-def drop(lease_ids: Iterable[int]) -> list[int]:
+def drop(allocation_ids: Iterable[int]) -> list[int]:
     dropped = []
-    for lease_id in lease_ids:
-        round_ids = list(Round.objects.filter(lease_id=lease_id).values_list("pk", flat=True))
+    for allocation_id in allocation_ids:
+        round_ids = list(Round.objects.filter(allocation_id=allocation_id).values_list("pk", flat=True))
         with transaction.atomic():
             log.forget(round_ids)
-            Lease.objects.filter(pk=lease_id).delete()
+            Allocation.objects.filter(pk=allocation_id).delete()
         for round_id in round_ids:
             site.forget(round_id)
-        dropped.append(lease_id)
+        dropped.append(allocation_id)
     return dropped
 
 

@@ -60,17 +60,17 @@ class NotSignedIn(DomainError):
     codes = frozenset({"not_signed_in", "wrong_credentials"})
 
 
-class NotSeated(DomainError):
-    code = "not_seated"
+class NotAPlayer(DomainError):
+    code = "not_a_player"
     status = 403
-    codes = frozenset({"not_seated", "not_staff", "csrf_failed", "account_pending", "not_operator"})
+    codes = frozenset({"not_a_player", "not_staff", "csrf_failed", "account_pending", "not_operator"})
 
 
 class NotFound(DomainError):
     code = "not_found"
     status = 404
     codes = frozenset({"not_found", "unknown_case", "unknown_tool", "unknown_run", "unknown_origin", "unknown_user",
-                       "unknown_block", "unknown_round", "unknown_lease", "unknown_problem", "unknown_posture"})
+                       "unknown_block", "unknown_round", "unknown_allocation", "unknown_problem", "unknown_posture"})
 
 
 class NotAllowed(DomainError):
@@ -90,8 +90,8 @@ class Conflict(DomainError):
     status = 409
     codes = frozenset({
         "conflict", "round_not_started", "round_closed", "round_running", "origins_spent", "stale_version",
-        "stale_revision", "test_busy", "already_seated", "seat_taken", "in_use",
-        "own_account", "loot_not_taken", "lease_closed", "seats_open", "objective_fallen", "round_started",
+        "stale_revision", "test_busy", "already_playing", "player_taken", "in_use",
+        "own_account", "loot_not_taken", "allocation_closed", "players_open", "objective_fallen", "round_started",
         "probe_running", "round_open", "range_not_cloud",
     })
 
@@ -130,6 +130,6 @@ class Unavailable(DomainError):
     })
 
 
-KINDS = (Invalid, NotSignedIn, NotSeated, NotFound, NotAllowed, NotAcceptable, Conflict, UnsupportedMedia,
+KINDS = (Invalid, NotSignedIn, NotAPlayer, NotFound, NotAllowed, NotAcceptable, Conflict, UnsupportedMedia,
          EngineRefused, TooMany, ServerError, Unavailable)
 CODES = frozenset(code for kind in KINDS for code in kind.codes)

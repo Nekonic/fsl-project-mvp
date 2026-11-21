@@ -23,9 +23,9 @@ STAMPED = re.compile(r"db-\d{8}T\d{6}Z\.sqlite3")
 
 TABLES = (
     ("users", "auth_user"),
-    ("leases", "training_lease"),
+    ("allocations", "training_allocation"),
     ("rounds", "training_round"),
-    ("seats", "training_seat"),
+    ("players", "training_player"),
     ("actions", "training_action"),
     ("tool runs", "training_toolrun"),
     ("detections", "telemetry_detection"),

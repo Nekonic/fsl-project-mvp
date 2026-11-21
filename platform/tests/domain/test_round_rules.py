@@ -4,13 +4,13 @@ import pytest
 
 from domain.round_rules import (
     END_REASONS,
-    LeaseState,
+    AllocationState,
     Matchup,
     Phase,
     RoundState,
     Side,
     ended,
-    human_seats,
+    human_players,
     may_end,
     may_start_scored,
 )
@@ -53,16 +53,16 @@ def test_only_a_running_round_ends(phase):
     assert ended(state(phase=phase, objectives_lost=2)) is None
 
 
-def test_a_scored_round_may_not_start_on_a_lease_where_an_objective_fell():
-    assert may_start_scored(LeaseState(objective_fallen=False)) is True
-    assert may_start_scored(LeaseState(objective_fallen=True)) is False
+def test_a_scored_round_may_not_start_on_an_allocation_where_an_objective_fell():
+    assert may_start_scored(AllocationState(objective_fallen=False)) is True
+    assert may_start_scored(AllocationState(objective_fallen=True)) is False
 
 
-def test_each_matchup_seats_humans_where_it_says():
-    assert human_seats(Matchup.PVP) == (Side.ATTACK, Side.DEFENCE)
-    assert human_seats(Matchup.DEF_VS_BOT) == (Side.DEFENCE,)
-    assert human_seats("atk_vs_bot") == (Side.ATTACK,)
+def test_each_matchup_players_humans_where_it_says():
+    assert human_players(Matchup.PVP) == (Side.ATTACK, Side.DEFENCE)
+    assert human_players(Matchup.DEF_VS_BOT) == (Side.DEFENCE,)
+    assert human_players("atk_vs_bot") == (Side.ATTACK,)
 
 
 def test_end_reasons_include_the_manual_ones():
-    assert {"ended_by_operator", "forfeit_attack", "forfeit_defence", "lease_expired"} <= set(END_REASONS)
+    assert {"ended_by_operator", "forfeit_attack", "forfeit_defence", "allocation_expired"} <= set(END_REASONS)

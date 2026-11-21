@@ -46,10 +46,10 @@ def wait_out_a_refill() -> list[dict]:
 
 
 def listed_for_pruning(played: plays.Played) -> None:
-    listed = os.environ.get("CR_ACCEPTANCE_LEASES")
+    listed = os.environ.get("CR_ACCEPTANCE_ALLOCATIONS")
     if listed:
         with open(listed, "a", encoding="utf-8") as ids:
-            ids.write(f"{played.lease}\n")
+            ids.write(f"{played.allocation}\n")
 
 
 plays.LISTENERS.append(listed_for_pruning)
@@ -69,16 +69,16 @@ class Standing:
     def __init__(self):
         self.played: plays.Played | None = None
 
-    def lease(self) -> int | None:
+    def allocation(self) -> int | None:
         if not BESIDE_ANOTHER_WORKER:
             return None
-        held = [played.lease for played in plays.OPENED if not played.closed and played is not self.played]
+        held = [played.allocation for played in plays.OPENED if not played.closed and played is not self.played]
         assert not held, (
-            f"a range call named no lease while lease {held} is open; beside another worker the newest "
-            f"slot is not this test's, so pass lease= explicitly")
+            f"a range call named no allocation while allocation {held} is open; beside another worker the newest "
+            f"slot is not this test's, so pass allocation= explicitly")
         if self.played is None or self.played.closed:
             self.played = plays.play("board")
-        return self.played.lease
+        return self.played.allocation
 
     def release(self) -> None:
         if self.played is not None:
@@ -88,12 +88,12 @@ class Standing:
 
 STANDING = Standing()
 if BESIDE_ANOTHER_WORKER:
-    the_range.default_to(STANDING.lease)
+    the_range.default_to(STANDING.allocation)
 
 
 @pytest.fixture
 def standing_stack(stack_is_up):
-    return STANDING.lease()
+    return STANDING.allocation()
 
 
 def close_opened_since(count: int) -> None:
@@ -103,7 +103,7 @@ def close_opened_since(count: int) -> None:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def the_run_leaves_no_lease_open(stack_is_up):
+def the_run_leaves_no_allocation_open(stack_is_up):
     yield
     STANDING.release()
     for played in plays.OPENED:
@@ -111,7 +111,7 @@ def the_run_leaves_no_lease_open(stack_is_up):
 
 
 @pytest.fixture(scope="module", autouse=True)
-def a_module_closes_the_leases_it_opened(the_run_leaves_no_lease_open):
+def a_module_closes_the_allocations_it_opened(the_run_leaves_no_allocation_open):
     count = len(plays.OPENED)
     yield
     close_opened_since(count)
@@ -122,27 +122,27 @@ def the_range_is_not_refilling(stack_is_up):
     if not IDLE and not BESIDE_ANOTHER_WORKER:
         slots = wait_out_a_refill()
         assert not settling(slots), (
-            f"the range was still refilling after {RESET_WAIT}s: {slots}. A closed lease rebuilds its slot's "
+            f"the range was still refilling after {RESET_WAIT}s: {slots}. A closed allocation rebuilds its slot's "
             f"stack, and a test that reaches a host meanwhile finds it gone or half configured")
 
 
 @pytest.fixture(autouse=True)
-def a_test_closes_the_leases_it_opened(the_run_leaves_no_lease_open):
+def a_test_closes_the_allocations_it_opened(the_run_leaves_no_allocation_open):
     count = len(plays.OPENED)
     yield
     close_opened_since(count)
 
 
-def target_code(path: str = "/", lease: int | None = None) -> int:
+def target_code(path: str = "/", allocation: int | None = None) -> int:
     probe = run(ATTACKER, ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "20",
-                           f"{TARGET_PUBLIC}{path}"], lease=lease)
+                           f"{TARGET_PUBLIC}{path}"], allocation=allocation)
     code = probe.stdout.strip()
     return int(code) if code.isdigit() else 0
 
 
-def from_attacker(path: str, lease: int | None = None) -> None:
+def from_attacker(path: str, allocation: int | None = None) -> None:
     result = run(ATTACKER, ["curl", "-s", "-o", "/dev/null", "--max-time", "20", f"{TARGET_PUBLIC}{path}"],
-                 lease=lease)
+                 allocation=allocation)
     assert result.ok, f"could not reach the target from the attacker box: {result.stderr}"
 
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
-import { waitForLease, type Schemas } from "../api/client";
-import { holdLease } from "../api/follow";
+import { waitForAllocation, type Schemas } from "../api/client";
+import { holdAllocation } from "../api/follow";
 import { useAction, useResource } from "../api/hooks";
 import { to } from "../links";
 import type { PageProps } from "../routes";
@@ -14,70 +14,70 @@ import {
 } from "../ui";
 import { wargameHost, wargameName } from "./wargameText";
 
-type Lease = Schemas["LeaseDetail"];
+type Allocation = Schemas["AllocationDetail"];
 type RoundLine = Schemas["RoundLine"];
-type SeatLine = Schemas["SeatLine"];
-type Side = Schemas["SeatSideEnum"];
+type PlayerLine = Schemas["PlayerLine"];
+type Side = Schemas["PlayerSideEnum"];
 type Matchup = Schemas["MatchupEnum"];
-type SeatKind = "user" | "bot" | "open";
-type SeatAsk = Schemas["SeatAskRequest"];
+type PlayerKind = "user" | "bot" | "open";
+type PlayerAsk = Schemas["PlayerAskRequest"];
 
 
 const SIDES: Side[] = ["attack", "defence"];
 const MATCHUPS: Matchup[] = ["pvp", "def_vs_bot", "atk_vs_bot"];
-const SEAT_KINDS: SeatKind[] = ["user", "bot", "open"];
-const SEATS_FOR: Record<Matchup, Record<Side, SeatKind>> = {
+const PLAYER_KINDS: PlayerKind[] = ["user", "bot", "open"];
+const PLAYERS_FOR: Record<Matchup, Record<Side, PlayerKind>> = {
   pvp: { attack: "open", defence: "open" },
   def_vs_bot: { attack: "bot", defence: "open" },
   atk_vs_bot: { attack: "open", defence: "bot" },
 };
-const INLINE_PATHS = ["problem", "matchup", ...SIDES.flatMap((side) => [`seats.${side}`, `seats.${side}.username`, `seats.${side}.bot.name`])];
-const ROUND_KINDS_THAT_CHANGE = ["seat.joined", "round.started", "round.ended"];
+const INLINE_PATHS = ["problem", "matchup", ...SIDES.flatMap((side) => [`players.${side}`, `players.${side}.username`, `players.${side}.bot.name`])];
+const ROUND_KINDS_THAT_CHANGE = ["player.joined", "round.started", "round.ended"];
 
-function seatOf(line: RoundLine, side: Side): SeatLine | undefined {
-  return line.seats.find((seat) => seat.side === side);
+function playerOf(line: RoundLine, side: Side): PlayerLine | undefined {
+  return line.players.find((player) => player.side === side);
 }
 
-interface SeatCellProps {
+interface PlayerCellProps {
   line: RoundLine;
   side: Side;
   joining: boolean;
   onJoin: (round: number, side: Side) => void;
 }
 
-function SeatCell({ line, side, joining, onJoin }: SeatCellProps) {
-  const seat = seatOf(line, side);
-  if (!seat) return <Text tone="faint">{t("lobby.seat.none")}</Text>;
-  if (seat.client === "bot") {
-    return <Stack gap="sm"><Text strong tone="heading">{t("lobby.seat.bot")}</Text><Text mono small tone="muted">{seat.bot_name}</Text></Stack>;
+function PlayerCell({ line, side, joining, onJoin }: PlayerCellProps) {
+  const player = playerOf(line, side);
+  if (!player) return <Text tone="faint">{t("lobby.player.none")}</Text>;
+  if (player.client === "bot") {
+    return <Stack gap="sm"><Text strong tone="heading">{t("lobby.player.bot")}</Text><Text mono small tone="muted">{player.bot_name}</Text></Stack>;
   }
-  if (seat.username !== null) {
+  if (player.username !== null) {
     return (
       <Stack gap="sm">
-        <Text strong mono tone="heading">{seat.username}</Text>
-        <Text small tone="muted"><Dot tone="ok" /> {t("lobby.seat.joined")}</Text>
+        <Text strong mono tone="heading">{player.username}</Text>
+        <Text small tone="muted"><Dot tone="ok" /> {t("lobby.player.joined")}</Text>
       </Stack>
     );
   }
   return (
     <Stack gap="sm">
-      <Text small tone="muted"><Dot tone="warn" /> {t("lobby.seat.open")}</Text>
-      {line.phase === "created" && <Button tone="ghost" small busy={joining} onClick={() => onJoin(line.round, side)}>{t("seat.join")}</Button>}
+      <Text small tone="muted"><Dot tone="warn" /> {t("lobby.player.open")}</Text>
+      {line.phase === "created" && <Button tone="ghost" small busy={joining} onClick={() => onJoin(line.round, side)}>{t("player.join")}</Button>}
     </Stack>
   );
 }
 
 interface RoundsProps {
-  lease: Lease;
+  allocation: Allocation;
   titleOf: (problem: number) => string;
   onChanged: () => void;
 }
 
-function Rounds({ lease, titleOf, onChanged }: RoundsProps) {
-  const join = useAction("post", "/api/rounds/{round_id}/seats/{side}/join/");
+function Rounds({ allocation, titleOf, onChanged }: RoundsProps) {
+  const join = useAction("post", "/api/rounds/{round_id}/players/{side}/join/");
   const start = useAction("post", "/api/rounds/{round_id}/start/");
   const end = useAction("post", "/api/rounds/{round_id}/end/");
-  const joinSeat = async (round: number, side: Side) => {
+  const joinPlayer = async (round: number, side: Side) => {
     if (await join.run({ params: { round_id: String(round), side } })) onChanged();
   };
   const startRound = async (round: number) => {
@@ -86,22 +86,22 @@ function Rounds({ lease, titleOf, onChanged }: RoundsProps) {
   const endRound = async (round: number) => {
     if (await end.run({ params: { round_id: round } })) onChanged();
   };
-  const closed = lease.closed !== null;
+  const closed = allocation.closed !== null;
 
   const columns: Column<RoundLine>[] = [
     { key: "round", label: t("col.round"), kind: "strong", cell: (line) => t("round.name", { round: line.round }) },
     { key: "problem", label: t("col.problem"), kind: "nowrap", cell: (line) => titleOf(line.problem) },
     { key: "matchup", label: t("col.matchup"), kind: "nowrap", cell: (line) => tFor("matchup", line.matchup) },
     ...SIDES.map((side): Column<RoundLine> => ({
-      key: side, label: t(`col.${side}_seat`),
-      cell: (line) => <SeatCell line={line} side={side} joining={join.busy} onJoin={(round, chosen) => void joinSeat(round, chosen)} />,
+      key: side, label: t(`col.${side}_player`),
+      cell: (line) => <PlayerCell line={line} side={side} joining={join.busy} onJoin={(round, chosen) => void joinPlayer(round, chosen)} />,
     })),
     { key: "phase", label: t("col.state"), cell: (line) => <Badge tone={phaseTone(line.phase)}>{tFor("phase", line.phase)}</Badge> },
     {
       key: "act", label: "", kind: "end",
       cell: (line) => {
         if (line.phase === "created") {
-          return <Button tone="primary" small busy={start.busy} disabled={closed || !lease.ready} onClick={() => void startRound(line.round)}>{t("lobby.start")}</Button>;
+          return <Button tone="primary" small busy={start.busy} disabled={closed || !allocation.ready} onClick={() => void startRound(line.round)}>{t("lobby.start")}</Button>;
         }
         if (line.phase === "running" || line.phase === "starting") {
           return <Button tone="ghost" small busy={end.busy} disabled={line.phase === "starting"} onClick={() => void endRound(line.round)}>{t("lobby.end")}</Button>;
@@ -115,45 +115,45 @@ function Rounds({ lease, titleOf, onChanged }: RoundsProps) {
     <Task title={t("lobby.rounds")}>
       <Stack>
         <ErrorNotice error={join.error ?? start.error ?? end.error} />
-        <Table columns={columns} rows={lease.rounds} rowKey={(line) => line.round} empty={t("lobby.rounds_none")} />
+        <Table columns={columns} rows={allocation.rounds} rowKey={(line) => line.round} empty={t("lobby.rounds_none")} />
       </Stack>
     </Task>
   );
 }
 
-interface SeatChoice {
-  kind: SeatKind;
+interface PlayerChoice {
+  kind: PlayerKind;
   username: string;
   bot: string;
 }
 
-function askOf(choice: SeatChoice): SeatAsk {
+function askOf(choice: PlayerChoice): PlayerAsk {
   if (choice.kind === "bot") return { bot: { name: choice.bot.trim() } };
   if (choice.kind === "user") return { username: choice.username.trim() };
   return { open: true };
 }
 
-interface SeatPickProps {
+interface PlayerPickProps {
   side: Side;
-  choice: SeatChoice;
+  choice: PlayerChoice;
   errors: Record<string, string>;
-  onChoice: (choice: SeatChoice) => void;
+  onChoice: (choice: PlayerChoice) => void;
 }
 
-function SeatPick({ side, choice, errors, onChoice }: SeatPickProps) {
+function PlayerPick({ side, choice, errors, onChoice }: PlayerPickProps) {
   return (
     <Card pad="md">
       <Stack gap="sm">
-        <Text strong tone="heading" small>{t(`col.${side}_seat`)}</Text>
-        <Choices inline name={`seat-${side}`} value={choice.kind} onValue={(kind) => onChoice({ ...choice, kind: kind as SeatKind })}
-          options={SEAT_KINDS.map((kind) => ({ value: kind, label: t(`lobby.seat_kind.${kind}`) }))} />
+        <Text strong tone="heading" small>{t(`col.${side}_player`)}</Text>
+        <Choices inline name={`player-${side}`} value={choice.kind} onValue={(kind) => onChoice({ ...choice, kind: kind as PlayerKind })}
+          options={PLAYER_KINDS.map((kind) => ({ value: kind, label: t(`lobby.player_kind.${kind}`) }))} />
         {choice.kind === "bot" && (
-          <Field label={t("lobby.bot_name")} error={errors[`seats.${side}.bot.name`] ?? errors[`seats.${side}`]}>
+          <Field label={t("lobby.bot_name")} error={errors[`players.${side}.bot.name`] ?? errors[`players.${side}`]}>
             <Input mono spellcheck={false} value={choice.bot} onValue={(bot) => onChoice({ ...choice, bot })} />
           </Field>
         )}
         {choice.kind === "user" && (
-          <Field label={t("lobby.username")} error={errors[`seats.${side}.username`] ?? errors[`seats.${side}`]}>
+          <Field label={t("lobby.username")} error={errors[`players.${side}.username`] ?? errors[`players.${side}`]}>
             <Input mono spellcheck={false} value={choice.username} onValue={(username) => onChoice({ ...choice, username })} />
           </Field>
         )}
@@ -163,46 +163,46 @@ function SeatPick({ side, choice, errors, onChoice }: SeatPickProps) {
 }
 
 interface CreateRoundProps {
-  lease: Lease;
+  allocation: Allocation;
   problems: Schemas["LearnerProblemSummary"][];
   onCreated: () => void;
 }
 
-function CreateRound({ lease, problems, onCreated }: CreateRoundProps) {
-  const fitting = problems.filter((problem) => problem.wargame === lease.wargame && problem.kind !== "lesson");
+function CreateRound({ allocation, problems, onCreated }: CreateRoundProps) {
+  const fitting = problems.filter((problem) => problem.wargame === allocation.wargame && problem.kind !== "lesson");
   const [problem, setProblem] = useState("");
   const [matchup, setMatchup] = useState<Matchup>("pvp");
-  const [seats, setSeats] = useState<Record<Side, SeatChoice>>({
+  const [players, setPlayers] = useState<Record<Side, PlayerChoice>>({
     attack: { kind: "open", username: "", bot: "" },
     defence: { kind: "open", username: "", bot: "" },
   });
   const [tokens, setTokens] = useState<Array<{ side: string; token: string; bot: string }>>([]);
   const [copied, setCopied] = useState("");
-  const create = useAction("post", "/api/leases/{lease_id}/rounds/");
+  const create = useAction("post", "/api/allocations/{allocation_id}/rounds/");
 
   const chosen = problem || String(fitting[0]?.id ?? "");
-  const unended = lease.rounds.some((line) => line.phase !== "ended");
-  const closed = lease.closed !== null;
-  const blocked = closed || !lease.ready || unended || !chosen;
+  const unended = allocation.rounds.some((line) => line.phase !== "ended");
+  const closed = allocation.closed !== null;
+  const blocked = closed || !allocation.ready || unended || !chosen;
   const errors = fieldErrors(create.error);
 
   const pickMatchup = (next: Matchup) => {
     setMatchup(next);
-    setSeats((was) => ({
-      attack: { ...was.attack, kind: SEATS_FOR[next].attack },
-      defence: { ...was.defence, kind: SEATS_FOR[next].defence },
+    setPlayers((was) => ({
+      attack: { ...was.attack, kind: PLAYERS_FOR[next].attack },
+      defence: { ...was.defence, kind: PLAYERS_FOR[next].defence },
     }));
   };
 
   const submit = async () => {
     if (blocked) return;
     const made = await create.run({
-      params: { lease_id: lease.lease },
-      body: { problem: Number(chosen), matchup, seats: { attack: askOf(seats.attack), defence: askOf(seats.defence) } },
+      params: { allocation_id: allocation.allocation },
+      body: { problem: Number(chosen), matchup, players: { attack: askOf(players.attack), defence: askOf(players.defence) } },
     });
     if (!made) return;
     setTokens(Object.entries(made.bot_tokens).map(([side, token]) => ({
-      side, token, bot: made.seats.find((seat) => seat.side === side)?.bot_name ?? "",
+      side, token, bot: made.players.find((player) => player.side === side)?.bot_name ?? "",
     })));
     onCreated();
   };
@@ -216,7 +216,7 @@ function CreateRound({ lease, problems, onCreated }: CreateRoundProps) {
     }
   };
 
-  const reason = closed ? t("lobby.closed_notice") : !lease.ready ? t("lobby.not_ready") : unended ? t("error.round_open") : !fitting.length ? t("lobby.no_match_problem") : "";
+  const reason = closed ? t("lobby.closed_notice") : !allocation.ready ? t("lobby.not_ready") : unended ? t("error.round_open") : !fitting.length ? t("lobby.no_match_problem") : "";
 
   return (
     <Task title={t("lobby.create")}>
@@ -243,8 +243,8 @@ function CreateRound({ lease, problems, onCreated }: CreateRoundProps) {
           </Stack>
           <Columns shape="two">
             {SIDES.map((side) => (
-              <SeatPick key={side} side={side} choice={seats[side]} errors={errors}
-                onChoice={(choice) => setSeats((was) => ({ ...was, [side]: choice }))} />
+              <PlayerPick key={side} side={side} choice={players[side]} errors={errors}
+                onChoice={(choice) => setPlayers((was) => ({ ...was, [side]: choice }))} />
             ))}
           </Columns>
           <ErrorNotice error={create.error && { errors: create.error.errors.filter((error) => !INLINE_PATHS.includes(error.path)) }} />
@@ -259,27 +259,27 @@ function CreateRound({ lease, problems, onCreated }: CreateRoundProps) {
 }
 
 export function RoundLobby({ params }: PageProps) {
-  const leaseId = Number(params.lease);
+  const allocationId = Number(params.allocation);
   const [liveRound, setLiveRound] = useState<number | null>(null);
-  const lease = useResource("/api/leases/{lease_id}/", { params: { lease_id: leaseId } }, {
+  const allocation = useResource("/api/allocations/{allocation_id}/", { params: { allocation_id: allocationId } }, {
     refreshOn: liveRound ? { round: liveRound, kinds: ROUND_KINDS_THAT_CHANGE } : undefined,
   });
   const problems = useResource("/api/problems/", {});
-  const close = useAction("post", "/api/leases/{lease_id}/close/");
-  const shown = lease.data;
+  const close = useAction("post", "/api/allocations/{allocation_id}/close/");
+  const shown = allocation.data;
   const live = shown?.rounds.find((line) => line.phase !== "ended")?.round ?? null;
 
   const open = shown !== undefined && shown.closed === null;
 
   useEffect(() => setLiveRound(live), [live]);
-  useEffect(() => (open ? holdLease(leaseId) : undefined), [open, leaseId]);
+  useEffect(() => (open ? holdAllocation(allocationId) : undefined), [open, allocationId]);
 
   useEffect(() => {
     if (!shown || shown.ready || shown.closed !== null) return undefined;
     const abort = new AbortController();
-    waitForLease(leaseId, { signal: abort.signal, onRead: lease.setData }).catch(() => undefined);
+    waitForAllocation(allocationId, { signal: abort.signal, onRead: allocation.setData }).catch(() => undefined);
     return () => abort.abort();
-  }, [leaseId, shown?.ready, shown?.closed]);
+  }, [allocationId, shown?.ready, shown?.closed]);
 
   const titleOf = useMemo(() => {
     const byId = new Map((problems.data ?? []).map((one) => [one.id, one.title]));
@@ -287,10 +287,10 @@ export function RoundLobby({ params }: PageProps) {
   }, [problems.data]);
 
   const giveBack = async () => {
-    if (await close.run({ params: { lease_id: leaseId } })) navigate(to.home());
+    if (await close.run({ params: { allocation_id: allocationId } })) navigate(to.home());
   };
 
-  const name = t("lease.name", { lease: leaseId });
+  const name = t("allocation.name", { allocation: allocationId });
   const state = !shown ? null : shown.closed !== null
     ? <Badge tone="muted">{t("lobby.closed")}</Badge>
     : shown.ready ? <Badge tone="ok">{t("lobby.ready")}</Badge> : <Badge tone="warn">{t("lobby.preparing")}</Badge>;
@@ -312,12 +312,12 @@ export function RoundLobby({ params }: PageProps) {
           : undefined} />
       <PageBody>
         <Stack>
-          <ErrorNotice error={lease.error ?? close.error} />
-          {!shown && lease.loading && <Loading>{t("common.loading")}</Loading>}
+          <ErrorNotice error={allocation.error ?? close.error} />
+          {!shown && allocation.loading && <Loading>{t("common.loading")}</Loading>}
           {shown && (
             <>
-              <Rounds lease={shown} titleOf={titleOf} onChanged={lease.reload} />
-              <CreateRound lease={shown} problems={problems.data ?? []} onCreated={lease.reload} />
+              <Rounds allocation={shown} titleOf={titleOf} onChanged={allocation.reload} />
+              <CreateRound allocation={shown} problems={problems.data ?? []} onCreated={allocation.reload} />
             </>
           )}
         </Stack>

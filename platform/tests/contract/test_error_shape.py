@@ -103,10 +103,10 @@ def test_the_handler_maps_every_domain_error_to_its_status(kind):
 
 @pytest.mark.parametrize("raised, status, code", [
     (ValueError("bad"), 400, "invalid"),
-    (PermissionError("no"), 403, "not_seated"),
+    (PermissionError("no"), 403, "not_a_player"),
     (exceptions.Throttled(wait=4.2), 429, "too_many"),
     (exceptions.PermissionDenied(code="not_staff"), 403, "not_staff"),
-    (exceptions.PermissionDenied(code="something_else"), 403, "not_seated"),
+    (exceptions.PermissionDenied(code="something_else"), 403, "not_a_player"),
 ])
 def test_the_handler_maps_python_and_drf_refusals(raised, status, code):
     answer = handler.handle(raised, {})

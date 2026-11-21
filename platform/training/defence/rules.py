@@ -21,7 +21,7 @@ from telemetry import events as log
 from telemetry.models import Detection
 from training.content import problems as content
 from training.defence import disable, drift, ruletest, terminal
-from training.models import DisabledRule, Lease, Round, RuleSet, RuleTest, Seat
+from training.models import DisabledRule, Allocation, Round, RuleSet, RuleTest, Player
 
 DEFENCE = "defence"
 
@@ -39,12 +39,12 @@ class Applied:
 
 
 def wired(found: Round, cfg: config.Config | None = None) -> ruletest.Wired:
-    return lease_wired(found.lease, cfg)
+    return allocation_wired(found.allocation, cfg)
 
 
-def lease_wired(lease: Lease, cfg: config.Config | None = None) -> ruletest.Wired:
+def allocation_wired(allocation: Allocation, cfg: config.Config | None = None) -> ruletest.Wired:
     cfg = cfg or configured()
-    reached = reach.lease_range(lease, cfg)
+    reached = reach.allocation_range(allocation, cfg)
     return ruletest.Wired(
         sensors=tuple(ruletest.Sensor(config=sensor, runner=reached.runner(sensor.role),
                                       node=reached.node_runner(sensor.role)) for sensor in cfg.sensors),
@@ -166,11 +166,11 @@ def check_waf(found: Round, posture: Mapping[str, Any]) -> dict:
     return {"ok": not found_errors, "errors": found_errors}
 
 
-def test_rules(found: Round, seat: Seat | None, engine: str, given: Any,
+def test_rules(found: Round, player: Player | None, engine: str, given: Any,
                cases: Sequence[str] | None = None) -> RuleTest:
     engine_given(engine)
     chosen = recordings(found, cases)
-    return ruletest.run(found, seat, engine, given, chosen, wired(found))
+    return ruletest.run(found, player, engine, given, chosen, wired(found))
 
 
 def rule_test(found: Round, engine: str, test_id: int) -> RuleTest:
@@ -180,15 +180,15 @@ def rule_test(found: Round, engine: str, test_id: int) -> RuleTest:
     return made
 
 
-def latest_test(found: Round, engine: str, seat: Seat | None = None) -> RuleTest | None:
+def latest_test(found: Round, engine: str, player: Player | None = None) -> RuleTest | None:
     tests = RuleTest.objects.filter(round=found, engine=engine_given(engine))
-    if seat is not None:
-        tests = tests.filter(seat=seat)
+    if player is not None:
+        tests = tests.filter(player=player)
     return tests.order_by("-id").first()
 
 
-def latest_table(found: Round, engine: str, seat: Seat | None = None) -> VerdictTable | None:
-    made = latest_test(found, engine, seat)
+def latest_table(found: Round, engine: str, player: Player | None = None) -> VerdictTable | None:
+    made = latest_test(found, engine, player)
     return None if made is None else ruletest.table_of(made.result)
 
 
@@ -205,10 +205,10 @@ def tuning_at(found: Round, at: datetime | None = None) -> dict:
     return json.loads(head.body) if head else start_tuning(found)
 
 
-def tested_of(found: Round, engine: str, seat: Seat | None, tested: int | None) -> RuleTest | None:
+def tested_of(found: Round, engine: str, player: Player | None, tested: int | None) -> RuleTest | None:
     if tested is None:
         return None
-    made = RuleTest.objects.filter(round=found, engine=engine, pk=tested, seat=seat).first()
+    made = RuleTest.objects.filter(round=found, engine=engine, pk=tested, player=player).first()
     if made is None:
         raise errors.Invalid(code="does_not_exist", path="tested")
     return made
@@ -255,23 +255,23 @@ def locked_head(found: Round, engine: str, base_version: int) -> RuleSet | None:
 
 
 def recorded(found: Round, engine: str, head: RuleSet | None, body: str, sensors: Sequence[dict],
-             tested: RuleTest | None, seat: Seat | None) -> RuleSet:
+             tested: RuleTest | None, player: Player | None) -> RuleSet:
     made = RuleSet.objects.create(round=found, engine=engine, version=(head.version if head else 0) + 1, body=body,
-                                  applied_at=timezone.now(), tested=tested, seat=seat,
+                                  applied_at=timezone.now(), tested=tested, player=player,
                                   same_as_tested=tested is not None and tested.body_sha == ruletest.sha(body),
                                   sensors=list(sensors))
-    log.append(found.pk, "rule.applied", {"engine": engine, "version": made.version}, seat_side=DEFENCE)
+    log.append(found.pk, "rule.applied", {"engine": engine, "version": made.version}, player_side=DEFENCE)
     return made
 
 
-def apply_ids(found: Round, text: str, base_version: int, seat: Seat | None = None,
+def apply_ids(found: Round, text: str, base_version: int, player: Player | None = None,
               tested: int | None = None) -> Applied:
     unread = ruletest.unread_errors(text)
     if unread:
         raise errors.EngineRefused(code="unread_sid", errors=tuple(
             errors.FieldError(path=error["path"], code=error["code"], line=error["line"],
                               params={"message": error["message"]}) for error in unread))
-    test = tested_of(found, ENGINE_IDS, seat, tested)
+    test = tested_of(found, ENGINE_IDS, player, tested)
     reached = wired(found)
     if not reached.sensors:
         raise errors.Unavailable(code="sensor_unavailable")
@@ -279,13 +279,13 @@ def apply_ids(found: Round, text: str, base_version: int, seat: Seat | None = No
         head = locked_head(found, ENGINE_IDS, base_version)
         previous = head.body if head else suricata.current(reached.sensors[0].runner, reached.sensors[0].config)
         sensors = written_to_sensors(text, previous, reached.sensors)
-        return Applied(rule_set=recorded(found, ENGINE_IDS, head, text, sensors, test, seat), sensors=sensors)
+        return Applied(rule_set=recorded(found, ENGINE_IDS, head, text, sensors, test, player), sensors=sensors)
 
 
-def apply_waf(found: Round, posture: Mapping[str, Any], base_version: int, seat: Seat | None = None,
+def apply_waf(found: Round, posture: Mapping[str, Any], base_version: int, player: Player | None = None,
               tested: int | None = None) -> Applied:
     tuning = ruletest.checked_posture(posture)
-    test = tested_of(found, ENGINE_WAF, seat, tested)
+    test = tested_of(found, ENGINE_WAF, player, tested)
     reached = wired(found)
     with transaction.atomic():
         head = locked_head(found, ENGINE_WAF, base_version)
@@ -293,7 +293,7 @@ def apply_waf(found: Round, posture: Mapping[str, Any], base_version: int, seat:
             crs.apply(tuning, reached.gateway, reached.waf)
         except crs.TuningRefused as refused:
             raise ruletest.posture_refusal(refused) from refused
-        return Applied(rule_set=recorded(found, ENGINE_WAF, head, ruletest.canonical(tuning), (), test, seat), sensors=())
+        return Applied(rule_set=recorded(found, ENGINE_WAF, head, ruletest.canonical(tuning), (), test, player), sensors=())
 
 
 def apply_posture(found: Round) -> None:
@@ -320,7 +320,7 @@ def disable_rule(found: Round, sid: int, minutes: float, reason: str = "",
     apply_ids(found, disable.comment_out(head.body, sid, expires_at.isoformat()), head.version)
     made = DisabledRule.objects.create(round=found, sid=sid, original=original, reason=reason,
                                        expires_at=expires_at)
-    log.append(found.pk, "rule.disabled", {"sid": sid, "expires_at": expires_at.isoformat()}, seat_side=DEFENCE)
+    log.append(found.pk, "rule.disabled", {"sid": sid, "expires_at": expires_at.isoformat()}, player_side=DEFENCE)
     return made
 
 
@@ -372,8 +372,8 @@ def close(found: Round) -> None:
 PROBE_CAPTURES = "/tmp/cr-probes"
 
 
-def detection_only(lease: Lease) -> dict:
-    reached = lease_wired(lease)
+def detection_only(allocation: Allocation) -> dict:
+    reached = allocation_wired(allocation)
     standing = crs.read(reached.gateway, reached.waf)
     tuning = ruletest.checked_posture({**{key: value for key, value in standing.items() if key != "file"},
                                        "paranoia": standing.get("paranoia") or 1, "detection_only": True})
@@ -384,15 +384,15 @@ def detection_only(lease: Lease) -> dict:
     return tuning
 
 
-def start_capture(lease: Lease, name: str, seconds: int) -> suricata.Capture:
-    reached = lease_wired(lease)
+def start_capture(allocation: Allocation, name: str, seconds: int) -> suricata.Capture:
+    reached = allocation_wired(allocation)
     if not reached.sensors:
         raise errors.Unavailable(code="sensor_unavailable")
     sensor = reached.sensors[0]
     return suricata.capture(sensor.node, sensor.config, f"{PROBE_CAPTURES}/{name}.pcap", seconds)
 
 
-def finish_capture(lease: Lease, held: suricata.Capture) -> bytes:
-    sensor = lease_wired(lease).sensors[0]
+def finish_capture(allocation: Allocation, held: suricata.Capture) -> bytes:
+    sensor = allocation_wired(allocation).sensors[0]
     suricata.stop_capture(sensor.node, held)
     return suricata.captured(sensor.node, held)

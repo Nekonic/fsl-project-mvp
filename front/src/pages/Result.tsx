@@ -19,20 +19,20 @@ function useResultRound(round: number) {
   const shown = useResource("/api/rounds/{round_id}/", { params: { round_id: round } }, { refreshOn: { round, kinds: ROUND_EVENTS } });
   const problemId = shown.data?.problem;
   const problem = useResource("/api/problems/{problem_id}/", problemId ? { params: { problem_id: problemId } } : null);
-  const leaseId = shown.data?.lease;
-  const lease = useResource("/api/leases/{lease_id}/", leaseId ? { params: { lease_id: leaseId } } : null);
-  return { round: shown.data, problem: problem.data, lease: lease.data, error: shown.error };
+  const allocationId = shown.data?.allocation;
+  const allocation = useResource("/api/allocations/{allocation_id}/", allocationId ? { params: { allocation_id: allocationId } } : null);
+  return { round: shown.data, problem: problem.data, allocation: allocation.data, error: shown.error };
 }
 
 export function Result({ params }: PageProps) {
   const round = Number(params.round);
   const place = usePlace();
   const side = sideFrom(place.search.get("side"));
-  const { round: shown, problem, lease, error } = useResultRound(round);
+  const { round: shown, problem, allocation, error } = useResultRound(round);
   const ended = shown?.phase === "ended";
   const span = shown?.started && shown.ended ? `${clock(shown.started)}–${clock(shown.ended)}` : "";
   const lead = [problem?.title, span, shown?.end_reason ? tFor("end_reason", shown.end_reason) : ""].filter(Boolean).join(" · ");
-  const nextRound = lease && !lease.closed ? <Button tone="primary" href={to.lease(lease.lease)}>{t("result.next_round")}</Button> : null;
+  const nextRound = allocation && !allocation.closed ? <Button tone="primary" href={to.allocation(allocation.allocation)}>{t("result.next_round")}</Button> : null;
 
   return (
     <AppPage

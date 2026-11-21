@@ -14,7 +14,7 @@ RETRY_AFTER = 30
 class SlotLine:
     slot: int
     wargame: str
-    lease: int | None
+    allocation: int | None
     refill: dict
 
 
@@ -89,7 +89,7 @@ def refill_slot(slot: int | None, wargame: str) -> None:
 
 def slots(holders: dict[int, int]) -> list[SlotLine]:
     whole, kept = reach.whole_range(), store()
-    return [SlotLine(slot=number, wargame=assigned(whole, number), lease=holders.get(number),
+    return [SlotLine(slot=number, wargame=assigned(whole, number), allocation=holders.get(number),
                      refill=refill.standing(kept, number).shown()) for number in numbers(whole)]
 
 

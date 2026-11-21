@@ -8,7 +8,7 @@ function json(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
-function leaseAnswering(lease: number, closed: string | null) {
+function allocationAnswering(allocation: number, closed: string | null) {
   const beats: string[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -17,7 +17,7 @@ function leaseAnswering(lease: number, closed: string | null) {
       return json({ expires_at: "2026-01-01T00:30:00Z" });
     }
     if (url.startsWith("/api/problems/")) return json([]);
-    return json({ lease, wargame: "board", slot: 1, ready: true, expires_at: "2026-01-01T00:30:00Z", closed, rounds: [] });
+    return json({ allocation, wargame: "board", slot: 1, ready: true, expires_at: "2026-01-01T00:30:00Z", closed, rounds: [] });
   }));
   return beats;
 }
@@ -38,10 +38,10 @@ afterEach(() => {
 });
 
 describe("RoundLobby", () => {
-  it("holds an open lease from load until it leaves the page", async () => {
-    const beats = leaseAnswering(61, null);
-    const page = render(<RoundLobby params={{ lease: "61" }} />);
-    await vi.waitFor(() => expect(beats).toEqual(["/api/leases/61/heartbeat/"]));
+  it("holds an open allocation from load until it leaves the page", async () => {
+    const beats = allocationAnswering(61, null);
+    const page = render(<RoundLobby params={{ allocation: "61" }} />);
+    await vi.waitFor(() => expect(beats).toEqual(["/api/allocations/61/heartbeat/"]));
     vi.advanceTimersByTime(HEARTBEAT_EVERY_MS);
     await vi.waitFor(() => expect(beats.length).toBe(2));
     page.unmount();
@@ -50,9 +50,9 @@ describe("RoundLobby", () => {
     expect(beats.length).toBe(2);
   });
 
-  it("never beats for a closed lease", async () => {
-    const beats = leaseAnswering(62, "2026-01-01T00:10:00Z");
-    const page = render(<RoundLobby params={{ lease: "62" }} />);
+  it("never beats for a closed allocation", async () => {
+    const beats = allocationAnswering(62, "2026-01-01T00:10:00Z");
+    const page = render(<RoundLobby params={{ allocation: "62" }} />);
     await vi.waitFor(() => expect(page.container.textContent).toContain("62"));
     vi.advanceTimersByTime(HEARTBEAT_EVERY_MS * 3);
     await settle();

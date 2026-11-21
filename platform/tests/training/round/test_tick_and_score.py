@@ -8,15 +8,15 @@ from telemetry import events as log
 from tests.shape import refused
 from tests.training.round.conftest import pvp, url
 from training.attack import actions as attack
-from training.models import CustomerRequest, Lease, Round
+from training.models import CustomerRequest, Allocation, Round
 from training.round import follow
 from training.round import lifecycle as service
 from training.traffic import customers
 
 
 @pytest.fixture
-def running(lease, problem, learner, other):
-    found = pvp(lease, problem, other, learner)
+def running(allocation, problem, learner, other):
+    found = pvp(allocation, problem, other, learner)
     return service.start_round(found)
 
 
@@ -82,7 +82,7 @@ def test_a_tick_survives_a_side_that_is_unavailable(monkeypatch, running):
 
 
 def test_the_score_keeps_objectives_outcomes_and_free_actions_apart(as_operator, running, learner):
-    attack.send(running, running.seats.get(side="attack"), "GET", "/?q=free")
+    attack.send(running, running.players.get(side="attack"), "GET", "/?q=free")
     service.end_round(running, "ended_by_operator")
 
     score = as_operator.get(url(running, "score/")).json()
@@ -93,7 +93,7 @@ def test_the_score_keeps_objectives_outcomes_and_free_actions_apart(as_operator,
     assert score["objectives"]["lost"] == [] and score["objectives"]["kept"]
 
 
-def test_a_seat_reads_the_score_only_after_the_end_and_never_picks_the_correlation(browser, running, other,
+def test_a_player_reads_the_score_only_after_the_end_and_never_picks_the_correlation(browser, running, other,
                                                                                    staff):
     browser.force_authenticate(other)
     refused(browser.get(url(running, "score/")), 409, "round_running")
@@ -105,12 +105,12 @@ def test_a_seat_reads_the_score_only_after_the_end_and_never_picks_the_correlati
     assert browser.get(url(running, "score/?correlation=window")).status_code == 200
 
 
-def test_neither_seat_reads_the_score_while_the_round_runs(browser, lease, problem, other, make_user):
+def test_neither_player_reads_the_score_while_the_round_runs(browser, allocation, problem, other, make_user):
     defender = make_user("defender")
-    found = service.start_round(pvp(lease, problem, other, defender))
+    found = service.start_round(pvp(allocation, problem, other, defender))
 
-    for seat in (other, defender):
-        browser.force_authenticate(seat)
+    for player in (other, defender):
+        browser.force_authenticate(player)
         refused(browser.get(url(found, "score/")), 409, "round_running")
 
 
@@ -118,16 +118,16 @@ def test_the_operator_reads_the_score_mid_round(as_operator, running):
     assert as_operator.get(url(running, "score/")).status_code == 200
 
 
-def test_the_follower_ticks_running_rounds_closes_expired_leases_and_prunes(running, lease, settings):
+def test_the_follower_ticks_running_rounds_closes_expired_allocations_and_prunes(running, allocation, settings):
     first = follow.once()
-    Lease.objects.filter(pk=lease.pk).update(expires_at=timezone.now() - timedelta(seconds=1))
+    Allocation.objects.filter(pk=allocation.pk).update(expires_at=timezone.now() - timedelta(seconds=1))
     second = follow.once()
-    Lease.objects.filter(pk=lease.pk).update(closed=timezone.now() - timedelta(minutes=settings.RETAIN_CLOSED_MINUTES + 1))
+    Allocation.objects.filter(pk=allocation.pk).update(closed=timezone.now() - timedelta(minutes=settings.RETAIN_CLOSED_MINUTES + 1))
     third = follow.once()
 
     assert first.ticked == (running.pk,)
-    assert second.expired == (lease.pk,)
-    assert third.pruned == (lease.pk,) and not Round.objects.filter(pk=running.pk).exists()
+    assert second.expired == (allocation.pk,)
+    assert third.pruned == (allocation.pk,) and not Round.objects.filter(pk=running.pk).exists()
     assert log.after(running.pk, 0, log.Viewer(staff=True)).events == []
 
 

@@ -3,6 +3,147 @@ info:
   title: Cyber range
   version: '1'
 paths:
+  /api/allocations/:
+    post:
+      operationId: allocation_open
+      tags:
+      - match
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenAllocationRequest'
+        required: true
+      security:
+      - player_token: []
+      - cr_session: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllocationShown'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/allocations/{allocation_id}/:
+    get:
+      operationId: allocation_read
+      parameters:
+      - in: path
+        name: allocation_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - match
+      security:
+      - player_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllocationDetail'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/allocations/{allocation_id}/close/:
+    post:
+      operationId: allocation_close
+      parameters:
+      - in: path
+        name: allocation_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - match
+      security:
+      - player_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Closed'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/allocations/{allocation_id}/heartbeat/:
+    post:
+      operationId: allocation_heartbeat
+      parameters:
+      - in: path
+        name: allocation_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - match
+      security:
+      - player_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expiry'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/allocations/{allocation_id}/rounds/:
+    post:
+      operationId: round_create
+      parameters:
+      - in: path
+        name: allocation_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - match
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoundRequest'
+        required: true
+      security:
+      - player_token: []
+      - cr_session: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Created'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
   /api/auth/csrf/:
     get:
       operationId: auth_csrf
@@ -85,147 +226,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SignedUp'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
-  /api/leases/:
-    post:
-      operationId: lease_open
-      tags:
-      - match
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OpenLeaseRequest'
-        required: true
-      security:
-      - seat_token: []
-      - cr_session: []
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LeaseShown'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
-  /api/leases/{lease_id}/:
-    get:
-      operationId: lease_read
-      parameters:
-      - in: path
-        name: lease_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - match
-      security:
-      - seat_token: []
-      - cr_session: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LeaseDetail'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
-  /api/leases/{lease_id}/close/:
-    post:
-      operationId: lease_close
-      parameters:
-      - in: path
-        name: lease_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - match
-      security:
-      - seat_token: []
-      - cr_session: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Closed'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
-  /api/leases/{lease_id}/heartbeat/:
-    post:
-      operationId: lease_heartbeat
-      parameters:
-      - in: path
-        name: lease_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - match
-      security:
-      - seat_token: []
-      - cr_session: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Expiry'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
-  /api/leases/{lease_id}/rounds/:
-    post:
-      operationId: round_create
-      parameters:
-      - in: path
-        name: lease_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - match
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateRoundRequest'
-        required: true
-      security:
-      - seat_token: []
-      - cr_session: []
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Created'
           description: ''
         default:
           description: refused
@@ -324,7 +324,7 @@ paths:
       tags:
       - match
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -353,7 +353,7 @@ paths:
       tags:
       - match
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -380,7 +380,7 @@ paths:
       tags:
       - attack
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -414,7 +414,7 @@ paths:
               $ref: '#/components/schemas/FireCaseRequest'
         required: true
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '202':
@@ -441,7 +441,7 @@ paths:
       tags:
       - attack
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -474,7 +474,7 @@ paths:
               $ref: '#/components/schemas/LootRequest'
         required: true
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -501,7 +501,7 @@ paths:
       tags:
       - attack
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -534,7 +534,7 @@ paths:
               $ref: '#/components/schemas/SendRequestRequest'
         required: true
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -561,7 +561,7 @@ paths:
       tags:
       - attack
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -588,7 +588,7 @@ paths:
       tags:
       - attack
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -615,7 +615,7 @@ paths:
       tags:
       - attack
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -647,7 +647,7 @@ paths:
               $ref: '#/components/schemas/StartToolRequest'
         required: true
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '202':
@@ -685,7 +685,7 @@ paths:
       tags:
       - attack
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -716,7 +716,7 @@ paths:
       tags:
       - attack
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '204':
@@ -767,7 +767,7 @@ paths:
       tags:
       - defence
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -794,7 +794,7 @@ paths:
       tags:
       - defence
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -821,7 +821,7 @@ paths:
       tags:
       - defence
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -855,7 +855,7 @@ paths:
               $ref: '#/components/schemas/DisableRequest'
         required: true
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '201':
@@ -887,7 +887,7 @@ paths:
       tags:
       - defence
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '204':
@@ -910,7 +910,7 @@ paths:
       tags:
       - defence
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -943,7 +943,7 @@ paths:
               $ref: '#/components/schemas/IdsApplyRequest'
         required: true
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -976,7 +976,7 @@ paths:
               $ref: '#/components/schemas/TextRequest'
         required: true
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1009,7 +1009,7 @@ paths:
               $ref: '#/components/schemas/IdsTestRequest'
         required: true
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1041,7 +1041,7 @@ paths:
       tags:
       - defence
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1068,7 +1068,7 @@ paths:
       tags:
       - defence
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1097,7 +1097,7 @@ paths:
       tags:
       - defence
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1124,7 +1124,7 @@ paths:
       tags:
       - defence
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1153,7 +1153,7 @@ paths:
       tags:
       - defence
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1180,7 +1180,7 @@ paths:
       tags:
       - defence
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1213,7 +1213,7 @@ paths:
       tags:
       - defence
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1240,7 +1240,7 @@ paths:
       tags:
       - defence
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1273,7 +1273,7 @@ paths:
               $ref: '#/components/schemas/WafApplyRequest'
         required: true
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1306,7 +1306,7 @@ paths:
               $ref: '#/components/schemas/WafCheckRequest'
         required: true
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1339,7 +1339,7 @@ paths:
               $ref: '#/components/schemas/WafTestRequest'
         required: true
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1371,7 +1371,7 @@ paths:
       tags:
       - defence
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1398,7 +1398,7 @@ paths:
       tags:
       - defence
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1427,7 +1427,7 @@ paths:
       tags:
       - match
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1460,7 +1460,7 @@ paths:
       tags:
       - match
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1468,6 +1468,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Page'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/players/{side}/join/:
+    post:
+      operationId: round_join
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: string
+          pattern: ^[0-9]+$
+        required: true
+      - in: path
+        name: side
+        schema:
+          type: string
+          pattern: ^attack|defence$
+        required: true
+      tags:
+      - match
+      security:
+      - player_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Joined'
           description: ''
         default:
           description: refused
@@ -1498,7 +1532,7 @@ paths:
       tags:
       - match
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1506,40 +1540,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Score'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
-  /api/rounds/{round_id}/seats/{side}/join/:
-    post:
-      operationId: round_join
-      parameters:
-      - in: path
-        name: round_id
-        schema:
-          type: string
-          pattern: ^[0-9]+$
-        required: true
-      - in: path
-        name: side
-        schema:
-          type: string
-          pattern: ^attack|defence$
-        required: true
-      tags:
-      - match
-      security:
-      - seat_token: []
-      - cr_session: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Joined'
           description: ''
         default:
           description: refused
@@ -1565,7 +1565,7 @@ paths:
       tags:
       - match
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1594,7 +1594,7 @@ paths:
       tags:
       - match
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1622,7 +1622,7 @@ paths:
       tags:
       - match
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '204':
@@ -1646,7 +1646,7 @@ paths:
       tags:
       - match
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '204':
@@ -1669,7 +1669,7 @@ paths:
       tags:
       - match
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -1832,19 +1832,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Errors'
-  /api/staff/probes/{lease_id}/:
+  /api/staff/probes/{allocation_id}/:
     get:
       operationId: staff_probes_progress
       parameters:
       - in: path
-        name: lease_id
+        name: allocation_id
         schema:
           type: integer
         required: true
       tags:
       - staff
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -2068,7 +2068,7 @@ paths:
       tags:
       - staff
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -2089,7 +2089,7 @@ paths:
       tags:
       - staff
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -2109,7 +2109,7 @@ paths:
       tags:
       - staff
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '204':
@@ -2126,7 +2126,7 @@ paths:
       tags:
       - staff
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '204':
@@ -2143,7 +2143,7 @@ paths:
       tags:
       - staff
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -2163,7 +2163,7 @@ paths:
       tags:
       - staff
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '200':
@@ -2183,7 +2183,7 @@ paths:
       tags:
       - staff
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '204':
@@ -2302,14 +2302,14 @@ paths:
       tags:
       - staff
       security:
-      - seat_token: []
+      - player_token: []
       - cr_session: []
       responses:
         '202':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProbeLease'
+                $ref: '#/components/schemas/ProbeAllocation'
           description: ''
         default:
           description: refused
@@ -2382,6 +2382,63 @@ components:
       required:
       - alerts
       - next
+    AllocationDetail:
+      type: object
+      properties:
+        allocation:
+          type: integer
+        wargame:
+          type: string
+        slot:
+          type: integer
+          nullable: true
+        ready:
+          type: boolean
+        expires_at:
+          type: string
+          format: date-time
+        closed:
+          type: string
+          format: date-time
+          nullable: true
+        rounds:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoundLine'
+      required:
+      - allocation
+      - closed
+      - expires_at
+      - ready
+      - rounds
+      - slot
+      - wargame
+    AllocationShown:
+      type: object
+      properties:
+        allocation:
+          type: integer
+        wargame:
+          type: string
+        slot:
+          type: integer
+          nullable: true
+        ready:
+          type: boolean
+        expires_at:
+          type: string
+          format: date-time
+        closed:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - allocation
+      - closed
+      - expires_at
+      - ready
+      - slot
+      - wargame
     AnalystSsh:
       type: object
       properties:
@@ -2664,29 +2721,29 @@ components:
           type: integer
         matchup:
           $ref: '#/components/schemas/MatchupEnum'
-        seats:
-          $ref: '#/components/schemas/SeatsAskRequest'
+        players:
+          $ref: '#/components/schemas/PlayersAskRequest'
       required:
       - matchup
+      - players
       - problem
-      - seats
     Created:
       type: object
       properties:
         round:
           type: integer
-        seats:
+        players:
           type: array
           items:
-            $ref: '#/components/schemas/SeatLine'
+            $ref: '#/components/schemas/PlayerLine'
         bot_tokens:
           type: object
           additionalProperties:
             type: string
       required:
       - bot_tokens
+      - players
       - round
-      - seats
     CredentialsRequest:
       type: object
       properties:
@@ -2884,7 +2941,7 @@ components:
       - ended_by_operator
       - forfeit_attack
       - forfeit_defence
-      - lease_expired
+      - allocation_expired
       type: string
       description: |-
         * `time_limit` - time_limit
@@ -2893,7 +2950,7 @@ components:
         * `ended_by_operator` - ended_by_operator
         * `forfeit_attack` - forfeit_attack
         * `forfeit_defence` - forfeit_defence
-        * `lease_expired` - lease_expired
+        * `allocation_expired` - allocation_expired
     Event:
       type: object
       properties:
@@ -2904,10 +2961,10 @@ components:
         at:
           type: string
           format: date-time
-        seat_side:
+        player_side:
           nullable: true
           oneOf:
-          - $ref: '#/components/schemas/SeatSideEnum'
+          - $ref: '#/components/schemas/PlayerSideEnum'
           - $ref: '#/components/schemas/NullEnum'
         body:
           type: object
@@ -2917,7 +2974,7 @@ components:
       - body
       - id
       - kind
-      - seat_side
+      - player_side
     Exclusion:
       type: object
       properties:
@@ -3162,12 +3219,12 @@ components:
     Joined:
       type: object
       properties:
-        seat:
+        player:
           type: integer
         side:
-          $ref: '#/components/schemas/SeatSideEnum'
+          $ref: '#/components/schemas/PlayerSideEnum'
       required:
-      - seat
+      - player
       - side
     KeptObjective:
       type: object
@@ -3232,63 +3289,6 @@ components:
       - side
       - summary
       - title
-      - wargame
-    LeaseDetail:
-      type: object
-      properties:
-        lease:
-          type: integer
-        wargame:
-          type: string
-        slot:
-          type: integer
-          nullable: true
-        ready:
-          type: boolean
-        expires_at:
-          type: string
-          format: date-time
-        closed:
-          type: string
-          format: date-time
-          nullable: true
-        rounds:
-          type: array
-          items:
-            $ref: '#/components/schemas/RoundLine'
-      required:
-      - closed
-      - expires_at
-      - lease
-      - ready
-      - rounds
-      - slot
-      - wargame
-    LeaseShown:
-      type: object
-      properties:
-        lease:
-          type: integer
-        wargame:
-          type: string
-        slot:
-          type: integer
-          nullable: true
-        ready:
-          type: boolean
-        expires_at:
-          type: string
-          format: date-time
-        closed:
-          type: string
-          format: date-time
-          nullable: true
-      required:
-      - closed
-      - expires_at
-      - lease
-      - ready
-      - slot
       - wargame
     LootRequest:
       type: object
@@ -3443,7 +3443,7 @@ components:
       - kept
       - lost
       - weighted
-    OpenLeaseRequest:
+    OpenAllocationRequest:
       type: object
       properties:
         wargame:
@@ -3526,6 +3526,50 @@ components:
           $ref: '#/components/schemas/RoundPhaseEnum'
       required:
       - phase
+    PlayerAskRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 150
+        bot:
+          $ref: '#/components/schemas/BotAskRequest'
+        open:
+          type: boolean
+    PlayerLine:
+      type: object
+      properties:
+        side:
+          $ref: '#/components/schemas/PlayerSideEnum'
+        client:
+          type: string
+        username:
+          type: string
+          readOnly: true
+          nullable: true
+        bot_name:
+          type: string
+      required:
+      - bot_name
+      - client
+      - side
+      - username
+    PlayerSideEnum:
+      enum:
+      - attack
+      - defence
+      type: string
+      description: |-
+        * `attack` - attack
+        * `defence` - defence
+    PlayersAskRequest:
+      type: object
+      properties:
+        attack:
+          $ref: '#/components/schemas/PlayerAskRequest'
+        defence:
+          $ref: '#/components/schemas/PlayerAskRequest'
     Pool:
       type: object
       properties:
@@ -3585,6 +3629,13 @@ components:
       required:
       - rule
       - signature
+    ProbeAllocation:
+      type: object
+      properties:
+        allocation:
+          type: integer
+      required:
+      - allocation
     ProbeCase:
       type: object
       properties:
@@ -3611,17 +3662,10 @@ components:
       required:
       - case
       - code
-    ProbeLease:
-      type: object
-      properties:
-        lease:
-          type: integer
-      required:
-      - lease
     ProbeProgress:
       type: object
       properties:
-        lease:
+        allocation:
           type: integer
         wargame:
           type: string
@@ -3638,9 +3682,9 @@ components:
           items:
             $ref: '#/components/schemas/ProbeFailure'
       required:
+      - allocation
       - done
       - failed
-      - lease
       - state
       - total
       - wargame
@@ -3761,17 +3805,17 @@ components:
           type: string
         phase:
           $ref: '#/components/schemas/RoundPhaseEnum'
-        seats:
+        players:
           type: array
           items:
-            $ref: '#/components/schemas/SeatLine'
+            $ref: '#/components/schemas/PlayerLine'
       required:
       - kind
       - matchup
       - phase
+      - players
       - problem
       - round
-      - seats
     RoundPhaseEnum:
       enum:
       - created
@@ -3855,7 +3899,7 @@ components:
       properties:
         round:
           type: integer
-        lease:
+        allocation:
           type: integer
         problem:
           type: integer
@@ -3865,10 +3909,10 @@ components:
           type: string
         phase:
           $ref: '#/components/schemas/RoundPhaseEnum'
-        seats:
+        players:
           type: array
           items:
-            $ref: '#/components/schemas/SeatLine'
+            $ref: '#/components/schemas/PlayerLine'
         started:
           type: string
           format: date-time
@@ -3884,16 +3928,16 @@ components:
         end_reason:
           type: string
       required:
+      - allocation
       - end_reason
       - ended
       - ends_at
       - kind
-      - lease
       - matchup
       - phase
+      - players
       - problem
       - round
-      - seats
       - started
     Rule:
       type: object
@@ -4048,50 +4092,6 @@ components:
       - objectives
       - outcomes
       - posture_drift
-    SeatAskRequest:
-      type: object
-      properties:
-        username:
-          type: string
-          minLength: 1
-          maxLength: 150
-        bot:
-          $ref: '#/components/schemas/BotAskRequest'
-        open:
-          type: boolean
-    SeatLine:
-      type: object
-      properties:
-        side:
-          $ref: '#/components/schemas/SeatSideEnum'
-        client:
-          type: string
-        username:
-          type: string
-          readOnly: true
-          nullable: true
-        bot_name:
-          type: string
-      required:
-      - bot_name
-      - client
-      - side
-      - username
-    SeatSideEnum:
-      enum:
-      - attack
-      - defence
-      type: string
-      description: |-
-        * `attack` - attack
-        * `defence` - defence
-    SeatsAskRequest:
-      type: object
-      properties:
-        attack:
-          $ref: '#/components/schemas/SeatAskRequest'
-        defence:
-          $ref: '#/components/schemas/SeatAskRequest'
     SendRequestRequest:
       type: object
       properties:
@@ -4235,13 +4235,13 @@ components:
           type: integer
         wargame:
           type: string
-        lease:
+        allocation:
           type: integer
           nullable: true
         refill:
           $ref: '#/components/schemas/Refill'
       required:
-      - lease
+      - allocation
       - refill
       - slot
       - wargame
@@ -4719,7 +4719,8 @@ components:
       type: string
       enum:
       - account_pending
-      - already_seated
+      - allocation_closed
+      - already_playing
       - apply_refused
       - attacker_unavailable
       - blank
@@ -4735,7 +4736,6 @@ components:
       - invalid
       - invalid_choice
       - kibana_unavailable
-      - lease_closed
       - loot_not_taken
       - malformed
       - matchup_not_allowed
@@ -4748,6 +4748,7 @@ components:
       - not_a_boolean
       - not_a_choice
       - not_a_list
+      - not_a_player
       - not_a_positive_integer
       - not_a_text
       - not_a_text_list
@@ -4757,7 +4758,6 @@ components:
       - not_malicious
       - not_operator
       - not_recorded
-      - not_seated
       - not_signed_in
       - not_staff
       - 'null'
@@ -4768,6 +4768,8 @@ components:
       - password_too_common
       - password_too_short
       - password_too_similar
+      - player_taken
+      - players_open
       - probe_running
       - range_drifted
       - range_not_cloud
@@ -4778,8 +4780,6 @@ components:
       - round_open
       - round_running
       - round_started
-      - seat_taken
-      - seats_open
       - sensor_unavailable
       - server_error
       - sign_in_blocked
@@ -4793,10 +4793,10 @@ components:
       - tool_unavailable
       - unavailable
       - unknown_account
+      - unknown_allocation
       - unknown_block
       - unknown_case
       - unknown_field
-      - unknown_lease
       - unknown_objective
       - unknown_origin
       - unknown_posture
@@ -4843,6 +4843,6 @@ components:
       type: apiKey
       in: cookie
       name: cr_session
-    seat_token:
+    player_token:
       type: http
       scheme: bearer

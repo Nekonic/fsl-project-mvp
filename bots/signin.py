@@ -55,5 +55,5 @@ def signed_in(platform_url: str, timeout: float = TIMEOUT) -> Client:
     return client
 
 
-def seated(platform_url: str, token: str, timeout: float = TIMEOUT) -> AuthenticatedClient:
+def playing(platform_url: str, token: str, timeout: float = TIMEOUT) -> AuthenticatedClient:
     return AuthenticatedClient(base_url=platform_url.rstrip("/"), token=token, timeout=httpx2.Timeout(timeout))

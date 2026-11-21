@@ -64,7 +64,7 @@ def test_the_attack_bot_reads_hp_on_every_answer_and_moves_origin_when_one_is_sp
 
 
 @pytest.mark.parametrize("bot_round", ["attack_bot_round", "defence_bot_round"])
-def test_a_bot_seat_reads_the_end_and_the_score_with_its_own_token(bot_round, request):
+def test_a_bot_player_reads_the_end_and_the_score_with_its_own_token(bot_round, request):
     played = request.getfixturevalue(bot_round)
 
     assert played["shown"].ok and played["shown"].body["phase"] == "ended", played["shown"].text

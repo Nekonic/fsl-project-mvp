@@ -4,7 +4,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 CR_SOURCE = Path(os.environ.get("CR_SOURCE") or BASE_DIR.parent)
 CR_PROBES_OUT = Path(os.environ.get("CR_PROBES_OUT") or CR_SOURCE / "wargames")
-LEASE_IDLE_MINUTES = int(os.environ.get("CR_LEASE_IDLE_MINUTES") or 30)
+ALLOCATION_IDLE_MINUTES = int(os.environ.get("CR_ALLOCATION_IDLE_MINUTES") or 30)
 RETAIN_CLOSED_MINUTES = int(os.environ.get("CR_RETAIN_CLOSED_MINUTES") or 60)
 FOLLOW_SECONDS = float(os.environ.get("CR_FOLLOW_SECONDS") or 5)
 
@@ -101,5 +101,5 @@ SPECTACULAR_SETTINGS = {
                             "ProblemSideEnum": "training.models.PROBLEM_SIDES",
                             "VerdictEnum": "training.defence.serializers.VERDICTS",
                             "MatchupEnum": "training.models.MATCHUPS",
-                            "SeatSideEnum": "training.models.SEAT_SIDES", "RoundPhaseEnum": "training.models.PHASES"},
+                            "PlayerSideEnum": "training.models.PLAYER_SIDES", "RoundPhaseEnum": "training.models.PHASES"},
 }

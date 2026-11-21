@@ -68,18 +68,18 @@ def benign_names(wargame: str = "board") -> set[str]:
     return {case["name"] for case in plays.declared_cases(wargame) if case.get("malicious") is False}
 
 
-def auth_users_of(lease: int) -> dict:
+def auth_users_of(allocation: int) -> dict:
     body = run(BOARD, [
         "python3", "-c",
         "import urllib.request,sys; "
         "sys.stdout.write(urllib.request.urlopen("
         "'http://127.0.0.1:8000/internal/auth-users', timeout=20).read().decode())",
-    ], lease=lease).stdout
+    ], allocation=allocation).stdout
     return json.loads(body)
 
 
 def probed(played: plays.Played, token: str) -> list[dict]:
-    from_attacker(SHELL_ATTACK.format(token=token), lease=played.lease)
+    from_attacker(SHELL_ATTACK.format(token=token), allocation=played.allocation)
     return plays.alerts_until(played, lambda listed: bool(with_token(listed, token)))
 
 
@@ -87,9 +87,9 @@ def with_token(listed: list[dict], token: str) -> list[dict]:
     return [alert for alert in listed if token in (alert.get("uri") or "")]
 
 
-def typed(command: str, lease: int):
+def typed(command: str, allocation: int):
     shell = f"printf '{command}\\nexit\\n' | bash -i"
-    return run(ATTACKER, ["bash", "-c", shell], timeout=120, lease=lease)
+    return run(ATTACKER, ["bash", "-c", shell], timeout=120, allocation=allocation)
 
 
 def seen_by_both(listed: list[dict], marker: str) -> bool:
@@ -138,7 +138,7 @@ def board_session(stack_is_up):
         seen["control_alerts"] = plays.marked(
             plays.alerts_until(played, lambda listed: bool(plays.marked(listed, seen["marker"]))), seen["marker"])
         seen["fabricated_loot"] = plays.loot(played, FABRICATED_LOOT)
-        truth = auth_users_of(played.lease)
+        truth = auth_users_of(played.allocation)
         seen["real_loot"] = plays.loot(played, [{"username": name, "hash": digest} for name, digest in truth.items()])
         seen["ended"] = plays.end(played)
         seen["score_once_ended"] = plays.score(played, client=played.attack)
@@ -229,12 +229,12 @@ def terminal_session(stack_is_up):
     with plays.Round("board") as played:
         state = plays.attack_seen(played)
         seen = {"round": played.round, "origin": state["hp"]["origin"]}
-        seen["box_addresses"] = run(ATTACKER, ["sh", "-c", "hostname -I"], lease=played.lease).stdout.split()
+        seen["box_addresses"] = run(ATTACKER, ["sh", "-c", "hostname -I"], allocation=played.allocation).stdout.split()
         token = f"zz{uuid.uuid4().hex[:10]}"
         seen["front"] = (token, with_token(probed(played, token), token))
 
-        typed("nmap --version", played.lease)
-        typed("echo after", played.lease)
+        typed("nmap --version", played.allocation)
+        typed("echo after", played.allocation)
         deadline = time.monotonic() + plays.SCORE_WAIT
         while True:
             run_lines = [event["body"].get("command") for event in plays.events(played, {"command.run"})]
@@ -313,12 +313,12 @@ def post_in(out):
     return dict(zip(POST_FIELDS, out.rstrip("\n").split("\t", len(POST_FIELDS) - 1)))
 
 
-def admin_ids(lease):
-    return ids_in(run(CORP_DB, ADMINS, lease=lease).stdout)
+def admin_ids(allocation):
+    return ids_in(run(CORP_DB, ADMINS, allocation=allocation).stdout)
 
 
-def post_row(post_id, lease):
-    return post_in(run(CORP_DB, post_query(post_id), lease=lease).stdout)
+def post_row(post_id, allocation):
+    return post_in(run(CORP_DB, post_query(post_id), allocation=allocation).stdout)
 
 
 def nonce_from(played: plays.Played, page: str, pattern: re.Pattern) -> str:
@@ -376,18 +376,18 @@ def lost_keys(played: plays.Played, wanted: set[str]) -> set[str]:
 
 def rogue_admin_run():
     with plays.Round(CORP) as played:
-        before = run_side_by_side(CORP_DB, {"admins": ADMINS, "post": FIRST_POST}, lease=played.lease)
+        before = run_side_by_side(CORP_DB, {"admins": ADMINS, "post": FIRST_POST}, allocation=played.allocation)
         baseline, original = ids_in(before["admins"].stdout), first_post_in(before["post"].stdout)
         seen = {"round": played.round, "baseline": baseline, "original": original}
         nonce = nonce_from(played, "/register/", REGISTER_NONCE)
         assert nonce, "no _wpnonce on the live UM register form; is corp-wp up?"
         seen["registered"] = posted(played, "/register/", registration(f"rogue_{uuid.uuid4().hex[:8]}", nonce))
-        seen["admins"] = admin_ids(played.lease)
+        seen["admins"] = admin_ids(played.allocation)
         seen["created"] = seen["admins"] - baseline
         nonce = nonce_from(played, "/submit-a-story/", SUBMISSION_NONCE)
         assert nonce, "no rbGlobalSubmissionSettings nonce on the live corp.com submission page; is corp-wp up?"
         seen["overwrite"] = posted(played, "/wp-admin/admin-ajax.php", post_overwrite(original["ID"], nonce))
-        seen["overwritten"] = post_row(original["ID"], played.lease)
+        seen["overwritten"] = post_row(original["ID"], played.allocation)
         seen["lost"] = lost_keys(played, {"corp-rogue-admin", "corp-content-overwrite"})
         plays.end(played)
         seen["score"] = plays.score(played).body
@@ -404,7 +404,7 @@ def option_flip_run():
             posted(played, "/wp-admin/admin-ajax.php", option_flip(name, value), flipping).body["status"]
             for name, value in (("users_can_register", "1"), ("default_role", "administrator")))
         read = run_side_by_side(CORP_DB, {name: option_query(name) for name in ("users_can_register", "default_role")},
-                                lease=played.lease)
+                                allocation=played.allocation)
         seen["registration_open"] = read["users_can_register"].stdout.strip()
         seen["default_role"] = read["default_role"].stdout.strip()
         seen["lost"] = lost_keys(played, {"corp-self-registration"})

@@ -1,18 +1,18 @@
 from rest_framework import serializers
 
-from training.models import MATCHUPS, PHASES, REASONS, SEAT_SIDES
+from training.models import MATCHUPS, PHASES, REASONS, PLAYER_SIDES
 
 STATES = [("", ""), ("open", "open"), ("joinable", "joinable")]
 CORRELATIONS = [("marker", "marker"), ("window", "window")]
 VERDICTS = [(verdict, verdict) for verdict in ("tp", "fn", "fp", "tn")]
 
 
-class OpenLease(serializers.Serializer):
+class OpenAllocation(serializers.Serializer):
     wargame = serializers.CharField(max_length=64)
 
 
-class SeatLine(serializers.Serializer):
-    side = serializers.ChoiceField(choices=SEAT_SIDES)
+class PlayerLine(serializers.Serializer):
+    side = serializers.ChoiceField(choices=PLAYER_SIDES)
     client = serializers.CharField()
     username = serializers.CharField(source="user.username", allow_null=True, read_only=True, default=None)
     bot_name = serializers.CharField()
@@ -24,11 +24,11 @@ class RoundLine(serializers.Serializer):
     kind = serializers.CharField()
     matchup = serializers.CharField()
     phase = serializers.ChoiceField(choices=PHASES)
-    seats = SeatLine(many=True, source="seats.all")
+    players = PlayerLine(many=True, source="players.all")
 
 
-class LeaseShown(serializers.Serializer):
-    lease = serializers.IntegerField(source="pk")
+class AllocationShown(serializers.Serializer):
+    allocation = serializers.IntegerField(source="pk")
     wargame = serializers.CharField(source="wargame_id")
     slot = serializers.IntegerField(allow_null=True)
     ready = serializers.BooleanField()
@@ -36,7 +36,7 @@ class LeaseShown(serializers.Serializer):
     closed = serializers.DateTimeField(allow_null=True)
 
 
-class LeaseDetail(LeaseShown):
+class AllocationDetail(AllocationShown):
     rounds = RoundLine(many=True, source="rounds.all")
 
 
@@ -52,7 +52,7 @@ class BotAsk(serializers.Serializer):
     name = serializers.CharField(max_length=64)
 
 
-class SeatAsk(serializers.Serializer):
+class PlayerAsk(serializers.Serializer):
     username = serializers.CharField(max_length=150, required=False)
     bot = BotAsk(required=False)
     open = serializers.BooleanField(required=False)
@@ -63,20 +63,20 @@ class SeatAsk(serializers.Serializer):
         return attrs
 
 
-class SeatsAsk(serializers.Serializer):
-    attack = SeatAsk(required=False)
-    defence = SeatAsk(required=False)
+class PlayersAsk(serializers.Serializer):
+    attack = PlayerAsk(required=False)
+    defence = PlayerAsk(required=False)
 
 
 class CreateRound(serializers.Serializer):
     problem = serializers.IntegerField()
     matchup = serializers.ChoiceField(choices=MATCHUPS)
-    seats = SeatsAsk()
+    players = PlayersAsk()
 
 
 class Created(serializers.Serializer):
     round = serializers.IntegerField(source="round.pk")
-    seats = SeatLine(many=True, source="round.seats.all")
+    players = PlayerLine(many=True, source="round.players.all")
     bot_tokens = serializers.DictField(child=serializers.CharField())
 
 
@@ -86,8 +86,8 @@ class RoundsQuery(serializers.Serializer):
 
 
 class Joined(serializers.Serializer):
-    seat = serializers.IntegerField(source="pk")
-    side = serializers.ChoiceField(choices=SEAT_SIDES)
+    player = serializers.IntegerField(source="pk")
+    side = serializers.ChoiceField(choices=PLAYER_SIDES)
 
 
 class PhaseShown(serializers.Serializer):
@@ -101,12 +101,12 @@ class Ended(serializers.Serializer):
 
 class RoundShown(serializers.Serializer):
     round = serializers.IntegerField(source="pk")
-    lease = serializers.IntegerField(source="lease_id")
+    allocation = serializers.IntegerField(source="allocation_id")
     problem = serializers.IntegerField(source="problem_id")
     kind = serializers.CharField()
     matchup = serializers.CharField()
     phase = serializers.ChoiceField(choices=PHASES)
-    seats = SeatLine(many=True, source="seats.all")
+    players = PlayerLine(many=True, source="players.all")
     started = serializers.DateTimeField(allow_null=True)
     ends_at = serializers.DateTimeField(allow_null=True)
     ended = serializers.DateTimeField(allow_null=True)
@@ -200,7 +200,7 @@ class Refill(serializers.Serializer):
 class SlotLine(serializers.Serializer):
     slot = serializers.IntegerField()
     wargame = serializers.CharField()
-    lease = serializers.IntegerField(allow_null=True)
+    allocation = serializers.IntegerField(allow_null=True)
     refill = Refill()
 
 
@@ -240,8 +240,8 @@ class Pool(serializers.Serializer):
     slots = SlotStanding(many=True)
 
 
-class ProbeLease(serializers.Serializer):
-    lease = serializers.IntegerField(source="pk")
+class ProbeAllocation(serializers.Serializer):
+    allocation = serializers.IntegerField(source="pk")
 
 
 class ProbeFailure(serializers.Serializer):
@@ -250,7 +250,7 @@ class ProbeFailure(serializers.Serializer):
 
 
 class ProbeProgress(serializers.Serializer):
-    lease = serializers.IntegerField()
+    allocation = serializers.IntegerField()
     wargame = serializers.CharField()
     state = serializers.CharField()
     total = serializers.IntegerField()

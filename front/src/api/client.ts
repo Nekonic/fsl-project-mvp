@@ -246,9 +246,9 @@ export async function waitUntil<T>(read: () => Promise<T>, done: (value: T) => b
   }
 }
 
-export function waitForLease(lease: number, init: WaitInit<Schemas["LeaseDetail"]> = {}) {
+export function waitForAllocation(allocation: number, init: WaitInit<Schemas["AllocationDetail"]> = {}) {
   return waitUntil(
-    () => api.get("/api/leases/{lease_id}/", { params: { lease_id: lease }, signal: init.signal }),
+    () => api.get("/api/allocations/{allocation_id}/", { params: { allocation_id: allocation }, signal: init.signal }),
     (shown) => shown.ready || shown.closed !== null,
     init,
   );
@@ -262,11 +262,11 @@ export function waitForLesson(round: number, init: WaitInit<Schemas["LessonShown
   );
 }
 
-export async function openLease(wargame: string, init: WaitInit<Schemas["LeaseDetail"]> = {}) {
+export async function openAllocation(wargame: string, init: WaitInit<Schemas["AllocationDetail"]> = {}) {
   const until = Date.now() + (init.within ?? SLOT_WAIT_LIMIT_MS);
   for (;;) {
     try {
-      return await api.post("/api/leases/", { body: { wargame }, signal: init.signal });
+      return await api.post("/api/allocations/", { body: { wargame }, signal: init.signal });
     } catch (error) {
       if (!(error instanceof ApiError) || !error.has("range_unavailable") || Date.now() > until) throw error;
       const retryAfter = Number(error.param("retry_after")) || SLOT_WAIT_EVERY_MS / 1000;

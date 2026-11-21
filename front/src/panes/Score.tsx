@@ -128,7 +128,7 @@ export function Score({ round, side }: PaneProps) {
     return (
       <Notice
         tone="danger"
-        action={<Button tone="ghost" small href={to.seat(round, side)}>{t(side === "attack" ? "page.attack" : "page.defence")}</Button>}
+        action={<Button tone="ghost" small href={to.player(round, side)}>{t(side === "attack" ? "page.attack" : "page.defence")}</Button>}
       >
         {t("error.round_running")}
       </Notice>

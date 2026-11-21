@@ -17,7 +17,7 @@ LONGEST_TEXT = 20000
 
 
 @dataclass(frozen=True)
-class Seat:
+class Player:
     base_url: str
     token: str
     round_id: int
@@ -69,11 +69,11 @@ def endpoint(operation: tools.Operation):
     return importlib.import_module(f"bots.client.api.{operation.tag}.{operation.name}")
 
 
-def keyword_arguments(operation: tools.Operation, function, seat: Seat, arguments: dict) -> dict:
+def keyword_arguments(operation: tools.Operation, function, player: Player, arguments: dict) -> dict:
     parameters = inspect.signature(function).parameters
     given = {}
     if tools.ROUND_PARAMETER in parameters:
-        given[tools.ROUND_PARAMETER] = seat.round_id
+        given[tools.ROUND_PARAMETER] = player.round_id
     for key in (*operation.path_parameters, *operation.query_parameters):
         if key in arguments:
             given[key] = converted(arguments[key], parameters[key].annotation)
@@ -101,33 +101,33 @@ def outcome_of(name: str, response: httpx2.Response) -> dict:
     return told
 
 
-def client_for(seat: Seat):
-    client = signin.seated(seat.base_url, seat.token)
+def client_for(player: Player):
+    client = signin.playing(player.base_url, player.token)
     answered: list[httpx2.Response] = []
     http = client.get_httpx_client()
     http.event_hooks["response"] = [*http.event_hooks.get("response", []), answered.append]
     return client, answered
 
 
-def call(seat: Seat, name: str, arguments=None, client_and_answers=None) -> dict:
+def call(player: Player, name: str, arguments=None, client_and_answers=None) -> dict:
     try:
-        if name not in tools.names_for(seat.side, tools.contract()):
-            raise Refused("unknown_tool", "name", f"the {seat.side} seat has no tool {name!r}")
+        if name not in tools.names_for(player.side, tools.contract()):
+            raise Refused("unknown_tool", "name", f"the {player.side} player has no tool {name!r}")
         operation, spec = tools.build(name, tools.contract())
         arguments = checked_arguments(spec, arguments)
         function = endpoint(operation).sync_detailed
         try:
-            given = keyword_arguments(operation, function, seat, arguments)
+            given = keyword_arguments(operation, function, player, arguments)
         except (ValueError, KeyError, TypeError) as wrong:
             raise Refused("invalid", "", f"{name}: {wrong}") from wrong
     except Refused as refused:
         return refused.outcome(name)
-    client, answered = client_and_answers or client_for(seat)
+    client, answered = client_and_answers or client_for(player)
     answered.clear()
     try:
         function(client=client, **given)
     except httpx2.HTTPError as unreachable:
-        return Refused("unreachable", "", f"{seat.base_url} did not answer: {unreachable}").outcome(name)
+        return Refused("unreachable", "", f"{player.base_url} did not answer: {unreachable}").outcome(name)
     except (ValueError, KeyError, TypeError):
         if not answered:
             raise

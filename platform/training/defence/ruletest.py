@@ -84,9 +84,9 @@ def canonical(posture: Mapping[str, Any]) -> str:
 
 
 @contextmanager
-def busy(lease_id: int, engine: str) -> Iterator[None]:
+def busy(allocation_id: int, engine: str) -> Iterator[None]:
     with _GUARD:
-        lock = _LOCKS.setdefault((lease_id, engine), threading.Lock())
+        lock = _LOCKS.setdefault((allocation_id, engine), threading.Lock())
     if not lock.acquire(blocking=False):
         raise errors.Conflict(code="test_busy")
     try:
@@ -263,12 +263,12 @@ def outcome(engine: str, given: Any, wired: Wired, recordings: Sequence[Recordin
         return failed(refused_posture(refused))
 
 
-def run(found, seat, engine: str, given: Any, recordings: Sequence[Recording], wired: Wired) -> RuleTest:
+def run(found, player, engine: str, given: Any, recordings: Sequence[Recording], wired: Wired) -> RuleTest:
     if engine == ENGINE_IDS and not wired.sensors:
         raise errors.Unavailable(code="sensor_unavailable")
-    with busy(found.lease_id, engine):
+    with busy(found.allocation_id, engine):
         body = body_of(engine, given)
-        made = RuleTest.objects.create(round=found, seat=seat, engine=engine, body_sha=sha(body), body=body)
+        made = RuleTest.objects.create(round=found, player=player, engine=engine, body_sha=sha(body), body=body)
         try:
             result = outcome(engine, given, wired, recordings, made.pk, found.pk)
         except BaseException:
@@ -277,10 +277,10 @@ def run(found, seat, engine: str, given: Any, recordings: Sequence[Recording], w
         made.syntax_ok, made.result = result["ok"], result
         made.save(update_fields=["syntax_ok", "result"])
         log.append(found.pk, "rule.tested", {"test": made.pk, "engine": engine, "ok": result["ok"]},
-                   seat_side=DEFENCE)
+                   player_side=DEFENCE)
     return made
 
 
 def check_waf(found, posture: Mapping[str, Any], wired: Wired) -> list[dict]:
-    with busy(found.lease_id, ENGINE_WAF):
+    with busy(found.allocation_id, ENGINE_WAF):
         return waf_errors(posture, wired, CHECK_SCRATCH_ID)

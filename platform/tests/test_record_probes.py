@@ -17,13 +17,13 @@ def command():
     return module
 
 
-def progress(state, done=(), failed=(), total=3, lease=7):
-    return 200, {"lease": lease, "wargame": "board", "state": state, "total": total, "done": list(done),
+def progress(state, done=(), failed=(), total=3, allocation=7):
+    return 200, {"allocation": allocation, "wargame": "board", "state": state, "total": total, "done": list(done),
                  "failed": list(failed)}
 
 
 class Platform:
-    def __init__(self, recorded=(202, {"lease": 7}), progresses=()):
+    def __init__(self, recorded=(202, {"allocation": 7}), progresses=()):
         self.recorded = recorded
         self.progresses = iter(progresses)
         self.calls = []
@@ -32,8 +32,8 @@ class Platform:
         self.calls.append(("record", wargame))
         return self.recorded
 
-    def progress(self, lease):
-        self.calls.append(("progress", lease))
+    def progress(self, allocation):
+        self.calls.append(("progress", allocation))
         return next(self.progresses)
 
 
@@ -56,7 +56,7 @@ def run(platform, *argv):
     return code, said, clock
 
 
-def test_it_starts_one_recording_and_follows_the_lease_until_the_platform_says_done():
+def test_it_starts_one_recording_and_follows_the_allocation_until_the_platform_says_done():
     platform = Platform(progresses=[progress("recording"), progress("recording", ["a"]),
                                     progress("recording", ["a"]), progress("done", ["a", "b", "c"])])
 
@@ -65,9 +65,9 @@ def test_it_starts_one_recording_and_follows_the_lease_until_the_platform_says_d
     assert code == 0
     assert platform.calls == [("record", "board"), *[("progress", 7)] * 4]
     assert clock.slept == [5.0, 5.0, 5.0]
-    assert said[0] == "recording board on probe lease 7"
-    assert said[1:4] == ["board lease 7: recording, 0/3 recorded", "board lease 7: recording, 1/3 recorded",
-                         "board lease 7: done, 3/3 recorded"], "an unchanged progress is not printed twice"
+    assert said[0] == "recording board on probe allocation 7"
+    assert said[1:4] == ["board allocation 7: recording, 0/3 recorded", "board allocation 7: recording, 1/3 recorded",
+                         "board allocation 7: done, 3/3 recorded"], "an unchanged progress is not printed twice"
     assert "wargames/board/probes/" in said[-1]
 
 
@@ -80,7 +80,7 @@ def test_a_case_the_platform_could_not_record_fails_the_run_and_is_named():
     assert "not recorded: c (attacker_unavailable)" in said[1]
 
 
-def test_a_lease_the_platform_gave_up_on_fails_the_run():
+def test_an_allocation_the_platform_gave_up_on_fails_the_run():
     code, _, _ = run(Platform(progresses=[progress("failed")]))
 
     assert code == 1
@@ -99,9 +99,9 @@ def test_an_unreachable_platform_is_waited_out_but_a_refused_progress_read_stops
     platform = Platform(progresses=[(0, {"errors": [{"code": "unreachable"}]}), progress("done", ["a", "b", "c"])])
     assert run(platform)[0] == 0
 
-    refused = Platform(progresses=[(404, {"errors": [{"path": "", "code": "unknown_lease"}]})])
+    refused = Platform(progresses=[(404, {"errors": [{"path": "", "code": "unknown_allocation"}]})])
     code, said, _ = run(refused)
-    assert code == 2 and "unknown_lease" in said[-1]
+    assert code == 2 and "unknown_allocation" in said[-1]
 
 
 def test_a_recording_that_outlasts_the_wait_stops_following_and_names_the_route_that_keeps_the_progress():
@@ -127,7 +127,7 @@ def test_the_real_client_signs_in_once_and_calls_the_two_staff_routes_through_th
     def answer(request):
         seen.append((request.method, request.url.path))
         if request.url.path.endswith("/record/"):
-            return httpx2.Response(202, json={"lease": 7})
+            return httpx2.Response(202, json={"allocation": 7})
         return httpx2.Response(200, json=progress("done", ["a", "b", "c"])[1])
 
     def connect(url, timeout):
@@ -137,7 +137,7 @@ def test_the_real_client_signs_in_once_and_calls_the_two_staff_routes_through_th
 
     platform = command().Platform("http://10.0.0.9:8000/", connect=connect)
 
-    assert platform.record("board") == (202, {"lease": 7})
+    assert platform.record("board") == (202, {"allocation": 7})
     assert platform.progress(7)[1]["state"] == "done"
     assert seen == [("connect", "http://10.0.0.9:8000"), ("POST", "/api/staff/wargames/board/probes/record/"),
                     ("GET", "/api/staff/probes/7/")]

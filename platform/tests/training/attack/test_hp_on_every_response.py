@@ -55,24 +55,24 @@ def test_an_error_names_its_code_beside_the_hp(as_attacker, attacker):
     assert carries_hp(answer)["left"] == 100
 
 
-def test_a_defence_seat_is_refused_and_never_sees_the_attacker_s_hp(browser, attack_round, make_user):
+def test_a_defence_player_is_refused_and_never_sees_the_attacker_s_hp(browser, attack_round, make_user):
     from tests import rounds
 
-    defender = rounds.seated(attack_round, "defence", make_user("defender"))
+    defender = rounds.playing(attack_round, "defence", make_user("defender"))
     browser.force_authenticate(defender.user)
 
     answer = browser.get(url(attack_round, "state/"))
 
     assert answer.status_code == 403
-    assert codes(answer) == ["not_seated"]
+    assert codes(answer) == ["not_a_player"]
     assert "hp" not in answer.json() and "X-Origin-HP" not in answer
 
 
-def test_a_bot_seat_token_reaches_its_attack_routes(browser, attack_round):
+def test_a_bot_player_token_reaches_its_attack_routes(browser, attack_round):
     from tests import rounds
-    from users import seats as auth
+    from users import players as auth
 
-    token = auth.issue_token(rounds.seated(attack_round, "attack", bot_name="claude"))
+    token = auth.issue_token(rounds.playing(attack_round, "attack", bot_name="claude"))
 
     answer = browser.get(url(attack_round, "state/"), HTTP_AUTHORIZATION=f"Bearer {token}")
 
@@ -84,7 +84,7 @@ def test_writes_before_the_start_and_after_the_end_are_refused_with_hp(browser, 
     from tests import rounds
 
     waiting = make_round(phase="created")
-    rounds.seated(waiting, "attack", learner)
+    rounds.playing(waiting, "attack", learner)
     browser.force_authenticate(learner)
 
     early = browser.post(url(waiting, "requests/"), {"method": "GET", "path": "/"}, format="json")

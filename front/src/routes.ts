@@ -29,7 +29,7 @@ export const routes: Route[] = [
   { path: "/login", page: Login, access: "public" },
   { path: "/signup", page: Signup, access: "public" },
   { path: "/", page: Home, access: "member" },
-  { path: "/leases/:lease", page: RoundLobby, access: "member" },
+  { path: "/allocations/:allocation", page: RoundLobby, access: "member" },
   { path: "/lessons/:round", page: Lesson, access: "member" },
   { path: "/rounds/:round/attack", page: RoundAttack, access: "member" },
   { path: "/rounds/:round/defence", page: RoundDefence, access: "member" },

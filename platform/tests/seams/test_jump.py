@@ -17,7 +17,7 @@ def config(tmp_path):
     return JumpConfig(directory=str(tmp_path / "jump"), port=2222, host="range.example")
 
 
-def test_a_key_may_forward_only_to_its_seat_s_box_ssh_port_and_nothing_else():
+def test_a_key_may_forward_only_to_its_player_s_box_ssh_port_and_nothing_else():
     line = jump.authorized_keys_line(PUBLIC, KALI, 7)
 
     assert line == f'restrict,port-forwarding,permitopen="{KALI}:22" {PUBLIC} cr-session-7'
@@ -56,7 +56,7 @@ def test_sshd_reads_the_rendered_config(tmp_path):
     assert "Bad configuration option" not in read.stderr and "unsupported option" not in read.stderr, read.stderr
 
 
-def test_a_second_key_for_a_seat_replaces_its_first_and_leaves_other_seats_alone(config):
+def test_a_second_key_for_a_player_replaces_its_first_and_leaves_other_players_alone(config):
     first = jump.issue(7, KALI, config)
     other = jump.issue(8, "10.20.1.5", config)
     second = jump.issue(7, KALI, config)

@@ -14,7 +14,7 @@ NON_FIELD_KEYS = {"non_field_errors", "detail"}
 REFUSALS = (
     (exceptions.NotAuthenticated, errors.NotSignedIn),
     (exceptions.AuthenticationFailed, errors.NotSignedIn),
-    (exceptions.PermissionDenied, errors.NotSeated),
+    (exceptions.PermissionDenied, errors.NotAPlayer),
     (exceptions.NotFound, errors.NotFound),
     (exceptions.MethodNotAllowed, errors.NotAllowed),
     (exceptions.NotAcceptable, errors.NotAcceptable),
@@ -68,7 +68,7 @@ def domain_error(exc: Exception) -> errors.DomainError | None:
     if isinstance(exc, ValueError):
         return errors.Invalid()
     if isinstance(exc, PermissionError):
-        return errors.NotSeated()
+        return errors.NotAPlayer()
     return None
 
 
@@ -102,7 +102,7 @@ def not_found(request, exception=None) -> JsonResponse:
 
 
 def denied(request, exception=None) -> JsonResponse:
-    return shaped(errors.NotSeated())
+    return shaped(errors.NotAPlayer())
 
 
 def bad_request(request, exception=None) -> JsonResponse:
@@ -114,4 +114,4 @@ def server_error(request) -> JsonResponse:
 
 
 def csrf_refused(request, reason: str = "") -> JsonResponse:
-    return shaped(errors.NotSeated(code="csrf_failed"))
+    return shaped(errors.NotAPlayer(code="csrf_failed"))

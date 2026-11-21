@@ -18,7 +18,7 @@ class RoundEvents(APIView):
     def get(self, request, round_id: int):
         given = serializers.Cursor(data=request.query_params)
         given.is_valid(raise_exception=True)
-        viewer = log.Viewer(sides=frozenset(seat.side for seat in request.seats),
+        viewer = log.Viewer(sides=frozenset(player.side for player in request.players),
                             staff=bool(getattr(request.user, "is_staff", False)), operator=request.operator)
         page = log.after(request.round.pk, given.validated_data["after"], viewer)
         return Response(serializers.Page(page).data)
@@ -32,7 +32,7 @@ def given(serializer, data):
 
 class DefenceView(APIView):
     authentication_classes = auth.ROUND_AUTHENTICATION
-    permission_classes = [auth.HasSeat("defence")]
+    permission_classes = [auth.IsPlayer("defence")]
 
 
 class Alerts(DefenceView):

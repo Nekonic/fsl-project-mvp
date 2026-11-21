@@ -7,8 +7,8 @@ export const FOLLOW_EVERY_MS = 3_000;
 export const FOLLOW_BACKOFF_LIMIT_MS = 30_000;
 export const FOLLOW_PAGES_PER_READ = 25;
 export const HEARTBEAT_EVERY_MS = 60_000;
-const STOPPING = new Set(["unknown_round", "not_seated", "not_signed_in"]);
-const LEASE_GONE = new Set(["lease_closed", "unknown_lease", "not_operator", "not_seated", "not_signed_in"]);
+const STOPPING = new Set(["unknown_round", "not_a_player", "not_signed_in"]);
+const ALLOCATION_GONE = new Set(["allocation_closed", "unknown_allocation", "not_operator", "not_a_player", "not_signed_in"]);
 
 class Follower {
   readonly round: number;
@@ -102,23 +102,23 @@ export function follow(round: number, listener: EventListener, replay = false): 
   return followerOf(round).subscribe(listener, replay);
 }
 
-interface HeldLease {
+interface HeldAllocation {
   holders: number;
   timer: ReturnType<typeof setInterval>;
 }
 
-const heldLeases = new Map<number, HeldLease>();
+const heldAllocations = new Map<number, HeldAllocation>();
 
-function dropLease(lease: number): void {
-  const held = heldLeases.get(lease);
+function dropAllocation(allocation: number): void {
+  const held = heldAllocations.get(allocation);
   if (!held) return;
   clearInterval(held.timer);
-  heldLeases.delete(lease);
+  heldAllocations.delete(allocation);
 }
 
-function beat(lease: number): void {
-  api.post("/api/leases/{lease_id}/heartbeat/", { params: { lease_id: lease } }).catch((error: unknown) => {
-    if (error instanceof ApiError && error.errors.some((one) => LEASE_GONE.has(one.code))) dropLease(lease);
+function beat(allocation: number): void {
+  api.post("/api/allocations/{allocation_id}/heartbeat/", { params: { allocation_id: allocation } }).catch((error: unknown) => {
+    if (error instanceof ApiError && error.errors.some((one) => ALLOCATION_GONE.has(one.code))) dropAllocation(allocation);
   });
 }
 
@@ -126,25 +126,25 @@ function nothingHeld(): void {
   return undefined;
 }
 
-export function holdLease(lease: number | null | undefined): () => void;
-export function holdLease(round: number | null | undefined, lease: number | null | undefined): () => void;
-export function holdLease(...given: Array<number | null | undefined>): () => void {
-  const lease = given[given.length - 1];
-  if (!lease) return nothingHeld;
-  let held = heldLeases.get(lease);
+export function holdAllocation(allocation: number | null | undefined): () => void;
+export function holdAllocation(round: number | null | undefined, allocation: number | null | undefined): () => void;
+export function holdAllocation(...given: Array<number | null | undefined>): () => void {
+  const allocation = given[given.length - 1];
+  if (!allocation) return nothingHeld;
+  let held = heldAllocations.get(allocation);
   if (held) {
     held.holders += 1;
   } else {
-    held = { holders: 1, timer: setInterval(() => beat(lease), HEARTBEAT_EVERY_MS) };
-    heldLeases.set(lease, held);
-    beat(lease);
+    held = { holders: 1, timer: setInterval(() => beat(allocation), HEARTBEAT_EVERY_MS) };
+    heldAllocations.set(allocation, held);
+    beat(allocation);
   }
   const mine = held;
   let released = false;
   return () => {
-    if (released || heldLeases.get(lease) !== mine) return;
+    if (released || heldAllocations.get(allocation) !== mine) return;
     released = true;
     mine.holders -= 1;
-    if (mine.holders <= 0) dropLease(lease);
+    if (mine.holders <= 0) dropAllocation(allocation);
   };
 }

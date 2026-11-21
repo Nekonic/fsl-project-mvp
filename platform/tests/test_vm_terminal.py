@@ -28,7 +28,7 @@ def remote_command(seen):
     return seen.read_text().split("\n")[-2]
 
 
-def test_the_attack_seat_gets_a_login_shell_as_the_kali_learner_account_on_the_address_its_grant_names(tmp_path):
+def test_the_attack_player_gets_a_login_shell_as_the_kali_learner_account_on_the_address_its_grant_names(tmp_path):
     ran, asked, seen = opened(tmp_path, "cr-kali", "attack", "3")
 
     assert asked.read_text().split("\n")[1:4] == ["terminal_shell", "attack", "3"]
@@ -37,7 +37,7 @@ def test_the_attack_seat_gets_a_login_shell_as_the_kali_learner_account_on_the_a
     assert remote_command(seen).startswith("sudo -i -u kali ") and remote_command(seen).endswith(" bash -l")
 
 
-def test_the_defence_seat_gets_the_waf_as_analyst_and_never_as_root(tmp_path):
+def test_the_defence_player_gets_the_waf_as_analyst_and_never_as_root(tmp_path):
     ran, asked, seen = opened(tmp_path, "cr-waf", "defence", "3", lookup=WAF_SHELL)
 
     assert asked.read_text().split("\n")[1:4] == ["terminal_shell", "defence", "3"]
@@ -55,7 +55,7 @@ def test_the_lookup_is_the_platform_s_manage_py_beside_the_script(tmp_path):
 
 def test_a_refused_lookup_ends_the_shell_without_ssh_and_tells_the_learner_one_plain_line(tmp_path):
     reached = tmp_path / "ssh-reached"
-    env = fakes(tmp_path, python="echo 'round 7 gives the defence seat no terminal: not_seated' >&2; exit 1",
+    env = fakes(tmp_path, python="echo 'round 7 gives the defence player no terminal: not_a_player' >&2; exit 1",
                 ssh=f"touch {reached}")
 
     ran = subprocess.run(["sh", str(SCRIPT), "cr-waf", "defence", "7"], capture_output=True, text=True, env=env)
@@ -63,10 +63,10 @@ def test_a_refused_lookup_ends_the_shell_without_ssh_and_tells_the_learner_one_p
     assert ran.returncode != 0 and not reached.exists()
     assert ran.stdout.strip() == "Connection to waf failed. Reopen the terminal in a moment."
     assert ran.stderr == ""
-    assert "not_seated" in (tmp_path / "terminal.log").read_text(), "the cause went nowhere"
+    assert "not_a_player" in (tmp_path / "terminal.log").read_text(), "the cause went nowhere"
 
 
-def test_a_terminal_without_a_seat_side_or_a_round_opens_nothing(tmp_path):
+def test_a_terminal_without_a_player_side_or_a_round_opens_nothing(tmp_path):
     for given in (("cr-kali",), ("cr-kali", "attack"), ("cr-kali", "attack", "3;id"), ("cr-kali", "root", "3")):
         ran, asked, seen = opened(tmp_path, *given)
 
@@ -92,7 +92,7 @@ def test_an_ssh_that_cannot_connect_ends_in_the_same_plain_line(tmp_path):
     assert "Connection timed out" in (tmp_path / "terminal.log").read_text()
 
 
-def test_a_kept_terminal_reattaches_to_one_tmux_session_per_seat_so_a_reload_keeps_the_run(tmp_path):
+def test_a_kept_terminal_reattaches_to_one_tmux_session_per_player_so_a_reload_keeps_the_run(tmp_path):
     seen = tmp_path / "tmux-argv"
     env = {**fakes(tmp_path, tmux=f'printf "%s\\n" "$@" > {seen}', ssh="exit 0"), "TERMINAL_KEEP": "1"}
     env.pop("TMUX", None)
@@ -113,7 +113,7 @@ def test_the_shell_s_clock_is_korean_time_even_in_a_box_without_a_time_zone_data
     assert "/" not in zone and offset == "+0900", "the WAF image has no tzdata, so TZ=Asia/Seoul read as UTC"
 
 
-def test_an_open_shell_is_closed_once_the_round_no_longer_gives_the_seat_a_terminal(tmp_path):
+def test_an_open_shell_is_closed_once_the_round_no_longer_gives_the_player_a_terminal(tmp_path):
     checks, ended = tmp_path / "checks", tmp_path / "ssh-ended"
     revoked_on_second_check = (f'echo x >> {checks}; [ "$(wc -l < {checks})" -lt 2 ] || exit 1; '
                                f'echo "{KALI_SHELL}"')
@@ -126,7 +126,7 @@ def test_an_open_shell_is_closed_once_the_round_no_longer_gives_the_seat_a_termi
 
     assert ended.exists(), "the shell outlived the round's grant"
     assert ran.returncode == 0 and ran.stdout == ""
-    assert "no longer gives the attack seat a terminal" in (tmp_path / "terminal.log").read_text()
+    assert "no longer gives the attack player a terminal" in (tmp_path / "terminal.log").read_text()
 
 
 def test_a_shell_whose_grant_holds_is_left_open_and_the_check_stops_with_it(tmp_path):

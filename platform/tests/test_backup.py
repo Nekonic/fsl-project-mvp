@@ -16,7 +16,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 ROWS = {
-    "training_lease": 3,
+    "training_allocation": 3,
     "training_action": 5,
     "telemetry_detection": 7,
     "training_customerrequest": 4,
@@ -107,14 +107,14 @@ def test_a_writer_holding_a_transaction_open_is_neither_waited_for_nor_copied(
     store = made_store(tmp_path / "db.sqlite3")
     writer = sqlite3.connect(store, isolation_level=None)
     writer.execute("BEGIN IMMEDIATE")
-    writer.execute("INSERT INTO training_lease (note) VALUES ('not committed')")
+    writer.execute("INSERT INTO training_allocation (note) VALUES ('not committed')")
 
     image = snapshot_of(backup.module, store)
 
     writer.execute("COMMIT")
     writer.close()
-    assert read(image, "SELECT count(*) FROM training_lease") == [(3,)]
-    assert read(snapshot_of(backup.module, store), "SELECT count(*) FROM training_lease") == [(4,)], (
+    assert read(image, "SELECT count(*) FROM training_allocation") == [(3,)]
+    assert read(snapshot_of(backup.module, store), "SELECT count(*) FROM training_allocation") == [(4,)], (
         "the snapshot left a lock behind and the platform's next write waited on it")
 
 
@@ -123,15 +123,15 @@ def test_a_writer_already_writing_into_the_file_is_waited_out_not_copied_half_do
 ):
     store = tmp_path / "db.sqlite3"
     with closing(sqlite3.connect(store)) as db:
-        db.execute("CREATE TABLE training_lease (id INTEGER PRIMARY KEY, label TEXT)")
+        db.execute("CREATE TABLE training_allocation (id INTEGER PRIMARY KEY, label TEXT)")
         db.executemany(
-            "INSERT INTO training_lease (label) VALUES (?)", [("committed",)] * 3000
+            "INSERT INTO training_allocation (label) VALUES (?)", [("committed",)] * 3000
         )
         db.commit()
     writer = sqlite3.connect(store, isolation_level=None)
     writer.execute("PRAGMA cache_size = 1")
     writer.execute("BEGIN")
-    writer.execute("UPDATE training_lease SET label = printf('%0200d', id)")
+    writer.execute("UPDATE training_allocation SET label = printf('%0200d', id)")
 
     taken = {}
     taking = threading.Thread(
@@ -146,7 +146,7 @@ def test_a_writer_already_writing_into_the_file_is_waited_out_not_copied_half_do
     taking.join(10)
 
     assert waited, "the writer had already spilled into the file, so a copy made now is half its work"
-    assert read(taken["image"], "SELECT label, count(*) FROM training_lease GROUP BY label") == [
+    assert read(taken["image"], "SELECT label, count(*) FROM training_allocation GROUP BY label") == [
         ("committed", 3000)]
 
 
@@ -305,7 +305,7 @@ def test_the_snapshot_leaves_the_space_of_deleted_rows_behind(backup, tmp_path):
     image = snapshot_of(backup.module, store)
 
     assert len(image) < store.stat().st_size / 10, (
-        "pruned leases leave free pages in the store; shipping them made every rebuild copy 6 GB"
+        "pruned allocations leave free pages in the store; shipping them made every rebuild copy 6 GB"
     )
 
 

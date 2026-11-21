@@ -67,7 +67,7 @@ def test_no_terminal_is_granted_after_the_end(as_defender, board_round, defender
     assert answer.json()["errors"][0]["code"] == "round_closed"
 
 
-def test_the_waf_shell_opens_as_analyst_not_root_on_the_address_the_seat_s_grant_names(
+def test_the_waf_shell_opens_as_analyst_not_root_on_the_address_the_player_s_grant_names(
         as_defender, board_round, defender):
     as_defender.get(BASE.format(round=board_round.pk))
 
@@ -85,8 +85,8 @@ def test_the_terminal_lookup_prints_the_one_line_the_terminal_script_splits(as_d
     assert printed.getvalue().split() == [WAF_MANAGEMENT, WAF_MANAGEMENT, "analyst"]
 
 
-def test_the_terminal_lookup_refuses_a_seat_without_a_grant(board_round, defender):
-    with pytest.raises(CommandError, match="not_seated"):
+def test_the_terminal_lookup_refuses_a_player_without_a_grant(board_round, defender):
+    with pytest.raises(CommandError, match="not_a_player"):
         call_command("terminal_shell", "defence", str(board_round.pk))
 
 

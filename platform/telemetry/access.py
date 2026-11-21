@@ -28,9 +28,9 @@ def decoded(token: str) -> dict:
 
 def traffic(found: Round, after: str = "") -> dict:
     cfg = configured().elastic
-    start = found.started or found.lease.opened
+    start = found.started or found.allocation.opened
     cursor = decoded(after) if after else {"at": start.isoformat()}
-    events, moved = elastic.access_events(cfg.url, cfg.index_of(found.lease.slot or 0), cursor)
+    events, moved = elastic.access_events(cfg.url, cfg.index_of(found.allocation.slot or 0), cursor)
     by_origin: dict[str, dict] = {}
     for event in events:
         if not event["source_ip"]:

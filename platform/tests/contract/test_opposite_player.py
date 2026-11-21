@@ -4,7 +4,7 @@ import pytest
 import yaml
 
 from tests.shape import refused
-from tests.training.round.conftest import cloud, lease, other, problem, pvp
+from tests.training.round.conftest import cloud, allocation, other, problem, pvp
 from training.round import lifecycle as service
 
 SCHEMA = Path(__file__).resolve().parents[3] / "openapi" / "schema.yaml"
@@ -21,7 +21,7 @@ SHARED = {
 }
 FILLED = {"run_id": "1", "test_id": "1", "sid": "9000001"}
 
-__all__ = ["cloud", "lease", "other", "problem"]
+__all__ = ["cloud", "allocation", "other", "problem"]
 
 
 def round_gets() -> list[str]:
@@ -48,32 +48,32 @@ def defender(make_user):
 
 
 @pytest.fixture
-def running(lease, problem, other, defender):
-    return service.start_round(pvp(lease, problem, other, defender))
+def running(allocation, problem, other, defender):
+    return service.start_round(pvp(allocation, problem, other, defender))
 
 
 @pytest.fixture
-def seats(running, other, defender):
+def players(running, other, defender):
     return {"attack": other, "defence": defender}
 
 
 def test_every_round_scoped_read_is_walked_by_this_test():
     unwalked = [path for path in round_gets() if side_of(path) is None and path not in SHARED]
 
-    assert unwalked == [], "add the new round read to SHARED with what the other seat may see"
+    assert unwalked == [], "add the new round read to SHARED with what the other player may see"
 
 
 @pytest.mark.parametrize("path", [path for path in round_gets() if side_of(path)])
-def test_a_side_s_reads_refuse_the_seat_across_the_table(browser, running, seats, path):
-    browser.force_authenticate(seats[other_side(side_of(path))])
+def test_a_side_s_reads_refuse_the_player_across_the_table(browser, running, players, path):
+    browser.force_authenticate(players[other_side(side_of(path))])
 
-    refused(browser.get(filled(path, running.pk)), 403, "not_seated")
+    refused(browser.get(filled(path, running.pk)), 403, "not_a_player")
 
 
-def test_a_seat_reads_neither_the_other_seat_s_site_requests_nor_its_round_secret(browser, running, seats):
-    browser.force_authenticate(seats["attack"])
+def test_a_player_reads_neither_the_other_player_s_site_requests_nor_its_round_secret(browser, running, players):
+    browser.force_authenticate(players["attack"])
     browser.get(f"/site-proxy/{running.pk}/board.com/posts/1/")
-    browser.force_authenticate(seats["defence"])
+    browser.force_authenticate(players["defence"])
 
     assert browser.get(f"/api/rounds/{running.pk}/site/requests/").json() == []
     shown = browser.get(f"/api/rounds/{running.pk}/").json()

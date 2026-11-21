@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, call, waitUntil } from "./client";
-import { follow, holdLease, HEARTBEAT_EVERY_MS } from "./follow";
+import { follow, holdAllocation, HEARTBEAT_EVERY_MS } from "./follow";
 
 interface Answered {
   url: string;
@@ -26,7 +26,7 @@ function answering(answer: (url: string, method: string) => Response) {
 function eventsAfter(cursor: number, upTo: number, size: number) {
   const events = [];
   for (let id = cursor + 1; id <= Math.min(upTo, cursor + size); id += 1) {
-    events.push({ id, kind: "alert.seen", at: "2026-01-01T00:00:00Z", seat_side: "defence", body: {} });
+    events.push({ id, kind: "alert.seen", at: "2026-01-01T00:00:00Z", player_side: "defence", body: {} });
   }
   return { events, next: events.length ? events[events.length - 1]!.id : cursor };
 }
@@ -54,12 +54,12 @@ describe("follow", () => {
   });
 });
 
-describe("holdLease", () => {
+describe("holdAllocation", () => {
   it("beats while held, outlives a round's end and stops on the last release", async () => {
     vi.useFakeTimers();
     const asked = answering(() => json(200, { expires_at: "2026-01-01T00:30:00Z" }));
-    const first = holdLease(77);
-    const second = holdLease(5, 77);
+    const first = holdAllocation(77);
+    const second = holdAllocation(5, 77);
     await vi.advanceTimersByTimeAsync(0);
     expect(asked.length).toBe(1);
     first();
@@ -69,13 +69,13 @@ describe("holdLease", () => {
     second();
     await vi.advanceTimersByTimeAsync(HEARTBEAT_EVERY_MS * 3);
     expect(asked.length).toBe(2);
-    expect(asked.every((one) => one.url === "/api/leases/77/heartbeat/" && one.method === "POST")).toBe(true);
+    expect(asked.every((one) => one.url === "/api/allocations/77/heartbeat/" && one.method === "POST")).toBe(true);
   });
 
-  it("stops beating once the lease is closed", async () => {
+  it("stops beating once the allocation is closed", async () => {
     vi.useFakeTimers();
-    const asked = answering(() => json(409, { errors: [{ path: "", code: "lease_closed" }] }));
-    holdLease(78);
+    const asked = answering(() => json(409, { errors: [{ path: "", code: "allocation_closed" }] }));
+    holdAllocation(78);
     await vi.advanceTimersByTimeAsync(HEARTBEAT_EVERY_MS * 3);
     expect(asked.length).toBe(1);
   });
@@ -89,8 +89,8 @@ describe("client", () => {
       writes += 1;
       return writes === 1 ? json(403, { errors: [{ path: "", code: "csrf_failed" }] }) : json(200, { expires_at: "x" });
     });
-    await call("post", "/api/leases/{lease_id}/heartbeat/", { params: { lease_id: 3 } });
-    expect(asked.map((one) => one.url)).toEqual(["/api/leases/3/heartbeat/", "/api/auth/csrf/", "/api/leases/3/heartbeat/"]);
+    await call("post", "/api/allocations/{allocation_id}/heartbeat/", { params: { allocation_id: 3 } });
+    expect(asked.map((one) => one.url)).toEqual(["/api/allocations/3/heartbeat/", "/api/auth/csrf/", "/api/allocations/3/heartbeat/"]);
   });
 
   it("keeps the hp block an attack route sends with its error", async () => {

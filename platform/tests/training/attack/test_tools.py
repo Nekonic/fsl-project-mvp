@@ -52,7 +52,7 @@ def test_the_output_is_read_after_an_offset_and_the_end_is_recorded_once(as_atta
     assert ToolRun.objects.get(pk=run).ended is not None
 
 
-def test_a_seat_stops_its_run_on_the_box(as_attacker, attacker, cloud):
+def test_a_player_stops_its_run_on_the_box(as_attacker, attacker, cloud):
     run = started(as_attacker, attacker.round, tool="nikto", args=("-h", "board.com")).json()["run"]
 
     answer = as_attacker.delete(url(attacker.round, f"tools/{run}/"))
@@ -61,8 +61,8 @@ def test_a_seat_stops_its_run_on_the_box(as_attacker, attacker, cloud):
     assert answer["X-Origin-HP"] == "100"
     assert cloud.box.matching(f"kill -TERM")
     stopped = ToolRun.objects.get(pk=run)
-    assert (stopped.stopped_by, stopped.exit_code) == ("seat", 143)
-    assert tool_events(attacker.round)[-1] == ("tool.ended", {"run": run, "exit_code": 143, "stopped_by": "seat"})
+    assert (stopped.stopped_by, stopped.exit_code) == ("player", 143)
+    assert tool_events(attacker.round)[-1] == ("tool.ended", {"run": run, "exit_code": 143, "stopped_by": "player"})
 
 
 def test_the_tool_list_names_every_tool_with_its_args_schema_and_the_round_s_runs(as_attacker, attacker):
@@ -94,8 +94,8 @@ def test_a_run_of_another_round_is_unknown_here(as_attacker, attacker, make_roun
     other = make_round()
     from tests import rounds
 
-    seat = rounds.seated(other, "attack", attacker.user)
-    foreign = started(as_attacker, seat.round).json()["run"]
+    player = rounds.playing(other, "attack", attacker.user)
+    foreign = started(as_attacker, player.round).json()["run"]
 
     answer = as_attacker.get(url(attacker.round, f"tools/{foreign}/"))
 

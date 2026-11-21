@@ -5,7 +5,7 @@ from telemetry.models import Event
 from tests import rounds
 from tests.training.defence.conftest import SEARCH_RULE
 from training.defence import rules as service
-from users.seats import issue_token
+from users.players import issue_token
 
 BASE = "/api/rounds/{round}/defence/"
 ATTACKER = "198.51.100.9"
@@ -51,7 +51,7 @@ def test_ingest_stores_each_alert_once_with_its_engine_rule_and_marker(board_rou
     assert again == []
     assert [record.detection_id for record in alert_feed.detections(board_round)] == ["s1", "w1:0", "a1"]
     seen = Event.objects.filter(round_id=board_round.pk, kind="alert.seen")
-    assert seen.count() == 3 and {event.seat_side for event in seen} == {"defence"}
+    assert seen.count() == 3 and {event.player_side for event in seen} == {"defence"}
 
 
 def test_alerts_page_by_detection_id_and_filter_by_engine_rule_and_source(as_defender, board_round, cyber_range, es,
@@ -108,20 +108,20 @@ def test_the_state_shows_the_brief_target_objectives_versions_and_alert_count(as
     assert (shown["ids"], shown["waf"], shown["alerts_total"]) == ({"version": 1}, {"version": 0}, 1)
 
 
-def test_an_attack_seat_reaches_no_defence_route(browser, board_round, make_user):
+def test_an_attack_player_reaches_no_defence_route(browser, board_round, make_user):
     attacker = make_user("attacker")
-    rounds.seated(board_round, "attack", user=attacker)
+    rounds.playing(board_round, "attack", user=attacker)
     browser.force_authenticate(attacker)
 
     answer = browser.get(url(board_round, "ids/rules/"))
 
     assert answer.status_code == 403
-    assert answer.json() == {"errors": [{"path": "", "code": "not_seated"}]}
+    assert answer.json() == {"errors": [{"path": "", "code": "not_a_player"}]}
 
 
-def test_a_bot_defence_seat_reaches_its_side_with_its_token(browser, board_round):
-    seat = rounds.seated(board_round, "defence", bot_name="defender-bot")
-    token = issue_token(seat)
+def test_a_bot_defence_player_reaches_its_side_with_its_token(browser, board_round):
+    player = rounds.playing(board_round, "defence", bot_name="defender-bot")
+    token = issue_token(player)
 
     answer = browser.get(url(board_round, "probes/"), HTTP_AUTHORIZATION=f"Bearer {token}")
     test = browser.post(url(board_round, "ids/rules/test/"), {"text": SEARCH_RULE}, format="json",

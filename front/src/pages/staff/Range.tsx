@@ -17,14 +17,14 @@ type Fabric = Schemas["Fabric"];
 const PROBE_READ_EVERY_MS = 3_000;
 const HOSTS = ["kali", "waf", "infra", "target"];
 
-type SlotState = "leased" | "idle" | "running" | "failed";
+type SlotState = "allocated" | "idle" | "running" | "failed";
 
-const SLOT_TONE: Record<SlotState, BadgeTone> = { leased: "info", idle: "ok", running: "warn", failed: "danger" };
+const SLOT_TONE: Record<SlotState, BadgeTone> = { allocated: "info", idle: "ok", running: "warn", failed: "danger" };
 const PROBE_TONE: Record<string, BadgeTone> = { recording: "warn", done: "ok", failed: "danger" };
 const SERVER_TONE: Record<string, DotTone> = { ACTIVE: "ok", BUILD: "warn", REBUILD: "warn", ERROR: "danger" };
 
 function slotStateOf(slot: SlotLine): SlotState {
-  if (slot.lease !== null) return "leased";
+  if (slot.allocation !== null) return "allocated";
   if (slot.refill.state === "running" || slot.refill.state === "failed") return slot.refill.state;
   return "idle";
 }
@@ -61,11 +61,11 @@ function SlotProblems({ standing, slot }: { standing: SlotStanding | undefined; 
   );
 }
 
-function SlotsCard({ slots, pool, wargames, probeLeases }: {
+function SlotsCard({ slots, pool, wargames, probeAllocations }: {
   slots: SlotLine[];
   pool: Map<number, SlotStanding>;
   wargames: Map<string, Wargame>;
-  probeLeases: Set<number>;
+  probeAllocations: Set<number>;
 }) {
   const columns: Column<SlotLine>[] = [
     { key: "slot", label: t("lobby.slot"), kind: "key", cell: (slot) => t("slot.name", { slot: slot.slot }) },
@@ -83,10 +83,10 @@ function SlotsCard({ slots, pool, wargames, probeLeases }: {
       },
     },
     {
-      key: "lease", label: t("range.col.lease"), kind: "nowrap",
-      cell: (slot) => slot.lease === null
+      key: "allocation", label: t("range.col.allocation"), kind: "nowrap",
+      cell: (slot) => slot.allocation === null
         ? <Text tone="faint">—</Text>
-        : t(probeLeases.has(slot.lease) ? "range.lease_probe" : "lease.name", { lease: slot.lease }),
+        : t(probeAllocations.has(slot.allocation) ? "range.allocation_probe" : "allocation.name", { allocation: slot.allocation }),
     },
     { key: "servers", label: t("range.col.servers"), cell: (slot) => <Servers standing={pool.get(slot.slot)} /> },
   ];
@@ -168,18 +168,18 @@ function OperationsCard({ notCloud, onRange, onPool }: { notCloud: ApiError | un
   );
 }
 
-function useProbeProgress(lease: number | undefined): ProbeProgress | undefined {
+function useProbeProgress(allocation: number | undefined): ProbeProgress | undefined {
   const [progress, setProgress] = useState<ProbeProgress | undefined>(undefined);
   useEffect(() => {
-    if (lease === undefined) return undefined;
+    if (allocation === undefined) return undefined;
     const abort = new AbortController();
     void waitUntil(
-      () => api.get("/api/staff/probes/{lease_id}/", { params: { lease_id: lease }, signal: abort.signal }),
+      () => api.get("/api/staff/probes/{allocation_id}/", { params: { allocation_id: allocation }, signal: abort.signal }),
       (shown) => shown.state !== "recording",
       { every: PROBE_READ_EVERY_MS, signal: abort.signal, onRead: setProgress },
     ).catch(() => undefined);
     return () => abort.abort();
-  }, [lease]);
+  }, [allocation]);
   return progress;
 }
 
@@ -188,7 +188,7 @@ function ProbeState({ progress }: { progress: ProbeProgress | undefined }) {
   return (
     <Row>
       <Badge tone={PROBE_TONE[progress.state] ?? "neutral"}>{tFor("range.probe_state", progress.state)}</Badge>
-      <Text small tone="muted">{t("lease.name", { lease: progress.lease })}</Text>
+      <Text small tone="muted">{t("allocation.name", { allocation: progress.allocation })}</Text>
     </Row>
   );
 }
@@ -207,7 +207,7 @@ function ProbeCases({ progress }: { progress: ProbeProgress | undefined }) {
   );
 }
 
-function RecordingCard({ wargames, leases, onLease }: { wargames: Wargame[]; leases: Map<string, number>; onLease: (wargame: string, lease: number) => void }) {
+function RecordingCard({ wargames, allocations, onAllocation }: { wargames: Wargame[]; allocations: Map<string, number>; onAllocation: (wargame: string, allocation: number) => void }) {
   const record = useRowAction<string, "post", "/api/staff/wargames/{wargame_id}/probes/record/">("post", "/api/staff/wargames/{wargame_id}/probes/record/");
   return (
     <Card>
@@ -215,14 +215,14 @@ function RecordingCard({ wargames, leases, onLease }: { wargames: Wargame[]; lea
       <Table variant="grid" rows={wargames} rowKey={(wargame) => wargame.id} empty={<Text tone="muted">{t("range.wargames_none")}</Text>}
         columns={[
           { key: "wargame", label: t("col.wargame"), kind: "nowrap", cell: (wargame) => <WargameName id={wargame.id} wargames={new Map([[wargame.id, wargame]])} /> },
-          { key: "state", label: t("col.state"), kind: "nowrap", cell: (wargame) => <ProbeRow lease={leases.get(wargame.id)} part="state" /> },
-          { key: "cases", label: t("range.col.cases"), cell: (wargame) => <ProbeRow lease={leases.get(wargame.id)} part="cases" /> },
+          { key: "state", label: t("col.state"), kind: "nowrap", cell: (wargame) => <ProbeRow allocation={allocations.get(wargame.id)} part="state" /> },
+          { key: "cases", label: t("range.col.cases"), cell: (wargame) => <ProbeRow allocation={allocations.get(wargame.id)} part="cases" /> },
           {
             key: "record", label: "", kind: "end",
             cell: (wargame) => (
               <RowActions error={record.errorFor(wargame.id) && errorText(record.errorFor(wargame.id))}>
                 <Button small busy={record.busyFor(wargame.id)} onClick={() => void record.run(wargame.id, { params: { wargame_id: wargame.id } })
-                  .then((said) => said.data && onLease(wargame.id, said.data.lease))}>
+                  .then((said) => said.data && onAllocation(wargame.id, said.data.allocation))}>
                   {t("range.record")}
                 </Button>
               </RowActions>
@@ -233,8 +233,8 @@ function RecordingCard({ wargames, leases, onLease }: { wargames: Wargame[]; lea
   );
 }
 
-function ProbeRow({ lease, part }: { lease: number | undefined; part: "state" | "cases" }) {
-  const progress = useProbeProgress(lease);
+function ProbeRow({ allocation, part }: { allocation: number | undefined; part: "state" | "cases" }) {
+  const progress = useProbeProgress(allocation);
   return part === "state" ? <ProbeState progress={progress} /> : <ProbeCases progress={progress} />;
 }
 
@@ -242,7 +242,7 @@ export function Range(_props: PageProps) {
   const range = useResource("/api/staff/range/", {});
   const pool = useResource("/api/staff/range/pool/", {});
   const wargames = useResource("/api/staff/wargames/", {});
-  const [probeLeases, setProbeLeases] = useState<Map<string, number>>(new Map());
+  const [probeAllocations, setProbeAllocations] = useState<Map<string, number>>(new Map());
   const byWargame = new Map((wargames.data ?? []).map((wargame) => [wargame.id, wargame]));
   const bySlot = new Map((pool.data?.slots ?? []).map((standing) => [standing.slot, standing]));
   const poolRefused = pool.error && !pool.error.has("range_not_cloud") ? pool.error : undefined;
@@ -252,13 +252,13 @@ export function Range(_props: PageProps) {
         <Section title={t("page.staff.range")} large>
           <Stack>
             {range.error ? <ErrorNotice error={range.error} /> : !range.data ? <Loading>{t("common.loading")}</Loading> : (
-              <SlotsCard slots={range.data.slots} pool={bySlot} wargames={byWargame} probeLeases={new Set(probeLeases.values())} />
+              <SlotsCard slots={range.data.slots} pool={bySlot} wargames={byWargame} probeAllocations={new Set(probeAllocations.values())} />
             )}
             {poolRefused && <ErrorNotice error={poolRefused} />}
             <OperationsCard notCloud={pool.error?.has("range_not_cloud") ? pool.error : undefined} onRange={(slots) => range.setData({ slots })} onPool={() => { range.reload(); pool.reload(); }} />
             {wargames.error ? <ErrorNotice error={wargames.error} /> : !wargames.data ? <Loading>{t("common.loading")}</Loading> : (
-              <RecordingCard wargames={wargames.data} leases={probeLeases}
-                onLease={(wargame, lease) => setProbeLeases((was) => new Map(was).set(wargame, lease))} />
+              <RecordingCard wargames={wargames.data} allocations={probeAllocations}
+                onAllocation={(wargame, allocation) => setProbeAllocations((was) => new Map(was).set(wargame, allocation))} />
             )}
           </Stack>
         </Section>

@@ -25,7 +25,7 @@ def printed(function: str) -> str:
     return subprocess.run(["sh", "-c", names + without_redirect], capture_output=True, text=True, check=True).stdout
 
 
-def test_the_account_is_the_one_the_defence_seat_s_terminal_opens():
+def test_the_account_is_the_one_the_defence_player_s_terminal_opens():
     assert assigned()["ACCOUNT"] == service.ANALYST_ACCOUNT == "analyst"
     assert "./analyst.sh" in (WAF / "install.sh").read_text()
 

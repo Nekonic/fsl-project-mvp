@@ -77,7 +77,7 @@ def test_the_red_team_run_is_read_from_what_its_fixture_recorded():
                if 'full_run["round"]' in path.read_text()]
 
     assert "round" not in split.shared_fixtures(), (
-        "a test that asks the platform about the red-team round hours after its lease closed finds it "
+        "a test that asks the platform about the red-team round hours after its allocation closed finds it "
         "deleted by CR_RETAIN_CLOSED_MINUTES; full_run records what the tests read when it runs"
     )
     assert not readers, readers
@@ -87,7 +87,7 @@ def test_the_red_team_run_is_read_from_what_its_fixture_recorded():
 def test_the_modules_that_hold_two_sessions_take_two_slots_and_start_first(workers):
     _, waiting = split.plan(workers)
 
-    holding = [p for p in waiting if set(p.modules) & set(split.TWO_LEASES)]
+    holding = [p for p in waiting if set(p.modules) & set(split.TWO_ALLOCATIONS)]
     assert holding and all(p.slots == 2 for p in holding)
     assert waiting[:len(holding)] == holding, (
         "a two-slot group queued behind one-slot groups waits until two slots are free at once, "
@@ -126,7 +126,7 @@ def test_the_idle_modules_ask_for_no_session_and_touch_no_host():
 
 
 def test_the_worker_count_is_the_number_of_slots_the_range_has(monkeypatch):
-    monkeypatch.setattr(split, "_slots", lambda platform: [slot(), slot(lease=3)])
+    monkeypatch.setattr(split, "_slots", lambda platform: [slot(), slot(allocation=3)])
     assert split.workers_the_range_allows("http://platform") == 2
 
     def unreachable(platform):
@@ -140,16 +140,16 @@ def test_a_refusal_for_want_of_room_is_told_apart_from_any_other():
     assert opening.refused_for_room(503, ["range_unavailable"])
     assert not opening.refused_for_room(503, ["sensor_unavailable"])
     assert not opening.refused_for_room(409, ["range_unavailable"])
-    assert not opening.refused_for_room(409, ["lease_closed"])
+    assert not opening.refused_for_room(409, ["allocation_closed"])
 
 
-def slot(lease=None, state="idle", wargame="board"):
-    return {"slot": 1, "wargame": wargame, "lease": lease, "refill": {"state": state, "reason": ""}}
+def slot(allocation=None, state="idle", wargame="board"):
+    return {"slot": 1, "wargame": wargame, "allocation": allocation, "refill": {"state": state, "reason": ""}}
 
 
 def test_room_means_an_unheld_slot_whose_refill_has_settled():
-    assert opening.has_room([slot(lease=4), slot()])
-    assert not opening.has_room([slot(lease=4)])
+    assert opening.has_room([slot(allocation=4), slot()])
+    assert not opening.has_room([slot(allocation=4)])
     for state in ("running", "failed"):
         assert not opening.has_room([slot(state=state)])
     assert opening.has_room([slot(wargame="")], "corp") and not opening.has_room([slot()], "corp")

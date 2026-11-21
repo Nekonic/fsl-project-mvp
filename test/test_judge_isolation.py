@@ -17,24 +17,24 @@ REFUSED = ("302", "403", "409", "503", "000")
 
 
 @pytest.fixture(scope="module")
-def lease(stack_is_up):
-    standing = STANDING.lease()
+def allocation(stack_is_up):
+    standing = STANDING.allocation()
     if standing is not None:
         return standing, STANDING.played
     played = plays.play("board")
-    return played.lease, played
+    return played.allocation, played
 
 
 @pytest.fixture(scope="module")
-def platform(lease):
-    held, _ = lease
+def platform(allocation):
+    held, _ = allocation
     found = set(platform_addresses(log_collector(held)))
     assert found, "neither CR_PLATFORM_URL nor the log relay names a platform address a range host could route to"
     return found
 
 
-def gateways_of(role: str, lease: int) -> set[str]:
-    table = run(role, ["cat", "/proc/net/route"], lease=lease).stdout.splitlines()[1:]
+def gateways_of(role: str, allocation: int) -> set[str]:
+    table = run(role, ["cat", "/proc/net/route"], allocation=allocation).stdout.splitlines()[1:]
     return {str(ipaddress.IPv4Address(struct.pack("<I", int(fields[2], 16))))
             for fields in map(str.split, table) if fields[1] == "00000000"}
 
@@ -49,8 +49,8 @@ def terminal(address: str, side: str, round_id: int) -> list[str]:
 
 
 @pytest.fixture(scope="module")
-def answered(lease, platform):
-    held, played = lease
+def answered(allocation, platform):
+    held, played = allocation
     found = {}
     for role in (ATTACKER, BOARD):
         addresses = sorted(gateways_of(role, held) | platform)
@@ -59,7 +59,7 @@ def answered(lease, platform):
         if role == BOARD:
             commands |= {(address, side): terminal(address, side, played.round)
                          for address in sorted(platform) for side in SIDES}
-        ran = run_side_by_side(role, commands, lease=held)
+        ran = run_side_by_side(role, commands, allocation=held)
         found[role] = {key: result.stdout for key, result in ran.items()}
     return found
 
@@ -92,7 +92,7 @@ def test_a_host_in_the_range_is_refused_the_terminal(answered, platform):
              for address in platform for side in SIDES}
 
     assert all(code in REFUSED for code in codes.values()), (
-        f"{codes}: the round's own terminal path goes through the seat check, which answers "
-        f"302 to sign-in, 403 not_seated, 409 for a round not running or 503; 000 is no route "
+        f"{codes}: the round's own terminal path goes through the player check, which answers "
+        f"302 to sign-in, 403 not_a_player, 409 for a round not running or 503; 000 is no route "
         f"to the platform. 2xx or 101 reached the terminal, 404 means the path is out of step "
         f"with nginx.conf, and an empty answer means curl never ran")

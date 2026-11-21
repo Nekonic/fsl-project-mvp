@@ -26,9 +26,9 @@ def slot_range(number: int | None, cfg: Config | None = None):
     return whole.in_slot(number) if hasattr(whole, "in_slot") and number else whole
 
 
-def lease_range(lease, cfg: Config | None = None):
-    return slot_range(lease.slot, cfg)
+def allocation_range(allocation, cfg: Config | None = None):
+    return slot_range(allocation.slot, cfg)
 
 
 def range_of(found, cfg: Config | None = None):
-    return lease_range(found.lease, cfg)
+    return allocation_range(found.allocation, cfg)

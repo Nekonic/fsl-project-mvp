@@ -102,7 +102,7 @@ def test_the_access_cursor_moves_so_a_second_tick_charges_nothing_again(attacker
     first, second = charged_from(es, attacker.round), charged_from(es, attacker.round)
 
     assert (first, second) == ({RU: 1}, {})
-    assert AccessCursor.objects.get(lease=attacker.round.lease).cursor["access"]["seen"] == ["a1"]
+    assert AccessCursor.objects.get(allocation=attacker.round.allocation).cursor["access"]["seen"] == ["a1"]
 
 
 def test_a_burst_seen_only_in_the_log_costs_double_beyond_the_rule(attacker):

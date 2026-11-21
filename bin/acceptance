@@ -34,7 +34,7 @@ IDLE = (
     "test_origin_placement",
     "test_waf_geolocation",
 )
-TWO_LEASES = (
+TWO_ALLOCATIONS = (
     "test_concurrent_sessions",
     "test_corp_authz",
 )
@@ -179,7 +179,7 @@ def seconds(group: list[str], durations: dict[str, float]) -> float:
 
 
 def slots_needed(group: list[str]) -> int:
-    return 2 if set(group) & set(TWO_LEASES) else 1
+    return 2 if set(group) & set(TWO_ALLOCATIONS) else 1
 
 
 def queued(groups: list[list[str]], durations: dict[str, float]) -> list[Process]:

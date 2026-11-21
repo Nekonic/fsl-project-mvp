@@ -28,7 +28,7 @@ def gated(client, uri, method="post", body=None):
                                    content_type="application/json", HTTP_X_KIBANA_URI=uri)
 
 
-def test_the_gate_forwards_a_discover_search_of_the_seat_s_own_space(as_defender, forwarded):
+def test_the_gate_forwards_a_discover_search_of_the_player_s_own_space(as_defender, forwarded):
     answer = gated(as_defender, f"/kibana/s/{OWN_SPACE}/internal/search/ese", body=SEARCH)
 
     assert answer.status_code == 200
@@ -61,9 +61,9 @@ def test_a_search_that_reaches_past_the_round_s_index_is_refused(as_defender, fo
     assert forwarded == []
 
 
-def test_a_user_with_no_defence_seat_reaches_no_space(browser, board_round, make_user, forwarded):
+def test_a_user_with_no_defence_player_reaches_no_space(browser, board_round, make_user, forwarded):
     attacker = make_user("attacker")
-    rounds.seated(board_round, "attack", user=attacker)
+    rounds.playing(board_round, "attack", user=attacker)
     browser.force_authenticate(attacker)
 
     answer = gated(browser, f"/kibana/s/{OWN_SPACE}/internal/search/ese", body=SEARCH)
@@ -100,7 +100,7 @@ def test_an_unanswering_kibana_is_a_bad_gateway(as_defender, monkeypatch):
     assert answer.json()["message"] == strings.line("kibana.unanswered")
 
 
-def test_the_seat_gets_the_discover_url_of_its_space_once_the_view_is_ready(as_defender, board_round, monkeypatch):
+def test_the_player_gets_the_discover_url_of_its_space_once_the_view_is_ready(as_defender, board_round, monkeypatch):
     monkeypatch.setenv("KIBANA_URL", "http://kibana:5601/kibana")
     monkeypatch.setattr(kibana, "VIEWS", {})
     asked = []

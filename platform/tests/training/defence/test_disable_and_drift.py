@@ -72,7 +72,7 @@ def test_a_live_crs_file_that_differs_from_the_head_posture_is_drift_reported_on
     assert service.check_drift(board_round, at) is True
     assert service.posture_drift(board_round) is True
     drifted = Event.objects.filter(round_id=board_round.pk, kind="rule.drifted")
-    assert [(event.body, event.seat_side) for event in drifted] == [({"engine": "waf"}, "defence")]
+    assert [(event.body, event.player_side) for event in drifted] == [({"engine": "waf"}, "defence")]
 
 
 def test_a_round_with_no_applied_posture_has_nothing_to_drift_from(board_round, cyber_range, at):

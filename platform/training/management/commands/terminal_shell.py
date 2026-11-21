@@ -5,7 +5,7 @@ from training.round import lifecycle as service
 
 
 class Command(BaseCommand):
-    help = "Print the address, host key alias and account of a seat's terminal shell, if the seat holds a grant."
+    help = "Print the address, host key alias and account of a player's terminal shell, if the player holds a grant."
     requires_system_checks = []
 
     def add_arguments(self, parser):
@@ -16,5 +16,5 @@ class Command(BaseCommand):
         try:
             shell = service.terminal_shell(round_id, side)
         except errors.DomainError as refused:
-            raise CommandError(f"round {round_id} gives the {side} seat no terminal: {refused.code}") from refused
+            raise CommandError(f"round {round_id} gives the {side} player no terminal: {refused.code}") from refused
         self.stdout.write(f"{shell.address} {shell.alias} {shell.account}")

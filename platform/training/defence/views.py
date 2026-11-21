@@ -24,7 +24,7 @@ def test_result(made) -> dict:
 
 class DefenceView(APIView):
     authentication_classes = auth.ROUND_AUTHENTICATION
-    permission_classes = [auth.HasSeat("defence")]
+    permission_classes = [auth.IsPlayer("defence")]
 
 
 class State(DefenceView):
@@ -69,7 +69,7 @@ class IdsTest(DefenceView):
                    operation_id="defence_ids_test")
     def post(self, request, round_id: int):
         asked = given(serializers.IdsTest, request.data)
-        made = service.test_rules(request.round, request.seat, IDS, asked["text"], asked.get("cases"))
+        made = service.test_rules(request.round, request.player, IDS, asked["text"], asked.get("cases"))
         return Response(test_result(made))
 
 
@@ -84,7 +84,7 @@ class IdsApply(DefenceView):
                    operation_id="defence_ids_apply")
     def post(self, request, round_id: int):
         asked = given(serializers.IdsApply, request.data)
-        applied = service.apply_ids(request.round, asked["text"], asked["base_version"], request.seat,
+        applied = service.apply_ids(request.round, asked["text"], asked["base_version"], request.player,
                                     asked.get("tested"))
         return Response(serializers.IdsApplied({"version": applied.rule_set.version,
                                                 "applied_at": applied.rule_set.applied_at,
@@ -131,7 +131,7 @@ class WafTest(DefenceView):
                    operation_id="defence_waf_test")
     def post(self, request, round_id: int):
         asked = given(serializers.WafTest, request.data)
-        made = service.test_rules(request.round, request.seat, WAF, asked["posture"], asked.get("cases"))
+        made = service.test_rules(request.round, request.player, WAF, asked["posture"], asked.get("cases"))
         return Response(test_result(made))
 
 
@@ -146,7 +146,7 @@ class WafApply(DefenceView):
                    operation_id="defence_waf_apply")
     def post(self, request, round_id: int):
         asked = given(serializers.WafApply, request.data)
-        applied = service.apply_waf(request.round, asked["posture"], asked["base_version"], request.seat,
+        applied = service.apply_waf(request.round, asked["posture"], asked["base_version"], request.player,
                                     asked.get("tested"))
         return Response(serializers.WafApplied(applied.rule_set).data)
 
@@ -154,7 +154,7 @@ class WafApply(DefenceView):
 class Terminal(DefenceView):
     @extend_schema(tags=TAGS, responses=serializers.DefenceTerminal, operation_id="defence_terminal")
     def get(self, request, round_id: int):
-        return Response(serializers.DefenceTerminal(defence_terminal.terminal(request.round, request.seat)).data)
+        return Response(serializers.DefenceTerminal(defence_terminal.terminal(request.round, request.player)).data)
 
 
 class Kibana(DefenceView):

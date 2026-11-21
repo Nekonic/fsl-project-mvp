@@ -42,7 +42,7 @@ class Viewer:
 KINDS: dict[str, Kind] = {
     "round.started": Kind({"ends_at": MAYBE_TEXT}, BOTH),
     "round.ended": Kind({"reason": TEXT}, BOTH),
-    "seat.joined": Kind({"side": TEXT, "client": TEXT}, BOTH),
+    "player.joined": Kind({"side": TEXT, "client": TEXT}, BOTH),
     "action.sent": Kind({"action": NUMBER, "kind": TEXT, "status": MAYBE_NUMBER}, ATTACK_SIDE),
     "tool.started": Kind({"run": NUMBER, "tool": TEXT}, ATTACK_SIDE),
     "tool.ended": Kind({"run": NUMBER, "exit_code": MAYBE_NUMBER, "stopped_by": MAYBE_TEXT}, ATTACK_SIDE),
@@ -96,16 +96,16 @@ class Page:
     next: int
 
 
-def append(round_id: int, kind: str, body: dict | None = None, seat_side: str | None = None) -> Event:
+def append(round_id: int, kind: str, body: dict | None = None, player_side: str | None = None) -> Event:
     if kind not in KINDS:
         raise LookupError(f"no event kind {kind!r}")
-    if seat_side is not None and seat_side not in SIDES:
-        raise TypeError(f"seat_side {seat_side!r} is not a side")
+    if player_side is not None and player_side not in SIDES:
+        raise TypeError(f"player_side {player_side!r} is not a side")
     given = dict(body or {})
     problems = malformed(kind, given)
     if problems:
         raise TypeError(f"{kind} body: {', '.join(problems)}")
-    return Event.objects.create(round_id=round_id, kind=kind, seat_side=seat_side, body=given)
+    return Event.objects.create(round_id=round_id, kind=kind, player_side=player_side, body=given)
 
 
 def forget(round_ids: list[int]) -> int:
@@ -114,7 +114,7 @@ def forget(round_ids: list[int]) -> int:
 
 
 def shown(event: Event, viewer: Viewer) -> dict:
-    return {"id": event.id, "kind": event.kind, "at": event.at, "seat_side": event.seat_side,
+    return {"id": event.id, "kind": event.kind, "at": event.at, "player_side": event.player_side,
             "body": shown_body(event.kind, event.body, viewer)}
 
 

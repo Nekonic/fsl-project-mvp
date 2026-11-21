@@ -51,9 +51,9 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 | `waf_changed` | WAF 설정이 지정한 방향으로 바뀜(paranoia·임계값 올림/내림, 예외 추가·삭제·좁힘, 탐지 전용 켬/끔) |
 
 - 앞 단계를 통과해야 다음 단계를 판정합니다. 순서를 건너뛰면 `step_locked`입니다.
-- 진도는 학습자와 문제별로 남습니다. 리스를 닫고 다시 열어도 마지막으로 통과한 단계 다음부터 이어 갑니다.
+- 진도는 학습자와 문제별로 남습니다. 할당을 닫고 다시 열어도 마지막으로 통과한 단계 다음부터 이어 갑니다.
 - 문제의 공격·방어 범위(`side`)가 `both`이면 학습자 한 명이 두 자리를 다 맡습니다.
-- 마지막 단계를 통과하면 라운드가 `steps_done`으로 끝나고 리스를 닫습니다.
+- 마지막 단계를 통과하면 라운드가 `steps_done`으로 끝나고 할당을 닫습니다.
 
 ### 2. 실전 라운드
 
@@ -131,13 +131,13 @@ flowchart TB
     pnet --- pvm
     subgraph pvm["VM cr-platform"]
       platform["platform: API, 채점, ssh 점프"]
-      follow["follow: 리스·라운드 틱"]
+      follow["follow: 할당·라운드 틱"]
       elk["Elasticsearch, Kibana"]
       collector["collector"]
     end
     pvm --- mgmt["cr-mgmt 네트워크 10.31.0.0/24<br/>훈련 환경 VM마다 제어 포트 1개"]
     mgmt --- stack
-    subgraph stack["리스마다 Heat 스택 cr-slot-N: VM 4대, 모든 스택이 같은 주소"]
+    subgraph stack["할당마다 Heat 스택 cr-slot-N: VM 4대, 모든 스택이 같은 주소"]
       kali["VM kali<br/>출발지 주소 100개"] --- inet["internet 121.134.88.40/29"]
       inet --- edge["VM infra: 라우터<br/>wan .42"]
       edge --- dmz["dmz 10.30.0.0/24"]
@@ -168,9 +168,9 @@ flowchart TB
 - 슬롯 스택은 VM 4대(kali, waf, infra, target)와 LAN 5개(internet, dmz, web-outer, web-inner, mgmt)입니다. LAN은
   스택마다 따로 만든 Neutron 네트워크이고 Neutron 라우터가 없습니다. 스택끼리 네트워크가 다르므로 모든 스택이 같은
   주소를 씁니다.
-- 스택은 워게임별 풀에 미리 띄워 둡니다(`compute.pool`, 기본 board 3개, corp 1개). 리스를 열면(`POST /api/leases/`)
-  준비된 스택 하나를 받고, 리스를 닫거나 하트비트 없이 만료되면 그 스택을 지우고 새로 만듭니다. 리스 하나에서 라운드를
-  여러 번 열 수 있지만, 목표를 하나라도 잃은 리스에서는 채점 라운드를 새로 시작하지 않습니다(board의 비밀값을 스택
+- 스택은 워게임별 풀에 미리 띄워 둡니다(`compute.pool`, 기본 board 3개, corp 1개). 할당을 열면(`POST /api/allocations/`)
+  준비된 스택 하나를 받고, 할당을 닫거나 하트비트 없이 만료되면 그 스택을 지우고 새로 만듭니다. 할당 하나에서 라운드를
+  여러 번 열 수 있지만, 목표를 하나라도 잃은 할당에서는 채점 라운드를 새로 시작하지 않습니다(board의 비밀값을 스택
   재생성 없이 바꿀 수 있는지 아직 모름).
 - 훈련 환경 VM은 `deploy/roles/<역할>/install.sh`로 미리 구운 Glance 이미지로 부팅합니다. 기본 이름은
   `cr-<역할>-bake1`이고, 이 클라우드의 WAF는 `cr-waf-bake2`입니다. 부팅할 때 인터넷에 나가지 않습니다.
@@ -185,7 +185,7 @@ flowchart TB
   붙어 af-packet으로 WAF와 대상 사이의 트래픽을 봅니다. WAF가 막은 요청은 센서에 닿지 않고 WAF 로그에 남습니다.
 - 센서가 보는 요청의 출발지는 WAF입니다. 수집할 때 같은 요청의 X-Forwarded-For 주소를 알림의 출발지로 씁니다.
 - 격리는 Neutron 보안 그룹과 port security가 맡습니다. Kali나 WAF의 root 셸로는 바꿀 수 없습니다.
-- 플랫폼 VM의 `follow` 서비스(같은 이미지의 `manage.py follow`)가 틱마다 슬롯 재생성, 리스 만료, 알림 수집, HP 차감,
+- 플랫폼 VM의 `follow` 서비스(같은 이미지의 `manage.py follow`)가 틱마다 슬롯 재생성, 할당 만료, 알림 수집, HP 차감,
   corp 변경 관찰, 명령 기록 읽기, WAF 설정 변경 감시, 라운드 종료 조건을 처리합니다. 브라우저가 열려 있지 않아도
   돕니다.
 
@@ -277,7 +277,7 @@ uv run bin/cloud up
 ## 동작 확인
 
 콘솔의 스태프 레인지 페이지(`/staff/range/`)가 이 상태를 보여 주지만 훈련 환경에서는 아직 확인하지 않았으므로, API로도 확인합니다. 스태프 계정으로 로그인한 쿠키로 풀 상태를 봅니다. 슬롯마다
-리스와 재생성 상태(`refill.state`)가 나오고, `idle`이면서 리스가 없는 슬롯을 새 리스가 받습니다. 슬롯 스택의 서버
+할당과 재생성 상태(`refill.state`)가 나오고, `idle`이면서 할당이 없는 슬롯을 새 할당이 받습니다. 슬롯 스택의 서버
 상태는 `GET /api/staff/range/pool/`에 있습니다.
 
 ```bash
@@ -285,8 +285,8 @@ curl -s -c cookies.txt http://ADDRESS:8000/api/auth/csrf/
 curl -s -b cookies.txt http://ADDRESS:8000/api/staff/range/
 ```
 
-라운드 하나를 처음부터 끝까지 돌리는 순서는 `test/plays.py`와 [test/README.md](test/README.md)에 있습니다. 리스 열기,
-라운드 만들기(`POST /api/leases/<id>/rounds/`), 시작, 케이스 발사, 종료, 점수 읽기 순서입니다.
+라운드 하나를 처음부터 끝까지 돌리는 순서는 `test/plays.py`와 [test/README.md](test/README.md)에 있습니다. 할당 열기,
+라운드 만들기(`POST /api/allocations/<id>/rounds/`), 시작, 케이스 발사, 종료, 점수 읽기 순서입니다.
 
 ## 문제 해결
 
@@ -318,7 +318,7 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 - push하지 않은 이미지를 올릴 때는 `--sideload NAME=TARBALL`을 씁니다. 절차는
   [재구축과 삭제](docs/OPENSTACK.md#53-rebuild-and-delete--lossless)에 있습니다.
 - 풀 크기는 `cloud.yaml`의 `compute.pool`(워게임별 스택 수)입니다. 바꾼 뒤 `uv run bin/cloud up --replace`를
-  실행합니다. 플랫폼은 이 값을 Heat 스택 파라미터로 받고, 리스가 없는 스택은 새 배정에 맞는
+  실행합니다. 플랫폼은 이 값을 Heat 스택 파라미터로 받고, 할당이 없는 스택은 새 배정에 맞는
   워게임으로 다시 만듭니다.
 
 `cloud.yaml` 항목:
@@ -353,7 +353,7 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
   `https://cr.example`처럼 scheme, 호스트, 포트만 적습니다. 플랫폼 컨테이너가 시작할 때 nginx 설정에 넣고,
   사이트 origin은 `/api/me/`의 `site_origin`으로 콘솔에 알려 줍니다. 형식이 틀리면 컨테이너가 시작하지 않습니다.
 - `board.com`과 `corp.com`은 훈련 환경 안에서만 응답합니다. 공격석이 8002로 보낸 요청은 공격 API와 같은 경로로
-  나가고 HP를 차감합니다. 방어석과 레슨의 요청은 리스의 브라우징 마커를 달고 고객 주소로 나가며, 공격으로도 오탐으로도
+  나가고 HP를 차감합니다. 방어석과 레슨의 요청은 할당의 브라우징 마커를 달고 고객 주소로 나가며, 공격으로도 오탐으로도
   세지 않습니다.
 - 공격 API와 방어 API의 계약은 `openapi/schema.yaml`입니다. 자리별 스키마는 `/api/schema/attack/`,
   `/api/schema/defence/`입니다.
@@ -407,7 +407,7 @@ npm run build && npx vitest run
 
 ## 백업과 복원
 
-백업 대상은 플랫폼 VM `cr_platformdata` 볼륨의 `/data/db.sqlite3`입니다. 계정, 리스, 라운드, 자리, 공격 기록,
+백업 대상은 플랫폼 VM `cr_platformdata` 볼륨의 `/data/db.sqlite3`입니다. 계정, 할당, 라운드, 자리, 공격 기록,
 도구 실행, 탐지 기록, 고객 요청, 목표, 룰셋, 룰 테스트, 비활성화한 룰이 들어 있습니다. Elasticsearch 데이터는
 백업하지 않습니다.
 
@@ -443,7 +443,7 @@ sudo docker compose start platform follow
 |---|---|
 | `/api/`(사람) | Django 로그인. 세션 쿠키는 HttpOnly, SameSite=Lax. 쓰기 요청은 CSRF 토큰 필요. CORS 헤더 없음 |
 | `/api/`(봇) | `Authorization: Bearer <자리 토큰>`. 토큰은 라운드를 만들 때 한 번만 보여 주고 해시로만 저장. 자기 자리의 공격 또는 방어 경로와 라운드 읽기만 닿음. 라운드가 끝나면 15분 동안 읽기만 가능 |
-| 자리 | 상대 자리의 경로는 403. 라운드 시작 전 쓰기는 `409 round_not_started`, 끝난 뒤는 `409 round_closed`. 자리는 리스를 열거나 닫지 못하고 라운드를 끝내지 못함(기권만 가능). PvP에서 한 사람이 두 자리를 맡지 못함(`already_seated`) |
+| 자리 | 상대 자리의 경로는 403. 라운드 시작 전 쓰기는 `409 round_not_started`, 끝난 뒤는 `409 round_closed`. 자리는 할당을 열거나 닫지 못하고 라운드를 끝내지 못함(기권만 가능). PvP에서 한 사람이 두 자리를 맡지 못함(`already_playing`) |
 | 이벤트 피드 | 이벤트 종류마다 볼 수 있는 쪽이 정해져 있음. 공격 쪽은 알림과 룰 이벤트를, 방어 쪽은 공격 행동과 HP 이벤트를 보지 못함 |
 | WAF 설정 | 방어석은 구조화된 posture(paranoia, 예외, 임계값, 탐지 전용)만 보냄. 자유 텍스트를 받지 않으므로 `SecRuleEngine Off`를 쓸 수 없음 |
 | `/vm-terminal/<side>/<round>/` | nginx `auth_request`가 `/api/rounds/<round>/terminal-auth/<side>/`에 그 라운드의 그 자리를 맡았는지 물음. 공격 자리는 Kali의 `kali` 계정, 방어 자리는 cr-waf의 `analyst` 계정(root 아님)으로 열리고, `GET terminal/`로 받은 점프 권한이 없거나 라운드가 끝났으면 열리지 않음. 열려 있던 셸도 15초마다 다시 확인해 권한이 없어지면 닫힘 |

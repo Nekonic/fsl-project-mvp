@@ -27,7 +27,7 @@ def test_a_live_rogue_admin_is_lost_from_the_targets_own_row_with_no_signature(c
     breach = lost_in(seen["score"]).get("corp-rogue-admin")
     assert breach is not None, seen["score"]["objectives"]
     assert breach["seen"] is False, breach
-    assert breach["attributed_marker"], f"the breach was tied to no action of the attack seat: {breach}"
+    assert breach["attributed_marker"], f"the breach was tied to no action of the attack player: {breach}"
 
 
 def test_a_live_content_overwrite_is_lost_from_the_targets_own_row(corp_stands, rogue_admin_session):
