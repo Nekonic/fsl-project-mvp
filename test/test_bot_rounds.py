@@ -8,7 +8,6 @@ from bots.signin import Platform
 SETUP = plays.Setup(wargame="board", title="Acceptance bot rounds board", side="both",
                     matchups=("def_vs_bot", "atk_vs_bot"))
 CONTROL = "board-sqli-search"
-RELOADED = plays.appended_and_reloaded(plays.CRS_EXCLUSIONS, plays.BOT_SEARCH_RULE)
 
 
 def attack_bot_baseline(played: plays.Played) -> list[plays.Answer]:
@@ -33,7 +32,7 @@ def bot_rule_alerts(played: plays.Played, marker: str) -> list[dict]:
 
 def defence_bot_turn(played: plays.Played, marker: str) -> dict:
     listed = plays.alerts_until(played, lambda listed: bool(plays.marked(listed, marker)))
-    shell = plays.in_shell(played, "defence", RELOADED)
+    shell = plays.tested_and_appended(played, plays.CRS_EXCLUSIONS, plays.BOT_SEARCH_RULE)
     head = terminal_version(played)
     live = plays.waf_files(played)[plays.CRS_EXCLUSIONS]
     fresh = plays.fired(played, CONTROL)["marker"]

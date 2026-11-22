@@ -84,6 +84,8 @@ class ResponseRecord:
     at: datetime
     kind: str
     source_ip: str | None = None
+    replayed: frozenset[str] = frozenset()
+    refused: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)

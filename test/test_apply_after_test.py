@@ -35,13 +35,18 @@ def applied_round(played):
 
 @pytest.fixture(scope="module")
 def waf_round(played):
-    waf_test = plays.rule_test_waf(played, plays.appended(played, plays.CRS_SETUP, blocking_at(2)))
-    changed = plays.appended(played, plays.CRS_SETUP, blocking_at(3))
-    waf_applied = plays.tune_waf(played, changed, tested=waf_test.body.get("test") if waf_test.ok else None)
+    tested_files = plays.appended(played, plays.CRS_SETUP, blocking_at(2))
+    waf_test = plays.rule_test_waf(played, tested_files)
+    other = plays.tune_waf(played, plays.appended(played, plays.CRS_SETUP, blocking_at(3)),
+                           tested=waf_test.body.get("test") if waf_test.ok else None)
+    waf_applied = plays.tune_waf(played, tested_files, tested=waf_test.body.get("test") if waf_test.ok else None)
     live = plays.done("defence_waf", played.defence, round_id=played.round)
-    broken = plays.tune_waf(played, plays.appended(played, plays.SITE_CONF, NOT_NGINX))
-    return {"waf_test": waf_test, "waf_applied": waf_applied, "changed": changed, "live": live,
-            "broken": broken, "after_broken": plays.waf_files(played), "waf_versions": plays.waf_versions(played)}
+    broken_files = plays.appended(played, plays.SITE_CONF, NOT_NGINX)
+    broken_test = plays.rule_test_waf(played, broken_files)
+    broken = plays.tune_waf(played, broken_files, tested=broken_test.body.get("test") if broken_test.ok else None)
+    return {"waf_test": waf_test, "other": other, "waf_applied": waf_applied, "changed": tested_files, "live": live,
+            "broken_test": broken_test, "broken": broken, "after_broken": plays.waf_files(played),
+            "waf_versions": plays.waf_versions(played)}
 
 
 def test_tested_ids_rules_reloaded_in_the_ids_terminal_are_recorded_as_a_terminal_version(applied_round):
@@ -49,25 +54,26 @@ def test_tested_ids_rules_reloaded_in_the_ids_terminal_are_recorded_as_a_termina
     assert applied_round["ids_applied"].ok, applied_round["ids_applied"].text
     head = max(applied_round["ids_versions"], key=lambda line: line["version"])
     assert head == applied_round["ids_applied"].version and head["source"] == "terminal"
-    assert head["tested"] is None, "a reload in the terminal is not tied to a test"
+    assert head["tested"] == applied_round["ids_test"].body["test"] and head["same_as_tested"] is True, (
+        "a terminal reload is tied to the passed test of the same text")
 
 
-def test_waf_files_other_than_the_tested_ones_apply_and_say_so(waf_round):
-    assert waf_round["waf_test"].ok, waf_round["waf_test"].text
+def test_only_the_waf_files_a_test_passed_apply(waf_round):
+    assert waf_round["waf_test"].ok and waf_round["waf_test"].body["passed"], waf_round["waf_test"].text
+    assert waf_round["other"].status == 409 and "not_tested" in waf_round["other"].codes, waf_round["other"].text
     assert waf_round["waf_applied"].ok, waf_round["waf_applied"].text
-    assert waf_round["waf_applied"].body["same_as_tested"] is False
+    assert waf_round["waf_applied"].body["same_as_tested"] is True
     live = {one["path"]: one["text"] for one in waf_round["live"]["files"]}
     assert live[plays.CRS_SETUP] == waf_round["changed"][plays.CRS_SETUP] and waf_round["live"]["recorded"], (
         "the applied crs-setup.conf is not the one nginx is running after the reload")
     head = next(line for line in waf_round["waf_versions"] if line["version"] == waf_round["waf_applied"].body["version"])
-    assert head["tested"] == waf_round["waf_test"].body["test"] and head["same_as_tested"] is False
+    assert head["tested"] == waf_round["waf_test"].body["test"] and head["same_as_tested"] is True
     assert head["source"] == "console" and head["sha"] == waf_round["live"]["sha"]
 
 
-def test_waf_files_nginx_refuses_are_rolled_back(waf_round):
-    broken = waf_round["broken"]
-
-    assert broken.status == 422 and "crs_refused" in broken.codes, broken.text
+def test_waf_files_nginx_refuses_fail_the_test_and_cannot_be_applied(waf_round):
+    assert waf_round["broken_test"].ok and waf_round["broken_test"].body["ok"] is False, waf_round["broken_test"].text
+    assert waf_round["broken"].status == 409 and "not_tested" in waf_round["broken"].codes, waf_round["broken"].text
     assert NOT_NGINX not in waf_round["after_broken"][plays.SITE_CONF], "nginx refused the file and it stayed live"
     assert waf_round["after_broken"][plays.CRS_SETUP] == waf_round["changed"][plays.CRS_SETUP]
     assert max(line["version"] for line in waf_round["waf_versions"]) == waf_round["waf_applied"].body["version"], (

@@ -51,7 +51,7 @@ export function IdsRules({ round }: PaneProps) {
         </PaneSection>
       )}
       <BenchOutcome bench={bench} onReload={rules.reload} />
-      <RuleTestSection result={bench.result} stale={bench.stale} untestedText={t("rule_test.not_yet.ids")} />
+      <RuleTestSection result={bench.result} stale={bench.stale} untestedText={t("rule_test.not_yet.ids")} engine="ids" />
       <PaneSection title={t("waf.versions")} ruled>
         {versions.error ? <ErrorNotice error={versions.error} />
           : <Table columns={versionColumns} rows={[...versions.versions].reverse()} rowKey={(row) => row.version} variant="grid" empty={t("versions.none")} />}

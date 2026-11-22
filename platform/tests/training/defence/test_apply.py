@@ -18,6 +18,11 @@ def url(found, tail):
     return BASE.format(round=found.pk) + tail
 
 
+def applied_after_a_test(client, found, files, base_version):
+    client.post(url(found, "waf/test/"), {"files": files}, format="json")
+    return client.post(url(found, "waf/apply/"), {"files": files, "base_version": base_version}, format="json")
+
+
 def test_reading_the_rules_before_any_apply_shows_the_live_file_at_version_zero(as_defender, board_round):
     answer = as_defender.get(url(board_round, "ids/rules/"))
 
@@ -65,8 +70,7 @@ def test_a_named_test_must_be_this_player_s_test_of_this_engine(as_defender, boa
 def test_the_waf_files_are_written_reloaded_and_recorded_as_a_version_with_their_text_and_hash(as_defender,
                                                                                                board_round,
                                                                                                cyber_range):
-    answer = as_defender.post(url(board_round, "waf/apply/"),
-                              {"files": {EXCLUSIONS: EXCLUDE_Q}, "base_version": 0}, format="json")
+    answer = applied_after_a_test(as_defender, board_round, {EXCLUSIONS: EXCLUDE_Q}, 0)
 
     assert answer.status_code == 200 and answer.json()["version"] == 1
     assert cyber_range.gateway.files[EXCLUSIONS] == EXCLUDE_Q
@@ -80,11 +84,9 @@ def test_the_waf_files_are_written_reloaded_and_recorded_as_a_version_with_their
 
 
 def test_a_stale_waf_apply_is_refused(as_defender, board_round, cyber_range):
-    as_defender.post(url(board_round, "waf/apply/"), {"files": {EXCLUSIONS: EXCLUDE_Q}, "base_version": 0},
-                     format="json")
+    applied_after_a_test(as_defender, board_round, {EXCLUSIONS: EXCLUDE_Q}, 0)
 
-    answer = as_defender.post(url(board_round, "waf/apply/"), {"files": {EXCLUSIONS: ""}, "base_version": 0},
-                              format="json")
+    answer = applied_after_a_test(as_defender, board_round, {EXCLUSIONS: ""}, 0)
 
     assert answer.status_code == 409
     assert answer.json()["errors"][0]["params"] == {"current_version": 1}
@@ -96,8 +98,7 @@ def test_files_nginx_refuses_on_reload_are_rolled_back_and_refused_with_the_file
     before = dict(cyber_range.gateway.files)
     cyber_range.gateway.reload_fails = 'unknown directive "denyy"'
 
-    answer = as_defender.post(url(board_round, "waf/apply/"), {"files": {HTTP: "denyy all;\n"}, "base_version": 0},
-                              format="json")
+    answer = applied_after_a_test(as_defender, board_round, {HTTP: "denyy all;\n"}, 0)
 
     assert answer.status_code == 422
     assert answer.json()["errors"] == [{"path": HTTP, "code": "crs_refused", "line": 2,
@@ -125,8 +126,7 @@ def test_a_file_the_defence_does_not_edit_or_the_platform_s_logging_never_reache
 
 
 def test_the_rule_engine_may_be_turned_off_the_score_shows_the_result(as_defender, board_round, cyber_range):
-    answer = as_defender.post(url(board_round, "waf/apply/"),
-                              {"files": {SETUP_FILE: "SecRuleEngine Off\n"}, "base_version": 0}, format="json")
+    answer = applied_after_a_test(as_defender, board_round, {SETUP_FILE: "SecRuleEngine Off\n"}, 0)
 
     assert answer.status_code == 200
     assert cyber_range.gateway.files[SETUP_FILE] == "SecRuleEngine Off\n"

@@ -18,7 +18,7 @@ def given(serializer, data):
 
 
 def test_result(made) -> dict:
-    return serializers.RuleTestResult({"test": made.pk, **made.result}).data
+    return serializers.RuleTestResult({"test": made.pk, "passed": False, "failed_benign": [], **made.result}).data
 
 
 class DefenceView(CatchingUpView):

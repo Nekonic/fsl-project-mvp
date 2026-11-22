@@ -126,9 +126,16 @@ export interface RuleTestSectionProps {
   result: RuleTestResult | undefined;
   stale: boolean;
   untestedText: string;
+  engine: "waf" | "ids";
 }
 
-export function RuleTestSection({ result, stale, untestedText }: RuleTestSectionProps) {
+function Passing({ result, engine }: { result: RuleTestResult; engine: "waf" | "ids" }) {
+  if (result.passed) return <Notice tone="ok">{t(engine === "waf" ? "rule_test.passed.waf" : "rule_test.passed.ids")}</Notice>;
+  if (result.failed_benign.length) return <Notice tone="danger">{t("rule_test.failed_benign", { cases: result.failed_benign.join(", ") })}</Notice>;
+  return <Notice tone="danger">{t("rule_test.failed_engine")}</Notice>;
+}
+
+export function RuleTestSection({ result, stale, untestedText, engine }: RuleTestSectionProps) {
   if (!result) {
     return (
       <PaneSection title={t("rule_test.title")} ruled>
@@ -139,7 +146,7 @@ export function RuleTestSection({ result, stale, untestedText }: RuleTestSection
   return (
     <PaneSection ruled title={t("rule_test.numbered", { test: result.test })}
       meta={<Stats>{VERDICT_ORDER.map((verdict) => <Stat key={verdict} label={tFor("verdict", verdict)} value={result.totals[verdict]} />)}</Stats>}>
-      {stale && <Notice tone="warn">{t("rule_test.stale")}</Notice>}
+      {stale ? <Notice tone="warn">{t("rule_test.stale")}</Notice> : <Passing result={result} engine={engine} />}
       <AgainstApplied changes={result.against_applied} />
       <RuleTestTable cases={result.cases} />
       <Untested untested={result.untested} />
@@ -234,6 +241,7 @@ export function useRuleBench(body: string) {
     passed: passedFor === body && !shownProblems.length,
     result,
     stale: result !== undefined && testedBody !== body,
+    applicable: result !== undefined && result.passed && testedBody === body,
     failure,
     applied,
     appliedWithTest,
@@ -257,7 +265,7 @@ export function BenchButtons({ bench, calls, disabled }: { bench: RuleBench; cal
     <>
       <Button small busy={bench.busy === "check"} disabled={disabled || bench.busy !== null} onClick={() => void bench.check(calls)}>{t("common.validate")}</Button>
       <Button small tone="primary" busy={bench.busy === "test"} disabled={disabled || bench.busy !== null} onClick={() => void bench.test(calls)}>{t("rules.test")}</Button>
-      <Button small tone="dark" busy={bench.busy === "apply"} disabled={disabled || bench.busy !== null} onClick={() => void bench.apply(calls)}>{t("rules.apply")}</Button>
+      <Button small tone="dark" busy={bench.busy === "apply"} disabled={disabled || bench.busy !== null || !bench.applicable} onClick={() => void bench.apply(calls)}>{t("rules.apply")}</Button>
     </>
   );
 }

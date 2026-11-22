@@ -64,7 +64,9 @@ DESCRIPTIONS = {
     "defence_ids_versions": "List the recorded Suricata rule versions: each one's hash, whether it came from the "
                             "round's setup or a reload in the IDS terminal, and whether it was the tested text.",
     "defence_ids_test": "Test Suricata rule text against the recorded probes, never the live range. Answers "
-                        "with per-case tp/fn/fp/tn, corroboration and totals. Only one test runs at a time.",
+                        "with per-case tp/fn/fp/tn, corroboration and totals. It passes only when no benign case "
+                        "alerts and the sensor accepts the rules; only a file a passing test named can be "
+                        "reloaded. Only one test runs at a time.",
     "defence_ids_test_result": "Read a stored Suricata rule test by its id.",
     "defence_waf": "Read the WAF files the defence edits (the CRS setup file, the request and response "
                    "exclusion files, the nginx files for deny and limit_req) as they are now, their hash, the "
@@ -77,17 +79,21 @@ DESCRIPTIONS = {
                          "file path to its whole text and leaves out the files you keep. Errors name the file "
                          "and line.",
     "defence_waf_test": "Test WAF files against the recorded probes, never the live range. Tool cases are "
-                        "listed as untested. Only one test runs at a time.",
+                        "listed as untested. It passes only when no benign case is refused and nginx accepts the "
+                        "files; only files a passing test named can be applied or reloaded. Only one test runs at "
+                        "a time.",
     "defence_waf_test_result": "Read a stored WAF test by its id.",
     "defence_waf_apply": "Write WAF files, run nginx -t and reload, rolling back if nginx refuses them. "
-                         "`base_version` must be the version you read; pass `tested` with the test id of the "
-                         "same files to record that it was tested.",
+                         "`base_version` must be the version you read. Refused with not_tested unless a passing "
+                         "defence_waf_test of this round named the same files.",
     "defence_terminal": "Get a short-lived shell on the WAF as analyst: a web terminal URL and an SSH jump grant. "
-                        "The WAF files are writable there, with sudo nginx -t and an nginx reload; a reload "
-                        "there is recorded as the next WAF version on the next request.",
+                        "The WAF files are writable there, with sudo nginx -t and an nginx reload; the reload "
+                        "loads only files a passing defence_waf_test named, and is recorded as the next WAF "
+                        "version on the next request.",
     "defence_ids_terminal": "Get a short-lived shell on the Suricata sensor's host as analyst: a web terminal URL and "
                             "an SSH jump grant. The rule file is writable there, with the rule test and the rule "
-                            "reload under sudo; a reload there is recorded as the next IDS version on the next request.",
+                            "reload under sudo; the reload loads only a file a passing defence_ids_test named, and "
+                            "is recorded as the next IDS version on the next request.",
     "defence_forfeit": "Give up the round as the defender. Ends the round.",
 }
 
@@ -104,12 +110,14 @@ SHELL_DESCRIPTIONS = {
     ("defence", SHELL): "Run one shell command on the WAF as analyst, over the same SSH grant a human defender's "
                         "terminal uses (defence_terminal). Each call is a new login, so cd and variables do not carry "
                         "over. The WAF files are writable there, with sudo nginx -t, sudo nginx -T and sudo systemctl "
-                        "reload nginx; a reload is recorded as the next WAF version on the next request.",
+                        "reload nginx; the reload loads only files a passing defence_waf_test named, and is recorded "
+                        "as the next WAF version on the next request.",
     ("defence", IDS_SHELL): "Run one shell command on the Suricata sensor's host as analyst, over the same SSH grant "
                             "a human defender's IDS terminal uses (defence_ids_terminal). Each call is a new login. "
                             "The rule file is writable there and the eve log readable; `sudo -l` lists the rule test "
-                            "and the rule reload you may run. A reload is recorded as the next IDS version on the "
-                            "next request; one that turns off the sensor's logging is put back.",
+                            "and the rule reload you may run. The reload loads only a file a passing defence_ids_test "
+                            "named and refuses one that turns off the sensor's logging; a reload is recorded as the "
+                            "next IDS version on the next request.",
 }
 
 

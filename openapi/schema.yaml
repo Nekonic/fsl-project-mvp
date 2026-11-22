@@ -3793,6 +3793,12 @@ components:
           type: integer
         ok:
           type: boolean
+        passed:
+          type: boolean
+        failed_benign:
+          type: array
+          items:
+            type: string
         errors:
           type: array
           items:
@@ -3815,7 +3821,9 @@ components:
       - against_applied
       - cases
       - errors
+      - failed_benign
       - ok
+      - passed
       - test
       - totals
       - untested
@@ -4565,6 +4573,7 @@ components:
       - not_recorded
       - not_signed_in
       - not_staff
+      - not_tested
       - 'null'
       - objective_fallen
       - origins_spent

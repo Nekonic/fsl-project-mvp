@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
 import re
 import shlex
@@ -21,6 +22,8 @@ ERROR_LINE = re.compile(r"(?:^|\s)(?:E:|<Error>|\[ERRCODE:|Error:)|error parsing
 RUN_ID = re.compile(r"[A-Za-z0-9_-]+")
 OFFLINE_TIMEOUT = 300.0
 LOGGING_OFF = re.compile(r"[(;]\s*config\s*:\s*logging\b", re.IGNORECASE)
+PERMIT = 'umask 077; mkdir -p "$(dirname "$1")"; printf "%s\\n" "$2" >> "$1"'
+FORGET = 'umask 077; mkdir -p "$(dirname "$1")"; : > "$1"'
 READ_SNAPSHOT = 'exec 9>>"$1.lock"; flock -s 9; cat "$1/at" && cat "$1$2"'
 
 
@@ -107,6 +110,22 @@ def refusals(text: str) -> list[RuleError]:
                                            + rule.strip())
             for number, rule in rules_in(text)
             if not rule.lstrip().startswith("#") and LOGGING_OFF.search(rule)]
+
+
+def loaded_sha(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def permit(node, config: SensorConfig, sha: str) -> None:
+    ran = node(["sh", "-c", PERMIT, "sh", config.passed, sha])
+    if not ran.ok:
+        raise RulesUnreadable(f"could not list a passed test on {config.name}: {ran.output.strip()[-300:]}")
+
+
+def forget_passed(node, config: SensorConfig) -> None:
+    ran = node(["sh", "-c", FORGET, "sh", config.passed])
+    if not ran.ok:
+        raise RulesUnreadable(f"could not clear the passed tests on {config.name}: {ran.output.strip()[-300:]}")
 
 
 def reloaded(node, config: SensorConfig) -> Reloaded | None:

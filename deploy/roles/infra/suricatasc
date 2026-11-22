@@ -4,6 +4,12 @@ set -eu
 RULE_FILE=/var/lib/suricata/rules/local.rules
 ANALYST=analyst
 SNAPSHOT=/var/lib/cr-reloaded/ids
+PASSED=/var/lib/cr-reloaded/ids.passed
+
+measured() {
+  awk '{ if (rule == "" && $0 ~ /^[[:space:]]*#/) next; line = $0; if (sub(/\\[[:space:]]*$/, "", line)) { rule = rule line; next } print rule line; rule = "" } END { if (rule != "") print rule }' "$1" |
+    grep -Eiq '[(;][[:space:]]*config[[:space:]]*:[[:space:]]*logging([^[:alnum:]_]|$)'
+}
 
 [ "$*" = "-c reload-rules" ] || exec docker exec -i sensor suricatasc "$@"
 trap '' INT TERM HUP
@@ -19,6 +25,14 @@ handed_back() {
 trap handed_back EXIT
 mkdir -p "$staged$(dirname "$RULE_FILE")"
 cp "$RULE_FILE" "$staged$RULE_FILE"
+if measured "$staged$RULE_FILE"; then
+  echo "a rule turns off the sensor's logging (config: logging); nothing was loaded" >&2
+  exit 1
+fi
+if ! grep -qxF "$(sha256sum < "$staged$RULE_FILE" | cut -d' ' -f1)" "$PASSED" 2>/dev/null; then
+  echo "these rules match no rule test that passed in this round; run the test in the console first; nothing was loaded" >&2
+  exit 1
+fi
 install -m 0644 -o root -g root "$staged$RULE_FILE" "$RULE_FILE.reloading"
 mv "$RULE_FILE.reloading" "$RULE_FILE"
 reply=$(docker exec -i sensor suricatasc -c reload-rules)

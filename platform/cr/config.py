@@ -55,6 +55,7 @@ class SensorConfig:
     scratch: str = "/var/lib/cr-ruletest"
     interface: str = "br0"
     snapshot: str = f"{RELOAD_SNAPSHOTS}/ids"
+    passed: str = f"{RELOAD_SNAPSHOTS}/ids.passed"
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,7 @@ class WafConfig:
     probe_upstream: str = "/usr/local/share/cr/probe-upstream.py"
     first_port: int = 18000
     snapshot: str = f"{RELOAD_SNAPSHOTS}/waf"
+    passed: str = f"{RELOAD_SNAPSHOTS}/waf.passed"
 
 
 @dataclass(frozen=True)

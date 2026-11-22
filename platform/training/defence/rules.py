@@ -11,14 +11,14 @@ from django.utils import timezone
 
 from cr import config, errors
 from cr.config import configured
-from domain.types import ENGINE_IDS, ENGINE_WAF, ENGINES, RESPONSE_VERSION, ResponseRecord
+from domain.types import ACTION_CASE, ENGINE_IDS, ENGINE_WAF, ENGINES, RESPONSE_VERSION, ResponseRecord
 from sandbox import crs, reach, suricata
 from scoring import losses as referee
 from telemetry import events as log
 from telemetry.models import Detection
 from training.content import problems as content
 from training.defence import ruletest, terminal
-from training.models import Allocation, Round, RuleSet, RuleTest, Player
+from training.models import Action, Allocation, Player, Round, RuleSet, RuleTest
 
 DEFENCE = "defence"
 IDS_FILE = ruletest.IDS_FILE
@@ -173,8 +173,30 @@ def versions(found: Round, engine: str) -> list[RuleSet]:
 
 
 def applied(found: Round) -> list[ResponseRecord]:
-    return [ResponseRecord(at=rule_set.took_effect, kind=RESPONSE_VERSION)
-            for rule_set in RuleSet.objects.filter(round=found).exclude(source=SETUP)]
+    made = []
+    for rule_set in (RuleSet.objects.filter(round=found, engine=ENGINE_WAF, same_as_tested=True)
+                     .exclude(source=SETUP).select_related("tested")):
+        if rule_set.tested is None or not rule_set.tested.result.get("passed"):
+            continue
+        actions = rule_set.tested.result.get("actions") or []
+        made.append(ResponseRecord(at=rule_set.took_effect, kind=RESPONSE_VERSION,
+                                   replayed=frozenset(one["marker"] for one in actions),
+                                   refused=frozenset(one["marker"] for one in actions if one["refused"])))
+    return made
+
+
+def attack_requests(found: Round) -> list[dict]:
+    sent = list(Action.objects.filter(round=found).exclude(malicious=False).order_by("id"))
+    fired = sorted({action.case_id for action in sent if action.kind == ACTION_CASE and action.case_id})
+    recorded = {one.case: one for one in (recordings(found, fired) if fired else ())
+                if one.malicious and one.recorded_for(ENGINE_WAF) and not one.tool_case}
+    made = []
+    for action in sent:
+        if action.kind == ACTION_CASE and action.case_id in recorded:
+            made.append({**ruletest.probe_request(recorded[action.case_id]), "marker": action.marker})
+        elif action.kind != ACTION_CASE and "method" in action.meta and "path" in action.meta:
+            made.append(ruletest.sent_request(action.marker, action.meta))
+    return made
 
 
 def version(found: Round, engine: str, number: int) -> RuleSet:
@@ -193,7 +215,8 @@ def test_rules(found: Round, player: Player | None, engine: str, given: Any,
                cases: Sequence[str] | None = None) -> RuleTest:
     engine_given(engine)
     chosen = recordings(found, cases)
-    return ruletest.run(found, player, engine, given, chosen, wired(found))
+    attacks = attack_requests(found) if engine == ENGINE_WAF else []
+    return ruletest.run(found, player, engine, given, chosen, wired(found), attacks)
 
 
 def rule_test(found: Round, engine: str, test_id: int) -> RuleTest:
@@ -201,6 +224,11 @@ def rule_test(found: Round, engine: str, test_id: int) -> RuleTest:
     if made is None:
         raise errors.NotFound()
     return made
+
+
+def passed_test(found: Round, engine: str, sha: str) -> RuleTest | None:
+    return next((test for test in RuleTest.objects.filter(round=found, engine=engine, sha=sha).order_by("-id")
+                 if test.syntax_ok and test.result.get("passed")), None)
 
 
 def tested_of(found: Round, engine: str, player: Player | None, tested: int | None) -> RuleTest | None:
@@ -255,6 +283,8 @@ def locked_head(found: Round, engine: str, base_version: int) -> RuleSet | None:
 def recorded(found: Round, engine: str, head: RuleSet | None, files: Mapping[str, str], sensors: Sequence[dict],
              tested: RuleTest | None, source: str = CONSOLE, reloaded: float | None = None) -> RuleSet:
     sha = ruletest.files_sha(files)
+    if tested is None and source == TERMINAL:
+        tested = passed_test(found, engine, sha)
     made = RuleSet.objects.create(round=found, engine=engine, version=(head.version if head else 0) + 1,
                                   files=dict(files), sha=sha, source=source, applied_at=timezone.now(),
                                   tested=tested,
@@ -283,10 +313,16 @@ def apply_waf(found: Round, files: Mapping[str, str], base_version: int, player:
     reached = wired(found)
     ruletest.checked_files(files, reached.waf)
     test = tested_of(found, ENGINE_WAF, player, tested)
+    loaded = dict(files)
+    if source == CONSOLE:
+        loaded = crs.read(reached.gateway, reached.waf) | loaded
+        test = passed_test(found, ENGINE_WAF, ruletest.files_sha(loaded))
+        if test is None:
+            raise errors.Conflict(code="not_tested", path="files")
     with transaction.atomic():
         head = locked_head(found, ENGINE_WAF, base_version)
         try:
-            merged = crs.apply(files, reached.gateway, reached.waf)
+            merged = crs.apply(loaded, reached.gateway, reached.waf)
         except crs.WafRefused as refused:
             raise ruletest.waf_refusal(refused) from refused
         return Applied(rule_set=recorded(found, ENGINE_WAF, head, merged, (), test, source,
@@ -329,6 +365,7 @@ def record_live_ids(found: Round, source: str, live: str | None = None,
 
 
 def apply_posture(found: Round) -> None:
+    ruletest.forget_passed(wired(found))
     posture = (found.snapshot.get("round") or {}).get("posture") or found.snapshot.get("start_posture") or {}
     if posture.get("suricata_rules"):
         apply_ids(found, posture["suricata_rules"], version_of(found, ENGINE_IDS), source=SETUP)

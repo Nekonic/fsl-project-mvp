@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 from cr import errors
 from cr.config import SensorConfig, WafConfig
@@ -178,12 +179,22 @@ def probe_request(recording: Recording) -> dict:
     return {"marker": recording.marker, **request, "response": answered}
 
 
-def waf_alerts(files: Mapping[str, str], wired: Wired, recordings: Sequence[Recording],
-               test_id: int) -> list[DetectionRecord]:
-    if not recordings:
-        return []
-    found = crs.scratch_test(dict(files), wired.gateway, wired.waf, test_id,
-                             [probe_request(recording) for recording in recordings])
+def sent_request(marker: str, meta: Mapping[str, Any]) -> dict:
+    query = meta.get("query") or {}
+    path = meta["path"] + (("&" if "?" in meta["path"] else "?") + urlencode(dict(query)) if query else "")
+    return {"marker": marker, "method": meta["method"], "host": meta.get("host"), "path": path,
+            "headers": dict(meta.get("headers") or {}), "body": meta.get("body"), "response": None}
+
+
+def waf_replayed(files: Mapping[str, str], wired: Wired, recordings: Sequence[Recording], test_id: int,
+                 attacks: Sequence[dict] = ()) -> dict[str, dict]:
+    if not recordings and not attacks:
+        return {}
+    return crs.scratch_test(dict(files), wired.gateway, wired.waf, test_id,
+                            [probe_request(recording) for recording in recordings] + list(attacks))
+
+
+def waf_alerts(found: Mapping[str, dict]) -> list[DetectionRecord]:
     return [DetectionRecord(detection_id=f"{marker}:{at}", timestamp=verdicts.RECORDING_TIME, src_ip=None,
                             marker=marker, engine=ENGINE_WAF, rule=alert["rule"], signature=alert["signature"],
                             blocked=answer["status"] in REFUSED_STATUSES)
@@ -215,7 +226,7 @@ def table_of(result: Mapping[str, Any]) -> verdicts.VerdictTable:
 
 
 def failed(found: Sequence[dict]) -> dict:
-    return {"ok": False, "errors": list(found), "cases": [], "totals": {TP: 0, FN: 0, FP: 0, TN: 0},
+    return {"ok": False, "passed": False, "failed_benign": [], "actions": [], "errors": list(found), "cases": [], "totals": {TP: 0, FN: 0, FP: 0, TN: 0},
             "untested": [], "against_applied": []}
 
 
@@ -227,16 +238,28 @@ def applied_table(round_id: int, engine: str) -> verdicts.VerdictTable | None:
 
 
 def judged(engine: str, given: Any, wired: Wired, recordings: Sequence[Recording], test_id: int,
-           round_id: int) -> dict:
+           round_id: int, attacks: Sequence[dict] = ()) -> dict:
     tested = [recording for recording in recordings
               if verdicts.untested_reason(recording.probe(engine), engine) is None]
+    benign = [recording for recording in tested if not recording.malicious]
     if engine == ENGINE_IDS:
         alerts = ids_alerts(given, wired.sensors[0], tested, test_id)
+        alerted = {alert.marker for alert in alerts}
+        failed_benign = [recording.case for recording in benign if recording.marker in alerted]
+        actions = []
     else:
-        alerts = waf_alerts(given, wired, tested, test_id)
+        replayed = waf_replayed(given, wired, tested, test_id, attacks)
+        probed = {recording.marker for recording in tested}
+        alerts = waf_alerts({marker: answer for marker, answer in replayed.items() if marker in probed})
+        failed_benign = [recording.case for recording in benign
+                         if replayed.get(recording.marker, {}).get("status") in REFUSED_STATUSES]
+        actions = [{"marker": attack["marker"],
+                    "refused": replayed.get(attack["marker"], {}).get("status") in REFUSED_STATUSES}
+                   for attack in attacks]
     table = verdicts.table([recording.probe(engine) for recording in recordings], alerts, engine,
                            applied_table(round_id, engine))
-    return {"ok": True, "errors": [], **shown(table)}
+    return {"ok": True, "passed": not failed_benign, "failed_benign": failed_benign, "actions": actions, "errors": [],
+            **shown(table)}
 
 
 def syntax_errors(engine: str, given: Any, wired: Wired, test_id: int) -> list[dict]:
@@ -246,30 +269,49 @@ def syntax_errors(engine: str, given: Any, wired: Wired, test_id: int) -> list[d
 
 
 def outcome(engine: str, given: Any, wired: Wired, recordings: Sequence[Recording], test_id: int,
-            round_id: int) -> dict:
+            round_id: int, attacks: Sequence[dict] = ()) -> dict:
     found_errors = syntax_errors(engine, given, wired, test_id)
     if found_errors:
         return failed(found_errors)
     try:
-        return judged(engine, given, wired, recordings, test_id, round_id)
+        return judged(engine, given, wired, recordings, test_id, round_id, attacks)
     except crs.WafRefused as refused:
         return failed(refused_files(refused))
 
 
-def run(found, player, engine: str, given: Any, recordings: Sequence[Recording], wired: Wired) -> RuleTest:
+def permitted(engine: str, files: Mapping[str, str], wired: Wired) -> None:
+    if engine == ENGINE_IDS:
+        for sensor in wired.sensors:
+            suricata.permit(sensor.node, sensor.config, suricata.loaded_sha(files[IDS_FILE]))
+    else:
+        crs.permit(wired.gateway, wired.waf, crs.loaded_sha(files, wired.waf))
+
+
+def forget_passed(wired: Wired) -> None:
+    crs.forget_passed(wired.gateway, wired.waf)
+    for sensor in wired.sensors:
+        suricata.forget_passed(sensor.node, sensor.config)
+
+
+def run(found, player, engine: str, given: Any, recordings: Sequence[Recording], wired: Wired,
+        attacks: Sequence[dict] = ()) -> RuleTest:
     if engine == ENGINE_IDS and not wired.sensors:
         raise errors.Unavailable(code="sensor_unavailable")
     with busy(found.allocation_id, engine):
         files = files_of(engine, given, wired)
         made = RuleTest.objects.create(round=found, player=player, engine=engine, sha=files_sha(files), files=files)
         try:
-            result = outcome(engine, given if engine == ENGINE_IDS else files, wired, recordings, made.pk, found.pk)
+            result = outcome(engine, given if engine == ENGINE_IDS else files, wired, recordings, made.pk, found.pk,
+                             attacks)
+            if result["passed"]:
+                permitted(engine, files, wired)
         except BaseException:
             made.delete()
             raise
         made.syntax_ok, made.result = result["ok"], result
         made.save(update_fields=["syntax_ok", "result"])
-        log.append(found.pk, "rule.tested", {"test": made.pk, "engine": engine, "ok": result["ok"]},
+        log.append(found.pk, "rule.tested", {"test": made.pk, "engine": engine, "ok": result["ok"],
+                                             "passed": result["passed"]},
                    player_side=DEFENCE)
     return made
 

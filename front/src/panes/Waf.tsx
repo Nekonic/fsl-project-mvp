@@ -100,11 +100,12 @@ export function Waf({ round }: PaneProps) {
           <Text tone="muted" small mono>{path}</Text>
           <CodeEditor minLines={12} value={draft[path] ?? ""} badLines={badLines} label={fileName(path)}
             onValue={(text) => setDraft({ ...draft, [path]: text })} />
+          {Object.keys(changed).length > 0 && !bench.applicable && <Text tone="muted" small>{t("rules.apply_needs_test")}</Text>}
           <Text tone="muted" small>{t("waf.terminal_note")}</Text>
         </PaneSection>
       )}
       <BenchOutcome bench={bench} onReload={read.reload} />
-      <RuleTestSection result={bench.result} stale={bench.stale} untestedText={t("rule_test.not_yet.waf")} />
+      <RuleTestSection result={bench.result} stale={bench.stale} untestedText={t("rule_test.not_yet.waf")} engine="waf" />
       <PaneSection title={t("waf.versions")} ruled>
         {versions.error ? <ErrorNotice error={versions.error} />
           : <Table columns={versionColumns} rows={[...versions.versions].reverse()} rowKey={(row) => row.version} variant="grid" empty={t("versions.none")} />}

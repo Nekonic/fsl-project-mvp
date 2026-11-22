@@ -109,15 +109,21 @@ def first_alert(inside: Sequence[Attempt]) -> datetime | None:
     return min((attempt.first_alert_at for attempt in inside if attempt.first_alert_at), default=None)
 
 
+def refused_the_attack(response: ResponseRecord, markers: set[str]) -> bool:
+    replayed = response.replayed & markers
+    return bool(replayed) and replayed <= response.refused
+
+
 def first_response(achieved_at: datetime, inside: Sequence[Attempt],
                    responses: Sequence[ResponseRecord]) -> datetime | None:
     if not inside:
         return None
     origins = {attempt.source_ip for attempt in inside if attempt.source_ip}
+    markers = {attempt.marker for attempt in inside if attempt.marker}
     after = first_alert(inside) or inside[0].started_at
     taken = [response.at for response in responses if response.at < achieved_at and (
         (response.kind == RESPONSE_ORIGIN and response.source_ip in origins)
-        or (response.kind == RESPONSE_VERSION and after <= response.at))]
+        or (response.kind == RESPONSE_VERSION and after <= response.at and refused_the_attack(response, markers)))]
     return min(taken, default=None)
 
 

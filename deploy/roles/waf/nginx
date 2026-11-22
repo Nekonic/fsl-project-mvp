@@ -5,6 +5,7 @@ NGINX=/usr/sbin/nginx
 PID=/run/nginx.pid
 ANALYST=analyst
 SNAPSHOT=/var/lib/cr-reloaded/waf
+PASSED=/var/lib/cr-reloaded/waf.passed
 CRS=/etc/nginx/modsecurity/crs
 DEFENCE_FILES="$CRS/crs-setup.conf $CRS/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf $CRS/rules/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf /etc/nginx/defence/http.conf /etc/nginx/defence/board.com.conf /etc/nginx/defence/corp.com.conf"
 
@@ -16,6 +17,19 @@ measured() {
 refuse_measured() {
   if measured "$@"; then
     echo "a defence file sets the platform's logging or includes another file; nothing was loaded" >&2
+    exit 1
+  fi
+}
+
+loaded_sha() {
+  for file in $DEFENCE_FILES; do
+    printf '%s  %s\n' "$(sha256sum < "$1$file" | cut -d' ' -f1)" "$file"
+  done | sha256sum | cut -d' ' -f1
+}
+
+refuse_untested() {
+  if ! grep -qxF "$(loaded_sha "$1")" "$PASSED" 2>/dev/null; then
+    echo "these files match no rule test that passed in this round; run the test in the console first; nothing was loaded" >&2
     exit 1
   fi
 }
@@ -54,6 +68,7 @@ for file in $DEFENCE_FILES; do
   mv "$file.reloading" "$file"
 done
 refuse_measured $(for file in $DEFENCE_FILES; do echo "$staged$file"; done)
+refuse_untested "$staged"
 "$NGINX" -t
 before=$(workers)
 "$NGINX" -s reload

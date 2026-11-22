@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
 import re
 import shlex
@@ -13,6 +14,8 @@ from pathlib import PurePosixPath
 from cr.config import WafConfig
 from cr.errors import EngineRefused, FieldError, Unavailable
 
+PERMIT = 'umask 077; mkdir -p "$(dirname "$1")"; printf "%s\\n" "$2" >> "$1"'
+FORGET = 'umask 077; mkdir -p "$(dirname "$1")"; : > "$1"'
 SETTLE_POLLS = 50
 MOST_BYTES = 200000
 READ_FILES = 'for f in "$@"; do base64 -w0 "$f" 2>/dev/null; echo; done'
@@ -160,11 +163,29 @@ def _moved_back(file: str | None, moved: Mapping[str, str]) -> str | None:
     return file
 
 
+def loaded_sha(files: Mapping[str, str], config: WafConfig = WafConfig()) -> str:
+    listed = "".join(f"{hashlib.sha256(files.get(path, '').encode()).hexdigest()}  {path}\n" for path in config.files)
+    return hashlib.sha256(listed.encode()).hexdigest()
+
+
+def permit(gateway, config: WafConfig, sha: str) -> None:
+    ran = gateway(["sh", "-c", PERMIT, "sh", config.passed, sha])
+    if not ran.ok:
+        raise WafUnreadable(f"could not list a passed test on the WAF: {ran.output.strip()[-300:]}")
+
+
+def forget_passed(gateway, config: WafConfig = WafConfig()) -> None:
+    ran = gateway(["sh", "-c", FORGET, "sh", config.passed])
+    if not ran.ok:
+        raise WafUnreadable(f"could not clear the passed tests on the WAF: {ran.output.strip()[-300:]}")
+
+
 def apply(files, gateway, config: WafConfig = WafConfig()) -> dict[str, str]:
     given = checked(files, config)
     previous = read(gateway, config)
     merged = checked(previous | given, config)
     changed = {path: text for path, text in merged.items() if previous.get(path) != text}
+    permit(gateway, config, loaded_sha(merged, config))
     old = _workers(gateway, config)
     _write(gateway, changed)
     ran = gateway(["sh", "-c", config.reload])

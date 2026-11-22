@@ -294,11 +294,13 @@ def send(found: Round, player: Player, method: str, path: str, host: str | None 
     reached = range_of(found)
     chosen, marker = host_of(found, host), new_marker()
     path = checked_path(path)
-    given = {**checked_headers(headers), "Host": chosen, tools.MARKER_HEADER: marker}
+    kept = checked_headers(headers)
+    given = {**kept, "Host": chosen, tools.MARKER_HEADER: marker}
     answer, started, ended = sent_over(reached.runner(ATTACKER), method, target_url(found, path, query), given, body)
     action = Action.objects.create(round=found, player=player, kind=kind, marker=marker, correlation=CORRELATION_MARKER,
                                    source_ip=worn.ip, started=started, ended=ended,
-                                   meta={"method": method, "path": path, "host": chosen, "status": answer.status})
+                                   meta={"method": method, "path": path, "host": chosen, "status": answer.status,
+                                         "query": dict(query or {}), "headers": kept, "body": body})
     log.append(found.pk, "action.sent", {"action": action.pk, "kind": kind, "status": answer.status},
                player_side="attack")
     return Sent(action=action.pk, marker=marker, status=answer.status, headers=answer.headers,

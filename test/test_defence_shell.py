@@ -1,5 +1,4 @@
 import shlex
-import time
 
 import pytest
 
@@ -8,20 +7,10 @@ import plays
 SETUP = plays.Setup(wargame="board", title="Acceptance defence shell board")
 SITES = "/etc/nginx/conf.d/board.com.conf"
 LOGGING_OFF = "access_log off;"
-REVERT_WAIT = 120.0
 
 
 def written(played: plays.Played, line: str, path: str) -> dict:
     return plays.in_shell(played, "defence", f"test -e {path} && printf '%s\\n' {shlex.quote(line)} >> {path}")
-
-
-def reverted(played: plays.Played) -> dict[str, str]:
-    deadline = time.monotonic() + REVERT_WAIT
-    while True:
-        live = plays.waf_files(played)
-        if LOGGING_OFF not in live[plays.SITE_CONF] or time.monotonic() >= deadline:
-            return live
-        time.sleep(plays.POLL)
 
 
 @pytest.fixture(scope="module")
@@ -34,8 +23,7 @@ def shell_round():
         }
         seen["reloaded"] = plays.in_shell(
             played, "defence", plays.appended_and_reloaded(plays.SITE_CONF, LOGGING_OFF + "\n"))
-        seen["live"] = reverted(played)
-        seen["refused"] = plays.events(played, {"rule.refused"})
+        seen["versions"] = plays.waf_versions(played)
         yield seen
 
 
@@ -47,8 +35,7 @@ def test_the_defence_shell_cannot_write_the_platform_s_logging(shell_round, chan
         f"the {change} write failed for a reason other than a permission refusal: {shell_round[change]}")
 
 
-def test_a_logging_directive_reloaded_from_the_shell_is_put_back(shell_round):
-    assert shell_round["reloaded"]["ok"], shell_round["reloaded"]
-    assert LOGGING_OFF not in shell_round["live"][plays.SITE_CONF], (
-        "access_log off in a defence file, reloaded from the shell, stayed live")
-    assert shell_round["refused"], "putting the logging directive back left no rule.refused event"
+def test_a_logging_directive_reloaded_from_the_shell_is_refused_before_it_loads(shell_round):
+    assert not shell_round["reloaded"]["ok"], shell_round["reloaded"]
+    assert "nothing was loaded" in shell_round["reloaded"]["stderr"], shell_round["reloaded"]
+    assert all(line["source"] != "terminal" for line in shell_round["versions"]), shell_round["versions"]

@@ -132,6 +132,28 @@ describe("Waf", () => {
     expect(sent[0]?.body).toEqual({ files: { [SETUP]: "deny 203.0.113.9;\n" } });
   });
 
+  it.each([true, false])("offers apply only after a test of the edited files passed (passed: %s)", async (passed) => {
+    document.cookie = "cr_csrf=token";
+    wafAnswering(true);
+    const answered = vi.mocked(fetch).getMockImplementation()!;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST" && String(input).endsWith("/waf/test/")) {
+        return new Response(JSON.stringify({ test: 5, ok: true, passed, failed_benign: passed ? [] : ["board-normal-search"], errors: [], cases: [], totals: { tp: 0, fn: 0, fp: passed ? 0 : 1, tn: 0 }, untested: [], against_applied: [] }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return answered(input, init);
+    }));
+    render(<Waf round={7} side="defence" placement="main" />);
+
+    fireEvent.input(await screen.findByLabelText("crs-setup.conf"), { target: { value: "deny 203.0.113.9;\n" } });
+    const apply = screen.getByText(t("rules.apply")).closest("button")!;
+    expect(apply.disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: t("rules.test") }));
+
+    if (passed) await waitFor(() => expect(screen.getByText(t("rule_test.passed.waf"))).toBeTruthy());
+    else await waitFor(() => expect(screen.getByText(t("rule_test.failed_benign", { cases: "board-normal-search" }))).toBeTruthy());
+    expect(apply.disabled).toBe(!passed);
+  });
+
   it("says when the files on the WAF are not the recorded version", async () => {
     wafAnswering(false);
     render(<Waf round={7} side="defence" placement="main" />);

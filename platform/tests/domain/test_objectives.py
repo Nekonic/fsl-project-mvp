@@ -152,36 +152,51 @@ def test_a_detected_loss_with_no_response_counts_full():
     assert tally([found], 0).damage == 3
 
 
+def refusing(seconds, *markers):
+    return ResponseRecord(at(seconds), RESPONSE_VERSION, replayed=frozenset(markers), refused=frozenset(markers))
+
+
 def test_a_version_applied_after_the_first_action_answers_a_loss_no_alert_saw():
-    found = scored([sqli("m-attack", 0)], [], [ResponseRecord(at(10), RESPONSE_VERSION)])
+    found = scored([sqli("m-attack", 0)], [], [refusing(10, "m-attack")])
 
     assert (found.detected, found.responded, found.response_seconds) == (False, True, None)
     assert tally([found], 0).damage == 1.5
 
 
+def test_a_version_answers_a_loss_only_when_its_test_replayed_the_attack_s_requests_and_refused_them():
+    cases = [sqli("m-attack", 0), sqli("m-probe", 3)]
+    untested = ResponseRecord(at(10), RESPONSE_VERSION)
+    other = refusing(10, "m-elsewhere")
+    let_through = ResponseRecord(at(10), RESPONSE_VERSION, replayed=frozenset({"m-attack", "m-probe"}),
+                                 refused=frozenset({"m-attack"}))
+
+    assert [scored(cases, [], [one]).responded for one in (untested, other, let_through)] == [False, False, False]
+    assert scored(cases, [], [refusing(10, "m-attack", "m-probe")]).responded is True
+
+
 def test_a_version_applied_before_the_first_alert_is_no_response_to_it():
     found = scored([sqli("m-attack", 5)], [DetectionRecord("d1", at(8), None, "m-attack")],
-                   [ResponseRecord(at(6), RESPONSE_VERSION)])
+                   [refusing(6, "m-attack")])
 
     assert found.responded is False
 
 
 def test_the_response_time_runs_from_the_first_alert_to_the_first_response():
     found = scored([sqli("m-attack", 0)], [DetectionRecord("d1", at(1), None, "m-attack")],
-                   [ResponseRecord(at(25), RESPONSE_VERSION), ResponseRecord(at(13), RESPONSE_ORIGIN, "198.51.100.7")])
+                   [refusing(25, "m-attack"), ResponseRecord(at(13), RESPONSE_ORIGIN, "198.51.100.7")])
 
     assert (found.responded, found.response_seconds) == (True, 12.0)
 
 
 def test_spending_another_origin_or_acting_after_the_theft_is_no_response():
     found = scored([sqli("m-attack", 0)], [DetectionRecord("d1", at(1), None, "m-attack")],
-                   [ResponseRecord(at(10), RESPONSE_ORIGIN, "203.0.113.9"), ResponseRecord(at(31), RESPONSE_VERSION)])
+                   [ResponseRecord(at(10), RESPONSE_ORIGIN, "203.0.113.9"), refusing(31, "m-attack")])
 
     assert found.responded is False
 
 
 def test_benign_traffic_is_never_part_of_a_loss():
     found = scored([sqli("m-customer", 0, malicious=False)], [DetectionRecord("d1", at(1), None, "m-customer")],
-                   [ResponseRecord(at(10), RESPONSE_VERSION)])
+                   [refusing(10, "m-customer")])
 
     assert (found.detected, found.responded, found.attributed_marker) == (False, False, None)

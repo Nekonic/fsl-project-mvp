@@ -441,6 +441,7 @@ class Reloaded:
 
 def apply_ids(played: Played, text: str, timeout: float = SCORE_WAIT) -> Reloaded:
     before = ids_rules(played)["version"]
+    rule_test_ids(played, text)
     ran = in_shell(played, "ids", ids_written_and_reloaded(played.wargame, text))
     deadline = time.monotonic() + timeout
     while ran.get("ok"):
@@ -466,6 +467,8 @@ def tested_field(tested: int | None) -> dict:
 
 
 def tune_waf(played: Played, files: dict[str, str], tested: int | None = None) -> Answer:
+    if tested is None:
+        tested = (rule_test_waf(played, files).body or {}).get("test")
     version = done("defence_waf", played.defence, round_id=played.round)["version"]
     return ask("defence_waf_apply", played.defence,
                {"files": files, "base_version": version, **tested_field(tested)}, round_id=played.round)
@@ -512,6 +515,11 @@ def in_shell(played: Played, terminal: str, command: str) -> dict:
         return {"ok": answer.ok, "status": answer.status, "body": answer.body}
 
     return bot_shell.run((played.round, terminal), {"command": command}, grant)
+
+
+def tested_and_appended(played: Played, path: str, text: str) -> dict:
+    rule_test_waf(played, {path: waf_files(played)[path] + text})
+    return in_shell(played, "defence", appended_and_reloaded(path, text))
 
 
 def waf_files(played: Played) -> dict[str, str]:

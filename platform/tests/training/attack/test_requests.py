@@ -34,6 +34,16 @@ def test_a_request_goes_out_from_the_box_with_the_action_s_own_marker_and_the_ch
     assert (action.kind, action.correlation, action.source_ip, action.malicious) == ("request", "marker", RU, None)
 
 
+def test_a_request_is_logged_whole_so_a_rule_test_can_replay_it(as_attacker, attacker, cloud):
+    answer = as_attacker.post(url(attacker.round, "requests/"), {
+        "method": "POST", "path": "/search/", "query": {"q": "it's"},
+        "headers": {"X-Request-ID": "forged", "Accept": "text/html"}, "body": "a=1"}, format="json")
+
+    meta = Action.objects.get(pk=answer.json()["action"]).meta
+    assert (meta["method"], meta["path"], meta["query"], meta["body"]) == ("POST", "/search/", {"q": "it's"}, "a=1")
+    assert meta["headers"] == {"Accept": "text/html"}
+
+
 def test_a_refused_request_does_not_spend_the_origin_it_went_out_from(as_attacker, attacker, cloud):
     cloud.box.answer("cr.status=", REFUSED_PAGE)
 

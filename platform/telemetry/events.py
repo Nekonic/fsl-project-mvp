@@ -52,7 +52,7 @@ KINDS: dict[str, Kind] = {
     "origin.switched": Kind({"ip": TEXT}, ATTACK_SIDE),
     "origins.spent": Kind({}, ATTACK_SIDE),
     "alert.seen": Kind({"alert": NUMBER, "engine": TEXT, "signature": TEXT}, DEFENCE_SIDE),
-    "rule.tested": Kind({"test": NUMBER, "engine": TEXT, "ok": FLAG}, DEFENCE_SIDE),
+    "rule.tested": Kind({"test": NUMBER, "engine": TEXT, "ok": FLAG, "passed": FLAG}, DEFENCE_SIDE),
     "rule.applied": Kind({"engine": TEXT, "version": NUMBER, "source": TEXT}, DEFENCE_SIDE),
     "rule.refused": Kind({"engine": TEXT, "version": NUMBER, "message": TEXT}, DEFENCE_SIDE),
     "limit.below_floor": Kind({"zone": TEXT, "rate_rpm": NUMBER, "floor_rpm": NUMBER}, DEFENCE_SIDE),

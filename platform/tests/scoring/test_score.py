@@ -33,7 +33,8 @@ def test_the_score_keeps_what_was_taken_apart_from_what_the_defence_got_right(bo
     actions = attack_and_customer()
     found = lost_admin(board_target, actions)
     alerts = [rounds.detection("d1", AT - timedelta(seconds=19), marker=SQLI, signature="ET WEB SQL Injection")]
-    reloaded = [ResponseRecord(at=AT - timedelta(seconds=10), kind=RESPONSE_VERSION)]
+    reloaded = [ResponseRecord(at=AT - timedelta(seconds=10), kind=RESPONSE_VERSION, replayed=frozenset({SQLI}),
+                               refused=frozenset({SQLI}))]
 
     scored = service.score(found, actions, alerts, responses=reloaded).shown()
 

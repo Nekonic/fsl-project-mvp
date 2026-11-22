@@ -171,3 +171,83 @@ def test_the_reload_wrapper_checks_the_snapshot_before_nginx_tests_or_loads_it_a
     assert reload.index("refuse_measured $(for file in $DEFENCE_FILES; do echo \"$staged$file\"") < reload.index(
         '"$NGINX" -t')
     assert '-t|-T) refuse_measured $DEFENCE_FILES; exec "$NGINX" "$@" ;;' in wrapper
+
+
+SEARCH_LINE = 'alert http any any -> any any (msg:"SQL"; content:"union"; sid:1;)\n'
+IDS_LINES = ['alert http any any -> any any (msg:"x"; config: logging disable, tx, rule; sid:1;)',
+             'alert http any any -> any any (msg:"x"; sid:2; \\\n  config:LOGGING disable, flow, rule;)',
+             '# alert http any any -> any any (msg:"x"; config: logging disable, tx, rule; sid:3;)',
+             'alert http any any -> any any (msg:"config: logging"; sid:4;)',
+             'alert http any any -> any any (msg:"x"; content:"logging"; sid:5;)',
+             'config logging disable tx rule']
+
+
+@pytest.mark.parametrize("line", IDS_LINES)
+def test_the_ids_reload_wrapper_refuses_what_the_platform_refuses(tmp_path, line):
+    from sandbox import suricata
+
+    wrapper = (ROOT / "deploy/roles/infra/suricatasc").read_text()
+    measured = re.search(r"^measured\(\) \{\n.*?^\}\n", wrapper, re.M | re.S)[0]
+    given = tmp_path / "local.rules"
+    given.write_text(line + "\n")
+
+    ran = subprocess.run(["sh", "-c", measured + 'measured "$1"', "sh", str(given)], capture_output=True)
+
+    assert (ran.returncode == 0) == bool(suricata.refusals(line + "\n"))
+
+
+def test_the_ids_reload_wrapper_checks_the_snapshot_before_it_loads_it():
+    wrapper = (ROOT / "deploy/roles/infra/suricatasc").read_text()
+    reload = wrapper[wrapper.index("trap handed_back EXIT"):]
+
+    assert reload.index('measured "$staged$RULE_FILE"') < reload.index('install -m 0644 -o root -g root "$staged')
+
+
+@pytest.mark.parametrize(("role", "wrapper", "passed"), [
+    ("waf", "nginx", WafConfig().passed), ("infra", "suricatasc", SensorConfig(name="cr-ids").passed)])
+def test_a_reload_reads_the_passed_tests_where_the_platform_lists_them(role, wrapper, passed):
+    reload = (ROOT / "deploy/roles" / role / wrapper).read_text()
+
+    assert f"PASSED={passed}\n" in reload
+
+
+def test_the_waf_wrapper_hashes_a_snapshot_as_the_platform_lists_a_passed_test(tmp_path):
+    from sandbox import crs
+
+    wrapper = (WAF / "nginx").read_text()
+    hashing = re.search(r"^loaded_sha\(\) \{\n.*?^\}\n", wrapper, re.M | re.S)[0]
+    files = {path: f"# {path}\nSecRuleEngine On\n" if "setup" in path else "" for path in WafConfig().files}
+    for path, text in files.items():
+        (tmp_path / path.lstrip("/")).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path.lstrip("/")).write_text(text)
+    listed = 'DEFENCE_FILES="' + " ".join(WafConfig().files) + '"\n'
+
+    ran = subprocess.run(["sh", "-c", listed + hashing + 'loaded_sha "$1"', "sh", str(tmp_path)],
+                         capture_output=True, text=True, check=True)
+
+    assert ran.stdout.strip() == crs.loaded_sha(files)
+
+
+def test_the_ids_wrapper_hashes_a_snapshot_as_the_platform_lists_a_passed_test(tmp_path):
+    from sandbox import suricata
+
+    wrapper = (ROOT / "deploy/roles/infra/suricatasc").read_text()
+    hashing = re.search(r'grep -qxF "\$\((sha256sum < [^)]*)\)"', wrapper)[1]
+    given = tmp_path / "local.rules"
+    given.write_text(SEARCH_LINE)
+
+    ran = subprocess.run(["sh", "-c", hashing.replace('"$staged$RULE_FILE"', '"$1"'), "sh", str(given)],
+                         capture_output=True, text=True, check=True)
+
+    assert ran.stdout.strip() == suricata.loaded_sha(SEARCH_LINE)
+
+
+@pytest.mark.parametrize(("role", "wrapper", "check", "load"), [
+    ("waf", "nginx", 'refuse_untested "$staged"', '"$NGINX" -t'),
+    ("infra", "suricatasc", '"$PASSED"', 'install -m 0644 -o root -g root "$staged')])
+def test_a_reload_refuses_a_snapshot_no_passed_test_lists_before_it_loads_it(role, wrapper, check, load):
+    reload = (ROOT / "deploy/roles" / role / wrapper).read_text()
+    staged = reload[reload.index("trap handed_back EXIT"):]
+
+    assert staged.index(check) < staged.index(load)
+    assert "match no rule test that passed in this round" in reload

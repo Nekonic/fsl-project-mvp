@@ -32,25 +32,27 @@ positive.
 3. Change the IDS on the sensor, as an analyst does on a standalone Suricata sensor: `ids_shell` runs one
    command on the sensor's host as analyst. `defence_ids_rules` shows the rule file the sensor runs and its
    version; `sudo -l` there lists the rule test and the rule reload you may run as root. Edit the rule file,
-   check it with `sudo suricata -T`, then reload. The reload is recorded as the next IDS version on the next
-   request; a file edited and not reloaded is not running (`recorded: false`). A rule with `config: logging`
-   turns off the eve records the platform measures and is put back (`rule.refused`). Before you reload, you
-   may `defence_ids_test` the text against the recorded probes (never the live range). Each call is a new
-   login: `cd` and variables do not carry over.
+   check it with `sudo suricata -T`, then send the same text to `defence_ids_test`, and reload only after a
+   test that `passed`. The reload refuses a file no passing test of this round named, and a rule with
+   `config: logging` (it turns off the eve records the platform measures); either way nothing is loaded. The
+   reload is recorded as the next IDS version on the next request; a file edited and not reloaded is not
+   running (`recorded: false`). Each call is a new login: `cd` and variables do not carry over.
 4. Change the WAF with its files: `defence_waf` lists the CRS setup file, the request and
    response exclusion files and the nginx files that hold `deny` and `limit_req` (`http.conf` at the http
    level, one per site at the server level). Send the whole text of each file you change in `files` to
-   `defence_waf_check`, `defence_waf_test` and `defence_waf_apply`. The logging (`log_format`, `access_log`,
+   `defence_waf_check`, then `defence_waf_test`, then `defence_waf_apply` with the same files: the apply
+   refuses files no passing test of this round named (`409 not_tested`). The logging (`log_format`, `access_log`,
    `error_log`, the audit log) is the platform's and is refused. Turning the rule engine off or to detection
    only is yours to do; the score shows what it costs.
    You also have the shell a human defender gets: `shell` runs one command on the WAF as analyst. The same
-   files are writable there, with `sudo nginx -t`, `sudo nginx -T` and `sudo systemctl reload nginx`; a
-   reload is recorded as the next WAF version on the next request, and nothing tests it against the recorded
-   probes first. Each call is a new login: `cd` and variables do not carry over. Read the logs, edit a file,
-   test it with `nginx -t`, then reload.
-5. A test answers per case `tp|fn|fp|tn`, `corroborated`, `totals` and `untested` (tool cases on the WAF,
-   cases with no recording). Read FPs on benign cases before you apply. Only one test runs at a time
-   (`409 test_busy`).
+   files are writable there, with `sudo nginx -t`, `sudo nginx -T` and `sudo systemctl reload nginx`; the
+   reload loads only files a passing `defence_waf_test` of this round named, and is recorded as the next WAF
+   version on the next request. Each call is a new login: `cd` and variables do not carry over. Read the
+   logs, edit a file, test it with `nginx -t`, send the whole set to `defence_waf_test`, then reload.
+5. A test answers per case `tp|fn|fp|tn`, `corroborated`, `totals`, `untested` (tool cases on the WAF,
+   cases with no recording), `passed` and `failed_benign`. A test passes only when no benign case was
+   refused (WAF) or alerted on (IDS) and the engine accepted the files; nothing that failed can go live.
+   Only one test runs at a time (`409 test_busy`).
 6. Follow `round_events` for `alert.seen`, `rule.tested`, `rule.applied`, `rule.refused`, `objective.lost` and
    `round.ended`.
 7. When the round has ended (phase `ended`, or `409 round_closed`), read `round_score` once and stop. Your player
@@ -59,7 +61,7 @@ positive.
 ## Errors
 
 Every refusal has the shape `{errors: [{path, code, line?, params?}]}`. Codes you will meet:
-`round_not_started`, `round_closed`, `stale_version`, `test_busy`, `suricata_syntax` (with `line`),
+`round_not_started`, `round_closed`, `stale_version`, `test_busy`, `not_tested`, `suricata_syntax` (with `line`),
 `crs_refused` (with a field `path`), `apply_refused`, `not_a_player`, `invalid` and the field codes,
 `sensor_unavailable`, `waf_unavailable`, `elastic_unavailable`. A refusal with `"local": true` came from your
 own tool layer before anything was sent: fix the arguments and call again.

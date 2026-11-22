@@ -58,6 +58,7 @@ def connection_log(allocation: int, log: str) -> list[tuple[float, str]]:
 
 
 def denied_at_the_waf(played: plays.Played, ip: str) -> None:
+    plays.rule_test_waf(played, {})
     loaded = f"printf 'deny %s;\\n' {shlex.quote(ip)} > {DENY_FILE} && nginx -t && systemctl reload nginx"
     written = run(GATEWAY, ["sh", "-c", loaded], allocation=played.allocation)
     assert written.ok, f"the defender's deny rule did not load on the WAF: {written.stderr}"

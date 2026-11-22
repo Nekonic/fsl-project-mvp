@@ -146,6 +146,8 @@ class Change(serializers.Serializer):
 class RuleTestResult(serializers.Serializer):
     test = serializers.IntegerField()
     ok = serializers.BooleanField()
+    passed = serializers.BooleanField()
+    failed_benign = serializers.ListField(child=serializers.CharField())
     errors = RuleError(many=True)
     cases = CaseVerdict(many=True)
     totals = VerdictTotals()
