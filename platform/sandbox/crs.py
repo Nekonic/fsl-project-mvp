@@ -24,6 +24,7 @@ DETECTION_ONLY = "SecRuleEngine DetectionOnly"
 NGINX_MEASUREMENT = re.compile(r"(?:^|[\s;{}])(access_log|log_format|error_log|open_log_file_cache"
                                r"|set_real_ip_from|real_ip_header|real_ip_recursive)\b")
 MODSECURITY_MEASUREMENT = re.compile(r"\b(SecAudit\w*|SecDebugLog\w*|ctl:audit\w*)", re.IGNORECASE)
+INCLUDED = re.compile(r"(?:^|[\s;{}])(include)\b|^\s*((?i:Include(?:Optional)?))(?:\s|$)")
 NGINX_ERROR = re.compile(r"\[(?:emerg|alert|crit|error)\]\s*(?P<message>.*?)(?: in (?P<file>\S+):(?P<line>\d+))?$")
 RULES_ERROR = re.compile(r"File: (?P<file>\S+?)\.? Line: (?P<line>\d+)")
 PROXIED = re.compile(r"proxy_pass\s+[^;]+;")
@@ -68,6 +69,9 @@ def measurement_in(path: str, text: str) -> list[dict]:
         named = NGINX_MEASUREMENT.search(kept) or MODSECURITY_MEASUREMENT.search(kept)
         if named:
             found.append(problem(path, number, f"{named.group(1)} is the platform's measurement and stays as it is"))
+        elif included := INCLUDED.search(kept):
+            directive = included.group(1) or included.group(2)
+            found.append(problem(path, number, f"{directive} loads a file the platform does not check"))
     return found
 
 
@@ -166,7 +170,7 @@ def _moved_back(file: str | None, moved: Mapping[str, str]) -> str | None:
 def apply(files, gateway, config: WafConfig = WafConfig()) -> dict[str, str]:
     given = checked(files, config)
     previous = read(gateway, config)
-    merged = previous | given
+    merged = checked(previous | given, config)
     changed = {path: text for path, text in merged.items() if previous.get(path) != text}
     old = _workers(gateway, config)
     _write(gateway, changed)
@@ -291,7 +295,7 @@ def _removed(gateway, scratch: Scratch) -> None:
 
 
 def scratch_check(files, gateway, config: WafConfig, test_id: int) -> list[dict]:
-    found = refusals(files, config)
+    found = refusals(files, config) or refusals(read(gateway, config) | dict(files), config)
     if found:
         return found
     scratch = scratch_for(config, test_id)

@@ -26,8 +26,13 @@ AUDIT = "\n".join(json.dumps(record) for record in [
 ]) + "\nnot json\n"
 
 
+LIVE_FILES = 'base64 -w0 "$f" 2>/dev/null'
+EMPTY_LIVE = "\n" * len(WAF.files)
+
+
 def gateway():
     return (FakeRunner()
+            .answer(LIVE_FILES, EMPTY_LIVE)
             .answer("nginx -t -p", "nginx: configuration file test is successful")
             .answer("board-sqli-union", "403")
             .answer("board-normal-comment", "200")
@@ -59,7 +64,8 @@ def test_the_scratch_check_runs_nginx_t_on_its_own_prefix_and_never_writes_or_re
 
     assert crs.scratch_check(FILES, waf, WAF, 7) == []
 
-    laid_out, exclusions, board, tested, removed = waf.sent
+    read_live, laid_out, exclusions, board, tested, removed = waf.sent
+    assert read_live.argv[2] == crs.READ_FILES
     script = laid_out.argv[-1]
     assert "cp -a /etc/nginx/modsecurity /var/lib/cr-crstest/test-7/modsecurity" in script
     assert "cp -a /etc/nginx/defence /var/lib/cr-crstest/test-7/sites" in script
@@ -75,7 +81,7 @@ def test_the_scratch_check_runs_nginx_t_on_its_own_prefix_and_never_writes_or_re
 
 
 def test_nginx_errors_come_back_with_the_live_file_and_line():
-    waf = FakeRunner().answer("nginx -t -p", (
+    waf = FakeRunner().answer(LIVE_FILES, EMPTY_LIVE).answer("nginx -t -p", (
         "nginx: [emerg] unknown directive \"limit_reqq\" in /var/lib/cr-crstest/test-7/sites/board.com.conf:2\n"
         "nginx: configuration file /var/lib/cr-crstest/test-7/nginx.conf test failed\n"), 1)
 
@@ -89,6 +95,17 @@ def test_files_the_check_refuses_never_reach_the_waf():
 
     assert crs.scratch_check({"/etc/nginx/nginx.conf": ""}, waf, WAF, 7)[0]["file"] == "/etc/nginx/nginx.conf"
     assert waf.sent == []
+
+
+def test_a_live_file_carrying_the_platform_s_logging_is_refused_before_the_scratch_loads_it():
+    live = "\n".join("YWNjZXNzX2xvZyAvZXRjL2Nyb24uZC94Owo=" if path == WafConfig().files[3] else ""
+                     for path in WAF.files)
+    waf = FakeRunner().answer(LIVE_FILES, live)
+
+    found = crs.scratch_check(FILES, waf, WAF, 7)
+
+    assert [(one["file"], one["line"]) for one in found] == [("/etc/nginx/defence/http.conf", 1)]
+    assert [one.argv[2] for one in waf.sent] == [crs.READ_FILES]
 
 
 def test_the_scratch_test_replays_each_probe_to_loopback_and_reads_its_own_audit_log():

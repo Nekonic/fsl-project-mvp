@@ -141,3 +141,33 @@ def test_a_reload_snapshots_the_files_it_loads_where_the_analyst_cannot_write(ro
     assert "trap handed_back EXIT" in reload and "trap '' INT TERM HUP" in reload
     assert 'flock 9' in reload and 'mktemp -d "$SNAPSHOT.new.XXXXXX"' in reload, "two reloads never share a snapshot"
     assert subprocess.run(["sh", "-n", str(ROOT / "deploy/roles" / role / wrapper)], capture_output=True).returncode == 0
+
+
+WRAPPER_LINES = ["deny 203.0.113.9;", "access_log /etc/cron.d/x x;", "  log_format x '$remote_addr';",
+                 "set_real_ip_from 127.0.0.1;", "real_ip_header X-Forwarded-For;", "include /home/analyst/x.conf;",
+                 "  IncludeOptional /tmp/x.conf", "SecAuditEngine Off", "SecRule ARGS \"@rx x\" \"id:1,ctl:auditEngine=Off\"",
+                 "# access_log off;", "limit_req zone=perip burst=5;", "SecRuleEngine DetectionOnly",
+                 "location / { error_log /dev/null; }", "access_logging on;"]
+
+
+@pytest.mark.parametrize("line", WRAPPER_LINES)
+def test_the_reload_wrapper_refuses_what_the_console_refuses(tmp_path, line):
+    from sandbox import crs
+
+    wrapper = (WAF / "nginx").read_text()
+    measured = re.search(r"^measured\(\) \{\n.*?^\}\n", wrapper, re.M | re.S)[0]
+    given = tmp_path / "http.conf"
+    given.write_text(line + "\n")
+
+    ran = subprocess.run(["sh", "-c", measured + 'measured "$1"', "sh", str(given)], capture_output=True)
+
+    assert (ran.returncode == 0) == bool(crs.measurement_in(str(given), line + "\n"))
+
+
+def test_the_reload_wrapper_checks_the_snapshot_before_nginx_tests_or_loads_it_and_checks_a_bare_test_or_dump():
+    wrapper = (WAF / "nginx").read_text()
+    reload = wrapper[wrapper.index('trap handed_back EXIT'):]
+
+    assert reload.index("refuse_measured $(for file in $DEFENCE_FILES; do echo \"$staged$file\"") < reload.index(
+        '"$NGINX" -t')
+    assert '-t|-T) refuse_measured $DEFENCE_FILES; exec "$NGINX" "$@" ;;' in wrapper

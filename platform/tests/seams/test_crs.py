@@ -103,6 +103,22 @@ def test_a_file_the_defence_does_not_edit_or_a_logging_directive_never_reaches_t
     assert gateway.sent == []
 
 
+def test_a_logging_directive_left_unloaded_in_a_live_file_is_refused_before_a_console_apply_reloads_it():
+    gateway = Gateway(files={**Gateway().files, HTTP: "access_log /etc/cron.d/x;\n"})
+
+    with pytest.raises(crs.WafRefused) as refused:
+        crs.apply({BOARD: "deny 203.0.113.9;\n"}, gateway, WAF)
+
+    assert (refused.value.errors[0].path, refused.value.errors[0].line) == (HTTP, 1)
+    assert written(gateway) == [] and [one.argv for one in gateway.sent if one.argv == RELOAD] == []
+
+
+@pytest.mark.parametrize("text", ["include /home/analyst/x.conf;\n", "http { include x; }\n",
+                                  "  IncludeOptional /tmp/x.conf\n"])
+def test_an_include_is_refused_because_it_loads_a_file_the_platform_does_not_check(text):
+    assert [one["line"] for one in crs.refusals({HTTP: text}, WAF)] == [1]
+
+
 def test_a_logging_word_in_a_comment_is_not_refused():
     assert crs.refusals({HTTP: "deny 203.0.113.9; # access_log stays as the platform set it\n"}, WAF) == []
 
