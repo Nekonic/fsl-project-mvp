@@ -8,7 +8,7 @@ from sandbox import service as sandbox
 from tests.shape import refused
 from tests.training.round.conftest import pvp, url
 from training.attack import actions as attack
-from training.models import Action, CustomerRequest, Round
+from training.models import Action, CustomerRequest, Origin, Round, RuleSet
 from training.round import lifecycle as service
 from training.round.lifecycle import wait_for_late_alerts
 from training.traffic import customers
@@ -508,3 +508,19 @@ def test_a_dump_holding_the_hash_and_an_alert_on_it_lose_nothing_until_the_loot_
 
     assert looted.json()["lost"] is True
     assert Objective.objects.filter(round=running, key="board-auth-user-admin").exists()
+
+
+def test_a_response_is_an_origin_the_waf_spent_or_a_version_the_defence_applied_never_a_give_up_or_the_setup(
+        running):
+    denied, given_up = list(running.origins.all())[:2]
+    at = timezone.now()
+    Origin.objects.filter(pk=denied.pk).update(spent_at=at, spent_by="deny")
+    Origin.objects.filter(pk=given_up.pk).update(spent_at=at, spent_by="player")
+    head = RuleSet.objects.filter(round=running, engine="waf").order_by("-version").first()
+    RuleSet.objects.create(round=running, engine="waf", version=head.version + 1, files=head.files, sha="x",
+                           source="terminal", applied_at=at, reloaded=at.timestamp() - 5)
+
+    shown = service.responses(running)
+
+    assert {(one.kind, one.source_ip) for one in shown} == {("origin", denied.ip), ("version", None)}
+    assert [one.at for one in shown if one.kind == "version"] == [at - timedelta(seconds=5)]

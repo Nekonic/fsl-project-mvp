@@ -80,9 +80,16 @@ Two separate numbers; the first is the primary score.
 
 What the red team took: the target flips its own ground truth when an objective
 falls — for the board, loot that exactly matches the round-start snapshot of
-its secret. That is the score: which objectives were lost, and whether the blue
-team saw each one go; one lost and undetected counts double. The platform never
-decides whether an attack succeeded — the target's own stored data does.
+its secret. That is the score: which objectives were lost, and for each one two
+marks, detection and response, each O or X. Detection is O when any attack
+action in the objective's attribution window drew an alert that survives
+`expect`. Response is O when, before the objective fell, an origin those actions
+came from was spent (deny or `limit_req` in the WAF error log) or a WAF or IDS
+version was applied after the first alert of those actions (after the first
+action when none alerted). One lost without a response counts double, whatever
+detection says; detection and the time from the first alert to the first
+response are reported beside it. The platform never decides whether an attack
+succeeded — the target's own stored data does.
 
 What the defence got wrong: TP, FP, FN, TN per attack case, from matching
 alerts to the cases that caused them. Reported beside the first number, never

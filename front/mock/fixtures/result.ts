@@ -2,12 +2,12 @@ import { refuse, reply } from "../fixture";
 
 export const score = {
   objectives: {
-    lost: [{ key: "board-auth-user-partial", name: "Board accounts, partial", seen: false, attributed_marker: "m-7f3a" }],
+    lost: [{ key: "board-auth-user-partial", name: "Board accounts, partial", detected: true, responded: true, response_seconds: 42.4, attributed_marker: "m-7f3a" }],
     kept: [
       { key: "board-auth-user-admin", name: "Board admin account" },
       { key: "board-auth-user-full", name: "Board accounts, all" },
     ],
-    weighted: 2,
+    weighted: 1,
   },
   outcomes: {
     per_case: [

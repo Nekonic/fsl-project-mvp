@@ -17,7 +17,9 @@ interface ObjectiveLine {
   key: string;
   name: string;
   lost: boolean;
-  seen: boolean;
+  detected: boolean;
+  responded: boolean;
+  responseSeconds: number | null;
 }
 
 const SCORE_EVENTS = ["round.ended"];
@@ -34,8 +36,13 @@ function isAttackCase(line: CaseLine): boolean {
 
 function objectiveLines(score: ScoreShown): ObjectiveLine[] {
   return [
-    ...score.objectives.lost.map((objective) => ({ key: objective.key, name: objective.name, lost: true, seen: objective.seen })),
-    ...score.objectives.kept.map((objective) => ({ key: objective.key, name: objective.name, lost: false, seen: false })),
+    ...score.objectives.lost.map((objective) => ({
+      key: objective.key, name: objective.name, lost: true, detected: objective.detected, responded: objective.responded,
+      responseSeconds: objective.response_seconds,
+    })),
+    ...score.objectives.kept.map((objective) => ({
+      key: objective.key, name: objective.name, lost: false, detected: false, responded: false, responseSeconds: null,
+    })),
   ];
 }
 
@@ -47,7 +54,9 @@ function Objectives({ score }: { score: ScoreShown }) {
   const columns: Column<ObjectiveLine>[] = [
     { key: "name", label: t("result.objective"), kind: "strong", cell: (line) => line.name, title: (line) => line.key },
     { key: "lost", label: t("result.achieved"), kind: "nowrap", cell: (line) => <Mark on={line.lost} tone="danger" /> },
-    { key: "seen", label: t("result.detected"), kind: "nowrap", cell: (line) => (line.lost ? <Mark on={line.seen} tone="ok" /> : <Text tone="faint">—</Text>) },
+    { key: "detected", label: t("result.detected"), kind: "nowrap", cell: (line) => (line.lost ? <Mark on={line.detected} tone="ok" /> : <Text tone="faint">—</Text>) },
+    { key: "responded", label: t("result.responded"), kind: "nowrap", cell: (line) => (line.lost ? <Mark on={line.responded} tone="ok" /> : <Text tone="faint">—</Text>) },
+    { key: "response", label: t("result.response_time"), kind: "num", cell: (line) => (line.responseSeconds === null ? <Text tone="faint">—</Text> : t("result.seconds", { seconds: count(Math.round(line.responseSeconds)) })) },
   ];
   return (
     <Task title={t("result.objectives_title")} side={<Text strong>{t("result.objective_points", { points: count(score.objectives.weighted) })}</Text>}>

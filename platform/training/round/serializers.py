@@ -120,7 +120,9 @@ class ScoreQuery(serializers.Serializer):
 class LostObjective(serializers.Serializer):
     key = serializers.CharField()
     name = serializers.CharField()
-    seen = serializers.BooleanField()
+    detected = serializers.BooleanField()
+    responded = serializers.BooleanField()
+    response_seconds = serializers.FloatField(allow_null=True)
     attributed_marker = serializers.CharField(allow_null=True)
 
 

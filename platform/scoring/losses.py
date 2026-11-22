@@ -82,10 +82,10 @@ def submit_loot(found: Round, value: Any, actions: Sequence[ActionRecord] = (),
     return LootVerdict(fell=lose(found, fired, at, earliest, latest, credited.marker if credited else None))
 
 
-def window_of(at: datetime, actions: Sequence[ActionRecord]) -> ActionRecord | None:
-    inside = [action for action in actions if action.malicious is not False
-              and action.started_at - CLOCK_SKEW <= at <= action.ended_at + CLOCK_SKEW]
-    return max(inside, key=lambda action: action.started_at, default=None)
+def window_of(at: datetime, actions: Sequence[ActionRecord]) -> tuple[ActionRecord, ...]:
+    return tuple(sorted((action for action in actions if action.malicious is not False
+                         and action.started_at - CLOCK_SKEW <= at <= action.ended_at + CLOCK_SKEW),
+                        key=lambda action: action.started_at))
 
 
 def observe_effects(found: Round, reach: Reach, actions: Sequence[ActionRecord] = (),
@@ -98,10 +98,11 @@ def observe_effects(found: Round, reach: Reach, actions: Sequence[ActionRecord] 
         if at < found.started or (found.ends_at and at > found.ends_at):
             continue
         window = window_of(at, actions)
-        if window is None:
+        if not window:
             fell += lose(found, [tier], at, at - CLOCK_SKEW, at + CLOCK_SKEW, None)
             continue
-        fell += lose(found, [tier], at, window.started_at - CLOCK_SKEW, window.ended_at + CLOCK_SKEW, window.marker)
+        fell += lose(found, [tier], at, window[0].started_at - CLOCK_SKEW,
+                     max(action.ended_at for action in window) + CLOCK_SKEW, window[-1].marker)
     found.read_of = {"effects_read_at": (now or timezone.now()).isoformat(), "changes": len(changes)}
     found.save(update_fields=["read_of"])
     return tuple(fell)

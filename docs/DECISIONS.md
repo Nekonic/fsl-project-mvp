@@ -10828,3 +10828,13 @@ How the "IDS rules are edited on the sensor" ruling above is carried out.
   only the last; a warning text for a shared-key zone; the IDS reload
   wrapper checks nothing before it loads; whether the topology should name
   the sensor's `suricata -T` check the way it names the reload.
+
+## 2026-11-22 — A lost objective is scored by detection and response, each O or X
+
+The objective score used to ask one question of a lost objective: was the attack seen, meaning an alert fired on the latest attack action in the two minutes before the theft. An alert firing measures the sensor, not the defender, and the latest-action rule let an attacker turn a detected theft into an undetected one by sending one plain request after the attack.
+
+Each lost objective now carries two marks:
+- **탐지 (detection) O/X**: O when any attack action (`malicious is not False`, benign never) in the attribution window drew an alert that survives `expect`. Not only the latest action, so a noise request after the attack changes nothing.
+- **대응 (response) O/X**: O when the defender acted against that attack before the objective fell: an origin used by an attack action in the window was spent (deny or limit_req in the nginx error log, the origin-loss path), or a WAF or IDS version was applied (console or terminal reload snapshot) after the first alert of those actions, or after the first of those actions when none alerted. Viewing Kibana does not count; only actions recorded in logs do.
+
+Weight of a lost objective in the primary score: 대응 O counts half (the old detected weight), 대응 X counts full, whatever 탐지 says. 탐지 is reported beside it, and so is the time from the first alert to the first response; neither is folded into the number. corp's effect path uses the same two marks. Rejected: crediting an alert alone (it rewards an ignored alarm) and counting Kibana views (a view is not a decision).

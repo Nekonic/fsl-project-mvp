@@ -33,6 +33,18 @@ def test_a_rogue_admin_the_target_recorded_during_an_attack_action_loses_the_obj
             if event["kind"] == "objective.lost"] == ["corp-rogue-admin"]
 
 
+def test_a_change_inside_two_attack_actions_spans_both_and_names_the_latest(corp_target):
+    found = started(corp_target)
+    long_run = rounds.action("act-1", ROGUE_ADMIN_AT - timedelta(seconds=30), seconds=40)
+    attack = rounds.action("act-3", ROGUE_ADMIN_AT - timedelta(seconds=2), seconds=4)
+
+    losses.observe_effects(found, corp_target, [attack, long_run])
+
+    stored = Objective.objects.get(round=found)
+    assert stored.attributed_marker == "act-3"
+    assert stored.earliest < long_run.started_at and stored.latest > long_run.ended_at
+
+
 def test_observing_again_loses_nothing_new(corp_target):
     found = started(corp_target)
     attack = rounds.action("act-3", ROGUE_ADMIN_AT - timedelta(seconds=2), seconds=4)

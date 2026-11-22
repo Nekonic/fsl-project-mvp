@@ -407,14 +407,19 @@ sequenceDiagram
 `scoring/`에는 view가 없고, 점수 API는 `training/round/views.py`에 있습니다.
 
 ```
-{objectives:{lost:[{key, name, seen, attributed_marker}], kept:[...], weighted},
+{objectives:{lost:[{key, name, detected, responded, response_seconds, attributed_marker}], kept:[...], weighted},
  outcomes:{per_case:[{case, verdict, alerts, corroborated}], totals, note:"one_case_one_decision"},
  free_actions:{by_origin:[{ip, actions, alerts, refused}]}}
 ```
 
 - `objectives`: 대상의 정답 데이터로만 정합니다. board는 loot가 라운드 시작 때 무작위 비밀번호로 새로 정한 뒤 읽은 해시와 정확히 같을 때, corp는
   라운드 시간 안에 바이너리 로그에 변경이 남았을 때 잃은 것입니다. 그 시각에 겹친 공격 행동이 없으면 `attributed_marker`는 비어 있고,
-  정상 케이스는 `attributed_marker`가 되지 않습니다. `seen`은 방어 쪽이 그 손실을 탐지했는지입니다.
+  정상 케이스는 `attributed_marker`가 되지 않습니다. `detected`는 귀속 구간의 공격 행동 가운데 하나라도 `expect`를
+  통과한 알림을 받았는지, `responded`는 목표를 잃기 전에 그 행동들의 출발지가 소진됐거나(`Origin.spent_by`가
+  `deny`·`limit_req`) 첫 알림 뒤에(알림이 없으면 첫 행동 뒤에) 콘솔이나 터미널로 WAF·IDS 버전(`RuleSet`, `setup` 제외)을
+  적용했는지입니다. `lifecycle.responses`가 이 둘을 `ResponseRecord`로 모읍니다. `weighted`는 대응한 목표를 난이도의
+  절반, 대응하지 못한 목표를 난이도 그대로 셉니다. `response_seconds`는 첫 알림부터 첫 대응까지 초이고, 둘 중 하나라도
+  없으면 비어 있습니다. `Objective.seen`과 방어 상태의 `seen`은 `detected`를 그대로 담습니다.
 - `outcomes`: 선언된 케이스와 플랫폼이 보낸 정상 케이스만. 케이스 하나는 결정 하나입니다.
 - `free_actions`: 자유 행동을 출발지별로. TP/FP/FN/TN에 들어가지 않습니다.
 - 판정 알림: 라운드를 읽을 때마다(`lifecycle.READS`의 마지막 단계)와 라운드가 끝날 때(`round.ended` 앞)
@@ -436,10 +441,11 @@ sequenceDiagram
   dry run 줄, `delaying request`, ModSecurity의 403 줄은 고르지 않습니다.
 - `limit_req` 하한은 `domain.traffic.limit_floor`입니다. `traffic.yaml`의 `users`, `origins` 가중치, `rate`(없으면
   초당 1건)로 가장 바쁜 고객 출발지의 분당 요청 수를 구하고 두 배를 합니다. `training.content.problems.snapshot`이 라운드 설정에
-  `limit_floor_rpm`으로 넣습니다. `limit_req` 줄이 나오면 `sandbox.crs.limit_rates`가 `nginx -T`에서
-  `limit_req_zone`의 `rate`를 읽고, zone의 rate가 하한보다 낮으면 소진하지 않고 방어 쪽에 `limit.below_floor`를
-  한 번 남깁니다. 지금 설정이 선언하지 않은 zone도, 키에 `$binary_remote_addr`나 `$remote_addr`가 없는 zone도
-  소진하지 않습니다.
+  `limit_floor_rpm`으로 넣습니다. `limit_req` 줄이 나오면 `training.attack.origins.rates_at`이 그 줄의 시각에
+  적용돼 있던 WAF 버전(`RuleSet`, 시각은 `RuleSet.took_effect`: 터미널 reload는 스냅샷 시각, 나머지는 적용 시각)을
+  고르고 `sandbox.crs.limit_rates_in`이 그 버전 파일에서 `limit_req_zone`의 `rate`를 읽습니다. 읽는 시점의 실행 중
+  설정은 보지 않습니다. zone의 rate가 하한보다 낮으면 소진하지 않고 방어 쪽에 `limit.below_floor`를 한 번 남깁니다.
+  그 버전이 선언하지 않은 zone도, 키에 `$binary_remote_addr`나 `$remote_addr`가 없는 zone도 소진하지 않습니다.
 - 출발지는 WAF에서 셉니다. Suricata는 WAF 뒤에 있어 출발지가 WAF이고, WAF가 거부한 요청을 보지 못하기 때문입니다.
 - 출발지가 소진되면 `sandbox.edge.spend`가 그 주소를 `spent` 집합에 넣고 conntrack을 지웁니다. `edge.nft`에서 이
   drop 규칙은 established 허용보다 앞에 있어야 열린 연결도 끊깁니다. 이어서 그 출발지의 도구 실행을 멈추고

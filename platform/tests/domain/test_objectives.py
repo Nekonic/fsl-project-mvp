@@ -10,7 +10,7 @@ from domain.scoring.objectives import (
     breaches,
     tally,
 )
-from domain.types import CaseRecord, DetectionRecord, ObjectiveRecord
+from domain.types import RESPONSE_ORIGIN, RESPONSE_VERSION, CaseRecord, DetectionRecord, ObjectiveRecord, ResponseRecord
 
 T0 = datetime(2026, 9, 18, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -21,9 +21,25 @@ def attempt(start, case_id="sqli", lasted=1, detected=False, malicious=True):
                    detected=detected, detection_ids=("d1",) if detected else ())
 
 
-def breach(key, difficulty, detected):
-    return Breach(key=key, name=key, category="c", difficulty=difficulty, detected=detected,
-                  attributed_marker=None, detection_ids=())
+def breach(key, difficulty, responded, detected=True):
+    return Breach(key=key, name=key, category="c", difficulty=difficulty, detected=detected, responded=responded,
+                  response_seconds=None, attributed_marker=None, detection_ids=())
+
+
+def at(seconds):
+    return T0 + timedelta(seconds=seconds)
+
+
+def sqli(marker, start, source_ip="198.51.100.7", expect=None, malicious=True):
+    return CaseRecord("sqli", "sqli", malicious, "marker", marker, source_ip, at(start), at(start + 2), expect=expect)
+
+
+def lost_at(seconds):
+    return [ObjectiveRecord("db", "db", "loot", 3, achieved_at=at(seconds))]
+
+
+def scored(cases, alerts, responses=(), taken=30):
+    return breaches(lost_at(taken), attempts(cases, correlate(cases, alerts), alerts), responses)[0]
 
 
 def test_an_untouched_round_has_no_coverage_and_no_damage():
@@ -32,12 +48,13 @@ def test_an_untouched_round_has_no_coverage_and_no_damage():
     assert (board.objectives, board.coverage, board.damage) == (0, None, 0)
 
 
-def test_an_objective_lost_and_undetected_counts_double():
-    assert tally([breach("a", 3, False)], 0).damage == 2 * tally([breach("a", 3, True)], 0).damage
+def test_an_objective_lost_without_a_response_counts_double_whatever_detection_says():
+    assert tally([breach("a", 3, False, detected=True)], 0).damage == 2 * tally([breach("a", 3, True)], 0).damage
+    assert tally([breach("a", 3, False, detected=True)], 0).damage == tally([breach("a", 3, False, False)], 0).damage
 
 
 def test_tier_difficulty_is_the_weight():
-    board = tally([breach("easy", 1, True), breach("hard", 4, False)], 0)
+    board = tally([breach("easy", 1, True), breach("hard", 4, False, detected=False)], 0)
 
     assert board.coverage == 1 / 5
     assert board.damage == 4 + 0.5 * 1
@@ -97,7 +114,7 @@ def test_breaches_attribute_each_lost_objective_and_skip_kept_ones():
         ObjectiveRecord("admin", "admin", "loot", 2),
     ]
 
-    lost = breaches(objectives, attempts(cases, result))
+    lost = breaches(objectives, attempts(cases, result, [DetectionRecord("d1", T0, None, "m-sqli")]))
 
     assert [(b.key, b.detected, b.attributed_marker, b.detection_ids) for b in lost] == [
         ("db", True, "m-sqli", ("d1",))]
@@ -107,9 +124,64 @@ def test_a_case_fired_again_later_does_not_lend_its_alert_to_the_firing_that_too
     cases = [CaseRecord("sqli", "sqli", True, "marker", "m1", None, T0, T0 + timedelta(seconds=2)),
              CaseRecord("sqli", "sqli", True, "marker", "m2", None, T0 + timedelta(minutes=5),
                         T0 + timedelta(minutes=5, seconds=2))]
-    result = correlate(cases, [DetectionRecord("a", T0 + timedelta(minutes=5), None, "m2")])
+    alerts = [DetectionRecord("a", T0 + timedelta(minutes=5), None, "m2")]
+    result = correlate(cases, alerts)
     objectives = [ObjectiveRecord("db", "db", "loot", 3, achieved_at=T0 + timedelta(seconds=10))]
 
-    lost = breaches(objectives, attempts(cases, result))
+    lost = breaches(objectives, attempts(cases, result, alerts))
 
     assert [(b.detected, b.attributed_marker, b.detection_ids) for b in lost] == [(False, "m1", ())]
+
+
+def test_a_plain_request_sent_after_a_detected_attack_leaves_the_loss_detected():
+    cases = [sqli("m-attack", 0), sqli("m-noise", 20, malicious=None)]
+
+    assert scored(cases, [DetectionRecord("d1", at(1), None, "m-attack")]).detected is True
+
+
+def test_an_alert_that_misses_the_attack_s_mechanism_does_not_detect_it():
+    cases = [sqli("m-attack", 0, expect="sql injection")]
+
+    assert scored(cases, [DetectionRecord("d1", at(1), None, "m-attack", signature="ET SCAN Nmap")]).detected is False
+
+
+def test_a_detected_loss_with_no_response_counts_full():
+    found = scored([sqli("m-attack", 0)], [DetectionRecord("d1", at(1), None, "m-attack")])
+
+    assert (found.detected, found.responded, found.response_seconds) == (True, False, None)
+    assert tally([found], 0).damage == 3
+
+
+def test_a_version_applied_after_the_first_action_answers_a_loss_no_alert_saw():
+    found = scored([sqli("m-attack", 0)], [], [ResponseRecord(at(10), RESPONSE_VERSION)])
+
+    assert (found.detected, found.responded, found.response_seconds) == (False, True, None)
+    assert tally([found], 0).damage == 1.5
+
+
+def test_a_version_applied_before_the_first_alert_is_no_response_to_it():
+    found = scored([sqli("m-attack", 5)], [DetectionRecord("d1", at(8), None, "m-attack")],
+                   [ResponseRecord(at(6), RESPONSE_VERSION)])
+
+    assert found.responded is False
+
+
+def test_the_response_time_runs_from_the_first_alert_to_the_first_response():
+    found = scored([sqli("m-attack", 0)], [DetectionRecord("d1", at(1), None, "m-attack")],
+                   [ResponseRecord(at(25), RESPONSE_VERSION), ResponseRecord(at(13), RESPONSE_ORIGIN, "198.51.100.7")])
+
+    assert (found.responded, found.response_seconds) == (True, 12.0)
+
+
+def test_spending_another_origin_or_acting_after_the_theft_is_no_response():
+    found = scored([sqli("m-attack", 0)], [DetectionRecord("d1", at(1), None, "m-attack")],
+                   [ResponseRecord(at(10), RESPONSE_ORIGIN, "203.0.113.9"), ResponseRecord(at(31), RESPONSE_VERSION)])
+
+    assert found.responded is False
+
+
+def test_benign_traffic_is_never_part_of_a_loss():
+    found = scored([sqli("m-customer", 0, malicious=False)], [DetectionRecord("d1", at(1), None, "m-customer")],
+                   [ResponseRecord(at(10), RESPONSE_VERSION)])
+
+    assert (found.detected, found.responded, found.attributed_marker) == (False, False, None)

@@ -179,20 +179,13 @@ def test_nginx_and_modsecurity_errors_name_the_file_and_line():
         {"file": HTTP, "line": 2, "message": 'unknown directive "denyy"'}]
 
 
-def test_the_limit_rates_come_from_the_running_configuration_in_requests_per_minute():
-    dumped = ("# configuration file /etc/nginx/conf.d/board.com.conf:\n"
-              "#limit_req_zone $binary_remote_addr zone=old:10m rate=1r/s;\n"
-              "limit_req_zone $binary_remote_addr zone=perip:10m rate=2r/s;\n"
-              "limit_req_zone $binary_remote_addr rate=30r/m zone=slow:1m;\n"
-              "server { location / { limit_req zone=perip burst=5; } }\n")
-    asked = []
+def test_the_limit_rates_are_read_from_the_waf_files_in_requests_per_minute():
+    files = ("#limit_req_zone $binary_remote_addr zone=old:10m rate=1r/s;\n"
+             "limit_req_zone $binary_remote_addr zone=perip:10m rate=2r/s;\n"
+             "limit_req_zone $binary_remote_addr rate=30r/m zone=slow:1m;\n"
+             "server { location / { limit_req zone=perip burst=5; } }\n")
 
-    def gateway(argv, stdin=None, timeout=60.0):
-        asked.append(argv)
-        return Ran(0, dumped)
-
-    assert crs.limit_rates(gateway) == {"perip": 120, "slow": 30}
-    assert asked == [["sh", "-c", "nginx -T 2>/dev/null"]]
+    assert crs.limit_rates_in(files) == {"perip": 120, "slow": 30}
 
 
 def test_a_zone_not_keyed_by_the_client_s_address_has_no_rate_a_refusal_can_be_judged_by():
@@ -201,8 +194,3 @@ def test_a_zone_not_keyed_by_the_client_s_address_has_no_rate_a_refusal_can_be_j
               "limit_req_zone $binary_remote_addr$uri zone=perpage:1m rate=90r/m;\n")
 
     assert crs.limit_rates_in(dumped) == {"perpage": 90}
-
-
-def test_an_unreadable_configuration_is_reported_not_taken_as_no_limit():
-    with pytest.raises(crs.WafUnreadable):
-        crs.limit_rates(lambda argv, stdin=None, timeout=60.0: Ran(1, "nginx: [emerg] unknown directive"))

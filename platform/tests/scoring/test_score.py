@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from domain.types import RESPONSE_VERSION, ResponseRecord
 from scoring import baseline as baselines
 from scoring import losses
 from scoring import score as service
@@ -32,12 +33,13 @@ def test_the_score_keeps_what_was_taken_apart_from_what_the_defence_got_right(bo
     actions = attack_and_customer()
     found = lost_admin(board_target, actions)
     alerts = [rounds.detection("d1", AT - timedelta(seconds=19), marker=SQLI, signature="ET WEB SQL Injection")]
+    reloaded = [ResponseRecord(at=AT - timedelta(seconds=10), kind=RESPONSE_VERSION)]
 
-    scored = service.score(found, actions, alerts).shown()
+    scored = service.score(found, actions, alerts, responses=reloaded).shown()
 
     assert scored["objectives"] == {
-        "lost": [{"key": "board-auth-user-admin", "name": "Board admin account", "seen": True,
-                  "attributed_marker": SQLI}],
+        "lost": [{"key": "board-auth-user-admin", "name": "Board admin account", "detected": True,
+                  "responded": True, "response_seconds": 9.0, "attributed_marker": SQLI}],
         "kept": [{"key": "board-auth-user-full", "name": "Board accounts (full)"}],
         "weighted": 2.0,
     }
@@ -51,13 +53,24 @@ def test_the_score_keeps_what_was_taken_apart_from_what_the_defence_got_right(bo
     assert set(scored) == {"objectives", "outcomes", "free_actions"}
 
 
-def test_an_objective_lost_and_unseen_counts_double(board_target):
+def test_an_objective_lost_with_no_response_counts_double_even_when_detected(board_target):
+    actions = attack_and_customer()
+    found = lost_admin(board_target, actions)
+    alerts = [rounds.detection("d1", AT - timedelta(seconds=19), marker=SQLI, signature="ET WEB SQL Injection")]
+
+    unanswered = service.score(found, actions, alerts)
+
+    assert (unanswered.lost[0].detected, unanswered.lost[0].responded) == (True, False)
+    assert unanswered.weighted == 4.0
+
+
+def test_an_objective_lost_unseen_and_unanswered_counts_double(board_target):
     actions = attack_and_customer()
     found = lost_admin(board_target, actions)
 
     unseen = service.score(found, actions, [])
 
-    assert unseen.lost[0].seen is False
+    assert (unseen.lost[0].detected, unseen.lost[0].responded) == (False, False)
     assert unseen.weighted == 4.0
     assert (unseen.totals.tp, unseen.totals.fn) == (0, 1)
 

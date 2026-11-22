@@ -48,11 +48,11 @@ function cellsOf(text: string): string[] {
 }
 
 describe("ScoreReport", () => {
-  it("marks each objective achieved and detected, heads them with the objective score and counts the four verdicts", () => {
+  it("marks each lost objective detected and responded with the response time, heads them with the objective score and counts the four verdicts", () => {
     render(<ScoreReport score={score} />);
-    expect(cellsOf("Board accounts, partial")).toEqual(["Board accounts, partial", t("mark.yes"), t("mark.no")]);
-    expect(cellsOf("Board admin account")).toEqual(["Board admin account", t("mark.no"), "—"]);
-    expect(screen.getByText(t("result.objective_points", { points: "2" }))).toBeTruthy();
+    expect(cellsOf("Board accounts, partial")).toEqual(["Board accounts, partial", t("mark.yes"), t("mark.yes"), t("mark.yes"), t("result.seconds", { seconds: "42" })]);
+    expect(cellsOf("Board admin account")).toEqual(["Board admin account", t("mark.no"), "—", "—", "—"]);
+    expect(screen.getByText(t("result.objective_points", { points: "1" }))).toBeTruthy();
     const verdicts = ["tp", "fn", "fp", "tn"].map((verdict, index) => `${tFor("verdict", verdict)} ${[2, 1, 0, 6][index]}`);
     expect(screen.getByText(verdicts.join(" · "))).toBeTruthy();
   });

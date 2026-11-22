@@ -221,8 +221,12 @@ def stepped(found: Round, what: str, work) -> Exception | None:
     return None
 
 
+def responses(found: Round):
+    return origins.spends(found) + defence.applied(found)
+
+
 def settle(found: Round) -> None:
-    referee.settle(found, actions(found), alert_feed.detections(found))
+    referee.settle(found, actions(found), alert_feed.detections(found), responses(found))
 
 
 def judge_after() -> timedelta:
@@ -393,7 +397,7 @@ def actions(found: Round):
 
 
 def score(found: Round, correlation: str | None = None) -> referee.RoundScore:
-    return referee.score(found, actions(found), alert_feed.detections(found), correlation)
+    return referee.score(found, actions(found), alert_feed.detections(found), correlation, responses(found))
 
 
 def score_for(found: Round, viewer_staff: bool, operator: bool, correlation: str | None) -> referee.RoundScore:

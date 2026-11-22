@@ -3125,16 +3125,24 @@ components:
           type: string
         name:
           type: string
-        seen:
+        detected:
           type: boolean
+        responded:
+          type: boolean
+        response_seconds:
+          type: number
+          format: double
+          nullable: true
         attributed_marker:
           type: string
           nullable: true
       required:
       - attributed_marker
+      - detected
       - key
       - name
-      - seen
+      - responded
+      - response_seconds
     MatchupEnum:
       enum:
       - pvp

@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from django.conf import settings
 from django.db import models
 
@@ -238,6 +240,12 @@ class RuleSet(models.Model):
     same_as_tested = models.BooleanField(default=False)
     sensors = models.JSONField(default=list)
     reloaded = models.FloatField(null=True, blank=True)
+
+    @property
+    def took_effect(self) -> datetime:
+        if self.source == "terminal" and self.reloaded is not None:
+            return datetime.fromtimestamp(self.reloaded, UTC)
+        return self.applied_at
 
     class Meta:
         ordering = ["round_id", "engine", "version"]

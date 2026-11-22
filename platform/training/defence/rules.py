@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from cr import config, errors
 from cr.config import configured
-from domain.types import ENGINE_IDS, ENGINE_WAF, ENGINES
+from domain.types import ENGINE_IDS, ENGINE_WAF, ENGINES, RESPONSE_VERSION, ResponseRecord
 from sandbox import crs, reach, suricata
 from scoring import losses as referee
 from telemetry import events as log
@@ -170,6 +170,11 @@ def waf_files(found: Round) -> dict:
 
 def versions(found: Round, engine: str) -> list[RuleSet]:
     return list(RuleSet.objects.filter(round=found, engine=engine_given(engine)).order_by("version"))
+
+
+def applied(found: Round) -> list[ResponseRecord]:
+    return [ResponseRecord(at=rule_set.took_effect, kind=RESPONSE_VERSION)
+            for rule_set in RuleSet.objects.filter(round=found).exclude(source=SETUP)]
 
 
 def version(found: Round, engine: str, number: int) -> RuleSet:

@@ -20,8 +20,8 @@ def test_a_breach_is_scored_and_attributed_to_the_attack_that_took_it(board_sess
     )
     assert lost, "nothing was taken, so attribution proves nothing"
     for breach in lost:
-        assert (breach["attributed_marker"], breach["seen"]) == (board_session["marker"], True), (
-            f"the loot was taken right after the SQLi case, so each breach must be tied to that case and seen "
+        assert (breach["attributed_marker"], breach["detected"]) == (board_session["marker"], True), (
+            f"the loot was taken right after the SQLi case, so each breach must be tied to that case and detected "
             f"through its alerts; {breach['key']} carried {breach}"
         )
 

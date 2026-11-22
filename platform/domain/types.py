@@ -16,6 +16,9 @@ ENGINES = (ENGINE_IDS, ENGINE_WAF)
 
 TP, FN, FP, TN = "tp", "fn", "fp", "tn"
 
+RESPONSE_ORIGIN = "origin"
+RESPONSE_VERSION = "version"
+
 
 @dataclass(frozen=True)
 class CaseRecord:
@@ -74,6 +77,13 @@ class DetectionRecord:
     signature: str = ""
     uri: str = ""
     blocked: bool = False
+
+
+@dataclass(frozen=True)
+class ResponseRecord:
+    at: datetime
+    kind: str
+    source_ip: str | None = None
 
 
 @dataclass(frozen=True)

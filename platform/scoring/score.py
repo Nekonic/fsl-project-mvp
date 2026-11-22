@@ -9,7 +9,7 @@ from domain.scoring.correlate import correlate
 from domain.scoring.metrics import ONE_CASE_ONE_DECISION, OriginActivity, decided, free_actions, per_case
 from domain.scoring.metrics import score as case_totals
 from domain.scoring.objectives import attempts, breaches, tally
-from domain.types import ActionRecord, DetectionRecord, ObjectiveRecord
+from domain.types import ActionRecord, DetectionRecord, ObjectiveRecord, ResponseRecord
 from scoring.baseline import LOOT_VERIFIED, declared, objective_model
 from scoring.losses import losses
 from scoring.models import Objective, Verdict
@@ -20,7 +20,9 @@ from training.models import Round
 class LostObjective:
     key: str
     name: str
-    seen: bool
+    detected: bool
+    responded: bool
+    response_seconds: float | None
     attributed_marker: str | None
 
 
@@ -92,16 +94,17 @@ def up_to_the_end(found: Round, actions: Sequence[ActionRecord], detections: Seq
 
 
 def score(found: Round, actions: Sequence[ActionRecord], detections: Sequence[DetectionRecord],
-          correlation: str | None = None) -> RoundScore:
+          correlation: str | None = None, responses: Sequence[ResponseRecord] = ()) -> RoundScore:
     actions, detections = up_to_the_end(found, actions, detections)
     cases = [action.as_case() for action in actions]
     result = correlate(cases, detections, correlation)
     totals = case_totals(result)
     records = objective_records(found)
-    lost = breaches(records, attempts(cases, result))
+    lost = breaches(records, attempts(cases, result, detections), responses)
     fallen = {breach.key for breach in lost}
     return RoundScore(
-        lost=tuple(LostObjective(key=breach.key, name=breach.name, seen=breach.detected,
+        lost=tuple(LostObjective(key=breach.key, name=breach.name, detected=breach.detected,
+                                 responded=breach.responded, response_seconds=breach.response_seconds,
                                  attributed_marker=breach.attributed_marker) for breach in lost),
         kept=tuple(KeptObjective(key=record.key, name=record.name) for record in records if record.key not in fallen),
         weighted=tally(lost, totals.fp).damage,
@@ -113,13 +116,14 @@ def score(found: Round, actions: Sequence[ActionRecord], detections: Sequence[De
     )
 
 
-def settle(found: Round, actions: Sequence[ActionRecord], detections: Sequence[DetectionRecord]) -> int:
-    settled = {one.key: one for one in score(found, actions, detections).lost}
+def settle(found: Round, actions: Sequence[ActionRecord], detections: Sequence[DetectionRecord],
+           responses: Sequence[ResponseRecord] = ()) -> int:
+    settled = {one.key: one for one in score(found, actions, detections, responses=responses).lost}
     changed = 0
     for objective in Objective.objects.filter(round=found, key__in=settled):
         now = settled[objective.key]
-        if (objective.seen, objective.attributed_marker) != (now.seen, now.attributed_marker):
-            objective.seen, objective.attributed_marker = now.seen, now.attributed_marker
+        if (objective.seen, objective.attributed_marker) != (now.detected, now.attributed_marker):
+            objective.seen, objective.attributed_marker = now.detected, now.attributed_marker
             objective.save(update_fields=["seen", "attributed_marker"])
             changed += 1
     return changed

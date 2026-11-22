@@ -138,13 +138,6 @@ def limit_rates_in(text: str) -> dict[str, int]:
     return rates
 
 
-def limit_rates(gateway) -> dict[str, int]:
-    ran = gateway(["sh", "-c", "nginx -T 2>/dev/null"])
-    if not ran.ok:
-        raise WafUnreadable(f"could not read the nginx configuration: {ran.output.strip()[-300:]}")
-    return limit_rates_in(ran.output)
-
-
 def nginx_errors(output: str, moved: Mapping[str, str] | None = None) -> list[dict]:
     found = []
     for line in output.splitlines():
