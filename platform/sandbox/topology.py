@@ -136,13 +136,6 @@ def learner(declared, wargame: str) -> Learner:
                    switches=switches, hidden=frozenset(hidden), prefers=prefers,
                    zones={"internet": INTERNET, "service": SERVICE, "database": backend}, kinds=kinds)
 
-def hosts(learner) -> list[str]:
-    return sorted({shown for names in learner.hosts.values() for shown in names
-                   if shown not in learner.hidden})
-
-def path_choices(learner) -> list[str]:
-    return sorted({*hosts(learner), *([INLINE_SENSOR] if "sensor" in learner.roles else [])})
-
 def route(learner, site: str, start: str = ATTACKER, wiring=None) -> list[str]:
     passed = [learner.roles[role] for role in TRANSIT if role in learner.roles]
     gateway = learner.roles.get("gateway")

@@ -90,7 +90,6 @@ class BoxConfig:
     target_url: str = "http://board.com"
     default_origin: str = ""
     tool_image: str = "cr-kali"
-    label_file: str = "/var/lib/session/active"
     command_log: str = "/var/log/commands.log"
 
 

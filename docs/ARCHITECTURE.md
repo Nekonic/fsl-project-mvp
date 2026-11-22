@@ -164,7 +164,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                baseline.py  라운드 시작 baseline, 비밀값 가리기
                losses.py    loot 제출, corp 변경 관찰, 목표
                score.py     점수, 케이스 판정(judge), 종료 시각까지 자르기
-  testing/     fakecloud.py  standin.py  fakes.py(가짜 runner, 가짜 ES)  fakerange.py  factories.py(영어 자리표시 문제)
+  testing/     fakecloud.py  fakes.py(가짜 runner, 가짜 ES)  fakerange.py  factories.py(영어 자리표시 문제)
   tests/       domain/  seams/  users/  telemetry/  scoring/  training/{content,round,attack,defence}/  contract/
                test_*.py(배포 파일, compose, 역할 이미지, 경계 검사 등)
   entrypoint.sh  nginx.conf  vm-terminal.sh  tmux.conf  Dockerfile

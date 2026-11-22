@@ -71,7 +71,7 @@ SEAMS = {
 }
 
 EXCEPTIONS = {
-    "platform/cr/config.py": {CRS, BOX, NODE_NAMES, INDEX_PATTERNS},
+    "platform/cr/config.py": {CRS, NODE_NAMES, INDEX_PATTERNS},
     "platform/nginx.conf": {KIBANA},
     "platform/entrypoint.sh": {NODE_NAMES, JUMP},
     "front/src/panes/Kibana.tsx": {KIBANA},

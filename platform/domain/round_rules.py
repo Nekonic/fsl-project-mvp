@@ -64,10 +64,6 @@ class AllocationState:
     objective_fallen: bool
 
 
-def human_players(matchup: Matchup) -> tuple[Side, ...]:
-    return tuple(side for side, client in PLAYERS[Matchup(matchup)].items() if client == HUMAN)
-
-
 def may_end(state: RoundState) -> bool:
     return state.benign_passes >= 1
 

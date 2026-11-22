@@ -3,12 +3,9 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from domain.round_rules import (
-    Matchup,
     Phase,
     RoundState,
-    Side,
     ended,
-    human_players,
     may_end,
 )
 
@@ -50,7 +47,3 @@ def test_only_a_running_round_ends(phase):
     assert ended(state(phase=phase, objectives_lost=2)) is None
 
 
-def test_each_matchup_puts_humans_where_it_says():
-    assert human_players(Matchup.PVP) == (Side.ATTACK, Side.DEFENCE)
-    assert human_players(Matchup.DEF_VS_BOT) == (Side.DEFENCE,)
-    assert human_players("atk_vs_bot") == (Side.ATTACK,)

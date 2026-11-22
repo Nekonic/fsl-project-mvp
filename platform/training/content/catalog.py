@@ -97,10 +97,6 @@ def wargames(root: Path) -> list[Wargame]:
     return [read(root, wargame_id) for wargame_id in wargame_ids(root)]
 
 
-def validation_catalog(root: Path) -> dict[str, WargameCatalog]:
-    return {wargame.id: wargame.for_validation() for wargame in wargames(root)}
-
-
 def read(root: Path, wargame_id: str) -> Wargame:
     folder = root / WARGAMES / wargame_id
     declared = loaded(folder / DECLARED)

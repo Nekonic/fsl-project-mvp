@@ -72,21 +72,6 @@ def test_wearing_an_origin_runs_set_origin_with_its_address():
         box.wear_origin(box.find(SHAPE, "hk", CONFIG), FakeRunner().answer("set-origin", "no", 1))
 
 
-@pytest.mark.parametrize("value, sent", [("c0ffee", "c0ffee"), (None, "")])
-def test_the_live_case_reaches_the_proxy_through_its_label_file(value, sent):
-    proxy = FakeRunner()
-
-    box.set_label(value, proxy, CONFIG)
-
-    assert proxy.sent[0].stdin == sent, "a cleared case must not label the shell's traffic with the word None"
-    assert CONFIG.label_file in proxy.sent[0].text
-
-
-def test_a_write_the_proxy_could_not_make_is_not_a_silent_success():
-    with pytest.raises(box.AttackerUnavailable):
-        box.set_label("c0ffee", FakeRunner().answer("cat >", "Read-only file system", 1), CONFIG)
-
-
 def test_the_launch_runs_on_the_tool_image_the_config_names():
     launcher = FakeLauncher()
 
@@ -151,7 +136,7 @@ def _hook(tmp_path):
     hook = tmp_path / "hook.sh"
     hook.write_text((DEPLOY / "kali/operator-log.sh").read_text()
                     .replace(BoxConfig.command_log, str(tmp_path / "commands.log"))
-                    .replace(BoxConfig.label_file, str(tmp_path / "active")))
+                    .replace("/var/lib/session/active", str(tmp_path / "active")))
     return hook
 
 

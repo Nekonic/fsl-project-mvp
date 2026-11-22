@@ -147,10 +147,6 @@ def send_json(request):
         return json.loads(answer.read() or b"{}")
 
 
-def sensed_http(marker):
-    return f'event_type : "http" and http.request_headers.value : "{marker}"'
-
-
 def rison(text):
     return "'" + text.replace("!", "!!").replace("'", "!'") + "'"
 

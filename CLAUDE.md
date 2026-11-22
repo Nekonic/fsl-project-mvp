@@ -63,8 +63,8 @@ placeholders (`platform/testing/factories.py`).
 The committed contract is `openapi/schema.yaml`, which `bin/verify` exports
 with `manage.py spectacular`. `bots/`, `test/` and `bin/` call it by
 operationId through `bots/rest.py`, with no generated client
-(`bin/platform-rebuild`'s readiness probe on `/api/auth/csrf/` is plain
-urllib, the one exception). Only
+(the readiness probes on `/api/auth/csrf/`, plain urllib in
+`bin/platform-rebuild` and curl in `bin/verify`, are the exceptions). Only
 `front/src/api/schema.d.ts` is generated from it (`npm run types`, in
 `bin/verify` and in the platform Dockerfile's node stage before it builds
 `front/`), and it is not committed, because the generator writes comments and
@@ -137,8 +137,8 @@ never scored as one.
   two lists differ.
   Known exceptions in code today; do not add more:
   `cr/config.py` holds the defaults the seams are handed (the CRS exclusion
-  files and the nginx reload for `sandbox/crs.py`, the box's label file and
-  node names for `sandbox/attacker.py`, the log index pattern); the
+  files and the nginx reload for `sandbox/crs.py`, the node names for
+  `sandbox/attacker.py`, the log index pattern); the
   acceptance driver `test/plays.py` writes CRS rule text into the API's
   `files`; the acceptance
   checks of Elasticsearch's own set-up, `test/test_event_time.py`,
@@ -204,8 +204,9 @@ logic changed, and before a push.
   frozen dataclasses, tested by `platform/tests/domain/` with no Django in the
   process. Services raise `cr/errors.py` domain errors and never build
   responses; `cr/handler.py` maps them to the one error shape.
-- The target is not published; cases are fired from the attacker box inside
-  the range (`training/attack/cases.py`).
+- The target is not published; attack cases are fired from the attacker box
+  inside the range (`training/attack/cases.py`), benign cases from the
+  customers' program on the infra VM (`sandbox/customers.py`).
   The product runs only on OpenStack: the range is one Heat stack per allocation
   (`cr-slot-<n>`: the VMs kali, waf, infra and target on the stack's own
   Neutron LANs, booted from role images baked from `deploy/roles/` into

@@ -165,19 +165,8 @@ def wear_origin(chosen: dict, box) -> None:
             f"the box could not wear {chosen['source_ip']}: {ran.output.strip()[:200]}"
         )
 
-def set_label(case_id: str | None, proxy, config: BoxConfig) -> None:
-    _write(proxy, config.label_file, case_id)
-
-
 SQLMAP_RUNS = "/tmp/sqlmap-runs"
 
-
-def _write(proxy, where: str, value: str | None) -> None:
-    ran = proxy(["sh", "-c", f"cat > {where}"], stdin=value or "")
-    if not ran.ok:
-        raise AttackerUnavailable(
-            f"the proxy could not write {where}: {ran.output.strip()[:200]}"
-        )
 
 def _as_root(script: str) -> list[str]:
     return ["sudo", "sh", "-c", script]
