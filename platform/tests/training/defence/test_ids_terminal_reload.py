@@ -24,7 +24,7 @@ def test_a_rule_reload_done_in_the_ids_terminal_is_recorded_as_the_next_ids_vers
     assert service.record_terminal_reload(board_round) is False, "the same running rules are one version"
     stored = service.versions(board_round, "ids")
     assert [(one.version, one.source) for one in stored] == [(1, "setup"), (2, "terminal")]
-    assert stored[-1].files == {"local.rules": BASELINE + SEARCH_RULE} and stored[-1].player == defender
+    assert stored[-1].files == {"local.rules": BASELINE + SEARCH_RULE}
     applied = Event.objects.filter(round_id=board_round.pk, kind="rule.applied").order_by("id").last()
     assert applied.body == {"engine": "ids", "version": 2, "source": "terminal"}
     shown = as_defender.get(RULES.format(round=board_round.pk)).json()

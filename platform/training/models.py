@@ -235,7 +235,6 @@ class RuleSet(models.Model):
     source = models.CharField(max_length=8, choices=RULE_SOURCES, default="console")
     applied_at = models.DateTimeField()
     tested = models.ForeignKey(RuleTest, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
-    player = models.ForeignKey(Player, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     same_as_tested = models.BooleanField(default=False)
     sensors = models.JSONField(default=list)
     reloaded = models.FloatField(null=True, blank=True)

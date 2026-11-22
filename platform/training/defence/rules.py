@@ -248,12 +248,11 @@ def locked_head(found: Round, engine: str, base_version: int) -> RuleSet | None:
 
 
 def recorded(found: Round, engine: str, head: RuleSet | None, files: Mapping[str, str], sensors: Sequence[dict],
-             tested: RuleTest | None, player: Player | None, source: str = CONSOLE,
-             reloaded: float | None = None) -> RuleSet:
+             tested: RuleTest | None, source: str = CONSOLE, reloaded: float | None = None) -> RuleSet:
     sha = ruletest.files_sha(files)
     made = RuleSet.objects.create(round=found, engine=engine, version=(head.version if head else 0) + 1,
                                   files=dict(files), sha=sha, source=source, applied_at=timezone.now(),
-                                  tested=tested, player=player,
+                                  tested=tested,
                                   same_as_tested=tested is not None and tested.sha == sha, sensors=list(sensors),
                                   reloaded=reloaded)
     log.append(found.pk, "rule.applied", {"engine": engine, "version": made.version, "source": source},
@@ -270,7 +269,7 @@ def apply_ids(found: Round, text: str, base_version: int, source: str = SETUP) -
         previous = (head.files.get(IDS_FILE, "") if head
                     else suricata.current(reached.sensors[0].runner, reached.sensors[0].config))
         sensors = written_to_sensors(text, previous, reached.sensors)
-        made = recorded(found, ENGINE_IDS, head, {IDS_FILE: text}, sensors, None, None, source, ids_reload_at(found))
+        made = recorded(found, ENGINE_IDS, head, {IDS_FILE: text}, sensors, None, source, ids_reload_at(found))
         return Applied(rule_set=made, sensors=sensors)
 
 
@@ -285,12 +284,12 @@ def apply_waf(found: Round, files: Mapping[str, str], base_version: int, player:
             merged = crs.apply(files, reached.gateway, reached.waf)
         except crs.WafRefused as refused:
             raise ruletest.waf_refusal(refused) from refused
-        return Applied(rule_set=recorded(found, ENGINE_WAF, head, merged, (), test, player, source,
+        return Applied(rule_set=recorded(found, ENGINE_WAF, head, merged, (), test, source,
                                          waf_reload_at(reached.gateway, reached.waf)), sensors=())
 
 
-def record_live_waf(found: Round, source: str, player: Player | None = None,
-                    live: Mapping[str, str] | None = None, reloaded: float | None = None) -> RuleSet | None:
+def record_live_waf(found: Round, source: str, live: Mapping[str, str] | None = None,
+                    reloaded: float | None = None) -> RuleSet | None:
     gateway, waf = gateway_of(found)
     if live is None:
         live = crs.read(gateway, waf)
@@ -300,7 +299,7 @@ def record_live_waf(found: Round, source: str, player: Player | None = None,
         if head is not None and head.sha == ruletest.files_sha(live):
             consumed(head, reloaded)
             return None
-        return recorded(found, ENGINE_WAF, head, live, (), None, player, source, reloaded)
+        return recorded(found, ENGINE_WAF, head, live, (), None, source, reloaded)
 
 
 def consumed(rule_set: RuleSet, reloaded: float | None) -> None:
@@ -309,7 +308,7 @@ def consumed(rule_set: RuleSet, reloaded: float | None) -> None:
         rule_set.save(update_fields=["reloaded"])
 
 
-def record_live_ids(found: Round, source: str, player: Player | None = None, live: str | None = None,
+def record_live_ids(found: Round, source: str, live: str | None = None,
                     reloaded: float | None = None) -> RuleSet | None:
     runner, sensor = first_sensor(found)
     if live is None:
@@ -321,8 +320,7 @@ def record_live_ids(found: Round, source: str, player: Player | None = None, liv
         if head is not None and head.sha == ruletest.files_sha(files):
             consumed(head, reloaded)
             return None
-        return recorded(found, ENGINE_IDS, head, files, ({"name": sensor.name, "ok": True},), None, player, source,
-                        reloaded)
+        return recorded(found, ENGINE_IDS, head, files, ({"name": sensor.name, "ok": True},), None, source, reloaded)
 
 
 def apply_posture(found: Round) -> None:
@@ -335,10 +333,6 @@ def apply_posture(found: Round) -> None:
         apply_waf(found, posture["waf_files"], version_of(found, ENGINE_WAF), source=SETUP)
     else:
         record_live_waf(found, SETUP)
-
-
-def defence_player(found: Round) -> Player | None:
-    return Player.objects.filter(round=found, side=DEFENCE).first()
 
 
 def record_terminal_reload(found: Round) -> bool:
@@ -363,7 +357,7 @@ def record_ids_terminal_reload(found: Round) -> bool:
             return False
     except (errors.Unavailable, suricata.RuleApplyError):
         return False
-    return record_live_ids(found, TERMINAL, defence_player(found), snapshot.text, snapshot.at) is not None
+    return record_live_ids(found, TERMINAL, snapshot.text, snapshot.at) is not None
 
 
 def record_waf_terminal_reload(found: Round) -> bool:
@@ -382,7 +376,7 @@ def record_waf_terminal_reload(found: Round) -> bool:
             return False
     except (crs.WafUnreadable, crs.WafRefused):
         return False
-    return record_live_waf(found, TERMINAL, defence_player(found), snapshot.files, snapshot.at) is not None
+    return record_live_waf(found, TERMINAL, snapshot.files, snapshot.at) is not None
 
 
 def put_back(found: Round, head: RuleSet, engine: str, messages: Sequence[str], reloaded: float) -> None:

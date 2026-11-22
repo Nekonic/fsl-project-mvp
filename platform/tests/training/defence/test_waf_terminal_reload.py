@@ -26,7 +26,7 @@ def test_a_reload_done_in_the_terminal_is_recorded_as_the_next_version_on_the_ne
     assert service.record_terminal_reload(board_round) is False, "the same running files are one version"
     stored = service.versions(board_round, "waf")
     assert [(one.version, one.source) for one in stored] == [(1, "setup"), (2, "terminal")]
-    assert stored[-1].files[HTTP] == "deny 203.0.113.9;\n" and stored[-1].player == defender
+    assert stored[-1].files[HTTP] == "deny 203.0.113.9;\n"
     applied = Event.objects.filter(round_id=board_round.pk, kind="rule.applied").order_by("id").last()
     assert (applied.body, applied.player_side) == ({"engine": "waf", "version": 2, "source": "terminal"}, "defence")
     shown = as_defender.get(url(board_round, "waf/")).json()
@@ -89,3 +89,9 @@ def test_a_waf_the_platform_cannot_read_records_nothing(board_round, cyber_range
 
     assert service.record_terminal_reload(board_round) is False
     assert [one.version for one in service.versions(board_round, "waf")] == [1]
+
+
+def test_a_version_names_no_author_because_the_round_has_one_defence_player():
+    from training.models import RuleSet
+
+    assert "player" not in {field.name for field in RuleSet._meta.get_fields()}

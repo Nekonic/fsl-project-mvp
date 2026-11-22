@@ -10758,8 +10758,8 @@ How the "IDS rules are edited on the sensor" ruling above is carried out.
   whose posture has no Suricata rules records the live file as IDS
   version 1. `GET ids/rules/` reads the live file and says `recorded`.
 - **What went.** `POST ids/rules/check/`, `POST ids/rules/apply/`,
-  `ids/disabled/` and `ids/disabled/<sid>/`, `DisabledRule` (migration
-  0003), `defence/disable.py`, the `rule.disabled` event, the
+  `ids/disabled/` and `ids/disabled/<sid>/`, `DisabledRule` (training's
+  `0001` is generated again without it), `defence/disable.py`, the `rule.disabled` event, the
   `unread_sid` code, the expired-rule read, and the console's IDS editor
   and disabled-rule form. Kept: `GET ids/rules/`, the versions, the rule
   test and its results; the posture still writes the sensors at the round
