@@ -33,7 +33,7 @@ SEAMS = {
         r"|^\s*(?:import|from) elasticsearch"),
     SURICATA: (
         {"platform/sandbox/suricata.py"},
-        r'"suricata", "-T"|suricatasc|reload-rules|"return":"OK"|af-packet'),
+        r'"suricata", "-T"|suricata -T -[cS]\b|suricatasc|reload-rules|"return":"OK"|af-packet'),
     CAPTURE: (
         {"platform/sandbox/suricata.py"},
         r"\btcpdump\b|\bdumpcap\b|\btshark\b"),
@@ -161,6 +161,12 @@ def test_every_listed_exception_exists_or_is_named_as_not_written_yet():
 
 def test_the_exception_list_is_the_one_claude_md_gives():
     assert named_in_claude_md() == set(EXCEPTIONS) | OUTSIDE_THE_SCAN
+
+
+def test_the_suricata_pattern_finds_a_config_test_in_a_shell_string_as_well_as_in_an_argv_list():
+    pattern = SEAMS[SURICATA][1]
+
+    assert re.search(pattern, 'f"suricata -T -c {settings} -S {rules}"') and re.search(pattern, '["suricata", "-T"]')
 
 
 def test_the_scan_reaches_every_client_and_skips_the_generated_types(files):
