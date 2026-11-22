@@ -10,6 +10,7 @@ from tests.training.round.conftest import pvp, url
 from training.attack import actions as attack
 from training.models import Action, CustomerRequest, Round
 from training.round import lifecycle as service
+from training.round.lifecycle import wait_for_late_alerts
 from training.traffic import customers
 
 
@@ -295,7 +296,7 @@ def test_a_round_ended_between_reads_reads_the_logs_once_more_before_it_ends(mon
 
     service.end_round(running, "ended_by_operator")
 
-    assert read == [running.pk, running.pk]
+    assert read == [running.pk, running.pk, running.pk]
     assert Round.objects.get(pk=running.pk).reading_since is None
 
 
@@ -312,7 +313,7 @@ def test_a_round_ended_while_another_request_holds_the_read_waits_for_it_and_rea
 
     service.end_round(running, "ended_by_operator")
 
-    assert (waited, read) == (["running"], [running.pk])
+    assert (waited, read) == (["running"], [running.pk, running.pk])
     assert Round.objects.get(pk=running.pk).phase == "ended"
 
 
@@ -390,6 +391,50 @@ def test_a_fired_case_its_alert_names_ends_the_round_as_a_true_positive_beside_t
 
     assert totals["tp"] == 1
     assert totals["tn"] == len(customers.benign_cases(running)) > 0
+
+
+def test_an_alert_that_reaches_elasticsearch_after_the_last_read_still_counts_once_the_round_waited_for_it(
+        monkeypatch, browser, running, other, learner):
+    from testing.fakes import FakeElastic
+
+    marker = fired_case(browser, running, other, "board-sqli-search")
+    es = FakeElastic()
+    monkeypatch.setattr("telemetry.elastic.requests.post", es.post)
+    waited = []
+
+    def late_alert_arrives(found):
+        waited.append(found.ended)
+        es.add("s1", suricata_alert(running, marker, 1))
+
+    monkeypatch.setattr(service, "wait_for_late_alerts", late_alert_arrives)
+    service.end_round(running, "ended_by_operator")
+
+    browser.force_authenticate(learner)
+    totals = browser.get(url(running, "score/")).json()["outcomes"]["totals"]
+
+    assert len(waited) == 1 and totals["tp"] == 1
+
+
+def test_the_round_s_end_waits_out_the_alert_delay_counted_from_its_end_time(monkeypatch, settings):
+    slept = []
+    monkeypatch.setattr(service.time, "sleep", slept.append)
+    settings.JUDGE_AFTER_SECONDS = 30
+    ended = Round(ended=timezone.now() - timedelta(seconds=10))
+
+    wait_for_late_alerts(ended)
+    wait_for_late_alerts(Round(ended=timezone.now() - timedelta(seconds=40)))
+
+    assert len(slept) == 1 and 19 < slept[0] <= 20
+
+
+def test_the_reads_at_a_round_s_end_fire_no_benign_pass(monkeypatch, running):
+    fired = []
+    monkeypatch.setattr(customers, "fire_pass", lambda found: fired.append(found.pk))
+    monkeypatch.setattr(customers, "due", lambda found, now: True)
+
+    service.end_round(running, "ended_by_operator")
+
+    assert fired == []
 
 
 def test_an_alert_stamped_after_the_round_ended_does_not_turn_its_case_into_a_true_positive(browser, running, other,

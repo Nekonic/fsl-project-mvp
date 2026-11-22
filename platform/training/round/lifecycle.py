@@ -263,10 +263,18 @@ def finish(found: Round, reason: str) -> Round:
     guarded(found, "closing the defence side", defence.close)
     if was != CREATED:
         customers.stop(found)
+        wait_for_late_alerts(found)
+        stepped(found, ALERTS_READ, lambda one: alert_feed.ingest_alerts(one))
         guarded(found, "settling the objectives", settle)
         stepped(found, "judging the cases", judge)
     log.append(found.pk, "round.ended", {"reason": reason})
     return found
+
+
+def wait_for_late_alerts(found: Round) -> None:
+    left = (found.ended + judge_after() - timezone.now()).total_seconds()
+    if left > 0:
+        time.sleep(left)
 
 
 def forfeit(found: Round, player: Player) -> Round:
@@ -289,6 +297,7 @@ READS = (
     ("settling the objectives", settle),
     ("judging the cases", judge),
 )
+FINAL_READS = tuple(read for read in READS if read[0] != "the customers")
 
 
 def state_of(found: Round, at: datetime) -> RoundState:
@@ -320,9 +329,9 @@ def still_running(found: Round) -> bool:
     return Round.objects.filter(pk=found.pk, phase=RUNNING).exists()
 
 
-def read_logs(found: Round) -> None:
+def read_logs(found: Round, reads=READS) -> None:
     unavailable = {}
-    for what, step in READS:
+    for what, step in reads:
         if not still_running(found):
             found.refresh_from_db()
             return
@@ -356,7 +365,7 @@ def final_reads(found: Round) -> None:
             return
         wait_for_reader()
     try:
-        read_logs(found)
+        read_logs(found, FINAL_READS)
     finally:
         release_reading(found, at)
 
