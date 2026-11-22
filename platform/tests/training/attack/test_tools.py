@@ -99,3 +99,18 @@ def test_a_run_of_another_round_is_unknown_here(as_attacker, attacker, make_roun
     answer = as_attacker.get(url(attacker.round, f"tools/{foreign}/"))
 
     assert codes(answer) == ["unknown_run"]
+
+
+def test_a_round_read_ends_a_run_that_finished_on_the_box_though_the_attacker_never_reads_its_output(
+        as_attacker, attacker, cloud):
+    from training.round import lifecycle
+
+    run = started(as_attacker, attacker.round).json()["run"]
+    cloud.box.answer("head -c 0", "cr.exit=3\ncr.output=\n")
+
+    lifecycle.read_logs(attacker.round)
+
+    ended = ToolRun.objects.get(pk=run)
+    assert ended.ended is not None and ended.exit_code == 3
+    assert Action.objects.get(pk=ended.action_id).ended == ended.ended
+    assert [kind for kind, _ in tool_events(attacker.round)] == ["tool.started", "tool.ended"]

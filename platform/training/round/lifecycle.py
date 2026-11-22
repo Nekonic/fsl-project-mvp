@@ -292,6 +292,7 @@ READS = (
     ("spending origins from the WAF error log", lambda found: attack.spend_from_log(found)),
     ("observing effects", observe),
     ("reading commands", lambda found: attack.read_commands(found)),
+    ("ending the tool runs that finished", lambda found: attack.finished_runs(found)),
     ("recording a reload done in a defence terminal", lambda found: defence.record_terminal_reload(found)),
     ("the customers", lambda found: customers.catch_up(found)),
     ("settling the objectives", settle),

@@ -270,7 +270,7 @@ sequenceDiagram
   R->>R: Kibana space, infra VM의 고객 트래픽 시작
   loop 라운드에 API 요청이 올 때(CatchingUpView, 한 번에 한 요청, CR_READ_EVERY_SECONDS 간격)
     R->>D: 알림 수집, 터미널 reload 기록
-    R->>A: 오류 로그로 출발지 소진, 명령 기록 읽기
+    R->>A: 오류 로그로 출발지 소진, 명령 기록 읽기, 박스에서 끝난 도구 실행 닫기
     R->>S: corp 변경 관찰, 목표 정리, 케이스 판정(case.judged)
     R->>R: 고객 기록과 정상 케이스, 종료 조건
   end

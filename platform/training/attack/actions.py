@@ -481,6 +481,23 @@ def stop_runs(found: Round, reason: str, reached=None) -> int:
     return len(running)
 
 
+def finished_runs(found: Round) -> int:
+    running = list(ToolRun.objects.select_related("action").filter(action__round=found, ended=None))
+    if not running:
+        return 0
+    attacker = range_of(found).runner(ATTACKER)
+    done = 0
+    for run in running:
+        try:
+            said = box.run_output(attacker, run.pk, limit=0)
+        except errors.NotFound:
+            continue
+        if said.done:
+            finish(run, said.exit_code, None)
+            done += 1
+    return done
+
+
 def record_of(action: Action) -> ActionRecord:
     return ActionRecord(action_id=str(action.pk), kind=action.kind, marker=action.marker,
                         correlation=action.correlation, source_ip=action.source_ip, started_at=action.started,
