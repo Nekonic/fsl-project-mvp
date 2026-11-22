@@ -143,14 +143,18 @@ def configured_by_hand(store: Store, slot: int) -> None:
 
 
 def advance(store: Store, clock: Clock, adapter) -> Refill:
-    refill = standing(store, adapter.slot)
-    if not refill.running:
-        return refill
+    started = standing(store, adapter.slot)
+    if not started.running:
+        return started
     try:
-        refill = _stepped(refill, clock, adapter)
+        refill = _stepped(started, clock, adapter)
     except Exception as exc:
-        refill = replace(refill, state=FAILED, reason=str(exc) or type(exc).__name__)
-    store.put(refill)
+        refill = replace(started, state=FAILED, reason=str(exc) or type(exc).__name__)
+    with _claiming:
+        now = standing(store, adapter.slot)
+        if now != started:
+            return now
+        store.put(refill)
     return refill
 
 

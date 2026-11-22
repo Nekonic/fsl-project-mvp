@@ -128,3 +128,26 @@ def test_the_file_store_survives_a_restart(tmp_path):
     assert again.slots() == [3]
     assert refill.standing(again, 3) == refill.Refill(slot=3, state=refill.BUILDING, wargame="corp",
                                                       replaced=("a", "b"), deadline=clock.now + refill.WAIT)
+
+
+def test_a_slot_emptied_while_its_rebuild_step_runs_stays_empty(store):
+    clock = Clock()
+
+    class EmptiedMeanwhile(Slot):
+        def ensure_slot(self, wargame=""):
+            refill.release(store, 1)
+            return super().ensure_slot(wargame)
+
+    refill.claim(store, clock, 1, "board", replaced=("old",))
+
+    assert refill.advance(store, clock, EmptiedMeanwhile(plans=[BUILDING])).state == refill.IDLE
+    assert refill.owed(store) == []
+
+
+def test_a_slot_held_for_its_reset_is_not_ready_not_rebuilt_and_shown_running(store):
+    assert refill.hold_for_reset(store, 1)
+    assert refill.hold_for_reset(store, 1) is False
+
+    assert refill.standing(store, 1).state == refill.RESETTING and refill.owed(store) == []
+    assert refill.standing(store, 1).shown()["state"] == "running"
+    assert refill.claim(store, Clock(), 1, "board", replaced=("old",))
