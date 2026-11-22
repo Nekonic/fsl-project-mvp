@@ -142,7 +142,7 @@ class Score(MatchView):
         found = service.score_for(request.round, bool(request.user.is_staff),
                                   bool(request.user.is_staff) or (request.operator and not request.players),
                                   asked.get("correlation"))
-        return Response(serializers.Score(found.shown()).data)
+        return Response(serializers.Score({"pending": service.pending(request.round), **found.shown()}).data)
 
 
 class Topology(MatchView):

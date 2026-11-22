@@ -131,14 +131,24 @@ ZONE_RATE = re.compile(r"\brate=(\d+)r/([sm])\b")
 PER_CLIENT_KEY = re.compile(r"\$(?:binary_)?remote_addr\b")
 
 
-def limit_rates_in(text: str) -> dict[str, int]:
+@dataclass(frozen=True)
+class LimitZones:
+    rates: dict[str, int]
+    shared: frozenset[str]
+
+
+def limit_zones_in(text: str) -> LimitZones:
     kept = "\n".join(line.split("#", 1)[0] for line in text.splitlines())
-    rates = {}
+    rates, shared = {}, set()
     for arguments in LIMIT_ZONE.findall(kept):
         name, rate = ZONE_NAME.search(arguments), ZONE_RATE.search(arguments)
-        if name and rate and PER_CLIENT_KEY.search(arguments.split()[0]):
+        if not name:
+            continue
+        if not PER_CLIENT_KEY.search(arguments.split()[0]):
+            shared.add(name.group(1))
+        elif rate:
             rates[name.group(1)] = int(rate.group(1)) * (60 if rate.group(2) == "s" else 1)
-    return rates
+    return LimitZones(rates=rates, shared=frozenset(shared))
 
 
 def nginx_errors(output: str, moved: Mapping[str, str] | None = None) -> list[dict]:

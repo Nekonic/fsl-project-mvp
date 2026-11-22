@@ -532,7 +532,12 @@ def appended(played: Played, path: str, *lines: str) -> dict[str, str]:
 
 def score(played: Played, correlation: str | None = None, client=None) -> Answer:
     named = {"correlation": correlation} if correlation else {}
-    return ask("round_score", client or operator(), round_id=played.round, **named)
+    deadline = time.monotonic() + SCORE_WAIT
+    while True:
+        answer = ask("round_score", client or operator(), round_id=played.round, **named)
+        if not answer.ok or not (answer.body or {}).get("pending") or time.monotonic() >= deadline:
+            return answer
+        time.sleep(POLL)
 
 
 def score_when_ready(played: Played, until: Callable[[dict], bool], timeout: float = SCORE_WAIT,

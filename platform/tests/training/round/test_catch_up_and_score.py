@@ -5,12 +5,12 @@ import pytest
 from django.utils import timezone
 
 from sandbox import service as sandbox
+from telemetry.models import Event
 from tests.shape import refused
 from tests.training.round.conftest import pvp, url
 from training.attack import actions as attack
 from training.models import Action, CustomerRequest, Origin, Round, RuleSet, RuleTest
 from training.round import lifecycle as service
-from training.round.lifecycle import wait_for_late_alerts
 from training.traffic import customers
 
 
@@ -123,7 +123,7 @@ def test_the_score_keeps_objectives_outcomes_and_free_actions_apart(as_operator,
 
     score = as_operator.get(url(running, "score/")).json()
 
-    assert set(score) == {"objectives", "outcomes", "free_actions"}
+    assert set(score) == {"pending", "objectives", "outcomes", "free_actions"}
     assert score["outcomes"]["note"] == "one_case_one_decision"
     assert [one["actions"] for one in score["free_actions"]["by_origin"]] == [1]
     assert score["objectives"]["lost"] == [] and score["objectives"]["kept"]
@@ -286,15 +286,17 @@ def test_a_read_judges_each_benign_case_once_the_alert_delay_is_out_and_only_the
     assert "case.judged" not in [kind for kind, _ in kinds_for(running, "attack")]
 
 
-def test_the_round_s_end_judges_the_cases_left_before_it_says_the_round_ended(as_operator, running):
+def test_the_read_after_the_alert_delay_judges_the_cases_left_before_it_says_the_round_was_judged(
+        as_operator, running, settings):
     service.catch_up(running)
     service.end_round(running, "ended_by_operator")
+    settings.JUDGE_AFTER_SECONDS = 0
 
+    per_case = as_operator.get(url(running, "score/")).json()["outcomes"]["per_case"]
     shown = [kind for kind, _ in kinds_for(running, "defence")]
     judged = [index for index, kind in enumerate(shown) if kind == "case.judged"]
-    per_case = as_operator.get(url(running, "score/")).json()["outcomes"]["per_case"]
 
-    assert len(judged) == len(per_case) > 0 and max(judged) < shown.index("round.ended")
+    assert len(judged) == len(per_case) > 0 and max(judged) < shown.index("round.judged")
 
 
 def test_a_round_ended_between_reads_reads_the_logs_once_more_before_it_ends(monkeypatch, running):
@@ -303,7 +305,7 @@ def test_a_round_ended_between_reads_reads_the_logs_once_more_before_it_ends(mon
 
     service.end_round(running, "ended_by_operator")
 
-    assert read == [running.pk, running.pk, running.pk]
+    assert read == [running.pk, running.pk]
     assert Round.objects.get(pk=running.pk).reading_since is None
 
 
@@ -320,7 +322,7 @@ def test_a_round_ended_while_another_request_holds_the_read_waits_for_it_and_rea
 
     service.end_round(running, "ended_by_operator")
 
-    assert (waited, read) == (["running"], [running.pk, running.pk])
+    assert (waited, read) == (["running"], [running.pk])
     assert Round.objects.get(pk=running.pk).phase == "ended"
 
 
@@ -400,38 +402,35 @@ def test_a_fired_case_its_alert_names_ends_the_round_as_a_true_positive_beside_t
     assert totals["tn"] == len(customers.benign_cases(running)) > 0
 
 
-def test_an_alert_that_reaches_elasticsearch_after_the_last_read_still_counts_once_the_round_waited_for_it(
-        monkeypatch, browser, running, other, learner):
+def test_an_alert_that_reaches_elasticsearch_after_the_end_counts_once_the_alert_delay_passed(
+        monkeypatch, browser, running, other, learner, settings):
     from testing.fakes import FakeElastic
 
+    settings.JUDGE_AFTER_SECONDS = 30
     marker = fired_case(browser, running, other, "board-sqli-search")
     es = FakeElastic()
     monkeypatch.setattr("telemetry.elastic.requests.post", es.post)
-    waited = []
-
-    def late_alert_arrives(found):
-        waited.append(found.ended)
-        es.add("s1", suricata_alert(running, marker, 1))
-
-    monkeypatch.setattr(service, "wait_for_late_alerts", late_alert_arrives)
     service.end_round(running, "ended_by_operator")
-
+    es.add("s1", suricata_alert(running, marker, 1))
     browser.force_authenticate(learner)
-    totals = browser.get(url(running, "score/")).json()["outcomes"]["totals"]
 
-    assert len(waited) == 1 and totals["tp"] == 1
+    early = browser.get(url(running, "score/")).json()
+    settings.JUDGE_AFTER_SECONDS = 0
+    late = browser.get(url(running, "score/")).json()
+
+    assert (early["pending"], early["outcomes"]["totals"]["tp"]) == (True, 0)
+    assert (late["pending"], late["outcomes"]["totals"]["tp"]) == (False, 1)
+    assert Event.objects.filter(round_id=running.pk, kind="round.judged").count() == 1
 
 
-def test_the_round_s_end_waits_out_the_alert_delay_counted_from_its_end_time(monkeypatch, settings):
+def test_the_request_that_ends_a_round_does_not_wait_for_late_alerts(monkeypatch, running, settings):
     slept = []
     monkeypatch.setattr(service.time, "sleep", slept.append)
     settings.JUDGE_AFTER_SECONDS = 30
-    ended = Round(ended=timezone.now() - timedelta(seconds=10))
 
-    wait_for_late_alerts(ended)
-    wait_for_late_alerts(Round(ended=timezone.now() - timedelta(seconds=40)))
+    ended = service.end_round(running, "ended_by_operator")
 
-    assert len(slept) == 1 and 19 < slept[0] <= 20
+    assert slept == [] and ended.phase == "ended" and ended.judged_at is None
 
 
 def test_the_reads_at_a_round_s_end_fire_no_benign_pass(monkeypatch, running):

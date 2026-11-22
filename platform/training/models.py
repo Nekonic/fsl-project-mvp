@@ -115,6 +115,7 @@ class Round(models.Model):
     end_reason = models.CharField(max_length=24, choices=REASONS, blank=True, default="")
     reading_since = models.DateTimeField(null=True, blank=True)
     read_at = models.DateTimeField(null=True, blank=True)
+    judged_at = models.DateTimeField(null=True, blank=True)
     unavailable_reads = models.JSONField(default=dict)
 
     class Meta:

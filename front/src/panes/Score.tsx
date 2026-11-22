@@ -22,7 +22,7 @@ interface ObjectiveLine {
   responseSeconds: number | null;
 }
 
-const SCORE_EVENTS = ["round.ended"];
+const SCORE_EVENTS = ["round.ended", "round.judged"];
 
 const VERDICT_TONE: Record<Verdict, TextTone> = { tp: "ok", tn: "ok", fn: "danger", fp: "danger" };
 
@@ -120,6 +120,7 @@ function FreeActions({ score }: { score: ScoreShown }) {
 export function ScoreReport({ score }: { score: ScoreShown }) {
   return (
     <Stack gap="sm">
+      {score.pending && <Notice tone="warn">{t("score.pending")}</Notice>}
       <Columns shape="main-side">
         <Objectives score={score} />
         <DetectionTotals score={score} />

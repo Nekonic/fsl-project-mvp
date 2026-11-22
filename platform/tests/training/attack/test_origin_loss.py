@@ -85,6 +85,22 @@ def test_a_rate_limit_below_the_floor_spends_nothing_and_warns_the_defender_once
     assert kinds(found, ATTACK_VIEW) == [], "the attacker is not told the defender's limit is too low"
 
 
+@pytest.mark.parametrize("floor", [None, 90])
+def test_a_limit_zone_keyed_by_something_other_than_the_client_spends_nothing_and_warns_the_defender_once(
+        make_round, cloud, floor):
+    found = make_round(floor=floor)
+    RuleSet.objects.create(round=found, engine="waf", version=1, sha="1", applied_at=after_start(found),
+                           files={"/etc/nginx/defence/http.conf": LIMITS.replace("$binary_remote_addr", "$server_name")
+                                  .format(rate="90r/m")})
+    es = FakeElastic()
+    es.add("e1", error_document(after_start(found, 1), limited_line(RU)))
+    es.add("e2", error_document(after_start(found, 2), limited_line(BR)))
+
+    assert spent_from_log(es, found) == 0
+    assert kinds(found, DEFENCE_VIEW) == [("limit.shared_key", {"zone": "perip"})]
+    assert kinds(found, ATTACK_VIEW) == []
+
+
 def test_a_limit_line_is_judged_by_the_waf_version_in_force_when_it_was_written(make_round, cloud):
     found = make_round(floor=90)
     with_limit(found, "90r/m")

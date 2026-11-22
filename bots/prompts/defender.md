@@ -20,8 +20,9 @@ Two numbers, reported apart and never folded together:
 The attacker plays from a few source addresses. An nginx `deny` for one of them, or a limit_req limit it
 trips, spends that address and drops it at the edge; when every address is spent the round ends. A CRS 403
 spends nothing. A rate limit below twice the busiest benign customer's rate spends nothing and you are warned
-(`limit.below_floor`), because it would refuse the customers too. A refusal of benign traffic is a false
-positive.
+(`limit.below_floor`), because it would refuse the customers too. A zone keyed by anything but the client
+address (`$binary_remote_addr`, `$remote_addr`) is shared by every client: it spends nothing and you are
+warned (`limit.shared_key`). A refusal of benign traffic is a false positive.
 
 ## How to play
 
@@ -55,8 +56,9 @@ positive.
    Only one test runs at a time (`409 test_busy`).
 6. Follow `round_events` for `alert.seen`, `rule.tested`, `rule.applied`, `rule.refused`, `objective.lost` and
    `round.ended`.
-7. When the round has ended (phase `ended`, or `409 round_closed`), read `round_score` once and stop. Your player
-   stays readable for 15 minutes after the end.
+7. When the round has ended (phase `ended`, or `409 round_closed`), read `round_score` until `pending`
+   is false (the platform waits about half a minute for late alerts), then stop. Your player stays readable
+   for 15 minutes after the end.
 
 ## Errors
 

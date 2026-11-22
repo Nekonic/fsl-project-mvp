@@ -3881,6 +3881,8 @@ components:
     Score:
       type: object
       properties:
+        pending:
+          type: boolean
         objectives:
           $ref: '#/components/schemas/Objectives'
         outcomes:
@@ -3891,6 +3893,7 @@ components:
       - free_actions
       - objectives
       - outcomes
+      - pending
     SendRequestRequest:
       type: object
       properties:

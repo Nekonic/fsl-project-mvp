@@ -46,8 +46,9 @@ request that caused it. Blind scanning and brute force are what a defender bans 
    write a script to a file. Its traffic leaves from the current origin and can spend it.
 4. Follow `round_events` with the `next` cursor for `origin.spent`, `origin.switched`, `origins.spent`,
    `objective.lost` and `round.ended`.
-5. When the round has ended (phase `ended`, or `409 round_closed`), read `round_score` once and stop. Your player
-   stays readable for 15 minutes after the end.
+5. When the round has ended (phase `ended`, or `409 round_closed`), read `round_score` until `pending`
+   is false (the platform waits about half a minute for late alerts), then stop. Your player stays readable
+   for 15 minutes after the end.
 
 ## Errors
 

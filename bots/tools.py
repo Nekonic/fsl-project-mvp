@@ -28,7 +28,8 @@ DESCRIPTIONS = {
     "round_topology": "Read the learner map of the range as your side may see it.",
     "round_score": "Read the score once the round has ended: objectives lost and kept, per-case outcomes "
                    "(one declared case is one decision however many alerts it drew) and free actions by origin. "
-                   "Refused with round_running while the round runs.",
+                   "Refused with round_running while the round runs. `pending` is true until the platform has "
+                   "waited for late alerts and judged the round once more; read again until it is false.",
     "allocation_heartbeat": "Keep the round's allocation alive; `allocation_id` is the `allocation` field of round_read.",
     "attack_state": "Read the attack player's state: phase, brief, target hosts, objectives (kept or lost), "
                     "every origin with when and why it was spent, and the remaining block.",

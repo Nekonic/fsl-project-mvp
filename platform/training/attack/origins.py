@@ -176,41 +176,45 @@ def floor_of(found: Round) -> int | None:
     return (found.snapshot.get("round") or {}).get("limit_floor_rpm")
 
 
-def waf_versions(found: Round) -> list[tuple[datetime, dict[str, int]]]:
-    return [(held.took_effect, crs.limit_rates_in("\n".join(held.files.values())))
+def waf_versions(found: Round) -> list[tuple[datetime, crs.LimitZones]]:
+    return [(held.took_effect, crs.limit_zones_in("\n".join(held.files.values())))
             for held in RuleSet.objects.filter(round=found, engine=ENGINE_WAF).order_by("version")]
 
 
-def rates_at(versions: Sequence[tuple[datetime, dict[str, int]]], at: datetime) -> dict[str, int]:
-    in_force = [rates for since, rates in versions if since <= at]
+def zones_at(versions: Sequence[tuple[datetime, crs.LimitZones]], at: datetime) -> crs.LimitZones:
+    in_force = [zones for since, zones in versions if since <= at]
     if in_force:
         return in_force[-1]
-    return versions[0][1] if versions else {}
+    return versions[0][1] if versions else crs.LimitZones(rates={}, shared=frozenset())
 
 
-def warn_below_floor(found: Round, held: AccessCursor, zone: str, rate: int, floor: int) -> None:
+def warned_once(found: Round, held: AccessCursor, key: str, kind: str, body: dict) -> None:
     warned = held.cursor.get("limit_warned", {})
     told = set(warned.get(str(found.pk), []))
-    if f"{zone}:{rate}" in told:
+    if key in told:
         return
-    log.append(found.pk, "limit.below_floor", {"zone": zone, "rate_rpm": rate, "floor_rpm": floor},
-               player_side="defence")
-    held.cursor = {**held.cursor, "limit_warned": {**warned, str(found.pk): sorted(told | {f"{zone}:{rate}"})}}
+    log.append(found.pk, kind, body, player_side="defence")
+    held.cursor = {**held.cursor, "limit_warned": {**warned, str(found.pk): sorted(told | {key})}}
     held.save(update_fields=["cursor"])
 
 
 def counted(found: Round, refusal: access_log.Refusal, held: AccessCursor,
-            versions: Sequence[tuple[datetime, dict[str, int]]]) -> bool:
+            versions: Sequence[tuple[datetime, crs.LimitZones]]) -> bool:
     if refusal.by == access_log.DENY:
         return True
+    zones = zones_at(versions, refusal.at)
+    if refusal.zone in zones.shared:
+        warned_once(found, held, f"shared:{refusal.zone}", "limit.shared_key", {"zone": refusal.zone})
+        return False
     floor = floor_of(found)
     if not floor:
         return True
-    rate = rates_at(versions, refusal.at).get(refusal.zone)
+    rate = zones.rates.get(refusal.zone)
     if rate is None:
         return False
     if rate < floor:
-        warn_below_floor(found, held, refusal.zone, rate, floor)
+        warned_once(found, held, f"{refusal.zone}:{rate}", "limit.below_floor",
+                    {"zone": refusal.zone, "rate_rpm": rate, "floor_rpm": floor})
         return False
     return True
 
@@ -226,14 +230,14 @@ def spent_by_log(found: Round) -> list[Origin]:
         return []
     held, _ = AccessCursor.objects.get_or_create(allocation=found.allocation)
     cursor = held.cursor.get("errors")
-    versions: list[tuple[datetime, dict[str, int]]] | None = None
+    versions: list[tuple[datetime, crs.LimitZones]] | None = None
     fallen: list[Origin] = []
     for _ in range(ERROR_PAGES):
         found_refusals, moved = access_log.refusals(found, cursor)
         for refusal in found_refusals:
             if refusal.ip not in open_ips or not within(found, refusal.at):
                 continue
-            if refusal.by == access_log.LIMIT_REQ and versions is None and floor_of(found):
+            if refusal.by == access_log.LIMIT_REQ and versions is None:
                 versions = waf_versions(found)
             if not counted(found, refusal, held, versions or []):
                 continue

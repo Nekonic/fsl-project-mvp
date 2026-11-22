@@ -169,6 +169,7 @@ class FreeActions(serializers.Serializer):
 
 
 class Score(serializers.Serializer):
+    pending = serializers.BooleanField()
     objectives = Objectives()
     outcomes = Outcomes()
     free_actions = FreeActions()

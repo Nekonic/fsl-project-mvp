@@ -265,20 +265,35 @@ def finish(found: Round, reason: str) -> Round:
     found.refresh_from_db()
     guarded(found, "closing the attack side", attack.close)
     guarded(found, "closing the defence side", defence.close)
-    if was != CREATED:
+    if was == CREATED:
+        Round.objects.filter(pk=found.pk).update(judged_at=timezone.now())
+    else:
         customers.stop(found)
-        wait_for_late_alerts(found)
-        stepped(found, ALERTS_READ, lambda one: alert_feed.ingest_alerts(one))
-        guarded(found, "settling the objectives", settle)
-        stepped(found, "judging the cases", judge)
     log.append(found.pk, "round.ended", {"reason": reason})
+    found.refresh_from_db()
     return found
 
 
-def wait_for_late_alerts(found: Round) -> None:
-    left = (found.ended + judge_after() - timezone.now()).total_seconds()
-    if left > 0:
-        time.sleep(left)
+def judge_late(found: Round) -> bool:
+    at = timezone.now()
+    if found.ended is None or found.judged_at is not None or at < found.ended + judge_after():
+        return False
+    if not Round.objects.filter(not_being_read(at), pk=found.pk, phase=ENDED, judged_at=None).update(
+            reading_since=at):
+        return False
+    try:
+        stepped(found, ALERTS_READ, lambda one: alert_feed.ingest_alerts(one))
+        guarded(found, "settling the objectives", settle)
+        stepped(found, "judging the cases", judge)
+    finally:
+        Round.objects.filter(pk=found.pk, reading_since=at).update(reading_since=None, judged_at=timezone.now())
+    log.append(found.pk, "round.judged", {})
+    found.refresh_from_db()
+    return True
+
+
+def pending(found: Round) -> bool:
+    return found.judged_at is None
 
 
 def forfeit(found: Round, player: Player) -> Round:
@@ -377,6 +392,9 @@ def final_reads(found: Round) -> None:
 
 def catch_up(found: Round, at: datetime | None = None) -> str | None:
     claimed_at = timezone.now()
+    if found.phase == ENDED:
+        judge_late(found)
+        return None
     if found.phase != RUNNING or not claim_reading(found, claimed_at):
         return None
     try:

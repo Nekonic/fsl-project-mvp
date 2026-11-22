@@ -1,6 +1,7 @@
 import { refuse, reply } from "../fixture";
 
 export const score = {
+  pending: false,
   objectives: {
     lost: [{ key: "board-auth-user-partial", name: "Board accounts, partial", detected: true, responded: true, response_seconds: 42.4, attributed_marker: "m-7f3a" }],
     kept: [

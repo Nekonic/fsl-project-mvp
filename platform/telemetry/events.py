@@ -43,6 +43,7 @@ class Viewer:
 KINDS: dict[str, Kind] = {
     "round.started": Kind({"ends_at": MAYBE_TEXT}, BOTH),
     "round.ended": Kind({"reason": TEXT}, BOTH),
+    "round.judged": Kind({}, BOTH),
     "player.joined": Kind({"side": TEXT, "client": TEXT}, BOTH),
     "action.sent": Kind({"action": NUMBER, "kind": TEXT, "status": MAYBE_NUMBER}, ATTACK_SIDE),
     "tool.started": Kind({"run": NUMBER, "tool": TEXT}, ATTACK_SIDE),
@@ -56,6 +57,7 @@ KINDS: dict[str, Kind] = {
     "rule.applied": Kind({"engine": TEXT, "version": NUMBER, "source": TEXT}, DEFENCE_SIDE),
     "rule.refused": Kind({"engine": TEXT, "version": NUMBER, "message": TEXT}, DEFENCE_SIDE),
     "limit.below_floor": Kind({"zone": TEXT, "rate_rpm": NUMBER, "floor_rpm": NUMBER}, DEFENCE_SIDE),
+    "limit.shared_key": Kind({"zone": TEXT}, DEFENCE_SIDE),
     "case.judged": Kind({"action": TEXT, "case": TEXT, "verdict": TEXT, "alerts": NUMBER, "corroborated": MAYBE_FLAG},
                         DEFENCE_SIDE),
     "objective.lost": Kind({"key": TEXT, "name": TEXT}, BOTH, staff_fields={"attributed_marker": MAYBE_TEXT}),

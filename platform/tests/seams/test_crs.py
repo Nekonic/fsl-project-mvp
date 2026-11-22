@@ -185,12 +185,12 @@ def test_the_limit_rates_are_read_from_the_waf_files_in_requests_per_minute():
              "limit_req_zone $binary_remote_addr rate=30r/m zone=slow:1m;\n"
              "server { location / { limit_req zone=perip burst=5; } }\n")
 
-    assert crs.limit_rates_in(files) == {"perip": 120, "slow": 30}
+    assert crs.limit_zones_in(files).rates == {"perip": 120, "slow": 30}
 
 
-def test_a_zone_not_keyed_by_the_client_s_address_has_no_rate_a_refusal_can_be_judged_by():
+def test_a_zone_not_keyed_by_the_client_s_address_is_shared_and_has_no_rate():
     dumped = ("limit_req_zone $server_name zone=all:1m rate=90r/m;\n"
               "limit_req_zone \"constant\" zone=one:1m rate=90r/m;\n"
               "limit_req_zone $binary_remote_addr$uri zone=perpage:1m rate=90r/m;\n")
 
-    assert crs.limit_rates_in(dumped) == {"perpage": 90}
+    assert crs.limit_zones_in(dumped) == crs.LimitZones(rates={"perpage": 90}, shared=frozenset({"all", "one"}))

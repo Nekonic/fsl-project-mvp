@@ -83,7 +83,8 @@ The provider turns these into its model's own message format. A `Turn` with no c
 The attacker plays from a set of source addresses (origins). An origin is spent when the WAF's nginx error log
 names it in an `access forbidden by rule` line (a `deny`) or a `limiting requests` line (a limit_req). A CRS
 rule's 403 does not spend it. A rate limit below twice the busiest benign customer's per-origin rate spends
-nothing, and the defender is warned instead (`limit.below_floor`).
+nothing, and the defender is warned instead (`limit.below_floor`); so does a zone keyed by anything but the
+client address (`limit.shared_key`).
 
 Every successful attack answer carries `remaining: {origin: {id, label, ip}, left, total, spent}`, and every
 attack answer, errors included, the headers `X-Origin` and `X-Origins-Left`. A spent origin is dropped at the

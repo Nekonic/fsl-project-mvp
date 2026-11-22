@@ -12,12 +12,12 @@ OPERATOR = Viewer(operator=True)
 STAFF = Viewer(staff=True)
 
 SPEC_VISIBILITY = {
-    "round.started": "both", "round.ended": "both", "player.joined": "both",
+    "round.started": "both", "round.ended": "both", "round.judged": "both", "player.joined": "both",
     "action.sent": "attack", "tool.started": "attack", "tool.ended": "attack", "command.run": "attack",
     "origin.spent": "attack", "origin.switched": "attack", "origins.spent": "attack",
     "alert.seen": "defence", "rule.tested": "defence", "rule.applied": "defence",
     "rule.refused": "defence",
-    "limit.below_floor": "defence", "case.judged": "defence", "objective.lost": "both",
+    "limit.below_floor": "defence", "limit.shared_key": "defence", "case.judged": "defence", "objective.lost": "both",
 }
 AUDIENCES = {
     "both": kinds.BOTH, "attack": kinds.ATTACK_SIDE, "defence": kinds.DEFENCE_SIDE,
