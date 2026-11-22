@@ -10790,3 +10790,41 @@ How the "IDS rules are edited on the sensor" ruling above is carried out.
   `test/test_apply_after_test.py`, `test/test_concurrent_sessions.py`,
   `test/test_rule_changes.py`) now write and reload through the IDS shell
   and were not run; `test/test_disabled_rule.py` went with the feature.
+
+## 2026-11-22 — Whole-branch review: what was fixed and what stays open
+
+- **A marker counts only from its own address.** Any client can send an
+  `X-Request-ID`, and the WAF's analyst can curl the sites through the WAF.
+  Under marker correlation a detection now counts for a case only when its
+  source is the address the case was sent from (an attack origin, or the
+  customer address of a benign case); a detection with no source still
+  counts. The IDS sees the WAF-to-site leg, so its source is the last
+  `X-Forwarded-For` entry, which nginx sets to the client it saw.
+  **[unverified on a range]** an IDS alert that reaches the platform with no
+  `X-Forwarded-For` join keeps the WAF's address and no longer counts for a
+  marker case; the acceptance run must show TP > 0 still.
+- **The WAF reload refuses before it loads.** `deploy/roles/waf/nginx` runs
+  the platform's measurement check (the logging directives, real IP and, new,
+  nginx `include` and ModSecurity `Include`/`IncludeOptional`) on the
+  snapshot before `nginx -t` and the reload, and on the live files for a bare
+  `-t` or `-T`; the console applies and the scratch test check the live files
+  they load beside the given ones. A test holds the shell check to
+  `crs.measurement_in` line by line. The WAF must be rebaked.
+- **The round's end waits for late alerts.** `finish` waits until
+  `CR_JUDGE_AFTER_SECONDS` past `ended`, ingests once more, then settles and
+  judges; the request that ends a round can take that long. The final reads
+  fire no benign pass.
+- **Smaller fixes.** A `limit_req_zone` whose key has no `$remote_addr` or
+  `$binary_remote_addr` spends nothing (silently, as an undeclared zone). A
+  closing allocation holds its slot `resetting` before it is marked closed,
+  so the slot is not offered during the teardown. A rebuild step drops its
+  result when the refill changed while it ran. An operator who holds a seat
+  reads the score only after the end. A read ends a tool run the box reports
+  finished. `RuleSet.player` is gone and training has one `0001` again.
+- **Open.** Whether a lost objective counts as seen from any detected attempt
+  in its window or only the latest (free actions now qualify and the
+  attacker can pick the credited one); judging a `limit_req` refusal by the
+  zone rate live when it was written, which needs every reload kept, not
+  only the last; a warning text for a shared-key zone; the IDS reload
+  wrapper checks nothing before it loads; whether the topology should name
+  the sensor's `suricata -T` check the way it names the reload.
