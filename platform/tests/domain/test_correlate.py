@@ -45,10 +45,16 @@ def test_the_marker_comes_from_the_action_not_the_case_id():
     assert result.matches[0].malicious is None
 
 
-def test_marker_case_ignores_time_and_ip():
-    result = correlate([case(source_ip="10.0.0.1")], [det(marker="c1", src_ip="10.0.0.9", at=9999)])
+def test_marker_case_ignores_time():
+    result = correlate([case(source_ip="10.0.0.1")], [det(marker="c1", src_ip="10.0.0.1", at=9999)])
 
     assert result.matches[0].detected is True
+
+
+def test_a_marker_sent_from_another_address_does_not_match():
+    result = correlate([case(source_ip="10.0.0.1")], [det(marker="c1", src_ip="127.0.0.1")])
+
+    assert result.matches[0].detected is False
 
 
 def test_window_case_matches_on_ip_and_time():

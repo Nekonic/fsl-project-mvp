@@ -10554,8 +10554,10 @@ How the "WAF is real files" ruling above is carried out.
   logs stay unwritable. `sudo` allows `nginx -t`, `nginx -T`,
   `nginx -s reload` and `systemctl reload nginx`. The nft fence that dropped
   everything the account sent now accepts loopback, so `curl` reaches the
-  sites through the WAF itself; the curl carries no marker and is not
-  scored. The sensor gets no analyst account, so nothing changes there.
+  sites through the WAF itself. Such a curl may carry any `X-Request-ID`,
+  so a detection counts for a marker case only when its source address is
+  the one the case was sent from (`correlate._sent_from`); the curl's
+  source is the WAF's own, and it counts for no case. The sensor gets no analyst account, so nothing changes there.
 - **The scratch test** copies the CRS tree and `/etc/nginx/defence`, points
   every `proxy_pass` in the copied site files at the probe stub, and loads
   the copies where the live config loads them (`probe.conf` now has a

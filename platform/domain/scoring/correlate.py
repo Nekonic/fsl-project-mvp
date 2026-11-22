@@ -52,12 +52,16 @@ def correlate(
 
 def matches_case(case: CaseRecord, detection: DetectionRecord) -> bool:
     if case.correlation == CORRELATION_MARKER:
-        return detection.marker is not None and detection.marker == case.marker
+        return detection.marker is not None and detection.marker == case.marker and _sent_from(case, detection)
     if case.source_ip is None or detection.src_ip != case.source_ip:
         return False
     if detection.marker not in (None, case.marker):
         return False
     return case.started_at - WINDOW_SLACK <= detection.timestamp <= case.ended_at + WINDOW_SLACK
+
+
+def _sent_from(case: CaseRecord, detection: DetectionRecord) -> bool:
+    return case.source_ip is None or detection.src_ip is None or detection.src_ip == case.source_ip
 
 
 def _require_known(strategy: str, whose: str) -> None:
