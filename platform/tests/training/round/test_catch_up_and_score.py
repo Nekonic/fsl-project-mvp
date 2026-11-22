@@ -149,6 +149,13 @@ def test_a_player_reads_the_score_only_after_the_end_and_never_picks_the_correla
     assert browser.get(url(found, "score/?correlation=window")).status_code == 200
 
 
+def test_an_operator_who_plays_in_the_round_reads_its_score_only_after_the_end(browser, allocation, problem, other):
+    found = service.start_round(pvp(allocation, problem, allocation.opened_by, other))
+    browser.force_authenticate(allocation.opened_by)
+
+    refused(browser.get(url(found, "score/")), 409, "round_running")
+
+
 def test_the_customers_program_starts_with_the_round_and_its_records_land_as_customer_requests(cloud, running):
     customers_box = cloud.in_slot(1).customers
     customers_box.answer("cr.records=", 'cr.records=\n{"marker": "m1", "action": "home", "method": "GET", "path": "/", '

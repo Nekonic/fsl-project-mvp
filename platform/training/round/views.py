@@ -139,7 +139,8 @@ class Score(MatchView):
                    operation_id="round_score")
     def get(self, request, round_id: int):
         asked = given(serializers.ScoreQuery, request.query_params)
-        found = service.score_for(request.round, bool(request.user.is_staff), request.operator,
+        found = service.score_for(request.round, bool(request.user.is_staff),
+                                  bool(request.user.is_staff) or (request.operator and not request.players),
                                   asked.get("correlation"))
         return Response(serializers.Score(found.shown()).data)
 
