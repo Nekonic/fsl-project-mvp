@@ -25,7 +25,8 @@
 - **자유 행동**: 선언된 케이스가 아닌 요청, 도구 실행, 명령, 사이트 패널 요청. 출발지와 시간으로 묶어 따로 보고하고
   정탐·오탐으로 세지 않음
 - **출발지**(`Origin`): 공격 박스가 요청을 보내는 주소 하나. WAF가 `deny`나 `limit_req`로 막으면 소진
-- **마커**: 요청의 `X-Request-ID` 값. API로 보낸 요청과 케이스는 플랫폼이 붙이고, 알림과 행동을 이 값으로 매칭
+- **마커**: 요청의 `X-Request-ID` 값. API로 보낸 요청과 케이스는 플랫폼이 붙이고, 알림과 행동을 이 값으로 매칭.
+  누구나 이 헤더를 붙일 수 있으므로 알림의 출발지가 그 행동을 보낸 주소일 때만 매칭(`correlate._sent_from`)
 - **posture**: 라운드 시작 시점의 Suricata 룰과 WAF 파일 텍스트. 스태프가 `Posture` 행으로 작성
 - **probe 녹화**: 룰 테스트에 쓰는 케이스별 요청·응답·pcap. `wargames/<id>/probes/`에 커밋
 
@@ -268,12 +269,12 @@ sequenceDiagram
   R->>A: 출발지 풀 채우기(에지 pool)
   R->>R: Kibana space, infra VM의 고객 트래픽 시작
   loop 라운드에 API 요청이 올 때(CatchingUpView, 한 번에 한 요청, CR_READ_EVERY_SECONDS 간격)
-    R->>D: 알림 수집, 터미널 reload 기록, 만료된 비활성화 복구
+    R->>D: 알림 수집, 터미널 reload 기록
     R->>A: 오류 로그로 출발지 소진, 명령 기록 읽기
     R->>S: corp 변경 관찰, 목표 정리, 케이스 판정(case.judged)
     R->>R: 고객 기록과 정상 케이스, 종료 조건
   end
-  R->>R: end_round: 남은 케이스 판정, 이벤트, 고객 중지, 터미널 권한 회수
+  R->>R: end_round: 고객 중지, 알림 지연만큼 기다린 뒤 알림 수집, 남은 케이스 판정, 이벤트, 터미널 권한 회수
   O->>R: GET /api/rounds/<r>/score/
 ```
 
@@ -284,13 +285,15 @@ sequenceDiagram
 - 할당은 `CR_ALLOCATION_IDLE_MINUTES`(기본 30분) 동안 하트비트가 없으면 만료됩니다. 운영자와 플레이어가 하트비트를
   보냅니다.
 - 주기적으로 도는 라운드 작업은 없습니다. 라운드나 할당에 대한 API view는 모두 `CatchingUpView`
-  (`training/round/views_catch_up.py`)를 거치고, 인증과 권한 확인 뒤 만료된 할당을 닫고 `lifecycle.catch_up`을
-  부릅니다. `catch_up`은 `Round.reading_since`에 대한 조건부 `UPDATE` 하나로 라운드를 잡고(5분이 지난 잡기는 버려진
+  (`training/round/views_catch_up.py`)를 거치고, 인증과 권한 확인 뒤 `lifecycle.catch_up`으로 라운드를 먼저 읽고
+  그다음 만료된 할당을 닫습니다. `catch_up`은 `Round.reading_since`에 대한 조건부 `UPDATE` 하나로 라운드를 잡고(5분이 지난 잡기는 버려진
   것으로 봄) `read_at`으로 놓습니다. 놓을 때는 자기가 잡은 시각과 같은 잡기만 풉니다. 읽기 단계마다 DB에서 라운드가
   아직 진행 중인지 보고, 그사이 끝났으면 거기서 멈춥니다. 아무도 부르지 않는 라운드는 아무 일도 하지 않습니다.
 - 읽기 단계 하나가 실패해도 나머지 단계는 계속 돕니다. 제한 시간이 지난 라운드는 다음 요청이 끝내고 종료 시각은
   제한 시간으로 남깁니다. 점수는 종료 시각까지의 동작, 알림, 목표만 셉니다.
-- 운영자 종료, 기권, 할당 만료로 끝나는 라운드도 끝내기 전에 읽기를 한 번 더 돌립니다. 다른 요청이 읽는 중이면
+- 운영자 종료, 기권, 할당 만료로 끝나는 라운드도 끝내기 전에 읽기를 한 번 더 돌립니다. 이 마지막 읽기는 정상
+  트래픽을 새로 보내지 않습니다. 라운드가 끝나면 종료 시각에서 `CR_JUDGE_AFTER_SECONDS`가 지날 때까지 기다렸다가
+  알림을 한 번 더 수집하고 남은 케이스를 판정하므로, 종료 직전에 찍혔지만 늦게 도착한 알림도 점수에 들어갑니다. 다른 요청이 읽는 중이면
   그 읽기가 끝나거나 버려질 때까지 기다렸다가 읽습니다. 요청은 할당 만료를 보기 전에
   라운드부터 읽으므로, 제한 시간이 지난 라운드는 할당이 만료됐어도 `time_limit`으로 끝납니다.
 - 만료된 할당은 다음 할당 요청이나 그 할당에 들어온 요청이 닫습니다. 반납된 슬롯의 스택은 `rebuild` 서비스
@@ -350,6 +353,10 @@ sequenceDiagram
   `log_format`, `access_log`, 요청 마커, 감사 로그는 읽기 전용인 `conf.d/board.com.conf`와 `modsecurity.conf`에
   있고, 방어 파일 어느 줄 어느 자리에든 `access_log`·`log_format`·`error_log`·`open_log_file_cache`·`SecAudit*`·`ctl:audit*`가
   있으면 거부합니다. 클라이언트 주소도 측정이라 `set_real_ip_from`·`real_ip_header`·`real_ip_recursive`도 거부합니다.
+  검사하지 않은 파일을 불러올 수 있는 nginx `include`와 ModSecurity `Include`·`IncludeOptional`도 거부합니다.
+  콘솔에서 적용할 때는 보낸 파일만이 아니라 함께 다시 불러올 지금 파일도 검사하고, 룰 테스트의 scratch도 그렇게
+  합니다. 터미널의 reload 래퍼(`deploy/roles/waf/nginx`)도 같은 검사를 스냅샷에 돌려 걸리면 `nginx -t`와 reload 전에
+  멈추고, `sudo nginx -t`·`-T`도 지금 파일에 같은 검사를 돌립니다.
 - 터미널에서 reload한 파일도 다음 읽기 때 같은 검사를 거칩니다. 검사 대상은 지금 파일이 아니라 reload 때 남긴
   스냅샷입니다. 걸리면 기록하지 않고 마지막 버전 파일을 써서 reload하고 `rule.refused` 이벤트를 남깁니다. IDS는
   `config: logging`이 든 룰(그 트랜잭션의 eve 기록을 끔)이 걸리는 대상이고, 백슬래시로 여러 줄에 이어 쓴 룰도 한
@@ -431,7 +438,8 @@ sequenceDiagram
   초당 1건)로 가장 바쁜 고객 출발지의 분당 요청 수를 구하고 두 배를 합니다. `training.content.problems.snapshot`이 라운드 설정에
   `limit_floor_rpm`으로 넣습니다. `limit_req` 줄이 나오면 `sandbox.crs.limit_rates`가 `nginx -T`에서
   `limit_req_zone`의 `rate`를 읽고, zone의 rate가 하한보다 낮으면 소진하지 않고 방어 쪽에 `limit.below_floor`를
-  한 번 남깁니다. 지금 설정이 선언하지 않은 zone도 소진하지 않습니다.
+  한 번 남깁니다. 지금 설정이 선언하지 않은 zone도, 키에 `$binary_remote_addr`나 `$remote_addr`가 없는 zone도
+  소진하지 않습니다.
 - 출발지는 WAF에서 셉니다. Suricata는 WAF 뒤에 있어 출발지가 WAF이고, WAF가 거부한 요청을 보지 못하기 때문입니다.
 - 출발지가 소진되면 `sandbox.edge.spend`가 그 주소를 `spent` 집합에 넣고 conntrack을 지웁니다. `edge.nft`에서 이
   drop 규칙은 established 허용보다 앞에 있어야 열린 연결도 끊깁니다. 이어서 그 출발지의 도구 실행을 멈추고

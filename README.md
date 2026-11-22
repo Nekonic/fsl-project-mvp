@@ -106,7 +106,9 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
   막으면 오류 로그에 남지 않으므로 세지 않습니다.
 - `limit_req` 하한: `traffic.yaml`에서 가장 바쁜 정상 고객 출발지의 요청 속도의 두 배를 라운드를 열 때
   계산해 둡니다(`limit_floor_rpm`, 분당 요청 수). 걸린 zone의 `rate`가 이보다 낮으면 소진하지 않고 방어 쪽에
-  `limit.below_floor` 이벤트로 알립니다. `rate`는 WAF의 `nginx -T`로 읽습니다.
+  `limit.below_floor` 이벤트로 알립니다. `rate`는 WAF의 `nginx -T`로 읽습니다. 키가 클라이언트 주소
+  (`$binary_remote_addr`, `$remote_addr`)를 담지 않은 zone(`$server_name`이나 상수처럼 모든 클라이언트가 나눠 쓰는
+  zone)에 걸린 요청은 소진하지 않습니다.
 - 소진되면 infra 라우터가 그 주소를 떨어뜨리고(이미 맺은 연결 포함), 돌고 있던 도구를 멈추고, 다음 출발지로
   바꿉니다. 출발지가 다 떨어지면 공격 API 쓰기는 `409 origins_spent`이고 라운드가 끝납니다.
 - 공격 API의 성공 응답에는 `remaining` 블록(현재 출발지, 남은 수, 전체 수, 소진된 IP)이, 모든 응답(오류 포함)에는
@@ -421,7 +423,7 @@ npm run build && npx vitest run
 ## 백업과 복원
 
 백업 대상은 플랫폼 VM `cr_platformdata` 볼륨의 `/data/db.sqlite3`입니다. 계정, 할당, 라운드, 플레이어, 출발지, 공격 기록,
-도구 실행, 탐지 기록, 고객 요청, 목표, 룰셋, 룰 테스트, 비활성화한 룰이 들어 있습니다. Elasticsearch 데이터는
+도구 실행, 탐지 기록, 고객 요청, 목표, 룰셋, 룰 테스트가 들어 있습니다. Elasticsearch 데이터는
 백업하지 않습니다.
 
 ```bash
@@ -457,7 +459,7 @@ sudo docker compose start platform rebuild
 | `/api/`(봇) | `Authorization: Bearer <플레이어 토큰>`. 토큰은 라운드를 만들 때 한 번만 보여 주고 해시로만 저장. 자기 쪽 공격 또는 방어 경로와 라운드 읽기만 닿음. 라운드가 끝나면 15분 동안 읽기만 가능 |
 | 플레이어 | 상대 쪽 경로는 403. 라운드 시작 전 쓰기는 `409 round_not_started`, 끝난 뒤는 `409 round_closed`. 플레이어는 할당을 열거나 닫지 못하고 라운드를 끝내지 못함(기권만 가능). PvP에서 한 사람이 양쪽 플레이어를 맡지 못함(`already_playing`) |
 | 이벤트 피드 | 이벤트 종류마다 볼 수 있는 쪽이 정해져 있음. 공격 쪽은 알림과 룰 이벤트를, 방어 쪽은 공격 행동과 출발지 이벤트를 보지 못함 |
-| WAF 파일 | 방어 플레이어가 고치는 파일은 `crs-setup.conf`, REQUEST-900·RESPONSE-999 예외 파일, `deny`·`limit_req`를 넣는 nginx 파일(`/etc/nginx/defence/`)뿐. `log_format`, `access_log`, `error_log`, 감사 로그 설정은 측정용이라 콘솔에서 거부하고 `analyst` 계정도 쓸 수 없음. `SecRuleEngine Off`·`DetectionOnly`는 허용(점수에 결과가 드러남) |
+| WAF 파일 | 방어 플레이어가 고치는 파일은 `crs-setup.conf`, REQUEST-900·RESPONSE-999 예외 파일, `deny`·`limit_req`를 넣는 nginx 파일(`/etc/nginx/defence/`)뿐. `log_format`, `access_log`, `error_log`, real IP 설정, 감사 로그 설정과 `include`는 측정용이라 콘솔이 거부하고, 터미널의 `sudo nginx -s reload`·`-t`·`-T`도 이런 설정이 든 파일은 불러오지 않고 거부함. `SecRuleEngine Off`·`DetectionOnly`는 허용(점수에 결과가 드러남) |
 | `/vm-terminal/<attack\|defence\|ids>/<round>/` | nginx `auth_request`가 `/api/rounds/<round>/terminal-auth/<attack\|defence\|ids>/`에 그 라운드의 그 쪽 플레이어인지 물음(`ids`는 방어 플레이어). 공격 플레이어는 Kali의 `kali` 계정, 방어 플레이어는 cr-waf와 cr-infra의 `analyst` 계정(root 아님)으로 열리고, `GET terminal/`이나 `GET ids/terminal/`로 받은 점프 권한이 없거나 라운드가 끝났으면 열리지 않음. 열려 있던 셸도 15초마다 다시 확인해 권한이 없어지면 닫힘 |
 | `/kibana/`, 8002(`/site/...`) | nginx `auth_request`로 `/api/me/`에 로그인 세션 확인. 없으면 로그인 페이지로. 로그인 뒤 돌아가는 `next`는 콘솔 안의 경로이거나 `CR_SITE_ORIGIN`(기본은 같은 호스트의 8002)의 `/site/` 주소만 받음 |
 | 회원가입 계정 | 비활성 상태로 만들어짐. 스태프가 승인해야 로그인 가능 |
@@ -493,7 +495,7 @@ sudo docker compose start platform rebuild
 - WAF 접근 로그와 오류 로그 전송, 방어 파일(`/etc/nginx/defence/`), infra 라우터의 `pool`·`spent` 집합, CRS 룰
   테스트용 임시 인스턴스, WAF와 infra의 `analyst` 계정, infra의 고객 프로그램(`cr-customers.service`), board의
   `set_passwords`는 배포 파일과 코드에만 있고 역할 이미지에는 아직 없습니다. infra, waf, kali, target 이미지를 다시
-  구워야 합니다(`docs/OPENSTACK.md` §3.7~§3.9). target을 다시 굽기 전에는 라운드 시작이
+  구워야 합니다(`docs/OPENSTACK.md` §3.7~§3.10). target을 다시 굽기 전에는 라운드 시작이
   `ground_truth_unavailable`로 실패합니다.
 - 룰 테스트용 녹화(`wargames/<id>/probes/`)가 아직 없습니다. 지금 룰 테스트는 케이스를 미탐이 아니라
   `untested`(`not_recorded`, WAF 도구 케이스는 `tool_case`)로 돌려줍니다.
