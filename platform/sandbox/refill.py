@@ -14,6 +14,7 @@ IDLE = "idle"
 BUILDING = "building"
 CONFIGURING = "configuring"
 FAILED = "failed"
+RESETTING = "resetting"
 RUNNING = (BUILDING, CONFIGURING)
 WAIT = 1800.0
 
@@ -34,7 +35,7 @@ class Refill:
         return self.state in RUNNING
 
     def shown(self) -> dict:
-        return {"state": "running" if self.running else self.state, "reason": self.reason}
+        return {"state": "running" if self.running or self.state == RESETTING else self.state, "reason": self.reason}
 
 
 class Store(Protocol):
@@ -112,6 +113,20 @@ def claim(store: Store, clock: Clock, slot: int, wargame: str = "", replaced: tu
         store.put(Refill(slot=slot, state=BUILDING, wargame=wargame, replaced=tuple(replaced),
                          deadline=clock() + wait))
         return True
+
+
+def hold_for_reset(store: Store, slot: int) -> bool:
+    with _claiming:
+        if standing(store, slot).state != IDLE:
+            return False
+        store.put(Refill(slot=slot, state=RESETTING))
+        return True
+
+
+def let_go_of_reset(store: Store, slot: int) -> None:
+    with _claiming:
+        if standing(store, slot).state == RESETTING:
+            store.put(Refill(slot=slot))
 
 
 def release(store: Store, slot: int) -> None:

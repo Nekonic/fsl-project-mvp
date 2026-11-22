@@ -79,14 +79,25 @@ def unavailable() -> errors.Unavailable:
     return errors.Unavailable(code="range_unavailable", params={"retry_after": RETRY_AFTER})
 
 
+def hold_for_reset(slot: int | None) -> bool:
+    return bool(slot) and refill.hold_for_reset(store(), slot)
+
+
+def let_go_of_reset(slot: int | None) -> None:
+    if slot:
+        refill.let_go_of_reset(store(), slot)
+
+
 def refill_slot(slot: int | None, wargame: str) -> None:
     if not slot:
         return
     kept = store()
     try:
         replaced = tuple(ident for _, ident in reach.slot_range(slot).reset_slot())
-    except errors.DomainError as failed:
+    except Exception as failed:
         refill.failed(kept, slot, str(failed) or type(failed).__name__)
+        if not isinstance(failed, errors.DomainError):
+            raise
         return
     refill.claim(kept, clock, slot, wargame, replaced, wait=configured().refill.wait)
 

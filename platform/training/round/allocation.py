@@ -77,10 +77,13 @@ def keeping_open(held: Allocation):
 def close_allocation(held: Allocation, reason: str = "ended_by_operator") -> Allocation:
     for found in Round.objects.filter(allocation=held).exclude(phase=ENDED):
         lifecycle.end_round(found, reason)
+    holding = sandbox.hold_for_reset(held.slot)
     closed = Allocation.objects.filter(pk=held.pk, closed=None).update(closed=timezone.now())
     held.refresh_from_db()
     if closed:
         sandbox.refill_slot(held.slot, held.wargame_id)
+    elif holding:
+        sandbox.let_go_of_reset(held.slot)
     return held
 
 

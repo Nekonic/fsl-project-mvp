@@ -57,6 +57,23 @@ def test_a_slot_still_refilling_is_not_offered(as_learner, cloud, settings):
     assert cloud.in_slot(1).resets == 1
 
 
+def test_a_slot_is_not_offered_while_its_stack_is_being_torn_down(db, cloud, monkeypatch):
+    allocation = allocations.open_allocation(None, "board")
+    slot = cloud.in_slot(1)
+    tearing_down = slot.reset_slot
+    ready_meanwhile = []
+
+    def torn_down():
+        ready_meanwhile.append(sandbox.slot_ready(1))
+        return tearing_down()
+
+    monkeypatch.setattr(slot, "reset_slot", torn_down)
+    allocations.close_allocation(allocation)
+
+    assert ready_meanwhile == [False]
+    assert refill.standing(sandbox.store(), 1).state == refill.BUILDING
+
+
 def test_closing_an_allocation_ends_its_rounds_and_the_rebuild_job_refills_the_slot(as_operator, cloud, allocation, problem,
                                                                            learner, other):
     found = pvp(allocation, problem, other, learner)
