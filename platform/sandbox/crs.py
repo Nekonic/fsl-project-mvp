@@ -121,6 +121,7 @@ def detection_only(files: Mapping[str, str], config: WafConfig) -> dict[str, str
 LIMIT_ZONE = re.compile(r"(?:^|[;{}\s])limit_req_zone\s+([^;]*);")
 ZONE_NAME = re.compile(r"\bzone=([^\s:;]+):")
 ZONE_RATE = re.compile(r"\brate=(\d+)r/([sm])\b")
+PER_CLIENT_KEY = re.compile(r"\$(?:binary_)?remote_addr\b")
 
 
 def limit_rates_in(text: str) -> dict[str, int]:
@@ -128,7 +129,7 @@ def limit_rates_in(text: str) -> dict[str, int]:
     rates = {}
     for arguments in LIMIT_ZONE.findall(kept):
         name, rate = ZONE_NAME.search(arguments), ZONE_RATE.search(arguments)
-        if name and rate:
+        if name and rate and PER_CLIENT_KEY.search(arguments.split()[0]):
             rates[name.group(1)] = int(rate.group(1)) * (60 if rate.group(2) == "s" else 1)
     return rates
 

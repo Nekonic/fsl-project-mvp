@@ -179,6 +179,14 @@ def test_the_limit_rates_come_from_the_running_configuration_in_requests_per_min
     assert asked == [["sh", "-c", "nginx -T 2>/dev/null"]]
 
 
+def test_a_zone_not_keyed_by_the_client_s_address_has_no_rate_a_refusal_can_be_judged_by():
+    dumped = ("limit_req_zone $server_name zone=all:1m rate=90r/m;\n"
+              "limit_req_zone \"constant\" zone=one:1m rate=90r/m;\n"
+              "limit_req_zone $binary_remote_addr$uri zone=perpage:1m rate=90r/m;\n")
+
+    assert crs.limit_rates_in(dumped) == {"perpage": 90}
+
+
 def test_an_unreadable_configuration_is_reported_not_taken_as_no_limit():
     with pytest.raises(crs.WafUnreadable):
         crs.limit_rates(lambda argv, stdin=None, timeout=60.0: Ran(1, "nginx: [emerg] unknown directive"))
