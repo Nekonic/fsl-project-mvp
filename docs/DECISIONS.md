@@ -10845,3 +10845,85 @@ Amends the entry above on what counts as 대응 O, and changes how a rule reache
 
 - **Test required.** No WAF or IDS change goes live untested, from the console or from the terminal. A test replays the round's benign cases and the attack cases against the candidate files on the scratch instance (WAF) or the offline `-r` run (IDS). It passes only when no benign case is refused (WAF) or alerted (IDS) and the engine check passes. The console apply accepts only files whose hash equals a passed test of that round and engine. On the box, the reload wrapper refuses to load a snapshot whose hash is not in the list of passed tests the platform writes there (root-owned, read-only to the analyst). The aim is that a false positive cannot reach the live sensor at all.
 - **대응 O** needs proof in logs, not just a new version: (a) an origin used by the attack was spent, shown by deny or limit_req lines in the nginx error log; or (b) a WAF version went live after the attack's first alert (or its first action when none alerted) and before the objective fell, and its required test replayed that attack's own requests (built from what the platform sent for that action: a case recording, or the logged request of a free request action) and the WAF refused them. An IDS change cannot be a response: the IDS only alerts. Rejected: counting any applied version (a no-op or unrelated rule would earn 대응 O).
+
+## 2026-11-22 — Test required and response proof: how it is carried out
+
+How the two rulings above are carried out, and two open points of the
+whole-branch review closed.
+
+- **The gate.** A rule test passes (`passed`) when the engine check passes
+  and no tested benign case was refused with 400 or 403 (WAF) or drew an
+  alert (IDS); the failing cases are `failed_benign`. On a pass the platform
+  appends the box's hash of the tested files to a root-only list,
+  `/var/lib/cr-reloaded/waf.passed` on cr-waf and `ids.passed` on the
+  sensor's node, through `sandbox.crs.permit` and `sandbox.suricata.permit`
+  only; the posture step of a round's setup empties both. The WAF hash is
+  the sha256 of the six defence files' `sha256  path` lines in their fixed
+  order, the IDS hash the rule file's sha256, so the wrappers compute it
+  with `sha256sum`. `deploy/roles/waf/nginx` and
+  `deploy/roles/infra/suricatasc` refuse a snapshot whose hash is not listed,
+  before it loads, and print why. The platform's own loads through the
+  wrapper (posture, put-back, DetectionOnly for a probe recording) list
+  their hash first in `crs.apply`. The console WAF apply merges the live
+  files with the given ones, refuses the result unless a passed test of the
+  round has its hash (`409 not_tested`), and writes that whole set. A
+  terminal version is tied to the passed test of its files.
+- **The proof.** A WAF test also replays the round's attack actions so far
+  (`rules.attack_requests`: a fired case by its recording, a free or
+  site-pane request by the method, host, path, query, headers and body the
+  platform now logs in `Action.meta`), each under its own marker, and keeps
+  per action whether the scratch WAF refused it in the stored result. That
+  list is not served to the defender: it would show attacks no alert saw.
+  A version is a response for a lost objective when it is a WAF version
+  with a passed test of the same files, live after the window's first alert
+  (first action when none alerted) and before the loss, and its test
+  replayed at least one of the window's actions and refused every one it
+  replayed. Tool runs and commands cannot be replayed and are proved only
+  by a spent origin.
+- **Closed from the review.** The IDS reload wrapper runs the
+  `config: logging` check before it loads. A `limit_req_zone` keyed by
+  anything but the client address spends nothing, with or without a floor,
+  and leaves one `limit.shared_key` event for the defence. The request that
+  ends a round no longer sleeps out `CR_JUDGE_AFTER_SECONDS`; the first read
+  after it runs the last ingest, settle and judge, sets `Round.judged_at`
+  and logs `round.judged`, and the score carries `pending` until then.
+- **Open.** With no probe recordings committed no benign case is tested and
+  every rule passes; whether a pass should need a tested benign case is for
+  the user. Acceptance plays that applied a rule expected to refuse
+  customers on the live range now meet the gate and were not run. A replayed
+  case whose recorded response is a 400 or 403 reads as refused by the WAF.
+  The boxes must be rebaked for the wrappers.
+
+## 2026-11-22 — Test required: the review's fixes
+
+Four points of the review of the entry above, fixed.
+
+- **A pass needs every benign case tested.** A rule test passes only when
+  every benign case of the round was replayed (WAF) or run (IDS), at least one
+  was, and none was refused or alerted on. A benign case with no recording
+  lists in `untested_benign` and fails the test, so nothing is permitted. This
+  closes the open point above: with no probe recordings a rule that refuses
+  every request used to pass. Until `bin/record-probes` has recorded a
+  wargame's probes, no WAF or IDS change can go live on its range.
+- **The response is judged on the attack's requests.** A WAF version answers
+  a loss when its test refused every replayed window action that drew an
+  alert; when none drew one, every replayed case attack; when only free
+  requests were replayed, any one of them. Rejected: "every replayed action
+  refused", which let one plain request in the window cancel any response,
+  the same noise the detection ruling closed.
+- **Replays carry fresh markers.** Each replayed attack action goes to the
+  scratch WAF under `replay-<test>-<random>` and is mapped back to its own
+  marker in `actions`. A rule keyed on the `X-Request-ID` the analyst can read
+  in the access log refuses none of the replays.
+- **Acceptance proves the halved weight.** `board_session` applies a tested
+  WAF rule refusing the SQLi search after its alert and before the loot, and
+  `test_score_reveal` needs a responded loss on the board and an unanswered
+  one on corp; the detection mark is a separate test.
+
+## 2026-11-23 — The response replay sends the attack's own logged requests, against the live version and the candidate
+
+Corrects the 2026-11-22 entry, which wrote the user's ruling ("send the log mock-up for real and count what the logs prove") down as a case recording or the logged request of a free request. That replayed one pre-recorded sample per case, not what the attack sent in the round: sqlmap sends about 2,000 requests a run, and the sample says nothing about the ones that got through.
+
+- The requests replayed for an attack are the requests that attack sent in this round, taken from the logs by its marker: the WAF access log's request lines (method, URI, Host), and the ModSecurity audit log for headers and body where it holds the transaction. A request whose body the logs do not hold (a POST that drew no rule, so the audit log kept nothing) takes the body the platform sent for that action; if none is known it is replayed without one and marked so.
+- Each replayed set is sent twice to the scratch instance: once with the files live when the candidate was tested, once with the candidate. 대응 O needs at least one of the attack's requests that the live files let through and the candidate refuses. A version that refuses only what was already refused, or nothing, is 대응 X.
+- Identical request lines are sent once; above a cap per action the replay takes an even sample and says how many it sent of how many logged.

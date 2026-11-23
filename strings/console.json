@@ -374,6 +374,8 @@
   "rule_test.passed.waf": "정상 케이스를 하나도 막지 않아 통과했습니다. 이 파일 그대로 적용하거나 터미널에서 reload 할 수 있습니다.",
   "rule_test.passed.ids": "정상 케이스에서 경보가 하나도 나지 않아 통과했습니다. 이 룰 그대로 터미널에서 reload 할 수 있습니다.",
   "rule_test.failed_benign": "정상 케이스에서 오탐이 나서 통과하지 못했습니다: {cases}. 오탐이 없어야 적용할 수 있습니다.",
+  "rule_test.untested_benign": "녹화가 없어 테스트하지 못한 정상 케이스가 있어 통과하지 못했습니다: {cases}. 정상 케이스를 모두 테스트해야 적용할 수 있습니다.",
+  "rule_test.no_benign": "테스트한 정상 케이스가 없어 통과하지 못했습니다. 정상 케이스로 오탐이 없음을 확인해야 적용할 수 있습니다.",
   "rule_test.failed_engine": "엔진이 받아들이지 않아 통과하지 못했습니다.",
   "rules.apply_needs_test": "적용하려면 지금 내용으로 테스트를 통과해야 합니다.",
   "rule_test.against_applied": "적용된 버전과 비교",

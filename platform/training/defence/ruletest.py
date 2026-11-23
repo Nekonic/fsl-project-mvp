@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import secrets
 import threading
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -186,6 +187,10 @@ def sent_request(marker: str, meta: Mapping[str, Any]) -> dict:
             "headers": dict(meta.get("headers") or {}), "body": meta.get("body"), "response": None}
 
 
+def unseen_markers(attacks: Sequence[dict], test_id: int) -> dict[str, str]:
+    return {attack["marker"]: f"replay-{test_id}-{secrets.token_hex(8)}" for attack in attacks}
+
+
 def waf_replayed(files: Mapping[str, str], wired: Wired, recordings: Sequence[Recording], test_id: int,
                  attacks: Sequence[dict] = ()) -> dict[str, dict]:
     if not recordings and not attacks:
@@ -226,7 +231,8 @@ def table_of(result: Mapping[str, Any]) -> verdicts.VerdictTable:
 
 
 def failed(found: Sequence[dict]) -> dict:
-    return {"ok": False, "passed": False, "failed_benign": [], "actions": [], "errors": list(found), "cases": [], "totals": {TP: 0, FN: 0, FP: 0, TN: 0},
+    return {"ok": False, "passed": False, "failed_benign": [], "untested_benign": [], "actions": [],
+            "errors": list(found), "cases": [], "totals": {TP: 0, FN: 0, FP: 0, TN: 0},
             "untested": [], "against_applied": []}
 
 
@@ -242,23 +248,28 @@ def judged(engine: str, given: Any, wired: Wired, recordings: Sequence[Recording
     tested = [recording for recording in recordings
               if verdicts.untested_reason(recording.probe(engine), engine) is None]
     benign = [recording for recording in tested if not recording.malicious]
+    untested_benign = [recording.case for recording in recordings
+                       if not recording.malicious and recording not in tested]
     if engine == ENGINE_IDS:
         alerts = ids_alerts(given, wired.sensors[0], tested, test_id)
         alerted = {alert.marker for alert in alerts}
         failed_benign = [recording.case for recording in benign if recording.marker in alerted]
         actions = []
     else:
-        replayed = waf_replayed(given, wired, tested, test_id, attacks)
+        unseen = unseen_markers(attacks, test_id)
+        replayed = waf_replayed(given, wired, tested, test_id,
+                                [{**attack, "marker": unseen[attack["marker"]]} for attack in attacks])
         probed = {recording.marker for recording in tested}
         alerts = waf_alerts({marker: answer for marker, answer in replayed.items() if marker in probed})
         failed_benign = [recording.case for recording in benign
                          if replayed.get(recording.marker, {}).get("status") in REFUSED_STATUSES]
         actions = [{"marker": attack["marker"],
-                    "refused": replayed.get(attack["marker"], {}).get("status") in REFUSED_STATUSES}
+                    "refused": replayed.get(unseen[attack["marker"]], {}).get("status") in REFUSED_STATUSES}
                    for attack in attacks]
     table = verdicts.table([recording.probe(engine) for recording in recordings], alerts, engine,
                            applied_table(round_id, engine))
-    return {"ok": True, "passed": not failed_benign, "failed_benign": failed_benign, "actions": actions, "errors": [],
+    return {"ok": True, "passed": bool(benign) and not failed_benign and not untested_benign,
+            "failed_benign": failed_benign, "untested_benign": untested_benign, "actions": actions, "errors": [],
             **shown(table)}
 
 

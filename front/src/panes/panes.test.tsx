@@ -138,7 +138,7 @@ describe("Waf", () => {
     const answered = vi.mocked(fetch).getMockImplementation()!;
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === "POST" && String(input).endsWith("/waf/test/")) {
-        return new Response(JSON.stringify({ test: 5, ok: true, passed, failed_benign: passed ? [] : ["board-normal-search"], errors: [], cases: [], totals: { tp: 0, fn: 0, fp: passed ? 0 : 1, tn: 0 }, untested: [], against_applied: [] }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ test: 5, ok: true, passed, failed_benign: passed ? [] : ["board-normal-search"], untested_benign: [], errors: [], cases: [], totals: { tp: 0, fn: 0, fp: passed ? 0 : 1, tn: 0 }, untested: [], against_applied: [] }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       return answered(input, init);
     }));

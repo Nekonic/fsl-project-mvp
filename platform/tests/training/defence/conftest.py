@@ -23,6 +23,8 @@ RECORDED = {
     "board-normal-post-list": {"method": "GET", "host": "board.com", "path": "/"},
     "board-normal-sort": {"method": "GET", "host": "board.com", "path": "/?sort=title"},
     "board-normal-search-korean": {"method": "GET", "host": "board.com", "path": "/search/?q=%ED%95%9C"},
+    "board-normal-comment": {"method": "POST", "host": "board.com", "path": "/posts/1/comments/",
+                             "headers": {"Content-Type": "application/x-www-form-urlencoded"}, "body": "body=thanks"},
 }
 TOOL_RECORDED = ("board-sqli-orderby-sqlmap",)
 PROBE_CASES = ("board-sqli-search", "board-sqli-login-bypass", "board-sqli-orderby-sqlmap")

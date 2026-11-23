@@ -1,3 +1,5 @@
+import shutil
+
 from sandbox import crs, suricata
 from tests.training.defence.conftest import LOGIN_RULE, SEARCH_RULE
 from training.defence import rules as service
@@ -29,6 +31,18 @@ def test_an_ids_test_that_alerts_on_a_benign_case_does_not_pass(as_defender, boa
     result = as_defender.post(url(board_round, "ids/rules/test/"), {"text": SEARCH_RULE}, format="json").json()
 
     assert result["passed"] is False and result["failed_benign"] == ["board-normal-search-with-apostrophe"]
+    assert permits(cyber_range.nodes["sensor"], "/var/lib/cr-reloaded/ids.passed") == []
+
+
+def test_a_test_with_a_benign_case_left_unrecorded_does_not_pass(as_defender, board_round, cyber_range, source):
+    shutil.rmtree(source / "wargames" / "board" / "probes")
+
+    waf = as_defender.post(url(board_round, "waf/test/"), {"files": {HTTP: DENY}}, format="json").json()
+    ids = as_defender.post(url(board_round, "ids/rules/test/"), {"text": LOGIN_RULE}, format="json").json()
+
+    assert waf["passed"] is False and ids["passed"] is False
+    assert "board-normal-post-list" in waf["untested_benign"] and "board-normal-post-list" in ids["untested_benign"]
+    assert permits(cyber_range.gateway, "/var/lib/cr-reloaded/waf.passed") == []
     assert permits(cyber_range.nodes["sensor"], "/var/lib/cr-reloaded/ids.passed") == []
 
 

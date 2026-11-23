@@ -220,6 +220,7 @@ class SensorNode(Recorded):
 class Gateway(Recorded):
     files: dict[str, str] = field(default_factory=lambda: {path: "" for path in WAF_FILES})
     blocks: dict[str, str] = field(default_factory=dict)
+    refused_paths: tuple[str, ...] = ()
     nginx_errors: str = ""
     reload_fails: str = ""
     workers: int = 1
@@ -239,7 +240,8 @@ class Gateway(Recorded):
         text = one.text
         if argv[0] == "curl":
             marker = next(part.split(": ", 1)[1] for part in argv if part.startswith("X-Request-ID: "))
-            return Ran(0, "403" if marker in self.blocks else "200")
+            refused = marker in self.blocks or any(path in argv[-1] for path in self.refused_paths)
+            return Ran(0, "403" if refused else "200")
         if argv[:3] == ["sh", "-c", READ_FILES]:
             return Ran(0, "".join(base64.b64encode(self.files.get(path, "").encode()).decode() + "\n"
                                   for path in argv[4:]))

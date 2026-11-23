@@ -33,9 +33,9 @@ def test_an_ids_test_replays_the_probe_set_offline_and_returns_a_verdict_per_cas
     assert verdicts(result) == {
         "board-sqli-search": "tp", "board-sqli-login-bypass": "fn", "board-sqli-orderby-sqlmap": "tp",
         "board-normal-search": "tn", "board-normal-search-with-apostrophe": "fp", "board-normal-post-list": "tn",
-        "board-normal-sort": "tn", "board-normal-search-korean": "tn"}
-    assert result["totals"] == {"tp": 2, "fn": 1, "fp": 1, "tn": 4}
-    assert result["untested"] == [{"case": "board-normal-comment", "reason": "not_recorded"}]
+        "board-normal-sort": "tn", "board-normal-search-korean": "tn", "board-normal-comment": "tn"}
+    assert result["totals"] == {"tp": 2, "fn": 1, "fp": 1, "tn": 5}
+    assert result["untested"] == []
     search = next(row for row in result["cases"] if row["case"] == "board-sqli-search")
     assert search["alerts"] == [{"rule": "1001", "signature": "SQL injection in search"}]
     assert search["corroborated"] is False and search["recorded_run"] is False
@@ -86,7 +86,6 @@ def test_a_waf_test_lists_tool_cases_untested_and_replays_http_probes_against_th
     result = answer.json()
     assert result["ok"] is True
     assert {"case": "board-sqli-orderby-sqlmap", "reason": "tool_case"} in result["untested"]
-    assert {"case": "board-normal-comment", "reason": "not_recorded"} in result["untested"]
     assert verdicts(result)["board-sqli-search"] == "tp"
     assert verdicts(result)["board-sqli-login-bypass"] == "fn"
     assert verdicts(result)["board-normal-search"] == "tn"
@@ -183,7 +182,7 @@ def test_the_probe_set_lists_the_round_s_cases_with_their_recordings(as_defender
     assert set(listed) == {"board-sqli-search", "board-sqli-login-bypass", "board-sqli-orderby-sqlmap", *BENIGN}
     assert listed["board-sqli-orderby-sqlmap"] == {"case": "board-sqli-orderby-sqlmap", "malicious": True,
                                                    "recorded": True, "tool_case": True}
-    assert listed["board-normal-comment"]["recorded"] is False
+    assert listed["board-normal-comment"]["recorded"] is True
 
 
 def test_the_waf_check_route_returns_errors_without_running_any_probe(as_defender, board_round, cyber_range):

@@ -692,7 +692,7 @@ each wargame's `compose.yaml`); copy the directory with the links resolved.
 |---|---|---|
 | `kali` | the Kali base | `kali-linux-headless` and the tools of the Kali container before (nmap, sqlmap, nikto, whatweb, ffuf, gobuster, hydra, dirb, mitmproxy and others), the stamp proxy as `web-proxy.service`, the operator log hook, `set-origin`, `slot-boot`, and a key-only `kali` user with bash and passwordless sudo; `board.com` and `corp.com` resolve to 121.134.88.42; sslh's systemd generator masked and `cloud-init.target` wanted by `multi-user.target`, so cloud-init runs on every boot (`docs/TROUBLESHOOTING.md` "A Kali VM booted without cloud-init") |
 | `waf` | `compute.base_image` | nginx 1.24 from Ubuntu, ModSecurity 3.0.16 and its nginx connector built from release tarballs checked by SHA-256, CRS 4.25.1, the repo's `modsecurity.conf` and `board.com.conf` (the JSON access log of every request), rsyslog, nftables, python3, the scratch CRS test's `probe.conf` and `probe-upstream.py` in `/usr/local/share/cr/` with its scratch folder `/var/lib/cr-crstest`, the `analyst` account (`analyst.sh`), the `nginx` reload wrapper in `/usr/local/sbin` and its `nginx.service` drop-in, `slot-boot` |
-| `infra` | `compute.base_image` | nftables, conntrack, tcpdump, bridge-utils, ethtool, rsyslog, Docker with `bridge: none` and no iptables, the pinned `jasonish/suricata` image (`suricata -T` run on the repo's config and rules), the `suricatasc` wrapper (`docker exec -i sensor suricatasc`; `-c reload-rules` first copies the rule file to `/var/lib/cr-reloaded/ids` and loads that copy), `edge.nft` with the `pool` and `spent` sets, the offline rule test's scratch folder `/var/lib/cr-ruletest`, `sensor.service`, `slot-boot`, the `analyst` account (`analyst.sh`) with the `suricata` wrapper (`docker exec sensor suricata -T`); `suricata` itself is only in the `sensor` container |
+| `infra` | `compute.base_image` | nftables, conntrack, tcpdump, bridge-utils, ethtool, rsyslog, Docker with `bridge: none` and no iptables, the pinned `jasonish/suricata` image (`suricata -T` run on the repo's config and rules), the `suricatasc` wrapper (`docker exec -i sensor suricatasc`; `-c reload-rules` first copies the rule file to `/var/lib/cr-reloaded/ids`, refuses a copy with `config: logging` or one whose sha256 is not in `/var/lib/cr-reloaded/ids.passed`, and loads that copy), `edge.nft` with the `pool` and `spent` sets, the offline rule test's scratch folder `/var/lib/cr-ruletest`, `sensor.service`, `slot-boot`, the `analyst` account (`analyst.sh`) with the `suricata` wrapper (`docker exec sensor suricata -T`); `suricata` itself is only in the `sensor` container |
 | `target` | `compute.base_image` | Docker and Compose; board's and corp's compose files rendered for a VM (`render.py`: fronts published on the stack's addresses, databases on the internal `<w>_backend`), their images pulled from GHCR at `CR_IMAGE_TAG` (required), brought up once and their volumes kept as the pristine data, `wargames.service` |
 
 The Ubuntu roles point apt at the Kakao mirror, purge `snapd` and
@@ -812,7 +812,11 @@ disables its linger, ends its logind sessions and kills its processes):
   (`log_format`, `access_log`, the shipper) stays the platform's; read
   `/var/lib/cr-crstest` (0700); write `/var/lib/cr-reloaded` (root 0700),
   where the wrapper's `-s reload` copies the six files, installs the copies
-  over the live paths as root-only files, runs `nginx -t`, reloads, waits
+  over the live paths as root-only files, refuses them when they set the
+  platform's logging or include a file, or when their hash is not in
+  `/var/lib/cr-reloaded/waf.passed` (the platform lists there each rule test
+  of the round that passed, and clears it at the round's setup), runs
+  `nginx -t`, reloads, waits
   for a new worker, writes the reload time (`at`) and then gives the files
   back to `root:analyst 0664` (a save during the reload is refused); forward ports or sockets over its ssh login
   (`/etc/ssh/sshd_config.d/60-analyst.conf`); or send anything past loopback:
@@ -821,7 +825,8 @@ disables its linger, ends its logind sessions and kills its processes):
   (`meta skuid analyst drop`).
 
 The defence posture changes through those files, from the terminal or the
-defence API; a reload done in the terminal is recorded the next time the
+defence API, and only to files a rule test of the round passed with no benign
+case refused; a reload done in the terminal is recorded the next time the
 round's reads run, from that snapshot rather than the live files, so an edit
 made after the reload is neither recorded nor undone.
 
@@ -843,11 +848,13 @@ sudo tail -1 /var/log/nginx/access.json            # on the WAF after one reques
 - an IDS rule test (`POST defence/ids/rules/test/`) leaves
   `/var/log/suricata/eve.json` unchanged;
 - as `analyst`, `touch /etc/nginx/x` and `curl http://<the infra's address>/`
-  fail, while `echo >> /etc/nginx/defence/board.com.conf`, `sudo nginx -t`,
-  `sudo nginx -s reload` and `curl http://127.0.0.1/` succeed and `sudo
-  nginx -T` prints the configuration;
+  fail, while `echo >> /etc/nginx/defence/board.com.conf`, `sudo nginx -t`
+  and `curl http://127.0.0.1/` succeed and `sudo nginx -T` prints the
+  configuration; `sudo nginx -s reload` of that edit prints that the files
+  match no rule test that passed and loads nothing, and succeeds once
+  `POST defence/waf/test/` with the same file passed;
 - a defender `deny <the worn origin>;` in `/etc/nginx/defence/board.com.conf`,
-  reloaded, leaves an `access forbidden by rule` line that reaches
+  tested and reloaded, leaves an `access forbidden by rule` line that reaches
   Elasticsearch as module `nginx_error` and spends that origin
   (`X-Origins-Left` on the next attack answer is one lower);
 - as `analyst`, `nohup sleep 9999 &` and a crontab line are gone once the
@@ -950,11 +957,14 @@ slot, **[unverified]**:
   `logger -T -n <the infra's log server address> -P 514 -t modsecurity x` fail;
 - `getfacl /var/lib/suricata/rules/local.rules` still names `user:analyst:rw-`
   after `sudo systemctl restart sensor.service`;
-- a rule added and reloaded in the IDS terminal is the next IDS version with
-  `source: terminal` on the next API request (`GET defence/ids/rules/versions/`),
-  and a rule with `config: logging disable, type tx, scope tx;` is put back
-  with a `rule.refused` event, also when it is continued over lines with a
-  backslash; `sudo ls /var/lib/cr-reloaded/ids/var/lib/suricata/rules`
+- a rule added in the IDS terminal and reloaded is refused with "match no
+  rule test that passed" until `POST defence/ids/rules/test/` with the same
+  text passed; then it is the next IDS version with `source: terminal` and
+  that test on the next API request (`GET defence/ids/rules/versions/`); a
+  rule with `config: logging disable, type tx, scope tx;` is refused by the
+  reload before it loads, also when it is continued over lines with a
+  backslash; `sudo ls -l /var/lib/cr-reloaded/ids.passed` shows a root-only
+  file the round's setup emptied; `sudo ls /var/lib/cr-reloaded/ids/var/lib/suricata/rules`
   shows the copy after a reload and `ls /var/lib/cr-reloaded` fails as
   `analyst`; a file edited after a reload and before the next request is
   left as it is, and the version holds what was reloaded;

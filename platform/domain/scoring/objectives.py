@@ -109,9 +109,18 @@ def first_alert(inside: Sequence[Attempt]) -> datetime | None:
     return min((attempt.first_alert_at for attempt in inside if attempt.first_alert_at), default=None)
 
 
-def refused_the_attack(response: ResponseRecord, markers: set[str]) -> bool:
-    replayed = response.replayed & markers
-    return bool(replayed) and replayed <= response.refused
+def attack_markers(inside: Sequence[Attempt], replayed: frozenset[str]) -> set[str]:
+    alerted = {attempt.marker for attempt in inside if attempt.detected and attempt.marker in replayed}
+    if alerted:
+        return alerted
+    return {attempt.marker for attempt in inside if attempt.malicious and attempt.marker in replayed}
+
+
+def refused_the_attack(response: ResponseRecord, inside: Sequence[Attempt]) -> bool:
+    needed = attack_markers(inside, response.replayed)
+    if needed:
+        return needed <= response.refused
+    return any(attempt.marker in response.refused for attempt in inside if attempt.marker)
 
 
 def first_response(achieved_at: datetime, inside: Sequence[Attempt],
@@ -119,11 +128,10 @@ def first_response(achieved_at: datetime, inside: Sequence[Attempt],
     if not inside:
         return None
     origins = {attempt.source_ip for attempt in inside if attempt.source_ip}
-    markers = {attempt.marker for attempt in inside if attempt.marker}
     after = first_alert(inside) or inside[0].started_at
     taken = [response.at for response in responses if response.at < achieved_at and (
         (response.kind == RESPONSE_ORIGIN and response.source_ip in origins)
-        or (response.kind == RESPONSE_VERSION and after <= response.at and refused_the_attack(response, markers)))]
+        or (response.kind == RESPONSE_VERSION and after <= response.at and refused_the_attack(response, inside)))]
     return min(taken, default=None)
 
 

@@ -27,8 +27,15 @@ Updated: 2026-11-22.
   reload, WAF or IDS, is recorded from the copy its sudo wrapper keeps in
   root-only `/var/lib/cr-reloaded` and installs root-only for the reload,
   so the engine loads exactly that copy and an edit after a reload is left
-  alone. The table is
-  in `docs/STATE.md` "What exists on restructure".
+  alone. Then the two later 2026-11-22 rulings: each lost objective is
+  marked detected and responded; no WAF or IDS change goes live, from the
+  console or a terminal reload, without a rule test of the same files that
+  refused or alerted on no benign case (the platform lists passed hashes on
+  the boxes, the wrappers refuse anything else); a WAF version is a response
+  only when its test replayed the attack's own requests and refused them;
+  a shared-key limit zone spends nothing and warns; the round's end answers
+  at once and the final judge runs on a later read (`pending` until then).
+  The table is in `docs/STATE.md` "What exists on restructure".
 - The unit and API suite and `front/` (build, vitest) run against fakes.
   The docs (CLAUDE.md, README, ARCHITECTURE, OPENSTACK, STATE, this file)
   describe the new layout.
@@ -59,7 +66,9 @@ live-verified".
   (`test/test_event_time.py`, `test_geoip_durable.py`,
   `test_origin_placement.py`, `test_waf_geolocation.py`); the seam scan
   lists them as named exceptions until they move behind `/api/`.
-- A round no one calls on does nothing; a polling console or bot keeps it
+- Until the probe recordings are in, no benign case is tested, so every
+  rule test passes; the FP gate holds only for recorded cases.
+- A round no one calls on does nothing (the late judge included); a polling console or bot keeps it
   moving. The rest is in `docs/STATE.md` "Open points".
 
 Written for a session that reaches the new cloud through the user's VPN

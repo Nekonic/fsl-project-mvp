@@ -44,12 +44,13 @@ function refusedFiles(files: Record<string, string> | undefined): RuleError[] {
 const benign = ["board-normal-search", "board-normal-search-with-apostrophe", "board-normal-post-list", "board-normal-sort", "board-normal-comment"];
 
 function idsResult(test: number, errors: RuleError[]): RuleTestResult {
-  if (errors.length) return { test, ok: false, passed: false, failed_benign: [], errors, cases: [], totals: { tp: 0, fn: 0, fp: 0, tn: 0 }, untested: [], against_applied: [] };
+  if (errors.length) return { test, ok: false, passed: false, failed_benign: [], untested_benign: [], errors, cases: [], totals: { tp: 0, fn: 0, fp: 0, tn: 0 }, untested: [], against_applied: [] };
   return {
     test,
     ok: true,
     passed: true,
     failed_benign: [],
+    untested_benign: [],
     errors: [],
     cases: [
       { case: "board-sqli-search", malicious: true, verdict: "tp", corroborated: true, recorded_run: false, alerts: [{ rule: "9000001", signature: "SQLi attempt - URI" }] },
@@ -65,12 +66,13 @@ function idsResult(test: number, errors: RuleError[]): RuleTestResult {
 }
 
 function wafResult(test: number, errors: RuleError[]): RuleTestResult {
-  if (errors.length) return { test, ok: false, passed: false, failed_benign: [], errors, cases: [], totals: { tp: 0, fn: 0, fp: 0, tn: 0 }, untested: [], against_applied: [] };
+  if (errors.length) return { test, ok: false, passed: false, failed_benign: [], untested_benign: [], errors, cases: [], totals: { tp: 0, fn: 0, fp: 0, tn: 0 }, untested: [], against_applied: [] };
   return {
     test,
     ok: true,
     passed: true,
     failed_benign: [],
+    untested_benign: [],
     errors: [],
     cases: [
       { case: "board-sqli-search", malicious: true, verdict: "tp", corroborated: true, recorded_run: false, alerts: [{ rule: "942100", signature: "SQL Injection Attack Detected via libinjection" }] },

@@ -79,12 +79,12 @@ pass in any order.
 | Fixture | Tests it serves |
 |---|---|
 | `full_run` (every malicious case, one sqlmap run) | `test_acceptance`, `test_board`, `test_objectives`, `test_topology`, `test_strategy_honesty` |
-| `board_session` | loot (one digest changed, the round's own, then the previous round's in the next), objectives and the score kept from a player while the round runs |
+| `board_session` | loot (one digest changed, the round's own, then the previous round's in the next), objectives and the score kept from a player while the round runs; a tested WAF rule refusing the SQLi goes live before the loot, so its losses are answered (`test_score_reveal`) |
 | `origins_session` | origins (the next origin's traffic arrives from it) and the tool case |
 | `rules_session` | four rounds on one allocation: the invalid and the buffer-less rule; the noisy and the ported rule, where benign alerts show where benign traffic comes from; the catch-all rule of `test_indiscriminate_defence` with the WAF's rule engine off; a `generic probe` rule that catches the SQLi without naming it |
 | `terminal_session` | the attacker box, the command feed and the front door |
 | `terminal_windows` | `test_window_correlation` (a free tool attributed by source and time) and `test_strategy_comparison` |
-| `rogue_admin_session`, `option_flip_session` | `test_corp_authz`, two corp allocations side by side; `rogue_admin_session` also serves `test_score_reveal` (the weighted objective number, an undetected loss) |
+| `rogue_admin_session`, `option_flip_session` | `test_corp_authz`, two corp allocations side by side; `rogue_admin_session` also serves `test_score_reveal` (the weighted objective number, an undetected and unanswered loss) |
 
 The red-team run fires every malicious case in `redteam/cases/board.yaml`
 except the sqlmap variants other than `board-sqli-orderby-sqlmap`.

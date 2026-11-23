@@ -41,12 +41,20 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 - 방어 플레이어는 Kibana, 방어 터미널, 구성도, 알림 목록으로 보고, IDS 룰과 WAF 파일을 고칩니다. 방어 터미널은
   WAF와 IDS 두 개이고 패널에서 바꿔 엽니다. IDS 룰은 단독 센서를 다루듯 IDS 터미널에서 룰 파일을 고치고
   `sudo suricata -T`로 검사한 뒤 `sudo suricatasc -c reload-rules`로 반영합니다. 콘솔에는 IDS 룰을 고치는 폼이
-  없고 지금 룰과 변경 이력만 보입니다. WAF 파일은 콘솔에서 고쳐 적용해도 되고, WAF 터미널에서 고친 뒤
-  `sudo nginx -t`, `sudo nginx -s reload`로 반영해도 됩니다. 터미널에서 reload한 내용은 reload 때 남긴 스냅샷으로
-  다음 요청 때 새 버전으로 기록되고, 로그 설정을 건드린 것은 마지막 버전으로 되돌립니다. reload한 뒤에 파일을 또
-  고쳐도 그 파일은 건드리지 않습니다. reload가 도는 동안(WAF는 `nginx -t`부터 새 worker가 뜰 때까지)은
-  그 파일을 저장할 수 없습니다. 룰과 파일은 반영하기 전에 녹화된 요청으로
-  테스트할 수 있습니다(룰 테스트).
+  없고 지금 룰과 변경 이력, 룰 테스트만 있습니다. WAF 파일은 콘솔에서 고쳐 적용해도 되고, WAF 터미널에서 고친 뒤
+  `sudo nginx -t`, `sudo nginx -s reload`로 반영해도 됩니다.
+- 룰 테스트를 통과해야 반영됩니다. 룰 테스트는 녹화한 요청(정상 케이스와 공격 케이스)과 이 라운드에서 공격자가
+  지금까지 보낸 요청을 WAF는 임시 인스턴스에, IDS는 센서의 오프라인 `-r` 실행에 다시 보냅니다. 엔진이 파일을
+  받아들이고 정상 케이스를 하나도 막지 않아야(WAF) 또는 정상 케이스에서 경보가 하나도 나지 않아야(IDS) 통과입니다.
+  콘솔 적용은 이 라운드에서 같은 파일로 통과한 테스트가 있어야 받고(아니면 `409 not_tested`), 터미널의 reload도
+  통과한 테스트의 해시 목록에 없는 스냅샷은 불러오지 않고 거부합니다. 플랫폼은 테스트를 통과할 때마다 그 해시를
+  WAF와 infra의 root 전용 파일(`/var/lib/cr-reloaded/<waf|ids>.passed`)에 적고, 라운드를 시작할 때 비웁니다.
+  콘솔은 지금 내용으로 통과한 테스트가 있을 때만 적용 버튼을 켭니다. 그래서 오탐이 나는 룰은 실제 센서에 올라가지
+  않습니다.
+- 터미널에서 reload한 내용은 reload 때 남긴 스냅샷으로 다음 요청 때 새 버전으로 기록되고, 같은 파일로 통과한
+  테스트와 묶입니다. 로그 설정을 건드린 파일은 reload가 불러오기 전에 거부합니다. reload한 뒤에 파일을 또 고쳐도
+  그 파일은 건드리지 않습니다. reload가 도는 동안(WAF는 `nginx -t`부터 새 worker가 뜰 때까지)은 그 파일을 저장할
+  수 없습니다.
 - 플랫폼이 라운드 내내 정상 케이스와 고객 트래픽을 보냅니다. 공격 플레이어가 아무것도 하지 않아도 오탐과 정상 통과가 쌓입니다.
 - 라운드는 시간 제한, 목표 전부 탈취, 공격 출발지 전부 소진, 운영자 종료, 한쪽 기권으로 끝납니다. 출발지 소진으로
   끝나는 것은 정상 케이스가 한 바퀴 이상 돈 뒤입니다.
@@ -80,8 +88,10 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 - 잃은 목표마다 탐지와 대응을 O/X로 매깁니다. 탐지는 그 목표의 귀속 구간(탈취 전 2분, corp는 변경 시각에 걸친
   공격 행동)에 든 공격 행동 가운데 하나라도 `expect`를 통과한 알림을 받았으면 O입니다. 마지막 행동만 보지 않으므로
   공격 뒤에 평범한 요청을 하나 더 보내도 바뀌지 않습니다. 대응은 목표를 잃기 전에 그 행동들의 출발지 IP가 소진됐거나
-  (WAF error log의 `deny`·`limit_req`), 그 행동들의 첫 알림 뒤에(알림이 없으면 첫 행동 뒤에) WAF나 IDS 버전을
-  적용했으면 O입니다. Kibana를 본 것은 로그에 남지 않으므로 대응이 아닙니다.
+  (WAF error log의 `deny`·`limit_req`), 그 행동들의 첫 알림 뒤에(알림이 없으면 첫 행동 뒤에) 올라간 WAF 버전의
+  룰 테스트가 그 행동들이 보낸 요청(케이스는 녹화, 자유 요청은 플랫폼이 남긴 요청)을 다시 보내 WAF가 모두 막았으면
+  O입니다. 효과를 확인하지 못한 버전이나 IDS 버전(IDS는 알리기만 함)은 대응이 아닙니다. Kibana를 본 것은 로그에
+  남지 않으므로 대응이 아닙니다.
 - 대응하지 못한 채 잃은 목표는 탐지 여부와 상관없이 2배로 셉니다. 목표 등급의 난이도가 가중치입니다. 탐지와 첫
   알림부터 첫 대응까지 걸린 시간은 점수 옆에 보여 주고 점수에 넣지 않습니다.
 
@@ -102,6 +112,8 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
   고치지 않으므로, 그 뒤에 들어온 알림 때문에 라운드가 끝난 뒤 점수의 판정이 다를 수 있습니다.
 
 점수는 `GET /api/rounds/<id>/score/`입니다. 플레이어는 라운드가 끝난 뒤에, 운영자와 스태프는 언제든 읽습니다.
+라운드를 끝내는 요청은 바로 답합니다. 끝난 뒤 `CR_JUDGE_AFTER_SECONDS`가 지나고 처음 라운드를 읽을 때 알림을 한 번
+더 가져와 목표와 케이스를 마지막으로 판정하고 `round.judged`를 남깁니다. 그때까지 점수는 `pending: true`입니다.
 
 ## 출발지 IP 소진
 
@@ -114,7 +126,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
   계산해 둡니다(`limit_floor_rpm`, 분당 요청 수). 걸린 zone의 `rate`가 이보다 낮으면 소진하지 않고 방어 쪽에
   `limit.below_floor` 이벤트로 알립니다. `rate`는 그 줄이 찍힌 시각에 적용돼 있던 WAF 버전(콘솔 적용이나 터미널 reload 스냅샷)의 파일에서 읽습니다. 키가 클라이언트 주소
   (`$binary_remote_addr`, `$remote_addr`)를 담지 않은 zone(`$server_name`이나 상수처럼 모든 클라이언트가 나눠 쓰는
-  zone)에 걸린 요청은 소진하지 않습니다.
+  zone)에 걸린 요청은 하한이 없어도 소진하지 않고, 방어 쪽에 `limit.shared_key` 이벤트로 한 번 알립니다.
 - 소진되면 infra 라우터가 그 주소를 떨어뜨리고(이미 맺은 연결 포함), 돌고 있던 도구를 멈추고, 다음 출발지로
   바꿉니다. 출발지가 다 떨어지면 공격 API 쓰기는 `409 origins_spent`이고 라운드가 끝납니다.
 - 공격 API의 성공 응답에는 `remaining` 블록(현재 출발지, 남은 수, 전체 수, 소진된 IP)이, 모든 응답(오류 포함)에는
@@ -465,7 +477,7 @@ sudo docker compose start platform rebuild
 | `/api/`(봇) | `Authorization: Bearer <플레이어 토큰>`. 토큰은 라운드를 만들 때 한 번만 보여 주고 해시로만 저장. 자기 쪽 공격 또는 방어 경로와 라운드 읽기만 닿음. 라운드가 끝나면 15분 동안 읽기만 가능 |
 | 플레이어 | 상대 쪽 경로는 403. 라운드 시작 전 쓰기는 `409 round_not_started`, 끝난 뒤는 `409 round_closed`. 플레이어는 할당을 열거나 닫지 못하고 라운드를 끝내지 못함(기권만 가능). PvP에서 한 사람이 양쪽 플레이어를 맡지 못함(`already_playing`) |
 | 이벤트 피드 | 이벤트 종류마다 볼 수 있는 쪽이 정해져 있음. 공격 쪽은 알림과 룰 이벤트를, 방어 쪽은 공격 행동과 출발지 이벤트를 보지 못함 |
-| WAF 파일 | 방어 플레이어가 고치는 파일은 `crs-setup.conf`, REQUEST-900·RESPONSE-999 예외 파일, `deny`·`limit_req`를 넣는 nginx 파일(`/etc/nginx/defence/`)뿐. `log_format`, `access_log`, `error_log`, real IP 설정, 감사 로그 설정과 `include`는 측정용이라 콘솔이 거부하고, 터미널의 `sudo nginx -s reload`·`-t`·`-T`도 이런 설정이 든 파일은 불러오지 않고 거부함. `SecRuleEngine Off`·`DetectionOnly`는 허용(점수에 결과가 드러남) |
+| WAF 파일 | 방어 플레이어가 고치는 파일은 `crs-setup.conf`, REQUEST-900·RESPONSE-999 예외 파일, `deny`·`limit_req`를 넣는 nginx 파일(`/etc/nginx/defence/`)뿐. `log_format`, `access_log`, `error_log`, real IP 설정, 감사 로그 설정과 `include`는 측정용이라 콘솔이 거부하고, 터미널의 `sudo nginx -s reload`·`-t`·`-T`도 이런 설정이 든 파일은 불러오지 않고 거부함. 콘솔 적용과 터미널 reload 모두 이 라운드에서 같은 파일로 통과한 룰 테스트가 있어야 함. `SecRuleEngine Off`·`DetectionOnly`는 허용(점수에 결과가 드러남) |
 | `/vm-terminal/<attack\|defence\|ids>/<round>/` | nginx `auth_request`가 `/api/rounds/<round>/terminal-auth/<attack\|defence\|ids>/`에 그 라운드의 그 쪽 플레이어인지 물음(`ids`는 방어 플레이어). 공격 플레이어는 Kali의 `kali` 계정, 방어 플레이어는 cr-waf와 cr-infra의 `analyst` 계정(root 아님)으로 열리고, `GET terminal/`이나 `GET ids/terminal/`로 받은 점프 권한이 없거나 라운드가 끝났으면 열리지 않음. 열려 있던 셸도 15초마다 다시 확인해 권한이 없어지면 닫힘 |
 | `/kibana/`, 8002(`/site/...`) | nginx `auth_request`로 `/api/me/`에 로그인 세션 확인. 없으면 로그인 페이지로. 로그인 뒤 돌아가는 `next`는 콘솔 안의 경로이거나 `CR_SITE_ORIGIN`(기본은 같은 호스트의 8002)의 `/site/` 주소만 받음 |
 | 회원가입 계정 | 비활성 상태로 만들어짐. 스태프가 승인해야 로그인 가능 |
@@ -504,7 +516,10 @@ sudo docker compose start platform rebuild
   구워야 합니다(`docs/OPENSTACK.md` §3.7~§3.10). target을 다시 굽기 전에는 라운드 시작이
   `ground_truth_unavailable`로 실패합니다.
 - 룰 테스트용 녹화(`wargames/<id>/probes/`)가 아직 없습니다. 지금 룰 테스트는 케이스를 미탐이 아니라
-  `untested`(`not_recorded`, WAF 도구 케이스는 `tool_case`)로 돌려줍니다.
+  `untested`(`not_recorded`, WAF 도구 케이스는 `tool_case`)로 돌려주고, 시험한 정상 케이스가 없으므로 어떤 룰도
+  오탐 없이 통과합니다. 녹화가 있어야 "오탐이 나는 룰은 올라가지 않는다"가 성립합니다.
+- 테스트 필수, 대응 증명, 늦은 판정은 단위 테스트만 거쳤습니다. WAF와 infra를 다시 구워야 reload 래퍼가 통과
+  목록을 확인합니다.
 
 다음 순서는 [docs/state/now.md](docs/state/now.md)에 있습니다.
 

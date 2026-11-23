@@ -51,8 +51,9 @@ warned (`limit.shared_key`). A refusal of benign traffic is a false positive.
    version on the next request. Each call is a new login: `cd` and variables do not carry over. Read the
    logs, edit a file, test it with `nginx -t`, send the whole set to `defence_waf_test`, then reload.
 5. A test answers per case `tp|fn|fp|tn`, `corroborated`, `totals`, `untested` (tool cases on the WAF,
-   cases with no recording), `passed` and `failed_benign`. A test passes only when no benign case was
-   refused (WAF) or alerted on (IDS) and the engine accepted the files; nothing that failed can go live.
+   cases with no recording), `passed`, `failed_benign` and `untested_benign`. A test passes only when every
+   benign case was replayed, none was refused (WAF) or alerted on (IDS), and the engine accepted the files;
+   nothing that failed can go live.
    Only one test runs at a time (`409 test_busy`).
 6. Follow `round_events` for `alert.seen`, `rule.tested`, `rule.applied`, `rule.refused`, `objective.lost` and
    `round.ended`.

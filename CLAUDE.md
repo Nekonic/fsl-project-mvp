@@ -84,17 +84,27 @@ its secret. That is the score: which objectives were lost, and for each one two
 marks, detection and response, each O or X. Detection is O when any attack
 action in the objective's attribution window drew an alert that survives
 `expect`. Response is O when, before the objective fell, an origin those actions
-came from was spent (deny or `limit_req` in the WAF error log) or a WAF or IDS
-version was applied after the first alert of those actions (after the first
-action when none alerted). One lost without a response counts double, whatever
-detection says; detection and the time from the first alert to the first
-response are reported beside it. The platform never decides whether an attack
-succeeded — the target's own stored data does.
+came from was spent (deny or `limit_req` in the WAF error log), or a WAF version
+went live after the first alert of those actions (after the first action when
+none alerted) whose required rule test replayed those actions' own requests
+under fresh markers and the WAF refused the attack among them: every replayed
+action that alerted, or every replayed case attack when none alerted, or any
+one when only free requests were replayed. An IDS version never counts: the IDS only
+alerts. One lost without a response counts double, whatever detection says;
+detection and the time from the first alert to the first response are reported
+beside it. The platform never decides whether an attack succeeded — the
+target's own stored data does. The final judge runs on the first read once
+`CR_JUDGE_AFTER_SECONDS` has passed since the end; until then the score is
+`pending`.
 
 What the defence got wrong: TP, FP, FN, TN per attack case, from matching
 alerts to the cases that caused them. Reported beside the first number, never
 folded in — a defence that blocks everything scores perfectly here and loses
-every objective.
+every objective. A false positive cannot reach a live sensor: no WAF or IDS
+change goes live, from the console or the terminal, without a rule test of the
+same files that replayed every benign case of the round and refused (WAF) or
+alerted on (IDS) none of them; a benign case with no recording fails the test,
+so the live FP count measures only traffic the benign cases do not model.
 
 One case is one decision however many alerts it drew (`board-sqli-orderby-sqlmap`
 sends about 2,000 requests through the WAF and draws many alerts, and counts once); say so when

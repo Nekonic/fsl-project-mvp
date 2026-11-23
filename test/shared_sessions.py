@@ -153,6 +153,7 @@ def board_session(stack_is_up):
         seen["marker"] = plays.fired(played, CONTROL)["marker"]
         seen["control_alerts"] = plays.marked(
             plays.alerts_until(played, lambda listed: bool(plays.marked(listed, seen["marker"]))), seen["marker"])
+        seen["response"] = plays.tune_waf(played, plays.appended(played, plays.CRS_EXCLUSIONS, plays.BOT_SEARCH_RULE))
         truth = auth_users_of(played.allocation)
         seen["truth"] = truth
         seen["fabricated_loot"] = plays.loot(played, one_digest_changed(truth))

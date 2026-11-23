@@ -57,13 +57,13 @@ replaces the one before. The bot needs `ssh` on its path and a route to the jump
 the answer is local, with the code `ssh_unavailable`.
 
 On the WAF, `analyst` can write the WAF files and run `sudo nginx -t`, `sudo nginx -T` and
-`sudo systemctl reload nginx`. A reload is recorded as the next WAF version on the next API request, like a
-human's reload in the terminal.
+`sudo systemctl reload nginx`. The reload loads only files a passing `defence_waf_test` of the round named,
+and is recorded as the next WAF version on the next API request, like a human's reload in the terminal.
 
 On the sensor's host, `analyst` can write the rule file the topology names, read the eve log and run the rule
-test and the rule reload under sudo (`sudo -l` lists them); the IDS rules have no write API. A reload is
-recorded as the next IDS version on the next API request, and one whose rules carry `config: logging` is put
-back.
+test and the rule reload under sudo (`sudo -l` lists them); the IDS rules have no write API. The reload loads
+only a file a passing `defence_ids_test` named and refuses rules that carry `config: logging`; a reload is
+recorded as the next IDS version on the next API request.
 
 ## Plugging in a model
 
@@ -117,6 +117,7 @@ Every refusal is `{errors: [{path, code, line?, params?}]}`. Codes a bot meets:
 | `origins_spent` | 409 | every attack origin is spent |
 | `stale_version` | 409 | `base_version` is not the applied version; `params` has the current one |
 | `test_busy` | 409 | another rule test of this engine is running |
+| `not_tested` | 409 | no rule test of this round passed with the same WAF files |
 | `suricata_syntax` | 422 | the Suricata text was refused, with `line` |
 | `crs_refused`, `apply_refused` | 422 | the WAF files or the apply was refused |
 | `attacker_unavailable`, `tool_unavailable`, `range_unavailable` | 503 | the attacker box or the range is not answering |

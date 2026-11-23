@@ -174,6 +174,14 @@ def test_a_version_answers_a_loss_only_when_its_test_replayed_the_attack_s_reque
     assert scored(cases, [], [refusing(10, "m-attack", "m-probe")]).responded is True
 
 
+def test_a_plain_request_the_waf_let_through_does_not_cancel_a_version_that_refused_the_attack():
+    cases = [sqli("m-attack", 0), sqli("m-noise", 5, malicious=None)]
+    refused_attack = ResponseRecord(at(10), RESPONSE_VERSION, replayed=frozenset({"m-attack", "m-noise"}),
+                                    refused=frozenset({"m-attack"}))
+
+    assert scored(cases, [DetectionRecord("d1", at(1), None, "m-attack")], [refused_attack]).responded is True
+
+
 def test_a_version_applied_before_the_first_alert_is_no_response_to_it():
     found = scored([sqli("m-attack", 5)], [DetectionRecord("d1", at(8), None, "m-attack")],
                    [refusing(6, "m-attack")])

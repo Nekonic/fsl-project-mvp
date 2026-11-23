@@ -3799,6 +3799,10 @@ components:
           type: array
           items:
             type: string
+        untested_benign:
+          type: array
+          items:
+            type: string
         errors:
           type: array
           items:
@@ -3827,6 +3831,7 @@ components:
       - test
       - totals
       - untested
+      - untested_benign
     RunLine:
       type: object
       properties:

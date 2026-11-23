@@ -132,6 +132,8 @@ export interface RuleTestSectionProps {
 function Passing({ result, engine }: { result: RuleTestResult; engine: "waf" | "ids" }) {
   if (result.passed) return <Notice tone="ok">{t(engine === "waf" ? "rule_test.passed.waf" : "rule_test.passed.ids")}</Notice>;
   if (result.failed_benign.length) return <Notice tone="danger">{t("rule_test.failed_benign", { cases: result.failed_benign.join(", ") })}</Notice>;
+  if (result.untested_benign.length) return <Notice tone="danger">{t("rule_test.untested_benign", { cases: result.untested_benign.join(", ") })}</Notice>;
+  if (result.ok) return <Notice tone="danger">{t("rule_test.no_benign")}</Notice>;
   return <Notice tone="danger">{t("rule_test.failed_engine")}</Notice>;
 }
 

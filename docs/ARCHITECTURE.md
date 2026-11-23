@@ -121,9 +121,10 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
   sandbox/     훈련 환경. 바깥 장치를 아는 파일이 모두 여기 있음
                openstack.py 경계: Keystone/Heat/Neutron REST, 실제 배선 읽기, 재생성 때 기본 룰 적재
                suricata.py  경계: 룰 파일, -T 검사, 오프라인 -r 실행, 적용, 기본 룰 적재, 패킷 캡처,
-                            터미널 reload 스냅샷 읽기, 로그를 끄는 룰(config: logging) 찾기
-               crs.py       경계: WAF 파일 여섯 개 읽기·검사·쓰기, nginx -t·reload·되돌리기, limit_req rate 읽기,
-                            터미널 reload 스냅샷 읽기, 임시 인스턴스 검사·테스트
+                            터미널 reload 스냅샷 읽기, 로그를 끄는 룰(config: logging) 찾기,
+                            통과한 테스트 목록 쓰기·비우기
+               crs.py       경계: WAF 파일 여섯 개 읽기·검사·쓰기, nginx -t·reload·되돌리기, limit_req rate·키 읽기,
+                            터미널 reload 스냅샷 읽기, 임시 인스턴스 검사·테스트, 통과한 테스트 목록 쓰기·비우기
                kibana.py    경계: Kibana API, space, 거부 규칙, 초기 설정, 로그 인덱스 패턴
                edge.py      경계: infra nftables pool·spent 집합, conntrack 정리
                access.py    경계: 플랫폼 sshd 점프 권한(플레이어·박스마다 하나), 키 생성, 박스 계정의 authorized_keys
@@ -292,8 +293,11 @@ sequenceDiagram
 - 읽기 단계 하나가 실패해도 나머지 단계는 계속 돕니다. 제한 시간이 지난 라운드는 다음 요청이 끝내고 종료 시각은
   제한 시간으로 남깁니다. 점수는 종료 시각까지의 동작, 알림, 목표만 셉니다.
 - 운영자 종료, 기권, 할당 만료로 끝나는 라운드도 끝내기 전에 읽기를 한 번 더 돌립니다. 이 마지막 읽기는 정상
-  트래픽을 새로 보내지 않습니다. 라운드가 끝나면 종료 시각에서 `CR_JUDGE_AFTER_SECONDS`가 지날 때까지 기다렸다가
-  알림을 한 번 더 수집하고 남은 케이스를 판정하므로, 종료 직전에 찍혔지만 늦게 도착한 알림도 점수에 들어갑니다. 다른 요청이 읽는 중이면
+  트래픽을 새로 보내지 않습니다. 라운드를 끝내는 요청은 기다리지 않고 바로 답합니다. 종료 시각에서
+  `CR_JUDGE_AFTER_SECONDS`가 지난 뒤 그 라운드를 처음 읽는 요청(`lifecycle.judge_late`)이 라운드를 잡고 알림을 한 번
+  더 수집해 목표를 정하고 남은 케이스를 판정한 뒤 `Round.judged_at`을 적고 `round.judged`를 남깁니다. 그래서 종료
+  직전에 찍혔지만 늦게 도착한 알림도 점수에 들어가고, 그때까지 점수는 `pending: true`입니다. 시작 전에 끝난 라운드는
+  바로 `judged_at`을 적습니다. 다른 요청이 읽는 중이면
   그 읽기가 끝나거나 버려질 때까지 기다렸다가 읽습니다. 요청은 할당 만료를 보기 전에
   라운드부터 읽으므로, 제한 시간이 지난 라운드는 할당이 만료됐어도 `time_limit`으로 끝납니다.
 - 만료된 할당은 다음 할당 요청이나 그 할당에 들어온 요청이 닫습니다. 반납된 슬롯의 스택은 `rebuild` 서비스
@@ -356,27 +360,45 @@ sequenceDiagram
   검사하지 않은 파일을 불러올 수 있는 nginx `include`와 ModSecurity `Include`·`IncludeOptional`도 거부합니다.
   콘솔에서 적용할 때는 보낸 파일만이 아니라 함께 다시 불러올 지금 파일도 검사하고, 룰 테스트의 scratch도 그렇게
   합니다. 터미널의 reload 래퍼(`deploy/roles/waf/nginx`)도 같은 검사를 스냅샷에 돌려 걸리면 `nginx -t`와 reload 전에
-  멈추고, `sudo nginx -t`·`-T`도 지금 파일에 같은 검사를 돌립니다.
+  멈추고, `sudo nginx -t`·`-T`도 지금 파일에 같은 검사를 돌립니다. 센서의 래퍼(`deploy/roles/infra/suricatasc`)도
+  `config: logging` 검사를 스냅샷에 돌려 걸리면 불러오기 전에 멈춥니다.
+- 룰 테스트를 통과해야 반영됩니다(2026-11-22 결정). 테스트는 엔진이 받아들이고(WAF 임시 설정의 `nginx -t`, IDS
+  `suricata -T`) 라운드의 정상 케이스를 빠짐없이 시험해 WAF가 400·403으로 막은 것도, IDS가 경보를 낸 것도 없어야
+  통과입니다(`passed`, 걸린 케이스는 `failed_benign`). 녹화가 없어 시험하지 못한 정상 케이스가 하나라도 있거나 시험한
+  정상 케이스가 없으면 통과하지 못합니다(`untested_benign`). 통과하면 `ruletest.permitted`가 박스가 계산하는 해시를
+  `sandbox.crs.permit`·`sandbox.suricata.permit`으로 root 전용 파일 `/var/lib/cr-reloaded/waf.passed`(cr-waf)와
+  `.../ids.passed`(센서 노드)에 한 줄씩 적습니다. WAF 해시는 방어 파일 여섯 개를 정해진 순서로 `sha256  경로` 줄로
+  늘어놓은 것의 sha256(`crs.loaded_sha`), IDS 해시는 룰 파일의 sha256입니다. posture를 적용할 때 두 목록을 비웁니다
+  (`ruletest.forget_passed`). 콘솔 적용은 지금 파일과 보낸 파일을 합친 결과가 이 라운드에서 통과한 테스트의 해시와
+  같아야 받고(`409 not_tested`), 그 합친 파일 전체를 씁니다. 두 reload 래퍼는 스냅샷의 해시가 목록에 없으면 불러오지
+  않고 이유를 찍고 끝납니다. 플랫폼이 직접 불러오는 것(posture, 되돌리기, probe 녹화의 DetectionOnly)은
+  `crs.apply`가 reload 전에 그 해시를 목록에 넣습니다. 터미널 reload로 기록한 버전은 같은 파일로 통과한 테스트에
+  묶입니다.
 - 터미널에서 reload한 파일도 다음 읽기 때 같은 검사를 거칩니다. 검사 대상은 지금 파일이 아니라 reload 때 남긴
   스냅샷입니다. 걸리면 기록하지 않고 마지막 버전 파일을 써서 reload하고 `rule.refused` 이벤트를 남깁니다. IDS는
   `config: logging`이 든 룰(그 트랜잭션의 eve 기록을 끔)이 걸리는 대상이고, 백슬래시로 여러 줄에 이어 쓴 룰도 한
   룰로 봅니다. reload하지 않고 고치기만 한 파일은 검사하지도 되돌리지도 않습니다.
-- WAF 흐름: 읽기 → 검사(`nginx -t`) → 녹화된 요청으로 테스트 → 쓰기 → reload → 버전 기록(파일 텍스트와 해시,
+- WAF 흐름: 읽기 → 검사(`nginx -t`) → 녹화된 요청으로 테스트(통과 필수) → 쓰기 → reload → 버전 기록(파일 텍스트와 해시,
   `RuleSet.files`·`sha`·`source`). nginx가 거부하면 이전 파일로 되돌립니다. IDS는 라운드 시작 때 posture의 룰만
   플랫폼이 쓰고(센서마다 차례로, 하나라도 거부하면 앞서 쓴 센서를 되돌림), 그 뒤로는 터미널 reload로만 바뀝니다.
 - `check/`(WAF만): `sandbox.crs.refusals`와 임시 설정의 `nginx -t`(오류는 파일 경로와 줄로 돌려줌).
 - `test/`: 라운드의 probe 케이스와 그 워게임의 정상 HTTP 케이스 전부를 녹화본으로 돌립니다. 실제 대상, 실제 센서,
-  라운드의 알림은 건드리지 않습니다.
+  라운드의 알림은 건드리지 않습니다. WAF 테스트는 여기에 이 라운드의 공격 행동이 지금까지 보낸 요청
+  (`rules.attack_requests`: 쏜 케이스는 그 녹화본, 자유 요청·사이트 패널 요청은 플랫폼이 남긴 method·host·path·query·
+  header·body)을 테스트마다 새로 만든 마커(`replay-<test>-<무작위>`)로 더해 보내고, 행동마다 막혔는지를 원래 행동의
+  마커로 테스트 결과의 `actions`에 남깁니다. 방어자가 access log에서 본 실제 마커에 건 룰은 다시 보낸 요청을 막지
+  못합니다. 이 목록은
+  방어 쪽 API에 내보내지 않습니다(알림이 없던 공격까지 드러나므로). 도구 실행과 명령은 다시 보낼 수 없어 빠집니다.
   - IDS: 센서 노드에서 같은 고정 이미지와 `suricata.yaml`로 `suricata -r <case>.pcap`을 돌리고, `/var/log/suricata`
     밖의 임시 `eve.json`을 읽습니다.
   - WAF: cr-waf에 따로 띄운 nginx 마스터(자기 prefix, `127.0.0.1`의 임시 포트, 자기 audit log)가 loopback의
     `probe-upstream.py`를 upstream으로 씁니다. 녹화된 요청을 `curl`로 보내고 임시 audit log를 읽은 뒤 내립니다.
   - WAF에서 도구 케이스는 `untested: tool_case`, 녹화가 없는 케이스는 `untested: not_recorded`입니다. 미탐이 아닙니다.
   - 판정은 `domain.verdicts`가 마커로 알림을 묶고 케이스 하나를 한 번 판정하고 `expect`로 수법을 확인합니다.
-    `against_applied`는 적용된 버전의 테스트 결과와 비교합니다. 터미널에서 기록한 버전에는 테스트가 붙지 않습니다.
+    `against_applied`는 적용된 버전의 테스트 결과와 비교합니다.
   - 할당·엔진마다 한 번에 하나만 돌고, 두 번째는 `409 test_busy`입니다.
-- `apply/`(WAF만): `base_version`이 최신이 아니면 `409 stale_version`. 테스트 없이도 적용할 수 있고, `tested`를 주면
-  `same_as_tested`를 기록합니다.
+- `apply/`(WAF만): `base_version`이 최신이 아니면 `409 stale_version`. 같은 파일로 통과한 테스트가 없으면
+  `409 not_tested`이고, 있으면 그 테스트를 붙여 `same_as_tested`로 기록합니다.
 - `GET terminal/`: cr-waf 관리 주소로 가는 점프 권한, 계정 `analyst`. 방어 파일만 쓸 수 있고 `sudo nginx -t`,
   `-T`, `-s reload`, `systemctl reload nginx`만 root로 돌리며, 네트워크는 loopback만 닿습니다(`curl`로 WAF를 거쳐
   사이트를 시험).
@@ -416,19 +438,24 @@ sequenceDiagram
   라운드 시간 안에 바이너리 로그에 변경이 남았을 때 잃은 것입니다. 그 시각에 겹친 공격 행동이 없으면 `attributed_marker`는 비어 있고,
   정상 케이스는 `attributed_marker`가 되지 않습니다. `detected`는 귀속 구간의 공격 행동 가운데 하나라도 `expect`를
   통과한 알림을 받았는지, `responded`는 목표를 잃기 전에 그 행동들의 출발지가 소진됐거나(`Origin.spent_by`가
-  `deny`·`limit_req`) 첫 알림 뒤에(알림이 없으면 첫 행동 뒤에) 콘솔이나 터미널로 WAF·IDS 버전(`RuleSet`, `setup` 제외)을
-  적용했는지입니다. `lifecycle.responses`가 이 둘을 `ResponseRecord`로 모읍니다. `weighted`는 대응한 목표를 난이도의
+  `deny`·`limit_req`) 첫 알림 뒤에(알림이 없으면 첫 행동 뒤에) 콘솔이나 터미널로 올라간 WAF 버전(`RuleSet`, `setup`
+  제외) 가운데, 붙은 통과 테스트가 그 행동들의 요청을 다시 보내 공격 요청을 막은 것이 있는지입니다
+  (`domain.scoring.objectives.refused_the_attack`, `ResponseRecord.replayed`·`refused`). 공격 요청은 다시 보낸 행동
+  가운데 알림을 받은 것 전부이고, 알림을 받은 것이 없으면 케이스로 쏜 공격 전부입니다. 둘 다 없으면(자유 요청만
+  있으면) 하나라도 막으면 됩니다. 알림 없는 평범한 요청이 통과했다고 대응이 사라지지 않습니다. IDS 버전은 알리기만 하므로
+  대응이 아닙니다. `lifecycle.responses`가 이 둘을 `ResponseRecord`로 모읍니다. `weighted`는 대응한 목표를 난이도의
   절반, 대응하지 못한 목표를 난이도 그대로 셉니다. `response_seconds`는 첫 알림부터 첫 대응까지 초이고, 둘 중 하나라도
   없으면 비어 있습니다. `Objective.seen`과 방어 상태의 `seen`은 `detected`를 그대로 담습니다.
 - `outcomes`: 선언된 케이스와 플랫폼이 보낸 정상 케이스만. 케이스 하나는 결정 하나입니다.
 - `free_actions`: 자유 행동을 출발지별로. TP/FP/FN/TN에 들어가지 않습니다.
-- 판정 알림: 라운드를 읽을 때마다(`lifecycle.READS`의 마지막 단계)와 라운드가 끝날 때(`round.ended` 앞)
+- 판정 알림: 라운드를 읽을 때마다(`lifecycle.READS`의 마지막 단계)와 늦은 판정 때(`round.judged` 앞)
   `lifecycle.judge`가 `scoring.score.judge`를 부릅니다. 점수와 같은 상관 분석으로 케이스마다 판정하되,
   `domain.scoring.metrics.decided`가 판정할 때가 됐는지 정합니다. 끝난 케이스에 알림이 묶였으면 바로, 알림이 없으면
   끝나고 `CR_JUDGE_AFTER_SECONDS`(기본 30초) 뒤에, 실행 중인 도구 케이스는 끝난 뒤에, 라운드가 끝났으면 모두입니다.
   판정은 `scoring.Verdict` 행(라운드와 행동마다 하나, 유일 제약)으로 남기고 새로 만든 행만 `case.judged`
   `{action, case, verdict, alerts, corroborated}` 이벤트로 냅니다. 방어 쪽 콘솔은 이 이벤트를 판정 알림으로 띄웁니다.
 - 플레이어는 라운드가 끝난 뒤에만 읽습니다(진행 중은 `409 round_running`). `?correlation=marker|window`는 스태프만 씁니다.
+  `pending`은 늦은 판정(`Round.judged_at`)이 끝나기 전까지 참입니다.
 
 ## 출발지 IP 소진
 
@@ -441,11 +468,13 @@ sequenceDiagram
   dry run 줄, `delaying request`, ModSecurity의 403 줄은 고르지 않습니다.
 - `limit_req` 하한은 `domain.traffic.limit_floor`입니다. `traffic.yaml`의 `users`, `origins` 가중치, `rate`(없으면
   초당 1건)로 가장 바쁜 고객 출발지의 분당 요청 수를 구하고 두 배를 합니다. `training.content.problems.snapshot`이 라운드 설정에
-  `limit_floor_rpm`으로 넣습니다. `limit_req` 줄이 나오면 `training.attack.origins.rates_at`이 그 줄의 시각에
+  `limit_floor_rpm`으로 넣습니다. `limit_req` 줄이 나오면 `training.attack.origins.zones_at`이 그 줄의 시각에
   적용돼 있던 WAF 버전(`RuleSet`, 시각은 `RuleSet.took_effect`: 터미널 reload는 스냅샷 시각, 나머지는 적용 시각)을
-  고르고 `sandbox.crs.limit_rates_in`이 그 버전 파일에서 `limit_req_zone`의 `rate`를 읽습니다. 읽는 시점의 실행 중
-  설정은 보지 않습니다. zone의 rate가 하한보다 낮으면 소진하지 않고 방어 쪽에 `limit.below_floor`를 한 번 남깁니다.
-  그 버전이 선언하지 않은 zone도, 키에 `$binary_remote_addr`나 `$remote_addr`가 없는 zone도 소진하지 않습니다.
+  고르고 `sandbox.crs.limit_zones_in`이 그 버전 파일에서 `limit_req_zone`의 `rate`와 키를 읽습니다. 읽는 시점의 실행 중
+  설정은 보지 않습니다. 키에 `$binary_remote_addr`나 `$remote_addr`가 없는 zone은 모든 클라이언트가 나눠 쓰므로
+  하한이 있든 없든 소진하지 않고 방어 쪽에 `limit.shared_key`를 한 번 남깁니다. zone의 rate가 하한보다 낮으면
+  소진하지 않고 방어 쪽에 `limit.below_floor`를 한 번 남깁니다. 하한이 있을 때 그 버전이 선언하지 않은 zone도
+  소진하지 않습니다.
 - 출발지는 WAF에서 셉니다. Suricata는 WAF 뒤에 있어 출발지가 WAF이고, WAF가 거부한 요청을 보지 못하기 때문입니다.
 - 출발지가 소진되면 `sandbox.edge.spend`가 그 주소를 `spent` 집합에 넣고 conntrack을 지웁니다. `edge.nft`에서 이
   drop 규칙은 established 허용보다 앞에 있어야 열린 연결도 끊깁니다. 이어서 그 출발지의 도구 실행을 멈추고
@@ -472,9 +501,9 @@ sequenceDiagram
 
 | 종류 | 보는 쪽 |
 |---|---|
-| `round.started`, `round.ended`, `player.joined` | 양쪽 |
+| `round.started`, `round.ended`, `round.judged`, `player.joined` | 양쪽 |
 | `action.sent`, `tool.started`, `tool.ended`, `command.run`, `origin.spent`, `origin.switched`, `origins.spent` | 공격, 스태프 |
-| `alert.seen`, `rule.tested`, `rule.applied`, `rule.refused`, `limit.below_floor`, `case.judged` | 방어, 스태프 |
+| `alert.seen`, `rule.tested`, `rule.applied`, `rule.refused`, `limit.below_floor`, `limit.shared_key`, `case.judged` | 방어, 스태프 |
 | `objective.lost` | 양쪽(누구 행동인지는 스태프만) |
 
 이벤트는 피드일 뿐 저장소가 아닙니다. 점수와 판정은 이벤트가 아니라 행(`Action`, `Detection`, `Objective`,
@@ -518,7 +547,8 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
 - `deploy/roles/waf/analyst.sh`: 방어 쪽 계정 `analyst`. nginx·CRS 설정과 로그(`adm` 그룹)를 읽고, 방어 파일
   여섯 개(root:analyst 0664)만 쓸 수 있으며, `sudo nginx -t`, `nginx -T`, `nginx -s reload`, `systemctl reload nginx`만
   root로 돌립니다. `nginx`는 sudo의 `secure_path`에서 먼저 찾는 래퍼 `/usr/local/sbin/nginx`이고(`deploy/roles/waf/nginx`),
-  `-s reload`일 때만 방어 파일을 `/var/lib/cr-reloaded/waf`에 복사해 root 전용 파일로 원래 경로에 깔고, `nginx -t`와
+  `-s reload`일 때만 방어 파일을 `/var/lib/cr-reloaded/waf`에 복사해 root 전용 파일로 원래 경로에 깔고, 측정용 설정
+  검사와 통과한 테스트 목록(`/var/lib/cr-reloaded/waf.passed`) 확인을 거친 뒤 `nginx -t`와
   reload를 거쳐 master의 새 worker가 뜨면 파일을 root:analyst 0664로 돌려줍니다.
   `systemctl reload nginx`도 drop-in(`nginx-reload.conf`)으로 같은 래퍼를 부릅니다. 측정용 설정(`log_format`, `access_log`, rsyslog, 로그 전송)은 읽기 전용이고, ssh 포워딩이 막혀
   있으며 네트워크는 loopback만 닿습니다.
@@ -526,7 +556,8 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
   센서 컨테이너가 시작할 때 룰 폴더 소유자를 자기 사용자로 바꾸는데(`chown -R`), ACL은 그대로 남기 때문입니다.
   root 명령은 `/usr/local/bin/suricata -T`(센서 컨테이너에서 `-T`만 돌리는 래퍼)와
   `/usr/local/bin/suricatasc -c reload-rules`뿐입니다. 이 래퍼는 reload 전에 룰 파일을 `/var/lib/cr-reloaded/ids`에
-  복사해 원래 경로에 root 전용으로 깔고, reload가 끝나면 ACL을 돌려줍니다(`/var/lib/cr-reloaded`는 두 박스 모두 root 0700). `suricata.yaml`, 룰 폴더, eve 로그, rsyslog는 읽기 전용이고,
+  복사하고, `config: logging` 룰이 있거나 그 해시가 통과한 테스트 목록(`/var/lib/cr-reloaded/ids.passed`)에 없으면
+  불러오지 않고 멈추고, 아니면 원래 경로에 root 전용으로 깔고, reload가 끝나면 ACL을 돌려줍니다(`/var/lib/cr-reloaded`는 두 박스 모두 root 0700). `suricata.yaml`, 룰 폴더, eve 로그, rsyslog는 읽기 전용이고,
   `/usr/local/share/slot`(edge.nft, 로그 중계)과 `/var/lib/cr-ruletest`는 root 0700, 고객 홈과 프로그램 폴더는
   `cr-users` 0750입니다. nft 울타리(`/etc/nftables.conf`)는 WAF보다 좁아서 `lo`로 나가는 패킷도 목적지가
   `127.0.0.0/8`, `::1`일 때만 통과시킵니다(로그 중계가 자기 주소의 514번에 있기 때문). 이 파일에는 그 테이블만
