@@ -1,0 +1,96 @@
+{
+  "cases": {
+    "board-normal-comment": {
+      "malicious": false,
+      "marker": "probe-2bd9ed1c8e82",
+      "tool_case": false
+    },
+    "board-normal-post-list": {
+      "malicious": false,
+      "marker": "probe-f5a23e6312cc",
+      "tool_case": false
+    },
+    "board-normal-search": {
+      "malicious": false,
+      "marker": "probe-ee5778906336",
+      "tool_case": false
+    },
+    "board-normal-search-korean": {
+      "malicious": false,
+      "marker": "probe-25883b54062a",
+      "tool_case": false
+    },
+    "board-normal-search-with-apostrophe": {
+      "malicious": false,
+      "marker": "probe-6be9bc693743",
+      "tool_case": false
+    },
+    "board-normal-sort": {
+      "malicious": false,
+      "marker": "probe-0b0c2982578b",
+      "tool_case": false
+    },
+    "board-path-traversal-static": {
+      "malicious": true,
+      "marker": "probe-36a532a7a7d8",
+      "tool_case": false
+    },
+    "board-sqli-login-bypass": {
+      "malicious": true,
+      "marker": "probe-bd89c17fb73e",
+      "tool_case": false
+    },
+    "board-sqli-orderby-sqlmap": {
+      "malicious": true,
+      "marker": "probe-2e8f95ac5eab",
+      "tool_case": true
+    },
+    "board-sqli-orderby-sqlmap-probe": {
+      "malicious": true,
+      "marker": "probe-06b6c3e453f5",
+      "tool_case": true
+    },
+    "board-sqli-orderby-sqlmap-random-agent": {
+      "malicious": true,
+      "marker": "probe-e4edca74d55f",
+      "tool_case": true
+    },
+    "board-sqli-orderby-sqlmap-skip-waf": {
+      "malicious": true,
+      "marker": "probe-c8b932f3fcc5",
+      "tool_case": true
+    },
+    "board-sqli-orderby-sqlmap-tamper": {
+      "malicious": true,
+      "marker": "probe-9741fd25fb62",
+      "tool_case": true
+    },
+    "board-sqli-orderby-sqlmap-versioned": {
+      "malicious": true,
+      "marker": "probe-13d3ef36dde6",
+      "tool_case": true
+    },
+    "board-sqli-search": {
+      "malicious": true,
+      "marker": "probe-c6b746e83359",
+      "tool_case": false
+    },
+    "board-sqli-union-search": {
+      "malicious": true,
+      "marker": "probe-12eb0d985d70",
+      "tool_case": false
+    },
+    "board-xss-img-onerror-in-comment": {
+      "malicious": true,
+      "marker": "probe-4aede9b85c42",
+      "tool_case": false
+    },
+    "board-xss-script-tag-in-search": {
+      "malicious": true,
+      "marker": "probe-01d32555412c",
+      "tool_case": false
+    }
+  },
+  "image_digest": "ghcr.io/nekonic/cr-board",
+  "recorded_at": "2026-11-23T09:58:53.820173+00:00"
+}

@@ -3,19 +3,19 @@ import pytest
 import plays
 
 CASE = "board-sqli-search"
-O_BRIEN = "board-normal-search-with-apostrophe"
-PROBE = 'alert http any any -> any any (msg:"round isolation probe"; sid:9009901; rev:1;)\n'
+PROBE_PATH = "/round-isolation-probe/"
+PROBE = ('alert http any any -> any any (msg:"round isolation probe"; flow:established,to_server; '
+         f'http.uri; content:"{PROBE_PATH}"; sid:9009901; rev:1;)\n')
 
 
-def o_brien(played: plays.Played) -> int:
-    request = next(case for case in plays.declared_cases("board") if case["name"] == O_BRIEN)["request"]
-    sent = plays.send(played, request["method"], request["path"], query=dict(request.get("params") or {}))
+def probed(played: plays.Played) -> int:
+    sent = plays.send(played, "GET", PROBE_PATH)
     assert sent.ok, sent.text
     return sent.body["status"]
 
 
-def at_paranoia(played: plays.Played, level: int) -> dict[str, str]:
-    return {**plays.appended(played, plays.CRS_SETUP, plays.paranoia(level)), plays.CRS_EXCLUSIONS: ""}
+def with_waf_probe(played: plays.Played) -> dict[str, str]:
+    return plays.appended(played, plays.CRS_EXCLUSIONS, plays.refusing_path(PROBE_PATH, 10077))
 
 
 @pytest.fixture(scope="module")
@@ -34,16 +34,17 @@ def two_allocations(stack_is_up):
         }
         seen["second_lines"] = [line["case"] for line in plays.score(second).body["outcomes"]["per_case"]]
 
-        assert plays.tune_waf(second, at_paranoia(second, 4)).ok
-        assert plays.tune_waf(first, at_paranoia(first, 1)).ok
+        tuned = plays.tune_waf(second, with_waf_probe(second))
+        assert tuned.ok, tuned.text
         committed = plays.declared_rules()
         seen["committed"] = committed
         seen["applied"] = plays.apply_ids(first, committed + PROBE)
-        seen["second_tuning"] = plays.waf_files(second)[plays.CRS_SETUP]
+        seen["first_tuning"] = plays.waf_files(first)[plays.CRS_EXCLUSIONS]
+        seen["second_tuning"] = plays.waf_files(second)[plays.CRS_EXCLUSIONS]
         seen["first_rules"] = plays.ids_rules(first)["text"]
         seen["second_rules"] = plays.ids_rules(second)["text"]
-        seen["served"] = o_brien(first)
-        seen["refused"] = o_brien(second)
+        seen["served"] = probed(first)
+        seen["refused"] = probed(second)
     finally:
         for played in opened:
             plays.close(played)
@@ -73,9 +74,9 @@ def test_two_rounds_tune_their_own_waf_and_their_own_sensor(two_allocations):
     assert seen["applied"].ok, seen["applied"].text
     assert seen["first_rules"] == seen["committed"] + PROBE
     assert seen["second_rules"] == seen["committed"], "a rule applied in one round reached another's sensor"
-    assert "blocking_paranoia_level=4" in seen["second_tuning"] and "blocking_paranoia_level=1" not in seen["second_tuning"], (
-        "crs-setup.conf applied in one round reached another's")
-    assert (seen["served"], seen["refused"]) == (200, 403), (
-        "paranoia level 1 in the first round and 4 in the second should serve and "
-        f"block the O'Brien search respectively; got {seen['served']} and {seen['refused']}"
+    assert "id:10077" in seen["second_tuning"] and "id:10077" not in seen["first_tuning"], (
+        "a WAF rule applied in one round reached another's")
+    assert seen["served"] != 403 and seen["refused"] == 403, (
+        f"the rule applied only in the second round should refuse {PROBE_PATH} there and nowhere else; "
+        f"got {seen['served']} in the first and {seen['refused']} in the second"
     )

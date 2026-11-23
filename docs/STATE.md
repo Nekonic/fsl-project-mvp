@@ -13,14 +13,35 @@ history.
 The product was rebuilt as a side split on `side-split` (user ruling
 2026-11-19: no code is kept or migrated; the old code is reference only), and
 then restructured on the working branch `restructure` (ruling 2026-11-21,
-"The platform is restructured into five units, KYPO-style"). `dev` keeps the
-old product deployable until gate 2. Nothing on `side-split` or
-`restructure` has run on a range.
+"The platform is restructured into five units, KYPO-style"). `dev` and
+`main` still hold the old product until gate 2, but the cloud now runs
+`restructure`: on 2026-11-23 its first range was built and checked
+(`docs/DECISIONS.md`, "The first cloud check of `restructure`").
+
+- **Images.** `cr-infra-bake2`, `cr-waf-bake3` and `cr-target-bake2`, baked
+  from `restructure`; `cr-kali-bake2`, whose role files are the same as
+  `restructure`'s (the `cr-kali-bake3` snapshot failed, `docs/OPENSTACK.md`
+  §3.6).
+- **Platform.** Replaced from `restructure` with a fresh database, as stack
+  `cr-platform2`: the stack `cr-platform` is `DELETE_FAILED`, because the
+  development VM `cr-dev` holds a port and a floating IP on its network
+  (`docs/OPENSTACK.md` §5.3). The old tree's store is kept in a backup off
+  the cloud. The pool (`board: 3`, `corp: 1`) converged.
+- **Ran live and passed.** The checks of `docs/OPENSTACK.md` §3.7-§3.10, 39
+  of 39 (§3.7's unused-address check by hand, after flushing kali's source
+  rewriting, which the procedure now says);
+  probe recordings, board 18 of 18 and corp 7 of 7, committed under
+  `wargames/<id>/probes/`; the final full `bin/verify` with acceptance from
+  the platform VM: acceptance 101 passed, 0 failed, the unit and API suites
+  beside it green. `front/` was built and its vitest passed on the
+  development VM, since the platform VM has no npm.
 
 ## What exists on restructure
 
 The side-split build (the spec's steps 1-17, recorded in this file's git
-history) is carried into five units. Each row ran against fakes only.
+history) is carried into five units. The proofs named in each row run
+against fakes; on 2026-11-23 the acceptance suite also ran the whole table on
+a live range and passed.
 
 | Stage | What exists | Proof that ran |
 |---|---|---|
@@ -29,85 +50,48 @@ history) is carried into five units. Each row ran against fakes only.
 | No tick | round reads run on the round's API requests (`training/round/views_catch_up.py`, `lifecycle.catch_up`, one reader per round through `Round.reading_since`, `CR_READ_EVERY_SECONDS`); the `follow` service is now `rebuild` (`manage.py rebuild_slots`); `ended` is `min(now, ends_at)` and the score counts up to it; a round ended by the operator, a forfeit or allocation expiry reads the logs once more first, waiting for a read another request holds; a reader releases only its own claim and stops once the round has ended, and a request reads a round before it closes an expired allocation | `tests/training/round/test_catch_up_and_score.py`, `tests/training/round/test_lifecycle.py` |
 | Origin loss | HP is gone; an origin is spent by an nginx `deny` or a `limit_req` at or above the floor in the WAF error log (`training/attack/origins.py`, `telemetry/access.py`, `domain/traffic.py`), judged by the WAF version in force when the line was written; `limit.below_floor` warns the defence, and a zone keyed by anything but the client address spends nothing and warns once (`limit.shared_key`) | `tests/training/attack/test_origin_loss.py`, `tests/domain/test_traffic.py`, `tests/telemetry/test_refusals.py` |
 | WAF as files | the defender edits six WAF files (`crs-setup.conf`, the REQUEST-900 and RESPONSE-999 exclusions, `/etc/nginx/defence/{http,board.com,corp.com}.conf`); one read, check, test, write, reload, record flow for IDS and WAF (`training/defence/rules.py`); a terminal reload recorded on the next read from the snapshot the reload wrapper (`deploy/roles/waf/nginx`) copies into root-only `/var/lib/cr-reloaded/waf` and installs root-only for the reload, so nginx loads exactly the snapshot, or put back to the head version when that snapshot touches the platform's measurement (`rule.refused`); live files edited after a reload are left alone; `drift.py` and the JSON tuning gone | `tests/seams/test_crs.py`, `test_crs_scratch.py`, `tests/training/defence/`, `test_analyst.py`, `test_roles.py` |
-| IDS on the sensor | the defence edits Suricata rules on the sensor (ruling 2026-11-22): a second terminal, `analyst` on the infra (`deploy/roles/infra/analyst.sh`: the rule file by ACL, `sudo suricata -T` and `suricatasc -c reload-rules`, loopback addresses only, so not the log relay on the host's own address), `GET defence/ids/terminal/` and `/vm-terminal/ids/<round>/`, the console's terminal pane switching WAF and IDS, the bots' `ids_shell`; a reload there recorded as the next IDS version from the snapshot the `suricatasc` wrapper copies into root-only `/var/lib/cr-reloaded/ids` before reloading, put back when a reloaded rule carries `config: logging` (a backslash-continued rule included); a rule file edited after a reload is left alone; the IDS check, apply and disable API, `DisabledRule` and the console form gone, versions and the rule test kept | `test_ids_analyst.py`, `tests/training/defence/test_ids_terminal_reload.py`, `test_terminal.py`, `test_apply.py`, `tests/seams/test_jump.py`, `test_bots.py`, `test_front.py`, `test_vm_terminal.py`; acceptance rewritten to the IDS shell and not run |
+| IDS on the sensor | the defence edits Suricata rules on the sensor (ruling 2026-11-22): a second terminal, `analyst` on the infra (`deploy/roles/infra/analyst.sh`: the rule file by ACL, `sudo suricata -T` and `suricatasc -c reload-rules`, loopback addresses only, so not the log relay on the host's own address), `GET defence/ids/terminal/` and `/vm-terminal/ids/<round>/`, the console's terminal pane switching WAF and IDS, the bots' `ids_shell`; a reload there recorded as the next IDS version from the snapshot the `suricatasc` wrapper copies into root-only `/var/lib/cr-reloaded/ids` before reloading, put back when a reloaded rule carries `config: logging` (a backslash-continued rule included); a rule file edited after a reload is left alone; the IDS check, apply and disable API, `DisabledRule` and the console form gone, versions and the rule test kept | `test_ids_analyst.py`, `tests/training/defence/test_ids_terminal_reload.py`, `test_terminal.py`, `test_apply.py`, `tests/seams/test_jump.py`, `test_bots.py`, `test_front.py`, `test_vm_terminal.py`; the acceptance tests through the IDS shell, live 2026-11-23 |
 | Test required | a rule test passes only when the engine accepts the files, every benign case of the round was replayed (`untested_benign` empty, at least one) and none is refused (WAF) or alerted on (IDS) (`passed`, `failed_benign`); a pass lists the box's hash of those files in root-only `/var/lib/cr-reloaded/{waf,ids}.passed` through `sandbox/crs.py` and `sandbox/suricata.py`, cleared at the round's setup; the console WAF apply takes only the files of a passed test (`409 not_tested`) and the console offers apply only then; both reload wrappers refuse a snapshot not listed, and the IDS wrapper refuses `config: logging` before it loads; a terminal version is tied to its passed test | `tests/training/defence/test_required_test.py`, `test_analyst.py` |
 | Response proof | detection and response O/X per lost objective (ruling 2026-11-22); response is a spent origin of the window's attack actions, or a WAF version live after their first alert (first action when none alerted) whose passed test replayed their own requests under fresh per-test markers (case recordings, the logged request of free requests, `rules.attack_requests`) and refused the attack among them (every replayed action that alerted, else every replayed case attack, else any one); IDS versions never count | `tests/domain/test_objectives.py`, `tests/training/defence/test_response_proof.py`, `tests/scoring/test_score.py` |
 | Late judge | the request that ends a round answers at once; the first read `CR_JUDGE_AFTER_SECONDS` after the end ingests once more, settles, judges and logs `round.judged` (`Round.judged_at`, `lifecycle.judge_late`); the score says `pending` until then | `tests/training/round/test_catch_up_and_score.py` |
 | Customers on the infra | benign traffic leaves from the infra VM (`sandbox/customers.py`, `cr-customers.service`, dummy link `customers`), never from kali; the edge `pool` holds only attack origins | `tests/seams/test_customers.py`, `tests/seams/test_stack_plan.py`, `tests/test_roles.py` |
 | Random board secret | each round's start sets new board passwords (`set_passwords`, declared as `rotate` in `wargames/board/objectives.yaml`) and then reads the baseline | `tests/scoring/test_baseline.py`, `tests/test_board_db_ephemeral.py` |
 | Verdict notices | each case is judged once during the round (`scoring.score.judge`, `Verdict` rows, `case.judged` to the defence); the console shows the newest three | `tests/scoring/test_judge.py`, `front/` vitest |
-| Bots | the bots get the human's shell (`bots/shell.py`); no generated client: `bots/`, `test/` and `bin/` call the API by `operationId` through `bots/rest.py` | `platform/tests/test_bots.py`, `test/` collected only |
+| Bots | the bots get the human's shell (`bots/shell.py`); no generated client: `bots/`, `test/` and `bin/` call the API by `operationId` through `bots/rest.py` | `platform/tests/test_bots.py`; the acceptance suite through `bots/rest.py`, live 2026-11-23 |
 | Lessons | the lesson content is gone; `training/lessons/` is an empty package; `front/` builds again | `npm run build`, `npx vitest run` |
-| Docs | README, ARCHITECTURE, OPENSTACK, this file and `now.md` describe `restructure` | this stage |
+| Docs | README, ARCHITECTURE, OPENSTACK, this file and `now.md` describe `restructure` and the 2026-11-23 cloud check | this stage |
 
 ## Not live-verified
 
-Everything on `restructure`. In particular, none of these has run on a slot:
+What ran on the range on 2026-11-23 is under "Where things stand". Still
+not run on a range:
 
-- the five-unit platform image on the platform VM and its fresh database;
-- reads on request on a live round: alert ingest, the WAF error log, corp
-  effects, the command log, verdict notices, the time-limit end on the next
-  request, and the `rebuild` service;
-- origin loss from a defender's nginx `deny` and `limit_req`, the drop at
-  the infra edge, a CRS 403 spending nothing (`test/test_origin_spend.py`,
-  `test/test_block_everything.py`, both rewritten and not run);
-- the six WAF files on a baked cr-waf: nginx loading the includes,
-  ModSecurity's error format, the worker-start check, `probe.conf` with two
-  servers, the `analyst` sudo rules and loopback fence, the `nginx` reload
-  wrapper on sudo's `secure_path` and its `systemctl reload` drop-in, a
-  terminal reload recorded as a version from its snapshot, which the wrapper
-  installs root-only for `nginx -t` and the reload;
-- the IDS analyst on a rebaked cr-infra (`docs/OPENSTACK.md` §3.10): the ACL
-  surviving the sensor's chown, the `suricata` wrapper, the `suricatasc`
-  wrapper's snapshot (the copy installed root-only for the reload, the ACL
-  handed back, the lock) and its `"return": "OK"` check, `nftables.service`
-  beside the edge table, and
-  the acceptance tests that now change IDS rules through the IDS shell;
-- the customers on the infra VM (`cr-customers.service`, the /32s on the
-  dummy link, replies through the edge) and kali holding attack origins only;
-- `set_passwords` on a target baked with the new `cr-board`, and the
-  customers' logins with the per-round passwords;
-- the rule test on a sensor and on cr-waf (`sandbox.suricata.offline_test`,
-  `sandbox.crs` scratch check and test) and that it leaves live alerts and
-  ground truth unchanged (`test/test_rule_test_isolation.py`);
-- the passed-test lists on the boxes: the platform's writes through the
-  gateway and node runners as root, both wrappers' hash matching the
-  platform's (`sha256sum` on the box), a reload refused until a test passed,
-  and the WAF replay of the round's attack requests on the scratch instance;
-- the late judge on a live round, and the acceptance plays that now test
-  before they apply and read the score until it is no longer pending;
-- jump grants on the platform sshd and the per-player key in the box
-  account, for kali and for `analyst`, and the bots' `shell` over them;
-- `bin/cloud up` and `down` through the staff range routes;
-- one round per matchup with Claude Code as the bot player;
-- the acceptance suite as a whole on `requests` and `bots/rest.py`
-  (`test/`, only collected);
-- `front/` against a live platform, `nginx -t` on `platform/nginx.conf` and
-  `nft -c` on `edge.nft`.
+- one round per matchup with Claude Code as the bot player (`def_vs_bot`,
+  `atk_vs_bot` through `bots/cli.py`) and one `pvp` round;
+- a captured walk of every page as a learner, against the live platform;
+- a live review round with zero countable findings, and a docs review;
+- the edge's `pool` and `spent` sets after a reboot of the infra
+  (`docs/OPENSTACK.md` §3.10, last check);
+- by hand: the IDS reload's refusal of `config: logging` and the WAF
+  wrapper's refusal of an `access_log off` written during a reload
+  (`docs/OPENSTACK.md` §3.10);
+- `bin/cloud up --replace` end to end on this cloud: it cannot delete the
+  platform stack while `cr-dev` stands on its network; and `bin/cloud down`;
+- the rulings of 2026-11-22 and 2026-11-23 not built yet (five attack
+  origins, more benign kinds, Internet scanners, the board's attack paths,
+  the response replay of the attack's own logged requests).
 
 ## Next steps, in order
 
-1. **Rebake the role images**: `cr-infra` (the edge sets, `conntrack`,
-   `tcpdump`, the customers' account, `users.py` and `cr-customers.service`,
-   the dummy link), `cr-waf` (the access and error logs shipped, the split
-   site config and six defence files, `probe.conf`, `analyst.sh`), `cr-kali`
-   (fewer addresses from `slot.env`; its role files did not change) and
-   `cr-target` (a `cr-board` image with `set_passwords`; until then every
-   round start fails with `ground_truth_unavailable`). Name them in
-   `compute.images`, `bin/cloud up --replace`, and run the checks of
-   `docs/OPENSTACK.md` §3.7, §3.8 and §3.9.
-2. **Probe recordings** (spec step 12): `bin/record-probes board` and `corp`
-   through the staff route on a probe allocation; copy
-   `CR_PROBES_OUT/<id>/probes/` off the platform VM into
-   `wargames/<id>/probes/` and commit it. Until the board's manifest is in,
-   `test/test_rule_test_isolation.py` fails.
-3. **Full `bin/verify` on the cloud**: with acceptance, from the platform VM
-   (`CR_PLATFORM_URL=http://<address>:8000 bin/verify`).
-4. **A Player vs AI round per matchup**: `def_vs_bot` and `atk_vs_bot` with
-   Claude Code as the bot player through `bots/cli.py`, and one `pvp` round,
-   then a captured walk of every page as a learner, a live review round with
-   zero countable findings and a docs review.
-5. **Gate 2**: present what changed with the evidence; on approval, move the
+1. **Unblock the cloud** (the user): decide where `cr-dev` lives (its own
+   network and router) so `stack delete cr-platform` can finish, or have an
+   admin raise the security-group quota (10 of 10); have an admin look for
+   why the `cr-kali-bake3` snapshot failed before the next kali bake.
+2. **A Player vs AI round per matchup**: `def_vs_bot` and `atk_vs_bot` with
+   Claude Code as the bot player through `bots/cli.py`, and one `pvp` round.
+3. **A captured walk of every page as a learner**, then a live review round
+   with zero countable findings and a docs review.
+4. **Gate 2**: present what changed with the evidence; on approval, move the
    verified, tagged state onto `dev` and then `main`.
 
 ## Open points
@@ -128,11 +112,11 @@ Everything on `restructure`. In particular, none of these has run on a slot:
 - **Screens not yet one file to change.** Verdict tones differ between
   `Score` and `RuleTestTable`; some cytoscape widths and margins in
   `panes/Map.tsx` and the SVG stroke widths are still numbers in code.
-- **Two runtime guesses in the rule test.** Whether `jasonish/suricata`'s
-  entrypoint lets the offline `-r` run write to the root-owned scratch log
-  folder mounted at `/scratch`, and whether the scratch ModSecurity
-  instance's audit log is opened by the root master (its workers could not
-  write it), are not known until a slot runs them.
+- **One case, many firings.** A benign case fires on every pass of the
+  customers, and the score lists one line per firing, while CLAUDE.md counts
+  one case as one decision. The acceptance harness reads a case as detected
+  when any firing drew an alert. The user has not ruled
+  (`docs/DECISIONS.md`, 2026-11-23).
 - **A round no one calls on does nothing.** The benign pass, origin loss,
   alert ingest, verdicts and the time-limit end wait for the next request
   for the round; a polling console or bot keeps it moving. The edge sets
@@ -150,13 +134,9 @@ Everything on `restructure`. In particular, none of these has run on a slot:
   comments and are not scanned: `redteam/cases/board.yaml`,
   `wargames/board/traffic.yaml` and `deploy/openstack/cloud.example.yaml`
   carry them today.
-- **No probe recordings are committed.** A test now fails while any benign
-  case of the round is unrecorded (`untested_benign`), so on the live range no
-  WAF or IDS change can go live until `bin/record-probes` has recorded the
-  wargame's probes into `wargames/<id>/probes/`.
-- **Acceptance plays that apply a rule that refuses customers.** Plays that
-  used to apply a rule expected to draw false positives on the live range
-  now meet `409 not_tested` or a refused reload; they were not run.
+- **A changed case needs its probe recorded again.** The board and corp
+  recordings were made on the 2026-11-23 range; a case whose request changes
+  needs a new recording, as `board-path-traversal-static` did.
 - **A recorded 400 or 403 response.** The scratch WAF's upstream answers a
   replayed case with its recorded response, so a case whose recording is a
   400 or 403 from the site reads as refused by the WAF.
@@ -192,7 +172,8 @@ Everything on `restructure`. In particular, none of these has run on a slot:
 
 ## Open risks (spec §17)
 
-Unmeasured until a range runs them: offline IDS against the live sensor;
+Not measured yet; the 2026-11-23 range ran these paths but measured none of
+them: offline IDS against the live sensor;
 mapping `suricata -T` errors to a line; scratch CRS instance fidelity;
 recorded sqlmap pcaps as an IDS preview; error-log loss on the UDP hop (an origin
 the defender banned is not spent); spend lag of one read interval plus shipping; forged markers and

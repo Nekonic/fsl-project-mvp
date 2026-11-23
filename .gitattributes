@@ -16,3 +16,4 @@
 *.zip binary
 *.sqlite3 binary
 *.pdf binary
+*.pcap binary

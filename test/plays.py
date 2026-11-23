@@ -43,6 +43,11 @@ def appended_and_reloaded(path: str, text: str) -> str:
     return f"printf %s {shlex.quote(text)} >> {path} && sudo nginx -t && sudo nginx -s reload"
 
 
+def refusing_path(path: str, rule_id: int) -> str:
+    return (f'SecRule REQUEST_FILENAME "@beginsWith {path}" '
+            f'"id:{rule_id},phase:1,t:none,deny,status:403,log,msg:\'refused {path}\'"\n')
+
+
 def paranoia(level: int, inbound: int | None = None) -> str:
     lines = (f'SecAction "id:900000,phase:1,pass,t:none,nolog,setvar:tx.blocking_paranoia_level={level}"\n'
              f'SecAction "id:900001,phase:1,pass,t:none,nolog,setvar:tx.detection_paranoia_level={level}"\n')
@@ -58,6 +63,7 @@ SCORE_WAIT = 150.0
 TOOL_WAIT = 900.0
 ALERT_PAGES = 200
 HEARTBEAT_EVERY = 60.0
+PROBLEM_UPDATE_ATTEMPTS = 5
 
 
 @dataclass(frozen=True)
@@ -164,8 +170,13 @@ def problem_of(setup: Setup) -> int:
     if standing is None:
         KNOWN[key] = done("staff_problem_create", operator(), document)["problem"]["id"]
         return KNOWN[key]
-    revision = done("staff_problem", operator(), problem_id=standing["id"])["problem"]["revision"]
-    done("staff_problem_update", operator(), {**document, "base_revision": revision}, problem_id=standing["id"])
+    for _ in range(PROBLEM_UPDATE_ATTEMPTS):
+        revision = done("staff_problem", operator(), problem_id=standing["id"])["problem"]["revision"]
+        updated = ask("staff_problem_update", operator(), {**document, "base_revision": revision},
+                      problem_id=standing["id"])
+        if "stale_revision" not in updated.codes:
+            break
+    assert updated.ok, f"staff_problem_update answered {updated.status}: {updated.text}"
     KNOWN[key] = standing["id"]
     return KNOWN[key]
 
@@ -559,7 +570,12 @@ def score_when_ready(played: Played, until: Callable[[dict], bool], timeout: flo
 
 
 def per_case(scored: dict) -> dict[str, dict]:
-    return {line["case"]: line for line in scored["outcomes"]["per_case"]}
+    chosen: dict[str, dict] = {}
+    for line in scored["outcomes"]["per_case"]:
+        held = chosen.get(line["case"])
+        if held is None or (line["alerts"] and not held["alerts"]):
+            chosen[line["case"]] = line
+    return chosen
 
 
 def totals(scored: dict) -> dict:

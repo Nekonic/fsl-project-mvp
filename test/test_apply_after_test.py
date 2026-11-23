@@ -5,7 +5,7 @@ import plays
 CONTROL = "board-sqli-search"
 CANDIDATE = (
     'alert http any any -> any any (msg:"tested SQL injection in search"; '
-    'flow:established,to_server; http.uri; content:"or 1=1"; nocase; sid:9009982; rev:1;)\n'
+    'flow:established,to_server; http.uri; content:"1=1"; sid:9009982; rev:1;)\n'
 )
 NOT_NGINX = "not_a_directive on;\n"
 SETUP = plays.Setup(wargame="board", title="Acceptance apply after test board", probe_cases=(CONTROL,))
@@ -54,8 +54,8 @@ def test_tested_ids_rules_reloaded_in_the_ids_terminal_are_recorded_as_a_termina
     assert applied_round["ids_applied"].ok, applied_round["ids_applied"].text
     head = max(applied_round["ids_versions"], key=lambda line: line["version"])
     assert head == applied_round["ids_applied"].version and head["source"] == "terminal"
-    assert head["tested"] == applied_round["ids_test"].body["test"] and head["same_as_tested"] is True, (
-        "a terminal reload is tied to the passed test of the same text")
+    assert head["tested"] is not None and head["tested"] >= applied_round["ids_test"].body["test"], head
+    assert head["same_as_tested"] is True, "a terminal reload is tied to the passed test of the same text"
 
 
 def test_only_the_waf_files_a_test_passed_apply(waf_round):

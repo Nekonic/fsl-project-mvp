@@ -1,0 +1,6 @@
+{
+  "headers": {},
+  "host": "board.com",
+  "method": "GET",
+  "path": "/?sort=-created_at"
+}

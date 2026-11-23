@@ -198,7 +198,7 @@
   correlation: window
   request:
     method: GET
-    path: /static/%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2fetc/passwd
+    path: /static/admin/%2e%2e%2f%2e%2e%2fetc/passwd
 
 # -- benign ----------------------------------------------------------------
 - name: board-normal-search

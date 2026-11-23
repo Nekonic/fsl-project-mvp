@@ -1,0 +1,12 @@
+{
+  "body": "csrfmiddlewaretoken=XQta2pnTg2QEtZK2NPACsZuN2359pAVHw2qBSBjQRhAJNs7isBTpMlgAzwbm3acE&body=Thanks%2C+the+fix+in+the+second+reply+worked+for+me.",
+  "headers": {
+    "Content-Type": "application/x-www-form-urlencoded",
+    "Cookie": "csrftoken=Aoqbpc06WYLEGzcDQmXuY1i3bdWhMws19AnCfoW3xdvJ02zTv8ghin4QIG2uq6JY",
+    "Origin": "http://board.com",
+    "Referer": "http://board.com/posts/1/"
+  },
+  "host": "board.com",
+  "method": "POST",
+  "path": "/posts/1/comments/"
+}

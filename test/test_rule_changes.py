@@ -2,7 +2,8 @@ import plays
 
 
 def test_criterion_4_adding_a_rule_moves_the_score(rules_session):
-    assert rules_session["noisy"].ok, rules_session["noisy"].text
+    live, posted = rules_session["noisy_rules"]
+    assert live == posted, "the round's start posture did not reach the sensor"
 
     benign = plays.per_case(rules_session["after_noisy"])["board-normal-search"]
     assert benign["verdict"] == "fp", (

@@ -178,7 +178,7 @@ def offline_argv(config: SensorConfig, scratch: str, case: str, pcap: str) -> li
     return ["docker", "run", "--rm", "--pull", "never", "--network", "none",
             "-v", f"{config.settings_file}:{config.settings_file}:ro",
             "-v", f"{folder}:/pcaps:ro", "-v", f"{scratch}:/scratch",
-            config.image, "-c", config.settings_file, "-k", "none",
+            config.image, "-c", config.settings_file, "--runmode", "single", "-k", "none",
             "-r", f"/pcaps/{PurePosixPath(pcap).name}", "-S", "/scratch/candidate.rules",
             "-l", f"/scratch/{case}"]
 

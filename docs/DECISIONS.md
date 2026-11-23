@@ -10927,3 +10927,70 @@ Corrects the 2026-11-22 entry, which wrote the user's ruling ("send the log mock
 - The requests replayed for an attack are the requests that attack sent in this round, taken from the logs by its marker: the WAF access log's request lines (method, URI, Host), and the ModSecurity audit log for headers and body where it holds the transaction. A request whose body the logs do not hold (a POST that drew no rule, so the audit log kept nothing) takes the body the platform sent for that action; if none is known it is replayed without one and marked so.
 - Each replayed set is sent twice to the scratch instance: once with the files live when the candidate was tested, once with the candidate. 대응 O needs at least one of the attack's requests that the live files let through and the candidate refuses. A version that refuses only what was already refused, or nothing, is 대응 X.
 - Identical request lines are sent once; above a cap per action the replay takes an even sample and says how many it sent of how many logged.
+
+## 2026-11-22 — Attack origins, benign traffic kinds, Internet scanners, board attack paths
+
+The user's rulings of 2026-11-22, recorded on 2026-11-23. None is built yet.
+
+- **Five attack origins per attacker** for now, in place of about thirty, and settable per wargame. With fewer origins each spent origin costs the attacker more.
+- **More benign traffic kinds.** The customers' program gains search crawlers (Googlebot, Bingbot, Naver Yeti, Daum), uptime monitors, RSS/feed readers and similar bots, and ordinary users who at random read posts, upload new posts and comment.
+- **Internet scanners as noise.** Probes for `wp-login.php`, `.env`, `phpmyadmin` and Shodan/Censys-like user agents run as background noise. They are neither benign nor attack: they enter no TP/FP/FN/TN, and the zero-FP rule test does not replay them.
+- **Board attack paths.** Only realistic old CVEs and configuration mistakes; each round picks one or two:
+  - SQLi: `order_by` CVE-2021-35042 (today's `?sort=`), Trunc/Extract CVE-2022-34265 (month/week archive).
+  - RCE: reportlab CVE-2023-33733 (save a post as PDF), with a new objective: the `SECRET_KEY`.
+  - `/admin/` access-control bypass: gunicorn request smuggling CVE-2024-1135 (< 22.0.0) or the trailing-newline CVE-2021-44420, combined with `/admin/` password guessing with no login rate limit.
+  - Information disclosure: `.env` served by an nginx static misconfiguration; `dictsort` CVE-2021-45116 (member list `?order=`).
+  - Deferred: SSRF, XXE, XSS (XSS needs a moderator browser bot). Rejected: `DEBUG=True`, as unrealistic for a production board; this also drops django-debug-toolbar, whose default show-toolbar check needs `DEBUG`.
+  - Before building a path, check from the CRS rule files which rules cover it.
+
+## 2026-11-23 — The first cloud check of `restructure`: what it changed in the product
+
+The first range built from `restructure` (rebaked images, the platform VM
+replaced, the pool converged, `docs/OPENSTACK.md` §3.7-§3.10 checked, probes
+recorded, the full `bin/verify` with acceptance) found these, fixed on the
+branch.
+
+- **The attack API returns bodies up to 256 KiB, not 64 KiB.** corp's
+  WordPress pages are 70-94 KB and their nonces sit a few hundred bytes from
+  the end (the home page's probe response is 93,755 bytes, its nonce at
+  93,421). `POST requests/` cut bodies at 64 KiB, so a bot player could not
+  read a nonce the human reads in the site pane. A bot must reach what a
+  human reaches (CLAUDE.md), so the limit follows the largest page the
+  wargames serve.
+- **`board-path-traversal-static` climbs from `/static/admin/`.** The case sent
+  `/static/` followed by four encoded `../`, which climbs above nginx's root:
+  the WAF's nginx answered 400 in its URI parser, before ModSecurity and
+  before anything reached the sensor, so its probe recording was an empty
+  capture and the case drew no alert of its own. The path is now
+  `/static/admin/%2e%2e%2f%2e%2e%2fetc/passwd`, which stays inside the root and
+  reaches CRS and the sensor; its probe was recorded again.
+- **The offline IDS rule test runs Suricata with `--runmode single`.**
+  `sandbox.suricata.offline_test` ran the sensor's `suricata.yaml`, whose
+  `runmode: workers` Suricata 8.0.7 refuses for `-r` ("The custom type
+  "workers" doesn't exist for this runmode type PCAP_FILE"), and stderr was
+  discarded. Every replay was empty, so every IDS rule test passed with no
+  alert and no benign case could fail it. With `--runmode single` the replay
+  of `board-sqli-search.pcap` gives its alert, and the zero-FP gate now holds
+  for IDS rules.
+- **A terminal grant names the jump host.** With no `CR_JUMP_HOST` set, every
+  grant (attack, WAF and IDS terminals) answered an empty `ssh.host`, so no
+  client could reach the jump sshd. The views fall back to the request's host,
+  as the old tree did (`training.round.access.with_jump_host`).
+- **The declaration file is read beside the code.** `cr/config.py` built the
+  declaration's path from `CR_SOURCE`, but the platform container mounts only
+  `deploy/`, `wargames/` and `redteam/cases` there, so `POST
+  /api/staff/range/fabric/` answered 500. The path falls back to the file
+  beside the code when `CR_SOURCE` does not hold it.
+- **Acceptance plays that changed the posture past the gate start from it.**
+  With the rule-test gate working, a live change that refuses or alerts on a
+  benign case cannot go live, so the block-everything WAF and the noisy and
+  catch-all IDS rule sets are now the start postures of their own rounds
+  (staff write those, no rule test gates them), and the round isolation plays
+  use rules that touch only a path no benign case uses.
+- **Open, for the user.** A benign case is fired on every pass of the
+  customers, so one round holds many firings of it, and the score lists one
+  line per firing. CLAUDE.md says one case is one decision however many
+  alerts it drew. The acceptance harness now reads a case as detected when any
+  of its firings drew an alert (the newest firing's alert may not be ingested
+  yet when the score is read). Whether the score should fold a benign case's
+  firings into one decision, and how, is not ruled.

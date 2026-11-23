@@ -109,7 +109,7 @@ user's password, flavor access, the base image and `cloud.yaml` (§4).
 | Kolla-Ansible cloud with Heat, Glance, Nova, Neutron (ML2/OVN) | done (this cloud) | §2 |
 | Project `fsl-range`, member user, clouds.yaml entry, quota check, flavor choice | `bin/cloud init` as admin (2026-11-15); flavors and quotas are never created or raised by it | §3 |
 | Base image, stock Ubuntu 24.04, upload with checksum check | `bin/cloud init` when missing; done (this cloud, 2026-10-20) | §3.6 |
-| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18; the WAF's re-baked as `cr-waf-bake2`). The side split's infra and WAF changes need a new bake of both, not done; the infra bake also carries the IDS analyst account (§3.7, §3.10) | §3.6 |
+| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18). Rebaked from `restructure` on 2026-11-23 as `cr-infra-bake2`, `cr-waf-bake3` and `cr-target-bake2`, the range on `cr-kali-bake2` (the kali snapshot failed, §3.6); the §3.7-§3.10 checks passed on that range | §3.6 |
 | `cloud.yaml`: every cloud-specific value, validated | written by `bin/cloud init` (2026-11-15) | §4 |
 | Platform and wargame images on GHCR (`.github/workflows/images.yml`) | done (public, pulled 2026-10-11) | §5 |
 | Heat stack pulls images instead of `--build` | done (2026-10-11) | §5 |
@@ -488,6 +488,12 @@ the compute node's instance storage must have, at a disk allocation ratio of
   five groups per range stack, as before, every stack of the pool of four
   failed with `OverQuotaClient: Quota exceeded for resources:
   ['security_group']` (`docs/DECISIONS.md`, 2026-11-18).
+- **(this cloud)** A VM outside the product with its own group takes the
+  tenth: on 2026-11-23 `cr-dev`'s group made 10 of 10, so a second platform
+  stack failed with `Quota exceeded for resources: ['security_group']` until
+  the first stack's emptied group was deleted. The platform now runs as stack
+  `cr-platform2`, whose own group is again named `cr-platform`, and the
+  groups are at 10 of 10 again (§5.3).
 
 ```bash
 openstack quota show fsl-range
@@ -641,7 +647,7 @@ Glance holds three kinds of image:
 |---|---|---|
 | `compute.base_image` (e.g. `ubuntu-24.04`) | the stock `noble-server-cloudimg-amd64.img`, checksum verified, uploaded as is (below) | `bin/cloud init`, once |
 | the Kali base | Kali's Generic Cloud image (`kali-linux-<ver>-cloud-genericcloud-amd64.tar.xz`), converted and uploaded once **[unverified]** | by hand, once |
-| `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1` (**(this cloud)** the WAF's is `cr-waf-bake2`) | baked from `deploy/roles/<role>/install.sh` on a builder VM, then a Nova snapshot (below) | by hand, once per bake |
+| `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1` (**(this cloud)** since 2026-11-23 `cr-kali-bake2`, `cr-waf-bake3`, `cr-infra-bake2`, `cr-target-bake2`) | baked from `deploy/roles/<role>/install.sh` on a builder VM, then a Nova snapshot (below) | by hand, once per bake |
 
 The platform VM installs or writes every package, tool, key and setting at
 boot from the base image. The range VMs boot from the baked images with no
@@ -724,12 +730,24 @@ openstack server delete cr-bake-waf2; openstack floating ip delete <address>
 
 The builder needs no floating IP when ssh reaches it through the platform VM,
 which has a port on `cr-platform`: the WAF re-bake of 2026-11-18 went that
-way.
+way. The bakes of 2026-11-23 reached the builders directly from another VM on
+`cr-platform`.
+
+Check that the snapshot is `active` in Glance (`openstack image show`) before
+the builder is deleted: `server image create --wait` can end with no image.
+On 2026-11-23 the kali snapshot `cr-kali-bake3` ended so, with Nova's instance
+action `createImage` showing `compute_snapshot_instance: Error` and no
+traceback a member user can see; the builder was deleted after it, so the
+45-minute bake was lost. The cause is **[unverified]** (free space on the
+compute node or the Glance store is a guess); an admin reads it on the
+controller and compute node.
 
 The builder takes one instance of the project's quota, and the full default
 pool takes all of it (§3.2: 17 of 17 on this cloud), so `server create`
 fails while the pool stands. Free one first: an admin raises `instances` by
-one, or one range stack is deleted for the bake.
+one, or one range stack is deleted for the bake. Four builders at once need
+four instances and their cores: on 2026-11-23 all four slot stacks were
+deleted for the bakes, and `bin/cloud up` built them again afterwards.
 
 A builder named `cr-build-<...>` or carrying the `cr_image` property would be
 deleted by `DELETE leftovers/` and `bin/cloud down` as a builder of the VM
@@ -752,6 +770,14 @@ reached through the platform VM as the user `kali`: the builder's
 `cloud-init-local` took about 5 min before ssh answered, `install.sh` 43 min
 27 s, the snapshot 10 min 54 s; virtual size 30 GB, `min_disk` 30 GB.
 
+On 2026-11-23 the roles were baked from `restructure` on `m1.medium` builders:
+`cr-infra-bake2` (`install.sh` about 10 min, snapshot 2 min 14 s),
+`cr-target-bake2` (at the branch's commit as `CR_IMAGE_TAG`, snapshot 6 min
+44 s) and `cr-waf-bake3` (snapshot 3 min 18 s), each `min_disk` 30 GB. The kali
+snapshot failed (above); the range runs `cr-kali-bake2`, because nothing under
+`deploy/roles/kali`, `deploy/kali` or `deploy/proxy` changed between the tree
+it was baked from and `restructure`.
+
 A range stack names its images by `compute.images`, and the stack's digest
 holds the names, not the content (§6, §7): bake a changed role under a new
 name. The target holds the board and corp images it pulled at bake, so a
@@ -770,7 +796,9 @@ both are baked and named in `compute.images`, a range runs the old edge and
 WAF: the WAF's error log is not shipped, so no origin is ever spent, a spent
 origin is not dropped at the edge, and the rule test has no scratch CRS instance or `analyst` account to
 reach. The procedure is the bake by hand of §3.6, once per role, under new
-names; none of it has run, so it is **[unverified]**.
+names. **(this cloud)** Both were baked on 2026-11-23 (§3.6), and the checks
+below ran on one slot of that range and passed, with the exception noted
+at each.
 
 | Role | New name | What changed in `deploy/roles/<role>/` |
 |---|---|---|
@@ -844,7 +872,10 @@ sudo tail -1 /var/log/nginx/access.json            # on the WAF after one reques
 - a request's access line reaches Elasticsearch as module `nginx_access` with
   its `request_id`, and a 200 makes no Detection (`GET defence/alerts/`);
 - a WAF rule test (`POST defence/waf/test/`) returns a verdict for one case,
-  and the live audit log's line count is unchanged;
+  and the live audit log's line count is unchanged; it passes only once the
+  wargame's probes are recorded (below): before that every benign case lists
+  in `untested_benign`, so this check and the reload checks that need a
+  passed test come after the recordings;
 - an IDS rule test (`POST defence/ids/rules/test/`) leaves
   `/var/log/suricata/eve.json` unchanged;
 - as `analyst`, `touch /etc/nginx/x` and `curl http://<the infra's address>/`
@@ -856,13 +887,18 @@ sudo tail -1 /var/log/nginx/access.json            # on the WAF after one reques
 - a defender `deny <the worn origin>;` in `/etc/nginx/defence/board.com.conf`,
   tested and reloaded, leaves an `access forbidden by rule` line that reaches
   Elasticsearch as module `nginx_error` and spends that origin
-  (`X-Origins-Left` on the next attack answer is one lower);
+  (`X-Origins-Left` on the next attack answer is one lower); not run by hand
+  on 2026-11-23, `test/test_origin_spend.py` passed in the acceptance run;
 - as `analyst`, `nohup sleep 9999 &` and a crontab line are gone once the
   round ends (`pgrep -u analyst` and `sudo crontab -l -u analyst` on the WAF
   show nothing);
-- on kali, `sudo ip addr add <an unused origin-subnet address> dev <its
-  internet NIC>` and `curl --interface <that address> http://board.com/`
-  time out, while the API's requests still answer;
+- on kali, `sudo iptables -t nat -F ORIGIN-SNAT`, then `sudo ip addr add <an
+  unused origin-subnet address> dev <its internet NIC>` and `curl --noproxy
+  '*' --interface <that address> http://board.com/` time out, while the API's
+  requests still answer. Flush first: `set-origin` rewrites every packet
+  leaving that NIC to the worn origin, so without the flush the curl leaves
+  from the worn origin and answers 200 (the WAF logs the worn origin as its
+  `client_ip`);
 - a closed round's `/vm-terminal/<side>/<round>/ws` answers `409` with code
   `round_closed`, not 500;
 - after a round ends, `sudo nft list set ip edge pool` on the infra is empty
@@ -906,7 +942,8 @@ change: no network path is new. The customer addresses are not in the
 edge's `pool`, so kali cannot send from them.
 
 After the bakes, name both in `compute.images` and run `bin/cloud up
---replace`. Checks on one slot, **[unverified]**:
+--replace`. Checks on one slot (passed on 2026-11-23 with `cr-infra-bake2` and
+`cr-kali-bake2`):
 
 ```bash
 ip -4 addr show dev customers                      # on the infra: the slot's customer addresses as /32s
@@ -928,8 +965,10 @@ among them, gets a random one nobody is told. The command is in the
 `cr-target` is baked again at a commit whose `cr-board` has it, every round
 start fails with `ground_truth_unavailable`. After the bake, name it in
 `compute.images` (and `compute.target_tag`) and run `bin/cloud up --replace`.
-Check on one slot, **[unverified]**: two rounds in a row read different
-hashes for every account, and the customers' log-ins still answer 302.
+Check on one slot: two rounds in a row read different hashes for every
+account, and the customers' log-ins still answer 302. **(this cloud)**
+`cr-target-bake2` (2026-11-23): not run by hand; `test/test_board_loot.py`
+passed in the acceptance run.
 
 ### 3.10 The IDS analyst account (infra rebake)
 
@@ -943,10 +982,11 @@ round's posture for the whole round.
 |---|---|
 | `infra` | `analyst.sh` creates `analyst` (bash, password field `*`, group `adm`) and gives it `local.rules` through an ACL (`u:analyst:rw`; package `acl`), because the sensor container's start chowns `/var/lib/suricata` to its own user, which keeps an ACL but not a group. `sudo` allows only `/usr/local/bin/suricata -T` (the new wrapper `suricata`, which runs `suricata -T` in the `sensor` container) and `/usr/local/bin/suricatasc -c reload-rules`; that wrapper copies the rule file into `/var/lib/cr-reloaded/ids`, installs the copy over the live path as a root-only file (the analyst's ACL comes back after the reload), and writes the reload time after a reply of `"return": "OK"`, and `/var/lib/cr-reloaded` is root 0700. `/etc/suricata`, `/var/lib/suricata`, `/var/log/suricata`, `/etc/rsyslog.conf` and `/etc/rsyslog.d` keep no group or other write bit; `/usr/local/share/slot` (`edge.nft`, the log relay) and `/var/lib/cr-ruletest` are root 0700; the customers' home and program folder are `cr-users` 0750. The ssh `Match User analyst` block is the WAF's. The nft fence (`/etc/nftables.conf`) is narrower than the WAF's: it accepts the account's packets on `oif "lo"` only to `127.0.0.0/8` and `::1`, because the infra's log relay listens on the host's own address (`imtcp` on 514) and forwards what it hears as WAF logs, and a packet to the host's own address also leaves on `lo`. That file holds only the `inet analyst` table, so `nftables.service` is now enabled and leaves the `edge` table `slot-boot` loads alone |
 
-None of §3.7, §3.8 or this section has been baked, so one infra bake from
-the current tree, `cr-infra-bake2` (§3.7), carries all three; name it in
-`compute.images.infra` and run `bin/cloud up --replace`. Checks on one
-slot, **[unverified]**:
+One infra bake from the current tree, `cr-infra-bake2` (§3.7), carries
+§3.7, §3.8 and this section; name it in `compute.images.infra` and run
+`bin/cloud up --replace`. Checks on one slot (2026-11-23: all passed but the
+`config: logging` refusal, the `access_log off` write during a reload and the
+reboot, which were not run by hand):
 
 - as `analyst` on the infra, `sudo -l` lists only the two commands;
   `echo >> /var/lib/suricata/rules/local.rules`, `sudo suricata -T`,
@@ -972,7 +1012,7 @@ slot, **[unverified]**:
   `(sleep 1; echo 'access_log off;' >> /etc/nginx/defence/http.conf) &
   sudo nginx -s reload` has the write refused during `nginx -t`;
 - `sudo nft list table ip edge` still lists `pool` and `spent` after a
-  reboot of the infra.
+  reboot of the infra (**[unverified]**: not run).
 
 ## 4. cloud.yaml
 
@@ -1021,7 +1061,7 @@ in a container's environment.
 | `compute.base_image` | `ubuntu-24.04` | the platform VM, and the builder of the Ubuntu role images (§3.6) |
 | `compute.availability_zone` | `""` | the platform VM and every range VM; if empty, Nova chooses |
 | `compute.flavors` | `platform`, and `kali`, `waf`, `infra`, `target` | §3.3. A range VM role left out takes `dba.small`; `CR_OPENSTACK_FLAVORS` |
-| `compute.images` | `cr-<role>-bake1` per role (**(this cloud)** `waf: cr-waf-bake2`) | optional; each range VM role's Glance image, baked from `deploy/roles/<role>/` (§3.6); a role left out takes `cr-<role>-bake1`; `CR_OPENSTACK_IMAGES` |
+| `compute.images` | `cr-<role>-bake1` per role (**(this cloud)** `kali: cr-kali-bake2`, `waf: cr-waf-bake3`, `infra: cr-infra-bake2`, `target: cr-target-bake2`) | optional; each range VM role's Glance image, baked from `deploy/roles/<role>/` (§3.6); a role left out takes `cr-<role>-bake1`; `CR_OPENSTACK_IMAGES` |
 | `compute.pool` | `{board: 3, corp: 1}` | optional; how many range stacks stand ready for each wargame, each one Heat stack of four VMs, so how many allocations can be open at once (§6.4); `CR_OPENSTACK_POOL` |
 | `compute.target_tag` | the commit the target image was baked at | optional; the full 40-hex commit whose board and corp images the target image pulled (its bake's `CR_IMAGE_TAG`, §3.6); a range stack has no egress, so it runs only those. Without it, the commit `cr-target-bake1` was baked at; `CR_OPENSTACK_TARGET_TAG` |
 | `keys.key_name`, `keys.key_file` | `fsl-claude`, `~/.ssh/fsl_claude` | the Nova keypair the platform VM boots with (its `key_name`, §3.4), and that keypair's private key, for ssh to the VM |
@@ -1213,7 +1253,10 @@ This command replaces the platform VM without losing data. It does these steps:
 
 1. It refuses unless every image `images.yml` publishes (`platform`, `board`,
    `corp`, `corp-db`) is public on GHCR for the
-   ref's commit, except the ones it sideloads.
+   ref's commit, except the ones it sideloads. `images.yml` runs on a push to
+   `dev` only; for another ref, start it by hand (`gh workflow run images.yml
+   --ref <branch>`), which tags the images with that commit and leaves the
+   `dev` tag alone.
 2. It keeps the range key (`keys.range`), which it takes once from the running
    platform.
 3. It backs up the store with `bin/backup`. If the old VM holds a store but its
@@ -1245,11 +1288,25 @@ failed, or the VM may hold none. The backup just taken may also hold no rows. In
 these cases the command restores the newest `backups/db-<UTC time>.sqlite3` that
 holds rows, and names it. If there is none, the platform starts empty and says
 so. The hand-over that `up` redoes (§5.2) does the same when the VM holds no
-store.
+store. Move a backup you do not want restored out of `backups/` first: on
+2026-11-23 the old VM held no store and the command chose the old tree's
+store, taken by hand just before, which the new platform's schema does not
+read.
 
 Because the key is carried over, the fabric's `cr-platform` keypair stays valid.
 You do not need to tear the range stacks down: no range VM has a port on the
-platform stack's own network. A range stack stands through the replace when
+platform stack's own network. Any other VM with a port and a floating IP on
+that network stops the replace. On 2026-11-23 a development VM, `cr-dev`,
+stood on `cr-platform`: `stack delete` removed the platform server, its port
+and the group's rules, then failed with `Router interface for subnet ...
+cannot be deleted, as it is required by one or more floating IPs`, and the
+stack stayed `DELETE_FAILED` holding network, subnet, router and router
+interface. Heat refuses `stack update` of a `DELETE_FAILED` stack. Removing
+the group's rules also cut the egress and ssh of a builder on that network
+mid-install; they were added back by hand. The platform was then made under
+another `platform.stack` name (`cr-platform2`), which needs one free security
+group of the quota (§3.2). Move such a VM to its own network and router
+before a replace. A range stack stands through the replace when
 what the new platform renders for it has the same digest (§6), and the
 refill `bin/cloud up --replace` owes it then only seeds its sensor again. The digest holds the
 platform's `cr-mgmt` address, which every node's user data names as its log
@@ -1629,10 +1686,10 @@ stack uses the same addresses; stacks differ by network, not by CIDR.
 
 | VM (`cr-slot-<n>-<node>`) | Image | Learner |
 |---|---|---|
-| `kali` | `cr-kali-bake1`: Kali with `kali-linux-headless` and the tools; rebaked with the infra (§3.8) | `kali` with passwordless sudo, by the attack player's web terminal and its jump grant (§3.5) |
-| `waf` | `cr-waf-bake1` (**(this cloud)** `cr-waf-bake2`): Ubuntu, nginx 1.24, ModSecurity 3.0.16, CRS 4.25.1 | the defence player as `analyst`, by web terminal and its jump grant (§3.7); the image must be rebaked for the split site config and the writable defence files |
-| `infra` | `cr-infra-bake1`: Ubuntu, nftables, Suricata (`jasonish/suricata`, pinned by digest), rsyslog; the image must be rebaked for the customers program (§3.8) | none |
-| `target` | `cr-target-bake1`: Ubuntu, Docker, board and corp at the baked tag | none |
+| `kali` | `cr-kali-bake1` (**(this cloud)** `cr-kali-bake2`): Kali with `kali-linux-headless` and the tools | `kali` with passwordless sudo, by the attack player's web terminal and its jump grant (§3.5) |
+| `waf` | `cr-waf-bake1` (**(this cloud)** `cr-waf-bake3`): Ubuntu, nginx 1.24, ModSecurity 3.0.16, CRS 4.25.1 | the defence player as `analyst`, by web terminal and its jump grant (§3.7) |
+| `infra` | `cr-infra-bake1` (**(this cloud)** `cr-infra-bake2`): Ubuntu, nftables, Suricata (`jasonish/suricata`, pinned by digest), rsyslog, the customers program (§3.8) | the defence player as `analyst`, by the IDS terminal and its jump grant (§3.10) |
+| `target` | `cr-target-bake1` (**(this cloud)** `cr-target-bake2`): Ubuntu, Docker, board and corp at the baked tag | none |
 
 - The subnets have DHCP off and no gateway, and no Neutron router stands on any
   of the stack's LANs. Every port has a fixed IP; the VMs boot with a config drive, whose

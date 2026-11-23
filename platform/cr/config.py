@@ -12,6 +12,7 @@ from django.conf import settings
 SOURCE = Path(__file__).resolve().parents[2]
 TOPOLOGIES = "wargames/*/topology.yaml"
 DECLARATION = "platform/sandbox/declaration.yaml"
+DECLARATION_BESIDE_THE_CODE = Path(__file__).resolve().parents[1] / "sandbox" / "declaration.yaml"
 SURICATA_RULES = "/var/lib/suricata/rules/local.rules"
 SURICATA_IMAGE = "jasonish/suricata@sha256:7ca2546f7f2735f621b981b6a5ec84fb962984636f7629a1a2fa6a324d4b6840"
 CRS_TREE = "/etc/nginx/modsecurity"
@@ -149,7 +150,7 @@ class RefillConfig:
 class RangeConfig:
     substrate: str = SUBSTRATE
     source: str = str(SOURCE)
-    declaration: str = str(SOURCE / DECLARATION)
+    declaration: str = str(DECLARATION_BESIDE_THE_CODE)
     openstack: OpenStackConfig = OpenStackConfig()
 
 
@@ -229,7 +230,7 @@ def kept_secret(path: str) -> str:
 def build(environ: Mapping[str, str] = os.environ, source: Path | str | None = None) -> Config:
     root = Path(source or environ.get("CR_SOURCE") or SOURCE)
     found, watches = devices(root)
-    declaration = root / DECLARATION
+    declaration = root / DECLARATION if (root / DECLARATION).is_file() else DECLARATION_BESIDE_THE_CODE
     declared = yaml.safe_load(declaration.read_text()) if declaration.is_file() else {}
     target_url = environ.get("ATTACKER_TARGET_URL") or environ.get("PUBLIC_TARGET_URL") or BoxConfig.target_url
     attacker, _ = filling(found, "attacker")

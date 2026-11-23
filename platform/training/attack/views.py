@@ -106,4 +106,5 @@ class NextOrigin(AttackView):
 class Terminal(AttackView):
     @extend_schema(tags=TAGS, responses=serializers.AttackTerminal, operation_id="attack_terminal")
     def get(self, request, round_id: int):
-        return answered(serializers.AttackTerminal, request, asdict(service.terminal(request.round, request.player)))
+        return answered(serializers.AttackTerminal, request,
+                        auth.with_jump_host(request, asdict(service.terminal(request.round, request.player))))

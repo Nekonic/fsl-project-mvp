@@ -125,14 +125,15 @@ class WafApply(DefenceView):
 class Terminal(DefenceView):
     @extend_schema(tags=TAGS, responses=serializers.DefenceTerminal, operation_id="defence_terminal")
     def get(self, request, round_id: int):
-        return Response(serializers.DefenceTerminal(defence_terminal.terminal(request.round, request.player)).data)
+        shown = defence_terminal.terminal(request.round, request.player)
+        return Response(serializers.DefenceTerminal(auth.with_jump_host(request, shown)).data)
 
 
 class IdsTerminal(DefenceView):
     @extend_schema(tags=TAGS, responses=serializers.DefenceTerminal, operation_id="defence_ids_terminal")
     def get(self, request, round_id: int):
         shown = defence_terminal.terminal(request.round, request.player, defence_terminal.IDS)
-        return Response(serializers.DefenceTerminal(shown).data)
+        return Response(serializers.DefenceTerminal(auth.with_jump_host(request, shown)).data)
 
 
 class Kibana(DefenceView):

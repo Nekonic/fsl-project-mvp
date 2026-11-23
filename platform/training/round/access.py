@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 from django.utils import timezone
 from rest_framework import authentication, permissions
 
@@ -167,3 +169,10 @@ class Approved(permissions.BasePermission):
         if isinstance(request.auth, Player) or isinstance(request.user, BotPrincipal):
             raise errors.NotAPlayer()
         return True
+
+
+def with_jump_host(request, shown: dict) -> dict:
+    ssh = shown["ssh"]
+    if ssh.get("host"):
+        return shown
+    return {**shown, "ssh": {**ssh, "host": urlsplit(f"//{request.get_host()}").hostname or ""}}

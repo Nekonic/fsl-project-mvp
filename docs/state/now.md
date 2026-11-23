@@ -5,72 +5,72 @@ are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`; the design in
 `docs/superpowers/specs/2026-11-19-side-split-design.md`; detail in `git log`.
 The handover of the old tree up to 2026-11-18 is in this file's git history.
 
-Updated: 2026-11-22.
+Updated: 2026-11-23.
 
 ## Where things stand
 
-- The working branch is `restructure`, cut from `side-split`. `dev` still
-  holds the old product, which is what the live cloud runs; nothing on
-  `side-split` or `restructure` has been deployed.
-- `restructure` carries out the 2026-11-21 rulings (`docs/DECISIONS.md`):
-  five units (`users/`, `sandbox/`, `telemetry/`, `training/`, `scoring/`)
-  with fresh `0001` migrations; Seat is `Player` and Lease is
-  `Allocation`; no periodic tick (reads run on the round's requests, the
-  `rebuild` service only rebuilds slots); origin loss from the WAF error log
-  in place of HP; the WAF as six files the defender edits; benign traffic
-  from the infra VM; a random board secret each round; live verdict
-  notices; the bots' shell and calls by `operationId` through
-  `bots/rest.py` with no generated client; the lesson content gone and
-  `training/lessons/` kept empty; and the 2026-11-22 ruling: the defence
-  edits Suricata rules in a second terminal on the sensor (`analyst` on
-  the infra), the IDS rule API and its console form are gone; a terminal
-  reload, WAF or IDS, is recorded from the copy its sudo wrapper keeps in
-  root-only `/var/lib/cr-reloaded` and installs root-only for the reload,
-  so the engine loads exactly that copy and an edit after a reload is left
-  alone. Then the two later 2026-11-22 rulings: each lost objective is
-  marked detected and responded; no WAF or IDS change goes live, from the
-  console or a terminal reload, without a rule test of the same files that
-  refused or alerted on no benign case (the platform lists passed hashes on
-  the boxes, the wrappers refuse anything else); a WAF version is a response
-  only when its test replayed the attack's own requests and refused them;
-  a shared-key limit zone spends nothing and warns; the round's end answers
-  at once and the final judge runs on a later read (`pending` until then).
-  The table is in `docs/STATE.md` "What exists on restructure".
-- The unit and API suite and `front/` (build, vitest) run against fakes.
-  The docs (CLAUDE.md, README, ARCHITECTURE, OPENSTACK, STATE, this file)
-  describe the new layout.
+- The working branch is `restructure`, cut from `side-split`. `dev` and
+  `main` still hold the old product; the cloud now runs `restructure`.
+- `restructure` carries out the 2026-11-21 and 2026-11-22 rulings; the table
+  is in `docs/STATE.md` "What exists on restructure". The rulings recorded on
+  2026-11-23 (five attack origins, more benign kinds, Internet scanners, the
+  board's attack paths, the response replay of the attack's own logged
+  requests) are not built.
+- The first cloud check of `restructure` ran on 2026-11-23
+  (`docs/DECISIONS.md`, same date):
+  - images `cr-infra-bake2`, `cr-waf-bake3`, `cr-target-bake2` baked from
+    `restructure`, and `cr-kali-bake2`, whose role files match
+    `restructure`'s;
+  - the platform VM replaced from `restructure` with a fresh database, as
+    stack `cr-platform2`; the pool converged;
+  - `docs/OPENSTACK.md` §3.7-§3.10 checks 39 of 39 passed;
+  - probes recorded, board 18 of 18 and corp 7 of 7, committed;
+  - the final full `bin/verify` with acceptance: 101 passed, 0 failed.
+- The run's product fixes: the attack API's body limit 256 KiB, the
+  traversal case's path, the offline IDS test's `--runmode single`, the jump
+  host in terminal grants, the declaration file's path.
 
 ## Not live-verified
 
-Everything on `restructure`; the list is in `docs/STATE.md` "Not
-live-verified".
+Player vs AI rounds, a `pvp` round, a captured learner walk, a live review
+round, a docs review, and the edge sets after an infra reboot. The list is
+in `docs/STATE.md` "Not live-verified".
+
+## Blockers for the user
+
+- **Where `cr-dev` lives.** It holds a port and a floating IP on the
+  platform stack's network, so stack `cr-platform` is `DELETE_FAILED` and
+  `bin/cloud up --replace` cannot delete it (`docs/OPENSTACK.md` §5.3).
+  Security groups are at 10 of 10. Move `cr-dev` to its own network and
+  router, or have an admin raise the quota.
+- **Why the kali snapshot failed.** `cr-kali-bake3` ended with Nova's
+  `compute_snapshot_instance: Error`, whose cause a member user cannot see;
+  free space on the compute node or the Glance store is a guess. An admin
+  should read the logs before the next kali bake.
 
 ## Next, in order
 
-1. Rebake `cr-infra`, `cr-waf`, `cr-kali` and `cr-target`, name them in
-   `compute.images`, `bin/cloud up --replace`, and the checks of
-   `docs/OPENSTACK.md` §3.7, §3.8, §3.9 and §3.10. Until `cr-target` is rebaked,
-   every round start fails with `ground_truth_unavailable`.
-2. Probe recordings: `bin/record-probes board` and `corp`, committed under
-   `wargames/<id>/probes/`; `test/test_rule_test_isolation.py` fails until
-   the board's manifest is in.
-3. The full `bin/verify` with acceptance on the cloud.
-4. A Player vs AI round per matchup (`def_vs_bot`, `atk_vs_bot`, with
-   Claude Code as the bot player) and one `pvp` round, a captured walk as a
-   learner, a live review round with zero countable findings, a docs review.
-5. Gate 2.
+1. The two blockers above.
+2. A Player vs AI round per matchup (`def_vs_bot`, `atk_vs_bot`, with
+   Claude Code as the bot player) and one `pvp` round.
+3. A captured walk as a learner, a live review round with zero countable
+   findings, a docs review.
+4. Gate 2.
 
 ## Open points
 
+- A benign case fires many times per round and the score lists one line per
+  firing, against CLAUDE.md's "one case is one decision"; the acceptance
+  harness reads a case as detected when any firing drew an alert. The user
+  has not ruled.
 - Four acceptance checks read Elasticsearch directly
   (`test/test_event_time.py`, `test_geoip_durable.py`,
   `test_origin_placement.py`, `test_waf_geolocation.py`); the seam scan
   lists them as named exceptions until they move behind `/api/`.
-- Until the probe recordings are in, no benign case is tested, so every
-  rule test passes; the FP gate holds only for recorded cases.
-- A round no one calls on does nothing (the late judge included); a polling console or bot keeps it
-  moving. The rest is in `docs/STATE.md` "Open points".
+- A round no one calls on does nothing (the late judge included); a polling
+  console or bot keeps it moving. The rest is in `docs/STATE.md` "Open
+  points".
 
-Written for a session that reaches the new cloud through the user's VPN
+Written for a session that reaches the cloud through the user's VPN
 (Keystone http://10.0.0.10:5000, platform VM http://192.168.2.247:8000) and
-the Internet. Do not touch the live cloud from `restructure` before step 1.
+the Internet.

@@ -1,0 +1,9 @@
+{
+  "body": "form_id=5&_wpnonce=ae23d0cd56&um_request=&_wp_http_referer=%2Fregister%2F&user_login-4=newcomer&first_name-4=New&last_name-4=Comer&user_email-4=newcomer%40example.com&user_password-4=Welcome-2026-aA&confirm_user_password-4=Welcome-2026-aA",
+  "headers": {
+    "Content-Type": "application/x-www-form-urlencoded"
+  },
+  "host": "corp.com",
+  "method": "POST",
+  "path": "/register/"
+}

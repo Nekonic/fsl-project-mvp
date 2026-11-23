@@ -4,7 +4,8 @@ import plays
 from shared_sessions import CATCH_ALL
 
 SETUP = plays.Setup(wargame="board", title="Acceptance block everything board",
-                    suricata_rules=plays.declared_rules() + CATCH_ALL, waf_files={})
+                    suricata_rules=plays.declared_rules() + CATCH_ALL,
+                    waf_files={plays.CRS_EXCLUSIONS: plays.paranoia(4, inbound=1)})
 FIRING_ROUNDS = 3
 BENIGN_WAIT = 2 * plays.BENIGN_EVERY_S + 60.0
 
@@ -26,9 +27,6 @@ def benign_fp(scored: dict, benign: set[str]) -> list[str]:
 def blocked_round():
     benign = {case["name"] for case in plays.declared_cases("board") if case.get("malicious") is False}
     with plays.Round("board", SETUP) as played:
-        refusing = plays.tune_waf(played, plays.appended(
-            played, plays.CRS_SETUP, plays.RULE_ENGINE_ON, plays.paranoia(4, inbound=1)))
-        assert refusing.ok, refusing.text
         answers = fire_every_case(played)
         plays.score_when_ready(played, until=lambda scored: bool(benign_fp(scored, benign)), timeout=BENIGN_WAIT)
         state = plays.attack_seen(played)

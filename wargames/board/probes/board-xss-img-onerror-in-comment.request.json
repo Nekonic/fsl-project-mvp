@@ -1,0 +1,12 @@
+{
+  "body": "csrfmiddlewaretoken=98ZTPX0FuE1ukbZxr4C07tcnI5QSs8IoaAqmHWKBz8Co8IM4DzIsgeeTEeqY0z9V&body=%3Cimg+src%3Dx+onerror%3Dalert%281%29%3E",
+  "headers": {
+    "Content-Type": "application/x-www-form-urlencoded",
+    "Cookie": "csrftoken=afQNoWMIWNmfrVBHCY5gdJTfFtfk9JpVbHhggVwE1hX9fsoeOtbImuVLBCPqHaQs",
+    "Origin": "http://board.com",
+    "Referer": "http://board.com/posts/1/"
+  },
+  "host": "board.com",
+  "method": "POST",
+  "path": "/posts/1/comments/"
+}

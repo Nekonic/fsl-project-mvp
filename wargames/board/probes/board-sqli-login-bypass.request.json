@@ -1,0 +1,9 @@
+{
+  "body": "{\"username\": \"' OR 1=1--\", \"password\": \"anything\"}",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "host": "board.com",
+  "method": "POST",
+  "path": "/accounts/login/"
+}

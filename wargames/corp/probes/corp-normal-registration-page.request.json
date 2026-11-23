@@ -1,0 +1,6 @@
+{
+  "headers": {},
+  "host": "corp.com",
+  "method": "GET",
+  "path": "/wp-login.php?action=register"
+}

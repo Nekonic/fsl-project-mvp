@@ -1,0 +1,4 @@
+{
+  "body": "HTTP/1.1 200 OK\nServer: nginx\nDate: Mon, 23 Nov 2026 09:59:49 GMT\nContent-Type: application/json\nContent-Length: 25\nConnection: keep-alive\nX-Powered-By: PHP/8.2.25\nX-Robots-Tag: noindex\nX-Content-Type-Options: nosniff\nExpires: Wed, 11 Jan 1984 05:00:00 GMT\nCache-Control: no-cache, must-revalidate, max-age=0\nReferrer-Policy: strict-origin-when-cross-origin\nX-Frame-Options: SAMEORIGIN\n\n{\"message\":\"\",\"error\":\"\"}",
+  "status": 200
+}

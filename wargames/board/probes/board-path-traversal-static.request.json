@@ -1,0 +1,6 @@
+{
+  "headers": {},
+  "host": "board.com",
+  "method": "GET",
+  "path": "/static/admin/..%2F..%2Fetc/passwd"
+}

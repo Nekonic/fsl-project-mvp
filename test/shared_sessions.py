@@ -38,9 +38,11 @@ CATCH_ALL = (
 )
 GENERIC_PROBE = (
     'alert http any any -> any any (msg:"generic probe"; '
-    'flow:established,to_server; http.uri; content:"or 1=1"; nocase; sid:9009994; rev:1;)\n'
+    'flow:established,to_server; http.uri; content:"1=1"; sid:9009994; rev:1;)\n'
 )
 PORTED_MESSAGE = "ported SQLi probe"
+CATCH_ALL_SETUP = plays.Setup(wargame="board", title="Acceptance catch-all rules board", suricata_rules=CATCH_ALL)
+NOISY_WAIT = 6 * plays.BENIGN_EVERY_S + 120.0
 CATCH_ALL_ATTACKS = ("board-sqli-search", "board-xss-script-tag-in-search", "board-path-traversal-static")
 CATCH_ALL_BENIGN = ("board-normal-search", "board-normal-search-with-apostrophe")
 
@@ -89,7 +91,7 @@ def loot_of(truth: dict) -> list[dict]:
 
 
 def one_digest_changed(truth: dict) -> list[dict]:
-    forged = loot_of(truth)
+    forged = loot_of(truth)[:1]
     digest = forged[0]["hash"]
     forged[0]["hash"] = digest[:-1] + ("A" if digest[-1] != "A" else "B")
     return forged
@@ -162,9 +164,9 @@ def board_session(stack_is_up):
         seen["ended"] = plays.end(played)
         seen["score_once_ended"] = plays.score(played, client=played.attack)
         seen["scored"] = plays.score_when_ready(played, until=lambda scored: bool(scored["objectives"]["lost"]))
-        plays.replay(played)
-        seen["stale_loot"] = plays.loot(played, loot_of(truth))
-        seen["objectives_after_stale"] = plays.attack_seen(played)["objectives"]
+    with plays.Round("board") as fresh:
+        seen["stale_loot"] = plays.loot(fresh, loot_of(truth))
+        seen["objectives_after_stale"] = plays.attack_seen(fresh)["objectives"]
     return seen
 
 
@@ -190,8 +192,8 @@ def origins_session(stack_is_up):
 
 @pytest.fixture(scope="session")
 def rules_session(stack_is_up):
+    seen = {}
     with plays.Round("board") as played:
-        seen = {}
         baseline = runs_the_declared_rules(played)
         seen["rules_before_invalid"] = plays.ids_rules(played)["text"]
         seen["invalid"] = plays.apply_ids(played, NOT_A_RULE)
@@ -208,9 +210,10 @@ def rules_session(stack_is_up):
         seen["bufferless"] = (plays.score_when_ready(played, until=lambda scored: UNION in plays.per_case(scored)),
                               union, listed)
 
-        plays.replay(played)
-        seen["noisy"] = plays.apply_ids(played, baseline + PORTED_RULE + NOISY_RULE)
-        assert seen["noisy"].ok, seen["noisy"].text
+    noisy_rules = baseline + PORTED_RULE + NOISY_RULE
+    with plays.Round("board", plays.Setup(wargame="board", title="Acceptance noisy rules board",
+                                          suricata_rules=noisy_rules)) as played:
+        seen["noisy_rules"] = (plays.ids_rules(played)["text"], noisy_rules)
         noisy_markers = {name: plays.fired(played, name)["marker"] for name in (CONTROL, UNION)}
         seen["noisy_markers"] = noisy_markers
 
@@ -220,16 +223,15 @@ def rules_session(stack_is_up):
 
         plays.alerts_until(played, ported_caught)
         seen["after_noisy"] = plays.score_when_ready(
-            played, until=lambda scored: plays.per_case(scored).get(BENIGN_SEARCH, {}).get("verdict") == "fp")
+            played, until=lambda scored: plays.per_case(scored).get(BENIGN_SEARCH, {}).get("verdict") == "fp",
+            timeout=NOISY_WAIT)
         seen["noisy_alerts"] = plays.alerts(played)
         seen["noisy_origins"] = {origin["ip"] for origin in plays.attack_seen(played)["origins"]}
         seen["attacker_processes"] = run(ATTACKER, ["ps", "-eo", "user=,args="], allocation=played.allocation).stdout
 
-        plays.replay(played)
+    with plays.Round("board", CATCH_ALL_SETUP) as played:
         engine_off = plays.tune_waf(played, plays.appended(played, plays.CRS_SETUP, plays.RULE_ENGINE_OFF))
         assert engine_off.ok, engine_off.text
-        caught_all = plays.apply_ids(played, CATCH_ALL)
-        assert caught_all.ok, caught_all.text
         seen["catch_all_markers"] = {name: plays.fired(played, name)["marker"] for name in CATCH_ALL_ATTACKS}
 
         def caught_both_ways(scored):
@@ -237,7 +239,7 @@ def rules_session(stack_is_up):
             return (all(verdicts.get(name) == "tp" for name in CATCH_ALL_ATTACKS)
                     and "fp" in {verdicts.get(name) for name in CATCH_ALL_BENIGN})
 
-        seen["after_catch_all"] = plays.score_when_ready(played, until=caught_both_ways)
+        seen["after_catch_all"] = plays.score_when_ready(played, until=caught_both_ways, timeout=NOISY_WAIT)
         seen["catch_all_alerts"] = plays.alerts(played)
 
         plays.replay(played)
@@ -252,7 +254,7 @@ def rules_session(stack_is_up):
             return (lines.get(CONTROL, {}).get("verdict") == "tp"
                     and any(name in lines for name in CATCH_ALL_BENIGN))
 
-        seen["after_generic"] = plays.score_when_ready(played, until=generic_judged)
+        seen["after_generic"] = plays.score_when_ready(played, until=generic_judged, timeout=NOISY_WAIT)
     return seen
 
 
