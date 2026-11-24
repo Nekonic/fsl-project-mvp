@@ -289,6 +289,29 @@ def test_the_api_is_rate_limited_per_client_and_per_address():
     assert gateway.values("proxy_pass") == [["http://127.0.0.1:8001"]]
 
 
+def mapped(variable, given):
+    [found] = [one for one in http().children("map") if one.args[1] == variable]
+    exact = {one.name: one.args[0] for one in found.block if not one.name.startswith("~") and one.name != "default"}
+    if given in exact:
+        return exact[given]
+    for one in found.block:
+        if one.name.startswith("~"):
+            taken = re.compile(one.name[1:].replace("(?<", "(?P<")).search(given)
+            if taken:
+                return re.sub(r"\$(\w+)", lambda name: taken.groupdict().get(name[1], name[0]), one.args[0])
+    return found.values("default")[0][0]
+
+
+def test_a_bearer_request_without_a_session_cookie_is_limited_by_its_own_token():
+    assert ["$from_the_platform_host:$cookie_cr_session:$http_authorization", "$limited_client"] in \
+        http().values("map")
+    assert mapped("$limited_client", "0::Bearer seat-one") == "Bearer seat-one"
+    assert mapped("$limited_client", "0::Bearer seat-two") == "Bearer seat-two"
+    assert mapped("$limited_client", "0::") == "$binary_remote_addr"
+    assert mapped("$limited_client", "0:session-key:Bearer seat-one") == "$cookie_cr_session"
+    assert mapped("$limited_client", "1::Bearer seat-one") == ""
+
+
 def test_the_console_is_the_front_build_served_last_with_every_other_path_falling_back_to_its_index():
     last = console().block[-1]
 

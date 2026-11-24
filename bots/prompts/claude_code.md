@@ -1,26 +1,39 @@
 # Driving a player from Claude Code
 
-You drive one player of a round through the bot CLI. Run every command from the repository root. The player token,
-the platform address and the round are in the environment:
+You drive one player of a round through the bot CLI. Run every command from the working directory you start in. The
+player's key, the platform address and the round are in the environment:
 
-- `CR_PLAYER_TOKEN`: the player token the operator received when the round was created (never print it);
-- `CR_PLATFORM_URL`: the platform's base URL, for example `http://platform.example:8000`;
+- `CR_PLAYER_TOKEN`: your player's key (never print it);
+- `CR_PLATFORM_URL`: the platform's base URL;
 - `CR_ROUND`: the round id.
 
 Commands:
 
 - `python -m bots.cli tools --side <attack|defence>` prints the tool specs: one JSON Schema per API operation
   your player may call. Read them once.
-- `echo '{"name": "<tool>", "arguments": {...}}' | python -m bots.cli call --side <side>` makes one call and
-  prints `{operation, ok, status, body, headers?}`. `headers` carries `X-Origin` and `X-Origins-Left` on attack
-  answers.
-- `python -m bots.cli <tool> --json '{...}'` is the same call written on one line. The `shell` tool is on
-  both sides, so name the side: `python -m bots.cli shell --side defence --json '{"command": "sudo nginx -t"}'`
-  prints `{operation, ok, exit_code, stdout, stderr}`.
+- `python -m bots.cli <tool> --json '{...}'` makes one call and prints `{operation, ok, status, body, headers?}`.
+  `headers` carries `X-Origin` and `X-Origins-Left` on attack answers. The `shell` tool is on both sides, so name
+  the side: `python -m bots.cli shell --side defence --json '{"command": "sudo nginx -t"}'` prints
+  `{operation, ok, exit_code, stdout, stderr}`.
+- `sleep <seconds>` waits.
 
-Never call the platform with curl or any other client: the CLI is your whole surface, the same API and the
-same shell a human player uses. `shell` asks the platform for the terminal's SSH grant and runs the command
-over the platform's jump host; each CLI call asks for a new grant, which replaces the one before. Shell traffic
-from the attacker box can spend an origin by the same rules.
+Write each call as one command on its own line: no pipe, no `&&`, `;` or `$(...)` around it, and no other program.
+Anything else is refused before it runs. Never call the platform with curl or any other client: the CLI is your whole
+surface, the same API and the same shell a human player uses. `shell` asks the platform for the terminal's SSH grant
+and runs the command over the platform's jump host; each CLI call asks for a new grant, which replaces the one before.
+Shell traffic from the attacker box can spend an origin by the same rules.
 
-Read the answer of every call before the next one. Stop when the round has ended and you have read the score.
+Before each action, read `round_events` after the last `next` cursor you were given, and what your side watches
+(`defence_alerts` and `defence_traffic`, or the `remaining` block), and act on what changed since your last action.
+Reads never count against your pace.
+
+Your difficulty step sets a pace and the operations you have. An action is every call that changes something (fire
+a case, send, start or stop a tool, loot, move to the next origin, check, test or apply rules) and every terminal
+grant, so each shell command is one action; forfeit is never held back. A call past the pace answers `429` with the
+code `pace_limited` and `params.retry_after_s`: nothing was sent, so wait that long and call again. A call your
+step does not give answers `403` with the code `not_at_this_step`: nothing was sent and it will not change this
+round, so do something else.
+
+Read the answer of every call before the next one. When the round has ended and you have read `round_score` until
+`pending` is false, end with your intent: what you aimed at and why, in at most ten lines, as your last message. Then
+stop.

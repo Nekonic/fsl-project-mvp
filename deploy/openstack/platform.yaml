@@ -243,6 +243,8 @@ resources:
               - [networkctl, reload]
               - [chown, -R, "ubuntu:ubuntu", /opt/cr]
               - [install, -m, "600", -o, "10001", /dev/null, /opt/cr/openstack-password]
+              - [sh, -c, "umask 077 && head -c 32 /dev/urandom | base64 > /opt/cr/bots-launcher-key && chown 10001 /opt/cr/bots-launcher-key"]
+              - [install, -m, "600", -o, "10001", /dev/null, /opt/cr/claude-oauth-token]
               - [usermod, -aG, docker, ubuntu]
               - [systemctl, daemon-reload]
               - [systemctl, enable, --now, cr-platform.service]

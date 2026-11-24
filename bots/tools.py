@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import sys
 from dataclasses import dataclass
 from functools import cache
@@ -18,6 +19,7 @@ METHODS = ("get", "post", "put", "patch", "delete")
 
 ROUND_OPERATIONS = ("round_read", "round_events", "round_topology", "round_score", "allocation_heartbeat")
 HUMAN_ONLY = frozenset({"defence_kibana"})
+STEP_OPERATIONS_VARIABLE = "CR_BOT_OPERATIONS"
 WITHHELD_PARAMETERS = {"round_score": frozenset({"correlation"})}
 
 DESCRIPTIONS = {
@@ -158,12 +160,18 @@ def operation_entries(schema: dict) -> dict[str, tuple[str, str, dict]]:
     return found
 
 
+def step_operations() -> frozenset[str] | None:
+    given = os.environ.get(STEP_OPERATIONS_VARIABLE)
+    return None if given is None else frozenset(name for name in given.split(",") if name)
+
+
 def names_for(side: str, schema: dict) -> list[str]:
     if side not in SIDES:
         raise ValueError(f"side must be one of {SIDES}, not {side!r}")
     entries = operation_entries(schema)
+    given = step_operations()
     own = [name for name, (_, _, operation) in entries.items()
-           if side_of(operation) == side and name not in HUMAN_ONLY]
+           if side_of(operation) == side and name not in HUMAN_ONLY and (given is None or name in given)]
     return [name for name in ROUND_OPERATIONS if name in entries] + sorted(own)
 
 

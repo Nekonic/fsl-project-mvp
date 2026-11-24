@@ -17,6 +17,10 @@ volumes:
 secrets:
   openstack_password:
     file: ./openstack-password
+  bots_launcher_key:
+    file: ./bots-launcher-key
+  claude_oauth_token:
+    file: ./claude-oauth-token
 
 services:
   elasticsearch:
@@ -118,11 +122,12 @@ services:
       CR_ALLOCATION_IDLE_MINUTES: "${CR_ALLOCATION_IDLE_MINUTES:-30}"
       CR_CONSOLE_ORIGIN: "${CR_CONSOLE_ORIGIN:-}"
       CR_SITE_ORIGIN: "${CR_SITE_ORIGIN:-}"
+      CR_BOT_ROUND_USERS: "${CR_BOT_ROUND_USERS:-}"
     env_file: &platform-env-file
       - path: ./openstack.env
         required: false
         format: raw
-    secrets: [openstack_password]
+    secrets: [openstack_password, bots_launcher_key]
     volumes: &platform-volumes
       - ./platform:/app
       - ./redteam:/app/redteam:ro
@@ -147,3 +152,16 @@ services:
     secrets: [openstack_password]
     volumes: *platform-volumes
 
+  bots:
+    platform: linux/amd64
+    build: {context: ., dockerfile: bots/Dockerfile}
+    image: ghcr.io/nekonic/cr-bots:${CR_IMAGE_TAG:-dev}
+    container_name: cr-bots
+    depends_on:
+      platform: {condition: service_started}
+    networks:
+      mgmt: {}
+    environment:
+      CR_PLATFORM_URL: "http://platform:8000"
+      CR_BOT_RUNS_MAX: "${CR_BOT_RUNS_MAX:-2}"
+    secrets: [bots_launcher_key, claude_oauth_token]

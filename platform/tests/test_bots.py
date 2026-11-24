@@ -8,8 +8,11 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
+import requests
 
-from bots import calls, cli, play, rest, shell, tools
+from bots import calls, cli, launcher, play, rest, shell, tools
+from bots.pace import Pace, counted, pace_wait
+from bots.relay import Relay
 from bots.provider import ProviderNotFound, ToolCall, Turn, load
 
 REPO = Path(__file__).resolve().parents[2]
@@ -324,7 +327,7 @@ def test_the_claude_code_prompt_adds_the_cli_and_the_loop_prompt_leaves_it_out()
     assert "python -m bots.cli" in play.system_prompt("defence", driving_the_cli=True)
     assert "python -m bots.cli" not in play.system_prompt("defence")
     code, printed = run_cli(["prompt", "--side", "attack"])
-    assert code == 0 and "bots.cli call" in printed
+    assert code == 0 and "python -m bots.cli <tool> --json" in printed and "bots.cli call" not in printed
 
 
 def test_every_tool_and_code_the_prompts_and_readme_name_exists():
@@ -557,3 +560,123 @@ def test_the_one_line_shell_needs_the_side_because_both_players_have_one(platfor
 
     assert code == cli.USAGE_ERROR and "--side" in capsys.readouterr().err
     assert platform.seen == []
+
+
+STEP_PACE = {"per_window": 3, "window_s": 300, "min_gap_s": 15}
+
+
+def test_pace_waits_for_the_window_and_the_gap():
+    pace = Pace.of(STEP_PACE)
+
+    assert pace_wait(100.0, [], pace) is None
+    assert pace_wait(100.0, [90.0], pace) == 5.0
+    assert pace_wait(400.0, [100.0, 200.0, 390.0], pace) == 5.0
+    assert pace_wait(420.0, [150.0, 200.0, 390.0], pace) == 30.0
+    assert pace_wait(451.0, [150.0, 200.0, 390.0], pace) is None
+
+
+def test_pace_counts_every_write_and_delete_and_the_terminal_grants_but_no_other_read_and_no_forfeit():
+    assert counted("POST", "attack_fire_case") and counted("DELETE", "attack_stop_tool")
+    assert counted("GET", "attack_terminal") and counted("GET", "defence_terminal")
+    assert counted("GET", "defence_ids_terminal")
+    assert not counted("GET", "round_events") and not counted("GET", "defence_alerts")
+    assert not counted("POST", "attack_forfeit")
+
+
+def attack_play(cases=("board-sqli-search",)):
+    return {"pace": {"per_window": 10, "window_s": 300, "min_gap_s": 0},
+            "allowance": {"operations": ["attack_state", "attack_fire_case", "attack_terminal"], "cases": list(cases)}}
+
+
+@pytest.fixture
+def relayed(platform):
+    refused = []
+    relay = Relay(platform.url, TOKEN, "run-key-placeholder", attack_play(), report=refused.append)
+    url = relay.start()
+    yield url, relay, refused
+    relay.stop()
+
+
+def through(url, method, path, key="run-key-placeholder", body=None):
+    return requests.request(method, url + path, json=body, headers={"Authorization": f"Bearer {key}"}, timeout=10)
+
+
+def test_relay_refuses_an_operation_or_a_case_the_step_does_not_give_and_sends_nothing(platform, relayed):
+    url, _, refused = relayed
+
+    tools_asked = through(url, "GET", f"/api/rounds/{ROUND}/attack/tools/")
+    case_asked = through(url, "POST", f"/api/rounds/{ROUND}/attack/cases/", body={"case": "board-sqli-orderby-sqlmap"})
+
+    assert (tools_asked.status_code, case_asked.status_code) == (403, 403)
+    assert {tools_asked.json()["errors"][0]["code"], case_asked.json()["errors"][0]["code"]} == {"not_at_this_step"}
+    assert platform.seen == [] and len(refused) == 2
+
+
+def test_relay_swaps_the_run_key_for_the_player_token_and_never_forwards_another_key(platform, relayed):
+    url, _, _ = relayed
+    platform.on("POST", f"/api/rounds/{ROUND}/attack/cases/", body={"fired": True}, headers={"X-Origin": "o1"})
+
+    fired = through(url, "POST", f"/api/rounds/{ROUND}/attack/cases/", body={"case": "board-sqli-search"})
+    stranger = through(url, "GET", f"/api/rounds/{ROUND}/attack/state/", key=TOKEN)
+
+    assert fired.status_code == 200 and fired.json() == {"fired": True} and fired.headers["X-Origin"] == "o1"
+    assert stranger.status_code == 401
+    assert [(seen["path"], seen["authorization"], seen["body"]) for seen in platform.seen] == [
+        (f"/api/rounds/{ROUND}/attack/cases/", f"Bearer {TOKEN}", {"case": "board-sqli-search"})]
+
+
+def test_relay_answers_pace_limited_with_the_wait_once_the_step_s_pace_is_used(platform):
+    platform.on("POST", f"/api/rounds/{ROUND}/attack/cases/", body={})
+    play_once = {**attack_play(), "pace": {"per_window": 1, "window_s": 300, "min_gap_s": 0}}
+    relay = Relay(platform.url, TOKEN, "k", play_once, clock=lambda: 1000.0)
+    url = relay.start()
+    try:
+        first = through(url, "POST", f"/api/rounds/{ROUND}/attack/cases/", key="k", body={"case": "board-sqli-search"})
+        second = through(url, "POST", f"/api/rounds/{ROUND}/attack/cases/", key="k", body={"case": "board-sqli-search"})
+    finally:
+        relay.stop()
+
+    assert first.status_code == 200 and second.status_code == 429
+    assert second.json()["errors"][0] == {"path": "", "code": "pace_limited", "params": {"retry_after_s": 300.0}}
+    assert len(platform.seen) == 1
+
+
+def claimed_run(side, stance=None):
+    return {"run": 4, "round": ROUND, "side": side, "step": "1", "token": TOKEN, "model": "claude-haiku-5-5",
+            "budget_usd": 2.0, "max_turns": 200, "pace": STEP_PACE,
+            "allowance": {"operations": [f"{side}_state"], "cases": ["*"]},
+            "card": None, "prompt": {"side": "attacker" if side == "attack" else "defender", "stance": stance}}
+
+
+def test_launcher_command_runs_claude_code_on_bash_alone_in_an_empty_directory_of_its_own_with_the_step_s_model():
+    attack = claimed_run("attack", stance="Your stance this round, quoted from MITRE ATT&CK (T1190 ...)")
+    command = launcher.child_command(attack, "opening", "bot3")
+    claude = command[command.index("claude"):]
+
+    assert command[:3] == ["sudo", "-u", "bot3"] and "CR_PLAYER_TOKEN" in command[4] and TOKEN not in command
+    assert claude[claude.index("--tools") + 1] == "Bash" and claude[claude.index("--model") + 1] == "claude-haiku-5-5"
+    assert claude[claude.index("--max-budget-usd") + 1] == "2.0" and claude[claude.index("--max-turns") + 1] == "200"
+    assert "Bash(python -m bots.cli *)" in claude and "Bash(cat *)" in claude[claude.index("--disallowedTools"):]
+    assert {"--safe-mode", "--strict-mcp-config", "--no-session-persistence"} <= set(claude)
+    assert claude[claude.index("--setting-sources") + 1] == "" and claude[claude.index("--permission-mode") + 1] == "dontAsk"
+    script = command[command.index("-c") + 1]
+    assert 'mkdir -p "$HOME/run/work"' in script and 'cd "$HOME/run/work"' in script
+    assert not any(str(REPO) in word or "redteam" in word for word in command)
+    assert "MITRE ATT&CK" in launcher.system_text(attack) and "bots.cli" in launcher.system_text(attack)
+    assert "MITRE ATT&CK" not in launcher.system_text(claimed_run("defence", stance="Your stance this round"))
+
+
+def test_notes_are_masked_of_the_player_token_the_run_key_and_any_anthropic_key():
+    transcript = launcher.Transcript(hidden=(TOKEN, "run-key-placeholder", "", ""))
+
+    transcript.take({"type": "assistant", "message": {"content": [
+        {"type": "text", "text": f"token {TOKEN} key run-key-placeholder and sk-ant-oat01-AbC_123-x"},
+        {"type": "tool_use", "name": "Bash", "input": {"command": f"python -m bots.cli attack_state # {TOKEN}"}}]}})
+    transcript.take({"type": "result", "subtype": "success", "num_turns": 3, "total_cost_usd": 0.5,
+                     "result": f"closing sk-ant-api03-zzz {TOKEN}"})
+
+    texts = " ".join(note["text"] for note in transcript.taken())
+    finished = transcript.finish(0, False)
+    assert TOKEN not in texts and "run-key-placeholder" not in texts and "sk-ant-" not in texts
+    assert finished == {"exit": "success", "cost_usd": 0.5, "turns": 3, "refusals": 0,
+                        "closing": "closing [hidden] [hidden]"}

@@ -3,3 +3,4 @@ front/dist
 front/src/api/schema.d.ts
 .venv
 .git
+**/__pycache__
