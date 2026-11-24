@@ -114,8 +114,9 @@ survive `expect`: the case names a substring its signature should match, and an
 alert that does not mention the attack's mechanism is reported
 `corroborated: false`. Only declared cases and the platform-fired benign cases
 enter TP/FP/FN/TN; a free action (a request, tool run, command or site-pane
-request with no declared case) is reported apart under `free_actions` and
-never scored as one.
+request with no declared case, or a request in the WAF access log from one of
+the round's attacker origins, current or spent, that no action marker names)
+is reported apart under `free_actions` and never scored as one.
 
 ## What must not break
 
@@ -141,8 +142,10 @@ never scored as one.
   `pool` and `spent` sets; `sandbox/access.py` the only one that knows the
   platform sshd's jump grants and the per-player key in a box account's
   `authorized_keys`; `sandbox/attacker.py` the only one that knows the
-  attacker box (origins, `set-origin`, the command log, the tool image,
-  stopping runs); `sandbox/customers.py` the only one that knows the
+  attacker box (origins, `set-origin`, `set-peer`, the command log, the tool
+  image, stopping runs); `sandbox/vpn.py` the only one that knows WireGuard
+  (key pairs, the profile text, the UDP relay's port map);
+  `sandbox/customers.py` the only one that knows the
   customers' box (`cr-customers.service`, the `cr-users` account, the
   customer addresses); and `scoring/loot.py` (the board) and
   `scoring/effect.py` (corp) the only ones that read the target's ground
@@ -221,9 +224,14 @@ logic changed, and before a push.
   frozen dataclasses, tested by `platform/tests/domain/` with no Django in the
   process. Services raise `cr/errors.py` domain errors and never build
   responses; `cr/handler.py` maps them to the one error shape.
-- The target is not published; attack cases are fired from the attacker box
-  inside the range (`training/attack/cases.py`), benign cases from the
-  customers' program on the infra VM (`sandbox/customers.py`).
+- The target has no public address and no published port; attack cases are
+  fired from the attacker box inside the range (`training/attack/cases.py`),
+  benign cases from the customers' program on the infra VM
+  (`sandbox/customers.py`). A learner reaches the board from their own PC only
+  through the round's kali: the account's WireGuard profile, attached to the
+  human attack seat while its round runs, or the SSH config the access page
+  shows; that traffic leaves kali under its current origin and is counted as
+  the attacker's (DECISIONS 2026-11-24).
   The product runs only on OpenStack: the range is one Heat stack per allocation
   (`cr-slot-<n>`: the VMs kali, waf, infra and target on the stack's own
   Neutron LANs, booted from role images baked from `deploy/roles/` into
@@ -234,7 +242,8 @@ logic changed, and before a push.
   pulls prebuilt images from GHCR (built by `.github/workflows/images.yml` on
   push to `dev`): `docker compose pull && docker compose up -d` starts the
   control plane (it registers the Elasticsearch ingest pipeline; no service
-  holds the Docker socket). Local development runs the unit tests, not
+  holds the Docker socket; the `bots` service claims bot runs over the REST
+  API and launches one Claude Code child per run, `bots/README.md`). Local development runs the unit tests, not
   the range. The `build:` keys stay because the CI build test checks them. The
   platform VM is rebuilt, never patched in place: `bin/cloud up --replace`
   (`bin/platform-rebuild`, then the pool converges; a slot stack rendered from

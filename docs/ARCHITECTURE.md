@@ -194,9 +194,13 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
                Kibana  Terminal(Kali, 방어 쪽 WAF·IDS 전환)  Site  Map(+map-symbols/)  IdsRules(읽기 전용)  Waf
                RuleTestTable  Alerts
                Objectives  Origins  Loot  AttackCases  RuleVersions  Score  Verdicts
-               registry.ts  패널 id → 컴포넌트 표   staff/  문제·posture 편집기, 가져오기
-  src/pages/   얇은 배치: 어떤 패널을 어디에 둘지. Login  Signup  Home  RoundLobby  RoundAttack  RoundDefence
-               Result  staff/(Problems  Postures  Users  Range)
+               registry.ts  패널 id → 컴포넌트 표
+               staff/  문제·posture 편집기, 가져오기. RoundSetupEditor(봇 난이도, 공격 봇 카드 체크)
+                       BaselinePanel(기준 분포 버튼과 진행 표)
+  src/pages/   얇은 배치: 어떤 패널을 어디에 둘지. Login  Signup  Home  RoundLobby(대전 방식, 봇 쪽 난이도)
+               RoundAttack  RoundDefence  Result(기준 분포 대비, 복기 링크)  Debrief(복기: 봇, 카드, 의도, 타임라인, 점수)
+               Records(내 기록 목록과 기록 한 건)  Access(VPN 프로필, hosts 줄, kali SSH 설정)
+               staff/(Problems  Postures  Users  Range)
   src/console/ Console.tsx(layouts.ts의 선언대로 레일, 본문, 오른쪽 열을 그림)  RoundHeader.tsx
   src/shell/   AppPage.tsx(상단 메뉴와 페이지 틀)  AuthCard.tsx(로그인·가입 카드)
   src/api/     client.ts(CSRF 갱신, 90초 제한, 슬롯 대기, 오류 형태)  follow.ts(이벤트 커서 하나, 할당 heartbeat)
@@ -330,7 +334,11 @@ sequenceDiagram
 | `match` | `/api/rounds/<r>/events/?after=` | 커서 피드(`telemetry/views.py`). 종류마다 보는 쪽이 정해짐 |
 | `attack` | `/api/rounds/<r>/attack/{state,cases,requests,tools,tools/<run>,loot,origins/next,terminal}/` | 공격 API. 성공 응답에 `remaining`, 모든 응답에 `X-Origin`, `X-Origins-Left` |
 | `defence` | `/api/rounds/<r>/defence/{state,alerts,traffic,probes,ids/rules,ids/rules/versions,ids/rules/versions/<n>,ids/rules/test,ids/rules/tests/<t>,ids/terminal,waf,waf/versions,waf/versions/<n>,waf/check,waf/test,waf/tests/<t>,waf/apply,terminal,kibana}/` | 방어 API. IDS 룰을 쓰는 경로는 없음. `alerts`, `traffic`은 `telemetry/views.py`, 나머지는 `training/defence` |
-| `catalog`, `staff` | `/api/problems/`, `/api/staff/problems/…`, `/api/staff/postures/…`, `/api/staff/wargames/` | 문제 읽기와 작성 |
+| `catalog`, `staff` | `/api/problems/`, `/api/staff/problems/…`, `/api/staff/postures/…`, `/api/staff/wargames/` | 문제 읽기와 작성. 학습자 문제 목록에 허용 대전 방식과 봇 난이도, 스태프 워게임 목록에 그 워게임의 공격 카드 |
+| `match` | `/api/bot-steps/`, `/api/rounds/<r>/debrief/` | 난이도 표(로비), 끝난 라운드의 복기(진행 중이면 `409 round_running`) |
+| `records` | `/api/records/`, `/api/records/<id>/` | 자기 라운드 기록(점수, 복기, 기준 분포 대비 백분위). 스태프는 모두 |
+| `staff` | `/api/problems/<id>/baselines/` (GET, POST) | 기준 분포 진행과 시작. 문제 편집 화면의 버튼이 부름 |
+| `bots` | `/api/bot-runs/claim/`, `/api/bot-runs/<id>/{notes,finish}/` | 실행기 전용(실행기 키). 플레이어 토큰으로는 못 부름 |
 
 권한:
 

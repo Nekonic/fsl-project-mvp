@@ -11138,3 +11138,21 @@ Settled while building the learner's own-PC access (spec §15), within the gate-
   wargames' topology, for the access page.
 - **The kali image needs a rebake** (`wireguard-tools`, `net.ipv4.ip_forward = 1`, `set-peer`); until a new
   `compute.images` kali name is set, attach fails on the running images and is logged.
+
+## 2026-11-24 — Player vs AI rounds, stage 5: console, what the build settled
+
+Settled while building the console screens (spec §13), within the gate-1 spec.
+
+- **Two read fields were added to the contract.** The learner problem list (`problems`) carries the
+  problem's `matchups` and `bot_steps`, so the lobby offers only the matchups and steps the problem allows;
+  the staff wargame list (`staff_wargames`) carries each wargame's attack cards (`id`, `technique`, `name`,
+  no quote), so the problem editor can show checkboxes over the catalog. No new operation.
+- **The lobby picks the step, nothing else, for a bot seat.** A learner sees no bot name and no token; a
+  staff account still sees "외부 봇 (스태프)", the `{name}` seat, and its token once. A bot seat with no step
+  the problem allows blocks the create button.
+- **The baseline button runs on the saved setup**, once per `(human side, step)` with no `current` or
+  `running` baseline, 20 rounds each; an unsaved change to the setup is not what it measures.
+- **The result page shows the percentile only once the record exists** (judged and the runs over); before
+  that it shows nothing rather than "no baseline".
+- **The debrief has its own page** (`/rounds/<r>/debrief`, linked from the result) and the frozen copy is
+  shown on the record page (`/records/<id>`, linked from 내 기록); both draw one component.

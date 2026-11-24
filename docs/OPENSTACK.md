@@ -1146,7 +1146,10 @@ The server's cloud-init does these steps:
    `CR_OPENSTACK_IMAGES` and `CR_OPENSTACK_FLAVORS` (§4) and `CR_OPENSTACK_SSH_USER=ubuntu`, the range
    VMs' management user, and `CR_TOOL_IMAGE=cr-kali`, the attacker host the
    launcher runs tools on. It makes `/opt/cr/openstack-password` empty, mode 0600, owned by
-   uid 10001; the hand-over fills it.
+   uid 10001; the hand-over fills it. It also makes `/opt/cr/bots-launcher-key`
+   (32 random bytes, base64, mode 0600, uid 10001), the key the platform and the
+   `bots` service share, and `/opt/cr/claude-oauth-token` empty, mode 0600,
+   uid 10001 (§5.1.1).
 6. Writes `/opt/cr/.env` with `CR_PUBLISH=<fixed IP>`,
    `CR_SYSLOG_PUBLISH=0.0.0.0` and `CR_IMAGE_TAG` (the clone's commit), and
    fetches the GeoIP database (`bin/fetch-geoip`).
@@ -1182,6 +1185,26 @@ a VM is an environment error (DECISIONS 2026-10-10).
 The password stays out of Heat and out of user data. Nova's metadata service
 answers inside the containers on the VM, so anything in user data can be read
 there.
+
+#### 5.1.1 The `bots` service
+
+`compose.yaml` runs a third service beside `platform` and `rebuild`: `bots`
+(image `cr-bots`, `python -m bots.launcher`). It polls the platform over the
+compose network `mgmt` (`http://platform:8000`) with the launcher key, claims
+each queued bot run and starts one relay and one Claude Code child per run;
+`bots/README.md` has the rest. It needs no port of its own, no OpenStack
+credential and no route to the range beyond the player's terminal grant, which
+reaches kali, the WAF and the sensor host through the jump on 2222 like a
+human's.
+
+The Claude Code credential is the one value an operator writes by hand: the
+token goes into `/opt/cr/claude-oauth-token` on the platform VM (one line, the
+file keeps mode 0600 and uid 10001), then `docker compose restart bots`. With
+the file empty the launcher claims nothing, so a round with a launched bot
+stays with its runs queued. `bin/platform-rebuild` does not carry this file
+over: a rebuilt VM starts with it empty again. Until the demo ends the token is
+the user's own login, and only the accounts in `CR_BOT_ROUND_USERS` can open a
+round with a launched bot (DECISIONS 2026-11-24).
 
 ### 5.2 One command [one-click]
 

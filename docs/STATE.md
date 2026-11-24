@@ -85,6 +85,7 @@ a live range and passed.
 | Bots | the bots get the human's shell (`bots/shell.py`); no generated client: `bots/`, `test/` and `bin/` call the API by `operationId` through `bots/rest.py` | `platform/tests/test_bots.py`; the acceptance suite through `bots/rest.py`, live 2026-11-23 |
 | Lessons | the lesson content is gone; `training/lessons/` is an empty package; `front/` builds again | `npm run build`, `npx vitest run` |
 | Docs | README, ARCHITECTURE, OPENSTACK, this file and `now.md` describe `restructure` and the 2026-11-23 cloud check | this stage |
+| Player vs AI rounds (branch `bot-rounds`, gate 1 of 2026-11-24) | three difficulty steps (`training/content/steps.yaml`; attack bot Haiku 5.5 at every step, defence bot Haiku/Sonnet/Opus 5.5); attack cards A1-A8 (`cards.yaml`, one ATT&CK id each, drawn at random per round, shown only in the debrief); the `bots` compose service launches Claude Code behind a per-run relay that holds the token, pace and allowance; bot runs, notes, round records kept 90 days, the debrief, the bot-vs-bot baseline started from the problem editor and the percentile; one WireGuard profile per account attached to the human attack seat's kali (`sandbox/vpn.py`, kali `set-peer`); attribution by origin (WAF access-log requests from the round's attacker origins are the attacker's free actions); console: lobby step picker, debrief, records, access page, staff card and step choice and baseline panel | the unit tests of spec §17, `front/` vitest and build; nothing of it ran on a range yet |
 
 ## Not live-verified
 
@@ -103,6 +104,11 @@ stand". Still not run on a range:
 - `bin/cloud up --replace` under the stack name `cr-platform` (it ran as
   `cr-platform2`; under `cr-platform` it stops before deleting anything,
   §5.3); `bin/cloud down`;
+- everything of the Player vs AI build (`bot-rounds`): the `bots` image and
+  service, a `def_vs_bot` and an `atk_vs_bot` round through the launcher, a
+  two-round baseline, a round from a PC through the WireGuard profile and
+  through the SSH config (needs the kali rebake with `set-peer` and a stack
+  update for udp 51820-51919);
 - the rulings of 2026-11-22 and 2026-11-23 not built yet (five attack
   origins, more benign kinds, Internet scanners, the board's attack paths,
   the response replay of the attack's own logged requests).
@@ -112,10 +118,14 @@ stand". Still not run on a range:
 1. **The name `cr-platform`** (an admin): remove the abandoned stack's
    record from Heat's database, then one replace under that name
    (`docs/OPENSTACK.md` §5.3).
-2. **One `pvp` round, and a bot round that loses an objective**.
-3. **A captured walk of every page as a learner**, then a live review round
+2. **Player vs AI live check** (spec §17 "Live"): kali rebake, platform
+   replace from `bot-rounds`, the Claude Code token in
+   `/opt/cr/claude-oauth-token` (`docs/OPENSTACK.md` §5.1.1), then the rounds
+   above.
+3. **One `pvp` round, and a bot round that loses an objective**.
+4. **A captured walk of every page as a learner**, then a live review round
    with zero countable findings and a docs review.
-4. **Gate 2**: present what changed with the evidence; on approval, move the
+5. **Gate 2**: present what changed with the evidence; on approval, move the
    verified, tagged state onto `dev` and then `main`.
 
 ## Open points
@@ -129,12 +139,11 @@ stand". Still not run on a range:
   slot while 15 processes shared three, and errored at setup; alone it
   passed. On 2026-11-23 the same split passed. Whether the wait, the split
   or the slot refill time should change is not measured.
-- **The bot inherits the repo.** `bots/prompts/claude_code.md` runs the bot
-  from the repository root, so its Claude Code session loads CLAUDE.md, the
-  auto-memory, the session hook and the project permissions; the attack
-  bots read `redteam/cases/board.yaml` and `wargames/board/*.yaml`, which a
-  human player does not see. A separate working directory, or
-  `--setting-sources` or `--bare`, is a launch decision not taken yet.
+- **The bot inherited the repo** in the bot rounds of 2026-11-24 (run from
+  the repository root, it read `redteam/cases/` and the wargame files). On
+  `bot-rounds` the launcher runs it from an empty directory in safe mode
+  with no setting sources, from an image holding only `bots/` and the
+  schema; not yet run live.
 - **Acceptance checks that read Elasticsearch directly.**
   `test/test_event_time.py`, `test/test_geoip_durable.py`,
   `test/test_origin_placement.py` and `test/test_waf_geolocation.py` query

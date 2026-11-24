@@ -26,7 +26,8 @@ only the launcher names a program, Claude Code, and the model of each difficulty
 Staff create a round with an externally driven bot player (`POST /api/allocations/<allocation>/rounds/` with
 `{bot: {name}}` for the side) and receive the player token once. A seat made with `{bot: {step}}` returns no token: the
 platform queues a bot run at round start and the launcher claims it (`bot_run_claim`, tag `bots`), which issues the
-token. The token reaches its side's routes and the round's `GET /`,
+token. A learner's lobby makes only `{bot: {step}}` seats, choosing the step from the problem's `bot_steps`; an attack
+bot seat draws one of the problem's attack cards, which nobody sees before the end. The token reaches its side's routes and the round's `GET /`,
 `events/`, `topology/` and, after the end, `score/`. After `round.ended` it stays valid read-only for 15
 minutes, so the bot can read the end and the score.
 
