@@ -31,6 +31,7 @@ BACKUPS = ROOT / "backups"
 PLATFORM_KEY = "/data/ssh/id_ed25519"
 PLATFORM_UID = 10001
 CHECKOUT = "/opt/cr"
+STORE_SERVICES = "platform rebuild"
 VENV_COMMAND = (
     "exec 9>/tmp/cr-venv.lock && flock 9 && "
     f"/usr/local/bin/uv sync --quiet --frozen --project {CHECKOUT} --python /usr/bin/python3"
@@ -318,7 +319,40 @@ def remove_builders(stack: str, run=run) -> list[str]:
     return found
 
 
+def stack_server(stack: str, run=run) -> str | None:
+    done = run(["openstack", "stack", "resource", "show", stack, "server",
+                "-f", "value", "-c", "physical_resource_id"], check=False)
+    found = done.stdout.decode().strip()
+    return found if done.returncode == 0 and found else None
+
+
+def holders(stack: str, run=run) -> list[str]:
+    network = stack_network(stack, run)
+    if network is None:
+        return []
+    own = {stack_server(stack, run), *builders(stack, run)}
+    ports = json.loads(run(["openstack", "port", "list", "--network", network, "--long", "-f", "json"]).stdout
+                       or b"[]")
+    devices = [run(["openstack", "port", "show", port["ID"], "-f", "value", "-c", "device_id"]).stdout.decode().strip()
+               for port in ports if str(port.get("Device Owner") or "").startswith("compute:")]
+    return [device for device in devices if device not in own]
+
+
+def refuse_if_held(stack: str, run=run) -> None:
+    held = holders(stack, run)
+    if not held:
+        return
+    names = [run(["openstack", "server", "show", device, "-f", "value", "-c", "name"],
+                 check=False).stdout.decode().strip() or device for device in held]
+    raise Refused(
+        f"{Path(sys.argv[0]).name}: {', '.join(names)} has a port on stack {stack}'s network, and Neutron keeps "
+        f"the router interface a floating IP behind it needs, so Heat could not delete the stack; nothing was "
+        f"deleted; move that server to a network of its own first (docs/OPENSTACK.md §5.3)"
+    )
+
+
 def delete_stack(stack: str, run=run) -> None:
+    refuse_if_held(stack, run)
     remove_builders(stack, run)
     run(["openstack", "stack", "delete", "--yes", "--wait", stack])
 
@@ -569,14 +603,14 @@ def hand_over(new: Host, password: str, range_key: Path, store: Path | None,
         new.ssh(f"mkdir -p {CHECKOUT}/backups")
         new.copy(store, f"{CHECKOUT}/backups/{store.name}")
         new.ssh(
-            f"cd {CHECKOUT} && {compose} stop platform && sudo docker run --rm --network none "
+            f"cd {CHECKOUT} && {compose} stop {STORE_SERVICES} && sudo docker run --rm --network none "
             f"--entrypoint sh --user cr -v cr_platformdata:/data -v {CHECKOUT}/backups:/backups:ro "
             "$(sudo docker inspect --format '{{.Config.Image}}' cr-platform) -c "
             + shlex.quote(f"rm -f /data/db.sqlite3-journal /data/db.sqlite3-wal /data/db.sqlite3-shm && cp /backups/{store.name} /data/db.sqlite3")
         )
     new.ssh(settings_rewrite(sideload), platform_settings(sideload).encode())
     new.ssh(password_write(), password.encode())
-    new.ssh(f"cd {CHECKOUT} && {compose} up -d --force-recreate" + ("" if sideload else " platform"))
+    new.ssh(f"cd {CHECKOUT} && {compose} up -d --force-recreate" + ("" if sideload else f" {STORE_SERVICES}"))
 
 
 def api_answers(address: str) -> bool:
@@ -648,6 +682,8 @@ def rebuild(cloud, environment: dict[str, str], sideload_pairs: list[str] = ()) 
         known_hosts = Path(scratch) / "known_hosts"
         status = stack_status(cloud.stack)
         refuse_if_busy(cloud.stack, status)
+        if status is not None:
+            refuse_if_held(cloud.stack, run)
         old_address = standing_address(cloud.stack, status)
         old = Host("ubuntu", old_address, known_hosts, identity) if old_address else None
         holding = holds_store(old) if old else False

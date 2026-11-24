@@ -520,7 +520,24 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
     )
 
 
-def test_without_a_sideload_the_rebuild_pulls_everything_and_restarts_only_the_platform(tmp_path):
+def test_the_restore_stops_every_service_that_holds_the_store_and_starts_them_again(tmp_path):
+    module = rebuild()
+    key = tmp_path / "range-key"
+    key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
+    store = tmp_path / "db-20261124T003326Z.sqlite3"
+    store.write_bytes(b"SQLite format 3\x00")
+    platform = NewPlatform()
+
+    module.hand_over(platform, "secret", key, store)
+
+    [restore] = [command for command in platform.ran if "docker run" in command]
+    assert "compose.yaml stop platform rebuild &&" in restore, (
+        "on 2026-11-24 cr-rebuild kept a WAL connection to the store the restore replaced; its lock on the "
+        "file made every write of the new platform answer database is locked")
+    assert platform.ran[-1].endswith("up -d --force-recreate platform rebuild")
+
+
+def test_without_a_sideload_the_rebuild_pulls_everything_and_restarts_only_the_platform_services(tmp_path):
     module = rebuild()
     key = tmp_path / "range-key"
     key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
@@ -529,7 +546,7 @@ def test_without_a_sideload_the_rebuild_pulls_everything_and_restarts_only_the_p
     module.hand_over(platform, "secret", key, None)
 
     assert not [command for command in platform.ran if "docker load" in command or "git " in command]
-    assert platform.ran[-1].endswith("up -d --force-recreate platform"), (
+    assert platform.ran[-1].endswith("up -d --force-recreate platform rebuild"), (
         "the password file keeps its inode, so compose sees no change and would keep the platform that read it empty"
     )
     assert platform.settings_fed() == b""
@@ -876,6 +893,7 @@ class Replacing:
         monkeypatch.setattr(module, "refuse_unless_published", lambda *args, **kwargs: None)
         monkeypatch.setattr(module, "ensure_keypair", lambda name, key_file: None)
         monkeypatch.setattr(module, "stack_status", lambda stack: status)
+        monkeypatch.setattr(module, "refuse_if_held", lambda stack, run=None: None)
         monkeypatch.setattr(module, "address_of", lambda stack, run=None: address)
         monkeypatch.setattr(module, "holds_store", lambda old: holds)
         monkeypatch.setattr(module, "start_platform", lambda old: self.calls.append("start"))

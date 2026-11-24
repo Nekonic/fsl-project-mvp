@@ -208,6 +208,7 @@ def down(args: argparse.Namespace) -> None:
         print(f"no stack {cloud.stack}; nothing to take down")
         return
     rebuild.refuse_if_busy(cloud.stack, status)
+    rebuild.refuse_if_held(cloud.stack, rebuild.run)
     address = rebuild.standing_address(cloud.stack, status)
     if address is None:
         take_down_broken(cloud.stack, f"is {status} and has no platform to ask", rebuild.run)

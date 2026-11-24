@@ -159,6 +159,49 @@ def test_a_stack_without_its_network_has_no_builders_to_remove():
     assert not [argv for argv in cli.ran if argv[1:3] in (["server", "list"], ["server", "delete"])]
 
 
+class HeldNetwork(Cli):
+    PORTS = (b'[{"ID": "port-router", "Device Owner": "network:router_interface"},'
+             b' {"ID": "port-platform", "Device Owner": "compute:nova"},'
+             b' {"ID": "port-dev", "Device Owner": "compute:nova"}]')
+    DEVICES = {"port-platform": b"srv-platform\n", "port-dev": b"srv-dev\n"}
+
+    def __call__(self, argv, stdin=None, check=True):
+        if argv[1:3] == ["port", "list"]:
+            self.ran.append(argv)
+            return subprocess.CompletedProcess(argv, 0, stdout=self.PORTS)
+        if argv[1:3] == ["port", "show"]:
+            self.ran.append(argv)
+            return subprocess.CompletedProcess(argv, 0, stdout=self.DEVICES[argv[3]])
+        if argv[1:3] == ["server", "show"]:
+            self.ran.append(argv)
+            return subprocess.CompletedProcess(argv, 0, stdout=b"cr-dev\n")
+        if argv[1:4] == ["stack", "resource", "show"] and argv[5] == "server":
+            self.ran.append(argv)
+            return subprocess.CompletedProcess(argv, 0, stdout=b"srv-platform\n")
+        return super().__call__(argv, stdin, check)
+
+
+def test_a_server_of_someone_else_on_the_stack_s_network_stops_the_delete_before_anything_is_deleted():
+    cli = HeldNetwork()
+
+    with pytest.raises(SystemExit, match="cr-dev has a port on stack cr-platform's network"):
+        command().rebuild.delete_stack("cr-platform", cli)
+
+    assert not [argv for argv in cli.ran if "delete" in argv], (
+        "a floating IP on that server keeps the router interface, so Heat would fail halfway")
+
+
+def test_only_the_stack_s_own_server_on_its_network_lets_the_delete_go_on():
+    class OwnOnly(HeldNetwork):
+        PORTS = b'[{"ID": "port-platform", "Device Owner": "compute:nova"}]'
+
+    cli = OwnOnly()
+
+    command().rebuild.delete_stack("cr-platform", cli)
+
+    assert cli.ran[-1] == ["openstack", "stack", "delete", "--yes", "--wait", "cr-platform"]
+
+
 def test_a_failed_stack_has_no_working_platform_so_up_rebuilds_it():
     cli = Cli(status=b"CREATE_FAILED")
 

@@ -492,8 +492,9 @@ the compute node's instance storage must have, at a disk allocation ratio of
   tenth: on 2026-11-23 `cr-dev`'s group made 10 of 10, so a second platform
   stack failed with `Quota exceeded for resources: ['security_group']` until
   the first stack's emptied group was deleted. The platform now runs as stack
-  `cr-platform2`, whose own group is again named `cr-platform`, and the
-  groups are at 10 of 10 again (§5.3).
+  `cr-platform2`, whose own group is again named `cr-platform`. On
+  2026-11-24 the user had the group quota raised to 30 (11 in use with the
+  hand builders' `cr-bake`).
 
 ```bash
 openstack quota show fsl-range
@@ -731,16 +732,28 @@ openstack server delete cr-bake-waf2; openstack floating ip delete <address>
 The builder needs no floating IP when ssh reaches it through the platform VM,
 which has a port on `cr-platform`: the WAF re-bake of 2026-11-18 went that
 way. The bakes of 2026-11-23 reached the builders directly from another VM on
-`cr-platform`.
+`cr-platform`. A builder on the platform stack's network with the stack's
+group loses its rules and ssh when a replace deletes that stack (2026-11-23),
+and a hand builder there makes `bin/platform-rebuild` refuse (§5.3). The kali
+bake of 2026-11-24 used its own group `cr-bake` (ingress tcp 22 from the
+development VM's network, default egress), made outside every stack, on the
+development VM's network.
 
 Check that the snapshot is `active` in Glance (`openstack image show`) before
 the builder is deleted: `server image create --wait` can end with no image.
 On 2026-11-23 the kali snapshot `cr-kali-bake3` ended so, with Nova's instance
 action `createImage` showing `compute_snapshot_instance: Error` and no
 traceback a member user can see; the builder was deleted after it, so the
-45-minute bake was lost. The cause is **[unverified]** (free space on the
-compute node or the Glance store is a guess); an admin reads it on the
-controller and compute node.
+45-minute bake was lost. On 2026-11-24 a second kali bake (`install.sh`
+35 min 35 s) failed the same way: the snapshot `cr-kali-bake4` was gone from
+Glance after 10 min 39 s, `compute_snapshot_instance: Error`, no traceback;
+this time the builder was kept until the image was gone. Both kali snapshots
+ended at about 10 minutes, while every role image of 5.7 GB or less went
+through and the same 14 GB kali snapshot passed on 2026-11-18. The cause is
+**[unverified]** (a timeout of about 10 minutes on the upload to Glance, or
+free space on the compute node or the Glance store, are guesses); an admin
+reads the nova-compute and glance-api logs. Until then the range runs
+`cr-kali-bake2`.
 
 The builder takes one instance of the project's quota, and the full default
 pool takes all of it (§3.2: 17 of 17 on this cloud), so `server create`
@@ -1271,13 +1284,17 @@ This command replaces the platform VM without losing data. It does these steps:
    `bin/cloud up --replace` makes it again.
 6. It starts the `cr-platform` container on the new VM if it is stopped, then
    writes the kept key to `/data/ssh/id_ed25519` through `docker exec`.
-7. It restores the store.
+7. It restores the store with both services that open it, `platform` and
+   `rebuild`, stopped. On 2026-11-24 only `platform` was stopped: `cr-rebuild`
+   kept its WAL connection to the store the restore replaced, its lock on the
+   file made every write of the new platform answer `database is locked`, and
+   `bin/cloud up --replace` stopped at the first sign-in (500).
 8. It writes the password into `/opt/cr/openstack-password` in place, so the
    file keeps mode 0600 and its owner. It drops a `CR_OPENSTACK_PASSWORD` line
    an older hand-over left in `/opt/cr/openstack.env` and writes the
    `CR_SIDELOADED` line there when the run sideloads; that file keeps every
-   other line and mode 0600. It recreates the platform container, which reads
-   the password file at start.
+   other line and mode 0600. It recreates the `platform` and `rebuild`
+   containers, which read the password file at start.
 9. It waits for `/api/auth/csrf/`, which answers before anyone signs in.
 
 The password file marks a finished hand-over, so it is written after the store
@@ -1305,8 +1322,33 @@ interface. Heat refuses `stack update` of a `DELETE_FAILED` stack. Removing
 the group's rules also cut the egress and ssh of a builder on that network
 mid-install; they were added back by hand. The platform was then made under
 another `platform.stack` name (`cr-platform2`), which needs one free security
-group of the quota (§3.2). Move such a VM to its own network and router
-before a replace. A range stack stands through the replace when
+group of the quota (§3.2). Since 2026-11-24 `bin/platform-rebuild` and
+`bin/cloud down` look before they delete anything: a port on the stack's
+network whose server is neither the stack's own server nor a builder (§5.2,
+`down` step 7) stops them, naming that server. Move such a VM to its own
+network and router before a replace.
+
+The stack `cr-platform` cannot finish its delete while `cr-dev` is on its
+network: after the router interface, Heat deletes the subnet and the network,
+which Neutron refuses while a port is on them. Heat's `stack abandon`, which
+drops a stack and leaves its resources, is off on this cloud (`Stack Abandon
+is not supported`, 2026-11-24). Two ways out: an admin turns on
+`enable_stack_abandon` in Heat's `[DEFAULT]` (in Kolla through
+`/etc/kolla/config/heat.conf`, then `kolla-ansible reconfigure -t heat`),
+the stack is abandoned and its network and router are renamed for `cr-dev`,
+which changes nothing on `cr-dev`'s path; or `cr-dev` gets a second port on a
+network and router of its own, its floating IP and default route move there,
+and its old port is detached, which drops the sessions over its floating IP
+and is done from its console. Neither has run. The platform then gets the
+name `cr-platform` back by one more rebuild under that name (unverified: the
+reserved floating IP is still associated with `cr-platform2`'s port then).
+
+`bin/cloud up --replace` ran end to end on 2026-11-24 as stack
+`cr-platform2`: the first run stopped at the first sign-in (step 7 above,
+`database is locked`); after the fix the second exited 0 in 12 min 12 s,
+10 min 30 s to `/api/auth/csrf/`, and the four slot stacks stood through.
+
+A range stack stands through the replace when
 what the new platform renders for it has the same digest (§6), and the
 refill `bin/cloud up --replace` owes it then only seeds its sensor again. The digest holds the
 platform's `cr-mgmt` address, which every node's user data names as its log
@@ -1340,7 +1382,7 @@ their rounds, records and events, one per transaction
 (`platform/cr/settings.py`, set in `compose.yaml`, overridden in
 `/opt/cr/.env`). It never touches open allocations. A backup therefore carries
 about an hour of closed allocations plus the open ones.
-The store is copied back with `scp` and put in place while the platform is
+The store is copied back with `scp` and put in place while `platform` and `rebuild` are
 stopped.
 
 **An unpushed commit (`--sideload NAME=TARBALL`).** Sideloading means loading a
