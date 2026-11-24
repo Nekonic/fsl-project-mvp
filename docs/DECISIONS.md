@@ -11105,3 +11105,36 @@ Settled while building the core (steps, cards, bot runs, records, debrief, basel
   dead launcher cannot stall a baseline; that round does not count and the runner opens another.
 - **No server numbers were measured.** `min_gap_s`, `budget_usd` (2, 4, 8) and `max_turns` (200, 300, 400)
   in `steps.yaml` are placeholders to tune after rounds are played.
+
+## 2026-11-24 — Player vs AI rounds, stage 4: learner access, what the build settled
+
+Settled while building the learner's own-PC access (spec §15), within the gate-1 spec.
+
+- **The tunnel terminates on kali**, as the spec chose (§15.4). The PC's packets reach kali's `wg0`, leave
+  by its default-route interface and take the current origin from `ORIGIN-SNAT`; the restrictions the score
+  depends on stay outside kali, in the infra router's `pool` and `spent` sets.
+- **No conntrack flush on an origin switch.** A connection open before `attack_next_origin` keeps the old
+  origin until it closes (pre-build check). Both origins are the attacker's, so attribution by origin counts
+  it either way, and a spent origin's open connections are already dropped by the edge (`sandbox/edge.py`
+  flushes them). Kali's own shell connections behave the same today.
+- **100 UDP ports, 51820-51919, not the estimated 1,000.** Docker starts one `docker-proxy` per published
+  port; 1,000 would be 1,000 processes on the platform VM. One port per account, so the range bounds the
+  number of profiles (`409 vpn_ports_full`). Widening it means the compose port line, the platform security
+  group and `CR_VPN_LAST_PORT` together.
+- **Tunnel addresses come from 10.99.0.0/16**: kali's `wg0` is 10.99.0.1, the account on port p gets
+  10.99.0.(2 + p - 51820). The range is outside `network.platform`, `network.mgmt`, the slot LANs, the
+  origins and Docker's default pools.
+- **Both ends use MTU 1360** (`MTU` in the profile, `wg0` on kali), below kali's 1442 with room for the
+  WireGuard and UDP headers.
+- **Keys are made in Python** (X25519 by RFC 7748 in `sandbox/vpn.py`), because the platform image carries no
+  `wireguard-tools` and `cryptography` is only a dependency of the cloud tools. The server private key is
+  stored (kali needs it at every attach); the PC's private key is in the issue answer only.
+- **The kali end is installed over the same ssh the platform already uses** (`set-peer` through
+  `sandbox/attacker.py`, the server key on stdin, not on the command line). Attach failures are logged and do
+  not stop the round; the SSH `DynamicForward` path stays.
+- **A reissue keeps the account's port and address** and replaces both key pairs; a reissue during a round
+  installs the new keys on that round's kali at once.
+- **The profile read carries the hosts line** (`121.134.88.42 board.com corp.com`), built from the
+  wargames' topology, for the access page.
+- **The kali image needs a rebake** (`wireguard-tools`, `net.ipv4.ip_forward = 1`, `set-peer`); until a new
+  `compute.images` kali name is set, attach fails on the running images and is logged.

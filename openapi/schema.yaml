@@ -2534,6 +2534,104 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Errors'
+  /api/users/{user_id}/vpn/:
+    delete:
+      operationId: vpn_profile_revoke_for
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - staff
+      security:
+      - cr_session: []
+      responses:
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/vpn/profile/:
+    get:
+      operationId: vpn_profile_read
+      tags:
+      - accounts
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VpnProfile'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    post:
+      operationId: vpn_profile_issue
+      tags:
+      - accounts
+      security:
+      - cr_session: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VpnIssued'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    delete:
+      operationId: vpn_profile_revoke
+      tags:
+      - accounts
+      security:
+      - cr_session: []
+      responses:
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/vpn/profiles/:
+    get:
+      operationId: vpn_profiles_list
+      tags:
+      - staff
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VpnProfileRow'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
 components:
   schemas:
     Account:
@@ -5232,6 +5330,121 @@ components:
       - source
       - tested
       - version
+    VpnIssued:
+      type: object
+      properties:
+        public_key:
+          type: string
+        server_public_key:
+          type: string
+        address:
+          type: string
+          format: ipv4
+        port:
+          type: integer
+        endpoint:
+          type: string
+          readOnly: true
+        hosts:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        created:
+          type: string
+          format: date-time
+        attached_round:
+          type: integer
+          nullable: true
+        profile:
+          type: string
+          readOnly: true
+      required:
+      - address
+      - attached_round
+      - created
+      - endpoint
+      - hosts
+      - port
+      - profile
+      - public_key
+      - server_public_key
+    VpnProfile:
+      type: object
+      properties:
+        public_key:
+          type: string
+        server_public_key:
+          type: string
+        address:
+          type: string
+          format: ipv4
+        port:
+          type: integer
+        endpoint:
+          type: string
+          readOnly: true
+        hosts:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        created:
+          type: string
+          format: date-time
+        attached_round:
+          type: integer
+          nullable: true
+      required:
+      - address
+      - attached_round
+      - created
+      - endpoint
+      - hosts
+      - port
+      - public_key
+      - server_public_key
+    VpnProfileRow:
+      type: object
+      properties:
+        public_key:
+          type: string
+        server_public_key:
+          type: string
+        address:
+          type: string
+          format: ipv4
+        port:
+          type: integer
+        endpoint:
+          type: string
+          readOnly: true
+        hosts:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        created:
+          type: string
+          format: date-time
+        attached_round:
+          type: integer
+          nullable: true
+        username:
+          type: string
+        user_id:
+          type: integer
+      required:
+      - address
+      - attached_round
+      - created
+      - endpoint
+      - hosts
+      - port
+      - public_key
+      - server_public_key
+      - user_id
+      - username
     WafApplied:
       type: object
       properties:
@@ -5463,6 +5676,8 @@ components:
       - unknown_wargame
       - unsupported_media_type
       - username_taken
+      - vpn_missing
+      - vpn_ports_full
       - waf_unavailable
       - wrong_credentials
     FieldError:

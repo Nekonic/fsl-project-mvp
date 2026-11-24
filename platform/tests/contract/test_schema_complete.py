@@ -64,7 +64,7 @@ def test_every_body_method_without_a_body_says_so_on_purpose(schema):
                       if method in BODY_METHODS and "requestBody" not in operation)
 
     assert all(path.endswith(("/close/", "/heartbeat/", "/start/", "/end/", "/join/", "/forfeit/", "/logout/",
-                              "/approve/", "/disable/", "/next/", "/record/", "/fabric/", "/pool/"))
+                              "/approve/", "/disable/", "/next/", "/record/", "/fabric/", "/pool/", "/vpn/profile/"))
                for path, _ in bodiless), bodiless
 
 

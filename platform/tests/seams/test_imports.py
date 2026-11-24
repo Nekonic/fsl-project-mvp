@@ -199,7 +199,7 @@ def test_the_checker_sees_a_framework_import_an_app_import_and_a_relative_import
 APPS = ("users", "telemetry", "training", "scoring")
 TRAINING_PARTS = ("content", "round", "traffic", "attack", "defence")
 SURFACES = {
-    "users": {"users/accounts.py", "users/permissions.py", "users/players.py"},
+    "users": {"users/accounts.py", "users/permissions.py", "users/players.py", "users/vpn.py"},
     "telemetry": {"telemetry/events.py", "telemetry/alerts.py", "telemetry/access.py"},
     "scoring": set(SCORING_SURFACE),
     "training/content": {"training/content/problems.py", "training/content/probes.py", "training/content/bots.py"},

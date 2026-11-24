@@ -174,6 +174,7 @@ def test_only_the_platform_and_the_syslog_collector_may_be_published_elsewhere_a
         ("platform", "${CR_PUBLISH:-127.0.0.1}:8000:8000"),
         ("platform", "${CR_PUBLISH:-127.0.0.1}:8002:8002"),
         ("platform", "${CR_PUBLISH:-127.0.0.1}:2222:2222"),
+        ("platform", "${CR_PUBLISH:-127.0.0.1}:51820-51919:51820-51919/udp"),
         ("collector", "${CR_SYSLOG_PUBLISH:-127.0.0.1}:5140:5140/udp"),
     }, chosen
 

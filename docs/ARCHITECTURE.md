@@ -118,6 +118,8 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                scoring/  correlate.py  metrics.py(판정 시점 decided 포함)  corroborate.py  objectives.py
   users/       accounts.py(로그인·가입·승인)  permissions.py(SessionAuthentication, CsrfChecked, IsStaff)
                players.py(플레이어 토큰 해시·발급·회수)  blocks.py(로그인 차단, SignInBlock)
+               vpn.py(계정마다 VPN 프로필 하나, VpnProfile: 발급·조회·폐기, 라운드 kali에 붙이고 떼기, 포트 맵 쓰기)
+               management/commands/  vpn_relay(포트 맵을 DB에서 다시 쓰고 UDP 중계 시작)
                스태프 계정 API, 초기 계정 admin(마이그레이션 0002)
   sandbox/     훈련 환경. 바깥 장치를 아는 파일이 모두 여기 있음
                openstack.py 경계: Keystone/Heat/Neutron REST, 실제 배선 읽기, 재생성 때 기본 룰 적재
@@ -129,7 +131,8 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                kibana.py    경계: Kibana API, space, 거부 규칙, 초기 설정, 로그 인덱스 패턴
                edge.py      경계: infra nftables pool·spent 집합, conntrack 정리
                access.py    경계: 플랫폼 sshd 점프 권한(플레이어·박스마다 하나), 키 생성, 박스 계정의 authorized_keys
-               attacker.py  경계: 공격 박스(출발지, set-origin, 명령 기록, 도구 이미지, 실행 중지)
+               attacker.py  경계: 공격 박스(출발지, set-origin, set-peer, 명령 기록, 도구 이미지, 실행 중지)
+               vpn.py       경계: WireGuard(키 쌍, 프로필 텍스트, 계정별 UDP 포트 맵, 플랫폼 컨테이너의 UDP 중계)
                customers.py 경계: infra VM의 고객 프로그램(cr-customers.service)과 고객 주소
                cloud_config.py  stack_plan.py  definitions.py(+declaration.yaml)  fabric.py
                wiring.py(배선 파싱)  topology.py(학습자용 이름, 쪽별 필터)  pool.py  refill.py
@@ -243,6 +246,7 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
 | infra 라우터의 nftables 집합 | `sandbox/edge.py` | `deploy/roles/infra/edge.nft`가 `pool`, `spent` 집합을 선언 |
 | 플랫폼 점프 호스트와 박스 계정 키 | `sandbox/access.py` | `platform/entrypoint.sh`가 점프 호스트의 `authorized_keys`를 만듦 |
 | 공격 박스 | `sandbox/attacker.py` | `cr/config.py`의 라벨 파일 경로 기본값 |
+| WireGuard(키, 프로필, 중계) | `sandbox/vpn.py` | 없음. kali 쪽 `deploy/roles/kali/set-peer`는 `sandbox/attacker.py`만 부름 |
 | 고객 박스(infra VM의 `cr-customers` 유닛, 계정, 기록) | `sandbox/customers.py` | 없음 |
 | 대상의 정답 데이터 | `scoring/loot.py`(board), `scoring/effect.py`(corp) | 점수를 정답 데이터와 맞춰 보는 acceptance 검사 `test/shared_sessions.py`, `test/test_board_exfil.py` |
 
@@ -319,6 +323,8 @@ sequenceDiagram
 |---|---|---|
 | `accounts` | `/api/auth/csrf/`, `login/`, `signup/`, `logout/`, `/api/me/` | 로그인, 가입 |
 | `staff` | `/api/staff/users/`, `/api/staff/blocks/` | 승인, 차단 |
+| `accounts` | `/api/vpn/profile/` (POST 발급, GET 조회, DELETE 폐기) | 자기 계정의 VPN 프로필. 개인 키는 발급 응답에 한 번만 |
+| `staff` | `/api/vpn/profiles/`, `/api/users/<id>/vpn/` (DELETE) | 모든 계정의 프로필, 다른 계정 프로필 폐기 |
 | `staff` | `/api/staff/range/{,fabric/,leftovers/,pool/}`, `/api/staff/wargames/<id>/probes/record/`, `/api/staff/probes/<a>/` | 풀 운영, probe 녹화(`training/round`, `training/content`) |
 | `match` | `/api/allocations/`, `/api/allocations/<a>/{heartbeat,close,rounds}/`, `/api/rounds/`, `/api/rounds/<r>/{players/<side>/join,start,end,score,topology,site/requests,terminal-auth/{attack,defence,ids},attack/forfeit,defence/forfeit}/` | 할당, 라운드, 점수, 구성도, 사이트 패널, 터미널 인증(`training/round`) |
 | `match` | `/api/rounds/<r>/events/?after=` | 커서 피드(`telemetry/views.py`). 종류마다 보는 쪽이 정해짐 |

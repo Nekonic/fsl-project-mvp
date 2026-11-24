@@ -106,6 +106,7 @@ services:
       - "${CR_PUBLISH:-127.0.0.1}:8000:8000"
       - "${CR_PUBLISH:-127.0.0.1}:8002:8002"
       - "${CR_PUBLISH:-127.0.0.1}:2222:2222"
+      - "${CR_PUBLISH:-127.0.0.1}:51820-51919:51820-51919/udp"
     environment: &platform-environment
       ELASTIC_URL: "http://elasticsearch:9200"
       ELASTIC_INDEX: "logs-*"
@@ -114,6 +115,7 @@ services:
       CR_REFILL_DIR: "/data/refill"
       CR_PROBES_OUT: "/data/probes"
       CR_JUMP_DIR: "/data/jump"
+      CR_VPN_DIR: "/data/vpn"
       TARGET_URL: "http://board.com"
       PUBLIC_TARGET_URL: "http://board.com"
       WARGAME_CASES_DIR: "/app/redteam/cases"

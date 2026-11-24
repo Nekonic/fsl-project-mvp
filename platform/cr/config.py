@@ -104,6 +104,15 @@ class JumpConfig:
 
 
 @dataclass(frozen=True)
+class VpnConfig:
+    directory: str = str(SOURCE / "platform/vpn")
+    first_port: int = 51820
+    last_port: int = 51919
+    network: str = "10.99.0.0/16"
+    host: str = ""
+
+
+@dataclass(frozen=True)
 class KibanaConfig:
     url: str = ""
     objects: str = str(SOURCE / "deploy/kibana/objects.ndjson")
@@ -163,6 +172,7 @@ class Config:
     edge: EdgeConfig = EdgeConfig()
     box: BoxConfig = BoxConfig()
     jump: JumpConfig = JumpConfig()
+    vpn: VpnConfig = VpnConfig()
     kibana: KibanaConfig = KibanaConfig()
     ground_truth: GroundTruthConfig = GroundTruthConfig()
     refill: RefillConfig = RefillConfig()
@@ -256,6 +266,10 @@ def build(environ: Mapping[str, str] = os.environ, source: Path | str | None = N
         jump=JumpConfig(directory=environ.get("CR_JUMP_DIR") or JumpConfig.directory,
                         port=int(environ.get("CR_JUMP_PORT") or JumpConfig.port),
                         host=environ.get("CR_JUMP_HOST", "")),
+        vpn=VpnConfig(directory=environ.get("CR_VPN_DIR") or VpnConfig.directory,
+                      first_port=int(environ.get("CR_VPN_FIRST_PORT") or VpnConfig.first_port),
+                      last_port=int(environ.get("CR_VPN_LAST_PORT") or VpnConfig.last_port),
+                      host=environ.get("CR_VPN_HOST") or environ.get("CR_JUMP_HOST", "")),
         kibana=KibanaConfig(url=environ.get("KIBANA_URL", ""), objects=str(root / "deploy/kibana/objects.ndjson")),
         ground_truth=GroundTruthConfig(board_url=environ.get("BOARD_API_URL") or GroundTruthConfig.board_url),
         refill=RefillConfig(directory=environ.get("CR_REFILL_DIR") or RefillConfig.directory),

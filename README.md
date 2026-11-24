@@ -140,7 +140,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 
 ```mermaid
 flowchart TB
-  user(["브라우저, ssh"]) -->|"8000, 8002, 2222"| fip["floating IP<br/>provider 네트워크"]
+  user(["브라우저, ssh, WireGuard"]) -->|"8000, 8002, 2222, 51820-51919/udp"| fip["floating IP<br/>provider 네트워크"]
   subgraph os["OpenStack 프로젝트 fsl-range"]
     fip --- pnet["cr-platform 네트워크 10.20.0.0/24"]
     pnet --- pvm
@@ -374,6 +374,7 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 | 8000 | 콘솔, `/api/`, Kibana(`/kibana/`), 터미널(`/vm-terminal/`) | 브라우저, 봇, `test/`, `bin/` |
 | 8002 | 대상 사이트(`/site/<라운드 id>/<host>/<path>`) | 콘솔 안의 iframe |
 | 2222 | SSH 점프 호스트, 플랫폼 컨테이너 안의 sshd | 학습자 PC의 `ssh`. 플레이어마다 받은 키로 공격 플레이어는 Kali 22번, 방어 플레이어는 WAF 22번과 infra 22번(둘 다 `analyst`)으로만 포워딩. 셸 없음 |
+| 51820-51919/udp | 학습자 WireGuard 터널의 UDP 중계, 플랫폼 컨테이너 안 | 학습자 PC의 WireGuard. 계정마다 포트 하나. 라운드 동안 그 판의 Kali 51820번(`cr-mgmt`)으로 넘김 |
 | 5140/udp | collector | 훈련 환경 infra VM의 log-server, `cr-mgmt`에서만 |
 | 5601 | Kibana 직접 접속, VM loopback 전용 | ssh 터널, 인증 없음 |
 | 9200 | Elasticsearch, VM loopback 전용 | acceptance 테스트, 인증 없음 |
@@ -489,7 +490,7 @@ sudo docker compose start platform rebuild
 | 8002의 대상 사이트 | 콘솔 쿠키를 지운 뒤 대상에 넘기고, 대상의 `Set-Cookie`는 브라우저로 보내지 않음 |
 | Elasticsearch, Kibana | 9200, 5601은 플랫폼 VM loopback에만 열림. 인증은 켜지 않음. space 안의 Kibana API 호출은 nginx가 플랫폼의 `/kibana-gate/`로 넘김. Discover가 쓰지 않는 호출(개발 도구, `bsearch`, ES\|QL 등)은 그 게이트가 한국어 안내와 함께 403으로 거절 |
 | 프로젝트 비밀번호 | `/opt/cr/openstack-password`(0600)를 compose secret으로 읽기 전용 마운트. 컨테이너 환경 변수에는 없음 |
-| 플랫폼 VM 인바운드 | ssh, 2222, 8000, 8002는 `cloud.yaml`의 `network.allowed`에서만. 기본값 `[0.0.0.0/0]` |
+| 플랫폼 VM 인바운드 | ssh, 2222, 8000, 8002, 51820-51919/udp는 `cloud.yaml`의 `network.allowed`에서만. 기본값 `[0.0.0.0/0]` |
 | 훈련 환경 VM | 학습자는 Kali에서 root(`NOPASSWD:ALL`). 그래서 소진된 출발지는 학습자가 손댈 수 없는 infra 라우터에서 떨어뜨림. 스택 사이, 스택과 플랫폼 사이의 격리는 VM 밖의 Neutron 보안 그룹과 port security가 맡음 |
 | Docker 소켓 | 플랫폼 VM의 어떤 서비스에도 마운트하지 않음 |
 

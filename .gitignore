@@ -5,6 +5,7 @@ __pycache__/
 db.sqlite3
 /data/
 /platform/jump/
+/platform/vpn/
 deploy/suricata/logs/
 /backups/
 /openstack.env

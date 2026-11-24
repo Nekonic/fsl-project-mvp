@@ -49,3 +49,32 @@ class Block(serializers.Serializer):
     failures = serializers.IntegerField()
     created = serializers.DateTimeField()
     until = serializers.DateTimeField()
+
+
+class VpnProfile(serializers.Serializer):
+    public_key = serializers.CharField()
+    server_public_key = serializers.CharField()
+    address = serializers.IPAddressField(protocol="IPv4")
+    port = serializers.IntegerField()
+    endpoint = serializers.SerializerMethodField()
+    hosts = serializers.SerializerMethodField()
+    created = serializers.DateTimeField()
+    attached_round = serializers.IntegerField(allow_null=True)
+
+    def get_endpoint(self, held) -> str:
+        return self.context["endpoint"](held)
+
+    def get_hosts(self, _held) -> list[str]:
+        return list(self.context["hosts"])
+
+
+class VpnIssued(VpnProfile):
+    profile = serializers.SerializerMethodField()
+
+    def get_profile(self, _held) -> str:
+        return self.context["text"]
+
+
+class VpnProfileRow(VpnProfile):
+    username = serializers.CharField(source="user.username")
+    user_id = serializers.IntegerField(source="user.pk")

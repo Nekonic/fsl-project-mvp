@@ -568,7 +568,7 @@ for the range VM roles if it has no `dba.small`; name it in `compute.flavors`.
 
 | Group | Made by | Rules |
 |---|---|---|
-| `cr-platform` | Heat stack | tcp 22, tcp 2222 (the Kali jump), tcp 8000, tcp 8002, icmp in |
+| `cr-platform` | Heat stack | tcp 22, tcp 2222 (the Kali jump), tcp 8000, tcp 8002, udp 51820-51919 (the learners' WireGuard ports), icmp in |
 | `cr-reach` | fabric | on the platform's `cr-mgmt` port; nothing in except udp 123 (NTP) from members of `cr-mgmt` and udp 5140 (the collector) from members of `cr-senders` |
 | `cr-mgmt` | fabric | on every range VM's control port; all IPv4 in, only from members of `cr-reach` (the platform's `cr-mgmt` port); out only to members of `cr-reach` and to udp 67 (DHCP) |
 | `cr-senders` | fabric | also on each stack's infra control port, the only sender the collector takes; no rule in; out only to members of `cr-reach` and to udp 67 |
@@ -620,6 +620,21 @@ public key into the box account's and the jump's `authorized_keys`. The
 round's end revokes both. Each box's control port takes tcp 22 only from the
 platform's group, so no floating IP is needed per box. A platform stack made
 before the jump lacks the 2222 rule; a stack update adds it.
+
+UDP 51820-51919 carries the learners' WireGuard tunnels, one port per account
+(`users/vpn.py` hands them out, `sandbox/vpn.py` writes the port map). A relay in
+the platform container (`python manage.py vpn_relay`, started by
+`platform/entrypoint.sh`, map rewritten from the database at start) forwards
+each attached port to that round's Kali on its `cr-mgmt` address, udp 51820,
+which the control port takes because `cr-mgmt` lets all IPv4 in from the
+platform. At round start the platform runs Kali's `set-peer` through
+`sandbox/attacker.py` with the account's server key on stdin; it makes `wg0`
+(MTU 1360, below Kali's 1442) with the learner's PC as its one peer. Kali forwards
+the PC's packets out its default-route interface, where `ORIGIN-SNAT` gives them
+the current origin, so the infra router's `pool` and `spent` sets hold them like
+Kali's own. The round's end runs `set-peer` with no arguments, which removes
+`wg0`. A platform stack made before the tunnels lacks the udp rule; a stack
+update adds it.
 
 The range has no Internet, so the platform is its only time source.
 
@@ -700,7 +715,7 @@ each wargame's `compose.yaml`); copy the directory with the links resolved.
 
 | Role | Builder's base | `install.sh` installs |
 |---|---|---|
-| `kali` | the Kali base | `kali-linux-headless` and the tools of the Kali container before (nmap, sqlmap, nikto, whatweb, ffuf, gobuster, hydra, dirb, mitmproxy and others), the stamp proxy as `web-proxy.service`, the operator log hook, `set-origin`, `slot-boot`, and a key-only `kali` user with bash and passwordless sudo; `board.com` and `corp.com` resolve to 121.134.88.42; sslh's systemd generator masked and `cloud-init.target` wanted by `multi-user.target`, so cloud-init runs on every boot (`docs/TROUBLESHOOTING.md` "A Kali VM booted without cloud-init") |
+| `kali` | the Kali base | `kali-linux-headless` and the tools of the Kali container before (nmap, sqlmap, nikto, whatweb, ffuf, gobuster, hydra, dirb, mitmproxy and others), the stamp proxy as `web-proxy.service`, the operator log hook, `set-origin`, `slot-boot`, `set-peer` with `wireguard-tools` and `net.ipv4.ip_forward = 1` (the learner's tunnel; images baked before 2026-11-25 lack it), and a key-only `kali` user with bash and passwordless sudo; `board.com` and `corp.com` resolve to 121.134.88.42; sslh's systemd generator masked and `cloud-init.target` wanted by `multi-user.target`, so cloud-init runs on every boot (`docs/TROUBLESHOOTING.md` "A Kali VM booted without cloud-init") |
 | `waf` | `compute.base_image` | nginx 1.24 from Ubuntu, ModSecurity 3.0.16 and its nginx connector built from release tarballs checked by SHA-256, CRS 4.25.1, the repo's `modsecurity.conf` and `board.com.conf` (the JSON access log of every request), rsyslog, nftables, python3, the scratch CRS test's `probe.conf` and `probe-upstream.py` in `/usr/local/share/cr/` with its scratch folder `/var/lib/cr-crstest`, the `analyst` account (`analyst.sh`), the `nginx` reload wrapper in `/usr/local/sbin` and its `nginx.service` drop-in, `slot-boot` |
 | `infra` | `compute.base_image` | nftables, conntrack, tcpdump, bridge-utils, ethtool, rsyslog, Docker with `bridge: none` and no iptables, the pinned `jasonish/suricata` image (`suricata -T` run on the repo's config and rules), the `suricatasc` wrapper (`docker exec -i sensor suricatasc`; `-c reload-rules` first copies the rule file to `/var/lib/cr-reloaded/ids`, refuses a copy with `config: logging` or one whose sha256 is not in `/var/lib/cr-reloaded/ids.passed`, and loads that copy), `edge.nft` with the `pool` and `spent` sets, the offline rule test's scratch folder `/var/lib/cr-ruletest`, `sensor.service`, `slot-boot`, the `analyst` account (`analyst.sh`) with the `suricata` wrapper (`docker exec sensor suricata -T`); `suricata` itself is only in the `sensor` container |
 | `target` | `compute.base_image` | Docker and Compose; board's and corp's compose files rendered for a VM (`render.py`: fronts published on the stack's addresses, databases on the internal `<w>_backend`), their images pulled from GHCR at `CR_IMAGE_TAG` (required), brought up once and their volumes kept as the pristine data, `wargames.service` |
@@ -1077,7 +1092,7 @@ in a container's environment.
 | `network.external` | `provider` | the stack's router and floating IP |
 | `network.address` | `""` (**(this cloud)** `192.168.2.247`) | optional; a floating IP the project already holds. The stack associates it and never releases it, so the address survives `bin/cloud down` and every rebuild. If empty, the stack allocates a new one (§5.1) |
 | `network.dns` | `[8.8.8.8, 8.8.4.4]` | the platform network's DNS |
-| `network.allowed` | `[0.0.0.0/0]` | optional; the source networks the group `cr-platform` takes ssh, the Kali jump 2222, 8000 and 8002 from, one rule per network and port. `init` writes the default. Keep the network `bin/cloud` runs from in it, or the rebuild cannot reach the VM over ssh. Without it, open to all |
+| `network.allowed` | `[0.0.0.0/0]` | optional; the source networks the group `cr-platform` takes ssh, the Kali jump 2222, 8000, 8002 and the WireGuard ports udp 51820-51919 from, one rule per network and port. `init` writes the default. Keep the network `bin/cloud` runs from in it, or the rebuild cannot reach the VM over ssh. Without it, open to all |
 | `network.platform`, `.mgmt` | `10.20.0.0/24`, `10.31.0.0/24` | The platform VM's network and the fabric's `cr-mgmt`, where every range VM has its control port. The ranges must be private and must not overlap. They must also stay outside Docker's default local address pools (172.17.0.0/16 to 172.31.0.0/16 and 192.168.0.0/16, moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`'s networks and the declared origins. A range stack's own LANs take their addresses from `wargames/<w>/topology.yaml`, the same in every stack (§6) |
 | `compute.base_image` | `ubuntu-24.04` | the platform VM, and the builder of the Ubuntu role images (§3.6) |
 | `compute.availability_zone` | `""` | the platform VM and every range VM; if empty, Nova chooses |

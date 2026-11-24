@@ -101,6 +101,10 @@ resources:
                 "<%cidr%>": {get_param: allowed}
                 "<%port%>": ["22", "2222", "8000", "8002"]
               template: {protocol: tcp, port_range_min: "<%port%>", port_range_max: "<%port%>", remote_ip_prefix: "<%cidr%>"}
+          - repeat:
+              for_each:
+                "<%cidr%>": {get_param: allowed}
+              template: {protocol: udp, port_range_min: 51820, port_range_max: 51919, remote_ip_prefix: "<%cidr%>"}
           - - {protocol: icmp}
 
   port:

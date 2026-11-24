@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 ROUTER=121.134.88.42
 PROXY_PORT=8081
 TOOLS="nmap sqlmap nikto whatweb ffuf gobuster hydra netcat-traditional dnsutils jq dirb mitmproxy"
-SYSTEM="ca-certificates curl wget iptables iproute2 sudo tzdata procps less nano iputils-ping traceroute python3 openssh-server"
+SYSTEM="ca-certificates curl wget iptables iproute2 sudo tzdata procps less nano iputils-ping traceroute python3 openssh-server wireguard-tools"
 
 export DEBIAN_FRONTEND=noninteractive
 APT="apt-get -y -o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold"
@@ -77,6 +77,9 @@ install -m 0644 stamp.py /usr/local/lib/web-proxy.py
 install -m 0644 operator-log.sh /usr/local/lib/shell-hook.sh
 install -m 0755 set-origin /usr/local/sbin/set-origin
 install -m 0755 slot-boot /usr/local/sbin/slot-boot
+install -m 0755 set-peer /usr/local/sbin/set-peer
+printf 'net.ipv4.ip_forward = 1\n' > /etc/sysctl.d/60-learner-tunnel.conf
+sysctl --system >/dev/null
 install -d -m 0711 /var/lib/session
 install -m 0600 /dev/null /var/lib/session/active
 install -m 0622 /dev/null /var/log/commands.log

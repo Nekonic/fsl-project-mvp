@@ -165,6 +165,19 @@ def wear_origin(chosen: dict, box) -> None:
             f"the box could not wear {chosen['source_ip']}: {ran.output.strip()[:200]}"
         )
 
+def attach_peer(box, server_private_key: str, peer_public_key: str, peer_address: str, own_address: str) -> None:
+    ran = box(["sudo", "/usr/local/sbin/set-peer", peer_public_key, f"{peer_address}/32", own_address],
+              stdin=server_private_key)
+    if not ran.ok:
+        raise AttackerUnavailable(f"the box could not take the learner's tunnel: {ran.output.strip()[:200]}")
+
+
+def detach_peer(box) -> None:
+    ran = box(["sudo", "/usr/local/sbin/set-peer"])
+    if not ran.ok:
+        raise AttackerUnavailable(f"the box could not drop the learner's tunnel: {ran.output.strip()[:200]}")
+
+
 SQLMAP_RUNS = "/tmp/sqlmap-runs"
 
 

@@ -13,4 +13,7 @@ urlpatterns = [
     path("staff/users/<str:username>/disable/", views.Disable.as_view()),
     path("staff/blocks/", views.Blocks.as_view()),
     path("staff/blocks/<int:block_id>/", views.Unblock.as_view()),
+    path("vpn/profile/", views.VpnProfile.as_view()),
+    path("vpn/profiles/", views.VpnProfiles.as_view()),
+    path("users/<int:user_id>/vpn/", views.VpnProfileFor.as_view()),
 ]

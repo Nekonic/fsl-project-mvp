@@ -35,6 +35,7 @@ exec gosu cr sh -c '
     export DJANGO_SECRET_KEY
   fi
   python manage.py migrate --noinput
+  python manage.py vpn_relay &
   python manage.py register_pipeline &
   python -m sandbox.kibana &
   exec waitress-serve --listen=127.0.0.1:8001 --threads=16 \

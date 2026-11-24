@@ -65,13 +65,16 @@ def test_the_template_takes_exactly_cloud_yaml_s_values_under_names_heat_accepts
 
 def rules_for(allowed):
     [group] = resources_of("OS::Neutron::SecurityGroup")
-    repeated, fixed = group["rules"]["list_concat"]
-    loop = repeated["repeat"]
-    assert loop["for_each"]["<%cidr%>"] == {"get_param": "allowed"}
-    made = [
-        {key: value.replace("<%cidr%>", cidr).replace("<%port%>", port) for key, value in loop["template"].items()}
-        for cidr in allowed for port in loop["for_each"]["<%port%>"]
-    ]
+    *repeated, fixed = group["rules"]["list_concat"]
+    made = []
+    for each in repeated:
+        loop = each["repeat"]
+        assert loop["for_each"]["<%cidr%>"] == {"get_param": "allowed"}
+        made += [
+            {key: value.replace("<%cidr%>", cidr).replace("<%port%>", port) if isinstance(value, str) else value
+             for key, value in loop["template"].items()}
+            for cidr in allowed for port in loop["for_each"].get("<%port%>", [""])
+        ]
     return made + fixed
 
 def test_a_browser_reaches_the_platform_at_the_floating_ip_from_the_allowed_networks_only():
@@ -84,6 +87,7 @@ def test_a_browser_reaches_the_platform_at_the_floating_ip_from_the_allowed_netw
 
     assert opened == {
         *{("tcp", port, cidr) for port in (22, 2222, 8000, 8002) for cidr in ("203.0.113.0/24", "198.51.100.7/32")},
+        *{("udp", 51820, cidr) for cidr in ("203.0.113.0/24", "198.51.100.7/32")},
         ("icmp", 0, None),
     }, opened
 

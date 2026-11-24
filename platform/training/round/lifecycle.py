@@ -42,6 +42,7 @@ from training.round import bots as bot_runs
 from training.round import site
 from training.traffic import customers
 from users import players as player_tokens
+from users import vpn as tunnels
 
 ROUND = "round"
 SIDES = ("attack", "defence")
@@ -238,9 +239,20 @@ def start_round(found: Round) -> Round:
         customers.stop(found)
         return found
     found.phase = RUNNING
+    guarded(found, "attaching the attacker's tunnel", attach_tunnel)
     log.append(found.pk, "round.started", {"ends_at": found.ends_at.isoformat() if found.ends_at else None})
     bot_runs.queue(found)
     return found
+
+
+def attach_tunnel(found: Round) -> None:
+    seat = Player.objects.filter(round=found, side="attack", client=HUMAN).exclude(user=None).first()
+    if seat is not None and found.allocation.slot:
+        tunnels.attach(seat.user, found.pk, found.allocation.slot)
+
+
+def detach_tunnel(found: Round) -> None:
+    tunnels.detach(found.pk)
 
 
 def guarded(found: Round, what: str, work) -> None:
@@ -302,6 +314,7 @@ def finish(found: Round, reason: str) -> Round:
         return found
     found.refresh_from_db()
     guarded(found, "closing the attack side", attack.close)
+    guarded(found, "detaching the attacker's tunnel", detach_tunnel)
     guarded(found, "closing the defence side", defence.close)
     if was == CREATED:
         Round.objects.filter(pk=found.pk).update(judged_at=timezone.now())

@@ -1,3 +1,4 @@
+from urllib.parse import urlsplit
 from drf_spectacular.authentication import SessionScheme
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
@@ -7,8 +8,11 @@ from rest_framework.views import APIView
 from users import accounts as service
 from users import permissions as users
 from users import serializers
+from users import vpn
+from training.round import access as rounds
 
 ACCOUNTS = ["accounts"]
+VPN_ISSUED = {201: serializers.VpnIssued}
 STAFF = ["staff"]
 
 
@@ -104,4 +108,50 @@ class Unblock(APIView):
     @extend_schema(tags=STAFF, responses={204: None}, operation_id="staff_block_delete")
     def delete(self, request, block_id: int):
         service.unblock(block_id)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def request_host(request) -> str:
+    return urlsplit(f"//{request.get_host()}").hostname or ""
+
+
+def vpn_context(request, **more) -> dict:
+    host = request_host(request)
+    return {"endpoint": lambda held: vpn.endpoint(held, host), "hosts": vpn.hosts(), **more}
+
+
+class VpnProfile(APIView):
+    permission_classes = [rounds.Approved]
+
+    @extend_schema(tags=ACCOUNTS, request=None, responses=VPN_ISSUED, operation_id="vpn_profile_issue")
+    def post(self, request):
+        issued = vpn.issue(request.user, request_host(request))
+        shown = serializers.VpnIssued(issued.profile, context=vpn_context(request, text=issued.text))
+        return Response(shown.data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(tags=ACCOUNTS, responses=serializers.VpnProfile, operation_id="vpn_profile_read")
+    def get(self, request):
+        held = vpn.profile_of(request.user)
+        return Response(serializers.VpnProfile(held, context=vpn_context(request)).data)
+
+    @extend_schema(tags=ACCOUNTS, responses={204: None}, operation_id="vpn_profile_revoke")
+    def delete(self, request):
+        vpn.revoke(request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class VpnProfiles(APIView):
+    permission_classes = [users.IsStaff]
+
+    @extend_schema(tags=STAFF, responses=serializers.VpnProfileRow(many=True), operation_id="vpn_profiles_list")
+    def get(self, request):
+        return Response(serializers.VpnProfileRow(vpn.profiles(), many=True, context=vpn_context(request)).data)
+
+
+class VpnProfileFor(APIView):
+    permission_classes = [users.IsStaff]
+
+    @extend_schema(tags=STAFF, responses={204: None}, operation_id="vpn_profile_revoke_for")
+    def delete(self, request, user_id: int):
+        vpn.revoke_for(user_id)
         return Response(status=status.HTTP_204_NO_CONTENT)

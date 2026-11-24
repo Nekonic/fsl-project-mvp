@@ -25,6 +25,7 @@ JUMP = "the platform jump host and the box accounts' keys"
 EDGE = "the infra router's nftables sets"
 OPENSTACK = "the OpenStack API"
 GROUND_TRUTH = "the target's ground truth"
+VPN = "WireGuard"
 
 SEAMS = {
     ELASTICSEARCH: (
@@ -49,7 +50,7 @@ SEAMS = {
         r"\blogs-\*|\bfilebeat-\*|\bsuricata-\*|\bindex_patterns?\b"),
     BOX: (
         {"platform/sandbox/attacker.py"},
-        r"/usr/local/sbin/set-origin|/var/lib/session/|ORIGIN-SNAT"),
+        r"/usr/local/sbin/set-(?:origin|peer)|/var/lib/session/|ORIGIN-SNAT"),
     CUSTOMERS: (
         {"platform/sandbox/customers.py"},
         r"cr-customers\.service|/var/lib/cr-users|--reuid=|setpriv\b"),
@@ -65,6 +66,10 @@ SEAMS = {
     OPENSTACK: (
         {"platform/sandbox/openstack.py"},
         r"/v2\.0/|/servers/detail|/v3/auth/tokens|os-keypairs|\{heat\}/stacks"),
+    VPN: (
+        {"platform/sandbox/vpn.py"},
+        r"\bAllowedIPs\b|\bPersistentKeepalive\b|\bwg (?:genkey|pubkey|set|show)\b"
+        r"|\bwireguard\b"),
     GROUND_TRUTH: (
         {"platform/scoring/loot.py", "platform/scoring/effect.py"},
         r"\bread_path\b|binlog|/internal/auth-users|\bwp_(?:usermeta|options|posts)\b|\bMYSQL_PWD\b"),

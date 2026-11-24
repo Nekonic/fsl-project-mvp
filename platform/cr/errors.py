@@ -72,7 +72,7 @@ class NotFound(DomainError):
     status = 404
     codes = frozenset({"not_found", "unknown_case", "unknown_tool", "unknown_run", "unknown_origin", "unknown_user",
                        "unknown_block", "unknown_round", "unknown_allocation", "unknown_problem", "unknown_posture",
-                       "unknown_bot_run", "unknown_record"})
+                       "unknown_bot_run", "unknown_record", "vpn_missing"})
 
 
 class NotAllowed(DomainError):
@@ -95,6 +95,7 @@ class Conflict(DomainError):
         "stale_revision", "test_busy", "already_playing", "player_taken", "in_use",
         "own_account", "loot_not_taken", "allocation_closed", "players_open", "objective_fallen", "round_started",
         "probe_running", "round_open", "range_not_cloud", "not_tested", "baseline_running", "baseline_missing",
+        "vpn_ports_full",
     })
 
 
