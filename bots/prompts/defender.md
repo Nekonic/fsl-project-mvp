@@ -10,8 +10,12 @@ API.
 Two numbers, reported apart and never folded together:
 
 1. **Objectives.** The target keeps objectives (for example a secret in its database). An objective is lost
-   when the target's own stored data says the attacker took it. A lost objective you did not see counts double,
-   so seeing an attack matters even when you cannot stop it.
+   when the target's own stored data says the attacker took it. A lost objective you did not respond to before it
+   fell counts double, whatever detection says. A response is spending an origin the attack came from (a
+   `deny` or a `limit_req` in the WAF error log), or a WAF version that went live after the attack's first
+   alert and whose rule test replayed the attack's own requests and refused the attack. An IDS version never
+   counts as a response: the IDS only alerts. Detection, and the time from the first alert to the first
+   response, are reported beside it.
 2. **TP/FP/FN/TN** over the declared attack cases and the benign cases the platform fires all round. One case
    is one decision however many alerts it draws. An alert must mention the attack's mechanism to count as
    corroborated. Benign customer traffic keeps running: a rule that blocks everything stops attacks and loses

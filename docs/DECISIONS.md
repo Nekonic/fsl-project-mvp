@@ -10994,3 +10994,90 @@ branch.
   of its firings drew an alert (the newest firing's alert may not be ingested
   yet when the score is read). Whether the score should fold a benign case's
   firings into one decision, and how, is not ruled.
+
+## 2026-11-24 — Player vs AI rounds, learner access by VPN, attribution by origin
+
+The user's rulings of 2026-11-24, given by eliminating options of the
+human-vs-AI options paper (`~/.cache/fsl-work/agent-vs-human/options.md`).
+Not built yet; gate 1 comes first.
+
+- **The AI opponent reacts to what the human does in the round.** Rejected: a
+  replay of one recorded run, and every learner facing the same fixed
+  opponent; a difficulty ladder has no fixed scripted bottom step.
+- **Difficulty is three steps**, chosen by the learner: Haiku, Sonnet, Opus at
+  4, 10 and 30 actions per 5 minutes. The pace is held only by the bot
+  launcher's proxy; the server treats bot and human seats alike.
+- **The attack bot gets a persona card drawn at random each round**; the
+  learner does not pick it. A card carries one ATT&CK technique: its ID, title
+  and text in MITRE's English original, with MITRE's copyright notice. The
+  defence bot has no card.
+- **The bot's intent is shown only after the round**, in a debrief. Rejected:
+  live commentary.
+- **One bot per side.** Several agents on one side may come later. An AI
+  teammate on the learner's side belongs to lessons, not to a real round.
+- **A bot-vs-bot baseline**: before a problem opens, staff start it from a
+  button on the problem's edit page; 20 attack-bot vs defence-bot rounds per
+  difficulty step; a learner's result is shown as a percentile against it.
+  Rejected: a defence-and-attack set per learner, series of short rounds, a
+  rating ladder (Glicko-2).
+- **Round records are kept 90 days** and compared, with no ranking.
+  Closed rounds are pruned after 60 minutes today; that changes.
+- **The platform launches the bot itself at round start.** Supersedes the
+  2026-11-21 ruling that the stack-rebuild job is the only background job.
+- **Bots run on the user's own Claude Code login**, used only by the user,
+  until the project demo ends. Other learners' bot rounds, on an API key, come
+  after it.
+- **Learners reach the range from their own PC.** They analyse the board with
+  Burp Suite and similar tools. Access is by VPN to an IP, one VPN profile per
+  account used in every round, not a public domain. Kali stays reachable by
+  SSH through the platform's jump host on 2222. Supersedes CLAUDE.md "The
+  target is not published" as far as the learner's own PC is concerned.
+- **Learner-PC traffic goes out through the round's kali and wears its
+  current origin.** Attack-defence CTFs (ENOWARS, saarCTF, FAUST, iCTF) SNAT
+  team traffic for the same reason: a defender who can tell the attacker by
+  address blocks it and passes the checker. Training platforms that put no
+  sensor between learner and target (HTB, TryHackMe, Dreamhack, PortSwigger)
+  were not followed, because here blocking an origin is scored. Rejected: the
+  VPN address as an origin of its own, and an unscored analysis copy.
+  Research: `~/.cache/fsl-work/vpn-research/summary.md`.
+- **Every request from an attacker's origin is that attacker's action.**
+  Live trial on 2026-11-24: `ssh -J jump@<platform>:2222 -D 1080 kali@<kali>`
+  from cr-dev works; the WAF saw the origin as `client_ip`, both engines
+  alerted on a tunnelled SQLi, and an origin switch applied to the open
+  tunnel. But the tunnelled requests were no action: not in the command log,
+  no marker, not a free action, so an objective lost only through them could
+  never earn response O. The user: the defender cannot tell an attacker from
+  a slow ordinary user anyway, so attributing by origin is fair. The origins
+  are the attacker's alone; the customers send from other addresses. Trial
+  log: `~/.cache/fsl-work/cloud-check/socks-test.md`.
+
+## 2026-11-24 — The attack bot runs on Haiku 5.5 at every step until the account's tier changes
+
+- On the user's account the Cyber Verification Program tier is Defense
+  Access. In rounds 143 and 144 the API stopped the attack bot on Opus 5.5
+  (twice, once with a prompt naming the isolated training range) and on
+  Sonnet 5.5 with `[cyber]` ("covers defensive work, such as vulnerability
+  triage and malware analysis"). Haiku 5.5 played to the end. The defence bot
+  on Opus 5.5 was not stopped.
+- The user: the demo may use a lower model. So until the tier allows
+  offensive work, the attack bot is Haiku 5.5 at all three steps. Each step
+  keeps its own pace and allowance (4, 10 and 30 actions per 5 minutes). An
+  attack stand-in in the baseline is Haiku 5.5 as well. The defence bot keeps
+  Haiku, Sonnet and Opus.
+- Rejected: wording the attack prompt to get past the classifier. The block
+  is the account's tier, enforced by the API, not the model's reply.
+
+## 2026-11-24 — Gate 1 for Player vs AI rounds approved; the defence stand-in is Sonnet 5.5
+
+- The user approved the gate-1 plan for Player vs AI rounds and asked for it
+  to be built, tested and documented overnight without questions.
+- The one open question, the baseline's stand-in on the human's side, takes
+  the recommended answer: the defence stand-in is Sonnet 5.5 at step 2's pace
+  and allowance at every step, so the three distributions compare. The attack
+  stand-in is Haiku 5.5 at step 2's pace (entry above), drawing a card like
+  every attack bot.
+- Two items in the spec the user did not rule on are built as written and
+  listed for review: `CR_BOT_ROUND_USERS` (only named accounts may open a bot
+  round until the demo ends) and the VPN terminating on kali.
+- The 2026-11-23 response replay of the attack's own logged requests stays
+  unbuilt.

@@ -18,15 +18,26 @@ then restructured on the working branch `restructure` (ruling 2026-11-21,
 `restructure`: on 2026-11-23 its first range was built and checked
 (`docs/DECISIONS.md`, "The first cloud check of `restructure`").
 
-- **Images.** `cr-infra-bake2`, `cr-waf-bake3` and `cr-target-bake2`, baked
-  from `restructure`; `cr-kali-bake2`, whose role files are the same as
-  `restructure`'s (the `cr-kali-bake3` snapshot failed, `docs/OPENSTACK.md`
-  §3.6).
+- **Images.** `cr-infra-bake2`, `cr-waf-bake3`, `cr-target-bake2` and, since
+  2026-11-24, `cr-kali-bake3`, all baked from `restructure`. Two kali
+  snapshots before it failed at about 10 minutes with Nova's
+  `compute_snapshot_instance: Error`; Glance's file store had 7.9 GB free
+  for the 14.1 GB image, and the third bake passed after five unused images
+  were deleted. That cause is likely, not confirmed: no admin log was read
+  (`docs/OPENSTACK.md` §3.6). The project quota is 24 instances, 32 cores
+  and 80 GB of RAM since 2026-11-24 (§3.2).
 - **Platform.** Replaced from `restructure` with a fresh database, as stack
-  `cr-platform2`: the stack `cr-platform` is `DELETE_FAILED`, because the
-  development VM `cr-dev` holds a port and a floating IP on its network
+  `cr-platform2`. The old stack `cr-platform` was abandoned on 2026-11-24
+  and its network and router renamed `cr-dev`, which carry the development
+  VM `cr-dev`; the abandoned record still holds the name, so the platform
+  cannot move back to `cr-platform` until an admin removes it
   (`docs/OPENSTACK.md` §5.3). The old tree's store is kept in a backup off
-  the cloud. The pool (`board: 3`, `corp: 1`) converged.
+  the cloud. On 2026-11-24 `bin/cloud up --replace` ran end to end on
+  `cr-platform2` twice: exit 0 in 12 min 12 s after a fix to the store
+  restore (the `rebuild` service is now stopped with the platform), with the
+  slot stacks standing through; and exit 0 in 29 min 32 s with
+  `cr-kali-bake3`, every slot built again. The pool (`board: 3`, `corp: 1`)
+  converged.
 - **Ran live and passed.** The checks of `docs/OPENSTACK.md` §3.7-§3.10, 39
   of 39 (§3.7's unused-address check by hand, after flushing kali's source
   rewriting, which the procedure now says);
@@ -34,7 +45,21 @@ then restructured on the working branch `restructure` (ruling 2026-11-21,
   `wargames/<id>/probes/`; the final full `bin/verify` with acceptance from
   the platform VM: acceptance 101 passed, 0 failed, the unit and API suites
   beside it green. `front/` was built and its vitest passed on the
-  development VM, since the platform VM has no npm.
+  development VM, since the platform VM has no npm. On 2026-11-24, on the
+  `cr-kali-bake3` range: probes board 18 of 18 and corp 7 of 7 recorded
+  again (the committed set stays); the full `bin/verify`: acceptance 99
+  passed and 2 errors (`test/test_block_everything.py`, both at setup: no
+  board slot came free within the 1800 s room wait while 15 processes shared
+  three board slots), the unit and API suites green; that module alone then
+  passed 2 of 2.
+- **Player vs AI rounds**, 2026-11-24, board, Claude Code as the bot
+  player through `bots/cli.py`: round 143 `def_vs_bot` (bot attacks; it
+  fired all nine attack cases and 13 free requests; TP/FP/FN/TN 9/0/0/66, no
+  objective lost) and round 144 `atk_vs_bot` (bot defends on Opus 5.5:
+  two tested WAF versions, the first origin spent by `deny`, an IDS reload
+  from its terminal; 6/0/0/84, no objective lost). The attack bot was
+  refused on Opus 5.5 and Sonnet 5.5 (`[cyber]`, the account's Cyber
+  Verification Program tier is Defense Access) and played on Haiku 5.5.
 
 ## What exists on restructure
 
@@ -63,11 +88,11 @@ a live range and passed.
 
 ## Not live-verified
 
-What ran on the range on 2026-11-23 is under "Where things stand". Still
-not run on a range:
+What ran on the range on 2026-11-23 and 2026-11-24 is under "Where things
+stand". Still not run on a range:
 
-- one round per matchup with Claude Code as the bot player (`def_vs_bot`,
-  `atk_vs_bot` through `bots/cli.py`) and one `pvp` round;
+- one `pvp` round, and a round that loses an objective (neither bot round
+  did, so the response mark and the double count have not run live);
 - a captured walk of every page as a learner, against the live platform;
 - a live review round with zero countable findings, and a docs review;
 - the edge's `pool` and `spent` sets after a reboot of the infra
@@ -75,20 +100,19 @@ not run on a range:
 - by hand: the IDS reload's refusal of `config: logging` and the WAF
   wrapper's refusal of an `access_log off` written during a reload
   (`docs/OPENSTACK.md` §3.10);
-- `bin/cloud up --replace` end to end on this cloud: it cannot delete the
-  platform stack while `cr-dev` stands on its network; and `bin/cloud down`;
+- `bin/cloud up --replace` under the stack name `cr-platform` (it ran as
+  `cr-platform2`; under `cr-platform` it stops before deleting anything,
+  §5.3); `bin/cloud down`;
 - the rulings of 2026-11-22 and 2026-11-23 not built yet (five attack
   origins, more benign kinds, Internet scanners, the board's attack paths,
   the response replay of the attack's own logged requests).
 
 ## Next steps, in order
 
-1. **Unblock the cloud** (the user): decide where `cr-dev` lives (its own
-   network and router) so `stack delete cr-platform` can finish, or have an
-   admin raise the security-group quota (10 of 10); have an admin look for
-   why the `cr-kali-bake3` snapshot failed before the next kali bake.
-2. **A Player vs AI round per matchup**: `def_vs_bot` and `atk_vs_bot` with
-   Claude Code as the bot player through `bots/cli.py`, and one `pvp` round.
+1. **The name `cr-platform`** (an admin): remove the abandoned stack's
+   record from Heat's database, then one replace under that name
+   (`docs/OPENSTACK.md` §5.3).
+2. **One `pvp` round, and a bot round that loses an objective**.
 3. **A captured walk of every page as a learner**, then a live review round
    with zero countable findings and a docs review.
 4. **Gate 2**: present what changed with the evidence; on approval, move the
@@ -96,6 +120,21 @@ not run on a range:
 
 ## Open points
 
+- **The attack bot and the model's safeguards.** On this account the
+  attack bot runs only on Haiku 5.5; Opus 5.5 and Sonnet 5.5 stop it with
+  `[cyber]` (Defense Access covers defensive work). The defence bot runs on
+  Opus 5.5.
+- **The acceptance room wait can run out.** On 2026-11-24 one module of the
+  full run waited past `ROOM_WAIT` (1800 s, `test/plays.py`) for a board
+  slot while 15 processes shared three, and errored at setup; alone it
+  passed. On 2026-11-23 the same split passed. Whether the wait, the split
+  or the slot refill time should change is not measured.
+- **The bot inherits the repo.** `bots/prompts/claude_code.md` runs the bot
+  from the repository root, so its Claude Code session loads CLAUDE.md, the
+  auto-memory, the session hook and the project permissions; the attack
+  bots read `redteam/cases/board.yaml` and `wargames/board/*.yaml`, which a
+  human player does not see. A separate working directory, or
+  `--setting-sources` or `--bare`, is a launch decision not taken yet.
 - **Acceptance checks that read Elasticsearch directly.**
   `test/test_event_time.py`, `test/test_geoip_durable.py`,
   `test/test_origin_placement.py` and `test/test_waf_geolocation.py` query

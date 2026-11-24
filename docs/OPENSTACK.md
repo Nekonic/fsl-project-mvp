@@ -109,7 +109,7 @@ user's password, flavor access, the base image and `cloud.yaml` (§4).
 | Kolla-Ansible cloud with Heat, Glance, Nova, Neutron (ML2/OVN) | done (this cloud) | §2 |
 | Project `fsl-range`, member user, clouds.yaml entry, quota check, flavor choice | `bin/cloud init` as admin (2026-11-15); flavors and quotas are never created or raised by it | §3 |
 | Base image, stock Ubuntu 24.04, upload with checksum check | `bin/cloud init` when missing; done (this cloud, 2026-10-20) | §3.6 |
-| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18). Rebaked from `restructure` on 2026-11-23 as `cr-infra-bake2`, `cr-waf-bake3` and `cr-target-bake2`, the range on `cr-kali-bake2` (the kali snapshot failed, §3.6); the §3.7-§3.10 checks passed on that range | §3.6 |
+| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18). Rebaked from `restructure` on 2026-11-23 as `cr-infra-bake2`, `cr-waf-bake3` and `cr-target-bake2`, the range on `cr-kali-bake2` (the kali snapshot failed, §3.6); the §3.7-§3.10 checks passed on that range; `cr-kali-bake3` from `restructure` on 2026-11-24 | §3.6 |
 | `cloud.yaml`: every cloud-specific value, validated | written by `bin/cloud init` (2026-11-15) | §4 |
 | Platform and wargame images on GHCR (`.github/workflows/images.yml`) | done (public, pulled 2026-10-11) | §5 |
 | Heat stack pulls images instead of `--build` | done (2026-10-11) | §5 |
@@ -471,11 +471,14 @@ the compute node's instance storage must have, at a disk allocation ratio of
 
 **(this cloud)** These are the figures:
 
-- The project quota is 24 cores, 57344 MB of RAM and 17 instances (recorded
-  2026-11-13). It was Nova's default, 20 / 51200 / 10, until 2026-10-24.
+- The project quota is 32 cores, 81920 MB of RAM and 24 instances (raised by
+  an admin on 2026-11-24, after a kali builder was refused with `Quota
+  exceeded for instances: Requested 1, but already used 18 of 18`). It was
+  24 / 57344 / 17 from 2026-11-13, and Nova's default, 20 / 51200 / 10,
+  until 2026-10-24.
 - The default pool `{board: 3, corp: 1}` is four stacks of four VMs; with the
-  platform VM that is 17 instances, the whole instance quota
-  (`docs/DECISIONS.md`, 2026-11-18). The four stacks of `dba.small` VMs stand
+  platform VM that is 17 instances (`docs/DECISIONS.md`, 2026-11-18), 18 with
+  the development VM `cr-dev`, which leaves six for builders. The four stacks of `dba.small` VMs stand
   on com01 (2026-11-18); how much memory headroom that leaves, and whether
   `dba.small` is enough for the target's Docker and MySQL under load, are
   **[unverified]**.
@@ -648,7 +651,7 @@ Glance holds three kinds of image:
 |---|---|---|
 | `compute.base_image` (e.g. `ubuntu-24.04`) | the stock `noble-server-cloudimg-amd64.img`, checksum verified, uploaded as is (below) | `bin/cloud init`, once |
 | the Kali base | Kali's Generic Cloud image (`kali-linux-<ver>-cloud-genericcloud-amd64.tar.xz`), converted and uploaded once **[unverified]** | by hand, once |
-| `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1` (**(this cloud)** since 2026-11-23 `cr-kali-bake2`, `cr-waf-bake3`, `cr-infra-bake2`, `cr-target-bake2`) | baked from `deploy/roles/<role>/install.sh` on a builder VM, then a Nova snapshot (below) | by hand, once per bake |
+| `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1` (**(this cloud)** since 2026-11-24 `cr-kali-bake3`, `cr-waf-bake3`, `cr-infra-bake2`, `cr-target-bake2`) | baked from `deploy/roles/<role>/install.sh` on a builder VM, then a Nova snapshot (below) | by hand, once per bake |
 
 The platform VM installs or writes every package, tool, key and setting at
 boot from the base image. The range VMs boot from the baked images with no
@@ -749,15 +752,19 @@ traceback a member user can see; the builder was deleted after it, so the
 Glance after 10 min 39 s, `compute_snapshot_instance: Error`, no traceback;
 this time the builder was kept until the image was gone. Both kali snapshots
 ended at about 10 minutes, while every role image of 5.7 GB or less went
-through and the same 14 GB kali snapshot passed on 2026-11-18. The cause is
-**[unverified]** (a timeout of about 10 minutes on the upload to Glance, or
-free space on the compute node or the Glance store, are guesses); an admin
-reads the nova-compute and glance-api logs. Until then the range runs
-`cr-kali-bake2`.
+through and the same 14 GB kali snapshot passed on 2026-11-18. The admin then
+found that Glance's file store on con01 had 7.9 GB free for the 14.1 GB
+image, and deleted five unused images. A third kali bake the same day passed:
+`install.sh` about 43 min, the snapshot `cr-kali-bake3` (the name the first
+failed snapshot had left free) `queued` for about 16 min, then `saving`
+and `active` within seconds, 14,102,953,984 bytes, `min_disk` 30 GB. Free space on the
+Glance store is therefore the likely cause; no admin log was read, so it is
+not confirmed. Check the store's free space against the image's size before
+a kali bake. The range runs `cr-kali-bake3` since 2026-11-24.
 
-The builder takes one instance of the project's quota, and the full default
-pool takes all of it (§3.2: 17 of 17 on this cloud), so `server create`
-fails while the pool stands. Free one first: an admin raises `instances` by
+The builder takes one instance of the project's quota. Until 2026-11-24 the
+full default pool took all of it (§3.2: 17 of 17 on this cloud), so `server
+create` failed while the pool stood; the quota of 24 leaves room since. Free one first: an admin raises `instances` by
 one, or one range stack is deleted for the bake. Four builders at once need
 four instances and their cores: on 2026-11-23 all four slot stacks were
 deleted for the bakes, and `bin/cloud up` built them again afterwards.
@@ -787,9 +794,10 @@ On 2026-11-23 the roles were baked from `restructure` on `m1.medium` builders:
 `cr-infra-bake2` (`install.sh` about 10 min, snapshot 2 min 14 s),
 `cr-target-bake2` (at the branch's commit as `CR_IMAGE_TAG`, snapshot 6 min
 44 s) and `cr-waf-bake3` (snapshot 3 min 18 s), each `min_disk` 30 GB. The kali
-snapshot failed (above); the range runs `cr-kali-bake2`, because nothing under
-`deploy/roles/kali`, `deploy/kali` or `deploy/proxy` changed between the tree
-it was baked from and `restructure`.
+snapshot failed (above), so the range ran `cr-kali-bake2` until 2026-11-24,
+because nothing under `deploy/roles/kali`, `deploy/kali` or `deploy/proxy`
+changed between the tree it was baked from and `restructure`; it runs
+`cr-kali-bake3`, baked from `restructure`, since.
 
 A range stack names its images by `compute.images`, and the stack's digest
 holds the names, not the content (§6, §7): bake a changed role under a new
@@ -1074,7 +1082,7 @@ in a container's environment.
 | `compute.base_image` | `ubuntu-24.04` | the platform VM, and the builder of the Ubuntu role images (§3.6) |
 | `compute.availability_zone` | `""` | the platform VM and every range VM; if empty, Nova chooses |
 | `compute.flavors` | `platform`, and `kali`, `waf`, `infra`, `target` | §3.3. A range VM role left out takes `dba.small`; `CR_OPENSTACK_FLAVORS` |
-| `compute.images` | `cr-<role>-bake1` per role (**(this cloud)** `kali: cr-kali-bake2`, `waf: cr-waf-bake3`, `infra: cr-infra-bake2`, `target: cr-target-bake2`) | optional; each range VM role's Glance image, baked from `deploy/roles/<role>/` (§3.6); a role left out takes `cr-<role>-bake1`; `CR_OPENSTACK_IMAGES` |
+| `compute.images` | `cr-<role>-bake1` per role (**(this cloud)** `kali: cr-kali-bake3`, `waf: cr-waf-bake3`, `infra: cr-infra-bake2`, `target: cr-target-bake2`) | optional; each range VM role's Glance image, baked from `deploy/roles/<role>/` (§3.6); a role left out takes `cr-<role>-bake1`; `CR_OPENSTACK_IMAGES` |
 | `compute.pool` | `{board: 3, corp: 1}` | optional; how many range stacks stand ready for each wargame, each one Heat stack of four VMs, so how many allocations can be open at once (§6.4); `CR_OPENSTACK_POOL` |
 | `compute.target_tag` | the commit the target image was baked at | optional; the full 40-hex commit whose board and corp images the target image pulled (its bake's `CR_IMAGE_TAG`, §3.6); a range stack has no egress, so it runs only those. Without it, the commit `cr-target-bake1` was baked at; `CR_OPENSTACK_TARGET_TAG` |
 | `keys.key_name`, `keys.key_file` | `fsl-claude`, `~/.ssh/fsl_claude` | the Nova keypair the platform VM boots with (its `key_name`, §3.4), and that keypair's private key, for ssh to the VM |
@@ -1328,25 +1336,40 @@ network whose server is neither the stack's own server nor a builder (§5.2,
 `down` step 7) stops them, naming that server. Move such a VM to its own
 network and router before a replace.
 
-The stack `cr-platform` cannot finish its delete while `cr-dev` is on its
-network: after the router interface, Heat deletes the subnet and the network,
-which Neutron refuses while a port is on them. Heat's `stack abandon`, which
-drops a stack and leaves its resources, is off on this cloud (`Stack Abandon
-is not supported`, 2026-11-24). Two ways out: an admin turns on
+The stack `cr-platform` could not finish its delete while `cr-dev` was on
+its network: after the router interface, Heat deletes the subnet and the
+network, which Neutron refuses while a port is on them. Heat's `stack
+abandon`, which drops a stack and leaves its resources, was off on this cloud
+(`Stack Abandon is not supported`). On 2026-11-24 an admin turned on
 `enable_stack_abandon` in Heat's `[DEFAULT]` (in Kolla through
 `/etc/kolla/config/heat.conf`, then `kolla-ansible reconfigure -t heat`),
-the stack is abandoned and its network and router are renamed for `cr-dev`,
-which changes nothing on `cr-dev`'s path; or `cr-dev` gets a second port on a
-network and router of its own, its floating IP and default route move there,
-and its old port is detached, which drops the sessions over its floating IP
-and is done from its console. Neither has run. The platform then gets the
-name `cr-platform` back by one more rebuild under that name (unverified: the
-reserved floating IP is still associated with `cr-platform2`'s port then).
+`openstack stack abandon cr-platform` ran, and the network and router it left
+were renamed `cr-dev`; nothing changed on `cr-dev`'s path.
+
+The abandon did not free the name. `stack list` still shows `cr-platform
+DELETE_COMPLETE`, `stack resource list cr-platform` still lists the router
+interface, subnet, network and router (now `cr-dev`'s), and `stack create
+--dry-run ... cr-platform` answers `The Stack (cr-platform) already
+exists.`; a second abandon changed nothing. `bin/cloud up --replace` under
+`platform.stack: cr-platform` ran on 2026-11-24 and stopped before it
+deleted anything: `stack show cr-platform` answers `DELETE_COMPLETE`, the
+record's `network` resource is `cr-dev`'s network, and the guard above names
+`cr-dev`. That stop is right: `stack delete cr-platform` would have Heat try
+the four resources it still records, which are `cr-dev`'s. Moving the
+platform back to the name `cr-platform` needs an admin to remove that stack
+record from Heat's database; which command does it on this release is
+**[unverified]**. Until then the platform stays `cr-platform2`.
 
 `bin/cloud up --replace` ran end to end on 2026-11-24 as stack
 `cr-platform2`: the first run stopped at the first sign-in (step 7 above,
 `database is locked`); after the fix the second exited 0 in 12 min 12 s,
 10 min 30 s to `/api/auth/csrf/`, and the four slot stacks stood through.
+A third run the same day, after `compute.images.kali` named the new
+`cr-kali-bake3`, exited 0 in 29 min 32 s: the backup, then the stack deleted
+and created again, 10 min 17 s from the backup to `/api/auth/csrf/`, then
+18 min 19 s while the pool built all four slot stacks again (the image name is
+in the digest). The new VM took the old `cr-platform.mgmt` port
+(10.31.0.158) and the reserved floating IP.
 
 A range stack stands through the replace when
 what the new platform renders for it has the same digest (§6), and the
@@ -1728,7 +1751,7 @@ stack uses the same addresses; stacks differ by network, not by CIDR.
 
 | VM (`cr-slot-<n>-<node>`) | Image | Learner |
 |---|---|---|
-| `kali` | `cr-kali-bake1` (**(this cloud)** `cr-kali-bake2`): Kali with `kali-linux-headless` and the tools | `kali` with passwordless sudo, by the attack player's web terminal and its jump grant (§3.5) |
+| `kali` | `cr-kali-bake1` (**(this cloud)** `cr-kali-bake3`): Kali with `kali-linux-headless` and the tools | `kali` with passwordless sudo, by the attack player's web terminal and its jump grant (§3.5) |
 | `waf` | `cr-waf-bake1` (**(this cloud)** `cr-waf-bake3`): Ubuntu, nginx 1.24, ModSecurity 3.0.16, CRS 4.25.1 | the defence player as `analyst`, by web terminal and its jump grant (§3.7) |
 | `infra` | `cr-infra-bake1` (**(this cloud)** `cr-infra-bake2`): Ubuntu, nftables, Suricata (`jasonish/suricata`, pinned by digest), rsyslog, the customers program (§3.8) | the defence player as `analyst`, by the IDS terminal and its jump grant (§3.10) |
 | `target` | `cr-target-bake1` (**(this cloud)** `cr-target-bake2`): Ubuntu, Docker, board and corp at the baked tag | none |

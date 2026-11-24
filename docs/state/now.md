@@ -5,7 +5,7 @@ are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`; the design in
 `docs/superpowers/specs/2026-11-19-side-split-design.md`; detail in `git log`.
 The handover of the old tree up to 2026-11-18 is in this file's git history.
 
-Updated: 2026-11-23.
+Updated: 2026-11-24.
 
 ## Where things stand
 
@@ -26,39 +26,66 @@ Updated: 2026-11-23.
   - `docs/OPENSTACK.md` §3.7-§3.10 checks 39 of 39 passed;
   - probes recorded, board 18 of 18 and corp 7 of 7, committed;
   - the final full `bin/verify` with acceptance: 101 passed, 0 failed.
+- On 2026-11-24:
+  - `bin/cloud up --replace` ran end to end on `cr-platform2` (exit 0,
+    12 min) after two fixes: it refuses before deleting a stack whose
+    network holds another server's port, and the store restore stops the
+    `rebuild` service too;
+  - the third kali bake passed as `cr-kali-bake3`, from `restructure`; a
+    second replace (exit 0, 29 min 32 s) put every slot on it;
+  - probes recorded again on that range, board 18 of 18 and corp 7 of 7
+    (not committed: the committed set of 2026-11-23 stays);
+  - the full `bin/verify` with acceptance on that range: acceptance 99
+    passed and 2 errors (`test/test_block_everything.py`, both at setup: no
+    board slot came free within the 1800 s room wait while 15 processes
+    shared three board slots), the unit and API suites green; that module
+    alone then passed 2 of 2;
+  - one Player vs AI round per matchup ran with Claude Code as the bot
+    (round 143 `def_vs_bot`, round 144 `atk_vs_bot`, board): no objective
+    lost in either, TP/FP/FN/TN 9/0/0/66 and 6/0/0/84; the defence bot
+    applied two WAF versions, spent the attack's first origin by `deny` and
+    reloaded the IDS from its terminal.
 - The run's product fixes: the attack API's body limit 256 KiB, the
   traversal case's path, the offline IDS test's `--runmode single`, the jump
   host in terminal grants, the declaration file's path.
 
 ## Not live-verified
 
-Player vs AI rounds, a `pvp` round, a captured learner walk, a live review
-round, a docs review, and the edge sets after an infra reboot. The list is
-in `docs/STATE.md` "Not live-verified".
+A `pvp` round, a captured learner walk, a live review round, a docs
+review, the edge sets after an infra reboot, and a round that loses an
+objective (neither bot round did, so the response mark and the double count
+have not run live). The list is in `docs/STATE.md` "Not live-verified".
 
 ## Blockers for the user
 
-- **Where `cr-dev` lives.** It holds a port and a floating IP on the
-  platform stack's network, so stack `cr-platform` is `DELETE_FAILED` and
-  `bin/cloud up --replace` cannot delete it (`docs/OPENSTACK.md` §5.3).
-  Security groups are at 10 of 10. Move `cr-dev` to its own network and
-  router, or have an admin raise the quota.
-- **Why the kali snapshot failed.** `cr-kali-bake3` ended with Nova's
-  `compute_snapshot_instance: Error`, whose cause a member user cannot see;
-  free space on the compute node or the Glance store is a guess. An admin
-  should read the logs before the next kali bake.
+- **The name `cr-platform`.** Heat's abandon ran (an admin turned it on)
+  and `cr-platform`'s network and router were renamed `cr-dev`, but the
+  abandoned stack's record stays (`DELETE_COMPLETE`, with its four resource
+  rows), so Heat refuses a new stack of that name and `bin/cloud up
+  --replace` under it stops, naming `cr-dev` (`docs/OPENSTACK.md` §5.3).
+  An admin removes that record from Heat's database; until then the
+  platform runs as `cr-platform2`, which works.
 
 ## Next, in order
 
-1. The two blockers above.
-2. A Player vs AI round per matchup (`def_vs_bot`, `atk_vs_bot`, with
-   Claude Code as the bot player) and one `pvp` round.
+1. The blocker above, when an admin can.
+2. One `pvp` round, and a bot round that loses an objective.
 3. A captured walk as a learner, a live review round with zero countable
    findings, a docs review.
 4. Gate 2.
 
 ## Open points
 
+- The attack bot is refused on Opus 5.5 and Sonnet 5.5 (`[cyber]`: the
+  account's Cyber Verification Program tier is Defense Access, which covers
+  defensive work); only Haiku 5.5 played the attack side. The defence bot on
+  Opus 5.5 was not refused.
+- The bot is launched in the repo root, so its Claude Code session inherits
+  the project: CLAUDE.md, the auto-memory, the session hook that prints this
+  file, the project permissions. The attack bots read
+  `redteam/cases/board.yaml` and `wargames/board/*.yaml`; a bot reaches more
+  than a human player does. Fixing it is a launch decision (a separate
+  working directory, `--setting-sources` or `--bare`), not decided.
 - A benign case fires many times per round and the score lists one line per
   firing, against CLAUDE.md's "one case is one decision"; the acceptance
   harness reads a case as detected when any firing drew an alert. The user
