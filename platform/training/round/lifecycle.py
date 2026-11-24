@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -15,6 +16,7 @@ from django.utils import timezone
 
 from cr import errors
 from cr.config import configured
+from domain import bots as bot_rules
 from domain import round_rules
 from domain.round_rules import BOT, HUMAN, AllocationState, Matchup, Phase, RoundState
 from sandbox import service as sandbox
@@ -28,13 +30,15 @@ from telemetry import alerts as alert_feed
 from telemetry import events as log
 from training.attack import actions as attack
 from training.attack import origins
+from training.content import bots as bot_catalog
 from training.content import probes
 from training.content import problems as content
 from training.defence import kibana_gate
 from training.defence import rules as defence
 from training.defence import terminal as defence_terminal
-from training.models import Allocation, Round, Player
+from training.models import Allocation, BotBaseline, Round, Player
 from training.round import access as auth
+from training.round import bots as bot_runs
 from training.round import site
 from training.traffic import customers
 from users import players as player_tokens
@@ -50,6 +54,7 @@ READ_ABANDONED = timedelta(minutes=5)
 READER_POLL_SECONDS = 0.5
 
 logger = logging.getLogger(__name__)
+CARD_DRAW = secrets.SystemRandom()
 
 
 @dataclass(frozen=True)
@@ -70,13 +75,32 @@ def playing_user(given: Any, path: str):
     return found
 
 
-def player_of(found: Round, side: str, client: str, asked: dict) -> Player:
+def seat_of(found: Round, side: str, asked: dict, setup: dict, by) -> Player:
+    path = f"players.{side}"
+    bot = asked.get("bot") if isinstance(asked.get("bot"), dict) else {}
+    step, name = bot.get("step"), bot.get("name")
+    if isinstance(step, str) and step:
+        if step not in (setup.get("bot_steps") or []):
+            raise errors.Invalid(code="step_not_allowed", path=f"{path}.bot.step")
+        card = ""
+        if side == "attack":
+            allowed = setup.get("cards") or []
+            if not allowed:
+                raise errors.Invalid(code="cards_missing", path=f"{path}.bot")
+            card = bot_rules.draw_card(allowed, CARD_DRAW)
+        return Player.objects.create(round=found, side=side, client=BOT, step=step, card=card,
+                                     bot_name=bot_catalog.step(step).label)
+    if not isinstance(name, str) or not name.strip():
+        raise errors.Invalid(code="invalid_choice", path=path)
+    if by is not None and not by.is_staff:
+        raise errors.NotAPlayer(code="not_staff", path=f"{path}.bot.name")
+    return Player.objects.create(round=found, side=side, client=BOT, bot_name=name.strip())
+
+
+def player_of(found: Round, side: str, client: str, asked: dict, setup: dict, by=None) -> Player:
     path = f"players.{side}"
     if client == BOT:
-        name = (asked.get("bot") or {}).get("name") if isinstance(asked.get("bot"), dict) else None
-        if not isinstance(name, str) or not name.strip():
-            raise errors.Invalid(code="invalid_choice", path=path)
-        return Player.objects.create(round=found, side=side, client=BOT, bot_name=name.strip())
+        return seat_of(found, side, asked, setup, by)
     if "username" in asked:
         return Player.objects.create(round=found, side=side, client=HUMAN, user=playing_user(asked["username"], path))
     if asked.get("open") is True:
@@ -84,15 +108,27 @@ def player_of(found: Round, side: str, client: str, asked: dict) -> Player:
     raise errors.Invalid(code="invalid_choice", path=path)
 
 
-def create_round(held: Allocation, problem_id: int, matchup: str, players: dict[str, dict]) -> Created:
+def refuse_closed_bot_rounds(players: dict[str, dict], by) -> None:
+    launched = [side for side, asked in players.items()
+                if isinstance(asked, dict) and isinstance(asked.get("bot"), dict) and "step" in asked["bot"]]
+    if launched and (by is None or by.username not in settings.BOT_ROUND_USERS):
+        raise errors.NotAPlayer(code="bot_rounds_closed", path=f"players.{launched[0]}.bot")
+
+
+def create_round(held: Allocation, problem_id: int, matchup: str, players: dict[str, dict], by=None,
+                 baseline: BotBaseline | None = None) -> Created:
     if held.closed is not None:
         raise errors.Conflict(code="allocation_closed")
     problem = content.problem(problem_id)
     if problem.wargame_id != held.wargame_id or problem.kind != ROUND:
         raise errors.Invalid(code="invalid_choice", path="problem")
-    allowed = (content.snapshot(problem).get("round") or {}).get("matchups") or []
-    if matchup not in allowed:
+    setup = content.snapshot(problem).get("round") or {}
+    if baseline is None and matchup not in (setup.get("matchups") or []):
         raise errors.Invalid(code="matchup_not_allowed", path="matchup")
+    if baseline is None:
+        refuse_closed_bot_rounds(players, by)
+    else:
+        setup = {**setup, "bot_steps": sorted(bot_catalog.step_ids())}
     if Round.objects.filter(allocation=held).exclude(phase=ENDED).exists():
         raise errors.Conflict(code="round_open")
     refuse_fallen(held)
@@ -101,11 +137,12 @@ def create_round(held: Allocation, problem_id: int, matchup: str, players: dict[
         raise errors.Conflict(code="already_playing")
     tokens: dict[str, str] = {}
     with transaction.atomic():
-        found = Round.objects.create(allocation=held, problem=problem, kind=ROUND, matchup=matchup)
-        made = [player_of(found, side.value, client, dict(players.get(side.value) or {}))
+        found = Round.objects.create(allocation=held, problem=problem, kind=ROUND, matchup=matchup,
+                                     baseline_of=baseline)
+        made = [player_of(found, side.value, client, dict(players.get(side.value) or {}), setup, by)
                 for side, client in round_rules.PLAYERS[Matchup(matchup)].items()]
         for player in made:
-            if player.client == BOT:
+            if player.client == BOT and not bot_runs.launched(player):
                 tokens[player.side] = player_tokens.issue_token(player)
     for player in made:
         if player.client == BOT or player.user_id is not None:
@@ -202,6 +239,7 @@ def start_round(found: Round) -> Round:
         return found
     found.phase = RUNNING
     log.append(found.pk, "round.started", {"ends_at": found.ends_at.isoformat() if found.ends_at else None})
+    bot_runs.queue(found)
     return found
 
 

@@ -11081,3 +11081,27 @@ Not built yet; gate 1 comes first.
   round until the demo ends) and the VPN terminating on kali.
 - The 2026-11-23 response replay of the attack's own logged requests stays
   unbuilt.
+
+## 2026-11-24 — Player vs AI rounds, stage 1: what the build settled
+
+Settled while building the core (steps, cards, bot runs, records, debrief, baseline), within the gate-1 spec.
+
+- **A baseline's profile key reads the problem by content, not by revision number.** The spec put the problem
+  revision in the key, but every save bumps it, so publishing a problem (a save that only sets `published`)
+  would mark its own baselines stale and then refuse itself with `baseline_missing`. The key hashes the
+  round's frozen problem snapshot without `problem.revision`, `round.matchups` and `round.bot_steps`; a change
+  to the setup a bot plays against still changes it. `problem_revision` is still stored on the baseline.
+- **The stand-in is a step, named in `steps.yaml` (`stand_in`).** Both stand-ins play step 2 of their side,
+  which is Haiku 5.5 for attack and Sonnet 5.5 for defence, as ruled.
+- **The launcher's own profile (prompt hashes, Claude Code version) reaches the key through the claim.**
+  The prompts live in `bots/`, not in the platform image, so `bot_run_claim` takes an opaque `launcher`
+  object, kept on the run and folded into the record's key.
+- **A record is written by the first read after the round is judged and its runs are over**
+  (`views_catch_up`), by `bot_run_finish`, by the baseline runner and by `retention.drop`; `lifecycle` does
+  not call `records`, which keeps the coordinators free of an import cycle.
+- **A `{name}` seat over the API is staff-only**, as the spec says; the two lifecycle tests that made one as
+  a learner operator now make it as staff.
+- **Runs of an ended baseline round still unfinished 20 minutes after the end are failed `timed_out`**, so a
+  dead launcher cannot stall a baseline; that round does not count and the runner opens another.
+- **No server numbers were measured.** `min_gap_s`, `budget_usd` (2, 4, 8) and `max_turns` (200, 300, 400)
+  in `steps.yaml` are placeholders to tune after rounds are played.

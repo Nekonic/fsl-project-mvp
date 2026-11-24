@@ -19,8 +19,10 @@ nothing here names a model or a vendor.
 
 ## A player
 
-The operator creates a round with a bot player (`POST /api/allocations/<allocation>/rounds/` with `{bot: {name}}` for the
-side) and receives the player token once. The token reaches its side's routes and the round's `GET /`,
+Staff create a round with an externally driven bot player (`POST /api/allocations/<allocation>/rounds/` with
+`{bot: {name}}` for the side) and receive the player token once. A seat made with `{bot: {step}}` returns no token: the
+platform queues a bot run at round start and the launcher claims it (`bot_run_claim`, tag `bots`), which issues the
+token. The token reaches its side's routes and the round's `GET /`,
 `events/`, `topology/` and, after the end, `score/`. After `round.ended` it stays valid read-only for 15
 minutes, so the bot can read the end and the score.
 

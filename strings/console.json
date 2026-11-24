@@ -513,5 +513,19 @@
   "waf.versions": "변경 이력",
   "waf.version.title": "버전 {version}",
   "waf.version.open": "보기",
-  "waf.version.close": "닫기"
+  "waf.version.close": "닫기",
+  "matchup.bot_vs_bot": "봇 대 봇 (기준 분포)",
+  "bot_step.1": "1단계",
+  "bot_step.2": "2단계",
+  "bot_step.3": "3단계",
+  "mitre.copyright": "© 2026 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation.",
+  "end_reason.bots_exited": "봇이 모두 종료됨",
+  "error.unknown_card": "이 워게임에 없는 공격 카드입니다.",
+  "error.cards_missing": "이 문제에는 공격 봇이 받을 카드가 지정되어 있지 않습니다.",
+  "error.step_not_allowed": "이 문제에서 고를 수 없는 난이도입니다.",
+  "error.bot_rounds_closed": "지금은 지정된 계정만 봇 라운드를 열 수 있습니다.",
+  "error.baseline_running": "이 난이도의 기준 분포를 이미 돌리고 있습니다.",
+  "error.baseline_missing": "봇 대전이 있는 문제는 난이도마다 기준 분포를 먼저 돌려야 공개할 수 있습니다.",
+  "error.unknown_bot_run": "없는 봇 실행입니다.",
+  "error.unknown_record": "없는 기록입니다."
 }

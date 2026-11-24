@@ -50,7 +50,7 @@ class Invalid(DomainError):
         "not_an_object", "not_a_choice", "not_a_text", "not_a_boolean", "not_a_text_list", "not_a_positive_integer",
         "unknown_field", "unknown_wargame",
         "unknown_objective", "unknown_profile", "matchup_not_allowed", "not_malicious",
-        "not_recorded", "name_taken",
+        "not_recorded", "name_taken", "unknown_step", "unknown_card", "cards_missing", "step_not_allowed",
     })
 
 
@@ -63,14 +63,16 @@ class NotSignedIn(DomainError):
 class NotAPlayer(DomainError):
     code = "not_a_player"
     status = 403
-    codes = frozenset({"not_a_player", "not_staff", "csrf_failed", "account_pending", "not_operator"})
+    codes = frozenset({"not_a_player", "not_staff", "csrf_failed", "account_pending", "not_operator",
+                       "bot_rounds_closed"})
 
 
 class NotFound(DomainError):
     code = "not_found"
     status = 404
     codes = frozenset({"not_found", "unknown_case", "unknown_tool", "unknown_run", "unknown_origin", "unknown_user",
-                       "unknown_block", "unknown_round", "unknown_allocation", "unknown_problem", "unknown_posture"})
+                       "unknown_block", "unknown_round", "unknown_allocation", "unknown_problem", "unknown_posture",
+                       "unknown_bot_run", "unknown_record"})
 
 
 class NotAllowed(DomainError):
@@ -92,7 +94,7 @@ class Conflict(DomainError):
         "conflict", "round_not_started", "round_closed", "round_running", "origins_spent", "stale_version",
         "stale_revision", "test_busy", "already_playing", "player_taken", "in_use",
         "own_account", "loot_not_taken", "allocation_closed", "players_open", "objective_fallen", "round_started",
-        "probe_running", "round_open", "range_not_cloud", "not_tested",
+        "probe_running", "round_open", "range_not_cloud", "not_tested", "baseline_running", "baseline_missing",
     })
 
 

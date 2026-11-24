@@ -10,6 +10,7 @@ from telemetry import events as log
 from testing import factories, fakerange
 from tests.shape import refused
 from tests.training.round.conftest import pvp, url
+from training.content import problems as content
 from training.defence import rules
 from training.models import Allocation, Player, Round
 from training.round import allocation as allocations
@@ -124,8 +125,8 @@ def test_asking_for_a_slot_closes_an_allocation_past_its_limit_and_starts_rebuil
     assert refill.standing(sandbox.store(), allocation.slot).state == refill.BUILDING
 
 
-def test_the_operator_creates_a_bot_round_and_sees_the_token_once(as_operator, allocation, problem, learner):
-    answer = as_operator.post(f"/api/allocations/{allocation.pk}/rounds/", {
+def test_staff_create_a_bot_round_and_see_the_token_once(as_staff, allocation, problem, learner):
+    answer = as_staff.post(f"/api/allocations/{allocation.pk}/rounds/", {
         "problem": problem.pk, "matchup": "def_vs_bot",
         "players": {"attack": {"bot": {"name": "claude"}}, "defence": {"username": learner.username}}}, format="json")
 
@@ -134,7 +135,7 @@ def test_the_operator_creates_a_bot_round_and_sees_the_token_once(as_operator, a
     player = Player.objects.get(round_id=made["round"], side="attack")
     assert player.client == "bot" and player.token_hash == auth.hashed(made["bot_tokens"]["attack"])
     assert sorted(one["side"] for one in made["players"]) == ["attack", "defence"]
-    assert "bot_tokens" not in as_operator.get(url(Round.objects.get(pk=made["round"]))).json()
+    assert "bot_tokens" not in as_staff.get(url(Round.objects.get(pk=made["round"]))).json()
 
 
 @pytest.mark.parametrize("matchup, players, status, code, path", [
@@ -149,6 +150,16 @@ def test_a_round_the_problem_or_matchup_does_not_allow_is_refused(as_operator, a
             status, code, path=path)
 
 
+def test_bot_vs_bot_is_created_only_by_a_baseline(as_staff, allocation, learner):
+    both = content.save_document(factories.round_problem({"side": "both"}, matchups=["pvp", "def_vs_bot", "atk_vs_bot"],
+                                                         objectives=["board-auth-user-admin"]))
+
+    refused(as_staff.post(f"/api/allocations/{allocation.pk}/rounds/", {
+        "problem": both.pk, "matchup": "bot_vs_bot",
+        "players": {"attack": {"bot": {"name": "one"}}, "defence": {"bot": {"name": "two"}}}}, format="json"),
+        400, "matchup_not_allowed", path="matchup")
+
+
 def test_an_inactive_account_cannot_be_a_player(as_operator, allocation, problem, learner):
     learner.is_active = False
     learner.save(update_fields=["is_active"])
@@ -158,12 +169,12 @@ def test_an_inactive_account_cannot_be_a_player(as_operator, allocation, problem
         400, "unknown_account", path="players.attack.username")
 
 
-def test_players_are_shown_by_username_and_never_by_user_id(as_operator, allocation, problem, learner):
-    made = as_operator.post(f"/api/allocations/{allocation.pk}/rounds/", {
+def test_players_are_shown_by_username_and_never_by_user_id(as_staff, allocation, problem, learner):
+    made = as_staff.post(f"/api/allocations/{allocation.pk}/rounds/", {
         "problem": problem.pk, "matchup": "def_vs_bot",
         "players": {"attack": {"bot": {"name": "claude"}}, "defence": {"username": learner.username}}}, format="json").json()
 
-    shown = {player["side"]: player for player in as_operator.get(f"/api/rounds/{made['round']}/").json()["players"]}
+    shown = {player["side"]: player for player in as_staff.get(f"/api/rounds/{made['round']}/").json()["players"]}
     assert shown["defence"]["username"] == learner.username and shown["attack"]["username"] is None
     assert all("user" not in player and "user_id" not in player for player in shown.values())
 

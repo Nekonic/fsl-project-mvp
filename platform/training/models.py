@@ -62,6 +62,8 @@ class RoundSetup(models.Model):
     traffic = models.CharField(max_length=32, null=True, blank=True)
     benign_every_s = models.PositiveIntegerField(default=60)
     time_limit_s = models.PositiveIntegerField(null=True, blank=True)
+    bot_steps = models.JSONField(default=list)
+    cards = models.JSONField(default=list)
 
 
 class ProbeSet(models.Model):
@@ -82,6 +84,30 @@ PHASES = [(phase.value, phase.value) for phase in Phase]
 PLAYER_SIDES = [(side, side) for side in ("attack", "defence")]
 CLIENTS = [(client, client) for client in (HUMAN, BOT)]
 REASONS = [(reason, reason) for reason in END_REASONS]
+
+
+BASELINE_STATES = [(state, state) for state in ("running", "current", "stale", "failed")]
+
+
+class BotBaseline(models.Model):
+    problem = models.ForeignKey(Problem, on_delete=models.PROTECT, related_name="+")
+    problem_revision = models.PositiveIntegerField()
+    human_side = models.CharField(max_length=8, choices=PLAYER_SIDES)
+    step = models.CharField(max_length=16)
+    profile_key = models.CharField(max_length=64, blank=True, default="")
+    rounds_wanted = models.PositiveIntegerField(default=20)
+    attempts_max = models.PositiveIntegerField()
+    attempts = models.PositiveIntegerField(default=0)
+    samples = models.JSONField(default=list)
+    exits = models.JSONField(default=dict)
+    launcher = models.JSONField(default=dict)
+    status = models.CharField(max_length=8, choices=BASELINE_STATES, default="running")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name="+")
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
 
 
 class Allocation(models.Model):
@@ -117,6 +143,8 @@ class Round(models.Model):
     read_at = models.DateTimeField(null=True, blank=True)
     judged_at = models.DateTimeField(null=True, blank=True)
     unavailable_reads = models.JSONField(default=dict)
+    baseline_of = models.ForeignKey(BotBaseline, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name="rounds")
 
     class Meta:
         ordering = ["id"]
@@ -131,10 +159,71 @@ class Player(models.Model):
     bot_name = models.CharField(max_length=64, blank=True, default="")
     token_hash = models.CharField(max_length=64, null=True, blank=True, unique=True)
     token_revoked_at = models.DateTimeField(null=True, blank=True)
+    step = models.CharField(max_length=16, blank=True, default="")
+    card = models.CharField(max_length=16, blank=True, default="")
 
     class Meta:
         ordering = ["round_id", "side"]
         constraints = [models.UniqueConstraint(fields=["round", "side"], name="one_player_per_side")]
+
+
+RUN_STATES = [(state, state) for state in ("queued", "running", "finished", "failed")]
+NOTE_KINDS = [(kind, kind) for kind in ("text", "call", "denied", "refused", "result")]
+
+
+class BotRun(models.Model):
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="bot_runs")
+    status = models.CharField(max_length=8, choices=RUN_STATES, default="queued")
+    model = models.CharField(max_length=64)
+    queued = models.DateTimeField(auto_now_add=True)
+    claimed = models.DateTimeField(null=True, blank=True)
+    finished = models.DateTimeField(null=True, blank=True)
+    exit = models.CharField(max_length=32, blank=True, default="")
+    cost_usd = models.FloatField(null=True, blank=True)
+    turns = models.PositiveIntegerField(null=True, blank=True)
+    refusals = models.PositiveIntegerField(default=0)
+    closing = models.TextField(blank=True, default="")
+    launcher = models.JSONField(default=dict)
+
+    class Meta:
+        ordering = ["id"]
+
+
+class BotNote(models.Model):
+    run = models.ForeignKey(BotRun, on_delete=models.CASCADE, related_name="notes")
+    at = models.DateTimeField()
+    kind = models.CharField(max_length=8, choices=NOTE_KINDS)
+    text = models.TextField()
+
+    class Meta:
+        ordering = ["at", "id"]
+
+
+class RoundRecord(models.Model):
+    round_number = models.PositiveIntegerField(unique=True)
+    problem = models.ForeignKey(Problem, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    problem_revision = models.PositiveIntegerField(null=True, blank=True)
+    matchup = models.CharField(max_length=16, choices=MATCHUPS)
+    attack_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name="+")
+    defence_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name="+")
+    steps = models.JSONField(default=dict)
+    card = models.CharField(max_length=16, blank=True, default="")
+    profile_key = models.CharField(max_length=64, blank=True, default="")
+    started = models.DateTimeField(null=True, blank=True)
+    ended = models.DateTimeField(null=True, blank=True)
+    end_reason = models.CharField(max_length=24, choices=REASONS, blank=True, default="")
+    score = models.JSONField(null=True, blank=True)
+    debrief = models.JSONField(default=dict)
+    bot = models.JSONField(default=dict)
+    baseline = models.ForeignKey(BotBaseline, on_delete=models.SET_NULL, null=True, blank=True, related_name="records")
+    counts_for_baseline = models.BooleanField(default=False)
+    incomplete = models.BooleanField(default=False)
+    kept = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-round_number"]
 
 
 class CustomerRequest(models.Model):

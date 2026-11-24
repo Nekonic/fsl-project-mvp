@@ -14,6 +14,8 @@ class RoundSetup(serializers.Serializer):
     traffic = serializers.CharField(allow_null=True, required=False)
     benign_every_s = serializers.IntegerField(required=False)
     time_limit_s = serializers.IntegerField(allow_null=True, required=False)
+    bot_steps = serializers.ListField(child=serializers.CharField(), required=False)
+    cards = serializers.ListField(child=serializers.CharField(), required=False)
 
 
 class InlinePosture(serializers.Serializer):

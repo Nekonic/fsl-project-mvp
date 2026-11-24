@@ -14,7 +14,8 @@ HTTP = ("*/views*.py", "*/serializers.py", "*/urls.py", "cr/urls.py", "cr/handle
 HTTP_LAYER = 10
 COORDINATORS = ("training/round/lifecycle.py", "training/round/allocation.py",
                 "training/round/site.py", "training/round/retention.py", "training/traffic/customers.py",
-                "training/content/probes.py")
+                "training/content/probes.py", "training/round/bots.py", "training/round/records.py",
+                "training/round/debrief.py", "training/round/baseline.py")
 LAYERS = (
     (HTTP_LAYER, HTTP),
     (0, ("domain/*",)),
@@ -26,7 +27,8 @@ LAYERS = (
     (4, ("telemetry/*",)),
     (5, ("scoring/*",)),
     (8, COORDINATORS),
-    (6, ("training/round/access.py", "training/content/catalog.py", "training/content/problems.py")),
+    (6, ("training/round/access.py", "training/content/catalog.py", "training/content/problems.py",
+         "training/content/bots.py")),
     (7, ("training/attack/actions.py", "training/attack/origins.py", "training/defence/*")),
 )
 FRAMEWORKS = ("django", "rest_framework", "drf_spectacular")
@@ -200,7 +202,7 @@ SURFACES = {
     "users": {"users/accounts.py", "users/permissions.py", "users/players.py"},
     "telemetry": {"telemetry/events.py", "telemetry/alerts.py", "telemetry/access.py"},
     "scoring": set(SCORING_SURFACE),
-    "training/content": {"training/content/problems.py", "training/content/probes.py"},
+    "training/content": {"training/content/problems.py", "training/content/probes.py", "training/content/bots.py"},
     "training/round": {"training/round/lifecycle.py", "training/round/allocation.py", "training/round/access.py"},
     "training/traffic": {"training/traffic/customers.py"},
     "training/attack": {"training/attack/actions.py", "training/attack/origins.py"},

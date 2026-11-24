@@ -61,9 +61,9 @@
 | L3 훈련 기록 | `training/models.py` |
 | L4 | `telemetry/*` |
 | L5 | `scoring/*` |
-| L6 | `training/round/access.py`, `training/content/catalog.py`, `training/content/problems.py` |
+| L6 | `training/round/access.py`, `training/content/catalog.py`, `training/content/problems.py`, `training/content/bots.py` |
 | L7 양쪽 | `training/attack/actions.py`, `training/attack/origins.py`, `training/defence/*` |
-| L8 조정 | `training/round/lifecycle.py`, `training/round/allocation.py`, `training/round/site.py`, `training/round/retention.py`, `training/traffic/customers.py`, `training/content/probes.py` |
+| L8 조정 | `training/round/lifecycle.py`, `training/round/allocation.py`, `training/round/site.py`, `training/round/retention.py`, `training/traffic/customers.py`, `training/content/probes.py`, `training/round/bots.py`, `training/round/records.py`, `training/round/debrief.py`, `training/round/baseline.py` |
 | HTTP | `views*.py`, `serializers.py`, `urls.py`, `cr/urls.py`, `cr/handler.py`, `cr/schema.py`, `cr/settings.py`, `cr/strings.py`, `cr/wsgi.py`, `management/commands/*`, `apps.py`, 마이그레이션 |
 
 주요 규칙(번호는 테스트 이름의 번호):
@@ -114,6 +114,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                strings.py   strings/server.json 읽기
   domain/      types.py  traffic.py(고객 배분, limit_req 하한)  verdicts.py(룰 테스트 판정표)
                problems.py(문제 검증)  round_rules.py(매치업, 단계, 종료 조건)
+               bots.py(난이도·공격 카드, 카드 추첨)  baseline.py(백분위, 프로필 키)
                scoring/  correlate.py  metrics.py(판정 시점 decided 포함)  corroborate.py  objectives.py
   users/       accounts.py(로그인·가입·승인)  permissions.py(SessionAuthentication, CsrfChecked, IsStaff)
                players.py(플레이어 토큰 해시·발급·회수)  blocks.py(로그인 차단, SignInBlock)
@@ -144,11 +145,16 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
   training/    Django 앱 하나. models.py에 Wargame부터 RuleTest까지 모든 훈련 기록
     content/   catalog.py(wargames/와 redteam/cases 읽기, limit_floor_rpm)  problems.py(중첩 문서, revision,
                내보내기·가져오기, posture)  probes.py(probe 녹화)  스태프 문제 API, 학습자 읽기 API
+               bots.py(steps.yaml 난이도 3단계, cards.yaml ATT&CK 공격 카드 A1~A8 읽기)
     round/     allocation.py  할당 열기·하트비트·닫기·만료(열 때 만료된 할당 닫기와 오래된 할당 정리)
                lifecycle.py   라운드 만들기, 참가, 시작, catch_up(READS), 케이스 판정, 종료, 기권, 점수
                access.py      PlayerTokenAuthentication, IsPlayer(side), InRound, IsOperator, OnAllocation
                views_catch_up.py  CatchingUpView: 요청마다 할당 만료 확인과 catch_up
                site.py(사이트 패널 프록시)  retention.py  views.py(라운드, 할당, 스태프 range API)
+               bots.py        봇 실행: 시작 때 자리마다 BotRun, 실행기의 수령(토큰 발급)·메모·종료
+               records.py     라운드 기록(점수·복기 고정, 90일 보관), 기준 분포 대비 백분위
+               debrief.py     끝난 라운드의 복기: 공격 봇 카드, 봇 의도, 두 갈래 타임라인
+               baseline.py    봇 대 봇 기준 분포: 판 열기·끝내기·판정·기록, 20판 채우기, stale 표시
     traffic/   customers.py   정상 케이스와 고객 트래픽, 라운드마다 새로 만드는 고객 비밀번호
     attack/    actions.py     공격 API의 모든 동작, 고객 전송, 명령 기록, 공격 쪽 터미널
                origins.py     출발지 풀, 오류 로그로 소진, limit_req 하한
@@ -519,7 +525,12 @@ sequenceDiagram
 `bots/`는 `/api/`의 클라이언트입니다. `tools.py`가 커밋된 스키마에서 쪽별 도구 명세(자기 쪽 동작, 라운드 읽기,
 할당 하트비트. 상대 쪽 동작, 스태프 전용 `correlation`, 사람용 `defence_kibana` 제외)와 `shell`을 만들고, `calls.py`가
 도구 명세로 인자를 검사한 뒤 `rest.py`로 한 번 호출하며, `play.py`의 턴 루프에 `provider.py` 인터페이스로 모델을
-붙입니다. 생성 클라이언트는 없습니다. `rest.py`가 스키마의 `operationId`에서 메서드·경로·쿼리를 찾아 보냅니다. 상대 쪽
+붙입니다. 생성 클라이언트는 없습니다. 학습자가 난이도(`{step}`)로 만든 봇 자리는 플랫폼이 띄웁니다. 라운드가
+시작되면 `training/round/bots.py`가 봇 자리마다 `BotRun`을 만들고, 실행기가 `bot_run_claim`(태그 `bots`, 실행기 키
+`IsLauncher`)으로 가져가 플레이어 토큰, 모델, 속도, 허용 동작, 공격이면 카드를 받습니다. 실행기는 `bot_run_report`로
+메모를, `bot_run_finish`로 종료를 알립니다. 서버는 봇 자리를 사람 자리와 똑같이 다루고, 속도와 허용 동작은 실행기의
+프록시가 겁니다. 시연이 끝날 때까지 `{step}` 자리가 있는 라운드와 기준 분포는 `CR_BOT_ROUND_USERS`에 적힌 계정만
+엽니다(`403 bot_rounds_closed`). `{name}` 자리(토큰을 한 번 돌려주는 외부 드라이버)는 스태프만 만듭니다. `rest.py`가 스키마의 `operationId`에서 메서드·경로·쿼리를 찾아 보냅니다. 상대 쪽
 도구는 보내기 전에 거부합니다. `shell`은 사람 플레이어와 같은 셸입니다. `attack_terminal`이나 `defence_terminal`이 주는
 SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에서 명령 하나를 실행합니다(`shell.py`). 방어 봇에는
 `defence_ids_terminal`로 센서 호스트(`analyst`)에서 실행하는 `ids_shell`도 있고, IDS 룰은 이것으로만 바꿉니다. 자세한 규칙은

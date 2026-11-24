@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hmac
 from urllib.parse import urlsplit
 
+from django.conf import settings
 from django.utils import timezone
 from rest_framework import authentication, permissions
 
@@ -55,6 +57,47 @@ class PlayerTokenAuthentication(authentication.BaseAuthentication):
 
 
 ROUND_AUTHENTICATION = (PlayerTokenAuthentication, users.SessionAuthentication)
+
+
+class LauncherPrincipal:
+    is_authenticated = True
+    is_active = True
+    is_staff = False
+    is_superuser = False
+    is_anonymous = False
+    pk = None
+    id = None
+    username = "launcher"
+
+
+def launcher_key() -> str:
+    if settings.BOT_LAUNCHER_KEY:
+        return settings.BOT_LAUNCHER_KEY
+    try:
+        return settings.BOT_LAUNCHER_KEY_FILE.read_text().strip()
+    except OSError:
+        return ""
+
+
+class LauncherAuthentication(authentication.BaseAuthentication):
+    def authenticate(self, request):
+        given = authentication.get_authorization_header(request).split()
+        if len(given) != 2 or given[0].lower() != BEARER:
+            return None
+        key = launcher_key()
+        if not key or not hmac.compare_digest(given[1], key.encode()):
+            return None
+        return LauncherPrincipal(), None
+
+    def authenticate_header(self, request) -> str:
+        return 'Bearer realm="launcher"'
+
+
+class IsLauncher(permissions.BasePermission):
+    def has_permission(self, request, view) -> bool:
+        if not isinstance(request.user, LauncherPrincipal):
+            raise errors.NotSignedIn()
+        return True
 
 
 def round_of(request, view) -> Round:

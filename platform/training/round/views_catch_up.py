@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 
 from training.round import allocation as allocations
-from training.round import lifecycle
+from training.round import lifecycle, records
 
 ALERTS_READ = lifecycle.ALERTS_READ
 
@@ -16,6 +16,7 @@ def catch_up(request) -> None:
     if found is not None:
         found.refresh_from_db()
         found.allocation.refresh_from_db()
+        records.keep_when_due(found)
 
 
 class CatchingUpView(APIView):

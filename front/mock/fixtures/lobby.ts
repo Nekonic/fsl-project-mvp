@@ -1,7 +1,7 @@
 import { minutesFromNow, refuse, reply } from "../fixture";
 
-const human = (side: "attack" | "defence", username: string | null) => ({ side, client: "human", username, bot_name: "" });
-const bot = (side: "attack" | "defence", name: string) => ({ side, client: "bot", username: null, bot_name: name });
+const human = (side: "attack" | "defence", username: string | null) => ({ side, client: "human", username, bot_name: "", step: "", bot_run: null });
+const bot = (side: "attack" | "defence", name: string) => ({ side, client: "bot", username: null, bot_name: name, step: "", bot_run: null });
 
 const waiting = { round: 43, problem: 7, kind: "round", matchup: "def_vs_bot", phase: "created" as const, players: [bot("attack", "claude-code"), human("defence", "learner-one")] };
 const finished = { round: 40, problem: 7, kind: "round", matchup: "pvp", phase: "ended" as const, players: [human("attack", "learner-two"), human("defence", null)] };
@@ -28,7 +28,7 @@ export const fixtures = [
     const players = asked.body?.players ?? {};
     const playerOf = (side: "attack" | "defence") => {
       const ask = players[side];
-      return ask?.bot ? bot(side, ask.bot.name) : human(side, ask?.username ?? null);
+      return ask?.bot ? bot(side, ask.bot.name ?? "") : human(side, ask?.username ?? null);
     };
     const made = [playerOf("attack"), playerOf("defence")];
     return {

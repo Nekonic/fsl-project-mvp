@@ -18,7 +18,7 @@ type Allocation = Schemas["AllocationDetail"];
 type RoundLine = Schemas["RoundLine"];
 type PlayerLine = Schemas["PlayerLine"];
 type Side = Schemas["PlayerSideEnum"];
-type Matchup = Schemas["MatchupEnum"];
+type Matchup = Schemas["MatchupsEnum"];
 type PlayerKind = "user" | "bot" | "open";
 type PlayerAsk = Schemas["PlayerAskRequest"];
 

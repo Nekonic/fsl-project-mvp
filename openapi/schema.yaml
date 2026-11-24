@@ -233,6 +233,120 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Errors'
+  /api/bot-runs/{run_id}/finish/:
+    post:
+      operationId: bot_run_finish
+      parameters:
+      - in: path
+        name: run_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - bots
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinishAskRequest'
+        required: true
+      security:
+      - launcher_key: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunShown'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/bot-runs/{run_id}/notes/:
+    post:
+      operationId: bot_run_report
+      parameters:
+      - in: path
+        name: run_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - bots
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotesAskRequest'
+        required: true
+      security:
+      - launcher_key: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesKept'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/bot-runs/claim/:
+    post:
+      operationId: bot_run_claim
+      tags:
+      - bots
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimAskRequest'
+      security:
+      - launcher_key: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Claimed'
+          description: ''
+        '204':
+          description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/bot-steps/:
+    get:
+      operationId: bot_steps
+      tags:
+      - match
+      security:
+      - player_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StepLine'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
   /api/me/:
     get:
       operationId: me
@@ -294,6 +408,122 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LearnerProblem'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/problems/{problem_id}/baselines/:
+    get:
+      operationId: baseline_read
+      parameters:
+      - in: path
+        name: problem_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - staff
+      security:
+      - player_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BaselineLine'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+    post:
+      operationId: baseline_create
+      parameters:
+      - in: path
+        name: problem_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - staff
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BaselineAskRequest'
+        required: true
+      security:
+      - player_token: []
+      - cr_session: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BaselineLine'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/records/:
+    get:
+      operationId: records_list
+      parameters:
+      - in: query
+        name: problem
+        schema:
+          type: integer
+      tags:
+      - records
+      security:
+      - player_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RecordLine'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/records/{record_id}/:
+    get:
+      operationId: record_read
+      parameters:
+      - in: path
+        name: record_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - records
+      security:
+      - player_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordShown'
           description: ''
         default:
           description: refused
@@ -721,6 +951,33 @@ paths:
       responses:
         '204':
           description: No response body
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
+  /api/rounds/{round_id}/debrief/:
+    get:
+      operationId: round_debrief
+      parameters:
+      - in: path
+        name: round_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - match
+      security:
+      - player_token: []
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Debrief'
+          description: ''
         default:
           description: refused
           content:
@@ -2399,6 +2656,20 @@ components:
       - ready
       - slot
       - wargame
+    AllowanceLine:
+      type: object
+      properties:
+        operations:
+          type: array
+          items:
+            type: string
+        cases:
+          type: array
+          items:
+            type: string
+      required:
+      - cases
+      - operations
     AnalystSsh:
       type: object
       properties:
@@ -2546,6 +2817,74 @@ components:
       - remaining
       - ssh
       - ws_url
+    BaselineAskRequest:
+      type: object
+      properties:
+        human_side:
+          $ref: '#/components/schemas/PlayerSideEnum'
+        step:
+          type: string
+          minLength: 1
+          maxLength: 16
+        rounds:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+      required:
+      - human_side
+      - step
+    BaselineLine:
+      type: object
+      properties:
+        baseline:
+          type: integer
+        human_side:
+          $ref: '#/components/schemas/PlayerSideEnum'
+        step:
+          type: string
+        status:
+          $ref: '#/components/schemas/BaselineStatusEnum'
+        profile_key:
+          type: string
+        counted:
+          type: integer
+        wanted:
+          type: integer
+        attempted:
+          type: integer
+        attempts_max:
+          type: integer
+        exits:
+          type: object
+          additionalProperties:
+            type: integer
+        spread:
+          $ref: '#/components/schemas/SpreadLine'
+      required:
+      - attempted
+      - attempts_max
+      - baseline
+      - counted
+      - exits
+      - human_side
+      - profile_key
+      - spread
+      - status
+      - step
+      - wanted
+    BaselineStatusEnum:
+      enum:
+      - running
+      - current
+      - stale
+      - failed
+      type: string
+      description: |-
+        * `running` - running
+        * `current` - current
+        * `stale` - stale
+        * `failed` - failed
     Block:
       type: object
       properties:
@@ -2591,8 +2930,50 @@ components:
           type: string
           minLength: 1
           maxLength: 64
+        step:
+          type: string
+          minLength: 1
+          maxLength: 16
+    BotRunStatusEnum:
+      enum:
+      - queued
+      - running
+      - finished
+      - failed
+      type: string
+      description: |-
+        * `queued` - queued
+        * `running` - running
+        * `finished` - finished
+        * `failed` - failed
+    CardShown:
+      type: object
+      properties:
+        id:
+          type: string
+        technique:
+          type: string
+        name:
+          type: string
+        quote:
+          type: string
+        url:
+          type: string
+        object_version:
+          type: string
+        release:
+          type: string
+        notice:
+          type: string
       required:
+      - id
       - name
+      - notice
+      - object_version
+      - quote
+      - release
+      - technique
+      - url
     CaseEntry:
       type: object
       properties:
@@ -2672,6 +3053,58 @@ components:
       - case
       - now
       - was
+    ClaimAskRequest:
+      type: object
+      properties:
+        restarted:
+          type: boolean
+          default: false
+        launcher:
+          type: object
+          additionalProperties: {}
+    Claimed:
+      type: object
+      properties:
+        run:
+          type: integer
+        round:
+          type: integer
+        side:
+          $ref: '#/components/schemas/PlayerSideEnum'
+        step:
+          type: string
+        token:
+          type: string
+        model:
+          type: string
+        budget_usd:
+          type: number
+          format: double
+        max_turns:
+          type: integer
+        pace:
+          $ref: '#/components/schemas/PaceLine'
+        allowance:
+          $ref: '#/components/schemas/AllowanceLine'
+        card:
+          allOf:
+          - $ref: '#/components/schemas/StanceShown'
+          nullable: true
+        prompt:
+          $ref: '#/components/schemas/PromptParts'
+      required:
+      - allowance
+      - budget_usd
+      - card
+      - max_turns
+      - model
+      - pace
+      - prompt
+      - round
+      - run
+      - side
+      - step
+      - token
     Closed:
       type: object
       properties:
@@ -2731,6 +3164,44 @@ components:
           type: boolean
       required:
       - ok
+    Debrief:
+      type: object
+      properties:
+        round:
+          type: integer
+        matchup:
+          type: string
+        pending:
+          type: boolean
+        steps:
+          type: object
+          additionalProperties:
+            type: string
+            nullable: true
+        card:
+          allOf:
+          - $ref: '#/components/schemas/CardShown'
+          nullable: true
+        bots:
+          type: array
+          items: {}
+        objectives:
+          type: array
+          items: {}
+        timeline:
+          type: array
+          items: {}
+        score: {}
+      required:
+      - bots
+      - card
+      - matchup
+      - objectives
+      - pending
+      - round
+      - score
+      - steps
+      - timeline
     DefenceBrief:
       type: object
       properties:
@@ -2862,6 +3333,7 @@ components:
       - forfeit_attack
       - forfeit_defence
       - allocation_expired
+      - bots_exited
       type: string
       description: |-
         * `time_limit` - time_limit
@@ -2871,6 +3343,7 @@ components:
         * `forfeit_attack` - forfeit_attack
         * `forfeit_defence` - forfeit_defence
         * `allocation_expired` - allocation_expired
+        * `bots_exited` - bots_exited
     Event:
       type: object
       properties:
@@ -2915,6 +3388,30 @@ components:
       required:
       - clean
       - present
+    FinishAskRequest:
+      type: object
+      properties:
+        exit:
+          type: string
+          minLength: 1
+          maxLength: 32
+        cost_usd:
+          type: number
+          format: double
+          nullable: true
+        turns:
+          type: integer
+          minimum: 0
+          nullable: true
+        refusals:
+          type: integer
+          minimum: 0
+          default: 0
+        closing:
+          type: string
+          default: ''
+      required:
+      - exit
     FireCaseRequest:
       type: object
       properties:
@@ -3148,6 +3645,18 @@ components:
       - pvp
       - def_vs_bot
       - atk_vs_bot
+      - bot_vs_bot
+      type: string
+      description: |-
+        * `pvp` - pvp
+        * `def_vs_bot` - def_vs_bot
+        * `atk_vs_bot` - atk_vs_bot
+        * `bot_vs_bot` - bot_vs_bot
+    MatchupsEnum:
+      enum:
+      - pvp
+      - def_vs_bot
+      - atk_vs_bot
       type: string
       description: |-
         * `pvp` - pvp
@@ -3198,6 +3707,50 @@ components:
       required:
       - origin
       - remaining
+    NoteAskKindEnum:
+      enum:
+      - text
+      - call
+      - denied
+      - refused
+      - result
+      type: string
+      description: |-
+        * `text` - text
+        * `call` - call
+        * `denied` - denied
+        * `refused` - refused
+        * `result` - result
+    NoteAskRequest:
+      type: object
+      properties:
+        at:
+          type: string
+          format: date-time
+        kind:
+          $ref: '#/components/schemas/NoteAskKindEnum'
+        text:
+          type: string
+      required:
+      - at
+      - kind
+      - text
+    NotesAskRequest:
+      type: object
+      properties:
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/NoteAskRequest'
+      required:
+      - notes
+    NotesKept:
+      type: object
+      properties:
+        kept:
+          type: integer
+      required:
+      - kept
     NullEnum:
       enum:
       - null
@@ -3309,6 +3862,19 @@ components:
       - note
       - per_case
       - totals
+    PaceLine:
+      type: object
+      properties:
+        per_window:
+          type: integer
+        window_s:
+          type: integer
+        min_gap_s:
+          type: integer
+      required:
+      - min_gap_s
+      - per_window
+      - window_s
     Page:
       type: object
       properties:
@@ -3352,10 +3918,20 @@ components:
           nullable: true
         bot_name:
           type: string
+        step:
+          type: string
+        bot_run:
+          nullable: true
+          readOnly: true
+          oneOf:
+          - $ref: '#/components/schemas/BotRunStatusEnum'
+          - $ref: '#/components/schemas/NullEnum'
       required:
       - bot_name
+      - bot_run
       - client
       - side
+      - step
       - username
     PlayerSideEnum:
       enum:
@@ -3559,6 +4135,17 @@ components:
         * `attack` - attack
         * `defence` - defence
         * `both` - both
+    PromptParts:
+      type: object
+      properties:
+        side:
+          type: string
+        stance:
+          type: string
+          nullable: true
+      required:
+      - side
+      - stance
     Range:
       type: object
       properties:
@@ -3568,6 +4155,112 @@ components:
             $ref: '#/components/schemas/SlotLine'
       required:
       - slots
+    RecordLine:
+      type: object
+      properties:
+        record:
+          type: integer
+        round_number:
+          type: integer
+        problem:
+          type: integer
+          nullable: true
+        matchup:
+          type: string
+        steps:
+          type: object
+          additionalProperties:
+            type: string
+        started:
+          type: string
+          format: date-time
+          nullable: true
+        ended:
+          type: string
+          format: date-time
+          nullable: true
+        end_reason:
+          type: string
+        incomplete:
+          type: boolean
+        baseline:
+          type: integer
+          nullable: true
+        standing:
+          allOf:
+          - $ref: '#/components/schemas/Standing'
+          nullable: true
+          readOnly: true
+      required:
+      - baseline
+      - end_reason
+      - ended
+      - incomplete
+      - matchup
+      - problem
+      - record
+      - round_number
+      - standing
+      - started
+      - steps
+    RecordShown:
+      type: object
+      properties:
+        record:
+          type: integer
+        round_number:
+          type: integer
+        problem:
+          type: integer
+          nullable: true
+        matchup:
+          type: string
+        steps:
+          type: object
+          additionalProperties:
+            type: string
+        started:
+          type: string
+          format: date-time
+          nullable: true
+        ended:
+          type: string
+          format: date-time
+          nullable: true
+        end_reason:
+          type: string
+        incomplete:
+          type: boolean
+        baseline:
+          type: integer
+          nullable: true
+        standing:
+          allOf:
+          - $ref: '#/components/schemas/Standing'
+          nullable: true
+          readOnly: true
+        card:
+          type: string
+        score:
+          nullable: true
+        debrief: {}
+        bot: {}
+      required:
+      - baseline
+      - bot
+      - card
+      - debrief
+      - end_reason
+      - ended
+      - incomplete
+      - matchup
+      - problem
+      - record
+      - round_number
+      - score
+      - standing
+      - started
+      - steps
     Refill:
       type: object
       properties:
@@ -3658,7 +4351,7 @@ components:
         matchups:
           type: array
           items:
-            $ref: '#/components/schemas/MatchupEnum'
+            $ref: '#/components/schemas/MatchupsEnum'
         posture:
           type: string
           nullable: true
@@ -3678,6 +4371,14 @@ components:
         time_limit_s:
           type: integer
           nullable: true
+        bot_steps:
+          type: array
+          items:
+            type: string
+        cards:
+          type: array
+          items:
+            type: string
       required:
       - matchups
     RoundSetupRequest:
@@ -3686,7 +4387,7 @@ components:
         matchups:
           type: array
           items:
-            $ref: '#/components/schemas/MatchupEnum'
+            $ref: '#/components/schemas/MatchupsEnum'
         posture:
           type: string
           nullable: true
@@ -3710,6 +4411,16 @@ components:
         time_limit_s:
           type: integer
           nullable: true
+        bot_steps:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        cards:
+          type: array
+          items:
+            type: string
+            minLength: 1
       required:
       - matchups
     RoundShown:
@@ -3883,6 +4594,19 @@ components:
       - output
       - remaining
       - stopped_by
+    RunShown:
+      type: object
+      properties:
+        run:
+          type: integer
+        status:
+          $ref: '#/components/schemas/BotRunStatusEnum'
+        exit:
+          type: string
+      required:
+      - exit
+      - run
+      - status
     Score:
       type: object
       properties:
@@ -4077,6 +4801,28 @@ components:
         * `setup` - setup
         * `console` - console
         * `terminal` - terminal
+    SpreadLine:
+      type: object
+      properties:
+        n:
+          type: integer
+        low:
+          type: number
+          format: double
+          nullable: true
+        median:
+          type: number
+          format: double
+          nullable: true
+        high:
+          type: number
+          format: double
+          nullable: true
+      required:
+      - high
+      - low
+      - median
+      - n
     Ssh:
       type: object
       properties:
@@ -4133,6 +4879,54 @@ components:
       - title
       - updated
       - wargame
+    StanceShown:
+      type: object
+      properties:
+        id:
+          type: string
+        technique:
+          type: string
+        name:
+          type: string
+        quote:
+          type: string
+        url:
+          type: string
+        object_version:
+          type: string
+        release:
+          type: string
+        notice:
+          type: string
+        stance:
+          type: string
+      required:
+      - id
+      - name
+      - notice
+      - object_version
+      - quote
+      - release
+      - stance
+      - technique
+      - url
+    Standing:
+      type: object
+      properties:
+        baseline:
+          type: integer
+        step:
+          type: string
+        n:
+          type: integer
+        top_percent:
+          type: number
+          format: double
+      required:
+      - baseline
+      - n
+      - step
+      - top_percent
     StartToolRequest:
       type: object
       properties:
@@ -4169,6 +4963,35 @@ components:
       description: |-
         * `kept` - kept
         * `lost` - lost
+    StepLine:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        attack:
+          $ref: '#/components/schemas/StepPlay'
+        defence:
+          $ref: '#/components/schemas/StepPlay'
+      required:
+      - attack
+      - defence
+      - id
+      - label
+    StepPlay:
+      type: object
+      properties:
+        model:
+          type: string
+        family:
+          type: string
+        pace:
+          $ref: '#/components/schemas/PaceLine'
+      required:
+      - family
+      - model
+      - pace
     StoredDocument:
       type: object
       properties:
@@ -4544,7 +5367,11 @@ components:
       - already_playing
       - apply_refused
       - attacker_unavailable
+      - baseline_missing
+      - baseline_running
       - blank
+      - bot_rounds_closed
+      - cards_missing
       - conflict
       - crs_refused
       - csrf_failed
@@ -4609,6 +5436,7 @@ components:
       - sign_ups_throttled
       - stale_revision
       - stale_version
+      - step_not_allowed
       - suricata_syntax
       - test_busy
       - too_many
@@ -4617,6 +5445,8 @@ components:
       - unknown_account
       - unknown_allocation
       - unknown_block
+      - unknown_bot_run
+      - unknown_card
       - unknown_case
       - unknown_field
       - unknown_objective
@@ -4624,8 +5454,10 @@ components:
       - unknown_posture
       - unknown_problem
       - unknown_profile
+      - unknown_record
       - unknown_round
       - unknown_run
+      - unknown_step
       - unknown_tool
       - unknown_user
       - unknown_wargame
@@ -4662,6 +5494,9 @@ components:
       type: apiKey
       in: cookie
       name: cr_session
+    launcher_key:
+      type: http
+      scheme: bearer
     player_token:
       type: http
       scheme: bearer

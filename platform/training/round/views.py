@@ -6,16 +6,24 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import renderers, status
 from rest_framework.response import Response
 
+from cr import errors
 from sandbox import service as sandbox
+from training.models import RoundRecord
 from training.round import access as auth
 from training.round import allocation as allocations
+from training.round import baseline as baselines
+from training.round import bots as bot_runs
+from training.round import debrief as debriefs
 from training.round import lifecycle as service
+from training.round import records
 from training.round import serializers
 from training.round.views_catch_up import CatchingUpView
 from users import permissions as accounts
 from users import permissions as users
 
 TAGS = ["match"]
+BOT_TAGS = ["bots"]
+RECORD_TAGS = ["records"]
 REFUSAL_HEADER = "X-Error-Code"
 STAFF_TAGS = ["staff"]
 
@@ -34,6 +42,14 @@ def shown_allocation(held, serializer=serializers.AllocationShown):
 class PlayerTokenScheme(OpenApiAuthenticationExtension):
     target_class = auth.PlayerTokenAuthentication
     name = "player_token"
+
+    def get_security_definition(self, auto_schema):
+        return {"type": "http", "scheme": "bearer"}
+
+
+class LauncherKeyScheme(OpenApiAuthenticationExtension):
+    target_class = auth.LauncherAuthentication
+    name = "launcher_key"
 
     def get_security_definition(self, auto_schema):
         return {"type": "http", "scheme": "bearer"}
@@ -84,7 +100,8 @@ class AllocationRounds(MatchView):
                    operation_id="round_create")
     def post(self, request, allocation_id: int):
         asked = given(serializers.CreateRound, request.data)
-        made = service.create_round(request.allocation, asked["problem"], asked["matchup"], dict(asked["players"]))
+        made = service.create_round(request.allocation, asked["problem"], asked["matchup"], dict(asked["players"]),
+                                    by=request.user)
         return Response(serializers.Created(made).data, status=status.HTTP_201_CREATED)
 
 
@@ -226,6 +243,101 @@ class DefenceForfeit(Forfeit):
     @extend_schema(tags=["defence"], request=None, responses=serializers.Ended, operation_id="defence_forfeit")
     def post(self, request, round_id: int):
         return super().post(request, round_id)
+
+
+class Debrief(MatchView):
+    permission_classes = [auth.InRound]
+
+    @extend_schema(tags=TAGS, responses=serializers.Debrief, operation_id="round_debrief")
+    def get(self, request, round_id: int):
+        found = request.round
+        if found.phase != service.ENDED:
+            raise errors.Conflict(code="round_running")
+        kept = RoundRecord.objects.filter(round_number=found.pk).first()
+        return Response(serializers.Debrief(kept.debrief if kept and kept.debrief else debriefs.compose(found)).data)
+
+
+class BotSteps(MatchView):
+    permission_classes = [auth.Approved]
+
+    @extend_schema(tags=TAGS, responses=serializers.StepLine(many=True), operation_id="bot_steps")
+    def get(self, request):
+        return Response(serializers.StepLine(bot_runs.step_lines(), many=True).data)
+
+
+class Records(MatchView):
+    permission_classes = [auth.Approved]
+
+    @extend_schema(tags=RECORD_TAGS, parameters=[serializers.RecordsQuery],
+                   responses=serializers.RecordLine(many=True), operation_id="records_list")
+    def get(self, request):
+        asked = given(serializers.RecordsQuery, request.query_params)
+        return Response(serializers.RecordLine(records.mine(request.user, asked.get("problem")), many=True).data)
+
+
+class Record(MatchView):
+    permission_classes = [auth.Approved]
+
+    @extend_schema(tags=RECORD_TAGS, responses=serializers.RecordShown, operation_id="record_read")
+    def get(self, request, record_id: int):
+        return Response(serializers.RecordShown(records.record(record_id, request.user)).data)
+
+
+class LauncherView(MatchView):
+    authentication_classes = (auth.LauncherAuthentication,)
+    permission_classes = [auth.IsLauncher]
+
+
+class BotRunClaim(LauncherView):
+    @extend_schema(tags=BOT_TAGS, request=serializers.ClaimAsk, responses={200: serializers.Claimed, 204: None},
+                   operation_id="bot_run_claim")
+    def post(self, request):
+        asked = given(serializers.ClaimAsk, request.data)
+        baselines.advance()
+        claimed = bot_runs.claim(asked["restarted"], asked["launcher"])
+        if claimed is None:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(serializers.Claimed(claimed).data)
+
+
+class BotRunNotes(LauncherView):
+    @extend_schema(tags=BOT_TAGS, request=serializers.NotesAsk, responses=serializers.NotesKept,
+                   operation_id="bot_run_report")
+    def post(self, request, run_id: int):
+        asked = given(serializers.NotesAsk, request.data)
+        return Response(serializers.NotesKept({"kept": bot_runs.report(bot_runs.run_of(run_id), asked["notes"])}).data)
+
+
+class BotRunFinish(LauncherView):
+    @extend_schema(tags=BOT_TAGS, request=serializers.FinishAsk, responses=serializers.RunShown,
+                   operation_id="bot_run_finish")
+    def post(self, request, run_id: int):
+        asked = given(serializers.FinishAsk, request.data)
+        run = bot_runs.finish(bot_runs.run_of(run_id), asked["exit"], asked["cost_usd"], asked["turns"],
+                              asked["refusals"], asked["closing"])
+        found = run.player.round
+        found.refresh_from_db()
+        records.keep_when_due(found)
+        baselines.advance()
+        return Response(serializers.RunShown(run).data)
+
+
+class Baselines(MatchView):
+    permission_classes = [accounts.IsStaff]
+
+    @extend_schema(tags=STAFF_TAGS, responses=serializers.BaselineLine(many=True), operation_id="baseline_read")
+    def get(self, request, problem_id: int):
+        return Response(serializers.BaselineLine([baselines.shown(line) for line in baselines.lines(problem_id)],
+                                                 many=True).data)
+
+    @extend_schema(tags=STAFF_TAGS, request=serializers.BaselineAsk, responses={201: serializers.BaselineLine},
+                   operation_id="baseline_create")
+    def post(self, request, problem_id: int):
+        asked = given(serializers.BaselineAsk, request.data)
+        made = baselines.create(problem_id, asked["human_side"], asked["step"], asked["rounds"], request.user)
+        baselines.advance()
+        made.refresh_from_db()
+        return Response(serializers.BaselineLine(baselines.shown(baselines.line_of(made))).data, status=status.HTTP_201_CREATED)
 
 
 class StaffRange(MatchView):

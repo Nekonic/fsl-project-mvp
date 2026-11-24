@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from telemetry import events as log
 from training.models import Allocation, Round
-from training.round import site
+from training.round import records, site
 
 
 def cutoff(now: datetime | None = None) -> datetime:
@@ -28,6 +28,9 @@ def closed_among(allocation_ids: Iterable[int]) -> list[int]:
 def drop(allocation_ids: Iterable[int]) -> list[int]:
     dropped = []
     for allocation_id in allocation_ids:
+        for found in Round.objects.filter(allocation_id=allocation_id).exclude(started=None).select_related(
+                "baseline_of"):
+            records.keep(found)
         round_ids = list(Round.objects.filter(allocation_id=allocation_id).values_list("pk", flat=True))
         with transaction.atomic():
             log.forget(round_ids)
@@ -39,4 +42,5 @@ def drop(allocation_ids: Iterable[int]) -> list[int]:
 
 
 def prune(now: datetime | None = None) -> list[int]:
+    records.prune(now)
     return drop(expired(now))

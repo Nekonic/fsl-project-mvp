@@ -16,6 +16,7 @@ SHARED = {
             "started"},
     f"{ROUND}events/": {"events", "next"},
     f"{ROUND}score/": {"errors"},
+    f"{ROUND}debrief/": {"errors"},
     f"{ROUND}topology/": {"edges", "nodes", "zones"},
     f"{ROUND}site/requests/": set(),
     f"{ROUND}terminal-auth/attack/": {"errors"},

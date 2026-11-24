@@ -1,6 +1,9 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from training.models import MATCHUPS, PHASES, REASONS, PLAYER_SIDES
+from training.models import BASELINE_STATES, MATCHUPS, NOTE_KINDS, PHASES, PLAYER_SIDES, REASONS, RUN_STATES
+from training.round import bots as bot_runs
+from training.round import records
 
 STATES = [("", ""), ("open", "open"), ("joinable", "joinable")]
 CORRELATIONS = [("marker", "marker"), ("window", "window")]
@@ -16,6 +19,13 @@ class PlayerLine(serializers.Serializer):
     client = serializers.CharField()
     username = serializers.CharField(source="user.username", allow_null=True, read_only=True, default=None)
     bot_name = serializers.CharField()
+    step = serializers.CharField()
+    bot_run = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.ChoiceField(choices=RUN_STATES, allow_null=True))
+    def get_bot_run(self, player):
+        run = bot_runs.latest_run(player)
+        return run.status if run else None
 
 
 class RoundLine(serializers.Serializer):
@@ -49,7 +59,19 @@ class Closed(serializers.Serializer):
 
 
 class BotAsk(serializers.Serializer):
-    name = serializers.CharField(max_length=64)
+    name = serializers.CharField(max_length=64, required=False)
+    step = serializers.CharField(max_length=16, required=False)
+
+    def to_internal_value(self, data):
+        unknown = sorted(set(data) - set(self.fields)) if isinstance(data, dict) else []
+        if unknown:
+            raise serializers.ValidationError({unknown[0]: "not a field of a bot seat"}, code="unknown_field")
+        return super().to_internal_value(data)
+
+    def validate(self, attrs):
+        if len(attrs) != 1:
+            raise serializers.ValidationError({"step": "one of step and name"}, code="invalid_choice")
+        return attrs
 
 
 class PlayerAsk(serializers.Serializer):
@@ -258,3 +280,170 @@ class ProbeProgress(serializers.Serializer):
     total = serializers.IntegerField()
     done = serializers.ListField(child=serializers.CharField())
     failed = ProbeFailure(many=True)
+
+
+class PaceLine(serializers.Serializer):
+    per_window = serializers.IntegerField()
+    window_s = serializers.IntegerField()
+    min_gap_s = serializers.IntegerField()
+
+
+class AllowanceLine(serializers.Serializer):
+    operations = serializers.ListField(child=serializers.CharField())
+    cases = serializers.ListField(child=serializers.CharField())
+
+
+class StepPlay(serializers.Serializer):
+    model = serializers.CharField()
+    family = serializers.CharField()
+    pace = PaceLine()
+
+
+class StepLine(serializers.Serializer):
+    id = serializers.CharField()
+    label = serializers.CharField()
+    attack = StepPlay()
+    defence = StepPlay()
+
+
+class ClaimAsk(serializers.Serializer):
+    restarted = serializers.BooleanField(required=False, default=False)
+    launcher = serializers.DictField(required=False, default=dict)
+
+
+class CardShown(serializers.Serializer):
+    id = serializers.CharField()
+    technique = serializers.CharField()
+    name = serializers.CharField()
+    quote = serializers.CharField()
+    url = serializers.CharField()
+    object_version = serializers.CharField()
+    release = serializers.CharField()
+    notice = serializers.CharField()
+
+
+class StanceShown(CardShown):
+    stance = serializers.CharField()
+
+
+class PromptParts(serializers.Serializer):
+    side = serializers.CharField()
+    stance = serializers.CharField(allow_null=True)
+
+
+class Claimed(serializers.Serializer):
+    run = serializers.IntegerField()
+    round = serializers.IntegerField()
+    side = serializers.ChoiceField(choices=PLAYER_SIDES)
+    step = serializers.CharField()
+    token = serializers.CharField()
+    model = serializers.CharField(source="play.model")
+    budget_usd = serializers.FloatField(source="play.budget_usd")
+    max_turns = serializers.IntegerField(source="play.max_turns")
+    pace = PaceLine(source="play.pace")
+    allowance = AllowanceLine(source="play.allowance")
+    card = StanceShown(allow_null=True)
+    prompt = PromptParts()
+
+
+class NoteAsk(serializers.Serializer):
+    at = serializers.DateTimeField()
+    kind = serializers.ChoiceField(choices=NOTE_KINDS)
+    text = serializers.CharField(allow_blank=True, trim_whitespace=False)
+
+
+class NotesAsk(serializers.Serializer):
+    notes = NoteAsk(many=True)
+
+
+class NotesKept(serializers.Serializer):
+    kept = serializers.IntegerField()
+
+
+class FinishAsk(serializers.Serializer):
+    exit = serializers.CharField(max_length=32)
+    cost_usd = serializers.FloatField(required=False, allow_null=True, default=None)
+    turns = serializers.IntegerField(required=False, allow_null=True, default=None, min_value=0)
+    refusals = serializers.IntegerField(required=False, default=0, min_value=0)
+    closing = serializers.CharField(required=False, default="", allow_blank=True, trim_whitespace=False)
+
+
+class RunShown(serializers.Serializer):
+    run = serializers.IntegerField(source="pk")
+    status = serializers.ChoiceField(choices=RUN_STATES)
+    exit = serializers.CharField()
+
+
+class Debrief(serializers.Serializer):
+    round = serializers.IntegerField()
+    matchup = serializers.CharField()
+    pending = serializers.BooleanField()
+    steps = serializers.DictField(child=serializers.CharField(allow_null=True))
+    card = CardShown(allow_null=True)
+    bots = serializers.ListField(child=serializers.JSONField())
+    objectives = serializers.ListField(child=serializers.JSONField())
+    timeline = serializers.ListField(child=serializers.JSONField())
+    score = serializers.JSONField()
+
+
+class RecordsQuery(serializers.Serializer):
+    problem = serializers.IntegerField(required=False)
+
+
+class Standing(serializers.Serializer):
+    baseline = serializers.IntegerField()
+    step = serializers.CharField()
+    n = serializers.IntegerField()
+    top_percent = serializers.FloatField()
+
+
+class RecordLine(serializers.Serializer):
+    record = serializers.IntegerField(source="pk")
+    round_number = serializers.IntegerField()
+    problem = serializers.IntegerField(source="problem_id", allow_null=True)
+    matchup = serializers.CharField()
+    steps = serializers.DictField(child=serializers.CharField())
+    started = serializers.DateTimeField(allow_null=True)
+    ended = serializers.DateTimeField(allow_null=True)
+    end_reason = serializers.CharField()
+    incomplete = serializers.BooleanField()
+    baseline = serializers.IntegerField(source="baseline_id", allow_null=True)
+    standing = serializers.SerializerMethodField()
+
+    @extend_schema_field(Standing(allow_null=True))
+    def get_standing(self, made):
+        return records.standing_of(made)
+
+
+class RecordShown(RecordLine):
+    card = serializers.CharField()
+    score = serializers.JSONField(allow_null=True)
+    debrief = serializers.JSONField()
+    bot = serializers.JSONField()
+
+
+class BaselineAsk(serializers.Serializer):
+    human_side = serializers.ChoiceField(choices=PLAYER_SIDES)
+    step = serializers.CharField(max_length=16)
+    rounds = serializers.IntegerField(required=False, default=20, min_value=1, max_value=100)
+
+
+class SpreadLine(serializers.Serializer):
+    n = serializers.IntegerField()
+    low = serializers.FloatField(allow_null=True)
+    median = serializers.FloatField(allow_null=True)
+    high = serializers.FloatField(allow_null=True)
+
+
+class BaselineLine(serializers.Serializer):
+    baseline = serializers.IntegerField()
+    human_side = serializers.ChoiceField(choices=PLAYER_SIDES)
+    step = serializers.CharField()
+    status = serializers.ChoiceField(choices=BASELINE_STATES)
+    profile_key = serializers.CharField()
+    counted = serializers.IntegerField()
+    wanted = serializers.IntegerField()
+    attempted = serializers.IntegerField()
+    attempts_max = serializers.IntegerField()
+    exits = serializers.DictField(child=serializers.IntegerField())
+    spread = SpreadLine()

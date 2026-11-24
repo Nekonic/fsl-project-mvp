@@ -50,3 +50,22 @@ def url(found, rest: str = "") -> str:
 def pvp(allocation, problem, attacker, defender):
     return service.create_round(allocation, problem.pk, "pvp",
                                 {"attack": {"username": attacker.username}, "defence": {"username": defender.username}}).round
+
+
+@pytest.fixture
+def bot_problem(db):
+    return content.save_document(factories.round_problem(objectives=["board-auth-user-admin"], bot_steps=["1", "2"],
+                                                         cards=["A1", "A3"]))
+
+
+@pytest.fixture
+def opens_bot_rounds(settings, learner):
+    settings.BOT_ROUND_USERS = frozenset({learner.username})
+    return learner
+
+
+def bot_round(client, allocation, problem, learner, bot, matchup="def_vs_bot"):
+    bot_side, human_side = ("attack", "defence") if matchup == "def_vs_bot" else ("defence", "attack")
+    return client.post(f"/api/allocations/{allocation.pk}/rounds/", {
+        "problem": problem.pk, "matchup": matchup,
+        "players": {bot_side: {"bot": bot}, human_side: {"username": learner.username}}}, format="json")

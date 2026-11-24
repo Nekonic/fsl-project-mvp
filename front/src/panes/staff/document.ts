@@ -8,7 +8,7 @@ export type SetupBody = Schemas["RoundSetupRequest"];
 export type InlinePosture = Schemas["InlinePostureRequest"];
 export type Posture = Schemas["Posture"];
 export type PostureBody = Schemas["PostureRequest"];
-export type Matchup = Schemas["MatchupEnum"];
+export type Matchup = Schemas["MatchupsEnum"];
 export type ProblemSide = Schemas["ProblemSideEnum"];
 
 export const MATCHUPS: Matchup[] = ["pvp", "def_vs_bot", "atk_vs_bot"];

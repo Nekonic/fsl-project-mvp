@@ -9,6 +9,10 @@ RETAIN_CLOSED_MINUTES = int(os.environ.get("CR_RETAIN_CLOSED_MINUTES") or 60)
 READ_EVERY_SECONDS = float(os.environ.get("CR_READ_EVERY_SECONDS") or 5)
 JUDGE_AFTER_SECONDS = float(os.environ.get("CR_JUDGE_AFTER_SECONDS") or 30)
 REBUILD_EVERY_SECONDS = float(os.environ.get("CR_REBUILD_EVERY_SECONDS") or 5)
+RETAIN_RECORDS_DAYS = int(os.environ.get("CR_RETAIN_RECORDS_DAYS") or 90)
+BOT_ROUND_USERS = frozenset(name.strip() for name in os.environ.get("CR_BOT_ROUND_USERS", "").split(",") if name.strip())
+BOT_LAUNCHER_KEY = os.environ.get("CR_BOT_LAUNCHER_KEY", "")
+BOT_LAUNCHER_KEY_FILE = Path(os.environ.get("CR_BOT_LAUNCHER_KEY_FILE") or "/run/secrets/bots_launcher_key")
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "") == "1"
 
@@ -103,5 +107,7 @@ SPECTACULAR_SETTINGS = {
                             "ProblemSideEnum": "training.models.PROBLEM_SIDES",
                             "VerdictEnum": "training.defence.serializers.VERDICTS",
                             "MatchupEnum": "training.models.MATCHUPS",
-                            "PlayerSideEnum": "training.models.PLAYER_SIDES", "RoundPhaseEnum": "training.models.PHASES"},
+                            "PlayerSideEnum": "training.models.PLAYER_SIDES", "RoundPhaseEnum": "training.models.PHASES",
+                            "BotRunStatusEnum": "training.models.RUN_STATES",
+                            "BaselineStatusEnum": "training.models.BASELINE_STATES"},
 }
