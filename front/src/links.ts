@@ -2,6 +2,7 @@ export const to = {
   home: () => "/",
   login: (next?: string) => (next && next !== "/" && !next.startsWith("/login") ? `/login?next=${encodeURIComponent(next)}` : "/login"),
   signup: () => "/signup",
+  access: () => "/access",
   allocation: (allocation: number) => `/allocations/${allocation}`,
   attack: (round: number) => `/rounds/${round}/attack`,
   defence: (round: number) => `/rounds/${round}/defence`,

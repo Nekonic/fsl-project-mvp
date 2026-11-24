@@ -8,6 +8,7 @@ export interface NavEntry {
 }
 
 export const topNav: NavEntry[] = [
+  { href: to.access(), label: "nav.access", staff: false },
   { href: to.staffProblems(), label: "nav.staff.problems", staff: true },
   { href: to.staffPostures(), label: "nav.staff.postures", staff: true },
   { href: to.staffUsers(), label: "nav.staff.users", staff: true },

@@ -1,4 +1,5 @@
 import type { FunctionComponent } from "preact";
+import { Access as AccessPage } from "./pages/Access";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { Result } from "./pages/Result";
@@ -28,6 +29,7 @@ export const routes: Route[] = [
   { path: "/login", page: Login, access: "public" },
   { path: "/signup", page: Signup, access: "public" },
   { path: "/", page: Home, access: "member" },
+  { path: "/access", page: AccessPage, access: "member" },
   { path: "/allocations/:allocation", page: RoundLobby, access: "member" },
   { path: "/rounds/:round/attack", page: RoundAttack, access: "member" },
   { path: "/rounds/:round/defence", page: RoundDefence, access: "member" },
