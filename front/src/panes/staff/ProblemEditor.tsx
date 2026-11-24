@@ -5,6 +5,7 @@ import { errorLine, errorText, t, type ShownError } from "../../strings";
 import { Button, ErrorList, ErrorNotice, Field, FormGrid, Input, Loading, Select, Stack, Switch, Text, TextArea, type Option, Chips, EditorCard, EditorGroup, EditorHead, EditorSection, EditorStrip, PublishRow } from "../../ui";
 import { usePostures, useWargames, wargameLabel } from "./catalog";
 import { asShownErrors, blankDraft, built, downloadJson, draftOf, postureInline, SIDES, textUnder, type Draft } from "./document";
+import { BaselinePanel } from "./BaselinePanel";
 import { RoundSetupEditor } from "./RoundSetupEditor";
 
 export interface ProblemEditorProps {
@@ -20,6 +21,7 @@ export function ProblemEditor({ problemId, onSaved, onDeleted }: ProblemEditorPr
   const stored = useResource("/api/staff/problems/{problem_id}/", problemId ? { params: { problem_id: problemId } } : null);
   const { wargames } = useWargames();
   const postures = usePostures();
+  const steps = useResource("/api/bot-steps/", {});
   const [draft, setDraft] = useState<Draft | null>(null);
   const [errors, setErrors] = useState<ShownError[]>([]);
   const [checked, setChecked] = useState(false);
@@ -176,7 +178,9 @@ export function ProblemEditor({ problemId, onSaved, onDeleted }: ProblemEditorPr
         </EditorSection>
 
         <EditorSection>
-          <RoundSetupEditor setup={draft.round} onSetup={(round) => change({ round })} errors={errors} postures={postureOptions} />
+          <RoundSetupEditor setup={draft.round} onSetup={(round) => change({ round })} errors={errors} postures={postureOptions}
+            steps={steps.data ?? []} cards={wargames.find((wargame) => wargame.id === draft.problem.wargame)?.cards ?? []} />
+          <BaselinePanel problemId={problemId} saved={stored.data?.round} />
           {publish}
         </EditorSection>
       </EditorCard>

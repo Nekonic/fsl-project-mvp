@@ -73,6 +73,7 @@ export const fixtures = [
   reply("get", "/api/problems/{problem_id}/", (asked) => ({
     id: Number(asked.params.problem_id), kind: "round", wargame: "board", side: "both",
     title: "Board wargame", summary: "Placeholder summary", body: "Placeholder body",
+    matchups: ["pvp", "def_vs_bot", "atk_vs_bot"], bot_steps: ["1", "2", "3"],
   })),
   reply("post", "/api/rounds/{round_id}/attack/forfeit/", { ended: minutesFromNow(0), reason: "forfeit_attack" }),
   reply("post", "/api/rounds/{round_id}/defence/forfeit/", { ended: minutesFromNow(0), reason: "forfeit_defence" }),

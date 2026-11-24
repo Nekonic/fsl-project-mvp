@@ -42,6 +42,16 @@ const slots = [
 
 let probeReads = 0;
 
+const BOARD_CARDS = [
+  { id: "A1", technique: "T1595.002", name: "Active Scanning: Vulnerability Scanning" },
+  { id: "A3", technique: "T1190", name: "Exploit Public-Facing Application" },
+  { id: "A4", technique: "T1212", name: "Exploitation for Credential Access" },
+];
+const CORP_CARDS = [
+  { id: "A1", technique: "T1595.002", name: "Active Scanning: Vulnerability Scanning" },
+  { id: "A7", technique: "T1068", name: "Exploitation for Privilege Escalation" },
+];
+
 export const fixtures = [
   reply("get", "/api/staff/users/", accounts),
   reply("post", "/api/staff/users/{username}/approve/", (asked) => accountWith(asked.params.username, true)),
@@ -72,8 +82,8 @@ export const fixtures = [
   reply("delete", "/api/staff/range/fabric/", undefined),
 
   reply("get", "/api/staff/wargames/", [
-    { id: "board", title: "Community board", image: "board:1", public_url: "", hosts: HOSTS, objective_model: "loot", case_file: "redteam/cases/board.yaml", default_traffic: null, waf_files: WAF_FILES },
-    { id: "corp", title: "Corporate site", image: "corp:1", public_url: "", hosts: HOSTS, objective_model: "effect", case_file: "redteam/cases/corp.yaml", default_traffic: null, waf_files: WAF_FILES },
+    { id: "board", title: "Community board", image: "board:1", public_url: "", hosts: HOSTS, objective_model: "loot", case_file: "redteam/cases/board.yaml", default_traffic: null, waf_files: WAF_FILES, cards: BOARD_CARDS },
+    { id: "corp", title: "Corporate site", image: "corp:1", public_url: "", hosts: HOSTS, objective_model: "effect", case_file: "redteam/cases/corp.yaml", default_traffic: null, waf_files: WAF_FILES, cards: CORP_CARDS },
   ]),
   reply("post", "/api/staff/wargames/{wargame_id}/probes/record/", () => {
     probeReads = 0;

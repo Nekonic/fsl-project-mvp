@@ -3044,6 +3044,19 @@ components:
         * `running` - running
         * `finished` - finished
         * `failed` - failed
+    CardLine:
+      type: object
+      properties:
+        id:
+          type: string
+        technique:
+          type: string
+        name:
+          type: string
+      required:
+      - id
+      - name
+      - technique
     CardShown:
       type: object
       properties:
@@ -3650,12 +3663,24 @@ components:
           type: string
         summary:
           type: string
+        matchups:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        bot_steps:
+          type: array
+          items:
+            type: string
+          readOnly: true
         body:
           type: string
       required:
       - body
+      - bot_steps
       - id
       - kind
+      - matchups
       - side
       - summary
       - title
@@ -3675,9 +3700,21 @@ components:
           type: string
         summary:
           type: string
+        matchups:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        bot_steps:
+          type: array
+          items:
+            type: string
+          readOnly: true
       required:
+      - bot_steps
       - id
       - kind
+      - matchups
       - side
       - summary
       - title
@@ -5562,7 +5599,13 @@ components:
           items:
             type: string
           readOnly: true
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/CardLine'
+          readOnly: true
       required:
+      - cards
       - case_file
       - default_traffic
       - hosts

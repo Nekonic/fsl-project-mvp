@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { waitForAllocation, type Schemas } from "../api/client";
 import { holdAllocation } from "../api/follow";
-import { useAction, useResource } from "../api/hooks";
+import { useAction, useResource, useSession } from "../api/hooks";
 import { to } from "../links";
 import type { PageProps } from "../routes";
 import { navigate } from "../router";
@@ -19,19 +19,20 @@ type RoundLine = Schemas["RoundLine"];
 type PlayerLine = Schemas["PlayerLine"];
 type Side = Schemas["PlayerSideEnum"];
 type Matchup = Schemas["MatchupsEnum"];
-type PlayerKind = "user" | "bot" | "open";
+type PlayerKind = "user" | "bot" | "driven" | "open";
 type PlayerAsk = Schemas["PlayerAskRequest"];
-
+type StepLine = Schemas["StepLine"];
+type Problem = Schemas["LearnerProblemSummary"];
 
 const SIDES: Side[] = ["attack", "defence"];
 const MATCHUPS: Matchup[] = ["pvp", "def_vs_bot", "atk_vs_bot"];
-const PLAYER_KINDS: PlayerKind[] = ["user", "bot", "open"];
+const HUMAN_KINDS: PlayerKind[] = ["user", "open"];
 const PLAYERS_FOR: Record<Matchup, Record<Side, PlayerKind>> = {
   pvp: { attack: "open", defence: "open" },
   def_vs_bot: { attack: "bot", defence: "open" },
   atk_vs_bot: { attack: "open", defence: "bot" },
 };
-const INLINE_PATHS = ["problem", "matchup", ...SIDES.flatMap((side) => [`players.${side}`, `players.${side}.username`, `players.${side}.bot.name`])];
+const INLINE_PATHS = ["problem", "matchup", ...SIDES.flatMap((side) => [`players.${side}`, `players.${side}.username`, `players.${side}.bot.name`, `players.${side}.bot.step`, `players.${side}.bot`])];
 const ROUND_KINDS_THAT_CHANGE = ["player.joined", "round.started", "round.ended"];
 
 function playerOf(line: RoundLine, side: Side): PlayerLine | undefined {
@@ -49,7 +50,13 @@ function PlayerCell({ line, side, joining, onJoin }: PlayerCellProps) {
   const player = playerOf(line, side);
   if (!player) return <Text tone="faint">{t("lobby.player.none")}</Text>;
   if (player.client === "bot") {
-    return <Stack gap="sm"><Text strong tone="heading">{t("lobby.player.bot")}</Text><Text mono small tone="muted">{player.bot_name}</Text></Stack>;
+    return (
+      <Stack gap="sm">
+        <Text strong tone="heading">{player.step ? t("lobby.player.step", { step: tFor("bot_step", player.step) }) : t("lobby.player.bot")}</Text>
+        {!player.step && <Text mono small tone="muted">{player.bot_name}</Text>}
+        {player.bot_run && <Text small tone="muted">{tFor("bot_run", player.bot_run)}</Text>}
+      </Stack>
+    );
   }
   if (player.username !== null) {
     return (
@@ -125,29 +132,53 @@ interface PlayerChoice {
   kind: PlayerKind;
   username: string;
   bot: string;
+  step: string;
 }
 
 function askOf(choice: PlayerChoice): PlayerAsk {
-  if (choice.kind === "bot") return { bot: { name: choice.bot.trim() } };
+  if (choice.kind === "bot") return { bot: { step: choice.step } };
+  if (choice.kind === "driven") return { bot: { name: choice.bot.trim() } };
   if (choice.kind === "user") return { username: choice.username.trim() };
   return { open: true };
 }
 
+function stepLabel(step: StepLine, side: Side): string {
+  const pace = step[side].pace;
+  return `${tFor("bot_step", step.id)} · ${t("lobby.step_pace", { minutes: Math.round(pace.window_s / 60), count: pace.per_window })}`;
+}
+
 interface PlayerPickProps {
   side: Side;
+  botSide: boolean;
+  staff: boolean;
+  steps: StepLine[];
   choice: PlayerChoice;
   errors: Record<string, string>;
   onChoice: (choice: PlayerChoice) => void;
 }
 
-function PlayerPick({ side, choice, errors, onChoice }: PlayerPickProps) {
+function PlayerPick({ side, botSide, staff, steps, choice, errors, onChoice }: PlayerPickProps) {
+  const kinds: PlayerKind[] = botSide ? (staff ? ["bot", "driven"] : ["bot"]) : HUMAN_KINDS;
+  const stepError = errors[`players.${side}.bot.step`] ?? errors[`players.${side}.bot`] ?? errors[`players.${side}`];
   return (
     <Card pad="md">
       <Stack gap="sm">
         <Text strong tone="heading" small>{t(`col.${side}_player`)}</Text>
-        <Choices inline name={`player-${side}`} value={choice.kind} onValue={(kind) => onChoice({ ...choice, kind: kind as PlayerKind })}
-          options={PLAYER_KINDS.map((kind) => ({ value: kind, label: t(`lobby.player_kind.${kind}`) }))} />
+        {kinds.length > 1 && (
+          <Choices inline name={`player-${side}`} value={choice.kind} onValue={(kind) => onChoice({ ...choice, kind: kind as PlayerKind })}
+            options={kinds.map((kind) => ({ value: kind, label: t(`lobby.player_kind.${kind}`) }))} />
+        )}
         {choice.kind === "bot" && (
+          <Stack gap="sm">
+            <Label>{t("lobby.step")}</Label>
+            {steps.length
+              ? <Choices name={`step-${side}`} value={choice.step} onValue={(step) => onChoice({ ...choice, step })}
+                options={steps.map((step) => ({ value: step.id, label: stepLabel(step, side) }))} />
+              : <Text tone="muted" small>{t("lobby.step_none")}</Text>}
+            {stepError && <Text tone="danger" small>{stepError}</Text>}
+          </Stack>
+        )}
+        {choice.kind === "driven" && (
           <Field label={t("lobby.bot_name")} error={errors[`players.${side}.bot.name`] ?? errors[`players.${side}`]}>
             <Input mono spellcheck={false} value={choice.bot} onValue={(bot) => onChoice({ ...choice, bot })} />
           </Field>
@@ -164,26 +195,47 @@ function PlayerPick({ side, choice, errors, onChoice }: PlayerPickProps) {
 
 interface CreateRoundProps {
   allocation: Allocation;
-  problems: Schemas["LearnerProblemSummary"][];
+  problems: Problem[];
+  steps: StepLine[];
   onCreated: () => void;
 }
 
-function CreateRound({ allocation, problems, onCreated }: CreateRoundProps) {
+function matchupsOf(problem: Problem | undefined): Matchup[] {
+  const allowed = MATCHUPS.filter((one) => problem?.matchups.includes(one));
+  return allowed.length ? allowed : MATCHUPS;
+}
+
+function stepsOf(problem: Problem | undefined, steps: StepLine[]): StepLine[] {
+  return steps.filter((step) => problem?.bot_steps.includes(step.id));
+}
+
+function CreateRound({ allocation, problems, steps, onCreated }: CreateRoundProps) {
+  const staff = Boolean(useSession().me?.is_staff);
   const fitting = problems.filter((problem) => problem.wargame === allocation.wargame);
   const [problem, setProblem] = useState("");
-  const [matchup, setMatchup] = useState<Matchup>("pvp");
+  const [picked, setMatchup] = useState<Matchup>("pvp");
   const [players, setPlayers] = useState<Record<Side, PlayerChoice>>({
-    attack: { kind: "open", username: "", bot: "" },
-    defence: { kind: "open", username: "", bot: "" },
+    attack: { kind: "open", username: "", bot: "", step: "" },
+    defence: { kind: "open", username: "", bot: "", step: "" },
   });
   const [tokens, setTokens] = useState<Array<{ side: string; token: string; bot: string }>>([]);
   const [copied, setCopied] = useState("");
   const create = useAction("post", "/api/allocations/{allocation_id}/rounds/");
 
   const chosen = problem || String(fitting[0]?.id ?? "");
+  const chosenProblem = fitting.find((one) => String(one.id) === chosen);
+  const allowed = matchupsOf(chosenProblem);
+  const matchup = allowed.includes(picked) ? picked : (allowed[0] as Matchup);
+  const offered = stepsOf(chosenProblem, steps);
+  const seatOf = (side: Side): PlayerChoice => {
+    const choice = players[side];
+    const botSide = PLAYERS_FOR[matchup][side] === "bot";
+    const kind = botSide ? (choice.kind === "driven" && staff ? "driven" : "bot") : (choice.kind === "user" ? "user" : "open");
+    const step = offered.some((one) => one.id === choice.step) ? choice.step : (offered[0]?.id ?? "");
+    return { ...choice, kind, step };
+  };
   const unended = allocation.rounds.some((line) => line.phase !== "ended");
   const closed = allocation.closed !== null;
-  const blocked = closed || !allocation.ready || unended || !chosen;
   const errors = fieldErrors(create.error);
 
   const pickMatchup = (next: Matchup) => {
@@ -193,12 +245,15 @@ function CreateRound({ allocation, problems, onCreated }: CreateRoundProps) {
       defence: { ...was.defence, kind: PLAYERS_FOR[next].defence },
     }));
   };
+  const seats = { attack: seatOf("attack"), defence: seatOf("defence") };
+  const stepless = SIDES.some((side) => seats[side].kind === "bot" && !seats[side].step);
+  const blocked = closed || !allocation.ready || unended || !chosen || stepless;
 
   const submit = async () => {
     if (blocked) return;
     const made = await create.run({
       params: { allocation_id: allocation.allocation },
-      body: { problem: Number(chosen), matchup, players: { attack: askOf(players.attack), defence: askOf(players.defence) } },
+      body: { problem: Number(chosen), matchup, players: { attack: askOf(seats.attack), defence: askOf(seats.defence) } },
     });
     if (!made) return;
     setTokens(Object.entries(made.bot_tokens).map(([side, token]) => ({
@@ -216,13 +271,13 @@ function CreateRound({ allocation, problems, onCreated }: CreateRoundProps) {
     }
   };
 
-  const reason = closed ? t("lobby.closed_notice") : !allocation.ready ? t("lobby.not_ready") : unended ? t("error.round_open") : !fitting.length ? t("lobby.no_match_problem") : "";
+  const reason = closed ? t("lobby.closed_notice") : !allocation.ready ? t("lobby.not_ready") : unended ? t("error.round_open") : !fitting.length ? t("lobby.no_match_problem") : stepless ? t("lobby.step_none") : "";
 
   return (
     <Task title={t("lobby.create")}>
       <Form onSubmit={() => void submit()}>
         <Stack>
-          {tokens.map((one) => (
+          {staff && tokens.map((one) => (
             <Notice key={one.side} tone="info" title={t("lobby.token_once")}
               detail={<>{tFor("side", one.side)}{one.bot && <> · <Text mono>{one.bot}</Text></>}</>}>
               <Row>
@@ -238,12 +293,13 @@ function CreateRound({ allocation, problems, onCreated }: CreateRoundProps) {
           <Stack gap="sm">
             <Label>{t("col.matchup")}</Label>
             <Choices name="matchup" value={matchup} onValue={(next) => pickMatchup(next as Matchup)}
-              options={MATCHUPS.map((one) => ({ value: one, label: tFor("matchup", one) }))} />
+              options={allowed.map((one) => ({ value: one, label: tFor("matchup", one) }))} />
             {errors.matchup && <Text tone="danger" small>{errors.matchup}</Text>}
           </Stack>
           <Columns shape="two">
             {SIDES.map((side) => (
-              <PlayerPick key={side} side={side} choice={players[side]} errors={errors}
+              <PlayerPick key={side} side={side} botSide={PLAYERS_FOR[matchup][side] === "bot"} staff={staff} steps={offered}
+                choice={seats[side]} errors={errors}
                 onChoice={(choice) => setPlayers((was) => ({ ...was, [side]: choice }))} />
             ))}
           </Columns>
@@ -265,6 +321,7 @@ export function RoundLobby({ params }: PageProps) {
     refreshOn: liveRound ? { round: liveRound, kinds: ROUND_KINDS_THAT_CHANGE } : undefined,
   });
   const problems = useResource("/api/problems/", {});
+  const steps = useResource("/api/bot-steps/", {});
   const close = useAction("post", "/api/allocations/{allocation_id}/close/");
   const shown = allocation.data;
   const live = shown?.rounds.find((line) => line.phase !== "ended")?.round ?? null;
@@ -317,7 +374,7 @@ export function RoundLobby({ params }: PageProps) {
           {shown && (
             <>
               <Rounds allocation={shown} titleOf={titleOf} onChanged={allocation.reload} />
-              <CreateRound allocation={shown} problems={problems.data ?? []} onCreated={allocation.reload} />
+              <CreateRound allocation={shown} problems={problems.data ?? []} steps={steps.data ?? []} onCreated={allocation.reload} />
             </>
           )}
         </Stack>

@@ -1,6 +1,7 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from training.content import bots as bot_catalog
 from training.models import PROBLEM_KINDS, PROBLEM_SIDES
 
 MATCHUPS = ["pvp", "def_vs_bot", "atk_vs_bot"]
@@ -79,6 +80,12 @@ class Posture(serializers.Serializer):
     waf_files = serializers.DictField(child=serializers.CharField(allow_blank=True, trim_whitespace=False))
 
 
+class CardLine(serializers.Serializer):
+    id = serializers.CharField()
+    technique = serializers.CharField()
+    name = serializers.CharField()
+
+
 class Wargame(serializers.Serializer):
     id = serializers.CharField()
     title = serializers.CharField()
@@ -89,10 +96,16 @@ class Wargame(serializers.Serializer):
     case_file = serializers.CharField()
     default_traffic = serializers.CharField(allow_null=True)
     waf_files = serializers.SerializerMethodField()
+    cards = serializers.SerializerMethodField()
 
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_waf_files(self, wargame) -> list[str]:
         return list(self.context.get("waf_files", ()))
+
+    @extend_schema_field(CardLine(many=True))
+    def get_cards(self, wargame) -> list[dict]:
+        return [{"id": card.id, "technique": card.technique, "name": card.name}
+                for card in bot_catalog.cards() if wargame.id in card.wargames]
 
 
 class LearnerProblemSummary(serializers.Serializer):
@@ -102,6 +115,18 @@ class LearnerProblemSummary(serializers.Serializer):
     side = serializers.CharField()
     title = serializers.CharField()
     summary = serializers.CharField()
+    matchups = serializers.SerializerMethodField()
+    bot_steps = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
+    def get_matchups(self, problem) -> list[str]:
+        setup = getattr(problem, "setup", None)
+        return list(setup.matchups) if setup else []
+
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
+    def get_bot_steps(self, problem) -> list[str]:
+        setup = getattr(problem, "setup", None)
+        return list(setup.bot_steps) if setup else []
 
 
 class LearnerProblem(LearnerProblemSummary):

@@ -28,6 +28,7 @@ function wargameRound(id: number, wargame: string, title: string): Stored {
       probe_cases: [`${wargame}-sqli-search`, `${wargame}-xss-script-tag-in-search`, `${wargame}-sqli-orderby-sqlmap-probe`, `${wargame}-path-traversal-static`, `${wargame}-normal-sort`],
       objectives: [`${wargame}-auth-user-partial`, `${wargame}-auth-user-admin`, `${wargame}-auth-user-full`],
       traffic: null, benign_every_s: 60, time_limit_s: 1800,
+      bot_steps: ["1", "2"], cards: ["A1", "A3"],
     },
     start_posture: null,
   };

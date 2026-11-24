@@ -16,7 +16,7 @@ function allocationAnswering(allocation: number, closed: string | null) {
       beats.push(url);
       return json({ expires_at: "2026-01-01T00:30:00Z" });
     }
-    if (url.startsWith("/api/problems/")) return json([]);
+    if (url.startsWith("/api/problems/") || url.startsWith("/api/bot-steps/")) return json([]);
     return json({ allocation, wargame: "board", slot: 1, ready: true, expires_at: "2026-01-01T00:30:00Z", closed, rounds: [] });
   }));
   return beats;

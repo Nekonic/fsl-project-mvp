@@ -1,5 +1,6 @@
-import { errorLine, t, type ShownError } from "../../strings";
-import { Checkbox, Field, FormGrid, Input, Row, Select, Subhead, type Option, EditorGroup, FieldNote, LineList, WithUnit } from "../../ui";
+import type { Schemas } from "../../api/client";
+import { errorLine, t, tFor, type ShownError } from "../../strings";
+import { Checkbox, Field, FormGrid, Input, Row, Select, Stack, Subhead, Text, type Option, EditorGroup, FieldNote, LineList, WithUnit } from "../../ui";
 import { MATCHUPS, textUnder, type SetupBody } from "./document";
 
 export interface RoundSetupEditorProps {
@@ -7,6 +8,12 @@ export interface RoundSetupEditorProps {
   onSetup: (setup: SetupBody) => void;
   errors: ShownError[];
   postures: Option[];
+  steps: Schemas["StepLine"][];
+  cards: Schemas["CardLine"][];
+}
+
+function toggled(list: string[], item: string, on: boolean): string[] {
+  return on ? [...list.filter((was) => was !== item), item] : list.filter((was) => was !== item);
 }
 
 function whole(text: string): number {
@@ -19,12 +26,13 @@ function lineNote(errors: ShownError[], path: string): string | undefined {
   return found.length ? found.map(errorLine).join(" ") : undefined;
 }
 
-export function RoundSetupEditor({ setup, onSetup, errors, postures }: RoundSetupEditorProps) {
+export function RoundSetupEditor({ setup, onSetup, errors, postures, steps, cards }: RoundSetupEditorProps) {
   const change = (patch: Partial<SetupBody>) => onSetup({ ...setup, ...patch });
   const cases = setup.probe_cases ?? [];
   const objectives = setup.objectives ?? [];
-  const toggleMatchup = (matchup: SetupBody["matchups"][number], on: boolean) =>
-    change({ matchups: on ? [...setup.matchups.filter((was) => was !== matchup), matchup] : setup.matchups.filter((was) => was !== matchup) });
+  const botSteps = setup.bot_steps ?? [];
+  const chosenCards = setup.cards ?? [];
+  const toggleMatchup = (matchup: SetupBody["matchups"][number], on: boolean) => change({ matchups: toggled(setup.matchups, matchup, on) as SetupBody["matchups"] });
   const postureOptions: Option[] = [{ value: "", label: t("common.none") }, ...postures];
   if (setup.posture && !postures.some((option) => option.value === setup.posture)) postureOptions.push({ value: setup.posture, label: setup.posture });
 
@@ -39,6 +47,30 @@ export function RoundSetupEditor({ setup, onSetup, errors, postures }: RoundSetu
         </Row>
         <FieldNote>{textUnder(errors, "round.matchups")}</FieldNote>
       </EditorGroup>
+
+      <FormGrid>
+        <EditorGroup label={t("staff.round.bot_steps")}>
+          <Row wide>
+            {steps.map((step) => (
+              <Checkbox key={step.id} checked={botSteps.includes(step.id)} label={tFor("bot_step", step.id)}
+                onChecked={(on) => change({ bot_steps: toggled(botSteps, step.id, on) })} />
+            ))}
+          </Row>
+          <FieldNote>{textUnder(errors, "round.bot_steps")}</FieldNote>
+        </EditorGroup>
+        <EditorGroup label={t("staff.round.cards")}>
+          <Stack gap="sm">
+            <Text tone="muted" small>{t("staff.round.cards_lead")}</Text>
+            {cards.length
+              ? cards.map((card) => (
+                <Checkbox key={card.id} checked={chosenCards.includes(card.id)} label={`${card.id} · ${card.technique} ${card.name}`}
+                  onChecked={(on) => change({ cards: toggled(chosenCards, card.id, on) })} />
+              ))
+              : <Text tone="faint" small>{t("staff.round.cards_none")}</Text>}
+          </Stack>
+          <FieldNote>{textUnder(errors, "round.cards")}</FieldNote>
+        </EditorGroup>
+      </FormGrid>
 
       <FormGrid>
         <EditorGroup label={t("staff.round.probe_cases")}>

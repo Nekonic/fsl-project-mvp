@@ -5,6 +5,7 @@ from cr.config import WafConfig
 from tests.shape import refused
 from tests.training.content.conftest import RECORDED, REPO
 from training.content import catalog
+from training.content import bots as bot_catalog
 
 
 def test_every_wargame_folder_declares_its_wargame_yaml():
@@ -105,7 +106,9 @@ def test_staff_read_the_wargames_synced_from_the_catalog(source, as_staff):
     assert listed[0] == {"id": "board", "title": "Community board", "image": "ghcr.io/nekonic/cr-board",
                          "public_url": "http://board.com", "hosts": ["board.com"],
                          "objective_model": "loot_verified", "case_file": "board.yaml",
-                         "default_traffic": "community", "waf_files": list(WafConfig().files)}
+                         "default_traffic": "community", "waf_files": list(WafConfig().files),
+                         "cards": [{"id": card.id, "technique": card.technique, "name": card.name}
+                                   for card in bot_catalog.cards() if "board" in card.wargames]}
 
 
 def test_a_learner_is_refused_the_wargame_list(source, as_learner):

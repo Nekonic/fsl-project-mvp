@@ -28,7 +28,7 @@ type PlayerLine = Schemas["PlayerLine"];
 const SIDE_ORDER: Side[] = ["attack", "defence"];
 
 function playerWho(player: PlayerLine): string {
-  if (player.client === "bot") return t("round.player_bot", { name: player.bot_name });
+  if (player.client === "bot") return t("round.player_bot", { name: player.step ? tFor("bot_step", player.step) : player.bot_name });
   return player.username ?? t("round.player_open");
 }
 

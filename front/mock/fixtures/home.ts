@@ -1,8 +1,8 @@
 import { minutesFromNow, refuse, reply } from "../fixture";
 
 export const problems = [
-  { id: 7, kind: "round", wargame: "board", side: "both", title: "Board wargame", summary: "Placeholder summary for the board match" },
-  { id: 8, kind: "round", wargame: "corp", side: "both", title: "Corp wargame", summary: "Placeholder summary for the corp match" },
+  { id: 7, kind: "round", wargame: "board", side: "both", title: "Board wargame", summary: "Placeholder summary for the board match", matchups: ["pvp", "def_vs_bot", "atk_vs_bot"], bot_steps: ["1", "2", "3"] },
+  { id: 8, kind: "round", wargame: "corp", side: "both", title: "Corp wargame", summary: "Placeholder summary for the corp match", matchups: ["pvp", "def_vs_bot"], bot_steps: ["1", "2"] },
 ];
 
 const human = (side: "attack" | "defence", username: string | null) => ({ side, client: "human", username, bot_name: "", step: "", bot_run: null });
